@@ -471,7 +471,8 @@ inline void LaserVolleyComponent::IgniteGround(const Vector3& point)
     object.runtimeGenerated = true;
     object.transform.position = object.transform.worldPosition = point;
     auto& emitter = object.AddComponent<ParticleEmitter>();
-    emitter.settings.materialPath = "guid:e134a84c306ae0689dddcc8a279fdb2f|Assets/Materials/Effects/FX_BOSS_GroundFire.mat";
+    emitter.settings.materialPath = "guid:7e21ddc1a0fb5e66120cfb386c7dff4b|Assets/VFX/Fluid/JetFlame.mat";
+    emitter.settings.randomStartRotation = false;
     auto& fire = object.AddScript<BossGroundFireComponent>();
     fire.owner = EntityRef{scene.Self()->GetID()};
     fire.radius = m_burnRadius;
@@ -902,4 +903,4 @@ inline void LaserVolleyComponent::OnUpdate()
     Stop();
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox
