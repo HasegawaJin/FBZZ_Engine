@@ -2444,7 +2444,8 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
     server.registerTool('fluid_bake', {
         description: '.fluid をフリップブックテクスチャへ焼くジョブを始めます。数秒〜数十秒かかるため、すぐ job を返します'
             + '(ここで待つと Editor のメインスレッドごと止まるため)。fluid_job_status で done / failed になるまでポーリングしてください。'
-            + '既定 (updateMaterial=true) では .fluid の隣に同名の .mat (Smoke.fluid → Smoke.mat) を作る / 焼き結果へ追従させます。'
+            + '.fluid の隣に同名の .mat (Smoke.fluid → Smoke.mat) を必ず作る / 焼き結果へ追従させます。'
+            + 'updateMaterial は旧クライアントとの互換用に受け取りますが、値にかかわらず .mat を更新します。'
             + '焼きモードはレシピの bake.mode で決まり、立体で焼くなら先に fluid_set で {"bake":{"mode":"3d"}} にします。'
             + '**焼いた出力 (テクスチャ・.mat) は Undo で消えません** (同名の既存アセットを壊しうるため)。'
             + '出力は必ず同じ名前へ上書きされるので、焼き直しても .mat の指す先はずれません。'
@@ -2453,14 +2454,13 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
             + '見た目が固まるまでは fluid_preview で反復し、焼くのは最後にしてください。',
         inputSchema: {
             path: FluidPathSchema.describe('projectRoot 相対の .fluid パス'),
-            updateMaterial: z.boolean().optional().describe('既定 true。false で隣の .mat を作らず / 触らず、テクスチャだけ焼く'),
+            updateMaterial: z.boolean().optional().describe('互換用。指定しても値にかかわらず隣の .mat を作る / 更新する'),
             seed: z.number().int().min(0).max(4294967295).optional()
                 .describe('0 以外でこの seed で焼く (.fluid は書き換えません。2d のみ)'),
         },
         annotations: writeAnnotations,
-    }, ({ path, updateMaterial, seed }) => run({
+    }, ({ path, seed }) => run({
         t: 'fluid.bake', path,
-        ...(updateMaterial === undefined ? {} : { updateMaterial }),
         ...(seed === undefined ? {} : { seed }),
     }));
 
