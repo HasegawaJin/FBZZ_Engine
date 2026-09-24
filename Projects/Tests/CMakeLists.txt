@@ -162,7 +162,8 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/VFXSubEmitterScopeTests.cpp
         Engine/Auto/ParticleMaterialPathTests.cpp
         Engine/Auto/FiberTests.cpp
-        Engine/Auto/ParticleFlipbookTests.cpp
+    Engine/Auto/ParticleFlipbookTests.cpp
+    Engine/Auto/ParticleLoopInspectionTests.cpp
         Engine/Auto/FluidSolverTests.cpp
         Engine/Auto/SixWayLightingTests.cpp
         Engine/Auto/ParticleLightSelectionTests.cpp

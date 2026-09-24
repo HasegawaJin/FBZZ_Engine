@@ -145,6 +145,8 @@ struct ParticleMaterialSettings {
     bool sixWayMaps = false;
     /// Negative の A (発光マスク) に掛ける色 (リニア HDR)。炎の芯を影の中でも光らせる。
     math::Vector3 sixWayEmissionColor = { 0.0f, 0.0f, 0.0f };
+    /// @brief 6-way emission color atlas に掛ける露出補正。
+    float sixWayEmissionScale = 1.0f;
     /// @}
 
     /// @name ボリュメトリック煙

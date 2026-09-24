@@ -4,6 +4,8 @@
 /// @date    2026-07-15
 #pragma once
 
+#include <span>
+
 namespace fbzz::physics { class World; }
 
 namespace fbzz::scene {
@@ -12,6 +14,15 @@ class Scene;
 class GameObject;
 struct ParticleEmitter;
 struct Transform;
+
+/// @brief 実際の CPU 粒子更新を固定 FPS で進めたループの可視性。
+struct ParticleLoopInspection {
+    int fps = 0;
+    int sampledFrames = 0;
+    int emptyFrames = 0;
+    int boundaryEmptyFrames = 0;
+    int firstEmptyFrame = -1;
+};
 
 /// CPUシミュレーション対象の全Emitterを1フレーム進める。
 /// GPUで完結できない機能を選択したEmitterも同じ経路で更新する。
@@ -23,6 +34,14 @@ void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float delt
 ///       実装を 1 本に保つ目的で公開: システムとパスに別々の実装を置くと更新漏れで食い違う。
 [[nodiscard]] bool AdvanceParticleEmitterPlayback(ParticleEmitter& emitter,
                                                   const Transform& transform, float deltaTime);
+
+/// @brief 一時シーンの Emitter を指定 FPS・周期数だけ再生し、粒子と Atlas の可視範囲が空になるフレームを数える。
+/// @param frameCoverage Atlas 各コマの可視画素率。空なら粒子の有無だけを検査する。
+/// @pre scene と emitter はこの検査専用で、実シーンの再生状態を渡さない。
+[[nodiscard]] bool InspectParticleEmitterLoop(Scene& scene, physics::World& world,
+                                              GameObject& gameObject, ParticleEmitter& emitter,
+                                              int fps, int cycles, std::span<const float> frameCoverage,
+                                              ParticleLoopInspection& out);
 
 /// VFX Editor のタイムラインスクラブ用: 単一 Emitter を ResetPlayback() で巻き戻した後、
 /// 固定ステップ (1/60s) で targetTime まで決定論的に再シミュレートする。

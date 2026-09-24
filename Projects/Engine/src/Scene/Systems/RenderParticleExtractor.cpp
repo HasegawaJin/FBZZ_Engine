@@ -109,7 +109,6 @@ float Random01(ParticleEmitter& emitter)
 
 /// @brief 粒子ごとの色ゆらぎ倍率を 1 粒子ぶん引く。RGB を各チャンネル独立に [1-v, 1+v] 倍して
 /// @brief 群れの単調さを崩す。alpha は返さない (フェード制御なのでゆらすと消え際が汚くなる)。
-///
 /// @brief 色ではなく倍率を返すのは、グラデーション使用時に色が毎フレーム作り直されるため
 /// @brief (スポーン時に焼き込むと翌フレームには消える)。
 /// @brief CPU/GPU どちらのスポーン経路からも同じ乱数列で呼ぶので結果は決定論的に一致する。
@@ -444,7 +443,6 @@ uint64_t                                                 g_particlePassSerial = 
 
 /// @brief .mat の [params] をカスタムシェーダーの MaterialConstants へ束縛し、b2 へ流す定数バッファを返す。
 /// @brief 組み込みシェーダー (MaterialConstants を宣言しない) では無効ハンドルを返す。
-///
 /// @brief 束縛規則そのものは asset::MaterialParamBinding が持つ — メッシュ / UI / デカールと同じ経路。
 renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveParticleMaterialParams(
     renderer::ResourceManager& resources,
@@ -586,6 +584,22 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
                     : LoadParticleTextureOrWhite(resources, sixWayTex);
                 emitter.runtime.loadedSixWayNegativeTexturePath = sixWayTex;
             }
+            const std::string& sixWayColorTex = mat->particle.sixWayMaps
+                ? ParticleMaterialTexture(*mat, "six_way_color") : kNoTexture;
+            if (emitter.runtime.loadedSixWayAlbedoColorTexturePath != sixWayColorTex) {
+                emitter.runtime.sixWayAlbedoColorTexture = sixWayColorTex.empty()
+                    ? renderer::ResourceHandle<renderer::TextureTag>::Null()
+                    : resources.LoadTexture(sixWayColorTex);
+                emitter.runtime.loadedSixWayAlbedoColorTexturePath = sixWayColorTex;
+            }
+            const std::string& sixWayEmissionTex = mat->particle.sixWayMaps
+                ? ParticleMaterialTexture(*mat, "six_way_emission") : kNoTexture;
+            if (emitter.runtime.loadedSixWayEmissionColorTexturePath != sixWayEmissionTex) {
+                emitter.runtime.sixWayEmissionColorTexture = sixWayEmissionTex.empty()
+                    ? renderer::ResourceHandle<renderer::TextureTag>::Null()
+                    : resources.LoadTexture(sixWayEmissionTex);
+                emitter.runtime.loadedSixWayEmissionColorTexturePath = sixWayEmissionTex;
+            }
             /// @note .mat の [params] albedo を色調整として引き継ぐ。
             /// @note オーサリング値は sRGB なので、他の色と同じくリニアへ揃えて渡す。
             math::Vector4 tint{ 1.0f, 1.0f, 1.0f, 1.0f };
@@ -721,6 +735,8 @@ ParticleRenderCB BuildParticleRenderConstants(ParticleEmitter& emitter,
         | (emitter.runtime.resolvedBlend == ParticleBlendMode::Additive ? kParticleFxAdditive : 0u)
         | (emitter.runtime.material.sixWayMaps && emitter.runtime.sixWayNegativeTexture.IsValid()
                ? kParticleFxSixWayMaps : 0u)
+        | (emitter.runtime.material.sixWayMaps && emitter.runtime.sixWayAlbedoColorTexture.IsValid()
+               && emitter.runtime.sixWayEmissionColorTexture.IsValid() ? kParticleFxSixWayColorMaps : 0u)
         | ((static_cast<std::uint32_t>(emitter.runtime.material.alphaSource) & kParticleAlphaMask)
                << kParticleAlphaShift);
     cb.distortionStrength = (std::max)(emitter.runtime.material.distortionStrength, 0.0f);
@@ -734,7 +750,8 @@ ParticleRenderCB BuildParticleRenderConstants(ParticleEmitter& emitter,
     cb.emissiveScale = (std::max)(emitter.runtime.material.emissiveScale, 0.0f);
     const math::Vector3& sixWayEmission = emitter.runtime.material.sixWayEmissionColor;
     cb.sixWayEmission = { (std::max)(sixWayEmission.x, 0.0f), (std::max)(sixWayEmission.y, 0.0f),
-                          (std::max)(sixWayEmission.z, 0.0f), 0.0f };
+                          (std::max)(sixWayEmission.z, 0.0f),
+                          (std::max)(emitter.runtime.material.sixWayEmissionScale, 0.0f) };
     cb.motionVectorStrength = (std::max)(emitter.runtime.material.flipbook.motionVectorStrength, 0.0f);
     /// @note 歪みの画面UV算出に使う。0 だとUVが右下隅へ張り付いて屈折が出ない。
     cb.screenWidth = static_cast<float>((std::max)(screenWidth, 1u));
@@ -774,7 +791,6 @@ GameObject* FindInSubtree(GameObject& root, const std::string& objectName)
 /// @brief SubEmitter へイベント数分のスポーンを積む。参照切れは VFX の縮退として無視する。
 /// @brief subEmitterScopeRoot が有効ならその GameObject 配下だけを名前で探す (VFXSystem が配る)。
 /// @brief .vfx の中の GO は同じ名前を名乗るので、シーン全体で引くと隣のインスタンスを掴む。
-///
 /// @brief origin / velocity は «発火元の粒子» のワールド位置と速度。これを渡さないと受け側は
 /// @brief 自分の emitPosition からしか湧けず、«斬った位置で火花» / «消えた場所から煙» が作れない。
 void QueueSubEmitter(Scene& scene, const ParticleEmitter& emitter,
@@ -966,7 +982,8 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
     p.color = emitter.settings.colorStart;
     p.size  = emitter.settings.sizeStart;
     p.age   = 0.0f;
-    p.rotation = Random01(emitter) * 3.14159265358979323846f * 2.0f;
+    const float startRotation = Random01(emitter) * 3.14159265358979323846f * 2.0f;
+    p.rotation = emitter.settings.randomStartRotation ? startRotation : 0.0f;
     p.angularVelocity = emitter.settings.angularVelocityMin
         + (emitter.settings.angularVelocityMax - emitter.settings.angularVelocityMin) * Random01(emitter);
     p.spriteSeed = Random01(emitter);
@@ -1096,7 +1113,8 @@ void InitGpuSpawnEntry(GpuSpawnEntry& s, ParticleEmitter& emitter, const Transfo
     s.colorScale      = { variation.x, variation.y, variation.z, 0.0f };
     s.spriteSeed      = Random01(emitter);
     s.uvRect          = ComputeSpriteRect(emitter, 0.0f, 0.0f, s.spriteSeed);
-    s.rotation        = Random01(emitter) * 6.28318530717958647692f;
+    const float startRotation = Random01(emitter) * 6.28318530717958647692f;
+    s.rotation        = emitter.settings.randomStartRotation ? startRotation : 0.0f;
     s.angularVelocity = emitter.settings.angularVelocityMin
         + (emitter.settings.angularVelocityMax - emitter.settings.angularVelocityMin) * Random01(emitter);
 }
@@ -1470,7 +1488,6 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
         /// @note 注入されたスポーンはレート/バーストより先に消費する。後回しにすると「斬った
         /// @note 位置の火花」が maxParticles 到達で黙って落ちる。イベントで 1 度だけ出る粒の
         /// @note 欠落は、常時湧く粒より目立つため。
-        ///
         /// @note ループ中に injectedSpawns から消さない: SpawnParticle → queueBirth が自分自身を
         /// @note birthSubEmitter として積み返すことがあり、走査中の push_back で参照が無効化
         /// @note されるため、添字で回して最後にまとめて消す。
@@ -1617,10 +1634,11 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
 /// @note 以前は System と Pass に別実装があり、rateOverDistance の基準点が食い違っていた
 /// @note (System は worldPosition、Pass は発生点)。基準点は発生点に寄せる: emitPosition を
 /// @note ずらしたエミッターでは、実際に粒が出る場所が動いた量が正しいため。
-bool AdvanceParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& tf, float dt)
+static bool AdvanceParticleEmitterPlaybackAtFrame(ParticleEmitter& emitter, const Transform& tf,
+                                                  float dt, std::uint64_t frameToken)
 {
-    if (emitter.runtime.lastPlaybackFrame == Time::frameCount) return emitter.runtime.emitThisFrame;
-    emitter.runtime.lastPlaybackFrame = Time::frameCount;
+    if (emitter.runtime.lastPlaybackFrame == frameToken) return emitter.runtime.emitThisFrame;
+    emitter.runtime.lastPlaybackFrame = frameToken;
     /// @note 黒体モードの焼き込みはここで 1 フレームに 1 回だけ行う。CPU 更新も GPU 定数バッファも
     /// @note この後の runtimeGradient を読むため、両経路の色が原理的にずれない。
     emitter.RefreshRuntimeGradient();
@@ -1633,10 +1651,17 @@ bool AdvanceParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& t
     /// @note duration の有無に関わらず進める (playTime は «再生開始からの経過»)。
     /// @note 止めると duration = 0 のエミッターで時刻指定 Burst が永久に発火しない。
     if (canEmit) emitter.runtime.playTime += dt;
+    const float loopTolerance = emitter.settings.loop
+        ? (std::min)((std::max)(dt, 0.0f) * 1.0e-3f, emitter.settings.duration * 1.0e-3f)
+        : 0.0f;
     if (canEmit && emitter.settings.duration > 0.0f
-        && emitter.runtime.playTime >= emitter.settings.duration) {
+        && emitter.runtime.playTime + loopTolerance >= emitter.settings.duration) {
         if (emitter.settings.loop) {
-            emitter.runtime.playTime = 0.0f;
+            /// @note lifetime と duration が等しい粒子は同じ刻みで死ぬ。float の累積誤差で
+            /// @note 次の Burst が 1 刻み遅れると空白が出るので、境界近傍を同時刻とみなす。
+            const float remainder = std::fmod(emitter.runtime.playTime, emitter.settings.duration);
+            emitter.runtime.playTime = std::abs(emitter.runtime.playTime - emitter.settings.duration)
+                <= loopTolerance ? 0.0f : remainder;
             emitter.runtime.delayTime = 0.0f;
             emitter.runtime.burstCyclesFired.clear();
         } else {
@@ -1698,6 +1723,11 @@ bool AdvanceParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& t
     return canEmit;
 }
 
+bool AdvanceParticleEmitterPlayback(ParticleEmitter& emitter, const Transform& tf, float dt)
+{
+    return AdvanceParticleEmitterPlaybackAtFrame(emitter, tf, dt, Time::frameCount);
+}
+
 void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float deltaTime, float time)
 {
     /// @note 場はカメラに属さない。Scene のフレームキャッシュを 3 経路 (CPU 更新・エディタの
@@ -1723,6 +1753,55 @@ void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float delt
         SimulateCpuEmitter(*emitter, gameObject->transform, animator, scaledDt, time,
                            flowFields, &world, scene);
     }
+}
+
+bool InspectParticleEmitterLoop(Scene& scene, physics::World& world,
+                                GameObject& gameObject, ParticleEmitter& emitter,
+                                int fps, int cycles, std::span<const float> frameCoverage,
+                                ParticleLoopInspection& out)
+{
+    out = {};
+    if (fps <= 0 || cycles <= 0 || emitter.settings.duration <= 0.0f || !emitter.settings.loop
+        || emitter.settings.simulationMode != ParticleSimulationMode::Cpu)
+        return false;
+    out.fps = fps;
+    const float dt = 1.0f / static_cast<float>(fps);
+    const int cycleFrames = (std::max)(1, static_cast<int>(std::lround(emitter.settings.duration * fps)));
+    const int totalFrames = cycleFrames * cycles;
+    const int columns = (std::max)(emitter.runtime.material.flipbook.spriteColumns, 1);
+    const int rows = (std::max)(emitter.runtime.material.flipbook.spriteRows, 1);
+    const auto flowSnapshot = scene.FlowFrame().fields;
+    const std::vector<ActiveFlowField>& flowFields = *flowSnapshot;
+    const auto* animator = FindParticleAnimator(gameObject);
+    emitter.ResetPlayback();
+    emitter.runtime.lastPlaybackFrame = UINT64_MAX;
+    for (int frame = 0; frame < totalFrames; ++frame) {
+        const float time = static_cast<float>(frame + 1) * dt;
+        (void)AdvanceParticleEmitterPlaybackAtFrame(emitter, gameObject.transform, dt,
+                                                     static_cast<std::uint64_t>(frame));
+        SimulateCpuEmitter(emitter, gameObject.transform, animator, dt, time, flowFields, &world, scene);
+        bool visible = false;
+        for (const Particle& particle : emitter.runtime.particles) {
+            if (particle.size <= 0.0f || particle.color.w <= 0.01f) continue;
+            if (frameCoverage.empty()) { visible = true; break; }
+            const auto coverageOf = [&](const math::Vector4& uvRect) {
+                const int column = std::clamp(static_cast<int>(std::lround(uvRect.x * columns)), 0, columns - 1);
+                const int row = std::clamp(static_cast<int>(std::lround(uvRect.y * rows)), 0, rows - 1);
+                const std::size_t index = static_cast<std::size_t>(row * columns + column);
+                return index < frameCoverage.size() ? frameCoverage[index] : 0.0f;
+            };
+            const float coverage = coverageOf(particle.uvRect) * (1.0f - particle.spriteBlend)
+                + coverageOf(particle.nextUvRect) * particle.spriteBlend;
+            if (coverage * particle.color.w > 0.001f) { visible = true; break; }
+        }
+        ++out.sampledFrames;
+        if (visible) continue;
+        ++out.emptyFrames;
+        if (out.firstEmptyFrame < 0) out.firstEmptyFrame = frame;
+        const int phase = frame % cycleFrames;
+        if (phase <= 1 || phase >= cycleFrames - 2) ++out.boundaryEmptyFrames;
+    }
+    return true;
 }
 
 void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
@@ -1934,6 +2013,8 @@ void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& outpu
         input.runtime.distortionTexture = emitter->runtime.distortionTexture;
         input.runtime.motionVectorTexture = emitter->runtime.motionVectorTexture;
         input.runtime.sixWayNegativeTexture = emitter->runtime.sixWayNegativeTexture;
+        input.runtime.sixWayAlbedoColorTexture = emitter->runtime.sixWayAlbedoColorTexture;
+        input.runtime.sixWayEmissionColorTexture = emitter->runtime.sixWayEmissionColorTexture;
         input.runtime.customShader = emitter->runtime.customShader;
         input.runtime.renderCB = emitter->runtime.renderCB;
         input.runtime.materialParamsCB = emitter->runtime.materialParamsCB;

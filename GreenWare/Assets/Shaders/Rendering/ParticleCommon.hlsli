@@ -54,6 +54,7 @@
 #define FBZZ_PFX_PUNCTUAL       2048u  // 点光源 (クラスタ) を粒子の中心で受ける
 #define FBZZ_PFX_SIX_WAY_MAPS   4096u  // 6 方向ライトマップ (t0 = Positive / t3 = Negative)
 #define FBZZ_PFX_ADDITIVE       8192u  // 加算合成 (霧の補正と TAA の反応マスクが合成式を知る必要がある)
+#define FBZZ_PFX_SIX_WAY_COLOR_MAPS 16384u // six-way 色相 / emission atlas (t10 / t11)
 
 // アルファの取り出し方は effectsFlags の bit8-10 (3 ビット) に格納する。
 // 値は Rendering/Mask.hlsli の FBZZ_MASK_* をそのまま使う。
@@ -274,6 +275,26 @@ float4 SampleParticleFlipbook(Texture2D albedo, Texture2D motionVectors, Sampler
     if (blend <= 0.0f) return current;
     return lerp(current, ResolveParticleAlbedo(albedo.Sample(samp, nextUv), effectsFlags),
                 saturate(blend));
+}
+
+/// @brief sRGB 色アトラスをリニア化し、Motion Vector とフレーム補間を適用する。
+float4 SampleParticleFlipbookColor(Texture2D colorAtlas, Texture2D motionVectors, SamplerState samp,
+                                   float2 uv, float2 nextUv, float blend, uint effectsFlags,
+                                   out float2 currentUv)
+{
+    currentUv = uv;
+    if ((effectsFlags & FBZZ_PFX_MOTION_VECTOR) != 0u)
+    {
+        const float2 motion = motionVectors.Sample(samp, uv).rg * 2.0f - 1.0f;
+        currentUv += motion * (blend * gMotionVectorStrength);
+        nextUv    -= motion * ((1.0f - blend) * gMotionVectorStrength);
+    }
+    float4 current = colorAtlas.Sample(samp, currentUv);
+    current.rgb = SRGBToLinear(current.rgb);
+    if (blend <= 0.0f) return current;
+    float4 next = colorAtlas.Sample(samp, nextUv);
+    next.rgb = SRGBToLinear(next.rgb);
+    return lerp(current, next, saturate(blend));
 }
 
 // ── 6 方向ライトマップ (Six-way lighting) ──
