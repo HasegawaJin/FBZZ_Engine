@@ -359,7 +359,20 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             const auto handle = m_inspectedMat;
             const std::string capturedPath = absPath;
             const std::string capturedDisplay = relPath;
-            auto apply = [context, handle, capturedPath, capturedDisplay](
+            auto persistMaterial = [handle, capturedPath, capturedDisplay](
+                                       const asset::MaterialAsset& value) {
+                if (asset::SaveMaterialAssetToFile(capturedPath, value)) {
+                    AssetDirtyRegistry::MarkClean(capturedPath);
+                    return;
+                }
+                AssetDirtyRegistry::Register(
+                    capturedPath, capturedDisplay, "MAT",
+                    [handle, capturedPath]() {
+                        const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(handle);
+                        return material && asset::SaveMaterialAssetToFile(capturedPath, *material);
+                    });
+            };
+            auto apply = [context, handle, capturedDisplay, persistMaterial](
                              const asset::MaterialAsset& value) {
                 auto* target = asset::AssetManager::Get<asset::MaterialAsset>(handle);
                 if (!target) return;
@@ -367,8 +380,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 /// @note Save ボタンを廃止した代わりに、Undo/Redo が確定した瞬間に即ディスクへ書く。
                 /// @note メモリ上の値と .mat が食い違うと、Undo で戻したつもりが再読み込みで元に戻る
                 /// @note (見た目だけの Undo) 事故が起きる。書き込みはウィジェット確定時の 1 回だけ。
-                asset::SaveMaterialAssetToFile(capturedPath, *target);
-                AssetDirtyRegistry::MarkClean(capturedPath);
+                persistMaterial(*target);
                 if (context->activeScene) {
                     for (auto [component] : context->activeScene->View<scene::MaterialComponent>()) {
                         if (NormalizeAssetPath(component.materialPath) == capturedDisplay)
@@ -399,8 +411,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             /// @note UndoStack::Push は記録するだけで Do() を呼ばない (mat は既にウィジェットで
             /// @note 直接編集済みのため)。よってここで確定時点の保存を明示的に行う。apply() 内の
             /// @note 保存は Undo/Redo 実行時にのみ効く。
-            asset::SaveMaterialAssetToFile(capturedPath, after);
-            AssetDirtyRegistry::MarkClean(capturedPath);
+            persistMaterial(after);
             context->requestAssetBrowserRefresh = true;
         };
         if (!canRecordUndo) {
@@ -715,6 +726,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             static FbxImportOptions s_modelOptions;
             static std::string      s_modelMetaPath;
             static std::filesystem::file_time_type s_modelMetaWriteTime{};
+            static bool s_modelOptionsLoaded = false;
             std::error_code modelMetaTimeError;
             const auto currentModelMetaWriteTime =
                 std::filesystem::last_write_time(absPath, modelMetaTimeError);
@@ -725,7 +737,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             if (s_modelMetaPath != absPath || modelMetaExternallyUpdated) {
                 s_modelMetaPath = absPath;
                 s_modelOptions = {};
-                FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
+                s_modelOptionsLoaded = FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
                 s_modelMetaWriteTime = currentModelMetaWriteTime;
             }
 
@@ -734,6 +746,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextUnformatted(sourcePath.c_str());
 
             ImGui::SeparatorText("Model Import Settings");
+            if (!s_modelOptionsLoaded)
+                ImGui::TextDisabled("No saved model settings; using defaults.");
             static constexpr const char* kSourceDccNames[] = { "Auto Detect", "Maya / FBX SDK", "Blender" };
             int sourceDccIdx = static_cast<int>(s_modelOptions.sourceDcc);
             if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3)) {
@@ -950,12 +964,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 if (FbxMetaSerializer::SaveOptions(sourcePath, s_modelOptions)) {
                     AssetDirtyRegistry::MarkClean(absPath);
                     ctx.requestAssetBrowserRefresh = true;
+                    s_modelOptionsLoaded = true;
                 }
             }
             ImGui::SameLine();
             if (ImGui::Button("Revert")) {
                 s_modelOptions = {};
-                FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
+                s_modelOptionsLoaded = FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
                 AssetDirtyRegistry::MarkClean(absPath);
             }
             ImGui::SameLine();
@@ -1328,6 +1343,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::SameLine();
             ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
         }
+        ImGui::SeparatorText("Preview");
+        m_texturePreview.Draw(ctx, sourcePath, 240.0f);
     } else if ((ext == ".png" && !asset::IsVectorFieldPng(absPath)) || ext == ".jpg" || ext == ".jpeg" ||
                ext == ".dds" || ext == ".tga" || ext == ".bmp" ||
                ext == ".hdr" || ext == ".exr") {
@@ -2952,4 +2969,4 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor
