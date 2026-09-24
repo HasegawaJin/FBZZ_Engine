@@ -8,6 +8,7 @@
 
 #include <Editor/Ai/EditorBusProtocol.hpp>
 #include <Editor/Ai/Json.hpp>
+#include <Editor/Playtest/ImageCompare.hpp>
 #include <Editor/Playtest/PlaytestRunner.hpp>
 #include <Engine/Core/Time.hpp>
 
@@ -110,6 +111,51 @@ TEST_F(PlaytestRunnerTest, RejectsScenarioWithoutSteps)
     EXPECT_FALSE(runner.Start(Parse(R"({"name":"x"})"), {}, m_temp.Path(), m_temp.Path(), PlaytestOptions{}, error));
     EXPECT_FALSE(error.empty());
     EXPECT_FALSE(runner.Start(Parse(R"({"steps":[{"nope":1}]})"), {}, m_temp.Path(), m_temp.Path(), PlaytestOptions{}, error));
+}
+
+TEST_F(PlaytestRunnerTest, CapturesPreparedFluidPlaybackFrame)
+{
+    PlaytestRunner runner;
+    ASSERT_TRUE(Start(runner, R"({"steps":[{"do":"capture","view":"fluidBaked","name":"JetFlame_3D_Seam", "fluidPath":"Assets/JetFlame.fluid","bakeMode":"3d","frame":63.5,"minForegroundPixels":1}]})"));
+    EXPECT_TRUE(runner.IsFluidPlaybackCaptureStep());
+
+    int prepared = 0;
+    int captured = 0;
+    PlaytestHooks hooks;
+    hooks.prepareFluidPlayback = [&](const JsonValue& step, std::string&) {
+        ++prepared;
+        EXPECT_EQ(step.Find("frame")->AsNumber(), 63.5);
+        return true;
+    };
+    hooks.capture = [&](std::string_view view, std::vector<uint8_t>& png) {
+        ++captured;
+        EXPECT_EQ(view, "fluidBaked");
+        editor::playtest::RgbaImage image{ 2, 1, { 0, 0, 0, 255, 255, 100, 20, 255 } };
+        return editor::playtest::EncodePng(image, png);
+    };
+    for (int tick = 0; tick < 5 && runner.IsRunning(); ++tick) runner.Tick(hooks);
+
+    EXPECT_EQ(runner.State(), PlaytestState::PASSED);
+    EXPECT_FALSE(runner.IsFluidPlaybackCaptureStep());
+    EXPECT_EQ(prepared, 1);
+    EXPECT_EQ(captured, 1);
+    EXPECT_TRUE(std::filesystem::exists(m_temp.Path() / "out" / "JetFlame_3D_Seam.actual.png"));
+}
+
+TEST_F(PlaytestRunnerTest, RejectsEmptyFluidPlaybackCapture)
+{
+    PlaytestRunner runner;
+    ASSERT_TRUE(Start(runner, R"({"steps":[{"do":"capture","view":"fluidBaked","name":"blank","minForegroundPixels":1}]})"));
+    PlaytestHooks hooks;
+    hooks.prepareFluidPlayback = [](const JsonValue&, std::string&) { return true; };
+    hooks.capture = [](std::string_view, std::vector<uint8_t>& png) {
+        editor::playtest::RgbaImage image{ 2, 1, { 0, 0, 0, 255, 0, 0, 0, 255 } };
+        return editor::playtest::EncodePng(image, png);
+    };
+    for (int tick = 0; tick < 5 && runner.IsRunning(); ++tick) runner.Tick(hooks);
+
+    EXPECT_EQ(runner.State(), PlaytestState::FAILED);
+    EXPECT_EQ(runner.Report().Find("images")->AsArray().front().Find("status")->AsString(), "empty-playback");
 }
 
 TEST_F(PlaytestRunnerTest, FramesStepWaitsExactlyThatManyTicks)

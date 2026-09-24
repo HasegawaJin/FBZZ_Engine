@@ -10,6 +10,7 @@
 #include <Engine/Core/Time.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iterator>
 #include <optional>
@@ -106,6 +107,17 @@ void PlaytestRunner::Cancel(const std::string& reason)
     Finish(PlaytestState::FAILED, nullptr);
 }
 
+bool PlaytestRunner::IsFluidPlaybackCaptureStep() const
+{
+    if (!IsRunning()) return false;
+    const JsonValue* steps = m_scenario.Find("steps");
+    if (steps == nullptr || !steps->IsArray() || m_stepIndex >= steps->AsArray().size()) return false;
+    const JsonValue& step = steps->AsArray()[m_stepIndex];
+    const std::string action = StringOf(step, "do");
+    return (action == "capture" || action == "compareImage")
+        && StringOf(step, "view") == "fluidBaked";
+}
+
 bool PlaytestRunner::CallBus(const PlaytestHooks& hooks, const char* kind, const JsonValue& payload,
                              JsonValue& result, std::string& errorCode, std::string& errorMessage)
 {
@@ -164,7 +176,11 @@ void PlaytestRunner::Tick(const PlaytestHooks& hooks)
 {
     if (!IsRunning()) return;
     ++m_frame;
-    if (hooks.keepViewportsRendering) hooks.keepViewportsRendering();
+    const JsonValue::Array& steps = m_scenario.Find("steps")->AsArray();
+    /// @note Fluid の専用 RT を撮る間は、WARP で高価な Scene / Game の描画を起こさない。
+    if (hooks.keepViewportsRendering && m_stepIndex < steps.size()
+        && StringOf(steps[m_stepIndex], "view") != "fluidBaked")
+        hooks.keepViewportsRendering();
 
     if (!m_prepared) {
         m_prepared = true;
@@ -190,7 +206,6 @@ void PlaytestRunner::Tick(const PlaytestHooks& hooks)
 
     if (m_waitFrames > 0) { --m_waitFrames; return; }
 
-    const JsonValue::Array& steps = m_scenario.Find("steps")->AsArray();
     for (size_t executed = 0; executed < kMaxStepsPerFrame && m_stepIndex < steps.size(); ++executed) {
         const StepResult result = RunStep(steps[m_stepIndex], hooks);
         if (result == StepResult::WAIT) return;
@@ -367,7 +382,8 @@ PlaytestRunner::StepResult PlaytestRunner::RunCompareImage(const JsonValue& step
     const std::string name = StringOf(step, captureOnly ? "name" : "baseline");
     if (!IsSafeImageName(name)) return Fail(std::string(captureOnly ? "name" : "baseline") + " は英数字 / _ / - / / のみ: " + name);
     const std::string view = StringOf(step, "view", "game");
-    if (view != "game" && view != "scene") return Fail("view は game か scene です");
+    if (view != "game" && view != "scene" && view != "fluidBaked")
+        return Fail("view は game、scene、fluidBaked のいずれかです");
 
     JsonValue image = JsonValue::MakeObject();
     image.Set("name", JsonValue(name));
@@ -382,7 +398,14 @@ PlaytestRunner::StepResult PlaytestRunner::RunCompareImage(const JsonValue& step
 
     /// @note RT の中身は撮影を要求したフレームにはまだ描かれていない。描き続けさせてから 2 フレーム置く。
     if (m_stepPhase == 0) {
-        if (hooks.keepViewportsRendering) hooks.keepViewportsRendering();
+        if (view == "fluidBaked") {
+            if (!hooks.prepareFluidPlayback) return Fail("Fluid 再生画面の撮影に対応していません");
+            std::string error;
+            if (!hooks.prepareFluidPlayback(step, error))
+                return Fail(error.empty() ? "Fluid 再生画面を用意できません" : error);
+        } else if (hooks.keepViewportsRendering) {
+            hooks.keepViewportsRendering();
+        }
         m_stepPhase = 1;
         m_stepFrame = 2;
         return StepResult::WAIT;
@@ -401,6 +424,29 @@ PlaytestRunner::StepResult PlaytestRunner::RunCompareImage(const JsonValue& step
     image.Set("actual", JsonValue(actualPath.generic_string()));
     image.Set("width", JsonValue(static_cast<double>(actual.width)));
     image.Set("height", JsonValue(static_cast<double>(actual.height)));
+
+    if (view == "fluidBaked" && step.Find("minForegroundPixels") != nullptr) {
+        const double minimum = NumberOf(step, "minForegroundPixels", -1.0);
+        if (!std::isfinite(minimum) || minimum < 0.0 || std::floor(minimum) != minimum
+            || minimum > static_cast<double>(actual.width) * actual.height)
+            return Fail("minForegroundPixels は画像内の非負整数で指定してください");
+        /// @note 背景だけの撮影を検出する。左上は比較プレビューの背景領域として使う。
+        const auto* background = actual.pixels.data();
+        std::size_t foregroundPixels = 0;
+        for (std::size_t pixel = 0; pixel < actual.pixels.size(); pixel += 4) {
+            const bool changed = std::abs(static_cast<int>(actual.pixels[pixel]) - background[0]) > 16
+                || std::abs(static_cast<int>(actual.pixels[pixel + 1]) - background[1]) > 16
+                || std::abs(static_cast<int>(actual.pixels[pixel + 2]) - background[2]) > 16;
+            foregroundPixels += changed ? 1 : 0;
+        }
+        image.Set("foregroundPixels", JsonValue(static_cast<double>(foregroundPixels)));
+        if (foregroundPixels < static_cast<std::size_t>(minimum)) {
+            image.Set("status", JsonValue("empty-playback"));
+            m_images.Push(std::move(image));
+            return Fail("Fluid 再生画面が背景のみです: " + std::to_string(foregroundPixels)
+                + " / " + std::to_string(static_cast<std::size_t>(minimum)) + " pixels");
+        }
+    }
 
     if (captureOnly) {
         image.Set("status", JsonValue("captured"));

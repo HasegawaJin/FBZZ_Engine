@@ -48,6 +48,7 @@
 #include <Editor/Panels/VFXTimelinePanel.hpp>
 #include <Editor/Panels/SfxEditorPanel.hpp>
 #include <Editor/Panels/FluidEditorPanel.hpp>
+#include "Panels/FluidEditor/FluidEditorExtras.hpp"
 #include <Editor/Panels/SpriteEditorPanel.hpp>
 #include <Editor/Panels/MapEditorPanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
@@ -91,6 +92,7 @@
 #include <toml++/toml.hpp>
 #include <Windows.h>
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -1862,7 +1864,43 @@ void EditorApp::TickPlaytest()
 
     playtest::PlaytestHooks hooks;
     hooks.bus = [this](const std::string& request) { return m_playtestDispatcher->Handle(request); };
+    hooks.prepareFluidPlayback = [this](const ai::JsonValue& step, std::string& error) {
+        const ai::JsonValue* fluidValue = step.Find("fluidPath");
+        const ai::JsonValue* modeValue = step.Find("bakeMode");
+        const ai::JsonValue* frameValue = step.Find("frame");
+        if (fluidValue == nullptr || !fluidValue->IsString() || modeValue == nullptr || !modeValue->IsString()
+            || frameValue == nullptr || !frameValue->IsNumber()) {
+            error = "fluidBaked には fluidPath、bakeMode、frame が必要です";
+            return false;
+        }
+        const std::string fluidPath = fluidValue->AsString();
+        const std::string mode = modeValue->AsString();
+        const double frame = frameValue->AsNumber();
+        const ai::JsonValue* strengthValue = step.Find("motionStrength");
+        const double strength = strengthValue != nullptr && strengthValue->IsNumber()
+            ? strengthValue->AsNumber() : -1.0;
+        if ((mode != "2d" && mode != "3d") || !std::isfinite(frame) || frame < 0.0
+            || !std::isfinite(strength) || strength > 1.0) {
+            error = "fluidBaked の bakeMode、frame、motionStrength が不正です";
+            return false;
+        }
+        const fs::path assetsRoot = util::FileSystem::MakeAbsolute(
+            util::FileSystem::PathFromUtf8(m_projectRoot) / "Assets");
+        const fs::path relativePath = util::FileSystem::PathFromUtf8(fluidPath);
+        const fs::path diskPath = util::FileSystem::MakeAbsolute(
+            util::FileSystem::PathFromUtf8(m_projectRoot) / relativePath);
+        if (relativePath.is_absolute() || relativePath.extension() != ".fluid"
+            || !util::FileSystem::IsChildPathText(util::FileSystem::PathToUtf8(diskPath),
+                                                   util::FileSystem::PathToUtf8(assetsRoot))) {
+            error = "fluidPath はプロジェクトの Assets 配下の .fluid を指定してください";
+            return false;
+        }
+        return fluideditor::PrepareFluidPlaybackCapture(m_ctx, util::FileSystem::PathToUtf8(diskPath),
+                                                        mode == "3d", static_cast<float>(frame),
+                                                        static_cast<float>(strength), error);
+    };
     hooks.capture = [this](std::string_view view, std::vector<uint8_t>& png) {
+        if (view == "fluidBaked") return fluideditor::CaptureFluidPlayback(m_ctx, png);
         const auto target = view == "scene" ? m_sceneViewportRT : m_gameViewportRT;
         uint32_t width = 0;
         uint32_t height = 0;
@@ -2026,6 +2064,7 @@ void EditorApp::OnRender()
     const fbzz::LayerMask   gameCullingMask  = scene::ResolveGameCullingMask(*resolveScene);
 
     m_renderer->BeginFrame();
+    fluideditor::RenderFluidPlaybackCapture(m_ctx);
 
     /// @note 実際に画面へ出ているビューポートだけを描く。Scene View と Game View はそれぞれ
     ///       フル描画 (Shadow / GBuffer / ライティング / ポスト一式) なので、両方回すと素で 2 倍になる。
@@ -2041,16 +2080,19 @@ void EditorApp::OnRender()
     /// @note 新しい RT の中身は未定義で、DX12 では解放待ちの領域を使い回すため «少し前の絵» が
     ///       残る。WasContentRendered() は 1 フレーム遅れて寸法変化時に false になりうるため、
     ///       そのフレームを飛ばすとパネルが未初期化の RT を貼り、止まった絵と重なって出る。
-    const bool needSceneView = isViewportShowing(m_sceneViewportPanel) || aiViewportCaptureActive
-        || m_sceneViewportRTRecreated
-        || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(false));
+    const bool fluidPlaybackCapture = m_playtest.IsFluidPlaybackCaptureStep();
+    const bool needSceneView = !fluidPlaybackCapture
+        && (isViewportShowing(m_sceneViewportPanel) || aiViewportCaptureActive
+            || m_sceneViewportRTRecreated
+            || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(false)));
     /// @note Game View の RT は UI Viewport が背景として共有する (m_uiViewportPanel->hdrRT = m_gameViewportRT)。
     ///       どちらか一方でも出ていれば描かないと、UI 編集画面が止まった絵のままになる。
-    const bool needGameView = isViewportShowing(m_gameViewportPanel)
-        || isViewportShowing(m_uiViewportPanel)
-        || aiViewportCaptureActive
-        || m_gameViewportRTRecreated
-        || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(true));
+    const bool needGameView = !fluidPlaybackCapture
+        && (isViewportShowing(m_gameViewportPanel)
+            || isViewportShowing(m_uiViewportPanel)
+            || aiViewportCaptureActive
+            || m_gameViewportRTRecreated
+            || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(true)));
 
     if (needSceneView)
         RenderSceneView(gameCamera, gameCullingMask);
@@ -2100,6 +2142,7 @@ void EditorApp::OnShutdown()
     /// @note 窓を閉じて中断されたシナリオも «不合格» のレポートを残し、ロックステップを解く。
     m_playtest.Cancel("エディターが終了した");
     m_playtestDispatcher.reset();
+    fluideditor::ShutdownFluidPlaybackCapture(m_ctx);
     /// @note FreeLibrary より前に全スクリプトの OnDestroy と destructor を DLL コードが
     ///       有効なうちに実行する。ProjectRuntime::Shutdown は Editor 外部 Scene と、Play 中の
     ///       シーン遷移で残った Manager 所有 Scene の両方を破棄する。

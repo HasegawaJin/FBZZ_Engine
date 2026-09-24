@@ -56,6 +56,7 @@ bool DX12RenderTarget::InitCubemap(
     desc.DepthOrArraySize = 6;
     desc.MipLevels = static_cast<UINT16>(m_mipCount);
     desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    m_colorFormat = desc.Format;
     desc.SampleDesc.Count = 1;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     D3D12_CLEAR_VALUE clear{};
@@ -135,6 +136,7 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
     colorDesc.DepthOrArraySize = 1;
     colorDesc.MipLevels = 1;
     colorDesc.Format = ToDxgi(desc.format);
+    m_colorFormat = colorDesc.Format;
     colorDesc.SampleDesc.Count = 1;
     colorDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     for (uint32_t index = 0; index < colorCount; ++index) {
