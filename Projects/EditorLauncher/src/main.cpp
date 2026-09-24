@@ -3,10 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-25
 ///
-/// コマンドライン引数でエディタ / スタンドアロン / バッチを切り替える単一バイナリ。
-/// `--project` 省略時は exe 隣の `.fbzz_proj` の有無で配布 Standalone か開発用テンプレート
-/// Editor かを判定する (配布時は exe をリネームするだけでよい)。文字列・パス変換は
-/// `Engine/Util` に集約し `EditorLauncher` と `Sandbox` の両方から使う。
+/// @note コマンドライン引数で Editor / Standalone / バッチを切り替える。
+/// @note `--project` 省略時は exe 隣の `.fbzz_proj` の有無で配布 Standalone か開発用テンプレート Editor かを判定する。
+/// @note 文字列・パス変換は `Engine/Util` に集約し `EditorLauncher` と `Sandbox` の両方から使う。
 #include "JobBreakaway.hpp"
 #include "StandaloneApp.hpp"
 #include <Engine/Asset/AssetManager.hpp>
@@ -124,7 +123,7 @@ LaunchArgs ParseArgs()
     return args;
 }
 
-} // namespace
+}
 
 int Run()
 {
@@ -210,6 +209,8 @@ int Run()
 
         auto& renderer    = app.GetRenderer();
         auto& imguiRenderer = app.GetImGuiRenderer();
+        /// @note バッチは window が occluded でも offscreen RT を描く。通常 Editor は DXGI の occlusion 休止を維持する。
+        renderer.SetRenderWhenOccluded(!args.batchScenario.empty());
         renderer::ResourceManager resources(renderer);
 
         const std::filesystem::path assetRoot = project.root / L"Assets";
@@ -245,7 +246,7 @@ int Run()
     return 0;
 }
 
-} // namespace fbzz::editor_launcher
+}
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {

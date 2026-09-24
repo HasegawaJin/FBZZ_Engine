@@ -4,9 +4,8 @@
 /// @date    2026-09-12
 ///
 /// @note 3D の焼きは GPU で毎フレーム Tick が要るため EditorApp が 1 つ持って毎フレーム回す
-///       (パネル所有だと閉じた瞬間に止まる)。VolumeFlipbookBaker (160³ の GPU 資源) の
-///       所有者もここ 1 つ。Enqueue* はすぐ戻り、結果は Find で追う。焼いた出力は
-///       Undo で消さない (同名の既存アセットを壊しうるため)。
+/// @note パネル所有だと閉じた瞬間に止まる。VolumeFlipbookBaker (160³ の GPU 資源) の所有者もここ 1 つ。
+/// @note Enqueue* はすぐ戻り、結果は Find で追う。焼いた出力は Undo で消さない (同名の既存アセットを壊しうるため)。
 #pragma once
 
 #include <cstdint>
@@ -36,13 +35,16 @@ enum class FluidJobState : std::uint8_t { Queued, Running, Encoding, Done, Faile
 struct FluidBakeRequest {
     /// @brief 焼く .fluid の実パス。
     std::string fluidPath;
-    /// @brief 焼き上がったら .fluid の隣の同名 .mat を作る / 追従させる。
-    bool updateMaterial = false;
+    /// @note Bake の成功には隣の .mat の作成 / 更新も含む。プレビューは FluidPreviewRequest を使う。
     /// @brief 空でなければ、焼き上がったあとその .mat を貼った 1 層の .vfx をこの実パスへ書く。
     std::string vfxPath;
     std::string vfxRootName;
     /// @brief 0 以外なら、この seed で焼く (.fluid は書き換えない — 気に入った seed は呼び手が固定する)。
     std::uint32_t seed = 0;
+    /// @brief 仮 Bake は Library に隔離し、解像度とコマ数を落として .mat / .vfx を書かない。
+    bool draft = false;
+    /// @brief 仮 Bake で未保存の編集内容を使う。通常 Bake では無視する。
+    std::shared_ptr<const fluid::FluidRecipe> recipeOverride;
 };
 
 struct FluidPreviewRequest {
@@ -77,6 +79,18 @@ struct FluidJobStatus {
     /// @brief [0,1]。
     float progress = 0.0f;
     std::string fluidPath;
+    /// @brief 仮 Bake の読み戻し用 .fluid。確定版と違い Library 配下にある。
+    std::string draftFluidPath;
+    bool draft = false;
+    /// @brief 工程別の経過秒。3D のシミュレーションと描画は並行するため壁時計上の配分。
+    float simulationSeconds = 0.0f;
+    float renderSeconds = 0.0f;
+    float outputSeconds = 0.0f;
+    float elapsedSeconds = 0.0f;
+    /// @brief 見積もれない段階では -1。
+    float remainingSeconds = -1.0f;
+    /// @brief 0: simulation, 1: render, 2: output。
+    int stage = 0;
     std::string message;
     /// @brief 書いたファイルの実パス (テクスチャ・速度場 PNG など)。
     std::vector<std::string> outputs;
