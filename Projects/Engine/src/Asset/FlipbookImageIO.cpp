@@ -154,11 +154,15 @@ bool SaveTextureMeta(const std::filesystem::path& sourcePath, TextureType type,
 }
 
 bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std::uint32_t height,
-                     std::span<const std::uint8_t> pixels, std::uint32_t tileWidth, std::uint32_t tileHeight,
-                     FlipbookMipContent content, FlipbookDdsCompression compression, std::string& outError)
+                      std::span<const std::uint8_t> pixels, std::uint32_t tileWidth, std::uint32_t tileHeight,
+                      FlipbookMipContent content, FlipbookDdsCompression compression, std::string& outError,
+                      const std::atomic<bool>* cancel)
 {
+    const auto cancelled = [cancel]() { return cancel && cancel->load(std::memory_order_relaxed); };
+    if (cancelled()) { outError = "キャンセルしました"; return false; }
     const std::vector<FlipbookMipLevel> levels =
         BuildFlipbookMips(pixels, width, height, tileWidth, tileHeight, content);
+    if (cancelled()) { outError = "キャンセルしました"; return false; }
     if (levels.empty()) {
         outError = "DDS へ書く画素が足りません: " + path.string();
         return false;
@@ -169,6 +173,7 @@ bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std
         return false;
     }
     for (std::size_t level = 0; level < levels.size(); ++level) {
+        if (cancelled()) { outError = "キャンセルしました"; return false; }
         const DirectX::Image* image = chain.GetImage(level, 0, 0);
         const FlipbookMipLevel& source = levels[level];
         const std::size_t sourcePitch = static_cast<std::size_t>(source.width) * 4;
@@ -185,13 +190,55 @@ bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std
             compression == FlipbookDdsCompression::BC5 ? DXGI_FORMAT_BC5_UNORM : DXGI_FORMAT_BC7_UNORM;
         const DirectX::TEX_COMPRESS_FLAGS flags = compression == FlipbookDdsCompression::BC7
             ? DirectX::TEX_COMPRESS_BC7_QUICK : DirectX::TEX_COMPRESS_DEFAULT;
-        if (FAILED(DirectX::Compress(chain.GetImages(), chain.GetImageCount(), chain.GetMetadata(), format, flags,
-                                     DirectX::TEX_THRESHOLD_DEFAULT, compressed))) {
-            outError = "DDS を圧縮できません: " + path.string();
-            return false;
+        if (cancel == nullptr || tileWidth < 4 || tileHeight < 4
+            || width % tileWidth != 0 || height % tileHeight != 0) {
+            if (FAILED(DirectX::Compress(chain.GetImages(), chain.GetImageCount(), chain.GetMetadata(), format, flags,
+                                         DirectX::TEX_THRESHOLD_DEFAULT, compressed))) {
+                outError = "DDS を圧縮できません: " + path.string();
+                return false;
+            }
+        } else {
+            if (FAILED(compressed.Initialize2D(format, width, height, 1, levels.size()))) {
+                outError = "DDS の圧縮バッファを確保できません";
+                return false;
+            }
+            /// @note BC の各 4x4 ブロックは独立している。タイル単位に圧縮するとキャンセルを
+            /// @note 1 枚の巨大な DirectXTex::Compress が終わる前に受け付けられる。
+            for (std::size_t level = 0; level < levels.size(); ++level) {
+                const DirectX::Image* source = chain.GetImage(level, 0, 0);
+                const DirectX::Image* destination = compressed.GetImage(level, 0, 0);
+                const std::uint32_t mipTileWidth = tileWidth >> level;
+                const std::uint32_t mipTileHeight = tileHeight >> level;
+                for (std::uint32_t y = 0; y < source->height; y += mipTileHeight) {
+                    for (std::uint32_t x = 0; x < source->width; x += mipTileWidth) {
+                        if (cancelled()) { outError = "キャンセルしました"; return false; }
+                        DirectX::Image tileImage{};
+                        tileImage.width = mipTileWidth;
+                        tileImage.height = mipTileHeight;
+                        tileImage.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                        tileImage.rowPitch = source->rowPitch;
+                        tileImage.slicePitch = source->rowPitch * mipTileHeight;
+                        tileImage.pixels = source->pixels + static_cast<std::size_t>(y) * source->rowPitch + x * 4;
+                        DirectX::ScratchImage tileCompressed;
+                        if (FAILED(DirectX::Compress(tileImage, format, flags,
+                                                     DirectX::TEX_THRESHOLD_DEFAULT, tileCompressed))) {
+                            outError = "DDS タイルを圧縮できません: " + path.string();
+                            return false;
+                        }
+                        const DirectX::Image* tileOutput = tileCompressed.GetImage(0, 0, 0);
+                        const std::size_t blockRows = mipTileHeight / 4;
+                        const std::size_t rowBytes = static_cast<std::size_t>(mipTileWidth / 4) * 16;
+                        for (std::size_t row = 0; row < blockRows; ++row)
+                            std::memcpy(destination->pixels + (y / 4 + row) * destination->rowPitch
+                                            + static_cast<std::size_t>(x / 4) * 16,
+                                        tileOutput->pixels + row * tileOutput->rowPitch, rowBytes);
+                    }
+                }
+            }
         }
         output = &compressed;
     }
+    if (cancelled()) { outError = "キャンセルしました"; return false; }
     if (FAILED(DirectX::SaveToDDSFile(output->GetImages(), output->GetImageCount(), output->GetMetadata(),
                                       DirectX::DDS_FLAGS_NONE, path.wstring().c_str()))) {
         outError = "DDS を書き出せません: " + path.string();

@@ -87,12 +87,19 @@ struct FluidJobStatus {
     float renderSeconds = 0.0f;
     float outputSeconds = 0.0f;
     float elapsedSeconds = 0.0f;
+    float slowestSimulationFrameSeconds = 0.0f;
+    int slowestSimulationFrame = -1;
+    float slowestRenderFrameSeconds = 0.0f;
+    int slowestRenderFrame = -1;
+    float colorEncodeSeconds = 0.0f;
+    float motionEncodeSeconds = 0.0f;
+    float sixWayEncodeSeconds = 0.0f;
     /// @brief 見積もれない段階では -1。
     float remainingSeconds = -1.0f;
     /// @brief 0: simulation, 1: render, 2: output。
     int stage = 0;
     std::string message;
-    /// @brief 書いたファイルの実パス (テクスチャ・速度場 PNG など)。
+    /// @brief 公開したファイルの実パス (テクスチャ・速度場 PNG・材質・VFX など)。
     std::vector<std::string> outputs;
     /// @brief 作った / 更新した .mat と .vfx の実パス (無ければ空)。
     std::string materialPath;
