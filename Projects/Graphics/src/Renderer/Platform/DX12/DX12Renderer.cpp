@@ -248,20 +248,10 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         m_seenPipelineStateGeneration = m_context.GetPipelineStateGeneration();
     }
 
-    /// @note ルートシグネチャは変化したときだけ設定する。SetGraphicsRootSignature は全ルート引数を
-    /// @note       無効化する契約のため、毎 Draw 呼ぶと直後の root CBV 差分キャッシュの前提が崩れる。
     ID3D12RootSignature* rootSignature = m_psoCache.GetRootSignature();
-    if (m_lastGraphicsRootSignature != rootSignature) {
-        /// @note 順序に注意: 無効化はルート引数のキャッシュを捨てると同時に直前値も nullptr へ戻すため、
-        /// @note       先に無効化してから「今設定した」ことを記録する。
-        InvalidateRootCbvCache();
-        commands->SetGraphicsRootSignature(rootSignature);
-        m_lastGraphicsRootSignature = rootSignature;
-    }
-    if (m_lastPipelineState != pso) {
-        commands->SetPipelineState(pso);
-        m_lastPipelineState = pso;
-    }
+    const bool signatureChanged = m_lastGraphicsRootSignature != rootSignature;
+    if (signatureChanged) InvalidateRootCbvCache();
+    /// @note 直接索引するルートシグネチャは、先に CBV/SRV/UAV ヒープを束縛する必要がある。
     if (ID3D12DescriptorHeap* srvHeap = m_context.GetResourceSrvHeap();
         m_lastDescriptorHeap != srvHeap)
     {
@@ -270,6 +260,18 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         m_lastDescriptorHeap = srvHeap;
     }
 
+    /// @note ルートシグネチャは変化したときだけ設定する。SetGraphicsRootSignature は全ルート引数を
+    /// @note       無効化する契約のため、毎 Draw 呼ぶと直後の root CBV 差分キャッシュの前提が崩れる。
+    if (signatureChanged) {
+        /// @note 順序に注意: 無効化はルート引数のキャッシュを捨てると同時に直前値も nullptr へ戻すため、
+        /// @note       先に無効化してから「今設定した」ことを記録する。
+        commands->SetGraphicsRootSignature(rootSignature);
+        m_lastGraphicsRootSignature = rootSignature;
+    }
+    if (m_lastPipelineState != pso) {
+        commands->SetPipelineState(pso);
+        m_lastPipelineState = pso;
+    }
     /// @note 状態遷移はテーブル再利用時も必ず発行する。同じテクスチャ集合でも間に挟まった別パス
     /// @note       (Compute の UAV 書き込み等) で状態が変わりうるため、コピーは省けても遷移は省けない。
     for (uint32_t slot = 0; slot < call.textures.size(); ++slot) {

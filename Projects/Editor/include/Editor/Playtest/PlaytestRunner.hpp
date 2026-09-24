@@ -28,8 +28,10 @@ struct PlaytestOptions {
 struct PlaytestHooks {
     /// @brief NDJSON 要求 1 行 → 応答 1 行。EditorBusDispatcher::Handle と同じ契約。
     std::function<std::string(const std::string& requestLine)> bus;
-    /// @brief view ("scene" / "game") の RT を PNG で読む。
+    /// @brief view ("scene" / "game" / "fluidBaked") の RT を PNG で読む。
     std::function<bool(std::string_view view, std::vector<uint8_t>& png)> capture;
+    /// @brief Fluid の撮影設定を読み込み、GPU 再生画面を用意する。失敗時は error を返す。
+    std::function<bool(const ai::JsonValue& step, std::string& error)> prepareFluidPlayback;
     /// @brief 隠れているビューポートも描かせ続ける (撮影の数フレーム前から呼ぶ)。
     std::function<void()> keepViewportsRendering;
 };
@@ -54,6 +56,8 @@ public:
 
     [[nodiscard]] PlaytestState State() const { return m_state; }
     [[nodiscard]] bool IsRunning() const { return m_state == PlaytestState::RUNNING; }
+    /// @brief 現在の手順が Fluid 専用 RT の撮影か。
+    [[nodiscard]] bool IsFluidPlaybackCaptureStep() const;
     /// @brief 実行中は途中経過、終了後は最終結果。
     [[nodiscard]] ai::JsonValue Report() const;
     [[nodiscard]] const std::filesystem::path& ReportPath() const { return m_reportPath; }

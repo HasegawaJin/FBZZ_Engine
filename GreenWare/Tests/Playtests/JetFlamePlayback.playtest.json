@@ -1,0 +1,12 @@
+{
+  "name": "JetFlamePlayback",
+  "lockstep": 0.016666667,
+  "steps": [
+    { "do": "capture", "view": "fluidBaked", "fluidPath": "Assets/VFX/Fluid/JetFlame.fluid", "bakeMode": "2d", "frame": 0.5, "minForegroundPixels": 500, "name": "JetFlamePlayback/2D_Start" },
+    { "do": "capture", "view": "fluidBaked", "fluidPath": "Assets/VFX/Fluid/JetFlame.fluid", "bakeMode": "2d", "frame": 31.5, "minForegroundPixels": 500, "name": "JetFlamePlayback/2D_Middle" },
+    { "do": "capture", "view": "fluidBaked", "fluidPath": "Assets/VFX/Fluid/JetFlame.fluid", "bakeMode": "2d", "frame": 63.5, "minForegroundPixels": 500, "name": "JetFlamePlayback/2D_Seam" },
+    { "do": "capture", "view": "fluidBaked", "fluidPath": "Assets/VFX/Fluid/JetFlame.fluid", "bakeMode": "3d", "frame": 0.5, "motionStrength": 0.003965385, "minForegroundPixels": 500, "name": "JetFlamePlayback/3D_Start" },
+    { "do": "capture", "view": "fluidBaked", "fluidPath": "Assets/VFX/Fluid/JetFlame.fluid", "bakeMode": "3d", "frame": 31.5, "motionStrength": 0.003965385, "minForegroundPixels": 500, "name": "JetFlamePlayback/3D_Middle" },
+    { "do": "capture", "view": "fluidBaked", "fluidPath": "Assets/VFX/Fluid/JetFlame.fluid", "bakeMode": "3d", "frame": 63.5, "motionStrength": 0.003965385, "minForegroundPixels": 500, "name": "JetFlamePlayback/3D_Seam" }
+  ]
+}
