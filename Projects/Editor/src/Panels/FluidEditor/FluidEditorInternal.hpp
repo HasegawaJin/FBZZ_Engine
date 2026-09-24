@@ -24,19 +24,41 @@ namespace fbzz::editor::fluideditor {
 
 enum class TimelineDragKind : std::uint8_t { None, Scrub, BarBody, BarEnd, Key };
 
-/// ビューポートの見せ方。3D は共有 Baker (VolumeFlipbookBaker) のライブプレビュー。
+/// @note ビューポートの見せ方。3D は共有 Baker (VolumeFlipbookBaker) のライブプレビュー。
 enum class ViewportMode : std::uint8_t { Flat2D, Volume3D };
-/// 3D のギズモで何を変えるか。
+/// @note 中心を通る参照平面。XY は Z=0、XZ は Y=0、YZ は X=0。
+enum class VolumeCenterPlane : std::uint8_t { XY, XZ, YZ };
+/// @note 3D のギズモで何を変えるか。
 enum class GizmoOp : std::uint8_t { Translate, Rotate, Scale };
+
+/// @note 3D ビューポートの方位ボールと、ベイク視点から独立した編集カメラ。
+struct VolumeOrbitState {
+    std::string recipePath;
+    bool initialized = false;
+    float yawDegrees = 0.0f;
+    float pitchDegrees = 0.0f;
+    bool hovered = false;
+    int hoveredAxis = -1;
+    bool pressed = false;
+    bool dragging = false;
+    int pressedAxis = -1;
+    ImVec2 pressPos{ 0.0f, 0.0f };
+    bool animActive = false;
+    float animT = 0.0f;
+    float fromYaw = 0.0f;
+    float fromPitch = 0.0f;
+    float toYaw = 0.0f;
+    float toPitch = 0.0f;
+};
 
 struct ViewportDrag {
     bool active = false;
     bool moved = false;
     FluidPartHandle handle;
     ImVec2 pressMouse{ 0.0f, 0.0f };
-    /// つかんだ点とハンドルの中心のずれ。そのまま置くと押した瞬間にハンドルがカーソルへ飛ぶ。
+    /// @note つかんだ点とハンドルの中心のずれ。そのまま置くと押した瞬間にハンドルがカーソルへ飛ぶ。
     ImVec2 grabOffset{ 0.0f, 0.0f };
-    /// 最後に当てたときのマウスと Shift。止まっている間も毎フレーム当てると Revision が進み、プレビューが解き直し続ける。
+    /// @note 最後に当てたときのマウスと Shift。止まっている間も毎フレーム当てると Revision が進み、プレビューが解き直し続ける。
     ImVec2 lastMouse{ 0.0f, 0.0f };
     bool lastShift = false;
     const char* undoLabel = "Move Fluid Part";
@@ -47,14 +69,14 @@ struct TimelineDrag {
     FluidSelectionKind list = FluidSelectionKind::None;
     int index = -1;
     int keyIndex = -1;
-    /// 押した位置のタイムライン時刻 (warmup の後を 0。はみ出しても切らない)。
+    /// @note 押した位置のタイムライン時刻 (warmup の後を 0。はみ出しても切らない)。
     float pressTime = 0.0f;
-    /// 押した時点の startTime / duration / キーの時刻 (ソルバーの時計)。
+    /// @note 押した時点の startTime / duration / キーの時刻 (ソルバーの時計)。
     float baseStart = 0.0f;
     float baseDuration = 0.0f;
     std::vector<float> baseKeyTimes;
-    /// 量のエンベロープのキーの時刻。タイムラインに菱形としては出さないが、帯を動かしたら一緒に動く
-    /// (置いていくと «勢いの落ち方» が部品の出番から外れる)。障害物は量を持たないので空のまま。
+    /// @note 量のエンベロープのキーの時刻。タイムラインに菱形としては出さないが、帯を動かしたら一緒に動く
+    /// @note (置いていくと «勢いの落ち方» が部品の出番から外れる)。障害物は量を持たないので空のまま。
     std::vector<float> baseAmountKeyTimes;
     bool moved = false;
     const char* undoLabel = "Edit Fluid Timing";
@@ -64,7 +86,7 @@ struct State {
     FluidDocument document;
     FluidPreviewCache preview;
 
-    /// プレビューへ最後に渡したもの。hide / solo は Revision を進めないので世代を別に数える。
+    /// @note プレビューへ最後に渡したもの。hide / solo は Revision を進めないので世代を別に数える。
     fluid::FluidRecipe sentRecipe;
     bool hasSent = false;
     std::uint64_t sentDocRevision = 0;
@@ -85,37 +107,42 @@ struct State {
     /// @name 3D ライブプレビュー
     /// @{
     ViewportMode viewMode = ViewportMode::Flat2D;
-    /// 開いた直後の 1 回だけ recipe.bake.mode に合わせる。人が切り替えたらもう触らない。
+    /// @note 開いた直後の 1 回だけ recipe.bake.mode に合わせる。人が切り替えたらもう触らない。
     bool viewModeChosen = false;
     GizmoOp gizmoOp = GizmoOp::Translate;
-    /// 共有 Baker を焼きに取られている / コマを解いている。どちらも 2D の絵で代える。
+    /// @note 共有 Baker を焼きに取られている / コマを解いている。どちらも 2D の絵で代える。
     bool volumeBusy = false;
     bool volumePending = false;
-    /// ソルバーの切り替えが折り返し待ちか / 出ている絵が前のソルバーのものか (表示に使う)。
+    /// @note ソルバーの切り替えが折り返し待ちか / 出ている絵が前のソルバーのものか (表示に使う)。
     bool volumeSwitchPending = false;
     bool volumeStale = false;
-    /// 前のフレームに 3D へ渡した再生位置。ループの折り返し (値が戻る) を見つけるためだけに持つ。
+    /// @note 体積を切らず、位置の手がかりとして重ねる参照平面。
+    bool showVolumeCenterPlane = true;
+    VolumeCenterPlane volumeCenterPlane = VolumeCenterPlane::XY;
+    /// @note 前のフレームに 3D へ渡した再生位置。ループの折り返し (値が戻る) を見つけるためだけに持つ。
     float volumeSwitchPlayhead = 0.0f;
-    /// 切り替えを待たせている時間 [秒]。折り返しが来ないレシピ (loop = false) で待ち続けないための期限。
+    /// @note 切り替えを待たせている時間 [秒]。折り返しが来ないレシピ (loop = false) で待ち続けないための期限。
     float volumeSwitchWait = 0.0f;
-    /// 前のフレームに 3D の絵を出した一辺 (画面画素)。プレビューのタイルをこれに合わせないと、
-    /// 小さく焼いた絵を引き伸ばすことになり «四角い» 絵になる。描く前に決める必要があるので持ち越す。
+    /// @note 前のフレームに 3D の絵を出した一辺 (画面画素)。プレビューのタイルをこれに合わせないと、
+    /// @note 小さく焼いた絵を引き伸ばすことになり «四角い» 絵になる。描く前に決める必要があるので持ち越す。
     float volumeViewSide = 0.0f;
-    /// 前のフレームに 2D の絵を出した一辺 (画面画素)。プレビューの画像をこれに合わせないと、
-    /// 小さく解いた絵を引き伸ばすことになり «四角い» 絵になる。裏のスレッドが描く前に決める必要があるので持ち越す。
+    /// @note 方位ボールで動かす 3D 編集視点。Bake Camera Yaw と独立して保持する。
+    VolumeOrbitState volumeOrbit;
+    /// @note 前のフレームに 2D の絵を出した一辺 (画面画素)。プレビューの画像をこれに合わせないと、
+    /// @note 小さく解いた絵を引き伸ばすことになり «四角い» 絵になる。裏のスレッドが描く前に決める必要があるので持ち越す。
     float previewViewSide = 0.0f;
-    /// RecordVolumePreview へ渡すレシピ。hide / solo を反映済み。毎フレーム作り直すと部品の
-    /// vector を丸ごと複製するので、鍵が変わったときだけ組み直す (0 = まだ組んでいない)。
+    /// @note RecordVolumePreview へ渡すレシピ。hide / solo を反映済み。毎フレーム作り直すと部品の
+    /// @note vector を丸ごと複製するので、鍵が変わったときだけ組み直す (0 = まだ組んでいない)。
     fluid::FluidRecipe volumeRecipe;
     std::uint64_t volumeRecipeKey = 0;
-    /// ギズモをつかんでいる間 true (Undo は離したフレームに 1 つ積む)。
+    /// @note ギズモをつかんでいる間 true (Undo は離したフレームに 1 つ積む)。
     bool gizmoActive = false;
     const char* gizmoUndoLabel = "Move Fluid Part";
 
     ViewportDrag viewDrag;
     TimelineDrag timelineDrag;
     FluidSelection timelineContextTarget;
-    /// タイムラインで選んでいる動きのキー (3D のギズモが動かす対象)。index < 0 なら部品そのもの。
+    /// @note タイムラインで選んでいる動きのキー (3D のギズモが動かす対象)。index < 0 なら部品そのもの。
     FluidSelection keyOwner;
     int selectedKey = -1;
 
@@ -126,14 +153,14 @@ struct State {
     std::string status;
     bool statusIsError = false;
 
-    /// 編集中のプレビューの隣へ «焼き上がり» (.fluid の隣の Atlas) を並べる。
-    /// 既定は単独表示 — 並べると 1 枚あたりの絵が半分になるので、要るときだけ人が開く。
+    /// @note 編集中のプレビューの隣へ «焼き上がり» (.fluid の隣の Atlas) を並べる。
+    /// @note 既定は単独表示 — 並べると 1 枚あたりの絵が半分になるので、要るときだけ人が開く。
     bool compareBaked = false;
     /// @}
 };
 
-/// 3 種類の部品 (FluidSource / FluidForce / FluidCollider) は enabled・name・center・startTime・duration・motion を
-/// 同じ名前で持つので、種類を問わない処理はこれ 1 本で書く。list / index が不正なら何もせず false。
+/// @note 3 種類の部品 (FluidSource / FluidForce / FluidCollider) は enabled・name・center・startTime・duration・motion を
+/// @note 同じ名前で持つので、種類を問わない処理はこれ 1 本で書く。list / index が不正なら何もせず false。
 template <typename Recipe, typename Fn>
 bool VisitPart(Recipe& recipe, FluidSelectionKind list, int index, Fn&& fn)
 {
@@ -155,54 +182,54 @@ bool VisitPart(Recipe& recipe, FluidSelectionKind list, int index, Fn&& fn)
 [[nodiscard]] ImU32 ListColor(FluidSelectionKind list, float alpha = 1.0f);
 [[nodiscard]] int MaxParts(FluidSelectionKind list);
 
-/// キーの間を直線でつないだ、solverTime (warmup を含むソルバーの時計) での中心からのずれ。
+/// @note キーの間を直線でつないだ、solverTime (warmup を含むソルバーの時計) での中心からのずれ。
 [[nodiscard]] math::Vector3 MotionOffsetAt(const fluid::FluidMotion& motion, float solverTime);
-/// hide と solo を合わせた «プレビューに出るか»。IsHidden は solo を含まない。
+/// @note hide と solo を合わせた «プレビューに出るか»。IsHidden は solo を含まない。
 [[nodiscard]] bool PartShownInPreview(const FluidDocument& document, FluidSelectionKind list, int index);
 
-/// タイムラインの長さ (output.duration。warmup は含まない)。
+/// @note タイムラインの長さ (output.duration。warmup は含まない)。
 [[nodiscard]] float TimelineDuration(const fluid::FluidRecipe& recipe);
-/// 1 コマの秒数 (焼きと同じ刻み)。
+/// @note 1 コマの秒数 (焼きと同じ刻み)。
 [[nodiscard]] float TimelineFrameDt(const State& state, const fluid::FluidRecipe& recipe);
 void StepFrame(State& state, int delta);
 
-/// 編集中のプレビューのコマ数と «いま出しているコマ» の添字。
+/// @note 編集中のプレビューのコマ数と «いま出しているコマ» の添字。
 /// @note ビューポートの見出し・焼き上がりとの突き合わせ・ツールバーの表示が同じ数え方をする必要があるため公開する。
 [[nodiscard]] int FluidViewportLiveFrameCount(const State& state, const fluid::FluidRecipe& recipe);
 [[nodiscard]] int FluidViewportLiveFrame(const State& state, const fluid::FluidRecipe& recipe, int frames);
 
 void SetStatus(State& state, std::string text, bool isError);
-/// 部品の数が減った・選択先が消えたときに添字を有効な範囲へ戻す。
+/// @note 部品の数が減った・選択先が消えたときに添字を有効な範囲へ戻す。
 void ClampSelection(State& state);
 void FixSelectionAfterRemove(FluidSelection& selection, FluidSelectionKind list, int removedIndex, int newCount);
 void FixSelectionAfterMove(FluidSelection& selection, FluidSelectionKind list, int from, int to);
 
 bool RemoveSelectedPart(EditorContext& ctx, State& state);
-/// 選んでいる部品へ、再生位置に今のずれでキーを打つ (同じコマにあれば置き換える)。
+/// @note 選んでいる部品へ、再生位置に今のずれでキーを打つ (同じコマにあれば置き換える)。
 bool InsertMotionKeyAtPlayhead(EditorContext& ctx, State& state);
 void BeginRename(State& state, FluidSelectionKind list, int index);
 
-/// マウスを離したドラッグを閉じる (Undo を 1 つ積む)。文書側が操作中の編集を捨てていたら積まずに畳む。
+/// @note マウスを離したドラッグを閉じる (Undo を 1 つ積む)。文書側が操作中の編集を捨てていたら積まずに畳む。
 void EndStaleDrags(EditorContext& ctx, State& state);
 
-/// 選んでいるキーが消えた / 別の部品を選んだら外す。
+/// @note 選んでいるキーが消えた / 別の部品を選んだら外す。
 void ClampKeySelection(State& state);
-/// 3D のギズモが動かす «選んでいるキー» の添字。無ければ -1。
+/// @note 3D のギズモが動かす «選んでいるキー» の添字。無ければ -1。
 [[nodiscard]] int ActiveMotionKey(const State& state);
 
 void DrawOutliner(EditorContext& ctx, State& state);
 void DrawViewport(EditorContext& ctx, State& state);
 void DrawTimeline(EditorContext& ctx, State& state);
 
-/// 2D のプレビュー (市松 → コマ → 枠) を 1 辺 side の正方形へ描く。3D が使えないときの代わりでもある。
-/// コマの細かさは previewViewSide (2D のビューポートが測った一辺) に合わせる — 代役で呼ばれたときに
-/// 3D の都合で解像度が動くと、戻ったときに 2D のコマを描き直すことになる。
+/// @note 2D のプレビュー (市松 → コマ → 枠) を 1 辺 side の正方形へ描く。3D が使えないときの代わりでもある。
+/// @note コマの細かさは previewViewSide (2D のビューポートが測った一辺) に合わせる — 代役で呼ばれたときに
+/// @note 3D の都合で解像度が動くと、戻ったときに 2D のコマを描き直すことになる。
 void DrawFluidPreviewSquare(ImDrawList* drawList, State& state, ImVec2 min, float side, const char* emptyText);
 
-/// 3D のライブプレビューを共有 Baker へ記録する。GPU を積むのでレンダラーのフレーム内
-/// (パネルの OnBeforeBegin) から毎フレーム呼ぶこと。
+/// @note 3D のライブプレビューを共有 Baker へ記録する。GPU を積むのでレンダラーのフレーム内
+/// @note (パネルの OnBeforeBegin) から毎フレーム呼ぶこと。
 void TickVolumePreview(EditorContext& ctx, State& state);
-/// 3D のビューポート (共有 Baker の絵 + ImGuizmo)。DrawViewport から呼ぶ。
+/// @note 3D のビューポート (共有 Baker の絵 + ImGuizmo)。DrawViewport から呼ぶ。
 void DrawViewport3D(EditorContext& ctx, State& state);
 
-} // namespace fbzz::editor::fluideditor
+}

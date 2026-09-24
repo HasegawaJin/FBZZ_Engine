@@ -9,6 +9,7 @@
 
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Asset/FluidBaker.hpp>
+#include <Engine/Scene/Components/ParticleColorSpace.hpp>
 #include <Fluid/FluidSolver.hpp>
 #include <Fluid/FluidSourceMask.hpp>
 #include <Fluid/FluidStepping.hpp>
@@ -35,21 +36,21 @@ namespace {
 using fluid::FluidKind;
 using fluid::FluidShading;
 
-/// 部品が変わっていない。
+/// @note 部品が変わっていない。
 constexpr float kNever = (std::numeric_limits<float>::max)();
-/// 頭から効く。
+/// @note 頭から効く。
 constexpr float kAlways = std::numeric_limits<float>::lowest();
 
 constexpr int kDraftGrid      = 48;
 constexpr int kNormalGrid     = 96;
 constexpr int kFinalMaxGrid   = 256;
-/// 画像の一辺の上限 [画素]。実寸はビューポートに出している一辺から決める — 格子より大きく描くのは
-/// Catmull-Rom の補間が受け持つので、画像だけ上げても解きは重くならない。
+/// @note 画像の一辺の上限 [画素]。実寸はビューポートに出している一辺から決める — 格子より大きく描くのは
+/// @note Catmull-Rom の補間が受け持つので、画像だけ上げても解きは重くならない。
 constexpr int kDraftMaxImage  = 256;
 constexpr int kNormalMaxImage = 384;
 constexpr int kFinalMaxImage  = 512;
 constexpr int kMinImage       = 32;
-/// 画像の一辺の下限。出す一辺がまだ分からない (一度も描いていない) ときもこれで描く。
+/// @note 画像の一辺の下限。出す一辺がまだ分からない (一度も描いていない) ときもこれで描く。
 constexpr int kBaseImage      = 128;
 /// @note 刻む: 画像の一辺は «描き直しが要るか» の鍵で、1 画素ごとに追うと窓を伸縮している間ずっと全コマ描き直し (途中経過の無いコマは解き直し) になる。
 constexpr int kImageStep      = 64;
@@ -60,7 +61,7 @@ constexpr float kMaxWarmup    = 30.0f;
 constexpr std::size_t kImageBudgetBytes    = std::size_t{ 128 } << 20;
 constexpr std::size_t kSnapshotBudgetBytes = std::size_t{ 128 } << 20;
 
-/// 積算した時計の丸め誤差で «変わり目ちょうどのコマ» を残してしまわないための幅。
+/// @note 積算した時計の丸め誤差で «変わり目ちょうどのコマ» を残してしまわないための幅。
 constexpr float kTimeEpsilon = 1.0e-4f;
 
 /// @name 比較
@@ -73,8 +74,8 @@ bool Same(const math::Vector4& a, const math::Vector4& b)
     return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
 
-/// 量のエンベロープはキーの並びごと比べる。startTime より前には効かないので、部品の «値が変わった»
-/// 扱い (PartInvalidation の fieldsDiffer) にしておけば startTime から解き直して足りる。
+/// @note 量のエンベロープはキーの並びごと比べる。startTime より前には効かないので、部品の «値が変わった»
+/// @note 扱い (PartInvalidation の fieldsDiffer) にしておけば startTime から解き直して足りる。
 bool Same(const fluid::FluidAmount& a, const fluid::FluidAmount& b)
 {
     if (a.keys.size() != b.keys.size()) return false;
@@ -110,16 +111,16 @@ bool LiquidDiffers(const fluid::FluidLiquidSettings& a, const fluid::FluidLiquid
         || !Same(a.floorFriction, b.floorFriction) || !Same(a.particleLifetime, b.particleLifetime);
 }
 
-/// 2D プレビューのコマの刻み・格子・解像度に効くものだけ。supersampling / loop / motionVectors / vectorField* は
-/// 焼きの段でしか使わない (プレビューは超解像もループのクロスフェードもしない)。
+/// @note 2D プレビューのコマの刻み・格子・解像度に効くものだけ。supersampling / loop / motionVectors / vectorField* は
+/// @note 焼きの段でしか使わない (プレビューは超解像もループのクロスフェードもしない)。
 bool OutputDiffers(const fluid::FluidOutputSettings& a, const fluid::FluidOutputSettings& b)
 {
     return a.frameSize != b.frameSize || a.columns != b.columns || a.rows != b.rows
         || !Same(a.duration, b.duration) || !Same(a.warmup, b.warmup) || a.substeps != b.substeps;
 }
 
-/// 名前は解き方に関係しない。種類ごとの «使わない値» (気体の count など) まで比べるのは、使っていないことを
-/// ソルバーの中身に頼って決めないため (無駄な解き直しは起きても、要る解き直しを落とさない)。
+/// @note 名前は解き方に関係しない。種類ごとの «使わない値» (気体の count など) まで比べるのは、使っていないことを
+/// @note ソルバーの中身に頼って決めないため (無駄な解き直しは起きても、要る解き直しを落とさない)。
 bool SourceDiffers(const fluid::FluidSource& a, const fluid::FluidSource& b)
 {
     return a.shape != b.shape || !Same(a.center, b.center) || !Same(a.size, b.size)
@@ -145,8 +146,8 @@ bool ColliderDiffers(const fluid::FluidCollider& a, const fluid::FluidCollider& 
         || !Same(a.startTime, b.startTime) || !Same(a.duration, b.duration);
 }
 
-/// 動きが変わって姿が変わり始める時刻。キーの間は直線で結ぶので、i 番目のキーを変えると
-/// «1 つ前のキー» から先の道筋が変わる。先頭を変えると先頭より前 (端のキーで止まっている間) も変わる。
+/// @note 動きが変わって姿が変わり始める時刻。キーの間は直線で結ぶので、i 番目のキーを変えると
+/// @note «1 つ前のキー» から先の道筋が変わる。先頭を変えると先頭より前 (端のキーで止まっている間) も変わる。
 float MotionInfluenceStart(const fluid::FluidMotion& a, const fluid::FluidMotion& b)
 {
     if (a.inheritVelocity != b.inheritVelocity) return kAlways;
@@ -167,7 +168,7 @@ float MotionInfluenceStart(const fluid::FluidMotion& a, const fluid::FluidMotion
     return start;
 }
 
-/// 部品 1 つが解きに効き始める時刻 [ソルバーの時計]。
+/// @note 部品 1 つが解きに効き始める時刻 [ソルバーの時計]。
 /// @note enabled の切り替えは頭から: ソルバーは有効な部品だけを詰めて持ち、ノイズの切り出し位置が «有効な部品の中での添字» で決まるため、1 つ消すと後ろの部品のノイズが最初から変わる。
 template <class Part>
 float PartInvalidation(const Part& a, const Part& b, bool fieldsDiffer)
@@ -182,8 +183,8 @@ float PartInvalidation(const Part& a, const Part& b, bool fieldsDiffer)
     return (std::max)(start, motion);
 }
 
-/// 焼きと同じく、Glow の Ramp を温度で引くかは «温度か燃料を注ぐ発生源が 1 つでもあるか» で決まる。
-/// 時刻に関係なく全コマの色が変わるので、解きは同じでも描き直しが要る。
+/// @note 焼きと同じく、Glow の Ramp を温度で引くかは «温度か燃料を注ぐ発生源が 1 つでもあるか» で決まる。
+/// @note 時刻に関係なく全コマの色が変わるので、解きは同じでも描き直しが要る。
 bool GlowRampFollowsTemperature(const fluid::FluidRecipe& recipe)
 {
     return std::any_of(recipe.sources.begin(), recipe.sources.end(), [](const fluid::FluidSource& source) {
@@ -191,8 +192,8 @@ bool GlowRampFollowsTemperature(const fluid::FluidRecipe& recipe)
     });
 }
 
-/// 2D の描画 (RenderFluidGasFrame / RenderFluidLiquidFrame) が読む Look の値。
-/// liquidSoftness / Extinction / Gloss / Fresnel は 3D (Volume Flipbook Baker) だけが読む。
+/// @note 2D の描画 (RenderFluidGasFrame / RenderFluidLiquidFrame) が読む Look の値。
+/// @note liquidSoftness / Extinction / Gloss / Fresnel は 3D (Volume Flipbook Baker) だけが読む。
 bool RenderDiffers(const fluid::FluidRenderSettings& a, const fluid::FluidRenderSettings& b)
 {
     return a.shading != b.shading || !Same(a.smokeColor, b.smokeColor) || !Same(a.shadowColor, b.shadowColor)
@@ -212,7 +213,7 @@ bool LookDiffers(const fluid::FluidRecipe& before, const fluid::FluidRecipe& aft
         || GlowRampFollowsTemperature(before) != GlowRampFollowsTemperature(after);
 }
 
-/// どちらかが解き直しを求めていれば、早い方を取る。
+/// @note どちらかが解き直しを求めていれば、早い方を取る。
 float CombineInvalidation(float a, float b)
 {
     if (a < 0.0f) return b;
@@ -228,7 +229,7 @@ FluidShading EffectiveShading(const fluid::FluidRecipe& recipe)
     return recipe.render.shading == FluidShading::Liquid ? FluidShading::Smoke : recipe.render.shading;
 }
 
-/// 焼き (BakeFluid) と同じ丸め。違えるとコマの時刻が焼いたアトラスとずれる。
+/// @note 焼き (BakeFluid) と同じ丸め。違えるとコマの時刻が焼いたアトラスとずれる。
 fluid::FluidRecipe NormalizedForPreview(const fluid::FluidRecipe& source)
 {
     fluid::FluidRecipe recipe = source;
@@ -252,7 +253,7 @@ struct PreviewScale {
     int image = kBaseImage;
 };
 
-/// 画面に出す一辺 [画素] に見合う画像の一辺。
+/// @note 画面に出す一辺 [画素] に見合う画像の一辺。
 int ImageSideFor(float viewSide, int cap)
 {
     if (!(viewSide > 0.0f)) return kBaseImage;
@@ -276,7 +277,7 @@ PreviewScale ScaleFor(const fluid::FluidRecipe& normalized, FluidPreviewQuality 
         break;
     case FluidPreviewQuality::Final:
         /// @note Final は «焼きと同じコマの大きさ» を下回らない。画面がそれより大きいときだけ上限まで足す
-        ///       (プレビューの画素数は焼きのコマの大きさとは別物なので、超えて構わない)。
+        /// @note       (プレビューの画素数は焼きのコマの大きさとは別物なので、超えて構わない)。
         scale = { (std::min)(resolved, kFinalMaxGrid),
                   (std::max)((std::min)(normalized.output.frameSize, kFinalMaxImage),
                              ImageSideFor(viewSide, kFinalMaxImage)) };
@@ -290,12 +291,12 @@ PreviewScale ScaleFor(const fluid::FluidRecipe& normalized, FluidPreviewQuality 
     return scale;
 }
 
-/// 途中経過 1 つの大きさの見積もり。ソルバーのコピーは作業領域まで丸ごと写す。
+/// @note 途中経過 1 つの大きさの見積もり。ソルバーのコピーは作業領域まで丸ごと写す。
 std::size_t EstimateSnapshotBytes(const fluid::FluidRecipe& normalized, int grid)
 {
     if (normalized.kind == FluidKind::Gas) {
         /// @note 場 (密度・温度・燃料・色・速度 3・圧力・発散・膨張) + 作業領域 (前の速度 3・scratch 3・curl 4・
-        ///       固体の速度 3・細部の座標 4) でおよそ 30 本 + 固体フラグ。
+        /// @note       固体の速度 3・細部の座標 4) でおよそ 30 本 + 固体フラグ。
         const std::size_t cells = static_cast<std::size_t>(grid) * static_cast<std::size_t>(grid);
         std::size_t bytes = cells * (30 * sizeof(float) + 1);
         const std::size_t maskBytes = static_cast<std::size_t>(fluid::kFluidSourceMaskSize)
@@ -315,9 +316,9 @@ std::size_t EstimateSnapshotBytes(const fluid::FluidRecipe& normalized, int grid
 /// @name 裏のスレッド
 
 struct SolverSnapshot {
-    /// 作ったときの場 (格子・粒子半径) の世代。今と同じときだけ «続きを解く» 起点に使える。
+    /// @note 作ったときの場 (格子・粒子半径) の世代。今と同じときだけ «続きを解く» 起点に使える。
     std::uint64_t simEpoch = 0;
-    /// 作ったときの部品の世代。今と違うなら、続ける前に ReplaceOperators で部品を差し替える。
+    /// @note 作ったときの部品の世代。今と違うなら、続ける前に ReplaceOperators で部品を差し替える。
     std::uint64_t partEpoch = 0;
     fluid::FluidGasSolver    gas;
     fluid::FluidLiquidSolver liquid;
@@ -360,17 +361,17 @@ struct Job {
     int imageSize = kBaseImage;
     float frameDt = 0.0f;
     int substeps = 1;
-    /// 焼き始めまでに進めるコマ数 (FluidWarmupFrames)。
+    /// @note 焼き始めまでに進めるコマ数 (FluidWarmupFrames)。
     int warmupFrames = 0;
     std::uint64_t simEpoch = 0;
     std::uint64_t partEpoch = 0;
 
-    /// 1 段目: 途中経過から描き直すだけのコマ (Look の変更)。解かないので速い。
+    /// @note 1 段目: 途中経過から描き直すだけのコマ (Look の変更)。解かないので速い。
     std::vector<std::pair<int, std::shared_ptr<const SolverSnapshot>>> rerender;
 
-    /// 2 段目: resumeFrom (無ければ Reset + warmup でコマ 0) から lastIndex まで解く。負なら解かない。
+    /// @note 2 段目: resumeFrom (無ければ Reset + warmup でコマ 0) から lastIndex まで解く。負なら解かない。
     std::shared_ptr<const SolverSnapshot> resumeFrom;
-    /// resumeFrom の部品が古い。続ける前に差し替える (断られたら頭から解き直す)。
+    /// @note resumeFrom の部品が古い。続ける前に差し替える (断られたら頭から解き直す)。
     bool replaceOperators = false;
     int resumeIndex = 0;
     int lastIndex = -1;
@@ -388,7 +389,7 @@ void RenderWith(const fluid::FluidLiquidSolver& solver, const Job& job, asset::F
     asset::RenderFluidLiquidFrame(solver, job.recipe, job.imageSize, job.frameDt, out);
 }
 
-/// プレビューは motion を使わない。持つ量が 2/3 になる。
+/// @note プレビューは motion を使わない。持つ量が 2/3 になる。
 void DropMotion(asset::FluidFrameImage& image)
 {
     std::vector<float>().swap(image.motion);
@@ -477,21 +478,6 @@ void RunJob(const Job& job, Channel& channel)
 
 /// @name 表示
 
-/// 焼いた絵をエンジンのブレンドと同じ式で市松の上へ重ねた、不透明な色を返す。
-void CompositePixel(const float* rgba, int x, int y, FluidShading shading, float out[3])
-{
-    const float background = (((x / 8) + (y / 8)) & 1) != 0 ? 0.22f : 0.12f;
-    const bool premultiplied = asset::FluidShadingIsPremultiplied(shading);
-    const bool additive = shading == FluidShading::Glow;
-    for (int c = 0; c < 3; ++c) {
-        float value = 0.0f;
-        if (premultiplied) value = rgba[c] + background * (1.0f - rgba[3]);
-        else if (additive) value = background + rgba[c] * rgba[3];
-        else               value = rgba[c] * rgba[3] + background * (1.0f - rgba[3]);
-        out[c] = (std::min)(value, 1.0f);
-    }
-}
-
 /// @note 矩形を並べて描かない: 128px で 16384 個の矩形になり、しかも 1 画素が拡大表示の 1 マスになるので «焼いたものより粗く» 見える。
 struct PreviewTexture {
     renderer::ResourceHandle<renderer::TextureTag> handle;
@@ -503,18 +489,52 @@ struct PreviewTexture {
 
 struct Slot {
     asset::FluidFrameImage image;
-    /// 絵がある (stale でも見せる)。
+    /// @note 絵がある (stale でも見せる)。
     bool has = false;
-    /// 絵は今の Look で描いたものではない (描き直し待ち)。
+    /// @note 絵は今の Look で描いたものではない (描き直し待ち)。
     bool stale = false;
     FluidShading shading = FluidShading::Smoke;
-    /// 絵を差し替えるたびに増える。GPU へ上げ直すかの判定に使う。
+    /// @note 絵を差し替えるたびに増える。GPU へ上げ直すかの判定に使う。
     std::uint64_t version = 0;
-    /// このコマ時点のソルバー (予算内で数コマおき)。
+    /// @note このコマ時点のソルバー (予算内で数コマおき)。
     std::shared_ptr<const SolverSnapshot> snapshot;
 };
 
-} // namespace
+}
+
+ImU32 FluidPreviewBackgroundPixel(int x, int y, bool checkerBackground)
+{
+    if (!checkerBackground) return IM_COL32(8, 8, 10, 255);
+    const bool light = (((x / 8) + (y / 8)) & 1) != 0;
+    const int channel = light ? 56 : 31;
+    return IM_COL32(channel, channel, channel, 255);
+}
+
+void CompositeFluidPreviewPixel(const float rgba[4], int x, int y, int imageSide, float viewSidePixels,
+                                fluid::FluidShading shading, bool checkerBackground, float outRgb[3])
+{
+    const float imageToView = imageSide > 0 && viewSidePixels > 0.0f
+        ? viewSidePixels / static_cast<float>(imageSide) : 1.0f;
+    const int backgroundX = static_cast<int>((static_cast<float>(x) + 0.5f) * imageToView);
+    const int backgroundY = static_cast<int>((static_cast<float>(y) + 0.5f) * imageToView);
+    const ImU32 backgroundColor = FluidPreviewBackgroundPixel(backgroundX, backgroundY, checkerBackground);
+    const float background[3] = {
+        scene::ParticleSrgbToLinear(static_cast<float>((backgroundColor >> IM_COL32_R_SHIFT) & 0xFFu) / 255.0f),
+        scene::ParticleSrgbToLinear(static_cast<float>((backgroundColor >> IM_COL32_G_SHIFT) & 0xFFu) / 255.0f),
+        scene::ParticleSrgbToLinear(static_cast<float>((backgroundColor >> IM_COL32_B_SHIFT) & 0xFFu) / 255.0f),
+    };
+    const bool premultiplied = asset::FluidShadingIsPremultiplied(shading);
+    const bool additive = shading == fluid::FluidShading::Glow;
+    const float alpha = std::clamp(rgba[3], 0.0f, 1.0f);
+    for (int channel = 0; channel < 3; ++channel) {
+        const float source = scene::ParticleSrgbToLinear(rgba[channel]);
+        float value = 0.0f;
+        if (premultiplied) value = source + background[channel] * (1.0f - alpha);
+        else if (additive) value = background[channel] + source * alpha;
+        else               value = source * alpha + background[channel] * (1.0f - alpha);
+        outRgb[channel] = scene::ParticleLinearToSrgb(std::clamp(value, 0.0f, 1.0f));
+    }
+}
 
 float FluidInvalidationTime(const fluid::FluidRecipe& before, const fluid::FluidRecipe& after)
 {
@@ -544,22 +564,22 @@ float FluidInvalidationTime(const fluid::FluidRecipe& before, const fluid::Fluid
 }
 
 struct FluidPreviewCache::Impl {
-    /// 最後に受け取ったレシピ (次の変更と比べる基準) と、焼きと同じ丸めをしたもの (解きに渡す)。
+    /// @note 最後に受け取ったレシピ (次の変更と比べる基準) と、焼きと同じ丸めをしたもの (解きに渡す)。
     fluid::FluidRecipe recipe;
     fluid::FluidRecipe preview;
     bool hasRecipe = false;
     std::uint64_t revision = 0;
     FluidPreviewQuality quality = FluidPreviewQuality::Draft;
-    /// 呼び手が絵を出している一辺 [画面画素]。0 = まだ描いていない。
+    /// @note 呼び手が絵を出している一辺 [画面画素]。0 = まだ描いていない。
     float viewSide = 0.0f;
 
     std::vector<Slot> slots;
     float frameDt = 0.0f;
-    /// 場 (格子の大きさ・コマ割り) が変わるたびに増える。古い世代の途中経過は続きを解く起点にできない。
+    /// @note 場 (格子の大きさ・コマ割り) が変わるたびに増える。古い世代の途中経過は続きを解く起点にできない。
     std::uint64_t simEpoch = 1;
-    /// 部品が変わるたびに増える。古い世代でも、ReplaceOperators で部品を差し替えれば起点に使える。
+    /// @note 部品が変わるたびに増える。古い世代でも、ReplaceOperators で部品を差し替えれば起点に使える。
     std::uint64_t partEpoch = 1;
-    /// 走っている解きの結果を受け取ってよいか。取り消すたびに増える。
+    /// @note 走っている解きの結果を受け取ってよいか。取り消すたびに増える。
     std::uint64_t generation = 1;
     std::uint64_t nextVersion = 1;
 
@@ -568,10 +588,11 @@ struct FluidPreviewCache::Impl {
     std::uint64_t jobGeneration = 0;
     FluidShading jobShading = FluidShading::Smoke;
 
-    /// TextureAt は引数にレンダラーを取らないので、最後の Tick で受け取ったものを使う。
+    /// @note TextureAt は引数にレンダラーを取らないので、最後の Tick で受け取ったものを使う。
     renderer::ResourceManager* resources = nullptr;
     renderer::IImGuiRenderer* imguiRenderer = nullptr;
     PreviewTexture texture;
+    bool checkerBackground = true;
     std::vector<std::uint8_t> pixels;
     int uploadedIndex = -1;
     std::uint64_t uploadedVersion = 0;
@@ -580,7 +601,7 @@ struct FluidPreviewCache::Impl {
     Impl(const Impl&) = delete;
     Impl& operator=(const Impl&) = delete;
 
-    /// GPU 資源には触らない (Shutdown を呼ばずに壊されても、止めて待つだけで済むように)。
+    /// @note GPU 資源には触らない (Shutdown を呼ばずに壊されても、止めて待つだけで済むように)。
     ~Impl()
     {
         CancelJob();
@@ -630,7 +651,7 @@ struct FluidPreviewCache::Impl {
         channel.reset();
     }
 
-    /// 取り消した解きは、次の Tick で終わったのを見届けてから次を出す (裏のスレッドは常に 1 本)。
+    /// @note 取り消した解きは、次の Tick で終わったのを見届けてから次を出す (裏のスレッドは常に 1 本)。
     void Abandon()
     {
         Drain();
@@ -673,7 +694,7 @@ struct FluidPreviewCache::Impl {
         return std::any_of(slots.begin(), slots.end(), [](const Slot& slot) { return !slot.has || slot.stale; });
     }
 
-    /// 今のレシピ・品質・表示の大きさで描く画像の一辺。
+    /// @note 今のレシピ・品質・表示の大きさで描く画像の一辺。
     [[nodiscard]] int ImageSide() const
     {
         if (!hasRecipe) return 0;
@@ -720,7 +741,7 @@ struct FluidPreviewCache::Impl {
 
         if (first >= 0) {
             /// @note 解き直しの起点は «変わり目の手前で一番新しい途中経過»。残したコマと同じ状態なので、
-            ///       そこから続けても残したコマと食い違わない。
+            /// @note       そこから続けても残したコマと食い違わない。
             for (int i = first - 1; i >= 0; --i) {
                 const Slot& slot = slots[static_cast<std::size_t>(i)];
                 if (slot.snapshot != nullptr && slot.snapshot->simEpoch == simEpoch) {
@@ -734,7 +755,7 @@ struct FluidPreviewCache::Impl {
             job.render.assign(static_cast<std::size_t>(count), 0);
             job.keepSnapshot.assign(static_cast<std::size_t>(count), 0);
             /// @note 起点より前にも印を付ける。続きを解くときは通らないが、差し替えを断られて頭から解き直す
-            ///       ことになったら、通りがかりで古い途中経過を取り直せる。
+            /// @note       ことになったら、通りがかりで古い途中経過を取り直せる。
             for (int i = 0; i <= last; ++i) {
                 const Slot& slot = slots[static_cast<std::size_t>(i)];
                 const bool current = slot.snapshot != nullptr && slot.snapshot->simEpoch == simEpoch
@@ -807,7 +828,8 @@ struct FluidPreviewCache::Impl {
                 const std::size_t pixel = static_cast<std::size_t>(y) * static_cast<std::size_t>(frame.size)
                                         + static_cast<std::size_t>(x);
                 float color[3];
-                CompositePixel(&frame.rgba[pixel * 4], x, y, slot.shading, color);
+                CompositeFluidPreviewPixel(&frame.rgba[pixel * 4], x, y, frame.size, viewSide,
+                                           slot.shading, checkerBackground, color);
                 for (int c = 0; c < 3; ++c)
                     pixels[pixel * 4 + static_cast<std::size_t>(c)] = static_cast<std::uint8_t>(color[c] * 255.0f + 0.5f);
                 pixels[pixel * 4 + 3] = 255;
@@ -831,7 +853,7 @@ void FluidPreviewCache::SetRecipe(const fluid::FluidRecipe& recipe, std::uint64_
     if (s.hasRecipe && revision == s.revision) return;
 
     /// @note 呼び手の申告と自前の比較の早い方を取る。呼び手はレシピに現れない変化 (発生源の画像ファイルの
-    ///       書き換えなど) を知っていることがあり、自前の比較は申告の取りこぼしを拾う。
+    /// @note       書き換えなど) を知っていることがあり、自前の比較は申告の取りこぼしを拾う。
     float from = 0.0f;
     bool lookChanged = false;
     const bool first = !s.hasRecipe;
@@ -874,6 +896,13 @@ FluidPreviewQuality FluidPreviewCache::Quality() const
     return m_impl->quality;
 }
 
+void FluidPreviewCache::SetCheckerBackground(bool enabled)
+{
+    if (m_impl->checkerBackground == enabled) return;
+    m_impl->checkerBackground = enabled;
+    m_impl->uploadedIndex = -1;
+}
+
 void FluidPreviewCache::SetPreviewSide(float sidePixels)
 {
     Impl& s = *m_impl;
@@ -883,7 +912,7 @@ void FluidPreviewCache::SetPreviewSide(float sidePixels)
     s.viewSide = side;
     if (!s.hasRecipe || s.ImageSide() == before) return;
     /// @note 格子は変わらないので途中経過はそのまま通じる。Look の変更と同じく «描き直し» で済み、
-    ///       途中経過を捨てられたコマだけが解き直しになる。
+    /// @note       途中経過を捨てられたコマだけが解き直しになる。
     s.Abandon();
     for (Slot& slot : s.slots)
         if (slot.has) slot.stale = true;
@@ -899,10 +928,13 @@ void FluidPreviewCache::Tick(renderer::ResourceManager* resources, renderer::IIm
     s.StartNextJob();
 }
 
-const asset::FluidFrameImage* FluidPreviewCache::FrameAt(float time) const
+const asset::FluidFrameImage* FluidPreviewCache::FrameAt(float time, fluid::FluidShading* shading) const
 {
     const int index = m_impl->FindFrame(time);
-    return index >= 0 ? &m_impl->slots[static_cast<std::size_t>(index)].image : nullptr;
+    if (index < 0) return nullptr;
+    const Slot& slot = m_impl->slots[static_cast<std::size_t>(index)];
+    if (shading != nullptr) *shading = slot.shading;
+    return &slot.image;
 }
 
 ImTextureID FluidPreviewCache::TextureAt(float time)
@@ -953,4 +985,4 @@ void FluidPreviewCache::Shutdown(renderer::ResourceManager* resources)
     s.uploadedIndex = -1;
 }
 
-} // namespace fbzz::editor
+}

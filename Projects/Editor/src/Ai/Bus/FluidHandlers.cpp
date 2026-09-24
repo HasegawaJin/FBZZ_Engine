@@ -39,12 +39,12 @@ namespace {
 
 /// @name 流体 (.fluid)
 /// @note レシピの読み書きは ReflectFluidRecipe 1 本に通す。キー名は .fluid (TOML) と同じなので、
-///       fluid.get で読んだ形をそのまま fluid.set へ返せる。焼き・プレビューは FluidBakeService の
-///       ジョブで受け付けて id を返すだけにし、バスの drain をベイクで止めない。
+/// @note fluid.get で読んだ形をそのまま fluid.set へ返せる。焼き・プレビューは FluidBakeService のジョブで受け付ける。
+/// @note id を返すだけにし、バスの drain をベイクで止めない。
 
 /// @brief プリセットの識別子テーブルの 1 行。
 /// @note FluidPresetName は «Fire (loop)» のような表示名で、空白や括弧を含むため
-///       AI が引数として書き写す識別子には向かない。
+/// @note AI が引数として書き写す識別子には向かない。
 struct FluidPresetEntry {
     asset::FluidPreset preset;
     const char*        id;
@@ -161,9 +161,9 @@ JsonValue FluidRecipeToJson(fluid::FluidRecipe recipe)
 }
 
 /// @brief JsonWriteReflector が扱わない 2 つ (オブジェクト配列の要素数と enum のラベル指定) を
-///        ドット区切りのパスで 1 箇所だけ書く。
+/// @note ドット区切りのパスで 1 箇所だけ書く。
 /// @note パスの数え方は JsonWriteReflector と同じ (入れ子は名前、配列要素は添字) にして、
-///       同じキーが両方で同じ場所を指すようにする。
+/// @note 同じキーが両方で同じ場所を指すようにする。
 class FluidPathReflector final : public scene::IReflector {
 public:
     enum class Mode { ResizeList, EnumLabel };
@@ -284,7 +284,7 @@ JsonValue FluidStringArray(const std::vector<std::string>& items)
 
 /// @brief fields の 1 項目をレシピへ書く。オブジェクトは入れ子として潜る。
 /// @note オブジェクトの配列は «要素数をその長さにしてから各要素へ部分適用» する
-///       (配列内で省いたキーは既存値のまま)。
+/// @note 配列内で省いたキーは既存値のまま。
 void ApplyFluidValue(fluid::FluidRecipe& recipe, const std::string& path,
                      const JsonValue& value, FluidFieldReport& report)
 {
@@ -308,7 +308,7 @@ void ApplyFluidValue(fluid::FluidRecipe& recipe, const std::string& path,
             if (resize.Found()) {
                 report.applied.push_back(path);
                 /// @note 上限は焼き側の都合で、AI が知らずに多めに並べることがある。全部拒否すると
-                ///       残りの変更まで捨てることになるため切り詰め、落とした分は clamped で返す。
+/// @note 残りの変更まで捨てることになるため切り詰め、落とした分は clamped で返す。
                 if (count < items.size())
                     report.clamped.push_back(path + ": " + std::to_string(items.size()) + " -> " + std::to_string(count));
                 for (std::size_t i = 0; i < count; ++i)
@@ -325,7 +325,7 @@ void ApplyFluidValue(fluid::FluidRecipe& recipe, const std::string& path,
 
     if (value.IsString()) {
         /// @note enum のラベルは TOML に書く名前と同じ ("smoke" / "3d")。fluid.get が添字で返した値を
-        ///       TOML と同じ綴りでも書き戻せるようにする。
+/// @note TOML と同じ綴りでも書き戻せるようにする。
         FluidPathReflector label(FluidPathReflector::Mode::EnumLabel, path);
         label.SetLabel(value.AsString());
         asset::ReflectFluidRecipe(recipe, label);
@@ -346,7 +346,7 @@ void ApplyFluidValue(fluid::FluidRecipe& recipe, const std::string& path,
 /// @brief fields をレシピへ適用する。1 つでも書けないキーがあれば何も書かない。
 /// @param basePath 指定すると fields をその下 ("source.3" など) への部分指定として読む。
 /// @note 一部だけ書いて成功にすると、書けなかったキーを AI が見落としたまま焼き直しに進み、
-///       何度焼いても狙いの絵にならない。
+/// @note 何度焼いても狙いの絵にならない。
 bool ApplyFluidFields(fluid::FluidRecipe& recipe, const JsonValue& fields,
                       std::vector<std::string>& outChanged, Outcome& err,
                       std::vector<std::string>* outClamped = nullptr,
@@ -436,7 +436,7 @@ bool CheckFluidTextureSources(const editor::EditorContext& ctx, const fluid::Flu
             continue;
         }
         /// @note Sprite 参照 (`<画像>::sprite::<ID>`) は元画像を確かめ、コマの在処は別に見る。
-        ///       参照のまま存在チェックへ回すと、実在する画像まで «見つからない» になる。
+/// @note 参照のまま存在チェックへ回すと、実在する画像まで «見つからない» になる。
         std::string imagePath;
         std::string spriteToken;
         const bool isSprite = asset::ParseSpriteReference(source.texture, imagePath, spriteToken);
@@ -462,7 +462,7 @@ bool CheckFluidTextureSources(const editor::EditorContext& ctx, const fluid::Flu
             continue;
         }
         /// @note 切れた Sprite 参照は «アトラス全面» ではなく «読めない» になる (LoadFluidSourceMask)。
-        ///       黙って板の形で湧くので、書いた側に見える形で言う。
+/// @note 黙って板の形で湧くので、書いた側に見える形で言う。
         if (!isSprite) continue;
         const std::string image = file.generic_string();
         asset::TextureImportSettings settings;
@@ -874,7 +874,7 @@ const JsonValue* FluidOperatorElementFields(const JsonValue& catalog, std::strin
 
 /// @brief 部品 1 つぶんの «効いている» 項目名。
 /// @note JsonCatalogReflector は FieldIf で隠れた項目も落とさず visible=false で載せる
-///       (保存は種類によらず全項目)。どれが効くかは種類ごとの要素を反射しないと分からない。
+/// @note 保存は種類によらず全項目で、どれが効くかは種類ごとの要素を反射しないと分からない。
 /// @note 見え方は kind (気体 / 液体) でも変わりうるので、両方で見えた項目の和を返す。
 JsonValue VisibleFluidOperatorFields(fluid::FluidRecipe recipe, std::string_view list)
 {
@@ -928,7 +928,7 @@ Outcome DoFluidSchema()
 {
     fluid::FluidRecipe recipe;
     /// @note 配列のスキーマは先頭要素から採る (JsonCatalogReflector)。空のままだと要素の項目が 1 つも出ない。
-    ///       motion.key / amount.key も配列なので、部品ごとに 1 キーを持たせる (障害物に amount は無い)。
+/// @note motion.key / amount.key も配列なので、部品ごとに 1 キーを持たせる (障害物に amount は無い)。
     recipe.sources.emplace_back();
     recipe.sources.back().motion.keys.emplace_back();
     recipe.sources.back().amount.keys.emplace_back();
@@ -1061,7 +1061,7 @@ Outcome DoFluidJobStatus(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("vfxPath", JsonValue(FluidProjectRelative(ctx, status->vfxPath)));
     result.Set("previewPngPath", JsonValue(FluidProjectRelative(ctx, status->previewPngPath)));
     /// @note 指紋は «前と同じ絵か» を画像を見比べずに決めるための値。ソルバーとフォールバックの理由も返し、
-    ///       «同じレシピなのに絵が違う» の原因 (GPU が使えず CPU で解かれた) を AI 側で切り分けられるようにする。
+/// @note «同じレシピなのに絵が違う» の原因 (GPU が使えず CPU で解かれた) を AI 側で切り分けられるようにする。
     if (!status->fingerprint.empty()) result.Set("fingerprint", JsonValue(status->fingerprint));
     if (!status->solverUsed.empty()) result.Set("solverUsed", JsonValue(status->solverUsed));
     if (!status->fallbackReason.empty()) result.Set("fallbackReason", JsonValue(status->fallbackReason));
@@ -1089,7 +1089,7 @@ Outcome DoFluidJobStatus(editor::EditorContext& ctx, const JsonValue& payload)
 
 /// @brief fluid.* コマンドの実体。create / set は Undo 可能。
 /// @note 焼き系 (preview / bake / cancel と createEffect の焼き部分) は build.run と同じく
-///       ジョブを受け付けるだけで Undo に載せない。
+/// @note ジョブを受け付けるだけで Undo に載せない。
 Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, const JsonValue& payload, bool dryRun)
 {
     namespace fs = std::filesystem;
@@ -1120,8 +1120,6 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
         std::error_code ec;
         if (!fs::is_regular_file(file, ec)) return Outcome::Err("FLUID_NOT_FOUND", ".fluid が見つかりません: " + relative);
 
-        const JsonValue* updateValue = payload.Find("updateMaterial");
-        const bool updateMaterial = updateValue == nullptr || updateValue->AsBool(true);
         fs::path materialRelative(relative);
         materialRelative.replace_extension(".mat");
         if (dryRun) {
@@ -1155,7 +1153,6 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
         } else {
             editor::FluidBakeRequest request;
             request.fluidPath = FluidAbsolutePath(file);
-            request.updateMaterial = updateMaterial;
             if (const JsonValue* seed = payload.Find("seed"); seed != nullptr && seed->IsNumber())
                 request.seed = static_cast<std::uint32_t>(std::clamp(seed->AsNumber(), 0.0, 4294967295.0));
             id = ctx.fluidBake->EnqueueBake(ctx, request, jobError);
@@ -1168,7 +1165,7 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
         result.Set("async", JsonValue(true));
         result.Set("poll", JsonValue(kPoll));
         result.Set("path", JsonValue(relative));
-        if (type == "fluid.bake" && updateMaterial)
+        if (type == "fluid.bake")
             result.Set("materialPath", JsonValue(materialRelative.generic_string()));
         return Outcome::Ok(std::move(result));
     }
@@ -1250,7 +1247,6 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
 
         editor::FluidBakeRequest request;
         request.fluidPath = FluidAbsolutePath(file);
-        request.updateMaterial = true;
         request.vfxPath = FluidAbsolutePath(vfxFile);
         request.vfxRootName = name;
         editor::FluidJobError jobError;

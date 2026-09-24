@@ -8,10 +8,15 @@
 #include "FlipbookImageIO.hpp"
 
 #include <Engine/Asset/TexDescSerializer.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
-#include <DirectXTex.h>
-#include <Windows.h>
+#include <atomic>
 #include <cstdio>
+#include <DirectXTex.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 #include <cstring>
 #include <system_error>
 
@@ -74,37 +79,73 @@ bool SavePngRgba8(const std::filesystem::path& path, std::uint32_t width, std::u
         return false;
     }
 
+    /// @note 既存 PNG を直接切り詰めず、隣の一時ファイルを完成してから置き換える。
+    static std::atomic<unsigned long long> temporarySerial{ 0 };
+    std::filesystem::path temporaryPath;
+    std::error_code temporaryError;
+    do {
+        temporaryPath = path;
+        temporaryPath += L".tmp." + std::to_wstring(GetCurrentProcessId()) + L"_"
+            + std::to_wstring(GetCurrentThreadId()) + L"_"
+            + std::to_wstring(temporarySerial.fetch_add(1, std::memory_order_relaxed));
+        const bool temporaryExists = std::filesystem::exists(temporaryPath, temporaryError);
+        if (temporaryError) {
+            outError = "PNG の一時ファイル名を確認できません: "
+                + util::FileSystem::PathToUtf8(temporaryPath) + " (" + temporaryError.message() + ")";
+            return false;
+        }
+        if (temporaryExists) continue;
+        break;
+    } while (true);
+
     hr = DirectX::SaveToWICFile(*destination, DirectX::WIC_FLAGS_NONE,
                                 DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),
-                                path.wstring().c_str());
+                                temporaryPath.wstring().c_str());
     if (FAILED(hr)) {
-        outError = "PNG を書き出せません: " + path.string();
+        char code[11]{};
+        std::snprintf(code, sizeof(code), "0x%08lX", static_cast<unsigned long>(hr));
+        outError = "PNG を書き出せません: " + util::FileSystem::PathToUtf8(path) + " (HRESULT " + code + ")";
+        std::error_code cleanupError;
+        std::filesystem::remove(temporaryPath, cleanupError);
+        if (cleanupError) outError += " (一時ファイルを削除できません: " + cleanupError.message() + ")";
+        return false;
+    }
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw MoveFileExW, MOVEFILE_REPLACE_EXISTING
+    if (!MoveFileExW(temporaryPath.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        const DWORD win32Error = GetLastError();
+        char code[11]{};
+        std::snprintf(code, sizeof(code), "0x%08lX", static_cast<unsigned long>(win32Error));
+        outError = "PNG を置き換えられません: " + util::FileSystem::PathToUtf8(path) + " (Win32 " + code + ")";
+        std::error_code cleanupError;
+        std::filesystem::remove(temporaryPath, cleanupError);
+        if (cleanupError) outError += " (一時ファイルを削除できません: " + cleanupError.message() + ")";
         return false;
     }
     return true;
 }
 
+/// @note 既存 .meta の GUID と取込設定を引き継ぎ、Bake に必要な型・色空間・alpha・ミップ・Atlas 端設定を更新する。
 bool SaveTextureMeta(const std::filesystem::path& sourcePath, TextureType type,
                      TextureCompression compression, AlphaMode alphaMode,
                      bool mipmaps, std::string& outError)
 {
     TextureAsset texture;
-    texture.sourcePath = sourcePath.string();
-    texture.settings = DefaultSettingsForType(type);
-    texture.settings.compression = compression;
+    texture.sourcePath = util::FileSystem::PathToUtf8(sourcePath);
+    const std::string metaPath = util::FileSystem::PathToUtf8(sourcePath) + ".meta";
+    TexDescSerializer serializer;
+    TextureAsset existing;
+    const bool hasExistingSettings = util::FileSystem::Exists(metaPath) && serializer.Load(metaPath, existing);
+    texture.settings = hasExistingSettings ? existing.settings : DefaultSettingsForType(type);
+    texture.settings.type = type;
+    if (!hasExistingSettings) texture.settings.compression = compression;
     texture.settings.alphaMode = alphaMode;
     texture.settings.mipmaps = mipmaps;
-    texture.settings.maxSize = 16384;
     if (!mipmaps) {
         texture.settings.wrapU = TextureWrap::Clamp;
         texture.settings.wrapV = TextureWrap::Clamp;
         texture.settings.filter = TextureFilter::Bilinear;
     }
-    if (type == TextureType::Data || type == TextureType::Normal)
-        texture.settings.srgb = false;
-
-    const std::string metaPath = sourcePath.string() + ".meta";
-    TexDescSerializer serializer;
+    texture.settings.srgb = DefaultSettingsForType(type).srgb;
     if (!serializer.Save(texture, metaPath)) {
         outError = "テクスチャ .meta を書き出せません: " + metaPath;
         return false;

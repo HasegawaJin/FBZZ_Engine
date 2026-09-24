@@ -154,7 +154,7 @@ const SourceMaskPreview* FindSourceMaskPreview(const std::string& path)
     const auto now = std::chrono::steady_clock::now();
     if (!it->checked || now - it->checkedAt >= std::chrono::seconds(1)) {
         /// @note Sprite 参照は «::sprite::» を落とした元画像を見る。付けたまま渡すと存在しない
-        ///       ファイルの時刻 (既定値) で固まり、絵を描き直しても縮小画がそのままになる。
+        /// @note ファイルの時刻 (既定値) で固まり、絵を描き直しても縮小画がそのままになる。
         std::string imagePath;
         std::string spriteToken;
         const bool isSprite = asset::ParseSpriteReference(path, imagePath, spriteToken);
@@ -932,7 +932,7 @@ bool VisitPartList(fluid::FluidRecipe& recipe, FluidSelectionKind list, Fn&& fn)
     }
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name 公開部品
 
@@ -945,7 +945,7 @@ bool EditSimulation(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe)
     if (ImGui::Combo("Kind", &kind, kKinds, IM_ARRAYSIZE(kKinds))) {
         recipe.kind = static_cast<FluidKind>(kind);
         /// @note 種類を替えた直後に発生源が無いと、何も写らず «壊れた» ように見える。
-        ///       発生源は両方の種類で共通なので、ある分はそのまま読み替える。
+        /// @note 発生源は両方の種類で共通なので、ある分はそのまま読み替える。
         if (recipe.sources.empty())
             recipe.sources.push_back(MakeDefaultSource(recipe.kind, fluid::FluidSourceShape::Sphere));
         changed = true;
@@ -1119,13 +1119,34 @@ bool EditOutput(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe)
         output.rows    = std::clamp(grid[1], 1, 32);
         changed = true;
     }
-    changed |= ImGui::DragFloat("Duration", &output.duration, 0.01f, 0.05f, 30.0f, "%.2f s");
-    changed |= ImGui::DragFloat("Warmup", &output.warmup, 0.01f, 0.0f, 30.0f, "%.2f s");
-    Tooltip("焼き始める前に回す時間。炎や噴流のように «出続けている状態» を焼くときに使います。");
+    ImGui::SeparatorText("Bake Range");
+    float bakeStart = output.warmup;
+    if (ImGui::DragFloat("Bake Start", &bakeStart, 0.01f, 0.0f, 30.0f, "%.2f s")) {
+        output.warmup = std::clamp(bakeStart, 0.0f, 30.0f);
+        changed = true;
+    }
+    Tooltip("シミュレーション開始から焼き始めるまでの時間。開始を動かしても収録する長さは変えません。");
+    float bakeEnd = output.warmup + output.duration;
+    if (ImGui::DragFloat("Bake End", &bakeEnd, 0.01f, output.warmup + 0.05f,
+                         output.warmup + 30.0f, "%.2f s")) {
+        output.duration = std::clamp(bakeEnd - output.warmup, 0.05f, 30.0f);
+        changed = true;
+    }
+    Tooltip("シミュレーション開始から焼き終えるまでの時間。終了を動かすと収録長と再生 FPS が変わります。");
+    ImGui::TextDisabled("Capture %.2f - %.2f s  |  %.2f s", output.warmup,
+                        output.warmup + output.duration, output.duration);
     changed |= ImGui::SliderInt("Substeps", &output.substeps, 1, 8);
     changed |= ImGui::Checkbox("Loop", &output.loop);
     Tooltip("末尾を先頭へクロスフェードして、FPS 再生でつながるようにします。\n"
             "一度きりの煙・爆発 (Lifetime 再生) では外したままにします。2D・3D どちらの焼きでも効きます。");
+    if (output.loop) {
+        float blendPercent = output.loopBlendFraction * 100.0f;
+        if (ImGui::SliderFloat("Loop Blend", &blendPercent, 0.0f, 50.0f, "%.0f%%")) {
+            output.loopBlendFraction = blendPercent / 100.0f;
+            changed = true;
+        }
+        Tooltip("先頭へ混ぜるコマの割合。0% は混ぜずに周回します。2D と 3D の Bake に共通です。");
+    }
     changed |= ImGui::Checkbox("Motion Vectors", &output.motionVectors);
     Tooltip("ソルバーの実速度から Motion Vector を焼きます。少ないコマ数でも滑らかに流れます\n"
             "(使うと GPU シミュレーションは CPU へ縮退します)。");
@@ -1358,4 +1379,4 @@ bool MovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int from, int
     });
 }
 
-} // namespace fbzz::editor::fluidui
+} /// @note namespace fbzz::editor::fluidui
