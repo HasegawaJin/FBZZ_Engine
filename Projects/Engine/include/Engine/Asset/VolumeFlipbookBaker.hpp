@@ -24,6 +24,7 @@
 #include <Math/Vector4.hpp>
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <future>
@@ -237,6 +238,9 @@ struct VolumeFlipbookBakeResult {
     float suggestedEmissiveScale = 1.0f;
     /// @note exposure 後に 1 を超えて切り詰められた画素の割合。大きければ exposure を下げる。
     float clippedFraction = 0.0f;
+    float colorEncodeSeconds = 0.0f;
+    float motionEncodeSeconds = 0.0f;
+    float sixWayEncodeSeconds = 0.0f;
     /// @note タイルの外周に煙がかかっていたコマ数 (実測)。
     int edgeTouchFrames = 0;
     /// @note 6 方向ライトマップ (焼いていなければ空)。
@@ -275,12 +279,14 @@ enum class VolumeFlipbookBakeState : std::uint8_t {
     AwaitingCapture,
     /// @note 全コマを撮り終え、PNG / DDS (BC7 圧縮) を裏で書いている。
     Encoding,
+    Cancelling,
     Finished,
     Failed,
 };
 
 class VolumeFlipbookBaker {
 public:
+    ~VolumeFlipbookBaker();
     /// @note 検証と CPU / GPU バッファの確保。失敗したら outError に理由を入れて false。
     [[nodiscard]] bool Begin(const VolumeFlipbookBakeSettings& settings,
                              renderer::ResourceManager& resources, std::string& outError);
@@ -334,7 +340,8 @@ public:
     {
         return m_state == VolumeFlipbookBakeState::Recording
             || m_state == VolumeFlipbookBakeState::AwaitingCapture
-            || m_state == VolumeFlipbookBakeState::Encoding;
+            || m_state == VolumeFlipbookBakeState::Encoding
+            || m_state == VolumeFlipbookBakeState::Cancelling;
     }
     [[nodiscard]] int CompletedFrames() const { return m_frameIndex; }
     /// @note 撮るコマの総数 (ループの重ね分として余分に解くコマを含む)。
@@ -445,6 +452,10 @@ private:
     std::vector<CapturedTile> m_loopHead;
     std::uint32_t m_previewResolution = 0;
     std::future<std::string> m_encodeJob;
+    std::atomic<bool> m_encodeCancel{ false };
+    mutable std::atomic<float> m_colorEncodeSeconds{ 0.0f };
+    mutable std::atomic<float> m_motionEncodeSeconds{ 0.0f };
+    mutable std::atomic<float> m_sixWayEncodeSeconds{ 0.0f };
     std::filesystem::path m_outputBase;
     float m_outputStrength = 0.0f;
     std::vector<std::uint8_t> m_motionBytes;

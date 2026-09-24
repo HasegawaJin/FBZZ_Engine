@@ -173,6 +173,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/VFXLineGeometryTests.cpp
         Engine/Auto/FluidLiquid3DTests.cpp
         Engine/Auto/FluidRecipeBakeTests.cpp
+        Engine/Auto/FluidBakeSafetyTests.cpp
         Engine/Auto/FluidDeterminismTests.cpp
         Engine/Auto/FluidSegmentShapeTests.cpp
         Engine/Auto/FluidAmountEnvelopeTests.cpp
@@ -245,6 +246,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/FluidPreviewCacheTests.cpp
     Editor/Auto/GraphLayoutTests.cpp
     Editor/Auto/ImageCompareTests.cpp
+    Editor/Auto/FluidJetFlamePlaybackTests.cpp
     Editor/Auto/ImportCacheStoreTests.cpp
     Editor/Auto/ImportFingerprintTests.cpp
     Editor/Auto/InputRecorderTests.cpp

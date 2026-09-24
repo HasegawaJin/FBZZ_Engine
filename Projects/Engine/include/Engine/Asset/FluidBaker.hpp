@@ -37,6 +37,10 @@ struct FluidBakeTiming {
     std::atomic<float> renderSeconds{ 0.0f };
     std::atomic<float> outputSeconds{ 0.0f };
     std::atomic<int> stage{ 0 };
+    std::atomic<float> slowestSimulationFrameSeconds{ 0.0f };
+    std::atomic<int> slowestSimulationFrame{ -1 };
+    std::atomic<float> slowestRenderFrameSeconds{ 0.0f };
+    std::atomic<int> slowestRenderFrame{ -1 };
 };
 
 /// @brief rgba が事前乗算かどうか (プレビューの合成とテクスチャ .meta が使う)。
@@ -104,6 +108,7 @@ struct FluidBakeResult {
 /// @note PNG の書き出し (WIC) に要る COM はこの関数が呼び出しスレッドで初期化する。
 [[nodiscard]] FluidBakeResult BakeFluid(const fluid::FluidRecipe& recipe, const std::string& basePath,
                                         std::atomic<float>* progress = nullptr,
-                                        FluidBakeTiming* timing = nullptr);
+                                        FluidBakeTiming* timing = nullptr,
+                                        const std::atomic<bool>* cancel = nullptr);
 
 } // namespace fbzz::asset

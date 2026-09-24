@@ -11,6 +11,7 @@
 #include "FlipbookImageIO.hpp"
 
 #include <Engine/Asset/BakeFingerprint.hpp>
+#include <Engine/Asset/FluidBakeBudget.hpp>
 #include <Engine/Asset/FluidFireRendering.hpp>
 #include <Engine/Asset/FluidRenderMath.hpp>
 #include <Engine/Asset/FlipbookMotionVectorEncoding.hpp>
@@ -672,26 +673,36 @@ bool RenderFluidBakeFrames(const fluid::FluidRecipe& source, std::span<const int
     } else {
         liquidSolver.Reset(recipe);
     }
-    const auto advance = [&]() {
+    const auto advance = [&](int frame) {
         if (timing != nullptr) timing->stage.store(0, std::memory_order_relaxed);
         const auto started = std::chrono::steady_clock::now();
         if (gas) fluid::AdvanceFluidFrame(gasSolver, plan);
         else     fluid::AdvanceFluidFrame(liquidSolver, plan);
-        if (timing != nullptr) timing->simulationSeconds.fetch_add(
-            std::chrono::duration<float>(std::chrono::steady_clock::now() - started).count(),
-            std::memory_order_relaxed);
+        if (timing != nullptr) {
+            const float seconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - started).count();
+            timing->simulationSeconds.fetch_add(seconds, std::memory_order_relaxed);
+            if (seconds > timing->slowestSimulationFrameSeconds.load(std::memory_order_relaxed)) {
+                timing->slowestSimulationFrameSeconds.store(seconds, std::memory_order_relaxed);
+                timing->slowestSimulationFrame.store(frame, std::memory_order_relaxed);
+            }
+        }
     };
     FluidFrameImage scratch;
-    const auto capture = [&](FluidFrameImage& image) {
+    const auto capture = [&](FluidFrameImage& image, int frame) {
         if (timing != nullptr) timing->stage.store(1, std::memory_order_relaxed);
         const auto started = std::chrono::steady_clock::now();
         CaptureFrame([&](FluidFrameImage& destination, int renderPixels) {
             if (gas) RenderFluidGasFrame(gasSolver, recipe, renderPixels, plan.frameDt, destination);
             else     RenderFluidLiquidFrame(liquidSolver, recipe, renderPixels, plan.frameDt, destination);
         }, frameSize, supersampling, premultiplied, scratch, image);
-        if (timing != nullptr) timing->renderSeconds.fetch_add(
-            std::chrono::duration<float>(std::chrono::steady_clock::now() - started).count(),
-            std::memory_order_relaxed);
+        if (timing != nullptr) {
+            const float seconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - started).count();
+            timing->renderSeconds.fetch_add(seconds, std::memory_order_relaxed);
+            if (seconds > timing->slowestRenderFrameSeconds.load(std::memory_order_relaxed)) {
+                timing->slowestRenderFrameSeconds.store(seconds, std::memory_order_relaxed);
+                timing->slowestRenderFrame.store(frame, std::memory_order_relaxed);
+            }
+        }
     };
     const auto step = [&](int index) {
         report(0.95f * static_cast<float>(index + 1) / static_cast<float>(totalSteps));
@@ -699,15 +710,15 @@ bool RenderFluidBakeFrames(const fluid::FluidRecipe& source, std::span<const int
 
     for (int i = 0; i < plan.warmupFrames; ++i) {
         if (cancelled()) return false;
-        advance();
+        advance(i - plan.warmupFrames);
         step(i);
     }
     std::vector<FluidFrameImage> captured(wanted.size());
     std::size_t next = 0;
     for (int i = 0; i <= lastFrame; ++i) {
         if (cancelled()) return false;
-        if (next < wanted.size() && wanted[next] == i) capture(captured[next++]);
-        if (i < lastFrame) advance();
+        if (next < wanted.size() && wanted[next] == i) capture(captured[next++], i);
+        if (i < lastFrame) advance(i);
         step(plan.warmupFrames + i);
     }
     const auto indexOf = [&wanted](int frame) {
@@ -742,8 +753,10 @@ bool RenderFluidBakeFrame(const fluid::FluidRecipe& recipe, int frame, int size,
 }
 
 FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& basePath,
-                          std::atomic<float>* progress, FluidBakeTiming* timing)
+                          std::atomic<float>* progress, FluidBakeTiming* timing,
+                          const std::atomic<bool>* cancel)
 {
+    const auto cancelled = [cancel]() { return cancel && cancel->load(std::memory_order_relaxed); };
     const auto report = [progress](float value) {
         if (progress != nullptr) progress->store(value, std::memory_order_relaxed);
     };
@@ -758,6 +771,10 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
     const int frames = plan.frameCount;
     if (size * output.columns > kMaxAtlasDimension || size * output.rows > kMaxAtlasDimension)
         return Fail("アトラスが最大寸法 16384px を超えます (Frame Size × Columns / Rows を下げてください)");
+    std::string budgetError;
+    if (!ValidateFluidBakeBudget(EstimateFluidBakeBudget(recipe),
+                                 util::FileSystem::PathFromUtf8(basePath).parent_path(), budgetError))
+        return Fail(budgetError);
     const bool gas = recipe.kind == fluid::FluidKind::Gas;
     /// @note 無効な発生源しか無いと、何も湧かないまま空のコマを焼き切ってしまう。
     if (std::none_of(recipe.sources.begin(), recipe.sources.end(),
@@ -776,9 +793,10 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
     std::vector<int> wanted(static_cast<std::size_t>(frames));
     std::iota(wanted.begin(), wanted.end(), 0);
     std::vector<FluidFrameImage> images;
-    if (!RenderFluidBakeFrames(recipe, wanted, size, images, progress, nullptr, timing)
+    if (!RenderFluidBakeFrames(recipe, wanted, size, images, progress, cancel, timing)
         || images.size() != wanted.size())
-        return Fail("コマを解けませんでした");
+        return Fail(cancelled() ? "キャンセルしました" : "コマを解けませんでした");
+    if (cancelled()) return Fail("キャンセルしました");
     if (timing != nullptr) timing->stage.store(2, std::memory_order_relaxed);
     const auto outputStarted = std::chrono::steady_clock::now();
 
@@ -866,11 +884,13 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
     if (directoryError) return Fail("出力フォルダーを作れません: " + directoryError.message());
 
     std::string error;
+    if (cancelled()) return Fail("キャンセルしました");
     if (!SaveRgbaPng(albedo, atlasWidth, atlasHeight, albedoPath, error)) return Fail(error);
     const TextureType albedoType = shading == fluid::FluidShading::Distortion ? TextureType::Data : TextureType::Color;
     const AlphaMode alphaMode = premultiplied ? AlphaMode::Premultiplied : AlphaMode::Straight;
     if (!SaveAtlasMeta(albedoPath, albedoType, TextureCompression::Auto, alphaMode, error)) return Fail(error);
     if (writeMotion) {
+        if (cancelled()) return Fail("キャンセルしました");
         if (!SaveRgbaPng(motion, atlasWidth, atlasHeight, motionPath, error)) return Fail(error);
         /// @note RG の 2 チャンネルを保てる BC5 で扱う (MV 生成ツールと同じ扱い)。
         if (!SaveAtlasMeta(motionPath, TextureType::Data, TextureCompression::BC5, AlphaMode::None, error))
@@ -883,14 +903,16 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
         : premultiplied                                                    ? FlipbookMipContent::PremultipliedSrgb
                                                                            : FlipbookMipContent::StraightSrgb;
     const auto tile = static_cast<std::uint32_t>(size);
+    if (cancelled()) return Fail("キャンセルしました");
     if (!detail::SaveFlipbookDds(albedoDds, static_cast<std::uint32_t>(atlasWidth), static_cast<std::uint32_t>(atlasHeight),
-                                 albedo, tile, tile, albedoContent, detail::FlipbookDdsCompression::BC7, error)
+                                  albedo, tile, tile, albedoContent, detail::FlipbookDdsCompression::BC7, error, cancel)
         || !detail::SaveFlipbookMeta(albedoDds, albedoType, TextureCompression::BC7, alphaMode, error))
         return Fail(error);
+    if (cancelled()) return Fail("キャンセルしました");
     if (writeMotion
         && (!detail::SaveFlipbookDds(motionDds, static_cast<std::uint32_t>(atlasWidth),
-                                     static_cast<std::uint32_t>(atlasHeight), motion, tile, tile,
-                                     FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC5, error)
+                                      static_cast<std::uint32_t>(atlasHeight), motion, tile, tile,
+                                      FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC5, error, cancel)
             || !detail::SaveFlipbookMeta(motionDds, TextureType::Data, TextureCompression::BC5, AlphaMode::None, error)))
         return Fail(error);
 
@@ -904,6 +926,7 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
         const std::size_t cells = static_cast<std::size_t>(resolution) * resolution * resolution;
         std::vector<float> sumX(cells, 0.0f), sumY(cells, 0.0f), sumZ(cells, 0.0f);
         for (int frame = 0; frame < frames; ++frame) {
+            if (cancelled()) return Fail("キャンセルしました");
             fluid::AdvanceFluidFrame(volume, plan);
             for (std::size_t i = 0; i < cells; ++i) {
                 sumX[i] += volume.VelocityX()[i];
@@ -940,6 +963,7 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
     fingerprint.Add(albedo);
     if (writeMotion) fingerprint.Add(motion);
     result.fingerprint = fingerprint.Finish();
+    if (cancelled()) return Fail("キャンセルしました");
     result.success = true;
     result.albedoPath = util::FileSystem::PathToUtf8(albedoDds);
     if (writeMotion) result.motionVectorPath = util::FileSystem::PathToUtf8(motionDds);

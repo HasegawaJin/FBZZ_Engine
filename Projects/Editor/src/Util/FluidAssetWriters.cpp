@@ -10,12 +10,14 @@
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/Uuid.hpp>
+#include <toml++/toml.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <locale>
+#include <sstream>
 #include <system_error>
 #include <utility>
 
@@ -23,7 +25,8 @@ namespace fbzz::editor {
 namespace {
 
 /// @brief 実在するアセットの GUID 参照を解決する。
-bool GuidReference(const std::string& diskPath, bool allowEmpty, std::string& outReference, std::string& outError)
+bool GuidReference(const std::string& diskPath, bool allowEmpty, std::string& outReference,
+                   std::string& outError, bool registerGuid = true)
 {
     outError.clear();
     if (diskPath.empty()) {
@@ -38,7 +41,17 @@ bool GuidReference(const std::string& diskPath, bool allowEmpty, std::string& ou
         outError = "焼いたテクスチャがありません: " + diskPath;
         return false;
     }
-    const std::string guid = asset::AssetDatabase::GuidFromPath(diskPath);
+    /// @note 仮 Bake には既存 .meta のコピーがある。これを DB に登録すると本番パスと
+    /// @note 同じ GUID の別アセットと誤判定されるので、既存 GUID は sidecar から読む。
+    std::string guid;
+    std::string metaText;
+    if (util::FileSystem::ReadText(diskPath + ".meta", metaText)) {
+        std::istringstream stream(metaText);
+        const auto parsed = toml::parse(stream);
+        if (parsed) guid = parsed.table()["meta"]["guid"].value_or(std::string{});
+    }
+    if (guid.empty()) guid = registerGuid ? asset::AssetDatabase::GuidFromPath(diskPath)
+                                         : asset::AssetDatabase::EnsureGuidMetaUnindexed(diskPath);
     if (!guid.empty()) {
         outReference = std::string(asset::AssetDatabase::kGuidPrefix) + guid;
         return true;
@@ -73,12 +86,13 @@ std::string TomlEscape(const std::string& text)
     return out;
 }
 
-bool ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAsset& material, std::string& outError)
+bool ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAsset& material,
+               std::string& outError, bool registerGuid)
 {
     std::string albedoReference;
     std::string motionReference;
-    if (!GuidReference(bake.albedoPath, false, albedoReference, outError)
-        || !GuidReference(bake.motionVectorPath, true, motionReference, outError))
+    if (!GuidReference(bake.albedoPath, false, albedoReference, outError, registerGuid)
+        || !GuidReference(bake.motionVectorPath, true, motionReference, outError, registerGuid))
         return false;
 
     material.renderPath = asset::RenderPath::Particle;
@@ -118,7 +132,8 @@ bool ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAsset& materia
     return true;
 }
 
-bool ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& material, std::string& outError)
+bool ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& material,
+                 std::string& outError, bool registerGuid)
 {
     const asset::VolumeFlipbookBakeResult& result = source.volume;
     const bool useSixWay = !source.volumeDistortion && !result.sixWayPositivePath.empty()
@@ -139,12 +154,12 @@ bool ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& materi
     std::string negativeReference;
     std::string sixWayColorReference;
     std::string sixWayEmissionReference;
-    if (!GuidReference(albedoPath, false, albedoReference, outError)
-        || !GuidReference(motionPath, true, motionReference, outError)
-        || (useSixWay && !GuidReference(negativePath, false, negativeReference, outError))
+    if (!GuidReference(albedoPath, false, albedoReference, outError, registerGuid)
+        || !GuidReference(motionPath, true, motionReference, outError, registerGuid)
+        || (useSixWay && !GuidReference(negativePath, false, negativeReference, outError, registerGuid))
         || (useSixWayColorMaps
-            && (!GuidReference(sixWayColorPath, false, sixWayColorReference, outError)
-                || !GuidReference(sixWayEmissionPath, false, sixWayEmissionReference, outError))))
+            && (!GuidReference(sixWayColorPath, false, sixWayColorReference, outError, registerGuid)
+                || !GuidReference(sixWayEmissionPath, false, sixWayEmissionReference, outError, registerGuid))))
         return false;
 
     material.renderPath = asset::RenderPath::Particle;
@@ -256,14 +271,16 @@ asset::MaterialAsset NewFluidParticleMaterial()
     return material;
 }
 
-bool ApplyFluidBakeToMaterial(const FluidMaterialSource& source, asset::MaterialAsset& material, std::string& outError)
+bool ApplyFluidBakeToMaterial(const FluidMaterialSource& source, asset::MaterialAsset& material,
+                              std::string& outError, bool registerGuid)
 {
-    if (source.kind == FluidMaterialSource::Kind::Flat2D) return ApplyFlat(source.flat, material, outError);
-    return ApplyVolume(source, material, outError);
+    if (source.kind == FluidMaterialSource::Kind::Flat2D)
+        return ApplyFlat(source.flat, material, outError, registerGuid);
+    return ApplyVolume(source, material, outError, registerGuid);
 }
 
 bool WriteFluidParticleMaterial(const std::string& materialPath, const FluidMaterialSource& source,
-                                bool& outCreated, std::string& outError)
+                                bool& outCreated, std::string& outError, bool registerGuid)
 {
     outCreated = false;
     bool created = false;
@@ -278,12 +295,12 @@ bool WriteFluidParticleMaterial(const std::string& materialPath, const FluidMate
         material = NewFluidParticleMaterial();
         created = true;
     }
-    if (!ApplyFluidBakeToMaterial(source, material, outError)) return false;
+    if (!ApplyFluidBakeToMaterial(source, material, outError, registerGuid)) return false;
     if (!asset::SaveMaterialAssetToFile(materialPath, material)) {
         outError = "マテリアルを書き出せません: " + materialPath;
         return false;
     }
-    (void)asset::AssetDatabase::GuidFromPath(materialPath);
+    if (registerGuid) (void)asset::AssetDatabase::GuidFromPath(materialPath);
     outCreated = created;
     outError.clear();
     return true;

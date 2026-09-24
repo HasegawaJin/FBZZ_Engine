@@ -5,6 +5,7 @@
 #include <Engine/Asset/VolumeFlipbookBaker.hpp>
 
 #include <Engine/Asset/BakeFingerprint.hpp>
+#include <Engine/Asset/FluidBakeBudget.hpp>
 #include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Asset/FluidRenderMath.hpp>
 #include <Fluid/FluidStepping.hpp>
@@ -552,6 +553,9 @@ bool VolumeFlipbookBaker::Begin(const VolumeFlipbookBakeSettings& settings,
             + "。最大 16384px/辺かつ合計 16M pixels)";
         return false;
     }
+    if (!ValidateFluidBakeBudget(EstimateVolumeBakeBudget(m_settings),
+                                 std::filesystem::path(m_settings.outputDirectory), outError))
+        return false;
     /// @note 縮める前の RT は 4 タイル並びなので、横幅が上限を超えない倍率までに抑える。
     m_supersampling = static_cast<std::uint32_t>(std::clamp(m_settings.supersampling, 1, kMaxSupersampling));
     while (m_supersampling > 1 && tile * m_supersampling * kRaymarchTiles > kMaxAtlasDimension) --m_supersampling;
@@ -1305,11 +1309,17 @@ void VolumeFlipbookBaker::Finish()
     /// @note BC7 の圧縮は Atlas の大きさ次第で数十秒かかる。エディターを止めないよう裏で書き、Tick が受け取る。
     /// @note       書いている間 (Encoding) は IsBusy なので、Atlas のバッファには誰も触らない。
     m_state = VolumeFlipbookBakeState::Encoding;
+    m_encodeCancel.store(false, std::memory_order_relaxed);
+    m_colorEncodeSeconds.store(0.0f, std::memory_order_relaxed);
+    m_motionEncodeSeconds.store(0.0f, std::memory_order_relaxed);
+    m_sixWayEncodeSeconds.store(0.0f, std::memory_order_relaxed);
     m_encodeJob = std::async(std::launch::async, [this, base = m_outputBase]() { return WriteOutputs(base); });
 }
 
 std::string VolumeFlipbookBaker::WriteOutputs(const std::filesystem::path& base) const
 {
+    const auto cancelled = [this]() { return m_encodeCancel.load(std::memory_order_relaxed); };
+    if (cancelled()) return "キャンセルしました";
     const ComScope com;
     const auto path = [&](const char* suffix) { return std::filesystem::path(base.string() + suffix); };
     const std::uint32_t tile = m_outputTile;
@@ -1324,55 +1334,67 @@ std::string VolumeFlipbookBaker::WriteOutputs(const std::filesystem::path& base)
         ? AlphaMode::Straight : AlphaMode::Premultiplied;
     const FlipbookMipContent colorMips = distortion ? FlipbookMipContent::Plain
         : m_settings.glowEmission ? FlipbookMipContent::StraightSrgb : FlipbookMipContent::PremultipliedSrgb;
+    const auto colorStarted = std::chrono::steady_clock::now();
     const bool colorOk =
         detail::SavePngRgba8(path(".png"), m_atlasWidth, m_atlasHeight, m_colorAtlas, error)
         && detail::SaveTextureMeta(path(".png"), colorType, TextureCompression::Auto, colorAlpha, false, error)
         && detail::SaveFlipbookDds(path(".dds"), m_atlasWidth, m_atlasHeight, m_colorAtlas, tile, tile,
-                                   colorMips, detail::FlipbookDdsCompression::BC7, error)
+                                   colorMips, detail::FlipbookDdsCompression::BC7, error, &m_encodeCancel)
         && detail::SaveFlipbookMeta(path(".dds"), colorType, TextureCompression::BC7, colorAlpha, error);
     if (!colorOk) return error.empty() ? std::string("書き出しに失敗しました") : error;
+    m_colorEncodeSeconds.store(std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - colorStarted).count(), std::memory_order_relaxed);
+    if (cancelled()) return "キャンセルしました";
     if (distortion) return {};
+    const auto motionStarted = std::chrono::steady_clock::now();
     const bool ok =
         detail::SavePngRgba8(path("_mv.png"), m_atlasWidth, m_atlasHeight, m_motionBytes, error)
         && detail::SaveTextureMeta(path("_mv.png"), TextureType::Data, TextureCompression::BC5,
                                    AlphaMode::None, false, error)
         && detail::SaveFlipbookDds(path("_mv.dds"), m_atlasWidth, m_atlasHeight, m_motionBytes, tile, tile,
-                                   FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC5, error)
+                                    FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC5, error, &m_encodeCancel)
         && detail::SaveFlipbookMeta(path("_mv.dds"), TextureType::Data, TextureCompression::BC5,
                                     AlphaMode::None, error);
     if (!ok) return error.empty() ? std::string("書き出しに失敗しました") : error;
+    m_motionEncodeSeconds.store(std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - motionStarted).count(), std::memory_order_relaxed);
+    if (cancelled()) return "キャンセルしました";
     if (!m_settings.sixWayLightmaps) return {};
 
     /// @note 6 方向マップは色ではなく明るさ (データ)。sRGB で読むと重みの中間調がずれる。
+    const auto sixWayStarted = std::chrono::steady_clock::now();
     const bool sixWayOk =
         detail::SavePngRgba8(path("_6wayP.png"), m_atlasWidth, m_atlasHeight, m_sixWayPositive, error)
         && detail::SaveTextureMeta(path("_6wayP.png"), TextureType::Data, TextureCompression::BC7,
                                    AlphaMode::Straight, false, error)
         && detail::SaveFlipbookDds(path("_6wayP.dds"), m_atlasWidth, m_atlasHeight, m_sixWayPositive, tile, tile,
-                                   FlipbookMipContent::CoverageWeighted, detail::FlipbookDdsCompression::BC7, error)
+                                    FlipbookMipContent::CoverageWeighted, detail::FlipbookDdsCompression::BC7, error, &m_encodeCancel)
         && detail::SaveFlipbookMeta(path("_6wayP.dds"), TextureType::Data, TextureCompression::BC7,
                                     AlphaMode::Straight, error)
         && detail::SavePngRgba8(path("_6wayN.png"), m_atlasWidth, m_atlasHeight, m_sixWayNegative, error)
         && detail::SaveTextureMeta(path("_6wayN.png"), TextureType::Data, TextureCompression::BC7,
                                    AlphaMode::Straight, false, error)
         && detail::SaveFlipbookDds(path("_6wayN.dds"), m_atlasWidth, m_atlasHeight, m_sixWayNegative, tile, tile,
-                                    FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC7, error)
+                                     FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC7, error, &m_encodeCancel)
         && detail::SaveFlipbookMeta(path("_6wayN.dds"), TextureType::Data, TextureCompression::BC7,
                                     AlphaMode::Straight, error)
         && detail::SavePngRgba8(path("_6wayC.png"), m_atlasWidth, m_atlasHeight, m_sixWayAlbedoColor, error)
         && detail::SaveTextureMeta(path("_6wayC.png"), TextureType::Color, TextureCompression::Auto,
                                    AlphaMode::Straight, false, error)
         && detail::SaveFlipbookDds(path("_6wayC.dds"), m_atlasWidth, m_atlasHeight, m_sixWayAlbedoColor, tile, tile,
-                                   FlipbookMipContent::CoverageWeighted, detail::FlipbookDdsCompression::BC7, error)
+                                    FlipbookMipContent::CoverageWeighted, detail::FlipbookDdsCompression::BC7, error, &m_encodeCancel)
         && detail::SaveFlipbookMeta(path("_6wayC.dds"), TextureType::Color, TextureCompression::BC7,
                                     AlphaMode::Straight, error)
         && detail::SavePngRgba8(path("_6wayE.png"), m_atlasWidth, m_atlasHeight, m_sixWayEmissionColor, error)
         && detail::SaveTextureMeta(path("_6wayE.png"), TextureType::Color, TextureCompression::Auto,
                                    AlphaMode::None, false, error)
         && detail::SaveFlipbookDds(path("_6wayE.dds"), m_atlasWidth, m_atlasHeight, m_sixWayEmissionColor, tile, tile,
-                                   FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC7, error)
+                                    FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC7, error, &m_encodeCancel)
         && detail::SaveFlipbookMeta(path("_6wayE.dds"), TextureType::Color, TextureCompression::BC7,
                                     AlphaMode::None, error);
+    m_sixWayEncodeSeconds.store(std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - sixWayStarted).count(), std::memory_order_relaxed);
+    if (cancelled()) return "キャンセルしました";
     return sixWayOk ? std::string{} : (error.empty() ? std::string("6 方向マップを書き出せません") : error);
 }
 
@@ -1401,6 +1423,9 @@ void VolumeFlipbookBaker::FinishOutputs()
     m_result.columns = m_grid.columns;
     m_result.rows = m_grid.rows;
     m_result.recommendedStrength = strength;
+    m_result.colorEncodeSeconds = m_colorEncodeSeconds.load(std::memory_order_relaxed);
+    m_result.motionEncodeSeconds = m_motionEncodeSeconds.load(std::memory_order_relaxed);
+    m_result.sixWayEncodeSeconds = m_sixWayEncodeSeconds.load(std::memory_order_relaxed);
     /// @note 歪みマップは色ではないので明るさを戻す倍率は要らない (2D の Distortion と同じ 1)。
     m_result.suggestedEmissiveScale = distortion ? 1.0f : 1.0f / (std::max)(m_settings.exposure, 1.0e-3f);
     m_result.edgeTouchFrames = m_edgeTouchFrames;
@@ -1429,6 +1454,9 @@ void VolumeFlipbookBaker::FinishOutputs()
     m_result.message = summary;
     if (m_loopOverlap > 0)
         m_result.message += " / Loop (続き " + std::to_string(m_loopOverlap) + " コマを先頭へ重ねました)";
+    m_result.message += " / Encode color " + std::to_string(m_colorEncodeSeconds.load(std::memory_order_relaxed))
+        + " s, MV " + std::to_string(m_motionEncodeSeconds.load(std::memory_order_relaxed))
+        + " s, 6-way " + std::to_string(m_sixWayEncodeSeconds.load(std::memory_order_relaxed)) + " s";
     if (!m_gpuFallbackNote.empty()) m_result.message += " — " + m_gpuFallbackNote;
     if (m_result.clippedFraction > 0.02f)
         m_result.message += " — Exposure を下げると階調が残ります";
@@ -1461,10 +1489,15 @@ bool VolumeFlipbookBaker::TakeBakedFlipbook(BakedVolumeFlipbook& out)
 
 void VolumeFlipbookBaker::Tick(renderer::IRenderer& renderer, renderer::ResourceManager& resources)
 {
-    if (m_state == VolumeFlipbookBakeState::Encoding) {
+    if (m_state == VolumeFlipbookBakeState::Encoding || m_state == VolumeFlipbookBakeState::Cancelling) {
         if (m_encodeJob.valid() && m_encodeJob.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
             const std::string error = m_encodeJob.get();
-            if (error.empty()) FinishOutputs();
+            if (m_state == VolumeFlipbookBakeState::Cancelling) {
+                m_state = VolumeFlipbookBakeState::Idle;
+                m_result = {};
+                m_result.message = "キャンセルしました";
+                ReleaseCpuBuffers();
+            } else if (error.empty()) FinishOutputs();
             else               Fail(error);
         }
         return;
@@ -1553,8 +1586,12 @@ void VolumeFlipbookBaker::Fail(std::string message)
 void VolumeFlipbookBaker::Cancel()
 {
     if (!IsBusy()) return;
-    /// @note 書き出し中のスレッドは Atlas のバッファを読んでいる。終わるまで待ってから手放す。
-    if (m_encodeJob.valid()) m_encodeJob.wait();
+    /// @note 書き出し中は worker が Atlas を読んでいる。Tick で完了を確認してから解放する。
+    if (m_state == VolumeFlipbookBakeState::Encoding || m_state == VolumeFlipbookBakeState::Cancelling) {
+        m_encodeCancel.store(true, std::memory_order_relaxed);
+        m_state = VolumeFlipbookBakeState::Cancelling;
+        return;
+    }
     m_encodeJob = {};
     m_fluidBake.Close();
     m_state = VolumeFlipbookBakeState::Idle;
@@ -1566,6 +1603,10 @@ void VolumeFlipbookBaker::Cancel()
 void VolumeFlipbookBaker::Release(renderer::ResourceManager& resources)
 {
     Cancel();
+    if (m_encodeJob.valid()) m_encodeJob.wait();
+    m_encodeJob = {};
+    m_state = VolumeFlipbookBakeState::Idle;
+    ReleaseCpuBuffers();
     m_fluidPreview.Close();
     m_fluidPreviewVolume = {};
     m_previewOpen.reset();
@@ -1612,6 +1653,12 @@ void VolumeFlipbookBaker::Release(renderer::ResourceManager& resources)
     m_raymarchShader = {};
     m_volumeResolution = 0;
     m_tileSize = 0;
+}
+
+VolumeFlipbookBaker::~VolumeFlipbookBaker()
+{
+    Cancel();
+    if (m_encodeJob.valid()) m_encodeJob.wait();
 }
 
 }
