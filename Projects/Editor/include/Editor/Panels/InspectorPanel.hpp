@@ -6,6 +6,7 @@
 
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/Panels/MaterialPreview.hpp>
+#include <Editor/Panels/TexturePreview.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -28,25 +29,25 @@ private:
     std::any              m_componentClipboard;
     const std::type_info* m_componentClipboardType = nullptr;
     char                  m_addComponentFilter[64] = {};
-    bool                  m_sectionStateRestored = false; ///< 起動時に ImGui StateStorage を一度だけ復元した後 true
+    bool                  m_sectionStateRestored = false;
 
-    /// ロック機能: true のとき m_lockedEntityId のオブジェクトを固定表示する。
-    /// @note IK Solver の設定中など、Hierarchy で別オブジェクトをクリックしても
-    ///       Inspector の表示を切り替えずに編集を続けられるようにする。
+    /// @brief Hierarchy の選択変更から Inspector の対象を固定する。
+    /// @note IK Solver の編集中も同じオブジェクトを表示し続ける。
     bool            m_locked         = false;
     scene::EntityID m_lockedEntityId = {};
 
-    /// アセットインスペクター状態。Asset ロックは m_locked && !m_lockedEntityId.IsValid() と
-    /// この path の組み合わせで表現する。
-    /// @note InspectorPanel は EditorApp.cpp の make_unique で確保されるため、増分ビルドで古い
-    ///       sizeof(InspectorPanel) が残ると破損しやすい。
+    /// @brief アセット Inspector とロック対象の状態。
+    /// @note Asset ロックは m_locked と無効な m_lockedEntityId と path の組み合わせで表す。
     std::string                                          m_inspectedAssetPath;
     asset::AssetHandle<asset::MaterialAsset>             m_inspectedMat;
 
-    /// .mat インスペクター下部のプレビュー。Preview パネルとは別の視点・照明を持つ。
+    /// @brief .mat Inspector 下部のプレビュー。
+    /// @note Preview パネルとは視点と照明を共有しない。
     MaterialPreviewView m_materialPreview;
+    /// @brief 画像の Inspector 下部プレビュー。
+    TexturePreviewView  m_texturePreview;
 
     void DrawAssetInspector(EditorContext& ctx, const std::string& assetPath);
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor
