@@ -108,6 +108,7 @@ public:
     uint32_t GetFrameIndex() const { return m_frameIndex; }
     uint32_t GetSrvDescriptorIncrement() const { return m_srvIncrement; }
     bool IsFrameOpen() const { return m_frameOpen; }
+    void SetRenderWhenOccluded(bool enabled) { m_renderWhenOccluded = enabled; }
 
     /// @note Present の垂直同期。既定は無効 (フレームレート制御は Time::targetFps)。
     /// @note 有効時は SyncInterval=1 にし、tearing フラグは落とす (併用は DXGI が拒否する)。
@@ -289,6 +290,7 @@ private:
     uint64_t m_pipelineStateGeneration = 0;
     bool m_suspended = false;
     bool m_occluded = false;   ///< @note 直前の Present が DXGI_STATUS_OCCLUDED (ウィンドウ遮蔽) を返した
+    bool m_renderWhenOccluded = false; ///< @note バッチのオフスクリーン描画中は occlusion 待ちを止める。
     bool m_resizePending = false;
     uint32_t m_pendingWidth = 0;
     uint32_t m_pendingHeight = 0;
