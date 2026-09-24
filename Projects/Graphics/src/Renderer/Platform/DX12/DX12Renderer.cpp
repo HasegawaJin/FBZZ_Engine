@@ -89,7 +89,7 @@ void DX12Renderer::BeginFrame()
         m_currentViewport = { 0.0f, 0.0f, static_cast<float>(m_context.GetWidth()),
                               static_cast<float>(m_context.GetHeight()), 0.0f, 1.0f };
         m_currentScissor = { 0, 0, static_cast<LONG>(m_context.GetWidth()),
-                            static_cast<LONG>(m_context.GetHeight()) };
+                             static_cast<LONG>(m_context.GetHeight()) };
         /// @note コマンドリストは BeginFrame で Reset される = 全パイプライン状態が既定へ戻る。
         /// @note       ここで直前値を捨てないと、実際には束縛されていない状態を「設定済み」と誤認する。
         InvalidateRootCbvCache();

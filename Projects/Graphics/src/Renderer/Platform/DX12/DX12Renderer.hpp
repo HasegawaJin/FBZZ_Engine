@@ -30,6 +30,7 @@ public:
     void Shutdown() override;
     void BeginFrame() override;
     void EndFrame() override;
+    void SetRenderWhenOccluded(bool enabled) override { m_context.SetRenderWhenOccluded(enabled); }
     void Clear(const math::Vector4& color) override;
     void ClearDepth() override;
     void Submit(const DrawCall& call, ResourceManager& resources) override;
