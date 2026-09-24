@@ -1,21 +1,21 @@
 [meta]
-guid = '16ab2c28fd358de70a66795ab83f5ef4'
+guid = 'f01cb77f47d4a933ad5017f55feeefe0'
 
 [texture]
 alpha_dither = false
-alpha_mode = 'Straight'
-aniso = 1
+alpha_mode = 'None'
+aniso = 8
 compression = 'BC7'
 compression_quality = 1
-filter = 'Bilinear'
+filter = 'Trilinear'
 flip_green = false
-max_size = 4096
+max_size = 16384
 mip_bias = 0.0
-mip_filter = 'Box'
+mip_filter = 'Kaiser'
 mip_sharpen = 0.0
-mipmaps = false
+mipmaps = true
 normalize_mipmaps = false
-srgb = false
-type = 'data'
+srgb = true
+type = 'color'
 wrap_u = 'Clamp'
 wrap_v = 'Clamp'
