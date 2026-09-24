@@ -387,9 +387,11 @@ UIMaterialBinding* ResolveUIMaterial(UISystemContext& ctx,
     const auto texturePaths = asset::ResolveMaterialTexturePaths(*matAsset);
     material.textures.resize(texturePaths.size());
     for (size_t i = 0; i < texturePaths.size(); ++i) {
-        material.textures[i] = texturePaths[i].empty()
-            ? renderer::ResourceHandle<renderer::TextureTag>{}
-            : resources.LoadTexture(texturePaths[i]);
+        if (texturePaths[i].empty()) continue;
+        asset::TextureImportSettings settings;
+        const bool flipGreen = asset::GetCachedTextureImportSettings(texturePaths[i], settings)
+            && settings.flipGreen;
+        material.textures[i] = resources.LoadTexture(texturePaths[i], flipGreen);
     }
 
     material.Init(resources, binding.descriptor.cbufferSize);
@@ -3405,7 +3407,7 @@ void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
     }
 }
 
-} // namespace (anonymous)
+} /// @note namespace
 
 math::Vector2 GetCanvasRectSize(const UICanvas& canvas, float viewportWidth, float viewportHeight)
 {
@@ -3537,4 +3539,4 @@ void UISelectionMaskSystem(Scene& scene,
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

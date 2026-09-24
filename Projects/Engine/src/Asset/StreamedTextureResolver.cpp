@@ -18,7 +18,7 @@ namespace {
 /// 自動選択で落とす最低の段。経路の最低品質 (テクスチャは 4) と揃える。
 constexpr AssetQuality kAutoQualityLowest = 4;
 
-} // namespace
+} /// @note namespace
 
 StreamedTextureResolver& StreamedTextureResolver::Engine()
 {
@@ -80,7 +80,12 @@ renderer::ResourceHandle<renderer::TextureTag> StreamedTextureResolver::ResolveG
 {
     if (reference.empty()) return {};
     Entry* entry = Acquire(reference);
-    if (!entry) return resources.LoadTexture(reference);
+    if (!entry) {
+        TextureImportSettings settings;
+        const bool flipGreen = GetCachedTextureImportSettings(reference, settings)
+            && settings.flipGreen;
+        return resources.LoadTexture(reference, flipGreen);
+    }
     /// @note 同じテクスチャを貼った物体のうち最も大きく映るものに合わせる。1 つでも大きさ不明なら最高品質。
     if (screenPixels <= 0.0f) entry->screenSizeKnown = false;
     entry->maxScreenPixels = (std::max)(entry->maxScreenPixels, screenPixels);
@@ -151,4 +156,4 @@ void StreamedTextureResolver::Reset()
     m_entries.clear();
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

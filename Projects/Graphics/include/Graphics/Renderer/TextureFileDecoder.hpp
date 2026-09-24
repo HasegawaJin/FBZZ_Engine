@@ -46,4 +46,7 @@ struct DecodedTextureRGBA8 {
                                           std::string* outError = nullptr,
                                           std::uint32_t dropTopLevels = 0);
 
+/// @brief 全ミップの緑成分を反転する。元画像とキャッシュは変更しない。
+void FlipTextureGreen(DecodedTextureRGBA8& texture);
+
 } /// @note namespace fbzz::renderer

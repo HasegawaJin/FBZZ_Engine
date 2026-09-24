@@ -41,7 +41,7 @@ std::string GetMaterialName(const aiMaterial* material, uint32_t fallbackIndex)
     return "Material_" + std::to_string(fallbackIndex);
 }
 
-} // namespace
+} /// @note namespace
 
 bool MatSubExporter::Export(FbxImportContext& ctx)
 {
@@ -81,12 +81,11 @@ bool MatSubExporter::Export(FbxImportContext& ctx)
                 ctx.baseName,
                 util::FileSystem::PathToUtf8(texDir),
                 matPath,
-                skinned,
-                ctx.normalMapConvention == NormalMapConvention::OpenGL))
+                skinned))
             return false;
     }
 
     return true;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor
