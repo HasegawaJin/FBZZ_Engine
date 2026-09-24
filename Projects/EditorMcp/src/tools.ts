@@ -927,6 +927,7 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
             + 'state は queued → running → encoding → done / failed / cancelled。done / failed / cancelled になるまでポーリングしてください。'
             + 'プレビューが done なら画像も返るので、必ず絵を見てから次の fluid_set を決めてください。'
             + '焼きが done になると outputs (書いたテクスチャ等)・materialPath・vfxPath が埋まります。'
+            + 'simulationSeconds / renderSeconds / outputSeconds と最も遅いフレーム、3D の色・MV・6-way 書き出し時間でボトルネックを調べられます。'
             + 'fingerprint は出た絵の指紋で、前回と同じなら 1 画素も変わっていません (効かない値をいじり続けるのを防げます)。'
             + 'solverUsed は実際に解いたソルバー ("gpu" / "cpu")、fallbackReason は GPU を頼んだのに CPU へ落ちた理由です '
             + '(同じレシピなのに絵が違うときはここを見てください。落としたくなければ bake.solver="gpu")。'

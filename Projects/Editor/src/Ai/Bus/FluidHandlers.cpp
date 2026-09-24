@@ -1054,6 +1054,18 @@ Outcome DoFluidJobStatus(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("state", JsonValue(FluidJobStateName(status->state)));
     result.Set("finished", JsonValue(status->Finished()));
     result.Set("progress", JsonValue(static_cast<double>(status->progress)));
+    result.Set("simulationSeconds", JsonValue(static_cast<double>(status->simulationSeconds)));
+    result.Set("renderSeconds", JsonValue(static_cast<double>(status->renderSeconds)));
+    result.Set("outputSeconds", JsonValue(static_cast<double>(status->outputSeconds)));
+    result.Set("elapsedSeconds", JsonValue(static_cast<double>(status->elapsedSeconds)));
+    result.Set("remainingSeconds", JsonValue(static_cast<double>(status->remainingSeconds)));
+    result.Set("slowestSimulationFrame", JsonValue(static_cast<std::int64_t>(status->slowestSimulationFrame)));
+    result.Set("slowestSimulationFrameSeconds", JsonValue(static_cast<double>(status->slowestSimulationFrameSeconds)));
+    result.Set("slowestRenderFrame", JsonValue(static_cast<std::int64_t>(status->slowestRenderFrame)));
+    result.Set("slowestRenderFrameSeconds", JsonValue(static_cast<double>(status->slowestRenderFrameSeconds)));
+    result.Set("colorEncodeSeconds", JsonValue(static_cast<double>(status->colorEncodeSeconds)));
+    result.Set("motionEncodeSeconds", JsonValue(static_cast<double>(status->motionEncodeSeconds)));
+    result.Set("sixWayEncodeSeconds", JsonValue(static_cast<double>(status->sixWayEncodeSeconds)));
     result.Set("fluidPath", JsonValue(FluidProjectRelative(ctx, status->fluidPath)));
     result.Set("message", JsonValue(status->message));
     result.Set("outputs", std::move(outputs));
