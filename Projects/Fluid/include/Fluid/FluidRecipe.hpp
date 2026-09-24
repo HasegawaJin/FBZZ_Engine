@@ -303,8 +303,8 @@ struct FluidRenderSettings {
     /// @brief 0.375 で 0.62〜1.38 倍。1 に近づけるほど「消える所」と「倍になる所」が同時に出る。
     /// @note 格子を細かくするだけで済ませない理由: 解像度を倍にすると焼き時間は 8 倍になる。
     ///       細部は「流れに沿って動くこと」さえ守れば物理で解かなくても見分けが付かない。
-    /// @note 2D と 3D で揃えている理由: 以前は 3D だけ「× 2・正規化なし」で、同じ値の効きが 1.9 倍違った。
-    ///       正本は 2D = FluidBaker.cpp の DetailNoise、3D = VolumeRaymarch.hlsl の DetailFactor。
+    /// @note 2D と 3D は同じ 4 オクターブ、層オフセット、振幅正規化を使う。
+    /// @note CPU 側の式は FluidRenderMath.hpp、GPU 側の対応式は VolumeRaymarch.hlsl。
     float detailStrength = 0.375f;
     /// @note 7 で止める理由: 最小の特徴は `1 / (detailScale × 8.37)` (4 オクターブ目は基本の 8.37 倍)。
     ///       10 だと 0.0119 で、128³ のボクセル幅 0.0156 を下回り標本化できずちらつくだけになる。
@@ -357,6 +357,8 @@ struct FluidOutputSettings {
     int   substeps  = 2;
     /// @brief 最後のコマから最初のコマへつながるよう、末尾を先頭へクロスフェードする (FPS 再生用)。
     bool  loop      = false;
+    /// @brief 先頭へ重ねるコマの割合 [0,0.5]。0 は重ねずにそのまま周回する。
+    float loopBlendFraction = 0.25f;
     bool  motionVectors = true;
     /// @brief 気体のみ: 3D で解き直して 速度場 PNG を焼く (粒子を同じ流れに乗せる)。
     bool  vectorField = false;

@@ -27,6 +27,14 @@ void NormalizeFluidOutput(FluidOutputSettings& output)
     output.duration  = (std::max)(output.duration, 0.05f);
     output.warmup    = std::clamp(output.warmup, 0.0f, 30.0f);
     output.substeps  = std::clamp(output.substeps, 1, 16);
+    output.loopBlendFraction = std::clamp(output.loopBlendFraction, 0.0f, 0.5f);
+}
+
+int FluidLoopOverlapFrames(int frameCount, bool loop, float blendFraction)
+{
+    if (!loop || frameCount < 2 || blendFraction <= 0.0f) return 0;
+    return std::clamp(static_cast<int>(std::lround(
+        static_cast<float>(frameCount) * std::clamp(blendFraction, 0.0f, 0.5f))), 1, frameCount / 2);
 }
 
 int FluidWarmupFrames(float warmupSeconds, float frameDt)
@@ -47,8 +55,8 @@ FluidStepPlan MakeFluidStepPlan(const FluidRecipe& recipe)
     plan.frameDt    = output.duration / static_cast<float>(plan.frameCount);
     plan.substeps   = output.substeps;
     plan.warmupFrames = FluidWarmupFrames(output.warmup, plan.frameDt);
-    plan.loopOverlap  = output.loop ? (std::max)(plan.frameCount / 4, 1) : 0;
+    plan.loopOverlap  = FluidLoopOverlapFrames(plan.frameCount, output.loop, output.loopBlendFraction);
     return plan;
 }
 
-} // namespace fbzz::fluid
+} /// @note namespace fbzz::fluid

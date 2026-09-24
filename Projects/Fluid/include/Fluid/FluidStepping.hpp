@@ -40,6 +40,9 @@ struct FluidStepPlan {
 /// output の値域を揃える。焼き・プレビュー・3D が別々にクランプすると、境目の値で刻みがずれる。
 void NormalizeFluidOutput(FluidOutputSettings& output);
 
+/// @brief 2D / 3D 共通のループ重ねコマ数。0 はクロスフェードしない。
+[[nodiscard]] int FluidLoopOverlapFrames(int frameCount, bool loop, float blendFraction);
+
 /// warmup [秒] を «コマ数» へ切り上げる。コマ間隔をレシピから導かない経路 (3D の焼き設定) も
 /// ここを通し、warmup の長さが経路ごとに 1 コマずれるのを防ぐ。
 [[nodiscard]] int FluidWarmupFrames(float warmupSeconds, float frameDt);

@@ -3,16 +3,20 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 ///
-/// AI は ReflectFluidRecipe のフィールド名で .fluid を書き換え、焼くときは TOML を読み直す。
-/// 名前が 1 つずれるだけで «書いたのに効かない» になり、エラーはどこにも出ない。
+/// @note AI は ReflectFluidRecipe のフィールド名で .fluid を書き換え、焼くときは TOML を読み直す。
+/// @note 名前が 1 つずれるだけで «書いたのに効かない» になり、エラーはどこにも出ない。
 
 #include <TestKit/TestKit.hpp>
 #include <TestKit/TempDir.hpp>
 
 #include <Engine/Asset/FluidRecipeCodec.hpp>
+#include <Engine/Asset/FluidFireRendering.hpp>
 #include <Engine/Asset/FluidSourceMaskLoader.hpp>
 #include <Engine/Asset/FluidVolumeBake.hpp>
+#include <Engine/Asset/VolumeFlipbookFluid.hpp>
+#include <Engine/Asset/VolumeFlipbookBaker.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
+#include <Fluid/FluidStepping.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
@@ -33,7 +37,7 @@ namespace {
 
 using KeyValue = std::pair<std::string, std::string>;
 
-/// 訪れたフィールドを «gas.buoyancy» «source[].motion.key[].time» の形で集める。Enum は選ばれている名前も集める。
+/// @brief 訪れたフィールドをパス表記で集め、Enum は選ばれている名前も集める。
 class KeyRecorder final : public scene::IReflector {
 public:
     std::set<std::string> keys;
@@ -258,7 +262,7 @@ void ExpectRampEq(const fluid::FluidColorRamp& actual, const fluid::FluidColorRa
     }
 }
 
-/// 保存して読み直す。
+/// @brief 保存して読み直す。
 fluid::FluidRecipe RoundTrip(const testkit::TempDir& temp, const char* fileName, const fluid::FluidRecipe& recipe)
 {
     const std::string path = util::FileSystem::PathToUtf8(temp.File(fileName));
@@ -268,7 +272,7 @@ fluid::FluidRecipe RoundTrip(const testkit::TempDir& temp, const char* fileName,
     return loaded;
 }
 
-/// TOML の文字列をファイルに書いて読む。
+/// @brief TOML の文字列をファイルに書いて読む。
 fluid::FluidRecipe LoadText(const testkit::TempDir& temp, const char* fileName, const std::string& text)
 {
     const std::filesystem::path file = temp.File(fileName);
@@ -280,7 +284,7 @@ fluid::FluidRecipe LoadText(const testkit::TempDir& temp, const char* fileName, 
 
 float ToLinear(float c) { return std::pow(c, 2.2f); }
 
-/// 無圧縮 32bit の TGA を書く (rgba は上の行から)。stb_image が読める一番単純な形で、PNG の符号化器を要らなくする。
+/// @note 無圧縮 32bit の TGA を書く (rgba は上の行から)。stb_image が読める一番単純な形で、PNG の符号化器を要らなくする。
 bool WriteTgaRgba8(const std::filesystem::path& file, int width, int height, const std::vector<std::uint8_t>& rgba)
 {
     std::vector<std::uint8_t> bytes(18, 0);
@@ -303,7 +307,7 @@ bool WriteTgaRgba8(const std::filesystem::path& file, int width, int height, con
     return util::FileSystem::WriteBinary(file, bytes.data(), bytes.size());
 }
 
-} // namespace
+}
 
 TEST(FluidRecipeBakeTest, BakeSectionRoundTripsThroughToml)
 {
@@ -336,7 +340,7 @@ TEST(FluidRecipeBakeTest, FileWithoutBakeSectionLoadsAs2D)
 TEST(FluidRecipeBakeTest, AllPresetsBakeIn3DAndLiquidsStayOnCpu)
 {
     /// @note 3D の焼きがループと歪みマップを持ったので、ループものも陽炎も 3D。
-    ///       液体は GPU の粒子ソルバーが未検証のうちは CPU に置く。
+    /// @note 液体は GPU の粒子ソルバーが未検証のうちは CPU に置く。
     for (int i = 0; i < static_cast<int>(asset::FluidPreset::Count); ++i) {
         const auto preset = static_cast<asset::FluidPreset>(i);
         SCOPED_TRACE(asset::FluidPresetName(preset));
@@ -367,7 +371,7 @@ TEST(FluidRecipeBakeTest, ReflectNamesAreTheTomlKeys)
     ASSERT_TRUE(temp.IsValid());
 
     /// @note 配列は要素が無いとキーが出ないので、発生源・力・動き・量のキーすべてに 1 つ以上入れる。
-    ///       Enum は既定以外の値にする。
+    /// @note Enum は既定以外の値にする。
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
     fluid::FluidSource& moving = recipe.sources.emplace_back();
     moving.name = "Moving";
@@ -808,8 +812,8 @@ TEST(FluidRecipeBakeTest, EveryPresetRoundTripsAndHasAnEnabledSource)
 TEST(FluidRecipeBakeTest, PresetsAreBuiltFromTheSameParts)
 {
     /// @note 液体のプリセットは旧 emitter の値を FluidSource へ移している。先頭の emitter が
-    ///       «球・速度・ばらつき・数・射出時間» を持つことだけを見る。数値を固定すると
-    ///       プリセットの絵を詰め直せなくなるため、値そのものは縛らない。
+    /// @note «球・速度・ばらつき・数・射出時間» を持つことだけを見る。数値を固定すると
+    /// @note プリセットの絵を詰め直せなくなるため、値そのものは縛らない。
     const fluid::FluidRecipe splash = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
     ASSERT_GE(splash.sources.size(), 1u);
     EXPECT_EQ(splash.sources[0].shape, fluid::FluidSourceShape::Sphere);
@@ -881,6 +885,7 @@ TEST(FluidRecipeBakeTest, VolumeSettingsComeFromOutputAndRender)
     EXPECT_EQ(settings.fluidRecipePath, path);
     EXPECT_EQ(settings.fluidSolver, asset::VolumeFluidSolver::Cpu);
     EXPECT_FLOAT_EQ(settings.fluidDensityScale, 2.5f);
+    EXPECT_FLOAT_EQ(settings.extinction, recipe.bake.extinction);
     EXPECT_EQ(settings.volumeResolution, 96);
     EXPECT_FLOAT_EQ(settings.exposure, 1.3f);
     EXPECT_FLOAT_EQ(settings.halfExtent, 1.4f);
@@ -908,6 +913,157 @@ TEST(FluidRecipeBakeTest, VolumeSettingsComeFromOutputAndRender)
     recipe.output.columns = 1;
     recipe.output.rows = 1;
     EXPECT_EQ(asset::MakeVolumeBakeSettings(recipe, path).source.frameCount, 2);
+}
+
+TEST(FluidRecipeBakeTest, LoopBlendRoundTripsAndReachesVolumeBaker)
+{
+    testkit::TempDir temp{ "fluidloopblend" };
+    ASSERT_TRUE(temp.IsValid());
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Fire);
+    recipe.output.loop = true;
+    recipe.output.loopBlendFraction = 0.125f;
+    const fluid::FluidRecipe loaded = RoundTrip(temp, "fire.fluid", recipe);
+    EXPECT_FLOAT_EQ(loaded.output.loopBlendFraction, 0.125f);
+    const asset::VolumeFlipbookBakeSettings settings =
+        asset::MakeVolumeBakeSettings(loaded, "C:/Fx/Fire.fluid");
+    EXPECT_FLOAT_EQ(settings.fluidLoopBlendFraction, 0.125f);
+    EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), fluid::MakeFluidStepPlan(loaded).loopOverlap);
+}
+
+TEST(FluidRecipeBakeTest, RenderOpacityScalesVolumeExtinctionAndStoreReversesIt)
+{
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
+    recipe.bake.extinction = 12.0f;
+    const std::string path = "C:/Fx/Opacity.fluid";
+    const float referenceOpacity = fluid::FluidRenderSettings{}.opacity;
+
+    recipe.render.opacity = referenceOpacity * 0.5f;
+    asset::VolumeFlipbookBakeSettings settings = asset::MakeVolumeBakeSettings(recipe, path);
+    EXPECT_FLOAT_EQ(settings.extinction, recipe.bake.extinction * 0.5f);
+
+    settings.extinction = 9.0f;
+    asset::StoreVolumeBakeSettings(settings, recipe);
+    EXPECT_FLOAT_EQ(recipe.bake.extinction, 18.0f);
+    EXPECT_FLOAT_EQ(asset::MakeVolumeBakeSettings(recipe, path).extinction, 9.0f);
+}
+
+TEST(FluidRecipeBakeTest, FireMaskUsesBakeExtinctionIndependentOfRenderOpacity)
+{
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Fire);
+    recipe.bake.extinction = 12.0f;
+    const float referenceOpacity = fluid::FluidRenderSettings{}.opacity;
+    recipe.render.opacity = referenceOpacity;
+
+    const asset::VolumeFlipbookBakeSettings defaultOpacity =
+        asset::MakeVolumeBakeSettings(recipe, "C:/Fx/Fire.fluid");
+    EXPECT_FLOAT_EQ(defaultOpacity.extinction, 12.0f);
+    EXPECT_FLOAT_EQ(defaultOpacity.fireEmissionExtinction, 12.0f);
+
+    recipe.render.opacity = referenceOpacity * 0.5f;
+    const asset::VolumeFlipbookBakeSettings lowOpacity =
+        asset::MakeVolumeBakeSettings(recipe, "C:/Fx/Fire.fluid");
+    EXPECT_TRUE(lowOpacity.fireEmission);
+    EXPECT_FLOAT_EQ(lowOpacity.extinction, 6.0f);
+    EXPECT_FLOAT_EQ(lowOpacity.fireEmissionExtinction, 12.0f);
+
+    recipe.render.opacity = referenceOpacity * 2.0f;
+    const asset::VolumeFlipbookBakeSettings highOpacity =
+        asset::MakeVolumeBakeSettings(recipe, "C:/Fx/Fire.fluid");
+    EXPECT_FLOAT_EQ(highOpacity.extinction, 24.0f);
+    EXPECT_FLOAT_EQ(highOpacity.fireEmissionExtinction, 12.0f);
+
+    recipe.render.shading = fluid::FluidShading::Smoke;
+    EXPECT_FALSE(asset::MakeVolumeBakeSettings(recipe, "C:/Fx/Smoke.fluid").fireEmission);
+}
+
+TEST(FluidRecipeBakeTest, FireKelvinMatchesNormalizedVolumeTemperature)
+{
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Fire);
+    fluid::FluidSource source;
+    source.temperature = 1.6f;
+    recipe.sources = { source };
+    recipe.render.fireKelvin = 1500.0f;
+    recipe.bake.blackbodyMaxKelvin = 2400.0f;
+
+    const float temperatureScale = asset::FluidRecipeTemperatureScale(recipe);
+    const asset::VolumeFlipbookBakeSettings settings =
+        asset::MakeVolumeBakeSettings(recipe, "C:/Fx/Fire.fluid");
+    const float volumeKelvin = settings.blackbodyMaxKelvin * source.temperature * temperatureScale;
+    const float twoDKelvin = recipe.render.fireKelvin * source.temperature;
+
+    EXPECT_FLOAT_EQ(temperatureScale * source.temperature, 1.0f);
+    EXPECT_FLOAT_EQ(volumeKelvin, twoDKelvin);
+    EXPECT_FLOAT_EQ(settings.blackbodyLutMaxKelvin, recipe.render.fireKelvin * 4.0f);
+}
+
+TEST(FluidRecipeBakeTest, FireRenderControlsPreserveVolumeCalibration)
+{
+    fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Fire);
+    recipe.bake.blackbodyEmission = false;
+    recipe.bake.blackbodyMaxKelvin = 3500.0f;
+    recipe.bake.emissionIntensity = 36.0f;
+    recipe.render.fireKelvin = 1500.0f;
+    recipe.render.fireIntensity = 1.0f;
+    recipe.render.useEmissionRamp = false;
+
+    const asset::VolumeFlipbookBakeSettings calibrated =
+        asset::MakeVolumeBakeSettings(recipe, "C:/Fx/JetFlame.fluid");
+    EXPECT_TRUE(calibrated.fireEmission);
+    EXPECT_TRUE(calibrated.blackbodyEmission);
+    EXPECT_FLOAT_EQ(calibrated.blackbodyMaxKelvin, 3500.0f);
+    EXPECT_FLOAT_EQ(calibrated.blackbodyLutMaxKelvin, 6000.0f);
+    EXPECT_FLOAT_EQ(calibrated.emissionIntensity, 36.0f);
+
+    recipe.render.fireIntensity = 0.5f;
+    const asset::VolumeFlipbookBakeSettings dimmed =
+        asset::MakeVolumeBakeSettings(recipe, "C:/Fx/JetFlame.fluid");
+    EXPECT_FLOAT_EQ(dimmed.emissionIntensity, 18.0f);
+    asset::StoreVolumeBakeSettings(dimmed, recipe);
+    EXPECT_FLOAT_EQ(recipe.bake.emissionIntensity, 36.0f);
+    EXPECT_FALSE(recipe.bake.blackbodyEmission);
+    EXPECT_FLOAT_EQ(recipe.bake.blackbodyMaxKelvin, 3500.0f);
+
+    recipe.render.useEmissionRamp = true;
+    recipe.render.emissionRamp.stops[3] = { { 2.0f, 0.5f, 0.1f }, 1.0f };
+    const asset::VolumeFlipbookBakeSettings ramped =
+        asset::MakeVolumeBakeSettings(recipe, "C:/Fx/JetFlame.fluid");
+    EXPECT_FALSE(ramped.blackbodyEmission);
+    ExpectVector3Eq(asset::EvaluateVolumeRamp(ramped.emissionRamp, 1.0f), { 2.0f, 0.5f, 0.1f });
+}
+
+TEST(FluidRecipeBakeTest, FireRadianceUsesSharedColorAndUnitBoxPathIntegral)
+{
+    constexpr float referenceKelvin = 1500.0f;
+    constexpr float temperature = 1.6f;
+    constexpr float intensity = 1.0f;
+    const asset::FluidFireColorLut lut(referenceKelvin * 4.0f);
+    const math::Vector3 chroma = lut.Chroma(referenceKelvin * temperature);
+    const math::Vector3 directChroma = scene::ParticleBlackbodyChroma(referenceKelvin * temperature);
+    EXPECT_NEAR(chroma.x, directChroma.x, 0.01f);
+    EXPECT_NEAR(chroma.y, directChroma.y, 0.01f);
+    EXPECT_NEAR(chroma.z, directChroma.z, 0.01f);
+
+    const math::Vector3 planarRadiance = asset::FluidFireBlackbodyRadiance(temperature, intensity, chroma);
+    math::Vector3 volumeRadiance = math::Vector3::ZERO;
+    constexpr int segmentCount = 128;
+    constexpr float segmentLength = asset::kFluidFireReferencePathLength / static_cast<float>(segmentCount);
+    for (int i = 0; i < segmentCount; ++i)
+        volumeRadiance = volumeRadiance + asset::FluidFireSegmentContribution(planarRadiance, 1.0f, 0.0f,
+                                                                              segmentLength);
+
+    const math::Vector3 planarFire = asset::FluidFireSoftKnee(planarRadiance);
+    const math::Vector3 volumeFire = asset::FluidFireSoftKnee(volumeRadiance);
+    EXPECT_NEAR(volumeFire.x, planarFire.x, 1.0e-5f);
+    EXPECT_NEAR(volumeFire.y, planarFire.y, 1.0e-5f);
+    EXPECT_NEAR(volumeFire.z, planarFire.z, 1.0e-5f);
+    EXPECT_NEAR(asset::FluidFireMeanTransmittance(1.0f, 2.0f, 1.0f),
+                (1.0f - std::exp(-2.0f)) / 2.0f, 1.0e-6f);
+
+    const math::Vector3 rampColor{ 0.2f, 0.4f, 0.8f };
+    const math::Vector3 rampRadiance = asset::FluidFireRampRadiance(rampColor, 3.0f);
+    EXPECT_FLOAT_EQ(rampRadiance.x, 0.6f);
+    EXPECT_FLOAT_EQ(rampRadiance.y, 1.2f);
+    EXPECT_FLOAT_EQ(rampRadiance.z, 2.4f);
 }
 
 TEST(FluidRecipeBakeTest, UserEmissionRampReachesTheVolumeBaker)
@@ -1210,4 +1366,4 @@ sprites = [
     EXPECT_FALSE(error.empty());
 }
 
-} // namespace fbzz::tests
+}

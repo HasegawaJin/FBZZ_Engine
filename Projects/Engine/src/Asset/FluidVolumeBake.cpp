@@ -5,43 +5,51 @@
 #include <Engine/Asset/FluidVolumeBake.hpp>
 
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/FluidRenderMath.hpp>
+#include <Engine/Scene/Components/ParticleColorSpace.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
 #include <algorithm>
-#include <cmath>
 #include <filesystem>
 
 namespace fbzz::asset {
 namespace {
 
-/// VolumeFlipbookBaker::Begin と同じ範囲。先に丸めておかないと、コマ間隔が «丸める前のコマ数» で割られる。
+/// @note VolumeFlipbookBaker::Begin と同じ範囲。先に丸めておかないと、コマ間隔が «丸める前のコマ数» で割られる。
 constexpr int kMinFrames = 2;
 constexpr int kMaxFrames = 256;
 constexpr int kMaxSupersampling = 3;
-/// FluidBaker (2D) の duration の下限と揃える。
+/// @note FluidBaker (2D) の duration の下限と揃える。
 constexpr float kMinDuration = 0.05f;
-/// ReflectBake の ray_steps / shadow_steps の範囲と揃える (手書きの .fluid が 0 を書いても焼けるように)。
+/// @note ReflectBake の ray_steps / shadow_steps の範囲と揃える (手書きの .fluid が 0 を書いても焼けるように)。
 constexpr int kMinRaySteps = 32;
 constexpr int kMaxRaySteps = 512;
 constexpr int kMinShadowSteps = 4;
 constexpr int kMaxShadowSteps = 64;
 
-/// .fluid の色は sRGB。Volume Flipbook Bake パネルと同じ近似で直す。
+/// @brief 2D Bake と同じ Particle 色空間の式で .fluid の sRGB 色をリニアへ変換する。
 math::Vector3 SrgbToLinear(const math::Vector4& color)
 {
-    const auto toLinear = [](float c) { return std::pow(std::clamp(c, 0.0f, 1.0f), 2.2f); };
-    return { toLinear(color.x), toLinear(color.y), toLinear(color.z) };
+    return { scene::ParticleSrgbToLinear(std::clamp(color.x, 0.0f, 1.0f)),
+             scene::ParticleSrgbToLinear(std::clamp(color.y, 0.0f, 1.0f)),
+             scene::ParticleSrgbToLinear(std::clamp(color.z, 0.0f, 1.0f)) };
 }
 
 static_assert(fluid::kFluidRampStops == kVolumeRampStops, ".fluid の emission_ramp / albedo_ramp と 3D の Ramp は同じ点数で写す");
 
-/// 2D (FluidBaker の Distortion) は «速さ 1 [領域単位/秒] で変位 0.42» で符号化している (0.42 は既存の歪み素材
-/// ProceduralVFXTextures と同じ振れ幅)。3D の速度も同じ単位 (bake 単位/秒 = 領域単位/秒) なので、同じ倍率なら
-/// 同じ .fluid を 2D と 3D で焼いた陽炎が同じ強さで揺れる。2D は速さ 1 で頭打ちにするため、それより速い所だけは
-/// 3D の方が強く出うる。render.opacity は写さない: 2D では覆い (A) の濃さで、3D の覆いは bake.extinction が決める。
-constexpr float kDistortionScale = 0.42f;
+/// @note 2D (FluidBaker の Distortion) は速さ 1 [領域単位/秒] で変位 0.42 へ符号化する。
+/// @note 0.42 は既存の ProceduralVFXTextures と同じ振れ幅で、3D も同じ速度単位を使う。
+/// @note 2D と 3D はどちらも速さ 1 で頭打ちにする。
+/// @note render.opacity は基準値からの相対倍率として 3D の消散係数へ写す。
 
-/// .fluid の Ramp は最初からリニア (HDR 可) なので、色は変換せずにそのまま渡す。
+/// @note 2D の opacity 既定値を基準として 3D の extinction を変換する。
+float FluidOpacityScale(const fluid::FluidRecipe& recipe)
+{
+    const float referenceOpacity = fluid::FluidRenderSettings{}.opacity;
+    return referenceOpacity > 0.0f ? (std::max)(recipe.render.opacity, 0.0f) / referenceOpacity : 0.0f;
+}
+
+/// @note .fluid の Ramp は最初からリニア (HDR 可) なので、色は変換せずにそのまま渡す。
 VolumeColorRamp ToVolumeRamp(const fluid::FluidColorRamp& ramp)
 {
     VolumeColorRamp volume;
@@ -52,7 +60,7 @@ VolumeColorRamp ToVolumeRamp(const fluid::FluidColorRamp& ramp)
     return volume;
 }
 
-/// Assets 相対と guid: 参照だけを AssetManager に解かせる (実パスは初期化前でもそのまま使える)。
+/// @note Assets 相対と guid: 参照だけを AssetManager に解かせる (実パスは初期化前でもそのまま使える)。
 std::filesystem::path RecipeFile(const std::string& fluidRecipePath)
 {
     const std::filesystem::path direct = util::FileSystem::PathFromUtf8(fluidRecipePath);
@@ -60,7 +68,7 @@ std::filesystem::path RecipeFile(const std::string& fluidRecipePath)
     return util::FileSystem::PathFromUtf8(AssetManager::ResolveAssetPath(fluidRecipePath));
 }
 
-} // namespace
+}
 
 VolumeFlipbookBakeSettings MakeVolumeBakeSettings(const fluid::FluidRecipe& recipe, const std::string& fluidRecipePath)
 {
@@ -100,7 +108,8 @@ VolumeFlipbookBakeSettings MakeVolumeBakeSettings(const fluid::FluidRecipe& reci
     settings.lightPitchDegrees = bake.lightPitchDegrees;
     settings.lightColor = bake.lightColor;
     settings.ambient = bake.ambient;
-    settings.extinction = bake.extinction;
+    /// @note opacity の既定値では従来の bake.extinction を保ち、明示した濃さだけ 3D の消散係数へ反映する。
+    settings.extinction = bake.extinction * FluidOpacityScale(recipe);
     settings.anisotropy = bake.anisotropy;
     settings.emissionIntensity = bake.emissionIntensity;
     settings.exposure = bake.exposure;
@@ -108,16 +117,31 @@ VolumeFlipbookBakeSettings MakeVolumeBakeSettings(const fluid::FluidRecipe& reci
     settings.halfExtent = bake.halfExtent;
 
     settings.fluidLoop = output.loop;
+    settings.fluidLoopBlendFraction = output.loopBlendFraction;
     settings.distortion = recipe.render.shading == fluid::FluidShading::Distortion;
-    settings.distortionScale = kDistortionScale;
+    settings.glowEmission = recipe.render.shading == fluid::FluidShading::Glow;
+    settings.distortionScale = kFluidDistortionScale;
+    settings.fireEmission = recipe.kind == fluid::FluidKind::Gas
+        && recipe.render.shading == fluid::FluidShading::Fire;
+    if (settings.fireEmission) {
+        /// @note render.fireIntensity は 2D Fire の強さを共有し、既定値 1 では 3D bake の校正値を保つ。
+        settings.emissionIntensity *= (std::max)(recipe.render.fireIntensity, 0.0f);
+        /// @note Fire の Ramp / 黒体選択は 2D と同じ render.useEmissionRamp に従う。
+        settings.blackbodyEmission = !recipe.render.useEmissionRamp;
+    }
+    /// @note 6-way の火炎マスク用。q(T) の放射強度は render.fireKelvin / bake.emissionIntensity から独立に決まる。
+    settings.fireEmissionExtinction = (std::max)(bake.extinction, 0.0f);
+    settings.blackbodyLutMaxKelvin = settings.fireEmission
+        ? (std::max)(recipe.render.fireKelvin, 1.0f) * 4.0f
+        : 0.0f;
 
     /// @note albedo_ramp はリニアのまま写す (smoke_color / liquid_color は sRGB なので直す)。
     const bool albedoRamp = recipe.render.useAlbedoRamp;
     if (recipe.kind == fluid::FluidKind::Liquid) {
         settings.albedoRamp = albedoRamp ? ToVolumeRamp(recipe.render.albedoRamp)
                                          : UniformVolumeRamp(SrgbToLinear(recipe.render.liquidColor));
-        /// @note 2D の liquid_threshold は画面へ投影した場 (奥行きぶん積み重なる) の等値線で、
-        ///       3D の «体積の密度» とは目盛りが違う。2D と同じ意味のスペキュラと、3D 専用の液面の項目だけを写す。
+        /// @note 2D の liquid_threshold は画面へ投影した場の等値線で、3D の体積密度とは目盛りが違う。
+        /// @note 2D と同じ意味のスペキュラと、3D 専用の液面項目だけを写す。
         settings.liquid.specular = recipe.render.specular;
         settings.liquid.softness = recipe.render.liquidSoftness;
         settings.liquid.extinction = recipe.render.liquidExtinction;
@@ -142,15 +166,15 @@ VolumeFlipbookBakeSettings MakeVolumeBakeSettings(const fluid::FluidRecipe& reci
             break;
         }
         /// @note 自分で決めた Ramp は shading によらず効かせる (煙を温度で色づける使い方もある)。
-        ///       blackbody_emission が立っていれば、レイマーチは今までどおり黒体を優先する。
+        /// @note blackbody_emission が立っていれば、レイマーチは黒体を優先する。
         if (recipe.render.useEmissionRamp) settings.emissionRamp = ToVolumeRamp(recipe.render.emissionRamp);
     }
 
     const std::filesystem::path file = RecipeFile(fluidRecipePath);
     settings.outputDirectory = util::FileSystem::PathToUtf8(file.parent_path());
     settings.baseName = util::FileSystem::PathToUtf8(file.stem());
-    /// @note .fluid から焼くときは必ず同じ名前へ上書きする。名前が焼くたびに変わると «同じレシピ → 同じ出力»
-    ///       が崩れ、追従させた .mat も前の世代を指したままになる。
+    /// @note .fluid から焼くときは必ず同じ名前へ上書きする。
+    /// @note 出力名が変わると同じレシピから同じ出力を得られず、追従させた .mat も前の世代を指したままになる。
     settings.overwriteOutputs = true;
     return settings;
 }
@@ -169,7 +193,9 @@ void StoreVolumeBakeSettings(const VolumeFlipbookBakeSettings& settings, fluid::
     bake.densityScale = settings.fluidDensityScale;
     bake.scatteringOctaves = settings.scatteringOctaves;
     bake.skyOcclusion = settings.skyOcclusion;
-    bake.blackbodyEmission = settings.blackbodyEmission;
+    const bool fireEmission = recipe.kind == fluid::FluidKind::Gas
+        && recipe.render.shading == fluid::FluidShading::Fire;
+    if (!fireEmission) bake.blackbodyEmission = settings.blackbodyEmission;
     bake.blackbodyMinKelvin = settings.blackbodyMinKelvin;
     bake.blackbodyMaxKelvin = settings.blackbodyMaxKelvin;
     bake.sixWayLightmaps = settings.sixWayLightmaps;
@@ -177,12 +203,19 @@ void StoreVolumeBakeSettings(const VolumeFlipbookBakeSettings& settings, fluid::
     bake.lightPitchDegrees = settings.lightPitchDegrees;
     bake.lightColor = settings.lightColor;
     bake.ambient = settings.ambient;
-    bake.extinction = settings.extinction;
+    /// @note 3D パネルの値を bake.extinction の基準倍率へ戻す。opacity が 0 なら逆変換できないため既存値を保つ。
+    const float opacityScale = FluidOpacityScale(recipe);
+    if (opacityScale > 0.0f) bake.extinction = settings.extinction / opacityScale;
     bake.anisotropy = settings.anisotropy;
-    bake.emissionIntensity = settings.emissionIntensity;
+    /// @note Fire では MakeVolumeBakeSettings の乗算を戻し、UI の保存ごとに倍率が積み上がらないようにする。
+    const float fireIntensity = (std::max)(recipe.render.fireIntensity, 0.0f);
+    /// @note 倍率が 0 のときは逆変換できないため bake 側の校正値を保つ。
+    if (!fireEmission || fireIntensity > 0.0f)
+        bake.emissionIntensity = fireEmission ? settings.emissionIntensity / fireIntensity
+                                              : settings.emissionIntensity;
     bake.exposure = settings.exposure;
     bake.cameraYawDegrees = settings.cameraYawDegrees;
     bake.halfExtent = settings.halfExtent;
 }
 
-} // namespace fbzz::asset
+}
