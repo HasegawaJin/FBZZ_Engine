@@ -1,2 +1,9 @@
 [meta]
 guid = '1b10b64709f94364ba5c7244293e9b8c'
+
+[texture]
+type = 'normal'
+srgb = false
+flip_green = true
+mipmaps = true
+normalize_mipmaps = true

@@ -49,7 +49,8 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
     /// @note 固定印を付けない。同期 `Load<TextureAsset>` の固定は AssetStore 側のスロットが持ち、
     ///       非同期経路 (AssetStreamer::CompleteNow) が同じ importer で読んだものは後で解放できる。
     if (resources) {
-        asset->gpuHandle = resources->LoadTextureUnpinned(asset->sourcePath);
+        asset->gpuHandle = resources->LoadTextureUnpinned(asset->sourcePath,
+                                                           asset->settings.flipGreen);
         if (const renderer::ITexture* texture = resources->Get(asset->gpuHandle)) {
             asset->sourceWidth  = texture->GetWidth();
             asset->sourceHeight = texture->GetHeight();
@@ -61,4 +62,4 @@ std::unique_ptr<TextureAsset> ImageImporter::Import(
     return asset;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

@@ -105,7 +105,7 @@ void WriteTwoLodModel(const std::string& path)
     WriteFileBytes(path, bytes);
 }
 
-} // namespace
+}
 
 /// @name チャンク索引付き形式
 
@@ -173,6 +173,22 @@ TEST_F(AssetPartialIoTest, AtomicWriteReplacesAnExistingFile)
 }
 
 /// @name テクスチャの品質段キャッシュ
+
+TEST_F(AssetPartialIoTest, GreenFlipChangesEveryMipWithoutChangingOtherChannels)
+{
+    DecodedTextureRGBA8 texture;
+    texture.mips.push_back({ 2, 1, Bytes({ 10, 20, 30, 40, 50, 200, 70, 80 }) });
+    texture.mips.push_back({ 1, 1, Bytes({ 90, 0, 110, 120 }) });
+    const auto original = texture.mips;
+
+    renderer::FlipTextureGreen(texture);
+    EXPECT_EQ(texture.mips[0].rgba, Bytes({ 10, 235, 30, 40, 50, 55, 70, 80 }));
+    EXPECT_EQ(texture.mips[1].rgba, Bytes({ 90, 255, 110, 120 }));
+
+    renderer::FlipTextureGreen(texture);
+    EXPECT_EQ(texture.mips[0].rgba, original[0].rgba);
+    EXPECT_EQ(texture.mips[1].rgba, original[1].rgba);
+}
 
 TEST_F(AssetPartialIoTest, BoxDownsampleAveragesAndRounds)
 {
@@ -287,4 +303,4 @@ TEST_F(AssetPartialIoTest, QualityFollowsScreenSizeWithOneLevelOfHeadroom)
     EXPECT_EQ(StreamedTextureResolver::QualityForScreenSize(1024, 1024, 0.0f, 4), 0) << "大きさ不明は最高品質";
 }
 
-} // namespace fbzz::tests
+}
