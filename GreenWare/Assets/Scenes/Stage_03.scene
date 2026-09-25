@@ -1,3 +1,10 @@
+[environment]
+windDirection = [ 0.7071, 0.0, 0.7071 ]
+windEnabled = false
+windPulseFrequency = 1.0
+windSpeed = 0.0
+windTurbulence = 0.0
+
 [scene]
 format_version = 2
 
@@ -18,7 +25,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777379
+    aspectRatio = 1.777267
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -293,6 +300,7 @@ tag = 'Untagged'
     weatherAmount = 0.169433
     weatherSize = 2350.0
     windDirection = [ 1.0, 0.25 ]
+    windResponse = 1.0
     windSpeed = 66.5
 
     [gameobjects.transform]
@@ -1466,7 +1474,9 @@ tag = 'Untagged'
     emitRate = 34.0
     emitVelocity = [ 0.0, 0.0, 0.0 ]
     enabled = true
-    forceFieldChannels = 4294967295
+    flowCoupling = 5.0
+    flowFieldChannels = 4294967295
+    gravity = [ 0.0, -0.05, 0.0 ]
     inheritVelocity = 0.0
     lifetime = 4.7
     lifetimeRandom = 0.45
@@ -1497,8 +1507,9 @@ tag = 'Untagged'
     playing = true
     prewarm = true
     randomSeed = 4201
+    randomStartRotation = true
     rateOverDistance = 0.0
-    receiveForceFields = false
+    receiveFlowFields = false
     renderMode = 0
     renderPriority = 6
     screenCoverageThreshold = 0.0
@@ -1580,21 +1591,6 @@ tag = 'Untagged'
 
         [[gameobjects.ParticleEmitter.localForces]]
         channels = 4294967295
-        direction = [ 0.0, -1.0, 0.0 ]
-        enabled = true
-        falloffPower = 2.0
-        fieldType = 0
-        noiseFrequency = 0.5
-        noiseSpeed = 1.0
-        radius = 0.0
-        space = 0
-        strength = 0.05
-        vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
-        vectorFieldPath = ''
-        vectorFieldTightness = 0.0
-
-        [[gameobjects.ParticleEmitter.localForces]]
-        channels = 4294967295
         direction = [ 1.0, 0.0, 0.0 ]
         enabled = true
         falloffPower = 2.0
@@ -1603,10 +1599,9 @@ tag = 'Untagged'
         noiseSpeed = 0.5
         radius = 0.0
         space = 0
-        strength = 0.3
+        strength = 0.06
         vectorFieldExtents = [ 5.0, 5.0, 5.0 ]
         vectorFieldPath = ''
-        vectorFieldTightness = 0.0
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 6.0 ]
@@ -1638,7 +1633,7 @@ tag = 'Untagged'
     resolutionZ = 512
     splashEnabled = true
     waterDrag = 2.0
-    waveAmplitudeScale = 3.58
+    waveAmplitudeScale = 0.0
 
     [gameobjects.transform]
     position = [ -51.0, -2.0, 0.0 ]
@@ -6152,6 +6147,7 @@ tag = 'Player'
     ccdRadius = 0.3
     charge = 0.0
     enabled = true
+    flowCoupling = 0.0
     freezePosition = [ 0.0, 0.0, 0.0 ]
     freezeRotation = [ 1.0, 1.0, 1.0 ]
     gravitationalMass = 1.0
@@ -6447,6 +6443,7 @@ tag = 'Player'
         servoTurnRate = 60.0
         sfxDeath = ''
         sfxHurt = ''
+        showAimMarker = false
         slashChargedWindup = 1.0
         slashFadeIn = 0.06
         slashFadeOut = 0.12

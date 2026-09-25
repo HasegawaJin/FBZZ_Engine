@@ -7,5 +7,17 @@ locked_objects = []
     component_order = [ 'Light' ]
     instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f002'
 
+    [[editor.game_objects]]
+    component_order = [ 'Light' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f00c'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material', 'Fiber (Fur / Grass)' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f007'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'ad4d7f1c-20d8-49de-9a72-c719a9d3f009'
+
 [meta]
 guid = 'ef2ab3f9392b4d1085b3274dedff27f9'
