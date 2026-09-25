@@ -342,8 +342,7 @@ int VolumeLoopOverlapFrames(const VolumeFlipbookBakeSettings& settings)
 
 float VolumeLoopKeepWeight(int index, int overlap)
 {
-    if (overlap <= 0) return 1.0f;
-    return std::clamp(static_cast<float>(index + 1) / static_cast<float>(overlap + 1), 0.0f, 1.0f);
+    return fluid::FluidLoopKeepWeight(index, overlap);
 }
 
 math::Vector4 EncodeVolumeDistortion(math::Vector2 screenVelocity, float coverage, float scale)

@@ -37,6 +37,13 @@ int FluidLoopOverlapFrames(int frameCount, bool loop, float blendFraction)
         static_cast<float>(frameCount) * std::clamp(blendFraction, 0.0f, 0.5f))), 1, frameCount / 2);
 }
 
+float FluidLoopKeepWeight(int index, int overlap)
+{
+    if (overlap <= 0) return 1.0f;
+    const float t = std::clamp(static_cast<float>(index) / static_cast<float>(overlap), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
 int FluidWarmupFrames(float warmupSeconds, float frameDt)
 {
     if (frameDt <= 0.0f) return 0;

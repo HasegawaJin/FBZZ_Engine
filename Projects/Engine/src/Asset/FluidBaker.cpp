@@ -2,7 +2,6 @@
 /// @brief   流体レシピ → フリップブック / Motion Vector / 速度場 PNG
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
 /// @note DirectXTex の WIC PNG エンコーダーに必要。
 #pragma comment(lib, "ole32.lib")
 
@@ -351,7 +350,7 @@ void CaptureFrame(Render&& render, int size, int supersampling, bool premultipli
     Downsample(scratch, supersampling, premultiplied, out);
 }
 
-} // namespace
+} /// @note namespace
 
 bool FluidShadingIsPremultiplied(fluid::FluidShading shading)
 {
@@ -730,7 +729,7 @@ bool RenderFluidBakeFrames(const fluid::FluidRecipe& source, std::span<const int
         FluidFrameImage& head = captured[indexOf(frame)];
         const FluidFrameImage& tail = captured[indexOf(plan.frameCount + frame)];
         if (head.size != tail.size) continue;
-        const float keep = static_cast<float>(frame + 1) / static_cast<float>(plan.loopOverlap + 1);
+        const float keep = fluid::FluidLoopKeepWeight(frame, plan.loopOverlap);
         for (std::size_t k = 0; k < head.rgba.size() && k < tail.rgba.size(); ++k)
             head.rgba[k] = tail.rgba[k] + (head.rgba[k] - tail.rgba[k]) * keep;
         for (std::size_t k = 0; k < head.motion.size() && k < tail.motion.size(); ++k)
@@ -1018,4 +1017,4 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
     return result;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset
