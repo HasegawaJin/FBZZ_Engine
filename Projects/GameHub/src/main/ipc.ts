@@ -1,14 +1,13 @@
-/**
- * @file ipc.ts
- * @brief renderer へ公開する操作をホワイトリスト化した IPC ハンドラー。
- * @author Hasegawa Jin
- * @date 2026/07/19
- */
+/// @file ipc.ts
+/// @brief renderer へ公開する操作をホワイトリスト化した IPC ハンドラー。
+/// @author Hasegawa Jin
+/// @date 2026/07/19
 
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import type { BootstrapData, CreateProjectRequest, HubSettings, OperationResult, UpdateNotice } from '../shared/contracts';
 import { ENGINE_VERSION } from '../shared/contracts';
+import { outdatedSdkNotice } from '../shared/SdkNotice';
 import { ConfigStore } from './configStore';
 import { ProjectService } from './projectService';
 import { TemplateService } from './templateService';
@@ -38,11 +37,7 @@ function failure(error: unknown): OperationResult<never> {
   return { ok: false, error: error instanceof Error ? error.message : String(error) };
 }
 
-/**
- * main 側の settings を全ウィンドウへ通知する。
- * @note renderer は最後に受け取った settings を bootstrap の値より優先する。起動時の自動検出
- *       だけでなく保存後にも送らないと、保存した値が起動時の検出結果へ巻き戻って見える。
- */
+/// @note 保存後も通知し、renderer が保存値を起動時の検出結果で上書きするのを防ぐ。
 function broadcastSettings(settings: HubSettings): void {
   for (const window of BrowserWindow.getAllWindows()) {
     window.webContents.send('hub:settings-updated', settings);
@@ -61,16 +56,14 @@ async function bootstrap(): Promise<BootstrapData> {
   return {
     engineVersion: ENGINE_VERSION,
     settings: config.settings,
-    // 実ファイル検証とサムネイル読込はproject:listへ分離し、初期画面を先に返す。
+    /// @note 実ファイル検証とサムネイル読込はproject:listへ分離し、初期画面を先に返す。
     projects: projectService.createPendingProjects(config.projects),
     templates: await templateService.listTemplates(),
   };
 }
 
-/**
- * 知らせるべき新しい版を返す。24 時間以内に確認済みなら問い合わせず保存済みの結果を使う。
- * @see Docs/design/gamehub-update-notice.md
- */
+/// @note 知らせるべき新しい版を返す。24 時間以内に確認済みなら問い合わせず保存済みの結果を使う。
+/// @see Docs/design/gamehub-update-notice.md
 async function checkForUpdate(): Promise<UpdateNotice | null> {
   await ensureConfigLoaded();
   const config = configStore.snapshot();
@@ -88,7 +81,7 @@ async function checkForUpdate(): Promise<UpdateNotice | null> {
 }
 
 export function registerIpcHandlers(): void {
-  // 読込は開始するが、BrowserWindow生成側をブロックしない。
+  /// @note 読込は開始するが、BrowserWindow生成側をブロックしない。
   void ensureConfigLoaded();
   publishResolvedSettings();
 
@@ -142,9 +135,24 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('project:open', async (_event, projectPath: string) => {
     try {
       await ensureConfigLoaded();
+      await configStore.ensureSdkResolved();
       const settings = configStore.snapshot().settings;
       const projectSdkId = await projectService.readProjectSdkId(projectPath);
       const sdkRoot = await configStore.resolveSdkRoot(projectSdkId);
+      const sdkNotice = outdatedSdkNotice(projectSdkId, settings.sdkId, ENGINE_VERSION);
+      if (sdkRoot && sdkNotice) {
+        const result = await dialog.showMessageBox({
+          type: 'warning',
+          title: '古い SDK で起動します',
+          message: sdkNotice,
+          detail: `プロジェクト: ${projectPath}\nSDK: ${sdkRoot}\n構成: ${settings.sdkConfiguration}`
+            + (settings.editorExe ? `\nEditor（手動指定）: ${settings.editorExe}` : ''),
+          buttons: ['キャンセル', `SDK ${projectSdkId || settings.sdkId} で開く`],
+          defaultId: 0,
+          cancelId: 0,
+        });
+        if (result.response !== 1) return cancelled();
+      }
       await projectService.openProject(projectPath, settings, sdkRoot);
       await configStore.touchProject(projectPath);
       return success();
@@ -176,7 +184,7 @@ export function registerIpcHandlers(): void {
     try {
       await ensureConfigLoaded();
       const url = configStore.snapshot().update.latestUrl;
-      /** @note renderer から URL を受け取らない。保存済みの値もこのリポジトリのリリースページでなければ開かない。 */
+      /// @note renderer から URL を受け取らない。保存済みの値もこのリポジトリのリリースページでなければ開かない。
       if (!isReleasePageUrl(url)) throw new Error('リリースページの URL が不正です。');
       await shell.openExternal(url);
       return success();
