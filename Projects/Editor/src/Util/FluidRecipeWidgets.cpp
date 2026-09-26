@@ -641,7 +641,8 @@ bool EditSourceBody(fluid::FluidSource& source, FluidKind kind, const fluid::Flu
         Tooltip("輪の半径と、管の太さ (半径) です (衝撃波・煙の輪)。");
         break;
     case Shape::Texture:
-        changed |= widgets::AssetPathField("Texture", source.texture, kSourceTextureFilter, projectRoot);
+        changed |= widgets::AssetPathField("Texture", source.texture, kSourceTextureFilter, projectRoot,
+                                           widgets::AssetPickerHost::FLUID_EDITOR);
         DrawTextureSourceStatus(source.texture);
         changed |= DragPair("Half Width / Half Height", source.size.x, source.size.y, 0.002f, 0.005f, 1.5f);
         Tooltip("板の半分の幅と高さ。画像は 256x256 に縮めて貼るので、縦横比はここで合わせます。");

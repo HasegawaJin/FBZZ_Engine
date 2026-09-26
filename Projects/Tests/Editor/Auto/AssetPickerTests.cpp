@@ -35,6 +35,8 @@ protected:
         for (int i = 0; i < 3; ++i) {
             BeginFrame();
             editor::widgets::DrawAssetPickerModal();
+            editor::widgets::DrawAssetPickerModal(nullptr, nullptr,
+                editor::widgets::AssetPickerHost::FLUID_EDITOR);
             EndFrame();
         }
         ImGui::DestroyContext(m_imgui);
@@ -65,7 +67,8 @@ protected:
         m_imgui->NavInputSource = ImGuiInputSource_Keyboard;
     }
 
-    bool Field(std::string& path, bool browse = false, int owner = 0)
+    bool Field(std::string& path, bool browse = false, int owner = 0,
+               editor::widgets::AssetPickerHost host = editor::widgets::AssetPickerHost::INSPECTOR)
     {
         ImGui::PushID(owner);
         if (browse) {
@@ -74,7 +77,7 @@ protected:
             ImGui::PopID();
         }
         const bool changed = editor::widgets::AssetPathField(
-            "Texture", path, ".png", ProjectRoot().generic_string());
+            "Texture", path, ".png", ProjectRoot().generic_string(), host);
         ImGui::PopID();
         return changed;
     }
@@ -144,4 +147,17 @@ TEST_F(AssetPickerTest, SelectionDoesNotReachAnotherOwnerOrReturnAfterOwnerDisap
     EndFrame();
 }
 
-} // namespace fbzz::tests
+TEST_F(AssetPickerTest, FluidEditorPickerIsDrawnByFluidEditorHost)
+{
+    BeginFrame();
+    std::string path = "Assets/Textures/Mask.png";
+    EXPECT_FALSE(Field(path, true, 0, editor::widgets::AssetPickerHost::FLUID_EDITOR));
+    editor::widgets::DrawAssetPickerModal();
+    EXPECT_EQ(NoneId(), 0u);
+    editor::widgets::DrawAssetPickerModal(nullptr, nullptr,
+        editor::widgets::AssetPickerHost::FLUID_EDITOR);
+    EXPECT_NE(NoneId(), 0u);
+    EndFrame();
+}
+
+}
