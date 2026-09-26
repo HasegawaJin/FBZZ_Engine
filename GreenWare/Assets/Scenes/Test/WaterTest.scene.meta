@@ -18,12 +18,12 @@ locked_objects = []
     instance_id = 'f1aa1bac-03c0-48bc-bb2b-0533de3a840d'
 
     [[editor.game_objects]]
-    component_order = [ 'Flow Field' ]
-    instance_id = '869e477c-25ae-44df-b17b-b82fc5d02826'
-
-    [[editor.game_objects]]
     component_order = [ 'Light' ]
     instance_id = '722eb808-617e-4bc9-9813-d759993dc762'
+
+    [[editor.game_objects]]
+    component_order = [ 'Water' ]
+    instance_id = '438952bc-daa5-4679-9faa-1dcad0e04075'
 
     [[editor.game_objects]]
     component_order = [ 'Post Process Volume' ]

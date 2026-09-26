@@ -1,6 +1,6 @@
 [app]
 renderer = 'dx12'
-targetFps = 144
+targetFps = 360
 
 [audio]
 masterVolume = 1.0
