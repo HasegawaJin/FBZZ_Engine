@@ -22,7 +22,7 @@ sprite_columns = 8
 sprite_rows = 8
 
 [textures]
-albedo = 'guid:19d0178c6a1c58d3483252b76d8517f3'
+albedo = 'guid:3cddc2226e0ce2ae6966864ea08ba0d1|Assets/VFX/Fluid/Frame/JetFlame_Flipbook.png'
 ao = ''
 emissive = ''
 metallic = ''
