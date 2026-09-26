@@ -22,7 +22,7 @@ namespace fbzz::asset {
 
 namespace {
 
-/// 落とせる品質段。4 段で 1/16 (面積 1/256) まで縮む。
+/// @note 落とせる品質段。4 段で 1/16 (面積 1/256) まで縮む。
 constexpr AssetQuality kLowestTextureQuality = 4;
 /// @brief 生画像と G 反転画像の品質段を別々に追跡する。
 std::string TextureVariantKey(const std::string& sourcePath, bool flipGreen)
@@ -33,11 +33,12 @@ std::string TextureVariantKey(const std::string& sourcePath, bool flipGreen)
 /// @brief メインスレッドで確定させた import 設定と、GPU 実体が既にあるかの判定。
 struct TextureJobContext final : AssetJobContext {
     TextureImportSettings settings;
-    /// 同じ画像が同じ品質で ResourceManager に載っていれば画素は要らない (転送もしない)。
+    /// @note 同じ画像が同じ品質で ResourceManager に載っていれば画素は要らない (転送もしない)。
     bool gpuAlreadyResident = false;
-    /// 品質段キャッシュ (.fztc) の場所と、元画像の世代。場所が空ならキャッシュを使わない。
+    /// @note 品質段キャッシュ (.fztc) の場所と、元画像の世代。場所が空ならキャッシュを使わない。
     std::string cachePath;
     uint64_t    sourceStamp = 0;
+    std::string packagedCachePath;
 };
 
 struct DecodedTexture final : IDecodedAsset {
@@ -45,13 +46,15 @@ struct DecodedTexture final : IDecodedAsset {
     TextureImportSettings         settings;
     renderer::DecodedTextureRGBA8 pixels;
     AssetQuality                  quality = 0;
+    bool nativeUpload = false;
 
     [[nodiscard]] std::size_t CpuBytes() const override { return pixels.ByteSize(); }
 };
 
 struct TextureCandidate final : AssetCandidate<TextureAsset> {
-    /// BeginTextureUpload で作った実体か。パスキャッシュの既存を借りただけなら返さない。
+    /// @note BeginTextureUpload で作った実体か。パスキャッシュの既存を借りただけなら返さない。
     bool         ownsGpuHandle = false;
+    bool         nativeUpload = false;
     AssetQuality quality = 0;
 };
 
@@ -61,6 +64,31 @@ public:
 
     [[nodiscard]] bool SupportsQuality() const override { return true; }
     [[nodiscard]] AssetQuality LowestQuality() const override { return kLowestTextureQuality; }
+
+    [[nodiscard]] bool LoadImmediately(RawAssetHandle handle, const std::string& key) override
+    {
+        AssetJobInput input;
+        std::string error;
+        if (!Snapshot(key, input, error)) return false;
+        const auto& context = static_cast<const TextureJobContext&>(*input.context);
+        renderer::DecodedTextureRGBA8 pixels;
+        if (context.gpuAlreadyResident || context.packagedCachePath.empty()
+            || !texturecache::ReadQuality(context.packagedCachePath, context.sourceStamp, 0, pixels))
+            return AssetStreamChannel<TextureAsset>::LoadImmediately(handle, key);
+        if (context.settings.flipGreen) renderer::FlipTextureGreen(pixels);
+        std::vector<renderer::TextureMipData> mips;
+        if (!pixels.ToMipData(mips)) return false;
+        const auto uploaded = m_resources.CreateTextureWithMips(mips.data(), static_cast<uint32_t>(mips.size()));
+        if (!uploaded.IsValid()) return false;
+        auto texture = std::make_unique<TextureAsset>();
+        texture->sourcePath = input.resolvedPath;
+        texture->settings = context.settings;
+        texture->sourceWidth = pixels.sourceWidth;
+        texture->sourceHeight = pixels.sourceHeight;
+        texture->gpuHandle = m_resources.PublishTexture(input.resolvedPath, uploaded,
+                                                        context.settings.flipGreen);
+        return AssetStore<TextureAsset>::Get().Replace(Typed(handle), std::move(texture));
+    }
 
     /// @note .meta の読み取りもここで行う。ワーカーへは確定した設定だけを渡す。
     [[nodiscard]] bool Snapshot(const std::string& key, AssetJobInput& out, std::string& outError) override
@@ -87,14 +115,16 @@ public:
                                                           context->settings.flipGreen);
 
         /// @note 元画像の世代はここで決める。ワーカーが読む間にファイルが差し替わっても、古い世代で書いた
-        ///       キャッシュは次の Snapshot で食い違って捨てられる。
-        if (const std::string cacheDir = AssetManager::StreamCacheDir(); !cacheDir.empty()) {
+        /// @note キャッシュは次の Snapshot で食い違って捨てられる。
+        {
+            const std::string cacheDir = AssetManager::StreamCacheDir();
             std::error_code error;
             const auto path = util::FileSystem::PathFromUtf8(sourcePath);
             const auto size = std::filesystem::file_size(path, error);
             const auto writeTime = error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(path, error);
             if (!error) {
-                context->cachePath = cacheDir + "/" + texturecache::CacheFileName(sourcePath);
+                if (!cacheDir.empty()) context->cachePath = cacheDir + "/" + texturecache::CacheFileName(sourcePath);
+                context->packagedCachePath = sourcePath + ".fztc";
                 context->sourceStamp = texturecache::MakeSourceStamp(
                     static_cast<uint64_t>(size), static_cast<int64_t>(writeTime.time_since_epoch().count()));
             }
@@ -113,7 +143,8 @@ public:
         decoded->sourcePath = input.resolvedPath;
         decoded->settings = context.settings;
         decoded->quality = input.quality;
-        if (!context.gpuAlreadyResident && !DecodePixels(input, context, decoded->pixels, result.message)) {
+        decoded->nativeUpload = renderer::RequiresNativeTextureUpload(input.resolvedPath);
+        if (!context.gpuAlreadyResident && !decoded->nativeUpload && !DecodePixels(input, context, decoded->pixels, result.message)) {
             result.error = AssetLoadError::DecodeFailed;
             return result;
         }
@@ -128,6 +159,9 @@ public:
     static bool DecodePixels(const AssetJobInput& input, const TextureJobContext& context,
                              renderer::DecodedTextureRGBA8& out, std::string& outError)
     {
+        if (!context.packagedCachePath.empty()
+            && texturecache::ReadQuality(context.packagedCachePath, context.sourceStamp, input.quality, out))
+            return true;
         if (!context.cachePath.empty()
             && texturecache::ReadQuality(context.cachePath, context.sourceStamp, input.quality, out))
             return true;
@@ -153,6 +187,11 @@ public:
         candidate->asset->settings = texture.settings;
         candidate->asset->sourceWidth = texture.pixels.sourceWidth;
         candidate->asset->sourceHeight = texture.pixels.sourceHeight;
+        if (texture.nativeUpload) {
+            /// @note ネイティブ形式は Publish 時にロードする。キャンセル可能な候補から共有パスキャッシュへ先に公開しない。
+            candidate->nativeUpload = true;
+            return candidate;
+        }
 
         /// @note ワーカーが動いている間に同期 LoadTexture が同じ品質で読んでいれば、その実体を使う。
         if (IsResidentAtQuality(texture.sourcePath, texture.quality, texture.settings.flipGreen)) {
@@ -192,6 +231,15 @@ public:
     {
         auto& texture = static_cast<TextureCandidate&>(candidate);
         if (!texture.asset) return false;
+        if (texture.nativeUpload) {
+            /// @note キューブと HDR は RGBA8 に潰さず既存形式で転送する。利用権が寿命を守るため固定しない。
+            texture.asset->gpuHandle = m_resources.LoadTextureUnpinned(
+                texture.asset->sourcePath, texture.asset->settings.flipGreen);
+            const auto* native = m_resources.Get(texture.asset->gpuHandle);
+            if (!native) return false;
+            texture.asset->sourceWidth = native->GetWidth();
+            texture.asset->sourceHeight = native->GetHeight();
+        }
         if (texture.ownsGpuHandle) {
             const auto uploaded = texture.asset->gpuHandle;
             const TextureAsset* current = TypedGet(handle);
@@ -204,7 +252,7 @@ public:
                 adopted = true;
             } else {
                 /// @note パスキャッシュへ載せた時点で所有は ResourceManager へ移る (同期経路と同じ)。
-                ///       既に同期経路の実体が載っていればそちらが正で、こちらの転送物は返される。
+                /// @note 既に同期経路の実体が載っていればそちらが正で、こちらの転送物は返される。
                 texture.asset->gpuHandle = m_resources.PublishTexture(
                     texture.asset->sourcePath, uploaded, texture.asset->settings.flipGreen);
                 adopted = texture.asset->gpuHandle == uploaded;
@@ -222,7 +270,7 @@ public:
     {
         auto& texture = static_cast<TextureCandidate&>(candidate);
         /// @note 転送中でも Release してよい。GPU 実体の返却はバックエンドのフェンス管理が遅らせる。
-        ///       デバイスが作り直された後のハンドルは既に無効なので触らない。
+        /// @note デバイスが作り直された後のハンドルは既に無効なので触らない。
         if (texture.ownsGpuHandle && deviceStillValid && texture.asset)
             m_resources.Release(texture.asset->gpuHandle);
         texture.ownsGpuHandle = false;
@@ -241,7 +289,7 @@ protected:
         const TextureAsset* asset = TypedGet(handle);
         if (!asset) return true;
         /// @note 同じ画像を別の書き方 (絶対パスと Assets/ 起点) で引いた TextureAsset は GPU 実体を共有する。
-        ///       片方が生きている間は実体を外さない。
+        /// @note 片方が生きている間は実体を外さない。
         for (const auto& slot : AssetStore<TextureAsset>::Get().slots) {
             if (slot.occupied && slot.asset && slot.asset.get() != asset
                 && slot.asset->gpuHandle == asset->gpuHandle)
@@ -264,7 +312,7 @@ private:
     }
 
     renderer::ResourceManager& m_resources;
-    /// この経路がパスキャッシュへ載せた実体の品質段。載っていなければ同期経路の最高品質。
+    /// @note この経路がパスキャッシュへ載せた実体の品質段。載っていなければ同期経路の最高品質。
     std::unordered_map<std::string, AssetQuality> m_residentQuality;
 };
 

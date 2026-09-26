@@ -2,6 +2,7 @@
 /// @brief   TrailComponent のリングバッファ更新、Catmull-Rom 補間、リボン頂点生成、DrawCall 発行 (IRenderPass 実装)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include <Engine/Scene/Systems/RenderTrailExtractor.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 
@@ -96,6 +97,7 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
         trail.trailCB = resources.CreateConstantBuffer(sizeof(TrailCB));
 
     /// @note materialPath が設定されている場合: .mat の albedo テクスチャを優先する。
+    trail.texture = resources.GetWhiteTexture();
     if (!trail.materialPath.empty()) {
         const bool matChanged = (trail.loadedMaterialPath != trail.materialPath);
         if (matChanged) {
@@ -106,16 +108,16 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
         if (const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
             const auto it = mat->textures.find("albedo");
             const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
-            if (!trail.texture.IsValid() || trail.loadedTexturePath != resolvedTex) {
+            {
                 if (resolvedTex.empty()) {
                     trail.texture = resources.GetWhiteTexture();
                 } else {
-                    trail.texture = resources.LoadTexture(resolvedTex);
+                    trail.texture = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, resolvedTex);
                 }
                 trail.loadedTexturePath = resolvedTex;
             }
         }
-    } else if (!trail.texture.IsValid()) {
+    } else {
         /// @note 共有の 1 枚を借りる。実体ごとに作ると、その実体が畳まれたぶんだけ GPU に残る。
         trail.texture = resources.GetWhiteTexture();
         trail.loadedTexturePath.clear();

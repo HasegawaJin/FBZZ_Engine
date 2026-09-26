@@ -15,6 +15,7 @@
 #include <cstring>
 #include <fstream>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <mfapi.h>
 #include <mfidl.h>
@@ -29,14 +30,14 @@ namespace fbzz::audio
 {
 namespace {
 
-/// 生成クリップの合計サイズ上限。超えても警告だけで生成は続ける。
-/// 止めると「音が急に鳴らなくなる」という原因の追いにくい形で現れる。
+/// @note 生成クリップの合計サイズ上限。超えても警告だけで生成は続ける。
+/// @note 止めると「音が急に鳴らなくなる」という原因の追いにくい形で現れる。
 constexpr size_t kGeneratedBudgetBytes = 32u * 1024u * 1024u;
 
-/// StopVoice の立ち下がり。「プツッ」を消せる最小限で、遅れは耳に分からない。
+/// @note StopVoice の立ち下がり。「プツッ」を消せる最小限で、遅れは耳に分からない。
 constexpr float kStopFadeSeconds = 0.02f;
 
-/// BGM はスティールしない。ループ音なので元から除外されるが、意図を数値でも残す。
+/// @note BGM はスティールしない。ループ音なので元から除外されるが、意図を数値でも残す。
 constexpr int kBgmPriority = 100;
 
 /// @name RIFF/WAV ヘッダ構造体 (リトルエンディアン前提)
@@ -64,8 +65,8 @@ std::string LowerExtension(const std::string& path)
     return ext;
 }
 
-/// 論理パス ("Assets/...") とリネーム後の実体を AssetManager の規則で解決する。
-/// 生のまま ifstream へ渡すと、カレントディレクトリ次第で読めない。
+/// @note 論理パス ("Assets/...") とリネーム後の実体を AssetManager の規則で解決する。
+/// @note 生のまま ifstream へ渡すと、カレントディレクトリ次第で読めない。
 std::string ResolveClipPath(const std::string& path)
 {
     const std::string resolved = asset::AssetManager::ResolveAssetPath(path);
@@ -83,7 +84,7 @@ bool EqualsIgnoreCase(std::string_view a, std::string_view b)
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 AudioManager::AudioManager(IAudioDevice& device)
     : m_device(device)
@@ -166,7 +167,7 @@ bool AudioManager::MakeRoomForVoice(int priority)
     }
 
     /// @note 奪える相手が居ない、または相手の方が大事なら、新しい音の方を捨てる。
-    ///       上限に達するのは同種の音が湧いた場面で、そこで大事な音を消す方が痛い。
+    /// @note 上限に達するのは同種の音が湧いた場面で、そこで大事な音を消す方が痛い。
     if (victim == 0 || victimPriority > priority) return false;
 
     StopVoiceImmediate(victim);
@@ -363,6 +364,23 @@ uint32_t AudioManager::PlayClipVoice(ClipId clip, bool loop, BusIndex bus,
 uint32_t AudioManager::PlayVoice(const std::string& path, bool loop, BusIndex bus,
                                  const PlayParams& params)
 {
+    const auto resolved = ResolveClipPath(path);
+    if (params.streaming && LowerExtension(resolved) != ".synth") {
+        if (path.empty() || !MakeRoomForVoice(params.priority)) return 0;
+        const uint32_t voiceId = m_device.PlayStream(resolved, loop, bus);
+        if (voiceId == 0) return 0;
+        VoiceState state;
+        state.loop = loop;
+        state.priority = params.priority;
+        state.sequence = m_nextVoiceSequence++;
+        if (params.fadeInSeconds > 0.0f) {
+            state.fadeGain = state.fadeFrom = 0.0f;
+            state.duration = params.fadeInSeconds;
+        }
+        m_voices[voiceId] = state;
+        ApplyVoiceGain(voiceId, state);
+        return voiceId;
+    }
     const ClipId clip = AcquireClip(path);
     return clip != 0 ? PlayClipVoice(clip, loop, bus, params) : 0;
 }
@@ -481,8 +499,8 @@ void AudioManager::StopAllVoices()
     m_voices.clear();
 
     /// @note 生成クリップは参照数によらず全部捨てる。一括停止が起きる Play→Stop と Shutdown では
-    ///       スクリプト DLL ごと作り直され、ハンドルの持ち主が消えているため。
-    ///       (ScriptAudioProxy::SynthClip のコメントと対)
+    /// @note スクリプト DLL ごと作り直され、ハンドルの持ち主が消えているため。
+    /// @note (ScriptAudioProxy::SynthClip のコメントと対)
     for (auto it = m_clips.begin(); it != m_clips.end();) {
         if (it->second.persistent) { it->second.voiceCount = 0; ++it; continue; }
         if (it->second.specHash != 0) m_specToClip.erase(it->second.specHash);
@@ -517,6 +535,19 @@ void AudioManager::SetVoiceLowPass(uint32_t voiceId, float normalizedCutoff)
     if (voiceId != 0) m_device.SetLowPass(voiceId, normalizedCutoff);
 }
 
+void AudioManager::SetVoiceSend(uint32_t voiceId, std::string_view busName, float level)
+{
+    if (voiceId == 0) return;
+    BusIndex bus = kInvalidBus;
+    for (size_t i = 0; i < m_busLayout.size(); ++i) {
+        if (EqualsIgnoreCase(m_busLayout[i].name, busName)) {
+            bus = static_cast<BusIndex>(i);
+            break;
+        }
+    }
+    m_device.SetSend(voiceId, bus, std::isfinite(level) ? std::clamp(level, 0.0f, 1.0f) : 0.0f);
+}
+
 bool AudioManager::IsVoicePlaying(uint32_t voiceId)
 {
     if (voiceId == 0) return false;
@@ -539,6 +570,7 @@ void AudioManager::PlayBGM(const std::string& path, bool loop, float fadeSeconds
 
     PlayParams params;
     params.priority      = kBgmPriority;
+    params.streaming     = true;
     params.fadeInSeconds = fadeSeconds;
     m_bgmVoiceId = PlayVoice(path, loop, FindBus("BGM"), params);
 }
@@ -591,7 +623,7 @@ bool AudioManager::LoadWav(const std::string& path,
     if (!file) return false;
 
     RiffHeader riff{};
-    file.read(reinterpret_cast<char*>(&riff), sizeof(riff));
+    file.read(static_cast<char*>(static_cast<void*>(&riff)), sizeof(riff));
     if (std::strncmp(riff.id,   "RIFF", 4) != 0 ||
         std::strncmp(riff.type, "WAVE", 4) != 0)
         return false;
@@ -600,12 +632,12 @@ bool AudioManager::LoadWav(const std::string& path,
     bool hasData = false;
     while (file) {
         ChunkHeader chunk{};
-        file.read(reinterpret_cast<char*>(&chunk), sizeof(chunk));
+        file.read(static_cast<char*>(static_cast<void*>(&chunk)), sizeof(chunk));
         if (!file) break;
 
         if (std::strncmp(chunk.id, "fmt ", 4) == 0) {
             FmtChunk fmt{};
-            file.read(reinterpret_cast<char*>(&fmt), sizeof(fmt));
+            file.read(static_cast<char*>(static_cast<void*>(&fmt)), sizeof(fmt));
             if (chunk.size > sizeof(fmt))
                 file.seekg(chunk.size - sizeof(fmt), std::ios::cur);
             /// @note PCM のみ対応
@@ -616,7 +648,7 @@ bool AudioManager::LoadWav(const std::string& path,
             hasFmt = true;
         } else if (std::strncmp(chunk.id, "data", 4) == 0) {
             outPcm.resize(chunk.size);
-            file.read(reinterpret_cast<char*>(outPcm.data()), chunk.size);
+            file.read(static_cast<char*>(static_cast<void*>(outPcm.data())), chunk.size);
             hasData = true;
         } else {
             file.seekg(chunk.size, std::ios::cur);
@@ -681,4 +713,4 @@ bool AudioManager::LoadWithMediaFoundation(const std::string& path,
     return !outPcm.empty();
 }
 
-} // namespace fbzz::audio
+} /// @note namespace fbzz::audio

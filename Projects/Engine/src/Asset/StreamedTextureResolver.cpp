@@ -15,7 +15,7 @@ namespace fbzz::asset {
 
 namespace {
 
-/// 自動選択で落とす最低の段。経路の最低品質 (テクスチャは 4) と揃える。
+/// @note 自動選択で落とす最低の段。経路の最低品質 (テクスチャは 4) と揃える。
 constexpr AssetQuality kAutoQualityLowest = 4;
 
 } /// @note namespace
@@ -23,7 +23,7 @@ constexpr AssetQuality kAutoQualityLowest = 4;
 StreamedTextureResolver& StreamedTextureResolver::Engine()
 {
     /// @note 台帳を先に構築させる。静的変数は構築の逆順に壊れるので、利用権を持つこちらが先に壊れ、
-    ///       利用権の解放が壊れた台帳を触らない。
+    /// @note 利用権の解放が壊れた台帳を触らない。
     (void)AssetStreamer::Engine();
     static StreamedTextureResolver resolver;
     return resolver;
@@ -54,7 +54,7 @@ const TextureAsset* StreamedTextureResolver::Complete(Entry& entry)
     if (state == AssetLoadState::Failed || m_missPolicy == MissPolicy::Placeholder || entry.syncFailed)
         return nullptr;
     /// @note 既定の方針。これまでの LoadTexture と同じく引いたフレームに絵を出す。先読みが済んでいれば
-    ///       ここへは来ない (公開済みを返す)。
+    /// @note ここへは来ない (公開済みを返す)。
     if (!streamer.CompleteNow(entry.lease.Handle())) {
         entry.syncFailed = true;
         return nullptr;
@@ -70,7 +70,7 @@ AssetQuality StreamedTextureResolver::QualityForScreenSize(uint32_t textureWidth
     const float ratio = static_cast<float>(longest) / screenPixels;
     if (ratio <= 1.0f) return 0;
     /// @note 1 段の余裕: 拡大縮小や UV の繰り返しで画面上のテクセル密度は物体の大きさより高くなりがちで、
-    ///       ぴったりの段を選ぶとぼけが目に見える。
+    /// @note ぴったりの段を選ぶとぼけが目に見える。
     const int level = static_cast<int>(std::floor(std::log2(ratio))) - 1;
     return static_cast<AssetQuality>(std::clamp(level, 0, static_cast<int>(lowest)));
 }
@@ -98,6 +98,7 @@ const TextureAsset* StreamedTextureResolver::ResolveAsset(renderer::ResourceMana
 {
     if (reference.empty()) return nullptr;
     Entry* entry = Acquire(reference);
+    if (entry) entry->screenSizeKnown = false;
     return entry ? Complete(*entry) : nullptr;
 }
 

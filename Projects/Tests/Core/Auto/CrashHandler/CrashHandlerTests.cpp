@@ -176,4 +176,33 @@ TEST_F(CrashHandlerTest, FindUnreportedIsEmptyWithoutCrashDirectory)
     EXPECT_TRUE(core::CrashHandler::FindUnreported(temp.Path()).empty());
 }
 
+TEST_F(CrashHandlerTest, FindUnreportedSkipsEntriesThatHoldNoReport)
+{
+    PlaceReport("2026-09-19_10-00-00_200", "the only real one");
+    /// @note 書き出しの途中で落ちた残骸と、人が置いたメモ。どちらも 1 件として数えない。
+    std::filesystem::create_directories(CrashesDir() / "2026-09-19_11-00-00_300");
+    std::ofstream(CrashesDir() / "notes.txt") << "not a report";
+
+    const std::vector<core::CrashRecord> records = core::CrashHandler::FindUnreported(temp.Path());
+
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records.front().summary, "the only real one");
+}
+
+TEST_F(CrashHandlerTest, SummaryIsEmptyWhenTheReportCarriesNoReason)
+{
+    /// @note 書き出しの途中で切れたレポート。`what:` の後ろが空白だけでも CR を «何が起きたか» に混ぜない。
+    PlaceReport("2026-09-19_10-00-00_200", "");
+
+    const std::vector<core::CrashRecord> records = core::CrashHandler::FindUnreported(temp.Path());
+
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_TRUE(records.front().summary.empty()) << "summary=" << records.front().summary;
+}
+
+TEST_F(CrashHandlerTest, NotifyUnreportedCountsNothingWithoutRecords)
+{
+    EXPECT_EQ(core::CrashHandler::NotifyUnreported(temp.Path(), "CrashTest", false), 0u);
+}
+
 } // namespace fbzz::tests

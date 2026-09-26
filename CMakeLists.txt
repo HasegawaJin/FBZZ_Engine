@@ -170,9 +170,9 @@ if(FBZZ_BUILD_TESTS)
     add_subdirectory(Projects/Tests)
 endif()
 
-# @note 計装範囲は OpenCppCoverage の --sources と揃える。
-# @note FBZZCore は FBZZEngine.dll に入る OBJECT ライブラリなので、計装は FBZZCore・ランタイムのリンクは FBZZEngine とずれる。
+# @note 計装範囲は OpenCppCoverage の --sources と揃える (Projects/Core = FBZZCore、Projects/Engine/src/Core = FBZZEnginePlatform)。
+# @note FBZZEnginePlatform は FBZZEngine.dll に入る OBJECT ライブラリなので、計装はそちら・ランタイムのリンクは FBZZEngine とずれる。
 if(FBZZ_COVERAGE)
-    fbzz_instrument_for_coverage(FBZZMath FBZZPhysics FBZZFluid FBZZCore)
-    fbzz_link_coverage_runtime(FBZZMath FBZZPhysics FBZZFluid FBZZEngine)
+    fbzz_instrument_for_coverage(FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZEnginePlatform)
+    fbzz_link_coverage_runtime(FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZEngine)
 endif()

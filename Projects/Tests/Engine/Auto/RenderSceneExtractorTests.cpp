@@ -68,6 +68,24 @@ TEST_F(RenderSceneExtractorTest, KeepsOffscreenAndOtherLayerCandidatesButRejects
     EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).objects.empty());
 }
 
+TEST_F(RenderSceneExtractorTest, SkinnedTextureQualityUsesAnimatedBoundsInsteadOfBindPose)
+{
+    auto& go = SkinnedObject();
+    scene::AnimatorComponent animator;
+    animator.skinnedBoundsCenter = {0.0f, 0.0f, 100.0f};
+    animator.skinnedBoundsRadius = 7.0f;
+    go.AddComponent<scene::AnimatorComponent>(animator);
+    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 1);
+    ASSERT_EQ(snapshot.objects.size(), 1u);
+    const auto& object = snapshot.objects[0];
+    const auto& item = snapshot.items[0];
+    EXPECT_FLOAT_EQ(object.boundsRadius, 10.0f);
+    EXPECT_FLOAT_EQ(scene::EstimateRenderTexturePixels(object, item, {}, 1.0f, 1000, false), 100.0f);
+    EXPECT_FLOAT_EQ(scene::EstimateRenderTexturePixels(object, item, {0,0,90}, 1.0f, 1000, false), 1000.0f);
+    EXPECT_FLOAT_EQ(scene::EstimateRenderTexturePixels(object, item, {}, 0.1f, 1000, true), 1000.0f);
+    EXPECT_FLOAT_EQ(scene::EstimateRenderTexturePixels(object, item, {}, 0.0f, 1000, false), 0.0f);
+}
+
 TEST_F(RenderSceneExtractorTest, CopiesWorldBoundsAndHandlesWithoutOwningTheSourceMesh)
 {
     auto& go = StaticObject();

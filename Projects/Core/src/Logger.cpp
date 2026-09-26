@@ -90,7 +90,10 @@ void Logger::Log(LogLevel level, const char* fmt, va_list args)
     line += body;
     line += '\n';
 
-    OutputDebugStringA(line.c_str());
+    /// @note デバッガ不在時は DBWIN の外部受信側に待たされず、標準出力だけへ送る。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-isdebuggerpresent IsDebuggerPresent
+    if (IsDebuggerPresent())
+        OutputDebugStringA(line.c_str());
     printf("%s", line.c_str());
 
     LogEntry entry{ level, body };
