@@ -407,6 +407,7 @@ void AssetBrowserPanel::RefreshDirectory()
     evictStaleEntries(m_meshPreviews);
     evictStaleEntries(m_prefabPreviews);
     evictStaleEntries(m_vfxPreviews);
+    evictStaleEntries(m_curveAssetPreviews);
     evictStaleEntries(m_terrainPreviews);
     evictStaleEntries(m_spritePreviews);
 

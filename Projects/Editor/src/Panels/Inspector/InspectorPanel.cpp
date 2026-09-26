@@ -124,6 +124,7 @@ void InspectorPanel::OnShutdown()
     m_lockedEntityId = {};
     m_inspectedAssetPath.clear();
     m_inspectedMat = {};
+    m_fontPreview.Release();
 }
 
 void InspectorPanel::OnRenderContent(EditorContext& ctx)

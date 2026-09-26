@@ -8,7 +8,9 @@
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationMaskPreview.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>
+#include <Editor/Panels/CurveAssetPreview.hpp>
 #include <Editor/Panels/MaterialPreview.hpp>
+#include <Editor/Panels/MaterialPreviewCore.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Import/ImportSettingsSchema.hpp>
@@ -37,6 +39,7 @@
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
+#include <Engine/Asset/ParticleCurveAsset.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/VectorFieldFile.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
@@ -452,6 +455,26 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         /// @note .vfx の再生面は Prefab 編集モード (Docs/design/vfx-prefab.md §8.2)。
         /// @note ここが受け持つのは «開く前に中身の見当を付ける» ところまで。
         DrawVfxAssetInspector(ctx, absPath);
+        ImGui::SeparatorText("Preview");
+        const VfxAssetSummary& summary = GetVfxAssetSummary(absPath);
+        std::string previewTexturePath;
+        for (const VfxSummaryEntry& entry : summary.entries) {
+            if (entry.materialPath.empty()) continue;
+            const auto materialHandle = asset::AssetManager::Load<asset::MaterialAsset>(
+                NormalizeAssetPath(entry.materialPath));
+            const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(materialHandle);
+            if (!material) continue;
+            const std::string texturePath = matpreview::RepresentativeTexturePath(*material);
+            if (texturePath.empty()) continue;
+            previewTexturePath = asset::AssetManager::ResolveAssetPath(texturePath);
+            break;
+        }
+        if (previewTexturePath.empty()) {
+            ImGui::TextDisabled("No particle texture to preview.");
+        } else {
+            m_texturePreview.Draw(ctx, previewTexturePath, 240.0f);
+            ImGui::TextDisabled("Open in Prefab Mode to play the effect.");
+        }
     } else if (ext == ".animcontroller") {
         if (DrawAnimationGraphAssetInspector(ctx)) {
             /// @note Unity と同じく、State / Transition 詳細の直下でクリップと遷移ブレンドを確認できる。
@@ -2772,6 +2795,45 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
         ImGui::SameLine();
         if (ImGui::SmallButton("Reload")) s_synthPath.clear();
+    } else if (ext == ".ttf" || ext == ".ttc" || ext == ".otf") {
+        ImGui::TextDisabled("Type: Font (%s)", ext.c_str());
+        ImGui::SeparatorText("Preview");
+        m_fontPreview.Draw(ctx, absPath, 240.0f);
+    } else if (ext == ".curve" || ext == ".gradient") {
+        struct CachedPreview {
+            std::string path;
+            std::filesystem::file_time_type lastWriteTime{};
+            asset::ParticleCurveAsset asset;
+            bool valid = false;
+        };
+        static CachedPreview preview;
+        std::error_code ec;
+        const auto writeTime = std::filesystem::last_write_time(
+            util::FileSystem::PathFromUtf8(absPath), ec);
+        const auto resolvedTime = ec ? std::filesystem::file_time_type{} : writeTime;
+        if (preview.path != absPath || preview.lastWriteTime != resolvedTime) {
+            preview = {};
+            preview.path = absPath;
+            preview.lastWriteTime = resolvedTime;
+            preview.valid = asset::LoadParticleCurveAssetFile(absPath, preview.asset);
+        }
+        const bool hasPayload = preview.valid &&
+            (ext == ".curve" ? preview.asset.hasCurve : preview.asset.hasGradient);
+        if (!hasPayload) {
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load %s preview", ext.c_str());
+            return;
+        }
+        ImGui::TextDisabled("Type: %s", ext == ".curve" ? "Curve" : "Gradient");
+        ImGui::SeparatorText("Preview");
+        const ImVec2 size{ std::max(1.0f, ImGui::GetContentRegionAvail().x),
+                           ext == ".curve" ? 180.0f : 80.0f };
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(size);
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        if (ext == ".curve")
+            curvepreview::DrawCurve(draw, preview.asset.curve, origin, size);
+        else
+            curvepreview::DrawGradient(draw, preview.asset.gradient, origin, size);
     } else if (ext == ".physmat") {
         /// @name PhysicsMaterial (共有物理マテリアル)
         /// @note AssetManager 上の実体を直接編集する。ColliderComponent::ResolvePhysicsMaterial() が

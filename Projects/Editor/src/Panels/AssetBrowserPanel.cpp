@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 #include "AssetBrowser/AssetBrowserCommon.hpp"
 #include <Editor/Util/AssetSearch.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 
 namespace fbzz::editor {
 
@@ -182,6 +183,7 @@ void AssetBrowserPanel::RefreshSearchResults()
 
 void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 {
+    FBZZ_PROFILE_SCOPE("AssetBrowser::Content");
     /// @note フォーカスの申告は IPanel::OnRender が GetHotkeyScope() を見て行う。
     ///       Asset Browser は複数開けるが、フォーカスを持てるのはそのうち 1 枚だけなので、
     ///       «どれか 1 枚でも» を自前で OR する必要はない。
@@ -190,9 +192,15 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     DrawImportSettingsModal(ctx);
 
     /// @note テクスチャ遅延ロードキューを処理 (3件/フレームに分散)
-    DrainTexLoadQueue(ctx);
+    {
+        FBZZ_PROFILE_SCOPE("AssetBrowser::TextureQueue");
+        DrainTexLoadQueue(ctx);
+    }
 
-    UpdateMounts(ctx);
+    {
+        FBZZ_PROFILE_SCOPE("AssetBrowser::UpdateMounts");
+        UpdateMounts(ctx);
+    }
 
     /// @note 一発フラグを世代番号へ移し替えてから、自分がまだ適用していない世代なら作り直す。
     ///       こうすると何枚開いていても、また閉じていた枚が開き直されたときも、
@@ -326,7 +334,10 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         ImGui::EndDragDropTarget();
     }
     if (rootOpen) {
-        DrawFolderTree(m_rootPath, ctx);
+        {
+            FBZZ_PROFILE_SCOPE("AssetBrowser::FolderTree");
+            DrawFolderTree(m_rootPath, ctx);
+        }
         ImGui::TreePop();
     }
 
@@ -367,7 +378,10 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::EndDragDropTarget();
             }
             if (mOpen) {
-                DrawFolderTree(mount.path, ctx);
+                {
+                    FBZZ_PROFILE_SCOPE("AssetBrowser::FolderTree");
+                    DrawFolderTree(mount.path, ctx);
+                }
                 ImGui::TreePop();
             }
             ImGui::PopID();
@@ -430,6 +444,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     ///       幅を実測して検索欄を動的に伸縮させ、どの DPI/フォントでも揃える。
     static constexpr const char* kSortLabels[] = { "Name ^", "Name v", "Type", "Modified" };
     {
+        FBZZ_PROFILE_SCOPE("AssetBrowser::Toolbar");
         const ImGuiStyle& st = ImGui::GetStyle();
         const float sp = st.ItemSpacing.x;
         const auto  btnW = [&](const char* s) {
@@ -553,7 +568,10 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     ImGui::Separator();
 
     /// @note 横断検索が有効なら結果を組み直す (検索語 / フィルタが変わったときのみ実走)。
-    RefreshSearchResults();
+    {
+        FBZZ_PROFILE_SCOPE("AssetBrowser::SearchRefresh");
+        RefreshSearchResults();
+    }
 
     const std::string filter(m_searchBuf.data());
     const bool globalSearch = IsGlobalSearchActive();
@@ -574,15 +592,18 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         const float rowH     = m_iconSize + ImGui::GetTextLineHeightWithSpacing() * 1.6f;
 
         std::vector<size_t> visIndices;
-        for (size_t i = 0; i < entries.size(); ++i) {
-            const auto& e = entries[i];
-            /// @note 横断検索の結果は AssetSearch 側で名前・タイプとも絞り済み。
-            ///       ここで再度フィルタすると、部分列一致でヒットした項目まで落ちてしまう。
-            if (!globalSearch) {
-                if (!filter.empty() && !util::StringUtils::ContainsCI(e.name, filter)) continue;
-                if (!PassesTypeFilter(e)) continue;
+        {
+            FBZZ_PROFILE_SCOPE("AssetBrowser::FilterGrid");
+            for (size_t i = 0; i < entries.size(); ++i) {
+                const auto& e = entries[i];
+                /// @note 横断検索の結果は AssetSearch 側で名前・タイプとも絞り済み。
+                /// @note ここで再度フィルタすると、部分列一致でヒットした項目まで落ちてしまう。
+                if (!globalSearch) {
+                    if (!filter.empty() && !util::StringUtils::ContainsCI(e.name, filter)) continue;
+                    if (!PassesTypeFilter(e)) continue;
+                }
+                visIndices.push_back(i);
             }
-            visIndices.push_back(i);
         }
 
         const int totalRows = cols > 0
@@ -620,6 +641,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             return entries[entryIndex].isSubAsset || isBandParent(entryIndex);
         };
 
+        FBZZ_PROFILE_SCOPE("AssetBrowser::DrawGrid");
         ImGuiListClipper clipper;
         clipper.Begin(totalRows, rowH);
         while (clipper.Step()) {
@@ -823,6 +845,7 @@ bool AssetBrowserPanel::MatchesTypeFilter(const Entry& e, TypeFilter type)
 
 void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filter)
 {
+    FBZZ_PROFILE_SCOPE("AssetBrowser::ListView");
     const bool globalSearch = IsGlobalSearchActive();
     const std::vector<Entry>& entries = VisibleEntries();
 

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/Panels/FontPreview.hpp>
 #include <Editor/Panels/MaterialPreview.hpp>
 #include <Editor/Panels/TexturePreview.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
@@ -46,6 +47,8 @@ private:
     MaterialPreviewView m_materialPreview;
     /// @brief 画像の Inspector 下部プレビュー。
     TexturePreviewView  m_texturePreview;
+    /// @brief フォントの Inspector 下部プレビュー。
+    FontPreviewView     m_fontPreview;
 
     void DrawAssetInspector(EditorContext& ctx, const std::string& assetPath);
 };
