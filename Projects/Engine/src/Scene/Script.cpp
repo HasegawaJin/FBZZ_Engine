@@ -14,6 +14,7 @@
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/Uuid.hpp>
 #include <algorithm>
 #include <cassert>
 #include <utility>
@@ -22,6 +23,10 @@
 #endif
 
 namespace fbzz::scene {
+
+ScriptInspectionIdentity::ScriptInspectionIdentity() : value(util::GenerateUUID()) {}
+ScriptInspectionIdentity::ScriptInspectionIdentity(const ScriptInspectionIdentity&)
+    : ScriptInspectionIdentity() {}
 
 physics::World*    Script::s_physicsWorld  = nullptr;
 bool               Script::s_inPlayMode    = false;
@@ -65,7 +70,7 @@ void HandleRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
                    script.GetTypeName(), callbackName ? callbackName : "callback");
 }
 
-} // namespace
+} /// namespace
 
 bool Script::ExecuteCallback(void (Script::*callback)(), const char* callbackName)
 {
@@ -521,4 +526,4 @@ void Script::ClearRuntimePostProcessSettings()
         m_scene->ClearRuntimePostProcessSettings();
 }
 
-} // namespace fbzz::scene
+} /// namespace fbzz::scene

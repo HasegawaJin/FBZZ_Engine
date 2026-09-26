@@ -79,7 +79,7 @@ struct ScriptSerializedReference {
     void Clear();
 };
 
-} // namespace fbzz::scene
+} /// namespace fbzz::scene
 
 namespace fbzz::physics {
 class World;
@@ -369,6 +369,14 @@ struct IReflector {
         (void)to;
         return false;
     }
+    /// @brief 観測値の型を通知する。true の利用者だけが値の評価を要求する。
+    /// @note 保存・復元・Undo は既定の false を使い、getter を一切呼ばない。
+    virtual bool BeginObservation(const char* name, const char* type)
+    {
+        (void)name;
+        (void)type;
+        return false;
+    }
     /// @}
 
 private:
@@ -582,7 +590,7 @@ struct ComponentCompleteness {
     static constexpr std::size_t value = (sizeof(Ts) + ... + 0);
 };
 
-} // namespace detail
+} /// namespace detail
 
 /// @brief GameObject に要る/望ましいコンポーネントを宣言する。無いと成立しないものは `FBZZ_REQUIRE_COMPONENT`、無くても縮退動作するものは `FBZZ_OPTIONAL_COMPONENT`。
 /// @note `GetComponent<T>()` が null なら黙って早期 return するため、付け忘れはエラーにならず動かない理由がどこにも出ない。宣言しておけば Inspector (赤帯 + Fix ボタン)・Play 開始時 (Console へ一括検証)・ScriptSystem (実行時に一度だけ警告、Standalone でも出る) の 3 箇所が同じ情報で名指しする。
@@ -623,6 +631,27 @@ struct ComponentCompleteness {
     static constexpr int _fbzz_base = __COUNTER__;                              \
     void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<0>,                    \
                        ::fbzz::scene::IReflector&) {}
+
+namespace detail {
+/// @brief 観測型を JSON / Inspector 共通の名前へ変換する。未対応型は宣言時に拒否する。
+template<typename T>
+constexpr const char* ObservationTypeName()
+{
+    static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int> ||
+        std::is_same_v<T, float> || std::is_same_v<T, std::string> ||
+        std::is_same_v<T, math::Vector2> || std::is_same_v<T, math::Vector3> ||
+        std::is_same_v<T, math::Vector4> || std::is_same_v<T, math::Quaternion>,
+        "FBZZ_OBSERVE supports bool, int, float, string, vectors and quaternion");
+    if constexpr (std::is_same_v<T, bool>) return "bool";
+    if constexpr (std::is_same_v<T, int>) return "int";
+    if constexpr (std::is_same_v<T, float>) return "float";
+    if constexpr (std::is_same_v<T, std::string>) return "string";
+    if constexpr (std::is_same_v<T, math::Vector2>) return "vector2";
+    if constexpr (std::is_same_v<T, math::Vector3>) return "vector3";
+    if constexpr (std::is_same_v<T, math::Vector4>) return "vector4";
+    return "quaternion";
+}
+} /// namespace detail
 
 /// @brief 1 エントリ分の登録。直前タグ (1 つ前のフィールド/グループ) を先に処理してから自分を反映することで宣言順を保つ。UniqueTok はメンバー名や行番号で一意化する。
 /// @note 可変長引数なのは、リフレクション文に含まれるトップレベルのカンマ (FBZZ_FIELD_ENUM のラベル配列など `()` で保護されないもの) を `__VA_ARGS__` で吸収するため。
@@ -931,6 +960,21 @@ struct ComponentCompleteness {
         r_.EndField();                                                          \
     })
 
+/// @brief 保存しない読み取り専用値。Expression は const 文脈で評価し、複製メンバーを作らない。
+/// @note getter は副作用を持たず、OnAwake 前・無効状態でも安全に読めること。
+#define FBZZ_OBSERVE(Type, Name, Expression, Display)                           \
+    Type _fbzz_observe_##Name() const { return (Expression); }                 \
+    FBZZ_REFLECT_ENTRY_(Name, {                                                \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.SetFieldReadOnly(true);                                             \
+        if (r_.BeginObservation(FBZZ_DISP_(Display, Name),                     \
+                ::fbzz::scene::detail::ObservationTypeName<Type>())) {         \
+            Type observedValue = _fbzz_observe_##Name();                       \
+            r_.Field(FBZZ_DISP_(Display, Name), observedValue);                 \
+        }                                                                     \
+        r_.EndField();                                                        \
+    })
+
 /// @brief Inspector 表示のみ・Serializer 非保存の計算値ラベル。
 #define FBZZ_COMPUTED(Type, Name, Display)                                      \
     Type Name = {};                                                            \
@@ -1021,8 +1065,18 @@ struct ComponentCompleteness {
                 T::TYPE_NAME, []() { return std::make_unique<T>(); });          \
     }
 
+/// @brief オブジェクトの生存期間だけ有効な観測 ID。コピー先には新しい ID を発行する。
+struct ScriptInspectionIdentity {
+    ScriptInspectionIdentity();
+    ScriptInspectionIdentity(const ScriptInspectionIdentity&);
+    ScriptInspectionIdentity& operator=(const ScriptInspectionIdentity&) { return *this; }
+    std::string value;
+};
+
 class Script {
 public:
+    [[nodiscard]] const std::string& InspectionId() const { return m_inspectionIdentity.value; }
+    [[nodiscard]] bool IsRuntimeFaulted() const { return m_runtimeFaulted; }
     virtual ~Script();
 
     template<typename T>
@@ -1214,6 +1268,7 @@ protected:
     bool        m_runtimeFaulted = false;
 
 private:
+    ScriptInspectionIdentity m_inspectionIdentity;
     friend struct ScriptTransformProxy;
     friend struct ScriptInputProxy;
     friend struct ScriptCursorProxy;
@@ -1319,4 +1374,4 @@ inline T* Ref<T>::Get() const
         return owner->scene.template GetComponent<T>(go);
 }
 
-} // namespace fbzz::scene
+} /// namespace fbzz::scene

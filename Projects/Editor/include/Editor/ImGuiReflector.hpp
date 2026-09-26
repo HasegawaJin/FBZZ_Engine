@@ -31,6 +31,7 @@
 namespace fbzz::editor {
 
 struct ImGuiReflector : scene::IReflector {
+    bool BeginObservation(const char*, const char*) override { return FieldVisible(); }
     /// GO 名解決コールバック。InspectorCore から activeScene を渡して設定する。
     std::function<std::string(scene::EntityID)> m_goNameResolver;
 
@@ -1383,4 +1384,4 @@ private:
     }
 };
 
-} // namespace fbzz::editor
+} /// namespace fbzz::editor
