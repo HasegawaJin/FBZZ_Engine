@@ -24,6 +24,8 @@ namespace fbzz::renderer { class ResourceManager; class IImGuiRenderer; }
 
 namespace fbzz::editor::widgets {
 
+enum class AssetPickerHost { INSPECTOR, FLUID_EDITOR };
+
 /// 画像パス選択欄で共通利用する、ImageImporter 対応拡張子の検索フィルター。
 /// @note 呼び出し側ごとの列挙漏れで、読み込める画像がピッカーに表示されない状態を防ぐ。
 inline constexpr const char* kTextureAssetFilter =
@@ -421,7 +423,8 @@ void RequestAssetReveal(std::string assetPath, bool selectInInspector);
 /// @return true if path was changed (InputText 編集 / drag-drop / picker 選択のいずれか)
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,
-                    const std::string& projectRoot);
+                    const std::string& projectRoot,
+                    AssetPickerHost host = AssetPickerHost::INSPECTOR);
 
 /// AssetPathField + ロードコールバック付き版。パス変更時に必ず再ロードが要るパターン
 /// (MeshRenderer / SkinnedMesh 等) のボイラープレートを排除する。
@@ -460,11 +463,12 @@ bool TextureSlotField(const char* label, std::string& path,
                       const std::string& projectRoot,
                       float thumbSize = 0.0f);
 
-/// InspectorPanel の OnRenderContent 先頭で毎フレーム 1 回だけ呼ぶ。
+/// @brief Inspector と Fluid Editor の各パネルから毎フレーム呼ぶ。開いた欄の host だけが一覧を描く。
 /// resources / imgui を渡すとピッカーに Unity 風のサムネイル可視化が有効になる
 /// (画像はテクスチャプレビュー、.mat はアルベドのテクスチャ/色スウォッチ)。null でもリスト表示は動く。
 void DrawAssetPickerModal(renderer::ResourceManager* resources = nullptr,
-                          renderer::IImGuiRenderer* imgui = nullptr);
+                           renderer::IImGuiRenderer* imgui = nullptr,
+                          AssetPickerHost host = AssetPickerHost::INSPECTOR);
 
 /// アセット検索ピッカーを任意の文字列ターゲットに対して開く (AssetPathField の "..." と同じ実体)。
 /// @note 独自描画のアセットスロット (参照ボタン形式) からも「パス検索」を使えるようにする公開口。
@@ -603,4 +607,4 @@ inline bool DragQuatEuler3(const char* label, math::Quaternion& q, float speed =
     return true;
 }
 
-} // namespace fbzz::editor::widgets
+}

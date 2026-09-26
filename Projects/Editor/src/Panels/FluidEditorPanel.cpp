@@ -145,7 +145,7 @@ std::string DefaultNewFolder(const EditorContext& ctx)
     return assetsRoot + "/VFX/Fluid";
 }
 
-} // namespace
+}
 
 FluidEditorPanel::FluidEditorPanel()
     : m_state(std::make_unique<fluideditor::State>())
@@ -1324,7 +1324,8 @@ void FluidEditorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::EndChild();
     }
 
+    widgets::DrawAssetPickerModal(ctx.resources, ctx.imguiRenderer, widgets::AssetPickerHost::FLUID_EDITOR);
     ImGui::PopID();
 }
 
-} // namespace fbzz::editor
+}
