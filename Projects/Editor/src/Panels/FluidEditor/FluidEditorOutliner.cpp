@@ -32,7 +32,7 @@ struct RowAction {
 
 /// @brief 上限に達しているリストへ足そうとしたとき、理由を出して弾く。
 /// @note メニューの淡色表示だけで済ませないのは、Ctrl+D / Ctrl+V には淡色表示に当たるものが無く、
-///       押しても何も起きないと «キーが効かない» と読まれるため。
+/// @note 押しても何も起きないと «キーが効かない» と読まれるため。
 bool OutlinerEnsureListRoom(State& state, FluidSelectionKind list)
 {
     const int count = fluidui::PartCount(state.document.Recipe(), list);
@@ -280,8 +280,8 @@ void ApplyRowAction(EditorContext& ctx, State& state, FluidSelectionKind list, c
             FixSelectionAfterMove(document.selection, list, action.index, action.to);
             document.RemapVisibilityAfterMove(list, action.index, action.to);
             /// @note 並べ替えは «解き直し» になる。ノイズの力は «有効な部品を数えた番号» で乱数を引くので、
-            ///       順番が変わると同じ設定でも模様が変わる (仕様)。プレビューは Revision の変化で、
-            ///       hide / solo 側は visibilityGeneration で捨てさせる。
+            /// @note 順番が変わると同じ設定でも模様が変わる (仕様)。プレビューは Revision の変化で、
+            /// @note hide / solo 側は visibilityGeneration で捨てさせる。
             ++state.visibilityGeneration;
         }
         return;
@@ -370,8 +370,8 @@ void OutlinerHandleClipboardKeys(EditorContext& ctx, State& state)
     if (!ctx.PanelScopeFocused(HotkeyScope::FluidEditor)) return;
 
     /// @note 全体のホットキー (edit.copy / edit.paste / edit.duplicate) を先に取り上げる。scope は
-    ///       Scene View | Hierarchy だが Scene View は «ホバーでも効く» 例外があり、3D ビューへ
-    ///       マウスが乗っただけで Ctrl+C がシーンへ漏れる。効くのは次フレームから (ProcessInput は描画より前)。
+    /// @note Scene View | Hierarchy だが Scene View は «ホバーでも効く» 例外があり、3D ビューへ
+    /// @note マウスが乗っただけで Ctrl+C がシーンへ漏れる。効くのは次フレームから (ProcessInput は描画より前)。
     if (ctx.hotkeyManager != nullptr) {
         ctx.hotkeyManager->SuppressOperatorThisFrame("edit.copy");
         ctx.hotkeyManager->SuppressOperatorThisFrame("edit.paste");
@@ -415,7 +415,7 @@ void DrawOutliner(EditorContext& ctx, State& state)
     DrawSectionEntry(state, "Simulation##fe_section", FluidSelectionKind::Simulation,
                      "種類 (気体 / 液体)・seed・格子とソルバー");
     DrawSectionEntry(state, "Look##fe_section", FluidSelectionKind::Look, "Shading・色・Ramp・細部・炎・液面");
-    DrawSectionEntry(state, "Output##fe_section", FluidSelectionKind::Output, "コマ・長さ・warmup・ループ・MV・速度場 PNG");
+    DrawSectionEntry(state, "Output##fe_section", FluidSelectionKind::Output, "コマ・Bake 開始/終了・ループ・MV・速度場 PNG");
     DrawSectionEntry(state, "Bake##fe_section", FluidSelectionKind::Bake, "焼き方 (2D / 3D・解像度)");
 
     ImGui::Spacing();

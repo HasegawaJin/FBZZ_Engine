@@ -105,7 +105,7 @@ std::optional<JsonValue> ReadComponentFields(GameObject& go, const std::string& 
         if (std::string_view(Reg::serializedName) != comp) return;
         if constexpr (requires(T& c, scene::IReflector& r) { c.Reflect(r); }) {
             if (T* component = go.GetComponent<T>()) {
-                JsonReadReflector reader;
+                JsonReadReflector reader(true);
                 component->Reflect(reader);
                 result = reader.Result();
             }
@@ -140,7 +140,7 @@ bool WriteComponentField(GameObject& go, const std::string& comp, const std::str
 
 /// @brief 全反射コンポーネントを `[{type, fields}]` 配列に写す。
 /// @note node.components と delete スナップショットで共用する。
-JsonValue SnapshotComponents(GameObject& go)
+JsonValue SnapshotComponents(GameObject& go, bool observations)
 {
     JsonValue array = JsonValue::MakeArray();
     scene::ForEachRegisteredComponent([&]<typename T, typename Reg>() {
@@ -152,7 +152,7 @@ JsonValue SnapshotComponents(GameObject& go)
                 JsonValue entry = JsonValue::MakeObject();
                 entry.Set("type", JsonValue(Reg::serializedName));
                 if constexpr (requires(T& c, scene::IReflector& r) { c.Reflect(r); }) {
-                    JsonReadReflector reader;
+                    JsonReadReflector reader(observations);
                     component->Reflect(reader);
                     entry.Set("fields", reader.Result());
                 } else {
@@ -284,4 +284,4 @@ int VirtualKeyFromName(std::string name)
     return iterator != keys.end() ? iterator->second : -1;
 }
 
-} // namespace fbzz::editor::ai::bus
+} /// namespace fbzz::editor::ai::bus

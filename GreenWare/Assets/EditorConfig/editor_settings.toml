@@ -46,7 +46,7 @@ version = '1.0.0'
 [debug]
 navmesh_draw_distance = 120.0
 navmesh_draw_mode = 0
-show_colliders = true
+show_colliders = false
 show_decal_bounds = false
 show_nav_sensors = false
 show_navmesh = false

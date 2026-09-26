@@ -10,6 +10,7 @@
 #include <Engine/Asset/FlipbookMips.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <initializer_list>
@@ -44,7 +45,8 @@ enum class FlipbookDdsCompression : std::uint8_t { BC7, BC5, None };
 [[nodiscard]] bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std::uint32_t height,
                                    std::span<const std::uint8_t> pixels, std::uint32_t tileWidth,
                                    std::uint32_t tileHeight, FlipbookMipContent content,
-                                   FlipbookDdsCompression compression, std::string& outError);
+                                   FlipbookDdsCompression compression, std::string& outError,
+                                   const std::atomic<bool>* cancel = nullptr);
 
 /// ミップ付きフリップブックの .meta。ラップは Clamp (Atlas の端のコマが反対側から滲まないように)。
 [[nodiscard]] bool SaveFlipbookMeta(const std::filesystem::path& sourcePath, TextureType type,

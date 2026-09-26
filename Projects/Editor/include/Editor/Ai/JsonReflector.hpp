@@ -5,17 +5,18 @@
 ///
 /// @note Inspector の ImGuiReflector・SceneSerializer の TOML リフレクタと同じ IReflector ビジターを AI 境界にも
 ///       通し、component.set / node.components を既存の FBZZ_FIELD 宣言に自動追従させる。
-/// @note 対応範囲は数値・真偽・文字列・ベクトル・クォータニオン。EntityID/参照型はシーン解決が要るため読みは省略・
-///       書きは無視し、構造的な変更は node.reparent 等の専用 Command 側に委ねる。
+/// @note Script 観測は getter を明示的に有効化し、参照解決を呼び出し元から注入する。保存用収集では getter を呼ばない。
 #pragma once
 #include <Editor/Ai/Json.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Input/KeyCode.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -26,17 +27,45 @@ namespace fbzz::editor::ai {
 /// コンポーネントの Reflect() を1回通し、フィールドを JSON オブジェクトへ吸い出す (読み取り専用)。
 class JsonReadReflector final : public scene::IReflector {
 public:
+    using EntityResolver = std::function<JsonValue(scene::EntityID, const char*)>;
+    /// @note 既定は保存用。実行状態の観測を要求する呼び出し元だけ true を渡す。
+    explicit JsonReadReflector(bool observations = false, EntityResolver resolver = {})
+        : m_observations(observations), m_entityResolver(std::move(resolver)) {}
+    bool BeginObservation(const char*, const char*) override { return m_observations; }
+    [[nodiscard]] const std::string& Error() const { return m_error; }
+    void Field(const char* name, scene::EntityID& value) override
+    {
+        if (m_entityResolver) Store(PersistentKey(name), ResolveEntity(value));
+    }
+    void RefField(const char* name, scene::EntityRef& value, const char* typeName) override
+    {
+        if (m_entityResolver) Store(PersistentKey(name), ResolveEntity(value.id, typeName));
+    }
+    void RefListField(const char* name, std::vector<scene::EntityRef>& values, const char* typeName) override
+    {
+        JsonValue array = JsonValue::MakeArray();
+        for (const auto& value : values) array.Push(ResolveEntity(value.id, typeName));
+        Store(PersistentKey(name), std::move(array));
+    }
+
+    void Field(const char* name, input::KeyCode& value) override
+    {
+        if (m_observations) Store(PersistentKey(name), JsonValue(static_cast<int>(value)));
+    }
+    void Field(const char* name, scene::ParticleCurve&) override { Unsupported(name, "particleCurve"); }
+    void Field(const char* name, scene::ParticleGradient&) override { Unsupported(name, "particleGradient"); }
+
     /// 収集済みの {フィールド名: 値} オブジェクトを返す。
     const JsonValue& Result() const { return m_result; }
 
-    void Field(const char* name, float& v) override        { Current().Set(PersistentKey(name), JsonValue(static_cast<double>(v))); }
-    void Field(const char* name, int& v) override          { Current().Set(PersistentKey(name), JsonValue(v)); }
-    void Field(const char* name, bool& v) override         { Current().Set(PersistentKey(name), JsonValue(v)); }
-    void Field(const char* name, math::Vector2& v) override { Current().Set(PersistentKey(name), MakeVec({ v.x, v.y })); }
-    void Field(const char* name, math::Vector3& v) override { Current().Set(PersistentKey(name), MakeVec({ v.x, v.y, v.z })); }
-    void Field(const char* name, math::Vector4& v) override { Current().Set(PersistentKey(name), MakeVec({ v.x, v.y, v.z, v.w })); }
-    void Field(const char* name, std::string& v) override  { Current().Set(PersistentKey(name), JsonValue(v)); }
-    void Field(const char* name, math::Quaternion& v) override { Current().Set(PersistentKey(name), MakeVec({ v.x, v.y, v.z, v.w })); }
+    void Field(const char* name, float& v) override        { Store(PersistentKey(name), JsonValue(static_cast<double>(v))); }
+    void Field(const char* name, int& v) override          { Store(PersistentKey(name), JsonValue(v)); }
+    void Field(const char* name, bool& v) override         { Store(PersistentKey(name), JsonValue(v)); }
+    void Field(const char* name, math::Vector2& v) override { Store(PersistentKey(name), MakeVec({ v.x, v.y })); }
+    void Field(const char* name, math::Vector3& v) override { Store(PersistentKey(name), MakeVec({ v.x, v.y, v.z })); }
+    void Field(const char* name, math::Vector4& v) override { Store(PersistentKey(name), MakeVec({ v.x, v.y, v.z, v.w })); }
+    void Field(const char* name, std::string& v) override  { Store(PersistentKey(name), JsonValue(v)); }
+    void Field(const char* name, math::Quaternion& v) override { Store(PersistentKey(name), MakeVec({ v.x, v.y, v.z, v.w })); }
     void AssetField(const char* name,
                     scene::ScriptAssetReference& value,
                     scene::ScriptAssetType) override
@@ -44,61 +73,58 @@ public:
         JsonValue asset = JsonValue::MakeObject();
         asset.Set("guid", JsonValue(value.guid));
         asset.Set("path", JsonValue(value.ResolvePath()));
-        Current().Set(PersistentKey(name), std::move(asset));
+        Store(PersistentKey(name), std::move(asset));
     }
     void ListField(const char* name, std::vector<float>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
         for (float value : values) array.Push(JsonValue(static_cast<double>(value)));
-        Current().Set(PersistentKey(name), std::move(array));
+        Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<int>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
         for (int value : values) array.Push(JsonValue(value));
-        Current().Set(PersistentKey(name), std::move(array));
+        Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<bool>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
         for (bool value : values) array.Push(JsonValue(value));
-        Current().Set(PersistentKey(name), std::move(array));
+        Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<std::string>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
         for (const auto& value : values) array.Push(JsonValue(value));
-        Current().Set(PersistentKey(name), std::move(array));
+        Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<math::Vector2>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
         for (const auto& value : values) array.Push(MakeVec({ value.x, value.y }));
-        Current().Set(PersistentKey(name), std::move(array));
+        Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<math::Vector3>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
         for (const auto& value : values) array.Push(MakeVec({ value.x, value.y, value.z }));
-        Current().Set(PersistentKey(name), std::move(array));
+        Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<math::Vector4>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
         for (const auto& value : values)
             array.Push(MakeVec({ value.x, value.y, value.z, value.w }));
-        Current().Set(PersistentKey(name), std::move(array));
+        Store(PersistentKey(name), std::move(array));
     }
     void ListField(const char* name, std::vector<scene::EntityRef>& values) override
     {
         JsonValue array = JsonValue::MakeArray();
         for (const auto& value : values) {
-            JsonValue entity = JsonValue::MakeArray();
-            entity.Push(JsonValue(static_cast<int64_t>(value.id.index)));
-            entity.Push(JsonValue(static_cast<int64_t>(value.id.generation)));
-            array.Push(std::move(entity));
+            array.Push(ResolveEntity(value.id));
         }
-        Current().Set(PersistentKey(name), std::move(array));
+        Store(PersistentKey(name), std::move(array));
     }
     void AssetListField(const char* name,
                         std::vector<scene::ScriptAssetReference>& values,
@@ -106,12 +132,12 @@ public:
     {
         JsonValue array = JsonValue::MakeArray();
         for (auto& value : values) {
-            JsonReadReflector child;
+            JsonReadReflector child(m_observations, m_entityResolver);
             child.AssetField("value", value, type);
             if (const JsonValue* asset = child.Result().Find("value"))
                 array.Push(*asset);
         }
-        Current().Set(PersistentKey(name), std::move(array));
+        Store(PersistentKey(name), std::move(array));
     }
     /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
 
@@ -128,7 +154,7 @@ public:
         if (m_pending.empty()) return;
         auto entry = std::move(m_pending.back());
         m_pending.pop_back();
-        Current().Set(std::move(entry.first), std::move(entry.second));
+        Store(std::move(entry.first), std::move(entry.second));
     }
 
     std::size_t BeginObjectList(const char* name, std::size_t count) override
@@ -158,7 +184,7 @@ public:
         if (m_pendingLists.empty()) return NO_REMOVE;
         auto entry = std::move(m_pendingLists.back());
         m_pendingLists.pop_back();
-        Current().Set(std::move(entry.first), std::move(entry.second));
+        Store(std::move(entry.first), std::move(entry.second));
         /// @note 観測専用のリフレクタは要素を削除しない
         return NO_REMOVE;
     }
@@ -168,20 +194,47 @@ public:
         JsonValue reference = JsonValue::MakeObject();
         reference.Set("type", JsonValue(value.type));
         if (value.value) {
-            JsonReadReflector child;
+            JsonReadReflector child(m_observations, m_entityResolver);
             value.value->Reflect(child);
+            if (!child.Error().empty()) m_error = child.Error();
             reference.Set("fields", child.Result());
         }
-        Current().Set(PersistentKey(name), std::move(reference));
+        Store(PersistentKey(name), std::move(reference));
     }
 
     /// Readonly (計算値) も AI の観測材料として含める。
-    void Readonly(const char* name, const std::string& v) override { Current().Set(name, JsonValue(v)); }
-    void Readonly(const char* name, float v) override { Current().Set(name, JsonValue(static_cast<double>(v))); }
-    void Readonly(const char* name, int v) override { Current().Set(name, JsonValue(v)); }
+    void Readonly(const char* name, const std::string& v) override { if (m_observations) Store(PersistentKey(name), JsonValue(v)); }
+    void Readonly(const char* name, float v) override { if (m_observations) Store(PersistentKey(name), JsonValue(static_cast<double>(v))); }
+    void Readonly(const char* name, int v) override { if (m_observations) Store(PersistentKey(name), JsonValue(v)); }
     /// @}
 
 private:
+    void Unsupported(const char* name, const char* type)
+    {
+        if (!m_observations) return;
+        JsonValue value = JsonValue::MakeObject();
+        value.Set("status", JsonValue("unsupported"));
+        value.Set("type", JsonValue(type));
+        Store(PersistentKey(name), std::move(value));
+    }
+    JsonValue ResolveEntity(scene::EntityID id, const char* typeName = "") const
+    {
+        if (m_entityResolver) return m_entityResolver(id, typeName);
+        JsonValue value = JsonValue::MakeArray();
+        value.Push(JsonValue(static_cast<int64_t>(id.index)));
+        value.Push(JsonValue(static_cast<int64_t>(id.generation)));
+        return value;
+    }
+    void Store(std::string key, JsonValue value)
+    {
+        if (m_observations && Current().Find(key) != nullptr)
+            m_error = "Duplicate script field: " + key;
+        Current().Set(std::move(key), std::move(value));
+    }
+    bool m_observations = false;
+    EntityResolver m_entityResolver;
+    std::string m_error;
+
     static JsonValue MakeVec(std::initializer_list<float> components)
     {
         JsonValue array = JsonValue::MakeArray();
@@ -206,6 +259,33 @@ private:
 /// @note Inspector と同じ IReflector を正本にすることで、AI 向けカタログがフィールド追加や enum/range 変更へ自動追従し、名前や許容値を推測する必要をなくす。
 class JsonCatalogReflector final : public scene::IReflector {
 public:
+    explicit JsonCatalogReflector(bool includeDefaults = true) : m_includeDefaults(includeDefaults) {}
+    bool BeginObservation(const char* name, const char* type) override
+    {
+        CurrentFields().Push(MakeField(name, type, JsonValue{}, false));
+        return false;
+    }
+    void Field(const char* name, scene::EntityID&) override { Add(name, "entityRef", JsonValue{}); }
+    void Field(const char* name, input::KeyCode& value) override { Add(name, "keyCode", JsonValue(static_cast<int>(value))); }
+    void RefField(const char* name, scene::EntityRef&, const char* typeName) override
+    {
+        JsonValue field = MakeField(name, "entityRef", JsonValue{});
+        field.Set("targetType", JsonValue(typeName ? typeName : ""));
+        CurrentFields().Push(std::move(field));
+    }
+    void RefListField(const char* name, std::vector<scene::EntityRef>& values, const char* typeName) override
+    {
+        JsonValue field = MakeField(name, "list", JsonValue::MakeArray());
+        field.Set("elementType", JsonValue("entityRef"));
+        field.Set("targetType", JsonValue(typeName ? typeName : ""));
+        field.Set("count", JsonValue(static_cast<int>(values.size())));
+        CurrentFields().Push(std::move(field));
+    }
+    void Field(const char* name, scene::ParticleCurve&) override { Unsupported(name, "particleCurve"); }
+    void Field(const char* name, scene::ParticleGradient&) override { Unsupported(name, "particleGradient"); }
+    void Readonly(const char* name, const std::string&) override { BeginObservation(name, "string"); }
+    void Readonly(const char* name, float) override { BeginObservation(name, "float"); }
+    void Readonly(const char* name, int) override { BeginObservation(name, "int"); }
     const JsonValue& Result() const { return m_fields; }
 
     void Field(const char* name, float& v) override { Add(name, "float", JsonValue(static_cast<double>(v))); }
@@ -276,6 +356,8 @@ public:
     /// スキーマ収集も値収集と同じく「子を完成させてから親へ積む」方式にする。
     void BeginObject(const char* name) override
     {
+        m_scopeFields.push_back(MakeField(name, "object", JsonValue::MakeObject()));
+        m_scopeGroups.push_back(m_group);
         m_pending.emplace_back(PersistentKey(name), JsonValue::MakeArray());
     }
 
@@ -285,7 +367,7 @@ public:
         auto entry = std::move(m_pending.back());
         m_pending.pop_back();
 
-        JsonValue field = MakeField(entry.first.c_str(), "object", JsonValue::MakeObject());
+        JsonValue field = FinishScope();
         field.Set("fields", std::move(entry.second));
         CurrentFields().Push(std::move(field));
     }
@@ -293,6 +375,8 @@ public:
     std::size_t BeginObjectList(const char* name, std::size_t count) override
     {
         /// @note 配列は「要素 1 個ぶんのスキーマ」だけを記述する。AI に渡すのは編集契約であって値ではなく、全要素を列挙しても同じ構造が繰り返されるだけでトークンを浪費するため。
+        m_scopeFields.push_back(MakeField(name, "objectList", JsonValue::MakeArray()));
+        m_scopeGroups.push_back(m_group);
         m_pending.emplace_back(PersistentKey(name), JsonValue::MakeArray());
         m_listElementCaptured.push_back(false);
         m_listCounts.push_back(count);
@@ -332,7 +416,7 @@ public:
         if (!m_listCounts.empty())          m_listCounts.pop_back();
         if (!m_listElementCaptured.empty()) m_listElementCaptured.pop_back();
 
-        JsonValue field = MakeField(entry.first.c_str(), "objectList", JsonValue::MakeArray());
+        JsonValue field = FinishScope();
         field.Set("count", JsonValue(static_cast<int>(count)));
         field.Set("elementFields", std::move(entry.second));
         CurrentFields().Push(std::move(field));
@@ -345,6 +429,11 @@ public:
         for (const auto& typeName : scene::ScriptSerializableFactory::RegisteredTypeNames())
             types.Push(JsonValue(typeName));
         field.Set("types", std::move(types));
+        if (value.value) {
+            JsonCatalogReflector child(m_includeDefaults);
+            value.value->Reflect(child);
+            field.Set("fields", child.Result());
+        }
         CurrentFields().Push(std::move(field));
     }
 
@@ -391,6 +480,23 @@ public:
     /// @}
 
 private:
+    JsonValue FinishScope()
+    {
+        JsonValue field = std::move(m_scopeFields.back());
+        m_scopeFields.pop_back();
+        m_group = std::move(m_scopeGroups.back());
+        m_scopeGroups.pop_back();
+        return field;
+    }
+    void Unsupported(const char* name, const char* type)
+    {
+        JsonValue field = MakeField(name, type, JsonValue{});
+        field.Set("supported", JsonValue(false));
+        CurrentFields().Push(std::move(field));
+    }
+    std::vector<JsonValue> m_scopeFields;
+    std::vector<std::string> m_scopeGroups;
+    bool m_includeDefaults = true;
     static const char* AssetTypeName(scene::ScriptAssetType type)
     {
         switch (type) {
@@ -413,17 +519,19 @@ private:
         return array;
     }
 
-    JsonValue MakeField(const char* name, const char* type, JsonValue defaultValue) const
+    JsonValue MakeField(const char* name, const char* type, JsonValue defaultValue, bool stored = true) const
     {
         JsonValue field = JsonValue::MakeObject();
         field.Set("name", JsonValue(PersistentKey(name)));
         field.Set("displayName", JsonValue(DisplayName(name)));
         field.Set("type", JsonValue(type));
-        field.Set("default", std::move(defaultValue));
+        if (stored && m_includeDefaults) field.Set("default", std::move(defaultValue));
+        field.Set("stored", JsonValue(stored));
+        field.Set("role", JsonValue(stored ? "configuration" : "observation"));
         if (!m_group.empty()) field.Set("group", JsonValue(m_group));
         field.Set("visible", JsonValue(FieldVisible()));
-        field.Set("enabled", JsonValue(FieldEnabled()));
-        field.Set("readOnly", JsonValue(FieldReadOnly()));
+        field.Set("enabled", JsonValue(stored && FieldEnabled()));
+        field.Set("readOnly", JsonValue(!stored || FieldReadOnly()));
         if (HasFieldMin()) field.Set("minimum", JsonValue(static_cast<double>(FieldMin())));
         if (FieldStep() > 0.0f) field.Set("step", JsonValue(static_cast<double>(FieldStep())));
         if (!FileExtensions().empty())
@@ -850,10 +958,16 @@ private:
         return true;
     }
 
-    bool Match(const char* name) const
+    bool Match(const char* name)
     {
         if (m_applied || !m_error.empty()) return false;
-        if (m_target == PersistentKey(name)) return true;
+        if (m_target == PersistentKey(name)) {
+            if (FieldReadOnly()) {
+                m_error = "field '" + m_target + "' is read-only";
+                return false;
+            }
+            return true;
+        }
         return false;
     }
 
@@ -882,4 +996,4 @@ private:
     std::string      m_error;
 };
 
-} // namespace fbzz::editor::ai
+} /// namespace fbzz::editor::ai

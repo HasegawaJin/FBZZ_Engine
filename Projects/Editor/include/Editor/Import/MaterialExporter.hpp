@@ -12,11 +12,10 @@ namespace fbzz::editor {
 
 class MaterialExporter {
 public:
-    /// aiMaterial を .mat TOML として outputPath に書き出す。
-    /// テクスチャファイルを texturesDir にコピーし、.mat 内のパスを相対化する。
-    /// fbxDir: FBX ファイルが置かれているディレクトリ (テクスチャ解決用)。
-    /// fbxBaseName: FBX の拡張子なしファイル名。解決先の `"<fbxBaseName>.fbm/"` を探すのに使う。
-    /// .mat は元画像を直接参照する。インポート設定は元画像隣の "<画像>.meta" が担う。
+    /// @brief aiMaterial と元画像を .mat と texturesDir へ書き出す。
+    /// @param fbxDir FBX の配置ディレクトリ。
+    /// @param fbxBaseName 拡張子なしの FBX 名。隣接する .fbm の探索に使う。
+    /// @note OpenGL 法線の G 反転は元画像を書き換えず .meta の flip_green で指定する。
     /// @return 成功なら true
     static bool Export(const aiMaterial* material,
                        const aiScene* scene,
@@ -24,8 +23,7 @@ public:
                        const std::string& fbxBaseName,
                        const std::string& texturesDir,
                        const std::string& outputPath,
-                       bool skinned = false,
-                       bool flipGreenChannel = false);
+                       bool skinned = false);
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

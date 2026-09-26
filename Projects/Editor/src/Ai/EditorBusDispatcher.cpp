@@ -106,7 +106,7 @@ Outcome RunBuilder(BusCall& call, const BusHandlerEntry& entry)
     return Outcome::Ok(std::move(result));
 }
 
-} // namespace
+} /// namespace
 
 EditorBusDispatcher::EditorBusDispatcher(editor::EditorContext& context)
     : m_context(context)
@@ -115,6 +115,7 @@ EditorBusDispatcher::EditorBusDispatcher(editor::EditorContext& context)
 {
     bus::RegisterEditorHandlers(*m_table);
     bus::RegisterSceneHandlers(*m_table);
+    bus::RegisterScriptHandlers(*m_table);
     bus::RegisterAssetHandlers(*m_table);
     bus::RegisterBehaviorTreeHandlers(*m_table);
     bus::RegisterPlayHandlers(*m_table);
@@ -187,4 +188,4 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
     return SerializeJson(MakeErrorResponse(request->id, outcome.code, outcome.message));
 }
 
-} // namespace fbzz::editor::ai
+} /// namespace fbzz::editor::ai

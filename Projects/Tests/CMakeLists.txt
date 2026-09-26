@@ -174,7 +174,8 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/VFXSubEmitterScopeTests.cpp
         Engine/Auto/ParticleMaterialPathTests.cpp
         Engine/Auto/FiberTests.cpp
-        Engine/Auto/ParticleFlipbookTests.cpp
+    Engine/Auto/ParticleFlipbookTests.cpp
+    Engine/Auto/ParticleLoopInspectionTests.cpp
         Engine/Auto/FluidSolverTests.cpp
         Engine/Auto/SixWayLightingTests.cpp
         Engine/Auto/ParticleLightSelectionTests.cpp
@@ -184,6 +185,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/VFXLineGeometryTests.cpp
         Engine/Auto/FluidLiquid3DTests.cpp
         Engine/Auto/FluidRecipeBakeTests.cpp
+        Engine/Auto/FluidBakeSafetyTests.cpp
         Engine/Auto/FluidDeterminismTests.cpp
         Engine/Auto/FluidSegmentShapeTests.cpp
         Engine/Auto/FluidAmountEnvelopeTests.cpp
@@ -256,6 +258,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/FluidPreviewCacheTests.cpp
     Editor/Auto/GraphLayoutTests.cpp
     Editor/Auto/ImageCompareTests.cpp
+    Editor/Auto/FluidJetFlamePlaybackTests.cpp
     Editor/Auto/ImportCacheStoreTests.cpp
     Editor/Auto/ImportFingerprintTests.cpp
     Editor/Auto/InputRecorderTests.cpp
@@ -267,6 +270,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/PrefabSaveTests.cpp
     Editor/Auto/SceneDirtyTrackerTests.cpp
     Editor/Auto/ScriptCodeGenTests.cpp
+    Editor/Auto/ScriptInspectionTests.cpp
     Editor/Auto/SpriteFieldFilterTests.cpp
     Editor/Auto/SpriteSlicerTests.cpp
     Editor/Auto/TerrainBrushTests.cpp

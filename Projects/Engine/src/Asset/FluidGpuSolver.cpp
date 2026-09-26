@@ -4,7 +4,6 @@
 /// @date    2026-09-11
 #include <Engine/Asset/FluidGpuSolver.hpp>
 
-#include <Engine/Asset/AssetManager.hpp>
 #include <Fluid/FluidGpuStep.hpp>
 #include <Engine/Asset/FluidSourceMaskLoader.hpp>
 #include <Fluid/FluidStepping.hpp>
@@ -13,6 +12,8 @@
 #include <Engine/Renderer/ComputeCall.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Util/EngineAssetPath.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -44,7 +45,7 @@ struct alignas(16) PassConstants {
     float pad[3];
 };
 
-} // namespace
+}
 
 bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const fluid::FluidRecipe& recipe, int resolution,
                                 float frameDt, float densityScale, std::string& outError)
@@ -76,7 +77,8 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
                   "kKernelPaths は Kernel の並びと 1:1");
     for (std::size_t i = 0; i < KernelCount; ++i) {
         if (!m_kernels[i].IsValid())
-            m_kernels[i] = resources.LoadShader(AssetManager::ResolveAssetPath(kKernelPaths[i]));
+            m_kernels[i] = resources.LoadShader(
+                util::FileSystem::PathToUtf8(util::ResolveEngineAssetPath(kKernelPaths[i])));
         if (!m_kernels[i].IsValid()) {
             outError = std::string("流体の Compute シェーダーを読み込めません: ") + kKernelPaths[i];
             m_ready = false;
@@ -378,4 +380,4 @@ void FluidGpuSolver::WriteVolumes(renderer::IRenderer& renderer, renderer::Resou
         { m_scalars[0], m_velocity[m_currentVelocity] }, { medium, velocity });
 }
 
-} // namespace fbzz::asset
+}

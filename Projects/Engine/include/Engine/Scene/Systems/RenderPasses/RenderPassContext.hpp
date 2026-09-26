@@ -89,6 +89,7 @@ using renderer::kParticleFxSrgbTexture;
 using renderer::kParticleFxDistortionMap;
 using renderer::kParticleFxPunctual;
 using renderer::kParticleFxSixWayMaps;
+using renderer::kParticleFxSixWayColorMaps;
 using renderer::kParticleFxAdditive;
 using renderer::kParticleAlphaShift;
 using renderer::kParticleAlphaMask;

@@ -35,6 +35,10 @@ public:
     /// @return 失敗 (.meta 書き込み不可等) なら空文字列。
     [[nodiscard]] static std::string GuidFromPath(const std::string& absPath);
 
+    /// @brief .meta の GUID だけを確保し、索引には登録しない。
+    /// @note 仮出力を本番パスへ移動してから GuidFromPath で登録する場合に使う。
+    [[nodiscard]] static std::string EnsureGuidMetaUnindexed(const std::string& absPath);
+
     /// @brief アセット絶対パス → 既存 .meta の guid。GuidFromPath と違い新規発行しない。
     /// @return 未登録 / .meta 未作成なら空文字列。
     /// @note AssetBrowser の存在確認等で、Import 前の FBX に .meta を発行させないために使う。

@@ -448,10 +448,9 @@ bool DX12Context::BeginFrame()
 {
     if (m_frameOpen || !m_swapChain || m_suspended)
         return false;
-    /// @note 遮蔽中は Present-test で復帰を検知するまでフレームを開かない。ロック画面や
-    /// @note       全面被覆で Present が OCCLUDED を返す間、記録・Present を続けると GPU/CPU を
-    /// @note       無駄に消費するため。`DXGI_PRESENT_TEST` は実 Present せず可視性だけ確認する。
-    if (m_occluded) {
+    /// @note 通常は遮蔽中の記録を止める。バッチの画面外出力では Present-test を迂回して処理を続ける。
+    if (m_occluded && !m_renderWhenOccluded) {
+        /// @note `DXGI_PRESENT_TEST` は実 Present せず可視性だけ確認する。
         if (m_swapChain->Present(kPresentSyncIntervalNoVsync, DXGI_PRESENT_TEST) != S_OK)
             return false;
         m_occluded = false;

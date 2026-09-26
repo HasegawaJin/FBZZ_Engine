@@ -567,6 +567,16 @@ std::string AssetDatabase::GuidFromPath(const std::string& absPath)
     return guid;
 }
 
+std::string AssetDatabase::EnsureGuidMetaUnindexed(const std::string& absPath)
+{
+    if (!util::FileSystem::Exists(absPath)) return {};
+    const std::string metaPath = absPath + ".meta";
+    std::string guid = ReadGuidFromMeta(metaPath);
+    if (!guid.empty()) return guid;
+    guid = GenerateGuid();
+    return WriteGuidToMeta(metaPath, guid) ? guid : std::string{};
+}
+
 std::string AssetDatabase::TryGetGuidFromPath(const std::string& absPath)
 {
     {

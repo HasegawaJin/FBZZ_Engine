@@ -1,0 +1,21 @@
+[meta]
+guid = '05e00107d02dc822b8963d48e4c01659'
+
+[texture]
+alpha_dither = false
+alpha_mode = 'None'
+aniso = 1
+compression = 'BC5'
+compression_quality = 1
+filter = 'Trilinear'
+flip_green = false
+max_size = 16384
+mip_bias = 0.0
+mip_filter = 'Box'
+mip_sharpen = 0.0
+mipmaps = true
+normalize_mipmaps = false
+srgb = false
+type = 'data'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

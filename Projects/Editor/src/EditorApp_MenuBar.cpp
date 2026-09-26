@@ -197,7 +197,7 @@ bool PlayToolbarButton(
     return enabled && pressed;
 }
 
-} // namespace
+}
 
 void EditorApp::InstallNativeMenuBar()
 {
@@ -796,40 +796,10 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     const bool isPlaying = pm && pm->IsPlaying();
     const bool isPaused = pm && pm->IsPaused();
 
-    const float toolbarButtonY = ImGui::GetCursorPosY();
-    /// @note 実行可否は operator の poll から引く。以前はここだけが持っていた条件
-    ///       (scriptReloadBusy 中は Play 不可) がホットキーとパレットに無く、
-    ///       コンパイル中でも Ctrl+P で Play へ入れてしまっていた。
-    const bool canToggleMapMode = CanInvokeOperator("tools.map_editing_mode");
-    if (ctx.mapEditingMode)
-        ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Secondary));
-    if (!canToggleMapMode)
-        ImGui::BeginDisabled();
-    if (ImGui::Button(ctx.mapEditingMode ? "EXIT MAP" : "MAP MODE", { 92.0f, 24.0f }))
-        InvokeOperator("tools.map_editing_mode");
-    if (!canToggleMapMode)
-        ImGui::EndDisabled();
-    if (ctx.mapEditingMode)
-        ImGui::PopStyleColor();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-        if (!canToggleMapMode)
-            ImGui::SetTooltip("Open a scene to enable Map Editing Mode");
-        else if (ctx.mapEditingMode)
-            ImGui::SetTooltip("Exit Map Editing Mode — restores normal editor layout");
-        else
-            ImGui::SetTooltip("Enter Map Editing Mode\nTerrain / Water tools in a focused layout");
-    }
-
     const float groupWidth = BUTTON_SIZE.x * 5.0f + BUTTON_SPACING * 4.0f;
-    /// @note ここでは Map ボタンを描いた後でも、子 Window 全体の幅を基準にする。
-    ///       GetContentRegionAvail() は現在カーソル位置からの残幅なので、Map ボタン分だけ
-    ///       二重に引かれて Play 群が左へ寄り、右端が欠ける原因になる。
     const float availableWidth = ImGui::GetWindowWidth();
-    /// @note Mapボタンの領域を予約してから中央寄せする。以前はツールバー全体の中央を
-    ///       基準にしていたため、ウィンドウ幅が一時的に狭くなると MAP MODE と Play 群が重なった。
-    const float playAreaLeft = 8.0f + 92.0f + 16.0f;
-    const float centerOffset = (std::max)(playAreaLeft, (availableWidth - groupWidth) * 0.5f);
-    ImGui::SetCursorPos({ centerOffset, toolbarButtonY });
+    const float centerOffset = (std::max)(8.0f, (availableWidth - groupWidth) * 0.5f);
+    ImGui::SetCursorPosX(centerOffset);
     const bool scriptReloadBusy =
         ctx.scriptReloadBusy ||
         ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
@@ -1412,4 +1382,4 @@ void EditorApp::RegisterDefaultHotkeys()
     });
 }
 
-} // namespace fbzz::editor
+}

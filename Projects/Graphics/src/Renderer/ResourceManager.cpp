@@ -7,6 +7,7 @@
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Renderer/AssetPathService.hpp>
+#include <Graphics/Renderer/TextureFileDecoder.hpp>
 #include <cstdint>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/IBuffer.hpp>
@@ -28,12 +29,13 @@ namespace {
 ResourceManager* s_activeResourceManager = nullptr;
 
 /// @note Windows の '\\' とアセット記述で使う '/' を同一キーにし、同じ実ファイルの二重キャッシュを防ぐ。
-std::string TextureCacheKey(std::string_view path)
+std::string TextureCacheKey(std::string_view path, bool flipGreen = false)
 {
     /// @note Sprite参照はGPU上では親Textureを共有する。サブアセット名をキャッシュキーへ
     /// @note       含めると同じ画像を重複ロードするため、ここで親パスへ正規化する。
     std::string key = NormalizeTextureKey(path);
     std::replace(key.begin(), key.end(), '\\', '/');
+    if (flipGreen) key += "|flipGreen";
     return key;
 }
 
@@ -161,19 +163,38 @@ void ResourceManager::Reset()
                   static_cast<unsigned long long>(m_resetVersion));
 }
 
-ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path)
+/// @brief 法線の G 反転は元画像を変更せず、全ミップへ同じ変換を適用する。
+std::unique_ptr<ITexture> ResourceManager::CreateTextureForPath(const std::string& sourcePath,
+                                                                 bool flipGreen)
 {
-    return LoadTextureImpl(path, true);
+    if (!flipGreen) return m_renderer.CreateNativeTexture(sourcePath);
+    DecodedTextureRGBA8 decoded;
+    std::string error;
+    if (!DecodeTextureFileRGBA8(sourcePath, decoded, &error)) {
+        FBZZ_LOG_ERROR("Texture green flip decode failed: %s", error.c_str());
+        return nullptr;
+    }
+    FlipTextureGreen(decoded);
+    std::vector<TextureMipData> mips;
+    if (!decoded.ToMipData(mips)) return nullptr;
+    return m_renderer.CreateNativeTextureFromDataMips(mips.data(), static_cast<uint32_t>(mips.size()));
 }
 
-ResourceHandle<TextureTag> ResourceManager::LoadTextureUnpinned(std::string_view path)
+ResourceHandle<TextureTag> ResourceManager::LoadTexture(std::string_view path, bool flipGreen)
 {
-    return LoadTextureImpl(path, false);
+    return LoadTextureImpl(path, true, flipGreen);
 }
 
-ResourceHandle<TextureTag> ResourceManager::LoadTextureImpl(std::string_view path, bool pin)
+ResourceHandle<TextureTag> ResourceManager::LoadTextureUnpinned(std::string_view path, bool flipGreen)
 {
-    const std::string key = TextureCacheKey(path);
+    return LoadTextureImpl(path, false, flipGreen);
+}
+
+ResourceHandle<TextureTag> ResourceManager::LoadTextureImpl(std::string_view path, bool pin,
+                                                             bool flipGreen)
+{
+    const std::string sourceKey = TextureCacheKey(path);
+    const std::string key = TextureCacheKey(path, flipGreen);
     /// @note 配った先がハンドルを持ち続けるかもしれない。一度でも配ったキーは非同期側から外さない。
     if (pin) m_texturesHandedOut.insert(key);
     auto it = m_textureCache.find(key);
@@ -183,11 +204,11 @@ ResourceHandle<TextureTag> ResourceManager::LoadTextureImpl(std::string_view pat
     /// @note       元画像へ解決)。.mat/Scene は Assets/ 起点の相対パスを保存するがテクスチャ実装は
     /// @note       実ファイルパスを要求するため、AssetManager と同じ解決規則を通して cwd 依存をなくす。
     std::string sourcePath;
-    if (!ResolveTextureSource(ResolveAssetPath(key), sourcePath)) {
+    if (!ResolveTextureSource(ResolveAssetPath(sourceKey), sourcePath)) {
         FBZZ_LOG_ERROR("Texture path resolution failed: %s", key.c_str());
         return ResourceHandle<TextureTag>::Null();
     }
-    auto texture = m_renderer.CreateNativeTexture(sourcePath);
+    auto texture = CreateTextureForPath(sourcePath, flipGreen);
     if (!texture) {
         FBZZ_LOG_ERROR("Texture load failed: %s", key.c_str());
         return ResourceHandle<TextureTag>::Null();
@@ -200,19 +221,19 @@ ResourceHandle<TextureTag> ResourceManager::LoadTextureImpl(std::string_view pat
     return handle;
 }
 
-ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path)
+ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path, bool flipGreen)
 {
-    const std::string key = TextureCacheKey(path);
+    const std::string key = TextureCacheKey(path, flipGreen);
     auto it = m_textureCache.find(key);
     if (it == m_textureCache.end())
-        return LoadTexture(path);
+        return LoadTexture(path, flipGreen);
 
     std::string sourcePath;
-    if (!ResolveTextureSource(ResolveAssetPath(key), sourcePath)) {
+    if (!ResolveTextureSource(ResolveAssetPath(TextureCacheKey(path)), sourcePath)) {
         FBZZ_LOG_ERROR("ReloadTexture path resolution failed: %s", key.c_str());
         return it->second;
     }
-    auto newTexture = m_renderer.CreateNativeTexture(sourcePath);
+    auto newTexture = CreateTextureForPath(sourcePath, flipGreen);
     if (!newTexture) {
         FBZZ_LOG_ERROR("ReloadTexture failed: %s", key.c_str());
         return it->second;
@@ -235,7 +256,8 @@ std::size_t ResourceManager::EvictTexture(std::string_view path)
 
     std::size_t evicted = 0;
     for (auto it = m_textureCache.begin(); it != m_textureCache.end(); ) {
-        if (it->first == key || it->first.rfind(prefix, 0) == 0) {
+        if (it->first == key || it->first == TextureCacheKey(path, true)
+            || it->first.rfind(prefix, 0) == 0) {
             m_textures.Remove(it->second);
             it = m_textureCache.erase(it);
             ++evicted;
@@ -291,15 +313,18 @@ bool ResourceManager::IsUploadComplete(uint64_t uploadToken) const
     return uploadToken == 0 || m_renderer.IsUploadComplete(uploadToken);
 }
 
-ResourceHandle<TextureTag> ResourceManager::FindCachedTexture(std::string_view path) const
+ResourceHandle<TextureTag> ResourceManager::FindCachedTexture(std::string_view path,
+                                                               bool flipGreen) const
 {
-    const auto it = m_textureCache.find(TextureCacheKey(path));
+    const auto it = m_textureCache.find(TextureCacheKey(path, flipGreen));
     return it != m_textureCache.end() ? it->second : ResourceHandle<TextureTag>::Null();
 }
 
-ResourceHandle<TextureTag> ResourceManager::PublishTexture(std::string_view path, ResourceHandle<TextureTag> uploaded)
+ResourceHandle<TextureTag> ResourceManager::PublishTexture(std::string_view path,
+                                                            ResourceHandle<TextureTag> uploaded,
+                                                            bool flipGreen)
 {
-    const std::string key = TextureCacheKey(path);
+    const std::string key = TextureCacheKey(path, flipGreen);
     const auto it = m_textureCache.find(key);
     /// @note 転送中に同期 LoadTexture が同じ画像を読んでいれば、そちらが既に配られている。配られた方を正とする。
     if (it != m_textureCache.end() && Get(it->second) != nullptr) {
@@ -324,9 +349,9 @@ bool ResourceManager::ReplaceTextureContents(ResourceHandle<TextureTag> target, 
     return true;
 }
 
-bool ResourceManager::EvictStreamedTexture(std::string_view path)
+bool ResourceManager::EvictStreamedTexture(std::string_view path, bool flipGreen)
 {
-    const std::string key = TextureCacheKey(path);
+    const std::string key = TextureCacheKey(path, flipGreen);
     if (m_texturesHandedOut.count(key) != 0) return false;
     const auto it = m_textureCache.find(key);
     if (it == m_textureCache.end()) return true;

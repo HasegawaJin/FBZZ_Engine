@@ -148,7 +148,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
         compositeDC.textures[22] = h.proceduralColorLut;
     r.Submit(compositeDC, resources);
 
-    h.postProcessInput = resources.GetColorTexture(ctx.Res().Target("LDR"), 0);
+    /// @note 後段へ渡すのは今回の出力。終端へ直書きする構成では LDR を申告も更新もしない。
+    h.postProcessInput = resources.GetColorTexture(ctx.compositeOutputRT, 0);
     h.fxaaInput = h.postProcessInput;
 }
 

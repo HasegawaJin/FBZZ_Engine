@@ -1688,12 +1688,13 @@ Outcome DoNodeComponentsQuery(editor::EditorContext& ctx, const JsonValue& paylo
         result.Set("active", JsonValue(go->activeSelf()));
         result.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
         result.Set("layer", JsonValue(go->layer));
-        result.Set("components", SnapshotComponents(*go));
+        result.Set("components", SnapshotComponents(*go, true));
+        result.Set("scripts", InspectScriptList(*go));
         outcome = Outcome::Ok(std::move(result));
     }
     return outcome;
 }
-} // namespace
+} /// namespace
 
 void RegisterSceneHandlers(BusHandlerTable& table)
 {
@@ -1741,4 +1742,4 @@ void RegisterSceneHandlers(BusHandlerTable& table)
     table.AddBuilder("component.set", BuildComponentSetCommand);
 }
 
-} // namespace fbzz::editor::ai::bus
+} /// namespace fbzz::editor::ai::bus

@@ -2,7 +2,6 @@
 /// @brief   流体レシピ → フリップブック / Motion Vector / 速度場 PNG
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
 /// @note DirectXTex の WIC PNG エンコーダーに必要。
 #pragma comment(lib, "ole32.lib")
 
@@ -11,13 +10,15 @@
 #include "FlipbookImageIO.hpp"
 
 #include <Engine/Asset/BakeFingerprint.hpp>
+#include <Engine/Asset/FluidBakeBudget.hpp>
+#include <Engine/Asset/FluidFireRendering.hpp>
+#include <Engine/Asset/FluidRenderMath.hpp>
 #include <Engine/Asset/FlipbookMotionVectorEncoding.hpp>
 #include <Fluid/FluidSolver.hpp>
 #include <Fluid/FluidStepping.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Asset/VectorFieldFile.hpp>
-#include <Math/CurlNoise.hpp>
 #include <Engine/Scene/Components/ParticleColorSpace.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
@@ -115,28 +116,11 @@ struct Rgb {
     return CatmullRom(column[0], column[1], column[2], column[3], ty);
 }
 
-/// @brief 細部ノイズ [-1,1]。3 オクターブ。layerOffset で 2 層を別のノイズにする。
-[[nodiscard]] float DetailNoise(float u, float v, float layerOffset)
-{
-    float value = 0.0f;
-    float amplitude = 1.0f;
-    float total = 0.0f;
-    float frequency = 1.0f;
-    for (int octave = 0; octave < 3; ++octave) {
-        value += math::ValueNoise3D({ u * frequency, v * frequency,
-                                      layerOffset + static_cast<float>(octave) * 7.1f }) * amplitude;
-        total += amplitude;
-        amplitude *= 0.5f;
-        frequency *= 2.03f;
-    }
-    return value / total;
-}
-
 /// @brief 各セルへ届く光の透過率。光源に近い順に処理し、1.5 セル上流の «もう計算した» 値へ
-///        途中の吸収を掛けて伝える。
+/// @note 途中の吸収を掛けて伝える。
 /// @note 1 セルずつ光源まで辿ると格子 N で N^3 になり (256 格子で 1 コマ数秒)、最近傍だと影が
-///       階段状になる。上流を双線形で引けば O(N^2) で影も滑らかになる。1.5 セルは上流点の
-///       双線形 4 タップが全て自分より光源側 (射影が大きい) になる最小距離。
+/// @note 階段状になる。上流を双線形で引けば O(N^2) で影も滑らかになる。1.5 セルは上流点の
+/// @note 双線形 4 タップが全て自分より光源側 (射影が大きい) になる最小距離。
 std::vector<float> ComputeLightTransmittance(const fluid::FluidGasSolver& solver, const fluid::FluidRenderSettings& look)
 {
     const int nx = solver.SizeX();
@@ -179,33 +163,6 @@ std::vector<float> ComputeLightTransmittance(const fluid::FluidGasSolver& solver
     }
     return transmittance;
 }
-
-/// @brief 黒体放射の色味は 1 回に可視域 81 点の積分を要する。画素ごとに呼ぶと 1 コマで数秒かかるので表にする。
-class BlackbodyTable {
-public:
-    explicit BlackbodyTable(float referenceKelvin)
-        : m_maxKelvin((std::max)(referenceKelvin, 1.0f) * 4.0f)
-    {
-        for (std::size_t i = 0; i < m_chroma.size(); ++i) {
-            const float kelvin = m_maxKelvin * static_cast<float>(i) / static_cast<float>(m_chroma.size() - 1);
-            m_chroma[i] = scene::ParticleBlackbodyChroma(kelvin);
-        }
-    }
-
-    [[nodiscard]] math::Vector3 Chroma(float kelvin) const
-    {
-        const float position = Saturate(kelvin / m_maxKelvin) * static_cast<float>(m_chroma.size() - 1);
-        const std::size_t index = (std::min)(static_cast<std::size_t>(position), m_chroma.size() - 2);
-        const float t = position - static_cast<float>(index);
-        const math::Vector3& a = m_chroma[index];
-        const math::Vector3& b = m_chroma[index + 1];
-        return { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t };
-    }
-
-private:
-    float m_maxKelvin;
-    std::array<math::Vector3, 256> m_chroma{};
-};
 
 /// @brief .fluid の emission_ramp / albedo_ramp (リニア HDR)。規則は EvaluateVolumeRamp と同じ: 端の外は端の色、
 /// @brief 前の点より手前にある点は前の点の位置に寄せる (焼き分けで 2D と 3D の色がずれないように)。
@@ -260,7 +217,7 @@ void BlurField(std::vector<float>& field, int size)
 
 /// @brief factor 倍で描いたコマを縮める。
 /// @note ストレートの色は α で重み付けする。透明画素の色 (液体では 0) を素直に平均すると
-///       縁が黒く縁取られるため。事前乗算はそのまま平均してよい。
+/// @note 縁が黒く縁取られるため。事前乗算はそのまま平均してよい。
 void Downsample(const FluidFrameImage& source, int factor, bool premultiplied, FluidFrameImage& out)
 {
     const int size = source.size / factor;
@@ -380,7 +337,7 @@ int ResolveSupersampling(const fluid::FluidOutputSettings& output, int frameSize
 
 /// @brief 1 コマを «出力の大きさ» で描く。超解像は内部で大きく描いてから縮める。
 /// @note プレビューと共有する。焼きだけ超解像を掛けていた頃は、AI が見た絵より焼いた絵の方が
-///       滑らかで細部ノイズの効き具合を見誤っていた。
+/// @note 滑らかで細部ノイズの効き具合を見誤っていた。
 template <class Render>
 void CaptureFrame(Render&& render, int size, int supersampling, bool premultiplied,
                   FluidFrameImage& scratch, FluidFrameImage& out)
@@ -393,7 +350,7 @@ void CaptureFrame(Render&& render, int size, int supersampling, bool premultipli
     Downsample(scratch, supersampling, premultiplied, out);
 }
 
-} // namespace
+} /// @note namespace
 
 bool FluidShadingIsPremultiplied(fluid::FluidShading shading)
 {
@@ -418,16 +375,16 @@ void RenderFluidGasFrame(const fluid::FluidGasSolver& solver, const fluid::Fluid
     const float opacity   = (std::max)(look.opacity, 0.0f);
     const float reference = (std::max)(look.fireKelvin, 1.0f);
     const float intensity = (std::max)(look.fireIntensity, 0.0f);
-    const BlackbodyTable blackbody(shading == fluid::FluidShading::Fire ? reference : 1.0f);
+    const FluidFireColorLut blackbody((shading == fluid::FluidShading::Fire ? reference : 1.0f) * 4.0f);
     const bool emissionRamp = look.useEmissionRamp;
     const bool albedoRamp = look.useAlbedoRamp && shading != fluid::FluidShading::Distortion;
     /// @note albedo_ramp の色で影を描くときは、smoke_color に対する shadow_color の明るさの比だけを掛ける。
-    ///       成分ごとの比にすると smoke_color 用の色味が Ramp のどの色にも乗ってしまう
-    ///       (灰色の煙用の青い影が赤い煙にも乗る)。明るさの比なら Ramp の色味のまま «光と影の差» だけを引き継げる。
+    /// @note 成分ごとの比にすると smoke_color 用の色味が Ramp のどの色にも乗ってしまう
+    /// @note (灰色の煙用の青い影が赤い煙にも乗る)。明るさの比なら Ramp の色味のまま «光と影の差» だけを引き継げる。
     const float shadowRatio = Saturate(Luminance(shadowColor) / (std::max)(Luminance(litColor), 1.0e-4f));
     /// @note Glow の Ramp を何で引くか。温度が生まれるレシピ (温度か燃料を注ぐ) では温度で引き、冷めながら
-    ///       色が移るようにする。温度が生まれないレシピで温度を引くと、常に左端の 1 色になって Ramp が効かない。
-    ///       そのときは濃さ (1 − e^−密度×opacity、[0,1] に収まる) で引く。
+    /// @note 色が移るようにする。温度が生まれないレシピで温度を引くと、常に左端の 1 色になって Ramp が効かない。
+    /// @note そのときは濃さ (1 − e^−密度×opacity、[0,1] に収まる) で引く。
     const bool glowByTemperature =
         std::any_of(recipe.sources.begin(), recipe.sources.end(), [](const fluid::FluidSource& source) {
             return source.enabled && (source.temperature > 0.0f || source.fuel > 0.0f);
@@ -443,8 +400,6 @@ void RenderFluidGasFrame(const fluid::FluidGasSolver& solver, const fluid::Fluid
     float weight0 = 1.0f;
     float weight1 = 0.0f;
     if (detail) solver.DetailWeights(weight0, weight1);
-    /// @note 2 層を重みで混ぜるとノイズの振幅が縮む (中間で最大 1/√2)。縮んだ分を戻して «揺らぎ» を消す。
-    const float detailNormalize = 1.0f / std::sqrt((std::max)(weight0 * weight0 + weight1 * weight1, 1.0e-4f));
     const float detailScale = (std::max)(look.detailScale, 0.1f);
 
     for (int py = 0; py < size; ++py) {
@@ -460,10 +415,11 @@ void RenderFluidGasFrame(const fluid::FluidGasSolver& solver, const fluid::Fluid
                 float u0 = 0.0f, v0 = 0.0f, u1 = 0.0f, v1 = 0.0f;
                 solver.SampleDetailCoordinate(0, x, y, u0, v0);
                 solver.SampleDetailCoordinate(1, x, y, u1, v1);
-                const float noise = (weight0 * DetailNoise(u0 * detailScale, v0 * detailScale, 0.0f)
-                                     + weight1 * DetailNoise(u1 * detailScale, v1 * detailScale, 37.7f))
-                    * detailNormalize;
-                const float factor = (std::max)(0.0f, 1.0f + look.detailStrength * noise);
+                const float noise0 = FluidDetailNoise({ u0 * detailScale, v0 * detailScale, 0.0f });
+                const float noise1 = FluidDetailNoise({ u1 * detailScale + kFluidDetailLayerOffset,
+                                                        v1 * detailScale + kFluidDetailLayerOffset,
+                                                        kFluidDetailLayerOffset });
+                const float factor = FluidDetailFactor(look.detailStrength, weight0, weight1, noise0, noise1);
                 density *= factor;
                 temperature *= factor;
             }
@@ -488,7 +444,7 @@ void RenderFluidGasFrame(const fluid::FluidGasSolver& solver, const fluid::Fluid
                 /// @note 加算は rgb × a で足される。色は一定にして、明るさを a で運ぶ。
                 if (emissionRamp) {
                     /// @note Ramp は HDR。1 で切ると芯の色が白へ潰れるので、最大の成分で割って色味だけを残す
-                    ///       (明るさは a と .mat の emissiveScale が運ぶ)。
+                    /// @note (明るさは a と .mat の emissiveScale が運ぶ)。
                     const math::Vector3 emission =
                         EvaluateFluidRamp(look.emissionRamp, glowByTemperature ? temperature : alpha);
                     const float peak = (std::max)({ emission.x, emission.y, emission.z, 1.0f });
@@ -504,12 +460,11 @@ void RenderFluidGasFrame(const fluid::FluidGasSolver& solver, const fluid::Fluid
                 break;
             case fluid::FluidShading::Distortion: {
                 /// @note 既存の歪み素材 (ProceduralVFXTextures) と同じ符号化: RG = 0.5 ± 変位、A = 効く範囲。
-                const float speed = std::sqrt(vx * vx + vy * vy);
-                const float scale = speed > 1.0e-5f ? (std::min)(speed, 1.0f) / speed * 0.42f : 0.0f;
-                r = 0.5f + vx * scale;
-                g = 0.5f - vy * scale;
-                b = 0.5f;
-                a = alpha;
+                const math::Vector4 encoded = EncodeFluidDistortion({ vx, vy }, alpha, kFluidDistortionScale);
+                r = encoded.x;
+                g = encoded.y;
+                b = encoded.z;
+                a = encoded.w;
                 break;
             }
             case fluid::FluidShading::Smoke:
@@ -527,20 +482,20 @@ void RenderFluidGasFrame(const fluid::FluidGasSolver& solver, const fluid::Fluid
                     break;
                 }
                 /// @note 炎: 煤は背景を隠し、光は足すだけ (事前乗算)。8bit へ収めるため発光は 1 − e^−x で丸め、
-                ///       明るさは .mat の emissiveScale で戻す。輝度は T^4 (Stefan-Boltzmann)。
+                /// @note 明るさは .mat の emissiveScale で戻す。輝度は T^4 (Stefan-Boltzmann)。
                 math::Vector3 emission;
                 if (emissionRamp) {
                     /// @note Ramp が温度 → 色と明るさの両方を決める。T^4 は掛けない (明るさの伸びも Ramp の点で描く)。
                     const math::Vector3 color = EvaluateFluidRamp(look.emissionRamp, temperature);
-                    emission = { color.x * intensity, color.y * intensity, color.z * intensity };
+                    emission = FluidFireRampRadiance(color, intensity);
                 } else {
-                    const float radiance = temperature * temperature * temperature * temperature * intensity;
                     const math::Vector3 chroma = blackbody.Chroma(temperature * reference);
-                    emission = { chroma.x * radiance, chroma.y * radiance, chroma.z * radiance };
+                    emission = FluidFireBlackbodyRadiance(temperature, intensity, chroma);
                 }
-                r = ToSrgb(smoke.r * alpha + 1.0f - std::exp(-emission.x));
-                g = ToSrgb(smoke.g * alpha + 1.0f - std::exp(-emission.y));
-                b = ToSrgb(smoke.b * alpha + 1.0f - std::exp(-emission.z));
+                const math::Vector3 fireColor = FluidFireSoftKnee(emission);
+                r = ToSrgb(smoke.r * alpha + fireColor.x);
+                g = ToSrgb(smoke.g * alpha + fireColor.y);
+                b = ToSrgb(smoke.b * alpha + fireColor.z);
                 a = alpha;
                 break;
             }
@@ -673,7 +628,7 @@ void RenderFluidLiquidFrame(const fluid::FluidLiquidSolver& solver, const fluid:
 
 bool RenderFluidBakeFrames(const fluid::FluidRecipe& source, std::span<const int> frames, int size,
                            std::vector<FluidFrameImage>& out, std::atomic<float>* progress,
-                           const std::atomic<bool>* cancel)
+                           const std::atomic<bool>* cancel, FluidBakeTiming* timing)
 {
     out.clear();
     if (frames.empty()) return false;
@@ -717,16 +672,36 @@ bool RenderFluidBakeFrames(const fluid::FluidRecipe& source, std::span<const int
     } else {
         liquidSolver.Reset(recipe);
     }
-    const auto advance = [&]() {
+    const auto advance = [&](int frame) {
+        if (timing != nullptr) timing->stage.store(0, std::memory_order_relaxed);
+        const auto started = std::chrono::steady_clock::now();
         if (gas) fluid::AdvanceFluidFrame(gasSolver, plan);
         else     fluid::AdvanceFluidFrame(liquidSolver, plan);
+        if (timing != nullptr) {
+            const float seconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - started).count();
+            timing->simulationSeconds.fetch_add(seconds, std::memory_order_relaxed);
+            if (seconds > timing->slowestSimulationFrameSeconds.load(std::memory_order_relaxed)) {
+                timing->slowestSimulationFrameSeconds.store(seconds, std::memory_order_relaxed);
+                timing->slowestSimulationFrame.store(frame, std::memory_order_relaxed);
+            }
+        }
     };
     FluidFrameImage scratch;
-    const auto capture = [&](FluidFrameImage& image) {
+    const auto capture = [&](FluidFrameImage& image, int frame) {
+        if (timing != nullptr) timing->stage.store(1, std::memory_order_relaxed);
+        const auto started = std::chrono::steady_clock::now();
         CaptureFrame([&](FluidFrameImage& destination, int renderPixels) {
             if (gas) RenderFluidGasFrame(gasSolver, recipe, renderPixels, plan.frameDt, destination);
             else     RenderFluidLiquidFrame(liquidSolver, recipe, renderPixels, plan.frameDt, destination);
         }, frameSize, supersampling, premultiplied, scratch, image);
+        if (timing != nullptr) {
+            const float seconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - started).count();
+            timing->renderSeconds.fetch_add(seconds, std::memory_order_relaxed);
+            if (seconds > timing->slowestRenderFrameSeconds.load(std::memory_order_relaxed)) {
+                timing->slowestRenderFrameSeconds.store(seconds, std::memory_order_relaxed);
+                timing->slowestRenderFrame.store(frame, std::memory_order_relaxed);
+            }
+        }
     };
     const auto step = [&](int index) {
         report(0.95f * static_cast<float>(index + 1) / static_cast<float>(totalSteps));
@@ -734,15 +709,15 @@ bool RenderFluidBakeFrames(const fluid::FluidRecipe& source, std::span<const int
 
     for (int i = 0; i < plan.warmupFrames; ++i) {
         if (cancelled()) return false;
-        advance();
+        advance(i - plan.warmupFrames);
         step(i);
     }
     std::vector<FluidFrameImage> captured(wanted.size());
     std::size_t next = 0;
     for (int i = 0; i <= lastFrame; ++i) {
         if (cancelled()) return false;
-        if (next < wanted.size() && wanted[next] == i) capture(captured[next++]);
-        if (i < lastFrame) advance();
+        if (next < wanted.size() && wanted[next] == i) capture(captured[next++], i);
+        if (i < lastFrame) advance(i);
         step(plan.warmupFrames + i);
     }
     const auto indexOf = [&wanted](int frame) {
@@ -754,7 +729,7 @@ bool RenderFluidBakeFrames(const fluid::FluidRecipe& source, std::span<const int
         FluidFrameImage& head = captured[indexOf(frame)];
         const FluidFrameImage& tail = captured[indexOf(plan.frameCount + frame)];
         if (head.size != tail.size) continue;
-        const float keep = static_cast<float>(frame + 1) / static_cast<float>(plan.loopOverlap + 1);
+        const float keep = fluid::FluidLoopKeepWeight(frame, plan.loopOverlap);
         for (std::size_t k = 0; k < head.rgba.size() && k < tail.rgba.size(); ++k)
             head.rgba[k] = tail.rgba[k] + (head.rgba[k] - tail.rgba[k]) * keep;
         for (std::size_t k = 0; k < head.motion.size() && k < tail.motion.size(); ++k)
@@ -762,7 +737,7 @@ bool RenderFluidBakeFrames(const fluid::FluidRecipe& source, std::span<const int
     }
     out.reserve(requested.size());
     for (const int frame : requested) out.push_back(std::move(captured[indexOf(frame)]));
-    report(1.0f);
+    report(timing != nullptr ? 0.95f : 1.0f);
     return !out.empty() && out.front().size > 0;
 }
 
@@ -776,8 +751,11 @@ bool RenderFluidBakeFrame(const fluid::FluidRecipe& recipe, int frame, int size,
     return true;
 }
 
-FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& basePath, std::atomic<float>* progress)
+FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& basePath,
+                          std::atomic<float>* progress, FluidBakeTiming* timing,
+                          const std::atomic<bool>* cancel)
 {
+    const auto cancelled = [cancel]() { return cancel && cancel->load(std::memory_order_relaxed); };
     const auto report = [progress](float value) {
         if (progress != nullptr) progress->store(value, std::memory_order_relaxed);
     };
@@ -792,6 +770,10 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
     const int frames = plan.frameCount;
     if (size * output.columns > kMaxAtlasDimension || size * output.rows > kMaxAtlasDimension)
         return Fail("アトラスが最大寸法 16384px を超えます (Frame Size × Columns / Rows を下げてください)");
+    std::string budgetError;
+    if (!ValidateFluidBakeBudget(EstimateFluidBakeBudget(recipe),
+                                 util::FileSystem::PathFromUtf8(basePath).parent_path(), budgetError))
+        return Fail(budgetError);
     const bool gas = recipe.kind == fluid::FluidKind::Gas;
     /// @note 無効な発生源しか無いと、何も湧かないまま空のコマを焼き切ってしまう。
     if (std::none_of(recipe.sources.begin(), recipe.sources.end(),
@@ -810,13 +792,17 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
     std::vector<int> wanted(static_cast<std::size_t>(frames));
     std::iota(wanted.begin(), wanted.end(), 0);
     std::vector<FluidFrameImage> images;
-    if (!RenderFluidBakeFrames(recipe, wanted, size, images, progress) || images.size() != wanted.size())
-        return Fail("コマを解けませんでした");
+    if (!RenderFluidBakeFrames(recipe, wanted, size, images, progress, cancel, timing)
+        || images.size() != wanted.size())
+        return Fail(cancelled() ? "キャンセルしました" : "コマを解けませんでした");
+    if (cancelled()) return Fail("キャンセルしました");
+    if (timing != nullptr) timing->stage.store(2, std::memory_order_relaxed);
+    const auto outputStarted = std::chrono::steady_clock::now();
 
     /// @note Motion Vector の保存値は FlipbookMotionVectorEncoding.hpp の規約 (m = −d / S) に従う。
-    ///       規約を自前で持つと生成器ごとに符号や単位がずれても誰も気付けない (実際に一度ずれていた)。
-    ///       S は «見えている画素» の最大変位 [アトラス UV]。空っぽの場所の速い流れで上限を決めると、
-    ///       肝心の煙の動きが 8bit の数段にしか割り当たらず warp がガタつくため見えている画素だけで計る。
+    /// @note 規約を自前で持つと生成器ごとに符号や単位がずれても誰も気付けない (実際に一度ずれていた)。
+    /// @note S は «見えている画素» の最大変位 [アトラス UV]。空っぽの場所の速い流れで上限を決めると、
+    /// @note 肝心の煙の動きが 8bit の数段にしか割り当たらず warp がガタつくため見えている画素だけで計る。
     bool writeMotion = output.motionVectors && shading != fluid::FluidShading::Distortion;
     const int atlasWidth  = size * output.columns;
     const int atlasHeight = size * output.rows;
@@ -897,11 +883,13 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
     if (directoryError) return Fail("出力フォルダーを作れません: " + directoryError.message());
 
     std::string error;
+    if (cancelled()) return Fail("キャンセルしました");
     if (!SaveRgbaPng(albedo, atlasWidth, atlasHeight, albedoPath, error)) return Fail(error);
     const TextureType albedoType = shading == fluid::FluidShading::Distortion ? TextureType::Data : TextureType::Color;
     const AlphaMode alphaMode = premultiplied ? AlphaMode::Premultiplied : AlphaMode::Straight;
     if (!SaveAtlasMeta(albedoPath, albedoType, TextureCompression::Auto, alphaMode, error)) return Fail(error);
     if (writeMotion) {
+        if (cancelled()) return Fail("キャンセルしました");
         if (!SaveRgbaPng(motion, atlasWidth, atlasHeight, motionPath, error)) return Fail(error);
         /// @note RG の 2 チャンネルを保てる BC5 で扱う (MV 生成ツールと同じ扱い)。
         if (!SaveAtlasMeta(motionPath, TextureType::Data, TextureCompression::BC5, AlphaMode::None, error))
@@ -914,14 +902,16 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
         : premultiplied                                                    ? FlipbookMipContent::PremultipliedSrgb
                                                                            : FlipbookMipContent::StraightSrgb;
     const auto tile = static_cast<std::uint32_t>(size);
+    if (cancelled()) return Fail("キャンセルしました");
     if (!detail::SaveFlipbookDds(albedoDds, static_cast<std::uint32_t>(atlasWidth), static_cast<std::uint32_t>(atlasHeight),
-                                 albedo, tile, tile, albedoContent, detail::FlipbookDdsCompression::BC7, error)
+                                  albedo, tile, tile, albedoContent, detail::FlipbookDdsCompression::BC7, error, cancel)
         || !detail::SaveFlipbookMeta(albedoDds, albedoType, TextureCompression::BC7, alphaMode, error))
         return Fail(error);
+    if (cancelled()) return Fail("キャンセルしました");
     if (writeMotion
         && (!detail::SaveFlipbookDds(motionDds, static_cast<std::uint32_t>(atlasWidth),
-                                     static_cast<std::uint32_t>(atlasHeight), motion, tile, tile,
-                                     FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC5, error)
+                                      static_cast<std::uint32_t>(atlasHeight), motion, tile, tile,
+                                      FlipbookMipContent::Plain, detail::FlipbookDdsCompression::BC5, error, cancel)
             || !detail::SaveFlipbookMeta(motionDds, TextureType::Data, TextureCompression::BC5, AlphaMode::None, error)))
         return Fail(error);
 
@@ -935,6 +925,7 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
         const std::size_t cells = static_cast<std::size_t>(resolution) * resolution * resolution;
         std::vector<float> sumX(cells, 0.0f), sumY(cells, 0.0f), sumZ(cells, 0.0f);
         for (int frame = 0; frame < frames; ++frame) {
+            if (cancelled()) return Fail("キャンセルしました");
             fluid::AdvanceFluidFrame(volume, plan);
             for (std::size_t i = 0; i < cells; ++i) {
                 sumX[i] += volume.VelocityX()[i];
@@ -971,6 +962,7 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
     fingerprint.Add(albedo);
     if (writeMotion) fingerprint.Add(motion);
     result.fingerprint = fingerprint.Finish();
+    if (cancelled()) return Fail("キャンセルしました");
     result.success = true;
     result.albedoPath = util::FileSystem::PathToUtf8(albedoDds);
     if (writeMotion) result.motionVectorPath = util::FileSystem::PathToUtf8(motionDds);
@@ -1018,8 +1010,11 @@ FluidBakeResult BakeFluid(const fluid::FluidRecipe& source, const std::string& b
         result.message += summary;
     }
     if (!result.vectorFieldPath.empty()) result.message += "\nVelocity PNG: " + result.vectorFieldPath;
+    if (timing != nullptr) timing->outputSeconds.store(
+        std::chrono::duration<float>(std::chrono::steady_clock::now() - outputStarted).count(),
+        std::memory_order_relaxed);
     report(1.0f);
     return result;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

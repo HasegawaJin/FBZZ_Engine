@@ -65,7 +65,7 @@ void EndModule()
 
 /// @brief 流れ 1 本ぶんの編集。型によって意味のある項目だけを出す。
 /// @note シーン FlowField とエミッター内蔵の流れの両方から呼ばれる共通 UI。
-///       別々に実装すると欄の食い違いが起きる。
+/// @note 別々に実装すると欄の食い違いが起きる。
 bool DrawFlowFieldSettings(scene::FlowFieldSettings& force, EditorContext& ctx,
                                     bool showSpace)
 {
@@ -73,7 +73,7 @@ bool DrawFlowFieldSettings(scene::FlowFieldSettings& force, EditorContext& ctx,
     using Space = scene::FlowFieldSpace;
 
     /// @note 添字 = FlowFieldType の値。LegacyDrag (5) は読み込み専用なので選択肢へ出さない
-    ///       (kSelectableTypes がその «出してよい型» の並び)。
+    /// @note (kSelectableTypes がその «出してよい型» の並び)。
     static const char* kTypeLabels[] = {
         "Uniform (constant flow)", "Sink", "Source", "Vortex", "Curl (turbulence)",
         "Drag (legacy)", "Baked Field"
@@ -95,7 +95,7 @@ bool DrawFlowFieldSettings(scene::FlowFieldSettings& force, EditorContext& ctx,
                 if (ImGui::Selectable(kTypeLabels[static_cast<int>(candidate)], selected)
                     && !selected) {
                     /// @note direction は Uniform では流れの向き、Vortex では回転軸を兼ねる。既定の
-                    ///       (1,0,0) は風にしか合わず、そのまま Vortex にすると軸が寝た «ローラー» になる。
+                    /// @note (1,0,0) は風にしか合わず、そのまま Vortex にすると軸が寝た «ローラー» になる。
                     if (candidate == Type::Vortex) force.direction = { 0.0f, 1.0f, 0.0f };
                     force.fieldType = candidate;
                     changed = true;
@@ -217,7 +217,7 @@ bool DrawFlowFieldList(std::vector<scene::FlowFieldSettings>& forces,
         for (Type type : kAddableTypes) {
             if (!ImGui::MenuItem(kShortNames[static_cast<int>(type)])) continue;
             /// @note EnsureLocalForce は «同じ型が既にあれば足さない»。ここでは «2 本目の Uniform» を
-            ///       作れる必要がある (別方向の流れ、別半径の吸い込み) ので直接足す。
+            /// @note 作れる必要がある (別方向の流れ、別半径の吸い込み) ので直接足す。
             scene::FlowFieldSettings force;
             force.fieldType = type;
             force.radius = 0.0f;
@@ -309,7 +309,7 @@ bool DrawShapeGizmo(scene::ParticleEmitterSettings& pe)
 
 /// @brief モジュールを «オフ» にしたときに捨てられる値の控え (編集セッション限定、保存しない)。
 /// @note Noise/Collision は専用の有効フラグを持たず、強度・モードの値自体を «有効/無効» として
-///       扱う。オフにすると値が消えるため、ここに控えて再度オンにしたとき復元する。
+/// @note 扱う。オフにすると値が消えるため、ここに控えて再度オンにしたとき復元する。
 template<typename T>
 [[nodiscard]] T& RememberedModuleValue(const void* key, T fallback)
 {
@@ -344,14 +344,14 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                                 scene::ParticleEmitter* liveEmitter)
 {
     /// @note 実体が無い (VFX グラフのノードを編集している) ときは、再生状態のリセットを捨て先へ流す。
-    ///       分岐を書かずに済ませることで、以降のモジュール実装が実体の有無を意識しなくてよくなる。
+    /// @note 分岐を書かずに済ませることで、以降のモジュール実装が実体の有無を意識しなくてよくなる。
     scene::ParticleRuntime discardedRuntime;
     scene::ParticleRuntime& runtime =
         liveEmitter != nullptr ? liveEmitter->runtime : discardedRuntime;
     bool changed = false;
 
     /// @note GPU 縮退の判定にはフリップブック補間・MV・自己影も要るが、それらは .mat 側にある。
-    ///       実体の有無に関わらず同じ答えを出すため、runtime の解決結果ではなく素材から直接読む。
+    /// @note 実体の有無に関わらず同じ答えを出すため、runtime の解決結果ではなく素材から直接読む。
     const asset::ParticleMaterialSettings* look = ResolveParticleMaterialSettings(pe.materialPath);
 
     /// @name Main: 初期値・再生設定・シミュレーション方式
@@ -399,7 +399,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                               "炎・火花に明度差と軽い色相差が出ます。");
 
         /// @note 重力と結合係数は «流れ» ではないのでリストに入らない。最も触る 2 つなので
-        ///       Main へ直に出す。
+        /// @note Main へ直に出す。
         changed |= widgets::DragVec3("Gravity", pe.gravity, 0.05f);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("粒子だけに掛かる加速度 [m/s^2]。\n"
@@ -427,7 +427,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
             changed = true;
         }
         /// @note GPU を選んでも条件を 1 つでも外すと黙って CPU へ落ちる。原因をコンボの真下に
-        ///       表示し、縮退に気付けるようにする。
+        /// @note 表示し、縮退に気付けるようにする。
         if (const auto fallback = scene::GetParticleGpuFallbackReason(pe, look);
             fallback != scene::ParticleGpuFallbackReason::None
             && fallback != scene::ParticleGpuFallbackReason::NotRequested) {
@@ -615,6 +615,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
 
     /// @name Rotation over Lifetime
     if (BeginModule("Rotation over Lifetime", nullptr, /*defaultOpen=*/false, changed)) {
+        changed |= ImGui::Checkbox("Random Start Rotation", &pe.randomStartRotation);
         changed |= ImGui::DragFloat("Angular Velocity Min", &pe.angularVelocityMin, 0.01f, -100.0f, 100.0f);
         changed |= ImGui::DragFloat("Angular Velocity Max", &pe.angularVelocityMax, 0.01f, -100.0f, 100.0f);
         changed |= ImGui::Checkbox("Use Rotation Curve", &pe.useRotationCurve);
@@ -788,7 +789,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
 
     /// @name Renderer: 描画方式とマテリアル参照
     /// @note 見た目 (ブレンド・フリップブック・歪み・煙・影) は .mat の [particle] が
-    ///       正本になったため、ここには無い。Material を選んで Inspector で編集する。
+    /// @note 正本になったため、ここには無い。Material を選んで Inspector で編集する。
     if (BeginModule("Renderer", nullptr, /*defaultOpen=*/true, changed)) {
         const char* renderModeItems[] = { "Billboard", "Stretched", "Horizontal", "Vertical" };
         int renderMode = static_cast<int>(pe.renderMode);
@@ -813,7 +814,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                               "同値のときはカメラから遠い順に描画されます。");
 
         /// @note .mat 参照。変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
-        ///       テクスチャを直接落とした場合は加算の .mat を用意して差し替える。
+        /// @note テクスチャを直接落とした場合は加算の .mat を用意して差し替える。
         if (ParticleMaterialField("Material", pe.materialPath, ctx.projectRoot)) {
             runtime.loadedMaterialPath.clear();
             runtime.texture = {};
@@ -834,7 +835,7 @@ bool DrawParticleEmitterModules(scene::ParticleEmitterSettings& pe, EditorContex
                               "MeshRenderer が持ちます (互換のため型は文字列のまま)。");
         if (!pe.meshParticlePath.empty()) {
             /// @note «別のモデルを指定したのに変わらない» / «何も出ない» の 2 つが、この欄で
-            ///       一番多い詰まり方。要求を画面に出しておく (どちらも黙って失敗する)。
+            /// @note 一番多い詰まり方。要求を画面に出しておく (どちらも黙って失敗する)。
             ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },
                 "パスは使われません: 形は同じ GameObject の MeshRenderer が正本です");
             ImGui::TextColored({ 1.0f, 0.78f, 0.35f, 1.0f },

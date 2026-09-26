@@ -24,6 +24,11 @@ namespace {
 
 /// @note 落とせる品質段。4 段で 1/16 (面積 1/256) まで縮む。
 constexpr AssetQuality kLowestTextureQuality = 4;
+/// @brief 生画像と G 反転画像の品質段を別々に追跡する。
+std::string TextureVariantKey(const std::string& sourcePath, bool flipGreen)
+{
+    return flipGreen ? sourcePath + "|flipGreen" : sourcePath;
+}
 
 /// @brief メインスレッドで確定させた import 設定と、GPU 実体が既にあるかの判定。
 struct TextureJobContext final : AssetJobContext {
@@ -70,6 +75,7 @@ public:
         if (context.gpuAlreadyResident || context.packagedCachePath.empty()
             || !texturecache::ReadQuality(context.packagedCachePath, context.sourceStamp, 0, pixels))
             return AssetStreamChannel<TextureAsset>::LoadImmediately(handle, key);
+        if (context.settings.flipGreen) renderer::FlipTextureGreen(pixels);
         std::vector<renderer::TextureMipData> mips;
         if (!pixels.ToMipData(mips)) return false;
         const auto uploaded = m_resources.CreateTextureWithMips(mips.data(), static_cast<uint32_t>(mips.size()));
@@ -79,7 +85,8 @@ public:
         texture->settings = context.settings;
         texture->sourceWidth = pixels.sourceWidth;
         texture->sourceHeight = pixels.sourceHeight;
-        texture->gpuHandle = m_resources.PublishTexture(input.resolvedPath, uploaded);
+        texture->gpuHandle = m_resources.PublishTexture(input.resolvedPath, uploaded,
+                                                        context.settings.flipGreen);
         return AssetStore<TextureAsset>::Get().Replace(Typed(handle), std::move(texture));
     }
 
@@ -104,7 +111,8 @@ public:
         context->settings = settingsLoaded
             ? scratch.settings
             : DefaultSettingsForType(GuessTextureType(util::FileSystem::GetFilename(sourcePath)));
-        context->gpuAlreadyResident = IsResidentAtQuality(sourcePath, out.quality);
+        context->gpuAlreadyResident = IsResidentAtQuality(sourcePath, out.quality,
+                                                          context->settings.flipGreen);
 
         /// @note 元画像の世代はここで決める。ワーカーが読む間にファイルが差し替わっても、古い世代で書いた
         /// @note キャッシュは次の Snapshot で食い違って捨てられる。
@@ -140,6 +148,8 @@ public:
             result.error = AssetLoadError::DecodeFailed;
             return result;
         }
+        if (!context.gpuAlreadyResident && context.settings.flipGreen)
+            renderer::FlipTextureGreen(decoded->pixels);
         result.decoded = std::move(decoded);
         return result;
     }
@@ -184,8 +194,9 @@ public:
         }
 
         /// @note ワーカーが動いている間に同期 LoadTexture が同じ品質で読んでいれば、その実体を使う。
-        if (IsResidentAtQuality(texture.sourcePath, texture.quality)) {
-            candidate->asset->gpuHandle = m_resources.FindCachedTexture(texture.sourcePath);
+        if (IsResidentAtQuality(texture.sourcePath, texture.quality, texture.settings.flipGreen)) {
+            candidate->asset->gpuHandle = m_resources.FindCachedTexture(
+                texture.sourcePath, texture.settings.flipGreen);
             if (candidate->asset->sourceWidth == 0) {
                 if (const renderer::ITexture* resident = m_resources.Get(candidate->asset->gpuHandle)) {
                     candidate->asset->sourceWidth = resident->GetWidth();
@@ -222,7 +233,8 @@ public:
         if (!texture.asset) return false;
         if (texture.nativeUpload) {
             /// @note キューブと HDR は RGBA8 に潰さず既存形式で転送する。利用権が寿命を守るため固定しない。
-            texture.asset->gpuHandle = m_resources.LoadTextureUnpinned(texture.asset->sourcePath);
+            texture.asset->gpuHandle = m_resources.LoadTextureUnpinned(
+                texture.asset->sourcePath, texture.asset->settings.flipGreen);
             const auto* native = m_resources.Get(texture.asset->gpuHandle);
             if (!native) return false;
             texture.asset->sourceWidth = native->GetWidth();
@@ -232,7 +244,8 @@ public:
             const auto uploaded = texture.asset->gpuHandle;
             const TextureAsset* current = TypedGet(handle);
             bool adopted = false;
-            if (current && m_resources.Get(current->gpuHandle) != nullptr
+            if (current && current->settings.flipGreen == texture.asset->settings.flipGreen
+                && m_resources.Get(current->gpuHandle) != nullptr
                 && m_resources.ReplaceTextureContents(current->gpuHandle, uploaded)) {
                 /// @note 品質変更・再読み込み: 配ってあるハンドルはそのまま、中身だけ新しい実体へ移る。
                 texture.asset->gpuHandle = current->gpuHandle;
@@ -240,12 +253,15 @@ public:
             } else {
                 /// @note パスキャッシュへ載せた時点で所有は ResourceManager へ移る (同期経路と同じ)。
                 /// @note 既に同期経路の実体が載っていればそちらが正で、こちらの転送物は返される。
-                texture.asset->gpuHandle = m_resources.PublishTexture(texture.asset->sourcePath, uploaded);
+                texture.asset->gpuHandle = m_resources.PublishTexture(
+                    texture.asset->sourcePath, uploaded, texture.asset->settings.flipGreen);
                 adopted = texture.asset->gpuHandle == uploaded;
             }
             texture.ownsGpuHandle = false;
-            if (adopted) m_residentQuality[texture.asset->sourcePath] = texture.quality;
-            else m_residentQuality.erase(texture.asset->sourcePath);
+            const std::string variantKey = TextureVariantKey(texture.asset->sourcePath,
+                                                              texture.asset->settings.flipGreen);
+            if (adopted) m_residentQuality[variantKey] = texture.quality;
+            else m_residentQuality.erase(variantKey);
         }
         return AssetStreamChannel<TextureAsset>::Publish(handle, candidate);
     }
@@ -279,17 +295,18 @@ protected:
                 && slot.asset->gpuHandle == asset->gpuHandle)
                 return false;
         }
-        if (!m_resources.EvictStreamedTexture(asset->sourcePath)) return false;
-        m_residentQuality.erase(asset->sourcePath);
+        if (!m_resources.EvictStreamedTexture(asset->sourcePath, asset->settings.flipGreen)) return false;
+        m_residentQuality.erase(TextureVariantKey(asset->sourcePath, asset->settings.flipGreen));
         return true;
     }
 
 private:
     /// @brief パスキャッシュの実体がその品質で作られたものか。同期経路で載ったものは最高品質として扱う。
-    [[nodiscard]] bool IsResidentAtQuality(const std::string& sourcePath, AssetQuality quality) const
+    [[nodiscard]] bool IsResidentAtQuality(const std::string& sourcePath, AssetQuality quality,
+                                           bool flipGreen) const
     {
-        if (!m_resources.FindCachedTexture(sourcePath).IsValid()) return false;
-        const auto it = m_residentQuality.find(sourcePath);
+        if (!m_resources.FindCachedTexture(sourcePath, flipGreen).IsValid()) return false;
+        const auto it = m_residentQuality.find(TextureVariantKey(sourcePath, flipGreen));
         const AssetQuality resident = it != m_residentQuality.end() ? it->second : 0;
         return resident == quality;
     }

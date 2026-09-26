@@ -41,6 +41,7 @@ namespace {
 
 struct AssetPickerState {
     bool                     open             = false;
+    AssetPickerHost          host             = AssetPickerHost::INSPECTOR;
     std::string*             target           = nullptr;
     std::string*             justPickedTarget = nullptr;
     ImGuiID                  fieldId          = 0;
@@ -403,7 +404,7 @@ float HeaderPadY()
     return std::max(2.0f, std::floor(ImGui::GetFontSize() * 0.14f));
 }
 
-} // namespace
+}
 
 bool InputString(const char* label, std::string& value, std::size_t capacity)
 {
@@ -554,7 +555,7 @@ namespace {
 AssetRevealRequest s_revealRequest;
 bool               s_revealRequestPending = false;
 
-} // namespace
+}
 
 void RequestAssetReveal(std::string assetPath, bool selectInInspector)
 {
@@ -579,7 +580,8 @@ bool ConsumeAssetRevealRequest(AssetRevealRequest& out)
 
 bool AssetPathField(const char* label, std::string& path,
                     const char* filterExts,
-                    const std::string& projectRoot)
+                    const std::string& projectRoot,
+                    AssetPickerHost host)
 {
     ImGui::PushID(label);
     bool changed = false;
@@ -771,6 +773,7 @@ bool AssetPathField(const char* label, std::string& path,
         ImGui::SetTooltip("Browse Assets...");
     if (browse) {
         s_picker.open        = true;
+        s_picker.host        = host;
         s_picker.target      = nullptr;
         s_picker.justPickedTarget = nullptr;
         s_picker.fieldId = fieldId;
@@ -920,6 +923,7 @@ void OpenAssetPicker(std::string& target, const char* filterExts,
                      const std::string& projectRoot, ImVec2 anchorPos)
 {
     s_picker.open        = true;
+    s_picker.host        = AssetPickerHost::INSPECTOR;
     s_picker.target      = &target;
     s_picker.fieldId = 0;
     s_picker.fieldPicked = false;
@@ -932,8 +936,10 @@ void OpenAssetPicker(std::string& target, const char* filterExts,
 }
 
 void DrawAssetPickerModal(renderer::ResourceManager* resources,
-                          renderer::IImGuiRenderer* imgui)
+                           renderer::IImGuiRenderer* imgui,
+                           AssetPickerHost host)
 {
+    if (s_picker.host != host) return;
     s_thumbnailResources = resources;
     s_thumbnailImGui = imgui;
     if (s_picker.fieldId != 0 && ImGui::GetFrameCount() - s_picker.fieldSeenFrame > 1) {
@@ -959,8 +965,8 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
     ///       Unity 風オブジェクトピッカーとして表示する。
     constexpr float kW = 460.0f;
     constexpr float kH = 480.0f;
-    const ImVec2 vpPos  = ImGui::GetMainViewport()->Pos;
-    const ImVec2 vpSize = ImGui::GetMainViewport()->Size;
+    const ImVec2 vpPos  = ImGui::GetWindowViewport()->Pos;
+    const ImVec2 vpSize = ImGui::GetWindowViewport()->Size;
     const float windowW = std::max(280.0f, std::min(kW, vpSize.x - 8.0f));
     const float windowH = std::max(240.0f, std::min(kH, vpSize.y - 8.0f));
     ImVec2 pos = s_picker.anchorPos;
@@ -1362,7 +1368,7 @@ ImGuiID s_expressionEditId = 0;
 char    s_expressionBuffer[64] = {};
 bool    s_expressionJustOpened = false;
 
-} // namespace
+}
 
 bool EvaluateExpression(const char* text, float& out)
 {
@@ -1627,7 +1633,7 @@ void DrawLockGlyph(ImDrawList* drawList, ImVec2 center, float size, bool locked,
     drawList->PathStroke(color, ImDrawFlags_None, std::max(1.0f, size * 0.10f));
 }
 
-} // namespace
+}
 
 bool DragAxes(const char* id, float* values, int count,
               float speed, float min, float max, const char* fmt)
@@ -1963,7 +1969,7 @@ struct ListReorderPayload {
     int     index  = -1;
 };
 
-} // namespace
+}
 
 float ListRowToolbarWidth(bool removable)
 {
@@ -2189,7 +2195,7 @@ std::unordered_set<ImGuiID>& HeaderStateIdRegistry()
     return ids;
 }
 
-} // namespace
+}
 
 const std::unordered_set<ImGuiID>& ComponentHeaderStateIds()
 {
@@ -2442,7 +2448,7 @@ void EndCardCommon(const ComponentBodyScope& scope)
     ImGui::GetStateStorage()->SetFloat(scope.key, height);
 }
 
-} // namespace
+}
 
 ComponentBodyScope BeginComponentBody(const ComponentHeaderResult& header, ImU32 accent)
 {
@@ -2612,4 +2618,4 @@ void ReadOnlyText(const char* label, const char* text)
     ImGui::LabelText(label, "%s", text);
 }
 
-} // namespace fbzz::editor::widgets
+}

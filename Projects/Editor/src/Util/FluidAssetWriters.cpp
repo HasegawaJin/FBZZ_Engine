@@ -10,29 +10,69 @@
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/Uuid.hpp>
+#include <toml++/toml.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <locale>
+#include <sstream>
 #include <system_error>
 #include <utility>
 
 namespace fbzz::editor {
 namespace {
 
-/// .mat からの参照は guid で書く。パスで書くと素材を別フォルダーへ移した瞬間に外れる。
-std::string GuidReference(const std::string& diskPath)
+/// @brief 実在するアセットの GUID 参照を解決する。
+bool GuidReference(const std::string& diskPath, bool allowEmpty, std::string& outReference,
+                   std::string& outError, bool registerGuid = true)
 {
-    const std::string guid = asset::AssetDatabase::GuidFromPath(diskPath);
-    if (guid.empty()) return NormalizeAssetPath(diskPath);
-    return std::string(asset::AssetDatabase::kGuidPrefix) + guid;
+    outError.clear();
+    if (diskPath.empty()) {
+        if (allowEmpty) {
+            outReference.clear();
+            return true;
+        }
+        outError = "焼いたテクスチャのパスがありません";
+        return false;
+    }
+    if (!util::FileSystem::Exists(diskPath)) {
+        outError = "焼いたテクスチャがありません: " + diskPath;
+        return false;
+    }
+    /// @note 仮 Bake には既存 .meta のコピーがある。これを DB に登録すると本番パスと
+    /// @note 同じ GUID の別アセットと誤判定されるので、既存 GUID は sidecar から読む。
+    std::string guid;
+    std::string metaText;
+    if (util::FileSystem::ReadText(diskPath + ".meta", metaText)) {
+        std::istringstream stream(metaText);
+        const auto parsed = toml::parse(stream);
+        if (parsed) guid = parsed.table()["meta"]["guid"].value_or(std::string{});
+    }
+    if (guid.empty()) guid = registerGuid ? asset::AssetDatabase::GuidFromPath(diskPath)
+                                         : asset::AssetDatabase::EnsureGuidMetaUnindexed(diskPath);
+    if (!guid.empty()) {
+        outReference = std::string(asset::AssetDatabase::kGuidPrefix) + guid;
+        return true;
+    }
+    outError = "アセット GUID を保存できません: " + diskPath;
+    return false;
 }
 
 bool EndsWith(const std::string& text, const std::string& suffix)
 {
     return text.size() >= suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+std::string PreferPngSibling(const std::string& bakedPath)
+{
+    std::filesystem::path pngPath = util::FileSystem::PathFromUtf8(bakedPath);
+    const std::string extension = pngPath.extension().string();
+    if (extension != ".dds" && extension != ".DDS") return bakedPath;
+    pngPath.replace_extension(".png");
+    const std::string png = util::FileSystem::PathToUtf8(pngPath);
+    return util::FileSystem::Exists(png) ? png : bakedPath;
 }
 
 std::string TomlEscape(const std::string& text)
@@ -46,12 +86,19 @@ std::string TomlEscape(const std::string& text)
     return out;
 }
 
-void ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAsset& material)
+bool ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAsset& material,
+               std::string& outError, bool registerGuid)
 {
+    std::string albedoReference;
+    std::string motionReference;
+    if (!GuidReference(bake.albedoPath, false, albedoReference, outError, registerGuid)
+        || !GuidReference(bake.motionVectorPath, true, motionReference, outError, registerGuid))
+        return false;
+
     material.renderPath = asset::RenderPath::Particle;
     material.blendMode  = bake.blendMode;
-    material.textures["albedo"] = GuidReference(bake.albedoPath);
-    if (!bake.motionVectorPath.empty()) material.textures["tex5"] = GuidReference(bake.motionVectorPath);
+    material.textures["albedo"] = std::move(albedoReference);
+    if (!motionReference.empty()) material.textures["tex5"] = std::move(motionReference);
     else                                material.textures.erase("tex5");
 
     asset::ParticleFlipbookSettings& flipbook = material.particle.flipbook;
@@ -60,6 +107,7 @@ void ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAsset& materia
     flipbook.spriteStartFrame        = 0;
     flipbook.spriteEndFrame          = 0;
     flipbook.spriteRandomRow         = false;
+    flipbook.spriteRandomStartFrame  = false;
     flipbook.flipbookMode            = bake.flipbookMode;
     flipbook.flipbookFramesPerSecond = bake.framesPerSecond;
     flipbook.flipbookFrameBlending   = true;
@@ -68,18 +116,62 @@ void ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAsset& materia
     material.particle.distortion     = bake.distortion;
     material.particle.emissiveScale  = bake.emissiveScale;
     material.particle.alphaSource    = scene::ParticleAlphaSource::TextureAlpha;
+    material.particle.sixWayMaps = false;
+    material.particle.punctualLighting = false;
+    material.particle.sixWayEmissionScale = 1.0f;
+    material.particle.sixWayEmissionColor = {};
+    material.textures.erase("six_way_color");
+    material.textures.erase("six_way_emission");
+    const auto emissive = material.textures.find("emissive");
+    std::string emissivePath = emissive != material.textures.end() ? emissive->second : std::string{};
+    if (asset::AssetDatabase::IsGuidRef(emissivePath))
+        emissivePath = asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(emissivePath));
+    if (emissive != material.textures.end()
+        && (EndsWith(emissivePath, "_6wayN.dds") || EndsWith(emissivePath, "_6wayN.png")))
+        material.textures.erase(emissive);
+    return true;
 }
 
-void ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& material)
+bool ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& material,
+                 std::string& outError, bool registerGuid)
 {
     const asset::VolumeFlipbookBakeResult& result = source.volume;
-    material.textures["albedo"] = NormalizeAssetPath(result.colorPath);
+    const bool useSixWay = !source.volumeDistortion && !result.sixWayPositivePath.empty()
+                        && !result.sixWayNegativePath.empty();
+    const bool useSixWayColorMaps = useSixWay && !result.sixWayAlbedoColorPath.empty()
+                                 && !result.sixWayEmissionColorPath.empty();
+    const std::string albedoPath = PreferPngSibling(
+        useSixWay ? result.sixWayPositivePath : result.colorPath);
+    const std::string motionPath = source.volumeDistortion
+        ? std::string{} : PreferPngSibling(result.motionPath);
+    const std::string negativePath = useSixWay ? PreferPngSibling(result.sixWayNegativePath) : std::string{};
+    const std::string sixWayColorPath = useSixWayColorMaps
+        ? PreferPngSibling(result.sixWayAlbedoColorPath) : std::string{};
+    const std::string sixWayEmissionPath = useSixWayColorMaps
+        ? PreferPngSibling(result.sixWayEmissionColorPath) : std::string{};
+    std::string albedoReference;
+    std::string motionReference;
+    std::string negativeReference;
+    std::string sixWayColorReference;
+    std::string sixWayEmissionReference;
+    if (!GuidReference(albedoPath, false, albedoReference, outError, registerGuid)
+        || !GuidReference(motionPath, true, motionReference, outError, registerGuid)
+        || (useSixWay && !GuidReference(negativePath, false, negativeReference, outError, registerGuid))
+        || (useSixWayColorMaps
+            && (!GuidReference(sixWayColorPath, false, sixWayColorReference, outError, registerGuid)
+                || !GuidReference(sixWayEmissionPath, false, sixWayEmissionReference, outError, registerGuid))))
+        return false;
+
+    material.renderPath = asset::RenderPath::Particle;
+    material.textures["albedo"] = std::move(albedoReference);
     /// @note 歪みマップは MV を焼かない。前回の MV を残すと、別の流れで warp される。
-    if (!result.motionPath.empty()) material.textures["tex5"] = NormalizeAssetPath(result.motionPath);
+    if (!motionReference.empty()) material.textures["tex5"] = std::move(motionReference);
     else                            material.textures.erase("tex5");
     /// @note 歪みは 2D の Distortion と同じく通常のアルファ合成で、albedo の RG を曲げる向きとして読む。
-    material.blendMode =
-        source.volumeDistortion ? renderer::BlendMode::ALPHA_BLEND : renderer::BlendMode::PREMULTIPLIED;
+    material.blendMode = source.volumeDistortion ? renderer::BlendMode::ALPHA_BLEND
+        : source.volumeFireEmission ? renderer::BlendMode::PREMULTIPLIED
+        : source.volumeGlow ? renderer::BlendMode::ADDITIVE
+        : useSixWay ? renderer::BlendMode::ALPHA_BLEND : renderer::BlendMode::PREMULTIPLIED;
     auto& particle = material.particle;
     particle.alphaSource = scene::ParticleAlphaSource::TextureAlpha;
     particle.flipbook.spriteColumns = result.columns;
@@ -90,28 +182,42 @@ void ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& materi
     particle.flipbook.spriteRandomStartFrame = false;
     /// @note MV は spriteBlend が 0 だと一切効かない。
     particle.flipbook.flipbookFrameBlending = true;
-    particle.flipbook.motionVectorFlipbook = !result.motionPath.empty();
-    particle.flipbook.motionVectorStrength = result.motionPath.empty() ? 0.0f : result.recommendedStrength;
+    particle.flipbook.motionVectorFlipbook = !motionPath.empty();
+    particle.flipbook.motionVectorStrength = source.volumeDistortion || result.motionPath.empty()
+        ? 0.0f : result.recommendedStrength;
     particle.emissiveScale = result.suggestedEmissiveScale;
     particle.distortion = source.volumeDistortion;
-    if (!source.volumeDistortion && !result.sixWayPositivePath.empty() && !result.sixWayNegativePath.empty()) {
+    particle.sixWayEmissionScale = useSixWayColorMaps ? result.suggestedEmissiveScale : 1.0f;
+    if (useSixWay) {
         /// @note 6 方向マップを焼いたなら、色の Atlas ではなくマップで陰影を付ける (光の向きに追従する)。
-        ///       マップはストレートの明るさなので、合成も通常のアルファへ戻す。
-        material.textures["albedo"] = NormalizeAssetPath(result.sixWayPositivePath);
-        material.textures["emissive"] = NormalizeAssetPath(result.sixWayNegativePath);
-        material.blendMode = renderer::BlendMode::ALPHA_BLEND;
+        /// @note Fire の発光マスクは煙の覆いと独立する。新しい Fire 材質だけ事前乗算へ切り替える。
+        material.textures["emissive"] = std::move(negativeReference);
         particle.sixWayMaps = true;
         particle.sixWayLighting = false;
         particle.volumetric = false;
         particle.punctualLighting = true;
         particle.sixWayEmissionColor = result.sixWayEmissionColor;
         particle.emissiveScale = 1.0f;
+        if (useSixWayColorMaps) {
+            material.textures["six_way_color"] = std::move(sixWayColorReference);
+            material.textures["six_way_emission"] = std::move(sixWayEmissionReference);
+        } else {
+            material.textures.erase("six_way_color");
+            material.textures.erase("six_way_emission");
+        }
     } else {
         particle.sixWayMaps = false;
+        particle.punctualLighting = false;
+        particle.sixWayEmissionColor = {};
+        material.textures.erase("six_way_color");
+        material.textures.erase("six_way_emission");
         /// @note 前回 6-way で焼いた _6wayN が emissive に残ると、6-way を切った焼き直しでも光って見える。
         const auto emissive = material.textures.find("emissive");
+        std::string emissivePath = emissive != material.textures.end() ? emissive->second : std::string{};
+        if (asset::AssetDatabase::IsGuidRef(emissivePath))
+            emissivePath = asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(emissivePath));
         if (emissive != material.textures.end()
-            && (EndsWith(emissive->second, "_6wayN.dds") || EndsWith(emissive->second, "_6wayN.png")))
+            && (EndsWith(emissivePath, "_6wayN.dds") || EndsWith(emissivePath, "_6wayN.png")))
             material.textures.erase(emissive);
     }
     if (source.volumeLoops) {
@@ -120,9 +226,10 @@ void ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& materi
     } else {
         particle.flipbook.flipbookMode = scene::ParticleFlipbookMode::Lifetime;
     }
+    return true;
 }
 
-} // namespace
+}
 
 FluidMaterialSource FluidMaterialSource::FromFlat(const asset::FluidBakeResult& result)
 {
@@ -141,6 +248,8 @@ FluidMaterialSource FluidMaterialSource::FromVolume(const asset::VolumeFlipbookB
     source.volumeLoops = asset::VolumeBakeLoops(settings);
     source.volumeFramesPerSecond = 1.0f / (std::max)(settings.source.frameDt, 1.0e-4f);
     source.volumeDistortion = settings.distortion;
+    source.volumeFireEmission = settings.fireEmission;
+    source.volumeGlow = settings.glowEmission;
     return source;
 }
 
@@ -162,16 +271,19 @@ asset::MaterialAsset NewFluidParticleMaterial()
     return material;
 }
 
-void ApplyFluidBakeToMaterial(const FluidMaterialSource& source, asset::MaterialAsset& material)
+bool ApplyFluidBakeToMaterial(const FluidMaterialSource& source, asset::MaterialAsset& material,
+                              std::string& outError, bool registerGuid)
 {
-    if (source.kind == FluidMaterialSource::Kind::Flat2D) ApplyFlat(source.flat, material);
-    else                                                  ApplyVolume(source, material);
+    if (source.kind == FluidMaterialSource::Kind::Flat2D)
+        return ApplyFlat(source.flat, material, outError, registerGuid);
+    return ApplyVolume(source, material, outError, registerGuid);
 }
 
 bool WriteFluidParticleMaterial(const std::string& materialPath, const FluidMaterialSource& source,
-                                bool& outCreated, std::string& outError)
+                                bool& outCreated, std::string& outError, bool registerGuid)
 {
     outCreated = false;
+    bool created = false;
     asset::MaterialAsset material;
     if (util::FileSystem::Exists(materialPath)) {
         /// @note 読めない .mat を既定で上書きすると、人が手で直している途中のファイルを消す。
@@ -181,14 +293,16 @@ bool WriteFluidParticleMaterial(const std::string& materialPath, const FluidMate
         }
     } else {
         material = NewFluidParticleMaterial();
-        outCreated = true;
+        created = true;
     }
-    ApplyFluidBakeToMaterial(source, material);
+    if (!ApplyFluidBakeToMaterial(source, material, outError, registerGuid)) return false;
     if (!asset::SaveMaterialAssetToFile(materialPath, material)) {
         outError = "マテリアルを書き出せません: " + materialPath;
         return false;
     }
-    (void)asset::AssetDatabase::GuidFromPath(materialPath);
+    if (registerGuid) (void)asset::AssetDatabase::GuidFromPath(materialPath);
+    outCreated = created;
+    outError.clear();
     return true;
 }
 
@@ -254,6 +368,8 @@ bool WriteLayeredFluidVfx(const std::filesystem::path& file, const std::string& 
     if (std::filesystem::exists(file, error) || error)
         return fail("既存の VFX は上書きしません: " + util::FileSystem::PathToUtf8(file));
     if (layers.empty() || layers.size() != materialPaths.size()) return fail("素材とレイヤーの数が一致しません");
+    std::vector<std::string> materialReferences;
+    materialReferences.reserve(materialPaths.size());
     for (std::size_t i = 0; i < layers.size(); ++i) {
         const auto& layer = layers[i];
         if (!std::isfinite(layer.startDelay) || layer.startDelay < 0.0f
@@ -261,7 +377,12 @@ bool WriteLayeredFluidVfx(const std::filesystem::path& file, const std::string& 
             || !std::isfinite(layer.recipe.output.duration) || layer.recipe.output.duration <= 0.0f
             || !std::isfinite(layer.position.x) || !std::isfinite(layer.position.y) || !std::isfinite(layer.position.z))
             return fail("レイヤーの時間・大きさ・位置が不正です");
-        if (!util::FileSystem::Exists(materialPaths[i])) return fail("素材がありません: " + materialPaths[i]);
+        if (!util::FileSystem::Exists(materialPaths[i]))
+            return fail("素材がありません: " + materialPaths[i]);
+        std::string reference;
+        if (!GuidReference(materialPaths[i], false, reference, outError))
+            return fail(outError);
+        materialReferences.push_back(std::move(reference));
     }
     const std::string rootId = util::GenerateUUID();
     const auto temporary = util::FileSystem::PathFromUtf8(
@@ -287,10 +408,10 @@ bool WriteLayeredFluidVfx(const std::filesystem::path& file, const std::string& 
         out << "[gameobjects.ParticleEmitter]\ncullingEnabled = false\nlodEnabled = false\n"
             << "startDelay = " << layer.startDelay << "\nduration = " << layer.recipe.output.duration
             << "\nlifetime = " << layer.recipe.output.duration << "\nlifetimeRandom = 0.0\n"
-            << "loop = false\nemitRate = 0.0\nmaxParticles = 1\nshape = 0\n"
+            << "loop = false\nemitRate = 0.0\nmaxParticles = 1\nshape = 0\nrandomStartRotation = false\n"
             << "sizeStart = " << layer.size << "\nsizeEnd = " << layer.size << "\nsizeCurvePower = 1.0\n"
             << "emitVelocity = [0.0, 0.0, 0.0]\nvelocitySpread = 0.0\ngravity = [0.0, 0.0, 0.0]\n"
-            << "materialPath = \"" << TomlEscape(GuidReference(materialPaths[i])) << "\"\n"
+            << "materialPath = \"" << TomlEscape(materialReferences[i]) << "\"\n"
             << "renderMode = 0\nsortMode = 1\nangularVelocityMin = 0.0\nangularVelocityMax = 0.0\n"
             << "colorVariation = 0.0\ncolorStart = [1.0, 1.0, 1.0, 1.0]\ncolorEnd = [1.0, 1.0, 1.0, 0.0]\n"
             << "bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.0, probability = 1.0 }]\n";
@@ -316,14 +437,13 @@ bool WriteSingleEmitterVfx(const std::filesystem::path& file, const std::string&
     const float life = (std::max)(lifetime, 0.01f);
     const std::string root = TomlEscape(rootName);
     char numbers[160]{};
-    /// @note 1 粒ずつ、寿命いっぱいでアトラスを最後まで再生させる (Lifetime モード)。
-    std::snprintf(numbers, sizeof(numbers), "duration = %.4f\nemitRate = %.4f\nlifetime = %.4f\n",
-                  life, 1.0f / life, life);
+    /// @note 周期末では前の粒がまだ生きているため、2 枠で先頭の Burst を欠かさず出す。
+    std::snprintf(numbers, sizeof(numbers), "duration = %.4f\nemitRate = 0.0\nlifetime = %.4f\n",
+                  life, life);
 
     std::ofstream out(file, std::ios::binary | std::ios::trunc);
     if (!out) return false;
-    out << "# FBZZ Engine\n"
-        << "# 焼いたフリップブックを 1 層だけ再生するプレビュー用 .vfx。焼き直すたびに上書きされる。\n"
+    out << "# @note 焼いたフリップブックを 1 層だけ再生するプレビュー用 .vfx。焼き直すたびに上書きされる。\n"
         << "[scene]\nformat_version = 1\n\n"
         << "[prefab]\nformat_version = 1\nroot_count = 1\n\n"
         << "[[gameobjects]]\nname = \"" << root << "\"\ninstanceId = \"" << rootId << "\"\n"
@@ -340,14 +460,16 @@ bool WriteSingleEmitterVfx(const std::filesystem::path& file, const std::string&
         << "scale = [1.0, 1.0, 1.0]\n\n"
         << "[gameobjects.ParticleEmitter]\ncullingEnabled = false\nlodEnabled = false\n"
         << numbers
-        << "loop = true\nmaxParticles = 1\nshape = 0\nsizeStart = 2.0\nsizeEnd = 2.0\nsizeCurvePower = 1.0\n"
+        << "loop = true\nmaxParticles = 2\nshape = 0\nrandomStartRotation = false\n"
+           "sizeStart = 2.0\nsizeEnd = 2.0\nsizeCurvePower = 1.0\n"
         << "lifetimeRandom = 0.0\nemitVelocity = [0.0, 0.0, 0.0]\nvelocitySpread = 0.0\n"
         << "flowCoupling = 0.0\ngravity = [0.0, 0.0, 0.0]\n"
         << "materialPath = \"" << TomlEscape(materialAssetPath) << "\"\n"
         << "renderMode = 0\nsortMode = 1\nangularVelocityMin = 0.0\nangularVelocityMax = 0.0\n"
         << "colorVariation = 0.0\ncolorStart = [1.0, 1.0, 1.0, 1.0]\ncolorEnd = [1.0, 1.0, 1.0, 1.0]\n"
-        << "startDelay = 0.0\n";
+        << "startDelay = 0.0\n"
+        << "bursts = [{ time = 0.0, count = 1, cycles = 1, interval = 0.0, probability = 1.0 }]\n";
     return static_cast<bool>(out);
 }
 
-} // namespace fbzz::editor
+}

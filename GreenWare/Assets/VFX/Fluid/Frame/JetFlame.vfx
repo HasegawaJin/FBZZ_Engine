@@ -1,0 +1,195 @@
+[prefab]
+format_version = 1
+root_count = 1
+
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = '12d55672-3da4-4714-a359-70b07b9deffd'
+layer = 0
+name = 'JetFlame'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.VFXComponent]
+    autoDestroy = false
+    duration = 0.0
+    enabled = true
+    loop = true
+    playOnAwake = true
+    speed = 1.0
+
+    [gameobjects.transform]
+    position = [ 0.0, -0.282347, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'd45b82af-00a8-48c6-a0a4-cc3ab1f412fa'
+layer = 0
+name = 'Flipbook'
+parent = 'JetFlame'
+parentInstanceId = '12d55672-3da4-4714-a359-70b07b9deffd'
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ParticleEmitter]
+    angularVelocityMax = 0.0
+    angularVelocityMin = 0.0
+    birthSubEmitter = ''
+    blackbodyEnabled = false
+    blackbodyIntensity = 1.0
+    blackbodyReferenceTemperature = 1800.0
+    boxExtents = [ 1.0, 1.0, 1.0 ]
+    clearOnStop = false
+    collisionBounciness = 0.5
+    collisionDamping = 0.0
+    collisionLayerMask = 4294967295
+    collisionMode = 0
+    collisionPlaneY = 0.0
+    collisionRadius = 0.05
+    collisionResponse = 0
+    collisionSubEmitter = ''
+    colorCurvePower = 1.0
+    colorEnd = [ 1.0, 1.0, 1.0, 1.0 ]
+    colorStart = [ 1.0, 1.0, 1.0, 1.0 ]
+    colorVariation = 0.0
+    coneAngleDegrees = 25.0
+    coneRadius = 1.0
+    cullingBoundsPadding = 0.25
+    cullingEnabled = false
+    deathSubEmitter = ''
+    duration = 1.6
+    emitPosition = [ 0.0, 0.0, 0.0 ]
+    emitRate = 0.0
+    emitVelocity = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    flowCoupling = 0.0
+    flowFieldChannels = 4294967295
+    gravity = [ 0.0, 0.0, 0.0 ]
+    inheritVelocity = 0.0
+    lifetime = 1.6
+    lifetimeRandom = 0.0
+    lightColor = [ 1.0, 1.0, 1.0, 1.0 ]
+    lightEnabled = false
+    lightFadeWithAlpha = true
+    lightIntensity = 1.0
+    lightMaxCount = 8
+    lightRange = 2.0
+    lightRangeFromSize = false
+    lightRatio = 1.0
+    lightUseParticleColor = true
+    localForces = []
+    lodEnabled = false
+    lodFarDistance = 40.0
+    lodFarRateScale = 0.25
+    lodNearDistance = 12.0
+    lodNearRateScale = 1.0
+    loop = true
+    materialPath = 'guid:7e21ddc1a0fb5e66120cfb386c7dff4b|Assets/VFX/Fluid/Frame/JetFlame.mat'
+    maxParticles = 2
+    meshParticlePath = ''
+    meshShapeFollowSkinnedAnimation = false
+    meshShapeIndex = -1
+    meshShapeNormalVelocity = 0.0
+    meshShapePath = ''
+    meshShapeScale = 1.0
+    pauseWhenCulled = false
+    playing = true
+    prewarm = false
+    randomSeed = 1
+    randomStartRotation = false
+    rateOverDistance = 0.0
+    receiveFlowFields = true
+    renderMode = 0
+    renderPriority = 0
+    screenCoverageThreshold = 0.0
+    shape = 0
+    simulationMode = 0
+    simulationSpace = 0
+    sizeAxisScale = [ 1.0, 1.0, 1.0 ]
+    sizeCurvePower = 1.0
+    sizeEnd = 2.0
+    sizeStart = 2.0
+    sortMode = 1
+    speedRange = 10.0
+    sphereRadius = 1.0
+    startDelay = 0.0
+    stretchedLengthScale = 1.0
+    stretchedVelocityScale = 0.1
+    subEmitterBurstCount = 1
+    subEmitterInheritVelocity = 0.0
+    trailAlphaScale = 0.5
+    trailColorTint = [ 1.0, 1.0, 1.0, 1.0 ]
+    trailEnabled = false
+    trailPointCount = 6
+    trailRibbon = false
+    trailRibbonWidth = 0.0
+    trailSampleInterval = 0.03
+    trailWidthScale = 0.6
+    useColorGradient = false
+    useDragCurve = false
+    useEmitRateCurve = false
+    useRotationCurve = false
+    useSizeCurve = false
+    useSpeedColorGradient = false
+    useSpeedSizeCurve = false
+    useVelocityCurve = false
+    velocitySpread = 0.0
+
+        [gameobjects.ParticleEmitter.colorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.dragCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.emitRateCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.rotationCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.sizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.speedColorGradient]
+        interp = 0
+        keys = [ [ 0.0, 1.0, 1.0, 1.0, 1.0 ], [ 1.0, 1.0, 1.0, 1.0, 0.0 ] ]
+        space = 0
+
+        [gameobjects.ParticleEmitter.speedSizeCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [gameobjects.ParticleEmitter.temperatureCurve]
+        interp = 0
+        keys = [ [ 0.0, 1900.0 ], [ 1.0, 1100.0 ] ]
+
+        [gameobjects.ParticleEmitter.velocityCurve]
+        interp = 0
+        keys = [ [ 0.0, 0.0 ], [ 1.0, 1.0 ] ]
+
+        [[gameobjects.ParticleEmitter.bursts]]
+        count = 1
+        cycles = 1
+        interval = 0.0
+        probability = 1.0
+        time = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 1.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

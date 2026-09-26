@@ -100,7 +100,7 @@ const std::vector<std::string>& AllCommandTypes()
         "prefab.create", "prefab.instantiate", "prefab.revert", "preset.catalog",
         "preset.create", "profiler.snapshot", "scene.find", "scene.list", "scene.open",
         "scene.save", "scene.selection", "scene.snapshot", "scene.tree", "scene.validate",
-        "script.reload", "selection.set", "shader.diagnostics", "shader.inspect",
+        "script.inspect", "script.catalog", "script.reload", "selection.set", "shader.diagnostics", "shader.inspect",
         "sprite.list", "sprite.rename", "sprite.slice", "sprite.thumbnail", "terrain.hole",
         "terrain.inspect", "terrain.paint", "terrain.ramp", "terrain.sample", "terrain.sculpt",
         "terrain.setLayerMaterial",
@@ -113,7 +113,7 @@ const std::vector<std::string>& AllCommandTypes()
     return types;
 }
 
-} // namespace
+} /// namespace
 
 /// 既定は «何も繋がっていない» 文脈。Play 中にシーンが差し替わる谷間そのもの。
 class EditorBusDispatcherTest : public testkit::EditorFixture {};
@@ -337,7 +337,7 @@ std::string ErrorMessage(const JsonValue& response)
 
 constexpr const char* kSmokePath = "Assets/VFX/Smoke.fluid";
 
-} // namespace
+} /// namespace
 
 /// projectRoot と UndoStack だけを繋ぐ。FluidBakeService は繋がない (焼きは GPU とフレームが要る)。
 class EditorBusFluidTest : public testkit::EditorFixture {
@@ -574,7 +574,7 @@ bool ArrayHasString(const JsonValue* array, const std::string& wanted)
     return false;
 }
 
-} // namespace
+} /// namespace
 
 TEST_F(EditorBusFluidTest, AddOperatorInsertsATypedPartAndUndoRemovesIt)
 {
@@ -974,4 +974,4 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
     EXPECT_TRUE(ArrayHasString(sphere, "color_key")) << SerializeJson(*sphere);
 }
 
-} // namespace fbzz::tests
+} /// namespace fbzz::tests

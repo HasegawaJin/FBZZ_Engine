@@ -1,15 +1,14 @@
-/**
- * @file App.tsx
- * @brief プロジェクト一覧・テンプレート・設定をまとめる GameHub のルート UI。
- * @author Hasegawa Jin
- * @date 2026/09/02
- */
+/// @file App.tsx
+/// @brief プロジェクト一覧・テンプレート・設定をまとめる GameHub のルート UI。
+/// @author Hasegawa Jin
+/// @date 2026/09/02
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BootstrapData, CreateProjectRequest, HubSettings, HubTheme, ProjectEntry, SdkBuildConfiguration, TemplateInfo, UpdateNotice } from '../shared/contracts';
 import { deriveProjectIdentifiers, isValidProjectIdentifiers } from '../shared/contracts';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
+import { outdatedSdkNotice } from '../shared/SdkNotice';
 
 type Page = 'projects' | 'templates' | 'settings';
 type ViewMode = 'list' | 'grid';
@@ -48,16 +47,16 @@ function formatTimestamp(value: string): { label: string; title: string } {
   return { label: absolute.split(' ')[0] ?? absolute, title: absolute };
 }
 
-/**
- * 検証フラグを、原因と対処が読み取れる粒度の診断へ展開する。
- * ProjectEntry のフラグ単体では「開けるか」しか分からないため、意味付けはUI側で持つ。
- */
-function diagnose(project: ProjectEntry, hubVersion: string): Diagnostic[] {
+/// @note 検証フラグを、原因と対処が読み取れる粒度の診断へ展開する。
+/// @note ProjectEntry のフラグ単体では「開けるか」しか分からないため、意味付けはUI側で持つ。
+function diagnose(project: ProjectEntry, hubVersion: string, selectedSdkId: string): Diagnostic[] {
   if (project.validationPending) return [];
   if (!project.pathExists) {
     return [{ severity: 'error', label: 'フォルダーが見つかりません', detail: '登録されたパスが存在しません。移動されたか削除されています。' }];
   }
   const diagnostics: Diagnostic[] = [];
+  const sdkNotice = outdatedSdkNotice(project.sdkId, selectedSdkId, hubVersion);
+  if (sdkNotice) diagnostics.push({ severity: 'warning', label: `古い SDK ${project.sdkId || selectedSdkId} を使用`, detail: sdkNotice });
   if (!project.projectFileValid) diagnostics.push({ severity: 'error', label: '.fbzz_proj が不正', detail: 'name と project_id を読み取れませんでした。' });
   if (!project.layoutValid) diagnostics.push({ severity: 'error', label: '必須フォルダーが不足', detail: 'Assets / Src / Include のいずれかがありません。' });
   if (!project.cmakeExists) diagnostics.push({ severity: 'warning', label: 'CMakeLists.txt がありません', detail: 'スクリプト DLL をビルドできません。' });
@@ -91,7 +90,7 @@ function Thumbnail({ project, className }: { project: ProjectEntry; className: s
   return <div className={className} style={style}>{!project.thumbnailDataUrl && project.name.slice(0, 2).toUpperCase()}</div>;
 }
 
-/** 「開く」ボタンの表示と活性。起動中は全プロジェクトの「開く」を止め、対象だけ「起動中…」にする。 */
+/// @note 「開く」ボタンの表示と活性。起動中は全プロジェクトの「開く」を止め、対象だけ「起動中…」にする。
 function openButtonState(status: ProjectStatus, projectPath: string, openingPath: string): { canOpen: boolean; label: string; title: string } {
   const opening = openingPath === projectPath;
   const healthy = status === 'ready' || status === 'warning';
@@ -115,7 +114,7 @@ function ProjectRow({ entry, expanded, openingPath, onToggle, onOpen, onReveal, 
   const opened = formatTimestamp(project.lastOpened);
   const issues = diagnostics.filter((diagnostic) => diagnostic.severity !== 'info').length;
   const open = openButtonState(status, project.path, openingPath);
-  // 「一覧から削除」は 2 段階にする。畳んだら確認状態も捨てる。
+  /// @note 「一覧から削除」は 2 段階にする。畳んだら確認状態も捨てる。
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   useEffect(() => { if (!expanded) setConfirmingRemove(false); }, [expanded]);
 
@@ -193,6 +192,8 @@ function ProjectCard({ entry, openingPath, onOpen, onReveal }: { entry: Inspecte
         <span className="mono truncate">{project.sdkId || 'SDK 未固定'}</span>
       </div>
       <div className="row-sub truncate mono" title={project.path}>{project.path}</div>
+      {diagnostics.filter((diagnostic) => diagnostic.severity === 'warning').map((diagnostic) =>
+        <div className="hint warn" key={diagnostic.label} title={diagnostic.detail}><Icon name="alert" size={13} />{diagnostic.label}</div>)}
       <div className="card-foot">
         <time title={opened.title}>{opened.label}</time>
         <div className="spacer" />
@@ -345,6 +346,7 @@ function SettingsPage({ settings, projectCount, hubVersion, onSave }: {
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
   const sdkPending = draft.sdkRoot.trim() !== settings.sdkRoot;
+  const sdkNotice = outdatedSdkNotice('', settings.sdkId, hubVersion);
   const patch = (values: Partial<HubSettings>) => setDraft({ ...draft, ...values });
 
   return <div className="settings">
@@ -375,7 +377,7 @@ function SettingsPage({ settings, projectCount, hubVersion, onSave }: {
             {sdkPending
               ? <span className="hint warn"><Icon name="alert" size={13} />保存時に fbzz-sdk.toml を検証します。</span>
               : settings.sdkId
-                ? <span className="hint ok"><Icon name="check" size={13} />解決済み: {settings.sdkId}</span>
+                ? <span className={`hint ${sdkNotice ? 'warn' : 'ok'}`}><Icon name={sdkNotice ? 'alert' : 'check'} size={13} />{sdkNotice || `解決済み: ${settings.sdkId}`}</span>
                 : <span className="hint danger"><Icon name="alert" size={13} />SDK が未解決です。プロジェクトの作成と起動ができません。</span>}
           </div>
         </div>
@@ -462,9 +464,10 @@ function SettingsPage({ settings, projectCount, hubVersion, onSave }: {
   </div>;
 }
 
-function CreateDialog({ templates, settings, initialTemplateId, onClose, onCreate }: {
+function CreateDialog({ templates, settings, hubVersion, initialTemplateId, onClose, onCreate }: {
   templates: TemplateInfo[];
   settings: HubSettings;
+  hubVersion: string;
   initialTemplateId: string;
   onClose: () => void;
   onCreate: (request: CreateProjectRequest) => Promise<void>;
@@ -474,6 +477,7 @@ function CreateDialog({ templates, settings, initialTemplateId, onClose, onCreat
   const [templateId, setTemplateId] = useState(initialTemplateId || templates.find((template) => template.compatible)?.id || 'standard');
   const [busy, setBusy] = useState(false);
   const selectedTemplate = templates.find((template) => template.id === templateId);
+  const sdkNotice = outdatedSdkNotice('', settings.sdkId, hubVersion);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
@@ -481,7 +485,7 @@ function CreateDialog({ templates, settings, initialTemplateId, onClose, onCreat
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  // main 側と同じ導出規則で、作成前にフォルダー名と識別子を提示する。
+  /// @note main 側と同じ導出規則で、作成前にフォルダー名と識別子を提示する。
   const identifiers = deriveProjectIdentifiers(displayName);
   const nameValid = isValidProjectIdentifiers(identifiers);
   const templateUsable = selectedTemplate?.compatible ?? false;
@@ -545,10 +549,11 @@ function CreateDialog({ templates, settings, initialTemplateId, onClose, onCreat
         <div className="field">
           <div className="field-label"><span>使用 SDK</span></div>
           <div className="field-control">
-            <span className={`hint ${settings.sdkId ? 'ok' : 'danger'}`}>
-              <Icon name={settings.sdkId ? 'check' : 'alert'} size={13} />
+            <span className={`hint ${settings.sdkId ? sdkNotice ? 'warn' : 'ok' : 'danger'}`}>
+              <Icon name={settings.sdkId && !sdkNotice ? 'check' : 'alert'} size={13} />
               {settings.sdkId || '未解決'} / {settings.sdkConfiguration}
             </span>
+            {sdkNotice && <span className="hint warn">{sdkNotice}</span>}
           </div>
         </div>
       </div>
@@ -562,10 +567,8 @@ function CreateDialog({ templates, settings, initialTemplateId, onClose, onCreat
   </div>;
 }
 
-/**
- * 新しい版の帯。閉じると main がその版を記録し、次の版が出るまで出さない。
- * @see Docs/design/gamehub-update-notice.md
- */
+/// @note 新しい版の帯。閉じると main がその版を記録し、次の版が出るまで出さない。
+/// @see Docs/design/gamehub-update-notice.md
 function UpdateBanner({ notice, onOpen, onDismiss }: {
   notice: UpdateNotice;
   onOpen: () => void;
@@ -591,7 +594,7 @@ export function App() {
   const [page, setPage] = useState<Page>('projects');
   const [creating, setCreating] = useState('');
   const [busy, setBusy] = useState(false);
-  // Editor 起動要求が main で処理中のプロジェクト。連打で同じ Editor を 2 つ立ち上げないための UI 側の門。
+  /// @note Editor 起動要求が main で処理中のプロジェクト。連打で同じ Editor を 2 つ立ち上げないための UI 側の門。
   const [openingPath, setOpeningPath] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -610,7 +613,7 @@ export function App() {
       return;
     }
 
-    // 設定・テンプレート・仮カードを先に表示し、重い検証結果は後から差し替える。
+    /// @note 設定・テンプレート・仮カードを先に表示し、重い検証結果は後から差し替える。
     setData({ ...result.value, settings: resolvedSettings.current ?? result.value.settings });
     void window.gameHub.listProjects().then((projectsResult) => {
       if (generation !== refreshGeneration.current) return;
@@ -632,15 +635,13 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // React.StrictMode は開発時に effect を二度実行する。
-    // WHY: refresh はIPCとプロジェクト検証を開始する副作用なので、再実行すると
-    //      起動直後に同じディスク走査を二重に発生させてしまう。
+    /// @note StrictMode による effect の再実行で、IPC とディスク走査を二重に開始させない。
     if (initialLoadStarted.current) return;
     initialLoadStarted.current = true;
     void refresh();
   }, [refresh]);
 
-  // 設定で確認を切り替えたときも追従する。確認は main が 1 日 1 回に抑えるので、ここでは何度呼んでもよい。
+  /// @note 設定で確認を切り替えたときも追従する。確認は main が 1 日 1 回に抑えるので、ここでは何度呼んでもよい。
   const checkForUpdates = data?.settings.checkForUpdates;
   useEffect(() => {
     if (checkForUpdates === undefined) return;
@@ -652,7 +653,7 @@ export function App() {
     return () => { cancelled = true; };
   }, [checkForUpdates]);
 
-  // system は CSS に持たせず、ここで実際の配色へ解決する。
+  /// @note system は CSS に持たせず、ここで実際の配色へ解決する。
   useEffect(() => {
     const choice = data?.settings.theme ?? 'modern';
     const media = window.matchMedia('(prefers-color-scheme: light)');
@@ -671,7 +672,7 @@ export function App() {
   const entries = useMemo<InspectedProject[]>(() => {
     if (!data) return [];
     return data.projects.map((project) => {
-      const diagnostics = diagnose(project, data.engineVersion);
+      const diagnostics = diagnose(project, data.engineVersion, data.settings.sdkId);
       return { project, diagnostics, status: statusOf(project, diagnostics) };
     });
   }, [data]);
@@ -679,7 +680,7 @@ export function App() {
   const run = async (operation: () => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>, message?: string) => {
     setError('');
     const result = await operation();
-    // ダイアログの取りやめは失敗でも完了でもない。何も出さず、再読込もしない。
+    /// @note ダイアログの取りやめは失敗でも完了でもない。何も出さず、再読込もしない。
     if (result.cancelled) return false;
     if (!result.ok) setError(result.error ?? '操作に失敗しました。');
     else { if (message) setNotice(message); await refresh(); }
@@ -707,7 +708,8 @@ export function App() {
   const { settings } = data;
   const readyCount = entries.filter((entry) => entry.status === 'ready').length;
   const issueCount = entries.filter((entry) => entry.status === 'warning' || entry.status === 'error').length;
-  const sdkTone = settings.sdkId ? 'ok' : 'danger';
+  const sdkNotice = outdatedSdkNotice('', settings.sdkId, data.engineVersion);
+  const sdkTone = settings.sdkId ? sdkNotice ? 'warn' : 'ok' : 'danger';
 
   return <div className="app-shell">
     <header className="titlebar">
@@ -756,6 +758,11 @@ export function App() {
     </aside>
 
     <main className="content">
+      {sdkNotice && <section className="update-banner" role="status">
+        <Icon name="alert" size={16} />
+        <div className="update-banner-body"><strong>古い SDK {settings.sdkId} が選択されています</strong><p>{sdkNotice}</p></div>
+        <button className="button" onClick={() => setPage('settings')}>SDK 設定を開く</button>
+      </section>}
       {updateNotice && <UpdateBanner
         notice={updateNotice}
         onOpen={() => void window.gameHub.openReleasePage().then((result) => { if (!result.ok) setError(result.error ?? 'リリースページを開けませんでした。'); })}
@@ -815,6 +822,7 @@ export function App() {
     {creating && <CreateDialog
       templates={data.templates}
       settings={settings}
+      hubVersion={data.engineVersion}
       initialTemplateId={creating}
       onClose={() => setCreating('')}
       onCreate={async (request) => {

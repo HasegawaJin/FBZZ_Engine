@@ -8,7 +8,9 @@
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationMaskPreview.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>
+#include <Editor/Panels/CurveAssetPreview.hpp>
 #include <Editor/Panels/MaterialPreview.hpp>
+#include <Editor/Panels/MaterialPreviewCore.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Import/ImportSettingsSchema.hpp>
@@ -37,6 +39,7 @@
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
+#include <Engine/Asset/ParticleCurveAsset.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/VectorFieldFile.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
@@ -359,7 +362,20 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             const auto handle = m_inspectedMat;
             const std::string capturedPath = absPath;
             const std::string capturedDisplay = relPath;
-            auto apply = [context, handle, capturedPath, capturedDisplay](
+            auto persistMaterial = [handle, capturedPath, capturedDisplay](
+                                       const asset::MaterialAsset& value) {
+                if (asset::SaveMaterialAssetToFile(capturedPath, value)) {
+                    AssetDirtyRegistry::MarkClean(capturedPath);
+                    return;
+                }
+                AssetDirtyRegistry::Register(
+                    capturedPath, capturedDisplay, "MAT",
+                    [handle, capturedPath]() {
+                        const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(handle);
+                        return material && asset::SaveMaterialAssetToFile(capturedPath, *material);
+                    });
+            };
+            auto apply = [context, handle, capturedDisplay, persistMaterial](
                              const asset::MaterialAsset& value) {
                 auto* target = asset::AssetManager::Get<asset::MaterialAsset>(handle);
                 if (!target) return;
@@ -367,8 +383,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 /// @note Save ボタンを廃止した代わりに、Undo/Redo が確定した瞬間に即ディスクへ書く。
                 /// @note メモリ上の値と .mat が食い違うと、Undo で戻したつもりが再読み込みで元に戻る
                 /// @note (見た目だけの Undo) 事故が起きる。書き込みはウィジェット確定時の 1 回だけ。
-                asset::SaveMaterialAssetToFile(capturedPath, *target);
-                AssetDirtyRegistry::MarkClean(capturedPath);
+                persistMaterial(*target);
                 if (context->activeScene) {
                     for (auto [component] : context->activeScene->View<scene::MaterialComponent>()) {
                         if (NormalizeAssetPath(component.materialPath) == capturedDisplay)
@@ -399,8 +414,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             /// @note UndoStack::Push は記録するだけで Do() を呼ばない (mat は既にウィジェットで
             /// @note 直接編集済みのため)。よってここで確定時点の保存を明示的に行う。apply() 内の
             /// @note 保存は Undo/Redo 実行時にのみ効く。
-            asset::SaveMaterialAssetToFile(capturedPath, after);
-            AssetDirtyRegistry::MarkClean(capturedPath);
+            persistMaterial(after);
             context->requestAssetBrowserRefresh = true;
         };
         if (!canRecordUndo) {
@@ -441,6 +455,26 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         /// @note .vfx の再生面は Prefab 編集モード (Docs/design/vfx-prefab.md §8.2)。
         /// @note ここが受け持つのは «開く前に中身の見当を付ける» ところまで。
         DrawVfxAssetInspector(ctx, absPath);
+        ImGui::SeparatorText("Preview");
+        const VfxAssetSummary& summary = GetVfxAssetSummary(absPath);
+        std::string previewTexturePath;
+        for (const VfxSummaryEntry& entry : summary.entries) {
+            if (entry.materialPath.empty()) continue;
+            const auto materialHandle = asset::AssetManager::Load<asset::MaterialAsset>(
+                NormalizeAssetPath(entry.materialPath));
+            const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(materialHandle);
+            if (!material) continue;
+            const std::string texturePath = matpreview::RepresentativeTexturePath(*material);
+            if (texturePath.empty()) continue;
+            previewTexturePath = asset::AssetManager::ResolveAssetPath(texturePath);
+            break;
+        }
+        if (previewTexturePath.empty()) {
+            ImGui::TextDisabled("No particle texture to preview.");
+        } else {
+            m_texturePreview.Draw(ctx, previewTexturePath, 240.0f);
+            ImGui::TextDisabled("Open in Prefab Mode to play the effect.");
+        }
     } else if (ext == ".animcontroller") {
         if (DrawAnimationGraphAssetInspector(ctx)) {
             /// @note Unity と同じく、State / Transition 詳細の直下でクリップと遷移ブレンドを確認できる。
@@ -715,6 +749,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             static FbxImportOptions s_modelOptions;
             static std::string      s_modelMetaPath;
             static std::filesystem::file_time_type s_modelMetaWriteTime{};
+            static bool s_modelOptionsLoaded = false;
             std::error_code modelMetaTimeError;
             const auto currentModelMetaWriteTime =
                 std::filesystem::last_write_time(absPath, modelMetaTimeError);
@@ -725,7 +760,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             if (s_modelMetaPath != absPath || modelMetaExternallyUpdated) {
                 s_modelMetaPath = absPath;
                 s_modelOptions = {};
-                FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
+                s_modelOptionsLoaded = FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
                 s_modelMetaWriteTime = currentModelMetaWriteTime;
             }
 
@@ -734,6 +769,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextUnformatted(sourcePath.c_str());
 
             ImGui::SeparatorText("Model Import Settings");
+            if (!s_modelOptionsLoaded)
+                ImGui::TextDisabled("No saved model settings; using defaults.");
             static constexpr const char* kSourceDccNames[] = { "Auto Detect", "Maya / FBX SDK", "Blender" };
             int sourceDccIdx = static_cast<int>(s_modelOptions.sourceDcc);
             if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3)) {
@@ -950,12 +987,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 if (FbxMetaSerializer::SaveOptions(sourcePath, s_modelOptions)) {
                     AssetDirtyRegistry::MarkClean(absPath);
                     ctx.requestAssetBrowserRefresh = true;
+                    s_modelOptionsLoaded = true;
                 }
             }
             ImGui::SameLine();
             if (ImGui::Button("Revert")) {
                 s_modelOptions = {};
-                FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
+                s_modelOptionsLoaded = FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
                 AssetDirtyRegistry::MarkClean(absPath);
             }
             ImGui::SameLine();
@@ -1328,6 +1366,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::SameLine();
             ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
         }
+        ImGui::SeparatorText("Preview");
+        m_texturePreview.Draw(ctx, sourcePath, 240.0f);
     } else if ((ext == ".png" && !asset::IsVectorFieldPng(absPath)) || ext == ".jpg" || ext == ".jpeg" ||
                ext == ".dds" || ext == ".tga" || ext == ".bmp" ||
                ext == ".hdr" || ext == ".exr") {
@@ -2755,6 +2795,45 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
         ImGui::SameLine();
         if (ImGui::SmallButton("Reload")) s_synthPath.clear();
+    } else if (ext == ".ttf" || ext == ".ttc" || ext == ".otf") {
+        ImGui::TextDisabled("Type: Font (%s)", ext.c_str());
+        ImGui::SeparatorText("Preview");
+        m_fontPreview.Draw(ctx, absPath, 240.0f);
+    } else if (ext == ".curve" || ext == ".gradient") {
+        struct CachedPreview {
+            std::string path;
+            std::filesystem::file_time_type lastWriteTime{};
+            asset::ParticleCurveAsset asset;
+            bool valid = false;
+        };
+        static CachedPreview preview;
+        std::error_code ec;
+        const auto writeTime = std::filesystem::last_write_time(
+            util::FileSystem::PathFromUtf8(absPath), ec);
+        const auto resolvedTime = ec ? std::filesystem::file_time_type{} : writeTime;
+        if (preview.path != absPath || preview.lastWriteTime != resolvedTime) {
+            preview = {};
+            preview.path = absPath;
+            preview.lastWriteTime = resolvedTime;
+            preview.valid = asset::LoadParticleCurveAssetFile(absPath, preview.asset);
+        }
+        const bool hasPayload = preview.valid &&
+            (ext == ".curve" ? preview.asset.hasCurve : preview.asset.hasGradient);
+        if (!hasPayload) {
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load %s preview", ext.c_str());
+            return;
+        }
+        ImGui::TextDisabled("Type: %s", ext == ".curve" ? "Curve" : "Gradient");
+        ImGui::SeparatorText("Preview");
+        const ImVec2 size{ std::max(1.0f, ImGui::GetContentRegionAvail().x),
+                           ext == ".curve" ? 180.0f : 80.0f };
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        ImGui::Dummy(size);
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        if (ext == ".curve")
+            curvepreview::DrawCurve(draw, preview.asset.curve, origin, size);
+        else
+            curvepreview::DrawGradient(draw, preview.asset.gradient, origin, size);
     } else if (ext == ".physmat") {
         /// @name PhysicsMaterial (共有物理マテリアル)
         /// @note AssetManager 上の実体を直接編集する。ColliderComponent::ResolvePhysicsMaterial() が
@@ -2952,4 +3031,4 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

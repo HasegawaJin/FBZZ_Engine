@@ -160,13 +160,23 @@ float4 PSMain(ParticlePSIn p) : SV_Target0
 
     // 陰影は CPU 経路と同じ ParticleLighting.hlsli で付ける。
     float4 sixWayNegative = 0.0f;
+    float4 sixWayAlbedoColor = 0.0f;
+    float4 sixWayEmissionColor = 0.0f;
     if ((gEffectsFlags & FBZZ_PFX_SIX_WAY_MAPS) != 0u)
     {
         float2 negativeUv;
         sixWayNegative = SampleParticleFlipbook(gSixWayNegative, gMotionVectors, gSampler, p.uv, p.nextUv,
                                                 p.spriteBlend, gEffectsFlags & FBZZ_PFX_MOTION_VECTOR, negativeUv);
     }
-    result.rgb = ShadeParticle(p, result.rgb, tex, sixWayNegative, shadow);
+    if ((gEffectsFlags & FBZZ_PFX_SIX_WAY_COLOR_MAPS) != 0u)
+    {
+        float2 colorUv;
+        sixWayAlbedoColor = SampleParticleFlipbookColor(gSixWayAlbedoColor, gMotionVectors, gSampler,
+            p.uv, p.nextUv, p.spriteBlend, gEffectsFlags & FBZZ_PFX_MOTION_VECTOR, colorUv);
+        sixWayEmissionColor = SampleParticleFlipbookColor(gSixWayEmissionColor, gMotionVectors, gSampler,
+            p.uv, p.nextUv, p.spriteBlend, gEffectsFlags & FBZZ_PFX_MOTION_VECTOR, colorUv);
+    }
+    result.rgb = ShadeParticle(p, result.rgb, tex, sixWayNegative, sixWayAlbedoColor, sixWayEmissionColor, shadow);
     result.rgb *= gEmissiveScale;
     if ((gEffectsFlags & FBZZ_PFX_DISTORTION) != 0u)
     {

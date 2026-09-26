@@ -8,6 +8,7 @@
 
 #include <imgui.h>
 
+#include <cstdint>
 #include <string>
 
 namespace fbzz::asset { struct MaterialAsset; }
@@ -16,7 +17,7 @@ namespace fbzz::editor {
 
 struct EditorContext;
 
-/// プレビュー背景の描き方。
+/// @brief マテリアルプレビューの背景表示。
 enum class MaterialPreviewBackground {
     Gradient, ///< AssetBrowser のサムネイル枠と同じ縦グラデーション (既定)
     Checker,  ///< 市松。アルファを持つ材質の «抜け» を見る
@@ -24,21 +25,21 @@ enum class MaterialPreviewBackground {
     Grid,     ///< 方眼。輪郭の歪みとタイリングを見る
 };
 
-/// パネル 1 つぶんのプレビュー状態と描画。
-/// @note 以前は static 1 個を Inspector と Preview パネルが共有しており、片方でズームや回転を
-///       すると、もう片方の見え方まで同時に変わっていた。2 つ並べて比べる用途ができなかったため、
-///       インスタンスとして持たせる。
+/// @brief パネル単位で状態を持つマテリアルプレビュー。
+/// @note Inspector と Preview パネルの視点操作は独立する。
 class MaterialPreviewView {
 public:
-    /// .mat を選択中の形状へ適用して描画する。焼けたら true。
+    /// @brief .mat を選択中の形状へ適用して描画する。
     bool Draw(EditorContext& ctx, const asset::MaterialAsset& material, float previewHeight);
 
-    /// 視点・照明・表示チャンネルを既定へ戻す (形状と背景は保つ)。
+    /// @brief 視点・照明・表示チャンネルを既定へ戻す。
     void ResetView();
 
 private:
     void DrawToolbar(EditorContext& ctx, matpreview::Flavor flavor);
     void DrawBackground(ImVec2 origin, float size, bool hovered) const;
+    /// @brief .mat の標準 normal スロットを raw RGB で表示する。
+    void DrawNormalMap(EditorContext& ctx, const asset::MaterialAsset& material);
     void DrawUnsupported(EditorContext& ctx, const asset::MaterialAsset& material,
                          ImVec2 origin, float size);
     bool RenderFrame(EditorContext& ctx, const asset::MaterialAsset& material,
@@ -55,21 +56,30 @@ private:
     MaterialPreviewBackground m_background = MaterialPreviewBackground::Gradient;
     float m_solidColor[3] = { 0.13f, 0.14f, 0.17f };
 
-    /// Water の波・Fiber の突風を進めるか。止めると波形を静止させて法線マップを読める。
+    /// @brief Water と Fiber のプレビューを時間で進める。
     bool m_animateWater = true;
 
     /// @name Fiber
-    /// @note .mat は描画方式を持たないため、プレビュー側で選んで見比べる。層数と風は FiberComponent の既定から始める。
+    /// @note Fiber の表示方式は .mat に保存せず、プレビュー状態で切り替える。
     /// @{
     matpreview::FiberMode m_fiberMode = matpreview::FiberMode::Shell;
     int   m_fiberShellCount = 16;
     float m_fiberWind = 0.0f;
     /// @}
 
-    /// 3D へ焼けない .mat (Particle / Trail / Decal …) の代表テクスチャ。
+    /// @brief 3D プレビュー未対応 Flavor の代表テクスチャ。
     renderer::ResourceHandle<renderer::TextureTag> m_fallbackTexture;
     std::string m_fallbackTexturePath;
     bool        m_fallbackTextureResolved = false;
+
+    /// @brief Flavor を問わず確認する .mat の raw normal map。
+    renderer::ResourceHandle<renderer::TextureTag> m_normalMapTexture;
+    std::string m_normalMapTexturePath;
+    bool        m_normalMapTextureResolved = false;
+    bool        m_normalMapFileExists = false;
+    std::int64_t m_normalMapFileRevision = 0;
+    std::uint64_t m_normalMapResourceResetVersion = 0;
+    double      m_normalMapNextFileCheck = 0.0;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

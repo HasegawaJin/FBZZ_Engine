@@ -350,10 +350,22 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'scene.selection' }))));
 
     server.registerTool('node_get_components', {
-        description: '指定ノードのコンポーネントと反射可能なフィールドを取得します。',
+        description: '指定ノードのコンポーネント値と Script 一覧を取得します。Script の値は返された scriptId で script_inspect を呼びます。',
         inputSchema: { id: NodeIdSchema.describe('対象 NodeId') },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ id }) => Safely(async () => TextResult(await bus.Query({ t: 'node.components', id }))));
+
+    server.registerTool('script_inspect', {
+        description: 'node_get_components の scriptId で Script の設定値・観測値・型情報を取得します。再生成や DLL 再読込後は一覧を取り直してください。値は Editor の要求処理時点の状態です。',
+        inputSchema: { id: NodeIdSchema, scriptId: z.string().min(1).max(128) },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ id, scriptId }) => Safely(async () => TextResult(await bus.Query({ t: 'script.inspect', id, scriptId }))));
+
+    server.registerTool('script_catalog', {
+        description: '登録 Script のフィールド型・保存対象・依存 Component を取得します。観測 getter は実行しません。現在値は script_inspect で取得します。',
+        inputSchema: { type: z.string().min(1).max(128).optional() },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ type }) => Safely(async () => TextResult(await bus.Query({ t: 'script.catalog', ...(type === undefined ? {} : { type }) }))));
 
     server.registerTool('asset_list', {
         description: 'プロジェクト内のアセット一覧を取得します。ファイルは変更しません。',
@@ -927,6 +939,7 @@ function RegisterQueryTools(server: McpServer, bus: EditorBus): void {
             + 'state は queued → running → encoding → done / failed / cancelled。done / failed / cancelled になるまでポーリングしてください。'
             + 'プレビューが done なら画像も返るので、必ず絵を見てから次の fluid_set を決めてください。'
             + '焼きが done になると outputs (書いたテクスチャ等)・materialPath・vfxPath が埋まります。'
+            + 'simulationSeconds / renderSeconds / outputSeconds と最も遅いフレーム、3D の色・MV・6-way 書き出し時間でボトルネックを調べられます。'
             + 'fingerprint は出た絵の指紋で、前回と同じなら 1 画素も変わっていません (効かない値をいじり続けるのを防げます)。'
             + 'solverUsed は実際に解いたソルバー ("gpu" / "cpu")、fallbackReason は GPU を頼んだのに CPU へ落ちた理由です '
             + '(同じレシピなのに絵が違うときはここを見てください。落としたくなければ bake.solver="gpu")。'
@@ -2444,7 +2457,8 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
     server.registerTool('fluid_bake', {
         description: '.fluid をフリップブックテクスチャへ焼くジョブを始めます。数秒〜数十秒かかるため、すぐ job を返します'
             + '(ここで待つと Editor のメインスレッドごと止まるため)。fluid_job_status で done / failed になるまでポーリングしてください。'
-            + '既定 (updateMaterial=true) では .fluid の隣に同名の .mat (Smoke.fluid → Smoke.mat) を作る / 焼き結果へ追従させます。'
+            + '.fluid の隣に同名の .mat (Smoke.fluid → Smoke.mat) を必ず作る / 焼き結果へ追従させます。'
+            + 'updateMaterial は旧クライアントとの互換用に受け取りますが、値にかかわらず .mat を更新します。'
             + '焼きモードはレシピの bake.mode で決まり、立体で焼くなら先に fluid_set で {"bake":{"mode":"3d"}} にします。'
             + '**焼いた出力 (テクスチャ・.mat) は Undo で消えません** (同名の既存アセットを壊しうるため)。'
             + '出力は必ず同じ名前へ上書きされるので、焼き直しても .mat の指す先はずれません。'
@@ -2453,14 +2467,13 @@ function RegisterCommandTools(server: McpServer, bus: EditorBus, permission: Per
             + '見た目が固まるまでは fluid_preview で反復し、焼くのは最後にしてください。',
         inputSchema: {
             path: FluidPathSchema.describe('projectRoot 相対の .fluid パス'),
-            updateMaterial: z.boolean().optional().describe('既定 true。false で隣の .mat を作らず / 触らず、テクスチャだけ焼く'),
+            updateMaterial: z.boolean().optional().describe('互換用。指定しても値にかかわらず隣の .mat を作る / 更新する'),
             seed: z.number().int().min(0).max(4294967295).optional()
                 .describe('0 以外でこの seed で焼く (.fluid は書き換えません。2d のみ)'),
         },
         annotations: writeAnnotations,
-    }, ({ path, updateMaterial, seed }) => run({
+    }, ({ path, seed }) => run({
         t: 'fluid.bake', path,
-        ...(updateMaterial === undefined ? {} : { updateMaterial }),
         ...(seed === undefined ? {} : { seed }),
     }));
 

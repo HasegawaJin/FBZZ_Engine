@@ -64,10 +64,11 @@ public:
     /// @note 旧 D3D デバイスに紐づく COM リソースは新デバイスで再利用できないため。
     void Reset();
     [[nodiscard]] uint64_t GetResetVersion() const { return m_resetVersion; }
-    ResourceHandle<TextureTag> LoadTexture(std::string_view path);
+    /// @brief flipGreen は法線画像の G を GPU 転送前に反転し、生画像とは別にキャッシュする。
+    ResourceHandle<TextureTag> LoadTexture(std::string_view path, bool flipGreen = false);
     /// @note 同名ファイルを上書きした際、既存ハンドルを維持したまま GPU テクスチャを差し替える。
     /// @note IBL ベイク後もパスキャッシュが古い DDS を返し続けるため、明示的な再ロードが必要。
-    ResourceHandle<TextureTag> ReloadTexture(std::string_view path);
+    ResourceHandle<TextureTag> ReloadTexture(std::string_view path, bool flipGreen = false);
 
     /// @note path (またはそのフォルダ配下) のテクスチャをキャッシュから外し、GPU 実体を解放する。
     /// @note LoadTexture はパスキャッシュに当たった時点で即返すため、ファイルを消しても
@@ -99,10 +100,13 @@ public:
     /// @brief BeginTextureUpload の転送が GPU 上で終わったか。CPU は待たない。
     [[nodiscard]] bool IsUploadComplete(uint64_t uploadToken) const;
     /// @brief パスキャッシュに載っているテクスチャを引く。読み込みはしない。
-    [[nodiscard]] ResourceHandle<TextureTag> FindCachedTexture(std::string_view path) const;
+    [[nodiscard]] ResourceHandle<TextureTag> FindCachedTexture(std::string_view path,
+                                                                bool flipGreen = false) const;
     /// @brief 転送を終えたテクスチャを path のキャッシュへ載せ、以後の LoadTexture が同じ実体を返すようにする。
     /// @return キャッシュに載ったハンドル。既に同じ path が載っていれば既存を返し、uploaded は返却する。
-    ResourceHandle<TextureTag> PublishTexture(std::string_view path, ResourceHandle<TextureTag> uploaded);
+    ResourceHandle<TextureTag> PublishTexture(std::string_view path,
+                                              ResourceHandle<TextureTag> uploaded,
+                                              bool flipGreen = false);
     /// @brief uploaded の実体を target のスロットへ移し、target の旧実体を返す (品質変更の差し替え)。
     /// @note target のハンドルは有効なまま中身だけが変わる。旧実体の GPU 返却と bindless 枠の回収は
     /// @note       バックエンドのフェンス管理が遅らせるので、記録済みの描画が読み終えるまで生きる。
@@ -110,10 +114,10 @@ public:
     bool ReplaceTextureContents(ResourceHandle<TextureTag> target, ResourceHandle<TextureTag> uploaded);
     /// @brief LoadTexture と同じ読み込みとキャッシュだが、«外部に配った» 印を付けない。
     /// @note 非同期経路 (TextureAsset) だけが使う。印の無い実体は EvictStreamedTexture で外せる。
-    ResourceHandle<TextureTag> LoadTextureUnpinned(std::string_view path);
+    ResourceHandle<TextureTag> LoadTextureUnpinned(std::string_view path, bool flipGreen = false);
     /// @brief 非同期経路が載せたテクスチャをキャッシュから外して返す。
     /// @return LoadTexture で配られたことがある (誰かがハンドルを持っているかもしれない) なら false で何もしない。
-    bool EvictStreamedTexture(std::string_view path);
+    bool EvictStreamedTexture(std::string_view path, bool flipGreen = false);
     /// @brief テクスチャ 1 枚の概算バイト数 (RGBA8 換算)。無効なハンドルは 0。
     [[nodiscard]] std::size_t GetTextureBytes(ResourceHandle<TextureTag> handle) const;
     /// @}
@@ -230,7 +234,8 @@ private:
     std::unique_ptr<RenderResources> m_renderResources;
     uint64_t m_frameStamp = 0;
     static uint64_t Key(ResourceHandle<RenderTargetTag> h);
-    ResourceHandle<TextureTag> LoadTextureImpl(std::string_view path, bool pin);
+    ResourceHandle<TextureTag> LoadTextureImpl(std::string_view path, bool pin, bool flipGreen);
+    std::unique_ptr<ITexture> CreateTextureForPath(const std::string& sourcePath, bool flipGreen);
     void ReleaseOwnedResourcesForShutdown();
     void LogLiveDebugResources() const;
 

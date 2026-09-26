@@ -106,6 +106,7 @@ private:
 /// @{
 void RegisterEditorHandlers(BusHandlerTable& table);
 void RegisterSceneHandlers(BusHandlerTable& table);
+void RegisterScriptHandlers(BusHandlerTable& table);
 void RegisterAssetHandlers(BusHandlerTable& table);
 void RegisterBehaviorTreeHandlers(BusHandlerTable& table);
 void RegisterPlayHandlers(BusHandlerTable& table);
@@ -131,7 +132,9 @@ void RemoveComponentByName(GameObject& go, const std::string& comp);
 bool WriteComponentField(GameObject& go, const std::string& comp, const std::string& field,
                          const JsonValue& value, std::string& errMsg);
 /// @brief 全反射コンポーネントを [{type, fields}] に写す (node.components と削除スナップショットで共用)。
-[[nodiscard]] JsonValue SnapshotComponents(GameObject& go);
+[[nodiscard]] JsonValue SnapshotComponents(GameObject& go, bool observations = false);
+/// @brief Script の識別子と状態のみを列挙する。保存用スナップショットからは呼ばない。
+[[nodiscard]] JsonValue InspectScriptList(GameObject& go);
 [[nodiscard]] std::string LowerAscii(std::string value);
 /// @brief OperatorBridge の結果を Outcome へ詰め替える。Operator 層へ Outcome を見せないため境界で 1 度だけ変換する。
 [[nodiscard]] Outcome FromBridge(OperatorBridgeResult bridge);
@@ -152,4 +155,4 @@ bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& req
 [[nodiscard]] bool IsImplicitSingleSprite(const std::string& texturePath, const std::string& token);
 /// @}
 
-} // namespace fbzz::editor::ai::bus
+} /// namespace fbzz::editor::ai::bus

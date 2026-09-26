@@ -8,6 +8,7 @@
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Util/Uuid.hpp>
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,6 +28,8 @@ struct ScriptEntry {
     ScriptEntry(ScriptEntry&&) noexcept = default;
     ScriptEntry& operator=(ScriptEntry&&) noexcept = default;
 
+    /// @note 保存しない。vector の移動では保持し、削除・複製・Scene 復元で再発行する。
+    std::string inspectionId = util::GenerateUUID();
     std::unique_ptr<Script> script;
     /// @note エディタ起動直後や DLL ビルド失敗時は ScriptFactory が未登録で `.fbzz` 内の Script をインスタンス化できないことがある。その状態で保存しても情報を失わないよう元の type/fields を保持する。
     std::unique_ptr<SerializedScriptData> serialized;
@@ -47,4 +50,4 @@ struct ScriptComponent {
     std::vector<ScriptEntry> scripts;
 };
 
-} // namespace fbzz::scene
+} /// namespace fbzz::scene

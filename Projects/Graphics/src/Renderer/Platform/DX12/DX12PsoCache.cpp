@@ -284,8 +284,11 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     desc.DepthStencilState.StencilEnable = FALSE;
 
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pso;
-    if (FAILED(m_device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pso)))) {
-        FBZZ_LOG_ERROR("DX12PsoCache: PSO の生成に失敗しました: %s", shader.GetPath().c_str());
+    const HRESULT createResult = m_device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pso));
+    if (FAILED(createResult)) {
+        FBZZ_LOG_ERROR("DX12PsoCache: PSO の生成に失敗しました: %s (HRESULT=0x%08X, removed=0x%08X)",
+                       shader.GetPath().c_str(), static_cast<unsigned>(createResult),
+                       static_cast<unsigned>(m_device->GetDeviceRemovedReason()));
         return nullptr;
     }
     ID3D12PipelineState* result = pso.Get();

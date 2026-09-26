@@ -2,7 +2,6 @@
 /// @brief   カーブ / グラデーションの TOML 往復が値を落とさないことを検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
 /// @brief エフェクトの見た目は .mat と .particle に散らばった数十項目で決まる。
 /// @brief 往復で 1 項目でも落ちると、開き直したときにその項目だけ既定値へ戻る ──
 /// @brief 「昨日いじった炎が今日は違う」という、履歴からも追えない壊れ方をする。
@@ -294,11 +293,12 @@ TEST_F(ParticleCodecTest, LegacyAccelerationForcesBecomeFlowSpeeds)
 TEST_F(ParticleCodecTest, AnEmptyFlowListSurvivesTheRoundTrip)
 {
     /// @note «流れを全部消した» と «旧ファイル» は区別が要る。前者で既定が復活すると、
-    ///       意図して止めたエフェクトが開き直すたびに動き始める。
+    /// @note 意図して止めたエフェクトが開き直すたびに動き始める。
     scene::ParticleEmitterSettings original;
     original.localForces.clear();
     original.flowCoupling = 1.25f;
     original.gravity = { 0.0f, 0.0f, 0.0f };
+    original.randomStartRotation = false;
 
     scene::ParticleEmitterSettings restored;
     asset::DeserializeParticleEmitterSettings(
@@ -307,6 +307,7 @@ TEST_F(ParticleCodecTest, AnEmptyFlowListSurvivesTheRoundTrip)
     EXPECT_TRUE(restored.localForces.empty());
     EXPECT_NEAR(restored.flowCoupling, 1.25f, testkit::kTolerance);
     EXPECT_VEC3_NEAR(restored.gravity, math::Vector3::ZERO, testkit::kTolerance);
+    EXPECT_FALSE(restored.randomStartRotation);
 }
 
 TEST_F(ParticleCodecTest, ABakedFlowSurvivesTheRoundTrip)
