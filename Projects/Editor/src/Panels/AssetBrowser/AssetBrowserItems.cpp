@@ -10,6 +10,8 @@
 #include <Editor/Util/AssetSearch.hpp>
 #include <Editor/Util/DragDropSet.hpp>
 #include <Editor/Util/IcoImage.hpp>
+#include <Editor/Panels/FontPreview.hpp>
+#include <Editor/Panels/CurveAssetPreview.hpp>
 #include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -21,6 +23,7 @@
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/Mesh.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Util/Uuid.hpp>
 #include <algorithm>
 #include <array>
@@ -423,9 +426,14 @@ static const ExtGroup* FindGroup(const std::string& ext)
 
 static bool IsTextureExt(const std::string& ext)
 {
-    /// @note .dds はキューブマップ等の非 2D テクスチャを含むため 2D プレビュー対象から除外する
+    /// @note DDS の配列・キューブ・3D は ResourceManager が先頭の面を 2D に展開する。
     return ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
-           ext == ".bmp" || ext == ".tga" || ext == ".ico";
+           ext == ".bmp" || ext == ".tga" || ext == ".ico" || ext == ".dds";
+}
+
+static bool IsFontExt(const std::string& ext)
+{
+    return ext == ".ttf" || ext == ".ttc" || ext == ".otf";
 }
 
 static bool IsMeshExt(const std::string& ext)
@@ -1300,7 +1308,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         return;
     }
 
-    if ((IsTextureExt(e.ext) || e.isSpriteSubAsset) && ctx.resources && ctx.imguiRenderer) {
+    if ((IsTextureExt(e.ext) || IsFontExt(e.ext) || e.isSpriteSubAsset) && ctx.resources && ctx.imguiRenderer) {
         const std::string& texturePath = e.isSpriteSubAsset ? e.sourceAssetPath : e.path;
         TexturePreview& preview = m_texturePreviews[texturePath];
         if (!preview.handle.IsValid() && !preview.queued && CanAttemptPreview(preview)) {
@@ -1311,9 +1319,18 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         if (preview.handle.IsValid()) {
             void* rawID = ctx.imguiRenderer->GetImTextureID(preview.handle, *ctx.resources);
             if (rawID) {
+                if (IsFontExt(e.ext)) {
+                    DrawSpriteThumbnail(rawID, preview.width, preview.height,
+                                        nullptr, "FONT", origin, sz, hovered);
+                    return;
+                }
                 SpritePreview& spritePreview = m_spritePreviews[texturePath];
                 const std::string metaPath = texturePath + ".meta";
-                const auto metaWriteTime = ReadLastWriteTime(metaPath);
+                std::filesystem::file_time_type metaWriteTime;
+                {
+                    FBZZ_PROFILE_SCOPE("AssetBrowser::SpriteMetaStat");
+                    metaWriteTime = ReadLastWriteTime(metaPath);
+                }
                 if (!spritePreview.loaded || spritePreview.lastWriteTime != metaWriteTime) {
                     spritePreview = {};
                     spritePreview.lastWriteTime = metaWriteTime;
@@ -1885,9 +1902,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                             }
                         }
                         if (!heroMaterial.empty()) {
-                            std::string absMatPath = heroMaterial;
-                            if (absMatPath.starts_with("Assets/") && !ctx.projectRoot.empty())
-                                absMatPath = ctx.projectRoot + "/" + absMatPath;
+                            /// @note GUID 参照も Assets/ 相対参照も同じ解決規則へ通す。
+                            const std::string absMatPath = asset::AssetManager::ResolveAssetPath(heroMaterial);
                             asset::MaterialAsset heroAsset;
                             if (asset::LoadMaterialAssetFromFile(absMatPath, heroAsset)) {
                                 const std::string texPath = SelectMaterialPreviewTexture(heroAsset);
@@ -2027,6 +2043,34 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
+    if (e.ext == ".curve" || e.ext == ".gradient") {
+        CurveAssetPreview& preview = m_curveAssetPreviews[e.path];
+        const auto writeTime = ReadLastWriteTime(e.path);
+        if (writeTime != preview.lastWriteTime) {
+            preview = {};
+            preview.lastWriteTime = writeTime;
+        }
+        if (!preview.parsed) {
+            preview.parsed = true;
+            preview.valid = asset::LoadParticleCurveAssetFile(e.path, preview.asset);
+        }
+        const bool hasPayload = preview.valid &&
+            (e.ext == ".curve" ? preview.asset.hasCurve : preview.asset.hasGradient);
+        if (hasPayload) {
+            DrawThumbnailFrame(origin, sz, hovered);
+            const ImVec2 previewOrigin{ origin.x + 6.0f, origin.y + 6.0f };
+            const ImVec2 previewSize{ std::max(1.0f, sz - 12.0f),
+                                      std::max(1.0f, sz - 25.0f) };
+            ImDrawList* draw = ImGui::GetWindowDrawList();
+            if (e.ext == ".curve")
+                curvepreview::DrawCurve(draw, preview.asset.curve, previewOrigin, previewSize);
+            else
+                curvepreview::DrawGradient(draw, preview.asset.gradient, previewOrigin, previewSize);
+            DrawThumbnailLabel(draw, origin, sz, e.ext == ".curve" ? "CURVE" : "GRAD");
+            return;
+        }
+    }
+
     DrawFileIconAt(origin, sz, e, hovered);
 }
 
@@ -2047,6 +2091,19 @@ void AssetBrowserPanel::DrainTexLoadQueue(EditorContext& ctx)
         if (util::StringUtils::ToLower(util::FileSystem::GetExtension(path)) == ".ico") {
             preview.handle = LoadIcoTexture(*ctx.resources, ToTextureLoadPath(path, ctx),
                                             preview.width, preview.height);
+            preview.ownsTexture = preview.handle.IsValid();
+            if (preview.handle.IsValid()) MarkPreviewSucceeded(preview);
+            else                          MarkPreviewFailed(preview);
+            continue;
+        }
+        if (IsFontExt(util::StringUtils::ToLower(util::FileSystem::GetExtension(path)))) {
+            FontPreviewImage image;
+            if (RasterizeFontPreview(ToTextureLoadPath(path, ctx), false, image)) {
+                preview.handle = ctx.resources->CreateTexture(
+                    image.rgba.data(), image.width, image.height);
+                preview.width = image.width;
+                preview.height = image.height;
+            }
             preview.ownsTexture = preview.handle.IsValid();
             if (preview.handle.IsValid()) MarkPreviewSucceeded(preview);
             else                          MarkPreviewFailed(preview);
@@ -2101,6 +2158,7 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
     releaseAndErase(m_meshPreviews);
     releaseAndErase(m_prefabPreviews);
     releaseAndErase(m_vfxPreviews);
+    releaseAndErase(m_curveAssetPreviews);
     releaseAndErase(m_terrainPreviews);
     {
         auto it = m_modelAssetPreviews.find(path);
@@ -2168,6 +2226,7 @@ void AssetBrowserPanel::ClearAllAssetPreviews()
     m_texDescPreviews.clear();
     m_spritePreviews.clear();
     m_vfxPreviews.clear();
+    m_curveAssetPreviews.clear();
     m_texLoadQueue.clear();
 }
 

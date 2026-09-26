@@ -11,6 +11,7 @@
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
+#include <Engine/Asset/ParticleCurveAsset.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <atomic>
@@ -473,6 +474,12 @@ private:
         bool parsed = false;
         bool hasTexture = false;
     };
+    struct CurveAssetPreview {
+        asset::ParticleCurveAsset asset;
+        std::filesystem::file_time_type lastWriteTime{};
+        bool parsed = false;
+        bool valid = false;
+    };
     struct TerrainPreview {
         MaterialPreview mat;
         std::filesystem::file_time_type lastWriteTime{};
@@ -512,6 +519,7 @@ private:
     std::unordered_map<std::string, MeshPreview>          m_meshPreviews;
     std::unordered_map<std::string, PrefabPreview>        m_prefabPreviews;
     std::unordered_map<std::string, VfxPreview>           m_vfxPreviews;
+    std::unordered_map<std::string, CurveAssetPreview>    m_curveAssetPreviews;
     std::unordered_map<std::string, TerrainPreview>       m_terrainPreviews;
     std::unordered_map<std::string, ModelAssetPreview>    m_modelAssetPreviews;
     std::unordered_map<std::string, TexDescPreview>       m_texDescPreviews;
