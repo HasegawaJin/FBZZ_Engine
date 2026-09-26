@@ -78,7 +78,7 @@ class EnemyComponent : public Script {
     FBZZ_FIELD_RANGE(float, moveSpeed, 4.0f, "移動速度 [m/s]", 0.0f, 20.0f)
     FBZZ_REF(GameObject, target, "追跡対象")
 public:
-    void OnUpdate(float dt) override;
+    void OnUpdate() override;
 };
 FBZZ_REFLECT(EnemyComponent)   // フィールド宣言の締め。クラス外に必須
 }

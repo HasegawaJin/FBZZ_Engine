@@ -92,6 +92,13 @@ export type EditorQuery = {
     t: 'node.components';
     id: string;
 } | {
+    t: 'script.inspect';
+    id: string;
+    scriptId: string;
+} | {
+    t: 'script.catalog';
+    type?: string | undefined;
+} | {
     t: 'asset.list';
     dir?: string | undefined;
 } | {

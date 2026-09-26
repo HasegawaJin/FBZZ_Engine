@@ -303,10 +303,20 @@ function RegisterQueryTools(server, bus) {
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'scene.selection' }))));
     server.registerTool('node_get_components', {
-        description: '指定ノードのコンポーネントと反射可能なフィールドを取得します。',
+        description: '指定ノードのコンポーネント値と Script 一覧を取得します。Script の値は返された scriptId で script_inspect を呼びます。',
         inputSchema: { id: NodeIdSchema.describe('対象 NodeId') },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ id }) => Safely(async () => TextResult(await bus.Query({ t: 'node.components', id }))));
+    server.registerTool('script_inspect', {
+        description: 'node_get_components の scriptId で Script の設定値・観測値・型情報を取得します。再生成や DLL 再読込後は一覧を取り直してください。値は Editor の要求処理時点の状態です。',
+        inputSchema: { id: NodeIdSchema, scriptId: z.string().min(1).max(128) },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ id, scriptId }) => Safely(async () => TextResult(await bus.Query({ t: 'script.inspect', id, scriptId }))));
+    server.registerTool('script_catalog', {
+        description: '登録 Script のフィールド型・保存対象・依存 Component を取得します。観測 getter は実行しません。現在値は script_inspect で取得します。',
+        inputSchema: { type: z.string().min(1).max(128).optional() },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ type }) => Safely(async () => TextResult(await bus.Query({ t: 'script.catalog', ...(type === undefined ? {} : { type }) }))));
     server.registerTool('asset_list', {
         description: 'プロジェクト内のアセット一覧を取得します。ファイルは変更しません。',
         inputSchema: { dir: z.string().min(1).optional().describe('プロジェクト相対ディレクトリ') },
@@ -843,6 +853,7 @@ function RegisterQueryTools(server, bus) {
             + 'state は queued → running → encoding → done / failed / cancelled。done / failed / cancelled になるまでポーリングしてください。'
             + 'プレビューが done なら画像も返るので、必ず絵を見てから次の fluid_set を決めてください。'
             + '焼きが done になると outputs (書いたテクスチャ等)・materialPath・vfxPath が埋まります。'
+            + 'simulationSeconds / renderSeconds / outputSeconds と最も遅いフレーム、3D の色・MV・6-way 書き出し時間でボトルネックを調べられます。'
             + 'fingerprint は出た絵の指紋で、前回と同じなら 1 画素も変わっていません (効かない値をいじり続けるのを防げます)。'
             + 'solverUsed は実際に解いたソルバー ("gpu" / "cpu")、fallbackReason は GPU を頼んだのに CPU へ落ちた理由です '
             + '(同じレシピなのに絵が違うときはここを見てください。落としたくなければ bake.solver="gpu")。'

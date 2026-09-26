@@ -692,7 +692,7 @@ Outcome DoEnvironmentInspect(editor::EditorContext& ctx)
         entry.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
         entry.Set("position", VectorToJson(go->transform.worldPosition));
         entry.Set("forward", VectorToJson(go->transform.Forward()));
-        JsonReadReflector reader;
+        JsonReadReflector reader(true);
         light->Reflect(reader);
         entry.Set("fields", reader.Result());
         lights.Push(std::move(entry));
@@ -726,7 +726,7 @@ Outcome DoAudioInspect(editor::EditorContext& ctx, const JsonValue& payload)
         entry.Set("active", JsonValue(go->activeSelf()));
         entry.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
         entry.Set("position", VectorToJson(go->transform.worldPosition));
-        JsonReadReflector reader;
+        JsonReadReflector reader(true);
         source->Reflect(reader);
         entry.Set("fields", reader.Result());
         /// @note 再生状態は保存対象でなく Reflect に載らないため、runtime として明示的に足す。
@@ -1241,7 +1241,7 @@ std::unique_ptr<ICommand> BuildAudioControlCommand([[maybe_unused]] editor::Edit
     err = Outcome::Err("UNSUPPORTED", "この Command は transaction 内で使用できません: " + type);
     return nullptr;
 }
-} // namespace
+} /// namespace
 
 void RegisterWorldHandlers(BusHandlerTable& table)
 {
@@ -1263,4 +1263,4 @@ void RegisterWorldHandlers(BusHandlerTable& table)
     table.AddBuilder("audio.control", BuildAudioControlCommand);
 }
 
-} // namespace fbzz::editor::ai::bus
+} /// namespace fbzz::editor::ai::bus

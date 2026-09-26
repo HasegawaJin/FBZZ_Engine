@@ -56,7 +56,7 @@ public:
                  "越えると画面が滲んで «攻撃を受けている» に見える")
 
     FBZZ_GROUP("デバッグ")
-    FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "HP")
+    FBZZ_OBSERVE(int, debugHealth, m_health, "HP")
     FBZZ_FIELD_READ_ONLY(int, debugFlashParts, 0, "Flash Parts")
 
     [[nodiscard]] int   Current() const { return m_health; }
@@ -205,7 +205,6 @@ inline void PlayerHealthComponent::ResetHealth()
 {
     m_health       = MaxHealth();
     m_invulnerable = 0.0f;
-    debugHealth    = m_health;
 }
 
 inline void PlayerHealthComponent::OnUpdate()
@@ -226,7 +225,6 @@ inline bool PlayerHealthComponent::TakeDamage(int amount)
     m_health = m_health > amount ? m_health - amount : 0;
     /// @note 下限が要求されているあいだは、そこで止める (`RequestDamageFloor` 参照)。
     if (m_damageFloor > 0 && m_health < m_damageFloor) m_health = m_damageFloor;
-    debugHealth = m_health;
     m_invulnerable = tuning ? tuning->hitInvulnerable : 0.0f;
 
     /// @note 揺れ・振動・画面の赤は ImpactFeedbackManagerComponent が配分を持つ。
@@ -257,7 +255,6 @@ inline void PlayerHealthComponent::Heal(int amount)
     if (amount <= 0 || !IsAlive()) return;
     const int max = MaxHealth();
     m_health = (m_health + amount > max) ? max : m_health + amount;
-    debugHealth = m_health;
 }
 
-} // namespace sandbox
+} /// namespace sandbox

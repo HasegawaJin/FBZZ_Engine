@@ -155,7 +155,7 @@ bool LoadFluidAt(const std::filesystem::path& file, const std::string& relative,
 
 JsonValue FluidRecipeToJson(fluid::FluidRecipe recipe)
 {
-    JsonReadReflector reader;
+    JsonReadReflector reader(true);
     asset::ReflectFluidRecipe(recipe, reader);
     return reader.Result();
 }
@@ -1279,7 +1279,7 @@ Outcome DoFluidCommand(editor::EditorContext& ctx, const std::string& type, cons
 
     return Outcome::Err("UNKNOWN_COMMAND", "未対応の fluid コマンドです: " + type);
 }
-} // namespace
+} /// namespace
 
 void RegisterFluidHandlers(BusHandlerTable& table)
 {
@@ -1300,4 +1300,4 @@ void RegisterFluidHandlers(BusHandlerTable& table)
         table.AddCommand(type, command);
 }
 
-} // namespace fbzz::editor::ai::bus
+} /// namespace fbzz::editor::ai::bus

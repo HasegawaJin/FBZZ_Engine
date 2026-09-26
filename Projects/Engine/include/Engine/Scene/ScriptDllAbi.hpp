@@ -67,7 +67,7 @@ struct ScriptDllAbiInfo {
 /// @note stale な DLL はこの値の不一致で安全に拒否される (Missing Script 表示、クラッシュしない)。
 /// @note 履歴 3: BeginObject/EndObject/BeginObjectList/BeginObjectElement/EndObjectElement/EndObjectList を IReflector 末尾へ追加 (入れ子オブジェクトと構造体配列のリフレクション対応)。
 /// @note 履歴 4: Field(ParticleCurve&)/Field(ParticleGradient&)/Button/ObjectListMove を IReflector 末尾へ追加 (カーブ・グラデーション・アクションボタン・構造体配列の並び替え)。
-constexpr uint64_t kReflectionAbiVersion = 4;
+constexpr uint64_t kReflectionAbiVersion = 5;
 
 /// @brief Script 仮想関数テーブルの世代。Script の仮想関数を追加・削除・並べ替えたら必ずインクリメントすること。
 /// @note OnUpdate/OnCollisionEnter/Reflect 等は vtable インデックスで呼ばれるが、仮想関数を途中挿入しても sizeof(Script) は変わらず、既存の署名では stale な DLL を検出できない。
@@ -92,7 +92,7 @@ template <std::size_t... I>
     return hash;
 }
 
-} // namespace detail
+} /// namespace detail
 
 [[nodiscard]] constexpr ScriptDllAbiInfo GetScriptDllAbiInfo()
 {
@@ -127,6 +127,9 @@ template <std::size_t... I>
     mix(info.sizeofScript);
     mix(info.sizeofScene);
     mix(info.sizeofScriptComponent);
+    /// @note vector 本体の sizeof には要素のレイアウトが現れない。
+    mix(sizeof(ScriptEntry));
+    mix(alignof(ScriptEntry));
     mix(info.componentCount);
     mix(info.componentLayoutHash);
     mix(info.msvcVersion);
@@ -151,4 +154,4 @@ template <std::size_t... I>
     return GetScriptDllAbiInfo().signature;
 }
 
-} // namespace fbzz::scene
+} /// namespace fbzz::scene

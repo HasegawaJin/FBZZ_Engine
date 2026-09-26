@@ -258,6 +258,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/PrefabSaveTests.cpp
     Editor/Auto/SceneDirtyTrackerTests.cpp
     Editor/Auto/ScriptCodeGenTests.cpp
+    Editor/Auto/ScriptInspectionTests.cpp
     Editor/Auto/SpriteFieldFilterTests.cpp
     Editor/Auto/SpriteSlicerTests.cpp
     Editor/Auto/TerrainBrushTests.cpp
