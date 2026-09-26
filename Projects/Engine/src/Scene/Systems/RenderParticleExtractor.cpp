@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderParticleExtractor.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
@@ -510,7 +511,7 @@ renderer::ResourceHandle<renderer::TextureTag> LoadParticleTextureOrWhite(
     /// @note Particle は色カーブだけでも成立する VFX なので、参照先テクスチャの欠落で
     /// @note DrawCall 全体を無効化せず、白テクスチャにフォールバックして色だけは表示する。
     if (!texturePath.empty()) {
-        auto texture = resources.LoadTexture(texturePath);
+        auto texture = asset::StreamedTextureResolver::Engine().ResolveGpu(resources, texturePath);
         if (texture.IsValid())
             return texture;
     }
@@ -552,7 +553,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
         const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(resolvedMaterial);
         if (const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
             const std::string& resolvedTex = ParticleMaterialTexture(*mat, "albedo");
-            if (!emitter.runtime.texture.IsValid() || emitter.runtime.loadedTexturePath != resolvedTex) {
+            {
                 emitter.runtime.texture = LoadParticleTextureOrWhite(resources, resolvedTex);
                 emitter.runtime.loadedTexturePath = resolvedTex;
                 emitter.runtime.textureIsSrgb = IsEffectTextureSrgb(resolvedTex);
@@ -560,7 +561,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             /// @note 歪みベクトル専用マップ (normal)。未設定なら無効ハンドルのままにして、
             /// @note シェーダー側は effectsFlags を見て albedo の RG へ縮退する。
             const std::string& distortionTex = ParticleMaterialTexture(*mat, "normal");
-            if (emitter.runtime.loadedDistortionTexturePath != distortionTex) {
+            {
                 emitter.runtime.distortionTexture = distortionTex.empty()
                     ? renderer::ResourceHandle<renderer::TextureTag>::Null()
                     : LoadParticleTextureOrWhite(resources, distortionTex);
@@ -568,7 +569,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             }
             /// @note Motion Vector アトラス (tex5)。
             const std::string& motionTex = ParticleMaterialTexture(*mat, "tex5");
-            if (emitter.runtime.loadedMotionVectorTexturePath != motionTex) {
+            {
                 emitter.runtime.motionVectorTexture = motionTex.empty()
                     ? renderer::ResourceHandle<renderer::TextureTag>::Null()
                     : LoadParticleTextureOrWhite(resources, motionTex);
@@ -578,7 +579,7 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             static const std::string kNoTexture;
             const std::string& sixWayTex = mat->particle.sixWayMaps ? ParticleMaterialTexture(*mat, "emissive")
                                                                     : kNoTexture;
-            if (emitter.runtime.loadedSixWayNegativeTexturePath != sixWayTex) {
+            {
                 emitter.runtime.sixWayNegativeTexture = sixWayTex.empty()
                     ? renderer::ResourceHandle<renderer::TextureTag>::Null()
                     : LoadParticleTextureOrWhite(resources, sixWayTex);
@@ -665,7 +666,10 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
     /// @note (エフェクトが丸ごと消えるより、素材が付いていないと分かる方がよい)。
     emitter.runtime.material      = asset::ParticleMaterialSettings{};
     emitter.runtime.resolvedBlend = ParticleBlendMode::Additive;
-    if (!emitter.runtime.texture.IsValid()) {
+    emitter.runtime.distortionTexture = {};
+    emitter.runtime.motionVectorTexture = {};
+    emitter.runtime.sixWayNegativeTexture = {};
+    {
         emitter.runtime.texture = LoadParticleTextureOrWhite(resources, {});
         emitter.runtime.loadedTexturePath.clear();
         /// @note 1x1 白フォールバック。リニアでも sRGB でも 1.0 は 1.0 なので変換しない。

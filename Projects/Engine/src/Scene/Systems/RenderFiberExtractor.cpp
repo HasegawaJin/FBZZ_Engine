@@ -2,6 +2,7 @@
 /// @brief   共通 RHI で表面繊維を描き、Fin の GPU データをメッシュごとに共有する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderFiberExtractor.hpp>
@@ -278,10 +279,10 @@ void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const asset
 void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const std::string& path,
     renderer::ResourceManager& resources, FiberMaskSlot& slot)
 {
-    /// @note パスが変わった時だけ読む。読込失敗は ResourceManager がキャッシュしないので、毎フレーム読み直すとエラーログが流れ続ける。
-    if (slot.m_path != path) {
+    /// @note 毎フレーム利用権を更新する。読込失敗は resolver が保持し、同期 I/O を繰り返さない。
+    {
         slot.m_path = path;
-        slot.m_texture = path.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.LoadTexture(path);
+        slot.m_texture = path.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, path);
     }
     const renderer::ITexture* texture = resources.Get(slot.m_texture);
     if (!texture) texture = resources.Get(resources.GetWhiteTexture());

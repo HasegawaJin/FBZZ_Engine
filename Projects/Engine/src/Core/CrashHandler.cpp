@@ -4,6 +4,7 @@
 /// @date    2026-09-19
 /// @see Docs/design/crash-report.md
 #include "Engine/Core/CrashHandler.hpp"
+#include "CrashLogTail.hpp"
 #include "Engine/Core/DeveloperMode.hpp"
 #include "Engine/Core/ILogSink.hpp"
 #include "Engine/Core/Logger.hpp"
@@ -36,8 +37,6 @@ namespace {
 
 using util::StringUtils;
 
-constexpr size_t kCrashLogLines     = 200;
-constexpr size_t kCrashLogLineBytes = 512;
 constexpr size_t kCrashPathChars    = 1024;
 constexpr size_t kCrashReasonBytes  = 256;
 constexpr DWORD  kCrashWriterStackBytes = 256 * 1024;
@@ -67,72 +66,20 @@ constexpr const char* kCrashBuildConfig = FBZZ_CMAKE_CONFIG;
 constexpr const char* kCrashBuildConfig = "unknown";
 #endif
 
-const char* CrashLevelPrefix(LogLevel level)
-{
-    switch (level) {
-    case LogLevel::DEBUG:     return "[DEBUG] ";
-    case LogLevel::INFO:      return "[INFO]  ";
-    case LogLevel::WARNING:   return "[WARN]  ";
-    case LogLevel::LOG_ERROR: return "[ERROR] ";
-    }
-    return "";
-}
-
-/// @brief ログの末尾を固定長の輪で持つ。落ちた後にヒープを触らずに読むため。
-/// @note Logger が配送を直列化しているので書き手は同時に 1 本。落ちた後の読み手はロックを取らない (1 行が欠けうる)。
-class CrashLogTail final : public ILogSink {
-public:
-    void OnLog(const LogEntry& entry) override
-    {
-        const uint32_t index = m_next.load(std::memory_order_relaxed);
-        char* line = m_lines[index % kCrashLogLines];
-
-        const char* prefix = CrashLevelPrefix(entry.level);
-        const size_t prefixLen = std::strlen(prefix);
-        std::memcpy(line, prefix, prefixLen);
-
-        /// @note UTF-8 の途中で切らない。継続バイト (10xxxxxx) の手前まで戻す。
-        size_t length = std::min(entry.message.size(), kCrashLogLineBytes - 1 - prefixLen);
-        while (length > 0 && length < entry.message.size()
-               && (static_cast<unsigned char>(entry.message[length]) & 0xC0u) == 0x80u)
-            --length;
-        std::memcpy(line + prefixLen, entry.message.data(), length);
-        line[prefixLen + length] = '\0';
-
-        m_next.store(index + 1, std::memory_order_release);
-    }
-
-    /// @brief 古い順に 1 行ずつ渡す。
-    template <class Fn>
-    void ForEachLine(Fn&& fn) const
-    {
-        const uint32_t next  = m_next.load(std::memory_order_acquire);
-        const uint32_t count = std::min<uint32_t>(next, static_cast<uint32_t>(kCrashLogLines));
-        for (uint32_t i = next - count; i != next; ++i)
-            fn(m_lines[i % kCrashLogLines]);
-    }
-
-    void Clear() { m_next.store(0, std::memory_order_release); }
-
-private:
-    char                  m_lines[kCrashLogLines][kCrashLogLineBytes] = {};
-    std::atomic<uint32_t> m_next{0};
-};
-
 /// @brief 1 回の書き出しの入出力。落ちたときは静的領域のものを使い、落ちたスタックに置かない。
 struct CrashRequest {
     EXCEPTION_POINTERS* exception = nullptr;
     DWORD               threadId  = 0;
-    char                reason[kCrashReasonBytes] = {};  ///< 空なら例外コードから «何が起きたか» を作る
+    char                reason[kCrashReasonBytes] = {};  ///< @note 空なら例外コードから «何が起きたか» を作る
     wchar_t             outDir[kCrashPathChars]   = {};
-    std::atomic<bool>   claimed{false};                  ///< 書き出しスレッドと落ちたスレッドのどちらが書くか
+    std::atomic<bool>   claimed{false};                  ///< @note 書き出しスレッドと落ちたスレッドのどちらが書くか
     bool                written = false;
 };
 
 struct CrashState {
     bool     installed = false;
-    wchar_t  savedDir[kCrashPathChars] = {};  ///< `<根>\Saved`
-    wchar_t  crashDir[kCrashPathChars] = {};  ///< `<根>\Saved\Crashes`
+    wchar_t  savedDir[kCrashPathChars] = {};  ///< @note `<根>\Saved`
+    wchar_t  crashDir[kCrashPathChars] = {};  ///< @note `<根>\Saved\Crashes`
     char     appName[128] = {};
 
     LPTOP_LEVEL_EXCEPTION_FILTER prevFilter   = nullptr;
@@ -316,7 +263,7 @@ void CrashWriteFiles(CrashRequest& request)
     else
         CrashPrintf(report, "dump:    failed (error %lu)\r\n", dumpError);
 
-    CrashPrintf(report, "\r\n--- log (oldest first, last %u lines) ---\r\n", static_cast<unsigned>(kCrashLogLines));
+    CrashPrintf(report, "\r\n--- log (oldest first, last %u lines) ---\r\n", static_cast<unsigned>(CrashLogTail::LINE_COUNT));
     GetCrashLogTail().ForEachLine([report](const char* line) {
         CrashWrite(report, line, std::strlen(line));
         CrashWrite(report, "\r\n", 2);
@@ -445,14 +392,16 @@ std::string CrashReadSummary(const std::filesystem::path& report)
     while (std::getline(in, line)) {
         if (line.rfind("what:", 0) != 0) continue;
         line.erase(0, 5);
-        const size_t begin = line.find_first_not_of(' ');
+        /// @note 前後を同じ集合で削り、空白だけの値で npos から巨大な長さを算出することを避ける。
+        const size_t begin = line.find_first_not_of(" \r");
         const size_t end   = line.find_last_not_of(" \r");
-        return begin == std::string::npos ? std::string{} : line.substr(begin, end - begin + 1);
+        if (begin == std::string::npos) return {};
+        return line.substr(begin, end - begin + 1);
     }
     return {};
 }
 
-} // namespace
+}
 
 bool CrashHandler::Install(const std::filesystem::path& root, std::string_view appName)
 {
@@ -630,4 +579,4 @@ size_t CrashHandler::NotifyUnreported(const std::filesystem::path& root, std::st
     return records.size();
 }
 
-} // namespace fbzz::core
+}

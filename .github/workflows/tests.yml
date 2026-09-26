@@ -97,7 +97,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               Write-Warning "変更ファイルを取得できなかったので、カバレッジを測る側に倒します"
             } else {
-              $pattern = '^(Projects/(Math|Physics|Engine/src/Core|Engine/include/Engine/Core|Tests/(Math|Physics|Core|TestKit))/|Tools/Coverage/|\.github/workflows/tests\.yml$)'
+              $pattern = '^(Projects/(Math|Physics|Core|Engine/src/Core|Engine/include/Engine/Core|Tests/(Math|Physics|Core|TestKit))/|Tools/Coverage/|\.github/workflows/tests\.yml$)'
               $measure = [bool]($files | Where-Object { $_ -match $pattern })
             }
           }
@@ -167,7 +167,7 @@ jobs:
       # @note 計測は ctest を通さずテスト exe を 1 本ずつ直接走らせ、binary で出して最後に統合する。
       # @warning ctest を通すと gtest_discover_tests が登録した «1 テスト 1 プロセス» (2148 本) すべてで OpenCppCoverage が PDB を読み直す。テスト本体は全スイート合わせて 25 秒なのに、起動だけで 20 分 (開発機) / 47 分超 (ランナー) かかりジョブの上限で落ちる。
       # @note --cover_children はテスト exe が起動する子まで追うために残す。
-      # @note 計測対象は «自作で、テストを書くと決めた» 3 つに絞る。Renderer / Editor を混ぜると分母が意味を失う。
+      # @note 計測対象は «自作で、テストを書くと決めた» 4 つに絞る。Renderer / Editor を混ぜると分母が意味を失う。
       # @warning スイートを足したらここにも足す。漏れるとそのスイートが踏んだ行が «未到達» に化ける。
       - name: Measure coverage
         if: steps.scope.outputs.measure == 'true'
@@ -186,6 +186,7 @@ jobs:
               --cover_children `
               --sources "Projects\Math" `
               --sources "Projects\Physics" `
+              --sources "Projects\Core" `
               --sources "Projects\Engine\src\Core" `
               --excluded_sources "Projects\Engine\src\Core\Platform" `
               --excluded_sources "Projects\Tests" `

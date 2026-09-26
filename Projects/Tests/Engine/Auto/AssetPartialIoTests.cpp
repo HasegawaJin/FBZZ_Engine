@@ -36,6 +36,52 @@ protected:
 
 std::vector<uint8_t> Bytes(std::initializer_list<uint8_t> values) { return values; }
 
+TEST_F(AssetPartialIoTest, DistributionCacheSurvivesRelocationAndRejectsChangedSource)
+{
+    const auto source = PathOf("source.tga");
+    {
+        std::ofstream file(source, std::ios::binary);
+        const uint8_t header[18] = {0,0,2,0,0,0,0,0,0,0,0,0,16,0,16,0,32,0x28};
+        file.write(static_cast<const char*>(static_cast<const void*>(header)), sizeof(header));
+        for (unsigned i = 0; i < 256; ++i) {
+            const uint8_t pixel[4] = {static_cast<uint8_t>(i), 64, 128, 255};
+            file.write(static_cast<const char*>(static_cast<const void*>(pixel)), sizeof(pixel));
+        }
+    }
+    std::string error;
+    ASSERT_TRUE(asset::texturecache::BakeDistributionTexture(source, error)) << error;
+    ASSERT_TRUE(std::filesystem::exists(source + ".fztc"));
+    const auto moved = PathOf("relocated.tga");
+    std::error_code ec;
+    std::filesystem::rename(source, moved, ec);
+    ASSERT_FALSE(ec);
+    std::filesystem::rename(source + ".fztc", moved + ".fztc", ec);
+    ASSERT_FALSE(ec);
+    const auto size = std::filesystem::file_size(moved, ec);
+    const auto time = std::filesystem::last_write_time(moved, ec);
+    ASSERT_FALSE(ec);
+    const auto stamp = asset::texturecache::MakeSourceStamp(size, time.time_since_epoch().count());
+    renderer::DecodedTextureRGBA8 full, cached;
+    ASSERT_TRUE(renderer::DecodeTextureFileRGBA8(moved, full, &error));
+    for (asset::AssetQuality quality = 0; quality <= 4; ++quality) {
+        ASSERT_TRUE(asset::texturecache::ReadQuality(moved + ".fztc", stamp, quality, cached));
+        const auto expected = asset::texturecache::SelectQuality(full, quality);
+        ASSERT_EQ(cached.mips.size(), expected.mips.size());
+        EXPECT_EQ(cached.mips[0].rgba, expected.mips[0].rgba);
+        EXPECT_EQ(cached.sourceWidth, 16u);
+    }
+    EXPECT_FALSE(asset::texturecache::ReadQuality(moved + ".fztc",
+        asset::texturecache::MakeSourceStamp(size + 1, time.time_since_epoch().count()), 0, cached));
+}
+
+TEST_F(AssetPartialIoTest, DistributionBakeReportsBrokenTexturesButSkipsNonTextures)
+{
+    std::string error;
+    EXPECT_TRUE(asset::texturecache::BakeDistributionTexture(PathOf("scene.scene"), error));
+    EXPECT_FALSE(asset::texturecache::BakeDistributionTexture(PathOf("missing.png"), error));
+    EXPECT_FALSE(error.empty());
+}
+
 /// @brief 1 段だけの画像。画素は (x, y, 座標和, 255) で、縮小結果を手で追える。
 DecodedTextureRGBA8 MakeSingleMip(uint32_t width, uint32_t height)
 {
@@ -105,7 +151,7 @@ void WriteTwoLodModel(const std::string& path)
     WriteFileBytes(path, bytes);
 }
 
-}
+} /// @note namespace
 
 /// @name チャンク索引付き形式
 
@@ -303,4 +349,4 @@ TEST_F(AssetPartialIoTest, QualityFollowsScreenSizeWithOneLevelOfHeadroom)
     EXPECT_EQ(StreamedTextureResolver::QualityForScreenSize(1024, 1024, 0.0f, 4), 0) << "大きさ不明は最高品質";
 }
 
-}
+} /// @note namespace fbzz::tests
