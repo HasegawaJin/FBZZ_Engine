@@ -47,6 +47,24 @@ static bool IsChunkVisible(
                                      (worldMax.z - worldMin.z) * 0.5f };
     return frustum.IntersectsAABB(center, extents);
 }
+/// @brief 地形の描画と影で同じチャンク LOD を選ぶ。
+/// @note 異なるメッシュで自己影を描くと粗い三角形が表示面を貫き、斜面に偽の影が出る。
+static int SelectTerrainLOD(const RenderTerrainInput& input, const RenderTerrainPatch& chunk,
+                            const math::Vector3& cameraPosition)
+{
+    if (input.fiberSurface) return 0;
+    const math::Vector3 localCenter = (chunk.aabbMin + chunk.aabbMax) * 0.5f;
+    const math::Vector4 worldCenter = input.constants.worldMatrix
+        * math::Vector4{ localCenter.x, localCenter.y, localCenter.z, 1.0f };
+    const float dx = worldCenter.x - cameraPosition.x;
+    const float dy = worldCenter.y - cameraPosition.y;
+    const float dz = worldCenter.z - cameraPosition.z;
+    const float distSq = dx * dx + dy * dy + dz * dz;
+    const float nearDistance = input.chunkWorldSize * 2.0f;
+    const float midDistance = input.chunkWorldSize * 6.0f;
+    return distSq < nearDistance * nearDistance ? 0
+         : distSq < midDistance * midDistance ? 1 : 2;
+}
 std::string_view TerrainRenderPass::Name() const
 {
     return m_mode == TerrainDrawMode::GBuffer ? "TerrainGBuffer" : "TerrainForward";
@@ -149,22 +167,7 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                     continue;
                 }
 
-                const math::Vector3 localCenter = {
-                    (chunk.aabbMin.x + chunk.aabbMax.x) * 0.5f,
-                    (chunk.aabbMin.y + chunk.aabbMax.y) * 0.5f,
-                    (chunk.aabbMin.z + chunk.aabbMax.z) * 0.5f
-                };
-                const math::Vector4 wc = world * math::Vector4{ localCenter.x, localCenter.y, localCenter.z, 1.0f };
-                const float dx = wc.x - camera.m_position.x;
-                const float dy = wc.y - camera.m_position.y;
-                const float dz = wc.z - camera.m_position.z;
-                const float distSq = dx * dx + dy * dy + dz * dz;
-
-                const float chunkWorldSize = input.chunkWorldSize;
-                const float d0 = chunkWorldSize * 2.0f;
-                const float d1 = chunkWorldSize * 6.0f;
-                const int lod = input.fiberSurface ? 0 : (distSq < d0 * d0) ? 0
-                              : (distSq < d1 * d1) ? 1 : 2;
+                const int lod = SelectTerrainLOD(input, chunk, camera.m_position);
                 /// @note 全セルが穴のチャンクはインデックスが 0 本。
                 if (chunk.indexCountLOD[lod] == 0) continue;
 
@@ -220,13 +223,7 @@ void SubmitTerrainShadowCasters(
                 if (!IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
                     continue;
 
-                /// @note シャドウ用は 1 段粗い LOD (格子ステップ 2 = 三角形数 1/4) を使う。
-                /// @note 影の形はシャドウマップのテクセルと PCF カーネルで既に鈍っており、
-                /// @note 地形の最密メッシュを光源視点でもう一度流しても輪郭は変わらない。
-                /// @note 落ちるのは頂点処理と極小三角形のラスタライズだけなので、
-                /// @note 見た目を保ったまま地形シャドウのコストを大きく削れる。
-                /// @note 粗い LOD が未生成のチャンクは LOD0 へフォールバックする。
-                const int lod = !input.fiberSurface && chunk.indexCountLOD[1]>0 && chunk.indexBufferLOD[1].IsValid() ? 1 : 0;
+                const int lod = SelectTerrainLOD(input, chunk, ctx.camera.m_position);
                 if (chunk.indexCountLOD[lod] == 0) continue;
 
                 renderer::DrawCall dc;
