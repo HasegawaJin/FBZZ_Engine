@@ -1,18 +1,26 @@
-version = 1
-shader = "guid:25726aa49fcb45c98918fb317b7d3f09"
-blend_mode = "Opaque"
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
 double_sided = false
+mesh_type = 'skinned'
+render_path = 'auto'
 render_queue = 2000
-render_path = "auto"
-mesh_type = "skinned"
-
-[textures]
-albedo = ""
-normal = ""
+shader = 'guid:25726aa49fcb45c98918fb317b7d3f09|Assets/Shaders/Material/Skinned/SkinnedRimLight.hlsl'
+version = 1
 
 [params]
-albedo = [1.0, 1.0, 1.0, 1.0]
-roughness = [0.65]
-rimPower = [3.0]
-rimIntensity = [1.0]
-rimColor = [1.0, 1.0, 1.0]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+rimColor = [ 1.0, 1.0, 1.0 ]
+rimIntensity = 0.41999998688697815
+rimPower = 3.0
+roughness = 0.09000000357627869
+
+[textures]
+albedo = ''
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''
