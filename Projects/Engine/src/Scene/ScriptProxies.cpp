@@ -3900,7 +3900,8 @@ void ScriptSceneProxy::DestroySelf(float delay) const
 bool ScriptSceneProxy::IsActiveAndEnabled() const
 {
     /// @note Unity の isActiveAndEnabled と同じく、親 GameObject の無効化も実効状態へ反映する。
-    return script && script->m_gameObject && script->m_gameObject->activeInHierarchy() && script->enabled;
+    return script && script->m_gameObject && script->m_gameObject->activeInHierarchy()
+        && script->IsContextEnabled();
 }
 
 GameObject* ScriptSceneProxy::Instantiate(const PrefabRef& prefab) const

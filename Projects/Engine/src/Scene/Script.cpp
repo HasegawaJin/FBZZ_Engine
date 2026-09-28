@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-27
 ///
-/// template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
+/// @note template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/ScriptEvent.hpp>
@@ -56,11 +56,12 @@ void Script::SetContext(Scene* scene, GameObject* gameObject)
 {
     m_scene      = scene;
     m_gameObject = gameObject;
+    m_contextOwner = nullptr;
 }
 
 namespace {
 
-/// Script の実行時障害を「Editor 全体のクラッシュ」から「当該 Script の停止」へ縮退させる。
+/// @brief Script の実行時障害を「Editor 全体のクラッシュ」から「当該 Script の停止」へ縮退させる。
 /// @note 空の Ref<T> を誤って operator-> で使うと MSVC はアクセス違反を SEH として通知する。C++ 例外
 ///       ではないため、ここでコールバック境界を保護し、原因を Console へ残す。
 void HandleRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
@@ -70,7 +71,7 @@ void HandleRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
                    script.GetTypeName(), callbackName ? callbackName : "callback");
 }
 
-} /// namespace
+} /// @note namespace
 
 bool Script::ExecuteCallback(void (Script::*callback)(), const char* callbackName)
 {
@@ -526,4 +527,4 @@ void Script::ClearRuntimePostProcessSettings()
         m_scene->ClearRuntimePostProcessSettings();
 }
 
-} /// namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -138,7 +138,11 @@ vector 本体から見えない ScriptEntry の sizeof / alignof も ABI 署名�
 初期版は既存のメインスレッド上の要求処理で値をコピーする。
 frameIndex は要求処理時点のフレーム番号であり、フレーム完了を意味しない。
 Playtest の完了フレームに合わせた assert 接続（1C）、Edit モードの Script 設定変更と Undo（2）、
-複合 ScriptModule の自動接続（3）、リロードを越える実行状態の保持は別段階。
+複合 ScriptModule の依存関係の自動注入（3）、リロードを越える実行状態の保持は別段階。
 観測 getter に自動 setter を作って実行状態を復元することはしない。
+
+2026-09-28 に、明示的な登録一覧から内部 Script の通知と反射を中継する
+[ScriptModules](script-modules.md) を追加した。通常のヘルパークラスは引き続き登録・アタッチ不要。
+ゲーム固有の依存関係と更新順は親が指定する。
 
 検証は ScriptInspectionTest、EditorBusDispatcherTest、BusContractParityTest と EditorMcp のテストを使う。

@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// GameObject にアタッチされる振る舞いの共通ライフサイクルを定義する。
-/// engine 側の Component とは分け、ScriptComponent が所有する。
+/// @note GameObject にアタッチされる振る舞いの共通ライフサイクルを定義する。
+/// @note engine 側の Component とは分け、ScriptComponent が所有する。
 #pragma once
 
 #include <Engine/Core/Time.hpp>
@@ -438,7 +438,7 @@ struct RootMotionInfo {
 
 /// @brief `FBZZ_REF(T, ...)` が RefField へ渡す型名を解決する。
 /// @param declaredName 登録コンポーネントの型名 (FBZZ_REF に書いた型名そのもの)。GameObject / Script 参照では未使用。
-/// @return GameObject なら「任意の GameObject 可」を意味する空文字、Script 派生なら T::TYPE_NAME (基底型で受けると継承鎖のどこで一致してもよい)、それ以外は declaredName。
+/// @return GameObject なら空文字、Script 派生・インターフェースなら T::TYPE_NAME、それ以外は declaredName。
 /// @note Inspector はこの型名でドロップを検証し、フィルタ付きピッカーを出す。
 /// @note コンポーネントだけマクロから名前を貰うのは TYPE_NAME を持たないため。名前の正本は ComponentRegistry の serializedName (中身は登録マクロの `#Type`) で、FBZZ_REF が持つ `#Type` から同じ文字列が作れる。名前空間付きで書くと食い違うため素の型名で書くこと。
 template<typename T>
@@ -448,7 +448,7 @@ constexpr const char* RefTypeNameOf(const char* declaredName)
     (void)declaredName;
     if constexpr (std::is_same_v<T, GameObject>)
         return "";
-    else if constexpr (std::is_base_of_v<Script, T>)
+    else if constexpr (requires(const T& value) { value.FbzzAsType(std::string_view{}); })
         return T::TYPE_NAME;
     else
         return declaredName;
@@ -531,17 +531,19 @@ inline constexpr bool kIsScriptQueryable<
 /// @brief 基底を順に当たり、最初に見つかった部分オブジェクトのポインタを返す。
 /// @note 修飾呼び出し (`Bases::FbzzAsType`) にするのは、仮想呼び出しだと派生の実装へ戻り無限再帰になるため。修飾すればその基底の実装が直接呼ばれ、self は static_cast でその基底の部分オブジェクトへずらされた後なので番地も自動的に正しくなる。
 /// @note 同じ型名が 2 つの経路から見える場合 (ダイヤモンド) は先に書いた基底が勝つ。
-template<typename... Bases, typename Self>
+/// @note MSVC で副作用付き fold 式の結果が失われるため、1 基底ずつ結果を返す。
+template<typename First, typename... Rest, typename Self>
 [[nodiscard]] inline void* TryBases(const Self* self, std::string_view typeName)
 {
-    void* found = nullptr;
-    (void)(((found = static_cast<const Bases*>(self)->Bases::FbzzAsType(typeName)) != nullptr)
-           || ...);
-    return found;
+    if (void* found = static_cast<const First*>(self)->First::FbzzAsType(typeName))
+        return found;
+    if constexpr (sizeof...(Rest) > 0)
+        return TryBases<Rest...>(self, typeName);
+    return nullptr;
 }
 
-/// 1 要素を from から to へ運ぶ。間の要素の相対順序は保たれる。
-/// FBZZ_OBJECT_LIST_FIELD が IReflector::ObjectListMove の結果を反映するのに使う。
+/// @note 1 要素を from から to へ運ぶ。間の要素の相対順序は保たれる。
+/// @note FBZZ_OBJECT_LIST_FIELD が IReflector::ObjectListMove の結果を反映するのに使う。
 template<typename T>
 inline void MoveListElement(std::vector<T>& values, std::size_t from, std::size_t to)
 {
@@ -553,9 +555,9 @@ inline void MoveListElement(std::vector<T>& values, std::size_t from, std::size_
     else           std::rotate(target, source, source + 1);
 }
 
-/// "RigidBodyComponent, AnimatorComponent" → { "RigidBodyComponent", "AnimatorComponent" }
-/// 名前空間修飾は落とす。短縮名でも fbzz::scene:: 付きでも ComponentRegistry の
-/// serializedName (= #Type の短縮名) と突き合わせられるよう、最後の "::" より後だけを採る。
+/// @note "RigidBodyComponent, AnimatorComponent" → { "RigidBodyComponent", "AnimatorComponent" }
+/// @note 名前空間修飾は落とす。短縮名でも fbzz::scene:: 付きでも ComponentRegistry の
+/// @note serializedName (= #Type の短縮名) と突き合わせられるよう、最後の "::" より後だけを採る。
 inline std::vector<std::string> SplitComponentNames(const char* list)
 {
     std::vector<std::string> names;
@@ -1104,11 +1106,11 @@ public:
     virtual void OnNavMeshTargetSpotted() {}       ///< NavMeshSensorComponent が対象を視界内に検知したとき
     virtual void OnNavMeshTargetLost() {}          ///< 検知していた対象を見失ったとき
     virtual void OnAnimationEvent(const AnimationEventInfo&) {}
-    /// AnimatorComponent がルートモーションを抽出した直後に、同じフレーム内で呼ばれる。
-    /// rootMotion.mode が None 以外なら毎フレーム発火する (delta がゼロでも呼ばれる)。
-    /// ExtractOnly のときはエンジンが何も動かさないため、ここで移動を適用する。
+    /// @note AnimatorComponent がルートモーションを抽出した直後に、同じフレーム内で呼ばれる。
+    /// @note rootMotion.mode が None 以外なら毎フレーム発火する (delta がゼロでも呼ばれる)。
+    /// @note ExtractOnly のときはエンジンが何も動かさないため、ここで移動を適用する。
     virtual void OnAnimatorMove(const RootMotionInfo&) {}
-    /// Editor authoring / serialization lifecycle。
+    /// @note Editor authoring / serialization lifecycle。
     virtual void Reset() {}
     virtual void OnValidate() {}
     virtual void OnBeforeSerialize() {}
@@ -1116,18 +1118,18 @@ public:
     virtual void Reflect(IReflector&) {}
     virtual const char* GetTypeName() const { return "Script"; }
 
-    /// 型名から、その型の部分オブジェクトを指すポインタを返す。無ければ nullptr。
-    /// GetScript<T>() / FindObjectsOfType<T>() が基底型やインターフェースで引けるのはこれによる。
-    /// bool ではなく void* を返す。多重継承では派生の先頭番地と基底の番地が一致せず、
-    /// 補正できるのは自分の型を知っている派生側だけなので、調整済みのポインタを返させる。
-    /// dynamic_cast は使えない ─ スクリプトはホットリロードされる DLL 側に居るため、
-    /// EXE と DLL で同じクラスの type_info が別実体になり得る。
+    /// @note 型名から、その型の部分オブジェクトを指すポインタを返す。無ければ nullptr。
+    /// @note GetScript<T>() / FindObjectsOfType<T>() が基底型やインターフェースで引けるのはこれによる。
+    /// @note bool ではなく void* を返す。多重継承では派生の先頭番地と基底の番地が一致せず、
+    /// @note 補正できるのは自分の型を知っている派生側だけなので、調整済みのポインタを返させる。
+    /// @note dynamic_cast は使えない ─ スクリプトはホットリロードされる DLL 側に居るため、
+    /// @note EXE と DLL で同じクラスの type_info が別実体になり得る。
     virtual void* FbzzAsType(std::string_view typeName) const
     {
         return typeName == "Script" ? const_cast<Script*>(this) : nullptr;
     }
 
-    /// 型名による is-a 判定。継承鎖とインターフェースを辿り、1 つでも一致すれば true。
+    /// @note 型名による is-a 判定。継承鎖とインターフェースを辿り、1 つでも一致すれば true。
     [[nodiscard]] bool IsA(std::string_view typeName) const
     {
         return FbzzAsType(typeName) != nullptr;
@@ -1135,47 +1137,47 @@ public:
 
     /// @name 固定ステップ更新
     /// @{
-    /// Phase::Physics と同じ固定タイムステップ (既定 60Hz) で、物理の直前に呼ばれる。
-    /// フレームレートに関わらず 1 秒あたりの呼び出し回数が一定なので、力の加算や
-    /// 移動量の積分はここへ置くと PC 性能で挙動が変わらない。
-    /// 経過時間は time.DeltaTime() ではなく time.FixedDeltaTime() を使うこと。
-    /// OnUpdate は描画フレームごと (可変 dt) なので、物理に効く処理を書くと環境で結果がずれる。
+    /// @note Phase::Physics と同じ固定タイムステップ (既定 60Hz) で、物理の直前に呼ばれる。
+    /// @note フレームレートに関わらず 1 秒あたりの呼び出し回数が一定なので、力の加算や
+    /// @note 移動量の積分はここへ置くと PC 性能で挙動が変わらない。
+    /// @note 経過時間は time.DeltaTime() ではなく time.FixedDeltaTime() を使うこと。
+    /// @note OnUpdate は描画フレームごと (可変 dt) なので、物理に効く処理を書くと環境で結果がずれる。
     virtual void OnFixedUpdate() {}
     /// @}
 
     /// @name オブジェクトプール
     /// @{
-    /// scene.Spawn() で貸し出された / scene.Despawn() で返却された瞬間に呼ばれる。
-    /// 再利用インスタンスでは OnAwake / OnStart は再発火しないため、
-    /// 「毎回リセットしたい状態」(HP・経過時間・軌跡バッファ) はここで初期化する。
+    /// @note scene.Spawn() で貸し出された / scene.Despawn() で返却された瞬間に呼ばれる。
+    /// @note 再利用インスタンスでは OnAwake / OnStart は再発火しないため、
+    /// @note 「毎回リセットしたい状態」(HP・経過時間・軌跡バッファ) はここで初期化する。
     virtual void OnSpawn() {}
     virtual void OnDespawn() {}
 
-    /// このスクリプトが成立するために同じ GameObject へ必要なコンポーネント型名。
-    /// FBZZ_REQUIRE_COMPONENT / FBZZ_OPTIONAL_COMPONENT が override する。
-    /// 返す名前は ComponentRegistry の serializedName (= 型名そのもの) と同じ綴り。
+    /// @note このスクリプトが成立するために同じ GameObject へ必要なコンポーネント型名。
+    /// @note FBZZ_REQUIRE_COMPONENT / FBZZ_OPTIONAL_COMPONENT が override する。
+    /// @note 返す名前は ComponentRegistry の serializedName (= 型名そのもの) と同じ綴り。
     ///
-    /// 仮想関数の追加は必ず仮想関数列の末尾に行い、ScriptDllAbi.hpp の
-    /// kScriptVtableAbiVersion をインクリメントすること (途中へ挿すと番号がずれる)。
+    /// @note 仮想関数の追加は必ず仮想関数列の末尾に行い、ScriptDllAbi.hpp の
+    /// @note kScriptVtableAbiVersion をインクリメントすること (途中へ挿すと番号がずれる)。
     virtual std::span<const std::string> RequiredComponents() const { return {}; }
     virtual std::span<const std::string> OptionalComponents() const { return {}; }
 
-    /// true を返すと Play 中でなくても ScriptSystem が回す。FBZZ_EXECUTE_ALWAYS() が override する。
-    /// 既定は false。編集中の実行はシーンの中身を書き換えるので、ゲームロジックが走ると
-    /// 保存したシーンに遊んだ後の状態が入る。見た目を組み立てる用途だけ opt-in する。
-    /// 追加位置は仮想関数列の末尾 (kScriptVtableAbiVersion も併せて上げる)。
+    /// @note true を返すと Play 中でなくても ScriptSystem が回す。FBZZ_EXECUTE_ALWAYS() が override する。
+    /// @note 既定は false。編集中の実行はシーンの中身を書き換えるので、ゲームロジックが走ると
+    /// @note 保存したシーンに遊んだ後の状態が入る。見た目を組み立てる用途だけ opt-in する。
+    /// @note 追加位置は仮想関数列の末尾 (kScriptVtableAbiVersion も併せて上げる)。
     virtual bool ExecuteInEditMode() const { return false; }
     /// @}
 
     /// @name .sequence のコールバック
     /// @{
-    /// EventTrack のキーを跨いだフレームで、時刻昇順に呼ばれる。逆再生と
-    /// エディタのスクラブでは発火しない (演出の合図は巻き戻せないため)。
+    /// @note EventTrack のキーを跨いだフレームで、時刻昇順に呼ばれる。逆再生と
+    /// @note エディタのスクラブでは発火しない (演出の合図は巻き戻せないため)。
     ///
-    /// 追加位置について: 仮想関数列の末尾に置くこと。ScriptDllAbi.hpp の
-    /// kScriptVtableAbiVersion も併せて上げる。
+    /// @note 追加位置について: 仮想関数列の末尾に置くこと。ScriptDllAbi.hpp の
+    /// @note kScriptVtableAbiVersion も併せて上げる。
     virtual void OnSequenceEvent(const SequenceEventInfo&) {}
-    /// wrapMode が Once のシーケンスが終端へ達し、復帰まで終えた直後に呼ばれる。
+    /// @note wrapMode が Once のシーケンスが終端へ達し、復帰まで終えた直後に呼ばれる。
     virtual void OnSequenceFinished(const char* /*sequenceName*/) {}
 
     /// @brief エディターで自分 (または祖先) が選択されているときだけ、OnDrawGizmos の後に呼ばれる。
@@ -1193,7 +1195,7 @@ public:
     #undef FBZZ_PROXY_STANDALONE
 
 
-    /// Invoke / タイマー
+    /// @note Invoke / タイマー
     [[nodiscard]] InvokeHandle Invoke(std::function<void()> fn, float delay);
     [[nodiscard]] InvokeHandle InvokeRepeating(std::function<void()> fn, float delay, float interval);
     void FrameDelay(uint32_t n, std::function<void()> fn);
@@ -1201,21 +1203,31 @@ public:
     void CancelInvoke(InvokeHandle handle);
     void CancelEventSubscriptions();
 
-    /// コルーチン (Coroutine.hpp)。WaitForSeconds 等を co_await して時間軸処理を直線的に書く。
+    /// @note コルーチン (Coroutine.hpp)。WaitForSeconds 等を co_await して時間軸処理を直線的に書く。
     void StartCoroutine(Coroutine co);
-    /// コルーチン内から呼んでもよい。その場合は実行中のハンドルを自己破棄しないよう、
-    /// ティックを抜けてから実際に畳む。
+    /// @note コルーチン内から呼んでもよい。その場合は実行中のハンドルを自己破棄しないよう、
+    /// @note ティックを抜けてから実際に畳む。
     void StopAllCoroutines();
 
-    /// QueueRenderPass / GetShaderDescriptor
+    /// @note QueueRenderPass / GetShaderDescriptor
     void QueueRenderPass(UserRenderPassDesc desc) const;
     const renderer::ShaderDescriptor* GetShaderDescriptor(std::string_view shaderPath) const;
 
-    /// Engine の実行時コールバック共通経路
+    /// @note Engine の実行時コールバック共通経路
     void SetContext(Scene* scene, GameObject* gameObject);
     /// @brief 複合 Script が内部モジュールへ同じ Scene / GameObject コンテキストを渡す。
     /// @note 公開するのは、PlayerComponent のような 1 コンポーネント構成でも責務別クラスをファイル分割したまま既存の Script proxy と EntityRef を再利用できるようにするため。
-    void AdoptContext(const Script& owner) { SetContext(owner.m_scene, owner.m_gameObject); }
+    void AdoptContext(const Script& owner)
+    {
+        SetContext(owner.m_scene, owner.m_gameObject);
+        m_contextOwner = &owner;
+    }
+    /// @brief 内部モジュールは親 Script の無効化も実効状態へ反映する。
+    /// @pre AdoptContext で渡した親は自分より長く生存し、所有関係は循環しない。
+    [[nodiscard]] bool IsContextEnabled() const
+    {
+        return enabled && (!m_contextOwner || m_contextOwner->IsContextEnabled());
+    }
     /// @brief GameObject の階層有効状態も含めた実効 enabled を更新し、OnEnable / OnDisable を通知する。
     /// @note Script 自身の enabled だけを見ると、GameObject を無効化してもコールバックが動き続ける。
     void SynchronizeEnabledState(bool gameObjectActive = true);
@@ -1263,8 +1275,9 @@ protected:
     void ClearRuntimePostProcessSettings();
 
     Scene*      m_scene      = nullptr;
+    const Script* m_contextOwner = nullptr;
     GameObject* m_gameObject = nullptr;
-    /// アクセス違反後は同じ Script を毎フレーム呼ばず、Play を継続できるようにする。
+    /// @note アクセス違反後は同じ Script を毎フレーム呼ばず、Play を継続できるようにする。
     bool        m_runtimeFaulted = false;
 
 private:
@@ -1365,8 +1378,8 @@ inline T* Ref<T>::Get() const
     if (!go) return nullptr;
     if constexpr (std::is_same_v<T, GameObject>)
         return go;
-    else if constexpr (std::is_base_of_v<Script, T>)
-        /// @note T が Script 派生のとき、その GameObject 上の T スクリプトを取得する。
+    else if constexpr (detail::kIsScriptQueryable<T>)
+        /// @note Script 派生と横断インターフェースは同じ取得経路を使う。
         return owner->scene.template GetScript<T>(go);
     else
         /// @note それ以外はコンポーネント。GameObject を完全型にしないで済むよう
