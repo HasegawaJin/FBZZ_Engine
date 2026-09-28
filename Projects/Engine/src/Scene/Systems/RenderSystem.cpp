@@ -198,7 +198,8 @@ void RenderSystem(Scene& scene,
                   const RenderSystemUIOptions* uiOptions,
                   const physics::World* physicsWorld,
                   const CameraCullingSettings* cullingSettings,
-                  RenderPassCapture* capture)
+                  RenderPassCapture* capture,
+                  RenderFrameGeometryCache* frameGeometry)
 {
     FBZZ_PROFILE_SCOPE("RenderSystem");
 
@@ -919,7 +920,7 @@ void RenderSystem(Scene& scene,
 
     /// @note プローブも同じ入力を読むため、グラフ外の捕捉より前に変形と抽出を完了する。
     ExecuteSkinningComputePass(passCtx);
-    ExtractRenderScene(passCtx);
+    ExtractRenderScene(passCtx, scene.GetEntities<ScriptComponent>().empty() ? frameGeometry : nullptr);
 
     /// @name 空連動 IBL: source=DynamicSky のとき空→動的 IBL を用意する
     /// @note AdvancedGraphicsCB / 各 Lit パスより前に焼くことで同フレームで消費できる。

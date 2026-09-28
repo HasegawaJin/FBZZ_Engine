@@ -13,7 +13,7 @@
 #include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 
-namespace fbzz::scene    { class Scene; }
+namespace fbzz::scene    { class Scene; struct RenderFrameGeometryCache; }
 namespace fbzz::physics  { class World; }
 namespace fbzz::renderer {
     class IRenderer;
@@ -57,6 +57,7 @@ void RenderSystem(Scene& scene,
                   /// @note Editor の Scene View は自前のデバッグカメラで描くため、ゲームカメラの設定を
                   /// @note 持ち込まないよう明示的に既定値を渡す。
                   const CameraCullingSettings* cullingSettings = nullptr,
-                  RenderPassCapture* capture = nullptr);
+                  RenderPassCapture* capture = nullptr,
+                  RenderFrameGeometryCache* frameGeometry = nullptr);
 
 } /// @note namespace fbzz::scene

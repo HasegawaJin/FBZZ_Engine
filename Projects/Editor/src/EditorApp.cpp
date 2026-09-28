@@ -8,6 +8,7 @@
 /// EditorApp_Scene.cpp   - シーン I/O・ダーティ追跡・ホットリロード
 /// EditorApp_MenuBar.cpp - メインメニューバーの構築・ホットキー登録
 #include <Editor/EditorApp.hpp>
+#include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/EditorTaskOverlay.hpp>
 #include <Editor/Ai/EditorBusDispatcher.hpp>
@@ -1806,6 +1807,8 @@ bool EditorApp::OnInit()
     m_debugCamera.camera.m_position = { m_settings.cameraLastPx, m_settings.cameraLastPy, m_settings.cameraLastPz };
     m_debugCamera.camera.m_rotation = { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz, m_settings.cameraLastRw };
     m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
+    /// @note Scene View は広い地形を編集するため、シーン内の CameraComponent の farZ と独立して遠景を映す。
+    m_debugCamera.camera.m_far      = 10000.0f;
     /// @note 射影は Teleport の後に直接書く。SetProjection は「見かけの大きさを引き継ぐ」ため
     ///       保存した orthoHeight を上書きしてしまう。復元では保存値をそのまま採用したい。
     m_debugCamera.camera.m_orthoHeight = m_settings.cameraOrthoHeight;
@@ -2094,10 +2097,12 @@ void EditorApp::OnRender()
             || m_gameViewportRTRecreated
             || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(true)));
 
+    scene::RenderFrameGeometryCache frameGeometry;
+    auto* sharedGeometry = needSceneView && needGameView ? &frameGeometry : nullptr;
     if (needSceneView)
-        RenderSceneView(gameCamera, gameCullingMask);
+        RenderSceneView(gameCamera, gameCullingMask, sharedGeometry);
     if (needGameView)
-        RenderGameView(gameCamera, gameCullingMask);
+        RenderGameView(gameCamera, gameCullingMask, sharedGeometry);
 
     /// @note 3D の焼きは Dispatch と読み戻しを伴うのでフレーム内で回す (DX12 はフレーム外を捨てる)。
     ///       パネルの開閉に関わらず毎フレーム進める。Baker が触った RT は直後のバックバッファ設定で戻る。
@@ -2272,7 +2277,8 @@ void EditorApp::UpdateFocusAnim(float dt)
     }
 }
 
-void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::LayerMask /*gameCullingMask*/)
+void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::LayerMask /*gameCullingMask*/,
+                                scene::RenderFrameGeometryCache* frameGeometry)
 {
     FBZZ_PROFILE_SCOPE("EditorApp::RenderSceneView");
     const auto sceneRT = m_sceneViewportRT;
@@ -2339,11 +2345,13 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
                             sceneViewCamera, sceneRT, &sceneRenderSettings,
                         fbzz::Layer::Everything, &uiOptions, &m_runtime.GetPhysicsWorld(),
                         &sceneViewCulling,
-                        m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(false) : nullptr);
+                         m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(false) : nullptr,
+                         frameGeometry);
     }
 }
 
-void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask)
+void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask,
+                               scene::RenderFrameGeometryCache* frameGeometry)
 {
     FBZZ_PROFILE_SCOPE("EditorApp::RenderGameView");
     const auto gameRT = m_gameViewportRT;
@@ -2386,7 +2394,8 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
                         gameCamera, gameRT,
                         &gameRenderSettings,
                         gameCullingMask, &uiOptions, nullptr, nullptr,
-                        m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(true) : nullptr);
+                         m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(true) : nullptr,
+                         frameGeometry);
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor
