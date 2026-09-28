@@ -494,9 +494,13 @@ struct ShadowConstantsCB {
     float         cloudShadowWindX;
     float         cloudShadowWindZ;
     float         _shadowPad0 = 0.0f;
+    /// @note CSM の選択はライト空間の重なりでなく、このビューの前方距離で行う。
+    math::Vector4 cascadeSplitFar;
+    math::Vector4 shadowCameraPosition;
+    math::Vector4 shadowCameraForward;
 };
-static_assert(sizeof(ShadowConstantsCB) == 464,
-    "ShadowConstantsCB must match ShadowConstants in Common/ShadowConstants.hlsli (464 bytes)");
+static_assert(sizeof(ShadowConstantsCB) == 512,
+    "ShadowConstantsCB must match ShadowConstants in Common/ShadowConstants.hlsli (512 bytes)");
 
 struct AtmosphereCB {
     float rayleighScattering[3];
@@ -1426,6 +1430,7 @@ struct ShadowCascade {
     float         biasNDC = 0.0f;
     /// @note このカスケードの 1 テクセルが覆うワールド距離 [m]。caster の極小カリングに使う。
     float         texelWorldSize = 0.0f;
+    float         splitFar = 0.0f;
 };
 
 /// @note PunctualShadowView — Spot / Point シャドウアトラスのタイル 1 枚ぶんの描画情報。

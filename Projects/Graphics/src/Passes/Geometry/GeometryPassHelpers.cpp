@@ -79,6 +79,15 @@ void UpdateShadowConstants(RenderPassContext& ctx)
         bias[i]                       = cascade.biasNDC;
     }
     data.cascadeBias = { bias[0], bias[1], bias[2], bias[3] };
+    data.cascadeSplitFar = {
+        ctx.shadowCascades[0].splitFar,
+        ctx.shadowCascades[(std::min)(1, count - 1)].splitFar,
+        ctx.shadowCascades[(std::min)(2, count - 1)].splitFar,
+        ctx.shadowCascades[(std::min)(3, count - 1)].splitFar
+    };
+    const math::Vector3 forward = ctx.camera.GetForward();
+    data.shadowCameraPosition = { ctx.camera.m_position.x, ctx.camera.m_position.y, ctx.camera.m_position.z, 0.0f };
+    data.shadowCameraForward = { forward.x, forward.y, forward.z, 0.0f };
 
     /// @note 単一のライト行列で足りるパス向け (= 最遠カスケード)。
     /// @note cascadeCount == 1 のときはカスケード 0 と同一なので、従来の単一シャドウマップ経路と一致する。
