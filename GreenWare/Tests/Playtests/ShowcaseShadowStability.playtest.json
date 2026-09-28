@@ -1,0 +1,18 @@
+{
+  "name": "ShowcaseShadowStability",
+  "scene": "Assets/Scenes/Test/ShowcaseCoast.scene",
+  "lockstep": 0.016666667,
+  "steps": [
+    { "do": "bus", "request": { "t": "viewport.camera", "position": [0, 180, -600], "lookAt": [0, 0, 0] } },
+    { "do": "frames", "count": 30 },
+    { "do": "capture", "view": "scene", "name": "ShowcaseShadow/Center" },
+    { "do": "capture", "view": "game", "name": "ShowcaseShadow/Game" },
+    { "do": "bus", "request": { "t": "viewport.camera", "position": [2, 180, -600], "lookAt": [0, 0, 0] } },
+    { "do": "frames", "count": 2 },
+    { "do": "capture", "view": "scene", "name": "ShowcaseShadow/Translated" },
+    { "do": "bus", "request": { "t": "viewport.camera", "position": [2, 180, -600], "lookAt": [20, 0, 0] } },
+    { "do": "frames", "count": 2 },
+    { "do": "capture", "view": "scene", "name": "ShowcaseShadow/Rotated" },
+    { "do": "assert", "query": { "t": "shader.diagnostics" }, "path": "errorCount", "op": "==", "value": 0 }
+  ]
+}

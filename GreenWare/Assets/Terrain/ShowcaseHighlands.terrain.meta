@@ -1,0 +1,6 @@
+# @file    ShowcaseHighlands.terrain.meta
+# @brief   撮影用ハイトマップの GUID。
+# @author  Hasegawa Jin
+# @date    2026-09-27
+[meta]
+guid = '5f9de667bc8c490b9621ef137846278a'
