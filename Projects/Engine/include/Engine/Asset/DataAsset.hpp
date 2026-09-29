@@ -3,10 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-01
 ///
-/// .fzdata に値を切り出し、複数スクリプトが Asset<T> で同じ実体を共有する (純共有、Unity の
-/// ScriptableObject 相当)。Script と同じ GetTypeName()/Reflect(IReflector&) を持つため、
-/// FBZZ_FIELD 等の登録マクロ・Inspector・TOML リフレクタをそのまま使い回せる。
-/// 宣言は FBZZ_DATA_ASSET、参照側は FBZZ_ASSET / FBZZ_REQUIRED_ASSET を使う (下記マクロ参照)。
+/// @note  .fzdata に値を切り出し、複数スクリプトが Asset<T> で同じ実体を共有する (純共有、Unity の
+/// @note  ScriptableObject 相当)。Script と同じ GetTypeName()/Reflect(IReflector&) を持つため、
+/// @note  FBZZ_FIELD 等の登録マクロ・Inspector・TOML リフレクタをそのまま使い回せる。
+/// @note  宣言は FBZZ_DATA_ASSET、参照側は FBZZ_ASSET / FBZZ_REQUIRED_ASSET を使う (下記マクロ参照)。
 #pragma once
 /// @note IReflector / FBZZ_* 登録マクロ / DataAssetRef を持ち込む。
 #include <Engine/Scene/Script.hpp>
@@ -54,13 +54,13 @@ struct Asset {
     void Clear() { ref.path.clear(); }
 };
 
-} // namespace asset
+} /// @note namespace asset
 
 /// @brief 公開エイリアス: `fbzz::DataAsset` / `fbzz::Asset<T>` で使えるようにする。
 using asset::DataAsset;
 template<typename T> using Asset = asset::Asset<T>;
 
-} // namespace fbzz
+} /// @note namespace fbzz
 
 /// @name ユーザー向けマクロ
 /// @{
@@ -78,10 +78,14 @@ template<typename T> using Asset = asset::Asset<T>;
     ::fbzz::asset::Asset<Type> Name{};                                          \
     FBZZ_REFLECT_ENTRY_(Name, r_.Field(FBZZ_DISP_(Display, Name), Name.ref))
 
-/// @brief 必須の共有データアセットであることを宣言する別名。Inspector の編集体験は FBZZ_ASSET と同じ。
-/// @note 実行時の必須検査は所有する Script の OnStart で行う。値のフォールバックを持たせないことで、未割り当てをシーン設定の不備として即座にログへ出せる。
+/// @brief 必須アセットの設定と型を共通検証へ通知する。保存形式は FBZZ_ASSET と同じ。
 #define FBZZ_REQUIRED_ASSET(Type, Name, Display)                                \
     ::fbzz::asset::Asset<Type> Name{};                                          \
-    FBZZ_REFLECT_ENTRY_(Name, r_.Field(FBZZ_DISP_(Display, Name), Name.ref))
+    FBZZ_REFLECT_ENTRY_(Name, {                                                 \
+        r_.BeginField(#Name, FBZZ_DISP_(Display, Name));                        \
+        r_.RequireAsset(FBZZ_DISP_(Display, Name), Name.ref);                   \
+        r_.Field(FBZZ_DISP_(Display, Name), Name.ref);                          \
+        r_.EndField();                                                        \
+    })
 
 /// @}

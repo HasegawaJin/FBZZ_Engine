@@ -4,6 +4,8 @@
 /// @date    2025-01-01
 #pragma once
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Audio/VoiceLifetime.hpp>
+#include <memory>
 #include <Math/Vector3.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -46,6 +48,8 @@ struct AudioSourceComponent {
     bool        m_pendingStop  = false; ///< @note 次フレームに停止要求
     bool        m_pendingPause = false; ///< @note 次フレームに一時停止要求
     bool        m_pendingResume = false; ///< @note 次フレームに再開要求
+    /// @note Script 所有ループだけが設定する。保存しない。音源削除でも weak な voice の寿命が切れる。
+    std::shared_ptr<audio::VoiceLifetime> m_scriptLoopLifetime;
     uint32_t    m_voiceId      = 0;     ///< @note AudioManager が返す非所有 voice ハンドル
 
     /// @note 前フレームのワールド座標と、それが有効かどうか。Doppler の相対速度に使う。

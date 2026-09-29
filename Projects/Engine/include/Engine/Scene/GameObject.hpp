@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
-/// 親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
+/// @note  Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
+/// @note  親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
 #pragma once
 #include "Entity.hpp"
 #include "Transform.hpp"
@@ -18,11 +18,11 @@ class Scene;
 
 class GameObject {
 public:
-    /// Unity: gameObject.name / .tag (直接変数)
+    /// @note  Unity: gameObject.name / .tag (直接変数)
     std::string name       = "GameObject";
     std::string tag        = "Untagged";
-    /// クロスオブジェクト参照 (IK Pole/Target 等) はリネームに耐えられるよう
-    /// UUID v4 を永続識別子として持つ。Scene::CreateGameObject で自動生成される。
+    /// @note  クロスオブジェクト参照 (IK Pole/Target 等) はリネームに耐えられるよう
+    /// @note  UUID v4 を永続識別子として持つ。Scene::CreateGameObject で自動生成される。
     std::string instanceId;
     /// @brief Prefab インスタンスの出所アセットパス (Assets 起点の相対パス)。空文字列 = Prefab 非インスタンス。
     /// @note Apply/Revert の判定に使う。SceneSerializer が Save/Load で永続化し、PrefabSerializer::Instantiate が書き込む。
@@ -36,26 +36,26 @@ public:
     /// @note 名前 "__" 接頭辞での判別をやめ意図を型で持たせた。SceneSerializer が保存対象から除外し、Hierarchy も既定で隠す。
     bool runtimeGenerated = false;
 
-    /// Unity: gameObject.transform (常に存在。ComponentArray には入れない)
+    /// @note  Unity: gameObject.transform (常に存在。ComponentArray には入れない)
     Transform transform;
 
-    /// Unity: SetActive / activeSelf / activeInHierarchy
+    /// @note  Unity: SetActive / activeSelf / activeInHierarchy
     void SetActive(bool active);
     bool activeSelf()        const;
     bool activeInHierarchy() const;
 
-    /// Unity: CompareTag
+    /// @note  Unity: CompareTag
     bool CompareTag(const std::string& t) const;
 
-    /// Unity: AddComponent<T> / GetComponent<T>
-    /// template 本体は Scene.hpp の末尾で定義する (Scene が完全型である必要があるため)
+    /// @note  Unity: AddComponent<T> / GetComponent<T>
+    /// @note  template 本体は Scene.hpp の末尾で定義する (Scene が完全型である必要があるため)
     template<typename T> T& AddComponent(T component = {});
     template<typename T> T* GetComponent();
     template<typename T> void RemoveComponent();
     template<typename T, typename... Args> T& AddScript(Args&&... args);
     template<typename T> T* GetScript();
 
-    /// Unity: transform.SetParent / childCount / GetChild
+    /// @note  Unity: transform.SetParent / childCount / GetChild
     void        SetParent(GameObject& parent);
     bool        SetParent(GameObject* parent);
     bool        ClearParent();
@@ -64,8 +64,8 @@ public:
     int         GetChildCount()     const;
     GameObject* GetChild(int index) const;
 
-    /// 自分を含む部分木を子の表示順に深さ優先で検索する。非アクティブも含む。
-    /// 同名は最初の1件、未検出は nullptr。戻り値は Scene が所有する非所有参照。
+    /// @note  自分を含む部分木を子の表示順に深さ優先で検索する。非アクティブも含む。
+    /// @note  同名は最初の1件、未検出は nullptr。戻り値は Scene が所有する非所有参照。
     [[nodiscard]] GameObject* FindInSubtree(std::string_view objectName);
 
     /// @brief Unity: transform.GetSiblingIndex / SetSiblingIndex
@@ -73,7 +73,7 @@ public:
     int  GetSiblingIndex() const;
     bool SetSiblingIndex(int index);
 
-    /// Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
+    /// @note  Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
     /// @note Unity と同じく既定では親ごと無効化された GameObject を返さない。FindByGuid は参照解決用なので無効な物も返す。
     static GameObject*              Find(const std::string& n, bool includeInactive = false);
     static GameObject*              FindByGuid(const std::string& guid);
@@ -81,10 +81,11 @@ public:
     template<typename T>
     static std::vector<GameObject*> FindObjectsOfType();
 
-    /// Unity: Object.Destroy(go, delay)
-    /// delay=0 → 次フレーム末尾で削除 / delay>0 → 毎フレーム減算後に削除
+    /// @note  Unity: Object.Destroy(go, delay)
+    /// @note  delay=0 → 次フレーム末尾で削除 / delay>0 → 毎フレーム減算後に削除
     static void Destroy(GameObject& go, float delay = 0.0f);
 
+    [[nodiscard]] Scene* GetScene() const { return m_scene; }
     bool     IsValid() const;
     EntityID GetID()   const { return m_id; }
 
@@ -93,9 +94,9 @@ private:
     bool                  m_isActive = true;
     EntityID              m_parent   = EntityID::INVALID;
     std::vector<EntityID> m_children;
-    Scene*                m_scene    = nullptr; ///< 非所有参照
+    Scene*                m_scene    = nullptr; ///< @note 非所有参照
 
     friend class Scene;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

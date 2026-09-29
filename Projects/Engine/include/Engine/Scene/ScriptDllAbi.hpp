@@ -46,20 +46,20 @@ namespace fbzz::scene {
 /// @note Scene/Script の具象型を共有するため、どちらか一方だけ再ビルドするとメンバオフセットが一致しない。各フィールドを個別に保持し、ミスマッチ時に「何が違うか」をログへ出せるようにする。
 /// @note DLL 境界を越えても安全。両側で同じヘッダを取り込むためレイアウトが一致する。
 struct ScriptDllAbiInfo {
-    uint64_t signature;           ///< 全フィールドの FNV-1a 合成ハッシュ
+    uint64_t signature;           ///< @note 全フィールドの FNV-1a 合成ハッシュ
     uint64_t sizeofScript;
     uint64_t sizeofScene;
     uint64_t sizeofScriptComponent;
-    uint64_t componentCount;      ///< `tuple_size_v<ComponentList>`
+    uint64_t componentCount;      ///< @note `tuple_size_v<ComponentList>`
     /// @note componentCount と別に必要: コンポーネントの「個数」はフィールド追加では変わらないが、コンポーネント配列の添字計算は sizeof に直接依存し Script DLL 側でもテンプレートとして実体化される。個数だけの署名だと片側だけ再ビルドされた状態を通過させ、以後のコンポーネントアクセスが別オフセットを指したまま黙って動く (メモリ破壊)。
     uint64_t componentLayoutHash;
-    uint64_t msvcVersion;         ///< `_MSC_VER` (0 = 非 MSVC)
-    uint64_t msvcFullVersion;     ///< `_MSC_FULL_VER` (0 = 非 MSVC)
-    uint64_t iteratorDebugLevel;  ///< `_ITERATOR_DEBUG_LEVEL` (0 = 未定義)
-    uint64_t engineVersion;       ///< major/minor/patch を 64 bit に pack
-    uint64_t buildConfiguration;  ///< 1=Debug, 2=Development, 3=Release
-    uint64_t pointerSize;         ///< x64 SDK は 8 のみ許可
-    uint64_t dynamicRuntime;      ///< /MD または /MDd なら 1
+    uint64_t msvcVersion;         ///< @note `_MSC_VER` (0 = 非 MSVC)
+    uint64_t msvcFullVersion;     ///< @note `_MSC_FULL_VER` (0 = 非 MSVC)
+    uint64_t iteratorDebugLevel;  ///< @note `_ITERATOR_DEBUG_LEVEL` (0 = 未定義)
+    uint64_t engineVersion;       ///< @note major/minor/patch を 64 bit に pack
+    uint64_t buildConfiguration;  ///< @note 1=Debug, 2=Development, 3=Release
+    uint64_t pointerSize;         ///< @note x64 SDK は 8 のみ許可
+    uint64_t dynamicRuntime;      ///< @note /MD または /MDd なら 1
 };
 
 /// @brief リフレクション ABI バージョン。IReflector の仮想関数を追加・削除・並べ替えたら必ずインクリメントすること。
@@ -67,13 +67,13 @@ struct ScriptDllAbiInfo {
 /// @note stale な DLL はこの値の不一致で安全に拒否される (Missing Script 表示、クラッシュしない)。
 /// @note 履歴 3: BeginObject/EndObject/BeginObjectList/BeginObjectElement/EndObjectElement/EndObjectList を IReflector 末尾へ追加 (入れ子オブジェクトと構造体配列のリフレクション対応)。
 /// @note 履歴 4: Field(ParticleCurve&)/Field(ParticleGradient&)/Button/ObjectListMove を IReflector 末尾へ追加 (カーブ・グラデーション・アクションボタン・構造体配列の並び替え)。
-constexpr uint64_t kReflectionAbiVersion = 5;
+constexpr uint64_t kReflectionAbiVersion = 6;
 
 /// @brief Script 仮想関数テーブルの世代。Script の仮想関数を追加・削除・並べ替えたら必ずインクリメントすること。
 /// @note OnUpdate/OnCollisionEnter/Reflect 等は vtable インデックスで呼ばれるが、仮想関数を途中挿入しても sizeof(Script) は変わらず、既存の署名では stale な DLL を検出できない。
 /// @note DLL 境界を越える値型 (CollisionInfo/RootMotionInfo/AnimationEventInfo) も同じ穴を持つ。フィールドを足しても sizeof は変わらずレイアウトがずれて引数が化けるため、変更時も必ずここを上げる。
 /// @note 履歴: 1=初版 / 2=OnAnimatorMove 追加 / 3=RequiredComponents・OptionalComponents 追加 / 4=CollisionInfo へ relativeVelocity 等追加 / 5=ExecuteInEditMode 追加 / 6=OnSequenceEvent・OnSequenceFinished 追加 / 7=OnDrawGizmosSelected 追加、ScriptDebugDrawCommand へ rotation 等追加。
-constexpr uint64_t kScriptVtableAbiVersion = 7;
+constexpr uint64_t kScriptVtableAbiVersion = 8;
 
 namespace detail {
 
@@ -92,7 +92,7 @@ template <std::size_t... I>
     return hash;
 }
 
-} /// namespace detail
+} /// @note namespace detail
 
 [[nodiscard]] constexpr ScriptDllAbiInfo GetScriptDllAbiInfo()
 {
@@ -154,4 +154,4 @@ template <std::size_t... I>
     return GetScriptDllAbiInfo().signature;
 }
 
-} /// namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -146,6 +146,9 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ScriptTransformProxyTests.cpp
         Engine/Auto/ScriptSceneQueryTests.cpp
         Engine/Auto/ScriptModulesTests.cpp
+        Engine/Auto/ScriptLifecycleTests.cpp
+        Engine/Auto/ScriptRequirementsTests.cpp
+        Engine/Auto/ScriptAudioLoopTests.cpp
         Engine/Auto/ColorTests.cpp
         Engine/Auto/EasingTests.cpp
         Engine/Auto/GuidRefCodecTests.cpp
