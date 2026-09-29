@@ -1,0 +1,166 @@
+{
+  "date": "2026-09-29",
+  "baseline": "534b075e",
+  "scope": "7 GreenWare scripts; pure observation copies only",
+  "files": [
+    {
+      "file": "GreenWare/Assets/Scripts/Combat/EnemyHealthComponent.hpp",
+      "observations": 1,
+      "beforeLines": 132,
+      "afterLines": 130,
+      "beforeAssignments": 2,
+      "afterAssignments": 0,
+      "migratedKeys": [
+        "debugHealth"
+      ],
+      "beforeCodeLines": 84,
+      "afterCodeLines": 82,
+      "sourceSha256": "9eee5143f57e6d49b4f5a6cd521ca6b36cc4a30194608329cacb333d73bfc3fe",
+      "afterSnapshot": "Docs/measurements/greenware-observation-snapshots/EnemyHealthComponent.hpp.txt"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Player/PlayerHealthComponent.hpp",
+      "observations": 1,
+      "beforeLines": 260,
+      "afterLines": 259,
+      "beforeAssignments": 1,
+      "afterAssignments": 0,
+      "migratedKeys": [
+        "debugFlashParts"
+      ],
+      "beforeCodeLines": 176,
+      "afterCodeLines": 175,
+      "sourceSha256": "7154056f20a2e18f6d44da3faae5a7a44ee66d6801a05d80b9a579c9bc598817",
+      "afterSnapshot": "Docs/measurements/greenware-observation-snapshots/PlayerHealthComponent.hpp.txt"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Player/PlayerBreathComponent.hpp",
+      "observations": 2,
+      "beforeLines": 186,
+      "afterLines": 182,
+      "beforeAssignments": 4,
+      "afterAssignments": 0,
+      "migratedKeys": [
+        "debugBreath",
+        "debugExhausted"
+      ],
+      "beforeCodeLines": 130,
+      "afterCodeLines": 126,
+      "sourceSha256": "f905e061a5460c72a06a08445158a0faabfcaf47f9505be3d40473efaaece86f",
+      "afterSnapshot": "Docs/measurements/greenware-observation-snapshots/PlayerBreathComponent.hpp.txt"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Game/CombatManagerComponent.hpp",
+      "observations": 10,
+      "beforeLines": 420,
+      "afterLines": 406,
+      "beforeAssignments": 15,
+      "afterAssignments": 0,
+      "migratedKeys": [
+        "debugKills",
+        "debugPushKills",
+        "debugDamageToEnemies",
+        "debugDamageToPlayer",
+        "debugChain",
+        "debugChainHits",
+        "debugBestChain",
+        "debugPerfectDodges",
+        "debugCadence",
+        "debugFaces"
+      ],
+      "beforeCodeLines": 271,
+      "afterCodeLines": 258,
+      "sourceSha256": "e64fcb20a09c4204ebd8672d6183d755b61730810271158089e71b8307a65662",
+      "afterSnapshot": "Docs/measurements/greenware-observation-snapshots/CombatManagerComponent.hpp.txt"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Combat/BossCoreComponent.hpp",
+      "observations": 1,
+      "beforeLines": 241,
+      "afterLines": 238,
+      "beforeAssignments": 2,
+      "afterAssignments": 0,
+      "migratedKeys": [
+        "debugPhase"
+      ],
+      "beforeCodeLines": 151,
+      "afterCodeLines": 149,
+      "sourceSha256": "7e56d361857aeaf4749b830e5710f0db6d6bc5f1227f569ecad5207913e9dc41",
+      "afterSnapshot": "Docs/measurements/greenware-observation-snapshots/BossCoreComponent.hpp.txt"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Combat/SerpentBossComponent.hpp",
+      "observations": 3,
+      "beforeLines": 146,
+      "afterLines": 137,
+      "beforeAssignments": 3,
+      "afterAssignments": 0,
+      "migratedKeys": [
+        "debugSegments",
+        "debugPhase",
+        "debugEngaged"
+      ],
+      "beforeCodeLines": 102,
+      "afterCodeLines": 95,
+      "sourceSha256": "69cbf855611596ceef6e091a6dee6c97f70dc4bcb69d2bdf6e2ed9f682b14596",
+      "afterSnapshot": "Docs/measurements/greenware-observation-snapshots/SerpentBossComponent.hpp.txt"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Combat/Boss03BossComponent.hpp",
+      "observations": 3,
+      "beforeLines": 136,
+      "afterLines": 127,
+      "beforeAssignments": 3,
+      "afterAssignments": 0,
+      "migratedKeys": [
+        "debugWings",
+        "debugPhase",
+        "debugEngaged"
+      ],
+      "beforeCodeLines": 99,
+      "afterCodeLines": 92,
+      "sourceSha256": "32b094b098146f7034fee92b27d3cb5d01b43972c25aea34411017d4579ac442",
+      "afterSnapshot": "Docs/measurements/greenware-observation-snapshots/Boss03BossComponent.hpp.txt"
+    }
+  ],
+  "totals": {
+    "scripts": 7,
+    "observations": 21,
+    "beforeAssignments": 30,
+    "afterAssignments": 0,
+    "beforeCodeLines": 1013,
+    "afterCodeLines": 977
+  },
+  "existingPlayerMigration": {
+    "beforeRevision": "75edd80d",
+    "afterRevision": "ae3d1ef6",
+    "routes": {
+      "reflection": 16,
+      "context": 16,
+      "start": 16,
+      "update": 13,
+      "lateUpdate": 3,
+      "fixedUpdate": 1,
+      "destroy": 8,
+      "gizmos": 1
+    },
+    "beforeModuleSpecificRoutes": 74,
+    "afterModuleRegistrations": 16,
+    "afterCommonForwardingCalls": 9,
+    "afterReflectionDeclarations": 1,
+    "beforeCodeLines": 412,
+    "afterCodeLines": 351
+  },
+  "verification": {
+    "configuration": "Development",
+    "tests": 32,
+    "newTests": 7,
+    "passed": 32,
+    "testLog": "build/agent/test-20260929-124847-37380.log",
+    "buildLog": "build/agent/build-20260929-124836-36952.log",
+    "playtest": false,
+    "authoringTimeMeasured": false,
+    "fullGameDllRebuilt": false
+  },
+  "snapshotNote": "Observation migration completion, before the later lifecycle / required settings / audio improvements. All snapshot hashes match the original measurement."
+}

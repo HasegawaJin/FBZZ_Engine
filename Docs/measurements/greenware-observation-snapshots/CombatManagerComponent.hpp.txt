@@ -195,7 +195,10 @@ private:
     void AdvanceChain(int hits);
 
     bool m_warnedNoPlayerTarget = false;
-    bool m_playerTargetChecked = false;
+    /// @note 受け手の検算を始めるまでの猶予 (秒)。スクリプト間のライフサイクルの
+    /// @note 前後関係を吸収する。
+    static constexpr float kTargetGraceSeconds = 0.5f;
+    float m_targetGrace = 0.0f;
 
     int m_kills = 0;
     int m_pushKills = 0;
@@ -228,8 +231,6 @@ inline void CombatManagerComponent::OnStart()
                          "The most recently started one takes over.");
     }
     s_instance = this;
-    m_playerTargetChecked = false;
-    m_warnedNoPlayerTarget = false;
 
     m_kills = 0;
     m_pushKills = 0;
@@ -261,20 +262,26 @@ inline void CombatManagerComponent::OnDestroy()
 inline void CombatManagerComponent::OnUpdate()
 {
     /// @name 受け手の検算
-    /// @note シーン配置済み Script の Start は全て完了しているため、最初の Update で検証できる。
-    if (!m_playerTargetChecked) {
-        m_playerTargetChecked = true;
-        GameObject* player = scene.FindWithTag("Player", true);
-        if (!player) {
-            m_warnedNoPlayerTarget = true;
-            debug.LogError("CombatManagerComponent: tag=Player の GameObject が無い。"
-                           "敵の攻撃は誰にも当たらない。");
-        } else if (!IDamageable::Of(player)) {
-            m_warnedNoPlayerTarget = true;
-            debug.LogError("CombatManagerComponent: '" + player->name
-                           + "' が IDamageable として名乗っていない。"
-                             "PlayerComponent::OnStart の IDamageable::Bind() を"
-                             "確認すること。このままでは敵の攻撃が一切通らない。");
+    /// @note 1 フレーム目では判定しない。このエンジンは «全員の OnStart → 全員の
+    /// @note OnUpdate» の順では回らず、CombatManager の最初の OnUpdate が
+    /// @note PlayerComponent の OnStart より先に走ることがあるため。
+    /// @note 攻撃が当たるまでは待たない。DamagePlayer 側の報告は «敵が初めて殴った瞬間»
+    /// @note まで出ないため、猶予を置いて 1 度だけ能動的に確かめる。
+    if (!m_warnedNoPlayerTarget && m_targetGrace < kTargetGraceSeconds) {
+        m_targetGrace += std::max(time.UnscaledDeltaTime(), 0.0f);
+        if (m_targetGrace >= kTargetGraceSeconds) {
+            GameObject* player = scene.FindWithTag("Player", true);
+            if (!player) {
+                m_warnedNoPlayerTarget = true;
+                debug.LogError("CombatManagerComponent: tag=Player の GameObject が無い。"
+                               "敵の攻撃は誰にも当たらない。");
+            } else if (!IDamageable::Of(player)) {
+                m_warnedNoPlayerTarget = true;
+                debug.LogError("CombatManagerComponent: '" + player->name
+                               + "' が IDamageable として名乗っていない。"
+                                 "PlayerComponent::OnStart の IDamageable::Bind() を"
+                                 "確認すること。このままでは敵の攻撃が一切通らない。");
+            }
         }
     }
 

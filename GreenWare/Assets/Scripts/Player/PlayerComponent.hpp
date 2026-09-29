@@ -4,11 +4,11 @@
 /// @date    2026-08-22
 ///
 /// @note 1 コンポーネントにする: 各責務は PlayerControllerComponent / PlayerAimComponent /
-///       PlayerHealthComponent / BladeComponent に分割したまま、シーンへは PlayerComponent
-///       だけをアタッチし、構成漏れを減らしつつモジュール単位の実装・差し替えは残す。
+/// @note        PlayerHealthComponent / BladeComponent に分割したまま、シーンへは PlayerComponent
+/// @note        だけをアタッチし、構成漏れを減らしつつモジュール単位の実装・差し替えは残す。
 /// @note fzdata を必須にする: 移動・HP・銃の成立値をコード側の既定値へフォールバックさせると、
-///       共有アセットを編集しても一部だけ別の値で動く。Play 開始時に 2 枚の参照を検査し、
-///       未設定なら動作を止める。
+/// @note        共有アセットを編集しても一部だけ別の値で動く。Play 開始時に 2 枚の参照を検査し、
+/// @note        未設定なら動作を止める。
 #pragma once
 
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
@@ -77,11 +77,11 @@ public:
     /// @note 一撃の入口。弾き → ジャスト回避 → 体力、の順に通す。
     /// @note 弾きは回避より先: 排他だが、順番を決めないと «どちらの手柄か» が組み方で変わる。
     /// @note ガードは弾きより後: 先に見ると同じボタンで押した瞬間に必ずガードが勝ち
-    ///       `AddParry` に届かず崩しが溜まらないまま «防げてはいる» ように見えていた。弾きは
-    ///       «頭の 0.22 秒»、ガードはその後の押しっぱなしなので、この順でも食われない。
+    /// @note        `AddParry` に届かず崩しが溜まらないまま «防げてはいる» ように見えていた。弾きは
+    /// @note        «頭の 0.22 秒»、ガードはその後の押しっぱなしなので、この順でも食われない。
     /// @note ガードでは崩しは溜まらない: 溜まると押しっぱなしで崩せ «崩すのは弾きだけ»
-    ///       (Docs/break-parry.md) が壊れる。弾けない手 (ビーム・パルス・扇) は Unblockable
-    ///       で構えていても素通りする。
+    /// @note        (Docs/break-parry.md) が壊れる。弾けない手 (ビーム・パルス・扇) は Unblockable
+    /// @note        で構えていても素通りする。
     PlayerHitResult ReceiveHit(int amount, const fbzz::math::Vector3* fromWorld,
                                PlayerHitKind kind) override
     {
@@ -123,7 +123,7 @@ public:
     { return m_breath.DeniedWithin(seconds); }
     /// @note ダメージの唯一の入口。回避中なら弾いて、ジャスト回避の報酬を配る。
     /// @note 体力側 (PlayerHealthComponent) でなくここで弾く: 回避を知るのは移動側、報酬を
-    ///       受け取るのは剣で、体力はどちらも知らない。3 つを束ねるのはこの入口だけ。
+    /// @note        受け取るのは剣で、体力はどちらも知らない。3 つを束ねるのはこの入口だけ。
     [[nodiscard]] bool TakeDamage(int amount)
     {
         return ReceiveHit(amount, nullptr, PlayerHitKind::Unblockable) == PlayerHitResult::Damaged;
@@ -175,7 +175,7 @@ public:
     /// @name 座標を外から置く演出 (登攀)
     /// @{
     /// @note Player 越しに渡す: 操作は内部モジュールが抱えており scene からは見つからない。
-    ///       個別モジュールを探させない方針に合わせ、押し続ける形の要求だけをここから通す。
+    /// @note        個別モジュールを探させない方針に合わせ、押し続ける形の要求だけをここから通す。
 
     /// @note 移動・跳躍・回避・重力の適用を 1 フレームぶん止める。
     /// @note lockInput を立てると刀の入力 (斬撃・弾き・とどめ) まで止まる。
@@ -190,8 +190,8 @@ public:
 
     /// @note 刀を背へ納める / 手へ戻す。
     /// @note 演出側がクリップを流すだけでは足りない: 納刀は «クリップ» でなく «刀がどの
-    ///       ソケットに付いているか» の変更で、移し替える時刻も左右で違う (WeaponRigComponent)。
-    ///       クリップだけ流すと芝居中も刀は手に握られたまま ── 登攀で壁を貫く。
+    /// @note        ソケットに付いているか» の変更で、移し替える時刻も左右で違う (WeaponRigComponent)。
+    /// @note        クリップだけ流すと芝居中も刀は手に握られたまま ── 登攀で壁を貫く。
     /// @note 刀が手にあるかは AreWeaponsDrawn() が既に答える。
     /// @note 刀の入力まで止まっているか。
     [[nodiscard]] bool IsInputLocked() const { return m_controller.IsInputLocked(); }
@@ -201,7 +201,6 @@ public:
 private:
     /// @note 内部 Script は通常の ScriptSystem から呼ばれないため、親と同じ実行コンテキストを渡す。
     void BindModules();
-    [[nodiscard]] bool HasRequiredAssets() const;
 
     /// @note 回避中に攻撃が重なったか。重なっていれば (同じ回避で初めてなら) 報酬を配って true。
     /// @note fromWorld は «どこから来た一撃か» (無い経路もある)。
@@ -215,8 +214,8 @@ private:
 
     /// @note 盤面に立っているボスの崩しゲージを全部なぞる。
     /// @note 1 体を引く口は使わない: 被弾・ジャスト回避・土壇場は «盤面の出来事» で相手を
-    ///       問わない。名簿は順序を持たないので 1 体だけ引くと、2 体居る盤面では毎回
-    ///       どちらかが乱数で選ばれ片方のゲージだけが育つ。
+    /// @note        問わない。名簿は順序を持たないので 1 体だけ引くと、2 体居る盤面では毎回
+    /// @note        どちらかが乱数で選ばれ片方のゲージだけが育つ。
     template <class Fn>
     void ForEachBoss(Fn&& apply) const
     {
@@ -256,8 +255,8 @@ private:
     /// @note 刀身が通った面。剣の «判定» から分ける ─ 軌跡の見た目を触っても射程や発生には
     /// @note 波及しないし、丸ごと外しても «斬る → 崩す → 仕留める» の芯は全部成立する。
     /// @note 刀身の残像 (MeshTrail) から戻した: 残像は «刀の形» を並べるため、0.2 秒の振りでは
-    ///       数本ばらばらに浮いて «斬った弧» として繋がらなかった。掃過面の帯なら切っ先の弧が
-    ///       1 本の線として残る。
+    /// @note        数本ばらばらに浮いて «斬った弧» として繋がらなかった。掃過面の帯なら切っ先の弧が
+    /// @note        1 本の線として残る。
     BladeTrailComponent      m_bladeTrail;
     /// @note 当たった瞬間の一閃。«振った» (残像) と «斬れた» (線) を分ける ─ 空振りでは出ない。
     SlashCutFxComponent      m_slashCut;
@@ -304,7 +303,7 @@ inline void PlayerComponent::BindModules()
     m_health.tuning.ref = tuning.ref;
     m_breath.tuning.ref = tuning.ref;
     /// @note 息を払うのは回避と構え、戻すのは当たった斬撃と弾き。3 つとも «要求する側» が
-    ///       息を知っていて、息の側は誰が払ったかを知らない。
+    /// @note        息を知っていて、息の側は誰が払ったかを知らない。
     m_controller.SetBreath(&m_breath);
     m_parry.SetBreath(&m_breath);
     m_blades.SetBreath(&m_breath);
@@ -335,16 +334,6 @@ inline void PlayerComponent::BindModules()
     m_blades.SetSlashScar(&m_slashScar);
 }
 
-inline bool PlayerComponent::HasRequiredAssets() const
-{
-    if (tuning && bladeTuning)
-        return true;
-    debug.LogError(
-        "PlayerComponent requires PlayerTuning and BladeTuning .fzdata assets. "
-        "Assign both assets before entering Play mode.");
-    return false;
-}
-
 inline bool PlayerComponent::TryPerfectDodge(const fbzz::math::Vector3* fromWorld)
 {
     if (!tuning || !tuning->dodgeInvulnerable) return false;
@@ -363,11 +352,11 @@ inline void PlayerComponent::OnDamaged(const fbzz::math::Vector3* fromWorld)
     if (auto* screen = ScreenEffectManagerComponent::Instance())
         if (fromWorld) screen->SetHurtSource(*fromWorld);
     /// @note 被弾・回避・土壇場は «誰か 1 体との» 出来事ではなく盤面の出来事なので、
-    ///       立っている相手の全部へ配る。名簿は順序を持たないので、1 体だけ引くと
-    ///       2 体居る盤面では乱数で選ばれた片方だけが育つ (理由は IBoss.hpp を参照)。
+    /// @note        立っている相手の全部へ配る。名簿は順序を持たないので、1 体だけ引くと
+    /// @note        2 体居る盤面では乱数で選ばれた片方だけが育つ (理由は IBoss.hpp を参照)。
     ForEachBoss([](BossBreakComponent& brk) { brk.ResetParryStreak(); });
     /// @note 土壇場に入った瞬間は同じフレームで申告する。次の OnUpdate を待つと、
-    ///       落ちた HP の赤と鼓動が 1 フレームずれて «別々の出来事» に見える。
+    /// @note        落ちた HP の赤と鼓動が 1 フレームずれて «別々の出来事» に見える。
     DriveLastStand();
 
 }
@@ -393,14 +382,14 @@ inline void PlayerComponent::OnPerfectDodge(const fbzz::math::Vector3* fromWorld
     if (flux > 0.0f) m_blades.GrantFlux(flux);
 
     /// @note 息も満タンへ戻す。読み切った 1 回だけが «呼吸ごと» 返り、報酬を Flux と同じ
-    ///       瞬間へ集める。一定量でなく満タンにするのは、ジャスト回避が出るのは息の薄い
-    ///       場面でもあり、«次の一振りは満溜め» でも転がる息が残らなければ受け取れないため。
+    /// @note        瞬間へ集める。一定量でなく満タンにするのは、ジャスト回避が出るのは息の薄い
+    /// @note        場面でもあり、«次の一振りは満溜め» でも転がる息が残らなければ受け取れないため。
     m_breath.Refill();
 
     /// @note 世界を «ゆっくり» にする。かわしたことを見せつつ Flux を押す時間で、ヒットストップ
-    ///       (Override) とは層が違うので重なっても互いを消さない。止め (Hitstop) でなくスロー
-    ///       にするのは、止めは «当たった» の語、回避は «当たらなかった» の語だから
-    ///       (同じ絵だと避けたのに殴られたように読める)。掛けは速く、戻しは長く。
+    /// @note        (Override) とは層が違うので重なっても互いを消さない。止め (Hitstop) でなくスロー
+    /// @note        にするのは、止めは «当たった» の語、回避は «当たらなかった» の語だから
+    /// @note        (同じ絵だと避けたのに殴られたように読める)。掛けは速く、戻しは長く。
     if (tuning->perfectDodgeSlowSeconds > 0.0f && tuning->perfectDodgeSlowScale < 1.0f)
         if (auto* timeManager = TimeManagerComponent::Instance())
             timeManager->SlowFor(tuning->perfectDodgeSlowScale,
@@ -408,16 +397,16 @@ inline void PlayerComponent::OnPerfectDodge(const fbzz::math::Vector3* fromWorld
                                  tuning->perfectDodgeSlowIn, tuning->perfectDodgeSlowOut);
 
     /// @note 縁をプレイヤー色に光らせる。被弾の赤 (Flash) とも極の赤青 (Surge) とも
-    ///       取り違えない色で、«自分に良いことが起きた» だけを言う。
+    /// @note        取り違えない色で、«自分に良いことが起きた» だけを言う。
     if (auto* screen = ScreenEffectManagerComponent::Instance())
         screen->Surge(kColorPlayer, 0.8f, 0.35f);
     /// @note 画面の縁と同時に体の残像も白熱させ長く引く。縁は «良いことが起きた» としか
-    ///       言えないため、何が良かったか (この姿勢で潜り抜けたこと) は並んだ残像にしか
-    ///       写らない。スロー (perfectDodgeSlowSeconds) 中ずっと見えるよう寿命も伸ばす。
+    /// @note        言えないため、何が良かったか (この姿勢で潜り抜けたこと) は並んだ残像にしか
+    /// @note        写らない。スロー (perfectDodgeSlowSeconds) 中ずっと見えるよう寿命も伸ばす。
     m_dodgeGhost.Flash();
     /// @note 一撃が «体のすぐ横を通った» ことを床にも残す。ここまでの見返り (縁・画角・スロー・
-    ///       残像) はどれも «画面» か «自分» に出て、すれ違った出来事そのものは写らないため、
-    ///       通り過ぎた向きへ床を煽り相手と避けた向きを 1 枚の絵で繋げる。
+    /// @note        残像) はどれも «画面» か «自分» に出て、すれ違った出来事そのものは写らないため、
+    /// @note        通り過ぎた向きへ床を煽り相手と避けた向きを 1 枚の絵で繋げる。
     if (auto* vfx = VfxManagerComponent::Instance()) {
         /// @note どこから来たか分からない経路 (TakeDamage) では、転がっていった向きへ流す。
         fbzz::math::Vector3 away = fromWorld ? (transform.worldPosition - *fromWorld)
@@ -427,13 +416,13 @@ inline void PlayerComponent::OnPerfectDodge(const fbzz::math::Vector3* fromWorld
                             away.NormalizedOr(fbzz::math::Vector3::FORWARD), 0.7f, 1.15f);
     }
     /// @note 画角も一瞬開く。スローで世界が遅くなる瞬間に画面が広がると、«時間が伸びた»
-    ///       ではなく «かわして視界が開けた» に読める。締めの一撃より控えめ。
+    /// @note        ではなく «かわして視界が開けた» に読める。締めの一撃より控えめ。
     if (auto* follow = CameraFollowManagerComponent::Instance())
         follow->PunchFov(0.45f);
     if (auto* pad = RumbleManagerComponent::Instance())
         pad->Rumble(0.2f, 0.9f, 0.12f);
     /// @note 満溜めの合図をそのまま使う。Flux は «満溜めが手に入った» ことなので、
-    ///       普段の溜めで覚えた音がここでも同じ意味で鳴る。
+    /// @note        普段の溜めで覚えた音がここでも同じ意味で鳴る。
     se::Play(audio, se::kSwordFlux);
 
     if (auto* combat = CombatManagerComponent::Instance()) combat->AddPerfectDodge();
@@ -449,22 +438,18 @@ inline void PlayerComponent::OnStart()
     m_lastStandSent    = false;
     m_deathAnimationPlayed = false;
     /// @note 弾きを «切った状態» から始めない: m_parry.enabled を切ったままにすると
-    ///       updateModule が弾きを一度も回さず、崩しがガードの下に隠れたまま溜まらない
-    ///       (本作の中核 Docs/break-parry.md)。既定では切らない。
-    if (!HasRequiredAssets()) {
-        enabled = false;
-        return;
-    }
+    /// @note        updateModule が弾きを一度も回さず、崩しがガードの下に隠れたまま溜まらない
+    /// @note        (本作の中核 Docs/break-parry.md)。既定では切らない。
 
     /// @note 再生速度を素へ戻す: ヒットストップ (`animator.SetSpeed(go, 0)`) を戻すのは
-    ///       固めた側 (HitstopManagerComponent) の残り秒数計算だが、その最中に Script DLL
-    ///       をリロードすると管理側だけ作り直され、誰も 0 を戻せなくなる。ボスは毎フレーム
-    ///       速度を書くため自力で戻るが、プレイヤーは書き手が居ないので入口で 1 度戻す。
+    /// @note        固めた側 (HitstopManagerComponent) の残り秒数計算だが、その最中に Script DLL
+    /// @note        をリロードすると管理側だけ作り直され、誰も 0 を戻せなくなる。ボスは毎フレーム
+    /// @note        速度を書くため自力で戻るが、プレイヤーは書き手が居ないので入口で 1 度戻す。
     animator.SetSpeed(1.0f);
     if (ragdoll.IsEnabled()) ragdoll.SetEnabled(false);
 
     /// @note «殴られる側» として名乗る。CombatManager はこの名簿からしか引けない
-    ///       (理由は IDamageable::Of のコメント)。
+    /// @note        (理由は IDamageable::Of のコメント)。
     IDamageable::Bind(scene.Self(), this);
 
     m_modules.Start();
@@ -481,8 +466,8 @@ inline void PlayerComponent::OnUpdate()
     physics.SetLocalTimeScale(playerClockScale);
 
     /// @note 撃破後は立ったまま結果画面を待つ。RequestSuspend は «1 フレームぶんの要求»
-    ///       なので毎フレーム言い直す。1 度きりだと次のフレームでコントローラーが入力を
-    ///       当て直し、結果画面の手前で移動できてしまう。
+    /// @note        なので毎フレーム言い直す。1 度きりだと次のフレームでコントローラーが入力を
+    /// @note        当て直し、結果画面の手前で移動できてしまう。
     if (!m_health.IsAlive()) {
         m_controller.RequestSuspend(true);
         if (!m_deathAnimationPlayed) {
@@ -496,10 +481,10 @@ inline void PlayerComponent::OnUpdate()
     }
     {
         /// @note 剣を止めるのは «倒れたとき» だけ。構えている間の停止は弾きの側が
-        ///       RequestMoveSpeedScale で持っている (構えは 0.22 秒しか続かない)。
+        /// @note        RequestMoveSpeedScale で持っている (構えは 0.22 秒しか続かない)。
         m_blades.SetGuarding(!m_health.IsAlive());
         /// @note Controller の AnyState は «倒れていない間だけ» 割り込みを通す門にこれを使う。
-        ///       立てないと、撃破後に残っている Trigger が Death を蹴り出して起き上がる。
+        /// @note        立てないと、撃破後に残っている Trigger が Death を蹴り出して起き上がる。
         animator.SetBool("IsDead", !m_health.IsAlive());
     }
 
@@ -509,11 +494,11 @@ inline void PlayerComponent::OnUpdate()
 }
 
 /// @note 照準まわりを丸ごと Late に置く: 照準・レーザー・枠はカメラの向きから引かれるが、
-///       TpsCameraComponent が Script フェーズで確定させても同フェーズ内の実行順は
-///       決まっておらず、Script で読むと前フレームの向きを掴みマウスを振ったフレームだけ
-///       レーザーがクロスヘアから外れる。フェーズを 1 つ下げれば順序に依らず確定済みになる。
-///       枠は対象の座標も要り、対象は物理/CharacterController で動くため Script フェーズで
-///       読むと半歩遅れて見える。
+/// @note        TpsCameraComponent が Script フェーズで確定させても同フェーズ内の実行順は
+/// @note        決まっておらず、Script で読むと前フレームの向きを掴みマウスを振ったフレームだけ
+/// @note        レーザーがクロスヘアから外れる。フェーズを 1 つ下げれば順序に依らず確定済みになる。
+/// @note        枠は対象の座標も要り、対象は物理/CharacterController で動くため Script フェーズで
+/// @note        読むと半歩遅れて見える。
 inline void PlayerComponent::RecoverBelowTerrain()
 {
     if (!terrainRecovery || !transform || !m_health.IsAlive()) return;

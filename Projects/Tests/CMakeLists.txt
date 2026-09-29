@@ -226,6 +226,7 @@ fbzz_add_test_suite(EngineAuto
         GreenWare/Auto/BossPartOwnerTests.cpp
         GreenWare/Auto/ParryRushTests.cpp
         GreenWare/Auto/PlayerScriptModulesTests.cpp
+        GreenWare/Auto/ScriptObservationTests.cpp
     LINKS
         FBZZTestKitEngine
         FBZZPhysics

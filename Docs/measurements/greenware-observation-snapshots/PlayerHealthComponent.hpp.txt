@@ -256,4 +256,4 @@ inline void PlayerHealthComponent::Heal(int amount)
     m_health = (m_health + amount > max) ? max : m_health + amount;
 }
 
-} /// @note namespace sandbox
+} /// namespace sandbox

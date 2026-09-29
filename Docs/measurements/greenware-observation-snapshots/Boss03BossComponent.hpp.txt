@@ -24,7 +24,6 @@ namespace sandbox {
 
 class Boss03BossComponent : public Script, public IBoss {
     FBZZ_SCRIPT_DERIVED(Boss03BossComponent, Script, IBoss)
-    FBZZ_REQUIRE_SCRIPT(Boss03AiComponent, EnemyHealthComponent, BossBreakComponent)
 
 public:
     FBZZ_GROUP("識別")
@@ -103,10 +102,26 @@ inline void Boss03BossComponent::OnStart()
     /// @note 進行管理が既存の IBoss 名簿を読むため、開始・破棄で登録を対にする。
     IBoss::Bind(scene.Self(), this);
 
+    if (!Ai())
+        debug.LogError("Boss03BossComponent: no Boss03AiComponent on the boss. "
+                       "Phase, topple and execute cannot be read.");
+
     if (auto* health = scene.GetScript<EnemyHealthComponent>()) {
         health->SetFlinchVoice(&se::kBossDamaged);
+        /// @note 撃破の声も預ける。ここを書かないと «最後の翼が落ちた瞬間» が無音になり、
+        /// @note 撃破の演出 (BossDeathVfxComponent) だけが音無しで始まる。
         health->SetDestroyVoice(&se::kBossDestroy);
+    } else {
+        /// @note 進行はボスの EnemyHealthComponent で終わりを決める。無いと «倒しても
+        /// @note 何も起きない» ステージになり、しかも進行側は何も言わない。
+        debug.LogError("Boss03BossComponent: no EnemyHealthComponent on the boss. "
+                       "GameFlowComponent decides victory from it, so the stage can never end.");
     }
+
+    if (!scene.GetScript<BossBreakComponent>())
+        debug.LogError("Boss03BossComponent: no BossBreakComponent on the boss. "
+                       "The break gauge never fills, so the boss never topples and "
+                       "the wings can never be executed.");
 }
 
 } /// @note namespace sandbox
