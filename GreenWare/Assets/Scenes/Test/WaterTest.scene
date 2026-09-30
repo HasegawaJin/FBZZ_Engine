@@ -1,6 +1,6 @@
 [environment]
 windDirection = [ 1.017, 0.0, 0.7071 ]
-windEnabled = true
+windEnabled = false
 windPulseFrequency = 1.0
 windSpeed = 0.0
 windTurbulence = 0.0
@@ -25,7 +25,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777379
+    aspectRatio = 1.777267
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -199,7 +199,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.098, 33.136452, 0.004797 ]
-    rotation = [ 0.294067, 0.892219, -0.308191, -0.149963 ]
+    rotation = [ -0.369462, -0.891039, 0.071049, 0.253968 ]
     scale = [ 0.999992, 1.0, 0.999995 ]
 
 [[gameobjects]]
@@ -425,6 +425,7 @@ tag = 'Untagged'
     playing = true
     prewarm = true
     randomSeed = 4101
+    randomStartRotation = true
     rateOverDistance = 0.0
     receiveFlowFields = false
     renderMode = 0
@@ -558,137 +559,7 @@ tag = 'Untagged'
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-active = true
-instanceId = 'fdf64c45-2c1d-4fe7-a9a2-690067708574'
-layer = 0
-name = 'Sphere'
-parent = ''
-parentInstanceId = ''
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'guid:df655b2f7688436a8ff92ceddcf8d4c2|Assets/Materials/Surface/Lit.mat'
-    visible = true
-
-    [gameobjects.MeshRenderer]
-    castShadows = true
-    enabled = true
-    mesh = 'primitive:sphere'
-
-    [gameobjects.RigidBodyComponent]
-    allowSleeping = true
-    angularDrag = 0.0
-    angularVelocity = [ 0.0, 0.0, 0.0 ]
-    ccdRadius = 0.5
-    charge = 0.0
-    enabled = true
-    flowCoupling = 0.0
-    freezePosition = [ 0.0, 0.0, 0.0 ]
-    freezeRotation = [ 0.0, 0.0, 0.0 ]
-    gravitationalMass = 1.0
-    gravityScale = 1.0
-    isGravitationalSource = false
-    isStatic = false
-    linearDrag = 0.0
-    mass = 1.0
-    massMode = 0
-    useCCD = false
-    useGravity = true
-    velocity = [ 0.0, 0.0, 0.0 ]
-
-    [gameobjects.SphereColliderComponent]
-    center = [ 0.0, 0.0, 0.0 ]
-    enabled = true
-    isTrigger = false
-    physicsMaterial = ''
-
-        [gameobjects.SphereColliderComponent.material]
-        density = 1.0
-        dynamicFriction = 0.4
-        frictionCombine = 1
-        restitution = 0.3
-        restitutionCombine = 2
-        staticFriction = 0.6
-
-        [gameobjects.SphereColliderComponent.shape]
-        radius = 0.5
-        type = 'Sphere'
-
-    [gameobjects.transform]
-    position = [ 0.0, 0.0, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 4.56, 4.559999, 4.559999 ]
-
-[[gameobjects]]
-active = true
-instanceId = '78c644ae-71e1-42f3-85a3-0b4e8e827046'
-layer = 0
-name = 'Cube'
-parent = ''
-parentInstanceId = ''
-prefabAssetPath = ''
-prefabSourceId = ''
-tag = 'Untagged'
-
-    [gameobjects.BoxColliderComponent]
-    center = [ 0.0, 0.0, 0.0 ]
-    enabled = true
-    isTrigger = false
-    physicsMaterial = ''
-
-        [gameobjects.BoxColliderComponent.material]
-        density = 1.0
-        dynamicFriction = 0.4
-        frictionCombine = 1
-        restitution = 0.3
-        restitutionCombine = 2
-        staticFriction = 0.6
-
-        [gameobjects.BoxColliderComponent.shape]
-        halfExtents = [ 0.5, 0.5, 0.5 ]
-        type = 'OBB'
-
-    [gameobjects.MaterialComponent]
-    enabled = true
-    material = 'guid:df655b2f7688436a8ff92ceddcf8d4c2|Assets/Materials/Surface/Lit.mat'
-    visible = true
-
-    [gameobjects.MeshRenderer]
-    castShadows = true
-    enabled = true
-    mesh = 'primitive:cube'
-
-    [gameobjects.RigidBodyComponent]
-    allowSleeping = true
-    angularDrag = 0.0
-    angularVelocity = [ 0.0, 0.0, 0.0 ]
-    ccdRadius = 0.5
-    charge = 0.0
-    enabled = true
-    flowCoupling = 0.0
-    freezePosition = [ 0.0, 0.0, 0.0 ]
-    freezeRotation = [ 0.0, 0.0, 0.0 ]
-    gravitationalMass = 1.0
-    gravityScale = 1.0
-    isGravitationalSource = false
-    isStatic = false
-    linearDrag = 0.0
-    mass = 1.0
-    massMode = 0
-    useCCD = false
-    useGravity = true
-    velocity = [ 0.0, 0.0, 0.0 ]
-
-    [gameobjects.transform]
-    position = [ 0.0, 6.136002, 0.0 ]
-    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
-    scale = [ 5.0, 2.0, 10.000006 ]
-
-[[gameobjects]]
-active = true
+active = false
 instanceId = '869e477c-25ae-44df-b17b-b82fc5d02826'
 layer = 0
 name = 'Flow Field'
@@ -713,6 +584,6 @@ tag = 'Untagged'
     vectorFieldPath = ''
 
     [gameobjects.transform]
-    position = [ -2.066146, -0.086073, -3.865773 ]
+    position = [ -2.066146, 0.546999, -3.865773 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]

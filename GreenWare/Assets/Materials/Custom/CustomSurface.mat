@@ -1,14 +1,28 @@
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
 mesh_type = 'surface'
-name = 'CustomSurface'
 render_path = 'auto'
-shader = 'guid:218d1917e9014fef96e76a64c504ac80'
+render_queue = 2000
+shader = 'guid:218d1917e9014fef96e76a64c504ac80|Assets/Shaders/Material/Custom/CustomSurface.hlsl'
 version = 1
 
 [params]
 albedo = [ 1.0, 1.0, 1.0, 1.0 ]
-roughness = 0.5
-normalStrength = 1.0
-emissiveScale = 0.0
 alphaCutoff = 0.0
-uvTiling = [ 1.0, 1.0 ]
+emissiveScale = 0.0
+normalStrength = 1.0
+roughness = 0.7099999785423279
 uvOffset = [ 0.0, 0.0 ]
+uvTiling = [ 1.0, 1.0 ]
+
+[textures]
+albedo = 'guid:4c5fada8ac7ad2e373d0354f2f403061|Assets/Models/Map/Textures/T_AR_WarnLight_Albedo.png'
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = ''
+tex6 = ''
+tex7 = ''

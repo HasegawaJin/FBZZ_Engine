@@ -1,0 +1,490 @@
+[environment]
+windDirection = [ 0.7071, 0.0, 0.7071 ]
+windEnabled = true
+windPulseFrequency = 0.8
+windSpeed = 2.5
+windTurbulence = 0.35
+
+[scene]
+format_version = 2
+
+[[gameobjects]]
+active = true
+instanceId = 'cb59fb12-45ae-437d-86dc-139886244001'
+layer = 0
+name = 'ShowcaseCamera'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'MainCamera'
+
+    [gameobjects.CameraComponent]
+    aspectRatio = 1.777267
+    backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
+    clearMode = 0
+    cullDistanceSpherical = true
+    cullingBoundsPadding = 0.0
+    cullingMask = 4294967295
+    enabled = true
+    farZ = 10000.0
+    fovY = 60.0
+    frustumCulling = true
+    isMain = true
+    maxDrawDistance = 0.0
+    nearZ = 0.5
+    occlusionCulling = false
+    smallObjectScreenHeight = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 220.0, -1200.0 ]
+    rotation = [ 0.09, 0.0, 0.0, 0.99594 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cb59fb12-45ae-437d-86dc-139886244002'
+layer = 0
+name = 'Sun'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.0
+    areaTwoSided = false
+    areaWidth = 1.0
+    castShadows = true
+    color = [ 1.0, 0.86, 0.72 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = true
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 15.0
+    intensity = 1.25
+    outerCone = 30.0
+    range = 10.0
+    shadowBias = 1.0
+    shadowDistance = 2000.0
+    shadowNearPlane = 0.1
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.0
+    type = 0
+    useColorTemperature = false
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.transform]
+    position = [ 0.0, 40.0, 0.0 ]
+    rotation = [ 0.026958, 0.638311, -0.759606, 0.121782 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cb59fb12-45ae-437d-86dc-139886244003'
+layer = 0
+name = 'Sky And Clouds'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.AtmosphericScatteringComponent]
+    enabled = true
+    fogColor = [ 0.24, 0.29, 0.36 ]
+    fogDensity = 6e-04
+    fogEnabled = true
+    fogFar = 4000.0
+    fogSource = 0
+
+    [gameobjects.EnvironmentLightComponent]
+    diffuseScale = 0.6
+    enabled = true
+    intensity = 0.8
+    irradiancePath = ''
+    maxMipLevel = 4
+    prefilterPath = ''
+    source = 1
+    specularScale = 0.6
+
+    [gameobjects.SkyRenderer]
+    atmosphereRadius = 6400.0
+    cloudShadowCoverage = 0.36
+    cloudShadowSize = 10000.0
+    cloudShadowSpeed = 1.0
+    cloudShadowStrength = 0.35
+    dayAltitude = 12.0
+    dayColor = [ 1.0, 0.98, 0.95 ]
+    dayIntensity = 1.0
+    dayNightEnabled = true
+    enabled = true
+    mieG = 0.76
+    mieScattering = 0.02
+    nightAltitude = 8.0
+    nightColor = [ 0.1, 0.15, 0.3 ]
+    nightIntensity = 1.0
+    planetRadius = 6400.0
+    rayleighScattering = [ 0.0058, 0.014, 0.0331 ]
+    skyDayBrightness = 1.5
+    skyNightBrightness = 0.1
+    skyScatterIntensity = 22.0
+    skySunsetBrightness = 1.0
+    sunsetColor = [ 1.0, 0.5, 0.2 ]
+    sunsetIntensity = 2.0
+
+    [gameobjects.SunMoonRenderer]
+    enabled = true
+    moonBrightness = 0.6
+    moonColor = [ 0.85, 0.9, 1.0 ]
+    moonEnabled = false
+    moonSize = 1.0
+    sunDiskIntensity = 20.0
+    sunEnabled = true
+
+    [gameobjects.VolumetricCloudComponent]
+    albedo = [ 1.0, 0.991489, 0.974468 ]
+    ambientGradient = 0.0
+    ambientStrength = 4.0
+    ambientTint = [ 1.0, 1.0, 1.0 ]
+    anisotropy = 0.35
+    bottomHeight = 700.0
+    bottomSoftness = 0.307568
+    cloudSize = 1490.0
+    coverage = 0.333333
+    density = 0.62
+    detailSize = 604.0
+    detailStrength = 0.832827
+    enabled = true
+    evolutionSpeed = 2.0
+    extinction = 0.056
+    fadeDistance = 492.0
+    halfResolution = true
+    horizonFade = 0.25
+    lightAbsorption = 1.74
+    lightShaftStrength = 1.0
+    lightStepCount = 2
+    maxDistance = 5100.0
+    minDistance = 168.0
+    multiScatter = 0.390577
+    powderStrength = 0.7
+    silverLining = 0.42
+    stepCount = 48
+    sunIntensity = 10.8
+    sunTint = [ 1.0, 1.0, 1.0 ]
+    thickness = 1760.0
+    topSoftness = 0.350851
+    weatherAmount = 0.9939
+    weatherSize = 2350.0
+    windDirection = [ 1.0, 0.25 ]
+    windResponse = 1.0
+    windSpeed = 33.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cb59fb12-45ae-437d-86dc-139886244004'
+layer = 0
+name = 'Post Process'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 0
+    profile = 'guid:69c3ef3c724c5ae85b6e1fb056c614cb|Assets/PostProcess/WaterTest.fzdata'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cb59fb12-45ae-437d-86dc-139886244005'
+layer = 0
+name = 'Ocean'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.WaterComponent]
+    buoyancy = 15.0
+    buoyancyDepth = 10.0
+    buoyancyEnabled = false
+    chunkCount = 32
+    enableGerstnerWaves = true
+    enabled = true
+    extentX = 10000.0
+    extentZ = 10000.0
+    materialPath = 'guid:bb147ae4d42b4af38214ae4e8e2dd608|Assets/Materials/Water/Ocean.mat'
+    resolutionX = 512
+    resolutionZ = 512
+    splashEnabled = false
+    waterDrag = 2.0
+    waveAmplitudeScale = 0.11
+
+    [gameobjects.transform]
+    position = [ 0.0, 19.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cb59fb12-45ae-437d-86dc-139886244006'
+layer = 0
+name = 'Island Terrain'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.TerrainColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.TerrainColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
+
+    [gameobjects.TerrainComponent]
+    enabled = true
+    layerMaterials = [
+        'guid:c0783f3ffcca445387418210c93113cc|Assets/Materials/Terrain/Layer0_Ground.mat',
+        'guid:6e860c554e5e45d196d874f813c007ee|Assets/Materials/Terrain/Layer1_Grass.mat',
+        'guid:a59a94c7c1d245a48beca037609f0fd6|Assets/Materials/Terrain/Layer2_Sand.mat',
+        'guid:2326f3a9a5be48dc855084ef5304bc1c|Assets/Materials/Terrain/Layer3_Rock.mat'
+    ]
+    terrainAssetPath = 'guid:5f9de667bc8c490b9621ef137846278a|Assets/Terrain/ShowcaseHighlands.terrain'
+
+    [gameobjects.transform]
+    position = [ -768.0, 16.0, -768.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'a3b53d50-2773-451c-a6ee-79fb8ea30ff8'
+layer = 0
+name = 'Cube'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.BoxColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.BoxColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
+
+        [gameobjects.BoxColliderComponent.shape]
+        halfExtents = [ 0.5, 0.5, 0.5 ]
+        type = 'OBB'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:4e91e0c23a384057bfe706a108d421ad|Assets/Materials/Debug/pbr_color_gold.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.RigidBodyComponent]
+    allowSleeping = true
+    angularDrag = 0.0
+    angularVelocity = [ 0.0, 0.0, 0.0 ]
+    ccdRadius = 0.5
+    charge = 0.0
+    enabled = true
+    flowCoupling = 0.0
+    freezePosition = [ 0.0, 0.0, 0.0 ]
+    freezeRotation = [ 0.0, 0.0, 0.0 ]
+    gravitationalMass = 1.0
+    gravityScale = 4.0
+    isGravitationalSource = false
+    isStatic = false
+    linearDrag = 0.0
+    mass = 1.0
+    massMode = 0
+    useCCD = false
+    useGravity = true
+    velocity = [ 0.0, 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -108.341492, 168.174866, 63.896301 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 31.0, 31.0, 31.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '0a0540e6-b8b5-44f7-9dbd-ec68f93df58e'
+layer = 0
+name = 'Sphere'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:6bee15ba2c864fe5a2a09879e9dbbb65|Assets/Materials/Nature/Tree/Tree.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.RigidBodyComponent]
+    allowSleeping = true
+    angularDrag = 0.0
+    angularVelocity = [ 0.0, 0.0, 0.0 ]
+    ccdRadius = 0.5
+    charge = 0.0
+    enabled = true
+    flowCoupling = 0.0
+    freezePosition = [ 0.0, 0.0, 0.0 ]
+    freezeRotation = [ 0.0, 0.0, 0.0 ]
+    gravitationalMass = 1.0
+    gravityScale = 4.0
+    isGravitationalSource = false
+    isStatic = false
+    linearDrag = 0.0
+    mass = 1.0
+    massMode = 0
+    useCCD = false
+    useGravity = true
+    velocity = [ 0.0, 0.0, 0.0 ]
+
+    [gameobjects.SphereColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.SphereColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
+
+        [gameobjects.SphereColliderComponent.shape]
+        radius = 0.5
+        type = 'Sphere'
+
+    [gameobjects.transform]
+    position = [ -73.392975, 150.720093, -22.871002 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 29.25, 29.25, 29.25 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'c6ce1c4f-41e6-40b6-a4f2-372afd339263'
+layer = 0
+name = 'Capsule'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.CapsuleColliderComponent]
+    center = [ 0.0, 0.0, 0.0 ]
+    enabled = true
+    isTrigger = false
+    physicsMaterial = ''
+
+        [gameobjects.CapsuleColliderComponent.material]
+        density = 1.0
+        dynamicFriction = 0.4
+        frictionCombine = 1
+        restitution = 0.3
+        restitutionCombine = 2
+        staticFriction = 0.6
+
+        [gameobjects.CapsuleColliderComponent.shape]
+        halfHeight = 0.5
+        radius = 0.5
+        type = 'Capsule'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:57e6316ccec5400fa3acc51ca187df16|Assets/Materials/Debug/pbr_rough_r50.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:capsule'
+
+    [gameobjects.RigidBodyComponent]
+    allowSleeping = true
+    angularDrag = 0.0
+    angularVelocity = [ 0.0, 0.0, 0.0 ]
+    ccdRadius = 0.5
+    charge = 0.0
+    enabled = true
+    flowCoupling = 0.0
+    freezePosition = [ 0.0, 0.0, 0.0 ]
+    freezeRotation = [ 0.0, 0.0, 0.0 ]
+    gravitationalMass = 1.0
+    gravityScale = 4.0
+    isGravitationalSource = false
+    isStatic = false
+    linearDrag = 0.0
+    mass = 1.0
+    massMode = 0
+    useCCD = false
+    useGravity = true
+    velocity = [ 0.0, 0.0, 0.0 ]
+
+    [gameobjects.transform]
+    position = [ -6.048264, 154.19487, 68.6008 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 20.84375, 20.84375, 20.84375 ]

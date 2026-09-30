@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 #include <Engine/Asset/MaterialParamBinding.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Editor/Panels/MaterialPreviewCore.hpp>
 
 #include <Engine/Asset/FiberMaterialSettings.hpp>
@@ -1536,7 +1537,7 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
     return drew;
 }
 
-} // namespace
+} /// @note namespace
 
 
 Flavor DetectFlavor(const asset::MaterialAsset& material)
@@ -1821,7 +1822,11 @@ bool BuildGpuData(GpuData& gpu,
         if (binding.slot >= gpu.textures.size()) continue;
         const std::string path = FindTexturePath(*renderAsset, binding);
         if (path.empty()) continue;
-        gpu.textures[binding.slot] = resources.LoadTexture(TextureLoadPath(path, projectRoot));
+        const std::string loadPath = TextureLoadPath(path, projectRoot);
+        asset::TextureImportSettings settings;
+        const bool flipGreen = asset::GetCachedTextureImportSettings(loadPath, settings)
+            && settings.flipGreen;
+        gpu.textures[binding.slot] = resources.LoadTexture(loadPath, flipGreen);
     }
     if (!descriptor.IsValid()) {
         /// @note cbuffer のリフレクションが無い分、標準スロット名だけは名前で解決しておく。
@@ -1829,8 +1834,13 @@ bool BuildGpuData(GpuData& gpu,
         for (std::uint32_t slot = 0; slot < 5; ++slot) {
             if (gpu.textures[slot].IsValid()) continue;
             auto it = renderAsset->textures.find(kSlotNames[slot]);
-            if (it != renderAsset->textures.end() && !it->second.empty())
-                gpu.textures[slot] = resources.LoadTexture(TextureLoadPath(it->second, projectRoot));
+            if (it != renderAsset->textures.end() && !it->second.empty()) {
+                const std::string loadPath = TextureLoadPath(it->second, projectRoot);
+                asset::TextureImportSettings settings;
+                const bool flipGreen = asset::GetCachedTextureImportSettings(loadPath, settings)
+                    && settings.flipGreen;
+                gpu.textures[slot] = resources.LoadTexture(loadPath, flipGreen);
+            }
         }
     }
     /// @note 地形の層テクスチャは BuildTerrainCB が bindless 添字として層配列へ詰める。枠へは差さない。
@@ -2026,4 +2036,4 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
     return true;
 }
 
-} // namespace fbzz::editor::matpreview
+} /// @note namespace fbzz::editor::matpreview

@@ -86,7 +86,9 @@
 #define TEX_SHADOW      t8
 #define TEX_SSAO        t9
 #define TEX_BLOOM       t10
+#define TEX_PARTICLE_SIX_WAY_COLOR t10 /// @note Particle pass の six-way albedo hue atlas
 #define TEX_ENV_CUBE    t11  /// @note Skybox キューブマップ / IBL
+#define TEX_PARTICLE_SIX_WAY_EMISSION t11 /// @note Particle pass の six-way emission atlas
 #define TEX_ENV_EQUIRECT t12 /// @note Skydome 等緯度テクスチャ
 /// @note カスタムパスが宣言したときだけ束縛される追加入力。IBL / Skydome と時分割で共有する。
 /// @note WHY 空きスロットを増やさず時分割か: 全画面のカスタムパスはシーンのジオメトリを
@@ -319,8 +321,10 @@
 #define TEX_PARTICLE_DENSITY_SLOT    9
 #define TEX_SSAO_SLOT                9
 #define TEX_BLOOM_SLOT               10
+#define TEX_PARTICLE_SIX_WAY_COLOR_SLOT 10
 #define TEX_CUSTOM_VELOCITY_SLOT     11
 #define TEX_ENV_CUBE_SLOT            11
+#define TEX_PARTICLE_SIX_WAY_EMISSION_SLOT 11
 #define TEX_CUSTOM_NORMAL_SLOT       12
 #define TEX_ENV_EQUIRECT_SLOT        12
 #define TEX_DECAL_MASK_SLOT          13

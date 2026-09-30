@@ -46,8 +46,8 @@ smoothness = 0.9399999976158142
 specularStrength = 0.8999999761581421
 sssColor = [ 0.10000000149011612, 0.5199999809265137, 0.5 ]
 sssStrength = 0.699999988079071
-wave0Amplitude = 2.924999952316284
-wave0Direction = [ 0.05000000074505806, 0.05000000074505806 ]
+wave0Amplitude = 1.2400000095367432
+wave0Direction = [ 2.0299999713897705, 0.05000000074505806 ]
 wave0Steepness = 0.4000000059604645
 wave0Wavelength = 14.0
 wave1Amplitude = 2.494999885559082
@@ -58,11 +58,12 @@ wave2Amplitude = 2.9549999237060547
 wave2Direction = [ 0.10999999940395355, -0.07999999821186066 ]
 wave2Steepness = 0.25
 wave2Wavelength = 9.0
-wave3Amplitude = 1.0299999713897705
-wave3Direction = [ -0.10000000149011612, 0.07000000029802322 ]
+wave3Amplitude = 1.375
+wave3Direction = [ 0.5899999737739563, 1.0299999713897705 ]
 wave3Steepness = 1.0
 wave3Wavelength = 18.0
 waveGrouping = 1.0
+waveSpread = 0.3499999940395355
 windResponse = 1.0
 
 [textures]

@@ -14,6 +14,7 @@
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -568,9 +569,13 @@ renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
     asset::ApplyMaterialAssetParams(*materialAsset, desc, material->paramData);
     const auto texturePaths = asset::ResolveMaterialTexturePaths(*materialAsset);
     material->textures.resize(texturePaths.size());
-    for (size_t t = 0; t < texturePaths.size(); ++t)
-        if (!texturePaths[t].empty())
-            material->textures[t] = resources.LoadTexture(texturePaths[t]);
+    for (size_t t = 0; t < texturePaths.size(); ++t) {
+        if (texturePaths[t].empty()) continue;
+        asset::TextureImportSettings settings;
+        const bool flipGreen = asset::GetCachedTextureImportSettings(texturePaths[t], settings)
+            && settings.flipGreen;
+        material->textures[t] = resources.LoadTexture(texturePaths[t], flipGreen);
+    }
     material->Upload(resources, desc);
     slot.material = std::move(material);
     return slot.material.get();
@@ -840,7 +845,7 @@ void SubmitPreviewLines(renderer::IRenderer& renderer,
     renderer.Submit(call, resources);
 }
 
-} // namespace
+} /// @note namespace
 
 /// クリップ / ポーズ
 
@@ -2068,7 +2073,7 @@ void AdvancePlayback()
     }
 }
 
-} // namespace fbzz::editor::animpreview
+} /// @note namespace fbzz::editor::animpreview
 
 namespace fbzz::editor {
 
@@ -2185,4 +2190,4 @@ void SaveAnimationPreviewSettings(EditorSettings& settings)
     settings.animPreviewLightYaw       = state.view.lightYaw;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

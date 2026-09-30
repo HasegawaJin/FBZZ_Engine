@@ -1,0 +1,21 @@
+[meta]
+guid = '621c86e763f65e527dda5b42a557a302'
+
+[texture]
+alpha_dither = false
+alpha_mode = 'None'
+aniso = 8
+compression = 'Auto'
+compression_quality = 1
+filter = 'Bilinear'
+flip_green = false
+max_size = 4096
+mip_bias = 0.0
+mip_filter = 'Kaiser'
+mip_sharpen = 0.0
+mipmaps = false
+normalize_mipmaps = false
+srgb = true
+type = 'color'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

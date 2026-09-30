@@ -65,7 +65,7 @@ void PushGameObjectPropertyCommand(EditorContext& ctx,
 #if !defined(NDEBUG)
 /// @brief Custom 登録型を持つのにカードが収集されなかったら、型ごとに 1 度だけ警告する。
 /// @note Custom 型のカードは OnRenderContent のカテゴリ別呼び出しで手書き管理している。
-///       呼び出しを足し忘れた新しい型が黙って Inspector から消えないようにする番人。
+/// @note        呼び出しを足し忘れた新しい型が黙って Inspector から消えないようにする番人。
 void WarnCustomComponentsWithoutCard(scene::GameObject& go,
                                      const InspectorComponentDrawCollector& collector)
 {
@@ -107,32 +107,53 @@ void DrawSceneEnvironment(EditorContext& ctx)
         changed |= ImGui::DragFloat(LOC("Pulse Frequency"), &environment.pulseFrequency, 0.01f, 0.0f, 20.0f);
     }
     /// @note @note Undo は通していない。シーン設定は «1 フレーム前へ戻す» 対象が
-    ///       GameObject コマンドと混ざると履歴の粒度が合わないため、保存でだけ拾う。
+    /// @note        GameObject コマンドと混ざると履歴の粒度が合わないため、保存でだけ拾う。
     if (changed && ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
-} // namespace
+} /// @note namespace
 
 void InspectorPanel::OnShutdown()
 {
     /// @note Inspector はロック中の EntityID / AssetPath と表示中 Material のハンドルを
-    ///       フレームをまたいで保持する。終了時は Scene / AssetManager / ImGui の破棄順が
-    ///       通常フレームと異なるため、古い参照を残すと破棄中に無効なアセットへ触れうる。
+    /// @note        フレームをまたいで保持する。終了時は Scene / AssetManager / ImGui の破棄順が
+    /// @note        通常フレームと異なるため、古い参照を残すと破棄中に無効なアセットへ触れうる。
     m_componentClipboard.reset();
     m_componentClipboardType = nullptr;
     m_locked = false;
     m_lockedEntityId = {};
     m_inspectedAssetPath.clear();
     m_inspectedMat = {};
+    m_fontPreview.Release();
+}
+
+void InspectorPanel::OnBeforeBegin(EditorContext& ctx)
+{
+    if (ctx.scriptRequirementReview.focus.unlockPending) {
+        ImGui::SetNextWindowFocus();
+        ImGui::SetNextWindowCollapsed(false);
+    }
 }
 
 void InspectorPanel::OnRenderContent(EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("Inspector::Render");
     /// @note Hierarchy / AssetBrowser から Inspector 下部の Component へドラッグできるよう、
-    ///       ペイン上下端にカーソルを置いたときだけ現在のウィンドウを自動スクロールする。
+    /// @note        ペイン上下端にカーソルを置いたときだけ現在のウィンドウを自動スクロールする。
     widgets::UpdateDragAutoScroll();
     widgets::DrawAssetPickerModal(ctx.resources, ctx.imguiRenderer);
+
+    auto& requirementFocus = ctx.scriptRequirementReview.focus;
+    const auto* requirementSelection = ctx.GetSelectedGO();
+    if (!CanReviewScriptRequirements(ctx) || !IsScriptRequirementReviewCurrent(ctx) ||
+        !requirementSelection || requirementSelection->instanceId != requirementFocus.nodeId)
+        requirementFocus = {};
+    if (requirementFocus.unlockPending) {
+        m_locked = false;
+        m_lockedEntityId = {};
+        ctx.mapInspectorFilter = false;
+        requirementFocus.unlockPending = false;
+    }
 
     if (ctx.mapEditingMode) {
         ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP MODE");
@@ -153,8 +174,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note ロック解決
-    ///       Entity ロック中は m_lockedEntityId、Asset ロック中は m_inspectedAssetPath を表示する。
-    ///       ロック先が破棄 / 削除されていた場合は自動解除する。
+    /// @note        Entity ロック中は m_lockedEntityId、Asset ロック中は m_inspectedAssetPath を表示する。
+    /// @note        ロック先が破棄 / 削除されていた場合は自動解除する。
     scene::GameObject* go = nullptr;
     const bool hasSelectedAsset = !ctx.selectedAssetPath.empty();
     std::string assetPathToInspect = ctx.selectedAssetPath;
@@ -184,7 +205,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     /// @name Play 中の編集警告バナー
     /// @note Play 中の Inspector 編集は Stop 時のスナップショット復元で巻き戻るため、
-    ///       目立つバナーで注意を促す (Unity が Play 中に UI を tint するのと同様)。
+    /// @note        目立つバナーで注意を促す (Unity が Play 中に UI を tint するのと同様)。
     if (ctx.playMode && !ctx.playMode->IsInEditor()) {
         ImVec4 warningBg = EditorTheme::Color(ThemeColor::Warning);
         warningBg.w = 0.16f;
@@ -200,8 +221,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note ロックボタン (右端に配置)。ボタン押下で m_locked が変化するため、押下前の状態を
-    ///       wasLocked に固定して Push/Pop を対称にする。m_locked を両判定に使うと
-    ///       片方が空振りしてクラッシュする。
+    /// @note        wasLocked に固定して Push/Pop を対称にする。m_locked を両判定に使うと
+    /// @note        片方が空振りしてクラッシュする。
     {
         /// @note ボタン描画前の状態を保存して Push/Pop を必ず対称にする
         const bool wasLocked = m_locked;
@@ -228,8 +249,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 m_locked          = false;
                 m_lockedEntityId  = {};
                 /// @note Asset ロックは EntityID を INVALID にした m_locked と既存の inspected path で表す。
-                ///       データメンバを増やすと、増分ビルドで古い確保サイズが残った際に std::string メンバ
-                ///       破損を起こしやすいため、既存メンバだけで状態を持つ。
+                /// @note        データメンバを増やすと、増分ビルドで古い確保サイズが残った際に std::string メンバ
+                /// @note        破損を起こしやすいため、既存メンバだけで状態を持つ。
                 m_locked = true;
                 m_inspectedAssetPath = ctx.selectedAssetPath;
                 m_inspectedMat = {};
@@ -300,13 +321,13 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::TextDisabled("Tip: press Ctrl+K to jump to any object or asset, F1 for shortcuts.");
         ImGui::PopTextWrapPos();
         /// @note シーン設定はどの GameObject にも属さない。«何も選んでいない» ときの Inspector が
-        ///       唯一の置き場になる (Lighting ウィンドウに相当する面がまだ無い)。
+        /// @note        唯一の置き場になる (Lighting ウィンドウに相当する面がまだ無い)。
         DrawSceneEnvironment(ctx);
         return;
     }
 
     /// @note Animation Graph の要素選択中は、GameObject 全体でなく選択要素の詳細を表示する。
-    ///       Graph は遷移関係の操作に専念し、State / Transition の設定は Inspector に集約する。
+    /// @note        Graph は遷移関係の操作に専念し、State / Transition の設定は Inspector に集約する。
     {
         FBZZ_PROFILE_SCOPE("Inspector::AnimationGraphSelection");
         if (DrawAnimationGraphInspector(ctx, *go)) {
@@ -319,7 +340,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     /// @name Save as Prefab
     /// @note Hierarchy のコンテキストメニューを使わず Inspector から直接 Prefab 化できる動線。
-    ///       Unity の Inspector ヘッダーと同様に最上部に配置する。
+    /// @note        Unity の Inspector ヘッダーと同様に最上部に配置する。
     {
         static constexpr const char* kSaveLabel = "Save as Prefab";
         const float btnW = ImGui::CalcTextSize(kSaveLabel).x
@@ -348,7 +369,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 savePath = base + " " + std::to_string(i) + ".prefab";
 
             /// @note SaveSelection だけだと元の GO が通常オブジェクトのまま残り、Apply/Revert が
-            ///       出ない「繋がっていない」状態になるため、保存と同時にインスタンスとして接続する。
+            /// @note        出ない「繋がっていない」状態になるため、保存と同時にインスタンスとして接続する。
             std::vector<scene::EntityID> connectedRoots;
             if (PrefabSerializer::SaveSelectionAndConnect(
                     *ctx.activeScene, ctx.selectedEntities, savePath, connectedRoots)) {
@@ -361,7 +382,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note プレファブインスタンスには出所プレファブ名と Apply / Revert ボタンを表示する
-    ///       (Unity の Inspector ヘッダーと同等の UX)。同期操作へ素早くアクセスできるようにする。
+    /// @note        (Unity の Inspector ヘッダーと同等の UX)。同期操作へ素早くアクセスできるようにする。
     if (!go->prefabAssetPath.empty() && ctx.activeScene) {
         const std::string displayName =
             util::FileSystem::GetFilename(go->prefabAssetPath);
@@ -377,7 +398,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SameLine();
         if (ImGui::SmallButton("Apply")) {
             /// @note アセットを書き換えるだけでは既に配置済みの他インスタンスが古い定義のまま残るため、
-            ///       Apply と伝播を 1 つの操作として閉じ、呼び忘れが起きないようにしている。
+            /// @note        Apply と伝播を 1 つの操作として閉じ、呼び忘れが起きないようにしている。
             const int updated = PrefabSerializer::ApplyAndPropagate(
                 *ctx.activeScene, go->GetID(), ctx.projectRoot);
             if (updated >= 0) {
@@ -386,7 +407,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 FBZZ_LOG_INFO("Prefab applied: %s (%d other instance(s) updated)",
                               displayName.c_str(), updated);
                 /// @note 他インスタンスが作り直され EntityID が変わっているため、
-                ///       このフレームの描画は打ち切る。
+                /// @note        このフレームの描画は打ち切る。
                 if (updated > 0) return;
             }
         }
@@ -430,7 +451,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
         /// @name Overrides: このインスタンスがアセット定義とどこで違うか
         /// @note Apply/Revert それぞれで何が起きるかを事前に見せる。差分算出はシーン全体の
-        ///       シリアライズを伴うため毎フレームは回さず、Undo リビジョンと選択が変わったときだけ取り直す。
+        /// @note        シリアライズを伴うため毎フレームは回さず、Undo リビジョンと選択が変わったときだけ取り直す。
         {
             struct OverrideCache {
                 std::string       guid;
@@ -546,8 +567,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     }
 
                     /// @note 1 件だけ戻すのは、その 1 件を除いた差分でインスタンスを作り直す形。
-                    ///       ライブなコンポーネントへ直接書き戻すと型ごとの分岐が要るが、差分集合を
-                    ///       編集して展開し直せば経路が 1 本で済む。
+                    /// @note        ライブなコンポーネントへ直接書き戻すと型ごとの分岐が要るが、差分集合を
+                    /// @note        編集して展開し直せば経路が 1 本で済む。
                     if (revertRequest) {
                         const PrefabOverrideSet kept = WithoutEntry(cache.set, *revertRequest);
                         std::vector<scene::EntityID> newRoots;
@@ -578,7 +599,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     /// @name GameObject ヘッダーカード
     /// @note 名前 / Tag / Layer はコンポーネント群と階層が違う情報のため、1 枚のカードで囲み、
-    ///       スクロールしても頭の 1 ブロックだけ性格が違うと分かるようにする。
+    /// @note        スクロールしても頭の 1 ブロックだけ性格が違うと分かるようにする。
     const widgets::ComponentBodyScope headerCard = widgets::BeginCard();
     ImGui::Spacing();
 
@@ -589,8 +610,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note Unity と同じく GameObject 自体の有効状態を名前欄の左で切り替える。activeInHierarchy でなく
-    ///       activeSelf を表示するのは、親が無効でも子自身の保存値を編集できる必要があるため
-    ///       (activeInHierarchy だと親の状態を誤って上書きする)。
+    /// @note        activeSelf を表示するのは、親が無効でも子自身の保存値を編集できる必要があるため
+    /// @note        (activeInHierarchy だと親の状態を誤って上書きする)。
     {
         bool active = go->activeSelf();
         if (ImGui::Checkbox("##game_object_active", &active)) {
@@ -614,7 +635,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     static std::string nameBeforeEdit;
     const std::string nameAtFrameStart = go->name;
     /// @note 名前欄はカードの主役なので 1 段高く取る。Tag / Layer と同じ高さだと
-    ///       「今どのオブジェクトか」が周りの設定行に埋もれる。
+    /// @note        「今どのオブジェクトか」が周りの設定行に埋もれる。
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                         { ImGui::GetStyle().FramePadding.x,
                           ImGui::GetStyle().FramePadding.y + 3.0f });
@@ -766,8 +787,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     auto* scriptComponent = go->GetComponent<scene::ScriptComponent>();
     if (scriptComponent) {
         /// @note ScriptComponent は 1 つの入れ物だが、Inspector 上は各スクリプトを
-        ///       独立した Component カードとして扱う。これにより Engine Component と
-        ///       スクリプトを同じ COMPONENT 順序リストで相互に入れ替えられる。
+        /// @note        独立した Component カードとして扱う。これにより Engine Component と
+        /// @note        スクリプトを同じ COMPONENT 順序リストで相互に入れ替えられる。
         BeginScriptInspectorFrame(go, ctx);
         for (int i = 0; i < static_cast<int>(scriptComponent->scripts.size()); ++i) {
             const std::string orderKey = GetScriptOrderKey(*scriptComponent, i);
@@ -802,9 +823,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
     /// @name Animator を持つ GameObject は Inspector 最下部にプレビューを出す
     /// @note SkinnedMeshRenderer が子に分かれる構成もあるため、判定は Animator の有無だけで行う。
-    ///       対象解決は DrawAnimationPreviewWidget / TickAnimationPreview が担う。先に
-    ///       HasAnimationPreviewTarget() で判定すると初回選択時に Preview 側が呼ばれず、
-    ///       再選択やパネル再アタッチまで対象が解決されない。
+    /// @note        対象解決は DrawAnimationPreviewWidget / TickAnimationPreview が担う。先に
+    /// @note        HasAnimationPreviewTarget() で判定すると初回選択時に Preview 側が呼ばれず、
+    /// @note        再選択やパネル再アタッチまで対象が解決されない。
     if (go->GetComponent<scene::AnimatorComponent>()) {
         FBZZ_PROFILE_SCOPE("Inspector::AnimationPreview");
         ImGui::Spacing();
@@ -813,4 +834,4 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

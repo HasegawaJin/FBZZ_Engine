@@ -25,7 +25,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777379
+    aspectRatio = 1.776614
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -1059,7 +1059,7 @@ tag = 'Untagged'
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-active = true
+active = false
 instanceId = '31b9edb2-ed20-4430-a0e4-44ba773c03b1'
 layer = 0
 name = 'ARENA_WarnLights.001'
@@ -1085,7 +1085,7 @@ tag = 'Untagged'
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-active = true
+active = false
 instanceId = '2a215ff5-9cc2-439f-aedc-1fc32df8d567'
 layer = 0
 name = 'ARENA_WarnLightsUpper'
@@ -2024,6 +2024,7 @@ tag = 'Untagged'
     priority = 0
     rolloffFactor = 1.0
     spatialBlend = 0.0
+    streaming = false
     volume = 1.0
 
     [gameobjects.transform]
@@ -2233,6 +2234,7 @@ tag = 'Untagged'
     priority = 0
     rolloffFactor = 1.0
     spatialBlend = 0.0
+    streaming = false
     volume = 1.0
 
     [gameobjects.transform]
@@ -2421,6 +2423,7 @@ tag = 'Untagged'
     priority = 0
     rolloffFactor = 1.0
     spatialBlend = 0.0
+    streaming = false
     volume = 1.0
 
     [gameobjects.transform]
@@ -5024,7 +5027,7 @@ tag = 'Untagged'
     visibleCharacters = -1
 
     [gameobjects.transform]
-    position = [ 416.0, 892.0, 0.0 ]
+    position = [ 416.0, 894.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1088.0, 62.0, 1.0 ]
 
@@ -6390,6 +6393,7 @@ tag = 'Enemy'
     priority = 0
     rolloffFactor = 1.0
     spatialBlend = 1.0
+    streaming = false
     volume = 1.0
 
     [gameobjects.CapsuleColliderComponent]
@@ -8090,6 +8094,7 @@ tag = 'Untagged'
     playing = true
     prewarm = true
     randomSeed = 4101
+    randomStartRotation = true
     rateOverDistance = 0.0
     receiveFlowFields = false
     renderMode = 0
@@ -8266,6 +8271,7 @@ tag = 'Untagged'
     playing = true
     prewarm = true
     randomSeed = 4102
+    randomStartRotation = true
     rateOverDistance = 0.0
     receiveFlowFields = false
     renderMode = 0
@@ -8442,6 +8448,7 @@ tag = 'Untagged'
     playing = true
     prewarm = true
     randomSeed = 4104
+    randomStartRotation = true
     rateOverDistance = 0.0
     receiveFlowFields = false
     renderMode = 0
@@ -12165,6 +12172,7 @@ tag = 'Player'
     priority = 0
     rolloffFactor = 1.0
     spatialBlend = 0.0
+    streaming = false
     volume = 1.0
 
     [gameobjects.CapsuleColliderComponent]
@@ -12357,7 +12365,6 @@ tag = 'Player'
         debugGhostMeshes = 0
         debugGuards = 0
         debugHeadYaw = 0.0
-        debugHealth = 0
         debugHitTicks = 0
         debugJumpSpeed = 0.0
         debugJustParries = 0
@@ -14441,6 +14448,7 @@ tag = 'Untagged'
     priority = 0
     rolloffFactor = 1.0
     spatialBlend = 0.0
+    streaming = false
     volume = 1.0
 
     [gameobjects.UICanvas]
@@ -21687,7 +21695,7 @@ tag = 'Untagged'
     visibleCharacters = -1
 
     [gameobjects.transform]
-    position = [ 480.0, 906.0, 0.0 ]
+    position = [ 480.0, 940.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1050.0, 34.0, 1.0 ]
 

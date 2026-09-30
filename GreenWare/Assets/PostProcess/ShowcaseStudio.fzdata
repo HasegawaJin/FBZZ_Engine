@@ -1,0 +1,58 @@
+# @file    ShowcaseStudio.fzdata
+# @brief   Light Probe GI と体積光を組み合わせた撮影用プロファイル。
+# @author  Hasegawa Jin
+# @date    2026-09-27
+type = 'PostProcessProfile'
+
+[[overrides]]
+active = true
+intensity = 1.5
+radius = 1.5
+slices = 4
+stepsPerSlice = 6
+type = 'GTAO'
+
+[[overrides]]
+active = true
+intensity = 0.1149425283074379
+softKnee = 1.0
+threshold = 4.0
+type = 'Bloom'
+
+[[overrides]]
+active = true
+exposure = 1.0
+type = 'Exposure'
+
+# @note GTAO の標本ノイズは TAA の蓄積で均す (FXAA では残る)。
+[[overrides]]
+active = true
+feedback = 0.9
+type = 'TAA'
+
+[[overrides]]
+active = true
+compensation = 0.0
+highPercent = 0.949999988079071
+lowPercent = 0.44999998807907104
+maxEV = 2.0
+maxExposureEV = 2.0
+minEV = -4.0
+minExposureEV = -1.0
+speedDown = 1.2000000476837158
+speedUp = 0.800000011920929
+type = 'AutoExposure'
+
+[[overrides]]
+active = true
+density = 0.025
+edgeFade = 0.25
+heightFalloff = 0.0
+heightStart = 0.0
+intensity = 0.8
+maxDistance = 12.0
+minDistance = 0.5
+scattering = 0.55
+steps = 48
+tint = [ 1.0, 0.94, 0.84 ]
+type = 'VolumetricLight'

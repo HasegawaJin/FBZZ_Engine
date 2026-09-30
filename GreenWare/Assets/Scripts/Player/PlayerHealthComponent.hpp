@@ -35,16 +35,16 @@ class PlayerHealthComponent : public Script {
     FBZZ_OPTIONAL_COMPONENT(AudioSourceComponent)
 
 public:
-    /// PlayerComponent が必須 PlayerTuning を注入する。HP 値をこの Script に複製しない。
+    /// @note PlayerComponent が必須 PlayerTuning を注入する。HP 値をこの Script に複製しない。
     fbzz::Asset<PlayerTuning> tuning{};
 
     FBZZ_GROUP("手応え")
     FBZZ_FIELD_AUDIO(sfxHurt, "", "SFX Hurt")
     FBZZ_FIELD_AUDIO(sfxDeath, "", "撃破の効果音")
-    /// 被弾時の揺れ・振動・画面効果は ImpactFeedbackManagerComponent の Player Hurt が持つ。
-    /// 12 章の「強さは 1 箇所で持つ」方針を、被弾以外の出来事も含めた形へ広げたもの。
+    /// @note 被弾時の揺れ・振動・画面効果は ImpactFeedbackManagerComponent の Player Hurt が持つ。
+    /// @note 12 章の「強さは 1 箇所で持つ」方針を、被弾以外の出来事も含めた形へ広げたもの。
 
-    /// 無敵の «見せ方»。被弾直後の 0.6 秒 (PlayerTuning の hitInvulnerable) に掛かる。
+    /// @note 無敵の «見せ方»。被弾直後の 0.6 秒 (PlayerTuning の hitInvulnerable) に掛かる。
     FBZZ_GROUP("Invulnerable Flash")
     FBZZ_FIELD(bool, flashOnInvulnerable, true, "閃光")
     FBZZ_FIELD_RANGE(float, flashHz, 9.0f, "Hz", 0.0f, 30.0f)
@@ -56,35 +56,35 @@ public:
                  "越えると画面が滲んで «攻撃を受けている» に見える")
 
     FBZZ_GROUP("デバッグ")
-    FBZZ_FIELD_READ_ONLY(int, debugHealth, 0, "HP")
-    FBZZ_FIELD_READ_ONLY(int, debugFlashParts, 0, "Flash Parts")
+    FBZZ_OBSERVE(int, debugHealth, m_health, "HP")
+    FBZZ_OBSERVE(int, debugFlashParts, static_cast<int>(m_flash.size()), "Flash Parts")
 
     [[nodiscard]] int   Current() const { return m_health; }
     /// @note Max() でなく MaxHealth(): 同名だと math::Max がクラス内から隠れる。
     [[nodiscard]] int   MaxHealth() const;
     [[nodiscard]] bool  IsAlive() const { return m_health > 0; }
     [[nodiscard]] bool  IsInvulnerable() const { return m_invulnerable > 0.0f; }
-    /// UI のライフゲージ用。1 = 満タン / 0 = 死亡。
+    /// @note UI のライフゲージ用。1 = 満タン / 0 = 死亡。
     [[nodiscard]] float Normalized() const;
 
-    /// 敵の攻撃から呼ばれる唯一の入口。無敵中や死亡後は無視して false を返す。
+    /// @note 敵の攻撃から呼ばれる唯一の入口。無敵中や死亡後は無視して false を返す。
     bool TakeDamage(int amount);
 
-    /// «ここより下へは減らない» を 1 フレームぶん要求する。0 で解除。
+    /// @note «ここより下へは減らない» を 1 フレームぶん要求する。0 で解除。
     /// @note 無敵でなく下限にする (チュートリアル用): 無敵は被弾自体を無かったことにするが、
-    ///       下限なら痛み・のけぞり・赤い縁は出したまま死亡だけを止められる。
+    /// @note 下限なら痛み・のけぞり・赤い縁は出したまま死亡だけを止められる。
     /// @note 下限は 1 を想定。崩し ×1.25 / Flux 窓 ×1.5 / 画面縁の鼓動という
-    ///       残り HP 1 の演出をそのまま使い、教えている間も緊張感を落とさない。
+    /// @note 残り HP 1 の演出をそのまま使い、教えている間も緊張感を落とさない。
     /// @note RequestSuspend と同じ「毎フレーム要求」形式。掛けっぱなしにできると
-    ///       外し忘れたまま死なないゲームになる。
+    /// @note 外し忘れたまま死なないゲームになる。
     void RequestDamageFloor(int minHealth)
     { m_requestedFloor = m_requestedFloor > minHealth ? m_requestedFloor : minHealth; }
     void Heal(int amount);
     void ResetHealth();
 
-    /// 死亡通知。Wave 管理やリザルト画面が購読する。
+    /// @note 死亡通知。Wave 管理やリザルト画面が購読する。
     /// @note コールバックにして遷移を分離: 直接呼ぶと体力管理と進行管理が同居し、
-    ///       未決のリトライ仕様変更のたびにこのファイルを触ることになる。
+    /// @note 未決のリトライ仕様変更のたびにこのファイルを触ることになる。
     std::function<void()> onDeath;
 
     void OnStart()  override;
@@ -92,7 +92,7 @@ public:
     void SetController(PlayerControllerComponent* controller) { m_controllerOverride = controller; }
 
 private:
-    /// 明滅させる 1 スロット。元の自発光を控えて、無敵が明けたら必ず戻す。
+    /// @note 明滅させる 1 スロット。元の自発光を控えて、無敵が明けたら必ず戻す。
     struct FlashSlot {
         EntityRef target;
         uint32_t  slot = 0;
@@ -100,20 +100,20 @@ private:
         float     baseScale = 0.0f;
     };
 
-    /// 体を描いている部位を集める。DLL リロードでも名前ではなく EntityRef で持つ。
+    /// @note 体を描いている部位を集める。DLL リロードでも名前ではなく EntityRef で持つ。
     void CollectFlashTargets(GameObject& object);
-    /// 明滅を書く。無敵でないフレームは元の値へ戻して、書いたことを忘れる。
+    /// @note 明滅を書く。無敵でないフレームは元の値へ戻して、書いたことを忘れる。
     void DriveFlash();
 
     int   m_health       = 0;
     float m_invulnerable = 0.0f;
-    /// 今フレーム効いている体力の下限と、次フレームぶんの要求 (0 で無し)。
+    /// @note 今フレーム効いている体力の下限と、次フレームぶんの要求 (0 で無し)。
     int   m_damageFloor    = 0;
     int   m_requestedFloor = 0;
     PlayerControllerComponent* m_controllerOverride = nullptr;
 
     std::vector<FlashSlot> m_flash;
-    /// 今フレーム自発光を上書きしているか。戻し忘れを 1 つの札で防ぐ。
+    /// @note 今フレーム自発光を上書きしているか。戻し忘れを 1 つの札で防ぐ。
     bool  m_flashing = false;
 };
 
@@ -136,7 +136,7 @@ inline float PlayerHealthComponent::Normalized() const
 inline void PlayerHealthComponent::OnStart()
 {
     /// @note 上限 0 は開始時点で «死んでいる» 扱いになり TakeDamage が常に false を返す。
-    ///       画面には «HP が減らない» としか出ず原因が追えないため、ここで検算する。
+    /// @note 画面には «HP が減らない» としか出ず原因が追えないため、ここで検算する。
     if (!tuning || tuning->maxHealth <= 0) {
         debug.LogError("PlayerHealthComponent has no usable PlayerTuning (Max Health must "
                        "be 1 or more). The player can never take damage.");
@@ -147,7 +147,7 @@ inline void PlayerHealthComponent::OnStart()
 
     /// @note 明滅させる先は «体を描いているもの» 全部 (武器含む。手だけ光ると剣が別物に見える)。
     /// @note 刀は Player の子でなくルート直下の実体 (SocketAttachment で手のボーンへ追従) のため、
-    ///       部分木探索でなく名前で明示的に足す。
+    /// @note 部分木探索でなく名前で明示的に足す。
     /// @see WeaponRigComponent
     m_flash.clear();
     m_flashing = false;
@@ -156,7 +156,6 @@ inline void PlayerHealthComponent::OnStart()
     for (const HandSide hand : hands)
         if (GameObject* sword = scene.Find(SwordObjectName(hand), true))
             CollectFlashTargets(*sword);
-    debugFlashParts = static_cast<int>(m_flash.size());
 }
 
 inline void PlayerHealthComponent::CollectFlashTargets(GameObject& object)
@@ -205,7 +204,6 @@ inline void PlayerHealthComponent::ResetHealth()
 {
     m_health       = MaxHealth();
     m_invulnerable = 0.0f;
-    debugHealth    = m_health;
 }
 
 inline void PlayerHealthComponent::OnUpdate()
@@ -213,7 +211,7 @@ inline void PlayerHealthComponent::OnUpdate()
     if (m_invulnerable > 0.0f)
         m_invulnerable = fbzz::math::Max(0.0f, m_invulnerable - TimeManagerComponent::PlayerDeltaTime());
     /// @note 下限は «押し続けている間だけ» 効く。要求を受け取って空にするのはここ 1 か所
-    ///       (RequestSuspend と同じ形。掛けっぱなしにできると外し忘れが死なないゲームになる)。
+    /// @note (RequestSuspend と同じ形。掛けっぱなしにできると外し忘れが死なないゲームになる)。
     m_damageFloor    = m_requestedFloor;
     m_requestedFloor = 0;
     DriveFlash();
@@ -226,11 +224,10 @@ inline bool PlayerHealthComponent::TakeDamage(int amount)
     m_health = m_health > amount ? m_health - amount : 0;
     /// @note 下限が要求されているあいだは、そこで止める (`RequestDamageFloor` 参照)。
     if (m_damageFloor > 0 && m_health < m_damageFloor) m_health = m_damageFloor;
-    debugHealth = m_health;
     m_invulnerable = tuning ? tuning->hitInvulnerable : 0.0f;
 
     /// @note 揺れ・振動・画面の赤は ImpactFeedbackManagerComponent が配分を持つ。
-    ///       ここは「被弾した」と「どれくらい深手か」だけを渡す。
+    /// @note ここは「被弾した」と「どれくらい深手か」だけを渡す。
     if (auto* feedback = ImpactFeedbackManagerComponent::Instance()) {
         /// @note 残り体力が少ないほど強く返す。同じ 1 ダメージでも、後がない一撃の方が重い。
         const float remaining = Normalized();
@@ -244,7 +241,7 @@ inline bool PlayerHealthComponent::TakeDamage(int amount)
     }
 
     /// @note 被弾音は既定を持たない: ImpactFeedbackManager の配分表が PlayerHurt で既に鳴らすため、
-    ///       既定を足すと同じ音が二重に重なり音量だけ倍になる。指定時だけ重ねて鳴らす。
+    /// @note 既定を足すと同じ音が二重に重なり音量だけ倍になる。指定時だけ重ねて鳴らす。
     if (!sfxHurt.empty()) audio.PlayOneShot(sfxHurt);
     if (auto* controller = m_controllerOverride
         ? m_controllerOverride : scene.GetScript<PlayerControllerComponent>())
@@ -257,7 +254,6 @@ inline void PlayerHealthComponent::Heal(int amount)
     if (amount <= 0 || !IsAlive()) return;
     const int max = MaxHealth();
     m_health = (m_health + amount > max) ? max : m_health + amount;
-    debugHealth = m_health;
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

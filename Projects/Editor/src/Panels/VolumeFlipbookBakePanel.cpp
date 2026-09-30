@@ -36,11 +36,11 @@ constexpr int kTileSizes[] = { 128, 256, 512 };
 constexpr float kPreviewSides[] = { 256.0f, 384.0f, 512.0f };
 constexpr ImU32 kWarningColor = IM_COL32(255, 80, 60, 255);
 constexpr ImU32 kLightColor = IM_COL32(255, 214, 90, 255);
-/// 一発ものを最後まで再生したあと、頭へ戻る前に止めておく時間 [秒]。
+/// @note 一発ものを最後まで再生したあと、頭へ戻る前に止めておく時間 [秒]。
 constexpr float kCompareHoldSeconds = 0.5f;
 
-/// 生成物はプロジェクトの Generated 配下へ出し、エンジン同梱の Assets を変更しない
-/// (Procedural Flipbook Generator と同じ置き場)。
+/// @note 生成物はプロジェクトの Generated 配下へ出し、エンジン同梱の Assets を変更しない。
+/// @note Procedural Flipbook Generator と同じ置き場。
 std::string GeneratedDirectory(const std::string& projectRoot, const char* relative)
 {
     if (projectRoot.empty()) return relative;
@@ -67,7 +67,7 @@ bool ComboFromList(const char* label, int& value, const int (&items)[N])
     return changed;
 }
 
-/// HDR のリニア色を、グラデーションのバーに塗る表示色へ。
+/// @brief HDR のリニア色を、グラデーションのバーに塗る表示色へ変換する。
 ImU32 ToDisplayColor(const math::Vector3& linear)
 {
     const auto encode = [](float v) { return std::pow(std::clamp(v, 0.0f, 1.0f), 1.0f / 2.2f); };
@@ -727,7 +727,12 @@ void VolumeFlipbookBakePanel::ApplyToMaterial(EditorContext& ctx)
 
     /// @note ループ判定と FPS は «今の» 設定ではなく焼いたときの設定で決める。
     asset::MaterialAsset newAsset = oldAsset;
-    ApplyFluidBakeToMaterial(FluidMaterialSource::FromVolume(m_lastResult, m_lastBakeSettings), newAsset);
+    std::string error;
+    if (!ApplyFluidBakeToMaterial(FluidMaterialSource::FromVolume(m_lastResult, m_lastBakeSettings), newAsset, error)) {
+        m_status = error;
+        m_statusIsError = true;
+        return;
+    }
 
     EditorContext* context = &ctx;
     const auto applyToDisk = [context, file](const asset::MaterialAsset& value) {

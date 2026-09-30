@@ -301,9 +301,6 @@ void StartBake()
     if (BakeJobActive()) return;
     FluidBakeRequest request;
     request.fluidPath = s_state.path;
-    /// @note .mat が既にあれば焼いた設定へ追従させる。コマ数を変えて焼き直した直後に、
-    ///       古い分割のまま描かれる (エラーにならず «変な煙» になる) のを防ぐ。
-    request.updateMaterial = util::FileSystem::Exists(SiblingMaterialPath(s_state.path));
     FluidJobError error;
     const std::uint32_t id = service->EnqueueBake(*s_context, request, error);
     if (id == 0) {

@@ -59,6 +59,8 @@ public:
 
     virtual void BeginFrame() = 0;
     virtual void EndFrame() = 0;
+    /// @note バッチなど画面外の成果物も描く呼び手は true にし、DXGI occlusion 中も frame を記録する。
+    virtual void SetRenderWhenOccluded(bool enabled) { (void)enabled; }
     virtual void Clear(const math::Vector4& color) = 0;
 
     virtual void Submit(const DrawCall& call, ResourceManager& resources) = 0;

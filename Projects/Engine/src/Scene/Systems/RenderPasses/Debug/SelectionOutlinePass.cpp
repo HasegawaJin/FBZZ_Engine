@@ -10,12 +10,15 @@ namespace fbzz::scene {
 
 void ExecuteSelectionOutlinePass(PassResources& res, RenderPassContext& ctx)
 {
-    if (!ctx.selectionOutlineEnabled || !res.Target("Outline").IsValid()) return;
+    if (!ctx.selectionOutlineEnabled) return;
 
     auto& r = ctx.renderer;
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
     const auto& rs = ctx.settings;
+    /// @note Outline は FXAA へ中継するときだけ申告される。終端へ直書きするときは参照しない。
+    const auto output = rs.postProcess.fxaaEnabled ? res.Target("Outline") : ctx.chainOutputRT;
+    if (rs.postProcess.fxaaEnabled && !output.IsValid()) return;
 
     OutlineCB outlineData{};
     outlineData.color = {
@@ -25,7 +28,7 @@ void ExecuteSelectionOutlinePass(PassResources& res, RenderPassContext& ctx)
         rs.outlineColor[3]
     };
     /// @note シェーダーは内部解像度の画素で幅を数え、その後 UpscalePass が出力の実寸へ引き伸ばす。
-    ///       描画スケールで太さが変わらないよう、出力の画素で見た幅になるよう換算する。
+    /// @note 描画スケールで太さが変わらないよう、出力の画素で見た幅になるよう換算する。
     const float renderToOutput = ctx.outputWidth > 0u
         ? static_cast<float>(ctx.width) / static_cast<float>(ctx.outputWidth) : 1.0f;
     outlineData.width = rs.outlineWidth * renderToOutput;
@@ -35,7 +38,7 @@ void ExecuteSelectionOutlinePass(PassResources& res, RenderPassContext& ctx)
     const PostProcCB outlinePostData = MakeScreenPostProcCB(ctx.width, ctx.height);
     resources.Update(h.postprocCB, &outlinePostData, sizeof(PostProcCB));
 
-    r.SetRenderTarget(rs.postProcess.fxaaEnabled ? res.Target("Outline") : ctx.chainOutputRT, resources);
+    r.SetRenderTarget(output, resources);
 
     renderer::DrawCall outlineDC;
     outlineDC.shader = h.selectionOutlineShader;
@@ -51,7 +54,7 @@ void ExecuteSelectionOutlinePass(PassResources& res, RenderPassContext& ctx)
     outlineDC.textures[8] = resources.GetDepthTexture(res.Target("SelectionMask"));
     r.Submit(outlineDC, resources);
 
-    h.fxaaInput = resources.GetColorTexture(res.Target("Outline"), 0);
+    h.fxaaInput = resources.GetColorTexture(output, 0);
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

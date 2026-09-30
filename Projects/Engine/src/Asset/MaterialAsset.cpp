@@ -294,6 +294,7 @@ void ReadParticleTable(const toml::table& table, ParticleMaterialSettings& out)
                                     static_cast<float>((*color)[1].value_or(0.0)),
                                     static_cast<float>((*color)[2].value_or(0.0)) };
     }
+    out.sixWayEmissionScale  = flt("six_way_emission_scale", d.sixWayEmissionScale);
     out.punctualLighting      = table["punctual_lighting"].value_or(d.punctualLighting);
 
     out.volumetric           = table["volumetric"].value_or(d.volumetric);
@@ -362,6 +363,7 @@ void WriteParticleTable(const ParticleMaterialSettings& value, toml::table& out)
                                                           static_cast<double>(value.sixWayEmissionColor.y),
                                                           static_cast<double>(value.sixWayEmissionColor.z) });
     }
+    putF("six_way_emission_scale", value.sixWayEmissionScale, d.sixWayEmissionScale);
     putB("punctual_lighting", value.punctualLighting, d.punctualLighting);
 
     putB("volumetric", value.volumetric, d.volumetric);

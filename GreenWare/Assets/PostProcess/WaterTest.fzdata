@@ -55,7 +55,7 @@ type = 'MotionBlur'
 active = true
 intensity = 1.0
 maxDistance = 200.0
-steps = 8
+steps = 128
 thickness = 2.0
 type = 'SSR'
 
@@ -65,7 +65,7 @@ distortion = 0.0
 type = 'LensDistortion'
 
 [[overrides]]
-active = true
+active = false
 albedo = [ 1.0, 1.0, 1.0 ]
 ambient = 0.6976743936538696
 anisotropy = 0.949999988079071

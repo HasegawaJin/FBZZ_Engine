@@ -61,8 +61,12 @@ std::string MetaPathFor(std::string_view texturePathOrRef)
     std::string token;
     (void)ParseSpriteReference(texturePathOrRef, texturePath, token);
     if (texturePath.empty()) return {};
+    /// @note GUID 参照に .meta を付ける前に実画像へ解決する。後付けすると GUID 解決が
+    /// @note 画像本体を返し、取り込み設定を読めなくなる。
+    texturePath = AssetManager::ResolveAssetPath(texturePath);
+    if (texturePath.empty()) return {};
     if (!texturePath.ends_with(".meta")) texturePath += ".meta";
-    return AssetManager::ResolveAssetPath(texturePath);
+    return texturePath;
 }
 
 /// 呼び出し側は MetaCacheMutex() を保持していること。
@@ -124,7 +128,7 @@ void ReportBrokenSprite(std::string_view reference, const char* reason)
                   static_cast<int>(reference.size()), reference.data(), reason);
 }
 
-} // namespace
+} /// @note namespace
 
 TextureImportSettings DefaultSettingsForType(TextureType type)
 {
@@ -410,4 +414,4 @@ ResolvedSprite ResolveSpriteReference(
     return result;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

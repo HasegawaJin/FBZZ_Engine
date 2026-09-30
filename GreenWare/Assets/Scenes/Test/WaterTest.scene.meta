@@ -29,9 +29,5 @@ locked_objects = []
     component_order = [ 'Flow Field' ]
     instance_id = '869e477c-25ae-44df-b17b-b82fc5d02826'
 
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material', 'Sphere Collider', 'Rigid Body' ]
-    instance_id = 'fdf64c45-2c1d-4fe7-a9a2-690067708574'
-
 [meta]
 guid = '16dc053a9693f1afbfd9d6c7bd77cfa6'

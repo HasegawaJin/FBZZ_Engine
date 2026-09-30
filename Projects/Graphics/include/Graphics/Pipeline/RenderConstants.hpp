@@ -494,9 +494,13 @@ struct ShadowConstantsCB {
     float         cloudShadowWindX;
     float         cloudShadowWindZ;
     float         _shadowPad0 = 0.0f;
+    /// @note CSM の選択はライト空間の重なりでなく、このビューの前方距離で行う。
+    math::Vector4 cascadeSplitFar;
+    math::Vector4 shadowCameraPosition;
+    math::Vector4 shadowCameraForward;
 };
-static_assert(sizeof(ShadowConstantsCB) == 464,
-    "ShadowConstantsCB must match ShadowConstants in Common/ShadowConstants.hlsli (464 bytes)");
+static_assert(sizeof(ShadowConstantsCB) == 512,
+    "ShadowConstantsCB must match ShadowConstants in Common/ShadowConstants.hlsli (512 bytes)");
 
 struct AtmosphereCB {
     float rayleighScattering[3];
@@ -821,6 +825,8 @@ inline constexpr std::uint32_t kParticleFxPunctual      = 1u << 11;
 inline constexpr std::uint32_t kParticleFxSixWayMaps    = 1u << 12;
 /// @note 加算合成。霧の補正 (ParticleLighting.hlsli) と TAA の反応マスクが合成式によって式を変える。
 inline constexpr std::uint32_t kParticleFxAdditive      = 1u << 13;
+/// @note six-way の色相 / emission atlas を t10/t11 から読む。
+inline constexpr std::uint32_t kParticleFxSixWayColorMaps = 1u << 14;
 /// @note アルファの取り出し方は bit8-10 の 3 ビットに ParticleAlphaSource を格納する。
 /// @note 値は Rendering/Mask.hlsli の FBZZ_MASK_* と共通 (全マテリアルで同じ語彙を使う)。
 inline constexpr std::uint32_t kParticleAlphaShift = 8u;
@@ -832,6 +838,9 @@ inline constexpr std::uint32_t kParticleAlphaMask  = 7u;
 /// @note b2 に探すため、そこを占有すると .mat の [params] を束縛できなくなる。
 /// @note b2 は材質へ明け渡す (Decal の CB_DECAL と同じ判断)。
 inline constexpr std::size_t kParticleConstantSlot = 11;
+/// @note six-way 色アトラスは Particle pass 専用で、Bloom / Environment map と時分割する。
+inline constexpr std::size_t kParticleSixWayAlbedoColorSlot = 10;
+inline constexpr std::size_t kParticleSixWayEmissionColorSlot = 11;
 
 /// @note Particle描画専用CB (b11)。CPU/GPUシェーダーで同じRenderer設定を使う。
 struct ParticleRenderCB {
@@ -1421,6 +1430,7 @@ struct ShadowCascade {
     float         biasNDC = 0.0f;
     /// @note このカスケードの 1 テクセルが覆うワールド距離 [m]。caster の極小カリングに使う。
     float         texelWorldSize = 0.0f;
+    float         splitFar = 0.0f;
 };
 
 /// @note PunctualShadowView — Spot / Point シャドウアトラスのタイル 1 枚ぶんの描画情報。

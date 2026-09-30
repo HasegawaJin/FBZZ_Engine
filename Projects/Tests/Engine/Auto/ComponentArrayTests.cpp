@@ -3,10 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
 ///
-/// 全コンポーネントの記憶域がこの 1 つのテンプレートに乗っている。
-/// «Remove は末尾と swap するので順序を保たない»、«確保後は再確保しないので
-/// Get() の参照は生き続ける» の 2 つは、崩れると «別のオブジェクトの値が入っている»
-/// という形でしか出ない。どのコンポーネントで出るかも毎回変わる。
+/// @note  全コンポーネントの記憶域がこの 1 つのテンプレートに乗っている。
+/// @note  «Remove は末尾と swap するので順序を保たない»、«確保後は再確保しないので
+/// @note  Get() の参照は生き続ける» の 2 つは、崩れると «別のオブジェクトの値が入っている»
+/// @note  という形でしか出ない。どのコンポーネントで出るかも毎回変わる。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
@@ -22,7 +22,7 @@
 namespace fbzz::tests {
 namespace {
 
-/// 中身が見分けられるだけの最小コンポーネント。
+/// @note  中身が見分けられるだけの最小コンポーネント。
 struct Probe {
     int value = 0;
 };
@@ -35,7 +35,7 @@ scene::EntityID Entity(std::uint32_t index, std::uint32_t generation = 0)
     return id;
 }
 
-} // namespace
+} /// @note namespace
 
 class ComponentArrayTest : public testkit::EngineFixture {
 protected:
@@ -103,7 +103,7 @@ TEST_F(ComponentArrayTest, RejectsIndicesBeyondTheCapacity)
 TEST_F(ComponentArrayTest, RejectsTheSameIndexFromAnEarlierGeneration)
 {
     /// @note index は再利用される。世代まで見ないと «破棄済みの参照» が生きている
-    ///       オブジェクトを掴む ── 一番たちの悪い壊れ方。
+    /// @note        オブジェクトを掴む ── 一番たちの悪い壊れ方。
     array.Add(Entity(5, 2), Probe{ 50 });
 
     EXPECT_TRUE(array.Has(Entity(5, 2)));
@@ -126,7 +126,7 @@ TEST_F(ComponentArrayTest, ForgetsWhatItRemoved)
 TEST_F(ComponentArrayTest, KeepsTheOtherEntriesReachableAfterARemoval)
 {
     /// @note 末尾と swap して穴を埋める。swap された側の索引を直し忘れると、
-    ///       «消していないコンポーネントが引けなくなる»。
+    /// @note        «消していないコンポーネントが引けなくなる»。
     array.Add(Entity(1), Probe{ 10 });
     array.Add(Entity(2), Probe{ 20 });
     array.Add(Entity(3), Probe{ 30 });
@@ -160,6 +160,20 @@ TEST_F(ComponentArrayTest, ReusesTheSlotOfARemovedEntity)
 
     EXPECT_EQ(array.Get(Entity(1)).value, 99);
     EXPECT_EQ(array.Count(), 1u);
+}
+
+TEST_F(ComponentArrayTest, RemovingEntriesImmediatelyReleasesOwnedResources)
+{
+    scene::ComponentArray<std::shared_ptr<int>> owners;
+    owners.Add(Entity(1), std::make_shared<int>(1));
+    owners.Add(Entity(2), std::make_shared<int>(2));
+    std::weak_ptr<int> first = owners.Get(Entity(1));
+    std::weak_ptr<int> second = owners.Get(Entity(2));
+    owners.Remove(Entity(1));
+    EXPECT_TRUE(first.expired());
+    EXPECT_FALSE(second.expired());
+    owners.Remove(Entity(2));
+    EXPECT_TRUE(second.expired());
 }
 
 TEST_F(ComponentArrayTest, SurvivesRemovingEveryEntryInOrder)
@@ -200,7 +214,7 @@ TEST_F(ComponentArrayTest, KeepsEveryRemainingValueThroughInterleavedRemovals)
 TEST_F(ComponentArrayTest, DataAndEntitiesLineUp)
 {
     /// @note System は Data() と Entities() を添字で対応づけて走査する。ずれると
-    ///       «別のオブジェクトのコンポーネントを更新する» ことになる。
+    /// @note        «別のオブジェクトのコンポーネントを更新する» ことになる。
     array.Add(Entity(4), Probe{ 40 });
     array.Add(Entity(7), Probe{ 70 });
     array.Add(Entity(2), Probe{ 20 });
@@ -234,7 +248,7 @@ TEST_F(ComponentArrayTest, WalksEveryStoredEntryExactlyOnce)
 TEST_F(ComponentArrayTest, KeepsReferencesValidWhileOtherEntriesAreAdded)
 {
     /// @note 確保は初回 Add の 1 回だけで、以後は再確保しない。ここが崩れると、
-    ///       System が握った参照が次の Add で宙に浮く。
+    /// @note        System が握った参照が次の Add で宙に浮く。
     array.Add(Entity(1), Probe{ 10 });
     Probe& held = array.Get(Entity(1));
 
@@ -290,11 +304,11 @@ TEST_F(ComponentArrayTest, TheMovedFromArrayIsEmptyAndReusable)
     array.Add(Entity(1), Probe{ 10 });
     scene::ComponentArray<Probe> moved = std::move(array);
 
-    EXPECT_EQ(array.Count(), 0u);        // NOLINT(bugprone-use-after-move) — 空であることが契約
+    EXPECT_EQ(array.Count(), 0u);        /// @note NOLINT(bugprone-use-after-move) — 空であることが契約
     EXPECT_FALSE(array.Has(Entity(1)));
 
     array.Add(Entity(1), Probe{ 5 });
     EXPECT_EQ(array.Get(Entity(1)).value, 5);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

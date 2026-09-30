@@ -616,6 +616,7 @@ void ReadOutput(NodeView view, FluidOutputSettings& output)
     r.Float("warmup", output.warmup);
     r.Int("substeps", output.substeps);
     r.Bool("loop", output.loop);
+    r.Float("loop_blend_fraction", output.loopBlendFraction);
     r.Bool("motion_vectors", output.motionVectors);
     r.Bool("vector_field", output.vectorField);
     r.Int("vector_field_resolution", output.vectorFieldResolution);
@@ -633,6 +634,7 @@ toml::table WriteOutput(const FluidOutputSettings& output)
     w.Float("warmup", output.warmup);
     w.Int("substeps", output.substeps);
     w.Bool("loop", output.loop);
+    w.Float("loop_blend_fraction", output.loopBlendFraction);
     w.Bool("motion_vectors", output.motionVectors);
     w.Bool("vector_field", output.vectorField);
     w.Int("vector_field_resolution", output.vectorFieldResolution);
@@ -989,6 +991,7 @@ void ReflectOutput(FluidOutputSettings& output, scene::IReflector& r)
     r.FloatRange("warmup", output.warmup, 0.0f, 30.0f);
     r.IntRange("substeps", output.substeps, 1, 16);
     r.Field("loop", output.loop);
+    r.FloatRange("loop_blend_fraction", output.loopBlendFraction, 0.0f, 0.5f);
     r.Field("motion_vectors", output.motionVectors);
     r.Field("vector_field", output.vectorField);
     r.IntRange("vector_field_resolution", output.vectorFieldResolution, 8, 64);
@@ -1026,7 +1029,7 @@ void ReflectBake(FluidBakeSettings& bake, scene::IReflector& r)
     r.FloatRange("half_extent", bake.halfExtent, 0.05f, 4.0f);
 }
 
-} // namespace
+} /// @note namespace
 
 const char* FluidPresetName(FluidPreset preset)
 {
@@ -2143,4 +2146,4 @@ void ReflectFluidRecipe(FluidRecipe& recipe, scene::IReflector& r)
     r.EndObject();
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

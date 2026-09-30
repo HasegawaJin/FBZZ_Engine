@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// Transform の Copy / Paste / Reset とコンポーネントの並べ替えは Inspector のヘッダー右クリック
-/// メニューにしか無く、コマンドパレット・ホットキー・AI から到達できなかった。
+/// @note  Transform の Copy / Paste / Reset とコンポーネントの並べ替えは Inspector のヘッダー右クリック
+/// @note  メニューにしか無く、コマンドパレット・ホットキー・AI から到達できなかった。
 /// @see Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
@@ -29,7 +29,7 @@ namespace {
 
 /// @brief NodeId (GameObject.instanceId / UUID) から GameObject を引く。
 /// @note EntityID でなく instanceId を使うのは、リネームや再ロードを跨いでも同じ対象を指せる安定 ID
-///       であり、AI 側のプロトコルも NodeId = instanceId で統一されているため。
+/// @note        であり、AI 側のプロトコルも NodeId = instanceId で統一されているため。
 scene::GameObject* ResolveNode(const OpContext& c, const std::string& nodeId)
 {
     if (c.ctx.activeScene == nullptr) return nullptr;
@@ -40,7 +40,7 @@ scene::GameObject* ResolveNode(const OpContext& c, const std::string& nodeId)
 
 /// @brief Transform を丸ごと差し替える Undo コマンドを作る。
 /// @note 戻す対象が 1 つの GameObject の Transform だけなので、スナップショットにしシーン全体を
-///       シリアライズし直さない (EntityID の振り直しで選択やロックが消え、大きなシーンではヒッチが出る)。
+/// @note        シリアライズし直さない (EntityID の振り直しで選択やロックが消え、大きなシーンではヒッチが出る)。
 std::unique_ptr<ICommand> MakeTransformCommand(EditorContext& ctx,
                                                scene::EntityID entityId,
                                                const scene::Transform& before,
@@ -65,7 +65,7 @@ std::unique_ptr<ICommand> MakeTransformCommand(EditorContext& ctx,
 
 /// @brief Inspector のカード並び順を丸ごと差し替える Undo コマンド。
 /// @note 並べ替えは「1 要素の移動」に見えるが、既存の順序に未登録のコンポーネントがあると
-///       SetComponentOrder が正規化して整合させるため、差分で戻すとその正規化を打ち消せない。
+/// @note        SetComponentOrder が正規化して整合させるため、差分で戻すとその正規化を打ち消せない。
 std::unique_ptr<ICommand> MakeComponentOrderCommand(EditorContext& ctx,
                                                     std::string instanceId,
                                                     std::vector<std::string> before,
@@ -180,14 +180,15 @@ std::string ResolveComponentSerializedName(std::string_view component)
     return name;
 }
 
-} // namespace
+} /// @note namespace
 
 void RegisterInspectorOperators(OperatorRegistry& registry)
 {
+    RegisterScriptRequirementOperators(registry);
     /// @note poll は引数も受け取るので「この呼び出しで対象を解決できるか」を判定できる。node 省略
-    ///       (メニュー・パレット) は選択が必要、node 明示 (AI) は選択不要という非対称な条件を
-    ///       表現できないと、選択必須だと AI の正当な要求を弾き、シーン有無だけだとパレットで
-    ///       「押せるのに何も起きない」が残る。
+    /// @note        (メニュー・パレット) は選択が必要、node 明示 (AI) は選択不要という非対称な条件を
+    /// @note        表現できないと、選択必須だと AI の正当な要求を弾き、シーン有無だけだとパレットで
+    /// @note        「押せるのに何も起きない」が残る。
     const auto hasTarget = [](const OpContext& c, const OpArgs& args) {
         return ResolveNode(c, args.GetString("node")) != nullptr;
     };
@@ -286,7 +287,7 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
 
     /// @name コンポーネントの並べ替え
     /// @note Inspector の並び順は「よく触る順に並べる」オーサリング情報でシーンと一緒に保存される。
-    ///       人が整えた順を AI が崩さないよう、AI が読める・直せる対象にしておく。
+    /// @note        人が整えた順を AI が崩さないよう、AI が読める・直せる対象にしておく。
     const auto registerMove = [&registry](const char* id, const char* label, bool down) {
         EditorOperator op;
         op.id        = id;
@@ -415,4 +416,4 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

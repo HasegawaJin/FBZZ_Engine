@@ -35,9 +35,10 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
-#include <Windows.h>
 
+struct HWND__;
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
+namespace fbzz::scene { struct RenderFrameGeometryCache; }
 namespace fbzz::core     { class Window; }
 namespace fbzz::editor::ai { class EditorBusDispatcher; class NamedPipeServer; }
 
@@ -119,8 +120,10 @@ private:
 
     void WarmupRenderResources();
     void UpdateFocusAnim(float dt);
-    void RenderSceneView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask);
-    void RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask);
+    void RenderSceneView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask,
+                         scene::RenderFrameGeometryCache* frameGeometry);
+    void RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask,
+                        scene::RenderFrameGeometryCache* frameGeometry);
 
     std::unique_ptr<scene::Scene>  m_scene;
     scene::ProjectRuntime          m_runtime;
@@ -465,7 +468,7 @@ private:
     bool                         m_selectionNavigating = false; ///< 履歴移動由来の選択は再記録しない
     scene::EntityID              m_lastRecordedSelection;       ///< 直近で履歴に積んだ選択 (既定=INVALID)
 
-    HWND                                     m_hwnd          = nullptr;
+    HWND__*                                  m_hwnd          = nullptr;
     core::Window*                            m_window        = nullptr;
     renderer::IRenderer*                     m_renderer      = nullptr;
     renderer::IImGuiRenderer*                m_imguiRenderer = nullptr;

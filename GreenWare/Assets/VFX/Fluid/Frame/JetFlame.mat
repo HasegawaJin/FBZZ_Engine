@@ -1,0 +1,32 @@
+blend_mode = 'Premultiplied'
+depth_test = 'LessEqual'
+depth_write = false
+double_sided = true
+mesh_type = 'surface'
+render_path = 'particle'
+render_queue = 3000
+shader = ''
+version = 1
+
+[params]
+albedo = [ 1.0, 1.0, 1.0, 1.0 ]
+
+[particle]
+emissive_scale = 2.5
+flipbook_fps = 40.0
+flipbook_frame_blending = true
+flipbook_mode = 'fps'
+motion_vector_flipbook = true
+motion_vector_strength = 0.003965384792536497
+sprite_columns = 8
+sprite_rows = 8
+
+[textures]
+albedo = 'guid:3cddc2226e0ce2ae6966864ea08ba0d1|Assets/VFX/Fluid/Frame/JetFlame_Flipbook.png'
+ao = ''
+emissive = ''
+metallic = ''
+normal = ''
+tex5 = 'guid:05e00107d02dc822b8963d48e4c01659'
+tex6 = ''
+tex7 = ''

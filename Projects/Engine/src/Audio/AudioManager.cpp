@@ -122,9 +122,20 @@ void AudioManager::Update(float dt)
     dt = (std::max)(dt, 0.0f);
 
     /// @note 停止はクリップの解放まで連鎖して m_voices を書き換えるので、走査中には畳めない。
+    std::vector<uint32_t> expired;
     std::vector<uint32_t> fadedOut;
     std::vector<uint32_t> finished;
     for (auto& [voiceId, state] : m_voices) {
+        if (state.lifetimeBound) {
+            const auto lifetime = state.lifetime.lock();
+            if (!lifetime || !lifetime->active) {
+                state.lifetimeBound = false;
+                if (!state.stopAtEnd) {
+                    expired.push_back(voiceId);
+                    continue;
+                }
+            }
+        }
         if (state.duration > 0.0f) {
             state.elapsed += dt;
             const float t = (std::min)(state.elapsed / state.duration, 1.0f);
@@ -138,9 +149,18 @@ void AudioManager::Update(float dt)
         if (!m_device.IsPlaying(voiceId)) finished.push_back(voiceId);
     }
 
+    for (uint32_t voiceId : expired) StopVoice(voiceId);
     for (uint32_t voiceId : fadedOut) StopVoiceImmediate(voiceId);
     /// @note IsPlaying が false の時点でデバイス側は破棄済み。参照を戻すだけでよい。
     for (uint32_t voiceId : finished) ForgetVoice(voiceId);
+}
+
+void AudioManager::BindVoiceLifetime(uint32_t voiceId, const std::shared_ptr<VoiceLifetime>& lifetime)
+{
+    if (const auto it = m_voices.find(voiceId); it != m_voices.end()) {
+        it->second.lifetime = lifetime;
+        it->second.lifetimeBound = true;
+    }
 }
 
 void AudioManager::SetVoiceLimit(size_t limit)

@@ -4,16 +4,8 @@ hidden_objects = []
 locked_objects = []
 
     [[editor.game_objects]]
-    component_order = [ 'Camera' ]
-    instance_id = 'ee045fe4-7d07-4dfe-82ed-1539a9ca8b27'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light Probe Volume' ]
-    instance_id = '78ffec51-1858-4db5-8925-7273e8d043a7'
-
-    [[editor.game_objects]]
-    component_order = [ 'Light Probe Volume' ]
-    instance_id = 'edc044b4-025b-4b27-84a0-3f315fe00064'
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '69d76a7d-513a-4660-9a87-9c93df3d6669'
 
 [meta]
 guid = 'e98d04ae62fedd4f0913fa59acfc91d8'

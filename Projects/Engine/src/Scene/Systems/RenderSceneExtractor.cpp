@@ -29,6 +29,8 @@
 namespace fbzz::scene {
 namespace {
 
+std::atomic<uint64_t> s_renderSceneSerial{ 0 };
+
 template<typename T>
 math::Matrix4 AdvanceWorld(T& component, const math::Matrix4& world, uint64_t frame)
 {
@@ -116,9 +118,8 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
 renderer::RenderScene ExtractRenderSceneGeometry(Scene& scene, uint64_t frameStamp,
     renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette)
 {
-    static std::atomic<uint64_t> serial{ 0 };
     renderer::RenderScene output;
-    output.snapshotSerial = ++serial;
+    output.snapshotSerial = ++s_renderSceneSerial;
     output.frameStamp = frameStamp;
     for (auto& go : scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
@@ -195,15 +196,33 @@ float EstimateRenderTexturePixels(const renderer::RenderObject& object,
     return radius * projectionScaleY * static_cast<float>(height) / (orthographic ? 1.0f : distance);
 }
 
-void ExtractRenderScene(RenderPassContext& ctx)
+void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameGeometry)
 {
     ctx.frameStamp = ctx.resources.FrameStamp();
     ctx.time = Time::time;
     ctx.deltaTime = Time::deltaTime;
     ctx.unscaledDeltaTime = Time::unscaledDeltaTime;
 
-    auto output = std::make_shared<renderer::RenderScene>(
-        ExtractRenderSceneGeometry(ctx.scene, Time::frameCount, ctx.handles.bindPoseSkinningCB));
+    std::shared_ptr<renderer::RenderScene> output;
+    const uint64_t resetVersion = ctx.resources.GetResetVersion();
+    if (frameGeometry && frameGeometry->geometry && frameGeometry->scene == &ctx.scene &&
+        frameGeometry->resources == &ctx.resources && frameGeometry->frameStamp == Time::frameCount &&
+        frameGeometry->resetVersion == resetVersion &&
+        frameGeometry->identityPalette == ctx.handles.bindPoseSkinningCB) {
+        output = std::make_shared<renderer::RenderScene>(*frameGeometry->geometry);
+        output->snapshotSerial = ++s_renderSceneSerial;
+    } else {
+        output = std::make_shared<renderer::RenderScene>(
+            ExtractRenderSceneGeometry(ctx.scene, Time::frameCount, ctx.handles.bindPoseSkinningCB));
+        if (frameGeometry) {
+            frameGeometry->scene = &ctx.scene;
+            frameGeometry->resources = &ctx.resources;
+            frameGeometry->frameStamp = Time::frameCount;
+            frameGeometry->resetVersion = resetVersion;
+            frameGeometry->identityPalette = ctx.handles.bindPoseSkinningCB;
+            frameGeometry->geometry = std::make_shared<renderer::RenderScene>(*output);
+        }
+    }
     for (auto& object : output->objects) {
         auto* go = ctx.scene.GetGameObject({ object.sourceIndex, object.sourceGeneration });
         object.selected = go && IsSelectedForOutline(*go, ctx.settings);

@@ -88,6 +88,8 @@ export type EditorQuery =
     | { t: 'scene.find'; name?: string | undefined; tag?: string | undefined; active?: boolean | undefined; comp?: string | undefined; components?: string[] | undefined; properties?: ScenePropertyFilter[] | undefined; limit?: number | undefined }
     | { t: 'scene.selection' }
     | { t: 'node.components'; id: string }
+    | { t: 'script.inspect'; id: string; scriptId: string }
+    | { t: 'script.catalog'; type?: string | undefined }
     | { t: 'asset.list'; dir?: string | undefined }
     | { t: 'asset.inspect'; path: string }
     | { t: 'asset.findUnused'; limit?: number | undefined }
@@ -210,6 +212,8 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
         }),
     z.object({ t: z.literal('scene.selection') }).strict(),
     z.object({ t: z.literal('node.components'), id: NodeIdSchema }).strict(),
+    z.object({ t: z.literal('script.inspect'), id: NodeIdSchema, scriptId: z.string().min(1).max(128) }).strict(),
+    z.object({ t: z.literal('script.catalog'), type: z.string().min(1).max(128).optional() }).strict(),
     z.object({ t: z.literal('asset.list'), dir: z.string().min(1).optional() }).strict(),
     z.object({ t: z.literal('asset.inspect'), path: z.string().min(1) }).strict(),
     z.object({ t: z.literal('asset.findUnused'), limit: z.number().int().min(1).max(500).optional() }).strict(),

@@ -316,7 +316,7 @@ Engine 側の `GeometryPassHelpers` は従来どおり Transform・Animator か�
 
 Engine の `RenderSceneExtractor` は二段階で動く。`ExtractRenderSceneGeometry` が GPU 操作なしに候補・姿勢・資源ハンドルを収集し、`ExtractRenderScene` が材質・テクスチャ・選択／マスク要求を解決して `shared_ptr<const RenderScene>` として公開する。候補はカメラ・レイヤー・LOD で絞らず、非アクティブ階層と無効 Renderer を除く。公開した配列は、その RenderSystem 呼び出しのプローブとグラフ記録が終わるまで不変とする。
 
-Forward、GBuffer、Deferred 内 Forward、Shadow、Velocity、Reflection Probe / Light Probe のメッシュ捕捉、選択輪郭・オブジェクトマスク・Decal 受信レイヤーのメッシュ描画を接続した。別々の RenderSystem 呼び出しはそれぞれ入力を抽出する。スキニング Dispatch と履歴更新は frameStamp により同一フレームで再実行しない。ビュー間の入力配列キャッシュはまだ導入しないため、Scene の変更や材質上書きが古いキャッシュへ残らない。
+Forward、GBuffer、Deferred 内 Forward、Shadow、Velocity、Reflection Probe / Light Probe のメッシュ捕捉、選択輪郭・オブジェクトマスク・Decal 受信レイヤーのメッシュ描画を接続した。スキニング Dispatch と履歴更新は frameStamp により同一フレームで再実行しない。Editor が同じフレームで Scene と Game を描くときは、呼び出し元が所有する `RenderFrameGeometryCache` を渡し、同じ Scene・ResourceManager・資源世代・フレーム・スキニングパレットのメッシュ候補と姿勢を共有する。キャッシュはフレーム末尾で破棄し、描画コールバックで Scene を変更できる ScriptComponent がある場合は使わない。各ビューは候補を複製してから材質・テクスチャ品質・選択／マスク要求・環境・ライトを個別に解決し、カリング・影アトラス・描画パスもそれぞれ実行する。
 
 プローブがグラフより前に動く既存構成に合わせ、スキニングと抽出をプローブより前へ移した。登録済み SkinningCompute パスは入力が既にあれば再実行しない。モーフ・旧モデル・古いフレームの変形済み出力は採用せず、VS スキニング入力へ戻す。前回行列の確定は Velocity から抽出へ移し、カメラ外でも有効な候補の履歴を進める。
 
@@ -371,6 +371,8 @@ Engine をリンクしない `FBZZTestsGraphicsStandalone` を追加した。Eng
 ビューの中間 RT・TAA・露出・霧・Plan キャッシュは個別に保持する。リサイズでは解像度依存資源を返して TAA の有効性を落とし、露出と解像度非依存の状態は維持する。`ReleaseRenderView(key)` はビュー全体を解放し、外部出力 RT の Release もその出力を使用するビューの解放へ接続する。バックバッファを使うホストはビュー終了時に明示解放でき、Manager 終了時は残りも破棄される。
 
 `ViewPipeline` が資源宣言・Geometry 構成・HDR/ポスト処理・アップスケールの登録順を所有する。`ViewPreparation` がカスケードのフィッティングと AdvancedGraphics 定数を生成する。Engine は Scene 走査、アセット解決、Probe の更新要求、Script・UI・選択・デバッグのホスト拡張を担当する。拡張の登録コールバックは同期実行し保持しない。実行パスに渡したホスト参照は同フレーム末尾で破棄してから、Plan/RT キャッシュだけをビューへ戻す。
+
+方向光のカスケードはビューごとに従来の解像度とテクセルスナップを維持する。受光点の担当カスケードはカメラ前方距離と各分割の遠端で決め、分割境界では隣のタイルをクロスフェードする。担当タイルの投影範囲外だけ遠方タイルを順に試す。Scene と Game の視点で影アトラスを共有しない。
 
 本段は従来のパス名・順序・挿入点を維持する。段 F の AfterOpaque 等の意味変更は含めない。
 

@@ -169,6 +169,7 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
         cascade.eyePos         = eye;
         cascade.frustum        = math::Frustum::FromViewProjection(cascade.viewProjection);
         cascade.texelWorldSize = texelWorldSize;
+        cascade.splitFar       = sliceFar;
         /// @note ワールド空間で約 5mm 相当の一定バイアスになるよう深度レンジで正規化する。
         /// @note カスケードごとにレンジが違うので、値もカスケードごとに持つ。
         cascade.biasNDC = (0.005f * dirShadowBias) / (std::max)(depthRange - 1.0f, 1.0f);

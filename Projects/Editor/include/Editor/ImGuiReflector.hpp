@@ -31,32 +31,33 @@
 namespace fbzz::editor {
 
 struct ImGuiReflector : scene::IReflector {
-    /// GO 名解決コールバック。InspectorCore から activeScene を渡して設定する。
+    bool BeginObservation(const char*, const char*) override { return FieldVisible(); }
+    /// @note  GO 名解決コールバック。InspectorCore から activeScene を渡して設定する。
     std::function<std::string(scene::EntityID)> m_goNameResolver;
 
-    /// オブジェクトピッカー◎用の候補 (EntityID, 表示名) 一覧プロバイダ。InspectorCore から activeScene の全 GameObject を列挙して設定する。
+    /// @note  オブジェクトピッカー◎用の候補 (EntityID, 表示名) 一覧プロバイダ。InspectorCore から activeScene の全 GameObject を列挙して設定する。
     /// @note D&D だけだと Hierarchy が深い/多いシーンで参照アサインが辛いため、一覧から検索して選べる代替手段を提供する。
     std::function<std::vector<std::pair<scene::EntityID, std::string>>()> m_goListProvider;
 
-    /// 型付き参照 (FBZZ_REF) の型チェック。指定 EntityID の GameObject が typeName の Script を
-    /// 持つかを返す。空 typeName (任意 GameObject) や未設定時は型不問。InspectorCore が配線する。
+    /// @note  型付き参照 (FBZZ_REF) の型チェック。指定 EntityID の GameObject が typeName の Script を
+    /// @note  持つかを返す。空 typeName (任意 GameObject) や未設定時は型不問。InspectorCore が配線する。
     std::function<bool(scene::EntityID, const char* typeName)> m_refTypeValidator;
     std::function<std::vector<std::string>()> m_tagListProvider;
 
-    /// アセットスロットの "..." パス検索ピッカー用。プロジェクトルート (絶対パス)。
-    /// InspectorCore から ctx.projectRoot を渡す。空なら検索ボタンを出さない。
+    /// @note  アセットスロットの "..." パス検索ピッカー用。プロジェクトルート (絶対パス)。
+    /// @note  InspectorCore から ctx.projectRoot を渡す。空なら検索ボタンを出さない。
     std::string m_projectRoot;
 
-    /// FBZZ_GROUP の折りたたみ状態。Group() が CollapsingHeader の開閉で更新し、
-    /// 各 Field はこれが false (閉) の間は描画をスキップする。グループ前の項目は true (既定)。
+    /// @note  FBZZ_GROUP の折りたたみ状態。Group() が CollapsingHeader の開閉で更新し、
+    /// @note  各 Field はこれが false (閉) の間は描画をスキップする。グループ前の項目は true (既定)。
     bool m_groupOpen = true;
     bool m_rowDisabled = false;
     bool m_changed = false;
 
-    /// 描画中の行 (ホバー地色の高さ記録用)。行は入れ子にならないので 1 つで足りる。
+    /// @note  描画中の行 (ホバー地色の高さ記録用)。行は入れ子にならないので 1 つで足りる。
     widgets::PropertyRowScope m_row{};
 
-    /// シリアライズ用 lowerCamelCase キーを Inspector 用の読みやすい表示名へ変換し、訳があれば訳へ差し替える。
+    /// @note  シリアライズ用 lowerCamelCase キーを Inspector 用の読みやすい表示名へ変換し、訳があれば訳へ差し替える。
     /// @note 呼び出し側はどれもこの 1 関数を通るため、辞書へ 1 行足すだけで日本語化できる。
     /// @note 呼び出し元は直前に PushID(PersistentKey(name)) 済みで ID はシリアライズキー由来のため、ラベルを訳しても ### は不要。
     static std::string HumanizeName(const char* name)
@@ -75,7 +76,7 @@ struct ImGuiReflector : scene::IReflector {
         return false;
     }
 
-    /// 訳を通さない素の表示名。辞書の鍵はこちらの綴り。**ASCII 専用。**
+    /// @note  訳を通さない素の表示名。辞書の鍵はこちらの綴り。**ASCII 専用。**
     static std::string RawHumanizeName(const char* name)
     {
         std::string result;
@@ -94,7 +95,7 @@ struct ImGuiReflector : scene::IReflector {
         return result;
     }
 
-    /// フィールド名の規約からアセット種別を決める。
+    /// @note  フィールド名の規約からアセット種別を決める。
     /// @note 各コンポーネントに Editor 専用メタデータを重複記述せず、xxxPath だけでドラッグ＆ドロップと検索ピッカーを自動提供する。
     static const char* AssetFilterFor(const char* name)
     {
@@ -110,7 +111,7 @@ struct ImGuiReflector : scene::IReflector {
         return nullptr;
     }
 
-    /// 入れ子オブジェクト / 配列 / 配列要素の見出し。
+    /// @note  入れ子オブジェクト / 配列 / 配列要素の見出し。
     /// @note 既定の CollapsingHeader はコンポーネントカードのヘッダーと同じ重みに見えるため、入れ子側は塗りを持たない軽い見出しへ落として階層差を付ける。
     static bool SubHeader(const char* label)
     {
@@ -119,7 +120,7 @@ struct ImGuiReflector : scene::IReflector {
         ImGui::PushStyleColor(ImGuiCol_HeaderActive,  EditorTheme::Color(ThemeColor::AccentSoft));
         ImGui::PushStyleColor(ImGuiCol_Text,          EditorTheme::Color(ThemeColor::TextMuted));
         /// @note AllowOverlap: 見出しの上へ重ねた ▲▼✕ (構造体配列の要素操作) がクリックを拾えるようにする。
-        ///       これが無いと見出しが先に HoveredId を取り、重ねたボタンは押しても反応しない。
+        /// @note        これが無いと見出しが先に HoveredId を取り、重ねたボタンは押しても反応しない。
         const bool open = ImGui::CollapsingHeader(
             label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
         ImGui::PopStyleColor(4);
@@ -130,12 +131,17 @@ struct ImGuiReflector : scene::IReflector {
     /// @{
     /// @note 従来は ImGui 既定のラベル右寄せ + 手書きの参照スロット追記で幅が溢れて切れていたため、「ラベル左・値右いっぱい」に統一した。
 
-    /// 値ウィジェットの開始 X (ラベル列幅)。ウィンドウ幅に追従しつつ下限を持たせる。
-    /// 手書きパネル (Transform 等) と列位置をそろえるため、算出は widgets 側に一本化する。
+    /// @note  値ウィジェットの開始 X (ラベル列幅)。ウィンドウ幅に追従しつつ下限を持たせる。
+    /// @note  手書きパネル (Transform 等) と列位置をそろえるため、算出は widgets 側に一本化する。
     float ValueColumnX() const { return widgets::PropertyLabelColumnWidth(); }
 
-    /// 1 フィールド行を開始する。ラベルを左に描き、続くウィジェットの左端をそろえる。
-    /// false ならグループ閉でスキップ。true のときは必ず EndRow() を呼ぶこと。
+    /// @note  1 フィールド行を開始する。ラベルを左に描き、続くウィジェットの左端をそろえる。
+    /// @note  false ならグループ閉でスキップ。true のときは必ず EndRow() を呼ぶこと。
+    /// @brief 保存キーで指定された行を強調する。スクロールと展開は要求時の一度だけ。
+    std::string m_focusField;
+    bool m_focusScrollRequested = false;
+    bool m_focusFound = false;
+
     bool BeginRow(const char* name)
     {
         if (!m_groupOpen || !FieldVisible()) return false;
@@ -143,6 +149,14 @@ struct ImGuiReflector : scene::IReflector {
 
         /// @note 行のホバー地色を中身より先に敷く。実測高さは EndRow が記録する。
         m_row = widgets::BeginPropertyRow();
+        m_focusRow = !m_focusField.empty() && FieldPath(PersistentKey(name)) == m_focusField;
+        if (m_focusRow) {
+            m_focusFound = true;
+            m_focusRowStart = ImGui::GetCursorScreenPos();
+            m_focusRowWidth = ImGui::GetContentRegionAvail().x;
+            if (m_focusScrollRequested)
+                ImGui::SetScrollFromPosY(ImGui::GetCursorPosY(), 0.3f);
+        }
 
         const float col = ValueColumnX();
         /// @note ラベル列に収まらない長い名前は末尾を省略し、全文はホバーのツールチップへ回す (以前は値ウィジェットを押し出し左端がずれていた)。
@@ -163,6 +177,10 @@ struct ImGuiReflector : scene::IReflector {
         if (m_rowDisabled) ImGui::EndDisabled();
         m_rowDisabled = false;
         widgets::EndPropertyRow(m_row);
+        if (m_focusRow)
+            ImGui::GetWindowDrawList()->AddRect(m_focusRowStart,
+                {m_focusRowStart.x + m_focusRowWidth, ImGui::GetCursorScreenPos().y},
+                IM_COL32(255, 184, 64, 255), 3.0f, 0, 2.0f);
         ImGui::PopID();
     }
     /// @}
@@ -236,7 +254,7 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    /// ベクトル系はすべて軸色付きの成分入力 (widgets::DragAxes) に通す。刻みは宣言が無ければ値の大きさに追従させる。
+    /// @note  ベクトル系はすべて軸色付きの成分入力 (widgets::DragAxes) に通す。刻みは宣言が無ければ値の大きさに追従させる。
     /// @note DragFloat2/3/4 は同じ見た目の数値が並ぶだけで対象が数え直しになるため、頭文字 + 色帯で視線だけで分かるようにする。
     void Field(const char* name, math::Vector2& v) override
     {
@@ -356,7 +374,7 @@ struct ImGuiReflector : scene::IReflector {
     /// @name 参照型
     /// @{
 
-    /// 任意 GameObject 参照 (EntityID 単体)。型要件なしで DrawObjectRefSlot を呼ぶ。
+    /// @note  任意 GameObject 参照 (EntityID 単体)。型要件なしで DrawObjectRefSlot を呼ぶ。
     void Field(const char* name, scene::EntityID& v) override
     {
         if (!BeginRow(name)) return;
@@ -366,7 +384,7 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    /// 型付きオブジェクト参照 (FBZZ_REF)。typeName の Script かコンポーネントを持つ GO のみ受理する。
+    /// @note  型付きオブジェクト参照 (FBZZ_REF)。typeName の Script かコンポーネントを持つ GO のみ受理する。
     void RefField(const char* name, scene::EntityRef& v, const char* typeName) override
     {
         if (!BeginRow(name)) return;
@@ -376,11 +394,11 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    /// オブジェクト参照スロット本体 (BeginRow 済みの値カラムに描く)。
-    ///   [参照ボタン(右いっぱい)] [◎ピッカー] [×クリア]
-    ///   typeName == ""  : 任意 GameObject 可
-    ///   typeName != ""  : その Script 型 / コンポーネント型を持つ GO のみ受理
-    ///                     (ドロップ検証 + ピッカー絞り込み + 不一致を赤表示)
+    /// @note  オブジェクト参照スロット本体 (BeginRow 済みの値カラムに描く)。
+    /// @note    [参照ボタン(右いっぱい)] [◎ピッカー] [×クリア]
+    /// @note    typeName == ""  : 任意 GameObject 可
+    /// @note    typeName != ""  : その Script 型 / コンポーネント型を持つ GO のみ受理
+    /// @note                      (ドロップ検証 + ピッカー絞り込み + 不一致を赤表示)
     void DrawObjectRefSlot(scene::EntityID& v, const char* typeName)
     {
         const bool typed = typeName && typeName[0] != '\0';
@@ -404,7 +422,7 @@ struct ImGuiReflector : scene::IReflector {
                                         : widgets::ReferenceSlotState::Invalid;
 
         /// @note 本体スロット。枠の色で「落とせる / 型違い」を出すので、
-        ///       名前に "(type?)" を書き足していた旧表示は不要になった。
+        /// @note        名前に "(type?)" を書き足していた旧表示は不要になった。
         widgets::BeginReferenceSlot("##ref", goName.c_str(), state, droppable, 2);
 
         if (ImGui::BeginDragDropTarget()) {
@@ -500,7 +518,7 @@ struct ImGuiReflector : scene::IReflector {
         const widgets::ReferenceSlotButtons buttons = widgets::EndReferenceSlot(hasSearch);
         if (buttons.clear) v.path.clear();
         /// @note 本体クリックでもピッカーを開く。狭い Inspector で ◎ を狙うのは
-        ///       当たり判定が小さく、外すたびに参照を触ってしまうため。
+        /// @note        当たり判定が小さく、外すたびに参照を触ってしまうため。
         if (hasSearch && (buttons.pick || bodyClicked))
             widgets::OpenAssetPicker(v.path, ".prefab", m_projectRoot,
                                      { slotPos.x, slotPos.y + ImGui::GetFrameHeight() + 2.0f });
@@ -509,8 +527,8 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    /// DataAsset (純共有 ScriptableObject) 参照スロット。
-    /// Asset ブラウザから .fzdata をドロップして割り当てる。.fzdata かつ期待型一致のみ受理する。
+    /// @note  DataAsset (純共有 ScriptableObject) 参照スロット。
+    /// @note  Asset ブラウザから .fzdata をドロップして割り当てる。.fzdata かつ期待型一致のみ受理する。
     void Field(const char* name, scene::DataAssetRef& v) override
     {
         if (!BeginRow(name)) return;
@@ -605,13 +623,13 @@ struct ImGuiReflector : scene::IReflector {
 
     /// @name 配列フィールド共通のリスト描画
     /// @{
-    /// 見た目は Inspector の他の行にそろえる:
-    ///   Name                              3 items [+]
-    ///     ⠿  [ 値ウィジェット ............. ]  [▲][▼][✕]
-    /// 行はプロパティ行 (ホバー地色) に乗せ、値の左端は他のフィールドと同じ列に置く。
+    /// @note  見た目は Inspector の他の行にそろえる:
+    /// @note    Name                              3 items [+]
+    /// @note      ⠿  [ 値ウィジェット ............. ]  [▲][▼][✕]
+    /// @note  行はプロパティ行 (ホバー地色) に乗せ、値の左端は他のフィールドと同じ列に置く。
 
-    /// 「target の前 / 後ろ」を、掴んだ要素を抜いた後の移動先 index へ変換する。
-    /// 抜いた分だけ後ろの要素が前へ詰まるので、自分より後ろへ挿すときは 1 引く。
+    /// @note  「target の前 / 後ろ」を、掴んだ要素を抜いた後の移動先 index へ変換する。
+    /// @note  抜いた分だけ後ろの要素が前へ詰まるので、自分より後ろへ挿すときは 1 引く。
     static int ListDropDestination(int dragged, int target, bool insertAfter)
     {
         int destination = insertAfter ? target + 1 : target;
@@ -619,7 +637,7 @@ struct ImGuiReflector : scene::IReflector {
         return destination;
     }
 
-    /// 1 要素を目的の位置まで隣と入れ替えながら運ぶ。間の要素の相対順序は保たれる。
+    /// @note  1 要素を目的の位置まで隣と入れ替えながら運ぶ。間の要素の相対順序は保たれる。
     /// @note std::vector<bool> の operator[] はプロキシ参照を返し iter_swap/rotate の ValueSwappable を満たさないため、値のコピーで書き bool 特殊化を含め同じ実装で通す。
     template<typename T>
     static bool ApplyListMove(std::vector<T>& values, int from, int to)
@@ -635,8 +653,8 @@ struct ImGuiReflector : scene::IReflector {
         return true;
     }
 
-    /// 見出し行 ("N items" + 追加ボタン)。追加された場合 true。
-    /// emplace は要素型を知る呼び出し側に任せる。
+    /// @note  見出し行 ("N items" + 追加ボタン)。追加された場合 true。
+    /// @note  emplace は要素型を知る呼び出し側に任せる。
     bool DrawListHeaderRow(const char* name, std::size_t count, bool addable)
     {
         if (!BeginRow(name)) return false;
@@ -645,8 +663,8 @@ struct ImGuiReflector : scene::IReflector {
         return added;
     }
 
-    /// 要素 1 行ぶんの枠 (つまみ → 値 → ▲▼✕) を描き、操作要求を移動/削除へ畳む。
-    /// drawValue には値ウィジェットだけを描かせる (幅とカーソル位置はこちらで整える)。
+    /// @note  要素 1 行ぶんの枠 (つまみ → 値 → ▲▼✕) を描き、操作要求を移動/削除へ畳む。
+    /// @note  drawValue には値ウィジェットだけを描かせる (幅とカーソル位置はこちらで整える)。
     template<typename T, typename DrawValue>
     void DrawListRows(std::vector<T>& values, bool removable, DrawValue&& drawValue)
     {
@@ -663,7 +681,7 @@ struct ImGuiReflector : scene::IReflector {
             const widgets::PropertyRowScope row = widgets::BeginPropertyRow();
 
             /// @note つまみは値カラムより左 (ラベル列の右端) へ置く。ラベルの無い行なので、
-            ///       ここが「この行の持ち手」であることが位置だけで分かる。
+            /// @note        ここが「この行の持ち手」であることが位置だけで分かる。
             bool insertAfter = false;
             const int dragged = widgets::ListRowDragHandle(listId, index, insertAfter);
             if (dragged >= 0) {
@@ -676,7 +694,7 @@ struct ImGuiReflector : scene::IReflector {
                 ImGui::SetCursorPosX(ValueColumnX());
 
             /// @note 右端に操作ボタンぶんの余白を確保してから値を描く。参照スロットのように
-            ///       自分で残り幅を測るウィジェットでも ▲▼✕ が押し出されない。
+            /// @note        自分で残り幅を測るウィジェットでも ▲▼✕ が押し出されない。
             const widgets::RightReserveScope reserve = widgets::BeginRightReserve(toolbarWidth);
             ImGui::SetNextItemWidth(-FLT_MIN);
             m_changed |= drawValue(values[static_cast<size_t>(index)]);
@@ -732,7 +750,7 @@ struct ImGuiReflector : scene::IReflector {
             return ImGui::DragInt("##value", &value);
         });
     }
-    /// std::vector<bool> は operator[] がプロキシを返すため bool& を取れない。値ウィジェット側を auto&& で受け、プロキシ経由で書き戻す。
+    /// @note  std::vector<bool> は operator[] がプロキシを返すため bool& を取れない。値ウィジェット側を auto&& で受け、プロキシ経由で書き戻す。
     /// @note 以前はここだけ独自ループで並び替えボタンが無く行の地色も付かない別物の見た目だったため、共通経路に寄せた。
     void ListField(const char* name, std::vector<bool>& values) override
     {
@@ -753,7 +771,7 @@ struct ImGuiReflector : scene::IReflector {
             return true;
         });
     }
-    /// リスト要素のベクトルも単体フィールドと同じ軸色付き入力に揃える。
+    /// @note  リスト要素のベクトルも単体フィールドと同じ軸色付き入力に揃える。
     void ListField(const char* name, std::vector<math::Vector2>& values) override
     {
         DrawReorderableList(name, values, [](math::Vector2& value) {
@@ -789,7 +807,7 @@ struct ImGuiReflector : scene::IReflector {
             return value.id != before;
         });
     }
-    /// 型付き参照リスト。各スロットへ typeName を渡し、型不一致のドロップを拒否する。
+    /// @note  型付き参照リスト。各スロットへ typeName を渡し、型不一致のドロップを拒否する。
     void RefListField(const char* name,
                       std::vector<scene::EntityRef>& values,
                       const char* typeName) override
@@ -817,7 +835,7 @@ struct ImGuiReflector : scene::IReflector {
                 return value.path != before;
             });
     }
-    /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    /// @note  ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
     /// @note 折りたたみ表示のロジックが BeginObject と重複するため override を消した。
     /// @}
 
@@ -826,12 +844,14 @@ struct ImGuiReflector : scene::IReflector {
     /// @note 閉じている間も m_groupOpen は「描画しない」状態にするだけで Field() 呼び出し自体は止まらない。BeginRow() が m_groupOpen を見て false を返すことで実際の描画が省かれる。
     void BeginObject(const char* name) override
     {
+        m_fieldScope.emplace_back(PersistentKey(name));
         ObjectScope scope{};
         scope.previousGroupOpen = m_groupOpen;
         scope.visible = m_groupOpen && FieldVisible();
 
         if (scope.visible) {
             ImGui::PushID(PersistentKey(name));
+            OpenFocusedScope();
             scope.open = SubHeader(HumanizeName(name).c_str());
             if (scope.open) {
                 ImGui::Indent();
@@ -847,6 +867,7 @@ struct ImGuiReflector : scene::IReflector {
     void EndObject() override
     {
         if (m_objectScopes.empty()) return;
+        if (!m_fieldScope.empty()) m_fieldScope.pop_back();
         const ObjectScope scope = m_objectScopes.back();
         m_objectScopes.pop_back();
 
@@ -865,6 +886,7 @@ struct ImGuiReflector : scene::IReflector {
     /// @{
     std::size_t BeginObjectList(const char* name, std::size_t count) override
     {
+        m_fieldScope.emplace_back(PersistentKey(name));
         ListScope scope{};
         scope.previousGroupOpen = m_groupOpen;
         scope.visible  = m_groupOpen && FieldVisible();
@@ -873,6 +895,7 @@ struct ImGuiReflector : scene::IReflector {
 
         if (scope.visible) {
             ImGui::PushID(PersistentKey(name));
+            OpenFocusedScope();
             scope.open = SubHeader(HumanizeName(name).c_str());
             if (scope.open) {
                 ImGui::Indent();
@@ -892,6 +915,7 @@ struct ImGuiReflector : scene::IReflector {
 
     void BeginObjectElement(std::size_t index) override
     {
+        m_fieldScope.push_back(std::to_string(index));
         ObjectScope scope{};
         scope.previousGroupOpen = m_groupOpen;
         scope.visible = m_groupOpen;
@@ -900,13 +924,14 @@ struct ImGuiReflector : scene::IReflector {
             ImGui::PushID(static_cast<int>(index));
             char label[32];
             std::snprintf(label, sizeof(label), "[%zu]", index);
+            OpenFocusedScope();
             scope.open = SubHeader(label);
 
             /// @note ▲▼✕ は折りたたみ状態に関わらず出す (閉じた要素を消したい/並べ替えたいときにわざわざ開かせるのは不便)。以前は ✕ しか無く、順序が意味を持つ配列 (ウェーブ・コンボ段・ウェイポイント) を作り直すしかなかった。
             if (!m_listScopes.empty() && m_listScopes.back().editable) {
                 ListScope& list = m_listScopes.back();
                 /// @note 見出し行の右端へ寄せる。SubHeader は全幅を占めるため、SameLine 任せだと
-                ///       ボタンが行の外へ出る。直前アイテム (= 見出し) の右端から幅ぶん戻して置く。
+                /// @note        ボタンが行の外へ出る。直前アイテム (= 見出し) の右端から幅ぶん戻して置く。
                 const float toolbarWidth = widgets::ListRowToolbarWidth(true);
                 const float headerRight = ImGui::GetItemRectMax().x;
                 ImGui::SameLine();
@@ -932,6 +957,7 @@ struct ImGuiReflector : scene::IReflector {
     void EndObjectElement() override
     {
         if (m_objectScopes.empty()) return;
+        if (!m_fieldScope.empty()) m_fieldScope.pop_back();
         const ObjectScope scope = m_objectScopes.back();
         m_objectScopes.pop_back();
 
@@ -945,6 +971,7 @@ struct ImGuiReflector : scene::IReflector {
     std::size_t EndObjectList() override
     {
         if (m_listScopes.empty()) return NO_REMOVE;
+        if (!m_fieldScope.empty()) m_fieldScope.pop_back();
         const ListScope scope = m_listScopes.back();
         m_listScopes.pop_back();
 
@@ -955,8 +982,8 @@ struct ImGuiReflector : scene::IReflector {
         m_groupOpen = scope.previousGroupOpen;
 
         /// @note 並び替え要求は直後の ObjectListMove で 1 回だけ引き取らせる。
-        ///       削除が同時に起きたフレームでは並び替えを捨てる: 呼び出し側は先に erase するため、
-        ///       残した index はもう別の要素を指している。
+        /// @note        削除が同時に起きたフレームでは並び替えを捨てる: 呼び出し側は先に erase するため、
+        /// @note        残した index はもう別の要素を指している。
         m_pendingMove = {};
         if (scope.removeIndex == NO_REMOVE && scope.moveFrom != NO_REMOVE) {
             m_pendingMove.valid = true;
@@ -1014,7 +1041,7 @@ struct ImGuiReflector : scene::IReflector {
             ImGui::Dummy({ 0.0f, (std::max)(0.0f, height) });
     }
 
-    /// 編集できない計算値 (FBZZ_COMPUTED / r.Readonly)。値カラムへ淡色テキストで置く (枠付き無効化ウィジェットだと押せそうに見えるため)。
+    /// @note  編集できない計算値 (FBZZ_COMPUTED / r.Readonly)。値カラムへ淡色テキストで置く (枠付き無効化ウィジェットだと押せそうに見えるため)。
     /// @note IReflector 側の既定は no-op のため、ここで override しないと宣言されたフィールドが Inspector に一切出ない。
     void Readonly(const char* name, const std::string& v) override
     {
@@ -1035,8 +1062,8 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    /// カーブ / グラデーションは 1 行に収まらないキャンバス型のウィジェットで、
-    /// ラベルと補間モードの選択を自前で描く。プロパティ行には乗せず、そのまま流す。
+    /// @note  カーブ / グラデーションは 1 行に収まらないキャンバス型のウィジェットで、
+    /// @note  ラベルと補間モードの選択を自前で描く。プロパティ行には乗せず、そのまま流す。
     void Field(const char* name, scene::ParticleCurve& v) override
     {
         if (!m_groupOpen || !FieldVisible()) return;
@@ -1056,7 +1083,7 @@ struct ImGuiReflector : scene::IReflector {
         if (disabled) ImGui::EndDisabled();
     }
 
-    /// アクションボタン (FBZZ_BUTTON)。ラベル列は空けて、値カラムの幅いっぱいに置く。
+    /// @note  アクションボタン (FBZZ_BUTTON)。ラベル列は空けて、値カラムの幅いっぱいに置く。
     /// @note 押下で m_changed を立てないと Undo スナップショットが取られず、シーンも未保存扱いにならない。
     void Button(const char* label, ActionCallback action, void* userData) override
     {
@@ -1098,8 +1125,8 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    /// 直前のフィールドへ説明ツールチップを付ける (FBZZ_TOOLTIP)。
-    /// 直前に描画したアイテム (= 対象フィールド) にホバー中だけ表示する。
+    /// @note  直前のフィールドへ説明ツールチップを付ける (FBZZ_TOOLTIP)。
+    /// @note  直前に描画したアイテム (= 対象フィールド) にホバー中だけ表示する。
     void Tooltip(const char* text) override
     {
         if (!m_groupOpen) return;
@@ -1126,7 +1153,7 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    /// 複数選択コンボの表示文字列を作る。閉じたままでも中身が読めるようにし、2 件を超えたら件数表示へ畳む。
+    /// @note  複数選択コンボの表示文字列を作る。閉じたままでも中身が読めるようにし、2 件を超えたら件数表示へ畳む。
     /// @note 従来はプレビューが "Flags" / "Layers" の固定文字で、選択内容を知るには毎回コンボを開くしかなかった。
     static std::string BitMaskPreview(int value, std::span<const char* const> labels)
     {
@@ -1163,7 +1190,7 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    /// Inspector のグループ見出し。FBZZ_GROUP("Label") から r_.Group() 経由で呼ばれる。見た目は「▾ ラベル ───────」の 1 行だけ。
+    /// @note  Inspector のグループ見出し。FBZZ_GROUP("Label") から r_.Group() 経由で呼ばれる。見た目は「▾ ラベル ───────」の 1 行だけ。
     /// @note IReflector::Group の既定は no-op のため、override しないと FBZZ_GROUP の見出しが描画されない。
     /// @note 枠付き CollapsingHeader は行高が増え全幅の塗りバーを持ちカードヘッダーと同じ重さに見えるため、枠なし TreeNode + 罫線に落として行高をテキスト 1 行分に抑えた。
     /// @note 折りたたみ状態は ImGui が ID (ラベル) ごとに記憶し、閉じている間は後続フィールドを m_groupOpen で描画スキップする。
@@ -1182,6 +1209,7 @@ struct ImGuiReflector : scene::IReflector {
         ImGui::PushStyleColor(ImGuiCol_HeaderHovered, EditorTheme::Color(ThemeColor::SurfaceHover));
         ImGui::PushStyleColor(ImGuiCol_HeaderActive,  EditorTheme::Color(ThemeColor::SurfaceHover));
         ImGui::PushStyleColor(ImGuiCol_Text,          EditorTheme::Color(ThemeColor::TextMuted));
+        OpenFocusedScope();
         m_groupOpen = ImGui::TreeNodeEx(label,
                                         ImGuiTreeNodeFlags_DefaultOpen |
                                         ImGuiTreeNodeFlags_NoTreePushOnOpen |
@@ -1189,7 +1217,7 @@ struct ImGuiReflector : scene::IReflector {
         ImGui::PopStyleColor(4);
 
         /// @note ラベルの右端から行末まで細い罫線を引く。
-        ///       SpanAvailWidth の行矩形は全幅なので、ラベル終端は「矢印ぶんの字下げ + 文字幅」で出す。
+        /// @note        SpanAvailWidth の行矩形は全幅なので、ラベル終端は「矢印ぶんの字下げ + 文字幅」で出す。
         const ImVec2 rowMin = ImGui::GetItemRectMin();
         const ImVec2 rowMax = ImGui::GetItemRectMax();
         const float  ruleY  = (rowMin.y + rowMax.y) * 0.5f;
@@ -1211,7 +1239,7 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
-    /// BeginRow 済みの値カラムにキー設定ボタンを描く (ラベルは左カラムに描画済み)。
+    /// @note  BeginRow 済みの値カラムにキー設定ボタンを描く (ラベルは左カラムに描画済み)。
     void KeyCodeField(int& v)
     {
         static int* s_listeningPtr = nullptr;
@@ -1301,9 +1329,9 @@ struct ImGuiReflector : scene::IReflector {
     /// @}
 
 private:
-    /// BeginObject / BeginObjectElement が積む描画スコープ。
-    /// ImGui の PushID / Indent / BeginDisabled を対で閉じるために、
-    /// 「開始時に何をしたか」を記録して EndObject で正確に巻き戻す。
+    /// @note  BeginObject / BeginObjectElement が積む描画スコープ。
+    /// @note  ImGui の PushID / Indent / BeginDisabled を対で閉じるために、
+    /// @note  「開始時に何をしたか」を記録して EndObject で正確に巻き戻す。
     struct ObjectScope {
         bool previousGroupOpen = true;
         /// @note PushID したか
@@ -1318,26 +1346,52 @@ private:
         bool        previousGroupOpen = true;
         bool        visible     = false;
         bool        open        = false;
-        bool        editable    = false;  ///< + / x ボタンを出すか
+        bool        editable    = false;  ///< @note + / x ボタンを出すか
         std::size_t count       = 0;
         std::size_t removeIndex = scene::IReflector::NO_REMOVE;
         std::size_t moveFrom    = scene::IReflector::NO_REMOVE;
         std::size_t moveTo      = scene::IReflector::NO_REMOVE;
     };
 
-    /// EndObjectList で確定し、直後の ObjectListMove が引き取るまでの一時置き場。
-    /// 入れ子の配列でも、EndObjectList → ObjectListMove は必ず隣り合って呼ばれるため 1 枠で足りる。
+    /// @note  EndObjectList で確定し、直後の ObjectListMove が引き取るまでの一時置き場。
+    /// @note  入れ子の配列でも、EndObjectList → ObjectListMove は必ず隣り合って呼ばれるため 1 枠で足りる。
     struct PendingMove {
         bool        valid = false;
         std::size_t from  = 0;
         std::size_t to    = 0;
     };
 
+    std::vector<std::string> m_fieldScope;
+    bool m_focusRow = false;
+    ImVec2 m_focusRowStart{};
+    float m_focusRowWidth = 0;
+
+    std::string FieldPath(const char* leaf = "") const
+    {
+        std::string result;
+        for (const auto& part : m_fieldScope) {
+            if (!result.empty()) result += ".";
+            result += part;
+        }
+        if (leaf && *leaf) {
+            if (!result.empty()) result += ".";
+            result += leaf;
+        }
+        return result;
+    }
+    void OpenFocusedScope() const
+    {
+        const auto path = FieldPath();
+        if (m_focusScrollRequested && !m_focusFound && !m_focusField.empty() &&
+            (path.empty() || m_focusField == path || m_focusField.starts_with(path + ".")))
+            ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    }
+
     std::vector<ObjectScope> m_objectScopes;
     std::vector<ListScope>   m_listScopes;
     PendingMove              m_pendingMove;
 
-    /// 今いる位置が「閉じた入れ子オブジェクトの中」か。
+    /// @note  今いる位置が「閉じた入れ子オブジェクトの中」か。
     /// @note m_groupOpen だけでは、前のグループが閉じているのかオブジェクトごと閉じているのかを区別できず、次のグループ見出しを描くべきかが決まらない。
     [[nodiscard]] bool InsideCollapsedObject() const
     {
@@ -1346,7 +1400,7 @@ private:
         return !scope.visible || !scope.open;
     }
 
-    /// Win32 VK コード → 表示名
+    /// @note  Win32 VK コード → 表示名
     static const char* KeyCodeName(int vk)
     {
         switch (vk) {
@@ -1383,4 +1437,4 @@ private:
     }
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

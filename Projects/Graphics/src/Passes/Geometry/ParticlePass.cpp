@@ -19,6 +19,8 @@ void BindParticleLighting(renderer::DrawCall& dc, const RenderParticleInput& emi
     auto& resources = ctx.resources;
     dc.constantBuffers[3] = h.lightCB;
     dc.textures[3]        = emitter.runtime.sixWayNegativeTexture;
+    dc.textures[kParticleSixWayAlbedoColorSlot] = emitter.runtime.sixWayAlbedoColorTexture;
+    dc.textures[kParticleSixWayEmissionColorSlot] = emitter.runtime.sixWayEmissionColorTexture;
     /// @note b8 + t16: 空の照度 (IBL)。iblIntensity が 0 なら PS は読まずに ambientColor を使う。
     dc.constantBuffers[8] = h.advancedGraphicsCB;
     dc.textures[16]       = h.iblIrradiance;

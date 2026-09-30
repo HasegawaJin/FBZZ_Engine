@@ -350,5 +350,17 @@ locked_objects = []
     component_order = [ 'Light' ]
     instance_id = 'fe86e3c4-a6cc-4932-bf17-e366453d1fd9'
 
+    [[editor.game_objects]]
+    component_order = [ 'UI Image' ]
+    instance_id = '5b2a18c9-4bbe-4f98-af41-7b2139f19b05'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'cea214f9-2e51-4698-9bf9-b6b2d3e81f4e'
+
+    [[editor.game_objects]]
+    component_order = [ 'UI Text' ]
+    instance_id = 'f4000002-0000-0000-0000-000000000021'
+
 [meta]
 guid = '843910ed23be057b3f1044f8b2a275d4'

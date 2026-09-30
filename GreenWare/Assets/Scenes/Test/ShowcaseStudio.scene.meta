@@ -1,0 +1,11 @@
+# @file    ShowcaseStudio.scene.meta
+# @brief   ShowcaseStudio シーンの GUID とエディター情報。
+# @author  Hasegawa Jin
+# @date    2026-09-27
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+[meta]
+guid = 'a7148c64bc254b108b3877b116000000'

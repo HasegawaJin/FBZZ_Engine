@@ -8,10 +8,15 @@
 #include "FlipbookImageIO.hpp"
 
 #include <Engine/Asset/TexDescSerializer.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
-#include <DirectXTex.h>
-#include <Windows.h>
+#include <atomic>
 #include <cstdio>
+#include <DirectXTex.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 #include <cstring>
 #include <system_error>
 
@@ -74,37 +79,73 @@ bool SavePngRgba8(const std::filesystem::path& path, std::uint32_t width, std::u
         return false;
     }
 
+    /// @note 既存 PNG を直接切り詰めず、隣の一時ファイルを完成してから置き換える。
+    static std::atomic<unsigned long long> temporarySerial{ 0 };
+    std::filesystem::path temporaryPath;
+    std::error_code temporaryError;
+    do {
+        temporaryPath = path;
+        temporaryPath += L".tmp." + std::to_wstring(GetCurrentProcessId()) + L"_"
+            + std::to_wstring(GetCurrentThreadId()) + L"_"
+            + std::to_wstring(temporarySerial.fetch_add(1, std::memory_order_relaxed));
+        const bool temporaryExists = std::filesystem::exists(temporaryPath, temporaryError);
+        if (temporaryError) {
+            outError = "PNG の一時ファイル名を確認できません: "
+                + util::FileSystem::PathToUtf8(temporaryPath) + " (" + temporaryError.message() + ")";
+            return false;
+        }
+        if (temporaryExists) continue;
+        break;
+    } while (true);
+
     hr = DirectX::SaveToWICFile(*destination, DirectX::WIC_FLAGS_NONE,
                                 DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),
-                                path.wstring().c_str());
+                                temporaryPath.wstring().c_str());
     if (FAILED(hr)) {
-        outError = "PNG を書き出せません: " + path.string();
+        char code[11]{};
+        std::snprintf(code, sizeof(code), "0x%08lX", static_cast<unsigned long>(hr));
+        outError = "PNG を書き出せません: " + util::FileSystem::PathToUtf8(path) + " (HRESULT " + code + ")";
+        std::error_code cleanupError;
+        std::filesystem::remove(temporaryPath, cleanupError);
+        if (cleanupError) outError += " (一時ファイルを削除できません: " + cleanupError.message() + ")";
+        return false;
+    }
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw MoveFileExW, MOVEFILE_REPLACE_EXISTING
+    if (!MoveFileExW(temporaryPath.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        const DWORD win32Error = GetLastError();
+        char code[11]{};
+        std::snprintf(code, sizeof(code), "0x%08lX", static_cast<unsigned long>(win32Error));
+        outError = "PNG を置き換えられません: " + util::FileSystem::PathToUtf8(path) + " (Win32 " + code + ")";
+        std::error_code cleanupError;
+        std::filesystem::remove(temporaryPath, cleanupError);
+        if (cleanupError) outError += " (一時ファイルを削除できません: " + cleanupError.message() + ")";
         return false;
     }
     return true;
 }
 
+/// @note 既存 .meta の GUID と取込設定を引き継ぎ、Bake に必要な型・色空間・alpha・ミップ・Atlas 端設定を更新する。
 bool SaveTextureMeta(const std::filesystem::path& sourcePath, TextureType type,
                      TextureCompression compression, AlphaMode alphaMode,
                      bool mipmaps, std::string& outError)
 {
     TextureAsset texture;
-    texture.sourcePath = sourcePath.string();
-    texture.settings = DefaultSettingsForType(type);
-    texture.settings.compression = compression;
+    texture.sourcePath = util::FileSystem::PathToUtf8(sourcePath);
+    const std::string metaPath = util::FileSystem::PathToUtf8(sourcePath) + ".meta";
+    TexDescSerializer serializer;
+    TextureAsset existing;
+    const bool hasExistingSettings = util::FileSystem::Exists(metaPath) && serializer.Load(metaPath, existing);
+    texture.settings = hasExistingSettings ? existing.settings : DefaultSettingsForType(type);
+    texture.settings.type = type;
+    if (!hasExistingSettings) texture.settings.compression = compression;
     texture.settings.alphaMode = alphaMode;
     texture.settings.mipmaps = mipmaps;
-    texture.settings.maxSize = 16384;
     if (!mipmaps) {
         texture.settings.wrapU = TextureWrap::Clamp;
         texture.settings.wrapV = TextureWrap::Clamp;
         texture.settings.filter = TextureFilter::Bilinear;
     }
-    if (type == TextureType::Data || type == TextureType::Normal)
-        texture.settings.srgb = false;
-
-    const std::string metaPath = sourcePath.string() + ".meta";
-    TexDescSerializer serializer;
+    texture.settings.srgb = DefaultSettingsForType(type).srgb;
     if (!serializer.Save(texture, metaPath)) {
         outError = "テクスチャ .meta を書き出せません: " + metaPath;
         return false;
@@ -113,11 +154,15 @@ bool SaveTextureMeta(const std::filesystem::path& sourcePath, TextureType type,
 }
 
 bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std::uint32_t height,
-                     std::span<const std::uint8_t> pixels, std::uint32_t tileWidth, std::uint32_t tileHeight,
-                     FlipbookMipContent content, FlipbookDdsCompression compression, std::string& outError)
+                      std::span<const std::uint8_t> pixels, std::uint32_t tileWidth, std::uint32_t tileHeight,
+                      FlipbookMipContent content, FlipbookDdsCompression compression, std::string& outError,
+                      const std::atomic<bool>* cancel)
 {
+    const auto cancelled = [cancel]() { return cancel && cancel->load(std::memory_order_relaxed); };
+    if (cancelled()) { outError = "キャンセルしました"; return false; }
     const std::vector<FlipbookMipLevel> levels =
         BuildFlipbookMips(pixels, width, height, tileWidth, tileHeight, content);
+    if (cancelled()) { outError = "キャンセルしました"; return false; }
     if (levels.empty()) {
         outError = "DDS へ書く画素が足りません: " + path.string();
         return false;
@@ -128,6 +173,7 @@ bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std
         return false;
     }
     for (std::size_t level = 0; level < levels.size(); ++level) {
+        if (cancelled()) { outError = "キャンセルしました"; return false; }
         const DirectX::Image* image = chain.GetImage(level, 0, 0);
         const FlipbookMipLevel& source = levels[level];
         const std::size_t sourcePitch = static_cast<std::size_t>(source.width) * 4;
@@ -144,13 +190,55 @@ bool SaveFlipbookDds(const std::filesystem::path& path, std::uint32_t width, std
             compression == FlipbookDdsCompression::BC5 ? DXGI_FORMAT_BC5_UNORM : DXGI_FORMAT_BC7_UNORM;
         const DirectX::TEX_COMPRESS_FLAGS flags = compression == FlipbookDdsCompression::BC7
             ? DirectX::TEX_COMPRESS_BC7_QUICK : DirectX::TEX_COMPRESS_DEFAULT;
-        if (FAILED(DirectX::Compress(chain.GetImages(), chain.GetImageCount(), chain.GetMetadata(), format, flags,
-                                     DirectX::TEX_THRESHOLD_DEFAULT, compressed))) {
-            outError = "DDS を圧縮できません: " + path.string();
-            return false;
+        if (cancel == nullptr || tileWidth < 4 || tileHeight < 4
+            || width % tileWidth != 0 || height % tileHeight != 0) {
+            if (FAILED(DirectX::Compress(chain.GetImages(), chain.GetImageCount(), chain.GetMetadata(), format, flags,
+                                         DirectX::TEX_THRESHOLD_DEFAULT, compressed))) {
+                outError = "DDS を圧縮できません: " + path.string();
+                return false;
+            }
+        } else {
+            if (FAILED(compressed.Initialize2D(format, width, height, 1, levels.size()))) {
+                outError = "DDS の圧縮バッファを確保できません";
+                return false;
+            }
+            /// @note BC の各 4x4 ブロックは独立している。タイル単位に圧縮するとキャンセルを
+            /// @note 1 枚の巨大な DirectXTex::Compress が終わる前に受け付けられる。
+            for (std::size_t level = 0; level < levels.size(); ++level) {
+                const DirectX::Image* source = chain.GetImage(level, 0, 0);
+                const DirectX::Image* destination = compressed.GetImage(level, 0, 0);
+                const std::uint32_t mipTileWidth = tileWidth >> level;
+                const std::uint32_t mipTileHeight = tileHeight >> level;
+                for (std::uint32_t y = 0; y < source->height; y += mipTileHeight) {
+                    for (std::uint32_t x = 0; x < source->width; x += mipTileWidth) {
+                        if (cancelled()) { outError = "キャンセルしました"; return false; }
+                        DirectX::Image tileImage{};
+                        tileImage.width = mipTileWidth;
+                        tileImage.height = mipTileHeight;
+                        tileImage.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                        tileImage.rowPitch = source->rowPitch;
+                        tileImage.slicePitch = source->rowPitch * mipTileHeight;
+                        tileImage.pixels = source->pixels + static_cast<std::size_t>(y) * source->rowPitch + x * 4;
+                        DirectX::ScratchImage tileCompressed;
+                        if (FAILED(DirectX::Compress(tileImage, format, flags,
+                                                     DirectX::TEX_THRESHOLD_DEFAULT, tileCompressed))) {
+                            outError = "DDS タイルを圧縮できません: " + path.string();
+                            return false;
+                        }
+                        const DirectX::Image* tileOutput = tileCompressed.GetImage(0, 0, 0);
+                        const std::size_t blockRows = mipTileHeight / 4;
+                        const std::size_t rowBytes = static_cast<std::size_t>(mipTileWidth / 4) * 16;
+                        for (std::size_t row = 0; row < blockRows; ++row)
+                            std::memcpy(destination->pixels + (y / 4 + row) * destination->rowPitch
+                                            + static_cast<std::size_t>(x / 4) * 16,
+                                        tileOutput->pixels + row * tileOutput->rowPitch, rowBytes);
+                    }
+                }
+            }
         }
         output = &compressed;
     }
+    if (cancelled()) { outError = "キャンセルしました"; return false; }
     if (FAILED(DirectX::SaveToDDSFile(output->GetImages(), output->GetImageCount(), output->GetMetadata(),
                                       DirectX::DDS_FLAGS_NONE, path.wstring().c_str()))) {
         outError = "DDS を書き出せません: " + path.string();

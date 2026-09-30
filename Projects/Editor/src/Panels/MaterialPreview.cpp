@@ -2,17 +2,16 @@
 /// @brief   Material 専用オフスクリーンプレビューのウィジェット。
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
-///
-/// 選択中の .mat を AssetBrowser のサムネイルと同じ MaterialPreviewCore で焼き、形状・背景・
-/// 照明・表示チャンネルを切り替えられる形で出す。Inspector と Preview パネルの見た目がアセットの
-/// 場所で変わらないようにする。
 #include <Editor/Panels/MaterialPreview.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Renderer/AssetPathService.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
 #include <imgui.h>
 
@@ -21,6 +20,8 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <system_error>
 
 namespace fbzz::editor {
 
@@ -29,6 +30,27 @@ namespace {
 namespace mp = matpreview;
 
 constexpr int kPreviewRtSize = 512;
+constexpr double kNormalMapRetryInterval = 0.5;
+
+struct TextureFileRevision {
+    bool exists = false;
+    std::int64_t writeTime = 0;
+};
+
+TextureFileRevision ReadTextureFileRevision(const std::string& path)
+{
+    const std::string resolvedAssetPath = renderer::ResolveAssetPath(path);
+    if (resolvedAssetPath.empty()) return {};
+    std::string sourcePath;
+    if (!renderer::ResolveTextureSource(resolvedAssetPath, sourcePath) || sourcePath.empty())
+        return {};
+
+    std::error_code error;
+    const auto writeTime = std::filesystem::last_write_time(
+        util::FileSystem::PathFromUtf8(sourcePath), error);
+    if (error) return {};
+    return { true, static_cast<std::int64_t>(writeTime.time_since_epoch().count()) };
+}
 
 ImTextureID ToImTextureID(void* ptr)
 {
@@ -117,14 +139,13 @@ void DrawGrid(ImDrawList* drawList, ImVec2 origin, float size)
     drawList->PopClipRect();
 }
 
-/// AssetBrowser の DrawThumbnailFrame と同じ背景グラデーション。
 void DrawGradient(ImDrawList* drawList, ImVec2 origin, float size, bool hovered)
 {
     const ImU32 base = hovered ? IM_COL32(42, 45, 52, 255) : IM_COL32(30, 32, 38, 255);
     drawList->AddRectFilled(origin, { origin.x + size, origin.y + size }, base, 4.0f);
     const ImU32 gradTop    = hovered ? IM_COL32(56, 60, 70, 255) : IM_COL32(44, 47, 56, 255);
     const ImU32 gradBottom = hovered ? IM_COL32(30, 32, 38, 255) : IM_COL32(19, 20, 24, 255);
-    /// @note AddRectFilledMultiColor は角丸非対応なので 2px 内側へ重ね、角丸の輪郭を残す。
+    /// @note 角丸を残すため、MultiColor の矩形を 2px 内側へ描く。
     drawList->AddRectFilledMultiColor(
         { origin.x + 2.0f, origin.y + 2.0f },
         { origin.x + size - 2.0f, origin.y + size - 2.0f },
@@ -140,7 +161,7 @@ void DrawBadge(ImDrawList* drawList, ImVec2 origin, float size, const char* badg
     drawList->AddText({ badgeMin.x + 4.0f, badgeMin.y + 2.0f }, IM_COL32(235, 240, 245, 230), badge);
 }
 
-} // namespace
+} /// @note namespace
 
 void MaterialPreviewView::ResetView()
 {
@@ -155,8 +176,7 @@ void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
     const float full = (std::max)(ImGui::GetContentRegionAvail().x, 120.0f);
     const float half = (full - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
 
-    /// @note Terrain / Water は «地面» と «水面»、UI は矩形、エフェクト系はビルボードや
-    ///       リボンと、形そのものが素材の一部なので選ばせない。
+    /// @note Terrain / Water と独自形状は選択形状を使わない。
     const bool shapeLocked = flavor == mp::Flavor::Terrain ||
                              flavor == mp::Flavor::Water ||
                              mp::UsesOwnGeometry(flavor);
@@ -191,7 +211,7 @@ void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
         }
         ImGui::EndCombo();
     }
-    /// @note 対応していないチャンネルのまま材質が切り替わることがあるので毎フレーム畳む。
+    /// @note Flavor の変更後に未対応チャンネルを Shaded へ戻す。
     if (!mp::ChannelSupported(flavor, m_channel)) m_channel = mp::Channel::Shaded;
 
     ImGui::SetNextItemWidth(half);
@@ -263,6 +283,91 @@ void MaterialPreviewView::DrawBackground(ImVec2 origin, float size, bool hovered
     DrawFrameBorder(drawList, origin, size);
 }
 
+void MaterialPreviewView::DrawNormalMap(EditorContext& ctx,
+                                        const asset::MaterialAsset& material)
+{
+    const auto texturePaths = asset::ResolveMaterialTexturePaths(material);
+    const std::string& texturePath = texturePaths[1];
+    if (texturePath.empty()) {
+        m_normalMapTexture = {};
+        m_normalMapTexturePath.clear();
+        m_normalMapTextureResolved = false;
+        m_normalMapFileExists = false;
+        m_normalMapFileRevision = 0;
+        m_normalMapNextFileCheck = 0.0;
+        return;
+    }
+
+    const std::string loadPath = mp::TextureLoadPath(texturePath, ctx.projectRoot);
+    if (loadPath != m_normalMapTexturePath) {
+        m_normalMapTexture = {};
+        m_normalMapTexturePath = loadPath;
+        m_normalMapTextureResolved = false;
+        m_normalMapFileExists = false;
+        m_normalMapFileRevision = 0;
+        m_normalMapNextFileCheck = ImGui::GetTime();
+    }
+
+    const double now = ImGui::GetTime();
+    if (ctx.resources && m_normalMapTextureResolved && !m_normalMapTexture.IsValid() &&
+        now >= m_normalMapNextFileCheck) {
+        const TextureFileRevision revision = ReadTextureFileRevision(loadPath);
+        if (revision.exists != m_normalMapFileExists ||
+            (revision.exists && revision.writeTime != m_normalMapFileRevision)) {
+            m_normalMapFileExists = revision.exists;
+            m_normalMapFileRevision = revision.writeTime;
+            m_normalMapTextureResolved = false;
+        }
+        m_normalMapNextFileCheck = now + kNormalMapRetryInterval;
+    }
+
+    if (ctx.resources && m_normalMapResourceResetVersion != ctx.resources->GetResetVersion()) {
+        m_normalMapTexture = {};
+        m_normalMapTextureResolved = false;
+        m_normalMapResourceResetVersion = ctx.resources->GetResetVersion();
+    }
+
+    ImGui::Spacing();
+    ImGui::SeparatorText("Normal map (raw RGB)");
+    ImGui::TextWrapped("%s", texturePath.c_str());
+
+    if (!ctx.resources) {
+        ImGui::TextWrapped("Normal map preview unavailable: renderer resources are unavailable.");
+        return;
+    }
+    if (!m_normalMapTextureResolved) {
+        const TextureFileRevision revision = ReadTextureFileRevision(loadPath);
+        m_normalMapTexture = ctx.resources->LoadTexture(loadPath);
+        m_normalMapFileExists = revision.exists;
+        m_normalMapFileRevision = revision.writeTime;
+        m_normalMapTextureResolved = true;
+        m_normalMapNextFileCheck = now + kNormalMapRetryInterval;
+    }
+    if (!m_normalMapTexture.IsValid()) {
+        ImGui::TextWrapped("Failed to load the normal map texture. Check the asset path and image format.");
+        return;
+    }
+    if (!ctx.imguiRenderer) {
+        ImGui::TextWrapped("Normal map loaded, but the preview renderer is unavailable.");
+        return;
+    }
+
+    void* rawId = ctx.imguiRenderer->GetImTextureID(m_normalMapTexture, *ctx.resources);
+    if (!rawId) {
+        ImGui::TextWrapped("Normal map loaded, but its GPU view is unavailable.");
+        return;
+    }
+
+    const auto* texture = ctx.resources->Get(m_normalMapTexture);
+    const float width = texture ? static_cast<float>((std::max)(1u, texture->GetWidth())) : 1.0f;
+    const float height = texture ? static_cast<float>((std::max)(1u, texture->GetHeight())) : 1.0f;
+    const float maxSize = (std::max)(1.0f, (std::min)(192.0f, ImGui::GetContentRegionAvail().x));
+    const float scale = (std::min)(maxSize / width, maxSize / height);
+    const ImVec2 imageSize{ (std::max)(1.0f, width * scale),
+                            (std::max)(1.0f, height * scale) };
+    ImGui::Image(ToImTextureID(rawId), imageSize);
+}
+
 void MaterialPreviewView::DrawUnsupported(EditorContext& ctx,
                                           const asset::MaterialAsset& material,
                                           ImVec2 origin,
@@ -271,8 +376,7 @@ void MaterialPreviewView::DrawUnsupported(EditorContext& ctx,
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     const char* badge = mp::UnsupportedBadge(material);
 
-    /// @note 素材があればその絵を出す。«この材質はこういう色» なのか «焼けなかった» のかを
-    ///       区別できるよう、色見本だけで終わらせない。
+    /// @note 代表画像またはスウォッチで描画失敗と材質色を見分ける。
     const std::string texturePath = mp::RepresentativeTexturePath(material);
     if (texturePath != m_fallbackTexturePath) {
         m_fallbackTexturePath = texturePath;
@@ -325,8 +429,7 @@ bool MaterialPreviewView::RenderFrame(EditorContext& ctx,
                                                       renderer::CameraDepthTargetDesc(1));
     if (!m_renderTarget.IsValid()) return false;
 
-    /// @note 毎フレーム作り直す: Inspector はスライダーを動かしている最中の .mat をそのまま渡してくる。
-    ///       保存を待つと «動かしても絵が変わらない» になる。LoadShader / LoadTexture はキャッシュに当たる。
+    /// @note 未保存値を即時反映し、Shader と Texture は ResourceManager のキャッシュを使う。
     if (!mp::BuildGpuData(m_gpu, material, resources, ctx.projectRoot)) return false;
 
     mp::RenderDesc desc;
@@ -356,8 +459,7 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     const mp::Flavor flavor = mp::DetectFlavor(material);
     DrawToolbar(ctx, flavor);
 
-    /// @note AssetBrowser と同じ正方形表示にする。横長の Inspector 幅へ引き伸ばすと、
-    ///       同じ RT でも球の投影とハイライトの位置が別物に見えるため。
+    /// @note AssetBrowser と同じ正方形比率で表示する。
     const float width  = (std::max)(ImGui::GetContentRegionAvail().x, 64.0f);
     const float height = (std::max)(previewHeight, 96.0f);
     const float size   = (std::max)((std::min)(width, height), 64.0f);
@@ -369,7 +471,7 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
 
     if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         const ImVec2 delta = ImGui::GetIO().MouseDelta;
-        /// @note Ctrl 併用で «光だけ» を回す。Unity / Blender のマテリアルプレビューと同じ操作。
+        /// @note Ctrl+Drag でライトの向きを変更する。
         if (ImGui::GetIO().KeyCtrl) {
             m_rig.yaw -= delta.x * 0.012f;
             m_rig.pitch = std::clamp(m_rig.pitch + delta.y * 0.010f, -1.35f, 1.35f);
@@ -387,9 +489,9 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     DrawBackground(origin, size, hovered);
 
     if (flavor == mp::Flavor::Unsupported) {
-        /// @note 3D へは焼けないが «何の素材か» は出している。呼び出し側に
-        ///       «プレビュー無し» のプレースホルダーを重ねさせないため true を返す。
+        /// @note 未対応 Flavor でも代表表示を出し、呼び出し側へ描画済みを返す。
         DrawUnsupported(ctx, material, origin, size);
+        DrawNormalMap(ctx, material);
         ImGui::PopID();
         return true;
     }
@@ -402,8 +504,7 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     if (rawId) {
         drawList->AddImage(ToImTextureID(rawId), origin, { origin.x + size, origin.y + size });
     } else {
-        /// @note 焼けるはずの Flavor なのに失敗した (シェーダーが壊れている等)。
-        ///       «何も出ない» で終わらせず、素材と種別だけは出す。
+        /// @note 描画失敗時も代表表示で素材種別を示す。
         DrawUnsupported(ctx, material, origin, size);
     }
 
@@ -413,10 +514,10 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
                           "Drag: Orbit | Ctrl+Drag: Light | Wheel: Zoom | Dbl: Reset");
     }
 
+    DrawNormalMap(ctx, material);
     ImGui::PopID();
-    /// @note 焼けなくても色見本は出しているので «描いた» と返す。呼び出し側に
-    ///       «プレビュー無し» のプレースホルダーを重ねさせないため。
+    /// @note 描画失敗時もスウォッチを表示するため true を返す。
     return true;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

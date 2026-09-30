@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-27
 ///
-/// template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
+/// @note template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/ScriptEvent.hpp>
@@ -14,6 +14,8 @@
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Audio/VoiceLifetime.hpp>
+#include <Engine/Util/Uuid.hpp>
 #include <algorithm>
 #include <cassert>
 #include <utility>
@@ -22,6 +24,10 @@
 #endif
 
 namespace fbzz::scene {
+
+ScriptInspectionIdentity::ScriptInspectionIdentity() : value(util::GenerateUUID()) {}
+ScriptInspectionIdentity::ScriptInspectionIdentity(const ScriptInspectionIdentity&)
+    : ScriptInspectionIdentity() {}
 
 physics::World*    Script::s_physicsWorld  = nullptr;
 bool               Script::s_inPlayMode    = false;
@@ -35,13 +41,14 @@ void Script::SetPrefabInstantiationCallback(PrefabInstantiateFn fn)
 bool Script::InstantiatePrefab(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
 {
     /// @note コールバックを注入するのは Editor だけなので、未設定時は既定実装 (InstantiatePrefabAsset)
-    ///       にフォールバックする。Editor は差分 (override) 付きの生成を注入して上書きする。
+    /// @note        にフォールバックする。Editor は差分 (override) 付きの生成を注入して上書きする。
     if (!s_instantiateFn) return InstantiatePrefabAsset(scene, path, roots);
     return s_instantiateFn(scene, path, roots);
 }
 
 Script::~Script()
 {
+    ReleaseOwnedAudioLoops();
     CancelEventSubscriptions();
 }
 
@@ -49,15 +56,17 @@ Script::~Script()
 
 void Script::SetContext(Scene* scene, GameObject* gameObject)
 {
+    if (m_scene != scene || m_gameObject != gameObject) ReleaseOwnedAudioLoops();
     m_scene      = scene;
     m_gameObject = gameObject;
+    m_contextOwner = nullptr;
 }
 
 namespace {
 
-/// Script の実行時障害を「Editor 全体のクラッシュ」から「当該 Script の停止」へ縮退させる。
+/// @brief Script の実行時障害を「Editor 全体のクラッシュ」から「当該 Script の停止」へ縮退させる。
 /// @note 空の Ref<T> を誤って operator-> で使うと MSVC はアクセス違反を SEH として通知する。C++ 例外
-///       ではないため、ここでコールバック境界を保護し、原因を Console へ残す。
+/// @note        ではないため、ここでコールバック境界を保護し、原因を Console へ残す。
 void HandleRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
 {
     script.enabled = false;
@@ -65,11 +74,14 @@ void HandleRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
                    script.GetTypeName(), callbackName ? callbackName : "callback");
 }
 
-} // namespace
+} /// @note namespace
 
 bool Script::ExecuteCallback(void (Script::*callback)(), const char* callbackName)
 {
+    if (callback == &Script::OnDestroy || callback == &Script::OnDisable) ReleaseOwnedAudioLoops();
     if (!callback || m_runtimeFaulted) return false;
+    if (m_requirementsBlocked && callback != &Script::OnDestroy && callback != &Script::OnDisable
+        && callback != &Script::OnDrawGizmos && callback != &Script::OnDrawGizmosSelected) return false;
 #if defined(_MSC_VER)
     __try {
         (this->*callback)();
@@ -89,7 +101,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const CollisionInfo&),
                              const CollisionInfo& info,
                              const char* callbackName)
 {
-    if (!callback || m_runtimeFaulted) return false;
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
 #if defined(_MSC_VER)
     __try {
         (this->*callback)(info);
@@ -108,7 +120,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const CollisionInfo&),
 bool Script::ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&),
                              const AnimationEventInfo& info)
 {
-    if (!callback || m_runtimeFaulted) return false;
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
 #if defined(_MSC_VER)
     __try {
         (this->*callback)(info);
@@ -127,7 +139,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&)
 bool Script::ExecuteCallback(void (Script::*callback)(const SequenceEventInfo&),
                              const SequenceEventInfo& info)
 {
-    if (!callback || m_runtimeFaulted) return false;
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
 #if defined(_MSC_VER)
     __try {
         (this->*callback)(info);
@@ -147,7 +159,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const char*),
                              const char* argument,
                              const char* callbackName)
 {
-    if (!callback || m_runtimeFaulted) return false;
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
 #if defined(_MSC_VER)
     __try {
         (this->*callback)(argument);
@@ -166,7 +178,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const char*),
 bool Script::ExecuteCallback(void (Script::*callback)(const RootMotionInfo&),
                              const RootMotionInfo& info)
 {
-    if (!callback || m_runtimeFaulted) return false;
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
 #if defined(_MSC_VER)
     __try {
         (this->*callback)(info);
@@ -186,7 +198,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(RenderPipeline&, RenderPas
                              RenderPipeline& pipeline,
                              RenderPassContext& context)
 {
-    if (!callback || m_runtimeFaulted) return false;
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
 #if defined(_MSC_VER)
     __try {
         (this->*callback)(pipeline, context);
@@ -229,7 +241,7 @@ bool Script::ResumeCoroutine(Coroutine& coroutine)
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         /// @note 巻き戻したフレームは中断点に居らず、以降 done() も destroy() も呼べないため、
-        ///       畳まず手放す。畳もうとすると障害を握った意味がなくなる。
+        /// @note        畳まず手放す。畳もうとすると障害を握った意味がなくなる。
         coroutine.Release();
         m_runtimeFaulted = true;
         HandleRuntimeFault(*this, "Coroutine step");
@@ -244,8 +256,8 @@ bool Script::ResumeCoroutine(Coroutine& coroutine)
 void Script::SynchronizeEnabledState(bool gameObjectActive)
 {
     /// @note enabled は public 互換性を維持するため setter 化しない。代わりに ScriptSystem の
-    ///       同期点で GameObject の有効状態と合わせて比較し、変化した瞬間だけ通知する。
-    const bool effectiveEnabled = enabled && gameObjectActive;
+    /// @note        同期点で GameObject の有効状態と合わせて比較し、変化した瞬間だけ通知する。
+    const bool effectiveEnabled = IsContextEnabled() && gameObjectActive;
     if (!m_enableStateInitialized) {
         m_lastEnabled = effectiveEnabled;
         m_enableStateInitialized = true;
@@ -326,7 +338,7 @@ void Script::UpdateInvocations(float dt)
             entry.canceled = true;
 
         /// @note callback 内から Invoke / CancelInvoke が呼ばれてもよいよう、fn はコピーしてから呼び、
-        ///       vector の再配置や canceled 更新の影響を受けないようにする。
+        /// @note        vector の再配置や canceled 更新の影響を受けないようにする。
         if (fn && !ExecuteCallback(fn, "deferred callback"))
             break;
     }
@@ -382,7 +394,7 @@ void Script::StopAllCoroutines()
 {
     m_pendingCoroutines.clear();
     /// @note コルーチンの中から呼ばれると、今 resume しているハンドル自身を破棄することになる
-    ///       ため、ループを抜けてから畳む。
+    /// @note        ため、ループを抜けてから畳む。
     if (m_isTickingCoroutines) {
         m_stopAllCoroutinesRequested = true;
         return;
@@ -396,7 +408,7 @@ void Script::UpdateCoroutines()
 
     m_isTickingCoroutines = true;
     /// @note 添字ループ。Step 内の再開で StartCoroutine されても追加分は m_pendingCoroutines へ回るため、
-    ///       m_coroutines は本ループ中に再確保されない。
+    /// @note        m_coroutines は本ループ中に再確保されない。
     for (size_t i = 0; i < m_coroutines.size(); ++i) {
         if (!ResumeCoroutine(m_coroutines[i])) break;
         if (m_stopAllCoroutinesRequested) break;
@@ -426,7 +438,7 @@ void Script::UpdateCoroutines()
 void Script::CancelEventSubscriptions()
 {
     /// @note ScriptEventBus の購読はオーナー単位で一括解除する。~Script から通るこの経路が、DLL
-    ///       ホットリロードで解放されるコードを指すハンドラがバスに残らないことの唯一の保証になる。
+    /// @note        ホットリロードで解放されるコードを指すハンドラがバスに残らないことの唯一の保証になる。
     ScriptEventBus::UnsubscribeOwner(this);
 
     /// @note 個別に登録された解除処理 (将来の別バス用の拡張点)。
@@ -451,18 +463,28 @@ bool Script::IsInPlayMode()
     return s_inPlayMode;
 }
 
+void Script::ReleaseOwnedAudioLoops()
+{
+    /// @note Scene や GameObject を触らないため、Scene 破棄中・DLL 破棄中にも安全に失効できる。
+    for (const auto& weak : m_ownedAudioLoops)
+        if (const auto lifetime = weak.lock()) lifetime->active = false;
+    m_ownedAudioLoops.clear();
+}
+
 void Script::ResetLifecycleState()
 {
+    ReleaseOwnedAudioLoops();
+    m_requirementsBlocked = false;
     CancelInvoke();
     StopAllCoroutines();
     CancelEventSubscriptions();
     /// @note 次の OnEnable を「初回」として扱わせる。モードをまたぐ直前に OnDisable を
-    ///       出し終えているため、ここを残すと新しいモードの最初の OnEnable が落ちる。
+    /// @note        出し終えているため、ここを残すと新しいモードの最初の OnEnable が落ちる。
     m_enableStateInitialized = false;
     m_lastEnabled            = true;
     /// @note 障害ラッチは畳んだライフサイクルのもの。次の OnAwake からやり直す。
     /// @note 障害時に落とされた enabled はここでは戻さない。ユーザーが自分で切ったのか障害で
-    ///       落ちたのかを区別できず、切ったつもりの Script が復活するため。
+    /// @note        落ちたのかを区別できず、切ったつもりの Script が復活するため。
     m_runtimeFaulted = false;
 }
 
@@ -488,7 +510,7 @@ const renderer::ShaderDescriptor* Script::GetShaderDescriptor(std::string_view s
     if (!resources) return nullptr;
 
     /// @note Script は ResourceManager を直接所有しないためここで解決だけを代行し、
-    ///       MaterialComponent は渡された Descriptor に従って純粋にバイト列を書き換える。
+    /// @note        MaterialComponent は渡された Descriptor に従って純粋にバイト列を書き換える。
     const auto handle = resources->LoadShader(std::string(shaderPath));
     if (const auto* shader = resources->Get(handle))
         return &shader->GetDescriptor();
@@ -521,4 +543,4 @@ void Script::ClearRuntimePostProcessSettings()
         m_scene->ClearRuntimePostProcessSettings();
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -80,7 +80,12 @@ renderer::ResourceHandle<renderer::TextureTag> StreamedTextureResolver::ResolveG
 {
     if (reference.empty()) return {};
     Entry* entry = Acquire(reference);
-    if (!entry) return resources.LoadTexture(reference);
+    if (!entry) {
+        TextureImportSettings settings;
+        const bool flipGreen = GetCachedTextureImportSettings(reference, settings)
+            && settings.flipGreen;
+        return resources.LoadTexture(reference, flipGreen);
+    }
     /// @note 同じテクスチャを貼った物体のうち最も大きく映るものに合わせる。1 つでも大きさ不明なら最高品質。
     if (screenPixels <= 0.0f) entry->screenSizeKnown = false;
     entry->maxScreenPixels = (std::max)(entry->maxScreenPixels, screenPixels);

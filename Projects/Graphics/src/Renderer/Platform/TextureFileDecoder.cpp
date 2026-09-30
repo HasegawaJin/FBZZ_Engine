@@ -155,6 +155,14 @@ bool DecodeTextureFileRGBA8(const std::string& path, DecodedTextureRGBA8& out, s
     return true;
 }
 
+void FlipTextureGreen(DecodedTextureRGBA8& texture)
+{
+    for (DecodedTextureRGBA8::Mip& mip : texture.mips) {
+        for (std::size_t pixel = 1; pixel < mip.rgba.size(); pixel += 4)
+            mip.rgba[pixel] = static_cast<std::uint8_t>(255u - mip.rgba[pixel]);
+    }
+}
+
 DecodedTextureRGBA8::Mip DownsampleRGBA8Box2x(const DecodedTextureRGBA8::Mip& source)
 {
     DecodedTextureRGBA8::Mip result;
