@@ -24,6 +24,7 @@ public:
     void OnShutdown() override;
 
 protected:
+    void OnBeforeBegin(EditorContext& ctx) override;
     void OnRenderContent(EditorContext& ctx) override;
 
 private:

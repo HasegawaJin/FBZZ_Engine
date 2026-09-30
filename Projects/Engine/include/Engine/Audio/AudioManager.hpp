@@ -6,6 +6,8 @@
 #include "AudioBus.hpp"
 #include "IAudioDevice.hpp"
 #include "SynthSpec.hpp"
+#include "VoiceLifetime.hpp"
+#include <memory>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -111,6 +113,8 @@ public:
     void ResumeVoice(uint32_t voiceId);
     /// @note EditorのPlay終了など、Scene Audioを一括停止するライフサイクル境界で使用する。
     void StopAllVoices();
+    /// @note 所有トークンの失効後、次の Update で停止する。AudioSource が消えた後も回収できる。
+    void BindVoiceLifetime(uint32_t voiceId, const std::shared_ptr<VoiceLifetime>& lifetime);
     /// @note 上位が意図する音量。実際にデバイスへ届くのは、これにフェードゲインを掛けた値。
     void SetVoiceVolume(uint32_t voiceId, float volume);
     void SetVoicePitch(uint32_t voiceId, float pitch);
@@ -184,6 +188,8 @@ private:
     /// @note AudioSystem は毎フレーム距離減衰から音量を計算し直して書き込むため、フェードは別変数に分ける。同じ変数へ書くと次フレームで消える。
     struct VoiceState
     {
+        std::weak_ptr<VoiceLifetime> lifetime;
+        bool lifetimeBound = false;
         ClipId   clip      = 0;
         float    volume    = 1.0f;
         float    fadeGain  = 1.0f;

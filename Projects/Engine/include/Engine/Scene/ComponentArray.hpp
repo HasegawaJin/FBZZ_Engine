@@ -54,6 +54,9 @@ public:
             m_sparseToIndex[m_denseToEntity[last].index] = di;
         }
 
+        /// @note 論理削除だけでは末尾が所有する Script や音声の寿命が次の Add まで残る。
+        m_dense[last] = {};
+        m_denseToEntity[last] = {};
         m_sparseToIndex[id.index] = EMPTY;
         --m_count;
     }
@@ -127,4 +130,4 @@ private:
     uint32_t m_count = 0;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

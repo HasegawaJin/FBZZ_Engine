@@ -3,25 +3,20 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 ///
-/// @note ScriptSystem は GameObject ごとに OnAwake→OnStart→OnUpdate をまとめて回すため、
-///       最初のフレームは自分より後ろのスクリプトの OnStart がまだで Instance() は空を
-///       返しうる。ここで即警告を出すとヒエラルキーの並びだけで嘘の「見つからない」が出て
-///       本物の警告まで信用できなくなるため、数フレーム待って 1 度だけ報告する規則を
-///       1 箇所に閉じる。待つのは報告のタイミングだけで、参照自体は相手の作り直しに備え
-///       毎回 Instance() を引き直すこと (掴んで持ち続けると解放済みポインタを読む)。
+/// @note シーン配置済み Script は最初の Update 前に全て Start 済みになる。
+/// @note GameFlow は Start 内で動的に生成されるボスも扱うため、次フレームから参加する対象に猶予を残す。
+/// @note 待つのは警告だけ。参照自体は相手の作り直しに備え毎回取り直す。
 #pragma once
 
 namespace sandbox {
 
 struct ManagerWatch {
-    /// 全スクリプトの OnStart が済むまでの猶予フレーム数。
-    /// 1 フレームあれば足りるが、別のスクリプトが OnStart の中で生成する
-    /// マネージャーまで拾えるよう少し多めに取る。
+    /// @note 動的生成が複数フレームに連なる参照先を待つためのゲーム側の猶予。
     static constexpr int kGraceFrames = 3;
 
-    /// 毎フレーム呼ぶ。報告すべき最初のフレームだけ true を返す。
-    /// 一度でも見つかっていれば、あとから消えても報告しない
-    /// (シーン遷移中の破棄を「設定漏れ」として出さないため)。
+    /// @note  毎フレーム呼ぶ。報告すべき最初のフレームだけ true を返す。
+    /// @note  一度でも見つかっていれば、あとから消えても報告しない
+    /// @note  (シーン遷移中の破棄を「設定漏れ」として出さないため)。
     [[nodiscard]] bool ShouldReport(bool found)
     {
         if (found) {
@@ -43,4 +38,4 @@ private:
     bool m_reported = false;
 };
 
-} // namespace sandbox
+} /// @note namespace sandbox

@@ -68,12 +68,8 @@ public:
             if (m_hasStarted) module.ResetLifecycleState();
             module.ExecuteCallback(&Script::OnAwake, "OnAwake");
             module.SynchronizeEnabledState(m_owner.scene.IsActiveAndEnabled());
-            if (auto* object = m_owner.scene.Self()) {
-                std::vector<ScriptRequirementIssue> issues;
-                CollectScriptRequirementIssues(*object, module, issues);
-                for (const auto& issue : issues)
-                    FBZZ_LOG_ERROR("Script module requirement: %s", FormatScriptRequirementIssue(issue).c_str());
-            }
+            if (auto* object = m_owner.scene.Self())
+                if (!ValidateScriptRequirementsForStart(*object, module)) continue;
             module.ExecuteCallback(&Script::OnStart, "OnStart");
         }
         m_hasStarted = true;
@@ -93,7 +89,7 @@ public:
         if (!Synchronize()) return;
         for (const auto& entry : m_modules) {
             auto& module = *entry.script;
-            if (!module.enabled || !m_owner.scene.IsActiveAndEnabled()) continue;
+            if (module.RequirementsBlocked() || !module.enabled || !m_owner.scene.IsActiveAndEnabled()) continue;
             module.UpdateFrameDelays();
             if (module.scene.IsActiveAndEnabled()) module.UpdateInvocations(dt);
             if (module.scene.IsActiveAndEnabled()) module.UpdateCoroutines();
@@ -180,7 +176,7 @@ private:
         for (auto* module : order) {
             const bool active = m_owner.scene.IsActiveAndEnabled();
             module->SynchronizeEnabledState(active);
-            if (active && module->enabled) module->ExecuteCallback(callback, name);
+            if (active && module->enabled && !module->RequirementsBlocked()) module->ExecuteCallback(callback, name);
         }
     }
 

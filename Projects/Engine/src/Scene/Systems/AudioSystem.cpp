@@ -238,6 +238,12 @@ void AudioSystem::Update(SystemContext& ctx)
         if (!sourcePointer || !sourceObject)
             continue;
         AudioSourceComponent& source = *sourcePointer;
+        if (source.m_scriptLoopLifetime && !source.m_scriptLoopLifetime->active) {
+            audioManager.StopVoice(source.m_voiceId);
+            source.m_voiceId = 0;
+            GameObject::Destroy(*sourceObject);
+            continue;
+        }
         Transform& transform = sourceObject->transform;
         if (source.m_voiceId != 0 && !audioManager.IsVoicePlaying(source.m_voiceId)) {
             source.m_voiceId = 0;
@@ -317,6 +323,9 @@ void AudioSystem::Update(SystemContext& ctx)
             source.m_voiceId = audioManager.PlayVoice(source.clipPath, source.loop, bus, params);
             source.m_isPlaying = source.m_voiceId != 0;
         }
+
+        if (source.m_voiceId != 0 && source.m_scriptLoopLifetime)
+            audioManager.BindVoiceLifetime(source.m_voiceId, source.m_scriptLoopLifetime);
 
         const SourceEffects effects = evaluateEffects(sourceObject, transform);
 

@@ -146,6 +146,9 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ScriptTransformProxyTests.cpp
         Engine/Auto/ScriptSceneQueryTests.cpp
         Engine/Auto/ScriptModulesTests.cpp
+        Engine/Auto/ScriptLifecycleTests.cpp
+        Engine/Auto/ScriptRequirementsTests.cpp
+        Engine/Auto/ScriptAudioLoopTests.cpp
         Engine/Auto/ColorTests.cpp
         Engine/Auto/EasingTests.cpp
         Engine/Auto/GuidRefCodecTests.cpp
@@ -223,6 +226,7 @@ fbzz_add_test_suite(EngineAuto
         GreenWare/Auto/BossPartOwnerTests.cpp
         GreenWare/Auto/ParryRushTests.cpp
         GreenWare/Auto/PlayerScriptModulesTests.cpp
+        GreenWare/Auto/ScriptObservationTests.cpp
     LINKS
         FBZZTestKitEngine
         FBZZPhysics
@@ -273,6 +277,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/SceneDirtyTrackerTests.cpp
     Editor/Auto/ScriptCodeGenTests.cpp
     Editor/Auto/ScriptInspectionTests.cpp
+    Editor/Auto/ScriptRequirementReviewTests.cpp
     Editor/Auto/SpriteFieldFilterTests.cpp
     Editor/Auto/SpriteSlicerTests.cpp
     Editor/Auto/TerrainBrushTests.cpp

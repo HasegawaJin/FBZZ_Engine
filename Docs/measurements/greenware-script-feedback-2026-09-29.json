@@ -1,0 +1,652 @@
+{
+  "schema": "fbzz-script-feedback/1",
+  "verifiedOn": "2026-09-29",
+  "baseline": "534b075e",
+  "configuration": "Development",
+  "tests": {
+    "total": 117,
+    "passed": 117,
+    "failed": 0,
+    "added": 26,
+    "addedNames": [
+      "ScriptLifecycleTest.AllAwakesThenAllStartsBeforeAnyUpdate",
+      "ScriptLifecycleTest.ExistingUpdateWaitsForNewScriptsStart",
+      "ScriptLifecycleTest.AdditionsDuringAwakeJoinNextFrameRegardlessOfTargetObject",
+      "ScriptLifecycleTest.RemovedAndReplacedEntryDoesNotReceiveOldTargetsCallbacks",
+      "ScriptLifecycleTest.ObjectDestroyedDuringStartDoesNotUpdate",
+      "ScriptLifecycleTest.InactiveAtSnapshotStartsNextFrameAfterActivation",
+      "ScriptLifecycleTest.PauseDoesNotStartAndDisabledScriptDoesNotUpdate",
+      "ScriptLifecycleTest.EditModeOptInRestartsBeforePlayUpdates",
+      "ScriptRequirementsTest.MissingSettingsReportObjectScriptAndPersistentKeyWithoutObserving",
+      "ScriptRequirementsTest.MissingSettingsBlockStartAndCannotBeBypassedByEnabling",
+      "ScriptRequirementsTest.BlockedStartStillCleansUpAwakeResourcesOnDestroyAndClear",
+      "ScriptRequirementsTest.ConfiguredSettingsStartAndKeepExistingSerializationKeys",
+      "ScriptRequirementsTest.MissingFileMalformedAssetAndWrongTypeAreDiagnosedBeforePlay",
+      "ScriptRequirementsTest.ReferencesRejectWrongTypeAmbiguityAndDeletedTarget",
+      "ScriptRequirementsTest.InspectorValidationDoesNotLoadAssetsOrMutateReferences",
+      "ScriptRequirementsTest.AwakeCanSupplyRequiredAttachmentBeforeStartValidation",
+      "ScriptRequirementsTest.InternalModulesUseTheSameBlockingValidation",
+      "ScriptAudioLoopTest.SameLabelOwnersRemainIndependentAndDoNotChangePrimaryAudio",
+      "ScriptAudioLoopTest.RepeatedUpdatesKeepPlaybackPositionAndStopCanRestart",
+      "ScriptAudioLoopTest.StopBeforeAudioTickCancelsPendingPlaybackAndSilenceAllocatesNothing",
+      "ScriptAudioLoopTest.DestroyingOwnerReclaimsVoiceWithoutAudioSourceStillExisting",
+      "ScriptAudioLoopTest.ScriptReloadInvalidatesOldHandleAndRemovesOrphanSource",
+      "ScriptAudioLoopTest.DeletedSourceAndReusedEntityDoNotAcceptStaleHandle",
+      "ScriptAudioLoopTest.DisableAndLifecycleResetInvalidateHandles",
+      "ScriptAudioLoopTest.ExplicitReleaseInvalidatesCopiesAndNonFiniteInputDoesNotAllocate",
+      "ComponentArrayTest.RemovingEntriesImmediatelyReleasesOwnedResources"
+    ],
+    "cases": [
+      {
+        "name": "ScriptModulesTest.StartsOnceAndRunsEachPhaseInItsDeclaredOrder",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptModulesTest.ParentDisableReachesChildrenAndReenableDoesNotRestart",
+        "seconds": 0.04
+      },
+      {
+        "name": "ScriptModulesTest.DisabledChildAndInactiveHierarchyDoNotRun",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptModulesTest.DeferredWorkTicksOnlyInUpdateAndStopsWhenDisabled",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptModulesTest.DestroyCancelsPendingWorkAndSubscriptionsExactlyOnce",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptModulesTest.InternalLookupSupportsInterfacesAndRejectsAmbiguity",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptModulesTest.InterfaceReferenceResolvesAndDetectsDeletedTarget",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptModulesTest.RestartBeginsNewLifecycleWithoutOldDeferredWork",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptModulesTest.ParentDisabledByDeferredWorkStopsFollowingPhases",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptLifecycleTest.AllAwakesThenAllStartsBeforeAnyUpdate",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptLifecycleTest.ExistingUpdateWaitsForNewScriptsStart",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptLifecycleTest.AdditionsDuringAwakeJoinNextFrameRegardlessOfTargetObject",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptLifecycleTest.RemovedAndReplacedEntryDoesNotReceiveOldTargetsCallbacks",
+        "seconds": 0.04
+      },
+      {
+        "name": "ScriptLifecycleTest.ObjectDestroyedDuringStartDoesNotUpdate",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptLifecycleTest.InactiveAtSnapshotStartsNextFrameAfterActivation",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptLifecycleTest.PauseDoesNotStartAndDisabledScriptDoesNotUpdate",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptLifecycleTest.EditModeOptInRestartsBeforePlayUpdates",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptRequirementsTest.MissingSettingsReportObjectScriptAndPersistentKeyWithoutObserving",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptRequirementsTest.MissingSettingsBlockStartAndCannotBeBypassedByEnabling",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptRequirementsTest.BlockedStartStillCleansUpAwakeResourcesOnDestroyAndClear",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptRequirementsTest.ConfiguredSettingsStartAndKeepExistingSerializationKeys",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptRequirementsTest.MissingFileMalformedAssetAndWrongTypeAreDiagnosedBeforePlay",
+        "seconds": 0.04
+      },
+      {
+        "name": "ScriptRequirementsTest.ReferencesRejectWrongTypeAmbiguityAndDeletedTarget",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptRequirementsTest.InspectorValidationDoesNotLoadAssetsOrMutateReferences",
+        "seconds": 0.04
+      },
+      {
+        "name": "ScriptRequirementsTest.AwakeCanSupplyRequiredAttachmentBeforeStartValidation",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptRequirementsTest.InternalModulesUseTheSameBlockingValidation",
+        "seconds": 0.02
+      },
+      {
+        "name": "ScriptAudioLoopTest.SameLabelOwnersRemainIndependentAndDoNotChangePrimaryAudio",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptAudioLoopTest.RepeatedUpdatesKeepPlaybackPositionAndStopCanRestart",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptAudioLoopTest.StopBeforeAudioTickCancelsPendingPlaybackAndSilenceAllocatesNothing",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptAudioLoopTest.DestroyingOwnerReclaimsVoiceWithoutAudioSourceStillExisting",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptAudioLoopTest.ScriptReloadInvalidatesOldHandleAndRemovesOrphanSource",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptAudioLoopTest.DeletedSourceAndReusedEntityDoNotAcceptStaleHandle",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptAudioLoopTest.DisableAndLifecycleResetInvalidateHandles",
+        "seconds": 0.03
+      },
+      {
+        "name": "ScriptAudioLoopTest.ExplicitReleaseInvalidatesCopiesAndNonFiniteInputDoesNotAllocate",
+        "seconds": 0.03
+      },
+      {
+        "name": "AudioBusTest.DefaultLayoutStartsWithMaster",
+        "seconds": 0.04
+      },
+      {
+        "name": "AudioBusTest.DefaultLayoutCoversTheCategories",
+        "seconds": 0.03
+      },
+      {
+        "name": "AudioBusTest.DefaultLayoutIsAlreadyNormalised",
+        "seconds": 0.02
+      },
+      {
+        "name": "AudioBusTest.PutsMasterFirstEvenIfItWasDeclaredLast",
+        "seconds": 0.03
+      },
+      {
+        "name": "AudioBusTest.PlacesEveryParentBeforeItsChild",
+        "seconds": 0.03
+      },
+      {
+        "name": "AudioBusTest.KeepsDeepChainsInOrder",
+        "seconds": 0.03
+      },
+      {
+        "name": "AudioBusTest.TreatsAMissingParentAsMaster",
+        "seconds": 0.02
+      },
+      {
+        "name": "AudioBusTest.BreaksACycleInsteadOfHanging",
+        "seconds": 0.02
+      },
+      {
+        "name": "AudioBusTest.CollapsesDuplicateNamesToTheLastOne",
+        "seconds": 0.02
+      },
+      {
+        "name": "AudioBusTest.AddsMasterWhenItIsMissing",
+        "seconds": 0.02
+      },
+      {
+        "name": "AudioBusTest.AnEmptyLayoutStillYieldsMaster",
+        "seconds": 0.04
+      },
+      {
+        "name": "AudioBusTest.KeepsTheSettingsOfEachBus",
+        "seconds": 0.02
+      },
+      {
+        "name": "AudioBusTest.NormalisingTwiceChangesNothing",
+        "seconds": 0.03
+      },
+      {
+        "name": "AudioStreamingTest.DecodesBoundedBlocksWithoutLosingSamplesAndRewinds",
+        "seconds": 0.06
+      },
+      {
+        "name": "AudioStreamingTest.RejectsMissingAndNonAudioFiles",
+        "seconds": 0.14
+      },
+      {
+        "name": "AudioStreamingTest.NativeStreamStopsWhilePausedAndRebuildsBusesWithoutKeepingBuffers",
+        "seconds": 0.09
+      },
+      {
+        "name": "AudioStreamingTest.BgmStreamsAndRetainsPauseFadeAndStopLifecycle",
+        "seconds": 0.03
+      },
+      {
+        "name": "AudioStreamingTest.MixerSendUsesNamedBusWithoutReducingDryVolumeAndCanBeRemoved",
+        "seconds": 0.03
+      },
+      {
+        "name": "AudioStreamingTest.StreamingAndSendSettingsSurviveSceneSerialization",
+        "seconds": 0.03
+      },
+      {
+        "name": "ComponentArrayTest.StartsEmptyAndAllocatesNothing",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.FindsWhatItStored",
+        "seconds": 0.03
+      },
+      {
+        "name": "ComponentArrayTest.KeepsEachEntitySeparate",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.WritesThroughTheReturnedReference",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.DoesNotFindAnEntityItNeverStored",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.RejectsIndicesBeyondTheCapacity",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.RejectsTheSameIndexFromAnEarlierGeneration",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.ForgetsWhatItRemoved",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.KeepsTheOtherEntriesReachableAfterARemoval",
+        "seconds": 0.12
+      },
+      {
+        "name": "ComponentArrayTest.RemovingTheLastEntryLeavesTheRestUntouched",
+        "seconds": 0.03
+      },
+      {
+        "name": "ComponentArrayTest.ReusesTheSlotOfARemovedEntity",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.RemovingEntriesImmediatelyReleasesOwnedResources",
+        "seconds": 0.03
+      },
+      {
+        "name": "ComponentArrayTest.SurvivesRemovingEveryEntryInOrder",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.SurvivesRemovingEveryEntryInReverse",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.KeepsEveryRemainingValueThroughInterleavedRemovals",
+        "seconds": 0.12
+      },
+      {
+        "name": "ComponentArrayTest.DataAndEntitiesLineUp",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.WalksEveryStoredEntryExactlyOnce",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.KeepsReferencesValidWhileOtherEntriesAreAdded",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.ClearForgetsEverything",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.CanBeRefilledAfterClear",
+        "seconds": 0.02
+      },
+      {
+        "name": "ComponentArrayTest.ClearingAnUntouchedArrayIsHarmless",
+        "seconds": 0.15
+      },
+      {
+        "name": "ComponentArrayTest.MoveTakesOverTheContents",
+        "seconds": 0.03
+      },
+      {
+        "name": "ComponentArrayTest.TheMovedFromArrayIsEmptyAndReusable",
+        "seconds": 0.02
+      },
+      {
+        "name": "SceneSerializerTest.SavesAndReloadsAnEmptyScene",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.KeepsEveryGameObject",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.KeepsNameTagAndLayer",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.KeepsThePersistentIdentifier",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.KeepsTheActiveFlag",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.KeepsTheLocalTransform",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.KeepsTheParentChildHierarchy",
+        "seconds": 0.04
+      },
+      {
+        "name": "SceneSerializerTest.KeepsDeepHierarchies",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.DoesNotSaveRuntimeGeneratedObjects",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.KeepsTheMeshPathWithoutBuildingGpuResources",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.KeepsSeveralMeshPathsIndependently",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.RejectsTextThatIsNotToml",
+        "seconds": 0.02
+      },
+      {
+        "name": "SceneSerializerTest.RejectsAMissingFile",
+        "seconds": 0.02
+      },
+      {
+        "name": "SceneSerializerTest.AcceptsAnEmptyDocument",
+        "seconds": 0.02
+      },
+      {
+        "name": "SceneSerializerTest.SavingTwiceProducesTheSameFile",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneSerializerTest.ASecondRoundTripChangesNothing",
+        "seconds": 0.05
+      },
+      {
+        "name": "SceneManagerTest.TransitionDestroysPreviousScriptsBeforeStartingNextScene",
+        "seconds": 0.03
+      },
+      {
+        "name": "SceneManagerTest.RuntimeTransitionResolvesRootAndChildPosesBeforeFirstScript",
+        "seconds": 0.03
+      },
+      {
+        "name": "BossBreakTest.ToppledHitsDoNotBankHeatOrParryStreak",
+        "seconds": 0.03
+      },
+      {
+        "name": "BossBreakTest.DisabledGainDoesNotRefreshDecayOrBankBonuses",
+        "seconds": 0.03
+      },
+      {
+        "name": "BossBreakTest.DecayOnlyCountsTimeAfterTheHoldBoundary",
+        "seconds": 0.03
+      },
+      {
+        "name": "BossBreakTest.ForcedWaitPreservesGaugeAndRemainingHold",
+        "seconds": 0.03
+      },
+      {
+        "name": "BossBreakTest.FullGaugeEntersToppleOnceAndRestartsAfterExecution",
+        "seconds": 0.03
+      },
+      {
+        "name": "Boss03CounterTest.ReflectedWingFallsBeforeStartingTheFullOpening",
+        "seconds": 0.03
+      },
+      {
+        "name": "Boss03CounterTest.BodyDamageUsesSharedHealthAndRewardsGroundedAttacks",
+        "seconds": 0.04
+      },
+      {
+        "name": "Boss03CounterTest.OneWingExecutionKeepsTheRemainingBodyPunishWindow",
+        "seconds": 0.03
+      },
+      {
+        "name": "Boss03CounterTest.BodyHealthAlsoAdvancesPhaseAndCocoonRejectsDamage",
+        "seconds": 0.03
+      },
+      {
+        "name": "ParryRushTest.PlayerKeepsRealTimeWhileWorldSlows",
+        "seconds": 0.03
+      },
+      {
+        "name": "ParryRushTest.PauseWinsOverHitstopAndPreservesChance",
+        "seconds": 0.03
+      },
+      {
+        "name": "ParryRushTest.EndingRushPreservesIndependentSlowRequest",
+        "seconds": 0.03
+      },
+      {
+        "name": "ParryRushTest.RepeatedSuccessRefreshesWithoutAddingDuration",
+        "seconds": 0.03
+      },
+      {
+        "name": "ParryRushTest.TutorialExtensionRequiresRealParryAndPreservesAttackSpeed",
+        "seconds": 0.03
+      },
+      {
+        "name": "ParryRushTest.TutorialExtensionDoesNotShortenLongerChance",
+        "seconds": 0.03
+      },
+      {
+        "name": "PlayerScriptModulesTest.ParentAndChildSettingsSurviveReflectionRoundTrip",
+        "seconds": 0.04
+      },
+      {
+        "name": "GreenWareScriptObservationTest.AllMigratedFieldsAreReadableBeforeStartAndExcludedFromSave",
+        "seconds": 0.03
+      },
+      {
+        "name": "GreenWareScriptObservationTest.EnemyDamageAndResetAreVisibleImmediately",
+        "seconds": 0.03
+      },
+      {
+        "name": "GreenWareScriptObservationTest.CombatCountersAndResetDoNotNeedAnUpdate",
+        "seconds": 0.03
+      },
+      {
+        "name": "GreenWareScriptObservationTest.BreathSpendExhaustionAndRefillAreVisibleWithoutAnUpdate",
+        "seconds": 0.03
+      },
+      {
+        "name": "GreenWareScriptObservationTest.MissingBossDependenciesHaveSafeValues",
+        "seconds": 0.03
+      },
+      {
+        "name": "GreenWareScriptObservationTest.LegacySavedDebugValuesCannotOverwriteLiveState",
+        "seconds": 0.03
+      },
+      {
+        "name": "GreenWareScriptObservationTest.PlayerModulesKeepSettingsAndExcludeMigratedObservations",
+        "seconds": 0.03
+      }
+    ],
+    "log": {
+      "file": "build/agent/test-20260929-141602-47020.log",
+      "sha256": "f4c092ca7196e45d36452224b147fdb8a0b8e12148337e7f20a9dcb6ae6237b3"
+    }
+  },
+  "verification": [
+    {
+      "file": "build/agent/check-20260929-135045-35420.log",
+      "sha256": "d0ca7288ea75c1c7f3cd0824f5b19f3c8d64a3aebac41f54456d4fd7ef629f6a"
+    },
+    {
+      "file": "build/agent/check-20260929-141140-25588.log",
+      "sha256": "8986a237039aae101b5ef3c8b3017b3a3fb11f35d37243177f30a244175ebbf2"
+    },
+    {
+      "file": "build/agent/build-20260929-141201-45112.log",
+      "sha256": "fdd11771961c7ecfbd9fd4ce0164b3a717eac1be8f3cec726a8522ee226ea106"
+    }
+  ],
+  "sources": [
+    {
+      "file": "Projects/Engine/src/Scene/Systems/ScriptSystem.cpp",
+      "sha256": "626bfad3ce853de8ae829703afb9bcfb725fb500500c168980e22eaacbfc7557"
+    },
+    {
+      "file": "Projects/Engine/src/Scene/Scene.cpp",
+      "sha256": "dfd8925b2cc2392cc9b03e1d4247c79f3405d52ee114c5a9bb08207c5b3a9e51"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Scene/ComponentArray.hpp",
+      "sha256": "325160ec7acd201ecab31e38cc01a287fd3e938fcffd693647c994bc9bbb60d2"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Scene/Script.hpp",
+      "sha256": "278a93a80ede7bfc1d23620d93f8f60dd39499d720dfd005f7636cf0b8c636d4"
+    },
+    {
+      "file": "Projects/Engine/src/Scene/Script.cpp",
+      "sha256": "39d5e571b12112ae5d491b7abae9eabef819e4b9175450d15a602372459c13f1"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Scene/ScriptModules.hpp",
+      "sha256": "7e1708fbcd4bdce3be48b70229a367da37bf88119494a499e73d2d900e0f5a32"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Scene/ScriptDllAbi.hpp",
+      "sha256": "e67b68512e45692d9f2df76e313bd3a00970ce167a008dc576152fbae24ca136"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Scene/ScriptValidation.hpp",
+      "sha256": "ff45f0a2c2a3411e1a345519f1e6c54c1bb7efc5ca4846c8b5408664e4b25c13"
+    },
+    {
+      "file": "Projects/Engine/src/Scene/ScriptValidation.cpp",
+      "sha256": "546679af4be010aafee418d9669c7df1623cd1d274ba18c0c731d6894c78d1e2"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Scene/GameObject.hpp",
+      "sha256": "0a71f497967666aaad8fc214c53d0306942a196e5fb3908e82a32cf8d124abf2"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Asset/DataAsset.hpp",
+      "sha256": "ba524f77dbd3601539d0ce8185b9d719d6c6d07772bbd3d214b538c6ecee3fcd"
+    },
+    {
+      "file": "Projects/Editor/src/Panels/Inspector/InspectorCore.cpp",
+      "sha256": "612809a95e198789f9adf902670338c2d1c4c9281908c81546d5dce656a4bde9"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Scene/ScriptProxy/ScriptAudioProxy.hpp",
+      "sha256": "2b27c4a8ba9cb278998f51eac645fdbdd005d5c94f9b4e7f71fad3c82c48528b"
+    },
+    {
+      "file": "Projects/Engine/src/Scene/ScriptAudioLoops.cpp",
+      "sha256": "ae1711ad1245ea5e605608fb70b5e6646921e545976424634ac1107459edddd5"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Audio/VoiceLifetime.hpp",
+      "sha256": "cc77b53e5d01d8c777f6b00c404d9c15e99c675a3375a29f7b6c2cf8f0436ad2"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Audio/AudioManager.hpp",
+      "sha256": "50ade446a79c73415976c9eb99e8644585a5fdf224ed90f27f8db83ff0166fb4"
+    },
+    {
+      "file": "Projects/Engine/src/Audio/AudioManager.cpp",
+      "sha256": "00eda63c2bd2cc3516bac1fc2991bce1e71ac570b825b53c9d60cac2e303464f"
+    },
+    {
+      "file": "Projects/Engine/include/Engine/Scene/Components/AudioSourceComponent.hpp",
+      "sha256": "20931198115ffd67e755e7fabc135d6ff7179dd7125526179a51bca21907bf19"
+    },
+    {
+      "file": "Projects/Engine/src/Scene/Systems/AudioSystem.cpp",
+      "sha256": "bb96ac202186bf426b7f259acd06163e8bd59136f042c92b1ed85c28f3d88df6"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Game/CombatManagerComponent.hpp",
+      "sha256": "cfdb2b27202fcde49a308975bc2fa49e0694cd90fc21d0700b8f2f794c33088b"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Player/PlayerComponent.hpp",
+      "sha256": "c099ac9ff2049c43eeedb704c6ce8e9c2664b3b697a85b2ea3649b95676f44a2"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Combat/Boss03BossComponent.hpp",
+      "sha256": "4b173f0534386ec9eda4a753afe476a20e50c20f64bc902c67f13ebfa7a5a3da"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Utils/LoopVoice.hpp",
+      "sha256": "edec4ffed7dc0e1812d06669d536a1b4116c369c668459c6057ea043f8ccb73a"
+    },
+    {
+      "file": "GreenWare/Assets/Scripts/Utils/ManagerWatch.hpp",
+      "sha256": "b06c4d3dcd7a165f995620084b86684aac405c302824ee6158f07a8b27a37a76"
+    },
+    {
+      "file": "Projects/Tests/Engine/Auto/ScriptLifecycleTests.cpp",
+      "sha256": "75fdfe94edc3730929e74398907e813286ab79379462ff7c78d4548c0c2f5e90"
+    },
+    {
+      "file": "Projects/Tests/Engine/Auto/ScriptRequirementsTests.cpp",
+      "sha256": "2e8355ba6771d6ccca6ed39142fa98390cae8fc6ec1a433d75e5bb4864a4cafa"
+    },
+    {
+      "file": "Projects/Tests/Engine/Auto/ScriptAudioLoopTests.cpp",
+      "sha256": "39597a14013f3e4c8b7abe9717405e696b03d78b37ec23b7630784f943ee7d80"
+    },
+    {
+      "file": "Projects/Tests/Engine/Auto/ComponentArrayTests.cpp",
+      "sha256": "04c503d4ebed0286a01d82e49e79ce6cf0550dba4d23cfc733b62fa2c0f2fd4b"
+    },
+    {
+      "file": "Projects/Tests/CMakeLists.txt",
+      "sha256": "a0ea381ac5a33749a12b96622f620dc0f4c2d46efd7e9583da32348be6ebfc41"
+    }
+  ],
+  "limits": [
+    "OS audio output replaced by recording device; Proxy, AudioSystem and AudioManager use production implementation.",
+    "Actual DLL loading, GreenWare gameplay, rendering and audible output were not tested.",
+    "Editor and GreenWare script DLL must be rebuilt against the same updated SDK; reflection ABI 6, Script vtable ABI 8.",
+    "No developer-time reduction or game performance claim."
+  ]
+}

@@ -167,7 +167,7 @@ bool PlayToolbarButton(
     const ImVec4* iconColorOverride = nullptr)
 {
     /// @note Play 操作は常に同じ位置に置き、状態確認と操作を視線移動なしで行えるようにする。
-    ///       active 時は操作種別の色を背景へ乗せ、無効時は Disabled スタイルで入力も止める。
+    /// @note        active 時は操作種別の色を背景へ乗せ、無効時は Disabled スタイルで入力も止める。
     if (active) {
         ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, WithAlpha(activeColor, 0.92f));
@@ -377,7 +377,7 @@ void EditorApp::InstallNativeMenuBar()
         }
 
         /// @note ネイティブメニューは項目ごとの有効/無効を持たないが、InvokeOperator は poll を
-        ///       満たさない要求を拒否するので、グレーアウトできない面でも同じ条件が効く。
+        /// @note        満たさない要求を拒否するので、グレーアウトできない面でも同じ条件が効く。
         switch (id) {
         case NEW_SCENE:       InvokeOperator("scene.new"); break;
         case OPEN_SCENE:      InvokeOperator("scene.open"); break;
@@ -402,7 +402,7 @@ void EditorApp::InstallNativeMenuBar()
             break;
         }
         /// @note 表示トグルとビューモードは Operator を通す。同じ切り替えを 3 面が持つので、
-        ///       書き込み先 (EditorContext か ProjectSettings か) を各面が覚えていると必ずずれる。
+        /// @note        書き込み先 (EditorContext か ProjectSettings か) を各面が覚えていると必ずずれる。
         case TOGGLE_GRID:      InvokeOperator("render.show_grid"); break;
         case TOGGLE_LIGHTS:    InvokeOperator("render.show_light_range"); break;
         case TOGGLE_VFX:       InvokeOperator("render.show_vfx_gizmos"); break;
@@ -439,7 +439,7 @@ void EditorApp::InstallNativeMenuBar()
         case TOGGLE_MAP:     InvokeOperator("tools.map_editing_mode"); break;
         case OPEN_BUILD:     InvokeOperator("tools.build_settings"); break;
         /// @note パネルを前面に出すのは panel.focus 1 つで足りる。パネルごとに
-        ///       operator を生やすと m_panels という単一の出所が二重管理へ戻る。
+        /// @note        operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         case OPEN_IBL:         InvokePanelFocus(m_iblBakePanel); break;
         case OPEN_VOLUME_FLIPBOOK: InvokePanelFocus(m_volumeFlipbookBakePanel); break;
         case OPEN_NAVIGATION:  InvokePanelFocus(m_navigationPanel); break;
@@ -477,7 +477,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         MenuItemOp("scene.save", inPrefabEdit ? "Save Prefab" : nullptr);
         MenuItemOp("scene.save_as");
         /// @note Prefab 編集中だけ出す。poll (prefab.close) も同じ条件を持つので、
-        ///       表示していない状況では AI からも通らない。
+        /// @note        表示していない状況では AI からも通らない。
         if (inPrefabEdit) MenuItemOp("prefab.close");
         MenuItemOp("asset.save_all");
         ImGui::Separator();
@@ -488,7 +488,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     /// @name Edit
     if (ImGui::BeginMenu(LOC("Edit"))) {
         /// @note 直前の操作名を添えて「何が戻るのか」を読めるようにする。
-        ///       ラベルだけが動的で、実行可否と実体は operator 側にある。
+        /// @note        ラベルだけが動的で、実行可否と実体は operator 側にある。
         const bool canUndo = ctx.undoStack && ctx.undoStack->CanUndo();
         const bool canRedo = ctx.undoStack && ctx.undoStack->CanRedo();
         const std::string undoLabel = canUndo
@@ -522,7 +522,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     /// @name View
     if (ImGui::BeginMenu(LOC("View"))) {
         /// @note panel.set_visible の投影にすることで、人が押すのと同じ実体を AI も呼べる
-        ///       (パネルが増えても operator は 1 つのまま)。
+        /// @note        (パネルが増えても operator は 1 つのまま)。
         if (ImGui::BeginMenu(LOC("Panels"))) {
             for (auto& panel : m_panels) {
                 if (!panel->ShowInViewMenu()) continue;
@@ -549,13 +549,13 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         }
 
         /// @note UI 全体スケール (フォント + 余白)。設定に永続化される。
-        ///       スライダー自体は連続値のドラッグなので operator には乗らないが、
-        ///       適用は view.set_ui_scale を通す (範囲の宣言と適用処理を 1 箇所に保つ)。
+        /// @note        スライダー自体は連続値のドラッグなので operator には乗らないが、
+        /// @note        適用は view.set_ui_scale を通す (範囲の宣言と適用処理を 1 箇所に保つ)。
         ImGui::Separator();
         ImGui::TextDisabled("%s", LOCT("UI Scale"));
         /// @note 範囲は operator の params 宣言から引く。スライダー側に直書きすると、
-        ///       人は 0.5x にできるのに AI からは BAD_ARG で弾かれる (同じ操作の限界が
-        ///       面ごとに違う) という、この設計が消したいずれが範囲という形で再発する。
+        /// @note        人は 0.5x にできるのに AI からは BAD_ARG で弾かれる (同じ操作の限界が
+        /// @note        面ごとに違う) という、この設計が消したいずれが範囲という形で再発する。
         float scaleMin = 0.7f;
         float scaleMax = 2.0f;
         if (const EditorOperator* scaleOp = m_operators.Find("view.set_ui_scale");
@@ -585,7 +585,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         }
         ImGui::Separator();
         /// @note 全項目を operator の投影にする。フラグのアドレスを直接渡すと、同じフラグを
-        ///       切り替える operator と表示が別経路になり、AI からも見えない。
+        /// @note        切り替える operator と表示が別経路になり、AI からも見えない。
         /// @name Scene Overlays
         MenuItemOp("render.show_grid",        "Grid");
         MenuItemOp("render.show_light_range", "Light Range");
@@ -630,7 +630,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::Separator();
         /// @name Culling
         /// @note Scene View はデバッグカメラで描くため CameraComponent の設定が届かない。
-        ///       「消えた原因がカリングか」を切り分ける唯一の口なので Debug 側へ出す。
+        /// @note        「消えた原因がカリングか」を切り分ける唯一の口なので Debug 側へ出す。
         MenuItemOp("render.scene_view_occlusion_culling", "Scene View Occlusion Culling");
         ImGui::Separator();
         /// @name Tools
@@ -639,7 +639,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         ImGui::Separator();
         if (ImGui::BeginMenu(LOC("View Mode"))) {
             /// @note 排他選択は 1 つの operator に引数で渡す。チェックは checked を
-            ///       同じ引数で評価した値なので、「表示は Lit なのに実体は Unlit」が作れない。
+            /// @note        同じ引数で評価した値なので、「表示は Lit なのに実体は Unlit」が作れない。
             const auto viewModeItem = [this](const char* mode, const char* label) {
                 OpArgs args;
                 args.Set("mode", std::string(mode));
@@ -653,7 +653,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         }
         ImGui::Separator();
         /// @note Bloom / FXAA は Post Process Volume + Profile (.fzdata) へ一本化済み。
-        ///       Shadow はプロジェクト全体の描画構成なのでここに残す。
+        /// @note        Shadow はプロジェクト全体の描画構成なのでここに残す。
         MenuItemOp("render.shadow_enabled", "Shadow");
         ImGui::Separator();
         /// @name Developer
@@ -690,7 +690,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         MenuItemOp("tools.build_settings");
         ImGui::Separator();
         /// @note パネルごとに operator を生やすと m_panels という単一の出所が二重管理へ戻る。
-        ///       名前を引数で渡す 1 つの操作で足りる。
+        /// @note        名前を引数で渡す 1 つの操作で足りる。
         if (m_iblBakePanel && ImGui::MenuItem(LOC("IBL Baker...")))
             InvokePanelFocus(m_iblBakePanel);
         if (m_volumeFlipbookBakePanel && ImGui::MenuItem(LOC("Volume Flipbook Baker...")))
@@ -707,7 +707,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             InvokePanelFocus(m_aiSettingsPanel);
         ImGui::Separator();
         /// @note チェックマークは operator の checked (= 実際の待受状態) なので、
-        ///       状態表示の役割を保ったままその場で切り替えられる。
+        /// @note        状態表示の役割を保ったままその場で切り替えられる。
         MenuItemOp("ai.command_bus", "Editor Command Bus");
         ImGui::EndMenu();
     }
@@ -937,7 +937,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
             const float posX = availableWidth - totalW - 8.0f;
             const float posY = (TOOLBAR_HEIGHT - ImGui::GetTextLineHeight()) * 0.5f;
             /// @note ステータス文字をボタン群へ重ねず、狭いフレームでは表示を省略する。
-            ///       Compiling / PLAYING 表示が Play ボタンを圧迫するより、操作ボタンの完全表示を優先する。
+            /// @note        Compiling / PLAYING 表示が Play ボタンを圧迫するより、操作ボタンの完全表示を優先する。
             if (posX > groupRight + kGap) {
                 if (posX > ImGui::GetCursorPosX())
                     ImGui::SetCursorPos({ posX, posY });
@@ -966,10 +966,10 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     ImGui::PopStyleVar(2);
 }
 
-/// ビルド失敗通知バー
+/// @note  ビルド失敗通知バー
 
 /// @note ビルド失敗が残っている間はツールバー直下に赤帯を出し続け、[Show] / [Dismiss] で操作する。
-///       成功ビルドで自動的に消える。
+/// @note        成功ビルドで自動的に消える。
 void EditorApp::DrawBuildNotificationBar(EditorContext& ctx)
 {
     if (!ctx.buildConsole || !ctx.buildConsole->HasActiveFailure()) return;
@@ -1034,12 +1034,12 @@ void EditorApp::DrawGuidConflictBar(EditorContext& /*ctx*/)
     ImGui::PopStyleColor();
 }
 
-/// ホットキー登録
+/// @note  ホットキー登録
 
 void EditorApp::StartPlayMode()
 {
     /// @note Play ツールバーボタンと Ctrl+P ホットキーの共通経路。
-    ///       ガード条件をここに集約し、どの入力経路でも同じ前提チェックを通す。
+    /// @note        ガード条件をここに集約し、どの入力経路でも同じ前提チェックを通す。
     const bool scriptReloadBusy =
         m_ctx.scriptReloadBusy ||
         m_ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
@@ -1053,37 +1053,38 @@ void EditorApp::StartPlayMode()
         return;
     }
     /// @note Prefab 編集面には「シーン」が無い (カメラもライトも無い、プレファブ単体)。
-    ///       そのまま Play すると空舞台で動き出し、Stop 時の復元も Prefab 内容に対して行われるため、
-    ///       編集面から出るまで開始させない。
+    /// @note        そのまま Play すると空舞台で動き出し、Stop 時の復元も Prefab 内容に対して行われるため、
+    /// @note        編集面から出るまで開始させない。
     if (m_ctx.InPrefabEditMode()) {
         FBZZ_LOG_WARN("Play: close the prefab edit mode first");
         return;
     }
 
-    /// @note FBZZ_REQUIRE_COMPONENT の充足をシーン全体でまとめて検証する。
-    ///       付け忘れは「動かないけどエラーも出ない」形でしか現れないので、Play を押した瞬間に
-    ///       Console へ全件出す。ただし Play は止めない — 作りかけを走らせるのが Play の役目。
-    if (const auto issues = scene::ValidateSceneScriptRequirements(*m_ctx.activeScene);
-        !issues.empty()) {
-        for (const auto& issue : issues)
+    /// @note 一覧と同じ検証を行う。Awake による設定を許すため、開始可否はランタイムで再判定する。
+    OpArgs requirementArgs;
+    requirementArgs.Set("showPanel", false);
+    editor::InvokeOperator(m_ctx, "script.requirements.validate", requirementArgs);
+    const auto& requirementReview = m_ctx.scriptRequirementReview;
+    if (!requirementReview.rows.empty()) {
+        for (const auto& row : requirementReview.rows)
             FBZZ_LOG_ERROR("Script requirement: %s",
-                           scene::FormatScriptRequirementIssue(issue).c_str());
-        Toast::Error(std::to_string(issues.size()) +
-                     " missing script component(s) — see Console");
+                           scene::FormatScriptRequirementIssue(row.issue).c_str());
+        Toast::Error(std::to_string(requirementReview.rows.size()) +
+                     " required setting issue(s) — Script Requirements / Console");
     }
 
     m_undoStack.Clear();
     /// @note 編集中に何かが基底を書いていても、Play は «誰も要求していない» 状態から始める。
-    ///       UpdatePlayCursorControls (フレーム先頭) より前に畳む必要がある — 次フレームには
-    ///       既に OnStart が要求を積んでおり、あちらで畳むと名乗ったばかりの要求を消してしまう。
+    /// @note        UpdatePlayCursorControls (フレーム先頭) より前に畳む必要がある — 次フレームには
+    /// @note        既に OnStart が要求を積んでおり、あちらで畳むと名乗ったばかりの要求を消してしまう。
     core::Cursor::ClearRequests();
     /// @note カーソルの絵もここで読む。スクリプトの OnStart は «OS カーソルの絵があるか» で
-    ///       自前のポインターを出すかどうかを決めるので、走り出す前に揃っている必要がある。
+    /// @note        自前のポインターを出すかどうかを決めるので、走り出す前に揃っている必要がある。
     m_ctx.projectSettings.cursor.Apply(m_ctx.projectRoot);
     /// @note Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
     RemoveEditorHiding();
     /// @note navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
-    ///       Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
+    /// @note        Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
     m_navMeshPlayCache.clear();
     for (scene::EntityID eid : m_ctx.activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
         auto* surf = m_ctx.activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
@@ -1094,28 +1095,28 @@ void EditorApp::StartPlayMode()
         entry.stats      = surf->bakeStats;
         entry.sourceHash = surf->bakedSourceHash;
         /// @note ボクセル格子は Scene View の Voxels 表示専用で、Play 中は表示自体が抑止される。
-        ///       数 MB を二重に抱えないよう、預けている間は Surface から外す。
+        /// @note        数 MB を二重に抱えないよう、預けている間は Surface から外す。
         entry.debug      = std::move(surf->bakeDebug);
         surf->bakeDebug  = {};
         m_navMeshPlayCache[go->instanceId] = std::move(entry);
     }
     /// @note ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。エディタは共通
-    ///       ProjectRuntime の SceneManager を Update するため、Play 開始時に ScriptRuntime を
-    ///       差し替えて正しい参照先を指す。
+    /// @note        ProjectRuntime の SceneManager を Update するため、Play 開始時に ScriptRuntime を
+    /// @note        差し替えて正しい参照先を指す。
     m_runtime.ActivateScriptRuntime(
         core::Application::Get().GetRenderer(),
         static_cast<uint32_t>(m_ctx.gameViewportWidth),
         static_cast<uint32_t>(m_ctx.gameViewportHeight)
     );
     /// @note graphics プロキシの書き換え先を Play 中だけ開ける。実体は ProjectSettings::render で
-    ///       終了時に toml へ保存されるので、スナップショットを取らないと Play 中の変更が焼き付く。
+    /// @note        終了時に toml へ保存されるので、スナップショットを取らないと Play 中の変更が焼き付く。
     m_renderSettingsPlaySnapshot = m_ctx.projectSettings.render;
     core::Application::Get().SetActiveRenderSettings(&m_ctx.projectSettings.render);
     /// @note Play 中の増加も Stop 後の残りも、この 1 つの基準から測る。
     if (m_ctx.resources != nullptr) {
         m_memoryLeakDiff.CaptureBaseline(*m_ctx.resources, "Play");
         /// @note 最初の Play だけ «セッション基準» も置く。キャッシュの初回充填と、
-        ///       往復のたびに積むリークを、1 往復ぶんの差分だけでは区別できないため。
+        /// @note        往復のたびに積むリークを、1 往復ぶんの差分だけでは区別できないため。
         m_memoryLeakDiff.CaptureSessionBaselineIfAbsent(*m_ctx.resources);
     }
     m_playMode.Play(*m_ctx.activeScene);
@@ -1129,7 +1130,7 @@ void EditorApp::StopPlayMode()
         return;
     scene::ScriptRuntime::Override(nullptr);
     /// @note Play 中のスクリプトが変えた画質・明るさを編集側へ持ち込まない。
-    ///       選択状態だけは編集の続きなので、復元から外して現在のものを残す。
+    /// @note        選択状態だけは編集の続きなので、復元から外して現在のものを残す。
     core::Application::Get().SetActiveRenderSettings(nullptr);
     {
         auto selection = std::move(m_ctx.projectSettings.render.selectedObjects);
@@ -1137,7 +1138,7 @@ void EditorApp::StopPlayMode()
         m_ctx.projectSettings.render.selectedObjects = std::move(selection);
     }
     /// @note AudioSystemはSimOnlyのため、EditModeへ戻った後ではループVoiceを停止できない。
-    ///       PauseではなくPlay終了時だけ一括停止し、BGMがEditor操作中まで残ることを防ぐ。
+    /// @note        PauseではなくPlay終了時だけ一括停止し、BGMがEditor操作中まで残ることを防ぐ。
     if (auto* audioManager = core::Application::Get().GetAudioManager())
         audioManager->StopAllVoices();
     m_playMode.Stop(*m_ctx.activeScene);
@@ -1152,7 +1153,7 @@ void EditorApp::TogglePlayMode()
         StopPlayMode();
 }
 
-/// 描画モードを operator へ渡す小さな補助 (ネイティブメニューの 4 項目が使う)。
+/// @note  描画モードを operator へ渡す小さな補助 (ネイティブメニューの 4 項目が使う)。
 void EditorApp::InvokeViewMode(const char* mode)
 {
     OpArgs args;
@@ -1160,9 +1161,9 @@ void EditorApp::InvokeViewMode(const char* mode)
     InvokeOperator("render.set_view_mode", args);
 }
 
-/// operator をメニュー項目として描く
-/// 表示名・ショートカット文字列・実行可否・実体の 4 つとも登録済みの情報から引く。
-/// 直書きするとリバインドで表示だけが嘘になり、実行可否もキー側と別式になる。
+/// @note  operator をメニュー項目として描く
+/// @note  表示名・ショートカット文字列・実行可否・実体の 4 つとも登録済みの情報から引く。
+/// @note  直書きするとリバインドで表示だけが嘘になり、実行可否もキー側と別式になる。
 bool EditorApp::MenuItemOp(const char* operatorId, const char* labelOverride)
 {
     return MenuItemOpArgs(operatorId, OpArgs{}, labelOverride);
@@ -1183,12 +1184,12 @@ bool EditorApp::MenuItemOpArgs(const char* operatorId, const OpArgs& args,
         shortcut = HotkeyManager::FormatBinding(*hk);
 
     /// @note 登録簿は英語のまま (op.list / AI バス / ホットキー保存の鍵になる)。訳すのは
-    ///       描くときだけ。LOC は "訳###原文" を返すので、ID は英語版と同じままになる。
+    /// @note        描くときだけ。LOC は "訳###原文" を返すので、ID は英語版と同じままになる。
     const char* label = LOC((labelOverride != nullptr) ? labelOverride : op->label.c_str());
     const bool  enabled = CanInvokeOperator(operatorId, args);
 
     /// @note チェックマークも登録簿から引く。フラグを直接指すと表示と実体が別経路になり、
-    ///       operator 側に条件を足してもメニューの見た目に反映されない。
+    /// @note        operator 側に条件を足してもメニューの見た目に反映されない。
     bool checked = false;
     if (op->checked) {
         const OpContext context = MakeOpContext();
@@ -1202,8 +1203,8 @@ bool EditorApp::MenuItemOpArgs(const char* operatorId, const OpArgs& args,
     return true;
 }
 
-/// Operator のカテゴリ文字列を、ショートカット一覧の見出し分類へ対応づける。
-/// 一覧は enum、Operator 側は文字列カテゴリなので、対応表をここに 1 つ置く。
+/// @note  Operator のカテゴリ文字列を、ショートカット一覧の見出し分類へ対応づける。
+/// @note  一覧は enum、Operator 側は文字列カテゴリなので、対応表をここに 1 つ置く。
 static HotkeyCategory HotkeyCategoryFromOperator(const std::string& category)
 {
     if (category == "File")      return HotkeyCategory::File;
@@ -1218,12 +1219,12 @@ static HotkeyCategory HotkeyCategoryFromOperator(const std::string& category)
     return HotkeyCategory::Edit;
 }
 
-/// ホットキー登録 — キー割り当ての単一の定義場所
-/// ここに書けば入力処理・F1 の一覧・リバインド UI・設定への永続化が全部ついてくる
-/// (パネル側で IsKeyPressed を直接叩くと、その 4 つが揃わない)。
-/// 「何をするか」「いつ実行できるか」は OperatorRegistry が持ち、ここは operator id に
-/// キーを割り当てるだけの表。条件式を各面へ写すと必ずずれる。
-/// Docs/design/editor-operator-model.md
+/// @note  ホットキー登録 — キー割り当ての単一の定義場所
+/// @note  ここに書けば入力処理・F1 の一覧・リバインド UI・設定への永続化が全部ついてくる
+/// @note  (パネル側で IsKeyPressed を直接叩くと、その 4 つが揃わない)。
+/// @note  「何をするか」「いつ実行できるか」は OperatorRegistry が持ち、ここは operator id に
+/// @note  キーを割り当てるだけの表。条件式を各面へ写すと必ずずれる。
+/// @note  Docs/design/editor-operator-model.md
 void EditorApp::RegisterDefaultHotkeys()
 {
     /// @note 説明専用エントリ (RegisterInfo) で使う
@@ -1231,7 +1232,7 @@ void EditorApp::RegisterDefaultHotkeys()
     using Scope = HotkeyScope;
 
     /// @note operator id へキーを割り当てる。表示名・分類・実行・実行可否はすべて
-    ///       レジストリ側から導出するので、ここでキー以外を書くことはない。
+    /// @note        レジストリ側から導出するので、ここでキー以外を書くことはない。
     auto bind = [this](const char* operatorId, int key, bool ctrl, bool shift, bool alt,
                        Scope scope) {
         const EditorOperator* op = m_operators.Find(operatorId);
@@ -1258,7 +1259,7 @@ void EditorApp::RegisterDefaultHotkeys()
     };
 
     /// @note Scene View と Hierarchy のどちらにフォーカスがあっても効く編集操作。
-    ///       Unity 同様、選択後にフォーカスを移さず Delete / Ctrl+D を通す。
+    /// @note        Unity 同様、選択後にフォーカスを移さず Delete / Ctrl+D を通す。
     constexpr Scope kEditScopes = Scope::SceneViewport | Scope::Hierarchy;
 
     /// @name File
@@ -1271,8 +1272,8 @@ void EditorApp::RegisterDefaultHotkeys()
     bind("edit.undo", ImGuiKey_Z, true, false, false, Scope::Global);
     bind("edit.redo", ImGuiKey_Y, true, false, false, Scope::Global);
     /// @note Ctrl+Shift+Z は Unity / Photoshop 系の Redo。Ctrl+Y と併存させる。
-    ///       同じ operator への 2 本目なので operatorId は付けない (付けると Rebind が
-    ///       id で引いたときどちらを指すか決まらない)。保存鍵は表示名になる。
+    /// @note        同じ operator への 2 本目なので operatorId は付けない (付けると Rebind が
+    /// @note        id で引いたときどちらを指すか決まらない)。保存鍵は表示名になる。
     {
         const EditorOperator* redo = m_operators.Find("edit.redo");
         if (redo != nullptr) {
@@ -1307,7 +1308,7 @@ void EditorApp::RegisterDefaultHotkeys()
     bind("view.frame_selected", ImGuiKey_F, false, false, false, Scope::SceneViewport);
 
     /// @note Alt+数字: 素の 1~9 はカメラブックマーク、Shift+数字はその保存で埋まっているため Alt を使う。
-    ///       ViewportPanel のブックマーク処理も Alt 押下中はスキップし、取り合いを避けている。
+    /// @note        ViewportPanel のブックマーク処理も Alt 押下中はスキップし、取り合いを避けている。
     bind("view.toggle_projection", ImGuiKey_O, false, false, false, Scope::SceneViewport);
     bind("view.axis_front",  ImGuiKey_1, false, false, true, Scope::SceneViewport);
     bind("view.axis_back",   ImGuiKey_2, false, false, true, Scope::SceneViewport);
@@ -1337,7 +1338,7 @@ void EditorApp::RegisterDefaultHotkeys()
 
     /// @name 説明専用エントリ
     /// @note マウス操作や数字キー列はキー 1 つに割り当てられないが、一覧としては同じくらい要る。
-    ///       別表に切り出すとそこがまた二重管理になるので、同じ器に入れて一覧を 1 本に保つ。
+    /// @note        別表に切り出すとそこがまた二重管理になるので、同じ器に入れて一覧を 1 本に保つ。
     m_hotkeys.RegisterInfo("Look around",     "RMB drag",       Cat::Viewport, Scope::SceneViewport);
     m_hotkeys.RegisterInfo("Fly (while RMB)", "W / A / S / D / Q / E", Cat::Viewport, Scope::SceneViewport);
     m_hotkeys.RegisterInfo("Pan",             "MMB drag",       Cat::Viewport, Scope::SceneViewport);
@@ -1354,8 +1355,8 @@ void EditorApp::RegisterDefaultHotkeys()
     m_hotkeys.RegisterInfo("Surface snap",    "Ctrl + Shift + drag", Cat::Gizmo, Scope::SceneViewport);
 
     /// @note Fluid Editor はキーをパネル内で直接拾う (対象が «開いている文書» でありレジストリの
-    ///       operator にできない)。入力には関与しない説明専用エントリとして一覧にだけ出す —
-    ///       一覧に出ないキーは «無い» のと同じで、特に Ctrl+S はここで明示しないと意味が読めない。
+    /// @note        operator にできない)。入力には関与しない説明専用エントリとして一覧にだけ出す —
+    /// @note        一覧に出ないキーは «無い» のと同じで、特に Ctrl+S はここで明示しないと意味が読めない。
     m_hotkeys.RegisterInfo("Save fluid document", "Ctrl+S", Cat::File, Scope::FluidEditor);
     m_hotkeys.RegisterInfo("Play / pause preview", "Space", Cat::Play, Scope::FluidEditor);
     m_hotkeys.RegisterInfo("Step frame",           "Left / Right", Cat::Play, Scope::FluidEditor);
@@ -1365,19 +1366,19 @@ void EditorApp::RegisterDefaultHotkeys()
     m_hotkeys.RegisterInfo("Rename selected part", "F2",           Cat::Edit, Scope::FluidEditor);
 
     /// @note 保存済みリバインドの適用は EditorApp::OpenProject が行う (設定を読むのがそこ)。
-    ///       Rebind は既定値を全部積んだ後でないと対象を引けないので、順序はここより後。
+    /// @note        Rebind は既定値を全部積んだ後でないと対象を引けないので、順序はここより後。
 
     /// @note scope の判定は EditorContext のフォーカス状態から答える。パネルは描画中にしか
-    ///       自身のフォーカスを知れないため、ここで見るのは 1 フレーム前の状態になる
-    ///       (キー入力への応答としては問題ない)。
+    /// @note        自身のフォーカスを知れないため、ここで見るのは 1 フレーム前の状態になる
+    /// @note        (キー入力への応答としては問題ない)。
     m_hotkeys.SetScopeResolver([this](HotkeyScope scope) {
         /// @note 「今フォーカスされている面」は 1 つ (EditorContext::focusedPanelScope)。
-        ///       パネルが増えてもここは変わらない — 各パネルが IPanel::GetHotkeyScope() で名乗る。
+        /// @note        パネルが増えてもここは変わらない — 各パネルが IPanel::GetHotkeyScope() で名乗る。
         if (m_ctx.PanelScopeFocused(scope)) return true;
 
         /// @note Scene View だけはホバーでも効かせる。ギズモ切替やカメラ操作は «絵を見ながら»
-        ///       押すもので、先にクリックしてフォーカスを取る手順を挟むと手が止まる。
-        ///       他の面はフォーカスのみで判定する方が読める。
+        /// @note        押すもので、先にクリックしてフォーカスを取る手順を挟むと手が止まる。
+        /// @note        他の面はフォーカスのみで判定する方が読める。
         return HasScope(scope, HotkeyScope::SceneViewport) && m_ctx.sceneViewportHovered;
     });
 }
