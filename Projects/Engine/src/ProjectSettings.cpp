@@ -2,9 +2,7 @@
 /// @brief   プロジェクト設定の TOML 永続化実装。
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
-///
-/// タグ・レイヤーなどエディタとランタイムで共有する設定を読み書きする。
-/// 失敗時は bool で返し、例外は使わない。
+/// @note タグ・レイヤーなどエディタとランタイムで共有する設定を読み書きする。失敗時は bool を返す。
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -23,7 +21,7 @@ std::vector<audio::BusDesc> AudioSettings::BuildBusLayout() const
     std::vector<audio::BusDesc> layout =
         buses.empty() ? audio::DefaultBusLayout() : buses;
     /// @note Master の音量はここで masterVolume に一本化する。設定 UI は Master を «全体音量» として
-    ///       1 本のスライダーで見せるため、バス側にも書けると、どちらが効くか読めなくなる。
+    /// @note 1 本のスライダーで見せるため、バス側にも書けると、どちらが効くか読めなくなる。
     for (audio::BusDesc& desc : layout) {
         if (desc.name == audio::kMasterBusName) {
             desc.volume = masterVolume;
@@ -89,6 +87,13 @@ bool ReadBool(const toml::table& table, const char* key, bool fallback)
     return fallback;
 }
 
+bool ReadRayRequest(const toml::table& table, const char* key)
+{
+    /// @note TOML の整数を bool へ変換して RT 要求を有効化しない。旧設定の ReadBool は維持する。
+    const auto* value = table[key].as_boolean();
+    return value && value->get();
+}
+
 float ReadFloat(const toml::table& table, const char* key, float fallback)
 {
     if (auto value = table[key].value<double>())
@@ -125,12 +130,28 @@ const char* RenderingPipelineToString(renderer::RenderingPipeline pipeline)
     return "Forward";
 }
 
-} // namespace
+renderer::RenderMode RenderModeFromString(std::string_view value)
+{
+    if (value == "Hybrid") return renderer::RenderMode::HYBRID;
+    if (value == "PathTracing") return renderer::RenderMode::PATH_TRACING;
+    return renderer::RenderMode::RASTER;
+}
+
+const char* RenderModeToString(renderer::RenderMode mode)
+{
+    switch (mode) {
+    case renderer::RenderMode::HYBRID: return "Hybrid";
+    case renderer::RenderMode::PATH_TRACING: return "PathTracing";
+    default: return "Raster";
+    }
+}
+
+} /// @note namespace
 
 void CursorAppearance::Apply(const std::string& projectRoot) const
 {
     /// @note 先に全部畳む。前のプロジェクト / 前の Play で読んだ絵が «設定を空にしても
-    ///       残り続ける» のを防ぐ。
+    /// @note 残り続ける» のを防ぐ。
     core::Cursor::ClearShapeImages();
     if (!hardwareCursor) return;
 
@@ -170,7 +191,7 @@ bool ProjectSettings::Load(const std::string& path)
     std::string text;
     if (!util::FileSystem::ReadText(path, text)) {
         /// @note Load 失敗時に既存設定を代入で破棄すると、呼び出し側が保持していた設定や UI 参照まで巻き戻る。
-        ///       失敗は bool で伝え、現在の設定はそのまま残す。
+        /// @note 失敗は bool で伝え、現在の設定はそのまま残す。
         FBZZ_LOG_WARN("ProjectSettings: read failed: %s", path.c_str());
         return false;
     }
@@ -181,6 +202,8 @@ bool ProjectSettings::Load(const std::string& path)
         return false;
     }
     auto& tbl = result.table();
+    /// @note 新しいキーがない旧設定は Raster。別プロジェクトの RT 要求を引き継がない。
+    render.modeRequest = {};
 
     if (auto* projectTbl = tbl["project"].as_table()) {
         game.project.name         = (*projectTbl)["name"].value_or(game.project.name);
@@ -210,7 +233,7 @@ bool ProjectSettings::Load(const std::string& path)
         physics.gravity = ArrToVec3((*physicsTbl)["gravity"].as_array(), physics.gravity);
 
         /// @note 衝突行列は «ぶつからない組» だけを書く。32x32 = 1024 個の true を並べても
-        ///       読めないうえ、レイヤーを 1 つ足すたびに差分が全面になる。
+            /// @note 読めないうえ、レイヤーを 1 つ足すたびに差分が全面になる。
         physics.collisionMatrix = LayerCollisionMatrix{};
         if (auto* ignoreArr = (*physicsTbl)["ignoreCollisions"].as_array()) {
             for (const auto& entry : *ignoreArr) {
@@ -230,9 +253,17 @@ bool ProjectSettings::Load(const std::string& path)
     if (physics.substeps > 32) physics.substeps = 32;
 
     /// @note [render] はシーンをまたいでも変わらない構成 (パイプライン・シャドウ品質・デバッグ表示・
-    ///       パーティクル予算) だけを持つ。Bloom/SSR 等の «ルック» は場所ごとに変わるため
-    ///       PostProcessVolume + PostProcessProfile (.fzdata) の所有。旧 bloom = … 等のキーは無視される。
+    /// @note パーティクル予算) だけを持つ。Bloom/SSR 等の «ルック» は場所ごとに変わるため
+    /// @note PostProcessVolume + PostProcessProfile (.fzdata) の所有。旧 bloom = … 等のキーは無視される。
     if (auto* renderTbl = tbl["render"].as_table()) {
+        render.modeRequest.mode = RenderModeFromString(
+            (*renderTbl)["mode"].value_or(std::string("Raster")));
+        render.modeRequest.pathProfile =
+            (*renderTbl)["pathProfile"].value_or(std::string("Reference")) == "Game"
+                ? renderer::PathTracingProfile::GAME : renderer::PathTracingProfile::REFERENCE;
+        render.modeRequest.rayShadow = ReadRayRequest(*renderTbl, "rayShadow");
+        render.modeRequest.rayReflection = ReadRayRequest(*renderTbl, "rayReflection");
+        render.modeRequest.rayDiffuseGi = ReadRayRequest(*renderTbl, "rayDiffuseGi");
         {
             const auto s = (*renderTbl)["pipeline"].value_or(std::string("forward"));
             render.pipeline = RenderingPipelineFromString(s, render.pipeline);
@@ -343,7 +374,7 @@ bool ProjectSettings::Load(const std::string& path)
 
         if (buses.empty()) {
             /// @note 旧形式 (bgmVolume / seVolume の 2 スライダー) からの移行。既定構成へ写すのは、
-            ///       旧設定を捨てると更新しただけで音量が 1.0 へ戻るため。
+            /// @note 旧設定を捨てると更新しただけで音量が 1.0 へ戻るため。
             buses = audio::DefaultBusLayout();
             const float bgm = unitRange((*audioTbl)["bgmVolume"].value_or(1.0));
             const float se  = unitRange((*audioTbl)["seVolume"].value_or(1.0));
@@ -367,7 +398,7 @@ bool ProjectSettings::Load(const std::string& path)
         if (app.targetFps < 0) app.targetFps = 0;
         if (auto backend = (*appTbl)["renderer"].value<std::string>()) {
             /// @note 終了済みトークンを黙って DX12 へ倒すと、利用者は設定が効いていると
-            ///       誤解したまま動いてしまう。倒すこと自体は変えず、名指しで伝える。
+                /// @note 誤解したまま動いてしまう。倒すこと自体は変えず、名指しで伝える。
             if (renderer::IsRetiredBackendToken(*backend)) {
                 FBZZ_LOG_WARN("ProjectSettings: renderer=\"%s\" は v1.0 でサポートを終了しました。"
                               "DirectX 12 で起動します (Docs/design/dx11-removal.md)",
@@ -387,8 +418,8 @@ bool ProjectSettings::Load(const std::string& path)
     }
 
     /// @note 旧 [cursor] の lock_mode / visible は読まない。拘束と表示はスクリプトが持つ
-    ///       ランタイム状態になり、設定ファイルは «絵» だけを持つ (CursorAppearance を参照)。
-    ///       古いファイルに残っていてもここで黙って捨てられ、次の Save で消える。
+    /// @note ランタイム状態になり、設定ファイルは «絵» だけを持つ (CursorAppearance を参照)。
+    /// @note 古いファイルに残っていてもここで黙って捨てられ、次の Save で消える。
     if (auto* cursorTbl = tbl["cursor"].as_table()) {
         cursor.hardwareCursor = (*cursorTbl)["hardware"].value_or(cursor.hardwareCursor);
         if (auto* shapesTbl = (*cursorTbl)["shapes"].as_table()) {
@@ -412,10 +443,10 @@ bool ProjectSettings::Load(const std::string& path)
 
     /// @name 入力バインド
     /// @note ProjectSettings.toml と同じディレクトリの Input.inputactions を読む。別ファイルなのは、
-    ///       バインド定義の配列が深く混ぜると読みにくいのと、プレイヤーが実行時に書き換える対象で
-    ///       開発者向け設定とは更新頻度も責務も違うため。
+    /// @note バインド定義の配列が深く混ぜると読みにくいのと、プレイヤーが実行時に書き換える対象で
+    /// @note 開発者向け設定とは更新頻度も責務も違うため。
     /// @note 読めなくても Load 全体は失敗させない。入力ファイルは無くて当然 (既定バインドで動く) で、
-    ///       ここで false を返すとプロジェクト設定自体が読めなかった扱いになる。
+    /// @note ここで false を返すとプロジェクト設定自体が読めなかった扱いになる。
     {
         const std::filesystem::path settingsPath = util::FileSystem::PathFromUtf8(path);
         const std::filesystem::path inputPath =
@@ -423,8 +454,8 @@ bool ProjectSettings::Load(const std::string& path)
                 ? settingsPath.parent_path() / "Input.inputactions"
                 : std::filesystem::path("Input.inputactions");
         /// @note 既定バインドは Move/Look/Jump/Attack/Dodge/Interact/Pause のみで、メニューが使う
-        ///       Submit/Cancel が無い。このファイルが配布物から抜けると «UI だけ反応しない» のに
-        ///       記録が残らないため、無いことを名指しで警告する。
+        /// @note Submit/Cancel が無い。このファイルが配布物から抜けると «UI だけ反応しない» のに
+        /// @note 記録が残らないため、無いことを名指しで警告する。
         std::error_code ec;
         if (!std::filesystem::exists(inputPath, ec)) {
             FBZZ_LOG_WARN("ProjectSettings: %s が見つかりません。"
@@ -466,7 +497,7 @@ std::string ProjectSettings::ToToml() const
     physicsTbl.insert("gravity",  Vec3ToArr(physics.gravity));
 
     /// @note 対称行列なので下三角 (a <= b) だけ書く。両方書くと、手で片方を消したときに
-    ///       «消したのに効いている» が起きる。
+    /// @note «消したのに効いている» が起きる。
     toml::array ignoreArr;
     for (int a = 0; a < 32; ++a)
         for (int b = a; b < 32; ++b) {
@@ -485,9 +516,15 @@ std::string ProjectSettings::ToToml() const
     outlineColorArr.push_back((double)render.outlineColor[3]);
 
     /// @note [render] の保存対象は Load と対になる「プロジェクト全体で固定の構成」のみ。
-    ///       ルック (ポストプロセス / 高度グラフィクス) は PostProcessProfile (.fzdata) が保存する。
+    /// @note ルック (ポストプロセス / 高度グラフィクス) は PostProcessProfile (.fzdata) が保存する。
     toml::table renderTbl;
     renderTbl.insert("pipeline", RenderingPipelineToString(render.pipeline));
+    renderTbl.insert("mode", RenderModeToString(render.modeRequest.mode));
+    renderTbl.insert("pathProfile", render.modeRequest.pathProfile == renderer::PathTracingProfile::GAME
+        ? "Game" : "Reference");
+    renderTbl.insert("rayShadow", render.modeRequest.rayShadow);
+    renderTbl.insert("rayReflection", render.modeRequest.rayReflection);
+    renderTbl.insert("rayDiffuseGi", render.modeRequest.rayDiffuseGi);
     renderTbl.insert("viewMode", static_cast<int>(render.viewMode));
 
     /// @name Shadow 品質
@@ -584,7 +621,7 @@ std::string ProjectSettings::ToToml() const
     cursorTbl.insert("hardware", cursor.hardwareCursor);
     {
         /// @note 画像を割り当てていない種類は書き出さない。全種類を空文字で並べても
-        ///       «設定してあるのはどれか» が読めなくなるだけで、既定へ倒す判断は Load 側が持つ。
+    /// @note «設定してあるのはどれか» が読めなくなるだけで、既定へ倒す判断は Load 側が持つ。
         toml::table shapesTbl;
         for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
             const auto& entry = cursor.shapes[i];
@@ -622,4 +659,4 @@ std::string ProjectSettings::ToToml() const
     return ss.str();
 }
 
-} // namespace fbzz
+} /// @note namespace fbzz

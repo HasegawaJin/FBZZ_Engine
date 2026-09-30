@@ -4,14 +4,13 @@
 /// @date    2026-09-21
 #pragma once
 #include <Graphics/Pipeline/RenderResources.hpp>
-#include <Graphics/Renderer/OpaqueRenderPlan.hpp>
+#include <Graphics/Pipeline/ResolvedRenderPlan.hpp>
 #include <functional>
 #include <vector>
 
 namespace fbzz::renderer {
 struct ViewPipelineOptions {
-    OpaqueRenderPlan opaquePlan;
-    bool clusteredEnabled = false;
+    ResolvedRenderPlan renderPlan;
     std::vector<uint32_t> customAfterOpaqueIndices;
     std::vector<uint32_t> customSceneHdrIndices;
     std::vector<uint32_t> customPostProcessIndices;
@@ -30,6 +29,7 @@ struct ViewPipelineExtensions {
 };
 /// @pre context とビューは登録されたパスの実行終了まで生存すること。
 /// @note options/extensions は保持しない。実行後は BeginBuild でホストのコールバックを破棄する。
+/// @note 無効な Plan は登録しない。現段階で対応する実効モードは Raster のみ。
 void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& context,
     RenderViewResources& view, RenderSharedResources& shared,
     const ViewPipelineOptions& options, const ViewPipelineExtensions& extensions = {});

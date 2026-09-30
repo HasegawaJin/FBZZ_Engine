@@ -1,0 +1,391 @@
+# @file    CornellBox.scene
+# @brief   Raster / Hybrid / Reference Path の比較用 Cornell Box サンプル。
+# @author  Hasegawa Jin
+# @date    2026-09-30
+[environment]
+windDirection = [ 0.7071, 0.0, 0.7071 ]
+windEnabled = false
+windPulseFrequency = 1.0
+windSpeed = 0.0
+windTurbulence = 0.0
+
+[scene]
+format_version = 2
+
+[[gameobjects]]
+active = true
+instanceId = 'cc6b617e-0531-4d1c-ad99-acf81fb65527'
+layer = 0
+name = 'MainCamera'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'MainCamera'
+
+    [gameobjects.CameraComponent]
+    aspectRatio = 1.777267
+    backgroundColor = [ 0.005, 0.005, 0.005, 1.0 ]
+    clearMode = 0
+    cullDistanceSpherical = true
+    cullingBoundsPadding = 0.0
+    cullingMask = 4294967295
+    enabled = true
+    farZ = 30.0
+    fovY = 55.0
+    frustumCulling = true
+    isMain = true
+    maxDrawDistance = 0.0
+    nearZ = 0.05
+    occlusionCulling = false
+    smallObjectScreenHeight = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 2.4, -5.2 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '82d0647e-795f-4eec-aa98-3567ad6ae3d6'
+layer = 0
+name = 'Floor'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:c52bd1cca0a24dde3a70b7f51aa96012|Assets/Materials/Demo/CornellBox/WhiteWalls.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.transform]
+    position = [ 0.0, -0.1, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 5.6, 0.2, 5.6 ]
+
+[[gameobjects]]
+active = true
+instanceId = '27ebb82f-69c8-423e-a9e1-4d498d12adc5'
+layer = 0
+name = 'Ceiling'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:c52bd1cca0a24dde3a70b7f51aa96012|Assets/Materials/Demo/CornellBox/WhiteWalls.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.transform]
+    position = [ 0.0, 4.9, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 5.6, 0.2, 5.6 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'cb09f4fd-f6b6-4f4a-ac7f-f7a65304c78d'
+layer = 0
+name = 'BackWall'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:c52bd1cca0a24dde3a70b7f51aa96012|Assets/Materials/Demo/CornellBox/WhiteWalls.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.transform]
+    position = [ 0.0, 2.4, 2.7 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 5.6, 4.8, 0.2 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'f0d721a1-9cc3-4a65-ac1b-a528b3789c25'
+layer = 0
+name = 'LeftWall_Red'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:ac27e9ec2178b054bfe29c6cdd0a983d|Assets/Materials/Demo/CornellBox/RedWall.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.transform]
+    position = [ -2.7, 2.4, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.2, 4.8, 5.6 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6b648f81-5b9b-4f16-a275-720a92e51ed0'
+layer = 0
+name = 'RightWall_Green'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:1074d39843e21425859814b421f62941|Assets/Materials/Demo/CornellBox/GreenWall.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.transform]
+    position = [ 2.7, 2.4, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 0.2, 4.8, 5.6 ]
+
+[[gameobjects]]
+active = true
+instanceId = '7992142e-69c9-4aeb-a7a2-cb04fcc27283'
+layer = 0
+name = 'Sphere_White'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:702655dd6faa0013be4dcad2e1665dc7|Assets/Materials/Demo/CornellBox/WhiteSphere.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.transform]
+    position = [ -1.25, 0.73, 0.25 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.46, 1.46, 1.46 ]
+
+[[gameobjects]]
+active = true
+instanceId = '56ca69a3-65ab-48d1-a6ce-85b1e007d483'
+layer = 0
+name = 'Sphere_Mirror'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:a86df02379544f2e27fa9e3d16dfadc1|Assets/Materials/Demo/CornellBox/Mirror.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = true
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.transform]
+    position = [ 1.25, 0.75, 0.55 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.5, 1.5, 1.5 ]
+
+[[gameobjects]]
+active = true
+instanceId = '4ffad7cf-a907-4f38-acb8-6807ed8de052'
+layer = 0
+name = 'Sphere_Glass'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:3800964f1dab7b72f5411d25f4b9e6c4|Assets/Materials/Demo/CornellBox/Glass.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = false
+    enabled = true
+    mesh = 'primitive:sphere'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.8, -0.7 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.6, 1.6, 1.6 ]
+
+[[gameobjects]]
+active = true
+instanceId = '53de48ba-f8dd-4584-a1d5-b2f7c6001cd7'
+layer = 0
+name = 'CeilingLight'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.LightComponent]
+    areaHeight = 1.15
+    areaTwoSided = false
+    areaWidth = 1.55
+    castShadows = true
+    color = [ 1.0, 1.0, 1.0 ]
+    colorTemperature = 6500.0
+    cookiePath = ''
+    cookieRotation = 0.0
+    enabled = true
+    flickerAmplitude = 0.0
+    flickerFrequency = 6.0
+    flickerMode = 0
+    flickerNoise = 0.0
+    flickerPhase = 0.0
+    flickerSeed = 0
+    innerCone = 15.0
+    intensity = 18.0
+    outerCone = 30.0
+    range = 12.0
+    shadowBias = 4.0
+    shadowDistance = 0.0
+    shadowNearPlane = 0.08
+    shadowStrength = 1.0
+    sourceLength = 1.0
+    sourceRadius = 0.12
+    type = 3
+    useColorTemperature = false
+
+        [gameobjects.LightComponent.flickerCurve]
+        interp = 2
+        keys = [ [ 0.0, 1.0 ], [ 0.5, 0.25 ], [ 1.0, 1.0 ] ]
+
+    [gameobjects.MaterialComponent]
+    enabled = true
+    material = 'guid:cd2aa9d1e3a1e54777014abc9952a5db|Assets/Materials/Demo/CornellBox/CeilingEmission.mat'
+    visible = true
+
+    [gameobjects.MeshRenderer]
+    castShadows = false
+    enabled = true
+    mesh = 'primitive:cube'
+
+    [gameobjects.transform]
+    position = [ 0.0, 4.765, 0.0 ]
+    rotation = [ 0.707107, 0.0, 0.0, 0.707107 ]
+    scale = [ 1.55, 1.15, 0.035 ]
+
+[[gameobjects]]
+active = true
+instanceId = 'e56949fd-608b-4371-a48f-d2a8638484b7'
+layer = 0
+name = 'RoomReflectionProbe'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.ReflectionProbeComponent]
+    boxExtents = [ 2.6, 2.4, 2.6 ]
+    boxInfluence = false
+    captureMode = 2
+    captureResolution = 256
+    cubemapPath = ''
+    enabled = true
+    influenceRadius = 12.0
+    intensity = 1.0
+    updateInterval = 5.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 2.2, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6e13a473-ccfe-40e8-a8ac-64a0a037d97b'
+layer = 0
+name = 'PostProcess'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    [gameobjects.PostProcessVolumeComponent]
+    blendDistance = 2.0
+    blendWeight = 1.0
+    enabled = true
+    influenceRadius = 10.0
+    isGlobal = true
+    priority = 0
+    profile = 'guid:77ff4c3ed8a319e9d4bc51ca1812da56|Assets/PostProcess/CornellBox.fzdata'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6fbf0fe1-8d8b-42d5-a3ca-906b8acd8080'
+layer = 0
+name = 'BlackEnvironmentForProbe'
+parent = ''
+parentInstanceId = ''
+prefabAssetPath = ''
+prefabSourceId = ''
+tag = 'Untagged'
+
+    # @note 現行 DynamicScene probe の capture は有効な SkyRenderer を必要とする。室外は黒にする。
+    [gameobjects.SkyRenderer]
+    enabled = true
+    dayNightEnabled = false
+    skyScatterIntensity = 0.0
+    skyDayBrightness = 0.0
+    skySunsetBrightness = 0.0
+    skyNightBrightness = 0.0
+    cloudShadowStrength = 0.0
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

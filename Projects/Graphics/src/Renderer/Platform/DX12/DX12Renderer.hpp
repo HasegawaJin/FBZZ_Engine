@@ -26,6 +26,7 @@ public:
     ~DX12Renderer() override;
 
     const char* GetBackendName() const override { return "DirectX 12"; }
+    [[nodiscard]] GraphicsCapabilities GetCapabilities() const override;
     bool Init(HWND hwnd, uint32_t width, uint32_t height);
     void Shutdown() override;
     void BeginFrame() override;

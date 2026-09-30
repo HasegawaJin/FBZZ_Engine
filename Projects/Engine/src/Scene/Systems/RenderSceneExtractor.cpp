@@ -104,6 +104,8 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
     copy("metallic", 16, 4);
     copy("roughness", 20, 4);
     copy("normalStrength", 24, 4);
+    copy("emissiveColor", 32, 12);
+    copy("emissiveScale", 44, 4);
     copy("uvTiling", 48, 8);
     copy("uvOffset", 56, 8);
     copy("alphaCutoff", 64, 4);

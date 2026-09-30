@@ -9,12 +9,18 @@
 #include <Graphics/Passes/Geometry/TrailRenderPass.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
+#include <Core/Logger.hpp>
 
 namespace fbzz::renderer {
 void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     RenderViewResources& viewTargets, RenderSharedResources& shared,
     const ViewPipelineOptions& options, const ViewPipelineExtensions& extensions)
 {
+    pipeline.BeginBuild();
+    if (!options.renderPlan.IsValid() || options.renderPlan.effectiveMode != RenderMode::RASTER) {
+        FBZZ_LOG_ERROR("ViewPipeline: 実行できない描画構成です");
+        return;
+    }
     auto& resources = passCtx.resources;
     auto& passHandles = passCtx.handles;
     const auto& rs = passCtx.settings;
@@ -22,12 +28,12 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     const uint32_t nativeW = passCtx.outputWidth;
     const uint32_t nativeH = passCtx.outputHeight;
     const bool needsUpscale = viewTargets.needsUpscale;
-    const auto& opaquePlan = options.opaquePlan;
+    const auto& opaquePlan = options.renderPlan.rasterPlan;
     const bool screenSpaceReady = opaquePlan.HasScreenSpaceInputs();
     const bool ssaoEnabled = passCtx.ssaoEnabled;
     const bool selectionOutlineEnabled = passCtx.selectionOutlineEnabled;
     const bool objectMaskEnabled = passCtx.objectMaskEnabled;
-    const bool clusteredEnabled = options.clusteredEnabled;
+    const bool clusteredEnabled = options.renderPlan.clusteredLighting;
     const auto& customAfterOpaqueIndices = options.customAfterOpaqueIndices;
     const auto& customSceneHdrIndices = options.customSceneHdrIndices;
     const auto& customPostProcessIndices = options.customPostProcessIndices;
@@ -55,7 +61,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     auto& shadowMapRT = shared.shadowMapRT;
     auto& punctualShadowRT = shared.punctualShadowRT;
     auto& lightCookieRT = shared.lightCookieRT;
-    pipeline.BeginBuild();
     /// @note エディターが編集した «このパスは載せない / これを待つ» をこのフレームへ効かせる。
     pipeline.SetPassOverrides(rs.passOverrides);
     pipeline.SetSchedulePolicy(rs.schedulePolicy);
@@ -120,7 +125,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note 「宣言されていないリソース」への書き込みになり RenderGraph の検証が落ちる。
     if (screenSpaceReady)
         pipeline.DeclareTarget("GBuffer", gbufferRT,
-            { RK::RenderTarget, sHdrW, sHdrH, kResFormat, 2, true, false, false });
+            { RK::RenderTarget, sHdrW, sHdrH, kResFormat, GBUFFER_COLOR_COUNT, true, false, false });
 
     /// @note AO と接触影は半解像度で持つ (実体は curW/2 x curH/2)。ここをフル解像度で
     /// @note 申告していると、エイリアシングが全画面 RT と同じ枠を貸してしまう。

@@ -8,6 +8,7 @@
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Pipeline/ViewPipeline.hpp>
+#include <Graphics/Pipeline/ViewPreparation.hpp>
 #include <Graphics/Renderer/OpaqueRenderPlan.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
@@ -83,6 +84,9 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, window.handle, 64, 64);
     ASSERT_NE(bundle.renderer, nullptr);
     auto& device = *bundle.renderer;
+    const auto capabilities = device.GetCapabilities();
+    EXPECT_TRUE(capabilities.bindless);
+    EXPECT_TRUE(!capabilities.inlineRayQuery || capabilities.rayTracingPipeline);
     {
         renderer::ResourceManager resources(device);
         const auto shader = resources.LoadShader(FBZZ_GRAPHICS_SMOKE_SHADER);
@@ -126,9 +130,36 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
         settings.renderScale = 1.0f;
         ASSERT_TRUE(rendering.PrepareView(viewA, device, outputA, settings));
         ASSERT_TRUE(rendering.PrepareView(viewB, device, outputB, settings));
+        ASSERT_NE(resources.Get(viewA.gbuffer), nullptr);
+        EXPECT_EQ(resources.Get(viewA.gbuffer)->GetColorCount(), renderer::GBUFFER_COLOR_COUNT);
+        EXPECT_TRUE(resources.GetColorTexture(viewA.gbuffer, 2).IsValid());
         EXPECT_NE(viewA.hdr, viewB.hdr);
         EXPECT_NE(viewA.exposureResult, viewB.exposureResult);
         EXPECT_NE(viewA.advancedGraphicsCB, viewB.advancedGraphicsCB);
+        EXPECT_EQ(rendering.FindView(99), nullptr);
+        /// @note 構成の準備に必要な実 GPU 資源。ここではパス登録を検証し、シーンの描画は実行しない。
+        auto& shared = rendering.Shared();
+        shared.frameCB = resources.CreateConstantBuffer(256);
+        shared.objectCB = resources.CreateConstantBuffer(256);
+        shared.lightCB = resources.CreateConstantBuffer(256);
+        shared.postprocCB = resources.CreateConstantBuffer(256);
+        shared.defaultPSO = state;
+        shared.postprocPSO = state;
+        shared.compositeShader = shader;
+        renderer::RenderPassHandles planHandles;
+        settings.modeRequest.mode = renderer::RenderMode::HYBRID;
+        settings.modeRequest.rayReflection = true;
+        const auto planA = renderer::PrepareViewRenderPlan(resources, device, settings, viewA, shared, planHandles);
+        ASSERT_TRUE(planA.IsValid());
+        EXPECT_EQ(planA.requestedMode, renderer::RenderMode::HYBRID);
+        EXPECT_EQ(planA.effectiveMode, renderer::RenderMode::RASTER);
+        EXPECT_FALSE(planA.NeedsRayScene());
+        settings.modeRequest.mode = renderer::RenderMode::PATH_TRACING;
+        const auto planB = renderer::PrepareViewRenderPlan(resources, device, settings, viewB, shared, planHandles);
+        ASSERT_TRUE(planB.IsValid());
+        EXPECT_EQ(planB.requestedMode, renderer::RenderMode::PATH_TRACING);
+        EXPECT_EQ(viewA.renderPlan.requestedMode, renderer::RenderMode::HYBRID);
+        EXPECT_EQ(settings.modeRequest.mode, renderer::RenderMode::PATH_TRACING);
         const auto oldHdrA = viewA.hdr;
         const auto hdrB = viewB.hdr;
         const auto exposureA = viewA.exposureResult;
@@ -138,6 +169,8 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
         viewA.exposureResetGeneration = 7;
         viewA.prevViewProjection.m[0][0] = 2.0f;
         ASSERT_TRUE(rendering.PrepareView(viewA, device, outputB, settings));
+        EXPECT_FALSE(viewA.renderPlan.IsValid());
+        EXPECT_EQ(viewB.renderPlan.requestedMode, renderer::RenderMode::PATH_TRACING);
         EXPECT_EQ(resources.Get(oldHdrA), nullptr);
         EXPECT_NE(viewA.hdr, oldHdrA);
         EXPECT_EQ(viewB.hdr, hdrB);
@@ -165,13 +198,38 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
         extensions.depthDebug = [&]() { stages.push_back("depth"); };
         extensions.overlayDebug = [&](const char*) { stages.push_back("overlay"); };
         extensions.ui = [&]() { stages.push_back("ui"); };
-        renderer::BuildViewPipeline(viewA.pipeline, context, viewA, rendering.Shared(), {}, extensions);
+        const auto preparedPlan = renderer::PrepareViewRenderPlan(
+            resources, device, settings, viewA, shared, planHandles);
+        ASSERT_TRUE(preparedPlan.IsValid());
+        renderer::BuildViewPipeline(viewA.pipeline, context, viewA, shared, { preparedPlan }, extensions);
         EXPECT_EQ(stages, (std::vector<std::string>{"begin", "setup", "user", "user", "depth", "user", "overlay", "ui"}));
         const auto names = viewA.pipeline.RegisteredPassNames();
         const auto position = [&](const char* name) { return std::find(names.begin(), names.end(), name); };
         EXPECT_LT(position("AutoExposure"), position("Bloom"));
         EXPECT_LT(position("Bloom"), position("Composite"));
         viewA.pipeline.BeginBuild();
+
+        /// @note 倍率を下げたとき、拡大元や filter が欠けた経路を有効な復帰先とみなさない。
+        settings.renderScale = 0.5f;
+        const auto scaledOutput = resources.CreateRenderTarget(1280, 720);
+        ASSERT_TRUE(rendering.PrepareView(viewA, device, scaledOutput, settings));
+        EXPECT_TRUE(viewA.needsUpscale);
+        EXPECT_EQ(viewA.nativeWidth, 1280u);
+        EXPECT_EQ(viewA.width, 640u);
+        auto scalePlan = renderer::PrepareViewRenderPlan(resources, device, settings, viewA, shared, planHandles);
+        EXPECT_FALSE(scalePlan.IsValid());
+        shared.copyColorShader = shader;
+        scalePlan = renderer::PrepareViewRenderPlan(resources, device, settings, viewA, shared, planHandles);
+        EXPECT_TRUE(scalePlan.IsValid());
+        resources.Release(viewA.upscaleSrc);
+        scalePlan = renderer::PrepareViewRenderPlan(resources, device, settings, viewA, shared, planHandles);
+        EXPECT_FALSE(scalePlan.IsValid());
+        EXPECT_EQ(scalePlan.failureReason, renderer::RenderPlanReason::RASTER_PIPELINE_UNAVAILABLE);
+        renderer::BuildViewPipeline(viewA.pipeline, context, viewA, shared, { scalePlan }, extensions);
+        EXPECT_TRUE(viewA.pipeline.RegisteredPassNames().empty());
+        ASSERT_TRUE(rendering.PrepareView(viewA, device, outputB, settings));
+        ASSERT_TRUE(renderer::PrepareViewRenderPlan(resources, device, settings, viewA, shared, planHandles).IsValid());
+        resources.Release(scaledOutput);
 
         const auto releasedHdr = viewA.hdr;
         resources.ReleaseRenderView(1);
@@ -192,6 +250,10 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
     }
     bundle.imguiRenderer.reset();
     device.Shutdown();
+    const auto shutdownCapabilities = device.GetCapabilities();
+    EXPECT_FALSE(shutdownCapabilities.bindless);
+    EXPECT_FALSE(shutdownCapabilities.inlineRayQuery);
+    EXPECT_FALSE(shutdownCapabilities.rayTracingPipeline);
 }
 }
 }

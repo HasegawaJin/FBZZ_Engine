@@ -596,6 +596,7 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
     ResourceHandle<RenderTargetTag> outputRT, const RenderSettings& rs)
 {
     viewTargets.output = outputRT;
+    viewTargets.renderPlan = {};
     auto& resources = m_resources;
     auto& hdrRT                   = viewTargets.hdr;
     auto& ldrRT                   = viewTargets.ldr;
@@ -679,7 +680,7 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
             objectMaskRT   = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
             customPostProcessRT[0] = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             customPostProcessRT[1] = resources.CreateRenderTarget(curW, curH, kPostChainRT);
-            gbufferRT       = resources.CreateRenderTarget(curW, curH, cameraDepthRT(2));
+            gbufferRT       = resources.CreateRenderTarget(curW, curH, cameraDepthRT(GBUFFER_COLOR_COUNT));
             velocityRT      = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
             decalDepthRT    = resources.CreateRenderTarget(curW, curH, cameraDepthRT(0));
             decalMaskRT     = resources.CreateRenderTarget(curW, curH, 1);

@@ -2,9 +2,8 @@
 /// @brief   地形を Deferred GBuffer (MRT) へ書き出す。ライティングは DeferredLighting に委ねる。
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
-///
 /// @note GBuffer へ書くことで GTAO / SSAO / ContactShadows / SSR / IBL が他の不透明物と同じように地形へ効く。
-/// @note LAYOUT: SV_Target0 = albedo(linear) / roughness、SV_Target1 = worldNormal*0.5+0.5 / metallic (Pipeline/Deferred/GBuffer.hlsl と一致)。
+/// @note SV_Target0 = albedo(linear) / roughness、SV_Target1 = worldNormal*0.5+0.5 / metallic、SV_Target2 = emission (Pipeline/Deferred/GBuffer.hlsl と一致)。
 /// @see Docs/design/terrain-layers.md
 #include "Common/Binding.hlsli"
 #include "Rendering/SpecularAA.hlsli"
@@ -15,10 +14,11 @@ struct GBufferOut
 {
     float4 albedoRoughness : SV_Target0;
     float4 normalMetallic  : SV_Target1;
+    float4 emission        : SV_Target2;
 };
 
 /// @note Deferred の地形はマット面で鏡面反射が弱く、法線マップの陰影が Forward より地味になる。
-///       XY を増幅して拡散陰影 (N·L) だけでも凹凸を出す。層ごとの強弱は .mat の Normal Strength が持つ。
+/// @note XY を増幅して拡散陰影 (N·L) だけでも凹凸を出す。層ごとの強弱は .mat の Normal Strength が持つ。
 static const float kTerrainNormalBoost = 3.0f;
 /// @note 層の roughness を尊重しつつ、青空 IBL が鏡のように映るのを防ぐ控えめな下限。
 static const float kTerrainMinRoughness = 0.6f;
@@ -42,5 +42,7 @@ GBufferOut PSMain(TerrainPSInput p)
     GBufferOut o;
     o.albedoRoughness = float4(wet.albedo, roughness);
     o.normalMetallic  = float4(N * 0.5f + 0.5f, 0.0f);
+    /// @note 地形は現在発光材質を持たない。背後の発光面の値を残さない。
+    o.emission = float4(0.0f, 0.0f, 0.0f, 0.0f);
     return o;
 }

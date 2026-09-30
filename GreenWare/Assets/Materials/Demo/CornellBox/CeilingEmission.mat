@@ -1,0 +1,34 @@
+# @file    CeilingEmission.mat
+# @brief   Cornell Box の天井面光源を表示する発光材質。
+# @author  Hasegawa Jin
+# @date    2026-09-30
+version = 1
+shader = "guid:73d100e5a351425aaf52953c23425438|Assets/Shaders/Material/Surface/PBR.hlsl"
+blend_mode = "Opaque"
+double_sided = false
+depth_write = true
+depth_test = "LessEqual"
+depth_bias = 0
+depth_bias_slope = 0.0
+render_queue = 2000
+render_path = "auto"
+mesh_type = "surface"
+
+[textures]
+albedo = ""
+normal = ""
+metallic = ""
+emissive = ""
+ao = ""
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+metallic = [0.0]
+roughness = [0.8]
+normalStrength = [1.0]
+occlusionStrength = [1.0]
+emissiveColor = [1.0, 1.0, 1.0]
+emissiveScale = [56.548668]
+uvTiling = [1.0, 1.0]
+uvOffset = [0.0, 0.0]
+alphaCutoff = [0.5]

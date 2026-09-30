@@ -19,6 +19,9 @@
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/PipelineDiagnostics.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <toml++/toml.hpp>
@@ -316,7 +319,7 @@ std::string JoinNames(const std::vector<std::string>& names)
     return joined;
 }
 
-} // namespace
+} /// @note namespace
 
 
 void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
@@ -798,6 +801,48 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
     const renderer::RenderSettings& d = ProjectDefaults().render;
 
     if (BeginGroup("Rendering")) {
+        static const char* const kRenderModes[] = { "Raster", "Hybrid", "Path Tracing" };
+        static const char* const kPathProfiles[] = { "Reference", "Game" };
+        Field("Render Mode", render.modeRequest.mode, &d.modeRequest.mode,
+              "要求する描画構成。対応する GPU・シーン・描画パスが揃わない場合は Raster を使う。要求は保存される",
+              [&] { return EnumCombo(render.modeRequest.mode, kRenderModes); });
+        if (render.modeRequest.mode == renderer::RenderMode::HYBRID) {
+            Field("Ray Traced Shadows", render.modeRequest.rayShadow, &d.modeRequest.rayShadow,
+                  "影を RT へ置き換える要求。未対応なら ShadowMap を使う",
+                  [&] { return ImGui::Checkbox("##v", &render.modeRequest.rayShadow); });
+            Field("Ray Traced Reflections", render.modeRequest.rayReflection, &d.modeRequest.rayReflection,
+                  "反射の RT 補完を要求。未対応なら既存の反射を使う",
+                  [&] { return ImGui::Checkbox("##v", &render.modeRequest.rayReflection); });
+            Field("Ray Traced Diffuse GI", render.modeRequest.rayDiffuseGi, &d.modeRequest.rayDiffuseGi,
+                  "拡散間接光を RT へ置き換える要求。未対応なら既存の環境光を使う",
+                  [&] { return ImGui::Checkbox("##v", &render.modeRequest.rayDiffuseGi); });
+        }
+        if (render.modeRequest.mode == renderer::RenderMode::PATH_TRACING) {
+            Field("Path Profile", render.modeRequest.pathProfile, &d.modeRequest.pathProfile,
+                  "Reference はカメラレイで参照画像を生成し、Game は Deferred の表面から照明を計算する要求",
+                  [&] { return EnumCombo(render.modeRequest.pathProfile, kPathProfiles); });
+        }
+        if (!Searching() && ctx.resources) {
+            for (const auto target : { scene::UIRenderTargetView::GameViewport,
+                                       scene::UIRenderTargetView::SceneViewport }) {
+                const auto* view = ctx.resources->Rendering().FindView(static_cast<uint32_t>(target) + 1u);
+                if (!view || !view->output.IsValid() || view->nativeWidth == 0 || view->nativeHeight == 0)
+                    continue;
+                const auto& plan = view->renderPlan;
+                const auto modeLabel = [&](renderer::RenderMode mode) {
+                    const auto index = static_cast<uint32_t>(mode);
+                    return index < 3u ? kRenderModes[index] : "Invalid";
+                };
+                ImGui::TextDisabled("%s 最終描画: %s -> %s (%u x %u)",
+                    target == scene::UIRenderTargetView::GameViewport ? "Game View" : "Scene View",
+                    modeLabel(plan.requestedMode), plan.IsValid() ? modeLabel(plan.effectiveMode) : "描画不可",
+                    view->width, view->height);
+                if (plan.fallbackReason != renderer::RenderPlanReason::NONE)
+                    ImGui::TextWrapped("%s", renderer::DescribeRenderPlanReason(plan.fallbackReason));
+                if (!plan.IsValid())
+                    ImGui::TextWrapped("%s", renderer::DescribeRenderPlanReason(plan.failureReason));
+            }
+        }
         static const char* const kPipelines[] = { "Forward", "Deferred", "Forward+", "Deferred+" };
         Field("Pipeline", render.pipeline, &d.pipeline,
               "描画経路。+ 付きはクラスタ分割でライトを間引く (ライトが多い場面向け)",
@@ -1448,7 +1493,7 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
     EndGroup();
 
     /// @note 音量は耳で合わせる作業なので即座に送る。ただしバス構成の組み直しは再生中の音を止めるので、
-    ///       名前・親・残響が変わったときだけ組み直す。
+                    /// @note 名前・親・残響が変わったときだけ組み直す。
     if (!dirty) return;
     auto* audioManager = core::Application::Get().GetAudioManager();
     if (!audioManager) return;
@@ -1796,4 +1841,4 @@ void ProjectSettingsPanel::DrawEditorPreferences(EditorContext& ctx)
     EndGroup();
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

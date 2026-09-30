@@ -1,0 +1,43 @@
+# @file    CornellBox.scene.meta
+# @brief   Cornell Box シーンの永続 GUID と編集情報。
+# @author  Hasegawa Jin
+# @date    2026-09-30
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Post Process Volume' ]
+    instance_id = '6e13a473-ccfe-40e8-a8ac-64a0a037d97b'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '56ca69a3-65ab-48d1-a6ce-85b1e007d483'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '4ffad7cf-a907-4f38-acb8-6807ed8de052'
+
+    [[editor.game_objects]]
+    component_order = [ 'Reflection Probe' ]
+    instance_id = 'e56949fd-608b-4371-a48f-d2a8638484b7'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '82d0647e-795f-4eec-aa98-3567ad6ae3d6'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '6b648f81-5b9b-4f16-a275-720a92e51ed0'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'cb09f4fd-f6b6-4f4a-ac7f-f7a65304c78d'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = 'f0d721a1-9cc3-4a65-ac1b-a528b3789c25'
+
+[meta]
+guid = '2ed6026bb8788b351f05bfb22768b394'

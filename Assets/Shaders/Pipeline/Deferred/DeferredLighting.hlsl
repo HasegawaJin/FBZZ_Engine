@@ -2,7 +2,6 @@
 /// @brief   GBuffer を読んで PBR ライティングを当てるディファードライティングパス。
 /// @author  Hasegawa Jin
 /// @date    2026-06-23
-///
 /// @note 頂点バッファなしのフルスクリーン三角形で描き、PS が GBuffer + 深度から worldPos を復元する。
 
 #include "Common/Constants.hlsli"
@@ -17,6 +16,8 @@
 
 FBZZ_TEX2D(texGBuffer0, TEX_GBUFFER0_SLOT);   ///< albedo(RGB) + roughness(A)
 FBZZ_TEX2D(texGBuffer1, TEX_GBUFFER1_SLOT);   ///< normal(RGB, [0,1] 符号化) + metallic(A)
+/// @note t3 はこのパスでは emission の MRT。材質テクスチャと異なり、既に線形 HDR。
+FBZZ_TEX2D(texGBufferEmission, TEX_EMISSIVE_SLOT);
 FBZZ_TEX2D(texDepth, TEX_DEPTH_SLOT);
 FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
 FBZZ_TEX2D(texSSAO, TEX_SSAO_SLOT);
@@ -116,5 +117,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     /// @note カスケード可視化。無効時は白。Split Lambda と境界ブレンド幅を地面や壁で目視調整するため不透明の主経路に置く。
     result *= ShadowCascadeDebugTint(worldPos);
 
+    /// @note 自発光は影・AO・IBL・デバッグの照明色から独立し、HDR 合成へ一度だけ加える。
+    result += texGBufferEmission.Sample(sampGBuffer, uv).rgb;
     return float4(result, 1.0f);
 }

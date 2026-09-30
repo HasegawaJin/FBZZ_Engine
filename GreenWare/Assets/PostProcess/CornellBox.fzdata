@@ -1,0 +1,30 @@
+# @file    CornellBox.fzdata
+# @brief   Cornell Box の比較用に露出と Bloom を固定するプロファイル。
+# @author  Hasegawa Jin
+# @date    2026-09-30
+type = 'PostProcessProfile'
+
+[[overrides]]
+active = true
+exposure = 1.0
+type = 'Exposure'
+
+[[overrides]]
+active = true
+intensity = 0.02500000037252903
+softKnee = 1.0
+threshold = 4.0
+type = 'Bloom'
+
+[[overrides]]
+active = true
+feedback = 0.8999999761581421
+type = 'TAA'
+
+[[overrides]]
+active = false
+intensity = 0.800000011920929
+maxDistance = 50.0
+steps = 64
+thickness = 0.15000000596046448
+type = 'SSR'

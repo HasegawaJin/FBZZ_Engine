@@ -164,6 +164,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ComponentArrayTests.cpp
         Engine/Auto/FzAssetFormatTests.cpp
         Engine/Auto/InputActionMapTests.cpp
+        Engine/Auto/RenderModeSettingsTests.cpp
         Engine/Auto/JointComponentTests.cpp
         Engine/Auto/ParticleCodecTests.cpp
         Engine/Auto/ParticleCurveTests.cpp
@@ -344,11 +345,14 @@ fbzz_add_test_suite(CoreManual MANUAL
 # @note Engine をリンクしない契約を実行時の DLL 一覧と実 GPU 描画の両方で検証する。
 fbzz_add_test_suite(GraphicsStandalone
     SOURCES Graphics/Auto/GraphicsStandaloneTests.cpp
+        Graphics/Auto/ResolvedRenderPlanTests.cpp
+        Graphics/Auto/DeferredEmissionTests.cpp
     LINKS FBZZGraphics
 )
 configure_file(Graphics/Auto/StandaloneTriangle.hlsl StandaloneTriangle.hlsl COPYONLY)
 target_compile_definitions(FBZZTestsGraphicsStandaloneObj PRIVATE
-    FBZZ_GRAPHICS_SMOKE_SHADER="${CMAKE_CURRENT_BINARY_DIR}/StandaloneTriangle.hlsl")
+    FBZZ_GRAPHICS_SMOKE_SHADER="${CMAKE_CURRENT_BINARY_DIR}/StandaloneTriangle.hlsl"
+    FBZZ_GRAPHICS_SHADER_ROOT="${CMAKE_SOURCE_DIR}/Assets/Shaders")
 # @note DrawsAndReadsBackWithoutEngine は実行時に .hlsl をコンパイルするので dxcompiler.dll が exe の隣に要る。
 # @warning DXC が見つからない構成では «シェーダーが読めない» だけの失敗になる。原因は configure 時の dxc.exe 探索 (Projects/Graphics/CMakeLists.txt)。
 if(FBZZ_DXC_RUNTIME_DIRECTORY)

@@ -1,0 +1,6 @@
+# @file    CornellBox.fzdata.meta
+# @brief   Cornell Box の表示プロファイルの永続 GUID。
+# @author  Hasegawa Jin
+# @date    2026-09-30
+[meta]
+guid = '77ff4c3ed8a319e9d4bc51ca1812da56'

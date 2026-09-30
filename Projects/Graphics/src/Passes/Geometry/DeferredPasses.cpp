@@ -201,6 +201,8 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     dc.textures[5]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 0);
     /// @note TEX_GBUFFER1
     dc.textures[6]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
+    /// @note Deferred の t3 は材質の emissive texture ではなく、GBuffer に保持した線形 HDR emission。
+    dc.textures[3]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 2);
     /// @note TEX_DEPTH
     dc.textures[7]        = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
     /// @note TEX_SHADOW

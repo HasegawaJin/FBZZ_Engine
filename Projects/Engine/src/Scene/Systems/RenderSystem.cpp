@@ -2,7 +2,7 @@
 /// @brief   Scene から DrawCall を生成するオーケストレーター。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-/// @note /// @note 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
+/// @note 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
 #include <Engine/Asset/StreamedTextureResolver.hpp>
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Scene/SceneUtils.hpp"
@@ -458,7 +458,12 @@ void RenderSystem(Scene& scene,
     }
     const uint32_t viewKey = uiOptions ? static_cast<uint32_t>(uiOptions->targetView) + 1u : 0u;
     auto& viewTargets = renderResources.View(viewKey);
-    if (!renderResources.PrepareView(viewTargets, renderer, outputRT, rs)) return;
+    if (!renderResources.PrepareView(viewTargets, renderer, outputRT, rs)) {
+        const auto failedPlan = renderer::PrepareViewRenderPlan(resources, renderer, rs,
+            viewTargets, shared, {});
+        FBZZ_LOG_ERROR("RenderSystem: %s", renderer::DescribeRenderPlanReason(failedPlan.failureReason));
+        return;
+    }
     const uint32_t nativeW = viewTargets.nativeWidth;
     const uint32_t nativeH = viewTargets.nativeHeight;
     const bool needsUpscale = viewTargets.needsUpscale;
@@ -488,11 +493,6 @@ void RenderSystem(Scene& scene,
     auto& objectMaskSkinnedShader = shared.objectMaskSkinnedShader;
     auto& ssrShader = shared.ssrShader;
     auto& sEnvironmentResources = shared.sEnvironmentResources;
-    auto& gbufferShader = shared.gbufferShader;
-    auto& deferredLightingShader = shared.deferredLightingShader;
-    auto& depthCopyShader = shared.depthCopyShader;
-    auto& clusterCullCS = shared.clusterCullCS;
-    auto& clusterIndexBuffer = shared.clusterIndexBuffer;
     auto& clusterCB = shared.clusterCB;
     auto& clusterLinearCB = shared.clusterLinearCB;
     auto& selectionMaskPso = shared.selectionMaskPso;
@@ -539,11 +539,16 @@ void RenderSystem(Scene& scene,
     const auto& lightView = shadows.lightView;
     const auto& lightPos = shadows.lightPos;
 
-    const renderer::OpaqueRenderPlan opaquePlan = renderer::ResolveOpaqueRenderPlan(rs, {
-        gbufferRT.IsValid() && gbufferShader.IsValid(),
-        deferredLightingShader.IsValid(),
-        depthCopyShader.IsValid(),
-    });
+    RenderPassHandles passHandles{};
+    renderResources.BindPassHandles(viewTargets, passHandles);
+    const auto renderPlan = renderer::PrepareViewRenderPlan(
+        resources, renderer, rs, viewTargets, shared, passHandles);
+    if (!renderPlan.IsValid()) {
+        profiler::Profiler::EndSample();
+        FBZZ_LOG_ERROR("RenderSystem: %s", renderer::DescribeRenderPlanReason(renderPlan.failureReason));
+        return;
+    }
+    const auto& opaquePlan = renderPlan.rasterPlan;
     const bool screenSpaceReady = opaquePlan.HasScreenSpaceInputs();
 
     const bool ssaoEnabled =
@@ -619,8 +624,6 @@ void RenderSystem(Scene& scene,
     }
     profiler::Profiler::EndSample();
 
-    RenderPassHandles passHandles{};
-    renderResources.BindPassHandles(viewTargets, passHandles);
     passHandles.customPostProcessShaders.resize(rs.postProcess.customEffects.size());
     /// @note 走る段でリストを分ける。登録順が RenderGraph のタイブレークなので、
     /// @note 同じ段の中では customEffects に並べた順がそのまま適用順になる。
@@ -820,9 +823,7 @@ void RenderSystem(Scene& scene,
     const bool punctualBufferReady =
         passHandles.punctualLightBuffer.IsValid() && clusterCB.IsValid();
     /// @note クラスタで絞れるか。カリング CS とインデックスバッファが揃って初めて成立する。
-    const bool canCullClusters = rs.UsesClusteredLighting()
-        && clusterIndexBuffer.IsValid() && clusterCullCS.IsValid()
-        && !rs.clustered.forceAllLights;
+    const bool canCullClusters = renderPlan.clusteredLighting;
 
     ClusterLightMode clusterMode = ClusterLightMode::Legacy;
     if (punctualBufferReady && !rs.IsUnlit()) {
@@ -1039,7 +1040,7 @@ void RenderSystem(Scene& scene,
         }
     };
     renderer::BuildViewPipeline(pipeline, passCtx, viewTargets, shared,
-        { opaquePlan, clusteredEnabled, customAfterOpaqueIndices,
+        { renderPlan, customAfterOpaqueIndices,
           customSceneHdrIndices, customPostProcessIndices }, extensions);
 
     {

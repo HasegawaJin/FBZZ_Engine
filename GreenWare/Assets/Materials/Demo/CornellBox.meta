@@ -1,0 +1,6 @@
+# @file    CornellBox.meta
+# @brief   Cornell Box のマテリアルフォルダーの永続 GUID。
+# @author  Hasegawa Jin
+# @date    2026-09-30
+[meta]
+guid = '7fd7f631b263c1ae4f38f2bfa8945085'

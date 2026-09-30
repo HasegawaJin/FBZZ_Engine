@@ -95,8 +95,10 @@ void DX12Renderer::BeginFrame()
         InvalidateRootCbvCache();
         m_uploadArena.BeginFrame(m_context.GetFrameIndex());
         m_nullConstantAddress = 0;
+        /// @note Root CBV はサイズを持たないため、未指定 CB の全読み取り範囲 (最大 64 KiB) をゼロで確保する。
+        /// @see https://microsoft.github.io/DirectX-Specs/d3d/ResourceBinding.html#using-descriptors-directly-in-the-root-arguments
         const auto nullConstant = m_uploadArena.Allocate(
-            D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
+            D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT * 16u,
             D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
         if (nullConstant) {
             std::memset(nullConstant.cpu, 0, nullConstant.size);

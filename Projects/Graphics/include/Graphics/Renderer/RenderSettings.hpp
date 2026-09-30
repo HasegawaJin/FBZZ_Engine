@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 #pragma once
 #include <Graphics/Renderer/RenderState.hpp>
+#include <Graphics/Renderer/RenderMode.hpp>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -765,6 +766,9 @@ struct RenderSettings {
     /// @note ランタイムの輪郭要求。エディタ選択とは別の RT (objectMask) へ描かれ、
     /// @note 見た目は CustomPostProcess のシェーダーが決める。ProjectSettings へは保存しない。
     std::vector<RenderObjectMaskRequest> objectMaskRequests;
+
+    /// @note 保存する要求。GPU 能力による縮退結果はビューの Plan に置き、この値を変更しない。
+    RenderModeRequest modeRequest;
 
     /// @note 排他的な論理スロットを正規化し、修正した競合をビットで返す。
     /// @note TOML・Inspector・ランタイムで別々の排他規則を持つと、設定経路によって

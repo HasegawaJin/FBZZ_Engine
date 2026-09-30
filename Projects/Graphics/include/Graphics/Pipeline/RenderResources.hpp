@@ -5,6 +5,7 @@
 #pragma once
 #include <Graphics/Pipeline/RenderPipeline.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
+#include <Graphics/Pipeline/ResolvedRenderPlan.hpp>
 #include <Graphics/Pipeline/EnvironmentResources.hpp>
 #include <Graphics/Renderer/DynamicBufferPool.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
@@ -13,6 +14,8 @@
 namespace fbzz::renderer {
 /// @note GPU のボーンパレット契約。Engine の Skeleton と静的検証する。
 inline constexpr int RENDER_SKINNING_BONES = 128;
+/// @note RGBA16F: albedo / roughness、normal / metallic、線形 HDR emission。
+inline constexpr uint32_t GBUFFER_COLOR_COUNT = 3;
 
 /// @note Viewport ごとに解像度依存の中間リソースを保持する。
 /// @note static で共有すると SceneView と GameView が 1 フレーム内でリサイズし合う。
@@ -104,6 +107,8 @@ struct RenderViewResources {
     bool taaHistoryValid = false;
     uint32_t width = 0;
     uint32_t height = 0;
+    /// @note 当該ビューで最後に準備した構成。PrepareView の開始時に無効へ戻す。
+    ResolvedRenderPlan renderPlan;
 };
 
 /// @note GPU 実体は ResourceManager が所有し、この状態も同じ Manager の Reset/終了時に破棄する。
@@ -252,6 +257,12 @@ public:
     explicit RenderResources(ResourceManager& resources);
     RenderSharedResources& Shared() { return m_shared; }
     RenderViewResources& View(uint32_t key);
+    /// @return 未登録なら nullptr。診断の照会でビューや GPU 資源を生成しない。
+    [[nodiscard]] const RenderViewResources* FindView(uint32_t key) const
+    {
+        const auto found = m_views.find(key);
+        return found == m_views.end() ? nullptr : &found->second;
+    }
     bool PrepareView(RenderViewResources& view, IRenderer& renderer,
                      ResourceHandle<RenderTargetTag> output, const RenderSettings& settings);
     /// @note ビュー所有者の破棄時に呼ぶ。共有シェーダーや他ビューの履歴は解放しない。

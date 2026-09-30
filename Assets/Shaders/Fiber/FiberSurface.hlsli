@@ -289,6 +289,8 @@ GBufferOut PSMain(FiberPixel p)
     GBufferOut o;
     o.albedoRoughness = float4(FiberStrandColor(strand, p.height), roughness);
     o.normalMetallic = float4(FiberNormalize(p.normal, float3(0, 1, 0)) * 0.5f + 0.5f, 0.0f);
+    /// @note Fiber の独自照明は後続の Forward パスで解決する。発光は保持しない。
+    o.emission = float4(0.0f, 0.0f, 0.0f, 0.0f);
     return o;
 }
 #elif FIBER_PASS == 3

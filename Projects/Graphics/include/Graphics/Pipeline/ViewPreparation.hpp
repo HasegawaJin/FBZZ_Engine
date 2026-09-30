@@ -7,6 +7,13 @@
 #include <functional>
 
 namespace fbzz::renderer {
+/// @note BindPassHandles 後に呼ぶ。資源の世代・寸法と必須の Raster 経路を確認し、view に保存する。
+/// @note 未実装の Ray Scene / パス / RasterSurface は未準備。Scene の被覆対応を推測しない。
+/// @return view.renderPlan と同じ構成。要求設定は変更しない。
+[[nodiscard]] ResolvedRenderPlan PrepareViewRenderPlan(ResourceManager& resources,
+    IRenderer& renderer, const RenderSettings& settings, RenderViewResources& view,
+    const RenderSharedResources& shared, const RenderPassHandles& handles);
+
 struct ShadowBounds {
     math::Vector3 center = math::Vector3::ZERO;
     float radius = 0.0f;

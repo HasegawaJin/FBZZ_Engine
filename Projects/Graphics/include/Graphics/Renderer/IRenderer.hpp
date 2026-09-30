@@ -13,6 +13,7 @@
 #include "ComputeCall.hpp"
 #include "DrawCall.hpp"
 #include "Format.hpp"
+#include "GraphicsCapabilities.hpp"
 #include "IIblBaker.hpp"
 #include "IBuffer.hpp"
 #include "IConstantBuffer.hpp"
@@ -48,7 +49,7 @@ class IRenderer {
 public:
     virtual ~IRenderer() = default;
 
-    /// @note アクティブな描画バックエンドの表示名 ("DirectX 11" / "DirectX 12")。
+    /// @note アクティブな描画バックエンドの表示名。
     /// @note ウィンドウタイトル等の UI 表示用。上位が具象型へダウンキャストしないための情報提供 API。
     virtual const char* GetBackendName() const { return "Unknown"; }
 
@@ -241,6 +242,11 @@ private:
 
     /// @note 旧シェーダーの破棄前に GPU 使用と依存キャッシュを解消する。安全に切り替えられなければ false。
     virtual bool PrepareShaderReload() { return true; }
+
+public:
+    /// @note 実機の能力だけを返す。描画パスと GPU 資源の可用性は呼び出し側で解決する。
+    /// @note 既存の仮想関数の順序を変えないため、資源生成を含む宣言の末尾へ追加する。
+    [[nodiscard]] virtual GraphicsCapabilities GetCapabilities() const { return {}; }
 };
 
 } /// @note namespace fbzz::renderer
