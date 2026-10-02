@@ -144,17 +144,17 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ClothAssetTests.cpp
         Engine/Auto/ClothRenderBindingTests.cpp
         Engine/Auto/AssetDatabaseTests.cpp
-        Engine/Auto/PixCaptureTests.cpp
         Engine/Auto/AssetStreamingTests.cpp
         Engine/Auto/SceneAssetReferencesTests.cpp
-        Engine/Auto/ScriptTransformHierarchyTests.cpp
-        Engine/Auto/PrefabIdentityTests.cpp
-        Engine/Auto/PrefabReferenceRemapTests.cpp
         Engine/Auto/AssetPartialIoTests.cpp
         Engine/Auto/AssetStreamingIntegrationTests.cpp
         Engine/Auto/EventBusTests.cpp
+        Engine/Auto/PixCaptureTests.cpp
         Engine/Auto/FileSystemPathTests.cpp
         Engine/Auto/ScriptTransformProxyTests.cpp
+        Engine/Auto/ScriptTransformHierarchyTests.cpp
+        Engine/Auto/PrefabIdentityTests.cpp
+        Engine/Auto/PrefabReferenceRemapTests.cpp
         Engine/Auto/ScriptSceneQueryTests.cpp
         Engine/Auto/ScriptModulesTests.cpp
         Engine/Auto/ScriptLifecycleTests.cpp
@@ -283,13 +283,13 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/ImageCompareTests.cpp
     Editor/Auto/FluidJetFlamePlaybackTests.cpp
     Editor/Auto/ImportCacheStoreTests.cpp
-    Editor/Auto/PixOperatorTests.cpp
     Editor/Auto/ImportFingerprintTests.cpp
     Editor/Auto/InputRecorderTests.cpp
     Editor/Auto/JsonTests.cpp
     Editor/Auto/MaterialPreviewFiberTests.cpp
     Editor/Auto/PlaytestJsonTests.cpp
     Editor/Auto/PlaytestRunnerTests.cpp
+    Editor/Auto/PixOperatorTests.cpp
     Editor/Auto/PrefabOverrideTests.cpp
     Editor/Auto/PrefabReferenceOverrideTests.cpp
     Editor/Auto/PrefabSaveTests.cpp
@@ -370,6 +370,8 @@ fbzz_add_test_suite(GraphicsStandalone
         Graphics/Auto/HybridHistoryTests.cpp
         Graphics/Auto/RayTracingTests.cpp
     Graphics/Auto/RayReflectionTests.cpp
+        Graphics/Auto/RayReflectionMediumCacheTests.cpp
+        Graphics/Auto/RayHybridGlassTraversalTests.cpp
         Graphics/Auto/RayReflectionReconstructionTests.cpp
         Graphics/Auto/RayHybridDiffuseGITests.cpp
     Graphics/Auto/ReflectionProbeCaptureTests.cpp

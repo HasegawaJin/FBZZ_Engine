@@ -184,3 +184,23 @@ First inspect the Dispatch constants, then compare glass inactive/active at the
 same camera and extent. Separately vary sample count and boundary budget, and
 compare IOR 1 against 1.5 while keeping glass active. Preserve history warmup and
 initial/probe work labels; do not claim an improvement from unrelated workloads.
+
+## Independent Hybrid Optimization 2026-10-02
+
+No new rendering library was added. Primary medium initialization now has a
+CPU-validated camera-outside-solid fast path, and the glass traversal keeps its
+current path local while storing only pending siblings. Sampling, optics, RNG
+order, boundary/work limits and fail-closed behavior are unchanged. Unknown
+geometry, camera-inside, orthographic and secondary-ray initialization retain
+the previous path. Scenes without glass skip the new CPU proof.
+
+Release builds completed without errors or warnings, and all 559 related
+regressions passed, including 39 new CPU/GPU cases. These are correctness
+checks, not performance benchmarks. Release's disabled debug layer is not
+certified by this result.
+
+PIX UI automation was stopped by the user's physical Escape key. No new GPU
+capture or replay comparison was completed for this implementation. The timings
+above belong to the old baseline only; the optimized speedup and sustained
+1080p / 60 fps remain unverified. Reuse the baseline conditions and independently
+verify the effective Dispatch constants before reporting a speed comparison.

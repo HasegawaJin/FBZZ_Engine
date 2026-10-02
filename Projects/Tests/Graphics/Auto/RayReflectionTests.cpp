@@ -96,12 +96,15 @@ struct ReflectionCase {
     bool verifyGlassMotionMetadata = false;
     bool primaryGlass = false;
     bool secondaryGlass = false;
+    bool secondaryOriginInsideGlass = false;
     bool thinGlass = false;
     bool openGlass = false;
     bool nestedGlass = false;
     bool mismatchedGlassOwner = false;
     bool glassBackgroundCameraOnly = false;
     bool cameraInsideGlass = false;
+    bool cameraOriginProvenAir = false;
+    math::Vector3 provenAirOrigin{};
     bool cameraInsideNestedGlass = false;
     bool overlappingInitialGlass = false;
     bool opaqueInsideGlass = false;
@@ -261,6 +264,11 @@ protected:
                 addTriangle(0.5f, false, 5, true, {0, 0, 1}, {}, true, 8, testCase.innerAttenuation);
             }
         }
+        if (testCase.secondaryOriginInsideGlass) {
+            /// @note Camera0 is outside, but the entry precedes near=.1 and the opaque receiver/secondary origin at z3 lies inside.
+            addTriangle(0.05f, true, 5, true, {0, 0, -1}, {}, true, 8, testCase.glassAttenuation);
+            addTriangle(4, false, 5, true, {0, 0, 1}, {}, true, 8, testCase.glassAttenuation);
+        }
         if (testCase.primaryGlass) {
             if (!testCase.thinGlass && !testCase.openGlass)
                 addTriangle(3 + testCase.glassThickness, false, 5, true, {0, 0, 1}, {},
@@ -351,7 +359,9 @@ protected:
         view.rayReflection.output = resources.CreateComputeTexture(renderSize, renderSize);
         view.rayReflection.constants = resources.CreateConstantBuffer(sizeof(renderer::RayReflectionConstants));
         view.rayReflection.sceneLighting = testCase.sceneLighting;
-        if (testCase.primaryGlass || testCase.secondaryGlass || testCase.cameraInsideGlass) {
+        view.rayReflection.cameraOriginProvenAir = testCase.cameraOriginProvenAir;
+        view.rayReflection.provenAirOrigin = testCase.provenAirOrigin;
+        if (testCase.primaryGlass || testCase.secondaryGlass || testCase.cameraInsideGlass || testCase.secondaryOriginInsideGlass) {
             renderer::RaySceneInstance glassInstance;
             glassInstance.surface.solidDielectricSupported = true;
             glassInstance.surface.issue = renderer::SurfaceMaterialIssue::NONE;
@@ -553,7 +563,9 @@ struct Surface {
             context.resourceRegistry.BindStructuredBuffer("RayReflectionSurface", surface);
             renderer::RayReflectionReconstructionViewResources reconstruction;
             renderer::RayReflectionLightingResources lighting;
-            if (testCase.verifyGlassMotionMetadata) {
+            lighting.cameraOriginProvenAir = testCase.cameraOriginProvenAir;
+            lighting.provenAirOrigin = testCase.provenAirOrigin;
+            if (testCase.verifyGlassMotionMetadata || testCase.cameraOriginProvenAir) {
                 lighting.sceneLighting = testCase.sceneLighting;
                 lighting.constantEnvironmentKnown = testCase.constantEnvironmentKnown;
                 lighting.constantEnvironmentRadiance = testCase.constantEnvironmentRadiance;
@@ -2040,6 +2052,103 @@ TEST_F(RayReflectionTest, SmoothThinMotionMetadataUsesActualTerminalAndCurrentIn
         EXPECT_NEAR(radiance[2], 6 * transmission, 0.006f);
         EXPECT_FLOAT_EQ(radiance[3], 2);
     }
+}
+
+TEST_F(RayReflectionTest, ProvenCameraAirKeepsGlassRadianceAndSampleSequence)
+{
+    for (float roughness : {0.0f, 0.25f}) {
+        SCOPED_TRACE(roughness);
+        ReflectionCase testCase;
+        testCase.primaryGlass = true;
+        testCase.secondary = false;
+        testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+        testCase.constantEnvironmentRadiance = {1, 2, 3};
+        testCase.glassRoughness = roughness;
+        testCase.glassAttenuation = {0.5f, 0.75f, 1};
+        testCase.quality.reflectionSamples = 4;
+        const auto original = Render(testCase);
+        testCase.cameraOriginProvenAir = true;
+        const auto optimized = Render(testCase);
+        ASSERT_EQ(original.size(), 4u);
+        ASSERT_EQ(optimized.size(), original.size());
+        EXPECT_FLOAT_EQ(original[3], 2);
+        for (size_t channel = 0; channel < original.size(); ++channel)
+            EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
+    }
+}
+
+TEST_F(RayReflectionTest, ProvenCameraAirDoesNotInitializeSecondaryGlassAsAir)
+{
+    ReflectionCase testCase;
+    testCase.secondaryOriginInsideGlass = true;
+    testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+    testCase.glassIor = 1;
+    testCase.glassAttenuation = {0.25f, 0.5f, 1};
+    const auto original = Render(testCase);
+    testCase.cameraOriginProvenAir = true;
+    const auto optimized = Render(testCase);
+    ASSERT_EQ(original.size(), 4u);
+    ASSERT_EQ(optimized.size(), original.size());
+    EXPECT_FLOAT_EQ(original[3], 1);
+    for (size_t channel = 0; channel < original.size(); ++channel)
+        EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
+}
+
+TEST_F(RayReflectionTest, OrthographicAndChangedCameraRejectPreparationTimeAirProof)
+{
+    for (bool orthographic : {false, true}) {
+        SCOPED_TRACE(orthographic);
+        ReflectionCase testCase;
+        testCase.cameraInsideGlass = true;
+        testCase.initialGlassExitZ = 0.05f;
+        testCase.secondary = false;
+        testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+        testCase.glassIor = 1;
+        testCase.glassAttenuation = {0.25f, 0.5f, 1};
+        testCase.primaryEmission = {2, 4, 6};
+        testCase.orthographic = orthographic;
+        const auto original = Render(testCase);
+        testCase.cameraOriginProvenAir = true;
+        testCase.provenAirOrigin = orthographic ? math::Vector3{} : math::Vector3{0, 0, 100};
+        const auto optimized = Render(testCase);
+        ASSERT_EQ(original.size(), 4u);
+        ASSERT_EQ(optimized.size(), original.size());
+        EXPECT_FLOAT_EQ(original[3], 2);
+        for (size_t channel = 0; channel < original.size(); ++channel)
+            EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
+    }
+}
+
+TEST_F(RayReflectionTest, ProvenCameraAirPreservesSsrEarlyOutAndThinMotionMetadata)
+{
+    ReflectionCase testCase;
+    testCase.secondaryGlass = true;
+    testCase.thinGlass = true;
+    testCase.glassIor = 1;
+    testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+    testCase.roughness = 0.5f;
+    testCase.metallic = 0;
+    testCase.reflectionResolveEnabled = testCase.reflectionSsrEnabled = true;
+    testCase.screenReflection.w = 0;
+    testCase.verifySsrEarlyOutClearsMetadata = true;
+    testCase.cameraOriginProvenAir = true;
+    const auto skipped = Render(testCase);
+    ASSERT_EQ(skipped.size(), 4u);
+    for (float value : skipped) EXPECT_FLOAT_EQ(value, 0);
+
+    testCase = {};
+    testCase.primaryGlass = testCase.thinGlass = true;
+    testCase.secondary = false;
+    testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+    testCase.verifyGlassMotionMetadata = true;
+    const auto original = Render(testCase);
+    testCase.cameraOriginProvenAir = true;
+    const auto optimized = Render(testCase);
+    ASSERT_EQ(original.size(), 4u);
+    ASSERT_EQ(optimized.size(), original.size());
+    EXPECT_FLOAT_EQ(original[3], 2);
+    for (size_t channel = 0; channel < original.size(); ++channel)
+        EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
 }
 
 } /// @note namespace

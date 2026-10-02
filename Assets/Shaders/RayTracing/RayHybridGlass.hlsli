@@ -160,13 +160,16 @@ bool HybridGlassRadianceWithMotion(HybridGlassPath initial, SurfaceHit firstHit,
     radiance = 0; motion = (RayReflectionGlassMotion)0;
     if (!glassEnabled || !glassBoundaryLimit
         || (firstHit.surface.supported != 1u && !RayHybridDielectricSupported(firstHit.surface))) return false;
-    HybridGlassPath pending[17];
-    pending[0] = initial;
-    uint pendingCount = 1u;
+    /// @note The legacy 17 slots held the current path plus at most 16 siblings; only siblings enter this stack.
+    HybridGlassPath pending[16];
+    HybridGlassPath path = initial;
+    uint pendingCount = 0u;
+    bool current = true;
     bool first = true;
     uint boundaryLimit = min(glassBoundaryLimit, 16u);
-    [loop] for (uint work = 0; work < 512u && pendingCount; ++work) {
-        HybridGlassPath path = pending[--pendingCount];
+    [loop] for (uint work = 0; work < 512u && (current || pendingCount); ++work) {
+        if (!current) path = pending[--pendingCount];
+        current = false;
         RayClosedMedium active = (RayClosedMedium)0;
         if (path.mediumDepth && !HybridLoadMedium(path.media[path.mediumDepth - 1u], active)) return false;
         SurfaceHit hit;
@@ -259,7 +262,7 @@ bool HybridGlassRadianceWithMotion(HybridGlassPath initial, SurfaceHit firstHit,
                 if (hit.frontFace) path.media[path.mediumDepth++] = hit.instanceId;
                 else --path.mediumDepth;
             } else path.mask = 4u;
-            pending[pendingCount++] = path;
+            current = true;
             continue;
         }
         float3 reflectedDirection, transmittedDirection;
@@ -279,12 +282,15 @@ bool HybridGlassRadianceWithMotion(HybridGlassPath initial, SurfaceHit firstHit,
         }
         if (reflectionWeight > 0) {
             if (pendingCount >= 17u) return false;
+            /// @note Two legacy pushes require two free slots; rejecting before storage preserves the same capacity failure without a seventeenth sibling.
+            if (transmissionWeight > 0 && pendingCount >= 16u) return false;
             HybridGlassPath reflected = path;
             reflected.motionBranch = firstThin ? 1u : 0u;
             reflected.mask = 4u;
             reflected.throughput *= reflectionWeight;
             reflected.ray.Origin = OffsetOrigin(hit, reflectedDirection); reflected.ray.Direction = reflectedDirection;
-            pending[pendingCount++] = reflected;
+            if (transmissionWeight > 0) pending[pendingCount++] = reflected;
+            else { path = reflected; current = true; }
         }
         if (transmissionWeight > 0) {
             if (pendingCount >= 17u) return false;
@@ -293,10 +299,10 @@ bool HybridGlassRadianceWithMotion(HybridGlassPath initial, SurfaceHit firstHit,
             path.ray.Origin = OffsetOrigin(hit, transmittedDirection); path.ray.Direction = transmittedDirection;
             if (!thin && hit.frontFace) path.media[path.mediumDepth++] = hit.instanceId;
             else if (!thin) --path.mediumDepth;
-            pending[pendingCount++] = path;
+            current = true;
         }
     }
-    return !pendingCount && all(isfinite(radiance)) && all(radiance >= 0);
+    return !current && !pendingCount && all(isfinite(radiance)) && all(radiance >= 0);
 }
 
 bool HybridGlassRadiance(HybridGlassPath initial, SurfaceHit firstHit, inout uint rng, out float3 radiance)

@@ -48,6 +48,7 @@ cbuffer RayReflectionConstants : register(b0)
     uint envTableCount, envFaceSize; float envRotation, envIntensity;
     uint environmentMode; float3 constantEnvironmentRadiance;
     uint reflectionResolveEnabled, reflectionSsrEnabled, glassEnabled, glassBoundaryLimit;
+    uint cameraOriginProvenAir; uint3 reflectionReserved;
 };
 
 struct RayHitRecord
@@ -855,7 +856,15 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
     primaryRay.TMin = nearDistance / forwardCosine;
     primaryRay.TMax = farDistance / forwardCosine;
     HybridGlassPath initialGlass = (HybridGlassPath)0;
-    if (glassEnabled && !HybridInitializeGlassPath(primaryRay, 1u, initialGlass)) return;
+    if (glassEnabled) {
+        /// @note This proof covers only the shared perspective camera origin, never a secondary or orthographic origin.
+        if (cameraOriginProvenAir == 1u && !orthographic) {
+            if (!all(isfinite(primaryRay.Origin)) || !all(isfinite(primaryRay.Direction))
+                || dot(primaryRay.Direction, primaryRay.Direction) <= 0) return;
+            initialGlass.ray = primaryRay; initialGlass.throughput = 1;
+            initialGlass.previousPosition = primaryRay.Origin; initialGlass.mask = 1u;
+        } else if (!HybridInitializeGlassPath(primaryRay, 1u, initialGlass)) return;
+    }
     bool cameraInMedium = initialGlass.mediumDepth > 0u;
     /// @note A screen-space opaque response cannot replace camera-to-surface transport through a proven initial medium.
     if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL && reflectionSsrEnabled && isfinite(ssrIntensity) && ssrIntensity > 0

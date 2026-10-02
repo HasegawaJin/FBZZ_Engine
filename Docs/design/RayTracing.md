@@ -978,6 +978,52 @@ Trace が確認した primary の完全 owner / dense surface ID、位置、法�
 
 隔離 Editor の `OutputHybridOptimizedRelease20261001/` は 32 step / 6 枚、`OutputHybridOptimizedAccumulatedRelease20261001/` は 10 step / 2 枚が成功し、原本 9 ファイルの SHA256 を各撮影前後で維持した。剛体移動・Scene View 往復・ガラスによる縮退と回復・32 frame と追加 64 frame の静止像を含む 8 枚の PNG は、それぞれ最適化前の `OutputHybridRimFixedRelease20261001/` / `OutputHybridAccumulatedRelease20261001/` と SHA256 が完全一致した。Game 像は 1548 x 871、Scene 像は 1263 x 435 であり、1920 x 1080 の性能合格とは扱わない。描画品質維持の検査と CodSpeed / Game 定常時間による速度検査を区別する。
 
+### PIX に基づく Hybrid 追跡の最適化
+
+2026-10-02 の PIX 保存フレームでは `RayReflection` の EOP がビューの
+98.00--98.40% を占めた。再構成のフィルターより先に追跡処理を対象とする。
+新しい denoiser / upscaler ライブラリは追加しない。測定の条件と EOP / TOP の
+区別は [PIX profiling](pix-profiling.md) に従う。
+
+perspective の一次レイ始点は全画素でカメラ位置と一致する。現 submitted geometry の
+内容版付き CPU snapshot から全 solid owner の保守 bounds を検証し、始点が
+すべての owner の bounds 外にあるときだけ初期媒体を AIR とする。
+既存 culling sphere や古い Mesh bounds は証明に使わない。キャッシュは geometry の
+exact key と reader の内容版に限り、world transform と camera position は毎回評価する。
+GPU 書込み geometry・読取不能・不正入力・bounds 内/境界の不確かさは従来探索へ戻す。
+補間法線の normalized separating projection を変換・補間の誤差込みで検査し、
+ほぼ相殺して FP32 の二乗長が underflow する可能性も unknown とする。
+ガラスがないシーンではこの CPU 判定を呼ばない。
+full-owner の材質整合と authored closed-winding の既存前提は変えず、媒体の
+topology を新たに保証するものではない。実 triangle を point/line にする完全な退化は
+DXR の no-intersection 契約に従い扱う。[DXR degenerate primitives](https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#degenerate-primitives-and-instances)
+
+proof はビューの現 perspective camera origin に限定し、orthographic の画素別始点と
+secondary glass の別始点へ流用しない。prepare と execute の camera position が違えば
+proof を失効する。SSR early-out の前に初期 path を構築する順序と、camera-inside の
+near clip より手前にある出口・Beer 距離を維持する。
+
+ガラス経路は現在処理する path と保留した兄弟 path を分離し、単枝の継続時の配列への
+push/pop を省く。smooth の透過を先に処理し、その反射兄弟を後で処理する既存順序、
+乱数と加算順、境界16・媒体8・全状態512の上限、超過時の invalid は変えない。
+Area / Shape / rough glass が乱数を消費するため、primary の4標本を同じ smooth
+経路として1回にまとめない。サンプル数・照明・光学モデルと画像の有効種別は維持する。
+
+Release の CPU 判定27件、production glass helper と旧 stack の GPU 比較8件、
+実 DXR の primary AIR / secondary-inside / orthographic / camera変更 / SSR / thin motion
+回帰4件を追加した。GPU helper 比較は全 query / terminal の訪問列、各標本の
+FP32 radiance / motion bit と最終 RNG、上限超過・未対応時の失敗を検査する。
+geometry と terminal lighting の adapter は決定的な fixture であり、実 TLAS の
+交差検証は既存 `RayReflectionTest` と追加4件で別に行う。
+
+最終変更単位コンパイルと Graphics / Engine / Editor テスト・EditorLauncher の
+Release ビルドはエラー・警告0。上記39件を含む関連回帰559件がすべて成功した。
+Release の debug layer は既存構成で無効なため、その検証済みとは扱わない。
+
+PIX の画面操作はユーザーの Escape で中止したため、この段の保存フレームの再計測、
+速度改善率、1080p / 60 fps は未検証である。既存 PIX baseline を今回の速度と
+混同しない。ライブラリ追加・サンプル削減・履歴の有効条件緩和は行っていない。
+
 ### Hybrid 計測の提出・ビュー分離
 
 次段では速度変更を加える前に、Scene / Game の同一物理フレームの query 領域がビュー開始で上書きされ、未提出領域を以前の slot fence で回収できた問題を修正する。query の開始と Resolve は renderer の物理 BeginFrame / EndFrame に一度だけ置き、ビューは末尾へ追記する。Resolve を含む command list を実際に提出して Signal した fence 値をその領域に保存し、それが完了するまで mapped readback の値を公開しない。完了した複数 slot を連結せず、最大の physical serial 一件だけを公開する。古い slot の遅延完了・二重回収・device reset / removal・不正 timestamp は未計測として扱う。[D3D12 Fence-Based Resource Management](https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management)、[D3D12 Timing](https://learn.microsoft.com/en-us/windows/win32/direct3d12/timing)

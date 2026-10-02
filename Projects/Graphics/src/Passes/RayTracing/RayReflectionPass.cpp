@@ -80,6 +80,12 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
         && !context.hybridReflectionSourcePass ? 1u : 0u;
     constants.glassEnabled = m_lighting.glassEnabled ? 1u : 0u;
     constants.glassBoundaryLimit = constants.glassEnabled ? quality.glassBoundaryLimit : 0u;
+    /// @note A changed camera or orthographic pixel origins cannot reuse a preparation-time perspective proof.
+    constants.cameraOriginProvenAir = constants.glassEnabled && !camera.orthographic
+        && m_lighting.cameraOriginProvenAir
+        && m_lighting.provenAirOrigin.x == camera.cameraPosition.x
+        && m_lighting.provenAirOrigin.y == camera.cameraPosition.y
+        && m_lighting.provenAirOrigin.z == camera.cameraPosition.z ? 1u : 0u;
     constants.emitterCount = m_lighting.emitterCount;
     constants.deltaLightCount = m_lighting.deltaLightCount;
     constants.shapeCount = m_lighting.shapeCount;

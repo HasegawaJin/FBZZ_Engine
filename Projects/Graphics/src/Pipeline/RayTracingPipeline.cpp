@@ -86,6 +86,7 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
     state.gpu = {};
     state.sceneLighting = false;
     state.diffuseIndirectEnabled = false;
+    state.cameraOriginProvenAir = false;
     view.rayReflectionCovered = false;
     context.rayReflectionPassActive = false;
     context.rayReflectionReconstructionPrepared = false;
@@ -93,6 +94,7 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
     context.handles.rayReflectionResult = {};
     const auto reject = [&]() {
         state.reconstruction.historyValid = false;
+        state.cameraOriginProvenAir = false;
         return false;
     };
     const auto& request = context.settings.modeRequest;
@@ -113,7 +115,9 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
     for (const auto& override : context.settings.passOverrides)
         if (!override.enabled && (override.name == "RayReflection" || override.name == "DeferredGBuffer"))
             view.rayReflectionCovered = false;
+    bool hasGlass = false;
     for (const auto& instance : state.scene.instances) {
+        hasGlass |= instance.surface.dielectric.transmission != 0.0f;
         if (instance.surface.dielectric.transmission != 0.0f
             && !IsHybridRayDielectricSupported(instance.surface)) {
             state.scene.surfaceDiagnostics.push_back({instance.objectId, instance.sourceItem,
@@ -150,6 +154,9 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
     if (!view.rayReflectionCovered) return reject();
     state.gpu = shared.rayGeometry.Prepare(state.scene, context);
     if (!state.gpu.ready) return reject();
+    state.provenAirOrigin = {camera.cameraPosition.x, camera.cameraPosition.y, camera.cameraPosition.z};
+    state.cameraOriginProvenAir = hasGlass && !camera.orthographic
+        && state.mediumCache.IsOriginProvenAir(state.scene, context.resources, state.provenAirOrigin);
     auto& resources = context.resources;
     if (state.pathScene.emitters.size() > UINT32_MAX || state.pathScene.deltaLights.size() > UINT32_MAX
         || state.pathScene.shapes.size() > UINT32_MAX) return reject();
@@ -311,6 +318,8 @@ void BuildRayReflectionPipeline(RenderPipeline& pipeline, RenderViewResources& v
     lighting.diffuseIndirectEnabled = state.diffuseIndirectEnabled;
     lighting.glassEnabled = std::any_of(state.scene.instances.begin(), state.scene.instances.end(),
         [](const RaySceneInstance& instance) { return IsHybridRayDielectricSupported(instance.surface); });
+    lighting.cameraOriginProvenAir = state.cameraOriginProvenAir;
+    lighting.provenAirOrigin = state.provenAirOrigin;
     lighting.constantEnvironmentKnown = state.constantEnvironmentKnown;
     lighting.constantEnvironmentRadiance = state.constantEnvironmentRadiance;
     lighting.emitterCount = static_cast<uint32_t>(state.pathScene.emitters.size());

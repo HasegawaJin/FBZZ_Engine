@@ -7,7 +7,9 @@
 #include <Graphics/RayTracing/RayPathScene.hpp>
 #include <Graphics/RayTracing/RayEnvironment.hpp>
 #include <Graphics/RayTracing/RayReflectionReconstructionResources.hpp>
+#include <Graphics/RayTracing/RayReflectionMediumCache.hpp>
 #include <Math/Vector4.hpp>
+#include <cstddef>
 
 namespace fbzz::renderer {
 
@@ -52,8 +54,12 @@ struct RayReflectionConstants {
     uint32_t reflectionSsrEnabled = 0;
     uint32_t glassEnabled = 0;
     uint32_t glassBoundaryLimit = 0;
+    /// @note 1 は現 perspective camera origin が検証済み全 solid bounds 外。0 は従来の画素別媒体探索。
+    uint32_t cameraOriginProvenAir = 0;
+    uint32_t reserved[3]{};
 };
-static_assert(sizeof(RayReflectionConstants) == 240);
+static_assert(sizeof(RayReflectionConstants) == 256);
+static_assert(offsetof(RayReflectionConstants, cameraOriginProvenAir) == 240);
 
 struct RayReflectionLightingResources {
     ResourceHandle<StructuredBufferTag> emitters, deltaLights, shapes, environmentTable;
@@ -66,6 +72,8 @@ struct RayReflectionLightingResources {
     math::Vector3 constantEnvironmentRadiance;
     bool glassEnabled = false;
     bool diffuseIndirectEnabled = false;
+    bool cameraOriginProvenAir = false;
+    math::Vector3 provenAirOrigin;
 };
 
 /// @note ビューが所有する RGBA16F 出力。scene/gpu は同じ静的表面版を指す。
@@ -77,6 +85,7 @@ struct RayReflectionViewResources {
     RayScene scene;
     RaySceneGpu gpu;
     RayPathSceneBuilder sceneBuilder;
+    RayReflectionMediumCache mediumCache;
     RayPathScene pathScene;
     ResourceHandle<StructuredBufferTag> emitters, deltaLights, shapes, environmentTable;
     ResourceHandle<TextureTag> environment;
@@ -86,6 +95,8 @@ struct RayReflectionViewResources {
     bool diffuseIndirectEnabled = false;
     bool constantEnvironmentKnown = false;
     math::Vector3 constantEnvironmentRadiance;
+    bool cameraOriginProvenAir = false;
+    math::Vector3 provenAirOrigin;
     RayReflectionReconstructionViewResources reconstruction;
 };
 
