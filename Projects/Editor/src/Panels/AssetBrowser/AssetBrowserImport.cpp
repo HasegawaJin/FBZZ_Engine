@@ -192,13 +192,13 @@ bool LoadTexMeta(const std::string& texAbsPath, asset::TextureImportSettings& se
     return true;
 }
 
-void SaveTexMeta(const std::string& texAbsPath, const asset::TextureImportSettings& settings)
+bool SaveTexMeta(const std::string& texAbsPath, const asset::TextureImportSettings& settings)
 {
     asset::TextureAsset texAsset;
     texAsset.sourcePath = util::FileSystem::GetFilename(texAbsPath);
     texAsset.settings   = settings;
     asset::TexDescSerializer ser;
-    ser.Save(texAsset, GetTexDescPath(texAbsPath));
+    return ser.Save(texAsset, GetTexDescPath(texAbsPath));
 }
 
 /// @name 除外パターンヘルパー
@@ -254,7 +254,7 @@ void MigrateImportRecord(const std::string& absPath, const FbxImportOptions& opt
     if (entry.contentHash.empty()) return;
     (void)ImportCacheStore::Save(guid, entry);
 }
-} // namespace
+} /// @note namespace
 
 bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
 {
@@ -294,8 +294,7 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
         int64_t  mtime = 0;
         const bool haveStamp = FbxMetaSerializer::SourceStamp(absPath, size, mtime);
 
-        /// @note 旧形式 (パス + サイズ + 更新時刻) しか無い記録は、その形式のまま突き合わせる。
-        ///       一致していれば中身も変わっていないので、焼き直さずに新形式へ書き換えるだけにする。
+        /// @note 旧形式 (パス + サイズ + 更新時刻) しか無い記録は、その形式のまま突き合わせる。 一致していれば中身も変わっていないので、焼き直さずに新形式へ書き換えるだけにする。
         if (cache.contentHash.empty()) {
             if (cache.legacyStamp != FbxMetaSerializer::LegacyStampHash(absPath)) return true;
             MigrateImportRecord(absPath, options, size, mtime, haveStamp);
@@ -310,8 +309,7 @@ bool AssetBrowserPanel::IsOutdated(const std::string& absPath)
         /// @note サイズも更新時刻も前回のままなら、触られてすらいない。ここが通常の経路。
         if (cache.size == size && cache.mtime == mtime) return false;
 
-        /// @note 触られてはいるが中身は同じかもしれない。ここで初めて原本を読む。
-        ///       (git pull / clone / コピーはどれも中身を変えずに更新時刻を動かす)
+        /// @note 触られてはいるが中身は同じかもしれない。ここで初めて原本を読む。 (git pull / clone / コピーはどれも中身を変えずに更新時刻を動かす)
         if (cache.contentHash == FbxMetaSerializer::SourceContentHash(absPath)) {
             /// @note 次回から上の «更新時刻が同じ» で抜けられるよう、目印だけ今の値にする。
             const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(absPath);
@@ -390,8 +388,7 @@ void AssetBrowserPanel::QueueAutomaticReimport(const std::string& absPath)
     if (!m_outdatedPaths.insert(absPath).second)
         return;
 
-    /// @note 元の .meta に保存された選択メッシュ・クリップ範囲を維持し、
-    ///       インポータ更新だけを適用する。設定が壊れている場合は既定値で復旧する。
+    /// @note 元の .meta に保存された選択メッシュ・クリップ範囲を維持し、 インポータ更新だけを適用する。設定が壊れている場合は既定値で復旧する。
     FbxImportOptions options{};
     (void)FbxMetaSerializer::LoadOptions(absPath, options);
     m_pendingImports.push_back({ absPath, std::move(options) });
@@ -429,8 +426,7 @@ void AssetBrowserPanel::FlushScheduledReimports()
         }
         /// @note 待っている間に消された / 別名になったファイルは黙って落とす。
         if (util::FileSystem::Exists(util::FileSystem::PathFromUtf8(it->first))) {
-            /// @note 実際に作り直しが要るかは QueueAutomaticReimport の IsOutdated が決める。
-            ///       保存し直しただけで中身が同じなら source_hash が変わるので焼き直す。
+            /// @note 実際に作り直しが要るかは QueueAutomaticReimport の IsOutdated が決める。 保存し直しただけで中身が同じなら source_hash が変わるので焼き直す。
             QueueAutomaticReimport(it->first);
         }
         it = m_scheduledReimports.erase(it);
@@ -542,8 +538,8 @@ void AssetBrowserPanel::CopyExternalFilesInto(
         const fs::path dest    = MakeUniqueDestPath(destDir / srcPath.filename());
 
         const bool ok = util::FileSystem::IsDirectory(src)
-            ? util::FileSystem::CopyDirectoryRecursive(srcPath, dest, /*overwrite=*/false)
-            : util::FileSystem::CopyFile(srcPath, dest, /*overwrite=*/false);
+            ? util::FileSystem::CopyDirectoryRecursive(srcPath, dest, false)
+            : util::FileSystem::CopyFile(srcPath, dest, false);
 
         if (ok) {
             anyCopied = true;
@@ -557,8 +553,7 @@ void AssetBrowserPanel::CopyExternalFilesInto(
         }
     }
 
-    /// @note ウォッチャーが Added を拾ってインポート設定モーダルを自動表示するが、
-    ///       表示中フォルダのグリッドは即座に反映されるよう明示的に更新する。
+    /// @note ウォッチャーが Added を拾ってインポート設定モーダルを自動表示するが、 表示中フォルダのグリッドは即座に反映されるよう明示的に更新する。
     if (anyCopied) {
         const std::string where = util::FileSystem::GetFilename(destUtf8);
         Toast::Success(std::to_string(copiedCount) +
@@ -592,8 +587,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
     bool needsDirectoryRefresh = false;
     const std::vector<AssetFileWatcher::FileEvent> watcherEvents = m_watcher.Poll();
 
-    /// @note 素材を一度に大量投入すると OS の通知バッファが溢れ、その回の変更が丸ごと捨てられる。
-    ///       個別イベントに追従する処理は全て空振りするので、ここだけは総取っ替えで作り直す。
+    /// @note 素材を一度に大量投入すると OS の通知バッファが溢れ、その回の変更が丸ごと捨てられる。 個別イベントに追従する処理は全て空振りするので、ここだけは総取っ替えで作り直す。
     if (m_watcher.ConsumeOverflow()) {
         ResyncAfterWatcherOverflow();
         Toast::Info("Asset Browser resynced (file notifications overflowed)");
@@ -630,14 +624,11 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
         {
             if (ev.type == AssetFileWatcher::EventType::Removed
                 && util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath)) != ".meta") {
-                /// @note 削除後に同じ名前で別アセットを作成しても、旧 GUID の逆引きが残らないよう
-                ///       watcher の Removed を索引にも通知する。.meta 単体の通知は本体が残るため無視する。
+                /// @note 削除後に同じ名前で別アセットを作成しても、旧 GUID の逆引きが残らないよう watcher の Removed を索引にも通知する。.meta 単体の通知は本体が残るため無視する。
                 asset::AssetDatabase::OnAssetRemoved(absPath);
             }
             if (ev.type == AssetFileWatcher::EventType::Renamed && !oldAbsPath.empty()) {
-                /// @note Explorer / IDE からの移動も Asset Browser 内の移動と同じ GUID 更新経路へ
-                ///       通す。ここを欠くと .meta は一緒に移動しても、実行中の索引だけが旧パスを
-                ///       保持し、次回保存時に参照を正しく GUID 化できない。
+                /// @note Explorer / IDE からの移動も Asset Browser 内の移動と同じ GUID 更新経路へ 通す。ここを欠くと .meta は一緒に移動しても、実行中の索引だけが旧パスを 保持し、次回保存時に参照を正しく GUID 化できない。
                 asset::AssetDatabase::OnAssetMoved(oldAbsPath, absPath);
             }
 
@@ -692,8 +683,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             ctx.pendingAssetReloads.push_back(reloadPath);
         }
 
-        /// @note 開いているシーンがディスク上で書き換わった場合。判断 (未保存か / Play 中か)
-        ///       は EditorApp 側でやるので、ここでは候補として渡すだけにする。
+        /// @note 開いているシーンがディスク上で書き換わった場合。判断 (未保存か / Play 中か) は EditorApp 側でやるので、ここでは候補として渡すだけにする。
         if ((ev.type == AssetFileWatcher::EventType::Modified ||
              ev.type == AssetFileWatcher::EventType::Added    ||
              ev.type == AssetFileWatcher::EventType::Renamed) &&
@@ -708,13 +698,11 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
         if (!util::FileSystem::IsDirectory(m_currentPath))
             m_currentPath = m_rootPath;
         RefreshDirectory();
-        /// @note 他の枚も同じ変更を反映させる (監視しているのはこのパネルだけなので、
-        ///       伝えないと 2 枚目以降は古い一覧のままになる)。
+        /// @note 他の枚も同じ変更を反映させる (監視しているのはこのパネルだけなので、 伝えないと 2 枚目以降は古い一覧のままになる)。
         ctx.requestAssetBrowserRefresh = true;
     }
 
-    /// @note 書き込みが落ち着いた候補をインポートキューへ流す。ここから先は
-    ///       手動 Import と同じ経路なので、進捗はいつもの EditorTaskOverlay に出る。
+    /// @note 書き込みが落ち着いた候補をインポートキューへ流す。ここから先は 手動 Import と同じ経路なので、進捗はいつもの EditorTaskOverlay に出る。
     FlushScheduledReimports();
 
     /// @name スレッド完了チェック
@@ -733,10 +721,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             asset::AssetManager::Unload<asset::ModelAsset>(path);
             ResetAssetPreviewCache(path);
         }
-        /// @note 成否にかかわらず「処理中」の印を外す。失敗したものを外さないと、
-        ///       原本を直して保存し直しても処理中と見なされ、二度と再試行されない。
-        ///       失敗した原本は .meta の fingerprint が更新されていないので、
-        ///       次に触られた時点で改めて再インポート候補になる。
+        /// @note 成否にかかわらず「処理中」の印を外す。失敗したものを外さないと、 原本を直して保存し直しても処理中と見なされ、二度と再試行されない。 失敗した原本は .meta の fingerprint が更新されていないので、 次に触られた時点で改めて再インポート候補になる。
         for (const std::string& path : m_inFlightImports)
             m_outdatedPaths.erase(path);
         const size_t attempted = m_inFlightImports.size();
@@ -745,8 +730,7 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
             Toast::Success(std::to_string(completedImports.size()) +
                            (completedImports.size() == 1 ? " model imported" : " models imported"));
         }
-        /// @note 失敗は必ず見せる。自動化した以上、黙って落ちると「保存したのに反映されない」
-        ///       としか見えず、原因を追う手掛かりがどこにも残らない。
+        /// @note 失敗は必ず見せる。自動化した以上、黙って落ちると「保存したのに反映されない」 としか見えず、原因を追う手掛かりがどこにも残らない。
         if (attempted > completedImports.size()) {
             const size_t failed = attempted - completedImports.size();
             Toast::Error(std::to_string(failed) +
@@ -812,8 +796,11 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
                 util::FileSystem::PathToUtf8(srcPath.parent_path() / srcPath.stem());
             if (FbxImportTool::Import(imp.path, outDir, imp.path, imp.options)) {
                 /// @note 設定は実際に Import が成功した後で初めて原本の .meta に確定する。
-                FbxMetaSerializer::SaveOptions(imp.path, imp.options);
-                FbxMetaSerializer::SaveCacheInfo(imp.path, imp.options);
+                /// @note 生成済みモデルの成功と設定保存の失敗を分け、片方が失敗しても他方の保存を試す。
+                const bool optionsSaved = FbxMetaSerializer::SaveOptions(imp.path, imp.options);
+                const bool cacheSaved = FbxMetaSerializer::SaveCacheInfo(imp.path, imp.options);
+                if (!optionsSaved || !cacheSaved)
+                    FBZZ_LOG_WARN("AssetBrowser: imported model metadata could not be saved [%s]", imp.path.c_str());
                 std::lock_guard<std::mutex> lock(m_importStatusMtx);
                 m_completedImportPaths.push_back(imp.path);
             }
@@ -1046,8 +1033,7 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
             }
 
             if (mask.sprite) {
-                /// @note Sprite の矩形編集は Sprite Editor / Inspector の担当。
-                ///       ここは「Sprite として取り込む」ことだけ確定させる。
+                /// @note Sprite の矩形編集は Sprite Editor / Inspector の担当。 ここは「Sprite として取り込む」ことだけ確定させる。
                 ImGui::SeparatorText("Sprite");
                 ImGui::TextDisabled("Sprite rects can be edited in the Sprite Editor after import.");
             }
@@ -1066,20 +1052,24 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
                 const ImportCategory perFile = CategoryForExtension(
                     util::StringUtils::ToLower(util::FileSystem::GetExtension(path)));
                 SanitizeTextureSettings(perFile, settings);
-                SaveTexMeta(path, settings);
+                if (SaveTexMeta(path, settings)) return true;
+                FBZZ_LOG_ERROR("AssetBrowser: texture import settings could not be saved [%s]", path.c_str());
+                Toast::Error("Texture import settings could not be saved: " + util::FileSystem::GetFilename(path));
+                return false;
             };
             auto applyTextureSettings = [&]() {
+                bool saved = true;
                 if (m_textureImportSettings.fromWatcher) {
                     for (int i = 0; i < static_cast<int>(m_pendingTextureConfirmImports.size()); ++i) {
                         const bool inc = i < static_cast<int>(m_pendingTextureConfirmIncludes.size())
                             && m_pendingTextureConfirmIncludes[i];
                         if (inc)
-                            saveSanitized(m_pendingTextureConfirmImports[i], m_textureImportSettings.settings);
+                            saved = saveSanitized(m_pendingTextureConfirmImports[i], m_textureImportSettings.settings) && saved;
                     }
                 } else {
-                    saveSanitized(m_textureImportSettings.path, m_textureImportSettings.settings);
+                    saved = saveSanitized(m_textureImportSettings.path, m_textureImportSettings.settings);
                 }
-                closeTextureWindow();
+                if (saved) closeTextureWindow();
                 RefreshDirectory();
             };
 
@@ -1552,4 +1542,4 @@ void AssetBrowserPanel::DrawImportSettingsModal(EditorContext& ctx)
     ImGui::End();
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor
