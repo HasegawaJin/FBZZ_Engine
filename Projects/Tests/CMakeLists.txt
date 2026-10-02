@@ -346,13 +346,31 @@ fbzz_add_test_suite(CoreManual MANUAL
 fbzz_add_test_suite(GraphicsStandalone
     SOURCES Graphics/Auto/GraphicsStandaloneTests.cpp
         Graphics/Auto/ResolvedRenderPlanTests.cpp
+        Graphics/Auto/GpuProfilerTests.cpp
+        Graphics/Auto/PixEventStackTests.cpp
         Graphics/Auto/DeferredEmissionTests.cpp
+        Graphics/Auto/HybridHistoryTests.cpp
+        Graphics/Auto/RayTracingTests.cpp
+    Graphics/Auto/RayReflectionTests.cpp
+        Graphics/Auto/RayReflectionReconstructionTests.cpp
+        Graphics/Auto/RayHybridDiffuseGITests.cpp
+    Graphics/Auto/ReflectionProbeCaptureTests.cpp
+    Graphics/Auto/ProbeCaptureBudgetTests.cpp
+    Graphics/Auto/RayEnvironmentTests.cpp
+        Graphics/Auto/RayGameTests.cpp
+    Graphics/Auto/RayPathTracingTests.cpp
+        Graphics/Auto/RayPathSceneTests.cpp
+        Graphics/Auto/RayPathHistoryTests.cpp
+        Graphics/Auto/BufferReadTests.cpp
+        Graphics/Auto/RaySceneBuilderTests.cpp
+        Graphics/Auto/RayTextureTests.cpp
     LINKS FBZZGraphics
 )
 configure_file(Graphics/Auto/StandaloneTriangle.hlsl StandaloneTriangle.hlsl COPYONLY)
 target_compile_definitions(FBZZTestsGraphicsStandaloneObj PRIVATE
     FBZZ_GRAPHICS_SMOKE_SHADER="${CMAKE_CURRENT_BINARY_DIR}/StandaloneTriangle.hlsl"
-    FBZZ_GRAPHICS_SHADER_ROOT="${CMAKE_SOURCE_DIR}/Assets/Shaders")
+    FBZZ_GRAPHICS_SHADER_ROOT="${CMAKE_SOURCE_DIR}/Assets/Shaders"
+    FBZZ_RAY_INTERSECTION_SHADER="${CMAKE_CURRENT_SOURCE_DIR}/Graphics/Shaders/RayIntersection.cs.hlsl")
 # @note DrawsAndReadsBackWithoutEngine は実行時に .hlsl をコンパイルするので dxcompiler.dll が exe の隣に要る。
 # @warning DXC が見つからない構成では «シェーダーが読めない» だけの失敗になる。原因は configure 時の dxc.exe 探索 (Projects/Graphics/CMakeLists.txt)。
 if(FBZZ_DXC_RUNTIME_DIRECTORY)

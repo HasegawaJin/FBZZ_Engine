@@ -11,26 +11,32 @@
 
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
+#include "Rendering/ReflectionPolicy.hlsli"
+#include "Rendering/HybridGlassPolicy.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(texGBuffer0, TEX_GBUFFER0_SLOT);   ///< albedo(RGB) + roughness(A)
-FBZZ_TEX2D(texGBuffer1, TEX_GBUFFER1_SLOT);   ///< normal(RGB, [0,1] 符号化) + metallic(A)
+FBZZ_TEX2D(texGBuffer0, TEX_GBUFFER0_SLOT);   ///< @note albedo(RGB) + roughness(A)
+FBZZ_TEX2D(texGBuffer1, TEX_GBUFFER1_SLOT);   ///< @note normal(RGB, [0,1] 符号化) + metallic(A)
 /// @note t3 はこのパスでは emission の MRT。材質テクスチャと異なり、既に線形 HDR。
 FBZZ_TEX2D(texGBufferEmission, TEX_EMISSIVE_SLOT);
 FBZZ_TEX2D(texDepth, TEX_DEPTH_SLOT);
 FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
 FBZZ_TEX2D(texSSAO, TEX_SSAO_SLOT);
-FBZZ_TEX2D_T(float, texContactShadow, TEX_CONTACT_SHADOW_SLOT); ///< t24: 接触影マスク (1=非遮蔽, 0=遮蔽)
+FBZZ_TEX2D_T(float, texContactShadow, TEX_CONTACT_SHADOW_SLOT); ///< @note t24: 接触影マスク (1=非遮蔽, 0=遮蔽)
+/// @note t20 alpha is typed: 1=weighted opaque specular, 2=full dielectric radiance, 0=invalid.
+FBZZ_TEX2D_T(float4, texRayReflection, 20);
+/// @note t23 は Hybrid resolve 専用。RGB は受け側 Fresnel 適用済み、alpha は反射率と独立した信頼度。
+FBZZ_TEX2D_T(float4, texScreenReflection, 23);
 SamplerState           sampDefault  : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow   : register(SAMPLER_SHADOW);
 SamplerState           sampGBuffer  : register(SAMPLER_POINT_CLAMP);
 
 /// @note IBL テクスチャは AdvancedGraphicsConstants.iblIntensity > 0 のときだけバインドされる。
-FBZZ_TEXCUBE(texIBLIrradiance, TEX_IBL_IRRADIANCE_SLOT);  ///< t16: 拡散 IBL (半球積分済み)
-FBZZ_TEXCUBE(texIBLPrefilter, TEX_IBL_PREFILTER_SLOT);   ///< t17: 鏡面 IBL (roughness → mip)
-FBZZ_TEX2D_T(float4, texBRDFLut, TEX_IBL_BRDF_LUT_SLOT);   ///< t18: RG=scale/bias。起動時に BRDFIntegration.cs.hlsl がベイク
-SamplerState      sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP); ///< s2。BRDF LUT の UV を [0,1] に収めるため Clamp
+FBZZ_TEXCUBE(texIBLIrradiance, TEX_IBL_IRRADIANCE_SLOT);  ///< @note t16: 拡散 IBL (半球積分済み)
+FBZZ_TEXCUBE(texIBLPrefilter, TEX_IBL_PREFILTER_SLOT);   ///< @note t17: 鏡面 IBL (roughness → mip)
+FBZZ_TEX2D_T(float4, texBRDFLut, TEX_IBL_BRDF_LUT_SLOT);   ///< @note t18: RG=scale/bias。起動時に BRDFIntegration.cs.hlsl がベイク
+SamplerState      sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP); ///< @note s2。BRDF LUT の UV を [0,1] に収めるため Clamp
 
 struct FSTriVSOut
 {
@@ -58,6 +64,20 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
 
     float4 gb0    = texGBuffer0.Sample(sampGBuffer, uv);
     float4 gb1    = texGBuffer1.Sample(sampGBuffer, uv);
+    float4 receiverEmission = texGBufferEmission.Sample(sampGBuffer, uv);
+    const bool resolveActive = HybridReflectionResolveActive(reflectionResolveEnabled);
+    const bool glassReceiver = resolveActive && HybridGlassReceiver(receiverEmission.a);
+    /// @note The immutable SSR source excludes authored glass rather than lighting its opaque GBuffer proxy.
+    if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_SOURCE && glassReceiver) return float4(0, 0, 0, 1);
+    float4 rayReflection = 0.0f;
+    [branch]
+    if (rayReflectionEnabled > 0.0f && reflectionResolveEnabled != HYBRID_REFLECTION_RESOLVE_SOURCE)
+        rayReflection = texRayReflection.Sample(sampGBuffer, uv);
+    /// @note A proven camera-inside/glass result owns complete radiance, including an opaque terminal; Raster lighting must not be added again.
+    if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL
+        && (receiverEmission.a == 0 || receiverEmission.a == HYBRID_GLASS_SUPPORTED)
+        && rayReflection.a == HYBRID_REFLECTION_DIELECTRIC_FULL && all(isfinite(rayReflection)) && all(rayReflection.rgb >= 0))
+        return float4(rayReflection.rgb, 1);
     float3 col    = gb0.rgb;
     float  rough  = gb0.a;
     /// @note 補間や GBuffer 境界でも単位法線を BRDF へ渡し、鏡面値の発散を防ぐ。
@@ -65,12 +85,8 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
                                   float3(0.0f, 1.0f, 0.0f));
     float  met    = gb1.a;
 
-    /// @note 画面上の法線分散を roughness に畳み込む。細い法線ピークが IBL の高輝度方向を拾う点状ハイライト (ライト非依存の specular aliasing) を BRDF 評価前に抑える。
-    float3 dNdx = ddx(N);
-    float3 dNdy = ddy(N);
-    float normalVariance = 0.5f * (dot(dNdx, dNdx) + dot(dNdy, dNdy));
-    float kernelRoughness2 = min(2.0f * normalVariance, 0.18f);
-    rough = max(sqrt(saturate(saturate(rough) * saturate(rough) + kernelRoughness2)), 0.045f);
+    /// @note GBuffer は面内でフィルタ済みの最終 roughness。別オブジェクトの法線差を再び混ぜず、RT と同じ下限を使う。
+    rough = clamp(rough, 0.045f, 1.0f);
     met   = saturate(met);
 
     float3 worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
@@ -92,6 +108,26 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     if (contactShadowStrength > 0.0f)
         shadow *= texContactShadow.Sample(sampLinearClamp, uv);
 
+    const bool rayReflectionValid = rayReflection.a == HYBRID_REFLECTION_OPAQUE_SPECULAR
+        && all(isfinite(rayReflection)) && !glassReceiver;
+    float4 screenReflection = 0.0f;
+    float screenWeight = 0.0f;
+    [branch]
+    if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL && !glassReceiver && reflectionSsrEnabled > 0.0f
+        && isfinite(ssrIntensity) && ssrIntensity > 0.0f)
+    {
+        screenReflection = texScreenReflection.Sample(sampGBuffer, uv);
+        if (all(isfinite(screenReflection))) screenWeight = saturate(screenReflection.a * ssrIntensity);
+    }
+    /// @note Available RT owns glossy metals even when primary validation fails; those holes fall back to IBL, not unproven SSR.
+    if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL && rayReflectionEnabled > 0.0f
+        && HybridReflectionPrefersRay(gb1.a, gb0.a))
+        screenWeight = 0.0f;
+    const float rayWeight = rayReflectionValid ? 1.0f - screenWeight : 0.0f;
+    const float environmentSpecularScale = resolveActive
+        ? iblSpecularScale * (1.0f - screenWeight - rayWeight)
+        : (rayReflectionValid ? 0.0f : iblSpecularScale);
+
     /// @note IBL 有効時は環境光を IBL に差し替えて ambientColor を使わない。無効時は定数 ambient (albedo * ambientColor * ao)。
     float3 result;
     if (iblIntensity > 0.0f)
@@ -100,7 +136,7 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
                                    lightColor, lightIntensity, shadow, ao,
                                    texIBLIrradiance, texIBLPrefilter, texBRDFLut,
                                    iblMaxMipLevel, iblIntensity,
-                                   iblDiffuseScale, iblSpecularScale,
+                                   iblDiffuseScale, environmentSpecularScale,
                                    sampDefault, sampLinearClamp);
     }
     else
@@ -108,6 +144,14 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
         result = Lighting_PBR(N, V, L, col, met, rough,
                               lightColor, lightIntensity, shadow, ao);
     }
+    /// @note SCREEN_FIRST は鏡面間接光だけを分配し、直接光・拡散 GI・自発光を変更しない。
+    if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL)
+    {
+        /// @note 無効 provider の NaN * 0 を避け、正の weight の値だけを加える。
+        if (screenWeight > 0.0f) result += screenReflection.rgb * screenWeight;
+        if (rayWeight > 0.0f) result += rayReflection.rgb * rayWeight;
+    }
+    else if (rayReflectionValid) result += rayReflection.rgb;
 
     /// @note 点光源 / スポットの走査元 (b3 の固定長配列 / StructuredBuffer / クラスタリスト) は ClusteredLights.hlsli が clusterLightMode で切り替える。
     FBZZ_PUNCTUAL_BEGIN(worldPos, p.svPosition.xy, N)
@@ -118,6 +162,6 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     result *= ShadowCascadeDebugTint(worldPos);
 
     /// @note 自発光は影・AO・IBL・デバッグの照明色から独立し、HDR 合成へ一度だけ加える。
-    result += texGBufferEmission.Sample(sampGBuffer, uv).rgb;
+    result += receiverEmission.rgb;
     return float4(result, 1.0f);
 }

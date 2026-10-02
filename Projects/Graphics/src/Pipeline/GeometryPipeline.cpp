@@ -21,10 +21,15 @@ void BuildScreenSpaceOcclusion(RenderPipeline& pipeline)
     pipeline.AddPass<SSAOPass>();
 }
 
-void BuildSkyComposition(RenderPipeline& pipeline)
+void BuildSkyBackground(RenderPipeline& pipeline)
 {
     pipeline.AddPass<SkyPass>();
     pipeline.AddPass<SunMoonPass>();
+}
+
+void BuildSkyComposition(RenderPipeline& pipeline)
+{
+    BuildSkyBackground(pipeline);
     pipeline.AddPass<VolumetricCloudPass>();
 }
 
@@ -46,20 +51,29 @@ void BuildForwardOpaque(RenderPipeline& pipeline, bool depthNormalPrepass)
         pipeline.AddPass<SSRPass>();
 }
 
-void BuildDeferredOpaque(RenderPipeline& pipeline)
+void BuildDeferredOpaque(RenderPipeline& pipeline, const std::function<void()>& deferredSurfaceReady,
+    bool hybridScreenFirst)
 {
     pipeline.AddPass<GBufferPass>(GBufferPassMode::Deferred);
     pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::GBuffer);
     pipeline.AddPass<DeferredDepthCopyPass>();
     BuildScreenSpaceOcclusion(pipeline);
+    if (hybridScreenFirst) {
+        /// @note SSR の入力は baseline の一度目の照明。最終 resolve の RT/SSR を循環参照しない。
+        pipeline.AddPass<DeferredLightingPass>(true);
+        BuildSkyBackground(pipeline);
+        pipeline.AddPass<SSRPass>();
+    }
+    if (deferredSurfaceReady) deferredSurfaceReady();
     pipeline.AddPass<DeferredLightingPass>();
-    /// @note DepthCopy の HDR クリアに空を消されないよう、Lighting 後に合成する。
-    BuildSkyComposition(pipeline);
+    /// @note 雲は前景にも合成するため baseline へ入れず、最終照明後に一度だけ重ねる。
+    if (hybridScreenFirst) pipeline.AddPass<VolumetricCloudPass>();
+    else BuildSkyComposition(pipeline);
     pipeline.AddPass<DeferredSkinnedForwardPass>();
     pipeline.AddPass<FiberRenderPass>();
     pipeline.AddPass<DeferredForwardTransparentPass>();
-    /// @note 透明描画後の SSR は現行の契約。段境界の是正時に別途変更する。
-    pipeline.AddPass<SSRPass>();
+    /// @note Raster の透明描画後 SSR は互換経路。Hybrid は上で baseline を読んで完了している。
+    if (!hybridScreenFirst) pipeline.AddPass<SSRPass>();
 }
 
 } /// @note namespace
@@ -74,10 +88,11 @@ void BuildGeometryPreparation(RenderPipeline& pipeline, bool clusteredEnabled)
     pipeline.AddPass<ShadowPass>();
 }
 
-void BuildGeometryPipeline(RenderPipeline& pipeline, const renderer::OpaqueRenderPlan& plan)
+void BuildGeometryPipeline(RenderPipeline& pipeline, const renderer::OpaqueRenderPlan& plan,
+    const std::function<void()>& deferredSurfaceReady, bool hybridScreenFirst)
 {
     if (plan.UsesDeferredLighting())
-        BuildDeferredOpaque(pipeline);
+        BuildDeferredOpaque(pipeline, deferredSurfaceReady, hybridScreenFirst);
     else
         BuildForwardOpaque(pipeline, plan.HasScreenSpaceInputs());
 }

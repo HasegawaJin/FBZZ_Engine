@@ -48,6 +48,16 @@ public:
     uint32_t GetWidth() const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
     uint32_t GetDepth() const override { return m_depth; }
+    uint64_t GetContentVersion() const override { return m_contentVersion; }
+    bool IsRayMaterialTexture() const override { return m_contentVersion != 0 && !m_isDynamic
+        && !m_isCube && m_depth == 1 && m_format == DXGI_FORMAT_R8G8B8A8_UNORM; }
+    void AdoptContentVersion(uint64_t previousVersion) override {
+        if (m_contentVersion) m_contentVersion = previousVersion == UINT64_MAX ? 0 : previousVersion + 1;
+    }
+    bool IsRayEnvironmentTexture() const override { return m_contentVersion != 0 && m_isCube
+        && (m_format == DXGI_FORMAT_R16G16B16A16_FLOAT || m_format == DXGI_FORMAT_R32G32B32A32_FLOAT
+            || m_format == DXGI_FORMAT_R11G11B10_FLOAT || m_format == DXGI_FORMAT_BC6H_UF16
+            || m_format == DXGI_FORMAT_BC6H_SF16); }
 
     /// @brief 永続 bindless ディスクリプタの添字。初回呼び出しで確保して発行する。
     /// @return bindless 非対応、SRV 未生成、または枠が枯渇していれば INVALID_BINDLESS_INDEX。
@@ -72,6 +82,8 @@ public:
     void TransitionForPixelRead(ID3D12GraphicsCommandList* commands);
 
 private:
+    /// @note Native format, all six faces and DDS mips remain unchanged; synchronous upload owns its staging memory until the graphics fence completes.
+    bool InitDdsCube(DX12Context* context, const std::string& path);
     bool CreateSrv(DX12Context* context, DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM);
     /// @note 矩形ぶんのアップロードバッファを作って CopyTextureRegion する共通処理。
     /// @note currentState には呼び出し時点のリソース状態を渡す (生成直後は COPY_DEST、
@@ -87,6 +99,7 @@ private:
     bool m_hasUav = false;
     /// @note InitDynamic で作られたときだけ true。UpdateRegion はこれを見て可否を判断する。
     bool m_isDynamic = false;
+    bool m_isCube = false;
     uint32_t m_bytesPerPixel = 0;
     DXGI_FORMAT m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
     uint32_t m_width = 0;
@@ -95,6 +108,7 @@ private:
     uint32_t m_height = 0;
     /// @note 3D テクスチャの奥行き。2D では 1 のまま。
     uint32_t m_depth = 1;
+    uint64_t m_contentVersion = 0;
     /// @note 永続 bindless 枠。GetBindlessIndex() の初回呼び出しで確保するため mutable。
     mutable uint32_t m_bindlessIndex = INVALID_BINDLESS_INDEX;
     mutable uint32_t m_bindlessUavIndex = INVALID_BINDLESS_INDEX;

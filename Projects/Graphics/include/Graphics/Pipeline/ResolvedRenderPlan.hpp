@@ -53,6 +53,7 @@ struct RenderAvailability {
 struct RayEffectPlan {
     bool enabled = false;
     RenderPlanReason fallbackReason = RenderPlanReason::NONE;
+    bool operator==(const RayEffectPlan&) const = default;
 };
 
 struct ResolvedRenderPlan {
@@ -69,6 +70,7 @@ struct ResolvedRenderPlan {
     RayEffectPlan diffuseGi;
     RenderPlanReason fallbackReason = RenderPlanReason::NONE;
     RenderPlanReason failureReason = RenderPlanReason::REQUIRED_OUTPUT_UNAVAILABLE;
+    bool operator==(const ResolvedRenderPlan&) const = default;
 
     [[nodiscard]] bool IsValid() const { return failureReason == RenderPlanReason::NONE; }
     [[nodiscard]] bool NeedsRayScene() const
@@ -78,7 +80,7 @@ struct ResolvedRenderPlan {
 };
 
 /// @note GPU 資源の生成・Scene 走査・設定変更を行わない。初期 RT は Inline と bindless を要求する。
-/// @note GAME の RasterSurface は初期には実効 Deferred が必要。Forward のプリパスでは代用しない。
+/// @note GAME は専用 GBuffer の準備を要求する。通常の Forward プリパスでは代用しない。
 /// @return 復帰先も未準備なら無効な Plan。fallbackReason と failureReason を別々に保持する。
 /// @see Docs/design/RayTracing.md
 [[nodiscard]] ResolvedRenderPlan ResolveRenderPlan(

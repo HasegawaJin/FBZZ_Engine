@@ -75,7 +75,11 @@ void DX12StateTracker::QueueTransitionAllToCommon()
     std::vector<ID3D12Resource*> targets;
     targets.reserve(m_states.size());
     for (const auto& [resource, state] : m_states)
-        if (state != D3D12_RESOURCE_STATE_COMMON) targets.push_back(resource);
+        /// @note AS storage must never leave AS state, including across the async-compute handoff.
+        /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#acceleration-structure-memory-restrictions AS state restrictions
+        if (state != D3D12_RESOURCE_STATE_COMMON
+            && state != D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE)
+            targets.push_back(resource);
 
     for (ID3D12Resource* resource : targets)
         QueueTransition(resource, D3D12_RESOURCE_STATE_COMMON);

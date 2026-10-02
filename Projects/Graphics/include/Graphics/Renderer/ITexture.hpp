@@ -68,5 +68,13 @@ namespace fbzz::renderer
         {
             return false;
         }
+        /// @note Stable CPU-authored content version, or 0 for GPU-writable/unsupported provenance. Replacement handles retain generation identity.
+        virtual std::uint64_t GetContentVersion() const { return 0; }
+        /// @note Ray material decoding requires immutable encoded UNORM 2D RGBA views; cube, render targets and dynamic uploads fail closed.
+        virtual bool IsRayMaterialTexture() const { return false; }
+        /// @note ResourceManager calls this before same-handle replacement to prevent content-version ABA. Unsupported provenance stays version 0.
+        virtual void AdoptContentVersion(std::uint64_t /*previousVersion*/) {}
+        /// @note Immutable, linear HDR TextureCube loaded from raw DDS; render-target and convolved cube provenance is not implied.
+        virtual bool IsRayEnvironmentTexture() const { return false; }
     };
 } /// @note namespace fbzz::renderer

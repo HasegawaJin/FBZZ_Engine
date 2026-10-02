@@ -33,6 +33,9 @@ public:
     {
         m_targets.clear();
         m_textures.clear();
+        m_buffers.clear();
+        m_structuredBuffers.clear();
+        m_accelerationStructures.clear();
     }
 
     void BindTarget(std::string_view name, renderer::ResourceHandle<renderer::RenderTargetTag> handle)
@@ -43,6 +46,23 @@ public:
     void BindTexture(std::string_view name, renderer::ResourceHandle<renderer::TextureTag> handle)
     {
         m_textures[std::string(name)] = handle;
+    }
+
+    void BindBuffer(std::string_view name, renderer::ResourceHandle<renderer::BufferTag> handle)
+    {
+        m_buffers[std::string(name)] = handle;
+    }
+
+    void BindStructuredBuffer(std::string_view name,
+                              renderer::ResourceHandle<renderer::StructuredBufferTag> handle)
+    {
+        m_structuredBuffers[std::string(name)] = handle;
+    }
+
+    void BindAccelerationStructure(std::string_view name,
+                                   renderer::ResourceHandle<renderer::AccelerationStructureTag> handle)
+    {
+        m_accelerationStructures[std::string(name)] = handle;
     }
 
     [[nodiscard]] renderer::ResourceHandle<renderer::RenderTargetTag>
@@ -57,6 +77,27 @@ public:
     {
         const auto it = m_textures.find(std::string(name));
         return it == m_textures.end() ? renderer::ResourceHandle<renderer::TextureTag>{} : it->second;
+    }
+
+    [[nodiscard]] renderer::ResourceHandle<renderer::BufferTag>
+    Buffer(std::string_view name) const
+    {
+        const auto it = m_buffers.find(std::string(name));
+        return it == m_buffers.end() ? renderer::ResourceHandle<renderer::BufferTag>{} : it->second;
+    }
+
+    [[nodiscard]] renderer::ResourceHandle<renderer::StructuredBufferTag>
+    StructuredBuffer(std::string_view name) const
+    {
+        const auto it = m_structuredBuffers.find(std::string(name));
+        return it == m_structuredBuffers.end() ? renderer::ResourceHandle<renderer::StructuredBufferTag>{} : it->second;
+    }
+
+    [[nodiscard]] renderer::ResourceHandle<renderer::AccelerationStructureTag>
+    AccelerationStructure(std::string_view name) const
+    {
+        const auto it = m_accelerationStructures.find(std::string(name));
+        return it == m_accelerationStructures.end() ? renderer::ResourceHandle<renderer::AccelerationStructureTag>{} : it->second;
     }
 
     /// @note 束縛済みの名前を走査する。
@@ -77,9 +118,33 @@ public:
             fn(name, handle);
     }
 
+    template<typename Fn>
+    void ForEachBuffer(Fn&& fn) const
+    {
+        for (const auto& [name, handle] : m_buffers)
+            fn(name, handle);
+    }
+
+    template<typename Fn>
+    void ForEachStructuredBuffer(Fn&& fn) const
+    {
+        for (const auto& [name, handle] : m_structuredBuffers)
+            fn(name, handle);
+    }
+
+    template<typename Fn>
+    void ForEachAccelerationStructure(Fn&& fn) const
+    {
+        for (const auto& [name, handle] : m_accelerationStructures)
+            fn(name, handle);
+    }
+
 private:
     std::unordered_map<std::string, renderer::ResourceHandle<renderer::RenderTargetTag>> m_targets;
     std::unordered_map<std::string, renderer::ResourceHandle<renderer::TextureTag>>      m_textures;
+    std::unordered_map<std::string, renderer::ResourceHandle<renderer::BufferTag>> m_buffers;
+    std::unordered_map<std::string, renderer::ResourceHandle<renderer::StructuredBufferTag>> m_structuredBuffers;
+    std::unordered_map<std::string, renderer::ResourceHandle<renderer::AccelerationStructureTag>> m_accelerationStructures;
 };
 
 /// @note パスが «何を読み、何を書くか» を申告する唯一の場所 (IRenderPass::Setup)。
@@ -87,10 +152,15 @@ class PassBuilder {
 public:
     using Usage  = renderer::RenderGraph::ResourceUsage;
     using Access = renderer::RenderGraph::ResourceAccess;
+    using Purpose = renderer::RenderGraph::ResourceAccessPurpose;
 
     PassBuilder& Read(std::string_view name)      { return Add(name, Usage::Read); }
     PassBuilder& Write(std::string_view name)     { return Add(name, Usage::Write); }
     PassBuilder& ReadWrite(std::string_view name) { return Add(name, Usage::ReadWrite); }
+
+    PassBuilder& Read(std::string_view name, Purpose purpose) { return Add(name, Usage::Read, purpose); }
+    PassBuilder& Write(std::string_view name, Purpose purpose) { return Add(name, Usage::Write, purpose); }
+    PassBuilder& ReadWrite(std::string_view name, Purpose purpose) { return Add(name, Usage::ReadWrite, purpose); }
 
     /// @note 組み立て済みの申告をそのまま載せる。
     /// @note 登録時点で accesses を持つアダプタ (LambdaPass) が usage を Read/Write/ReadWrite へ
@@ -122,9 +192,9 @@ public:
     }
 
 private:
-    PassBuilder& Add(std::string_view name, Usage usage)
+    PassBuilder& Add(std::string_view name, Usage usage, Purpose purpose = Purpose::UNSPECIFIED)
     {
-        m_accesses.push_back(Access{ std::string(name), usage });
+        m_accesses.push_back(Access{ std::string(name), usage, purpose });
         return *this;
     }
 
@@ -155,6 +225,27 @@ public:
     {
         WarnIfUndeclared(name);
         return m_registry.Texture(name);
+    }
+
+    [[nodiscard]] renderer::ResourceHandle<renderer::BufferTag>
+    Buffer(std::string_view name) const
+    {
+        WarnIfUndeclared(name);
+        return m_registry.Buffer(name);
+    }
+
+    [[nodiscard]] renderer::ResourceHandle<renderer::StructuredBufferTag>
+    StructuredBuffer(std::string_view name) const
+    {
+        WarnIfUndeclared(name);
+        return m_registry.StructuredBuffer(name);
+    }
+
+    [[nodiscard]] renderer::ResourceHandle<renderer::AccelerationStructureTag>
+    AccelerationStructure(std::string_view name) const
+    {
+        WarnIfUndeclared(name);
+        return m_registry.AccelerationStructure(name);
     }
 
     [[nodiscard]] bool IsDeclared(std::string_view name) const;

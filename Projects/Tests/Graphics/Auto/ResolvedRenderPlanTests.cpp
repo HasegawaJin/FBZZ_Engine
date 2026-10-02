@@ -237,7 +237,7 @@ TEST_F(ResolvedRenderPlanTest, ReferenceUsesCameraRaysWithoutADeferredPrimarySur
     EXPECT_FALSE(plan.diffuseGi.enabled);
 }
 
-TEST_F(ResolvedRenderPlanTest, GamePathRequiresDeferredAndCompleteRasterSurfaceInputs)
+TEST_F(ResolvedRenderPlanTest, GamePathUsesDedicatedCompleteRasterSurfaceInputs)
 {
     renderer::RenderSettings settings;
     const auto request = PathRequest(renderer::PathTracingProfile::GAME);
@@ -250,8 +250,8 @@ TEST_F(ResolvedRenderPlanTest, GamePathRequiresDeferredAndCompleteRasterSurfaceI
         const auto plan = renderer::ResolveRenderPlan(settings, request, RayCapabilities(),
             CoveredScene(), availability);
         EXPECT_TRUE(plan.IsValid());
-        EXPECT_EQ(plan.effectiveMode, settings.UsesGBuffer()
-            ? renderer::RenderMode::PATH_TRACING : renderer::RenderMode::RASTER);
+        EXPECT_EQ(plan.effectiveMode, renderer::RenderMode::PATH_TRACING);
+        EXPECT_EQ(plan.rasterPlan.path, renderer::OpaqueRenderPath::DEFERRED);
         EXPECT_EQ(plan.primaryVisibility, renderer::PrimaryVisibility::RASTER);
     }
     availability.rasterSurfaceReady = false;
@@ -262,7 +262,7 @@ TEST_F(ResolvedRenderPlanTest, GamePathRequiresDeferredAndCompleteRasterSurfaceI
     EXPECT_FALSE(missingSurface.NeedsRayScene());
 }
 
-TEST_F(ResolvedRenderPlanTest, ForwardPrepassAfterDeferredFailureCannotStartGamePath)
+TEST_F(ResolvedRenderPlanTest, GameDedicatedSurfaceDoesNotRequireDeferredDirectLighting)
 {
     renderer::RenderSettings settings;
     settings.pipeline = renderer::RenderingPipeline::Deferred;
@@ -272,10 +272,10 @@ TEST_F(ResolvedRenderPlanTest, ForwardPrepassAfterDeferredFailureCannotStartGame
     const auto plan = renderer::ResolveRenderPlan(settings,
         PathRequest(renderer::PathTracingProfile::GAME), RayCapabilities(), CoveredScene(), availability);
     EXPECT_TRUE(plan.IsValid());
-    EXPECT_EQ(plan.rasterPlan.path, renderer::OpaqueRenderPath::FORWARD_DEPTH_NORMAL);
-    EXPECT_EQ(plan.effectiveMode, renderer::RenderMode::RASTER);
-    EXPECT_EQ(plan.fallbackReason, renderer::RenderPlanReason::RASTER_SURFACE_UNAVAILABLE);
-    EXPECT_FALSE(plan.NeedsRayScene());
+    EXPECT_EQ(plan.rasterPlan.path, renderer::OpaqueRenderPath::DEFERRED);
+    EXPECT_EQ(plan.effectiveMode, renderer::RenderMode::PATH_TRACING);
+    EXPECT_EQ(plan.fallbackReason, renderer::RenderPlanReason::NONE);
+    EXPECT_TRUE(plan.NeedsRayScene());
 }
 
 TEST_F(ResolvedRenderPlanTest, PathCoverageFailureDoesNotLeaveSomeRayEffectsActive)

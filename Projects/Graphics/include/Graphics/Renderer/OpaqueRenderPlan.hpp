@@ -25,6 +25,7 @@ struct OpaqueRenderAvailability {
 
 struct OpaqueRenderPlan {
     OpaqueRenderPath path = OpaqueRenderPath::FORWARD;
+    bool operator==(const OpaqueRenderPlan&) const = default;
 
     [[nodiscard]] bool UsesDeferredLighting() const
     {

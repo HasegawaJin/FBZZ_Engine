@@ -4,12 +4,14 @@
 /// @date    2026-09-21
 #include <Graphics/Pipeline/ViewPipeline.hpp>
 #include <Graphics/Pipeline/GeometryPipeline.hpp>
+#include <Graphics/Pipeline/ViewPreparation.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Passes/Geometry/MeshTrailRenderPass.hpp>
 #include <Graphics/Passes/Geometry/TrailRenderPass.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
 #include <Core/Logger.hpp>
+#include <algorithm>
 
 namespace fbzz::renderer {
 void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
@@ -17,23 +19,71 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     const ViewPipelineOptions& options, const ViewPipelineExtensions& extensions)
 {
     pipeline.BeginBuild();
-    if (!options.renderPlan.IsValid() || options.renderPlan.effectiveMode != RenderMode::RASTER) {
+    passCtx.rayPathViewActive = false;
+    passCtx.ssrPassActive = false;
+    passCtx.hybridReflectionResolveActive = false;
+    passCtx.hybridReflectionSourcePass = false;
+    passCtx.hybridReflectionSsrPlanned = false;
+    if (!options.renderPlan.IsValid()) {
         FBZZ_LOG_ERROR("ViewPipeline: 実行できない描画構成です");
         return;
     }
     auto& resources = passCtx.resources;
     auto& passHandles = passCtx.handles;
     const auto& rs = passCtx.settings;
+    const bool taaOverriddenOff = std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
+        [](const RenderPassOverride& override) { return override.name == "TAA" && !override.enabled; });
+    if (!rs.IsTaaActive() || taaOverriddenOff) {
+        viewTargets.taaHistoryValid = false;
+        viewTargets.taaProviderHistory.valid = false;
+    }
+    const bool rayDebugReady = PrepareRayDebugView(passCtx, viewTargets, shared);
+    const bool rayReflectionReady = PrepareRayReflectionView(passCtx, viewTargets, shared,
+        options.renderPlan.rasterPlan);
+    const bool rayPathReady = PrepareRayPathView(passCtx, viewTargets, shared);
+    const auto renderPlan = PrepareViewRenderPlan(resources, passCtx.renderer, rs, viewTargets, shared, passHandles);
+    passCtx.rayReflectionPassActive = rayReflectionReady && renderPlan.reflection.enabled;
+    /// @note RT の縮退理由は保持し、使える Deferred 表面の SSR / IBL まで旧 HDR 合成へ戻さない。
+    passCtx.hybridReflectionResolveActive = rs.modeRequest.mode == RenderMode::HYBRID
+        && renderPlan.rasterPlan.UsesDeferredLighting() && !rs.IsUnlit() && !rs.IsWireframe()
+        && !IsRayDebugView(rs.viewMode);
+    if (!passCtx.rayReflectionPassActive) {
+        viewTargets.rayReflection.reconstruction.historyValid = false;
+        viewTargets.rayReflection.reconstruction.prepared = false;
+        passCtx.rayReflectionReconstructionPrepared = false;
+    }
+    if (!renderPlan.IsValid()) return;
+    if (rayPathReady && renderPlan.effectiveMode == RenderMode::PATH_TRACING) {
+        BuildRayPathViewPipeline(pipeline, passCtx, viewTargets, shared, extensions);
+        return;
+    }
+    viewTargets.rayPath.history.Reset();
     const auto outputRT = passCtx.outputRT;
     const uint32_t nativeW = passCtx.outputWidth;
     const uint32_t nativeH = passCtx.outputHeight;
     const bool needsUpscale = viewTargets.needsUpscale;
-    const auto& opaquePlan = options.renderPlan.rasterPlan;
+    const auto& opaquePlan = renderPlan.rasterPlan;
     const bool screenSpaceReady = opaquePlan.HasScreenSpaceInputs();
+    const bool ssrOverriddenOff = std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
+        [](const RenderPassOverride& override) { return override.name == "SSR" && !override.enabled; });
+    /// @note A persistent GBuffer is graph-readable after its producer is disabled, but cannot prove a new Hybrid surface or SSR receipt.
+    const bool hybridGBufferOverriddenOff = passCtx.hybridReflectionResolveActive
+        && std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
+            [](const RenderPassOverride& override) { return override.name == "DeferredGBuffer" && !override.enabled; });
+    const bool ssrAvailable = rs.ssr.enabled && screenSpaceReady && !ssrOverriddenOff && !hybridGBufferOverriddenOff
+        && resources.Get(passHandles.ssrShader) && resources.Get(viewTargets.ssrResult)
+        && resources.Get(viewTargets.gbuffer);
+    const bool ssrSourceOverriddenOff = std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
+        [](const RenderPassOverride& override) {
+            return override.name == "ReflectionSourceLighting" && !override.enabled;
+        });
+    /// @note source を止めたフレームは未照明 HDR を SSR として採用せず、RT-only resolve に戻す。
+    passCtx.hybridReflectionSsrPlanned = passCtx.hybridReflectionResolveActive
+        && ssrAvailable && !ssrSourceOverriddenOff;
     const bool ssaoEnabled = passCtx.ssaoEnabled;
     const bool selectionOutlineEnabled = passCtx.selectionOutlineEnabled;
     const bool objectMaskEnabled = passCtx.objectMaskEnabled;
-    const bool clusteredEnabled = options.renderPlan.clusteredLighting;
+    const bool clusteredEnabled = renderPlan.clusteredLighting;
     const auto& customAfterOpaqueIndices = options.customAfterOpaqueIndices;
     const auto& customSceneHdrIndices = options.customSceneHdrIndices;
     const auto& customPostProcessIndices = options.customPostProcessIndices;
@@ -166,7 +216,10 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     };
 
     BuildGeometryPreparation(pipeline, clusteredEnabled);
-    BuildGeometryPipeline(pipeline, opaquePlan);
+    BuildGeometryPipeline(pipeline, opaquePlan, [&]() {
+        if (passCtx.rayReflectionPassActive)
+            BuildRayReflectionPipeline(pipeline, viewTargets, shared, passCtx);
+    }, passCtx.hybridReflectionSsrPlanned);
     BuildWaterComposition(pipeline);
 
     if (extensions.setup) extensions.setup();
@@ -295,6 +348,10 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
             { hasPostCompositeEffects ? "LDR" : chainOutRes, RU::Write },
         };
         if (rs.postProcess.bloom.enabled) compositeAccesses.push_back({ "Bloom", RU::Read });
+        if (!passCtx.hybridReflectionResolveActive && ssrAvailable)
+            compositeAccesses.push_back({ "SSRResult", RU::Read });
+        if (passCtx.rayReflectionPassActive) compositeAccesses.push_back({ "RayReflectionResult", RU::Read });
+        if (passCtx.rayReflectionReconstructionPrepared) compositeAccesses.push_back({ "RayReflectionRaw", RU::Read });
         pipeline.AddRawPass("Composite", std::move(compositeAccesses), [&]() {
             ExecuteCompositePass(passCtx);
         });
@@ -311,6 +368,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note 登録順が RenderGraph のタイブレークになる (Kahn's algorithm)。
     if (rs.IsTaaActive()) {
         const auto taaBody = [&]() {
+            PrepareTaaProviderHistory(passCtx, viewTargets);
             ExecuteTAAPass(passCtx);
             viewTargets.taaHistoryValid = true;
             /// @note taaFlip は ExecuteTAAPass 内で反転済み — 反転後のフラグで「書いた方」を特定する。
@@ -390,6 +448,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note 終端 RT はシーン深度を持たないので、深度テストが要る線は上の HDR 段に残してある。
     /// @note 同じ描き先を ReadWrite するので登録順がそのまま描画順。コライダーは破線で最後に描き、
     /// @note 同じ形のスクリプト Gizmo (実線) と重なっても両方読めるようにする。
+    if (rayDebugReady) BuildRayDebugPipeline(pipeline, viewTargets, shared, resources, chainOutRes);
     if (extensions.overlayDebug) extensions.overlayDebug(chainOutRes);
 
     /// @note Upscale — 内部解像度で仕上がった絵を出力先の実寸へ解像する。

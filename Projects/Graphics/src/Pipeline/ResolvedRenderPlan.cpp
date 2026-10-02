@@ -123,7 +123,7 @@ ResolvedRenderPlan ResolveRenderPlan(
     if (reason == RenderPlanReason::NONE && !availability.pathPipelineReady)
         reason = RenderPlanReason::RAY_PIPELINE_UNAVAILABLE;
     if (reason == RenderPlanReason::NONE && request.pathProfile == PathTracingProfile::GAME
-        && (!plan.rasterPlan.UsesDeferredLighting() || !availability.rasterSurfaceReady))
+        && !availability.rasterSurfaceReady)
         reason = RenderPlanReason::RASTER_SURFACE_UNAVAILABLE;
     if (reason != RenderPlanReason::NONE) {
         ResolveRasterFallback(plan, availability, reason);
@@ -133,6 +133,8 @@ ResolvedRenderPlan ResolveRenderPlan(
     plan.effectiveMode = RenderMode::PATH_TRACING;
     plan.primaryVisibility = request.pathProfile == PathTracingProfile::REFERENCE
         ? PrimaryVisibility::CAMERA_RAY : PrimaryVisibility::RASTER;
+    if (request.pathProfile == PathTracingProfile::GAME)
+        plan.rasterPlan.path = OpaqueRenderPath::DEFERRED;
     plan.rayExecution = RayExecution::INLINE_RAY_QUERY;
     plan.failureReason = RenderPlanReason::NONE;
     return plan;

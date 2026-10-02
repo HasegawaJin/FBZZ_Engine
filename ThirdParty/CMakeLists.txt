@@ -60,6 +60,18 @@ target_compile_definitions(TomlPlusPlus INTERFACE TOML_EXCEPTIONS=0)
 # ImGuizmo
 add_subdirectory(ImGuizmo)
 
+# @note PIX headers and runtime remain a private DX12 dependency, not an installed public SDK interface.
+# @see https://github.com/microsoft/PixEvents Official WinPixEventRuntime SDK distribution.
+if(WIN32)
+    add_library(WinPixEventRuntime SHARED IMPORTED GLOBAL)
+    set_target_properties(WinPixEventRuntime PROPERTIES
+        IMPORTED_IMPLIB "${CMAKE_CURRENT_SOURCE_DIR}/WinPixEventRuntime/lib/x64/WinPixEventRuntime.lib"
+        IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/WinPixEventRuntime/bin/x64/WinPixEventRuntime.dll"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/WinPixEventRuntime/include"
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/WinPixEventRuntime/include"
+    )
+endif()
+
 # GoogleTest / GoogleMock (vendored: ThirdParty/GoogleTest/VERSION を参照)
 # WHY: FetchContent はネット到達性に依存し、上流の CMake が CRT 設定と install 規則を
 #      持ち込む。実体として要るのは gtest-all.cc / gmock-all.cc の 2 TU だけなので、

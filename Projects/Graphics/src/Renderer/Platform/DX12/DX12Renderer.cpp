@@ -5,6 +5,8 @@
 #include "DX12Renderer.hpp"
 
 #include <Core/Logger.hpp>
+#include <Core/HResult.hpp>
+#include "DX12AccelerationStructure.hpp"
 #include "DX12Buffer.hpp"
 #include "DX12ConstantBuffer.hpp"
 #include "DX12PipelineState.hpp"
@@ -21,9 +23,14 @@
 #include <DirectXTex.h>
 #include <cstring>
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 
 namespace fbzz::renderer {
+
+namespace {
+std::atomic<uint64_t> s_gpuProfilerDeviceEpoch{1};
+} /// @note namespace
 
 /// @note out-of-line 定義。ここは DX12IblBaker.hpp を include 済みなので、m_iblBaker
 /// @note (unique_ptr<DX12IblBaker>) のデリーターを完全型として実体化できる。
@@ -48,7 +55,12 @@ bool DX12Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
         m_context.Shutdown();
         return false;
     }
-    if (!InitializeGpuProfiler()) {
+    m_gpuDeviceEpoch = s_gpuProfilerDeviceEpoch.fetch_add(1, std::memory_order_relaxed);
+    m_gpuPhysicalFrameSerial = 0;
+    m_gpuProfilerRecording = false;
+    const bool profilerReady = InitializeGpuProfiler();
+    m_gpuProfilerLedger.Reset(m_gpuDeviceEpoch, profilerReady);
+    if (!profilerReady) {
         FBZZ_LOG_WARN("DX12Renderer: GPUプロファイラーを初期化できませんでした");
     }
     return true;
@@ -63,7 +75,9 @@ void DX12Renderer::Shutdown()
     m_gpuMappedTimestamps = nullptr;
     m_gpuReadback.Reset();
     m_gpuQueryHeap.Reset();
-    m_gpuResults.clear();
+    m_gpuTimestampFrequency = 0;
+    m_gpuProfilerRecording = false;
+    m_gpuProfilerLedger.Reset(m_gpuDeviceEpoch, false);
     m_psoCache.Shutdown();
     m_stateTracker.Clear();
     m_uploadArena.Shutdown();
@@ -82,6 +96,17 @@ void DX12Renderer::InvalidateRootCbvCache()
 void DX12Renderer::BeginFrame()
 {
     if (m_context.BeginFrame()) {
+        /// @note 既存 BeginFrame の slot fence 待機後に回収し、未回収 query を上書きしない。
+        GpuProfCollect();
+        m_gpuProfilerFrame = m_context.GetFrameIndex();
+        m_gpuProfilerRecording = m_gpuProfilerLedger.BeginFrame(
+            m_gpuProfilerFrame, ++m_gpuPhysicalFrameSerial, m_gpuDeviceEpoch);
+        m_pixViewToken = 0;
+        m_pixPassToken = 0;
+        m_pixViewName.clear();
+        m_pixFrameToken = m_context.BeginPixEvent(m_context.GetCommandList(),
+            "Frame physical=" + std::to_string(m_gpuPhysicalFrameSerial)
+                + " device=" + std::to_string(m_gpuDeviceEpoch), 0xff4878a8u);
         m_computeBatchActive = false;
         m_computeBatchWrittenResources.clear();
         m_currentRenderTargetHandle = {};
@@ -123,7 +148,26 @@ void DX12Renderer::EndFrame()
 {
     /// @note 呼び出し側が閉じ忘れても、UAV 書き込みを未同期のまま Submit しない。
     EndComputeBatch();
-    m_context.EndFrame();
+    const bool recorded = m_gpuProfilerRecording;
+    const uint32_t slot = m_gpuProfilerFrame;
+    if (recorded) {
+        const uint32_t count = m_gpuProfilerLedger.FinishFrame();
+        if (count != 0 && m_context.IsFrameOpen()) {
+            const uint32_t firstQuery = slot * GPU_MAX_PASSES * 2;
+            /// @note Resolve は最終提出へ記録し、その提出後の実 Fence だけで回収可否を判定する。
+            /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/queries Queries
+            m_context.GetCommandList()->ResolveQueryData(m_gpuQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+                firstQuery, count * 2, m_gpuReadback.Get(), static_cast<UINT64>(firstQuery) * sizeof(uint64_t));
+        }
+    }
+    m_gpuProfilerRecording = false;
+    m_context.EndPixEvent(m_context.GetCommandList(), m_pixPassToken);
+    m_context.EndPixEvent(m_context.GetCommandList(), m_pixViewToken);
+    m_context.EndPixEvent(m_context.GetCommandList(), m_pixFrameToken);
+    m_pixPassToken = m_pixViewToken = m_pixFrameToken = 0;
+    m_pixViewName.clear();
+    const uint64_t actualFence = m_context.EndFrame();
+    if (recorded) m_gpuProfilerLedger.SubmitFrame(slot, actualFence);
 }
 
 void DX12Renderer::Clear(const math::Vector4& color)
@@ -139,6 +183,8 @@ void DX12Renderer::Clear(const math::Vector4& color)
     if (DX12RenderTarget* const target = ResolveCurrentRenderTarget(resources)) {
         if (target->IsCubemap() && m_currentCubeRtv.ptr) {
             m_context.GetCommandList()->ClearRenderTargetView(m_currentCubeRtv, clearColor, 0, nullptr);
+            m_context.GetCommandList()->ClearDepthStencilView(target->GetDsv(m_currentCubeMip),
+                D3D12_CLEAR_FLAG_DEPTH, FarDepth(target->IsReversedZ()), 0, 0, nullptr);
             return;
         }
         for (uint32_t index = 0; index < target->GetColorCount(); ++index)
@@ -167,9 +213,8 @@ void DX12Renderer::ClearDepth()
             return;
         }
         DX12RenderTarget* const target = ResolveCurrentRenderTarget(resources);
-        if (target && target->IsCubemap()) return;
         if (target && !target->HasDepth()) return;
-        const auto dsv = target ? target->GetDsv() : m_context.GetDsv();
+        const auto dsv = target ? target->GetDsv(target->IsCubemap() ? m_currentCubeMip : 0) : m_context.GetDsv();
         const float farDepth = FarDepth(target && target->IsReversedZ());
         m_context.GetCommandList()->ClearDepthStencilView(
             dsv, D3D12_CLEAR_FLAG_DEPTH, farDepth, 0, 0, nullptr);
@@ -243,6 +288,16 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     if (!pso) return;
 
     ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
+
+    /// @note Probe/Sky capture draws occur outside the main view graph; record their face and shader.
+    const std::string cubeEventName = m_currentCubeRtv.ptr != 0
+        ? "CubeCapture target=" + std::to_string(m_currentRenderTargetHandle.id)
+            + ":" + std::to_string(m_currentRenderTargetHandle.gen)
+            + " face=" + std::to_string(m_currentCubeFace)
+            + " mip=" + std::to_string(m_currentCubeMip) + " shader=" + shader->GetPath()
+        : std::string{};
+    DX12ScopedPixEvent cubeEvent(m_context, cubeEventName.empty() ? nullptr : commands,
+                                 cubeEventName, 0xff65b891u);
 
     /// @note 共有コマンドリストへ他所 (ImGui / IblBaker) が記録していたら状態キャッシュを捨てる。
     if (m_seenPipelineStateGeneration != m_context.GetPipelineStateGeneration()) {
@@ -409,28 +464,113 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
 
 void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
 {
-    if (!m_context.IsFrameOpen()) return;
+    (void)TryDispatch(call, resources);
+}
+
+bool DX12Renderer::TryDispatch(const ComputeCall& call, ResourceManager& resources)
+{
+    if (!m_context.IsFrameOpen() || !call.dispatchX || !call.dispatchY || !call.dispatchZ) return false;
+    for (uint32_t slot = 0; slot < call.accelerationStructures.size(); ++slot) {
+        const auto handle = call.accelerationStructures[slot];
+        if (!handle.IsValid()) continue;
+        auto* structure = resources.Get(handle);
+        if (m_asyncComputeActive || !m_context.SupportsInlineRaytracing() || !structure
+            || !structure->IsBuilt() || structure->GetKind() != AccelerationStructureKind::TOP_LEVEL
+            || structure->GetBindlessIndex() == INVALID_BINDLESS_INDEX
+            || call.srvInputs[slot].IsValid() || call.srvBuffers[slot].IsValid()
+            || call.srvRawBuffers[slot].IsValid()) {
+            FBZZ_LOG_ERROR("DX12Renderer: invalid TLAS dispatch binding at slot %u", slot);
+            return false;
+        }
+    }
+    const auto validateRawRead = [&](ResourceHandle<BufferTag> handle) {
+        auto* buffer = resources.Get(handle);
+        if (m_asyncComputeActive || !buffer || handle == call.uavVertexBuffer
+            || buffer->GetBindlessSrvIndex() == INVALID_BINDLESS_INDEX) {
+            FBZZ_LOG_ERROR("DX12Renderer: invalid or stale raw buffer dispatch binding");
+            return false;
+        }
+        return true;
+    };
+    for (uint32_t slot = 0; slot < call.srvRawBuffers.size(); ++slot) {
+        const auto handle = call.srvRawBuffers[slot];
+        if (!handle.IsValid()) continue;
+        if (call.srvInputs[slot].IsValid() || call.srvBuffers[slot].IsValid()
+            || call.accelerationStructures[slot].IsValid()) {
+            FBZZ_LOG_ERROR("DX12Renderer: conflicting raw buffer dispatch slot %u", slot);
+            return false;
+        }
+        if (!validateRawRead(handle)) return false;
+    }
+    for (const auto handle : call.indirectReadBuffers) {
+        if (!validateRawRead(handle)) return false;
+    }
+    for (const auto handle : call.indirectReadTextures) {
+        const auto* texture = resources.Get(handle);
+        if (m_asyncComputeActive || !texture || texture->GetBindlessIndex() == INVALID_BINDLESS_INDEX
+            || std::find(call.uavOutputs.begin(), call.uavOutputs.end(), handle) != call.uavOutputs.end()) {
+            FBZZ_LOG_ERROR("DX12Renderer: invalid, stale or writable indirect texture dispatch binding");
+            return false;
+        }
+    }
     auto* shaderBase = resources.Get(call.shader);
-    if (!shaderBase) return;
+    if (!shaderBase) return false;
     auto* shader = static_cast<DX12Shader*>(shaderBase);
+    if (!shader->IsCompute()) return false;
     ID3D12PipelineState* pso = m_psoCache.GetOrCreateCompute(*shader);
-    if (!pso) return;
+    if (!pso) return false;
     ID3D12GraphicsCommandList* commands = RecordingList();
-    if (!commands) return;
+    if (!commands) return false;
+    /// @note 明示したハンドルの解放や descriptor 不足を null binding の成功へ変換しない。
+    for (const auto handle : call.srvInputs) {
+        if (!handle.IsValid()) continue;
+        const auto* texture = resources.Get(handle);
+        if (!texture || texture->GetBindlessIndex() == INVALID_BINDLESS_INDEX) return false;
+    }
+    for (const auto handle : call.srvBuffers) {
+        if (!handle.IsValid()) continue;
+        const auto* buffer = resources.Get(handle);
+        if (!buffer || buffer->GetBindlessIndex() == INVALID_BINDLESS_INDEX) return false;
+    }
+    for (const auto handle : call.uavOutputs) {
+        if (!handle.IsValid()) continue;
+        const auto* texture = resources.Get(handle);
+        if (!texture || texture->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) return false;
+    }
+    for (const auto handle : call.uavBuffers) {
+        if (!handle.IsValid()) continue;
+        const auto* buffer = resources.Get(handle);
+        if (!buffer || buffer->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) return false;
+    }
+    if (call.uavVertexBuffer.IsValid()) {
+        const auto* buffer = resources.Get(call.uavVertexBuffer);
+        if (!buffer || !static_cast<const DX12Buffer*>(buffer)->IsGpuWritable()
+            || buffer->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) return false;
+    }
+    std::array<D3D12_GPU_VIRTUAL_ADDRESS, 14> constantAddresses{};
+    for (uint32_t slot = 0; slot < call.constantBuffers.size(); ++slot) {
+        constantAddresses[slot] = m_nullConstantAddress;
+        if (call.constantBuffers[slot].IsValid()) {
+            auto* buffer = resources.Get(call.constantBuffers[slot]);
+            if (!buffer) return false;
+            constantAddresses[slot] = static_cast<DX12ConstantBuffer*>(buffer)->PrepareForSubmit();
+        }
+        if (!constantAddresses[slot]) return false;
+    }
+    const auto indicesBlock = m_uploadArena.Allocate(
+        sizeof(BindlessIndicesConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+    if (!indicesBlock) return false;
     /// @note Compute へ切り替えるとグラフィクス側のパイプライン状態・ルート束縛は当てにできない。
     /// @note       Submit 側の差分キャッシュをここで必ず捨てる (捨て忘れると次の Draw が束縛を省いて壊れる)。
     InvalidateRootCbvCache();
+    ID3D12DescriptorHeap* heaps[] = {m_context.GetResourceSrvHeap()};
+    /// @note Directly indexed heaps must be bound before the root signature.
+    /// @see https://microsoft.github.io/DirectX-Specs/d3d/HLSL_SM_6_6_DynamicResources.html#setting-and-changing-descriptor-heaps-and-root-signatures SM 6.6 binding order
+    commands->SetDescriptorHeaps(1, heaps);
     commands->SetComputeRootSignature(m_psoCache.GetComputeRootSignature());
     commands->SetPipelineState(pso);
-    ID3D12DescriptorHeap* heaps[] = {m_context.GetResourceSrvHeap()};
-    commands->SetDescriptorHeaps(1, heaps);
     for (uint32_t slot = 0; slot < call.constantBuffers.size(); ++slot) {
-        D3D12_GPU_VIRTUAL_ADDRESS address = m_nullConstantAddress;
-        if (auto* base = resources.Get(call.constantBuffers[slot])) {
-            const auto current = static_cast<DX12ConstantBuffer*>(base)->PrepareForSubmit();
-            if (current) address = current;
-        }
-        if (address) commands->SetComputeRootConstantBufferView(slot, address);
+        commands->SetComputeRootConstantBufferView(slot, constantAddresses[slot]);
     }
 
     /// @note SRV の状態遷移。bindless ではディスクリプタを張らないが、遷移は従来どおり要る
@@ -445,6 +585,22 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
                 static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
+    const auto transitionRawRead = [&](ResourceHandle<BufferTag> handle) {
+        if (auto* bufferBase = resources.Get(handle)) {
+            auto* buffer = static_cast<DX12Buffer*>(bufferBase);
+            /// @note UPLOAD snapshot は GENERIC_READ を維持する。GPU 変形の DEFAULT 実体だけ遷移させる。
+            if (buffer->IsGpuWritable())
+                m_stateTracker.QueueTransition(buffer->GetSrvResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        }
+    };
+    for (const auto handle : call.srvRawBuffers) {
+        if (handle.IsValid()) transitionRawRead(handle);
+    }
+    for (const auto handle : call.indirectReadBuffers)
+        transitionRawRead(handle);
+    for (const auto handle : call.indirectReadTextures)
+        m_stateTracker.QueueTransition(static_cast<DX12Texture*>(resources.Get(handle))->GetResource(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
     /// @note UAV の状態遷移と、Dispatch 後の UAV バリア対象の収集。
     std::array<ID3D12Resource*, 10> writtenResources{};
@@ -477,8 +633,7 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
     }
 
     /// @name bindless 添字ブロック (b14)
-    /// @note srvInputs / srvBuffers は同じ t0〜t31 の空間を共有する。両方が同じスロットに居たら
-    /// @note       バッファが勝つ (旧テーブル構築と同じ順序。ここを変えると絵が変わる)。
+    /// @note Texture / StructuredBuffer の既存競合は後勝ちを保つ。Raw Buffer と TLAS の競合は記録前に拒否する。
     {
         BindlessIndicesConstants indices;
         indices.Reset();
@@ -487,6 +642,10 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
                 indices.pixel[slot] = textureBase->GetBindlessIndex();
             if (auto* bufferBase = resources.Get(call.srvBuffers[slot]))
                 indices.pixel[slot] = bufferBase->GetBindlessIndex();
+            if (auto* bufferBase = resources.Get(call.srvRawBuffers[slot]))
+                indices.pixel[slot] = bufferBase->GetBindlessSrvIndex();
+            if (auto* structure = resources.Get(call.accelerationStructures[slot]))
+                indices.pixel[slot] = structure->GetBindlessIndex();
         }
         for (uint32_t slot = 0; slot < kBindlessUavSlotCount; ++slot) {
             if (auto* textureBase = resources.Get(call.uavOutputs[slot]))
@@ -500,19 +659,17 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
                     indices.uav[slot] = bufferBase->GetBindlessUavIndex();
             }
         }
-        const auto block = m_uploadArena.Allocate(
-            sizeof(BindlessIndicesConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-        if (block) {
-            std::memcpy(block.cpu, &indices, sizeof(indices));
-            commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, block.gpu);
-        } else if (m_invalidBindlessAddress) {
-            commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam,
-                                                       m_invalidBindlessAddress);
-        }
+        std::memcpy(indicesBlock.cpu, &indices, sizeof(indices));
+        commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, indicesBlock.gpu);
     }
+    const std::string computeEventName = (m_asyncComputeActive ? "ComputeQueue " : "ComputeDirect ")
+        + m_pixViewName + " shader=" + shader->GetPath();
+    DX12ScopedPixEvent computeEvent(m_context, commands, computeEventName, 0xff9d78c9u);
     /// @note SRV/UAV ループで溜めた遷移をここで 1 回の ResourceBarrier にまとめて発行する (Dispatch より前)。
     m_stateTracker.FlushBarriers(commands);
     commands->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
+    if (auto* output = resources.Get(call.uavVertexBuffer); output && !m_asyncComputeActive)
+        output->NotifyGpuWrite();
     if (writtenCount > 0) {
         if (m_computeBatchActive) {
             /// @note バッチ内 Dispatch は相互依存しない契約なので、ここでは記録だけ行う。
@@ -534,6 +691,37 @@ void DX12Renderer::Dispatch(const ComputeCall& call, ResourceManager& resources)
             commands->ResourceBarrier(writtenCount, uavBarriers.data());
         }
     }
+    return true;
+}
+
+bool DX12Renderer::BuildAccelerationStructure(
+    ResourceHandle<AccelerationStructureTag> handle, ResourceManager& resources)
+{
+    auto* structure = static_cast<DX12AccelerationStructure*>(resources.Get(handle));
+    if (!m_context.IsFrameOpen() || m_asyncComputeActive || m_computeBatchActive
+        || !m_context.SupportsInlineRaytracing() || !structure || structure->IsBuilt()) {
+        FBZZ_LOG_ERROR("DX12Renderer: acceleration structure build rejected");
+        return false;
+    }
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> commands;
+    FBZZ_HR_CHECK(m_context.GetCommandList()->QueryInterface(IID_PPV_ARGS(&commands)));
+    const std::string buildName = std::string(structure->GetKind() == AccelerationStructureKind::BOTTOM_LEVEL
+        ? "AS Prepare BLAS " : "AS Prepare TLAS ")
+        + std::to_string(handle.id) + ":" + std::to_string(handle.gen);
+    DX12ScopedPixEvent buildEvent(m_context, m_context.GetCommandList(), buildName, 0xffe8ad58u);
+    if (!structure->Build(*commands.Get(), m_uploadArena, resources)) {
+        FBZZ_LOG_ERROR("DX12Renderer: acceleration structure inputs are unavailable");
+        return false;
+    }
+    return true;
+}
+
+std::unique_ptr<IAccelerationStructure> DX12Renderer::CreateNativeAccelerationStructure(
+    const AccelerationStructureDesc& desc, ResourceManager& resources)
+{
+    auto structure = std::make_unique<DX12AccelerationStructure>();
+    if (!structure->Init(m_context, m_stateTracker, desc, resources)) return nullptr;
+    return structure;
 }
 
 void DX12Renderer::BeginComputeBatch()
@@ -592,7 +780,8 @@ void DX12Renderer::RestoreGraphicsTargetState(ResourceManager& resources)
 
     if (m_currentCubeRtv.ptr != 0) {
         /// @note キューブ面を描いている途中 (SkyCapture)。面の RTV をそのまま張り直す。
-        commands->OMSetRenderTargets(1, &m_currentCubeRtv, FALSE, nullptr);
+        const auto dsv = target ? target->GetDsv(m_currentCubeMip) : D3D12_CPU_DESCRIPTOR_HANDLE{};
+        commands->OMSetRenderTargets(1, &m_currentCubeRtv, FALSE, dsv.ptr ? &dsv : nullptr);
     } else if (target) {
         std::array<D3D12_CPU_DESCRIPTOR_HANDLE, DX12RenderTarget::MAX_COLOR> rtvs{};
         for (uint32_t index = 0; index < target->GetColorCount(); ++index)
@@ -681,6 +870,7 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
     auto* target = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
     m_currentRenderTargetHandle = target ? handle : ResourceHandle<RenderTargetTag>{};
     m_currentCubeRtv = {};
+    m_currentCubeMip = 0;
     if (!target) {
         m_stateTracker.FlushBarriers(commands);
         const auto rtv = m_context.GetCurrentRtv();
@@ -753,9 +943,11 @@ void DX12Renderer::SetRenderTargetFace(
     m_currentCubeRtv = target->GetFaceRtv(face, mip);
     m_currentCubeFace = face;
     m_currentCubeMip = mip;
-    m_stateTracker.Transition(m_context.GetCommandList(), target->GetCubeResource(),
-                              D3D12_RESOURCE_STATE_RENDER_TARGET);
-    m_context.GetCommandList()->OMSetRenderTargets(1, &m_currentCubeRtv, FALSE, nullptr);
+    m_stateTracker.QueueTransition(target->GetCubeResource(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+    m_stateTracker.QueueTransition(target->GetDepthResource(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
+    m_stateTracker.FlushBarriers(m_context.GetCommandList());
+    const auto dsv = target->GetDsv(mip);
+    m_context.GetCommandList()->OMSetRenderTargets(1, &m_currentCubeRtv, FALSE, &dsv);
     const uint32_t mipSize = (std::max)(1u, target->GetWidth() >> mip);
     D3D12_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(mipSize),
                             static_cast<float>(mipSize), 0.0f, 1.0f};
@@ -806,6 +998,9 @@ bool DX12Renderer::BakeSkyLight(
     auto* targetBase = resources.Get(handle);
     auto* target = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
     if (!target || !target->IsCubemap()) return false;
+    DX12ScopedPixEvent bakeEvent(m_context, m_context.GetCommandList(),
+        "Probe/Sky IBL Convolve target=" + std::to_string(handle.id)
+            + ":" + std::to_string(handle.gen), 0xff65b891u);
     if (!m_iblBaker)
         m_iblBaker = std::make_unique<DX12IblBaker>(
             &m_context, &m_stateTracker, &m_psoCache, &m_uploadArena);
@@ -836,7 +1031,7 @@ static bool CaptureDX12RenderTargetImage(DX12Context& context, IRenderTarget* ba
     /// @note Scene View RT は直前フレームで ImGui サンプリング用に PIXEL_SHADER_RESOURCE へ遷移済み。
     /// @note       CaptureTexture は自前の CommandQueue/フェンス同期で COPY_SOURCE へ遷移→読み戻し→元状態へ戻す。
     /// @note       呼び出しはフレーム外 (OnUpdate) なのでレンダラーの CommandList とは競合しない。
-    return SUCCEEDED(DirectX::CaptureTexture(context.GetCommandQueue(), resource, /*isCubeMap*/ false, outImage,
+    return SUCCEEDED(DirectX::CaptureTexture(context.GetCommandQueue(), resource, false, outImage,
                                              D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                                              D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
 }
@@ -1043,8 +1238,8 @@ bool DX12Renderer::InitializeGpuProfiler()
     D3D12_QUERY_HEAP_DESC queryDesc{};
     queryDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
     queryDesc.Count = DX12Context::FRAME_COUNT * GPU_MAX_PASSES * 2;
-    if (FAILED(m_context.GetDevice()->CreateQueryHeap(&queryDesc, IID_PPV_ARGS(&m_gpuQueryHeap))))
-        return false;
+    const HRESULT queryResult = m_context.GetDevice()->CreateQueryHeap(&queryDesc, IID_PPV_ARGS(&m_gpuQueryHeap));
+    FBZZ_HR_CHECK(queryResult);
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_READBACK;
     D3D12_RESOURCE_DESC buffer{};
@@ -1055,81 +1250,95 @@ bool DX12Renderer::InitializeGpuProfiler()
     buffer.MipLevels = 1;
     buffer.SampleDesc.Count = 1;
     buffer.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-    if (FAILED(m_context.GetDevice()->CreateCommittedResource(
+    const HRESULT bufferResult = m_context.GetDevice()->CreateCommittedResource(
             &heap, D3D12_HEAP_FLAG_NONE, &buffer, D3D12_RESOURCE_STATE_COPY_DEST,
-            nullptr, IID_PPV_ARGS(&m_gpuReadback)))) return false;
+            nullptr, IID_PPV_ARGS(&m_gpuReadback));
+    FBZZ_HR_CHECK(bufferResult);
     void* mapped = nullptr;
-    if (FAILED(m_gpuReadback->Map(0, nullptr, &mapped))) return false;
+    const HRESULT mapResult = m_gpuReadback->Map(0, nullptr, &mapped);
+    FBZZ_HR_CHECK(mapResult);
     m_gpuMappedTimestamps = static_cast<uint64_t*>(mapped);
-    return SUCCEEDED(m_context.GetCommandQueue()->GetTimestampFrequency(&m_gpuTimestampFrequency))
-        && m_gpuTimestampFrequency != 0;
+    const HRESULT frequencyResult = m_context.GetCommandQueue()->GetTimestampFrequency(&m_gpuTimestampFrequency);
+    FBZZ_HR_CHECK(frequencyResult);
+    return m_gpuTimestampFrequency != 0;
 }
 
 void DX12Renderer::GpuProfBeginFrame()
 {
-    if (!m_gpuQueryHeap || !m_context.IsFrameOpen()) return;
-    m_gpuProfilerFrame = m_context.GetFrameIndex();
-    GpuQueryFrame& frame = m_gpuQueryFrames[m_gpuProfilerFrame];
-    frame.count = 0;
-    frame.recording = true;
-    frame.pending = false;
+    /// @note 旧 API は互換 no-op。物理 BeginFrame だけが query 領域を開始する。
 }
 
 void DX12Renderer::GpuProfBeginPass(const char* name)
 {
-    GpuQueryFrame& frame = m_gpuQueryFrames[m_gpuProfilerFrame];
-    if (!frame.recording || frame.count >= GPU_MAX_PASSES) return;
-    std::snprintf(frame.names[frame.count].data(), frame.names[frame.count].size(),
-                  "%s", name ? name : "Unknown");
-    const uint32_t query = (m_gpuProfilerFrame * GPU_MAX_PASSES + frame.count) * 2;
-    m_context.GetCommandList()->EndQuery(m_gpuQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query);
+    if (!m_context.IsFrameOpen()) return;
+    /// @note PIX scopes are independent of timestamp query capacity and list-split cancellation.
+    m_context.EndPixEvent(m_context.GetCommandList(), m_pixPassToken);
+    m_pixPassToken = m_context.BeginPixEvent(m_context.GetCommandList(), name ? name : "Unknown");
+    if (!m_gpuProfilerRecording) return;
+    uint32_t query = 0;
+    if (m_gpuProfilerLedger.BeginPass(name ? name : "Unknown", query)) {
+        m_gpuPassListSerial = m_context.GetGraphicsCommandListSerial();
+        m_context.GetCommandList()->EndQuery(m_gpuQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query);
+    }
 }
 
-void DX12Renderer::GpuProfEndPass(const char*)
+void DX12Renderer::GpuProfEndPass(const char* name)
 {
-    GpuQueryFrame& frame = m_gpuQueryFrames[m_gpuProfilerFrame];
-    if (!frame.recording || frame.count >= GPU_MAX_PASSES) return;
-    const uint32_t query = (m_gpuProfilerFrame * GPU_MAX_PASSES + frame.count) * 2 + 1;
-    m_context.GetCommandList()->EndQuery(m_gpuQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query);
-    ++frame.count;
+    m_context.EndPixEvent(m_context.GetCommandList(), m_pixPassToken);
+    m_pixPassToken = 0;
+    if (!m_gpuProfilerRecording || !m_context.IsFrameOpen()) return;
+    if (m_gpuPassListSerial != m_context.GetGraphicsCommandListSerial()) {
+        /// @note 別 list の timestamp 比較は stable power 未設定では保証されないため、分割・別キュー区間を未計測にする。
+        /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/queries Differences in Queries: disjoint timestamps
+        m_gpuProfilerLedger.CancelOpenPass();
+        return;
+    }
+    uint32_t query = 0;
+    if (m_gpuProfilerLedger.EndPass(name ? name : "Unknown", query))
+        m_context.GetCommandList()->EndQuery(m_gpuQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, query);
 }
 
 void DX12Renderer::GpuProfEndFrame()
 {
-    GpuQueryFrame& frame = m_gpuQueryFrames[m_gpuProfilerFrame];
-    if (!frame.recording || frame.count == 0) {
-        frame.recording = false;
-        return;
-    }
-    const uint32_t firstQuery = m_gpuProfilerFrame * GPU_MAX_PASSES * 2;
-    const uint32_t queryCount = frame.count * 2;
-    const UINT64 destinationOffset = static_cast<UINT64>(firstQuery) * sizeof(uint64_t);
-    m_context.GetCommandList()->ResolveQueryData(
-        m_gpuQueryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, firstQuery, queryCount,
-        m_gpuReadback.Get(), destinationOffset);
-    frame.recording = false;
-    frame.pending = true;
+    /// @note 旧 API は互換 no-op。Resolve と提出 Fence の捕捉は物理 EndFrame に閉じる。
 }
 
 void DX12Renderer::GpuProfCollect()
 {
     if (!m_gpuMappedTimestamps || m_gpuTimestampFrequency == 0) return;
-    m_gpuResults.clear();
-    const uint64_t completedFence = m_context.GetCompletedFenceValue();
-    for (uint32_t frameIndex = 0; frameIndex < DX12Context::FRAME_COUNT; ++frameIndex) {
-        GpuQueryFrame& frame = m_gpuQueryFrames[frameIndex];
-        if (!frame.pending || completedFence < m_context.GetFrameFenceValue(frameIndex)) continue;
-        const uint32_t base = frameIndex * GPU_MAX_PASSES * 2;
-        for (uint32_t pass = 0; pass < frame.count; ++pass) {
-            const uint64_t begin = m_gpuMappedTimestamps[base + pass * 2];
-            const uint64_t end = m_gpuMappedTimestamps[base + pass * 2 + 1];
-            if (end < begin) continue;
-            const double milliseconds = static_cast<double>(end - begin) * 1000.0
-                                      / static_cast<double>(m_gpuTimestampFrequency);
-            m_gpuResults.push_back({frame.names[pass].data(), milliseconds});
-        }
-        frame.pending = false;
-    }
+    m_gpuProfilerLedger.Collect(m_context.GetCompletedFenceValue(),
+        {m_gpuMappedTimestamps, static_cast<size_t>(DX12Context::FRAME_COUNT) * GPU_MAX_PASSES * 2},
+        m_gpuTimestampFrequency);
+    if (!m_gpuProfilerLedger.GetSnapshot().supported) m_gpuProfilerRecording = false;
+}
+
+bool DX12Renderer::GpuProfBeginView(const GpuProfilerViewMetadata& metadata)
+{
+    if (!m_context.IsFrameOpen() || m_pixViewToken != 0 || m_pixPassToken != 0
+        || metadata.width == 0 || metadata.height == 0) return false;
+    char name[384]{};
+    std::snprintf(name, sizeof(name),
+        "View=%llu appFrame=%llu scene=%llu plan=%llu resources=%llu output=%u:%u extent=%ux%u",
+        static_cast<unsigned long long>(metadata.viewId),
+        static_cast<unsigned long long>(metadata.applicationFrameSerial),
+        static_cast<unsigned long long>(metadata.sceneGeneration),
+        static_cast<unsigned long long>(metadata.planGeneration),
+        static_cast<unsigned long long>(metadata.resourceEpoch),
+        metadata.outputId, metadata.outputGeneration, metadata.width, metadata.height);
+    m_pixViewName = name;
+    m_pixViewToken = m_context.BeginPixEvent(m_context.GetCommandList(), m_pixViewName, 0xff589cb4u);
+    if (m_gpuProfilerRecording) m_gpuProfilerLedger.BeginView(metadata);
+    /// @note Returning a recording scope enables named pass hooks even when timestamps are unavailable.
+    return m_pixViewToken != 0;
+}
+
+void DX12Renderer::GpuProfEndView()
+{
+    m_context.EndPixEvent(m_context.GetCommandList(), m_pixPassToken);
+    m_context.EndPixEvent(m_context.GetCommandList(), m_pixViewToken);
+    m_pixPassToken = m_pixViewToken = 0;
+    m_pixViewName.clear();
+    if (m_gpuProfilerRecording) m_gpuProfilerLedger.EndView();
 }
 
 } /// @note namespace fbzz::renderer

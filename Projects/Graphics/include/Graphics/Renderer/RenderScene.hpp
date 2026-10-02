@@ -6,6 +6,8 @@
 #include <Graphics/Renderer/RenderLightingInput.hpp>
 #include <Graphics/Effects/RenderCustomPostInput.hpp>
 #include <Graphics/Renderer/GeometryRoute.hpp>
+#include <Graphics/RayTracing/RayMaterialCapabilities.hpp>
+#include <Graphics/RayTracing/SurfaceMaterialData.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <Graphics/Renderer/RenderEnvironment.hpp>
 #include <Graphics/Effects/RenderTrailInput.hpp>
@@ -26,6 +28,8 @@ namespace fbzz::renderer {
 
 struct RenderMaterial {
     GeometryMaterialInput capabilities;
+    RayMaterialCapabilities rayCapabilities;
+    SurfaceMaterialData surface;
     ResourceHandle<ShaderTag> shader;
     ResourceHandle<ConstantBufferTag> paramsBuffer;
     std::array<ResourceHandle<TextureTag>, 8> textures{};
@@ -50,6 +54,12 @@ struct RenderMeshItem {
     ResourceHandle<BufferTag> deformedVertexBuffer;
     uint32_t indexCount = 0;
     uint32_t vertexCount = 0;
+    /// @note 内容版 0 は未解決または GPU 変形専用。バッファの世代と独立して Update を識別する。
+    uint64_t vertexContentVersion = 0;
+    uint64_t indexContentVersion = 0;
+    uint64_t deformedContentVersion = 0;
+    uint32_t vertexStride = 0;
+    uint32_t vertexPositionOffset = 0;
     RenderMaterial material;
     /// @note Surface 材質をスキンドに誤指定したときの Forward 用代替。
     RenderMaterial forwardMaterial;
@@ -61,7 +71,7 @@ struct RenderMeshItem {
 };
 
 struct RenderObject {
-    /// @note Entity の識別値を不透明な整数として保持する。snapshotSerial の異なる入力間で参照を持ち越さない。
+    /// @note sceneGeneration と組にした Entity ID。vector 添字や入力への参照は snapshotSerial を跨いで持ち越さない。
     uint32_t sourceIndex = 0;
     uint32_t sourceGeneration = 0;
     uint32_t firstItem = 0;
@@ -83,12 +93,32 @@ struct RenderObject {
     ResourceHandle<ConstantBufferTag> skinningPalette;
     ResourceHandle<ConstantBufferTag> previousSkinningPalette;
     bool previousSkinningValid = false;
+    /// @note LODGroup membership needs a camera-independent canonical ray shape; lodVisible alone cannot prove coverage.
+    bool rayLodSelectionRequired = false;
+    /// @note レイは LOD0 を固定使用し、Raster の選択・crossfade・cull とは独立する。
+    bool rayVisible = true;
 };
 
 struct RenderMaskGroup {
     math::Vector4 payload;
     bool visibleOnly = true;
     std::vector<uint32_t> objectIndices;
+};
+
+struct RenderRayLodDiagnostic {
+    uint32_t sourceIndex = 0;
+    uint32_t sourceGeneration = 0;
+    uint32_t layerMask = UINT32_MAX;
+};
+
+enum class RenderRayUnsupportedEffect : uint8_t { PARTICLE, FIBER };
+
+/// @note These sources are collected independently of Raster draw-list culling and retain their complete Scene owner.
+struct RenderRayEffectSource {
+    uint32_t sourceIndex = 0;
+    uint32_t sourceGeneration = 0;
+    uint32_t layerMask = 0;
+    RenderRayUnsupportedEffect kind = RenderRayUnsupportedEffect::PARTICLE;
 };
 
 /// @note GameObject / Component / Model / Mesh / Material のポインターを保持しない。
@@ -106,11 +136,14 @@ struct RenderScene {
     std::vector<RenderMeshTrailInput> meshTrails;
     std::vector<RenderParticleInput> particles;
     uint64_t snapshotSerial = 0;
+    uint64_t sceneGeneration = 0;
     uint64_t frameStamp = 0;
     std::vector<RenderObject> objects;
     std::vector<RenderMeshItem> items;
+    std::vector<RenderRayLodDiagnostic> rayLodDiagnostics;
     std::vector<RenderMaskGroup> maskGroups;
     uint32_t liveMaskRequests = 0;
+    std::vector<RenderRayEffectSource> rayUnsupportedEffects;
 };
 
 } /// @note namespace fbzz::renderer

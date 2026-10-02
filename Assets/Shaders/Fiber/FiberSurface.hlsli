@@ -6,6 +6,9 @@
 #include "Fiber/FiberCommon.hlsli"
 #include "Common/Structs.hlsli"
 #include "Common/Space.hlsli"
+#if FIBER_PASS == 2
+#include "Rendering/SpecularAA.hlsli"
+#endif
 
 #ifndef FIBER_SKINNED
 #define FIBER_SKINNED 0
@@ -285,10 +288,13 @@ void PSMain(FiberPixel p)
 #elif FIBER_PASS == 2
 GBufferOut PSMain(FiberPixel p)
 {
+    /// @note coverage の clip より前に面内微分を確定し、Deferred と RT が同じ最終 roughness を読む。
+    const float3 normal = FiberNormalize(p.normal, float3(0, 1, 0));
+    const float filteredRoughness = FilterSpecularRoughness(normal, saturate(roughness));
     FiberStrand strand = FiberCoverage(p);
     GBufferOut o;
-    o.albedoRoughness = float4(FiberStrandColor(strand, p.height), roughness);
-    o.normalMetallic = float4(FiberNormalize(p.normal, float3(0, 1, 0)) * 0.5f + 0.5f, 0.0f);
+    o.albedoRoughness = float4(FiberStrandColor(strand, p.height), filteredRoughness);
+    o.normalMetallic = float4(normal * 0.5f + 0.5f, 0.0f);
     /// @note Fiber の独自照明は後続の Forward パスで解決する。発光は保持しない。
     o.emission = float4(0.0f, 0.0f, 0.0f, 0.0f);
     return o;

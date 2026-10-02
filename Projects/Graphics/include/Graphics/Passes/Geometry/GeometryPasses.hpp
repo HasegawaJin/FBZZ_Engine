@@ -201,6 +201,10 @@ renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     bool                       wireframe = false);
 void UpdateShadowConstants(RenderPassContext& ctx);
 void UpdatePunctualShadowConstants(RenderPassContext& ctx);
+/// @note GPU へ書き込まず、当該ビューの現在のライト／影入力を値として組み立てる。
+[[nodiscard]] ShadowConstantsCB MakeShadowConstants(const RenderPassContext& ctx);
+/// @note b12 の光源形状と sourceRadius は影・cookie provider を外す捕捉でも維持する。
+[[nodiscard]] PunctualShadowConstantsCB MakePunctualShadowConstants(const RenderPassContext& ctx);
 struct WorldBounds { math::Vector3 center; float radius; };
 class SkyPass final : public IRenderPass {
 public:
@@ -312,9 +316,16 @@ public:
 };
 class DeferredLightingPass final : public IRenderPass {
 public:
-    std::string_view Name() const override { return "DeferredLighting"; }
+    explicit DeferredLightingPass(bool reflectionSource = false) : m_reflectionSource(reflectionSource) {}
+    std::string_view Name() const override
+    {
+        return m_reflectionSource ? "ReflectionSourceLighting" : "DeferredLighting";
+    }
     void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
     void Execute(PassResources& resources, RenderPassContext& ctx) override;
+
+private:
+    bool m_reflectionSource;
 };
 class ShadowPass final : public IRenderPass {
 public:

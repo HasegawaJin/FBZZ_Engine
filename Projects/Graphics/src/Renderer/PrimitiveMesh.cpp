@@ -101,11 +101,14 @@ Mesh* PrimitiveMesh::Sphere(ResourceManager& resources, int segments)
 
         for (int s = 0; s <= segments; ++s) {
             /// @note 0 → 2π
-            float theta    = math::TWO_PI * s / segments;
+            /// @note UV seam は u=1 を残して角度だけ 0 に戻し、同じ境界位置を bit-exact に閉じる。
+            float theta    = s == segments ? 0.0f : math::TWO_PI * s / segments;
             float sinTheta = std::sin(theta);
             float cosTheta = std::cos(theta);
 
-            math::Vector3 n = { sinPhi * cosTheta, cosPhi, sinPhi * sinTheta };
+            /// @note sin(float PI) の非ゼロ値や signed zero で極の頂点を分離しない。
+            math::Vector3 n = (r == 0 || r == rings) ? math::Vector3{0, r == 0 ? 1.0f : -1.0f, 0}
+                : math::Vector3{sinPhi * cosTheta, cosPhi, sinPhi * sinTheta};
             /// @note tangent = dPos/dTheta 方向 (正規化)
             math::Vector3 t = { -sinTheta, 0.0f, cosTheta };
             verts.push_back({

@@ -43,9 +43,26 @@ ResolvedRenderPlan PrepareViewRenderPlan(ResourceManager& resources, IRenderer& 
     available.clusteredLightingReady = !settings.IsUnlit() && !settings.clustered.forceAllLights
         && resources.Get(handles.punctualLightBuffer) && resources.Get(shared.clusterCB)
         && resources.Get(shared.clusterIndexBuffer) && resources.Get(shared.clusterCullCS);
-    /// @note Ray Scene と RT パスの実装後に、当該フレームの準備結果と被覆を追加する。
+    SceneRayCoverage coverage;
+    coverage.reflection = view.rayReflectionCovered;
+    coverage.path = view.rayPathCovered;
+    available.raySceneReady = view.rayReflection.gpu.ready || view.rayPath.gpu.ready;
+    available.reflectionPipelineReady = view.rayReflection.gpu.ready
+        && resources.Get(view.rayReflection.output) && resources.Get(view.rayReflection.constants)
+        && resources.Get(shared.rayReflectionShader) && handles.rayReflectionResult == view.rayReflection.output;
+    available.pathPipelineReady = view.rayPathPrepared && view.rayPath.gpu.ready && targetReady(view.hdr)
+        && resources.Get(view.rayPath.output) && resources.Get(view.rayPath.firstSurface)
+        && resources.Get(view.rayPath.firstMaterial) && resources.Get(view.rayPath.firstGeometry)
+        && resources.Get(view.rayPath.historyBuffer) && resources.Get(view.rayPath.idsBuffer)
+        && resources.Get(view.rayPath.constants) && resources.Get(shared.rayPathShader)
+        && resources.Get(shared.rayPathResolveShader) && resources.Get(shared.rayPathResolvePSO)
+        && resources.Get(shared.copyColorShader) && available.rasterPipelineReady;
+    if (settings.modeRequest.pathProfile == PathTracingProfile::GAME)
+        available.pathPipelineReady = available.pathPipelineReady && view.rayPath.game.prepared
+            && available.opaque.depthNormal && resources.Get(shared.rayGameReconstructionShader);
+    available.rasterSurfaceReady = view.rayPathPrepared && view.rayPath.game.prepared && available.opaque.depthNormal;
     view.renderPlan = ResolveRenderPlan(settings, settings.modeRequest,
-        renderer.GetCapabilities(), {}, available);
+        renderer.GetCapabilities(), coverage, available);
     return view.renderPlan;
 }
 

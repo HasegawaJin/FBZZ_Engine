@@ -115,6 +115,7 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
 
         /// @note 当該面 (mip0) を描画先にバインドし、スカイドームを 1 回描く。
         renderer.SetRenderTargetFace(h.skyEnvCubeRT, face, 0, resources);
+        renderer.ClearDepth();
 
         renderer::DrawCall dc;
         dc.vertexBuffer       = h.skyVB;

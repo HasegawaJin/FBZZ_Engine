@@ -39,9 +39,15 @@ struct AdvancedViewInput {
     float weatherWetness = 0.0f;
     float weatherDarkening = 0.0f;
     float weatherPuddle = 0.0f;
+    bool reflectionProbeSelected = false;
 };
 /// @note Probe のアセット更新はホスト側で同期実行する。コールバックは保持しない。
 void PrepareAdvancedConstants(RenderPassContext& context, RenderViewResources& view,
     const AdvancedViewInput& input,
     const std::function<void(AdvancedGraphicsCB&)>& prepareProbes = {});
+
+/// @pre Reflection の記録可否が確定した TAA 実行直前に呼ぶ。
+/// @note provider 変更・非連続フレームでは現在の画像だけで履歴を再開する。画素別 RT motion は別契約。
+/// @note 先行 Draw/Dispatch が確保した定数は IConstantBuffer の immutable submit snapshot により変更されない。
+void PrepareTaaProviderHistory(RenderPassContext& context, RenderViewResources& view);
 }

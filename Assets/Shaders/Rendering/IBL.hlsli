@@ -11,6 +11,7 @@
 
 #include "Common/Math.hlsli"
 #include "Rendering/BRDF.hlsli"
+#include "Rendering/DiffuseIndirect.hlsli"
 #include "Rendering/LightProbeGI.hlsli"
 
 /// @brief IBL 用 Smith-Schlick の片側項。
@@ -42,9 +43,9 @@ float3 DesaturateSkyIrradiance(float3 irradiance)
 /// @brief 拡散環境光の引き結果。
 struct DiffuseGI
 {
-    float3 diffuse;           ///< 拡散項に使う放射照度 / π (キューブ側は彩度補正済み)
-    float3 sheen;             ///< Sheen / Cloth に使う値 (キューブ側は補正前。従来の絵を変えないため)
-    float  specularOcclusion; ///< 鏡面 IBL に掛ける倍率 [0,1]
+    float3 diffuse;           ///< @note 拡散項に使う放射照度 / π (キューブ側は彩度補正済み)
+    float3 sheen;             ///< @note Sheen / Cloth に使う値 (キューブ側は補正前)
+    float  specularOcclusion; ///< @note 鏡面 IBL に掛ける倍率 [0,1]
 };
 
 /// @brief キューブだけの従来の値。
@@ -62,10 +63,8 @@ DiffuseGI FBZZ_SkyDiffuse(float3 sky)
 /// @param sampClamp Linear clamp サンプラー (プローブの Texture3D に使う)。
 /// @note ボリュームの外では覆い率が 0 なので、キューブだけの従来版と同じ値になる。
 /// @note 入れ子の lerp は fallback について線形 (係数 1 - coverage) なので、彩度補正の差分だけを後から足せば 1 回の引きで両方が出る。
-DiffuseGI FBZZ_DiffuseIrradiance(float3 worldPos, float3 N, TextureCube irradianceMap,
-                                 SamplerState samp, SamplerState sampClamp)
+DiffuseGI FBZZ_DiffuseIrradianceFromSky(float3 worldPos, float3 N, float3 sky, SamplerState sampClamp)
 {
-    const float3 sky = irradianceMap.Sample(samp, N).rgb;
     float coverage;
     const float3 lit = FBZZ_ApplyLightProbes(worldPos, N, sampClamp, sky, coverage);
     DiffuseGI gi;
@@ -73,6 +72,13 @@ DiffuseGI FBZZ_DiffuseIrradiance(float3 worldPos, float3 N, TextureCube irradian
     gi.diffuse = lit + (DesaturateSkyIrradiance(sky) - sky) * (1.0f - coverage);
     gi.specularOcclusion = FBZZ_ProbeSpecularOcclusion(lit, sky);
     return gi;
+}
+
+/// @note Raster は既存の cube sampler、ray hit は明示 LOD0 の sky 値を同じ空間補間へ渡す。
+DiffuseGI FBZZ_DiffuseIrradiance(float3 worldPos, float3 N, TextureCube irradianceMap,
+    SamplerState samp, SamplerState sampClamp)
+{
+    return FBZZ_DiffuseIrradianceFromSky(worldPos, N, irradianceMap.Sample(samp, N).rgb, sampClamp);
 }
 
 /// @brief 拡散放射照度を受け取って環境光寄与を返す (split-sum)。
@@ -105,9 +111,7 @@ float3 EvaluateIBLFromIrradiance(
     float3 F0    = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
 
     /// @note 拡散の kD はラフネス補正フレネルから取り、メタルは拡散を持たない。
-    float3 F       = F_SchlickRoughness(NdotV, F0, roughness);
-    float3 kD      = (1.0f - F) * (1.0f - metallic);
-    float3 diffuse = kD * irradiance * albedo * max(diffuseScale, 0.0f);
+    float3 diffuse = FBZZ_DiffuseIndirectResponse(N, V, albedo, metallic, roughness, irradiance, diffuseScale);
 
     float  mip              = roughness * (float)maxMipLevel;
     float3 prefilteredColor = prefilterMap.SampleLevel(samp, R, mip).rgb;
@@ -121,8 +125,7 @@ float3 EvaluateIBLFromIrradiance(
     float3 specular = prefilteredColor * (F0 * brdf.x + brdf.y) * max(specularScale, 0.0f) * specularOcclusion;
 
     /// @note 接地バウンス相当の中立な下限。日陰や AO 部が暗い青に潰れるのを防ぐ。AO 非依存で、コントラストを保つよう小さく保つ。
-    const float3 kIBLAmbientFloor = float3(0.025f, 0.025f, 0.025f);
-    return diffuse * saturate(ao) + specular + albedo * kIBLAmbientFloor;
+    return diffuse * saturate(ao) + specular + FBZZ_DiffuseIndirectFloor(albedo);
 }
 
 /// @brief キューブだけで拡散を引く従来版。Light Probe を受けない。
@@ -248,4 +251,4 @@ float3 EvaluateIBLAdvanced(
         brdfLUT, maxMipLevel, diffuseScale, specularScale, samp, sampClamp);
 }
 
-#endif // IBL_HLSLI
+#endif

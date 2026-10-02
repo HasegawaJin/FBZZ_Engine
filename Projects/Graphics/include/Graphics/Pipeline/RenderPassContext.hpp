@@ -7,6 +7,16 @@
 #include <Graphics/Pipeline/RenderConstants.hpp>
 #include <Graphics/Effects/RenderSkinningInput.hpp>
 namespace fbzz::renderer {
+/// @note Only a successful bake may publish a never-again-written texture; resource owner/epoch and exact handle bind the proof.
+struct RenderTexturePublication {
+    ResourceHandle<TextureTag> texture;
+    const ResourceManager* owner = nullptr;
+    uint64_t resourceEpoch = 0;
+    [[nodiscard]] bool Matches(ResourceHandle<TextureTag> handle, const ResourceManager* resources, uint64_t epoch) const
+    {
+        return texture.IsValid() && texture == handle && owner == resources && resourceEpoch == epoch;
+    }
+};
 struct RenderPassContext : RenderLightingInput {
     renderer::IRenderer& renderer;
     renderer::ResourceManager& resources;
@@ -29,6 +39,7 @@ struct RenderPassContext : RenderLightingInput {
     float deltaTime = 0.0f;
     float unscaledDeltaTime = 0.0f;
     RenderEnvironmentInput environment;
+    RenderTexturePublication iblIrradiancePublication, iblPrefilterPublication;
 
     /// @name カリング挙動 (CameraComponent 由来)
     /// @{
@@ -106,6 +117,24 @@ struct RenderPassContext : RenderLightingInput {
     /// @note 設定だけを見て Composite が読むと、最後に書かれた絵がそのまま毎フレーム乗り続ける。
     /// @note VolumetricLight は自分のパス内で HDR へ加算するので、この種のフラグは要らない。
     bool ssrPassActive = false;
+    /// @note HYBRID を要求した Lit Deferred の反射 resolver。RT 縮退・記録失敗でも全 HDR 補間へ戻さない。
+    bool hybridReflectionResolveActive = false;
+    /// @note SSR の照明入力を作る間だけ true。RT と SSR の差し替え前の baseline を描く。
+    bool hybridReflectionSourcePass = false;
+    /// @note 生きた SSR 資源と pass override を確認した当該ビューの graph 宣言条件。
+    bool hybridReflectionSsrPlanned = false;
+    /// @note 当該ビューで RayReflection が実行可能なフレームだけ有効。材質・形状の被覆不足では false。
+    bool rayReflectionPassActive = false;
+    /// @note Graph は filtered/RAW の両方を申告し、再構成の記録失敗時も同フレーム RAW だけを読む。
+    bool rayReflectionReconstructionPrepared = false;
+    /// @note Reference Path の照明・深度がこのビューで有効な場合のみ true。
+    bool rayPathPassActive = false;
+    /// @note dispatch 失敗でも専用 Path 表示では Raster の履歴・画面空間効果を束縛しない。
+    bool rayPathViewActive = false;
+    /// @note hit の照明へ未対応の天候・空間プローブが有効な場合は false。
+    bool rayHitLightingSupported = true;
+    /// @note Reference は経路を自ら積分するため、Raster 用プローブの準備状態では縮退しない。
+    bool rayPathLightingSupported = true;
     /// @note 選択マスクへ UI 要素の矩形を追記する。UISystemContext を握っているのは
     /// @note Viewport ごとの呼び出し元なので、パス側は「入っていれば呼ぶ」だけにする。
     std::function<void()> appendUISelectionMask;

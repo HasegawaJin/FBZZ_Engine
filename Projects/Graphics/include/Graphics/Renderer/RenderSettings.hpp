@@ -5,6 +5,7 @@
 #pragma once
 #include <Graphics/Renderer/RenderState.hpp>
 #include <Graphics/Renderer/RenderMode.hpp>
+#include <Graphics/Renderer/HybridQualitySettings.hpp>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -286,6 +287,9 @@ enum class ViewMode : uint8_t {
     Unlit           = 1,
     WireframeLit    = 2,
     WireframeUnlit  = 3,
+    RayHitDistance = 4,
+    RayGeometricNormal = 5,
+    RayInstanceId = 6,
 };
 
 /// @note NavMesh オーバーレイの描き方。showNavMesh が true のときだけ効く。
@@ -351,7 +355,7 @@ struct ShadowSettings {
     /// @note 影を落とす「全方位ライト」(Point / Sphere / Tube) の上限。
     /// @note 1 個でキューブ 6 面 = 6 タイルを消費する。既定 2 個で 12 タイル、
     /// @note 残り 4 タイルが Spot / Area (1 個 1 タイル) へ回る。
-    /// @note     /// ⚠ 割り当てはカメラから近い順なので、近くに全方位ライトを置くと 6 枚まとめて
+    /// @note 割り当てはカメラから近い順なので、近くに全方位ライトを置くと 6 枚まとめて
     /// @note   持っていかれ、遠くの Spot が枠から落ちる。蛍光灯を何十本も並べた部屋で
     /// @note   「主照明の影だけ消える」のがこれ。器具側の castShadows を絞って調整する。
     int      maxShadowedPointLights = 2;
@@ -654,7 +658,7 @@ struct RenderSettings {
     /// @pre RenderSystem を ImGuiNewFrame〜Render の間で呼ぶこと。
     bool passViewerEnabled = false;
     /// @note RenderGraph の実行順の決め方。既定は登録順どおり。
-    /// @note     /// @note MinimizeLifetimes は同時に生きる中間 RT を減らす代わりに実行順が
+    /// @note MinimizeLifetimes は同時に生きる中間 RT を減らす代わりに実行順が
     /// @note       登録順から離れる。申告漏れのあるパス (読むと言っていないものを束縛する
     /// @note       パス) はそこで即座に壊れるので、«申告が本当に揃っているか» を試す
     /// @note       診断モードとしても使える。既定を変えないのはそのため。
@@ -683,7 +687,7 @@ struct RenderSettings {
     /// @brief 診断表示 (ワイヤーフレーム・コライダー・NavMesh・ギズモ・ヒートマップ等) をすべて切る。
     /// @note Game View へ渡す設定を作るときに使う。Scene View で点けた表示をゲーム画面へ漏らさない。
     /// @note showUIRects だけは残す。当たり判定を試すクリックは Game View で行うため。
-    /// @warning 診断表示のフラグを足したら、ここと RenderSettingsTests にも足すこと。
+    /// @warning 診断表示のフラグを足したら、ここ、CopyDebugVisualizationFrom と RenderSettingsTests にも足すこと。
     void StripDebugVisualization()
     {
         viewMode                      = ViewMode::Lit;
@@ -715,6 +719,49 @@ struct RenderSettings {
         particleOverdrawReadback      = false;
         shadow.debugVisualizeCascades = false;
         clustered.debugHeatmap        = false;
+    }
+
+    /// @note Scene View diagnostics remain live during Play without replacing the runtime pipeline, quality or Volume snapshot.
+    void CopyDebugVisualizationFrom(const RenderSettings& source)
+    {
+        viewMode                     = source.viewMode;
+        showColliders                = source.showColliders;
+        showTerrainCollision         = source.showTerrainCollision;
+        showDecalBounds              = source.showDecalBounds;
+        showNavMesh                  = source.showNavMesh;
+        showNavSensors               = source.showNavSensors;
+        navMeshDrawMode              = source.navMeshDrawMode;
+        navMeshDrawDistance          = source.navMeshDrawDistance;
+        showSkeleton                 = source.showSkeleton;
+        skeletonSelectedOnly         = source.skeletonSelectedOnly;
+        showGrid                     = source.showGrid;
+        showLightRange               = source.showLightRange;
+        showVFXGizmos                = source.showVFXGizmos;
+        showFlowFields               = source.showFlowFields;
+        showFlowSamples              = source.showFlowSamples;
+        showPhysicsVolumes           = source.showPhysicsVolumes;
+        showWaterFlow                = source.showWaterFlow;
+        showConstraints              = source.showConstraints;
+        showRagdoll                   = source.showRagdoll;
+        showScriptGizmos             = source.showScriptGizmos;
+        showRigidBodies              = source.showRigidBodies;
+        showIK                       = source.showIK;
+        showSpringBones              = source.showSpringBones;
+        showAttachments              = source.showAttachments;
+        showVFXPaths                 = source.showVFXPaths;
+        showTerrainBounds            = source.showTerrainBounds;
+        showLODBounds                = source.showLODBounds;
+        showUIRects                  = source.showUIRects;
+        showSelectionOutline         = source.showSelectionOutline;
+        outlineWidth                 = source.outlineWidth;
+        for (int i = 0; i < 4; ++i) outlineColor[i] = source.outlineColor[i];
+        passViewerEnabled            = source.passViewerEnabled;
+        particleOverdrawView         = source.particleOverdrawView;
+        particleOverdrawIncludeModels = source.particleOverdrawIncludeModels;
+        particleOverdrawReadback      = source.particleOverdrawReadback;
+        shadow.debugVisualizeCascades = source.shadow.debugVisualizeCascades;
+        clustered.debugHeatmap        = source.clustered.debugHeatmap;
+        clustered.forceAllLights      = source.clustered.forceAllLights;
     }
 
     PostProcessSettings postProcess;
@@ -769,6 +816,7 @@ struct RenderSettings {
 
     /// @note 保存する要求。GPU 能力による縮退結果はビューの Plan に置き、この値を変更しない。
     RenderModeRequest modeRequest;
+    HybridQualitySettings hybridQuality;
 
     /// @note 排他的な論理スロットを正規化し、修正した競合をビットで返す。
     /// @note TOML・Inspector・ランタイムで別々の排他規則を持つと、設定経路によって

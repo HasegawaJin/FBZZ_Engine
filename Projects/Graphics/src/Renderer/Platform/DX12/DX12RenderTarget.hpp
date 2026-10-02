@@ -28,7 +28,9 @@ public:
     uint32_t GetColorCount() const override { return m_colorCount; }
     void* GetNativeSRV(int slot = 0) const override;
     D3D12_CPU_DESCRIPTOR_HANDLE GetRtv(uint32_t index) const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetDsv() const;
+    /// @note Cube faces share depth per mip; the caller clears it after selecting each capture face.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_tex2d_dsv DSV mip selection.
+    D3D12_CPU_DESCRIPTOR_HANDLE GetDsv(uint32_t mip = 0) const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetColorSrv(uint32_t index) const;
     D3D12_GPU_DESCRIPTOR_HANDLE GetColorSrvGpu(uint32_t index) const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetDepthSrv() const;
@@ -55,6 +57,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_srvHeap;
     uint32_t m_rtvIncrement = 0;
+    uint32_t m_dsvIncrement = 0;
     uint32_t m_srvIncrement = 0;
     uint32_t m_width = 0;
     uint32_t m_height = 0;

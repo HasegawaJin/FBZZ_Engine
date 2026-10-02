@@ -12,13 +12,16 @@
 #pragma once
 
 #include <Graphics/Renderer/ResourceHandle.hpp>
+#include <Graphics/Renderer/ProbeCaptureBudget.hpp>
 #include <Math/Vector3.hpp>
 #include <cstdint>
 
 namespace fbzz::renderer {
+class ResourceManager;
 
 class EnvironmentResources {
 public:
+    ProbeCaptureBudget probeCaptureBudget;
     /// @note SkySignature — 空の見た目を決めるパラメータの要約。
     /// @note 毎フレーム IBL を焼き直すと高コストなため、この要約が変化したフレーム (太陽が動いた/
     /// @note 大気設定を変えた) だけ再ベイクする dirty 判定に使う。
@@ -46,6 +49,10 @@ public:
     renderer::ResourceHandle<renderer::TextureTag> skyIrradiance; ///< @note "SkyIrradiance": 拡散 irradiance キューブマップ
     renderer::ResourceHandle<renderer::TextureTag> skyPrefilter;  ///< @note "SkyPrefilter" : 鏡面 prefiltered キューブマップ
     uint32_t prefilteredMipCount = 0;                             ///< @note prefilter の mip 数 (maxMipLevel = この値 - 1)
+    /// @note Successful convolution publishes fresh textures that are never written again before replacement.
+    const renderer::ResourceManager* immutableIblOwner = nullptr;
+    renderer::ResourceHandle<renderer::TextureTag> immutableIrradiance, immutablePrefilter;
+    uint64_t immutableIblEpoch = 0;
 
     /// @note SkyCapture が空を焼き直したフレームに true を立て、SkyLightBake が畳み込み後に false に戻す。
     /// @note SkyCapture と SkyLightBake は別パスのため、「今フレーム焼いたから畳み込みも要る」を橋渡しする。

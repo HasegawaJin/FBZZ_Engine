@@ -11,9 +11,11 @@
 #include <string>
 #include <vector>
 #include "ComputeCall.hpp"
+#include "AccelerationStructure.hpp"
 #include "DrawCall.hpp"
 #include "Format.hpp"
 #include "GraphicsCapabilities.hpp"
+#include "GpuProfiler.hpp"
 #include "IIblBaker.hpp"
 #include "IBuffer.hpp"
 #include "IConstantBuffer.hpp"
@@ -30,13 +32,6 @@
 namespace fbzz::renderer {
 
 class ResourceManager;
-
-/// @note GPU プロファイリング 1 パス分の結果。
-/// @note IRenderer を経由することで上位レイヤーが具象を知らずに GPU 時間を取得できる。
-struct GpuPassProfile {
-    std::string name;
-    double gpuMs = 0.0;
-};
 
 /// @note RenderTarget 内部 SRV のどちらを TextureTag 化するかを表す。
 /// @note bool 引数では Color / Depth の意味が呼び出し側から読めず、誤指定に気づきにくいため。
@@ -68,9 +63,9 @@ public:
     /// @note 診断画像を描き、呼び出し前の描画先・ビューポート・シザーへ戻す。
     /// @note パス境界でのみ呼ぶ。後続の Submit は自身の描画状態を束縛すること。
     /// @note 未対応のバックエンドでは false を返す。
-    virtual bool RenderDebugPreview(const DrawCall& /*call*/,
-                                    ResourceHandle<RenderTargetTag> /*target*/,
-                                    ResourceManager& /*resources*/) { return false; }
+    virtual bool RenderDebugPreview(const DrawCall&,
+                                    ResourceHandle<RenderTargetTag>,
+                                    ResourceManager&) { return false; }
     virtual void Dispatch(const ComputeCall& call, ResourceManager& resources) = 0;
     /// @note 相互依存しない Dispatch 群の UAV バリアをバッチ末尾へまとめる。
     /// @note スキニングのように各 Dispatch が別バッファへ書くパスでは、Dispatch ごとの
@@ -85,7 +80,7 @@ public:
     /// @note       機械と設定で変わり、絵が変わってはいけない。
     /// @note 区間へ入る時点で描画の列を割るため、直前までの描画がそこで GPU へ投入される。
     /// @see Docs/design/async-compute.md
-    virtual bool BeginAsyncCompute(ResourceManager& /*resources*/) { return false; }
+    virtual bool BeginAsyncCompute(ResourceManager&) { return false; }
     /// @brief 非同期区間を閉じ、以降の描画がその完了を待つようにする。
     /// @note BeginAsyncCompute が false を返した場合も呼んでよい (no-op)。
     virtual void EndAsyncCompute() {}
@@ -98,7 +93,7 @@ public:
     /// @note フレームレート制御は Time::targetFps に任せる。Present の待ちを描画同期に混ぜると
     /// @note       プロファイラ上で描画コストと区別できなくなる。
     /// @note 有効にすると tearing 許可フラグは自動的に落ちる (併用は DXGI が拒否する)。
-    virtual void SetVSync(bool /*enabled*/) {}
+    virtual void SetVSync(bool) {}
     [[nodiscard]] virtual bool GetVSync() const { return false; }
 
     virtual void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) = 0;
@@ -117,8 +112,8 @@ public:
     /// @note 空連動 IBL の SkyCapture が空ドームを 6 面それぞれの向きで描くために使う。
     /// @note       未対応バックエンドは no-op でよい。CreateCubemapRenderTarget 以外の RT を渡した
     /// @note       場合の挙動は実装依存。
-    virtual void SetRenderTargetFace(ResourceHandle<RenderTargetTag> /*rt*/, uint32_t /*face*/,
-                                     uint32_t /*mip*/, ResourceManager& /*resources*/) {}
+    virtual void SetRenderTargetFace(ResourceHandle<RenderTargetTag>, uint32_t,
+                                     uint32_t, ResourceManager&) {}
 
     /// @note かつてここに SetSampler(slot, mode) があったが削除した。サンプラーはレジスタごとに
     /// @note       意味を 1 つ固定する規約になり、正本は Assets/Shaders/Common/Binding.hlsli の SAMPLER_*
@@ -130,10 +125,11 @@ public:
     /// @note GPU プロファイリング。未対応バックエンドは no-op のままでよい。
     /// @note タイムスタンプクエリで非同期に計測するため、GpuProfCollect() を呼んだ時点で
     /// @note       数フレーム前の結果が確定する (即値ではない)。
+    /// @note DX12 の Begin/EndFrame は旧呼出互換の no-op。物理描画フレームが計測領域を所有する。
     virtual void GpuProfBeginFrame()                      {}
     virtual void GpuProfEndFrame()                        {}
-    virtual void GpuProfBeginPass(const char* /*name*/)   {}
-    virtual void GpuProfEndPass(const char* /*name*/)     {}
+    virtual void GpuProfBeginPass(const char*)   {}
+    virtual void GpuProfEndPass(const char*)     {}
     virtual void GpuProfCollect()                         {}
     virtual const std::vector<GpuPassProfile>& GpuProfGetResults() const
     {
@@ -146,11 +142,11 @@ public:
     /// @note 畳み込み Compute は面ごとの Texture2DArray UAV を要求するバックエンド固有処理のため、
     /// @note       抽象 IRenderer は入口だけ提供する。返した ITexture は呼び出し側が
     /// @note       ResourceManager::RegisterTexture で所有する。未対応なら false。
-    virtual bool BakeSkyLight(ResourceHandle<RenderTargetTag> /*envCubeRT*/, ResourceManager& /*resources*/,
-                              uint32_t /*irradianceSize*/, uint32_t /*prefilterSize*/,
-                              uint32_t /*prefilterMips*/, uint32_t /*sampleCount*/,
-                              std::unique_ptr<ITexture>& /*outIrradiance*/,
-                              std::unique_ptr<ITexture>& /*outPrefilter*/) { return false; }
+    virtual bool BakeSkyLight(ResourceHandle<RenderTargetTag>, ResourceManager&,
+                              uint32_t, uint32_t,
+                              uint32_t, uint32_t,
+                              std::unique_ptr<ITexture>&,
+                              std::unique_ptr<ITexture>&) { return false; }
 
     /// @note IBL ベイク処理の実装を返す (Editor 専用)。未対応のバックエンドは nullptr を返してよい。
     /// @note IblBaker はバックエンド固有の UAV 操作を必要とするため IRenderer の factory 経由で
@@ -162,17 +158,17 @@ public:
     /// @note       PNG エンコードはバックエンド固有 (DX12: CommandQueue + DirectXTex) のため入口だけ提供する。
     /// @note 未対応バックエンドは false。outPng は PNG 全体のバイト列、out{Width,Height} は
     /// @note       実 RT サイズ (要求サイズではない)。
-    virtual bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> /*rt*/, ResourceManager& /*resources*/,
-                                          std::vector<uint8_t>& /*outPng*/,
-                                          uint32_t& /*outWidth*/, uint32_t& /*outHeight*/) { return false; }
+    virtual bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag>, ResourceManager&,
+                                          std::vector<uint8_t>&,
+                                          uint32_t&, uint32_t&) { return false; }
 
     /// @note CaptureRenderTargetToLinearRGBA — 同じ RT を「絵」ではなく「数値」として読み戻す。
     /// @note PNG は 8bit UNORM へクランプされ、白飛びか単に明るいのかがエンコード時点で失われる。
     /// @note       露出・画面占有・動きの量を機械的に判定するには HDR の線形値が要る (vfx.previewMetrics が使う)。
     /// @note outRgba は width*height*4 の行優先 float 列。トーンマップもガンマ変換も行わない。
-    virtual bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> /*rt*/, ResourceManager& /*resources*/,
-                                                 std::vector<float>& /*outRgba*/,
-                                                 uint32_t& /*outWidth*/, uint32_t& /*outHeight*/) { return false; }
+    virtual bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag>, ResourceManager&,
+                                                 std::vector<float>&,
+                                                 uint32_t&, uint32_t&) { return false; }
 
 private:
     friend class ResourceManager;
@@ -182,7 +178,7 @@ private:
     /// @note スキニング結果を 1 度だけ計算してシャドウ・GBuffer・Forward で共有するため、同じ
     /// @note       バッファに UAV 書き込みと頂点入力の両方を許す。未対応バックエンドは nullptr を
     /// @note       返してよい (呼び出し側は VS スキニングへフォールバックする)。
-    virtual std::unique_ptr<IBuffer> CreateNativeGpuWritableVertexBuffer(size_t /*sizeBytes*/, uint32_t /*stride*/) { return nullptr; }
+    virtual std::unique_ptr<IBuffer> CreateNativeGpuWritableVertexBuffer(size_t, uint32_t) { return nullptr; }
     virtual std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void* data, uint32_t count) = 0;
     virtual std::unique_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t sizeBytes) = 0;
     virtual std::unique_ptr<IShader> CreateNativeShader(const std::string& path) = 0;
@@ -193,7 +189,7 @@ private:
     /// @note       任せないのは、勾配を格納したテクスチャのように «どう縮小すれば正しいか» を呼び出し側
     /// @note       しか知らない場合があるため。
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromDataMips(
-        const TextureMipData* /*mips*/, uint32_t /*mipCount*/) { return nullptr; }
+        const TextureMipData*, uint32_t) { return nullptr; }
     /// @note CreateNativeTextureFromDataMips の待たない版。転送を投入して戻る。
     /// @param outUploadToken 転送完了の判定に IsUploadComplete へ渡す値。0 は完了済み。
     /// @note mips は戻った時点で手放してよい (転送元は内部の upload メモリへ複製済み)。
@@ -205,7 +201,7 @@ private:
         return CreateNativeTextureFromDataMips(mips, mipCount);
     }
     /// @note 非同期転送が GPU 上で完了したか。CPU は待たない。
-    virtual bool IsUploadComplete(uint64_t /*uploadToken*/) const { return true; }
+    virtual bool IsUploadComplete(uint64_t) const { return true; }
     virtual std::unique_ptr<ITexture> CreateNativeTexture3DFromData(
         const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth) = 0;
     virtual std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(
@@ -216,21 +212,21 @@ private:
     virtual std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t width, uint32_t height,
                                                                     const RenderTargetDesc& desc) = 0;
     /// @note 6 面キューブマップ描画先。未対応バックエンドは nullptr を返してよい。
-    virtual std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t /*size*/, uint32_t /*mipCount*/) { return nullptr; }
+    virtual std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t, uint32_t) { return nullptr; }
     /// @note キューブマップ RT の TextureCube SRV を ITexture 化する (TextureTag として束縛可能にする)。
-    virtual std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget& /*rt*/) { return nullptr; }
+    virtual std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget&) { return nullptr; }
     virtual std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t width, uint32_t height) = 0;
     /// @note CS が RWTexture3D として書き、後段が Texture3D として読むボリューム (フロクセル霧)。
     /// @note 未対応バックエンドは nullptr を返してよい。呼び出し側は機能そのものを落とすこと。
     virtual std::unique_ptr<ITexture> CreateNativeComputeTexture3D(
-        uint32_t /*width*/, uint32_t /*height*/, uint32_t /*depth*/) { return nullptr; }
+        uint32_t, uint32_t, uint32_t) { return nullptr; }
     /// @note CPU から矩形単位で書き換えられるテクスチャ。ITexture::UpdateRegion と対で使う。
     /// @note 中身は未初期化ではなくゼロクリアされた状態で返すこと。
     /// @note フォントの動的アトラス (使われたグリフだけを実行時にラスタライズして貼る) が要求する。
     /// @note       Immutable な CreateNativeTextureFromData だと 1 グリフ増えるたびに全体を作り直し
     /// @note       ハンドルも毎回変わる。未対応バックエンドは nullptr でよい (呼び出し側は静的アトラスへ縮退)。
     virtual std::unique_ptr<ITexture> CreateNativeDynamicTexture(
-        uint32_t /*width*/, uint32_t /*height*/, DynamicTextureFormat /*format*/) { return nullptr; }
+        uint32_t, uint32_t, DynamicTextureFormat) { return nullptr; }
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void* data, uint32_t elementCount, uint32_t stride) = 0;
     /// @note 初期データだけを持つ GPU ローカル SRV。専用経路がないバックエンドは通常の SRV へ縮退する。
     virtual std::unique_ptr<IStructuredBuffer> CreateNativeGpuLocalStructuredBuffer(
@@ -247,6 +243,29 @@ public:
     /// @note 実機の能力だけを返す。描画パスと GPU 資源の可用性は呼び出し側で解決する。
     /// @note 既存の仮想関数の順序を変えないため、資源生成を含む宣言の末尾へ追加する。
     [[nodiscard]] virtual GraphicsCapabilities GetCapabilities() const { return {}; }
+
+    /// @note Record once on the DIRECT queue inside a frame, outside async compute and compute batches.
+    /// @return False for invalid inputs, unsupported hardware or an already-built structure; no build is recorded.
+    virtual bool BuildAccelerationStructure(ResourceHandle<AccelerationStructureTag>, ResourceManager&) { return false; }
+
+private:
+    virtual std::unique_ptr<IAccelerationStructure> CreateNativeAccelerationStructure(
+        const AccelerationStructureDesc&, ResourceManager&) { return nullptr; }
+
+public:
+    /// @return true は Dispatch の記録済みを示し、GPU 完了やシェーダーの計算結果を保証しない。
+    /// @note 未対応・無効な入力・記録不能では false。既存 Dispatch の仮想関数位置を維持する。
+    virtual bool TryDispatch(const ComputeCall&, ResourceManager&) { return false; }
+
+    /// @note ビューごとのタグだけを切り替え、物理フレームの query 領域を再開始しない。
+    virtual bool GpuProfBeginView(const GpuProfilerViewMetadata&) { return false; }
+    virtual void GpuProfEndView() {}
+    /// @note 最新の完了済み物理フレーム。available/complete と source serial を確認して消費する。
+    virtual const GpuProfilerSnapshot& GpuProfGetSnapshot() const
+    {
+        static const GpuProfilerSnapshot s_empty;
+        return s_empty;
+    }
 };
 
 } /// @note namespace fbzz::renderer

@@ -144,6 +144,37 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
 {
     /// @note transient RT も同じ Viewport 寿命に属するため、固定 RT より先に明示解放する。
     targets.pipeline.ReleaseViewResources(resources);
+    resources.Release(targets.rayDebug.output);
+    resources.Release(targets.rayDebug.constants);
+    resources.Release(targets.rayReflection.output);
+    resources.Release(targets.rayReflection.constants);
+    resources.Release(targets.rayReflection.emitters);
+    resources.Release(targets.rayReflection.deltaLights);
+    resources.Release(targets.rayReflection.shapes);
+    resources.Release(targets.rayReflection.environmentTable);
+    for (const auto surface : targets.rayReflection.reconstruction.surfaces) resources.Release(surface);
+    for (const auto history : targets.rayReflection.reconstruction.histories) resources.Release(history);
+    resources.Release(targets.rayReflection.reconstruction.output);
+    resources.Release(targets.rayReflection.reconstruction.constants);
+    targets.rayReflection = {};
+    resources.Release(targets.rayPath.output);
+    resources.Release(targets.rayPath.firstSurface);
+    resources.Release(targets.rayPath.firstMaterial);
+    resources.Release(targets.rayPath.firstGeometry);
+    resources.Release(targets.rayPath.historyBuffer);
+    resources.Release(targets.rayPath.idsBuffer);
+    resources.Release(targets.rayPath.constants);
+    resources.Release(targets.rayPath.emitters);
+    resources.Release(targets.rayPath.deltaLights);
+    resources.Release(targets.rayPath.shapes);
+    resources.Release(targets.rayPath.environmentTable);
+    resources.Release(targets.rayPath.game.transport);
+    resources.Release(targets.rayPath.game.surface);
+    for (const auto history : targets.rayPath.game.reconstructionHistory) resources.Release(history);
+    resources.Release(targets.rayPath.game.motionInstances);
+    resources.Release(targets.rayPath.game.traceConstants);
+    resources.Release(targets.rayPath.game.reconstructionConstants);
+    targets.rayPath = {};
     if (targets.hdr.IsValid())                  resources.Release(targets.hdr);
     if (targets.ldr.IsValid())                  resources.Release(targets.ldr);
     if (targets.selectionMask.IsValid())        resources.Release(targets.selectionMask);
@@ -176,6 +207,7 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     /// @note どちらも解像度非依存。作り直すと prevVP が Identity へ戻り、
     /// @note MotionBlur / TAA が 1 フレーム乱れるので、保存して復元する。
     auto savedCB         = targets.advancedGraphicsCB;
+    const auto savedMaterialCB = targets.gbufferMaterialCB;
     auto savedPrevVP     = targets.prevViewProjection;
     auto savedPrevInvVP  = targets.invPrevViewProjection;
     auto savedTaaIndex   = targets.taaFrameIndex;
@@ -218,6 +250,7 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     targets.froxelGrid[2] = savedFroxelGrid[2];
     targets.froxelState   = savedFroxelState;
     targets.advancedGraphicsCB  = savedCB;
+    targets.gbufferMaterialCB = savedMaterialCB;
     targets.prevViewProjection    = savedPrevVP;
     targets.invPrevViewProjection = savedPrevInvVP;
     targets.taaFrameIndex         = savedTaaIndex;
@@ -313,6 +346,10 @@ void RenderSharedResources::Initialize(ResourceManager& resources)
         sEnvironmentResources.skyEnvCube    = {};
         sEnvironmentResources.skyIrradiance = {};
         sEnvironmentResources.skyPrefilter  = {};
+        sEnvironmentResources.immutableIblOwner = nullptr;
+        sEnvironmentResources.immutableIblEpoch = 0;
+        sEnvironmentResources.immutableIrradiance = {};
+        sEnvironmentResources.immutablePrefilter = {};
         sEnvironmentResources.needsConvolution = false;
         sEnvironmentResources.MarkDirty();
     }
@@ -597,7 +634,17 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
 {
     viewTargets.output = outputRT;
     viewTargets.renderPlan = {};
+    viewTargets.rayReflection.gpu = {};
+    viewTargets.rayReflection.scene = {};
+    viewTargets.rayReflectionCovered = false;
+    viewTargets.rayPath.gpu = {};
+    viewTargets.rayPath.scene = {};
+    viewTargets.rayPath.dispatchSucceeded = false;
+    viewTargets.rayPathCovered = false;
+    viewTargets.rayPathPrepared = false;
     auto& resources = m_resources;
+    if (!resources.Get(viewTargets.gbufferMaterialCB))
+        viewTargets.gbufferMaterialCB = resources.CreateConstantBuffer(96);
     auto& hdrRT                   = viewTargets.hdr;
     auto& ldrRT                   = viewTargets.ldr;
     auto& selectionMaskRT         = viewTargets.selectionMask;
@@ -774,6 +821,7 @@ void RenderResources::ReleaseView(uint32_t key)
     view.output = {};
     ReleaseRenderViewResources(view, m_resources);
     m_resources.Release(view.advancedGraphicsCB);
+    m_resources.Release(view.gbufferMaterialCB);
     m_resources.Release(view.exposureHistogram);
     m_resources.Release(view.exposureResult);
     m_resources.Release(view.froxelScatter);
@@ -792,7 +840,14 @@ void RenderResources::ReleaseOutput(ResourceHandle<RenderTargetTag> output)
 void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPassHandles& passHandles)
 {
     auto& resources = m_resources;
+    if (!resources.Get(viewTargets.gbufferMaterialCB))
+        viewTargets.gbufferMaterialCB = resources.CreateConstantBuffer(96);
+    passHandles.gbufferMaterialCB = viewTargets.gbufferMaterialCB;
     auto& shared = m_shared;
+    if (!resources.Get(shared.reflectionProbeCaptureShadowCB))
+        shared.reflectionProbeCaptureShadowCB = resources.CreateConstantBuffer(sizeof(ShadowConstantsCB));
+    if (!resources.Get(shared.reflectionProbeCapturePunctualCB))
+        shared.reflectionProbeCapturePunctualCB = resources.CreateConstantBuffer(sizeof(PunctualShadowConstantsCB));
     auto& hdrRT                   = viewTargets.hdr;
     auto& ldrRT                   = viewTargets.ldr;
     auto& selectionMaskRT         = viewTargets.selectionMask;
@@ -920,6 +975,8 @@ void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPa
     passHandles.velocityInstancedShader = shared.velocityInstancedShader;
     passHandles.velocitySkinnedShader = shared.velocitySkinnedShader;
     passHandles.punctualShadowCB     = shared.punctualShadowCB;
+    passHandles.reflectionProbeCaptureShadowCB = shared.reflectionProbeCaptureShadowCB;
+    passHandles.reflectionProbeCapturePunctualCB = shared.reflectionProbeCapturePunctualCB;
     passHandles.skinningComputeCS    = shared.skinningComputeCS;
     passHandles.skinningCB           = shared.skinningCB;
     passHandles.defaultPSO           = shared.defaultPSO;

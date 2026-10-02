@@ -10,7 +10,9 @@
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
 #include <Core/Util/StringUtils.hpp>
 #include <algorithm>
+#include <atomic>
 #include <bit>
+#include <cassert>
 #include <cctype>
 #include <cwctype>
 #include <d3dcompiler.h>
@@ -29,6 +31,14 @@
 namespace fbzz::renderer {
 
 namespace {
+
+uint64_t NextShaderCacheIdentity()
+{
+    static std::atomic<uint64_t> next{1};
+    const uint64_t identity = next.fetch_add(1, std::memory_order_relaxed);
+    assert(identity != 0);
+    return identity;
+}
 
 /// @note 相対Assetsパスを実ファイルへ解決する。CWD探索とSDKのEngine assetルート探索は
 /// @note ResolveShaderFilePath に集約している。
@@ -426,6 +436,7 @@ std::vector<uint8_t> DX12Shader::LoadBinary(const std::string& path)
 
 bool DX12Shader::Init(const std::string& path)
 {
+    m_cacheIdentity = NextShaderCacheIdentity();
     m_path = path;
     const std::string base = CompiledBase(path);
     if (path.ends_with(".cs.hlsl")) {

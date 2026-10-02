@@ -25,6 +25,28 @@ void ReleaseParamsBuffer(ResourceHandle<ConstantBufferTag>& buffer)
 
 } /// @note namespace
 
+SurfaceMaterialData Material::ResolveRaySurface(const std::array<uint8_t, 96>& canonicalParams,
+    bool standardPbr, uint32_t declaredTextureMask, bool unresolvedTexture, bool advancedLobes,
+    ResourceManager& resources) const
+{
+    auto params = canonicalParams;
+    uint32_t mask = 0;
+    std::memcpy(&mask, params.data() + 80, sizeof(mask));
+    mask |= declaredTextureMask;
+    std::array<RayTextureBinding, 5> bindings{};
+    for (size_t i = 0; i < textures.size(); ++i) {
+        if (!textures[i]) continue;
+        if (i >= bindings.size()) { unresolvedTexture = true; continue; }
+        mask |= 1u << i;
+        const auto* texture = resources.Get(textures[i]);
+        if (!texture || !texture->IsRayMaterialTexture()
+            || texture->GetBindlessIndex() == INVALID_BINDLESS_INDEX) continue;
+        bindings[i] = {textures[i], texture->GetContentVersion()};
+    }
+    std::memcpy(params.data() + 80, &mask, sizeof(mask));
+    return ResolveTexturedSurfaceMaterial(params, standardPbr, bindings, unresolvedTexture, advancedLobes, dielectric);
+}
+
 Material::~Material()
 {
     ReleaseParamsBuffer(paramsBuffer);
@@ -36,6 +58,7 @@ Material::Material(Material&& other) noexcept
     , paramsBuffer(other.paramsBuffer)
     , paramData(std::move(other.paramData))
     , shaderPath(std::move(other.shaderPath))
+    , dielectric(other.dielectric)
 {
     other.paramsBuffer = {};
 }
@@ -49,6 +72,7 @@ Material& Material::operator=(Material&& other) noexcept
     paramsBuffer = other.paramsBuffer;
     paramData    = std::move(other.paramData);
     shaderPath   = std::move(other.shaderPath);
+    dielectric   = other.dielectric;
     other.paramsBuffer = {};
     return *this;
 }
@@ -60,6 +84,7 @@ Material Material::CloneWithoutGpuResources() const
     clone.textures   = textures;
     clone.paramData  = paramData;
     clone.shaderPath = shaderPath;
+    clone.dielectric = dielectric;
     return clone;
 }
 

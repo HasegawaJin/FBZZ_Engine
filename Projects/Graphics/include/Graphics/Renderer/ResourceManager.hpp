@@ -7,6 +7,7 @@
 #pragma once
 #include <Core/Memory/AllocationInfo.hpp>
 #include <Graphics/Renderer/Format.hpp>
+#include <Graphics/Renderer/AccelerationStructure.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <Graphics/Renderer/ResourcePool.hpp>
 #include <Graphics/Renderer/RenderState.hpp>
@@ -191,6 +192,11 @@ public:
     IPipelineState* Get(ResourceHandle<PipelineStateTag> h);
     IRenderTarget* Get(ResourceHandle<RenderTargetTag> h);
     IStructuredBuffer* Get(ResourceHandle<StructuredBufferTag> h);
+    IAccelerationStructure* Get(ResourceHandle<AccelerationStructureTag> h);
+
+    /// @return Null on unsupported hardware or invalid geometry; creation does not record GPU work.
+    ResourceHandle<AccelerationStructureTag> CreateAccelerationStructure(
+        const AccelerationStructureDesc& desc, Where where = Where::current());
 
     ResourceHandle<TextureTag> GetColorTexture(ResourceHandle<RenderTargetTag> rt, uint32_t index = 0);
     ResourceHandle<TextureTag> GetDepthTexture(ResourceHandle<RenderTargetTag> rt);
@@ -208,6 +214,7 @@ public:
     void Release(ResourceHandle<PipelineStateTag> h);
     void Release(ResourceHandle<RenderTargetTag> h);
     void Release(ResourceHandle<StructuredBufferTag> h);
+    void Release(ResourceHandle<AccelerationStructureTag> h);
 
     [[nodiscard]] std::size_t GetLiveDebugResourceCount() const;
     /// @note 生存中のリソース追跡情報を全プールぶん out へ追記する。
@@ -248,6 +255,7 @@ private:
     ResourcePool<IPipelineState, PipelineStateTag> m_pipelineStates;
     ResourcePool<IRenderTarget, RenderTargetTag> m_renderTargets;
     ResourcePool<IStructuredBuffer, StructuredBufferTag> m_structuredBuffers;
+    ResourcePool<IAccelerationStructure, AccelerationStructureTag> m_accelerationStructures;
 
     std::unordered_map<std::string, ResourceHandle<ShaderTag>> m_shaderCache;
     std::unordered_map<std::string, ResourceHandle<TextureTag>> m_textureCache;

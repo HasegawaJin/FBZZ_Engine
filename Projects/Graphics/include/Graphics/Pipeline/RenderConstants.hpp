@@ -589,6 +589,9 @@ static_assert(sizeof(AdvancedGraphicsCB) == 464,
 /// @note 増やすほど広がるが、画面全体がぼんやりする方向へ倒れる。
 inline constexpr uint32_t kBloomMipCount = 5;
 
+/// @note Stored as float in the existing PostProcCB field; source and final resolve must not share boolean semantics.
+enum class ReflectionResolveStage : uint32_t { LEGACY = 0, FINAL = 1, SOURCE = 2 };
+
 struct PostProcCB {
     float texelSize[2];
     float screenSize[2];
@@ -692,7 +695,12 @@ struct PostProcCB {
     float shockRingRadius;
     float shockRingWidth;
     float shockRingAmplitude;
-    float _shockRingPad[3];
+    /// @note 今フレーム生成したレイ反射を読むときだけ 1。既定 0 は未束縛 SRV を参照しない。
+    float rayReflectionEnabled = 0.0f;
+    /// @note ReflectionResolveStage: legacy0 / final1 / baseline source2. Primary glass replaces full surface radiance only in final.
+    float reflectionResolveEnabled = 0.0f;
+    /// @note このビューで SSR の記録に成功したときだけ読み、有効性と材質応答を分離する。
+    float reflectionSsrEnabled = 0.0f;
 };
 /// @note HLSL 側 (Common/Constants.hlsli の PostProcConstants) は複数コピーある。サイズがずれたら全コピーを直す。
 static_assert(sizeof(PostProcCB) == 416, "PostProcCB must match PostProcConstants in Constants.hlsli (416 bytes)");
@@ -1343,6 +1351,8 @@ struct RenderPassHandles {
     /// @note SSR (Screen Space Reflections)
     renderer::ResourceHandle<renderer::TextureTag>        ssrResult;       ///< @note SSR Compute 出力テクスチャ
     renderer::ResourceHandle<renderer::ShaderTag>         ssrShader;       ///< @note CS
+    /// @note a=1 は重み付け済み鏡面間接光、a=2 はガラスの全放射輝度。a=0 は従来反射へ戻す。
+    renderer::ResourceHandle<renderer::TextureTag>        rayReflectionResult;
 
     /// @note Volumetric Lighting
     renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;
@@ -1405,6 +1415,11 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightProbeCaptureAdvancedCB;
     /// @}
     /// @}
+    /// @note View-owned normalized GBuffer draw snapshots; numeric handles from a different ResourceManager may collide.
+    renderer::ResourceHandle<renderer::ConstantBufferTag> gbufferMaterialCB;
+    /// @note ReflectionProbe 捕捉専用。主ビューの b4/b12 を変更せず、camera-dependent shadow/cookie は unavailable。
+    renderer::ResourceHandle<renderer::ConstantBufferTag> reflectionProbeCaptureShadowCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> reflectionProbeCapturePunctualCB;
 };
 
 /// @note ShadowCascade — カスケード 1 枚ぶんの描画情報。RenderSystem が毎フレーム組み立て、

@@ -34,6 +34,10 @@ public:
     void Update(const void* data, size_t sizeBytes) override;
     size_t GetSize() const override { return m_size; }
     uint32_t GetStride() const override { return m_stride; }
+    Kind GetKind() const { return m_kind; }
+    size_t GetDataSize() const { return m_mapped ? m_dataSize : m_size; }
+    /// @note CPU-updated indices are checked against the same snapshot consumed by GetIndexView.
+    bool ValidateIndexRange(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount) const;
     D3D12_VERTEX_BUFFER_VIEW GetVertexView(DX12UploadArena& arena);
     D3D12_INDEX_BUFFER_VIEW GetIndexView(DX12UploadArena& arena);
 
@@ -45,9 +49,17 @@ public:
     /// @brief UAV 側の永続 bindless 添字。GPU 書き込み不可のバッファは INVALID を返す。
     /// @see  Docs/design/bindless.md
     uint32_t GetBindlessUavIndex() const override;
+    /// @note CPU 更新後だけ immutable 読取り snapshot を作り、旧実体と descriptor はフェンス経由で退役する。
+    uint32_t GetBindlessSrvIndex() const override;
+    uint64_t GetContentVersion() const override { return m_contentVersion; }
+    void NotifyGpuWrite() override;
+    /// @pre GetBindlessSrvIndex が成功した直後に使う。
+    ID3D12Resource* GetSrvResource() const { return m_srvResource.Get(); }
+    bool CopyData(size_t offset, size_t sizeBytes, void* output) const override;
 
 private:
     D3D12_GPU_VIRTUAL_ADDRESS PrepareForSubmit(DX12UploadArena& arena);
+    bool CreateRawReadSnapshot(size_t readableBytes, Microsoft::WRL::ComPtr<ID3D12Resource>& readable) const;
     std::vector<uint8_t> m_cpuData;
     size_t m_dataSize = 0;
     uint64_t m_cachedEpoch = 0;
@@ -58,6 +70,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
     /// @note 永続 bindless 枠 (UAV)。初回参照で確保するため mutable。
     mutable uint32_t m_bindlessUavIndex = INVALID_BINDLESS_INDEX;
+    mutable uint32_t m_bindlessSrvIndex = INVALID_BINDLESS_INDEX;
+    mutable uint64_t m_srvContentVersion = 0;
+    mutable Microsoft::WRL::ComPtr<ID3D12Resource> m_srvResource;
+    uint64_t m_contentVersion = 0;
     DX12StateTracker* m_tracker = nullptr;
     uint8_t* m_mapped = nullptr;
     size_t m_size = 0;

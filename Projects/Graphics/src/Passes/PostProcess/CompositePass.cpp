@@ -22,6 +22,11 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     r.SetRenderTarget(ctx.compositeOutputRT, resources);
 
     PostProcCB postData{};
+    const bool rayReflectionActive = ctx.rayReflectionPassActive
+        && resources.Get(ctx.handles.rayReflectionResult);
+    postData.rayReflectionEnabled = rayReflectionActive ? 1.0f : 0.0f;
+    postData.reflectionResolveEnabled = ctx.hybridReflectionResolveActive ? 1.0f : 0.0f;
+    postData.reflectionSsrEnabled = ctx.hybridReflectionResolveActive && ctx.ssrPassActive ? 1.0f : 0.0f;
     postData.texelSize[0] = 1.0f / static_cast<float>(ctx.width);
     postData.texelSize[1] = 1.0f / static_cast<float>(ctx.height);
     postData.screenSize[0] = static_cast<float>(ctx.width);
@@ -64,7 +69,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.sharpenRadius = pp.sharpen.radius;
     postData.dofFocusDistance = pp.depthOfField.focusDistance;
     postData.dofFocusRange = pp.depthOfField.focusRange;
-    postData.dofBlurRadius = pp.depthOfField.enabled ? pp.depthOfField.blurRadius : 0.0f;
+    postData.dofBlurRadius = pp.depthOfField.enabled && !ctx.rayPathViewActive ? pp.depthOfField.blurRadius : 0.0f;
     postData.sepiaIntensity = pp.stylized.sepiaEnabled ? pp.stylized.sepiaIntensity : 0.0f;
     postData.invertIntensity = pp.stylized.invertEnabled ? pp.stylized.invertIntensity : 0.0f;
     postData.posterizeLevels = pp.stylized.posterizeEnabled ? pp.stylized.posterizeLevels : 0.0f;
@@ -117,8 +122,13 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     /// @note froxelGridZ が持ち、FroxelFogPass が切ると 0 を書き戻すため常に最新を渡せば良い。
     /// @note 束縛を止めると DX11 では前フレームの値が残り、切った瞬間に画面が黒く落ちる。
     if (h.froxelFogCB.IsValid()) {
+        /// @note Reference Path は FroxelFogPass を登録しないので、以前の Raster の有効 CB を明示的に無効化する。
+        if (ctx.rayPathViewActive) {
+            const FroxelFogCB disabled{};
+            resources.Update(h.froxelFogCB, &disabled, sizeof(disabled));
+        }
         compositeDC.constantBuffers[13] = h.froxelFogCB;
-        if (h.froxelIntegrated.IsValid())
+        if (!ctx.rayPathViewActive && h.froxelIntegrated.IsValid())
             compositeDC.textures[23] = h.froxelIntegrated;
     }
     /// @note MotionBlur が有効なら CS が生成した blurred HDR を hdrRT の代わりに t5 へ束縛する。
@@ -126,7 +136,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     /// @note はそれを HDR ソースとして読むだけで良く、Composite.hlsl の変更は不要。
     /// @note 条件は ExecuteMotionBlurPass の早期 return と同じにする。シェーダーが読めずパスが走らなかった
     /// @note フレームに結果テクスチャを読むと、前のフレーム (または未初期化) の絵が出る。
-    const bool motionBlurWritten = rs.motionBlur.enabled
+    const bool motionBlurWritten = !ctx.rayPathViewActive && rs.motionBlur.enabled
         && h.motionBlurShader.IsValid() && h.motionBlurResult.IsValid();
     compositeDC.textures[5] = motionBlurWritten
         ? h.motionBlurResult
@@ -139,8 +149,10 @@ void ExecuteCompositePass(RenderPassContext& ctx)
         && h.bloomDownShader.IsValid() && h.bloomUpShader.IsValid();
     compositeDC.textures[10] = bloomWritten ? ctx.Res().Texture("Bloom") : renderer::ResourceHandle<renderer::TextureTag>{};
     /// @note SSR 反射結果 (t19) — Composite.hlsl が ssrIntensity に基づいてブレンドする
-    if (ctx.ssrPassActive && h.ssrResult.IsValid())
+    if (!ctx.hybridReflectionResolveActive && ctx.ssrPassActive && h.ssrResult.IsValid())
         compositeDC.textures[19] = h.ssrResult;
+    /// @note DeferredLighting が採用した画素では SSR を重ねず、間接鏡面の供給元を一つにする。
+    if (rayReflectionActive) compositeDC.textures[20] = ctx.handles.rayReflectionResult;
     /// @note Volumetric Light はここでは束縛しない。VolumetricLightPass が水・半透明より前で
     /// @note HDR へ加算済みで、ここで足すと二重になるうえ水面の手前へ光芒が乗る。
     /// @note Procedural LUT (t22) — Renderer互換の32^3 Texture3DをRenderSystemがCPU生成する。

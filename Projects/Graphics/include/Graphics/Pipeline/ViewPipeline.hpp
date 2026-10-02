@@ -29,7 +29,7 @@ struct ViewPipelineExtensions {
 };
 /// @pre context とビューは登録されたパスの実行終了まで生存すること。
 /// @note options/extensions は保持しない。実行後は BeginBuild でホストのコールバックを破棄する。
-/// @note 無効な Plan は登録しない。現段階で対応する実効モードは Raster のみ。
+    /// @note 無効な Plan は登録しない。Reference Path は Raster の照明・TAA を使用しない。
 void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& context,
     RenderViewResources& view, RenderSharedResources& shared,
     const ViewPipelineOptions& options, const ViewPipelineExtensions& extensions = {});

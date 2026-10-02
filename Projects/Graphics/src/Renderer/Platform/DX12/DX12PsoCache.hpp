@@ -6,6 +6,7 @@
 
 #include <Graphics/Renderer/RenderState.hpp>
 #include <d3d12.h>
+#include <cstdint>
 #include <unordered_map>
 #include <wrl/client.h>
 
@@ -34,7 +35,8 @@ public:
 
 private:
     struct Key {
-        const DX12Shader* shader = nullptr;
+        /// @note Shader allocation addresses are reusable after resource reset; bytecode generation is the identity instead.
+        uint64_t shaderIdentity = 0;
         RasterizerMode rasterizer{};
         BlendMode blend{};
         DepthMode depth{};
@@ -61,7 +63,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_computeRootSignature;
     std::unordered_map<Key, Microsoft::WRL::ComPtr<ID3D12PipelineState>, KeyHash> m_cache;
-    std::unordered_map<const DX12Shader*, Microsoft::WRL::ComPtr<ID3D12PipelineState>> m_computeCache;
+    std::unordered_map<uint64_t, Microsoft::WRL::ComPtr<ID3D12PipelineState>> m_computeCache;
 };
 
 } /// @note namespace fbzz::renderer

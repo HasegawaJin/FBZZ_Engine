@@ -2,7 +2,7 @@
 /// @brief   標準 PBR の表面と線形 HDR 発光を 3 枚の MRT に保持する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-23
-/// @note SV_Target0: albedo / roughness、SV_Target1: normal / metallic、SV_Target2: emission / 予約。
+/// @note SV_Target0: albedo / roughness、SV_Target1: normal / metallic、SV_Target2: emission / validated Hybrid surface marker。
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
@@ -29,8 +29,8 @@ PSInput GBufferVS(VSInput v, float4x4 objectWorld, float4x4 objectWorldInvTransp
     float4 worldPos4 = mul(float4(v.position, 1.0f), objectWorld);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(v.normal,  (float3x3)objectWorldInvTranspose));
-    o.tangent    = normalize(mul(v.tangent, (float3x3)objectWorld));
+    o.normal     = SafeNormalize(mul(v.normal, (float3x3)objectWorldInvTranspose), float3(0.0f, 1.0f, 0.0f));
+    o.tangent    = SafeNormalize(mul(v.tangent, (float3x3)objectWorld), float3(1.0f, 0.0f, 0.0f));
     o.uv         = v.uv;
     return o;
 }
@@ -89,12 +89,12 @@ GBufferOut PSMain(PSInput p)
     float  alpha = rawAlbedo.a * albedo.a;
     clip(alpha - alphaCutoff);
 
-    float3 N = normalize(p.normal);
+    float3 N = SafeNormalize(p.normal, float3(0.0f, 1.0f, 0.0f));
     if (textureMask & (1u << 1))
     {
         float3 ns = texNormal.Sample(sampDefault, uv).rgb;
-        float3 nm = ApplyNormalMap(ns, N, normalize(p.tangent));
-        N = normalize(lerp(N, nm, normalStrength));
+        float3 nm = ApplyNormalMap(ns, N, SafeNormalize(p.tangent, float3(1.0f, 0.0f, 0.0f)));
+        N = SafeNormalize(lerp(N, nm, saturate(normalStrength)), N);
     }
 
     /// @note Metallic / Roughness (glTF 規約: G=roughness, B=metallic)
@@ -126,6 +126,7 @@ GBufferOut PSMain(PSInput p)
     o.albedoRoughness = float4(col, rough);
     /// @note 法線は [-1,1] → [0,1] にエンコード (復元: n*2-1)
     o.normalMetallic  = float4(N * 0.5f + 0.5f, met);
-    o.emission = float4(emissionTexture * emissiveColor * emissiveScale, 0.0f);
+    /// @note The normalized draw material supplies opaque0 / supportedGlass1 / unsupportedTypedGlass2 at float@84; alpha is not emission energy.
+    o.emission = float4(emissionTexture * emissiveColor * emissiveScale, _matPad1.x);
     return o;
 }

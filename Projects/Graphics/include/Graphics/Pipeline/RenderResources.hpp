@@ -7,6 +7,7 @@
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Pipeline/ResolvedRenderPlan.hpp>
 #include <Graphics/Pipeline/EnvironmentResources.hpp>
+#include <Graphics/Pipeline/RayTracingPipeline.hpp>
 #include <Graphics/Renderer/DynamicBufferPool.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <unordered_map>
@@ -14,8 +15,19 @@
 namespace fbzz::renderer {
 /// @note GPU のボーンパレット契約。Engine の Skeleton と静的検証する。
 inline constexpr int RENDER_SKINNING_BONES = 128;
-/// @note RGBA16F: albedo / roughness、normal / metallic、線形 HDR emission。
+/// @note RGBA16F: albedo / roughness、normal / metallic、線形 HDR emission / typed glass marker。
 inline constexpr uint32_t GBUFFER_COLOR_COUNT = 3;
+
+/// @note 照明・反射合成方式と実記録・連続フレームを追跡する。画素別の反射 motion 履歴ではない。
+struct TaaProviderHistory {
+    RenderMode mode = RenderMode::RASTER;
+    bool reflectionActive = false;
+    bool reflectionResolveActive = false;
+    bool screenReflectionActive = false;
+    bool valid = false;
+    uint64_t frameStamp = 0;
+    uint64_t epoch = 0;
+};
 
 /// @note Viewport ごとに解像度依存の中間リソースを保持する。
 /// @note static で共有すると SceneView と GameView が 1 フレーム内でリサイズし合う。
@@ -70,6 +82,9 @@ struct RenderViewResources {
     /// @note static で共有すると SceneView と GameView が互いのカメラ行列を引き、
     /// @note MotionBlur / TAA の再投影が常に壊れる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
+    /// @note TAA 直前の feedback 更新は typed CPU snapshot から行い、別の照明定数を失わない。
+    AdvancedGraphicsCB advancedGraphicsSnapshot{};
+    bool advancedGraphicsSnapshotValid = false;
     /// @name 自動露出 (ビュー単位・解像度非依存)
     /// @note exposureResult は「順応済みの平均輝度」でフレームをまたぐ状態。static で共有すると
     /// @note SceneView と GameView が交互に順応を進め、互いの明るさへ引きずられて露出が振れる。
@@ -105,14 +120,31 @@ struct RenderViewResources {
     /// @note 作り直した直後と TAA を切っていた後は中身が未定義か古い絵。false の間は taaFeedback を 0 にし、
     /// @note 今のフレームだけで履歴を作り直す。リサイズでは保存・復元しないので false に戻る。
     bool taaHistoryValid = false;
+    TaaProviderHistory taaProviderHistory;
     uint32_t width = 0;
     uint32_t height = 0;
     /// @note 当該ビューで最後に準備した構成。PrepareView の開始時に無効へ戻す。
     ResolvedRenderPlan renderPlan;
+    RayDebugViewResources rayDebug;
+    RayReflectionViewResources rayReflection;
+    bool rayReflectionCovered = false;
+    RayPathViewResources rayPath;
+    bool rayPathCovered = false;
+    bool rayPathPrepared = false;
+    /// @note Canonical material bytes plus the typed glass marker. Survives resize, retires with this view and ResourceManager.
+    ResourceHandle<ConstantBufferTag> gbufferMaterialCB;
 };
 
 /// @note GPU 実体は ResourceManager が所有し、この状態も同じ Manager の Reset/終了時に破棄する。
 struct RenderSharedResources {
+    RayGeometryCache rayGeometry;
+    ResourceHandle<ShaderTag> rayDebugShader;
+    ResourceHandle<ShaderTag> rayReflectionShader;
+    ResourceHandle<ShaderTag> rayReflectionReconstructionShader;
+    ResourceHandle<ShaderTag> rayPathShader;
+    ResourceHandle<ShaderTag> rayPathResolveShader;
+    ResourceHandle<ShaderTag> rayGameReconstructionShader;
+    ResourceHandle<PipelineStateTag> rayPathResolvePSO;
     SizedRenderTarget shadowMapRT{};
     SizedRenderTarget punctualShadowRT{};
     SizedRenderTarget lightCookieRT{};
@@ -243,6 +275,9 @@ struct RenderSharedResources {
     ResourceHandle<PipelineStateTag> decalPSO{};
     ResourceHandle<PipelineStateTag> decalMaskPso{};
     ResourceHandle<BufferTag> particleIB{};
+    /// @note DynamicScene 捕捉は主カメラの前フレーム atlas を読まず、現在の光源だけを独立して束縛する。
+    ResourceHandle<ConstantBufferTag> reflectionProbeCaptureShadowCB{};
+    ResourceHandle<ConstantBufferTag> reflectionProbeCapturePunctualCB{};
 
     void Initialize(ResourceManager& resources);
     bool Prepare(ResourceManager& resources, const RenderSettings& rs);

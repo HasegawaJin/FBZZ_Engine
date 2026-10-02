@@ -7,11 +7,13 @@
 #include "../GpuValidation.hpp"
 
 #include <Core/Logger.hpp>
+#include <Core/HResult.hpp>
 #include <cstring>
 #include <cwchar>
 #include <algorithm>
 #include <iterator>
 #include <vector>
+#include <pix3.h>
 #if defined(FBZZ_GPU_VALIDATION)
 #include <d3d12sdklayers.h>
 #endif
@@ -22,6 +24,15 @@ namespace {
 
 /// @note 遮蔽検知の Present-test は実 Present を行わないため、常に同期無しで投げる。
 constexpr UINT kPresentSyncIntervalNoVsync = 0;
+
+/// @note GPU overloads also emit CPU scopes; adding separate CPU events would duplicate the stack.
+/// @see https://devblogs.microsoft.com/pix/winpixeventruntime/ Official CPU/GPU event pairing.
+void EmitPixEvent(ID3D12GraphicsCommandList* commands, bool begin,
+                  uint64_t color, const std::string& name)
+{
+    if (begin) PIXBeginEvent(commands, color, "%s", name.c_str());
+    else PIXEndEvent(commands);
+}
 
 bool CheckResult(HRESULT result, const char* operation)
 {
@@ -37,6 +48,30 @@ bool CheckResult(HRESULT result, const char* operation)
 DX12Context::~DX12Context()
 {
     Shutdown();
+}
+
+uint64_t DX12Context::BeginPixEvent(ID3D12GraphicsCommandList* commands,
+                                   std::string_view name, uint64_t color)
+{
+    if (!commands) return 0;
+    const auto emit = [commands](bool begin, uint64_t eventColor, const std::string& eventName) {
+        EmitPixEvent(commands, begin, eventColor, eventName);
+    };
+    if (commands == m_computeList.Get() && m_computeListOpen)
+        return m_computePixEvents.Begin(name, color, emit);
+    if (commands == m_commandList.Get() && m_frameOpen)
+        return m_graphicsPixEvents.Begin(name, color, emit);
+    return 0;
+}
+
+void DX12Context::EndPixEvent(ID3D12GraphicsCommandList* commands, uint64_t token)
+{
+    if (!commands || token == 0) return;
+    const auto emit = [commands](bool begin, uint64_t color, const std::string& name) {
+        EmitPixEvent(commands, begin, color, name);
+    };
+    if (commands == m_computeList.Get()) m_computePixEvents.End(token, emit);
+    else if (commands == m_commandList.Get()) m_graphicsPixEvents.End(token, emit);
 }
 
 bool DX12Context::Initialize(HWND hwnd, uint32_t width, uint32_t height)
@@ -399,7 +434,16 @@ bool DX12Context::CreateCommandsAndFence()
 uint64_t DX12Context::SplitGraphicsList()
 {
     if (!m_frameOpen) return 0;
-    if (!CheckResult(m_commandList->Close(), "CommandList::Close (分割)")) return 0;
+    const auto emit = [this](bool begin, uint64_t color, const std::string& name) {
+        EmitPixEvent(m_commandList.Get(), begin, color, name);
+    };
+    /// @note PIX GPU scopes may not span lists; only logical names survive a successful Reset.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-close Command-list recording boundary.
+    m_graphicsPixEvents.Suspend(emit);
+    if (!CheckResult(m_commandList->Close(), "CommandList::Close (分割)")) {
+        m_graphicsPixEvents.Discard(emit);
+        return 0;
+    }
 
     ID3D12CommandList* lists[] = { m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(1, lists);
@@ -411,10 +455,13 @@ uint64_t DX12Context::SplitGraphicsList()
                      "CommandList::Reset (分割)")) {
         /// @note ここで失敗するとフレームの記録先が閉じたままになる。以降の記録を捨てる。
         m_frameOpen = false;
+        m_graphicsPixEvents.Discard(emit);
         return 0;
     }
     /// @note Reset で全パイプライン状態が落ちた。束縛の記憶を持つ側へ知らせる。
+    ++m_graphicsCommandListSerial;
     MarkPipelineStateDirty();
+    m_graphicsPixEvents.Resume(emit);
     return value;
 }
 
@@ -427,12 +474,18 @@ ID3D12GraphicsCommandList* DX12Context::BeginComputeList(uint64_t waitGraphicsFe
     if (waitGraphicsFenceValue != 0)
         m_computeQueue->Wait(m_fence.Get(), waitGraphicsFenceValue);
     m_computeListOpen = true;
+    m_computePixEvents.Resume([this](bool begin, uint64_t color, const std::string& name) {
+        EmitPixEvent(m_computeList.Get(), begin, color, name);
+    });
     return m_computeList.Get();
 }
 
 void DX12Context::EndComputeList()
 {
     if (!m_computeListOpen) return;
+    m_computePixEvents.Discard([this](bool begin, uint64_t color, const std::string& name) {
+        EmitPixEvent(m_computeList.Get(), begin, color, name);
+    });
     m_computeListOpen = false;
     if (!CheckResult(m_computeList->Close(), "ComputeList::Close")) return;
 
@@ -468,6 +521,7 @@ bool DX12Context::BeginFrame()
     if (!CheckResult(frame.allocator->Reset(), "CommandAllocator::Reset")
         || !CheckResult(m_commandList->Reset(frame.allocator.Get(), nullptr), "CommandList::Reset"))
         return false;
+    ++m_graphicsCommandListSerial;
     /// @note このフレームのコンピュート用アロケーターもここで 1 回だけ巻き戻す。同じフレームの
     /// @note       描画フェンスを待った後なので、そのフレームのコンピュートも既に終わっている
     /// @note       (描画キューが区間の完了を待ってから最後の Signal を出すため)。
@@ -485,22 +539,30 @@ bool DX12Context::BeginFrame()
     m_commandList->RSSetViewports(1, &viewport);
     m_commandList->RSSetScissorRects(1, &scissor);
     m_frameOpen = true;
+    m_graphicsPixEvents.Resume([this](bool begin, uint64_t color, const std::string& name) {
+        EmitPixEvent(m_commandList.Get(), begin, color, name);
+    });
     return true;
 }
 
-void DX12Context::EndFrame()
+uint64_t DX12Context::EndFrame()
 {
     if (!m_frameOpen)
-        return;
+        return 0;
     TransitionBackBuffer(D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    m_graphicsPixEvents.Discard([this](bool begin, uint64_t color, const std::string& name) {
+        EmitPixEvent(m_commandList.Get(), begin, color, name);
+    });
     if (!CheckResult(m_commandList->Close(), "CommandList::Close")) {
         m_frameOpen = false;
-        return;
+        return 0;
     }
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
     const uint64_t fenceValue = m_nextFenceValue++;
-    m_commandQueue->Signal(m_fence.Get(), fenceValue);
+    const HRESULT signalResult = m_commandQueue->Signal(m_fence.Get(), fenceValue);
+    m_frameOpen = false;
+    FBZZ_HR_CHECK(signalResult);
     m_frames[m_frameIndex].fenceValue = fenceValue;
     const UINT syncInterval = m_vsync ? 1u : 0u;
     const UINT presentFlags = (!m_vsync && m_allowTearing) ? DXGI_PRESENT_ALLOW_TEARING : 0u;
@@ -517,7 +579,7 @@ void DX12Context::EndFrame()
         m_occluded = false;
     }
     m_frameIndex = (m_frameIndex + 1) % FRAME_COUNT;
-    m_frameOpen = false;
+    return fenceValue;
 }
 
 void DX12Context::Resize(uint32_t width, uint32_t height)
@@ -574,6 +636,13 @@ void DX12Context::Flush()
 
 void DX12Context::Shutdown()
 {
+    m_computePixEvents.Discard([this](bool begin, uint64_t color, const std::string& name) {
+        EmitPixEvent(m_computeList.Get(), begin, color, name);
+    });
+    m_graphicsPixEvents.Discard([this](bool begin, uint64_t color, const std::string& name) {
+        EmitPixEvent(m_commandList.Get(), begin, color, name);
+    });
+    m_computeListOpen = false;
     if (m_commandQueue)
         Flush();
     FlushCopyQueue();
@@ -957,10 +1026,10 @@ bool DX12Context::CreateDefaultBuffer(
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     D3D12_HEAP_PROPERTIES defaultHeap{};
     defaultHeap.Type = D3D12_HEAP_TYPE_DEFAULT;
-    const D3D12_RESOURCE_STATES initialState = data
-        ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_COMMON;
+    /// @note Buffer は COMMON で生成し、最初の CopyBufferRegion で COPY_DEST へ暗黙昇格する。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12 Common state promotion
     if (FAILED(m_device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &desc,
-            initialState, nullptr, IID_PPV_ARGS(&buffer)))) return false;
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&buffer)))) return false;
     if (!data) return true;
     D3D12_HEAP_PROPERTIES uploadHeap{};
     uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;

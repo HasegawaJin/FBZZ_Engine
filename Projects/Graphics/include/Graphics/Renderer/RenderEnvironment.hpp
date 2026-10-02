@@ -4,6 +4,7 @@
 /// @date    2026-09-21
 #pragma once
 #include <Graphics/Renderer/ResourceHandle.hpp>
+#include <Graphics/RayTracing/RayEnvironment.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <optional>
@@ -45,6 +46,7 @@ struct RenderCausticsInput {
     ResourceHandle<TextureTag> texture;
 };
 struct RenderEnvironmentInput {
+    RayEnvironmentInput rayEnvironment;
     std::optional<RenderSkyInput> sky;
     std::optional<RenderSunMoonInput> sunMoon;
     RenderCloudConstants cloud{};

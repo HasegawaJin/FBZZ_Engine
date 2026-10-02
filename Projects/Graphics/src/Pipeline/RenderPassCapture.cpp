@@ -317,22 +317,33 @@ void RenderPassCapture::CaptureGallery(RenderPassContext& ctx)
 }
 
 void RenderPassCapture::Finish(const renderer::RenderGraph::ExecutionReport& report,
-                               const std::vector<renderer::GpuPassProfile>& gpuTimings)
+                               const GpuProfilerSnapshot& gpuSnapshot,
+                               const GpuProfilerViewMetadata& capturedView)
 {
+    const auto& gpuTimings = gpuSnapshot.passes;
     size_t profileIndex = 0;
     for (auto& pass : m_passes) {
+        pass.gpuMs = -1.0;
         if (pass.culled) continue;
         if (profileIndex < report.profiles.size())
             pass.cpuMs = report.profiles[profileIndex++].cpuMilliseconds;
-        /// @note GPU profiler は別ビューの同名パスも返す。曖昧な重複は数値を捏造せず未計測にする。
+        if (!gpuSnapshot.available || !gpuSnapshot.complete || capturedView.planGeneration == 0)
+            continue;
+        /// @note 名前の一致だけでは過去の画像や別ビューに結び付く。完全一致の出自だけを受け入れる。
+        const auto matchesPass = [&](const auto& timing) {
+            return timing.name == pass.name && IsGpuProfilerViewCompatible(timing.metadata, capturedView)
+                && timing.physicalFrameSerial == gpuSnapshot.physicalFrameSerial
+                && timing.deviceEpoch == gpuSnapshot.deviceEpoch;
+        };
         const auto matches = std::count_if(gpuTimings.begin(), gpuTimings.end(),
-            [&pass](const auto& timing) { return timing.name == pass.name; });
+            matchesPass);
         const auto sameNamePasses = std::count_if(m_passes.begin(), m_passes.end(),
             [&pass](const auto& item) { return !item.culled && item.name == pass.name; });
         if (matches == 1 && sameNamePasses == 1) {
             const auto timing = std::find_if(gpuTimings.begin(), gpuTimings.end(),
-                [&pass](const auto& item) { return item.name == pass.name; });
-            pass.gpuMs = timing->gpuMs;
+                matchesPass);
+            if (timing->available && std::isfinite(timing->gpuMs) && timing->gpuMs >= 0.0)
+                pass.gpuMs = timing->gpuMs;
         }
     }
 }
