@@ -2,7 +2,7 @@
 /// @brief   メインメニューバーの構築とホットキー登録。
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
-///
+
 /// @note UI 記述に特化した独立ファイル。ライフサイクル管理やシーン I/O と関心を分離する。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
@@ -1026,7 +1026,7 @@ void EditorApp::DrawBuildNotificationBar(EditorContext& ctx)
     ImGui::PopStyleColor();
 }
 
-void EditorApp::DrawGuidConflictBar(EditorContext& /*ctx*/)
+void EditorApp::DrawGuidConflictBar(EditorContext&)
 {
     const size_t count = asset::AssetDatabase::GuidConflictCount();
     if (count == 0) return;

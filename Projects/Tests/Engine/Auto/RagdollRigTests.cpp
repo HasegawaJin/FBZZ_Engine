@@ -2,10 +2,7 @@
 /// @brief   骨の並び ↔ 剛体の往復と、プロファイルの割り当てを自動検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-02
-///
-/// スケルトンもシーンも用意せず、骨の «ワールド姿勢の配列» だけで確かめる。
-/// 一番大事なのは «捕獲して書き戻したら元の姿勢に戻る» こと ─ ここが崩れていると、
-/// ラグドールを起動した瞬間にキャラクターの形が変わる。
+/// @note シーンを使わず、骨のワールド姿勢配列で捕獲と書き戻しの往復を検証する。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
@@ -25,8 +22,8 @@ class RagdollRigTest : public testkit::EngineFixture {};
 
 namespace {
 
-/// 原点から +Y へ 1m 刻みで伸びる、まっすぐな 4 本の骨。
-/// 3 本が剛体を持ち (最後の骨は葉なので持たない)、関節は 2 本。
+/// @brief 原点から +Y へ 1m 刻みで伸びる骨を作る。
+/// @note 既定の 4 本では葉を除く 3 剛体と 2 関節になる。
 std::vector<scene::RagdollBonePose> StraightChain(int boneCount = 4)
 {
     std::vector<scene::RagdollBonePose> bones;
@@ -41,9 +38,8 @@ std::vector<scene::RagdollBonePose> StraightChain(int boneCount = 4)
     return bones;
 }
 
-/// 原点から +X へ 1m 刻みで伸びる骨。**重力が関節を曲げる向きに掛かる**ので、
-/// «サーボが荷重を支えられるか» を見るにはこちらを使う (縦の鎖では軸方向にしか
-/// 引かれず、力負けが起きない)。
+/// @brief 原点から +X へ 1m 刻みで伸びる骨を作る。
+/// @note 縦の鎖と異なり、重力が関節を曲げるのでサーボの荷重支持を検証できる。
 std::vector<scene::RagdollBonePose> HorizontalChain(int boneCount = 4)
 {
     std::vector<scene::RagdollBonePose> bones;
@@ -90,7 +86,7 @@ float MaxRotationError(const std::vector<scene::RagdollBonePose>& expected,
     return worst;
 }
 
-} // namespace
+}
 
 TEST_F(RagdollRigTest, PlayerHumanoidProfileHandlesReportedBonesWithoutFallback)
 {
@@ -133,7 +129,7 @@ TEST_F(RagdollRigTest, BuildsOneBodyPerBoneThatHasAChild)
     EXPECT_EQ(rig.BodyIndexOfBone(3), -1);
 }
 
-/// 一番大事な契約。物理を 1 ステップも回さずに書き戻したら、元の姿勢と一致すること。
+/// @note 物理ステップなしの捕獲と書き戻しでは元の姿勢と一致すること。
 TEST_F(RagdollRigTest, CaptureThenWriteReproducesThePose)
 {
     const auto bones = StraightChain(4);
@@ -150,7 +146,7 @@ TEST_F(RagdollRigTest, CaptureThenWriteReproducesThePose)
     EXPECT_LT(MaxRotationError(bones, rotations), 1.0e-3f);
 }
 
-/// 組んだ時と違う姿勢を捕獲しても往復すること。ラグドールは «歩いている途中» で起動する。
+/// @note 構築時と異なる途中の姿勢を捕獲しても往復できること。
 TEST_F(RagdollRigTest, CaptureReproducesAPoseDifferentFromTheBuildPose)
 {
     const auto bones = StraightChain(4);
@@ -176,7 +172,7 @@ TEST_F(RagdollRigTest, CaptureReproducesAPoseDifferentFromTheBuildPose)
     EXPECT_LT(MaxRotationError(bent, rotations), 1.0e-3f);
 }
 
-/// 剛体を持たない葉の骨も、親に付いて動くこと。
+/// @note 剛体を持たない葉の骨も親に追従すること。
 TEST_F(RagdollRigTest, LeafBoneFollowsItsParentBody)
 {
     const auto bones = StraightChain(4);
@@ -219,7 +215,7 @@ TEST_F(RagdollRigTest, JointsKeepTheChainConnectedWhileFalling)
     }
 }
 
-/// Active の要。ドライブの目標を今の骨から取り直すと、無負荷の釣り合い点がその姿勢になる。
+/// @note 現在の骨からドライブ目標を取り直すと、無負荷の釣り合い点はその姿勢になる。
 TEST_F(RagdollRigTest, DriveHoldsTheAnimationPoseUnderGravity)
 {
     const auto bones = StraightChain(4);
@@ -241,8 +237,7 @@ TEST_F(RagdollRigTest, DriveHoldsTheAnimationPoseUnderGravity)
         rig.Step(1.0f / 60.0f);
     }
 
-    /// @note 根の剛体は何にも繋がっていないので落ちる。ここで見たいのは «形が保たれるか» で、
-    ///       関節から先が垂れていないこと ＝ 姿勢のずれが小さいこと。
+    /// @note 根は自由落下するため、根の移動を除いた姿勢のずれで関節の垂れを検証する。
     std::vector<math::Vector3>    positions;
     std::vector<math::Quaternion> rotations;
     rig.WritePose(bones, positions, rotations);
@@ -254,7 +249,7 @@ TEST_F(RagdollRigTest, DriveHoldsTheAnimationPoseUnderGravity)
     }
 }
 
-/// 接地。M3 で本物の接触へ差し替わるまでの足場だが、«床を抜けない» は今から要る。
+/// @note 接触の簡易平面でも床を抜けないこと。
 TEST_F(RagdollRigTest, GroundPlaneStopsTheFallingChain)
 {
     const auto bones = StraightChain(4);
@@ -275,8 +270,7 @@ TEST_F(RagdollRigTest, GroundPlaneStopsTheFallingChain)
         EXPECT_GT(positions[i].y, -2.15f) << "bone " << i << " fell through the ground";
 }
 
-/// 力負け。同じ荷重でもトルク上限が低い関節は目標を保てず、そのぶん垂れる。
-/// «サーボが力負けする» はロボット感の中心なので、数値として押さえておく。
+/// @note 同じ荷重で低いトルク上限の関節ほど垂れ、出力が飽和すること。
 TEST_F(RagdollRigTest, LowerTorqueLimitSagsMoreAndSaturates)
 {
     const auto bones = HorizontalChain(4);
@@ -288,9 +282,7 @@ TEST_F(RagdollRigTest, LowerTorqueLimitSagsMoreAndSaturates)
     profile.fallback.servo.holdSag     = 0.02f;
     profile.fallback.servo.damping     = 20.0f;
 
-    /// @note 自由落下する鎖は垂れない (重力が一様で全剛体が同じ加速度で落ち、関節にたわみが
-    ///       生まれずサーボが 1 N·m も出さない)。トルクの上限を見るには反力を受ける固定点が
-    ///       要る (片持ち梁にする)。
+    /// @note 一様な自由落下では関節に荷重が掛からないため、根を固定してトルク上限を検証する。
     const auto sagWith = [&](float driveScale, int& outSaturated) {
         scene::RagdollRig rig;
         rig.Build(bones, profile);
@@ -299,8 +291,7 @@ TEST_F(RagdollRigTest, LowerTorqueLimitSagsMoreAndSaturates)
         rig.SetDrive(true, driveScale, 1.0f, 1.0f);
         rig.SetGravity({ 0.0f, -9.81f, 0.0f });
 
-        /// @note 垂れ切って «軸方向にぶら下がる» 形に落ち着くとトルクが要らなくなるので、
-        ///       最後の 1 フレームではなく «一度でも張り付いたか» を見る。
+        /// @note 垂れ切るとトルク不要になるため、最終フレームではなく飽和履歴を検証する。
         outSaturated = 0;
         for (int i = 0; i < 120; ++i) {
             rig.UpdateDriveTargets(bones);
@@ -353,14 +344,12 @@ TEST_F(RagdollRigTest, ImpulsePushesEveryBody)
             << "bone " << i;
 }
 
-/// M3。世界に置いた «床» で止まること。自前の平面ではなく、World のコライダーを
-/// 既存の NarrowPhase 越しに拾って解いている経路を通す。
+/// @note 簡易平面ではなく、World コライダーと NarrowPhase の接触で落下を止めること。
 TEST_F(RagdollRigTest, WorldColliderStopsTheFall)
 {
     const auto bones = StraightChain(4);
 
-    /// @note 天板が y = 0 に来る箱を静的コライダーとして置く。静的コライダーは World が
-    ///       Update しない (剛体を持たないため) ので、ここで一度だけワールドへ置く。
+    /// @note 剛体のない静的コライダーは World が更新しないため、天板 y = 0 の姿勢を明示する。
     physics::OBBCollider floor{ { 20.0f, 1.0f, 20.0f } };
     floor.Update({ 0.0f, -1.0f, 0.0f }, math::Quaternion::Identity());
     const physics::PhysicsMaterial material;
@@ -393,8 +382,7 @@ TEST_F(RagdollRigTest, WorldColliderStopsTheFall)
         EXPECT_GT(positions[i].y, -0.2f) << "bone " << i << " fell through the world collider";
 }
 
-/// M4。World が積分している剛体は substep の中では動かさず、受けた反作用を
-/// フレーム末に力積として返す。«瓦礫を蹴る» の実体。
+/// @note World が積分する剛体を substep で動かさず、フレーム末の反作用の力積で動かすこと。
 TEST_F(RagdollRigTest, FallingRagdollKicksADynamicBody)
 {
     const auto bones = StraightChain(4);
@@ -432,8 +420,7 @@ TEST_F(RagdollRigTest, FallingRagdollKicksADynamicBody)
     EXPECT_LT(debris.GetVelocity().y, 0.0f) << "the dynamic body was never pushed";
 }
 
-/// 関節で繋がった骨どうしは必ず重なる。当ててしまうと、関節が寄せた端から接触が
-/// 押し返して震え続ける ─ 真っ直ぐな鎖では自己衝突が 1 つも出ないのが正しい。
+/// @note 関節で隣接する骨は重なるため、接触の押し返しによる振動を避けて自己衝突から除外する。
 TEST_F(RagdollRigTest, ConnectedBonesDoNotSelfCollide)
 {
     const auto bones = StraightChain(4);
@@ -452,8 +439,7 @@ TEST_F(RagdollRigTest, ConnectedBonesDoNotSelfCollide)
     EXPECT_EQ(rig.GetContactCount(), 0);
 }
 
-/// @note トルクを自重を支えるのに要る量への倍率で持つ。絶対値 [N·m] で固定すると骨格の大きさが
-///       変わるたびに数値を置き直す必要があり、汎用のプロファイルにならない。
+/// @note トルクを自重支持量の倍率で持ち、骨格の大きさが変わってもプロファイルを共用できること。
 TEST_F(RagdollRigTest, TorqueFollowsTheSkeletonScale)
 {
     const auto relativeSag = [](float scale) {
@@ -494,9 +480,7 @@ TEST_F(RagdollRigTest, TorqueFollowsTheSkeletonScale)
     EXPECT_NEAR(large, small, 0.05f) << "small=" << small << " large=" << large;
 }
 
-/// 常時アクティブの前提。関節は «隣の骨との相対» しか拘束しないので、根を繋ぎ止めないと
-/// サーボが形を保ったまま全体が重力で落ちていく。倒れる数秒だけなら見えないが、
-/// 立っている間ずっと走らせると胴が床下へ沈む。
+/// @note 関節は相対姿勢だけを拘束するため、常時アクティブでは根の固定が全身の落下を防ぐ。
 TEST_F(RagdollRigTest, RootAnchorHoldsTheWholeBodyUpUnderGravity)
 {
     const auto bones = StraightChain(4);
@@ -530,7 +514,7 @@ TEST_F(RagdollRigTest, RootAnchorHoldsTheWholeBodyUpUnderGravity)
             << "bone " << i << " drifted from the animation pose";
 }
 
-/// 脱力したら繋ぎ止めも外れること。残ると «力が抜けたのに胴だけ宙に留まる» になる。
+/// @note 脱力時に根の固定も外れ、胴だけが宙に留まらないこと。
 TEST_F(RagdollRigTest, PassiveReleasesTheRootAnchor)
 {
     const auto bones = StraightChain(4);
@@ -556,8 +540,7 @@ TEST_F(RagdollRigTest, PassiveReleasesTheRootAnchor)
     EXPECT_LT(positions[0].y, bones[0].position.y - 1.0f);
 }
 
-/// 可動域の自動学習。クリップが «曲げてよいことになっていない» 所まで曲げていると
-/// サーボが目標へ行けず絵が崩れる。要求された角を測って広げれば、崩れなくなる。
+/// @note クリップの要求角を学習して可動域を広げると、サーボが目標へ到達できること。
 TEST_F(RagdollRigTest, LearningWidensLimitsToFitTheClip)
 {
     const auto bones = StraightChain(4);
@@ -573,13 +556,7 @@ TEST_F(RagdollRigTest, LearningWidensLimitsToFitTheClip)
     profile.fallback.limits.swingMaxZ = 0.01f;
     profile.fallback.servo.enabled    = true;
 
-    /// @note 骨 1 で折れ曲がった «クリップ» を作る。
-    ///
-    ///       曲げる骨の回転も一緒に回すこと。剛体は «その骨から次の骨へ» の区間を代表し、
-    ///       向きは骨の rotation から作られる。回転を据え置いたまま子の位置だけ動かすと、
-    ///       剛体の向きと関節の位置が食い違った «骨格として有り得ない姿勢» になり、
-    ///       捕獲した瞬間にソケット拘束が 0.6m ぶん引き戻しにかかる。
-    ///       それは «可動域が狭い» のではなく «姿勢が壊れている» ので、この試験の対象ではない。
+    /// @note 子の位置と骨の回転を共に曲げ、捕獲時にソケット拘束が戻す不正な姿勢を作らない。
     auto bent = bones;
     const math::Quaternion bend = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, 0.6f);
     for (std::size_t i = 1; i < bent.size(); ++i) {
@@ -620,8 +597,7 @@ TEST_F(RagdollRigTest, ProfileResolvesByBoneNameSubstring)
     EXPECT_FLOAT_EQ(profile.Resolve("Spine_01").radiusRatio, 0.5f);
 }
 
-/// @note 回帰: Mech プロファイルは Boss_01 のリグ (README: Body + 脚 4 本 × Thigh→Shin→Hock→Foot)
-///       全部位に当たること。Resolve は外れても既定 settings を返すため、取りこぼしに気づきにくい。
+/// @note Resolve は未一致でも fallback を返すため、Mech が Boss_01 の胴と全脚の各部位に一致することを検証する。
 TEST_F(RagdollRigTest, MechProfileCoversTheBossRig)
 {
     const scene::RagdollProfile profile = scene::RagdollProfile::Mech();
@@ -630,7 +606,7 @@ TEST_F(RagdollRigTest, MechProfileCoversTheBossRig)
                               "Yaw_FR", "Thigh_FR", "Shin_FR", "Hock_FR", "Foot_FR",
                               "Yaw_BL", "Thigh_BL", "Shin_BL", "Hock_BL", "Foot_BL" }) {
         bool matched = false;
-        profile.Resolve(bone, &matched);
+        EXPECT_NE(&profile.Resolve(bone, &matched), &profile.fallback);
         EXPECT_TRUE(matched) << bone << " falls through to the profile fallback";
     }
 
@@ -660,7 +636,7 @@ TEST_F(RagdollRigTest, MechProfileCoversTheBossRig)
     EXPECT_FLOAT_EQ(knee.limits.swingMinZ, 0.0f);
 }
 
-/// 当たらない骨は «黙って fallback» にせず、名前で残すこと。
+/// @note 一致しない骨は黙って fallback にせず、名前を記録すること。
 TEST_F(RagdollRigTest, UnmatchedBonesAreNamed)
 {
     auto bones = StraightChain(4);
@@ -828,4 +804,4 @@ TEST_F(RagdollRigTest, StandingProjectionPreservesLengthsAndPhysicalBodyCenters)
     EXPECT_GT(largestResponse, 0.0001f);
 }
 
-} // namespace fbzz::tests
+}
