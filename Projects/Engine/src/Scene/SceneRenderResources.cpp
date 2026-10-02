@@ -151,6 +151,11 @@ void Drop(ReflectionProbeComponent& probe, renderer::ResourceManager* resources)
     Drop(resources, probe.runtimePrefilter);
     probe.runtimeResolution = 0;
     probe.runtimePrefilterMipCount = 0;
+    probe.runtimePublicationOwner = nullptr;
+    probe.runtimePublishedIrradiance = {};
+    probe.runtimePublishedPrefilter = {};
+    probe.runtimePublicationEpoch = 0;
+    probe.runtimeImmutablePublished = false;
 }
 
 void Drop(LightProbeVolumeComponent& volume, renderer::ResourceManager* resources)

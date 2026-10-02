@@ -2,18 +2,13 @@
 /// @brief   Plan キャッシュの鍵とパス上書きの畳み込みを固定する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
-///
-/// RenderPipeline::Execute は RenderPassContext (デバイス付き) を要るので直接は試せない。
-/// 代わりに «鍵の計算» と «上書きの畳み込み» を ctx を要らない静的な形へ切り出してあり、
-/// ここで契約を固定する。
-///
-/// 鍵が «変わったのに同じ値» になると、パイプラインは古い実行順を注入し続ける。
-/// 絵が壊れるまで誰も気付かない種類の故障なので、項目ごとに «その 1 つだけ変えた 2 つが
-/// 異なる» を並べて押さえる。
+/// @note デバイス不要の指紋計算・上書き・型付き資源登録を検証する。
+/// @note 記述変更が指紋へ反映されないと古い実行順を再利用するため、項目ごとに差を確認する。
 #include <TestKit/TestKit.hpp>
 
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPipeline.hpp>
+#include <Graphics/Pipeline/PassResources.hpp>
 
 #include <string>
 #include <vector>
@@ -24,14 +19,14 @@ namespace {
 using Pipeline = scene::RenderPipeline;
 using RG       = renderer::RenderGraph;
 
-/// 既定の «全部埋まった» 記述。1 項目だけ変えて鍵の差を見るための土台。
+/// @brief 項目ごとの差分比較に使う記述を返す。
 RG::ResourceDesc BaseDesc()
 {
     return RG::ResourceDesc{ RG::ResourceKind::RenderTarget, 1920, 1080,
                              renderer::Format::RGBA16F, 1, true, false, true };
 }
 
-/// リソース 1 件だけを混ぜた鍵。
+/// @brief 単一リソースの指紋を返す。
 uint64_t ResourceKey(const RG::ResourceDesc& desc)
 {
     Pipeline::GraphFingerprint fingerprint;
@@ -47,7 +42,7 @@ std::vector<RG::ResourceAccess> Accesses(std::initializer_list<const char*> read
     return result;
 }
 
-} // namespace
+} /// @note namespace
 
 class RenderPipelineFingerprintTest : public testkit::Fixture {};
 
@@ -99,6 +94,18 @@ TEST_F(RenderPipelineFingerprintTest, EveryResourceDescFieldChangesTheKey)
     auto transient = BaseDesc();
     transient.transient = false;
     EXPECT_NE(ResourceKey(transient), base);
+
+    auto byteSize = BaseDesc();
+    byteSize.byteSize = 4096;
+    EXPECT_NE(ResourceKey(byteSize), base);
+
+    auto stride = BaseDesc();
+    stride.stride = 32;
+    EXPECT_NE(ResourceKey(stride), base);
+
+    auto allowAliasing = BaseDesc();
+    allowAliasing.allowAliasing = false;
+    EXPECT_NE(ResourceKey(allowAliasing), base);
 }
 
 TEST_F(RenderPipelineFingerprintTest, ResourceNameChangesTheKey)
@@ -131,8 +138,7 @@ TEST_F(RenderPipelineFingerprintTest, PassAccessesAndCullingChangeTheKey)
 
 TEST_F(RenderPipelineFingerprintTest, ConcatenationCannotCollide)
 {
-    /// @note 区切りが無いと "ab"+"c" と "a"+"bc" が同じ鍵になる。名前は連結して混ぜるので、
-    ///       隣り合う宣言が入れ替わっただけのときに «変わっていない» と誤判定しうる。
+    /// @note 区切りが無いと "ab"+"c" と "a"+"bc" が同じ鍵になる。
     Pipeline::GraphFingerprint split;
     split.MixOutput("ab");
     split.MixOutput("c");
@@ -155,6 +161,88 @@ TEST_F(RenderPipelineFingerprintTest, PassOrderChangesTheKey)
     reversed.MixPass("Sky", true, {});
 
     EXPECT_NE(forward.Value(), reversed.Value());
+}
+
+TEST_F(RenderPipelineFingerprintTest, AccessPurposeChangesTheKeyWithoutChangingDependencies)
+{
+    Pipeline::GraphFingerprint build;
+    build.MixPass("ReadVertices", true,
+                  { { "Vertices", RG::ResourceUsage::Read, RG::ResourceAccessPurpose::BUILD_INPUT } });
+    Pipeline::GraphFingerprint shader;
+    shader.MixPass("ReadVertices", true,
+                   { { "Vertices", RG::ResourceUsage::Read, RG::ResourceAccessPurpose::SHADER_READ } });
+    EXPECT_NE(build.Value(), shader.Value());
+}
+
+class RenderPassResourcesTest : public testkit::Fixture {};
+
+TEST_F(RenderPassResourcesTest, RegistryPreservesTypedHandlesAndClearsAllKinds)
+{
+    renderer::RenderResourceRegistry registry;
+    const renderer::ResourceHandle<renderer::BufferTag> vertices{ 1, 2 };
+    const renderer::ResourceHandle<renderer::StructuredBufferTag> table{ 3, 4 };
+    const renderer::ResourceHandle<renderer::AccelerationStructureTag> tlas{ 5, 6 };
+    registry.BindBuffer("Vertices", vertices);
+    registry.BindStructuredBuffer("Table", table);
+    registry.BindAccelerationStructure("TLAS", tlas);
+
+    EXPECT_EQ(registry.Buffer("Vertices"), vertices);
+    EXPECT_EQ(registry.StructuredBuffer("Table"), table);
+    EXPECT_EQ(registry.AccelerationStructure("TLAS"), tlas);
+    EXPECT_FALSE(registry.StructuredBuffer("Vertices").IsValid());
+    EXPECT_FALSE(registry.Buffer("Table").IsValid());
+    EXPECT_FALSE(registry.AccelerationStructure("Missing").IsValid());
+
+    registry.Clear();
+    EXPECT_FALSE(registry.Buffer("Vertices").IsValid());
+    EXPECT_FALSE(registry.StructuredBuffer("Table").IsValid());
+    EXPECT_FALSE(registry.AccelerationStructure("TLAS").IsValid());
+}
+
+TEST_F(RenderPassResourcesTest, SetupKeepsDependencyUsageSeparateFromGpuPurpose)
+{
+    renderer::PassBuilder builder;
+    builder.Read("Vertices", RG::ResourceAccessPurpose::BUILD_INPUT)
+           .Write("BLAS", RG::ResourceAccessPurpose::AS_WRITE)
+           .Read("TLAS", RG::ResourceAccessPurpose::TRACE_READ)
+           .Read("Table", RG::ResourceAccessPurpose::SHADER_READ)
+           .ReadWrite("Scratch", RG::ResourceAccessPurpose::UAV);
+
+    std::vector<RG::ResourceAccess> accesses;
+    std::string autoTarget;
+    builder.MoveOut(accesses, autoTarget);
+    ASSERT_EQ(accesses.size(), 5u);
+    EXPECT_EQ(accesses[0].usage, RG::ResourceUsage::Read);
+    EXPECT_EQ(accesses[0].purpose, RG::ResourceAccessPurpose::BUILD_INPUT);
+    EXPECT_EQ(accesses[1].usage, RG::ResourceUsage::Write);
+    EXPECT_EQ(accesses[1].purpose, RG::ResourceAccessPurpose::AS_WRITE);
+    EXPECT_EQ(accesses[2].purpose, RG::ResourceAccessPurpose::TRACE_READ);
+    EXPECT_EQ(accesses[3].purpose, RG::ResourceAccessPurpose::SHADER_READ);
+    EXPECT_EQ(accesses[4].usage, RG::ResourceUsage::ReadWrite);
+    EXPECT_EQ(accesses[4].purpose, RG::ResourceAccessPurpose::UAV);
+}
+
+TEST_F(RenderPassResourcesTest, ExecuteResolvesDeclaredBuffersAndAccelerationStructures)
+{
+    renderer::RenderResourceRegistry registry;
+    const renderer::ResourceHandle<renderer::BufferTag> vertices{ 1, 2 };
+    const renderer::ResourceHandle<renderer::StructuredBufferTag> table{ 3, 4 };
+    const renderer::ResourceHandle<renderer::AccelerationStructureTag> tlas{ 5, 6 };
+    registry.BindBuffer("Vertices", vertices);
+    registry.BindStructuredBuffer("Table", table);
+    registry.BindAccelerationStructure("TLAS", tlas);
+    const std::vector<RG::ResourceAccess> accesses{
+        { "Vertices", RG::ResourceUsage::Read, RG::ResourceAccessPurpose::SHADER_READ },
+        { "Table", RG::ResourceUsage::Read, RG::ResourceAccessPurpose::SHADER_READ },
+        { "TLAS", RG::ResourceUsage::Read, RG::ResourceAccessPurpose::TRACE_READ }
+    };
+    renderer::PassResources resources(registry, accesses, "Trace");
+
+    EXPECT_EQ(resources.Buffer("Vertices"), vertices);
+    EXPECT_EQ(resources.StructuredBuffer("Table"), table);
+    EXPECT_EQ(resources.AccelerationStructure("TLAS"), tlas);
+    EXPECT_TRUE(resources.IsDeclared("TLAS"));
+    EXPECT_FALSE(resources.IsDeclared("Missing"));
 }
 
 class RenderPipelineOverrideTest : public testkit::Fixture {};
@@ -214,8 +302,7 @@ TEST_F(RenderPipelineOverrideTest, CullingOnlyEverBecomesStricter)
     Pipeline::ApplyOverride(keep, accesses, cullable);
     EXPECT_FALSE(cullable);
 
-    /// @note 逆向きは効かない。パス自身が «刈られては困る» と言っているものを
-    ///       UI の既定値 (allowCulling = true) が黙って刈れるようにはしない。
+    /// @note パス自身のカリング禁止は UI の既定値から解除できない。
     renderer::RenderPassOverride release;
     release.allowCulling = true;
     bool mustRun = false;
@@ -247,4 +334,4 @@ TEST_F(RenderPipelineOverrideTest, DefaultOverrideIsRecognisedAndChangesNothing)
     EXPECT_TRUE(allowCulling);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

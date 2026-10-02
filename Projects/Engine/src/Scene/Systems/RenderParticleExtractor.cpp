@@ -1885,6 +1885,22 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
     emitter.runtime.lastPlaybackFrame      = Time::frameCount;
     emitter.runtime.lastCpuSimulationFrame = Time::frameCount;
 }
+void ExtractRayParticleSources(const Scene& scene, renderer::RenderScene& output)
+{
+    for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
+        auto* go = scene.GetGameObject(id);
+        const auto* emitter = go ? go->GetComponent<ParticleEmitter>() : nullptr;
+        if (!go || !go->activeInHierarchy() || !emitter || !emitter->settings.enabled) continue;
+        const bool gpu = CanUseGpuSimulation(emitter->settings, &emitter->runtime.material);
+        /// @note Match Raster's CPU mesh-particle exclusion and zero-count rule, but never use the camera, LOD, budget, or visibleParticleCount as proof of no source.
+        if (gpu ? emitter->settings.maxParticles <= 0
+                : !emitter->settings.meshParticlePath.empty() || emitter->runtime.particles.empty()) continue;
+        const uint32_t layerMask = go->layer >= 0 && go->layer < 32 ? uint32_t{1} << go->layer : 0;
+        output.rayUnsupportedEffects.push_back({id.index, id.generation, layerMask,
+            renderer::RenderRayUnsupportedEffect::PARTICLE});
+    }
+}
+
 void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& output) {
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
@@ -2037,5 +2053,6 @@ void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& outpu
         input.runtime.material.selfShadowStrength = emitter->runtime.material.selfShadowStrength;
         output.particles.push_back(std::move(input));
     }
+    ExtractRayParticleSources(ctx.scene, output);
 }
 }

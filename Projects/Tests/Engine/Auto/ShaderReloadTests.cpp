@@ -21,6 +21,10 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
+#include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Renderer/Camera.hpp>
+#include <Engine/Renderer/RenderSettings.hpp>
 #include <cstring>
 
 namespace fbzz::tests {
@@ -103,7 +107,7 @@ public:
     std::unique_ptr<r::IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t, uint32_t) override { return {}; }
 };
 
-} // namespace
+} /// @note namespace
 
 class ShaderReloadTest : public testkit::Fixture {};
 
@@ -212,6 +216,63 @@ TEST_F(ShaderReloadTest, SingleReloadNormalizesPathSeparators)
 
     EXPECT_EQ(backend.prepareCalls, 1);
     EXPECT_EQ(resources.Get(shader)->GetDescriptor().cbufferSize, 32u);
+}
+
+TEST_F(ShaderReloadTest, ReleasedShaderIsLoadedWithANewGenerationAndStaleReleaseKeepsCurrentCache)
+{
+    ReloadRenderer backend;
+    r::ResourceManager resources(backend);
+    const auto released = resources.LoadShader("UI/Text.hlsl");
+    const auto other = resources.LoadShader("other.hlsl");
+    resources.Release(released);
+    EXPECT_EQ(resources.Get(released), nullptr);
+
+    const auto reusedSlot = resources.LoadShader("reused.hlsl");
+    ASSERT_NE(resources.Get(reusedSlot), nullptr);
+    EXPECT_EQ(reusedSlot.id, released.id);
+    EXPECT_NE(reusedSlot.gen, released.gen);
+    const auto current = resources.LoadShader("UI\\Text.hlsl");
+    ASSERT_NE(resources.Get(current), nullptr);
+    EXPECT_NE(current, released);
+    EXPECT_NE(current, reusedSlot);
+    EXPECT_EQ(resources.LoadShader("UI/Text.hlsl"), current);
+    EXPECT_EQ(backend.shaderCreates, 4);
+
+    resources.Release(released);
+    EXPECT_EQ(resources.LoadShader("UI\\Text.hlsl"), current);
+    EXPECT_EQ(resources.LoadShader("reused.hlsl"), reusedSlot);
+    EXPECT_EQ(resources.LoadShader("other.hlsl"), other);
+    EXPECT_EQ(backend.shaderCreates, 4);
+    EXPECT_EQ(backend.prepareCalls, 0);
+}
+
+TEST_F(ShaderReloadTest, ReleasedShaderIsExcludedFromBatchReloadAndSingleReloadCreatesALiveHandle)
+{
+    ReloadRenderer backend;
+    r::ResourceManager resources(backend);
+    const auto released = resources.LoadShader("UI/Text.hlsl");
+    const auto other = resources.LoadShader("other.hlsl");
+    const auto version = resources.GetShaderVersion();
+    resources.Release(released);
+    backend.shaderSize = 32;
+
+    ASSERT_TRUE(resources.ReloadAllShaders());
+    EXPECT_EQ(backend.shaderCreates, 3);
+    EXPECT_EQ(backend.prepareCalls, 1);
+    EXPECT_EQ(resources.Get(released), nullptr);
+    ASSERT_NE(resources.Get(other), nullptr);
+    EXPECT_EQ(resources.Get(other)->GetDescriptor().cbufferSize, 32u);
+    EXPECT_EQ(resources.LoadShader("other.hlsl"), other);
+    EXPECT_EQ(resources.GetShaderVersion(), version + 1);
+
+    const auto current = resources.ReloadShader("UI\\Text.hlsl");
+    ASSERT_NE(resources.Get(current), nullptr);
+    EXPECT_NE(current, released);
+    EXPECT_EQ(resources.Get(current)->GetDescriptor().cbufferSize, 32u);
+    EXPECT_EQ(resources.LoadShader("UI/Text.hlsl"), current);
+    EXPECT_EQ(backend.shaderCreates, 4);
+    EXPECT_EQ(backend.prepareCalls, 1);
+    EXPECT_EQ(resources.GetShaderVersion(), version + 1);
 }
 
 TEST_F(ShaderReloadTest, MaterialGrowsGpuBufferAfterCpuLayoutHasAlreadyChanged)
@@ -333,4 +394,76 @@ TEST_F(MaterialScriptIntegrationTest, ShaderReloadInvalidatesPreviouslyValidProp
     EXPECT_FALSE(m_material->integerParamOverrides.contains("mode"));
 }
 
-} // namespace fbzz::tests
+TEST_F(MaterialScriptIntegrationTest, ExtractsRoughSolidAndSmoothThinRuntimeValuesWhileRejectingRoughThinAndAlphaOverrides)
+{
+    m_backend.shaderVars = {
+        {"albedo", 0, 16, 1, 4, r::ShaderVarClass::Vector, r::ShaderVarType::Float},
+        {"metallic", 16, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::Float},
+        {"roughness", 20, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::Float},
+        {"alphaCutoff", 64, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::Float}
+    };
+    asset::MaterialAsset glass;
+    glass.shaderPath = "Assets/Shaders/Material/Surface/PBR.hlsl";
+    glass.params["albedo"] = {1, 1, 1, 1};
+    glass.params["metallic"] = {0};
+    glass.params["roughness"] = {0};
+    glass.params["alphaCutoff"] = {0.5f};
+    glass.dielectric.transmission = 1;
+    glass.dielectric.ior = 1.6f;
+    glass.dielectric.attenuationColor = {0.25f, 0.5f, 1};
+    glass.dielectric.attenuationDistance = 2;
+    const auto path = m_temp.File("glass.mat").generic_string();
+    ASSERT_TRUE(asset::SaveMaterialAssetToFile(path, glass));
+    auto& object = m_scene.CreateGameObject("Glass");
+    renderer::Mesh mesh;
+    scene::MeshRenderer meshRenderer;
+    meshRenderer.mesh = &mesh;
+    object.AddComponent<scene::MeshRenderer>(meshRenderer);
+    auto& slot = object.AddComponent<scene::MaterialComponent>();
+    slot.materialPath = path;
+    renderer::Camera camera;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
+    scene::ExtractRenderScene(context);
+    ASSERT_NE(context.renderScene, nullptr);
+    ASSERT_EQ(context.renderScene->items.size(), 1u);
+    const auto first = context.renderScene->items[0].material.surface;
+    EXPECT_EQ(first.dielectric, glass.dielectric);
+    EXPECT_TRUE(first.solidDielectricSupported);
+    EXPECT_FALSE(first.standardSurfaceSupported);
+    ASSERT_NE(slot.material, nullptr);
+    EXPECT_EQ(slot.material->dielectric, glass.dielectric);
+    auto* shared = asset::AssetManager::Get<asset::MaterialAsset>(slot.materialAsset);
+    ASSERT_NE(shared, nullptr);
+    shared->dielectric.ior = 1.7f;
+    scene::ExtractRenderScene(context);
+    const auto edited = context.renderScene->items[0].material.surface;
+    EXPECT_FLOAT_EQ(edited.dielectric.ior, 1.7f);
+    EXPECT_NE(first, edited);
+    slot.paramOverrides["roughness"] = {0.1f};
+    scene::ExtractRenderScene(context);
+    EXPECT_TRUE(context.renderScene->items[0].material.surface.solidDielectricSupported);
+    EXPECT_FLOAT_EQ(context.renderScene->items[0].material.surface.roughness, 0.1f);
+    shared->dielectric.thinWalled = true;
+    shared->dielectric.attenuationColor = {1, 1, 1};
+    scene::ExtractRenderScene(context);
+    EXPECT_EQ(context.renderScene->items[0].material.surface.issue,
+        renderer::SurfaceMaterialIssue::SOLID_DIELECTRIC_UNSUPPORTED);
+    slot.paramOverrides.erase("roughness");
+    scene::ExtractRenderScene(context);
+    EXPECT_TRUE(context.renderScene->items[0].material.surface.solidDielectricSupported);
+    EXPECT_TRUE(context.renderScene->items[0].material.surface.dielectric.thinWalled);
+    shared->dielectric.thinWalled = false;
+    slot.paramOverrides["albedo"] = {1, 1, 1, 0.75f};
+    scene::ExtractRenderScene(context);
+    EXPECT_FALSE(context.renderScene->items[0].material.surface.solidDielectricSupported);
+    EXPECT_FLOAT_EQ(context.renderScene->items[0].material.surface.dielectric.transmission, 1);
+    slot.paramOverrides.erase("albedo");
+    slot.hasBlendModeOverride = true;
+    slot.blendModeOverride = renderer::BlendMode::ALPHA_BLEND;
+    scene::ExtractRenderScene(context);
+    EXPECT_NE(context.renderScene->items[0].material.rayCapabilities.opacity, renderer::RayOpacity::OPAQUE_SURFACE);
+}
+
+} /// @note namespace fbzz::tests

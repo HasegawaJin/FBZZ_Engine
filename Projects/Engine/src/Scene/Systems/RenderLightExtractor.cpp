@@ -17,6 +17,7 @@ namespace fbzz::scene {
 RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& camera, const renderer::RenderSettings& rs, uint32_t punctualShadowRes)
 {
     RenderLightExtraction output;
+    output.rayLightsComplete = true;
     /// @note ライト定数バッファを構築
     auto& lightData = output.lightData;
     lightData.lightDir       = { 0.0f, -1.0f, 0.5f };
@@ -95,6 +96,30 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
         const math::Vector3 lightColor =
             lc.useColorTemperature ? renderer::ColorFromTemperature(lc.colorTemperature)
                                    : lc.color;
+
+        renderer::RayLightInput ray;
+        ray.objectId = {scene.GetRenderSceneGeneration(), id.index, id.generation};
+        ray.layerMask = go->layer >= 0 && go->layer < 32 ? (uint32_t{1} << go->layer) : 0;
+        ray.type = static_cast<renderer::RayLightType>(lc.type);
+        ray.position = tf.worldPosition;
+        ray.direction = tf.forward;
+        ray.tangent = tf.right;
+        ray.bitangent = tf.up;
+        ray.color = lightColor;
+        ray.intensity = lc.intensity;
+        ray.range = lc.range;
+        ray.innerCone = lc.innerCone;
+        ray.outerCone = lc.outerCone;
+        ray.areaWidth = lc.areaWidth;
+        ray.areaHeight = lc.areaHeight;
+        ray.sourceRadius = lc.sourceRadius;
+        ray.sourceLength = lc.sourceLength;
+        ray.twoSided = lc.areaTwoSided;
+        ray.castShadows = rs.shadowEnabled && lc.castShadows;
+        ray.shadowStrength = lc.shadowStrength;
+        if (!lc.cookiePath.empty()) ray.unsupportedFlags |= renderer::RAY_LIGHT_UNSUPPORTED_COOKIE;
+        if (ray.layerMask == 0) ray.unsupportedFlags |= renderer::RAY_LIGHT_INVALID_LAYER;
+        output.rayLights.push_back(ray);
 
         /// @note 点光源 / スポット / 大きさを持つ光源は上限に達するまで統合配列へも積む。
         /// @note b3 は「点を全部→スポットを全部」の 2 配列だがこちらは 1 本なので評価順が変わりうる。
@@ -251,6 +276,20 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
     /// @note 枠が足りないときに削られるのは粒子の光の方。Legacy (b3) には載せない。
     /// @note GPU シミュレーションの粒子は位置が GPU にしか無いので対象外 (Inspector に注記がある)。
     std::vector<ParticleLightEmission> particleLights;
+    /// @note 粒子光源の未対応は Raster の 256 本上限や GPU runtime の準備状態で消さない。
+    for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
+        const GameObject* go = scene.GetGameObject(id);
+        const ParticleEmitter* emitter = scene.GetComponent<ParticleEmitter>(id);
+        if (!go || !emitter || !go->activeInHierarchy() || !emitter->settings.enabled
+            || !emitter->settings.light.lightEnabled) continue;
+        renderer::RayLightInput ray;
+        ray.objectId = {scene.GetRenderSceneGeneration(), id.index, id.generation};
+        ray.layerMask = go->layer >= 0 && go->layer < 32 ? (uint32_t{1} << go->layer) : 0;
+        ray.position = go->transform.worldPosition;
+        ray.unsupportedFlags = renderer::RAY_LIGHT_UNSUPPORTED_PARTICLE;
+        if (ray.layerMask == 0) ray.unsupportedFlags |= renderer::RAY_LIGHT_INVALID_LAYER;
+        output.rayLights.push_back(ray);
+    }
     for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
         if (punctualLights.size() >= kMaxPunctualLights) break;
         GameObject*      go      = scene.GetGameObject(id);
@@ -516,6 +555,19 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
             /// @note 詳細は SkyRenderer::skyDayBrightness。
             lightData.skyDimmer      = lerp1(sky.skySunsetBrightness,
                                              above ? sky.skyDayBrightness : sky.skyNightBrightness, t);
+            /// @note independent RayLightTable は初期段で昼夜カーブを解決しない。primary owner を診断に残す。
+            const auto primary = std::find_if(output.rayLights.rbegin(), output.rayLights.rend(),
+                [](const renderer::RayLightInput& light) { return light.type == renderer::RayLightType::DIRECTIONAL; });
+            if (primary != output.rayLights.rend()) primary->unsupportedFlags |= renderer::RAY_LIGHT_UNSUPPORTED_DAY_NIGHT;
+            else {
+                renderer::RayLightInput ray;
+                ray.objectId = {scene.GetRenderSceneGeneration(), id.index, id.generation};
+                ray.layerMask = go->layer >= 0 && go->layer < 32 ? (uint32_t{1} << go->layer) : 0;
+                ray.type = renderer::RayLightType::DIRECTIONAL;
+                ray.unsupportedFlags = renderer::RAY_LIGHT_UNSUPPORTED_DAY_NIGHT;
+                if (ray.layerMask == 0) ray.unsupportedFlags |= renderer::RAY_LIGHT_INVALID_LAYER;
+                output.rayLights.push_back(ray);
+            }
         }
         break;
     }
@@ -534,4 +586,4 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
 
     return output;
 }
-}
+} /// @note namespace fbzz::scene

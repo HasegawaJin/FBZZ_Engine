@@ -264,7 +264,56 @@ bool HasFiberSurface(GameObject& go, fbzz::LayerMask mask)
     return terrain && terrain->enabled;
 }
 
+/// @note Count proof follows BuildFiberFins/BuildFiberBlades without allocating the expanded shape or uploading GPU buffers.
+bool HasRayFiberMesh(const renderer::Mesh& mesh, const FiberComponent& fiber,
+                     renderer::ResourceHandle<renderer::BufferTag> vertices)
+{
+    if (!vertices.IsValid() || !mesh.indexBuffer.IsValid()) return false;
+    if (fiber.m_mode == FiberRenderMode::SHELL) return mesh.indexCount >= 3;
+    if (fiber.m_mode == FiberRenderMode::HYBRID && mesh.indexCount >= 3) return true;
+    const bool blades = fiber.m_mode == FiberRenderMode::BLADE;
+    if (!blades && fiber.m_mode != FiberRenderMode::FIN && fiber.m_mode != FiberRenderMode::HYBRID) return false;
+    if (mesh.cpuIndices.size() % 3 != 0 || mesh.cpuIndices.size() > 600000) return false;
+    if (blades && (mesh.isSkinned || !std::isfinite(fiber.m_bladeDensity)
+        || fiber.m_bladeDensity <= 0 || !std::isfinite(fiber.m_bladeWidth) || fiber.m_bladeWidth <= 0)) return false;
+    const size_t vertexCount = mesh.isSkinned ? mesh.cpuSkinnedVertices.size() : mesh.cpuVertices.size();
+    const auto position = [&](size_t i) { return mesh.isSkinned ? mesh.cpuSkinnedVertices[i].position : mesh.cpuVertices[i].position; };
+    const auto normal = [&](size_t i) { return mesh.isSkinned ? mesh.cpuSkinnedVertices[i].normal : mesh.cpuVertices[i].normal; };
+    const auto uv = [&](size_t i) { return mesh.isSkinned ? mesh.cpuSkinnedVertices[i].uv : mesh.cpuVertices[i].uv; };
+    const auto finite = [](math::Vector3 v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); };
+    if (!blades)
+        for (size_t i = 0; i < vertexCount; ++i)
+            if (!finite(position(i)) || !finite(normal(i)) || !std::isfinite(uv(i).x) || !std::isfinite(uv(i).y)) return false;
+    std::map<std::array<float, 6>, uint32_t> edges;
+    float area = 0;
+    for (size_t first = 0; first < mesh.cpuIndices.size(); first += 3) {
+        const uint32_t indices[]{mesh.cpuIndices[first], mesh.cpuIndices[first + 1], mesh.cpuIndices[first + 2]};
+        for (uint32_t index : indices)
+            if (index >= vertexCount || !finite(position(index)) || !finite(normal(index))) return false;
+        const auto face = math::Vector3::Cross(position(indices[1]) - position(indices[0]),
+                                             position(indices[2]) - position(indices[0]));
+        if (!finite(face)) return false;
+        if (blades) {
+            area += face.Length() * 0.5f;
+            continue;
+        }
+        if (face.LengthSq() <= 1.0e-16f) continue;
+        for (uint32_t edge = 0; edge < 3; ++edge) {
+            const uint32_t a = indices[edge], b = indices[(edge + 1) % 3];
+            const auto pa = position(a), pb = position(b);
+            auto ka = std::array{pa.x, pa.y, pa.z}, kb = std::array{pb.x, pb.y, pb.z};
+            if (kb < ka) std::swap(ka, kb);
+            const auto deltaUv = uv(b) - uv(a);
+            if (!std::isfinite((pb - pa).Length()) || !std::isfinite(std::sqrt(deltaUv.x * deltaUv.x + deltaUv.y * deltaUv.y))) return false;
+            if (++edges[{ka[0], ka[1], ka[2], kb[0], kb[1], kb[2]}] > 2) return false;
+        }
+    }
+    if (!blades) return !edges.empty();
+    const float count = area * fiber.m_bladeDensity;
+    return std::isfinite(area) && std::isfinite(count) && count >= 1 && count <= static_cast<float>(renderer::FIBER_MAX_BLADES);
 }
+
+} /// @note namespace
 void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const asset::MaterialAsset* material,
     renderer::ResourceManager& resources, FiberMaskSlot& slot)
 {
@@ -288,6 +337,50 @@ void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const std::
     if (!texture) texture = resources.Get(resources.GetWhiteTexture());
     settings.m_maskIndex = texture ? texture->GetBindlessIndex() : renderer::INVALID_BINDLESS_INDEX;
 }
+
+void ExtractRayFiberSources(Scene& scene, renderer::ResourceManager& resources, renderer::RenderScene& output)
+{
+    auto& cache = GetFiberResources(resources);
+    for (EntityID id : scene.GetEntities<FiberComponent>()) {
+        auto* go = scene.GetGameObject(id);
+        const auto* fiber = go ? go->GetComponent<FiberComponent>() : nullptr;
+        if (!go || !go->activeInHierarchy() || !fiber || !fiber->m_enabled || fiber->m_materialPath.empty()) continue;
+        const auto& material = GetFiberMaterial(cache, resources, fiber->m_materialPath);
+        if (!material.m_valid) continue;
+        const auto settings = ApplyFiberOverrides(material.m_settings, *fiber, cache, resources);
+        if (settings.m_length <= 0 || settings.m_density <= 0) continue;
+        bool hasSource = false;
+        if (const auto* mesh = go->GetComponent<MeshRenderer>(); mesh && mesh->enabled && mesh->mesh && !mesh->mesh->isSkinned)
+            hasSource = HasRayFiberMesh(*mesh->mesh, *fiber, mesh->mesh->vertexBuffer);
+        if (const auto* skin = go->GetComponent<SkinnedMeshRenderer>(); !hasSource && skin && skin->enabled && skin->model) {
+            const auto* baseMaterial = go->GetComponent<MaterialComponent>();
+            for (size_t slot = 0; slot < skin->SubmeshCount() && !hasSource; ++slot) {
+                const auto* mesh = skin->SubmeshMesh(slot);
+                if (!mesh || (baseMaterial && !baseMaterial->SlotAt(slot).visible)) continue;
+                hasSource = HasRayFiberMesh(*mesh, *fiber, skin->ResolveSlotVertexBuffer(slot, mesh->vertexBuffer));
+            }
+        }
+        if (const auto* terrain = go->GetComponent<TerrainComponent>(); !hasSource && terrain && terrain->enabled) {
+            /// @note Terrain surfaces already ignore renderer LOD. Reuse the resolved draw counts, including seeded vertex-alpha blade rejection.
+            for (const auto& surface : output.fibers) {
+                if (!fiber->m_renderIdentity || surface.identity != fiber->m_renderIdentity) continue;
+                if (fiber->m_mode == FiberRenderMode::SHELL || fiber->m_mode == FiberRenderMode::HYBRID)
+                    hasSource = surface.vertices.IsValid() && surface.indices.IsValid() && surface.indexCount >= 3;
+                if (fiber->m_mode == FiberRenderMode::FIN || fiber->m_mode == FiberRenderMode::HYBRID)
+                    hasSource |= surface.fins.m_vertices.IsValid() && surface.fins.m_indices.IsValid() && surface.fins.m_indexCount > 0;
+                else if (fiber->m_mode == FiberRenderMode::BLADE)
+                    hasSource = surface.blades.m_blades.IsValid() && surface.blades.m_bladeCount > 0;
+                if (hasSource) break;
+            }
+        }
+        if (hasSource) {
+            const uint32_t layerMask = go->layer >= 0 && go->layer < 32 ? uint32_t{1} << go->layer : 0;
+            output.rayUnsupportedEffects.push_back({id.index, id.generation, layerMask,
+                renderer::RenderRayUnsupportedEffect::FIBER});
+        }
+    }
+}
+
 void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) {
     auto& resources = ctx.resources;
     auto& cache = GetFiberResources(resources);
@@ -409,5 +502,6 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             output.fibers.push_back(std::move(input));
         }
     }
+    ExtractRayFiberSources(ctx.scene, resources, output);
 }
 }

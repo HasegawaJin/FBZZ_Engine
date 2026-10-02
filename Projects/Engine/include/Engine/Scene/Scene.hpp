@@ -2,9 +2,7 @@
 /// @brief   GameObject 所有と ComponentArray 管理。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// GameObjectRange / SceneView を提供し、System が連続メモリを走査できるようにする。
-/// Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
+/// @note Destroy は遅延キューを通し、フレーム中の参照破壊を避ける。
 #pragma once
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -41,12 +39,12 @@ enum class ScriptDebugDrawType {
     Sphere,
     Box,
     Ray,
-    Arrow,       ///< from=a, to=b, headLength=radius, headRadius=halfExtents.x
-    Cone,        ///< apex=a, direction=b, height=halfExtents.x, baseRadius=radius
-    OrientedBox, ///< center=a, halfExtents, rotation
-    Capsule,     ///< center=a, radius, halfHeight=halfExtents.x, rotation (軸はローカル Y)
-    Circle,      ///< center=a, normal=b, radius
-    Arc,         ///< center=a, normal=b, fromDirection=halfExtents, radius, angle [rad]
+    Arrow,       ///< @note from=a, to=b, headLength=radius, headRadius=halfExtents.x
+    Cone,        ///< @note apex=a, direction=b, height=halfExtents.x, baseRadius=radius
+    OrientedBox, ///< @note center=a, halfExtents, rotation
+    Capsule,     ///< @note center=a, radius, halfHeight=halfExtents.x, rotation (軸はローカル Y)
+    Circle,      ///< @note center=a, normal=b, radius
+    Arc,         ///< @note center=a, normal=b, fromDirection=halfExtents, radius, angle [rad]
 };
 
 /// @brief OnUpdate など任意のタイミングで発行されたデバッグ描画要求。
@@ -62,10 +60,10 @@ struct ScriptDebugDrawCommand {
     uint64_t frameCreated = 0;
     math::Quaternion rotation = math::Quaternion::Identity();
     float angle = 0.0f;
-    bool depthTest = false; ///< true ならシーン深度で遮蔽される (HDR 段で描く)。
+    bool depthTest = false; ///< @note true ならシーン深度で遮蔽される (HDR 段で描く)。
 };
 
-/// detail: ComponentList → `tuple<ComponentArray<Ts>...>` 変換ヘルパー
+/// @note ComponentList を `tuple<ComponentArray<Ts>...>` へ展開する。
 namespace detail {
 
 template<typename Tuple> struct ArrayTupleHelper;
@@ -76,15 +74,15 @@ struct ArrayTupleHelper<std::tuple<Ts...>> {
 template<typename Tuple>
 using ArrayTuple = typename ArrayTupleHelper<Tuple>::type;
 
-/// T が ComponentList に含まれるか判定するトレイト
+/// @note ComponentList に未登録の型を compile-time で拒否する。
 template<typename T, typename Tuple> struct IsInList;
 template<typename T, typename... Ts>
 struct IsInList<T, std::tuple<Ts...>>
     : std::disjunction<std::is_same<T, Ts>...> {};
 
-} // namespace detail
+} /// @note namespace detail
 
-/// GameObjectRange  —  scene.GameObjects() が返す Unity ライクな範囲 for 用 range
+/// @note Scene が所有する GameObject を非所有参照で走査する。
 class GameObjectRange {
     using VecT = std::vector<std::unique_ptr<GameObject>>;
     VecT::iterator m_begin, m_end;
@@ -102,12 +100,11 @@ public:
     Iterator end()   { return { m_end   }; }
 };
 
-/// Scene
 class Scene {
 public:
     static constexpr uint32_t MAX_ENTITIES = ComponentArray<uint8_t>::MAX;
 
-    Scene() = default;
+    Scene();
     /// @note Component が個体ごとに確保した GPU リソースは ResourceManager 側の実体のため、Component 破棄だけでは返らない。畳むときに必ず返す口をここに置く。
     ~Scene();
     Scene(const Scene&) = delete;
@@ -115,10 +112,11 @@ public:
     Scene(Scene&& other) noexcept;
     Scene& operator=(Scene&& other) noexcept;
 
-    /// Unity: new GameObject("name")
+    /// @note 保存しない寿命識別値。Clear / 移動代入で更新し、再利用された EntityID と区別する。
+    [[nodiscard]] uint64_t GetRenderSceneGeneration() const { return m_renderSceneGeneration; }
+
     GameObject& CreateGameObject(const std::string& name = "GameObject");
 
-    /// Unity: GameObject.Find 系の実体
     /// @note ここは参照解決 (保存・プレハブ・エディター) 用で、無効な GameObject も返す。ゲームスクリプトは ScriptSceneProxy の Find 系 (既定で有効な物だけ) を使う。
     GameObject*              Find(const std::string& name)     const;
     GameObject*              FindByGuid(const std::string& guid) const;
@@ -129,14 +127,12 @@ public:
     template<typename T>
     std::vector<GameObject*> FindObjectsOfType()               const;
 
-    /// Unity: scene.GetRootGameObjects()
     std::vector<GameObject*> GetRootGameObjects() const;
 
-    /// Unity ライクな範囲 for (ゲームロジック向け)
     GameObjectRange GameObjects();
     size_t GameObjectCount() const { return m_gameObjects.size(); }
 
-    /// Editor / serializer 用。階層操作を安定した API に集約する。
+    /// @note 保存・Undo のフラット順を維持する階層操作。
     bool DestroyGameObject(EntityID id);
     bool MoveGameObject(EntityID id, int offset);
     bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
@@ -147,32 +143,22 @@ public:
     /// @note シリアライザ (保存 / Undo スナップショット / Play 復元) は flat 順で SetParent を再生して子リストを再構築するため、flat 順の兄弟順序が正本になる。
     bool SyncSiblingFlatOrder(EntityID id);
 
-    /// System 向け高速マルチ Component イテレータ
     template<typename... Ts>
     SceneView<Ts...> View();
 
-    /// Entity の生死を確認する
     bool IsValid(EntityID id) const;
 
-    /// フレーム末尾で呼ぶ。delay 付き Destroy を処理し、期限切れを削除する
+    /// @note フレーム末尾で呼び、走査中の Component 参照を無効化しない。
     void FlushDestroyQueue(float dt);
 
-    /// 全 GameObject・Component を削除してシーンを空にする
     void Clear();
 
-    /// シーン設定の環境流。保存対象 (SceneSerializer の [environment])。
-    /// @note 書き換えたら次のフレームから効く。同じフレームで反映したいなら
-    ///       InvalidateFlowFrame() を呼んでからサンプルすること。
+    /// @note SceneSerializer の [environment] に保存する。同一フレーム内の変更は InvalidateFlowFrame が必要。
     [[nodiscard]] SceneEnvironment&       Environment()       { return m_environment; }
     [[nodiscard]] const SceneEnvironment& Environment() const { return m_environment; }
 
-    /// 今フレームの流れ一式。フレーム番号が古ければ集め直してから返す。
-    ///
-    /// @note 遅延更新なのは、ParticlePass がマテリアルプレビューや VFX Editor の別 Scene も
-    ///       描くため。そこではスケジューラが回らないので、FlowFieldSystem だけに頼ると
-    ///       プレビューで流れが消える。System は «物理より前に確定させる» 役だけを持つ。
+    /// @note スケジューラを回さない preview でも使えるよう、古いフレームは遅延収集する。
     [[nodiscard]] FlowFieldFrame& FlowFrame();
-    /// 次の FlowFrame() で必ず集め直させる。
     void InvalidateFlowFrame();
 
     renderer::PostProcessSettings& GetRuntimePostProcessSettings();
@@ -202,36 +188,30 @@ public:
     template<typename T> std::vector<T*> GetComponents();
     template<typename T> std::vector<const T*> GetComponents() const;
 
-    /// src の全 Component を dst にコピーする (Duplicate 用)
     void DuplicateComponents(EntityID src, EntityID dst);
     /// @brief 別 Scene 上の src から dst へ全 Component をコピーする (Prefab / Clipboard 用)。
     /// @note Prefab は一時 Scene に通常ロードしてから現在の Scene へ追加するため、Scene 内複製だけでは全 Component 対応を共有できない。
     void CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst);
 
-    /// SceneView が entity span を取得するために使う
     template<typename T>
     std::span<const EntityID> GetEntities() const;
 
-    /// EntityID → GameObject* の O(1) 逆引き
     GameObject* GetGameObject(EntityID id) const;
     /// @}
 
 private:
-    /// Entity 管理
+    uint64_t m_renderSceneGeneration = 0;
     uint32_t              m_generations[MAX_ENTITIES] = {};
     uint32_t              m_nextIndex   = 0;
     std::vector<uint32_t> m_freeIndices;
 
-    /// GameObjects 所有
     std::vector<std::unique_ptr<GameObject>> m_gameObjects;
 
-    /// EntityID.index → GameObject* (非所有)
+    /// @note EntityID.index から非所有 GameObject 参照を引く。
     GameObject* m_entityToGameObject[MAX_ENTITIES] = {};
 
-    /// Component 配列 — ComponentList に登録された全型を自動展開
     detail::ArrayTuple<ComponentList> m_arrays;
 
-    /// delay 付き Destroy キュー
     struct DestroyEntry { EntityID id; float delay; };
     std::vector<DestroyEntry> m_destroyQueue;
 
@@ -242,7 +222,7 @@ private:
     std::vector<ScriptDebugDrawCommand> m_scriptDebugDrawCommands;
     uint64_t m_lastScriptDebugDrawTickFrame = 0;
 
-    /// 環境流 (保存する) と、そこから解決した 1 フレーム分の流れ (保存しない)。
+    /// @note environment は保存対象、flowFrame は未保存のフレームキャッシュ。
     SceneEnvironment m_environment;
     FlowFieldFrame   m_flowFrame;
 
@@ -251,7 +231,6 @@ private:
     void     FixupOwnership();
     void     RemoveAllComponents(EntityID id);
 
-    /// T が ComponentList に登録済みかコンパイル時に検査する
     template<typename T>
     static constexpr bool IsRegistered = detail::IsInList<T, ComponentList>::value;
 
@@ -269,14 +248,12 @@ private:
         return std::get<ComponentArray<T>>(m_arrays);
     }
 
-    /// fold expression から呼ぶ配列ごとのヘルパー
     template<typename T>
     static void RemoveIfHas(ComponentArray<T>& arr, EntityID id) {
         if (arr.Has(id)) arr.Remove(id);
     }
 
-    /// ScriptComponent はコピー不可 (Script は unique_ptr 所有) のため、この fold からは
-    /// 落ちる。実体の作り直しとフィールド値の複製は CopyScriptComponentFrom が担う。
+    /// @note unique_ptr を持つ ScriptComponent の複製は CopyScriptComponentFrom が担う。
     template<typename T>
     static void CopyIfHas(ComponentArray<T>& arr, EntityID src, EntityID dst) {
         if constexpr (std::is_copy_constructible_v<T>) {
@@ -298,8 +275,7 @@ private:
     friend class GameObject;
 };
 
-/// SceneView<Ts...>  —  複数 Component を持つ Entity を効率よくイテレート
-/// Transform は ComponentArray に入らず GameObject から取得する
+/// @note Transform は ComponentArray に入らず GameObject から取得する。
 template<typename... Ts>
 class SceneView {
 public:
@@ -326,7 +302,6 @@ public:
             return (... && HasOne<Ts>(*m_scene, id));
         }
 
-        /// operator* は tuple<Ts&...> を返す。range-for では auto [a,b] = *it で使う
         std::tuple<Ts&...> operator*() const {
             EntityID id = m_ids[m_index];
             return std::tuple<Ts&...>(GetRef<Ts>(*m_scene, id)...);
@@ -366,7 +341,7 @@ public:
 private:
     Scene* m_scene;
 
-    /// 最小の非 Transform ComponentArray の entity span を返す
+    /// @note 最小の ComponentArray を基準にし、該当型のない Entity の走査を抑える。
     std::pair<const EntityID*, size_t> GetBase() const {
         const EntityID* bestPtr   = nullptr;
         size_t          bestCount = SIZE_MAX;
@@ -389,7 +364,6 @@ private:
     }
 };
 
-/// Scene template 本体
 
 template<typename T>
 std::vector<GameObject*> Scene::FindObjectsOfType() const {
@@ -460,7 +434,7 @@ std::span<const EntityID> Scene::GetEntities() const {
     return GetArray<T>().Entities();
 }
 
-/// GameObject template 本体 (Scene が完全型になったあとに定義)
+/// @note Scene の完全型が必要な GameObject の template 定義。
 
 template<typename T>
 T& GameObject::AddComponent(T component) {
@@ -606,4 +580,4 @@ T& ScriptSceneProxy::RequireComponent() const
     return *component;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

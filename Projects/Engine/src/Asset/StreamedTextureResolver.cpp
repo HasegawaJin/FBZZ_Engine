@@ -102,6 +102,12 @@ const TextureAsset* StreamedTextureResolver::ResolveAsset(renderer::ResourceMana
     return entry ? Complete(*entry) : nullptr;
 }
 
+uint64_t StreamedTextureResolver::ResolveContentRevision(renderer::ResourceManager& resources, std::string_view ref)
+{
+    if (!ResolveAsset(resources, ref)) return 0;
+    Entry* entry = Acquire(ref);
+    return entry ? AssetStreamer::Engine().GetStatus(entry->lease.Handle()).publishedRevision : 0;
+}
 renderer::ResourceHandle<renderer::TextureTag> StreamedTextureResolver::ResolveGpuWithSourceSize(
     renderer::ResourceManager& resources, std::string_view reference,
     uint32_t& outSourceWidth, uint32_t& outSourceHeight)

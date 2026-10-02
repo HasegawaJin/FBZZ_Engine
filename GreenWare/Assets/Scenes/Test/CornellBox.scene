@@ -1,7 +1,3 @@
-# @file    CornellBox.scene
-# @brief   Raster / Hybrid / Reference Path の比較用 Cornell Box サンプル。
-# @author  Hasegawa Jin
-# @date    2026-09-30
 [environment]
 windDirection = [ 0.7071, 0.0, 0.7071 ]
 windEnabled = false
@@ -24,7 +20,7 @@ prefabSourceId = ''
 tag = 'MainCamera'
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777267
+    aspectRatio = 1.777589
     backgroundColor = [ 0.005, 0.005, 0.005, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -249,7 +245,7 @@ tag = 'Untagged'
     mesh = 'primitive:sphere'
 
     [gameobjects.transform]
-    position = [ 0.0, 0.8, -0.7 ]
+    position = [ -0.000859, 0.8, -0.7 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.6, 1.6, 1.6 ]
 
@@ -375,15 +371,30 @@ prefabAssetPath = ''
 prefabSourceId = ''
 tag = 'Untagged'
 
-    # @note 現行 DynamicScene probe の capture は有効な SkyRenderer を必要とする。室外は黒にする。
     [gameobjects.SkyRenderer]
-    enabled = true
-    dayNightEnabled = false
-    skyScatterIntensity = 0.0
-    skyDayBrightness = 0.0
-    skySunsetBrightness = 0.0
-    skyNightBrightness = 0.0
+    atmosphereRadius = 6471.0
+    cloudShadowCoverage = 0.5
+    cloudShadowSize = 50.0
+    cloudShadowSpeed = 1.0
     cloudShadowStrength = 0.0
+    dayAltitude = 12.0
+    dayColor = [ 1.0, 0.98, 0.95 ]
+    dayIntensity = 4.0
+    dayNightEnabled = false
+    enabled = true
+    mieG = 0.76
+    mieScattering = 0.0021
+    nightAltitude = 8.0
+    nightColor = [ 0.1, 0.15, 0.3 ]
+    nightIntensity = 0.3
+    planetRadius = 6371.0
+    rayleighScattering = [ 0.0058, 0.0135, 0.0331 ]
+    skyDayBrightness = 0.0
+    skyNightBrightness = 0.0
+    skyScatterIntensity = 0.0
+    skySunsetBrightness = 0.0
+    sunsetColor = [ 1.0, 0.5, 0.2 ]
+    sunsetIntensity = 2.0
 
     [gameobjects.transform]
     position = [ 0.0, 0.0, 0.0 ]

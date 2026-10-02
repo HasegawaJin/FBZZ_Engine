@@ -4,13 +4,24 @@
 <!-- @date    2026-09-30 -->
 # Raster と Ray Tracing と Path Tracing の描画設計
 
-- 状態: 設計案。2026-09-30 の `feature/ray-tracing` を調査し、段 0 の GPU 能力公開と純粋な構成解決 API に着手した。RT の GPU 実行と既存ビューへの接続は未実装。
+- 状態: 段階導入中。DX12 の BLAS / TLAS、Ray Scene、交差診断、一段不透明 RT Reflection、texture / alpha / 現在の GPU 変形を実装した。Reference Path は raw HDR・面/形状光源・粗面/薄板/入れ子媒体と FP32 RAW 蓄積に対応し、Game Path は定数不透明材質の初期再構成まで。Hybrid Reflection は SSR との鏡面-only 合成、限定 smooth dielectric 輸送、静止時 HDR 蓄積と限定空間再構成に対応した。RenderPipelineAsset で方式・品質を共有し、Volume・Scene・runtime 設定とは所有を分離する。主可視面 RT Shadow / RT Diffuse GI、Forward 反射、統一 ReflectionPolicy、動く鏡像の専用 denoiser、Raster ガラスは未実装。
 - 結論: Graphics の既存境界を維持し、ビュー単位の描画モードと効果単位の供給方式を分離する。反射は材質・画面上の寄与・情報の有効度・予算に応じて ReflectionProbe / SSR / RT を選び、カメラ距離は任意の LOD 補助にする。Raster を常設し、Hybrid RT と Path Tracing が交差判定・材質・光源・GPU 資源管理を共有する。
 - 初期方針: DX12 の Inline RayQuery を使う。最初の製品向け効果は RT Shadow、最初の Path Tracing は静的シーンの Progressive 表示とする。
-- ゲーム向け方針: Hybrid を段階導入し、最終的に InGame の RealTime Path Tracing を選べるようにする。参照用の積分器を先に検証する順序は、Path Tracing を静止画専用に限定する意味ではない。
+- ゲーム向け方針: InGame の主軸を Hybrid とし、対応範囲・安全な復帰・合成・動的シーンの品質と予算を先に完成させる。Reference Path は比較基準として維持し、Game Path は任意の追加方式として扱う。Path の対応拡大を Hybrid の完成条件にはしない。
+- 計測方針 (2026-10-02): Windows / DX12 の性能検証は PIX に統一する。CodSpeed は使用しない。起動接続・イベント・GPU / Timing Capture の契約は [pix-profiling.md](pix-profiling.md) を正本とし、過去の CodSpeed 取得記録は実施履歴としてのみ残す。
 - スケーリング方針: 全体の内部解像度、効果別の計算解像度、サンプル予算、更新頻度、供給方式を別の軸にする。品質の下限と変更可能な項目を定め、実測から実効 Plan を調整する。Raster にも同じ仕組みを適用する。
 
 Path Tracing は、レイによる交差判定に確率的な光輸送の積分を組み合わせる手法である。交差判定の基盤は先に必要だが、Whitted 型の再帰反射レンダラーを完成させることは必須ではない。ユーザー提供の [Path Tracing 解説](https://rayspace.xyz/CG/contents/path_tracing/) を理論の出発点とし、同じ交差基盤を Hybrid の効果と Path Tracing の双方から使う。
+
+### Hybrid 優先の実装順序
+
+2026-10-01 に InGame の実装優先を Hybrid へ変更した。「完成」は全設定で RT を有効化することではなく、対応した入力の正しさ、未対応入力の診断、Raster へ戻る画像の整合、動きと解像度変更の履歴、実測した予算を満たすこととする。
+
+1. 現在の一段 Reflection の correctness。光源ごとの artist shadow 設定、Dispatch 未記録時の stale 出力拒否、camera-independent の効果被覆、provider 切替時の TAA 履歴を検証する。
+2. 主可視面の RT Shadow。BSDF / hit lighting の対応と切り離し、geometry / opacity の証明で主方向光から追加する。同じライトの ShadowMap / ContactShadow と二重に適用しない。
+3. 共通 ReflectionPolicy と品質。SSR / RT / Probe / IBL の鏡面項だけを解決し、confidence・材質境界・探索距離・SCREEN_FIRST / RAY_FIRST の mask と効果別再構成を供給する。動く反射像を受け手の motion だけで再投影しない。
+4. Forward の SurfaceInputs と、LOD 切替・ガラス・地形・水・VFX の入力契約を一件ずつ拡張する。Raster の見た目を維持する対象と、RT の遮蔽/反射で追跡できる対象は別に証明する。ガラスの Raster 屈折と RT 二次輸送は別の明示設計が必要。
+5. 拡散 GI の provider 置換と実測に基づく最適化。既存 LightProbe / IBL と加算しない。共有 AS 準備、各効果、再構成の GPU 時間と VRAM を分けて計測し、品質を揃えて比較する。
 
 ## UE と RE ENGINE の公開設計をどう取り入れるか
 
@@ -55,7 +66,7 @@ RT の hit と、その地点の照明を求める処理を分ける。初期の
 | `Pipeline/GeometryPipeline.cpp` | Forward / Deferred の登録関数が分かれ、同じグラフへパスを積む | Raster の構成を残し、RT の生産者と消費者を組み込む |
 | `Pipeline/ViewPipeline.cpp` | ビューの資源宣言・ジオメトリ・水・ポスト処理・UI を構成する | 最終 Plan を受け取り、モード別の HDR 生産者を選ぶ |
 | `Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl` | 3 枚に albedo / roughness、shading normal / metallic、線形 HDR emission を保存。材質 ID・幾何法線は出力しない | emission の欠落は修正。GAME Path の SurfaceInputs には依然として追加出力または検証済みの再構築が必要 |
-| `Pipeline/PassResources.hpp` | 実体の登録と取得は RenderTarget / Texture が中心 | Buffer と AccelerationStructure を型付きで追加 |
+| `Pipeline/PassResources.hpp` | RenderTarget / Texture / Buffer / StructuredBuffer / AccelerationStructure の型付き登録・取得を持つ | Ray Scene の共有準備と追跡パスから同じ名前で宣言・取得する |
 | `Renderer/Platform/DX12/DX12Context.hpp` | DXR Tier、Inline RayQuery、Ray Pipeline の能力を検出済み | 能力をバックエンド非依存の値として `IRenderer` から公開 |
 | `Renderer/RenderSettings.hpp` / `Renderer/QualityPreset.cpp` | 手動 `renderScale` と Low / Medium / High / Ultra がある。倍率は 0.5–2.0、内部寸法に床がある | 既存の要求値とプリセットを維持し、自動調整の実効値を別に持つ |
 | `Pipeline/RenderResources.cpp` | 内部寸法の変更でビューの中間資源と TAA 履歴を作り直す。露出・霧など一部は維持 | 資源を解像度の領域と用途で分け、効果別の変更を局所化する |
@@ -241,21 +252,21 @@ Alpha clip は Raster と RayQuery の candidate 判定で同じ UV・cutoff・�
 
 ### 誘電体の透過・屈折
 
-画像のような閉じたガラス球には反射 BRDF だけでなく、透過 BTDF を含む BSDF が必要である。現在の標準 PBR は物理的な屈折・透過・内部吸収を持たない。`alpha` は被覆・合成の契約として維持し、光の透過率には流用しない。材質へ IOR の数値だけを保存しても、対応する表面評価と積分器がなければガラス対応にはならない。[PBRT Dielectric BSDF](https://pbr-book.org/4ed/Reflection_Models/Dielectric_BSDF)
+画像のような閉じたガラス球には反射 BRDF だけでなく、透過 BTDF を含む BSDF が必要である。Reference Path は滑らかな固体の屈折・透過・内部吸収を実装したが、Raster の標準 PBR はこれらを持たない。`alpha` は被覆・合成の契約として維持し、光の透過率には流用しない。材質へ IOR の数値だけを保存しても、対応する表面評価と積分器がなければガラス対応にはならない。[PBRT Dielectric BSDF](https://pbr-book.org/4ed/Reflection_Models/Dielectric_BSDF)
 
-共通 `.mat` / `SurfaceMaterialData` に追加する候補は次の通り。これらは設計段階の項目であり、今回の標準 PBR とサンプル材質には未実装のキーを記入しない。
+共通 `MaterialAsset` / runtime `Material` / `SurfaceMaterialData` は `SolidDielectricSettings` を保持する。`.mat` は reflection の `[params]` と独立した `[dielectric]` に `transmission` / `ior` / `attenuation_color` / `attenuation_distance` / `thin_walled` を保存する。表なしは不透明の既定値を維持し、型が不正なら読み込みを失敗させて以前の材質を保持する。範囲外の数値は保存時に対応済みへ clamp せず、表面の能力判定で拒否する。
 
 | 項目 | 単位・既定と契約 |
 |---|---|
-| `transmission` | [0, 1]、既定 0。誘電体の透過ローブの量。反射・拡散とエネルギーを分配し、metallic と独立に透過を足し算しない |
+| `transmission` | [0, 1]、既定 0。初期実装は 0 または 1 のみ。1 は metallic=0 / roughness=0 / alpha=1 の非発光な固体 BSDF。部分透過の混合ローブは未実装 |
 | `ior` | 無次元、既定 1.5。材質内の屈折率。境界での相対 IOR は入射側・出射側の媒体から求める |
 | `attenuationColor` | 線形 RGB、既定 [1, 1, 1]。指定距離を通過した後の媒体内透過率。baseColor とは分ける |
-| `attenuationDistance` | 正の m。吸収係数へ変換し、レイが媒体内で実際に通過した距離へ適用する |
+| `attenuationDistance` | 正の m、既定 1。吸収係数へ変換し、レイが媒体内で実際に通過した距離へ適用する |
 | `thinWalled` | 既定 false。薄い板と閉じた固体を区別する。初期対応は閉じた固体に限定し、薄膜の散乱モデルは別途定義する |
 
 吸収のみの媒体は距離に対する指数減衰を使う。Raster 向け厚みの近似値を追加する場合も、Ray / Path の交差から求めた実距離へ置き換えない。[PBRT Transmittance](https://pbr-book.org/4ed/Volume_Scattering/Transmittance)
 
-最初の実装は、空気中にある重なりのない閉じた滑らかな誘電体とする。幾何法線で入射・出射を区別し、Snell の屈折、Fresnel による反射・透過のサンプリング、全反射、媒体内の距離吸収、radiance の IOR 補正を同じ BSDF 契約で検証する。内側の面も交差対象に含め、外側の面から入った光を一度の交差で背景へ抜かない。roughness のあるガラス、重なった媒体、薄膜、分散は後段で拡張する。
+初期実装は、空気中にある重なりのない閉じた滑らかな誘電体とする。幾何法線で入射・出射を区別し、Snell の屈折、厳密な非偏光 Fresnel による反射・透過のサンプリング、全反射、媒体内の距離吸収、radiance の IOR 補正を同じ BSDF 契約で扱う。内側の面も交差対象に含め、外側の面から入った光を一度の交差で背景へ抜かない。roughness のあるガラス、重なった媒体、薄膜、分散は後段で拡張する。
 
 DXR の geometry opaque flag は candidate の alpha 判定を省けるという意味であり、光学的に透過しないことを意味しない。alpha clip がないガラスでも最近接の境界へ交差させ、以後の光輸送は BSDF が決める。影も単純な alpha blend の割合には置き換えず、初期積分器の可視性と対応範囲を明示する。
 
@@ -276,6 +287,26 @@ Raster のクラスタは主カメラ向けのライト供給なので、画面�
 GAME の RasterSurface からレイを出す場合は depth 復元と Raster / RT の形状差も誤差源になる。初期検証は同じ geometry / LOD で行い、相違がある経路には整合確認と、必要なら検証済みの primary recast を追加する。通常の RayQuery ヒット向け offset だけで GBuffer の位置ずれまで解決したとはみなさない。公開例の数値定数が全 GPU で同じ誤差上限を保証するとも扱わない。
 
 既存ライトの intensity を型ごとに確認し、現在の絵と物理量の対応を文書化してから変換する。数値をそのまま別の単位として解釈しない。環境には未畳み込みの HDR 放射輝度を使う。空の太陽と方向光、emissive mesh と対応する面光源は同じ発光源を二重計上しない。
+
+### Reference の光源供給と代理面
+
+Reference は active / enabled な全 Scene 光源を所有者・layer とともに収集する。Raster のクラスタ、256 本の上限、主カメラの視錐台、影タイルや Cookie の準備状態に依存した部分集合を使わない。未対応 source は無視せず診断する。方向光は最後の一つだけでなく全件を評価し、光源がない Scene へ Raster 用の既定方向光を追加しない。Point / Spot / Directional は delta 光源として t5 の 64 byte record、有限 Area は t3 の 96 byte emitter record を使う。
+
+| 型 | Reference の単位と評価 |
+|---|---|
+| Directional | `color * intensity * pi` の放射照度。全形状への可視性 ray を使い、delta のため連続 BSDF と MIS しない |
+| Point / Spot | `color * intensity * pi` の放射強度。既存の逆二乗減衰・0.01 m² の特異点ガード・Spot の cone を維持。Raster の sourceRadius による highlight 拡張は持ち込まない |
+| Area | `color * intensity` の放射輝度。Raster の面積形態係数は既に `1/pi` で正規化済みなので、追加の pi 換算をしない。一様面積 sampling と立体角 PDF、BSDF 到達側の MIS を同じ面で評価する |
+
+Point / Spot / Area の正の range は `(1 - (d/r)^4)^2` の滑らかな窓を持つ artist cutoff、0 は無限とする。負・非有限な値は拒否する。Area の窓は NEE と BSDF-hit の直前の実区間に同じ式で適用する。これは距離に依存しない純粋な発光面からの演出的変更であり、Reference の物理的な逆二乗減衰とは区別する。castShadow / shadowStrength による Raster の opt-out を、光輸送の壁の穴にはしない。
+
+Area が同じ所有者の追跡対象メッシュを持たない場合は矩形を二つの virtual triangle にし、一次レイ・反射・屈折・可視性でも TLAS の最近接面と比較する。光源の表裏は emission と遮蔽を分け、片面光源の裏側は放射せず遮蔽する。NEE にだけ現れる、鏡やガラスから見えない光源にはしない。[PBRT Area Lights](https://pbr-book.org/4ed/Light_Sources/Area_Lights)
+
+同じ所有者に Area とメッシュがある場合は、平行・共面な二つの三角形が指定幅高さの矩形四隅と共有対角線を構成すると確認できたときだけ、メッシュ面を照明の代理面とする。元の材質 emission が 0 の面・別 submesh も含めて所有者の全形状を確認し、発光面より前の不明な遮蔽面を見落とさない。面の位置は薄い灯具の境界面、放射輝度は LightComponent を正本とし、同じ所有者の元の材質 emission を置換する。側面など、矩形に属さない元 emission も加算しない。発光材質の正本はファイルに残り、Area を無効にすれば通常の mesh emission に戻る。曖昧な形状対応、CPU snapshot を読めない形状、両面メッシュ代理面は縮退し、単に所有者や法線が一致しただけでは認定しない。メッシュを持たない virtual Area の両面放射は対応する。別の所有者の emission は保持する。CornellBox の天井はこの灯具契約を使い、Area の輝度 18 と材質の emission `18*pi` を二重加算しない。
+
+代理面の角・共面判定の許容誤差は短辺の `1e-4` とし、固定の絶対下限を置かない。保存された float 頂点からの座標差と投影は double で検証する。極小光源に大きなメッシュを対応付けたり、大座標の量子化で失われた矩形を証明済みと扱わない。forward 面の中心からの距離は短辺の 5% 以下であることを求める。これは薄い灯具の境界面契約であり、任意の厚い立体光源の受理ではない。
+
+Point / Spot の区間は最大成分で正規化して距離を求め、距離二乗を先に作らない。逆二乗の係数は正の FP32 を有界仮数と二進指数へ分け、最終 normal 値の指数ビットを構築する。近距離の `0.01 m²` 下限、0 成分、subnormal 入力から normal への復帰を区別する。最終 subnormal は D3D の FTZ に合わせ正常な 0 とし、表現できない距離・放射照度・Area の立体角 PDF は sticky 診断にする。表現可能な遠距離照明を小さな逆数二乗の underflow で捨てない。
 
 ## 加速構造と GPU の寿命
 
@@ -317,7 +348,7 @@ GPU の使用期間は、ハンドルの生存とは別に守る。
 
 UE の RDG も Texture と Buffer の読み書きからリアルタイム描画の依存と寿命を管理している。本エンジンで不足しているのは RT 入力の登録契約であり、RenderGraph という方式の適性ではない。[RDG の資源とビュー](https://dev.epicgames.com/documentation/en-us/unreal-engine/render-dependency-graph-in-unreal-engine)
 
-`ResourceKind::Buffer` は既に存在する。一方、`RenderPipeline::DeclareTarget / DeclareTexture` と `PassResources::Target / Texture` の実体登録・取得 API は、この二種類が中心である。RT には頂点・index・GPU table・AS の明示依存も必要なため、この API を拡張する。ゲームに不向きな graph を作り直す変更ではない。
+`ResourceKind::Buffer` は既に存在する。段 1 の入口で `RenderPipeline::DeclareBuffer / DeclareStructuredBuffer / DeclareAccelerationStructure` と、対応する `PassResources` の型付き取得を追加した。Buffer の byte size / stride、alias の許可と access の用途は graph の指紋へ含め、AS は alias を禁止する。用途の宣言は graph の依存と分離し、宣言だけで backend の同期が自動生成されるとは扱わない。
 
 | 変更先 | 追加する契約 |
 |---|---|
@@ -420,6 +451,8 @@ Probe の選択は反射面の worldPos を基準にする。現行の「カメ�
 
 既存 DynamicSky / DynamicScene と更新間隔は維持する。更新をフレーム一回にし、利用される範囲・dirty 状態・近さに加えて、全体の capture 予算を持つ。全 probe の 6 面 capture を RT の節約と引き換えに毎フレーム走らせない。DynamicScene の現行の捕捉対象と深度の制約は [light-probe-gi.md](light-probe-gi.md) も参照し、Skinned 等を含む正確な反射が既に得られるとみなさない。
 
+2026-10-02 の DynamicScene capture は、現在のライト配列・Area / Sphere / Tube の形状と Point / Spot の sourceRadius、world-space cloud shadow を保持する。主カメラ用 ShadowMap / punctual atlas / cookie / screen AO は捕捉ビューに対して unavailable とし、捕捉専用 b4 / b12 へその状態を明示する。主ビューの定数や古い atlas を再利用しない。初期 capture と Play 停止後の再 capture で、前の shadow ON/OFF によって IBL が変わることを防ぐ。これはプローブ位置からの正確な遮蔽を追加する修正ではなく、probe-local shadow provider と未準備 geometry を含む捕捉完了性は後続段とする。
+
 反射パスの依存は SurfaceInputs → ReflectionClassification → 必要な SSR / RT → 各方式の filter → ReflectionResolve → IndirectSpecular 合成とする。SCREEN_FIRST では SSR → Confidence / RT mask → RT の順序を graph に宣言し、RAY_FIRST では RT の有効区分から SSR 補完範囲を求める。最初は mask による early-out、計測後に tile list / indirect dispatch を加える。Probe に解決しても全画素の RT を先に実行していれば、コストを削減したことにはならない。RT 対象画素を減らしても他の効果に必要な AS の build / update は残るため、効果時間と共有準備を分けて測る。
 
 SSR の色入力は、反射解決前に `SSRSourceHDR = BaseLightingHDR + BaselineIndirectSpecular` として確定する。Baseline は当該フレームの Probe / IBL 等で作り、RT / SSR に置換される受け手の既定鏡面項である。SSRSource から鏡面間接光まで除くと、環境を映す金属等が反射内で不当に暗くなる。最終画像は `BaseLightingHDR + ResolvedIndirectSpecular` とし、Baseline をもう一度足さない。
@@ -431,6 +464,147 @@ SSR / RT の合成結果を同じ trace の入力へ即時に戻して、graph �
 方式や品質条件が変わるときは方式ごとの履歴を混用しない。各方式の履歴を検証した後で、そのフレームの重みで合成する。方式を完全に停止していた領域を再開する際は古い履歴を棄却する。任意の距離 LOD による表現切替と、時間的な品質降格の待機期間を区別する。
 
 REFERENCE の Path Tracing は、この Hybrid 用 policy で二次反射を SSR / Probe に置換しない。Hybrid の反射の近似と、Path の光輸送の検証を分ける。将来 GAME に照明キャッシュを導入する場合も、近似を用いた integrator として明示する。
+
+### Hybrid SCREEN_FIRST の初期実装
+
+HYBRID を要求した通常 Lit・非 Wireframe の Deferred ビューでは、一般的な低粗さの表面は SSR の有効な画素を先に使い、残りを ReflectionTracing、未解決分を既存 IBL で補う。強い金属鏡面は後述の RT 優先例外を使う。SSR を無効にした場合は ReflectionTracing → IBL となる。RT の被覆不足では実効 Raster と縮退理由を保持したまま、対応済み Deferred 表面の SSR → IBL を同じ鏡面-only resolver で解決する。Forward・診断表示・RASTER を要求した場合の既存 SSR 合成は互換経路として維持する。任意の RAY_FIRST 設定・Probe を独立した鏡面 provider として選ぶ共通 policy は後続段とする。
+
+SSR を使う Hybrid は `ReflectionSourceLighting → Sky / SunMoon → SSR → RayReflection → reconstruction → DeferredLighting → VolumetricCloud` の順とする。最初の Lighting は RT / SSR を読まず BaselineIndirectSpecular を含む HDR を生成し、SSR の記録が終わるまでこの HDR を変更しない。最後の Lighting は BaseLightingHDR を再評価し、鏡面間接光だけを解決する。雲は不透明物の手前にも散乱・透過を合成するため source から除外し、最終 Lighting 後に一度だけ描く。独立した全解像度 source texture の追加を避ける代わりに、SSR 有効時の Deferred Lighting が一回増える。これは正しさを優先した初期構成であり、速度改善を意味しない。
+
+SSR の RGB は receiver の Schlick Fresnel を一度適用した scene-linear IndirectSpecular の近似とし、alpha は材質の F0 と独立した交差・画面端・roughness による hit confidence とする。鋭い単一反射レイの近似であり、粗い面の GGX convolution を実装済みとは扱わない。`q = saturate(confidence * ssrIntensity)` に対し SSR の重みを q、RT の重みを `rayValid ? 1-q : 0`、IBL の重みを `1-q-rayWeight` として、同じ鏡面成分を二重加算しない。直接光・拡散・emission・後段 Bloom はこの重みで減衰させない。
+
+Hybrid の SSR 候補は深度横切り区間を最大 6 回二分し、2 pixel 未満の移動・背景・反射方向に対する裏面を棄却する。レイ位置と同 UV の深度面の視空間距離を固定 `ssrThickness` で検証し、距離に応じた二乗 confidence で RT へ移行する。探索ステップの大きさでこの受理窓を拡大しない。色・法線・深度は検証済みの同じ画素から取得し、輪郭の別表面を線形補間で混ぜない。単一レイでは粗い反射ローブを表せないため roughness 0.05 から confidence を下げ、0.25 以上は SSR を採用しない。従来 Raster の探索・roughness 契約は変更しない。[FidelityFX SSSR hit validation](https://github.com/GPUOpen-Effects/FidelityFX-SSSR/blob/master/ffx-sssr/ffx_sssr.h)
+
+metallic 0.9 以上・GBuffer の filtered roughness 0.25 以下の高反射金属では、RT の当該フレーム receipt がある場合に q を 0 とする。GBuffer の roughness は `FilterSpecularRoughness` 後の値であり、曲面の法線分散で authored roughness より上がるため、authoring 値 0.05 の判定をここへ代用しない。カメラ方向の Raster source と二次方向の RT 照明・幾何法線安全性が一致するとは限らず、Cornell の鏡面球で反射の帯と facet の差を確認したための固定品質例外である。RT の有効な黒も優先し、primary が無効な画素は IBL へ戻す。RT 自体の縮退・記録失敗ではこの例外を外し、SSR → IBL の補完を保持する。共通 `Rendering/ReflectionPolicy.hlsli` の同じ判定を trace の early-out と最終 resolver で使う。
+
+上の鏡面例外に該当せず SSR confidence が十分な画素は RayReflection の交差処理前に除外し、RAW と surface metadata を無効で上書きする。SSR の無効化・pass override・記録失敗では当該ビューの receipt を false とし、永続 SSR テクスチャの前フレーム内容を読まない。SSR から RT に戻る画素は既存の無効 surface 判定によって古い RT 履歴を棄却する。SSR 自身の temporal reconstruction と動く表面への motion-vector 再投影は未実装のままとする。
+
+TAA の provider key は実効 mode・RT receipt に加えて resolver の有無と SSR receipt も比較する。実効 Raster のまま旧合成から鏡面-only 合成へ切り替わる場合や SSR の停止・復旧でも古い LDR 履歴を混用しない。SSR source は Deferred 不透明物と Sky / SunMoon までとし、後段の雲・Forward 透明物・粒子・水面は含めない。これは Hybrid の物理ガラス輸送を追加するものではなく、未対応 transmission は引き続き RT の縮退理由になる。
+
+2026-10-01 の Release 変更単位コンパイル、Graphics / Engine テストと Editor ビルドはエラー・警告 0。最終の重点 126 / integration 229 / transport 95 の計 450 件が成功した。実 SSR シェーダーは到達できる傾斜面で RGB・F0 非依存 confidence・画面端を検証し、自己交差・裏面・背景・固定厚み外・粗さ・非有限設定の拒否を確認した。実 GPU の二ビュー・pass override・RT 被覆不足、TAA の実効 Raster 内の provider 切替、RT の完全 confidence / 部分 confidence と metadata のクリアも検証した。高反射金属の filtered roughness 0.1 / 0.2 と half-float の 0.25 / 0.9 境界、RT の有効黒・無効画素・全体記録失敗時の選択、完全 SSR confidence でも鏡面の実 trace と新 metadata を保持するケースを追加した。
+
+隔離プロジェクトの `OutputHybridFinalMaterialPolicyRelease20261001/` は 35 step / 6 枚で成功し、SSR → RT → resolve、Scene View 往復、ガラスによる RT 縮退と復旧を確認した。ガラス OFF の Hybrid で SSR 合成由来の鏡面球下部の白帯・facet 差が消えたことを画像確認した。原本 CornellBox の SSR は承認に従い ON、intensity 0.8 は維持した。原本のガラス・シーンはこの段で変更せず、ガラス有効時の RT 縮退は残る。SSR OFF の最終互換撮影 `OutputHybridPolicyCompatibilityRelease20261001/` の 32 step / 6 枚と `OutputHybridPolicyCompatibilityAccumulatedRelease20261001/` の 10 step / 2 枚は成功した。前段の profiler 撮影に対し 7 枚は PNG / RGB 完全一致、残る Scene View 往復後の 1 枚は床の (658,866) の B 成分だけ 227 → 228、最大差 1/255 だった。各撮影前後で原本 9 ファイルの hash を保護した。Game 1548 x 871 / Scene 1263 x 435 の画像検証であり、1080p / 60 fps の性能認定ではない。Release debug layer はコンパイル時無効で、雲の実色合成は今回の CornellBox 撮影では検証せず、登録・実行順と一回性の回帰テストで保護する。
+
+### Hybrid の dielectric 輸送
+
+typed glass の Opaque / alpha=1 は被覆を表し、光学的な不透明を意味しない。
+Hybrid は constant・full transmission・nonmetal・nonemissive の solid
+(`roughness` 0..1) と、roughness=0・無吸収の thin sheet を受理する。
+smooth solid (`roughness * roughness < 1e-3`) は分岐木を保持する。
+rough solid は共通 GGX VNDF dielectric の反射・透過を `f * cos / pdf` でサンプリングし、
+null sample も分母に数える。画面ぼかしの代用ではなく、有限経路予算を持つ確率推定である。
+部分透過、rough thin、テクスチャ付き dielectric は明示的な縮退対象を維持する。
+
+canonical MaterialCB の予約 float@84 と GBuffer emission.a は、0=opaque、
+1=supported glass、2=authored but unsupported glass の validated marker とする。
+typed glass は ReflectionSourceLighting の RGB を 0 にし、SSR の receiver と
+hit target の両方から除外する。Raster fallback の glass を SSR source へ混ぜない。
+PostProcCB の reflectionResolveEnabled は 0=legacy、1=final、2=source とする。
+
+RAW reflection.a は光学透過率でなく result kind を表す。0=invalid、
+1=opaque indirect specular、2=glass/media full outgoing radiance。
+当該フレームの RT dispatch receipt と marker=1 と kind=2 が一致する場合、または
+初期媒体解決と Raster depth 照合済みの媒体内 opaque primary (marker=0 / kind=2) だけ、
+Deferred の全 lighting を置換する。direct / diffuse / AO / IBL / emission を
+さらに加算しない。有効な黒は黒のまま採用する。kind=2 を opaque specular として
+採用せず、記録失敗・非有限値は Raster fallback へ戻す。
+
+smooth Fresnel の反射・透過を決定論的に分岐し、Snell、全反射、実境界距離の
+Beer 吸収と owner / generation を比較する LIFO 媒体 stack (最大8) を使う。
+opaque reflection が二次 glass に当たった場合も界面輸送を続ける。
+thin sheet は2界面の有効 Fresnel と直進透過を使い、架空の内部距離を作らない。
+境界上限は品質設定の1..16、上限後の残余は0とする有限輸送の近似であり、無限 bounce の収束ではない。
+camera-inside は同じ owner の逆方向出口と前方向境界順で初期 stack を検証する。
+閉じた一貫した winding の著者形状を前提とし、全 mesh の watertight topology を証明しない。
+光学最初の ray は TMin=0、Raster primary の照合は near/far を保持し、近クリップ前の出口を飛ばさない。
+媒体内 opaque terminal の実 segment に Beer を一度適用し、直接光は別 segment の減衰・遮蔽を使う。
+work > 512 / pending overflow、開いた媒体、非 LIFO の重なり、depth0 の媒体内背景など、
+保証外の経路は画素を invalid として部分結果を公開しない。
+8段の構造を受理しても全ての入れ子経路が work budget 内で完了するとは保証しない。
+
+glass metadata.w=2 は opaque の履歴と隔離する。RAW kind と metadata kind の一致を
+必須とし、全 consumed content key・非 jitter カメラ・連続 frame・成功 receipt が
+一致する静止時は品質設定の historyLimit (1..64、既定32) の平均、その後同じ上限の EMA を使う。
+履歴は read/write の別資源へ書き、再投影による inter-pixel race を避ける。
+移動時は平面 smooth opaque の鏡像位置、または smooth thin の直接 opaque terminal 位置を
+前カメラへ投影し、owner / generation / primitive、界面平面、法線、pixel footprint を照合する。
+thin は既知 constant 環境へ直接 miss する反射枝と直接 terminal の透過枝だけを受理し、
+透過信号を demod/remod、現在の Fresnel 反射を保持する。再利用は最大4 frame の近似であり、
+terminal 自身の視線依存 BRDF まで不変とするものではない。
+物体・光・材質・配置・未知 provider の変更、camera cut、記録失敗は reset する。
+rough / curved / solid / nested / inside / multiple-path は移動時 current-only とし、
+無効画素の穴埋めや glass の空間ぼかしは行わない。
+rough interface NEE / MIS、一般動的物体の屈折像再構成、透過 caustics は別の対応段とする。
+
+2026-10-02 の Release 撮影 `OutputHybridGlassStaticHistoryRelease20261002/` は
+27 step / 6 枚で成功した。inline Raster / Forward の隔離プロジェクトへ GUID の
+RenderPipelineAsset を指定し、Hybrid / Deferred+、SSR と RT の実行、Scene View 往復、
+非交差の物体移動、glass OFF と復旧、shader error 0 を確認した。Game は1548 x 871、
+Scene は1263 x 435であり、原本9ファイルの hash を前後で保護した。
+媒体 stack は immutable な instance / material data を参照する ID へ縮小し、
+輸送式・分岐・上限を変えずに path の媒体保持を簡素化した。
+この撮影と GPU 回帰は、CodSpeed による性能比較や1080p / 60 fps の達成証明ではない。
+Release の debug layer はコンパイル時無効で、strict resource declarations は有効にした。
+
+最終 Release は Editor と Graphics / Engine / Editor のテスト実行ファイルを再リンクし、
+エラー・警告0。重点141、統合252、transport95、Editor保存・操作34の計522件が成功した。
+追加の probe GPU 3件は旧 shadow / cookie / AO の状態からの独立、Area 直接光の保持、
+主ビュー b4 / b12 の byte 不変、manager / Reset の寿命を検証する。
+`OutputHybridGlassFinalRelease20261002/` の再撮影も27 step / 6枚で成功し、shader error 0。
+`OutputPipelineRuntimeFinalRelease20261002/` は78 step / 6枚で Play中の shadow変更、
+pause、Stop、再開始を確認した。原本9ファイルと clone の設定・asset 2ファイルは不変。
+初期 / Play / Stop / 再Playの天井・背面壁・拡散球の固定領域比較9件は、RGB成分の
+平均絶対差が最大0.271/255で許容3/255以内だった。全画像の一致や物理的GIの証明ではない。
+
+2026-10-02 の shared diffuse indirect 段では、Hybrid の primary Raster と opaque secondary
+hit が同じ `FBZZ_DiffuseIndirectResponse` を使う。照明値は当該ビューの irradiance cube と
+最大2つの選択済み SH volume を hit の world position / normal で引く既存近似であり、
+DDGI、可視性付きの新規拡散レイ、完全な diffuse multi-bounce GI ではない。
+local ReflectionProbe cube の選択は引き続きビュー単位で、二次点ごとに別の cube を選択し直さない。
+SH は world-space 箱と境界 fade に従って混合するので、二次点が選択 volume の外なら cube へ戻る。
+
+生きた finite b8 snapshot、irradiance SRV、active SH の寸法 / grid / 全配置値を確認できる
+フレームだけ、この shared approximation を有効にする。二次点には material AO を一度だけ
+適用し、primary の screen-space AO を転用しない。既存 Raster の中立 floor 0.025 は同じ
+artist approximation として一度だけ保持する。shared diffuse 使用中は、known/raw environment
+NEE の diffuse と unknown IBL/ambient の diffuse / floor を置換し、環境 specular、直接光、
+emission は別に保持する。したがって同じ環境 diffuse を NEE と probe の両方から加算しない。
+
+履歴キーは環境が known black でも、実際に消費した irradiance / active SH の handle・世代・
+content version、IBL intensity / diffuse scale、SH volume 全配置値を含む。GPU生成 cube の
+version 0 は、成功した bake が新しい never-again-written 結果を公開した explicit publication
+（元 handle、ResourceManager owner、resource epoch が完全一致）の場合だけ不変入力として扱う。
+新しい bake は新 handle に交換し履歴を reset、解放 / manager変更 / Reset / 不一致 proof は
+再利用を許可しない。in-place GPU 書込 SH の version 0 をこの publication で救済しない。
+
+媒体内の opaque terminal には距離を持たない probe / ambient / floor を加算しない。
+known/raw 環境と直接光は実 hit-to-light segment の Beer 減衰を使い、straight NEE を塞ぐ
+光学境界は artist shadow strength が0でも physical PRIMARY mask で検証する。
+閉じた屈折界面を曲がって接続する caustic NEE は別段であり、未知環境の媒体内 terminal は
+finite alpha0 に縮退する。camera / 最後の界面から hit までの Beer は別 segment として一度だけ適用する。
+旧撮影の媒体内不透明物は当時の対応範囲外だった。現在は閉じた solid の粗面、
+初期媒体内カメラ、媒体内 opaque terminal を下記の制限付きで扱う。
+移動履歴は対応を検証できる平面鏡・滑らかな薄板の短期近似に限定し、複雑な経路は current-only。
+rough thin、非 LIFO 重なり、depth0 の媒体内背景、caustics、DDGI と性能目標は未完了として残す。
+設定の永続化と実行時の所有権は [Render Pipeline Asset](render-pipeline-asset.md) に従う。
+
+2026-10-02 の追加実装は Release の Editor と Graphics / Engine / Editor テストを再リンクし、
+最終ビルドはエラー・警告0。関連483件と Inspector 保存6件の計489件が成功した。
+新しい GPU 検証は shared diffuse / SH配置 / 環境 diffuse の排他性、内容公開の寿命、
+rough solid / null sample / 初期媒体 / 近クリップ前の出口 / nested owner / 媒体内opaqueの
+実 Beer 距離、motion terminal / thin demodulation / ping-pong race回避 / RAW復帰、品質上限を含む。
+人工 GBuffer の片面 Raster と TLAS 両面 flag の不一致を修正し、解析 Beer / TIR 期待は緩和していない。
+
+隔離撮影 `OutputHybridSharedLightingRelease20261002/` は27 step / 6枚、
+`OutputHybridLightingRuntimeRelease20261002/` は78 step / 6枚、
+`OutputHybridRoughInsideRelease20261002/` は14 step / 4枚で成功した。
+通常ガラスの室内照明の変化、粗い透過像、内部カメラ、Scene View往復とPlay開始・停止を確認した。
+旧 clone 設定には保存時に新既定の `[render.hybrid]` が追加された。その後の再検証
+`OutputHybridLightingNormalizedRuntimeRelease20261002/` は78 step / 6枚で成功し、
+clone の設定と Pipeline Asset の2ファイルは byte 不変、各撮影の原本9ファイルも不変だった。
+計197 step / 22枚、Game1548 x871 / Scene1263 x435の品質検証である。
+rough glass の粒状感は残り、一般動的屈折 denoiser、DDGI、効果別低解像度、1080p/60fpsを
+達成済みとは扱わない。Release debug layerはコンパイル時無効、GPU-Based Validationも検証していない。
 
 ### Path Tracing の出力
 
@@ -539,6 +713,21 @@ ProjectSettings に mode と効果別要求を追加する。既存 `render.pipe
 `PipelineDiagnostics`、品質プリセット、ProjectSettings の読書き、設定パネル、Render Pass Viewer の表示を同じ Plan に接続する。Editor 操作の追加は既存 `Op/` 登録簿へ集約する。
 
 ### ダウンスケーリングを共通機能にする
+
+2026-10-02 の `HybridQualitySettings` は Pipeline Asset / inline fallback に
+同じ typed codec で保存する。Inspector の Low / Balanced / High は負荷の出発点であり、
+FPS の保証ではない。reflection samples、履歴長、spatial radius、glass boundary limit、
+opaque reflection の有限距離、ビューごとの再構成 working set、全ビュー共通の
+probe capture attempt 上限を個別に適用する。既定距離0は既知環境の全探索を維持する。
+有限距離 no-hit は unresolved として SSR / IBL へ戻し、有効な黒や確定環境 miss にしない。
+Shadow / diffuse visibility と glass の媒体経路へ同じ距離を適用しない。
+履歴が MiB 上限を超えた場合は fence-safe に退役し、同フレーム RAW の反射を維持する。
+これは AS、材質 texture、driver heap、退役待ちとの同時生存を含む全 VRAM 上限ではない。
+Hybrid の probe 更新は ResourceManager の frame / reset epoch を共有して6面＋畳み込みを
+一回の attempt と数え、失敗も予算を消費する。owner 順の巡回で未更新・失敗・毎フレーム更新
+probe の starvation を防ぎ、待機中は既存の有効結果を保持する。更新0はrefresh停止を意味する。
+frame / AS / trace / reconstruction / probe の ms は保存する目標値のみで、自動調整や
+未計測の準備時間・GPU critical path を実装済みとは扱わない。CodSpeed 比較は未実施。
 
 解像度を下げる操作と、描画方式・更新コストを下げる操作を一つの倍率へ押し込めない。`RenderScalePolicy` に許可範囲を持ち、結果を `ViewResolutionPlan` と効果別の品質へ解決する。Raster / Hybrid / GAME Path のすべてが使う。REFERENCE の Progressive と基準画像の取得では自動調整を停止し、固定条件を記録する。
 
@@ -688,9 +877,9 @@ GPU 予算はゲーム描画だけの値と、Editor の全ビューを含むフ
 
 [CornellBox.scene](../../GreenWare/Assets/Scenes/Test/CornellBox.scene) は、赤・緑の側壁、白い床・天井・奥壁、白球・金属球・透明球、天井発光面と矩形 Area Light を持つ開いた箱である。専用の 7 材質を `GreenWare/Assets/Materials/Demo/CornellBox/`、露出・Bloom の設定を `Assets/PostProcess/CornellBox.fzdata` に分け、GUID で参照する。
 
-現在は Raster の動作比較用で、DynamicScene ReflectionProbe を配置している。現行のキャプチャには SkyRenderer が必要なので黒い室外環境を置く。天井は標準 PBR の発光を使い、Deferred の GBuffer に保持してから Bloom へ渡す。Area Light と発光メッシュは一つの光源を二つの入力で表すため、将来の Ray Light Table で重複光源として登録しない。現行の強度値と露出は見た目の比較用であり、物理量が一致する参照条件としては未認定である。
+Raster / Reference Path の動作比較用で、DynamicScene ReflectionProbe を配置している。Raster のキャプチャには SkyRenderer が必要なので黒い室外環境を置く。天井は標準 PBR の発光を使い、Deferred の GBuffer に保持してから Bloom へ渡す。Reference では Area Light と発光メッシュを一つの矩形代理面として扱い、LightComponent の放射輝度を正本にする。現行の強度値と露出は見た目の比較用であり、Raster と Reference の物理量が一致する参照条件としては未認定である。
 
-`Glass.mat` は alpha blend による透明近似であり、屈折・透過・内部吸収の物理モデルは未実装である。未実装の transmission / IOR のキーは保存しない。Reference の誘電体を導入する段で、同じ球の光学材質を追加し、既存 Raster 近似と分けて比較する。Raster の現在の画像はカラーブリーディングや屈折の正解画像として扱わない。
+`Glass.mat` は Reference Path 用の全面被覆・滑らかな固体に更新した。`[dielectric]` は transmission=1 / IOR=1.5 / attenuationColor=[0.96, 0.98, 1] / attenuationDistance=1 m を持つ。旧 alpha blend と異なり、Raster fallback では通常の不透明 PBR として表示され、屈折は再現しない。シーン正本の Area Light / ReflectionProbe / Sky は維持している。初期の撮影では未対応だった Area を隔離コピーの runtime だけで無効にしていたが、矩形代理面対応後は有効のまま Reference を要求する。Raster の画像はカラーブリーディングや屈折の正解画像として扱わない。
 
 2026-09-30 の検証では、正本アセットの一時コピーをビルド済み Editor で非表示実行し、Deferred+ と未実装 PathTracing 要求からの Raster 縮退で 160 フレーム後の shader diagnostics が 0 件であることと画像を確認した。天井の HDR 発光・Bloom と透明球の表示を確認した。数値としての発光契約は `DeferredEmissionTest` の GPU 読み戻しで別途検証する。
 
@@ -704,11 +893,205 @@ GPU 予算はゲーム描画だけの値と、Editor の全ビューを含むフ
 
 `PrepareViewRenderPlan` は現在の ResourceManager にある実体と寸法を確認し、ビュー別の `renderPlan` に結果を置く。Engine はこの Plan の不透明方式・クラスタ可否を使い、`BuildViewPipeline` へ渡す。現在の Raster ゲートは出力先・HDR / LDR・基本描画の定数バッファと状態・Composite・必要な再拡大元と filter を対象にする。各材質や任意の既存エフェクトの失敗処理は引き続き各パスが担当し、全材質の対応証明までをこのゲートの成立条件とは扱わない。
 
-Project Settings > Graphics には要求の編集と、Game / Scene View の最終描画時の実効モード・縮退理由を表示する。照会でビューや GPU 資源を生成しない。未実装の Ray Scene / RT パス / 完全な RasterSurface は false のままとし、RT / Path の要求を保存しても現段階の実効モードは Raster になる。効果ごとの品質・解像度・履歴の詳細は、対応する資源とパスを追加する段で Plan を拡張する。
+Project Settings > Graphics には要求の編集と、Game / Scene View の最終描画時の実効モード・縮退理由を表示する。照会でビューや GPU 資源を生成しない。`Hybrid + rayReflection` は対応する Deferred / DeferredPlus ビューで有効になり、未対応の形状・表面・照明では設定を保ったまま Raster へ戻る。未実装の RT Shadow / Diffuse GI / Game Path の availability は false のままである。
 
 固定の Scene 倍率は既存の `renderScale` と Spatial 経路を維持する。段 0a の `ViewResolutionPlan`、効果別の倍率、資源グループの分割はまだ実装していない。
 
-初回検証では Graphics 単体ターゲットのビルド、`ResolvedRenderPlanTest` の 17 件、既存 `GraphicsStandaloneTest` の 3 件が成功した。後者は実 GPU の Raster 描画・読み戻しと、初期化中 / 終了後の能力照会を含む。段 0 の接続後もこの 20 件が成功し、独立した複数ビュー、resize による Plan 無効化、固定縮小と filter の不足・失効を追加確認した。`RenderModeSettingsTest` の 5 件では旧設定、不正なキー型、要求の保存往復、縮退による要求の不変性、パース失敗を確認した。C++ の変更単位のコンパイルと AgentLint も成功した。RT 追跡と実際のエディター操作の検証は未実施である。
+初回検証では Graphics 単体ターゲットのビルド、`ResolvedRenderPlanTest` の 17 件、既存 `GraphicsStandaloneTest` の 3 件が成功した。後者は実 GPU の Raster 描画・読み戻しと、初期化中 / 終了後の能力照会を含む。段 0 の接続後もこの 20 件が成功し、独立した複数ビュー、resize による Plan 無効化、固定縮小と filter の不足・失効を追加確認した。`RenderModeSettingsTest` の 5 件では旧設定、不正なキー型、要求の保存往復、縮退による要求の不変性、パース失敗を確認した。C++ の変更単位のコンパイルと AgentLint も成功した。その段階では RT 追跡と実際のエディター操作の検証は未実施であった。
+
+段 1 の RHI は `AccelerationStructure.hpp` のバックエンド非依存契約から静的三角形 BLAS / instance TLAS を生成する。`ResourceManager` が実体を単独所有し、`IRenderer::BuildAccelerationStructure` がフレーム内の DIRECT queue へ一度だけ build を記録する。TLAS は build 済み BLAS の GPU storage を保持し、AS 本体・scratch・bindless descriptor とともに最後の使用フェンスまで退役を遅らせる。Scratch は現在 AS ごとの専用確保であり、メモリ台帳のサイズへ含む。共有 scratch・update・compaction は未実装である。
+
+三角形は float3 position と uint32 index、頂点・index の開始位置と範囲を明示する。CPU 更新後の Buffer は Raster と同じ UploadArena の最新 snapshot を使い、容量だけで実際の入力範囲を認定しない。instance transform は Math の column-vector 行列の先頭 3 行を DXR の row-major 3x4 へ渡す。24 bit instance ID、非有限・非 affine・特異 transform、不正な index と範囲は GPU 記録前に拒否する。AS の状態は COMMON へ移さず、build の直後に AS の UAV barrier を発行する。初期の ray Dispatch は型付き TLAS を `ComputeCall::accelerationStructures` から受け取り、未構築・失効・slot の型衝突と非同期区間での使用を拒否する。
+
+`RayTracingTest` は専用の Inline RayQuery シェーダーと実際の診断パスで交差 ID / 距離 / 幾何法線を読み戻す。non-opaque candidate を扱うテストは candidate API の検証であり、材質 alpha clip の対応証明ではない。
+
+段 1 の基盤検証は RTX 4070 で実施し、`RayTracingTest` の 4 件を含む描画構成・RenderGraph・型付き PassResources・Raster 回帰の計 88 件が成功した。D3D12 debug layer を有効にし、RT テストは WARNING / ERROR / CORRUPTION の出力がないことも検査する。GPU-Based Validation は無効であり、実ビューの操作・自動収集した Scene の交差は未検証である。変更単位のコンパイル、Graphics 単体 / Engine 自動テストのビルド、AgentLint はすべてエラー・警告なしで成功した。
+
+2026-10-01 の追加実装は次の範囲に限定する。
+
+- `RaySceneBuilder` はカメラの可視性・HiZ・距離カリングと独立に静的メッシュを収集し、layer / authoring slot を適用する。Scene 世代と完全な Entity ID を保存し、dense InstanceID はヒット表の索引にだけ使う。
+- `RayGeometryCache` は Buffer 内容版と形状範囲が一致する BLAS をビュー間で共有する。変換・mask・ヒット表が変わると TLAS を交換し、定数材質だけの変更では Surface 表だけを交換する。旧 GPU 実体はフェンス完了まで保持し、需要がなくなったキャッシュを退役させる。
+- `IBuffer` の raw SRV と `ComputeCall::indirectReadBuffers` は table 背後の頂点・index を型付きで申告する。CPU 更新は新しい immutable snapshot / descriptor を公開し、既に記録した読み取りを上書きしない。
+- Viewport の `RayT` / `RayN` / `RayID` は通常のポスト処理後に交差距離・実三角形の幾何法線・完全な Object ID の色を表示する。未対応形状は診断色を付け、Path の準備済みとは扱わない。
+- `RayReflectionPass` は GBuffer の一次面をカメラ ray と深度で照合し、フル内部解像度で isotropic GGX VNDF の固定 4 サンプルによる一段反射を計算する。hit は standard Vertex の補間法線、linear baseColor / metallic / roughness / emission、主方向光の可視性、ambient またはグローバル IBL で評価する。
+- Reflection 出力は primary の鏡面 BRDF で重み付け済み RGB と有効性 alpha を持つ。有効な画素だけ Deferred の IBL 鏡面項へ置換し、Composite の SSR を抑止する。直接光・拡散 IBL・発光は保持する。miss / 未対応 hit / 裏面 / 深度不一致 / RGBA16F overflow の画素は alpha=0 として従来 SSR / IBL へ戻す。
+- 初期 Reflection は static / opaque / canonical constant PBR / standard Vertex / dry-only。テクスチャ、追加ローブ、Skinned / morph、alpha clip、地形・水・VFX・decal、LODGroup / dither、点・スポット・形状光源、cookie / cloud shadow、LightProbe GI、camera-selected ReflectionProbe、fog / volumetric / cloud / underwater はビュー全体を従来反射へ戻す。反射内の方向光遮蔽は hit shading の一部であり、主可視面の RT Shadow 実装ではない。
+
+段 3 の全体は未完了である。画面上の寄与に応じた予算配分、Probe の hit-point 選択、効果別解像度、動く鏡像の temporal denoise / history は次段に残る。初期 Reflection は 4 サンプルの raw 表示と既存 LDR TAA だけを使っていたが、現在は後述の静止時 HDR 再構成を追加する。Reference Path の初期対応は以下に記す。全 Scene 対応や Game Path の完成を意味しない。
+
+追加検証では `RayReflectionTest` の 7 件を含む関連 130 件が RTX 4070 上ですべて成功した。発光・Fresnel・roughness・補間法線、far / orthographic / jitter、画面外の方向光遮蔽、部分 shadowStrength、実 IBL cube / LUT / 強度、裏面・未対応・半精度 overflow の無効値、SSR / IBL の排他性、Scene / 内容版 / 材質版 / LOD 所属と複数ビューを確認した。D3D12 debug layer と strict resource declarations を有効にし、GPU-Based Validation は無効。IBL テストの意図的な HDR クリアに伴う性能メタデータ警告 ID 820 だけを限定して除外し、RT / barrier / descriptor の警告は除外しない。
+
+Reflection 段の変更単位コンパイル・Graphics / Engine 自動テスト・Development Editor ビルドと AgentLint が成功した。その時点で残った `AssetBrowserImport.cpp` の C4834 警告 3 件は、保存結果を確認し失敗を通知する修正を追加した。元の CornellBox をコピーして旧バイナリで撮影した基準画像は、ガラス・Area Light を含む原本の Raster fallback である。shader errorCount=0、撮影前後で元シーン・meta・PostProcess・ProjectSettings の SHA256 一致を確認した。
+
+### Hybrid のゲーム向け安定化
+
+2026-10-01 の優先変更後は、既存の一段 Reflection の契約を先に固める。主可視面 RT Shadow / RT Diffuse GI や統一 ReflectionPolicy の完成とは区別する。
+
+- Hybrid の反射内直接光は Directional / Point / Spot / Area / Sphere / Tube ごとに `castShadows` と有限な `shadowStrength` を受け取り、Raster と同じ 0–1 clamp を適用する。全体の影設定は authored light ごとに合成し、選ばれた主方向光の設定を他のライトへ流用しない。Area の mesh 代理面と virtual 面にも owner の設定を使う。
+- Reference は `RayPathSceneBuilder::Build` の既定契約を維持し、artist shadow 値を transport・検証・内容キーへ含めない。共有光源 record は Emitter 112 / Delta 64 / Shape 80 byte とし、Reference の shadow strength は 1 に正規化する。Hybrid だけが artist 設定を有効化する。
+- 通常の mesh emission と raw HDR の NEE は全 PRIMARY geometry で可視性を求め、artist light の弱い影や `object.castShadow=false` で光輸送へ穴を開けない。authored light は SHADOW mask、primary 鏡面環境サンプルは SPECULAR mask を使う。
+- `IRenderer::TryDispatch` の true は実際の Compute command の記録を示す。既存 void `Dispatch` の仮想関数位置と利用者を維持し、未対応 backend は false とする。Reflection はこの receipt が得られたフレームだけ有効とし、旧フレームの出力が残っていても Deferred / Composite が採用しない。GPU 完了や全画素の有効性の保証ではない。
+- 未対応の Particle / Fiber は Raster の可視 draw-list とは別の owner / layer メタデータで被覆を診断する。粒子の simulation・draw budget・カメラ cull は変更しない。CPU の実粒子ゼロと非描画 mesh 粒子は除外し、GPU の正の最大容量だけでは alive=0 を証明しない。Fiber の renderer LOD 非表示を「反射に影響しない形状」の証明に使わない。
+- TAA はビューごとの実効 mode・Reflection receipt・連続 frame stamp を記録し、方式変更・縮退・停止再開・フレーム欠落で feedback を 0 にする。Reflection の実行後、TAA の直前に typed `AdvancedGraphicsCB` snapshot から更新し、先行 Draw / Dispatch の immutable 定数を上書きしない。これは既存 LDR TAA の履歴安全性であり、反射像専用 motion や denoiser の実装ではない。
+- Standard / Terrain / Fiber の GBuffer 出力側で面内の法線分散を roughness に畳み込み、Deferred と RT はその確定値を同じ下限で読む。DeferredLighting だけで GBuffer の別オブジェクト境界を跨ぐ二段目の微分補正を行わない。Fiber は GBuffer 変種だけで、coverage clip より前に微分を確定する。
+- 先行する輪郭修正では、smooth shading / normal map の法線には表側でも実三角形の幾何法線には裏側となる一次鏡面サンプルを被覆不足として alpha=0 に戻した。太い黒斑は別の深度修正で解消したが、この per-sample の binary fallback が最外周の細い破線を残すことを理由別診断で確認した。現在の Hybrid は後述の反射用法線整合と元の count を保つ null sample に置き換える。Reference の shading-normal transport は変更しない。
+- GBuffer の一次面照合は ray の距離差だけで判定せず、確認した三角形の法線方向へ位置差を射影する。D32 の距離誤差も同方向へ射影し、FP32 の復元・RT 交差誤差と、画素寸法・射影に応じた 1/256 pixel の Raster snap footprint を加える。Raster は頂点 XY を n.8 固定小数点へ丸め、その座標で補間するため、浅い角度では従来の距離差判定が正しい面を拒否し、IBL fallback の黒い輪郭を生じていた。[Direct3D Spec 3.2.4.1 / 3.4.1](https://microsoft.github.io/DirectX-Specs/d3d/archive/D3D11_3_FunctionalSpec.htm)
+- レイ構築・正規化と幾何法線の cross / 逆転置 / 正規化の前進誤差で、極端に条件の悪い grazing は引き続き拒否する。固定 world epsilon や scene-wide の深度割合は使わず、反射 ray の始点は確認済みの RT 交差位置と従来の SpawnOffset を保持する。誤差上限を超える別深度は拒否するが、Raster ID がない現在の GBuffer だけで数値的に区別できない別オブジェクトの同一性まで証明するものではない。
+
+被覆 collector は追加の Fiber GPU 形状を生成しない。Shell の存在証明は定数時間、通常 Blade は CPU 三角形面積の走査、未解決 Fin は既存生成器と同じ position-weld edge / 非多様体検査を行う。一時 edge map の構築コストは残り、内容版を証明できない既存 GPU 形状 cache を誤って再利用しない。被覆の正しさとゲーム向けの CPU 予算は別に計測する。
+
+輪郭修正後は Release の Graphics / Engine 自動テスト・Editor をビルドし、変更単位コンパイルを含めエラー・警告 0。関連テストは重点 100 / transport 90 / integration 187 の計 377 件がすべて成功した。実 production GBuffer で浅い三角形を描画し、perspective / orthographic と 3 種の jitter の照合成功、誤差上限を超える別 Raster 深度の拒否、極端に条件の悪い grazing の拒否を確認する。Ns / Ng 不一致の confidence fallback と正当な GGX null sample の元サンプル数による積分も区別して検査する。
+
+Release Editor の隔離 Cornell シーンでは 30 step が成功し、剛体移動・Scene View 往復・未対応ガラスによる Raster 縮退と回復を含む 6 枚を撮影した。shader errorCount=0、保護した原本 9 ファイルの SHA256 は撮影前後で一致した。球体の輪郭内側にあった太い三角形状の黒斑は解消したが、鏡面球の最外周には細い破線状の境界が残り、4 spp の粒状ノイズも残る。これらは反射被覆・再構成の残課題であり、輪郭全体の無欠陥や denoiser の完成は主張しない。Release では D3D12 debug layer の初期化がコンパイル時に無効なため、環境変数を設定しただけで debug layer 検証済みとは扱わない。先行する Development の重点 96 件では debug layer / strict declarations を有効、GPU-Based Validation を無効にして確認した。
+
+### Hybrid 反射の初期ノイズ再構成
+
+2026-10-01 の追加品質段は raw の一段輸送と再構成出力を分離する。反射像の motion をまだ証明できないため、受け手の velocity による specular 再投影は導入しない。シーンの実内容、ジッター前のカメラの全入力、shader / device 世代、内部寸法が厳密一致し、成功した Reflection dispatch が連続した場合だけ scene-linear HDR RGB を平均する。最初の 32 frame は算術平均、以後は oldMean 31 : current 1 の bounded EMA とする。厳密な直近 32 frame の移動平均や Reference の生の和ではない。いずれかのキーが変わればビュー全体の履歴を破棄する。照明や反射対象が動いたときも受け手が静止しているだけで古い反射像を再利用しない。
+
+Trace が確認した primary の完全 owner / dense surface ID、位置、法線、roughness、SpawnOffset を再構成へ渡す。jitter による画素内変化にも表面・法線・深度の検証を行う。空間処理は GBuffer の albedo / metallic 境界も検証し、同じ対応表面の粗い反射だけを対象とする。roughness < 0.4 の鋭い鏡像を混ぜない。current raw の alpha=0 は履歴や近傍で alpha=1 に変えず、未対応輸送をぼかして対応済みと見せない。再構成 dispatch が記録できないフレームは current raw へ戻し、履歴の連続性を失効する。既存 LDR TAA は画面 AA の所有者を維持する。この段は静止時蓄積と境界停止フィルターであり、moving specular denoiser / variance-guided wavelet の完成ではない。[SVGF](https://research.nvidia.com/labs/rtr/publication/schied2017spatiotemporal/)
+
+再構成とは別に、primary の補間 shading normal と実三角形の Ng による鏡面方向の不整合を扱う。一次面の被覆は HW front-face と深度で確認し、Ns dot V の符号だけでは補正前に拒否しない。Ns dot Ng が正のまま view tangent を跨ぐ極端な輪郭でも、後段の整合後に Ns dot V を判定する。Hybrid だけで、鏡面ローブ中心の Ng cosine が入射 Ng cosine の半分を下回る場合、Ns を Ng へ最小方向に寄せる二分探索で反射用法線を決める。その法線を GGX sampling / PDF / Fresnel / geometry に一貫して使い、サンプリング後のレイ方向や確認済みの始点は曲げない。残る Ns / Ng 半球外サンプルはゼロ寄与として元のサンプル数へ残し、画素全体を別 provider に切り替えない。これは view-dependent なゲーム向け近似であり、相反的な Reference transport や論文の per-vertex 曲率補間をそのまま実装したものではない。HW 裏面・不正材質・逆向きの Ns を対応済みとして修復せず、secondary の判定も変更しない。[Consistent Normal Interpolation](https://doi.org/10.1145/1866158.1866168)
+
+環境は raw HDR / 完成した定数 / 未解決を区別する。黒い Sky と実際に clear される camera background の scene-linear RGB は定数環境として供給し、全探索範囲の miss を有効な黒または定数放射輝度として元の count と NEE / BSDF MIS へ含める。既知の定数と raw HDR は secondary hit の環境 NEE にも一貫して使い、Raster Probe / ambient へ差し替えない。これらを消費しないときは、その GPU 更新や強度変更を反射履歴のキーにも含めない。未知環境の secondary lighting だけが従来の Raster IBL / ambient 近似を使う。procedural Sky・太陽/月 disk・cloud・未準備 raw cube・不明な DepthOnly 背景の miss は従来通り無効にする。黒い miss の存在による binary RT / IBL 切替を、ノイズ低減による穴埋めで隠さない。
+
+2026-10-01 時点では primary metadata 64 byte の2面と、同画素更新の FP32 history 16 byte の計144 byte / pixel を使っていた。2026-10-02 の terminal motion guide 追加後は Surface96 の2面、history16 の2面に変更した。read/write 履歴の分離は移動画素間の競合を避けるためであり、以前の容量削減率を現構成へ適用しない。消費する provider の不変内容を証明できない場合は temporal を許可せず current-only へ戻す。immutable publication による cube の例外と shared GI のキーは上記の共通照明節に従う。一般動的シーンの履歴再投影、効果別低解像度化、metadata 圧縮、計測に基づく予算制御は残課題とする。
+
+追加品質段の最終 Release ビルドは Graphics / Engine テストと Editor を含めエラー・警告 0。重点 115 / transport 95 / integration 187 の計 397 件がすべて成功した。新規 20 件には既知環境の CPU 5 件、primary の Ng / Ns 整合と固定 count / MIS / secondary 環境の GPU 4 件、再構成の GPU / production prepare 11 件を含む。一次面の Ns dot V が負・零・正を跨ぐ同じ Ng 表面のテストは修正前に失敗し、判定遅延後は HDR 値と alpha の連続性を保って成功した。逆向き Ns は引き続き拒否する。
+
+最新の隔離 Release Cornell 撮影は `Scratch/CornellGlassCapture/OutputHybridRimFixedRelease20261001/` に保存した。移動・Scene View 切替・ガラスによる縮退と回復の 32 step が成功し、shader errorCount=0、原本 9 ファイルの SHA256 一致を確認した。鏡面球の最外周の細い破線は、HW front-face にもかかわらず Ns dot V 判定で補正前に落ちる画素として理由別に確認し、修正画像で解消を目視確認した。固定した壁 3 領域の表示上の高周波 RMS は先行最終画像から約 52--63% 低下した。この指標は画面上の粒状感の比較であり、環境照明の評価変更も含むため、RAW 分散やフィルター単体の無偏性の証明ではない。
+
+`Scratch/CornellGlassCapture/OutputHybridAccumulatedRelease20261001/` では 32 frame 待機後と追加 64 frame 後の静止像を比較した。これを受理された履歴 count や厳密な spp と同一視しない。鋭い鏡像を空間ぼかしせず粒状感は低下したが、鏡面内の強い明暗境界には微細な Monte Carlo ノイズが残る。secondary の未対応面、極端な数値条件の alpha0 は穴埋めせず維持する。完全な moving specular denoiser やゼロノイズ表示の完成は主張しない。Release の debug layer は引き続きコンパイル時に無効であり、今回の合格は実 GPU 実行と strict resource declarations の検証である。
+
+### Hybrid InGame の省コスト化
+
+初期の目標は RTX 4070 の 1920 x 1080 / 60 fps、フレーム全体の 16.67 ms 以内とする。Editor の二ビュー、起動・shader compilation・readback のコストを Game の定常フレームへ混ぜない。playtest の固定 dt に由来する `profiler.snapshot.frameMs` は実処理時間ではなく、これだけで 60 fps を達成したとは判定しない。
+
+移動対応後は表面と RGB/count の両方を ping-pong する。temporal は前履歴を SRV、別の現履歴を UAV とし、検証済みの任意 old index から読める。spatial は UAV ordering 後の現履歴だけを読み、別出力へ書く。in-place halo 融合は group 間の競合を生むため行わない。Surface/history index、frameStamp、jitter、前カメラの commit は spatial の成功だけで行う。raw / temporal / spatial の失敗は RAW fallback と次フレーム reset を保持する。[D3D12 Resource Barriers](https://learn.microsoft.com/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states)
+
+現構成の上限判定対象は Surface96 x2 + History16 x2 + filtered RGBA16F8 = 232 byte / pixel。1920 x1080 では約458.8 MiB / view、RAW RGBA16Fを含めると約474.6 MiB / viewとなる。GBuffer / AS / texture / allocation alignment / fence-retired allocations を含む全 VRAM 使用量ではない。以前の331.8 MB / viewは静止専用の小さい構成の記録であり、現在値ではない。`maxHistoryMiB` を超えると再構成資源を退役し、current RAW を維持する。型サイズによる容量上限は GPU 時間の改善率や1080p/60fpsの達成を意味しない。
+
+既知の定数環境が RGB=(0,0,0) の場合だけ、primary / secondary の環境 NEE の可視性レイを省く。3 回の RNG 更新は残し、後続 Area / Shape の標本列・元の GGX sample count・miss の alpha を変えない。raw HDR / 未知環境 / 非ゼロ定数は既存の評価を維持する。剛体 transform の変更は TLAS 更新へ限定し、交差・材質 GPU 表は現在の exact 内容と live descriptor が一致する場合だけ独立に再利用する。新規作成の一部が失敗した場合は今回の新規資源だけを破棄し、失敗フレームに旧 TLAS を公開しない。
+
+速度の比較は未計測であり、60 fps 達成・全動的シーンでの使用可能性は未認定。CPU scene / emitter 分布の再生成、照明表の全体 revision 連動 upload、TLAS refit / scratch reuse、低解像度 trace と specular motion を伴う動的再構成は後段の計測対象とする。
+
+この省コスト段の Release 変更単位コンパイル 8 件と Graphics / Engine テスト・Editor ビルドはエラー・警告 0。重点 119 / transport 95 / integration 190 の計 404 件がすべて成功した。追加 7 件は、256 frame の bounded EMA・途中失敗後の metadata 上書きと current-only 復帰・144 byte / pixel と resize / 部分欠損 / 不正 stride または容量からの再確保、黒環境 NEE の Area / Shape 標本列と RGBA 完全一致、剛体移動と表の独立変更・失効 / reset / 二ビュー・両方向の TLAS build 失敗を検査する。Release の debug layer はコンパイル時に無効であり、strict declarations と実 GPU の成功である。
+
+隔離 Editor の `OutputHybridOptimizedRelease20261001/` は 32 step / 6 枚、`OutputHybridOptimizedAccumulatedRelease20261001/` は 10 step / 2 枚が成功し、原本 9 ファイルの SHA256 を各撮影前後で維持した。剛体移動・Scene View 往復・ガラスによる縮退と回復・32 frame と追加 64 frame の静止像を含む 8 枚の PNG は、それぞれ最適化前の `OutputHybridRimFixedRelease20261001/` / `OutputHybridAccumulatedRelease20261001/` と SHA256 が完全一致した。Game 像は 1548 x 871、Scene 像は 1263 x 435 であり、1920 x 1080 の性能合格とは扱わない。描画品質維持の検査と CodSpeed / Game 定常時間による速度検査を区別する。
+
+### Hybrid 計測の提出・ビュー分離
+
+次段では速度変更を加える前に、Scene / Game の同一物理フレームの query 領域がビュー開始で上書きされ、未提出領域を以前の slot fence で回収できた問題を修正する。query の開始と Resolve は renderer の物理 BeginFrame / EndFrame に一度だけ置き、ビューは末尾へ追記する。Resolve を含む command list を実際に提出して Signal した fence 値をその領域に保存し、それが完了するまで mapped readback の値を公開しない。完了した複数 slot を連結せず、最大の physical serial 一件だけを公開する。古い slot の遅延完了・二重回収・device reset / removal・不正 timestamp は未計測として扱う。[D3D12 Fence-Based Resource Management](https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management)、[D3D12 Timing](https://learn.microsoft.com/en-us/windows/win32/direct3d12/timing)
+
+各パスは記録時の application frame、view、Scene 世代、ResourceManager reset 世代、出力 RT の ID / generation、内部寸法、最終解決済み描画構成と実 Graph の計画世代を保持する。ray 準備前の暫定 Plan ではなく `BuildViewPipeline` 後の最終 Plan を採用する。Graph が不変でも構成・縮退理由が変われば計画世代を進める。Scene + Game の通常構成が常時溢れないよう容量を 128 pass / physical frame へ拡張する。超過・Begin / End 不一致・欠損値・command list 境界を跨ぐ区間は complete=false とし dropped count を返す。部分結果を完全なフレーム時間として使わない。[D3D12 Queries: Disjoint Timestamps](https://learn.microsoft.com/en-us/windows/win32/direct3d12/queries)
+
+パス Viewer の現在画像には application frame を含め出自が完全一致した値だけを結合する。通常の非同期結果はまだ過去フレームのため画像の GPU 時間は unavailable であり、同名パスの重複も推測して対応付けない。Overlay / `profiler.snapshot` の過去 GPU sample は現在と view / Scene / resources / 出力 / Plan / 寸法が一致し、遅延 8 application frame 以内の値を source frame 付きの別情報として返す。自動品質制御への入力にはまだ使わない。`frameMsSource` / `lockstep` で固定 dt を区別し、全体 GPU 時間・AS 準備・別 queue 時間は unavailable / null を明示する。パス合計や固定 dt をフレーム全体の速度へ代用しない。
+
+CodSpeed CLI は公式 v5.3.1 の Linux x86_64 archive を `Scratch/CodSpeed/` に取得し、公式 release の SHA256 と照合した。CLI は未インストール・未実行、この Windows 環境は WSL 未導入。Linux の CPU benchmark 環境と Windows / DX12 の GPU 測定は別の検証経路であり、archive の取得だけでどちらも実測済みとは扱わない。CPU emitter / GPU 照明表の更新削減は baseline が整うまで調査案として保留する。[CodSpeed CLI](https://codspeed.io/docs/cli)
+
+この計測段の Release 変更単位コンパイル 10 件は、Engine の接続修正後にエラー・警告 0。Graphics / Engine テストと Editor の Release ビルドもエラー・警告 0。重点 119 / transport 95 / integration 220 の計 434 件が成功した。新規は GPU 不要の Ledger / metadata 境界 19 件、capture の厳密結合 7 件、実 GPU の二ビュー・旧 API 呼び出し・最終 Plan と Graph 世代・失敗時クリア 1 件で、既存 capture 3 件も再検証した。速度の大小をテストの条件にしない。
+
+`OutputHybridProfilerRelease20261001/` の 32 step / 6 枚と `OutputHybridProfilerAccumulatedRelease20261001/` の 10 step / 2 枚が成功し、原本 9 ファイルを各撮影前後で保護した。8 枚の PNG はこの段の前の `OutputHybridOptimizedRelease20261001/` / `OutputHybridOptimizedAccumulatedRelease20261001/` と SHA256 が一致した。4 件の profiler 応答で source と現在ビューの世代・Plan・寸法の対応、古い / 未来 frame の拒否、全体時間 null と lockstep 識別を検査した。計測値の大小は比較しない。画像寸法は Game 1548 x 871 / Scene 1263 x 435、Release debug layer はコンパイル時無効であり、1080p / 60 fps の性能合格や debug layer 合格を意味しない。
+
+### Reference Path の初期対応
+
+`RayPathTracePass` は Compute の画素内ループで、定数 diffuse + isotropic GGX の full BSDF / mixture PDF、発光三角形・矩形 Area と定数環境の NEE / power-heuristic MIS、delta Directional / Point / Spot、Russian Roulette を評価する。初期設定は 1 spp / frame、8 scattering bounce 上限、3 bounce 以降の RR。camera AA は独立した画素内サンプル、補助可視面は中心レイで生成する。生の和は clamp / denoise しない。有限 bounce 上限による切り詰めは残る。
+
+`RayPathSceneBuilder` は内容版付き CPU Buffer snapshot から world-space 発光三角形と面積・放射輝度による選択 PMF / CDF を作る。ヒットの instance / primitive と同じ PDF を emission MIS に使う。負・非一様 scale の面積と DXR の local winding に従う法線を区別する。transport の可視性は全 PRIMARY opaque geometry で判定し、Raster 用 castShadow=false を光輸送の穴にしない。
+
+`RayPathHistory` は exact 内容版、Scene 世代、カメラ・射影、内部寸法、推定器 / sampler、shader reload 版を比較する。device 再生成はビュー資源ごと破棄する。snapshotSerial / frameStamp / previousWorld / AS 再配置は内容版へ含めず、露出・Bloom・色調整・UI は履歴キーへ含めない。各ビューの FP32 RGB 和 + uint sample count は専用 UAV StructuredBuffer に保持し、表示だけ RGBA16F の平均へ変換する。表示範囲の制限は RAW に戻さない。
+
+不正 PDF / geometry / 非有限経路はサンプルを除外して条件付き平均にせず、sampleCount / IDs.valid の UINT32_MAX と magenta 表示で sticky 診断にする。内容キーの reset で回復する。sample count は MAX-1 までを通常値として予約し、GPU 全体の診断を CPU availability へ読み戻す仕組みは未実装である。カメラ ray も transport の全 Scene 距離を追跡し、far の外側は補助深度で最遠値に丸める。Raster の far clip と同じ主可視性ではない。
+
+専用 Path graph は主可視面の法線・幾何法線・Reversed-Z・albedo / roughness・object / material ID を生成し、HDR へ照明と深度を転写する。深度なし Color の clear / 背景転写を、部分深度更新 Resolve の HDR ReadWrite 依存で保持する。Raster の Sky / DeferredLighting / AO / SSR / TAA / MotionBlur / DoF / HDR 拡張は登録せず、Bloom・露出・トーンマップ・LDR overlay / UI だけを共有する。古い Raster の FroxelFog 定数も無効化する。GPU 資源と descriptor の準備がすべて成功したフレームだけ Path availability を公開する。
+
+Reference の production gate は one-sided authoring / canonical PBR / standard Vertex / dry-only を基礎にする。2026-10-01 の追加拡張は後述のテクスチャ・変形・canonical LOD・誘電体・HDR 環境・形状光源を接続する。alpha blend・追加ローブ・独自 shader・Cookie・粒子光源・Sky の昼夜照明カーブ・volume 等は全体を Raster へ戻す。Raster 用 ReflectionProbe / LightProbe の近似照明は Reference で使わず、その準備状態では縮退しない。CornellBox の天井 Area は前述の矩形代理面契約で対応する。
+
+### 未対応入力の監査
+
+2026-10-01 の追加拡張の実装範囲は次のとおり。CPU で認識できる未対応入力は、一部だけ捨てた Path 画像にはせず、選択 layer 内の被覆不足として要求を保持したまま Raster へ縮退する。ガラスの authoring 前提違反など CPU が事前証明しないものは、後述の遭遇時 sticky 診断で区別する。
+
+| 分野 | 今回対応した範囲 | 残る未対応・前提 |
+|---|---|---|
+| 光源 | 全 Directional、Point、Spot、矩形 Area、Sphere、capsule Tube、通常の mesh emission。画面外・Raster 上限外も供給 | Cookie、粒子光源、Sky の昼夜カーブ、Sphere / Tube と同 owner mesh の代理面。Point / Spot の有限半径は delta に近似 |
+| Area の形状 | virtual 矩形の片面/両面、矩形と全 owner geometry を証明した mesh 代理面、NEE / BSDF 到達 / 可視性 | 任意形状との自動対応、両面 mesh 代理面、CPU snapshot を取得できない owner |
+| ガラス | 滑らか/粗い GGX solid、smooth thin sheet、8 段 LIFO の入れ子媒体、Fresnel / Snell / 全反射 / 距離吸収 | 部分透過、texture glass、粗い thin sheet、色付き thin absorption、薄膜干渉、分散、非 LIFO の重なり、カメラ内包。閉形状の authoring 前提は CPU では証明しない |
+| 不透明材質 | canonical PBR の albedo / normal / metallic-roughness / emission / AO texture、alpha clip。明示 ray LOD0 | alpha blend、clearcoat 等の追加ローブ、独自 shader、動的/GPU texture、RGBA8 UNORM 以外の material texture、ray footprint filtering |
+| 形状 | static / rigid、GPU skinning / morph の現在形状、全ビュー共通 canonical LOD0 | ambiguous / unresolved LOD、Raster と異なる LOD の Game primary、両面 authoring、地形、水、VFX、decal、未知の VS 変形 |
+| 環境 | 定数背景、black Sky、明示 raw HDR DDS cube と重要度分布。Raster Probe の準備から独立 | 太陽/月 disk、雲/雲影、DynamicSky raw capture、湿潤/水溜まり。畳み込み irradiance/prefilter cube は raw 環境に代用しない |
+| 再構成 | Reference FP32 RAW progressive、限定した Game RasterSurface、diffuse 短期 temporal / 境界停止 spatial | Game texture / glass / virtual primary light、specular hit motion、previous skinned deformation、完全 SVGF / variance 推定、fog / volume / underwater、caustics 専用 sampling |
+| Hybrid Reflection | 一段不透明 Reflection の全 Directional / Point / Spot / Area / Sphere / Tube、texture / alpha、明示 raw HDR | 誘電体の二次輸送、未知の BSDF / geometry。Raster Probe を Reference hit lighting の代わりに使わない |
+
+昼夜カーブは Raster の主方向光の色・強度を後段で変更するため、未解決の authored Directional を Path へ渡さない。primary owner に未対応 flag を残し、方向光がない場合は Sky owner の診断 source を記録する。完全な Scene 光源入力を偽って Raster の既定太陽へ戻さない。
+
+光源拡張の最終検証では関連 218 件が RTX 4070 上ですべて成功した (32.70 秒)。CPU の Area 代理面・所有者・layer・入力版の検査、Engine の全光源供給、実 GPU の Path 30 件を含む。virtual Area の表裏・range・一次/鏡面/ガラス到達・NEE と BSDF の整合、灯具の発光置換、部分遮蔽と到達点の前後の遮蔽、極小/大座標の矩形証明、極端距離の Point / Spot と FP32 限界値、ガラス越しの高コントラスト像を確認した。二ビュー production 回帰は完全な Scene 光源表を使い、光源変更で履歴を reset し、Raster 側の不完全なライト集合に依存しないことも検査する。D3D12 debug layer / strict declarations 有効、GPU-Based Validation 無効。変更単位コンパイル、Graphics / Engine テストと Development Editor ビルド、AgentLint はエラー・警告なし。
+
+Path の追加検証では CPU 内容版 / emitter の 10 件、履歴キーの 5 件、実 GPU の 5 件を含む関連 150 件が RTX 4070 上ですべて成功した。FP32 RAW の半精度範囲超過、中心 Reversed-Z / orthographic depth、鏡面と負 scale の発光 MIS、BSDF-only 比較、RR と dispatch 分割の同じサンプル列、sticky 不正履歴の内容変更による回復を確認した。専用 graph は実行 profiles の Color→Resolve と、旧 HDR から背景全画素の置換を検査する。D3D12 debug layer / strict declarations 有効、GPU-Based Validation 無効。変更単位コンパイル・Graphics / Engine テスト・Development Editor ビルド・AgentLint はエラー・ビルド警告なし。
+
+実ビュー撮影は `Scratch/CornellPathCapture/OutputClearFix/` の Early / Accumulated 画像と report に保存した。隔離コピーの runtime だけで Glass を非表示、Area Light / ReflectionProbe / Sky を無効、カメラ背景を black とし、天井 mesh の emission は維持した。25 step が成功し、shader errorCount=0、runtime 設定と実行した Trace→Color→Resolve を表明した。撮影は frame 14 / 273 であり、フレーム番号を厳密な spp とは呼ばない。後者でノイズ低下と間接反射を目視確認した。元の Scene / meta / PostProcess / ProjectSettings / EditorSettings / project 記述の 7 SHA256 は撮影前後で一致した。起動時の既存 orphan meta / 隔離環境の Script DLL 未構成警告は、コンパイル警告とは別に残る。
+
+### Reference Path の初期固体ガラス
+
+以下は初期滑面実装の経緯であり、追加拡張の現在の契約は次節を正本とする。Inspector の Solid Glass は共通材質の typed settings を編集し、有効化時の既定値を opaque coverage / depthWrite / single-sided authoring / metallic=0 / roughness=0 / alpha=1 にする。IOR・線形吸収色・吸収距離は独立して編集できる。
+
+共有 `RaySurfaceRecord` は 64 byte に拡張し、不透明=1 / 固体ガラス=2 を区別する。Path だけが固体ガラスの収集を明示的に許可し、既存の一段 RT Reflection は引き続き不透明面だけを認定する。光学設定の変更は exact Scene 内容キーを更新して蓄積を reset し、形状が同じなら BLAS / TLAS を変更しない。積分器版はガラス段で 2、所有者付き光源供給段で 3 とする。
+
+delta 境界は Fresnel の確率で反射または透過を選び、確率と寄与の相殺後、透過 throughput に `(etaI / etaT)^2` を掛ける。RR は別の eta scale でこの補正を相殺して判定する。delta の直後に当たる emission / environment の MIS weight は 1 とし、delta 境界自身では NEE を行わない。NEE の可視性レイにとってガラス境界は遮蔽面であり、屈折 caustics は BSDF の経路だけから得る。有限 8 bounce と通常の一方向追跡による収束の制限は残る。
+
+IOR が一致する境界は方向を変えず weight=1 で透過し、grazing cosine の FP32 桁落ちによる偽の全反射を避ける。hit position と spawn point の誤差上界に合わせ、edge 補間後の基準頂点、線形変換後の translation を最後に加える順序を Path / Reflection の両方で保つ。組み込み Sphere は UV seam と極の position を bit-exact に一致させる。材質ファイルの有限 double 値が float の表現範囲外なら、値を clamp せず読み込み失敗とし、呼び出し元の出力を維持する。
+
+媒体は一経路に一つの active solid とし、所有者の Object index / generation と光学設定を一致させて退出する。吸収距離は直前の真の hit position から次の hit までの world-space 距離を使い、ray offset を厚みに加減しない。吸収色 0 / 1 も明示的に扱う。カメラは空気中、形状は閉じた非交差 solid という authoring 前提であり、CPU が watertight topology や point containment を証明する実装ではない。遭遇した camera-inside / nested / overlap / opaque-inside / medium 内の miss は sticky 診断にする。通常の補間法線と幾何法線の半球不一致による null sample はゼロ寄与として sample count に含め、条件付き平均や geometry failure にしない。
+
+閉じた Sphere の輪郭では、隣接する入口・出口の T が FP32 の 1 ULP 以内になり、空気中のレイでも出口が先に確定する場合がある。媒体のない背面 hit に限り、同じレイを front-only で狭く再検索し、同じ Object 所有者と光学設定の前面 hit が 1 ULP 以内にある場合だけ未解像の境界対を null sample とする。再検索範囲は報告された T の次の 2 ULP までで、受理範囲は 1 ULP のまま。距離を normal cosine で割った大きな許容幅は使わない。これは数値解像度内のゼロ寄与近似であり、薄い境界の厳密な輸送や watertight の証明ではない。対を確認できない背面 hit の診断は維持し、null sample を平均の分母から除外しない。
+
+### 追加拡張の現在契約
+
+`RaySurfaceRecord` は 128 bytes。共通 `.mat` と instance override の解決後に、版付き immutable RGBA8 UNORM 2D texture と UV tiling / offset を渡す。albedo / emission は Raster と同じ gamma 2.2 の色復号、metallic-roughness は G/B、normal は元の normal と tangent を使う。幾何法線は分離し、normal map で ray offset や表裏を変えない。AO は取得するが Reference の実輸送へ Raster ambient の近似として掛けない。ray LOD は初期 0 を明示し、Raster derivatives や ray footprint の代用品とは呼ばない。
+
+alpha clip は nonopaque BLAS と RayQuery candidate の barycentric UV で `alpha >= cutoff` を判定する。主 ray、continuation、shadow で同じ規則を使う。発光三角形の NEE は full triangle の面積 PDF を保ち、穴は分母から除外せず null sample にする。textured emission の選択分布は定数 emission と面積による推定であり、寄与はサンプル点の実 texture 値を読む。hit MIS と同じ PMF を使う。Area mesh proxy は constant authoritative Le と full coverage の証明を維持し、emission texture を代理面へ暗黙に置き換えない。
+
+raw HDR は `EnvironmentLightComponent.rawEnvironmentPath` に明示した線形 DDS cube から供給する。元 mip0 の輝度を最大 128 x 128 / face の分布へ縮約し、texel solid angle を掛け、5% の uniform-solid-angle mixture で全方向を覆う。FP32 CDF の実区間長を PMF として用い、cell 内は cube UV 一様、方向 PDF は cube Jacobian を含める。NEE と BSDF 到達は同じ rotation / intensity / PDF を使う。実放射輝度は GPU の raw cube mip0 から読み、分布用縮約画像を背景へ表示しない。露出は輸送版に含めない。畳み込み cube の名前から raw path を推測しない。
+
+DX12 の file loader は native HDR format と六面・全 mip の cube SRV を保持し、RGBA8 2D へ平坦化しない。CPU snapshot は縮小前の原 mip0 全 texel の有限・非負 RGB を検証する。公開 stream revision と GPU texture 内容版を別々に照合し、同 handle の同期 reload でも immutable snapshot と照明履歴を更新する。2D 材質・GPU 書込み cube を raw file provenance として受理しない。
+
+solid glass の粗面は GGX の反射・屈折の評価、sampling、PDF を同じ radiance-mode eta 補正で揃える。Ns と Ng の向きが不整合なら null sample とし、物理的な幾何面の向きを Ns で反転しない。選択した反射/透過枝と出射方向の半球が一致しない場合も、別枝として再評価せず null sample にし、媒体を更新しない。smooth thin sheet は二界面の有効 Fresnel と直進 transmission のみ。厚みを持たないため、色付き吸収や rough thin を受理しない。solid medium stack は最大 8、owner の Scene / index / generation と光学値で LIFO 退出を照合する。入れ子ごとに IOR / Beer / RR eta scale を追跡し、NEE の反射/透過方向には出射側の媒体を使う。カメラ内包の初期 stack、非 LIFO の重なり、overflow は対応したことにせず診断する。
+
+Inspector の Glass / Thin Walled が共通 typed settings を編集する。Thin Walled を有効化した時点では roughness=0 / 無吸収へ初期化し、厚みを持つ場合だけ吸収色・距離の操作を表示する。rough thin や texture glass の未対応設定を入力した場合は、通常の被覆診断を維持する。
+
+Sphere は面積 `4*pi*r^2`、Tube は円柱と両端半球の capsule。寸法は world m、表面 sampling と intersection と可視性と hit MIS を揃える。Sphere `Le=intensity/r^2`、Tube `Le=4*pi*intensity/area` とし、既存 Point の全 flux と一致させる。Raster の代表点による角度方向の見え方まで一致するとは主張しない。同 owner の任意 mesh を Sphere / Tube 代理面と認定しない。
+
+GPU skinning は現在の morph source と bone palette の exact 内容が同じなら再 Dispatch せず、全ビューで共有する。ray 需要は camera cull / Raster LOD 表示から独立。記録済み DIRECT queue 書込みだけが GPU vertex 内容版を進め、AS と後続読取りへ同じ順序で供給する。未初期化出力、stale resource、部分 submesh の失敗を現在形状として公開しない。shader / constant buffer の実体を前検査し、新規 Dispatch を要求した renderer は全出力の内容版が実際に進んだことを後検査する。void Dispatch が書込みを記録しない場合も、旧版が非ゼロという理由だけで古いポーズを現在として公開しない。頂点数も内容キーに含め、入力/出力の stride・要素数・容量と出力 UAV を公開前/Dispatch 前の双方で検査する。same-handle の頂点数増加で出力が不足した場合は再確保し、失敗は renderer 全体の未対応形状として扱う。Reference の LOD は全ビュー共通の authored level0。参照切れ・複数 group の曖昧な所有は被覆診断にし、下位 LOD をすべて重ねたり bind pose を代用したりしない。
+
+初期 Game は full resolution の center sample を専用 GBuffer と same-ray recast で照合し、ID / emission policy / 幾何法線を補完する。通常 Raster が Forward 設定でも専用 GBuffer を準備する。constant opaque / canonical matching LOD のみ受理し、glass / texture / virtual primary light は whole-view Raster fallback。texture なし・constant alpha=1・opaque の全被覆を証明した材質では、無作用の alpha cutoff 0.5 や 1 も受理する。一次面は Raster の near/far と backface cull に合わせる。Raster depth の復元位置は同じ中心面の照合だけに使い、transport / spawn / history には検証済み RT barycentric 位置とその誤差上界を保持する。復元位置で上書きすると、depth の丸めがその上界から外れて自己交差を生むためである。BSDF の Ns / albedo / roughness / metallic は照合済み GBuffer 値を使う。数値的な中心境界の tie は current camera-ray RAW を無加工で表示し、その画素の再構成履歴を拒否する限定近似とする。形状や材質の被覆不足をこの近似で隠さない。
+
+Game transport は first receiver の評価済み full BSDF を diffuse / specular 成分へ分け、NEE と continuation の weight を保持する。選んだ sample lobe のタグでは分類しない。primary emission / background は独立成分。合計は current FP32 RAW と一致させ、Reference progressive の和と履歴には filter を戻さない。diffuse は完全 ID / 材質 / camera-relative 位置 / 法線で検証し、履歴長を 8 で制限した短期 EMA とする。厳密な 8 frame の移動窓ではなく、動く遮蔽者による照明変化には残像が残りうる。specular は反射 hit motion 未供給のため temporal reuse 0。境界停止 spatial は最大 3 x 3、鋭い specular は混ぜない。rigid は previousWorld、skinned は previous deformation 未供給のため temporal reject。通常 camera motion は再投影、cut・frame gap・光源/材質/static geometry 内容・shader・寸法変更は reset する。skinned の現在頂点版は各表面の temporal reject で扱い、他の検証済み表面まで毎 frame reset しない。
+
+この Game filter は variance 推定と階層 wavelet を持つ完全 SVGF ではない。初期 FP32 transport / 表面 / ping-pong 履歴は VRAM 費用が大きく、packed history、light 選択加速、BLAS refit、denoiser 品質と GPU 時間の測定は後続の最適化として残す。実測なしで高速化率を主張しない。
+
+### 追加拡張の検証
+
+最新版の関連 326 件は RTX 4070 上ですべて成功した (121.02 秒)。証拠は `build/agent/test-20261001-151406-42624.log` の全ケースと完了行。実行ラッパーは 120 秒で出力回収を打ち切ったが、ctest の完了ログは 326 件成功・失敗 0 を示す。texture / alpha / normal、raw HDR DDS と reload、Hybrid の全光源、粗面/薄板/入れ子媒体、Sphere / Tube、現在の skinning / morph / LOD、Game の RAW 成分和・再投影・履歴拒否を含む。Game の本物 GBuffer depth を 40 micrometer 内向きに摂動しても、検証済み primary と直接光が変わらず自己交差しないことを実 GPU で確認した。解放済み shader / constant buffer と書込み未記録の Dispatch は古い非ゼロ頂点版を公開せず、復旧後の現在ポーズを GPU で読む。D3D12 debug layer / strict declarations 有効、GPU-Based Validation 無効。変更単位の check と Graphics / Engine テスト・Development Editor の build はエラー・警告 0。
+
+同じ完成バイナリと production HLSL / CSO の実ビュー撮影は `Scratch/CornellGlassCapture/OutputExpansionCompleteReference20261001/` と `OutputExpansionCompleteGame20261001/` に保存した。Reference は原本の Area / 灯具 emission / ガラス / Probe / black Sky を維持し、24 step・frame 550 が成功。Scene View 操作の前後も Trace → Color → Resolve が実行された。初期 Game は隔離 runtime のガラスだけを非表示にし、21 step・frame 54 が成功。球の rigid 移動と Scene View 操作の前後で専用 GBuffer → Trace → Temporal → Spatial が実行された。両 report の shader errorCount は 0、原本 9 SHA256 は撮影前後で一致した。非加工 native PNG 8 枚を目視確認し、Game の黒い自己影斑点・壁の黒い帯が解消した。magenta 色ヒューリスティックも全画像 0 だが、これは GPU RAW status の証明とは区別する。フレーム番号は厳密な spp ではない。既存 orphan meta / 隔離環境の Script DLL 未構成の起動警告と、Game の短期 EMA・specular temporal 未対応によるノイズは別に残る。
+
+### ビュー切替後の Reference 継続
+
+Scene View で ReflectionProbe の bake が完了すると、その共有状態を Game View も選択する。従来は一段 Reflection の hit lighting gate を Reference と共有していたため、数フレーム後や Scene View を一度表示した後に Path も Raster へ縮退した。Reference の gate を分離し、天候の wetness / puddle と光源・材質の実際の対応範囲だけで判定する。プローブの近似照明は Path に加算しない。当初は Hybrid Reflection の未対応プローブ判定を維持したが、追加拡張では明示 raw 環境と Scene 光源表で hit lighting を独立させた。天候判定は AdvancedGraphics 定数バッファの準備前にも適用し、起動直後だけ未対応表現を受理しない。
+
+2026-10-01 の検証では関連 188 件が RTX 4070 上ですべて成功した (19.99 秒)。二つのビューを使う回帰テストで、Raster 側の ReflectionProbe / LightProbe 準備後も Reference の RAW sample count が継続し、Hybrid の縮退と wetness / puddle / 未対応光源による Reference の縮退は維持することを確認した。実測した Sphere の入口・出口が 1 ULP だけ逆転するレイも固定し、null sample を数えたまま 64 → 128 sample へ進み、sticky failure にならないことを確認した。D3D12 debug layer / strict resource declarations 有効、GPU-Based Validation 無効。変更単位コンパイルと Development Editor / Graphics / Engine テストのビルドはエラー・コンパイル警告なし。
+
+既存の DEFAULT Buffer 作成時の D3D12 警告 ID 1328 は、初期状態を COMMON とし、最初のコピーで COPY_DEST へ暗黙昇格することで除去した。二ビュー回帰テストは shutdown まで warning / error / corruption を検査し、既知の HDR clear 性能メタデータ警告 ID 820 だけを限定して除外する。ID 1328 や RT / barrier / descriptor の警告は除外しない。
+
+追加拡張の最終確認で、Raster fallback の cube capture が DepthOn PSO に DSV を供給しない D3D12 error ID 615 を修正した。cube の各 mip と同寸法の共有深度を持ち、各 face の capture 開始時だけ明示 clear する。再 bind や async restore はその深度を保持し、6 face x 2 mip の実 GPU 読取りで検査する。shader 解放後のアドレス再利用による PSO 誤選択も、Graphics / Compute の cache key を初期化ごとの非ゼロ識別子へ変更して修正した。6 回の resource reset と shader 作成順の反転を含む現在形状の読取りを、許容値を広げずに検査する。shader 解放時は一致する世代の path cache も取り除き、失効 handle の再読込み・一括 reload への混入を防ぐ。live shader の hot-reload による handle 維持は変更しない。
+
+ビュー切替修正時の撮影は `Scratch/CornellGlassCapture/OutputSceneViewVerified/` に保存した。完成した Development バイナリと production HLSL / CSO を隔離コピーへ揃え、runtime の Area Light だけを無効にし、ガラス・天井 emission・RoomReflectionProbe・black Sky は維持した。33 step が成功し、Scene View のカメラ操作と撮影後にも Game View の Trace → Color → Resolve が frame 33 / 548 で継続し、shader errorCount=0 を確認した。Game 画像は frame 14 / 35 / 550、Scene 画像は frame 16 であり、フレーム番号を厳密な spp とは呼ばない。全画素の magenta 色ヒューリスティックは Early / Accumulated とも 0、固定した壁領域の隣接画素 RMS は後者で約 0.254 倍になった。これは画像上の観測であり、GPU RAW の状態検証は前述の回帰テストで行う。撮影直前と直後の元 Scene / meta / PostProcess / Glass / EditorSettings / ProjectSettings / project 記述の 9 SHA256 は一致した。隔離環境の既存 orphan meta と Script DLL 未構成の起動警告は別に残る。
+
+光源拡張後の最終撮影は `Scratch/CornellGlassCapture/OutputNativeAreaFinal/` に保存した。原本と同じ有効な Area Light (強度 18)、灯具 Mesh / Material、ガラス、RoomReflectionProbe、black Sky を維持し、最新版 Development バイナリと production HLSL / CSO を隔離コピーへ揃えた。24 step が成功し、frame 550 まで Scene View 操作後も Game の Trace → Color → Resolve が継続、shader errorCount=0、撮影前後の原本 9 SHA256 一致を確認した。4 枚の native PNG を目視確認し、光源代理面・色壁の間接光・ガラスの反射と屈折境界が見える。
+
+ガラスの白さを切り分けるため、元ファイルを編集せず `Scratch/CornellGlassAB/` のコピーだけに白/黒/赤/緑の背景を追加し、他の二球を runtime 非表示にした。非表示・IOR=1/白吸収・IOR=1.5/白吸収・現在の IOR=1.5/吸収色 (.96,.98,1) を露出 1 / .25 で比較した。全 8 条件は各 22 step、frame 529 で成功し、各 shader errorCount=0、CPU/GPU の Path 3 パスと原本 9 SHA256 一致を確認した。結果は `OutputAreaGlassFinal-{case}/` に保存した。原本撮影と合わせた全 20 枚の native PNG は非加工で、magenta 色ヒューリスティックは 0。画像の検査と GPU RAW の回帰証明を混同しない。
+
+表示 RGB の固定 ROI では、中央の赤黒コントラストが露出 1 で非表示 +.585 / IOR=1 +.591 / 無吸収 IOR=1.5 -.564 / 現材質 -.562 となり、露出 .25 でも符号の関係を維持した。IOR 一致では帯位置と色を保持し、IOR=1.5 では鮮明な像の反転がある。現在の吸収色は無吸収に比べ赤が約 3〜4% 低く、青はほぼ維持された。IOR=1 と非表示の画素一致は要求しない。ガラスによる NEE の遮蔽、追加境界と有限 bounce によりノイズと切り詰め条件が異なり、ここでの表示統計は RAW の Beer 則推定や信頼区間ではない。この比較に白い diffuse lobe が混ざる根拠は見えず、原本の白壁像・露出/トーンマップが白い見た目を強めると判断した。
+
+中央付近の小さな像の再反転は、同じカメラ・背景の解析球へ Snell の二界面を適用した double 計算でも再現する。現 Sphere32 の三角形交差と radial 補間法線では境界が多角形へずれ、mesh128 の数値比較では解析球へ近づいた。焦点近傍の像と曲面の平面近似で説明できる残差であり、GPU 全経路の同値証明や完全な球面描画の保証ではない。元の primitive 密度や材質を見た目だけで変更していない。
 
 | 段 | 実装範囲 | 完了の判断 |
 |---|---|---|
@@ -814,4 +1197,4 @@ Assets/Shaders/RayTracing/
 
 本案で選ぶのは、Raster を既定として常設、効果単位の Hybrid、ゲーム用の SCREEN_FIRST と材質・画面上の寄与による品質配分、共通 Ray Scene と Surface / BSDF、Inline による初期 RT、CameraRay の Reference から RasterSurface の Game への Path 導入である。Reference の表現不足はビュー全体を Raster へ戻し、Game の許可した Raster 合成は近似を明示する。距離 LOD は任意の補助に留める。スケーリングは Raster から導入し、Scene / Effect の独立倍率、品質床、計測元を識別する自動制御、資源と履歴の局所変更を共通基盤にする。
 
-対象 GPU、目標解像度 / FPS、効果ごとの倍率の床と制御の待機期間、通常ゲームで Path を使う範囲、既存ライトの物理量への対応は未確定である。これらは段 0 / 1 の調査と計測で埋める。DispatchRays、wavefront、ReSTIR、SER、外部 denoiser、volume Path Tracing は最初の基盤の必須要件にせず、共通部品と測定結果から必要なものを追加する。
+対象 GPU と初期目標は RTX 4070 / 1920 x 1080 / 60 fps とする。効果ごとの倍率の床と制御の待機期間、通常ゲームで Path を使う範囲、既存ライトの物理量への対応は未確定である。これらは段 0 / 1 の調査と計測で埋める。DispatchRays、wavefront、ReSTIR、SER、外部 denoiser、volume Path Tracing は最初の基盤の必須要件にせず、共通部品と測定結果から必要なものを追加する。

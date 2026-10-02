@@ -200,6 +200,9 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/GeometryPipelineTests.cpp
         Engine/Auto/RenderVisibilityTests.cpp
         Engine/Auto/RenderSceneExtractorTests.cpp
+        Engine/Auto/RaySkinningTests.cpp
+        Engine/Auto/RayParticleCoverageTests.cpp
+        Engine/Auto/RayEnvironmentExtractionTests.cpp
         Engine/Auto/RenderLightExtractorTests.cpp
         Engine/Auto/InstanceBatchTests.cpp
         Engine/Auto/RenderGraphTests.cpp
@@ -238,6 +241,7 @@ target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/G
 # @note ヘッダーオンリーで src 側に閉じている。公開ヘッダーへ出すと、焼き方を知る必要のない
 # @note 利用側にまで実装が露出する。テストだけが実装ディレクトリを覗く。
 target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Engine/src")
+target_compile_definitions(FBZZTestsEngineAutoObj PRIVATE FBZZ_ENGINE_SHADER_ROOT="${CMAKE_SOURCE_DIR}/Assets/Shaders")
 
 # @note --- Editor -----------------------------------------------------------------
 # @note Editor をリンクするか: import 判定まわりは «起動のたびに全アセットを焼き直す»

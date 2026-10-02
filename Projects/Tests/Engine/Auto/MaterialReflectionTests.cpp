@@ -6,6 +6,8 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Asset/DataAsset.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
+#include <Graphics/Renderer/Material.hpp>
 #include <Engine/Scene/TomlReflector.hpp>
 #include <array>
 #include <cstring>
@@ -176,6 +178,84 @@ TEST_F(MaterialReflectionTest, DataAssetKeysAndAssetListsRoundTrip)
     EXPECT_EQ(restored.textures[0].reference.guid, "texture-guid");
     EXPECT_EQ(restored.textures[0].reference.path, "Assets/Texture.png");
     EXPECT_TRUE(restored.textures[1].reference.guid.empty());
+}
+
+TEST_F(MaterialReflectionTest, SolidDielectricTypedSettingsRoundTripAndRuntimeCopies)
+{
+    testkit::TempDir directory("material-dielectric");
+    const auto path = (directory.Path() / "glass.mat").generic_string();
+    asset::MaterialAsset original;
+    original.dielectric.transmission = 1;
+    original.dielectric.ior = 1.6f;
+    original.dielectric.attenuationColor = {0, 0.5f, 0.75f};
+    original.dielectric.attenuationDistance = 2.5f;
+    original.dielectric.thinWalled = true;
+    ASSERT_TRUE(asset::SaveMaterialAssetToFile(path, original));
+    asset::MaterialAsset restored;
+    ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path, restored));
+    EXPECT_EQ(restored.dielectric, original.dielectric);
+    renderer::Material runtime;
+    runtime.dielectric = restored.dielectric;
+    auto clone = runtime.CloneWithoutGpuResources();
+    EXPECT_EQ(clone.dielectric, original.dielectric);
+    renderer::Material moved(std::move(clone));
+    EXPECT_EQ(moved.dielectric, original.dielectric);
+    renderer::Material assigned;
+    assigned = std::move(moved);
+    EXPECT_EQ(assigned.dielectric, original.dielectric);
+}
+
+TEST_F(MaterialReflectionTest, LegacyAlphaDoesNotImplicitlyEnableOpticalTransmission)
+{
+    testkit::TempDir directory("material-legacy-alpha");
+    const auto path = directory.Path() / "legacy.mat";
+    {
+        std::ofstream file(path);
+        file << "blend_mode = 'AlphaBlend'\n[params]\nbaseColor = [1, 1, 1, 0.2]\n";
+    }
+    asset::MaterialAsset restored;
+    restored.dielectric.transmission = 1;
+    ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path.generic_string(), restored));
+    EXPECT_EQ(restored.blendMode, renderer::BlendMode::ALPHA_BLEND);
+    EXPECT_FLOAT_EQ(restored.params.at("baseColor")[3], 0.2f);
+    EXPECT_EQ(restored.dielectric, renderer::SolidDielectricSettings{});
+}
+
+TEST_F(MaterialReflectionTest, RejectsWrongDielectricTypesWithoutModifyingOutput)
+{
+    testkit::TempDir directory("material-dielectric-invalid");
+    const auto path = directory.Path() / "invalid.mat";
+    asset::MaterialAsset preserved;
+    preserved.shaderPath = "preserved";
+    preserved.dielectric.transmission = 0.75f;
+    const auto originalSettings = preserved.dielectric;
+    for (const auto* invalid : {
+        "dielectric = 'glass'\n", "[dielectric]\ntransmission = '1'\n",
+        "[dielectric]\nior = true\n", "[dielectric]\nattenuation_distance = '1'\n",
+        "[dielectric]\nthin_walled = 0\n", "[dielectric]\nattenuation_color = [1, 1]\n",
+        "[dielectric]\nattenuation_color = [1, true, 1]\n",
+        "[dielectric]\nior = 1e300\n", "[dielectric]\nior = -1e300\n",
+        "[dielectric]\ntransmission = 1e300\n", "[dielectric]\nattenuation_distance = 1e300\n",
+        "[dielectric]\nattenuation_color = [1e300, 1, 1]\n",
+        "[dielectric]\nattenuation_color = [1, -1e300, 1]\n"}) {
+        {
+            std::ofstream file(path);
+            file << invalid;
+        }
+        EXPECT_FALSE(asset::LoadMaterialAssetFromFile(path.generic_string(), preserved));
+        EXPECT_EQ(preserved.shaderPath, "preserved");
+        EXPECT_EQ(preserved.dielectric, originalSettings);
+    }
+    {
+        std::ofstream file(path);
+        file << "[dielectric]\ntransmission = 1\nior = 2\nattenuation_color = [0, 1, 1]\n";
+    }
+    ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path.generic_string(), preserved));
+    EXPECT_FLOAT_EQ(preserved.dielectric.transmission, 1);
+    EXPECT_FLOAT_EQ(preserved.dielectric.ior, 2);
+    EXPECT_VEC3_NEAR(preserved.dielectric.attenuationColor, (math::Vector3{0, 1, 1}), 1e-6f);
+    EXPECT_FLOAT_EQ(preserved.dielectric.attenuationDistance, 1);
+    EXPECT_FALSE(preserved.dielectric.thinWalled);
 }
 
 TEST_F(MaterialReflectionTest, LegacyAssetPathsAndMissingFieldsRemainCompatible)

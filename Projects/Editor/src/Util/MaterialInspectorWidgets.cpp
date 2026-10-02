@@ -7,6 +7,7 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Scene/Systems/WaterSystem.hpp>
 #include <Engine/Asset/MaterialParamBinding.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <cstring>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
@@ -158,7 +159,52 @@ void Tooltip(const char* text)
         ImGui::SetTooltip("%s", text);
 }
 
-} // namespace
+} /// @note namespace
+
+bool DrawSolidDielectricMaterialInspector(asset::MaterialAsset& material)
+{
+    std::string shaderPath = material.shaderPath;
+    if (shaderPath.starts_with("guid:")) shaderPath = asset::AssetManager::ResolveAssetPath(shaderPath);
+    std::replace(shaderPath.begin(), shaderPath.end(), '\\', '/');
+    if (!shaderPath.ends_with("Assets/Shaders/Material/Surface/PBR.hlsl")
+        && shaderPath != "Material/Surface/PBR.hlsl"
+        && material.dielectric.transmission == 0) return false;
+    ImGui::SeparatorText("Dielectric");
+    auto& dielectric = material.dielectric;
+    bool enabled = dielectric.transmission != 0;
+    bool changed = ImGui::Checkbox("Glass", &enabled);
+    if (changed) {
+        dielectric.transmission = enabled ? 1.0f : 0.0f;
+        if (enabled) {
+            /// @note alpha は被覆だけ。閉じた境界の屈折は固体 BSDF が担当する。
+            material.blendMode = renderer::BlendMode::OPAQUE_BLEND;
+            material.depthWrite = true;
+            material.doubleSided = false;
+            material.renderQueue = renderer::RenderQueue::GEOMETRY;
+            dielectric.thinWalled = false;
+            EnsureFloatParam(material, "albedo", 4, {1, 1, 1, 1})[3] = 1;
+            EnsureFloatParam(material, "metallic", 1, {0})[0] = 0;
+            EnsureFloatParam(material, "roughness", 1, {0})[0] = 0;
+            EnsureFloatParam(material, "alphaCutoff", 1, {0})[0] = 0;
+        }
+    }
+    if (enabled) {
+        const bool thinChanged = ImGui::Checkbox("Thin Walled", &dielectric.thinWalled);
+        changed |= thinChanged;
+        if (thinChanged && dielectric.thinWalled) {
+            /// @note 厚みゼロの初期 BSDF は滑面・無吸収に限定し、固体の距離吸収を持ち込まない。
+            EnsureFloatParam(material, "roughness", 1, {0})[0] = 0;
+            dielectric.attenuationColor = {1, 1, 1};
+        }
+        changed |= ImGui::DragFloat("IOR", &dielectric.ior, 0.01f, 1.0f, 5.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        if (!dielectric.thinWalled) {
+            changed |= ImGui::ColorEdit3("Attenuation Color", &dielectric.attenuationColor.x);
+            changed |= ImGui::DragFloat("Attenuation Distance [m]", &dielectric.attenuationDistance,
+                0.01f, 0.0001f, 1000.0f, "%.4f", ImGuiSliderFlags_AlwaysClamp);
+        }
+    }
+    return changed;
+}
 
 bool DrawMaterialTextureField(asset::MaterialAsset& mat, const char* label, const char* key)
 {
@@ -398,4 +444,4 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
     return dirty;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -2,15 +2,8 @@
 /// @brief   リソース寿命の算出とエイリアスグループの割り当て規則を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
-///
-/// エイリアスグループは「ライフタイムが重ならない同型リソースは 1 つの物理 RT を
-/// 共有してよい」という申告で、実際に VRAM を貸し回す判断の根拠になる。誤って
-/// 重なる 2 つを同じグループへ入れると、片方の描画がもう片方を踏み潰す。絵を見て
-/// 気付ける壊れ方ではないので、割り当て規則そのものを固定する。
-///
-/// 貸し回しの判定は «前のリソースの lastPass < 次のリソースの firstPass» という
-/// 厳密な不等号。隣接するだけ (lastPass == firstPass) では共有しない。テストの
-/// 構成に 1 段の «間» が要るのはこのため。
+/// @note 寿命が重ならない同型資源だけを同じ alias group に入れる。
+/// @note lastPass == firstPass の資源は同じパスで生存しているため共有できない。
 #include <TestKit/TestKit.hpp>
 
 #include <Engine/Renderer/RenderGraph.hpp>
@@ -45,21 +38,21 @@ RG::ResourceDesc ImportedRT(uint32_t width = 1920, uint32_t height = 1080)
                              renderer::Format::RGBA16F, 1, true, true, false };
 }
 
-/// external ではないが transient でもない = «永続»。producer 無しで読めて、貸し回されない。
+/// @note 永続資源は書き手なしで読めるが alias しない。
 RG::ResourceDesc PersistentRT(uint32_t width = 1920, uint32_t height = 1080)
 {
     return RG::ResourceDesc{ RG::ResourceKind::RenderTarget, width, height,
                              renderer::Format::RGBA16F, 1, true, false, false };
 }
 
-/// 深度専用 RT (colorCount = 0)。DecalDepth / cloudDepth がこれ。
+/// @note colorCount == 0 は深度専用 RT。
 RG::ResourceDesc TransientDepthOnlyRT(uint32_t width = 1920, uint32_t height = 1080)
 {
     return RG::ResourceDesc{ RG::ResourceKind::RenderTarget, width, height,
                              renderer::Format::RGBA16F, 0, true, false, true };
 }
 
-/// 深度を持たないポストの中継 RT。
+/// @note 深度を持たないカラー RT。
 RG::ResourceDesc TransientColorOnlyRT(uint32_t width = 1920, uint32_t height = 1080)
 {
     return RG::ResourceDesc{ RG::ResourceKind::RenderTarget, width, height,
@@ -74,7 +67,7 @@ const RG::ResourceLifetime* Find(const RG& graph, std::string_view name)
     return it == lifetimes.end() ? nullptr : &*it;
 }
 
-} // namespace
+} /// @note namespace
 
 class RenderGraphLifetimeTest : public testkit::Fixture {};
 
@@ -82,8 +75,7 @@ class RenderGraphLifetimeTest : public testkit::Fixture {};
 
 TEST_F(RenderGraphLifetimeTest, ReportsLifetimeBoundsAsExecutionOrderIndices)
 {
-    /// @note firstPass / lastPass は «登録番号» ではなく «カリング後の実行順の番号»。
-    ///       取り違えると、刈られたパスがある構成で寿命が実際より長く出る。
+    /// @note firstPass / lastPass はカリング後の実行順の番号。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("Unused", TransientRT());
@@ -120,8 +112,7 @@ TEST_F(RenderGraphLifetimeTest, OmitsResourcesTouchedOnlyByCulledPasses)
 
 TEST_F(RenderGraphLifetimeTest, SortsLifetimesByFirstUseThenName)
 {
-    /// @note RenderPipeline はこの並び順でプールを組み直す。並びが変われば、同じ構成でも
-    ///       別の物理 RT が配られる。
+    /// @note 構成が同じときに異なる資源へ alias group が配られないよう順序を固定する。
     RG graph;
     graph.DeclareResource("Zebra", TransientRT());
     graph.DeclareResource("Alpha", TransientRT());
@@ -186,8 +177,7 @@ TEST_F(RenderGraphLifetimeTest, SeparatesGroupsForResourcesAliveAtTheSameTime)
 
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenDescriptorsDiffer)
 {
-    /// @note Half は寿命の上では Full の枠に収まるが、寸法が違うので貸し回してはいけない。
-    ///       上の SharesOneGroup... と同じ形で desc だけを変えてある。
+    /// @note 寿命が重ならなくても寸法が違う資源は共有できない。
     RG graph;
     graph.DeclareResource("Full", TransientRT(1920, 1080));
     graph.DeclareResource("Mid", TransientRT(1920, 1080));
@@ -213,9 +203,7 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenDescriptorsDiffer)
 
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupBetweenDepthOnlyAndColourTargets)
 {
-    /// @note 寸法も形式も同じだが colorCount が違う。実体の作られ方が別物なので貸し回せない。
-    ///       以前は寸法と形式しか見ておらず、深度専用の DecalDepth とカラーマスクが
-    ///       同じグループに入り得た。
+    /// @note 寸法と形式が一致しても colorCount の違う資源は共有できない。
     RG graph;
     graph.DeclareResource("Colour", TransientRT(1920, 1080));
     graph.DeclareResource("Mid",    TransientRT(1920, 1080));
@@ -265,8 +253,7 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenOnlyTheDepthFlagDiffers)
 
 TEST_F(RenderGraphLifetimeTest, ExcludesImportedAndPersistentResourcesFromAliasing)
 {
-    /// @note 外から持ち込んだ RT と、フレームを跨いで内容を保つ RT は貸し回してはいけない。
-    ///       aliasGroup = -1 がその印。
+    /// @note 外部資源と履歴の aliasGroup は -1。
     RG graph;
     graph.DeclareResource("HDR", TransientRT());
     graph.DeclareResource("History", PersistentRT());
@@ -290,10 +277,7 @@ TEST_F(RenderGraphLifetimeTest, ExcludesImportedAndPersistentResourcesFromAliasi
 
 TEST_F(RenderGraphLifetimeTest, SharesAGroupBetweenUndeclaredResourcesBecauseTheyGetTheDefaultDesc)
 {
-    /// @note DeclareResource を書き忘れた名前は desc が既定値 {Unknown, 0, 0} になる。
-    ///       寸法も kind も揃ってしまうので、本来まったく別物のリソース同士が «同型» と
-    ///       判定されて同じ物理実体を貸し回される。
-    ///       現状これを検出する仕組みは無い。所有権をグラフへ移す前に必ず塞ぐこと。
+    /// @warning 未宣言資源は既定の Unknown 記述となり、現状では互いに alias できてしまう。
     RG graph;
     graph.DeclareResource("Output", ImportedRT());
     AddPass(graph, "MakeA", {}, { "UndeclaredA" });
@@ -313,10 +297,139 @@ TEST_F(RenderGraphLifetimeTest, SharesAGroupBetweenUndeclaredResourcesBecauseThe
     EXPECT_EQ(a->aliasGroup, b->aliasGroup);
 }
 
+TEST_F(RenderGraphLifetimeTest, BufferAliasingRequiresTheSameByteSizeAndStride)
+{
+    RG::ResourceDesc first;
+    first.kind = RG::ResourceKind::Buffer;
+    first.byteSize = 4096;
+    first.stride = 32;
+    for (const auto [byteSize, stride] : {
+            std::pair<uint64_t, uint32_t>{ 4096, 32 },
+            std::pair<uint64_t, uint32_t>{ 8192, 32 },
+            std::pair<uint64_t, uint32_t>{ 4096, 64 } }) {
+        RG graph;
+        auto second = first;
+        second.byteSize = byteSize;
+        second.stride = stride;
+        graph.DeclareResource("Early", first);
+        graph.DeclareResource("Mid", TransientRT());
+        graph.DeclareResource("Late", second);
+        graph.DeclareResource("Output", ImportedRT());
+        AddPass(graph, "MakeEarly", {}, { "Early" });
+        AddPass(graph, "Middle", { "Early" }, { "Mid" });
+        AddPass(graph, "MakeLate", { "Mid" }, { "Late" });
+        AddPass(graph, "Present", { "Late" }, { "Output" });
+        graph.SetOutputs({ "Output" });
+
+        ASSERT_TRUE(graph.Plan());
+        const auto* early = Find(graph, "Early");
+        const auto* late = Find(graph, "Late");
+        ASSERT_NE(early, nullptr);
+        ASSERT_NE(late, nullptr);
+        EXPECT_LT(early->lastPass, late->firstPass);
+        if (byteSize == first.byteSize && stride == first.stride)
+            EXPECT_EQ(early->aliasGroup, late->aliasGroup);
+        else
+            EXPECT_NE(early->aliasGroup, late->aliasGroup);
+    }
+}
+
+TEST_F(RenderGraphLifetimeTest, ExplicitNoAliasResourcesHaveNoAliasGroup)
+{
+    RG graph;
+    auto noAlias = TransientRT();
+    noAlias.allowAliasing = false;
+    graph.DeclareResource("History", noAlias);
+    graph.DeclareResource("Output", ImportedRT());
+    AddPass(graph, "MakeHistory", {}, { "History" });
+    AddPass(graph, "Present", { "History" }, { "Output" });
+    graph.SetOutputs({ "Output" });
+
+    ASSERT_TRUE(graph.Plan());
+    const auto* history = Find(graph, "History");
+    ASSERT_NE(history, nullptr);
+    EXPECT_EQ(history->aliasGroup, -1);
+    EXPECT_FALSE(history->desc.allowAliasing);
+}
+
+TEST_F(RenderGraphLifetimeTest, AccelerationStructuresCannotAliasEvenWhenRequested)
+{
+    RG graph;
+    RG::ResourceDesc accelerationStructure;
+    accelerationStructure.kind = RG::ResourceKind::AccelerationStructure;
+    accelerationStructure.byteSize = 4096;
+    accelerationStructure.allowAliasing = true;
+    graph.DeclareResource("BLAS", accelerationStructure);
+    graph.DeclareResource("TLAS", accelerationStructure);
+    graph.DeclareResource("Output", ImportedRT());
+    AddPass(graph, "BuildBLAS", {}, { "BLAS" });
+    AddPass(graph, "BuildTLAS", { "BLAS" }, { "TLAS" });
+    AddPass(graph, "Trace", { "TLAS" }, { "Output" });
+    graph.SetOutputs({ "Output" });
+
+    ASSERT_TRUE(graph.Plan());
+    for (const auto name : { "BLAS", "TLAS" }) {
+        const auto* resource = Find(graph, name);
+        ASSERT_NE(resource, nullptr);
+        EXPECT_EQ(resource->aliasGroup, -1);
+        EXPECT_FALSE(resource->desc.allowAliasing);
+    }
+}
+
+TEST_F(RenderGraphLifetimeTest, RayPreparationAndTraceFollowDeclaredDependencies)
+{
+    RG graph;
+    RG::ResourceDesc vertices;
+    vertices.kind = RG::ResourceKind::Buffer;
+    vertices.byteSize = 4096;
+    RG::ResourceDesc accelerationStructure;
+    accelerationStructure.kind = RG::ResourceKind::AccelerationStructure;
+    graph.DeclareResource("Vertices", vertices);
+    graph.DeclareResource("BLAS", accelerationStructure);
+    graph.DeclareResource("TLAS", accelerationStructure);
+    graph.DeclareResource("Output", ImportedRT());
+    graph.AddPass("Trace", {
+        { "TLAS", RG::ResourceUsage::Read, RG::ResourceAccessPurpose::TRACE_READ },
+        { "Vertices", RG::ResourceUsage::Read, RG::ResourceAccessPurpose::SHADER_READ },
+        { "Output", RG::ResourceUsage::Write, RG::ResourceAccessPurpose::UAV }
+    }, [] {});
+    graph.AddPass("BuildTLAS", {
+        { "BLAS", RG::ResourceUsage::Read, RG::ResourceAccessPurpose::BUILD_INPUT },
+        { "TLAS", RG::ResourceUsage::Write, RG::ResourceAccessPurpose::AS_WRITE }
+    }, [] {});
+    graph.AddPass("BuildBLAS", {
+        { "Vertices", RG::ResourceUsage::Read, RG::ResourceAccessPurpose::BUILD_INPUT },
+        { "BLAS", RG::ResourceUsage::Write, RG::ResourceAccessPurpose::AS_WRITE }
+    }, [] {});
+    graph.AddPass("Skinning", {
+        { "Vertices", RG::ResourceUsage::Write, RG::ResourceAccessPurpose::UAV }
+    }, [] {});
+    graph.SetOutputs({ "Output" });
+
+    ASSERT_TRUE(graph.Plan());
+    EXPECT_EQ(graph.GetLastReport().executionOrder, (std::vector<size_t>{ 3, 2, 1, 0 }));
+}
+
+TEST_F(RenderGraphLifetimeTest, PreparationOutputKeepsItsProducersWithoutAViewGraph)
+{
+    RG graph;
+    RG::ResourceDesc accelerationStructure;
+    accelerationStructure.kind = RG::ResourceKind::AccelerationStructure;
+    graph.DeclareResource("BLAS", accelerationStructure);
+    graph.DeclareResource("TLAS", accelerationStructure);
+    AddPass(graph, "BuildTLAS", { "BLAS" }, { "TLAS" });
+    AddPass(graph, "BuildBLAS", {}, { "BLAS" });
+    AddPass(graph, "Unused", {}, { "UnusedTable" });
+    graph.SetOutputs({ "TLAS" });
+
+    ASSERT_TRUE(graph.Plan());
+    EXPECT_EQ(graph.GetLastReport().executionOrder, (std::vector<size_t>{ 1, 0 }));
+    EXPECT_EQ(graph.GetLastReport().culledPasses, (std::vector<size_t>{ 2 }));
+}
+
 TEST_F(RenderGraphLifetimeTest, AssignsIdenticalAliasGroupsAcrossRepeatedPlans)
 {
-    /// @note グループ番号は物理 RT の貸出先そのもの。unordered_map の走査順に依存して
-    ///       揺れると、フレームごとに違う RT へ描くことになる。
+    /// @note unordered_map の走査順が alias group の割り当てを変えてはならない。
     RG graph;
     graph.DeclareResource("A", TransientRT());
     graph.DeclareResource("B", TransientRT());
@@ -343,4 +456,4 @@ TEST_F(RenderGraphLifetimeTest, AssignsIdenticalAliasGroupsAcrossRepeatedPlans)
     EXPECT_EQ(first, second);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

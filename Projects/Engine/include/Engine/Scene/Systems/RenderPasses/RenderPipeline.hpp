@@ -33,9 +33,11 @@ public:
             renderer::RenderPipeline::AddPass<T>(std::forward<Args>(args)...);
         else renderer::RenderPipeline::AddPass<HostPass<T>>(m_context, std::forward<Args>(args)...);
     }
-    bool Execute(RenderPassContext& context, renderer::RenderPassCapture* capture = nullptr) {
+    bool Execute(RenderPassContext& context, renderer::RenderPassCapture* capture = nullptr,
+                 const renderer::GpuProfilerViewMetadata* gpuView = nullptr,
+                 const renderer::ResolvedRenderPlan* gpuPlan = nullptr) {
         m_context = &context;
-        const bool result = renderer::RenderPipeline::Execute(context, capture);
+        const bool result = renderer::RenderPipeline::Execute(context, capture, gpuView, gpuPlan);
         m_context = nullptr;
         return result;
     }

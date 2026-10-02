@@ -833,6 +833,8 @@ void RenderSystem(Scene& scene,
     const bool clusteredEnabled = (clusterMode == ClusterLightMode::Clustered);
 
     passCtx.punctualLights    = std::move(punctualLights);
+    passCtx.rayLights = std::move(lighting.rayLights);
+    passCtx.rayLightsComplete = lighting.rayLightsComplete;
     passCtx.clusterLightMode  = clusterMode;
     /// @note 霧のフレーム間状態は描画中のビューが持つ (SceneView / GameView で混ざらないように)。
     passCtx.froxelFogState    = &viewTargets.froxelState;
@@ -928,6 +930,7 @@ void RenderSystem(Scene& scene,
     /// @note キャプチャ先と畳み込み出力は RenderGraph 管理外なのでグラフ実行前に直接呼ぶ。
     /// @note SkyCapture / SkyLightBake は dirty を内部判定し、不要フレームは即 return する。
     bool dynamicIblReady = false;
+    bool reflectionProbeSelected = false;
     float reflectionProbeIntensity = 1.0f;
     int dynamicIblMipCount = 0;
     if (activeIblSource == IblSource::DynamicSky) {
@@ -938,24 +941,37 @@ void RenderSystem(Scene& scene,
             passHandles.iblPrefilter  = sEnvironmentResources.skyPrefilter;
             dynamicIblReady = true;
             dynamicIblMipCount = static_cast<int>(sEnvironmentResources.prefilteredMipCount);
+            passCtx.iblIrradiancePublication = {sEnvironmentResources.immutableIrradiance, sEnvironmentResources.immutableIblOwner,
+                sEnvironmentResources.immutableIblEpoch};
+            passCtx.iblPrefilterPublication = {sEnvironmentResources.immutablePrefilter, sEnvironmentResources.immutableIblOwner,
+                sEnvironmentResources.immutableIblEpoch};
         }
     }
 
     /// @note 局所 Reflection Probe はカメラが影響範囲内にいるとき、グローバル IBL より優先する。
     /// @note IBL スロットを共有するので、マテリアル側に専用分岐も追加テクスチャも要らない。
     if (auto* localProbe = ExecuteReflectionProbeCapturePass(passCtx)) {
+        reflectionProbeSelected = true;
         passHandles.iblIrradiance = localProbe->runtimeIrradiance;
         passHandles.iblPrefilter  = localProbe->runtimePrefilter;
         dynamicIblReady = true;
         reflectionProbeIntensity = localProbe->intensity;
         dynamicIblMipCount = static_cast<int>(localProbe->runtimePrefilterMipCount);
+        passCtx.iblIrradiancePublication = {};
+        passCtx.iblPrefilterPublication = {};
+        if (localProbe->runtimeImmutablePublished) {
+            passCtx.iblIrradiancePublication = {localProbe->runtimePublishedIrradiance, localProbe->runtimePublicationOwner,
+                localProbe->runtimePublicationEpoch};
+            passCtx.iblPrefilterPublication = {localProbe->runtimePublishedPrefilter, localProbe->runtimePublicationOwner,
+                localProbe->runtimePublicationEpoch};
+        }
     }
 
     const ActiveWeather weather = FindActiveWeather(scene);
     renderer::PrepareAdvancedConstants(passCtx, viewTargets,
         { dynamicIblReady, reflectionProbeIntensity, dynamicIblMipCount,
           screenAoStrength, screenContactShadowStrength,
-          weather.wetness, weather.darkening, weather.puddleAmount },
+          weather.wetness, weather.darkening, weather.puddleAmount, reflectionProbeSelected },
         [&](AdvancedGraphicsCB& agData) {
             const LightProbeVolumeSelection gi = ExecuteLightProbeBakePass(passCtx, agData);
             const LightProbeVolumeSelection::Entry* slots[2] = { &gi.inner, &gi.outer };
@@ -1061,12 +1077,10 @@ void RenderSystem(Scene& scene,
 
     /// @note RenderPipeline 実行 + デバッグスナップショット更新
 
-    /// @note GPU Timestamp Query の前フレーム結果を収集してからフレームを開始する。
-    /// @note GpuProfCollect を先に呼ぶことで前フレームの非同期クエリが確定している可能性を最大化する。
+    /// @note GPU query 領域は renderer の物理フレームが所有する。ビュー開始で再初期化しない。
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::GpuProfilerSetup");
         renderer.GpuProfCollect();
-        renderer.GpuProfBeginFrame();
 
         /// @note GPU フックを RenderPipeline に設定する。CPU フックとは独立しているため、
         /// @note Profiler の CPU スコープ計測と干渉しない。
@@ -1076,11 +1090,19 @@ void RenderSystem(Scene& scene,
         );
     }
 
-    const bool graphExecuted = pipeline.Execute(passCtx, capture);
+    renderer::GpuProfilerViewMetadata gpuView;
+    gpuView.applicationFrameSerial = resources.FrameStamp();
+    gpuView.viewId = viewKey;
+    gpuView.sceneGeneration = scene.GetRenderSceneGeneration();
+    gpuView.resourceEpoch = resources.GetResetVersion();
+    gpuView.outputId = outputRT.id;
+    gpuView.outputGeneration = outputRT.gen;
+    gpuView.width = sHdrW;
+    gpuView.height = sHdrH;
+    const bool graphExecuted = pipeline.Execute(passCtx, capture, &gpuView, &viewTargets.renderPlan);
 
-    renderer.GpuProfEndFrame();
     if (capture)
-        capture->Finish(pipeline.LastReport(), renderer.GpuProfGetResults());
+        capture->Finish(pipeline.LastReport(), renderer.GpuProfGetSnapshot(), pipeline.LastGpuProfilerView());
     assert(graphExecuted);
     (void)graphExecuted;
     /// @note パスが書き換えたフレームをまたぐ状態をビューへ戻す。
@@ -1119,8 +1141,17 @@ void RenderSystem(Scene& scene,
         for (const auto& profile : pipeline.LastReport().profiles)
             dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
 
-        /// @note GPU 計測結果を Snapshot に詰める。QUERY_LATENCY フレーム以内は空になる。
-        for (const auto& gp : renderer.GpuProfGetResults())
+        /// @note 遅延値は出自を保持し、別ビュー・旧 Plan・再生成前の資源へ帰属させない。
+        dbgSnap.gpuCurrentView = pipeline.LastGpuProfilerView();
+        dbgSnap.gpuProfiler = renderer.GpuProfGetSnapshot();
+        std::erase_if(dbgSnap.gpuProfiler.passes, [&](const auto& gp) {
+            return !gp.available || !std::isfinite(gp.gpuMs) || gp.gpuMs < 0.0
+                || gp.physicalFrameSerial != dbgSnap.gpuProfiler.physicalFrameSerial
+                || gp.deviceEpoch != dbgSnap.gpuProfiler.deviceEpoch
+                || !renderer::IsGpuProfilerViewCompatible(gp.metadata, dbgSnap.gpuCurrentView, 8u);
+        });
+        dbgSnap.gpuProfiler.available = dbgSnap.gpuProfiler.available && !dbgSnap.gpuProfiler.passes.empty();
+        for (const auto& gp : dbgSnap.gpuProfiler.passes)
             dbgSnap.gpuPassTimings.push_back({ gp.name, gp.gpuMs });
 
         /// @note カリング統計を Snapshot に詰める

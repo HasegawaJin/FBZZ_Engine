@@ -2,7 +2,6 @@
 /// @brief   Scene の Entity 管理と GameObject 所有。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
 /// @brief EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
 /// @brief フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
 #include "Engine/Scene/Scene.hpp"
@@ -17,6 +16,7 @@
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Util/Uuid.hpp"
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -28,9 +28,10 @@ namespace fbzz::scene {
 
 namespace {
 
+std::atomic<uint64_t> s_renderSceneGeneration{0};
+
 /// @brief Component 個体が抱えている GPU リソースを、返す先がまだ生きているあいだだけ返す。
-/// @note Scene は ResourceManager を知らない (上位は ResourceHandle しか触らない設計)。プロセス
-/// @note        終了で ResourceManager が先に畳まれた場合は Active() が空になり、返す先が無いので何もしない。
+/// @note ResourceManager が先に終了した場合は Active が空になり、返す先がないので何もしない。
 void ReleaseGpuResourcesIfPossible(Scene& scene)
 {
     if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
@@ -39,10 +40,11 @@ void ReleaseGpuResourcesIfPossible(Scene& scene)
 
 } /// @note namespace
 
+Scene::Scene() : m_renderSceneGeneration(++s_renderSceneGeneration) {}
+
 Scene::~Scene()
 {
-    /// @note デストラクタから OnDestroy を回すと既に畳まれたサブシステムへスクリプトが触りにいく
-    /// @note        ため Clear() は呼ばない。ここで要るのは GPU リソースの返却だけ。
+    /// @note 終了済み subsystem を Script が触らないよう、破棄では Clear / OnDestroy を呼ばない。
     ReleaseGpuResourcesIfPossible(*this);
 }
 
@@ -70,8 +72,7 @@ Scene& Scene::operator=(Scene&& other) noexcept
     m_scriptDebugDrawCommands = std::move(other.m_scriptDebugDrawCommands);
     m_lastScriptDebugDrawTickFrame = other.m_lastScriptDebugDrawTickFrame;
     m_environment = other.m_environment;
-    /// @note 流れのキャッシュは «誰の GameObject を指しているか» に依存しない値だが、
-    /// @note        移った先で集め直させる。移動元と同じフレームでも中身は別シーンのもの。
+    /// @note 同一フレームでも移動元と内容が異なるため、流れは移動先で集め直す。
     InvalidateFlowFrame();
 
     FixupOwnership();
@@ -114,9 +115,7 @@ void Scene::DestroyImmediate(EntityID id) {
         }
     }
 
-    /// @note Script の後処理。OnDestroy から AddScript / Create が呼ばれると ScriptComponent 配列も
-    /// @note        sc->scripts も再確保されうる。範囲 for が握る参照はそこで無効になるため、毎回 id と
-    /// @note        添字から引き直す。
+    /// @note OnDestroy が Component / Script 配列を再確保し得るため、毎回 id と添字から引き直す。
     if (auto* sc = GetComponent<ScriptComponent>(id)) {
         const size_t initialCount = sc->scripts.size();
         for (size_t i = 0; i < initialCount; ++i) {
@@ -322,8 +321,7 @@ bool Scene::SyncSiblingFlatOrder(EntityID id)
     const size_t curFlat = flatIndexOf(id);
     if (curFlat == SIZE_MAX) return false;
 
-    /// @note 兄弟順が「直前の兄弟の後 / 先頭なら次の兄弟の前」になるよう flat 位置を移す。
-    /// @note        (削除後の座標系で挿入位置を求める)
+    /// @note 挿入位置は削除後の flat 座標で求め、兄弟順を再現する。
     size_t insertPos;
     if (k > 0) {
         size_t prevFlat = flatIndexOf(siblings[k - 1]);
@@ -380,9 +378,7 @@ void Scene::Clear()
     /// @note Component を捨てる前に返す。捨ててからでは、どのハンドルを持っていたか辿れない。
     ReleaseGpuResourcesIfPossible(*this);
 
-    /// @note 待機列は Scene* をキーに持つ静的な表で、Scene の実体が同じまま中身だけ入れ替わる
-    /// @note        Play/Stop では生き残る。EntityID の generation は Clear で 0 に戻るので、
-    /// @note        残したままだと «次の Play で無関係な GameObject をプール済みとして配る» ことが起きる。
+    /// @note Play / Stop で Scene* と EntityID が再利用されるため、旧内容のプール参照を破棄する。
     PrefabPool::Clear(*this);
 
     m_destroyQueue.clear();
@@ -400,6 +396,7 @@ void Scene::Clear()
     m_lastScriptDebugDrawTickFrame = 0;
     m_environment = SceneEnvironment{};
     m_flowFrame = FlowFieldFrame{};
+    m_renderSceneGeneration = ++s_renderSceneGeneration;
     InvalidateFlowFrame();
 }
 
@@ -518,8 +515,7 @@ void Scene::CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityI
 
 void Scene::FixupOwnership()
 {
-    /// @note ムーブ後、GameObject が保持する m_scene 生ポインタは旧 Scene を指したままになる。
-    /// @note        m_entityToGameObject も新アドレスで再構築が必要。ここで両方を修正する。
+    /// @note move 前の Scene を指す非所有参照と逆引きを新しい所有者へ付け替える。
     for (auto& go : m_gameObjects) {
         go->m_scene = this;
         m_entityToGameObject[go->m_id.index] = go.get();

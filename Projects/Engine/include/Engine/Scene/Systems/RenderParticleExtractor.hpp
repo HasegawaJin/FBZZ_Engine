@@ -4,4 +4,10 @@
 /// @date    2026-09-21
 #pragma once
 namespace fbzz::renderer { struct RenderScene; }
-namespace fbzz::scene { struct RenderPassContext; void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& output); }
+namespace fbzz::scene {
+class Scene;
+struct RenderPassContext;
+/// @note Append once after the snapshot's particle simulation. GPU alive counts are unavailable on CPU, so positive draw capacity is conservatively unsupported.
+void ExtractRayParticleSources(const Scene& scene, renderer::RenderScene& output);
+void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& output);
+}

@@ -2,12 +2,12 @@
 /// @brief   ReflectionProbe の空のみ／周辺メッシュ込み動的キャプチャと IBL 畳み込み。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-///
 /// @note プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得るため、更新間隔と
 /// @note 明示リクエストで間引く。昼夜変化だけを追う用途には DynamicSky、室内・配置物の反射には
 /// @note DynamicScene を使う。
 #include "RenderScenePassHelpers.hpp"
 #include <Graphics/Effects/RenderProbeInput.hpp>
+#include <Graphics/Pipeline/EnvironmentResources.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ITexture.hpp>
@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <vector>
 
 namespace fbzz::scene {
 namespace {
@@ -53,6 +54,11 @@ void ReleaseProbeTextures(ReflectionProbeComponent& probe, renderer::ResourceMan
     probe.runtimeIrradiance = {};
     probe.runtimePrefilter = {};
     probe.runtimePrefilterMipCount = 0;
+    probe.runtimePublicationOwner = nullptr;
+    probe.runtimePublishedIrradiance = {};
+    probe.runtimePublishedPrefilter = {};
+    probe.runtimePublicationEpoch = 0;
+    probe.runtimeImmutablePublished = false;
 }
 
 bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeComponent& probe)
@@ -99,6 +105,11 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
     probe.runtimeIrradiance = output.irradiance;
     probe.runtimePrefilter = output.prefilter;
     probe.runtimePrefilterMipCount = output.prefilterMipCount;
+    probe.runtimeImmutablePublished = output.immutablePublished;
+    probe.runtimePublicationOwner = &resources;
+    probe.runtimePublishedIrradiance = output.irradiance;
+    probe.runtimePublishedPrefilter = output.prefilter;
+    probe.runtimePublicationEpoch = resources.GetResetVersion();
     probe.lastCaptureTime = Time::time;
     probe.refreshRequested = false;
     return true;
@@ -108,6 +119,11 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
 
 ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& ctx)
 {
+    struct CaptureCandidate { GameObject* owner; ReflectionProbeComponent* probe; };
+    std::vector<CaptureCandidate> dueProbes;
+    const bool bounded = ctx.settings.modeRequest.mode == renderer::RenderMode::HYBRID;
+    const auto quality = renderer::IsHybridQualityValid(ctx.settings.hybridQuality)
+        ? ctx.settings.hybridQuality : renderer::HybridQualitySettings{};
     ReflectionProbeComponent* selected = nullptr;
     float selectedDistanceSq = 0.0f;
     for (auto& go : ctx.scene.GameObjects()) {
@@ -116,12 +132,48 @@ ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& c
             || probe->captureMode == ReflectionProbeCaptureMode::Static) continue;
         const bool due = probe->refreshRequested || probe->lastCaptureTime < -1.0e20f
             || probe->updateInterval <= 0.0f || (Time::time - probe->lastCaptureTime) >= probe->updateInterval;
-        if (due) (void)CaptureAndBake(ctx, go, *probe);
+        if (due) {
+            if (bounded) dueProbes.push_back({&go, probe});
+            else (void)CaptureAndBake(ctx, go, *probe);
+        }
         if (!probe->runtimeIrradiance.IsValid() || !probe->runtimePrefilter.IsValid()
             || !IsInsideProbe(*probe, go.transform.worldPosition, ctx.camera.m_position)) continue;
         const math::Vector3 d = ctx.camera.m_position - go.transform.worldPosition;
         const float distanceSq = d.LengthSq();
         if (!selected || distanceSq < selectedDistanceSq) { selected = probe; selectedDistanceSq = distanceSq; }
+    }
+    if (bounded && ctx.environmentResources && ctx.renderScene) {
+        auto& budget = ctx.environmentResources->probeCaptureBudget;
+        const uint64_t frame = ctx.resources.FrameStamp();
+        const uint64_t epoch = ctx.resources.GetResetVersion();
+        const uint64_t sceneGeneration = ctx.renderScene->sceneGeneration;
+        std::sort(dueProbes.begin(), dueProbes.end(), [](const auto& first, const auto& second) {
+            const auto a = first.owner->GetID(), b = second.owner->GetID();
+            return a.index < b.index || (a.index == b.index && a.generation < b.generation);
+        });
+        /// @note Continue after the last attempted owner, including failures, so a broken or every-frame probe cannot starve the rest.
+        while (!dueProbes.empty() && budget.CanAttempt(frame, epoch, quality.maxProbeCapturesPerFrame)) {
+            auto candidate = std::find_if(dueProbes.begin(), dueProbes.end(), [&](const auto& entry) {
+                const auto id = entry.owner->GetID();
+                return budget.IsAfterCursor(sceneGeneration, id.index, id.generation);
+            });
+            if (candidate == dueProbes.end()) candidate = dueProbes.begin();
+            const auto id = candidate->owner->GetID();
+            budget.MarkAttempt(sceneGeneration, id.index, id.generation);
+            (void)CaptureAndBake(ctx, *candidate->owner, *candidate->probe);
+            dueProbes.erase(candidate);
+        }
+        /// @note Selection follows publication; an initial capture may become available in this very frame.
+        selected = nullptr;
+        for (auto& go : ctx.scene.GameObjects()) {
+            auto* probe = go.GetComponent<ReflectionProbeComponent>();
+            if (!probe || !probe->enabled || !go.activeInHierarchy()
+                || probe->captureMode == ReflectionProbeCaptureMode::Static
+                || !probe->runtimeIrradiance.IsValid() || !probe->runtimePrefilter.IsValid()
+                || !IsInsideProbe(*probe, go.transform.worldPosition, ctx.camera.m_position)) continue;
+            const float distanceSq = (ctx.camera.m_position - go.transform.worldPosition).LengthSq();
+            if (!selected || distanceSq < selectedDistanceSq) { selected = probe; selectedDistanceSq = distanceSq; }
+        }
     }
     return selected;
 }

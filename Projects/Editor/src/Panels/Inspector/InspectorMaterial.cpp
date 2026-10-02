@@ -119,6 +119,7 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
             if (isWaterMaterial) {
                 materialDirty |= DrawWaterMaterialInspector(mat);
             } else {
+                materialDirty |= DrawSolidDielectricMaterialInspector(mat);
                 ImGui::SeparatorText("Textures");
                 /// @note fzmat のキーは GeometryPassHelpers の kTextureSlotNames と一致させる。ShaderDescriptor の
                 /// @note tex.name は HLSL 変数名 ("texAlbedo") で kTextureSlotNames ("albedo") と異なるため、
@@ -371,7 +372,7 @@ size_t RendererSubmeshCount(scene::GameObject& go)
     return 0u;
 }
 
-} // namespace
+} /// @note namespace
 
 void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
@@ -403,4 +404,4 @@ void DrawMaterialInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
 }
 
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

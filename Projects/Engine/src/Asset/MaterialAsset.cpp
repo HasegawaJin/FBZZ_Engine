@@ -9,7 +9,9 @@
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <filesystem>
+#include <limits>
 #include <sstream>
 
 namespace fbzz::asset {
@@ -379,6 +381,56 @@ void WriteParticleTable(const ParticleMaterialSettings& value, toml::table& out)
     putF("emissive_scale", value.emissiveScale, d.emissiveScale);
 }
 
+bool ReadDielectricTable(const toml::table& table, renderer::SolidDielectricSettings& out)
+{
+    /// @note 表現範囲外の有限値を clamp しない。inf / nan は表面能力の診断へ保持する。
+    const auto floatValue = [](const toml::node& node, float& target) {
+        if (!node.is_number()) return false;
+        const auto value = node.value<double>();
+        if (!value || (std::isfinite(*value)
+            && std::abs(*value) > static_cast<double>(std::numeric_limits<float>::max()))) return false;
+        target = static_cast<float>(*value);
+        return true;
+    };
+    const auto number = [&](const char* key, float& target) {
+        const auto* node = table.get(key);
+        if (!node) return true;
+        return floatValue(*node, target);
+    };
+    if (!number("transmission", out.transmission) || !number("ior", out.ior)
+        || !number("attenuation_distance", out.attenuationDistance)) return false;
+    if (const auto* node = table.get("thin_walled")) {
+        if (!node->is_boolean()) return false;
+        out.thinWalled = node->value_or(false);
+    }
+    if (const auto* node = table.get("attenuation_color")) {
+        const auto* color = node->as_array();
+        if (!color || color->size() != 3) return false;
+        std::array<float, 3> values{};
+        for (size_t i = 0; i < values.size(); ++i) {
+            if (!floatValue((*color)[i], values[i])) return false;
+        }
+        out.attenuationColor = {values[0], values[1], values[2]};
+    }
+    return true;
+}
+
+void WriteDielectricTable(const renderer::SolidDielectricSettings& value, toml::table& out)
+{
+    const renderer::SolidDielectricSettings defaults;
+    if (value.transmission != defaults.transmission)
+        out.insert("transmission", static_cast<double>(value.transmission));
+    if (value.ior != defaults.ior) out.insert("ior", static_cast<double>(value.ior));
+    if (value.attenuationColor.x != defaults.attenuationColor.x
+        || value.attenuationColor.y != defaults.attenuationColor.y
+        || value.attenuationColor.z != defaults.attenuationColor.z)
+        out.insert("attenuation_color", toml::array{static_cast<double>(value.attenuationColor.x),
+            static_cast<double>(value.attenuationColor.y), static_cast<double>(value.attenuationColor.z)});
+    if (value.attenuationDistance != defaults.attenuationDistance)
+        out.insert("attenuation_distance", static_cast<double>(value.attenuationDistance));
+    if (value.thinWalled != defaults.thinWalled) out.insert("thin_walled", value.thinWalled);
+}
+
 toml::array FloatArrayToToml(const std::vector<float>& values)
 {
     toml::array arr;
@@ -387,7 +439,7 @@ toml::array FloatArrayToToml(const std::vector<float>& values)
     return arr;
 }
 
-} // namespace
+} /// @note namespace
 
 bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
 {
@@ -450,6 +502,14 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
     /// @note 未記載のキーは既定値のまま (テーブルごと無くても壊れない)。
     if (auto* particle = table["particle"].as_table())
         ReadParticleTable(*particle, asset.particle);
+
+    if (const auto* node = table.get("dielectric")) {
+        const auto* dielectric = node->as_table();
+        if (!dielectric || !ReadDielectricTable(*dielectric, asset.dielectric)) {
+            FBZZ_LOG_WARN("MaterialAsset: invalid typed dielectric settings [%s]", pathString.c_str());
+            return false;
+        }
+    }
 
     outAsset = std::move(asset);
     return true;
@@ -514,6 +574,11 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
         if (!particle.empty()) table.insert("particle", std::move(particle));
     }
 
+    /// @note 光学設定だけの独立 table。旧 alpha 材質を透過材質へ自動変換しない。
+    toml::table dielectric;
+    WriteDielectricTable(asset.dielectric, dielectric);
+    if (!dielectric.empty()) table.insert("dielectric", std::move(dielectric));
+
     /// @note ディスク上のテクスチャ / シェーダー参照は guid: 形式にする (リネーム・移動耐性)。
     EncodeGuidRefs(table);
 
@@ -526,4 +591,4 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
     return true;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset
