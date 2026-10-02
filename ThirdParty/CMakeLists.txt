@@ -1,4 +1,8 @@
-# Dear ImGui (docking branch)
+# @file    CMakeLists.txt
+# @brief   Vendored library targets and shared dependency contracts.
+# @author  Hasegawa Jin
+# @date    2026-05-15
+# @note Dear ImGui uses the vendored docking branch.
 add_library(ImGui SHARED
     ImGui/imgui.cpp
     ImGui/imgui_draw.cpp
@@ -17,9 +21,11 @@ target_include_directories(ImGui
         "$<INSTALL_INTERFACE:include/ThirdParty/ImGui/backends>"
 )
 
+# @note Inherited definitions evaluate in the consumer context; ImNodes defines this macro before imgui.h itself.
+# @see https://cmake.org/cmake/help/latest/manual/cmake-generator-expressions.7.html#target-properties TARGET_PROPERTY:prop consuming-target evaluation.
 target_compile_definitions(ImGui
     PUBLIC
-        IMGUI_DEFINE_MATH_OPERATORS
+        "$<$<NOT:$<STREQUAL:$<TARGET_PROPERTY:NAME>,ImNodes>>:IMGUI_DEFINE_MATH_OPERATORS>"
     PRIVATE
         FBZZ_IMGUI_EXPORTS
     INTERFACE
@@ -32,9 +38,7 @@ set_target_properties(ImGui PROPERTIES
     EXPORT_NAME "ImGui"
 )
 
-# imnodes
-# WHY: AnimationGraphPanel は AnimatorComponent をノードグラフ編集するため、
-#      Dear ImGui と同じ ThirdParty レイヤーでノードエディタ実装をビルドする。
+# @note AnimationGraphPanel のノード編集は Dear ImGui と同じ ThirdParty レイヤーの ImNodes を使う。
 add_library(ImNodes STATIC
     ImNodes/imnodes.cpp
 )
@@ -48,7 +52,7 @@ target_link_libraries(ImNodes
 )
 set_target_properties(ImNodes PROPERTIES OUTPUT_NAME "imnodes")
 
-# toml++ (header-only, exception-free モードで使用)
+# @note toml++ は例外を使わない header-only 依存として公開する。
 add_library(TomlPlusPlus INTERFACE)
 set_target_properties(TomlPlusPlus PROPERTIES EXPORT_NAME "TomlPlusPlus")
 target_include_directories(TomlPlusPlus INTERFACE
@@ -57,7 +61,6 @@ target_include_directories(TomlPlusPlus INTERFACE
 )
 target_compile_definitions(TomlPlusPlus INTERFACE TOML_EXCEPTIONS=0)
 
-# ImGuizmo
 add_subdirectory(ImGuizmo)
 
 # @note PIX headers and runtime remain a private DX12 dependency, not an installed public SDK interface.
@@ -72,10 +75,8 @@ if(WIN32)
     )
 endif()
 
-# GoogleTest / GoogleMock (vendored: ThirdParty/GoogleTest/VERSION を参照)
-# WHY: FetchContent はネット到達性に依存し、上流の CMake が CRT 設定と install 規則を
-#      持ち込む。実体として要るのは gtest-all.cc / gmock-all.cc の 2 TU だけなので、
-#      ImNodes と同じくソースを直接ビルドし、ルートの CRT 設定を暗黙に継承させる。
+# @note GoogleTest/GoogleMock の集約ソースを直接ビルドし、上流の CRT 設定と install 規則を持ち込まずルートを継承する。
+# @see ThirdParty/GoogleTest/VERSION Vendored test-library version.
 if(FBZZ_BUILD_TESTS)
     set(FBZZ_GTEST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/GoogleTest")
 
@@ -102,8 +103,7 @@ if(FBZZ_BUILD_TESTS)
     target_link_libraries(GoogleMockMain PUBLIC GoogleMock)
     set_target_properties(GoogleMockMain PROPERTIES OUTPUT_NAME "gmock_main" FOLDER "ThirdParty")
 
-    # find_package(GTest) と同じ名前を張り、CMake 同梱の GoogleTest モジュール
-    # (gtest_discover_tests) と一般的なリンク記法をそのまま使えるようにする。
+    # @note 標準 GTest::* alias を保ち、gtest_discover_tests と一般的なリンク記法を利用可能にする。
     add_library(GTest::gtest      ALIAS GoogleTest)
     add_library(GTest::gtest_main ALIAS GoogleTestMain)
     add_library(GTest::gmock      ALIAS GoogleMock)
