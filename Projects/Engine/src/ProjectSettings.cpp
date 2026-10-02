@@ -7,6 +7,8 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Input/InputActionMap.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
+#include "Asset/RenderPipelineAssetCodec.hpp"
 #include <toml++/toml.hpp>
 #include <cmath>
 #include <filesystem>
@@ -202,8 +204,28 @@ bool ProjectSettings::Load(const std::string& path)
         return false;
     }
     auto& tbl = result.table();
+    renderer::HybridQualitySettings hybridQuality;
+    if (const auto* node = tbl["render"]["hybrid"].node()) {
+        const auto* quality = node->as_table();
+        if (!quality || !asset::RenderPipelineAssetCodec::LoadHybridQuality(*quality, hybridQuality)) {
+            FBZZ_LOG_WARN("ProjectSettings: invalid render.hybrid quality: %s", path.c_str());
+            return false;
+        }
+    }
+    std::string pipelineAsset;
+    if (const auto* node = tbl["render"]["pipelineAsset"].node()) {
+        const auto* token = node->as_string();
+        if (!token) {
+            FBZZ_LOG_WARN("ProjectSettings: render.pipelineAsset must be a string: %s", path.c_str());
+            return false;
+        }
+        /// @note GUID resolution requires the later AssetManager initialization; preserve unresolved references rather than dropping missing assets.
+        pipelineAsset = token->get();
+    }
+    renderPipelineAssetPath = std::move(pipelineAsset);
     /// @note 新しいキーがない旧設定は Raster。別プロジェクトの RT 要求を引き継がない。
     render.modeRequest = {};
+    render.hybridQuality = hybridQuality;
 
     if (auto* projectTbl = tbl["project"].as_table()) {
         game.project.name         = (*projectTbl)["name"].value_or(game.project.name);
@@ -472,6 +494,10 @@ bool ProjectSettings::Load(const std::string& path)
 
 bool ProjectSettings::Save(const std::string& path) const
 {
+    if (!renderer::IsHybridQualityValid(render.hybridQuality)) {
+        FBZZ_LOG_WARN("ProjectSettings: invalid Hybrid quality cannot be saved: %s", path.c_str());
+        return false;
+    }
     return util::FileSystem::WriteText(path, ToToml());
 }
 
@@ -525,6 +551,11 @@ std::string ProjectSettings::ToToml() const
     renderTbl.insert("rayShadow", render.modeRequest.rayShadow);
     renderTbl.insert("rayReflection", render.modeRequest.rayReflection);
     renderTbl.insert("rayDiffuseGi", render.modeRequest.rayDiffuseGi);
+    toml::table hybridQuality;
+    asset::RenderPipelineAssetCodec::SaveHybridQuality(render.hybridQuality, hybridQuality);
+    renderTbl.insert("hybrid", std::move(hybridQuality));
+    if (!renderPipelineAssetPath.empty())
+        renderTbl.insert("pipelineAsset", asset::EncodeGuidRef(renderPipelineAssetPath));
     renderTbl.insert("viewMode", static_cast<int>(render.viewMode));
 
     /// @name Shadow 品質

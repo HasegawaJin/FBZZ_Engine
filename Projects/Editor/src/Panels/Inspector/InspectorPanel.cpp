@@ -115,6 +115,7 @@ void DrawSceneEnvironment(EditorContext& ctx)
 
 void InspectorPanel::OnShutdown()
 {
+    ResetPendingDataAssetSaves();
     /// @note Inspector はロック中の EntityID / AssetPath と表示中 Material のハンドルを
     /// @note        フレームをまたいで保持する。終了時は Scene / AssetManager / ImGui の破棄順が
     /// @note        通常フレームと異なるため、古い参照を残すと破棄中に無効なアセットへ触れうる。

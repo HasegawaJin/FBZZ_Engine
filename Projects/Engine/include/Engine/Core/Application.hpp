@@ -54,8 +54,8 @@ public:
     util::SaveStore&          GetConfigStore() const { return *m_configStore; }
 
     /// @brief ScriptProxy (graphics) が触る「実行中の」描画設定。所有はしない。
-    /// @note 実体は ProjectSettings::render で、それを持つのが Editor か Standalone かで変わるため、Application は composition root として参照だけ預かる。
-    /// @note Editor は Play 中だけ登録すること。編集中に書き換えると、そのまま ProjectSettings.toml へ保存されてしまう (EditorApp が終了時に保存する)。
+    /// @note Editor は Play 専用コピー、Standalone は解決済みランタイム設定を所有し、Application は非所有参照だけ預かる。
+    /// @note Editor は Play 中だけ登録し、終了時に解除する。スクリプトの変更は編集用設定や品質アセットへ保存しない。
     void SetActiveRenderSettings(renderer::RenderSettings* settings) { m_activeRenderSettings = settings; }
     [[nodiscard]] renderer::RenderSettings* GetActiveRenderSettings() const { return m_activeRenderSettings; }
 

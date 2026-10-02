@@ -23,6 +23,13 @@ public:
     const char* GetWindowName() const override { return "Inspector"; }
     void OnShutdown() override;
 
+    /// @brief 共有 DataAsset の編集を path 別に保存待ちへ登録する。
+    /// @note UI の操作中は保存せず、失敗後は再編集または明示保存まで自動再試行しない。
+    static void QueueDataAssetSave(const std::string& path);
+    /// @brief 全パネル描画後、選択外・非表示になった DataAsset の編集を確定する。
+    /// @note 現フレームに表示されたアセットの active 操作と、明示 Discard は保持する。
+    static void FlushPendingDataAssetSaves(EditorContext& ctx);
+
 protected:
     void OnBeforeBegin(EditorContext& ctx) override;
     void OnRenderContent(EditorContext& ctx) override;
@@ -52,6 +59,7 @@ private:
     FontPreviewView     m_fontPreview;
 
     void DrawAssetInspector(EditorContext& ctx, const std::string& assetPath);
+    static void ResetPendingDataAssetSaves();
 };
 
 } /// @note namespace fbzz::editor

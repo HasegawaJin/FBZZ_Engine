@@ -4,7 +4,10 @@
 /// @date    2026-09-15
 #include <Editor/Panels/RenderPassViewerPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/PlayModeController.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
+#include <Engine/Core/Application.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <algorithm>
 #include <cmath>
@@ -29,6 +32,24 @@ constexpr float NODE_HEIGHT = 44.0f;
 constexpr float NODE_GAP_X = 72.0f;
 constexpr float NODE_GAP_Y = 16.0f;
 constexpr std::size_t HISTORY_LIMIT = 64;
+
+/// @note Scene and Game share the Play-entry copy; inspection must not display or edit an ignored inline policy.
+renderer::RenderSettings ViewerRenderSettings(const EditorContext& ctx)
+{
+    if (ctx.playMode && !ctx.playMode->IsInEditor()) {
+        if (const auto* runtime = core::Application::Get().GetActiveRenderSettings()) return *runtime;
+    }
+    renderer::RenderSettings resolved;
+    (void)asset::ResolveRenderPipelineSettings(ctx.projectSettings.render,
+        ctx.projectSettings.renderPipelineAssetPath, resolved);
+    return resolved;
+}
+
+bool ViewerPipelineControlsReadOnly(const EditorContext& ctx)
+{
+    return !ctx.projectSettings.renderPipelineAssetPath.empty()
+        || (ctx.playMode && !ctx.playMode->IsInEditor());
+}
 
 /// @brief 宣言と実体の食い違いの見え方。
 /// @note 宣言と実体は別々に手で維持されるので、«どちらが欠けているか» を名指しする。
@@ -180,7 +201,7 @@ void DrawOverlayText(ImDrawList* draw, const ImVec2& pos, const char* text, ImU3
     draw->AddText({ pos.x + pad, pos.y + pad }, color, text);
 }
 
-} // namespace
+} /// @note namespace
 
 void RenderPassViewerPanel::OnInit(EditorContext& ctx)
 {
@@ -341,7 +362,8 @@ void RenderPassViewerPanel::DrawToolbar(EditorContext& ctx)
                           "CPU belongs to this view. GPU samples are delayed and may belong to another view.\n"
                           "Capture overhead is excluded from the selected pass, but increases frame time.");
 
-    const auto& overrides = ctx.projectSettings.render.passOverrides;
+    const auto resolved = ViewerRenderSettings(ctx);
+    const auto& overrides = resolved.passOverrides;
     const std::string optionsLabel = overrides.empty()
         ? std::string("Options")
         : "Options (" + std::to_string(overrides.size()) + " overrides)";
@@ -369,11 +391,17 @@ void RenderPassViewerPanel::DrawOptionsPopup(EditorContext& ctx)
 {
     if (!ImGui::BeginPopup("ViewerOptions")) return;
 
+    auto resolved = ViewerRenderSettings(ctx);
+    const bool readOnly = ViewerPipelineControlsReadOnly(ctx);
+    auto& render = readOnly ? resolved : ctx.projectSettings.render;
+    if (readOnly) ImGui::TextDisabled("%s", ctx.playMode && !ctx.playMode->IsInEditor()
+        ? "Runtime policy (read-only)" : "Render Pipeline Asset policy (read-only)");
+    ImGui::BeginDisabled(readOnly);
     ImGui::SeparatorText("Scheduling");
-    auto& policy = ctx.projectSettings.render.schedulePolicy;
+    auto& policy = render.schedulePolicy;
     int policyIndex = policy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes ? 1 : 0;
     ImGui::SetNextItemWidth(200.0f);
-    if (ImGui::Combo("Order", &policyIndex, "Registration order\0Minimize lifetimes\0"))
+    if (ImGui::Combo("Order", &policyIndex, "Registration order\0Minimize lifetimes\0") && !readOnly)
         policy = policyIndex == 1 ? renderer::RenderGraphSchedulePolicy::MinimizeLifetimes
                                   : renderer::RenderGraphSchedulePolicy::RegistrationOrder;
     ImGui::SetItemTooltip("Both honour every declared dependency; they differ only where\n"
@@ -383,11 +411,11 @@ void RenderPassViewerPanel::DrawOptionsPopup(EditorContext& ctx)
                           "so it doubles as a test that the declarations are complete.");
 
     ImGui::SeparatorText("Pass overrides");
-    auto& overrides = ctx.projectSettings.render.passOverrides;
+    auto& overrides = render.passOverrides;
     if (overrides.empty()) {
         ImGui::TextDisabled("None. Right-click a pass to add one.");
     } else {
-        ImGui::TextDisabled("Saved in ProjectSettings.");
+        if (!readOnly) ImGui::TextDisabled("Saved in ProjectSettings.");
         if (ImGui::BeginTable("Overrides", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
             for (std::size_t i = 0; i < overrides.size(); ++i) {
                 const auto& entry = overrides[i];
@@ -404,15 +432,16 @@ void RenderPassViewerPanel::DrawOptionsPopup(EditorContext& ctx)
                 ImGui::TableSetColumnIndex(2);
                 const bool clear = ImGui::SmallButton("Clear");
                 ImGui::PopID();
-                if (clear) {
+                if (clear && !readOnly) {
                     overrides.erase(overrides.begin() + static_cast<std::ptrdiff_t>(i));
                     break;
                 }
             }
             ImGui::EndTable();
         }
-        if (ImGui::Button("Clear all")) overrides.clear();
+        if (ImGui::Button("Clear all") && !readOnly) overrides.clear();
     }
+    ImGui::EndDisabled();
     ImGui::EndPopup();
 }
 
@@ -553,7 +582,9 @@ std::vector<std::size_t> RenderPassViewerPanel::ConsumersOf(const std::string& r
 
 void RenderPassViewerPanel::DrawPassOverride(EditorContext& ctx, const std::string& passName)
 {
-    auto& overrides = ctx.projectSettings.render.passOverrides;
+    auto resolved = ViewerRenderSettings(ctx);
+    const bool readOnly = ViewerPipelineControlsReadOnly(ctx);
+    auto& overrides = readOnly ? resolved.passOverrides : ctx.projectSettings.render.passOverrides;
     const auto found = std::find_if(overrides.begin(), overrides.end(),
         [&passName](const renderer::RenderPassOverride& entry) { return entry.name == passName; });
 
@@ -563,6 +594,9 @@ void RenderPassViewerPanel::DrawPassOverride(EditorContext& ctx, const std::stri
     if (found != overrides.end()) edited = *found;
     const renderer::RenderPassOverride before = edited;
 
+    if (readOnly) ImGui::TextDisabled("%s", ctx.playMode && !ctx.playMode->IsInEditor()
+        ? "Runtime policy (read-only)" : "Render Pipeline Asset policy (read-only)");
+    ImGui::BeginDisabled(readOnly);
     ImGui::Checkbox("Enabled", &edited.enabled);
     ImGui::SetItemTooltip("Drop this pass from the graph. Passes that consume its output are culled with it.");
     /// @note allowCulling は «刈ってよいか»。UI では意図に近い逆向きの «残す» で見せる。
@@ -608,6 +642,8 @@ void RenderPassViewerPanel::DrawPassOverride(EditorContext& ctx, const std::stri
         }
         ImGui::EndCombo();
     }
+    ImGui::EndDisabled();
+    if (readOnly) return;
 
     if (edited.enabled == before.enabled && edited.allowCulling == before.allowCulling
         && edited.extraReads == before.extraReads) return;
@@ -699,7 +735,8 @@ void RenderPassViewerPanel::DrawPassList(EditorContext& ctx)
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 
-    const auto& overrides = ctx.projectSettings.render.passOverrides;
+    const auto resolved = ViewerRenderSettings(ctx);
+    const auto& overrides = resolved.passOverrides;
     const ImVec4 disabledText = ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
     const float lineHeight = ImGui::GetTextLineHeight();
 
@@ -825,7 +862,8 @@ void RenderPassViewerPanel::DrawSelection(EditorContext& ctx)
         ImGui::TextDisabled("#%zu of %zu   CPU %s ms   GPU* %s ms", index + 1, m_executedCount, cpu, gpu);
     }
 
-    const auto& overrides = ctx.projectSettings.render.passOverrides;
+    const auto resolved = ViewerRenderSettings(ctx);
+    const auto& overrides = resolved.passOverrides;
     const bool overridden = std::any_of(overrides.begin(), overrides.end(),
         [&request](const renderer::RenderPassOverride& entry) { return entry.name == request.passName; });
     const char* overrideLabel = overridden ? "Overridden..." : "Override...";
@@ -1510,4 +1548,4 @@ void RenderPassViewerPanel::DrawGallery(EditorContext& ctx)
     ImGui::EndChild();
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

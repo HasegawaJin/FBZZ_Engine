@@ -8,6 +8,7 @@
 /// @note  EditorApp_Scene.cpp   - シーン I/O・ダーティ追跡・ホットリロード
 /// @note  EditorApp_MenuBar.cpp - メインメニューバーの構築・ホットキー登録
 #include <Editor/EditorApp.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/EditorTaskOverlay.hpp>
@@ -1316,6 +1317,7 @@ void EditorApp::RenderPanels(EditorContext& ctx)
             profiler::ProfilerMarker(panel->GetWindowName(), "Editor Panels"));
         panel->OnRender(ctx);
     }
+    InspectorPanel::FlushPendingDataAssetSaves(ctx);
 
     if (ctx.requestEditorSettingsSave) {
         ctx.requestEditorSettingsSave = false;
@@ -2154,6 +2156,7 @@ void EditorApp::OnShutdown()
     /// @note        有効なうちに実行する。ProjectRuntime::Shutdown は Editor 外部 Scene と、Play 中の
     /// @note        シーン遷移で残った Manager 所有 Scene の両方を破棄する。
     m_runtime.Shutdown();
+    core::Application::Get().SetActiveRenderSettings(nullptr);
     /// @note Unload(nullptr) で DestroyAllScripts をスキップする (Clear() 済みのため)
     m_ctx.activeScene = nullptr;
     m_ctx.editScene   = nullptr;
@@ -2191,8 +2194,11 @@ void EditorApp::WarmupRenderResources()
         /// @note 温めたいのは «本番で使うシェーダーと PSO»。nullptr を渡すと既定 (Forward) の
         /// @note        組み合わせが作られ、Deferred+ のプロジェクトでは 1 つも当たらず、最初の
         /// @note        可視フレームで結局作り直す。
+        renderer::RenderSettings warmupSettings;
+        (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
+            m_ctx.projectSettings.renderPipelineAssetPath, warmupSettings);
         scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
-                            warmupCamera, sceneRT, &m_ctx.projectSettings.render,
+                            warmupCamera, sceneRT, &warmupSettings,
                             fbzz::Layer::Everything, &uiOptions, nullptr,
                             &warmupSceneViewCulling);
     }
@@ -2217,7 +2223,9 @@ void EditorApp::WarmupRenderResources()
         uiOptions.targetView    = scene::UIRenderTargetView::GameViewport;
         uiOptions.context       = &m_runtime.GetGameUIContext();
         /// @note 本番の Game View と同じ設定で温める (RenderGameView と同じく診断表示を外す)。
-        renderer::RenderSettings gameRenderSettings = m_ctx.projectSettings.render;
+        renderer::RenderSettings gameRenderSettings;
+        (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
+            m_ctx.projectSettings.renderPipelineAssetPath, gameRenderSettings);
         gameRenderSettings.StripDebugVisualization();
         scene::RenderSystem(*m_scene, *m_renderer, *m_resources,
                             warmupCamera, gameRT,
@@ -2287,7 +2295,14 @@ void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::La
     m_renderer->SetRenderTarget(sceneRT, *m_resources);
     m_renderer->Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
 
-    auto sceneRenderSettings = m_ctx.projectSettings.render;
+    renderer::RenderSettings sceneRenderSettings;
+    if (m_playMode.IsInEditor()) {
+        (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
+            m_ctx.projectSettings.renderPipelineAssetPath, sceneRenderSettings);
+    } else {
+        sceneRenderSettings = m_playRenderSettings;
+        sceneRenderSettings.CopyDebugVisualizationFrom(m_ctx.projectSettings.render);
+    }
     sceneRenderSettings.selectedObjects.clear();
     /// @note 親を選んだら子孫も選択へ展開する。輪郭と «選択中だけ» の診断表示が同じ集合を見る。
     const auto appendHierarchy = [&](auto&& self, scene::GameObject& object) -> void {
@@ -2390,7 +2405,13 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
     uiOptions.targetView         = scene::UIRenderTargetView::GameViewport;
     uiOptions.context            = &m_runtime.GetGameUIContext();
     /// @note Debug メニューの診断表示は Scene View 専用。Game View はゲームの見た目だけを描く。
-    renderer::RenderSettings gameRenderSettings = m_ctx.projectSettings.render;
+    renderer::RenderSettings gameRenderSettings;
+    if (m_playMode.IsInEditor()) {
+        (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
+            m_ctx.projectSettings.renderPipelineAssetPath, gameRenderSettings);
+    } else {
+        gameRenderSettings = m_playRenderSettings;
+    }
     gameRenderSettings.StripDebugVisualization();
     scene::RenderSystem(*renderScene, *m_renderer, *m_resources,
                         gameCamera, gameRT,

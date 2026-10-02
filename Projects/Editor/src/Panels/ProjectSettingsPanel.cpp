@@ -4,6 +4,9 @@
 /// @date    2026-05-23
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/PlayModeController.hpp>
+#include <Editor/Util/FileDialog.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/EditorTheme.hpp>
@@ -11,6 +14,10 @@
 #include <Editor/Util/Localization.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Audio/AudioManager.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -796,11 +803,103 @@ void ProjectSettingsPanel::DrawCursor(EditorContext& ctx, CursorAppearance& curs
 }
 
 
-void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSettings& render)
+void ProjectSettingsPanel::DrawPipelineAsset(EditorContext& ctx)
 {
+    if (!BeginGroup("Render Pipeline Asset", true, "quality asset pipeline 品質 アセット")) {
+        EndGroup();
+        return;
+    }
+    const bool playing = ctx.playMode && !ctx.playMode->IsInEditor();
+    ImGui::BeginDisabled(playing);
+    auto& settings = ctx.projectSettings;
+    renderer::RenderSettings resolved;
+    bool valid = asset::ResolveRenderPipelineSettings(settings.render,
+        settings.renderPipelineAssetPath, resolved);
+    std::string reference = asset::DecodeGuidRef(settings.renderPipelineAssetPath);
+    if (Field("Default Pipeline Asset", reference, static_cast<const std::string*>(nullptr),
+        "RenderPipelineAsset (.fzdata)", [&] {
+            return widgets::AssetPathField("##v", reference, ".fzdata", ctx.projectRoot);
+        })) {
+        if (reference.empty() && valid) settings.render = resolved;
+        settings.renderPipelineAssetPath = asset::EncodeGuidRef(reference);
+        valid = asset::ResolveRenderPipelineSettings(settings.render,
+            settings.renderPipelineAssetPath, resolved);
+        m_pipelineAssetError.clear();
+        MarkStructuralEdit();
+    }
+    if (Matches("Pipeline Asset Actions", "create export detach inspect asset アセット 保存")) {
+        if (ImGui::SmallButton(LOC("Save as Pipeline Asset..."))) {
+            std::string destination;
+            if (FileDialog::SaveFile(nullptr, {{"Render Pipeline Asset", "*.fzdata"}}, destination)) {
+                std::error_code error;
+                auto absolute = util::FileSystem::PathFromUtf8(destination);
+                absolute.replace_extension(".fzdata");
+                const auto assetsRoot = std::filesystem::weakly_canonical(
+                    util::FileSystem::PathFromUtf8(ctx.projectRoot) / "Assets", error);
+                const auto canonical = error ? std::filesystem::path{}
+                    : std::filesystem::weakly_canonical(absolute, error);
+                const auto relative = error ? std::filesystem::path{} : canonical.lexically_relative(assetsRoot);
+                const bool insideAssets = !relative.empty() && !relative.is_absolute()
+                    && *relative.begin() != ".." && relative.extension() == ".fzdata";
+                if (!insideAssets) {
+                    m_pipelineAssetError = "Destination must be inside this project's Assets directory.";
+                } else {
+                    const std::string assetPath = "Assets/" + util::FileSystem::PathToUtf8(relative);
+                    if (asset::CreateRenderPipelineAsset(assetPath, resolved)) {
+                        const std::string diskPath = util::FileSystem::PathToUtf8(canonical);
+                        (void)asset::AssetDatabase::GuidFromPath(diskPath);
+                        settings.renderPipelineAssetPath = asset::EncodeGuidRef(assetPath);
+                        valid = asset::ResolveRenderPipelineSettings(settings.render,
+                            settings.renderPipelineAssetPath, resolved);
+                        ctx.requestAssetBrowserRefresh = true;
+                        SelectAsset(ctx, diskPath);
+                        m_pipelineAssetError.clear();
+                        MarkStructuralEdit();
+                    } else {
+                        m_pipelineAssetError = "Asset creation failed. Existing files are not replaced.";
+                    }
+                }
+            }
+        }
+        if (!settings.renderPipelineAssetPath.empty()) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton(LOC("Inspect Asset"))) {
+                SelectAsset(ctx, asset::AssetManager::ResolveAssetPath(settings.renderPipelineAssetPath));
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(LOC("Detach Asset"))) {
+                if (valid) settings.render = resolved;
+                settings.renderPipelineAssetPath.clear();
+                valid = false;
+                m_pipelineAssetError.clear();
+                MarkStructuralEdit();
+            }
+        }
+    }
+    ImGui::EndDisabled();
+    if (!Searching()) {
+        if (!m_pipelineAssetError.empty())
+            ImGui::TextWrapped("%s", m_pipelineAssetError.c_str());
+        else if (!settings.renderPipelineAssetPath.empty() && !valid)
+            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "%s", LOCT("Invalid pipeline asset: inline fallback active"));
+        else
+            ImGui::TextDisabled("%s", valid ? LOCT("Pipeline asset active") : LOCT("Inline settings active"));
+    }
+    EndGroup();
+}
+
+void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSettings& inlineRender)
+{
+    DrawPipelineAsset(ctx);
+    renderer::RenderSettings resolved;
+    const bool assigned = asset::ResolveRenderPipelineSettings(inlineRender,
+        ctx.projectSettings.renderPipelineAssetPath, resolved);
+    auto& render = assigned ? resolved : inlineRender;
+    const bool playing = ctx.playMode && !ctx.playMode->IsInEditor();
     const renderer::RenderSettings& d = ProjectDefaults().render;
 
     if (BeginGroup("Rendering")) {
+        ImGui::BeginDisabled(assigned || playing);
         static const char* const kRenderModes[] = { "Raster", "Hybrid", "Path Tracing" };
         static const char* const kPathProfiles[] = { "Reference", "Game" };
         Field("Render Mode", render.modeRequest.mode, &d.modeRequest.mode,
@@ -877,31 +976,35 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
                 Field("Cluster Distance", render.clustered.maxDistance, &d.clustered.maxDistance,
                       "クラスタを張る最大距離。これより遠いライトは振り分けない",
                       [&] { return ImGui::DragFloat("##v", &render.clustered.maxDistance, 1.0f, 1.0f, 10000.0f, "%.0f m"); });
-                Field("Cluster Heatmap", render.clustered.debugHeatmap, &d.clustered.debugHeatmap,
-                      "クラスタごとのライト数を色で重ねる (デバッグ)",
-                      [&] { return ImGui::Checkbox("##v", &render.clustered.debugHeatmap); });
-                Field("Force All Lights", render.clustered.forceAllLights, &d.clustered.forceAllLights,
-                      "振り分けを無視して全ライトを評価する。クラスタの取りこぼしを疑うときの検証用",
-                      [&] { return ImGui::Checkbox("##v", &render.clustered.forceAllLights); });
             }
         }
 
-        static const char* const kViewModes[] = { "Lit", "Unlit", "Wireframe Lit", "Wireframe Unlit" };
-        Field("View Mode", render.viewMode, &d.viewMode, "ライティングとワイヤーフレームの表示切り替え",
-              [&] { return EnumCombo(render.viewMode, kViewModes); });
+        Field("Particle Budget", render.particleBudgetEnabled, &d.particleBudgetEnabled,
+              "画面内のパーティクル総数に上限をかける",
+              [&] { return ImGui::Checkbox("##v", &render.particleBudgetEnabled); });
+        if (render.particleBudgetEnabled)
+            Field("Particle Budget Count", render.particleBudget, &d.particleBudget, "上限の粒子数",
+                  [&] { return ImGui::DragInt("##v", &render.particleBudget, 100.0f, 0, 1000000); });
+        ImGui::EndDisabled();
     }
     EndGroup();
 
-    if (BeginGroup("Shadows"))
+    if (BeginGroup("Shadows")) {
+        ImGui::BeginDisabled(assigned || playing);
         DrawShadows(render);
+        ImGui::EndDisabled();
+    }
     EndGroup();
 
-    if (BeginGroup("Player Options Preview", false, "brightness render scale 明るさ 解像度"))
-        DrawPlayerOptionsPreview(ctx, render);
+    if (BeginGroup("Player Options Preview", false, "brightness render scale 明るさ 解像度")) {
+        ImGui::BeginDisabled(playing);
+        DrawPlayerOptionsPreview(ctx, inlineRender);
+        ImGui::EndDisabled();
+    }
     EndGroup();
 
     if (BeginGroup("Debug Overlays", false))
-        DrawDebugOverlays(render);
+        DrawDebugOverlays(inlineRender);
     EndGroup();
 
     /// @note Bloom / SSR / TAA などの «ルック» は場所ごとに変わるので、所有者は Post Process Volume に一本化してある。
@@ -952,9 +1055,6 @@ void ProjectSettingsPanel::DrawShadows(renderer::RenderSettings& render)
         Field("Cascade Blend", render.shadow.cascadeBlend, &d.cascadeBlend,
               "カスケード境界のクロスフェード幅",
               [&] { return ImGui::SliderFloat("##v", &render.shadow.cascadeBlend, 0.0f, 0.5f, "%.2f"); });
-        Field("Visualize Cascades", render.shadow.debugVisualizeCascades, &d.debugVisualizeCascades,
-              "カスケードを色分けする (緑 = 近 -> 赤 = 遠)",
-              [&] { return ImGui::Checkbox("##v", &render.shadow.debugVisualizeCascades); });
     }
 
     /// @note 解像度を上げるより分割数や距離を変える方が効くことが多い。それはこの表を見ないと判断できない。
@@ -1055,13 +1155,18 @@ void ProjectSettingsPanel::DrawDebugOverlays(renderer::RenderSettings& render)
         Field("Outline Color", render.outlineColor, &d.outlineColor, "選択輪郭の色",
               [&] { return ImGui::ColorEdit4("##v", render.outlineColor); });
     }
-    Field("Particle Budget", render.particleBudgetEnabled, &d.particleBudgetEnabled,
-          "画面内のパーティクル総数に上限をかける",
-          [&] { return ImGui::Checkbox("##v", &render.particleBudgetEnabled); });
-    if (render.particleBudgetEnabled) {
-        Field("Particle Budget Count", render.particleBudget, &d.particleBudget, "上限の粒子数",
-              [&] { return ImGui::DragInt("##v", &render.particleBudget, 100.0f, 0, 1000000); });
-    }
+    static const char* const kViewModes[] = { "Lit", "Unlit", "Wireframe Lit", "Wireframe Unlit" };
+    Field("View Mode", render.viewMode, &d.viewMode, "ライティングとワイヤーフレームの表示切り替え",
+          [&] { return EnumCombo(render.viewMode, kViewModes); });
+    Field("Cluster Heatmap", render.clustered.debugHeatmap, &d.clustered.debugHeatmap,
+          "クラスタごとのライト数を色で重ねる (デバッグ)",
+          [&] { return ImGui::Checkbox("##v", &render.clustered.debugHeatmap); });
+    Field("Force All Lights", render.clustered.forceAllLights, &d.clustered.forceAllLights,
+          "振り分けを無視して全ライトを評価する",
+          [&] { return ImGui::Checkbox("##v", &render.clustered.forceAllLights); });
+    Field("Visualize Cascades", render.shadow.debugVisualizeCascades, &d.shadow.debugVisualizeCascades,
+          "カスケードを色分けする",
+          [&] { return ImGui::Checkbox("##v", &render.shadow.debugVisualizeCascades); });
 
     /// @note Script Gizmos / Skeleton / IK などはエディター設定が正本で毎フレーム上書きされるので、置き場所だけ案内する。
     if (!Searching()) {

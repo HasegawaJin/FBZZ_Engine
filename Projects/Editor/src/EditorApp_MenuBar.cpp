@@ -22,6 +22,7 @@
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Scene/ScriptValidation.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Cursor.hpp>
@@ -1108,10 +1109,10 @@ void EditorApp::StartPlayMode()
         static_cast<uint32_t>(m_ctx.gameViewportWidth),
         static_cast<uint32_t>(m_ctx.gameViewportHeight)
     );
-    /// @note graphics プロキシの書き換え先を Play 中だけ開ける。実体は ProjectSettings::render で
-    /// @note        終了時に toml へ保存されるので、スナップショットを取らないと Play 中の変更が焼き付く。
-    m_renderSettingsPlaySnapshot = m_ctx.projectSettings.render;
-    core::Application::Get().SetActiveRenderSettings(&m_ctx.projectSettings.render);
+    /// @note 実行中の品質変更は専用コピーへ限定し、アセットと編集側の自動保存を汚さない。
+    (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
+        m_ctx.projectSettings.renderPipelineAssetPath, m_playRenderSettings);
+    core::Application::Get().SetActiveRenderSettings(&m_playRenderSettings);
     /// @note Play 中の増加も Stop 後の残りも、この 1 つの基準から測る。
     if (m_ctx.resources != nullptr) {
         m_memoryLeakDiff.CaptureBaseline(*m_ctx.resources, "Play");
@@ -1129,14 +1130,8 @@ void EditorApp::StopPlayMode()
     if (!m_ctx.activeScene || m_playMode.IsInEditor())
         return;
     scene::ScriptRuntime::Override(nullptr);
-    /// @note Play 中のスクリプトが変えた画質・明るさを編集側へ持ち込まない。
-    /// @note        選択状態だけは編集の続きなので、復元から外して現在のものを残す。
+    /// @note 実行用コピーを切り離す。ProjectSettings は Play 中も編集側の正本を保持する。
     core::Application::Get().SetActiveRenderSettings(nullptr);
-    {
-        auto selection = std::move(m_ctx.projectSettings.render.selectedObjects);
-        m_ctx.projectSettings.render = m_renderSettingsPlaySnapshot;
-        m_ctx.projectSettings.render.selectedObjects = std::move(selection);
-    }
     /// @note AudioSystemはSimOnlyのため、EditModeへ戻った後ではループVoiceを停止できない。
     /// @note        PauseではなくPlay終了時だけ一括停止し、BGMがEditor操作中まで残ることを防ぐ。
     if (auto* audioManager = core::Application::Get().GetAudioManager())

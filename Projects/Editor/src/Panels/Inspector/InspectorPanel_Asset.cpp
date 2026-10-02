@@ -69,10 +69,163 @@
 #include <functional>
 #include <string>
 #include <system_error>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace fbzz::editor {
+namespace {
+
+struct PendingDataAssetSave {
+    int lastDrawFrame = -1;
+    bool attempted = false;
+};
+
+struct FzDataUndoTracker {
+    std::string path;
+    std::string before;
+    ImGuiID activeId = 0;
+    bool active = false;
+    bool changed = false;
+    std::string deferredBefore;
+    int lastDrawFrame = -1;
+};
+
+struct DataAssetInspectorState {
+    std::unordered_map<std::string, PendingDataAssetSave> pending;
+    std::unordered_set<std::string> saveFailures;
+    FzDataUndoTracker undo;
+    std::string projectRoot;
+    bool projectInitialized = false;
+    bool refreshRequested = false;
+};
+
+DataAssetInspectorState& DataAssetState()
+{
+    static DataAssetInspectorState state;
+    return state;
+}
+
+int DataAssetFrame()
+{
+    return GImGui ? ImGui::GetFrameCount() : -1;
+}
+
+void SynchronizeDataAssetProject(const EditorContext& ctx)
+{
+    auto& state = DataAssetState();
+    if (state.projectInitialized && state.projectRoot != ctx.projectRoot)
+        state = {};
+    state.projectRoot = ctx.projectRoot;
+    state.projectInitialized = true;
+}
+
+/// @note SaveAll は登録簿を走査中に callback を呼ぶため、ここでは登録簿自体を変更しない。
+bool SaveQueuedDataAsset(const std::string& absolute)
+{
+    auto& state = DataAssetState();
+    if (auto it = state.pending.find(absolute); it != state.pending.end())
+        it->second.attempted = true;
+    const bool saved = asset::DataAssetRegistry::Save(absolute);
+    if (saved) {
+        state.pending.erase(absolute);
+        state.saveFailures.erase(absolute);
+        state.refreshRequested = true;
+    } else {
+        state.saveFailures.insert(absolute);
+    }
+    return saved;
+}
+
+bool SaveDataAsset(const std::string& path)
+{
+    InspectorPanel::QueueDataAssetSave(path);
+    return AssetDirtyRegistry::Save(asset::AssetManager::ResolveAssetPath(path));
+}
+
+void PushDataAssetCommand(EditorContext& ctx, const std::string& path,
+                         const std::string& before, const std::string& after)
+{
+    auto& undo = DataAssetState().undo;
+    if (!ctx.undoStack) return;
+    if (after.empty()) {
+        if (undo.deferredBefore.empty() && !before.empty()) undo.deferredBefore = before;
+        return;
+    }
+    /// @note 空 name の追加から有効入力までを、復元できる snapshot 2 枚の 1 操作として記録する。
+    const std::string validBefore = undo.deferredBefore.empty() ? before : undo.deferredBefore;
+    undo.deferredBefore.clear();
+    if (validBefore.empty() || validBefore == after) return;
+    /// @note Undo の寿命は Inspector/context より長いことがあるため、安定した path と値だけを所有する。
+    auto apply = [path](const std::string& snapshot) {
+        if (!asset::DataAssetRegistry::RestoreSnapshot(path, snapshot)) return;
+        (void)SaveDataAsset(path);
+    };
+    ctx.undoStack->Push(std::make_unique<LambdaCommand>(
+        "Edit Data Asset", [apply, after] { apply(after); },
+        [apply, validBefore] { apply(validBefore); }));
+}
+
+void FinishDataAssetUndo(EditorContext& ctx)
+{
+    auto& state = DataAssetState();
+    auto& undo = state.undo;
+    /// @note SaveAll 成功後も Undo は確定するが、未保存 queue が明示 Discard された操作は捨てる。
+    const bool discarded = state.pending.contains(undo.path) && !AssetDirtyRegistry::IsDirty(undo.path);
+    if (CanRecordEditorUndo(ctx) && !discarded
+        && ((undo.active && undo.changed) || !undo.deferredBefore.empty()))
+        PushDataAssetCommand(ctx, undo.path, undo.before,
+                             asset::DataAssetRegistry::Snapshot(undo.path));
+    undo = {};
+}
+
+} /// @note namespace
+
+void InspectorPanel::QueueDataAssetSave(const std::string& path)
+{
+    if (path.empty()) return;
+    const std::string absolute = asset::AssetManager::ResolveAssetPath(path);
+    auto& pending = DataAssetState().pending[absolute];
+    pending.lastDrawFrame = DataAssetFrame();
+    pending.attempted = false;
+    AssetDirtyRegistry::Register(absolute, path, "DATA", [absolute] {
+        return SaveQueuedDataAsset(absolute);
+    });
+}
+
+void InspectorPanel::FlushPendingDataAssetSaves(EditorContext& ctx)
+{
+    SynchronizeDataAssetProject(ctx);
+    auto& state = DataAssetState();
+    const int frame = DataAssetFrame();
+    if (!CanRecordEditorUndo(ctx)) state.undo = {};
+    else if (state.undo.lastDrawFrame != frame) FinishDataAssetUndo(ctx);
+
+    std::vector<std::string> ready;
+    for (auto it = state.pending.begin(); it != state.pending.end();) {
+        /// @note DiscardAll/明示保存の後に旧 queue が保存を再開しない。
+        if (!AssetDirtyRegistry::IsDirty(it->first)) {
+            state.saveFailures.erase(it->first);
+            it = state.pending.erase(it);
+            continue;
+        }
+        if (!it->second.attempted
+            && (it->second.lastDrawFrame != frame || !GImGui || !ImGui::IsAnyItemActive()))
+            ready.push_back(it->first);
+        ++it;
+    }
+    for (const auto& path : ready) (void)AssetDirtyRegistry::Save(path);
+    if (state.refreshRequested) {
+        ctx.requestAssetBrowserRefresh = true;
+        state.refreshRequested = false;
+    }
+}
+
+void InspectorPanel::ResetPendingDataAssetSaves()
+{
+    DataAssetState() = {};
+}
 
 void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& assetPath)
 {
@@ -219,6 +372,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         } else if (isWaterMaterial) {
             materialDirty |= DrawWaterMaterialInspector(mat);
         } else {
+            materialDirty |= DrawSolidDielectricMaterialInspector(mat);
             ImGui::SeparatorText("Textures");
             static constexpr std::array<const char*, 8> kCanonicalSlots = {
                 "albedo", "normal", "metallic", "emissive", "ao", "tex5", "tex6", "tex7"
@@ -2493,6 +2647,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
     } else if (ext == ".fzdata") {
         /// @name DataAsset (純共有 ScriptableObject)
+        SynchronizeDataAssetProject(ctx);
         const std::string relPath = NormalizeAssetPath(absPath);
         asset::DataAsset* data = asset::DataAssetRegistry::Resolve(relPath);
         if (!data) {
@@ -2500,6 +2655,16 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 "Failed to load .fzdata (型が未登録か、パース失敗)");
             return;
         }
+
+        const std::string savePath = asset::AssetManager::ResolveAssetPath(relPath);
+        auto& dataAssetState = DataAssetState();
+        auto& fzdataUndo = dataAssetState.undo;
+        const int fzdataDrawFrame = DataAssetFrame();
+        /// @note 別アセットを描く前に旧操作を確定し、選択間で before/after を混ぜない。
+        if (fzdataUndo.path != savePath || fzdataUndo.lastDrawFrame < fzdataDrawFrame - 1)
+            FinishDataAssetUndo(ctx);
+        if (auto it = dataAssetState.pending.find(savePath); it != dataAssetState.pending.end())
+            it->second.lastDrawFrame = fzdataDrawFrame;
 
         ImGui::TextDisabled("Type: %s", data->GetTypeName());
         ImGui::Separator();
@@ -2538,62 +2703,30 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         /// @note (ScriptableObject 的な「いじったら保存されている」体験)。連続ドラッグ中の大量書き込みを
         /// @note 避けるため、アクティブ操作が無くなったフレームでだけ保存する。
         const bool editedThisFrame =
-            (GImGui && GImGui->ActiveIdHasBeenEditedThisFrame) || editedByCustomUi;
-        static bool        s_fzdataDirty = false;
-        static std::string s_fzdataDirtyPath;
-        if (editedThisFrame) {
-            s_fzdataDirty     = true;
-            s_fzdataDirtyPath = relPath;
-        }
-        if (s_fzdataDirty && s_fzdataDirtyPath == relPath && !ImGui::IsAnyItemActive()) {
-            if (asset::DataAssetRegistry::Save(relPath))
-                ctx.requestAssetBrowserRefresh = true;
-            s_fzdataDirty = false;
-        }
+            (GImGui && GImGui->ActiveIdHasBeenEditedThisFrame) || reflector.m_changed || editedByCustomUi;
+        if (editedThisFrame) QueueDataAssetSave(savePath);
 
         /// @name Undo 記録
         /// @note .fzdata は自動保存でディスクへ即書き戻すため、Undo が無いと値を壊しても戻せない。
         /// @note 記録の粒度は .mat と同じ「ウィジェットを掴んでから離すまで = 1 操作」。
         /// @note フレーム単位で積むとドラッグ 1 回が数十件の中間値で履歴を埋めてしまう。
-        struct FzDataUndoTracker {
-            std::string path;      ///< @brief どの .fzdata に対する記録か
-            std::string before;    ///< @brief 掴んだ直前のスナップショット
-            ImGuiID     activeId = 0;
-            bool        active   = false;
-            bool        changed  = false;
-        };
-        static FzDataUndoTracker fzdataUndo;
         const ImGuiID fzdataActiveAfter = ImGui::GetActiveID();
+        /// @note 型付き snapshot が作れない編集中も、別形式/Scene 選択や非Undo区間をまたいで操作を結合しない。
+        if (!canRecordFzDataUndo) fzdataUndo = {};
+        fzdataUndo.path = savePath;
+        fzdataUndo.lastDrawFrame = fzdataDrawFrame;
 
-        auto pushFzDataCommand = [&ctx, &relPath](const std::string& before,
-                                                  const std::string& after) {
-            if (!ctx.undoStack || before.empty() || before == after) return;
-            EditorContext*    context      = &ctx;
-            const std::string capturedPath = relPath;
-            auto apply = [context, capturedPath](const std::string& snapshot) {
-                if (!asset::DataAssetRegistry::RestoreSnapshot(capturedPath, snapshot)) return;
-                /// @note 復元した値はディスクへも書き戻す。.fzdata は編集確定ごとに自動保存されるため、
-                /// @note メモリだけ戻すと次のロードやホットリロードで巻き戻る (.mat と同じ規則へ揃える)。
-                asset::DataAssetRegistry::Save(capturedPath);
-                context->requestAssetBrowserRefresh = true;
-            };
-            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                "Edit Data Asset",
-                [apply, after]()  { apply(after); },
-                [apply, before]() { apply(before); }));
+        auto pushFzDataCommand = [&ctx, &savePath](const std::string& before,
+                                                const std::string& after) {
+            PushDataAssetCommand(ctx, savePath, before, after);
         };
 
         if (!canRecordFzDataUndo) {
             fzdataUndo.active = false;
         } else {
-            /// @note 選択が別の .fzdata へ移ったら記録途中の操作は捨てる
-            /// @note (別アセットの値で before/after が混ざるのを防ぐ)。
-            if (fzdataUndo.active && fzdataUndo.path != relPath)
-                fzdataUndo.active = false;
-
             if (!fzdataUndo.active) {
                 if (fzdataActiveAfter != 0 && fzdataActiveAfter != fzdataActiveBefore) {
-                    fzdataUndo.path     = relPath;
+                    fzdataUndo.path     = savePath;
                     fzdataUndo.before   = fzdataBeforeDraw;
                     fzdataUndo.activeId = fzdataActiveAfter;
                     fzdataUndo.active   = true;
@@ -2617,7 +2750,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 fzdataUndo.changed = false;
                 /// @note 離した直後に別ウィジェットを掴んでいたら、そこから記録し直す。
                 if (fzdataActiveAfter != 0) {
-                    fzdataUndo.path     = relPath;
+                    fzdataUndo.path     = savePath;
                     fzdataUndo.before   = asset::DataAssetRegistry::Snapshot(relPath);
                     fzdataUndo.activeId = fzdataActiveAfter;
                     fzdataUndo.active   = true;
@@ -2629,10 +2762,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::Separator();
         /// @note 保険の手動保存 (自動保存があるので通常は不要)。
         if (ImGui::Button("Save .fzdata"))
-            asset::DataAssetRegistry::Save(relPath);
+            (void)SaveDataAsset(savePath);
         ImGui::SameLine();
-        ImGui::TextDisabled(s_fzdataDirty && s_fzdataDirtyPath == relPath
-                            ? "Saving on release..." : "Auto-saved");
+        if (dataAssetState.saveFailures.contains(savePath))
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Could not save .fzdata");
+        else
+            ImGui::TextDisabled(AssetDirtyRegistry::IsDirty(savePath)
+                                ? "Saving on release..." : "Auto-saved");
     } else if (ext == ".wav" || ext == ".mp3" || ext == ".ogg" || ext == ".flac") {
         /// @note 録音素材の試聴。テクスチャにプレビューがあって音だけ無いと、どんな音かは
         /// @note ゲームを走らせるまで分からず探す手間が桁違いになる。

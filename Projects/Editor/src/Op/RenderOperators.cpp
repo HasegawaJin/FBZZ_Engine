@@ -2,13 +2,16 @@
 /// @brief   デバッグ表示とビューモードの Operator。
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
-///
+
 /// @note 移行前は Debug メニューにしか無く、AI は viewport を撮れても NavMesh/Collider/overdraw 等の診断表示を選べなかった。
 /// @note 表示の切り替えはシーンの内容を変えないので Undo には載せない (Action)。
 /// @see Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>
+#include <Editor/PlayModeController.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
+#include <Engine/Core/Application.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
@@ -48,7 +51,7 @@ OpResult ApplyToggle(bool& value, const OpArgs& args)
     return result;
 }
 
-/// @brief ProjectSettings 側が権威のフラグ (Collider / NavMesh / 影 など)。
+/// @brief ProjectSettings 側が権威の診断フラグ。
 EditorOperator MakeRenderToggle(const char* id, const char* label, const char* desc,
                                 bool renderer::RenderSettings::*field)
 {
@@ -59,6 +62,44 @@ EditorOperator MakeRenderToggle(const char* id, const char* label, const char* d
     /// @note メニューのチェックと op.list の checked が同じ式から出る。
     op.checked = [field](const OpContext& c, const OpArgs&) {
         return c.ctx.projectSettings.render.*field;
+    };
+    return op;
+}
+
+EditorOperator MakeShadowToggle()
+{
+    EditorOperator op = MakeToggleBase("render.shadow_enabled", "Shadows",
+        "シャドウマップの有効・無効。アセット割当時の品質設定は Inspector で編集する。");
+    const auto playing = [](const OpContext& context) {
+        return context.ctx.playMode && !context.ctx.playMode->IsInEditor();
+    };
+    op.poll = [playing](const OpContext& context, const OpArgs&) {
+        if (playing(context)) return core::Application::Get().GetActiveRenderSettings() != nullptr;
+        renderer::RenderSettings resolved;
+        return !asset::ResolveRenderPipelineSettings(context.ctx.projectSettings.render,
+            context.ctx.projectSettings.renderPipelineAssetPath, resolved);
+    };
+    op.exec = [playing](OpContext& context, const OpArgs& args) -> OpResult {
+        if (playing(context)) {
+            auto* runtime = core::Application::Get().GetActiveRenderSettings();
+            if (!runtime) return OpResult::Err("NO_RUNTIME_SETTINGS", "実行中の描画設定がありません");
+            return ApplyToggle(runtime->shadowEnabled, args);
+        }
+        renderer::RenderSettings resolved;
+        if (asset::ResolveRenderPipelineSettings(context.ctx.projectSettings.render,
+            context.ctx.projectSettings.renderPipelineAssetPath, resolved))
+            return OpResult::Err("PIPELINE_ASSET_OWNS_SETTING", "影の品質設定は Render Pipeline Asset の Inspector で編集してください");
+        return ApplyToggle(context.ctx.projectSettings.render.shadowEnabled, args);
+    };
+    op.checked = [playing](const OpContext& context, const OpArgs&) {
+        if (playing(context)) {
+            const auto* runtime = core::Application::Get().GetActiveRenderSettings();
+            return runtime && runtime->shadowEnabled;
+        }
+        renderer::RenderSettings resolved;
+        (void)asset::ResolveRenderPipelineSettings(context.ctx.projectSettings.render,
+            context.ctx.projectSettings.renderPipelineAssetPath, resolved);
+        return resolved.shadowEnabled;
     };
     return op;
 }
@@ -76,7 +117,7 @@ EditorOperator MakeContextToggle(const char* id, const char* label, const char* 
     return op;
 }
 
-} // namespace
+} /// @note namespace
 
 void RegisterRenderOperators(OperatorRegistry& registry)
 {
@@ -241,10 +282,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "render.show_decal_bounds", "Show Decal Bounds",
         "デカールの投影ボックスを描く。", &renderer::RenderSettings::showDecalBounds));
 
-    registry.Register(MakeRenderToggle(
-        "render.shadow_enabled", "Shadows",
-        "シャドウマップの有効・無効。影が原因で暗いのかを切り分けるのに使う。",
-        &renderer::RenderSettings::shadowEnabled));
+    registry.Register(MakeShadowToggle());
 
     registry.Register(MakeRenderToggle(
         "render.particle_overdraw_view", "Particle Overdraw View",
@@ -254,33 +292,32 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         &renderer::RenderSettings::particleOverdrawView));
 
     /// @name ビューモード
-    /// @note 排他選択のため、4 つの Action より 1 引数で受けるほうが「今どれか」を取り違えない。
+    /// @note 排他選択と現在値の判定を同じ操作へ集約する。
     {
         EditorOperator op;
         op.id       = "render.set_view_mode";
         op.label    = "Set View Mode";
         op.category = "Render";
-        op.desc     = "描画モードを切り替える (lit / unlit / wireframe_lit / wireframe_unlit)。"
-                      "unlit はライティングを外してアルベドだけを見るので、"
-                      "「暗い」の原因がマテリアルか光かを一発で分けられる。";
+        op.desc     = "通常描画とレイ交差の診断表示を切り替える。";
         op.kind     = OpKind::Action;
 
         OpParam modeParam;
         modeParam.name = "mode";
         modeParam.type = OpParamType::String;
         modeParam.desc = "描画モード";
-        /// @note 取りうる値は宣言する。以前は exec の中で 4 つの文字列と比較し、
-        ///       独自のエラー文を返していた — 候補が op.list に出ないので、AI は
-        ///       desc の文章から綴りを起こすしかなかった。
-        modeParam.enumValues = { "lit", "unlit", "wireframe_lit", "wireframe_unlit" };
+        /// @note AI バスの候補提示と入力検証もこの宣言を使う。
+        modeParam.enumValues = { "lit", "unlit", "wireframe_lit", "wireframe_unlit",
+            "ray_hit_distance", "ray_geometric_normal", "ray_instance_id" };
         op.params = { modeParam };
 
-        /// @note 文字列 → enum の対応表。exec と checked が同じ表を読むので、
-        ///       「設定はできるのに現在値の判定だけ綴りが違う」が起きない。
+        /// @note exec と checked は同じ文字列と enum の対応を使う。
         const auto toViewMode = [](const std::string& mode) {
             if (mode == "unlit")           return renderer::ViewMode::Unlit;
             if (mode == "wireframe_lit")   return renderer::ViewMode::WireframeLit;
             if (mode == "wireframe_unlit") return renderer::ViewMode::WireframeUnlit;
+            if (mode == "ray_hit_distance") return renderer::ViewMode::RayHitDistance;
+            if (mode == "ray_geometric_normal") return renderer::ViewMode::RayGeometricNormal;
+            if (mode == "ray_instance_id") return renderer::ViewMode::RayInstanceId;
             return renderer::ViewMode::Lit;
         };
 
@@ -296,9 +333,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 
-    /// @note NavMesh オーバーレイの描き方。show_navmesh が「出す/出さない」だけを持ち、
-    ///       「何を出すか」がどこにも無かったため、穴の位置も areaType の塗り分けも
-    ///       同じ 1 枚の青い面からは読み取れなかった。
+    /// @note NavMesh の可視性と診断表示の種類は独立して指定する。
     {
         EditorOperator op;
         op.id       = "render.set_navmesh_draw_mode";
@@ -370,4 +405,4 @@ void RegisterRenderOperators(OperatorRegistry& registry)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -165,6 +165,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/FzAssetFormatTests.cpp
         Engine/Auto/InputActionMapTests.cpp
         Engine/Auto/RenderModeSettingsTests.cpp
+        Engine/Auto/RenderPipelineAssetTests.cpp
         Engine/Auto/JointComponentTests.cpp
         Engine/Auto/ParticleCodecTests.cpp
         Engine/Auto/ParticleCurveTests.cpp
