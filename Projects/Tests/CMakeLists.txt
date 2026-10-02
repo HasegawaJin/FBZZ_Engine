@@ -11,6 +11,13 @@ add_subdirectory(TestKit)
 
 include("${CMAKE_SOURCE_DIR}/CMake/FBZZTests.cmake")
 
+# @note Runtime packaging is a CMake contract, so validate its isolated fixture through the same CTest entry point.
+add_test(NAME SharedSDKTemplates
+    COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+        -P "${CMAKE_SOURCE_DIR}/CMake/SDK/TestSharedSDKTemplates.cmake")
+set_tests_properties(SharedSDKTemplates PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 30)
+
 # @note --- Math -------------------------------------------------------------------
 fbzz_add_test_suite(MathAuto
     SOURCES
@@ -137,6 +144,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ClothAssetTests.cpp
         Engine/Auto/ClothRenderBindingTests.cpp
         Engine/Auto/AssetDatabaseTests.cpp
+        Engine/Auto/PixCaptureTests.cpp
         Engine/Auto/AssetStreamingTests.cpp
         Engine/Auto/SceneAssetReferencesTests.cpp
         Engine/Auto/AssetPartialIoTests.cpp
@@ -272,6 +280,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/ImageCompareTests.cpp
     Editor/Auto/FluidJetFlamePlaybackTests.cpp
     Editor/Auto/ImportCacheStoreTests.cpp
+    Editor/Auto/PixOperatorTests.cpp
     Editor/Auto/ImportFingerprintTests.cpp
     Editor/Auto/InputRecorderTests.cpp
     Editor/Auto/JsonTests.cpp

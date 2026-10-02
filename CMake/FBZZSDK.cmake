@@ -116,6 +116,20 @@ install(FILES
 )
 install(FILES "${FBZZ_SDK_GENERATED_DIR}/fbzz-sdk.toml" DESTINATION ".")
 
+set(FBZZ_SDK_PIX_RUNTIME_DLL "")
+set(FBZZ_SDK_PIX_REQUIRED OFF)
+if(FBZZ_ENABLE_DX12 AND TARGET WinPixEventRuntime)
+    set(FBZZ_SDK_PIX_RUNTIME_DLL "$<TARGET_FILE:WinPixEventRuntime>")
+    set(FBZZ_SDK_PIX_REQUIRED ON)
+    # @note The graphics DLL imports this private runtime even when GPU capture is disabled.
+    install(FILES "$<TARGET_FILE:WinPixEventRuntime>" DESTINATION "bin/$<CONFIG>")
+    install(FILES
+        "${CMAKE_SOURCE_DIR}/ThirdParty/WinPixEventRuntime/LICENSE"
+        "${CMAKE_SOURCE_DIR}/ThirdParty/WinPixEventRuntime/VERSION"
+        "${CMAKE_SOURCE_DIR}/ThirdParty/WinPixEventRuntime/ThirdPartyNotices.txt"
+        DESTINATION "share/fbzz/licenses/WinPixEventRuntime")
+endif()
+
 # @note Visual Studio から FBZZSDK ターゲットをビルドすると、同じ構成の lib/bin と
 # @note 構成非依存の headers/package/assets/tools を版別 SDK へ同期する。
 add_custom_target(FBZZSDK
@@ -137,11 +151,13 @@ add_custom_target(FBZZSDK
         "-DIMGUI_DLL=$<TARGET_FILE:ImGui>"
         "-DASSIMP_DLL=$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "-DEDITOR_DIR=$<TARGET_FILE_DIR:FBZZEditorLauncher>"
+        "-DPIX_RUNTIME_DLL=${FBZZ_SDK_PIX_RUNTIME_DLL}"
         -P "${CMAKE_SOURCE_DIR}/CMake/SDK/StageFBZZSDK.cmake"
     COMMAND ${CMAKE_COMMAND}
         "-DSDK_ROOT=${FBZZ_SDK_ROOT}"
         "-DSDK_ID=${FBZZ_SDK_ID}"
         "-DCONFIG=$<CONFIG>"
+        "-DPIX_REQUIRED=${FBZZ_SDK_PIX_REQUIRED}"
         -P "${CMAKE_SOURCE_DIR}/CMake/SDK/ValidateFBZZSDK.cmake"
     # @note 検証を通った後にだけ、旧方式が残した同一versionの世代を回収する。
     # @note 先に消すと、公開に失敗した時点で「新しいSDKは不完全・古いSDKは無い」

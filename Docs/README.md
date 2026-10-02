@@ -69,6 +69,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [pipeline-boundary.md](design/pipeline-boundary.md) | 材質ごとの GBuffer / Forward 振り分け規則とスキンド描画の導入背景 |
 | [render-graph.md](design/render-graph.md) | RenderGraph の責務と資源・パスの依存関係 |
 | [render-pass-viewer.md](design/render-pass-viewer.md) | Render Pass Viewer による描画パスの確認 |
+| [pix-profiling.md](design/pix-profiling.md) | PIX の起動接続、イベント、Release キャプチャと性能検証の契約 |
 | [async-compute.md](design/async-compute.md) | 非同期コンピュートキュー |
 | [gpu-instancing.md](design/gpu-instancing.md) | 同じメッシュの自動インスタンシング |
 | [view-culling.md](design/view-culling.md) | ビューごとのカリング結果の共有 |

@@ -2,7 +2,7 @@
 /// @brief   エディタ / スタンドアロン両対応のエントリポイント。
 /// @author  Hasegawa Jin
 /// @date    2026-05-25
-///
+
 /// @note コマンドライン引数で Editor / Standalone / バッチを切り替える。
 /// @note `--project` 省略時は exe 隣の `.fbzz_proj` の有無で配布 Standalone か開発用テンプレート Editor かを判定する。
 /// @note 文字列・パス変換は `Engine/Util` に集約し `EditorLauncher` と `Sandbox` の両方から使う。
@@ -14,6 +14,7 @@
 #include <Engine/Core/DeveloperMode.hpp>
 #include <Engine/Core/EngineRebuildBootstrap.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Core/PixCapture.hpp>
 #include <Engine/ProjectResolver.hpp>
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -22,10 +23,15 @@
 #include <Engine/Util/StringUtils.hpp>
 #include <Editor/EditorApp.hpp>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 #include <shellapi.h>
 #include <filesystem>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace fbzz::editor_launcher {
 
@@ -37,20 +43,22 @@ using fbzz::util::StringUtils;
 /// @brief コマンドライン引数の解析結果。
 struct LaunchArgs {
     std::filesystem::path projectPath;
-    std::filesystem::path scriptsDll;      ///< --scripts-dll で上書き指定 (省略可)
+    std::filesystem::path scriptsDll;      ///< @note --scripts-dll で上書き指定 (省略可)
     bool                  standalone = false;
     /// @brief --batch のシナリオ。空でなければ Playtest を回して終了する (Docs/design/ai-verification-loop.md)。
     std::filesystem::path batchScenario;
-    std::filesystem::path batchReport;     ///< --report
+    std::filesystem::path batchReport;     ///< @note --report
     bool                  updateBaselines = false;
     bool                  skipImages = false;
-    bool                  hidden = false;  ///< --hidden: 窓を出さない
+    bool                  hidden = false;  ///< @note --hidden: 窓を出さない
+    core::PixCaptureOptions pixCapture;
+    std::string argumentError;
 };
 
 std::filesystem::path FindDefaultEditorProjectPath()
 {
     /// @note `build/Release/Binaries/Release/FBZZEditor.exe` を直接起動する開発導線では
-    ///       exe 隣に `.fbzz_proj` が存在しない。配布物と区別し、標準テンプレートを Editor で開く。
+    /// @note exe 隣に `.fbzz_proj` が存在しない。配布物と区別し、標準テンプレートを Editor で開く。
     std::filesystem::path current = FileSystem::GetExecutableDirectory();
     for (int i = 0; i < 8 && !current.empty(); ++i) {
         const std::filesystem::path candidate =
@@ -75,8 +83,8 @@ std::filesystem::path FindDefaultEditorProjectPath()
 
 /// @brief コマンドライン引数を解析して `LaunchArgs` を返す。
 /// @note 引数なし起動は exe 隣に `.fbzz_proj` があれば配布版 Standalone、なければ
-///       標準テンプレートを Standalone として開く。`build_root` は未解決だが
-///       `StandaloneApp` が exe 隣の `SandboxScripts.dll` へフォールバックする。
+/// @note 標準テンプレートを Standalone として開く。`build_root` は未解決だが
+/// @note `StandaloneApp` が exe 隣の `SandboxScripts.dll` へフォールバックする。
 LaunchArgs ParseArgs()
 {
     LaunchArgs args;
@@ -84,6 +92,7 @@ LaunchArgs ParseArgs()
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (!argv) return args;
 
+    std::vector<std::wstring_view> pixArguments;
     for (int i = 1; i < argc; ++i) {
         const std::wstring arg = argv[i];
         if (arg == L"--project" && i + 1 < argc)
@@ -103,6 +112,18 @@ LaunchArgs ParseArgs()
             args.skipImages = true;
         else if (arg == L"--hidden")
             args.hidden = true;
+        else if (arg == L"--pix-path") {
+            pixArguments.emplace_back(argv[i]);
+            if (i + 1 < argc) pixArguments.emplace_back(argv[++i]);
+        }
+        else if (arg == L"--pix-capture" || arg.starts_with(L"--pix-path=")
+                 || arg.starts_with(L"--pix-capture="))
+            pixArguments.emplace_back(argv[i]);
+    }
+    /// @note Consume ordinary launcher operands first so a project path cannot accidentally request DLL loading.
+    if (!core::ParsePixCaptureOptions(pixArguments, args.pixCapture, args.argumentError)) {
+        LocalFree(argv);
+        return args;
     }
     LocalFree(argv);
 
@@ -123,22 +144,27 @@ LaunchArgs ParseArgs()
     return args;
 }
 
-}
+} /// @note namespace
 
 int Run()
 {
     /// @note 起動元が「閉じたら配下ごと殺す」Job に自分を入れている場合、その外へ自分を
-    ///       起動し直す。ウィンドウもプロジェクトも作る前なら、作り直しの副作用が無い。
+    /// @note 起動し直す。ウィンドウもプロジェクトも作る前なら、作り直しの副作用が無い。
     const LaunchArgs args = ParseArgs();
     /// @note バッチは終了コードが結果そのもの。起動し直すと呼び出し側が受け取るのは «0 で抜けた親» の値になる。
     const bool batch = !args.batchScenario.empty();
+    if (!args.argumentError.empty()) {
+        FBZZ_LOG_ERROR("EditorLauncher: %s", args.argumentError.c_str());
+        return batch ? 2 : 1;
+    }
 
-    if (!batch && RelaunchOutsideKillOnCloseJob())
+    /// @note PIX startup must retain its PID and early module loading; it never opts into launcher-controlled restarts.
+    if (!batch && !args.pixCapture.requested && RelaunchOutsideKillOnCloseJob())
         return 0;
 
     /// @note `FBZZEngine.dll` は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
-    ///       新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
-    if (!batch && fbzz::core::CheckEngineFreshnessAndRelaunch())
+    /// @note 新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
+    if (!batch && !args.pixCapture.requested && fbzz::core::CheckEngineFreshnessAndRelaunch())
         return 0;
 
     fbzz::ProjectResolver resolver;
@@ -150,8 +176,8 @@ int Run()
     }
     fbzz::LaunchProject project = resolver.Get();
     /// @note `.fbzz_proj` に `scripts_dll` が書かれていないプロジェクト (DemoGame 等) では
-    ///       `ProjectResolver` が `scriptsDll` を空のままにする。エディタから `--scripts-dll`
-    ///       で解決済みパスが渡された場合はそれを優先して上書きする。
+    /// @note `ProjectResolver` が `scriptsDll` を空のままにする。エディタから `--scripts-dll`
+    /// @note で解決済みパスが渡された場合はそれを優先して上書きする。
     if (!args.scriptsDll.empty() && project.scriptsDll.empty())
         project.scriptsDll = args.scriptsDll;
 
@@ -160,8 +186,8 @@ int Run()
         ? executableDirectory
         : project.root;
     /// @note 配布物は exe 隣に Assets があるため exeDir を CWD にする。Editor から別プロジェクトを
-    ///       `--project` 指定で Standalone 起動する場合は Assets が `project.root` にあるため、
-    ///       相対 shader path が解決できるよう CWD を切り替える。
+    /// @note `--project` 指定で Standalone 起動する場合は Assets が `project.root` にあるため、
+    /// @note 相対 shader path が解決できるよう CWD を切り替える。
     SetCurrentDirectoryW(workingDirectory.wstring().c_str());
 
     /// @note 終了処理で落ちても残すため Uninstall しない。バッチは人が居ないので通知をダイアログにしない。
@@ -175,8 +201,8 @@ int Run()
 
     if (args.standalone) {
         /// @note Standalone モードではウィンドウを正しいサイズで生成するため
-        ///       `Application::Init()` の前に `ProjectSettings` を読み込む必要がある。
-        ///       Init 後に `Resize()` するとウィンドウが一瞬デフォルトサイズで表示されてしまう。
+        /// @note `Application::Init()` の前に `ProjectSettings` を読み込む必要がある。
+        /// @note Init 後に `Resize()` するとウィンドウが一瞬デフォルトサイズで表示されてしまう。
         ProjectSettings settings;
         if (!settings.Load(StringUtils::PathToUtf8(project.settingsFile))) {
             MessageBoxW(nullptr, L"ProjectSettings を読み込めませんでした。", L"FBZZ", MB_OK | MB_ICONERROR);
@@ -184,7 +210,12 @@ int Run()
         }
 
         /// @note Standalone は `ProjectSettings` の renderer 指定でレンダラーを生成する。
-        ///       コマンドライン `--renderer=` があれば `Application::Init` 内でそちらが優先される。
+        /// @note コマンドライン `--renderer=` があれば `Application::Init` 内でそちらが優先される。
+        if (args.pixCapture.requested && settings.app.rendererBackend != renderer::RendererBackend::DX12) {
+            FBZZ_LOG_ERROR("EditorLauncher: --pix-capture requires the DirectX 12 backend.");
+            return 1;
+        }
+        if (!core::InitializePixCapture(args.pixCapture)) return 1;
         if (!app.Init(scene::MakeWindowConfig(settings), settings.app.rendererBackend)) return 1;
 
         auto& renderer = app.GetRenderer();
@@ -195,16 +226,21 @@ int Run()
         StandaloneApp standaloneApp(renderer, imguiRenderer, resources, project, settings);
         app.Run(standaloneApp);
         /// @note `ResourceManager` は app よりスコープが長いため `~ResourceManager()` が
-        ///       `app::Shutdown()` より先に走る。事前に `Reset()` しないとデストラクタの
-        ///       `LogLiveDebugResources` が GPU リソースを「外部保持」と誤判定して報告する。
+        /// @note `app::Shutdown()` より先に走る。事前に `Reset()` しないとデストラクタの
+        /// @note `LogLiveDebugResources` が GPU リソースを「外部保持」と誤判定して報告する。
         asset::AssetManager::UnloadAll();
         resources.Reset();
     } else {
         /// @note Editor も起動時プロジェクトの renderer 設定に従う。レンダラーはプロジェクト
-        ///       読込前に生成するため設定をここで先読みしてバックエンドを渡す (`--renderer=`
-        ///       があれば優先)。Load 失敗時は既定の DX12 で開く (本読込は `OpenProject` が行う)。
+        /// @note 読込前に生成するため設定をここで先読みしてバックエンドを渡す (`--renderer=`
+        /// @note があれば優先)。Load 失敗時は既定の DX12 で開く (本読込は `OpenProject` が行う)。
         ProjectSettings settings;
         settings.Load(StringUtils::PathToUtf8(project.settingsFile));
+        if (args.pixCapture.requested && settings.app.rendererBackend != renderer::RendererBackend::DX12) {
+            FBZZ_LOG_ERROR("EditorLauncher: --pix-capture requires the DirectX 12 backend.");
+            return batch ? 2 : 1;
+        }
+        if (!core::InitializePixCapture(args.pixCapture)) return batch ? 2 : 1;
         if (!app.Init(core::Window::Config{}, settings.app.rendererBackend)) return 1;
 
         auto& renderer    = app.GetRenderer();
@@ -246,7 +282,7 @@ int Run()
     return 0;
 }
 
-}
+} /// @note namespace fbzz::editor_launcher
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {

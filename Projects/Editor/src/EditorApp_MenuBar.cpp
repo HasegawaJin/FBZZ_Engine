@@ -253,12 +253,16 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t VIEW_UNLIT      = 411;
     constexpr uint16_t VIEW_WIRE_LIT   = 412;
     constexpr uint16_t VIEW_WIRE_UNLIT = 413;
+    constexpr uint16_t VIEW_RAY_HIT_DISTANCE = 440;
+    constexpr uint16_t VIEW_RAY_GEOMETRIC_NORMAL = 441;
+    constexpr uint16_t VIEW_RAY_INSTANCE_ID = 442;
     constexpr uint16_t TOGGLE_MAP       = 501;
     constexpr uint16_t OPEN_BUILD       = 502;
     constexpr uint16_t OPEN_IBL         = 503;
     constexpr uint16_t OPEN_NAVIGATION  = 504;
     constexpr uint16_t OPEN_ASSET_MAINT = 505;
     constexpr uint16_t OPEN_VOLUME_FLIPBOOK = 506;
+    constexpr uint16_t OPEN_PIX         = 507;
     constexpr uint16_t OPEN_AI_SETTINGS = 600;
     constexpr uint16_t PANEL_BASE       = 1000;
     constexpr uint16_t CREATE_EMPTY     = 2999;
@@ -284,6 +288,9 @@ void EditorApp::InstallNativeMenuBar()
     debugViewMode.push_back(command("Unlit", VIEW_UNLIT));
     debugViewMode.push_back(command("Wireframe Lit", VIEW_WIRE_LIT));
     debugViewMode.push_back(command("Wireframe Unlit", VIEW_WIRE_UNLIT));
+    debugViewMode.push_back(command("Ray Hit Distance", VIEW_RAY_HIT_DISTANCE));
+    debugViewMode.push_back(command("Ray Geometric Normal", VIEW_RAY_GEOMETRIC_NORMAL));
+    debugViewMode.push_back(command("Ray Instance ID", VIEW_RAY_INSTANCE_ID));
 
     MenuList terrainTools;
     terrainTools.push_back(command("Terrain Tool", 510));
@@ -359,7 +366,8 @@ void EditorApp::InstallNativeMenuBar()
         command("Build Settings...", OPEN_BUILD), command("IBL Baker...", OPEN_IBL),
         command("Volume Flipbook Baker...", OPEN_VOLUME_FLIPBOOK),
         command("Navigation...", OPEN_NAVIGATION),
-        command("Asset Maintenance...", OPEN_ASSET_MAINT)
+        command("Asset Maintenance...", OPEN_ASSET_MAINT),
+        command("Open PIX...", OPEN_PIX)
     }));
     menus.push_back(submenu("AI", { command("AI Settings...", OPEN_AI_SETTINGS) }));
 
@@ -436,9 +444,13 @@ void EditorApp::InstallNativeMenuBar()
         case VIEW_UNLIT:     InvokeViewMode("unlit"); break;
         case VIEW_WIRE_LIT:  InvokeViewMode("wireframe_lit"); break;
         case VIEW_WIRE_UNLIT:InvokeViewMode("wireframe_unlit"); break;
+        case VIEW_RAY_HIT_DISTANCE: InvokeViewMode("ray_hit_distance"); break;
+        case VIEW_RAY_GEOMETRIC_NORMAL: InvokeViewMode("ray_geometric_normal"); break;
+        case VIEW_RAY_INSTANCE_ID: InvokeViewMode("ray_instance_id"); break;
         case 700:            InvokeOperator("view.reset_ui_scale"); break;
         case TOGGLE_MAP:     InvokeOperator("tools.map_editing_mode"); break;
         case OPEN_BUILD:     InvokeOperator("tools.build_settings"); break;
+        case OPEN_PIX:       InvokeOperator("tools.pix_open"); break;
         /// @note パネルを前面に出すのは panel.focus 1 つで足りる。パネルごとに
         /// @note        operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         case OPEN_IBL:         InvokePanelFocus(m_iblBakePanel); break;
@@ -650,6 +662,9 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             viewModeItem("unlit",           "Unlit");
             viewModeItem("wireframe_lit",   "Wireframe Lit");
             viewModeItem("wireframe_unlit", "Wireframe Unlit");
+            viewModeItem("ray_hit_distance", "Ray Hit Distance");
+            viewModeItem("ray_geometric_normal", "Ray Geometric Normal");
+            viewModeItem("ray_instance_id", "Ray Instance ID");
             ImGui::EndMenu();
         }
         ImGui::Separator();
@@ -689,6 +704,13 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::EndMenu();
         }
         MenuItemOp("tools.build_settings");
+        ImGui::Separator();
+        MenuItemOp("tools.pix_open");
+        const auto pixStatus = InvokeOperator("tools.pix_status");
+        const auto* pixReady = pixStatus.data.Find("captureReady");
+        ImGui::TextDisabled("%s", LOC(pixReady && pixReady->AsBool()
+            ? "PIX: GPU capture ready" : "PIX: next launch with --pix-capture"));
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", pixStatus.message.c_str());
         ImGui::Separator();
         /// @note パネルごとに operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         /// @note        名前を引数で渡す 1 つの操作で足りる。
@@ -1148,7 +1170,7 @@ void EditorApp::TogglePlayMode()
         StopPlayMode();
 }
 
-/// @note  描画モードを operator へ渡す小さな補助 (ネイティブメニューの 4 項目が使う)。
+/// @note ネイティブメニューも描画モード操作の登録簿を使う。
 void EditorApp::InvokeViewMode(const char* mode)
 {
     OpArgs args;

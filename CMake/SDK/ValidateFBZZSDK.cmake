@@ -50,6 +50,20 @@ foreach(REQUIRED_PATH IN LISTS REQUIRED_PATHS)
     endif()
 endforeach()
 
+# @note PIX is private to Graphics, but every executable loading Graphics needs the event runtime.
+if(PIX_REQUIRED OR EXISTS "${SDK_ROOT}/bin/${CONFIG}/WinPixEventRuntime.dll")
+    foreach(PIX_REQUIRED_PATH
+        "bin/${CONFIG}/WinPixEventRuntime.dll"
+        "tools/${CONFIG}/Editor/WinPixEventRuntime.dll"
+        "share/fbzz/licenses/WinPixEventRuntime/LICENSE"
+        "share/fbzz/licenses/WinPixEventRuntime/VERSION"
+        "share/fbzz/licenses/WinPixEventRuntime/ThirdPartyNotices.txt")
+        if(NOT EXISTS "${SDK_ROOT}/${PIX_REQUIRED_PATH}")
+            message(FATAL_ERROR "FBZZ SDK validation failed: ${PIX_REQUIRED_PATH} is missing")
+        endif()
+    endforeach()
+endif()
+
 # @note DXIL reflection は dxcompiler.dll を exe 隣から LoadLibraryW で解決する。Editor 隣に無いとシェーダーが全滅する。
 # @note 契約は同梱の有無ではなく、bin に在れば Editor 隣にも在るという整合。
 foreach(DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)

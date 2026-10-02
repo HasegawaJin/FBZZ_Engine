@@ -255,3 +255,15 @@ if(FBZZ_DXC_RUNTIME_DIRECTORY)
         endforeach()
     endforeach()
 endif()
+
+# @note Both local Sandbox executables import Graphics and need its private PIX runtime beside them.
+if(FBZZ_ENABLE_DX12)
+    foreach(FBZZ_SANDBOX_TARGET Sandbox SandboxStandalone)
+        add_custom_command(TARGET ${FBZZ_SANDBOX_TARGET} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:WinPixEventRuntime>"
+                "$<TARGET_FILE_DIR:${FBZZ_SANDBOX_TARGET}>/WinPixEventRuntime.dll"
+            VERBATIM
+        )
+    endforeach()
+endif()
