@@ -4,6 +4,8 @@
 /// @date    2026-06-07
 #include <Editor/Util/AssetPath.hpp>
 
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
 #include <utility>
@@ -12,6 +14,7 @@ namespace fbzz::editor {
 
 std::string NormalizeAssetPath(std::string path)
 {
+    if (asset::AssetDatabase::IsGuidRef(path)) return path;
     path = util::FileSystem::NormalizePathSeparators(std::move(path));
 
     if (path.rfind("Assets/", 0) == 0)
@@ -40,10 +43,12 @@ std::string NormalizeAssetPath(std::string path)
 
 std::string ToProjectAssetDiskPath(std::string_view projectRoot, std::string_view assetPath)
 {
+    if (asset::AssetDatabase::IsGuidRef(assetPath))
+        return asset::AssetManager::ResolveAssetPath(std::string(assetPath));
     std::string normalized = NormalizeAssetPath(std::string(assetPath));
     if (normalized.rfind("Assets/", 0) == 0 && !projectRoot.empty())
         return std::string(projectRoot) + "/" + normalized;
     return normalized;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -3,13 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-16
 ///
-/// @note Instantiate は .prefab 読込→TOML書換→SceneIO::AppendObjects→一時 Scene へ
-///       Deserialize→シーン全 GameObject の参照張り直しまで行い、AppendObjects が
-///       GameObject 配列を再確保するため既存の GameObject* (呼び出し元の m_gameObject も) が無効化される。
-/// @note プールは非アクティブにしたインスタンスを取り置いて再利用し、重い経路と配列再確保を回避する。
-///       鍵は必ず書かれる GameObject::prefabAssetPath。
-/// @warning Despawn したインスタンスはシーンに非アクティブのまま残り、runtimeGenerated 扱いでは
-///          ないため保存対象になり得る (Play 中の生成物は保存しない運用が前提)。
+/// @note 非アクティブな階層を再利用し、プレファブの解析・コンポーネント生成を戦闘中に繰り返さない。
+/// @note Scene ごとの待機列と貸出列はプレファブの GUID で識別し、改名・移動後も共有する。
+/// @warning Despawn した階層はシーンに残るため、Play 中の生成物を編集シーンへ保存しないこと。
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
@@ -27,8 +23,7 @@ class PrefabPool {
 public:
     /// @brief プールから 1 つ取り出す。空なら Instantiate して補充する。
     /// @return 失敗時 nullptr。取り出したインスタンスは activeSelf = true に戻り、指定の位置・回転に置かれる。
-    /// @note position / rotation は値で受ける。プールが空だと内部の Instantiate が Scene の GameObject
-    ///       配列を再確保するため、参照渡しだと呼び出し側が持つ別 GameObject の transform 参照が無効になる。
+    /// @note OnSpawn の前に子孫までワールド座標を同期する。position / rotation はコールバックで変更されないよう値で受ける。
     static GameObject* Spawn(Scene& scene,
                              const std::string& prefabPath,
                              math::Vector3 position,
@@ -44,7 +39,7 @@ public:
 
     /// @brief 同時に出ていられる数の上限。0 以下で無制限 (既定 = 従来の挙動)。
     /// @note 空なら無条件に Instantiate するため、撒く頻度が「枠数÷寿命」を超えると実体が増え続け、絵には出ないまま Tick が重くなる。
-    /// @note 追い出しは最古を選ぶ: 一番古い 1 発はもう見られていないか消え際にあるため。上限はパス単位に持ち Scene 切り替えでも残る (ClearAll だけが捨てる)。
+    /// @note 追い出しは最古を選ぶ。上限は GUID 単位に持ち、Scene 切り替えでも残る (ClearAll だけが捨てる)。
     static void SetLimit(const std::string& prefabPath, int maxLive);
 
     [[nodiscard]] static int GetLimit(const std::string& prefabPath);
@@ -60,4 +55,4 @@ public:
     static void ClearAll();
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

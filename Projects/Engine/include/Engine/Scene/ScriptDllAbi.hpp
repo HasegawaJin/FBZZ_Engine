@@ -126,6 +126,9 @@ template <std::size_t... I>
     const auto mix = [&](uint64_t v) constexpr { sig ^= v; sig *= FNV_PRIME; };
     mix(info.sizeofScript);
     mix(info.sizeofScene);
+    /// @note GameObject は unique_ptr 越しに共有されるため、Scene の sizeof だけではメンバー追加を検出できない。
+    mix(sizeof(GameObject));
+    mix(alignof(GameObject));
     mix(info.sizeofScriptComponent);
     /// @note vector 本体の sizeof には要素のレイアウトが現れない。
     mix(sizeof(ScriptEntry));

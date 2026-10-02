@@ -13,6 +13,7 @@
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/PrefabInstantiate.hpp>
 #include <Engine/Scene/MeshResolver.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -91,6 +92,35 @@ namespace fbzz::scene {
 
 /// @note 内部ヘルパー
 namespace {
+
+/// @note Prefab の GUID と適用済み定義は編集の正本なので、コンポーネント用のパス復号から外す。
+/// @see Docs/design/prefab-safety.md
+template<typename Fn>
+void TransformSceneAssetRefs(toml::table& document, const Fn& transform)
+{
+    std::vector<std::pair<toml::table*, toml::table>> metadata;
+    if (auto* objects = document["gameobjects"].as_array()) {
+        for (auto& item : *objects) {
+            auto* object = item.as_table();
+            if (!object) continue;
+            toml::table fields;
+            for (const char* key : { "prefabAssetPath", "prefabSourceSnapshot" }) {
+                if (const auto value = (*object)[key].value<std::string>()) {
+                    fields.insert(key, *value);
+                    object->erase(key);
+                }
+            }
+            if (!fields.empty()) metadata.emplace_back(object, std::move(fields));
+        }
+    }
+    transform(document);
+    for (auto& [object, fields] : metadata) {
+        if (const auto reference = fields["prefabAssetPath"].value<std::string>())
+            fields.insert_or_assign("prefabAssetPath", CanonicalPrefabAssetRef(*reference));
+        for (const auto& [key, value] : fields)
+            object->insert(key.str(), value);
+    }
+}
 
 /// @note LightComponent を読む。`type` が文字列で書かれた旧シーンをここで吸収する。
 /// @note 旧コーデックは `type` を文字列で書いていたが、`Reflect()` は他の enum と同じく int を
@@ -535,7 +565,7 @@ public:
     /// @note 指したまま有効になる。EntityID → instanceId の変換に Scene が要る。
     /// @note 挿入が先勝ちなのは従来の保存結果と一致させるため。
     explicit SceneWriteReflector(toml::table& table, const Scene* scene = nullptr)
-        : util::TomlWriteReflector(table, /*overwriteDuplicates=*/false)
+        : util::TomlWriteReflector(table, false)
         , m_scene(scene)
     {
     }
@@ -848,7 +878,7 @@ std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std
     return normalizedScene.substr(0, assetsPos + 1) + normalizedAsset;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @note ScriptComponent の複製
 ScriptComponent CloneScriptComponent(const ScriptComponent& src,
@@ -951,6 +981,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         goTbl.insert("active",          go.activeSelf());
         goTbl.insert("prefabAssetPath", go.prefabAssetPath);
         goTbl.insert("prefabSourceId",  go.prefabSourceId);
+        if (!go.prefabSourceSnapshot.empty())
+            goTbl.insert("prefabSourceSnapshot", go.prefabSourceSnapshot);
         if (auto* parent = go.GetParent()) {
             goTbl.insert("parent", parent->name);
             goTbl.insert("parentInstanceId", parent->instanceId);
@@ -1752,7 +1784,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
 
     /// @note ディスク上のアセット参照は guid: 形式にする (リネーム・移動耐性)。
     /// @note ランタイム側のコンポーネントは "Assets/..." パスのままなので、この一点で変換が完結する。
-    asset::EncodeGuidRefs(doc);
+    TransformSceneAssetRefs(doc, asset::EncodeGuidRefs);
 
     std::ostringstream oss;
     oss << doc;
@@ -1791,7 +1823,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     auto& doc = result.table();
 
     /// @note guid: 参照を "Assets/..." パスへ戻す。以降の全コンポーネント読み込みはパス前提で動く。
-    asset::DecodeGuidRefs(doc);
+    TransformSceneAssetRefs(doc, asset::DecodeGuidRefs);
 
     auto scene = std::make_unique<Scene>();
 
@@ -1831,6 +1863,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         }
         go.prefabAssetPath = (*goTbl)["prefabAssetPath"].value_or(std::string{});
         go.prefabSourceId  = (*goTbl)["prefabSourceId"].value_or(std::string{});
+        go.prefabSourceSnapshot = (*goTbl)["prefabSourceSnapshot"].value_or(std::string{});
 
         /// @note Transform
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
@@ -2915,7 +2948,7 @@ bool SceneSerializer::AppendObjects(
     auto& doc = result.table();
 
     /// @note Prefab 等の TOML 断片にも guid: 参照が含まれるため Load と同じくデコードする。
-    asset::DecodeGuidRefs(doc);
+    TransformSceneAssetRefs(doc, asset::DecodeGuidRefs);
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr || goArr->empty()) return false;
@@ -2940,6 +2973,7 @@ bool SceneSerializer::AppendObjects(
         }
         go.prefabAssetPath = (*goTbl)["prefabAssetPath"].value_or(std::string{});
         go.prefabSourceId  = (*goTbl)["prefabSourceId"].value_or(std::string{});
+        go.prefabSourceSnapshot = (*goTbl)["prefabSourceSnapshot"].value_or(std::string{});
 
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
             auto& t = go.transform;
@@ -3203,4 +3237,4 @@ bool SceneSerializer::AppendObjects(
     return !outRoots.empty();
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

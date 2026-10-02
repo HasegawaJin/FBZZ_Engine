@@ -24,12 +24,15 @@ public:
     /// @note  クロスオブジェクト参照 (IK Pole/Target 等) はリネームに耐えられるよう
     /// @note  UUID v4 を永続識別子として持つ。Scene::CreateGameObject で自動生成される。
     std::string instanceId;
-    /// @brief Prefab インスタンスの出所アセットパス (Assets 起点の相対パス)。空文字列 = Prefab 非インスタンス。
-    /// @note Apply/Revert の判定に使う。SceneSerializer が Save/Load で永続化し、PrefabSerializer::Instantiate が書き込む。
+    /// @brief Prefab インスタンスの出所参照。GUID を正本とし、旧 Assets 相対パスも読み込める。
+    /// @note 空なら非インスタンス。改名・移動時も同じ GUID の定義を Apply/Revert が参照する。
     std::string prefabAssetPath;
     /// @brief この GO が .prefab 内のどのオブジェクトから作られたか (プレファブ側の instanceId)。空文字列 = プレファブ由来でない。
     /// @note instanceId はインスタンス化のたびに新規採番されるため、これで対応する子を突き合わせ、プロパティ単位の override を計算する。階層内の全 GO に入る。
     std::string prefabSourceId;
+    /// @note ルートだけが最後に適用した元定義の TOML を保持する。個別変更はこの版との差分で判定する。
+    /// @see Docs/design/prefab-safety.md
+    std::string prefabSourceSnapshot;
     int layer = 0;
 
     /// @brief システムが実行時に作った GO か (VFX Graph のノード実体・Water splash 等)。生成側が必ず立てる。

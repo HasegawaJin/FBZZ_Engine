@@ -56,7 +56,7 @@ bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload,
     if (!PrefabSerializer::SaveSelectionAndConnect(*ctx.activeScene, selection, path, connectedRoots))
         return false;
 
-    const std::string relPath = NormalizeAssetPath(path);
+    const std::string relPath = scene::CanonicalPrefabAssetRef(path);
     if (ctx.markSceneDirty) ctx.markSceneDirty();
 
     /// @note シーン側のリンク (prefabAssetPath) だけを Undo 対象にする。旧実装は .prefab ファイル自体を RemoveAll(path) で戻していたため、無関係な作業のあとで Ctrl+Z を重ねると編集ぶんごとファイルが消えた。ファイルの存在は Undo 対象にせず、消したいときは Delete でごみ箱へ送る。
@@ -173,8 +173,8 @@ void AssetBrowserPanel::OnLoadSettings(const EditorSettings& settings)
     m_treeShowFiles    = state.treeShowFiles;
 
     /// @note 前回のフォルダは「今のプロジェクトの中に実在する」ときだけ復元する。
-    ///       プロジェクトを開き直した直後は SetRootPath がルートへ戻した状態なので、
-    ///       解決できない保存値は黙って捨ててルート表示のままにする。
+    /// @note プロジェクトを開き直した直後は SetRootPath がルートへ戻した状態なので、
+    /// @note 解決できない保存値は黙って捨ててルート表示のままにする。
     const std::string folder =
         util::FileSystem::NormalizePathSeparators(state.currentFolder);
     if (!folder.empty() && !m_rootPath.empty()
@@ -216,8 +216,8 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
 
 namespace {
 
-/// FileSystem::GetDirectory は末尾に '/' を付けて返す ("Assets/Scenes/")。
-/// ナビゲート先やパス比較に使う前に落とす。
+/// @note FileSystem::GetDirectory は末尾に '/' を付けて返す ("Assets/Scenes/")。
+/// @note ナビゲート先やパス比較に使う前に落とす。
 std::string DirectoryOfPath(const std::string& path)
 {
     std::string directory = util::FileSystem::GetDirectory(path);
@@ -226,7 +226,7 @@ std::string DirectoryOfPath(const std::string& path)
     return directory;
 }
 
-} // namespace
+} /// @note namespace
 
 void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
 {
@@ -268,7 +268,7 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
     m_typeFilterMask = 0;
 
     /// @note FBX の従属アセット (Foo/materials/*.mat 等) は Foo/ フォルダ自体が非表示で、
-    ///       原本 .fbx を展開したときだけサブアセットとして並ぶ。親を特定して展開しておく。
+    /// @note 原本 .fbx を展開したときだけサブアセットとして並ぶ。親を特定して展開しておく。
     std::string navigateDir = DirectoryOfPath(absolute);
     for (std::filesystem::path dir = util::FileSystem::PathFromUtf8(navigateDir);
          !dir.empty() && dir.has_parent_path() && dir != dir.parent_path();
@@ -287,7 +287,7 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
     /// @note 展開状態を反映した一覧に組み直す
     RefreshDirectory();
     /// @note RefreshDirectory は「フォルダを移動したら先頭へ戻す」ため m_resetScroll を立てる。
-    ///       Reveal は逆に対象タイルの位置までスクロールさせたいので、その要求だけ取り下げる。
+    /// @note Reveal は逆に対象タイルの位置までスクロールさせたいので、その要求だけ取り下げる。
     m_resetScroll = false;
 
     m_selectedPaths.clear();
@@ -493,8 +493,8 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
     /// @note Header Tool、FBX importer、Shader compiler が生成する派生ファイルを隠し、原本の .hpp / .fbx / .hlsl だけを操作対象にする。
     static constexpr const char* kGeneratedSuffixes[] = {
         ".generated.hpp",
-        ".meta",  ///< インポート設定サイドカー。元画像を第一級アセットとして扱うため非表示にする
-        ".fzasset",  ///< .anim は新パイプラインで第一級アセットになったため非表示から除外
+        ".meta",  /// @note インポート設定サイドカー。元画像を第一級アセットとして扱うため非表示にする
+        ".fzasset",  /// @note .anim は新パイプラインで第一級アセットになったため非表示から除外
         ".mesh",
         ".skel",
         ".cso",
@@ -814,4 +814,4 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
     return cached.items;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -22,8 +22,10 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/Localization.hpp>
+#include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
@@ -106,7 +108,7 @@ void DrawSceneEnvironment(EditorContext& ctx)
         changed |= ImGui::DragFloat(LOC("Turbulence [m/s]"), &environment.turbulence, 0.01f, 0.0f, 100.0f);
         changed |= ImGui::DragFloat(LOC("Pulse Frequency"), &environment.pulseFrequency, 0.01f, 0.0f, 20.0f);
     }
-    /// @note @note Undo は通していない。シーン設定は «1 フレーム前へ戻す» 対象が
+    /// @note Undo は通していない。シーン設定は «1 フレーム前へ戻す» 対象が
     /// @note        GameObject コマンドと混ざると履歴の粒度が合わないため、保存でだけ拾う。
     if (changed && ctx.markSceneDirty) ctx.markSceneDirty();
 }
@@ -385,8 +387,22 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     /// @note プレファブインスタンスには出所プレファブ名と Apply / Revert ボタンを表示する
     /// @note        (Unity の Inspector ヘッダーと同等の UX)。同期操作へ素早くアクセスできるようにする。
     if (!go->prefabAssetPath.empty() && ctx.activeScene) {
-        const std::string displayName =
-            util::FileSystem::GetFilename(go->prefabAssetPath);
+        const std::string diskPath = ToProjectAssetDiskPath(ctx.projectRoot, go->prefabAssetPath);
+        const std::string pathHint = asset::AssetDatabase::HintFromRef(go->prefabAssetPath);
+        const std::string displayPath = !diskPath.empty() ? diskPath
+            : (!pathHint.empty() ? pathHint : (asset::AssetDatabase::IsGuidRef(go->prefabAssetPath)
+                ? "Missing Prefab" : go->prefabAssetPath));
+        const std::string displayName = util::FileSystem::GetFilename(displayPath);
+        const auto revertWithUndo = [&](const PrefabOverrideSet* kept = nullptr) {
+            const scene::EntityID entity = go->GetID();
+            bool reverted = false;
+            ExecuteSceneEditWithUndo(ctx, "Revert Prefab", [&] {
+                std::vector<scene::EntityID> roots;
+                reverted = PrefabSerializer::Revert(*ctx.activeScene, entity, roots, ctx.projectRoot, kept);
+                if (reverted && !roots.empty()) SelectEntities(ctx, roots, SelectionReveal::Skip);
+            });
+            return reverted;
+        };
 
         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Accent));
         ImGui::TextUnformatted(("Prefab: " + displayName).c_str());
@@ -420,10 +436,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
         ImGui::SameLine();
         if (ImGui::SmallButton("Revert")) {
-            std::vector<scene::EntityID> newRoots;
-            if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(), newRoots, ctx.projectRoot)) {
-                if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
-                if (ctx.markSceneDirty) ctx.markSceneDirty();
+            if (revertWithUndo()) {
                 /// @note 古い GO を描画し続けないよう早期リターン
                 return;
             }
@@ -437,10 +450,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             char selectLabel[64];
             std::snprintf(selectLabel, sizeof(selectLabel), "Select All (%d)", instanceCount);
             if (ImGui::SmallButton(selectLabel)) {
-                const std::string prefabPath = go->prefabAssetPath;
+                const std::string prefabPath = scene::PrefabAssetKey(go->prefabAssetPath);
                 std::vector<scene::EntityID> instances;
                 for (auto& candidate : ctx.activeScene->GameObjects())
-                    if (candidate.prefabAssetPath == prefabPath)
+                    if (scene::PrefabAssetKey(candidate.prefabAssetPath) == prefabPath)
                         instances.push_back(candidate.GetID());
                 if (!instances.empty()) SelectEntities(ctx, instances, SelectionReveal::Skip);
                 /// @note 選択が複数になったので、この後の単体 Inspector は描かない
@@ -456,6 +469,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         {
             struct OverrideCache {
                 std::string       guid;
+                std::string       sourceSnapshot;
                 std::size_t       undoRevision = static_cast<std::size_t>(-1);
                 PrefabOverrideSet set;
                 bool              valid = false;
@@ -464,8 +478,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
             const std::size_t revision =
                 ctx.undoStack ? ctx.undoStack->GetRevision() : 0;
-            if (cache.guid != go->instanceId || cache.undoRevision != revision) {
+            if (cache.guid != go->instanceId || cache.sourceSnapshot != go->prefabSourceSnapshot
+                || cache.undoRevision != revision) {
                 cache.guid         = go->instanceId;
+                cache.sourceSnapshot = go->prefabSourceSnapshot;
                 cache.undoRevision = revision;
                 cache.valid = ComputePrefabOverrides(*ctx.activeScene, go->GetID(),
                                                      ctx.projectRoot, cache.set);
@@ -475,25 +491,33 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
             const int overrideCount = static_cast<int>(cache.set.entries.size());
             char overridesLabel[64];
             std::snprintf(overridesLabel, sizeof(overridesLabel),
-                          "Overrides (%d)", overrideCount);
+                          cache.set.hasStructuralOverrides ? "Overrides (%d + hierarchy)" : "Overrides (%d)",
+                          overrideCount);
 
-            if (overrideCount > 0)
+            const bool hasOverrides = overrideCount > 0 || cache.set.hasStructuralOverrides;
+            if (hasOverrides)
                 ImGui::PushStyleColor(ImGuiCol_Button,
                                       EditorTheme::Color(ThemeColor::AccentSoft));
             if (ImGui::SmallButton(overridesLabel))
                 ImGui::OpenPopup("##prefab_overrides");
-            if (overrideCount > 0) ImGui::PopStyleColor();
+            if (hasOverrides) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(overrideCount > 0
+                ImGui::SetTooltip(cache.set.hasStructuralOverrides
+                    ? "Hierarchy changes are preserved. Automatic prefab updates are paused for this instance."
+                    : (overrideCount > 0
                     ? "Properties on this instance that differ from the prefab asset"
-                    : "This instance matches the prefab asset");
+                    : "This instance matches the prefab asset"));
 
             if (ImGui::BeginPopup("##prefab_overrides")) {
                 if (!cache.valid) {
                     ImGui::TextDisabled("Could not read the prefab asset.");
-                } else if (cache.set.entries.empty()) {
+                } else if (cache.set.entries.empty() && !cache.set.hasStructuralOverrides) {
                     ImGui::TextDisabled("No overrides — this instance matches the asset.");
                 } else {
+                    if (cache.set.hasStructuralOverrides) {
+                        ImGui::TextWrapped("Hierarchy changes are preserved. Automatic prefab updates are paused for this instance.");
+                        ImGui::Separator();
+                    }
                     ImGui::TextDisabled("%d overridden propert%s",
                                         overrideCount, overrideCount == 1 ? "y" : "ies");
                     ImGui::Separator();
@@ -532,7 +556,9 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                             ImGui::TextUnformatted(entry.instanceValue.c_str());
 
                             ImGui::TableSetColumnIndex(3);
+                            ImGui::BeginDisabled(cache.set.hasStructuralOverrides);
                             if (ImGui::SmallButton("Revert")) revertRequest = &entry;
+                            ImGui::EndDisabled();
 
                             ImGui::PopID();
                         }
@@ -541,11 +567,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
                     ImGui::Separator();
                     if (ImGui::Button("Revert All")) {
-                        std::vector<scene::EntityID> newRoots;
-                        if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(),
-                                                     newRoots, ctx.projectRoot)) {
-                            if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
-                            if (ctx.markSceneDirty) ctx.markSceneDirty();
+                        if (revertWithUndo()) {
                             cache.valid = false;
                             cache.guid.clear();
                             ImGui::EndPopup();
@@ -572,11 +594,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                     /// @note        編集して展開し直せば経路が 1 本で済む。
                     if (revertRequest) {
                         const PrefabOverrideSet kept = WithoutEntry(cache.set, *revertRequest);
-                        std::vector<scene::EntityID> newRoots;
-                        if (PrefabSerializer::Revert(*ctx.activeScene, go->GetID(),
-                                                     newRoots, ctx.projectRoot, &kept)) {
-                            if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
-                            if (ctx.markSceneDirty) ctx.markSceneDirty();
+                        if (revertWithUndo(&kept)) {
                             cache.guid.clear();
                             ImGui::EndPopup();
                             return;

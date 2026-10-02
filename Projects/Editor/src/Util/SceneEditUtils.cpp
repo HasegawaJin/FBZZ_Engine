@@ -45,6 +45,8 @@ scene::EntityID CopyHierarchyToSceneRecursive(const scene::Scene& srcScene,
     dst.tag             = src.tag;
     dst.layer           = src.layer;
     dst.prefabAssetPath = src.prefabAssetPath;
+    dst.prefabSourceId = src.prefabSourceId;
+    dst.prefabSourceSnapshot = src.prefabSourceSnapshot;
     dst.transform       = src.transform;
     dstScene.CopyComponentsFrom(srcScene, src.GetID(), dst.GetID());
 
@@ -76,7 +78,7 @@ scene::EntityID FindUICanvasByGuid(scene::Scene& targetScene, const std::string&
     return canvas->GetID();
 }
 
-} // namespace
+} /// @note namespace
 
 std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
                                                const char* description,
@@ -153,6 +155,8 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
     dst.tag       = src->tag;
     dst.layer     = src->layer;
     dst.prefabAssetPath = src->prefabAssetPath;
+    dst.prefabSourceId = src->prefabSourceId;
+    dst.prefabSourceSnapshot = src->prefabSourceSnapshot;
     dst.transform = src->transform;
     ctx.activeScene->DuplicateComponents(srcId, dst.GetID());
     ctx.editorSceneState.CopyComponentOrder(src->instanceId, dst.instanceId);
@@ -219,7 +223,7 @@ std::unique_ptr<ICommand> MakeRenameNodeCommand(EditorContext& ctx,
     if (go == nullptr || go->name == newName) return nullptr;
 
     /// @note ポインタではなく EntityID を捕捉して毎回引き直す。Undo/Redo の途中でシーンが差し替わっても
-    ///       対象を取り違えず、解放後参照にもならない。
+    /// @note 対象を取り違えず、解放後参照にもならない。
     scene::Scene* scene = ctx.activeScene;
     const auto markDirty = ctx.markSceneDirty;
     const std::string oldName = go->name;
@@ -294,7 +298,7 @@ void PasteClipboardWithUndo(EditorContext& ctx, scene::EntityID parentId)
 
 namespace {
 
-/// 2 つの球を包含する最小球へ球 0 を拡張する
+/// @note 2 つの球を包含する最小球へ球 0 を拡張する
 void MergeSpheres(math::Vector3& c0, float& r0, const math::Vector3& c1, float r1)
 {
     const math::Vector3 d = { c1.x - c0.x, c1.y - c0.y, c1.z - c0.z };
@@ -309,7 +313,7 @@ void MergeSpheres(math::Vector3& c0, float& r0, const math::Vector3& c1, float r
     r0 = newR;
 }
 
-} // namespace
+} /// @note namespace
 
 void ComputeGameObjectBounds(scene::GameObject& go,
                              math::Vector3& outCenter,
@@ -339,8 +343,8 @@ void ComputeGameObjectBounds(scene::GameObject& go,
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
         /// @note この Renderer が描く submesh の境界球を合成する (フレーム選択の範囲)。
-        ///       非表示スロットの submesh は描画されないので境界にも含めない。
-        ///       i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
+        /// @note 非表示スロットの submesh は描画されないので境界にも含めない。
+        /// @note i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
         const auto* mat = go.GetComponent<scene::MaterialComponent>();
         for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
             const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
@@ -379,4 +383,4 @@ bool ComputeSelectionBounds(EditorContext& ctx,
     return true;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -5,6 +5,8 @@
 #include <Editor/Util/PrefabOverrides.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/SceneIO.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -20,19 +22,17 @@ namespace fbzz::editor {
 namespace {
 
 /// @brief 差分の対象外にするキー。
-/// @note インスタンス化のたびに作り替えられる値 (instanceId 系の採番、name の UniqueName 化、
-///       prefab へのリンク情報、末尾が "Guid" の各種参照) を除く。含めると全インスタンスが
-///       常に override だらけになり一覧が意味を失う。
+/// @note 識別子と出所メタデータは差分から除き、内部参照はソース ID へ正規化して比較する。
 bool IsIdentityKey(std::string_view key)
 {
     static constexpr std::string_view kExcluded[] = {
         "instanceId", "parentInstanceId", "name", "parent",
-        "prefabAssetPath", "prefabSourceId"
+        "prefabAssetPath", "prefabSourceId", "prefabSourceSnapshot"
     };
     for (std::string_view e : kExcluded)
         if (key == e) return true;
 
-    return key.size() > 4 && key.substr(key.size() - 4) == "Guid";
+    return false;
 }
 
 std::string JoinPath(const std::string& prefix, std::string_view key)
@@ -41,9 +41,6 @@ std::string JoinPath(const std::string& prefix, std::string_view key)
     return prefix + "." + std::string(key);
 }
 
-/// @brief 2 つの node を「値として同じか」で比べる。
-/// @note toml++ の node に汎用の等値比較が無いため、シリアライズ表現を突き合わせる。
-///       差分検出のたびに走るが対象は 1 プロパティぶんの小さな node なのでコストは問題ない。
 std::string NodeToString(const toml::node& node)
 {
     std::ostringstream ss;
@@ -51,13 +48,39 @@ std::string NodeToString(const toml::node& node)
     return ss.str();
 }
 
+/// @note 比較用コピーだけの表示ヒントを除き、サブアセットを含む GUID 本体は保持する。
+void RemoveAssetReferenceHints(toml::node& node)
+{
+    if (auto* value = node.as_string()) {
+        std::string& ref = value->get();
+        if (asset::AssetDatabase::IsGuidRef(ref)) {
+            const std::size_t hint = ref.find(asset::AssetDatabase::kRefHintSeparator);
+            if (hint != std::string::npos) ref.resize(hint);
+        }
+    } else if (auto* table = node.as_table()) {
+        for (auto& [key, value] : *table) RemoveAssetReferenceHints(value);
+    } else if (auto* array = node.as_array()) {
+        for (auto& value : *array) RemoveAssetReferenceHints(value);
+    }
+}
+
+/// @note 旧パスと GUID 表記を同一視する。差分パッチや Inspector の表示値は変更しない。
+std::string ComparisonNodeToString(const toml::node& node)
+{
+    toml::table copy;
+    node.visit([&](const auto& value) { copy.insert("value", value); });
+    asset::EncodeGuidRefs(copy);
+    RemoveAssetReferenceHints(copy);
+    return NodeToString(*copy.get("value"));
+}
+
 bool NodesEqual(const toml::node& lhs, const toml::node& rhs)
 {
     if (lhs.type() != rhs.type()) return false;
-    return NodeToString(lhs) == NodeToString(rhs);
+    return ComparisonNodeToString(lhs) == ComparisonNodeToString(rhs);
 }
 
-/// prefabTable と instanceTable を再帰的に比べ、差分を entries へ積む。
+/// @note prefabTable と instanceTable を再帰的に比べ、差分を entries へ積む。
 void DiffTables(const toml::table& prefabTable,
                 const toml::table& instanceTable,
                 const std::string& pathPrefix,
@@ -110,7 +133,7 @@ void DiffTables(const toml::table& prefabTable,
     }
 }
 
-/// rootEntity 以下の GO を GUID で集める。
+/// @note rootEntity 以下の GO を GUID で集める。
 void CollectHierarchyGuids(scene::GameObject& go, std::unordered_set<std::string>& out)
 {
     if (!go.instanceId.empty()) out.insert(go.instanceId);
@@ -119,7 +142,30 @@ void CollectHierarchyGuids(scene::GameObject& go, std::unordered_set<std::string
             CollectHierarchyGuids(*child, out);
 }
 
-} // namespace
+/// @note 一意化された表示名を個別変更と誤認しないよう、内部参照の名前ヒントもソースへ戻す。
+void NormalizeReferenceNames(toml::table& object,
+    const std::unordered_map<std::string, const toml::table*>& sources)
+{
+    const auto normalize = [&](toml::table& table, const char* guidKey, const char* nameKey) {
+        const std::string sourceId = table[guidKey].value_or(std::string{});
+        const auto source = sources.find(sourceId);
+        if (source != sources.end() && table.contains(nameKey))
+            table.insert_or_assign(nameKey, (*source->second)["name"].value_or(std::string{}));
+    };
+    if (auto* ik = object["IKSolverComponent"].as_table())
+        if (auto* chains = (*ik)["chains"].as_array())
+            for (auto& item : *chains)
+                if (auto* chain = item.as_table()) {
+                    normalize(*chain, "targetGuid", "targetName");
+                    normalize(*chain, "poleGuid", "poleName");
+                }
+    if (auto* bone = object["BoneComponent"].as_table())
+        normalize(*bone, "skinnedMeshOwnerGuid", "skinnedMeshOwner");
+    if (auto* skin = object["SkinnedMeshRenderer"].as_table())
+        normalize(*skin, "skeletonRootGuid", "skeletonRootName");
+}
+
+} /// @note namespace
 
 std::string FormatNodeForDisplay(const toml::node* node)
 {
@@ -158,8 +204,8 @@ bool ComputePrefabOverrides(scene::Scene& scene,
 
     /// @name プレファブ定義を読む
     const std::string diskPath = ToProjectAssetDiskPath(projectRoot, root->prefabAssetPath);
-    std::string prefabText;
-    if (!util::FileSystem::ReadText(diskPath, prefabText)) return false;
+    std::string prefabText = root->prefabSourceSnapshot;
+    if (prefabText.empty() && !util::FileSystem::ReadText(diskPath, prefabText)) return false;
 
     toml::parse_result prefabParsed = toml::parse(prefabText);
     if (!prefabParsed) return false;
@@ -175,9 +221,38 @@ bool ComputePrefabOverrides(scene::Scene& scene,
     }
     if (prefabById.empty()) return false;
 
+    std::unordered_map<std::string, std::string> sourceByName;
+    for (const auto& [id, table] : prefabById)
+        sourceByName.emplace((*table)["name"].value_or(std::string{}), id);
+    std::unordered_map<std::string, std::string> sourceParents;
+    for (const auto& [id, table] : prefabById) {
+        std::string parent = (*table)["parentInstanceId"].value_or(std::string{});
+        if (parent.empty()) {
+            const std::string parentName = (*table)["parent"].value_or(std::string{});
+            const auto byName = sourceByName.find(parentName);
+            if (!parentName.empty() && byName != sourceByName.end()) parent = byName->second;
+        }
+        sourceParents.emplace(id, std::move(parent));
+    }
+    /// @note 複数ルートのアセットでも、このルート由来の構造だけを比較する。
+    std::unordered_set<std::string> expectedSources;
+    if (prefabById.contains(root->prefabSourceId))
+        expectedSources.insert(root->prefabSourceId);
+    else
+        out.hasStructuralOverrides = true;
+    bool expanded = true;
+    while (expanded) {
+        expanded = false;
+        for (const auto& [id, parent] : sourceParents)
+            if (!expectedSources.contains(id) && expectedSources.contains(parent)) {
+                expectedSources.insert(id);
+                expanded = true;
+            }
+    }
+
     /// @name インスタンス側の現在状態をシリアライズして拾う
     /// @note ランタイム構造体を直接比べず、保存されるのと同じ表現で比べる。
-    ///       Save したら消える差分を override として出さないため。
+    /// @note Save したら消える差分を override として出さないため。
     std::unordered_set<std::string> hierarchyGuids;
     CollectHierarchyGuids(*root, hierarchyGuids);
 
@@ -189,6 +264,15 @@ bool ComputePrefabOverrides(scene::Scene& scene,
     auto* sceneObjects = sceneParsed.table()["gameobjects"].as_array();
     if (!sceneObjects) return false;
 
+    std::unordered_map<std::string, std::string> instanceToSource;
+    for (const auto& item : *sceneObjects) {
+        const auto* table = item.as_table();
+        if (!table) continue;
+        const std::string guid = (*table)["instanceId"].value_or(std::string{});
+        const std::string source = (*table)["prefabSourceId"].value_or(std::string{});
+        if (hierarchyGuids.contains(guid) && !source.empty()) instanceToSource.emplace(guid, source);
+    }
+    std::unordered_set<std::string> actualSources;
     for (const auto& item : *sceneObjects) {
         const auto* tbl = item.as_table();
         if (!tbl) continue;
@@ -197,17 +281,28 @@ bool ComputePrefabOverrides(scene::Scene& scene,
         if (instanceGuid.empty() || !hierarchyGuids.contains(instanceGuid)) continue;
 
         const std::string sourceId = (*tbl)["prefabSourceId"].value_or(std::string{});
-        /// @note 旧アセット由来 / 手で足した子は対応先が無い
+        if (sourceId.empty() || !expectedSources.contains(sourceId) || !actualSources.insert(sourceId).second)
+            out.hasStructuralOverrides = true;
         if (sourceId.empty()) continue;
-
         const auto found = prefabById.find(sourceId);
         if (found == prefabById.end()) continue;
+        /// @note ルートの配置先はインスタンス固有のため、子の親だけを比較する。
+        if (instanceGuid != root->instanceId) {
+            const std::string parentGuid = (*tbl)["parentInstanceId"].value_or(std::string{});
+            const auto parent = instanceToSource.find(parentGuid);
+            const std::string parentSource = parent == instanceToSource.end() ? std::string{} : parent->second;
+            if (parentSource != sourceParents.at(sourceId)) out.hasStructuralOverrides = true;
+        }
 
         const std::string objectName = (*tbl)["name"].value_or(std::string{"GameObject"});
-        out.instanceTables.emplace(sourceId, *tbl);
-        DiffTables(*found->second, *tbl, {}, sourceId, instanceGuid, objectName, out.entries);
+        toml::table normalized = *tbl;
+        scene::RemapPrefabObjectReferences(normalized, instanceToSource);
+        NormalizeReferenceNames(normalized, prefabById);
+        out.instanceTables.emplace(sourceId, normalized);
+        DiffTables(*found->second, normalized, {}, sourceId, instanceGuid, objectName, out.entries);
     }
 
+    if (actualSources != expectedSources) out.hasStructuralOverrides = true;
     return true;
 }
 
@@ -216,6 +311,7 @@ PrefabOverrideSet WithoutEntry(const PrefabOverrideSet& set, const PrefabOverrid
     PrefabOverrideSet result;
     result.prefabAssetPath = set.prefabAssetPath;
     result.instanceTables  = set.instanceTables;
+    result.hasStructuralOverrides = set.hasStructuralOverrides;
     for (const PrefabOverride& e : set.entries) {
         if (e.prefabSourceId == removed.prefabSourceId && e.path == removed.path) continue;
         result.entries.push_back(e);
@@ -223,4 +319,4 @@ PrefabOverrideSet WithoutEntry(const PrefabOverrideSet& set, const PrefabOverrid
     return result;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

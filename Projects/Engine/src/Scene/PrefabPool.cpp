@@ -5,7 +5,9 @@
 #include <Engine/Scene/PrefabPool.hpp>
 
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/PrefabInstantiate.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -18,13 +20,13 @@
 namespace fbzz::scene {
 namespace {
 
-/// prefabAssetPath → 待機中インスタンスと貸し出し中インスタンス。
+/// @note prefabAssetPath → 待機中インスタンスと貸し出し中インスタンス。
 /// @note エディタは編集用 Scene とプレイ用 Scene を同時に持ち得るため Scene* で分ける。
-///       待機列を共有すると片方の Scene の EntityID をもう片方で引いてしまう。
+/// @note 待機列を共有すると片方の Scene の EntityID をもう片方で引いてしまう。
 struct Bucket {
-    /// 待機列。末尾から貸し出す (一番最近返ってきたものが一番キャッシュに乗っている)。
+    /// @note 待機列。末尾から貸し出す (一番最近返ってきたものが一番キャッシュに乗っている)。
     std::vector<EntityID> idle;
-    /// 貸し出し中。先頭が最古。追い出しはここの先頭から取る。
+    /// @note 貸し出し中。先頭が最古。追い出しはここの先頭から取る。
     std::vector<EntityID> live;
 };
 using Buckets = std::unordered_map<std::string, Bucket>;
@@ -35,9 +37,9 @@ std::unordered_map<const Scene*, Buckets>& Pools()
     return s_pools;
 }
 
-/// 同時数の上限。Scene ではなくプレファブのパスで持つ。
+/// @note 同時数の上限。Scene ではなくプレファブのパスで持つ。
 /// @note 上限は «この演出は何発まで重なってよいか» というプレファブ側の性質で、シーンを
-///       開き直すたびに設定し直すものではない。
+/// @note 開き直すたびに設定し直すものではない。
 std::unordered_map<std::string, int>& Limits()
 {
     static std::unordered_map<std::string, int> s_limits;
@@ -46,7 +48,7 @@ std::unordered_map<std::string, int>& Limits()
 
 int LimitOf(const std::string& prefabPath)
 {
-    const auto it = Limits().find(prefabPath);
+    const auto it = Limits().find(PrefabAssetKey(prefabPath));
     return it == Limits().end() ? 0 : it->second;
 }
 
@@ -59,9 +61,9 @@ void EraseLive(Bucket& bucket, EntityID id)
     }
 }
 
-/// GO とその子孫すべての Script へ通知する。
+/// @note GO とその子孫すべての Script へ通知する。
 /// @note 弾のプレファブは «ルート = 挙動スクリプト、子 = エフェクト/コライダー» という構成が
-///       普通で、リセットが必要な状態は子側にもある。
+/// @note 普通で、リセットが必要な状態は子側にもある。
 void NotifyScripts(Scene& scene, GameObject& gameObject, bool spawned)
 {
     if (auto* sc = gameObject.GetComponent<ScriptComponent>()) {
@@ -76,11 +78,11 @@ void NotifyScripts(Scene& scene, GameObject& gameObject, bool spawned)
             }
             script->ExecuteCallback(&Script::OnDespawn, "OnDespawn");
             /// @note 待機中の «時間で起きる仕事» は前の一生のもの。枠は非アクティブになるだけで
-            ///       Script は生き続け、Invoke もコルーチンも «一時停止» のまま残るため、畳まないと
-            ///       次に貸し出された実体で前の演出の続きが動き出す。
+            /// @note Script は生き続け、Invoke もコルーチンも «一時停止» のまま残るため、畳まないと
+            /// @note 次に貸し出された実体で前の演出の続きが動き出す。
             /// @note ResetLifecycleState は使わない。あちらは購読も畳むが、購読は OnAwake / OnStart
-            ///       で張るのが普通で再利用では再発火しないため、外すとその実体は二度とイベントを
-            ///       受け取れなくなる。
+            /// @note で張るのが普通で再利用では再発火しないため、外すとその実体は二度とイベントを
+            /// @note 受け取れなくなる。
             script->CancelInvoke();
             script->StopAllCoroutines();
         }
@@ -93,7 +95,7 @@ void NotifyScripts(Scene& scene, GameObject& gameObject, bool spawned)
     }
 }
 
-/// プレファブから 1 体作り、ルート GameObject を返す。
+/// @note プレファブから 1 体作り、ルート GameObject を返す。
 GameObject* InstantiateRoot(Scene& scene, const std::string& prefabPath)
 {
     std::vector<EntityID> roots;
@@ -104,7 +106,7 @@ GameObject* InstantiateRoot(Scene& scene, const std::string& prefabPath)
     return scene.GetGameObject(roots.front());
 }
 
-} // namespace
+} /// @note namespace
 
 GameObject* PrefabPool::Spawn(Scene& scene,
                               const std::string& prefabPath,
@@ -112,10 +114,11 @@ GameObject* PrefabPool::Spawn(Scene& scene,
                               math::Quaternion rotation)
 {
     if (prefabPath.empty()) return nullptr;
+    const std::string prefabKey = PrefabAssetKey(prefabPath);
 
     GameObject* instance = nullptr;
 
-    auto& bucket = Pools()[&scene][prefabPath];
+    auto& bucket = Pools()[&scene][prefabKey];
     while (!bucket.idle.empty()) {
         const EntityID id = bucket.idle.back();
         bucket.idle.pop_back();
@@ -127,8 +130,8 @@ GameObject* PrefabPool::Spawn(Scene& scene,
     }
 
     /// @note 待機列が空で、かつ上限に達しているなら «最古の 1 発» を畳んで奪う。
-    ///       生存確認で落ちた枠は数に含めない (数えているのは実体ではなく ID なので、
-    ///       ここで詰めないと «居ない枠» が上限を食い続ける)。
+    /// @note 生存確認で落ちた枠は数に含めない (数えているのは実体ではなく ID なので、
+    /// @note ここで詰めないと «居ない枠» が上限を食い続ける)。
     const int limit = LimitOf(prefabPath);
     while (!instance && limit > 0 && static_cast<int>(bucket.live.size()) >= limit) {
         const EntityID oldest = bucket.live.front();
@@ -136,8 +139,8 @@ GameObject* PrefabPool::Spawn(Scene& scene,
         GameObject* victim = scene.GetGameObject(oldest);
         if (!victim) continue;
         /// @note 追い出しも «返却» と同じ手順を通す。OnDespawn を飛ばすと、前の一生の
-        ///       Invoke やコルーチンが次の貸し出し先で動き出す。
-        NotifyScripts(scene, *victim, /*spawned=*/false);
+        /// @note Invoke やコルーチンが次の貸し出し先で動き出す。
+        NotifyScripts(scene, *victim, false);
         victim->SetActive(false);
         instance = victim;
     }
@@ -146,18 +149,19 @@ GameObject* PrefabPool::Spawn(Scene& scene,
         instance = InstantiateRoot(scene, prefabPath);
         if (!instance) return nullptr;
         /// @note Instantiate 経由なら prefabAssetPath は書かれているはずだが、
-        ///       Despawn の鍵になる値なので念のため保証しておく。
+        /// @note Despawn の鍵になる値なので念のため保証しておく。
         if (instance->prefabAssetPath.empty())
-            instance->prefabAssetPath = prefabPath;
+            instance->prefabAssetPath = CanonicalPrefabAssetRef(prefabPath);
     }
 
     instance->transform.position = position;
     instance->transform.rotation = rotation;
+    FlushWorldTransforms(*instance);
     instance->SetActive(true);
-    NotifyScripts(scene, *instance, /*spawned=*/true);
+    NotifyScripts(scene, *instance, true);
     /// @note bucket への参照はここで取り直す。OnSpawn の中で別のプレファブが Spawn されると
-    ///       バケットの連想配列が rehash され、上で掴んだ参照が無効になる。
-    Bucket& liveBucket = Pools()[&scene][prefabPath];
+    /// @note バケットの連想配列が rehash され、上で掴んだ参照が無効になる。
+    Bucket& liveBucket = Pools()[&scene][prefabKey];
     EraseLive(liveBucket, instance->GetID());
     liveBucket.live.push_back(instance->GetID());
     return instance;
@@ -165,10 +169,10 @@ GameObject* PrefabPool::Spawn(Scene& scene,
 
 bool PrefabPool::Despawn(Scene& scene, GameObject& gameObject)
 {
-    const std::string prefabPath = gameObject.prefabAssetPath;
+    const std::string prefabPath = PrefabAssetKey(gameObject.prefabAssetPath);
     if (prefabPath.empty()) return false;
 
-    NotifyScripts(scene, gameObject, /*spawned=*/false);
+    NotifyScripts(scene, gameObject, false);
     gameObject.SetActive(false);
 
     auto& bucket = Pools()[&scene][prefabPath];
@@ -185,11 +189,12 @@ bool PrefabPool::Despawn(Scene& scene, GameObject& gameObject)
 int PrefabPool::Prewarm(Scene& scene, const std::string& prefabPath, int count)
 {
     if (prefabPath.empty() || count <= 0) return 0;
+    const std::string prefabKey = PrefabAssetKey(prefabPath);
 
     /// @note 上限を超えて温めても、貸し出された瞬間に追い出される枠が増えるだけ。
     const int limit = LimitOf(prefabPath);
     if (limit > 0) {
-        const Bucket& bucket = Pools()[&scene][prefabPath];
+        const Bucket& bucket = Pools()[&scene][prefabKey];
         const int held = static_cast<int>(bucket.idle.size() + bucket.live.size());
         count = (std::min)(count, limit - held);
         if (count <= 0) return 0;
@@ -200,10 +205,10 @@ int PrefabPool::Prewarm(Scene& scene, const std::string& prefabPath, int count)
         GameObject* instance = InstantiateRoot(scene, prefabPath);
         if (!instance) break;
         if (instance->prefabAssetPath.empty())
-            instance->prefabAssetPath = prefabPath;
+            instance->prefabAssetPath = CanonicalPrefabAssetRef(prefabPath);
         /// @note OnSpawn を通さずに直接待機列へ入れる (まだ「出していない」ため)。
         instance->SetActive(false);
-        Pools()[&scene][prefabPath].idle.push_back(instance->GetID());
+        Pools()[&scene][prefabKey].idle.push_back(instance->GetID());
         ++created;
     }
     return created;
@@ -212,11 +217,12 @@ int PrefabPool::Prewarm(Scene& scene, const std::string& prefabPath, int count)
 void PrefabPool::SetLimit(const std::string& prefabPath, int maxLive)
 {
     if (prefabPath.empty()) return;
+    const std::string prefabKey = PrefabAssetKey(prefabPath);
     if (maxLive <= 0) {
-        Limits().erase(prefabPath);
+        Limits().erase(prefabKey);
         return;
     }
-    Limits()[prefabPath] = maxLive;
+    Limits()[prefabKey] = maxLive;
 }
 
 int PrefabPool::GetLimit(const std::string& prefabPath)
@@ -228,7 +234,7 @@ size_t PrefabPool::AvailableCount(const Scene& scene, const std::string& prefabP
 {
     const auto sceneIt = Pools().find(&scene);
     if (sceneIt == Pools().end()) return 0;
-    const auto bucketIt = sceneIt->second.find(prefabPath);
+    const auto bucketIt = sceneIt->second.find(PrefabAssetKey(prefabPath));
     return bucketIt == sceneIt->second.end() ? 0 : bucketIt->second.idle.size();
 }
 
@@ -236,7 +242,7 @@ size_t PrefabPool::LiveCount(const Scene& scene, const std::string& prefabPath)
 {
     const auto sceneIt = Pools().find(&scene);
     if (sceneIt == Pools().end()) return 0;
-    const auto bucketIt = sceneIt->second.find(prefabPath);
+    const auto bucketIt = sceneIt->second.find(PrefabAssetKey(prefabPath));
     return bucketIt == sceneIt->second.end() ? 0 : bucketIt->second.live.size();
 }
 
@@ -251,4 +257,4 @@ void PrefabPool::ClearAll()
     Limits().clear();
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

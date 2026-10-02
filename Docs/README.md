@@ -96,6 +96,8 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | ファイル | 内容 |
 |---|---|
 | [vfx-prefab.md](design/vfx-prefab.md) | プレハブとしてのエフェクト (`.vfx`) |
+| [prefab-safety.md](design/prefab-safety.md) | GUID による出所・適用済み定義との差分・検証後の階層差し替え |
+| [script-transform-contract.md](design/script-transform-contract.md) | スクリプトのローカル / ワールド座標の書き込みと即時同期 |
 | [fluid-library.md](design/fluid-library.md) | Fluid の数式ライブラリと Engine 側の結合・実行の分離 |
 | [fluid-determinism.md](design/fluid-determinism.md) | 流体シミュレーションと素材生成の決定論 |
 | [flow-field.md](design/flow-field.md) | 媒質の速度を表す流れの場 |

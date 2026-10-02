@@ -148,6 +148,8 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/AssetStreamingTests.cpp
         Engine/Auto/SceneAssetReferencesTests.cpp
         Engine/Auto/ScriptTransformHierarchyTests.cpp
+        Engine/Auto/PrefabIdentityTests.cpp
+        Engine/Auto/PrefabReferenceRemapTests.cpp
         Engine/Auto/AssetPartialIoTests.cpp
         Engine/Auto/AssetStreamingIntegrationTests.cpp
         Engine/Auto/EventBusTests.cpp
@@ -289,6 +291,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/PlaytestJsonTests.cpp
     Editor/Auto/PlaytestRunnerTests.cpp
     Editor/Auto/PrefabOverrideTests.cpp
+    Editor/Auto/PrefabReferenceOverrideTests.cpp
     Editor/Auto/PrefabSaveTests.cpp
     Editor/Auto/SceneDirtyTrackerTests.cpp
     Editor/Auto/ScriptCodeGenTests.cpp
