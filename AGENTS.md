@@ -62,7 +62,7 @@ C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理�
 
 - Unity 同様の GameObject / Component。新システムは `ISystem` を継承し Phase / RunMode / ComponentAccess を宣言して `SystemScheduler` に登録
 - Phase 順: `PreScript → Script → PrePhysics → Physics(固定) → PostPhysics → Navigation → LateScript → Cleanup → LateUpdate`。描画と UI は Phase ではなく描画パスから駆動
-- `worldPosition` だけ書いても `PrePhysics` が local から組み直す。位置を置くときは `position` (ローカル) も書く
+- スクリプトの `transform.position` はローカル、`transform.worldPosition` はワールド。どちらの setter も local を正本に親と子孫の world を即時同期する。二重書き込みは不要。Engine 内で Transform のフィールドを直接書く場合は `FlushWorldTransforms` で同期する (`Docs/design/script-transform-contract.md`)
 - エディターの「操作」は `Editor/src/Op/` の登録簿へ 1 件足す。メニュー・ホットキー・パレット・AI バスはその投影なので面ごとに書かない
 
 ## スクリプト (`<Project>/Assets/Scripts/<領域>/XxxComponent.hpp`)

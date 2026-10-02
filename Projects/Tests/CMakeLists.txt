@@ -147,6 +147,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/PixCaptureTests.cpp
         Engine/Auto/AssetStreamingTests.cpp
         Engine/Auto/SceneAssetReferencesTests.cpp
+        Engine/Auto/ScriptTransformHierarchyTests.cpp
         Engine/Auto/AssetPartialIoTests.cpp
         Engine/Auto/AssetStreamingIntegrationTests.cpp
         Engine/Auto/EventBusTests.cpp

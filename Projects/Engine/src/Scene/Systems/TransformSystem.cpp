@@ -3,8 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// ルートから BFS で辿り、ローカル値からワールドの position / rotation を再計算する。
-/// 循環しない親子関係を前提にする。
+/// @note GameObject の親子関係は循環しないことを前提にする。
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Components/RigidBodyComponent.hpp"
@@ -12,6 +11,7 @@
 #include "Engine/Scene/Systems/GameplayComponentSystems.hpp"
 #include <cmath>
 #include <queue>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -38,11 +38,21 @@ static void UpdateWorldTransform(GameObject& go, const Transform* parentTransfor
     }
 }
 
+static void UpdateWorldTransformQueue(std::queue<GameObject*>& queue)
+{
+    while (!queue.empty()) {
+        GameObject* go = queue.front();
+        queue.pop();
+        const GameObject* parent = go->GetParent();
+        UpdateWorldTransform(*go, parent ? &parent->transform : nullptr);
+        for (int i = 0; i < go->GetChildCount(); ++i)
+            if (auto* child = go->GetChild(i)) queue.push(child);
+    }
+}
+
 static void ApplyPhysicsInterpolation(Scene& scene, float alpha)
 {
-    /// @note fixed step 後の確定 Transform を直接補間すると次の PhysicsSystem がテレポートと
-    ///       誤認するため、local 値は触らず world 値だけを描画用に更新する。次フレームの
-    ///       TransformPrePhysics が local → world を再計算し、Physics には補間前の確定姿勢が戻る。
+    /// @note 物理の確定姿勢を変更しないため、描画補間は world だけへ適用する。
     std::queue<GameObject*> queue;
     for (GameObject& go : scene.GameObjects())
         if (!go.GetParent())
@@ -95,35 +105,13 @@ ComponentAccess TransformSystem::GetAccess() const
 void TransformSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
-    /// @note ルート (親なし) から BFS で子孫を更新する
-    std::queue<GameObject*> queue;
-
-    for (GameObject& go : scene.GameObjects())
-        if (!go.GetParent())
-            queue.push(&go);
-
-    while (!queue.empty()) {
-        GameObject* go = queue.front();
-        queue.pop();
-
-        Transform* parentTf = nullptr;
-        if (auto* parent = go->GetParent())
-            parentTf = &parent->transform;
-
-        UpdateWorldTransform(*go, parentTf);
-
-        for (int i = 0; i < go->GetChildCount(); ++i)
-            if (auto* child = go->GetChild(i))
-                queue.push(child);
-    }
+    FlushWorldTransforms(scene);
 
     if (ctx.simulating && GetPhase() == Phase::LateUpdate)
         ApplyPhysicsInterpolation(scene, ctx.interpolationAlpha);
 
     if (ctx.simulating && GetPhase() == Phase::PrePhysics) {
-        /// @note 初回 fixed step より前にワールド姿勢で履歴を初期化する。FixedScript より後の
-        ///       PhysicsSystem で初期化すると、最初の OnFixedUpdate が RigidBody へ設定した
-        ///       姿勢を Scene の初期値で上書きしてしまう。
+        /// @note 最初の OnFixedUpdate が書いた姿勢を上書きしないよう、物理履歴は FixedScript より前に初期化する。
         for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
             GameObject* go = scene.GetGameObject(id);
             auto* rb = scene.GetComponent<RigidBodyComponent>(id);
@@ -139,28 +127,28 @@ void TransformSystem::Update(SystemContext& ctx)
 
 void FlushWorldTransforms(Scene& scene)
 {
-    /// @note スケジューラを経由しないため SystemContext は不要。
-    ///       BFS でルートから辿り、TransformSystem::Update と同じ計算を実行する。
     std::queue<GameObject*> queue;
-
     for (GameObject& go : scene.GameObjects())
-        if (!go.GetParent())
-            queue.push(&go);
+        if (!go.GetParent()) queue.push(&go);
+    UpdateWorldTransformQueue(queue);
+}
 
-    while (!queue.empty()) {
-        GameObject* go = queue.front();
-        queue.pop();
-
-        Transform* parentTf = nullptr;
-        if (auto* parent = go->GetParent())
-            parentTf = &parent->transform;
-
-        UpdateWorldTransform(*go, parentTf);
-
-        for (int i = 0; i < go->GetChildCount(); ++i)
-            if (auto* child = go->GetChild(i))
-                queue.push(child);
+void FlushWorldTransforms(GameObject& root)
+{
+    std::vector<GameObject*> ancestors;
+    for (GameObject* parent = root.GetParent(); parent; parent = parent->GetParent())
+        ancestors.push_back(parent);
+    for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
+        const GameObject* parent = (*it)->GetParent();
+        UpdateWorldTransform(**it, parent ? &parent->transform : nullptr);
     }
+    const GameObject* parent = root.GetParent();
+    UpdateWorldTransform(root, parent ? &parent->transform : nullptr);
+    if (root.GetChildCount() == 0) return;
+    std::queue<GameObject*> queue;
+    for (int i = 0; i < root.GetChildCount(); ++i)
+        if (auto* child = root.GetChild(i)) queue.push(child);
+    UpdateWorldTransformQueue(queue);
 }
 
 void SetWorldPose(GameObject& go,
@@ -168,8 +156,7 @@ void SetWorldPose(GameObject& go,
                   const math::Quaternion& worldRotation,
                   const math::Vector3& worldScale)
 {
-    /// @note 0 スケールの親で割らない。親が潰れている軸は local を 0 に倒し、
-    ///       「無限大が Transform に混ざって以降のフレームが全部 NaN になる」壊れ方を避ける。
+    /// @note 親のゼロスケール軸で除算せず、有限なローカル値へ倒す。
     const auto divideSafe = [](const math::Vector3& a, const math::Vector3& b) {
         return math::Vector3{
             std::abs(b.x) > 1e-6f ? a.x / b.x : 0.0f,
@@ -197,4 +184,4 @@ void SetWorldPose(GameObject& go,
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

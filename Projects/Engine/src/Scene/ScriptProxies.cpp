@@ -71,6 +71,7 @@
 #include <Engine/Scene/Systems/JointSync.hpp>
 #include <Engine/Scene/Systems/ColliderSync.hpp>
 #include <Engine/Scene/Systems/WaterSystem.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
@@ -236,7 +237,7 @@ RaycastHit ToScriptHit(Scene* scene, const physics::World::RaycastHit& worldHit)
     return hit;
 }
 
-} // namespace
+} /// @note namespace
 
 bool ScriptMemoryProxy::InitializeFrame(std::size_t capacity) const
 {
@@ -385,7 +386,10 @@ math::Vector3 ScriptTransformProxy::_GetPos() const
 }
 void ScriptTransformProxy::_SetPos(const math::Vector3& v)
 {
-    if (auto* t = Get()) t->position = v;
+    if (auto* t = Get()) {
+        t->position = v;
+        FlushWorldTransforms(*script->m_gameObject);
+    }
 }
 math::Quaternion ScriptTransformProxy::_GetRot() const
 {
@@ -393,7 +397,10 @@ math::Quaternion ScriptTransformProxy::_GetRot() const
 }
 void ScriptTransformProxy::_SetRot(const math::Quaternion& v)
 {
-    if (auto* t = Get()) t->rotation = v;
+    if (auto* t = Get()) {
+        t->rotation = v;
+        FlushWorldTransforms(*script->m_gameObject);
+    }
 }
 math::Vector3 ScriptTransformProxy::_GetScl() const
 {
@@ -401,7 +408,10 @@ math::Vector3 ScriptTransformProxy::_GetScl() const
 }
 void ScriptTransformProxy::_SetScl(const math::Vector3& v)
 {
-    if (auto* t = Get()) t->scale = v;
+    if (auto* t = Get()) {
+        t->scale = v;
+        FlushWorldTransforms(*script->m_gameObject);
+    }
 }
 
 /// @name ワールド空間 property getter / setter
@@ -411,7 +421,18 @@ math::Vector3 ScriptTransformProxy::_GetWPos() const
 }
 void ScriptTransformProxy::_SetWPos(const math::Vector3& v)
 {
-    if (auto* t = Get()) t->worldPosition = v;
+    if (auto* t = Get()) {
+        GameObject& go = *script->m_gameObject;
+        const math::Vector3 worldPosition = v;
+        FlushWorldTransforms(go);
+        const math::Quaternion localRotation = t->rotation;
+        const math::Vector3 localScale = t->scale;
+        SetWorldPose(go, worldPosition, t->worldRotation, t->worldScale);
+        /// @note 位置だけの編集で、非可逆な親の軸にあるローカルスケールを失わない。
+        t->rotation = localRotation;
+        t->scale = localScale;
+        FlushWorldTransforms(go);
+    }
 }
 math::Quaternion ScriptTransformProxy::_GetWRot() const
 {
@@ -426,23 +447,31 @@ math::Vector3 ScriptTransformProxy::_GetRight() const { auto* t = Get(); return 
 /// @name メソッド
 void ScriptTransformProxy::Translate(const math::Vector3& v) const
 {
-    if (auto* t = Get()) t->Translate(v);
+    if (auto* t = Get()) {
+        t->Translate(v);
+        FlushWorldTransforms(*script->m_gameObject);
+    }
 }
 
 void ScriptTransformProxy::Rotate(const math::Vector3& axis, float deg) const
 {
     if (auto* t = Get()) {
-        /// @note 軸が潰れていたら回しようがない。スクリプトの引数ミスでエディターごと
-        /// @note 落とさないよう、何もしないで返す。
+        /// @note 長さゼロの軸は正規化の契約を満たさないため無視する。
         if (axis.LengthSq() < math::EPSILON * math::EPSILON) return;
         const auto delta = math::Quaternion::FromAxisAngle(axis.Normalized(), deg * DEG_TO_RAD);
         t->rotation = (delta * t->rotation).Normalized();
+        FlushWorldTransforms(*script->m_gameObject);
     }
 }
 
 void ScriptTransformProxy::LookAt(const math::Vector3& target) const
 {
-    if (auto* t = Get()) t->LookAt(target);
+    if (auto* t = Get()) {
+        const math::Vector3 worldTarget = target;
+        FlushWorldTransforms(*script->m_gameObject);
+        t->LookAt(worldTarget);
+        FlushWorldTransforms(*script->m_gameObject);
+    }
 }
 
 float ScriptTransformProxy::DistanceTo(const GameObject& other) const
@@ -510,7 +539,7 @@ int ResolveScriptPad(int pad)
     const int first = input::Gamepad::GetFirstConnectedPad();
     return first >= 0 ? first : 0;
 }
-} // namespace
+} /// @note namespace
 
 bool ScriptInputProxy::GetPadButton(input::GamepadButton button, int pad) const
 {
@@ -935,7 +964,7 @@ ColliderComponent* SelfAnyCollider(const Script* script)
     if (auto* c = script->GetComponent<TerrainColliderComponent>()) return c;
     return nullptr;
 }
-} // namespace
+} /// @note namespace
 
 void ScriptColliderProxy::SetEnabled(bool enabled) const
 {
@@ -1164,7 +1193,7 @@ void PushOneShot(AudioSourceComponent& source, AudioSourceComponent::OneShotRequ
     source.m_pendingOneShots.push_back(std::move(request));
 }
 
-} // namespace
+} /// @note namespace
 
 bool ScriptAudioProxy::Preload(std::string_view clipPath) const
 {
@@ -2255,7 +2284,7 @@ const asset::MaterialAsset* ResolveSharedMaterial(const MaterialRef& material)
     return asset::AssetManager::Get<asset::MaterialAsset>(handle);
 }
 
-} // namespace
+} /// @note namespace
 
 bool ScriptMaterialProxy::HasSharedProperty(const MaterialRef& material,
                                             MaterialPropertyId property) const
@@ -3138,7 +3167,7 @@ UIButtonPhase ToButtonPhase(const UIButton* button)
     }
 }
 
-} // namespace
+} /// @note namespace
 
 bool ScriptUIProxy::WasClicked() const
 {
@@ -3444,7 +3473,7 @@ void AssignUIMaterialOverride(UIImage& image, std::string_view param,
     target.assign(values, values + count);
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptUIProxy::SetMaterialFloat(GameObject* go, std::string_view param, float value) const
 {
@@ -3686,7 +3715,7 @@ UICanvas* OwningCanvas(GameObject* go)
     return nullptr;
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptUIProxy::SetFocus(GameObject* go) const
 {
@@ -4553,7 +4582,7 @@ ScriptDebugDrawCommand MakeDebugDrawCommand(ScriptDebugDrawType type, const math
     return command;
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptDebugProxy::DrawLine(const math::Vector3& a, const math::Vector3& b, const math::Vector4& color, float duration) const
 {
@@ -4926,7 +4955,7 @@ NavMeshAgentComponent* SelfNavAgent(const Script* script)
 {
     return SelfComponent<NavMeshAgentComponent>(script);
 }
-} // namespace
+} /// @note namespace
 
 void ScriptNavigationProxy::SetDestination(const math::Vector3& worldPos) const
 {
@@ -5115,7 +5144,7 @@ CharacterControllerComponent* SelfCharacter(const Script* script)
 {
     return SelfComponent<CharacterControllerComponent>(script);
 }
-} // namespace
+} /// @note namespace
 
 void ScriptCharacterProxy::Tick(float dt) const
 {
@@ -5309,7 +5338,7 @@ void ApplyProceduralMesh(GameObject& go, const MeshBuilder& builder)
     procedural->enabled = true;
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptMeshProxy::Apply(const MeshBuilder& builder) const
 {
@@ -5373,7 +5402,7 @@ IKChain* FindChainByTarget(IKSolverComponent* ik, std::string_view targetName)
         if (c.targetName == targetName) return &c;
     return nullptr;
 }
-} // namespace
+} /// @note namespace
 
 void ScriptIKProxy::SetChainEnabled(std::string_view targetName, bool enabled) const
 {
@@ -5438,7 +5467,7 @@ WaterComponent* SelfWater(const Script* script)
 {
     return SelfComponent<WaterComponent>(script);
 }
-} // namespace
+} /// @note namespace
 
 float ScriptWaterProxy::GetSurfaceHeightWorld(float worldX, float worldZ, float time) const
 {
@@ -5528,7 +5557,7 @@ math::Vector3 WorldToTerrainLocal(const GameObject* gameObject, const math::Vect
         t.worldScale.z > 0.0f ? local.z / t.worldScale.z : local.z
     };
 }
-} // namespace
+} /// @note namespace
 
 float ScriptTerrainProxy::GetHeightLocal(float localX, float localZ) const
 {
@@ -5625,7 +5654,7 @@ T* FindFirstInScene(Scene* scene)
     }
     return nullptr;
 }
-} // namespace
+} /// @note namespace
 
 void ScriptEnvironmentProxy::SetIBLEnabled(bool enabled) const
 {
@@ -5738,7 +5767,7 @@ DecalComponent* SelfDecal(const Script* script)
 {
     return SelfComponent<DecalComponent>(script);
 }
-} // namespace
+} /// @note namespace
 
 EntityRef ScriptDecalProxy::Spawn(const math::Vector3& point,
                                   const math::Vector3& normal,
@@ -5939,7 +5968,7 @@ void AssignDecalMaterialOverride(DecalComponent& decal, std::string_view param,
     auto& target = decal.materialParamOverrides[std::string(param)];
     target.assign(values, values + count);
 }
-} // namespace
+} /// @note namespace
 
 void ScriptDecalProxy::SetMaterialFloat(std::string_view param, float value) const
 {
@@ -5986,7 +6015,7 @@ VolumeComponent* SelfVolume(const Script* script)
 {
     return SelfComponent<VolumeComponent>(script);
 }
-} // namespace
+} /// @note namespace
 
 void ScriptVolumeProxy::SetEnabled(bool enabled) const
 {
@@ -6043,7 +6072,7 @@ ReflectionProbeComponent* SelfReflectionProbe(const Script* script)
 {
     return SelfComponent<ReflectionProbeComponent>(script);
 }
-} // namespace
+} /// @note namespace
 
 void ScriptReflectionProbeProxy::SetEnabled(bool enabled) const
 {
@@ -6090,7 +6119,7 @@ MotionWarpComponent* SelfMotionWarp(const Script* script)
 {
     return SelfComponent<MotionWarpComponent>(script);
 }
-} // namespace
+} /// @note namespace
 
 void ScriptMotionWarpProxy::WarpTo(const math::Vector3& position, float duration) const
 {
@@ -6168,7 +6197,7 @@ LifetimeComponent* SelfLifetime(const Script* script)
 {
     return SelfComponent<LifetimeComponent>(script);
 }
-} // namespace
+} /// @note namespace
 
 void ScriptLifetimeProxy::SetRemaining(float seconds) const
 {
@@ -6212,7 +6241,7 @@ FlowFieldSettings* SelfPrimaryForce(const Script* script)
     return &field->forces.front();
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptFlowFieldProxy::SetEnabled(bool enabled) const
 {
@@ -6677,7 +6706,7 @@ util::SaveStore& StoreOf(SaveStoreKind kind)
     return kind == SaveStoreKind::Config ? app.GetConfigStore() : app.GetSaveStore();
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptStoreProxyBase::SetPath(std::string_view path) const
 {
@@ -6817,7 +6846,7 @@ bool IsEditorHostedWindow()
     return core::Application::Get().IsEditorHosted();
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptDisplayProxy::SetFullscreen(bool enabled) const
 {
@@ -6897,7 +6926,7 @@ const renderer::RenderSettings& RenderSettingsForRead()
     return active ? *active : s_defaults;
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptGraphicsProxy::SetBrightness(float value) const
 {
@@ -7215,7 +7244,7 @@ float TweenStepDelta(const Script* script, TweenClock clock)
                                          : script->time.DeltaTime();
 }
 
-} // namespace
+} /// @note namespace
 
 Coroutine ScriptTweenProxy::MoveTo(math::Vector3 target, float duration,
                                    TweenEase ease, TweenClock clock) const
@@ -7410,7 +7439,7 @@ void BindSequenceKey(SequencePlayerComponent* player,
                                                              : EntityID::INVALID });
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptSequenceProxy::Play(std::string_view path) const
 {
@@ -7569,7 +7598,7 @@ void WithdrawObjectMaskRequest(GameObject* target)
                   });
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptObjectMaskProxy::Set(const math::Vector4& color, float value) const
 {
@@ -7602,7 +7631,7 @@ SpringBoneChain* FindSpringChain(const Script* script, std::string_view rootBone
         if (chain.rootBoneName == rootBoneName) return &chain;
     return nullptr;
 }
-} // namespace
+} /// @note namespace
 
 void ScriptSpringBoneProxy::EnsureChain(std::string_view rootBoneName, int maxDepth) const
 {
@@ -7725,7 +7754,7 @@ RagdollComponent* EnsureRagdoll(const Script* script)
     if (auto* ragdoll = object->GetComponent<RagdollComponent>()) return ragdoll;
     return &object->AddComponent<RagdollComponent>();
 }
-} // namespace
+} /// @note namespace
 
 void ScriptRagdollProxy::Begin(float holdSeconds, float maxWeight, float gravityScale) const
 {
@@ -8050,7 +8079,7 @@ void SetAuthoredJointDistance(JointComponent& joint, float distance)
     joint.distance     = joint.autoDistance ? 0.0f : distance;
 }
 
-} // namespace
+} /// @note namespace
 
 void ScriptJointProxy::ConnectFixed(GameObject* target) const
 {
@@ -8236,7 +8265,7 @@ asset::AssetLoadState OwnedRequestState(const ScriptAssetProxy* proxy, std::uint
     return asset::AssetStreamer::Engine().GetLeaseStatus(request).state;
 }
 
-} // namespace
+} /// @note namespace
 
 ScriptAssetProxy::~ScriptAssetProxy()
 {
@@ -8319,4 +8348,4 @@ float ScriptAssetProxy::GetScenePrefetchProgress(std::string_view sceneName) con
     return static_cast<float>(progress.ready + progress.failed) / static_cast<float>(progress.total);
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

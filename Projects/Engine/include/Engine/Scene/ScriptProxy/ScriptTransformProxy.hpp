@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
 ///
-/// __declspec(property) により transform.position / transform.worldPosition を
-/// -> 不要でアクセスできる。position=ローカル、worldPosition=ワールド。
+/// @note position / rotation / scale はローカル空間。書き込みは対象と子孫のワールド姿勢へ即時反映する。
+/// @see Docs/design/script-transform-contract.md
 #pragma once
 
 #include <Math/Quaternion.hpp>
@@ -32,11 +32,12 @@ struct ScriptTransformProxy {
     void             _SetScl(const math::Vector3& v);
     /// @}
 
-    /// @name ワールド空間 getter (TransformSystem が毎フレーム更新)
+    /// @name ワールド空間
     /// @{
     math::Vector3    _GetWPos() const;
-    void             _SetWPos(const math::Vector3& v);  ///< 物理・IK 専用
-    math::Quaternion _GetWRot() const;                  ///< 読み取り専用
+    /// @note 親からローカル位置を逆算し、回転とスケールは保つ。親のゼロスケール軸は実現可能な位置へ射影する。
+    void             _SetWPos(const math::Vector3& v);
+    math::Quaternion _GetWRot() const;
     /// @}
 
     /// @name 算出値 (worldRotation から算出)
@@ -60,8 +61,11 @@ struct ScriptTransformProxy {
 
     /// @name メソッド
     /// @{
+    /// @note 移動量は自分のローカル軸。書き込み後はワールド姿勢も同期する。
     void    Translate   (const math::Vector3& v)               const;
+    /// @param deg 回転角 [deg]。長さゼロの軸は無視する。
     void    Rotate      (const math::Vector3& axis, float deg) const;
+    /// @note target はワールド空間。自分と重なる対象は回転を変えない。
     void    LookAt      (const math::Vector3& target)          const;
     float   DistanceTo  (const GameObject& other)              const;
     math::Vector3 DirectionTo(const GameObject& other)         const;
@@ -69,4 +73,4 @@ struct ScriptTransformProxy {
 
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

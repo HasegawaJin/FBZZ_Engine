@@ -21,6 +21,20 @@
 
 ## API の契約
 
+### Transform
+
+Script の `transform.position` は親に対するローカル座標、`transform.worldPosition` はワールド座標。
+どちらの書き込みも、その場で自分と子孫の world 値を更新する。
+`worldPosition` は祖先のローカル姿勢から親変換を求め、対応するローカル位置へ逆変換するため、
+次の PrePhysics でも指定した位置を維持する。同じワールド座標を `position` へ重ねて書かない。
+親のゼロスケール軸では逆変換できない成分をローカル 0 とし、実現できる world 値を返す。
+位置の変更でローカル回転・スケールは変えない。読み取りは描画用に公開された姿勢を返す。
+
+この同期は ScriptTransformProxy の契約。`GameObject*` から触る `object->transform` は
+Engine の Transform データなので、world 値への直接代入はローカル値を更新しない。
+ルートの生成物を直接配置し、同フレームに描画・物理の初期値として読む処理では、
+既存のローカル・world 両方の設定を維持する。親付きの直接配置では親変換を考慮する。
+
 ### カメラ
 
 `TryWorldToViewportPoint(world, outViewport, cameraObject)` は左上原点の UV と DirectX 深度を返す。
