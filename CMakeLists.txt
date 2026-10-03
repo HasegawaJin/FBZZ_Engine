@@ -144,6 +144,8 @@ include(CMake/AppManifest.cmake)
 
 # @note ThirdParty/CMakeLists.txt が gtest / gmock をこのオプションで囲うので、add_subdirectory より前に確定させる。
 option(FBZZ_BUILD_TESTS "Build unit tests" ON)
+option(FBZZ_ENABLE_DX12 "Build the Direct3D 12 backend" ON)
+include(CMake/FBZZAgilitySDK.cmake)
 if(FBZZ_BUILD_TESTS)
     enable_testing()
 endif()

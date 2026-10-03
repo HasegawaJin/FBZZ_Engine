@@ -23,9 +23,15 @@ target_link_libraries(FBZZGraphics PUBLIC FBZZCore FBZZMath
 fbzz_use_std_pch(FBZZGraphics)
 fbzz_use_unity_build(FBZZGraphics EXCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/StbFontImpl.cpp")
 
-# @note DX12 のホットリロードと DXIL reflection は dxcompiler.dll を実行時に遅延ロードする。FBZZ_ENABLE_DX12=OFF には DXC を強制しない。
-get_filename_component(FBZZ_WINDOWS_SDK_BIN_DIRECTORY "${CMAKE_RC_COMPILER}" DIRECTORY)
 if(FBZZ_ENABLE_DX12)
+    # @note DX 型と Agility / DXC ヘッダーは Graphics の非公開実装だけが使う。
+    # @see https://devblogs.microsoft.com/directx/gettingstarted-dx12agility/ Include path ordering.
+    target_include_directories(FBZZGraphics BEFORE PRIVATE
+        "${FBZZ_AGILITY_ROOT}/build/native/include" "${FBZZ_DXC_ROOT}/include"
+        "${CMAKE_CURRENT_BINARY_DIR}")
+    configure_file("${CMAKE_SOURCE_DIR}/CMake/GraphicsRuntimeContract.hpp.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/GraphicsRuntimeContract.hpp" @ONLY)
+    target_link_libraries(FBZZGraphics PRIVATE version)
     # @note USE_PIX enables official named events in Release as well as Debug; SDK types never escape backend sources.
     # @see https://github.com/microsoft/PixEvents Using the prebuilt runtime and pix3.h.
     target_compile_definitions(FBZZGraphics PRIVATE USE_PIX)
@@ -36,40 +42,7 @@ if(FBZZ_ENABLE_DX12)
             "$<TARGET_FILE_DIR:FBZZGraphics>/WinPixEventRuntime.dll"
         VERBATIM
     )
-    if(DEFINED ENV{FBZZ_DXC} AND EXISTS "$ENV{FBZZ_DXC}")
-        set(FBZZ_DXC_EXECUTABLE "$ENV{FBZZ_DXC}")
-    else()
-        # @note VS 開発者環境の外 (CI の素の cmake) では WindowsSdkDir が無く、VS ジェネレーターの CMAKE_RC_COMPILER も "rc" だけでディレクトリを持たない。
-        # @note dxc.exe を同梱するのは新しい Windows SDK だけなので、bin を新しい順に並べて当てる (古い SDK の bin には無い)。
-        file(GLOB FBZZ_WINDOWS_KITS_BIN_DIRECTORIES
-            "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/*/x64"
-            "$ENV{ProgramFiles}/Windows Kits/10/bin/*/x64")
-        list(SORT FBZZ_WINDOWS_KITS_BIN_DIRECTORIES COMPARE NATURAL ORDER DESCENDING)
-        find_program(FBZZ_DXC_EXECUTABLE
-            NAMES dxc.exe
-            HINTS
-                "${FBZZ_WINDOWS_SDK_BIN_DIRECTORY}"
-                "$ENV{WindowsSdkDir}/bin/$ENV{WindowsSDKVersion}/x64"
-                ${FBZZ_WINDOWS_KITS_BIN_DIRECTORIES}
-        )
-    endif()
-    if(FBZZ_DXC_EXECUTABLE)
-        get_filename_component(FBZZ_DXC_DIRECTORY "${FBZZ_DXC_EXECUTABLE}" DIRECTORY)
-        # @note dxcompiler.dll は exe 隣から LoadLibraryW で解決されるので、サブディレクトリに出る Editor 等の配置用に場所を公開する。
-        set(FBZZ_DXC_RUNTIME_DIRECTORY "${FBZZ_DXC_DIRECTORY}" CACHE INTERNAL "DXC runtime DLL directory")
-        foreach(FBZZ_DXC_RUNTIME_DLL dxcompiler.dll dxil.dll)
-            if(EXISTS "${FBZZ_DXC_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}")
-                add_custom_command(TARGET FBZZGraphics POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                        "${FBZZ_DXC_DIRECTORY}/${FBZZ_DXC_RUNTIME_DLL}"
-                        "$<TARGET_FILE_DIR:FBZZGraphics>/${FBZZ_DXC_RUNTIME_DLL}"
-                    COMMENT "Copying ${FBZZ_DXC_RUNTIME_DLL} for DXIL runtime support"
-                )
-            endif()
-        endforeach()
-    else()
-        message(WARNING "dxc.exe was not found; DX12 shader hot reload will require FBZZ_DXC at runtime")
-    endif()
+    fbzz_stage_agility_sdk(FBZZGraphics)
 else()
     # @note Editor / Launcher 側の DXC 配置判定もこの変数を見る。
     unset(FBZZ_DXC_RUNTIME_DIRECTORY CACHE)

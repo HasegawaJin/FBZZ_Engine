@@ -67,6 +67,7 @@ add_dependencies(Sandbox SandboxScripts)
 
 # @note DPI 認識をプロセス起動時に確定させる (未適用だと高 DPI 環境で UI 全体が滲む)。
 fbzz_apply_app_manifest(Sandbox)
+fbzz_enable_agility_sdk(Sandbox)
 
 set_target_properties(Sandbox PROPERTIES
     # @note CMake の内部ターゲット名は既存依存との互換性を保ち、公開成果物だけ PascalCase に統一する。
@@ -110,6 +111,7 @@ target_compile_definitions(SandboxStandalone PRIVATE FBZZ_STANDALONE_TARGET)
 
 # @note DPI 認識をプロセス起動時に確定させる (配布 exe も Editor と同じ挙動にする)。
 fbzz_apply_app_manifest(SandboxStandalone)
+fbzz_enable_agility_sdk(SandboxStandalone)
 
 set_target_properties(SandboxStandalone PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Sandbox"
@@ -136,14 +138,16 @@ set_source_files_properties(${HLSL_FILES} PROPERTIES
 find_program(FBZZ_POWERSHELL_EXECUTABLE NAMES powershell.exe powershell REQUIRED)
 
 add_custom_target(CompileShaders
-    COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_SCRIPT}"
+    COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_SCRIPT}" -CompilerPath "${FBZZ_DXC_EXECUTABLE}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling HLSL shaders..."
     SOURCES ${HLSL_FILES} "${SHADER_SCRIPT}"
     VERBATIM
 )
-add_dependencies(Sandbox CompileShaders)
-add_dependencies(SandboxStandalone CompileShaders)
+if(FBZZ_ENABLE_DX12)
+    add_dependencies(Sandbox CompileShaders)
+    add_dependencies(SandboxStandalone CompileShaders)
+endif()
 
 target_include_directories(Sandbox PRIVATE
     src

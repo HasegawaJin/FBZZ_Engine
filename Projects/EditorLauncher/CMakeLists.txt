@@ -21,6 +21,7 @@ add_executable(FBZZEditorLauncher WIN32
 
 # @note DPI 認識をプロセス起動時に確定させる (未適用だと高 DPI 環境で UI 全体が滲む)。
 fbzz_apply_app_manifest(FBZZEditorLauncher)
+fbzz_enable_agility_sdk(FBZZEditorLauncher)
 
 set_target_properties(FBZZEditorLauncher PROPERTIES
     OUTPUT_NAME "FBZZEditor"
@@ -68,13 +69,15 @@ set_source_files_properties(${EDITOR_LAUNCHER_HLSL_FILES} PROPERTIES
 find_program(FBZZ_POWERSHELL_EXECUTABLE NAMES powershell.exe powershell REQUIRED)
 
 add_custom_target(CompileEditorLauncherShaders
-    COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_SCRIPT}"
+    COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_SCRIPT}" -CompilerPath "${FBZZ_DXC_EXECUTABLE}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling HLSL shaders for FBZZEditor..."
     SOURCES ${EDITOR_LAUNCHER_HLSL_FILES} "${SHADER_SCRIPT}"
     VERBATIM
 )
-add_dependencies(FBZZEditorLauncher CompileEditorLauncherShaders)
+if(FBZZ_ENABLE_DX12)
+    add_dependencies(FBZZEditorLauncher CompileEditorLauncherShaders)
+endif()
 
 add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
     # @note コア DLL と ImGui DLL を Editor/ に配置する。

@@ -1,15 +1,17 @@
-# Auto detect text files and perform LF normalization
+# @file    .gitattributes
+# @brief   通常テキストの改行とアート素材・固定依存物の保存形式を定める。
+# @author  Hasegawa Jin
+# @date    2026-05-15
+# @note 通常テキストは自動判定して LF へ正規化する。
 * text=auto
 
-# Git LFS — GreenWare のアート素材のみ。
-# WHY: 素材を除外したままだと clone しただけでは GreenWare が起動しない
-#      (ポートフォリオとして成立しない)。一方で LFS は差分を持たず、
-#      再エクスポートのたびに旧版のフルコピーが GitHub の無料枠 (1GB) を食う。
-#      そのためソース素材だけを対象にし、ベイク出力 (.fzasset/.anim/.skel/.ibl/
-#      .cso/IBL の .dds) は .gitignore 側で除外したままにする。
-# NOTE: 他プロジェクト (Assets/ ・ Projects/GameHub/Templates/) は対象外。
-#       GreenWare/Assets/UI/Font/*.ttf は既に通常 blob として追跡済みのため、
-#       ここには含めない (移すには git lfs migrate = 履歴書き換えが要る)。
+# @note 固定パッケージは VERSION の SHA256 と一致させるため、改行を含む取得時の全バイトを保持する。
+ThirdParty/AgilitySDK/** -text
+ThirdParty/DXC/** -text
+
+# @note GreenWare のソース素材だけを LFS 対象とし、clone 後のゲーム起動に必要な素材を保持する。
+# @note LFS は旧版の全量を保存するため、再生成できるベイク出力は .gitignore で除外する。
+# @note Assets/ と GameHub/Templates/ は対象外。既存通常 blob の UI/Font/*.ttf も移行しない。
 GreenWare/Assets/**/*.fbx  filter=lfs diff=lfs merge=lfs -text
 GreenWare/Assets/**/*.png  filter=lfs diff=lfs merge=lfs -text
 GreenWare/Assets/**/*.jpg  filter=lfs diff=lfs merge=lfs -text
