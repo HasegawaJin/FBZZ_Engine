@@ -57,6 +57,8 @@ CMakeUserPresets.json
 *.exp
 # @note コンパイル済みシェーダーは HLSL から再生成できるため追跡しない。
 *.cso
+*.cso.compiler
+*.cso.compiler.meta
 
 # @note ThirdParty の lib / dll / exp は通常は追跡しないが、
 # @note Assimp / DirectXTex のプリコンパイル済みバイナリはリポジトリに含める

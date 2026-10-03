@@ -1,0 +1,56 @@
+# @file    VERSION
+# @brief   固定パッケージの取得元・版・SHA256 正本。
+# @author  Hasegawa Jin
+# @date    2026-10-03
+set(FBZZ_AGILITY_PACKAGE "Microsoft.Direct3D.D3D12")
+set(FBZZ_AGILITY_PACKAGE_VERSION "1.619.6")
+set(FBZZ_AGILITY_SDK_VERSION 619)
+set(FBZZ_AGILITY_SDK_PATH ".\\D3D12\\")
+set(FBZZ_AGILITY_CORE_NUMERIC_VERSION "1,619,6,0")
+set(FBZZ_AGILITY_CORE_FILE_VERSION "1.619.6.0")
+set(FBZZ_AGILITY_SOURCE "https://api.nuget.org/v3-flatcontainer/microsoft.direct3d.d3d12/1.619.6/microsoft.direct3d.d3d12.1.619.6.nupkg")
+set(FBZZ_AGILITY_ARCHITECTURE "x64")
+set(FBZZ_AGILITY_RETRIEVED "2026-10-03")
+set(FBZZ_AGILITY_ARCHIVE_SHA256 "08f0489281401aa430fc37322d6c3fc98a8025175aacd714c10d562f4963f1e9")
+set(FBZZ_AGILITY_CORE_SHA256 "37fa14281a58cc834076971873006feb8a8d25cddc908d1a345bda1b149ffc7d")
+set(FBZZ_AGILITY_LAYERS_SHA256 "7ab48d56d1c18708ebcf16c7c9259b2d783e2b935b85add4a244573b9f03cab4")
+# @note 更新時は公式アーカイブから x64 一式と全ライセンスを取得し、全ハッシュを再計算して SDK 全構成を個別に再公開・検証する。
+set(FBZZ_PACKAGE_FILE_HASHES
+    "build/native/bin/x64/D3D12Core.dll|37fa14281a58cc834076971873006feb8a8d25cddc908d1a345bda1b149ffc7d"
+    "build/native/bin/x64/d3d12SDKLayers.dll|7ab48d56d1c18708ebcf16c7c9259b2d783e2b935b85add4a244573b9f03cab4"
+    "build/native/include/d3d12.h|dc55b65d24bf5c83079be5c3c708df8862b1d46308a3c8232886ad6f707932b8"
+    "build/native/include/d3d12.idl|b09c8e933d5d23e3efd9d25ecc710386681747372af95401b8a49e7d889f2e1c"
+    "build/native/include/d3d12compatibility.h|49c90e78c6729d086770cecc0b037b118cd63fa87c1fa7237771eadb59c28d2c"
+    "build/native/include/d3d12compatibility.idl|df7f5e52521a83ca85caa1c1ee24adc042ca7982e805d2c98633f817ecc7a2de"
+    "build/native/include/d3d12compiler.h|b262ef82c3f8de1f7f9309ca875554e72daaba6aa29e28a5d937fa453e97458a"
+    "build/native/include/d3d12compiler.idl|82fba0810504e3268cacc9ed5a88d17b9d0895e31b37a363a83d89fcc47fa01c"
+    "build/native/include/D3D12Events.h|15f8e02fe5d2c8961836c11c82df4d2c60e66758bec63395baea1576bca958cb"
+    "build/native/include/d3d12markerapienums.idl|3a56a193a577050b3457c6d493c3c85e3660c219bd9a6892436674f8053ba415"
+    "build/native/include/d3d12sdklayers.h|27cdc0e48f426d41e3ae62263f39343273d55dd098bc0bd9dae1bb46247a804a"
+    "build/native/include/d3d12sdklayers.idl|0bd229c32219270386c75eb9ec1c9d7246cfce25df4b422046598395e28ce97e"
+    "build/native/include/d3d12shader.h|bdcdd726b6bc803ae50f442fe725ed02b7a8b068572cfd17078358b6232f217c"
+    "build/native/include/D3D12TokenizedProgramFormat.hpp|6e92a19e6ef7e5ef1723713c86d35101025653c9725cde5eeb6436797094e917"
+    "build/native/include/d3d12video.h|9ccd140cedfb962696e05604f42207697d4e1802d1aa639ce16511f62616bbfd"
+    "build/native/include/d3d12video.idl|88cb80c14b92de77f3c5dffafe266e8529e6741d58bfbec8d8c253e1a6cbfc71"
+    "build/native/include/d3dcommon.h|8c236985415516302faf0cb725fa78312cb1ac05ba866e29eeab23d695a0f5cb"
+    "build/native/include/d3dcommon.idl|2513f619ece3bda0af925b8120ba1adfd6ac1d27a9cb62e4635ef3fafbd09fd2"
+    "build/native/include/d3dshadercacheregistration.h|822351db7e51ccccd46ce6407cd708d84cf6232799b921c191b5379225751663"
+    "build/native/include/d3dshadercacheregistration.idl|3d6560ee407b561094b77cdf3e21860c212fe9dce46b6f6e718fddc334be67b3"
+    "build/native/include/d3dx12/d3dx12_barriers.h|f34f8e4dc71ba50d684e58e33d622f31b4f56c66bff0d82531a65b17ec710849"
+    "build/native/include/d3dx12/d3dx12_check_feature_support.h|acd83a6b7a89da9acaed06b6d4ec46af7f05c77e87b9b4d1e82c336e5da7a604"
+    "build/native/include/d3dx12/d3dx12_core.h|4873476b0e4b4e56d3b1daa3fcd7de12148685a52401fd37141931c3d959b568"
+    "build/native/include/d3dx12/d3dx12_default.h|7086bdb3b36e9ee8f3f4eda7ac0f50b4d8fcbb3a4d641ea5d0e7a4253d85e8fa"
+    "build/native/include/d3dx12/d3dx12_pipeline_state_stream.h|34368aa1a5370233be9cc272c82b0fc9b6bb4ad45f0d24b82074a6861883cee1"
+    "build/native/include/d3dx12/d3dx12_property_format_table.h|a63eb8632c7e3b8ee97ffc4a1f7d39b07b2eb022f5f50dc75c6803418842fbb4"
+    "build/native/include/d3dx12/d3dx12_render_pass.h|092ffb4cd1df4f755afb2d7b99e7cca51908fb5471bb2666f7355171d4df47d1"
+    "build/native/include/d3dx12/d3dx12_resource_helpers.h|16a04f62a9b3e809e07a21bff9dc706067c7668f4dfeb4c3c631bef97bda439c"
+    "build/native/include/d3dx12/d3dx12_root_signature.h|6575ca966d6a6ab82f9acc3f07d3fcf327d1d586d860cf5a3859f57d4875955d"
+    "build/native/include/d3dx12/d3dx12_state_object.h|bcf793ae8151104a99a9bd517f3df3ef2512717d15a73e3f073b7a4e773294d1"
+    "build/native/include/d3dx12/d3dx12.h|874a67be3eeee5dd4d589b997f53c8e63bd95023270f53cb8bb696736a612e44"
+    "build/native/include/dxgiformat.h|0ac14d7da595c528e0f14c64685d83596c392d36a0ab49ce2ecab05299e6c0d0"
+    "build/native/include/dxgiformat.idl|dec3bd183947ebf7bdef8547aff8f1b3aa6e6f6be770d3be15b14d39b626618f"
+    "distributable files.txt|18be111795af241547e17596a010cb7606aa8670d9a26096425ba46a0f76ef9e"
+    "LICENSE|131ff0b1c7cf44070bf72991c9aaaeeac1579cf6b5e4f3dea6fed9aeb9488372"
+    "LICENSE-CODE.txt|903df5512f7d02609fed0c780a9b704f5a3eeb6e4d84ebe42a29845c81899a3c"
+    "LICENSE.txt|5239850894610071566f7ecee0b751fde43c862032d92b99d7d0f596b3433ebd"
+)

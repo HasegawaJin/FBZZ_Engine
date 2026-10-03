@@ -14,6 +14,7 @@
 #include <Graphics/Renderer/OpaqueRenderPlan.hpp>
 #include <Graphics/Renderer/AccelerationStructure.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
+#include <Graphics/Renderer/RuntimePackageValidation.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
@@ -32,6 +33,30 @@
 namespace fbzz::tests {
 namespace {
 class GraphicsStandaloneTest : public testkit::Fixture {};
+
+TEST_F(GraphicsStandaloneTest, AgilityPackageAcceptsHostExportsAndPinnedRuntime)
+{
+    wchar_t host[32768]{};
+    ASSERT_GT(GetModuleFileNameW(nullptr, host, static_cast<DWORD>(std::size(host))), 0u);
+    std::string reason;
+    EXPECT_TRUE(renderer::ValidateGraphicsRuntimePackage(std::filesystem::path(host), reason)) << reason;
+}
+
+TEST_F(GraphicsStandaloneTest, AgilityPackageRejectsMissingCoreEvenOnNewerOperatingSystem)
+{
+    wchar_t host[32768]{};
+    ASSERT_GT(GetModuleFileNameW(nullptr, host, static_cast<DWORD>(std::size(host))), 0u);
+    const auto executable = std::filesystem::path(host);
+    if (!std::filesystem::exists(executable.parent_path() / "D3D12/D3D12Core.dll")) GTEST_SKIP() << "DX12-disabled configuration";
+    testkit::TempDir isolated("agility-missing-core");
+    ASSERT_TRUE(isolated.IsValid());
+    std::error_code error;
+    const auto copiedHost = isolated.File("Host.exe");
+    ASSERT_TRUE(std::filesystem::copy_file(executable, copiedHost, error)) << error.message();
+    std::string reason;
+    EXPECT_FALSE(renderer::ValidateGraphicsRuntimePackage(copiedHost, reason));
+    EXPECT_NE(reason.find("D3D12Core.dll"), std::string::npos) << reason;
+}
 
 TEST_F(GraphicsStandaloneTest, SkyCacheCapturesFirstSignatureAndReusesUnchangedSky)
 {

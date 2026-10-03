@@ -11,7 +11,13 @@
 #include <Engine/Asset/TextureStreamCache.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
+#include <Graphics/Renderer/RuntimePackageValidation.hpp>
 #include <toml++/toml.hpp>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#include <bcrypt.h>
 
 #include <algorithm>
 #include <array>
@@ -43,6 +49,39 @@ std::string TodayString()
 std::string LowerUtf8(const std::filesystem::path& path)
 {
     return util::StringUtils::ToLower(util::FileSystem::PathToUtf8(path));
+}
+
+/// @note Windows 7 以降の CNG 管理バッファを使い、SHA256 の所有権をこの関数へ閉じる。
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptcreatehash BCryptCreateHash buffer ownership
+bool FileSha256(const std::filesystem::path& path, std::string& result)
+{
+    std::vector<std::uint8_t> bytes;
+    if (!util::FileSystem::ReadBinary(path, bytes)) return false;
+    struct HashHandles {
+        BCRYPT_ALG_HANDLE algorithm = nullptr;
+        BCRYPT_HASH_HANDLE hash = nullptr;
+        ~HashHandles()
+        {
+            if (hash) BCryptDestroyHash(hash);
+            if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
+        }
+    } handles;
+    if (BCryptOpenAlgorithmProvider(&handles.algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0 ||
+        BCryptCreateHash(handles.algorithm, &handles.hash, nullptr, 0, nullptr, 0, 0) < 0) return false;
+    for (std::size_t offset = 0; offset < bytes.size();) {
+        const auto size = static_cast<ULONG>(std::min<std::size_t>(bytes.size() - offset, 1024 * 1024));
+        if (BCryptHashData(handles.hash, bytes.data() + offset, size, 0) < 0) return false;
+        offset += size;
+    }
+    std::array<std::uint8_t, 32> digest{};
+    if (BCryptFinishHash(handles.hash, digest.data(), static_cast<ULONG>(digest.size()), 0) < 0) return false;
+    constexpr char HEX[] = "0123456789abcdef";
+    result.clear();
+    for (const auto value : digest) {
+        result.push_back(HEX[value >> 4]);
+        result.push_back(HEX[value & 15]);
+    }
+    return true;
 }
 
 /// @note 配布物に入れないファイルか (relative は Assets/ からの相対パス)。
@@ -112,6 +151,105 @@ bool ShouldSkipAsset(const std::filesystem::path& absPath, const std::filesystem
 }
 
 } /// @note namespace
+
+bool BuildPipeline::ValidateRuntimePackage(const std::filesystem::path& exePath,
+    const std::filesystem::path& sdkRoot, const std::string& configuration,
+    bool finalDistribution, std::string& reason, bool* dx12Enabled)
+{
+    if (dx12Enabled) *dx12Enabled = false;
+    const auto runtimeDir = exePath.parent_path();
+    const auto sdkManifest = sdkRoot / L"fbzz-sdk.toml";
+    const bool sharedSdk = !sdkRoot.empty() && util::FileSystem::Exists(sdkManifest);
+    const auto manifestPath = sharedSdk ? sdkManifest : runtimeDir / L"fbzz-runtime.toml";
+    std::string manifestText;
+    if (!util::FileSystem::ReadText(manifestPath, manifestText)) {
+        reason = "Runtime manifest not found: " + util::FileSystem::PathToUtf8(manifestPath);
+        return false;
+    }
+    const auto parsed = toml::parse(manifestText);
+    if (!parsed || parsed.table()["sdk"]["schema"].value_or(0) != 2) {
+        reason = "Unsupported runtime manifest schema: " + util::FileSystem::PathToUtf8(manifestPath);
+        return false;
+    }
+    const auto& manifest = parsed.table();
+    if (sharedSdk) {
+        const auto fingerprint = manifest["runtime"]["fingerprint"].value_or(std::string{});
+        const auto record = manifest["configurations"][configuration];
+        if (fingerprint.size() != 64 || !record["validated"].value_or(false) ||
+            record["fingerprint"].value_or(std::string{}) != fingerprint) {
+            reason = "SDK configuration is not validated for its runtime contract: " + configuration;
+            return false;
+        }
+    }
+    const auto manifestDx12Enabled = manifest["runtime"]["dx12_enabled"].value<bool>();
+    if (!manifestDx12Enabled) {
+        reason = "Runtime manifest dx12_enabled is missing";
+        return false;
+    }
+    if (dx12Enabled) *dx12Enabled = *manifestDx12Enabled;
+    if (!*manifestDx12Enabled) return true;
+    if (manifest["runtime"]["agility_sdk_version"].value_or(0) <= 0 ||
+        manifest["runtime"]["agility_path"].value_or(std::string{}) != ".\\D3D12\\" ||
+        manifest["runtime"]["agility_package"].value_or(std::string{}).empty() ||
+        manifest["runtime"]["core_file_version"].value_or(std::string{}).empty()) {
+        reason = "Runtime manifest Agility version or path contract is invalid";
+        return false;
+    }
+    if (!renderer::ValidateGraphicsRuntimePackage(exePath, reason)) return false;
+    std::vector<std::pair<std::filesystem::path, std::string>> required = {
+        { L"D3D12/D3D12Core.dll", "core_sha256" },
+        { L"dxcompiler.dll", "dxc_compiler_sha256" }, { L"dxil.dll", "dxc_validator_sha256" },
+    };
+    if (!finalDistribution && configuration != "Release") required.emplace_back(L"D3D12/d3d12SDKLayers.dll", "layers_sha256");
+    if (finalDistribution && util::FileSystem::Exists(runtimeDir / L"D3D12/d3d12SDKLayers.dll")) {
+        reason = "Final distribution must exclude D3D12/d3d12SDKLayers.dll";
+        return false;
+    }
+    for (const auto& [relativePath, hashField] : required) {
+        const auto file = runtimeDir / relativePath;
+        if (!util::FileSystem::Exists(file)) {
+            reason = "Required runtime file not found: " + util::FileSystem::PathToUtf8(file);
+            return false;
+        }
+        const auto expectedHash = manifest["runtime"][hashField].value_or(std::string{});
+        if (expectedHash.size() != 64) {
+            reason = "Runtime manifest hash is invalid: " + hashField;
+            return false;
+        }
+        if (finalDistribution) {
+            std::string actualHash;
+            if (!FileSha256(file, actualHash) || actualHash != expectedHash) {
+                reason = "Runtime SHA256 mismatch: " + util::FileSystem::PathToUtf8(file);
+                return false;
+            }
+        }
+    }
+    for (const auto& [package, notices] : std::vector<std::pair<std::wstring, std::vector<std::wstring>>>{
+        { L"AgilitySDK", { L"LICENSE", L"LICENSE.txt", L"LICENSE-CODE.txt", L"VERSION", L"distributable files.txt" } },
+        { L"DXC", { L"LICENSE", L"LICENCE-MIT.txt", L"LICENSE-LLVM.txt", L"LICENSE-MS.txt", L"VERSION" } },
+        { L"WinPixEventRuntime", { L"LICENSE", L"VERSION", L"ThirdPartyNotices.txt" } },
+    }) {
+        for (const auto& name : notices) {
+            const auto file = runtimeDir / L"EngineLicenses" / package / name;
+            if (!util::FileSystem::Exists(file)) {
+                reason = "Required runtime notice not found: " + util::FileSystem::PathToUtf8(file);
+                return false;
+            }
+            if (finalDistribution) {
+                const auto relative = std::filesystem::path(L"share/fbzz/licenses") / package / name;
+                const auto expectedHash = sharedSdk
+                    ? manifest["files"][configuration][relative.generic_string()].value_or(std::string{})
+                    : manifest["notices"][(std::filesystem::path(package) / name).generic_string()].value_or(std::string{});
+                std::string actualHash;
+                if (expectedHash.size() != 64 || !FileSha256(file, actualHash) || actualHash != expectedHash) {
+                    reason = "Runtime notice SHA256 mismatch: " + util::FileSystem::PathToUtf8(file);
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
 
 /// @note 開始 / 進行
 
@@ -419,6 +557,13 @@ bool BuildPipeline::ExecuteStep()
     case Step::CopyDlls: {
         m_status = "Copying DLLs...";
         const std::filesystem::path exeDir = m_exeSrcPath.parent_path();
+        std::string runtimeReason;
+        bool dx12Enabled = false;
+        if (!ValidateRuntimePackage(m_exeSrcPath, util::FileSystem::PathFromUtf8(m_engineRoot),
+                                    m_runtimeConfiguration, false, runtimeReason, &dx12Enabled)) {
+            SetFailed(runtimeReason);
+            return false;
+        }
         const std::wstring assimpDLL = m_runtimeConfiguration == "Debug"
             ? L"assimp-vc145-mtd.dll"
             : L"assimp-vc145-mt.dll";
@@ -428,8 +573,11 @@ bool BuildPipeline::ExecuteStep()
         /// @note exe 隣を丸ごと同期する。
         std::vector<std::filesystem::path> runtimeDlls;
         for (const std::filesystem::path& file : util::FileSystem::ListFiles(exeDir)) {
-            if (LowerUtf8(file.extension()) == ".dll")
-                runtimeDlls.push_back(file);
+            if (LowerUtf8(file.extension()) != ".dll") continue;
+            const auto name = LowerUtf8(file.filename());
+            if (name == "d3d12sdklayers.dll" || name == "d3d12core.dll") continue;
+            if (!dx12Enabled && (name == "dxcompiler.dll" || name == "dxil.dll" || name == "winpixeventruntime.dll")) continue;
+            runtimeDlls.push_back(file);
         }
 
         /// @note 実行に必須の DLL がないパッケージを成功扱いにしない。黙ってスキップすると
@@ -440,7 +588,7 @@ bool BuildPipeline::ExecuteStep()
         /// @note DX12 は .cso (DXIL) を読むだけの経路でも、頂点入力と MaterialConstants の
         /// @note リフレクションに dxcompiler.dll が要る。無いと DX12Shader::Init が
         /// @note 全シェーダーで失敗し、何も描かれないまま起動する。
-        if (m_rendererBackend == "dx12") {
+        if (dx12Enabled) {
             required.push_back(L"dxcompiler.dll");
             required.push_back(L"dxil.dll");
             required.push_back(L"WinPixEventRuntime.dll");
@@ -455,7 +603,7 @@ bool BuildPipeline::ExecuteStep()
         }
 
         /// @note The imported PIX event runtime requires its SDK notices even when capture is disabled.
-        if (m_rendererBackend == "dx12") {
+        if (dx12Enabled) {
             for (const wchar_t* name : { L"LICENSE", L"VERSION", L"ThirdPartyNotices.txt" }) {
                 const auto src = exeDir / L"EngineLicenses" / L"WinPixEventRuntime" / name;
                 if (!util::FileSystem::Exists(src)) {
@@ -470,6 +618,21 @@ bool BuildPipeline::ExecuteStep()
                 SetFailed("Failed to copy DLL: " + util::FileSystem::PathToUtf8(src));
                 return false;
             }
+        }
+        if (dx12Enabled) {
+            const auto core = exeDir / L"D3D12" / L"D3D12Core.dll";
+            if (!util::FileSystem::CopyFile(core, m_tmpDir / L"D3D12" / L"D3D12Core.dll")) {
+                SetFailed("Failed to copy Agility runtime: " + util::FileSystem::PathToUtf8(core));
+                return false;
+            }
+            /// @note 最終ゲームは Core だけを指定して運び、開発レイヤーや PDB を含めない。
+            /// @see https://microsoft.github.io/DirectX-Specs/d3d/D3D12Redistributable.html#d3d12-debug-layer
+        }
+        const auto localManifest = exeDir / L"fbzz-runtime.toml";
+        if (util::FileSystem::Exists(localManifest) &&
+            !util::FileSystem::CopyFile(localManifest, m_tmpDir / L"fbzz-runtime.toml")) {
+            SetFailed("Failed to copy runtime manifest: " + util::FileSystem::PathToUtf8(localManifest));
+            return false;
         }
         FBZZ_LOG_DEBUG("BuildPipeline: copied %zu runtime DLLs", runtimeDlls.size());
 
@@ -510,7 +673,7 @@ bool BuildPipeline::ExecuteStep()
             return !rel.empty() ? rel.generic_string() : rawPath;
         };
 
-        /// @name ビルド向け最小 .fbzz_proj を書き出す (開発環境固有の絶対パスを除去)
+        /// @note ビルド向け最小 .fbzz_proj を書き出す (開発環境固有の絶対パスを除去)
         /// @note 元の .fbzz_proj は engine.root/api_root/script_root 等の開発環境固有の
         /// @note 絶対パスを含み、別 PC では無効になる。ランタイムが読むフィールドだけを
         /// @note 相対パスで書き直す。
@@ -534,7 +697,7 @@ bool BuildPipeline::ExecuteStep()
             }
         }
 
-        /// @name ProjectSettings を相対パスに修正してコピー
+        /// @note ProjectSettings を相対パスに修正してコピー
         /// @note default_scene / start_scene が絶対パスで保存されている場合、パースして
         /// @note 絶対パスフィールドのみ相対変換し、それ以外は元の値を保持する。
         {
@@ -582,7 +745,7 @@ bool BuildPipeline::ExecuteStep()
             }
         }
 
-        /// @name 入力バインド (.inputactions) をコピー
+        /// @note 入力バインド (.inputactions) をコピー
         /// @note ProjectSettings.toml と同じディレクトリの Input.inputactions をランタイムが
         /// @note 読む。入れ忘れるとビルドだけ既定バインドに戻る。入力設定自体は任意なので
         /// @note ファイルが無くても失敗にしない。
@@ -599,7 +762,7 @@ bool BuildPipeline::ExecuteStep()
             }
         }
 
-        /// @name Assets の外に置かれたシーンを拾う
+        /// @note Assets の外に置かれたシーンを拾う
         /// @note Assets 配下のシーンは CopyFiles で既にコピー済み。ここが効くのは Build
         /// @note Settings に Assets 外の絶対パス/別ディレクトリを足した場合だけ。
         {
@@ -636,6 +799,13 @@ bool BuildPipeline::ExecuteStep()
 
     case Step::WriteManifest: {
         m_status = "Writing manifest...";
+        std::string runtimeReason;
+        if (!ValidateRuntimePackage(m_tmpDir / (m_settings.productName + ".exe"),
+                                    util::FileSystem::PathFromUtf8(m_engineRoot), m_runtimeConfiguration,
+                                    true, runtimeReason)) {
+            SetFailed(runtimeReason);
+            return false;
+        }
         /// @note game.manifest.toml: 製品名・バージョン・ビルド構成を書き出す。出来上がった
         /// @note 配布物だけを見てどの構成/バックエンドで焼いたか判別できるようにする。
         /// @note ランタイムは development フラグを読む。

@@ -9,7 +9,7 @@
 # @see Docs/design/ai-verification-loop.md
 
 # @note check <file...> [-Preset <p>]: 変更したファイルだけコンパイルする (リンクしない)。
-# @note build <target...> [-Preset <p>]: ターゲットをビルドする。
+# @note build <target...> [-Preset <p>] [-BuildDirectory <dir>]: エンジンまたは構成済み SDK consumer をビルドする。
 # @note test [-Filter <regex>] [-Preset <p>]: ctest を回す。
 # @note configure [-Preset <p>]: CMake を作り直す (GLOB に新規ファイルを載せる)。
 [CmdletBinding()]
@@ -23,6 +23,9 @@ param(
 
     # @note 省略時は development → debug → release の順で configure 済みのツリーを使う。
     [string] $Preset = '',
+
+    # @note build のみ。リポジトリ内の構成済み Visual Studio consumer のビルド先を指定する。
+    [string] $BuildDirectory = '',
 
     [string] $Filter = '',
 
@@ -52,6 +55,36 @@ $PresetLayout = [ordered]@{
 
 function Write-Line([string] $text) { [Console]::Out.WriteLine($text) }
 
+# @brief リポジトリ内の実在ディレクトリを絶対解決する。リンク経由の外部参照も拒否する。
+function Resolve-RepositoryDirectory([string] $path, [ref] $reason) {
+    try {
+        $candidate = if ([System.IO.Path]::IsPathRooted($path)) { $path } else { Join-Path $RepositoryRoot $path }
+        $resolved = [System.IO.Path]::GetFullPath($candidate).TrimEnd([char[]]'\/')
+        $root = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([char[]]'\/')
+        if (-not ($resolved.Equals($root, [System.StringComparison]::OrdinalIgnoreCase) -or
+            $resolved.StartsWith($root + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase))) {
+            $reason.Value = "directory is outside repository: $resolved"
+            return ''
+        }
+        if (-not (Test-Path -LiteralPath $resolved -PathType Container)) {
+            $reason.Value = "directory is missing: $resolved"
+            return ''
+        }
+        $directory = Get-Item -LiteralPath $resolved -Force
+        while ($null -ne $directory) {
+            if (($directory.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                $reason.Value = "linked directory is not supported: $($directory.FullName)"
+                return ''
+            }
+            if ($directory.FullName.Equals($root, [System.StringComparison]::OrdinalIgnoreCase)) { return $resolved }
+            $directory = $directory.Parent
+        }
+        $reason.Value = "directory does not resolve inside repository: $resolved"
+    }
+    catch { $reason.Value = "invalid directory '$path': $($_.Exception.Message)" }
+    return ''
+}
+
 # @brief 使う preset を決める。明示された preset が未知なら exit 2。
 function Resolve-Preset {
     if (-not [string]::IsNullOrWhiteSpace($Preset)) {
@@ -74,6 +107,58 @@ function Resolve-Preset {
 $PresetKey = Resolve-Preset
 $BinaryDirectory = Join-Path $RepositoryRoot $PresetLayout[$PresetKey].BinaryDir
 $Configuration = $PresetLayout[$PresetKey].Configuration
+
+# @note consumer の指定は既存キャッシュの検査だけで受理し、Engine の自動 configure へ流さない。
+$UsesBuildDirectory = $PSBoundParameters.ContainsKey('BuildDirectory')
+if ($UsesBuildDirectory) {
+    if ($Verb -ne 'build' -or [string]::IsNullOrWhiteSpace($BuildDirectory)) {
+        Write-Line 'RESULT env-error -BuildDirectory requires build and a configured directory'
+        exit 2
+    }
+    $directoryReason = ''
+    $resolvedBuildDirectory = Resolve-RepositoryDirectory $BuildDirectory ([ref] $directoryReason)
+    if ([string]::IsNullOrEmpty($resolvedBuildDirectory)) {
+        Write-Line "RESULT env-error $directoryReason"
+        exit 2
+    }
+    $cachePath = Join-Path $resolvedBuildDirectory 'CMakeCache.txt'
+    if (-not (Test-Path -LiteralPath $cachePath -PathType Leaf) -or
+        ((Get-Item -LiteralPath $cachePath -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Write-Line "RESULT env-error configured CMakeCache.txt is missing or linked: $cachePath"
+        exit 2
+    }
+    try { $cacheText = [System.IO.File]::ReadAllText($cachePath) }
+    catch { Write-Line "RESULT env-error cannot read CMakeCache.txt: $cachePath"; exit 2 }
+    $sourceMatch = [regex]::Match($cacheText, '(?m)^CMAKE_HOME_DIRECTORY:INTERNAL=([^\r\n]+)\r?$')
+    $cacheDirectoryMatch = [regex]::Match($cacheText, '(?m)^CMAKE_CACHEFILE_DIR:INTERNAL=([^\r\n]+)\r?$')
+    $generatorMatch = [regex]::Match($cacheText, '(?m)^CMAKE_GENERATOR:INTERNAL=([^\r\n]+)\r?$')
+    $configurationMatch = [regex]::Match($cacheText, '(?m)^CMAKE_CONFIGURATION_TYPES:STRING=([^\r\n]+)\r?$')
+    if (-not $sourceMatch.Success -or -not $cacheDirectoryMatch.Success -or
+        -not $generatorMatch.Success -or -not $configurationMatch.Success) {
+        Write-Line "RESULT env-error incomplete Visual Studio CMakeCache.txt: $cachePath"
+        exit 2
+    }
+    $resolvedSourceDirectory = Resolve-RepositoryDirectory $sourceMatch.Groups[1].Value ([ref] $directoryReason)
+    if ([string]::IsNullOrEmpty($resolvedSourceDirectory)) {
+        Write-Line "RESULT env-error CMAKE_HOME_DIRECTORY $directoryReason"
+        exit 2
+    }
+    $resolvedCacheDirectory = Resolve-RepositoryDirectory $cacheDirectoryMatch.Groups[1].Value ([ref] $directoryReason)
+    if ([string]::IsNullOrEmpty($resolvedCacheDirectory) -or
+        -not $resolvedCacheDirectory.Equals($resolvedBuildDirectory, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-Line 'RESULT env-error CMAKE_CACHEFILE_DIR does not match -BuildDirectory'
+        exit 2
+    }
+    if ($generatorMatch.Groups[1].Value -notmatch '^Visual Studio \d+ ') {
+        Write-Line 'RESULT env-error -BuildDirectory requires a Visual Studio CMake generator'
+        exit 2
+    }
+    if ($Configuration -notin ($configurationMatch.Groups[1].Value -split ';')) {
+        Write-Line "RESULT env-error configuration '$Configuration' is not configured in $resolvedBuildDirectory"
+        exit 2
+    }
+    $BinaryDirectory = $resolvedBuildDirectory
+}
 
 $AgentDirectory = Join-Path $RepositoryRoot 'build/agent'
 New-Item -ItemType Directory -Force -Path $AgentDirectory | Out-Null
@@ -356,6 +441,10 @@ function Invoke-Build {
         exit 2
     }
     if (-not (Test-Path -LiteralPath (Join-Path $BinaryDirectory 'CMakeCache.txt'))) {
+        if ($UsesBuildDirectory) {
+            Write-Line 'RESULT env-error consumer CMakeCache.txt disappeared; configure it before building'
+            exit 2
+        }
         if ((Invoke-Configure) -ne 0) { Write-Summary 1 'stage=configure'; exit 2 }
     }
     $arguments = New-Object System.Collections.Generic.List[string]

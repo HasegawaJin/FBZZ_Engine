@@ -16,7 +16,10 @@ FBZZ Engine 本体は MIT License ([LICENSE](LICENSE)) で配布する。
 | [Assimp](https://github.com/assimp/assimp) | 6.0.5 | `BSD-3-Clause` | [`ThirdParty/Assimp/LICENSE`](ThirdParty/Assimp/LICENSE) |
 | [DirectXTex](https://github.com/microsoft/DirectXTex) | 2.0.2 (`DIRECTX_TEX_VERSION 202`) | `MIT` | [`ThirdParty/DirectXTex/LICENSE`](ThirdParty/DirectXTex/LICENSE) |
 | [WinPixEventRuntime](https://www.nuget.org/packages/WinPixEventRuntime/1.0.240308001) | 1.0.240308001 | `MIT` | [`ThirdParty/WinPixEventRuntime/LICENSE`](ThirdParty/WinPixEventRuntime/LICENSE) |
+| [DirectX 12 Agility SDK](https://www.nuget.org/packages/Microsoft.Direct3D.D3D12/1.619.6) | 1.619.6 | Microsoft binary / MIT code terms | [`ThirdParty/AgilitySDK/LICENSE`](ThirdParty/AgilitySDK/LICENSE) |
+| [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler/releases/tag/v1.9.2609) | 1.9.2609 | MIT / LLVM / Microsoft binary terms | [`ThirdParty/DXC/LICENSE`](ThirdParty/DXC/LICENSE) |
 | [Dear ImGui](https://github.com/ocornut/imgui) | 1.92.8 (docking) | `MIT` | [`ThirdParty/ImGui/LICENSE.txt`](ThirdParty/ImGui/LICENSE.txt) |
+| [ImPlot](https://github.com/epezent/implot/tree/v1.0) | 1.0 | `MIT` | [`ThirdParty/ImPlot/LICENSE`](ThirdParty/ImPlot/LICENSE) |
 | [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo) | — | `MIT` | [`ThirdParty/ImGuizmo/LICENSE`](ThirdParty/ImGuizmo/LICENSE) |
 | [imnodes](https://github.com/Nelarius/imnodes) | — | `MIT` | [`ThirdParty/ImNodes/LICENSE`](ThirdParty/ImNodes/LICENSE) |
 | [toml++](https://github.com/marzer/tomlplusplus) | 3.4.0 | `MIT` | [`ThirdParty/TomlPlusPlus/LICENSE`](ThirdParty/TomlPlusPlus/LICENSE) |
@@ -38,7 +41,6 @@ FBZZ Engine 本体は MIT License ([LICENSE](LICENSE)) で配布する。
 | XAudio2 | Windows SDK | 同上 |
 | Microsoft::WRL (ComPtr) | Windows SDK | 同上 |
 | FXC (`fxc.exe`) | Windows SDK | DX11 用シェーダーコンパイラー。ビルド時のみ使用 |
-| DXC (`dxcompiler.dll` / `dxil.dll`) | [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler) | DX12 用。**スタンドアロン配布物に同梱される**ため、配布時は上流の `LICENSE.TXT` (University of Illinois/NCSA Open Source License) と `dxil.dll` の再頒布条件を添付すること |
 | Electron / React / Node.js 依存 (GameHub) | npm | `Projects/GameHub/package.json` と `node_modules` 配下の各ライセンスに従う |
 | MCP SDK ほか (EditorMcp) | npm | `Projects/EditorMcp/package.json` と `node_modules` 配下の各ライセンスに従う |
 
@@ -187,6 +189,33 @@ SOFTWARE.
 ```
 
 ---
+
+## ImPlot — MIT
+
+取り込み範囲: v1.0 の `implot.h` / `implot_internal.h` / `implot.cpp` / `implot_items.cpp`。デモと上流ビルドスクリプトは含めない。Editor 専用の静的依存として使い、固定コミットと各ファイルの SHA-256 は [`ThirdParty/ImPlot/VERSION`](ThirdParty/ImPlot/VERSION) に記録する。
+
+MIT License
+
+Copyright (c) 2020-2024 Evan Pezent
+Copyright (c) 2025-2026 Breno Cunha Queiroz
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ## ImGuizmo — MIT
 

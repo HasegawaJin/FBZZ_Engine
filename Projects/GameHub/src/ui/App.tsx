@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BootstrapData, CreateProjectRequest, HubSettings, HubTheme, ProjectEntry, SdkBuildConfiguration, TemplateInfo, UpdateNotice } from '../shared/contracts';
-import { deriveProjectIdentifiers, isValidProjectIdentifiers } from '../shared/contracts';
+import { deriveProjectIdentifiers, GetSdkEditorPath, isValidProjectIdentifiers } from '../shared/contracts';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
 import { outdatedSdkNotice } from '../shared/SdkNotice';
@@ -347,22 +347,23 @@ function SettingsPage({ settings, projectCount, hubVersion, onSave }: {
   const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
   const sdkPending = draft.sdkRoot.trim() !== settings.sdkRoot;
   const sdkNotice = outdatedSdkNotice('', settings.sdkId, hubVersion);
+  const editorPath = GetSdkEditorPath(draft.sdkRoot, draft.sdkConfiguration);
+  const savedEditorPath = GetSdkEditorPath(settings.sdkRoot, settings.sdkConfiguration);
   const patch = (values: Partial<HubSettings>) => setDraft({ ...draft, ...values });
 
   return <div className="settings">
     <section className="card">
-      <header><h2>ツールチェーン</h2><p>Editor の実体と、プロジェクトを開く SDK を決めます。</p></header>
+      <header><h2>ツールチェーン</h2><p>プロジェクトを開く SDK と構成を選びます。</p></header>
       <div className="card-content">
         <div className="field">
-          <div className="field-label"><span>Editor 実行ファイル</span><small>空欄なら SDK から自動検出</small></div>
+          <div className="field-label"><span>Editor 実行ファイル</span><small>SDK と構成から決定</small></div>
           <div className="field-control">
             <div className="path-input">
-              <input className="text-input mono" value={draft.editorExe} placeholder="(自動検出)" onChange={(event) => patch({ editorExe: event.target.value })} />
-              <button className="button" onClick={async () => { const value = await window.gameHub.chooseEditorExecutable(); if (value) patch({ editorExe: value }); }}>参照</button>
+              <input className="text-input mono" value={editorPath} placeholder="SDK を選択してください" readOnly aria-label="SDK Editor の起動先" />
             </div>
             <span className="hint">
               <Icon name="info" size={13} />
-              {draft.editorExe ? '指定した実行ファイルを優先します。' : `tools/${draft.sdkConfiguration}/Editor/FBZZEditor.exe を使用します。`}
+              選択した SDK の Editor を使用します。プロジェクトに SDK の版が固定されている場合は、その版で開きます。
             </span>
           </div>
         </div>
@@ -444,7 +445,7 @@ function SettingsPage({ settings, projectCount, hubVersion, onSave }: {
           <dt>GameHub</dt><dd className="mono">v{hubVersion}</dd>
           <dt>解決済み SDK ID</dt><dd className="mono">{settings.sdkId || '—'}</dd>
           <dt>SDK ルート</dt><dd className="mono" title={settings.sdkRoot}>{settings.sdkRoot || '—'}</dd>
-          <dt>Editor 実行ファイル</dt><dd className="mono" title={settings.editorExe}>{settings.editorExe || '(自動検出)'}</dd>
+          <dt>Editor 実行ファイル</dt><dd className="mono" title={savedEditorPath}>{savedEditorPath || '—'}</dd>
           <dt>登録プロジェクト</dt><dd>{projectCount}</dd>
         </dl>
       </div>
@@ -751,7 +752,7 @@ export function App() {
         <dl>
           <dt>SDK</dt><dd className="strong mono">{settings.sdkId || '未解決'}</dd>
           <dt>構成</dt><dd>{settings.sdkConfiguration}</dd>
-          <dt>Editor</dt><dd>{settings.editorExe ? '手動指定' : '自動検出'}</dd>
+          <dt>Editor</dt><dd>SDK 内</dd>
           <dt>Root</dt><dd title={settings.sdkRoot}>{settings.sdkRoot || '未設定'}</dd>
         </dl>
       </button>
