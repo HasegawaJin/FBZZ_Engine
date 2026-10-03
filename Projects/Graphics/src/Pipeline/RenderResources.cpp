@@ -206,6 +206,7 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     if (targets.ssaoRaw.IsValid())               resources.Release(targets.ssaoRaw);
     if (targets.ssaoBlur.IsValid())              resources.Release(targets.ssaoBlur);
     if (targets.ssrResult.IsValid())             resources.Release(targets.ssrResult);
+    if (targets.volumetricRaw.IsValid())         resources.Release(targets.volumetricRaw);
     if (targets.volumetricResult.IsValid())      resources.Release(targets.volumetricResult);
     if (targets.taaHistoryA.IsValid())           resources.Release(targets.taaHistoryA);
     if (targets.taaHistoryB.IsValid())           resources.Release(targets.taaHistoryB);
@@ -693,6 +694,7 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
     auto& ssaoRaw                 = viewTargets.ssaoRaw;
     auto& ssaoBlur                = viewTargets.ssaoBlur;
     auto& ssrResult               = viewTargets.ssrResult;
+    auto& volumetricRaw           = viewTargets.volumetricRaw;
     auto& volumetricResult        = viewTargets.volumetricResult;
     auto& taaHistoryA             = viewTargets.taaHistoryA;
     auto& taaHistoryB             = viewTargets.taaHistoryB;
@@ -782,6 +784,8 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
             ssaoBlur        = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
     /// @note Advanced Graphics per-view テクスチャ
             ssrResult           = resources.CreateComputeTexture(curW, curH);
+            /// @note 奇数の辺でも最後の画素を落とさず、半解像度の積分結果を全画面へ再構成する。
+            volumetricRaw       = resources.CreateComputeTexture((curW + 1u) / 2u, (curH + 1u) / 2u);
             volumetricResult    = resources.CreateComputeTexture(curW, curH);
             taaHistoryA         = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             taaHistoryB         = resources.CreateRenderTarget(curW, curH, kPostChainRT);

@@ -67,6 +67,7 @@ struct RenderViewResources {
     /// @note Advanced Graphics (解像度依存・ビュー単位)
     /// @note 解像度非依存の LUT 等は RenderSharedResources が保持する。
     renderer::ResourceHandle<renderer::TextureTag>        ssrResult;           ///< @note SSR CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        volumetricRaw;       ///< @note 半解像度の散乱 RGB / 正規化した視空間深度 A (空は -1)
     renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;    ///< @note Volumetric CS 出力
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;         ///< @note TAA ping-pong A
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;         ///< @note TAA ping-pong B

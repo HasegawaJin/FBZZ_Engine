@@ -172,6 +172,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     declareViewTexture("SSRResult",        ssrResult,        sHdrW, sHdrH);
     declareViewTexture("MotionBlurResult", motionBlurResult, sHdrW, sHdrH);
     declareViewTexture("VolumetricResult", volumetricResult, sHdrW, sHdrH);
+    declareViewTexture("VolumetricRaw", viewTargets.volumetricRaw, (sHdrW + 1u) / 2u, (sHdrH + 1u) / 2u);
 
     /// @note Forward もプリパスで GBuffer へ描くので、ここを Deferred 限定にすると
     /// @note 「宣言されていないリソース」への書き込みになり RenderGraph の検証が落ちる。

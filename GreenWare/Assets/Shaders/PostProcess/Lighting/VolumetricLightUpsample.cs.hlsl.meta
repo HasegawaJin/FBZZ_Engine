@@ -1,0 +1,14 @@
+# @file    VolumetricLightUpsample.cs.hlsl.meta
+# @brief   深度考慮の体積光再構成シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-10-03
+[meta]
+guid = 'd16bfdd5abc54f2e9e6d3e00c5cd2f61'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'
