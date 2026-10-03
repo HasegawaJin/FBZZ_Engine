@@ -4,7 +4,7 @@
 <!-- @date    2026-10-03 -->
 # Profiler の責務分割と計測契約
 
-- 状態: Draft。設計のみ。収集器の共通化、スクリプト個別計測、パネル分割は未実装 (2026-10-03)。
+- 状態: 実装済み。収集器の共通化、スクリプト個別計測、三つの独立パネルと Query を実装し、回帰・統合検証を完了 (2026-10-03)。
 
 エンジン全体の負荷を調べる Performance Profiler と、ゲームスクリプトの負荷原因を調べる Script Profiler を独立させる。共通の時間計測は Core に置き、スクリプトの識別と計測入口は Engine、履歴と画面は Editor が持つ。Memory Debug も独立パネルにする。
 
@@ -12,9 +12,9 @@
 
 ## 現在の構成と不足
 
-2026-10-03 の作業ツリーでは次の構成になっている。
+実装前の `develop` では次の構成になっていた。
 
-| 実装 | 現在の責務と不足 |
+| 実装 | 実装前の責務と不足 |
 |---|---|
 | [Core の Profiler](../../Projects/Core/include/Core/Profiler/Profiler.hpp) | CPU のフレーム収集と入れ子の計測。記録は名前、カテゴリ、経過時間、フレーム、深さ、色で、開始位置と対象識別子がない |
 | [Engine の Profiler ヘッダー](../../Projects/Engine/include/Engine/Profiler/Profiler.hpp) | Core への互換 include。別の CPU 収集器ではない |
@@ -57,7 +57,7 @@ Core に汎用の `ProfileRecorder` を追加する。単調時計、入れ子�
 
 スクリプト詳細を停止しても Performance の ScriptSystem 合計は残る。Performance を停止しても Script の個別計測は可能である。ScriptProfiler は実行を駆動するシステムではないため、ISystem や新しい Phase を追加しない。
 
-| 配置予定 | 内容 |
+| 実装の配置 | 内容 |
 |---|---|
 | `Projects/Core/include/Core/Profiler/ProfileRecorder.hpp` と対応する `src/Profiler/` | 汎用収集器と値型。公開ヘッダーに実装を集中させない |
 | `Projects/Core/include/Core/Profiler/Profiler.hpp` と `src/Profiler/Profiler.cpp` | 既存 API の facade、Performance の descriptor と確定 snapshot |
@@ -100,7 +100,7 @@ BeginFrame、更新と描画、EndFrame を一対にし、通常終了とウィ�
 | depth と status | 深さと COMPLETE、FAULTED、ABORTED の完了状態 |
 | sampleKind と startAvailable | TIMED_SCOPE、EXTERNAL_DURATION、INSTANT の別と、開始位置の実測有無 |
 
-Begin は recorder インスタンス、収集世代、フレーム、scope を識別する軽量 token を返す。通常 End は token を検証し LIFO で終了する。Checkpoint は同じ識別情報と現在の stack 境界、追跡上限後の suppression 状態を保持する。Recover は checkpoint より内側の未終了 scope を ABORTED として閉じ、suppression 状態も戻す。別 recorder、別フレーム、失効した世代、二重 End、復旧済み token は別 scope に作用させない。値型だけを SEH 入口へ渡せるようにする。
+Begin は recorder インスタンス、収集世代、フレーム、scope を識別する軽量 token を返す。通常 End は token を検証し LIFO で終了する。Checkpoint は同じ識別情報と現在の stack 境界、追跡上限後の suppression 状態を保持する。抑制中の checkpoint は保存した scope の生存 anchor も検証し、その scope を閉じて新しい分岐へ入った後の旧 checkpoint を復活させない。Performance facade の ProfilerCheckpoint は recorder 境界に加え、互換 BeginSample の stack、抑制深さ、元の overflow 境界と分岐 ID を保存する。native scope の抑制深さを互換 Begin/End の対応数へ流用しない。Recover は checkpoint より内側の未終了 scope を ABORTED として閉じ、suppression 状態も戻す。別 recorder、別フレーム、失効した世代、二重 End、復旧済み token は別 scope に作用させない。値型だけを SEH 入口へ渡せるようにする。
 
 初期実装は main thread 専用。ワーカーは既存の SystemScheduler と同じく外側で経過時間を測り、join 後に main thread から EXTERNAL_DURATION として追加する。開始位置を観測していなければ startAvailable と selfAvailable は false。表示上の親へ所属させても、その親から並列区間の和を差し引かない。重複区間を確定できない祖先の Self も unavailable とする。INSTANT は子時間へ加算しない。ワーカーの区間は観測できた範囲だけ公開し、main thread 上で順次実行した timeline に偽装しない。並列区間の合計をフレーム経過時間と呼ばない。
 
@@ -131,7 +131,7 @@ transitionFrame は状態変更操作によりフレーム内で runtimeEpoch、
 
 owner 付き Event は kind と channel を指定して共通の guarded callback に渡し、その入口で一度だけ計測する。EventBus と std::function wrapper の双方へ scope を置かない。
 
-現在の診断名には `collision callback` などがあるため、文字列から種類を推定しない。既知のメンバー関数ポインターを通常の比較で分類するか、呼び出し元から `ScriptCallbackKind` を明示する。任意関数には UNKNOWN と複写したラベルを使う。旧非仮想の呼び出し署名は wrapper として維持する。
+現在の診断名には `collision callback` などがあるため、文字列から種類を推定しない。[C++ の等値比較契約](https://eel.is/c++draft/expr.eq#5.3) は仮想メンバー関数ポインター同士の比較結果を unspecified とするため、既知 callback は呼び出し元から `ScriptCallbackKind` を明示する。Engine の通知、内部 ScriptModules、ゲーム DLL の直接呼び出しもこの入口を使う。任意関数には UNKNOWN と複写したラベルを使い、旧非仮想の呼び出し署名は UNKNOWN の wrapper として維持する。
 
 事前判定でスキップした呼び出しは数えない。呼び出した基底の空コールバックも一回に数える。仮想関数が override されているかを vtable やキャストで調べない。
 
@@ -187,6 +187,10 @@ DLL 更新、対象削除、Play 終了後も古い履歴は表示できる。�
 
 実行側も Editor の有無に関係なく、収集器ごとの descriptor 表を 8,192 件、所有文字列を合計 4 MiB 以内とする。現フレームと最新 snapshot に必要な descriptor を保持し、Editor へ複写した履歴の descriptor と文字列は Editor の 64 MiB 予算へ数える。解放済み DLL の表へ参照しない。一フレームに必要な descriptor が予算を超えた場合は後続の詳細を欠落として扱う。これらは初期の上限であり、実測後に調整する。
 
+所有文字列は長さだけでなく capacity() + 1 で課金する。実行側の descriptor と Script の型名表の合計を保守的に 1 MiB に制限し、最新 snapshot と初回登録中の候補文字列を含めて 4 MiB へ収める。候補を所有する前に長さと [MSVC basic_string の丸め](https://github.com/microsoft/STL/blob/main/stl/inc/xstring) へ 32 byte の余裕を見積り、保存後と退役後は実 capacity で再集計する。既存 descriptor と型名の検索キーは非所有 string_view とし、呼び出しごとの所有文字列を作らない。
+
+各 recorder は 8,192 samples の二重バッファ、128 件の active scope、最大 8,192 件の生存 suppression checkpoint anchor を初期予約する。Windows x64 の現在の値型では samples が 1 MiB、active scope が 10 KiB、anchor が 128 KiB で、両 recorder 合計は約 2.27 MiB となる。anchor 上限では当該 checkpoint を無効にし、保存済みの外側境界を維持する。descriptor オブジェクト自体は Core が 8,192 × sizeof(PerformanceDescriptor)、Script が 8,192 × sizeof(ScriptProfileDescriptor) を予約し、最新 snapshot もそれぞれ最大同数とする。descriptor 検索、Script 型 ID、instance、context の各表は最大 8,192 件で有限化する。これらのオブジェクトと索引の常駐容量は文字列の 4 MiB とは別に数え、Editor の snapshot 複写では全オブジェクトと文字列を履歴予算へ含める。
+
 sample の出力枠は Begin 時に予約し、保存済みの子の親が出力から欠落しないようにする。出力上限後も、上限内の active stack では終了と子時間の集計を継続する。深さ上限では subtree 全体を suppression 状態にして深さと対応する End を追跡し、追跡しない子の End が保存済みの親を閉じないようにする。この状態は checkpoint にも含め、子時間を確定できない祖先の Self を unavailable にする。`recordedSampleCount`、`droppedSampleCount`、`complete`、`historyEvictedFrameCount` を公開する。容量超過はゲームの実行を止めず、完全な計測値とは表示しない。
 
 ## 画面と既存設定の移行
@@ -237,7 +241,22 @@ SEH の統合試験は既存の障害隔離テスト方式に合わせ、Script 
 
 履歴について、DLL を解放した後に旧型名を読めること、同一フレームに旧実体の破棄と新実体の開始を保持できること、再生成した同名実体を選択しないこと、容量超過と深さ超過が完全性を下げても parent と End の対応が壊れないこと、独立した収集の四通りの有効状態を検証する。GPU は同名別ビュー、別フレーム、出自不明の結果が厳密結合されないことを確認する。
 
-C++ の変更検証は [AI 検証ループ](ai-verification-loop.md) の AgentBuild を使う。新規テストの SOURCES 登録、Engine のモジュール定義、Core と Engine の SDK 配布、必要なホストの再リンクも各段階の完了条件とする。起動中の DLL を掴むフルビルドと再起動は既存運用に従う。本書作成時点ではこれらを実施していない。
+C++ の変更検証は [AI 検証ループ](ai-verification-loop.md) の AgentBuild を使う。新規テストの SOURCES 登録、Engine のモジュール定義、Core と Engine の SDK 配布、必要なホストの再リンクも各段階の完了条件とする。起動中の DLL を掴むフルビルドと再起動は既存運用に従う。
+
+2026-10-03 に次の範囲を検証した。
+
+| 検証 | 状態 |
+|--------|------|
+| 変更 C++ のコンパイル | 初回 37 単位と最終修正の再チェック、全体ビルドでエラー・警告 0 |
+| Core / Engine / Editor の回帰テスト | 261 件合格。Core 18 / ScriptProfiler 15 / Editor 履歴 17 の追加テストと既存呼び出しの互換を確認 (`test-20261003-175442-68324.log`) |
+| Editor と SDK のリンク・公開ヘッダー | Core / Engine / Editor テスト、EditorLauncher、FBZZSDK の Development ビルド合格 (`build-20261003-173703-12500.log`) |
+| `GreenWare/Tests/Playtests/ProfilerSplit.playtest.json` | 配布 SDK の Editor で 76 / 76 項目合格。ゲーム DLL の初回ビルド・読み込み後に、非表示時の履歴、Play/Edit、独立 Record 四通り、旧 Query、エラー応答、三パネルの前面化・描画を確認 (`Scratch/ProfilerSplitReport2.json`) |
+
+Coroutine のテストを既存 Tween/Coroutine API へ置換し、最終コンパイルと EngineAuto 再ビルドはエラー・警告 0、ScriptProfilerTest 15 件の再検証も合格した (`test-20261003-203641-28244.log`)。
+
+作業ツリーの初回検証では、未展開の Git LFS 画像と初回スクリプトビルド待ちの上限により起動準備が完了しなかった。共有済みローカルキャッシュから素材を展開し、原本と一致する `.meta` を持つ不足ベイクを補完した。ファイル内容、GUID、原本の変更を保持し、初回ビルドの待機上限を調整して再実行した。
+
+DLL 世代切替を模した旧型名の所有、失効した対象の選択拒否、複数文脈、SEH、容量と失効 token の境界は単体テストで確認した。実 GUI からの Freeze/Capture 操作と DLL 再読み込みの失敗復帰、GPU 遅延の実機注入はこの Playtest に含めていない。
 
 ## 参考と採用しない前提
 

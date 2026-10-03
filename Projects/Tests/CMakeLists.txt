@@ -49,6 +49,7 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Signal/SignalTests.cpp
         Core/Auto/Logger/LoggerTests.cpp
         Core/Auto/Profiler/ProfilerTests.cpp
+        Core/Auto/Profiler/ProfileRecorderTests.cpp
         Core/Auto/Util/FileSystemTests.cpp
         Core/Auto/Util/TempDirTests.cpp
         Core/Auto/CrashHandler/CrashHandlerTests.cpp
@@ -162,6 +163,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ScriptModulesTests.cpp
         Engine/Auto/ScriptLifecycleTests.cpp
         Engine/Auto/ScriptRequirementsTests.cpp
+        Engine/Auto/ScriptProfilerTests.cpp
         Engine/Auto/ScriptAudioLoopTests.cpp
         Engine/Auto/ColorTests.cpp
         Engine/Auto/EasingTests.cpp
@@ -295,6 +297,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/PlaytestJsonTests.cpp
     Editor/Auto/PlaytestRunnerTests.cpp
     Editor/Auto/PixOperatorTests.cpp
+        Editor/Auto/ProfilerHistoryTests.cpp
     Editor/Auto/PrefabOverrideTests.cpp
         Editor/Auto/PrefabReferenceOverrideTests.cpp
         Editor/Auto/SceneEditCapacityTests.cpp
