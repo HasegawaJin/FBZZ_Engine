@@ -1,2 +1,14 @@
+# @file    CloudUpscale.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-16
 [meta]
 guid = '47046bf9cfb4419da4785a067d882568'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

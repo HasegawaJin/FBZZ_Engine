@@ -9,6 +9,7 @@
 #include <Graphics/Renderer/Format.hpp>
 #include <Graphics/Renderer/AccelerationStructure.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
+#include <Graphics/Renderer/ShaderCapabilities.hpp>
 #include <Graphics/Renderer/ResourcePool.hpp>
 #include <Graphics/Renderer/RenderState.hpp>
 /// @note DynamicTextureFormat を CreateDynamicTexture の引数に取るため、ITexture の前方宣言
@@ -53,6 +54,8 @@ public:
     static ResourceManager* Active();
 
     ResourceHandle<ShaderTag> LoadShader(std::string_view path);
+    /// @note 成功した shader load / reload と同じ版の能力を返す。失敗した reload は旧能力を保持する。
+    [[nodiscard]] ShaderCapabilities GetShaderCapabilities(ResourceHandle<ShaderTag> handle) const;
 
     /// @note レンダースレッドのフレーム外で呼ぶ。失敗時は旧実体とハンドルを保持する。
     ResourceHandle<ShaderTag> ReloadShader(std::string_view path);
@@ -258,6 +261,7 @@ private:
     ResourcePool<IAccelerationStructure, AccelerationStructureTag> m_accelerationStructures;
 
     std::unordered_map<std::string, ResourceHandle<ShaderTag>> m_shaderCache;
+    std::unordered_map<uint64_t, ShaderCapabilities> m_shaderCapabilities;
     std::unordered_map<std::string, ResourceHandle<TextureTag>> m_textureCache;
     /// @note LoadTexture で外へ配ったキー。配られた先がハンドルを持ち続けるかもしれないので、非同期側は外さない。
     std::unordered_set<std::string> m_texturesHandedOut;

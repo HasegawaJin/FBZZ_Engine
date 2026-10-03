@@ -3,10 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
 #include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
+#include <TestKit/TempDir.hpp>
 #include <Engine/Renderer/GeometryRoute.hpp>
 #include <Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <array>
 #include <string>
 #include <type_traits>
@@ -20,7 +23,27 @@ using scene::ExtractGeometryMaterial;
 
 static_assert(std::is_trivially_copyable_v<renderer::GeometryMaterialInput>);
 
-class GeometryMaterialExtractionTest : public testkit::Fixture {};
+class GeometryMaterialExtractionTest : public testkit::EngineFixture {
+protected:
+    void SetUp() override
+    {
+        EngineFixture::SetUp();
+        ASSERT_TRUE(m_temp.IsValid());
+        ASSERT_TRUE(WriteShader("PBR.hlsl", "standard_surface_v1"));
+        ASSERT_TRUE(WriteShader("SkinnedPBR.hlsl", "standard_skinned_v1"));
+    }
+
+    std::string ShaderPath(const std::string& name) const { return m_temp.File(name).generic_string(); }
+    bool WriteShader(const std::string& name, const std::string& vertex)
+    {
+        const std::string path = ShaderPath(name);
+        return util::FileSystem::WriteText(path, "float4 PSMain() : SV_Target { return 1; }\n")
+            && util::FileSystem::WriteText(path + ".meta", "[shader]\nversion=1\nvertex='" + vertex
+                + "'\nsurface='metallic_roughness_v1'\nopacity='alpha_clip_v1'\nvariants='" + vertex + "'\n");
+    }
+
+    testkit::TempDir m_temp{"geometry-material"};
+};
 
 TEST_F(GeometryMaterialExtractionTest, MissingAssetKeepsBlendOverrideAndStaysForward)
 {
@@ -39,6 +62,7 @@ TEST_F(GeometryMaterialExtractionTest, MissingAssetKeepsBlendOverrideAndStaysFor
 TEST_F(GeometryMaterialExtractionTest, BlendOverrideTakesPrecedenceOverSharedAsset)
 {
     asset::MaterialAsset material;
+    material.shaderPath = ShaderPath("PBR.hlsl");
     material.blendMode = renderer::BlendMode::ALPHA_BLEND;
     scene::MaterialSlot slot;
     EXPECT_EQ(ResolveGeometryRoute(ExtractGeometryMaterial(slot, &material), true),
@@ -85,7 +109,7 @@ TEST_F(GeometryMaterialExtractionTest, SnapshotSurvivesMaterialEditingAndDestruc
     renderer::GeometryMaterialInput saved;
     {
         asset::MaterialAsset material;
-        material.shaderPath = "Assets/Shaders/Material/Surface/PBR.hlsl";
+        material.shaderPath = ShaderPath("PBR.hlsl");
         scene::MaterialSlot slot;
         saved = ExtractGeometryMaterial(slot, &material);
         material.shaderPath = "Custom.hlsl";
@@ -101,7 +125,7 @@ TEST_F(GeometryMaterialExtractionTest, SnapshotSurvivesMaterialEditingAndDestruc
 TEST_F(GeometryMaterialExtractionTest, SubmeshSlotsKeepIndependentRoutesAcrossViews)
 {
     asset::MaterialAsset material;
-    material.shaderPath = "Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl";
+    material.shaderPath = ShaderPath("SkinnedPBR.hlsl");
     std::array<scene::MaterialSlot, 3> slots;
     slots[1].hasBlendModeOverride = true;
     slots[1].blendModeOverride = renderer::BlendMode::PREMULTIPLIED;

@@ -155,6 +155,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ScriptTransformHierarchyTests.cpp
         Engine/Auto/SceneCapacityTests.cpp
         Engine/Auto/SceneCapacityIntegrationTests.cpp
+        Engine/Auto/ShaderCapabilitiesTests.cpp
         Engine/Auto/PrefabIdentityTests.cpp
         Engine/Auto/PrefabReferenceRemapTests.cpp
         Engine/Auto/ScriptSceneQueryTests.cpp

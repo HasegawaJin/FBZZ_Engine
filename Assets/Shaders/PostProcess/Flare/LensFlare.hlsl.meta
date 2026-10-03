@@ -1,2 +1,14 @@
+# @file    LensFlare.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-07-11
 [meta]
 guid = 'c17a8c0534c34d5ea1c7293cb8fa8532'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

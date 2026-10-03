@@ -1,2 +1,14 @@
+# @file    GTAOBlur.cs.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-07-11
 [meta]
 guid = '97cf3e7b28564a2abfe78e02deb9d7a0'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

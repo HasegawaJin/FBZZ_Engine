@@ -42,6 +42,7 @@
 #include <Engine/Asset/StreamedTextureResolver.hpp>
 #include <Engine/Asset/TextureStreamChannel.hpp>
 #include <Engine/Renderer/AssetPathService.hpp>
+#include <Engine/Asset/ShaderCapabilities.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/EngineAssetPath.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -70,7 +71,7 @@ std::string DiscoverEngineAssetRoot()
 
 /// @brief 壊れた guid 参照は解決のたびに (= 毎フレーム) 通るため、同じ参照は 1 度だけ報告する。
 /// @note Console のリングバッファは 512 件しかなく、1 件が毎フレーム流れると他のログを
-///       押し出して「エラーが出ている」こと自体が見えなくなる。
+/// @note 押し出して「エラーが出ている」こと自体が見えなくなる。
 std::unordered_set<std::string>& BrokenRefReports()
 {
     static std::unordered_set<std::string> reported;
@@ -92,8 +93,8 @@ std::unique_ptr<Model> BuildBundledModelImpl(std::unique_ptr<ModelAsset> asset)
     model->materials.reserve(lod0.submeshes.size());
 
     /// @note submesh の添字 → model->meshes の添字。下のループは mesh を持たない submesh を
-    ///       飛ばすため、ModelNode::meshIndices (submesh 基準) をそのまま使うと 1 個ずれた
-    ///       メッシュを指す (ノードが別の部位を描く、という静かな壊れ方になる)。
+    /// @note 飛ばすため、ModelNode::meshIndices (submesh 基準) をそのまま使うと 1 個ずれた
+    /// @note メッシュを指す (ノードが別の部位を描く、という静かな壊れ方になる)。
     constexpr uint32_t kDropped = UINT32_MAX;
     std::vector<uint32_t> submeshToMesh(lod0.submeshes.size(), kDropped);
 
@@ -102,7 +103,7 @@ std::unique_ptr<Model> BuildBundledModelImpl(std::unique_ptr<ModelAsset> asset)
         if (!submesh.mesh) continue;
 
         /// @note Model は所有するメッシュ列を返す表現なので、.fzasset の LOD0 だけを移譲し、
-        ///       マテリアルは別アセット束縛までの既定値で埋める。
+        /// @note マテリアルは別アセット束縛までの既定値で埋める。
         submeshToMesh[si] = static_cast<uint32_t>(model->meshes.size());
         model->meshes.push_back(std::move(submesh.mesh));
         model->materials.push_back(std::make_unique<renderer::Material>());
@@ -126,7 +127,7 @@ std::unique_ptr<Model> BuildBundledModelImpl(std::unique_ptr<ModelAsset> asset)
     model->nodeTransformsBaked = asset->nodeTransformsBaked;
 
     /// @note ベイクが v3 以前でノード情報が無い場合は、全メッシュを担当する
-    ///       ルート 1 個として表現する。配置側にノード有無の分岐を書かせない。
+    /// @note ルート 1 個として表現する。配置側にノード有無の分岐を書かせない。
     if (model->nodes.empty() && !model->meshes.empty()) {
         ModelNode root;
         root.name = "Mesh";
@@ -209,7 +210,7 @@ std::unique_ptr<Model> LoadFzMeshModel(
     model->materials.push_back(std::make_unique<renderer::Material>());
 
     /// @note .mesh は単一メッシュを結合済みで持つ形式なので、階層は常にルート 1 個。
-    ///       配置側にノード有無の分岐を持たせないため、その 1 個を明示的に作る。
+    /// @note 配置側にノード有無の分岐を持たせないため、その 1 個を明示的に作る。
     ModelNode root;
     root.name = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(absPath).stem());
@@ -224,6 +225,7 @@ std::unique_ptr<Model> LoadFzMeshModel(
 /// @brief Init ではなく DLL ロード時に差し込む。Init に置くとその間だけ解決規則が変わる。
 [[maybe_unused]] const bool g_assetPathServiceInstalled = [] {
     renderer::AssetPathService service{};
+    service.resolveShaderCapabilities = ResolveShaderCapabilities;
     service.resolveAssetPath = [](const std::string& path) {
         return AssetManager::ResolveAssetPath(path);
     };
@@ -238,7 +240,7 @@ std::unique_ptr<Model> LoadFzMeshModel(
     return true;
 }();
 
-} // namespace
+} /// @note namespace
 
 /// @name 静的メンバ定義
 
@@ -308,11 +310,11 @@ static bool EndsWithCI(const std::string& s, const char* suffix)
 
 /// @brief import 生成物 (baked) の拡張子か。これらは Assets ではなく Library/Baked に置かれる。
 /// @note .anim を含めるのは、クリップが FBX から毎回焼き直される派生物で、編集対象の設定
-///       (Loop Time 等) が原本の .fbx.meta 側にあるため。Assets に置くと 1 モデルにつき
-///       数十ファイルがブラウザーを埋める (取り出したい場合は Extract で複製、新 GUID が
-///       振られる)。.mat を含めても手作りマテリアルは壊れない。LibraryBakedPath は
-///       「パッケージ規約 (Foo/ の隣に原本 Foo.fbx)」が成立しない限り空を返すため、
-///       Assets/Materials/*.mat のような手作りはここで必ず外れ、上の "Assets 優先" 分岐でも守られる。
+/// @note (Loop Time 等) が原本の .fbx.meta 側にあるため。Assets に置くと 1 モデルにつき
+/// @note 数十ファイルがブラウザーを埋める (取り出したい場合は Extract で複製、新 GUID が
+/// @note 振られる)。.mat を含めても手作りマテリアルは壊れない。LibraryBakedPath は
+/// @note 「パッケージ規約 (Foo/ の隣に原本 Foo.fbx)」が成立しない限り空を返すため、
+/// @note Assets/Materials/*.mat のような手作りはここで必ず外れ、上の "Assets 優先" 分岐でも守られる。
 static bool IsBakedModelExt(const std::string& key)
 {
     return EndsWithCI(key, ".fzasset") || EndsWithCI(key, ".mesh") ||
@@ -336,9 +338,9 @@ static bool IsExtractableBaked(const std::string& key)
 
 /// @brief 論理パス → 物理パス `<projectRoot>/Library/Baked/<fbx-guid>/[anims/]<file>`。
 /// @note 扱う 2 形: `<dir>/Foo/Foo.fzasset` → `Library/Baked/<guid>/Foo.fzasset`、
-///       `<dir>/Foo/anims/Idle.anim` → `Library/Baked/<guid>/anims/Idle.anim`。パッケージ規約
-///       (Foo/ の隣に原本 Foo.fbx) から fbx を特定し、その guid でキャッシュを引く。fbx が
-///       存在しない / basePath が `Assets/` で終わらない場合は空を返す (呼び出し側がフォールバック)。
+/// @note `<dir>/Foo/anims/Idle.anim` → `Library/Baked/<guid>/anims/Idle.anim`。パッケージ規約
+/// @note (Foo/ の隣に原本 Foo.fbx) から fbx を特定し、その guid でキャッシュを引く。fbx が
+/// @note 存在しない / basePath が `Assets/` で終わらない場合は空を返す (呼び出し側がフォールバック)。
 static std::string LibraryBakedPath(const std::string& absPath, const std::string& basePath)
 {
     namespace fs = std::filesystem;
@@ -348,7 +350,7 @@ static std::string LibraryBakedPath(const std::string& absPath, const std::strin
     fs::path pkgDir  = p.parent_path();
 
     /// @note anims/ と materials/ は 1 階層深い。Library 側でも同じサブディレクトリを維持することで、
-    ///       同名クリップ・同名マテリアルを持つ別 FBX どうしがぶつからない。
+    /// @note 同名クリップ・同名マテリアルを持つ別 FBX どうしがぶつからない。
     std::string subDir;
     {
         std::string leaf = util::FileSystem::PathToUtf8(pkgDir.filename());
@@ -376,7 +378,7 @@ static std::string LibraryBakedPath(const std::string& absPath, const std::strin
 
 /// @brief 原本 FBX の恒久 GUID から Library/Baked 内のモデルコンテナを引く。
 /// @note Scene / Component には Unity と同じく原本 .fbx を保存し、再生成可能な .fzasset は
-///       AssetBrowser や Inspector に露出しない内部キャッシュとして扱う。
+/// @note AssetBrowser や Inspector に露出しない内部キャッシュとして扱う。
 static std::string LibraryBakedModelPathFromFbx(const std::string& fbxAbsPath, const std::string& basePath)
 {
     namespace fs = std::filesystem;
@@ -417,8 +419,8 @@ static std::string ResolveModelAssetPath(const std::string& key, const std::stri
 std::string AssetManager::ResolvePath(const std::string& key, const std::string& basePath)
 {
     /// @note `guid:<32hex>` 参照は AssetDatabase で実パスへ解決する。全ロードがこの一点を
-    ///       通るため、ここに分岐を置くだけで .mat / .scene / コンポーネントの GUID 参照が
-    ///       エンジン全体で有効になる。
+    /// @note 通るため、ここに分岐を置くだけで .mat / .scene / コンポーネントの GUID 参照が
+    /// @note エンジン全体で有効になる。
     if (AssetDatabase::IsGuidRef(key)) {
         /// @note GuidFromRef が併記されたパスヒントとサブアセット接尾辞を落とす。
         std::string p = AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(key));
@@ -446,11 +448,11 @@ std::string AssetManager::ResolvePath(const std::string& key, const std::string&
     }
 
     /// @note baked 生成物は `Library/Baked/<fbx-guid>/` から解決する。.anim / .mat だけ Assets を
-    ///       先に見るのは Extract の仕組みのため: これらは AssetBrowser の "Extract to Assets"
-    ///       で Assets 側へ取り出せ、取り出した実体があればそちらが人の編集を受けた正であり
-    ///       Library の再生成物より優先する。取り出していなければ Assets 側が存在しないので
-    ///       そのまま Library へ落ちる。.fzasset / .mesh / .skel は取り出しの対象外なので常に
-    ///       Library が先。
+    /// @note 先に見るのは Extract の仕組みのため: これらは AssetBrowser の "Extract to Assets"
+    /// @note で Assets 側へ取り出せ、取り出した実体があればそちらが人の編集を受けた正であり
+    /// @note Library の再生成物より優先する。取り出していなければ Assets 側が存在しないので
+    /// @note そのまま Library へ落ちる。.fzasset / .mesh / .skel は取り出しの対象外なので常に
+    /// @note Library が先。
     if (IsBakedModelExt(key) || IsExtractableBaked(key)) {
         if (IsExtractableBaked(key) && util::FileSystem::Exists(full)) return full;
 
@@ -459,9 +461,9 @@ std::string AssetManager::ResolvePath(const std::string& key, const std::string&
     }
 
     /// @note 開いた Scene / Prefab がリネーム前の論理パスを一時的に保持していても、
-    ///       AssetDatabase の移動 alias から現在の実体へ追従させる。保存時だけ GUID 化
-    ///       できても、リネーム直後のプレビューや Inspector の実体ロードが旧パスのままだと
-    ///       「参照が切れた」と見えて編集を続けられない。
+    /// @note AssetDatabase の移動 alias から現在の実体へ追従させる。保存時だけ GUID 化
+    /// @note できても、リネーム直後のプレビューや Inspector の実体ロードが旧パスのままだと
+    /// @note 「参照が切れた」と見えて編集を続けられない。
     if (const std::string movedGuid = AssetDatabase::TryGetGuidFromPath(full);
         !movedGuid.empty()) {
         const std::string movedPath = AssetDatabase::PathFromGuid(movedGuid);
@@ -503,13 +505,13 @@ std::string AssetManager::BakedDirForSource(const std::string& sourceAbsPath)
 namespace {
 
 /// @brief .mesh / .fzasset / DCC 形式を、メッシュ・マテリアル・クリップを一括保持する
-///        Model へ組み立てる。
+/// @note Model へ組み立てる。
 /// @note Model は以前 AssetManager が持つ専用キャッシュから配られていた。ストアと二重に
-///       キャッシュが並ぶと、ホットリロードと UnloadAll の掃除口が経路ごとに分かれ、片方
-///       だけ生き残った実体が «直したのに反映されない» を生む。IAssetImporter に寄せることで
-///       Load<T> / ReloadPath / FlushFailed が 1 本で済む。absPath は LoadFromStore が
-///       ResolveModelAssetPath を通した後の実パスで、.fbx はここへ来る時点で Library/Baked の
-///       .fzasset へ寄っている。
+/// @note キャッシュが並ぶと、ホットリロードと UnloadAll の掃除口が経路ごとに分かれ、片方
+/// @note だけ生き残った実体が «直したのに反映されない» を生む。IAssetImporter に寄せることで
+/// @note Load<T> / ReloadPath / FlushFailed が 1 本で済む。absPath は LoadFromStore が
+/// @note ResolveModelAssetPath を通した後の実パスで、.fbx はここへ来る時点で Library/Baked の
+/// @note .fzasset へ寄っている。
 class BundledModelImporter final : public IAssetImporter<Model> {
 public:
     [[nodiscard]] std::unique_ptr<Model> Import(
@@ -534,7 +536,7 @@ public:
     }
 };
 
-} // namespace
+} /// @note namespace
 
 std::unique_ptr<Model> detail::BuildBundledModel(std::unique_ptr<ModelAsset> asset)
 {
@@ -554,7 +556,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     BrokenRefReports().clear();
 
     /// @note GUID ⇄ パス索引を構築する (.meta の自己修復もここで走る)。
-    ///       ResolvePath の "guid:" 分岐が使う前提なので、importer 登録より先に済ませる。
+    /// @note ResolvePath の "guid:" 分岐が使う前提なので、importer 登録より先に済ませる。
     AssetDatabase::Init(s_basePath);
 
     /// @name インポーター登録
@@ -575,7 +577,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
 
     /// @name 非同期経路の登録
     /// @note チャンネルは DLL 内で作る。AssetStore<T> は DLL / EXE ごとに別実体なので、ここで作らないと
-    ///       同期 Load<T> と違うストアを埋めてしまう。
+    /// @note 同期 Load<T> と違うストアを埋めてしまう。
     AssetStreamer::Engine().RegisterChannel(CreateTextureStreamChannel(resources));
     AssetStreamer::Engine().RegisterChannel(CreateModelStreamChannel(resources));
     AssetStreamer::Engine().RegisterChannel(CreateModelAssetStreamChannel(resources));
@@ -585,13 +587,13 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
 void AssetManager::UnloadAll()
 {
     /// @note ストアを畳む前に非同期要求を捨てる。転送中の GPU 候補は ResourceManager が生きているうちに返し、
-    ///       実行中ジョブの結果は epoch の不一致で棄却させる。
+    /// @note 実行中ジョブの結果は epoch の不一致で棄却させる。
     AssetStreamer::Engine().ResetForProjectSwitch();
     StreamedTextureResolver::Engine().Reset();
 
     /// @note 全型を漏れなく並べる。消し忘れた型はプロジェクトを切り替えても前のプロジェクトの
-    ///       アセットが cache に残り続け、パスが同名なら別プロジェクトの中身が黙って引き
-    ///       当たるという、最も気付きにくい壊れ方をする。
+    /// @note アセットが cache に残り続け、パスが同名なら別プロジェクトの中身が黙って引き
+    /// @note 当たるという、最も気付きにくい壊れ方をする。
     AssetStore<Model>::Get().Clear();
     AssetStore<ModelAsset>::Get().Clear();
     AssetStore<AnimationClip>::Get().Clear();
@@ -606,7 +608,7 @@ void AssetManager::UnloadAll()
     AssetStore<SequenceAsset>::Get().Clear();
     AssetStore<fluid::VectorFieldAsset>::Get().Clear();
     /// @note 速度場アトラスはストアの中身から作られる。捨て忘れると、前プロジェクトの場が
-    ///       新しいプロジェクトのタイル番号に化けて «知らない流れ» として効く。
+    /// @note 新しいプロジェクトのタイル番号に化けて «知らない流れ» として効く。
     VelocityFieldAtlas::Reset();
     AssetStore<ParticleCurveAsset>::Get().Clear();
 
@@ -643,7 +645,7 @@ AssetHandle<T> AssetManager::LoadFromStore(const std::string& relativePath)
     const auto it = store.cache.find(key);
     if (it != store.cache.end()) {
         /// @note 非同期ロードが予約中のスロット。同期 API の契約 (戻った時点で読めている) を守るため、
-        ///       ここで読んで埋め、実行中の非同期結果は棄却させる。計測と警告は AssetStreamer 側。
+        /// @note ここで読んで埋め、実行中の非同期結果は棄却させる。計測と警告は AssetStreamer 側。
         if (store.IsPending(it->second) && store.importer) {
             if (std::unique_ptr<T> filled = store.importer->Import(importPathOf(), S_res())) {
                 store.Replace(it->second, std::move(filled));
@@ -894,9 +896,9 @@ void AssetManager::Unload<SequenceAsset>(const std::string& relativePath)
 void AssetManager::FlushFailed()
 {
     /// @note Init() のインポーター登録と同じ並び・同じ顔ぶれで書く。ここに 1 つ書き忘れると、
-    ///       その型は「一度ロードに失敗したらプロセスが終わるまで二度と復帰しない」という
-    ///       無音の不具合になる。LoadFromStore() は失敗も cache へ焼き付けるため、掃除口は
-    ///       ここしかない (実際 .physmat は登録漏れで、アセットを直しても参照が復活しなかった)。
+    /// @note その型は「一度ロードに失敗したらプロセスが終わるまで二度と復帰しない」という
+    /// @note 無音の不具合になる。LoadFromStore() は失敗も cache へ焼き付けるため、掃除口は
+    /// @note ここしかない (実際 .physmat は登録漏れで、アセットを直しても参照が復活しなかった)。
     FlushStore<Model>();
     FlushStore<ModelAsset>();
     FlushStore<AnimationClip>();
@@ -922,8 +924,8 @@ void AssetManager::BumpAssetGeneration() { ++s_assetGeneration; }
 
 /// @brief 監視イベントの絶対パスと、キャッシュキーを解決した実パスを同じ土俵で比べる。
 /// @note キャッシュキーは `guid:...` / `Assets/...` / 絶対パスが混在し、解決結果も区切り
-///       文字と大小がまちまちになるため、素の == では同じファイルなのに再読込されない
-///       取りこぼしが経路ごとに出る。
+/// @note 文字と大小がまちまちになるため、素の == では同じファイルなのに再読込されない
+/// @note 取りこぼしが経路ごとに出る。
 static bool SameFilePathCI(const std::string& a, const std::string& b)
 {
     if (a.size() != b.size()) return false;
@@ -945,9 +947,9 @@ int AssetManager::ReloadFromStore(const std::string& absPath)
     int reloaded = 0;
     for (auto it = store.cache.begin(); it != store.cache.end(); ) {
         /// @note 失敗した guid 参照を先に外す。ResolvePath は解決できない guid に対して
-        ///       エラーログを出すが、ここはファイルが変わるたびに全キャッシュを走査するので
-        ///       触ると 1 回の保存でログが件数分あふれる。参照が切れたままの項目の掃除は
-        ///       FlushFailed の役目。
+        /// @note エラーログを出すが、ここはファイルが変わるたびに全キャッシュを走査するので
+        /// @note 触ると 1 回の保存でログが件数分あふれる。参照が切れたままの項目の掃除は
+        /// @note FlushFailed の役目。
         if (!it->second.IsValid() && AssetDatabase::IsGuidRef(it->first)) { ++it; continue; }
 
         const std::string resolved = ResolvePath(it->first, s_basePath);
@@ -977,9 +979,9 @@ int AssetManager::ReloadFromStore(const std::string& absPath)
 std::span<const std::string_view> AssetManager::HotReloadableExtensions()
 {
     /// @note ReloadPath がストアの中身を差し替える型の拡張子 + 直読みで差し替わる型。監視側
-    ///       から見た «差し替えたら通知が要るか» は同じ問いなので直読みのものも載せる。
-    ///       .mask / .fzdata / .synth はストアを通らないが、BumpAssetGeneration 経由で派生
-    ///       キャッシュが作り直される。載せ忘れると «直したのに反映されない» になる。
+    /// @note から見た «差し替えたら通知が要るか» は同じ問いなので直読みのものも載せる。
+    /// @note .mask / .fzdata / .synth はストアを通らないが、BumpAssetGeneration 経由で派生
+    /// @note キャッシュが作り直される。載せ忘れると «直したのに反映されない» になる。
     static constexpr std::string_view kExtensions[] = {
         ".mat", ".anim", ".animcontroller", ".mask", ".fzdata", ".physmat",
         ".cloth", ".synth", ".terrain", ".sequence", ".curve", ".gradient",
@@ -1005,9 +1007,9 @@ int AssetManager::ReloadPath(const std::string& absPath)
     const std::string target = Normalize(absPath);
 
     /// @note TextureAsset / IblAsset のような GPU 資源を持つ型はここに並べない。gpuHandle を
-    ///       素で持ちデストラクタで解放しないため、差し替えると前の版の GPU テクスチャが
-    ///       解放されないまま residual になる。画像・モデルは原本の自動再インポート経路が
-    ///       別にあるので、ここでは「編集されたら中身がそのまま変わる」型だけを扱う。
+    /// @note 素で持ちデストラクタで解放しないため、差し替えると前の版の GPU テクスチャが
+    /// @note 解放されないまま residual になる。画像・モデルは原本の自動再インポート経路が
+    /// @note 別にあるので、ここでは「編集されたら中身がそのまま変わる」型だけを扱う。
     int reloaded = 0;
     reloaded += ReloadFromStore<AnimationClip>(target);
     reloaded += ReloadFromStore<AnimatorControllerAsset>(target);
@@ -1018,7 +1020,7 @@ int AssetManager::ReloadPath(const std::string& absPath)
     reloaded += ReloadFromStore<SequenceAsset>(target);
     reloaded += ReloadFromStore<ParticleCurveAsset>(target);
     /// @note 速度場 PNG は GPU 資源を持たない (常駐は VelocityFieldAtlas 側)。差し替えは安全だが、
-    ///       アトラスはアセットの実体をポインタで指しているので焼き直させる。
+    /// @note アトラスはアセットの実体をポインタで指しているので焼き直させる。
     if (const int fields = ReloadFromStore<fluid::VectorFieldAsset>(target); fields > 0) {
         reloaded += fields;
         if (s_resources != nullptr) VelocityFieldAtlas::Invalidate(*s_resources);
@@ -1032,4 +1034,4 @@ int AssetManager::ReloadPath(const std::string& absPath)
     return reloaded;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

@@ -1,2 +1,14 @@
+# @file    ParticleGPU.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-16
 [meta]
 guid = '4fda27113ecc4b2285e55e6a4159c4b0'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'gpu_particle'

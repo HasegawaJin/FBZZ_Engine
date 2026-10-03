@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 ///
-/// 選択中の State / Transition / .anim / モデルからクリップを解決し、
-/// スキンメッシュを SkinnedLit でレンダーターゲットへ毎フレーム描画する。
-/// UI (ツールバー・トランスポート・オーバーレイ) は AnimationPreviewUI.cpp が持つ。
+/// @note 選択中の State / Transition / .anim / モデルからクリップを解決し、
+/// @note スキンメッシュを SkinnedLit でレンダーターゲットへ毎フレーム描画する。
+/// @note UI (ツールバー・トランスポート・オーバーレイ) は AnimationPreviewUI.cpp が持つ。
 #include "AnimationPreviewInternal.hpp"
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/EditorSettings.hpp>
@@ -50,7 +50,7 @@ MaskPreviewRequest   g_maskPreviewRequest;
 namespace {
 
 /// @name クリップサンプリング
-/// AnimatorSystem.cpp と同じ規約 (tick 空間サンプル + FBX チャンネル名の正規化)。
+/// @note AnimatorSystem.cpp と同じ規約 (tick 空間サンプル + FBX チャンネル名の正規化)。
 /// @note ランタイムは Scene の AnimatorComponent と密結合するため、プレビューは Skeleton + Clip だけで完結する軽量版をここに持つ。
 
 math::Vector3 SampleVectorKeys(const std::vector<asset::VectorKey>& keys,
@@ -91,9 +91,9 @@ math::Quaternion SampleQuaternionKeys(const std::vector<asset::QuaternionKey>& k
     return keys.back().value;
 }
 
-/// クリップ A (+任意でクリップ B とのブレンド) を評価し、スキニングパレットを構築する。
-/// blendWeight: 0 = A のみ / 1 = B のみ。Transition プレビューのクロスフェードに使う。
-/// nodeGlobals (任意): ボーン可視化などデバッグ表示のため、全ノードのグローバル行列も併記する。
+/// @note クリップ A (+任意でクリップ B とのブレンド) を評価し、スキニングパレットを構築する。
+/// @note blendWeight: 0 = A のみ / 1 = B のみ。Transition プレビューのクロスフェードに使う。
+/// @note nodeGlobals (任意): ボーン可視化などデバッグ表示のため、全ノードのグローバル行列も併記する。
 void EvaluatePreviewNode(const asset::Skeleton& skeleton,
                          const asset::AnimationClip* clipA,
                          double ticksA,
@@ -129,8 +129,8 @@ void EvaluatePreviewNode(const asset::Skeleton& skeleton,
                             child, global, palette, nodeGlobals);
 }
 
-/// 根元から幅優先で最初に見つかる «変形ボーン» のノード index。通常 Hips に当たる。
-/// 軌跡・接地リング・ルートモーション解析が «どの骨をルートとみなすか» の唯一の定義。
+/// @note 根元から幅優先で最初に見つかる «変形ボーン» のノード index。通常 Hips に当たる。
+/// @note 軌跡・接地リング・ルートモーション解析が «どの骨をルートとみなすか» の唯一の定義。
 int FindRootMotionNode(const asset::Skeleton& skeleton)
 {
     if (skeleton.rootNodeIndex < 0) return -1;
@@ -146,7 +146,7 @@ int FindRootMotionNode(const asset::Skeleton& skeleton)
     return -1;
 }
 
-/// ノードごとのトラックを 1 回だけ引いて表にする。
+/// @note ノードごとのトラックを 1 回だけ引いて表にする。
 /// @note FindTrack はノード名の正規化で文字列を組み直すため、全ノード×全サンプルで毎回引くと文字列生成が数十万回走る。
 std::vector<const asset::NodeAnimationTrack*> BuildTrackTable(const asset::Skeleton& skeleton,
                                                               const asset::AnimationClip& clip)
@@ -186,7 +186,7 @@ void EvaluateGlobalsFromTable(const asset::Skeleton& skeleton,
         EvaluateGlobalsFromTable(skeleton, tracks, ticks, child, global, outGlobals);
 }
 
-/// node が ancestor の子孫か。足の候補が «Foot と、その子の Toe» に偏るのを避ける。
+/// @note node が ancestor の子孫か。足の候補が «Foot と、その子の Toe» に偏るのを避ける。
 bool IsDescendantOf(const asset::Skeleton& skeleton, int node, int ancestor)
 {
     for (int i = node; i >= 0; i = skeleton.nodes[static_cast<size_t>(i)].parentIndex)
@@ -194,14 +194,14 @@ bool IsDescendantOf(const asset::Skeleton& skeleton, int node, int ancestor)
     return false;
 }
 
-/// 列ベクトル規約の行列から、ローカル +Z がワールドで向く方向を取り出す。
+/// @note 列ベクトル規約の行列から、ローカル +Z がワールドで向く方向を取り出す。
 math::Vector3 MatrixForward(const math::Matrix4& m)
 {
     return { m.m[0][2], m.m[1][2], m.m[2][2] };
 }
 
-/// State からプレビュー用の (sourcePath, clipName) を取り出す。
-/// Blend Tree はランタイム Weight 依存のため、先頭モーションを代表として使う。
+/// @note State からプレビュー用の (sourcePath, clipName) を取り出す。
+/// @note Blend Tree はランタイム Weight 依存のため、先頭モーションを代表として使う。
 bool StatePreviewSource(const scene::AnimationState& state,
                         std::string& outSource,
                         std::string& outClip)
@@ -220,7 +220,7 @@ bool StatePreviewSource(const scene::AnimationState& state,
     return true;
 }
 
-/// State / Animator の sourcePath を PreviewTarget の適切なスロットへ振り分ける。
+/// @note State / Animator の sourcePath を PreviewTarget の適切なスロットへ振り分ける。
 /// @note 「1 クリップ = 1 FBX」規約で sourcePath は .anim を指すことが多い。そのまま modelPath に入れると `Load<Model>` が失敗し真っ黒になるため、.anim ならクリップ側スロットへ入れ器は別途探す。
 std::string ResolvePreviewSourcePath(const std::string& source)
 {
@@ -246,7 +246,7 @@ void AssignClipSource(PreviewTarget& out, const std::string& source,
     }
 }
 
-/// GameObject 階層から最初のスキンメッシュを探し、その modelPath を返す。
+/// @note GameObject 階層から最初のスキンメッシュを探し、その modelPath を返す。
 /// @note MiniBot は本体 GO に Animator、子 GO 群に SkinnedMeshRenderer を持つ構成のため、自分自身だけでは器が見つからない。
 std::string FindGeometryInHierarchy(scene::GameObject* go, int depth = 0)
 {
@@ -263,8 +263,8 @@ std::string FindGeometryInHierarchy(scene::GameObject* go, int depth = 0)
     return {};
 }
 
-/// 選択中の GameObject (Animator 付き) からプレビュー対象を解決する。
-/// Unity と同じく、Animator を持つオブジェクトを選ぶだけでプレビューできるようにする。
+/// @note 選択中の GameObject (Animator 付き) からプレビュー対象を解決する。
+/// @note Unity と同じく、Animator を持つオブジェクトを選ぶだけでプレビューできるようにする。
 bool ResolveGameObjectTarget(EditorContext& ctx, PreviewTarget& out)
 {
     scene::GameObject* go = ctx.GetSelectedGO();
@@ -300,7 +300,7 @@ bool ResolveGameObjectTarget(EditorContext& ctx, PreviewTarget& out)
     return !out.modelPath.empty() || !out.animAssetPath.empty();
 }
 
-/// 現在の Animation Graph 選択からプレビュー対象を解決する。
+/// @note 現在の Animation Graph 選択からプレビュー対象を解決する。
 bool ResolveGraphTarget(EditorContext& ctx, PreviewTarget& out)
 {
     const auto& selection = ctx.animationGraphSelection;
@@ -320,8 +320,8 @@ bool ResolveGraphTarget(EditorContext& ctx, PreviewTarget& out)
     if (!animator) return false;
 
     /// @note Graph が追加 Layer を表示しているときは、その Layer の states / Any State を
-    ///       参照する。Base Layer の配列を見続けると、遷移線を選択しても別グラフのクリップを
-    ///       プレビューするか、添字不一致で対象なしになる。
+    /// @note 参照する。Base Layer の配列を見続けると、遷移線を選択しても別グラフのクリップを
+    /// @note プレビューするか、添字不一致で対象なしになる。
     const std::vector<scene::AnimationState>* graphStates = &animator->states;
     const std::vector<scene::AnimationTransition>* graphAnyStateTransitions =
         &animator->anyStateTransitions;
@@ -348,7 +348,7 @@ bool ResolveGraphTarget(EditorContext& ctx, PreviewTarget& out)
         out.mode = PreviewTarget::Mode::Clip;
         AssignClipSource(out, source, clip);
         /// @note 一度 FBX を明示的にアタッチした後は、Clip を切り替えても同じ器を使う。
-        ///       未アタッチ時だけ Scene 上の SkinnedMeshRenderer を自動解決する。
+        /// @note 未アタッチ時だけ Scene 上の SkinnedMeshRenderer を自動解決する。
         if (g_state.attachedModelPath.empty() && selection.entityId.IsValid() && ctx.activeScene) {
             if (auto* owner = ctx.activeScene->GetGameObject(selection.entityId)) {
                 if (std::string geo = FindGeometryInHierarchy(owner); !geo.empty())
@@ -439,7 +439,7 @@ bool ResolveAssetTarget(EditorContext& ctx, PreviewTarget& out)
     return ResolvePathTarget(ctx.selectedAssetPath, out);
 }
 
-/// GPU
+/// @note GPU
 
 bool EnsurePreviewGpu(renderer::ResourceManager& resources)
 {
@@ -498,7 +498,7 @@ bool EnsurePreviewGpu(renderer::ResourceManager& resources)
            g_gpu.renderTarget.IsValid();
 }
 
-/// 床グリッド用の頂点カラー Unlit 経路。DebugDraw と同じシェーダーを使う。
+/// @note 床グリッド用の頂点カラー Unlit 経路。DebugDraw と同じシェーダーを使う。
 /// @note DebugDraw.hlsl の b0 は viewProjection だけの 64 バイトで、専用 CB が要る。PerFrameCB (先頭は view) を差すと別の行列を読む。
 struct PreviewLineCameraCB {
     math::Matrix4 viewProjection;
@@ -521,8 +521,8 @@ bool EnsurePreviewLineGpu(renderer::ResourceManager& resources)
     return g_lineGpu.shader.IsValid() && g_lineGpu.cameraCB.IsValid() && g_lineGpu.pso.IsValid();
 }
 
-/// meshIndex の submesh に割り当たる .mat から描画用 Material を返す。無ければ nullptr。
-/// 束縛は MaterialParamBinding (シーン描画と同じ規則) に任せ、ここでは写さない。
+/// @note meshIndex の submesh に割り当たる .mat から描画用 Material を返す。無ければ nullptr。
+/// @note 束縛は MaterialParamBinding (シーン描画と同じ規則) に任せ、ここでは写さない。
 renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
                                                    renderer::ResourceManager& resources,
                                                    size_t meshCount,
@@ -544,7 +544,7 @@ renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
     if (slot.materialPath.empty()) return nullptr;
 
     /// @note 再インポートで .mat が読み直されるとハンドルが変わり、Inspector の未保存編集は
-    ///       リビジョンだけが進む。どちらでも組み直す。
+    /// @note リビジョンだけが進む。どちらでも組み直す。
     const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(slot.materialPath);
     const uint64_t revision =
         ctx.MaterialPreviewRevision(NormalizeAssetPath(slot.materialPath));
@@ -638,7 +638,7 @@ std::string MaskPathForMesh(const asset::Model& model, size_t meshIndex)
         model, model.FindNodeForMesh(static_cast<uint32_t>(meshIndex)));
 }
 
-/// スキニングパレット (skeleton.bones) の 1 本ごとのマスクウェイト。
+/// @note スキニングパレット (skeleton.bones) の 1 本ごとのマスクウェイト。
 /// @note メッシュ平均は全頂点×4 影響を舐めるため、ボーンパスの組み立てをその内側でやると文字列生成が頂点数ぶん走る。事前に表を作る。
 std::vector<float> BuildBoneMaskWeights(const asset::Skeleton& skeleton,
                                         const asset::AvatarMaskAsset& mask)
@@ -653,7 +653,7 @@ std::vector<float> BuildBoneMaskWeights(const asset::Skeleton& skeleton,
     return weights;
 }
 
-/// スキンメッシュ 1 枚の代表マスクウェイト。頂点ごとの影響ボーンで加重平均する。
+/// @note スキンメッシュ 1 枚の代表マスクウェイト。頂点ごとの影響ボーンで加重平均する。
 /// @note メッシュノードでは評価しない。スキンメッシュのノード (`P_ArmorGrey` 等) はアーマチュア外側にあり、そこでマスクを引くと default_include=false は常に 0 になる (「全部赤」の原因だった)。
 /// @note 動かされる度合いは、頂点を動かすボーンのマスクウェイトでしか決まらない。
 float SkinnedMaskWeight(const renderer::Mesh& mesh, const std::vector<float>& boneWeights)
@@ -691,7 +691,7 @@ float MaskWeightForMesh(const asset::Model& model,
     return asset::EvaluateAvatarMaskWeight(mask, MaskPathForMesh(model, meshIndex), node.name);
 }
 
-/// 指定時刻におけるブレンド係数と両クリップのサンプル時刻 (秒) を求める純関数。
+/// @note 指定時刻におけるブレンド係数と両クリップのサンプル時刻 (秒) を求める純関数。
 /// @note 現在時刻の描画とオニオンスキン (前後フレーム) の評価で同じ規則を共有するために関数化している。
 void ComputePlaybackSampleAt(float time,
                              const asset::AnimationClip* clipA,
@@ -726,7 +726,7 @@ void ComputePlaybackSampleAt(float time,
     outSecondsB = intoBlend <= 0.0f ? 0.0f : WrapTime(intoBlend, lenB);
 }
 
-/// 現在時刻版。共有ステート (タイムライン長・ブレンド率表示) も更新する。
+/// @note 現在時刻版。共有ステート (タイムライン長・ブレンド率表示) も更新する。
 void ComputePlaybackSample(const asset::AnimationClip* clipA,
                            const asset::AnimationClip* clipB,
                            float& outSecondsA,
@@ -738,10 +738,10 @@ void ComputePlaybackSample(const asset::AnimationClip* clipA,
     g_state.currentBlendWeight = outBlend;
 }
 
-/// 床グリッド / 接地リング
+/// @note 床グリッド / 接地リング
 
-/// 1 / 2 / 5 × 10^n に丸めたグリッド間隔。ズームやモデルの大きさが変わっても
-/// 目盛りが «中途半端な実数» にならないようにする。
+/// @note 1 / 2 / 5 × 10^n に丸めたグリッド間隔。ズームやモデルの大きさが変わっても
+/// @note 目盛りが «中途半端な実数» にならないようにする。
 float NiceGridStep(float raw)
 {
     if (!(raw > 0.0f)) return 1.0f;
@@ -766,7 +766,7 @@ void BuildPreviewGridLines(std::vector<PreviewLineVertex>& out)
     const float y = g_state.groundY;
 
     /// @note 中心から遠いほど薄くする。線ごと 1 マスに割って端点で減衰させないと、
-    ///       «両端が薄い = 真ん中も薄い» という線形補間の結果になって中央が沈む。
+    /// @note «両端が薄い = 真ん中も薄い» という線形補間の結果になって中央が沈む。
     const auto fade = [&](float x, float z) {
         const float dx = x - centerX;
         const float dz = z - centerZ;
@@ -847,7 +847,7 @@ void SubmitPreviewLines(renderer::IRenderer& renderer,
 
 } /// @note namespace
 
-/// クリップ / ポーズ
+/// @note クリップ / ポーズ
 
 const asset::NodeAnimationTrack* FindTrack(const asset::AnimationClip& clip,
                                            const std::string& nodeName)
@@ -914,13 +914,13 @@ float ClipFrameRate(const asset::AnimationClip* clip)
     return clip && clip->frameRate > 0.0f ? clip->frameRate : 30.0f;
 }
 
-/// 列ベクトル規約 (M * v) の行優先行列から平行移動成分を取り出す。
+/// @note 列ベクトル規約 (M * v) の行優先行列から平行移動成分を取り出す。
 math::Vector3 MatrixTranslation(const math::Matrix4& m)
 {
     return { m.m[0][3], m.m[1][3], m.m[2][3] };
 }
 
-/// 表示専用のオイラー角分解 (XYZ, degrees)。Inspector の数値表示にだけ使い、計算には使わない。
+/// @note 表示専用のオイラー角分解 (XYZ, degrees)。Inspector の数値表示にだけ使い、計算には使わない。
 math::Vector3 QuaternionToEulerDegrees(const math::Quaternion& q)
 {
     const float sinrCosp = 2.0f * (q.w * q.x + q.y * q.z);
@@ -935,15 +935,15 @@ math::Vector3 QuaternionToEulerDegrees(const math::Quaternion& q)
     return { roll * RAD_TO_DEG, pitch * RAD_TO_DEG, yaw * RAD_TO_DEG };
 }
 
-/// FBX の namespace prefix (mixamorig: 等) を落とした短いボーン名。オーバーレイ表示用。
+/// @note FBX の namespace prefix (mixamorig: 等) を落とした短いボーン名。オーバーレイ表示用。
 std::string ShortBoneName(const std::string& name)
 {
     const size_t namespacePos = name.find_last_of(':');
     return namespacePos != std::string::npos ? name.substr(namespacePos + 1) : name;
 }
 
-/// ルートモーション確認用の軌跡: 最初の変形ボーン (通常 Hips) の位置をクリップ全長に渡って
-/// サンプルする。親チェーンだけ評価するので全階層評価より大幅に軽い。
+/// @note ルートモーション確認用の軌跡: 最初の変形ボーン (通常 Hips) の位置をクリップ全長に渡って
+/// @note サンプルする。親チェーンだけ評価するので全階層評価より大幅に軽い。
 void BuildTrailPoints(const asset::Skeleton& skeleton,
                       const asset::AnimationClip& clip,
                       std::vector<math::Vector3>& outPoints,
@@ -996,7 +996,7 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
     const auto tracks = BuildTrackTable(skeleton, clip);
 
     /// @note 全ノードの «ワールド» 位置をクリップ全長ぶん持つ。足の接地判定が、ルートの移動を
-    ///       含んだ位置でないと成立しないため、チェーンだけでなく階層全体を評価する。
+    /// @note 含んだ位置でないと成立しないため、チェーンだけでなく階層全体を評価する。
     const size_t nodeCount = skeleton.nodes.size();
     std::vector<std::vector<math::Vector3>> positions(SAMPLES + 1);
     std::vector<math::Matrix4> globals(nodeCount, math::Matrix4::Identity());
@@ -1076,7 +1076,7 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
 
     /// @name ループ整合
     /// @note ルートボーンは «進む・回る» のが正しい姿なので、この比較からは外す。
-    ///       残りのボーンが先頭と末尾で食い違っていれば、それがループ時の «跳ね» になる。
+    /// @note 残りのボーンが先頭と末尾で食い違っていれば、それがループ時の «跳ね» になる。
     const double endTicks = static_cast<double>(duration) * ticksPerSecond;
     double positionSumSq = 0.0;
     int comparedBones = 0;
@@ -1151,7 +1151,7 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
             const math::Vector3& a = positions[static_cast<size_t>(sample - 1)][foot];
             const math::Vector3& b = positions[static_cast<size_t>(sample)][foot];
             /// @note 前後どちらのサンプルも床付近にある区間だけを «接地» とみなす。
-            ///       片側だけで判定すると、踏み込み・蹴り出しの 1 コマを滑りに数えてしまう。
+            /// @note 片側だけで判定すると、踏み込み・蹴り出しの 1 コマを滑りに数えてしまう。
             if (a.y > footFloor + plantThreshold || b.y > footFloor + plantThreshold) continue;
             const float dx = b.x - a.x;
             const float dz = b.z - a.z;
@@ -1164,8 +1164,8 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
         out.plantedSeconds > 0.0001f ? out.plantedSlide / out.plantedSeconds : 0.0f;
 }
 
-/// 単一ボーンのローカル位置 XYZ・回転オイラー XYZ をクリップ全長でサンプルし、
-/// カーブミニグラフ用の配列と min/max を構築する。位置と回転は別スケールで正規化する。
+/// @note 単一ボーンのローカル位置 XYZ・回転オイラー XYZ をクリップ全長でサンプルし、
+/// @note カーブミニグラフ用の配列と min/max を構築する。位置と回転は別スケールで正規化する。
 void BuildBoneCurves(const asset::Skeleton& skeleton,
                      const asset::AnimationClip& clip,
                      int nodeIndex,
@@ -1212,7 +1212,7 @@ void BuildBoneCurves(const asset::Skeleton& skeleton,
     }
 }
 
-/// モデル内クリップを名前で検索。空名は先頭クリップ (State の <Auto / First Clip> と同じ規約)。
+/// @note モデル内クリップを名前で検索。空名は先頭クリップ (State の <Auto / First Clip> と同じ規約)。
 const asset::AnimationClip* FindModelClip(const asset::Model* model, const std::string& clipName)
 {
     if (!model || model->clips.empty()) return nullptr;
@@ -1223,7 +1223,7 @@ const asset::AnimationClip* FindModelClip(const asset::Model* model, const std::
     return &model->clips.front();
 }
 
-/// .anim 直接指定があればそちら、なければモデル内クリップを解決する。
+/// @note .anim 直接指定があればそちら、なければモデル内クリップを解決する。
 const asset::AnimationClip* ResolveClip(const asset::Model* model,
                                         const std::string& clipName,
                                         const std::string& animAssetPath)
@@ -1235,9 +1235,9 @@ const asset::AnimationClip* ResolveClip(const asset::Model* model,
     return FindModelClip(model, clipName);
 }
 
-/// 対象解決
+/// @note 対象解決
 
-/// スキンメッシュとスケルトンを両方持ち、プレビューの器として使えるモデルか。
+/// @note スキンメッシュとスケルトンを両方持ち、プレビューの器として使えるモデルか。
 /// @note FBZZ の「1 クリップ = 1 FBX」で書き出されたクリップ FBX はアーマチュアと Empty しか含まないため、器としては使えない。
 bool IsPreviewableGeometry(const asset::Model* model)
 {
@@ -1251,12 +1251,12 @@ bool LoadsAsPreviewableGeometry(const std::string& path)
     return IsPreviewableGeometry(asset::AssetManager::LoadAndGet<asset::Model>(path));
 }
 
-/// .anim からスキンメッシュを持つモデルを探す。
-///   Assets/Models/MiniBot/Walk/anims/Walk@Walk.anim
-///     → Assets/Models/MiniBot/Walk.fbx  (クリップ FBX: メッシュ無しなので不採用)
-///     → Assets/Models/MiniBot.fbx       (パッケージ本体: 採用)
-/// AssetManager の「パッケージフォルダ Foo/ の隣に原本 Foo.fbx」規約を利用し、
-/// 親ディレクトリを遡って最初に見つかったスキンメッシュ付きモデルを返す。
+/// @note .anim からスキンメッシュを持つモデルを探す。
+/// @note Assets/Models/MiniBot/Walk/anims/Walk@Walk.anim
+/// @note → Assets/Models/MiniBot/Walk.fbx  (クリップ FBX: メッシュ無しなので不採用)
+/// @note → Assets/Models/MiniBot.fbx       (パッケージ本体: 採用)
+/// @note AssetManager の「パッケージフォルダ Foo/ の隣に原本 Foo.fbx」規約を利用し、
+/// @note 親ディレクトリを遡って最初に見つかったスキンメッシュ付きモデルを返す。
 std::string FindGeometryForAnim(const std::string& animPath)
 {
     namespace fs = std::filesystem;
@@ -1282,11 +1282,11 @@ std::string FindGeometryForAnim(const std::string& animPath)
     return {};
 }
 
-/// モデルのパッケージ配下にある .anim を全部集める。
-///   Assets/Models/MiniBot.fbx
-///     → Assets/Models/MiniBot/*/anims/*.anim   (Idle, Walk, Run …)
-///     → Assets/Models/MiniBot/anims/*.anim     (モデル自身に同梱された場合)
-/// 結果はモデルパスをキーにキャッシュする (毎フレーム走査すると重いため)。
+/// @note モデルのパッケージ配下にある .anim を全部集める。
+/// @note Assets/Models/MiniBot.fbx
+/// @note → Assets/Models/MiniBot/*/anims/*.anim   (Idle, Walk, Run …)
+/// @note → Assets/Models/MiniBot/anims/*.anim     (モデル自身に同梱された場合)
+/// @note 結果はモデルパスをキーにキャッシュする (毎フレーム走査すると重いため)。
 const std::vector<std::string>& CollectPackageAnims(const std::string& modelPath)
 {
     static std::string cachedKey;
@@ -1361,7 +1361,7 @@ bool ResolvePathTarget(const std::string& path, PreviewTarget& out)
     return false;
 }
 
-/// ドロップ等で明示指定された対象を採用する。以降は選択操作があるまでこの対象を維持する。
+/// @note ドロップ等で明示指定された対象を採用する。以降は選択操作があるまでこの対象を維持する。
 void AdoptManualTarget(const PreviewTarget& target, bool attachModel)
 {
     const bool identityChanged = !target.SameIdentity(g_state.target);
@@ -1376,7 +1376,7 @@ void AdoptManualTarget(const PreviewTarget& target, bool attachModel)
     }
 }
 
-/// 現在のクリップを保ったままジオメトリだけ差し替える。
+/// @note 現在のクリップを保ったままジオメトリだけ差し替える。
 /// @note Unity の .anim プレビューと同じく「動きは今のまま、器だけ別モデルで見たい」操作を成立させる。モデルをドロップしてもクリップは消えない。
 void SwapPreviewGeometry(const std::string& modelPath)
 {
@@ -1391,8 +1391,8 @@ void SwapPreviewGeometry(const std::string& modelPath)
     g_state.needsFraming = true;
 }
 
-/// ImGui の直前アイテムを ASSET_PATH ドロップターゲットとして扱い、
-/// アニメーション関連アセットが落とされたらプレビュー対象を差し替える。
+/// @note ImGui の直前アイテムを ASSET_PATH ドロップターゲットとして扱い、
+/// @note アニメーション関連アセットが落とされたらプレビュー対象を差し替える。
 bool AcceptPreviewAssetDrop()
 {
     bool accepted = false;
@@ -1425,7 +1425,7 @@ bool AcceptPreviewAssetDrop()
     return accepted;
 }
 
-/// 選択の変化を検知し、「後から操作された方」をプレビュー対象として採用する。
+/// @note 選択の変化を検知し、「後から操作された方」をプレビュー対象として採用する。
 /// @note グラフの遷移矢印とアセットの .anim はどちらも選択状態を持ち続けるため、優先順位を固定すると片方が永遠にプレビューできなくなる。
 void UpdatePreviewTarget(EditorContext& ctx)
 {
@@ -1471,7 +1471,7 @@ void UpdatePreviewTarget(EditorContext& ctx)
         origin = TargetOrigin::Asset;
         resolved = true;
         /// @note Asset Browser から別のモデルを選んだ場合も「再アタッチ」とみなし、
-        ///       以降の Clip 選択ではこのモデルを保持する。`.anim` 選択では変更しない。
+        /// @note 以降の Clip 選択ではこのモデルを保持する。`.anim` 選択では変更しない。
         if (isModelAssetPath(ctx.selectedAssetPath) && !candidate.modelPath.empty())
             g_state.attachedModelPath = candidate.modelPath;
     } else if (goChanged && ResolveGameObjectTarget(ctx, candidate)) {
@@ -1486,7 +1486,7 @@ void UpdatePreviewTarget(EditorContext& ctx)
         resolved = ResolveAssetTarget(ctx, candidate);
     }
     /// @note origin == Manual (ドロップ指定) は選択に追従しないため、
-    ///       graphChanged / assetChanged で新しい対象が解決されるまで現状維持する。
+    /// @note graphChanged / assetChanged で新しい対象が解決されるまで現状維持する。
 
     if (!resolved && g_state.origin == TargetOrigin::None) {
         if (ResolveGraphTarget(ctx, candidate)) { origin = TargetOrigin::Graph; resolved = true; }
@@ -1505,7 +1505,7 @@ void UpdatePreviewTarget(EditorContext& ctx)
     }
 }
 
-/// Avatar Mask 共有ヘルパー
+/// @note Avatar Mask 共有ヘルパー
 
 std::string MaskPathForModelNode(const asset::Model& model, int nodeIndex)
 {
@@ -1556,7 +1556,7 @@ std::string MaskPreviewRevision(const asset::AvatarMaskAsset& mask)
     return revision;
 }
 
-/// カメラ / 描画
+/// @note カメラ / 描画
 
 void ComputeModelBounds(const asset::Model& model, PreviewBounds& out)
 {
@@ -1706,7 +1706,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
             }
 
             /// @note ルートモーション解析はクリップ単位で 1 回。トグルを後から点けた場合も
-            ///       «そのクリップでまだ解析していない» としてここで組む。
+            /// @note «そのクリップでまだ解析していない» としてここで組む。
             if (g_state.showRootMotion &&
                 g_state.rootMotionCacheKey != g_state.debugCacheIdentity) {
                 g_state.rootMotionCacheKey = g_state.debugCacheIdentity;
@@ -1854,12 +1854,12 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     lightData.lightDir = { -keyDirection.x, -keyDirection.y, -keyDirection.z };
     lightData.lightColor = { 1.0f, 0.97f, 0.92f };
     /// @note 手調整リグなので、Lighting.hlsli の LIGHT_UNIT_SCALE (= PI) を相殺して
-    ///       記述値がそのまま「絵として狙った明るさ」を表すようにする (サムネイルと同じ方針)。
+    /// @note 記述値がそのまま「絵として狙った明るさ」を表すようにする (サムネイルと同じ方針)。
     constexpr float kPreviewUnitScale = 3.14159265358979323846f;
     lightData.lightIntensity = 1.6f / kPreviewUnitScale;
     lightData.ambientColor = { 0.16f, 0.17f, 0.20f };
     /// @note LightAttenuation の逆二乗を打ち消し、intensity を「最終的な明るさ」として扱う。
-    ///       range = boundsRadius * 20 に対し dist は boundsRadius * 3 前後なので range 窓はほぼ 1.0。
+    /// @note range = boundsRadius * 20 に対し dist は boundsRadius * 3 前後なので range 窓はほぼ 1.0。
     auto placeLight = [&](renderer::PointLight& light,
                           const math::Vector3& offset,
                           const math::Vector3& color,
@@ -1898,7 +1898,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     renderer.ClearDepth();
     const bool maskColorMode = g_maskPreview.active && g_maskPreview.loaded;
     /// @note スキンメッシュの着色に使うボーン別ウェイト。描画は RenderPreviewFrame が
-    ///       キャッシュミスのときだけ呼ぶので、ここで組んでもフレームごとには走らない。
+    /// @note キャッシュミスのときだけ呼ぶので、ここで組んでもフレームごとには走らない。
     const std::vector<float> boneMaskWeights =
         (maskColorMode && model->skeleton)
             ? BuildBoneMaskWeights(*model->skeleton, g_maskPreview.mask)
@@ -1917,19 +1917,19 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                 const math::Matrix4 animatedGlobal =
                     previewNodeGlobals[static_cast<size_t>(skeletonNodeIndex)];
                 /// @note 現行フォーマットでは、スケルトンを持つモデル内の剛体メッシュは
-                ///       ノードローカル頂点として保存される。旧アセットも同じ挙動へ縮退させ、
-                ///       アニメーション付き FBX の混在メッシュをバインド姿勢で二重補正しない。
+                /// @note ノードローカル頂点として保存される。旧アセットも同じ挙動へ縮退させ、
+                /// @note アニメーション付き FBX の混在メッシュをバインド姿勢で二重補正しない。
                 const bool meshTransformsBaked = model->nodeTransformsBaked &&
                     model->skeleton == nullptr;
                 if (meshTransformsBaked &&
                     skeletonNodeIndex < static_cast<int>(previewBindGlobals.size())) {
                     /// @note 静的メッシュはバインド姿勢が頂点へ焼き込まれているため、
-                    ///       「現在姿勢 × バインド姿勢の逆行列」だけを追加して二重変換を避ける。
+                    /// @note 「現在姿勢 × バインド姿勢の逆行列」だけを追加して二重変換を避ける。
                     meshWorld = animatedGlobal * math::Matrix4::Inverse(
                         previewBindGlobals[static_cast<size_t>(skeletonNodeIndex)]);
                 } else {
                     /// @note 未ベイク形式は頂点がノードローカルなので、スキニングと同じ
-                    ///       rootInverse 空間へ変換した現在のノード姿勢を使う。
+                    /// @note rootInverse 空間へ変換した現在のノード姿勢を使う。
                     meshWorld = model->skeleton->rootInverseTransform * animatedGlobal;
                 }
             }
@@ -1956,7 +1956,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         updateMeshObjectTransform(i, *mesh);
 
         /// @note インポート済み .mat を優先し、無いモデル (旧 Assimp 経路など) だけ
-        ///       Model 自身の materials へ落とす。
+        /// @note Model 自身の materials へ落とす。
         renderer::Material* material =
             ResolveImportedPreviewMaterial(ctx, resources, model->meshes.size(), i);
         if (!material && i < model->materials.size())
@@ -1964,7 +1964,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
 
         /// @note シェーダーの頂点入力がメッシュと合わなければ使えない。描画パスと同じくフォールバックする。スキンモデルの .mat はインポーターが一律 Skinned で書くため、同じ FBX 内の剛体メッシュ (武器など) にも Skinned シェーダーが付いてくる。
         const bool materialSupportsSkinning =
-            material && material->shaderPath.find("/Skinned/") != std::string::npos;
+            material && resources.GetShaderCapabilities(material->shader).SupportsSkinning();
         const bool useMaterial =
             material && material->shader.IsValid() && material->paramsBuffer.IsValid() &&
             mesh->isSkinned == materialSupportsSkinning;
@@ -1986,7 +1986,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
 
         if (maskColorMode) {
             /// @note マスクプレビューでは元材質よりも「どの部位が効くか」の判読性を優先し、
-            ///       メッシュを担当ノードの実効ウェイト色で描く。
+            /// @note メッシュを担当ノードの実効ウェイト色で描く。
             PreviewMaterialCB materialData{};
             const float weight =
                 MaskWeightForMesh(*model, i, g_maskPreview.mask, boneMaskWeights);
@@ -2012,7 +2012,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                 if (material->textures[ti].IsValid()) dc.textures[ti] = material->textures[ti];
         } else {
             /// @note フォールバック: プレビュー既定のフラットマテリアル。
-            ///       アルベドテクスチャがあればそれだけは反映する。
+            /// @note アルベドテクスチャがあればそれだけは反映する。
             PreviewMaterialCB materialData{};
             renderer::ResourceHandle<renderer::TextureTag> albedoTexture;
             if (material && !material->textures.empty() && material->textures[0].IsValid()) {
@@ -2029,7 +2029,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
 
     /// @name 床グリッド / 接地リング
     /// @note メッシュより «後» に出す。DEPTH_READ なので、既に書かれた深度がそのまま
-    ///       「モデルの手前か奥か」の判定になり、キャラクターの向こう側だけが隠れる。
+    /// @note 「モデルの手前か奥か」の判定になり、キャラクターの向こう側だけが隠れる。
     if ((g_state.view.showGrid || g_state.view.showGroundRing) &&
         EnsurePreviewLineGpu(resources)) {
         const PreviewLineCameraCB lineCamera{ frameData.viewProjection };
@@ -2055,7 +2055,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     return true;
 }
 
-/// 再生時刻を進める。複数箇所 (Inspector + パネル) から呼ばれても 1 フレーム 1 回だけ。
+/// @note 再生時刻を進める。複数箇所 (Inspector + パネル) から呼ばれても 1 フレーム 1 回だけ。
 void AdvancePlayback()
 {
     if (g_state.lastAdvanceFrame == ImGui::GetFrameCount()) return;

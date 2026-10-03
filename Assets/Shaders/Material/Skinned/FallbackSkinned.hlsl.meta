@@ -1,2 +1,13 @@
+# @file    FallbackSkinned.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-07-11
 [meta]
 guid = 'c39404bd5cca4b3fa429850aea3484d8'
+
+[shader]
+version = 1
+vertex = 'standard_skinned_v1'
+surface = 'unlit_v1'
+opacity = 'opaque_v1'
+variants = 'none'

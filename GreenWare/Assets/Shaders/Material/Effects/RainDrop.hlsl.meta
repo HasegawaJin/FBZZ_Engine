@@ -1,2 +1,14 @@
+# @file    RainDrop.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-25
 [meta]
 guid = '3113effe97127d6489ff713f1fbc7fa7'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'particle'

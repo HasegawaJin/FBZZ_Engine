@@ -1,2 +1,13 @@
+# @file    PBR.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-07-11
 [meta]
 guid = '73d100e5a351425aaf52953c23425438'
+
+[shader]
+version = 1
+vertex = 'standard_surface_v1'
+surface = 'metallic_roughness_v1'
+opacity = 'alpha_clip_v1'
+variants = 'standard_surface_v1'

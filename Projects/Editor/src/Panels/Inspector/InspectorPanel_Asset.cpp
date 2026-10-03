@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 /// @brief Undo 記録可否の判定 (CanRecordEditorUndo) など、Inspector 共通ヘルパーを使う。
+#include <Engine/Asset/ShaderCapabilities.hpp>
 #include "InspectorCommon.hpp"
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
@@ -361,10 +362,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
 
-        const bool isTerrainMaterial = mat.shaderPath == "Assets/Shaders/Terrain/Terrain.hlsl"
-            || relPath.find("/Terrain/") != std::string::npos;
-        const bool isWaterMaterial = mat.shaderPath == "Assets/Shaders/Water/Water.hlsl"
-            || relPath.find("/Water/") != std::string::npos;
+        const auto shaderCapabilities = asset::ResolveShaderCapabilities(mat.shaderPath);
+        const bool isTerrainMaterial = shaderCapabilities.surface == renderer::ShaderSurfaceContract::TERRAIN;
+        const bool isWaterMaterial = shaderCapabilities.surface == renderer::ShaderSurfaceContract::WATER;
 
         if (isTerrainMaterial) {
             const auto tf = DrawTerrainLayerMaterialInspector(mat);

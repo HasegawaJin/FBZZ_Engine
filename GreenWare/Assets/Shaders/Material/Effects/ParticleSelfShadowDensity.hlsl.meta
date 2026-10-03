@@ -1,2 +1,14 @@
+# @file    ParticleSelfShadowDensity.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-16
 [meta]
 guid = 'f3c603a85afa0bbb298b64efdafb826e'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'particle'

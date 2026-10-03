@@ -1,2 +1,14 @@
+# @file    UICrosshair.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-23
 [meta]
 guid = '4c8b1a90f27d5e3b6a41d80c9f2e7b53'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'ui'

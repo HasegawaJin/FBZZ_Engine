@@ -1,0 +1,14 @@
+# @file    UIGauge.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-10-02
+[meta]
+guid = 'ac7fd2a1b2d84dba82717575295114c2'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'ui'

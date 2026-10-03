@@ -1,2 +1,14 @@
+# @file    UIBreathGauge.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-15
 [meta]
 guid = 'd2d9cbcb8d5e4e769c79be8cc4f4b3e1'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'ui'

@@ -1,2 +1,14 @@
+# @file    FiberBlade.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-18
 [meta]
 guid = "2a3ca60bdd03436ba8a83983377cb7eb"
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_blade'

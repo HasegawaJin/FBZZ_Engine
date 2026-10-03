@@ -1,2 +1,14 @@
+# @file    ContactShadows.cs.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-16
 [meta]
 guid = 'fcd3d76e44f94452964a15685338343a'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

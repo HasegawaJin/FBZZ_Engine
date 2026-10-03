@@ -1,2 +1,14 @@
+# @file    Outline.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-28
 [meta]
 guid = '4c2f809951f6d92d42ec9fcf816e24a0'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

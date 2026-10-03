@@ -1,0 +1,14 @@
+# @file    ParticleReactive.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-10-02
+[meta]
+guid = '8d25824ada9e42db971d6d1c73132065'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'particle'

@@ -1,2 +1,13 @@
+# @file    SkinnedLit.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-07-11
 [meta]
 guid = '00582a147be04cfc812145aa2dbf1a3e'
+
+[shader]
+version = 1
+vertex = 'standard_skinned_v1'
+surface = 'lambert_v1'
+opacity = 'opaque_v1'
+variants = 'none'

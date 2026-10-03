@@ -1,0 +1,14 @@
+# @file    FroxelInject.cs.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-10-02
+[meta]
+guid = '5dbf60b0b1944892bb2d969782d7607e'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

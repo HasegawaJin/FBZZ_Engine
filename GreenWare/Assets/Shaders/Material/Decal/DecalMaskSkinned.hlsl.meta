@@ -1,2 +1,14 @@
+# @file    DecalMaskSkinned.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-23
 [meta]
 guid = '2181f1c9f3494bc1aa76cb67345948fb'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'decal'

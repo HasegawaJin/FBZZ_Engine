@@ -1,2 +1,14 @@
+# @file    FiberFinSelection.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-18
 [meta]
 guid = "0399082631e94e7c99fcefb990539054"
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_fin'

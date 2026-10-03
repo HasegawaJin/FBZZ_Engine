@@ -1,0 +1,14 @@
+# @file    CustomCompose.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-10-02
+[meta]
+guid = '939b1c10a8254e62aadb4ab3e4d9aef2'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

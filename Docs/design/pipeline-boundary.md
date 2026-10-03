@@ -83,15 +83,14 @@ Engine 側の `scene::ExtractGeometryMaterial` が MaterialSlot と共有アセ�
 
 | 種別 | シェーダー |
 |------|-----------|
-| Surface | `PBR.hlsl` / `Lit.hlsl` / `Fallback.hlsl` |
-| Skinned | `SkinnedPBR.hlsl` / `SkinnedLit.hlsl` / `FallbackSkinned.hlsl` |
-| 空欄 | Fallback として扱う (＝ GBuffer 相当) |
+| Surface | 標準 PBR の表面・被覆・剛体頂点と GBuffer 変種セットを宣言したもの |
+| Skinned | 同じ表面・被覆と標準スキニング頂点・GBuffer 変種セットを宣言したもの |
+| 空欄 | 未知として Forward。欠落材質は別途 Unlit の Fallback で可視化する |
 
-判定はファイル名で行う。シェーダーは `Assets/` と `<Project>/Assets/` の 2 本立てで、参照は
-`guid:` にもパスにもなるため、絶対パスで比べると同じシェーダーが別物に見える。
+判定は `.hlsl.meta` の能力契約で行う。GUID の表示ヒントとファイル名は根拠にしない。原本と `.meta` の改名・移動で能力は変わらない。実行中の能力は成功した load / reload と同じ版へ固定する。宣言と検証は [shader-capabilities.md](shader-capabilities.md) を参照。
 
 `Toon` / `RimLight` / `Unlit` / `Dissolve` / `Anisotropic` / `Subsurface` / `Cloth` と、
-プロジェクト側のカスタムシェーダーはすべて **GBuffer 相当ではない** = Forward。
+Lambert / Unlit と、標準契約を宣言していないプロジェクト側のカスタムシェーダーは **GBuffer 相当ではない** = Forward。
 
 ### 2.2 発光の保持 (2026-09-30)
 

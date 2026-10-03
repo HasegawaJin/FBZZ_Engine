@@ -1,2 +1,14 @@
+# @file    DangerMask.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-15
 [meta]
 guid = 'b56de5bd572c43d19a522bc13a1cb0b7'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

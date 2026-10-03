@@ -21,12 +21,14 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <array>
+#include <Graphics/Renderer/ShaderCapabilities.hpp>
 #include <cstdint>
 #include <vector>
 
 namespace fbzz::renderer {
 
 struct RenderMaterial {
+    ShaderCapabilities shaderCapabilities;
     GeometryMaterialInput capabilities;
     RayMaterialCapabilities rayCapabilities;
     SurfaceMaterialData surface;

@@ -28,6 +28,29 @@ namespace fbzz::renderer {
 namespace {
 ResourceManager* s_activeResourceManager = nullptr;
 
+/// @note 表面宣言だけで標準 PBR と認定せず、実際にロードした PS に正規化可能な定数を要求する。
+ShaderCapabilities LoadedShaderCapabilities(const IShader& shader, const std::string& path)
+{
+    auto capabilities = ResolveShaderCapabilities(path);
+    if (!capabilities.IsStandardPbr()) return capabilities;
+    const auto& descriptor = shader.GetDescriptor();
+    const auto matches = [&](std::string_view name, uint8_t columns) {
+        const auto* variable = descriptor.FindVar(name);
+        return variable && variable->IsWritable() && variable->varType == ShaderVarType::Float
+            && variable->varClass == (columns == 1 ? ShaderVarClass::Scalar : ShaderVarClass::Vector)
+            && variable->rows == 1 && variable->columns == columns && variable->elements == 0
+            && variable->size == static_cast<uint32_t>(columns) * sizeof(float)
+            && variable->offset <= descriptor.cbufferSize
+            && static_cast<uint32_t>(columns) * sizeof(float) <= descriptor.cbufferSize - variable->offset;
+    };
+    if (!matches("albedo", 4) || !matches("metallic", 1) || !matches("roughness", 1)
+        || !matches("uvTiling", 2) || !matches("uvOffset", 2) || !matches("alphaCutoff", 1)) {
+        FBZZ_LOG_WARN("Shader capability contract does not match loaded constants: %s", path.c_str());
+        return {};
+    }
+    return capabilities;
+}
+
 /// @note Windows の '\\' とアセット記述で使う '/' を同一キーにし、同じ実ファイルの二重キャッシュを防ぐ。
 std::string TextureCacheKey(std::string_view path, bool flipGreen = false)
 {
@@ -102,9 +125,17 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
 
     /// @note 0 バイトとして登録: シェーダーバイトコードの実サイズはバックエンドの内側にあり、
     /// @note       ITexture/IBuffer のように寸法から復元することもできない。
+    const auto capabilities = LoadedShaderCapabilities(*shader, key);
     ResourceHandle<ShaderTag> handle = m_shaders.Insert(std::move(shader), 0, "Shader", __FILE__, __LINE__);
     m_shaderCache[key] = handle;
+    m_shaderCapabilities[(static_cast<uint64_t>(handle.gen) << 32) | handle.id] = capabilities;
     return handle;
+}
+
+ShaderCapabilities ResourceManager::GetShaderCapabilities(ResourceHandle<ShaderTag> handle) const
+{
+    const auto found = m_shaderCapabilities.find((static_cast<uint64_t>(handle.gen) << 32) | handle.id);
+    return found != m_shaderCapabilities.end() ? found->second : ShaderCapabilities{};
 }
 
 ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
@@ -120,11 +151,13 @@ ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
         FBZZ_LOG_ERROR("ReloadShader failed: %s", key.c_str());
         return it->second;
     }
+    const auto capabilities = LoadedShaderCapabilities(*newShader, key);
     if (!m_renderer.PrepareShaderReload()) {
         FBZZ_LOG_WARN("ReloadShader: renderer rejected reload of %s", key.c_str());
         return it->second;
     }
     m_shaders.Replace(it->second, std::move(newShader));
+    m_shaderCapabilities[(static_cast<uint64_t>(it->second.gen) << 32) | it->second.id] = capabilities;
     ++m_shaderVersion;
     return it->second;
 }
@@ -132,6 +165,7 @@ ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
 bool ResourceManager::ReloadAllShaders()
 {
     std::vector<std::pair<ResourceHandle<ShaderTag>, std::unique_ptr<IShader>>> pending;
+    std::vector<ShaderCapabilities> capabilities;
     pending.reserve(m_shaderCache.size());
     for (const auto& [path, handle] : m_shaderCache) {
         auto newShader = m_renderer.CreateNativeShader(path);
@@ -139,6 +173,7 @@ bool ResourceManager::ReloadAllShaders()
             FBZZ_LOG_WARN("ReloadAllShaders: failed to reload %s; keeping all previous shaders", path.c_str());
             return false;
         }
+        capabilities.push_back(LoadedShaderCapabilities(*newShader, path));
         pending.emplace_back(handle, std::move(newShader));
     }
     if (pending.empty()) return true;
@@ -146,8 +181,11 @@ bool ResourceManager::ReloadAllShaders()
         FBZZ_LOG_WARN("ReloadAllShaders: renderer rejected reload; keeping all previous shaders");
         return false;
     }
-    for (auto& [handle, shader] : pending)
+    std::size_t index = 0;
+    for (auto& [handle, shader] : pending) {
         m_shaders.Replace(handle, std::move(shader));
+        m_shaderCapabilities[(static_cast<uint64_t>(handle.gen) << 32) | handle.id] = capabilities[index++];
+    }
     ++m_shaderVersion;
     FBZZ_LOG_INFO("ResourceManager: %zu shader(s) hot-reloaded", pending.size());
     return true;
@@ -647,6 +685,7 @@ void ResourceManager::Release(ResourceHandle<ShaderTag> h)
         else ++it;
     }
     m_shaders.Remove(h);
+    m_shaderCapabilities.erase((static_cast<uint64_t>(h.gen) << 32) | h.id);
 }
 void ResourceManager::Release(ResourceHandle<TextureTag> h) { m_textures.Remove(h); }
 void ResourceManager::Release(ResourceHandle<BufferTag> h)
@@ -686,6 +725,7 @@ void ResourceManager::ReleaseOwnedResourcesForShutdown()
     m_renderTargetColors.clear();
     m_renderTargetDepths.clear();
     m_shaderCache.clear();
+    m_shaderCapabilities.clear();
     m_textureCache.clear();
     m_texturesHandedOut.clear();
 

@@ -1,2 +1,14 @@
+# @file    FiberShellSkinnedSelection.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-18
 [meta]
 guid = "273a3688f2a04a5ba5b5638b1baefe30"
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_shell'

@@ -2,6 +2,7 @@
 /// @brief   .mat 用 Inspector ウィジェット群。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Asset/ShaderCapabilities.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -163,11 +164,7 @@ void Tooltip(const char* text)
 
 bool DrawSolidDielectricMaterialInspector(asset::MaterialAsset& material)
 {
-    std::string shaderPath = material.shaderPath;
-    if (shaderPath.starts_with("guid:")) shaderPath = asset::AssetManager::ResolveAssetPath(shaderPath);
-    std::replace(shaderPath.begin(), shaderPath.end(), '\\', '/');
-    if (!shaderPath.ends_with("Assets/Shaders/Material/Surface/PBR.hlsl")
-        && shaderPath != "Material/Surface/PBR.hlsl"
+    if (!asset::ResolveShaderCapabilities(material.shaderPath).IsStandardPbr()
         && material.dielectric.transmission == 0) return false;
     ImGui::SeparatorText("Dielectric");
     auto& dielectric = material.dielectric;

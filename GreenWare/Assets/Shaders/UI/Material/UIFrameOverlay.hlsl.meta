@@ -1,2 +1,14 @@
+# @file    UIFrameOverlay.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-15
 [meta]
 guid = 'c6a6f6f14b5a45e4a22c82eb98c7d2ef'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'ui'

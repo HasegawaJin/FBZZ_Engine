@@ -1,2 +1,14 @@
+# @file    FiberShellSkinnedVelocity.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-18
 [meta]
 guid = "62c481d49e60420bb38ab9245ab80756"
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_shell'

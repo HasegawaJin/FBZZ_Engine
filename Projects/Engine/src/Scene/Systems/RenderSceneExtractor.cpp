@@ -140,15 +140,13 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
     output.valid = material != nullptr;
     if (!material) return;
     output.shader = material->shader;
+    output.shaderCapabilities = resources.GetShaderCapabilities(material->shader);
     output.paramsBuffer = material->paramsBuffer;
     for (size_t i = 0; i < output.textures.size() && i < material->textures.size(); ++i)
         output.textures[i] = material->textures[i];
-    output.directGBufferParams = material->paramData.size() == output.gbufferParams.size();
-    if (output.directGBufferParams) {
-        std::memcpy(output.gbufferParams.data(), material->paramData.data(), output.gbufferParams.size());
-        return;
-    }
     /// @note 異なるシェーダーの CB レイアウトを GBuffer の 96 バイトへ正規化する。
+    output.directGBufferParams = false;
+    output.gbufferParams = {};
     const float roughness = 0.5f;
     const float tiling[] = { 1.0f, 1.0f };
     std::memcpy(output.gbufferParams.data() + 20, &roughness, sizeof(roughness));
@@ -158,7 +156,11 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
     const auto& descriptor = shader->GetDescriptor();
     auto copy = [&](std::string_view name, uint32_t offset, uint32_t bytes) {
         const auto* variable = descriptor.FindVar(name);
-        if (variable && variable->offset + bytes <= material->paramData.size())
+        if (variable && variable->IsWritable() && variable->varType == renderer::ShaderVarType::Float
+            && variable->varClass == (bytes == sizeof(float) ? renderer::ShaderVarClass::Scalar : renderer::ShaderVarClass::Vector)
+            && variable->rows == 1 && variable->elements == 0 && variable->size == bytes
+            && variable->offset <= material->paramData.size()
+            && bytes <= material->paramData.size() - variable->offset)
             std::memcpy(output.gbufferParams.data() + offset,
                         material->paramData.data() + variable->offset, bytes);
     };
@@ -173,29 +175,27 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
     copy("uvOffset", 56, 8);
     copy("alphaCutoff", 64, 4);
     if (descriptor.textureMaskOffset != UINT32_MAX &&
-        descriptor.textureMaskOffset + 4 <= material->paramData.size())
+        descriptor.textureMaskOffset <= material->paramData.size() &&
+        4 <= material->paramData.size() - descriptor.textureMaskOffset)
         std::memcpy(output.gbufferParams.data() + 80,
                     material->paramData.data() + descriptor.textureMaskOffset, 4);
+    /// @note 同じ 96 bytes でも変数の位置は異なり得る。正規化した値が一致するときだけ元 CB を共有する。
+    output.directGBufferParams = material->paramData.size() == output.gbufferParams.size()
+        && std::memcmp(material->paramData.data(), output.gbufferParams.data(), output.gbufferParams.size()) == 0;
 }
 
 void ExtractRayMaterialInputs(renderer::RenderMaterial& material,
     const renderer::Material* source, const MaterialSlot& slot, renderer::ResourceManager& resources,
     bool currentDeformationVerified)
 {
-    std::string path = source ? source->shaderPath : std::string{};
-    if (path.starts_with("guid:")) path = asset::AssetManager::ResolveAssetPath(path);
-    std::replace(path.begin(), path.end(), '\\', '/');
-    /// @note Raster の basename 分類ではなく、検証した標準 VS の配置だけを geometry の根拠にする。
-    const bool surfacePbr = path.ends_with("Assets/Shaders/Material/Surface/PBR.hlsl") || path == "Material/Surface/PBR.hlsl";
-    const bool skinnedPbr = path.ends_with("Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl")
-        || path == "Material/Skinned/SkinnedPBR.hlsl";
-    /// @note SkinnedPBR の PS だけを共有し、現在版の 60-byte 変形済み入力なしで任意の skinning VS を受理しない。
-    const bool pbr = surfacePbr || (skinnedPbr && currentDeformationVerified);
-    const bool unclipped = path.ends_with("Assets/Shaders/Material/Surface/Lit.hlsl")
-        || path.ends_with("Assets/Shaders/Material/Surface/Fallback.hlsl")
-        || path == "Material/Surface/Lit.hlsl" || path == "Material/Surface/Fallback.hlsl";
+    const auto contract = material.shaderCapabilities;
+    /// @note 成功した shader 版の能力だけを使い、失敗した reload の新宣言を描画へ混ぜない。
+    material.capabilities.gbufferEquivalentShader = contract.SupportsGBuffer();
+    const bool deformationVerified = !contract.SupportsSkinning() || currentDeformationVerified;
+    const bool pbr = contract.IsStandardPbr() && deformationVerified;
+    const bool unclipped = contract.HasOpaqueOutput();
     const auto* shader = resources.Get(material.shader);
-    const bool standardGeometry = material.valid && shader && (pbr || unclipped);
+    const bool standardGeometry = material.valid && shader && contract.HasStandardGeometry() && deformationVerified;
     /// @note Lit / Fallback は texture alpha に関係なく alpha=1 を返し、clip を実行しない。
     float alpha = 0, cutoff = 0;
     uint32_t textureMask = 0;
@@ -422,6 +422,8 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             const auto* source = SyncMaterialSlot(*component, item.materialSlot, ctx.resources,
                                                    object.skinned, screenPixels);
             CopyMaterial(material, source, ctx.resources);
+            material.capabilities.gbufferEquivalentShader =
+                ctx.resources.GetShaderCapabilities(material.shader).SupportsGBuffer();
             const auto* deformed = ctx.resources.Get(item.deformedVertexBuffer);
             const bool currentDeformationVerified = object.skinned && item.deformedContentVersion != 0
                 && deformed && deformed->GetStride() == sizeof(renderer::Vertex)

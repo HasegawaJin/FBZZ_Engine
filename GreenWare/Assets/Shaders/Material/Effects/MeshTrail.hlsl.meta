@@ -1,2 +1,14 @@
+# @file    MeshTrail.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-16
 [meta]
 guid = '163b4aaea7524663a5f8c65ad2fd4442'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'mesh_trail'

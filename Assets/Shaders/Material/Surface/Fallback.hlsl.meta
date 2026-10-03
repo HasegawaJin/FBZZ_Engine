@@ -1,2 +1,13 @@
+# @file    Fallback.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-07-11
 [meta]
 guid = '67d2ce6f904c439099c6eec56f21ae35'
+
+[shader]
+version = 1
+vertex = 'standard_surface_v1'
+surface = 'unlit_v1'
+opacity = 'opaque_v1'
+variants = 'none'

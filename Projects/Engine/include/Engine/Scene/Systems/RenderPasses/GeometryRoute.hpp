@@ -15,8 +15,8 @@ struct MaterialSlot;
 /// @note 既存の Scene 描画パス向け互換名。Renderer からこのヘッダーを参照しない。
 using renderer::GeometryRoute;
 
-/// @param shaderPath アセット参照またはパス。空文字は既定の Fallback を指す。
-/// @note 未知のシェーダーは非対応。GUID の解決は Engine 側で完結させる。
+/// @param shaderPath アセット参照またはパス。未宣言・未知・空欄は非対応。
+/// @note .meta の能力契約と変種セットを要求する。GUID の解決は Engine 側で完結させる。
 [[nodiscard]] bool IsGBufferEquivalentShader(std::string_view shaderPath);
 
 /// @note EnsureMaterialAsset 後に呼ぶ。ロードや GPU 材質の更新は行わない。

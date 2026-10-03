@@ -1,2 +1,14 @@
+# @file    DecalSlashScar.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-06
 [meta]
 guid = '0dcfa26d70ebc12571e00e8bb3123a5e'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'decal'

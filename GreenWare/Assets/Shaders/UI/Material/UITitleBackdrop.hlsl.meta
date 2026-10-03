@@ -1,2 +1,14 @@
+# @file    UITitleBackdrop.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-31
 [meta]
 guid = 'faa3ce9e2042184a6d660cb60d3d0362'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'ui'

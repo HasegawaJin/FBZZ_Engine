@@ -1,2 +1,14 @@
+# @file    Water.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-07-11
 [meta]
 guid = 'c496f8e37c024b17aac1fce28730e300'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'water_v1'
+opacity = 'custom'
+variants = 'none'
+preview = 'water'

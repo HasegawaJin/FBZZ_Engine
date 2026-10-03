@@ -79,6 +79,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [gpu-instancing.md](design/gpu-instancing.md) | 同じメッシュの自動インスタンシング |
 | [view-culling.md](design/view-culling.md) | ビューごとのカリング結果の共有 |
 | [shader-reload-lifetime.md](design/shader-reload-lifetime.md) | シェーダー再読み込みと描画キャッシュの寿命 |
+| [shader-capabilities.md](design/shader-capabilities.md) | 名前に依存しない表面・頂点・被覆・GBuffer 変種とプレビューの宣言 |
 | [light-probe-gi.md](design/light-probe-gi.md) | Light Probe Volume のベイク・GI と比較シナリオ |
 | [fiber-rendering.md](design/fiber-rendering.md) | 毛・草の Shell / Fin / Hybrid / Blade、スキニング・風・接触、Lifecycle 画像回帰 |
 | [terrain-layers.md](design/terrain-layers.md) | 地形の可変レイヤー・質感・穴・ブラシ |

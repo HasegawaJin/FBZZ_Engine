@@ -1,2 +1,14 @@
+# @file    UIPanel.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-22
 [meta]
 guid = 'bd50723ef4927b26bc57e3af03679596'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'ui'

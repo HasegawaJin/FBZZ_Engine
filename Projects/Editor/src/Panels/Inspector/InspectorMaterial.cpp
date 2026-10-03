@@ -2,6 +2,7 @@
 /// @brief   Material Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Asset/ShaderCapabilities.hpp>
 #include "InspectorMaterial.hpp"
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <cstring>
@@ -113,8 +114,8 @@ void DrawMaterialSlotBody(scene::MaterialSlot& mc, EditorContext& ctx)
                 }
             }
 
-            const bool isWaterMaterial = mat.shaderPath == "Assets/Shaders/Water/Water.hlsl"
-                || mc.materialPath.find("/Water/") != std::string::npos;
+            const bool isWaterMaterial = asset::ResolveShaderCapabilities(mat.shaderPath).surface
+                == renderer::ShaderSurfaceContract::WATER;
 
             if (isWaterMaterial) {
                 materialDirty |= DrawWaterMaterialInspector(mat);

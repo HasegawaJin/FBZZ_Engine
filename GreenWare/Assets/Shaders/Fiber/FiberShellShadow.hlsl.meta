@@ -4,3 +4,11 @@
 # @date    2026-09-17
 [meta]
 guid = "df7a707cde314371bc092bf1bb4390b5"
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_shell'

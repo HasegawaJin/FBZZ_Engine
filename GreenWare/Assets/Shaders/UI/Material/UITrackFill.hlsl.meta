@@ -1,2 +1,14 @@
+# @file    UITrackFill.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-31
 [meta]
 guid = '6ed4eaf50380b5656baf7672221c208e'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'ui'
