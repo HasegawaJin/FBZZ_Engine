@@ -61,6 +61,7 @@ target_include_directories(FBZZEditor
 )
 
 target_link_libraries(FBZZEditor
+    PRIVATE bcrypt
     PUBLIC
         FBZZEngine
         ImGui

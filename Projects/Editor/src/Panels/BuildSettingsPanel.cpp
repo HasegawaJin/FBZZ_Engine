@@ -21,6 +21,9 @@
 
 #include <imgui.h>
 #include <imgui_internal.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 #include <shlobj.h>
 
@@ -496,7 +499,7 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 
     const std::filesystem::path root = util::FileSystem::PathFromUtf8(ctx.projectRoot);
 
-    /// @name 出力先
+    /// @note 出力先
     /// @note Error にする: コミットは出力先を remove_all するため、空欄やデスクトップを指したまま
     /// @note ビルドを押すとそのフォルダが中身ごと消える。
     {
@@ -509,7 +512,7 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
         }
     }
 
-    /// @name アイコン
+    /// @note アイコン
     /// @note 事前に読む: 差し替えはコンパイル後にしか走らないため、読めない画像を指したままだと
     /// @note 数分かけたビルドがアイコンのためだけに失敗する。
     if (!m_settings.iconPath.empty()) {
@@ -537,7 +540,9 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
         }
     }
 
-    /// @name ツールチェーン (cmake / build.config)
+    /// @note ツールチェーン (cmake / build.config)
+    std::string runtimeConfiguration = m_settings.developmentBuild ? "Development" : "Release";
+    bool dx12Enabled = false;
     const ToolchainLocator::Result toolchain =
         ToolchainLocator::Locate(util::FileSystem::PathFromUtf8(ctx.projectBuildRoot));
     if (!toolchain.found) {
@@ -550,9 +555,36 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
             ? (!toolchain.exeDevelopment.empty() ? toolchain.exeDevelopment : toolchain.exeDebug)
             : toolchain.exeRelease;
         m_standaloneExeDir = util::FileSystem::PathToUtf8(exe.parent_path());
+        std::string runtimeReason;
+        runtimeConfiguration = m_settings.developmentBuild
+            ? (!toolchain.exeDevelopment.empty() ? "Development" : "Debug") : "Release";
+        if (util::FileSystem::Exists(exe)) {
+            if (BuildPipeline::ValidateRuntimePackage(exe, util::FileSystem::PathFromUtf8(ctx.engineRoot),
+                                                      runtimeConfiguration, false, runtimeReason, &dx12Enabled)) {
+                m_checks.push_back({ Check::Level::Ok, "Graphics runtime",
+                    dx12Enabled ? "Agility SDK, DXC and runtime notices" : "Graphics backend disabled" });
+            } else {
+                m_checks.push_back({ Check::Level::Warn, "Graphics runtime", runtimeReason + " (the build re-stages the runtime)" });
+            }
+        }
     }
 
-    /// @name ランタイム DLL / EngineAssets
+    /// @note 初回ゲームビルド前も SDK 版 Editor で選択構成の公開契約と必須配置を確認する。
+    if (!ctx.engineRoot.empty()) {
+        const auto sdkRoot = util::FileSystem::PathFromUtf8(ctx.engineRoot);
+        const auto sdkEditor = sdkRoot / "tools" / runtimeConfiguration / "Editor/FBZZEditor.exe";
+        std::string sdkReason;
+        if (util::FileSystem::Exists(sdkRoot / "bin" / runtimeConfiguration)
+            && util::FileSystem::Exists(sdkRoot / "lib" / runtimeConfiguration)
+            && BuildPipeline::ValidateRuntimePackage(sdkEditor, sdkRoot, runtimeConfiguration, false, sdkReason, &dx12Enabled)) {
+            m_checks.push_back({ Check::Level::Ok, "SDK", runtimeConfiguration + " runtime contract validated" });
+        } else {
+            if (sdkReason.empty()) sdkReason = "SDK bin/lib configuration is missing: " + runtimeConfiguration;
+            m_checks.push_back({ Check::Level::Error, "SDK", sdkReason + " — republish this SDK configuration" });
+        }
+    }
+
+    /// @note ランタイム DLL / EngineAssets
     /// @note 未ビルドは警告止まりにする: DLL も EngineAssets も standalone ターゲットの POST_BUILD が
     /// @note 置くため、1 度もビルドしていない状態でエラーにすると「DLL が無いからビルドできない /
     /// @note ビルドしないと DLL が来ない」で詰む。
@@ -564,14 +596,16 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
             m_checks.push_back({ Check::Level::Warn, "Runtime DLLs",
                                  "not staged yet — the build produces them next to the exe" });
         } else {
-            /// @note DXC を名指しで見る: DX12 は焼いた `.cso` を読むだけの経路でもリフレクションに
-            /// @note `dxcompiler.dll` が要る。無いまま配ると「起動はするが何も描かれない」になる。
-            /// @note DX11 撤去後は DXC が全構成で必須になったので、条件付けをやめて常に見る。
-            const std::vector<std::wstring> required = {
+            /// @note DXC と PIX の必須判定は ProjectSettings でなく runtime の DX12 有効状態に従う。
+            std::vector<std::wstring> required = {
                 L"imgui.dll", L"FBZZMath.dll", L"FBZZPhysics.dll", L"FBZZFluid.dll", L"FBZZCore.dll", L"FBZZGraphics.dll", L"FBZZEngine.dll",
-                L"assimp-vc145-mt.dll",
-                L"dxcompiler.dll", L"dxil.dll",
+                runtimeConfiguration == "Debug" ? L"assimp-vc145-mtd.dll" : L"assimp-vc145-mt.dll",
             };
+            if (dx12Enabled) {
+                required.push_back(L"dxcompiler.dll");
+                required.push_back(L"dxil.dll");
+                required.push_back(L"WinPixEventRuntime.dll");
+            }
 
             std::string missing;
             for (const std::wstring& dll : required) {
@@ -582,7 +616,7 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 
             if (missing.empty()) {
                 m_checks.push_back({ Check::Level::Ok, "Runtime DLLs",
-                                     "including DXC (dx12)" });
+                                     dx12Enabled ? "including DXC (dx12)" : "Graphics backend disabled" });
             } else {
                 m_checks.push_back({ Check::Level::Warn, "Runtime DLLs",
                                      "missing next to the exe: " + missing +
@@ -600,25 +634,7 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
         }
     }
 
-    /// @name SDK が選んだ構成で公開されているか
-    /// @note SDK は FBZZSDK ターゲットをビルドした構成ぶんしか bin/lib を持たない。Release を公開していない
-    /// @note 状態で Release ビルドを選ぶと、リンクではなくステージングの copy_directory が落ち、
-    /// @note CMake のログだけを見ても理由が読めない。
-    if (!ctx.engineRoot.empty()) {
-        const std::string configuration = m_settings.developmentBuild ? "Development" : "Release";
-        const std::filesystem::path sdkRoot = util::FileSystem::PathFromUtf8(ctx.engineRoot);
-        const bool published = util::FileSystem::Exists(sdkRoot / "bin" / configuration)
-                            && util::FileSystem::Exists(sdkRoot / "lib" / configuration);
-        if (published) {
-            m_checks.push_back({ Check::Level::Ok, "SDK", configuration + " is published" });
-        } else {
-            m_checks.push_back({ Check::Level::Error, "SDK",
-                                 "not published for " + configuration +
-                                 " — build the FBZZSDK target in that configuration first" });
-        }
-    }
-
-    /// @name Library/Baked (FBX 由来の実体)
+    /// @note Library/Baked (FBX 由来の実体)
     if (util::FileSystem::Exists(root / L"Library" / L"Baked")) {
         m_checks.push_back({ Check::Level::Ok, "Library/Baked", "will be packaged" });
     } else {
@@ -627,7 +643,7 @@ void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
                              "re-imported from the source FBX at runtime" });
     }
 
-    /// @name 開始シーン
+    /// @note 開始シーン
     const std::string startScene = ResolveStartScene(ctx);
     if (startScene.empty()) {
         m_checks.push_back({ Check::Level::Error, "Start scene",
