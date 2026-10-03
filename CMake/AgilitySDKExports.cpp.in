@@ -1,0 +1,9 @@
+/// @file    AgilitySDKExports.cpp.in
+/// @brief   描画ホスト EXE の Agility SDK 選択データ。
+/// @author  Hasegawa Jin
+/// @date    2026-10-03
+/// @see https://microsoft.github.io/DirectX-Specs/d3d/D3D12Redistributable.html#application-and-games EXE data exports.
+extern "C" {
+__declspec(dllexport) extern const unsigned int D3D12SDKVersion = @FBZZ_AGILITY_SDK_VERSION@;
+__declspec(dllexport) const char* D3D12SDKPath = "@FBZZ_AGILITY_SDK_PATH_CPP@";
+}

@@ -98,10 +98,6 @@ export function registerIpcHandlers(): void {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
-  ipcMain.handle('dialog:editor', async () => {
-    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'FBZZ Editor', extensions: ['exe'] }] });
-    return result.canceled ? null : result.filePaths[0] ?? null;
-  });
   ipcMain.handle('project:add', async () => {
     try {
       await ensureConfigLoaded();
@@ -145,8 +141,7 @@ export function registerIpcHandlers(): void {
           type: 'warning',
           title: '古い SDK で起動します',
           message: sdkNotice,
-          detail: `プロジェクト: ${projectPath}\nSDK: ${sdkRoot}\n構成: ${settings.sdkConfiguration}`
-            + (settings.editorExe ? `\nEditor（手動指定）: ${settings.editorExe}` : ''),
+          detail: `プロジェクト: ${projectPath}\nSDK: ${sdkRoot}\n構成: ${settings.sdkConfiguration}`,
           buttons: ['キャンセル', `SDK ${projectSdkId || settings.sdkId} で開く`],
           defaultId: 0,
           cancelId: 0,

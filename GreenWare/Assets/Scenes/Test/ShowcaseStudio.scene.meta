@@ -5,23 +5,11 @@ locked_objects = []
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = '4e2ce9ee-881e-4701-9405-5ce8aa78180b'
+    instance_id = 'e3a6af0d-462d-4586-a366-9bc5ca168092'
 
     [[editor.game_objects]]
     component_order = [ 'Mesh Renderer', 'Material' ]
     instance_id = '55d094c5-344f-4ffc-9107-12ecc56d36e7'
-
-    [[editor.game_objects]]
-    component_order = [ 'Post Process Volume' ]
-    instance_id = '442adbd3-1251-407f-94f9-8bd480fbb24b'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'a7148c64-bc25-4b10-8b38-77b116000002'
-
-    [[editor.game_objects]]
-    component_order = [ 'Mesh Renderer', 'Material' ]
-    instance_id = 'a7148c64-bc25-4b10-8b38-77b116000001'
 
 [meta]
 guid = 'a7148c64bc254b108b3877b116000000'

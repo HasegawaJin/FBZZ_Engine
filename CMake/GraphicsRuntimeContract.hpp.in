@@ -1,0 +1,14 @@
+/// @file    GraphicsRuntimeContract.hpp.in
+/// @brief   固定パッケージから生成する Graphics 内部の配布契約。
+/// @author  Hasegawa Jin
+/// @date    2026-10-03
+#pragma once
+namespace fbzz::renderer::runtimecontract {
+inline constexpr unsigned int SDK_VERSION = @FBZZ_AGILITY_SDK_VERSION@;
+inline constexpr char SDK_PATH[] = "@FBZZ_AGILITY_SDK_PATH_CPP@";
+inline constexpr char PACKAGE_VERSION[] = "@FBZZ_AGILITY_PACKAGE_VERSION@";
+inline constexpr unsigned int CORE_VERSION[] = {@FBZZ_AGILITY_CORE_NUMERIC_VERSION@};
+inline constexpr unsigned int DXC_VERSION[] = {@FBZZ_DXC_NUMERIC_VERSION@};
+inline constexpr char DXC_PACKAGE_VERSION[] = "@FBZZ_DXC_PACKAGE_VERSION@";
+inline constexpr char DXC_SIGNATURE[] = "@FBZZ_DXC_EXECUTABLE_SHA256@|@FBZZ_DXC_COMPILER_SHA256@|@FBZZ_DXC_VALIDATOR_SHA256@";
+}

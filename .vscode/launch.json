@@ -2,45 +2,33 @@
 // @brief   Editor、ゲーム、テストのデバッグ起動構成。
 // @author  Hasegawa Jin
 // @date    2026-05-15
-// @note 2 つの起動経路がある:
-// @note 1. ビルドツリー直接起動 (FBZZEditor / Sandbox / Tests)
-// @note → 最短でブレークポイントに入れる。日常のデバッグはこちら。
-// @note 2. GameHub 経由 (GameHub + SDK)
-// @note → 実際のユーザー体験と同じ経路。ただし GameHub は Editor を
-// @note detached で起動する (projectService.ts) ため、デバッガーは付かない。
-// @note この経路で Editor を止めたい時は "Attach: FBZZ プロセス" を使う。
-
-// @note ビルドツリー直接起動には環境変数が 2 つ要る:
-// @note FBZZ_ENGINE_ASSET_ROOT — AssetManager の探索は「exe 隣の EngineAssets」か
-// @note 「SDK の share/fbzz/Assets」しか見ず、ソースツリーへのフォールバックが無い。
-// @note 未指定だとエンジンアセット (シェーダー等) が一切解決できずに起動する。
-// @note FBZZ_SKIP_ENGINE_REBUILD — 未指定だと CheckEngineFreshnessAndRelaunch() が
-// @note ソースと DLL の時刻を比べてリビルド確認ダイアログを出し、プロセスを
-// @note 起動し直す。デバッガーが元プロセスごと外れるため必ず抑止する。
-// @note preLaunchTask が既にビルド済みなので判定自体が不要。
-
-// @note なおビルドツリー起動ではスクリプト DLL のコンパイルは使えない。
-// @note FBZZ_SDK_ROOT が指す公開済み SDK を必要とし、その ID は編集のたびに変わるため
-// @note ここへ固定値を書けない。スクリプトを触る時は GameHub 経由で起動すること。
+// @note Editor は起動前に同構成の SDK を公開し、SDK 配置へ直接デバッガーを付ける。
+// @note SDK の版は CMake PROJECT_VERSION と揃え、版更新時にこの起動設定も更新する。
+// @note FBZZ_SDK_ROOT と FBZZ_ENGINE_ASSET_ROOT は同じ公開 SDK を指す。
+// @note FBZZ_SKIP_ENGINE_REBUILD は source tree の部分更新とデバッガーの離脱を抑止する。
+// @note Sandbox、テスト、ベンチは build の検証用配置から起動する。
+// @note GameHub は SDK Editor を detached 起動するため、必要時は Attach を使う。
+// @see Docs/design/shared-engine-sdk.md
 {
     "version": "0.2.0",
     "configurations": [
         // @note ------------------------------------------------------------------
-        // @note エディター — ビルドツリー直接起動
+        // @note エディター — 公開 SDK へ直接デバッグ起動
         // @note ------------------------------------------------------------------
         {
             "name": "FBZZEditor (Development)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor/FBZZEditor.exe",
             "args": [
                 "--project",
                 "${input:fbzzProjectPath}"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor",
             "environment": [
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
             "console": "integratedTerminal",
@@ -52,15 +40,16 @@
             "name": "FBZZEditor (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.9.1/tools/Debug/Editor/FBZZEditor.exe",
             "args": [
                 "--project",
                 "${input:fbzzProjectPath}"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Debug/Editor",
             "environment": [
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
             "console": "integratedTerminal",
@@ -75,15 +64,16 @@
             "name": "FBZZEditor (Development + GPU Validation)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor/FBZZEditor.exe",
             "args": [
                 "--project",
                 "${input:fbzzProjectPath}"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor",
             "environment": [
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" },
                 { "name": "FBZZ_GPU_VALIDATION", "value": "1" }
             ],
@@ -96,12 +86,13 @@
             "name": "FBZZEditor (Development + DeveloperMode)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor/FBZZEditor.exe",
             "args": [ "--project", "${input:fbzzProjectPath}", "--developer" ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor",
             "environment": [
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
             "console": "integratedTerminal",
@@ -113,18 +104,37 @@
             "name": "FBZZEditor (Debug + DeveloperMode)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.9.1/tools/Debug/Editor/FBZZEditor.exe",
             "args": [ "--project", "${input:fbzzProjectPath}", "--developer" ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Debug/Editor",
             "environment": [
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
             "console": "integratedTerminal",
             "requireExactSource": false,
             "preLaunchTask": "CMake: Build Editor (Debug)",
             "presentation": { "group": "1_editor", "order": 6 }
+        },
+        {
+            "name": "FBZZEditor (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/SDK/0.9.1/tools/Release/Editor/FBZZEditor.exe",
+            "args": [ "--project", "${input:fbzzProjectPath}" ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Release/Editor",
+            "environment": [
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+            ],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Editor (Release)",
+            "presentation": { "group": "1_editor", "order": 7 }
         },
         {
             // @note GameHub から起動した Editor はデバッガーを持たないので、

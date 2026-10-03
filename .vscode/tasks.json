@@ -79,6 +79,7 @@
         },
 
         // @name CMake Build — 全ターゲット
+        // @note 全体ビルド成功後に VcBuild.ps1 が同構成の SDK を直列公開する。
         {
             "label": "CMake: Build All (Debug)",
             "type": "shell",
@@ -109,17 +110,17 @@
         {
             "label": "Profile: Build Timing (Development)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZEditorLauncher -- /clp:PerformanceSummary /v:m",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '${workspaceFolder}\\Tools\\VcBuild.ps1' -Verb build -ConfigurePreset development -BuildPreset development -CMakeArguments @('--target', 'FBZZEditorLauncher', '--', '/clp:PerformanceSummary', '/v:m'); exit $LASTEXITCODE\"",
             "group": "build",
             "problemMatcher": []
         },
 
         // @name CMake Build — エディター
-        // @note FBZZEditorLauncher を通して Editor と Engine を同じ版で上げる。片方だけ古い状態を作らない。
+        // @note FBZZSDK を通して同構成の Editor と Engine を公開し、通常起動先を更新する。
         {
             "label": "CMake: Build Editor (Debug)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZEditorLauncher",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build debug debug --target FBZZSDK",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -127,7 +128,7 @@
         {
             "label": "CMake: Build Editor (Development)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZEditorLauncher",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build development development --target FBZZSDK",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"
@@ -135,7 +136,7 @@
         {
             "label": "CMake: Build Editor (Release)",
             "type": "shell",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZEditorLauncher",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${workspaceFolder}\\Tools\\VcBuild.ps1\" build release release --target FBZZSDK",
             "group": "build",
             "dependsOn": "Kill: Engine Processes",
             "problemMatcher": "$msCompile"

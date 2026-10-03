@@ -138,7 +138,7 @@ FBZZ_Engine/
 ├── Assets/             エディター既定プロジェクト (Shaders / Scenes / Models / Fonts …)
 ├── GreenWare/          デモゲーム (独立プロジェクト)
 ├── SDK/                版ごとに publish されたエンジン SDK
-├── ThirdParty/         Assimp / DirectXTex / ImGui / ImGuizmo / ImNodes / toml++ / stb / TinyEXR / GoogleTest
+├── ThirdParty/         Assimp / DirectXTex / ImGui / ImPlot / ImGuizmo / ImNodes / toml++ / stb / TinyEXR / GoogleTest
 ├── CMake/              ビルド基盤 (PCH / Unity / SDK publish / カバレッジ / テスト登録)
 ├── Tools/              ビルド・検証・カバレッジの入口
 └── Docs/               規約・設計ドキュメント
@@ -147,7 +147,7 @@ FBZZ_Engine/
 ```mermaid
 graph LR
     subgraph サードパーティ
-        TP["Assimp / ImGui / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / TinyEXR / XAudio2\nDirectX 12 / DXC"]
+        TP["Assimp / ImGui / ImPlot / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / TinyEXR / XAudio2\nDirectX 12 / DXC"]
     end
 
     subgraph コアライブラリ
@@ -706,6 +706,8 @@ Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管
 
 エンジンは**版ごとの SDK** として `SDK/<version>/` へ publish し、ゲームプロジェクトは CMake の IMPORTED package として参照する。VS Code タスクの `Distribution: Assemble` が、実行ファイル・`Library/Baked`・EngineAssets・DXC ランタイム (`dxcompiler` / `dxil`) を含むスタンドアロンパッケージを組み立てる。
 
+Editor の通常起動も SDK を正本にする。VS Code の Build Editor は同構成の SDK を公開し、Build All も全体ビルドの成功後に公開する。VS Code と GameHub は `SDK/<version>/tools/<Config>/Editor/FBZZEditor.exe` を起動し、ゲーム DLL と EngineAssets も同じ SDK を参照する。`build/<Config>/` は中間成果物とテストの作業場所として残す。更新と構成の契約は [共有 Engine SDK](Docs/design/shared-engine-sdk.md) を参照。
+
 ---
 
 ## サンプルゲーム
@@ -924,6 +926,7 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 | XAudio2 | 3D オーディオ |
 | Assimp | FBX / OBJ メッシュ・スケルタルデータ読み込み |
 | ImGui | エディター UI |
+| [ImPlot](https://github.com/epezent/implot) | Profiler・メモリ・描画時間の履歴グラフ (拡大 / 移動 / 値確認) |
 | ImGuizmo | エディター Gizmo |
 | ImNodes | ノードエディター (アニメーショングラフ / ビヘイビアツリー) |
 | toml++ | シーン・設定のシリアライゼーション |

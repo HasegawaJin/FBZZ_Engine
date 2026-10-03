@@ -1,0 +1,35 @@
+# @file    VERSION
+# @brief   固定パッケージの取得元・版・SHA256 正本。
+# @author  Hasegawa Jin
+# @date    2026-10-03
+set(FBZZ_DXC_PACKAGE_VERSION "1.9.2609")
+set(FBZZ_DXC_NUMERIC_VERSION "1,9,2609,5")
+set(FBZZ_DXC_SOURCE "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2609/dxc_2026_09_29.zip")
+set(FBZZ_DXC_ARCHITECTURE "x64")
+set(FBZZ_DXC_RETRIEVED "2026-10-03")
+set(FBZZ_DXC_ARCHIVE_SHA256 "ad31b1fc8443175d204f77a611fdb3ef2ec42759bdc2f1167368de24a4a7e7f1")
+set(FBZZ_DXC_EXECUTABLE_SHA256 "aa7965b3763d9c710baaa5a28cedcc633449962a75d1391d161a85304a41b3e2")
+set(FBZZ_DXC_COMPILER_SHA256 "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59")
+set(FBZZ_DXC_VALIDATOR_SHA256 "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac")
+# @note 更新時は公式アーカイブから x64 一式と全ライセンスを取得し、全ハッシュを再計算して SDK 全構成を個別に再公開・検証する。
+set(FBZZ_PACKAGE_FILE_HASHES
+    "bin/x64/dxc.exe|aa7965b3763d9c710baaa5a28cedcc633449962a75d1391d161a85304a41b3e2"
+    "bin/x64/dxcompiler.dll|0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59"
+    "bin/x64/dxil.dll|64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac"
+    "include/d3d12shader.h|306488778cb00978fbf7035d6cebb568c79f2148704087cbd3caf13fcbe74cc4"
+    "include/dxcapi.h|ff3ca20c5ff948d7b1050c4b96d1ee42a9ecc054724dc4dafbef50cc04fd1cde"
+    "include/dxcerrors.h|848ff3904d619816377212c9eb8e66454ecc021817876ce56afb5c4da0f0a22a"
+    "include/dxcisense.h|4d944fc32f2253376bd98f5b071a1d045bd422d36997138938b85ab21e91439f"
+    "include/dxcpix.h|0d1d93fe14d50aa372bcb3b72551be71db410ea4bece7ef34fa34266bad4c45a"
+    "include/hlsl/LICENCE.txt|f47b94fc51b04f4354a6c6f41fb84b0bd22a8ebfcde9f93c1b4d9abd7f6d14c2"
+    "include/hlsl/README.txt|4bcf3c5394d8758cf95bcc79dac0f4e4301e5f5100d5d5efa54ec10ebb2334cd"
+    "include/hlsl/vk/khr/cooperative_matrix.h|7ebbb93ea23097db187d6c3c721fb882ab7ba13a39d5cadd98ea2e7c3dce232e"
+    "include/hlsl/vk/khr/cooperative_matrix.impl|fcc9f9cbd54aacf82350619454bfc0702027498d260ce4046957f8e10fe96ff2"
+    "include/hlsl/vk/opcode_selector.h|c73062832a97c948c1676de1cf938eb2e2b4fb46c63a28955bb952ec9fa7108f"
+    "include/hlsl/vk/spirv.h|1b565a5e3a5db3c98c76adb28b14138878c0d3e9bde655aadc0e80860d9b1576"
+    "include/Support/ErrorCodes.h|3dbb8d868886e95a5b83126e377578dc6061b9619c2ffef0112977c1d8a49195"
+    "LICENCE-MIT.txt|903df5512f7d02609fed0c780a9b704f5a3eeb6e4d84ebe42a29845c81899a3c"
+    "LICENSE|9c38b2181db14eb07cabe75215cba84d044956be8e41b92d07d54c4b0763f1b5"
+    "LICENSE-LLVM.txt|729615317e28dd03907e46f0fc3b5e88f7853cee61d1a1471d2749335516b46f"
+    "LICENSE-MS.txt|734f72f239fe7b07b4c7203f294c1a7ce27095687278bab7e56d630d7c672963"
+)

@@ -25,7 +25,7 @@ tag = 'MainCamera'
     volume = 1.0
 
     [gameobjects.CameraComponent]
-    aspectRatio = 1.777267
+    aspectRatio = 1.777589
     backgroundColor = [ 0.005, 0.005, 0.02, 1.0 ]
     clearMode = 0
     cullDistanceSpherical = true
@@ -199,7 +199,7 @@ tag = 'Untagged'
 
     [gameobjects.transform]
     position = [ 0.098, 33.136452, 0.004797 ]
-    rotation = [ -0.369462, -0.891039, 0.071049, 0.253968 ]
+    rotation = [ -0.127834, -0.706788, 0.686386, -0.113945 ]
     scale = [ 0.999992, 1.0, 0.999995 ]
 
 [[gameobjects]]
@@ -228,6 +228,8 @@ tag = 'Untagged'
     irradiancePath = ''
     maxMipLevel = 4
     prefilterPath = ''
+    rawEnvironmentPath = ''
+    rotationY = 0.0
     source = 1
     specularScale = 1.0
 
@@ -541,12 +543,14 @@ tag = 'Untagged'
     buoyancy = 40.0
     buoyancyDepth = 10.0
     buoyancyEnabled = true
+    cameraFocusedGrid = false
     chunkCount = 16
     enableGerstnerWaves = true
     enabled = true
     extentX = 512.0
     extentZ = 512.0
     materialPath = 'guid:bb147ae4d42b4af38214ae4e8e2dd608|Assets/Materials/Water/Ocean.mat'
+    nearCellSize = 2.0
     resolutionX = 512
     resolutionZ = 512
     splashEnabled = true
@@ -559,7 +563,7 @@ tag = 'Untagged'
     scale = [ 1.0, 1.0, 1.0 ]
 
 [[gameobjects]]
-active = false
+active = true
 instanceId = '869e477c-25ae-44df-b17b-b82fc5d02826'
 layer = 0
 name = 'Flow Field'

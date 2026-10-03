@@ -21,6 +21,7 @@
 #include <Engine/Util/StringUtils.hpp>
 
 #include <imgui.h>
+#include <implot.h>
 
 #include <algorithm>
 #include <cfloat>
@@ -93,6 +94,7 @@ struct MemoryHistoryState {
     std::unordered_map<std::string, std::deque<float>> tagUsedMB;
     std::string selectedTag;
     DerivedHistoryCursor cursor;
+    bool autoFit = true;
 };
 MemoryHistoryState s_memHistory;
 
@@ -114,8 +116,73 @@ struct RenderingHistoryState {
     DerivedHistoryCursor cursor;
     std::string selectedPass;
     std::string selectedPassLabel;
+    bool autoFit = true;
 };
 RenderingHistoryState s_renderHistory;
+
+/// @brief 採取済みの履歴を、軸の拡大・移動とサンプル値の確認に対応したグラフで表示する。
+/// @note X は保持済みの採取順であり、実フレーム番号や経過秒を表さない。
+/// @see https://github.com/epezent/implot/blob/524f9fcd48d76c13fdf94c5ffbba8787a1ff7e39/implot.h ImPlotSpec と Setup API の契約。
+void DrawAnalysisHistoryPlot(const char* plotId, const char* seriesLabel, const char* unit,
+                             const std::vector<float>& values, const ImVec2& size, bool& autoFit,
+                             const std::vector<RenderingSample>* gpuSamples = nullptr)
+{
+    ImGui::PushID(plotId);
+    ImGui::SameLine();
+    ImGui::Checkbox("Auto fit", &autoFit);
+    ImGui::SetItemTooltip("Fit the full history automatically. Turn off to zoom with the wheel,\n"
+                          "pan by dragging, or zoom a range with the right mouse button.\n"
+                          "Double-click to fit once; right-click for plot options.");
+
+    /// @note ImPlot の既定最小高さは 150 px。既存パネルが確保する小さな履歴領域に合わせる。
+    ImPlot::PushStyleVar(ImPlotStyleVar_PlotMinSize, ImVec2(1.0f, 1.0f));
+    ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(4.0f, 4.0f));
+    ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, 0.15f));
+    if (ImPlot::BeginPlot(plotId, size, ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText)) {
+        /// @note 軸メニューの Auto-Fit と上のチェックボックスが別々の状態を持たないようにする。
+        const ImPlotAxisFlags axisFlags = ImPlotAxisFlags_NoMenus
+            | (autoFit ? ImPlotAxisFlags_AutoFit : ImPlotAxisFlags_None);
+        ImPlot::SetupAxes(nullptr, unit, axisFlags, axisFlags);
+        ImPlot::SetupAxisFormat(ImAxis_X1, "%.0f");
+        ImPlot::SetupAxisLimitsConstraints(ImAxis_Y1, 0.0, DBL_MAX);
+        ImPlot::SetupAxisZoomConstraints(ImAxis_X1, 1.0, DBL_MAX);
+
+        ImPlotSpec lineSpec;
+        lineSpec.LineColor = ImGui::GetStyleColorVec4(ImGuiCol_PlotLines);
+        lineSpec.LineWeight = 1.5f;
+        lineSpec.Marker = values.size() == 1u ? ImPlotMarker_Circle : ImPlotMarker_None;
+        ImPlot::PlotLine(seriesLabel, values.data(), static_cast<int>(values.size()), 1.0, 0.0, lineSpec);
+
+        if (ImPlot::IsPlotHovered() && !values.empty()) {
+            const double sample = std::clamp(ImPlot::GetPlotMousePos().x, 0.0,
+                                             static_cast<double>(values.size() - 1u));
+            const std::size_t index = static_cast<std::size_t>(sample + 0.5);
+            const double sampleX = static_cast<double>(index);
+            const double sampleY = static_cast<double>(values[index]);
+            ImPlotSpec hoverSpec;
+            hoverSpec.LineColor = ImGui::GetStyleColorVec4(ImGuiCol_PlotLinesHovered);
+            hoverSpec.Marker = ImPlotMarker_Circle;
+            hoverSpec.MarkerSize = 3.0f;
+            hoverSpec.Flags = ImPlotItemFlags_NoLegend | ImPlotItemFlags_NoFit;
+            ImPlot::PlotInfLines("##hoverSample", &sampleX, 1, hoverSpec);
+            ImPlot::PlotScatter("##hoverValue", &sampleX, &sampleY, 1, hoverSpec);
+            ImGui::BeginTooltip();
+            ImGui::Text("%s\nSample %zu / %zu (oldest = 0)\n%.3f %s", seriesLabel,
+                        index, values.size() - 1u, sampleY, unit);
+            if (gpuSamples != nullptr && index < gpuSamples->size()) {
+                const auto& source = (*gpuSamples)[index];
+                ImGui::Text("GPU application %llu / physical %llu\nObserved at CPU application %llu",
+                            static_cast<unsigned long long>(source.applicationSerial),
+                            static_cast<unsigned long long>(source.physicalSerial),
+                            static_cast<unsigned long long>(source.observedSerial));
+            }
+            ImGui::EndTooltip();
+        }
+        ImPlot::EndPlot();
+    }
+    ImPlot::PopStyleVar(3);
+    ImGui::PopID();
+}
 
 /// @brief Unity Profiler に近い粒度で処理を読むための表示カテゴリ。
 /// @note スコープ名ごとのランダム色は細かすぎるため、Rendering/Scripts/Physics 等の大枠へまとめる。
@@ -258,7 +325,7 @@ struct AnalysisProfNode {
     std::vector<int> children;
 };
 
-/// @note Flat 表示の 1 行。ツリー全体から同名スコープを合算する。
+/// @brief ツリー全体から同名スコープを合算した Flat 表示の 1 行。
 struct AnalysisProfFlatRow {
     const char*      name = "";
     ProfilerCategory category;
@@ -278,7 +345,7 @@ struct AnalysisProfTree {
     const char*                      unavailableReason = nullptr;
 };
 
-/// @note 取り込みごとの時間を key 単位で残し、グラフと Avg / Peak 列の出所にする。
+/// @brief グラフと Avg / Peak 列に使う key 単位の採取履歴。
 struct AnalysisProfHistory {
     struct Stat {
         double avg  = 0.0;
@@ -298,6 +365,8 @@ struct AnalysisProfHistory {
     std::deque<std::unordered_set<std::string>>         unavailableKeys;
     DerivedHistoryCursor                              cursor;
     std::unordered_map<std::string, Stat>              stats;
+    bool                                              autoFit = true;
+    bool                                              elapsedAutoFit = true;
 };
 
 AnalysisProfTree    s_profTree;
@@ -554,6 +623,7 @@ void SyncPerformanceView()
             s_profHistory.frames.clear(); s_profHistory.frameMs.clear(); s_profHistory.elapsedMs.clear();
             s_profHistory.unavailableKeys.clear(); s_profHistory.completeFrames.clear(); s_profHistory.stats.clear();
             s_profHistory.completeFrameCount = 0; s_profHistory.retainedBytes = 0; s_profHistory.budgetLimited = false;
+            s_profHistory.autoFit = true; s_profHistory.elapsedAutoFit = true;
         });
     if (changed) UpdateAnalysisProfStats();
 }
@@ -567,7 +637,7 @@ void SyncMemoryView()
                 values.push_back(static_cast<float>(tag.stats.used) / (1024.0f * 1024.0f));
                 while (values.size() > MemoryHistoryState::kMaxFrames) values.pop_front();
             }
-        }, [] { s_memHistory.tagUsedMB.clear(); });
+        }, [] { s_memHistory.tagUsedMB.clear(); s_memHistory.autoFit = true; });
 }
 
 /// @note GPU 履歴は同名パスでもビューと全世代で分け、同じ遅延結果を複数の CPU フレームで数えない。
@@ -681,6 +751,7 @@ void SyncRenderingView()
         }, [] {
             s_renderHistory.passGpuMs.clear(); s_renderHistory.observedFrames.clear();
             s_renderHistory.hasGpuSource = false; s_renderHistory.budgetLimited = false;
+            s_renderHistory.autoFit = true;
         });
 }
 
@@ -694,9 +765,8 @@ void DrawSelectedFrameTime(float targetMs, float height)
     else ImGui::TextDisabled("Measured frame interval unavailable.");
     if (!s_profHistory.elapsedMs.empty()) {
         const std::vector<float> values(s_profHistory.elapsedMs.begin(), s_profHistory.elapsedMs.end());
-        const float peak = *std::max_element(values.begin(), values.end());
-        ImGui::PlotLines("CPU elapsed history", values.data(), static_cast<int>(values.size()), 0, nullptr,
-            0.0f, (std::max)(peak * 1.15f, targetMs * 1.5f), {-FLT_MIN, height});
+        DrawAnalysisHistoryPlot("##cpuElapsedHistory", "CPU elapsed", "ms", values,
+                                {-FLT_MIN, height}, s_profHistory.elapsedAutoFit);
     }
 }
 
@@ -724,7 +794,7 @@ bool AnalysisProfMatches(const char* name, const ProfilerCategory& category, dou
     return true;
 }
 
-/// @note 数値列を右寄せにする。比例フォントでも小数点の位置が縦に揃い、桁の大小を目で比べられる。
+/// @note 比例フォントでも小数点の位置を縦に揃え、桁の大小を比較できるよう右寄せにする。
 void AnalysisTextRight(const char* text, ImU32 color = 0)
 {
     const float width = ImGui::CalcTextSize(text).x;
@@ -965,6 +1035,7 @@ void ToggleAnalysisProfSelection(const std::string& key, const char* label)
         s_profilerFilter.selectedKey   = key;
         s_profilerFilter.selectedLabel = label;
     }
+    s_profHistory.autoFit = true;
 }
 
 void DrawAnalysisProfTreeRow(int index, const AnalysisProfTreeDraw& dc)
@@ -1009,7 +1080,6 @@ void DrawAnalysisProfTreeTable(float height)
     std::vector<char> visible(s_profTree.nodes.size(), 0);
     for (std::size_t i = s_profTree.nodes.size(); i-- > 0;) {
         const AnalysisProfNode& node = s_profTree.nodes[i];
-        /// @note 時間幅の無いマーカー
         if (node.totalMs <= 0.0 && node.children.empty()) continue;
         bool show = !filterActive || AnalysisProfMatches(node.name, node.category, node.totalMs, nameFilter);
         for (std::size_t c = 0; !show && c < node.children.size(); ++c)
@@ -1119,16 +1189,18 @@ void DrawAnalysisProfGraph()
         peak = (std::max)(peak, v);
         sum += v;
     }
-    const double avg = values.empty() ? 0.0 : sum / static_cast<double>(values.size());
-
     ImGui::TextUnformatted(hasSelection ? s_profilerFilter.selectedLabel.c_str() : "Scoped frame CPU");
     ImGui::SameLine();
-    ImGui::TextDisabled("last complete %.3f  avg %.3f  peak %.3f ms  (%zu complete frames)",
-                        values.empty() ? 0.0 : static_cast<double>(values.back()), avg,
-                        static_cast<double>(peak), values.size());
+    if (values.empty()) ImGui::TextDisabled("No complete history; time unavailable.");
+    else ImGui::TextDisabled("last complete %.3f  avg %.3f  peak %.3f ms  (%zu complete frames)",
+                            static_cast<double>(values.back()), sum / static_cast<double>(values.size()),
+                            static_cast<double>(peak), values.size());
     if (hasSelection) {
         ImGui::SameLine();
-        if (ImGui::SmallButton("x##profGraphClose")) s_profilerFilter.selectedKey.clear();
+        if (ImGui::SmallButton("x##profGraphClose")) {
+            s_profilerFilter.selectedKey.clear();
+            s_profHistory.autoFit = true;
+        }
         ImGui::SetItemTooltip("Back to the frame total");
     }
 
@@ -1137,8 +1209,8 @@ void DrawAnalysisProfGraph()
         ImGui::TextDisabled("No history yet.");
         return;
     }
-    ImGui::PlotLines("##profHistory", values.data(), static_cast<int>(values.size()), 0, nullptr,
-                     0.0f, (std::max)(peak * 1.15f, 0.001f), { -FLT_MIN, height });
+    DrawAnalysisHistoryPlot("##profHistory", hasSelection ? s_profilerFilter.selectedLabel.c_str() : "Scoped frame CPU",
+                             "ms", values, { -FLT_MIN, height }, s_profHistory.autoFit);
 }
 
 /// @brief Console から «問題» だけを抜き出して報告へ足す。
@@ -1168,7 +1240,7 @@ std::string FormatConsoleProblems(const ConsoleSink* sink, std::size_t maxLines 
     return out;
 }
 
-/// @note 貼り付け用の一括コピー。押した瞬間の «全部» をクリップボードへ入れる。
+/// @brief 押した瞬間のメモリ報告と Console の問題一覧を一括でコピーする。
 void DrawCopyReportButton(EditorContext& ctx)
 {
     const bool ready = (ctx.resources != nullptr && ctx.memoryLeakDiff != nullptr);
@@ -1192,7 +1264,7 @@ void DrawCopyReportButton(EditorContext& ctx)
     ImGui::Separator();
 }
 
-/// @note "file:line" をボタンにして、押したらエディターでその行を開く。
+/// @brief "file:line" から該当行を外部エディターで開くボタンを表示する。
 void DrawOriginButton(const std::string& origin, int id)
 {
     const std::size_t colon = origin.find_last_of(':');
@@ -1211,7 +1283,7 @@ void DrawOriginButton(const std::string& origin, int id)
         ImGui::SetTooltip("%s", origin.c_str());
 }
 
-/// @note 生存リソース一覧の表示状態。集計は台帳を全走査するため、毎フレームは回さない。
+/// @note 生存リソースの集計は台帳を全走査するため、表示用に保持して毎フレームは回さない。
 struct LiveResourceState {
     std::vector<MemoryLeakGroup> groups;
     float       elapsed   = 0.0f;
@@ -1280,7 +1352,7 @@ void DrawLiveResources(EditorContext& ctx)
     ImGui::EndTable();
 }
 
-/// @note リーク差分の表示状態。比較は台帳を全走査するため、毎フレームは回さない。
+/// @note リーク差分の比較は台帳を全走査するため、表示用に保持して毎フレームは回さない。
 struct LeakDiffState {
     MemoryLeakReport live;
     MemoryLeakReport session;
@@ -1512,10 +1584,14 @@ void DrawPerformanceCpu(EditorContext& ctx)
 
     DrawAnalysisProfCategoryBar(s_profTree);
 
-    if (ImGui::RadioButton("Hierarchy", !s_profilerFilter.flatView)) s_profilerFilter.flatView = false;
+    if (ImGui::RadioButton("Hierarchy", !s_profilerFilter.flatView)) {
+        s_profilerFilter.flatView = false; s_profHistory.autoFit = true;
+    }
     ImGui::SetItemTooltip("Call tree. Same-named scopes under one parent are merged (see Calls).");
     ImGui::SameLine();
-    if (ImGui::RadioButton("Flat", s_profilerFilter.flatView)) s_profilerFilter.flatView = true;
+    if (ImGui::RadioButton("Flat", s_profilerFilter.flatView)) {
+        s_profilerFilter.flatView = true; s_profHistory.autoFit = true;
+    }
     ImGui::SetItemTooltip("Every scope summed across the frame, sorted by Self time.\n"
                           "Answers \"what spends the most time by itself?\"");
     ImGui::SameLine(0.0f, sp * 2.0f);
@@ -1679,6 +1755,7 @@ void DrawMemoryDebug(EditorContext& ctx)
         ImGui::Separator();
         ImGui::TextUnformatted("Memory history");
 
+        /// @note unordered_map の巡回順ではタグ選択の並びが変わるため、MemoryTag の宣言順を使う。
         std::vector<const char*> tagNames;
         tagNames.reserve(static_cast<std::size_t>(core::MemoryTag::COUNT));
         for (const auto& tag : selected->tags) tagNames.push_back(tag.name.c_str());
@@ -1688,30 +1765,35 @@ void DrawMemoryDebug(EditorContext& ctx)
             if (s_memHistory.selectedTag == tagNames[static_cast<std::size_t>(i)]) { selIdx = i; break; }
         }
         ImGui::SetNextItemWidth(200.0f);
-        if (ImGui::Combo("Tag##memGraph", &selIdx, tagNames.data(), static_cast<int>(tagNames.size())))
+        if (ImGui::Combo("Tag##memGraph", &selIdx, tagNames.data(), static_cast<int>(tagNames.size()))) {
             s_memHistory.selectedTag = tagNames[static_cast<std::size_t>(selIdx)];
+            s_memHistory.autoFit = true;
+        }
         if (s_memHistory.selectedTag.empty() && !tagNames.empty())
             s_memHistory.selectedTag = tagNames[0];
 
+        /// @note RENDERER 以外は追跡側が未実装であり、0 MB の測定結果として描画しない。
+        const size_t instrumentedTag = static_cast<size_t>(core::MemoryTag::RENDERER);
+        if (instrumentedTag >= selected->tags.size() ||
+            s_memHistory.selectedTag != selected->tags[instrumentedTag].name) {
+            ImGui::TextDisabled("History unavailable: this memory tag is not instrumented.");
+            return;
+        }
         const auto it = s_memHistory.tagUsedMB.find(s_memHistory.selectedTag);
         if (it != s_memHistory.tagUsedMB.end() && !it->second.empty()) {
             const std::vector<float> vals(it->second.begin(), it->second.end());
-            float maxVal = 0.0f;
-            for (float v : vals) maxVal = (std::max)(maxVal, v);
-            char overlay[64];
-            std::snprintf(overlay, sizeof(overlay), "%.3f MB", vals.back());
-            ImGui::PlotLines("##memHistory", vals.data(), static_cast<int>(vals.size()),
-                             0, overlay, 0.0f, (std::max)(maxVal * 1.2f, 0.001f),
-                             { -1.0f, 60.0f });
+            ImGui::SameLine();
+            ImGui::TextDisabled("%.3f MB", static_cast<double>(vals.back()));
+            DrawAnalysisHistoryPlot("##memHistory", s_memHistory.selectedTag.c_str(), "MB", vals,
+                                     { -1.0f, 60.0f }, s_memHistory.autoFit);
         }
     }
 }
 
 namespace {
 
-/// @note RenderGraph の構成テキストをプロジェクト配下へ保存する。
-/// @note タイムスタンプ付きで上書きせず溜める: 改修前後の差分比較に使うため。
-/// @note Artifacts 配下は git 管理外の既存置き場 (coverage も使用)。
+/// @brief RenderGraph の構成テキストをプロジェクト配下へ保存する。
+/// @note 改修前後の比較用にタイムスタンプ付きで蓄積し、Git 対象外の Artifacts へ置く。
 bool SaveRenderGraphPlan(const std::string& text, std::string& outPath)
 {
     const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
@@ -1743,7 +1825,7 @@ bool SaveRenderGraphPlan(const std::string& text, std::string& outPath)
 
 namespace {
 
-/// @note 大きな整数を 3 桁区切りにする。三角形数は桁を数えないと 10 万か 100 万か読めない。
+/// @note 三角形数などの桁数を比較しやすいよう、整数に 3 桁区切りを付ける。
 const char* FormatAnalysisCount(std::uint64_t value, char (&buffer)[32])
 {
     char digits[24];
@@ -1758,7 +1840,7 @@ const char* FormatAnalysisCount(std::uint64_t value, char (&buffer)[32])
     return buffer;
 }
 
-/// @note DrawCall / ポリゴン / カリングの統計。
+/// @brief DrawCall / ポリゴン / カリングの統計を表示する。
 /// @note 左右 2 列: 縦 1 列だとスクロールが要り、下の GPU パス表が押し出されていた。
 void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& stats)
 {
@@ -1954,6 +2036,7 @@ void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap, u
             if (ImGui::Selectable(pass.name.c_str(), s_renderHistory.selectedPass == row.key, ImGuiSelectableFlags_SpanAllColumns)) {
                 s_renderHistory.selectedPass = s_renderHistory.selectedPass == row.key ? std::string{} : row.key;
                 s_renderHistory.selectedPassLabel = pass.name;
+                s_renderHistory.autoFit = true;
             }
             ImGui::PopID();
             if (ImGui::IsItemHovered()) {
@@ -1984,12 +2067,23 @@ void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap, u
     if (const auto history = s_renderHistory.passGpuMs.find(s_renderHistory.selectedPass);
         history != s_renderHistory.passGpuMs.end() && !history->second.empty()) {
         std::vector<float> values;
-        for (const auto& sample : history->second) values.push_back(sample.ms);
-        const float peak = *std::max_element(values.begin(), values.end());
+        values.reserve(history->second.size());
+        double sum = 0.0;
+        float peak = 0.0f;
+        for (const auto& sample : history->second) {
+            values.push_back(sample.ms); sum += sample.ms; peak = (std::max)(peak, sample.ms);
+        }
         ImGui::Text("%s / %zu distinct GPU samples", s_renderHistory.selectedPassLabel.c_str(), values.size());
-        ImGui::PlotLines("##renderHistory", values.data(), static_cast<int>(values.size()), 0, nullptr, 0.0f,
-            (std::max)(peak * 1.15f, 0.001f), {-FLT_MIN, fontH * 4.0f});
-    }
+        ImGui::SameLine();
+        ImGui::TextDisabled("last %.3f  avg %.3f  peak %.3f ms", static_cast<double>(values.back()),
+                            sum / static_cast<double>(values.size()), static_cast<double>(peak));
+        ImGui::SameLine();
+        if (ImGui::SmallButton("x##renderGraphClose")) {
+            s_renderHistory.selectedPass.clear(); s_renderHistory.autoFit = true;
+        }
+        DrawAnalysisHistoryPlot("##renderHistory", s_renderHistory.selectedPassLabel.c_str(), "ms", values,
+                                {-FLT_MIN, fontH * 4.0f}, s_renderHistory.autoFit, &history->second);
+    } else ImGui::TextDisabled("Select a GPU pass with retained measurements to plot its history.");
     if (ImGui::CollapsingHeader("CPU passes / separate observation")) {
         ImGui::TextDisabled("CPU view metadata unavailable; same-named GPU rows do not identify this CPU observation.");
         if (ImGui::BeginTable("CpuPasses##Analysis", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
@@ -2047,10 +2141,12 @@ void DrawPerformanceRendering(EditorContext& ctx)
 
     DrawAnalysisRenderStats(snap.renderStats);
 
+    /// @note Profiler タブは CPU スコープのみ表示するため、GPU 負荷のボトルネックはここで可視化する。
     ImGui::Spacing();
     ImGui::SeparatorText("GPU passes");
     DrawAnalysisGpuPasses(snap, selected->applicationFrameSerial);
 
+    /// @note 画像から判別できない実行順・カリング・エイリアス割り当ての変更を、テキスト差分で比較できるようにする。
     ImGui::Spacing();
     if (ImGui::CollapsingHeader("Render graph plan")) {
         if (snap.planDescription.empty()) {

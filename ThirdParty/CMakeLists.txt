@@ -38,6 +38,16 @@ set_target_properties(ImGui PROPERTIES
     EXPORT_NAME "ImGui"
 )
 
+# @note ImPlot は Editor の静的依存に限定し、ImGui の共有コンテキストとビルド設定を継承する。
+# @see https://github.com/epezent/implot/tree/v1.0 Official ImPlot integration and plotting API.
+add_library(ImPlot STATIC
+    ImPlot/implot.cpp
+    ImPlot/implot_items.cpp
+)
+target_include_directories(ImPlot SYSTEM PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/ImPlot")
+target_link_libraries(ImPlot PUBLIC ImGui)
+set_target_properties(ImPlot PROPERTIES OUTPUT_NAME "implot" FOLDER "ThirdParty")
+
 # @note AnimationGraphPanel のノード編集は Dear ImGui と同じ ThirdParty レイヤーの ImNodes を使う。
 add_library(ImNodes STATIC
     ImNodes/imnodes.cpp

@@ -95,9 +95,13 @@
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <implot.h>
 #include <ImGuizmo.h>
 #include <imgui_impl_win32.h>
 #include <toml++/toml.hpp>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 #include <algorithm>
 #include <cmath>
@@ -293,6 +297,7 @@ void LoadRuntimeBuildMetadata(EditorContext& ctx)
 /// @note  コンストラクタ・デストラクタをここで定義する。EditorApp.hpp は TerrainTool を
 /// @note  前方宣言だけにしており、unique_ptr のデストラクタは完全型を要求するため。
 EditorApp::EditorApp()
+    : m_implotContext(nullptr, ImPlot::DestroyContext)
 {
     SceneIO::SetEditorSceneState(&m_ctx.editorSceneState);
 }
@@ -338,6 +343,11 @@ void EditorApp::StopAiCommandBus()
 
 bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer, renderer::ResourceManager& resources, core::Window& window)
 {
+    if (m_implotContext) {
+        FBZZ_LOG_ERROR("EditorApp is already initialized");
+        return false;
+    }
+
     m_hwnd          = window.GetHandle();
     m_window        = &window;
     m_renderer      = &renderer;
@@ -396,6 +406,9 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    /// @see https://github.com/epezent/implot/blob/v1.0/implot.h Context API: ImGui 生成後に作り、ImGui 破棄前に解放する。
+    m_implotContext.reset(ImPlot::CreateContext());
+    ImPlot::SetCurrentContext(m_implotContext.get());
     ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -695,6 +708,7 @@ void EditorApp::Shutdown()
     m_sceneViewportRT = {};
     m_gameViewportRT  = {};
     m_imguiRenderer->ImGuiShutdown();
+    m_implotContext.reset();
     ImGui::DestroyContext();
 }
 
