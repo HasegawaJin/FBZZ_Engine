@@ -19,6 +19,7 @@
 #include <Engine/Util/StringUtils.hpp>
 
 #include <imgui.h>
+#include <implot.h>
 
 #include <algorithm>
 #include <cfloat>
@@ -94,6 +95,7 @@ struct MemoryHistoryState {
     std::string selectedTag;
     float sampleInterval = 0.25f;
     float elapsed = 0.0f;
+    bool autoFit = true;
 };
 MemoryHistoryState s_memHistory;
 
@@ -103,8 +105,63 @@ struct RenderingHistoryState {
     std::string selectedPass;
     float sampleInterval = 0.25f;
     float elapsed = 0.0f;
+    bool autoFit = true;
 };
 RenderingHistoryState s_renderHistory;
+
+/// @brief 採取済みの履歴を、軸の拡大・移動とサンプル値の確認に対応したグラフで表示する。
+/// @note X は保持済みの採取順であり、実フレーム番号や経過秒を表さない。
+/// @see https://github.com/epezent/implot/blob/524f9fcd48d76c13fdf94c5ffbba8787a1ff7e39/implot.h ImPlotSpec と Setup API の契約。
+void DrawAnalysisHistoryPlot(const char* plotId, const char* seriesLabel, const char* unit,
+                             const std::vector<float>& values, const ImVec2& size, bool& autoFit)
+{
+    ImGui::PushID(plotId);
+    ImGui::SameLine();
+    ImGui::Checkbox("Auto fit", &autoFit);
+    ImGui::SetItemTooltip("Fit the full history automatically. Turn off to zoom with the wheel,\n"
+                          "pan by dragging, or zoom a range with the right mouse button.\n"
+                          "Double-click to fit once; right-click for plot options.");
+
+    /// @note ImPlot の既定最小高さは 150 px。既存パネルが確保する小さな履歴領域に合わせる。
+    ImPlot::PushStyleVar(ImPlotStyleVar_PlotMinSize, ImVec2(1.0f, 1.0f));
+    ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(4.0f, 4.0f));
+    ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, 0.15f));
+    if (ImPlot::BeginPlot(plotId, size, ImPlotFlags_NoLegend | ImPlotFlags_NoMouseText)) {
+        /// @note 軸メニューの Auto-Fit と上のチェックボックスが別々の状態を持たないようにする。
+        const ImPlotAxisFlags axisFlags = ImPlotAxisFlags_NoMenus
+            | (autoFit ? ImPlotAxisFlags_AutoFit : ImPlotAxisFlags_None);
+        ImPlot::SetupAxes(nullptr, unit, axisFlags, axisFlags);
+        ImPlot::SetupAxisFormat(ImAxis_X1, "%.0f");
+        ImPlot::SetupAxisLimitsConstraints(ImAxis_Y1, 0.0, DBL_MAX);
+        ImPlot::SetupAxisZoomConstraints(ImAxis_X1, 1.0, DBL_MAX);
+
+        ImPlotSpec lineSpec;
+        lineSpec.LineColor = ImGui::GetStyleColorVec4(ImGuiCol_PlotLines);
+        lineSpec.LineWeight = 1.5f;
+        lineSpec.Marker = values.size() == 1u ? ImPlotMarker_Circle : ImPlotMarker_None;
+        ImPlot::PlotLine(seriesLabel, values.data(), static_cast<int>(values.size()), 1.0, 0.0, lineSpec);
+
+        if (ImPlot::IsPlotHovered() && !values.empty()) {
+            const double sample = std::clamp(ImPlot::GetPlotMousePos().x, 0.0,
+                                             static_cast<double>(values.size() - 1u));
+            const std::size_t index = static_cast<std::size_t>(sample + 0.5);
+            const double sampleX = static_cast<double>(index);
+            const double sampleY = static_cast<double>(values[index]);
+            ImPlotSpec hoverSpec;
+            hoverSpec.LineColor = ImGui::GetStyleColorVec4(ImGuiCol_PlotLinesHovered);
+            hoverSpec.Marker = ImPlotMarker_Circle;
+            hoverSpec.MarkerSize = 3.0f;
+            hoverSpec.Flags = ImPlotItemFlags_NoLegend | ImPlotItemFlags_NoFit;
+            ImPlot::PlotInfLines("##hoverSample", &sampleX, 1, hoverSpec);
+            ImPlot::PlotScatter("##hoverValue", &sampleX, &sampleY, 1, hoverSpec);
+            ImGui::SetTooltip("%s\nSample %zu / %zu (oldest = 0)\n%.3f %s", seriesLabel,
+                              index, values.size() - 1u, sampleY, unit);
+        }
+        ImPlot::EndPlot();
+    }
+    ImPlot::PopStyleVar(3);
+    ImGui::PopID();
+}
 
 /// @brief Unity Profiler に近い粒度で処理を読むための表示カテゴリ。
 /// @note スコープ名ごとのランダム色は細かすぎるため、Rendering/Scripts/Physics 等の大枠へまとめる。
@@ -260,15 +317,18 @@ void AccumulateTrackedRendererResources(renderer::ResourceManager* resources,
 struct AnalysisProfNode {
     const char*      name = "";
     ProfilerCategory category;
-    std::string      key;             ///< ルートからの経路。選択と履歴集計の同一性に使う
-    double           totalMs = 0.0;   ///< 子を含む
-    double           selfMs  = 0.0;   ///< 子を除く
+    /// @note ルートからの経路を選択と履歴集計の同一性に使う。
+    std::string      key;
+    /// @note 子の時間を含む。
+    double           totalMs = 0.0;
+    /// @note 子の時間を除く。
+    double           selfMs  = 0.0;
     int              calls   = 0;
     int              depth   = 0;
     std::vector<int> children;
 };
 
-/// Flat 表示の 1 行。ツリー全体から同名スコープを合算する。
+/// @brief ツリー全体から同名スコープを合算した Flat 表示の 1 行。
 struct AnalysisProfFlatRow {
     const char*      name = "";
     ProfilerCategory category;
@@ -279,21 +339,24 @@ struct AnalysisProfFlatRow {
 };
 
 struct AnalysisProfTree {
-    std::vector<AnalysisProfNode>    nodes;   ///< 親は必ず子より前に並ぶ
+    /// @note 親は必ず子より前に並ぶ。
+    std::vector<AnalysisProfNode>    nodes;
     std::vector<int>                 roots;
     std::vector<AnalysisProfFlatRow> flat;
     double                           frameMs = 0.0;
 };
 
-/// 取り込みごとの時間を key 単位で残し、グラフと Avg / Peak 列の出所にする。
+/// @brief グラフと Avg / Peak 列に使う key 単位の採取履歴。
 struct AnalysisProfHistory {
     struct Stat {
         double avg  = 0.0;
         double peak = 0.0;
     };
-    std::deque<std::unordered_map<std::string, float>> frames;  ///< Hierarchy は Total、Flat は Self
+    /// @note Hierarchy は Total、Flat は Self の時間を保持する。
+    std::deque<std::unordered_map<std::string, float>> frames;
     std::deque<float>                                  frameMs;
     std::unordered_map<std::string, Stat>              stats;
+    bool                                              autoFit = true;
 };
 
 AnalysisProfTree    s_profTree;
@@ -302,11 +365,12 @@ AnalysisProfHistory s_profHistory;
 enum class AnalysisProfCol : int { Name, Category, Total, Self, Share, Calls, Avg, Peak, Count };
 
 struct AnalysisProfSort {
-    AnalysisProfCol column     = AnalysisProfCol::Count;  ///< Count = 並べ替えなし (呼び出し順)
+    /// @note Count は並べ替えなしの呼び出し順を表す。
+    AnalysisProfCol column     = AnalysisProfCol::Count;
     bool            descending = true;
 };
 
-/// Hierarchy の経路 key ("/A/B") と衝突しないよう、区切りに使わない制御文字を先頭に置く。
+/// @note Hierarchy の経路 key ("/A/B") と衝突しないよう、区切りに使わない制御文字を先頭に置く。
 std::string AnalysisProfFlatKey(const char* name)
 {
     return std::string("\x1f") + name;
@@ -441,7 +505,7 @@ void PushAnalysisProfHistory(const AnalysisProfTree& tree)
     RebuildAnalysisProfStats();
 }
 
-/// 表示するフレームを差し替える。pause 中は履歴も動かさず、画面に残った値をそのまま読めるようにする。
+/// @note 一時停止中は履歴を進めず、画面に残った値を保持する。
 void ShowAnalysisProfFrame(std::vector<profiler::ProfileRecord> records, uint64_t frameIndex, bool pushHistory)
 {
     s_profilerDisplay.visibleRecords    = std::move(records);
@@ -475,7 +539,7 @@ bool AnalysisProfMatches(const char* name, const ProfilerCategory& category, dou
     return true;
 }
 
-/// 数値列を右寄せにする。比例フォントでも小数点の位置が縦に揃い、桁の大小を目で比べられる。
+/// @note 比例フォントでも小数点の位置を縦に揃え、桁の大小を比較できるよう右寄せにする。
 void AnalysisTextRight(const char* text, ImU32 color = 0)
 {
     const float width = ImGui::CalcTextSize(text).x;
@@ -597,7 +661,7 @@ AnalysisProfSort ReadAnalysisProfSort()
     return sort;
 }
 
-/// Node と FlatRow は同じ名前のメンバーを持つので、並べ替えとセル描画を共有する。
+/// @note Node と FlatRow は同じ名前のメンバーを持つので、並べ替えとセル描画を共有する。
 template <class Row>
 double AnalysisProfNumeric(const Row& row, AnalysisProfCol column, bool flat)
 {
@@ -712,6 +776,7 @@ void ToggleAnalysisProfSelection(const std::string& key, const char* label)
         s_profilerFilter.selectedKey   = key;
         s_profilerFilter.selectedLabel = label;
     }
+    s_profHistory.autoFit = true;
 }
 
 void DrawAnalysisProfTreeRow(int index, const AnalysisProfTreeDraw& dc)
@@ -756,7 +821,6 @@ void DrawAnalysisProfTreeTable(float height)
     std::vector<char> visible(s_profTree.nodes.size(), 0);
     for (std::size_t i = s_profTree.nodes.size(); i-- > 0;) {
         const AnalysisProfNode& node = s_profTree.nodes[i];
-        /// @note 時間幅の無いマーカー
         if (node.totalMs <= 0.0 && node.children.empty()) continue;
         bool show = !filterActive || AnalysisProfMatches(node.name, node.category, node.totalMs, nameFilter);
         for (std::size_t c = 0; !show && c < node.children.size(); ++c)
@@ -868,7 +932,10 @@ void DrawAnalysisProfGraph()
                         static_cast<double>(peak), values.size());
     if (hasSelection) {
         ImGui::SameLine();
-        if (ImGui::SmallButton("x##profGraphClose")) s_profilerFilter.selectedKey.clear();
+        if (ImGui::SmallButton("x##profGraphClose")) {
+            s_profilerFilter.selectedKey.clear();
+            s_profHistory.autoFit = true;
+        }
         ImGui::SetItemTooltip("Back to the frame total");
     }
 
@@ -877,8 +944,8 @@ void DrawAnalysisProfGraph()
         ImGui::TextDisabled("No history yet.");
         return;
     }
-    ImGui::PlotLines("##profHistory", values.data(), static_cast<int>(values.size()), 0, nullptr,
-                     0.0f, (std::max)(peak * 1.15f, 0.001f), { -FLT_MIN, height });
+    DrawAnalysisHistoryPlot("##profHistory", hasSelection ? s_profilerFilter.selectedLabel.c_str() : "Scoped frame CPU",
+                             "ms", values, { -FLT_MIN, height }, s_profHistory.autoFit);
 }
 
 /// @brief Console から «問題» だけを抜き出して報告へ足す。
@@ -908,7 +975,7 @@ std::string FormatConsoleProblems(const ConsoleSink* sink, std::size_t maxLines 
     return out;
 }
 
-/// 貼り付け用の一括コピー。押した瞬間の «全部» をクリップボードへ入れる。
+/// @brief 押した瞬間のメモリ報告と Console の問題一覧を一括でコピーする。
 void DrawCopyReportButton(EditorContext& ctx)
 {
     const bool ready = (ctx.resources != nullptr && ctx.memoryLeakDiff != nullptr);
@@ -932,7 +999,7 @@ void DrawCopyReportButton(EditorContext& ctx)
     ImGui::Separator();
 }
 
-/// "file:line" をボタンにして、押したらエディターでその行を開く。
+/// @brief "file:line" から該当行を外部エディターで開くボタンを表示する。
 void DrawOriginButton(const std::string& origin, int id)
 {
     const std::size_t colon = origin.find_last_of(':');
@@ -951,7 +1018,7 @@ void DrawOriginButton(const std::string& origin, int id)
         ImGui::SetTooltip("%s", origin.c_str());
 }
 
-/// 生存リソース一覧の表示状態。集計は台帳を全走査するため、毎フレームは回さない。
+/// @note 生存リソースの集計は台帳を全走査するため、表示用に保持して毎フレームは回さない。
 struct LiveResourceState {
     std::vector<MemoryLeakGroup> groups;
     float       elapsed   = 0.0f;
@@ -1020,7 +1087,7 @@ void DrawLiveResources(EditorContext& ctx)
     ImGui::EndTable();
 }
 
-/// リーク差分の表示状態。比較は台帳を全走査するため、毎フレームは回さない。
+/// @note リーク差分の比較は台帳を全走査するため、表示用に保持して毎フレームは回さない。
 struct LeakDiffState {
     MemoryLeakReport live;
     MemoryLeakReport session;
@@ -1179,7 +1246,7 @@ void DrawLeakDiff(EditorContext& ctx)
     }
 }
 
-} // namespace
+}
 
 void AnalysisPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -1207,9 +1274,7 @@ void AnalysisPanel::DrawProfiler()
     const float       fontH = ImGui::GetFontSize();
     const auto btnW = [&](const char* s) { return ImGui::CalcTextSize(s, nullptr, true).x + st.FramePadding.x * 2.0f; };
 
-    /// @note 判定は毎フレーム行う。取り込みの間隔に乗せると、詰まったフレームを取りこぼす。
-    ///       尺度に DeltaTime を使うのは、体感の «カクつき» がフレームの実時間そのものだから
-    ///       (計測区間の合計は入れ子ぶん重複するので、この判定には使えない)。
+    /// @note スパイクは毎フレームの DeltaTime で判定する。取り込み間隔では取りこぼし、計測区間の合計では入れ子が重複する。
     if (s_profilerDisplay.catchSpikes) {
         const double frameMs = static_cast<double>(ImGui::GetIO().DeltaTime) * 1000.0;
         if (frameMs >= static_cast<double>(s_profilerDisplay.spikeThresholdMs)
@@ -1231,7 +1296,6 @@ void AnalysisPanel::DrawProfiler()
         }
     }
 
-    /// @name 1 段目: 記録 / 一時停止 / 表示中フレーム / スパイク / オプション
     /// @note 一度決めたら触らない設定は Options へ畳み、1 行に詰める。
     bool enabled = profiler::Profiler::IsEnabled();
     if (ImGui::Checkbox("Record", &enabled)) profiler::Profiler::SetEnabled(enabled);
@@ -1270,8 +1334,7 @@ void AnalysisPanel::DrawProfiler()
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - rightW);
 
     if (hasSpike) {
-        /// @note 一番詰まったフレームだけを別枠で控える。Reset を押すまで上書きされないので、
-        ///       何度も再現しなくても «その 1 フレームの内訳» を落ち着いて読める。
+        /// @note 捕捉済みの最悪フレームは、より遅いフレームか Reset 操作が来るまで内訳を保持する。
         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
         if (ImGui::Button(spikeLabel)) {
             ShowAnalysisProfFrame(s_profilerDisplay.spikeRecords, s_profilerDisplay.spikeFrameIndex, false);
@@ -1307,15 +1370,14 @@ void AnalysisPanel::DrawProfiler()
             s_profHistory.frames.clear();
             s_profHistory.frameMs.clear();
             s_profHistory.stats.clear();
+            s_profHistory.autoFit = true;
         }
         ImGui::TextDisabled("Right-click the table header to show / hide columns.");
         ImGui::EndPopup();
     }
 
-    /// @name 2 段目: カテゴリの内訳
     DrawAnalysisProfCategoryBar(s_profTree);
 
-    /// @name 3 段目: 表示形式と絞り込み
     if (ImGui::RadioButton("Hierarchy", !s_profilerFilter.flatView)) s_profilerFilter.flatView = false;
     ImGui::SetItemTooltip("Call tree. Same-named scopes under one parent are merged (see Calls).");
     ImGui::SameLine();
@@ -1391,7 +1453,6 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
         totalStats.activeCount += stats.activeCount;
     }
 
-    /// @note Sample memory history
     s_memHistory.elapsed += ImGui::GetIO().DeltaTime;
     if (s_memHistory.elapsed >= s_memHistory.sampleInterval) {
         s_memHistory.elapsed = 0.0f;
@@ -1463,8 +1524,7 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
                 tracker.GetActiveAllocationCount(),
                 tracker.GetMaxTrackedAllocationCount());
     ImGui::Text("Dropped tracking entries: %zu", tracker.GetDroppedAllocationCount());
-    /// @note 0 が «使っていない» なのか «測っていない» なのか、表からは区別できない。
-    ///       RENDERER 以外はまだ記録側が居ないので、その旨をここで明示する。
+    /// @note 未計測の 0 と使用量の 0 を区別するため、記録側のある RENDERER 以外は未計測と明示する。
     ImGui::TextDisabled("Only RENDERER is instrumented; other tags stay 0 until their "
                         "subsystems record into MemoryTracker.");
 
@@ -1475,7 +1535,7 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
         ImGui::Separator();
         ImGui::TextUnformatted("Memory history");
 
-        /// @note Build tag name list in stable order
+        /// @note unordered_map の巡回順ではタグ選択の並びが変わるため、MemoryTag の宣言順を使う。
         std::vector<const char*> tagNames;
         tagNames.reserve(static_cast<std::size_t>(core::MemoryTag::COUNT));
         for (std::size_t i = 0; i < static_cast<std::size_t>(core::MemoryTag::COUNT); ++i)
@@ -1486,31 +1546,28 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
             if (s_memHistory.selectedTag == tagNames[static_cast<std::size_t>(i)]) { selIdx = i; break; }
         }
         ImGui::SetNextItemWidth(200.0f);
-        if (ImGui::Combo("Tag##memGraph", &selIdx, tagNames.data(), static_cast<int>(tagNames.size())))
+        if (ImGui::Combo("Tag##memGraph", &selIdx, tagNames.data(), static_cast<int>(tagNames.size()))) {
             s_memHistory.selectedTag = tagNames[static_cast<std::size_t>(selIdx)];
+            s_memHistory.autoFit = true;
+        }
         if (s_memHistory.selectedTag.empty() && !tagNames.empty())
             s_memHistory.selectedTag = tagNames[0];
 
         const auto it = s_memHistory.tagUsedMB.find(s_memHistory.selectedTag);
         if (it != s_memHistory.tagUsedMB.end() && !it->second.empty()) {
             const std::vector<float> vals(it->second.begin(), it->second.end());
-            float maxVal = 0.0f;
-            for (float v : vals) maxVal = (std::max)(maxVal, v);
-            char overlay[64];
-            std::snprintf(overlay, sizeof(overlay), "%.3f MB", vals.back());
-            ImGui::PlotLines("##memHistory", vals.data(), static_cast<int>(vals.size()),
-                             0, overlay, 0.0f, (std::max)(maxVal * 1.2f, 0.001f),
-                             { -1.0f, 60.0f });
+            ImGui::SameLine();
+            ImGui::TextDisabled("%.3f MB", static_cast<double>(vals.back()));
+            DrawAnalysisHistoryPlot("##memHistory", s_memHistory.selectedTag.c_str(), "MB", vals,
+                                     { -1.0f, 60.0f }, s_memHistory.autoFit);
         }
     }
 }
 
 namespace {
 
-/// RenderGraph の構成テキストをプロジェクト配下へ保存する。
-///
-/// @note タイムスタンプ付きで上書きせず溜める: 改修前後の差分比較に使うため。
-///       Artifacts 配下は git 管理外の既存置き場 (coverage も使用)。
+/// @brief RenderGraph の構成テキストをプロジェクト配下へ保存する。
+/// @note 改修前後の比較用にタイムスタンプ付きで蓄積し、Git 対象外の Artifacts へ置く。
 bool SaveRenderGraphPlan(const std::string& text, std::string& outPath)
 {
     const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
@@ -1538,11 +1595,11 @@ bool SaveRenderGraphPlan(const std::string& text, std::string& outPath)
     return true;
 }
 
-} // namespace
+}
 
 namespace {
 
-/// 大きな整数を 3 桁区切りにする。三角形数は桁を数えないと 10 万か 100 万か読めない。
+/// @note 三角形数などの桁数を比較しやすいよう、整数に 3 桁区切りを付ける。
 const char* FormatAnalysisCount(std::uint64_t value, char (&buffer)[32])
 {
     char digits[24];
@@ -1557,14 +1614,14 @@ const char* FormatAnalysisCount(std::uint64_t value, char (&buffer)[32])
     return buffer;
 }
 
-/// DrawCall / ポリゴン / カリングの統計。
+/// @brief DrawCall / ポリゴン / カリングの統計を表示する。
 /// @note 左右 2 列: 縦 1 列だとスクロールが要り、下の GPU パス表が押し出されていた。
 void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& stats)
 {
     struct Item {
         const char*   label;
         std::uint64_t value;
-        bool          percent;   ///< 描画対象オブジェクト数に対する割合を添えるか
+        bool          percent;
     };
     const auto count = [](long long v) { return static_cast<std::uint64_t>((std::max)(0LL, v)); };
     const long long rendered = static_cast<long long>(stats.totalObjects) - stats.frustumCulled -
@@ -1653,7 +1710,7 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
 
 enum class AnalysisPassCol : int { Name, Gpu, Share, Cpu, Avg, Peak, Count };
 
-/// GPU パスの表と、選択したパスの履歴グラフ。
+/// @brief GPU パスの表と、選択したパスの履歴グラフを表示する。
 /// @note 表形式にした理由: `"%-22s"` の固定整形は比例フォントで桁が揃わず、GPU/CPU 列の比較も並べ替えもできなかった。
 void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap)
 {
@@ -1767,8 +1824,10 @@ void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap)
             ImGui::TableNextColumn();
             const bool selected = s_renderHistory.selectedPass == *row.name;
             ImGui::PushID(row.name->c_str());
-            if (ImGui::Selectable(row.name->c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
+            if (ImGui::Selectable(row.name->c_str(), selected, ImGuiSelectableFlags_SpanAllColumns)) {
                 s_renderHistory.selectedPass = selected ? std::string() : *row.name;
+                s_renderHistory.autoFit = true;
+            }
             ImGui::PopID();
 
             ImGui::TableNextColumn();
@@ -1818,24 +1877,25 @@ void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap)
     ImGui::TextDisabled("now %.3f  avg %.3f  peak %.3f ms", static_cast<double>(values.back()),
                         sum / static_cast<double>(values.size()), static_cast<double>(peak));
     ImGui::SameLine();
-    if (ImGui::SmallButton("x##renderGraphClose")) s_renderHistory.selectedPass.clear();
-    ImGui::PlotLines("##renderHistory", values.data(), static_cast<int>(values.size()), 0, nullptr,
-                     0.0f, (std::max)(peak * 1.15f, 0.001f), { -FLT_MIN, graphH - ImGui::GetTextLineHeightWithSpacing() });
+    if (ImGui::SmallButton("x##renderGraphClose")) {
+        s_renderHistory.selectedPass.clear();
+        s_renderHistory.autoFit = true;
+    }
+    DrawAnalysisHistoryPlot("##renderHistory", s_renderHistory.selectedPass.c_str(), "ms", values,
+                             { -FLT_MIN, graphH - ImGui::GetTextLineHeightWithSpacing() }, s_renderHistory.autoFit);
 }
 
-/// InputTextMultiline は可変バッファを要求するので、構成テキストの写しを持つ。
+/// @note InputTextMultiline は可変バッファを要求するので、構成テキストの写しを持つ。
 std::string s_renderPlanText;
 
-} // namespace
+}
 
 void AnalysisPanel::DrawRendering(EditorContext& ctx)
 {
     const renderer::RenderDebugOverlay::Snapshot& snap =
         renderer::RenderDebugOverlay::GetLastSnapshot();
 
-    /// @name フレーム時間
-    /// @note フレーム予算の可否はビューポート Stats HUD でしか見えなかったため、HUD と同じ部品をここへ置く。
-    ///       履歴は widgets 側で共有しているので HUD とグラフの中身は一致する。
+    /// @note フレーム予算は Stats HUD と同じ部品と widgets 側の共有履歴を使い、両画面で値を一致させる。
     const int   targetFps = ctx.projectSettings.app.targetFps > 0 ? ctx.projectSettings.app.targetFps : 60;
     const float targetMs  = 1000.0f / static_cast<float>(targetFps);
     const float fontH     = ImGui::GetFontSize();
@@ -1847,7 +1907,6 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x
                          - ImGui::CalcTextSize(budgetText).x);
-    /// @note 大きい数字の下端へ揃える
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + fontH * 0.9f);
     ImGui::TextDisabled("%s", budgetText);
 
@@ -1866,7 +1925,6 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
 
     DrawAnalysisRenderStats(snap.renderStats);
 
-    /// @name GPU パスタイミング
     /// @note Profiler タブは CPU スコープのみ表示するため、GPU 負荷のボトルネックはここで可視化する。
     ImGui::Spacing();
     ImGui::SeparatorText("GPU passes");
@@ -1875,9 +1933,7 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
     else
         DrawAnalysisGpuPasses(snap);
 
-    /// @name RenderGraph の構成
-    /// @note 実行順・カリング・エイリアス割り当てが «いつの間にか変わっていた» を捕まえるための口。
-    ///       絵を見ても分からない種類の変化なので、テキストで差分を取るしかない。
+    /// @note 画像から判別できない実行順・カリング・エイリアス割り当ての変更を、テキスト差分で比較できるようにする。
     ImGui::Spacing();
     if (ImGui::CollapsingHeader("Render graph plan")) {
         if (snap.planDescription.empty()) {
@@ -1913,4 +1969,4 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
     }
 }
 
-} // namespace fbzz::editor
+}

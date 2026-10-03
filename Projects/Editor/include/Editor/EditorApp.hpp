@@ -37,6 +37,7 @@
 #include <vector>
 
 struct HWND__;
+struct ImPlotContext;
 namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
 namespace fbzz::scene { struct RenderFrameGeometryCache; }
 namespace fbzz::core     { class Window; }
@@ -67,6 +68,7 @@ public:
     EditorApp();
     ~EditorApp(); ///< @note TerrainTool の完全型が見えるところ (EditorApp.cpp) で定義する
 
+    /// @return 初期化済みなら false。
     bool Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer, renderer::ResourceManager& resources, core::Window& window);
     void Shutdown();
     bool OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath);
@@ -313,6 +315,8 @@ private:
     std::string HandleAiRequest(const std::string& request);
 
     EditorContext                        m_ctx;
+    /// @note 起動中にプロジェクトを開けず Shutdown に届かない場合も解放する。
+    std::unique_ptr<ImPlotContext, void (*)(ImPlotContext*)> m_implotContext;
     std::vector<std::unique_ptr<IPanel>> m_panels;
     std::unique_ptr<StatusBar>           m_statusBar;
 
