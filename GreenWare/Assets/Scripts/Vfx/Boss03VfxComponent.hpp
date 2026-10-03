@@ -2,12 +2,12 @@
 /// @brief   Boss03 の «体で言う» 予兆。翼の光り・自発光の脈・翼が落ちた後の煙
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
-///
+
 /// @note 床だけでなく体でも言う (BossPartTelegraphComponent と同じ理由)。頭上に浮く
-///       ボスは近づくほど足元の床が本体で隠れるため、«見えているもの» = 体で言う。
-///       分割インポートされた翼メッシュは個別の発光で予告し、点光源で装甲の凹凸も拾う。
+/// @note ボスは近づくほど足元の床が本体で隠れるため、«見えているもの» = 体で言う。
+/// @note 分割インポートされた翼メッシュは個別の発光で予告し、点光源で装甲の凹凸も拾う。
 /// @note 自発光も一緒に脈打たせる。取り込んだ .mat は emissiveScale=0 で発光用の
-///       材質 (B03_Emission_*) が死んでいるため、拍に合わせてここで与える。
+/// @note 材質 (B03_Emission_*) が死んでいるため、拍に合わせてここで与える。
 #pragma once
 
 #include <Engine/Scene/Components/LightComponent.hpp>
@@ -61,10 +61,10 @@ public:
     FBZZ_FIELD_COLOR(idleColor, (Vector4{ 1.00f, 0.42f, 0.30f, 1.00f }), "平常の色")
     FBZZ_TOOLTIP("B03_Emission_Coral の色みに合わせる。予兆の間は琥珀へ寄る")
 
-    /// 拍。床のデカールと同じ言葉で刻む (BossTelegraphCue)。
-    ///
+    /// @note 拍。床のデカールと同じ言葉で刻む (BossTelegraphCue)。
+
     /// @note 床のデカールと同じ値を持つ。食い違うと足元と体が別々のリズムで光り、
-    ///       どちらでタイミングを取るのか決められなくなる。
+    /// @note どちらでタイミングを取るのか決められなくなる。
     FBZZ_GROUP("拍")
     FBZZ_FIELD_RANGE_INT(int, pips, 3, "ピップの数", 0, 8)
     FBZZ_TOOLTIP("出す側が拍数を言ってきたらそちらが優先される。これは既定")
@@ -74,7 +74,7 @@ public:
     FBZZ_TOOLTIP("予兆が消えてから光が引くまで。0 だと着弾の瞬間に消えて «不発» に見える")
 
     /// @note 出し続ける。落ちた翼は消えずに残る (Detach レイヤーが畳んだ姿を保持する) が、
-    ///       煙が 1 度で終わると «壊れた» が一瞬で流れ、盤面から «あと何枚» が読めない。
+    /// @note 煙が 1 度で終わると «壊れた» が一瞬で流れ、盤面から «あと何枚» が読めない。
     FBZZ_GROUP("翼が落ちた後")
     FBZZ_FIELD(bool, smokeOnDetach, true, "断面から煙を出す")
     FBZZ_TOOLTIP("もいだ付け根から立ちのぼる煙。落ちている間ずっと出し続ける")
@@ -83,7 +83,7 @@ public:
     FBZZ_FIELD_RANGE(float, smokeScale, 1.20f, "煙の大きさ", 0.1f, 4.0f)
 
     /// @note 撃破で光を落とす。自発光は «生きている» の表示でもあり、倒した後も点いた
-    ///       まま崩れると «まだ動いている» に見えて決着が絵から読めない。
+    /// @note まま崩れると «まだ動いている» に見えて決着が絵から読めない。
     FBZZ_FIELD_RANGE(float, deathFadeSeconds, 1.60f, "撃破で光が落ちるまで", 0.0f, 8.0f)
 
     FBZZ_GROUP("デバッグ")
@@ -97,15 +97,15 @@ public:
     void OnDestroy() override;
 
 private:
-    /// 翼 6 枚の骨へ点光源を吊る。骨は実行時に出来るので、揃うまで試し続ける。
+    /// @note 翼 6 枚の骨へ点光源を吊る。骨は実行時に出来るので、揃うまで試し続ける。
     void EnsureLights();
-    /// 今フレーム光らせる翼を決める。攻撃の種類と «どちらの側か» の対応表。
+    /// @note 今フレーム光らせる翼を決める。攻撃の種類と «どちらの側か» の対応表。
     [[nodiscard]] bool WingIsHot(int wing, BossAttackKind kind, int side) const;
-    /// 自発光スロット 1 つへ書き込む。
+    /// @note 自発光スロット 1 つへ書き込む。
     void DriveEmissive(int slot, const Vector4& color, float scale);
     BossGlowMaterials m_glowMaterials;
     BossArmorMaterials m_armorMaterials;
-    /// 落ちた翼を見つけて、1 度だけ煙を出す。
+    /// @note 落ちた翼を見つけて、1 度だけ煙を出す。
     void WatchDetach();
 
     [[nodiscard]] Boss03AiComponent* Ai() const
@@ -119,7 +119,7 @@ private:
     float     m_probeCooldown = 0.0f;
     float     m_smokeTimer = 0.0f;
     float     m_release = 0.0f;
-    /// 生きている度合い [0,1]。撃破でここが落ち、光の全部に掛かる。
+    /// @note 生きている度合い [0,1]。撃破でここが落ち、光の全部に掛かる。
     float     m_life = 1.0f;
     BossAttackKind   m_kind = BossAttackKind::None;
     BossTelegraphCue m_cue;
@@ -128,7 +128,6 @@ private:
 };
 
 FBZZ_REFLECT(Boss03VfxComponent)
-
 
 inline void Boss03VfxComponent::OnStart()
 {
@@ -164,32 +163,31 @@ inline void Boss03VfxComponent::EnsureLights()
     for (int i = 0; i < kBoss03WingCount; ++i) {
         if (m_lights[i].Resolve(scene)) { ++built; continue; }
 
-        /// @note 生成のたびに引き直す。scene.Create が GameObject 配列を再確保するので、
-        ///       ループの外で掴んだポインタは 2 つ目以降で無効になる。
         GameObject* self = scene.Self();
         if (!self || !FindInSubtree(*self, kBoss03WingBones[i])) continue;
 
-        GameObject& glow = scene.Create(std::string("FX_Glow_") + kBoss03WingBones[i]);
+        GameObject* glow = scene.Create(std::string("FX_Glow_") + kBoss03WingBones[i]);
+        if (!glow) continue;
         /// @note シーンには保存しない。Play のたびにその時点のリグへ吊り直す。
-        glow.runtimeGenerated = true;
+        glow->runtimeGenerated = true;
 
         GameObject* owner = scene.Self();
         if (GameObject* bone = owner ? FindInSubtree(*owner, kBoss03WingBones[i]) : nullptr)
-            glow.SetParent(*bone);
+            glow->SetParent(*bone);
         /// @note 骨のローカル +Y が骨の向き。翼の途中へ置くと、根元と先の両方が明るくなる。
-        glow.transform.position = { 0.0f, std::max(lightOffset, 0.0f), 0.0f };
+        glow->transform.position = { 0.0f, std::max(lightOffset, 0.0f), 0.0f };
 
-        auto& light = glow.AddComponent<LightComponent>();
+        auto& light = glow->AddComponent<LightComponent>();
         light.type  = LightComponent::Type::Point;
         light.color = { warnColor.x, warnColor.y, warnColor.z };
         light.range = std::max(lightRange, 0.5f);
         light.intensity = 0.0f;
         /// @note 影は落とさない。6 枚ぶんの点光源に影を持たせると影アトラスの面を
-        ///       取り合う ─ ここは «翼が光っている» を言う光で、形を落とす役ではない。
+        /// @note 取り合う ─ ここは «翼が光っている» を言う光で、形を落とす役ではない。
         light.castShadows = false;
-        glow.SetActive(false);
+        glow->SetActive(false);
 
-        m_lights[i] = EntityRef{ glow.GetID() };
+        m_lights[i] = EntityRef{ glow->GetID() };
         ++built;
     }
     debugLights = built;
@@ -233,7 +231,7 @@ inline bool Boss03VfxComponent::WingIsHot(int wing, BossAttackKind kind, int sid
         return true;
     default:
         /// @note 焼き払いは線そのものが予兆なので、翼は光らせない
-        ///       (理由は Boss03AiComponent の TickLaserWindup を参照)。
+        /// @note (理由は Boss03AiComponent の TickLaserWindup を参照)。
         return false;
     }
 }
@@ -316,7 +314,7 @@ inline void Boss03VfxComponent::OnUpdate()
     m_cue.Tick(progress, std::max(Time::deltaTime, 0.0f), active);
 
     /// @note 撃破したら光が落ちていく。爆ぜるのは BossDeathVfxComponent の担当で、
-    ///       こちらは «消えていく» 側だけを持つ。
+    /// @note こちらは «消えていく» 側だけを持つ。
     const auto* anim = Anim();
     const bool  dead = anim && anim->IsDead();
     if (!dead) m_armorMaterials.Apply(scene.Self(), material, envelope * envelope,
@@ -407,4 +405,4 @@ inline void Boss03VfxComponent::OnUpdate()
     m_wasToppled = toppled;
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

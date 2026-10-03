@@ -2,9 +2,7 @@
 /// @brief   GameObject 生成 (プリセット・Prefab・スクリプト) の親付け・命名・配置・選択・Undo の実体。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
-///
-/// Hierarchy・メインメニュー・Operator (node.create_* / prefab.instantiate)・AI バス
-/// (preset.create / node.create) はすべてここを通る。
+/// @note Hierarchy・メインメニュー・Operator (node.create_* / prefab.instantiate)・AI バス (preset.create / node.create) はすべてここを通る。
 /// @see Docs/design/editor-operator-model.md
 #pragma once
 
@@ -23,9 +21,9 @@ namespace fbzz::editor {
 struct EditorContext;
 
 enum class CreateObjectSource {
-    Preset, ///< key はプリセット id (ObjectPresets.hpp)
-    Prefab, ///< key は .prefab / .vfx のパス (ディスク上、または projectRoot 相対)
-    Script, ///< key はスクリプト型名
+    Preset, ///< @brief key はプリセット id (ObjectPresets.hpp)
+    Prefab, ///< @brief key は .prefab / .vfx のパス (ディスク上、または projectRoot 相対)
+    Script, ///< @brief key はスクリプト型名
 };
 
 struct CreateObjectRequest {
@@ -43,7 +41,7 @@ struct CreateObjectRequest {
 };
 
 /// @brief 要求が今のシーンで実行できるか。
-/// @param outCode 失敗時の理由コード (NO_SCENE / NODE_NOT_FOUND / UNKNOWN_PRESET / PREFAB_NOT_FOUND / UNKNOWN_SCRIPT / BAD_ARG)。
+/// @param outCode 失敗時の理由コード (NO_SCENE / NODE_NOT_FOUND / UNKNOWN_PRESET / PREFAB_NOT_FOUND / UNKNOWN_SCRIPT / BAD_ARG / SCENE_CAPACITY)。
 /// @return 実行できなければ false。
 [[nodiscard]] bool ValidateCreateObjectRequest(const EditorContext& ctx, const CreateObjectRequest& request,
                                                std::string& outCode, std::string& outMessage);
@@ -75,4 +73,4 @@ struct CreateObjectRequest {
 /// @note 差分 (PrefabOverrides) はプロパティ単位しか追わず、足した子は override にならない。
 [[nodiscard]] const char* PrefabInstanceChildWarning();
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

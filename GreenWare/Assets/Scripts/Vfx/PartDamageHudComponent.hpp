@@ -2,14 +2,13 @@
 /// @brief   斬った部位に追従する耐久バー 1 本と、その場へ跳ねるダメージ数値
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
+
 /// @note バーは 1 本だけ。脚 4 本・節 28 の全てに出すと画面が計器で埋まるため、
-///       最後に斬った部位へ 1 本が乗り移る形にする。部位に追従させる (脚は踏みつけで
-///       跳ね上がり、節は床下へ潜るため、固定すると空中に取り残される)。
+/// @note 最後に斬った部位へ 1 本が乗り移る形にする。部位に追従させる (脚は踏みつけで
+/// @note 跳ね上がり、節は床下へ潜るため、固定すると空中に取り残される)。
 /// @note 数値は跳ねさせる (出た瞬間に大きく、すぐ縮み、弧を描いて散る)。同じ部位への
-///       連続ヒットは新しい数字を足さず、出ている数字へ積み上げてもう一度跳ねさせる。
-/// @note 枠は使い回す (毎回 Create しない)。`scene.Create` は GameObject 配列を
-///       再確保するため、連撃 5 段で毎回作ると他スクリプトの `GameObject*` が無効になる。
+/// @note 連続ヒットは新しい数字を足さず、出ている数字へ積み上げてもう一度跳ねさせる。
+/// @note 演出の枠を再利用し、連撃中の生成負荷とオブジェクト数を制限する。
 #pragma once
 
 #include <Engine/Scene/Components/UICanvas.hpp>
@@ -72,9 +71,9 @@ public:
     FBZZ_FIELD_RANGE(float, gravity, 5.0f, "Gravity", 0.0f, 30.0f)
     FBZZ_FIELD_RANGE(float, numberHold, 0.75f, "保持", 0.0f, 5.0f)
     FBZZ_FIELD_RANGE(float, numberFade, 0.55f, "フェード", 0.05f, 3.0f)
-    /// ⚠ Hold + Fade は Stacking の Window より長く保つこと。短いと数字が «積み上げの
-    ///   窓が閉じる前に» 消えてしまい、繋いでいるのに別の数字が出る。
-    ///   既定は 0.75 + 0.55 = 1.30 秒 > Window 1.20 秒。
+    /// @note ⚠ Hold + Fade は Stacking の Window より長く保つこと。短いと数字が «積み上げの
+    /// @note 窓が閉じる前に» 消えてしまい、繋いでいるのに別の数字が出る。
+    /// @note 既定は 0.75 + 0.55 = 1.30 秒 > Window 1.20 秒。
     FBZZ_FIELD_COLOR(numberColor, (Vector4{ 1.0f, 0.98f, 0.92f, 1.0f }), "Color")
     FBZZ_FIELD_COLOR(numberHeavyColor, (Vector4{ 1.0f, 0.80f, 0.30f, 1.0f }), "Color (heavy)")
     FBZZ_FIELD_COLOR(numberHotColor, (Vector4{ 1.0f, 0.45f, 0.20f, 1.0f }), "Color (stacked)")
@@ -95,7 +94,7 @@ public:
 
     [[nodiscard]] static PartDamageHudComponent* Instance() { return s_instance; }
 
-    /// 叩いた部位へ、耐久バーを乗せ替えてダメージ数値を跳ねさせる。
+    /// @note 叩いた部位へ、耐久バーを乗せ替えてダメージ数値を跳ねさせる。
     /// @param part    叩いた部位の GameObject。バーはこれに追従する
     /// @param amount  与えたダメージ。0 以下なら数字を出さない
     /// @param ratio   残り耐久 [0,1]。負ならバーを出さない (耐久を持たない部位)
@@ -109,33 +108,33 @@ public:
 private:
     static inline PartDamageHudComponent* s_instance = nullptr;
 
-    /// 跳ねる数字 1 つ。
+    /// @note 跳ねる数字 1 つ。
     struct Number {
         EntityRef canvas;
         EntityRef text;
-        /// 積み上げのキー。同じ部位の続けての一撃はこれで拾う。
+        /// @note 積み上げのキー。同じ部位の続けての一撃はこれで拾う。
         EntityRef part;
         Vector3   origin   = Vector3::ZERO;
         Vector3   velocity = Vector3::ZERO;
-        float     age      = -1.0f;   ///< 負なら空き
+        float     age      = -1.0f;   ///< @note 負なら空き
         int       total    = 0;
-        float     pop      = 0.0f;    ///< 1 で出た瞬間。popSeconds で 0 へ
-        float     grow     = 1.0f;    ///< 積み上げで育った倍率
+        float     pop      = 0.0f;    ///< @note 1 で出た瞬間。popSeconds で 0 へ
+        float     grow     = 1.0f;    ///< @note 積み上げで育った倍率
         bool      heavy    = false;
     };
     std::vector<Number> m_numbers;
-    int  m_serial = 0;                ///< 横へ散らす向きの交互
+    int  m_serial = 0;                ///< @note 横へ散らす向きの交互
 
-    /// 追従するバー 1 本ぶん。
+    /// @note 追従するバー 1 本ぶん。
     struct Bar {
         EntityRef canvas;
         EntityRef back;
         EntityRef fill;
-        EntityRef chip;               ///< たった今削れた分 (白)
-        EntityRef part;               ///< 追従先
-        float     age      = -1.0f;   ///< 負なら消えている
-        float     target   = 1.0f;    ///< 実際の残り
-        float     shown    = 1.0f;    ///< 表示中 (target へ寄る)
+        EntityRef chip;               ///< @note たった今削れた分 (白)
+        EntityRef part;               ///< @note 追従先
+        float     age      = -1.0f;   ///< @note 負なら消えている
+        float     target   = 1.0f;    ///< @note 実際の残り
+        float     shown    = 1.0f;    ///< @note 表示中 (target へ寄る)
     };
     Bar m_bar;
 
@@ -146,7 +145,7 @@ private:
     void HideNumber(Number& number) const;
     void HideBar() const;
 
-    /// Canvas のピクセルとワールドの換算。BossLegHealthBarComponent と同じ 100px = 1m。
+    /// @note Canvas のピクセルとワールドの換算。BossLegHealthBarComponent と同じ 100px = 1m。
     static constexpr float kPixelsPerUnit = 100.0f;
 };
 
@@ -161,70 +160,89 @@ inline void PartDamageHudComponent::OnStart()
 inline void PartDamageHudComponent::Build()
 {
     const int count = std::clamp(numberSlots, 1, 32);
-    m_numbers.assign(static_cast<std::size_t>(count), Number{});
+    if (!scene.CanCreate(static_cast<std::size_t>(count) * 2 + 4)) return;
+    std::vector<Number> numbers(static_cast<std::size_t>(count));
+    Bar bar{};
+    const auto abandon = [&]() {
+        for (const Number& number : numbers) {
+            if (GameObject* object = number.text.Resolve(scene)) scene.Destroy(*object);
+            if (GameObject* object = number.canvas.Resolve(scene)) scene.Destroy(*object);
+        }
+        if (GameObject* object = bar.back.Resolve(scene)) scene.Destroy(*object);
+        if (GameObject* object = bar.chip.Resolve(scene)) scene.Destroy(*object);
+        if (GameObject* object = bar.fill.Resolve(scene)) scene.Destroy(*object);
+        if (GameObject* object = bar.canvas.Resolve(scene)) scene.Destroy(*object);
+    };
 
-    /// @note 段階を分けて作る。scene.Create は GameObject 配列を再確保するため、
-    ///       «全部作る → 参照を取る → 親付け» の順に分ける。
+    /// @note 生成をすべて終えてから親を設定し、完成した UI だけを公開する。
     for (int i = 0; i < count; ++i) {
-        GameObject& canvasObject = scene.Create("PartDamageNum_" + std::to_string(i));
-        canvasObject.runtimeGenerated = true;
-        UICanvas& canvas  = canvasObject.AddComponent<UICanvas>();
+        GameObject* canvasObject = scene.Create("PartDamageNum_" + std::to_string(i));
+        if (!canvasObject) { abandon(); return; }
+        canvasObject->runtimeGenerated = true;
+        UICanvas& canvas  = canvasObject->AddComponent<UICanvas>();
         canvas.renderMode = UIRenderMode::WorldSpace;
         canvas.faceCamera = true;
         canvas.worldScale = 1.0f / kPixelsPerUnit;
-        m_numbers[static_cast<std::size_t>(i)].canvas = EntityRef{ canvasObject.GetID() };
+        numbers[static_cast<std::size_t>(i)].canvas = EntityRef{ canvasObject->GetID() };
     }
     {
-        GameObject& canvasObject = scene.Create("PartDamageBar");
-        canvasObject.runtimeGenerated = true;
-        UICanvas& canvas  = canvasObject.AddComponent<UICanvas>();
+        GameObject* canvasObject = scene.Create("PartDamageBar");
+        if (!canvasObject) { abandon(); return; }
+        canvasObject->runtimeGenerated = true;
+        UICanvas& canvas  = canvasObject->AddComponent<UICanvas>();
         canvas.renderMode = UIRenderMode::WorldSpace;
         canvas.faceCamera = true;
         canvas.worldScale = 1.0f / kPixelsPerUnit;
-        m_bar.canvas = EntityRef{ canvasObject.GetID() };
+        bar.canvas = EntityRef{ canvasObject->GetID() };
     }
 
     for (int i = 0; i < count; ++i) {
-        GameObject& textObject = scene.Create("PartDamageNum_Text");
-        textObject.runtimeGenerated = true;
-        UIText& text       = textObject.AddComponent<UIText>();
+        GameObject* textObject = scene.Create("PartDamageNum_Text");
+        if (!textObject) { abandon(); return; }
+        textObject->runtimeGenerated = true;
+        UIText& text       = textObject->AddComponent<UIText>();
         text.sortOrder     = 2;
         text.fontPath      = fontFile;
         text.fontSize      = fontSize;
         text.align         = TextAlign::Center;
         text.letterSpacing = 1.0f;
-        m_numbers[static_cast<std::size_t>(i)].text = EntityRef{ textObject.GetID() };
+        numbers[static_cast<std::size_t>(i)].text = EntityRef{ textObject->GetID() };
     }
     {
-        GameObject& backObject = scene.Create("PartDamageBar_Back");
-        backObject.runtimeGenerated = true;
-        backObject.AddComponent<UIImage>().sortOrder = 0;
-        m_bar.back = EntityRef{ backObject.GetID() };
+        GameObject* backObject = scene.Create("PartDamageBar_Back");
+        if (!backObject) { abandon(); return; }
+        backObject->runtimeGenerated = true;
+        backObject->AddComponent<UIImage>().sortOrder = 0;
+        bar.back = EntityRef{ backObject->GetID() };
 
         /// @note 削れた分の白。fill の «先» に残して、減りが目で追えるようにする。
-        GameObject& chipObject = scene.Create("PartDamageBar_Chip");
-        chipObject.runtimeGenerated = true;
-        chipObject.AddComponent<UIImage>().sortOrder = 1;
-        m_bar.chip = EntityRef{ chipObject.GetID() };
+        GameObject* chipObject = scene.Create("PartDamageBar_Chip");
+        if (!chipObject) { abandon(); return; }
+        chipObject->runtimeGenerated = true;
+        chipObject->AddComponent<UIImage>().sortOrder = 1;
+        bar.chip = EntityRef{ chipObject->GetID() };
 
-        GameObject& fillObject = scene.Create("PartDamageBar_Fill");
-        fillObject.runtimeGenerated = true;
-        fillObject.AddComponent<UIImage>().sortOrder = 2;
-        m_bar.fill = EntityRef{ fillObject.GetID() };
+        GameObject* fillObject = scene.Create("PartDamageBar_Fill");
+        if (!fillObject) { abandon(); return; }
+        fillObject->runtimeGenerated = true;
+        fillObject->AddComponent<UIImage>().sortOrder = 2;
+        bar.fill = EntityRef{ fillObject->GetID() };
     }
 
-    for (Number& number : m_numbers) {
+    for (Number& number : numbers) {
         GameObject* canvasObject = number.canvas.Resolve(scene);
         GameObject* text = number.text.Resolve(scene);
         if (!canvasObject || !text) continue;
         text->SetParent(*canvasObject);
         HideNumber(number);
     }
-    if (GameObject* canvasObject = m_bar.canvas.Resolve(scene)) {
-        if (GameObject* back = m_bar.back.Resolve(scene)) back->SetParent(*canvasObject);
-        if (GameObject* chip = m_bar.chip.Resolve(scene)) chip->SetParent(*canvasObject);
-        if (GameObject* fill = m_bar.fill.Resolve(scene)) fill->SetParent(*canvasObject);
+    if (GameObject* canvasObject = bar.canvas.Resolve(scene)) {
+        if (GameObject* back = bar.back.Resolve(scene)) back->SetParent(*canvasObject);
+        if (GameObject* chip = bar.chip.Resolve(scene)) chip->SetParent(*canvasObject);
+        if (GameObject* fill = bar.fill.Resolve(scene)) fill->SetParent(*canvasObject);
     }
+    m_numbers = std::move(numbers);
+    m_bar = bar;
     HideBar();
 
     if (fontFile.empty())
@@ -243,12 +261,12 @@ inline PartDamageHudComponent::Number* PartDamageHudComponent::Take()
 
 inline void PartDamageHudComponent::Show(GameObject* part, int amount, float ratio, bool heavy)
 {
-    /// @name バーを «乗り移らせる»
+    /// @note バーを «乗り移らせる»
     if (showBar && ratio >= 0.0f && part) {
         const bool samePart = m_bar.part.Resolve(scene) == part;
         if (!samePart) {
             /// @note 別の部位へ乗り移ったら、前の部位の削れ跡を引きずらない。最初の 1 撃は
-            ///       白帯が出ない代わりに «その部位の今» から始まる。
+            /// @note 白帯が出ない代わりに «その部位の今» から始まる。
             m_bar.shown = Clamp01(ratio);
             m_bar.part  = EntityRef{ part->GetID() };
         }
@@ -259,7 +277,7 @@ inline void PartDamageHudComponent::Show(GameObject* part, int amount, float rat
 
     if (amount <= 0 || fontFile.empty() || m_numbers.empty()) return;
 
-    /// @name 同じ部位への続けての一撃は «積み上げ»
+    /// @note 同じ部位への続けての一撃は «積み上げ»
     if (part && stackWindow > 0.0f) {
         for (Number& number : m_numbers) {
             if (number.age < 0.0f || number.age > stackWindow) continue;
@@ -271,10 +289,10 @@ inline void PartDamageHudComponent::Show(GameObject* part, int amount, float rat
             number.heavy  = number.heavy || heavy;
 
             /// @note ⚠ age を «巻き戻す» のではなく、その場から撃ち直す。
-            ///       age は寿命であると同時に弧の時刻でもあるので、引き算すると数字が
-            ///       弧を逆走して下へ戻る ─ 積み上げるたびに «跳ね返って落ちる» 妙な動きになる。
-            ///       叩かれた部位の «今» の位置から新しい弧で撃ち直せば、連撃のあいだ
-            ///       数字は刃の近くに居続け、1 撃ごとに «もう一度弾ける»。
+            /// @note age は寿命であると同時に弧の時刻でもあるので、引き算すると数字が
+            /// @note 弧を逆走して下へ戻る ─ 積み上げるたびに «跳ね返って落ちる» 妙な動きになる。
+            /// @note 叩かれた部位の «今» の位置から新しい弧で撃ち直せば、連撃のあいだ
+            /// @note 数字は刃の近くに居続け、1 撃ごとに «もう一度弾ける»。
             number.age      = 0.0f;
             number.origin   = part->transform.worldPosition;
             number.velocity = { (m_serial++ % 2 == 0) ? spreadSpeed : -spreadSpeed,
@@ -287,7 +305,7 @@ inline void PartDamageHudComponent::Show(GameObject* part, int amount, float rat
         }
     }
 
-    /// @name 新しい数字
+    /// @note 新しい数字
     Number* number = Take();
     if (!number) return;
 
@@ -311,7 +329,7 @@ inline void PartDamageHudComponent::Show(GameObject* part, int amount, float rat
 inline void PartDamageHudComponent::OnLateUpdate()
 {
     /// @note LateUpdate で行う。部位は Animator が動かすため、Update だと 1 フレーム前の
-    ///       位置に出て、速い薙ぎで数字とバーだけが取り残される。
+    /// @note 位置に出て、速い薙ぎで数字とバーだけが取り残される。
     const float dt = std::max(Time::deltaTime, 0.0f);
     DriveNumbers(dt);
     DriveBar(dt);
@@ -340,13 +358,13 @@ inline void PartDamageHudComponent::DriveNumbers(float dt)
                               number.velocity.y * t - 0.5f * gravity * t * t,
                               0.0f };
         /// @note 積み上げで別の部位へ移った数字は、出た場所に置いていく (追従させない) ─
-        ///       数字が部位に貼り付くと、跳ねているのか脚が動いているのか読めない。
+        /// @note 数字が部位に貼り付くと、跳ねているのか脚が動いているのか読めない。
         const Vector3 at = number.origin + offset;
         canvasObject->transform.position      = at;
         canvasObject->transform.worldPosition = at;
 
         /// @note 弾け。出た瞬間 popScale 倍、popSeconds で 1 倍へ。2 乗で落とすので
-        ///       «最初のひと目だけ大きい» になる ─ 線形だと «ゆっくり縮んだ» に見える。
+        /// @note «最初のひと目だけ大きい» になる ─ 線形だと «ゆっくり縮んだ» に見える。
         number.pop = std::max(number.pop - dt / std::max(popSeconds, 0.01f), 0.0f);
         const float pop  = 1.0f + (std::max(popScale, 1.0f) - 1.0f) * number.pop * number.pop;
         const float size = std::max(fontSize, 1.0f)
@@ -447,4 +465,4 @@ inline void PartDamageHudComponent::HideBar() const
     if (GameObject* fill = m_bar.fill.Resolve(scene)) fill->SetActive(false);
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

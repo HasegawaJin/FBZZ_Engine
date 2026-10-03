@@ -575,13 +575,17 @@ inline void PlayerClimbComponent::EnsureGripTargets()
     static constexpr const char* kName[LimbCount] = {
         "PlayerGrip_HandR", "PlayerGrip_HandL", "PlayerGrip_FootR", "PlayerGrip_FootL"
     };
+    std::size_t missing = 0;
+    for (int limb = 0; limb < LimbCount; ++limb)
+        if (!scene.Find(kName[limb], true)) ++missing;
+    if (!scene.CanCreate(missing)) return;
     for (int limb = 0; limb < LimbCount; ++limb) {
         GameObject* target = scene.Find(kName[limb], true);
         if (!target) {
-            /// @note scene.Create は GameObject 配列を再確保する。作って即しまうだけに留める。
-            GameObject& created      = scene.Create(kName[limb]);
-            created.runtimeGenerated = true;
-            target = &created;
+            GameObject* created = scene.Create(kName[limb]);
+            if (!created) return;
+            created->runtimeGenerated = true;
+            target = created;
         }
         m_gripTarget[limb] = EntityRef{ target->GetID() };
     }
@@ -714,7 +718,7 @@ inline void PlayerClimbComponent::HoldPlayer(const Vector3& facing, bool holdInp
     /// @note 毎フレーム置き直す: cutscene の申告は 0.25 秒で古びる (maxAge)。1 回だけ置くと 登り始めて 0.25 秒後に操作が戻り、経路の書き込みと移動入力が座標を奪い合う。
     /// @note unscaledTime で置く: 読む側 (PlayerController/Blade/Parry/BossAi) は全部 unscaledTime で古さを測るため、scaled で置くとヒットストップの止め秒数の ぶん最初から «古い申告» になる。
     if (holdInput)
-        cutscene::Publish(/*holdBoss=*/false, /*holdPlayer=*/true, Time::unscaledTime);
+        cutscene::Publish(false, true, Time::unscaledTime);
 
     /// @note 入力を止めるだけでは重力と衝突解決が進む。座標を置き換えている間は 移動そのものを止めないと、落下速度が登攀の 3 秒ぶん積み上がる。 操作は PlayerComponent の内部モジュールなので、窓口は Player 本体が持っている。
     if (auto* player = scene.GetScript<PlayerComponent>()) {
@@ -742,7 +746,7 @@ inline void PlayerClimbComponent::Dismount()
     m_path.clear();
     m_carryValid = false;
     animator.StopSlot(layerName);
-    cutscene::Publish(/*holdBoss=*/false, /*holdPlayer=*/false, Time::unscaledTime);
+    cutscene::Publish(false, false, Time::unscaledTime);
 }
 
 inline void PlayerClimbComponent::OnStart()
@@ -860,8 +864,8 @@ inline void PlayerClimbComponent::OnUpdate()
         /// @note 足元へ貼り付けたまま納刀する。ここで手を離すと脚から落ちる。
         if (!m_path.empty()) Place(m_path.front());
         /// @note 納刀の間は «脚を見上げて構える»。ここで傾けると、刀を背へ回す動作が 斜めになって «倒れながら納刀している» になる。
-        DrivePosture(Vector3::ZERO, dt, /*onPath=*/false, /*sway=*/0.0f);
-        HoldPlayer(FacingFor(StepDirection(0)), /*holdInput=*/true);
+        DrivePosture(Vector3::ZERO, dt, false, 0.0f);
+        HoldPlayer(FacingFor(StepDirection(0)), true);
         m_timer += dt;
         if (m_timer >= std::max(sheatheSeconds, 0.0f)) {
             m_phase = Phase::Climb; m_timer = 0.0f;
@@ -916,9 +920,9 @@ inline void PlayerClimbComponent::OnUpdate()
         const Vector3 tangent = StepDirection(m_step);
         /// @note 体が振れるのは «引いている間» だけ。掴んで止まっている間に戻るので、 揺れそのものが拍を数えている絵になる。
         const float sway = std::sin(PI * pull) * swayDegrees * (m_rightHand ? 1.0f : -1.0f);
-        DrivePosture(tangent, dt, /*onPath=*/true, sway);
+        DrivePosture(tangent, dt, true, sway);
         const Vector3 facing = FacingFor(tangent);
-        HoldPlayer(facing, /*holdInput=*/true);
+        HoldPlayer(facing, true);
         /// @note 掴む所は経路の «関節» なので、体が動いても脚が揺れても手足は貼り付いたまま。
         DriveGrip(dt, facing);
 
@@ -939,8 +943,8 @@ inline void PlayerClimbComponent::OnUpdate()
         BuildPath(m_suffix);
         if (!m_path.empty()) Place(m_path.back());
         /// @note 抜いたら正面にコアが居てほしい。とどめ (Execute) は正面へ振り下ろすので、 向いていないと «着いたのに何も起きない» になる。 甲板は平らなので傾きは 0 へ戻す ── 登り切った前傾のまま抜刀すると、 操作が返った瞬間に体が直立へ跳ねる。
-        DrivePosture(Vector3::ZERO, dt, /*onPath=*/false, /*sway=*/0.0f);
-        HoldPlayer(CoreFacing(), /*holdInput=*/true);
+        DrivePosture(Vector3::ZERO, dt, false, 0.0f);
+        HoldPlayer(CoreFacing(), true);
         m_timer += dt;
         if (m_timer >= std::max(drawSeconds, 0.0f)) {
             m_phase = Phase::Deck; m_timer = 0.0f;

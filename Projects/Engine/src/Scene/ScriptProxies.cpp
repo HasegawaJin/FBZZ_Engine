@@ -2762,7 +2762,7 @@ void ScriptParticleProxy::SetSubEmitters(std::string_view birthEmitter,
 
 void ScriptParticleProxy::SetVelocityDamping(float damping) const
 {
-    /// @note @note 旧 API 名のまま。減衰は «流れへ寄る速さ» になったので flowCoupling を触る。
+    /// @note 旧 API 名のまま。減衰は «流れへ寄る速さ» になったので flowCoupling を触る。
     if (auto* p = SelfComponent<ParticleEmitter>(script))
         p->settings.flowCoupling = (std::max)(damping, 0.0f);
 }
@@ -3909,10 +3909,15 @@ GameObject* ScriptSceneProxy::GetMainCameraObject() const
     return nullptr;
 }
 
-GameObject& ScriptSceneProxy::Create(std::string_view name) const
+GameObject* ScriptSceneProxy::Create(std::string_view name) const
 {
-    assert(script && script->m_scene && "Script context is not set");
-    return script->m_scene->CreateGameObject(std::string(name));
+    return script && script->m_scene
+        ? script->m_scene->TryCreateGameObject(std::string(name)) : nullptr;
+}
+
+bool ScriptSceneProxy::CanCreate(std::size_t count) const
+{
+    return script && script->m_scene && script->m_scene->CanCreateGameObjects(count);
 }
 
 void ScriptSceneProxy::Destroy(GameObject& go, float delay) const
@@ -3941,9 +3946,7 @@ GameObject* ScriptSceneProxy::Instantiate(const PrefabRef& prefab) const
 GameObject* ScriptSceneProxy::Instantiate(const std::string& prefabPath) const
 {
     if (!script || !script->m_scene || prefabPath.empty()) return nullptr;
-    /// @note PrefabSerializer::Instantiate は内部で SceneIO::Deserialize を呼び全 GameObject を再構築し、
-    /// @note 呼び出し元 Script (と m_gameObject) を解放する。呼び出し後に script->m_scene を参照すると
-    /// @note クラッシュするため、同アドレスで生き続ける Scene* を先に退避しておく。
+    /// @note Prefab の追記は既存の GameObject と Script を維持し、容量不足では追加しない。
     Scene* scene = script->m_scene;
     std::vector<EntityID> roots;
     if (!Script::InstantiatePrefab(*scene, prefabPath, roots) || roots.empty())
@@ -3981,8 +3984,6 @@ GameObject* ScriptSceneProxy::Spawn(const std::string& prefabPath,
                                     const math::Quaternion& rotation) const
 {
     if (!script || !script->m_scene) return nullptr;
-    /// @note Instantiate と同じ理由で Scene* を先に退避する。プールが空だった場合は
-    /// @note 内部で Instantiate が走り、GameObject 配列が再確保され得る。
     Scene* scene = script->m_scene;
     return PrefabPool::Spawn(*scene, prefabPath, position, rotation);
 }
@@ -3990,8 +3991,7 @@ GameObject* ScriptSceneProxy::Spawn(const std::string& prefabPath,
 GameObject* ScriptSceneProxy::Spawn(const PrefabRef& prefab) const
 {
     if (!script || !script->m_gameObject) return nullptr;
-    /// @note 値へコピーしてから渡す: Spawn 内部で Instantiate が走ると Scene の GameObject 配列が
-    /// @note 再確保され、m_gameObject->transform の参照先が無効になるため。
+    /// @note Spawn が初期化する側の Transform と引数が別の値になるよう、位置・回転を先に固定する。
     const math::Vector3    position = script->m_gameObject->transform.worldPosition;
     const math::Quaternion rotation = script->m_gameObject->transform.worldRotation;
     return Spawn(prefab.path, position, rotation);
@@ -5799,13 +5799,10 @@ EntityRef ScriptDecalProxy::Spawn(const math::Vector3& point,
                         math::Vector3::UP, rollDegrees * math::DEG2RAD)).Normalized();
     }
 
-    /// @note Create / AddComponent はシーンの配列を伸ばしうる。値は必ず ID から引き直した
-    /// @note 個体へ入れる —— 作った直後の参照は、次の確保で無効になりうる。
-    const EntityID id = [&] {
-        GameObject& created = scene.CreateGameObject("Decal");
-        created.runtimeGenerated = true;
-        return created.GetID();
-    }();
+    GameObject* created = scene.TryCreateGameObject("Decal");
+    if (!created) return EntityRef{};
+    created->runtimeGenerated = true;
+    const EntityID id = created->GetID();
     scene.AddComponent<DecalComponent>(id, DecalComponent{});
 
     GameObject* spawned = scene.GetGameObject(id);

@@ -831,7 +831,9 @@ void DrawHierarchyNode(EditorContext& ctx,
                             else if (commonParentId != pid) { commonParentId = {}; break; }
                         }
                     }
-                    auto& group = ctx.activeScene->CreateGameObject("Group");
+                    auto* created = ctx.activeScene->TryCreateGameObject("Group");
+                    if (!created) return;
+                    auto& group = *created;
                     if (commonParentId.IsValid())
                         if (auto* cp = ctx.activeScene->GetGameObject(commonParentId))
                             group.SetParent(cp);

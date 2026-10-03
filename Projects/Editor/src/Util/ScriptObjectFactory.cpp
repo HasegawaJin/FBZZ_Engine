@@ -4,8 +4,7 @@
 /// @date    2026-08-19
 #include <Editor/Util/ScriptObjectFactory.hpp>
 
-/// @note AddRegisteredComponentByName (コライダーの自動フィット・RigidBody の既定質量) はここにしか無い。
-///       重いヘッダーなので依存はこの TU に閉じる。
+/// @note AddRegisteredComponentByName (コライダーの自動フィット・RigidBody の既定質量) はここにしか無い。 重いヘッダーなので依存はこの TU に閉じる。
 #include <Panels/Inspector/InspectorCommon.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -41,7 +40,9 @@ scene::GameObject* CreateScriptObject(EditorContext& ctx, const std::string& scr
     auto script = scene::ScriptFactory::Create(scriptTypeName);
     if (!script) return nullptr;
 
-    scene::GameObject& go = ctx.activeScene->CreateGameObject(ScriptObjectName(scriptTypeName));
+    auto* created = ctx.activeScene->TryCreateGameObject(ScriptObjectName(scriptTypeName));
+    if (!created) return nullptr;
+    scene::GameObject& go = *created;
 
     /// @note OnValidate は全部揃った後に回したいので、コンポーネント → スクリプトの順に固定する。
     for (const std::string& typeName : script->RequiredComponents())
@@ -57,4 +58,4 @@ scene::GameObject* CreateScriptObject(EditorContext& ctx, const std::string& scr
     return &go;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -10,6 +10,7 @@
 #include "Engine/Scene/SceneSerializer.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Components/MaterialComponent.hpp"
+#include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/IShader.hpp"
@@ -20,6 +21,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <cstdlib>
 #include <iterator>
 #include <memory>
 #include <utility>
@@ -80,14 +82,15 @@ Scene& Scene::operator=(Scene&& other) noexcept
     return *this;
 }
 
-/// @brief Entity 管理
-EntityID Scene::AllocateEntity() {
+EntityID Scene::TryAllocateEntity() {
+    if (m_freeIndices.empty() && m_nextIndex >= MAX_ENTITIES)
+        return EntityID::INVALID;
+
     uint32_t idx;
     if (!m_freeIndices.empty()) {
         idx = m_freeIndices.back();
         m_freeIndices.pop_back();
     } else {
-        assert(m_nextIndex < MAX_ENTITIES && "Entity 数が MAX_ENTITIES を超えました");
         idx = m_nextIndex++;
     }
     ++m_generations[idx];
@@ -155,9 +158,13 @@ bool Scene::IsValid(EntityID id) const {
     return m_generations[id.index] == id.generation;
 }
 
-/// @brief GameObject 生成
-GameObject& Scene::CreateGameObject(const std::string& name) {
-    EntityID id = AllocateEntity();
+GameObject* Scene::TryCreateGameObject(const std::string& name) {
+    const EntityID id = TryAllocateEntity();
+    if (!id.IsValid()) {
+        FBZZ_LOG_WARN("Scene::TryCreateGameObject: capacity %u reached; cannot create '%s'",
+                      MAX_ENTITIES, name.c_str());
+        return nullptr;
+    }
 
     auto go            = std::make_unique<GameObject>();
     go->name           = name;
@@ -169,7 +176,22 @@ GameObject& Scene::CreateGameObject(const std::string& name) {
     m_entityToGameObject[id.index] = ptr;
     m_gameObjects.push_back(std::move(go));
 
-    return *ptr;
+    return ptr;
+}
+
+GameObject& Scene::CreateGameObject(const std::string& name) {
+    GameObject* gameObject = TryCreateGameObject(name);
+    assert(gameObject && "CreateGameObject requires available capacity; use TryCreateGameObject");
+    if (!gameObject) std::abort();
+    return *gameObject;
+}
+
+size_t Scene::RemainingEntityCapacity() const {
+    return static_cast<size_t>(MAX_ENTITIES - m_nextIndex) + m_freeIndices.size();
+}
+
+bool Scene::CanCreateGameObjects(size_t count) const {
+    return count <= RemainingEntityCapacity();
 }
 
 GameObject* Scene::FindByGuid(const std::string& guid) const {

@@ -572,7 +572,9 @@ void UpdateWaterSplashes(Scene& scene)
         scene.DestroyGameObject(id);
 
     for (const SplashEvent& ev : s_pendingSplashes) {
-        auto& go = scene.CreateGameObject(kSplashObjectName);
+        auto* created = scene.TryCreateGameObject(kSplashObjectName);
+        if (!created) break;
+        auto& go = *created;
         /// @note 数秒で消える演出用。保存に混ざると開くたびに消えない GO が増える。
         go.runtimeGenerated = true;
         go.transform.position = ev.worldPos;

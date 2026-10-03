@@ -9,6 +9,7 @@
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Util/ScriptObjectFactory.hpp>
 #include <Editor/Util/Selection.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Environment/SceneEnvironment.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -27,9 +28,9 @@ namespace {
 
 /// @brief 1 回の生成の結果。Redo で同じ instanceId を名乗り直すために持ち越す。
 struct CreationRecord {
-    std::vector<std::string> destroyGuids; ///< Undo で消す最上位 (自動で足した Canvas を含む)
-    std::vector<std::string> primaryGuids; ///< 要求どおりに作ったルート
-    std::vector<std::string> allGuids;     ///< destroyGuids 以下の全 GameObject (深さ優先)
+    std::vector<std::string> destroyGuids; ///< @brief Undo で消す最上位 (自動で足した Canvas を含む)
+    std::vector<std::string> primaryGuids; ///< @brief 要求どおりに作ったルート
+    std::vector<std::string> allGuids;     ///< @brief destroyGuids 以下の全 GameObject (深さ優先)
     /// @brief GameObject を作らずシーン設定だけを変えるプリセット (env.ambientWind) だったか。
     bool                     settingsOnly = false;
     /// @brief settingsOnly のとき Undo で戻す値。
@@ -80,10 +81,18 @@ scene::GameObject* FindCanvasInAncestors(scene::GameObject* go)
     return nullptr;
 }
 
+std::size_t RequiredPresetEntities(const EditorContext& ctx, const ObjectPreset& preset,
+                                  scene::GameObject* parent)
+{
+    if (preset.placement != PresetPlacement::UIElement || FindCanvasInAncestors(parent))
+        return preset.entityCount;
+    auto* canvas = ctx.activeScene->GetGameObject(ctx.activeUICanvas);
+    return preset.entityCount + (canvas && canvas->GetComponent<scene::UICanvas>() ? 0 : 1);
+}
+
 /// @brief UI 要素の入れ先を決める。
 /// @param outCreatedCanvas 新しく Canvas を作ったらその ID。
-/// @note 祖先に Canvas があればそのまま。無ければ activeUICanvas、それも無ければルートに Canvas を作る。
-///       Canvas を持たない 3D の親の下へ UI を入れても描かれないので、指定された親より Canvas を優先する。
+/// @note 祖先に Canvas があればそのまま。無ければ activeUICanvas、それも無ければルートに Canvas を作る。 Canvas を持たない 3D の親の下へ UI を入れても描かれないので、指定された親より Canvas を優先する。
 scene::GameObject* ResolveUIParent(EditorContext& ctx, scene::GameObject* requestedParent,
                                    scene::EntityID& outCreatedCanvas)
 {
@@ -142,6 +151,16 @@ bool RunCreation(EditorContext& ctx, const CreateObjectRequest& request, Creatio
     }
 
     const PresetPlacement placement = PlacementOf(request);
+    if (request.source == CreateObjectSource::Preset) {
+        const ObjectPreset* preset = FindObjectPreset(request.key);
+        if (!preset || !activeScene->CanCreateGameObjects(RequiredPresetEntities(ctx, *preset, parent))) {
+            FBZZ_LOG_WARN("Object creation: insufficient entity capacity");
+            return false;
+        }
+    } else if (request.source == CreateObjectSource::Script && !activeScene->CanCreateGameObjects()) {
+        FBZZ_LOG_WARN("Script object creation: insufficient entity capacity");
+        return false;
+    }
     scene::EntityID createdCanvas{};
     if (placement == PresetPlacement::UIElement) parent = ResolveUIParent(ctx, parent, createdCanvas);
     const scene::EntityID parentId = parent != nullptr ? parent->GetID() : scene::EntityID{};
@@ -153,8 +172,8 @@ bool RunCreation(EditorContext& ctx, const CreateObjectRequest& request, Creatio
             activeScene->DestroyGameObject(createdCanvas);
             if (ctx.activeUICanvas == createdCanvas) ctx.activeUICanvas = scene::EntityID::INVALID;
         }
-        /// @note プリセットが nullptr を返すのは «GameObject を作らずシーン設定を変える» 契約 (ObjectPresets.hpp)。
-        if (request.source != CreateObjectSource::Preset || placement != PresetPlacement::World) return false;
+        const ObjectPreset* preset = request.source == CreateObjectSource::Preset ? FindObjectPreset(request.key) : nullptr;
+        if (!preset || preset->entityCount != 0) return false;
         record = {};
         record.settingsOnly      = true;
         record.environmentBefore = environmentBefore;
@@ -205,7 +224,7 @@ bool RunCreation(EditorContext& ctx, const CreateObjectRequest& request, Creatio
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 bool ValidateCreateObjectRequest(const EditorContext& ctx, const CreateObjectRequest& request,
                                  std::string& outCode, std::string& outMessage)
@@ -251,6 +270,16 @@ bool ValidateCreateObjectRequest(const EditorContext& ctx, const CreateObjectReq
         }
         break;
     }
+    }
+    if (request.source != CreateObjectSource::Prefab) {
+        const ObjectPreset* preset = request.source == CreateObjectSource::Preset ? FindObjectPreset(request.key) : nullptr;
+        auto* parent = request.parentGuid.empty() ? nullptr : ctx.activeScene->FindByGuid(request.parentGuid);
+        const std::size_t required = preset ? RequiredPresetEntities(ctx, *preset, parent) : 1;
+        if (!ctx.activeScene->CanCreateGameObjects(required)) {
+            outCode = "SCENE_CAPACITY";
+            outMessage = "シーンの GameObject 上限を超えるため作成できません";
+            return false;
+        }
     }
     return true;
 }
@@ -360,4 +389,4 @@ const char* PrefabInstanceChildWarning()
            "Revert from Prefab and prefab updates remove them; Apply to Prefab writes them into the asset.";
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

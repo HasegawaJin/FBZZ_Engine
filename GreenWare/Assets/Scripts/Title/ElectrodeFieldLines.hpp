@@ -2,14 +2,14 @@
 /// @brief   電荷の芯から外へ伸びる電気力線。極を «線の湧き出し口» として見せる。
 /// @author  Hasegawa Jin
 /// @date    2026-08-24
-///
+
 /// @note 放電と別にもう 1 種類の線を引く理由: 放電 (ElectricArc) は «対» の持ち物で
-///       ＋と−の間だけを繋ぐ。力線は 1 個の電荷の持ち物なので、極ごとに放射状へ生やせる。
+/// @note ＋と−の間だけを繋ぐ。力線は 1 個の電荷の持ち物なので、極ごとに放射状へ生やせる。
 /// @note まっすぐ伸ばさず場を積分する理由: 放射状の直線だけだと «ウニ» で、電荷が
-///       2 つある事実が線に出ない。場 E = Σ q(x - p)/|x - p|^3 を積分すると、
-///       相手側へ向いた線は引き寄せられ、反対側は逃げる ─ 引力と斥力が線の «形» になる。
+/// @note 2 つある事実が線に出ない。場 E = Σ q(x - p)/|x - p|^3 を積分すると、
+/// @note 相手側へ向いた線は引き寄せられ、反対側は逃げる ─ 引力と斥力が線の «形» になる。
 /// @note 種を画面平面 (ワールド XY) に置く理由: ElectrodeCore と同じく、極は XZ 平面を
-///       周回するため、極の並びを基準に撒くとカメラ方向で線束が 1 本へ潰れる。
+/// @note 周回するため、極の並びを基準に撒くとカメラ方向で線束が 1 本へ潰れる。
 #pragma once
 
 #include <Engine/Scene/Components/PresentationComponents.hpp>
@@ -30,47 +30,47 @@ using namespace fbzz::math;
 
 namespace sandbox {
 
-/// 力線を曲げる電荷 1 個。ElectrodeRig が盤面の全極ぶんを組んで渡す。
+/// @note 力線を曲げる電荷 1 個。ElectrodeRig が盤面の全極ぶんを組んで渡す。
 struct ElectrodeCharge {
     Vector3 position = Vector3::ZERO;
-    /// ＋で +1、−で −1。電荷量は全極で等しい前提 (タイトルは対の演出しか置かない)。
+    /// @note ＋で +1、−で −1。電荷量は全極で等しい前提 (タイトルは対の演出しか置かない)。
     float   sign     = 1.0f;
 };
 
-/// 1 本の極から出る力線束の見た目の設定。
+/// @note 1 本の極から出る力線束の見た目の設定。
 struct ElectrodeFieldStyle {
-    /// 芯から出る本数。0 で力線を出さない。
+    /// @note 芯から出る本数。0 で力線を出さない。
     int   lineCount   = 10;
-    /// 1 本あたりの折れ点数。増やしても «曲がりの滑らかさ» にしか効かない。
+    /// @note 1 本あたりの折れ点数。増やしても «曲がりの滑らかさ» にしか効かない。
     /// @note 長さを伸ばしたら点も増やすこと: 刻み幅は length / segments なので、
-    ///       長いまま点が少ないと極のそばの曲がりのきつい所で追従できず、線が相手を
-    ///       素通りして裏へ回る。
+    /// @note 長いまま点が少ないと極のそばの曲がりのきつい所で追従できず、線が相手を
+    /// @note 素通りして裏へ回る。
     int   segments    = 44;
-    /// 線の道のり [m]。直線距離ではないので、曲がるぶん到達点は近くなる。
+    /// @note 線の道のり [m]。直線距離ではないので、曲がるぶん到達点は近くなる。
     /// @note 既定を «相手に届く» 長さにする理由: 途中で切ると 2 つの電荷が «たまたま
-    ///       隣にある別のもの» に見える。届かなかった線は先細りして «外へ逃げる力線»
-    ///       として残る。
+    /// @note 隣にある別のもの» に見える。届かなかった線は先細りして «外へ逃げる力線»
+    /// @note として残る。
     float length      = 9.0f;
-    /// 湧き出し口の半径 [m]。端子の輪より外に置かないと符号が線に埋もれる。
+    /// @note 湧き出し口の半径 [m]。端子の輪より外に置かないと符号が線に埋もれる。
     float startRadius = 0.75f;
     float width       = 0.055f;
-    /// 先端の太さの比 [0,1]。シェーダーに端のフェードが無いので、細らせて消し際を作る。
+    /// @note 先端の太さの比 [0,1]。シェーダーに端のフェードが無いので、細らせて消し際を作る。
     float tipTaper    = 0.1f;
     float intensity   = 1.1f;
-    /// 線を流れる粒の数 (1 本あたり)。0 で粒を出さない。
+    /// @note 線を流れる粒の数 (1 本あたり)。0 で粒を出さない。
     float beads       = 4.0f;
-    /// 粒の速さ。向きは極性が決める (＋は外向き / −は内向き)。
+    /// @note 粒の速さ。向きは極性が決める (＋は外向き / −は内向き)。
     float travel      = 1.1f;
-    /// 束全体を回す角速度 [deg/s]。0 で止まる。
+    /// @note 束全体を回す角速度 [deg/s]。0 で止まる。
     float spin        = 7.0f;
-    /// 種の角度を隣の線との間隔の何割ずらすか [0,1)。
+    /// @note 種の角度を隣の線との間隔の何割ずらすか [0,1)。
     /// @note 極ごとにずらす理由: ＋と−で種の角度が揃うと同じ曲線を 2 度描いて
-    ///       «明るさだけ倍の 1 本» になる。半間隔ずらすと入れ子の束になり詰まって見える。
+    /// @note «明るさだけ倍の 1 本» になる。半間隔ずらすと入れ子の束になり詰まって見える。
     float seedStagger = 0.0f;
 
-    /// 根元の色 = この極の極性色。ElectrodeRig が ElectrodePole から入れる。
+    /// @note 根元の色 = この極の極性色。ElectrodeRig が ElectrodePole から入れる。
     Vector4 color     = { 1.0f, 0.16f, 0.18f, 1.0f };
-    /// 相手の極まで届いた線の先端の色 = 逆極の極性色。対になっていることを線で示す。
+    /// @note 相手の極まで届いた線の先端の色 = 逆極の極性色。対になっていることを線で示す。
     Vector4 tipColor  = { 0.10f, 0.35f, 1.00f, 1.0f };
     Vector4 coreColor = { 2.6f, 2.5f, 2.4f, 1.0f };
     float   coreWidth   = 0.30f;
@@ -80,8 +80,8 @@ struct ElectrodeFieldStyle {
     std::string materialPath = "Assets/Materials/Effects/ElectricArc.mat";
 };
 
-/// 場の強さ。芯の中で 1/r^2 が発散すると 1 フレームで線が画面外まで飛ぶので、
-/// 極に潰れるほど近い点は寄与から外す。
+/// @note 場の強さ。芯の中で 1/r^2 が発散すると 1 フレームで線が画面外まで飛ぶので、
+/// @note 極に潰れるほど近い点は寄与から外す。
 [[nodiscard]] inline Vector3 ElectrodeFieldAt(const Vector3& point,
                                               const std::vector<ElectrodeCharge>& charges)
 {
@@ -95,7 +95,7 @@ struct ElectrodeFieldStyle {
     return field;
 }
 
-/// 進む向き。flow は ＋極で +1 (場に沿って外へ)、−極で −1 (場を遡って外へ)。
+/// @note 進む向き。flow は ＋極で +1 (場に沿って外へ)、−極で −1 (場を遡って外へ)。
 [[nodiscard]] inline Vector3 ElectrodeFlowDirection(const Vector3& point, float flow,
                                                     const std::vector<ElectrodeCharge>& charges,
                                                     const Vector3& fallback)
@@ -106,26 +106,26 @@ struct ElectrodeFieldStyle {
     return length > EPSILON ? field * (1.0f / length) : fallback;
 }
 
-/// 電極 1 本ぶんの力線束。線ごとに 1 つの LineRenderer を実行時に作って持つ。
+/// @note 電極 1 本ぶんの力線束。線ごとに 1 つの LineRenderer を実行時に作って持つ。
 class ElectrodeFieldLines {
 public:
-    /// 毎フレーム呼ぶ。origin と charges はワールド座標。
+    /// @note 毎フレーム呼ぶ。origin と charges はワールド座標。
     void Update(Script& owner, Pole pole, const Vector3& origin,
                 const std::vector<ElectrodeCharge>& charges,
                 const ElectrodeFieldStyle& style, float dt);
-    /// 線ごと片付ける。
+    /// @note 線ごと片付ける。
     void Detach(const Script& owner);
 
 private:
     void EnsureLines(Script& owner, std::size_t count, const ElectrodeFieldStyle& style);
-    /// 1 本ぶんの経路を組む。逆極の芯に着いて打ち切ったときだけ true。
+    /// @note 1 本ぶんの経路を組む。逆極の芯に着いて打ち切ったときだけ true。
     [[nodiscard]] bool BuildPath(std::vector<Vector3>& out, const Vector3& origin,
                                  const Vector3& seedDirection, float flow,
                                  const std::vector<ElectrodeCharge>& charges,
                                  const ElectrodeFieldStyle& style) const;
 
     std::vector<EntityID> m_lines;
-    std::vector<Vector3>  m_points;   ///< 毎フレームの再確保を避けるための作業領域
+    std::vector<Vector3>  m_points;   ///< @note 毎フレームの再確保を避けるための作業領域
     float                 m_spin  = 0.0f;
     float                 m_phase = 0.0f;
 };
@@ -133,6 +133,8 @@ private:
 inline void ElectrodeFieldLines::EnsureLines(Script& owner, std::size_t count,
                                              const ElectrodeFieldStyle& style)
 {
+    if (count > m_lines.size() &&
+        !owner.scene.CanCreate(count - m_lines.size())) return;
     while (m_lines.size() > count) {
         if (GameObject* object = owner.scene.GetGameObject(m_lines.back()))
             owner.scene.Destroy(*object);
@@ -141,11 +143,12 @@ inline void ElectrodeFieldLines::EnsureLines(Script& owner, std::size_t count,
 
     while (m_lines.size() < count) {
         /// @note ElectricArc / ElectrodeCore と同じく、World 空間の点を素直に渡すため
-        ///       原点・無回転のルートへ置く。
-        GameObject& object = owner.scene.Create("ElectrodeField_Line");
-        const EntityID id  = object.GetID();
-        object.runtimeGenerated   = true;
-        object.transform.position = Vector3::ZERO;
+        /// @note 原点・無回転のルートへ置く。
+        GameObject* object = owner.scene.Create("ElectrodeField_Line");
+        if (!object) return;
+        const EntityID id  = object->GetID();
+        object->runtimeGenerated   = true;
+        object->transform.position = Vector3::ZERO;
         m_lines.push_back(id);
 
         if (GameObject* created = owner.scene.GetGameObject(id)) {
@@ -228,7 +231,7 @@ inline void ElectrodeFieldLines::Update(Script& owner, Pole pole, const Vector3&
         const bool    landed = BuildPath(m_points, origin, seed, flow, charges, style);
 
         /// @note 逃げた線の先端は «同じ色相のまま暗く» する。黒にすると、アルファ合成のまま
-        ///       背景を削って黒い髪の毛が残る。相手へ着いた線は逆極の色で終わらせて対を示す。
+        /// @note 背景を削って黒い髪の毛が残る。相手へ着いた線は逆極の色で終わらせて対を示す。
         const Vector4 tip = landed
             ? style.tipColor
             : Vector4{ style.color.x * 0.12f, style.color.y * 0.12f,
@@ -261,7 +264,7 @@ inline void ElectrodeFieldLines::Update(Script& owner, Pole pole, const Vector3&
                           m_phase + static_cast<float>(index) * 0.37f);
         instance.SetFloat(MaterialPropertyId("travel"), travel);
         /// @note 粒は «相手へ流れ込んでいる» 線にだけ乗せる。逃げた線にも流すと、
-        ///       どこへも着かない粒が画面外へ出続けて «漏れている» ように見える。
+        /// @note どこへも着かない粒が画面外へ出続けて «漏れている» ように見える。
         instance.SetFloat(MaterialPropertyId("beadDensity"),
                           landed ? Max(style.beads, 0.0f) : 0.0f);
         instance.SetFloat(MaterialPropertyId("beadFalloff"), 14.0f);
@@ -281,4 +284,4 @@ inline void ElectrodeFieldLines::Detach(const Script& owner)
     m_lines.clear();
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

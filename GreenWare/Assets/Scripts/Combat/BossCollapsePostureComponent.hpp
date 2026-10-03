@@ -2,15 +2,15 @@
 /// @brief   脚を失ったボスの «崩れた体» を、再生中のクリップの上から手続き的に作る
 /// @author  Hasegawa Jin
 /// @date    2026-08-30
-///
+
 /// @note 崩れ方ごとのクリップは焼かない。焼いた姿勢は他の moveset (歩き・踏みつけ等) と
-///       両立せず出した瞬間に立ち上がるため、崩れは «体に掛ける変形» として持ち、
-///       胴を傾けて沈め残った脚を IK で床へ留めるだけで、上のクリップを問わず成立させる。
+/// @note 両立せず出した瞬間に立ち上がるため、崩れは «体に掛ける変形» として持ち、
+/// @note 胴を傾けて沈め残った脚を IK で床へ留めるだけで、上のクリップを問わず成立させる。
 /// @note 残った脚を結ぶ線を蝶番にして解く。四足が 2 本を失うと残り 2 本を結ぶ線が唯一の
-///       支持になり、体はそのまわりで «脚を失った側» へ倒れる。1 本目・3 本目も同じ式で、
-///       «失った側に近い 2 本» の線が蝶番になる (変わるのは倒れる量だけ)。
+/// @note 支持になり、体はそのまわりで «脚を失った側» へ倒れる。1 本目・3 本目も同じ式で、
+/// @note «失った側に近い 2 本» の線が蝶番になる (変わるのは倒れる量だけ)。
 /// @note 倒れ角は定数でなくリグから出す (θ = atan2(付け根の高さ, 蝶番までの距離))。
-///       定数だと前後と左右で同じだけ傾いて «途中で支えられている» 絵になるため。
+/// @note 定数だと前後と左右で同じだけ傾いて «途中で支えられている» 絵になるため。
 #pragma once
 
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
@@ -32,7 +32,7 @@ using fbzz::Time;
 
 namespace sandbox {
 
-/// 崩れた体を作る層。BossRigComponent が «どの脚を失ったか» を押し込む。
+/// @note 崩れた体を作る層。BossRigComponent が «どの脚を失ったか» を押し込む。
 class BossCollapsePostureComponent : public Script {
     FBZZ_SCRIPT(BossCollapsePostureComponent)
 
@@ -59,10 +59,10 @@ public:
     FBZZ_FIELD_RANGE(float, settleSeconds, 0.85f, "Settle", 0.05f, 5.0f)
     FBZZ_TOOLTIP("崩れきるまでの秒数。0 に近いほど «折れた» 感じになり、長いほど «沈む»")
 
-    /// 脚を斬られた «一瞬» の体の反応。崩れ (不可逆) とは別で、必ず立ち姿へ戻る。
+    /// @note 脚を斬られた «一瞬» の体の反応。崩れ (不可逆) とは別で、必ず立ち姿へ戻る。
     /// @note 崩れと同じコンポーネントへ入れる。書き込む先は VisualPivot 1 つしかなく、
-    ///       別スクリプトから書くと崩れていない間 (m_blend==0) にここが毎フレーム ZERO へ
-    ///       戻すため、よろめきが 1 フレームも残らない。
+    /// @note 別スクリプトから書くと崩れていない間 (m_blend==0) にここが毎フレーム ZERO へ
+    /// @note 戻すため、よろめきが 1 フレームも残らない。
     FBZZ_GROUP("のけぞり")
     FBZZ_FIELD(bool, stagger, true, "のけぞり")
     FBZZ_TOOLTIP("斬られた脚の側へ体を泳がせる。切ると脚だけが反応する")
@@ -89,13 +89,13 @@ public:
     FBZZ_FIELD_RANGE(float, groundOffset, 0.0f, "接地のオフセット", -1.0f, 1.0f)
     FBZZ_TOOLTIP("足を置く高さの微調整。ボス本体の足元を床とみなす")
 
-    /// 壊れた脚は本体に残る (BossRigComponent の «壊れた脚を残す»)。残っている以上、
-    /// 崩れた体と一緒に床へ突き刺さる ── 脚が «伸びたまま» 動かないためで、傾きの側の
-    /// 問題ではない。
+    /// @note 壊れた脚は本体に残る (BossRigComponent の «壊れた脚を残す»)。残っている以上、
+    /// @note 崩れた体と一緒に床へ突き刺さる ── 脚が «伸びたまま» 動かないためで、傾きの側の
+    /// @note 問題ではない。
     /// @note «畳む» で解く。IK の的を «付け根の真下・床の上・伸びきらない距離» へ置けば、
-    ///       足が床を貫通しない・脚が伸びきらない・体が沈むほど畳まれる、が同時に満たされる。
+    /// @note 足が床を貫通しない・脚が伸びきらない・体が沈むほど畳まれる、が同時に満たされる。
     /// @note メッシュを消す/傾きを浅くする案は採らない。どちらも «残す» «脚を失って崩れた»
-    ///       という直したい絵そのものを削ることになる。
+    /// @note という直したい絵そのものを削ることになる。
     FBZZ_GROUP("壊れた脚")
     FBZZ_FIELD(bool, foldBrokenLegs, true, "壊れた脚を畳む")
     FBZZ_TOOLTIP("壊れた脚を膝から畳んで床の上へ置く。切ると脚がクリップのまま伸びて"
@@ -114,7 +114,7 @@ public:
     FBZZ_GROUP("デバッグ")
     /// @brief 戦わずに崩れ「方」だけを見る口。倒れる向き・角・沈みの調整用。
     /// @note 本番のもぐボタン (BossRigComponent の Break FR 等) と別にする: あちらは
-    ///       一度もぐと Stop まで戻らず微調整に向かない。これは見た目だけで AI/判定は動かない。
+    /// @note 一度もぐと Stop まで戻らず微調整に向かない。これは見た目だけで AI/判定は動かない。
     FBZZ_FIELD(bool, previewFR, false, "Preview FR")
     FBZZ_FIELD(bool, previewFL, false, "Preview FL")
     FBZZ_FIELD(bool, previewBR, false, "Preview BR")
@@ -127,7 +127,7 @@ public:
 
     /// @brief 失った脚のビット (FR=1 / FL=2 / BR=4 / BL=8)。壊した側から押し込む。
     /// @note こちらから引かない: 状態を持つ BossRigComponent が既にこちらを include して
-    ///       いるため、逆方向に引くと include が循環する。
+    /// @note いるため、逆方向に引くと include が循環する。
     void SetBrokenMask(int mask) { m_mask = mask & 0xF; }
     [[nodiscard]] int  BrokenMask() const
     {
@@ -135,16 +135,16 @@ public:
                           | (previewBR ? 4 : 0) | (previewBL ? 8 : 0);
         return preview != 0 ? preview : m_mask;
     }
-    /// 崩れ切っているか。0 = 健在 / 1 = 完全に崩れた。
+    /// @note 崩れ切っているか。0 = 健在 / 1 = 完全に崩れた。
     [[nodiscard]] float Blend() const { return m_blend; }
 
-    /// 脚を斬られた。その脚の側へ体を泳がせる。
-    ///
+    /// @note 脚を斬られた。その脚の側へ体を泳がせる。
+
     /// @param towardWorld  傾ける先のワールド座標 (斬られた脚の位置)。水平成分だけ使う。
     /// @param strength     1.0 で staggerDegrees ぶん。溜め斬りは 1 より大きい値を渡す。
     void Stagger(const Vector3& towardWorld, float strength);
 
-    /// 今よろめいている量 [degrees]。HUD や他の演出が読める。
+    /// @note 今よろめいている量 [degrees]。HUD や他の演出が読める。
     [[nodiscard]] float StaggerDegrees() const { return ToDeg(m_lean.Length()); }
 
     void OnUpdate() override;
@@ -152,7 +152,7 @@ public:
 private:
     /// @brief 崩れ用チェーンの order 起点。
     /// @note 引き合い (700) より前に置く: 両方が同時に掛かる瞬間 (残り 2 本を引かれて全損)
-    ///       は引かれる絵を見せたいため、後から解く方が勝つ規則を利用して先に解く。
+    /// @note は引かれる絵を見せたいため、後から解く方が勝つ規則を利用して先に解く。
     static constexpr int kChainOrder = 600;
 
     [[nodiscard]] static const char* SuffixOf(int leg);
@@ -169,61 +169,61 @@ private:
     void ReleaseChains();
     /// @brief 壊れた脚を膝から畳んで床の上へ置く。崩れているかに関わらず毎フレーム。
     /// @note 崩れ (m_blend) から切り離す: 脚がクリップで床を出入りするのは崩れ中に限らない。
-    ///       畳む条件は「壊れているから」だけで足りる。
+    /// @note 畳む条件は「壊れているから」だけで足りる。
     void DriveBrokenLegs(GameObject& self, float groundY, float dt);
-    /// 蝶番の軸・場所・倒す向き・倒れ角 (rad) を解く。1 本も失っていなければ false。
+    /// @note 蝶番の軸・場所・倒す向き・倒れ角 (rad) を解く。1 本も失っていなければ false。
     [[nodiscard]] bool SolveHinge(Vector3& axisLocal, Vector3& pivotLocal,
                                   float& sign, float& angleRad) const;
     [[nodiscard]] bool FootLocal(int leg, Vector3& out) const;
-    /// 脚の付け根 (Thigh)。床に当たって倒れが止まる点。
+    /// @note 脚の付け根 (Thigh)。床に当たって倒れが止まる点。
     [[nodiscard]] bool HipLocal(int leg, Vector3& out) const;
-    /// 付け根のワールド位置。IK の的が届くかを測る起点。
+    /// @note 付け根のワールド位置。IK の的が届くかを測る起点。
     [[nodiscard]] bool HipWorld(int leg, Vector3& out) const;
-    /// 付け根から足先までの伸びきった長さ。骨の並びから測る。
+    /// @note 付け根から足先までの伸びきった長さ。骨の並びから測る。
     [[nodiscard]] float LegReach(int leg) const;
-    /// ボスのローカル系へ落とす。x = 右 / y = 高さ / z = 前。
+    /// @note ボスのローカル系へ落とす。x = 右 / y = 高さ / z = 前。
     [[nodiscard]] bool ToLocal(const GameObject* bone, Vector3& out) const;
 
     int     m_mask  = 0;
-    /// よろめきのバネ。向きは «倒れる先» の水平単位ベクトル、長さは傾き [rad]。
-    /// 速度と対で持ち、減衰バネで 0 へ戻る。
+    /// @note よろめきのバネ。向きは «倒れる先» の水平単位ベクトル、長さは傾き [rad]。
+    /// @note 速度と対で持ち、減衰バネで 0 へ戻る。
     Vector3 m_lean{};
     Vector3 m_leanVel{};
 
-    /// よろめきを VisualPivot の姿勢へ足す。崩れているぶんだけ効きを弱める。
+    /// @note よろめきを VisualPivot の姿勢へ足す。崩れているぶんだけ効きを弱める。
     void ApplyStagger(GameObject& pivot, float dt);
 
     float   m_blend = 0.0f;
     bool    m_built = false;
 
     /// @note 「失った脚が変わった瞬間」にだけ解き直す。蝶番/足置き場は今の足位置から出すため、
-    ///       毎フレーム解くと IK の出力を次の入力に混ぜて蝶番が流れ続ける (解く瞬間の値は
-    ///       ToLocal が立ち姿へ割り戻して揃える)。
+    /// @note 毎フレーム解くと IK の出力を次の入力に混ぜて蝶番が流れ続ける (解く瞬間の値は
+    /// @note ToLocal が立ち姿へ割り戻して揃える)。
     int     m_solvedMask = -1;
     bool    m_solved     = false;
     Vector3 m_axis{};
     Vector3 m_hinge{};
     float   m_sign  = 1.0f;
-    float   m_angle = 0.0f;   ///< 倒れきったときの角 (rad)
+    float   m_angle = 0.0f;   ///< @note 倒れきったときの角 (rad)
 
-    /// 既に崩れている体が «別の崩れ方» へ移るとき (2 本目の後に 3 本目を失う等) の
-    /// 繋ぎ。蝶番も向きも変わるので、解き直した姿勢をそのまま書くと 1 フレームで
-    /// 別の倒れ方へ飛ぶ。前の姿勢から新しい姿勢へ渡す。
+    /// @note 既に崩れている体が «別の崩れ方» へ移るとき (2 本目の後に 3 本目を失う等) の
+    /// @note 繋ぎ。蝶番も向きも変わるので、解き直した姿勢をそのまま書くと 1 フレームで
+    /// @note 別の倒れ方へ飛ぶ。前の姿勢から新しい姿勢へ渡す。
     Quaternion m_fromRot = Quaternion::Identity();
     Vector3    m_fromPos{};
     float      m_shift = 1.0f;
 
     struct LegPlant {
         EntityRef target;
-        /// 崩れ始めに控えた、ボスのローカル系での足の置き場。
+        /// @note 崩れ始めに控えた、ボスのローカル系での足の置き場。
         Vector3   offset;
-        /// 付け根から足先までの長さ。骨の間隔は姿勢に依らないので 1 度測れば足りる。
+        /// @note 付け根から足先までの長さ。骨の間隔は姿勢に依らないので 1 度測れば足りる。
         float     reach   = 0.0f;
         bool      planted = false;
     };
     LegPlant m_legs[4];
-    /// 壊れた脚を畳み切った度合い [0,1]。もげた瞬間に IK を全開で入れると、
-    /// 伸びた脚が 1 フレームで潰れて «消えた» ように見える。
+    /// @note 壊れた脚を畳み切った度合い [0,1]。もげた瞬間に IK を全開で入れると、
+    /// @note 伸びた脚が 1 フレームで潰れて «消えた» ように見える。
     float    m_fold[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 };
 
@@ -238,8 +238,12 @@ inline const char* BossCollapsePostureComponent::SuffixOf(int leg)
 inline void BossCollapsePostureComponent::EnsureTargets()
 {
     /// @note 毎回名前で拾い直す: DLL リロードで EntityRef は空に戻るが GameObject は
-    ///       Scene に残るため、「作った」と覚えたままだと的が増え続ける。
+    /// @note Scene に残るため、「作った」と覚えたままだと的が増え続ける。
     if (m_built && m_legs[0].target.Resolve(scene)) return;
+    std::size_t missing = 0;
+    for (int leg = 0; leg < 4; ++leg)
+        if (!scene.Find(std::string("BossCollapseTarget") + SuffixOf(leg), true)) ++missing;
+    if (!scene.CanCreate(missing)) return;
 
     GameObject* self = scene.Self();
     if (!self) return;
@@ -251,11 +255,10 @@ inline void BossCollapsePostureComponent::EnsureTargets()
         const std::string name = std::string("BossCollapseTarget") + SuffixOf(leg);
         GameObject* target = scene.Find(name, true);
         if (!target) {
-            /// @note scene.Create は GameObject 配列を再確保するので、掴んだポインタを
-            ///       跨いで作らない。ここは «作って即しまう» だけに留める。
-            GameObject& created      = scene.Create(name);
-            created.runtimeGenerated = true;
-            target = &created;
+            GameObject* created = scene.Create(name);
+            if (!created) return;
+            created->runtimeGenerated = true;
+            target = created;
         }
         m_legs[leg].target = EntityRef{ target->GetID() };
     }
@@ -301,13 +304,13 @@ inline void BossCollapsePostureComponent::ReleaseChains()
             if (chain.type != IKSolverType::FABRIK) continue;
             if (chain.order < kChainOrder || chain.order >= kChainOrder + 4) continue;
             /// @note 畳んだ脚は手放さない。ここで解くと、崩れていない間 (歩けるうちに 1 本
-            ///       失った等) だけ脚が伸びて床へ刺さる ── 直したはずの絵が状況で戻る。
+            /// @note 失った等) だけ脚が伸びて床へ刺さる ── 直したはずの絵が状況で戻る。
             if (foldBrokenLegs && IsBroken(chain.order - kChainOrder)) continue;
             chain.enabled = false;
             chain.weight  = 0.0f;
         }
     /// @note 置き場は消さない。植え直すのは «失った脚が変わったとき» だけで、
-    ///       ここで消すと崩れた直後の 1 フレームで控えた値が飛ぶ。
+    /// @note ここで消すと崩れた直後の 1 フレームで控えた値が飛ぶ。
 }
 
 inline void BossCollapsePostureComponent::DriveBrokenLegs(GameObject& self, float groundY,
@@ -329,7 +332,7 @@ inline void BossCollapsePostureComponent::DriveBrokenLegs(GameObject& self, floa
         if (reach <= 0.0f) continue;
 
         /// @note 逃がす向きは «体の中心から付け根へ» の水平。脚が付いている側そのものなので、
-        ///       どの脚でも «外へ» になる。
+        /// @note どの脚でも «外へ» になる。
         Vector3 outward = hip - self.transform.worldPosition;
         outward.y = 0.0f;
         outward = outward.NormalizedOr(self.transform.Right());
@@ -340,14 +343,14 @@ inline void BossCollapsePostureComponent::DriveBrokenLegs(GameObject& self, floa
                       hip.z + outward.z * std::max(foldSpread, 0.0f) };
 
         /// @note 伸びきらせない。的が遠いと FABRIK は «真っ直ぐ伸ばして的を指す» ので、
-        ///       潰れた脚のはずが «床を突いて踏ん張っている脚» になる。
+        /// @note 潰れた脚のはずが «床を突いて踏ん張っている脚» になる。
         const Vector3 toGoal = goal - hip;
         const float   span   = toGoal.Length();
         const float   limit  = std::max(reach * std::clamp(foldReach, 0.15f, 1.0f), 0.05f);
         if (span > limit && span > 0.0001f) goal = hip + toGoal * (limit / span);
 
         /// @note 縮めた結果が床より下に来ることはないが、床の高さは体の足元から取っている
-        ///       ので、傾いた体では下回りうる。床より下は «貫通» そのものなので必ず戻す。
+        /// @note ので、傾いた体では下回りうる。床より下は «貫通» そのものなので必ず戻す。
         goal.y = std::max(goal.y, groundY);
 
         target->transform.position      = goal;
@@ -364,15 +367,15 @@ inline bool BossCollapsePostureComponent::ToLocal(const GameObject* bone, Vector
     if (!bone || !self) return false;
 
     /// @note ボスの向きは戦闘中ずっと変わる。ワールドのまま控えると、向き直った瞬間に
-    ///       足の置き場が体の反対側へ回り込む。自分の右前ベクトルで分解して持つ。
+    /// @note 足の置き場が体の反対側へ回り込む。自分の右前ベクトルで分解して持つ。
     const Vector3 d = bone->transform.worldPosition - self->transform.worldPosition;
     Vector3 local{ Vector3::Dot(d, self->transform.Right()),
                    d.y,
                    Vector3::Dot(d, self->transform.Forward()) };
 
     /// @note 自分が pivot へ掛けた変形を外して「立っていたときの」値へ戻す。骨のワールド
-    ///       位置は崩れた後の姿勢そのもので、そのまま測ると出力を入力に混ぜてしまい、
-    ///       3 本目を失う等の解き直しで倒れ代が 0 と出て崩れが取り消され立ち姿へ戻る。
+    /// @note 位置は崩れた後の姿勢そのもので、そのまま測ると出力を入力に混ぜてしまい、
+    /// @note 3 本目を失う等の解き直しで倒れ代が 0 と出て崩れが取り消され立ち姿へ戻る。
     if (GameObject* pivot = scene.Find(pivotName, true)) {
         const Vector3 rel = local - pivot->transform.position;
         local = pivot->transform.rotation.Inverse() * rel;
@@ -393,7 +396,7 @@ inline bool BossCollapsePostureComponent::HipLocal(int leg, Vector3& out) const
     GameObject* self = scene.Self();
     if (!self) return false;
     /// @note 付け根は当たり判定を持たないので RigComponent には控えられていない。
-    ///       名前で引く ─ 骨名はシーン内で一意でないため、必ずボスの部分木だけを見る。
+    /// @note 名前で引く ─ 骨名はシーン内で一意でないため、必ずボスの部分木だけを見る。
     return ToLocal(FindInSubtree(*self, std::string("Thigh") + SuffixOf(leg)), out);
 }
 
@@ -413,7 +416,7 @@ inline float BossCollapsePostureComponent::LegReach(int leg) const
     if (!self) return 0.0f;
 
     /// @note README のリグ構成どおり Thigh → Shin → Hock → Foot。節の間隔は姿勢を変えても
-    ///       変わらないので、立っている間に測った値がそのまま伸びきった長さになる。
+    /// @note 変わらないので、立っている間に測った値がそのまま伸びきった長さになる。
     static constexpr const char* kJoints[4] = { "Thigh", "Shin", "Hock", "Foot" };
     Vector3 previous{};
     float   total = 0.0f;
@@ -438,7 +441,7 @@ inline bool BossCollapsePostureComponent::SolveHinge(Vector3& axisLocal,
         known[leg] = FootLocal(leg, foot[leg]);
 
     /// @note 倒れる先は «失った脚の重心»。対角では両側が釣り合って 0 になる ─
-    ///       そのときはどちらでもよく、符号を固定してねじれの向きを一定にする。
+    /// @note そのときはどちらでもよく、符号を固定してねじれの向きを一定にする。
     Vector3 lost{};
     int     lostCount = 0;
     for (int leg = 0; leg < 4; ++leg)
@@ -460,8 +463,8 @@ inline bool BossCollapsePostureComponent::SolveHinge(Vector3& axisLocal,
     Vector3 b{};
     if (aliveCount >= 2) {
         /// @note 蝶番は «失った側に近い 2 本» を結ぶ線。残り 2 本ならその 2 本しかなく、
-        ///       3 本なら失った角を挟む 2 本が選ばれる (残る 1 本は反対側で、体はそれを
-        ///       乗り越えて倒れるのではなく、その線の上でかしぐ)。
+        /// @note 3 本なら失った角を挟む 2 本が選ばれる (残る 1 本は反対側で、体はそれを
+        /// @note 乗り越えて倒れるのではなく、その線の上でかしぐ)。
         const Vector3 dir{ lost.x, 0.0f, lost.z };
         int   pick[2] = { alive[0], alive[1] };
         float best[2] = { -1.0e9f, -1.0e9f };
@@ -475,7 +478,7 @@ inline bool BossCollapsePostureComponent::SolveHinge(Vector3& axisLocal,
         b = foot[pick[1]];
     } else {
         /// @note 残り 1 本以下。線が引けないので、その足を通る «倒れる向きに直交する» 線を
-        ///       蝶番にする。四本とも失えば倒れる先も消えるので、前へ突っ伏す向きを既定にする。
+        /// @note 蝶番にする。四本とも失えば倒れる先も消えるので、前へ突っ伏す向きを既定にする。
         const Vector3 f = aliveCount == 1 ? foot[alive[0]] : Vector3{ 0.0f, 0.0f, 0.0f };
         Vector3 away{ lost.x - f.x, 0.0f, lost.z - f.z };
         const float   awayLen = std::sqrt(away.x * away.x + away.z * away.z);
@@ -494,8 +497,8 @@ inline bool BossCollapsePostureComponent::SolveHinge(Vector3& axisLocal,
     axisLocal = hinge;
 
     /// @note 蝶番の「場所」は選んだ 2 本の足の中点、高さは接地面。原点 (足元中央) 回転だと
-    ///       4.5m 上の胴が横へ振り出され「倒れた」でなく「横っ飛びした」絵になるため、
-    ///       実際に回るのは残った足を結ぶ線の上 (原点を通らない) にする。
+    /// @note 4.5m 上の胴が横へ振り出され「倒れた」でなく「横っ飛びした」絵になるため、
+    /// @note 実際に回るのは残った足を結ぶ線の上 (原点を通らない) にする。
     const Vector3 mid{ (a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, (a.z + b.z) * 0.5f };
     pivotLocal = mid;
     /// @note 蝶番に直交する水平ベクトル。hinge × up がこれになる。
@@ -503,21 +506,21 @@ inline bool BossCollapsePostureComponent::SolveHinge(Vector3& axisLocal,
     const float   side = (lost.x - mid.x) * perp.x + (lost.z - mid.z) * perp.z;
 
     /// @note 角 θ で蝶番周りに回すと点 r は θ·(hinge×r) へ動く (Quaternion の 1 次展開)。
-    ///       真上の点は hinge×up = perp なので「+θ で perp 側へ」倒れる。失った側
-    ///       (side>0 が +perp 側) へ倒すため符号をそのまま使う。
+    /// @note 真上の点は hinge×up = perp なので「+θ で perp 側へ」倒れる。失った側
+    /// @note (side>0 が +perp 側) へ倒すため符号をそのまま使う。
     /// @warning 符号を反転すると見た目が大きく崩れるのではなく「なんか変」としか見えず
-    ///       気付きにくい (対角喪失時は side=0 でどちらでも同じ)。
+    /// @note 気付きにくい (対角喪失時は side=0 でどちらでも同じ)。
     sign = side >= 0.0f ? 1.0f : -1.0f;
 
     /// @note 倒れ角。支えを失った側の付け根が床へ着いたら止まる。蝶番から付け根までの
-    ///       水平距離 d と付け根の高さ h に対して、θ = atan2(h, d) で床に触れる。
-    ///       複数本失っていれば «最初に着いた 1 本» が体を止めるので、最小角を採る。
+    /// @note 水平距離 d と付け根の高さ h に対して、θ = atan2(h, d) で床に触れる。
+    /// @note 複数本失っていれば «最初に着いた 1 本» が体を止めるので、最小角を採る。
     float contact = -1.0f;
     for (int leg = 0; leg < 4; ++leg) {
         Vector3 hip{};
         if (!IsBroken(leg) || !HipLocal(leg, hip)) continue;
         /// @note 倒れる側にある付け根だけが床へ近づく。蝶番の反対側にあるものは «上がる»
-        ///       ので、絶対値で測ると «上がっていく点が床に着く» という嘘の終点になる。
+        /// @note ので、絶対値で測ると «上がっていく点が床に着く» という嘘の終点になる。
         const float d = ((hip.x - mid.x) * perp.x + (hip.z - mid.z) * perp.z) * sign;
         if (d <= 0.0f) continue;
         const float h = std::max(hip.y - mid.y, 0.0f);
@@ -525,12 +528,12 @@ inline bool BossCollapsePostureComponent::SolveHinge(Vector3& axisLocal,
         if (contact < 0.0f || t < contact) contact = t;
     }
     /// @note 付け根が引けないリグでも «崩れない» にはしない。四足の胴を横倒しにする
-    ///       ときの目安として 45 度を置く。
+    /// @note ときの目安として 45 度を置く。
     if (contact < 0.0f) contact = ToRad(45.0f);
 
     /// @note 3 本残る間はまだ三点で立てる (床当たりまで倒すと「1 本折れただけで転倒」に
-    ///       なるため撓みぶんの角で止める)。sagDegrees が既定 0 な理由: 三点接地の剛体は
-    ///       回すと軸外の 1 本が浮く。撓ませるには脚ごとの IK が要るが歩行中は滑るため両立しない。
+    /// @note なるため撓みぶんの角で止める)。sagDegrees が既定 0 な理由: 三点接地の剛体は
+    /// @note 回すと軸外の 1 本が浮く。撓ませるには脚ごとの IK が要るが歩行中は滑るため両立しない。
     angleRad = aliveCount >= 3 ? ToRad(sagDegrees)
                                : contact * std::max(fallRatio, 0.0f);
     /// @note 90 度を越えると «倒れる» ではなく «裏返る»。リグが壊れていても超えさせない。
@@ -551,7 +554,7 @@ inline void BossCollapsePostureComponent::Stagger(const Vector3& towardWorld, fl
     if (toward.LengthSq() <= EPSILON) return;
 
     /// @note 速度へ足す。位置へ直接入れると «瞬間移動してから戻る» になり、当たった
-    ///       衝撃ではなく «別のポーズへ切り替わった» ように見える。
+    /// @note 衝撃ではなく «別のポーズへ切り替わった» ように見える。
     m_leanVel += toward * (ToRad(staggerDegrees) * std::max(strength, 0.0f) * staggerStiffness
                            * 0.05f);
 }
@@ -570,7 +573,7 @@ inline void BossCollapsePostureComponent::ApplyStagger(GameObject& pivot, float 
     m_lean    += m_leanVel * step;
 
     /// @note 連撃で回り続けないよう頭打ちにする。速度ごと削らないと、次のフレームで
-    ///       また上限を超えて «上限に張り付いたまま震える» になる。
+    /// @note また上限を超えて «上限に張り付いたまま震える» になる。
     const float maxLean = ToRad(std::max(staggerMaxDegrees, 0.0f));
     const float amount  = m_lean.Length();
     if (maxLean > 0.0f && amount > maxLean) {
@@ -614,7 +617,7 @@ inline void BossCollapsePostureComponent::OnUpdate()
     const float rate = dt / std::max(settleSeconds, 0.01f);
 
     /// @note 失った脚が変わった瞬間にだけ解く。2 本目の後に 3 本目を失えば蝶番も倒れる
-    ///       向きも変わるので、そのたびに解き直す (測る値は ToLocal が立ち姿へ戻している)。
+    /// @note 向きも変わるので、そのたびに解き直す (測る値は ToLocal が立ち姿へ戻している)。
     const int mask = BrokenMask();
     if (mask != m_solvedMask) {
         m_solvedMask = mask;
@@ -637,11 +640,11 @@ inline void BossCollapsePostureComponent::OnUpdate()
             }
     }
     /// @note 床は «ボス本体の足元»。崩れの足留めと同じ基準にしないと、畳んだ脚だけが
-    ///       別の高さへ置かれて «片脚だけ床が違う» になる。
+    /// @note 別の高さへ置かれて «片脚だけ床が違う» になる。
     const float groundY = self->transform.worldPosition.y + groundOffset;
 
     /// @note 壊れた脚を畳むのは崩れの前。崩れていない間も脚は壊れたままで、
-    ///       伸びていれば床を出入りする (理由は DriveBrokenLegs の @note を参照)。
+    /// @note 伸びていれば床を出入りする (理由は DriveBrokenLegs の @note を参照)。
     DriveBrokenLegs(*self, groundY, dt);
 
     const bool down = collapse && m_solved;
@@ -665,17 +668,17 @@ inline void BossCollapsePostureComponent::OnUpdate()
     const float ease = m_blend * m_blend * (3.0f - 2.0f * m_blend);
     const float rad  = m_angle * ease * m_sign;
     /// @note 沈みと脚の張り出しの重み。«どれだけ倒れたか» は角そのものでなく倒れた高さで
-    ///       効くので sin を採る ─ 9 度のかしぎでは 0.16、60 度の転倒では 0.87 になる。
+    /// @note 効くので sin を採る ─ 9 度のかしぎでは 0.16、60 度の転倒では 0.87 になる。
     const float amt  = std::sin(std::abs(rad));
 
     /// @note 沈みは «1 本あたりの荷重» で効く。残り 1 本で 2 本残りと同じだけしか沈まないと、
-    ///       支えが半分になったのに姿勢が変わらず «片脚で平然と立っている» 絵になる。
-    ///       2 本残りを 1 とした比 (2/本数) を掛ける ─ 1 本以下は倍まで。
+    /// @note 支えが半分になったのに姿勢が変わらず «片脚で平然と立っている» 絵になる。
+    /// @note 2 本残りを 1 とした比 (2/本数) を掛ける ─ 1 本以下は倍まで。
     const int   alive = AliveCount();
     const float load  = std::min(2.0f / static_cast<float>(std::max(alive, 1)), 2.0f);
 
     /// @note 蝶番の線を «その場に留めたまま» 回す。回転だけでは節の原点が中心になるので、
-    ///       T(P) · R · T(-P) を «回転 + 位置» の 2 つに畳んで入れる。
+    /// @note T(P) · R · T(-P) を «回転 + 位置» の 2 つに畳んで入れる。
     const Quaternion rot = Quaternion::FromAxisAngle(m_axis, rad);
     const Vector3    p   = m_hinge;
     const Vector3    moved = rot * p;
@@ -684,7 +687,7 @@ inline void BossCollapsePostureComponent::OnUpdate()
                           p.z - moved.z };
 
     /// @note 崩れ方が切り替わった直後だけ、前の姿勢から渡す。初回の崩れでは m_shift は
-    ///       最初から 1 なので、ease の掛かった素の値がそのまま出る。
+    /// @note 最初から 1 なので、ease の掛かった素の値がそのまま出る。
     m_shift = std::clamp(m_shift + rate, 0.0f, 1.0f);
     const float shift = m_shift * m_shift * (3.0f - 2.0f * m_shift);
     pivot->transform.rotation = shift >= 1.0f
@@ -696,8 +699,8 @@ inline void BossCollapsePostureComponent::OnUpdate()
     ApplyStagger(*pivot, dt);
 
     /// @note 3 本残っている間はまだ歩ける (BossRigComponent の crippleAtBrokenLegs)。
-    ///       そこで足を床へ縫い付けると、かしいだ体の下で歩行クリップの脚だけが止まって
-    ///       «滑って移動する置物» になる。留めるのは歩けなくなってからにする。
+    /// @note そこで足を床へ縫い付けると、かしいだ体の下で歩行クリップの脚だけが止まって
+    /// @note «滑って移動する置物» になる。留めるのは歩けなくなってからにする。
     if (!holdFeet || alive > 2) {
         ReleaseChains();
         return;
@@ -708,7 +711,7 @@ inline void BossCollapsePostureComponent::OnUpdate()
         if (!chain) continue;
 
         /// @note 壊れた脚は DriveBrokenLegs が畳んで持っている。ここで触ると的が
-        ///       «床へ留める» と «畳む» で毎フレーム奪い合う。
+        /// @note «床へ留める» と «畳む» で毎フレーム奪い合う。
         if (IsBroken(leg)) {
             m_legs[leg].planted = false;
             if (!foldBrokenLegs) {
@@ -724,13 +727,13 @@ inline void BossCollapsePostureComponent::OnUpdate()
         if (!target) continue;
 
         /// @note 置き場はボスのローカル系で持っているので、引きずって動いても向き直っても
-        ///       足は «体に対して同じ所» の床に付いたままになる ─ それが引きずる絵になる。
+        /// @note 足は «体に対して同じ所» の床に付いたままになる ─ それが引きずる絵になる。
         const Vector3 origin = self->transform.worldPosition;
         const Vector3 right  = self->transform.Right();
         const Vector3 fwd    = self->transform.Forward();
         /// @note 張り出しは毎フレーム掛ける。Inspector で詰めている最中に効きが変わらないと、
-        ///       一度崩してから直しても «動かない» ように見える。倒れる量に比例させる ─
-        ///       1 本失っただけでかしいでいる間に脚だけ全開で開くと «踏ん張り» を通り越す。
+        /// @note 一度崩してから直しても «動かない» ように見える。倒れる量に比例させる ─
+        /// @note 1 本失っただけでかしいでいる間に脚だけ全開で開くと «踏ん張り» を通り越す。
         const float   spread = 1.0f + (footSpread - 1.0f) * std::clamp(amt, 0.0f, 1.0f);
         const float   sx  = m_legs[leg].offset.x * spread;
         const float   sz  = m_legs[leg].offset.z * spread;
@@ -739,8 +742,8 @@ inline void BossCollapsePostureComponent::OnUpdate()
                       origin.z + right.z * sx + fwd.z * sz };
 
         /// @note 脚の長さの中へ収める: 体が倒れると付け根は足から遠ざかる。届かない的のまま
-        ///       FABRIK に渡すと脚が真っ直ぐ伸びて的の方を向くだけで足が宙に浮くため、
-        ///       届く範囲で床の上へ引き寄せる。
+        /// @note FABRIK に渡すと脚が真っ直ぐ伸びて的の方を向くだけで足が宙に浮くため、
+        /// @note 届く範囲で床の上へ引き寄せる。
         Vector3 hip{};
         if (HipWorld(leg, hip) && m_legs[leg].reach > 0.0f) {
             const float rise = std::max(hip.y - groundY, 0.0f);
@@ -764,4 +767,4 @@ inline void BossCollapsePostureComponent::OnUpdate()
     }
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

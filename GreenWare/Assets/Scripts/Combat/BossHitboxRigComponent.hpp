@@ -2,13 +2,13 @@
 /// @brief   ボスの当たり判定をボーン階層から組み立てる。移動用コライダーとは別系統
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
-///
+
 /// @note 移動用 (ルートのカプセル) と判定用 (骨ごとの当たり) を分ける: 兼用すると脚の間を
-///       抜けたはずの一撃が当たるか、逆にボスが床をすり抜けるかになる。
+/// @note 抜けたはずの一撃が当たるか、逆にボスが床をすり抜けるかになる。
 /// @note ボーン階層から組み立てる (シーンに手で置かない): 59 本を手で置くと左右で寸法が
-///       揃わずリグ更新のたびに置き直しになる。トリガーにするのは、とどめの間合い
-///       (脚の間へ潜り込む) を押し返さないため。ランタイム生成のためシーンには保存されず、
-///       Play のたびに現在のリグから組み直す。
+/// @note 揃わずリグ更新のたびに置き直しになる。トリガーにするのは、とどめの間合い
+/// @note (脚の間へ潜り込む) を押し返さないため。ランタイム生成のためシーンには保存されず、
+/// @note Play のたびに現在のリグから組み直す。
 #pragma once
 
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -27,7 +27,7 @@
 #include <vector>
 
 /// @note Scene.hpp が要る理由: AddComponent / GetScript の template 本体は Scene.hpp の
-///       末尾にある (GameObject.hpp では Scene が前方宣言のみ)。
+/// @note 末尾にある (GameObject.hpp では Scene が前方宣言のみ)。
 using namespace fbzz::scene;
 using namespace fbzz::math;
 using fbzz::Time;
@@ -51,9 +51,9 @@ public:
     FBZZ_TOOLTIP("背のコアを削り切るのに要る量。蓋が開いているあいだしか削れない")
     FBZZ_FIELD_RANGE(float, legRadius, 0.38f, "脚", 0.05f, 3.0f)
     /// @note 既定 false (2026-09-10): 成立条件の衝突行列 (ProjectSettings.toml [physics]
-    ///       ignoreCollisions) はエディタが開いていると古い設定で上書きされ消えることがある。
-    ///       消えた瞬間の壊れ方は「ボスが吹き飛ぶ」と重いため、既定は行列不要側に置く。
-    ///       on にする前に SolidAllowed が毎フレーム見る行列を確認すること。
+    /// @note ignoreCollisions) はエディタが開いていると古い設定で上書きされ消えることがある。
+    /// @note 消えた瞬間の壊れ方は「ボスが吹き飛ぶ」と重いため、既定は行列不要側に置く。
+    /// @note on にする前に SolidAllowed が毎フレーム見る行列を確認すること。
     FBZZ_FIELD(bool, solidLegs, false, "脚と胴でぶつかる (要・衝突行列)")
     FBZZ_TOOLTIP("プレイヤーが 6m の重機をすり抜けないようにする物理の当たり。"
                  "ProjectSettings > Physics の衝突行列で «当たりのレイヤー × ボス本体» と "
@@ -65,19 +65,19 @@ public:
 
     FBZZ_GROUP("レイヤー")
     /// @note 当たりを別レイヤーへ置く理由: 本体とボーン当たりは「同じ物体の 2 表現」で
-    ///       互いに衝突してはいけない。行列はレイヤーの組でしか切れないため分離が必須。
+    /// @note 互いに衝突してはいけない。行列はレイヤーの組でしか切れないため分離が必須。
     FBZZ_FIELD_RANGE_INT(int, hitboxLayer, 9, "当たりのレイヤー", 0, 31)
     FBZZ_TOOLTIP("生成する当たりに入れるレイヤー番号。ProjectSettings > Physics の "
                  "衝突行列で «このレイヤー × ボス本体のレイヤー» と «自分自身» を "
                  "切っておくこと。切らないとボスが自分の脚に押されて吹き飛ぶ")
 
     /// @note 甲板だけ別扱い: 胴の球面 (torsoRadius) の上は必ず滑り落ちるため平らな面が要る。
-    ///       骨の子にしない理由: ボーンのローカル +Y (上方向) が骨ごとに違うため、ボスの
-    ///       ルート姿勢 (PlayerClimbComponent と同じ基準) から毎フレーム置く。
+    /// @note 骨の子にしない理由: ボーンのローカル +Y (上方向) が骨ごとに違うため、ボスの
+    /// @note ルート姿勢 (PlayerClimbComponent と同じ基準) から毎フレーム置く。
     FBZZ_GROUP("甲板")
     /// @note 甲板だけ物理の当たりで済む理由: `attachToParentBody` でボス本体の剛体へ属させると
-    ///       同一ボディのコライダー同士は当たらず (PhysicsSolver) 衝突行列が不要。脚は姿勢が
-    ///       剛体基準になり骨と一緒に回らないうえ地面に届くため同じ手法は使えない。
+    /// @note 同一ボディのコライダー同士は当たらず (PhysicsSolver) 衝突行列が不要。脚は姿勢が
+    /// @note 剛体基準になり骨と一緒に回らないうえ地面に届くため同じ手法は使えない。
     FBZZ_FIELD(bool, buildDeck, true, "甲板の足場を作る")
     FBZZ_TOOLTIP("背に立てる平らな当たり。ボス本体の剛体へ属させるので自己衝突しない。"
                  "off にすると登っても足場が無く、甲羅をすり抜けて落ちる")
@@ -100,18 +100,18 @@ public:
     void OnStart()  override;
     void OnUpdate() override;
 
-    /// 踏みつける脚の «足» ボーン。AI が着弾点を実座標で取るために使う。
+    /// @note 踏みつける脚の «足» ボーン。AI が着弾点を実座標で取るために使う。
     [[nodiscard]] GameObject* FootBone(BossLeg leg) const;
-    /// 吊りコア。弱点表示や VFX の発生点に使う。
+    /// @note 吊りコア。弱点表示や VFX の発生点に使う。
     [[nodiscard]] GameObject* CoreBone() const { return m_core.Resolve(scene); }
 
     /// @brief 当たったオブジェクトからボス本体を引く。
     /// @note 親を遡る: HP/スクリプトはルートにあり、ヒットボックス側に持ち主を書き込むと
-    ///       階層を組み替えるたびに貼り直しになる。
+    /// @note 階層を組み替えるたびに貼り直しになる。
     [[nodiscard]] static GameObject* BossRootOf(GameObject* hit);
 
 private:
-    /// ボーン 1 本ぶんの当たり。to が空なら bone の位置に球を置く。
+    /// @note ボーン 1 本ぶんの当たり。to が空なら bone の位置に球を置く。
     struct Segment {
         std::string from;
         /// @note 空なら球
@@ -119,39 +119,39 @@ private:
         float       radius = 0.3f;
         /// @brief とどめの的になる部位か (Docs/break-parry.md)。
         /// @note 膝下だけにする理由: プレイヤーの射程 2.6m に対しボスは全高 6m あり、
-        ///       Thigh は届かない高さのため。
+        /// @note Thigh は届かない高さのため。
         bool        severable = false;
-        /// 脚の接尾辞 ("_FR" など)。とどめ の的だけが持つ。
+        /// @note 脚の接尾辞 ("_FR" など)。とどめ の的だけが持つ。
         std::string suffix;
         /// @brief 斬撃で削れる部位にするか (BossPartComponent を付ける)。
         /// @note severable と分ける理由: とどめが通るのは膝下だけだが、斬れる部位は
-        ///       膝下+コアの 2 種類あるため、1 つの旗で兼ねると片方が壊れる。
+        /// @note 膝下+コアの 2 種類あるため、1 つの旗で兼ねると片方が壊れる。
         bool        damageable = false;
-        /// 部位の耐久。0 なら BossPartComponent の既定値のまま。
+        /// @note 部位の耐久。0 なら BossPartComponent の既定値のまま。
         int         health = 0;
         /// @brief プレイヤーがぶつかる「固い」当たりにするか。
         /// @note 部位ごとに分ける理由: 脚は塞がないと 6m の重機をすり抜けて歩けてしまう。
-        ///       コアは足場で固いと壁になり、頭は届かず引っ掛かる元になるだけのため外す。
+        /// @note コアは足場で固いと壁になり、頭は届かず引っ掛かる元になるだけのため外す。
         bool        blocking = false;
     };
 
     void Build();
-    /// from → to の間にカプセルを 1 本張る。to が空なら球。
+    /// @note from → to の間にカプセルを 1 本張る。to が空なら球。
     /// @return 作れたら true。ボーンが見つからなければ false。
     bool BuildSegment(const Segment& segment);
-    /// ローカル +Y を direction へ向ける回転。
+    /// @note ローカル +Y を direction へ向ける回転。
     [[nodiscard]] static Quaternion AlignUpTo(const Vector3& direction);
 
     /// @brief ボーンが揃うまで持ち越すセグメント。
     /// @note 1 回で作り切らない理由: ボーン GameObject は AnimatorSystem が実行時に作るため
-    ///       OnStart 時点で 0 本のことがあり、揃うまで毎フレーム作り直さないと当たりが出ない。
+    /// @note OnStart 時点で 0 本のことがあり、揃うまで毎フレーム作り直さないと当たりが出ない。
     std::vector<Segment> m_pending;
-    /// 揃わないまま経った時間 [秒]。諦めて名指しで言うまでの猶予に使う。
+    /// @note 揃わないまま経った時間 [秒]。諦めて名指しで言うまでの猶予に使う。
     float     m_waited = 0.0f;
-    /// 次に作り直しを試すまでの残り [秒]。
+    /// @note 次に作り直しを試すまでの残り [秒]。
     float     m_retryCooldown = 0.0f;
     bool      m_reported = false;
-    /// 衝突行列の不備を 1 度だけ言うための旗。毎フレーム言うとログが埋まる。
+    /// @note 衝突行列の不備を 1 度だけ言うための旗。毎フレーム言うとログが埋まる。
     bool      m_solidWarned = false;
     static constexpr float kRetryInterval  = 0.20f;
     static constexpr float kGiveUpSeconds  = 6.0f;
@@ -161,30 +161,29 @@ private:
 
     /// @brief 当たりを「固く」してよいか。衝突行列が前提を満たしていなければ false。
     /// @note 毎回確かめる (2026-09-10): 行列はエディタが開いていると古い設定で消えることが
-    ///       あり、消えたまま固くすると自己衝突で毎フレーム前へずれ続ける (めり込み解決は
-    ///       位置を直接動かすため速度 0 でも止まらず、AI が前進させているように見える)。
+    /// @note あり、消えたまま固くすると自己衝突で毎フレーム前へずれ続ける (めり込み解決は
+    /// @note 位置を直接動かすため速度 0 でも止まらず、AI が前進させているように見える)。
     [[nodiscard]] bool SolidAllowed();
     /// @brief 「固い」つもりの当たりへ、今の判定を書き込む。
     /// @note 作成後も書き換え可能にする理由: OnStart 時点では物理ワールド未接続のことがあり、
-    ///       1 度きり決め打ちだと安全側のまま固まる。Play 中の solidLegs 変更にも効かせる。
+    /// @note 1 度きり決め打ちだと安全側のまま固まる。Play 中の solidLegs 変更にも効かせる。
     void ApplySolidity(bool solid);
-    /// 固くするつもりの当たり (脚・胴・甲板)。頭やコアは常にトリガーなので入れない。
+    /// @note 固くするつもりの当たり (脚・胴・甲板)。頭やコアは常にトリガーなので入れない。
     std::vector<EntityRef> m_solidParts;
-    /// 直近に書いた «固さ»。変わったフレームだけ書き直す。
+    /// @note 直近に書いた «固さ»。変わったフレームだけ書き直す。
     bool m_solidApplied = false;
-    /// 背の «立てる面»。作れたら true。基準の骨がまだ無ければ false。
+    /// @note 背の «立てる面»。作れたら true。基準の骨がまだ無ければ false。
     bool EnsureDeck();
-    /// 甲板をボスのルート姿勢へ合わせて置き直す。毎フレーム。
+    /// @note 甲板をボスのルート姿勢へ合わせて置き直す。毎フレーム。
     void UpdateDeck();
     EntityRef m_deck;
     EntityRef m_deckAnchor;
-    /// 基準の骨を探し直すまでの残り [秒]。骨はまだ無いのが正常なので、
-    /// 見つからない間ずっと全サブツリーを歩き続けないよう間隔を空ける。
+    /// @note 基準の骨を探し直すまでの残り [秒]。骨はまだ無いのが正常なので、
+    /// @note 見つからない間ずっと全サブツリーを歩き続けないよう間隔を空ける。
     float     m_deckProbeCooldown = 0.0f;
 };
 
 FBZZ_REFLECT(BossHitboxRigComponent)
-
 
 inline GameObject* BossHitboxRigComponent::BossRootOf(GameObject* hit)
 {
@@ -242,8 +241,8 @@ inline void BossHitboxRigComponent::Build()
     segments.push_back({ "Head", "",       headRadius  * scale });
     segments.push_back({ "Rear", "",       rearRadius  * scale });
     /// @note 球にする (2026-09-08): 以前は Core→Muzzle のカプセルだったが、コアを背面へ
-    ///       移し Muzzle を Body の子へ付け替えたため、結ぶと胴体を貫く当たりになってしまう。
-    ///       コアは「蓋が開いている間だけ」斬れる的で、開閉と有効化は BossHatchComponent が握る。
+    /// @note 移し Muzzle を Body の子へ付け替えたため、結ぶと胴体を貫く当たりになってしまう。
+    /// @note コアは「蓋が開いている間だけ」斬れる的で、開閉と有効化は BossHatchComponent が握る。
     segments.push_back({ "Core", "",       coreRadius  * scale, false, "", true, coreHealth });
 
     /// @note 脚は 4 本とも同じ骨並び。README のリグ構成 (Thigh → Shin → Hock → Foot) に従う。
@@ -270,8 +269,7 @@ inline void BossHitboxRigComponent::Build()
 
 inline void BossHitboxRigComponent::ResolveAnchors()
 {
-    /// @note 足とコアは AI と演出が名指しで使う。GameObject を作り終えてから引く
-    ///       (scene.Create が GameObject 配列を再確保するため、生成前に掴んだポインタは無効)。
+    /// @note 足とコアは AI と演出が名指しで使うため、生成後に参照を確定する。
     GameObject* self = scene.Self();
     if (!self) return;
     for (int i = 0; i < 4; ++i) {
@@ -329,28 +327,26 @@ inline bool BossHitboxRigComponent::EnsureDeck()
     if (!self) return false;
     GameObject* anchor = FindInSubtree(*self, deckAnchorBone);
     if (!anchor) return false;
+    GameObject* deck = scene.Create("HB_Deck");
+    if (!deck) return false;
     m_deckAnchor = EntityRef{ anchor->GetID() };
-
-    GameObject& deck = scene.Create("HB_Deck");
-    deck.runtimeGenerated = true;
-    deck.tag   = "Enemy";
-    deck.layer = hitboxLayer & 31;
+    deck->runtimeGenerated = true;
+    deck->tag   = "Enemy";
+    deck->layer = hitboxLayer & 31;
     /// @note 親はボスのルート。骨の子にすると、骨のローカル軸に «上» が乗ってしまう。
-    ///
-    ///       引き直してから繋ぐ。scene.Create が GameObject 配列を再確保するので、
-    ///       上で掴んだ self は既に無効かもしれない (BuildSegment と同じ理由)。
-    if (GameObject* owner = scene.Self()) deck.SetParent(*owner);
 
-    auto& collider = deck.AddComponent<BoxColliderComponent>();
+    if (GameObject* owner = scene.Self()) deck->SetParent(*owner);
+
+    auto& collider = deck->AddComponent<BoxColliderComponent>();
     const float half = std::max(deckHalfWidth, 0.05f);
     collider.SetSize({ half * 2.0f, std::max(deckThickness, 0.02f), half * 2.0f });
     /// @note 甲板は «立つ» のが役目なので固い。
     collider.isTrigger = false;
     /// @note ボス本体の剛体へ属させる。これが無いと «世界に固定された静的コライダー» として
-    ///       胴のカプセルを押し、ボスが勝手に動く / 吹き飛ぶ。
+    /// @note 胴のカプセルを押し、ボスが勝手に動く / 吹き飛ぶ。
     collider.attachToParentBody = true;
 
-    m_deck = EntityRef{ deck.GetID() };
+    m_deck = EntityRef{ deck->GetID() };
     return true;
 }
 
@@ -364,9 +360,9 @@ inline void BossHitboxRigComponent::UpdateDeck()
     if (!anchor || !self) { deck->SetActive(false); return; }
 
     /// @note 上面は「骨から deckRise」、箱の中心はそこから厚みの半分下。ローカルで書く理由:
-    ///       甲板はルートの子で、ワールド姿勢は TransformSystem が親×ローカルから毎フレーム
-    ///       組み直すため、worldPosition へ書くと走る順によって同フレームで捨てられる。
-    ///       向きはルートに合わせる (転倒で骨が回っても背中の向きを保つ)。
+    /// @note 甲板はルートの子で、ワールド姿勢は TransformSystem が親×ローカルから毎フレーム
+    /// @note 組み直すため、worldPosition へ書くと走る順によって同フレームで捨てられる。
+    /// @note 向きはルートに合わせる (転倒で骨が回っても背中の向きを保つ)。
     const float      half = std::max(deckThickness, 0.02f) * 0.5f;
     const Quaternion inv  = self->transform.worldRotation.Inverse();
     Vector3 local = inv * (anchor->transform.worldPosition - self->transform.worldPosition);
@@ -393,7 +389,7 @@ inline void BossHitboxRigComponent::OnUpdate()
     if (EnsureDeck()) UpdateDeck();
 
     /// @note 前提が満たされたか / 崩れたかを追う。Build は OnStart で走るので、そこでは
-    ///       まだ物理ワールドがスクリプトへ渡っていないことがある。
+    /// @note まだ物理ワールドがスクリプトへ渡っていないことがある。
     const bool solid = SolidAllowed();
     if (solid != m_solidApplied) {
         ApplySolidity(solid);
@@ -403,14 +399,14 @@ inline void BossHitboxRigComponent::OnUpdate()
     if (m_pending.empty()) return;
 
     /// @note 毎フレーム試さない (2026-09-08): BuildSegment は 1 本ごとに全サブツリーを再帰で
-    ///       歩くため、15 本保留のままだと正常時もずっと重くなる。数百 ms 遅れても害は無い。
+    /// @note 歩くため、15 本保留のままだと正常時もずっと重くなる。数百 ms 遅れても害は無い。
     m_waited += Time::deltaTime;
     m_retryCooldown -= Time::deltaTime;
     if (m_retryCooldown > 0.0f) return;
     m_retryCooldown = kRetryInterval;
 
     /// @note 揃った物から順に生かす。1 フレームで全部揃う保証は無い
-    ///       (AnimatorSystem がボーンを作る順はこちらから見えない)。
+    /// @note (AnimatorSystem がボーンを作る順はこちらから見えない)。
     for (std::size_t i = m_pending.size(); i-- > 0; ) {
         if (!BuildSegment(m_pending[i])) continue;
         ++debugHitboxes;
@@ -421,7 +417,7 @@ inline void BossHitboxRigComponent::OnUpdate()
     if (m_pending.empty()) { ResolveAnchors(); return; }
 
     /// @note 綴り違いは「その部位だけ当たらない」形でしか出ないため名指しで言う。すぐ言わない
-    ///       理由: 起動直後はボーン未生成が正常で、毎回出すと本当の綴り違いと見分けられない。
+    /// @note 理由: 起動直後はボーン未生成が正常で、毎回出すと本当の綴り違いと見分けられない。
     if (m_waited > kGiveUpSeconds && !m_reported) {
         m_reported = true;
         debug.LogError("BossHitboxRigComponent could not find " +
@@ -429,23 +425,21 @@ inline void BossHitboxRigComponent::OnUpdate()
                        " bone(s) after " + std::to_string(static_cast<int>(kGiveUpSeconds)) +
                        "s. Check the rig names against Assets/Models/Boss_01/README.md.");
         /// @note ここまで来たら「まだ出来ていない」でなく「名前が違う」。待っても見つからず
-        ///       探索負荷だけが残るため諦める。
+        /// @note 探索負荷だけが残るため諦める。
         m_pending.clear();
     }
 }
 
 inline bool BossHitboxRigComponent::BuildSegment(const Segment& segment)
 {
-    /// @note 生成のたびに引き直す。scene.Create が GameObject 配列を再確保するので、
-    ///       ループの外で掴んだポインタは 2 本目以降で無効になる。
     GameObject* self = scene.Self();
     if (!self || !FindInSubtree(*self, segment.from)) return false;
 
     const float radius = std::max(segment.radius, 0.01f);
 
     /// @note カプセルの向きと長さは次の骨の位置から出す。ローカル座標を使う理由: ワールド姿勢は
-    ///       TransformSystem 実行後でないと確定しないが、子ボーンのローカル位置はシーンに
-    ///       書かれた値がそのまま使える。
+    /// @note TransformSystem 実行後でないと確定しないが、子ボーンのローカル位置はシーンに
+    /// @note 書かれた値がそのまま使える。
     Vector3    center = Vector3::ZERO;
     Quaternion rotation = Quaternion::Identity();
     float      halfHeight = 0.0f;
@@ -464,44 +458,45 @@ inline bool BossHitboxRigComponent::BuildSegment(const Segment& segment)
         }
     }
 
-    GameObject& hitbox = scene.Create("HB_" + segment.from);
+    GameObject* hitbox = scene.Create("HB_" + segment.from);
+    if (!hitbox) return false;
     /// @note シーンには保存しない。Play のたびにその時点のリグから組み直す。
-    hitbox.runtimeGenerated = true;
+    hitbox->runtimeGenerated = true;
     /// @note 部位はボス本体と同じ «敵» として扱わせる。Mite の接地レイキャストは
-    ///       タグで敵を捨てているので、これが無いとボスの脚を地面と読んで脚の上に浮く。
-    hitbox.tag = "Enemy";
+    /// @note タグで敵を捨てているので、これが無いとボスの脚を地面と読んで脚の上に浮く。
+    hitbox->tag = "Enemy";
     /// @note 当たりのレイヤー。ボス本体と分けないと、固くした瞬間に自分の胴カプセルを
-    ///       押してボスが吹き飛ぶ (solidLegs の @note を参照)。
-    hitbox.layer = hitboxLayer & 31;
+    /// @note 押してボスが吹き飛ぶ (solidLegs の @note を参照)。
+    hitbox->layer = hitboxLayer & 31;
 
     /// @note 親を引き直してから繋ぐ。ローカル姿勢は «繋いだ後» に書く
-    ///       (SetParent がワールド姿勢を保つ実装でも、後から書けば必ずこちらが勝つ)。
+    /// @note (SetParent がワールド姿勢を保つ実装でも、後から書けば必ずこちらが勝つ)。
     GameObject* owner = scene.Self();
     if (GameObject* parent = owner ? FindInSubtree(*owner, segment.from) : nullptr)
-        hitbox.SetParent(*parent);
-    hitbox.transform.position = center;
-    hitbox.transform.rotation = rotation;
+        hitbox->SetParent(*parent);
+    hitbox->transform.position = center;
+    hitbox->transform.rotation = rotation;
 
     /// @note 斬撃は物理でなく BossPartComponent を型で集めて判定するため、当たりはトリガーで
-    ///       足りる。solid にするのはプレイヤーが物理的にぶつかるためだけ。segment.blocking
-    ///       (固くするつもりか) と SolidAllowed (今固くしてよいか) は別軸として分ける。
+    /// @note 足りる。solid にするのはプレイヤーが物理的にぶつかるためだけ。segment.blocking
+    /// @note (固くするつもりか) と SolidAllowed (今固くしてよいか) は別軸として分ける。
     const bool solid = segment.blocking && SolidAllowed();
-    if (segment.blocking) m_solidParts.push_back(EntityRef{ hitbox.GetID() });
+    if (segment.blocking) m_solidParts.push_back(EntityRef{ hitbox->GetID() });
     if (capsule) {
-        auto& collider = hitbox.AddComponent<CapsuleColliderComponent>();
+        auto& collider = hitbox->AddComponent<CapsuleColliderComponent>();
         collider.SetCapsule(radius, halfHeight);
         collider.isTrigger = !solid;
     } else {
-        auto& collider = hitbox.AddComponent<SphereColliderComponent>();
+        auto& collider = hitbox->AddComponent<SphereColliderComponent>();
         collider.SetRadius(radius);
         collider.isTrigger = !solid;
     }
 
     /// @note 斬撃の扇は BossPartComponent を名指しで探すため、削れる部位はここで必ず宣言する
-    ///       (無いと斬っても何も起きない)。とどめの的 (severable) は名前だけで足りるが、
-    ///       削れるかは耐久という状態を持つためスクリプトの置き場所が要る。
+    /// @note (無いと斬っても何も起きない)。とどめの的 (severable) は名前だけで足りるが、
+    /// @note 削れるかは耐久という状態を持つためスクリプトの置き場所が要る。
     if (segment.damageable) {
-        auto& part = hitbox.AddScript<BossPartComponent>();
+        auto& part = hitbox->AddScript<BossPartComponent>();
         part.legSuffix = segment.suffix;
         /// @note 扇の判定はレンダラーを持たない部位に対して «本人の申告» を使う。
         part.hitRadius = radius;
@@ -511,4 +506,4 @@ inline bool BossHitboxRigComponent::BuildSegment(const Segment& segment)
     return true;
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

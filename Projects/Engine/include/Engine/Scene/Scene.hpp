@@ -115,7 +115,18 @@ public:
     /// @note 保存しない寿命識別値。Clear / 移動代入で更新し、再利用された EntityID と区別する。
     [[nodiscard]] uint64_t GetRenderSceneGeneration() const { return m_renderSceneGeneration; }
 
+    /// @return 容量不足なら nullptr。既存 GameObject、Component と Entity の割り当て状態は変更しない。
+    /// @note 非アクティブな GameObject と破棄待ちの GameObject も容量を使う。
+    /// @see Docs/design/scene-capacity.md
+    [[nodiscard]] GameObject* TryCreateGameObject(const std::string& name = "GameObject");
+
+    /// @pre 空き容量を確保済みの内部処理か、容量が既知の初期構築でだけ呼ぶ。
+    /// @note 外部入力や実行中の生成には TryCreateGameObject を使い、容量不足を呼び出し側で扱う。
     GameObject& CreateGameObject(const std::string& name = "GameObject");
+
+    [[nodiscard]] size_t RemainingEntityCapacity() const;
+    /// @note 単一スレッドでの事前確認。枠を予約しないため、生成前の別処理による消費は防がない。
+    [[nodiscard]] bool CanCreateGameObjects(size_t count = 1) const;
 
     /// @note ここは参照解決 (保存・プレハブ・エディター) 用で、無効な GameObject も返す。ゲームスクリプトは ScriptSceneProxy の Find 系 (既定で有効な物だけ) を使う。
     GameObject*              Find(const std::string& name)     const;
@@ -226,7 +237,7 @@ private:
     SceneEnvironment m_environment;
     FlowFieldFrame   m_flowFrame;
 
-    EntityID AllocateEntity();
+    EntityID TryAllocateEntity();
     void     DestroyImmediate(EntityID id);
     void     FixupOwnership();
     void     RemoveAllComponents(EntityID id);

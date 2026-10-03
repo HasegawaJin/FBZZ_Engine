@@ -56,7 +56,7 @@ public:
     FBZZ_GROUP("デバッグ")
     FBZZ_FIELD_READ_ONLY(std::string, debugTargetName, "", "対象")
 
-    /// PlayerComponent が内部モジュールとして持つときに、同じ PlayerAimComponent を渡す。
+    /// @note PlayerComponent が内部モジュールとして持つときに、同じ PlayerAimComponent を渡す。
     void SetAimComponent(PlayerAimComponent* aim) { m_aimOverride = aim; }
 
     void OnStart() override;
@@ -64,9 +64,9 @@ public:
     void OnDestroy() override;
 
 private:
-    /// Canvas のピクセル座標系とワールド単位の換算比。UICanvas::worldScale の逆数。
+    /// @note Canvas のピクセル座標系とワールド単位の換算比。UICanvas::worldScale の逆数。
     static constexpr float kPixelsPerUnit = 100.0f;
-    /// 角 4 つ × (横棒 + 縦棒)。
+    /// @note 角 4 つ × (横棒 + 縦棒)。
     static constexpr int kBarCount = 8;
 
     static constexpr const char* kCanvasName = "AimMarker";
@@ -74,13 +74,13 @@ private:
     [[nodiscard]] PlayerAimComponent* Aim() const;
     [[nodiscard]] std::string CanvasName() const;
     [[nodiscard]] Vector4 CurrentColor(GameObject& target) const;
-    /// 枠の一辺 (ワールド) を対象の体から決める。
+    /// @note 枠の一辺 (ワールド) を対象の体から決める。
     [[nodiscard]] float FrameSize(GameObject& target) const;
 
-    /// 生成済みの枠を拾い直せたら true。スクリプト DLL のリロード対策。
+    /// @note 生成済みの枠を拾い直せたら true。スクリプト DLL のリロード対策。
     bool Adopt();
     void Build();
-    /// 一辺 size (ピクセル) の四隅ブラケットとして 8 本を並べる。
+    /// @note 一辺 size (ピクセル) の四隅ブラケットとして 8 本を並べる。
     void LayoutBars(float size);
 
     PlayerAimComponent* m_aimOverride = nullptr;
@@ -88,13 +88,12 @@ private:
     EntityRef m_canvas;
     std::array<EntityRef, kBarCount> m_bars{};
 
-    /// 乗り換え検出。EntityRef ではなく素の ID で持つ (解決は要らず比較しかしない)。
+    /// @note 乗り換え検出。EntityRef ではなく素の ID で持つ (解決は要らず比較しかしない)。
     EntityID m_lastTarget{};
     float    m_lockRemaining = 0.0f;
 };
 
 FBZZ_REFLECT(AimMarkerComponent)
-
 
 inline PlayerAimComponent* AimMarkerComponent::Aim() const
 {
@@ -104,7 +103,7 @@ inline PlayerAimComponent* AimMarkerComponent::Aim() const
 inline std::string AimMarkerComponent::CanvasName() const
 {
     /// @note 枠はルートに置くため、同名だと 2 人目のプレイヤー (デバッグ複製含む) が
-    ///       1 人目の枠を拾い直してしまう。持ち主ごとに名前を分ける。
+    /// @note 1 人目の枠を拾い直してしまう。持ち主ごとに名前を分ける。
     GameObject* owner = scene.Self();
     return std::string(kCanvasName) + "_" + (owner ? owner->instanceId : std::string{});
 }
@@ -116,7 +115,7 @@ inline void AimMarkerComponent::OnStart()
     debugTargetName.clear();
 
     /// @note スクリプト DLL リロードで Script は作り直され EntityRef は空へ戻るが、
-    ///       UI の GameObject は Scene 側に残る。無条件に組み直すとリロードのたびに枠が増える。
+    /// @note UI の GameObject は Scene 側に残る。無条件に組み直すとリロードのたびに枠が増える。
     if (!Adopt()) Build();
 }
 
@@ -137,24 +136,30 @@ inline bool AimMarkerComponent::Adopt()
 
 inline void AimMarkerComponent::Build()
 {
+    if (!scene.CanCreate(static_cast<std::size_t>(kBarCount) + 1)) return;
+    std::array<EntityRef, kBarCount> bars{};
+
     /// @note 対象はなぞるたびに乗り換わり、敵の剛体には物理補間も掛かる。親を張り替えると
-    ///       枠の位置が親の変換と TransformSystem の巡回順に依存しずれの切り分けができない。
-    GameObject& canvasObject = scene.Create(CanvasName());
-    canvasObject.runtimeGenerated = true;
-    UICanvas& canvas = canvasObject.AddComponent<UICanvas>();
+    /// @note 枠の位置が親の変換と TransformSystem の巡回順に依存しずれの切り分けができない。
+    GameObject* canvasObject = scene.Create(CanvasName());
+    if (!canvasObject) return;
+    canvasObject->runtimeGenerated = true;
+    UICanvas& canvas = canvasObject->AddComponent<UICanvas>();
     canvas.renderMode = UIRenderMode::WorldSpace;
     canvas.faceCamera = true;
     canvas.worldScale = 1.0f / kPixelsPerUnit;
 
     for (int i = 0; i < kBarCount; ++i) {
-        GameObject& bar = scene.Create(kCanvasName + std::string("_Bar"));
-        bar.runtimeGenerated = true;
-        bar.SetParent(canvasObject);
-        bar.AddComponent<UIImage>().sortOrder = 0;
-        m_bars[static_cast<std::size_t>(i)] = EntityRef{ bar.GetID() };
+        GameObject* bar = scene.Create(kCanvasName + std::string("_Bar"));
+        if (!bar) { scene.Destroy(*canvasObject); return; }
+        bar->runtimeGenerated = true;
+        bar->SetParent(*canvasObject);
+        bar->AddComponent<UIImage>().sortOrder = 0;
+        bars[static_cast<std::size_t>(i)] = EntityRef{ bar->GetID() };
     }
 
-    m_canvas = EntityRef{ canvasObject.GetID() };
+    m_bars = bars;
+    m_canvas = EntityRef{ canvasObject->GetID() };
 }
 
 inline float AimMarkerComponent::FrameSize(GameObject& target) const
@@ -181,8 +186,8 @@ inline void AimMarkerComponent::LayoutBars(float size)
     const float arm   = Clamp(size * cornerRatio, width, half);
 
     /// @note UI 要素の position は矩形の左上、localScale.xy は倍率ではなく幅・高さ (どちらも
-    ///       Canvas ピクセル)。原点は Canvas の左上で y は下向き。
-    ///       角は (左/右) × (上/下) の 4 通りで、それぞれ横棒と縦棒の 2 本で L 字を作る。
+    /// @note Canvas ピクセル)。原点は Canvas の左上で y は下向き。
+    /// @note 角は (左/右) × (上/下) の 4 通りで、それぞれ横棒と縦棒の 2 本で L 字を作る。
     for (int corner = 0; corner < 4; ++corner) {
         const bool right  = (corner & 1) != 0;
         const bool bottom = (corner & 2) != 0;
@@ -230,7 +235,7 @@ inline void AimMarkerComponent::OnLateUpdate()
     m_lockRemaining = std::max(0.0f, m_lockRemaining - dt);
 
     /// @note 掴んだ直後は lockScale 倍から等倍へ縮む。ヒットストップ中でも縮み続けるよう、
-    ///       時間は実時間で数える (止まった画面で枠だけ固まると、掴んだことが伝わらない)。
+    /// @note 時間は実時間で数える (止まった画面で枠だけ固まると、掴んだことが伝わらない)。
     const float lockProgress = lockSeconds > 0.0f
         ? Clamp01(1.0f - m_lockRemaining / lockSeconds) : 1.0f;
     const float lockFactor   = Lerp(std::max(lockScale, 1.0f), 1.0f, lockProgress);
@@ -244,7 +249,7 @@ inline void AimMarkerComponent::OnLateUpdate()
     }
 
     /// @note Canvas はルートなので local = world。この関数は LateScript で走り UI 描画より前なので、
-    ///       world まで書けば TransformSystem を待たずに同じフレームへ反映される。
+    /// @note world まで書けば TransformSystem を待たずに同じフレームへ反映される。
     const Vector3 anchor = bodybounds::CenterWorld(*target, fallbackBodySize);
     canvasObject->transform.position      = anchor;
     canvasObject->transform.worldPosition = anchor;
@@ -265,4 +270,4 @@ inline void AimMarkerComponent::OnDestroy()
     m_bars.fill(EntityRef{});
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

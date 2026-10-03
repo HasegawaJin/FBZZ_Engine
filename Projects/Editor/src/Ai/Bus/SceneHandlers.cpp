@@ -1456,7 +1456,9 @@ std::unique_ptr<ICommand> BuildNodeDeleteCommand([[maybe_unused]] editor::Editor
                 markDirty();
             },
             [scene, id, name, tag, layer, active, pos, rot, scl, parentGuid, sibling, snapshot, markDirty]() {
-                GameObject& go = scene->CreateGameObject(*name);
+                GameObject* created = scene->TryCreateGameObject(*name);
+                if (!created) return;
+                GameObject& go = *created;
                 /// @note NodeId を保って再生成し、参照の安定性を維持する。
                 go.instanceId = id;
                 go.tag = *tag;

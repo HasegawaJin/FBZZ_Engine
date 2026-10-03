@@ -93,6 +93,19 @@ namespace fbzz::scene {
 /// @note 内部ヘルパー
 namespace {
 
+std::size_t CountSceneObjects(const toml::array& objects, bool skipRuntimeNames)
+{
+    std::size_t count = 0;
+    for (const auto& item : objects) {
+        const auto* object = item.as_table();
+        if (!object) continue;
+        const std::string name = (*object)["name"].value_or(std::string{"GameObject"});
+        if (skipRuntimeNames && name.starts_with("__")) continue;
+        ++count;
+    }
+    return count;
+}
+
 /// @note Prefab の GUID と適用済み定義は編集の正本なので、コンポーネント用のパス復号から外す。
 /// @see Docs/design/prefab-safety.md
 template<typename Fn>
@@ -1335,7 +1348,6 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             animTbl.insert("enabled",   anim->enabled);
             animTbl.insert("playing",   anim->playing);
             animTbl.insert("externalPose", anim->externalPose);
-            /// @name Root Motion
             animTbl.insert("rootMotionMode",     (int64_t)anim->rootMotion.mode);
             animTbl.insert("rootMotionSource",   (int64_t)anim->rootMotion.source);
             animTbl.insert("rootMotionPoseMode", (int64_t)anim->rootMotion.poseMode);
@@ -1353,7 +1365,6 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
 
             animTbl.insert("defaultStateName", anim->defaultStateName);
 
-            /// @name ステートマシン: states
             toml::array statesArr;
             for (const auto& st : anim->states) {
                 toml::table stTbl;
@@ -1452,7 +1463,6 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             }
             animTbl.insert("anyStateTransitions", std::move(anyStateArr));
 
-            /// @name ステートマシン: parameters
             toml::array paramsArr;
             for (const auto& p : anim->parameters) {
                 toml::table pTbl;
@@ -1835,6 +1845,10 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr) return scene;
+    if (!scene->CanCreateGameObjects(CountSceneObjects(*goArr, true))) {
+        FBZZ_LOG_ERROR("SceneSerializer: entity capacity exceeded in [%s]", sourcePath.c_str());
+        return nullptr;
+    }
     std::vector<Script*> pendingDeserializedScripts;
     /// @note ファクトリに居なかったスクリプト型。読み終わりに 1 度だけまとめて告げる。
     std::vector<std::string> unresolvedScriptTypes;
@@ -1850,7 +1864,9 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         std::string tag    = (*goTbl)["tag"].value_or(std::string{"Untagged"});
         bool        active = (*goTbl)["active"].value_or(true);
 
-        auto& go = scene->CreateGameObject(name);
+        auto* created = scene->TryCreateGameObject(name);
+        if (!created) return nullptr;
+        auto& go = *created;
         go.tag   = tag;
         go.layer = (int)(*goTbl)["layer"].value_or((int64_t)0);
         go.SetActive(active);
@@ -2195,7 +2211,6 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             anim.playing   = (*animTbl)["playing"].value_or(true);
             anim.externalPose = (*animTbl)["externalPose"].value_or(false);
 
-            /// @name Root Motion
             const auto readEnum = [&animTbl](const char* key, int fallback) {
                 return (int)(*animTbl)[key].value_or((int64_t)fallback);
             };
@@ -2226,7 +2241,6 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
 
             anim.defaultStateName = (*animTbl)["defaultStateName"].value_or(std::string{});
 
-            /// @name ステートマシン: states
             if (const auto* statesArr = (*animTbl)["states"].as_array()) {
                 for (const auto& stElem : *statesArr) {
                     const auto* stTbl = stElem.as_table();
@@ -2349,7 +2363,6 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
                 }
             }
 
-            /// @name ステートマシン: parameters
             if (const auto* paramsArr = (*animTbl)["parameters"].as_array()) {
                 for (const auto& pElem : *paramsArr) {
                     const auto* pTbl = pElem.as_table();
@@ -2952,6 +2965,13 @@ bool SceneSerializer::AppendObjects(
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr || goArr->empty()) return false;
+    const std::size_t objectCount = CountSceneObjects(*goArr, false);
+    if (!scene.CanCreateGameObjects(objectCount)) {
+        FBZZ_LOG_WARN("AppendObjects: insufficient entity capacity");
+        return false;
+    }
+    std::vector<EntityID> createdEntities;
+    createdEntities.reserve(objectCount);
     std::vector<Script*> pendingDeserializedScripts;
 
     /// @note Pass 1: GameObject 生成 + Component アタッチ
@@ -2963,7 +2983,13 @@ bool SceneSerializer::AppendObjects(
         std::string tag    = (*goTbl)["tag"].value_or(std::string{"Untagged"});
         bool        active = (*goTbl)["active"].value_or(true);
 
-        auto& go = scene.CreateGameObject(name);
+        auto* created = scene.TryCreateGameObject(name);
+        if (!created) {
+            for (const EntityID id : createdEntities) scene.DestroyGameObject(id);
+            return false;
+        }
+        auto& go = *created;
+        createdEntities.push_back(go.GetID());
         go.tag   = tag;
         go.layer = (int)(*goTbl)["layer"].value_or((int64_t)0);
         go.SetActive(active);
@@ -3034,7 +3060,7 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
-        /// @note @note 追記 (Prefab / クリップボード) では環境流を書き換えない。
+        /// @note 追記 (Prefab / クリップボード) では環境流を書き換えない。
         /// @note «部品を 1 つ足しただけでシーン全体の風が変わる» のは事故になる。
         SceneEnvironment discardedEnvironment;
         ReadFlowFieldComponent(go, *goTbl, discardedEnvironment);

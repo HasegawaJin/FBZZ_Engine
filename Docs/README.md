@@ -1,3 +1,7 @@
+<!-- @file    README.md -->
+<!-- @brief   FBZZ Engine の設計文書と運用規約の索引。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-09-14 -->
 # Docs — 索引
 
 更新日: 2026-09-21。対象は現行作業ツリー (`CMakeLists.txt` のプロジェクト版 `0.9.1`)。リリース済みかどうかと、各機能の実装・検証状況は区別し、設計文書の状態行と検証記録を参照する。
@@ -54,6 +58,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [developer-mode.md](design/developer-mode.md) | 開発者モードの設定と機能 |
 | [gamehub-update-notice.md](design/gamehub-update-notice.md) | GameHub の新しい版の通知 |
 | [script-dll-recovery.md](design/script-dll-recovery.md) | Scripts DLL の読み込み失敗と復帰 |
+| [scene-capacity.md](design/scene-capacity.md) | Entity 上限での安全な作成失敗と複数生成の容量確認 |
 | [benchmark-report.md](design/benchmark-report.md) | ベンチマークの計測と比較レポート |
 | [game-settings.md](design/game-settings.md) | ユーザー定義シリアライズと Option 画面。宣言 1 行で設定を増やす |
 | [sequence-system.md](design/sequence-system.md) | 演出タイムライン (`.sequence`) |
