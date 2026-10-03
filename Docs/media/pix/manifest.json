@@ -20,27 +20,27 @@
   "screenshots": [
     {
       "file": "pix-hybrid-events.jpg",
-      "sha256": "6F339895D683B9C2BC5BA04606C13C5CA693C28D951B5E46AEAACF0296F7B4A8",
+      "sha256": "1D4B0B3917AEA035AC04BDCD1C9DBBD441E08529447A8D893C27C633B107F40F",
       "width": 1920,
-      "height": 1080,
+      "height": 983,
       "shownOn": "2026-10-03",
       "description": "Actual PIX event list, selected Dispatch, pipeline state and constant-buffer contents.",
-      "processing": "None; original JPEG from Computer Use window screenshot."
+      "processing": "None; original JPEG from Computer Use window screenshot, with the pointer outside the captured PIX window."
     },
     {
       "file": "pix-hybrid-timeline.jpg",
-      "sha256": "2D455AF12A4034B023CF6BD58E6E60E623DED8F059F7DD4090854AFA350E2253",
+      "sha256": "63EB6FDDE00369E15B2D721A0CEC5C68BA65B134A7D603A51637FB53CA015B30",
       "width": 1920,
       "height": 1080,
       "shownOn": "2026-10-03",
       "description": "Actual PIX event list and GPU timeline.",
-      "processing": "None; original JPEG from Computer Use window screenshot."
+      "processing": "None; original JPEG from Computer Use window screenshot, with the pointer outside the captured PIX window."
     }
   ],
   "newUiReplay": {
     "scope": "One replay collected only to display the saved capture for portfolio screenshots; excluded from the 2026-10-02 comparison.",
-    "rayReflectionEopMs": 336.224256,
-    "viewEopMs": 341.786624
+    "rayReflectionEopMs": 340.913152,
+    "viewEopMs": 346.212352
   },
   "records": [
     {
