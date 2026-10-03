@@ -2,7 +2,7 @@
 /// @brief   エディター標準操作の登録 (Operator モデル Step 1)。
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
-///
+
 /// @note メニュー・ホットキー・パレットの実行可能条件は poll を共有する。
 /// @note パネル表示と Recent Scenes は m_panels 等から導出するためここに重複登録しない。
 /// @see Docs/design/editor-operator-model.md
@@ -10,6 +10,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Op/OperatorGroups.hpp>
+#include <Editor/Profiler/ProfilerOperators.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
@@ -451,10 +452,15 @@ void EditorApp::RegisterBuiltinOperators()
         OpKind::Action,
         [](OpContext& c, const OpArgs&) { c.ctx.requestOpenProjectSettings = true; return OpResult::Ok(); });
 
-    add("tools.analysis", "Analysis", "Tools",
-        "解析パネルを開く。",
+    add("tools.analysis", "Performance Profiler", "Tools",
+        "Performance Profiler を開く。",
         OpKind::Action,
         [](OpContext& c, const OpArgs&) { c.ctx.requestOpenAnalysis = true; return OpResult::Ok(); });
+
+    add("tools.script_profiler", "Script Profiler", "Tools", "Script Profiler を開く。", OpKind::Action,
+        [this](OpContext&, const OpArgs&) { InvokePanelFocus(FindPanelByName("Script Profiler")); return OpResult::Ok(); });
+    add("tools.memory_debug", "Memory Debug", "Tools", "Memory Debug を開く。", OpKind::Action,
+        [this](OpContext&, const OpArgs&) { InvokePanelFocus(FindPanelByName("Memory Debug")); return OpResult::Ok(); });
 
     addWindowToggle("tools.terrain", "Terrain Tool",
         "地形編集ツールウィンドウの表示。", &EditorContext::showTerrainTool);
@@ -478,6 +484,7 @@ void EditorApp::RegisterBuiltinOperators()
     /// @name EditorApp に依存しない操作群
     /// @note パネル操作は m_panels を必要とするため EditorApp のメンバーとして別ファイルへ置く。
     RegisterPanelOperators();
+    RegisterProfilerOperators(m_operators);
 
     /// @note EditorContext と UndoStack だけで完結する登録関数はパネル実装へ依存しない。
     RegisterNodeOperators(m_operators);

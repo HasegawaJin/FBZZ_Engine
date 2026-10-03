@@ -3048,7 +3048,7 @@ inline void SerpentAiComponent::DriveSweepTrail()
         m_sweepTrailLive = false;
     }
 
-    m_sweepTrail.ExecuteCallback(&Script::OnLateUpdate, m_sweepTrail.GetTypeName());
+    m_sweepTrail.ExecuteProfiledCallback(&Script::OnLateUpdate, ScriptCallbackKind::LATE_UPDATE, m_sweepTrail.GetTypeName());
 }
 
 inline void SerpentAiComponent::OnDestroy()

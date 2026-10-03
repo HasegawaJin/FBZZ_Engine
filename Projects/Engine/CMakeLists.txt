@@ -115,6 +115,8 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
 list(REMOVE_ITEM CORE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Application.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Util/SaveStore.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler/ScriptProfiler.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler/ProfilerFrame.cpp"
 )
 fbzz_engine_module(FBZZEnginePlatform SOURCES ${CORE_SOURCES})
 
@@ -135,6 +137,11 @@ list(APPEND ENGINE_SOURCES
     ${ENGINE_ROOT_SOURCES}
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Application.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Util/SaveStore.cpp"
+)
+
+list(APPEND ENGINE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler/ScriptProfiler.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler/ProfilerFrame.cpp"
 )
 
 # @note 新ディレクトリをモジュールへ足し忘れると、リンクエラーか実行時の機能欠落としてしか現れないので configure で落とす。

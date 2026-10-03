@@ -1,78 +1,71 @@
 /// @file    Profiler.hpp
-/// @brief   CPU 計測サンプルをフレーム単位で収集する軽量プロファイラ。
+/// @brief   Performance 計測の互換 API と所有 snapshot。
 /// @author  Hasegawa Jin
 /// @date    2026-06-02
 #pragma once
 
 #include <Core/Profiler/ProfilerMarker.hpp>
-
-#include <chrono>
-#include <cstddef>
+#include <Core/Profiler/ProfileRecorder.hpp>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace fbzz::profiler {
 
-/// @note 1 つの計測区間の結果を表すスナップショット。
+/// @note 旧 ABI のレイアウトを維持する。文字列は次の EndFrame まで有効。
 struct ProfileRecord {
-    const char* name       = "Unnamed";
-    const char* category   = "General";
-    double      elapsedMs  = 0.0;
-    uint64_t    frameIndex = 0;
-    uint32_t    depth      = 0;
-    uint32_t    color      = 0xFF4FA3FF;
+    const char* name = "Unnamed";
+    const char* category = "General";
+    double elapsedMs = 0.0;
+    uint64_t frameIndex = 0;
+    uint32_t depth = 0;
+    uint32_t color = 0xFF4FA3FF;
 };
 
-/// @note ゲームループから使う CPU プロファイラの静的 API。
-/// @note 前フレームのスナップショットを公開し、描画中に収集バッファは書き換えない。
+struct PerformanceDescriptor {
+    uint64_t sampleKey = 0;
+    std::string name;
+    std::string category;
+    uint32_t color = 0xFF4FA3FF;
+};
+
+struct PerformanceSnapshot : ProfileSnapshot {
+    std::vector<PerformanceDescriptor> descriptors;
+};
+
+/// @note recorder と互換 BeginSample の対応を同時に保存する、所有ポインターを持たない SEH 境界。
+struct ProfilerCheckpoint {
+    ProfileCheckpoint recorder;
+    ProfileCheckpoint compatOverflow;
+    uint64_t compatTopScopeId = 0;
+    uint64_t compatOverflowScopeId = 0;
+    uint32_t compatStackSize = 0;
+    uint32_t compatSuppressedDepth = 0;
+};
+
+/// @pre 全操作は main thread から呼ぶ。
 class Profiler {
 public:
-    /// @note プロファイラの収集を有効・無効にする。無効時は Begin/End のコストを最小化する。
+    /// @note 即時に token と公開データを失効させる旧契約。新 UI は RequestRecording を使う。
     static void SetEnabled(bool enabled);
     static bool IsEnabled();
-
-    /// @note 新しいフレームの収集を開始する。通常はゲームループ先頭で 1 回呼ぶ。
+    static void RequestRecording(bool recording);
+    static void RequestClear();
     static void BeginFrame();
-
-    /// @note 現在フレームの収集を確定し、Viewer が読む前フレームスナップショットへ移す。
+    static void BeginFrame(uint64_t applicationFrameSerial, double frameStartMs);
     static void EndFrame();
-
-    /// @note 手動で計測区間を開始する。RAII を使える箇所では ProfileScope を優先する。
     static void BeginSample(const ProfilerMarker& marker);
-
-    /// @note 直近の BeginSample に対応する計測区間を終了する。
     static void EndSample();
-
-    /// @note インスタントイベントを記録する。時間幅を持たないため elapsedMs は 0 になる。
+    static ProfileToken BeginScope(const ProfilerMarker& marker);
+    static void EndScope(ProfileToken token);
     static void PushMarker(const ProfilerMarker& marker);
-
-    /// @note 既に別の場所で測り終えた区間を、そのままフレームへ積む。
-    /// @note s_stack はメインスレッド専用の static のため、ワーカースレッドは std::chrono で測り、
-    /// @note       join 後にメインスレッドからこれで積む。
-    /// @param elapsedMs 呼び出し側が測った所要時間。
+    /// @note join 後の外部経過時間は Self と開始位置を unavailable とする。
     static void PushSample(const ProfilerMarker& marker, double elapsedMs);
-
-    /// @note Viewer やログ出力用に、確定済みフレームの計測結果を参照する。
+    static ProfilerCheckpoint Checkpoint();
+    static void Recover(ProfilerCheckpoint checkpoint);
     static const std::vector<ProfileRecord>& GetLastFrameRecords();
-
-    /// @note 直近で確定したフレーム番号を返す。
     static uint64_t GetLastFrameIndex();
-
-private:
-    using Clock = std::chrono::steady_clock;
-
-    struct ActiveSample {
-        ProfilerMarker    marker;
-        Clock::time_point startTime;
-        uint32_t          depth = 0;
-    };
-
-    static std::vector<ActiveSample>  s_stack;
-    static std::vector<ProfileRecord> s_currentFrameRecords;
-    static std::vector<ProfileRecord> s_lastFrameRecords;
-    static uint64_t                   s_currentFrameIndex;
-    static uint64_t                   s_lastFrameIndex;
-    static bool                       s_enabled;
+    static const PerformanceSnapshot& GetSnapshot();
 };
 
 } /// @note namespace fbzz::profiler

@@ -53,7 +53,7 @@ scene::GameObject* CreateScriptObject(EditorContext& ctx, const std::string& scr
 
     script->SetContext(ctx.activeScene, &go);
     script->Reset();
-    script->OnValidate();
+    script->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
     sc->scripts.emplace_back().script = std::move(script);
     return &go;
 }

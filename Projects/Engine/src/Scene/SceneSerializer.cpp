@@ -913,7 +913,7 @@ ScriptComponent CloneScriptComponent(const ScriptComponent& src,
 
         if (srcEntry.script) {
             Script& script = *srcEntry.script;
-            script.OnBeforeSerialize();
+            script.ExecuteProfiledCallback(&Script::OnBeforeSerialize, ScriptCallbackKind::BEFORE_SERIALIZE, "OnBeforeSerialize");
 
             toml::table fields;
             SceneWriteReflector writer(fields, srcScene);
@@ -945,7 +945,7 @@ ScriptComponent CloneScriptComponent(const ScriptComponent& src,
         const toml::table fields = TomlTableFromString(fieldsToml);
         SceneReadReflector reader(fields, guids ? &*guids : nullptr);
         dstEntry.script->Reflect(reader);
-        dstEntry.script->OnAfterDeserialize();
+        dstEntry.script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
     }
     return dst;
 }
@@ -1763,7 +1763,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
                 toml::table fieldsTbl;
                 if (entry.script) {
                     entry.script->SetContext(&scene, &go);
-                    entry.script->OnBeforeSerialize();
+                    entry.script->ExecuteProfiledCallback(&Script::OnBeforeSerialize, ScriptCallbackKind::BEFORE_SERIALIZE, "OnBeforeSerialize");
                     SceneWriteReflector reflector(fieldsTbl, &scene);
                     entry.script->Reflect(reflector);
                     const std::string type = entry.script->GetTypeName();
@@ -2885,8 +2885,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         }
     }
     for (Script* script : pendingDeserializedScripts) {
-        script->OnAfterDeserialize();
-        script->OnValidate();
+        script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
+        script->ExecuteProfiledCallback(&Script::OnValidate, ScriptCallbackKind::VALIDATE, "OnValidate");
     }
 
     /// @note 生えなかったスクリプトを 1 行で告げる。中身は SerializedScriptData として entry に残り、
@@ -3251,8 +3251,8 @@ bool SceneSerializer::AppendObjects(
         if (owner) bone->skinnedMeshEntity = owner->GetID();
     }
     for (Script* script : pendingDeserializedScripts) {
-        script->OnAfterDeserialize();
-        script->OnValidate();
+        script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
+        script->ExecuteProfiledCallback(&Script::OnValidate, ScriptCallbackKind::VALIDATE, "OnValidate");
     }
 
     /// @note root 収集。guid を正とし、フォールバックだけ名前引きにする。

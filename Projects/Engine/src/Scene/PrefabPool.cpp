@@ -73,10 +73,10 @@ void NotifyScripts(Scene& scene, GameObject& gameObject, bool spawned)
             /// @note 再利用時は OnAwake / OnStart が再発火しないため、コンテキストだけ張り直す。
             script->SetContext(&scene, &gameObject);
             if (spawned) {
-                script->ExecuteCallback(&Script::OnSpawn, "OnSpawn");
+                script->ExecuteProfiledCallback(&Script::OnSpawn, ScriptCallbackKind::SPAWN, "OnSpawn");
                 continue;
             }
-            script->ExecuteCallback(&Script::OnDespawn, "OnDespawn");
+            script->ExecuteProfiledCallback(&Script::OnDespawn, ScriptCallbackKind::DESPAWN, "OnDespawn");
             /// @note 待機中の «時間で起きる仕事» は前の一生のもの。枠は非アクティブになるだけで
             /// @note Script は生き続け、Invoke もコルーチンも «一時停止» のまま残るため、畳まないと
             /// @note 次に貸し出された実体で前の演出の続きが動き出す。

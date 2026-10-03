@@ -590,7 +590,9 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     /// @name Debug
     if (ImGui::BeginMenu(LOC("Debug"))) {
         /// @note View はレイアウト・パネル、Debug は実行/描画診断に役割を分ける。
-        MenuItemOp("tools.analysis", "Analysis");
+            MenuItemOp("tools.analysis", "Performance Profiler");
+            MenuItemOp("tools.script_profiler", "Script Profiler");
+            MenuItemOp("tools.memory_debug", "Memory Debug");
         {
             OpArgs args;
             args.Set("panel", std::string("Render Pass Viewer"));

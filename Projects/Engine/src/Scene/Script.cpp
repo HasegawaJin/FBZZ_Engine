@@ -5,6 +5,7 @@
 ///
 /// @note template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Profiler/ScriptProfiler.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/ScriptEvent.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -48,6 +49,7 @@ bool Script::InstantiatePrefab(Scene& scene, const std::string& path, std::vecto
 
 Script::~Script()
 {
+    ScriptProfiler::ForgetInstance(*this);
     ReleaseOwnedAudioLoops();
     CancelEventSubscriptions();
 }
@@ -60,6 +62,7 @@ void Script::SetContext(Scene* scene, GameObject* gameObject)
     m_scene      = scene;
     m_gameObject = gameObject;
     m_contextOwner = nullptr;
+    ScriptProfiler::RegisterInstance(*this);
 }
 
 namespace {
@@ -74,183 +77,186 @@ void HandleRuntimeFault(fbzz::scene::Script& script, const char* callbackName)
                    script.GetTypeName(), callbackName ? callbackName : "callback");
 }
 
+/// @note SEH 内には巻き戻しが必要なローカルを置かず、所有と計測は呼び出し側で閉じる。
+/// @see https://learn.microsoft.com/en-us/cpp/error-messages/compiler-errors-2/compiler-error-c2712?view=vs-2019 C2712 と SEH 内の unwinding 制約。
+/// @see https://learn.microsoft.com/en-us/cpp/build/reference/eh-exception-handling-model /EH の SEH 契約。
+template<typename Callback>
+bool GuardedInvoke(const Callback& callback)
+{
+#if defined(_MSC_VER)
+    __try { callback(); return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+#else
+    callback();
+    return true;
+#endif
+}
+
 } /// @note namespace
 
 bool Script::ExecuteCallback(void (Script::*callback)(), const char* callbackName)
 {
-    if (callback == &Script::OnDestroy || callback == &Script::OnDisable) ReleaseOwnedAudioLoops();
+    return ExecuteProfiledCallback(callback, ScriptCallbackKind::UNKNOWN, callbackName);
+}
+
+/// @see https://learn.microsoft.com/en-us/cpp/cpp/pointers-to-members?view=msvc-170 メンバー関数ポインターによる仮想ディスパッチ。
+bool Script::ExecuteProfiledCallback(void (Script::*callback)(), ScriptCallbackKind kind, const char* callbackName)
+{
+    if (kind == ScriptCallbackKind::DESTROY || kind == ScriptCallbackKind::DISABLE) ReleaseOwnedAudioLoops();
     if (!callback || m_runtimeFaulted) return false;
-    if (m_requirementsBlocked && callback != &Script::OnDestroy && callback != &Script::OnDisable
-        && callback != &Script::OnDrawGizmos && callback != &Script::OnDrawGizmosSelected) return false;
-#if defined(_MSC_VER)
-    __try {
-        (this->*callback)();
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    if (m_requirementsBlocked && kind != ScriptCallbackKind::DESTROY && kind != ScriptCallbackKind::DISABLE
+        && kind != ScriptCallbackKind::DRAW_GIZMOS && kind != ScriptCallbackKind::DRAW_GIZMOS_SELECTED) return false;
+    /// @note 初回起動と再生成時の旧文脈を、新しい OnEnable/OnAwake より先に切り替える。
+    if (kind == ScriptCallbackKind::AWAKE || kind == ScriptCallbackKind::ENABLE) ScriptProfiler::RebindInstance(*this);
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
+    const bool succeeded = GuardedInvoke([&] { (this->*callback)(); });
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
         m_runtimeFaulted = true;
         HandleRuntimeFault(*this, callbackName);
-        return false;
     }
-#else
-    (this->*callback)();
-    return true;
-#endif
+    return succeeded;
 }
 
-bool Script::ExecuteCallback(void (Script::*callback)(const CollisionInfo&),
-                             const CollisionInfo& info,
-                             const char* callbackName)
+bool Script::ExecuteCallback(void (Script::*callback)(const CollisionInfo&), const CollisionInfo& info, const char* callbackName)
+{
+    return ExecuteProfiledCallback(callback, info, ScriptCallbackKind::UNKNOWN, callbackName);
+}
+
+bool Script::ExecuteProfiledCallback(void (Script::*callback)(const CollisionInfo&), const CollisionInfo& info, ScriptCallbackKind kind, const char* callbackName)
 {
     if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-#if defined(_MSC_VER)
-    __try {
-        (this->*callback)(info);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
+    const bool succeeded = GuardedInvoke([&] { (this->*callback)(info); });
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
         m_runtimeFaulted = true;
         HandleRuntimeFault(*this, callbackName);
-        return false;
     }
-#else
-    (this->*callback)(info);
-    return true;
-#endif
+    return succeeded;
 }
 
-bool Script::ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&),
-                             const AnimationEventInfo& info)
+bool Script::ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&), const AnimationEventInfo& info)
 {
-    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-#if defined(_MSC_VER)
-    __try {
-        (this->*callback)(info);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, "OnAnimationEvent");
-        return false;
-    }
-#else
-    (this->*callback)(info);
-    return true;
-#endif
+    return ExecuteProfiledCallback(callback, info, ScriptCallbackKind::UNKNOWN, "OnAnimationEvent");
 }
 
-bool Script::ExecuteCallback(void (Script::*callback)(const SequenceEventInfo&),
-                             const SequenceEventInfo& info)
+bool Script::ExecuteProfiledCallback(void (Script::*callback)(const AnimationEventInfo&), const AnimationEventInfo& info, ScriptCallbackKind kind, const char* callbackName)
 {
     if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-#if defined(_MSC_VER)
-    __try {
-        (this->*callback)(info);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, "OnSequenceEvent");
-        return false;
-    }
-#else
-    (this->*callback)(info);
-    return true;
-#endif
-}
-
-bool Script::ExecuteCallback(void (Script::*callback)(const char*),
-                             const char* argument,
-                             const char* callbackName)
-{
-    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-#if defined(_MSC_VER)
-    __try {
-        (this->*callback)(argument);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
+    const bool succeeded = GuardedInvoke([&] { (this->*callback)(info); });
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
         m_runtimeFaulted = true;
         HandleRuntimeFault(*this, callbackName);
-        return false;
     }
-#else
-    (this->*callback)(argument);
-    return true;
-#endif
+    return succeeded;
 }
 
-bool Script::ExecuteCallback(void (Script::*callback)(const RootMotionInfo&),
-                             const RootMotionInfo& info)
+bool Script::ExecuteCallback(void (Script::*callback)(const SequenceEventInfo&), const SequenceEventInfo& info)
 {
-    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-#if defined(_MSC_VER)
-    __try {
-        (this->*callback)(info);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, "OnAnimatorMove");
-        return false;
-    }
-#else
-    (this->*callback)(info);
-    return true;
-#endif
+    return ExecuteProfiledCallback(callback, info, ScriptCallbackKind::UNKNOWN, "OnSequenceEvent");
 }
 
-bool Script::ExecuteCallback(void (Script::*callback)(RenderPipeline&, RenderPassContext&),
-                             RenderPipeline& pipeline,
-                             RenderPassContext& context)
+bool Script::ExecuteProfiledCallback(void (Script::*callback)(const SequenceEventInfo&), const SequenceEventInfo& info, ScriptCallbackKind kind, const char* callbackName)
 {
     if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-#if defined(_MSC_VER)
-    __try {
-        (this->*callback)(pipeline, context);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
+    const bool succeeded = GuardedInvoke([&] { (this->*callback)(info); });
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
         m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, "OnSetupRenderPasses");
-        return false;
+        HandleRuntimeFault(*this, callbackName);
     }
-#else
-    (this->*callback)(pipeline, context);
-    return true;
-#endif
+    return succeeded;
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(const char*), const char* argument, const char* callbackName)
+{
+    return ExecuteProfiledCallback(callback, argument, ScriptCallbackKind::UNKNOWN, callbackName);
+}
+
+bool Script::ExecuteProfiledCallback(void (Script::*callback)(const char*), const char* argument, ScriptCallbackKind kind, const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
+    const bool succeeded = GuardedInvoke([&] { (this->*callback)(argument); });
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, callbackName);
+    }
+    return succeeded;
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(const RootMotionInfo&), const RootMotionInfo& info)
+{
+    return ExecuteProfiledCallback(callback, info, ScriptCallbackKind::UNKNOWN, "OnAnimatorMove");
+}
+
+bool Script::ExecuteProfiledCallback(void (Script::*callback)(const RootMotionInfo&), const RootMotionInfo& info, ScriptCallbackKind kind, const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
+    const bool succeeded = GuardedInvoke([&] { (this->*callback)(info); });
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, callbackName);
+    }
+    return succeeded;
+}
+
+bool Script::ExecuteCallback(void (Script::*callback)(RenderPipeline&, RenderPassContext&), RenderPipeline& pipeline, RenderPassContext& context)
+{
+    return ExecuteProfiledCallback(callback, pipeline, context, ScriptCallbackKind::UNKNOWN, "OnSetupRenderPasses");
+}
+
+bool Script::ExecuteProfiledCallback(void (Script::*callback)(RenderPipeline&, RenderPassContext&), RenderPipeline& pipeline, RenderPassContext& context, ScriptCallbackKind kind, const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
+    const bool succeeded = GuardedInvoke([&] { (this->*callback)(pipeline, context); });
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
+        m_runtimeFaulted = true;
+        HandleRuntimeFault(*this, callbackName);
+    }
+    return succeeded;
 }
 
 bool Script::ExecuteCallback(const std::function<void()>& function, const char* callbackName)
 {
+    return ExecuteProfiledCallback(function, ScriptCallbackKind::UNKNOWN, callbackName);
+}
+
+bool Script::ExecuteProfiledCallback(const std::function<void()>& function, ScriptCallbackKind kind, const char* callbackName)
+{
     if (!function || m_runtimeFaulted) return false;
-#if defined(_MSC_VER)
-    __try {
-        function();
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
+    const bool succeeded = GuardedInvoke([&] { function(); });
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
         m_runtimeFaulted = true;
         HandleRuntimeFault(*this, callbackName);
-        return false;
     }
-#else
-    function();
-    return true;
-#endif
+    return succeeded;
 }
 
 bool Script::ResumeCoroutine(Coroutine& coroutine)
 {
     if (m_runtimeFaulted) return false;
-#if defined(_MSC_VER)
-    __try {
-        coroutine.Step();
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        /// @note 巻き戻したフレームは中断点に居らず、以降 done() も destroy() も呼べないため、
-        /// @note        畳まず手放す。畳もうとすると障害を握った意味がなくなる。
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, ScriptCallbackKind::COROUTINE_STEP, "Coroutine step");
+    const bool succeeded = GuardedInvoke([&] { coroutine.Step(); });
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
+        /// @note SEH で中断したハンドルは done/destroy を呼べないため、以降の所有を手放す。
         coroutine.Release();
         m_runtimeFaulted = true;
         HandleRuntimeFault(*this, "Coroutine step");
-        return false;
     }
-#else
-    coroutine.Step();
-    return true;
-#endif
+    return succeeded;
 }
 
 void Script::SynchronizeEnabledState(bool gameObjectActive)
@@ -261,16 +267,16 @@ void Script::SynchronizeEnabledState(bool gameObjectActive)
     if (!m_enableStateInitialized) {
         m_lastEnabled = effectiveEnabled;
         m_enableStateInitialized = true;
-        if (effectiveEnabled) ExecuteCallback(&Script::OnEnable, "OnEnable");
+        if (effectiveEnabled) ExecuteProfiledCallback(&Script::OnEnable, ScriptCallbackKind::ENABLE, "OnEnable");
         return;
     }
 
     if (m_lastEnabled == effectiveEnabled) return;
     m_lastEnabled = effectiveEnabled;
     if (effectiveEnabled)
-        ExecuteCallback(&Script::OnEnable, "OnEnable");
+        ExecuteProfiledCallback(&Script::OnEnable, ScriptCallbackKind::ENABLE, "OnEnable");
     else
-        ExecuteCallback(&Script::OnDisable, "OnDisable");
+        ExecuteProfiledCallback(&Script::OnDisable, ScriptCallbackKind::DISABLE, "OnDisable");
 }
 
 
@@ -339,7 +345,7 @@ void Script::UpdateInvocations(float dt)
 
         /// @note callback 内から Invoke / CancelInvoke が呼ばれてもよいよう、fn はコピーしてから呼び、
         /// @note        vector の再配置や canceled 更新の影響を受けないようにする。
-        if (fn && !ExecuteCallback(fn, "deferred callback"))
+        if (fn && !ExecuteProfiledCallback(fn, ScriptCallbackKind::DEFERRED, "deferred callback"))
             break;
     }
     m_isTickingInvokes = false;
@@ -374,7 +380,7 @@ void Script::UpdateFrameDelays()
             m_frameDelays.push_back(std::move(entry));
             continue;
         }
-        if (entry.fn && !ExecuteCallback(entry.fn, "FrameDelay callback"))
+        if (entry.fn && !ExecuteProfiledCallback(entry.fn, ScriptCallbackKind::FRAME_DELAY, "FrameDelay callback"))
             break;
     }
 }
@@ -455,6 +461,7 @@ void Script::SetPhysicsWorld(physics::World* world)
 
 void Script::SetInPlayMode(bool inPlayMode)
 {
+    ScriptProfiler::SetExecutionMode(inPlayMode);
     s_inPlayMode = inPlayMode;
 }
 
@@ -473,6 +480,7 @@ void Script::ReleaseOwnedAudioLoops()
 
 void Script::ResetLifecycleState()
 {
+    ScriptProfiler::RebindInstance(*this);
     ReleaseOwnedAudioLoops();
     m_requirementsBlocked = false;
     CancelInvoke();

@@ -126,7 +126,7 @@ void Scene::DestroyImmediate(EntityID id) {
             if (!sc || i >= sc->scripts.size()) break;
             ScriptEntry& entry = sc->scripts[i];
             if (entry.script && (entry.m_awoken || entry.m_started))
-                entry.script->ExecuteCallback(&Script::OnDestroy, "OnDestroy");
+                entry.script->ExecuteProfiledCallback(&Script::OnDestroy, ScriptCallbackKind::DESTROY, "OnDestroy");
         }
     }
 
@@ -394,7 +394,7 @@ void Scene::Clear()
         if (!sc) continue;
         for (auto& entry : sc->scripts)
             if (entry.script && (entry.m_awoken || entry.m_started))
-                entry.script->ExecuteCallback(&Script::OnDestroy, "OnDestroy");
+                entry.script->ExecuteProfiledCallback(&Script::OnDestroy, ScriptCallbackKind::DESTROY, "OnDestroy");
     }
 
     /// @note Component を捨てる前に返す。捨ててからでは、どのハンドルを持っていたか辿れない。

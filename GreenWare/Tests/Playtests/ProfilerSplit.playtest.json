@@ -1,0 +1,706 @@
+{
+  "@file": "ProfilerSplit.playtest.json",
+  "@brief": "既存 Title シーンで独立収集、専用 Query、互換 API と非表示時採取を検証する。",
+  "@author": "Hasegawa Jin",
+  "@date": "2026-10-03",
+  "name": "ProfilerSplit",
+  "scene": "Assets/Scenes/Title.scene",
+  "lockstep": 0.016666666666666666,
+  "steps": [
+    {
+      "do": "waitUntil",
+      "query": {
+        "t": "editor.state"
+      },
+      "path": "scriptReloadBusy",
+      "op": "==",
+      "value": false,
+      "timeoutFrames": 60000
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "panel.set_visible",
+        "args": {
+          "panel": "Analysis",
+          "visible": false
+        }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "panel.set_visible",
+        "args": {
+          "panel": "Script Profiler",
+          "visible": false
+        }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "panel.set_visible",
+        "args": {
+          "panel": "Memory Debug",
+          "visible": false
+        }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "profiler.performance.set_recording",
+        "args": {
+          "recording": true
+        }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "profiler.script.set_recording",
+        "args": {
+          "recording": true
+        }
+      }
+    },
+    {
+      "do": "frames",
+      "count": 8
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.performance.snapshot",
+        "args": {}
+      },
+      "path": "data.available",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {}
+      },
+      "path": "data.available",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.performance.snapshot",
+        "args": {}
+      },
+      "path": "data.retainedFrameCount",
+      "op": ">=",
+      "value": 2
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {}
+      },
+      "path": "data.retainedFrameCount",
+      "op": ">=",
+      "value": 2
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.memory.snapshot",
+        "args": {}
+      },
+      "path": "data.tags",
+      "op": "length>=",
+      "value": 1
+    },
+    {
+      "do": "play"
+    },
+    {
+      "do": "waitUntil",
+      "query": {
+        "t": "editor.state"
+      },
+      "path": "playState",
+      "op": "==",
+      "value": "playing",
+      "timeoutFrames": 120
+    },
+    {
+      "do": "frames",
+      "count": 8
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {}
+      },
+      "path": "data.contexts.0.mode",
+      "op": "==",
+      "value": "play"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "type": "TitleMenuComponent",
+          "callback": "OnUpdate",
+          "mode": "play",
+          "groupBy": "type",
+          "sort": "self",
+          "limit": 1
+        }
+      },
+      "path": "data.rows",
+      "op": "length==",
+      "value": 1
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "type": "TitleMenuComponent",
+          "callback": "OnUpdate",
+          "mode": "play",
+          "groupBy": "type",
+          "sort": "self",
+          "limit": 1
+        }
+      },
+      "path": "data.rows.0.type",
+      "op": "==",
+      "value": "TitleMenuComponent"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "type": "TitleMenuComponent",
+          "callback": "OnUpdate",
+          "mode": "play",
+          "groupBy": "call_tree",
+          "sort": "self",
+          "limit": 8192
+        }
+      },
+      "path": "data.samples",
+      "op": "length>=",
+      "value": 1
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.performance.snapshot",
+        "args": {
+          "limit": 1
+        }
+      },
+      "path": "data.samples",
+      "op": "length<=",
+      "value": 1
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot",
+        "limit": 2
+      },
+      "path": "profilerEnabled",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot",
+        "limit": 2
+      },
+      "path": "frameMsSource",
+      "op": "==",
+      "value": "lockstep"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot",
+        "limit": 2
+      },
+      "path": "topSamples",
+      "op": "length<=",
+      "value": 2
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "profiler.performance.set_recording",
+        "args": {
+          "recording": false
+        }
+      }
+    },
+    {
+      "do": "frames",
+      "count": 4
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.performance.snapshot",
+        "args": {}
+      },
+      "path": "data.recording",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.performance.snapshot",
+        "args": {}
+      },
+      "path": "data.available",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {}
+      },
+      "path": "data.recording",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "type": "TitleMenuComponent",
+          "callback": "OnUpdate",
+          "mode": "play",
+          "groupBy": "type",
+          "sort": "self",
+          "limit": 1
+        }
+      },
+      "path": "data.rows",
+      "op": "length==",
+      "value": 1
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "profilerEnabled",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "topSamples",
+      "op": "length==",
+      "value": 0
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "profiler.script.set_recording",
+        "args": {
+          "recording": false
+        }
+      }
+    },
+    {
+      "do": "frames",
+      "count": 4
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.performance.snapshot",
+        "args": {}
+      },
+      "path": "data.recording",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {}
+      },
+      "path": "data.recording",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {}
+      },
+      "path": "data.available",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "profiler.performance.set_recording",
+        "args": {
+          "recording": true
+        }
+      }
+    },
+    {
+      "do": "frames",
+      "count": 4
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.performance.snapshot",
+        "args": {}
+      },
+      "path": "data.available",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {}
+      },
+      "path": "data.recording",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "profilerEnabled",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "topSamples",
+      "op": "length>=",
+      "value": 1
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "profiler.script.set_recording",
+        "args": {
+          "recording": true
+        }
+      }
+    },
+    {
+      "do": "frames",
+      "count": 4
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {}
+      },
+      "path": "data.available",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "type": "TitleMenuComponent",
+          "callback": "OnUpdate",
+          "mode": "play",
+          "groupBy": "type",
+          "sort": "self",
+          "limit": 1
+        }
+      },
+      "path": "data.rows",
+      "op": "length==",
+      "value": 1
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "groupBy": "invalid"
+        }
+      },
+      "expectError": "BAD_ARG"
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "sort": "invalid"
+        }
+      },
+      "expectError": "BAD_ARG"
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "mode": "invalid"
+        }
+      },
+      "expectError": "BAD_ARG"
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "callback": "invalid"
+        }
+      },
+      "expectError": "BAD_ARG"
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "limit": 0
+        }
+      },
+      "expectError": "BAD_ARG"
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "captureSessionId": "18446744073709551615",
+          "applicationFrameSerial": "18446744073709551615"
+        }
+      },
+      "expectError": "NOT_FOUND"
+    },
+    {
+      "do": "stop"
+    },
+    {
+      "do": "waitUntil",
+      "query": {
+        "t": "editor.state"
+      },
+      "path": "playState",
+      "op": "==",
+      "value": "editor",
+      "timeoutFrames": 120
+    },
+    {
+      "do": "frames",
+      "count": 8
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {}
+      },
+      "path": "data.contexts.0.mode",
+      "op": "==",
+      "value": "edit"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.script.snapshot",
+        "args": {
+          "mode": "play",
+          "groupBy": "type"
+        }
+      },
+      "path": "data.rows",
+      "op": "length==",
+      "value": 0
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "profiler.performance.snapshot",
+        "args": {}
+      },
+      "path": "data.available",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "frameMsSource",
+      "op": "==",
+      "value": "lockstep"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "panel.set_visible",
+        "args": { "panel": "Analysis", "visible": true }
+      }
+    },
+    { "do": "frames", "count": 2 },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke", "id": "panel.focus", "args": { "panel": "Analysis" }
+      }
+    },
+    { "do": "frames", "count": 6 },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "panel.set_visible",
+        "args": { "panel": "Script Profiler", "visible": true }
+      }
+    },
+    { "do": "frames", "count": 2 },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke", "id": "panel.focus", "args": { "panel": "Script Profiler" }
+      }
+    },
+    { "do": "frames", "count": 6 },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "panel.set_visible",
+        "args": { "panel": "Memory Debug", "visible": true }
+      }
+    },
+    { "do": "frames", "count": 2 },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke", "id": "panel.focus", "args": { "panel": "Memory Debug" }
+      }
+    },
+    { "do": "frames", "count": 6 },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "panel.set_visible",
+        "args": { "panel": "Analysis", "visible": false }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "panel.set_visible",
+        "args": { "panel": "Script Profiler", "visible": false }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "panel.set_visible",
+        "args": { "panel": "Memory Debug", "visible": false }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "profiler.script.set_recording",
+        "args": {
+          "recording": false
+        }
+      }
+    },
+    {
+      "do": "frames",
+      "count": 2
+    }
+  ]
+}

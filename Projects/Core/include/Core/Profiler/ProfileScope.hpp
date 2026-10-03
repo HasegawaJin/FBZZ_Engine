@@ -12,10 +12,10 @@ namespace fbzz::profiler {
 /// @note return が複数ある関数でも EndSample の呼び忘れを防ぎ、計測コードを安全に差し込める。
 class ProfileScope {
 public:
-    /// @note コンストラクタで計測を開始する。marker は ProfilerMarker と同じ寿命前提を持つ。
+    /// @note 名前は収集器が所有する。失効済み token は別 scope を閉じない。
     explicit ProfileScope(const ProfilerMarker& marker)
     {
-        Profiler::BeginSample(marker);
+        m_token = Profiler::BeginScope(marker);
     }
 
     ProfileScope(const ProfileScope&)            = delete;
@@ -24,8 +24,10 @@ public:
     /// @note デストラクタで計測を閉じる。例外は禁止方針のため noexcept を明示する。
     ~ProfileScope() noexcept
     {
-        Profiler::EndSample();
+        Profiler::EndScope(m_token);
     }
+private:
+    ProfileToken m_token;
 };
 
 } /// @note namespace fbzz::profiler

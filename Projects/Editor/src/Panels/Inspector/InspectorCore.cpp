@@ -785,7 +785,7 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                     requirementFocus.scrollPending = false;
                 }
                 if (reflector.m_changed)
-                    entry.script->OnValidate();
+                    entry.script->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
                 const ImGuiID activeAfterScript = ImGui::GetActiveID();
                 if (activeAfterScript != 0 && activeAfterScript != activeBeforeScript)
                     s_scriptFrame.editingIndex = i;
@@ -899,7 +899,7 @@ void EndScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
             auto& e = comp->scripts[static_cast<std::size_t>(index)];
             if (!e.script || e.script->GetTypeName() != type) return;
             ApplyScriptSnapshot(*e.script, snapshot);
-            e.script->OnValidate();
+                                e.script->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
             if (markDirty) markDirty();
         };
 

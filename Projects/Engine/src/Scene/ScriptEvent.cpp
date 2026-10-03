@@ -4,6 +4,7 @@
 /// @date    2026-08-16
 #include <Engine/Scene/ScriptEvent.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Profiler/ScriptProfiler.hpp>
 
 #include <algorithm>
 #include <string>
@@ -20,9 +21,9 @@ struct Subscription {
     bool                        canceled = false;
 };
 
-/// チャンネル名 → 購読リスト。
+/// @note チャンネル名 → 購読リスト。
 /// @note 配信はフレームごとに走る一方、購読/解除は開始時と破棄時に偏るため、連続領域を順に舐める
-///       配信コストを優先し、解除は canceled フラグ + 後片付けで行う。
+/// @note 配信コストを優先し、解除は canceled フラグ + 後片付けで行う。
 std::unordered_map<std::string, std::vector<Subscription>>& Channels()
 {
     static std::unordered_map<std::string, std::vector<Subscription>> s_channels;
@@ -30,10 +31,10 @@ std::unordered_map<std::string, std::vector<Subscription>>& Channels()
 }
 
 uint64_t g_nextId = 1;
-/// 配信中は vector を再確保させない。ネストした Publish もあり得るので深さで数える。
+/// @note 配信中は vector を再確保させない。ネストした Publish もあり得るので深さで数える。
 int g_publishDepth = 0;
 
-/// canceled になった購読を実際に取り除く。配信の入れ子が完全に抜けたときだけ行う。
+/// @note canceled になった購読を実際に取り除く。配信の入れ子が完全に抜けたときだけ行う。
 void CompactIfIdle()
 {
     if (g_publishDepth > 0) return;
@@ -46,7 +47,7 @@ void CompactIfIdle()
     }
 }
 
-} // namespace
+} /// @note namespace
 
 ScriptEventToken ScriptEventBus::SubscribeRaw(Script* owner,
                                               std::string_view channel,
@@ -63,8 +64,8 @@ ScriptEventToken ScriptEventBus::SubscribeRaw(Script* owner,
     Channels()[std::string(channel)].push_back(std::move(subscription));
 
     /// @note 自動解除は Script::CancelEventSubscriptions() が UnsubscribeOwner(this) を呼ぶことで
-    ///       行われる (~Script から必ず通る)。Subscribe ごとに解除関数を積むと購読数ぶんの重複
-    ///       エントリになるため、オーナー単位の一括解除にまとめる。
+    /// @note 行われる (~Script から必ず通る)。Subscribe ごとに解除関数を積むと購読数ぶんの重複
+    /// @note エントリになるため、オーナー単位の一括解除にまとめる。
     return token;
 }
 
@@ -95,23 +96,30 @@ void ScriptEventBus::PublishRaw(std::string_view channel, const void* payload)
 {
     const auto it = Channels().find(std::string(channel));
     if (it == Channels().end()) return;
+    /// @note callback 内の別 channel 登録による rehash 後も、node の文字列参照は有効。
+    /// @see https://eel.is/c++draft/unord.req.general#9 rehash による iterator 失効と要素参照の契約。
+    const std::string& channelName = it->first;
 
     ++g_publishDepth;
     /// @note ハンドラ内から Subscribe されると vector が再確保され得るため、開始時点の件数までを
-    ///       走査する。配信中に増えた購読は次回の Publish から届かせ、同一イベント配信中に自分自身を
-    ///       購読して即受け取る混乱を避ける。
+    /// @note 走査する。配信中に増えた購読は次回の Publish から届かせ、同一イベント配信中に自分自身を
+    /// @note 購読して即受け取る混乱を避ける。
     const size_t initialCount = it->second.size();
     for (size_t i = 0; i < initialCount; ++i) {
         /// @note 参照は保持しない。ハンドラ内の Subscribe による再確保後も安全に読めるよう、
-        ///       毎回コンテナ経由で取り直してからコピーして呼ぶ。
+        /// @note 毎回コンテナ経由で取り直してからコピーして呼ぶ。
         auto& subs = Channels()[std::string(channel)];
         if (i >= subs.size()) break;
         if (subs[i].canceled) continue;
         /// @note 持ち主のスクリプトが無効 (自身が無効・親ごと無効化) なら配らない。購読は残すので、有効に戻せば何もせずまた届く。
-        ///       Update と同じ規則にしないと、止めたはずのオブジェクトがイベントにだけ反応し続ける。
+        /// @note Update と同じ規則にしないと、止めたはずのオブジェクトがイベントにだけ反応し続ける。
         if (const Script* owner = subs[i].owner; owner && !owner->scene.IsActiveAndEnabled()) continue;
         RawHandler handler = subs[i].handler;
-        if (handler) handler(payload);
+        if (handler) {
+            if (auto* owner = subs[i].owner) {
+                owner->ExecuteProfiledCallback([&] { handler(payload); }, ScriptCallbackKind::EVENT_HANDLER, channelName.c_str());
+            } else handler(payload);
+        }
     }
     --g_publishDepth;
 
@@ -134,4 +142,4 @@ size_t ScriptEventBus::SubscriptionCount()
     return count;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

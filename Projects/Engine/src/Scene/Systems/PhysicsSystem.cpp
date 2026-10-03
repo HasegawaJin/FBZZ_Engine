@@ -80,7 +80,7 @@ bool PoseChanged(const RigidBodyComponent& component, const Transform& transform
 /// @brief 水面 1 面ぶんを physics::FluidVolume の入力へ写す。
 /// @note 法則そのものは Physics が持つ (physics::FluidVolume)。ここに残すのは配線だけ。
 /// @note 表面の callback が WaterComponent を値で捕まえる理由: Volume は毎フレーム作り直す
-///       ので値が古くなることはなく、物理ステップ中に Scene を触らずに済む。
+/// @note ので値が古くなることはなく、物理ステップ中に Scene を触らずに済む。
 /// @note 流速の callback は不変の場を shared_ptr で共有し、全 substep と全水面で同じ配列を読む。
 /// @see Docs/design/buoyancy.md
 /// @see Docs/design/water-waves.md 「流れの場が水面に出る 3 つの道」
@@ -94,7 +94,7 @@ physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
         return snapshot.GetSurfaceHeightAt(worldX, worldZ, time);
     };
     /// @note 流速は場所の関数。.mat の一様な current に、その点を覆う流れの場を足す。
-    ///       これで浮いた物は flowCoupling を立てなくても Vortex の周りを回る。
+    /// @note これで浮いた物は flowCoupling を立てなくても Vortex の周りを回る。
     desc.flowVelocity = [snapshot = water, snapshotFields = fields,
                          baseY = transform.worldPosition.y,
                          time = Time::time](const math::Vector3& p) {
@@ -115,10 +115,10 @@ physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
 /// @brief シーンの流れを physics::FlowVolume として 1 個だけ申告する。
 /// @return 今フレームのハンドル。場が 1 本も無ければ無効ハンドル (EndSceneSync が枠を返す)。
 /// @pre FlowFieldSystem (PrePhysics) がこの System より前に走ること。走らなくても
-///      Scene::FlowFrame() が遅延更新するが、その場合は収集の時刻がフレーム内でぶれる。
+/// @note Scene::FlowFrame() が遅延更新するが、その場合は収集の時刻がフレーム内でぶれる。
 /// @note flowVelocity は不変のスナップショットを共有し、物理ステップ中に Scene を参照しない。
-///       場が 1 本も無いフレームは申告しない。無いことは «流速 0» ではなく «媒質について
-///       何も言っていない» 意味で、0 を渡すと flowCoupling を立てた体が理由もなく減速する。
+/// @note 場が 1 本も無いフレームは申告しない。無いことは «流速 0» ではなく «媒質について
+/// @note 何も言っていない» 意味で、0 を渡すと flowCoupling を立てた体が理由もなく減速する。
 /// @see Docs/design/flow-field.md §9-6
 physics::VolumeHandle SyncFlowVolume(Scene& scene, physics::World& world,
                                      physics::VolumeHandle handle)
@@ -129,7 +129,7 @@ physics::VolumeHandle SyncFlowVolume(Scene& scene, physics::World& world,
     physics::FlowVolumeDesc desc;
     /// @note channels は全ビット。剛体にはチャンネルの申告が無いので «どの場も受ける»。
     /// @note 時刻を捕まえ時に固定するのは、Curl のスクロールが substep ごとに進むと
-    ///       同じフレームの中で場が動いてしまうため。
+    /// @note 同じフレームの中で場が動いてしまうため。
     desc.flowVelocity = MakeFlowSampler(frame, {}, Time::time);
     return world.SyncVolume(handle, std::make_unique<physics::FlowVolume>(std::move(desc)));
 }
@@ -145,7 +145,7 @@ void WriteWorldPoseToTransform(GameObject& go,
         const math::Vector3 parentSpace = invParentRot * (worldPosition - parentTf.worldPosition);
 
         /// @note TransformSystem は localPosition に親 worldScale を掛けてから親回転を適用する。
-        ///       Physics は world pose を返すため、ここで同じ式を逆変換して local pose に戻す。
+        /// @note Physics は world pose を返すため、ここで同じ式を逆変換して local pose に戻す。
         tf.position = {
             parentTf.worldScale.x == 0.0f ? 0.0f : parentSpace.x / parentTf.worldScale.x,
             parentTf.worldScale.y == 0.0f ? 0.0f : parentSpace.y / parentTf.worldScale.y,
@@ -176,10 +176,10 @@ void AddColliderInstance(Scene& scene,
     physics::RigidBody* body = rb && rb->enabled && rb->rigidBody ? rb->rigidBody.get() : nullptr;
 
     /// @note 祖先の剛体へ属させる指定。自分に剛体が無いときだけ遡る。既定では遡らない —
-    ///       «親が剛体・子は静的な床» の構成もあるため、遡るかはコライダー側の申告に任せ、
-    ///       立てた所だけが «同じ体の一部» になる。質量も遡らせない。下の FromDensity は
-    ///       «この剛体の体積» を積むので、子の当たり (骨のヒットボックス等) まで数えると
-    ///       形を 1 つ足すたびに質量が勝手に増える。質量は自分の GameObject の分だけ。
+    /// @note «親が剛体・子は静的な床» の構成もあるため、遡るかはコライダー側の申告に任せ、
+    /// @note 立てた所だけが «同じ体の一部» になる。質量も遡らせない。下の FromDensity は
+    /// @note «この剛体の体積» を積むので、子の当たり (骨のヒットボックス等) まで数えると
+    /// @note 形を 1 つ足すたびに質量が勝手に増える。質量は自分の GameObject の分だけ。
     bool attachedToAncestor = false;
     if (!body && col.attachToParentBody) {
         for (GameObject* parent = go.GetParent(); parent; parent = parent->GetParent()) {
@@ -193,9 +193,9 @@ void AddColliderInstance(Scene& scene,
     }
 
     /// @note 共有 .physmat を参照しているなら、この時点で実効値へ解決する。毎フレーム解決する
-    ///       のは、エディタで .physmat を編集した結果を参照コライダーへ待ち時間なく反映させる
-    ///       ため。未参照なら即 return、参照ありでも AssetManager のパスキャッシュ引きだけなので
-    ///       フレームコストは実質ゼロ。
+    /// @note のは、エディタで .physmat を編集した結果を参照コライダーへ待ち時間なく反映させる
+    /// @note ため。未参照なら即 return、参照ありでも AssetManager のパスキャッシュ引きだけなので
+    /// @note フレームコストは実質ゼロ。
     col.ResolvePhysicsMaterial();
 
     /// @note 密度モードの剛体へ、このコライダーぶんの質量を積む。
@@ -203,13 +203,13 @@ void AddColliderInstance(Scene& scene,
         rb->computedMass += col.collider->ComputeVolume() * col.material.density;
 
     /// @note 剛体を持つコライダーの姿勢は World::UpdateColliders が
-    ///       «body の位置 + body の回転 × centerOffset» で組む。剛体が自分の GameObject に
-    ///       乗っているときは body の姿勢 = 自分の姿勢なので、centerOffset はローカルの
-    ///       center そのままでよい。祖先の剛体へ属させたときは両者がずれるので、
-    ///       «body から見た自分» へ直さないと、当たりが親の位置に生えてしまう。
+    /// @note «body の位置 + body の回転 × centerOffset» で組む。剛体が自分の GameObject に
+    /// @note 乗っているときは body の姿勢 = 自分の姿勢なので、centerOffset はローカルの
+    /// @note center そのままでよい。祖先の剛体へ属させたときは両者がずれるので、
+    /// @note «body から見た自分» へ直さないと、当たりが親の位置に生えてしまう。
     ///
-    ///       ⚠ 回転は body のものが使われる。祖先へ属させてよいのは、向きが剛体と揃っている
-    ///       当たりだけ (骨と一緒に回る当たりは、この経路では正しく回らない)。
+    /// @note ⚠ 回転は body のものが使われる。祖先へ属させてよいのは、向きが剛体と揃っている
+    /// @note 当たりだけ (骨と一緒に回る当たりは、この経路では正しく回らない)。
     math::Vector3 centerOffset = ColliderCenterOffset(go, col);
     if (attachedToAncestor && body) {
         centerOffset = body->GetRotation().Inverse()
@@ -252,15 +252,15 @@ void SyncColliderComponents(Scene& scene,
                             float dt)
 {
     /// @note GameObject 全体を毎 fixed step 走査して各 Collider 型を GetComponent すると、
-    ///       物理を持たないオブジェクト数に比例して固定コストが増える。ComponentArray が
-    ///       保持する Entity span を入口にし、存在する Collider component だけを同期する。
+    /// @note 物理を持たないオブジェクト数に比例して固定コストが増える。ComponentArray が
+    /// @note 保持する Entity span を入口にし、存在する Collider component だけを同期する。
     for (EntityID id : scene.GetEntities<T>()) {
         GameObject* go = scene.GetGameObject(id);
         T* col = scene.GetComponent<T>(id);
         if (!go || !go->activeInHierarchy() || !col || !col->enabled) continue;
 
         /// @note 構築 → 形状同期 → 姿勢反映は ColliderSync に集約。
-        ///       同じ手順をコライダー可視化 (DebugCollidersPass) も使うため、両者の見え方が一致する。
+        /// @note 同じ手順をコライダー可視化 (DebugCollidersPass) も使うため、両者の見え方が一致する。
         if (!PrepareCollider(scene, *go, *col)) continue;
 
         AddColliderInstance(scene, *go, *col, world, colliderOwners, bodyVolumes, dt);
@@ -294,7 +294,7 @@ CollisionInfo BuildCollisionInfo(const ColliderOwner& self,
 
 /// @brief CharacterController は Script の有無にかかわらず物理接触を受け取る。
 /// @note 接地判定のためだけに全キャラクターへ同じ OnCollisionStay 実装を要求すると、
-///       スクリプトを使わない敵・NPC・プレハブが成立しない。
+/// @note スクリプトを使わない敵・NPC・プレハブが成立しない。
 void RegisterCharacterGroundContact(const ColliderOwner& self,
                                     const ColliderOwner& other,
                                     const physics::CollisionEvent& event,
@@ -313,7 +313,8 @@ void DispatchToScript(Scene& scene,
                       const ColliderOwner& other,
                       const physics::CollisionEvent& event,
                       bool flipped,
-                      ScriptCollisionCallback callback)
+                      ScriptCollisionCallback callback,
+                      ScriptCallbackKind kind)
 {
     if (!self.gameObject || !other.gameObject) return;
 
@@ -325,7 +326,7 @@ void DispatchToScript(Scene& scene,
     for (auto& entry : scriptComponent->scripts) {
         if (!entry.script || !entry.script->enabled) continue;
         entry.script->SetContext(&scene, self.gameObject);
-        entry.script->ExecuteCallback(callback, info, "collision callback");
+        entry.script->ExecuteProfiledCallback(callback, info, kind, "collision callback");
     }
 }
 
@@ -333,6 +334,7 @@ void DispatchCollisionEvent(Scene& scene,
                             const ColliderOwnerMap& owners,
                             const physics::CollisionEvent& event,
                             ScriptCollisionCallback callback,
+                            ScriptCallbackKind kind,
                             bool registerGroundContact)
 {
     auto ownerA = owners.find(event.colliderA);
@@ -344,8 +346,8 @@ void DispatchCollisionEvent(Scene& scene,
         RegisterCharacterGroundContact(ownerB->second, ownerA->second, event, true);
     }
 
-    DispatchToScript(scene, ownerA->second, ownerB->second, event, false, callback);
-    DispatchToScript(scene, ownerB->second, ownerA->second, event, true,  callback);
+    DispatchToScript(scene, ownerA->second, ownerB->second, event, false, callback, kind);
+    DispatchToScript(scene, ownerB->second, ownerA->second, event, true,  callback, kind);
 }
 
 void DispatchCollisionEvents(Scene& scene,
@@ -356,21 +358,27 @@ void DispatchCollisionEvents(Scene& scene,
     {
         DispatchCollisionEvent(scene, owners, event, event.isTrigger
             ? &Script::OnTriggerEnter
-            : &Script::OnCollisionEnter, true);
+            : &Script::OnCollisionEnter, event.isTrigger
+                ? ScriptCallbackKind::TRIGGER_ENTER
+                : ScriptCallbackKind::COLLISION_ENTER, true);
     }
 
     for (const auto& event : world.GetStayEvents())
     {
         DispatchCollisionEvent(scene, owners, event, event.isTrigger
             ? &Script::OnTriggerStay
-            : &Script::OnCollisionStay, true);
+            : &Script::OnCollisionStay, event.isTrigger
+                ? ScriptCallbackKind::TRIGGER_STAY
+                : ScriptCallbackKind::COLLISION_STAY, true);
     }
 
     for (const auto& event : world.GetExitEvents())
     {
         DispatchCollisionEvent(scene, owners, event, event.isTrigger
             ? &Script::OnTriggerExit
-            : &Script::OnCollisionExit, false);
+            : &Script::OnCollisionExit, event.isTrigger
+                ? ScriptCallbackKind::TRIGGER_EXIT
+                : ScriptCallbackKind::COLLISION_EXIT, false);
     }
 }
 
@@ -416,9 +424,9 @@ void PhysicsSystem::Update(SystemContext& ctx) {
             if (!go || !go->activeInHierarchy() || !rb || !rb->enabled || !rb->rigidBody) continue;
 
             /// @note BodyHandle は Component 側へ永続化される runtime state で、Component 実体へ
-            ///       直接書き戻す。動的剛体は Physics を正とし、Transform が前回物理姿勢から
-            ///       明示的に変わった時だけテレポートとして Scene → Physics へ送る (毎 step の
-            ///       無条件再送は補間履歴と FixedScript の直接操作を巻き戻すため行わない)。
+            /// @note 直接書き戻す。動的剛体は Physics を正とし、Transform が前回物理姿勢から
+            /// @note 明示的に変わった時だけテレポートとして Scene → Physics へ送る (毎 step の
+            /// @note 無条件再送は補間履歴と FixedScript の直接操作を巻き戻すため行わない)。
             if (rb->rigidBody->IsStatic() || PoseChanged(*rb, go->transform)) {
                 rb->rigidBody->SetPosition(go->transform.worldPosition);
                 rb->rigidBody->SetRotation(go->transform.worldRotation);
@@ -426,16 +434,16 @@ void PhysicsSystem::Update(SystemContext& ctx) {
                     go->transform.worldPosition, go->transform.worldRotation);
             }
             /// @note 毎フレーム押し込む理由: 正本はコンポーネント側。Inspector と
-            ///       スクリプトが触るのはそちらなので、massMode と同じ形で剛体へ配る。
+            /// @note スクリプトが触るのはそちらなので、massMode と同じ形で剛体へ配る。
             rb->rigidBody->SetFlowCoupling(rb->flowCoupling);
             rb->bodyHandle = world.SyncBody(rb->bodyHandle, rb->rigidBody.get());
         }
     }
 
     /// @note 密度から質量を出す剛体は、コライダー同期の中で体積 × 密度を積算するため、ここで
-    ///       累算器をゼロに戻す。コライダー側で積むのは、1 つの GameObject に複数のコライダーが
-    ///       付くことがあり (胴 + 頭のカプセル等) 質量は全部の体積の合計であるべきで、コライダー
-    ///       走査はどのみち毎フレーム行うのでそこに相乗りするのが最も安いため。
+    /// @note 累算器をゼロに戻す。コライダー側で積むのは、1 つの GameObject に複数のコライダーが
+    /// @note 付くことがあり (胴 + 頭のカプセル等) 質量は全部の体積の合計であるべきで、コライダー
+    /// @note 走査はどのみち毎フレーム行うのでそこに相乗りするのが最も安いため。
     for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
         auto* rb = scene.GetComponent<RigidBodyComponent>(id);
         if (rb && rb->massMode == MassMode::FromDensity) rb->computedMass = 0.0f;
@@ -476,7 +484,7 @@ void PhysicsSystem::Update(SystemContext& ctx) {
     }
 
     /// @note 関節は剛体と同じ «毎フレーム申告» で寿命を持つ。申告が途切れた制約は
-    ///       EndSceneSync が破棄するので、Scene 側に «外す» 経路は要らない。
+    /// @note EndSceneSync が破棄するので、Scene 側に «外す» 経路は要らない。
     SyncJointComponents(scene, world);
 
     {
@@ -487,7 +495,7 @@ void PhysicsSystem::Update(SystemContext& ctx) {
             if (!go || !go->activeInHierarchy() || !rb ||
                 rb->massMode != MassMode::FromDensity || !rb->rigidBody) continue;
             /// @note コライダーが 1 つも付いていない (= 体積 0) 剛体を質量 0 にすると
-            ///       invMass が無限大になり、わずかな接触で吹き飛ぶ。下限で守る。
+            /// @note invMass が無限大になり、わずかな接触で吹き飛ぶ。下限で守る。
             constexpr float MIN_MASS = 0.001f;
             rb->rigidBody->SetMass(std::max(rb->computedMass, MIN_MASS));
         }
