@@ -204,3 +204,112 @@ capture or replay comparison was completed for this implementation. The timings
 above belong to the old baseline only; the optimized speedup and sustained
 1080p / 60 fps remain unverified. Reuse the baseline conditions and independently
 verify the effective Dispatch constants before reporting a speed comparison.
+
+## Opaque Candidate Comparison 2026-10-02
+
+This comparison isolates the later Hybrid opaque-candidate / vertex-read change.
+Both snapshots already contain the camera-air proof and local-current-path change
+above. The earlier `GPU 1.wpix` is not the baseline for this comparison.
+The GPU is RTX 4070, driver 610.88, Release / DX12, PIX 2603.25.
+The snapshots are `Scratch/PixCapture/ReflectionBaseline20261002/` and
+`ReflectionOptimized20261002/`; all 2,696 non-shader inputs match by SHA256.
+Both original asset/settings manifests still verify all nine protected inputs.
+
+Each standalone `RangeGpu.wpix` contains 64 consecutive frames, appFrame 2--65,
+with View 1, scene 2, plan 1, resources 1, output 0:0 and extent 1904 x 993.
+The view descendants of frame 65, original Global IDs 7634--7748, were recaptured
+into `LateGpu.wpix`. The physical Frame marker is outside the trimmed region;
+the retained View marker still identifies appFrame 65 and the same extent.
+Original range captures retain their screenshots. The trimmed capture has no
+gold screenshot; `save-screenshot` returned E_POINTER, while recapture and the
+event-list export succeeded. This does not replace a live Timing Capture.
+
+Three analyses of each saved late capture were run in alternating baseline / new
+order. All six CSVs have identical non-timing structure and counter schema.
+Every view's 36 direct sibling EOP durations sum exactly to its View EOP.
+Nested Dispatch durations are not added again. The repeat results are:
+
+| Work, EOP | Baseline median [range], ms | New median [range], ms | Median reduction |
+| --- | --- | --- | --- |
+| RayReflection | 265.152512 [258.122752, 274.694144] | 234.105856 [233.421824, 246.151168] | 11.71% |
+| View | 269.391872 | 238.332928 | 11.53% |
+
+These are replay measurements of matched saved work, not sustained FPS or the
+reported live 90 ms. Multi-frame replay has materially different absolute
+durations: the later 34 range frames average 666.397274 / 611.102268 ms for
+RayReflection. Do not mix range and trimmed replay durations. The snapshots did
+not add explicit history-valid / reset or AS/probe markers; their absence does
+not prove those costs or state transitions are zero.
+
+The C++ exports were inspected, without compiling or running generated code.
+Both target Dispatches are 238 x 125 x 1, trimmed Global ID 56. Captured PSO
+shader bytes exactly match their respective frozen CSOs. Root parameter 0 is
+b0/space0 and points to upload resource 104 (baseline) / 105 (new), offset 94464.
+The exact 256-byte buffers verify width 1904, height 993, instance count 9,
+sample count 4, frame index 65, incomplete 0, IBL ready 1, resolve 1, SSR 1,
+glass 1, boundary limit 16 and camera-origin-proven-air 1 in both captures.
+Byte 244 is baseline reserved 0 and new `hybridCandidatePolicy` 1.
+The late export reconstructs AS objects from driver serialization; original
+BLAS geometry / TLAS instance flags are not independently decoded from that data.
+Source policy and its CPU / real-DXR regressions are separate evidence.
+
+Structured replay and binding evidence is in
+`Scratch/ReflectionOptimize/LateReplayComparison.json` and
+`PixCapturedBindings.json`, with extracted shader and constant-buffer bytes.
+
+### Supplemental Application Timestamp Comparison
+
+The ordinary Editor batch path, without the PIX capturer, was also measured.
+This path renders Scene and Game; only the completed Game View 1 RayReflection
+pass at 1548 x 871 is compared here. The cloned probe update interval is 3600 s,
+glass is active, and both runs wait 256 fixed-step frames before sampling.
+The identical scenario queries 32 snapshots eight application frames apart.
+Both reports pass all 67 steps; all 32 samples are available, complete, unique,
+have zero dropped passes and source lag 2. Query frames 260--508, source frames
+257--505, physical frames 258--506, view/output/scene/plan/resource/device metadata
+match between runs. Source identification prevents combining different views
+or attributing the lockstep FPS to measured GPU performance.
+
+| Game View 1 RayReflection GPU timestamps | Baseline, ms | New, ms |
+| --- | --- | --- |
+| Mean, 32 samples | 131.261984 | 117.986784 |
+| Median | 130.051072 | 117.284864 |
+| Minimum / maximum | 129.140736 / 137.046016 | 116.078592 / 123.568128 |
+| p95 | 136.291379 | 122.320998 |
+| Sample standard deviation | 2.493634 | 1.941649 |
+
+Mean pass time falls by 13.275200 ms, 10.11%; all 32 frame-matched pairs improve.
+p95 uses sorted-position `(n-1)*0.95` linear interpolation (type 7); standard
+deviation uses the sample `n-1` denominator. These observations complement the
+matched PIX replay rather than mixing its absolute times with application times.
+This is one pair of application runs, not a live Timing Capture, a complete GPU
+frame measurement, sustained FPS or reproduction of the reported 90 ms setup.
+Full-frame GPU time, preparation and per-queue totals remain unavailable.
+Evidence is `Scratch/ReflectionOptimize/TimingComparison.json` and the two
+snapshots' `Timing/report.json` files. No benchmark threshold was added to tests.
+
+The matching settled image scenarios pass all 10 steps and capture two Game
+images at frames 262 / 270. Each image differs by at most 1/255 in any channel;
+RGB mean absolute differences on the 0--255 scale are 0.002280 / 0.002183.
+This validates the settled images under those conditions; it does not identify
+the cause of the earlier transient image differences or establish bit equality.
+
+## Portfolio Evidence 2026-10-03
+
+The saved optimized `LateGpu.wpix` was reopened in PIX 2603.25 for actual UI
+screenshots: [events and captured constants](../media/pix/pix-hybrid-events.jpg)
+and [events and GPU timeline](../media/pix/pix-hybrid-timeline.jpg). These JPEGs
+retain the original 1920 x 1080 window pixels without editing. The selected
+RayReflection Dispatch is Global ID 56, with 238 x 125 x 1 groups. The captured
+constant buffer shows 1904 x 993, four samples and frame index 65.
+
+The display replay on 2026-10-03 reports RayReflection EOP 336.224256 ms and
+View EOP 341.786624 ms. It was collected to illustrate the inspection screen,
+not added to the 2026-10-02 matched comparison. Portfolio improvement figures
+continue to use the three-repeat replay medians and the separate 32 application
+GPU timestamps described above. Neither observation certifies sustained FPS.
+
+[The media manifest](../media/pix/manifest.json) records capture/image hashes,
+capture and screenshot dates, and the unmodified comparison and binding reports.
+The portfolio pairs PIX inspection with the engine Profiler, D3D12 validation
+and CPU/GPU/image regressions; it claims only tools supported by these records.
