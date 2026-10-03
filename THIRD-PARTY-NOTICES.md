@@ -19,6 +19,7 @@ FBZZ Engine 本体は MIT License ([LICENSE](LICENSE)) で配布する。
 | [DirectX 12 Agility SDK](https://www.nuget.org/packages/Microsoft.Direct3D.D3D12/1.619.6) | 1.619.6 | Microsoft binary / MIT code terms | [`ThirdParty/AgilitySDK/LICENSE`](ThirdParty/AgilitySDK/LICENSE) |
 | [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler/releases/tag/v1.9.2609) | 1.9.2609 | MIT / LLVM / Microsoft binary terms | [`ThirdParty/DXC/LICENSE`](ThirdParty/DXC/LICENSE) |
 | [Dear ImGui](https://github.com/ocornut/imgui) | 1.92.8 (docking) | `MIT` | [`ThirdParty/ImGui/LICENSE.txt`](ThirdParty/ImGui/LICENSE.txt) |
+| [ImPlot](https://github.com/epezent/implot/tree/v1.0) | 1.0 | `MIT` | [`ThirdParty/ImPlot/LICENSE`](ThirdParty/ImPlot/LICENSE) |
 | [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo) | — | `MIT` | [`ThirdParty/ImGuizmo/LICENSE`](ThirdParty/ImGuizmo/LICENSE) |
 | [imnodes](https://github.com/Nelarius/imnodes) | — | `MIT` | [`ThirdParty/ImNodes/LICENSE`](ThirdParty/ImNodes/LICENSE) |
 | [toml++](https://github.com/marzer/tomlplusplus) | 3.4.0 | `MIT` | [`ThirdParty/TomlPlusPlus/LICENSE`](ThirdParty/TomlPlusPlus/LICENSE) |
@@ -188,6 +189,33 @@ SOFTWARE.
 ```
 
 ---
+
+## ImPlot — MIT
+
+取り込み範囲: v1.0 の `implot.h` / `implot_internal.h` / `implot.cpp` / `implot_items.cpp`。デモと上流ビルドスクリプトは含めない。Editor 専用の静的依存として使い、固定コミットと各ファイルの SHA-256 は [`ThirdParty/ImPlot/VERSION`](ThirdParty/ImPlot/VERSION) に記録する。
+
+MIT License
+
+Copyright (c) 2020-2024 Evan Pezent
+Copyright (c) 2025-2026 Breno Cunha Queiroz
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ## ImGuizmo — MIT
 

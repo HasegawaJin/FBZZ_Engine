@@ -150,6 +150,15 @@ install(FILES
     "${CMAKE_SOURCE_DIR}/CMake/StageAgilitySDK.cmake"
     "${CMAKE_SOURCE_DIR}/CMake/AgilitySDKExports.cpp.in"
     DESTINATION "cmake/FBZZ")
+# @note SDK の Editor は ImPlot を静的リンクし、既存の staging がこの告知を Editor/EngineLicenses へ配置する。
+install(FILES
+    "${CMAKE_SOURCE_DIR}/ThirdParty/ImPlot/LICENSE"
+    "${CMAKE_SOURCE_DIR}/ThirdParty/ImPlot/VERSION"
+    DESTINATION "share/fbzz/licenses/ImPlot")
+# @note ImPlot のソースに記載された全著作権者を Editor の配布告知へ含める。
+install(FILES
+    "${CMAKE_SOURCE_DIR}/THIRD-PARTY-NOTICES.md"
+    DESTINATION "share/fbzz/licenses")
 if(FBZZ_ENABLE_DX12)
     foreach(FBZZ_RUNTIME_PACKAGE AgilitySDK DXC)
         if(FBZZ_RUNTIME_PACKAGE STREQUAL "AgilitySDK")

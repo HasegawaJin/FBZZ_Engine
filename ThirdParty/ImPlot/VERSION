@@ -1,0 +1,14 @@
+ImPlot 1.0
+Repository: https://github.com/epezent/implot
+Tag: v1.0
+Commit: 524f9fcd48d76c13fdf94c5ffbba8787a1ff7e39
+Files: implot.h, implot_internal.h, implot.cpp, implot_items.cpp, LICENSE
+Local patches: none
+Retrieved: 2026-10-03
+Demo and upstream build scripts are excluded; FBZZ defines the static target.
+Update: replace the four source files and LICENSE from a fixed upstream tag, then refresh commit and hashes and compile Editor against the vendored ImGui.
+SHA256 implot.h 4ff67ceef69d4bf3bdc0d62d8b699ff66f3914b50329d530fe5527e25cf58e94
+SHA256 implot_internal.h 6483813f3d62203353bdcd01505d22fc43252282f40ac401edd9951e1cb65919
+SHA256 implot.cpp 7bd4e9702e5b1b9e8d1e890b17a69ec5bf4a928fb0a5d9b226093df173dcbdac
+SHA256 implot_items.cpp d1a6effd918d09f4478224900707593380dc8a1f7752a9b64f53319de3ec5f2a
+SHA256 LICENSE 38bd30c2111fe7e3d8fb86d8607491239659eff1df1b1004b9a8349e20a91967

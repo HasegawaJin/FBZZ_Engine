@@ -138,7 +138,7 @@ FBZZ_Engine/
 ├── Assets/             エディター既定プロジェクト (Shaders / Scenes / Models / Fonts …)
 ├── GreenWare/          デモゲーム (独立プロジェクト)
 ├── SDK/                版ごとに publish されたエンジン SDK
-├── ThirdParty/         Assimp / DirectXTex / ImGui / ImGuizmo / ImNodes / toml++ / stb / TinyEXR / GoogleTest
+├── ThirdParty/         Assimp / DirectXTex / ImGui / ImPlot / ImGuizmo / ImNodes / toml++ / stb / TinyEXR / GoogleTest
 ├── CMake/              ビルド基盤 (PCH / Unity / SDK publish / カバレッジ / テスト登録)
 ├── Tools/              ビルド・検証・カバレッジの入口
 └── Docs/               規約・設計ドキュメント
@@ -147,7 +147,7 @@ FBZZ_Engine/
 ```mermaid
 graph LR
     subgraph サードパーティ
-        TP["Assimp / ImGui / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / TinyEXR / XAudio2\nDirectX 12 / DXC"]
+        TP["Assimp / ImGui / ImPlot / ImGuizmo\nImNodes / DirectXTex / toml++\nstb / TinyEXR / XAudio2\nDirectX 12 / DXC"]
     end
 
     subgraph コアライブラリ
@@ -926,6 +926,7 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 | XAudio2 | 3D オーディオ |
 | Assimp | FBX / OBJ メッシュ・スケルタルデータ読み込み |
 | ImGui | エディター UI |
+| [ImPlot](https://github.com/epezent/implot) | Profiler・メモリ・描画時間の履歴グラフ (拡大 / 移動 / 値確認) |
 | ImGuizmo | エディター Gizmo |
 | ImNodes | ノードエディター (アニメーショングラフ / ビヘイビアツリー) |
 | toml++ | シーン・設定のシリアライゼーション |

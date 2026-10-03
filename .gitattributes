@@ -8,6 +8,7 @@
 # @note 固定パッケージは VERSION の SHA256 と一致させるため、改行を含む取得時の全バイトを保持する。
 ThirdParty/AgilitySDK/** -text
 ThirdParty/DXC/** -text
+ThirdParty/ImPlot/** -text
 
 # @note GreenWare のソース素材だけを LFS 対象とし、clone 後のゲーム起動に必要な素材を保持する。
 # @note LFS は旧版の全量を保存するため、再生成できるベイク出力は .gitignore で除外する。

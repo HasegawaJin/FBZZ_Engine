@@ -89,6 +89,16 @@ add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZCore>  "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:FBZZGraphics>  "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ImGui>        "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
+    # @note ImPlot は exe へ静的リンクするため、告知だけを Editor 配布物へ同梱する。
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:FBZZEditorLauncher>/EngineLicenses/ImPlot"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/ThirdParty/ImPlot/LICENSE"
+        "${CMAKE_SOURCE_DIR}/ThirdParty/ImPlot/VERSION"
+        "$<TARGET_FILE_DIR:FBZZEditorLauncher>/EngineLicenses/ImPlot"
+    # @note ソース側の追加著作権表記を含む告知を静的リンク済み Editor とともに配置する。
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/THIRD-PARTY-NOTICES.md"
+        "$<TARGET_FILE_DIR:FBZZEditorLauncher>/EngineLicenses/THIRD-PARTY-NOTICES.md"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:FBZZEditorLauncher>"
