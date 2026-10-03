@@ -118,6 +118,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | ファイル | 内容 |
 |---|---|
 | [blender-dcc-pipeline.md](design/blender-dcc-pipeline.md) | Blender × FBZZ の分業パイプライン。交換フォーマットと責務境界 (Draft) |
+| [geometry-authoring.md](design/geometry-authoring.md) | 独立 AssetEditor と Terrain / Mesh / Paint 共通基盤の検討記録。費用対効果により実装見送り |
 | [asset-streaming.md](design/asset-streaming.md) | アセットの非同期読み込み・ストリーミングと段階ごとの実装範囲 |
 | [material-reflection-types.md](design/material-reflection-types.md) | Material Reflection の型契約 |
 | [minibot-c-humanoid.md](design/minibot-c-humanoid.md) | MiniBot C — 人型リグと一刀モデルの制作仕様 |
