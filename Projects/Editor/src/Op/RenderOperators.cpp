@@ -12,6 +12,8 @@
 #include <Editor/PlayModeController.hpp>
 #include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
+#include <Graphics/Pipeline/RayTracingPipeline.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
@@ -321,8 +323,14 @@ void RegisterRenderOperators(OperatorRegistry& registry)
             return renderer::ViewMode::Lit;
         };
 
+        op.poll = [toViewMode](const OpContext&, const OpArgs& args) {
+            return !renderer::IsRayDebugView(toViewMode(args.GetString("mode")))
+                || core::DeveloperMode::IsEnabled();
+        };
         op.exec = [toViewMode](OpContext& c, const OpArgs& args) -> OpResult {
             /// @note 未知の綴りは ValidateArgs (enumValues) が入口で弾く。
+            if (renderer::IsRayDebugView(toViewMode(args.GetString("mode"))) && !core::DeveloperMode::IsEnabled())
+                return OpResult::Err("DEVELOPER_MODE_REQUIRED", "レイ診断表示には DeveloperMode が必要です");
             c.ctx.projectSettings.render.viewMode = toViewMode(args.GetString("mode"));
             return OpResult::Ok();
         };

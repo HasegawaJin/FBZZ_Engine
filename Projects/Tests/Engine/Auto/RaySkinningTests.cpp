@@ -10,6 +10,7 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
@@ -129,10 +130,12 @@ protected:
         m_bundle.renderer->BeginFrame();
         m_frameOpen = true;
     }
-    size_t ExecuteView(scene::RenderFrameGeometryCache* cache = nullptr)
+    size_t ExecuteView(scene::RenderFrameGeometryCache* cache = nullptr,
+                       bool experimentalRayTracingEnabled = true)
     {
         scene::RenderPassContext context{m_scene, *m_bundle.renderer, *m_resources, m_camera, m_settings,
             m_target, ~0u, m_handles};
+        context.experimentalRayTracingEnabled = experimentalRayTracingEnabled;
         context.width = context.height = 1;
         scene::ExecuteSkinningComputePass(context);
         scene::ExtractRenderScene(context, cache);
@@ -230,6 +233,45 @@ TEST_F(RaySkinningTest, RayDemandDeformsOffscreenLodHiddenGeometryAndPublishesTh
     const auto pixels = ReadAndEndFrame();
     ASSERT_EQ(pixels.size(), 4u);
     EXPECT_NEAR(pixels[0], -1, 0.001f); EXPECT_NEAR(pixels[1], -1, 0.001f); EXPECT_NEAR(pixels[2], 3, 0.001f);
+}
+
+TEST_F(RaySkinningTest, DisabledExperimentalPermissionDoesNotDeformHiddenGeometryForASavedPathRequest)
+{
+    Skinned().lodVisible = false;
+    Object().transform.position = Object().transform.worldPosition = {10000, 0, 0};
+    Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 2});
+    scene::LODGroupComponent group;
+    group.levels = {{0.75f, {{"unresolved-canonical-renderer", scene::EntityID::INVALID}}}};
+    m_scene.CreateGameObject("Unresolved LOD").AddComponent<scene::LODGroupComponent>(group);
+    scene::RenderFrameGeometryCache cache;
+    BeginFrame();
+    EXPECT_EQ(ExecuteView(&cache, false), 0u);
+    EXPECT_FALSE(Skinned().gpuSkinnedThisFrame);
+    EXPECT_FALSE(Skinned().ResolveSlotSkinnedVertexBuffer(0).IsValid());
+    ASSERT_NE(m_snapshot, nullptr);
+    ASSERT_EQ(m_snapshot->items.size(), 1u);
+    EXPECT_FALSE(m_snapshot->items[0].deformedVertexBuffer.IsValid());
+    EXPECT_EQ(m_snapshot->items[0].deformedContentVersion, 0u);
+    EXPECT_TRUE(m_snapshot->rayLodDiagnostics.empty());
+    EXPECT_TRUE(m_snapshot->rayUnsupportedEffects.empty());
+    EXPECT_FALSE(cache.rayTracingInputs);
+    EXPECT_EQ(m_settings.modeRequest.mode, renderer::RenderMode::PATH_TRACING);
+    EXPECT_EQ(ExecuteView(&cache, true), 1u);
+    EXPECT_TRUE(cache.rayTracingInputs);
+    EXPECT_EQ(m_snapshot->rayLodDiagnostics.size(), 1u);
+    EXPECT_GT(OutputVersion(), 0u);
+    const auto pixels = ReadAndEndFrame();
+    ASSERT_EQ(pixels.size(), 4u);
+    EXPECT_NEAR(pixels[2], 3, 0.001f);
+    BeginFrame();
+    EXPECT_EQ(ExecuteView(&cache, false), 0u);
+    EXPECT_FALSE(cache.rayTracingInputs);
+    ASSERT_NE(m_snapshot, nullptr);
+    EXPECT_FALSE(m_snapshot->items[0].deformedVertexBuffer.IsValid());
+    EXPECT_EQ(m_snapshot->items[0].deformedContentVersion, 0u);
+    EXPECT_TRUE(m_snapshot->rayLodDiagnostics.empty());
+    EXPECT_EQ(m_settings.modeRequest.mode, renderer::RenderMode::PATH_TRACING);
+    EndFrameWithoutRead();
 }
 
 TEST_F(RaySkinningTest, SamePoseAndTwoViewsShareOneDispatchButPoseChangesAdvanceTheOutputVersion)

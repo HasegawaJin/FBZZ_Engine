@@ -104,10 +104,11 @@ protected:
     {
         return *m_scene.GetComponent<scene::EnvironmentLightComponent>(owner);
     }
-    renderer::RayEnvironmentInput Extract()
+    renderer::RayEnvironmentInput Extract(bool experimentalRayTracingEnabled = true)
     {
         scene::RenderPassContext context{m_scene, *m_bundle.renderer, *m_resources, m_camera,
             m_settings, {}, ~0u, m_handles};
+        context.experimentalRayTracingEnabled = experimentalRayTracingEnabled;
         return scene::ExtractRenderEnvironment(context).rayEnvironment;
     }
     void ExpectHdr(const renderer::RayEnvironmentInput& input, float scale)
@@ -150,6 +151,35 @@ private:
     bool m_assetInitialized = false;
     asset::StreamedTextureResolver::MissPolicy m_savedPolicy = asset::StreamedTextureResolver::MissPolicy::Synchronous;
 };
+
+TEST_F(RayEnvironmentExtractionTest, DisabledExperimentalSessionSkipsRawAssetsAndClearsCpuCacheForResume)
+{
+    const auto owner = AddEnvironment("RawEnvironment", m_firstPath);
+    m_settings.modeRequest.mode = renderer::RenderMode::PATH_TRACING;
+    auto& resolver = asset::StreamedTextureResolver::Engine();
+    const auto heldBefore = resolver.HeldCount();
+    const auto disabled = Extract(false);
+    EXPECT_FALSE(disabled.requested);
+    EXPECT_FALSE(disabled.ready);
+    EXPECT_FALSE(disabled.rawTexture.IsValid());
+    EXPECT_EQ(disabled.pixels, nullptr);
+    EXPECT_EQ(resolver.HeldCount(), heldBefore);
+    EXPECT_EQ(m_settings.modeRequest.mode, renderer::RenderMode::PATH_TRACING);
+    EXPECT_EQ(Environment(owner).rawEnvironmentPath, m_firstPath.generic_string());
+
+    const auto enabled = Extract(true);
+    ExpectHdr(enabled, 2);
+    EXPECT_EQ(resolver.HeldCount(), heldBefore + 1);
+    EXPECT_EQ(Extract(true).pixels, enabled.pixels);
+    const auto stopped = Extract(false);
+    EXPECT_FALSE(stopped.requested);
+    EXPECT_FALSE(stopped.rawTexture.IsValid());
+    EXPECT_EQ(stopped.pixels, nullptr);
+    const auto resumed = Extract(true);
+    ExpectHdr(resumed, 2);
+    EXPECT_EQ(resumed.rawTexture, enabled.rawTexture);
+    EXPECT_NE(resumed.pixels, enabled.pixels);
+}
 
 TEST_F(RayEnvironmentExtractionTest, StreamedNativeCubePreservesLinearHdrAndSelectedOwnerSettings)
 {

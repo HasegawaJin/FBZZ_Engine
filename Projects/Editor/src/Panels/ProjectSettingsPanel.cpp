@@ -21,6 +21,7 @@
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
 #include <Engine/Input/Gamepad.hpp>
 #include <Engine/Input/InputActionMap.hpp>
 #include <Engine/ProjectSettings.hpp>
@@ -902,6 +903,8 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
         ImGui::BeginDisabled(assigned || playing);
         static const char* const kRenderModes[] = { "Raster", "Hybrid", "Path Tracing" };
         static const char* const kPathProfiles[] = { "Reference", "Game" };
+        const bool developerMode = core::DeveloperMode::IsEnabled();
+        ImGui::BeginDisabled(!developerMode);
         Field("Render Mode", render.modeRequest.mode, &d.modeRequest.mode,
               "要求する描画構成。対応する GPU・シーン・描画パスが揃わない場合は Raster を使う。要求は保存される",
               [&] { return EnumCombo(render.modeRequest.mode, kRenderModes); });
@@ -921,6 +924,9 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
                   "Reference はカメラレイで参照画像を生成し、Game は Deferred の表面から照明を計算する要求",
                   [&] { return EnumCombo(render.modeRequest.pathProfile, kPathProfiles); });
         }
+        ImGui::EndDisabled();
+        if (!developerMode && !Searching())
+            ImGui::TextWrapped("RT は DeveloperMode 限定の実験機能です。--developer で起動してください。保存済みの要求は保持し、通常起動では Raster を使います。");
         if (!Searching() && ctx.resources) {
             for (const auto target : { scene::UIRenderTargetView::GameViewport,
                                        scene::UIRenderTargetView::SceneViewport }) {

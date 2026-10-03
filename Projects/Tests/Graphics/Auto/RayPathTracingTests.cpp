@@ -228,6 +228,7 @@ protected:
         renderer::RenderSettings settings;
         renderer::RenderPassHandles handles;
         renderer::RenderPassContext context{{}, device, resources, m_camera, settings, m_target, ~0u, handles};
+        context.experimentalRayTracingEnabled = true;
         context.width = context.height = 1;
         ++m_state.scene.snapshotSerial;
         m_state.pathScene = m_state.sceneBuilder.Build(m_state.scene, resources, m_lighting);

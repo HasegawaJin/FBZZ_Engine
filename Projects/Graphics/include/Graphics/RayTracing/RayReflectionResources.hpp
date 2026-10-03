@@ -56,10 +56,17 @@ struct RayReflectionConstants {
     uint32_t glassBoundaryLimit = 0;
     /// @note 1 は現 perspective camera origin が検証済み全 solid bounds 外。0 は従来の画素別媒体探索。
     uint32_t cameraOriginProvenAir = 0;
-    uint32_t reserved[3]{};
+    /// @note bit0 は Hybrid 専用 AS の opaque/cull 証明、bit1 は smooth glass の単一 Fresnel 分岐。
+    uint32_t hybridPolicyFlags = 0;
+    /// @note Scene width/height は変更せず、粗い opaque 輸送だけ ceil(Scene/2) の独立資源を使う。
+    uint32_t traceWidth = 0;
+    uint32_t traceHeight = 0;
 };
 static_assert(sizeof(RayReflectionConstants) == 256);
 static_assert(offsetof(RayReflectionConstants, cameraOriginProvenAir) == 240);
+static_assert(offsetof(RayReflectionConstants, hybridPolicyFlags) == 244);
+static_assert(offsetof(RayReflectionConstants, traceWidth) == 248);
+static_assert(offsetof(RayReflectionConstants, traceHeight) == 252);
 
 struct RayReflectionLightingResources {
     ResourceHandle<StructuredBufferTag> emitters, deltaLights, shapes, environmentTable;
@@ -76,12 +83,17 @@ struct RayReflectionLightingResources {
     math::Vector3 provenAirOrigin;
 };
 
-/// @note ビューが所有する RGBA16F 出力。scene/gpu は同じ静的表面版を指す。
+/// @note output と guide/history は Scene extent、halfRaw は粗い opaque 輸送だけの RGBA16F。scene/gpu は同じ静的表面版を指す。
 struct RayReflectionViewResources {
     ResourceHandle<TextureTag> output;
+    ResourceHandle<TextureTag> halfRaw;
     ResourceHandle<ConstantBufferTag> constants;
     uint32_t width = 0;
     uint32_t height = 0;
+    /// @note 再構成・半解像度資源の準備失敗時は divisor1 と Scene extent に戻す。
+    uint32_t traceWidth = 0;
+    uint32_t traceHeight = 0;
+    uint32_t resolutionDivisor = 1;
     RayScene scene;
     RaySceneGpu gpu;
     RayPathSceneBuilder sceneBuilder;

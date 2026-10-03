@@ -119,6 +119,7 @@ protected:
         handles.taaHistoryA = view.taaHistoryA;
         handles.taaHistoryB = view.taaHistoryB;
         renderer::RenderPassContext context{{}, device, resources, camera, settings, {}, ~0u, handles};
+        context.experimentalRayTracingEnabled = true;
         context.frameStamp = frameStamp;
         context.width = context.height = 3;
         context.rayReflectionPassActive = reflectionActive;
@@ -174,6 +175,7 @@ protected:
         renderer::Camera camera;
         renderer::RenderPassHandles handles;
         renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources, camera, settings, {}, ~0u, handles};
+        context.experimentalRayTracingEnabled = true;
         renderer::RenderSharedResources shared;
         renderer::ResolvedRenderPlan plan;
         plan.failureReason = renderer::RenderPlanReason::NONE;

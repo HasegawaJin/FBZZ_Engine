@@ -12,7 +12,8 @@ namespace fbzz::renderer {
 /// @return view.renderPlan と同じ構成。要求設定は変更しない。
 [[nodiscard]] ResolvedRenderPlan PrepareViewRenderPlan(ResourceManager& resources,
     IRenderer& renderer, const RenderSettings& settings, RenderViewResources& view,
-    const RenderSharedResources& shared, const RenderPassHandles& handles);
+    const RenderSharedResources& shared, const RenderPassHandles& handles,
+    bool experimentalRayTracingEnabled = false);
 
 struct ShadowBounds {
     math::Vector3 center = math::Vector3::ZERO;

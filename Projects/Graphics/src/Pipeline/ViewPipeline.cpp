@@ -41,10 +41,12 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     const bool rayReflectionReady = PrepareRayReflectionView(passCtx, viewTargets, shared,
         options.renderPlan.rasterPlan);
     const bool rayPathReady = PrepareRayPathView(passCtx, viewTargets, shared);
-    const auto renderPlan = PrepareViewRenderPlan(resources, passCtx.renderer, rs, viewTargets, shared, passHandles);
+    const auto renderPlan = PrepareViewRenderPlan(resources, passCtx.renderer, rs, viewTargets, shared, passHandles,
+        passCtx.experimentalRayTracingEnabled);
     passCtx.rayReflectionPassActive = rayReflectionReady && renderPlan.reflection.enabled;
     /// @note RT の縮退理由は保持し、使える Deferred 表面の SSR / IBL まで旧 HDR 合成へ戻さない。
-    passCtx.hybridReflectionResolveActive = rs.modeRequest.mode == RenderMode::HYBRID
+    passCtx.hybridReflectionResolveActive = passCtx.experimentalRayTracingEnabled
+        && rs.modeRequest.mode == RenderMode::HYBRID
         && renderPlan.rasterPlan.UsesDeferredLighting() && !rs.IsUnlit() && !rs.IsWireframe()
         && !IsRayDebugView(rs.viewMode);
     if (!passCtx.rayReflectionPassActive) {
@@ -120,7 +122,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     using RU = renderer::RenderGraph::ResourceUsage;
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
-    /// @name 論理リソースの宣言
+    /// @note 論理リソースの宣言
     /// @note 申告 (依存解析に使う «形») と実体 (名前 → ハンドル) を同じ 1 行で渡す。宣言と登録を
     /// @note 分けると、片方だけ足しても Plan が通り «申告したのに実体が無い» が静かに成立してしまう。
     /// @note 登録簿は RenderPipeline がここから組み立てる。
@@ -232,18 +234,18 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note AfterOpaque 段のカスタムパスがマスクを読めなくなる (順序が閉じない)。
     pipeline.AddPass<ObjectMaskPass>();
 
-    /// @name AfterOpaque 段のユーザーシェーダー
+    /// @note AfterOpaque 段のユーザーシェーダー
     /// @note 背景だけが描かれていて、デカール・トレイル・パーティクル・半透明はまだ乗っていない。
     /// @note 画面を歪める効果をこの後 (SceneHDR) に置くと、既に描かれたパーティクルごと曲がって
     /// @note «エフェクトだけ別の場所に居る» 絵になる。
     appendCustomHdrPasses("CustomAfterOpaque", customAfterOpaqueIndices);
 
-    /// @name デカール用深度スナップショット
+    /// @note デカール用深度スナップショット
     /// @note 深度専用 RT (colorCount = 0)。カラーを持つ RT と貸し回してはいけない。
     declareViewTarget("DecalDepth", decalDepthRT, 0, true);
     pipeline.AddPass<DecalDepthCopyPass>();
 
-    /// @name Decal + Trail + Particle
+    /// @note Decal + Trail + Particle
     pipeline.AddPass<DecalPass>();
 
     pipeline.AddPass<MeshTrailRenderPass>();
@@ -267,10 +269,10 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
 
     if (extensions.userPasses) extensions.userPasses(UserRenderPassInjectionPoint::AfterTransparent);
 
-    /// @name Selection / Debug
+    /// @note Selection / Debug
     if (extensions.selectionMask) extensions.selectionMask();
 
-    /// @name SceneHDR 段のユーザーシェーダー
+    /// @note SceneHDR 段のユーザーシェーダー
     /// @note 絵が出揃っていて、まだブルームにも露出にも触れていない唯一の場所。
     /// @note Bloom より後ろへ置くと «光っているのに滲まない»、AutoExposure より後ろへ
     /// @note 置くと «明るくしたのに露出が反応しない» という、段を選べる意味が消える並びになる。
@@ -290,7 +292,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
 
     if (extensions.userPasses) extensions.userPasses(UserRenderPassInjectionPoint::BeforePostProcess);
 
-    /// @name モーションベクター
+    /// @note モーションベクター
     /// @note TAA とモーションブラーは深度再投影だけでは「カメラの動き」しか復元できない。
     /// @note 不透明ジオメトリの実際の移動量を専用 RT へ描いて両者へ供給する。
     /// @note 消費側が 1 つも無いフレームは丸ごと省く (不透明をもう一度ラスタライズするため)。
@@ -300,7 +302,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         pipeline.AddPass<VelocityPass>();
     }
 
-    /// @name PostProcess チェーン
+    /// @note PostProcess チェーン
     /// @note MotionBlur CS — HDR 空間で計算し motionBlurResult へ書く (Composite が hdrRT の代わりに読む)。
     /// @note Bloom の前に走らせるので blur 後の輝度が Bloom に乗る。
     if (rs.motionBlur.enabled) {
@@ -357,7 +359,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         });
     }
 
-    /// @name Post-composite チェーン
+    /// @note Post-composite チェーン
     /// @note ppCurrent は「LDR 空間の最新フレームを持つリソース名」。これを進めるだけで
     /// @note TAA/CustomPP/SelectionOutline/FXAA の任意の組み合わせが 1 本の直列チェーンになる。
     std::string ppCurrent  = hasPostCompositeEffects ? "LDR" : chainOutRes;

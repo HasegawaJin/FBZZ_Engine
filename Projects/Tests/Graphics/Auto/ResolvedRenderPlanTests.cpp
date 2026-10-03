@@ -34,6 +34,7 @@ renderer::RenderAvailability PreparedResources()
     availability.diffuseGiPipelineReady = true;
     availability.pathPipelineReady = true;
     availability.rasterSurfaceReady = true;
+    availability.experimentalRayTracingEnabled = true;
     return availability;
 }
 
@@ -53,6 +54,87 @@ renderer::RenderModeRequest PathRequest(renderer::PathTracingProfile profile)
     request.mode = renderer::RenderMode::PATH_TRACING;
     request.pathProfile = profile;
     return request;
+}
+
+void ExpectRequestUnchanged(const renderer::RenderModeRequest& request,
+                            const renderer::RenderModeRequest& saved)
+{
+    EXPECT_EQ(request.mode, saved.mode);
+    EXPECT_EQ(request.pathProfile, saved.pathProfile);
+    EXPECT_EQ(request.rayShadow, saved.rayShadow);
+    EXPECT_EQ(request.rayReflection, saved.rayReflection);
+    EXPECT_EQ(request.rayDiffuseGi, saved.rayDiffuseGi);
+}
+
+TEST_F(ResolvedRenderPlanTest, DeveloperGateDisablesEveryRayModeWithoutChangingTheRequest)
+{
+    EXPECT_FALSE(renderer::RenderAvailability{}.experimentalRayTracingEnabled);
+    renderer::RenderSettings settings;
+    auto availability = PreparedResources();
+    availability.experimentalRayTracingEnabled = false;
+    for (auto request : { HybridRequest(), PathRequest(renderer::PathTracingProfile::REFERENCE),
+                         PathRequest(renderer::PathTracingProfile::GAME) }) {
+        request.rayShadow = true;
+        request.rayReflection = true;
+        request.rayDiffuseGi = true;
+        const auto saved = request;
+        const auto plan = renderer::ResolveRenderPlan(settings, request, RayCapabilities(),
+            CoveredScene(), availability);
+        ASSERT_TRUE(plan.IsValid());
+        EXPECT_EQ(plan.requestedMode, saved.mode);
+        EXPECT_EQ(plan.pathProfile, saved.pathProfile);
+        EXPECT_EQ(plan.effectiveMode, renderer::RenderMode::RASTER);
+        EXPECT_EQ(plan.primaryVisibility, renderer::PrimaryVisibility::RASTER);
+        EXPECT_EQ(plan.rayExecution, renderer::RayExecution::NONE);
+        EXPECT_EQ(plan.fallbackReason, renderer::RenderPlanReason::DEVELOPER_MODE_REQUIRED);
+        EXPECT_FALSE(plan.NeedsRayScene());
+        EXPECT_FALSE(plan.shadow.enabled);
+        EXPECT_FALSE(plan.reflection.enabled);
+        EXPECT_FALSE(plan.diffuseGi.enabled);
+        ExpectRequestUnchanged(request, saved);
+    }
+}
+
+TEST_F(ResolvedRenderPlanTest, DeveloperGateKeepsItsReasonWhenRasterFallbackIsUnavailable)
+{
+    renderer::RenderSettings settings;
+    auto availability = PreparedResources();
+    availability.experimentalRayTracingEnabled = false;
+    availability.rasterPipelineReady = false;
+    for (const auto request : { HybridRequest(), PathRequest(renderer::PathTracingProfile::REFERENCE),
+                               PathRequest(renderer::PathTracingProfile::GAME) }) {
+        const auto plan = renderer::ResolveRenderPlan(settings, request, RayCapabilities(),
+            CoveredScene(), availability);
+        EXPECT_FALSE(plan.IsValid());
+        EXPECT_EQ(plan.fallbackReason, renderer::RenderPlanReason::DEVELOPER_MODE_REQUIRED);
+        EXPECT_EQ(plan.failureReason, renderer::RenderPlanReason::RASTER_PIPELINE_UNAVAILABLE);
+        EXPECT_EQ(plan.rayExecution, renderer::RayExecution::NONE);
+        EXPECT_FALSE(plan.NeedsRayScene());
+        EXPECT_FALSE(plan.shadow.enabled);
+        EXPECT_FALSE(plan.reflection.enabled);
+        EXPECT_FALSE(plan.diffuseGi.enabled);
+    }
+}
+
+TEST_F(ResolvedRenderPlanTest, DeveloperPermissionResumesTheSameSavedRayRequest)
+{
+    renderer::RenderSettings settings;
+    for (const auto request : { HybridRequest(), PathRequest(renderer::PathTracingProfile::REFERENCE),
+                               PathRequest(renderer::PathTracingProfile::GAME) }) {
+        auto availability = PreparedResources();
+        for (const bool enabled : { false, true, false }) {
+            availability.experimentalRayTracingEnabled = enabled;
+            const auto plan = renderer::ResolveRenderPlan(settings, request, RayCapabilities(),
+                CoveredScene(), availability);
+            ASSERT_TRUE(plan.IsValid());
+            EXPECT_EQ(plan.requestedMode, request.mode);
+            EXPECT_EQ(plan.pathProfile, request.pathProfile);
+            EXPECT_EQ(plan.effectiveMode, enabled ? request.mode : renderer::RenderMode::RASTER);
+            EXPECT_EQ(plan.fallbackReason, enabled ? renderer::RenderPlanReason::NONE
+                : renderer::RenderPlanReason::DEVELOPER_MODE_REQUIRED);
+            EXPECT_EQ(plan.NeedsRayScene(), enabled);
+        }
+    }
 }
 
 TEST_F(ResolvedRenderPlanTest, UnpreparedOutputNeverPublishesAValidPlan)
@@ -82,6 +164,7 @@ TEST_F(ResolvedRenderPlanTest, RasterDoesNotDemandRayResourcesEvenWithSavedEffec
                                 renderer::RenderingPipeline::DeferredPlus }) {
         settings.pipeline = pipeline;
         auto availability = PreparedResources();
+        availability.experimentalRayTracingEnabled = false;
         availability.raySceneReady = false;
         const auto plan = renderer::ResolveRenderPlan(settings, request, {}, {}, availability);
         EXPECT_TRUE(plan.IsValid());

@@ -367,6 +367,7 @@ TEST_F(GraphicsStandaloneTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndI
     {
         renderer::ResourceManager resources(device);
         auto& rendering = resources.Rendering();
+        rendering.SetExperimentalRayTracingEnabled(true);
         auto& shared = rendering.Shared();
         shared.frameCB = resources.CreateConstantBuffer(sizeof(renderer::PerFrameCB));
         shared.objectCB = resources.CreateConstantBuffer(sizeof(renderer::PerObjectCB));
@@ -433,6 +434,7 @@ TEST_F(GraphicsStandaloneTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndI
                 rendering.BindPassHandles(view, handles);
                 renderer::RenderPassContext context{{}, device, resources, camera, currentSettings,
                     outputs[viewIndex], ~0u, handles};
+                context.experimentalRayTracingEnabled = true;
                 context.renderScene = scene;
                 const bool gbufferDisabled = viewIndex == 0 && frame == 4;
                 const bool expectedLights = viewIndex == 1 || frame != 5;
@@ -446,7 +448,7 @@ TEST_F(GraphicsStandaloneTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndI
                 context.ssrPassActive = context.hybridReflectionSourcePass = true;
                 renderer::PrepareAdvancedConstants(context, view, {});
                 const auto initial = renderer::PrepareViewRenderPlan(resources, device, currentSettings,
-                    view, shared, handles);
+                    view, shared, handles, true);
                 ASSERT_TRUE(initial.IsValid());
                 const auto previousReflectionFrame = view.rayReflection.reconstruction.lastFrameStamp;
                 const auto previousReflectionSurface = view.rayReflection.reconstruction.surfaceReadIndex;
@@ -539,6 +541,7 @@ TEST_F(GraphicsStandaloneTest, ReferencePathKeepsAccumulatingAfterAnotherViewPre
     {
         renderer::ResourceManager resources(device);
         auto& rendering = resources.Rendering();
+        rendering.SetExperimentalRayTracingEnabled(true);
         auto& gameView = rendering.View(10);
         auto& sceneView = rendering.View(11);
         const auto gameOutput = resources.CreateRenderTarget(8, 8);
@@ -586,6 +589,8 @@ TEST_F(GraphicsStandaloneTest, ReferencePathKeepsAccumulatingAfterAnotherViewPre
         renderer::RenderPassContext context{{}, device, resources, camera, settings, gameOutput, ~0u, handles};
         renderer::RenderPassContext sceneContext{{}, device, resources, sceneCamera, sceneSettings,
             sceneOutput, ~0u, sceneHandles};
+        context.experimentalRayTracingEnabled = true;
+        sceneContext.experimentalRayTracingEnabled = true;
         context.renderScene = scene;
         sceneContext.renderScene = scene;
         context.rayLightsComplete = true;
@@ -622,7 +627,7 @@ TEST_F(GraphicsStandaloneTest, ReferencePathKeepsAccumulatingAfterAnotherViewPre
             EXPECT_EQ(context.rayHitLightingSupported, frame == 0);
             ++scene->snapshotSerial;
             const auto requestedPlan = renderer::PrepareViewRenderPlan(resources, device, settings,
-                gameView, shared, handles);
+                gameView, shared, handles, true);
             ASSERT_TRUE(requestedPlan.IsValid());
             renderer::BuildViewPipeline(gameView.pipeline, context, gameView, shared, {requestedPlan}, {});
             ASSERT_EQ(gameView.renderPlan.effectiveMode, renderer::RenderMode::PATH_TRACING);
@@ -672,7 +677,7 @@ TEST_F(GraphicsStandaloneTest, ReferencePathKeepsAccumulatingAfterAnotherViewPre
             EXPECT_FALSE(renderer::PrepareRayPathView(context, gameView, shared));
             EXPECT_FALSE(context.rayPathPassActive);
             const auto fallback = renderer::PrepareViewRenderPlan(resources, device, settings,
-                gameView, shared, handles);
+                gameView, shared, handles, true);
             EXPECT_EQ(fallback.effectiveMode, renderer::RenderMode::RASTER);
             EXPECT_EQ(settings.modeRequest.mode, renderer::RenderMode::PATH_TRACING);
         }
@@ -713,7 +718,7 @@ TEST_F(GraphicsStandaloneTest, ReferencePathKeepsAccumulatingAfterAnotherViewPre
             rendering.BindPassHandles(gameView, handles);
             renderer::PrepareAdvancedConstants(context, gameView, input);
             const auto requested = renderer::PrepareViewRenderPlan(resources, device, settings,
-                gameView, shared, handles);
+                gameView, shared, handles, true);
             renderer::BuildViewPipeline(gameView.pipeline, context, gameView, shared, {requested}, {});
             ASSERT_EQ(gameView.renderPlan.effectiveMode, renderer::RenderMode::PATH_TRACING);
             EXPECT_EQ(gameView.rayPath.constantsData.emitterCount, 2u);
@@ -992,19 +997,48 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
         resources.Release(scaledOutput);
 
         if (capabilities.inlineRayQuery) {
-            settings.renderScale = 1.0f;
+            auto pathScene = std::make_shared<renderer::RenderScene>();
+            pathScene->sceneGeneration = 123;
+            context.renderScene = pathScene;
+            context.experimentalRayTracingEnabled = false;
+            context.width = viewA.width;
+            context.height = viewA.height;
+            context.rayLightsComplete = true;
+            context.rayPathLightingSupported = true;
+            context.rayHitLightingSupported = true;
+            camera.m_clearMode = renderer::CameraClearMode::SolidColor;
             settings.ibl.enabled = false;
             settings.postProcess.fog.enabled = false;
             settings.froxelFog.enabled = false;
             settings.volumetricLight.enabled = false;
+            settings.modeRequest.pathProfile = renderer::PathTracingProfile::REFERENCE;
+            settings.viewMode = renderer::ViewMode::RayHitDistance;
+            EXPECT_FALSE(renderer::PrepareRayDebugView(context, viewA, shared));
+            settings.viewMode = renderer::ViewMode::Lit;
+            settings.modeRequest.mode = renderer::RenderMode::HYBRID;
+            settings.modeRequest.rayReflection = true;
+            EXPECT_FALSE(renderer::PrepareRayReflectionView(context, viewA, shared,
+                {renderer::OpaqueRenderPath::DEFERRED}));
+            EXPECT_FALSE(renderer::PrepareRayReflectionReconstruction(context, viewA, shared));
+            settings.modeRequest.mode = renderer::RenderMode::PATH_TRACING;
+            EXPECT_FALSE(renderer::PrepareRayPathView(context, viewA, shared));
+            EXPECT_EQ(shared.rayGeometry.BottomLevelCount(), 0u);
+            EXPECT_FALSE(viewA.rayDebug.output.IsValid());
+            EXPECT_FALSE(viewA.rayDebug.constants.IsValid());
+            EXPECT_FALSE(viewA.rayReflection.output.IsValid());
+            EXPECT_FALSE(viewA.rayPath.historyBuffer.IsValid());
+            EXPECT_FALSE(shared.rayDebugShader.IsValid());
+            EXPECT_FALSE(shared.rayReflectionShader.IsValid());
+            EXPECT_FALSE(shared.rayReflectionReconstructionShader.IsValid());
+            EXPECT_FALSE(shared.rayPathShader.IsValid());
+            rendering.SetExperimentalRayTracingEnabled(true);
+            context.experimentalRayTracingEnabled = true;
+            settings.renderScale = 1.0f;
             settings.postProcess.bloom.enabled = false;
             settings.autoExposure.enabled = false;
             settings.modeRequest.mode = renderer::RenderMode::PATH_TRACING;
             settings.modeRequest.pathProfile = renderer::PathTracingProfile::REFERENCE;
             ASSERT_TRUE(rendering.PrepareView(viewA, device, outputA, settings));
-            auto pathScene = std::make_shared<renderer::RenderScene>();
-            pathScene->sceneGeneration = 123;
-            context.renderScene = pathScene;
             context.width = viewA.width;
             context.height = viewA.height;
             context.outputRT = outputA;
@@ -1022,7 +1056,7 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
             ASSERT_TRUE(shared.rayPathShader.IsValid() && shared.rayPathResolveShader.IsValid());
             ASSERT_TRUE(shared.copyColorShader.IsValid());
             stages.clear();
-            const auto initialPathPlan = renderer::PrepareViewRenderPlan(resources, device, settings, viewA, shared, handles);
+            const auto initialPathPlan = renderer::PrepareViewRenderPlan(resources, device, settings, viewA, shared, handles, true);
             ASSERT_TRUE(initialPathPlan.IsValid());
             renderer::BuildViewPipeline(viewA.pipeline, context, viewA, shared, {initialPathPlan}, extensions);
             ASSERT_EQ(viewA.renderPlan.effectiveMode, renderer::RenderMode::PATH_TRACING);
@@ -1073,9 +1107,32 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
             ASSERT_TRUE(rendering.PrepareView(viewA, device, outputA, settings));
             EXPECT_FALSE(viewA.rayPath.gpu.ready);
             EXPECT_FALSE(viewA.rayPathCovered);
-            EXPECT_EQ(renderer::PrepareViewRenderPlan(resources, device, settings, viewA, shared, handles).effectiveMode,
+            EXPECT_EQ(renderer::PrepareViewRenderPlan(resources, device, settings, viewA, shared, handles, true).effectiveMode,
                 renderer::RenderMode::RASTER);
             viewA.pipeline.BeginBuild();
+            const auto rasterHdr = viewA.hdr;
+            const auto pathAccumulation = viewA.rayPath.historyBuffer;
+            const auto pathConstants = viewA.rayPath.constants;
+            const auto pathShader = shared.rayPathShader;
+            const auto pathResolveShader = shared.rayPathResolveShader;
+            ASSERT_TRUE(pathAccumulation.IsValid() && pathConstants.IsValid());
+            rendering.SetExperimentalRayTracingEnabled(false);
+            context.experimentalRayTracingEnabled = false;
+            EXPECT_EQ(resources.Get(pathAccumulation), nullptr);
+            EXPECT_EQ(resources.Get(pathConstants), nullptr);
+            EXPECT_EQ(resources.Get(pathShader), nullptr);
+            EXPECT_EQ(resources.Get(pathResolveShader), nullptr);
+            EXPECT_FALSE(viewA.rayPath.historyBuffer.IsValid());
+            EXPECT_FALSE(shared.rayPathShader.IsValid());
+            EXPECT_FALSE(shared.rayPathResolveShader.IsValid());
+            EXPECT_EQ(viewA.hdr, rasterHdr);
+            EXPECT_NE(resources.Get(rasterHdr), nullptr);
+            const auto disabledPlan = renderer::PrepareViewRenderPlan(resources, device, settings,
+                viewA, shared, handles);
+            EXPECT_TRUE(disabledPlan.IsValid());
+            EXPECT_EQ(disabledPlan.fallbackReason, renderer::RenderPlanReason::DEVELOPER_MODE_REQUIRED);
+            EXPECT_EQ(disabledPlan.effectiveMode, renderer::RenderMode::RASTER);
+            EXPECT_EQ(settings.modeRequest.mode, renderer::RenderMode::PATH_TRACING);
         }
 
         const auto releasedHdr = viewA.hdr;

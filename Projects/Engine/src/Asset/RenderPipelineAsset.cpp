@@ -7,6 +7,7 @@
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
 #include "RenderPipelineAssetCodec.hpp"
 #include <cmath>
 #include <cstddef>
@@ -192,6 +193,8 @@ void RenderPipelineAsset::Reflect(scene::IReflector& r)
     static constexpr const char* PIPELINES[] = {"Forward", "Deferred", "Forward+", "Deferred+"};
     r.Enum("pipeline", pipeline, PIPELINES);
     m_settings.pipeline = static_cast<renderer::RenderingPipeline>(pipeline);
+    /// @note UI の編集可否だけを制限し、TOML codec は保存済み RT 要求をそのまま保持する。
+    r.SetFieldEnabled(core::DeveloperMode::IsEnabled());
     int mode = static_cast<int>(m_settings.modeRequest.mode);
     static constexpr const char* MODES[] = {"Raster", "Hybrid", "PathTracing"};
     r.Enum("mode", mode, MODES);
@@ -203,15 +206,17 @@ void RenderPipelineAsset::Reflect(scene::IReflector& r)
     r.Field("rayShadow", m_settings.modeRequest.rayShadow);
     r.Field("rayReflection", m_settings.modeRequest.rayReflection);
     r.Field("rayDiffuseGi", m_settings.modeRequest.rayDiffuseGi);
+    r.SetFieldEnabled(true);
     r.Field("gpuInstancing", m_settings.gpuInstancing);
     r.Field("asyncCompute", m_settings.asyncCompute);
-    r.Group("Hybrid quality");
+    r.Group("Hybrid quality (DeveloperMode)");
+    r.SetFieldEnabled(core::DeveloperMode::IsEnabled());
     auto& quality = m_settings.hybridQuality;
     const int previousPreset = static_cast<int>(renderer::DetectHybridQualityPreset(quality));
     int preset = previousPreset;
-    static constexpr const char* HYBRID_PRESETS[] = {"Custom", "Low", "Balanced", "High"};
+    static constexpr const char* HYBRID_PRESETS[] = {"Custom", "Low", "Balanced", "High", "Performance"};
     r.Enum("hybridPreset", preset, HYBRID_PRESETS);
-    if (preset != previousPreset && preset > 0 && preset <= 3)
+    if (preset != previousPreset && preset > 0 && preset <= 4)
         quality = renderer::MakeHybridQualityPreset(static_cast<renderer::HybridQualityPreset>(preset));
     const auto boundedUnsigned = [&](const char* name, uint32_t& field, int low, int high) {
         int editable = static_cast<int>(field);
@@ -219,6 +224,8 @@ void RenderPipelineAsset::Reflect(scene::IReflector& r)
         if (editable >= low && editable <= high) field = static_cast<uint32_t>(editable);
     };
     boundedUnsigned("reflectionSamples", quality.reflectionSamples, 1, 64);
+    boundedUnsigned("reflectionResolutionDivisor", quality.reflectionResolutionDivisor, 1, 2);
+    r.Field("glassStochastic", quality.glassStochastic);
     boundedUnsigned("historyLimit", quality.historyLimit, 1, 64);
     boundedUnsigned("spatialRadius", quality.spatialRadius, 0, 2);
     boundedUnsigned("glassBoundaryLimit", quality.glassBoundaryLimit, 1, 16);
@@ -231,6 +238,7 @@ void RenderPipelineAsset::Reflect(scene::IReflector& r)
     r.Field("traceBudgetMs", quality.traceBudgetMs);
     r.Field("reconstructionBudgetMs", quality.reconstructionBudgetMs);
     r.Field("probeUpdateBudgetMs", quality.probeUpdateBudgetMs);
+    r.SetFieldEnabled(true);
     r.Group("Shadows");
     r.Field("shadowEnabled", m_settings.shadowEnabled);
     auto& shadow = m_settings.shadow;
@@ -437,6 +445,8 @@ bool RenderPipelineAssetCodec::LoadHybridQuality(const toml::table& table, rende
 {
     renderer::HybridQualitySettings value;
     if (!Read(table, "reflectionSamples", value.reflectionSamples) || !Read(table, "historyLimit", value.historyLimit)
+        || !Read(table, "reflectionResolutionDivisor", value.reflectionResolutionDivisor)
+        || !Read(table, "glassStochastic", value.glassStochastic)
         || !Read(table, "spatialRadius", value.spatialRadius) || !Read(table, "glassBoundaryLimit", value.glassBoundaryLimit)
         || !Read(table, "maxTraceDistance", value.maxTraceDistance) || !Read(table, "maxHistoryMiB", value.maxHistoryMiB)
         || !Read(table, "maxProbeCapturesPerFrame", value.maxProbeCapturesPerFrame)
@@ -450,6 +460,8 @@ bool RenderPipelineAssetCodec::LoadHybridQuality(const toml::table& table, rende
 void RenderPipelineAssetCodec::SaveHybridQuality(const renderer::HybridQualitySettings& value, toml::table& out)
 {
     out.insert_or_assign("reflectionSamples", static_cast<int64_t>(value.reflectionSamples));
+    out.insert_or_assign("reflectionResolutionDivisor", static_cast<int64_t>(value.reflectionResolutionDivisor));
+    out.insert_or_assign("glassStochastic", value.glassStochastic);
     out.insert_or_assign("historyLimit", static_cast<int64_t>(value.historyLimit));
     out.insert_or_assign("spatialRadius", static_cast<int64_t>(value.spatialRadius));
     out.insert_or_assign("glassBoundaryLimit", static_cast<int64_t>(value.glassBoundaryLimit));

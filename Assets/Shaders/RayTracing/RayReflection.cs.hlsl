@@ -48,7 +48,7 @@ cbuffer RayReflectionConstants : register(b0)
     uint envTableCount, envFaceSize; float envRotation, envIntensity;
     uint environmentMode; float3 constantEnvironmentRadiance;
     uint reflectionResolveEnabled, reflectionSsrEnabled, glassEnabled, glassBoundaryLimit;
-    uint cameraOriginProvenAir; uint3 reflectionReserved;
+    uint cameraOriginProvenAir, hybridPolicyFlags, traceWidth, traceHeight;
 };
 
 struct RayHitRecord
@@ -160,8 +160,10 @@ bool AcceptReflectionCandidate(uint instance, uint primitive, float2 bary, out b
     uint3 indices;
     if (!ReflectionIndices(record, primitive, indices)) return false;
     RaySurfaceRecord surface = surfaces[instance];
-    float alpha = RayMaterialOpacity(surface, RayLoadUv(record.vertexSrv, record.vertexStride,
-        record.firstVertex, indices, bary));
+    float alpha = surface.baseColor.a;
+    if ((surface.textureMask & 1u) != 0)
+        alpha = RayMaterialOpacity(surface, RayLoadUv(record.vertexSrv, record.vertexStride,
+            record.firstVertex, indices, bary));
     valid = isfinite(alpha);
     return valid && alpha >= surface.alphaCutoff;
 }
@@ -173,9 +175,15 @@ uint TraceMeshSurface(RayDesc ray, uint mask, out SurfaceHit hit, uint extraFlag
     if (!instanceCount) return 0u;
     RaytracingAccelerationStructure scene = ResourceDescriptorHeap[FbzzPixelSlot(0)];
     RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
-    /// @note Force candidates only for glass scenes, preserving opaque backface culling while allowing dielectric exit boundaries.
-    query.TraceRayInline(scene, extraFlags | (glassEnabled ? RAY_FLAG_FORCE_NON_OPAQUE : RAY_FLAG_CULL_BACK_FACING_TRIANGLES), mask, ray);
+    /// @note Certified Hybrid AS keeps glass nonopaque/two-sided and ordinary surfaces one-sided; owner and two-sided queries still inspect every candidate.
+    /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#ray-flags Instance cull disable and opaque candidate processing
+    bool forceCandidates = glassEnabled && ((hybridPolicyFlags & 1u) == 0u || requiredObjectIndex != 0xFFFFFFFFu
+        || includeOpaqueBackfaces || mask == 2u);
+    query.TraceRayInline(scene, extraFlags | (forceCandidates ? RAY_FLAG_FORCE_NON_OPAQUE : RAY_FLAG_CULL_BACK_FACING_TRIANGLES), mask, ray);
     while (query.Proceed()) {
+        /// @note A glass instance disables hardware face culling; explicit front-only proofs must still reject its exit candidates.
+        if ((hybridPolicyFlags & 1u) != 0u && ((extraFlags & RAY_FLAG_CULL_BACK_FACING_TRIANGLES) != 0u
+            && !query.CandidateTriangleFrontFace())) continue;
         if (requiredObjectIndex != 0xFFFFFFFFu) {
             uint candidate = query.CandidateInstanceID();
             if (candidate >= instanceCount) return 2u;
@@ -259,11 +267,16 @@ uint TraceMeshSurface(RayDesc ray, uint mask, out SurfaceHit hit, uint extraFlag
     float3 shadingNormal = normalize(n0) * weights.x + normalize(n1) * weights.y + normalize(n2) * weights.z;
     if (dot(shadingNormal, shadingNormal) <= 0) return 2u;
     shadingNormal = normalize(shadingNormal);
-    float3 tangent = RayLoadTangent(record.vertexSrv, record.vertexStride, record.firstVertex,
-        indices, barycentrics, (float3x3)objectToWorld);
+    float3 tangent = 0;
+    if ((hit.surface.textureMask & 2u) != 0)
+        tangent = RayLoadTangent(record.vertexSrv, record.vertexStride, record.firstVertex,
+            indices, barycentrics, (float3x3)objectToWorld);
+    float2 uv = 0;
+    if ((hit.surface.textureMask & 31u) != 0)
+        uv = RayLoadUv(record.vertexSrv, record.vertexStride, record.firstVertex, indices, barycentrics);
     RaySurfaceRecord evaluated;
     float ao;
-    if (!RayMaterialEvaluate(hit.surface, RayLoadUv(record.vertexSrv, record.vertexStride, record.firstVertex, indices, barycentrics),
+    if (!RayMaterialEvaluate(hit.surface, uv,
         shadingNormal, tangent, evaluated, shadingNormal, ao)) return 2u;
     hit.surface = evaluated;
     /// @note Primary coverage is proved by the triangle, not Ns dot V; its view-tangent correction runs after GBuffer plane validation.
@@ -762,6 +775,8 @@ float3 HitRadiance(SurfaceHit hit, float3 view, inout uint rng)
     return emission + delta + AreaLighting(hit, view, rng) + ShapeLighting(hit, view, rng) + environment
         + SharedDiffuseIndirect(hit, view);
 }
+/// @note Bit1 selects the explicit Hybrid quality estimator; Reference and legacy fixtures leave it clear.
+bool HybridGlassSinglePathEnabled() { return (hybridPolicyFlags & 2u) != 0u; }
 #include "RayTracing/RayHybridGlass.hlsli"
 float PowerWeight(float first, float second)
 {
@@ -816,12 +831,50 @@ bool ReflectionMotionFootprint(SurfaceHit primary, float3 terminal, bool reflect
         && all(abs(projected - (float2(pixel) + 0.5f)) <= 0.5f);
 }
 
+/// @note Zero trace extents preserve legacy full-resolution callers; odd scene extents use ceil division.
+bool HalfReflectionEnabled()
+{
+    return writeMetadata && traceWidth == (width + 1u) / 2u && traceHeight == (height + 1u) / 2u
+        && (traceWidth < width || traceHeight < height);
+}
+
+/// @note One missing Scene SSR observation keeps the representative transport active; confidence never scales its radiance.
+bool HalfCellScreenCovered(uint2 origin)
+{
+    Texture2D<float4> screenReflection = ResourceDescriptorHeap[FbzzPixelSlot(23)];
+    Texture2D<float4> gbuffer0 = ResourceDescriptorHeap[FbzzPixelSlot(5)];
+    Texture2D<float4> gbuffer1 = ResourceDescriptorHeap[FbzzPixelSlot(6)];
+    uint screenWidth, screenHeight;
+    screenReflection.GetDimensions(screenWidth, screenHeight);
+    if (screenWidth != width || screenHeight != height) return false;
+    for (uint y = 0; y < 2u; ++y) for (uint x = 0; x < 2u; ++x) {
+        uint2 member = origin + uint2(x, y);
+        if (any(member >= uint2(width, height))) continue;
+        float4 screen = screenReflection.Load(int3(member, 0));
+        float4 first = gbuffer0.Load(int3(member, 0)), second = gbuffer1.Load(int3(member, 0));
+        if (!all(isfinite(screen)) || !all(isfinite(first)) || !all(isfinite(second))
+            || saturate(screen.a * ssrIntensity) < 0.999f || HybridReflectionPrefersRay(second.a, first.a)) return false;
+        if (glassEnabled) {
+            Texture2D<float4> emission = ResourceDescriptorHeap[FbzzPixelSlot(22)];
+            float marker = emission.Load(int3(member, 0)).a;
+            if (!isfinite(marker) || HybridGlassReceiver(marker)) return false;
+        }
+    }
+    return true;
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 pixel : SV_DispatchThreadID)
 {
     if (pixel.x >= width || pixel.y >= height) return;
     RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(0)];
     output[pixel.xy] = 0;
+    bool halfResolution = HalfReflectionEnabled();
+    bool representative = all((pixel.xy & 1u) == 0u);
+    if (halfResolution && representative) {
+        RWTexture2D<float4> halfOutput = ResourceDescriptorHeap[FbzzUavSlot(1)];
+        halfOutput[pixel.xy / 2u] = 0;
+    }
     if (writeMetadata) {
         RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(2)];
         metadata[pixel.y * width + pixel.x] = (RayReflectionSurface)0;
@@ -866,6 +919,7 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
         } else if (!HybridInitializeGlassPath(primaryRay, 1u, initialGlass)) return;
     }
     bool cameraInMedium = initialGlass.mediumDepth > 0u;
+    bool coarsePrimary = halfResolution && !cameraInMedium && !HybridGlassReceiver(glassMarker) && primary0.a > 0.25f;
     /// @note A screen-space opaque response cannot replace camera-to-surface transport through a proven initial medium.
     if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL && reflectionSsrEnabled && isfinite(ssrIntensity) && ssrIntensity > 0
         && !cameraInMedium && !HybridGlassReceiver(glassMarker) && !HybridReflectionPrefersRay(primary1.a, primary0.a)) {
@@ -874,7 +928,7 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
         screenReflection.GetDimensions(screenWidth, screenHeight);
         if (screenWidth == width && screenHeight == height) {
             float4 screenSample = screenReflection.Load(int3(pixel.xy, 0));
-            if (all(isfinite(screenSample)) && saturate(screenSample.a * ssrIntensity) >= 0.999f) return;
+            if (!coarsePrimary && all(isfinite(screenSample)) && saturate(screenSample.a * ssrIntensity) >= 0.999f) return;
         }
     }
     float nearOverFar = nearDistance / farDistance;
@@ -923,7 +977,7 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
         uint glassSeed = Hash(pixel.x + pixel.y * width + Hash(frameIndex));
         float3 glassRadiance = 0;
         RayReflectionMotionGuide glassMotion = (RayReflectionMotionGuide)0;
-        bool glassProof = writeMetadata && !cameraInMedium && environmentMode == 1u
+        bool glassProof = writeMetadata && !HybridGlassSinglePathEnabled() && !cameraInMedium && environmentMode == 1u
             && (primaryHit.surface.dielectricFlags & 1u) != 0 && primaryHit.surface.roughness == 0
             && primaryHit.frontFace && dot(primaryHit.normal, primaryHit.geometricNormal) > 0.99999f;
         float3 glassTerminal = 0;
@@ -970,6 +1024,19 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
     float3 bitangent = cross(normal, tangent);
     float3 tangentView = float3(dot(view, tangent), dot(view, bitangent), nDotV);
     float roughness = clamp(primary0.a, 0.045f, 1.0f);
+    if (coarsePrimary) {
+        RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(2)];
+        RayReflectionSurface surface = (RayReflectionSurface)0;
+        surface.positionDepth = float4(primaryHit.position, dot(primaryHit.position - cameraPosition.xyz, cameraForward.xyz));
+        surface.normalRoughness = float4(normal, roughness);
+        surface.geometricNormalOffset = float4(primaryHit.geometricNormal, primaryHit.offsetDistance);
+        surface.objectMaterialValid = uint4(primaryHit.objectIndex, primaryHit.objectGeneration, primaryHit.instanceId, 1u);
+        metadata[pixel.y * width + pixel.x] = surface;
+        /// @note Every Scene pixel keeps an actual primary identity; only coherent rough cells may reuse one representative transport later.
+        if (!representative) return;
+        if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL && reflectionSsrEnabled
+            && isfinite(ssrIntensity) && ssrIntensity > 0 && HalfCellScreenCovered(pixel.xy)) return;
+    }
     float alpha = roughness * roughness;
     float3 f0 = lerp(0.04f.xxx, saturate(primary0.rgb), saturate(primary1.a));
     uint seed = Hash(pixel.x + pixel.y * width + Hash(frameIndex));
@@ -1028,7 +1095,10 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
     radiance /= count;
     /// @note 出力は RGBA16F。有限 FP32 が half store で Inf になる場合も fallback にする。
     if (all(isfinite(radiance)) && all(radiance <= 65504.0f)) {
-        output[pixel.xy] = float4(max(radiance, 0), 1);
+        if (coarsePrimary) {
+            RWTexture2D<float4> halfOutput = ResourceDescriptorHeap[FbzzUavSlot(1)];
+            halfOutput[pixel.xy / 2u] = float4(max(radiance, 0), 1);
+        } else output[pixel.xy] = float4(max(radiance, 0), 1);
         if (writeMetadata) {
             RWStructuredBuffer<RayReflectionSurface> metadata = ResourceDescriptorHeap[FbzzUavSlot(2)];
             RayReflectionSurface surface = (RayReflectionSurface)0;

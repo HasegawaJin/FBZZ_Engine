@@ -190,7 +190,7 @@ bool PrepareRayPathView(RenderPassContext& context, RenderViewResources& view, R
     context.rayPathPassActive = false;
     const auto& request = context.settings.modeRequest;
     const auto capabilities = context.renderer.GetCapabilities();
-    if (request.mode != RenderMode::PATH_TRACING
+    if (!context.experimentalRayTracingEnabled || request.mode != RenderMode::PATH_TRACING
         || !capabilities.inlineRayQuery || !capabilities.bindless || !context.renderScene
         || !context.width || !context.height) return false;
     RayPathTraceConstants constants;

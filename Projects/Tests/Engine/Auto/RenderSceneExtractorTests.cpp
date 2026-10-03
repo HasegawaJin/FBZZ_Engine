@@ -88,7 +88,7 @@ TEST_F(RenderSceneExtractorTest, SelectsCanonicalLodZeroWithoutFilteringRasterHi
     };
     m_scene.CreateGameObject("LOD Group").AddComponent<scene::LODGroupComponent>(group);
 
-    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
     ASSERT_EQ(snapshot.objects.size(), 3u);
     for (const auto& object : snapshot.objects) {
         const scene::EntityID source{ object.sourceIndex, object.sourceGeneration };
@@ -113,7 +113,7 @@ TEST_F(RenderSceneExtractorTest, ResolvesLodGuidForMembershipWithoutChangingRefe
     auto& owner = m_scene.CreateGameObject("LOD Group");
     owner.AddComponent<scene::LODGroupComponent>(group);
 
-    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
     ASSERT_EQ(snapshot.objects.size(), 2u);
     for (const auto& object : snapshot.objects) {
         const scene::EntityID source{ object.sourceIndex, object.sourceGeneration };
@@ -211,7 +211,7 @@ TEST_F(RenderSceneExtractorTest, RejectsRendererMembershipInMultipleLodGroups)
     group.levels = {{0.5f, {{{}, memberId}}}};
     m_scene.CreateGameObject("First LOD").AddComponent<scene::LODGroupComponent>(group);
     m_scene.CreateGameObject("Second LOD").AddComponent<scene::LODGroupComponent>(group);
-    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
     ASSERT_EQ(snapshot.objects.size(), 1u);
     EXPECT_TRUE(snapshot.objects[0].rayLodSelectionRequired);
 }
@@ -226,13 +226,34 @@ TEST_F(RenderSceneExtractorTest, DiagnosesUnresolvedCanonicalLodInsteadOfPublish
         {0.25f, {{{}, lowId}}}};
     const auto ownerId = m_scene.CreateGameObject("Unresolved LOD").GetID();
     m_scene.GetGameObject(ownerId)->AddComponent<scene::LODGroupComponent>(group);
-    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
     ASSERT_EQ(snapshot.objects.size(), 1u);
     EXPECT_FALSE(snapshot.objects[0].rayVisible);
     ASSERT_EQ(snapshot.rayLodDiagnostics.size(), 1u);
     EXPECT_EQ(snapshot.rayLodDiagnostics[0].sourceIndex, ownerId.index);
     EXPECT_EQ(snapshot.rayLodDiagnostics[0].sourceGeneration, ownerId.generation);
     EXPECT_EQ(snapshot.rayLodDiagnostics[0].layerMask, UINT32_MAX);
+}
+
+TEST_F(RenderSceneExtractorTest, NormalExtractionSkipsUnresolvedRayLodDiagnosticsAndKeepsRasterGeometry)
+{
+    auto& lower = StaticObject();
+    lower.GetComponent<scene::MeshRenderer>()->lodVisible = true;
+    const auto lowerId = lower.GetID();
+    scene::LODGroupComponent group;
+    group.levels = {{0.75f, {{"unresolved-renderer-guid", scene::EntityID::INVALID}}},
+        {0.25f, {{{}, lowerId}}}};
+    m_scene.CreateGameObject("Unresolved LOD").AddComponent<scene::LODGroupComponent>(group);
+    const auto normal = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    ASSERT_EQ(normal.objects.size(), 1u);
+    EXPECT_TRUE(normal.objects[0].lodVisible);
+    EXPECT_FALSE(normal.objects[0].rayLodSelectionRequired);
+    EXPECT_TRUE(normal.rayLodDiagnostics.empty());
+    const auto experimental = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
+    ASSERT_EQ(experimental.objects.size(), 1u);
+    EXPECT_TRUE(experimental.objects[0].lodVisible);
+    EXPECT_FALSE(experimental.objects[0].rayVisible);
+    EXPECT_EQ(experimental.rayLodDiagnostics.size(), 1u);
 }
 
 TEST_F(RenderSceneExtractorTest, ParentAnimatorWinsOverReferencePoseAndPreservesPreviousPalette)

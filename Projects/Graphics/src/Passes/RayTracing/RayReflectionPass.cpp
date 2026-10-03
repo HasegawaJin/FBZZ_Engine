@@ -34,6 +34,7 @@ void RayReflectionPass::Setup(PassBuilder& builder, const RenderPassContext& con
         builder.Read("RayReflectionEnvironmentTable", Purpose::SHADER_READ);
     }
     builder.Write(m_reconstruction ? "RayReflectionRaw" : "RayReflectionResult", Purpose::UAV);
+    if (m_reconstruction && m_halfRaw.IsValid()) builder.Write("RayReflectionHalfRaw", Purpose::UAV);
     if (m_reconstruction) builder.Write("RayReflectionSurface", Purpose::UAV);
     if (m_scene.instanceCount) {
         builder.Read("RaySceneTLAS", Purpose::TRACE_READ);
@@ -70,6 +71,8 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
     constants.traceDistanceLimited = quality.maxTraceDistance > 0 ? 1u : 0u;
     constants.width = context.width;
     constants.height = context.height;
+    constants.traceWidth = context.width;
+    constants.traceHeight = context.height;
     constants.instanceCount = m_scene.instanceCount;
     constants.incomplete = m_incomplete;
     constants.frameIndex = static_cast<uint32_t>(context.frameStamp);
@@ -80,6 +83,7 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
         && !context.hybridReflectionSourcePass ? 1u : 0u;
     constants.glassEnabled = m_lighting.glassEnabled ? 1u : 0u;
     constants.glassBoundaryLimit = constants.glassEnabled ? quality.glassBoundaryLimit : 0u;
+    constants.hybridPolicyFlags = (m_scene.hybridCandidatePolicy ? 1u : 0u) | (quality.glassStochastic ? 2u : 0u);
     /// @note A changed camera or orthographic pixel origins cannot reuse a preparation-time perspective proof.
     constants.cameraOriginProvenAir = constants.glassEnabled && !camera.orthographic
         && m_lighting.cameraOriginProvenAir
@@ -109,6 +113,18 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
     call.constantBuffers[0] = m_constants;
     call.constantBuffers[8] = context.handles.advancedGraphicsCB;
     call.uavOutputs[0] = resources.Texture(m_reconstruction ? "RayReflectionRaw" : "RayReflectionResult");
+    if (m_reconstruction && m_halfRaw.IsValid()) {
+        const auto halfRawHandle = resources.Texture("RayReflectionHalfRaw");
+        const auto* halfRaw = context.resources.Get(halfRawHandle);
+        if (halfRaw && halfRaw->GetWidth() == context.width / 2 + context.width % 2
+            && halfRaw->GetHeight() == context.height / 2 + context.height % 2
+            && halfRaw->GetBindlessIndex() != INVALID_BINDLESS_INDEX
+            && halfRaw->GetBindlessUavIndex() != INVALID_BINDLESS_INDEX) {
+            call.uavOutputs[1] = halfRawHandle;
+            constants.traceWidth = halfRaw->GetWidth();
+            constants.traceHeight = halfRaw->GetHeight();
+        }
+    }
     context.handles.rayReflectionResult = call.uavOutputs[0];
     if (m_reconstruction) call.uavBuffers[0] = resources.StructuredBuffer("RayReflectionSurface");
     const auto gbuffer = resources.Target("GBuffer");

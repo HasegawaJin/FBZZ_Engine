@@ -64,7 +64,7 @@ struct RenderViewResources {
     renderer::ResourceHandle<renderer::TextureTag> bloomFull;
     renderer::ResourceHandle<renderer::TextureTag> ssaoRaw;
     renderer::ResourceHandle<renderer::TextureTag> ssaoBlur;
-    /// @name Advanced Graphics (解像度依存・ビュー単位)
+    /// @note Advanced Graphics (解像度依存・ビュー単位)
     /// @note 解像度非依存の LUT 等は RenderSharedResources が保持する。
     renderer::ResourceHandle<renderer::TextureTag>        ssrResult;           ///< @note SSR CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;    ///< @note Volumetric CS 出力
@@ -78,32 +78,32 @@ struct RenderViewResources {
     renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;             ///< @note GTAO RAW CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;            ///< @note GTAO Blur CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult; ///< @note Contact Shadow CS 出力
-    /// @name ビュー別定数バッファ / 再投影行列
+    /// @note ビュー別定数バッファ / 再投影行列
     /// @note static で共有すると SceneView と GameView が互いのカメラ行列を引き、
     /// @note MotionBlur / TAA の再投影が常に壊れる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
     /// @note TAA 直前の feedback 更新は typed CPU snapshot から行い、別の照明定数を失わない。
     AdvancedGraphicsCB advancedGraphicsSnapshot{};
     bool advancedGraphicsSnapshotValid = false;
-    /// @name 自動露出 (ビュー単位・解像度非依存)
+    /// @note 自動露出 (ビュー単位・解像度非依存)
     /// @note exposureResult は「順応済みの平均輝度」でフレームをまたぐ状態。static で共有すると
     /// @note SceneView と GameView が交互に順応を進め、互いの明るさへ引きずられて露出が振れる。
     renderer::ResourceHandle<renderer::StructuredBufferTag> exposureHistogram;
     renderer::ResourceHandle<renderer::StructuredBufferTag> exposureResult;
     uint32_t exposureResetGeneration = 0;
-    /// @name 体積雲の作業 RT (ビュー単位・解像度依存)
+    /// @note 体積雲の作業 RT (ビュー単位・解像度依存)
     renderer::SizedRenderTarget cloudRT;
     renderer::SizedRenderTarget cloudDepthRT;
-    /// @name 水面の屈折用コピー (ビュー単位・解像度依存)
+    /// @note 水面の屈折用コピー (ビュー単位・解像度依存)
     renderer::SizedRenderTarget waterSceneColorRT;
     renderer::SizedRenderTarget waterSceneDepthRT;
-    /// @name 歪みパーティクルの背景退避 / 重なり計数 / コースティクスの深度コピー
+    /// @note 歪みパーティクルの背景退避 / 重なり計数 / コースティクスの深度コピー
     /// @note 水面と同じくビュー単位。共有すると 2 ビューで寸法を取り合い、毎フレーム作り直す。
     renderer::SizedRenderTarget particleSceneColorRT;
     renderer::SizedRenderTarget particleOverdrawRT;
     renderer::SizedRenderTarget particleReactiveRT;
     renderer::SizedRenderTarget causticsDepthRT;
-    /// @name フロクセル霧 (ビュー単位・解像度非依存)
+    /// @note フロクセル霧 (ビュー単位・解像度非依存)
     /// @note グリッドは視錐台に貼り付くので、共有すると互いの履歴を上書きして霧が明滅する。
     /// @note 寸法は設定値 (既定 160x90x64) で画面サイズと無関係なので、リサイズでは作り直さない。
     renderer::ResourceHandle<renderer::TextureTag> froxelScatter;
@@ -290,6 +290,10 @@ private:
 class RenderResources {
 public:
     explicit RenderResources(ResourceManager& resources);
+    /// @pre ビューの準備・記録開始前に呼ぶ。
+    /// @note 許可を解除したら全ビューの実験 RT 専用資源を退役する。描画設定・Raster 資源は変更しない。
+    /// @see Docs/design/developer-mode.md
+    void SetExperimentalRayTracingEnabled(bool enabled);
     RenderSharedResources& Shared() { return m_shared; }
     RenderViewResources& View(uint32_t key);
     /// @return 未登録なら nullptr。診断の照会でビューや GPU 資源を生成しない。
@@ -308,5 +312,6 @@ private:
     ResourceManager& m_resources;
     RenderSharedResources m_shared;
     std::unordered_map<uint32_t, RenderViewResources> m_views;
+    bool m_experimentalRayTracingEnabled = false;
 };
 }

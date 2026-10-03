@@ -24,6 +24,7 @@ enum class RenderPlanReason : uint8_t {
     RASTER_SURFACE_UNAVAILABLE,
     RASTER_PIPELINE_UNAVAILABLE,
     REQUIRED_OUTPUT_UNAVAILABLE,
+    DEVELOPER_MODE_REQUIRED,
 };
 
 /// @note 効果に届く形状・opacity・必要な BSDF / 光源の対応を呼び出し側で証明する。
@@ -38,6 +39,8 @@ struct SceneRayCoverage {
 /// @note 当該ビュー・Scene / device 世代・寸法の準備結果。ハンドルの存在だけで true にしない。
 /// @note パスの実装・シェーダー・必須資源が揃った場合だけ pipelineReady を true にする。
 struct RenderAvailability {
+    /// @note ホストのセッション方針。false なら保存された RT 要求を保持したまま Raster へ戻す。
+    bool experimentalRayTracingEnabled = false;
     bool outputsReady = false;
     bool rasterPipelineReady = false;
     OpaqueRenderAvailability opaque;

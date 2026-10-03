@@ -286,6 +286,7 @@ TEST_F(RayHybridDiffuseGITest, ReadinessRejectsMissingStaleWrongSizeAndNonfinite
     renderer::RenderViewResources view;
     View(view);
     renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
+    context.experimentalRayTracingEnabled = true;
     EXPECT_TRUE(renderer::IsRayDiffuseIndirectReady(context, view));
     ActiveVolume(0, {});
     View(view);
@@ -318,6 +319,7 @@ TEST_F(RayHybridDiffuseGITest, PublishedIrradianceHistoryRequiresExactOwnerEpoch
     View(view);
     shared.rayReflectionReconstructionShader = m_reconstruction;
     renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
+    context.experimentalRayTracingEnabled = true;
     context.width = context.height = 2; context.frameStamp = 1;
     auto& state = view.rayReflection.reconstruction;
     ASSERT_TRUE(renderer::PrepareRayReflectionReconstruction(context, view, shared));
@@ -360,6 +362,7 @@ TEST_F(RayHybridDiffuseGITest, ShBindingsAndParametersInvalidateHistoryAndUnvers
     View(view);
     shared.rayReflectionReconstructionShader = m_reconstruction;
     renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
+    context.experimentalRayTracingEnabled = true;
     context.width = context.height = 2; context.frameStamp = 1;
     context.iblIrradiancePublication = {m_handles.iblIrradiance, m_resources.get(), m_resources->GetResetVersion()};
     auto& state = view.rayReflection.reconstruction;

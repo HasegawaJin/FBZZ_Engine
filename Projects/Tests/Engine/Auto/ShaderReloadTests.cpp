@@ -736,6 +736,12 @@ TEST_F(MaterialScriptIntegrationTest, ExtractsRoughSolidAndSmoothThinRuntimeValu
     renderer::RenderSettings settings;
     renderer::RenderPassHandles handles;
     scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
+    settings.modeRequest.mode = renderer::RenderMode::PATH_TRACING;
+    scene::ExtractRenderScene(context);
+    ASSERT_NE(context.renderScene, nullptr);
+    ASSERT_EQ(context.renderScene->items.size(), 1u);
+    EXPECT_FLOAT_EQ(context.renderScene->items[0].material.surface.dielectric.transmission, 0);
+    context.experimentalRayTracingEnabled = true;
     scene::ExtractRenderScene(context);
     ASSERT_NE(context.renderScene, nullptr);
     ASSERT_EQ(context.renderScene->items.size(), 1u);

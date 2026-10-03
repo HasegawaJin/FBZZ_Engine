@@ -338,8 +338,10 @@ void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const std::
     settings.m_maskIndex = texture ? texture->GetBindlessIndex() : renderer::INVALID_BINDLESS_INDEX;
 }
 
-void ExtractRayFiberSources(Scene& scene, renderer::ResourceManager& resources, renderer::RenderScene& output)
+void ExtractRayFiberSources(Scene& scene, renderer::ResourceManager& resources, renderer::RenderScene& output,
+    bool experimentalRayTracingEnabled)
 {
+    if (!experimentalRayTracingEnabled) return;
     auto& cache = GetFiberResources(resources);
     for (EntityID id : scene.GetEntities<FiberComponent>()) {
         auto* go = scene.GetGameObject(id);
@@ -502,6 +504,6 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             output.fibers.push_back(std::move(input));
         }
     }
-    ExtractRayFiberSources(ctx.scene, resources, output);
+    ExtractRayFiberSources(ctx.scene, resources, output, ctx.experimentalRayTracingEnabled);
 }
 }

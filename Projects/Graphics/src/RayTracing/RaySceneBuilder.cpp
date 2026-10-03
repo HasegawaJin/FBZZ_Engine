@@ -116,6 +116,7 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
     output.snapshotSerial = scene.snapshotSerial;
     output.frameStamp = scene.frameStamp;
     output.layerMask = options.layerMask;
+    output.hybridCandidatePolicy = options.hybridCandidatePolicy;
     if (scene.sceneGeneration == 0) {
         output.diagnostics.push_back({{}, UINT32_MAX, RaySceneIssue::SCENE_ID_UNAVAILABLE});
         return output;
@@ -160,11 +161,15 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
                 output.diagnostics.push_back({objectId, sourceItem, RaySceneIssue::INSTANCE_LIMIT_EXCEEDED});
                 continue;
             }
+            const bool dielectric = item.material.surface.dielectric.transmission != 0.0f;
+            const bool opaque = item.material.rayCapabilities.opacity == RayOpacity::OPAQUE_SURFACE
+                && !(options.hybridCandidatePolicy && dielectric);
+            const bool doubleSided = options.hybridCandidatePolicy ? dielectric : item.material.doubleSided;
             RayGeometryKey key{object.skinned ? item.deformedVertexBuffer : item.vertexBuffer, item.indexBuffer,
                 object.skinned ? item.deformedContentVersion : item.vertexContentVersion,
                 item.indexContentVersion, object.skinned ? static_cast<uint32_t>(sizeof(Vertex)) : item.vertexStride, 0, item.vertexCount,
                 item.vertexPositionOffset, 0, item.indexCount,
-                item.material.rayCapabilities.opacity == RayOpacity::OPAQUE_SURFACE, item.material.doubleSided};
+                opaque, doubleSided};
             const auto [geometry, inserted] = geometryIndices.emplace(key,
                 static_cast<uint32_t>(output.geometries.size()));
             if (inserted) {
@@ -181,7 +186,7 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
             instance.surface = item.material.surface;
             instance.world = object.world;
             instance.previousWorld = object.previousWorld;
-            instance.doubleSided = item.material.doubleSided;
+            instance.doubleSided = doubleSided;
             if (!object.castShadows) instance.mask &= static_cast<uint8_t>(~RAY_SHADOW_MASK);
             output.instances.push_back(instance);
         }

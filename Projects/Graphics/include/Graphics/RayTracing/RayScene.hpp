@@ -66,6 +66,7 @@ struct RaySceneInstance {
     math::Matrix4 world = math::Matrix4::Identity();
     math::Matrix4 previousWorld = math::Matrix4::Identity();
     uint8_t mask = RAY_PRIMARY_MASK | RAY_SHADOW_MASK | RAY_SPECULAR_MASK | RAY_DIFFUSE_MASK;
+    /// @note Effective TLAS culling disable; Hybrid candidate policy selects this independently of authored material sidedness.
     bool doubleSided = false;
 };
 
@@ -103,6 +104,9 @@ struct RaySceneBuildOptions {
     uint32_t layerMask = UINT32_MAX;
     /// @note Path と対応済み Hybrid 輸送が明示 opt-in する。DXR opaque は alpha 評価不要を意味し、光透過を禁止しない。
     bool allowSolidDielectrics = false;
+    /// @note Hybrid only: dielectric candidates remain two-sided while ordinary surfaces retain hardware backface culling.
+    /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#ray-flags Instance culling disable and nonopaque candidates.
+    bool hybridCandidatePolicy = false;
 };
 
 /// @note GPU ハンドルは非所有。BLAS / TLAS と GPU table は同じ snapshotSerial で公開する。
@@ -112,6 +116,7 @@ struct RayScene {
     uint64_t snapshotSerial = 0;
     uint64_t frameStamp = 0;
     uint32_t layerMask = UINT32_MAX;
+    bool hybridCandidatePolicy = false;
     std::vector<RaySceneGeometry> geometries;
     std::vector<RaySceneInstance> instances;
     std::vector<RaySceneDiagnostic> diagnostics;

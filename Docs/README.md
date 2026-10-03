@@ -75,6 +75,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [render-graph.md](design/render-graph.md) | RenderGraph の責務と資源・パスの依存関係 |
 | [render-pass-viewer.md](design/render-pass-viewer.md) | Render Pass Viewer による描画パスの確認 |
 | [pix-profiling.md](design/pix-profiling.md) | PIX の起動接続、イベント、Release キャプチャと性能検証の契約 |
+| [rt-experiment.md](design/rt-experiment.md) | DeveloperMode に保持する RT 実験、公開用 Reference 画像、撮影条件・保留理由・再開条件 |
 | [async-compute.md](design/async-compute.md) | 非同期コンピュートキュー |
 | [gpu-instancing.md](design/gpu-instancing.md) | 同じメッシュの自動インスタンシング |
 | [view-culling.md](design/view-culling.md) | ビューごとのカリング結果の共有 |

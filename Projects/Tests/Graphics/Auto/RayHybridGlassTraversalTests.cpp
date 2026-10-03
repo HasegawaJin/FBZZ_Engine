@@ -1,5 +1,5 @@
 /// @file    RayHybridGlassTraversalTests.cpp
-/// @brief   Production glass tail-continuation equivalence against the frozen GPU stack traversal.
+/// @brief   Production glass equivalence and bounded single-path Fresnel transport against the frozen traversal.
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #include <TestKit/TestKit.hpp>
@@ -14,6 +14,7 @@
 #include <objbase.h>
 #pragma comment(lib, "ole32.lib")
 #include <array>
+#include <cmath>
 #include <filesystem>
 #include <memory>
 #include <system_error>
@@ -29,10 +30,10 @@ struct TraversalConstants {
     float envRotation = 0;
     float envIntensity = 1;
     uint32_t terminalDraws = 3;
-    std::array<uint32_t, 2> reserved{};
+    uint32_t glassStochastic = 0, forcedChoice = 0;
 };
 static_assert(sizeof(TraversalConstants) == 64);
-using Report = std::array<math::Vector4, 5>;
+using Report = std::array<math::Vector4, 6>;
 
 /// @note The geometry and lighting adapters isolate traversal; existing RayReflectionTest cases retain real TLAS, material and shadow coverage.
 class RayHybridGlassTraversalTest : public testkit::Fixture, private core::ILogSink {
@@ -76,8 +77,8 @@ protected:
         m_copy = m_resources->LoadShader((root / "PostProcess/Color/CopyColor.hlsl").generic_string());
         m_constants = m_resources->CreateConstantBuffer(sizeof(TraversalConstants));
         m_events = m_resources->CreateRWStructuredBuffer(nullptr, 16448, 4 * sizeof(uint32_t));
-        m_output = m_resources->CreateComputeTexture(5, 1);
-        m_target = m_resources->CreateRenderTarget(5, 1, {1, renderer::Format::RGBA16F, false});
+        m_output = m_resources->CreateComputeTexture(6, 1);
+        m_target = m_resources->CreateRenderTarget(6, 1, {1, renderer::Format::RGBA16F, false});
         m_pipeline = m_resources->CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,
             renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF});
         ASSERT_TRUE(m_shader && m_copy && m_constants && m_events && m_output && m_target && m_pipeline);
@@ -147,9 +148,9 @@ protected:
         std::vector<float> pixels;
         uint32_t width = 0, height = 0;
         EXPECT_TRUE(device.CaptureRenderTargetToLinearRGBA(m_target, *m_resources, pixels, width, height));
-        EXPECT_EQ(width, 5u); EXPECT_EQ(height, 1u); EXPECT_EQ(pixels.size(), 20u);
+        EXPECT_EQ(width, 6u); EXPECT_EQ(height, 1u); EXPECT_EQ(pixels.size(), 24u);
         Report report{};
-        if (pixels.size() == 20)
+        if (pixels.size() == 24)
             for (size_t pixel = 0; pixel < report.size(); ++pixel)
                 report[pixel] = {pixels[4 * pixel], pixels[4 * pixel + 1], pixels[4 * pixel + 2], pixels[4 * pixel + 3]};
         return report;
@@ -269,6 +270,111 @@ TEST_F(RayHybridGlassTraversalTest, FiveHundredTwelveWorkCapRejectsTheSameIncomp
     ExpectEquivalent(report, false);
     /// @note The first hit is supplied, so 511 subsequent queries prove that the same 512 states were visited before fail-closed truncation.
     EXPECT_FLOAT_EQ(report[2].x, 511);
+}
+
+TEST_F(RayHybridGlassTraversalTest, SinglePathThinFresnelExpectationMatchesTheDeterministicSplit)
+{
+    TraversalConstants constants; constants.scenario = 2; constants.repeatCount = 1;
+    constants.glassStochastic = 1; constants.terminalDraws = 0; constants.forcedChoice = 1;
+    const auto reflected = Run(constants);
+    constants.forcedChoice = 2;
+    const auto transmitted = Run(constants);
+    EXPECT_FLOAT_EQ(reflected[4].w, 1); EXPECT_FLOAT_EQ(transmitted[4].w, 1);
+    EXPECT_LT(reflected[2].y, reflected[2].x); EXPECT_LT(transmitted[2].y, transmitted[2].x);
+    EXPECT_FLOAT_EQ(reflected[5].x, 2); EXPECT_FLOAT_EQ(reflected[5].y, 0);
+    EXPECT_FLOAT_EQ(transmitted[5].x, 0); EXPECT_FLOAT_EQ(transmitted[5].y, 1);
+    /// @note Exact normal-incidence Fresnel and the thin two-interface series define the discrete expectation independently of the shader chooser.
+    /// @see https://pbr-book.org/4ed/Reflection_Models/Dielectric_BSDF ThinDielectricBxDF.
+    constexpr float reflection = 0.04f, probability = 2 * reflection / (1 + reflection);
+    EXPECT_NEAR(probability * reflected[4].x + (1 - probability) * transmitted[4].x, reflected[3].x, 0.004f);
+    EXPECT_NEAR(probability * reflected[4].y + (1 - probability) * transmitted[4].y, reflected[3].y, 0.004f);
+    EXPECT_NEAR(probability * reflected[4].z + (1 - probability) * transmitted[4].z, reflected[3].z, 0.004f);
+}
+
+TEST_F(RayHybridGlassTraversalTest, SinglePathSolidTransmissionRetainsSnellBeerAndRadianceEtaCompensation)
+{
+    TraversalConstants constants; constants.scenario = 9; constants.repeatCount = 1; constants.terminalDraws = 0;
+    constants.glassStochastic = 1; constants.forcedChoice = 2;
+    const auto report = Run(constants);
+    EXPECT_FLOAT_EQ(report[4].w, 1); EXPECT_FLOAT_EQ(report[2].w, 1);
+    /// @note Reciprocal slab eta squared factors cancel; Snell's oblique internal segment defines the Beer exponent independently of the traversal.
+    const float cosineI = 1 / std::sqrt(1 + 0.6f * 0.6f);
+    const float cosineT = std::sqrt(1 - (1 - cosineI * cosineI) / (1.5f * 1.5f));
+    const float distanceRatio = 1 / (2 * cosineT);
+    EXPECT_NEAR(report[4].x, 2 * std::pow(0.8f, distanceRatio), 0.004f);
+    EXPECT_NEAR(report[4].y, 4 * std::pow(0.9f, distanceRatio), 0.004f);
+    EXPECT_NEAR(report[4].z, 6, 0.004f);
+    EXPECT_FLOAT_EQ(report[5].z, 0);
+}
+
+TEST_F(RayHybridGlassTraversalTest, SinglePathTotalInternalReflectionAndIndexMatchedThinConsumeNoRouletteDraw)
+{
+    for (uint32_t limit : {1u, 5u, 16u}) {
+        TraversalConstants constants; constants.scenario = 3; constants.initialDepth = 1;
+        constants.glassStochastic = 1; constants.glassBoundaryLimit = limit; constants.repeatCount = 1;
+        const auto report = Run(constants);
+        ExpectEquivalent(report, true);
+        EXPECT_FLOAT_EQ(report[5].z, 1);
+    }
+    TraversalConstants matched; matched.scenario = 2; matched.glassStochastic = 1; matched.terminalDraws = 0;
+    const auto report = Run(matched, 0, 1);
+    ExpectEquivalent(report, true);
+    EXPECT_FLOAT_EQ(report[5].z, 1);
+}
+
+TEST_F(RayHybridGlassTraversalTest, SinglePathInsideExitRetainsUncancelledRadianceEtaSquared)
+{
+    TraversalConstants constants; constants.scenario = 10; constants.initialDepth = 1;
+    constants.glassStochastic = 1; constants.forcedChoice = 2; constants.repeatCount = 1; constants.terminalDraws = 0;
+    const auto report = Run(constants);
+    EXPECT_FLOAT_EQ(report[4].w, 1); EXPECT_FLOAT_EQ(report[2].w, 1);
+    /// @note A camera already in glass has no paired entry to cancel the exit's radiance-mode eta squared factor.
+    /// @see https://pbr-book.org/4ed/Reflection_Models/Dielectric_BSDF Radiance transport through a specular BTDF.
+    const float cosineI = 1 / std::sqrt(1 + 0.3f * 0.3f);
+    const float distanceRatio = 0.5f / (2 * cosineI);
+    EXPECT_NEAR(report[4].x, 2 * 2.25f * std::pow(0.8f, distanceRatio), 0.012f);
+    EXPECT_NEAR(report[4].y, 4 * 2.25f * std::pow(0.9f, distanceRatio), 0.012f);
+    EXPECT_NEAR(report[4].z, 6 * 2.25f, 0.012f);
+}
+
+TEST_F(RayHybridGlassTraversalTest, SinglePathModePreservesRoughNullSamplingAndSeedAdvancement)
+{
+    for (float roughness : {0.2f, 1.0f})
+        for (uint32_t seed : {17u, 12345u}) {
+            TraversalConstants constants; constants.initialSeed = seed; constants.glassStochastic = 1;
+            ExpectEquivalent(Run(constants, roughness), true);
+        }
+    TraversalConstants nullInterface; nullInterface.scenario = 8; nullInterface.glassStochastic = 1;
+    ExpectEquivalent(Run(nullInterface), true);
+}
+
+TEST_F(RayHybridGlassTraversalTest, SinglePathVisitedInvalidOwnerNinthMediumAndUnknownEnvironmentFailClosed)
+{
+    for (uint32_t scenario : {4u, 5u, 6u}) {
+        TraversalConstants constants; constants.scenario = scenario; constants.glassStochastic = 1;
+        constants.forcedChoice = 2; constants.terminalDraws = 0; constants.repeatCount = 1;
+        if (scenario == 4) { constants.instanceCount = 9; constants.initialDepth = 8; }
+        if (scenario == 6) constants.environmentMode = 0;
+        const auto report = Run(constants);
+        EXPECT_FLOAT_EQ(report[4].w, 0);
+        EXPECT_FLOAT_EQ(report[4].x, 0); EXPECT_FLOAT_EQ(report[4].y, 0); EXPECT_FLOAT_EQ(report[4].z, 0);
+    }
+    TraversalConstants disabled; disabled.glassStochastic = 1; disabled.glassBoundaryLimit = 0;
+    EXPECT_FLOAT_EQ(Run(disabled)[4].w, 0);
+}
+
+TEST_F(RayHybridGlassTraversalTest, SinglePathKeepsFiniteBoundaryResidualAndAvoidsTheIncompleteSplitTree)
+{
+    TraversalConstants constants; constants.glassStochastic = 1; constants.forcedChoice = 2;
+    constants.terminalDraws = 0; constants.repeatCount = 1; constants.glassBoundaryLimit = 1;
+    const auto bounded = Run(constants);
+    EXPECT_FLOAT_EQ(bounded[4].w, 1);
+    EXPECT_FLOAT_EQ(bounded[4].x, 0); EXPECT_FLOAT_EQ(bounded[4].y, 0); EXPECT_FLOAT_EQ(bounded[4].z, 0);
+    constants.scenario = 7; constants.instanceCount = 4; constants.glassBoundaryLimit = 16;
+    const auto report = Run(constants);
+    EXPECT_FLOAT_EQ(report[3].w, 0); EXPECT_FLOAT_EQ(report[4].w, 1);
+    EXPECT_FLOAT_EQ(report[2].y, 4);
+    EXPECT_FLOAT_EQ(report[4].x, 0.25f); EXPECT_FLOAT_EQ(report[4].y, 0.5f); EXPECT_FLOAT_EQ(report[4].z, 1);
 }
 
 } /// @note namespace

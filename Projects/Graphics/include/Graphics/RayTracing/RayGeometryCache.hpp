@@ -37,6 +37,8 @@ struct RaySceneGpu {
     uint32_t builtBottomLevels = 0;
     bool builtTopLevel = false;
     bool ready = false;
+    /// @note True only for the submitted Hybrid candidate/culling policy; a manually assembled scene defaults to conservative queries.
+    bool hybridCandidatePolicy = false;
 };
 
 /// @note ResourceManager::Rendering の共有状態に置く。異なる Manager / device へ持ち越さない。

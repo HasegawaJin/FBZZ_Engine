@@ -29,6 +29,9 @@ struct RenderPassContext : RenderLightingInput {
     /// @note 既定値付きフィールドを挿すと呼び出し側の初期化子が 1 つずつずれるため、
     /// @note 新しい設定は必ず handles より後ろへ追加すること。
     RenderPassHandles& handles;
+    /// @note ホストが実験 RT のセッション許可を渡す。保存された描画要求や実機能力とは独立する。
+    /// @see Docs/design/developer-mode.md
+    bool experimentalRayTracingEnabled = false;
 
     /// @note スキニング完了後に抽出し、派生ビューを含む記録終了まで共有する不変入力。
     std::shared_ptr<const renderer::RenderScene> renderScene;
@@ -41,7 +44,7 @@ struct RenderPassContext : RenderLightingInput {
     RenderEnvironmentInput environment;
     RenderTexturePublication iblIrradiancePublication, iblPrefilterPublication;
 
-    /// @name カリング挙動 (CameraComponent 由来)
+    /// @note カリング挙動 (CameraComponent 由来)
     /// @{
     /// @note パスが直接 CameraComponent を読むと、Scene View や VFX プレビューでゲームカメラの
     /// @note 設定が効いてしまい、エディタ上の見え方が編集対象と食い違う。
@@ -147,7 +150,7 @@ struct RenderPassContext : RenderLightingInput {
 
     /// @}
 
-    /// @name クラスタライトカリング
+    /// @note クラスタライトカリング
     /// @{
 
     /// @note フロクセル霧のフレーム間状態。実体は描画中のビューが持つ。
@@ -174,11 +177,11 @@ struct RenderPassContext : RenderLightingInput {
     /// @note 依存になるので、0.005 / depthRange としてワールド約 5mm 相当を保つ。
     /// @}
 
-    /// @name カスケードシャドウ
+    /// @note カスケードシャドウ
     /// @{
     /// @}
 
-    /// @name Spot / Point シャドウ
+    /// @note Spot / Point シャドウ
     /// @{
     /// @note アトラス全体の一辺 [px]。タイルサイズは これ / 4。
 
@@ -191,11 +194,11 @@ struct RenderPassContext : RenderLightingInput {
     /// @note ライトが他のライトの深度を引く。
     /// @}
 
-    /// @name ライト Cookie
+    /// @note ライト Cookie
     /// @{
     /// @}
 
-    /// @name レガシー経路 (b3) 向けの「大きさを持つ光源」
+    /// @note レガシー経路 (b3) 向けの「大きさを持つ光源」
     /// @{
     /// @note punctualLights から Area / Sphere / Tube を先頭 kMaxLegacyShapedLights 本まで
     /// @note 写したもの。b3 はこれらの型を運べないため、b12 側へ実体ごと載せる。

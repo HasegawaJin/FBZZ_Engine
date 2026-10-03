@@ -5,6 +5,7 @@
 #include <Graphics/RayTracing/RayReflectionReconstructionResources.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Passes/RayTracing/RayDebugPass.hpp>
+#include <Graphics/Renderer/IConstantBuffer.hpp>
 #include <Graphics/Renderer/IStructuredBuffer.hpp>
 #include <bit>
 #include <limits>
@@ -38,15 +39,21 @@ bool PrepareRayReflectionReconstruction(RenderPassContext& context, RenderViewRe
     state.prepared = state.rawSucceeded = state.temporalSucceeded = false;
     context.rayReflectionReconstructionPrepared = false;
     const auto reject = [&]() { state.historyValid = false; return false; };
+    if (!context.experimentalRayTracingEnabled) return reject();
     for (const auto& override : context.settings.passOverrides)
         if (!override.enabled && (override.name == "RayReflectionTemporal" || override.name == "RayReflectionSpatial"))
             return reject();
     const uint64_t pixelCount = static_cast<uint64_t>(context.width) * context.height;
     if (!pixelCount || pixelCount > std::numeric_limits<uint32_t>::max()) return reject();
     const auto& quality = context.settings.hybridQuality;
+    const bool halfResolution = view.rayReflection.resolutionDivisor == 2;
+    const uint32_t traceWidth = halfResolution ? context.width / 2 + context.width % 2 : context.width;
+    const uint32_t traceHeight = halfResolution ? context.height / 2 + context.height % 2 : context.height;
+    const uint64_t tracePixelCount = static_cast<uint64_t>(traceWidth) * traceHeight;
     /// @note This is logical live reconstruction storage, not a claim about driver heaps or fence-retired allocations.
     constexpr uint64_t bytesPerPixel = 2 * sizeof(RayReflectionSurface) + 2 * sizeof(RayReflectionHistoryRecord) + 8;
-    if (!IsHybridQualityValid(quality) || pixelCount * bytesPerPixel > static_cast<uint64_t>(quality.maxHistoryMiB) * 1024 * 1024) {
+    const uint64_t workingSetBytes = pixelCount * bytesPerPixel + (halfResolution ? tracePixelCount * 8 : 0);
+    if (!IsHybridQualityValid(quality) || workingSetBytes > static_cast<uint64_t>(quality.maxHistoryMiB) * 1024 * 1024) {
         for (const auto surface : state.surfaces) resources.Release(surface);
         for (const auto history : state.histories) resources.Release(history);
         resources.Release(state.output);
@@ -54,6 +61,8 @@ bool PrepareRayReflectionReconstruction(RenderPassContext& context, RenderViewRe
         state.width = state.height = state.surfaceReadIndex = 0;
         return reject();
     }
+    /// @note Half RAW cannot be expanded without current-frame GBuffer material/normal checks for every Scene pixel.
+    if (halfResolution && !resources.Get(view.gbuffer)) return reject();
     if (!resources.Get(shared.rayReflectionReconstructionShader))
         shared.rayReflectionReconstructionShader = resources.LoadShader("Assets/Shaders/RayTracing/RayReflectionReconstruction.cs.hlsl");
     if (!resources.Get(shared.rayReflectionReconstructionShader)) return reject();
@@ -80,7 +89,11 @@ bool PrepareRayReflectionReconstruction(RenderPassContext& context, RenderViewRe
         state.output = resources.CreateComputeTexture(context.width, context.height);
         state.width = context.width; state.height = context.height;
     }
-    if (!resources.Get(state.constants)) state.constants = resources.CreateConstantBuffer(sizeof(RayReflectionReconstructionConstants));
+    const auto* currentConstants = resources.Get(state.constants);
+    if (!currentConstants || currentConstants->GetSize() < sizeof(RayReflectionReconstructionConstants)) {
+        resources.Release(state.constants);
+        state.constants = resources.CreateConstantBuffer(sizeof(RayReflectionReconstructionConstants));
+    }
     const auto bufferReady = [&](ResourceHandle<StructuredBufferTag> handle, uint32_t stride) {
         const auto* buffer = resources.Get(handle);
         return storageReady(handle, stride)
@@ -108,6 +121,8 @@ bool PrepareRayReflectionReconstruction(RenderPassContext& context, RenderViewRe
     key.push_back(static_cast<uint32_t>(camera.m_projection));
     key.push_back(quality.reflectionSamples); key.push_back(quality.historyLimit); key.push_back(quality.spatialRadius);
     key.push_back(quality.glassBoundaryLimit); AppendFloat(key, quality.maxTraceDistance);
+    key.push_back(quality.reflectionResolutionDivisor); key.push_back(quality.glassStochastic ? 1u : 0u);
+    key.push_back(view.rayReflection.resolutionDivisor); key.push_back(traceWidth); key.push_back(traceHeight);
     std::vector<uint32_t> cameraKey;
     for (float value : {camera.m_position.x, camera.m_position.y, camera.m_position.z,
         camera.m_rotation.x, camera.m_rotation.y, camera.m_rotation.z, camera.m_rotation.w}) AppendFloat(cameraKey, value);
@@ -171,6 +186,8 @@ bool PrepareRayReflectionReconstruction(RenderPassContext& context, RenderViewRe
     constants.cameraPosition = basis.cameraPosition; constants.cameraPosition.w = static_cast<float>(basis.orthographic);
     constants.cameraRight = basis.cameraRight; constants.cameraUp = basis.cameraUp; constants.cameraForward = basis.cameraForward;
     constants.width = context.width; constants.height = context.height;
+    constants.traceWidth = traceWidth; constants.traceHeight = traceHeight;
+    constants.resolutionDivisor = view.rayReflection.resolutionDivisor;
     constants.resetHistory = reset ? 1u : 0u;
     constants.temporalAllowed = knownContent ? 1u : 0u;
     constants.historyLimit = quality.historyLimit;

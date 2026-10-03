@@ -1,0 +1,263 @@
+{
+  "name": "CornellNativeArea",
+  "scene": "Assets/Scenes/Test/CornellBox.scene",
+  "lockstep": 0.016666667,
+  "steps": [
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.find",
+        "name": "Sphere_Glass",
+        "active": true,
+        "components": [
+          "MeshRenderer",
+          "MaterialComponent"
+        ],
+        "properties": [
+          {
+            "comp": "MeshRenderer",
+            "field": "enabled",
+            "value": true
+          },
+          {
+            "comp": "MaterialComponent",
+            "field": "enabled",
+            "value": true
+          }
+        ]
+      },
+      "path": "count",
+      "op": "==",
+      "value": 1
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.find",
+        "name": "CeilingLight",
+        "properties": [
+          {
+            "comp": "LightComponent",
+            "field": "enabled",
+            "value": true
+          },
+          {
+            "comp": "LightComponent",
+            "field": "type",
+            "value": 3
+          },
+          {
+            "comp": "LightComponent",
+            "field": "intensity",
+            "value": 18
+          },
+          {
+            "comp": "MeshRenderer",
+            "field": "enabled",
+            "value": true
+          },
+          {
+            "comp": "MaterialComponent",
+            "field": "enabled",
+            "value": true
+          }
+        ]
+      },
+      "path": "count",
+      "op": "==",
+      "value": 1
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "material.inspect",
+        "id": "53de48ba-f8dd-4584-a1d5-b2f7c6001cd7"
+      },
+      "path": "materialPath",
+      "op": "==",
+      "value": "Assets/Materials/Demo/CornellBox/CeilingEmission.mat"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.find",
+        "name": "RoomReflectionProbe",
+        "properties": [
+          {
+            "comp": "ReflectionProbeComponent",
+            "field": "enabled",
+            "value": true
+          }
+        ]
+      },
+      "path": "count",
+      "op": "==",
+      "value": 1
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.find",
+        "name": "BlackEnvironmentForProbe",
+        "properties": [
+          {
+            "comp": "SkyRenderer",
+            "field": "enabled",
+            "value": true
+          },
+          {
+            "comp": "SkyRenderer",
+            "field": "skyScatterIntensity",
+            "value": 0
+          }
+        ]
+      },
+      "path": "count",
+      "op": "==",
+      "value": 1
+    },
+    {
+      "do": "frames",
+      "count": 8
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "shader.diagnostics"
+      },
+      "path": "errorCount",
+      "op": "==",
+      "value": 0
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "cpuRenderPasses.0.name",
+      "op": "==",
+      "value": "RayPathTrace"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "cpuRenderPasses.1.name",
+      "op": "==",
+      "value": "RayPathColor"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "cpuRenderPasses.2.name",
+      "op": "==",
+      "value": "RayPathResolve"
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot"
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "CornellNativeAreaEarly"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "viewport.camera",
+        "position": [
+          3,
+          2.7,
+          -3.8
+        ],
+        "lookAt": [
+          0,
+          0.8,
+          -0.7
+        ]
+      }
+    },
+    {
+      "do": "capture",
+      "view": "scene",
+      "name": "CornellNativeAreaSceneMoved"
+    },
+    {
+      "do": "frames",
+      "count": 16
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "cpuRenderPasses.0.name",
+      "op": "==",
+      "value": "RayPathTrace"
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "CornellNativeAreaAfterSceneMove"
+    },
+    {
+      "do": "frames",
+      "count": 512
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "shader.diagnostics"
+      },
+      "path": "errorCount",
+      "op": "==",
+      "value": 0
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "cpuRenderPasses.0.name",
+      "op": "==",
+      "value": "RayPathTrace"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "cpuRenderPasses.1.name",
+      "op": "==",
+      "value": "RayPathColor"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "profiler.snapshot"
+      },
+      "path": "cpuRenderPasses.2.name",
+      "op": "==",
+      "value": "RayPathResolve"
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "profiler.snapshot"
+      }
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "CornellNativeAreaAccumulated"
+    }
+  ]
+}

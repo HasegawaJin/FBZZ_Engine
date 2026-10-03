@@ -32,6 +32,7 @@
 #include "RenderPasses/Debug/SelectionPasses.hpp"
 #include "Engine/Core/Application.hpp"
 #include "Engine/Core/Time.hpp"
+#include <Engine/Core/DeveloperMode.hpp>
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
@@ -279,7 +280,7 @@ void RenderSystem(Scene& scene,
     /// @note View<> を使わないのは GameObject が取れず activeInHierarchy() を見られないため。
     /// @note enabled (コンポーネントを切る) と activeInHierarchy() (オブジェクトごと切る) の
     /// @note どちらでも絵から消える必要がある。
-    /// @note /// @note EnvironmentLightComponent — シーン Inspector から IBL を上書きする。先着優先。
+    /// @note EnvironmentLightComponent — シーン Inspector から IBL を上書きする。先着優先。
     /// @note 空連動 IBL: 採用された EnvironmentLight の source
     IblSource activeIblSource = IblSource::StaticDDS;
     for (EntityID id : scene.GetEntities<EnvironmentLightComponent>()) {
@@ -447,8 +448,10 @@ void RenderSystem(Scene& scene,
     }
 
     const renderer::RenderSettings& rs = effectiveSettings;
+    const bool experimentalRayTracingEnabled = core::DeveloperMode::IsEnabled();
 
     auto& renderResources = resources.Rendering();
+    renderResources.SetExperimentalRayTracingEnabled(experimentalRayTracingEnabled);
     auto& shared = renderResources.Shared();
     if (shared.Prepare(resources, rs)) {
         ReleaseSkinningComputeCaches();
@@ -460,7 +463,7 @@ void RenderSystem(Scene& scene,
     auto& viewTargets = renderResources.View(viewKey);
     if (!renderResources.PrepareView(viewTargets, renderer, outputRT, rs)) {
         const auto failedPlan = renderer::PrepareViewRenderPlan(resources, renderer, rs,
-            viewTargets, shared, {});
+            viewTargets, shared, {}, experimentalRayTracingEnabled);
         FBZZ_LOG_ERROR("RenderSystem: %s", renderer::DescribeRenderPlanReason(failedPlan.failureReason));
         return;
     }
@@ -501,7 +504,7 @@ void RenderSystem(Scene& scene,
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::LightingSetup", "Rendering"));
 
-    auto lighting = ExtractRenderLights(scene, camera, rs, punctualShadowRes);
+    auto lighting = ExtractRenderLights(scene, camera, rs, punctualShadowRes, experimentalRayTracingEnabled);
     auto& lightData = lighting.lightData;
     auto& dirCastShadows = lighting.dirCastShadows;
     auto& dirShadowBias = lighting.dirShadowBias;
@@ -542,7 +545,7 @@ void RenderSystem(Scene& scene,
     RenderPassHandles passHandles{};
     renderResources.BindPassHandles(viewTargets, passHandles);
     const auto renderPlan = renderer::PrepareViewRenderPlan(
-        resources, renderer, rs, viewTargets, shared, passHandles);
+        resources, renderer, rs, viewTargets, shared, passHandles, experimentalRayTracingEnabled);
     if (!renderPlan.IsValid()) {
         profiler::Profiler::EndSample();
         FBZZ_LOG_ERROR("RenderSystem: %s", renderer::DescribeRenderPlanReason(renderPlan.failureReason));
@@ -714,6 +717,7 @@ void RenderSystem(Scene& scene,
         outputRT, cullingMask, passHandles
     };
     passCtx.frustumCullingEnabled   = resolvedCulling.frustumCulling;
+    passCtx.experimentalRayTracingEnabled = experimentalRayTracingEnabled;
     passCtx.occlusionCullingEnabled = resolvedCulling.occlusionCulling;
     passCtx.cullingBoundsPadding    = resolvedCulling.cullingBoundsPadding;
     passCtx.cullMaxDistance         = resolvedCulling.maxDrawDistance;

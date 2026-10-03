@@ -1,0 +1,83 @@
+{
+  "title": "FBZZ Engine Reference PathTracing / Cornell Box",
+  "capturedOn": "2026-10-01",
+  "archivedOn": "2026-10-02",
+  "mode": "PathTracing",
+  "profile": "Reference",
+  "gpu": "NVIDIA GeForce RTX 4070",
+  "build": "Development",
+  "backend": "DirectX 12",
+  "debugLayer": true,
+  "gpuBasedValidation": false,
+  "scene": "GreenWare/Assets/Scenes/Test/CornellBox.scene",
+  "condition": "原本を隔離コピー。有効なArea Light (強度18)、発光灯具、ガラス、ReflectionProbe、black Skyを維持。",
+  "images": [
+    {
+      "name": "CornellNativeAreaEarly",
+      "file": "cornell-reference-early.png",
+      "frame": 14,
+      "width": 1548,
+      "height": 871,
+      "sha256": "be5e8384eac65c601114e39044f1693ffe84bb29e3f64dfc7c83727d271774d5",
+      "source": "Scratch/CornellGlassCapture/OutputExpansionCompleteReference20261001/CornellNativeAreaEarly.actual.png"
+    },
+    {
+      "name": "CornellNativeAreaAccumulated",
+      "file": "cornell-reference-accumulated.png",
+      "frame": 550,
+      "width": 1548,
+      "height": 871,
+      "sha256": "00d82243cb40351111f7e560d75fc880ca162ce68905aa0aa02f743628819c8b",
+      "source": "Scratch/CornellGlassCapture/OutputExpansionCompleteReference20261001/CornellNativeAreaAccumulated.actual.png"
+    }
+  ],
+  "captureReport": {
+    "source": "Scratch/CornellGlassCapture/OutputExpansionCompleteReference20261001/report.json",
+    "sha256": "9e6d1ed427a9e9594caba1c5cc49f72a43fbcc1c2e151fcc5c2e0239c464e0dc",
+    "state": "passed",
+    "frames": 550,
+    "passedSteps": 24
+  },
+  "profilerSnapshots": [
+    {
+      "frame": 11,
+      "gpuRenderPasses": [
+        {
+          "name": "RayPathTrace",
+          "elapsedMs": 10.025984
+        },
+        {
+          "name": "RayPathColor",
+          "elapsedMs": 0.033792
+        },
+        {
+          "name": "RayPathResolve",
+          "elapsedMs": 0.039936
+        }
+      ]
+    },
+    {
+      "frame": 547,
+      "gpuRenderPasses": [
+        {
+          "name": "RayPathTrace",
+          "elapsedMs": 9.106432
+        },
+        {
+          "name": "RayPathColor",
+          "elapsedMs": 0.026624
+        },
+        {
+          "name": "RayPathResolve",
+          "elapsedMs": 0.03584
+        }
+      ]
+    }
+  ],
+  "interpretation": "GPU時間は撮影中の2回の単発snapshot。統計的な性能比較ではない。lockstepのframeMs/fpsは固定dtであり実性能ではない。captureのframe番号はsppではない。",
+  "knownCaptureWarnings": [
+    "既存orphan meta",
+    "隔離環境のScript DLL未構成",
+    "HDR clear性能メタデータ警告ID 820"
+  ]
+}

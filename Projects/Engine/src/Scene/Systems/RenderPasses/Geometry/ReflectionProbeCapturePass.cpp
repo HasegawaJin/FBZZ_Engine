@@ -121,7 +121,8 @@ ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& c
 {
     struct CaptureCandidate { GameObject* owner; ReflectionProbeComponent* probe; };
     std::vector<CaptureCandidate> dueProbes;
-    const bool bounded = ctx.settings.modeRequest.mode == renderer::RenderMode::HYBRID;
+    const bool bounded = ctx.experimentalRayTracingEnabled
+        && ctx.settings.modeRequest.mode == renderer::RenderMode::HYBRID;
     const auto quality = renderer::IsHybridQualityValid(ctx.settings.hybridQuality)
         ? ctx.settings.hybridQuality : renderer::HybridQualitySettings{};
     ReflectionProbeComponent* selected = nullptr;

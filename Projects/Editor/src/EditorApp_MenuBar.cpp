@@ -662,9 +662,11 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             viewModeItem("unlit",           "Unlit");
             viewModeItem("wireframe_lit",   "Wireframe Lit");
             viewModeItem("wireframe_unlit", "Wireframe Unlit");
-            viewModeItem("ray_hit_distance", "Ray Hit Distance");
-            viewModeItem("ray_geometric_normal", "Ray Geometric Normal");
-            viewModeItem("ray_instance_id", "Ray Instance ID");
+            if (core::DeveloperMode::IsEnabled()) {
+                viewModeItem("ray_hit_distance", "Ray Hit Distance");
+                viewModeItem("ray_geometric_normal", "Ray Geometric Normal");
+                viewModeItem("ray_instance_id", "Ray Instance ID");
+            }
             ImGui::EndMenu();
         }
         ImGui::Separator();

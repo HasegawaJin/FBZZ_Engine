@@ -53,6 +53,7 @@ bool PrepareRayDebugView(RenderPassContext& context, RenderViewResources& view, 
     auto& state = view.rayDebug;
     state.gpu = {};
     state.scene = {};
+    if (!context.experimentalRayTracingEnabled) return false;
     shared.rayGeometry.Trim(context.resources, context.frameStamp);
     if (!IsRayDebugView(context.settings.viewMode) || !context.renderer.GetCapabilities().inlineRayQuery
         || !context.renderScene || !context.width || !context.height) return false;
@@ -87,6 +88,9 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
     state.sceneLighting = false;
     state.diffuseIndirectEnabled = false;
     state.cameraOriginProvenAir = false;
+    state.resolutionDivisor = 1;
+    state.traceWidth = context.width;
+    state.traceHeight = context.height;
     view.rayReflectionCovered = false;
     context.rayReflectionPassActive = false;
     context.rayReflectionReconstructionPrepared = false;
@@ -99,7 +103,7 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
     };
     const auto& request = context.settings.modeRequest;
     const auto capabilities = context.renderer.GetCapabilities();
-    if (request.mode != RenderMode::HYBRID || !request.rayReflection
+    if (!context.experimentalRayTracingEnabled || request.mode != RenderMode::HYBRID || !request.rayReflection
         || !capabilities.inlineRayQuery || !capabilities.bindless || !context.renderScene
         || !context.width || !context.height) return reject();
     RayDebugConstants camera{};
@@ -130,6 +134,9 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
             || context.renderScene->objects[item.objectIndex].rayLodSelectionRequired)
             view.rayReflectionCovered = false;
     }
+    /// @note Glass-free scenes retain authored instance culling and their existing unsupported-backface fallback.
+    if (hasGlass && view.rayReflectionCovered)
+        state.scene = BuildRayScene(*context.renderScene, {context.cullingMask, true, true});
     RayPathLighting lighting;
     lighting.useSceneLights = true;
     lighting.lights = context.rayLights;
@@ -217,7 +224,41 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
         || output->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) return reject();
     context.handles.rayReflectionResult = state.output;
     context.rayReflectionPassActive = true;
-    (void)PrepareRayReflectionReconstruction(context, view, shared);
+    const auto& quality = context.settings.hybridQuality;
+    if (IsHybridQualityValid(quality) && quality.reflectionResolutionDivisor == 2
+        && (context.width > 1 || context.height > 1)) {
+        state.resolutionDivisor = 2;
+        state.traceWidth = context.width / 2 + context.width % 2;
+        state.traceHeight = context.height / 2 + context.height % 2;
+    }
+    const auto restoreFullResolution = [&]() {
+        resources.Release(state.halfRaw);
+        state.halfRaw = {};
+        state.resolutionDivisor = 1;
+        state.traceWidth = context.width;
+        state.traceHeight = context.height;
+        state.reconstruction.historyValid = false;
+    };
+    if (state.resolutionDivisor == 1) {
+        resources.Release(state.halfRaw);
+        state.halfRaw = {};
+    }
+    if (!PrepareRayReflectionReconstruction(context, view, shared)) restoreFullResolution();
+    else if (state.resolutionDivisor == 2) {
+        const auto* current = resources.Get(state.halfRaw);
+        if (!current || current->GetWidth() != state.traceWidth || current->GetHeight() != state.traceHeight) {
+            resources.Release(state.halfRaw);
+            state.halfRaw = resources.CreateComputeTexture(state.traceWidth, state.traceHeight);
+        }
+        const auto* halfRaw = resources.Get(state.halfRaw);
+        if (!halfRaw || halfRaw->GetWidth() != state.traceWidth || halfRaw->GetHeight() != state.traceHeight
+            || halfRaw->GetBindlessIndex() == INVALID_BINDLESS_INDEX
+            || halfRaw->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) {
+            /// @note A failed mixed allocation restores full RAW transport and only keeps reconstruction if its smaller working set is ready.
+            restoreFullResolution();
+            (void)PrepareRayReflectionReconstruction(context, view, shared);
+        }
+    }
     return true;
 }
 
@@ -236,6 +277,12 @@ void BuildRayReflectionPipeline(RenderPipeline& pipeline, RenderViewResources& v
     pipeline.DeclareTexture("RayReflectionResult", reconstruction.prepared ? reconstruction.output : state.output, texture);
     if (reconstruction.prepared) {
         pipeline.DeclareTexture("RayReflectionRaw", state.output, texture);
+        if (state.resolutionDivisor == 2) {
+            auto halfTexture = texture;
+            halfTexture.width = state.traceWidth;
+            halfTexture.height = state.traceHeight;
+            pipeline.DeclareTexture("RayReflectionHalfRaw", state.halfRaw, halfTexture);
+        }
         RenderGraph::ResourceDesc buffer;
         buffer.external = true; buffer.transient = false; buffer.allowAliasing = false;
         const uint64_t count = static_cast<uint64_t>(state.width) * state.height;
@@ -330,7 +377,7 @@ void BuildRayReflectionPipeline(RenderPipeline& pipeline, RenderViewResources& v
     lighting.environmentIntensity = context.environment.rayEnvironment.intensity;
     lighting.environmentRotation = context.environment.rayEnvironment.rotationRadians;
     pipeline.AddPass<RayReflectionPass>(state.gpu, state.constants, shared.rayReflectionShader, false, lighting,
-        reconstruction.prepared ? &reconstruction : nullptr);
+        reconstruction.prepared ? &reconstruction : nullptr, state.halfRaw);
     if (reconstruction.prepared) {
         pipeline.AddPass<RayReflectionReconstructionPass>(state, shared.rayReflectionReconstructionShader, false);
         pipeline.AddPass<RayReflectionReconstructionPass>(state, shared.rayReflectionReconstructionShader, true);

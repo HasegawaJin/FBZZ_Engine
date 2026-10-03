@@ -764,7 +764,8 @@ TEST_F(RenderPipelineAssetTest, InvalidHybridQualityRejectsWithoutChangingSettin
     ExpectOwned(pipeline->Settings(), Distinct());
     const char* badValues[] = {"reflectionSamples=0", "reflectionSamples=65", "historyLimit=0",
         "spatialRadius=3", "glassBoundaryLimit=17", "maxHistoryMiB=0", "maxProbeCapturesPerFrame=17", "maxTraceDistance=-1",
-        "frameBudgetMs=nan", "traceBudgetMs='3'", "probeUpdateBudgetMs=0"};
+        "frameBudgetMs=nan", "traceBudgetMs='3'", "probeUpdateBudgetMs=0", "reflectionResolutionDivisor=0",
+        "reflectionResolutionDivisor=3", "glassStochastic=1", "glassStochastic='true'"};
     for (const char* bad : badValues) {
         const auto file = File("Bad.fzdata");
         Write(file, std::string("type='RenderPipelineAsset'\nschemaVersion=1\n[hybrid]\n") + bad + "\n");
@@ -800,6 +801,35 @@ TEST_F(RenderPipelineAssetTest, LegacyHybridQualityDefaultsAndUnknownFieldsSurvi
     Write(projectFile, "[render]\nmode='Hybrid'\nrayReflection=true\n");
     ASSERT_TRUE(reused.Load(projectFile));
     EXPECT_EQ(reused.render.hybridQuality, renderer::HybridQualitySettings{});
+}
+
+TEST_F(RenderPipelineAssetTest, PerformanceQualityRoundTripsInAssetAndProjectWithoutChangingSceneScale)
+{
+    auto source = Distinct();
+    source.hybridQuality = renderer::MakeHybridQualityPreset(renderer::HybridQualityPreset::PERFORMANCE);
+    ASSERT_TRUE(asset::CreateRenderPipelineAsset(File(), source));
+    const auto* pipeline = Resolve(File());
+    ASSERT_NE(pipeline, nullptr);
+    EXPECT_EQ(pipeline->Settings().hybridQuality, source.hybridQuality);
+    ASSERT_TRUE(asset::DataAssetRegistry::Save(File()));
+    const auto assetText = toml::parse(Text(File()));
+    ASSERT_TRUE(assetText);
+    EXPECT_EQ(assetText.table()["hybrid"]["reflectionResolutionDivisor"].value<int64_t>(), 2);
+    EXPECT_EQ(assetText.table()["hybrid"]["glassStochastic"].value<bool>(), true);
+    ProjectSettings original;
+    original.render = source;
+    original.render.renderScale = 0.75f;
+    const auto path = m_temp.File("PerformanceSettings.toml").generic_string();
+    ASSERT_TRUE(original.Save(path));
+    ProjectSettings loaded;
+    loaded.render.renderScale = 0.75f;
+    ASSERT_TRUE(loaded.Load(path));
+    EXPECT_EQ(loaded.render.hybridQuality, source.hybridQuality);
+    EXPECT_FLOAT_EQ(loaded.render.renderScale, 0.75f);
+    const auto projectText = toml::parse(Text(path));
+    ASSERT_TRUE(projectText);
+    EXPECT_EQ(projectText.table()["render"]["hybrid"]["reflectionResolutionDivisor"].value<int64_t>(), 2);
+    EXPECT_EQ(projectText.table()["render"]["hybrid"]["glassStochastic"].value<bool>(), true);
 }
 
 } /// @note namespace

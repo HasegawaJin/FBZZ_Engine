@@ -1,5 +1,5 @@
 /// @file    RayHybridGlass.hlsli
-/// @brief   Bounded split-branch Hybrid glass transport over verified ray surfaces.
+/// @brief   Bounded deterministic or single-path Hybrid glass transport over verified ray surfaces.
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #ifndef FBZZ_RAY_HYBRID_GLASS_HLSLI
@@ -147,8 +147,29 @@ void HybridStoreMotionTerminal(HybridGlassPath path, SurfaceHit hit, float3 valu
     else { motion.transmitted = guide; motion.transmittedRadiance = value; }
 }
 
-/// @note Smooth Fresnel branches are both evaluated; rough solids sample the shared full f*cos/pdf without survivor normalization or a second NEE estimator.
-/// @note Each branch has at most 16 boundaries; its remaining radiance is zero at that finite budget. Work over 512 states fails closed instead of publishing a partial tree.
+/// @note Physical Fresnel probabilities retain geometric null samples and radiance-mode eta squared through existing weight/probability compensation.
+/// @see https://pbr-book.org/4ed/Reflection_Models/Dielectric_BSDF Sample perfect specular dielectric BSDF and ThinDielectricBxDF.
+bool HybridSelectSmoothDielectric(SurfaceHit hit, float3 incident, float etaI, float etaT, inout uint rng,
+    inout float reflectionWeight, inout float transmissionWeight)
+{
+    float3 normal = hit.frontFace ? hit.normal : -hit.normal;
+    float cosine = dot(normal, -incident);
+    float eta = etaT / etaI;
+    float probability = (hit.surface.dielectricFlags & 1u) != 0
+        ? RayThinReflectance(cosine, eta) : RayDielectricFresnel(cosine, eta);
+    if (!isfinite(probability) || probability < 0 || probability > 1) return false;
+    if (probability == 0) { reflectionWeight = 0; return true; }
+    if (probability == 1) { transmissionWeight = 0; return true; }
+    float choice = Random(rng);
+    if (!isfinite(choice) || choice < 0 || choice >= 1) return false;
+    if (choice < probability) { reflectionWeight /= probability; transmissionWeight = 0; }
+    else { transmissionWeight /= 1 - probability; reflectionWeight = 0; }
+    return isfinite(reflectionWeight) && isfinite(transmissionWeight);
+}
+
+/// @note Deterministic smooth Fresnel evaluates both branches; opt-in single-path visits one compensated branch, while rough sampling remains the shared full f*cos/pdf.
+/// @note Single-path validates visited owners and arithmetic; invalid unselected branches cannot be discovered without evaluating the deterministic tree.
+/// @note Each path has at most 16 boundaries; its remaining radiance is zero at that finite budget. Work over 512 visited states fails closed instead of publishing a partial result.
 /// @note Verified initial closed media and opaque terminals retain their actual Beer segments; unknown environments, non-LIFO overlaps and open solids require fallback.
 /// @note Transmission retains camera/reflection provenance; every reflected branch uses castReflection mask4 while its active solid's exit remains visible.
 /// @return false leaves the producer's finite alpha0 output intact; no previous-frame glass value may substitute for failure.
@@ -271,11 +292,14 @@ bool HybridGlassRadianceWithMotion(HybridGlassPath initial, SurfaceHit firstHit,
             path.ray.Direction, etaI, etaT, reflectedDirection, transmittedDirection, reflectionWeight, transmissionWeight);
         if (split == 2u) return false;
         if (split == 0u) continue;
+        bool zeroReflectedEnergy = reflectionWeight == 0;
+        if (HybridGlassSinglePathEnabled()
+            && !HybridSelectSmoothDielectric(hit, path.ray.Direction, etaI, etaT, rng, reflectionWeight, transmissionWeight)) return false;
         path.previousPosition = hit.position;
         ++path.boundaryCount;
         path.ray.TMin = 0; path.ray.TMax = 3.402823466e38f;
         /// @note An index-matched thin interface has exactly zero reflected energy; its constant branch needs no scene query or terminal correspondence.
-        if (firstThin && environmentMode == 1u && reflectionWeight == 0) {
+        if (firstThin && environmentMode == 1u && zeroReflectedEnergy) {
             motion.reflected = (RayReflectionMotionGuide)0;
             motion.reflected.objectPrimitiveKind.w = 2u;
             motion.reflectedRadiance = 0;

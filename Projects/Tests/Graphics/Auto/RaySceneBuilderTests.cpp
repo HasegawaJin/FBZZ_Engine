@@ -477,6 +477,115 @@ TEST_F(RaySceneBuilderTest, CollectsSmoothSolidDielectricOnlyWithPathOptIn)
     EXPECT_EQ(alphaBlend.diagnostics[0].issue, renderer::RaySceneIssue::TRANSPARENT_UNSUPPORTED);
 }
 
+TEST_F(RaySceneBuilderTest, HybridCandidatesSeparateGlassFromOpaqueAndAlphaGeometry)
+{
+    AddObject(10, 1);
+    SetSurfaceConstant(12, 1);
+    const auto opaque = ResolveSurface();
+    renderer::SolidDielectricSettings glass;
+    glass.transmission = 1;
+    m_scene.items[0].material.surface = opaque;
+    AddObject(20, 2);
+    m_scene.items[1].material.surface = ResolveSurface(true, false, false, glass);
+    m_scene.objects[1].castShadows = false;
+    AddObject(30, 3);
+    m_scene.items[2].material.surface = opaque;
+    m_scene.items[2].material.rayCapabilities.opacity = renderer::RayOpacity::ALPHA_TEST;
+    m_scene.items[2].material.doubleSided = true;
+    AddObject(40, 4);
+    m_scene.items[3].material.surface = opaque;
+    m_scene.items[3].material.doubleSided = true;
+
+    const auto hybrid = renderer::BuildRayScene(m_scene, {UINT32_MAX, true, true});
+    ASSERT_EQ(hybrid.instances.size(), 4u);
+    ASSERT_EQ(hybrid.geometries.size(), 3u);
+    EXPECT_TRUE(hybrid.hybridCandidatePolicy);
+    EXPECT_TRUE(hybrid.diagnostics.empty());
+    EXPECT_TRUE(hybrid.surfaceDiagnostics.empty());
+    for (uint32_t i = 0; i < hybrid.instances.size(); ++i) {
+        const auto& instance = hybrid.instances[i];
+        const auto& geometry = hybrid.geometries[instance.geometryIndex];
+        EXPECT_EQ(geometry.key.opaque, i == 0u || i == 3u);
+        EXPECT_EQ(geometry.triangles.opaque, geometry.key.opaque);
+        EXPECT_EQ(geometry.key.doubleSided, i == 1u);
+        EXPECT_EQ(instance.doubleSided, i == 1u);
+        EXPECT_EQ(instance.denseInstanceId, i);
+        EXPECT_EQ(instance.objectId.index, (i + 1u) * 10u);
+        EXPECT_EQ(instance.mask, i == 1u ? 13u : 15u);
+    }
+    EXPECT_NE(hybrid.instances[0].geometryIndex, hybrid.instances[1].geometryIndex);
+    EXPECT_NE(hybrid.instances[1].geometryIndex, hybrid.instances[2].geometryIndex);
+    EXPECT_EQ(hybrid.instances[0].geometryIndex, hybrid.instances[3].geometryIndex);
+    EXPECT_TRUE(m_scene.items[2].material.doubleSided);
+    EXPECT_TRUE(m_scene.items[3].material.doubleSided);
+    EXPECT_FALSE(m_scene.items[1].material.doubleSided);
+}
+
+TEST_F(RaySceneBuilderTest, HybridPolicySwitchPreservesReferenceFlagsAndCreatesDistinctKeys)
+{
+    AddObject(10, 1);
+    SetSurfaceConstant(12, 1);
+    renderer::SolidDielectricSettings glass;
+    glass.transmission = 1;
+    m_scene.items[0].material.surface = ResolveSurface(true, false, false, glass);
+    AddObject(20, 2);
+    m_scene.items[1].material.surface = ResolveSurface();
+    m_scene.items[1].material.doubleSided = true;
+
+    const auto before = renderer::BuildRayScene(m_scene, {UINT32_MAX, true});
+    const auto hybrid = renderer::BuildRayScene(m_scene, {UINT32_MAX, true, true});
+    const auto after = renderer::BuildRayScene(m_scene, {UINT32_MAX, true});
+    ASSERT_EQ(before.instances.size(), 2u);
+    ASSERT_EQ(hybrid.instances.size(), 2u);
+    ASSERT_EQ(after.instances.size(), 2u);
+    EXPECT_FALSE(renderer::RaySceneBuildOptions{}.hybridCandidatePolicy);
+    EXPECT_FALSE(before.hybridCandidatePolicy);
+    EXPECT_TRUE(hybrid.hybridCandidatePolicy);
+    EXPECT_FALSE(after.hybridCandidatePolicy);
+    for (uint32_t i = 0; i < before.instances.size(); ++i) {
+        const auto& beforeKey = before.geometries[before.instances[i].geometryIndex].key;
+        const auto& hybridKey = hybrid.geometries[hybrid.instances[i].geometryIndex].key;
+        const auto& afterKey = after.geometries[after.instances[i].geometryIndex].key;
+        EXPECT_TRUE(beforeKey.opaque);
+        EXPECT_EQ(beforeKey.doubleSided, i == 1u);
+        EXPECT_EQ(before.instances[i].doubleSided, i == 1u);
+        EXPECT_EQ(afterKey, beforeKey);
+        EXPECT_EQ(after.instances[i].doubleSided, before.instances[i].doubleSided);
+        EXPECT_NE(hybridKey, beforeKey);
+        EXPECT_EQ(hybrid.instances[i].doubleSided, i == 0u);
+        EXPECT_EQ(hybrid.instances[i].surface, before.instances[i].surface);
+        EXPECT_EQ(hybrid.instances[i].objectId, before.instances[i].objectId);
+    }
+}
+
+TEST_F(RaySceneBuilderTest, HybridCandidatePolicyRetainsDielectricOptInAndUnsupportedDiagnostics)
+{
+    AddObject();
+    SetSurfaceConstant(12, 1);
+    renderer::SolidDielectricSettings glass;
+    glass.transmission = 1;
+    m_scene.items[0].material.surface = ResolveSurface(true, false, false, glass);
+    const auto denied = renderer::BuildRayScene(m_scene, {UINT32_MAX, false, true});
+    EXPECT_TRUE(denied.instances.empty());
+    ASSERT_EQ(denied.diagnostics.size(), 1u);
+    EXPECT_EQ(denied.diagnostics[0].issue, renderer::RaySceneIssue::SOLID_DIELECTRIC_UNSUPPORTED);
+
+    for (uint32_t kind = 0; kind < 3u; ++kind) {
+        SCOPED_TRACE(kind);
+        glass.transmission = kind == 0u ? 0.5f : 1.0f;
+        glass.ior = kind == 1u ? std::numeric_limits<float>::quiet_NaN() : 1.5f;
+        glass.thinWalled = kind == 2u;
+        SetSurfaceConstant(20, kind == 2u ? 0.1f : 0.0f);
+        m_scene.items[0].material.surface = ResolveSurface(true, false, false, glass);
+        const auto rejected = renderer::BuildRayScene(m_scene, {UINT32_MAX, true, true});
+        EXPECT_TRUE(rejected.instances.empty());
+        ASSERT_EQ(rejected.diagnostics.size(), 1u);
+        EXPECT_EQ(rejected.diagnostics[0].issue, renderer::RaySceneIssue::SOLID_DIELECTRIC_UNSUPPORTED);
+        ASSERT_EQ(rejected.surfaceDiagnostics.size(), 1u);
+        EXPECT_EQ(rejected.surfaceDiagnostics[0].issue, m_scene.items[0].material.surface.issue);
+    }
+}
+
 TEST_F(RaySceneBuilderTest, AcceptsRoughSolidAndSmoothThinButRejectsPartialMetalEmissiveAndAlphaDielectrics)
 {
     AddObject();

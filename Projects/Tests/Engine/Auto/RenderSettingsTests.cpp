@@ -157,7 +157,7 @@ TEST_F(RenderSettingsTest, HybridWorkloadPresetsAreValidAndLeaveOtherSettingsAlo
     settings.renderScale = 0.75f;
     settings.ssr.enabled = false;
     for (auto preset : {renderer::HybridQualityPreset::LOW, renderer::HybridQualityPreset::BALANCED,
-        renderer::HybridQualityPreset::HIGH}) {
+        renderer::HybridQualityPreset::HIGH, renderer::HybridQualityPreset::PERFORMANCE}) {
         settings.hybridQuality = renderer::MakeHybridQualityPreset(preset);
         EXPECT_TRUE(renderer::IsHybridQualityValid(settings.hybridQuality));
         EXPECT_EQ(renderer::DetectHybridQualityPreset(settings.hybridQuality), preset);
@@ -188,6 +188,25 @@ TEST_F(RenderSettingsTest, HybridWorkloadRejectsUnsafeCountsAndNonFiniteTargets)
     quality = {};
     quality.maxHistoryMiB = 0;
     EXPECT_FALSE(renderer::IsHybridQualityValid(quality));
+}
+
+TEST_F(RenderSettingsTest, PerformanceQualityLimitsTransportAndKeepsLegacyDefaults)
+{
+    const renderer::HybridQualitySettings legacy;
+    EXPECT_EQ(legacy.reflectionResolutionDivisor, 1u);
+    EXPECT_FALSE(legacy.glassStochastic);
+    const auto quality = renderer::MakeHybridQualityPreset(renderer::HybridQualityPreset::PERFORMANCE);
+    EXPECT_EQ(quality.reflectionSamples, 1u);
+    EXPECT_EQ(quality.reflectionResolutionDivisor, 2u);
+    EXPECT_TRUE(quality.glassStochastic);
+    EXPECT_EQ(quality.glassBoundaryLimit, legacy.glassBoundaryLimit);
+    EXPECT_FLOAT_EQ(quality.frameBudgetMs, 1000.0f / 120.0f);
+    EXPECT_TRUE(renderer::IsHybridQualityValid(quality));
+    for (uint32_t divisor : {0u, 3u, 4u}) {
+        auto invalid = quality;
+        invalid.reflectionResolutionDivisor = divisor;
+        EXPECT_FALSE(renderer::IsHybridQualityValid(invalid));
+    }
 }
 
 } /// @note namespace fbzz::tests

@@ -289,8 +289,9 @@ renderer::RenderEnvironmentInput ExtractRenderEnvironment(RenderPassContext& ctx
 {
     renderer::RenderEnvironmentInput output;
     static renderer::RayEnvironmentCache rayEnvironmentCache;
+    if (!ctx.experimentalRayTracingEnabled) rayEnvironmentCache.Reset();
     /// @note Global IBL と同じ component order/active 条件で同じ owner を選ぶ。
-    for (const EntityID id : ctx.scene.GetEntities<EnvironmentLightComponent>()) {
+    if (ctx.experimentalRayTracingEnabled) for (const EntityID id : ctx.scene.GetEntities<EnvironmentLightComponent>()) {
         const auto* go = ctx.scene.GetGameObject(id);
         const auto* light = ctx.scene.GetComponent<EnvironmentLightComponent>(id);
         if (!go || !go->activeInHierarchy() || !light || !light->enabled) continue;

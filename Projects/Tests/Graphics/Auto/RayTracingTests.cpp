@@ -384,6 +384,13 @@ TEST_F(RayTracingTest, ReusesGeometryAcrossSnapshotsViewsAndSceneGenerations)
     renderer::RenderPassContext context{{}, device, resources, camera, settings, {}, ~0u, handles};
     renderer::RayGeometryCache cache;
     BeginFrame();
+    const auto disabled = cache.Prepare(scene, context);
+    EXPECT_FALSE(disabled.ready);
+    EXPECT_FALSE(disabled.topLevel.IsValid());
+    EXPECT_FALSE(disabled.hitRecords.IsValid());
+    EXPECT_FALSE(disabled.surfaceMaterials.IsValid());
+    EXPECT_EQ(cache.BottomLevelCount(), 0u);
+    context.experimentalRayTracingEnabled = true;
     const auto first = cache.Prepare(scene, context);
     ASSERT_TRUE(first.ready);
     EXPECT_EQ(first.builtBottomLevels, 1u);
@@ -448,6 +455,7 @@ TEST_F(RayTracingTest, ReusesImmutableTablesIndependentlyAcrossRigidMotionAndOwn
     renderer::RenderSettings settings;
     renderer::RenderPassHandles handles;
     renderer::RenderPassContext context{{}, device, resources, camera, settings, {}, ~0u, handles};
+    context.experimentalRayTracingEnabled = true;
     renderer::RayGeometryCache cache;
     BeginFrame();
     const auto first = cache.Prepare(scene, context);
@@ -503,6 +511,7 @@ TEST_F(RayTracingTest, ReleasedTablesAndManagerResetCannotReuseStaleHandlesAcros
     renderer::RenderSettings settings;
     renderer::RenderPassHandles handles;
     renderer::RenderPassContext context{{}, device, resources, camera, settings, {}, ~0u, handles};
+    context.experimentalRayTracingEnabled = true;
     renderer::RayGeometryCache cache;
     BeginFrame();
     const auto viewA = cache.Prepare(scene, context);
@@ -571,6 +580,7 @@ TEST_F(RayTracingTest, FailedTlasRebuildDoesNotRetireReusedImmutableTablesOrPubl
     renderer::RenderSettings settings;
     renderer::RenderPassHandles handles;
     renderer::RenderPassContext context{{}, device, resources, camera, settings, {}, ~0u, handles};
+    context.experimentalRayTracingEnabled = true;
     renderer::RayGeometryCache cache;
     BeginFrame();
     const auto first = cache.Prepare(scene, context);
@@ -633,6 +643,7 @@ TEST_F(RayTracingTest, SameHandleTextureReplacementRejectsStaleContentAndUpdates
     renderer::RenderSettings settings;
     renderer::RenderPassHandles handles;
     renderer::RenderPassContext context{{}, device, resources, camera, settings, {}, ~0u, handles};
+    context.experimentalRayTracingEnabled = true;
     renderer::RayGeometryCache cache;
     const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
     const auto shader = resources.LoadShader((root / "../../Projects/Tests/Graphics/Shaders/RayMaterialRead.cs.hlsl").generic_string());
@@ -741,6 +752,7 @@ TEST_F(RayTracingTest, DisplaysCameraIntersectionsAndReadsActualTransformedTrian
     renderer::RenderPassHandles handles;
     renderer::RenderViewResources view;
     renderer::RenderPassContext context{{}, device, resources, camera, settings, target, ~0u, handles};
+    context.experimentalRayTracingEnabled = true;
     context.renderScene = source;
     context.width = context.height = context.outputWidth = context.outputHeight = 1;
     context.frameStamp = 1;
@@ -838,6 +850,7 @@ TEST_F(RayTracingTest, BuildsCurrentGpuDeformationAndRejectsStaleContentAcrossFr
     renderer::RenderSettings settings;
     renderer::RenderPassHandles handles;
     renderer::RenderPassContext context{{}, device, resources, camera, settings, {}, ~0u, handles};
+    context.experimentalRayTracingEnabled = true;
     renderer::RayGeometryCache cache;
     const auto deform = [&](const math::Matrix4& matrix) {
         const auto palette = resources.CreateStructuredBuffer(&matrix, 1, sizeof(matrix));
@@ -913,6 +926,7 @@ TEST_F(RayTracingTest, ReflectionPreparationRejectsIncompleteSurfaceLightingAndR
     settings.modeRequest.rayReflection = true;
     renderer::RenderPassHandles handles;
     renderer::RenderPassContext context{{}, device, resources, camera, settings, {}, ~0u, handles};
+    context.experimentalRayTracingEnabled = true;
     context.renderScene = source;
     context.width = context.height = 1;
     context.rayLightsComplete = true;
@@ -985,6 +999,7 @@ TEST_F(RayTracingTest, DisabledAndEmptyDebugViewsDoNotBuildAccelerationStructure
     renderer::RenderSettings settings;
     renderer::RenderPassHandles handles;
     renderer::RenderPassContext context{{}, *m_bundle.renderer, resources, camera, settings, {}, ~0u, handles};
+    context.experimentalRayTracingEnabled = true;
     auto source = std::make_shared<renderer::RenderScene>();
     source->sceneGeneration = 42;
     context.renderScene = source;

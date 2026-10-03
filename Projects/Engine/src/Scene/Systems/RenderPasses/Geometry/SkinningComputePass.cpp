@@ -243,8 +243,9 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
-        const bool rayDemand = ctx.settings.modeRequest.mode != renderer::RenderMode::RASTER
-            || renderer::IsRayDebugView(ctx.settings.viewMode);
+        const bool rayDemand = ctx.experimentalRayTracingEnabled
+            && (ctx.settings.modeRequest.mode != renderer::RenderMode::RASTER
+                || renderer::IsRayDebugView(ctx.settings.viewMode));
         if (!smr || !smr->enabled || (!smr->lodVisible && !rayDemand) || !smr->model) continue;
 
         AnimatorComponent* anim = nullptr;

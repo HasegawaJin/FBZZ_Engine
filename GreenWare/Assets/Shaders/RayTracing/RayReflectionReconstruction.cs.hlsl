@@ -18,6 +18,7 @@ cbuffer RayReflectionReconstructionConstants : register(b0)
     float4 previousCameraPosition, previousCameraRight, previousCameraUp, previousCameraForward;
     float4 constantEnvironmentRadiance;
     float nearDistance, farDistance; uint cameraMotion, movingHistoryLimit;
+    uint traceWidth, traceHeight, resolutionDivisor, reconstructionReserved;
 };
 struct RayReflectionHistoryRecord
 {
@@ -74,6 +75,51 @@ bool ValidSample(float4 raw, RayReflectionSurface surface)
 {
     /// @note Whole dielectric radiance and opaque specular radiance use disjoint history kinds; metadata alone cannot validate a raw sample.
     return ValidRadiance(raw) && ValidSurface(surface) && raw.a == float(surface.objectMaterialValid.w);
+}
+
+/// @note A half transport belongs to one actual primary owner/material cell; missing coverage never becomes a black history observation.
+/// @note Mirrors, dielectric radiance and initial-medium transport keep their full-resolution RAW; rough cells use point reconstruction, never unconditional bilinear filtering.
+float4 CurrentObservation(uint2 pixel, StructuredBuffer<RayReflectionSurface> surfaces)
+{
+    Texture2D<float4> raw = ResourceDescriptorHeap[FbzzPixelSlot(5)];
+    float4 full = raw.Load(int3(pixel, 0));
+    if (ValidRadiance(full) || resolutionDivisor != 2u) return full;
+    RayReflectionSurface target = surfaces[pixel.y * width + pixel.x];
+    if (!hasGBuffer || !ValidSurface(target) || target.objectMaterialValid.w != 1u
+        || target.normalRoughness.w <= 0.25f || traceWidth != (width + 1u) / 2u
+        || traceHeight != (height + 1u) / 2u) return full;
+    uint2 cell = pixel / 2u, origin = cell * 2u;
+    RayReflectionSurface representative = surfaces[origin.y * width + origin.x];
+    Texture2D<float4> halfRaw = ResourceDescriptorHeap[FbzzPixelSlot(19)];
+    uint halfWidth, halfHeight;
+    halfRaw.GetDimensions(halfWidth, halfHeight);
+    if (halfWidth != traceWidth || halfHeight != traceHeight) return full;
+    float4 observation = halfRaw.Load(int3(cell, 0));
+    if (observation.a != 1 || !ValidSample(observation, representative)
+        || representative.normalRoughness.w <= 0.25f) return full;
+    Texture2D<float4> albedoRoughness = ResourceDescriptorHeap[FbzzPixelSlot(16)];
+    Texture2D<float4> normalMetallic = ResourceDescriptorHeap[FbzzPixelSlot(17)];
+    float4 representativeAlbedo = albedoRoughness.Load(int3(origin, 0));
+    float4 representativeNormal = normalMetallic.Load(int3(origin, 0));
+    float3 referenceNormal = representativeNormal.xyz * 2 - 1;
+    if (!all(isfinite(representativeAlbedo)) || !all(isfinite(representativeNormal))
+        || dot(referenceNormal, referenceNormal) <= 0) return full;
+    referenceNormal = normalize(referenceNormal);
+    for (uint y = 0; y < 2u; ++y) for (uint x = 0; x < 2u; ++x) {
+        uint2 memberPixel = origin + uint2(x, y);
+        if (any(memberPixel >= uint2(width, height))) continue;
+        RayReflectionSurface member = surfaces[memberPixel.y * width + memberPixel.x];
+        if (!SameSurface(representative, member, false) || member.objectMaterialValid.w != 1u
+            || member.normalRoughness.w <= 0.25f) return full;
+        float4 memberAlbedo = albedoRoughness.Load(int3(memberPixel, 0));
+        float4 memberNormal = normalMetallic.Load(int3(memberPixel, 0));
+        float3 normal = memberNormal.xyz * 2 - 1;
+        if (!all(isfinite(memberAlbedo)) || !all(isfinite(memberNormal)) || dot(normal, normal) <= 0
+            || any(abs(representativeAlbedo - memberAlbedo) > 0.02f)
+            || abs(representativeNormal.a - memberNormal.a) > 0.02f
+            || dot(referenceNormal, normalize(normal)) < 0.98f) return full;
+    }
+    return observation;
 }
 
 bool MotionEligible(RayReflectionSurface surface)
@@ -148,14 +194,13 @@ bool ThinSignal(float4 raw, RayReflectionSurface surface, out float3 signal, out
 void Temporal(uint2 pixel)
 {
     uint index = pixel.y * width + pixel.x;
-    Texture2D<float4> raw = ResourceDescriptorHeap[FbzzPixelSlot(5)];
     StructuredBuffer<RayReflectionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(14)];
     StructuredBuffer<RayReflectionSurface> previousSurfaces = ResourceDescriptorHeap[FbzzPixelSlot(15)];
     StructuredBuffer<RayReflectionHistoryRecord> previousHistory = ResourceDescriptorHeap[FbzzPixelSlot(18)];
     RWStructuredBuffer<RayReflectionHistoryRecord> history = ResourceDescriptorHeap[FbzzUavSlot(2)];
     RayReflectionHistoryRecord result = (RayReflectionHistoryRecord)0;
     RayReflectionSurface surface = surfaces[index];
-    float4 current = raw.Load(int3(pixel, 0));
+    float4 current = CurrentObservation(pixel, surfaces);
     if (ValidSample(current, surface)) {
         float3 signal; float reflection;
         bool thin = ThinSignal(current, surface, signal, reflection);
@@ -196,11 +241,10 @@ void Temporal(uint2 pixel)
 void Spatial(uint2 pixel)
 {
     uint index = pixel.y * width + pixel.x;
-    Texture2D<float4> raw = ResourceDescriptorHeap[FbzzPixelSlot(5)];
     StructuredBuffer<RayReflectionHistoryRecord> history = ResourceDescriptorHeap[FbzzPixelSlot(14)];
     StructuredBuffer<RayReflectionSurface> surfaces = ResourceDescriptorHeap[FbzzPixelSlot(15)];
     RWTexture2D<float4> output = ResourceDescriptorHeap[FbzzUavSlot(0)];
-    float4 current = raw.Load(int3(pixel, 0));
+    float4 current = CurrentObservation(pixel, surfaces);
     RayReflectionSurface center = surfaces[index];
     RayReflectionHistoryRecord accumulated = history[index];
     if (!ValidSample(current, center) || abs(accumulated.radianceCount.w) < 1) {
@@ -222,7 +266,8 @@ void Spatial(uint2 pixel)
         if ((x == 0 && y == 0) || any(neighbourPixel < 0) || any(neighbourPixel >= int2(width, height))) continue;
         uint neighbourIndex = uint(neighbourPixel.y) * width + uint(neighbourPixel.x);
         RayReflectionHistoryRecord neighbour = history[neighbourIndex];
-        if (!ValidSample(raw.Load(int3(neighbourPixel, 0)), surfaces[neighbourIndex]) || neighbour.radianceCount.w < 1
+        /// @note Temporal writes zero count for every invalid current observation, including rejected half cells; its positive count already certifies neighbour coverage.
+        if (neighbour.radianceCount.w < 1
             || !all(isfinite(neighbour.radianceCount)) || !SameSurface(center, surfaces[neighbourIndex], false)) continue;
         if (hasGBuffer) {
             Texture2D<float4> albedoRoughness = ResourceDescriptorHeap[FbzzPixelSlot(16)];

@@ -9,7 +9,8 @@ namespace fbzz::renderer {
 
 ResolvedRenderPlan PrepareViewRenderPlan(ResourceManager& resources, IRenderer& renderer,
     const RenderSettings& settings, RenderViewResources& view,
-    const RenderSharedResources& shared, const RenderPassHandles& handles)
+    const RenderSharedResources& shared, const RenderPassHandles& handles,
+    bool experimentalRayTracingEnabled)
 {
     const auto targetReady = [&](ResourceHandle<RenderTargetTag> handle) {
         const auto* target = resources.Get(handle);
@@ -17,6 +18,7 @@ ResolvedRenderPlan PrepareViewRenderPlan(ResourceManager& resources, IRenderer& 
     };
     const auto* output = resources.Get(view.output);
     RenderAvailability available;
+    available.experimentalRayTracingEnabled = experimentalRayTracingEnabled;
     available.outputsReady = view.nativeWidth > 0 && view.nativeHeight > 0
         && (view.output.IsValid()
             ? output && output->GetWidth() == view.nativeWidth && output->GetHeight() == view.nativeHeight

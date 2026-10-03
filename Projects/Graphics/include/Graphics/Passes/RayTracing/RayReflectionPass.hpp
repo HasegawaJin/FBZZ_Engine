@@ -13,9 +13,10 @@ class RayReflectionPass final : public IRenderPass {
 public:
     RayReflectionPass(const RaySceneGpu& scene, ResourceHandle<ConstantBufferTag> constants,
         ResourceHandle<ShaderTag> shader, bool incomplete = false, RayReflectionLightingResources lighting = {},
-        RayReflectionReconstructionViewResources* reconstruction = nullptr)
+        RayReflectionReconstructionViewResources* reconstruction = nullptr,
+        ResourceHandle<TextureTag> halfRaw = {})
         : m_scene(scene), m_constants(constants), m_shader(shader), m_incomplete(incomplete), m_lighting(lighting),
-          m_reconstruction(reconstruction) {}
+          m_reconstruction(reconstruction), m_halfRaw(halfRaw) {}
     std::string_view Name() const override { return "RayReflection"; }
     void Setup(PassBuilder& builder, const RenderPassContext& context) const override;
     void Execute(PassResources& resources, RenderPassContext& context) override;
@@ -26,6 +27,7 @@ private:
     bool m_incomplete = false;
     RayReflectionLightingResources m_lighting;
     RayReflectionReconstructionViewResources* m_reconstruction = nullptr;
+    ResourceHandle<TextureTag> m_halfRaw;
 };
 
 } /// @note namespace fbzz::renderer

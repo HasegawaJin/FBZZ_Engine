@@ -11,9 +11,11 @@
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/ViewportCamera.hpp>
 #include <Engine/Core/Cursor.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <cstdio>
 #include <iterator>
+#include <string_view>
 
 namespace fbzz::editor {
 
@@ -350,6 +352,7 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
     overlaySurface.w = 0.90f;
 
     for (const auto& entry : kModes) {
+        if (std::string_view(entry.mode).starts_with("ray_") && !core::DeveloperMode::IsEnabled()) continue;
         OpArgs args;
         args.Set("mode", std::string(entry.mode));
         bool active = false;

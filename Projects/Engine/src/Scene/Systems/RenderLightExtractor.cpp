@@ -14,10 +14,11 @@
 #include <algorithm>
 #include <cmath>
 namespace fbzz::scene {
-RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& camera, const renderer::RenderSettings& rs, uint32_t punctualShadowRes)
+RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& camera,
+    const renderer::RenderSettings& rs, uint32_t punctualShadowRes, bool experimentalRayTracingEnabled)
 {
     RenderLightExtraction output;
-    output.rayLightsComplete = true;
+    output.rayLightsComplete = experimentalRayTracingEnabled;
     /// @note ライト定数バッファを構築
     auto& lightData = output.lightData;
     lightData.lightDir       = { 0.0f, -1.0f, 0.5f };
@@ -97,29 +98,31 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
             lc.useColorTemperature ? renderer::ColorFromTemperature(lc.colorTemperature)
                                    : lc.color;
 
-        renderer::RayLightInput ray;
-        ray.objectId = {scene.GetRenderSceneGeneration(), id.index, id.generation};
-        ray.layerMask = go->layer >= 0 && go->layer < 32 ? (uint32_t{1} << go->layer) : 0;
-        ray.type = static_cast<renderer::RayLightType>(lc.type);
-        ray.position = tf.worldPosition;
-        ray.direction = tf.forward;
-        ray.tangent = tf.right;
-        ray.bitangent = tf.up;
-        ray.color = lightColor;
-        ray.intensity = lc.intensity;
-        ray.range = lc.range;
-        ray.innerCone = lc.innerCone;
-        ray.outerCone = lc.outerCone;
-        ray.areaWidth = lc.areaWidth;
-        ray.areaHeight = lc.areaHeight;
-        ray.sourceRadius = lc.sourceRadius;
-        ray.sourceLength = lc.sourceLength;
-        ray.twoSided = lc.areaTwoSided;
-        ray.castShadows = rs.shadowEnabled && lc.castShadows;
-        ray.shadowStrength = lc.shadowStrength;
-        if (!lc.cookiePath.empty()) ray.unsupportedFlags |= renderer::RAY_LIGHT_UNSUPPORTED_COOKIE;
-        if (ray.layerMask == 0) ray.unsupportedFlags |= renderer::RAY_LIGHT_INVALID_LAYER;
-        output.rayLights.push_back(ray);
+        if (experimentalRayTracingEnabled) {
+            renderer::RayLightInput ray;
+            ray.objectId = {scene.GetRenderSceneGeneration(), id.index, id.generation};
+            ray.layerMask = go->layer >= 0 && go->layer < 32 ? (uint32_t{1} << go->layer) : 0;
+            ray.type = static_cast<renderer::RayLightType>(lc.type);
+            ray.position = tf.worldPosition;
+            ray.direction = tf.forward;
+            ray.tangent = tf.right;
+            ray.bitangent = tf.up;
+            ray.color = lightColor;
+            ray.intensity = lc.intensity;
+            ray.range = lc.range;
+            ray.innerCone = lc.innerCone;
+            ray.outerCone = lc.outerCone;
+            ray.areaWidth = lc.areaWidth;
+            ray.areaHeight = lc.areaHeight;
+            ray.sourceRadius = lc.sourceRadius;
+            ray.sourceLength = lc.sourceLength;
+            ray.twoSided = lc.areaTwoSided;
+            ray.castShadows = rs.shadowEnabled && lc.castShadows;
+            ray.shadowStrength = lc.shadowStrength;
+            if (!lc.cookiePath.empty()) ray.unsupportedFlags |= renderer::RAY_LIGHT_UNSUPPORTED_COOKIE;
+            if (ray.layerMask == 0) ray.unsupportedFlags |= renderer::RAY_LIGHT_INVALID_LAYER;
+            output.rayLights.push_back(ray);
+        }
 
         /// @note 点光源 / スポット / 大きさを持つ光源は上限に達するまで統合配列へも積む。
         /// @note b3 は「点を全部→スポットを全部」の 2 配列だがこちらは 1 本なので評価順が変わりうる。
@@ -277,7 +280,7 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
     /// @note GPU シミュレーションの粒子は位置が GPU にしか無いので対象外 (Inspector に注記がある)。
     std::vector<ParticleLightEmission> particleLights;
     /// @note 粒子光源の未対応は Raster の 256 本上限や GPU runtime の準備状態で消さない。
-    for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
+    if (experimentalRayTracingEnabled) for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
         const GameObject* go = scene.GetGameObject(id);
         const ParticleEmitter* emitter = scene.GetComponent<ParticleEmitter>(id);
         if (!go || !emitter || !go->activeInHierarchy() || !emitter->settings.enabled
@@ -312,7 +315,7 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
         }
     }
 
-    /// @name Spot / Point シャドウのスロット割り当てと行列の組み立て
+    /// @note Spot / Point シャドウのスロット割り当てと行列の組み立て
     /// @note カメラから近い順。遠いライトの影は数ピクセルにしかならず落としても気づかれにくい。
     /// @note 距離キーは連続に変化するので、あふれの切り替わりも端から 1 つずつ起きる。
     std::sort(shadowCandidates.begin(), shadowCandidates.end(),
@@ -446,7 +449,7 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
         }
     }
 
-    /// @name Cookie のスロット割り当て
+    /// @note Cookie のスロット割り当て
     /// @note 影と同じくカメラから近い順。タイルは 8 枚しかない。
     std::sort(cookieCandidates.begin(), cookieCandidates.end(),
               [](const LightCookieCandidate& a, const LightCookieCandidate& b) {
@@ -497,7 +500,7 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
             legacyCookieSlots[cand.legacySlot] = slot;
     }
 
-    /// @name 昼夜の色・強度カーブ (Phase B)
+    /// @note 昼夜の色・強度カーブ (Phase B)
     /// @note 太陽の向きは DirectionalLight の transform が唯一のソース (lightDir は上書きしない)。
     /// @note dayNightEnabled のときは、その光源の太陽高度から色と強度の遷移だけを駆動する。
     /// @note ライトを回すと 太陽ディスク・空・月・空連動 IBL・ライティングが一緒に動く。
@@ -556,17 +559,19 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
             lightData.skyDimmer      = lerp1(sky.skySunsetBrightness,
                                              above ? sky.skyDayBrightness : sky.skyNightBrightness, t);
             /// @note independent RayLightTable は初期段で昼夜カーブを解決しない。primary owner を診断に残す。
-            const auto primary = std::find_if(output.rayLights.rbegin(), output.rayLights.rend(),
-                [](const renderer::RayLightInput& light) { return light.type == renderer::RayLightType::DIRECTIONAL; });
-            if (primary != output.rayLights.rend()) primary->unsupportedFlags |= renderer::RAY_LIGHT_UNSUPPORTED_DAY_NIGHT;
-            else {
-                renderer::RayLightInput ray;
-                ray.objectId = {scene.GetRenderSceneGeneration(), id.index, id.generation};
-                ray.layerMask = go->layer >= 0 && go->layer < 32 ? (uint32_t{1} << go->layer) : 0;
-                ray.type = renderer::RayLightType::DIRECTIONAL;
-                ray.unsupportedFlags = renderer::RAY_LIGHT_UNSUPPORTED_DAY_NIGHT;
-                if (ray.layerMask == 0) ray.unsupportedFlags |= renderer::RAY_LIGHT_INVALID_LAYER;
-                output.rayLights.push_back(ray);
+            if (experimentalRayTracingEnabled) {
+                const auto primary = std::find_if(output.rayLights.rbegin(), output.rayLights.rend(),
+                    [](const renderer::RayLightInput& light) { return light.type == renderer::RayLightType::DIRECTIONAL; });
+                if (primary != output.rayLights.rend()) primary->unsupportedFlags |= renderer::RAY_LIGHT_UNSUPPORTED_DAY_NIGHT;
+                else {
+                    renderer::RayLightInput ray;
+                    ray.objectId = {scene.GetRenderSceneGeneration(), id.index, id.generation};
+                    ray.layerMask = go->layer >= 0 && go->layer < 32 ? (uint32_t{1} << go->layer) : 0;
+                    ray.type = renderer::RayLightType::DIRECTIONAL;
+                    ray.unsupportedFlags = renderer::RAY_LIGHT_UNSUPPORTED_DAY_NIGHT;
+                    if (ray.layerMask == 0) ray.unsupportedFlags |= renderer::RAY_LIGHT_INVALID_LAYER;
+                    output.rayLights.push_back(ray);
+                }
             }
         }
         break;

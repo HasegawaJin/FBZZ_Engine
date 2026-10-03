@@ -12,7 +12,7 @@ cbuffer TraversalTestConstants : register(b0)
     uint scenario, initialSeed, glassBoundaryLimit, instanceCount;
     uint environmentMode, glassEnabled, initialDepth, repeatCount;
     float3 constantEnvironmentRadiance; float envRotation;
-    float envIntensity; uint terminalDraws; uint2 reserved;
+    float envIntensity; uint terminalDraws, glassStochastic, forcedChoice;
 };
 struct RayHitRecord
 {
@@ -43,6 +43,8 @@ uint Hash(uint value)
 float Random(inout uint state)
 {
     state = Hash(state + 0x9e3779b9u);
+    if (forcedChoice == 1u) return 0;
+    if (forcedChoice == 2u) return asfloat(0x3F7FFFFFu);
     return ((state >> 9) + 0.5f) * (1.0f / 8388608.0f);
 }
 /// @note Match production's visible-normal sampler and Smith term; the tested dielectric evaluator itself is included from production.
@@ -150,6 +152,7 @@ float3 HitRadiance(SurfaceHit hit, float3 view, inout uint rng)
     for (uint draw = 0; draw < terminalDraws; ++draw) value += Random(rng) * float3(0.125f, 0.25f, 0.5f);
     return value;
 }
+bool HybridGlassSinglePathEnabled() { return glassStochastic != 0u; }
 #include "RayTracing/RayHybridGlass.hlsli"
 #include "RayTracing/RayHybridGlassTraversalLegacy.hlsli"
 
@@ -167,20 +170,24 @@ void CSMain(uint3 thread : SV_DispatchThreadID)
 {
     if (any(thread != 0)) return;
     HybridGlassPath initial = (HybridGlassPath)0;
-    initial.ray.Origin = scenario == 3u ? float3(0, 0, 1.5f) : 0;
-    initial.ray.Direction = scenario == 3u ? normalize(float3(0.95f, 0, 0.3f)) : float3(0, 0, 1);
+    bool inside = scenario == 3u || scenario == 10u;
+    initial.ray.Origin = inside ? float3(0, 0, 1.5f) : 0;
+    initial.ray.Direction = scenario == 3u ? normalize(float3(0.95f, 0, 0.3f))
+        : scenario == 10u ? normalize(float3(0.3f, 0, 1))
+        : scenario == 9u ? normalize(float3(0.6f, 0, 1)) : float3(0, 0, 1);
     initial.ray.TMax = 3.402823466e38f;
     initial.throughput = 1; initial.previousPosition = initial.ray.Origin; initial.mask = 1u;
     initial.mediumDepth = initialDepth;
     for (uint medium = 0; medium < min(initialDepth, 8u); ++medium) initial.media[medium] = medium;
-    SurfaceHit firstHit = PlaneHit(initial.ray, scenario == 3u ? 2 : 1, scenario == 4u ? 8u : 0u,
-        scenario == 3u ? float3(0, 0, 1) : float3(0, 0, -1));
+    SurfaceHit firstHit = PlaneHit(initial.ray, inside ? 2 : 1, scenario == 4u ? 8u : 0u,
+        inside ? float3(0, 0, 1) : float3(0, 0, -1));
     if (scenario == 8u) firstHit.normal = -firstHit.geometricNormal;
     uint oldRng = initialSeed, newRng = initialSeed;
     float3 oldSum = 0, newSum = 0;
     bool oldSuccess = true, newSuccess = true, sameMotion = true;
     uint oldEvents = 0, newEvents = 0, oldQueries = 0, newQueries = 0, oldTerminals = 0, newTerminals = 0;
     uint oldOverflow = 0, newOverflow = 0;
+    uint reflectedMotionKind = 0u, transmittedMotionKind = 0u;
     eventCount = eventOffset = traceCount = terminalCount = eventOverflow = 0;
     for (uint sample = 0; sample < repeatCount; ++sample) {
         float3 value; RayReflectionGlassMotion motion;
@@ -202,6 +209,8 @@ void CSMain(uint3 thread : SV_DispatchThreadID)
     for (uint sample = 0; sample < repeatCount; ++sample) {
         float3 value; RayReflectionGlassMotion motion;
         newSuccess = HybridGlassRadianceWithMotion(initial, firstHit, newRng, value, motion);
+        reflectedMotionKind = motion.reflected.objectPrimitiveKind.w;
+        transmittedMotionKind = motion.transmitted.objectPrimitiveKind.w;
         newSum += value;
         RWStructuredBuffer<uint4> events = ResourceDescriptorHeap[FbzzUavSlot(2)];
         uint slot = 16384u + sample * 7u;
@@ -225,4 +234,5 @@ void CSMain(uint3 thread : SV_DispatchThreadID)
     output[uint2(2, 0)] = float4(oldQueries, newQueries, oldTerminals, newTerminals);
     output[uint2(3, 0)] = float4(oldSum / max(repeatCount, 1u), oldSuccess);
     output[uint2(4, 0)] = float4(newSum / max(repeatCount, 1u), newSuccess);
+    output[uint2(5, 0)] = float4(reflectedMotionKind, transmittedMotionKind, newRng == initialSeed, glassStochastic != 0u);
 }

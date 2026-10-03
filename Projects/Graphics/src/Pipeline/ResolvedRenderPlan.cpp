@@ -58,6 +58,7 @@ const char* DescribeRenderPlanReason(RenderPlanReason reason)
     case RenderPlanReason::RASTER_SURFACE_UNAVAILABLE: return "Game Path に必要な Deferred の表面入力がありません";
     case RenderPlanReason::RASTER_PIPELINE_UNAVAILABLE: return "Raster の描画経路を準備できていません";
     case RenderPlanReason::REQUIRED_OUTPUT_UNAVAILABLE: return "出力先を準備できていません";
+    case RenderPlanReason::DEVELOPER_MODE_REQUIRED: return "RT / Path Tracing の実験機能には DeveloperMode が必要です";
     }
     return "不明な描画構成の診断です";
 }
@@ -81,6 +82,17 @@ ResolvedRenderPlan ResolveRenderPlan(
     }
     if (request.mode != RenderMode::HYBRID && request.mode != RenderMode::PATH_TRACING) {
         ResolveRasterFallback(plan, availability, RenderPlanReason::INVALID_REQUEST);
+        return plan;
+    }
+
+    if (!availability.experimentalRayTracingEnabled) {
+        const RayEffectPlan disabled{ false, RenderPlanReason::DEVELOPER_MODE_REQUIRED };
+        if (request.mode == RenderMode::HYBRID) {
+            if (request.rayShadow) plan.shadow = disabled;
+            if (request.rayReflection) plan.reflection = disabled;
+            if (request.rayDiffuseGi) plan.diffuseGi = disabled;
+        }
+        ResolveRasterFallback(plan, availability, RenderPlanReason::DEVELOPER_MODE_REQUIRED);
         return plan;
     }
 

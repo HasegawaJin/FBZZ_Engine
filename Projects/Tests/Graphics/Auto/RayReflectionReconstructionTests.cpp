@@ -32,7 +32,9 @@ namespace {
 inline constexpr uint32_t kExtent = 5;
 inline constexpr uint32_t kPixelCount = kExtent * kExtent;
 inline constexpr uint32_t kCenter = kPixelCount / 2;
+inline constexpr uint32_t kHalfExtent = (kExtent + 1u) / 2u;
 using FramePixels = std::array<math::Vector4, kPixelCount>;
+using HalfFramePixels = std::array<math::Vector4, kHalfExtent * kHalfExtent>;
 using SurfacePixels = std::array<renderer::RayReflectionSurface, kPixelCount>;
 
 enum class StageFailure : uint8_t {
@@ -66,12 +68,14 @@ protected:
             renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF});
         m_fillConstants = m_resources->CreateConstantBuffer(2 * sizeof(math::Vector4));
         m_raw = m_resources->CreateRenderTarget(kExtent, kExtent, {1, renderer::Format::RGBA16F, false});
+        m_halfRaw = m_resources->CreateRenderTarget(kHalfExtent, kHalfExtent, {1, renderer::Format::RGBA16F, false});
         m_readback = m_resources->CreateRenderTarget(kExtent, kExtent, {1, renderer::Format::RGBA16F, false});
-        m_gbuffer = m_resources->CreateRenderTarget(kExtent, kExtent, renderer::CameraDepthTargetDesc(2));
+        m_gbuffer = m_resources->CreateRenderTarget(kExtent, kExtent,
+            renderer::CameraDepthTargetDesc(renderer::GBUFFER_COLOR_COUNT));
         const std::array<uint8_t, 4> transparent{};
         m_transparent = m_resources->CreateTexture(transparent.data(), 1, 1);
         ASSERT_TRUE(m_fillShader && m_copyShader && m_reconstructionShader && m_gbufferShader
-            && m_pipeline && m_fillConstants && m_raw && m_readback && m_gbuffer && m_transparent);
+            && m_pipeline && m_fillConstants && m_raw && m_halfRaw && m_readback && m_gbuffer && m_transparent);
         m_camera.m_position = {};
         m_camera.m_aspect = 1;
         m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -108,9 +112,16 @@ protected:
         auto& device = *m_bundle.renderer;
         device.BeginFrame();
         m_frameOpen = true;
-        device.SetRenderTarget(m_raw, *m_resources);
-        for (uint32_t pixel = 0; pixel < kPixelCount; ++pixel) {
-            device.SetViewport(pixel % kExtent, pixel / kExtent, 1, 1);
+        FillRaw(m_raw, pixels.data(), kExtent);
+    }
+
+    void FillRaw(renderer::ResourceHandle<renderer::RenderTargetTag> target,
+        const math::Vector4* pixels, uint32_t extent)
+    {
+        auto& device = *m_bundle.renderer;
+        device.SetRenderTarget(target, *m_resources);
+        for (uint32_t pixel = 0; pixel < extent * extent; ++pixel) {
+            device.SetViewport(pixel % extent, pixel / extent, 1, 1);
             renderer::DrawCall draw;
             draw.pipelineState = m_pipeline;
             draw.vertexCount = 3;
@@ -224,7 +235,7 @@ protected:
     FramePixels Reconstruct(renderer::RayReflectionViewResources& view, const FramePixels& pixels,
         const SurfacePixels& surfaces, bool reset = false, bool temporalAllowed = true,
         StageFailure failure = StageFailure::NONE, const FramePixels* gbufferValues = nullptr,
-        bool captureResult = true, bool useCameraConstants = false)
+        bool captureResult = true, bool useCameraConstants = false, const HalfFramePixels* halfRawValues = nullptr)
     {
         auto& reconstruction = view.reconstruction;
         if (!reconstruction.surfaces[0]) {
@@ -255,7 +266,10 @@ protected:
         data.resetHistory = reset || !reconstruction.historyValid;
         data.temporalAllowed = temporalAllowed;
         data.hasGBuffer = gbufferValues != nullptr;
+        data.traceWidth = data.traceHeight = halfRawValues ? kHalfExtent : kExtent;
+        data.resolutionDivisor = halfRawValues ? 2u : 1u;
         Begin(pixels);
+        if (halfRawValues) FillRaw(m_halfRaw, halfRawValues->data(), kHalfExtent);
         if (gbufferValues) {
             auto& device = *m_bundle.renderer;
             device.SetRenderTarget(m_gbuffer, *m_resources);
@@ -278,12 +292,15 @@ protected:
         m_handles.rayReflectionResult = view.output;
         renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources,
             m_camera, m_settings, {}, ~0u, m_handles};
+        context.experimentalRayTracingEnabled = true;
         context.width = context.height = kExtent;
         context.frameStamp = ++m_frameStamp;
         context.taaJitterNdcX = data.currentJitterX;
         context.taaJitterNdcY = data.currentJitterY;
         context.rayReflectionPassActive = true;
         context.resourceRegistry.BindTexture("RayReflectionRaw", view.output);
+        if (halfRawValues)
+            context.resourceRegistry.BindTexture("RayReflectionHalfRaw", m_resources->GetColorTexture(m_halfRaw, 0));
         context.resourceRegistry.BindTarget("GBuffer", m_gbuffer);
         context.resourceRegistry.BindTexture("RayReflectionResult", reconstruction.output);
         context.resourceRegistry.BindStructuredBuffer("RayReflectionSurface", currentSurface);
@@ -321,6 +338,7 @@ protected:
     renderer::ResourceHandle<renderer::ShaderTag> m_copyShader;
     renderer::ResourceHandle<renderer::ShaderTag> m_reconstructionShader;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_raw;
+    renderer::ResourceHandle<renderer::RenderTargetTag> m_halfRaw;
     uint64_t m_frameStamp = 0;
 
 private:
@@ -360,6 +378,108 @@ TEST_F(RayReflectionReconstructionTest, StationaryMirrorArithmeticMeanPreservesH
             for (const auto& pixel : result) ExpectColor(pixel, {8, 8, 16, 1});
     }
     EXPECT_LT(Variance(result), 0.0001f);
+}
+
+TEST_F(RayReflectionReconstructionTest, HalfTransportReconstructsCoherentRoughCellsIncludingOddExtentEdges)
+{
+    renderer::RayReflectionViewResources view;
+    view.reconstruction.constantsData.spatialRadius = 0;
+    HalfFramePixels half{};
+    for (uint32_t cell = 0; cell < half.size(); ++cell) {
+        const float value = static_cast<float>(cell + 1u);
+        half[cell] = {value, 2 * value, 4 * value, 1};
+    }
+    const auto gbuffer = Uniform({0.8f, 0, 0, 0});
+    const auto result = Reconstruct(view, Uniform({}), Surfaces(), false, true,
+        StageFailure::NONE, &gbuffer, true, false, &half);
+    ASSERT_TRUE(view.reconstruction.historyValid);
+    for (uint32_t pixel = 0; pixel < kPixelCount; ++pixel) {
+        const uint32_t cell = pixel / kExtent / 2u * kHalfExtent + pixel % kExtent / 2u;
+        ExpectColor(result[pixel], half[cell]);
+    }
+}
+
+TEST_F(RayReflectionReconstructionTest, HalfTransportRejectsWholeCellsWithDifferentPrimaryIdentityOrRasterSurface)
+{
+    HalfFramePixels half{};
+    half.fill({8, 16, 32, 1});
+    for (uint32_t mismatch = 0; mismatch < 11u; ++mismatch) {
+        SCOPED_TRACE(mismatch);
+        renderer::RayReflectionViewResources view;
+        view.reconstruction.constantsData.spatialRadius = 0;
+        auto surfaces = Surfaces();
+        auto gbuffer = Uniform({0.8f, 0, 0, 0});
+        auto& different = surfaces[18];
+        if (mismatch == 0) ++different.objectMaterialValid[0];
+        else if (mismatch == 1) ++different.objectMaterialValid[1];
+        else if (mismatch == 2) ++different.objectMaterialValid[2];
+        else if (mismatch == 3) different.objectMaterialValid[3] = 2;
+        else if (mismatch == 4) different.normalRoughness = {1, 0, 0, 0.8f};
+        else if (mismatch == 5) different.geometricNormalOffset = {1, 0, 0, 0.0001f};
+        else if (mismatch == 6) { different.positionDepth.z += 1; different.positionDepth.w += 1; }
+        else if (mismatch == 7) different.normalRoughness.w = 0.1f;
+        else if (mismatch == 8) different.objectMaterialValid[3] = 0;
+        else if (mismatch == 9) gbuffer[18].x = 0.3f;
+        else gbuffer[18].y = 1;
+        const auto result = Reconstruct(view, Uniform({}), surfaces, false, true,
+            StageFailure::NONE, &gbuffer, true, false, &half);
+        ASSERT_TRUE(view.reconstruction.historyValid);
+        for (uint32_t pixel = 0; pixel < kPixelCount; ++pixel) {
+            const uint32_t x = pixel % kExtent, y = pixel / kExtent;
+            const bool rejectedCell = x >= 2u && x <= 3u && y >= 2u && y <= 3u;
+            ExpectColor(result[pixel], rejectedCell ? math::Vector4{} : math::Vector4{8, 16, 32, 1});
+        }
+    }
+}
+
+TEST_F(RayReflectionReconstructionTest, HalfTransportKeepsUncomputedCoverageSeparateFromValidBlackHistory)
+{
+    renderer::RayReflectionViewResources view;
+    view.reconstruction.constantsData.spatialRadius = 0;
+    const auto surfaces = Surfaces();
+    const auto gbuffer = Uniform({0.8f, 0, 0, 0});
+    HalfFramePixels half{};
+    half.fill({8, 16, 32, 1});
+    (void)Reconstruct(view, Uniform({}), surfaces, false, true, StageFailure::NONE, &gbuffer, true, false, &half);
+    half[4] = {};
+    const auto missing = Reconstruct(view, Uniform({}), surfaces, false, true,
+        StageFailure::NONE, &gbuffer, true, false, &half);
+    half[4] = {0, 0, 0, 1};
+    const auto black = Reconstruct(view, Uniform({}), surfaces, false, true,
+        StageFailure::NONE, &gbuffer, true, false, &half);
+    half[4] = {16, 32, 64, 1};
+    const auto continued = Reconstruct(view, Uniform({}), surfaces, false, true,
+        StageFailure::NONE, &gbuffer, true, false, &half);
+    for (const uint32_t pixel : {12u, 13u, 17u, 18u}) {
+        ExpectColor(missing[pixel], {});
+        ExpectColor(black[pixel], {0, 0, 0, 1});
+        ExpectColor(continued[pixel], {8, 16, 32, 1});
+    }
+}
+
+TEST_F(RayReflectionReconstructionTest, HalfTransportPreservesSharpAndDielectricFullRawAndNeverInventsTheirCoverage)
+{
+    renderer::RayReflectionViewResources view;
+    view.reconstruction.constantsData.spatialRadius = 0;
+    auto surfaces = Surfaces();
+    auto gbuffer = Uniform({0.8f, 0, 0, 0});
+    auto full = Uniform({});
+    full[0] = {2, 4, 8, 1};
+    surfaces[0].normalRoughness.w = gbuffer[0].x = 0.045f;
+    full[1] = {3, 6, 12, 2};
+    surfaces[1].objectMaterialValid[3] = 2;
+    full[12] = {7, 9, 11, 1};
+    surfaces[4].normalRoughness.w = gbuffer[4].x = 0.045f;
+    surfaces[8].objectMaterialValid[3] = 2;
+    HalfFramePixels half{};
+    half.fill({128, 256, 512, 1});
+    const auto result = Reconstruct(view, full, surfaces, false, true,
+        StageFailure::NONE, &gbuffer, true, false, &half);
+    ExpectColor(result[0], full[0]);
+    ExpectColor(result[1], full[1]);
+    ExpectColor(result[12], full[12]);
+    ExpectColor(result[4], {});
+    ExpectColor(result[8], {});
 }
 
 TEST_F(RayReflectionReconstructionTest, HistoryLimitUsesBoundedEmaAfterThirtyTwoArithmeticSamples)
@@ -483,6 +603,7 @@ TEST_F(RayReflectionReconstructionTest, HybridGlassSubsetPreparesTypedGraphAndRe
     m_settings.modeRequest.rayReflection = true;
     renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources,
         m_camera, m_settings, {}, ~0u, m_handles};
+    context.experimentalRayTracingEnabled = true;
     context.width = context.height = kExtent;
     context.renderScene = scene;
     context.rayLightsComplete = true;
@@ -840,6 +961,7 @@ TEST_F(RayReflectionReconstructionTest, PreparationReusesExactSizedSplitResource
     view.rayReflection.pathScene.contentRevision = 1;
     renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources,
         m_camera, m_settings, {}, ~0u, m_handles};
+    context.experimentalRayTracingEnabled = true;
     context.width = context.height = kExtent;
     context.frameStamp = 1;
     ASSERT_TRUE(renderer::PrepareRayReflectionReconstruction(context, view, shared));
@@ -967,6 +1089,7 @@ TEST_F(RayReflectionReconstructionTest, PreparationRejectsChangedContentFrameGap
     view.rayReflection.pathScene.contentRevision = 1;
     renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources,
         m_camera, m_settings, {}, ~0u, m_handles};
+    context.experimentalRayTracingEnabled = true;
     context.width = context.height = kExtent;
     context.frameStamp = 1;
     ASSERT_TRUE(renderer::PrepareRayReflectionReconstruction(context, view, shared));
@@ -1187,6 +1310,7 @@ TEST_F(RayReflectionReconstructionTest, HistoryBudgetRetiresAnAllocatedGroupAndQ
     view.rayReflection.pathScene.contentRevision = 1;
     renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources,
         m_camera, m_settings, {}, ~0u, m_handles};
+    context.experimentalRayTracingEnabled = true;
     context.width = context.height = kExtent;
     context.frameStamp = 1;
     ASSERT_TRUE(renderer::PrepareRayReflectionReconstruction(context, view, shared));
@@ -1236,6 +1360,7 @@ TEST_F(RayReflectionReconstructionTest, ConsumedGiRequiresLiveImmutablePublicati
     EXPECT_EQ(m_resources->Get(m_handles.iblIrradiance)->GetContentVersion(), 0u);
     renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources,
         m_camera, m_settings, {}, ~0u, m_handles};
+    context.experimentalRayTracingEnabled = true;
     context.width = context.height = kExtent;
     context.frameStamp = 1;
     context.iblIrradiancePublication = {m_handles.iblIrradiance, m_resources.get(), m_resources->GetResetVersion()};

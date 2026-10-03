@@ -9,7 +9,7 @@
 
 namespace fbzz::renderer {
 
-enum class HybridQualityPreset : uint8_t { CUSTOM, LOW, BALANCED, HIGH };
+enum class HybridQualityPreset : uint8_t { CUSTOM, LOW, BALANCED, HIGH, PERFORMANCE };
 
 /// @note Targets are not measurements or automatic quality changes. Shared preparation and overlapping queues must be reported separately.
 /// @see Docs/design/RayTracing.md Frame budgets, independent effect quality and bounded approximation.
@@ -18,6 +18,10 @@ struct HybridQualitySettings {
     uint32_t historyLimit = 32;
     uint32_t spatialRadius = 1;
     uint32_t glassBoundaryLimit = 16;
+    /// @note Rough opaque transport may use half extent; sharp reflection and dielectric overrides retain full-resolution samples.
+    uint32_t reflectionResolutionDivisor = 1;
+    /// @note Opt-in smooth Fresnel single-path estimator; unvisited branches are not validated and deterministic transport stays the default.
+    bool glassStochastic = false;
     /// @note Zero retains unbounded scene-lighting reflection queries. A finite no-hit requests existing SSR/IBL fallback, not a confirmed environment miss.
     float maxTraceDistance = 0;
     /// @note Per-view reconstruction working set; exceeding it keeps current-frame RAW rendering without allocating oversized histories.
@@ -37,6 +41,7 @@ struct HybridQualitySettings {
     if (value.reflectionSamples < 1 || value.reflectionSamples > 64
         || value.historyLimit < 1 || value.historyLimit > 64 || value.spatialRadius > 2
         || value.glassBoundaryLimit < 1 || value.glassBoundaryLimit > 16
+        || (value.reflectionResolutionDivisor != 1 && value.reflectionResolutionDivisor != 2)
         || value.maxHistoryMiB < 1 || value.maxHistoryMiB > 16384 || value.maxProbeCapturesPerFrame > 16
         || !std::isfinite(value.maxTraceDistance) || value.maxTraceDistance < 0) return false;
     for (float target : {value.frameBudgetMs, value.asUpdateBudgetMs, value.traceBudgetMs,
@@ -66,13 +71,20 @@ struct HybridQualitySettings {
         value.reflectionSamples = 8;
         value.spatialRadius = 2;
         value.traceBudgetMs = 5;
+    } else if (preset == HybridQualityPreset::PERFORMANCE) {
+        value.reflectionSamples = 1;
+        value.reflectionResolutionDivisor = 2;
+        value.glassStochastic = true;
+        value.frameBudgetMs = 1000.0f / 120.0f;
+        value.traceBudgetMs = 3;
     }
     return value;
 }
 
 [[nodiscard]] inline HybridQualityPreset DetectHybridQualityPreset(const HybridQualitySettings& value)
 {
-    for (auto preset : {HybridQualityPreset::LOW, HybridQualityPreset::BALANCED, HybridQualityPreset::HIGH})
+    for (auto preset : {HybridQualityPreset::LOW, HybridQualityPreset::BALANCED, HybridQualityPreset::HIGH,
+        HybridQualityPreset::PERFORMANCE})
         if (value == MakeHybridQualityPreset(preset)) return preset;
     return HybridQualityPreset::CUSTOM;
 }

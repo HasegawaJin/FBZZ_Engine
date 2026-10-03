@@ -104,6 +104,9 @@ struct ReflectionCase {
     bool glassBackgroundCameraOnly = false;
     bool cameraInsideGlass = false;
     bool cameraOriginProvenAir = false;
+    bool hybridCandidatePolicy = false;
+    bool reconstructionEnabled = false;
+    bool coarseSsrRepresentativesCovered = false;
     math::Vector3 provenAirOrigin{};
     bool cameraInsideNestedGlass = false;
     bool overlappingInitialGlass = false;
@@ -150,11 +153,11 @@ protected:
         if (SUCCEEDED(m_comResult)) CoUninitialize();
     }
 
-    std::vector<float> Render(const ReflectionCase& testCase)
+    std::vector<float> Render(const ReflectionCase& testCase, uint32_t requestedExtent = 0)
     {
         auto& resources = *m_resources;
         auto& device = *m_bundle.renderer;
-        const uint32_t renderSize = testCase.rasterPrimary ? 64u : 1u;
+        const uint32_t renderSize = requestedExtent ? requestedExtent : (testCase.rasterPrimary ? 64u : 1u);
         renderer::RaySceneGpu gpu;
         std::vector<renderer::RayHitRecord> records;
         std::vector<renderer::RaySurfaceRecord> surfaces;
@@ -194,13 +197,15 @@ protected:
             const auto buffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::Vertex));
             EXPECT_TRUE(buffer.IsValid());
             renderer::AccelerationStructureDesc bottom;
-            bottom.geometries.push_back({buffer, {}, 0, 3, 0, 0, 0, !(testCase.alphaBlocker && mask == 2)});
+            bottom.geometries.push_back({buffer, {}, 0, 3, 0, 0, 0,
+                !(testCase.alphaBlocker && mask == 2) && !(testCase.hybridCandidatePolicy && glass)});
             const auto structure = resources.CreateAccelerationStructure(bottom);
             EXPECT_TRUE(structure.IsValid());
             bottomLevels.push_back(structure);
             const auto instanceId = static_cast<uint32_t>(records.size());
             /// @note Inside cases supply an opaque-only raster depth; one-sided solids cull the earlier exit in that GBuffer, while optical queries still retain exit boundaries.
-            topDescription.instances.push_back({structure, math::Matrix4::Identity(), instanceId, mask, !testCase.cameraInsideGlass});
+            topDescription.instances.push_back({structure, math::Matrix4::Identity(), instanceId, mask,
+                testCase.hybridCandidatePolicy ? glass : !testCase.cameraInsideGlass});
             renderer::RayHitRecord record;
             record.vertexSrv = resources.Get(buffer)->GetBindlessSrvIndex();
             record.vertexStride = sizeof(renderer::Vertex);
@@ -231,7 +236,7 @@ protected:
                 surface.alphaCutoff = 0.5f;
                 gpu.readTextures.push_back(texture);
             }
-            if ((testCase.secondaryNormalMap && mask == 6) || (testCase.primaryNormalMap && mask == 5)) {
+            if (!glass && ((testCase.secondaryNormalMap && mask == 6) || (testCase.primaryNormalMap && mask == 5))) {
                 const std::array<uint8_t, 4> normalPixels = mask == 5
                     ? std::array<uint8_t, 4>{238, 128, 191, 255} : std::array<uint8_t, 4>{255, 128, 255, 255};
                 const auto texture = resources.CreateTexture(normalPixels.data(), 1, 1);
@@ -240,7 +245,7 @@ protected:
                 surface.normalStrength = 1;
                 gpu.readTextures.push_back(texture);
             }
-            if ((testCase.secondaryEmissionTexture && mask == 6) || (testCase.meshNeeTexture && mask == 7)) {
+            if (!glass && ((testCase.secondaryEmissionTexture && mask == 6) || (testCase.meshNeeTexture && mask == 7))) {
                 const uint8_t emissionPixels[] = {128, 255, 0, 255};
                 const auto texture = resources.CreateTexture(emissionPixels, 1, 1);
                 surface.textureMask |= 8;
@@ -295,6 +300,7 @@ protected:
             testCase.blockerSupported, testCase.blockerBackFace ? math::Vector3{0, 0, 1} : math::Vector3{0, 0, -1}, {});
         if (testCase.meshNee) addTriangle(0, true, 7, true, {0, 0, -1}, {18, 18, 18});
         gpu.instanceCount = static_cast<uint32_t>(records.size());
+        gpu.hybridCandidatePolicy = testCase.hybridCandidatePolicy;
         gpu.topLevel = resources.CreateAccelerationStructure(topDescription);
         gpu.hitRecords = resources.CreateStructuredBuffer(records.data(), gpu.instanceCount, sizeof(renderer::RayHitRecord));
         gpu.surfaceMaterials = resources.CreateStructuredBuffer(surfaces.data(), gpu.instanceCount, sizeof(renderer::RaySurfaceRecord));
@@ -302,6 +308,8 @@ protected:
         const auto shaderRoot = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
         renderer::RenderSharedResources shared;
         shared.rayReflectionShader = resources.LoadShader((shaderRoot / "RayTracing/RayReflection.cs.hlsl").generic_string());
+        if (testCase.reconstructionEnabled)
+            shared.rayReflectionReconstructionShader = resources.LoadShader((shaderRoot / "RayTracing/RayReflectionReconstruction.cs.hlsl").generic_string());
         const auto fill = resources.LoadShader((shaderRoot / (testCase.rasterPrimary
             ? "Pipeline/Deferred/GBuffer.hlsl" : "../../Projects/Tests/Graphics/Shaders/RayReflectionGBuffer.hlsl")).generic_string());
         const auto copy = resources.LoadShader((shaderRoot / "PostProcess/Color/CopyColor.hlsl").generic_string());
@@ -358,6 +366,13 @@ protected:
         view.rayReflection.width = view.rayReflection.height = renderSize;
         view.rayReflection.output = resources.CreateComputeTexture(renderSize, renderSize);
         view.rayReflection.constants = resources.CreateConstantBuffer(sizeof(renderer::RayReflectionConstants));
+        view.gbuffer = gbuffer;
+        view.rayReflection.traceWidth = view.rayReflection.traceHeight = renderSize;
+        if (testCase.reconstructionEnabled && testCase.quality.reflectionResolutionDivisor == 2 && renderSize > 1) {
+            view.rayReflection.resolutionDivisor = 2;
+            view.rayReflection.traceWidth = view.rayReflection.traceHeight = renderSize / 2 + renderSize % 2;
+            view.rayReflection.halfRaw = resources.CreateComputeTexture(view.rayReflection.traceWidth, view.rayReflection.traceHeight);
+        }
         view.rayReflection.sceneLighting = testCase.sceneLighting;
         view.rayReflection.cameraOriginProvenAir = testCase.cameraOriginProvenAir;
         view.rayReflection.provenAirOrigin = testCase.provenAirOrigin;
@@ -409,6 +424,7 @@ protected:
                 && handles.iblBrdfLut.IsValid() && handles.advancedGraphicsCB.IsValid());
         }
         renderer::RenderPassContext context{{}, device, resources, camera, settings, target, ~0u, handles};
+        context.experimentalRayTracingEnabled = true;
         context.width = context.height = renderSize;
         context.hybridReflectionResolveActive = testCase.reflectionResolveEnabled;
         context.hybridReflectionSsrPlanned = testCase.reflectionResolveEnabled;
@@ -433,6 +449,26 @@ protected:
             view.rayReflection.environmentTable = resources.CreateStructuredBuffer(table.data(),
                 static_cast<uint32_t>(table.size()), sizeof(renderer::RayEnvironmentRecord));
         }
+        if (testCase.reconstructionEnabled) {
+            const bool prepared = renderer::PrepareRayReflectionReconstruction(context, view, shared);
+            EXPECT_TRUE(prepared);
+            if (!prepared) return {};
+            EXPECT_EQ(view.rayReflection.reconstruction.constantsData.resolutionDivisor,
+                view.rayReflection.resolutionDivisor);
+            if (view.rayReflection.resolutionDivisor == 2) {
+                const auto* halfRaw = resources.Get(view.rayReflection.halfRaw);
+                EXPECT_TRUE(halfRaw != nullptr);
+                if (halfRaw) {
+                    EXPECT_EQ(halfRaw->GetWidth(), renderSize / 2 + renderSize % 2);
+                    EXPECT_EQ(halfRaw->GetHeight(), renderSize / 2 + renderSize % 2);
+                }
+            }
+        }
+        renderer::ResourceHandle<renderer::TextureTag> coveredTexture;
+        if (testCase.coarseSsrRepresentativesCovered) {
+            const uint8_t coveredPixel[] = {64, 128, 192, 255};
+            coveredTexture = resources.CreateTexture(coveredPixel, 1, 1);
+        }
         resources.AdvanceFrame();
         device.BeginFrame();
         m_frameOpen = true;
@@ -442,6 +478,18 @@ protected:
         if (screenReflection) {
             device.SetRenderTarget(screenReflection, resources);
             device.Clear(testCase.screenReflection);
+            if (testCase.coarseSsrRepresentativesCovered) {
+                renderer::DrawCall covered;
+                covered.shader = copy;
+                covered.pipelineState = copyState;
+                covered.vertexCount = 3;
+                covered.textures[5] = coveredTexture;
+                for (uint32_t y = 0; y < renderSize; y += 2)
+                    for (uint32_t x = 0; x < renderSize; x += 2) {
+                        device.SetViewport(x, y, 1, 1);
+                        device.Submit(covered, resources);
+                    }
+            }
         }
         if (environment) {
             /// @note 検証 queue は EndFrame で排出されるため、意図した HDR cube clear の metadata 警告だけをその間許す。
@@ -490,7 +538,7 @@ protected:
         draw.shader = copy;
         draw.pipelineState = copyState;
         draw.vertexCount = 3;
-        draw.textures[5] = view.rayReflection.output;
+        draw.textures[5] = testCase.reconstructionEnabled ? context.handles.rayReflectionResult : view.rayReflection.output;
         device.Submit(draw, resources);
         device.SetRenderTarget({}, resources);
         device.EndFrame();
@@ -2149,6 +2197,197 @@ TEST_F(RayReflectionTest, ProvenCameraAirPreservesSsrEarlyOutAndThinMotionMetada
     EXPECT_FLOAT_EQ(original[3], 2);
     for (size_t channel = 0; channel < original.size(); ++channel)
         EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
+}
+
+TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsSolidThinAndRoughRadiance)
+{
+    for (bool secondary : {false, true}) {
+        for (float roughness : {0.0f, 0.25f}) {
+            for (bool thin : {false, true}) {
+                if (thin && roughness != 0) continue;
+                SCOPED_TRACE(secondary);
+                SCOPED_TRACE(roughness);
+                SCOPED_TRACE(thin);
+                ReflectionCase testCase;
+                testCase.primaryGlass = !secondary;
+                testCase.secondaryGlass = secondary;
+                testCase.secondary = secondary;
+                testCase.thinGlass = thin;
+                testCase.glassRoughness = roughness;
+                testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+                testCase.constantEnvironmentRadiance = {1, 2, 3};
+                testCase.glassAttenuation = thin ? math::Vector3{1, 1, 1} : math::Vector3{0.5f, 0.75f, 1};
+                const auto original = Render(testCase);
+                testCase.hybridCandidatePolicy = true;
+                const auto optimized = Render(testCase);
+                ASSERT_EQ(original.size(), 4u);
+                ASSERT_EQ(optimized.size(), original.size());
+                EXPECT_GT(original[3], 0);
+                for (size_t channel = 0; channel < original.size(); ++channel)
+                    EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
+            }
+        }
+    }
+}
+
+TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsInitialNestedAndSecondaryMedia)
+{
+    for (uint32_t mediumCase = 0; mediumCase < 4; ++mediumCase) {
+        SCOPED_TRACE(mediumCase);
+        ReflectionCase testCase;
+        testCase.cameraInsideGlass = mediumCase < 3;
+        testCase.cameraInsideNestedGlass = mediumCase == 1;
+        testCase.secondaryOriginInsideGlass = mediumCase == 3;
+        testCase.orthographic = mediumCase == 2;
+        testCase.secondary = mediumCase == 3;
+        testCase.initialGlassExitZ = mediumCase == 1 ? 1.0f : 0.05f;
+        testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+        testCase.glassIor = 1;
+        testCase.primaryEmission = {2, 4, 6};
+        testCase.glassAttenuation = {0.25f, 0.5f, 1};
+        const auto original = Render(testCase);
+        testCase.hybridCandidatePolicy = true;
+        const auto optimized = Render(testCase);
+        ASSERT_EQ(original.size(), 4u);
+        ASSERT_EQ(optimized.size(), original.size());
+        EXPECT_GT(original[3], 0);
+        for (size_t channel = 0; channel < original.size(); ++channel)
+            EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
+    }
+}
+
+TEST_F(RayReflectionTest, HybridCandidatePolicyPreservesBackfaceAndAlphaShadowQueries)
+{
+    for (uint8_t mask : {uint8_t{2}, uint8_t{4}}) {
+        for (bool backFace : {false, true}) {
+            for (bool alpha : {false, true}) {
+                if (mask == 4 && alpha) continue;
+                SCOPED_TRACE(mask);
+                SCOPED_TRACE(backFace);
+                SCOPED_TRACE(alpha);
+                ReflectionCase testCase;
+                testCase.primaryGlass = mask == 2;
+                testCase.secondaryGlass = mask == 4;
+                testCase.thinGlass = true;
+                testCase.secondary = mask == 4;
+                testCase.glassIor = 1;
+                testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+                testCase.blocker = testCase.blockerSupported = true;
+                testCase.blockerZ = mask == 2 ? 4.0f : -2.0f;
+                testCase.blockerMask = mask;
+                testCase.blockerBackFace = backFace;
+                testCase.alphaBlocker = alpha;
+                testCase.constantEnvironmentRadiance = {1, 2, 3};
+                testCase.deltaLights.push_back({{0, 0, 3.5f}, 0, {4, 4, 4}, 0});
+                const auto original = Render(testCase);
+                testCase.hybridCandidatePolicy = true;
+                const auto optimized = Render(testCase);
+                ASSERT_EQ(original.size(), 4u);
+                ASSERT_EQ(optimized.size(), original.size());
+                EXPECT_GT(original[3], 0);
+                for (size_t channel = 0; channel < original.size(); ++channel)
+                    EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
+            }
+        }
+    }
+}
+
+TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsTextureEvaluationAndThinMotion)
+{
+    for (uint32_t textureCase = 0; textureCase < 3; ++textureCase) {
+        SCOPED_TRACE(textureCase);
+        ReflectionCase testCase;
+        testCase.primaryGlass = textureCase == 0;
+        testCase.secondaryGlass = !testCase.primaryGlass;
+        testCase.thinGlass = true;
+        testCase.secondary = !testCase.primaryGlass;
+        testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+        testCase.verifyGlassMotionMetadata = textureCase == 0;
+        testCase.secondaryNormalMap = textureCase == 1;
+        testCase.secondaryEmissionTexture = textureCase == 2;
+        if (textureCase == 1) testCase.deltaLights.push_back({{0, 0, -2}, 0, {4, 4, 4}, 0});
+        const auto original = Render(testCase);
+        testCase.hybridCandidatePolicy = true;
+        const auto optimized = Render(testCase);
+        ASSERT_EQ(original.size(), 4u);
+        ASSERT_EQ(optimized.size(), original.size());
+        EXPECT_GT(original[3], 0);
+        for (size_t channel = 0; channel < original.size(); ++channel)
+            EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
+    }
+}
+
+TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsUnsupportedGlassFailClosed)
+{
+    for (uint32_t invalidCase = 0; invalidCase < 4; ++invalidCase) {
+        SCOPED_TRACE(invalidCase);
+        ReflectionCase testCase;
+        testCase.primaryGlass = invalidCase != 0;
+        testCase.cameraInsideGlass = invalidCase == 0;
+        testCase.secondary = false;
+        testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+        testCase.openGlass = invalidCase == 0;
+        testCase.mismatchedGlassOwner = invalidCase == 1;
+        testCase.glassIor = invalidCase == 2 ? 0 : 1.5f;
+        testCase.glassRoughness = invalidCase == 3 ? -1 : 0;
+        const auto original = Render(testCase);
+        testCase.hybridCandidatePolicy = true;
+        const auto optimized = Render(testCase);
+        ASSERT_EQ(original.size(), 4u);
+        ASSERT_EQ(optimized.size(), original.size());
+        EXPECT_FLOAT_EQ(original[3], 0);
+        for (size_t channel = 0; channel < original.size(); ++channel)
+            EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
+    }
+}
+
+TEST_F(RayReflectionTest, PerformancePreservesSharpAndGlassOverridesAtOddExtent)
+{
+    for (bool glass : {false, true}) {
+        SCOPED_TRACE(glass);
+        ReflectionCase testCase;
+        testCase.quality = renderer::MakeHybridQualityPreset(renderer::HybridQualityPreset::PERFORMANCE);
+        testCase.reconstructionEnabled = true;
+        testCase.primaryGlass = glass;
+        testCase.secondary = !glass;
+        testCase.glassIor = 1;
+        testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+        testCase.constantEnvironmentRadiance = testCase.glassBackground;
+        testCase.hybridCandidatePolicy = true;
+        const auto result = Render(testCase, 3);
+        ASSERT_EQ(result.size(), 36u);
+        for (size_t pixel = 0; pixel < 9; ++pixel) {
+            EXPECT_FLOAT_EQ(result[pixel * 4 + 3], glass ? 2.0f : 1.0f);
+            for (size_t channel = 0; channel < 3; ++channel) {
+                EXPECT_TRUE(std::isfinite(result[pixel * 4 + channel]));
+                EXPECT_GT(result[pixel * 4 + channel], 0);
+            }
+        }
+    }
+}
+
+TEST_F(RayReflectionTest, HalfRoughTransportKeepsSsrHolesWhenRepresentativeIsScreenCovered)
+{
+    ReflectionCase testCase;
+    testCase.quality.reflectionSamples = 1;
+    testCase.quality.reflectionResolutionDivisor = 2;
+    testCase.reconstructionEnabled = true;
+    testCase.roughness = 0.8f;
+    testCase.secondary = false;
+    testCase.sceneLighting = testCase.constantEnvironmentKnown = true;
+    testCase.constantEnvironmentRadiance = {4, 8, 12};
+    testCase.reflectionResolveEnabled = true;
+    const auto withoutSsr = Render(testCase, 3);
+    testCase.reflectionSsrEnabled = true;
+    testCase.coarseSsrRepresentativesCovered = true;
+    const auto withSsr = Render(testCase, 3);
+    ASSERT_EQ(withoutSsr.size(), 36u);
+    ASSERT_EQ(withSsr.size(), withoutSsr.size());
+    /// @note Pixels (0,0) and (2,0) are covered representatives; (1,0) is an actual SSR hole in the first cell.
+    EXPECT_FLOAT_EQ(withoutSsr[7], 1);
+    EXPECT_FLOAT_EQ(withSsr[7], 1);
+    for (size_t channel = 0; channel < 3; ++channel)
+        EXPECT_FLOAT_EQ(withSsr[4 + channel], withoutSsr[4 + channel]);
 }
 
 } /// @note namespace

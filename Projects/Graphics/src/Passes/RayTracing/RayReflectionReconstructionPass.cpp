@@ -13,9 +13,11 @@ void RayReflectionReconstructionPass::Setup(PassBuilder& builder, const RenderPa
     using Purpose = RenderGraph::ResourceAccessPurpose;
     builder.Read("RayReflectionRaw", Purpose::SHADER_READ);
     builder.Read("RayReflectionSurface", Purpose::SHADER_READ);
+    if (m_state.reconstruction.constantsData.resolutionDivisor == 2)
+        builder.Read("RayReflectionHalfRaw", Purpose::SHADER_READ);
+    if (m_state.reconstruction.constantsData.hasGBuffer) builder.Read("GBuffer", Purpose::SHADER_READ);
     if (m_spatial) {
         builder.Read("RayReflectionHistory", Purpose::SHADER_READ);
-        if (m_state.reconstruction.constantsData.hasGBuffer) builder.Read("GBuffer", Purpose::SHADER_READ);
         builder.Write("RayReflectionResult", Purpose::UAV);
     } else {
         builder.Read("RayReflectionSurfacePrevious", Purpose::SHADER_READ);
@@ -42,15 +44,24 @@ void RayReflectionReconstructionPass::Execute(PassResources& resources, RenderPa
     call.shader = m_shader;
     call.constantBuffers[0] = state.constants;
     call.srvInputs[5] = resources.Texture("RayReflectionRaw");
+    if (constants.resolutionDivisor == 2) {
+        call.srvInputs[19] = resources.Texture("RayReflectionHalfRaw");
+        const auto* halfRaw = context.resources.Get(call.srvInputs[19]);
+        if (!halfRaw || !constants.hasGBuffer
+            || constants.traceWidth != context.width / 2 + context.width % 2
+            || constants.traceHeight != context.height / 2 + context.height % 2
+            || halfRaw->GetWidth() != constants.traceWidth || halfRaw->GetHeight() != constants.traceHeight
+            || halfRaw->GetBindlessIndex() == INVALID_BINDLESS_INDEX) { reject(); return; }
+    }
     call.srvBuffers[14] = resources.StructuredBuffer(m_spatial ? "RayReflectionHistory" : "RayReflectionSurface");
     call.srvBuffers[15] = resources.StructuredBuffer(m_spatial ? "RayReflectionSurface" : "RayReflectionSurfacePrevious");
+    if (constants.hasGBuffer) {
+        call.srvInputs[16] = context.resources.GetColorTexture(resources.Target("GBuffer"), 0);
+        call.srvInputs[17] = context.resources.GetColorTexture(resources.Target("GBuffer"), 1);
+        if (!context.resources.Get(call.srvInputs[16]) || !context.resources.Get(call.srvInputs[17])) { reject(); return; }
+    }
     if (m_spatial) {
         call.uavOutputs[0] = resources.Texture("RayReflectionResult");
-        if (constants.hasGBuffer) {
-            call.srvInputs[16] = context.resources.GetColorTexture(resources.Target("GBuffer"), 0);
-            call.srvInputs[17] = context.resources.GetColorTexture(resources.Target("GBuffer"), 1);
-            if (!context.resources.Get(call.srvInputs[16]) || !context.resources.Get(call.srvInputs[17])) { reject(); return; }
-        }
     } else {
         call.srvBuffers[18] = resources.StructuredBuffer("RayReflectionHistoryPrevious");
         call.uavBuffers[0] = resources.StructuredBuffer("RayReflectionHistory");

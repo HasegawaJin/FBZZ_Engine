@@ -253,11 +253,13 @@ protected:
         renderer::RenderPassHandles handles;
         rendering.BindPassHandles(view, handles);
         renderer::RenderPassContext context{{}, device, *m_resources, camera, settings, m_target, ~0u, handles};
+        context.experimentalRayTracingEnabled = true;
         context.renderScene = std::move(scene); context.frameStamp = frame;
         context.width = context.outputWidth = 4; context.height = context.outputHeight = 1;
         context.lightData.lightDir = {0, 0, 1}; context.lightData.lightColor = {1, 1, 1}; context.lightData.lightIntensity = 1;
         renderer::PrepareAdvancedConstants(context, view, {});
-        const auto plan = renderer::PrepareViewRenderPlan(*m_resources, device, settings, view, shared, handles);
+        const auto plan = renderer::PrepareViewRenderPlan(*m_resources, device, settings, view, shared, handles,
+            context.experimentalRayTracingEnabled);
         if (!plan.IsValid()) return nullptr;
         Begin();
         renderer::BuildViewPipeline(view.pipeline, context, view, shared, {plan});

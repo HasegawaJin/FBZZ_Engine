@@ -1024,6 +1024,121 @@ PIX の画面操作はユーザーの Escape で中止したため、この段�
 速度改善率、1080p / 60 fps は未検証である。既存 PIX baseline を今回の速度と
 混同しない。ライブラリ追加・サンプル削減・履歴の有効条件緩和は行っていない。
 
+### Hybrid の opaque candidate と頂点読取の削減
+
+2026-10-02 の追加段では、glass を含み Hybrid の被覆条件を満たした scene だけに
+専用 AS candidate policy を設定する。通常 opaque は BLAS の opaque flag を保ち、
+instance の triangle cull を有効にする。glass は non-opaque と two-sided を保つ。
+通常の front-only query から `FORCE_NON_OPAQUE` を除き、opaque の候補ごとの
+材質判定を DXR の committed hit へ移す。alpha geometry は従来どおり候補で検査する。
+[DXR ray flags](https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#ray-flags)
+
+owner-only・two-sided・mask 2 の shadow query は `FORCE_NON_OPAQUE` を維持する。
+glass の instance cull disable は ray の cull flag より優先されるため、camera-inside の
+front-only 再探索など、明示的に backface cull を指定した query は glass 候補で同じ判定を行う。
+policy を持たない scene / GPU fixture は従来経路を使う。geometry cache key と TLAS の
+instance 比較は opaque / effective double-sided を区別し、成功した AS prepare だけが
+policy を GPU 定数へ公開する。Reference Path と glass-free scene は既存の authoring flag を保つ。
+
+被覆判定は既存 scene で行い、実行可能な glass scene だけを専用 policy で再収集する。
+この段は CPU scene 収集を削減する変更ではない。alpha 候補の albedo texture がない場合は
+UV と texture 読取を省く。committed hit の UV は使用する texture がある場合だけ、
+tangent は normal map がある場合だけ読む。標本数・境界上限・乱数列・媒体と照明の式は維持する。
+
+Release の変更単位コンパイルと Graphics テスト・EditorLauncher ビルドはエラー・警告0。
+追加の CPU 3件と実 DXR 5件を含む関連178件を検証した。初回177件成功後、残る1件の
+fixture を、不透明 terminal で終了できる open slab から初期媒体を証明できない open owner へ
+修正し、再コンパイル・再ビルドとその1件の再実行が成功した。通常 opaque / alpha / glass、
+solid / thin / rough、inside / nested / secondary、shadow / texture / motion と未対応入力を比較する。
+制限環境の driver 初回準備による timeout を含む中断 run は合格数に含めない。
+通常環境で初回準備後に再実行し、既存のケース別30秒制限を維持した。
+
+`Scratch/PixCapture/ReflectionBaseline20261002/` と `ReflectionOptimized20261002/` の
+非 shader 入力2,696件は SHA256 が一致し、同一27 step の隔離シナリオで各6枚を取得した。
+baseline の再撮影も成功し、3 run の capture frame は38 / 40 / 75 / 94 / 113 / 132で一致した。
+Game は1548 x 871、Scene は1263 x 435。各実行後に原本9件を保護し、コピーの入力も維持した。
+PNG / 画素の完全一致は得られていない。RGB 0--255 の primary 平均絶対差は変更前後0.516、
+同じ baseline の再撮影0.530で、残る5枚の変更前後の平均差も再撮影差以下だった。
+primary 最大差は変更前後101 / 再撮影65であり、変更前後の差をすべて実行間の揺らぎと
+断定しない。変更前後の primary は16超の差が15画素、64超が2画素で、opaque / recovered は
+最大差1。シナリオと目視の成功を、bit exact の画像維持や最大差の原因証明とは扱わない。
+
+追加の静止比較は同じ入力・カメラ・1/60秒 lockstep を使い、隔離コピーの動的 probe の
+更新間隔を3600秒に固定して256フレーム待った。両実行とも10手順が成功し、1548 x 871の
+Game 画像を同じ262 / 270フレームで2枚取得した。変更前後の最大差は2枚とも1/255、
+RGB 0--255 の平均絶対差は順に0.002280 / 0.002183だった。静止後に大きな差が残らないことを
+確認した結果であり、上記初期画像の最大差の原因は特定していない。
+
+この段の変更前後で PIX CLI の64フレーム capture を取得し、同じ65フレーム目の View を
+切り出して交互に3回再生した。RayReflection の EOP 中央値は265.152512→234.105856ms、
+11.71%減だった。これは1904 x 993 の保存フレーム再生であり、申告された live 90msや
+1080p / 60 fps への換算ではない。実 Dispatch の shader bytes は各 frozen CSO と一致し、
+b0 の実256 bytesから両方の4 samples / glass有効 / boundary16 / frame65を確認した。
+変更後の policy は1、変更前の同じ位置は reserved 0。AS の元 flag は driver serializationから
+独立には読み取っていない。詳細と証拠は [PIX Profiling](pix-profiling.md) に記録した。
+
+通常 Editor batch の補助測定では、同じ256フレーム待ちの後に8フレーム間隔で32件の
+Game View GPU timestamp を取得した。全件 complete / available・drop0で、変更前後の
+source frame / 世代 / 寸法などが一致した。1548 x 871 の RayReflection 平均は
+131.261984→117.986784ms、13.275200ms / 10.11%減で、32組すべて短縮した。
+両シナリオ67手順が成功した。Scene も描く batch の一つの Game パス時間であり、
+全体GPU時間・AS準備・固定 lockstep のFPS・PIX再生時間へ代用しない。
+証拠は `Scratch/ReflectionOptimize/TimingComparison.json`。元の90ms条件は再現未確認。
+
+### 120FPS 向けの明示品質設定
+
+`HybridQualityPreset::PERFORMANCE` を既存 enum の末尾へ加え、既存 Low / Balanced / High の
+数値と既定値は維持する。Performance は reflectionSamples=1、reflectionResolutionDivisor=2、
+glassStochastic=true、frameBudgetMs=1000/120を要求する。ms は目標であり達成の保証ではない。
+新項目がない旧設定は divisor1 / deterministic glass に戻る。Pipeline Asset と inline fallback、
+Inspector に同じ typed codec を使い、無効な倍率や bool 型違いは全体を拒否する。
+
+半解像度は粗い opaque の重い輸送だけに適用する。roughness<=0.25の鋭い反射と glass の
+full radiance override は Scene と同じ解像度を品質床にする。Scene の surface guide / RAW と
+履歴・最終結果は full extent、粗い輸送の別 RAW は ceil(width/2) x ceil(height/2)とする。
+guide の owner / generation / material / kind・深度・法線・roughness を照合し、別表面の
+セルから補わない。SCREEN_FIRST はセル内の SSR 不足を代表点の confidence だけで除外しない。
+未計算は有効な黒と区別し、照合できない粗い輪郭は SSR / Probe へ戻す。
+Temporal は現在観測の検証に失敗した画素へ count=0 を毎フレーム書く。Spatial の隣接画素は
+この有効性と surface 境界を使い、2x2 セルの全検証を隣接ごとに繰り返さない。
+再構成や資源予算が成立しない場合は full-resolution RAW の既存経路へ戻す。
+Camera、Scene extent、SSR / UI の解像度はこの効果別倍率では変更しない。
+
+glassStochastic は smooth Fresnel の反射と透過から一方を確率で選び、元の枝の重みを
+選択確率で割る推定器とする。Snell / TIR、etaによる radiance 重み、吸収、媒体の push/pop と
+訪問経路の失敗時の無効化を維持し、境界上限16は減らさない。粗い glass の既存確率方式は
+維持する。deterministic glass の全分岐検証とは異なり、選ばれない枝の不正入力は検出しない。
+参照経路と既定品質は従来方式のまま。新設定は輸送経路の分散を増やすため、静止と動きの
+両方で画像を比較し、一般屈折 denoiser を実装済みとは扱わない。
+
+単独 Game の同じシーン・実寸・サンプルと設定を明示して計測する。Editor batch の Scene と
+Game、PIX再生、GPUパスとフレーム全体を分け、低品質設定の選択を120FPS達成と報告しない。
+
+2026-10-02 の RTX 4070 / Release / CornellBox 比較は、同じ完成バイナリ・シェーダーで
+通常4samples / full / deterministic と Performance1sample / rough half / single-path を比較した。
+DeveloperMode を明示して RT を有効にし、probe の周期更新を止め、256フレーム後の
+Game1548x871で32組の完了 GPU timestamp を採用した。全組で改善し、平均
+RayReflection は121.729120→5.436576ms（95.533874%減）、中央値119.763968→5.634048ms。
+最終 Performance の Temporal平均0.690784ms、Spatial平均0.697504ms、記録済みGameパスの
+合計平均7.867328ms。準備・別ビュー・フレーム全体の GPU 時間と lockstep FPS はこの値に含めない。
+根拠は `Scratch/ReflectionOptimize/PerformanceFinalTimingComparison.json` と、両
+`ReflectionPerformance*V220261002/Timing/report.json`。source/current一致・32unique・dropped=0を確認した。
+同条件の静止2画像は RGB MAE1.460310 / 1.461797（0..255）、最大差128 / 118。
+1sample と粗い輸送の間引きにより粒状ノイズが増え、従来品質との同一画像は保証しない。
+関連158テスト、Spatial整理後31テスト、Releaseビルドと変更ファイルの規約チェックは成功した。
+移動・材質切り替え・別ビューの両27手順も成功し、Game5画像のRGB MAEは1.577377..2.683910、
+Scene1画像は2.659404。移動後の全履歴リセットや新しく開いたビューでは粒状ノイズが強い。
+
+単独Gameの元PIX記録 `ReflectionPerformanceV220261002/RangeGpu.wpix` のphysical/appFrame65は
+実寸1904x993。EOP-to-EOPのGPU再生はFrame15.590400ms、View15.568896ms、
+RayReflection11.549696ms、Temporal0.984064ms、Spatial0.975872ms。
+`PerformanceStandalonePix.json` に記録したが、これはlive FPSやsteady frame timeではない。
+`PerformancePixBindings.json` の捕捉PSOは完成CSOと一致し、捕捉Frame2のb0はsampleCount1、
+hybridPolicyFlags3、glassBoundaryLimit16、Scene1904x993、trace952x497を保持していた。
+PIXの部分再捕捉は開けない結果となったため、時間も設定の検証も正常な元記録から採用した。
+120FPS達成はこの測定で認定しない。GreenWareのinline Hybrid品質だけをPerformanceへ設定し、
+保存済みrender mode / pipeline assignmentとDeveloperModeによる実行条件は維持する。
+
 ### Hybrid 計測の提出・ビュー分離
 
 次段では速度変更を加える前に、Scene / Game の同一物理フレームの query 領域がビュー開始で上書きされ、未提出領域を以前の slot fence で回収できた問題を修正する。query の開始と Resolve は renderer の物理 BeginFrame / EndFrame に一度だけ置き、ビューは末尾へ追記する。Resolve を含む command list を実際に提出して Signal した fence 値をその領域に保存し、それが完了するまで mapped readback の値を公開しない。完了した複数 slot を連結せず、最大の physical serial 一件だけを公開する。古い slot の遅延完了・二重回収・device reset / removal・不正 timestamp は未計測として扱う。[D3D12 Fence-Based Resource Management](https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management)、[D3D12 Timing](https://learn.microsoft.com/en-us/windows/win32/direct3d12/timing)

@@ -1377,7 +1377,7 @@ void PrepareGpuEmitter(ParticleEmitter&                     emitter,
     cb.depthCollision = emitter.settings.collisionMode == ParticleCollisionMode::Depth ? 1u : 0u;
     cb.depthResponse = static_cast<std::uint32_t>(emitter.settings.collisionResponse);
     cb.depthDamping = std::clamp(emitter.settings.collisionDamping, 0.0f, 1.0f);
-    /// @name over-lifetime モジュール (回転カーブ / drag カーブ / 周回・放射)
+    /// @note over-lifetime モジュール (回転カーブ / drag カーブ / 周回・放射)
     cb.curveFlags2 = {
         emitter.settings.useRotationCurve ? 1.0f : 0.0f,
         emitter.settings.useDragCurve ? 1.0f : 0.0f,
@@ -1885,8 +1885,10 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
     emitter.runtime.lastPlaybackFrame      = Time::frameCount;
     emitter.runtime.lastCpuSimulationFrame = Time::frameCount;
 }
-void ExtractRayParticleSources(const Scene& scene, renderer::RenderScene& output)
+void ExtractRayParticleSources(const Scene& scene, renderer::RenderScene& output,
+    bool experimentalRayTracingEnabled)
 {
+    if (!experimentalRayTracingEnabled) return;
     for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
         auto* go = scene.GetGameObject(id);
         const auto* emitter = go ? go->GetComponent<ParticleEmitter>() : nullptr;
@@ -2053,6 +2055,6 @@ void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& outpu
         input.runtime.material.selfShadowStrength = emitter->runtime.material.selfShadowStrength;
         output.particles.push_back(std::move(input));
     }
-    ExtractRayParticleSources(ctx.scene, output);
+    ExtractRayParticleSources(ctx.scene, output, ctx.experimentalRayTracingEnabled);
 }
 }

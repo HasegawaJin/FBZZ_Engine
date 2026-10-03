@@ -6,6 +6,7 @@
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <Math/Vector4.hpp>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -51,11 +52,16 @@ struct alignas(16) RayReflectionReconstructionConstants {
     math::Vector4 constantEnvironmentRadiance;
     float nearDistance = 0, farDistance = 0;
     uint32_t cameraMotion = 0, movingHistoryLimit = 4;
+    /// @note 全解像度 guide の同一 surface/material 証明を通る粗い opaque セルだけ half RAW を復元する。
+    uint32_t traceWidth = 0, traceHeight = 0, resolutionDivisor = 1, reserved = 0;
 };
-static_assert(sizeof(RayReflectionReconstructionConstants) == 208);
+static_assert(sizeof(RayReflectionReconstructionConstants) == 224);
+static_assert(offsetof(RayReflectionReconstructionConstants, traceWidth) == 208);
+static_assert(offsetof(RayReflectionReconstructionConstants, traceHeight) == 212);
+static_assert(offsetof(RayReflectionReconstructionConstants, resolutionDivisor) == 216);
 
-/// @note Surface96×2 と RGB/count16×2 の224B/画素、RGBA16F output を含め232B/画素。色も ping-pong して他画素の再投影 read/write race を防ぐ。
-/// @note trace metadata=u2、temporal t5 raw/t14 current/t15 previous/t18 previous history -> u2 current history、spatial t5/t14/t15(+t16/17 GBuffer0/1) -> u0。
+/// @note Scene 画素ごとに Surface96×2 と RGB/count16×2 と RGBA16F output の232B、半解像度時は trace 画素ごとに half RAW8B を加算する。
+/// @note trace metadata=u2、temporal t5 raw/t14 current/t15 previous/t18 previous history -> u2 current history、spatial t5/t14/t15 -> u0。両 stage は t16/17 GBuffer0/1 と半解像度時 t19 half RAW を読む。
 /// @note 一つのビューが単独所有する。停止・失敗・非連続 frame・内容変化は履歴を無効にする。
 /// @note Spatial 成功時だけ共通 index を進める。途中失敗後は部分更新も次フレームで破棄する。
 struct RayReflectionReconstructionViewResources {
@@ -74,6 +80,7 @@ struct RayReflectionReconstructionViewResources {
 };
 
 /// @return false は再構成だけを無効化し、同フレームの生 Reflection を維持する。
+/// @note 実験 RT のセッション許可なしでは専用 shader / GPU 資源を生成せず false。
 [[nodiscard]] bool PrepareRayReflectionReconstruction(RenderPassContext& context,
     RenderViewResources& view, RenderSharedResources& shared);
 } /// @note namespace fbzz::renderer

@@ -25,6 +25,7 @@
 #include <Engine/Scene/Systems/RenderParticleExtractor.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include "RenderPasses/Debug/SelectionPasses.hpp"
+#include <Graphics/Pipeline/RayTracingPipeline.hpp>
 #include <atomic>
 #include <algorithm>
 #include <cmath>
@@ -255,13 +256,14 @@ void ExtractRayMaterialInputs(renderer::RenderMaterial& material,
 } /// @note namespace
 
 renderer::RenderScene ExtractRenderSceneGeometry(Scene& scene, uint64_t frameStamp,
-    renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette)
+    renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette, bool rayTracingInputs)
 {
     renderer::RenderScene output;
     output.snapshotSerial = ++s_renderSceneSerial;
     output.sceneGeneration = scene.GetRenderSceneGeneration();
     output.frameStamp = frameStamp;
-    const auto lodRenderers = CollectRayLodRenderers(scene, output.rayLodDiagnostics);
+    const auto lodRenderers = rayTracingInputs ? CollectRayLodRenderers(scene, output.rayLodDiagnostics)
+        : std::unordered_map<uint64_t, RayLodSelection>{};
     for (auto& go : scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
         if (auto* mr = go.GetComponent<MeshRenderer>(); mr && mr->enabled && mr->mesh && !mr->mesh->isSkinned) {
@@ -353,21 +355,26 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
 
     std::shared_ptr<renderer::RenderScene> output;
     const uint64_t resetVersion = ctx.resources.GetResetVersion();
+    const bool rayTracingInputs = ctx.experimentalRayTracingEnabled
+        && (ctx.settings.modeRequest.mode != renderer::RenderMode::RASTER
+            || renderer::IsRayDebugView(ctx.settings.viewMode));
     if (frameGeometry && frameGeometry->geometry && frameGeometry->scene == &ctx.scene &&
         frameGeometry->geometry->sceneGeneration == ctx.scene.GetRenderSceneGeneration() &&
         frameGeometry->resources == &ctx.resources && frameGeometry->frameStamp == Time::frameCount &&
         frameGeometry->resetVersion == resetVersion &&
+        frameGeometry->rayTracingInputs == rayTracingInputs &&
         frameGeometry->identityPalette == ctx.handles.bindPoseSkinningCB) {
         output = std::make_shared<renderer::RenderScene>(*frameGeometry->geometry);
         output->snapshotSerial = ++s_renderSceneSerial;
     } else {
         output = std::make_shared<renderer::RenderScene>(
-            ExtractRenderSceneGeometry(ctx.scene, Time::frameCount, ctx.handles.bindPoseSkinningCB));
+            ExtractRenderSceneGeometry(ctx.scene, Time::frameCount, ctx.handles.bindPoseSkinningCB, rayTracingInputs));
         if (frameGeometry) {
             frameGeometry->scene = &ctx.scene;
             frameGeometry->resources = &ctx.resources;
             frameGeometry->frameStamp = Time::frameCount;
             frameGeometry->resetVersion = resetVersion;
+            frameGeometry->rayTracingInputs = rayTracingInputs;
             frameGeometry->identityPalette = ctx.handles.bindPoseSkinningCB;
             frameGeometry->geometry = std::make_shared<renderer::RenderScene>(*output);
         }
@@ -428,7 +435,8 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             const bool currentDeformationVerified = object.skinned && item.deformedContentVersion != 0
                 && deformed && deformed->GetStride() == sizeof(renderer::Vertex)
                 && deformed->GetContentVersion() == item.deformedContentVersion;
-            ExtractRayMaterialInputs(material, source, slot, ctx.resources, currentDeformationVerified);
+            if (rayTracingInputs)
+                ExtractRayMaterialInputs(material, source, slot, ctx.resources, currentDeformationVerified);
             item.forwardMaterial = material;
             if (object.skinned && source && IsSurfaceMaterial(slot)) {
                 LogSkinnedSurfaceFallbackWarningOnce(source->shaderPath);

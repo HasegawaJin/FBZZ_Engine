@@ -16,6 +16,38 @@ namespace fbzz::tests {
 namespace {
 class RenderLightExtractorTest : public testkit::EngineFixture {};
 
+TEST_F(RenderLightExtractorTest, DisabledExperimentalSessionKeepsRasterLightsWithoutRayListsOrDiagnostics)
+{
+    scene::Scene source;
+    auto& point = source.CreateGameObject("Point").AddComponent<scene::LightComponent>();
+    point.type = scene::LightComponent::Type::Point;
+    point.castShadows = false;
+    auto& sun = source.CreateGameObject("Sun").AddComponent<scene::LightComponent>();
+    sun.castShadows = false;
+    auto& sky = source.CreateGameObject("Sky").AddComponent<scene::SkyRenderer>();
+    sky.dayNightEnabled = true;
+    auto& emitter = source.CreateGameObject("ParticleLight").AddComponent<scene::ParticleEmitter>();
+    emitter.settings.enabled = true;
+    emitter.settings.light.lightEnabled = true;
+    renderer::Camera camera;
+    renderer::RenderSettings settings;
+    settings.modeRequest.mode = renderer::RenderMode::PATH_TRACING;
+    const auto disabled = scene::ExtractRenderLights(source, camera, settings, 1024);
+    EXPECT_TRUE(disabled.rayLights.empty());
+    EXPECT_FALSE(disabled.rayLightsComplete);
+    ASSERT_EQ(disabled.punctualLights.size(), 1u);
+    const auto enabled = scene::ExtractRenderLights(source, camera, settings, 1024, true);
+    ASSERT_EQ(enabled.rayLights.size(), 3u);
+    EXPECT_TRUE(enabled.rayLightsComplete);
+    EXPECT_EQ(enabled.punctualLights.size(), disabled.punctualLights.size());
+    EXPECT_VEC3_NEAR(enabled.punctualLights[0].position, disabled.punctualLights[0].position, testkit::kTolerance);
+    EXPECT_FLOAT_EQ(enabled.punctualLights[0].intensity, disabled.punctualLights[0].intensity);
+    EXPECT_VEC3_NEAR(enabled.lightData.lightColor, disabled.lightData.lightColor, testkit::kTolerance);
+    EXPECT_FLOAT_EQ(enabled.lightData.lightIntensity, disabled.lightData.lightIntensity);
+    EXPECT_TRUE(scene::ExtractRenderLights(source, camera, settings, 1024, false).rayLights.empty());
+    EXPECT_EQ(settings.modeRequest.mode, renderer::RenderMode::PATH_TRACING);
+}
+
 TEST_F(RenderLightExtractorTest, CopiesWorldPositionAndTemperatureWithoutKeepingComponentReferences)
 {
     scene::Scene source;
@@ -28,7 +60,7 @@ TEST_F(RenderLightExtractorTest, CopiesWorldPositionAndTemperatureWithoutKeeping
     go.transform.worldPosition = {10, 2, -3};
     renderer::Camera camera;
     renderer::RenderSettings settings;
-    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     ASSERT_EQ(input.punctualLights.size(), 1u);
     light.intensity = 99;
     go.transform.worldPosition = {};
@@ -50,10 +82,10 @@ TEST_F(RenderLightExtractorTest, DisabledLightAndInactiveParentDoNotContribute)
     renderer::Camera camera;
     renderer::RenderSettings settings;
     parent.SetActive(false);
-    EXPECT_TRUE(scene::ExtractRenderLights(source, camera, settings, 1024).punctualLights.empty());
+    EXPECT_TRUE(scene::ExtractRenderLights(source, camera, settings, 1024, true).punctualLights.empty());
     parent.SetActive(true);
     light.enabled = false;
-    EXPECT_TRUE(scene::ExtractRenderLights(source, camera, settings, 1024).punctualLights.empty());
+    EXPECT_TRUE(scene::ExtractRenderLights(source, camera, settings, 1024, true).punctualLights.empty());
 }
 
 TEST_F(RenderLightExtractorTest, SpotShadowAndCookieSlotsMatchLegacyAndStructuredInputs)
@@ -65,7 +97,7 @@ TEST_F(RenderLightExtractorTest, SpotShadowAndCookieSlotsMatchLegacyAndStructure
     light.cookiePath = "cookie.png";
     renderer::Camera camera;
     renderer::RenderSettings settings;
-    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     ASSERT_EQ(input.punctualLights.size(), 1u);
     EXPECT_EQ(input.punctualShadowViewCount, 1);
     EXPECT_EQ(input.lightCookieViewCount, 1);
@@ -92,7 +124,7 @@ TEST_F(RenderLightExtractorTest, RayInputIsSceneCompleteBeyondRasterLimitAndReta
     second.AddComponent<scene::LightComponent>().castShadows = false;
     renderer::Camera camera;
     renderer::RenderSettings settings;
-    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     EXPECT_EQ(input.punctualLights.size(), 256u);
     ASSERT_EQ(input.rayLights.size(), 262u);
     EXPECT_TRUE(input.rayLightsComplete);
@@ -117,7 +149,7 @@ TEST_F(RenderLightExtractorTest, RayInputPreservesRawAreaValuesAndDeclaredCookie
     go.layer = -1;
     renderer::Camera camera;
     renderer::RenderSettings settings;
-    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     ASSERT_EQ(input.rayLights.size(), 1u);
     const auto& ray = input.rayLights[0];
     EXPECT_EQ(ray.type, renderer::RayLightType::AREA);
@@ -141,13 +173,13 @@ TEST_F(RenderLightExtractorTest, RayInputReportsParticleSourceWithoutRequiringLi
     go.layer = 3;
     renderer::Camera camera;
     renderer::RenderSettings settings;
-    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    const auto input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     ASSERT_EQ(input.rayLights.size(), 1u);
     EXPECT_EQ(input.rayLights[0].layerMask, 8u);
     EXPECT_NE(input.rayLights[0].unsupportedFlags & renderer::RAY_LIGHT_UNSUPPORTED_PARTICLE, 0u);
     EXPECT_TRUE(input.punctualLights.empty());
     go.SetActive(false);
-    EXPECT_TRUE(scene::ExtractRenderLights(source, camera, settings, 1024).rayLights.empty());
+    EXPECT_TRUE(scene::ExtractRenderLights(source, camera, settings, 1024, true).rayLights.empty());
 }
 
 TEST_F(RenderLightExtractorTest, RayInputKeepsEveryOwnerShadowSettingIndependentOfSelectedDirectional)
@@ -164,7 +196,7 @@ TEST_F(RenderLightExtractorTest, RayInputKeepsEveryOwnerShadowSettingIndependent
     renderer::Camera camera;
     renderer::RenderSettings settings;
     settings.shadowEnabled = true;
-    auto input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    auto input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     ASSERT_EQ(input.rayLights.size(), strengths.size());
     for (size_t i = 0; i < strengths.size(); ++i) {
         EXPECT_EQ(input.rayLights[i].castShadows, i != 0);
@@ -172,7 +204,7 @@ TEST_F(RenderLightExtractorTest, RayInputKeepsEveryOwnerShadowSettingIndependent
     }
     EXPECT_FALSE(input.dirCastShadows);
     settings.shadowEnabled = false;
-    input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     ASSERT_EQ(input.rayLights.size(), strengths.size());
     for (size_t i = 0; i < strengths.size(); ++i) {
         EXPECT_FALSE(input.rayLights[i].castShadows);
@@ -190,7 +222,7 @@ TEST_F(RenderLightExtractorTest, BlackSkyDayNightCurveIsExplicitlyUnsupportedWit
     const auto skyId = skyOwner.GetID();
     renderer::Camera camera;
     renderer::RenderSettings settings;
-    auto input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    auto input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     ASSERT_EQ(input.rayLights.size(), 1u);
     EXPECT_NE(input.rayLights[0].unsupportedFlags & renderer::RAY_LIGHT_UNSUPPORTED_DAY_NIGHT, 0u);
     EXPECT_EQ(input.rayLights[0].objectId.index, skyId.index);
@@ -198,13 +230,13 @@ TEST_F(RenderLightExtractorTest, BlackSkyDayNightCurveIsExplicitlyUnsupportedWit
     auto& sun = sunOwner.AddComponent<scene::LightComponent>();
     sun.castShadows = false;
     const auto sunId = sunOwner.GetID();
-    input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     ASSERT_EQ(input.rayLights.size(), 1u);
     EXPECT_NE(input.rayLights[0].unsupportedFlags & renderer::RAY_LIGHT_UNSUPPORTED_DAY_NIGHT, 0u);
     EXPECT_EQ(input.rayLights[0].objectId.index, sunId.index);
     EXPECT_FLOAT_EQ(input.rayLights[0].intensity, sun.intensity);
     sky.dayNightEnabled = false;
-    input = scene::ExtractRenderLights(source, camera, settings, 1024);
+    input = scene::ExtractRenderLights(source, camera, settings, 1024, true);
     ASSERT_EQ(input.rayLights.size(), 1u);
     EXPECT_EQ(input.rayLights[0].unsupportedFlags, 0u);
 }

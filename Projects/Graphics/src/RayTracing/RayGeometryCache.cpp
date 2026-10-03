@@ -51,10 +51,15 @@ RaySceneGpu RayGeometryCache::Prepare(const RayScene& scene, RenderPassContext& 
     RaySceneGpu result;
     auto& resources = context.resources;
     auto& renderer = context.renderer;
-    if (!renderer.GetCapabilities().inlineRayQuery || !scene.sceneGeneration) return result;
+    if (!context.experimentalRayTracingEnabled
+        || !renderer.GetCapabilities().inlineRayQuery || !scene.sceneGeneration) return result;
     const auto frameStamp = context.frameStamp;
     Prune(resources, frameStamp);
-    if (scene.instances.empty()) { result.ready = true; return result; }
+    if (scene.instances.empty()) {
+        result.ready = true;
+        result.hybridCandidatePolicy = scene.hybridCandidatePolicy;
+        return result;
+    }
     if (scene.instances.size() > 0x1000000u) return result;
 
     m_preparation.BeginBuild();
@@ -233,6 +238,7 @@ RaySceneGpu RayGeometryCache::Prepare(const RayScene& scene, RenderPassContext& 
     m_preparation.BeginBuild();
     result.instanceCount = static_cast<uint32_t>(instances.size());
     result.ready = true;
+    result.hybridCandidatePolicy = scene.hybridCandidatePolicy;
     if (hasExisting) {
         /// @note Publish only after all new allocations/builds succeed; unchanged handles keep their prior GPU lifetime and are never retired here.
         if (!reuseTopLevel) resources.Release(existing->gpu.topLevel);

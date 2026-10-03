@@ -109,6 +109,46 @@ TEST_F(RenderModeSettingsTest, RasterFallbackDoesNotChangeTheSavedRequest)
     EXPECT_TRUE(restored.render.modeRequest.rayReflection);
 }
 
+TEST_F(RenderModeSettingsTest, DeveloperGateKeepsEverySavedRayModeAndDormantEffect)
+{
+    for (const auto mode : { renderer::RenderMode::HYBRID, renderer::RenderMode::PATH_TRACING }) {
+        for (const auto profile : { renderer::PathTracingProfile::REFERENCE,
+                                   renderer::PathTracingProfile::GAME }) {
+            ProjectSettings source;
+            source.render.pipeline = renderer::RenderingPipeline::DeferredPlus;
+            source.render.modeRequest = { mode, profile, true, false, true };
+            renderer::RenderAvailability available;
+            available.outputsReady = true;
+            available.rasterPipelineReady = true;
+            available.opaque = { true, true, true };
+            available.clusteredLightingReady = true;
+            available.raySceneReady = true;
+            available.shadowPipelineReady = true;
+            available.reflectionPipelineReady = true;
+            available.diffuseGiPipelineReady = true;
+            available.pathPipelineReady = true;
+            available.rasterSurfaceReady = true;
+            const auto plan = renderer::ResolveRenderPlan(source.render, source.render.modeRequest,
+                { true, true, true }, { true, true, true, true }, available);
+            ASSERT_TRUE(plan.IsValid());
+            EXPECT_EQ(plan.requestedMode, mode);
+            EXPECT_EQ(plan.pathProfile, profile);
+            EXPECT_EQ(plan.effectiveMode, renderer::RenderMode::RASTER);
+            EXPECT_EQ(plan.fallbackReason, renderer::RenderPlanReason::DEVELOPER_MODE_REQUIRED);
+            EXPECT_FALSE(plan.NeedsRayScene());
+            ASSERT_TRUE(source.Save(File()));
+            ProjectSettings restored;
+            ASSERT_TRUE(restored.Load(File()));
+            EXPECT_EQ(restored.render.pipeline, source.render.pipeline);
+            EXPECT_EQ(restored.render.modeRequest.mode, mode);
+            EXPECT_EQ(restored.render.modeRequest.pathProfile, profile);
+            EXPECT_TRUE(restored.render.modeRequest.rayShadow);
+            EXPECT_FALSE(restored.render.modeRequest.rayReflection);
+            EXPECT_TRUE(restored.render.modeRequest.rayDiffuseGi);
+        }
+    }
+}
+
 TEST_F(RenderModeSettingsTest, ParseFailurePreservesTheEarlierRequest)
 {
     Write("[render\nmode = 'Hybrid'\n");

@@ -46,14 +46,27 @@ protected:
         } else emitter.runtime.particles.resize(1);
         return go.GetID();
     }
-    renderer::RenderScene Snapshot()
+    renderer::RenderScene Snapshot(bool experimentalRayTracingEnabled = true)
     {
         renderer::RenderScene snapshot;
         snapshot.sceneGeneration = m_scene.GetRenderSceneGeneration();
-        scene::ExtractRayParticleSources(m_scene, snapshot);
+        scene::ExtractRayParticleSources(m_scene, snapshot, experimentalRayTracingEnabled);
         return snapshot;
     }
 };
+
+TEST_F(RayParticleCoverageTest, DisabledExperimentalSessionSkipsParticleCoverageWithoutChangingParticles)
+{
+    const auto id = AddEmitter();
+    const auto* emitter = m_scene.GetComponent<scene::ParticleEmitter>(id);
+    const auto simulationFrame = emitter->runtime.lastCpuSimulationFrame;
+    EXPECT_TRUE(Snapshot(false).rayUnsupportedEffects.empty());
+    EXPECT_EQ(Snapshot(true).rayUnsupportedEffects.size(), 1u);
+    EXPECT_TRUE(Snapshot(false).rayUnsupportedEffects.empty());
+    EXPECT_EQ(emitter->runtime.particles.size(), 1u);
+    EXPECT_TRUE(emitter->runtime.isCulledThisFrame);
+    EXPECT_EQ(emitter->runtime.lastCpuSimulationFrame, simulationFrame);
+}
 
 TEST_F(RayParticleCoverageTest, OffscreenNonLightParticlesKeepTheirOwnerAndDoNotMutateRasterState)
 {
@@ -196,13 +209,24 @@ protected:
         fiber.m_materialPath = m_materialPath;
         return go.GetID();
     }
-    renderer::RenderScene Snapshot(renderer::RenderScene output = {})
+    renderer::RenderScene Snapshot(renderer::RenderScene output = {}, bool experimentalRayTracingEnabled = true)
     {
         output.sceneGeneration = m_scene.GetRenderSceneGeneration();
-        scene::ExtractRayFiberSources(m_scene, m_resources, output);
+        scene::ExtractRayFiberSources(m_scene, m_resources, output, experimentalRayTracingEnabled);
         return output;
     }
 };
+
+TEST_F(RayFiberCoverageTest, DisabledExperimentalSessionSkipsFiberCoverageWithoutUploadingGeometry)
+{
+    const auto id = AddFiber();
+    EXPECT_TRUE(Snapshot({}, false).rayUnsupportedEffects.empty());
+    EXPECT_EQ(Snapshot({}, true).rayUnsupportedEffects.size(), 1u);
+    EXPECT_TRUE(Snapshot({}, false).rayUnsupportedEffects.empty());
+    EXPECT_EQ(m_renderer.bufferCreations, 0u);
+    EXPECT_FALSE(m_scene.GetComponent<scene::MeshRenderer>(id)->lodVisible);
+    EXPECT_EQ(m_scene.GetComponent<scene::FiberComponent>(id)->m_renderIdentity, 0u);
+}
 
 TEST_F(RayFiberCoverageTest, OffscreenRendererLodDoesNotDropFiberOwnerOrChangeRasterVisibility)
 {
