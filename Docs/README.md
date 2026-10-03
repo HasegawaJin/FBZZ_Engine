@@ -55,6 +55,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [audio-system.md](design/audio-system.md) | 手続き音生成 (`.synth`) と Mixer Bus の階層 |
 | [cursor.md](design/cursor.md) | カーソルの要求スタックと見た目の分離 |
 | [crash-report.md](design/crash-report.md) | クラッシュ情報の収集と報告 |
+| [profiler.md](design/profiler.md) | Performance / Script Profiler と Memory Debug の分割、計測と履歴、障害復旧、既存 API の移行契約 (Draft) |
 | [developer-mode.md](design/developer-mode.md) | 開発者モードの設定と機能 |
 | [gamehub-update-notice.md](design/gamehub-update-notice.md) | GameHub の新しい版の通知 |
 | [script-dll-recovery.md](design/script-dll-recovery.md) | Scripts DLL の読み込み失敗と復帰 |
