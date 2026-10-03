@@ -60,6 +60,18 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
 
     /// @note 最遠 (Reversed-Z で 0) はジオメトリの無い空・背景なので捨てる。
     float  ndcDepth = texDepth.Sample(sampGBuffer, uv).r;
+    /// @note discard・Hybrid の早期 return・カスケード選択より前に微分し、クアッド内の分岐で勾配を壊さない。
+    float3 worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
+    float3 worldPositionDx = ddx(worldPos);
+    float3 worldPositionDy = ddy(worldPos);
+    const float viewDepth = mul(float4(worldPos, 1.0f), view).z;
+    const float2 viewDepthDelta = float2(ddx(viewDepth), ddy(viewDepth));
+    /// @note 隣接画素で前方距離が 5% を超えて跳ぶ輪郭では、別面を受光平面へ混ぜず既存 bias へ戻す。
+    if (max(abs(viewDepthDelta.x), abs(viewDepthDelta.y)) > max(abs(viewDepth), nearZ) * 0.05f)
+    {
+        worldPositionDx = float3(0.0f, 0.0f, 0.0f);
+        worldPositionDy = float3(0.0f, 0.0f, 0.0f);
+    }
     if (IsFarDepth(ndcDepth)) discard;
 
     float4 gb0    = texGBuffer0.Sample(sampGBuffer, uv);
@@ -89,8 +101,6 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     rough = clamp(rough, 0.045f, 1.0f);
     met   = saturate(met);
 
-    float3 worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
-
     float ao = 1.0f;
     if (ssaoIntensity > 0.0f)
     {
@@ -100,8 +110,9 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
 
     float3 V      = SafeNormalize(cameraPos - worldPos, N);
     float3 L      = SafeNormalize(-lightDir, N);
-    float  shadow = ComputeShadow(texShadow, sampShadow, worldPos,
-                                  lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    float  shadow = ComputeShadowSurface(texShadow, sampShadow, worldPos,
+        lightViewProjection, shadowMapTexelSize, shadowBias, N, L,
+        worldPositionDx, worldPositionDy);
 
     /// @note 無効時は RenderSystem が contactShadowStrength=0 を入れるので、未バインドの t24 を読まずに済む。
     /// @note マスクは ContactShadows.cs が strength を織り込み済み。半解像度でも正規化 UV + Linear Clamp でバイリニアに拡大される。

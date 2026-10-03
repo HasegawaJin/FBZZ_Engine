@@ -78,6 +78,206 @@ struct GBufferMaterialCB {
 };
 static_assert(sizeof(GBufferMaterialCB) == 96);
 
+TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlockerShadow)
+{
+    constexpr uint32_t extent = 64;
+    constexpr uint32_t shadowExtent = 16;
+    auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, extent, extent);
+    ASSERT_NE(bundle.renderer, nullptr);
+    auto& device = *bundle.renderer;
+    device.SetRenderWhenOccluded(true);
+    {
+        renderer::ResourceManager resources(device);
+        const auto shaderRoot = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
+        const auto loadShader = [&](const char* relative) {
+            return resources.LoadShader((shaderRoot / relative).generic_string());
+        };
+        const auto shadowShader = loadShader("Pipeline/Shadow/ShadowMap.hlsl");
+        const auto geometryShader = loadShader("Pipeline/Deferred/GBuffer.hlsl");
+        const auto lightingShader = loadShader("Pipeline/Deferred/DeferredLighting.hlsl");
+        const auto shadowTarget = resources.CreateRenderTarget(shadowExtent, shadowExtent, 0);
+        const auto gbuffer = resources.CreateRenderTarget(extent, extent,
+            renderer::CameraDepthTargetDesc(renderer::GBUFFER_COLOR_COUNT));
+        const auto hdr = resources.CreateRenderTarget(extent, extent,
+            renderer::RenderTargetDesc{1, renderer::Format::RGBA16F, false});
+        const auto geometryState = resources.CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,
+            renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON});
+        const auto lightingState = resources.CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,
+            renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF});
+        ASSERT_TRUE(shadowShader && geometryShader && lightingShader && shadowTarget && gbuffer && hdr
+            && geometryState && lightingState);
+
+        /// @note The real rasterized receiver rises 1.2m per horizontal metre; no blocker exists in the self-shadow cases.
+        const math::Vector3 normal = math::Vector3{1.2f, 0, -1}.Normalized();
+        const math::Vector3 tangent = math::Vector3{1, 0, 1.2f}.Normalized();
+        const renderer::Vertex receiver[] = {
+            {{-1, -1, 1.8f}, normal, tangent, {0, 1}},
+            {{-1,  1, 1.8f}, normal, tangent, {0, 0}},
+            {{ 1, -1, 4.2f}, normal, tangent, {1, 1}},
+            {{ 1, -1, 4.2f}, normal, tangent, {1, 1}},
+            {{-1,  1, 1.8f}, normal, tangent, {0, 0}},
+            {{ 1,  1, 4.2f}, normal, tangent, {1, 0}},
+        };
+        /// @note A separate opaque blocker is closer to the light; it changes only the shadow producer, not the visible receiver.
+        const renderer::Vertex blocker[] = {
+            {{-0.7f, -0.7f, 1}, {0, 0, -1}, {1, 0, 0}, {0, 1}},
+            {{-0.7f,  0.7f, 1}, {0, 0, -1}, {1, 0, 0}, {0, 0}},
+            {{ 0.7f, -0.7f, 1}, {0, 0, -1}, {1, 0, 0}, {1, 1}},
+            {{ 0.7f, -0.7f, 1}, {0, 0, -1}, {1, 0, 0}, {1, 1}},
+            {{-0.7f,  0.7f, 1}, {0, 0, -1}, {1, 0, 0}, {0, 0}},
+            {{ 0.7f,  0.7f, 1}, {0, 0, -1}, {1, 0, 0}, {1, 0}},
+        };
+        const auto receiverBuffer = resources.CreateVertexBuffer(receiver, sizeof(receiver), sizeof(renderer::Vertex));
+        const auto blockerBuffer = resources.CreateVertexBuffer(blocker, sizeof(blocker), sizeof(renderer::Vertex));
+        ASSERT_TRUE(receiverBuffer && blockerBuffer);
+
+        renderer::Camera camera;
+        camera.m_position = {};
+        camera.m_projection = renderer::ProjectionMode::Orthographic;
+        camera.m_orthoHeight = 2;
+        camera.m_aspect = 1;
+        camera.m_near = 0.1f;
+        camera.m_far = 20;
+        const auto frame = renderer::MakeCameraFrameCB(camera, 0, 0);
+        auto lightFrame = frame;
+        lightFrame.projection = camera.GetProjectionMatrix();
+        lightFrame.viewProjection = camera.GetViewProjection();
+        renderer::PerObjectCB object{};
+        object.world = object.worldInvTranspose = math::Matrix4::Identity();
+        GBufferMaterialCB material;
+        material.albedo = {0.5f, 0.5f, 0.5f, 1};
+        material.roughness = 0.8f;
+        material.emissiveScale = 0;
+        renderer::LightConstantsCB light{};
+        light.lightDir = {0, 0, 1};
+        light.lightColor = {1, 1, 1};
+        light.lightIntensity = 1;
+        /// @note Isolate direct visibility; ambient radiance remains even behind an opaque blocker.
+        light.ambientColor = {};
+        renderer::ShadowConstantsCB shadow{};
+        shadow.lightViewProjection = lightFrame.viewProjection;
+        shadow.shadowMapTexelSize[0] = shadow.shadowMapTexelSize[1] = 1.0f / shadowExtent;
+        shadow.shadowBias = 0.005f / (camera.m_far - camera.m_near);
+        shadow.cascadeCount = 1;
+        renderer::PostProcCB post{};
+        renderer::AdvancedGraphicsCB advanced{};
+        const auto frameCB = resources.CreateConstantBuffer(sizeof(frame));
+        const auto lightFrameCB = resources.CreateConstantBuffer(sizeof(lightFrame));
+        const auto objectCB = resources.CreateConstantBuffer(sizeof(object));
+        const auto materialCB = resources.CreateConstantBuffer(sizeof(material));
+        const auto lightCB = resources.CreateConstantBuffer(sizeof(light));
+        const auto shadowCB = resources.CreateConstantBuffer(sizeof(shadow));
+        const auto postCB = resources.CreateConstantBuffer(sizeof(post));
+        const auto advancedCB = resources.CreateConstantBuffer(sizeof(advanced));
+        ASSERT_TRUE(frameCB && lightFrameCB && objectCB && materialCB && lightCB && shadowCB && postCB && advancedCB);
+
+        const auto render = [&](int pcfRadius, float strength, bool hasBlocker) {
+            resources.AdvanceFrame();
+            device.BeginFrame();
+            shadow.shadowPcfRadius = pcfRadius;
+            shadow.shadowStrength = strength;
+            resources.Update(frameCB, &frame, sizeof(frame));
+            resources.Update(lightFrameCB, &lightFrame, sizeof(lightFrame));
+            resources.Update(objectCB, &object, sizeof(object));
+            resources.Update(materialCB, &material, sizeof(material));
+            resources.Update(lightCB, &light, sizeof(light));
+            resources.Update(shadowCB, &shadow, sizeof(shadow));
+            resources.Update(postCB, &post, sizeof(post));
+            resources.Update(advancedCB, &advanced, sizeof(advanced));
+
+            device.SetRenderTarget(shadowTarget, resources);
+            device.ClearDepth();
+            renderer::DrawCall caster;
+            caster.shader = shadowShader;
+            caster.pipelineState = geometryState;
+            caster.vertexBuffer = receiverBuffer;
+            caster.vertexCount = 6;
+            caster.constantBuffers[0] = lightFrameCB;
+            caster.constantBuffers[1] = objectCB;
+            device.Submit(caster, resources);
+            if (hasBlocker) {
+                caster.vertexBuffer = blockerBuffer;
+                device.Submit(caster, resources);
+            }
+
+            device.SetRenderTarget(gbuffer, resources);
+            device.Clear({0, 0, 0, 0});
+            renderer::DrawCall geometry;
+            geometry.shader = geometryShader;
+            geometry.pipelineState = geometryState;
+            geometry.vertexBuffer = receiverBuffer;
+            geometry.vertexCount = 6;
+            geometry.constantBuffers[0] = frameCB;
+            geometry.constantBuffers[1] = objectCB;
+            geometry.constantBuffers[2] = materialCB;
+            geometry.constantBuffers[8] = advancedCB;
+            device.Submit(geometry, resources);
+
+            device.SetRenderTarget(hdr, resources);
+            device.Clear({0, 0, 0, 0});
+            renderer::DrawCall lighting;
+            lighting.shader = lightingShader;
+            lighting.pipelineState = lightingState;
+            lighting.vertexCount = 3;
+            lighting.constantBuffers[0] = frameCB;
+            lighting.constantBuffers[3] = lightCB;
+            lighting.constantBuffers[4] = shadowCB;
+            lighting.constantBuffers[5] = postCB;
+            lighting.constantBuffers[8] = advancedCB;
+            lighting.textures[3] = resources.GetColorTexture(gbuffer, 2);
+            lighting.textures[5] = resources.GetColorTexture(gbuffer, 0);
+            lighting.textures[6] = resources.GetColorTexture(gbuffer, 1);
+            lighting.textures[7] = resources.GetDepthTexture(gbuffer);
+            /// @note DeferredLighting.hlsl binds directional depth at TEX_SHADOW_SLOT (t8).
+            lighting.textures[8] = resources.GetDepthTexture(shadowTarget);
+            device.Submit(lighting, resources);
+            device.SetRenderTarget({}, resources);
+            device.EndFrame();
+            std::vector<float> pixels;
+            uint32_t width = 0, height = 0;
+            EXPECT_TRUE(device.CaptureRenderTargetToLinearRGBA(hdr, resources, pixels, width, height));
+            EXPECT_EQ(width, extent);
+            EXPECT_EQ(height, extent);
+            return pixels;
+        };
+
+        for (int radius : {2, 3}) {
+            SCOPED_TRACE(radius);
+            const auto unshadowed = render(radius, 0, false);
+            const auto selfShadow = render(radius, 1, false);
+            const auto blocked = render(radius, 1, true);
+            ASSERT_EQ(unshadowed.size(), extent * extent * 4u);
+            ASSERT_EQ(selfShadow.size(), unshadowed.size());
+            ASSERT_EQ(blocked.size(), unshadowed.size());
+            /// @note Ignore raster borders; the entire checked region is the same isolated planar receiver in all three draws.
+            for (uint32_t y = 16; y < 48; ++y) {
+                for (uint32_t x = 16; x < 48; ++x) {
+                    const size_t offset = (y * extent + x) * 4;
+                    for (size_t channel = 0; channel < 3; ++channel) {
+                        ASSERT_TRUE(std::isfinite(unshadowed[offset + channel]));
+                        ASSERT_GT(unshadowed[offset + channel], 0.05f);
+                        EXPECT_TRUE(std::isfinite(selfShadow[offset + channel]));
+                        EXPECT_TRUE(std::isfinite(blocked[offset + channel]));
+                        EXPECT_NEAR(selfShadow[offset + channel], unshadowed[offset + channel], 0.001f)
+                            << "pixel=" << x << ',' << y << " channel=" << channel;
+                    }
+                }
+            }
+            /// @note The blocker covers every central PCF tap; preserving its strong shadow rejects a fix that simply disables occlusion.
+            for (uint32_t y = 28; y < 36; ++y) {
+                for (uint32_t x = 28; x < 36; ++x) {
+                    const size_t offset = (y * extent + x) * 4;
+                    for (size_t channel = 0; channel < 3; ++channel)
+                        EXPECT_LT(blocked[offset + channel], unshadowed[offset + channel] * 0.1f)
+                            << "pixel=" << x << ',' << y << " channel=" << channel;
+                }
+            }
+        }
+        resources.Reset();
+    }
+    device.Shutdown();
+}
+
 TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
 {
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, 64, 64);
