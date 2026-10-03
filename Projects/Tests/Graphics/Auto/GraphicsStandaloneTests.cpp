@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #include <TestKit/TestKit.hpp>
+#include <Graphics/Pipeline/EnvironmentResources.hpp>
 #include <Graphics/Pipeline/GeometryPipeline.hpp>
 #include <Graphics/Pipeline/RenderPipeline.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
@@ -31,6 +32,182 @@
 namespace fbzz::tests {
 namespace {
 class GraphicsStandaloneTest : public testkit::Fixture {};
+
+TEST_F(GraphicsStandaloneTest, SkyCacheCapturesFirstSignatureAndReusesUnchangedSky)
+{
+    renderer::EnvironmentResources environment;
+    renderer::EnvironmentResources::SkySignature signature;
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 0.0f, 1));
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 0.5f, 2));
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 100.0f, 3));
+    environment.MarkDirty();
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 100.0f, 4));
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 101.0f, 5));
+}
+
+TEST_F(GraphicsStandaloneTest, SkyCacheCapturesOnlyOnceAcrossCamerasInOneFrame)
+{
+    renderer::EnvironmentResources environment;
+    renderer::EnvironmentResources::SkySignature signature;
+    signature.cloudEnabled = true;
+    ASSERT_TRUE(environment.ConsumeDirty(signature, 0.0f, 1));
+    signature.capturePosition = {100.0f, 0.0f, 0.0f};
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 1.0f, 1));
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 1.0f, 2));
+    signature.capturePosition = {200.0f, 0.0f, 0.0f};
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 2.0f, 2));
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 2.0f, 3));
+}
+
+TEST_F(GraphicsStandaloneTest, SkyCacheCloudConfigurationChangesCaptureWithoutWaiting)
+{
+    using CloudVectorMember = math::Vector4 renderer::RenderCloudConstants::*;
+    using VectorScalarMember = float math::Vector4::*;
+    const std::array<CloudVectorMember, 11> vectorMembers{{
+        &renderer::RenderCloudConstants::cloudLayer,
+        &renderer::RenderCloudConstants::cloudNoise,
+        &renderer::RenderCloudConstants::cloudWind,
+        &renderer::RenderCloudConstants::cloudLighting,
+        &renderer::RenderCloudConstants::cloudAlbedo,
+        &renderer::RenderCloudConstants::cloudWeather,
+        &renderer::RenderCloudConstants::cloudShading,
+        &renderer::RenderCloudConstants::cloudProfile,
+        &renderer::RenderCloudConstants::cloudRange,
+        &renderer::RenderCloudConstants::cloudSunTint,
+        &renderer::RenderCloudConstants::cloudAmbTint
+    }};
+    const std::array<VectorScalarMember, 4> scalarMembers{{
+        &math::Vector4::x, &math::Vector4::y, &math::Vector4::z, &math::Vector4::w
+    }};
+    size_t checkedCount = 0;
+    for (size_t vectorIndex = 0; vectorIndex < vectorMembers.size(); ++vectorIndex) {
+        for (size_t scalarIndex = 0; scalarIndex < scalarMembers.size(); ++scalarIndex) {
+            /// @note cloudNoise.z はシミュレーション時刻で、即時更新する編集パラメータではない。
+            if (vectorMembers[vectorIndex] == &renderer::RenderCloudConstants::cloudNoise
+                && scalarMembers[scalarIndex] == &math::Vector4::z) continue;
+            SCOPED_TRACE("cloud vector=" + std::to_string(vectorIndex)
+                + " scalar=" + std::to_string(scalarIndex));
+            renderer::EnvironmentResources environment;
+            renderer::EnvironmentResources::SkySignature signature;
+            signature.cloudEnabled = true;
+            ASSERT_TRUE(environment.ConsumeDirty(signature, 0.0f, 1));
+            (signature.cloud.*vectorMembers[vectorIndex]).*scalarMembers[scalarIndex] = 0.01f;
+            EXPECT_TRUE(environment.ConsumeDirty(signature, 0.001f, 2));
+            EXPECT_FALSE(environment.ConsumeDirty(signature, 1.0f, 3));
+            ++checkedCount;
+        }
+    }
+    EXPECT_EQ(checkedCount, 43u);
+}
+
+TEST_F(GraphicsStandaloneTest, SkyCacheCloudEnableAndDisableCaptureImmediately)
+{
+    renderer::EnvironmentResources environment;
+    renderer::EnvironmentResources::SkySignature signature;
+    ASSERT_TRUE(environment.ConsumeDirty(signature, 0.0f, 1));
+    signature.cloudEnabled = true;
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 0.001f, 2));
+    signature.cloudEnabled = false;
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 0.002f, 3));
+    signature.cloud.cloudLayer.x = 10.0f;
+    signature.cloud.cloudNoise.z = 10.0f;
+    signature.capturePosition.x = 100.0f;
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 1.0f, 4));
+}
+
+TEST_F(GraphicsStandaloneTest, SkyCacheMovingCloudsWaitHalfASecondForWindOrEvolution)
+{
+    for (const bool useWind : {false, true}) {
+        SCOPED_TRACE(useWind);
+        renderer::EnvironmentResources environment;
+        renderer::EnvironmentResources::SkySignature signature;
+        signature.cloudEnabled = true;
+        if (useWind) signature.cloud.cloudWind.y = 1.0f;
+        else signature.cloud.cloudWeather.w = 1.0f;
+        ASSERT_TRUE(environment.ConsumeDirty(signature, 0.0f, 1));
+        signature.cloud.cloudNoise.z = 1.0f;
+        EXPECT_FALSE(environment.ConsumeDirty(signature, 0.499f, 2));
+        EXPECT_TRUE(environment.ConsumeDirty(signature, 0.5f, 3));
+        EXPECT_FALSE(environment.ConsumeDirty(signature, 0.75f, 4));
+        signature.cloud.cloudNoise.z = 2.0f;
+        EXPECT_FALSE(environment.ConsumeDirty(signature, 0.999f, 5));
+        EXPECT_TRUE(environment.ConsumeDirty(signature, 1.0f, 6));
+    }
+}
+
+TEST_F(GraphicsStandaloneTest, SkyCachePausedCloudTimeUsesRealElapsedSecondsAndCaptureAnchor)
+{
+    renderer::EnvironmentResources environment;
+    renderer::EnvironmentResources::SkySignature signature;
+    signature.cloudEnabled = true;
+    signature.cloud.cloudWind.y = 1.0f;
+    signature.cloud.cloudNoise.z = 8.0f;
+    ASSERT_TRUE(environment.ConsumeDirty(signature, 10.0f, 1));
+    signature.capturePosition.x = 49.0f;
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 10.25f, 2));
+    signature.capturePosition.x = 50.0f;
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 10.499f, 3));
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 10.5f, 4));
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 11.0f, 5));
+    signature.capturePosition.x = 60.0f;
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 11.1f, 6));
+    signature.capturePosition.x = 100.0f;
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 11.2f, 7));
+}
+
+TEST_F(GraphicsStandaloneTest, SkyCacheStaticCloudsIgnoreSimulationTimeChanges)
+{
+    renderer::EnvironmentResources environment;
+    renderer::EnvironmentResources::SkySignature signature;
+    signature.cloudEnabled = true;
+    ASSERT_TRUE(environment.ConsumeDirty(signature, 0.0f, 1));
+    signature.cloud.cloudNoise.z = 1.0f;
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 0.5f, 2));
+    signature.cloud.cloudNoise.z = 100.0f;
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 100.0f, 3));
+}
+
+TEST_F(GraphicsStandaloneTest, SkyCacheSunAndAtmosphereChangesWaitThirtyThreeMilliseconds)
+{
+    using Signature = renderer::EnvironmentResources::SkySignature;
+    using ChangeSignature = void (*)(Signature&);
+    const std::array<ChangeSignature, 11> changes{{
+        [](Signature& signature) { signature.sunDirection = {1.0f, 0.0f, 0.0f}; },
+        [](Signature& signature) { signature.rayleigh.x += 0.01f; },
+        [](Signature& signature) { signature.mieScattering += 0.01f; },
+        [](Signature& signature) { signature.skyScatterIntensity += 0.01f; },
+        [](Signature& signature) { signature.mieG += 0.01f; },
+        [](Signature& signature) { signature.planetRadius += 0.01f; },
+        [](Signature& signature) { signature.atmosphereRadius += 0.01f; },
+        [](Signature& signature) { signature.lightColor.x += 0.01f; },
+        [](Signature& signature) { signature.ambientColor.x += 0.01f; },
+        [](Signature& signature) { signature.skyDimmer += 0.01f; },
+        [](Signature& signature) { ++signature.shaderVersion; }
+    }};
+    for (size_t index = 0; index < changes.size(); ++index) {
+        SCOPED_TRACE(index);
+        renderer::EnvironmentResources environment;
+        Signature signature;
+        ASSERT_TRUE(environment.ConsumeDirty(signature, 0.0f, 1));
+        changes[index](signature);
+        EXPECT_FALSE(environment.ConsumeDirty(signature, 0.032f, 2));
+        EXPECT_TRUE(environment.ConsumeDirty(signature, 0.033f, 3));
+        EXPECT_FALSE(environment.ConsumeDirty(signature, 1.0f, 4));
+    }
+}
+
+TEST_F(GraphicsStandaloneTest, SkyCacheSunMotionAccumulatesFromLastCapture)
+{
+    renderer::EnvironmentResources environment;
+    renderer::EnvironmentResources::SkySignature signature;
+    ASSERT_TRUE(environment.ConsumeDirty(signature, 0.0f, 1));
+    signature.sunDirection = math::Vector3{0.01f, -1.0f, 0.0f}.Normalized();
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 1.0f, 2));
+    signature.sunDirection = math::Vector3{0.02f, -1.0f, 0.0f}.Normalized();
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 2.0f, 3));
+    signature.sunDirection = math::Vector3{0.03f, -1.0f, 0.0f}.Normalized();
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 3.0f, 4));
+}
 
 TEST_F(GraphicsStandaloneTest, GpuProfilerKeepsPhysicalSubmissionAndViewPlanProvenance)
 {

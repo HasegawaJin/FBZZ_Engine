@@ -338,6 +338,7 @@ void RenderSharedResources::Initialize(ResourceManager& resources)
     proceduralColorLutHash = 0u;
 
     skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
+    skyCloudCaptureShader = resources.LoadShader("Assets/Shaders/Material/Sky/SkyCloudCapture.hlsl");
     sunMoonShader = resources.LoadShader("Assets/Shaders/Material/Sky/SunMoon.hlsl");
     skydomeMesh = CreateSkyMesh(resources);
 
@@ -1013,6 +1014,7 @@ void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPa
     passHandles.defaultPSO           = shared.defaultPSO;
     passHandles.wireframePSO         = shared.wireframePSO;
     passHandles.skyShader            = shared.skydomeShader;
+    passHandles.skyCloudCaptureShader = shared.skyCloudCaptureShader;
     passHandles.sunMoonShader        = shared.sunMoonShader;
     passHandles.skyPSO               = shared.skydomePSO;
     passHandles.sunMoonPSO           = shared.sunMoonPSO;

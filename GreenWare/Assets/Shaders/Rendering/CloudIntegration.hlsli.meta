@@ -1,0 +1,6 @@
+# @file    CloudIntegration.hlsli.meta
+# @brief   空 IBL 捕捉の共有シェーダー識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-03
+[meta]
+guid = 'f56a71072ab44e3bbf27cd93510e973e'

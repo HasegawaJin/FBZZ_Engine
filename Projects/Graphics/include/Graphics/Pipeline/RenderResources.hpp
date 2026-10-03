@@ -191,6 +191,7 @@ struct RenderSharedResources {
     ResourceHandle<TextureTag> proceduralColorLut{};
     uint64_t proceduralColorLutHash{};
     ResourceHandle<ShaderTag> skydomeShader{};
+    ResourceHandle<ShaderTag> skyCloudCaptureShader{};
     ResourceHandle<ShaderTag> sunMoonShader{};
     std::unique_ptr<Mesh> skydomeMesh;
     EnvironmentResources sEnvironmentResources{};

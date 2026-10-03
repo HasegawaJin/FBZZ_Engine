@@ -1252,6 +1252,7 @@ struct RenderPassHandles {
     renderer::ResourceHandle<renderer::PipelineStateTag>  wireframePSO;
 
     renderer::ResourceHandle<renderer::ShaderTag>         skyShader;
+    renderer::ResourceHandle<renderer::ShaderTag>         skyCloudCaptureShader;
     renderer::ResourceHandle<renderer::ShaderTag>         sunMoonShader;
     renderer::ResourceHandle<renderer::PipelineStateTag>  skyPSO;
     renderer::ResourceHandle<renderer::PipelineStateTag>  sunMoonPSO;
