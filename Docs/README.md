@@ -68,6 +68,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 
 | ファイル | 内容 |
 |---|---|
+| [dx12-agility-sdk.md](design/dx12-agility-sdk.md) | Agility SDK の EXE 指定、Graphics の非公開依存、SDK とゲーム配布、起動診断と受入条件 (Draft) |
 | [bindless.md](design/bindless.md) | ResourceDescriptorHeap によるディスクリプタ直引き。区画割り・枠の寿命・縮退規則 |
 | [dx11-removal.md](design/dx11-removal.md) | DirectX 11 の撤去理由・残した境界・旧設定の扱い。文書中の v1.0 表記は導入時の記録 |
 | [graphics-library.md](design/graphics-library.md) | Core / Graphics の物理分割、RenderScene 全入力の抽出、Forward / Deferred の構成境界、SDK と単独描画の検証。§8.2 が今回の実装範囲 |
