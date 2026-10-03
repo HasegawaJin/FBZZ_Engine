@@ -19,6 +19,8 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 - **ターミナルからのビルド禁止は «VS 開発者環境を知っているのが `VcBuild.ps1` だけ» が理由。** `AgentBuild.ps1` は同じ `Import-VisualStudioEnvironment` を通るので規約と両立する。AI が叩いてよいビルドの入口はこれだけ。
 - `check <files...>`: 所有する `.vcxproj` を探して `ClCompile` + `SelectedFiles` でコンパイルだけ行う (リンクしない = 起動中のエディターが DLL を掴んでいても通る)。ヘッダーを渡すと、それを include する `.cpp` を最大 3 本選んで代わりにコンパイルする。どの `.vcxproj` にも無いファイルは GLOB が古いので 1 度だけ再 configure する。
 - `build <target>` / `test [-Filter]`: `cmake --build` / `ctest`。LNK1168 はエディター起動中として分類して返す。
+- Editor の起動確認は `build FBZZSDK -Preset <preset>` で同構成を公開してから `SDK/<version>/tools/<Config>/Editor/FBZZEditor.exe` を使う。compile check と単体テストは build の作業ツリーを使う。起動先・更新の正本は [共有 Engine SDK](shared-engine-sdk.md) に従う。
+- `build <target> -Preset debug -BuildDirectory GreenWare/Build/VS`: 構成済み SDK consumer を同じ入口でビルドする。相対パスはリポジトリ基準。ビルド先と `CMAKE_HOME_DIRECTORY` はリポジトリ内の実在ディレクトリだけを許可し、リンク経由の参照も拒否する。既存 Visual Studio cache のビルド先と指定構成の一致を要求し、自動 configure は行わない。`-BuildDirectory` は build 専用で、通常の preset 選択と全体 BUSY 検査は維持する。
 - 出力は `ERROR path:line:col CODE message` の 1 行形式に畳み、重複を落とす。全文は `RESULT` 行の log= (最新は `build/agent/last-<verb>.txt` が指す)。終了コード 0 = 成功 / 1 = コードのエラー / 2 = 環境の失敗。
 - 構成ツリーは `development → debug → release` の順で CMakeCache のあるものを使う。
 - **ビルドは同時に 1 本だけ。** SDK 公開も `build/<Config>` から行うので、人のタスクと AI の検証は同じツリーで重なりうる。重なった MSBuild は中間ファイルを奪い合い、C1041 / C1083 / LNK1104 / MSB3491 という «コードのエラー» の形で落ちる。AI がそれを直そうとして正しいコードを壊すのを防ぐため、AgentBuild は始める前に `cl.exe` / `link.exe` / `MSBuild.exe` (ノード再利用の待機を除く) / `cmake.exe` / `ctest.exe` を探し、あれば `RESULT busy` (終了コード 2) で断る。途中で重なった形跡は `HINT CONTENDED` で返す。上書きの引数は持たせない (逃げ道があると常に使われる)。対処は verify-cpp スキルの «ビルドが重なったとき»。

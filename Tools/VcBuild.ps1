@@ -102,6 +102,21 @@ switch ($Verb) {
         }
 
         & cmake --build --preset $BuildPreset --parallel $jobs @CMakeArguments
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+        # @note 明示 target のない通常ビルドだけ、成功後に同じ preset の SDK を直列公開する。
+        # @see Docs/design/shared-engine-sdk.md
+        $hasExplicitTarget = $false
+        foreach ($argument in $CMakeArguments) {
+            if ($argument -eq '--') { break }
+            if ($argument -eq '--target' -or $argument -eq '-t' -or $argument.StartsWith('--target=')) {
+                $hasExplicitTarget = $true
+                break
+            }
+        }
+        if ($PresetKey -ne 'coverage' -and -not $hasExplicitTarget) {
+            & cmake --build --preset $BuildPreset --parallel $jobs --target FBZZSDK
+        }
         exit $LASTEXITCODE
     }
 

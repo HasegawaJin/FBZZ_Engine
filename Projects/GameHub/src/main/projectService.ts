@@ -1,18 +1,16 @@
-/**
- * @file projectService.ts
- * @brief プロジェクト検証、サムネイル取得、Editor 起動を OS 権限側へ集約する。
- * @author Hasegawa Jin
- * @date 2026/07/19
- */
+/// @file projectService.ts
+/// @brief プロジェクト検証、サムネイル取得、Editor 起動を OS 権限側へ集約する。
+/// @author Hasegawa Jin
+/// @date 2026/07/19
 
 import { shell } from 'electron';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile, spawn, type SpawnOptions } from 'node:child_process';
 import { promisify } from 'node:util';
 import { parse } from 'smol-toml';
-import { ENGINE_VERSION, type HubSettings, type ProjectEntry } from '../shared/contracts';
-import type { ConfigProject } from './configStore';
+import { ENGINE_VERSION, GetSdkEditorPath, type HubSettings, type ProjectEntry } from '../shared/contracts';
+import { AssertSdkEditorRuntime, type ConfigProject } from './configStore';
 
 const execFileAsync = promisify(execFile);
 
@@ -34,7 +32,7 @@ function escapeRegExp(text: string): string {
 }
 
 export class ProjectService {
-  // 起動処理中のプロジェクト。spawn が返るまでの連打を弾く。
+  /// @note spawn 完了まで同じプロジェクトの起動要求を受け付けない。
   private readonly launching = new Set<string>();
 
   createPendingProjects(configProjects: ConfigProject[]): ProjectEntry[] {
@@ -77,7 +75,6 @@ export class ProjectService {
     if (!await exists(projectRoot)) return empty;
     empty.pathExists = true;
 
-    // 独立した検証I/Oを同時に開始し、プロジェクトごとの直列待ちをなくす。
     const [cmakeExists, layoutChecks, generatedChecks, thumbnailDataUrl, projectFile] = await Promise.all([
       exists(path.join(projectRoot, 'CMakeLists.txt')),
       Promise.all(['Assets', 'Src', 'Include'].map((name) => exists(path.join(projectRoot, name)))),
@@ -103,7 +100,7 @@ export class ProjectService {
       empty.engineVersionMismatch = empty.engineVersion !== '-' && empty.engineVersion !== ENGINE_VERSION;
       empty.migrationRequired = empty.engineVersionMismatch || !empty.sdkId;
     } catch {
-      // 壊れたプロジェクトも一覧から消さず、修復できるよう状態として返す。
+      /// @note 壊れたプロジェクトも修復対象として一覧に残す。
     }
     return empty;
   }
@@ -124,12 +121,13 @@ export class ProjectService {
     try {
       if (!sdkRoot) throw new Error('プロジェクトが要求するFBZZ SDKがSDK storeにありません。');
       const editorPath = await this.resolveEditorPath(settings, sdkRoot);
-      if (!editorPath) throw new Error(`SDK ${settings.sdkConfiguration}用FBZZEditor.exeが見つかりません。`);
-      // WHY: 同じプロジェクトを 2 つの Editor で開くと .meta とシーンの書き換えが競合する。
+      if (!editorPath) throw new Error(`SDK ${settings.sdkConfiguration}用FBZZEditor.exeが見つかりません。同じ構成のSDKを公開してください。`);
+      /// @note 二重起動による .meta とシーンの同時書換えを防ぐ。
       if (await this.isOpenInEditor(editorPath, projectRoot)) {
         throw new Error(`${path.basename(projectRoot)} は既に Editor で開いています。先に閉じてください。`);
       }
-      await this.spawnEditor(editorPath, projectRoot, sdkRoot);
+      await AssertSdkEditorRuntime(sdkRoot, settings.sdkConfiguration);
+      await this.spawnEditor(editorPath, projectRoot, path.resolve(sdkRoot));
     } finally {
       this.launching.delete(projectRoot);
     }
@@ -147,18 +145,18 @@ export class ProjectService {
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
-        // Editor・CMake・AssetManagerへ同じimmutable SDKを渡し、ソースツリー探索を禁止する。
+        cwd: path.dirname(editorPath),
+        /// @note Editor・CMake・AssetManager は起動先と同じ SDK を使う。
         env: {
           ...process.env,
           FBZZ_SDK_ROOT: sdkRoot,
           FBZZ_ENGINE_ASSET_ROOT: path.join(sdkRoot, 'share', 'fbzz', 'Assets'),
-          // Shared SDK は immutable artifact であり、Engine ソースの鮮度判定・再ビルド対象ではない。
+          /// @note Engine 更新は SDK 公開が担当し、部分的な source rebuild を起動しない。
           FBZZ_SKIP_ENGINE_REBUILD: '1',
         },
       };
-      // WHY: Windows では短命の start ブローカーに Editor を生成させ、GameHub が
-      //      Editor の直接の親・lifetime owner にならないようにする。
-      //      shell オプションは使わず引数配列で渡し、プロジェクトパスをコマンドとして解釈させない。
+      /// @note Windows の start ブローカーで Editor の寿命を GameHub から切り離す。
+      /// @note shell オプションを使わず引数配列で渡す。
       const launcher = process.platform === 'win32'
         ? spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', 'start', '', '/normal', editorPath, ...editorArgs], launchOptions)
         : spawn(editorPath, editorArgs, launchOptions);
@@ -172,14 +170,11 @@ export class ProjectService {
     });
   }
 
-  /**
-   * 同じプロジェクトを `--project` で開いている Editor プロセスがあるか。
-   * Windows 以外と問い合わせ失敗時は false (起動を止める根拠が無いので通す)。
-   */
+  /// @return Windows 以外と問い合わせ失敗時は false。
   private async isOpenInEditor(editorPath: string, projectRoot: string): Promise<boolean> {
     if (process.platform !== 'win32') return false;
     const executableName = path.basename(editorPath).replaceAll("'", "''");
-    // 非 ASCII のプロジェクトパスが OEM コードページで化けて照合に失敗しないよう UTF-8 で受ける。
+    /// @note 非 ASCII のプロジェクトパスも UTF-8 で照合する。
     const script = '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; '
       + `Get-CimInstance Win32_Process -Filter "Name='${executableName}'" | ForEach-Object { $_.CommandLine }`;
     try {
@@ -188,7 +183,7 @@ export class ProjectService {
         timeout: 5_000,
         encoding: 'utf8',
       });
-      // 前後を空白か引用符で区切り、`C:\Games\Foo` が `C:\Games\FooBar` に一致しないようにする。
+      /// @note プロジェクトパスの末尾も照合し、同じ接頭辞の別プロジェクトを除く。
       const pattern = new RegExp(`(^|[\\s"])${escapeRegExp(projectRoot)}("|\\s|$)`, 'i');
       return stdout.split(/\r?\n/).some((line) => pattern.test(line));
     } catch (error) {
@@ -207,13 +202,8 @@ export class ProjectService {
   }
 
   private async resolveEditorPath(settings: HubSettings, sdkRoot: string): Promise<string | null> {
-    const candidates = [
-      settings.editorExe,
-      path.join(sdkRoot, 'tools', settings.sdkConfiguration, 'Editor', 'FBZZEditor.exe'),
-    ].filter(Boolean);
-    for (const candidate of candidates) {
-      if (await exists(candidate)) return candidate;
-    }
-    return null;
+    /// @note legacy editorExe を使わず、解決済みプロジェクト SDK の構成だけを起動する。
+    const editorPath = path.resolve(GetSdkEditorPath(sdkRoot, settings.sdkConfiguration));
+    try { return (await stat(editorPath)).isFile() ? editorPath : null; } catch { return null; }
   }
 }
