@@ -1706,6 +1706,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             waterTbl.insert("resolutionX",         static_cast<int64_t>(water->resolutionX));
             waterTbl.insert("resolutionZ",         static_cast<int64_t>(water->resolutionZ));
             waterTbl.insert("chunkCount",          static_cast<int64_t>(water->chunkCount));
+            waterTbl.insert("cameraFocusedGrid",   water->cameraFocusedGrid);
+            waterTbl.insert("nearCellSize",        static_cast<double>(water->nearCellSize));
             waterTbl.insert("enableGerstnerWaves", water->enableGerstnerWaves);
             waterTbl.insert("waveAmplitudeScale",  static_cast<double>(water->waveAmplitudeScale));
             waterTbl.insert("buoyancyEnabled",     water->buoyancyEnabled);
@@ -2628,6 +2630,10 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
                 std::max<int64_t>(1, (*waterTbl)["resolutionZ"].value_or(int64_t{64})));
             water.chunkCount          = static_cast<uint32_t>(
                 std::max<int64_t>(1, (*waterTbl)["chunkCount"].value_or(int64_t{4})));
+            water.cameraFocusedGrid   = (*waterTbl)["cameraFocusedGrid"].value_or(false);
+            const float nearCellSize = static_cast<float>((*waterTbl)["nearCellSize"].value_or(2.0));
+            water.nearCellSize = std::isfinite(nearCellSize)
+                ? std::clamp(nearCellSize, 0.25f, 10.0f) : 2.0f;
             water.enableGerstnerWaves = (*waterTbl)["enableGerstnerWaves"].value_or(true);
             water.waveAmplitudeScale  = static_cast<float>((*waterTbl)["waveAmplitudeScale"].value_or(1.0));
             water.buoyancyEnabled     = (*waterTbl)["buoyancyEnabled"].value_or(true);

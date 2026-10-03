@@ -173,10 +173,17 @@ void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* materi
 
 math::Vector2 ResolveWaterCellSize(const WaterComponent& water, const Transform& transform)
 {
-    return {
+    math::Vector2 cell = {
         water.extentX * std::abs(transform.worldScale.x) / static_cast<float>((std::max)(water.resolutionX, 1u)),
         water.extentZ * std::abs(transform.worldScale.z) / static_cast<float>((std::max)(water.resolutionZ, 1u)),
     };
+    if (water.cameraFocusedGrid) {
+        /// @note 物理の波は最密区間のスペクトルを使い、SceneView と GameView のカメラ変更では動かさない。
+        const float nearCell = (std::clamp)(water.nearCellSize, 0.25f, 10.0f);
+        cell.x = (std::min)(cell.x, nearCell);
+        cell.y = (std::min)(cell.y, nearCell);
+    }
+    return cell;
 }
 
 void EmitWaterRipple(WaterComponent& water, const Transform& transform,

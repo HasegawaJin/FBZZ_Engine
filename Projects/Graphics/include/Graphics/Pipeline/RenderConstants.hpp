@@ -1032,7 +1032,7 @@ struct WaterCB {
     math::Vector4 sssParams;
     math::Vector4 reflectParams;
     math::Vector4 flowParams;
-    /// @note x = 方向広がり [0,1]。0 で «1 波 1 方向» の従来どおり。y = 有効な流れの本数。zw は予約。
+    /// @note x=方向広がり [0,1]、y=有効な流れの本数、zw=描画ビューが求めた集中格子のローカル中心。
     math::Vector4 waveShapeParams;
     /// @note 流れの場が水面へ出す形。xy = 中心のワールド XZ [m], z = 影響半径 [m], w = 変位 [m] (符号つき)。
     /// @note 本数は waveShapeParams.y が持つ。
@@ -1047,10 +1047,12 @@ struct WaterCB {
     math::Vector4 surfaceFlowD[8];
     /// @note xyz = Baked の箱の半径 [m], w = 水面の基準面 Y − 場の中心 Y [m]。
     math::Vector4 surfaceFlowE[8];
+    /// @note x=近景格子の有効フラグ、y=近景の頂点間隔 [m]、zw=元格子の X/Z 分割数。
+    math::Vector4 gridParams;
 };
 /// @note Matrix4 x2 (128) + float4 x7 (112) + waveDir[4]/waveParams[4] (128) + float4 x5 (80)
-/// @note + surfaceFlowA〜E[8] (640)
-static_assert(sizeof(WaterCB) == 1088, "WaterCB size mismatch");
+/// @note + surfaceFlowA〜E[8] (640) + gridParams (16)
+static_assert(sizeof(WaterCB) == 1104, "WaterCB size mismatch");
 
 /// @note WaterEffectParams — Water.hlsl の MaterialConstants (b2) の C++ ミラー。
 struct WaterEffectParams {

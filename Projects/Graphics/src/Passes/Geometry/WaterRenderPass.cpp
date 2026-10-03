@@ -5,7 +5,9 @@
 #include <Graphics/Passes/Geometry/WaterRenderPass.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
+#include <Graphics/Effects/WaterGrid.hpp>
 #include "WaterNoiseBake.hpp"
+#include <algorithm>
 #include <cmath>
 namespace fbzz::renderer {
 namespace {
@@ -44,6 +46,34 @@ void ExpandByWaterWaveMargin(const WaterWaveMargin& margin, math::Vector3& outMi
     outMax.z += margin.horizontal;
     outMin.y -= margin.vertical;
     outMax.y += margin.vertical;
+}
+
+/// @brief 頂点シェーダーと同じ有限格子の写像をチャンクの境界へ適用する。
+/// @note 格子の集中はビューごとに異なる。抽出時の等間隔 AABB では近景チャンクを誤って捨てる。
+/// @see https://developer.nvidia.com/gpugems/gpugems2/part-ii-shading-lighting-and-shadows/chapter-18-using-vertex-texture-displacement GPU Gems 2 Chapter 18, camera-centered grid
+void FocusWaterChunkBounds(const RenderWaterInput& input, const math::Vector2& focus,
+                           math::Vector3& outMin, math::Vector3& outMax)
+{
+    if (input.constants.gridParams.x <= 0.5f) return;
+    const auto& world = input.constants.worldMatrix;
+    const math::Vector3 axisX = { world.m[0][0], world.m[1][0], world.m[2][0] };
+    const math::Vector3 axisZ = { world.m[0][2], world.m[1][2], world.m[2][2] };
+    auto mapAxis = [&](float minimum, float maximum, float extent, const math::Vector3& axis,
+                       uint32_t resolution, float axisFocus) {
+        const float axisScale = (std::max)(axis.Length(), 1.0e-4f);
+        const float nearCellSize = input.constants.gridParams.y / axisScale;
+        /// @note CPU/GPU の積和の丸めで中心の量子化が 1 セル違っても、見えるチャンクを捨てない。
+        return math::Vector2{
+            WaterGridAxisPosition(minimum / extent + 0.5f, extent, resolution, axisFocus, nearCellSize) - nearCellSize,
+            WaterGridAxisPosition(maximum / extent + 0.5f, extent, resolution, axisFocus, nearCellSize) + nearCellSize
+        };
+    };
+    const auto x = mapAxis(outMin.x, outMax.x, input.aabbMax.x - input.aabbMin.x, axisX,
+                           static_cast<uint32_t>(input.constants.gridParams.z), focus.x);
+    const auto z = mapAxis(outMin.z, outMax.z, input.aabbMax.z - input.aabbMin.z, axisZ,
+                           static_cast<uint32_t>(input.constants.gridParams.w), focus.y);
+    outMin.x = x.x; outMax.x = x.y;
+    outMin.z = z.x; outMax.z = z.y;
 }
 
 }
@@ -281,6 +311,14 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         const auto& waterWorld = input.constants.worldMatrix;
         const auto& margin = input.margin;
         auto cb = input.constants;
+        math::Vector2 focus{};
+        if (cb.gridParams.x > 0.5f) {
+            /// @note 上空では視線が当たる水面へ集中する。足元だけを細かくすると俯瞰の画面中央が粗いままになる。
+            focus = ResolveWaterGridFocus(waterWorld, camera.m_position, camera.GetForward(),
+                { cb.gridParams.z, cb.gridParams.w }, cb.gridParams.y);
+            cb.waveShapeParams.z = focus.x;
+            cb.waveShapeParams.w = focus.y;
+        }
         cb.wvpMatrix = jitteredVP * waterWorld;
         if (!ctx.handles.iblPrefilter.IsValid()) cb.reflectParams.x = 0;
         resources.Update(waterCBH, &cb, sizeof(cb));
@@ -296,6 +334,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             /// @note 地形チャンクと同様、カメラの Frustum Culling を切っている間は落とさない。
             math::Vector3 chunkMin = chunk.aabbMin;
             math::Vector3 chunkMax = chunk.aabbMax;
+            FocusWaterChunkBounds(input, focus, chunkMin, chunkMax);
             ExpandByWaterWaveMargin(margin, chunkMin, chunkMax);
             if (ctx.frustumCullingEnabled &&
                 !AabbVisible(frustum, waterWorld, chunkMin, chunkMax)) {

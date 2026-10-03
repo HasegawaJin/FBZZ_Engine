@@ -127,6 +127,10 @@ struct WaterComponent {
     /// @brief チャンク分割数。水面を chunkCount×chunkCount のサブメッシュに分割し、
     /// @brief チャンク単位でフラスタムカリングする。
     uint32_t chunkCount = 4;
+    /// @brief 各ビューのカメラ付近へ頂点を寄せ、有限矩形の外周を維持する。
+    bool cameraFocusedGrid = false;
+    /// @brief カメラ付近の目標頂点間隔 [m]。ワールド単位で、均一格子より粗くはしない。
+    float nearCellSize = 2.0f;
     /// @}
 
     /// @name 波 (個体ごとの補正。波そのものは .mat が持つ)
@@ -170,9 +174,8 @@ struct WaterComponent {
     std::array<GerstnerWave, 4> waves = {};
     /// @brief 水流の速度 [m/s] (ワールド XZ)。.mat の flowDirection × currentSpeed。
     math::Vector2 current = math::Vector2::ZERO;
-    /// @brief WaterSystem が毎フレーム書く «頂点グリッド 1 セルのワールド実寸» [m]。
-    /// @note 刻めない波長の Gerstner 波を寝かせる判断は、描画 (GPU) と浮力 (CPU) が同じ値を
-    ///       使う必要がある。片方だけ寝かせると平らな水面の上で物が揺れる。
+    /// @brief WaterSystem が毎フレーム書く最密区間の頂点間隔 [m]。
+    /// @note 浮力・水中判定はカメラに依存しない。この間隔を正本とし、遠景描画だけ実際の格子間隔で波を法線へ移す。
     math::Vector2 cellSize = math::Vector2::ZERO;
     /// @brief 波の «群» の深さ [0,1]。.mat の waveGrouping をそのまま持つ。
     float waveGrouping = 0.0f;
@@ -555,6 +558,8 @@ public:
         r.Field("resolutionX", resX);
         r.Field("resolutionZ", resZ);
         r.Field("chunkCount", chunks);
+        r.Field("cameraFocusedGrid", cameraFocusedGrid);
+        r.Field("nearCellSize", nearCellSize);
         r.Field("extentX", extentX);
         r.Field("extentZ", extentZ);
         r.Field("materialPath", materialPath);
@@ -571,6 +576,7 @@ public:
         chunkCount  = static_cast<uint32_t>((std::clamp)(chunks, 1, 64));
         extentX = (std::clamp)(extentX, 0.1f, 10000.0f);
         extentZ = (std::clamp)(extentZ, 0.1f, 10000.0f);
+        nearCellSize = (std::clamp)(nearCellSize, 0.25f, 10.0f);
         waveAmplitudeScale = (std::max)(waveAmplitudeScale, 0.0f);
         buoyancyDepth      = (std::max)(buoyancyDepth, 0.1f);
         if (resolutionX != oldResolutionX || resolutionZ != oldResolutionZ ||
