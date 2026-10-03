@@ -4,7 +4,9 @@
 # @date    2026-05-15
 cmake_minimum_required(VERSION 3.25)
 # @note 版はリリースのタグ (vX.Y.Z) と揃える。SDK の置き場所 SDK/<版>/ と Script DLL の ABI 署名もこの値から決まる (Docs/conventions/git.md)。
-project(FBZZEngine VERSION 0.9.1 LANGUAGES CXX)
+# @note Editor の miniz.c は C としてコンパイルするため、Ninja でも C のビルドルールを生成する。
+# @see https://cmake.org/cmake/help/latest/command/project.html LANGUAGES
+project(FBZZEngine VERSION 0.9.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
