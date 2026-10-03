@@ -1,3 +1,7 @@
+# @file    CMakeLists.txt
+# @brief   テストの生成と描画ランタイムの配置。
+# @author  Hasegawa Jin
+# @date    2026-05-15
 cmake_minimum_required(VERSION 3.25)
 project(GreenWare LANGUAGES CXX)
 
@@ -5,7 +9,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# WHY: 共有 SDK と同じ CRT を使用し、Script DLL が STL/C++ オブジェクトを渡す境界の ABI を固定する。
+# @note 共有 SDK と同じ CRT を使用し、Script DLL が STL/C++ オブジェクトを渡す境界の ABI を固定する。
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Development" CACHE STRING "Build configurations" FORCE)
 set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob1 /FS"            CACHE STRING "Development CXX flags"        FORCE)
@@ -16,9 +20,9 @@ if(MSVC)
     add_compile_options(/utf-8 /FS)
 endif()
 
-# WHY: 一度 CMakeCache に入った FBZZ_SDK_ROOT は環境変数より優先されるため、SDK を入れ替え・削除すると
-#      消えたディレクトリを指したまま固定され、find_package(FBZZ) が毎回失敗して復帰できなくなる。
-#      実体を失った cache 値は破棄し、FBZZ Hub が渡す現在の SDK を取り直す。
+# @note 一度 CMakeCache に入った FBZZ_SDK_ROOT は環境変数より優先されるため、SDK を入れ替え・削除すると
+# @note 消えたディレクトリを指したまま固定され、find_package(FBZZ) が毎回失敗して復帰できなくなる。
+# @note 実体を失った cache 値は破棄し、FBZZ Hub が渡す現在の SDK を取り直す。
 if(DEFINED FBZZ_SDK_ROOT AND NOT FBZZ_SDK_ROOT STREQUAL ""
    AND NOT EXISTS "${FBZZ_SDK_ROOT}/cmake/FBZZ/FBZZConfig.cmake")
     message(WARNING "FBZZ_SDK_ROOT '${FBZZ_SDK_ROOT}' no longer contains an SDK; re-resolving from the environment.")
@@ -31,8 +35,8 @@ endif()
 if(NOT DEFINED FBZZ_SDK_ROOT OR FBZZ_SDK_ROOT STREQUAL "")
     message(FATAL_ERROR "FBZZ_SDK_ROOT is required. Select the versioned SDK in FBZZ Hub.")
 endif()
-# WHY: find_package の失敗メッセージは候補ファイル名の羅列で原因が読み取りにくい。
-#      SDK 実体の欠落はここで名指しして弾き、Hub での再選択へ誘導する。
+# @note find_package の失敗メッセージは候補ファイル名の羅列で原因が読み取りにくい。
+# @note SDK 実体の欠落はここで名指しして弾き、Hub での再選択へ誘導する。
 if(NOT EXISTS "${FBZZ_SDK_ROOT}/cmake/FBZZ/FBZZConfig.cmake")
     message(FATAL_ERROR "FBZZ SDK not found at '${FBZZ_SDK_ROOT}'. Re-select the versioned SDK in FBZZ Hub.")
 endif()
@@ -53,7 +57,7 @@ set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEBUG       "${CMAKE_RUNTIME_OUTPUT_DIRECTORY
 set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_RELEASE     "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/Scripts.dll")
 set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEVELOPMENT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/Scripts.dll")
 
-# 共有 Editor がホットリロードするゲーム固有 Script DLL。
+# @note 共有 Editor がホットリロードするゲーム固有 Script DLL。
 file(GLOB_RECURSE SCRIPTS_DLL_SOURCES CONFIGURE_DEPENDS
     Assets/*.cpp
     Assets/*.hpp
@@ -66,16 +70,16 @@ set_target_properties(Scripts PROPERTIES OUTPUT_NAME "Scripts")
 target_compile_definitions(Scripts PRIVATE GAMESCRIPTS_EXPORTS)
 target_include_directories(Scripts PRIVATE Assets Src)
 target_link_libraries(Scripts PRIVATE FBZZ::Engine)
-# 全スクリプトが 1 つの翻訳単位 (GreenWareScriptsDll.cpp) に集まる。inline 定義が 100 本を
-# 超えたところで COFF のセクション上限 (C1128) に当たったので、大きいオブジェクト形式で出す。
+# @note 全スクリプトが 1 つの翻訳単位 (GreenWareScriptsDll.cpp) に集まる。inline 定義が 100 本を
+# @note 超えたところで COFF のセクション上限 (C1128) に当たったので、大きいオブジェクト形式で出す。
 target_compile_options(Scripts PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
 
-# Scripts だけをビルドしたときもランタイムを SDK と揃える。
-# これが無いと Binaries/ の FBZZEngine.dll は GreenWareStandalone を建てた日のまま
-# 取り残され、Scripts.dll とバージョンが食い違ったまま気付けない。
+# @note Scripts だけをビルドしたときもランタイムを SDK と揃える。
+# @note これが無いと Binaries/ の FBZZEngine.dll は GreenWareStandalone を建てた日のまま
+# @note 取り残され、Scripts.dll とバージョンが食い違ったまま気付けない。
 fbzz_stage_runtime(Scripts)
 
-# ゲーム側は共有 Editor を生成せず、配布・Play 用 Standalone だけを所有する。
+# @note ゲーム側は共有 Editor を生成せず、配布・Play 用 Standalone だけを所有する。
 add_executable(GreenWareStandalone
     Src/AppMain.cpp
     Src/GameMain.cpp
@@ -85,7 +89,7 @@ add_dependencies(GreenWareStandalone Scripts)
 target_compile_definitions(GreenWareStandalone PRIVATE FBZZ_STANDALONE_TARGET)
 target_include_directories(GreenWareStandalone PRIVATE Assets Include Src)
 target_link_libraries(GreenWareStandalone PRIVATE FBZZ::Engine shell32 user32)
-# GameMain.cpp も同じ全スクリプトを取り込むので同じ上限に当たる。
+# @note GameMain.cpp も同じ全スクリプトを取り込むので同じ上限に当たる。
 target_compile_options(GreenWareStandalone PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
 target_link_options(GreenWareStandalone PRIVATE
     "$<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS>"
@@ -98,3 +102,4 @@ configure_file(
     @ONLY
 )
 fbzz_stage_runtime(GreenWareStandalone)
+fbzz_enable_agility_sdk(GreenWareStandalone)

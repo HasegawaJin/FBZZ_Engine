@@ -1,12 +1,12 @@
-# FBZZ Engine
-# fbzz-sdk.toml | SDK
-# SDK の版数・ツールチェーン・ABI 契約
+# @file    fbzz-sdk.toml.in
+# @brief   SDK の版数、ABI と構成別ランタイム公開契約。
+# @author  Hasegawa Jin
+# @date    2026-07-15
 
 [sdk]
+schema = 2
 id = "@FBZZ_SDK_ID@"
 version = "@PROJECT_VERSION@"
-# SDK は version ごとに 1 つで、publish のたびに上書きされる。
-# ID から由来を追えないため、publish 時点の revision を manifest 側へ残す。
 source_revision = "@FBZZ_SDK_REVISION@"
 architecture = "x64"
 compiler = "MSVC"
@@ -17,3 +17,17 @@ runtime_debug = "MultiThreadedDebugDLL"
 runtime_development = "MultiThreadedDLL"
 runtime_release = "MultiThreadedDLL"
 abi_policy = "exact"
+
+[runtime]
+dx12_enabled = @FBZZ_SDK_DX12_ENABLED@
+fingerprint = "@FBZZ_SDK_RUNTIME_FINGERPRINT@"
+agility_package = "@FBZZ_AGILITY_PACKAGE_VERSION@"
+agility_sdk_version = @FBZZ_SDK_AGILITY_VERSION@
+agility_path = '@FBZZ_AGILITY_SDK_PATH@'
+core_file_version = "@FBZZ_AGILITY_CORE_FILE_VERSION@"
+core_sha256 = "@FBZZ_SDK_CORE_SHA256@"
+layers_sha256 = "@FBZZ_SDK_LAYERS_SHA256@"
+dxc_version = "@FBZZ_DXC_PACKAGE_VERSION@"
+dxc_exe_sha256 = "@FBZZ_SDK_DXC_EXE_SHA256@"
+dxc_compiler_sha256 = "@FBZZ_SDK_DXC_COMPILER_SHA256@"
+dxc_validator_sha256 = "@FBZZ_SDK_DXC_VALIDATOR_SHA256@"

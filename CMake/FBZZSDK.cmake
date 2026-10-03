@@ -58,6 +58,37 @@ endforeach()
 set(FBZZ_SDK_MSVC_VERSION "${MSVC_VERSION}")
 set(FBZZ_SDK_COMPILER_VERSION "${CMAKE_CXX_COMPILER_VERSION}")
 set(FBZZ_SDK_MSVC_TOOLSET_VERSION "${CMAKE_VS_PLATFORM_TOOLSET_VERSION}")
+set(FBZZ_SDK_DX12_ENABLED false)
+set(FBZZ_SDK_AGILITY_VERSION 0)
+set(FBZZ_AGILITY_SDK_PATH ".\\D3D12\\")
+set(FBZZ_SDK_CORE_SHA256 "")
+set(FBZZ_SDK_LAYERS_SHA256 "")
+set(FBZZ_SDK_DXC_EXE_SHA256 "")
+set(FBZZ_SDK_DXC_COMPILER_SHA256 "")
+set(FBZZ_SDK_DXC_VALIDATOR_SHA256 "")
+set(FBZZ_SDK_RUNTIME_CONTRACT "schema=2;dx12=${FBZZ_ENABLE_DX12}")
+if(FBZZ_ENABLE_DX12)
+    include("${CMAKE_SOURCE_DIR}/ThirdParty/AgilitySDK/VERSION")
+    include("${CMAKE_SOURCE_DIR}/ThirdParty/DXC/VERSION")
+    set(FBZZ_SDK_DX12_ENABLED true)
+    set(FBZZ_SDK_AGILITY_VERSION "${FBZZ_AGILITY_SDK_VERSION}")
+    set(FBZZ_SDK_CORE_SHA256 "${FBZZ_AGILITY_CORE_SHA256}")
+    set(FBZZ_SDK_LAYERS_SHA256 "${FBZZ_AGILITY_LAYERS_SHA256}")
+    set(FBZZ_SDK_DXC_EXE_SHA256 "${FBZZ_DXC_EXECUTABLE_SHA256}")
+    set(FBZZ_SDK_DXC_COMPILER_SHA256 "${FBZZ_DXC_COMPILER_SHA256}")
+    set(FBZZ_SDK_DXC_VALIDATOR_SHA256 "${FBZZ_DXC_VALIDATOR_SHA256}")
+    foreach(FBZZ_CONTRACT_FILE ThirdParty/AgilitySDK/VERSION ThirdParty/DXC/VERSION)
+        file(SHA256 "${CMAKE_SOURCE_DIR}/${FBZZ_CONTRACT_FILE}" FBZZ_CONTRACT_HASH)
+        string(APPEND FBZZ_SDK_RUNTIME_CONTRACT ";${FBZZ_CONTRACT_FILE}=${FBZZ_CONTRACT_HASH}")
+    endforeach()
+endif()
+# @note The canonical Editor layout and package contract apply equally to SDKs without DX12.
+foreach(FBZZ_CONTRACT_FILE CMake/FBZZAgilitySDK.cmake CMake/StageAgilitySDK.cmake CMake/AgilitySDKExports.cpp.in
+        CMake/SDK/fbzz-sdk.toml.in CMake/SDK/FBZZConfig.cmake.in CMake/SDK/StageFBZZSDK.cmake CMake/SDK/ValidateFBZZSDK.cmake)
+    file(SHA256 "${CMAKE_SOURCE_DIR}/${FBZZ_CONTRACT_FILE}" FBZZ_CONTRACT_HASH)
+    string(APPEND FBZZ_SDK_RUNTIME_CONTRACT ";${FBZZ_CONTRACT_FILE}=${FBZZ_CONTRACT_HASH}")
+endforeach()
+string(SHA256 FBZZ_SDK_RUNTIME_FINGERPRINT "${FBZZ_SDK_RUNTIME_CONTRACT}")
 configure_package_config_file(
     "${CMAKE_SOURCE_DIR}/CMake/SDK/FBZZConfig.cmake.in"
     "${FBZZ_SDK_GENERATED_DIR}/FBZZConfig.cmake"
@@ -114,7 +145,24 @@ install(FILES
     "${CMAKE_SOURCE_DIR}/CMake/build.config.in"
     DESTINATION "cmake/FBZZ"
 )
-install(FILES "${FBZZ_SDK_GENERATED_DIR}/fbzz-sdk.toml" DESTINATION ".")
+install(FILES
+    "${CMAKE_SOURCE_DIR}/CMake/FBZZAgilitySDK.cmake"
+    "${CMAKE_SOURCE_DIR}/CMake/StageAgilitySDK.cmake"
+    "${CMAKE_SOURCE_DIR}/CMake/AgilitySDKExports.cpp.in"
+    DESTINATION "cmake/FBZZ")
+if(FBZZ_ENABLE_DX12)
+    foreach(FBZZ_RUNTIME_PACKAGE AgilitySDK DXC)
+        if(FBZZ_RUNTIME_PACKAGE STREQUAL "AgilitySDK")
+            set(FBZZ_PACKAGE_NOTICES LICENSE LICENSE.txt LICENSE-CODE.txt VERSION "distributable files.txt")
+        else()
+            set(FBZZ_PACKAGE_NOTICES LICENSE LICENCE-MIT.txt LICENSE-LLVM.txt LICENSE-MS.txt VERSION)
+        endif()
+        foreach(FBZZ_NOTICE IN LISTS FBZZ_PACKAGE_NOTICES)
+            install(FILES "${CMAKE_SOURCE_DIR}/ThirdParty/${FBZZ_RUNTIME_PACKAGE}/${FBZZ_NOTICE}"
+                DESTINATION "share/fbzz/licenses/${FBZZ_RUNTIME_PACKAGE}")
+        endforeach()
+    endforeach()
+endif()
 
 set(FBZZ_SDK_PIX_RUNTIME_DLL "")
 set(FBZZ_SDK_PIX_REQUIRED OFF)
@@ -133,6 +181,11 @@ endif()
 # @note Visual Studio から FBZZSDK ターゲットをビルドすると、同じ構成の lib/bin と
 # @note 構成非依存の headers/package/assets/tools を版別 SDK へ同期する。
 add_custom_target(FBZZSDK
+    # @note 公開を始める前に成功状態を落とし、途中失敗した構成を選択不能にする。
+    COMMAND ${CMAKE_COMMAND}
+        "-DSDK_ROOT=${FBZZ_SDK_ROOT}" "-DCONFIG=$<CONFIG>"
+        "-DPUBLISH_BEGIN=ON" "-DMANIFEST_TEMPLATE=${FBZZ_SDK_GENERATED_DIR}/fbzz-sdk.toml"
+        -P "${CMAKE_SOURCE_DIR}/CMake/SDK/StageFBZZSDK.cmake"
     # @note 同じフォルダーを再利用するため、前回公開したheaderが残り続ける。
     # @note 削除したAPIをゲーム側がincludeできてしまう退行を避けたいので、公開前に捨てる。
     # @note lib/bin/shareは同名fileの上書きで最新化される。Assetsは350MB超あり毎回消して
@@ -145,13 +198,12 @@ add_custom_target(FBZZSDK
     COMMAND ${CMAKE_COMMAND}
         "-DSDK_ROOT=${FBZZ_SDK_ROOT}"
         "-DCONFIG=$<CONFIG>"
-        "-DENGINE_DLL=$<TARGET_FILE:FBZZEngine>"
-        "-DCORE_DLL=$<TARGET_FILE:FBZZCore>"
-        "-DGRAPHICS_DLL=$<TARGET_FILE:FBZZGraphics>"
-        "-DIMGUI_DLL=$<TARGET_FILE:ImGui>"
         "-DASSIMP_DLL=$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "-DEDITOR_DIR=$<TARGET_FILE_DIR:FBZZEditorLauncher>"
         "-DPIX_RUNTIME_DLL=${FBZZ_SDK_PIX_RUNTIME_DLL}"
+        "-DDX12_ENABLED=${FBZZ_ENABLE_DX12}"
+        "-DAGILITY_ROOT=${CMAKE_SOURCE_DIR}/ThirdParty/AgilitySDK"
+        "-DDXC_ROOT=${CMAKE_SOURCE_DIR}/ThirdParty/DXC"
         -P "${CMAKE_SOURCE_DIR}/CMake/SDK/StageFBZZSDK.cmake"
     COMMAND ${CMAKE_COMMAND}
         "-DSDK_ROOT=${FBZZ_SDK_ROOT}"
