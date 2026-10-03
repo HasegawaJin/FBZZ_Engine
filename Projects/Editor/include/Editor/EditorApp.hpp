@@ -50,7 +50,7 @@ class ProjectSettingsPanel;
 class BuildSettingsPanel;
 class AssetBrowserPanel;
 class ConsolePanel;
-class AnalysisPanel;
+class PerformanceProfilerPanel;
 class RenderPassViewerPanel;
 class MapEditorPanel;
 class IblBakePanel;
@@ -109,7 +109,7 @@ public:
 
 private:
     /// @name IModule ループが所有するステート
-    /// @{
+
     struct FocusAnim {
         bool          active   = false;
         math::Vector3 startPos = {};
@@ -158,10 +158,10 @@ private:
     void StopPlayMode();
     void TogglePlayMode();
     void RegisterDefaultHotkeys();
-    /// @}
+
 
     /// @name Operator モデル (Docs/design/editor-operator-model.md)
-    /// @{
+
     /// @brief メニュー・ホットキー・コマンドパレットは、いずれもここへ登録された操作の
     /// @brief 投影として描かれる。実行可能条件 (poll) を 1 箇所に持つことで、
     /// @brief 「メニューではグレーアウトなのにホットキーからは通る」を構造的に防ぐ。
@@ -281,10 +281,10 @@ private:
     void ProcessPrefabDiskReloads();
     /// @brief ディスク上で書き換わったアセットを、実行中のキャッシュへ読み直す。
     void ProcessAssetDiskReloads();
-    /// @}
+
 
     /// @name 開いているシーンとディスクの食い違いを扱う
-    /// @{
+
     /// @note AI・外部エディタ・git が直接書く前提のため、読み込み・保存の両方で同じタイムスタンプを見て他人の変更を検出する。
     void ProcessSceneDiskReload();
     void DrawSceneReloadBar(EditorContext& ctx);
@@ -483,7 +483,7 @@ private:
     std::vector<AssetBrowserPanel*>          m_assetBrowserPanels;
     /// @brief StatusBar から Asset Browser と同じ操作感で開閉するため、専用ポインタで保持する。
     ConsolePanel*                            m_consolePanel           = nullptr;
-    AnalysisPanel*                           m_analysisPanel          = nullptr;
+    PerformanceProfilerPanel*                m_analysisPanel          = nullptr;
     RenderPassViewerPanel*                   m_renderPassViewerPanel  = nullptr;
     MapEditorPanel*                          m_mapEditorPanel         = nullptr;
     IblBakePanel*                            m_iblBakePanel           = nullptr;
@@ -501,7 +501,7 @@ private:
     /// @note 作り直した直後の RT は中身が未定義 (DX12 は解放待ち領域を使い回すため «少し前の絵» が残る)。描画を省いたフレームでパネルがそれを貼ると絵が重なって出る。
     bool m_sceneViewportRTRecreated = false;
     bool m_gameViewportRTRecreated  = false;
-    /// @}
+
 };
 
 } /// @note namespace fbzz::editor

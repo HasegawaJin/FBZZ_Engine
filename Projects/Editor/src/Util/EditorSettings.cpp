@@ -13,9 +13,9 @@
 namespace fbzz::editor {
 namespace {
 
-/// 個人の作業状態を置くファイル。Library は .gitignore 済みなので、clone しても
-/// 他人の視点位置・開いていたシーン・パネル配置が付いてこない (Unity の UserSettings/ 相当)。
-/// projectRoot が空 (プロジェクト未確定) なら保存先を決められないので空文字列を返す。
+/// @note 個人の作業状態を置くファイル。Library は .gitignore 済みなので、clone しても
+/// @note 他人の視点位置・開いていたシーン・パネル配置が付いてこない (Unity の UserSettings/ 相当)。
+/// @note projectRoot が空 (プロジェクト未確定) なら保存先を決められないので空文字列を返す。
 std::string EditorLocalStatePath(const std::string& projectRoot)
 {
     if (projectRoot.empty()) return {};
@@ -24,9 +24,9 @@ std::string EditorLocalStatePath(const std::string& projectRoot)
     return root + "Library/EditorLocalState.toml";
 }
 
-/// 共有設定を読んだテーブルの上へ、個人状態のセクションを被せる。
+/// @note 共有設定を読んだテーブルの上へ、個人状態のセクションを被せる。
 /// @note セクションごと差し替える: Load 本体は `tbl["scene"]` のような参照を 250 行にわたって持つため、
-///       ファイル分割を読み出し側へ持ち込まず読む前に 1 つのテーブルへ合流させる。旧ファイルに同じセクションが残っていても local 側が勝つ。
+/// @note ファイル分割を読み出し側へ持ち込まず読む前に 1 つのテーブルへ合流させる。旧ファイルに同じセクションが残っていても local 側が勝つ。
 void OverlayEditorLocalState(const std::string& projectRoot, toml::table& tbl)
 {
     const std::string localPath = EditorLocalStatePath(projectRoot);
@@ -50,7 +50,7 @@ void OverlayEditorLocalState(const std::string& projectRoot, toml::table& tbl)
     }
 }
 
-/// 個人状態のセクションを Library/EditorLocalState.toml へ書き出す。
+/// @note 個人状態のセクションを Library/EditorLocalState.toml へ書き出す。
 bool SaveEditorLocalState(const std::string& projectRoot, toml::table&& localRoot)
 {
     const std::string localPath = EditorLocalStatePath(projectRoot);
@@ -68,7 +68,7 @@ bool SaveEditorLocalState(const std::string& projectRoot, toml::table&& localRoo
     return false;
 }
 
-} // namespace
+} /// @note namespace
 
 bool EditorSettings::Load(const std::string& path, const std::string& projectRoot)
 {
@@ -87,10 +87,10 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
         sharedLoaded = true;
     }
     /// @note 共有設定がまだ無いプロジェクトでも読み出しは続ける。空テーブル相手なら
-    ///       全項目が既定値のまま素通りし、個人状態と旧 BuildSettings.toml だけが拾われる。
+    /// @note 全項目が既定値のまま素通りし、個人状態と旧 BuildSettings.toml だけが拾われる。
 
     /// @note 個人状態を上書きで被せる。旧 editor_settings.toml に [camera] や [scene] が
-    ///       残っていても local 側が勝つので、移行はこの 1 行で済む。
+    /// @note 残っていても local 側が勝つので、移行はこの 1 行で済む。
     OverlayEditorLocalState(projectRoot, tbl);
 
     /// @note カメラ
@@ -251,8 +251,8 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     };
 
     /// @note Asset Browser
-    ///       1 パネルぶんの状態を 1 つのテーブルから読む。旧形式 ([asset_browser] 直下の
-    ///       スカラー) も新形式 ([[asset_browser.panels]] の各要素) も同じ形なので共用する。
+    /// @note 1 パネルぶんの状態を 1 つのテーブルから読む。旧形式 ([asset_browser] 直下の
+    /// @note スカラー) も新形式 ([[asset_browser.panels]] の各要素) も同じ形なので共用する。
     const auto readPanelState = [](const auto& src, AssetBrowserPanelState& dst,
                                    const auto& toAbs) {
         if (auto v = src["icon_size"].template value<float>())    dst.iconSize  = *v;
@@ -357,6 +357,17 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
 
     /// @note パネル表示状態
     panelVisibility.clear();
+    if (auto v = tbl["profiler"]["performance_recording"].value<bool>()) performanceProfilerRecording = *v;
+    if (auto v = tbl["profiler"]["script_recording"].value<bool>()) scriptProfilerRecording = *v;
+    if (auto v = tbl["profiler"]["memory_recording"].value<bool>()) memoryProfilerRecording = *v;
+    if (auto v = tbl["profiler"]["script_group"].value<int64_t>()) scriptProfilerGroup = std::clamp(static_cast<int>(*v), 0, 2);
+    if (auto v = tbl["profiler"]["script_mode"].value<int64_t>()) scriptProfilerMode = std::clamp(static_cast<int>(*v), 0, 2);
+    if (auto v = tbl["profiler"]["script_range"].value<int64_t>()) scriptProfilerRange = std::clamp(static_cast<int>(*v), 1, 240);
+    if (auto v = tbl["profiler"]["script_name"].value<std::string>()) scriptProfilerNameFilter = *v;
+    if (auto v = tbl["profiler"]["script_type"].value<std::string>()) scriptProfilerTypeFilter = *v;
+    if (auto v = tbl["profiler"]["script_instance"].value<std::string>()) scriptProfilerInstanceFilter = *v;
+    if (auto v = tbl["profiler"]["script_callback"].value<std::string>()) scriptProfilerCallbackFilter = *v;
+    if (auto v = tbl["profiler"]["script_scene"].value<std::string>()) scriptProfilerSceneFilter = *v;
     if (auto* arr = tbl["panels"]["visible"].as_array()) {
         for (auto& elem : *arr) {
             if (auto* t = elem.as_table()) {
@@ -414,7 +425,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     /// @note 最近 Fluid Editor で開いた .fluid
     recentFluids.clear();
     /// @note 節を分ける: 履歴は個人の作業状態なので EditorLocalState.toml 側に置く。`OverlayEditorLocalState` はセクション単位で差し替えるため、
-    ///       同じ [fluid_editor] を両方のファイルに置くと local 側が共有側の follow_selection ごと隠してしまう。
+    /// @note 同じ [fluid_editor] を両方のファイルに置くと local 側が共有側の follow_selection ごと隠してしまう。
     if (auto* arr = tbl["fluid_editor_state"]["recent"].as_array()) {
         for (auto& elem : *arr)
             if (auto v = elem.value<std::string>()) recentFluids.push_back(toAbsProjectPath(*v));
@@ -687,7 +698,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     fluidEditorTbl.insert("follow_selection", fluidEditorFollowSelection);
 
     /// @note 履歴は個人の作業状態。共有ファイルへ置くと、同じプロジェクトを触る全員がこの行で衝突する
-    ///       (recentScenes が [scene] で local 側に居るのと同じ理由)。
+    /// @note (recentScenes が [scene] で local 側に居るのと同じ理由)。
     toml::table fluidEditorStateTbl;
     {
         toml::array recentArr;
@@ -759,8 +770,21 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
 
     /// @name 個人の作業状態 (Library/EditorLocalState.toml)
     /// @note 「その人がどこで何を開いて作業していたか」しか入っていないセクション。
-    ///       共有しても相手の役に立たず、触るたびに書き換わるので分けて置く。
+    /// @note 共有しても相手の役に立たず、触るたびに書き換わるので分けて置く。
     toml::table localRoot;
+    toml::table profilerTbl;
+    profilerTbl.insert("performance_recording", performanceProfilerRecording);
+    profilerTbl.insert("script_recording", scriptProfilerRecording);
+    profilerTbl.insert("memory_recording", memoryProfilerRecording);
+    profilerTbl.insert("script_group", static_cast<int64_t>(scriptProfilerGroup));
+    profilerTbl.insert("script_mode", static_cast<int64_t>(scriptProfilerMode));
+    profilerTbl.insert("script_range", static_cast<int64_t>(scriptProfilerRange));
+    profilerTbl.insert("script_name", scriptProfilerNameFilter);
+    profilerTbl.insert("script_type", scriptProfilerTypeFilter);
+    profilerTbl.insert("script_instance", scriptProfilerInstanceFilter);
+    profilerTbl.insert("script_callback", scriptProfilerCallbackFilter);
+    profilerTbl.insert("script_scene", scriptProfilerSceneFilter);
+    localRoot.insert("profiler", std::move(profilerTbl));
     localRoot.insert("camera",             std::move(camTbl));
     localRoot.insert("camera_bookmarks",   std::move(camBkArr));
     localRoot.insert("scene",              std::move(sceneTbl));
@@ -772,7 +796,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     localRoot.insert("fluid_editor_state", std::move(fluidEditorStateTbl));
 
     /// @note 個人状態は共有ファイルより先に片付ける。ここが失敗しても共有側の保存は続ける
-    ///       (作業状態を落とすだけで、ビルド設定やホットキーまで巻き添えにする理由が無い)。
+    /// @note (作業状態を落とすだけで、ビルド設定やホットキーまで巻き添えにする理由が無い)。
     (void)SaveEditorLocalState(projectRoot, std::move(localRoot));
 
     /// @name 共有設定 (Assets/EditorConfig/editor_settings.toml)
@@ -799,4 +823,4 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     return util::FileSystem::WriteText(path, ss.str());
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

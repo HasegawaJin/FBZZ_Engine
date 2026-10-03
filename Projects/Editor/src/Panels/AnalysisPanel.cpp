@@ -2,7 +2,9 @@
 /// @brief   Profiler と MemoryDebug を ImGui で表示する診断パネル実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-02
-#include <Editor/Panels/AnalysisPanel.hpp>
+#include <Editor/Profiler/ProfilerWidgets.hpp>
+#include <Editor/Profiler/ProfilerHistory.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/FrameTimeGraph.hpp>
 #include <Editor/Util/ConsoleSink.hpp>
@@ -40,24 +42,15 @@ namespace fbzz::editor {
 
 namespace {
 
-/// @brief Profiler UI が保持する表示用スナップショット。
-/// @note 生データは毎フレーム更新され流れて読めないため、表示側だけ更新間隔・一時停止・履歴集計を持つ。
+/// @note 表示範囲とスパイク判定の cursor のみ保持し、計測値は所有履歴から読む。
 struct ProfilerDisplayState {
-    std::vector<profiler::ProfileRecord> visibleRecords;
-    uint64_t visibleFrameIndex = 0;
-    float refreshInterval = 0.25f;
-    float elapsedSinceRefresh = 0.0f;
+    uint64_t lastObservedSession = 0;
+    uint64_t lastObservedSerial = 0;
     int historyFrameLimit = 60;
-    bool paused = false;
-    bool showingSpike = false;
 
-    /// @brief スパイクの自動捕捉。
-    /// @note refreshInterval 間隔の取り込みでは詰まったフレームを取りこぼすため、閾値超過時は別枠で保持する。
+    /// @note Freeze や表示更新とは独立して確定フレームのスパイクを検出する。
     bool     catchSpikes = true;
     float    spikeThresholdMs = 20.0f;
-    std::vector<profiler::ProfileRecord> spikeRecords;
-    uint64_t spikeFrameIndex = 0;
-    double   spikeMs = 0.0;
 };
 
 ProfilerDisplayState s_profilerDisplay;
@@ -88,21 +81,39 @@ struct RenderingFilterState {
 };
 RenderingFilterState s_renderingFilter;
 
+struct DerivedHistoryCursor {
+    uint64_t session = 0;
+    uint64_t serial = 0;
+    size_t limit = 0;
+    bool frozen = false;
+};
+
 struct MemoryHistoryState {
     static constexpr std::size_t kMaxFrames = 128;
     std::unordered_map<std::string, std::deque<float>> tagUsedMB;
     std::string selectedTag;
-    float sampleInterval = 0.25f;
-    float elapsed = 0.0f;
+    DerivedHistoryCursor cursor;
 };
 MemoryHistoryState s_memHistory;
 
+struct RenderingSample {
+    uint64_t observedSerial = 0;
+    uint64_t applicationSerial = 0;
+    uint64_t physicalSerial = 0;
+    float ms = 0.0f;
+};
+
 struct RenderingHistoryState {
     static constexpr std::size_t kMaxFrames = 128;
-    std::unordered_map<std::string, std::deque<float>> passGpuMs;
+    std::unordered_map<std::string, std::vector<RenderingSample>> passGpuMs;
+    std::deque<uint64_t> observedFrames;
+    uint64_t lastGpuPhysicalSerial = 0;
+    uint64_t lastGpuDeviceEpoch = 0;
+    bool hasGpuSource = false;
+    bool budgetLimited = false;
+    DerivedHistoryCursor cursor;
     std::string selectedPass;
-    float sampleInterval = 0.25f;
-    float elapsed = 0.0f;
+    std::string selectedPassLabel;
 };
 RenderingHistoryState s_renderHistory;
 
@@ -227,228 +238,466 @@ ProfilerCategory ClassifyProfileRecord(const profiler::ProfileRecord& record)
     return { "Others", IM_COL32(140, 140, 140, 225) };
 }
 
-/// @brief MemoryDebug が追跡している GPU リソースを、用途タグ別の統計へ合流させる。
-/// @note MemoryTracker はサブシステム別を記録しないため、ResourceManager 側の実バイト数を RENDERER 行へ合流させる。
-void AccumulateTrackedRendererResources(renderer::ResourceManager* resources,
-                                        std::vector<core::MemoryStats>& tagStats)
-{
-    if (resources == nullptr) {
-        return;
-    }
-
-    /// @note GetLiveDebugResource() の索引指定は台帳を毎回先頭から走るため、全件個別取得は O(n^2)。1 回のパスで集める。
-    std::vector<core::AllocationInfo> live;
-    live.reserve(512);
-    resources->CollectLiveDebugResources(live);
-
-    for (const core::AllocationInfo& info : live) {
-        const auto tagIndex = static_cast<std::size_t>(info.tag);
-        if (tagIndex >= tagStats.size()) {
-            continue;
-        }
-
-        core::MemoryStats& stats = tagStats[tagIndex];
-        stats.used += info.size;
-        stats.peakUsed += info.size;
-        ++stats.allocationCount;
-        ++stats.activeCount;
-    }
-}
+struct ProfilePathId {
+    uint64_t low = 0;
+    uint64_t high = 0;
+};
 
 /// @brief 同名の兄弟をまとめた呼び出しツリーの 1 ノード。
 /// @note ProfileRecord は呼び出し毎に 1 件で数百件並ぶため、同じ親の下の同名スコープを畳み回数は Calls 列へ逃がす。
 struct AnalysisProfNode {
     const char*      name = "";
     ProfilerCategory category;
-    std::string      key;             ///< ルートからの経路。選択と履歴集計の同一性に使う
-    double           totalMs = 0.0;   ///< 子を含む
-    double           selfMs  = 0.0;   ///< 子を除く
+    std::string      key;
+    ProfilePathId     pathId;
+    double           totalMs = 0.0;   ///< @note 子を含む
+    double           selfMs  = 0.0;   ///< @note 子を除く
+    bool             selfAvailable = true;
     int              calls   = 0;
     int              depth   = 0;
     std::vector<int> children;
 };
 
-/// Flat 表示の 1 行。ツリー全体から同名スコープを合算する。
+/// @note Flat 表示の 1 行。ツリー全体から同名スコープを合算する。
 struct AnalysisProfFlatRow {
     const char*      name = "";
     ProfilerCategory category;
     std::string      key;
     double           totalMs = 0.0;
     double           selfMs  = 0.0;
+    bool             selfAvailable = true;
     int              calls   = 0;
 };
 
 struct AnalysisProfTree {
-    std::vector<AnalysisProfNode>    nodes;   ///< 親は必ず子より前に並ぶ
+    std::vector<AnalysisProfNode>    nodes;   ///< @note 親は必ず子より前に並ぶ
     std::vector<int>                 roots;
     std::vector<AnalysisProfFlatRow> flat;
     double                           frameMs = 0.0;
+    bool                             complete = true;
+    const char*                      unavailableReason = nullptr;
 };
 
-/// 取り込みごとの時間を key 単位で残し、グラフと Avg / Peak 列の出所にする。
+/// @note 取り込みごとの時間を key 単位で残し、グラフと Avg / Peak 列の出所にする。
 struct AnalysisProfHistory {
     struct Stat {
         double avg  = 0.0;
         double peak = 0.0;
+        bool available = true;
+        double total = 0.0;
+        size_t occurrences = 0;
+        size_t unavailableCount = 0;
     };
-    std::deque<std::unordered_map<std::string, float>> frames;  ///< Hierarchy は Total、Flat は Self
+    std::deque<std::unordered_map<std::string, float>> frames;  ///< @note Hierarchy は Total、Flat は Self
     std::deque<float>                                  frameMs;
+    std::deque<bool>                                   completeFrames;
+    size_t                                            completeFrameCount = 0;
+    size_t                                            retainedBytes = 0;
+    bool                                              budgetLimited = false;
+    std::deque<float>                                  elapsedMs;
+    std::deque<std::unordered_set<std::string>>         unavailableKeys;
+    DerivedHistoryCursor                              cursor;
     std::unordered_map<std::string, Stat>              stats;
 };
 
 AnalysisProfTree    s_profTree;
 AnalysisProfHistory s_profHistory;
+std::weak_ptr<const PerformanceCapture> s_treeSource;
 
 enum class AnalysisProfCol : int { Name, Category, Total, Self, Share, Calls, Avg, Peak, Count };
 
 struct AnalysisProfSort {
-    AnalysisProfCol column     = AnalysisProfCol::Count;  ///< Count = 並べ替えなし (呼び出し順)
+    AnalysisProfCol column     = AnalysisProfCol::Count;  ///< @note Count = 並べ替えなし (呼び出し順)
     bool            descending = true;
 };
 
-/// Hierarchy の経路 key ("/A/B") と衝突しないよう、区切りに使わない制御文字を先頭に置く。
-std::string AnalysisProfFlatKey(const char* name)
+/// @see https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp MurmurHash3 x64 128 の finalization。
+uint64_t MixProfilePathWord(uint64_t value)
 {
-    return std::string("\x1f") + name;
+    value ^= value >> 33; value *= 0xff51afd7ed558ccdULL;
+    value ^= value >> 33; value *= 0xc4ceb9fe1a85ec53ULL;
+    return value ^ (value >> 33);
 }
 
-/// @brief 終了順 (子 → 親) に積まれた ProfileRecord を、同名兄弟を畳んだ呼び出しツリーへ組み直す。
-AnalysisProfTree BuildAnalysisProfTree(const std::vector<profiler::ProfileRecord>& records)
+/// @note 親の 128 bit ID と sampleKey の 24 byte を混ぜる。表示名・深さによって key の容量は増えない。
+/// @warning 非暗号識別子。フレーム内で異なる親/descriptor の衝突を検出した場合、その派生 tree を unavailable にする。
+/// @see https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp MurmurHash3 x64 128 の body と 8 byte tail。
+ProfilePathId ExtendProfilePath(ProfilePathId parent, uint64_t sampleKey)
+{
+    const auto rotate = [](uint64_t value, unsigned amount) { return (value << amount) | (value >> (64 - amount)); };
+    constexpr uint64_t FIRST = 0x87c37b91114253d5ULL;
+    constexpr uint64_t SECOND = 0x4cf5ad432745937fULL;
+    uint64_t low = 0;
+    uint64_t high = 0;
+    uint64_t first = rotate(parent.low * FIRST, 31) * SECOND;
+    low ^= first; low = rotate(low, 27); low += high; low = low * 5 + 0x52dce729;
+    uint64_t second = rotate(parent.high * SECOND, 33) * FIRST;
+    high ^= second; high = rotate(high, 31); high += low; high = high * 5 + 0x38495ab5;
+    first = rotate(sampleKey * FIRST, 31) * SECOND; low ^= first;
+    low ^= 24; high ^= 24; low += high; high += low;
+    low = MixProfilePathWord(low); high = MixProfilePathWord(high); low += high; high += low;
+    return {low, high};
+}
+
+std::string ProfilePathKey(ProfilePathId pathId)
+{
+    char key[33];
+    std::snprintf(key, sizeof(key), "%016llx%016llx", static_cast<unsigned long long>(pathId.low), static_cast<unsigned long long>(pathId.high));
+    return key;
+}
+
+std::string AnalysisProfFlatKey(uint64_t sampleKey)
+{
+    return std::string("\x1f") + std::to_string(sampleKey);
+}
+
+/// @note Tree と構築用索引を 4 MiB へ制限し、同時に保持する tree/CPU/GPU/preview 合計を 16 MiB の予約内へ収める。
+AnalysisProfTree BuildRecordedProfTree(const profiler::PerformanceSnapshot& snapshot)
 {
     AnalysisProfTree tree;
-
-    /// @note 深さ d の記録が閉じた時点で pending[d + 1] に溜まっている記録が、その直接の子。
-    std::vector<std::vector<std::size_t>> childrenOf(records.size());
-    std::vector<std::vector<std::size_t>> pending(1);
-    for (std::size_t i = 0; i < records.size(); ++i) {
-        const std::size_t depth = records[i].depth;
-        if (pending.size() < depth + 2u) pending.resize(depth + 2u);
-        childrenOf[i].swap(pending[depth + 1u]);
-        pending[depth].push_back(i);
+    tree.frameMs = snapshot.scopeRootSumMs;
+    tree.complete = snapshot.complete;
+    constexpr size_t TREE_BUDGET = 4 * 1024 * 1024;
+    constexpr size_t KEY_BYTES = 64;
+    constexpr size_t INDEX_ENTRY_BYTES = 96;
+    constexpr size_t SAMPLE_BYTES = sizeof(AnalysisProfNode) + sizeof(AnalysisProfFlatRow) + KEY_BYTES * 2 + INDEX_ENTRY_BYTES * 3 + 64;
+    constexpr size_t DESCRIPTOR_BYTES = INDEX_ENTRY_BYTES;
+    if (snapshot.descriptors.size() > TREE_BUDGET / DESCRIPTOR_BYTES ||
+        snapshot.samples.size() > (TREE_BUDGET - snapshot.descriptors.size() * DESCRIPTOR_BYTES) / SAMPLE_BYTES) {
+        tree.complete = false; tree.unavailableReason = "Derived scope tree unavailable: the 4 MiB construction budget was exceeded.";
+        return tree;
     }
-    /// @note 親が同じフレーム内で閉じなかった記録 (フレームを跨ぐスコープ等) もルートとして拾う。
-    std::vector<std::size_t> rootRecords;
-    for (const std::vector<std::size_t>& level : pending)
-        rootRecords.insert(rootRecords.end(), level.begin(), level.end());
-
-    const auto build = [&](auto&& self, const std::vector<std::size_t>& group, int depth,
-                           const std::string& parentKey) -> std::vector<int> {
-        std::vector<int>                      merged;
-        std::vector<std::vector<std::size_t>> mergedChildren;
-        for (const std::size_t recordIndex : group) {
-            const profiler::ProfileRecord& record = records[recordIndex];
-            std::size_t slot = merged.size();
-            for (std::size_t k = 0; k < merged.size(); ++k) {
-                if (std::strcmp(tree.nodes[static_cast<std::size_t>(merged[k])].name, record.name) == 0) {
-                    slot = k;
-                    break;
-                }
-            }
-            if (slot == merged.size()) {
-                AnalysisProfNode node;
-                node.name     = record.name;
-                node.category = ClassifyProfileRecord(record);
-                node.key      = parentKey + '/' + record.name;
-                node.depth    = depth;
-                tree.nodes.push_back(std::move(node));
-                merged.push_back(static_cast<int>(tree.nodes.size() - 1u));
-                mergedChildren.emplace_back();
-            }
-            AnalysisProfNode& node = tree.nodes[static_cast<std::size_t>(merged[slot])];
-            node.totalMs += record.elapsedMs;
-            ++node.calls;
-            const std::vector<std::size_t>& kids = childrenOf[recordIndex];
-            mergedChildren[slot].insert(mergedChildren[slot].end(), kids.begin(), kids.end());
+    const size_t count = snapshot.samples.size();
+    tree.nodes.reserve(count); tree.flat.reserve(count); tree.roots.reserve(count);
+    std::unordered_map<uint64_t, const profiler::PerformanceDescriptor*> descriptors;
+    descriptors.reserve(snapshot.descriptors.size());
+    for (const auto& descriptor : snapshot.descriptors) descriptors[descriptor.sampleKey] = &descriptor;
+    struct PathSlot { size_t index = 0; size_t parent = 0; uint64_t sampleKey = 0; };
+    std::unordered_map<uint64_t, size_t> sampleNodes;
+    std::unordered_map<std::string, PathSlot> nodesByKey;
+    std::unordered_map<uint64_t, size_t> flatByKey;
+    sampleNodes.reserve(count); nodesByKey.reserve(count); flatByKey.reserve(count);
+    for (const auto& sample : snapshot.samples) {
+        const auto found = descriptors.find(sample.sampleKey);
+        if (found == descriptors.end()) continue;
+        const auto& descriptor = *found->second;
+        const auto parent = sampleNodes.find(sample.parentSampleId);
+        const bool hasParent = parent != sampleNodes.end();
+        const size_t parentIndex = hasParent ? parent->second : count;
+        const ProfilePathId pathId = ExtendProfilePath(hasParent ? tree.nodes[parentIndex].pathId : ProfilePathId{}, sample.sampleKey);
+        const std::string key = ProfilePathKey(pathId);
+        auto [nodeIndex, inserted] = nodesByKey.emplace(key, PathSlot{tree.nodes.size(), parentIndex, sample.sampleKey});
+        if (!inserted && (nodeIndex->second.parent != parentIndex || nodeIndex->second.sampleKey != sample.sampleKey)) {
+            AnalysisProfTree unavailable;
+            unavailable.frameMs = snapshot.scopeRootSumMs; unavailable.complete = false;
+            unavailable.unavailableReason = "Derived scope tree unavailable: a 128 bit path identity collision was detected.";
+            return unavailable;
         }
-
-        for (std::size_t k = 0; k < merged.size(); ++k) {
-            const std::size_t nodeIndex = static_cast<std::size_t>(merged[k]);
-            /// @note 再帰で nodes が伸びて参照が無効になるので、key は値で渡す。
-            const std::string key = tree.nodes[nodeIndex].key;
-            std::vector<int> kids = self(self, mergedChildren[k], depth + 1, key);
-            double childMs = 0.0;
-            for (const int child : kids) childMs += tree.nodes[static_cast<std::size_t>(child)].totalMs;
-            AnalysisProfNode& node = tree.nodes[nodeIndex];
-            node.selfMs   = (std::max)(0.0, node.totalMs - childMs);
-            node.children = std::move(kids);
-        }
-        return merged;
-    };
-    tree.roots = build(build, rootRecords, 0, std::string());
-
-    for (const int root : tree.roots)
-        tree.frameMs += tree.nodes[static_cast<std::size_t>(root)].totalMs;
-
-    std::unordered_map<std::string, std::size_t> flatIndex;
-    for (const AnalysisProfNode& node : tree.nodes) {
-        const auto [it, inserted] = flatIndex.try_emplace(node.name, tree.flat.size());
         if (inserted) {
-            AnalysisProfFlatRow row;
-            row.name     = node.name;
-            row.category = node.category;
-            row.key      = AnalysisProfFlatKey(node.name);
+            AnalysisProfNode node;
+            node.name = descriptor.name.c_str(); node.key = key; node.pathId = pathId; node.depth = static_cast<int>(sample.depth);
+            profiler::ProfileRecord record; record.name = node.name; record.category = descriptor.category.c_str();
+            node.category = ClassifyProfileRecord(record);
+            tree.nodes.push_back(std::move(node));
+            if (hasParent) tree.nodes[parentIndex].children.push_back(static_cast<int>(nodeIndex->second.index));
+            else tree.roots.push_back(static_cast<int>(nodeIndex->second.index));
+        }
+        sampleNodes[sample.sampleId] = nodeIndex->second.index;
+        auto& node = tree.nodes[nodeIndex->second.index];
+        node.totalMs += sample.inclusiveMs; node.selfMs += sample.selfMs; ++node.calls;
+        node.selfAvailable = node.selfAvailable && sample.selfAvailable && sample.status == profiler::ProfileSampleStatus::COMPLETE;
+        auto [flatIndex, newFlat] = flatByKey.emplace(sample.sampleKey, tree.flat.size());
+        if (newFlat) {
+            AnalysisProfFlatRow row; row.name = node.name; row.category = node.category; row.key = AnalysisProfFlatKey(sample.sampleKey);
             tree.flat.push_back(std::move(row));
         }
-        AnalysisProfFlatRow& row = tree.flat[it->second];
-        row.totalMs += node.totalMs;
-        row.selfMs  += node.selfMs;
-        row.calls   += node.calls;
+        auto& row = tree.flat[flatIndex->second];
+        row.totalMs += sample.inclusiveMs; row.selfMs += sample.selfMs; ++row.calls;
+        row.selfAvailable = row.selfAvailable && sample.selfAvailable && sample.status == profiler::ProfileSampleStatus::COMPLETE;
     }
     return tree;
 }
 
-/// @brief 履歴から平均値とピーク値を一括計算する。
-/// @note 表示行ごとに履歴全体を再走査すると O(表示行数 × 履歴 × 行数) になり Profiler 自身が CPU ボトルネックになる。
-void RebuildAnalysisProfStats()
+/// @note 平均の分母は範囲内の完全な収集フレーム数。行がない完全フレームは 0 と数える。
+void UpdateAnalysisProfStats()
 {
-    struct Aggregate {
-        double total = 0.0;
-        double peak  = 0.0;
-    };
-    std::unordered_map<std::string, Aggregate> aggregates;
-    for (const auto& frame : s_profHistory.frames) {
-        for (const auto& [key, ms] : frame) {
-            Aggregate& aggregate = aggregates[key];
-            aggregate.total += ms;
-            aggregate.peak   = (std::max)(aggregate.peak, static_cast<double>(ms));
+    const double count = static_cast<double>((std::max)(size_t{1}, s_profHistory.completeFrameCount));
+    for (auto& [key, stat] : s_profHistory.stats) {
+        (void)key;
+        stat.avg = stat.total / count;
+        stat.available = stat.unavailableCount == 0 && s_profHistory.completeFrameCount != 0;
+    }
+}
+
+void RetireAnalysisProfFrame()
+{
+    const auto retired = std::move(s_profHistory.frames.front());
+    const auto unavailable = std::move(s_profHistory.unavailableKeys.front());
+    s_profHistory.frames.pop_front(); s_profHistory.unavailableKeys.pop_front(); s_profHistory.frameMs.pop_front();
+    if (s_profHistory.completeFrames.front()) --s_profHistory.completeFrameCount;
+    s_profHistory.completeFrames.pop_front();
+    for (const auto& [key, value] : retired) {
+        s_profHistory.retainedBytes -= key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+        const auto found = s_profHistory.stats.find(key);
+        if (found == s_profHistory.stats.end()) continue;
+        auto& stat = found->second;
+        stat.total -= value;
+        if (--stat.occurrences == 0) { s_profHistory.stats.erase(found); continue; }
+        if (stat.peak == static_cast<double>(value)) {
+            const auto& latest = s_profHistory.frames.back();
+            const auto current = latest.find(key);
+            if (current == latest.end() || current->second < value) {
+                stat.peak = 0.0;
+                for (const auto& frame : s_profHistory.frames)
+                    if (const auto item = frame.find(key); item != frame.end()) stat.peak = (std::max)(stat.peak, static_cast<double>(item->second));
+            }
         }
     }
-
-    /// @note 出現フレーム数でなく全フレーム数で割り、たまにしか走らない処理も毎フレーム走る処理と同じ尺度で比べる。
-    const double frameCount = static_cast<double>((std::max)(std::size_t{1}, s_profHistory.frames.size()));
-    s_profHistory.stats.clear();
-    s_profHistory.stats.reserve(aggregates.size());
-    for (const auto& [key, aggregate] : aggregates)
-        s_profHistory.stats[key] = { aggregate.total / frameCount, aggregate.peak };
-}
-
-void PushAnalysisProfHistory(const AnalysisProfTree& tree)
-{
-    std::unordered_map<std::string, float> frame;
-    frame.reserve(tree.nodes.size() + tree.flat.size());
-    for (const AnalysisProfNode& node : tree.nodes)
-        frame[node.key] += static_cast<float>(node.totalMs);
-    for (const AnalysisProfFlatRow& row : tree.flat)
-        frame[row.key] = static_cast<float>(row.selfMs);
-
-    s_profHistory.frames.push_back(std::move(frame));
-    s_profHistory.frameMs.push_back(static_cast<float>(tree.frameMs));
-    const std::size_t limit = static_cast<std::size_t>((std::max)(1, s_profilerDisplay.historyFrameLimit));
-    while (s_profHistory.frames.size() > limit) {
-        s_profHistory.frames.pop_front();
-        s_profHistory.frameMs.pop_front();
+    for (const auto& key : unavailable) {
+        s_profHistory.retainedBytes -= key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+        const auto found = s_profHistory.stats.find(key);
+        if (found == s_profHistory.stats.end()) continue;
+        --found->second.unavailableCount;
+        if (--found->second.occurrences == 0) s_profHistory.stats.erase(found);
     }
-    RebuildAnalysisProfStats();
 }
 
-/// 表示するフレームを差し替える。pause 中は履歴も動かさず、画面に残った値をそのまま読めるようにする。
-void ShowAnalysisProfFrame(std::vector<profiler::ProfileRecord> records, uint64_t frameIndex, bool pushHistory)
+void PushAnalysisProfHistory(const AnalysisProfTree& tree, double elapsedMs)
 {
-    s_profilerDisplay.visibleRecords    = std::move(records);
-    s_profilerDisplay.visibleFrameIndex = frameIndex;
-    s_profTree = BuildAnalysisProfTree(s_profilerDisplay.visibleRecords);
-    if (pushHistory && !s_profilerDisplay.visibleRecords.empty())
-        PushAnalysisProfHistory(s_profTree);
+    const size_t limit = static_cast<size_t>((std::max)(1, s_profilerDisplay.historyFrameLimit));
+    s_profHistory.elapsedMs.push_back(static_cast<float>(elapsedMs));
+    while (s_profHistory.elapsedMs.size() > limit) s_profHistory.elapsedMs.pop_front();
+    constexpr size_t ENTRY_BYTES = 64 * 2 + sizeof(std::string) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+    const size_t incomingBytes = (tree.nodes.size() + tree.flat.size()) * ENTRY_BYTES;
+    while (!s_profHistory.frames.empty() && s_profHistory.retainedBytes + incomingBytes > 4 * 1024 * 1024) {
+        s_profHistory.budgetLimited = true; RetireAnalysisProfFrame();
+    }
+    std::unordered_map<std::string, float> frame;
+    std::unordered_set<std::string> unavailable;
+    if (tree.complete && incomingBytes <= 4 * 1024 * 1024) {
+        ++s_profHistory.completeFrameCount;
+        frame.reserve(tree.nodes.size() + tree.flat.size());
+        for (const auto& node : tree.nodes) frame[node.key] += static_cast<float>(node.totalMs);
+        for (const auto& row : tree.flat) {
+            if (row.selfAvailable) frame[row.key] = static_cast<float>(row.selfMs);
+            else unavailable.insert(row.key);
+        }
+    }
+    for (const auto& [key, value] : frame) {
+        s_profHistory.retainedBytes += key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+        auto& stat = s_profHistory.stats[key];
+        stat.total += value; stat.peak = (std::max)(stat.peak, static_cast<double>(value)); ++stat.occurrences;
+    }
+    for (const auto& key : unavailable) {
+        s_profHistory.retainedBytes += key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+        auto& stat = s_profHistory.stats[key]; ++stat.unavailableCount; ++stat.occurrences;
+    }
+    s_profHistory.frames.push_back(std::move(frame)); s_profHistory.unavailableKeys.push_back(std::move(unavailable));
+    s_profHistory.frameMs.push_back(static_cast<float>(tree.frameMs));
+    s_profHistory.completeFrames.push_back(tree.complete && incomingBytes <= 4 * 1024 * 1024);
+    if (incomingBytes > 4 * 1024 * 1024) s_profHistory.budgetLimited = true;
+    while (s_profHistory.frames.size() > limit || s_profHistory.retainedBytes > 4 * 1024 * 1024) RetireAnalysisProfFrame();
+}
+
+/// @note 再構築はセッション・選択・範囲変更時のみ。通常表示では未投影の確定フレームだけ追加する。
+/// @see Docs/design/profiler.md 履歴と CPU/GPU の対応契約。
+template<class Snapshot, class Append, class Reset>
+bool ProjectSelectedHistory(const ProfilerCaptureHistory<Snapshot>& history, DerivedHistoryCursor& cursor,
+                            size_t limit, Append append, Reset reset)
+{
+    if (!history.selected) {
+        if (cursor.session != 0) { reset(); cursor = {}; return true; }
+        return false;
+    }
+    const auto& selected = *history.selected;
+    if (cursor.session == selected.captureSessionId && cursor.serial == selected.applicationFrameSerial && cursor.limit == limit) {
+        cursor.frozen = history.frozen;
+        return false;
+    }
+    const bool rebuild = cursor.session != selected.captureSessionId || cursor.limit != limit || cursor.frozen ||
+                         history.frozen || selected.applicationFrameSerial < cursor.serial;
+    if (rebuild) reset();
+    size_t begin = history.frames.size();
+    size_t count = 0;
+    if (rebuild) {
+        for (size_t i = history.frames.size(); i-- > 0;) {
+            const auto& frame = history.frames[i];
+            if (frame->captureSessionId != selected.captureSessionId || frame->applicationFrameSerial > selected.applicationFrameSerial) continue;
+            begin = i;
+            if (++count == limit) break;
+        }
+    } else begin = 0;
+    for (size_t i = begin; i < history.frames.size(); ++i) {
+        const auto& frame = *history.frames[i];
+        if (frame.captureSessionId != selected.captureSessionId || frame.applicationFrameSerial > selected.applicationFrameSerial ||
+            (!rebuild && frame.applicationFrameSerial <= cursor.serial)) continue;
+        append(frame);
+    }
+    cursor = {selected.captureSessionId, selected.applicationFrameSerial, limit, history.frozen};
+    return true;
+}
+
+void SyncPerformanceView()
+{
+    const auto& history = GetPerformanceHistory();
+    if (!history.selected || s_treeSource.lock() != history.selected) {
+        s_profTree = {};
+        if (history.selected) s_profTree = BuildRecordedProfTree(*history.selected);
+        s_treeSource = history.selected;
+    }
+    const size_t limit = static_cast<size_t>((std::max)(1, s_profilerDisplay.historyFrameLimit));
+    const bool changed = ProjectSelectedHistory(history, s_profHistory.cursor, limit,
+        [&](const PerformanceCapture& frame) {
+            if (history.selected.get() == &frame) PushAnalysisProfHistory(s_profTree, frame.cpuFrameElapsedMs);
+            else PushAnalysisProfHistory(BuildRecordedProfTree(frame), frame.cpuFrameElapsedMs);
+        }, [] {
+            s_profHistory.frames.clear(); s_profHistory.frameMs.clear(); s_profHistory.elapsedMs.clear();
+            s_profHistory.unavailableKeys.clear(); s_profHistory.completeFrames.clear(); s_profHistory.stats.clear();
+            s_profHistory.completeFrameCount = 0; s_profHistory.retainedBytes = 0; s_profHistory.budgetLimited = false;
+        });
+    if (changed) UpdateAnalysisProfStats();
+}
+
+void SyncMemoryView()
+{
+    ProjectSelectedHistory(GetMemoryHistory(), s_memHistory.cursor, MemoryHistoryState::kMaxFrames,
+        [](const MemoryProfileSnapshot& frame) {
+            for (const auto& tag : frame.tags) {
+                auto& values = s_memHistory.tagUsedMB[tag.name];
+                values.push_back(static_cast<float>(tag.stats.used) / (1024.0f * 1024.0f));
+                while (values.size() > MemoryHistoryState::kMaxFrames) values.pop_front();
+            }
+        }, [] { s_memHistory.tagUsedMB.clear(); });
+}
+
+/// @note GPU 履歴は同名パスでもビューと全世代で分け、同じ遅延結果を複数の CPU フレームで数えない。
+std::string GpuPassSeriesKey(const renderer::GpuPassProfile& pass)
+{
+    const auto& view = pass.metadata;
+    char context[192];
+    std::snprintf(context, sizeof(context), "/%llu/%llu/%llu/%llu/%llu/%u/%u/%ux%u",
+        static_cast<unsigned long long>(pass.deviceEpoch), static_cast<unsigned long long>(view.viewId),
+        static_cast<unsigned long long>(view.sceneGeneration), static_cast<unsigned long long>(view.planGeneration),
+        static_cast<unsigned long long>(view.resourceEpoch), view.outputId, view.outputGeneration, view.width, view.height);
+    std::string key;
+    key.reserve(pass.name.size() + std::strlen(context));
+    key.append(pass.name); key.append(context);
+    return key;
+}
+
+constexpr size_t GPU_HISTORY_BUDGET = 2 * 1024 * 1024;
+constexpr size_t MAX_GPU_SERIES = 512;
+constexpr size_t GPU_SERIES_OVERHEAD = sizeof(decltype(RenderingHistoryState::passGpuMs)::value_type) + 128;
+
+size_t GpuSeriesBytes(const std::string& key, const std::vector<RenderingSample>& values)
+{
+    return key.capacity() + 1 + GPU_SERIES_OVERHEAD + values.capacity() * sizeof(RenderingSample);
+}
+
+size_t GpuHistoryBaseBytes()
+{
+    /// @note 固定枠は observedFrames の deque/map と作業領域を含む。bucket は MSVC の 2 iterator/slot を上限として数える。
+    return 16 * 1024 + s_renderHistory.passGpuMs.bucket_count() * sizeof(void*) * 2;
+}
+
+bool RetireOldestGpuSeries(size_t& bytes)
+{
+    if (s_renderHistory.passGpuMs.empty()) return false;
+    const auto oldest = std::min_element(s_renderHistory.passGpuMs.begin(), s_renderHistory.passGpuMs.end(),
+        [](const auto& a, const auto& b) { return a.second.front().observedSerial < b.second.front().observedSerial; });
+    bytes -= GpuSeriesBytes(oldest->first, oldest->second);
+    s_renderHistory.passGpuMs.erase(oldest);
+    s_renderHistory.budgetLimited = true;
+    return true;
+}
+
+/// @note 新しい文字列・系列・sample の確保前に退役する。大きい key 単体で予算を満たせない場合は派生履歴だけを拒否する。
+bool MakeRoomForGpuHistory(size_t incomingBytes, size_t& bytes)
+{
+    if (incomingBytes > GPU_HISTORY_BUDGET - GpuHistoryBaseBytes()) {
+        s_renderHistory.budgetLimited = true;
+        return false;
+    }
+    while (bytes > GPU_HISTORY_BUDGET - incomingBytes)
+        if (!RetireOldestGpuSeries(bytes)) return false;
+    return true;
+}
+
+void SyncRenderingView()
+{
+    ProjectSelectedHistory(GetPerformanceHistory(), s_renderHistory.cursor, RenderingHistoryState::kMaxFrames,
+        [](const PerformanceCapture& frame) {
+            /// @note 最大系列数を先に予約し、sample 挿入時の bucket 再確保による一時増幅を避ける。
+            if (s_renderHistory.passGpuMs.bucket_count() < MAX_GPU_SERIES) s_renderHistory.passGpuMs.reserve(MAX_GPU_SERIES);
+            s_renderHistory.observedFrames.push_back(frame.applicationFrameSerial);
+            while (s_renderHistory.observedFrames.size() > RenderingHistoryState::kMaxFrames) s_renderHistory.observedFrames.pop_front();
+            const uint64_t oldest = s_renderHistory.observedFrames.front();
+            size_t bytes = GpuHistoryBaseBytes();
+            for (auto it = s_renderHistory.passGpuMs.begin(); it != s_renderHistory.passGpuMs.end();) {
+                auto& values = it->second;
+                values.erase(std::remove_if(values.begin(), values.end(), [&](const RenderingSample& sample) {
+                    return sample.observedSerial < oldest;
+                }), values.end());
+                if (values.empty()) it = s_renderHistory.passGpuMs.erase(it);
+                else { bytes += GpuSeriesBytes(it->first, values); ++it; }
+            }
+            const auto& gpu = frame.rendering.gpuProfiler;
+            const bool newGpuSource = !s_renderHistory.hasGpuSource || gpu.physicalFrameSerial != s_renderHistory.lastGpuPhysicalSerial ||
+                                      gpu.deviceEpoch != s_renderHistory.lastGpuDeviceEpoch;
+            if (!gpu.available || !newGpuSource) return;
+            s_renderHistory.hasGpuSource = true;
+            s_renderHistory.lastGpuPhysicalSerial = gpu.physicalFrameSerial;
+            s_renderHistory.lastGpuDeviceEpoch = gpu.deviceEpoch;
+            for (const auto& pass : gpu.passes) {
+                if (!pass.available) continue;
+                /// @note key 構築の capacity 丸めを 2 倍で先に確保し、構築後は実 capacity で系列を見積もる。
+                if (pass.name.size() > GPU_HISTORY_BUDGET / 4) { s_renderHistory.budgetLimited = true; continue; }
+                const size_t temporaryKeyBytes = (pass.name.size() + 192 + 1) * 2 + 64;
+                if (!MakeRoomForGpuHistory(temporaryKeyBytes, bytes)) continue;
+                std::string key = GpuPassSeriesKey(pass);
+                const auto found = s_renderHistory.passGpuMs.find(key);
+                if (found != s_renderHistory.passGpuMs.end()) {
+                    auto& values = found->second;
+                    const bool seen = std::any_of(values.begin(), values.end(), [&](const RenderingSample& sample) {
+                        return sample.applicationSerial == pass.metadata.applicationFrameSerial && sample.physicalSerial == pass.physicalFrameSerial;
+                    });
+                    if (seen) continue;
+                    if (values.size() == values.capacity()) values.erase(values.begin());
+                    values.push_back({frame.applicationFrameSerial, pass.metadata.applicationFrameSerial, pass.physicalFrameSerial, static_cast<float>(pass.gpuMs)});
+                    continue;
+                }
+                while (s_renderHistory.passGpuMs.size() >= MAX_GPU_SERIES) RetireOldestGpuSeries(bytes);
+                const size_t reserveBytes = key.capacity() + 1 + GPU_SERIES_OVERHEAD +
+                    RenderingHistoryState::kMaxFrames * sizeof(RenderingSample) * 2;
+                if (!MakeRoomForGpuHistory(reserveBytes, bytes)) continue;
+                std::vector<RenderingSample> values;
+                values.reserve(RenderingHistoryState::kMaxFrames);
+                const size_t incomingBytes = GpuSeriesBytes(key, values);
+                if (!MakeRoomForGpuHistory(incomingBytes, bytes)) continue;
+                values.push_back({frame.applicationFrameSerial, pass.metadata.applicationFrameSerial, pass.physicalFrameSerial, static_cast<float>(pass.gpuMs)});
+                bytes += incomingBytes;
+                s_renderHistory.passGpuMs.emplace(std::move(key), std::move(values));
+            }
+        }, [] {
+            s_renderHistory.passGpuMs.clear(); s_renderHistory.observedFrames.clear();
+            s_renderHistory.hasGpuSource = false; s_renderHistory.budgetLimited = false;
+        });
+}
+
+void DrawSelectedFrameTime(float targetMs, float height)
+{
+    const auto& selected = GetPerformanceHistory().selected;
+    if (!selected) { ImGui::TextDisabled("No completed Performance capture."); return; }
+    ImGui::TextColored(widgets::FrameBudgetColor(static_cast<float>(selected->cpuFrameElapsedMs), targetMs),
+        "CPU elapsed %.3f ms", selected->cpuFrameElapsedMs);
+    if (selected->wallFrameIntervalAvailable) ImGui::Text("Measured frame interval %.3f ms", selected->wallFrameIntervalMs);
+    else ImGui::TextDisabled("Measured frame interval unavailable.");
+    if (!s_profHistory.elapsedMs.empty()) {
+        const std::vector<float> values(s_profHistory.elapsedMs.begin(), s_profHistory.elapsedMs.end());
+        const float peak = *std::max_element(values.begin(), values.end());
+        ImGui::PlotLines("CPU elapsed history", values.data(), static_cast<int>(values.size()), 0, nullptr,
+            0.0f, (std::max)(peak * 1.15f, targetMs * 1.5f), {-FLT_MIN, height});
+    }
 }
 
 const AnalysisProfHistory::Stat* FindAnalysisProfStat(const std::string& key)
@@ -475,7 +724,7 @@ bool AnalysisProfMatches(const char* name, const ProfilerCategory& category, dou
     return true;
 }
 
-/// 数値列を右寄せにする。比例フォントでも小数点の位置が縦に揃い、桁の大小を目で比べられる。
+/// @note 数値列を右寄せにする。比例フォントでも小数点の位置が縦に揃い、桁の大小を目で比べられる。
 void AnalysisTextRight(const char* text, ImU32 color = 0)
 {
     const float width = ImGui::CalcTextSize(text).x;
@@ -515,6 +764,10 @@ void AnalysisShareBar(double value, double total, ImU32 color)
 /// @note Self で積む。Total だと入れ子のぶん同じ時間を何重にも数える。
 void DrawAnalysisProfCategoryBar(const AnalysisProfTree& tree)
 {
+    if (std::any_of(tree.nodes.begin(), tree.nodes.end(), [](const auto& node) { return !node.selfAvailable; })) {
+        ImGui::TextDisabled("Self breakdown unavailable for external, faulted or incomplete intervals.");
+        return;
+    }
     struct Total {
         const char* name;
         ImU32       color;
@@ -597,7 +850,7 @@ AnalysisProfSort ReadAnalysisProfSort()
     return sort;
 }
 
-/// Node と FlatRow は同じ名前のメンバーを持つので、並べ替えとセル描画を共有する。
+/// @note Node と FlatRow は同じ名前のメンバーを持つので、並べ替えとセル描画を共有する。
 template <class Row>
 double AnalysisProfNumeric(const Row& row, AnalysisProfCol column, bool flat)
 {
@@ -649,8 +902,8 @@ void DrawAnalysisProfValueCells(const Row& row, bool flat, double frameMs)
         ImGui::TextDisabled("%s", row.category.name);
     }
     ImGui::TableNextColumn(); AnalysisCellMs(row.totalMs);
-    ImGui::TableNextColumn(); AnalysisCellMs(row.selfMs);
-    ImGui::TableNextColumn(); AnalysisShareBar(flat ? row.selfMs : row.totalMs, frameMs, row.category.color);
+    ImGui::TableNextColumn(); if (row.selfAvailable) AnalysisCellMs(row.selfMs); else ImGui::TextDisabled("unavailable");
+    ImGui::TableNextColumn(); if (row.selfAvailable) AnalysisShareBar(flat ? row.selfMs : row.totalMs, frameMs, row.category.color); else ImGui::TextDisabled("unavailable");
     ImGui::TableNextColumn();
     {
         char calls[16];
@@ -658,8 +911,8 @@ void DrawAnalysisProfValueCells(const Row& row, bool flat, double frameMs)
         AnalysisTextRight(calls, row.calls <= 1 ? EditorTheme::ColorU32(ThemeColor::TextFaint) : 0);
     }
     const AnalysisProfHistory::Stat* stat = FindAnalysisProfStat(row.key);
-    ImGui::TableNextColumn(); AnalysisCellMs(stat ? stat->avg : 0.0);
-    ImGui::TableNextColumn(); AnalysisCellMs(stat ? stat->peak : 0.0);
+    ImGui::TableNextColumn(); if (stat && stat->available) AnalysisCellMs(stat->avg); else ImGui::TextDisabled("unavailable");
+    ImGui::TableNextColumn(); if (stat && stat->available) AnalysisCellMs(stat->peak); else ImGui::TextDisabled("unavailable");
 }
 
 constexpr ImGuiTableFlags kAnalysisProfTableFlags =
@@ -842,15 +1095,22 @@ void DrawAnalysisProfFlatTable(float height)
 void DrawAnalysisProfGraph()
 {
     const bool hasSelection = !s_profilerFilter.selectedKey.empty();
+    if (hasSelection) {
+        const auto* stat = FindAnalysisProfStat(s_profilerFilter.selectedKey);
+        if (stat != nullptr && !stat->available) { ImGui::TextDisabled("Selected Self history unavailable."); return; }
+    }
     std::vector<float> values;
     values.reserve(s_profHistory.frames.size());
     if (hasSelection) {
-        for (const auto& frame : s_profHistory.frames) {
+        for (size_t i = 0; i < s_profHistory.frames.size(); ++i) {
+            if (!s_profHistory.completeFrames[i]) continue;
+            const auto& frame = s_profHistory.frames[i];
             const auto it = frame.find(s_profilerFilter.selectedKey);
             values.push_back(it == frame.end() ? 0.0f : it->second);
         }
     } else {
-        values.assign(s_profHistory.frameMs.begin(), s_profHistory.frameMs.end());
+        for (size_t i = 0; i < s_profHistory.frameMs.size(); ++i)
+            if (s_profHistory.completeFrames[i]) values.push_back(s_profHistory.frameMs[i]);
     }
 
     float peak = 0.0f;
@@ -863,7 +1123,7 @@ void DrawAnalysisProfGraph()
 
     ImGui::TextUnformatted(hasSelection ? s_profilerFilter.selectedLabel.c_str() : "Scoped frame CPU");
     ImGui::SameLine();
-    ImGui::TextDisabled("now %.3f  avg %.3f  peak %.3f ms  (%zu samples)",
+    ImGui::TextDisabled("last complete %.3f  avg %.3f  peak %.3f ms  (%zu complete frames)",
                         values.empty() ? 0.0 : static_cast<double>(values.back()), avg,
                         static_cast<double>(peak), values.size());
     if (hasSelection) {
@@ -908,7 +1168,7 @@ std::string FormatConsoleProblems(const ConsoleSink* sink, std::size_t maxLines 
     return out;
 }
 
-/// 貼り付け用の一括コピー。押した瞬間の «全部» をクリップボードへ入れる。
+/// @note 貼り付け用の一括コピー。押した瞬間の «全部» をクリップボードへ入れる。
 void DrawCopyReportButton(EditorContext& ctx)
 {
     const bool ready = (ctx.resources != nullptr && ctx.memoryLeakDiff != nullptr);
@@ -932,7 +1192,7 @@ void DrawCopyReportButton(EditorContext& ctx)
     ImGui::Separator();
 }
 
-/// "file:line" をボタンにして、押したらエディターでその行を開く。
+/// @note "file:line" をボタンにして、押したらエディターでその行を開く。
 void DrawOriginButton(const std::string& origin, int id)
 {
     const std::size_t colon = origin.find_last_of(':');
@@ -951,7 +1211,7 @@ void DrawOriginButton(const std::string& origin, int id)
         ImGui::SetTooltip("%s", origin.c_str());
 }
 
-/// 生存リソース一覧の表示状態。集計は台帳を全走査するため、毎フレームは回さない。
+/// @note 生存リソース一覧の表示状態。集計は台帳を全走査するため、毎フレームは回さない。
 struct LiveResourceState {
     std::vector<MemoryLeakGroup> groups;
     float       elapsed   = 0.0f;
@@ -1020,7 +1280,7 @@ void DrawLiveResources(EditorContext& ctx)
     ImGui::EndTable();
 }
 
-/// リーク差分の表示状態。比較は台帳を全走査するため、毎フレームは回さない。
+/// @note リーク差分の表示状態。比較は台帳を全走査するため、毎フレームは回さない。
 struct LeakDiffState {
     MemoryLeakReport live;
     MemoryLeakReport session;
@@ -1179,143 +1439,79 @@ void DrawLeakDiff(EditorContext& ctx)
     }
 }
 
-} // namespace
-
-void AnalysisPanel::OnRenderContent(EditorContext& ctx)
-{
-    if (ImGui::BeginTabBar("AnalysisTabs##fbzz")) {
-        if (ImGui::BeginTabItem("Profiler")) {
-            DrawProfiler();
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("Memory")) {
-            DrawMemory(ctx);
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem("Rendering")) {
-            DrawRendering(ctx);
-            ImGui::EndTabItem();
-        }
-        ImGui::EndTabBar();
-    }
 }
 
-void AnalysisPanel::DrawProfiler()
+void DrawPerformanceCpu(EditorContext& ctx)
 {
     const ImGuiStyle& st    = ImGui::GetStyle();
     const float       sp    = st.ItemSpacing.x;
     const float       fontH = ImGui::GetFontSize();
     const auto btnW = [&](const char* s) { return ImGui::CalcTextSize(s, nullptr, true).x + st.FramePadding.x * 2.0f; };
 
-    /// @note 判定は毎フレーム行う。取り込みの間隔に乗せると、詰まったフレームを取りこぼす。
-    ///       尺度に DeltaTime を使うのは、体感の «カクつき» がフレームの実時間そのものだから
-    ///       (計測区間の合計は入れ子ぶん重複するので、この判定には使えない)。
-    if (s_profilerDisplay.catchSpikes) {
-        const double frameMs = static_cast<double>(ImGui::GetIO().DeltaTime) * 1000.0;
-        if (frameMs >= static_cast<double>(s_profilerDisplay.spikeThresholdMs)
-            && frameMs > s_profilerDisplay.spikeMs) {
-            s_profilerDisplay.spikeRecords    = profiler::Profiler::GetLastFrameRecords();
-            s_profilerDisplay.spikeFrameIndex = profiler::Profiler::GetLastFrameIndex();
-            s_profilerDisplay.spikeMs         = frameMs;
-        }
-    }
-
-    if (!s_profilerDisplay.paused) {
-        s_profilerDisplay.elapsedSinceRefresh += ImGui::GetIO().DeltaTime;
-        if (s_profilerDisplay.visibleRecords.empty()
-            || s_profilerDisplay.elapsedSinceRefresh >= s_profilerDisplay.refreshInterval) {
-            ShowAnalysisProfFrame(profiler::Profiler::GetLastFrameRecords(),
-                                  profiler::Profiler::GetLastFrameIndex(), true);
-            s_profilerDisplay.elapsedSinceRefresh = 0.0f;
-            s_profilerDisplay.showingSpike        = false;
-        }
-    }
-
-    /// @name 1 段目: 記録 / 一時停止 / 表示中フレーム / スパイク / オプション
-    /// @note 一度決めたら触らない設定は Options へ畳み、1 行に詰める。
+    auto& performanceHistory = GetPerformanceHistory();
     bool enabled = profiler::Profiler::IsEnabled();
-    if (ImGui::Checkbox("Record", &enabled)) profiler::Profiler::SetEnabled(enabled);
-    ImGui::SameLine();
-    if (ImGui::Button(s_profilerDisplay.paused ? "Resume###profPause" : "Pause###profPause")) {
-        s_profilerDisplay.paused = !s_profilerDisplay.paused;
-        if (!s_profilerDisplay.paused) s_profilerDisplay.showingSpike = false;
+    if (ImGui::Checkbox("Record", &enabled)) {
+        OpArgs args; args.Set("recording", enabled);
+        InvokeOperator(ctx, "profiler.performance.set_recording", args);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Capture")) {
-        ShowAnalysisProfFrame(profiler::Profiler::GetLastFrameRecords(),
-                              profiler::Profiler::GetLastFrameIndex(), true);
-        s_profilerDisplay.elapsedSinceRefresh = 0.0f;
-        s_profilerDisplay.showingSpike        = false;
-    }
-    ImGui::SetItemTooltip("Take the latest frame now (works while paused)");
-
-    ImGui::SameLine(0.0f, sp * 2.0f);
-    if (s_profilerDisplay.showingSpike) {
-        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "Spike frame %llu",
-                           static_cast<unsigned long long>(s_profilerDisplay.visibleFrameIndex));
-    } else {
-        ImGui::TextDisabled("Frame %llu", static_cast<unsigned long long>(s_profilerDisplay.visibleFrameIndex));
-    }
+    if (ImGui::Checkbox("Freeze", &performanceHistory.frozen) && !performanceHistory.frozen && !performanceHistory.frames.empty())
+        performanceHistory.selected = performanceHistory.frames.back();
     ImGui::SameLine();
-    ImGui::Text("CPU %.2f ms", s_profTree.frameMs);
-    ImGui::SetItemTooltip("Sum of the top-level scopes in the shown frame");
-
-    char spikeLabel[64] = {};
-    const bool hasSpike = s_profilerDisplay.spikeMs > 0.0;
-    if (hasSpike)
-        std::snprintf(spikeLabel, sizeof(spikeLabel), "Worst %.1f ms###profSpikeShow", s_profilerDisplay.spikeMs);
-    const float rightW = (hasSpike ? btnW(spikeLabel) + 4.0f + btnW("x") + sp : 0.0f) + btnW("Options");
-    ImGui::SameLine();
-    if (ImGui::GetContentRegionAvail().x > rightW)
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - rightW);
-
-    if (hasSpike) {
-        /// @note 一番詰まったフレームだけを別枠で控える。Reset を押すまで上書きされないので、
-        ///       何度も再現しなくても «その 1 フレームの内訳» を落ち着いて読める。
-        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
-        if (ImGui::Button(spikeLabel)) {
-            ShowAnalysisProfFrame(s_profilerDisplay.spikeRecords, s_profilerDisplay.spikeFrameIndex, false);
-            s_profilerDisplay.paused       = true;
-            s_profilerDisplay.showingSpike = true;
-        }
-        ImGui::PopStyleColor();
-        ImGui::SetItemTooltip("Show the slowest frame caught so far (frame %llu). Pauses the view.",
-                              static_cast<unsigned long long>(s_profilerDisplay.spikeFrameIndex));
-        ImGui::SameLine(0.0f, 4.0f);
-        if (ImGui::Button("x###profSpikeReset")) {
-            s_profilerDisplay.spikeRecords.clear();
-            s_profilerDisplay.spikeFrameIndex = 0;
-            s_profilerDisplay.spikeMs         = 0.0;
-        }
-        ImGui::SetItemTooltip("Forget the caught spike");
+    if (ImGui::Button("Capture") && !performanceHistory.frames.empty()) {
+        performanceHistory.selected = performanceHistory.frames.back(); performanceHistory.frozen = true;
+    }
+    ImGui::SetItemTooltip("Select the latest completed capture and freeze this view.");
+    const auto spike = performanceHistory.spike;
+    if (spike) {
         ImGui::SameLine();
+        char label[64];
+        std::snprintf(label, sizeof(label), "Worst %.1f ms###profSpikeShow", spike->wallFrameIntervalMs);
+        if (ImGui::Button(label)) { performanceHistory.selected = spike; performanceHistory.frozen = true; }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("x###profSpikeReset")) performanceHistory.spike.reset();
     }
-
+    ImGui::SameLine();
     if (ImGui::Button("Options")) ImGui::OpenPopup("##profOptions");
     if (ImGui::BeginPopup("##profOptions")) {
         ImGui::SetNextItemWidth(fontH * 10.0f);
-        ImGui::SliderFloat("Refresh interval", &s_profilerDisplay.refreshInterval, 0.05f, 2.0f, "%.2f s");
-        ImGui::SetNextItemWidth(fontH * 10.0f);
-        ImGui::SliderInt("History", &s_profilerDisplay.historyFrameLimit, 10, 300, "%d samples");
+        ImGui::SliderInt("History", &s_profilerDisplay.historyFrameLimit, 10, 240, "%d frames");
         ImGui::Checkbox("Catch spikes over", &s_profilerDisplay.catchSpikes);
         ImGui::SameLine();
         ImGui::SetNextItemWidth(fontH * 5.0f);
         ImGui::DragFloat("##spikeThreshold", &s_profilerDisplay.spikeThresholdMs, 0.5f, 1.0f, 1000.0f, "%.1f ms");
         s_profilerDisplay.spikeThresholdMs = (std::max)(1.0f, s_profilerDisplay.spikeThresholdMs);
-        ImGui::Separator();
         if (ImGui::Button("Clear history")) {
-            s_profHistory.frames.clear();
-            s_profHistory.frameMs.clear();
-            s_profHistory.stats.clear();
+            ClearPerformanceHistory(); s_profTree = {}; s_profHistory = {}; s_renderHistory = {}; s_treeSource.reset();
         }
-        ImGui::TextDisabled("Right-click the table header to show / hide columns.");
+        ImGui::TextDisabled("Right-click the table header to show or hide columns.");
         ImGui::EndPopup();
     }
+    if (!performanceHistory.frames.empty()) {
+        int selectedIndex = static_cast<int>(performanceHistory.frames.size() - 1);
+        for (size_t i = 0; i < performanceHistory.frames.size(); ++i)
+            if (performanceHistory.frames[i] == performanceHistory.selected) selectedIndex = static_cast<int>(i);
+        ImGui::SetNextItemWidth(fontH * 16.0f);
+        if (ImGui::SliderInt("Captured frame", &selectedIndex, 0, static_cast<int>(performanceHistory.frames.size() - 1))) {
+            performanceHistory.selected = performanceHistory.frames[static_cast<size_t>(selectedIndex)]; performanceHistory.frozen = true;
+        }
+    }
+    SyncPerformanceView(); SyncRenderingView();
+    if (performanceHistory.budgetBlocked) ImGui::TextDisabled("History paused: retained snapshot budget reached.");
+    if (s_profHistory.budgetLimited) ImGui::TextDisabled("Scope history range reduced to its 4 MiB derived budget.");
+    if (s_profTree.unavailableReason != nullptr) ImGui::TextDisabled("%s", s_profTree.unavailableReason);
+    if (const auto& snapshot = performanceHistory.selected) {
+        ImGui::Text("Session %llu / application frame %llu / internal frame %llu%s",
+            static_cast<unsigned long long>(snapshot->captureSessionId), static_cast<unsigned long long>(snapshot->applicationFrameSerial),
+            static_cast<unsigned long long>(snapshot->frameIndex), snapshot == performanceHistory.spike ? " / captured spike" : "");
+        ImGui::Text("CPU elapsed %.3f ms / scope roots %.3f ms", snapshot->cpuFrameElapsedMs, snapshot->scopeRootSumMs);
+        if (snapshot->wallFrameIntervalAvailable) ImGui::Text("Measured frame interval %.3f ms", snapshot->wallFrameIntervalMs);
+        else ImGui::TextDisabled("Measured frame interval unavailable.");
+        if (!snapshot->complete) ImGui::TextDisabled("Incomplete capture: excluded from normal scope averages.");
+    }
 
-    /// @name 2 段目: カテゴリの内訳
     DrawAnalysisProfCategoryBar(s_profTree);
 
-    /// @name 3 段目: 表示形式と絞り込み
     if (ImGui::RadioButton("Hierarchy", !s_profilerFilter.flatView)) s_profilerFilter.flatView = false;
     ImGui::SetItemTooltip("Call tree. Same-named scopes under one parent are merged (see Calls).");
     ImGui::SameLine();
@@ -1351,8 +1547,9 @@ void AnalysisPanel::DrawProfiler()
 
     if (s_profTree.nodes.empty()) {
         ImGui::Spacing();
-        ImGui::TextDisabled("%s", enabled ? "No samples yet."
-                                          : "The profiler is off. Turn on Record to collect samples.");
+        if (performanceHistory.selected) {
+            ImGui::TextDisabled("Recorded frame contains no scopes."); DrawAnalysisProfGraph();
+        } else ImGui::TextDisabled("%s", enabled ? "Waiting for a completed capture." : "Record is stopped; no retained capture.");
         return;
     }
 
@@ -1365,7 +1562,7 @@ void AnalysisPanel::DrawProfiler()
     DrawAnalysisProfGraph();
 }
 
-void AnalysisPanel::DrawMemory(EditorContext& ctx)
+void DrawMemoryDebug(EditorContext& ctx)
 {
     if (ctx.memorySystem == nullptr || !ctx.memorySystem->IsInitialized()) {
         ImGui::TextDisabled("MemorySystem is not initialized.");
@@ -1373,13 +1570,37 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
     }
 
     const core::MemoryTracker& tracker = ctx.memorySystem->GetTracker();
-    const core::MemoryStats frameStats = ctx.memorySystem->GetFrameAllocator().GetStats();
+    auto& memoryHistory = GetMemoryHistory();
+    bool recording = IsMemoryHistoryRecording();
+    if (ImGui::Checkbox("Record history", &recording)) SetMemoryHistoryRecording(recording);
+    ImGui::SameLine();
+    if (ImGui::Checkbox("Freeze", &memoryHistory.frozen) && !memoryHistory.frozen && !memoryHistory.frames.empty())
+        memoryHistory.selected = memoryHistory.frames.back();
+    ImGui::SameLine();
+    if (ImGui::Button("Capture") && !memoryHistory.frames.empty()) { memoryHistory.selected = memoryHistory.frames.back(); memoryHistory.frozen = true; }
+    ImGui::SameLine();
+    if (ImGui::Button("Clear")) { ClearMemoryHistory(); s_memHistory = {}; return; }
+    if (!memoryHistory.frames.empty()) {
+        int index = static_cast<int>(memoryHistory.frames.size() - 1);
+        for (size_t i = 0; i < memoryHistory.frames.size(); ++i)
+            if (memoryHistory.frames[i] == memoryHistory.selected) index = static_cast<int>(i);
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+        if (ImGui::SliderInt("Captured frame", &index, 0, static_cast<int>(memoryHistory.frames.size() - 1))) {
+            memoryHistory.selected = memoryHistory.frames[static_cast<size_t>(index)]; memoryHistory.frozen = true;
+        }
+    }
+    SyncMemoryView();
+    if (memoryHistory.budgetBlocked) ImGui::TextDisabled("History paused: retained snapshot budget reached.");
+    if (!memoryHistory.selected) { ImGui::TextDisabled("No memory history yet."); return; }
+    const auto selected = memoryHistory.selected;
+    ImGui::Text("Session %llu / application frame %llu", static_cast<unsigned long long>(selected->captureSessionId),
+        static_cast<unsigned long long>(selected->applicationFrameSerial));
+    const core::MemoryStats frameStats = selected->frameAllocator;
 
     constexpr std::size_t kTagCount = static_cast<std::size_t>(core::MemoryTag::COUNT);
     std::vector<core::MemoryStats> tagStats(kTagCount);
-    for (std::size_t i = 0; i < kTagCount; ++i)
-        tagStats[i] = tracker.GetStats(static_cast<core::MemoryTag>(i));
-    AccumulateTrackedRendererResources(ctx.resources, tagStats);
+    for (std::size_t i = 0; i < kTagCount && i < selected->tags.size(); ++i)
+        tagStats[i] = selected->tags[i].stats;
 
     core::MemoryStats totalStats;
     for (const core::MemoryStats& stats : tagStats) {
@@ -1391,19 +1612,7 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
         totalStats.activeCount += stats.activeCount;
     }
 
-    /// @note Sample memory history
-    s_memHistory.elapsed += ImGui::GetIO().DeltaTime;
-    if (s_memHistory.elapsed >= s_memHistory.sampleInterval) {
-        s_memHistory.elapsed = 0.0f;
-        for (std::size_t i = 0; i < kTagCount; ++i) {
-            const char* tagName = tracker.GetTagName(static_cast<core::MemoryTag>(i));
-            auto& buf = s_memHistory.tagUsedMB[tagName];
-            buf.push_back(static_cast<float>(tagStats[i].used) / (1024.0f * 1024.0f));
-            if (buf.size() > MemoryHistoryState::kMaxFrames) buf.pop_front();
-        }
-    }
-
-    DrawCopyReportButton(ctx);
+    if (!memoryHistory.frozen) DrawCopyReportButton(ctx);
 
     ImGui::SetNextItemWidth(200.0f);
     ImGui::InputText("Filter tags##memory", s_memoryFilter.tagFilter, sizeof(s_memoryFilter.tagFilter));
@@ -1416,8 +1625,8 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
     struct MemTagRow { const char* label; core::MemoryStats stats; };
     std::vector<MemTagRow> tagRows;
     tagRows.reserve(kTagCount);
-    for (std::size_t i = 0; i < kTagCount; ++i) {
-        const char* tagName = tracker.GetTagName(static_cast<core::MemoryTag>(i));
+    for (std::size_t i = 0; i < kTagCount && i < selected->tags.size(); ++i) {
+        const char* tagName = selected->tags[i].name.c_str();
         if (s_memoryFilter.tagFilter[0] != '\0' &&
             std::strstr(tagName, s_memoryFilter.tagFilter) == nullptr) continue;
         tagRows.push_back({ tagName, tagStats[i] });
@@ -1458,28 +1667,21 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
         ImGui::EndTable();
     }
 
-    ImGui::Separator();
-    ImGui::Text("Tracked allocations: %zu / %zu",
-                tracker.GetActiveAllocationCount(),
-                tracker.GetMaxTrackedAllocationCount());
-    ImGui::Text("Dropped tracking entries: %zu", tracker.GetDroppedAllocationCount());
-    /// @note 0 が «使っていない» なのか «測っていない» なのか、表からは区別できない。
-    ///       RENDERER 以外はまだ記録側が居ないので、その旨をここで明示する。
-    ImGui::TextDisabled("Only RENDERER is instrumented; other tags stay 0 until their "
-                        "subsystems record into MemoryTracker.");
-
-    DrawLiveResources(ctx);
-    DrawLeakDiff(ctx);
+    ImGui::TextDisabled("Only RENDERER is instrumented; other tags stay 0 until their subsystems record into MemoryTracker.");
+    if (!memoryHistory.frozen) {
+        ImGui::SeparatorText("Live allocation diagnostics");
+        ImGui::Text("Tracked allocations: %zu / %zu", tracker.GetActiveAllocationCount(), tracker.GetMaxTrackedAllocationCount());
+        ImGui::Text("Dropped tracking entries: %zu", tracker.GetDroppedAllocationCount());
+        DrawLiveResources(ctx); DrawLeakDiff(ctx);
+    } else ImGui::TextDisabled("Live allocation diagnostics paused while viewing a retained capture.");
 
     if (!s_memHistory.tagUsedMB.empty()) {
         ImGui::Separator();
         ImGui::TextUnformatted("Memory history");
 
-        /// @note Build tag name list in stable order
         std::vector<const char*> tagNames;
         tagNames.reserve(static_cast<std::size_t>(core::MemoryTag::COUNT));
-        for (std::size_t i = 0; i < static_cast<std::size_t>(core::MemoryTag::COUNT); ++i)
-            tagNames.push_back(tracker.GetTagName(static_cast<core::MemoryTag>(i)));
+        for (const auto& tag : selected->tags) tagNames.push_back(tag.name.c_str());
 
         int selIdx = 0;
         for (int i = 0; i < static_cast<int>(tagNames.size()); ++i) {
@@ -1507,10 +1709,9 @@ void AnalysisPanel::DrawMemory(EditorContext& ctx)
 
 namespace {
 
-/// RenderGraph の構成テキストをプロジェクト配下へ保存する。
-///
+/// @note RenderGraph の構成テキストをプロジェクト配下へ保存する。
 /// @note タイムスタンプ付きで上書きせず溜める: 改修前後の差分比較に使うため。
-///       Artifacts 配下は git 管理外の既存置き場 (coverage も使用)。
+/// @note Artifacts 配下は git 管理外の既存置き場 (coverage も使用)。
 bool SaveRenderGraphPlan(const std::string& text, std::string& outPath)
 {
     const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
@@ -1538,11 +1739,11 @@ bool SaveRenderGraphPlan(const std::string& text, std::string& outPath)
     return true;
 }
 
-} // namespace
+}
 
 namespace {
 
-/// 大きな整数を 3 桁区切りにする。三角形数は桁を数えないと 10 万か 100 万か読めない。
+/// @note 大きな整数を 3 桁区切りにする。三角形数は桁を数えないと 10 万か 100 万か読めない。
 const char* FormatAnalysisCount(std::uint64_t value, char (&buffer)[32])
 {
     char digits[24];
@@ -1557,14 +1758,14 @@ const char* FormatAnalysisCount(std::uint64_t value, char (&buffer)[32])
     return buffer;
 }
 
-/// DrawCall / ポリゴン / カリングの統計。
+/// @note DrawCall / ポリゴン / カリングの統計。
 /// @note 左右 2 列: 縦 1 列だとスクロールが要り、下の GPU パス表が押し出されていた。
 void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& stats)
 {
     struct Item {
         const char*   label;
         std::uint64_t value;
-        bool          percent;   ///< 描画対象オブジェクト数に対する割合を添えるか
+        bool          percent;   ///< @note 描画対象オブジェクト数に対する割合を添えるか
     };
     const auto count = [](long long v) { return static_cast<std::uint64_t>((std::max)(0LL, v)); };
     const long long rendered = static_cast<long long>(stats.totalObjects) - stats.frustumCulled -
@@ -1651,233 +1852,205 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
     ImGui::EndTable();
 }
 
-enum class AnalysisPassCol : int { Name, Gpu, Share, Cpu, Avg, Peak, Count };
+enum class AnalysisPassCol : int { Name, Gpu, Share, Source, Age, View, Status, Avg, Peak, Count };
 
-/// GPU パスの表と、選択したパスの履歴グラフ。
-/// @note 表形式にした理由: `"%-22s"` の固定整形は比例フォントで桁が揃わず、GPU/CPU 列の比較も並べ替えもできなかった。
-void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap)
+void DrawGpuMetadata(const renderer::GpuProfilerViewMetadata& view, uint64_t physicalSerial, uint64_t deviceEpoch, bool physicalAvailable = true)
 {
-    const ImGuiStyle& st    = ImGui::GetStyle();
-    const float       fontH = ImGui::GetFontSize();
+    if (physicalAvailable) ImGui::Text("Application %llu / physical %llu / device epoch %llu / view %llu",
+        static_cast<unsigned long long>(view.applicationFrameSerial), static_cast<unsigned long long>(physicalSerial),
+        static_cast<unsigned long long>(deviceEpoch), static_cast<unsigned long long>(view.viewId));
+    else ImGui::Text("Application %llu / view %llu", static_cast<unsigned long long>(view.applicationFrameSerial), static_cast<unsigned long long>(view.viewId));
+    ImGui::Text("Scene %llu / plan %llu / resource %llu / output %u:%u / %ux%u",
+        static_cast<unsigned long long>(view.sceneGeneration), static_cast<unsigned long long>(view.planGeneration),
+        static_cast<unsigned long long>(view.resourceEpoch), view.outputId, view.outputGeneration, view.width, view.height);
+}
 
-    const bool  hasFilter = s_renderingFilter.passFilter[0] != '\0';
-    const float clearW    = hasFilter ? ImGui::CalcTextSize("Clear").x + st.FramePadding.x * 2.0f + st.ItemSpacing.x : 0.0f;
-    ImGui::SetNextItemWidth((std::max)(fontH * 8.0f, ImGui::GetContentRegionAvail().x - clearW));
-    ImGui::InputTextWithHint("##renderPassFilter", "Filter passes...", s_renderingFilter.passFilter,
-                             sizeof(s_renderingFilter.passFilter));
-    if (hasFilter) {
-        ImGui::SameLine();
-        if (ImGui::Button("Clear##renderFilter")) s_renderingFilter.passFilter[0] = '\0';
-    }
+/// @note CPU パスにはビュー出自がないため、遅延 GPU 区間とは別表で表示する。
+void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap, uint64_t cpuSerial)
+{
+    const auto& gpu = snap.gpuProfiler;
+    const float fontH = ImGui::GetFontSize();
+    if (s_renderHistory.budgetLimited) ImGui::TextDisabled("GPU history reduced or skipped to its 2 MiB derived budget.");
+    ImGui::TextDisabled("CPU application frame %llu; CPU/GPU observations are not joined.", static_cast<unsigned long long>(cpuSerial));
+    if (!gpu.supported) ImGui::TextDisabled("GPU timestamps unsupported.");
+    else if (!gpu.available) ImGui::TextDisabled("GPU sample unavailable; waiting for completion.");
+    else ImGui::Text("GPU capture %s / %u recorded / %u dropped", gpu.complete ? "complete" : "partial", gpu.recordedPassCount, gpu.droppedPassCount);
+    ImGui::TextDisabled("Current view context");
+    DrawGpuMetadata(snap.gpuCurrentView, 0, 0, false);
+    if (gpu.available) ImGui::Text("Completed GPU physical frame %llu / device epoch %llu",
+        static_cast<unsigned long long>(gpu.physicalFrameSerial), static_cast<unsigned long long>(gpu.deviceEpoch));
+    if (gpu.totalGpuTimeAvailable && gpu.available) ImGui::Text("GPU frame time %.3f ms", gpu.totalGpuMs);
+    else ImGui::TextDisabled("GPU frame total unavailable; AS preparation and per-queue totals are not measured here.");
 
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint("##renderPassFilter", "Filter passes...", s_renderingFilter.passFilter, sizeof(s_renderingFilter.passFilter));
     struct PassRow {
-        const std::string* name   = nullptr;
-        double             gpuMs  = 0.0;
-        double             cpuMs  = 0.0;
-        bool               hasCpu = false;
-        double             avgMs  = 0.0;
-        double             peakMs = 0.0;
+        const renderer::GpuPassProfile* pass = nullptr;
+        std::string key;
+        double avgMs = 0.0;
+        double peakMs = 0.0;
+        bool hasHistory = false;
     };
-
-    std::unordered_map<std::string, double> cpuMap;
-    for (const auto& [name, ms] : snap.passTimings) cpuMap[name] = ms;
-
-    const std::string filter(s_renderingFilter.passFilter);
     std::vector<PassRow> rows;
-    double totalGpuMs = 0.0;
-    double shownGpuMs = 0.0;
-    for (const auto& [name, ms] : snap.gpuPassTimings) {
-        totalGpuMs += ms;
-        if (!filter.empty() && !util::StringUtils::ContainsCI(name, filter)) continue;
-        shownGpuMs += ms;
-
-        PassRow row;
-        row.name  = &name;
-        row.gpuMs = ms;
-        if (const auto cpu = cpuMap.find(name); cpu != cpuMap.end()) {
-            row.cpuMs  = cpu->second;
-            row.hasCpu = true;
+    const std::string filter(s_renderingFilter.passFilter);
+    double passSumMs = 0.0;
+    double shownMs = 0.0;
+    size_t availableCount = 0;
+    for (const auto& pass : gpu.passes) {
+        if (gpu.available && pass.available) { passSumMs += pass.gpuMs; ++availableCount; }
+        if (!filter.empty() && !util::StringUtils::ContainsCI(pass.name, filter)) continue;
+        PassRow row; row.pass = &pass; row.key = GpuPassSeriesKey(pass);
+        if (gpu.available && pass.available) shownMs += pass.gpuMs;
+        if (const auto history = s_renderHistory.passGpuMs.find(row.key); history != s_renderHistory.passGpuMs.end() && !history->second.empty()) {
+            row.hasHistory = true;
+            for (const auto& sample : history->second) { row.avgMs += sample.ms; row.peakMs = (std::max)(row.peakMs, static_cast<double>(sample.ms)); }
+            row.avgMs /= static_cast<double>(history->second.size());
         }
-        if (const auto hist = s_renderHistory.passGpuMs.find(name);
-            hist != s_renderHistory.passGpuMs.end() && !hist->second.empty()) {
-            double sum = 0.0;
-            for (const float v : hist->second) {
-                sum += v;
-                row.peakMs = (std::max)(row.peakMs, static_cast<double>(v));
-            }
-            row.avgMs = sum / static_cast<double>(hist->second.size());
-        }
-        rows.push_back(row);
+        rows.push_back(std::move(row));
     }
-
-    /// @note 表は行数ぶんだけの高さにし、多いときはグラフと RenderGraph の見出しが残るところで止める。
-    const float rowH   = ImGui::GetTextLineHeight() + st.CellPadding.y * 2.0f;
-    const float graphH = fontH * 5.0f;
-    const float wantH  = static_cast<float>(rows.size() + 1u) * rowH + st.CellPadding.y * 2.0f + 2.0f;
-    const float maxH   = (std::max)(fontH * 8.0f, ImGui::GetContentRegionAvail().y - graphH - fontH * 4.0f);
-    const float tableH = (std::min)(wantH, maxH);
-
-    constexpr ImGuiTableFlags kFlags =
-        ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
-        ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable |
-        ImGuiTableFlags_Sortable;
-    if (ImGui::BeginTable("GpuPasses##Analysis", static_cast<int>(AnalysisPassCol::Count), kFlags, { 0.0f, tableH })) {
-        const float numW = fontH * 4.6f;
-        const ImGuiTableColumnFlags num = ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_PreferSortDescending;
-        ImGui::TableSetupColumn("Pass", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHide,
-                                0.0f, static_cast<ImGuiID>(AnalysisPassCol::Name));
-        ImGui::TableSetupColumn("GPU ms", num | ImGuiTableColumnFlags_DefaultSort, numW,
-                                static_cast<ImGuiID>(AnalysisPassCol::Gpu));
-        ImGui::TableSetupColumn("% GPU", num, fontH * 6.0f, static_cast<ImGuiID>(AnalysisPassCol::Share));
-        ImGui::TableSetupColumn("CPU ms", num, numW, static_cast<ImGuiID>(AnalysisPassCol::Cpu));
-        ImGui::TableSetupColumn("Avg ms", num, numW, static_cast<ImGuiID>(AnalysisPassCol::Avg));
-        ImGui::TableSetupColumn("Peak ms", num, numW, static_cast<ImGuiID>(AnalysisPassCol::Peak));
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableHeadersRow();
-
-        if (const ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs != nullptr && specs->SpecsCount > 0) {
+    const float rowH = ImGui::GetTextLineHeight() + ImGui::GetStyle().CellPadding.y * 2.0f;
+    const float tableH = (std::min)(static_cast<float>(rows.size() + 1) * rowH + 4.0f,
+        (std::max)(fontH * 8.0f, ImGui::GetContentRegionAvail().y - fontH * 12.0f));
+    constexpr ImGuiTableFlags FLAGS = ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX | ImGuiTableFlags_RowBg |
+        ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable;
+    if (ImGui::BeginTable("GpuPasses##Analysis", static_cast<int>(AnalysisPassCol::Count), FLAGS, {0.0f, tableH})) {
+        const ImGuiTableColumnFlags numeric = ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_PreferSortDescending;
+        ImGui::TableSetupColumn("Pass", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHide, fontH * 12.0f, static_cast<ImGuiID>(AnalysisPassCol::Name));
+        ImGui::TableSetupColumn("GPU ms", numeric | ImGuiTableColumnFlags_DefaultSort, fontH * 4.6f, static_cast<ImGuiID>(AnalysisPassCol::Gpu));
+        ImGui::TableSetupColumn("% Pass Sum", numeric, fontH * 6.0f, static_cast<ImGuiID>(AnalysisPassCol::Share));
+        ImGui::TableSetupColumn("Source frame", numeric, fontH * 7.0f, static_cast<ImGuiID>(AnalysisPassCol::Source));
+        ImGui::TableSetupColumn("Age", numeric, fontH * 3.0f, static_cast<ImGuiID>(AnalysisPassCol::Age));
+        ImGui::TableSetupColumn("View", numeric, fontH * 4.0f, static_cast<ImGuiID>(AnalysisPassCol::View));
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, fontH * 8.0f, static_cast<ImGuiID>(AnalysisPassCol::Status));
+        ImGui::TableSetupColumn("Avg ms", numeric, fontH * 4.6f, static_cast<ImGuiID>(AnalysisPassCol::Avg));
+        ImGui::TableSetupColumn("Peak ms", numeric, fontH * 4.6f, static_cast<ImGuiID>(AnalysisPassCol::Peak));
+        ImGui::TableSetupScrollFreeze(0, 1); ImGui::TableHeadersRow();
+        if (const auto* specs = ImGui::TableGetSortSpecs(); specs != nullptr && specs->SpecsCount > 0) {
             const auto column = static_cast<AnalysisPassCol>(specs->Specs[0].ColumnUserID);
-            const bool desc   = specs->Specs[0].SortDirection == ImGuiSortDirection_Descending;
-            const auto value  = [column](const PassRow& r) -> double {
+            const bool descending = specs->Specs[0].SortDirection == ImGuiSortDirection_Descending;
+            const auto value = [&](const PassRow& row) -> double {
+                const auto& pass = *row.pass;
                 switch (column) {
-                case AnalysisPassCol::Gpu:
-                case AnalysisPassCol::Share: return r.gpuMs;
-                case AnalysisPassCol::Cpu:   return r.hasCpu ? r.cpuMs : -1.0;
-                case AnalysisPassCol::Avg:   return r.avgMs;
-                case AnalysisPassCol::Peak:  return r.peakMs;
-                default:                     return 0.0;
+                case AnalysisPassCol::Gpu: case AnalysisPassCol::Share: return gpu.available && pass.available ? pass.gpuMs : -1.0;
+                case AnalysisPassCol::Source: return static_cast<double>(pass.metadata.applicationFrameSerial);
+                case AnalysisPassCol::Age: return cpuSerial >= pass.metadata.applicationFrameSerial ? static_cast<double>(cpuSerial - pass.metadata.applicationFrameSerial) : -1.0;
+                case AnalysisPassCol::View: return static_cast<double>(pass.metadata.viewId);
+                case AnalysisPassCol::Status: return gpu.available && pass.available ? 1.0 : 0.0;
+                case AnalysisPassCol::Avg: return row.hasHistory ? row.avgMs : -1.0;
+                case AnalysisPassCol::Peak: return row.hasHistory ? row.peakMs : -1.0;
+                default: return 0.0;
                 }
             };
             std::stable_sort(rows.begin(), rows.end(), [&](const PassRow& a, const PassRow& b) {
-                int cmp = 0;
-                if (column == AnalysisPassCol::Name) {
-                    cmp = a.name->compare(*b.name);
-                } else {
-                    const double va = value(a);
-                    const double vb = value(b);
-                    cmp = (va < vb) ? -1 : (va > vb ? 1 : 0);
-                }
-                return desc ? cmp > 0 : cmp < 0;
+                const int comparison = column == AnalysisPassCol::Name ? a.pass->name.compare(b.pass->name) :
+                    value(a) < value(b) ? -1 : value(a) > value(b) ? 1 : 0;
+                return descending ? comparison > 0 : comparison < 0;
             });
         }
-
-        const ImU32 gpuColor = IM_COL32(255, 170, 50, 255);
-        for (const PassRow& row : rows) {
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            const bool selected = s_renderHistory.selectedPass == *row.name;
-            ImGui::PushID(row.name->c_str());
-            if (ImGui::Selectable(row.name->c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
-                s_renderHistory.selectedPass = selected ? std::string() : *row.name;
-            ImGui::PopID();
-
-            ImGui::TableNextColumn();
-            {
-                /// @note GPU 全体の 1/4 を超えるパスは «まず見るべき所» なので色で浮かせる。
-                char text[32];
-                std::snprintf(text, sizeof(text), "%.3f", row.gpuMs);
-                const bool heavy = totalGpuMs > 0.0 && row.gpuMs / totalGpuMs >= 0.25;
-                AnalysisTextRight(text, heavy ? EditorTheme::ColorU32(ThemeColor::Warning) : 0);
+        for (const auto& row : rows) {
+            const auto& pass = *row.pass;
+            const bool available = gpu.available && pass.available;
+            ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::PushID(row.key.c_str());
+            if (ImGui::Selectable(pass.name.c_str(), s_renderHistory.selectedPass == row.key, ImGuiSelectableFlags_SpanAllColumns)) {
+                s_renderHistory.selectedPass = s_renderHistory.selectedPass == row.key ? std::string{} : row.key;
+                s_renderHistory.selectedPassLabel = pass.name;
             }
-            ImGui::TableNextColumn(); AnalysisShareBar(row.gpuMs, totalGpuMs, gpuColor);
+            ImGui::PopID();
+            if (ImGui::IsItemHovered()) {
+                ImGui::BeginTooltip(); DrawGpuMetadata(pass.metadata, pass.physicalFrameSerial, pass.deviceEpoch);
+                ImGui::TextUnformatted("Separate GPU observation; no strict CPU/GPU join."); ImGui::EndTooltip();
+            }
+            ImGui::TableNextColumn(); if (available) AnalysisCellMs(pass.gpuMs); else ImGui::TextDisabled("unavailable");
+            ImGui::TableNextColumn(); if (available && passSumMs > 0.0) AnalysisShareBar(pass.gpuMs, passSumMs, IM_COL32(255, 170, 50, 255)); else ImGui::TextDisabled("unavailable");
+            ImGui::TableNextColumn(); ImGui::Text("%llu", static_cast<unsigned long long>(pass.metadata.applicationFrameSerial));
+            ImGui::TableNextColumn(); if (cpuSerial >= pass.metadata.applicationFrameSerial) ImGui::Text("%llu", static_cast<unsigned long long>(cpuSerial - pass.metadata.applicationFrameSerial)); else ImGui::TextDisabled("unavailable");
+            ImGui::TableNextColumn(); ImGui::Text("%llu", static_cast<unsigned long long>(pass.metadata.viewId));
             ImGui::TableNextColumn();
-            if (row.hasCpu) AnalysisCellMs(row.cpuMs);
-            else            AnalysisTextRight("-", EditorTheme::ColorU32(ThemeColor::TextFaint));
-            ImGui::TableNextColumn(); AnalysisCellMs(row.avgMs);
-            ImGui::TableNextColumn(); AnalysisCellMs(row.peakMs);
-        }
-        if (rows.empty()) {
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::TextDisabled("No passes match the filter.");
+            if (!available) ImGui::TextDisabled("unavailable");
+            else {
+                const auto& current = snap.gpuCurrentView;
+                auto expected = current; expected.applicationFrameSerial = pass.metadata.applicationFrameSerial;
+                const bool compatible = pass.metadata.planGeneration != 0 && pass.metadata.applicationFrameSerial <= current.applicationFrameSerial && pass.metadata == expected;
+                ImGui::TextUnformatted(compatible ? "view compatible" : "other context");
+            }
+            ImGui::TableNextColumn(); if (row.hasHistory) AnalysisCellMs(row.avgMs); else ImGui::TextDisabled("unavailable");
+            ImGui::TableNextColumn(); if (row.hasHistory) AnalysisCellMs(row.peakMs); else ImGui::TextDisabled("unavailable");
         }
         ImGui::EndTable();
     }
-
-    if (hasFilter) {
-        ImGui::TextDisabled("GPU shown %.3f ms of %.3f ms  |  %zu of %zu passes",
-                            shownGpuMs, totalGpuMs, rows.size(), snap.gpuPassTimings.size());
-    } else {
-        ImGui::TextDisabled("GPU total %.3f ms  |  %zu passes", totalGpuMs, snap.gpuPassTimings.size());
+    if (availableCount != 0) ImGui::TextDisabled("Pass Sum %.3f ms%s / shown %.3f ms / %zu available intervals",
+        passSumMs, gpu.complete ? "" : " (partial)", shownMs, availableCount);
+    else ImGui::TextDisabled("Pass Sum unavailable.");
+    if (const auto history = s_renderHistory.passGpuMs.find(s_renderHistory.selectedPass);
+        history != s_renderHistory.passGpuMs.end() && !history->second.empty()) {
+        std::vector<float> values;
+        for (const auto& sample : history->second) values.push_back(sample.ms);
+        const float peak = *std::max_element(values.begin(), values.end());
+        ImGui::Text("%s / %zu distinct GPU samples", s_renderHistory.selectedPassLabel.c_str(), values.size());
+        ImGui::PlotLines("##renderHistory", values.data(), static_cast<int>(values.size()), 0, nullptr, 0.0f,
+            (std::max)(peak * 1.15f, 0.001f), {-FLT_MIN, fontH * 4.0f});
     }
-
-    const auto it = s_renderHistory.passGpuMs.find(s_renderHistory.selectedPass);
-    if (s_renderHistory.selectedPass.empty() || it == s_renderHistory.passGpuMs.end() || it->second.empty()) {
-        ImGui::TextDisabled("Click a pass to plot its GPU time history.");
-        return;
-    }
-    const std::vector<float> values(it->second.begin(), it->second.end());
-    float  peak = 0.0f;
-    double sum  = 0.0;
-    for (const float v : values) {
-        peak = (std::max)(peak, v);
-        sum += v;
-    }
-    ImGui::TextUnformatted(s_renderHistory.selectedPass.c_str());
-    ImGui::SameLine();
-    ImGui::TextDisabled("now %.3f  avg %.3f  peak %.3f ms", static_cast<double>(values.back()),
-                        sum / static_cast<double>(values.size()), static_cast<double>(peak));
-    ImGui::SameLine();
-    if (ImGui::SmallButton("x##renderGraphClose")) s_renderHistory.selectedPass.clear();
-    ImGui::PlotLines("##renderHistory", values.data(), static_cast<int>(values.size()), 0, nullptr,
-                     0.0f, (std::max)(peak * 1.15f, 0.001f), { -FLT_MIN, graphH - ImGui::GetTextLineHeightWithSpacing() });
-}
-
-/// InputTextMultiline は可変バッファを要求するので、構成テキストの写しを持つ。
-std::string s_renderPlanText;
-
-} // namespace
-
-void AnalysisPanel::DrawRendering(EditorContext& ctx)
-{
-    const renderer::RenderDebugOverlay::Snapshot& snap =
-        renderer::RenderDebugOverlay::GetLastSnapshot();
-
-    /// @name フレーム時間
-    /// @note フレーム予算の可否はビューポート Stats HUD でしか見えなかったため、HUD と同じ部品をここへ置く。
-    ///       履歴は widgets 側で共有しているので HUD とグラフの中身は一致する。
-    const int   targetFps = ctx.projectSettings.app.targetFps > 0 ? ctx.projectSettings.app.targetFps : 60;
-    const float targetMs  = 1000.0f / static_cast<float>(targetFps);
-    const float fontH     = ImGui::GetFontSize();
-
-    widgets::FrameTimeHero(targetMs, fontH * 12.0f);
-
-    char budgetText[64];
-    std::snprintf(budgetText, sizeof(budgetText), "budget %.1f ms  (%d fps)", targetMs, targetFps);
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x
-                         - ImGui::CalcTextSize(budgetText).x);
-    /// @note 大きい数字の下端へ揃える
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + fontH * 0.9f);
-    ImGui::TextDisabled("%s", budgetText);
-
-    widgets::FrameTimeGraph(targetMs, fontH * 3.0f);
-    ImGui::Spacing();
-
-    s_renderHistory.elapsed += ImGui::GetIO().DeltaTime;
-    if (!snap.gpuPassTimings.empty() && s_renderHistory.elapsed >= s_renderHistory.sampleInterval) {
-        s_renderHistory.elapsed = 0.0f;
-        for (const auto& [name, ms] : snap.gpuPassTimings) {
-            auto& buf = s_renderHistory.passGpuMs[name];
-            buf.push_back(static_cast<float>(ms));
-            if (buf.size() > RenderingHistoryState::kMaxFrames) buf.pop_front();
+    if (ImGui::CollapsingHeader("CPU passes / separate observation")) {
+        ImGui::TextDisabled("CPU view metadata unavailable; same-named GPU rows do not identify this CPU observation.");
+        if (ImGui::BeginTable("CpuPasses##Analysis", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
+            ImGui::TableSetupColumn("Pass"); ImGui::TableSetupColumn("CPU ms"); ImGui::TableHeadersRow();
+            for (const auto& [name, ms] : snap.passTimings) {
+                ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextUnformatted(name.c_str());
+                ImGui::TableNextColumn(); AnalysisCellMs(ms);
+            }
+            ImGui::EndTable();
         }
     }
+}
+
+/// @note InputTextMultiline は可変バッファを要求するので、構成テキストの写しを持つ。
+std::string s_renderPlanText;
+
+}
+
+void DrawPerformanceRendering(EditorContext& ctx)
+{
+    auto& history = GetPerformanceHistory();
+    bool recording = profiler::Profiler::IsEnabled();
+    if (ImGui::Checkbox("Record", &recording)) {
+        OpArgs args; args.Set("recording", recording); InvokeOperator(ctx, "profiler.performance.set_recording", args);
+    }
+    ImGui::SameLine();
+    if (ImGui::Checkbox("Freeze", &history.frozen) && !history.frozen && !history.frames.empty()) history.selected = history.frames.back();
+    ImGui::SameLine();
+    if (ImGui::Button("Capture") && !history.frames.empty()) { history.selected = history.frames.back(); history.frozen = true; }
+    ImGui::SameLine();
+    if (ImGui::Button("Clear")) {
+        ClearPerformanceHistory(); s_profTree = {}; s_profHistory = {}; s_renderHistory = {}; s_treeSource.reset(); return;
+    }
+    if (!history.frames.empty()) {
+        int index = static_cast<int>(history.frames.size() - 1);
+        for (size_t i = 0; i < history.frames.size(); ++i) if (history.frames[i] == history.selected) index = static_cast<int>(i);
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+        if (ImGui::SliderInt("Captured frame", &index, 0, static_cast<int>(history.frames.size() - 1))) {
+            history.selected = history.frames[static_cast<size_t>(index)]; history.frozen = true;
+        }
+    }
+    SyncPerformanceView(); SyncRenderingView();
+    if (history.budgetBlocked) ImGui::TextDisabled("History paused: retained snapshot budget reached.");
+    if (!history.selected) { ImGui::TextDisabled("No completed Performance capture."); return; }
+    const auto selected = history.selected;
+    const auto& snap = selected->rendering;
+    const int targetFps = ctx.projectSettings.app.targetFps > 0 ? ctx.projectSettings.app.targetFps : 60;
+    const float targetMs = 1000.0f / static_cast<float>(targetFps);
+    const float fontH = ImGui::GetFontSize();
+    ImGui::Text("Session %llu / application frame %llu", static_cast<unsigned long long>(selected->captureSessionId),
+        static_cast<unsigned long long>(selected->applicationFrameSerial));
+    ImGui::TextDisabled("CPU budget %.1f ms (%d fps)", targetMs, targetFps);
+    DrawSelectedFrameTime(targetMs, fontH * 3.0f);
+    ImGui::Spacing();
 
     DrawAnalysisRenderStats(snap.renderStats);
 
-    /// @name GPU パスタイミング
-    /// @note Profiler タブは CPU スコープのみ表示するため、GPU 負荷のボトルネックはここで可視化する。
     ImGui::Spacing();
     ImGui::SeparatorText("GPU passes");
-    if (snap.gpuPassTimings.empty())
-        ImGui::TextDisabled("Measuring, waiting for GPU latency...");
-    else
-        DrawAnalysisGpuPasses(snap);
+    DrawAnalysisGpuPasses(snap, selected->applicationFrameSerial);
 
-    /// @name RenderGraph の構成
-    /// @note 実行順・カリング・エイリアス割り当てが «いつの間にか変わっていた» を捕まえるための口。
-    ///       絵を見ても分からない種類の変化なので、テキストで差分を取るしかない。
     ImGui::Spacing();
     if (ImGui::CollapsingHeader("Render graph plan")) {
         if (snap.planDescription.empty()) {
@@ -1906,11 +2079,36 @@ void AnalysisPanel::DrawRendering(EditorContext& ctx)
             }
 
             /// @note 読み取り専用の入力欄: 差分箇所だけ範囲選択してコピーしたいため。TextUnformatted は全文コピーしかできない。
-            if (s_renderPlanText != snap.planDescription) s_renderPlanText = snap.planDescription;
+            constexpr size_t PREVIEW_LIMIT = 1024 * 1024;
+            const size_t previewSize = (std::min)(snap.planDescription.size(), PREVIEW_LIMIT);
+            if (s_renderPlanText.size() != previewSize || snap.planDescription.compare(0, previewSize, s_renderPlanText) != 0)
+                s_renderPlanText.assign(snap.planDescription, 0, previewSize);
+            if (previewSize != snap.planDescription.size()) ImGui::TextDisabled("Preview limited to 1 MiB; Copy and Save retain the complete owned plan.");
             ImGui::InputTextMultiline("##renderPlanText", s_renderPlanText.data(), s_renderPlanText.size() + 1,
                                       { -FLT_MIN, fontH * 16.0f }, ImGuiInputTextFlags_ReadOnly);
         }
     }
 }
 
-} // namespace fbzz::editor
+void TickProfilerWidgets(EditorContext& ctx)
+{
+    (void)ctx;
+    auto& history = GetPerformanceHistory();
+    for (const auto& frame : history.frames) {
+        if (frame->captureSessionId < s_profilerDisplay.lastObservedSession ||
+            (frame->captureSessionId == s_profilerDisplay.lastObservedSession && frame->applicationFrameSerial <= s_profilerDisplay.lastObservedSerial)) continue;
+        s_profilerDisplay.lastObservedSession = frame->captureSessionId;
+        s_profilerDisplay.lastObservedSerial = frame->applicationFrameSerial;
+        if (s_profilerDisplay.catchSpikes && frame->wallFrameIntervalAvailable && frame->wallFrameIntervalMs >= s_profilerDisplay.spikeThresholdMs &&
+            (!history.spike || frame->wallFrameIntervalMs > history.spike->wallFrameIntervalMs)) history.spike = frame;
+    }
+    SyncPerformanceView(); SyncMemoryView(); SyncRenderingView();
+}
+
+void ResetProfilerWidgets()
+{
+    s_profilerDisplay = {}; s_profilerFilter = {}; s_profTree = {}; s_profHistory = {};
+    s_memHistory = {}; s_renderHistory = {}; s_treeSource.reset(); s_renderPlanText.clear();
+}
+
+}

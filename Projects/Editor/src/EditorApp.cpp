@@ -2,7 +2,7 @@
 /// @brief   エディター全体のライフサイクル管理 + DockSpace。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
+
 /// @note  ファイル構成:
 /// @note  EditorApp.cpp         - Init / Shutdown / OpenProject / BeginFrame / EndFrame / RenderPanels
 /// @note  EditorApp_Scene.cpp   - シーン I/O・ダーティ追跡・ホットリロード
@@ -43,7 +43,12 @@
 #include <Editor/Panels/HotkeyEditorPanel.hpp>
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
 #include <Editor/Panels/BuildSettingsPanel.hpp>
-#include <Editor/Panels/AnalysisPanel.hpp>
+#include <Editor/Panels/PerformanceProfilerPanel.hpp>
+#include <Editor/Panels/ScriptProfilerPanel.hpp>
+#include <Editor/Panels/MemoryDebugPanel.hpp>
+#include <Editor/Profiler/ProfilerHistory.hpp>
+#include <Editor/Profiler/ProfilerWidgets.hpp>
+#include <Engine/Profiler/ScriptProfiler.hpp>
 #include <Editor/Panels/RenderPassViewerPanel.hpp>
 #include <Editor/Panels/AnimationGraphPanel.hpp>
 #include <Editor/Panels/BehaviorTreePanel.hpp>
@@ -559,7 +564,9 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_panels.push_back(std::move(bs));
     }
     {
-        auto analysis = std::make_unique<AnalysisPanel>();
+        m_panels.push_back(std::make_unique<ScriptProfilerPanel>());
+        m_panels.push_back(std::make_unique<MemoryDebugPanel>());
+        auto analysis = std::make_unique<PerformanceProfilerPanel>();
         m_analysisPanel = analysis.get();
         m_panels.push_back(std::move(analysis));
     }
@@ -842,6 +849,10 @@ void EditorApp::PersistEditorSettings()
 
 bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath)
 {
+    scene::ScriptProfiler::AdvanceRuntimeEpoch();
+    scene::ScriptProfiler::SetExecutionMode(false);
+    ResetProfilerHistory();
+    ResetProfilerWidgets();
     if (!m_ctx.activeScene || !m_resources) return false;
 
     m_projectRoot      = projectRoot;
@@ -984,7 +995,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     /// @note 参照を失った import 生成物を片付ける。ルートを配ると Asset Browser が未 import の
     /// @note        走査を始めるため、それより前に孤児を落としておかないと数え直しになる。
     if (m_settings.sweepOrphanedBakedOnOpen) {
-        const auto sweep = asset::AssetDatabase::SweepOrphanedBaked(/*dryRun=*/false);
+        const auto sweep = asset::AssetDatabase::SweepOrphanedBaked(false);
         if (sweep.aborted) {
             FBZZ_LOG_WARN("EditorApp: baked sweep skipped (%s)", sweep.abortReason.c_str());
         } else if (sweep.removed > 0) {
@@ -1931,6 +1942,8 @@ void EditorApp::TickPlaytest()
 
 void EditorApp::OnUpdate(float dt)
 {
+    TickProfilerHistory(m_ctx);
+    TickProfilerWidgets(m_ctx);
     BeginFrame();
 
     /// @note Prefab 編集モードの出入りはシーンの中身を丸ごと差し替える。パネル描画の途中で
@@ -2148,6 +2161,8 @@ void EditorApp::OnRender()
 
 void EditorApp::OnShutdown()
 {
+    ResetProfilerHistory();
+    ResetProfilerWidgets();
     /// @note 窓を閉じて中断されたシナリオも «不合格» のレポートを残し、ロックステップを解く。
     m_playtest.Cancel("エディターが終了した");
     m_playtestDispatcher.reset();
@@ -2287,7 +2302,7 @@ void EditorApp::UpdateFocusAnim(float dt)
     }
 }
 
-void EditorApp::RenderSceneView(const renderer::Camera& /*gameCamera*/, fbzz::LayerMask /*gameCullingMask*/,
+void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
                                 scene::RenderFrameGeometryCache* frameGeometry)
 {
     FBZZ_PROFILE_SCOPE("EditorApp::RenderSceneView");
