@@ -19,7 +19,10 @@ struct RenderReflectionProbeInput {
 struct RenderReflectionProbeResult {
     ResourceHandle<TextureTag> irradiance, prefilter;
     uint32_t prefilterMipCount = 0;
+    bool immutablePublished = false;
 };
+/// @note DynamicScene は現在の直射光と world-space cloud shadow を捕捉し、主カメラ依存の shadow/cookie/AO は unavailable とする。
+/// @note 捕捉専用 b4/b12 が無効なら false。主ビューの shadow 定数は変更しない。
 bool CaptureReflectionProbe(RenderPassContext&, const RenderReflectionProbeInput&, RenderReflectionProbeResult&);
 struct RenderLightProbeInput {
     uint32_t sourceIndex = 0, sourceGeneration = 0;

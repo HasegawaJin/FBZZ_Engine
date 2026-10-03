@@ -1,2 +1,14 @@
+# @file    Terrain.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-16
 [meta]
 guid = '615451f5bba944f3b8dcfbd595b27719'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'terrain_v1'
+opacity = 'custom'
+variants = 'none'
+preview = 'terrain'

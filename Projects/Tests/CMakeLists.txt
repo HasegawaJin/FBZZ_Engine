@@ -11,6 +11,13 @@ add_subdirectory(TestKit)
 
 include("${CMAKE_SOURCE_DIR}/CMake/FBZZTests.cmake")
 
+# @note Runtime packaging is a CMake contract, so validate its isolated fixture through the same CTest entry point.
+add_test(NAME SharedSDKTemplates
+    COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+        -P "${CMAKE_SOURCE_DIR}/CMake/SDK/TestSharedSDKTemplates.cmake")
+set_tests_properties(SharedSDKTemplates PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 30)
+
 # @note --- Math -------------------------------------------------------------------
 fbzz_add_test_suite(MathAuto
     SOURCES
@@ -142,8 +149,15 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/AssetPartialIoTests.cpp
         Engine/Auto/AssetStreamingIntegrationTests.cpp
         Engine/Auto/EventBusTests.cpp
+        Engine/Auto/PixCaptureTests.cpp
         Engine/Auto/FileSystemPathTests.cpp
         Engine/Auto/ScriptTransformProxyTests.cpp
+        Engine/Auto/ScriptTransformHierarchyTests.cpp
+        Engine/Auto/SceneCapacityTests.cpp
+        Engine/Auto/SceneCapacityIntegrationTests.cpp
+        Engine/Auto/ShaderCapabilitiesTests.cpp
+        Engine/Auto/PrefabIdentityTests.cpp
+        Engine/Auto/PrefabReferenceRemapTests.cpp
         Engine/Auto/ScriptSceneQueryTests.cpp
         Engine/Auto/ScriptModulesTests.cpp
         Engine/Auto/ScriptLifecycleTests.cpp
@@ -164,6 +178,8 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ComponentArrayTests.cpp
         Engine/Auto/FzAssetFormatTests.cpp
         Engine/Auto/InputActionMapTests.cpp
+        Engine/Auto/RenderModeSettingsTests.cpp
+        Engine/Auto/RenderPipelineAssetTests.cpp
         Engine/Auto/JointComponentTests.cpp
         Engine/Auto/ParticleCodecTests.cpp
         Engine/Auto/ParticleCurveTests.cpp
@@ -199,6 +215,9 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/GeometryPipelineTests.cpp
         Engine/Auto/RenderVisibilityTests.cpp
         Engine/Auto/RenderSceneExtractorTests.cpp
+        Engine/Auto/RaySkinningTests.cpp
+        Engine/Auto/RayParticleCoverageTests.cpp
+        Engine/Auto/RayEnvironmentExtractionTests.cpp
         Engine/Auto/RenderLightExtractorTests.cpp
         Engine/Auto/InstanceBatchTests.cpp
         Engine/Auto/RenderGraphTests.cpp
@@ -215,6 +234,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/TrailMultiKeyTests.cpp
         Engine/Auto/UIRectTests.cpp
         Engine/Auto/WaterWaveTests.cpp
+        Engine/Auto/WaterGridTests.cpp
         Engine/Auto/WaterOptimizationTests.cpp
         Engine/Auto/WaterVortexTests.cpp
         Engine/Auto/WaterNoiseBakeTests.cpp
@@ -227,6 +247,7 @@ fbzz_add_test_suite(EngineAuto
         GreenWare/Auto/ParryRushTests.cpp
         GreenWare/Auto/PlayerScriptModulesTests.cpp
         GreenWare/Auto/ScriptObservationTests.cpp
+        GreenWare/Auto/SceneCapacityScriptsTests.cpp
     LINKS
         FBZZTestKitEngine
         FBZZPhysics
@@ -237,6 +258,7 @@ target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/G
 # @note ヘッダーオンリーで src 側に閉じている。公開ヘッダーへ出すと、焼き方を知る必要のない
 # @note 利用側にまで実装が露出する。テストだけが実装ディレクトリを覗く。
 target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Engine/src")
+target_compile_definitions(FBZZTestsEngineAutoObj PRIVATE FBZZ_ENGINE_SHADER_ROOT="${CMAKE_SOURCE_DIR}/Assets/Shaders")
 
 # @note --- Editor -----------------------------------------------------------------
 # @note Editor をリンクするか: import 判定まわりは «起動のたびに全アセットを焼き直す»
@@ -272,7 +294,10 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/MaterialPreviewFiberTests.cpp
     Editor/Auto/PlaytestJsonTests.cpp
     Editor/Auto/PlaytestRunnerTests.cpp
+    Editor/Auto/PixOperatorTests.cpp
     Editor/Auto/PrefabOverrideTests.cpp
+        Editor/Auto/PrefabReferenceOverrideTests.cpp
+        Editor/Auto/SceneEditCapacityTests.cpp
     Editor/Auto/PrefabSaveTests.cpp
     Editor/Auto/SceneDirtyTrackerTests.cpp
     Editor/Auto/ScriptCodeGenTests.cpp
@@ -344,11 +369,34 @@ fbzz_add_test_suite(CoreManual MANUAL
 # @note Engine をリンクしない契約を実行時の DLL 一覧と実 GPU 描画の両方で検証する。
 fbzz_add_test_suite(GraphicsStandalone
     SOURCES Graphics/Auto/GraphicsStandaloneTests.cpp
+        Graphics/Auto/ResolvedRenderPlanTests.cpp
+        Graphics/Auto/GpuProfilerTests.cpp
+        Graphics/Auto/PixEventStackTests.cpp
+        Graphics/Auto/DeferredEmissionTests.cpp
+        Graphics/Auto/HybridHistoryTests.cpp
+        Graphics/Auto/RayTracingTests.cpp
+    Graphics/Auto/RayReflectionTests.cpp
+        Graphics/Auto/RayReflectionMediumCacheTests.cpp
+        Graphics/Auto/RayHybridGlassTraversalTests.cpp
+        Graphics/Auto/RayReflectionReconstructionTests.cpp
+        Graphics/Auto/RayHybridDiffuseGITests.cpp
+    Graphics/Auto/ReflectionProbeCaptureTests.cpp
+    Graphics/Auto/ProbeCaptureBudgetTests.cpp
+    Graphics/Auto/RayEnvironmentTests.cpp
+        Graphics/Auto/RayGameTests.cpp
+    Graphics/Auto/RayPathTracingTests.cpp
+        Graphics/Auto/RayPathSceneTests.cpp
+        Graphics/Auto/RayPathHistoryTests.cpp
+        Graphics/Auto/BufferReadTests.cpp
+        Graphics/Auto/RaySceneBuilderTests.cpp
+        Graphics/Auto/RayTextureTests.cpp
     LINKS FBZZGraphics
 )
 configure_file(Graphics/Auto/StandaloneTriangle.hlsl StandaloneTriangle.hlsl COPYONLY)
 target_compile_definitions(FBZZTestsGraphicsStandaloneObj PRIVATE
-    FBZZ_GRAPHICS_SMOKE_SHADER="${CMAKE_CURRENT_BINARY_DIR}/StandaloneTriangle.hlsl")
+    FBZZ_GRAPHICS_SMOKE_SHADER="${CMAKE_CURRENT_BINARY_DIR}/StandaloneTriangle.hlsl"
+    FBZZ_GRAPHICS_SHADER_ROOT="${CMAKE_SOURCE_DIR}/Assets/Shaders"
+    FBZZ_RAY_INTERSECTION_SHADER="${CMAKE_CURRENT_SOURCE_DIR}/Graphics/Shaders/RayIntersection.cs.hlsl")
 # @note DrawsAndReadsBackWithoutEngine は実行時に .hlsl をコンパイルするので dxcompiler.dll が exe の隣に要る。
 # @warning DXC が見つからない構成では «シェーダーが読めない» だけの失敗になる。原因は configure 時の dxc.exe 探索 (Projects/Graphics/CMakeLists.txt)。
 if(FBZZ_DXC_RUNTIME_DIRECTORY)

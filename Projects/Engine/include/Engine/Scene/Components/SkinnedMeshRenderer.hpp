@@ -95,6 +95,8 @@ struct SkinnedMeshRenderer {
     /// @brief 同フレームの別ビューでも同じパス統計を表示できるよう、実際に処理した仕事量を保持する。
     uint64_t gpuSkinningVertexCount = 0;
     uint32_t gpuSkinningDispatchCount = 0;
+    /// @note 入力の完全比較で同じポーズの再 Dispatch を省く。保存せず、model / resource 世代が変われば棄却する。
+    std::vector<uint32_t> gpuSkinningContent;
     /// @}
 
     /// @note VelocityPass だけが読み書きする。シーンへは保存しない。ボーンの動きは

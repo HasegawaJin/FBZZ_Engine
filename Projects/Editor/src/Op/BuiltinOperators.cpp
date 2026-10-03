@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// メニュー・ホットキー・パレットに別々に書かれていた「実行可能条件」を poll へ 1 本化する。
-/// パネル表示トグルと Recent Scenes 等は単一の出所 (m_panels 等) から導出されるためここに登録しない。
+/// @note メニュー・ホットキー・パレットの実行可能条件は poll を共有する。
+/// @note パネル表示と Recent Scenes は m_panels 等から導出するためここに重複登録しない。
 /// @see Docs/design/editor-operator-model.md
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
@@ -29,10 +29,7 @@ namespace fbzz::editor {
 
 void EditorApp::RegisterBuiltinOperators()
 {
-    /// @note 登録を読みやすくする小さな組み立てヘルパー (引数を持たない操作専用)。
-    ///       引数を取る操作は params の宣言が要るので、下の addWindowToggle のように
-    ///       個別に組むか、EditorContext だけで完結するものは OperatorGroups 側の
-    ///       登録関数へ置く。checked はトグル操作の現在状態 (メニューのチェックになる)。
+    /// @note 引数付き操作は params を宣言し、EditorContext だけで完結する操作は OperatorGroups へ置く。
     auto add = [this](const char* id, const char* label, const char* category,
                       const char* desc, OpKind kind,
                       OpExec exec, OpPoll poll = {}, OpCheck checked = {}) {
@@ -48,9 +45,7 @@ void EditorApp::RegisterBuiltinOperators()
         m_operators.Register(std::move(op));
     };
 
-    /// @note ツールウィンドウの表示トグル。メニュー項目はチェックボックスとして描かれ押すと閉じられる
-    ///       ため、開くことしかできない operator にすると「閉じられないメニュー」になってしまう。
-    ///       enabled を省略すると反転、指定すればその値 (render.show_* と同じ規約)。
+    /// @note 表示トグルは enabled の省略で反転、指定時はその値へ変更する。
     const auto addWindowToggle = [this](const char* id, const char* label, const char* desc,
                                         bool EditorContext::*field) {
         EditorOperator op;
@@ -80,8 +75,7 @@ void EditorApp::RegisterBuiltinOperators()
     };
 
     /// @name 共通の述語
-    /// @note 同じ条件がメニュー・ホットキー・パレットへ別々に書かれていたため、ここで 1 度だけ定義し
-    ///       必要な操作が共有する。
+    /// @note メニュー・ホットキー・パレットは同じ条件を共有する。
     const auto hasScene      = [](const OpContext& c, const OpArgs&) { return c.ctx.activeScene != nullptr; };
     const auto inPrefabEdit  = [](const OpContext& c, const OpArgs&) { return c.ctx.InPrefabEditMode(); };
     const auto hasSelection  = [](const OpContext& c, const OpArgs&) { return !c.ctx.selectedEntities.empty(); };
@@ -97,7 +91,6 @@ void EditorApp::RegisterBuiltinOperators()
 
     /// @name File
     /// @note Prefab 編集中にシーンを新規作成/切り替えできてはいけない。
-    ///       移行前はメニューだけがこれを禁じており、Ctrl+N とパレットは通っていた。
     add("scene.new", "New Scene", "File",
         "編集中のシーンを閉じて新しいシーンを作る。未保存の変更があれば確認する。",
         OpKind::Action,
@@ -111,8 +104,7 @@ void EditorApp::RegisterBuiltinOperators()
         [hasScene, inPrefabEdit](const OpContext& c, const OpArgs& a) { return hasScene(c, a) && !inPrefabEdit(c, a); });
 
     /// @note Prefab 編集中は SaveScene が SavePrefabEdit へ読み替わるため、ここでは禁じない。
-    ///       未保存アセットも一緒に書くのは、Ctrl+S が «今の編集を全部残す» つもりで押されるため
-    ///       (Material 配列から開いた .mat のインライン編集は «Save .mat» を押さないと消えていた)。
+    /// @note Ctrl+S はインライン編集した未保存アセットも一緒に保存する。
     add("scene.save", "Save", "File",
         "現在のシーンと未保存のアセットを保存する (Prefab 編集中は編集中の Prefab を保存する)。",
         OpKind::Action,
@@ -153,9 +145,7 @@ void EditorApp::RegisterBuiltinOperators()
         [](OpContext& c, const OpArgs&) { c.undo.Redo(); return OpResult::Ok(); },
         [](const OpContext& c, const OpArgs&) { return c.undo.CanRedo(); });
 
-    /// @note Mutation は Undo コマンドを返し、レジストリが 1 箇所で UndoStack へ積む。各操作が自分で
-    ///       積むと、レジストリの検問 (Undo を残していない Mutation を指摘する) を素通りする経路が
-    ///       残るため。SceneEditUtils の Make*Command で実体を共有し「積む」責務だけレジストリへ寄せる。
+    /// @note Mutation は Undo コマンドを返し、レジストリだけが UndoStack へ積む。
     add("edit.delete_selected", "Delete Selected", "Edit",
         "選択中の GameObject を削除する。",
         OpKind::Mutation,
@@ -272,8 +262,7 @@ void EditorApp::RegisterBuiltinOperators()
         },
         hasSelection);
 
-    /// @note 軸ビューはナビゲーションギズモのクリックでしか行けず、マウスドラッグ中は切り替えられ
-    ///       なかった。メニュー・パレット・ホットキー・AI の 4 面から同じ経路で呼べるようにする。
+    /// @note 軸ビュー操作はメニュー・パレット・ホットキー・AI で同じ経路を共有する。
     add("view.toggle_projection", "Toggle Orthographic", "Viewport",
         "Scene View を遠近投影 / 平行投影で切り替える。",
         OpKind::Action,
@@ -311,14 +300,12 @@ void EditorApp::RegisterBuiltinOperators()
     }
 
     /// @name Gizmo
-    /// @note 右ドラッグ中の W/A/S/D はカメラのフライ移動でギズモ切替と衝突するため、押下中は無効にする
-    ///       (Unity と同じ調停)。poll に置くことでコマンドパレットからも同じ条件で淡色表示される。
+    /// @note 右ドラッグ中の W/A/S/D はカメラ移動と衝突するため、poll でギズモ切替を無効にする。
     const auto gizmoEnabled = [inEditor](const OpContext& c, const OpArgs& a) {
         return !ImGui::IsMouseDown(ImGuiMouseButton_Right) && inEditor(c, a);
     };
 
-    /// @note ギズモモードは排他選択なので、checked が無いと AI から見て「切り替えたつもりで既に
-    ///       そのモードだった」と「切り替わっていない」が区別できない。op.list の checked で読める。
+    /// @note 排他的なギズモモードは checked を通じて現在値を公開する。
     add("gizmo.move", "Gizmo: Move", "Gizmo",
         "ギズモを移動モードにする。",
         OpKind::Action,
@@ -389,8 +376,7 @@ void EditorApp::RegisterBuiltinOperators()
         [](const OpContext& c, const OpArgs&) { return c.ctx.snapEnabled; });
 
     /// @name Play
-    /// @note スクリプトのコンパイル/リロード中は Play を開始できない (旧実装は Play ツールバーの
-    ///       ボタンだけがこの条件を持ち、Ctrl+P とコマンドパレットは素通りしていた)。
+    /// @note スクリプトのコンパイル/リロード中は全操作入口で Play 開始を拒否する。
     const auto scriptBusy = [](const OpContext& c, const OpArgs&) {
         return c.ctx.scriptReloadBusy
             || c.ctx.hotReloadState == EditorContext::HotReloadState::Compiling
@@ -490,12 +476,10 @@ void EditorApp::RegisterBuiltinOperators()
         [this](const OpContext&, const OpArgs&) { return m_showShortcutsOverlay; });
 
     /// @name EditorApp に依存しない操作群
-    /// @note パネル表示・UI スケール・Prefab 編集モード。m_panels を引くため
-    ///       EditorApp のメンバー関数だが、量があるので別ファイルへ置いてある。
+    /// @note パネル操作は m_panels を必要とするため EditorApp のメンバーとして別ファイルへ置く。
     RegisterPanelOperators();
 
-    /// @note 以下は EditorContext と UndoStack だけで完結し EditorApp のメンバーを知る必要がないため
-    ///       分ける。操作を足すたびに EditorApp が肥大化しない形にしておく (パネルの実装詳細にも依存しない)。
+    /// @note EditorContext と UndoStack だけで完結する登録関数はパネル実装へ依存しない。
     RegisterNodeOperators(m_operators);
     RegisterRenderOperators(m_operators);
     RegisterInspectorOperators(m_operators);
@@ -509,6 +493,7 @@ void EditorApp::RegisterBuiltinOperators()
     RegisterClothOperators(m_operators);
     RegisterSfxOperators(m_operators);
     RegisterDeveloperOperators(m_operators);
+    RegisterPixOperators(m_operators);
 }
 
 /// @brief 4 面 (メニュー / ホットキー / パレット / AI) が共有する実行文脈。
@@ -530,4 +515,4 @@ OpResult EditorApp::InvokeOperator(std::string_view id, const OpArgs& args)
     return m_operators.Invoke(id, context, args);
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

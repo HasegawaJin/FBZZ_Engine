@@ -1,3 +1,7 @@
+# @file    tests.yml
+# @brief   自動テストとコンパイルキャッシュ、行カバレッジの CI。
+# @author  Hasegawa Jin
+# @date    2026-09-04
 name: Tests
 
 # @brief GoogleTest による自動テストと、OpenCppCoverage による行カバレッジ計測。
@@ -72,11 +76,23 @@ jobs:
   test:
     runs-on: windows-latest
 
+    # @note コミット単位ではなく、ソース・ヘッダー・コンパイラ・引数から TU ごとにキャッシュを照合する。
+    # @see https://github.com/mozilla/sccache/blob/v0.16.0/docs/GHA.md GitHub Actions backend
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_IGNORE_SERVER_IO_ERROR: "1"
+
     # @note Engine + Editor のフルビルドと ctest (+ 計測時は OpenCppCoverage の 2 周目) で 40〜70 分。既定の上限 360 分だとハング 1 件で 6 時間持っていかれるので «正常な最長» の倍あたりで切る。
     timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v5
+
+      - name: Set up compiler cache
+        id: compiler-cache
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.16.0
 
       # @note 変更ファイルを取れなかったときは測る側に倒す。
       # @note `gh pr diff` は 300 ファイルを超える PR (develop → main のリリース等) で HTTP 406 になるため、ページ送りできる files API (上限 3000) を使う。
@@ -106,39 +122,29 @@ jobs:
           "measure=$($measure.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           exit 0
 
-      # @note Visual Studio の世代はランナーイメージで予告なく入れ替わるため、枯れている順に試して最初に通ったものを使う。
-      # @note 失敗した generator は CMakeCache に残って次の試行を汚すので、build ディレクトリごと消してから次へ進む。
-      # @note 世代を足すときは «古い順» を崩さない。新しい方を先に置くと過渡期のランナーで毎回 configure が 1 回無駄になる。
+      # @note compiler launcher は Ninja / Makefile 専用なので、CI は Ninja + MSVC を使う。
+      # @see https://cmake.org/cmake/help/latest/prop_tgt/LANG_COMPILER_LAUNCHER.html Compiler launcher generators
+      # @note MSVC の PCH と共有コンパイラ PDB はキャッシュを妨げるため、CI のみ PCH を切り /Z7 にする。リンク時の /DEBUG:FULL は維持する。
+      # @see https://github.com/mozilla/sccache/blob/v0.16.0/src/compiler/msvc.rs Unsupported PCH arguments
+      # @see https://github.com/mozilla/sccache/blob/v0.16.0/README.md MSVC and CMake debug information
       - name: Configure
         shell: pwsh
         run: |
-          $generators = @(
-            "Visual Studio 17 2022",
-            "Visual Studio 18 2026"
-          )
-
-          $configured = $false
-          foreach ($gen in $generators) {
-            Write-Host "Trying CMake generator: $gen"
-            cmake -S . -B "$env:BUILD_DIR" `
-              -G "$gen" -A x64 `
-              -DFBZZ_BUILD_TESTS=ON `
-              -DFBZZ_ENABLE_SOURCE_REBUILD=OFF `
-              -DFBZZ_BUILD_JOBS=4
-
-            if ($LASTEXITCODE -eq 0) {
-              Write-Host "Configured with generator: $gen"
-              $configured = $true
-              break
-            }
-
-            Remove-Item -Recurse -Force "$env:BUILD_DIR" -ErrorAction SilentlyContinue
-          }
-
-          if (-not $configured) {
-            Write-Error "No supported Visual Studio generator found on runner."
-            exit 1
-          }
+          . ./Tools/VsEnvironment.ps1
+          Import-VisualStudioEnvironment
+          cmake -S . -B "$env:BUILD_DIR" `
+            -G Ninja `
+            "-DCMAKE_BUILD_TYPE=$env:BUILD_CONFIG" `
+            -DCMAKE_C_COMPILER=cl `
+            -DCMAKE_CXX_COMPILER=cl `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded `
+            -DFBZZ_USE_PCH=OFF `
+            -DFBZZ_BUILD_TESTS=ON `
+            -DFBZZ_ENABLE_SOURCE_REBUILD=OFF `
+            -DFBZZ_BUILD_JOBS=4
+          exit $LASTEXITCODE
 
       # @brief テスト exe とその依存だけを建てる (Sandbox / EditorLauncher は建てない)。
       # @note  EditorAuto が FBZZEditor をリンクするので Editor も建つ。AI 連携や import 判定は起動しないと分からない壊れ方をするため CI で押さえる。
@@ -146,8 +152,23 @@ jobs:
       - name: Build test targets
         shell: pwsh
         run: |
-          cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel `
+          . ./Tools/VsEnvironment.ps1
+          Import-VisualStudioEnvironment
+          sccache --zero-stats
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel 4 `
             --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto FBZZTestsGraphicsStandalone
+
+      # @note テスト失敗時もヒット・ミス・キャッシュ不可の件数を残し、キャッシュが働かない理由を切り分ける。
+      - name: Report compiler cache
+        if: always() && steps.compiler-cache.outcome == 'success'
+        shell: pwsh
+        run: |
+          $stats = sccache --show-stats
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $stats | Write-Host
+          @('### Compiler cache', '```text') + $stats + @('```') |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       # @note --timeout で止まったテストを打ち切り残りを走らせる。無いと 1 件のハングでジョブ上限まで待つ。
       # @note --no-tests=error でテストが 1 件も登録されていない状態を成功にしない。

@@ -34,7 +34,8 @@ public:
         Unknown,
         RenderTarget,
         Texture,
-        Buffer
+        Buffer,
+        AccelerationStructure
     };
 
     enum class ResourceUsage {
@@ -43,8 +44,18 @@ public:
         ReadWrite
     };
 
+    /// @note GPU の用途は依存の読み書きとは独立して宣言する。ここでは backend のバリアを発行しない。
+    enum class ResourceAccessPurpose {
+        UNSPECIFIED,
+        BUILD_INPUT,
+        AS_WRITE,
+        TRACE_READ,
+        SHADER_READ,
+        UAV
+    };
+
     /// @note 依存を満たす実行順が複数あるとき、どれを選ぶかの方針。
-    /// @note     /// どちらを選んでも «依存として申告された制約» は必ず守られる。違うのは、制約が
+    /// @note どちらを選んでも «依存として申告された制約» は必ず守られる。違うのは、制約が
     /// @note 何も言っていない部分をどう埋めるか。
     enum class SchedulePolicy {
         /// @note 実行可能なパスのうち常に登録順が最小のものを出す。既定。
@@ -71,11 +82,18 @@ public:
         bool withDepth = false;
         bool external = false;
         bool transient = true;
+        /// @note Buffer / AS の総バイト数。Texture / RenderTarget では 0。
+        uint64_t byteSize = 0;
+        /// @note Buffer の頂点・要素幅 [byte]。raw / index Buffer と AS では 0。
+        uint32_t stride = 0;
+        /// @note false の資源と AS は transient でも alias 対象にしない。
+        bool allowAliasing = true;
     };
 
     struct ResourceAccess {
         std::string name;
         ResourceUsage usage = ResourceUsage::Read;
+        ResourceAccessPurpose purpose = ResourceAccessPurpose::UNSPECIFIED;
     };
 
     struct RenderPass {
@@ -183,7 +201,10 @@ public:
 
     void DeclareResource(std::string_view name, const ResourceDesc& desc)
     {
-        m_resources[std::string(name)] = desc;
+        ResourceDesc stored = desc;
+        if (stored.kind == ResourceKind::AccelerationStructure)
+            stored.allowAliasing = false;
+        m_resources[std::string(name)] = stored;
     }
 
     void SetOutputs(std::initializer_list<std::string_view> outputs)
@@ -322,6 +343,7 @@ public:
         case ResourceKind::RenderTarget: return "RenderTarget";
         case ResourceKind::Texture:      return "Texture";
         case ResourceKind::Buffer:       return "Buffer";
+        case ResourceKind::AccelerationStructure: return "AccelerationStructure";
         case ResourceKind::Unknown:      break;
         }
         return "Unknown";
@@ -381,6 +403,15 @@ public:
             if (lifetime.desc.withDepth) out += " depth";
             if (lifetime.desc.external)  out += " external";
             if (lifetime.desc.transient) out += " transient";
+            if (lifetime.desc.byteSize != 0) {
+                out += " bytes=";
+                out += std::to_string(lifetime.desc.byteSize);
+            }
+            if (lifetime.desc.stride != 0) {
+                out += " stride=";
+                out += std::to_string(lifetime.desc.stride);
+            }
+            if (!lifetime.desc.allowAliasing) out += " noalias";
             out += '\n';
         }
 
@@ -411,7 +442,7 @@ private:
     }
 
     /// @note 依存グラフを «登録順から独立に» 組み、実行順を導く。
-    /// @note     /// 同じリソースへ複数のパスが書く場合、その «世代» の順序だけは登録順が決める。
+    /// @note 同じリソースへ複数のパスが書く場合、その «世代» の順序だけは登録順が決める。
     /// @note これは事故ではなく仕様そのもの (Sky は Geometry の上に描く) なので動かさない。
     /// @note 動かせるのは «世代が競合しないパス同士» の相対順序で、そこはスケジューラーが決める。
     [[nodiscard]] bool BuildExecutionOrder(std::vector<size_t>* culledPasses,
@@ -709,7 +740,8 @@ private:
         };
         std::vector<AliasGroupState> groups;
         for (auto& lifetime : lifetimes) {
-            if (lifetime.desc.external || !lifetime.desc.transient) {
+            if (lifetime.desc.external || !lifetime.desc.transient || !lifetime.desc.allowAliasing ||
+                lifetime.desc.kind == ResourceKind::AccelerationStructure) {
                 lifetime.aliasGroup = -1;
                 continue;
             }
@@ -739,12 +771,17 @@ private:
     /// @note 1 項目でも違えば別グループにする (寸法だけ見ていた頃の取りこぼしを塞ぐ)。
     [[nodiscard]] static bool CanAlias(const ResourceDesc& a, const ResourceDesc& b)
     {
-        return a.kind == b.kind &&
+        return a.allowAliasing && b.allowAliasing &&
+               a.kind != ResourceKind::AccelerationStructure &&
+               b.kind != ResourceKind::AccelerationStructure &&
+               a.kind == b.kind &&
                a.width == b.width &&
                a.height == b.height &&
                a.format == b.format &&
                a.colorCount == b.colorCount &&
-               a.withDepth == b.withDepth;
+               a.withDepth == b.withDepth &&
+               a.byteSize == b.byteSize &&
+               a.stride == b.stride;
     }
 
     std::vector<RenderPass> m_passes;

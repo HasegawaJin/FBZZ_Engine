@@ -111,3 +111,13 @@ if(FBZZ_DXC_RUNTIME_DIRECTORY)
         endif()
     endforeach()
 endif()
+
+# @note The Graphics DLL imports the PIX runtime; it must also be beside the Editor executable.
+if(FBZZ_ENABLE_DX12)
+    add_custom_command(TARGET FBZZEditorLauncher POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:WinPixEventRuntime>"
+            "$<TARGET_FILE_DIR:FBZZEditorLauncher>/WinPixEventRuntime.dll"
+        VERBATIM
+    )
+endif()

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-22
 #include <Engine/Scene/StandaloneProjectModule.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
 
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
@@ -45,9 +46,11 @@ bool StandaloneProjectModule::OnInit()
         audioManager->SetVoiceLimit(static_cast<size_t>(m_settings.audio.voiceLimit));
         audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
     }
-    /// @note graphics プロキシが触る描画設定の実体を登録する。配布ゲームでは
-    ///       ProjectSettings が読み取り専用のオーサリング設定なので、書き換えが
-    ///       ファイルへ戻ることはない。
+    /// @note 起動時だけアセットを展開し、以後の graphics 設定は実行用コピーへ適用する。
+    renderer::RenderSettings resolvedSettings;
+    (void)asset::ResolveRenderPipelineSettings(m_settings.render,
+        m_settings.renderPipelineAssetPath, resolvedSettings);
+    m_settings.render = std::move(resolvedSettings);
     app.SetActiveRenderSettings(&m_settings.render);
     /// @note カーソルの拘束と表示はスクリプトが名乗る (cursor.Push)。設定が持つのは «絵» だけ。
     m_settings.cursor.Apply(m_projectRoot.string());
@@ -59,8 +62,8 @@ bool StandaloneProjectModule::OnInit()
 void StandaloneProjectModule::OnUpdate(float dt)
 {
     /// @note Locked は中央へ戻す処理そのものがここにあり、Confined も他アプリが ClipCursor を
-    ///       取ると黙って外れるため毎フレーム張り直す。Input::Update の直後・スクリプトの前で
-    ///       解くことで、Locked のマウス移動量がそのフレームのうちに読める。
+    /// @note Confined は他アプリの ClipCursor で外れるため毎フレーム張り直す。
+    /// @note Input::Update の直後・スクリプトの前に解くことで Locked の移動量を当該フレームで読める。
     core::Cursor::ApplyLock();
     m_runtime.Update(dt, m_settings, true);
 }
@@ -116,8 +119,9 @@ void StandaloneProjectModule::OnRender()
 void StandaloneProjectModule::OnShutdown()
 {
     /// @note Script DLL を解放する前にスクリプトの仮想デストラクターを実行し、
-    ///       PhysicsProxy が破棄済み World を参照しないようコンテキストも解除する。
+    /// @note PhysicsProxy が破棄済み World を参照しないようコンテキストも解除する。
     m_runtime.Shutdown();
+    core::Application::Get().SetActiveRenderSettings(nullptr);
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

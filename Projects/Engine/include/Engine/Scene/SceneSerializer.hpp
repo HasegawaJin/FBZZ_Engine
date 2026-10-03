@@ -2,9 +2,7 @@
 /// @brief   TOML ベースのシーン保存・復元。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// GameObject 階層と登録済み Component を .fbzz に変換する。
-/// 未知の型は ScriptFactory / ComponentRegistry との対応を見て扱う。
+/// @note GameObject 階層と登録済み Component を .fbzz に変換する。 未知の型は ScriptFactory / ComponentRegistry との対応を見て扱う。
 #pragma once
 #include <string>
 #include <memory>
@@ -50,6 +48,7 @@ public:
     }
 
     /// @brief TOML テキストから直接復元する。
+    /// @return パース失敗または容量超過なら nullptr。
     /// @param sourcePath このテキストの出所 (`.scene`/`.prefab`/`.vfx` のパス)。パースエラー表示に加え、TerrainComponent の terrainAssetPath など「シーンからの相対パス」を解決する基準になる。空だと相対参照が解けない。
     /// @note プレファブ展開のように断片を一度きり読む呼び出しでも、Load へ渡すためだけの一時ファイルが要らない。
     static std::unique_ptr<Scene> LoadFromText(const std::string& tomlText,
@@ -87,6 +86,7 @@ public:
                             renderer::ResourceManager& resources);
 
     /// @brief 既存 Scene に tomlText の GameObject を追記する (既存 GO は破棄しない)。
+    /// @return 容量不足なら false。既存 Scene は変更せず outRoots を空にする。
     /// @note Script::OnUpdate 内の Instantiate でシーン全体を再構築すると呼び出し元 Script が解放され use-after-free になる。AppendObjects は破棄せず追記のみ行う。
     static bool AppendObjects(Scene& scene, const std::string& tomlText,
                               renderer::ResourceManager* resources,
@@ -100,4 +100,4 @@ public:
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

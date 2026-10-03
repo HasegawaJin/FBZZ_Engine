@@ -43,7 +43,9 @@ bool ScriptAudioProxy::UpdateLoop(AudioLoop& loop, std::string_view clipPath, fl
     auto* source = ResolveLoop(script, loop.m_source, lifetime);
     if (!source) {
         /// @note 名前は表示だけに使う。同じラベルの複数個体が同じ音源を取得することはない。
-        auto& object = script->m_scene->CreateGameObject("SFX_Loop_" + settings.label);
+        auto* created = script->m_scene->TryCreateGameObject("SFX_Loop_" + settings.label);
+        if (!created) return false;
+        auto& object = *created;
         object.runtimeGenerated = true;
         object.SetParent(*script->m_gameObject);
         object.transform.position = math::Vector3::ZERO;

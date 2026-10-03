@@ -666,15 +666,15 @@ bool HasAcyclicParentChain(const asset::Skeleton& skeleton, int nodeIndex)
 }
 
 /// @brief ノードに対応する Bone GameObject を既存から束縛し、無ければ親から順に生成する。
-/// @return nodeIndex が範囲外なら owner。
-GameObject& EnsureBoneObject(Scene& scene,
+/// @return nodeIndex が範囲外なら owner、生成できなければ nullptr。
+GameObject* EnsureBoneObject(Scene& scene,
                              GameObject& owner,
                              SkinnedMeshRenderer& smr,
                              const asset::Skeleton& skeleton,
                              int nodeIndex)
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size()))
-        return owner;
+        return &owner;
     auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
 
     if (nodeIndex < static_cast<int>(smr.nodeEntities.size())) {
@@ -684,7 +684,9 @@ GameObject& EnsureBoneObject(Scene& scene,
                 bone->boneIndex = node.boneIndex;
                 bone->skinnedMeshEntity = owner.GetID();
             }
-            return *existing;
+            if (nodeIndex == skeleton.rootNodeIndex)
+                smr.skeletonRootEntity = existing->GetID();
+            return existing;
         }
     }
 
@@ -707,21 +709,23 @@ GameObject& EnsureBoneObject(Scene& scene,
         smr.nodeEntities[static_cast<size_t>(nodeIndex)] = found->GetID();
         if (nodeIndex == skeleton.rootNodeIndex)
             smr.skeletonRootEntity = found->GetID();
-        return *found;
+        return found;
     }
 
     GameObject* parent = &owner;
     if (node.parentIndex >= 0 &&
         node.parentIndex < static_cast<int>(skeleton.nodes.size()) &&
         HasAcyclicParentChain(skeleton, node.parentIndex))
-        parent = &EnsureBoneObject(scene, owner, smr, skeleton, node.parentIndex);
+        parent = EnsureBoneObject(scene, owner, smr, skeleton, node.parentIndex);
+    if (!parent) return nullptr;
 
-    GameObject& boneObject = scene.CreateGameObject(node.name);
-    boneObject.layer = owner.layer;
-    boneObject.transform.position = node.bindTranslation;
-    boneObject.transform.rotation = node.bindRotation;
-    boneObject.transform.scale = node.bindScale;
-    boneObject.SetParent(parent);
+    GameObject* boneObject = scene.TryCreateGameObject(node.name);
+    if (!boneObject) return nullptr;
+    boneObject->layer = owner.layer;
+    boneObject->transform.position = node.bindTranslation;
+    boneObject->transform.rotation = node.bindRotation;
+    boneObject->transform.scale = node.bindScale;
+    boneObject->SetParent(parent);
 
     BoneComponent bone{};
     bone.boneName = node.name;
@@ -729,24 +733,59 @@ GameObject& EnsureBoneObject(Scene& scene,
     bone.boneIndex = node.boneIndex;
     bone.skinnedMeshEntity = owner.GetID();
     bone.generated = true;
-    boneObject.AddComponent<BoneComponent>(std::move(bone));
+    boneObject->AddComponent<BoneComponent>(std::move(bone));
 
-    smr.nodeEntities[static_cast<size_t>(nodeIndex)] = boneObject.GetID();
+    smr.nodeEntities[static_cast<size_t>(nodeIndex)] = boneObject->GetID();
     if (nodeIndex == skeleton.rootNodeIndex)
-        smr.skeletonRootEntity = boneObject.GetID();
+        smr.skeletonRootEntity = boneObject->GetID();
     return boneObject;
 }
 
-void EnsureBoneHierarchy(Scene& scene,
+/// @return 不足ノードを全て作れる容量がなければ、既存の階層と Renderer の束縛を変えず false。
+bool EnsureBoneHierarchy(Scene& scene,
                          GameObject& owner,
                          SkinnedMeshRenderer& smr,
                          const asset::Skeleton& skeleton)
 {
-    if (smr.nodeEntities.size() != skeleton.nodes.size())
-        smr.nodeEntities.assign(skeleton.nodes.size(), EntityID::INVALID);
+    if (smr.nodeEntities.size() == skeleton.nodes.size() &&
+        std::all_of(smr.nodeEntities.begin(), smr.nodeEntities.end(),
+                    [&scene](EntityID id) { return scene.GetGameObject(id) != nullptr; })) {
+        for (size_t i = 0; i < skeleton.nodes.size(); ++i)
+            if (!EnsureBoneObject(scene, owner, smr, skeleton, static_cast<int>(i)))
+                return false;
+        return true;
+    }
+
+    std::vector<EntityID> resolvedNodes(skeleton.nodes.size(), EntityID::INVALID);
+    GameObject* searchScope = &owner;
+    if (GameObject* skeletonRoot = scene.GetGameObject(smr.skeletonRootEntity)) {
+        searchScope = skeletonRoot->GetParent() ? skeletonRoot->GetParent() : skeletonRoot;
+    }
+    size_t missingCount = 0;
+    for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
+        GameObject* existing = smr.nodeEntities.size() == skeleton.nodes.size()
+            ? scene.GetGameObject(smr.nodeEntities[i]) : nullptr;
+        if (!existing) {
+            if (auto* bone = searchScope->GetComponent<BoneComponent>();
+                bone && bone->nodeIndex == static_cast<int>(i))
+                existing = searchScope;
+            else
+                existing = FindBoneDescendant(*searchScope, static_cast<int>(i));
+        }
+        if (existing) resolvedNodes[i] = existing->GetID();
+        else ++missingCount;
+    }
+    if (!scene.CanCreateGameObjects(missingCount)) {
+        FBZZ_LOG_WARN("AnimatorSystem: '%s' needs %zu Bone entities, but only %zu slots remain",
+                      owner.name.c_str(), missingCount, scene.RemainingEntityCapacity());
+        return false;
+    }
+    smr.nodeEntities = std::move(resolvedNodes);
 
     for (size_t i = 0; i < skeleton.nodes.size(); ++i)
-        EnsureBoneObject(scene, owner, smr, skeleton, static_cast<int>(i));
+        if (!EnsureBoneObject(scene, owner, smr, skeleton, static_cast<int>(i)))
+            return false;
+    return true;
 }
 
 void ApplyAnimatedPoseToBones(Scene& scene,
@@ -2617,7 +2656,11 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
         ProcessRootMotion(animator, go, {}, dt);
         return;
     }
-    EnsureBoneHierarchy(scene, go, smr, skeleton);
+    if (!EnsureBoneHierarchy(scene, go, smr, skeleton)) {
+        UploadBindPose(animator, resources, &skeleton);
+        ProcessRootMotion(animator, go, {}, dt);
+        return;
+    }
 
     /// @note externalPose は Script が骨のローカルを直接書く構成。バインド姿勢へ戻さず、今の骨からパレットを組む。
     /// @note パレットを埋めるのは Animator だけなので、Animator を外す運用ではメッシュが動かない。
@@ -2822,8 +2865,8 @@ void AnimatorSystem::Update(SystemContext& ctx)
             if (smr && skeleton && skeleton->rootNodeIndex >= 0 &&
                 skeleton->rootNodeIndex < static_cast<int>(skeleton->nodes.size()))
             {
-                EnsureBoneHierarchy(scene, go, *smr, *skeleton);
-                ApplyBindPoseToBones(scene, *skeleton, *smr, go);
+                if (EnsureBoneHierarchy(scene, go, *smr, *skeleton))
+                    ApplyBindPoseToBones(scene, *skeleton, *smr, go);
             }
             UploadBindPose(*animator, resources, skeleton);
             /// @note 停止中は移動量ゼロを公開する。前フレームの delta が残ると Inspector やポーリングが古い値を掴む。

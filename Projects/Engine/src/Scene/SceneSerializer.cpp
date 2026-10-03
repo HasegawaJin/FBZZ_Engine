@@ -13,6 +13,7 @@
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/PrefabInstantiate.hpp>
 #include <Engine/Scene/MeshResolver.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -91,6 +92,48 @@ namespace fbzz::scene {
 
 /// @note 内部ヘルパー
 namespace {
+
+std::size_t CountSceneObjects(const toml::array& objects, bool skipRuntimeNames)
+{
+    std::size_t count = 0;
+    for (const auto& item : objects) {
+        const auto* object = item.as_table();
+        if (!object) continue;
+        const std::string name = (*object)["name"].value_or(std::string{"GameObject"});
+        if (skipRuntimeNames && name.starts_with("__")) continue;
+        ++count;
+    }
+    return count;
+}
+
+/// @note Prefab の GUID と適用済み定義は編集の正本なので、コンポーネント用のパス復号から外す。
+/// @see Docs/design/prefab-safety.md
+template<typename Fn>
+void TransformSceneAssetRefs(toml::table& document, const Fn& transform)
+{
+    std::vector<std::pair<toml::table*, toml::table>> metadata;
+    if (auto* objects = document["gameobjects"].as_array()) {
+        for (auto& item : *objects) {
+            auto* object = item.as_table();
+            if (!object) continue;
+            toml::table fields;
+            for (const char* key : { "prefabAssetPath", "prefabSourceSnapshot" }) {
+                if (const auto value = (*object)[key].value<std::string>()) {
+                    fields.insert(key, *value);
+                    object->erase(key);
+                }
+            }
+            if (!fields.empty()) metadata.emplace_back(object, std::move(fields));
+        }
+    }
+    transform(document);
+    for (auto& [object, fields] : metadata) {
+        if (const auto reference = fields["prefabAssetPath"].value<std::string>())
+            fields.insert_or_assign("prefabAssetPath", CanonicalPrefabAssetRef(*reference));
+        for (const auto& [key, value] : fields)
+            object->insert(key.str(), value);
+    }
+}
 
 /// @note LightComponent を読む。`type` が文字列で書かれた旧シーンをここで吸収する。
 /// @note 旧コーデックは `type` を文字列で書いていたが、`Reflect()` は他の enum と同じく int を
@@ -535,7 +578,7 @@ public:
     /// @note 指したまま有効になる。EntityID → instanceId の変換に Scene が要る。
     /// @note 挿入が先勝ちなのは従来の保存結果と一致させるため。
     explicit SceneWriteReflector(toml::table& table, const Scene* scene = nullptr)
-        : util::TomlWriteReflector(table, /*overwriteDuplicates=*/false)
+        : util::TomlWriteReflector(table, false)
         , m_scene(scene)
     {
     }
@@ -848,7 +891,7 @@ std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std
     return normalizedScene.substr(0, assetsPos + 1) + normalizedAsset;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @note ScriptComponent の複製
 ScriptComponent CloneScriptComponent(const ScriptComponent& src,
@@ -951,6 +994,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         goTbl.insert("active",          go.activeSelf());
         goTbl.insert("prefabAssetPath", go.prefabAssetPath);
         goTbl.insert("prefabSourceId",  go.prefabSourceId);
+        if (!go.prefabSourceSnapshot.empty())
+            goTbl.insert("prefabSourceSnapshot", go.prefabSourceSnapshot);
         if (auto* parent = go.GetParent()) {
             goTbl.insert("parent", parent->name);
             goTbl.insert("parentInstanceId", parent->instanceId);
@@ -1303,7 +1348,6 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             animTbl.insert("enabled",   anim->enabled);
             animTbl.insert("playing",   anim->playing);
             animTbl.insert("externalPose", anim->externalPose);
-            /// @name Root Motion
             animTbl.insert("rootMotionMode",     (int64_t)anim->rootMotion.mode);
             animTbl.insert("rootMotionSource",   (int64_t)anim->rootMotion.source);
             animTbl.insert("rootMotionPoseMode", (int64_t)anim->rootMotion.poseMode);
@@ -1321,7 +1365,6 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
 
             animTbl.insert("defaultStateName", anim->defaultStateName);
 
-            /// @name ステートマシン: states
             toml::array statesArr;
             for (const auto& st : anim->states) {
                 toml::table stTbl;
@@ -1420,7 +1463,6 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             }
             animTbl.insert("anyStateTransitions", std::move(anyStateArr));
 
-            /// @name ステートマシン: parameters
             toml::array paramsArr;
             for (const auto& p : anim->parameters) {
                 toml::table pTbl;
@@ -1664,6 +1706,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             waterTbl.insert("resolutionX",         static_cast<int64_t>(water->resolutionX));
             waterTbl.insert("resolutionZ",         static_cast<int64_t>(water->resolutionZ));
             waterTbl.insert("chunkCount",          static_cast<int64_t>(water->chunkCount));
+            waterTbl.insert("cameraFocusedGrid",   water->cameraFocusedGrid);
+            waterTbl.insert("nearCellSize",        static_cast<double>(water->nearCellSize));
             waterTbl.insert("enableGerstnerWaves", water->enableGerstnerWaves);
             waterTbl.insert("waveAmplitudeScale",  static_cast<double>(water->waveAmplitudeScale));
             waterTbl.insert("buoyancyEnabled",     water->buoyancyEnabled);
@@ -1752,7 +1796,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
 
     /// @note ディスク上のアセット参照は guid: 形式にする (リネーム・移動耐性)。
     /// @note ランタイム側のコンポーネントは "Assets/..." パスのままなので、この一点で変換が完結する。
-    asset::EncodeGuidRefs(doc);
+    TransformSceneAssetRefs(doc, asset::EncodeGuidRefs);
 
     std::ostringstream oss;
     oss << doc;
@@ -1791,7 +1835,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     auto& doc = result.table();
 
     /// @note guid: 参照を "Assets/..." パスへ戻す。以降の全コンポーネント読み込みはパス前提で動く。
-    asset::DecodeGuidRefs(doc);
+    TransformSceneAssetRefs(doc, asset::DecodeGuidRefs);
 
     auto scene = std::make_unique<Scene>();
 
@@ -1803,6 +1847,10 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr) return scene;
+    if (!scene->CanCreateGameObjects(CountSceneObjects(*goArr, true))) {
+        FBZZ_LOG_ERROR("SceneSerializer: entity capacity exceeded in [%s]", sourcePath.c_str());
+        return nullptr;
+    }
     std::vector<Script*> pendingDeserializedScripts;
     /// @note ファクトリに居なかったスクリプト型。読み終わりに 1 度だけまとめて告げる。
     std::vector<std::string> unresolvedScriptTypes;
@@ -1818,7 +1866,9 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         std::string tag    = (*goTbl)["tag"].value_or(std::string{"Untagged"});
         bool        active = (*goTbl)["active"].value_or(true);
 
-        auto& go = scene->CreateGameObject(name);
+        auto* created = scene->TryCreateGameObject(name);
+        if (!created) return nullptr;
+        auto& go = *created;
         go.tag   = tag;
         go.layer = (int)(*goTbl)["layer"].value_or((int64_t)0);
         go.SetActive(active);
@@ -1831,6 +1881,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         }
         go.prefabAssetPath = (*goTbl)["prefabAssetPath"].value_or(std::string{});
         go.prefabSourceId  = (*goTbl)["prefabSourceId"].value_or(std::string{});
+        go.prefabSourceSnapshot = (*goTbl)["prefabSourceSnapshot"].value_or(std::string{});
 
         /// @note Transform
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
@@ -2162,7 +2213,6 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             anim.playing   = (*animTbl)["playing"].value_or(true);
             anim.externalPose = (*animTbl)["externalPose"].value_or(false);
 
-            /// @name Root Motion
             const auto readEnum = [&animTbl](const char* key, int fallback) {
                 return (int)(*animTbl)[key].value_or((int64_t)fallback);
             };
@@ -2193,7 +2243,6 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
 
             anim.defaultStateName = (*animTbl)["defaultStateName"].value_or(std::string{});
 
-            /// @name ステートマシン: states
             if (const auto* statesArr = (*animTbl)["states"].as_array()) {
                 for (const auto& stElem : *statesArr) {
                     const auto* stTbl = stElem.as_table();
@@ -2316,7 +2365,6 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
                 }
             }
 
-            /// @name ステートマシン: parameters
             if (const auto* paramsArr = (*animTbl)["parameters"].as_array()) {
                 for (const auto& pElem : *paramsArr) {
                     const auto* pTbl = pElem.as_table();
@@ -2582,6 +2630,10 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
                 std::max<int64_t>(1, (*waterTbl)["resolutionZ"].value_or(int64_t{64})));
             water.chunkCount          = static_cast<uint32_t>(
                 std::max<int64_t>(1, (*waterTbl)["chunkCount"].value_or(int64_t{4})));
+            water.cameraFocusedGrid   = (*waterTbl)["cameraFocusedGrid"].value_or(false);
+            const float nearCellSize = static_cast<float>((*waterTbl)["nearCellSize"].value_or(2.0));
+            water.nearCellSize = std::isfinite(nearCellSize)
+                ? std::clamp(nearCellSize, 0.25f, 10.0f) : 2.0f;
             water.enableGerstnerWaves = (*waterTbl)["enableGerstnerWaves"].value_or(true);
             water.waveAmplitudeScale  = static_cast<float>((*waterTbl)["waveAmplitudeScale"].value_or(1.0));
             water.buoyancyEnabled     = (*waterTbl)["buoyancyEnabled"].value_or(true);
@@ -2915,10 +2967,17 @@ bool SceneSerializer::AppendObjects(
     auto& doc = result.table();
 
     /// @note Prefab 等の TOML 断片にも guid: 参照が含まれるため Load と同じくデコードする。
-    asset::DecodeGuidRefs(doc);
+    TransformSceneAssetRefs(doc, asset::DecodeGuidRefs);
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr || goArr->empty()) return false;
+    const std::size_t objectCount = CountSceneObjects(*goArr, false);
+    if (!scene.CanCreateGameObjects(objectCount)) {
+        FBZZ_LOG_WARN("AppendObjects: insufficient entity capacity");
+        return false;
+    }
+    std::vector<EntityID> createdEntities;
+    createdEntities.reserve(objectCount);
     std::vector<Script*> pendingDeserializedScripts;
 
     /// @note Pass 1: GameObject 生成 + Component アタッチ
@@ -2930,7 +2989,13 @@ bool SceneSerializer::AppendObjects(
         std::string tag    = (*goTbl)["tag"].value_or(std::string{"Untagged"});
         bool        active = (*goTbl)["active"].value_or(true);
 
-        auto& go = scene.CreateGameObject(name);
+        auto* created = scene.TryCreateGameObject(name);
+        if (!created) {
+            for (const EntityID id : createdEntities) scene.DestroyGameObject(id);
+            return false;
+        }
+        auto& go = *created;
+        createdEntities.push_back(go.GetID());
         go.tag   = tag;
         go.layer = (int)(*goTbl)["layer"].value_or((int64_t)0);
         go.SetActive(active);
@@ -2940,6 +3005,7 @@ bool SceneSerializer::AppendObjects(
         }
         go.prefabAssetPath = (*goTbl)["prefabAssetPath"].value_or(std::string{});
         go.prefabSourceId  = (*goTbl)["prefabSourceId"].value_or(std::string{});
+        go.prefabSourceSnapshot = (*goTbl)["prefabSourceSnapshot"].value_or(std::string{});
 
         if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
             auto& t = go.transform;
@@ -3000,7 +3066,7 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<ParticleEmitter>(std::move(pe));
         }
 
-        /// @note @note 追記 (Prefab / クリップボード) では環境流を書き換えない。
+        /// @note 追記 (Prefab / クリップボード) では環境流を書き換えない。
         /// @note «部品を 1 つ足しただけでシーン全体の風が変わる» のは事故になる。
         SceneEnvironment discardedEnvironment;
         ReadFlowFieldComponent(go, *goTbl, discardedEnvironment);
@@ -3203,4 +3269,4 @@ bool SceneSerializer::AppendObjects(
     return !outRoots.empty();
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

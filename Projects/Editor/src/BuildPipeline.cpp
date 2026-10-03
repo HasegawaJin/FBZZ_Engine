@@ -443,6 +443,7 @@ bool BuildPipeline::ExecuteStep()
         if (m_rendererBackend == "dx12") {
             required.push_back(L"dxcompiler.dll");
             required.push_back(L"dxil.dll");
+            required.push_back(L"WinPixEventRuntime.dll");
         }
 
         for (const std::wstring& dllName : required) {
@@ -450,6 +451,17 @@ bool BuildPipeline::ExecuteStep()
             if (!util::FileSystem::Exists(src)) {
                 SetFailed("Required runtime DLL not found: " + util::FileSystem::PathToUtf8(src));
                 return false;
+            }
+        }
+
+        /// @note The imported PIX event runtime requires its SDK notices even when capture is disabled.
+        if (m_rendererBackend == "dx12") {
+            for (const wchar_t* name : { L"LICENSE", L"VERSION", L"ThirdPartyNotices.txt" }) {
+                const auto src = exeDir / L"EngineLicenses" / L"WinPixEventRuntime" / name;
+                if (!util::FileSystem::Exists(src)) {
+                    SetFailed("Required runtime notice not found: " + util::FileSystem::PathToUtf8(src));
+                    return false;
+                }
             }
         }
 
@@ -740,6 +752,11 @@ void BuildPipeline::BeginEnumerateFiles()
         FBZZ_LOG_WARN("BuildPipeline: EngineAssets not found next to the exe; "
                       "assets that only exist in the SDK (default font, etc.) will be missing");
     }
+
+    /// @note Runtime notices are not assets and must survive editor-source stripping and project shadowing.
+    const std::filesystem::path engineLicensesDir = m_exeSrcPath.parent_path() / L"EngineLicenses";
+    if (util::FileSystem::Exists(engineLicensesDir))
+        enqueueTree(engineLicensesDir, m_tmpDir / L"EngineLicenses", false);
 
     m_status = "Copying files... (0/" + std::to_string(m_copyJobs.size()) + ")";
 }

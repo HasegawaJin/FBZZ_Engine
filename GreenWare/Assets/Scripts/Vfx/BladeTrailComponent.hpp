@@ -2,15 +2,15 @@
 /// @brief   刀身が実際に通った面を帯として張る軌跡。両面の 3D メッシュトレイル
 /// @author  Hasegawa Jin
 /// @date    2026-09-06
-///
-/// シーンへは付けない。PlayerComponent が内部モジュールとして持ち、BladeComponent へ注入する。
+
+/// @note シーンへは付けない。PlayerComponent が内部モジュールとして持ち、BladeComponent へ注入する。
 /// @note 判定の扇 (射程・角度から組む円弧) ではなく、刀身の 2 点 (鍔寄り/切っ先) が実際に
-///       掃過した面を張る。1 点のビルボード (TrailComponent) では刃の長さが絵から消える。
-///       頂点の uv.x には弧位置 (刃側 0 〜振り始め 1) を焼き、消し込みはこれを進めるだけで
-///       表す。一振り = 1 Stroke は点を捨てずに全部持ち、記録が止まった後 Hold → Fade で
-///       尾側から消す (点ごとの寿命だと帯が刀に付いて回る彗星になり斬った跡が残らない)。
+/// @note 掃過した面を張る。1 点のビルボード (TrailComponent) では刃の長さが絵から消える。
+/// @note 頂点の uv.x には弧位置 (刃側 0 〜振り始め 1) を焼き、消し込みはこれを進めるだけで
+/// @note 表す。一振り = 1 Stroke は点を捨てずに全部持ち、記録が止まった後 Hold → Fade で
+/// @note 尾側から消す (点ごとの寿命だと帯が刀に付いて回る彗星になり斬った跡が残らない)。
 /// @note サンプルは Catmull-Rom で刻み直す (60fps では速い振りが折れ線の多角形に見えるため)。
-///       極性は持たない (どちらの剣かは纏いと環が伝える。企画書 12.2)。
+/// @note 極性は持たない (どちらの剣かは纏いと環が伝える。企画書 12.2)。
 #pragma once
 
 #include <Engine/Scene/Components/LightComponent.hpp>
@@ -36,18 +36,18 @@ using fbzz::Time;
 
 namespace sandbox {
 
-/// WeaponTrail.hlsl の [params] のうち、スクリプトが毎フレーム書くもの。
+/// @note WeaponTrail.hlsl の [params] のうち、スクリプトが毎フレーム書くもの。
 inline constexpr MaterialPropertyId kTrailPhaseId{ "phase" };
 inline constexpr MaterialPropertyId kTrailHeatId { "heat" };
 inline constexpr MaterialPropertyId kTrailFlashId{ "flash" };
 
-/// 未割り当てでも軌跡が出る状態にする。差し替えは Inspector が優先する。
+/// @note 未割り当てでも軌跡が出る状態にする。差し替えは Inspector が優先する。
 inline constexpr const char* kBladeTrailMaterialPath =
     "Assets/Materials/Effects/FX_BLD_Trail.mat";
 
-/// 軌跡の «本» を指す番号。
+/// @note 軌跡の «本» を指す番号。
 /// @note HandSide (右手/左手) は使わない。持ち主は刀とは限らず、蛇の薙ぎは頭と首の
-///       2 点で 1 本を張るため、手の名で呼ぶと持ち主違いのときに紛らわしい。
+/// @note 2 点で 1 本を張るため、手の名で呼ぶと持ち主違いのときに紛らわしい。
 enum class TrailSlot : int { A = 0, B = 1 };
 
 [[nodiscard]] inline TrailSlot TrailSlotOf(HandSide hand)
@@ -60,16 +60,16 @@ class BladeTrailComponent : public Script {
 
 public:
     /// @note フィールド名に trail を付ける。PlayerComponent は全モジュールの Reflect を
-    ///       1 つの名前空間へ平らに並べるので、汎用名だと後から追加されたモジュールと
-    ///       衝突し、Script 基底のメンバー名 (lifetime/time/random) を覆う事故にもなる。
+    /// @note 1 つの名前空間へ平らに並べるので、汎用名だと後から追加されたモジュールと
+    /// @note 衝突し、Script 基底のメンバー名 (lifetime/time/random) を覆う事故にもなる。
     FBZZ_GROUP("Blade Trail")
     FBZZ_ASSET_FIELD(MaterialRef, trailMaterial, "Material")
     FBZZ_TOOLTIP("未割り当てなら FX_BLD_Trail.mat を使う")
 
-    /// @name 誰の «刃» を追うか
+    /// @note 誰の «刃» を追うか
     /// @{
     /// @note 刀に固定しない。«2 点が通った面を張る» 実装は刀身かどうかを知らず、蛇の薙ぎ
-    ///       (BossAttackKind::Sweep) も頭と首の 2 点で同じ形が作れる。
+    /// @note (BossAttackKind::Sweep) も頭と首の 2 点で同じ形が作れる。
     FBZZ_GROUP("Blade Trail — 持ち主")
     FBZZ_FIELD(std::string, trailOwnerA, "", "Owner A")
     FBZZ_TOOLTIP("枠 A の刃を持つ GameObject 名。空なら Sword")
@@ -84,10 +84,10 @@ public:
                  "必ず別の名前にすること (同じだと互いの帯を奪い合う)")
     /// @}
 
-    /// @name 残り方
+    /// @note 残り方
     /// @{
     /// @note 一振りごとの寿命 (点ごとではない)。Hold の後 Fade で尾から消える契約は
-    ///       ファイルヘッダー参照。
+    /// @note ファイルヘッダー参照。
     FBZZ_FIELD_RANGE(float, trailHold, 0.06f, "保持", 0.0f, 0.5f)
     FBZZ_TOOLTIP("記録が止まってから消え始めるまで [秒]。振り抜いた形をそのまま見せる時間")
     FBZZ_FIELD_RANGE(float, trailLifetime, 0.26f, "フェード", 0.05f, 1.5f)
@@ -99,12 +99,12 @@ public:
     FBZZ_TOOLTIP("同時に残せる一振りの数。連撃で前の跡が消え切る前に次が来るので 2 以上")
     /// @}
 
-    /// @name 切っ先がいつ «生き» はじめ、いつ止むか
+    /// @note 切っ先がいつ «生き» はじめ、いつ止むか
     /// @{
     /// @note Start Delay は秒でなく発生に対する比。振りかぶり (刀を引く動き) から
-    ///       記録すると引いた跡と斬った跡が «く» の字に繋がり、折り返し点で帯が
-    ///       自分自身と交差して二重に明るくなる。クリップごとに尺は違うが振りかぶりの
-    ///       占める比はほぼ共通なので、秒でなく比なら 1 つの数が全段に効く。
+    /// @note 記録すると引いた跡と斬った跡が «く» の字に繋がり、折り返し点で帯が
+    /// @note 自分自身と交差して二重に明るくなる。クリップごとに尺は違うが振りかぶりの
+    /// @note 占める比はほぼ共通なので、秒でなく比なら 1 つの数が全段に効く。
     FBZZ_GROUP("Blade Trail — 生存 (いつ出て、いつ止むか)")
     FBZZ_FIELD_RANGE(float, trailStartDelay, 0.30f, "Start Delay", 0.0f, 0.9f)
     FBZZ_TOOLTIP("発生に対する比。ここまでは記録しない (振りかぶり)。"
@@ -113,8 +113,8 @@ public:
     FBZZ_TOOLTIP("判定が出た後も記録を続ける長さ [秒]。0 にすると «振り抜き» が"
                  "絵に出ず、当たった瞬間で軌跡が止まる")
     /// @note Min Tip Speed は速さでも記録を切る。Start Delay / Follow Through は尺の
-    ///       位置でしか切れず、振り終わりの減速や回避キャンセルで刃が止まる瞬間を
-    ///       捉えられない。速さで切れば «動いた線» だけが残る。
+    /// @note 位置でしか切れず、振り終わりの減速や回避キャンセルで刃が止まる瞬間を
+    /// @note 捉えられない。速さで切れば «動いた線» だけが残る。
     FBZZ_FIELD_RANGE(float, trailMinSpeed, 2.5f, "Min Tip Speed", 0.0f, 20.0f)
     FBZZ_TOOLTIP("切っ先がこれ未満の速さ [m/s] なら記録を止める。"
                  "刀身 0.7m の薙ぎは 8〜10 m/s 出るので、2〜4 が «止まっている» の境目")
@@ -126,13 +126,13 @@ public:
     FBZZ_TOOLTIP("刀身の長さに対する帯の幅。1 を少し超えさせると切っ先の «先» まで"
                  "光が伸びて、刃が空気を裂いた跡として読める")
     /// @}
-    /// @name 掃過方向の «太さの型»
+    /// @note 掃過方向の «太さの型»
     /// @{
     /// @note 頭/頂点/尾の 3 点で太さを持つ。直線補間だけでは輪郭が楔になり、三日月の
-    ///       膨らみの頂点が表現できない。
+    /// @note 膨らみの頂点が表現できない。
     /// @note 幅は鍔側の縁だけを動かして詰める。切っ先側の縁は実際に刃が通った弧そのもの
-    ///       (白熱の筋 railBias もここに置く) で、対称に絞ると筋が帯の中を泳いで
-    ///       軌跡がどこを通ったか読めなくなる。
+    /// @note (白熱の筋 railBias もここに置く) で、対称に絞ると筋が帯の中を泳いで
+    /// @note 軌跡がどこを通ったか読めなくなる。
     FBZZ_GROUP("Blade Trail — 太さの型")
     FBZZ_FIELD_RANGE(float, trailHeadTaper, 0.70f, "Head Width", 0.05f, 1.6f)
     FBZZ_TOOLTIP("刃に接している端の幅 [刀身比]。1 で刀身と同じ長さ。"
@@ -149,13 +149,13 @@ public:
     FBZZ_TOOLTIP("両端の尖り。小さいほど «中央が太い三日月»、大きいほど細い弓になる")
     /// @}
 
-    /// @name 速さで太さが変わる
+    /// @note 速さで太さが変わる
     /// @{
     /// @note 型 (3 点補間) だけでは足りない。振りは等速ではなく振りかぶりから加速して
-    ///       振り切って減速するため、型を固定すると全クリップで同じ場所が膨らむ。
-    ///       点ごとの速さを太さへ掛ければ、膨らみの位置はモーションが自然に決める。
+    /// @note 振り切って減速するため、型を固定すると全クリップで同じ場所が膨らむ。
+    /// @note 点ごとの速さを太さへ掛ければ、膨らみの位置はモーションが自然に決める。
     /// @note 速さは Min Tip Speed の判定用に毎フレーム測ってある値をそのまま焼く。
-    ///       別に測り直すと 2 つの «速さ» がずれ、片方だけ直すと食い違いが起きる。
+    /// @note 別に測り直すと 2 つの «速さ» がずれ、片方だけ直すと食い違いが起きる。
     FBZZ_FIELD_RANGE(float, trailSpeedWidth, 0.55f, "Slow Width", 0.0f, 1.0f)
     FBZZ_TOOLTIP("止まっている点の太さ [型に対する比]。1 で速さを無視 (型のまま)。"
                  "下げるほど «速い区間だけが太い» 帯になる")
@@ -168,13 +168,13 @@ public:
                  "ここでしか出せないが、上げすぎると背景を洗って «乳白色の板» になる")
     /// @}
 
-    /// @name 厚み
+    /// @note 厚み
     /// @{
     /// @note 同一平面に重ねても奥行きは増えず明るさが増すだけ。面から浮かせた殻を
-    ///       前後に置くとカメラ移動で視差がつき «中身のある塊» として読める。
+    /// @note 前後に置くとカメラ移動で視差がつき «中身のある塊» として読める。
     FBZZ_GROUP("Blade Trail — 厚み")
     /// @note 既定 1 枚 (殻を増やさない)。事前乗算は層を重ねるほど帯が乳白色の板に
-    ///       寄るため。厚みが要る一撃は幅と寿命の格 (Heat Width/Lifetime) で出す。
+    /// @note 寄るため。厚みが要る一撃は幅と寿命の格 (Heat Width/Lifetime) で出す。
     FBZZ_FIELD_RANGE_INT(int, trailShells, 1, "Shells", 1, 5)
     FBZZ_TOOLTIP("重ねる殻の枚数。1 で «1 枚の板» (旧来の見え方)。"
                  "殻は芯を挟んで対称なので、偶数を入れても奇数として扱う")
@@ -203,7 +203,7 @@ public:
     FBZZ_TOOLTIP("繊維と火花の位相が進む速さ [周/秒]")
 
     /// @note 格 (締め/溜め) は別 .mat でなく倍率で持つ。材質を分けると軌跡の質を
-    ///       触るたびに 2 枚を同じ方向へ直す負債になる。
+    /// @note 触るたびに 2 枚を同じ方向へ直す負債になる。
     FBZZ_GROUP("Blade Trail — 格 (締め / 溜め斬り)")
     FBZZ_FIELD_RANGE(float, trailHeatWidth, 1.45f, "Heat Width", 1.0f, 3.0f)
     FBZZ_TOOLTIP("heat = 1 のときの帯の幅の倍率")
@@ -214,11 +214,11 @@ public:
     FBZZ_FIELD_READ_ONLY(int, debugTrailSamples, 0, "Live Samples")
     /// @note Min Tip Speed の妥当な値は振っている間ここを見て決める。
     /// @}
-    /// @name 斬った «場所» を照らす
+    /// @note 斬った «場所» を照らす
     /// @{
     /// @note 光源が要る。帯だけ明るくても周囲が暗いと «画面に貼った絵» のまま。
     /// @note 帯とは別の GameObject。帯は原点の実体へワールド座標で頂点を積むため、
-    ///       同じ実体を動かすと帯ごと持っていかれる。
+    /// @note 同じ実体を動かすと帯ごと持っていかれる。
     FBZZ_GROUP("Blade Trail — 光")
     FBZZ_FIELD_COLOR(trailLightColor, (Vector4{ 1.00f, 0.72f, 0.34f, 1.0f }), "Light Color")
     FBZZ_TOOLTIP("刃が通る点が放つ光。材質の主色 (edgeColor) と揃えること ─ "
@@ -232,10 +232,10 @@ public:
     FBZZ_TOOLTIP("記録が止まってから光が消えるまで [秒]。振り抜いた余韻ぶんだけ残す")
     /// @}
 
-    /// @name 当たったか
+    /// @note 当たったか
     /// @{
     /// @note 空振りと命中を軌跡自体でも描き分ける。ヒットストップと音だけだと
-    ///       «画面の外» の情報になり、目が向いている刃そのものには差が出ない。
+    /// @note «画面の外» の情報になり、目が向いている刃そのものには差が出ない。
     FBZZ_FIELD_RANGE(float, trailHitFlash, 1.0f, "Hit Flash", 0.0f, 3.0f)
     FBZZ_TOOLTIP("当たった一撃だけ乗る白熱の量。0 で空振りと同じ絵になる")
     FBZZ_FIELD_RANGE(float, trailHitFlashSeconds, 0.09f, "Hit Flash Time", 0.0f, 0.5f)
@@ -244,24 +244,24 @@ public:
 
     FBZZ_FIELD_READ_ONLY(float, debugTipSpeed, 0.0f, "Tip Speed (m/s)")
 
-    /// 一振りぶんの軌跡を出す。
-    ///
-    /// hand は振った手、both で両手 (交差斬り)。swingSeconds はその一振りの発生 ─
-    /// 判定が出るまでの時間をそのまま渡すこと。ここに «軌跡用の長さ» をもう 1 つ
-    /// 持たせると、モーションを差し替えるたびに «刃はもう止まっているのに帯だけ
-    /// 伸び続ける» が生まれる。heat は一振りの «格» [0,1] (締め / 溜め斬りで上がる)。
+    /// @note 一振りぶんの軌跡を出す。
+
+    /// @note hand は振った手、both で両手 (交差斬り)。swingSeconds はその一振りの発生 ─
+    /// @note 判定が出るまでの時間をそのまま渡すこと。ここに «軌跡用の長さ» をもう 1 つ
+    /// @note 持たせると、モーションを差し替えるたびに «刃はもう止まっているのに帯だけ
+    /// @note 伸び続ける» が生まれる。heat は一振りの «格» [0,1] (締め / 溜め斬りで上がる)。
     void Play(TrailSlot slot, bool both, float swingSeconds, float heat);
-    /// Playerの剣は枠Aだけを使う。
+    /// @note Playerの剣は枠Aだけを使う。
     void Play(HandSide hand, bool, float swingSeconds, float heat)
     { Play(TrailSlotOf(hand), false, swingSeconds, heat); }
 
-    /// ソケットを持たない持ち主が «刃の 2 点» を毎フレーム押し込む。
-    /// 押されたフレームはソケット探索より優先される。
-    ///
-    /// 一度でも押し込まれた枠は、以後ソケット探索へ落ちない (`sourced`)。
-    /// 押すのをやめた枠が探索へ戻ると、`OwnerName` の既定が **双剣** なので、
-    /// 蛇の帯がプレイヤーの刀を持ち主として掴む ─ しかも見つけた結果は
-    /// `socketBase/Tip` に控えられるので、二度と戻らない。
+    /// @note ソケットを持たない持ち主が «刃の 2 点» を毎フレーム押し込む。
+    /// @note 押されたフレームはソケット探索より優先される。
+
+    /// @note 一度でも押し込まれた枠は、以後ソケット探索へ落ちない (`sourced`)。
+    /// @note 押すのをやめた枠が探索へ戻ると、`OwnerName` の既定が **双剣** なので、
+    /// @note 蛇の帯がプレイヤーの刀を持ち主として掴む ─ しかも見つけた結果は
+    /// @note `socketBase/Tip` に控えられるので、二度と戻らない。
     void SetSource(TrailSlot slot, const Vector3& base, const Vector3& tip)
     {
         Ribbon& ribbon = m_ribbons[SlotIndex(slot)];
@@ -271,15 +271,15 @@ public:
         ribbon.sourced    = true;
     }
 
-    /// その一振りが当たった。判定 (ResolveHit) が実際に 1 体以上へ通った直後に呼ぶ。
+    /// @note その一振りが当たった。判定 (ResolveHit) が実際に 1 体以上へ通った直後に呼ぶ。
     /// @note Play とは別入口。命中は振り出し時点では分からず (判定は発生ぶん遅れる)、
-    ///       今出ている帯へ後乗せするだけで済む。
+    /// @note 今出ている帯へ後乗せするだけで済む。
     void Hit(TrailSlot slot, bool both);
     void Hit(HandSide hand, bool) { Hit(TrailSlotOf(hand), false); }
 
-    /// 振りが打ち切られた (回避・弾き)。記録だけ止め、残っている跡はその場で消し込みへ回す。
+    /// @note 振りが打ち切られた (回避・弾き)。記録だけ止め、残っている跡はその場で消し込みへ回す。
     /// @note 記録の窓は発生+振り抜きぶん予約してある。打ち切った後も開いたままだと、
-    ///       転がりや弾きで振られた刀の動きまで帯として張られる。
+    /// @note 転がりや弾きで振られた刀の動きまで帯として張られる。
     void Cut()
     {
         for (Ribbon& ribbon : m_ribbons) ribbon.emitRemaining = 0.0f;
@@ -291,85 +291,85 @@ public:
     /// @}
 
 private:
-    /// 刀身が «その時刻に» 居た場所。base = 鍔寄り / tip = 切っ先。
+    /// @note 刀身が «その時刻に» 居た場所。base = 鍔寄り / tip = 切っ先。
     struct Sample {
         Vector3 base = Vector3::ZERO;
         Vector3 tip  = Vector3::ZERO;
-        /// この点を取ったときの切っ先の速さ [m/s]。太さの型へ掛ける。
+        /// @note この点を取ったときの切っ先の速さ [m/s]。太さの型へ掛ける。
         float   speed = 0.0f;
-        /// ここから新しい帯が始まる。止まっていた区間を跨いで繋ぐと、そこだけ
-        /// 帯が一気に広がる。
+        /// @note ここから新しい帯が始まる。止まっていた区間を跨いで繋ぐと、そこだけ
+        /// @note 帯が一気に広がる。
         bool    breakBefore = false;
     };
 
-    /// 一振りぶんの跡。記録が止まった後も、消え切るまでその場に残る。
+    /// @note 一振りぶんの跡。記録が止まった後も、消え切るまでその場に残る。
     struct Stroke {
         std::vector<Sample> samples;
         float heat      = 0.0f;
-        /// まだ点を足している。
+        /// @note まだ点を足している。
         bool  recording = true;
-        /// 記録が止まってからの経過 [秒]。Hold を過ぎた分が消し込みになる。
+        /// @note 記録が止まってからの経過 [秒]。Hold を過ぎた分が消し込みになる。
         float settled   = 0.0f;
     };
 
-    /// 刀 1 本ぶんの軌跡 (残っている一振りの列)。
+    /// @note 刀 1 本ぶんの軌跡 (残っている一振りの列)。
     struct Ribbon {
         EntityRef ref;
-        /// ソケットは毎フレーム木を歩かずに覚える。DLL リロードで空に戻っても拾い直す。
+        /// @note ソケットは毎フレーム木を歩かずに覚える。DLL リロードで空に戻っても拾い直す。
         EntityRef socketBase;
         EntityRef socketTip;
-        /// 外から押し込まれた 2 点 (ソケットを持たない持ち主用)。
+        /// @note 外から押し込まれた 2 点 (ソケットを持たない持ち主用)。
         /// @note 1 フレームで失効させる (解除を別に呼ぶ形にすると呼び忘れで古い座標に
-        ///       張り付く)。GlowPartComponent::RequestColor と同じ形。
+        /// @note 張り付く)。GlowPartComponent::RequestColor と同じ形。
         Vector3 pushedBase = Vector3::ZERO;
         Vector3 pushedTip  = Vector3::ZERO;
         bool    pushed     = false;
-        /// この枠は «押し込まれる» 側か。一度でも SetSource が来たら立ち、以後
-        /// ソケット探索へ落ちない (SetSource の注記)。
-        ///
-        /// ⚠ OnStart の «作り直し» で false へ戻さないこと。これは一振りごとの
-        ///   状態ではなく «この枠の駆動のしかた» で、落とすと押されていない
-        ///   1 フレームのあいだにソケット探索が走り、双剣を掴んで控えてしまう。
+        /// @note この枠は «押し込まれる» 側か。一度でも SetSource が来たら立ち、以後
+        /// @note ソケット探索へ落ちない (SetSource の注記)。
+
+        /// @note ⚠ OnStart の «作り直し» で false へ戻さないこと。これは一振りごとの
+        /// @note 状態ではなく «この枠の駆動のしかた» で、落とすと押されていない
+        /// @note 1 フレームのあいだにソケット探索が走り、双剣を掴んで控えてしまう。
         bool    sourced    = false;
-        /// 古い順。末尾が今の一振り (recording なら記録中)。
+        /// @note 古い順。末尾が今の一振り (recording なら記録中)。
         std::vector<Stroke> strokes;
-        /// 次に取る 1 点から新しい Stroke を始める (Play が立てる)。
+        /// @note 次に取る 1 点から新しい Stroke を始める (Play が立てる)。
         bool startStroke = false;
-        /// 記録を続ける残り時間 [秒]。0 以下で «振り終わった»。
+        /// @note 記録を続ける残り時間 [秒]。0 以下で «振り終わった»。
         float emitRemaining = 0.0f;
-        /// Play からの経過と、その一振りの発生 [秒]。Start Delay の基準。
+        /// @note Play からの経過と、その一振りの発生 [秒]。Start Delay の基準。
         float emitElapsed = 0.0f;
         float emitSwing   = 0.0f;
-        /// 前フレームの切っ先。速さはここからしか測れない。
+        /// @note 前フレームの切っ先。速さはここからしか測れない。
         Vector3 lastTip    = Vector3::ZERO;
         bool    hasLastTip = false;
-        /// 遅いまま続いている長さ [秒]。Speed Grace を超えたら記録を止める。
+        /// @note 遅いまま続いている長さ [秒]。Speed Grace を超えたら記録を止める。
         float slowFor = 0.0f;
-        /// 光源。帯とは別の実体 (帯は原点に置いてワールドで組むので、同じ実体を
-        /// 動かすと帯ごと持っていかれる)。
+        /// @note 光源。帯とは別の実体 (帯は原点に置いてワールドで組むので、同じ実体を
+        /// @note 動かすと帯ごと持っていかれる)。
         EntityRef light;
-        /// 光が消えるまでの残り [秒]。記録している間は満タンに押し直される。
+        /// @note 光が消えるまでの残り [秒]。記録している間は満タンに押し直される。
         float lightLife = 0.0f;
-        /// 当たった白熱の残り [秒]。
+        /// @note 当たった白熱の残り [秒]。
         float flash = 0.0f;
         float heat  = 0.0f;
         float phase = 0.0f;
         bool  live  = false;
     };
 
-    /// 刻み直した後の 1 断面。位置と経過だけ持てば、法線は前後の駅から組める。
+    /// @note 刻み直した後の 1 断面。位置と経過だけ持てば、法線は前後の駅から組める。
     struct Station {
         Vector3 base = Vector3::ZERO;
         Vector3 tip  = Vector3::ZERO;
         float   age  = 0.0f;
-        /// 太さの型へ掛かる係数 [0,1]。速さから引く。
+        /// @note 太さの型へ掛かる係数 [0,1]。速さから引く。
         float   swell = 1.0f;
     };
 
     [[nodiscard]] static std::size_t SlotIndex(TrailSlot slot)
     { return slot == TrailSlot::A ? 0u : 1u; }
 
-    /// 枠 slot の持ち主の名前。未設定なら双剣へ落ちる (今までどおり動く)。
+    /// @note 枠 slot の持ち主の名前。未設定なら双剣へ落ちる (今までどおり動く)。
     [[nodiscard]] std::string OwnerName(TrailSlot slot) const
     {
         const std::string& owner = slot == TrailSlot::A ? trailOwnerA : trailOwnerB;
@@ -377,12 +377,12 @@ private:
         return slot == TrailSlot::A ? kSwordObject : "";
     }
 
-    /// その一振りが消え切るまでの長さ [秒]。«格» で伸びる。
+    /// @note その一振りが消え切るまでの長さ [秒]。«格» で伸びる。
     [[nodiscard]] float FadeOf(const Stroke& stroke) const
     { return Max(trailLifetime, 0.01f) * Lerp(1.0f, Max(trailHeatLifetime, 1.0f),
                                               Clamp01(stroke.heat)); }
 
-    /// 消し込みの進み [0,1]。記録中は 0。Hold を過ぎてから Fade かけて 1 へ。
+    /// @note 消し込みの進み [0,1]。記録中は 0。Hold を過ぎてから Fade かけて 1 へ。
     [[nodiscard]] float EraseOf(const Stroke& stroke) const
     {
         if (stroke.recording) return 0.0f;
@@ -390,14 +390,14 @@ private:
         return after <= 0.0f ? 0.0f : Clamp01(after / FadeOf(stroke));
     }
 
-    /// 今記録している一振り。無ければ nullptr。
+    /// @note 今記録している一振り。無ければ nullptr。
     [[nodiscard]] static Stroke* Recording(Ribbon& ribbon)
     {
         if (ribbon.strokes.empty() || !ribbon.strokes.back().recording) return nullptr;
         return &ribbon.strokes.back();
     }
 
-    /// 経過 age における帯の幅 [刀身比]。頭 → 頂点 → 尾 の 3 点を指数補間で結ぶ。
+    /// @note 経過 age における帯の幅 [刀身比]。頭 → 頂点 → 尾 の 3 点を指数補間で結ぶ。
     /// @note 線形だと輪郭が折れ線の楔になり頂点が角として見えるため、指数で端を急に細らせる。
     [[nodiscard]] float WidthAt(float age) const
     {
@@ -414,29 +414,29 @@ private:
         return Lerp(mid, Max(trailTailTaper, 0.0f), std::pow(t, power));
     }
 
-    /// 4 点を通す Catmull-Rom。通す点 (p1 → p2) は動かさないので、刻み直しても
-    /// 刀身の実際の軌跡からはずれない。
+    /// @note 4 点を通す Catmull-Rom。通す点 (p1 → p2) は動かさないので、刻み直しても
+    /// @note 刀身の実際の軌跡からはずれない。
     [[nodiscard]] static Vector3 Spline(const Vector3& p0, const Vector3& p1,
                                         const Vector3& p2, const Vector3& p3, float t);
 
-    /// その手の刀身ソケットを引く。見つからなければ false。
+    /// @note その手の刀身ソケットを引く。見つからなければ false。
     [[nodiscard]] bool ResolveSockets(Ribbon& ribbon, TrailSlot slot,
                                       Vector3& outBase, Vector3& outTip);
-    /// 枠の実体を確保する。DLL リロードを跨いでも名前で拾い直す。
+    /// @note 枠の実体を確保する。DLL リロードを跨いでも名前で拾い直す。
     [[nodiscard]] GameObject* EnsureObject(Ribbon& ribbon, TrailSlot slot);
-    /// 光源を刃の «今» 居る点へ運び、強さを落とす。tip はその手の切っ先 (ワールド)。
+    /// @note 光源を刃の «今» 居る点へ運び、強さを落とす。tip はその手の切っ先 (ワールド)。
     void DriveLight(Ribbon& ribbon, TrailSlot slot, const Vector3& tip, float dt);
-    /// 残っている一振りをすべて張り直す。張るものが無ければ false。
+    /// @note 残っている一振りをすべて張り直す。張るものが無ければ false。
     [[nodiscard]] bool BuildRibbon(const Ribbon& ribbon);
-    /// 一振りぶん (Stroke) を m_builder へ足す。
+    /// @note 一振りぶん (Stroke) を m_builder へ足す。
     void AppendStroke(const Stroke& stroke);
-    /// 連続した 1 本ぶんを m_builder へ足す。
-    ///   arc    … 点ごとの «弧のどこか» [0,1] (0 が刃側、1 が振り始め)
-    ///   erase  … 消し込みの進み [0,1]
-    ///   scale  … 刀身長に対する帯の幅
-    ///   weight … 層の重み (頂点カラーのアルファ)
-    ///   lift   … 掃過面の法線方向へずらす量 [m]。これが «厚み» の正体
-    ///   lag    … 弧位置を進める量。外側の殻を «遅らせて» 芯との間に視差を作る
+    /// @note 連続した 1 本ぶんを m_builder へ足す。
+    /// @note arc    … 点ごとの «弧のどこか» [0,1] (0 が刃側、1 が振り始め)
+    /// @note erase  … 消し込みの進み [0,1]
+    /// @note scale  … 刀身長に対する帯の幅
+    /// @note weight … 層の重み (頂点カラーのアルファ)
+    /// @note lift   … 掃過面の法線方向へずらす量 [m]。これが «厚み» の正体
+    /// @note lag    … 弧位置を進める量。外側の殻を «遅らせて» 芯との間に視差を作る
     void AppendStrip(const Stroke& stroke, const std::vector<float>& arc, float erase,
                      std::size_t first, std::size_t last,
                      float scale, float weight, float lift, float lag);
@@ -444,9 +444,9 @@ private:
 
     [[nodiscard]] std::string MaterialPath() const;
 
-    /// エフェクト用の時計。Time::time ではなく deltaTime を積むのは、ヒットストップで
-    /// 画面が止まっている間は軌跡も止めるため (止まった絵の中で帯だけ薄くなると、
-    /// 止めが «斬った瞬間» から外れる)。
+    /// @note エフェクト用の時計。Time::time ではなく deltaTime を積むのは、ヒットストップで
+    /// @note 画面が止まっている間は軌跡も止めるため (止まった絵の中で帯だけ薄くなると、
+    /// @note 止めが «斬った瞬間» から外れる)。
     float       m_clock = 0.0f;
     Ribbon      m_ribbons[2];
     MeshBuilder m_builder;
@@ -455,7 +455,6 @@ private:
 };
 
 FBZZ_REFLECT(BladeTrailComponent)
-
 
 inline void BladeTrailComponent::OnStart()
 {
@@ -513,15 +512,15 @@ inline bool BladeTrailComponent::ResolveSockets(Ribbon& ribbon, TrailSlot slot,
                                                 Vector3& outBase, Vector3& outTip)
 {
     /// @note 外から押し込まれていればそれが最優先。ソケットを持たない持ち主 (蛇の頭など) は
-    ///       こちらだけを使う。押されなかったフレームは自動的にソケット探索へ戻る。
+    /// @note こちらだけを使う。押されなかったフレームは自動的にソケット探索へ戻る。
     if (ribbon.pushed) {
         outBase = ribbon.pushedBase;
         outTip  = ribbon.pushedTip;
         return true;
     }
     /// @note 押し込まれる枠が «今フレームは押されなかった» ときは、何も出さないのが正しい。
-    ///       ソケット探索へ落とすと OwnerName の既定 (双剣) を掴んでしまう ─ 薙ぎが
-    ///       終わった後の追従 0.2 秒で、蛇の帯がプレイヤーの刀へ伸びていた。
+    /// @note ソケット探索へ落とすと OwnerName の既定 (双剣) を掴んでしまう ─ 薙ぎが
+    /// @note 終わった後の追従 0.2 秒で、蛇の帯がプレイヤーの刀へ伸びていた。
     if (ribbon.sourced) return false;
 
     GameObject* base = ribbon.socketBase.Resolve(scene);
@@ -531,7 +530,7 @@ inline bool BladeTrailComponent::ResolveSockets(Ribbon& ribbon, TrailSlot slot,
         GameObject* owner = scene.Find(OwnerName(slot), true);
         if (!owner) return false;
         /// @note 名前をシーン全体からは引かない。SOCKET_Trail_* は左右の刀に 1 本ずつ
-        ///       あり名前が一意でないため、生成順で結果がぶれる。必ず持ち主の下を探す。
+        /// @note あり名前が一意でないため、生成順で結果がぶれる。必ず持ち主の下を探す。
         base = FindInSubtree(*owner, trailSocketBase);
         tip  = FindInSubtree(*owner, trailSocketTip);
         /// @note トレイル用ソケットを持たない旧 FBX でも «握り → 切っ先» で成立させる。
@@ -550,28 +549,31 @@ inline bool BladeTrailComponent::ResolveSockets(Ribbon& ribbon, TrailSlot slot,
 inline GameObject* BladeTrailComponent::EnsureObject(Ribbon& ribbon, TrailSlot slot)
 {
     /// @note 帯と光が両方揃っているときだけ早く返す。片方だけ残った状態 (光を消した経路)
-    ///       で帯だけ返すと、以降二度と光を持たない ─ «軌跡はあるのに暗い» のに気付けない。
+    /// @note で帯だけ返すと、以降二度と光を持たない ─ «軌跡はあるのに暗い» のに気付けない。
     if (GameObject* existing = ribbon.ref.Resolve(scene))
         if (ribbon.light.Resolve(scene)) return existing;
 
     const std::string name = (trailObjectName.empty() ? std::string("BladeTrail")
                                                       : trailObjectName)
                            + (slot == TrailSlot::A ? "_A" : "_B");
+    const std::string lightName = name + "_Light";
+    GameObject* existingTrail = scene.Find(name, true);
+    GameObject* existingLight = scene.Find(lightName, true);
+    const std::size_t missing = (existingTrail ? 0u : 1u) + (existingLight ? 0u : 1u);
+    if (!scene.CanCreate(missing)) return nullptr;
     /// @note 先に既存を拾い直す。スクリプト DLL リロードで EntityRef は空に戻るが、
-    ///       帯の GameObject は Scene に残るため、拾わず作るとリロードのたびに枠が増える。
-    GameObject* object = scene.Find(name, true);
+    /// @note 帯の GameObject は Scene に残るため、拾わず作るとリロードのたびに枠が増える。
+    GameObject* object = existingTrail;
     if (!object) {
         /// @note 刀の子にしない。頂点はワールド座標で積む (点ごとに刀の姿勢が違い、
-        ///       1 つのローカル空間では表せない) ので、親を持たせると変換が二重に掛かる。
-        GameObject& created = scene.Create(name);
-        created.runtimeGenerated = true;
-        object = &created;
+        /// @note 1 つのローカル空間では表せない) ので、親を持たせると変換が二重に掛かる。
+        GameObject* created = scene.Create(name);
+        if (!created) return nullptr;
+        created->runtimeGenerated = true;
+        object = created;
     }
-    ribbon.ref = EntityRef{ object->GetID() };
 
-    /// @note Create / AddComponent はシーンの配列を伸ばしうる。設定は必ず ID から引き直した
-    ///       個体へ入れる ─ 作った直後のポインタは、次の Create で無効になりうる。
-    GameObject* trail = ribbon.ref.Resolve(scene);
+    GameObject* trail = object;
     if (!trail) return nullptr;
 
     trail->transform.position      = Vector3::ZERO;
@@ -580,20 +582,24 @@ inline GameObject* BladeTrailComponent::EnsureObject(Ribbon& ribbon, TrailSlot s
     trail->transform.worldRotation = Quaternion::Identity();
 
     /// @note ScriptMeshProxy::SetProceduralMaterial は自分自身の GameObject にしか
-    ///       効かないため使わない。枠は別実体なのでここへ直接書く。
+    /// @note 効かないため使わない。枠は別実体なのでここへ直接書く。
     auto* procedural = trail->GetComponent<ProceduralMeshComponent>();
     if (!procedural) procedural = &trail->AddComponent<ProceduralMeshComponent>();
     procedural->materialPath = MaterialPath();
 
     /// @note 光源は別の実体。帯の子にもしない ─ 子にすると帯のローカル空間で動かすことに
-    ///       なり、«帯は原点に置く» という前提と、光を刃に沿って走らせる話が絡まる。
-    const std::string lightName = name + "_Light";
-    GameObject* lightObject = scene.Find(lightName, true);
+    /// @note なり、«帯は原点に置く» という前提と、光を刃に沿って走らせる話が絡まる。
+    GameObject* lightObject = existingLight;
     if (!lightObject) {
-        GameObject& created = scene.Create(lightName);
-        created.runtimeGenerated = true;
-        lightObject = &created;
+        GameObject* created = scene.Create(lightName);
+        if (!created) {
+            if (!existingTrail) scene.Destroy(*object);
+            return nullptr;
+        }
+        created->runtimeGenerated = true;
+        lightObject = created;
     }
+    ribbon.ref = EntityRef{ object->GetID() };
     ribbon.light = EntityRef{ lightObject->GetID() };
 
     if (GameObject* light = ribbon.light.Resolve(scene)) {
@@ -618,7 +624,7 @@ inline void BladeTrailComponent::DriveLight(Ribbon& ribbon, TrailSlot slot,
     ribbon.lightLife = Max(ribbon.lightLife - dt, 0.0f);
 
     /// @note 光は «消えている» ときに実体を作らない。1 度も振っていないシーンで
-    ///       使いもしない GameObject が 2 つ増えるのを避ける。
+    /// @note 使いもしない GameObject が 2 つ増えるのを避ける。
     if (ribbon.lightLife <= 0.0f || peak <= 0.0f || life <= 0.0f) {
         if (GameObject* light = ribbon.light.Resolve(scene)) {
             if (auto* component = light->GetComponent<LightComponent>())
@@ -663,7 +669,7 @@ inline void BladeTrailComponent::Hit(TrailSlot slot, bool both)
         Ribbon& ribbon = m_ribbons[SlotIndex(slots[i])];
         ribbon.flash = Max(trailHitFlashSeconds, 0.0f);
         /// @note 当たった瞬間は光も押し直す。振り抜きの減衰の途中で当たっても、
-        ///       «斬れた場所» が暗いまま終わらない。
+        /// @note «斬れた場所» が暗いまま終わらない。
         ribbon.lightLife = Max(ribbon.lightLife, Max(trailLightSeconds, 0.0f));
     }
 }
@@ -674,7 +680,7 @@ inline void BladeTrailComponent::Play(TrailSlot slot, bool both, float swingSeco
     if (!enabled) return;
 
     /// @note 振り抜きは «格» で伸ばす。全周を薙ぐ一撃は発生 (判定が出るまで) より後ろの方が
-    ///       長く、そこで記録を止めると輪が閉じる前に帯が切れる。
+    /// @note 長く、そこで記録を止めると輪が閉じる前に帯が切れる。
     const float heat01  = Clamp01(heat);
     const float seconds = Max(swingSeconds, 0.0f)
                         + Max(trailFollowThrough, 0.0f) * (1.0f + heat01);
@@ -682,9 +688,9 @@ inline void BladeTrailComponent::Play(TrailSlot slot, bool both, float swingSeco
     const int count = both ? 2 : 1;
 
     /// @note 残り時間は延長でなく上書き。連撃の各段は別の一振りで Start Delay をその段の
-    ///       頭から数え直す必要があり、Max で延ばすと前段の窓に次段が埋もれ引き際が写る。
-    ///       前の一振りはここで記録終わりにしてその場へ残し、次に取る 1 点から新しい
-    ///       Stroke を始める (繋ぐと反対側へ跳んだ跡の間を埋める巨大な三角形が残る)。
+    /// @note 頭から数え直す必要があり、Max で延ばすと前段の窓に次段が埋もれ引き際が写る。
+    /// @note 前の一振りはここで記録終わりにしてその場へ残し、次に取る 1 点から新しい
+    /// @note Stroke を始める (繋ぐと反対側へ跳んだ跡の間を埋める巨大な三角形が残る)。
     for (int i = 0; i < count; ++i) {
         Ribbon& ribbon = m_ribbons[SlotIndex(slots[i])];
         if (Stroke* current = Recording(ribbon)) current->recording = false;
@@ -711,11 +717,11 @@ inline void BladeTrailComponent::AppendStrip(const Stroke& stroke,
     const float width = Max(scale, 0.01f)
                       * Lerp(1.0f, Max(trailHeatWidth, 1.0f), Clamp01(stroke.heat));
     /// @note 消し込みは «弧位置を進める» ことで表す。尾 (1) から順に uv.x が 1 を越えて
-    ///       抜けていき、刃側 (0) が最後まで残る。
+    /// @note 抜けていき、刃側 (0) が最後まで残る。
     const float shift = erase * Max(trailEraseSpread, 0.01f);
 
     /// @note 端は自分自身を «外側の制御点» として使う。折り返すと端で曲線が跳ね上がり、
-    ///       帯の先端だけが刀身の外へ飛び出す。
+    /// @note 帯の先端だけが刀身の外へ飛び出す。
     const auto at = [&](std::ptrdiff_t index) -> const Sample& {
         const std::ptrdiff_t clamped = std::clamp<std::ptrdiff_t>(
             index, static_cast<std::ptrdiff_t>(first), static_cast<std::ptrdiff_t>(last));
@@ -724,11 +730,11 @@ inline void BladeTrailComponent::AppendStrip(const Stroke& stroke,
 
     const uint32_t base = m_builder.VertexCount();
     /// @note 全体もゆるく薄くする。尾からの千切れだけだと、刃側の白熱が最後の 1 コマまで
-    ///       満額で残って «消えた» ではなく «切れた» に見える。
+    /// @note 満額で残って «消えた» ではなく «切れた» に見える。
     const Vector4  tint{ 1.0f, 1.0f, 1.0f, Clamp01(weight) * (1.0f - erase * erase) };
 
     /// @note 刻み直した «駅» を作る。毎フレーム 層 × 帯の本数ぶん呼ばれるので、
-    ///       器はメンバーで使い回す (中身だけ捨てれば確保は 1 度で済む)。
+    /// @note 器はメンバーで使い回す (中身だけ捨てれば確保は 1 度で済む)。
     std::vector<Station>& stations = m_stations;
     stations.clear();
     stations.reserve((count - 1u) * static_cast<std::size_t>(steps) + 1u);
@@ -740,7 +746,7 @@ inline void BladeTrailComponent::AppendStrip(const Stroke& stroke,
         const Sample& p3 = at(static_cast<std::ptrdiff_t>(i) + 2);
 
         /// @note 最後の区間だけ終点まで積む。毎区間で積むと駅が二重になり、そこだけ
-        ///       面積 0 の三角形が挟まって帯に線が入る。
+        /// @note 面積 0 の三角形が挟まって帯に線が入る。
         const int emit = (i + 1u == last) ? steps + 1 : steps;
         for (int s = 0; s < emit; ++s) {
             const float t = static_cast<float>(s) / static_cast<float>(steps);
@@ -748,10 +754,10 @@ inline void BladeTrailComponent::AppendStrip(const Stroke& stroke,
             station.base = Spline(p0.base, p1.base, p2.base, p3.base, t);
             station.tip  = Spline(p0.tip,  p1.tip,  p2.tip,  p3.tip,  t);
             /// @note 弧位置も一緒に刻む。位置だけ補間して段で持つと、帯の途中に
-            ///       «同じ明るさの区画» が並んで縞に見える。
+            /// @note «同じ明るさの区画» が並んで縞に見える。
             station.age = Clamp01(Lerp(arc[i], arc[i + 1u], t) + lag + shift);
             /// @note 速さも点の間を埋める。段で持つと、太さが «区間ごとの階段» になって
-            ///       帯の輪郭に節が並ぶ。
+            /// @note 帯の輪郭に節が並ぶ。
             const float speed = Lerp(p1.speed, p2.speed, t);
             station.swell = Lerp(Clamp01(trailSpeedWidth), 1.0f,
                                  Clamp01(speed / Max(trailSpeedRef, 0.1f)));
@@ -766,15 +772,15 @@ inline void BladeTrailComponent::AppendStrip(const Stroke& stroke,
         const Station& station = stations[j];
 
         /// @note 鍔側の縁だけを動かして詰める (太さの型と同じ理由)。等幅だと帯が刀身幅の
-        ///       板に見え、対称に絞ると白熱の筋 (uv.y=1) が帯の中を泳ぐ。太さの型は
-        ///       消し込み前の弧位置で引く (消えながら型も進めると三日月が縮んで見える)。
+        /// @note 板に見え、対称に絞ると白熱の筋 (uv.y=1) が帯の中を泳ぐ。太さの型は
+        /// @note 消し込み前の弧位置で引く (消えながら型も進めると三日月が縮んで見える)。
         const float   shape   = Clamp01(station.age - shift);
         const float   profile = WidthAt(shape) * station.swell;
         const Vector3 root0   = station.tip + (station.base - station.tip) * profile;
 
         const Vector3 center = (root0 + station.tip) * 0.5f;
         /// @note 幅は中心から広げる。根元を固定して伸ばすと、暈だけが «刀身が 2 倍に
-        ///       伸びた» 絵になって、刃の長さが読めなくなる。
+        /// @note 伸びた» 絵になって、刃の長さが読めなくなる。
         const Vector3 half   = (station.tip - root0) * (0.5f * width);
 
         const Station& prev = stations[j > 0 ? j - 1u : j];
@@ -783,17 +789,17 @@ inline void BladeTrailComponent::AppendStrip(const Stroke& stroke,
                             * 0.5f;
         const Vector3 across = half.NormalizedOr(Vector3::UP);
         /// @note 掃過面の法線。刀が «同じ場所で立っている» フレームでは along が縮むので、
-        ///       そこは横断方向と直交する適当な向きへ落とす (絵には出ない区間)。
+        /// @note そこは横断方向と直交する適当な向きへ落とす (絵には出ない区間)。
         const Vector3 normal = Vector3::Cross(across, along.NormalizedOr(Vector3::FORWARD))
                                    .NormalizedOr(Vector3::UP);
         const Vector3 tangent = along.NormalizedOr(Vector3::FORWARD);
 
         /// @note 面から浮かせた殻を前後に置くと、カメラが動くたびに殻どうしが視差でずれ、
-        ///       «中身のある塊» として読めるようになる (同一平面に何枚重ねても奥行きは出ない)。
+        /// @note «中身のある塊» として読めるようになる (同一平面に何枚重ねても奥行きは出ない)。
         const Vector3 shell = normal * lift;
 
         /// @note uv.x = 弧位置 + 消し込み (0 が刃側) / uv.y = 刃の横断 (0 が鍔、1 が切っ先)。
-        ///       WeaponTrail.hlsl がこの並びを読む。
+        /// @note WeaponTrail.hlsl がこの並びを読む。
         const uint32_t root =
             m_builder.AddVertex(center - half + shell, normal,
                                 Vector2{ station.age, 0.0f }, tint);
@@ -815,10 +821,10 @@ inline void BladeTrailComponent::AppendStroke(const Stroke& stroke)
     const std::size_t n = stroke.samples.size();
     if (n < 2u) return;
 
-    /// @name 弧位置
+    /// @note 弧位置
     /// @note 切っ先が通った弧長で 0 (刃側=末尾) 〜1 (振り始め=先頭) を振る。時刻でなく
-    ///       弧長を使うのは、速い区間ほど帯が短い経過に詰まり膨らみが遅い側へ寄るのを
-    ///       避けるため (速さは swell が別に持つ)。
+    /// @note 弧長を使うのは、速い区間ほど帯が短い経過に詰まり膨らみが遅い側へ寄るのを
+    /// @note 避けるため (速さは swell が別に持つ)。
     std::vector<float>& arc = m_arc;
     arc.assign(n, 0.0f);
     float total = 0.0f;
@@ -837,7 +843,7 @@ inline void BladeTrailComponent::AppendStroke(const Stroke& stroke)
     const int   count = std::clamp(trailShells, 1, 5);
     const float thick = Max(trailThickness, 0.0f);
     /// @note 殻の遅れ。旧実装は秒 (寿命比) で持っていた。弧位置は無次元なので、
-    ///       既定の 0.014 秒 / 0.16 秒 ≒ 0.09 と同じ見え方になるよう Fade で割る。
+    /// @note 既定の 0.014 秒 / 0.16 秒 ≒ 0.09 と同じ見え方になるよう Fade で割る。
     const float lag   = Max(trailShellLag, 0.0f) / Max(trailLifetime, 0.01f);
 
     /// @note 切れ目で区切った «連続した 1 本» ごとに張る。
@@ -852,11 +858,11 @@ inline void BladeTrailComponent::AppendStroke(const Stroke& stroke)
             AppendStrip(stroke, arc, erase, first, last,
                         width * Max(trailHaloScale, 1.0f), halo, 0.0f, 0.0f);
 
-        /// @name 殻
+        /// @note 殻
         /// @note 面の «前後» へ振り分けた薄い層。中央 (t = 0) が芯で、外へ行くほど
-        ///       薄く・少し広く・少し遅れる。外側を遅らせるのは、同じ形の板を平行に
-        ///       並べただけでは «同じ絵が 3 枚» で模様が揃ってしまうため。
-        ///       外側から内側へ «輪» で積む (事前乗算では後から積んだものが上に載る)。
+        /// @note 薄く・少し広く・少し遅れる。外側を遅らせるのは、同じ形の板を平行に
+        /// @note 並べただけでは «同じ絵が 3 枚» で模様が揃ってしまうため。
+        /// @note 外側から内側へ «輪» で積む (事前乗算では後から積んだものが上に載る)。
         const int half = count / 2;
         for (int r = half; r >= 0; --r) {
             const float t     = half > 0 ? static_cast<float>(r) / static_cast<float>(half)
@@ -890,8 +896,8 @@ inline void BladeTrailComponent::OnLateUpdate()
     if (!enabled) return;
 
     /// @note LateUpdate で読む。刀は SocketAttachment (ConstraintSystem, Phase::LateUpdate)
-    ///       で追従するため、Script フェーズだと当たる前の姿勢を掴み帯だけ古くなる。
-    ///       1 フレーム遅れ自体は残るが、全サンプルが揃って遅れる分には形は崩れない。
+    /// @note で追従するため、Script フェーズだと当たる前の姿勢を掴み帯だけ古くなる。
+    /// @note 1 フレーム遅れ自体は残るが、全サンプルが揃って遅れる分には形は崩れない。
     const float dt = Max(Time::deltaTime, 0.0f);
     m_clock += dt;
 
@@ -907,7 +913,7 @@ inline void BladeTrailComponent::OnLateUpdate()
         Vector3 tipNow    = Vector3::ZERO;
         bool    hasTipNow = false;
 
-        /// @name 記録
+        /// @note 記録
         if (ribbon.emitRemaining > 0.0f) {
             ribbon.emitRemaining -= dt;
             ribbon.emitElapsed   += dt;
@@ -915,10 +921,10 @@ inline void BladeTrailComponent::OnLateUpdate()
             Vector3 base = Vector3::ZERO;
             Vector3 tip  = Vector3::ZERO;
             if (ResolveSockets(ribbon, slot, base, tip)) {
-                /// @name 生きているか
+                /// @note 生きているか
                 /// @note 速さは «連続する 2 フレームの切っ先» からしか測れない。1 フレーム目は
-                ///       測れないので «遅い» とは判定しない (判定すると振り出しの 1 点が必ず
-                ///       落ちて、帯の頭が刀から離れる)。
+                /// @note 測れないので «遅い» とは判定しない (判定すると振り出しの 1 点が必ず
+                /// @note 落ちて、帯の頭が刀から離れる)。
                 const bool  measured = ribbon.hasLastTip && dt > 0.0f;
                 const float speed    = measured
                                      ? (tip - ribbon.lastTip).Length() / dt : 0.0f;
@@ -933,17 +939,17 @@ inline void BladeTrailComponent::OnLateUpdate()
                 const bool fast  = ribbon.slowFor <= Max(trailSpeedGrace, 0.0f);
 
                 /// @note 光は «刃が今どこに在るか» なので、記録するかどうかとは別に、
-                ///       ソケットが引けている限り必ず今の切っ先へ運ぶ。
+                /// @note ソケットが引けている限り必ず今の切っ先へ運ぶ。
                 tipNow    = tip;
                 hasTipNow = true;
 
                 if (!begun || !fast) {
                     /// @note 記録しない。live を落として «次に取る 1 点» へ切れ目を入れる ─
-                    ///       止まっていた間を跨いで繋ぐと、そこだけ帯が一気に広がる。
+                    /// @note 止まっていた間を跨いで繋ぐと、そこだけ帯が一気に広がる。
                     ribbon.live = false;
                 } else {
                     /// @note 記録している間は光を満タンに押し直す。振り切った時点から
-                    ///       trailLightSeconds かけて引く形になる。
+                    /// @note trailLightSeconds かけて引く形になる。
                     ribbon.lightLife = Max(trailLightSeconds, 0.0f);
 
                     /// @note 一振りの頭なら新しい Stroke を開く。前の跡は消し込みへ回す。
@@ -960,7 +966,7 @@ inline void BladeTrailComponent::OnLateUpdate()
                     const bool  fresh = !ribbon.live;
                     const float step  = Max(trailMinStep, 0.0f);
                     /// @note 止まっている刀で点が溜まると、同じ場所の駅が並んで帯がその場で
-                    ///       潰れる (面積 0 の三角形が続くだけで、絵には何も足さない)。
+                    /// @note 潰れる (面積 0 の三角形が続くだけで、絵には何も足さない)。
                     const bool  moved = fresh || stroke.samples.empty()
                                       || (tip - stroke.samples.back().tip).LengthSq()
                                          > step * step;
@@ -969,7 +975,7 @@ inline void BladeTrailComponent::OnLateUpdate()
                         sample.base = base;
                         sample.tip  = tip;
                         /// @note 1 フレーム目は測れない。振り出しの 1 点だけ痩せるのを
-                        ///       避けるため、測れるまでは «満速» として扱う。
+                        /// @note 避けるため、測れるまでは «満速» として扱う。
                         sample.speed = measured ? speed : Max(trailSpeedRef, 0.1f);
                         sample.breakBefore = fresh && !stroke.samples.empty();
                         stroke.samples.push_back(sample);
@@ -982,14 +988,14 @@ inline void BladeTrailComponent::OnLateUpdate()
             if (Stroke* current = Recording(ribbon)) current->recording = false;
             ribbon.live       = false;
             /// @note 次の一振りは «前の振り終わりからの移動» を速さとして測らない。
-            ///       跨いで測ると必ず巨大な値が出て、Min Tip Speed が 1 フレーム空振りする。
+            /// @note 跨いで測ると必ず巨大な値が出て、Min Tip Speed が 1 フレーム空振りする。
             ribbon.hasLastTip = false;
             ribbon.slowFor    = 0.0f;
         }
 
-        /// @name 残り方
+        /// @note 残り方
         /// @note 記録の止まった一振りは Hold → Fade で消え、消え切ったら捨てる。
-        ///       記録中の一振りは 1 点も捨てない (点の上限だけ守る)。
+        /// @note 記録中の一振りは 1 点も捨てない (点の上限だけ守る)。
         for (Stroke& stroke : ribbon.strokes) {
             if (!stroke.recording) stroke.settled += dt;
             while (static_cast<int>(stroke.samples.size()) > cap)
@@ -1010,23 +1016,23 @@ inline void BladeTrailComponent::OnLateUpdate()
             total += static_cast<int>(stroke.samples.size());
 
         /// @note 押し込みは 1 フレームで失効する。押し続けている間だけ効いて、押されなく
-        ///       なった時点が解除 ─ «解除» を別に呼ぶ作りにすると、呼び忘れ 1 回で
-        ///       帯が古い座標へ張り付いたまま残る。
+        /// @note なった時点が解除 ─ «解除» を別に呼ぶ作りにすると、呼び忘れ 1 回で
+        /// @note 帯が古い座標へ張り付いたまま残る。
         ribbon.pushed = false;
 
-        /// @name 光と命中
+        /// @note 光と命中
         /// @note 帯を張るより前に置く。帯が空のフレームは下で continue するので、後ろに
-        ///       置くと振り抜いた瞬間に光だけ点きっぱなしで取り残される。
+        /// @note 置くと振り抜いた瞬間に光だけ点きっぱなしで取り残される。
         ribbon.flash = Max(ribbon.flash - dt, 0.0f);
         /// @note 記録を止めた後もソケットは引ける。引けないとき (刀が消えた / 納刀) だけ、
-        ///       最後に刃が居た場所へ置いたままにする。
+        /// @note 最後に刃が居た場所へ置いたままにする。
         const Vector3 lightAt = hasTipNow
             ? tipNow
             : (!ribbon.strokes.empty() && !ribbon.strokes.back().samples.empty()
                    ? ribbon.strokes.back().samples.back().tip : ribbon.lastTip);
         DriveLight(ribbon, slot, lightAt, dt);
 
-        /// @name 帯
+        /// @note 帯
         GameObject* object = ribbon.ref.Resolve(scene);
         if (!BuildRibbon(ribbon)) {
             if (object && object->activeSelf()) object->SetActive(false);
@@ -1039,9 +1045,9 @@ inline void BladeTrailComponent::OnLateUpdate()
         mesh.Apply(*object, m_builder);
 
         /// @note 位相は «エフェクトごとの経過» を渡す。全体時計 (Time::time) を配ると、
-        ///       係数を掛けた時点で桁が伸びてハッシュの分布が壊れ、繊維が規則的な縞になる
-        ///       (廃した軌跡シェーダーが踏んだのと同じ罠)。左右で 64 の巻き取り位置がずれる
-        ///       ぶん、両手の軌跡が揃って明滅することもない。
+        /// @note 係数を掛けた時点で桁が伸びてハッシュの分布が壊れ、繊維が規則的な縞になる
+        /// @note (廃した軌跡シェーダーが踏んだのと同じ罠)。左右で 64 の巻き取り位置がずれる
+        /// @note ぶん、両手の軌跡が揃って明滅することもない。
         ribbon.phase += dt * Max(trailCrackleRate, 0.0f);
         if (ribbon.phase > 64.0f) ribbon.phase -= 64.0f;
 
@@ -1061,4 +1067,4 @@ inline void BladeTrailComponent::OnLateUpdate()
     debugTipSpeed     = fastest;
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

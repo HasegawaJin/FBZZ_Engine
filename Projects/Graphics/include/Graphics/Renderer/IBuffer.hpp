@@ -29,6 +29,21 @@ namespace fbzz::renderer
         /// @return 書き込み経路を持たないバッファは INVALID_BINDLESS_INDEX。
         /// @see Docs/design/bindless.md
         virtual std::uint32_t GetBindlessUavIndex() const { return INVALID_BINDLESS_INDEX; }
+
+        /// @return ByteAddressBuffer SRV の添字。未対応・未初期化・読取り snapshot 確保失敗時は INVALID_BINDLESS_INDEX。
+        /// @note Raw SRV は有効なデータ長が 4 byte の倍数であることを要求する。
+        /// @note CPU 更新後は新しい添字へ差し替わり得る。使用前に引き直し、GPU table も内容版と合わせる。
+        virtual std::uint32_t GetBindlessSrvIndex() const { return INVALID_BINDLESS_INDEX; }
+
+        /// @return 記録済み内容の単調な版。0 は版追跡未対応、または未初期化の GPU 出力。
+        virtual std::uint64_t GetContentVersion() const { return 0; }
+
+        /// @note DIRECT queue に書込みを記録したバックエンドだけが呼ぶ。内容版は後続の AS と同じ順序で公開する。
+        virtual void NotifyGpuWrite() {}
+
+        /// @return 最新の CPU 内容をコピーできれば true。失敗時は output を変更しない。
+        /// @note GPU 専用の内容は読み戻さない。呼出元が Update と同じスレッドで使用する。
+        virtual bool CopyData(size_t, size_t, void*) const { return false; }
     };
 
 } /// @note namespace fbzz::renderer

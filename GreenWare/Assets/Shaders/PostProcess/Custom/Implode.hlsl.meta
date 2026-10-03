@@ -1,2 +1,14 @@
+# @file    Implode.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-26
 [meta]
 guid = '253dc7cf7ed8f4ec2f672e0160221c4c'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

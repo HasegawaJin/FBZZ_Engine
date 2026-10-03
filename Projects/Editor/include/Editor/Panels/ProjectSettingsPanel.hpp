@@ -75,6 +75,7 @@ private:
     void DrawApplication(EditorContext& ctx, ProjectSettings& settings);
     void DrawCursor(EditorContext& ctx, CursorAppearance& cursor);
     void DrawGraphics(EditorContext& ctx, renderer::RenderSettings& render);
+    void DrawPipelineAsset(EditorContext& ctx);
     void DrawShadows(renderer::RenderSettings& render);
     /// @brief 明るさ・描画スケール。Option 画面が持つ値なので保存されない (確認用)。
     void DrawPlayerOptionsPreview(EditorContext& ctx, renderer::RenderSettings& render);
@@ -113,6 +114,7 @@ private:
     Section       m_currentSection = Section::Application;
     char          m_search[64] = {};
     char          m_newTag[64] = {};
+    std::string   m_pipelineAssetError;
     std::uint64_t m_editGeneration = 0;
     UndoTracker   m_undo;
 
@@ -149,4 +151,4 @@ private:
     /// @}
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 #include <Engine/Asset/MaterialParamBinding.hpp>
+#include <Engine/Asset/ShaderCapabilities.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Editor/Panels/MaterialPreviewCore.hpp>
 
@@ -1542,22 +1543,13 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
 
 Flavor DetectFlavor(const asset::MaterialAsset& material)
 {
-    const std::string lower = Lower(material.shaderPath);
-
-    /// @note 先に «プレビューの形を作れない» シェーダーを落とす。render_path より
-    /// @note シェーダー本体の入力のほうが強い制約で、ここを後回しにすると
-    /// @note render_path = 'trail' の MeshTrail をリボンの頂点で描いて崩す。
-    /// @note MeshTrail / SkinnedMeshTrail … 帯ではなくメッシュを流す (TrailVertex ではない)
-    /// @note GPU パーティクル             … 頂点バッファを持たず StructuredBuffer から引く
-    if (lower.find("meshtrail") != std::string::npos) return Flavor::Unsupported;
-    if (lower.find("/effects/particlegpu") != std::string::npos ||
-        lower.find("/effects/particlereactivegpu") != std::string::npos ||
-        lower.find("/effects/particlegpumesh") != std::string::npos)
+    using renderer::ShaderPreviewKind;
+    const auto preview = asset::ResolveShaderCapabilities(material.shaderPath).preview;
+    /// @note render_path より頂点入力の宣言を優先し、メッシュ残像や GPU 粒子をリボン頂点で描かない。
+    if (preview == ShaderPreviewKind::MESH_TRAIL || preview == ShaderPreviewKind::GPU_PARTICLE)
         return Flavor::Unsupported;
 
-    /// @note 以降の判定は render_path を信頼元にする。Particle / Trail / Decal の .mat は
-    /// @note MeshRenderer と頂点入力も定数バッファも違うため、3D メッシュのプレビューへ流すと
-    /// @note 不正な IA レイアウトになる。
+    /// @note 専用の render_path は材質が選んだ入力であり、標準メッシュ用の球へ流さない。
     switch (material.renderPath) {
         case asset::RenderPath::UI:          return Flavor::Ui;
         case asset::RenderPath::Particle:    return Flavor::Particle;
@@ -1566,26 +1558,29 @@ Flavor DetectFlavor(const asset::MaterialAsset& material)
         case asset::RenderPath::PostProcess: return Flavor::PostProcess;
         default: break;
     }
-    /// @note Fiber の .mat は MeshRenderer の材質として球へ流すと b5 (層数・LOD) が 0 のまま全画素 clip されて何も出ない。
-    if (lower.find("/fiber/fiber") != std::string::npos) return Flavor::Fiber;
-    if (material.meshType == asset::MeshType::Skinned) return Flavor::Skinned;
-
-    /// @note render_path = 'auto' のまま置き場所で意図を示している .mat の救済。
-    if (lower.find("/ui/") != std::string::npos)                return Flavor::Ui;
-    if (lower.find("/postprocess/") != std::string::npos)       return Flavor::PostProcess;
-    if (lower.find("/material/decal/") != std::string::npos)    return Flavor::Decal;
-    if (lower.find("/effects/trail") != std::string::npos)      return Flavor::Trail;
-    if (lower.find("/effects/particle") != std::string::npos)   return Flavor::Particle;
-    if (lower.find("/effects/raindrop") != std::string::npos)   return Flavor::Particle;
-    if (lower.find("/material/effects/") != std::string::npos)  return Flavor::Particle;
-    if (lower.find("/water/") != std::string::npos)             return Flavor::Water;
-    if (lower.find("/terrain/") != std::string::npos)           return Flavor::Terrain;
-    if (lower.find("/material/skinned/") != std::string::npos)  return Flavor::Skinned;
-    return Flavor::Surface;
+    switch (preview) {
+        case ShaderPreviewKind::SURFACE:      return Flavor::Surface;
+        case ShaderPreviewKind::SKINNED:      return Flavor::Skinned;
+        case ShaderPreviewKind::WATER:        return Flavor::Water;
+        case ShaderPreviewKind::TERRAIN:      return Flavor::Terrain;
+        case ShaderPreviewKind::UI:           return Flavor::Ui;
+        case ShaderPreviewKind::PARTICLE:     return Flavor::Particle;
+        case ShaderPreviewKind::TRAIL:        return Flavor::Trail;
+        case ShaderPreviewKind::DECAL:        return Flavor::Decal;
+        case ShaderPreviewKind::POST_PROCESS: return Flavor::PostProcess;
+        case ShaderPreviewKind::FIBER_SHELL:
+        case ShaderPreviewKind::FIBER_FIN:
+        case ShaderPreviewKind::FIBER_BLADE:   return Flavor::Fiber;
+        default:                             return Flavor::Unsupported;
+    }
 }
 
 const char* UnsupportedBadge(const asset::MaterialAsset& material)
 {
+    using renderer::ShaderPreviewKind;
+    const auto preview = asset::ResolveShaderCapabilities(material.shaderPath).preview;
+    if (preview == ShaderPreviewKind::MESH_TRAIL) return "TRAIL";
+    if (preview == ShaderPreviewKind::GPU_PARTICLE) return "PARTICLE";
     switch (material.renderPath) {
         case asset::RenderPath::Particle:    return "PARTICLE";
         case asset::RenderPath::Trail:       return "TRAIL";
@@ -1594,12 +1589,14 @@ const char* UnsupportedBadge(const asset::MaterialAsset& material)
         case asset::RenderPath::PostProcess: return "POST";
         default: break;
     }
-    /// @note render_path = 'auto' のまま Effects へ置いてある .mat はここに来る。
-    const std::string lower = Lower(material.shaderPath);
-    if (lower.find("decal") != std::string::npos)    return "DECAL";
-    if (lower.find("trail") != std::string::npos)    return "TRAIL";
-    if (lower.find("particle") != std::string::npos) return "PARTICLE";
-    return "FX";
+    switch (preview) {
+        case ShaderPreviewKind::DECAL:        return "DECAL";
+        case ShaderPreviewKind::TRAIL:        return "TRAIL";
+        case ShaderPreviewKind::PARTICLE:     return "PARTICLE";
+        case ShaderPreviewKind::UI:           return "UI";
+        case ShaderPreviewKind::POST_PROCESS: return "POST";
+        default:                             return "FX";
+    }
 }
 
 math::Vector4 SwatchColor(const asset::MaterialAsset& material)
@@ -1699,10 +1696,11 @@ const char* FiberModeLabel(FiberMode mode)
 
 FiberMode DefaultFiberMode(const asset::MaterialAsset& material)
 {
-    const std::string lower = Lower(material.shaderPath);
-    if (lower.find("/fiber/fiberfin") != std::string::npos) return FiberMode::Fin;
-    if (lower.find("/fiber/fiberblade") != std::string::npos) return FiberMode::Blade;
-    return FiberMode::Shell;
+    switch (asset::ResolveShaderCapabilities(material.shaderPath).preview) {
+        case renderer::ShaderPreviewKind::FIBER_FIN:   return FiberMode::Fin;
+        case renderer::ShaderPreviewKind::FIBER_BLADE: return FiberMode::Blade;
+        default:                                      return FiberMode::Shell;
+    }
 }
 
 Shape ThumbnailShape(const asset::MaterialAsset& material, Flavor flavor)

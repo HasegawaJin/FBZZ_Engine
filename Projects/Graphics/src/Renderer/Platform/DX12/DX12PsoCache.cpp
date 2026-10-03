@@ -72,7 +72,7 @@ std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
 
 size_t DX12PsoCache::KeyHash::operator()(const Key& key) const
 {
-    size_t hash = std::hash<const DX12Shader*>{}(key.shader);
+    size_t hash = std::hash<uint64_t>{}(key.shaderIdentity);
     hash ^= static_cast<size_t>(key.rasterizer) << 3;
     hash ^= static_cast<size_t>(key.blend) << 7;
     hash ^= static_cast<size_t>(key.depth) << 11;
@@ -198,7 +198,7 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     const DX12Shader& shader, const PipelineStateDesc& state, PrimitiveTopology topology,
     DXGI_FORMAT renderTargetFormat, uint32_t renderTargetCount, bool reversedZ)
 {
-    const Key key{&shader, state.rasterizer, state.blend, state.depth, topology,
+    const Key key{shader.GetCacheIdentity(), state.rasterizer, state.blend, state.depth, topology,
                   renderTargetFormat, renderTargetCount, reversedZ,
                   state.depthBias, state.depthBiasSlope};
     if (const auto found = m_cache.find(key); found != m_cache.end())
@@ -301,7 +301,8 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
 
 ID3D12PipelineState* DX12PsoCache::GetOrCreateCompute(const DX12Shader& shader)
 {
-    if (const auto found = m_computeCache.find(&shader); found != m_computeCache.end())
+    const uint64_t identity = shader.GetCacheIdentity();
+    if (const auto found = m_computeCache.find(identity); found != m_computeCache.end())
         return found->second.Get();
     D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
     desc.pRootSignature = m_computeRootSignature.Get();
@@ -312,7 +313,7 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreateCompute(const DX12Shader& shader)
         return nullptr;
     }
     ID3D12PipelineState* result = pso.Get();
-    m_computeCache.emplace(&shader, std::move(pso));
+    m_computeCache.emplace(identity, std::move(pso));
     FBZZ_LOG_DEBUG("DX12PsoCache: Compute PSO生成 [%s]", shader.GetPath().c_str());
     return result;
 }

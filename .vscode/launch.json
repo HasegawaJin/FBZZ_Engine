@@ -1,33 +1,33 @@
-// FBZZ Engine
-// launch.json | .vscode
-// デバッグ実行の入口。
-//
-// 2 つの起動経路がある:
-//   1. ビルドツリー直接起動 (FBZZEditor / Sandbox / Tests)
-//      → 最短でブレークポイントに入れる。日常のデバッグはこちら。
-//   2. GameHub 経由 (GameHub + SDK)
-//      → 実際のユーザー体験と同じ経路。ただし GameHub は Editor を
-//        detached で起動する (projectService.ts) ため、デバッガーは付かない。
-//        この経路で Editor を止めたい時は "Attach: FBZZ プロセス" を使う。
-//
-// ビルドツリー直接起動には環境変数が 2 つ要る:
-//   FBZZ_ENGINE_ASSET_ROOT — AssetManager の探索は「exe 隣の EngineAssets」か
-//       「SDK の share/fbzz/Assets」しか見ず、ソースツリーへのフォールバックが無い。
-//       未指定だとエンジンアセット (シェーダー等) が一切解決できずに起動する。
-//   FBZZ_SKIP_ENGINE_REBUILD — 未指定だと CheckEngineFreshnessAndRelaunch() が
-//       ソースと DLL の時刻を比べてリビルド確認ダイアログを出し、プロセスを
-//       起動し直す。デバッガーが元プロセスごと外れるため必ず抑止する。
-//       preLaunchTask が既にビルド済みなので判定自体が不要。
-//
-// なおビルドツリー起動ではスクリプト DLL のコンパイルは使えない。
-// FBZZ_SDK_ROOT が指す公開済み SDK を必要とし、その ID は編集のたびに変わるため
-// ここへ固定値を書けない。スクリプトを触る時は GameHub 経由で起動すること。
+// @file    launch.json
+// @brief   Editor、ゲーム、テストのデバッグ起動構成。
+// @author  Hasegawa Jin
+// @date    2026-05-15
+// @note 2 つの起動経路がある:
+// @note 1. ビルドツリー直接起動 (FBZZEditor / Sandbox / Tests)
+// @note → 最短でブレークポイントに入れる。日常のデバッグはこちら。
+// @note 2. GameHub 経由 (GameHub + SDK)
+// @note → 実際のユーザー体験と同じ経路。ただし GameHub は Editor を
+// @note detached で起動する (projectService.ts) ため、デバッガーは付かない。
+// @note この経路で Editor を止めたい時は "Attach: FBZZ プロセス" を使う。
+
+// @note ビルドツリー直接起動には環境変数が 2 つ要る:
+// @note FBZZ_ENGINE_ASSET_ROOT — AssetManager の探索は「exe 隣の EngineAssets」か
+// @note 「SDK の share/fbzz/Assets」しか見ず、ソースツリーへのフォールバックが無い。
+// @note 未指定だとエンジンアセット (シェーダー等) が一切解決できずに起動する。
+// @note FBZZ_SKIP_ENGINE_REBUILD — 未指定だと CheckEngineFreshnessAndRelaunch() が
+// @note ソースと DLL の時刻を比べてリビルド確認ダイアログを出し、プロセスを
+// @note 起動し直す。デバッガーが元プロセスごと外れるため必ず抑止する。
+// @note preLaunchTask が既にビルド済みなので判定自体が不要。
+
+// @note なおビルドツリー起動ではスクリプト DLL のコンパイルは使えない。
+// @note FBZZ_SDK_ROOT が指す公開済み SDK を必要とし、その ID は編集のたびに変わるため
+// @note ここへ固定値を書けない。スクリプトを触る時は GameHub 経由で起動すること。
 {
     "version": "0.2.0",
     "configurations": [
-        // ------------------------------------------------------------------
-        // エディター — ビルドツリー直接起動
-        // ------------------------------------------------------------------
+        // @note ------------------------------------------------------------------
+        // @note エディター — ビルドツリー直接起動
+        // @note ------------------------------------------------------------------
         {
             "name": "FBZZEditor (Development)",
             "type": "cppvsdbg",
@@ -69,9 +69,9 @@
             "presentation": { "group": "1_editor", "order": 2 }
         },
         {
-            // GPU リソースの漏れを追う日に使う。Development の速度のまま D3D 検証レイヤーを立てる。
-            // 検証レイヤーは API 呼び出しごとに負荷が掛かるので、通常の Development 起動では
-            // 立てない (立てるのはこの構成と Debug だけ)。
+            // @note GPU リソースの漏れを追う日に使う。Development の速度のまま D3D 検証レイヤーを立てる。
+            // @note 検証レイヤーは API 呼び出しごとに負荷が掛かるので、通常の Development 起動では
+            // @note 立てない (立てるのはこの構成と Debug だけ)。
             "name": "FBZZEditor (Development + GPU Validation)",
             "type": "cppvsdbg",
             "request": "launch",
@@ -93,8 +93,42 @@
             "presentation": { "group": "1_editor", "order": 3 }
         },
         {
-            // GameHub から起動した Editor はデバッガーを持たないので、
-            // 後からここでアタッチする。プロセス一覧から FBZZEditor.exe を選ぶ。
+            "name": "FBZZEditor (Development + DeveloperMode)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Development/Binaries/Development/Editor/FBZZEditor.exe",
+            "args": [ "--project", "${input:fbzzProjectPath}", "--developer" ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Development/Binaries/Development/Editor",
+            "environment": [
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+            ],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Editor (Development)",
+            "presentation": { "group": "1_editor", "order": 5 }
+        },
+        {
+            "name": "FBZZEditor (Debug + DeveloperMode)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/Binaries/Debug/Editor/FBZZEditor.exe",
+            "args": [ "--project", "${input:fbzzProjectPath}", "--developer" ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/Debug/Binaries/Debug/Editor",
+            "environment": [
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/Assets" },
+                { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
+            ],
+            "console": "integratedTerminal",
+            "requireExactSource": false,
+            "preLaunchTask": "CMake: Build Editor (Debug)",
+            "presentation": { "group": "1_editor", "order": 6 }
+        },
+        {
+            // @note GameHub から起動した Editor はデバッガーを持たないので、
+            // @note 後からここでアタッチする。プロセス一覧から FBZZEditor.exe を選ぶ。
             "name": "Attach: FBZZ プロセス",
             "type": "cppvsdbg",
             "request": "attach",
@@ -103,9 +137,9 @@
             "presentation": { "group": "1_editor", "order": 4 }
         },
 
-        // ------------------------------------------------------------------
-        // ランタイム / テスト
-        // ------------------------------------------------------------------
+        // @note ------------------------------------------------------------------
+        // @note ランタイム / テスト
+        // @note ------------------------------------------------------------------
         {
             "name": "Sandbox (Development)",
             "type": "cppvsdbg",
@@ -141,8 +175,8 @@
             "presentation": { "group": "2_runtime", "order": 2 }
         },
         {
-            // --gtest_filter を渡したい時のために引数を対話入力にしてある。
-            // 空 Enter で全テスト実行。
+            // @note --gtest_filter を渡したい時のために引数を対話入力にしてある。
+            // @note 空 Enter で全テスト実行。
             "name": "Tests: Core Auto (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
@@ -207,8 +241,8 @@
             "presentation": { "group": "2_runtime", "order": 6 }
         },
         {
-            // Window / Cursor の OS 状態を触るため CTest には登録されていない。
-            // 手動で確認したい時だけここから起動する。
+            // @note Window / Cursor の OS 状態を触るため CTest には登録されていない。
+            // @note 手動で確認したい時だけここから起動する。
             "name": "Tests: Core Manual (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
@@ -223,8 +257,8 @@
             "presentation": { "group": "2_runtime", "order": 7 }
         },
         {
-            // ビジュアル検証ベンチ。合否はコードではなく目で判断する層。
-            // DX11 固定で起動するので dxcompiler.dll は要らない。
+            // @note ビジュアル検証ベンチ。合否はコードではなく目で判断する層。
+            // @note DX11 固定で起動するので dxcompiler.dll は要らない。
             "name": "Bench: Visual (Development)",
             "type": "cppvsdbg",
             "request": "launch",
@@ -259,9 +293,9 @@
             "presentation": { "group": "2_runtime", "order": 9 }
         },
 
-        // ------------------------------------------------------------------
-        // GameHub — 実際のユーザー起動経路 (Editor にはデバッガーが付かない)
-        // ------------------------------------------------------------------
+        // @note ------------------------------------------------------------------
+        // @note GameHub — 実際のユーザー起動経路 (Editor にはデバッガーが付かない)
+        // @note ------------------------------------------------------------------
         {
             "name": "GameHub + SDK (Development)",
             "type": "cppvsdbg",
@@ -308,9 +342,9 @@
             "presentation": { "group": "3_hub", "order": 3 }
         },
 
-        // ------------------------------------------------------------------
-        // ツール
-        // ------------------------------------------------------------------
+        // @note ------------------------------------------------------------------
+        // @note ツール
+        // @note ------------------------------------------------------------------
         {
             "name": "EditorMcp Server",
             "type": "node",
@@ -330,8 +364,8 @@
     ],
     "inputs": [
         {
-            // 既定はリポジトリ同梱のサンプルプロジェクト。
-            // 空プロジェクトから確認したい時は Projects/GameHub/Templates/standard を指定する。
+            // @note 既定はリポジトリ同梱のサンプルプロジェクト。
+            // @note 空プロジェクトから確認したい時は Projects/GameHub/Templates/standard を指定する。
             "id": "fbzzProjectPath",
             "type": "promptString",
             "description": "FBZZ プロジェクトフォルダー",

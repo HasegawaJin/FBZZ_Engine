@@ -6,6 +6,7 @@
 #include <Engine/Asset/ParticleMaterialSettings.hpp>
 #include <Engine/Renderer/RenderLayer.hpp>
 #include <Engine/Renderer/RenderState.hpp>
+#include <Graphics/RayTracing/SurfaceMaterialData.hpp>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -68,6 +69,8 @@ struct MaterialAsset {
     /// @note パーティクルの見た目 (ブレンド以外) の正本。詳細と «なぜ [params] ではないか» は
     /// @note ParticleMaterialSettings.hpp を参照。
     ParticleMaterialSettings particle;
+    /// @note [dielectric] は alpha 被覆と独立。未記載の旧材質は光透過を持たない。
+    renderer::SolidDielectricSettings dielectric;
 };
 
 /// @note TOML から .mat を読み込む。破損・未存在時は false を返し、例外は使わない。
@@ -76,4 +79,4 @@ struct MaterialAsset {
 /// @note .mat を TOML へ保存する。Editor からの Save とテンプレート生成で共有する。
 [[nodiscard]] bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset);
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

@@ -25,6 +25,7 @@
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/PrefabInstantiate.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
@@ -426,7 +427,9 @@ Outcome DoSceneValidate(editor::EditorContext& ctx)
         if (!go.prefabAssetPath.empty()) {
             fs::path prefabPath;
             std::string relative;
-            if (!ResolveProjectFile(ctx, go.prefabAssetPath, prefabPath, relative) || !fs::is_regular_file(prefabPath)) {
+            const std::string resolvedPrefab = scene::ResolvePrefabAssetPath(go.prefabAssetPath, ctx.projectRoot);
+            if (resolvedPrefab.empty() || !ResolveProjectFile(ctx, resolvedPrefab, prefabPath, relative)
+                || !fs::is_regular_file(prefabPath)) {
                 AddValidationIssue(issues, "error", "BROKEN_PREFAB", go, "Prefab 参照が見つかりません: " + go.prefabAssetPath);
                 ++errors;
             }
@@ -658,7 +661,7 @@ std::unique_ptr<ICommand> BuildCreateObjectCommand(editor::EditorContext& ctx,
     }
 
     return editor::MakeCreateObjectCommand(
-        ctx, request, "AI: " + editor::CreateObjectLabel(request), /*applyNow*/false,
+                ctx, request, "AI: " + editor::CreateObjectLabel(request), false,
         [createdSink](const std::vector<std::string>& ids) {
             if (createdSink && !ids.empty()) *createdSink = ids.front();
         });
@@ -1249,7 +1252,7 @@ std::unique_ptr<ICommand> BuildNodeRenameCommand([[maybe_unused]] editor::Editor
         /// @note 履歴ラベルだけ AI 用にする (editor_get_undo_history で自分の編集を識別できる)。
         /// @note dryRun でもここまでは通るため適用は UndoStack::Execute に任せる (applyNow=true だと dryRun が実際に書き換えてしまう)。
         auto command = MakeRenameNodeCommand(ctx, go->GetID(), name,
-                                             "AI: Rename Node", /*applyNow*/false);
+                        "AI: Rename Node", false);
         if (!command) { err = Outcome::Err("NO_CHANGE", "名前が変わりません: " + name); return nullptr; }
         return command;
     }
@@ -1453,7 +1456,9 @@ std::unique_ptr<ICommand> BuildNodeDeleteCommand([[maybe_unused]] editor::Editor
                 markDirty();
             },
             [scene, id, name, tag, layer, active, pos, rot, scl, parentGuid, sibling, snapshot, markDirty]() {
-                GameObject& go = scene->CreateGameObject(*name);
+                GameObject* created = scene->TryCreateGameObject(*name);
+                if (!created) return;
+                GameObject& go = *created;
                 /// @note NodeId を保って再生成し、参照の安定性を維持する。
                 go.instanceId = id;
                 go.tag = *tag;
@@ -1694,7 +1699,7 @@ Outcome DoNodeComponentsQuery(editor::EditorContext& ctx, const JsonValue& paylo
     }
     return outcome;
 }
-} /// namespace
+} /// @note namespace
 
 void RegisterSceneHandlers(BusHandlerTable& table)
 {
@@ -1742,4 +1747,4 @@ void RegisterSceneHandlers(BusHandlerTable& table)
     table.AddBuilder("component.set", BuildComponentSetCommand);
 }
 
-} /// namespace fbzz::editor::ai::bus
+} /// @note namespace fbzz::editor::ai::bus

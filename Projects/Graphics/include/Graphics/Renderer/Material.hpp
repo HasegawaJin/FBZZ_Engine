@@ -11,6 +11,7 @@
 #pragma once
 #include "ResourceHandle.hpp"
 #include "ShaderDescriptor.hpp"
+#include <Graphics/RayTracing/SurfaceMaterialData.hpp>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -40,6 +41,7 @@ public:
     std::vector<uint8_t>              paramData; ///< @note CB_MATERIAL 生バイト列
 
     std::string shaderPath;
+    SolidDielectricSettings dielectric;
 
     /// @note 設定だけを写した複製を作る。paramsBuffer は空のまま (次の Init が確保し直す)。
     /// @note コピーコンストラクタにしないのは、ConstantBuffer の所有者を 1 つに限るため。
@@ -54,6 +56,10 @@ public:
     /// @note textureMask を textures の有効性から計算して paramData に書き込み、GPU へ転送する。
     void Upload(ResourceManager& resources, const ShaderDescriptor& desc,
                 Where where = Where::current());
+    /// @note Declared but missing textures fail closed; immutable typed versions are part of the returned surface identity.
+    [[nodiscard]] SurfaceMaterialData ResolveRaySurface(const std::array<uint8_t, 96>& canonicalParams,
+        bool standardPbr, uint32_t declaredTextureMask, bool unresolvedTexture, bool advancedLobes,
+        ResourceManager& resources) const;
 };
 
 } /// @note namespace fbzz::renderer

@@ -4,7 +4,7 @@
 /// @date    2026-08-12
 ///
 /// @note Scene オブジェクトは差し替えず m_scene の中身だけを入れ替える。ProjectRuntime /
-///       SceneManager / レンダーパスが握るポインタを一切張り替えずに済ませるため。
+/// @note SceneManager / レンダーパスが握るポインタを一切張り替えずに済ませるため。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
@@ -39,7 +39,7 @@ std::vector<scene::EntityID> CollectRoots(scene::Scene& scene)
     return roots;
 }
 
-} // namespace
+} /// @note namespace
 
 void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
 {
@@ -61,8 +61,8 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
 
     /// @name 編集中シーンを退避
     /// @note 保存を強制せず「メモリ上に退避」し、閉じたときに dirty も含め元の状態へ戻す。
-    ///       非表示を外してから採るのは、隠す前の activeSelf を記録するため —
-    ///       隠したまま false を焼くと表示へ戻す手立てが無くなる。
+    /// @note 非表示を外してから採るのは、隠す前の activeSelf を記録するため —
+    /// @note 隠したまま false を焼くと表示へ戻す手立てが無くなる。
     CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
     m_prefabEditStashedScene     = SceneIO::Serialize(*m_ctx.activeScene);
@@ -97,10 +97,12 @@ void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
     }
 
     /// @note 編集面は「プレファブ本体」を触るため prefabAssetPath は消す (残すと自インスタンスに
-    ///       見え Apply/Revert/Overrides が壊れる)。prefabSourceId は残す — SaveSelection が
-    ///       保存時に「アセットへ書く id」として使うため、消すと override の対応付けが切れる。
-    for (auto& go : m_ctx.activeScene->GameObjects())
+    /// @note 見え Apply/Revert/Overrides が壊れる)。prefabSourceId は残す — SaveSelection が
+    /// @note 保存時に「アセットへ書く id」として使うため、消すと override の対応付けが切れる。
+    for (auto& go : m_ctx.activeScene->GameObjects()) {
         go.prefabAssetPath.clear();
+        go.prefabSourceSnapshot.clear();
+    }
 
     m_ctx.prefabEditPath  = assetRelPath;
     m_ctx.prefabEditDirty = false;
@@ -192,7 +194,7 @@ void EditorApp::ExitPrefabEditMode(bool save)
     UpdateWindowTitle();
 }
 
-/// ディスク上で書き換わった .prefab を、シーン内のインスタンスへ反映する。
+/// @note ディスク上で書き換わった .prefab を、シーン内のインスタンスへ反映する。
 void EditorApp::ProcessPrefabDiskReloads()
 {
     if (m_ctx.pendingPrefabReloads.empty()) return;
@@ -204,7 +206,7 @@ void EditorApp::ProcessPrefabDiskReloads()
     paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
 
     /// @note 編集モード中は「編集面のシーン」しか開いていないので、反映する相手がいない。
-    ///       抜けたときに ExitPrefabEditMode が伝播する。
+    /// @note 抜けたときに ExitPrefabEditMode が伝播する。
     if (m_ctx.InPrefabEditMode() || !m_ctx.activeScene) return;
     /// @note Play 中にシーンを作り直すと実行中の状態が壊れる。
     if (!m_playMode.IsInEditor()) return;
@@ -269,7 +271,7 @@ void EditorApp::DrawPrefabEditBar(EditorContext& ctx)
     if (!ctx.InPrefabEditMode()) return;
 
     /// @note 編集モードは「今どのシーンを触っているか」の認識が最も狂いやすい。
-    ///       画面上部の帯で対象と戻り道を常時明示する (Unity のパンくずと同じ役割)。
+    /// @note 画面上部の帯で対象と戻り道を常時明示する (Unity のパンくずと同じ役割)。
     const std::string name = util::FileSystem::GetFilename(ctx.prefabEditPath);
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, EditorTheme::Color(ThemeColor::AccentSoft));
@@ -304,4 +306,4 @@ void EditorApp::DrawPrefabEditBar(EditorContext& ctx)
     ImGui::PopStyleColor();
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

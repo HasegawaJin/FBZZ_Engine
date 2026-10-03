@@ -12,6 +12,9 @@ namespace fbzz::editor {
 /// @note 型・行列・配列の要素数を Reflection に合わせる。未対応型は理由を表示し編集しない。
 bool DrawReflectedMaterialParam(asset::MaterialAsset& material, const renderer::ShaderVarDesc& variable);
 
+/// @note 完全被覆の滑らかな固体へ切り替え、光学設定は shader reflection と独立に保存する。
+bool DrawSolidDielectricMaterialInspector(asset::MaterialAsset& material);
+
 /// @brief Drag & Drop 対応の texture path 入力欄を、左にサムネイルを添えて描画する。
 /// @return パスが変わったら true (サムネイルへのドロップを含む)。
 /// @note Terrain / Water / 汎用 Material で同じ UI とパス正規化を使い、パネル間の挙動差をなくす。
@@ -35,4 +38,4 @@ TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAsset& m
 /// @note 水面は調整頻度が高く、汎用 float 一覧では «どれが波でどれが色か» を追えない。
 bool DrawWaterMaterialInspector(asset::MaterialAsset& mat);
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

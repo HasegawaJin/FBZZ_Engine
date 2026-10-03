@@ -1,0 +1,172 @@
+{
+  "_file": "PixCapturedBindings.json",
+  "_brief": "Captured RayReflection PSO and root0 b0 bytes from PIX C++ export.",
+  "_author": "Hasegawa Jin",
+  "_date": "2026-10-02",
+  "baseline": {
+    "capture": "Scratch\\PixCapture\\ReflectionBaseline20261002\\LateGpu.wpix",
+    "export": "Scratch\\PixCapture\\ReflectionBaseline20261002\\LateCpp",
+    "dispatchGlobalId": 56,
+    "psoApiObjectId": 60,
+    "cbResourceApiObjectId": 104,
+    "cbResourceOffset": 94464,
+    "shader": {
+      "compressedStreamOffset": 136857,
+      "compressedBytes": 770704,
+      "capturedBytes": 1005380,
+      "capturedSha256": "F920501506A916BFD5BA71FA7999769552CCEB635BAF54F19DD17A2E5C330F06",
+      "frozenSha256": "F920501506A916BFD5BA71FA7999769552CCEB635BAF54F19DD17A2E5C330F06",
+      "matchesFrozenBytes": true,
+      "extractedPath": "Scratch\\ReflectionOptimize\\PixCapturedBaselineRayReflection.cso"
+    },
+    "constantBuffer": {
+      "compressedStreamOffset": 215414731,
+      "compressedBytes": 8601,
+      "resourceBytes": 16777216,
+      "constantBytes": 256,
+      "constantsSha256": "0CF69D3ECF9EC4720EF49D8EBBB099EF081A82F9AA24C1ABD2AAE053FF03E2DF",
+      "extractedPath": "Scratch\\ReflectionOptimize\\PixCapturedBaselineRayReflectionConstants.bin",
+      "decoded": {
+        "width": {
+          "offset": 112,
+          "value": 1904
+        },
+        "height": {
+          "offset": 116,
+          "value": 993
+        },
+        "instanceCount": {
+          "offset": 120,
+          "value": 9
+        },
+        "orthographic": {
+          "offset": 124,
+          "value": 0
+        },
+        "sampleCount": {
+          "offset": 144,
+          "value": 4
+        },
+        "frameIndex": {
+          "offset": 148,
+          "value": 65
+        },
+        "incomplete": {
+          "offset": 152,
+          "value": 0
+        },
+        "iblReady": {
+          "offset": 156,
+          "value": 1
+        },
+        "reflectionResolveEnabled": {
+          "offset": 224,
+          "value": 1
+        },
+        "ssrEnabled": {
+          "offset": 228,
+          "value": 1
+        },
+        "glassEnabled": {
+          "offset": 232,
+          "value": 1
+        },
+        "glassBoundaryLimit": {
+          "offset": 236,
+          "value": 16
+        },
+        "cameraOriginProvenAir": {
+          "offset": 240,
+          "value": 1
+        },
+        "policyOrReserved": {
+          "offset": 244,
+          "value": 0
+        }
+      }
+    }
+  },
+  "optimized": {
+    "capture": "Scratch\\PixCapture\\ReflectionOptimized20261002\\LateGpu.wpix",
+    "export": "Scratch\\PixCapture\\ReflectionOptimized20261002\\LateCpp",
+    "dispatchGlobalId": 56,
+    "psoApiObjectId": 59,
+    "cbResourceApiObjectId": 105,
+    "cbResourceOffset": 94464,
+    "shader": {
+      "compressedStreamOffset": 152321,
+      "compressedBytes": 776230,
+      "capturedBytes": 1009600,
+      "capturedSha256": "5FB5304A56E655FC1C2B9CBD6AB6AB1F9691ECF5EEFFDDB320774B7DC7993277",
+      "frozenSha256": "5FB5304A56E655FC1C2B9CBD6AB6AB1F9691ECF5EEFFDDB320774B7DC7993277",
+      "matchesFrozenBytes": true,
+      "extractedPath": "Scratch\\ReflectionOptimize\\PixCapturedOptimizedRayReflection.cso"
+    },
+    "constantBuffer": {
+      "compressedStreamOffset": 215104910,
+      "compressedBytes": 8613,
+      "resourceBytes": 16777216,
+      "constantBytes": 256,
+      "constantsSha256": "AF3F5E15ED54E357B03CE4466C4C488FC0D360A04094A5FF35CBDE7C47F7FE88",
+      "extractedPath": "Scratch\\ReflectionOptimize\\PixCapturedOptimizedRayReflectionConstants.bin",
+      "decoded": {
+        "width": {
+          "offset": 112,
+          "value": 1904
+        },
+        "height": {
+          "offset": 116,
+          "value": 993
+        },
+        "instanceCount": {
+          "offset": 120,
+          "value": 9
+        },
+        "orthographic": {
+          "offset": 124,
+          "value": 0
+        },
+        "sampleCount": {
+          "offset": 144,
+          "value": 4
+        },
+        "frameIndex": {
+          "offset": 148,
+          "value": 65
+        },
+        "incomplete": {
+          "offset": 152,
+          "value": 0
+        },
+        "iblReady": {
+          "offset": 156,
+          "value": 1
+        },
+        "reflectionResolveEnabled": {
+          "offset": 224,
+          "value": 1
+        },
+        "ssrEnabled": {
+          "offset": 228,
+          "value": 1
+        },
+        "glassEnabled": {
+          "offset": 232,
+          "value": 1
+        },
+        "glassBoundaryLimit": {
+          "offset": 236,
+          "value": 16
+        },
+        "cameraOriginProvenAir": {
+          "offset": 240,
+          "value": 1
+        },
+        "policyOrReserved": {
+          "offset": 244,
+          "value": 1
+        }
+      }
+    }
+  }
+}

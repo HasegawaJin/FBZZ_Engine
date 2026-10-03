@@ -3,12 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 ///
-/// Scene View で点けた診断表示が Game View へ漏れると «ゲームの絵が壊れた» ように見える。
-/// 逆に絵作りの設定まで落とすと Game View だけ見た目が変わる。両方向を固定する。
+/// @note Scene View の診断表示を Game View へ漏らさず、画質設定は保持する。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Renderer/RenderSettings.hpp>
+#include <initializer_list>
+#include <limits>
 
 namespace fbzz::tests {
 
@@ -56,7 +57,7 @@ RenderSettings MakeEveryDiagnosticOn()
     return settings;
 }
 
-} // namespace
+} /// @note namespace
 
 TEST_F(RenderSettingsTest, StripDebugVisualizationTurnsOffEveryDiagnosticView)
 {
@@ -149,4 +150,63 @@ TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsLookSettings)
     EXPECT_FLOAT_EQ(settings.clustered.maxDistance, 90.0f);
 }
 
-} // namespace fbzz::tests
+TEST_F(RenderSettingsTest, HybridWorkloadPresetsAreValidAndLeaveOtherSettingsAlone)
+{
+    RenderSettings settings;
+    settings.modeRequest.mode = renderer::RenderMode::RASTER;
+    settings.renderScale = 0.75f;
+    settings.ssr.enabled = false;
+    for (auto preset : {renderer::HybridQualityPreset::LOW, renderer::HybridQualityPreset::BALANCED,
+        renderer::HybridQualityPreset::HIGH, renderer::HybridQualityPreset::PERFORMANCE}) {
+        settings.hybridQuality = renderer::MakeHybridQualityPreset(preset);
+        EXPECT_TRUE(renderer::IsHybridQualityValid(settings.hybridQuality));
+        EXPECT_EQ(renderer::DetectHybridQualityPreset(settings.hybridQuality), preset);
+        settings.StripDebugVisualization();
+        EXPECT_EQ(renderer::DetectHybridQualityPreset(settings.hybridQuality), preset);
+        EXPECT_EQ(settings.modeRequest.mode, renderer::RenderMode::RASTER);
+        EXPECT_FALSE(settings.ssr.enabled);
+        EXPECT_FLOAT_EQ(settings.renderScale, 0.75f);
+    }
+    settings.hybridQuality.reflectionSamples = 3;
+    EXPECT_EQ(renderer::DetectHybridQualityPreset(settings.hybridQuality), renderer::HybridQualityPreset::CUSTOM);
+}
+
+TEST_F(RenderSettingsTest, HybridWorkloadRejectsUnsafeCountsAndNonFiniteTargets)
+{
+    renderer::HybridQualitySettings quality;
+    EXPECT_TRUE(renderer::IsHybridQualityValid(quality));
+    quality.reflectionSamples = 0;
+    EXPECT_FALSE(renderer::IsHybridQualityValid(quality));
+    quality.reflectionSamples = 65;
+    EXPECT_FALSE(renderer::IsHybridQualityValid(quality));
+    quality = {};
+    quality.maxTraceDistance = std::numeric_limits<float>::infinity();
+    EXPECT_FALSE(renderer::IsHybridQualityValid(quality));
+    quality = {};
+    quality.frameBudgetMs = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(renderer::IsHybridQualityValid(quality));
+    quality = {};
+    quality.maxHistoryMiB = 0;
+    EXPECT_FALSE(renderer::IsHybridQualityValid(quality));
+}
+
+TEST_F(RenderSettingsTest, PerformanceQualityLimitsTransportAndKeepsLegacyDefaults)
+{
+    const renderer::HybridQualitySettings legacy;
+    EXPECT_EQ(legacy.reflectionResolutionDivisor, 1u);
+    EXPECT_FALSE(legacy.glassStochastic);
+    const auto quality = renderer::MakeHybridQualityPreset(renderer::HybridQualityPreset::PERFORMANCE);
+    EXPECT_EQ(quality.reflectionSamples, 1u);
+    EXPECT_EQ(quality.reflectionResolutionDivisor, 2u);
+    EXPECT_TRUE(quality.glassStochastic);
+    EXPECT_EQ(quality.glassBoundaryLimit, legacy.glassBoundaryLimit);
+    EXPECT_FLOAT_EQ(quality.frameBudgetMs, 1000.0f / 120.0f);
+    EXPECT_TRUE(renderer::IsHybridQualityValid(quality));
+    for (uint32_t divisor : {0u, 3u, 4u}) {
+        auto invalid = quality;
+        invalid.reflectionResolutionDivisor = divisor;
+        EXPECT_FALSE(renderer::IsHybridQualityValid(invalid));
+    }
+}
+
+} /// @note namespace fbzz::tests

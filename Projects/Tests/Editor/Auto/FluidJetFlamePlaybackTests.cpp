@@ -23,7 +23,7 @@ using editor::playtest::RgbaImage;
 
 std::filesystem::path JetFlameAsset(const char* name)
 {
-    return std::filesystem::path(FBZZ_SOURCE_DIR) / "GreenWare/Assets/VFX/Fluid" / name;
+    return std::filesystem::path(FBZZ_SOURCE_DIR) / "GreenWare/Assets/VFX/Fluid/Frame" / name;
 }
 
 bool LoadAtlas(const char* name, RgbaImage& image)

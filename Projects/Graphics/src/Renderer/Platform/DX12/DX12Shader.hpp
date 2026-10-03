@@ -6,6 +6,7 @@
 
 #include <Graphics/Renderer/IShader.hpp>
 #include <d3d12.h>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,8 @@ namespace fbzz::renderer {
 class DX12Shader final : public IShader {
 public:
     bool Init(const std::string& path);
+    /// @note Process-unique bytecode generation; allocator address reuse and reinitialization must never select a previous shader's PSO.
+    uint64_t GetCacheIdentity() const { return m_cacheIdentity; }
     const std::string& GetPath() const override { return m_path; }
     const ShaderDescriptor& GetDescriptor() const override { return m_descriptor; }
     D3D12_SHADER_BYTECODE GetVertexBytecode() const;
@@ -41,6 +44,7 @@ private:
     std::vector<std::string> m_semanticNames;
     std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputElements;
     uint32_t m_reflectedStride = 0;
+    uint64_t m_cacheIdentity = 0;
 };
 
 } /// @note namespace fbzz::renderer

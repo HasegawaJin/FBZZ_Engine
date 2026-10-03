@@ -24,9 +24,9 @@ class StreamedTextureResolver {
 public:
     /// @brief 未完成のテクスチャを引かれたときの振る舞い。
     enum class MissPolicy : std::uint8_t {
-        /// その場で同期ロードして返す。既存の LoadTexture と同じ絵になる (既定)。
+        /// @note その場で同期ロードして返す。既存の LoadTexture と同じ絵になる (既定)。
         Synchronous,
-        /// 無効ハンドルを返し、完成したフレームから使わせる (マテリアルはテクスチャ無しで描く)。
+        /// @note 無効ハンドルを返し、完成したフレームから使わせる。
         Placeholder,
     };
 
@@ -51,6 +51,9 @@ public:
     /// @brief 公開済みの TextureAsset。未完成・失敗なら nullptr。元画像寸法 (sourceWidth) を引く用途。
     [[nodiscard]] const TextureAsset* ResolveAsset(renderer::ResourceManager& resources, std::string_view reference);
 
+    /// @return 公開済みの内容版。利用権を保持できない・未完成なら 0。
+    [[nodiscard]] uint64_t ResolveContentRevision(renderer::ResourceManager& resources, std::string_view reference);
+
     /// @brief ResolveGpu と同時に元画像の寸法を返す (スプライト矩形の UV 換算用)。
     /// @note 品質段で縮小して常駐していても元の寸法を返す。分からなければ GPU 実体の寸法、それも無ければ 0。
     [[nodiscard]] renderer::ResourceHandle<renderer::TextureTag> ResolveGpuWithSourceSize(
@@ -71,9 +74,9 @@ private:
     struct Entry {
         AssetLease<TextureAsset> lease;
         std::uint64_t            lastUsedFrame = 0;
-        /// 同期ロードに一度失敗した。非同期の結果 (失敗理由付き) を待ち、毎フレーム読み直さない。
+        /// @note 同期ロードに一度失敗した。非同期の結果を待ち、毎フレーム読み直さない。
         bool                     syncFailed = false;
-        /// このフレームで引かれた中で最も大きい画面上の直径 [px]。0 は不明。
+        /// @note このフレームで引かれた中で最も大きい画面上の直径 [px]。0 は不明。
         float                    maxScreenPixels = 0.0f;
         bool                     screenSizeKnown = true;
         AssetQuality             appliedQuality = 0;
@@ -90,4 +93,4 @@ private:
     bool          m_autoQuality = false;
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

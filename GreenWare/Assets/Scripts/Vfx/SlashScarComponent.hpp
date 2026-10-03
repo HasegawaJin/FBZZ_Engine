@@ -2,18 +2,18 @@
 /// @brief   斬った面へ残る斬撃痕。当たった一撃ごとにデカールを 1 枚置く
 /// @author  Hasegawa Jin
 /// @date    2026-09-06
-///
-/// シーンへは付けない。PlayerComponent が内部モジュールとして持ち、
-/// BladeComponent へ注入する (他の Player モジュールと同じ形)。
-///
+
+/// @note シーンへは付けない。PlayerComponent が内部モジュールとして持ち、
+/// @note BladeComponent へ注入する (他の Player モジュールと同じ形)。
+
 /// @note ヒットストップ・音・刃の白熱は斬った瞬間にしか無く、振り抜けば画面は当たる前と
-///       同じに戻る。斬った線を体に残せば、崩し (break-parry) の進み具合を HP バー
-///       以外からも読める。
+/// @note 同じに戻る。斬った線を体に残せば、崩し (break-parry) の進み具合を HP バー
+/// @note 以外からも読める。
 /// @note パーティクルでも軌跡でもなくデカールにする。痕は «相手の面に貼り付いている»
-///       ことに意味があり、粒や板は相手が動くと空中に取り残される。デカールは投影
-///       なので凹凸のある部位の上でも面に沿って曲がる。
+/// @note ことに意味があり、粒や板は相手が動くと空中に取り残される。デカールは投影
+/// @note なので凹凸のある部位の上でも面に沿って曲がる。
 /// @note 枠を使い回す。斬撃は 1 秒に何度も当たるため、1 発ごとに GameObject を作ると
-///       連撃 1 セットで十数個が積み上がる。固定数の枠を最も古いものから奪う。
+/// @note 連撃 1 セットで十数個が積み上がる。固定数の枠を最も古いものから奪う。
 #pragma once
 
 #include <Engine/Scene/Components/DecalComponent.hpp>
@@ -67,12 +67,12 @@ public:
 
     FBZZ_FIELD_READ_ONLY(int, debugLiveScars, 0, "Live Scars")
 
-    /// 斬った痕を 1 枚置く。
-    ///   point     … 斬れた点 (ワールド)
-    ///   direction … 刃が走った向き (水平で可)。傷の長さ方向になる
-    ///   facing    … 傷を «どちらから» 貼るか。斬った本人から点への向きを渡す ─
-    ///               面の法線が取れないので、見ている側から投影するのが最も外れない
-    ///   scale     … 大きさの倍率 (締めと溜め斬りで上げる)
+    /// @note 斬った痕を 1 枚置く。
+    /// @note point     … 斬れた点 (ワールド)
+    /// @note direction … 刃が走った向き (水平で可)。傷の長さ方向になる
+    /// @note facing    … 傷を «どちらから» 貼るか。斬った本人から点への向きを渡す ─
+    /// @note 面の法線が取れないので、見ている側から投影するのが最も外れない
+    /// @note scale     … 大きさの倍率 (締めと溜め斬りで上げる)
     void Play(const Vector3& point, const Vector3& direction, const Vector3& facing,
               float scale);
 
@@ -81,7 +81,7 @@ public:
     void OnDestroy() override;
 
 private:
-    /// 出ている傷 1 枚ぶん。
+    /// @note 出ている傷 1 枚ぶん。
     struct Slot {
         EntityRef ref;
         float     elapsed = 0.0f;
@@ -89,7 +89,7 @@ private:
         bool      live    = false;
     };
 
-    /// 空いている枠を返す。全部埋まっていれば最も古い 1 枚を奪う。
+    /// @note 空いている枠を返す。全部埋まっていれば最も古い 1 枚を奪う。
     [[nodiscard]] Slot* AcquireSlot();
     [[nodiscard]] GameObject* EnsureObject(Slot& slot, int index);
     void ReleaseSlots();
@@ -101,13 +101,12 @@ private:
     }
 
     std::vector<Slot> m_slots;
-    /// 1 枚ごとの種を進める番号。乱数を引かないのは、同じ振りが毎回同じ絵になる方が
-    /// 調整中に «今の変更で何が変わったか» を見分けやすいため。
+    /// @note 1 枚ごとの種を進める番号。乱数を引かないのは、同じ振りが毎回同じ絵になる方が
+    /// @note 調整中に «今の変更で何が変わったか» を見分けやすいため。
     int m_serial = 0;
 };
 
 FBZZ_REFLECT(SlashScarComponent)
-
 
 inline void SlashScarComponent::OnStart()
 {
@@ -143,7 +142,7 @@ inline SlashScarComponent::Slot* SlashScarComponent::AcquireSlot()
     }
 
     /// @note 埋まっている。最も長く出ている 1 枚を奪う ─ いちばん薄くなっているので、
-    ///       消え方が飛んでも目に留まりにくい。
+    /// @note 消え方が飛んでも目に留まりにくい。
     Slot* oldest = &m_slots.front();
     for (Slot& slot : m_slots)
         if (slot.elapsed > oldest->elapsed) oldest = &slot;
@@ -156,20 +155,19 @@ inline GameObject* SlashScarComponent::EnsureObject(Slot& slot, int index)
 
     const std::string name = "SlashScar_" + std::to_string(index);
     /// @note 先に拾い直す。スクリプト DLL リロードで EntityRef は空に戻るが、枠の
-    ///       GameObject は Scene に残るため、拾わず作るとリロードのたびに枠が増える。
+    /// @note GameObject は Scene に残るため、拾わず作るとリロードのたびに枠が増える。
     GameObject* object = scene.Find(name, true);
     if (!object) {
         /// @note 斬った相手の子にしない。部位はスキンドメッシュのノードで transform が
-        ///       恒等のまま骨だけが動く (「スキンド描画ノードの座標」の罠) ため、
-        ///       子にしても付いてこず、ボスが倒れた瞬間に傷だけ原点へ飛ぶ。
-        GameObject& created = scene.Create(name);
-        created.runtimeGenerated = true;
-        object = &created;
+        /// @note 恒等のまま骨だけが動く (「スキンド描画ノードの座標」の罠) ため、
+        /// @note 子にしても付いてこず、ボスが倒れた瞬間に傷だけ原点へ飛ぶ。
+        GameObject* created = scene.Create(name);
+        if (!created) return nullptr;
+        created->runtimeGenerated = true;
+        object = created;
     }
     slot.ref = EntityRef{ object->GetID() };
 
-    /// @note Create / AddComponent はシーンの配列を伸ばしうる。設定は必ず ID から引き直した
-    ///       個体へ入れる ─ 作った直後のポインタは、次の Create で無効になりうる。
     GameObject* scar = slot.ref.Resolve(scene);
     if (!scar) return nullptr;
 
@@ -192,28 +190,28 @@ inline void SlashScarComponent::Play(const Vector3& point, const Vector3& direct
     GameObject* scar = EnsureObject(*slot, index);
     if (!scar) return;
 
-    /// @name 箱の向き
+    /// @note 箱の向き
     /// @note デカールの投影軸はローカル +Y (DecalScorch と同じ規約)。傷の長さは +X、
-    ///       直交する側が +Z になるよう、3 本を直交化して組む。
-    ///
-    ///       面の法線は使わない。判定 (ResolveHit) は «扇の中に居るか» しか見ておらず
-    ///       当たった «面» を誰も知らないため、斬った本人から点への向きを投影軸に
-    ///       すれば少なくともカメラに見えている側へは必ず貼れる。
+    /// @note 直交する側が +Z になるよう、3 本を直交化して組む。
+
+    /// @note 面の法線は使わない。判定 (ResolveHit) は «扇の中に居るか» しか見ておらず
+    /// @note 当たった «面» を誰も知らないため、斬った本人から点への向きを投影軸に
+    /// @note すれば少なくともカメラに見えている側へは必ず貼れる。
     const Vector3 down = facing.NormalizedOr(Vector3{ 0.0f, -1.0f, 0.0f });
     Vector3       cut  = direction.NormalizedOr(Vector3::FORWARD);
 
     /// @note 投影軸と斬った向きが並ぶと «傷の長さ方向» が決まらない (正面から真っ直ぐ
-    ///       突いた形)。そのときだけ、投影軸に直交する適当な向きへ倒す。
+    /// @note 突いた形)。そのときだけ、投影軸に直交する適当な向きへ倒す。
     cut = (cut - down * Vector3::Dot(cut, down));
     if (cut.LengthSq() < 0.05f * 0.05f)
         cut = Vector3::Cross(Vector3::UP, down);
     cut = cut.NormalizedOr(Vector3::RIGHT);
 
     /// @note ローカル +Y を down (投影軸)、+X を cut (傷の長さ) に向ける。
-    ///
-    ///       LookRotation へ渡す «前» を作り直す。LookRotation はローカル +Z を forward、
-    ///       +Y を up に向ける。基底は X = Y × Z なので、+X を cut にするには
-    ///       Z = cut × down を渡す。
+
+    /// @note LookRotation へ渡す «前» を作り直す。LookRotation はローカル +Z を forward、
+    /// @note +Y を up に向ける。基底は X = Y × Z なので、+X を cut にするには
+    /// @note Z = cut × down を渡す。
     const Quaternion rotation =
         Quaternion::LookRotation(Vector3::Cross(cut, down), down).Normalized();
 
@@ -231,7 +229,7 @@ inline void SlashScarComponent::Play(const Vector3& point, const Vector3& direct
     slot->elapsed = 0.0f;
     slot->live    = true;
     /// @note 枠の番号ではなく «何枚目か» で散らす。枠は使い回すので、番号だけだと
-    ///       同じ枠に来た傷が毎回同じ形になる。
+    /// @note 同じ枠に来た傷が毎回同じ形になる。
     slot->seed    = static_cast<float>(++m_serial) * 0.37f;
 }
 
@@ -240,7 +238,7 @@ inline void SlashScarComponent::OnUpdate()
     if (!enabled) return;
 
     /// @note Time::deltaTime を使う。ヒットストップで画面が止まっている間は傷も止め、
-    ///       熱だけが引くと止めが «斬った瞬間» から外れるのを避ける。
+    /// @note 熱だけが引くと止めが «斬った瞬間» から外れるのを避ける。
     const float dt   = Max(Time::deltaTime, 0.0f);
     const float span = Max(scarSeconds, 0.05f);
 
@@ -266,7 +264,7 @@ inline void SlashScarComponent::OnUpdate()
         if (!decal) continue;
 
         /// @note 熱 (速い) と 濃さ (遅い) の 2 本。桁が違うので 1 本には畳めない ─
-        ///       熱に合わせると傷が一瞬で消え、濃さに合わせると «いつまでも熱い» になる。
+        /// @note 熱に合わせると傷が一瞬で消え、濃さに合わせると «いつまでも熱い» になる。
         const float cooled = scarCoolSeconds > 0.0f
             ? Clamp01(slot.elapsed / scarCoolSeconds) : 1.0f;
         const float life01 = Clamp01(slot.elapsed / span);
@@ -282,4 +280,4 @@ inline void SlashScarComponent::OnUpdate()
     debugLiveScars = live;
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

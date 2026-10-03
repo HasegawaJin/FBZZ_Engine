@@ -293,6 +293,45 @@ v1 (層数 × 頂点の密な重み) は読み込み時に上位 4 層へ畳む�
 
 ---
 
+## 9. 方向光の斜面自己影
+
+本体と影は同じカメラ距離から同じチャンク LOD を選ぶ。その上で、Forward と Deferred の
+不透明受光面には `ComputeShadowSurface` の receiver plane PCF を使う。
+固定の 5 mm bias を法線マップの N·L で増幅するだけでは、メートル単位の CSM texel と
+PCF 近傍が示す斜面の深度差を覆えず、遮蔽物が無い地形にも縞・まだらな自己影が出る。
+
+world position の画面微分を材質合成・discard・カスケード選択より前に求め、選択した
+方向光の正射影でアトラス UV と深度の微分へ写す。UV の 2×2 Jacobian を逆にして
+`g = d(depth)/d(atlas UV)` を求め、各 tap の比較値を
+`depth - bias - dot(abs(g), atlasTexelSize) + dot(g, sampleUV - centerUV)` とする。
+最後の項はクランプ後の実際の tap 位置を使う。線形比較が tap 内の 4 texel に同じ基準を
+渡す残差だけ、最大 1 texel の深度幅で覆う。PCF カーネル全体ぶんの大きな固定 bias は足さない。
+境界の次カスケードも同じ world 微分から別の勾配を求めて混ぜる。
+
+逆行列は UV 微分長の積に対する相対 determinant が `1e-4` 以下なら使わない。
+非有限値や、1 texel の補正が通常 Z の全深度範囲の 1% を超える面も既存 bias へ戻す。
+Deferred では隣接画素の前方距離が中央の 5% を超えて跳ぶと微分を無効にし、輪郭の
+別オブジェクトを受光平面へ取り込まない。Forward の fallback 法線は材質法線ではなく
+地形の幾何法線を渡す。実際の補正は現在の LOD 三角形の位置微分から求めるため、
+元の高さ格子から平滑化した法線とも独立する。
+
+この経路は位置の微分がある不透明表面限定。水面・体積光・Compute Shader は従来の
+`ComputeShadow` / 個別の可視性評価を維持する。追加の定数バッファ・GBuffer チャンネルは作らない。
+
+[Microsoft — Cascaded Shadow Maps, per-texel depth bias](https://learn.microsoft.com/windows/win32/dxtecharts/cascaded-shadow-maps#calculating-a-per-texel-depth-bias-with-ddx-and-ddy-for-large-pcfs)
+が示す近傍受光面の平面近似と、カスケード分岐より前に微分する契約に従う。
+
+`DeferredEmissionTest.SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlockerShadow` は実シェーダーで
+16² の影と 64² の HDR を描き、PCF 半径 2/3 の急斜面に自己影が出ず、別の遮蔽物の影が残ることを確かめる。
+旧方式へ切り替えると自己影の比較が失敗するため、補正の回帰を検出できる。
+`GreenWare/Tests/Playtests/TerrainShadowAcne.playtest.json` は ShowcaseCoast の 3 視点で影の強度 1/0 を撮影し、
+移動・回転後の影も確認する。最後に光と表示設定を戻し、シェーダー診断 0 件を表明する。
+
+2026-10-03 の同じ斜面 ROI では、影の有無による RGB 平均絶対差が 12.84 → 0.16 (8 bit) へ減少した。
+4 以上暗くなる画素は 99.65% → 0%。丘上の実際の投影影は残り、移動・回転後も連続している。
+
+---
+
 ## 参考資料
 
 - A. Mishkinis, *Advanced Terrain Texture Splatting* (Game Developer, 2013) — https://www.gamedeveloper.com/programming/advanced-terrain-texture-splatting

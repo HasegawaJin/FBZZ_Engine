@@ -2,7 +2,6 @@
 /// @brief   ReflectionProbe の空のみ／周辺メッシュ込み動的キャプチャと IBL 畳み込み。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-///
 /// @note プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得るため、更新間隔と
 /// @note 明示リクエストで間引く。昼夜変化だけを追う用途には DynamicSky、室内・配置物の反射には
 /// @note DynamicScene を使う。
@@ -39,6 +38,7 @@ void RenderSkyFace(RenderPassContext& ctx, const math::Vector3& position, uint32
     frame.farZ = 500.0f;
     resources.Update(h.skyCaptureFrameCB, &frame, sizeof(frame));
     ctx.renderer.SetRenderTargetFace(target, face, 0, resources);
+    ctx.renderer.ClearDepth();
 
     renderer::DrawCall skyCall{};
     skyCall.vertexBuffer = h.skyVB;
@@ -95,11 +95,13 @@ void RenderSceneFace(RenderPassContext& ctx, const RenderReflectionProbeInput& p
         draw.constantBuffers[1] = h.objectCB;
         draw.constantBuffers[2] = material.paramsBuffer;
         draw.constantBuffers[3] = h.lightCB;
-        draw.constantBuffers[4] = h.shadowCB;
+        draw.constantBuffers[4] = h.reflectionProbeCaptureShadowCB;
         for (size_t i = 0; i < material.textures.size(); ++i) draw.textures[i] = material.textures[i];
-        draw.textures[8] = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
         /// @note 捕捉ビューはメインカメラのクラスタを使わず、統合ライト配列を全数走査する。
         BindForwardShadingResources(draw, ctx, true);
+        /// @note 主カメラの atlas/AO は捕捉の視点・現在の shadow provider と一致しないため束縛しない。
+        draw.constantBuffers[12] = h.reflectionProbeCapturePunctualCB;
+        for (const uint32_t slot : {8u, 23u, 24u, 28u, 31u}) draw.textures[slot] = {};
         ctx.renderer.Submit(draw, resources);
     }
 }
@@ -109,6 +111,27 @@ bool CaptureReflectionProbe(RenderPassContext& ctx, const RenderReflectionProbeI
 {
     auto& h = ctx.handles;
     auto& resources = ctx.resources;
+    if (input.captureScene) {
+        const auto* shadowBuffer = resources.Get(h.reflectionProbeCaptureShadowCB);
+        const auto* punctualBuffer = resources.Get(h.reflectionProbeCapturePunctualCB);
+        if (!shadowBuffer || !punctualBuffer || shadowBuffer->GetSize() < sizeof(ShadowConstantsCB)
+            || punctualBuffer->GetSize() < sizeof(PunctualShadowConstantsCB)) return false;
+        auto shadow = MakeShadowConstants(ctx);
+        shadow.shadowStrength = 0.0f;
+        shadow.cascadeDebugView = 0;
+        auto punctual = MakePunctualShadowConstants(ctx);
+        punctual.punctualShadowCount = 0;
+        punctual.lightCookieCount = 0;
+        for (auto& slots : punctual.legacyPunctualSlots) {
+            slots.x = -1.0f;
+            slots.y = -1.0f;
+        }
+        for (int i = 0; i < punctual.legacyShapedLightCount; ++i)
+            punctual.legacyShapedLight[i * kLegacyShapedLightStride + 5].z = -1.0f;
+        /// @note 独立 CB に現在の光源と world-space cloud を保持し、主ビューの b4/b12 は変更しない。
+        resources.Update(h.reflectionProbeCaptureShadowCB, &shadow, sizeof(shadow));
+        resources.Update(h.reflectionProbeCapturePunctualCB, &punctual, sizeof(punctual));
+    }
     resources.Update(h.lightCB, &ctx.lightData, sizeof(ctx.lightData));
     PostProcCB post{}; post.exposure = 1; post.time = ctx.time;
     resources.Update(h.postprocCB, &post, sizeof(post));
@@ -124,6 +147,7 @@ bool CaptureReflectionProbe(RenderPassContext& ctx, const RenderReflectionProbeI
     output.irradiance = resources.RegisterTexture(std::move(irradiance));
     output.prefilter = resources.RegisterTexture(std::move(prefilter));
     output.prefilterMipCount = 5;
-    return true;
+    output.immutablePublished = resources.Get(output.irradiance) && resources.Get(output.prefilter);
+    return output.immutablePublished;
 }
 }

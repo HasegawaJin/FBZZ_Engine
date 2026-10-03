@@ -2,7 +2,6 @@
 /// @brief   WaterComponent → GPU 水面メッシュ・泡マスク・波紋テクスチャ生成と描画 (IRenderPass 実装)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-///
 /// @note 水面は透明描画・Terrain 高さ参照・動的 CPU テクスチャ更新を扱う。GPU リソースは
 /// @note Component に持たせず System 側の static cache に閉じ、Scene データは保存しやすい
 /// @note 純粋なパラメータのまま保つ。
@@ -334,7 +333,6 @@ WaterTextures BuildTextureSet(
 }
 
 /// @note 波紋テクスチャを焼く。RG = 法線 xy、**B = 頂点へ乗せる高さ** [m] (kWaterRippleHeightScale 正規化)。
-///
 /// @note 高さにだけ輪ごとの meshFade を掛ける。細い輪は頂点で刻めないので «傾きだけ» の帯へ落ち、
 /// @note 法線は今までどおり全部書く (water-waves.md の帯の原則)。
 /// @note テクセルをワールド XZ へ直して距離を測る。UV 距離で測ると、非正方形の水面で輪が
@@ -420,9 +418,12 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
     /// @note 写さない (写すとタイルを焼き直してもシェーダーが古い係数で復号し続ける)。
     cb.normalParams = { worldExtentX, worldExtentZ, detailNoise.derivativeScale,
                         WGetF(mat, "normalStrength", 1.0f) };
-    /// @note 頂点グリッド 1 セルの実寸。«刻めない波» の判断を CPU (浮力) と揃えるため、
-    /// @note 描画側で計算し直さず WaterSystem が解決した値をそのまま渡す。z はタイルのセル数の逆数。
+    /// @note xy は最密区間の間隔で物理の波と揃える。集中格子の遠景描画は局所のセル幅を別に求める。
+    /// @note z はタイルのセル数の逆数。
     cb.timeParams   = { water.cellSize.x, water.cellSize.y, detailNoise.invTileCells, time };
+    cb.gridParams = { water.cameraFocusedGrid ? 1.0f : 0.0f,
+        (std::clamp)(water.nearCellSize, 0.25f, 10.0f),
+        static_cast<float>(water.resolutionX), static_cast<float>(water.resolutionZ) };
     cb.foamParams = {
         WGetF(mat, "foamThreshold",     0.3f),
         WGetF(mat, "foamFade",          0.5f),
@@ -572,7 +573,9 @@ void UpdateWaterSplashes(Scene& scene)
         scene.DestroyGameObject(id);
 
     for (const SplashEvent& ev : s_pendingSplashes) {
-        auto& go = scene.CreateGameObject(kSplashObjectName);
+        auto* created = scene.TryCreateGameObject(kSplashObjectName);
+        if (!created) break;
+        auto& go = *created;
         /// @note 数秒で消える演出用。保存に混ざると開くたびに消えない GO が増える。
         go.runtimeGenerated = true;
         go.transform.position = ev.worldPos;

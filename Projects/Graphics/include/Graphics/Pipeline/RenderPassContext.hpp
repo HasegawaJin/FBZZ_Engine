@@ -7,6 +7,16 @@
 #include <Graphics/Pipeline/RenderConstants.hpp>
 #include <Graphics/Effects/RenderSkinningInput.hpp>
 namespace fbzz::renderer {
+/// @note Only a successful bake may publish a never-again-written texture; resource owner/epoch and exact handle bind the proof.
+struct RenderTexturePublication {
+    ResourceHandle<TextureTag> texture;
+    const ResourceManager* owner = nullptr;
+    uint64_t resourceEpoch = 0;
+    [[nodiscard]] bool Matches(ResourceHandle<TextureTag> handle, const ResourceManager* resources, uint64_t epoch) const
+    {
+        return texture.IsValid() && texture == handle && owner == resources && resourceEpoch == epoch;
+    }
+};
 struct RenderPassContext : RenderLightingInput {
     renderer::IRenderer& renderer;
     renderer::ResourceManager& resources;
@@ -19,6 +29,9 @@ struct RenderPassContext : RenderLightingInput {
     /// @note 既定値付きフィールドを挿すと呼び出し側の初期化子が 1 つずつずれるため、
     /// @note 新しい設定は必ず handles より後ろへ追加すること。
     RenderPassHandles& handles;
+    /// @note ホストが実験 RT のセッション許可を渡す。保存された描画要求や実機能力とは独立する。
+    /// @see Docs/design/developer-mode.md
+    bool experimentalRayTracingEnabled = false;
 
     /// @note スキニング完了後に抽出し、派生ビューを含む記録終了まで共有する不変入力。
     std::shared_ptr<const renderer::RenderScene> renderScene;
@@ -29,8 +42,9 @@ struct RenderPassContext : RenderLightingInput {
     float deltaTime = 0.0f;
     float unscaledDeltaTime = 0.0f;
     RenderEnvironmentInput environment;
+    RenderTexturePublication iblIrradiancePublication, iblPrefilterPublication;
 
-    /// @name カリング挙動 (CameraComponent 由来)
+    /// @note カリング挙動 (CameraComponent 由来)
     /// @{
     /// @note パスが直接 CameraComponent を読むと、Scene View や VFX プレビューでゲームカメラの
     /// @note 設定が効いてしまい、エディタ上の見え方が編集対象と食い違う。
@@ -106,6 +120,24 @@ struct RenderPassContext : RenderLightingInput {
     /// @note 設定だけを見て Composite が読むと、最後に書かれた絵がそのまま毎フレーム乗り続ける。
     /// @note VolumetricLight は自分のパス内で HDR へ加算するので、この種のフラグは要らない。
     bool ssrPassActive = false;
+    /// @note HYBRID を要求した Lit Deferred の反射 resolver。RT 縮退・記録失敗でも全 HDR 補間へ戻さない。
+    bool hybridReflectionResolveActive = false;
+    /// @note SSR の照明入力を作る間だけ true。RT と SSR の差し替え前の baseline を描く。
+    bool hybridReflectionSourcePass = false;
+    /// @note 生きた SSR 資源と pass override を確認した当該ビューの graph 宣言条件。
+    bool hybridReflectionSsrPlanned = false;
+    /// @note 当該ビューで RayReflection が実行可能なフレームだけ有効。材質・形状の被覆不足では false。
+    bool rayReflectionPassActive = false;
+    /// @note Graph は filtered/RAW の両方を申告し、再構成の記録失敗時も同フレーム RAW だけを読む。
+    bool rayReflectionReconstructionPrepared = false;
+    /// @note Reference Path の照明・深度がこのビューで有効な場合のみ true。
+    bool rayPathPassActive = false;
+    /// @note dispatch 失敗でも専用 Path 表示では Raster の履歴・画面空間効果を束縛しない。
+    bool rayPathViewActive = false;
+    /// @note hit の照明へ未対応の天候・空間プローブが有効な場合は false。
+    bool rayHitLightingSupported = true;
+    /// @note Reference は経路を自ら積分するため、Raster 用プローブの準備状態では縮退しない。
+    bool rayPathLightingSupported = true;
     /// @note 選択マスクへ UI 要素の矩形を追記する。UISystemContext を握っているのは
     /// @note Viewport ごとの呼び出し元なので、パス側は「入っていれば呼ぶ」だけにする。
     std::function<void()> appendUISelectionMask;
@@ -118,7 +150,7 @@ struct RenderPassContext : RenderLightingInput {
 
     /// @}
 
-    /// @name クラスタライトカリング
+    /// @note クラスタライトカリング
     /// @{
 
     /// @note フロクセル霧のフレーム間状態。実体は描画中のビューが持つ。
@@ -145,11 +177,11 @@ struct RenderPassContext : RenderLightingInput {
     /// @note 依存になるので、0.005 / depthRange としてワールド約 5mm 相当を保つ。
     /// @}
 
-    /// @name カスケードシャドウ
+    /// @note カスケードシャドウ
     /// @{
     /// @}
 
-    /// @name Spot / Point シャドウ
+    /// @note Spot / Point シャドウ
     /// @{
     /// @note アトラス全体の一辺 [px]。タイルサイズは これ / 4。
 
@@ -162,11 +194,11 @@ struct RenderPassContext : RenderLightingInput {
     /// @note ライトが他のライトの深度を引く。
     /// @}
 
-    /// @name ライト Cookie
+    /// @note ライト Cookie
     /// @{
     /// @}
 
-    /// @name レガシー経路 (b3) 向けの「大きさを持つ光源」
+    /// @note レガシー経路 (b3) 向けの「大きさを持つ光源」
     /// @{
     /// @note punctualLights から Area / Sphere / Tube を先頭 kMaxLegacyShapedLights 本まで
     /// @note 写したもの。b3 はこれらの型を運べないため、b12 側へ実体ごと載せる。

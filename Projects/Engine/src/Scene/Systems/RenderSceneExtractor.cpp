@@ -4,13 +4,16 @@
 /// @date    2026-09-20
 #include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
 #include <Engine/Scene/Systems/RenderCustomPostExtractor.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp>
 #include <Engine/Renderer/IShader.hpp>
+#include <Engine/Renderer/IBuffer.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Systems/RenderEnvironmentExtractor.hpp>
 #include <Engine/Scene/Systems/RenderTrailExtractor.hpp>
@@ -22,14 +25,70 @@
 #include <Engine/Scene/Systems/RenderParticleExtractor.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include "RenderPasses/Debug/SelectionPasses.hpp"
+#include <Graphics/Pipeline/RayTracingPipeline.hpp>
 #include <atomic>
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <memory>
+#include <unordered_set>
+#include <unordered_map>
 
 namespace fbzz::scene {
 namespace {
 
 std::atomic<uint64_t> s_renderSceneSerial{ 0 };
+
+uint64_t EntityKey(EntityID id)
+{
+    return (static_cast<uint64_t>(id.index) << 32) | id.generation;
+}
+
+struct RayLodSelection {
+    bool visible = false;
+    bool ambiguous = false;
+    uint64_t group = 0;
+};
+
+/// @note LOD0 は全ビュー共通の正本。GUID fallback は Raster と同じで、カメラ・crossfade は参照しない。
+std::unordered_map<uint64_t, RayLodSelection> CollectRayLodRenderers(Scene& scene,
+    std::vector<renderer::RenderRayLodDiagnostic>& diagnostics)
+{
+    std::unordered_map<uint64_t, RayLodSelection> result;
+    for (EntityID id : scene.GetEntities<LODGroupComponent>()) {
+        const auto* group = scene.GetComponent<LODGroupComponent>(id);
+        const auto* owner = scene.GetGameObject(id);
+        if (!group || !group->enabled || !owner || !owner->activeInHierarchy()) continue;
+        bool canonicalMissing = false;
+        for (size_t levelIndex = 0; levelIndex < group->levels.size(); ++levelIndex) {
+            const auto& level = group->levels[levelIndex];
+            for (const auto& reference : level.renderers) {
+                EntityID renderer = reference.entity;
+                if (!scene.IsValid(renderer) && !reference.instanceId.empty()) {
+                    if (const auto* resolved = scene.FindByGuid(reference.instanceId))
+                        renderer = resolved->GetID();
+                }
+                if (!scene.IsValid(renderer)) {
+                    canonicalMissing |= levelIndex == 0;
+                    continue;
+                }
+                const auto* target = scene.GetGameObject(renderer);
+                canonicalMissing |= levelIndex == 0 && (!target
+                    || (!scene.GetComponent<MeshRenderer>(renderer) && !scene.GetComponent<SkinnedMeshRenderer>(renderer)));
+                const auto [found, inserted] = result.emplace(EntityKey(renderer),
+                    RayLodSelection{levelIndex == 0, false, EntityKey(id)});
+                if (!inserted) {
+                    found->second.visible |= levelIndex == 0;
+                    found->second.ambiguous |= found->second.group != EntityKey(id);
+                }
+            }
+        }
+        /// @note 未解決の canonical renderer の layer は証明できず、下位 LOD の layer で除外しない。
+        if (canonicalMissing)
+            diagnostics.push_back({id.index, id.generation, UINT32_MAX});
+    }
+    return result;
+}
 
 template<typename T>
 math::Matrix4 AdvanceWorld(T& component, const math::Matrix4& world, uint64_t frame)
@@ -68,6 +127,7 @@ renderer::RenderMeshItem ExtractMesh(GameObject& go, const renderer::Mesh& mesh)
     item.indexBuffer = mesh.indexBuffer;
     item.indexCount = mesh.indexCount;
     item.vertexCount = mesh.vertexCount;
+    item.vertexStride = mesh.isSkinned ? sizeof(renderer::SkinnedVertex) : sizeof(renderer::Vertex);
     item.reliableOccluder = IsReliableOccluder(mesh);
     const auto bounds = ComputeWorldBounds(go.transform, mesh);
     item.boundsCenter = bounds.center;
@@ -81,12 +141,13 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
     output.valid = material != nullptr;
     if (!material) return;
     output.shader = material->shader;
+    output.shaderCapabilities = resources.GetShaderCapabilities(material->shader);
     output.paramsBuffer = material->paramsBuffer;
     for (size_t i = 0; i < output.textures.size() && i < material->textures.size(); ++i)
         output.textures[i] = material->textures[i];
-    output.directGBufferParams = material->paramData.size() == output.gbufferParams.size();
-    if (output.directGBufferParams) return;
     /// @note 異なるシェーダーの CB レイアウトを GBuffer の 96 バイトへ正規化する。
+    output.directGBufferParams = false;
+    output.gbufferParams = {};
     const float roughness = 0.5f;
     const float tiling[] = { 1.0f, 1.0f };
     std::memcpy(output.gbufferParams.data() + 20, &roughness, sizeof(roughness));
@@ -96,7 +157,11 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
     const auto& descriptor = shader->GetDescriptor();
     auto copy = [&](std::string_view name, uint32_t offset, uint32_t bytes) {
         const auto* variable = descriptor.FindVar(name);
-        if (variable && variable->offset + bytes <= material->paramData.size())
+        if (variable && variable->IsWritable() && variable->varType == renderer::ShaderVarType::Float
+            && variable->varClass == (bytes == sizeof(float) ? renderer::ShaderVarClass::Scalar : renderer::ShaderVarClass::Vector)
+            && variable->rows == 1 && variable->elements == 0 && variable->size == bytes
+            && variable->offset <= material->paramData.size()
+            && bytes <= material->paramData.size() - variable->offset)
             std::memcpy(output.gbufferParams.data() + offset,
                         material->paramData.data() + variable->offset, bytes);
     };
@@ -104,27 +169,109 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
     copy("metallic", 16, 4);
     copy("roughness", 20, 4);
     copy("normalStrength", 24, 4);
+    copy("occlusionStrength", 28, 4);
+    copy("emissiveColor", 32, 12);
+    copy("emissiveScale", 44, 4);
     copy("uvTiling", 48, 8);
     copy("uvOffset", 56, 8);
     copy("alphaCutoff", 64, 4);
     if (descriptor.textureMaskOffset != UINT32_MAX &&
-        descriptor.textureMaskOffset + 4 <= material->paramData.size())
+        descriptor.textureMaskOffset <= material->paramData.size() &&
+        4 <= material->paramData.size() - descriptor.textureMaskOffset)
         std::memcpy(output.gbufferParams.data() + 80,
                     material->paramData.data() + descriptor.textureMaskOffset, 4);
+    /// @note 同じ 96 bytes でも変数の位置は異なり得る。正規化した値が一致するときだけ元 CB を共有する。
+    output.directGBufferParams = material->paramData.size() == output.gbufferParams.size()
+        && std::memcmp(material->paramData.data(), output.gbufferParams.data(), output.gbufferParams.size()) == 0;
+}
+
+void ExtractRayMaterialInputs(renderer::RenderMaterial& material,
+    const renderer::Material* source, const MaterialSlot& slot, renderer::ResourceManager& resources,
+    bool currentDeformationVerified)
+{
+    const auto contract = material.shaderCapabilities;
+    /// @note 成功した shader 版の能力だけを使い、失敗した reload の新宣言を描画へ混ぜない。
+    material.capabilities.gbufferEquivalentShader = contract.SupportsGBuffer();
+    const bool deformationVerified = !contract.SupportsSkinning() || currentDeformationVerified;
+    const bool pbr = contract.IsStandardPbr() && deformationVerified;
+    const bool unclipped = contract.HasOpaqueOutput();
+    const auto* shader = resources.Get(material.shader);
+    const bool standardGeometry = material.valid && shader && contract.HasStandardGeometry() && deformationVerified;
+    /// @note Lit / Fallback は texture alpha に関係なく alpha=1 を返し、clip を実行しない。
+    float alpha = 0, cutoff = 0;
+    uint32_t textureMask = 0;
+    std::memcpy(&alpha, material.gbufferParams.data() + 12, sizeof(alpha));
+    std::memcpy(&cutoff, material.gbufferParams.data() + 64, sizeof(cutoff));
+    std::memcpy(&textureMask, material.gbufferParams.data() + 80, sizeof(textureMask));
+    material.rayCapabilities = standardGeometry && unclipped
+        ? renderer::RayMaterialCapabilities{true, renderer::RayOpacity::OPAQUE_SURFACE}
+        : renderer::ResolveStaticRayMaterialCapabilities(standardGeometry,
+            material.capabilities.blend, alpha, cutoff, (textureMask & 1u) != 0);
+    uint32_t declaredTextureMask = 0;
+    bool unresolvedTexture = false;
+    const auto declareTexture = [&](const std::string& name, const std::string& texturePath) {
+        if (texturePath.empty()) return;
+        for (uint32_t i = 0; i < renderer::kMaterialTextureSlotCount; ++i) {
+            if (name != renderer::kMaterialTextureSlots[i].key) continue;
+            declaredTextureMask |= 1u << i;
+            return;
+        }
+        unresolvedTexture = true;
+    };
+    const auto* materialAsset = asset::AssetManager::Get<asset::MaterialAsset>(slot.materialAsset);
+    /// @note 未ロードや無効な GPU handle でも、元 .mat の texture 指定を定数材質と誤認しない。
+    if (materialAsset) {
+        for (const auto& [name, texturePath] : materialAsset->textures) {
+            const auto replacement = slot.textureOverrides.find(name);
+            declareTexture(name, replacement != slot.textureOverrides.end() ? replacement->second : texturePath);
+        }
+    }
+    for (const auto& [name, texturePath] : slot.textureOverrides)
+        declareTexture(name, texturePath);
+    bool advancedLobes = false;
+    if (pbr && shader && source) {
+        /// @note GBuffer の 96 bytes 外にある追加ローブを、定数 metallic / roughness と誤認しない。
+        for (const auto* name : {"clearcoat", "sheen", "anisotropy"}) {
+            const auto* variable = shader->GetDescriptor().FindVar(name);
+            if (!variable) continue;
+            if (variable->offset > source->paramData.size()
+                || sizeof(float) > source->paramData.size() - variable->offset) {
+                advancedLobes = true;
+                continue;
+            }
+            float amount = 0;
+            std::memcpy(&amount, source->paramData.data() + variable->offset, sizeof(amount));
+            advancedLobes |= !std::isfinite(amount) || amount != 0;
+        }
+    }
+    material.surface = source ? source->ResolveRaySurface(material.gbufferParams, standardGeometry && pbr,
+        declaredTextureMask, unresolvedTexture, advancedLobes, resources)
+        : renderer::ResolveConstantSurfaceMaterial(material.gbufferParams, false);
+    /// @note Surface resolution includes authored-but-not-yet-uploaded textures; never share an opaque BLAS variant for them.
+    if (!unclipped)
+        material.rayCapabilities = renderer::ResolveStaticRayMaterialCapabilities(standardGeometry,
+            material.capabilities.blend, alpha, cutoff, (material.surface.textureMask & 1u) != 0);
 }
 
 } /// @note namespace
 
 renderer::RenderScene ExtractRenderSceneGeometry(Scene& scene, uint64_t frameStamp,
-    renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette)
+    renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette, bool rayTracingInputs)
 {
     renderer::RenderScene output;
     output.snapshotSerial = ++s_renderSceneSerial;
+    output.sceneGeneration = scene.GetRenderSceneGeneration();
     output.frameStamp = frameStamp;
+    const auto lodRenderers = rayTracingInputs ? CollectRayLodRenderers(scene, output.rayLodDiagnostics)
+        : std::unordered_map<uint64_t, RayLodSelection>{};
     for (auto& go : scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
         if (auto* mr = go.GetComponent<MeshRenderer>(); mr && mr->enabled && mr->mesh && !mr->mesh->isSkinned) {
             auto object = ExtractObject(go, *mr, frameStamp);
+            if (const auto lod = lodRenderers.find(EntityKey(go.GetID())); lod != lodRenderers.end()) {
+                object.rayVisible = lod->second.visible;
+                object.rayLodSelectionRequired = lod->second.ambiguous;
+            }
             auto item = ExtractMesh(go, *mr->mesh);
             object.boundsCenter = item.boundsCenter;
             object.boundsRadius = item.boundsRadius;
@@ -137,6 +284,10 @@ renderer::RenderScene ExtractRenderSceneGeometry(Scene& scene, uint64_t frameSta
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
         if (!smr || !smr->enabled || !smr->model) continue;
         auto object = ExtractObject(go, *smr, frameStamp);
+        if (const auto lod = lodRenderers.find(EntityKey(go.GetID())); lod != lodRenderers.end()) {
+            object.rayVisible = lod->second.visible;
+            object.rayLodSelectionRequired = lod->second.ambiguous;
+        }
         object.skinned = true;
         object.firstItem = static_cast<uint32_t>(output.items.size());
         WorldBounds bounds{};
@@ -160,8 +311,7 @@ renderer::RenderScene ExtractRenderSceneGeometry(Scene& scene, uint64_t frameSta
             item.sourceSubmesh = smr->SubmeshAt(slot);
             item.skinningVertexBuffer = smr->ResolveSlotVertexBuffer(slot, mesh->vertexBuffer);
             /// @note 古いフレームやモーフ対象に残った GPU 出力を再利用しない。
-            if (smr->gpuSkinningFrame == frameStamp && smr->skinnedBufferModel == smr->model &&
-                item.skinningVertexBuffer == mesh->vertexBuffer)
+            if (smr->gpuSkinningFrame == frameStamp && smr->skinnedBufferModel == smr->model)
                 item.deformedVertexBuffer = smr->ResolveSlotSkinnedVertexBuffer(slot);
             output.items.push_back(std::move(item));
         }
@@ -205,23 +355,50 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
 
     std::shared_ptr<renderer::RenderScene> output;
     const uint64_t resetVersion = ctx.resources.GetResetVersion();
+    const bool rayTracingInputs = ctx.experimentalRayTracingEnabled
+        && (ctx.settings.modeRequest.mode != renderer::RenderMode::RASTER
+            || renderer::IsRayDebugView(ctx.settings.viewMode));
     if (frameGeometry && frameGeometry->geometry && frameGeometry->scene == &ctx.scene &&
+        frameGeometry->geometry->sceneGeneration == ctx.scene.GetRenderSceneGeneration() &&
         frameGeometry->resources == &ctx.resources && frameGeometry->frameStamp == Time::frameCount &&
         frameGeometry->resetVersion == resetVersion &&
+        frameGeometry->rayTracingInputs == rayTracingInputs &&
         frameGeometry->identityPalette == ctx.handles.bindPoseSkinningCB) {
         output = std::make_shared<renderer::RenderScene>(*frameGeometry->geometry);
         output->snapshotSerial = ++s_renderSceneSerial;
     } else {
         output = std::make_shared<renderer::RenderScene>(
-            ExtractRenderSceneGeometry(ctx.scene, Time::frameCount, ctx.handles.bindPoseSkinningCB));
+            ExtractRenderSceneGeometry(ctx.scene, Time::frameCount, ctx.handles.bindPoseSkinningCB, rayTracingInputs));
         if (frameGeometry) {
             frameGeometry->scene = &ctx.scene;
             frameGeometry->resources = &ctx.resources;
             frameGeometry->frameStamp = Time::frameCount;
             frameGeometry->resetVersion = resetVersion;
+            frameGeometry->rayTracingInputs = rayTracingInputs;
             frameGeometry->identityPalette = ctx.handles.bindPoseSkinningCB;
             frameGeometry->geometry = std::make_shared<renderer::RenderScene>(*output);
         }
+    }
+    /// @note 後から開いた Ray view が LOD0 を追加変形しても、最初の Raster view の snapshot に閉じ込めない。
+    for (const auto& object : output->objects) {
+        if (!object.skinned) continue;
+        auto* go = ctx.scene.GetGameObject({object.sourceIndex, object.sourceGeneration});
+        const auto* smr = go ? go->GetComponent<SkinnedMeshRenderer>() : nullptr;
+        for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
+            auto& item = output->items[i];
+            item.deformedVertexBuffer = smr && smr->gpuSkinningFrame == Time::frameCount
+                && smr->skinnedBufferModel == smr->model ? smr->ResolveSlotSkinnedVertexBuffer(item.materialSlot)
+                : renderer::ResourceHandle<renderer::BufferTag>{};
+        }
+    }
+    for (auto& item : output->items) {
+        const auto* vertices = ctx.resources.Get(item.vertexBuffer);
+        const auto* indices = ctx.resources.Get(item.indexBuffer);
+        const auto* deformed = ctx.resources.Get(item.deformedVertexBuffer);
+        item.deformedContentVersion = deformed ? deformed->GetContentVersion() : 0;
+        item.vertexContentVersion = vertices ? vertices->GetContentVersion() : 0;
+        item.indexContentVersion = indices ? indices->GetContentVersion() : 0;
+        if (vertices) item.vertexStride = vertices->GetStride();
     }
     for (auto& object : output->objects) {
         auto* go = ctx.scene.GetGameObject({ object.sourceIndex, object.sourceGeneration });
@@ -252,6 +429,14 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             const auto* source = SyncMaterialSlot(*component, item.materialSlot, ctx.resources,
                                                    object.skinned, screenPixels);
             CopyMaterial(material, source, ctx.resources);
+            material.capabilities.gbufferEquivalentShader =
+                ctx.resources.GetShaderCapabilities(material.shader).SupportsGBuffer();
+            const auto* deformed = ctx.resources.Get(item.deformedVertexBuffer);
+            const bool currentDeformationVerified = object.skinned && item.deformedContentVersion != 0
+                && deformed && deformed->GetStride() == sizeof(renderer::Vertex)
+                && deformed->GetContentVersion() == item.deformedContentVersion;
+            if (rayTracingInputs)
+                ExtractRayMaterialInputs(material, source, slot, ctx.resources, currentDeformationVerified);
             item.forwardMaterial = material;
             if (object.skinned && source && IsSurfaceMaterial(slot)) {
                 LogSkinnedSurfaceFallbackWarningOnce(source->shaderPath);

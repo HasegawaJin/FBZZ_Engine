@@ -11,5 +11,7 @@ struct RenderLightExtraction : renderer::RenderLightingInput {
     float dirShadowBias = 1;
     float dirShadowDistance = 0;
 };
-RenderLightExtraction ExtractRenderLights(Scene&, const renderer::Camera&, const renderer::RenderSettings&, uint32_t punctualShadowRes);
+/// @note 実験 RT の許可なしでは Raster の照明だけを抽出し、RayLightTable 向けの走査・診断を省く。
+RenderLightExtraction ExtractRenderLights(Scene&, const renderer::Camera&, const renderer::RenderSettings&,
+    uint32_t punctualShadowRes, bool experimentalRayTracingEnabled = false);
 }

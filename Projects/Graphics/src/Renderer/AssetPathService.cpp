@@ -23,6 +23,12 @@ void SetAssetPathService(const AssetPathService& service)
     Service() = service;
 }
 
+ShaderCapabilities ResolveShaderCapabilities(std::string_view reference)
+{
+    const auto& service = Service();
+    return service.resolveShaderCapabilities ? service.resolveShaderCapabilities(reference) : ShaderCapabilities{};
+}
+
 std::string ResolveAssetPath(const std::string& path)
 {
     const auto& service = Service();

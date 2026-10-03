@@ -9,13 +9,13 @@
 
 namespace fbzz::editor {
 
-/// NormalizeAssetPath — OS 絶対パス / バックスラッシュ混在パスを Assets 起点の保存用パスへ寄せる。
+/// @brief OS 絶対パス / バックスラッシュ混在パスを Assets 起点の保存用パスへ寄せる。
 /// @note AssetBrowser は絶対パスを持ち、Scene / Component / .mat は Assets 起点パスを保存する。
-///       各パネルで個別実装すると、ロック・DragDrop・保存時に別形式のパスが混ざりやすい。
+/// @note GUID 参照はヒントを含めそのまま保持する。
 [[nodiscard]] std::string NormalizeAssetPath(std::string path);
 
-/// ToProjectAssetDiskPath — Assets 起点パスをプロジェクトルートからの実ファイルパスへ変換する。
-/// @note Runtime は可搬な Assets 起点パスだけを保持し、Editor の保存 / 読み込み時だけ projectRoot を補完する。
+/// @brief Assets 起点パスまたは GUID 参照を実ファイルパスへ変換する。
+/// @note GUID は現在の索引から解決する。未登録なら空文字列で、古いヒント先へ保存しない。
 [[nodiscard]] std::string ToProjectAssetDiskPath(std::string_view projectRoot, std::string_view assetPath);
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

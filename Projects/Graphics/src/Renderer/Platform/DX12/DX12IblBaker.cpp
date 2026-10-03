@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstring>
 #include <vector>
+#include <string>
 #include <wrl/client.h>
 
 namespace fbzz::renderer {
@@ -144,6 +145,8 @@ bool DX12IblBaker::DispatchIrradiance(DX12RenderTarget& environment, CubeOutput&
         if (!indexBlock) return false;
         std::memcpy(indexBlock.cpu, &indices, sizeof(indices));
         commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, indexBlock.gpu);
+        DX12ScopedPixEvent event(*m_context, commands,
+            "IBL Irradiance face=" + std::to_string(face), 0xff65b891u);
         commands->Dispatch((output.size + 7) / 8, (output.size + 7) / 8, 1);
     }
     return true;
@@ -181,6 +184,9 @@ bool DX12IblBaker::DispatchPrefilter(
             if (!indexBlock) return false;
             std::memcpy(indexBlock.cpu, &indices, sizeof(indices));
             commands->SetComputeRootConstantBufferView(kBindlessIndicesRootParam, indexBlock.gpu);
+            DX12ScopedPixEvent event(*m_context, commands,
+                "IBL Prefilter face=" + std::to_string(face) + " mip=" + std::to_string(mip),
+                0xff65b891u);
             commands->Dispatch((mipSize + 7) / 8, (mipSize + 7) / 8, 1);
         }
     }

@@ -8,13 +8,15 @@
 
 /// @note Skydome.hlsl は色を「オブジェクト空間のレイ方向 (= ドーム頂点)」から計算し、view/projection は
 /// @note ドームを画面のどこに置くかにしか使わない。面ごとの view (回転) + 90° 射影を差し替えるだけで
-/// @note 各面に正しい方向の空が描け、新規 HLSL は不要になる。
+/// @note 各面の大気へ SkyCloudCapture が同じワールド空間の雲を重ねる。
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include "Graphics/Renderer/DrawCall.hpp"
 #include <Math/MathUtils.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <cstdint>
+#include <algorithm>
+#include <chrono>
 
 namespace fbzz::renderer {
 
@@ -52,10 +54,13 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
     /// @note 有効な SkyRenderer を 1 つ探す (SkyPass と同じ先着優先)。
     const auto* sky = ctx.environment.sky ? &*ctx.environment.sky : nullptr;
     if (!sky) return;
+    /// @note 捕捉用シェーダーやノイズが欠けたら大気のみへ戻し、未束縛の Texture3D を読まない。
+    const bool captureClouds = ctx.environment.cloudEnabled
+        && resources.Get(h.skyCloudCaptureShader) && resources.Get(h.volumetricCloudPremultipliedPSO)
+        && resources.Get(h.volumetricCloudCB) && resources.Get(h.cloudShapeTex) && resources.Get(h.cloudDetailTex);
+    const math::Vector3 capturePosition = ctx.camera.m_position;
 
-    /// @note dirty 判定: 太陽 (= ディレクショナルライト) 方向と大気パラメータが前回と同じなら
-    /// @note 再ベイクしない。キューブマップ生成は毎フレーム行うと無駄なコストなので
-    /// @note EnvironmentResources がキャッシュする。
+    /// @note 大気・照明・雲設定の変更と、間引いた雲時刻・捕捉位置だけを EnvironmentResources が消費する。
     if (ctx.environmentResources) {
         EnvironmentResources::SkySignature sig;
         sig.sunDirection     = ctx.lightData.lightDir.Normalized();
@@ -65,7 +70,17 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
         sig.mieG             = sky->mieG;
         sig.planetRadius     = sky->planetRadius;
         sig.atmosphereRadius = sky->atmosphereRadius;
-        if (!ctx.environmentResources->ConsumeDirty(sig, ctx.time))
+        sig.lightColor = ctx.lightData.lightColor;
+        sig.ambientColor = ctx.lightData.ambientColor;
+        sig.skyDimmer = ctx.lightData.skyDimmer;
+        sig.shaderVersion = resources.GetShaderVersion();
+        sig.cloudEnabled = captureClouds;
+        sig.cloud = ctx.environment.cloud;
+        sig.capturePosition = capturePosition;
+        /// @note 小さな間隔を float で保てるよう、steady_clock の絶対 epoch ではなく起点からの秒を使う。
+        static const auto clockOrigin = std::chrono::steady_clock::now();
+        const float captureTime = std::chrono::duration<float>(std::chrono::steady_clock::now() - clockOrigin).count();
+        if (!ctx.environmentResources->ConsumeDirty(sig, captureTime, ctx.frameStamp))
             /// @note 変化なし / 間引き中 → キャッシュ済みキューブを再利用
             return;
     }
@@ -91,16 +106,17 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
     atmData.sunIntensity          = sky->skyScatterIntensity;
     atmData.mieG                  = sky->mieG;
     resources.Update(h.atmosphereCB, &atmData, sizeof(AtmosphereCB));
+    if (captureClouds)
+        resources.Update(h.volumetricCloudCB, &ctx.environment.cloud, sizeof(ctx.environment.cloud));
 
-    /// @note 90° FOV・アスペクト 1.0 の射影。Skydome.hlsl は svPosition の z を 0 (Reversed-Z の最遠) で上書きし、面は深度を持たないため
-    /// @note near/far は xy に影響しない (値は形式的)。
-    const math::Matrix4 proj = math::Matrix4::Perspective(math::ToRad(90.0f), 1.0f, 0.1f, 10.0f);
+    /// @note 雲の視線復元も行うため、90°・アスペクト 1 の Reversed-Z 射影と雲の最大距離を使う。
+    const float captureFar = captureClouds ? (std::max)(ctx.environment.cloud.cloudNoise.w, 10.0f) : 10.0f;
+    const math::Matrix4 proj = math::Matrix4::PerspectiveReversedZ(math::ToRad(90.0f), 1.0f, 0.1f, captureFar);
 
     for (uint32_t face = 0; face < 6; ++face) {
-        /// @note 面ごとの view。カメラは原点固定 (Skydome は (float3x3)view = 回転のみ使用)。
-        /// @note ForwardPasses と同じ規約で view/projection/viewProjection を格納する (CB レイアウト一致)。
+        /// @note 実カメラの雲柱を捕捉する。大気ドームは回転だけを読み、雲は位置も読む。
         const math::Matrix4 faceView = math::Matrix4::LookAt(
-            math::Vector3::ZERO, kCubeFaces[face].forward, kCubeFaces[face].up);
+            capturePosition, capturePosition + kCubeFaces[face].forward, kCubeFaces[face].up);
 
         PerFrameCB faceFrame{};
         faceFrame.view              = faceView;
@@ -108,13 +124,14 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
         /// @note GetViewProjection と同じ proj*view 規約
         faceFrame.viewProjection    = proj * faceView;
         faceFrame.invViewProjection = math::Matrix4::Inverse(faceFrame.viewProjection);
-        faceFrame.cameraPos         = math::Vector3::ZERO;
+        faceFrame.cameraPos         = capturePosition;
         faceFrame.nearZ             = 0.1f;
-        faceFrame.farZ              = 10.0f;
+        faceFrame.farZ              = captureFar;
         resources.Update(h.skyCaptureFrameCB, &faceFrame, sizeof(PerFrameCB));
 
         /// @note 当該面 (mip0) を描画先にバインドし、スカイドームを 1 回描く。
         renderer.SetRenderTargetFace(h.skyEnvCubeRT, face, 0, resources);
+        renderer.ClearDepth();
 
         renderer::DrawCall dc;
         dc.vertexBuffer       = h.skyVB;
@@ -131,6 +148,18 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
         /// @note b6: 散乱パラメータ
         dc.constantBuffers[6] = h.atmosphereCB;
         renderer.Submit(dc, resources);
+        if (captureClouds) {
+            renderer::DrawCall cloudDraw;
+            cloudDraw.shader = h.skyCloudCaptureShader;
+            cloudDraw.pipelineState = h.volumetricCloudPremultipliedPSO;
+            cloudDraw.vertexCount = 3;
+            cloudDraw.constantBuffers[0] = h.skyCaptureFrameCB;
+            cloudDraw.constantBuffers[2] = h.volumetricCloudCB;
+            cloudDraw.constantBuffers[3] = h.lightCB;
+            cloudDraw.textures[26] = h.cloudShapeTex;
+            cloudDraw.textures[27] = h.cloudDetailTex;
+            renderer.Submit(cloudDraw, resources);
+        }
     }
 
     /// @note キューブ面の RTV を OM から外す。直後の SkyLightBake がこのキューブを SRV (t0) として

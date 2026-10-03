@@ -139,11 +139,51 @@ std::vector<uint8_t> GenerateProceduralColorLut(const renderer::LUTColorGradingS
     }
     return pixels;
 }
+void ReleaseRayTracingViewResources(RenderViewResources& targets, ResourceManager& resources)
+{
+    resources.Release(targets.rayDebug.output);
+    resources.Release(targets.rayDebug.constants);
+    targets.rayDebug = {};
+    resources.Release(targets.rayReflection.output);
+    resources.Release(targets.rayReflection.halfRaw);
+    resources.Release(targets.rayReflection.constants);
+    resources.Release(targets.rayReflection.emitters);
+    resources.Release(targets.rayReflection.deltaLights);
+    resources.Release(targets.rayReflection.shapes);
+    resources.Release(targets.rayReflection.environmentTable);
+    for (const auto surface : targets.rayReflection.reconstruction.surfaces) resources.Release(surface);
+    for (const auto history : targets.rayReflection.reconstruction.histories) resources.Release(history);
+    resources.Release(targets.rayReflection.reconstruction.output);
+    resources.Release(targets.rayReflection.reconstruction.constants);
+    targets.rayReflection = {};
+    resources.Release(targets.rayPath.output);
+    resources.Release(targets.rayPath.firstSurface);
+    resources.Release(targets.rayPath.firstMaterial);
+    resources.Release(targets.rayPath.firstGeometry);
+    resources.Release(targets.rayPath.historyBuffer);
+    resources.Release(targets.rayPath.idsBuffer);
+    resources.Release(targets.rayPath.constants);
+    resources.Release(targets.rayPath.emitters);
+    resources.Release(targets.rayPath.deltaLights);
+    resources.Release(targets.rayPath.shapes);
+    resources.Release(targets.rayPath.environmentTable);
+    resources.Release(targets.rayPath.game.transport);
+    resources.Release(targets.rayPath.game.surface);
+    for (const auto history : targets.rayPath.game.reconstructionHistory) resources.Release(history);
+    resources.Release(targets.rayPath.game.motionInstances);
+    resources.Release(targets.rayPath.game.traceConstants);
+    resources.Release(targets.rayPath.game.reconstructionConstants);
+    targets.rayPath = {};
+    targets.rayReflectionCovered = false;
+    targets.rayPathCovered = false;
+    targets.rayPathPrepared = false;
+}
 /// @note Resize 前のネイティブリソースを ResourceManager から確実に解放する。
 void ReleaseRenderViewResources(RenderViewResources& targets, renderer::ResourceManager& resources)
 {
     /// @note transient RT も同じ Viewport 寿命に属するため、固定 RT より先に明示解放する。
     targets.pipeline.ReleaseViewResources(resources);
+    ReleaseRayTracingViewResources(targets, resources);
     if (targets.hdr.IsValid())                  resources.Release(targets.hdr);
     if (targets.ldr.IsValid())                  resources.Release(targets.ldr);
     if (targets.selectionMask.IsValid())        resources.Release(targets.selectionMask);
@@ -166,6 +206,7 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     if (targets.ssaoRaw.IsValid())               resources.Release(targets.ssaoRaw);
     if (targets.ssaoBlur.IsValid())              resources.Release(targets.ssaoBlur);
     if (targets.ssrResult.IsValid())             resources.Release(targets.ssrResult);
+    if (targets.volumetricRaw.IsValid())         resources.Release(targets.volumetricRaw);
     if (targets.volumetricResult.IsValid())      resources.Release(targets.volumetricResult);
     if (targets.taaHistoryA.IsValid())           resources.Release(targets.taaHistoryA);
     if (targets.taaHistoryB.IsValid())           resources.Release(targets.taaHistoryB);
@@ -176,6 +217,7 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     /// @note どちらも解像度非依存。作り直すと prevVP が Identity へ戻り、
     /// @note MotionBlur / TAA が 1 フレーム乱れるので、保存して復元する。
     auto savedCB         = targets.advancedGraphicsCB;
+    const auto savedMaterialCB = targets.gbufferMaterialCB;
     auto savedPrevVP     = targets.prevViewProjection;
     auto savedPrevInvVP  = targets.invPrevViewProjection;
     auto savedTaaIndex   = targets.taaFrameIndex;
@@ -218,6 +260,7 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     targets.froxelGrid[2] = savedFroxelGrid[2];
     targets.froxelState   = savedFroxelState;
     targets.advancedGraphicsCB  = savedCB;
+    targets.gbufferMaterialCB = savedMaterialCB;
     targets.prevViewProjection    = savedPrevVP;
     targets.invPrevViewProjection = savedPrevInvVP;
     targets.taaFrameIndex         = savedTaaIndex;
@@ -279,7 +322,7 @@ void RenderSharedResources::Initialize(ResourceManager& resources)
     upscaleShader = resources.LoadShader("Assets/Shaders/PostProcess/Upscale/Upscale.hlsl");
     downscaleShader = resources.LoadShader("Assets/Shaders/PostProcess/Upscale/Downscale.hlsl");
 
-    /// @name Advanced Graphics シェーダー
+    /// @note Advanced Graphics シェーダー
     iblBrdfBakeShader = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/BRDFIntegration.cs.hlsl");
     gtaoShader = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAO.cs.hlsl");
     gtaoBlurShader = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAOBlur.cs.hlsl");
@@ -296,6 +339,7 @@ void RenderSharedResources::Initialize(ResourceManager& resources)
     proceduralColorLutHash = 0u;
 
     skydomeShader = resources.LoadShader("Assets/Shaders/Material/Sky/Skydome.hlsl");
+    skyCloudCaptureShader = resources.LoadShader("Assets/Shaders/Material/Sky/SkyCloudCapture.hlsl");
     sunMoonShader = resources.LoadShader("Assets/Shaders/Material/Sky/SunMoon.hlsl");
     skydomeMesh = CreateSkyMesh(resources);
 
@@ -313,6 +357,10 @@ void RenderSharedResources::Initialize(ResourceManager& resources)
         sEnvironmentResources.skyEnvCube    = {};
         sEnvironmentResources.skyIrradiance = {};
         sEnvironmentResources.skyPrefilter  = {};
+        sEnvironmentResources.immutableIblOwner = nullptr;
+        sEnvironmentResources.immutableIblEpoch = 0;
+        sEnvironmentResources.immutableIrradiance = {};
+        sEnvironmentResources.immutablePrefilter = {};
         sEnvironmentResources.needsConvolution = false;
         sEnvironmentResources.MarkDirty();
     }
@@ -504,7 +552,7 @@ void RenderSharedResources::Initialize(ResourceManager& resources)
         renderer::BlendMode::PREMULTIPLIED,
         renderer::DepthMode::DEPTH_OFF
     });
-    /// @name Advanced Graphics PSO / 定数バッファ
+    /// @note Advanced Graphics PSO / 定数バッファ
     /// @note taaPSO: OPAQUE — TAA は ping-pong バッファへ上書きするため α ブレンドは不要
     taaPSO = resources.CreatePipelineState({
         renderer::RasterizerMode::SOLID,
@@ -591,12 +639,45 @@ bool RenderSharedResources::Prepare(ResourceManager& resources, const RenderSett
 RenderResources::RenderResources(ResourceManager& resources) : m_resources(resources)
 {
 }
+void RenderResources::SetExperimentalRayTracingEnabled(bool enabled)
+{
+    if (m_experimentalRayTracingEnabled == enabled) return;
+    m_experimentalRayTracingEnabled = enabled;
+    if (enabled) return;
+    for (auto& entry : m_views) ReleaseRayTracingViewResources(entry.second, m_resources);
+    m_shared.rayGeometry.Release(m_resources);
+    m_resources.Release(m_shared.rayDebugShader);
+    m_resources.Release(m_shared.rayReflectionShader);
+    m_resources.Release(m_shared.rayReflectionReconstructionShader);
+    m_resources.Release(m_shared.rayPathShader);
+    m_resources.Release(m_shared.rayPathResolveShader);
+    m_resources.Release(m_shared.rayGameReconstructionShader);
+    m_resources.Release(m_shared.rayPathResolvePSO);
+    m_shared.rayDebugShader = {};
+    m_shared.rayReflectionShader = {};
+    m_shared.rayReflectionReconstructionShader = {};
+    m_shared.rayPathShader = {};
+    m_shared.rayPathResolveShader = {};
+    m_shared.rayGameReconstructionShader = {};
+    m_shared.rayPathResolvePSO = {};
+}
 RenderViewResources& RenderResources::View(uint32_t key) { return m_views[key]; }
 bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& renderer,
     ResourceHandle<RenderTargetTag> outputRT, const RenderSettings& rs)
 {
     viewTargets.output = outputRT;
+    viewTargets.renderPlan = {};
+    viewTargets.rayReflection.gpu = {};
+    viewTargets.rayReflection.scene = {};
+    viewTargets.rayReflectionCovered = false;
+    viewTargets.rayPath.gpu = {};
+    viewTargets.rayPath.scene = {};
+    viewTargets.rayPath.dispatchSucceeded = false;
+    viewTargets.rayPathCovered = false;
+    viewTargets.rayPathPrepared = false;
     auto& resources = m_resources;
+    if (!resources.Get(viewTargets.gbufferMaterialCB))
+        viewTargets.gbufferMaterialCB = resources.CreateConstantBuffer(96);
     auto& hdrRT                   = viewTargets.hdr;
     auto& ldrRT                   = viewTargets.ldr;
     auto& selectionMaskRT         = viewTargets.selectionMask;
@@ -613,6 +694,7 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
     auto& ssaoRaw                 = viewTargets.ssaoRaw;
     auto& ssaoBlur                = viewTargets.ssaoBlur;
     auto& ssrResult               = viewTargets.ssrResult;
+    auto& volumetricRaw           = viewTargets.volumetricRaw;
     auto& volumetricResult        = viewTargets.volumetricResult;
     auto& taaHistoryA             = viewTargets.taaHistoryA;
     auto& taaHistoryB             = viewTargets.taaHistoryB;
@@ -679,7 +761,7 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
             objectMaskRT   = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
             customPostProcessRT[0] = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             customPostProcessRT[1] = resources.CreateRenderTarget(curW, curH, kPostChainRT);
-            gbufferRT       = resources.CreateRenderTarget(curW, curH, cameraDepthRT(2));
+            gbufferRT       = resources.CreateRenderTarget(curW, curH, cameraDepthRT(GBUFFER_COLOR_COUNT));
             velocityRT      = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
             decalDepthRT    = resources.CreateRenderTarget(curW, curH, cameraDepthRT(0));
             decalMaskRT     = resources.CreateRenderTarget(curW, curH, 1);
@@ -700,8 +782,10 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
             /// @note SSR は鏡面が崩れるためフル解像度のまま。
             ssaoRaw         = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
             ssaoBlur        = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
-            /// @name Advanced Graphics per-view テクスチャ
+    /// @note Advanced Graphics per-view テクスチャ
             ssrResult           = resources.CreateComputeTexture(curW, curH);
+            /// @note 奇数の辺でも最後の画素を落とさず、半解像度の積分結果を全画面へ再構成する。
+            volumetricRaw       = resources.CreateComputeTexture((curW + 1u) / 2u, (curH + 1u) / 2u);
             volumetricResult    = resources.CreateComputeTexture(curW, curH);
             taaHistoryA         = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             taaHistoryB         = resources.CreateRenderTarget(curW, curH, kPostChainRT);
@@ -773,6 +857,7 @@ void RenderResources::ReleaseView(uint32_t key)
     view.output = {};
     ReleaseRenderViewResources(view, m_resources);
     m_resources.Release(view.advancedGraphicsCB);
+    m_resources.Release(view.gbufferMaterialCB);
     m_resources.Release(view.exposureHistogram);
     m_resources.Release(view.exposureResult);
     m_resources.Release(view.froxelScatter);
@@ -791,7 +876,14 @@ void RenderResources::ReleaseOutput(ResourceHandle<RenderTargetTag> output)
 void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPassHandles& passHandles)
 {
     auto& resources = m_resources;
+    if (!resources.Get(viewTargets.gbufferMaterialCB))
+        viewTargets.gbufferMaterialCB = resources.CreateConstantBuffer(96);
+    passHandles.gbufferMaterialCB = viewTargets.gbufferMaterialCB;
     auto& shared = m_shared;
+    if (!resources.Get(shared.reflectionProbeCaptureShadowCB))
+        shared.reflectionProbeCaptureShadowCB = resources.CreateConstantBuffer(sizeof(ShadowConstantsCB));
+    if (!resources.Get(shared.reflectionProbeCapturePunctualCB))
+        shared.reflectionProbeCapturePunctualCB = resources.CreateConstantBuffer(sizeof(PunctualShadowConstantsCB));
     auto& hdrRT                   = viewTargets.hdr;
     auto& ldrRT                   = viewTargets.ldr;
     auto& selectionMaskRT         = viewTargets.selectionMask;
@@ -910,7 +1002,7 @@ void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPa
     passHandles.decalCB           = shared.decalCB;
     passHandles.decalMaterialCB   = shared.decalMaterialCB;
     passHandles.decalReceiverCB   = shared.decalReceiverCB;
-    /// @name ジオメトリ用ハンドル
+    /// @note ジオメトリ用ハンドル
     passHandles.shadowShader         = shared.shadowShader;
     passHandles.shadowInstancedShader = shared.shadowInstancedShader;
     passHandles.shadowSkinnedShader  = shared.skinnedShadowShader;
@@ -919,11 +1011,14 @@ void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPa
     passHandles.velocityInstancedShader = shared.velocityInstancedShader;
     passHandles.velocitySkinnedShader = shared.velocitySkinnedShader;
     passHandles.punctualShadowCB     = shared.punctualShadowCB;
+    passHandles.reflectionProbeCaptureShadowCB = shared.reflectionProbeCaptureShadowCB;
+    passHandles.reflectionProbeCapturePunctualCB = shared.reflectionProbeCapturePunctualCB;
     passHandles.skinningComputeCS    = shared.skinningComputeCS;
     passHandles.skinningCB           = shared.skinningCB;
     passHandles.defaultPSO           = shared.defaultPSO;
     passHandles.wireframePSO         = shared.wireframePSO;
     passHandles.skyShader            = shared.skydomeShader;
+    passHandles.skyCloudCaptureShader = shared.skyCloudCaptureShader;
     passHandles.sunMoonShader        = shared.sunMoonShader;
     passHandles.skyPSO               = shared.skydomePSO;
     passHandles.sunMoonPSO           = shared.sunMoonPSO;
@@ -979,7 +1074,7 @@ void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPa
     passHandles.clusterCB            = shared.clusterCB;
     passHandles.clusterLinearCB      = shared.clusterLinearCB;
 
-    /// @name Advanced Graphics ハンドルを passHandles に束縛
+    /// @note Advanced Graphics ハンドルを passHandles に束縛
     passHandles.advancedGraphicsCB   = advancedGraphicsCB;
     passHandles.proceduralColorLut = shared.proceduralColorLut;
     /// @note IBLBakePass は Manager ごとの LUT へ初回だけ書き込む。

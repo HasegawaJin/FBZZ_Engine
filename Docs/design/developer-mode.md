@@ -27,6 +27,15 @@ IsEnabled() = 起動で強制 || 設定
 - どちらも Debug メニューの末尾に並ぶ。«Developer» の子メニューは開発者モードのときだけ出る
 - Op の登録簿に載せるので、コマンドパレットと AI バスからも同じ条件 (poll) で呼べる。開発者モードがオフなら AI からも呼べない
 
+## RT 実験機能
+
+- Hybrid / Path Tracing とレイ診断表示は DeveloperMode 限定。通常の Editor とゲーム制作を優先し、目標性能・画質へ到達する追加工数を保留する。
+- Engine が毎ビューの実行許可を Graphics へ渡す。通常起動では RT 用 LOD / 材質収集、隠れた LOD の追加スキニング、BLAS / TLAS、RT 専用 shader / 履歴 / 出力資源の準備を行わない。
+- DeveloperMode をオフへ切り替えると登録済み全ビューの RT 専用資源を退役する。Raster の資源は継続して使う。
+- 保存した要求モード・プロファイル・効果は保持し、実効モードだけ Raster とする。診断は `DEVELOPER_MODE_REQUIRED`。設定・アセットの RT 編集と AI のレイ表示操作も同じ判定を使う。
+- VS Code の `FBZZEditor (Development + DeveloperMode)` / `FBZZEditor (Debug + DeveloperMode)` は `--developer` を渡す。通常の起動構成は変更しない。
+- デモ、実画像、計測条件、再開条件は [RT 実験の保存と再開](rt-experiment.md) を参照。
+
 ## 3. わざと落とす (`CrashHandler::Trigger`)
 
 クラッシュレポート (`crash-report.md`) の受け口を 1 つずつ実際に通すために使う。

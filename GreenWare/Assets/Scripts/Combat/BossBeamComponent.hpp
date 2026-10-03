@@ -2,11 +2,11 @@
 /// @brief   ボスのコアビーム。線の «見え» と «当たり» の両方をここ 1 つが持つ
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
-///
+
 /// @note 見え/当たりの終端は 1 箇所で決めて共有する (企画書 8 章: 避けたかどうかは絵と一致
-///       必須)。地面接地点は毎フレーム再計算する (固定距離だと段差・スロープで線が浮く)。
+/// @note 必須)。地面接地点は毎フレーム再計算する (固定距離だと段差・スロープで線が浮く)。
 /// @note 点火 (charge) はビーム側が持つ: AI は撃つ/止めるだけを言えばよく、予兆の育ち方は
-///       ここに閉じる。帯の組み立ては BeamTrailRendererComponent に委譲し複製しない。
+/// @note ここに閉じる。帯の組み立ては BeamTrailRendererComponent に委譲し複製しない。
 #pragma once
 
 #include <Engine/Scene/Components/LightComponent.hpp>
@@ -42,7 +42,7 @@ namespace sandbox {
 /// @note 定数にする理由: シェーダーリフレクションは綴りが違うと黙って捨てるため、1 箇所に閉じる。
 inline constexpr MaterialPropertyId kBossBeamChargeId{ "charge" };
 
-/// 線と焦げの色。ボスは色を切り替えないので 1 本に固定する。
+/// @note 線と焦げの色。ボスは色を切り替えないので 1 本に固定する。
 inline constexpr BladeSide kBeamSide = BladeSide::Right;
 
 /// @brief 薙ぎの「下地」で低周波モーターを高周波の何割で回すか。
@@ -126,7 +126,7 @@ public:
     FBZZ_FIELD_RANGE(float, lightRange, 9.0f, "ライトの範囲", 0.5f, 40.0f)
 
     /// @note 予兆 (アパーチャ) と薙ぎ (接地点) は別の場所で測る: 1 点で兼ねると「唸り始め」と
-    ///       「線が寄ってきた」が同じ強さで返り、移動を強制する狙いが崩れる。
+    /// @note 「線が寄ってきた」が同じ強さで返り、移動を強制する狙いが崩れる。
     FBZZ_GROUP("手応え")
     FBZZ_FIELD_RANGE(float, chargeRumble, 0.45f, "Charge Rumble", 0.0f, 1.0f)
     FBZZ_TOOLTIP("点火の予兆。太りきるまで上がり続ける低周波の唸り。0 で出さない")
@@ -157,7 +157,7 @@ public:
     void OnStart()      override;
     void OnLateUpdate() override;
     void OnDisable()    override { Hide(); }
-    /// 放電の筋はルートに置いた GameObject なので、このスクリプトと一緒には消えない。
+    /// @note 放電の筋はルートに置いた GameObject なので、このスクリプトと一緒には消えない。
     void OnDestroy()    override
     {
         /// @note 照射の途中でシーンが切り替わっても、パッドと画面の歪みを置き去りにしない。
@@ -169,16 +169,16 @@ public:
         m_beamArcs.clear();
         m_groundArcs.clear();
         /// @note 着弾点の光も筋と同じくルートに置いた実体。破棄では OnDisable が呼ばれない
-        ///       (Scene::Destroy は OnDestroy だけを回す) ので、照射中に消えると点いたまま残る。
+        /// @note (Scene::Destroy は OnDestroy だけを回す) ので、照射中に消えると点いたまま残る。
         if (GameObject* light = m_light.Resolve(scene)) scene.Destroy(*light);
         m_light = {};
     }
 
-    /// @name AI からの入口
+    /// @note AI からの入口
     /// @{
 
     /// @brief 狙う点 (ワールド)。毎フレーム呼ぶ。終端は worldTarget の真下の地面から
-    ///        heightAboveGround だけ持ち上げた位置になる。
+    /// @note heightAboveGround だけ持ち上げた位置になる。
     /// @note 高さを地面相対で受ける: 絶対座標だと段差の上を薙いだ瞬間に線が地面へ潜る。
     void Aim(const Vector3& worldTarget, float heightAboveGround = 0.0f)
     {
@@ -186,66 +186,66 @@ public:
         m_aimLift = heightAboveGround;
         m_aimed   = true;
     }
-    /// 照射の開始 / 停止。点火と消灯は線の側が時間をかけて処理する。
+    /// @note 照射の開始 / 停止。点火と消灯は線の側が時間をかけて処理する。
     void SetFiring(bool firing) { m_firing = firing; }
 
     [[nodiscard]] bool  IsFiring() const { return m_firing; }
-    /// 点火 0..1。AI が «撃ち始めた» 予兆の進みを見るために使う。
+    /// @note 点火 0..1。AI が «撃ち始めた» 予兆の進みを見るために使う。
     [[nodiscard]] float Charge01() const { return m_charge; }
-    /// 今フレームの接地点。VFX や SE の置き場所として使う。
+    /// @note 今フレームの接地点。VFX や SE の置き場所として使う。
     [[nodiscard]] Vector3 ContactPoint() const { return m_contact; }
-    /// 今フレーム、線がプレイヤーへ触れているか。
+    /// @note 今フレーム、線がプレイヤーへ触れているか。
     [[nodiscard]] bool IsTouchingPlayer() const { return m_touching; }
 
     /// @brief 線が出る「口」のワールド位置。腹下のアパーチャ (骨 `Muzzle`) そのもの。
     /// @note LaserVolleyComponent 等の別線もここへ合わせる: 各自が高さを持つと斉射内で
-    ///       出どころが揃わなくなる。
+    /// @note 出どころが揃わなくなる。
     [[nodiscard]] Vector3 AperturePoint() const;
 
     /// @brief 今フレームの「線の質」。同じ攻撃の左右を撃つ斉射がこれを借りて質を揃える。
     /// @note この口で配る理由: 質は毎フレーム変わるため、互いのフィールドを読み合うと
-    ///       呼ぶ順で左右が別フレームの太さになる。
+    /// @note 呼ぶ順で左右が別フレームの太さになる。
     [[nodiscard]] beamlook::Look CurrentLook() const { return LookOf(); }
-    /// 射線を伸ばす上限 [m]。同じ面で止めたい線が同じ距離を使うために公開する。
+    /// @note 射線を伸ばす上限 [m]。同じ面で止めたい線が同じ距離を使うために公開する。
     [[nodiscard]] float TraceRange() const { return traceRange; }
     /// @}
 
 private:
-    /// 帯 1 層ぶんの GameObject を用意する。DLL リロードをまたいでも増えない。
+    /// @note 帯 1 層ぶんの GameObject を用意する。DLL リロードをまたいでも増えない。
     [[nodiscard]] GameObject* BuildLayer(const std::string& name);
     [[nodiscard]] std::string LayerName(const char* layer) const;
     [[nodiscard]] BeamTrailRendererComponent* TrailOf(const EntityRef& ref) const;
-    /// アパーチャから狙点へ向けて射線を伸ばし、最初に当たった面で止める。
-    /// 何にも当たらなければ最大距離まで伸ばす。outNormal には当たった面の法線。
+    /// @note アパーチャから狙点へ向けて射線を伸ばし、最初に当たった面で止める。
+    /// @note 何にも当たらなければ最大距離まで伸ばす。outNormal には当たった面の法線。
     [[nodiscard]] Vector3 TraceContact(const Vector3& from, const Vector3& aimPoint,
                                        Vector3& outNormal) const;
     [[nodiscard]] Vector4 BeamColor() const;
-    /// 明るさを 1 に正規化した極性色。«色が意味を持つ» 側だけが要る値。
+    /// @note 明るさを 1 に正規化した極性色。«色が意味を持つ» 側だけが要る値。
     [[nodiscard]] Vector4 BeamHue() const;
 
     void Show(const Vector3& from, const Vector3& to);
     void Hide();
-    /// 線分とプレイヤーの距離を測り、間隔を空けて当てる。
+    /// @note 線分とプレイヤーの距離を測り、間隔を空けて当てる。
     void ResolveHit(const Vector3& from, const Vector3& to, float dt);
-    /// 揺れ・振動・画面の歪みを今フレームの «点火と接地点» から出す。
+    /// @note 揺れ・振動・画面の歪みを今フレームの «点火と接地点» から出す。
     void DriveFeedback(const Vector3& from, float dt);
-    /// 掛けっぱなしの手触りを畳む。線を消すときに必ず通す。
+    /// @note 掛けっぱなしの手触りを畳む。線を消すときに必ず通す。
     void StopFeedback();
     void DriveEffects(float dt);
-    /// 接地点の光。無ければ作り、照射していなければ消す。
+    /// @note 接地点の光。無ければ作り、照射していなければ消す。
     void DriveLight(bool lit);
-    /// 放電 3 系統を今フレームの端点へ張り直す。
+    /// @note 放電 3 系統を今フレームの端点へ張り直す。
     void DriveArcs(const Vector3& from, const Vector3& to, float dt);
-    /// 全部の束を消灯する。線を畳むときに必ず通す。
+    /// @note 全部の束を消灯する。線を畳むときに必ず通す。
     void ExtinguishArcs();
-    /// 束の数を揃え、鍵を配る。鍵が衝突すると束どうしが筋を奪い合う。
+    /// @note 束の数を揃え、鍵を配る。鍵が衝突すると束どうしが筋を奪い合う。
     void EnsureArcs(std::vector<ElectricArcBundle>& bundles, int count, const char* tag);
-    /// 3 系統が共有する基本の見た目。膨らみ方と長さだけ呼び出し側が変える。
+    /// @note 3 系統が共有する基本の見た目。膨らみ方と長さだけ呼び出し側が変える。
     [[nodiscard]] ElectricArcStyle ArcStyleBase(float brightness) const;
 
-    /// 今フレームの «線の質»。斉射 (LaserVolleyComponent) と同じ器へ詰めて渡す。
+    /// @note 今フレームの «線の質»。斉射 (LaserVolleyComponent) と同じ器へ詰めて渡す。
     [[nodiscard]] beamlook::Look LookOf() const;
-    /// 層 1 枚ぶんの見た目を組む。
+    /// @note 層 1 枚ぶんの見た目を組む。
     [[nodiscard]] BeamTrailStyle StyleOf(bool isCore) const
     {
         return beamlook::Style(LookOf(), isCore);
@@ -255,19 +255,19 @@ private:
     EntityRef m_glow;
     EntityRef m_light;
 
-    /// 放電は «同じ電気の別の出方» なので 3 つに分ける。1 つの束で兼ねると、
-    /// 膨らむ場所 (taperBias) が 1 通りしか選べず、どれかが必ず嘘になる。
+    /// @note 放電は «同じ電気の別の出方» なので 3 つに分ける。1 つの束で兼ねると、
+    /// @note 膨らむ場所 (taperBias) が 1 通りしか選べず、どれかが必ず嘘になる。
     std::vector<ElectricArcBundle> m_apertureArcs;
     std::vector<ElectricArcBundle> m_beamArcs;
     std::vector<ElectricArcBundle> m_groundArcs;
-    /// 接地点の放電を回す角度。止めると «同じ形が明滅している» に見える。
+    /// @note 接地点の放電を回す角度。止めると «同じ形が明滅している» に見える。
     float m_arcSpin = 0.0f;
 
     Vector3 m_target  = Vector3::ZERO;
     Vector3 m_contact = Vector3::ZERO;
-    /// 焼いている面の法線。床なら上、壁なら横を向く。焦げの向きに使う。
+    /// @note 焼いている面の法線。床なら上、壁なら横を向く。焦げの向きに使う。
     Vector3 m_contactNormal = Vector3::UP;
-    /// 狙点を床から持ち上げる量 [m]。AI が薙ぎの進みに合わせて上げる。
+    /// @note 狙点を床から持ち上げる量 [m]。AI が薙ぎの進みに合わせて上げる。
     float   m_aimLift = 0.0f;
     bool    m_aimed   = false;
     bool    m_firing  = false;
@@ -277,23 +277,22 @@ private:
     float m_charge   = 0.0f;
     float m_hitTimer = 0.0f;
     float m_scorchTimer = 0.0f;
-    /// 揺れを継ぎ足すまでの残り。毎フレーム積むと要求どうしが押し出し合う。
+    /// @note 揺れを継ぎ足すまでの残り。毎フレーム積むと要求どうしが押し出し合う。
     float m_shakeTimer = 0.0f;
-    /// この 1 射で点火しきった合図を返したか。撃つたびに 1 度だけ。
+    /// @note この 1 射で点火しきった合図を返したか。撃つたびに 1 度だけ。
     bool  m_ignited = false;
-    /// 掛けっぱなしの手触りを持っているか。持っていないのに畳むと、
-    /// 他所が設定した歪みまで巻き添えで 0 にしてしまう。
+    /// @note 掛けっぱなしの手触りを持っているか。持っていないのに畳むと、
+    /// @note 他所が設定した歪みまで巻き添えで 0 にしてしまう。
     bool  m_feedbackActive = false;
     bool  m_warnedNoCombat = false;
 };
 
 FBZZ_REFLECT(BossBeamComponent)
 
-
 inline std::string BossBeamComponent::LayerName(const char* layer) const
 {
     /// @note 持ち主ごとに名前を変える: 帯はルートに置くため、同名だと 2 体目のボス
-    ///       (デバッグ複製含む) が 1 体目の帯を奪う。
+    /// @note (デバッグ複製含む) が 1 体目の帯を奪う。
     GameObject* owner = scene.Self();
     return std::string("BossBeam_") + layer + "_" + (owner ? owner->instanceId : std::string{});
 }
@@ -301,14 +300,15 @@ inline std::string BossBeamComponent::LayerName(const char* layer) const
 inline GameObject* BossBeamComponent::BuildLayer(const std::string& name)
 {
     /// @note 先に既存を探す: DLL リロードで EntityRef は空に戻るが帯の GameObject は
-    ///       Scene に残るため、無条件に作るとリロードのたびに 2 本ずつ増える。
+    /// @note Scene に残るため、無条件に作るとリロードのたびに 2 本ずつ増える。
     GameObject* existing = scene.Find(name, true);
     if (!existing) {
         /// @note ボスの子にしない: 子だと帯がボスの移動・回転を引き継ぎ、ワールド座標で
-        ///       指定した両端が歪む。ルートへ原点で置く。
-        GameObject& object = scene.Create(name);
-        object.runtimeGenerated = true;
-        existing = &object;
+        /// @note 指定した両端が歪む。ルートへ原点で置く。
+        GameObject* object = scene.Create(name);
+        if (!object) return nullptr;
+        object->runtimeGenerated = true;
+        existing = object;
     }
     if (!scene.GetScript<BeamTrailRendererComponent>(existing))
         existing->AddScript<BeamTrailRendererComponent>();
@@ -350,7 +350,7 @@ inline Vector3 BossBeamComponent::AperturePoint() const
             return bone->transform.worldPosition;
 
         /// @note ボーンが引けない構成でも «下から出ている» ことだけは守る。原点から出すと
-        ///       足元から生えて、腹下のアパーチャという設計がまるごと消える。
+        /// @note 足元から生えて、腹下のアパーチャという設計がまるごと消える。
         Vector3 point = self->transform.worldPosition;
         point.y += std::max(apertureFallbackHeight, 0.0f);
         return point;
@@ -362,7 +362,7 @@ inline Vector3 BossBeamComponent::TraceContact(const Vector3& from, const Vector
                                                Vector3& outNormal) const
 {
     /// @note 真下ではなく射線に沿って探す: 振り上げた直後は狙点の真下に何も無く終端が
-    ///       宙に浮く。射線を伸ばせば床/壁いずれかに当たる。止め方の正本は beamlook::TraceSurface。
+    /// @note 宙に浮く。射線を伸ばせば床/壁いずれかに当たる。止め方の正本は beamlook::TraceSurface。
     return beamlook::TraceSurface(*this, from, aimPoint - from, traceRange,
                                   playerTag, outNormal);
 }
@@ -410,7 +410,7 @@ inline void BossBeamComponent::Show(const Vector3& from, const Vector3& to)
     if (auto* core = TrailOf(m_core)) {
         core->Show(from, to, StyleOf(true));
         /// @note 点火はシェーダーの «太さと明るさの元» なので、帯を張った後に毎フレーム押す。
-        ///       BeamTrailRendererComponent は共通名しか書かないため、ここが受け持つ。
+        /// @note BeamTrailRendererComponent は共通名しか書かないため、ここが受け持つ。
         const MaterialInstance instance = material.Instance(m_core, 0u);
         if (instance.HasProperty(kBossBeamChargeId))
             instance.SetFloat(kBossBeamChargeId, Clamp01(m_charge));
@@ -428,7 +428,7 @@ inline void BossBeamComponent::Show(const Vector3& from, const Vector3& to)
 inline void BossBeamComponent::Hide()
 {
     /// @note 手触りは m_visible より先に畳む。線を 1 度も出さずに撃ち止めた経路 (狙いが
-    ///       付く前に AI が止めた) でも、点火の唸りだけは既に鳴っているため。
+    /// @note 付く前に AI が止めた) でも、点火の唸りだけは既に鳴っているため。
     StopFeedback();
     if (!m_visible) return;
     m_visible  = false;
@@ -449,8 +449,8 @@ inline void BossBeamComponent::ResolveHit(const Vector3& from, const Vector3& to
     if (!player) return;
 
     /// @note 物理の掃引でなく線分距離で直接判定する: 相手はプレイヤー 1 体だけなので、
-    ///       見た目の線と同じ線分で測れる。胴体中心 (足元の原点+オフセット) で測らないと、
-    ///       線を持ち上げた途端「胸を貫いているのに足元からは遠い」が起きる。
+    /// @note 見た目の線と同じ線分で測れる。胴体中心 (足元の原点+オフセット) で測らないと、
+    /// @note 線を持ち上げた途端「胸を貫いているのに足元からは遠い」が起きる。
     Vector3 body = player->transform.worldPosition;
     body.y += std::max(playerCenterHeight, 0.0f);
 
@@ -484,7 +484,7 @@ inline void BossBeamComponent::EnsureArcs(std::vector<ElectricArcBundle>& bundle
     while (bundles.size() < wanted) {
         bundles.emplace_back();
         /// @note 鍵は «持ち主 + 系統 + 番号»。同じ鍵の束が 2 つあると筋を奪い合い、
-        ///       どちらも 1 本ぶんしか出なくなる。
+        /// @note どちらも 1 本ぶんしか出なくなる。
         bundles.back().SetKey(LayerName(tag) + "_" + std::to_string(bundles.size() - 1));
     }
     /// @note 減らされた枠は消灯だけして寝かせる。作り直すと GameObject 数が毎フレーム動く。
@@ -516,9 +516,9 @@ inline void BossBeamComponent::DriveArcs(const Vector3& from, const Vector3& to,
     /// @note 回し続ける。止めると同じ形が明滅するだけの «静止した飾り» になる。
     m_arcSpin = std::fmod(m_arcSpin + dt * 1.7f, TWO_PI);
 
-    /// @name アパーチャ
+    /// @note アパーチャ
     /// @note 点火中ほど強くする: 本体は点火中は細いままなので予兆は砲口側が伝える役
-    ///       (企画書 8 章)。照射開始後は本体が主役になるため逆に落とす。
+    /// @note (企画書 8 章)。照射開始後は本体が主役になるため逆に落とす。
     const float apertureGain = ignite * (1.35f - 0.75f * ignite);
     for (std::size_t i = 0; i < m_apertureArcs.size(); ++i) {
         const float phase = m_arcSpin * 1.9f + static_cast<float>(i) * TWO_PI
@@ -537,7 +537,7 @@ inline void BossBeamComponent::DriveArcs(const Vector3& from, const Vector3& to,
         m_apertureArcs[i].Update(*this, from, tip, style, dt);
     }
 
-    /// @name 線に沿う
+    /// @note 線に沿う
     /// @note 筒は表面が硬い。輪郭を跨いで這う筋があると、«帯電した塊» として読めるようになる。
     for (std::size_t i = 0; i < m_beamArcs.size(); ++i) {
         const float phase = m_arcSpin + static_cast<float>(i) * TWO_PI
@@ -556,7 +556,7 @@ inline void BossBeamComponent::DriveArcs(const Vector3& from, const Vector3& to,
         m_beamArcs[i].Update(*this, from + offset, to + offset, style, dt);
     }
 
-    /// @name 接地点
+    /// @note 接地点
     /// @note 焼いている面に沿って外へ逃がす。法線を使うので、床でも壁でも面へ寝る。
     Vector3 floorSide, floorUp;
     beamlook::PerpendicularBasis(m_contactNormal.NormalizedOr(Vector3::UP), floorSide, floorUp);
@@ -598,8 +598,8 @@ inline void BossBeamComponent::DriveEffects(float dt)
     if (!vfx) return;
 
     /// @note 焦げは当たった面の法線へ向けて置く。床を焼いている間は上向き、振り上げて
-    ///       壁へ移ったら壁の法線になるので、火花が面へ潜らない。薙いでいる間は終端が
-    ///       毎フレーム動くので、置いた点の列がそのまま «焼き払った跡» になる。
+    /// @note 壁へ移ったら壁の法線になるので、火花が面へ潜らない。薙いでいる間は終端が
+    /// @note 毎フレーム動くので、置いた点の列がそのまま «焼き払った跡» になる。
     vfx->PlayBeamScorch(m_contact, m_contactNormal, kBeamSide,
                         std::clamp(scorchSize * Clamp01(m_charge), 0.05f, 2.0f));
 }
@@ -635,7 +635,7 @@ inline void BossBeamComponent::DriveFeedback(const Vector3& from, float dt)
         pad->Sustain(RumbleChannel::BossBeam, low, high);
 
     /// @note 点火しきった 1 瞬。唸りが最大まで上がったのに何も起きないと、予兆が
-    ///       «ずっと鳴っている音» に化けて、いつ来たのかが判らない。ここで段を付ける。
+    /// @note «ずっと鳴っている音» に化けて、いつ来たのかが判らない。ここで段を付ける。
     if (!m_ignited && m_firing && ignite >= 1.0f) {
         m_ignited = true;
         if (auto* shake = CameraShakeManagerComponent::Instance())
@@ -644,8 +644,8 @@ inline void BossBeamComponent::DriveFeedback(const Vector3& from, float dt)
     if (!m_firing) m_ignited = false;
 
     /// @note 揺れだけ間隔を空けて継ぎ足す: CameraShakeManager は寿命付き要求の器で上限超過時
-    ///       弱い方から捨てる。毎フレーム積むと同じ照射の揺れが互いを押し出す (振動側は
-    ///       持続の器 (Sustain) があるためこの制約が無い)。
+    /// @note 弱い方から捨てる。毎フレーム積むと同じ照射の揺れが互いを押し出す (振動側は
+    /// @note 持続の器 (Sustain) があるためこの制約が無い)。
     m_shakeTimer -= dt;
     if (sweep > 0.0f && m_shakeTimer <= 0.0f) {
         m_shakeTimer = std::max(shakeInterval, 0.02f);
@@ -654,7 +654,7 @@ inline void BossBeamComponent::DriveFeedback(const Vector3& from, float dt)
     }
 
     /// @note 寿命付き Distort でなく持続の器を使う: 線に触れているのは瞬間でなく状態なので、
-    ///       毎フレーム積むと抜けた後も溜まったぶんが残り、避けたのに歪みが残ってしまう。
+    /// @note 毎フレーム積むと抜けた後も溜まったぶんが残り、避けたのに歪みが残ってしまう。
     if (auto* screen = ScreenEffectManagerComponent::Instance())
         screen->SetSustainedDistortion(m_touching ? Clamp01(burnDistortion) : 0.0f);
 }
@@ -664,7 +664,7 @@ inline void BossBeamComponent::StopFeedback()
     m_ignited    = false;
     m_shakeTimer = 0.0f;
     /// @note 持っていないのに畳まない。掛けっぱなしの歪みは盤面で 1 つしか無いので、
-    ///       撃っていない間も 0 を書き続けると、他所が掛けた歪みを毎フレーム消してしまう。
+    /// @note 撃っていない間も 0 を書き続けると、他所が掛けた歪みを毎フレーム消してしまう。
     if (!m_feedbackActive) return;
     m_feedbackActive = false;
 
@@ -690,9 +690,10 @@ inline void BossBeamComponent::DriveLight(bool lit)
         const std::string name = LayerName("Light");
         object = scene.Find(name, true);
         if (!object) {
-            GameObject& created = scene.Create(name);
-            created.runtimeGenerated = true;
-            object = &created;
+            GameObject* created = scene.Create(name);
+            if (!created) return;
+            created->runtimeGenerated = true;
+            object = created;
         }
         m_light = EntityRef{ object->GetID() };
     }
@@ -704,7 +705,7 @@ inline void BossBeamComponent::DriveLight(bool lit)
     if (!lit) return;
 
     /// @note worldPosition へ直接置く: ルートなので local = world。親に付けるとボスの回転が
-    ///       光の位置に乗り、薙いだときに光だけ別の弧を描く (描画は worldPosition を見る)。
+    /// @note 光の位置に乗り、薙いだときに光だけ別の弧を描く (描画は worldPosition を見る)。
     object->transform.position = m_contact;
     object->transform.worldPosition = m_contact;
 
@@ -733,7 +734,7 @@ inline void BossBeamComponent::OnLateUpdate()
     }
 
     /// @note 狙いを更新されていないフレームは、最後に狙った点をそのまま使う。消灯中に
-    ///       端点が原点へ落ちると、消えかけの線が一瞬だけ盤面を横切る。
+    /// @note 端点が原点へ落ちると、消えかけの線が一瞬だけ盤面を横切る。
     const Vector3 from = AperturePoint();
     if (m_aimed) {
         /// @note 狙点は «正面の床» を基準に、そこから持ち上げた点。射線はそこへ向けて伸ばす。
@@ -748,7 +749,7 @@ inline void BossBeamComponent::OnLateUpdate()
     DriveArcs(from, m_contact, dt);
     DriveLight(true);
     /// @note 手触りは ResolveHit の後。線に触れているかは «今フレームの答え» で、
-    ///       焼かれている間だけ振り切る配分がそれを待っている。
+    /// @note 焼かれている間だけ振り切る配分がそれを待っている。
     DriveFeedback(from, dt);
     if (m_firing) DriveEffects(dt);
 
@@ -756,4 +757,4 @@ inline void BossBeamComponent::OnLateUpdate()
         debug.DrawLine(from, m_contact, { 0.2f, 1.0f, 0.4f, 1.0f });
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

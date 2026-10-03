@@ -1,2 +1,14 @@
+# @file    Downscale.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-20
 [meta]
 guid = '144158deb20dfb3be1f5a677fc3454e3'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

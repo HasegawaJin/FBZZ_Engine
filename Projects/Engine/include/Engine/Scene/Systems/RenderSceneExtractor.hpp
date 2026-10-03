@@ -17,6 +17,7 @@ struct RenderFrameGeometryCache {
     const renderer::ResourceManager* resources = nullptr;
     uint64_t frameStamp = 0;
     uint64_t resetVersion = 0;
+    bool rayTracingInputs = false;
     renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette;
     std::shared_ptr<const renderer::RenderScene> geometry;
 };
@@ -26,9 +27,10 @@ struct RenderFrameGeometryCache {
     float projectionScaleY, uint32_t height, bool orthographic);
 
 /// @note 更新・スキニング完了後に呼ぶ。GPU 操作と材質ロードを行わず、全レイヤーの候補を抽出する。
+/// @param rayTracingInputs 実験 RT の実行を許可したビューだけ true。既定では RT 専用の LOD 収集を行わない。
 [[nodiscard]] renderer::RenderScene ExtractRenderSceneGeometry(
     Scene& scene, uint64_t frameStamp,
-    renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette = {});
+    renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette = {}, bool rayTracingInputs = false);
 
 /// @note 材質・テクスチャを解決してから const としてパスへ公開する。GPU スキニング完了後に呼ぶ。
 void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameGeometry = nullptr);

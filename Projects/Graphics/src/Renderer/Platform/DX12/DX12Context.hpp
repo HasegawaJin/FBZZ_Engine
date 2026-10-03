@@ -12,6 +12,7 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 #include <vector>
+#include "DX12PixEventStack.hpp"
 
 namespace fbzz::renderer {
 
@@ -29,13 +30,22 @@ public:
     bool Initialize(HWND hwnd, uint32_t width, uint32_t height);
     void Shutdown();
     bool BeginFrame();
-    void EndFrame();
+    /// @return Query Resolve を含む最後の描画提出の Signal 値。未提出・失敗では 0。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management Fence-Based Resource Management
+    uint64_t EndFrame();
     void Resize(uint32_t width, uint32_t height);
     void Flush();
 
     ID3D12Device* GetDevice() const { return m_device.Get(); }
     ID3D12CommandQueue* GetCommandQueue() const { return m_commandQueue.Get(); }
     ID3D12GraphicsCommandList* GetCommandList() const { return m_commandList.Get(); }
+    /// @note GPU timestamp の区間が同一 DIRECT command list 内にあるか検証する Reset 世代。
+    uint64_t GetGraphicsCommandListSerial() const { return m_graphicsCommandListSerial; }
+    /// @note Scopes belong to a recording list and reopen only after a successful split Reset.
+    /// @see https://devblogs.microsoft.com/pix/winpixeventruntime/ Official SDK GPU event overloads.
+    [[nodiscard]] uint64_t BeginPixEvent(ID3D12GraphicsCommandList* commands,
+        std::string_view name, uint64_t color = 0xff4d9de0u);
+    void EndPixEvent(ID3D12GraphicsCommandList* commands, uint64_t token);
     ID3D12DescriptorHeap* GetImGuiSrvHeap() const { return m_imguiSrvHeap.Get(); }
     ID3D12DescriptorHeap* GetResourceSrvHeap() const { return m_resourceSrvHeap.Get(); }
     D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRtv() const;
@@ -287,6 +297,9 @@ private:
     bool m_allowTearing = false;
     bool m_vsync = false;
     bool m_frameOpen = false;
+    DX12PixEventStack m_graphicsPixEvents;
+    DX12PixEventStack m_computePixEvents;
+    uint64_t m_graphicsCommandListSerial = 0;
     uint64_t m_pipelineStateGeneration = 0;
     bool m_suspended = false;
     bool m_occluded = false;   ///< @note 直前の Present が DXGI_STATUS_OCCLUDED (ウィンドウ遮蔽) を返した
@@ -297,6 +310,21 @@ private:
     D3D_SHADER_MODEL m_highestShaderModel = D3D_SHADER_MODEL_5_1;
     D3D12_RAYTRACING_TIER m_raytracingTier = D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
     D3D12_RESOURCE_BINDING_TIER m_resourceBindingTier = D3D12_RESOURCE_BINDING_TIER_1;
+};
+
+/// @note Uses context tokens rather than SDK RAII so split, failed Reset, and Shutdown retire safely.
+class DX12ScopedPixEvent final {
+public:
+    DX12ScopedPixEvent(DX12Context& context, ID3D12GraphicsCommandList* commands,
+        std::string_view name, uint64_t color = 0xff4d9de0u)
+        : m_context(context), m_commands(commands), m_token(context.BeginPixEvent(commands, name, color)) {}
+    ~DX12ScopedPixEvent() { m_context.EndPixEvent(m_commands, m_token); }
+    DX12ScopedPixEvent(const DX12ScopedPixEvent&) = delete;
+    DX12ScopedPixEvent& operator=(const DX12ScopedPixEvent&) = delete;
+private:
+    DX12Context& m_context;
+    ID3D12GraphicsCommandList* m_commands = nullptr;
+    uint64_t m_token = 0;
 };
 
 } /// @note namespace fbzz::renderer

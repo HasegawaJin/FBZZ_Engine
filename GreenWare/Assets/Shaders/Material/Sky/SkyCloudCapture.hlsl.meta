@@ -1,0 +1,14 @@
+# @file    SkyCloudCapture.hlsl.meta
+# @brief   空 IBL 捕捉の共有シェーダー識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-03
+[meta]
+guid = 'd2afd751df164fbeac8ae6530a7d5029'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

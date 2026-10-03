@@ -5,7 +5,9 @@
 #pragma once
 #include <Graphics/Pipeline/RenderPipeline.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
+#include <Graphics/Pipeline/ResolvedRenderPlan.hpp>
 #include <Graphics/Pipeline/EnvironmentResources.hpp>
+#include <Graphics/Pipeline/RayTracingPipeline.hpp>
 #include <Graphics/Renderer/DynamicBufferPool.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <unordered_map>
@@ -13,6 +15,19 @@
 namespace fbzz::renderer {
 /// @note GPU のボーンパレット契約。Engine の Skeleton と静的検証する。
 inline constexpr int RENDER_SKINNING_BONES = 128;
+/// @note RGBA16F: albedo / roughness、normal / metallic、線形 HDR emission / typed glass marker。
+inline constexpr uint32_t GBUFFER_COLOR_COUNT = 3;
+
+/// @note 照明・反射合成方式と実記録・連続フレームを追跡する。画素別の反射 motion 履歴ではない。
+struct TaaProviderHistory {
+    RenderMode mode = RenderMode::RASTER;
+    bool reflectionActive = false;
+    bool reflectionResolveActive = false;
+    bool screenReflectionActive = false;
+    bool valid = false;
+    uint64_t frameStamp = 0;
+    uint64_t epoch = 0;
+};
 
 /// @note Viewport ごとに解像度依存の中間リソースを保持する。
 /// @note static で共有すると SceneView と GameView が 1 フレーム内でリサイズし合う。
@@ -49,9 +64,10 @@ struct RenderViewResources {
     renderer::ResourceHandle<renderer::TextureTag> bloomFull;
     renderer::ResourceHandle<renderer::TextureTag> ssaoRaw;
     renderer::ResourceHandle<renderer::TextureTag> ssaoBlur;
-    /// @name Advanced Graphics (解像度依存・ビュー単位)
+    /// @note Advanced Graphics (解像度依存・ビュー単位)
     /// @note 解像度非依存の LUT 等は RenderSharedResources が保持する。
     renderer::ResourceHandle<renderer::TextureTag>        ssrResult;           ///< @note SSR CS 出力
+    renderer::ResourceHandle<renderer::TextureTag>        volumetricRaw;       ///< @note 半解像度の散乱 RGB / 正規化した視空間深度 A (空は -1)
     renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;    ///< @note Volumetric CS 出力
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;         ///< @note TAA ping-pong A
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;         ///< @note TAA ping-pong B
@@ -63,29 +79,32 @@ struct RenderViewResources {
     renderer::ResourceHandle<renderer::TextureTag>        gtaoRaw;             ///< @note GTAO RAW CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        gtaoBlur;            ///< @note GTAO Blur CS 出力
     renderer::ResourceHandle<renderer::TextureTag>        contactShadowResult; ///< @note Contact Shadow CS 出力
-    /// @name ビュー別定数バッファ / 再投影行列
+    /// @note ビュー別定数バッファ / 再投影行列
     /// @note static で共有すると SceneView と GameView が互いのカメラ行列を引き、
     /// @note MotionBlur / TAA の再投影が常に壊れる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> advancedGraphicsCB;
-    /// @name 自動露出 (ビュー単位・解像度非依存)
+    /// @note TAA 直前の feedback 更新は typed CPU snapshot から行い、別の照明定数を失わない。
+    AdvancedGraphicsCB advancedGraphicsSnapshot{};
+    bool advancedGraphicsSnapshotValid = false;
+    /// @note 自動露出 (ビュー単位・解像度非依存)
     /// @note exposureResult は「順応済みの平均輝度」でフレームをまたぐ状態。static で共有すると
     /// @note SceneView と GameView が交互に順応を進め、互いの明るさへ引きずられて露出が振れる。
     renderer::ResourceHandle<renderer::StructuredBufferTag> exposureHistogram;
     renderer::ResourceHandle<renderer::StructuredBufferTag> exposureResult;
     uint32_t exposureResetGeneration = 0;
-    /// @name 体積雲の作業 RT (ビュー単位・解像度依存)
+    /// @note 体積雲の作業 RT (ビュー単位・解像度依存)
     renderer::SizedRenderTarget cloudRT;
     renderer::SizedRenderTarget cloudDepthRT;
-    /// @name 水面の屈折用コピー (ビュー単位・解像度依存)
+    /// @note 水面の屈折用コピー (ビュー単位・解像度依存)
     renderer::SizedRenderTarget waterSceneColorRT;
     renderer::SizedRenderTarget waterSceneDepthRT;
-    /// @name 歪みパーティクルの背景退避 / 重なり計数 / コースティクスの深度コピー
+    /// @note 歪みパーティクルの背景退避 / 重なり計数 / コースティクスの深度コピー
     /// @note 水面と同じくビュー単位。共有すると 2 ビューで寸法を取り合い、毎フレーム作り直す。
     renderer::SizedRenderTarget particleSceneColorRT;
     renderer::SizedRenderTarget particleOverdrawRT;
     renderer::SizedRenderTarget particleReactiveRT;
     renderer::SizedRenderTarget causticsDepthRT;
-    /// @name フロクセル霧 (ビュー単位・解像度非依存)
+    /// @note フロクセル霧 (ビュー単位・解像度非依存)
     /// @note グリッドは視錐台に貼り付くので、共有すると互いの履歴を上書きして霧が明滅する。
     /// @note 寸法は設定値 (既定 160x90x64) で画面サイズと無関係なので、リサイズでは作り直さない。
     renderer::ResourceHandle<renderer::TextureTag> froxelScatter;
@@ -102,12 +121,31 @@ struct RenderViewResources {
     /// @note 作り直した直後と TAA を切っていた後は中身が未定義か古い絵。false の間は taaFeedback を 0 にし、
     /// @note 今のフレームだけで履歴を作り直す。リサイズでは保存・復元しないので false に戻る。
     bool taaHistoryValid = false;
+    TaaProviderHistory taaProviderHistory;
     uint32_t width = 0;
     uint32_t height = 0;
+    /// @note 当該ビューで最後に準備した構成。PrepareView の開始時に無効へ戻す。
+    ResolvedRenderPlan renderPlan;
+    RayDebugViewResources rayDebug;
+    RayReflectionViewResources rayReflection;
+    bool rayReflectionCovered = false;
+    RayPathViewResources rayPath;
+    bool rayPathCovered = false;
+    bool rayPathPrepared = false;
+    /// @note Canonical material bytes plus the typed glass marker. Survives resize, retires with this view and ResourceManager.
+    ResourceHandle<ConstantBufferTag> gbufferMaterialCB;
 };
 
 /// @note GPU 実体は ResourceManager が所有し、この状態も同じ Manager の Reset/終了時に破棄する。
 struct RenderSharedResources {
+    RayGeometryCache rayGeometry;
+    ResourceHandle<ShaderTag> rayDebugShader;
+    ResourceHandle<ShaderTag> rayReflectionShader;
+    ResourceHandle<ShaderTag> rayReflectionReconstructionShader;
+    ResourceHandle<ShaderTag> rayPathShader;
+    ResourceHandle<ShaderTag> rayPathResolveShader;
+    ResourceHandle<ShaderTag> rayGameReconstructionShader;
+    ResourceHandle<PipelineStateTag> rayPathResolvePSO;
     SizedRenderTarget shadowMapRT{};
     SizedRenderTarget punctualShadowRT{};
     SizedRenderTarget lightCookieRT{};
@@ -154,6 +192,7 @@ struct RenderSharedResources {
     ResourceHandle<TextureTag> proceduralColorLut{};
     uint64_t proceduralColorLutHash{};
     ResourceHandle<ShaderTag> skydomeShader{};
+    ResourceHandle<ShaderTag> skyCloudCaptureShader{};
     ResourceHandle<ShaderTag> sunMoonShader{};
     std::unique_ptr<Mesh> skydomeMesh;
     EnvironmentResources sEnvironmentResources{};
@@ -238,6 +277,9 @@ struct RenderSharedResources {
     ResourceHandle<PipelineStateTag> decalPSO{};
     ResourceHandle<PipelineStateTag> decalMaskPso{};
     ResourceHandle<BufferTag> particleIB{};
+    /// @note DynamicScene 捕捉は主カメラの前フレーム atlas を読まず、現在の光源だけを独立して束縛する。
+    ResourceHandle<ConstantBufferTag> reflectionProbeCaptureShadowCB{};
+    ResourceHandle<ConstantBufferTag> reflectionProbeCapturePunctualCB{};
 
     void Initialize(ResourceManager& resources);
     bool Prepare(ResourceManager& resources, const RenderSettings& rs);
@@ -250,8 +292,18 @@ private:
 class RenderResources {
 public:
     explicit RenderResources(ResourceManager& resources);
+    /// @pre ビューの準備・記録開始前に呼ぶ。
+    /// @note 許可を解除したら全ビューの実験 RT 専用資源を退役する。描画設定・Raster 資源は変更しない。
+    /// @see Docs/design/developer-mode.md
+    void SetExperimentalRayTracingEnabled(bool enabled);
     RenderSharedResources& Shared() { return m_shared; }
     RenderViewResources& View(uint32_t key);
+    /// @return 未登録なら nullptr。診断の照会でビューや GPU 資源を生成しない。
+    [[nodiscard]] const RenderViewResources* FindView(uint32_t key) const
+    {
+        const auto found = m_views.find(key);
+        return found == m_views.end() ? nullptr : &found->second;
+    }
     bool PrepareView(RenderViewResources& view, IRenderer& renderer,
                      ResourceHandle<RenderTargetTag> output, const RenderSettings& settings);
     /// @note ビュー所有者の破棄時に呼ぶ。共有シェーダーや他ビューの履歴は解放しない。
@@ -262,5 +314,6 @@ private:
     ResourceManager& m_resources;
     RenderSharedResources m_shared;
     std::unordered_map<uint32_t, RenderViewResources> m_views;
+    bool m_experimentalRayTracingEnabled = false;
 };
 }

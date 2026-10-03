@@ -5,9 +5,11 @@
 #pragma once
 
 #include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/GpuProfilerLedger.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <string>
 #include "DX12Context.hpp"
 #include "DX12UploadArena.hpp"
 #include "DX12PsoCache.hpp"
@@ -26,6 +28,7 @@ public:
     ~DX12Renderer() override;
 
     const char* GetBackendName() const override { return "DirectX 12"; }
+    [[nodiscard]] GraphicsCapabilities GetCapabilities() const override;
     bool Init(HWND hwnd, uint32_t width, uint32_t height);
     void Shutdown() override;
     void BeginFrame() override;
@@ -37,6 +40,8 @@ public:
     bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
                             ResourceManager& resources) override;
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
+    bool TryDispatch(const ComputeCall& call, ResourceManager& resources) override;
+    bool BuildAccelerationStructure(ResourceHandle<AccelerationStructureTag>, ResourceManager&) override;
     void BeginComputeBatch() override;
     void EndComputeBatch() override;
     bool BeginAsyncCompute(ResourceManager& resources) override;
@@ -59,7 +64,10 @@ public:
     void GpuProfBeginPass(const char* name) override;
     void GpuProfEndPass(const char* name) override;
     void GpuProfCollect() override;
-    const std::vector<GpuPassProfile>& GpuProfGetResults() const override { return m_gpuResults; }
+    const std::vector<GpuPassProfile>& GpuProfGetResults() const override { return m_gpuProfilerLedger.GetSnapshot().passes; }
+    bool GpuProfBeginView(const GpuProfilerViewMetadata& metadata) override;
+    void GpuProfEndView() override;
+    const GpuProfilerSnapshot& GpuProfGetSnapshot() const override { return m_gpuProfilerLedger.GetSnapshot(); }
     /// @note AI 連携 (viewport.capture): Scene View RT を PNG バイト列へ読み戻す。
     bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
                                   std::vector<uint8_t>& outPng,
@@ -74,6 +82,8 @@ public:
 
 private:
     bool PrepareShaderReload() override;
+    std::unique_ptr<IAccelerationStructure> CreateNativeAccelerationStructure(
+        const AccelerationStructureDesc&, ResourceManager&) override;
     std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override;
     std::unique_ptr<IBuffer> CreateNativeGpuWritableVertexBuffer(size_t sizeBytes, uint32_t stride) override;
     std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override;
@@ -173,21 +183,22 @@ private:
     std::unordered_set<const void*> m_strideWarned;
     bool m_reportedMissingDrawResource = false;
 
-    static constexpr uint32_t GPU_MAX_PASSES = 32;
-    struct GpuQueryFrame {
-        std::array<std::array<char, 64>, GPU_MAX_PASSES> names{};
-        uint32_t count = 0;
-        bool recording = false;
-        bool pending = false;
-    };
+    static constexpr uint32_t GPU_MAX_PASSES = GpuProfilerLedger::MAX_PASSES;
     bool InitializeGpuProfiler();
     Microsoft::WRL::ComPtr<ID3D12QueryHeap> m_gpuQueryHeap;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_gpuReadback;
     uint64_t* m_gpuMappedTimestamps = nullptr;
     uint64_t m_gpuTimestampFrequency = 0;
-    std::array<GpuQueryFrame, DX12Context::FRAME_COUNT> m_gpuQueryFrames;
+    GpuProfilerLedger m_gpuProfilerLedger{DX12Context::FRAME_COUNT};
     uint32_t m_gpuProfilerFrame = 0;
-    std::vector<GpuPassProfile> m_gpuResults;
+    uint64_t m_gpuPhysicalFrameSerial = 0;
+    uint64_t m_gpuDeviceEpoch = 0;
+    uint64_t m_gpuPassListSerial = 0;
+    bool m_gpuProfilerRecording = false;
+    uint64_t m_pixFrameToken = 0;
+    uint64_t m_pixViewToken = 0;
+    uint64_t m_pixPassToken = 0;
+    std::string m_pixViewName;
 };
 
 } /// @note namespace fbzz::renderer

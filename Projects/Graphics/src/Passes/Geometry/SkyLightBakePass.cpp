@@ -44,6 +44,11 @@ void ExecuteSkyLightBakePass(RenderPassContext& ctx)
         env->skyIrradiance       = ctx.resources.RegisterTexture(std::move(irrTex));
         env->skyPrefilter        = ctx.resources.RegisterTexture(std::move(preTex));
         env->prefilteredMipCount = kPrefilterMips;
+        env->immutableIblOwner = ctx.resources.Get(env->skyIrradiance) && ctx.resources.Get(env->skyPrefilter)
+            ? &ctx.resources : nullptr;
+        env->immutableIblEpoch = env->immutableIblOwner ? ctx.resources.GetResetVersion() : 0;
+        env->immutableIrradiance = env->skyIrradiance;
+        env->immutablePrefilter = env->skyPrefilter;
     }
 
     /// @note 成否に関わらずフラグを消費する。失敗フレームを毎回リトライして固まらないようにし、

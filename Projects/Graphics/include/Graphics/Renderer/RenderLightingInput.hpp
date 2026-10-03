@@ -4,6 +4,7 @@
 /// @date    2026-09-21
 #pragma once
 #include <Graphics/Pipeline/RenderConstants.hpp>
+#include <Graphics/RayTracing/RayLightInput.hpp>
 namespace fbzz::renderer {
 struct RenderLightingInput {
     renderer::LightConstantsCB lightData;
@@ -46,5 +47,8 @@ struct RenderLightingInput {
     float                       cloudShadowWindX    = 1.0f;
     float                       cloudShadowWindZ    = 0.3f;
     float                       cloudShadowTime     = 0.0f; ///< @note RenderSystem が Time::time を設定
+    /// @note Raster の上限と atlas 準備状態に依存しない全光源。false は供給の完全性を証明できない。
+    std::vector<RayLightInput> rayLights;
+    bool rayLightsComplete = false;
 };
 }

@@ -211,6 +211,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
     }
     const std::string effectiveShaderPath = matAsset ? matAsset->shaderPath : std::string{};
     material.shaderPath = effectiveShaderPath;
+    material.dielectric = matAsset ? matAsset->dielectric : renderer::SolidDielectricSettings{};
     material.shader = effectiveShaderPath.empty()
         ? renderer::ResourceHandle<renderer::ShaderTag>{}
         : resources.LoadShader(effectiveShaderPath);

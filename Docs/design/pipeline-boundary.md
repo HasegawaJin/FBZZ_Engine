@@ -83,15 +83,28 @@ Engine 側の `scene::ExtractGeometryMaterial` が MaterialSlot と共有アセ�
 
 | 種別 | シェーダー |
 |------|-----------|
-| Surface | `PBR.hlsl` / `Lit.hlsl` / `Fallback.hlsl` |
-| Skinned | `SkinnedPBR.hlsl` / `SkinnedLit.hlsl` / `FallbackSkinned.hlsl` |
-| 空欄 | Fallback として扱う (＝ GBuffer 相当) |
+| Surface | 標準 PBR の表面・被覆・剛体頂点と GBuffer 変種セットを宣言したもの |
+| Skinned | 同じ表面・被覆と標準スキニング頂点・GBuffer 変種セットを宣言したもの |
+| 空欄 | 未知として Forward。欠落材質は別途 Unlit の Fallback で可視化する |
 
-判定はファイル名で行う。シェーダーは `Assets/` と `<Project>/Assets/` の 2 本立てで、参照は
-`guid:` にもパスにもなるため、絶対パスで比べると同じシェーダーが別物に見える。
+判定は `.hlsl.meta` の能力契約で行う。GUID の表示ヒントとファイル名は根拠にしない。原本と `.meta` の改名・移動で能力は変わらない。実行中の能力は成功した load / reload と同じ版へ固定する。宣言と検証は [shader-capabilities.md](shader-capabilities.md) を参照。
 
 `Toon` / `RimLight` / `Unlit` / `Dissolve` / `Anisotropic` / `Subsurface` / `Cloth` と、
-プロジェクト側のカスタムシェーダーはすべて **GBuffer 相当ではない** = Forward。
+Lambert / Unlit と、標準契約を宣言していないプロジェクト側のカスタムシェーダーは **GBuffer 相当ではない** = Forward。
+
+### 2.2 発光の保持 (2026-09-30)
+
+標準 PBR の発光を Deferred でも保持するため、現在の GBuffer は RGBA16F の 3 枚とする。Target0 は albedo / roughness、Target1 は符号化した shading normal / metallic、Target2 は線形 HDR emission / 予約である。上記の「2 枚」は発光保持を追加する前の能力判定の背景であり、拡張ローブと接線基底は引き続き格納しない。
+
+`GBuffer.hlsl` の static / instanced / skinned は Forward PBR と同じ UV・sRGB デコードで emissive texture × emissiveColor × emissiveScale を出力する。Engine の 96 バイト材質への正規化も発光色と強度を移す。地形と Fiber は発光なしを明示して Target2 に 0 を書き、背後の発光面の値を残さない。
+
+`DeferredLighting` は Target2 を t3 で読み、直接光・環境光・影・AO・カスケード表示色の計算後に一度だけ加算する。t3 の意味はこのパスでは解決済みの発光であり、GBuffer を書く材質パスでは emissive texture である。HDR のまま Bloom と Composite へ渡す。発光面が周囲を照らす GI は別機能で、今回の保持だけでは生成しない。
+
+確保・RenderGraph の記述・ビューの availability は `GBUFFER_COLOR_COUNT` に揃える。追加費用は内部解像度で 8 bytes/pixel、1920×1080 で約 15.8 MiB/view。将来の異種 MRT format / SurfaceInputs 整理による圧縮は別段で実測し、HDR 発光を albedo の範囲へクランプして節約しない。
+
+実 GPU の `DeferredEmissionTest` では線形 HDR 値、発光テクスチャ、手前の不透明面による上書き、alpha clip、発光なしを読み戻して確認した。テクスチャの期待値は現行 `Color.hlsli` の gamma 2.2 近似に合わせており、厳密な sRGB transfer function への変更は今回含めない。static / instanced / skinned、地形、Fiber の GBuffer 変種も実際のシェーダーをコンパイルして確認した。
+
+この検証で DX12 の未指定 Root CBV が 256 バイトのゼロ領域を超えてライト数を読んでしまう不具合も見つかった。Root descriptor はサイズ情報を持たないため、フレーム共有のゼロ領域を CBV の最大読み取り範囲である 64 KiB に拡張した。未指定 b12 の末尾もゼロとして読めることを同じ GPU テストで検証する。
 
 ## 3. スキンドを GBuffer へ入れる
 

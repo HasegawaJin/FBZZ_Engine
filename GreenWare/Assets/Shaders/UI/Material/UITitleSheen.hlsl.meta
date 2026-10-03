@@ -1,2 +1,14 @@
+# @file    UITitleSheen.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-31
 [meta]
 guid = 'a04634aa23a2566e92b3a93a0bb7f70b'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'ui'

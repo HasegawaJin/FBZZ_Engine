@@ -4,8 +4,9 @@
 /// @date    2026-05-31
 ///
 /// @note IModule を継承して Application::Run() に乗せることで、Profiler::BeginFrame/EndFrame・MemorySystem・
-///       Input::Update・PollEvents などのフレーム境界処理をエンジン側に統一する。
+/// @note Input::Update・PollEvents などのフレーム境界処理をエンジン側に統一する。
 #include "StandaloneApp.hpp"
+#include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -56,7 +57,7 @@ StandaloneApp::StandaloneApp(renderer::IRenderer& renderer,
 bool StandaloneApp::OnInit()
 {
     /// @note Standalone は WIN32 サブシステムのためコンソールがなく printf が見えない。OutputDebugString もデバッガが
-    ///       ないと見えないため、game.log を exe 隣に生成し Debug・Release 両方でログを残す。
+    /// @note デバッガがない場合にも game.log を exe 隣に生成し Debug・Release 両方でログを残す。
     const std::filesystem::path logPath =
         util::FileSystem::GetExecutableDirectory() / L"game.log";
     m_logSink.file.open(logPath, std::ios::out | std::ios::trunc);
@@ -71,9 +72,8 @@ bool StandaloneApp::OnInit()
     }
 
     /// @note スクリプト DLL はシーンロードより前にロードする必要がある。SceneSerializer がシーン内の ScriptComponent を
-    ///       復元する際に ScriptFactory からファクトリ関数を引くため、DLL が未ロードだとスクリプトインスタンスが
-    ///       生成されず OnUpdate() に到達できない。DLL パス解決優先順位: (1) .fbzz_proj の scripts_dll (BuildPipeline が
-    ///       配布物へ記録) (2) exe 隣の SandboxScripts.dll (Sandbox 開発環境フォールバック)。
+    /// @note SceneSerializer の型解決には DLL の ScriptFactory 登録が必要。
+    /// @note DLL は .fbzz_proj の scripts_dll、exe 隣の SandboxScripts.dll の順に解決する。
     std::filesystem::path scriptsDllPath = m_project.scriptsDll;
     if (scriptsDllPath.empty() || !std::filesystem::exists(scriptsDllPath)) {
         scriptsDllPath = util::FileSystem::GetExecutableDirectory() / L"SandboxScripts.dll";
@@ -102,13 +102,17 @@ bool StandaloneApp::OnInit()
         audioManager->SetVoiceLimit(static_cast<size_t>(m_settings.audio.voiceLimit));
         audioManager->ApplyBusLayout(m_settings.audio.BuildBusLayout());
     }
-    /// @note graphics プロキシが触る描画設定の実体を登録する (配布ゲームでは書き戻さない)。
+    /// @note 起動時だけアセットを展開し、以後の graphics 設定は実行用コピーへ適用する。
+    renderer::RenderSettings resolvedSettings;
+    (void)asset::ResolveRenderPipelineSettings(m_settings.render,
+        m_settings.renderPipelineAssetPath, resolvedSettings);
+    m_settings.render = std::move(resolvedSettings);
     app.SetActiveRenderSettings(&m_settings.render);
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
 
     /// @note プロファイラオーバーレイ用 ImGui を初期化する。StandaloneApp は EditorApp を使わないため ImGui コンテキストが
-    ///       存在せず、Release ビルドでもプロファイラデータを確認できるよう独立したコンテキストを作成する。
+    /// @note Editor のコンテキストは存在しないため、Release でも独立したコンテキストを作成する。
     m_imguiCtx = ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     /// @note ini を書かない (スタンドアロンゲームのドキュメントを汚さない)
@@ -145,7 +149,7 @@ void StandaloneApp::OnRender()
     const float aspect = (h > 0) ? (static_cast<float>(w) / static_cast<float>(h)) : 1.0f;
 
     /// @note LoadScene によるシーン遷移後は SceneManager が新しい Scene を所有するため、ProjectRuntime の Active Scene を
-    ///       参照し、遷移前 Scene を描き続けないようにする。
+    /// @note 遷移前 Scene を保持せず ProjectRuntime の Active Scene を参照する。
     scene::Scene* activeScene = m_runtime.GetActiveScene();
     if (!activeScene) {
         { FBZZ_PROFILE_SCOPE("Renderer::EndFrame"); m_renderer.EndFrame(); }
@@ -226,6 +230,7 @@ void StandaloneApp::OnShutdown()
 {
     /// @note FreeLibrary より先に Scene を破棄しないと、DLL 内の仮想デストラクタが解放済みコードを呼んでアクセス違反になる。
     m_runtime.Shutdown();
+    core::Application::Get().SetActiveRenderSettings(nullptr);
     /// @note ProjectRuntimeがScriptインスタンスを破棄済みなので、DLL Loader側では二重破棄しない。
     m_scriptDll.Unload(nullptr);
 
@@ -238,4 +243,4 @@ void StandaloneApp::OnShutdown()
     core::Logger::RemoveSink(&m_logSink);
 }
 
-} // namespace fbzz::editor_launcher
+} /// @note namespace fbzz::editor_launcher

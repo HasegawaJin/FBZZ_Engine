@@ -150,8 +150,8 @@ void SelectMoved(EditorContext& ctx, std::vector<scene::EntityID> moved, scene::
     SelectEntities(ctx, std::move(moved), SelectionReveal::Skip);
 }
 
-/// 子孫を再帰的に visited に追加するだけ（ImGui 呼び出しなし）。
-/// 親が閉じているとき子が第2ループで誤って root 描画されるのを防ぐ。
+/// @note 子孫を再帰的に visited に追加するだけ（ImGui 呼び出しなし）。
+/// @note 親が閉じているとき子が第2ループで誤って root 描画されるのを防ぐ。
 std::string SanitizeAssetName(const std::string& name)
 {
     std::string result = name.empty() ? "Prefab" : name;
@@ -163,8 +163,8 @@ std::string SanitizeAssetName(const std::string& name)
 }
 
 /// @note .vfx はプレハブと同じ中身だが、AssetBrowser の色分け・サムネイル・VFXRef のドロップ受理・
-///       開いたときの振る舞いがすべて拡張子で分岐する。同じ保存経路を通しつつ «これは演出だ»
-///       という区別だけ呼び出し側が決められるよう拡張子と置き場所を引数にする。
+/// @note 開いたときの振る舞いがすべて拡張子で分岐する。同じ保存経路を通しつつ «これは演出だ»
+/// @note という区別だけ呼び出し側が決められるよう拡張子と置き場所を引数にする。
 std::string UniqueAssetPath(const EditorContext& ctx, const std::string& objectName,
                             const char* subDirectory, const char* extension)
 {
@@ -186,16 +186,16 @@ void SaveSelectedAsAsset(EditorContext& ctx, const std::string& objectName,
     scene::Scene& scene = *ctx.activeScene;
 
     /// @note 保存 + インスタンス接続をまとめて実行する (Unity 互換の Create Prefab)。
-    ///       接続したルート GO は rootSelection に返り、Undo で接続解除に使う。
+    /// @note 接続したルート GO は rootSelection に返り、Undo で接続解除に使う。
     const std::string path = UniqueAssetPath(ctx, objectName, subDirectory, extension);
     std::vector<scene::EntityID> rootSelection;
     if (!PrefabSerializer::SaveSelectionAndConnect(scene, ctx.selectedEntities, path, rootSelection))
         return;
-    const std::string relPath = NormalizeAssetPath(path);
+    const std::string relPath = scene::CanonicalPrefabAssetRef(path);
 
     /// @note Undo 対象はシーン側のリンク (prefabAssetPath) だけ。.prefab ファイルは残す。
-    ///       ファイル削除まで Undo すると、無関係な作業のあと Ctrl+Z を重ねたときに編集ぶんごと
-    ///       ファイルが消える。消したいときは Asset Browser の Delete でごみ箱へ送る。
+    /// @note ファイル削除まで Undo すると、無関係な作業のあと Ctrl+Z を重ねたときに編集ぶんごと
+    /// @note ファイルが消える。消したいときは Asset Browser の Delete でごみ箱へ送る。
     if (ctx.undoStack) {
         EditorContext* context = &ctx;
         const std::vector<scene::EntityID> roots = rootSelection;
@@ -298,15 +298,15 @@ void MarkDescendantsVisited(scene::GameObject& go,
     }
 }
 
-/// ランタイム生成 GO を Hierarchy から隠すか。ctx.showGeneratedObjects が真なら全部見せる。
+/// @note ランタイム生成 GO を Hierarchy から隠すか。ctx.showGeneratedObjects が真なら全部見せる。
 /// @note 隠す判断を 1 箇所に集約する。ツリー・検索リスト・展開矢印が別々の条件を持つと
-///       「矢印は出るが開いても空」のような不整合が必ず起きる。
+/// @note 「矢印は出るが開いても空」のような不整合が必ず起きる。
 bool IsHiddenGenerated(const EditorContext& ctx, const scene::GameObject& go)
 {
     return go.runtimeGenerated && !ctx.showGeneratedObjects;
 }
 
-/// 実際に描画される子の数。生成物を隠しているときは、それを除いた数を返す。
+/// @note 実際に描画される子の数。生成物を隠しているときは、それを除いた数を返す。
 /// @note GetChildCount() をそのまま使うと、子が生成物だけのノードで「開けるのに何も出ない」状態になる。
 int VisibleChildCount(const EditorContext& ctx, const scene::GameObject& go)
 {
@@ -318,8 +318,8 @@ int VisibleChildCount(const EditorContext& ctx, const scene::GameObject& go)
     return count;
 }
 
-/// 隠している生成物の総数 (子孫すべて)。行末のバッジに出し、
-/// 「Hierarchy に出ていない = 存在しない」と誤解させないための表示。
+/// @note 隠している生成物の総数 (子孫すべて)。行末のバッジに出し、
+/// @note 「Hierarchy に出ていない = 存在しない」と誤解させないための表示。
 int HiddenGeneratedCount(const EditorContext& ctx, const scene::GameObject& go)
 {
     int count = 0;
@@ -339,7 +339,7 @@ int HiddenGeneratedCount(const EditorContext& ctx, const scene::GameObject& go)
 
 /// @brief F2 インラインリネームの状態一式 (パネルメンバーへの参照)。
 struct InlineRenameState {
-    scene::EntityID& id;        ///< リネーム対象 (無効 = リネーム中でない)
+    scene::EntityID& id;        /// @note リネーム対象 (無効 = リネーム中でない)
     char*            buffer;
     size_t           bufferSize;
     bool&            focusPending;
@@ -347,9 +347,9 @@ struct InlineRenameState {
 
 /// @brief ツリーを「開いて見せる」ための状態一式 (パネルメンバーへの参照)。
 struct HierarchyRevealState {
-    scene::EntityID&              pendingExpand; ///< SetParent 直後に開くノード
-    std::vector<scene::EntityID>& openChain;     ///< 他の面から選ばれた対象の祖先
-    scene::EntityID&              scrollTo;      ///< 行までスクロールする対象
+    scene::EntityID&              pendingExpand; /// @note SetParent 直後に開くノード
+    std::vector<scene::EntityID>& openChain;     /// @note 他の面から選ばれた対象の祖先
+    scene::EntityID&              scrollTo;      /// @note 行までスクロールする対象
 };
 
 /// @param rootIndex roots 配列内の位置。Order メニュー用で、ルートのときだけ意味を持つ。
@@ -375,7 +375,7 @@ void DrawHierarchyNode(EditorContext& ctx,
     const scene::EntityID id = go.GetID();
     if (ContainsEntity(visited, id)) return;
     /// @note ランタイム生成物は既定で描かない。visited へは入れて、第2ループが
-    ///       これを「孤立オブジェクト」と誤認して root レベルへ描くのを防ぐ。
+    /// @note これを「孤立オブジェクト」と誤認して root レベルへ描くのを防ぐ。
     if (IsHiddenGenerated(ctx, go)) {
         visited.push_back(id);
         MarkDescendantsVisited(go, visited);
@@ -403,7 +403,7 @@ void DrawHierarchyNode(EditorContext& ctx,
             const std::string newName = rename.buffer;
             if (!newName.empty() && newName != go.name) {
                 /// @note operator (node.rename) 経由にする: 旧経路の ExecuteSceneEditWithUndo は
-                ///       名前を 1 つ変えるだけでシーン全体を 2 回 TOML シリアライズしていた。
+                /// @note 名前を 1 つ変えるだけでシーン全体を 2 回 TOML シリアライズしていた。
                 OpArgs args;
                 args.Set("node", go.instanceId);
                 args.Set("name", newName);
@@ -444,12 +444,12 @@ void DrawHierarchyNode(EditorContext& ctx,
         *pendingExpand = scene::EntityID{};
     }
     /// @note 他の面で選ばれた対象までの祖先を開く。開いた状態は StateStorage に残るので、
-    ///       要求はこのフレームの描画が終わった時点で捨ててよい (畳み直しを妨げない)。
+    /// @note 要求はこのフレームの描画が終わった時点で捨ててよい (畳み直しを妨げない)。
     if (ContainsEntity(reveal.openChain, id))
         ImGui::SetNextItemOpen(true, ImGuiCond_Always);
 
     /// @note エディタ専用非表示はシアン（runtime 非アクティブより優先）、非アクティブはグレー、
-    ///       ロック中はオレンジ、プレファブインスタンスは水色
+    /// @note ロック中はオレンジ、プレファブインスタンスは水色
     ui::PushHierarchySelectionColors();
     if (isEditorHidden)         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Info));
     else if (!isActive)         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
@@ -460,15 +460,15 @@ void DrawHierarchyNode(EditorContext& ctx,
     ui::PopHierarchySelectionColors();
 
     /// @note ノード本体のアイテム状態は TreeNodeEx 直後に確定させ、以降で使い回す。この後に描く
-    ///       「隠し生成物」バッジ (TextDisabled) が新しい item として LastItemData を上書きし、
-    ///       後段の IsItemClicked()/GetItemRectMin() がバッジ側を指してしまうため。
+    /// @note 「隠し生成物」バッジ (TextDisabled) が新しい item として LastItemData を上書きし、
+    /// @note 後段の IsItemClicked()/GetItemRectMin() がバッジ側を指してしまうため。
     const ImVec2 nodeMin         = ImGui::GetItemRectMin();
     const ImVec2 nodeMax         = ImGui::GetItemRectMax();
     const bool   nodeHovered     = ImGui::IsItemHovered();
     const bool   nodeClicked     = ImGui::IsItemClicked(ImGuiMouseButton_Left);
     const bool   nodeToggledOpen = ImGui::IsItemToggledOpen();
     /// @note 右クリックメニュー用のホバー。別ノードのメニューを開いたまま行を移れるよう、
-    ///       BeginPopupContextItem() 内部と同じ AllowWhenBlockedByPopup を使う。
+    /// @note BeginPopupContextItem() 内部と同じ AllowWhenBlockedByPopup を使う。
     const bool   nodeHoveredForMenu =
         ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
     hierarchyNodeHovered = hierarchyNodeHovered || nodeHovered;
@@ -480,7 +480,7 @@ void DrawHierarchyNode(EditorContext& ctx,
     }
 
     /// @note 隠している生成物の件数バッジ。「Hierarchy に出ていない = 存在しない」ではないことを示す。
-    ///       VFX 再生中は裏で十数個の GameObject が動くが、何も出さないと「生成されていない」と誤診断させる。
+    /// @note VFX 再生中は裏で十数個の GameObject が動くが、何も出さないと「生成されていない」と誤診断させる。
     if (const int hiddenCount = HiddenGeneratedCount(ctx, go); hiddenCount > 0) {
         ImGui::SameLine();
         ImGui::TextDisabled("(+%d)", hiddenCount);
@@ -566,8 +566,8 @@ void DrawHierarchyNode(EditorContext& ctx,
         }
 
         /// @note prefab インスタンスバッジ (右端 4 番目スロット, 常時表示の水色ダイヤ)。青いテキスト
-        ///       だけだと非アクティブや選択ハイライトと重なった際に判別しづらいため常設マーカーを置き、
-        ///       ホバーで参照パスをツールチップ表示する。
+        /// @note だけだと非アクティブや選択ハイライトと重なった際に判別しづらいため常設マーカーを置き、
+        /// @note ホバーで参照パスをツールチップ表示する。
         if (isPrefabInstance) {
             const ImVec2 pfMin = { rx - btnW * 4.0f, nodeMin.y };
             const ImVec2 pfMax = { rx - btnW * 3.0f, nodeMax.y };
@@ -585,8 +585,8 @@ void DrawHierarchyNode(EditorContext& ctx,
         if (nodeClicked && !nodeToggledOpen
             && !isLocked && !iconAreaClick) {
             /// @note ここではまだ選択を変更しない。MouseClicked はドラッグ開始より先に来るため、
-            ///       先に選択すると「つかんだ瞬間に Inspector が別 GO へ切り替わる」。
-            ///       クリックかドラッグか確定する MouseReleased まで保留する。
+            /// @note 先に選択すると「つかんだ瞬間に Inspector が別 GO へ切り替わる」。
+            /// @note クリックかドラッグか確定する MouseReleased まで保留する。
             pendingClick = id;
         }
         if (nodeHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)
@@ -641,11 +641,11 @@ void DrawHierarchyNode(EditorContext& ctx,
 
     /// @name 兄弟間並べ替え: ノード下端の細い帯を「この直後に挿入」ドロップ先にする
     /// @note ノード本体へのドロップは「子にする」操作。境界線ドロップが無いと並び順の変更に
-    ///       Order メニュー (ルート限定) を往復する羽目になる。
+    /// @note Order メニュー (ルート限定) を往復する羽目になる。
     if (const ImGuiPayload* dragging = ImGui::GetDragDropPayload();
         dragging && dragging->IsDataType("FBZZ_HIERARCHY_ENTITY")) {
         /// @note 帯は行の下端に置く。ここで GetItemRect を読み直すと、バッジを持つノードでは
-        ///       バッジの矩形 (行の一部) だけが挿入先になり、行のどこを狙っても入らなくなる。
+        /// @note バッジの矩形 (行の一部) だけが挿入先になり、行のどこを狙っても入らなくなる。
         /// @note 挿入帯の半分の高さ (px)
         constexpr float kBandHalf = 3.0f;
         const ImRect band({ nodeMin.x, nodeMax.y - kBandHalf },
@@ -723,14 +723,14 @@ void DrawHierarchyNode(EditorContext& ctx,
     }
 
     /// @note 引数なしの BeginPopupContextItem() は使わない: あれは LastItemData を対象に取るが、
-    ///       上の「隠し生成物」バッジ (TextDisabled) は ID を持たない item のため、バッジが出る
-    ///       ノードでは id == 0 になり ImGui が assert する。開く判定も TreeNodeEx 直後のホバーを使う。
+    /// @note 上の「隠し生成物」バッジ (TextDisabled) は ID を持たない item のため、バッジが出る
+    /// @note ノードでは id == 0 になり ImGui が assert する。開く判定も TreeNodeEx 直後のホバーを使う。
     static constexpr const char* kNodeMenuId = "##node_context";
     if (nodeHoveredForMenu && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
         ImGui::OpenPopup(kNodeMenuId);
     if (ImGui::BeginPopup(kNodeMenuId)) {
         /// @note 右クリックした GO が既に複数選択中なら選択を維持する。
-        ///       そうでなければ単一選択に切り替える。
+        /// @note そうでなければ単一選択に切り替える。
         {
             const bool alreadySelected = std::find(
                 ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
@@ -795,7 +795,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         }
         ImGui::Separator();
         /// @note operator 経由にする: 同じ Copy / Paste はホットキー・コマンドパレット・AI からも
-        ///       呼ばれる。ヘルパーを直接叩くと実行可否の判定がこのファイルにも書かれ面ごとにずれていく。
+        /// @note 呼ばれる。ヘルパーを直接叩くと実行可否の判定がこのファイルにも書かれ面ごとにずれていく。
         if (ImGui::MenuItem("Copy", "Ctrl+C", false, CanInvokeOperator(ctx, "edit.copy")))
             InvokeOperator(ctx, "edit.copy");
         if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
@@ -805,7 +805,7 @@ void DrawHierarchyNode(EditorContext& ctx,
             deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste_as_child"); };
         ImGui::Separator();
         /// @note operator 経由にする: 旧実装はメニューからの複製が Undo に載っていなかった
-        ///       (ExecuteSceneEditWithUndo で包んでいなかったため。Ctrl+D は載る)。
+        /// @note (ExecuteSceneEditWithUndo で包んでいなかったため。Ctrl+D は載る)。
         if (ImGui::MenuItem("Duplicate", nullptr, false,
                             CanInvokeOperator(ctx, "edit.duplicate"))) {
             const std::vector<scene::EntityID> toDup =
@@ -831,7 +831,9 @@ void DrawHierarchyNode(EditorContext& ctx,
                             else if (commonParentId != pid) { commonParentId = {}; break; }
                         }
                     }
-                    auto& group = ctx.activeScene->CreateGameObject("Group");
+                    auto* created = ctx.activeScene->TryCreateGameObject("Group");
+                    if (!created) return;
+                    auto& group = *created;
                     if (commonParentId.IsValid())
                         if (auto* cp = ctx.activeScene->GetGameObject(commonParentId))
                             group.SetParent(cp);
@@ -866,22 +868,22 @@ void DrawHierarchyNode(EditorContext& ctx,
             SaveSelectedAsAsset(ctx, go.name, "Prefabs", ".prefab");
         }
         /// @note VFX ルートは .vfx として保存する。中身はプレハブと同じだが、
-        ///       拡張子で «演出» と分かるようにしておく (VFXRef のドロップ先にもなる)。
+        /// @note 拡張子で «演出» と分かるようにしておく (VFXRef のドロップ先にもなる)。
         if (go.GetComponent<scene::VFXComponent>() != nullptr) {
             if (ImGui::MenuItem("Save As VFX")) {
                 SaveSelectedAsAsset(ctx, go.name, "VFX", ".vfx");
             }
         }
         /// @note プレファブインスタンスには Apply / Revert を提供する (Unity 互換)。Apply は
-        ///       ディスクへの書き戻しのみでシーンは変わらないため Undo なし。Revert はシーンを
-        ///       変更するため ExecuteSceneEditWithUndo が自動的にスナップショット Undo を生成する。
+        /// @note ディスクへの書き戻しのみでシーンは変わらないため Undo なし。Revert はシーンを
+        /// @note 変更するため ExecuteSceneEditWithUndo が自動的にスナップショット Undo を生成する。
         if (!go.prefabAssetPath.empty()) {
             ImGui::Separator();
             if (ImGui::MenuItem("Apply to Prefab")) {
                 deferred = [&ctx, id]() {
                     if (!ctx.activeScene) return;
                     /// @note Apply と伝播は 1 つの操作として閉じてある。
-                    ///       各インスタンスの個別調整 (override) は保持される。
+                    /// @note 各インスタンスの個別調整 (override) は保持される。
                     const int updated = PrefabSerializer::ApplyAndPropagate(
                         *ctx.activeScene, id, ctx.projectRoot);
                     if (updated < 0) return;
@@ -941,7 +943,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         }
         ImGui::Separator();
         /// @note operator 経由にする: 旧実装は DestroySelected を直接呼び Undo に載っていなかった。
-        ///       Delete キー経由は DeleteSelectedWithUndo を通るため取り消せる食い違いがあった。
+        /// @note Delete キー経由は DeleteSelectedWithUndo を通るため取り消せる食い違いがあった。
         if (ImGui::MenuItem("Delete", nullptr, false,
                             CanInvokeOperator(ctx, "edit.delete_selected")))
             deferred = [&ctx]() { InvokeOperator(ctx, "edit.delete_selected"); };
@@ -959,7 +961,7 @@ void DrawHierarchyNode(EditorContext& ctx,
             ImGui::TreePop();
         } else {
             /// @note 閉じていても子孫を visited に入れる。
-            ///       これをしないと第2ループが子を root レベルで誤描画する。
+            /// @note これをしないと第2ループが子を root レベルで誤描画する。
             MarkDescendantsVisited(go, visited);
         }
     }
@@ -985,12 +987,12 @@ void DrawHierarchyBackgroundMenu(EditorContext& ctx, std::function<void()>& defe
     ImGui::EndPopup();
 }
 
-} // namespace
+} /// @note namespace
 
 void SceneHierarchyPanel::HandlePanelRequests(EditorContext& ctx)
 {
     /// @note フォーカスの申告は IPanel::OnRender が GetHotkeyScope() を見て行う。
-    ///       ここに残すのは、パネル内部の状態 (編集バッファ) を要する要求だけ。
+    /// @note ここに残すのは、パネル内部の状態 (編集バッファ) を要する要求だけ。
     if (!ctx.requestRenameSelected) return;
     ctx.requestRenameSelected = false;
 
@@ -1012,8 +1014,8 @@ void SceneHierarchyPanel::HandleKeyboardNavigation(EditorContext& ctx)
     if (ImGui::GetIO().WantTextInput || m_renamingId.IsValid()) return;
 
     /// @note IsKeyPressed でなく Shortcut を使う: 矢印キーは ImGui のキーボードナビも使うため、
-    ///       素のキー読みだと «ナビの枠» と «選択» が別々に動いて 2 つ光る。Shortcut は routing で
-    ///       キーの所有権を取るのでナビ側が同じキーを消費しない。押しっぱなしのリピートも受ける。
+    /// @note 素のキー読みだと «ナビの枠» と «選択» が別々に動いて 2 つ光る。Shortcut は routing で
+    /// @note キーの所有権を取るのでナビ側が同じキーを消費しない。押しっぱなしのリピートも受ける。
     constexpr ImGuiInputFlags kRepeat = ImGuiInputFlags_Repeat;
     int  step   = 0;
     bool extend = false;
@@ -1048,7 +1050,7 @@ void SceneHierarchyPanel::HandleKeyboardNavigation(EditorContext& ctx)
     if (target == primary) return;
 
     /// @note Shift は «アンカーから今の行まで» を選ぶ。アンカーの決め方も範囲の作り方も
-    ///       Shift+クリック (DrawHierarchyNode) と同じにして、経路で結果が変わらないようにする。
+    /// @note Shift+クリック (DrawHierarchyNode) と同じにして、経路で結果が変わらないようにする。
     if (extend && m_lastClickedEntity.IsValid()) {
         auto from = std::find(m_visibleOrder.begin(), m_visibleOrder.end(), m_lastClickedEntity);
         auto to   = std::find(m_visibleOrder.begin(), m_visibleOrder.end(), target);
@@ -1078,7 +1080,7 @@ void SceneHierarchyPanel::ConsumeRevealRequest(EditorContext& ctx)
     if (!go) return;
 
     /// @note 検索フィルタ中はツリーそのものが出ていない。対象がヒットしないフィルタなら、
-    ///       開いても見えないままなので外す。
+    /// @note 開いても見えないままなので外す。
     if (m_searchFilter[0] != '\0' && !util::StringUtils::ContainsCI(go->name, m_searchFilter))
         m_searchFilter[0] = '\0';
 
@@ -1101,7 +1103,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     ConsumeRevealRequest(ctx);
 
     /// @note ドラッグ開始後の選択保留はマウス操作が終わったフレームで解放する。
-    ///       MouseReleased のフレームにはまだドロップ判定が残っているので消さない。
+    /// @note MouseReleased のフレームにはまだドロップ判定が残っているので消さない。
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)
         && !ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
         m_pendingClickEntity = {};
@@ -1347,7 +1349,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         }
         std::string assetPath;
         /// @note 背景へのドロップは選択に関係なくルート (エンティティを背景へ落とすとルート化するのと同じ)。
-        ///       選択の子に置きたいときはノードへ落とすか、メニューの Prefab を使う。
+        /// @note 選択の子に置きたいときはノードへ落とすか、メニューの Prefab を使う。
         if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath))
             QueueAssetDrop(ctx, assetPath, scene::EntityID{}, std::string{}, deferred, pendingCreate, nullptr);
         ImGui::EndDragDropTarget();
@@ -1370,4 +1372,4 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     InvokePendingObjectCreate(ctx, pendingCreate);
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

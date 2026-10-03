@@ -1,2 +1,14 @@
+# @file    UIMenuItem.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-23
 [meta]
 guid = '164801593af50e9b40417db3fd2d0c00'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'ui'

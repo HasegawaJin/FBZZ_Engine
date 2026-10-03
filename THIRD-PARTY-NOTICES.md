@@ -15,6 +15,7 @@ FBZZ Engine 本体は MIT License ([LICENSE](LICENSE)) で配布する。
 |---|---|---|---|
 | [Assimp](https://github.com/assimp/assimp) | 6.0.5 | `BSD-3-Clause` | [`ThirdParty/Assimp/LICENSE`](ThirdParty/Assimp/LICENSE) |
 | [DirectXTex](https://github.com/microsoft/DirectXTex) | 2.0.2 (`DIRECTX_TEX_VERSION 202`) | `MIT` | [`ThirdParty/DirectXTex/LICENSE`](ThirdParty/DirectXTex/LICENSE) |
+| [WinPixEventRuntime](https://www.nuget.org/packages/WinPixEventRuntime/1.0.240308001) | 1.0.240308001 | `MIT` | [`ThirdParty/WinPixEventRuntime/LICENSE`](ThirdParty/WinPixEventRuntime/LICENSE) |
 | [Dear ImGui](https://github.com/ocornut/imgui) | 1.92.8 (docking) | `MIT` | [`ThirdParty/ImGui/LICENSE.txt`](ThirdParty/ImGui/LICENSE.txt) |
 | [ImGuizmo](https://github.com/CedricGuillemet/ImGuizmo) | — | `MIT` | [`ThirdParty/ImGuizmo/LICENSE`](ThirdParty/ImGuizmo/LICENSE) |
 | [imnodes](https://github.com/Nelarius/imnodes) | — | `MIT` | [`ThirdParty/ImNodes/LICENSE`](ThirdParty/ImNodes/LICENSE) |
@@ -124,6 +125,38 @@ SOFTWARE.
 ```
 
 ---
+
+## WinPixEventRuntime — MIT
+
+Included files: five official SDK headers, the desktop x64 import library and
+runtime DLL. Package/version/hash provenance is recorded in
+[`ThirdParty/WinPixEventRuntime/VERSION`](ThirdParty/WinPixEventRuntime/VERSION).
+The package's informational PIX tool-suite notices are also preserved verbatim in
+[`ThirdParty/WinPixEventRuntime/ThirdPartyNotices.txt`](ThirdParty/WinPixEventRuntime/ThirdPartyNotices.txt).
+
+```text
+Copyright (c) Microsoft Corporation.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## Dear ImGui — MIT
 

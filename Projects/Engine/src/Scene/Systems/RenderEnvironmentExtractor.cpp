@@ -9,10 +9,12 @@
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Fields/FlowFieldFrame.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/StreamedTextureResolver.hpp>
+#include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Util/Mathf.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
@@ -199,9 +201,9 @@ void ExtractCloud(RenderPassContext& ctx, renderer::RenderEnvironmentInput& envi
     auto* cloud = FindActiveCloud(ctx);
     if (!cloud) return;
     /// @note 環境流があれば雲もその向き・その速さで流す (XZ 平面へ射影)。
-    ///       @note 粒子と雲の流れを 1 か所で揃えるため。環境流は SceneEnvironment が正本で、
+    /// @note 粒子と雲の流れを 1 か所で揃えるため。環境流は SceneEnvironment が正本で、
     /// @note 粒子が受けるものとまったく同じ値を見ている。
-    ///       @note 環境流が無効なシーンは従来どおりコンポーネント固有の windDirection / windSpeed。
+    /// @note 環境流が無効なシーンは従来どおりコンポーネント固有の windDirection / windSpeed。
     math::Vector2 wind = cloud->windDirection.Normalized();
     float windSpeed = cloud->windSpeed;
     const AmbientWind& ambient = ctx.scene.FlowFrame().ambient;
@@ -286,6 +288,28 @@ void ExtractCloud(RenderPassContext& ctx, renderer::RenderEnvironmentInput& envi
 renderer::RenderEnvironmentInput ExtractRenderEnvironment(RenderPassContext& ctx)
 {
     renderer::RenderEnvironmentInput output;
+    static renderer::RayEnvironmentCache rayEnvironmentCache;
+    if (!ctx.experimentalRayTracingEnabled) rayEnvironmentCache.Reset();
+    /// @note Global IBL と同じ component order/active 条件で同じ owner を選ぶ。
+    if (ctx.experimentalRayTracingEnabled) for (const EntityID id : ctx.scene.GetEntities<EnvironmentLightComponent>()) {
+        const auto* go = ctx.scene.GetGameObject(id);
+        const auto* light = ctx.scene.GetComponent<EnvironmentLightComponent>(id);
+        if (!go || !go->activeInHierarchy() || !light || !light->enabled) continue;
+        auto& environment = output.rayEnvironment;
+        environment.requested = light->source != IblSource::StaticDDS || !light->rawEnvironmentPath.empty();
+        environment.intensity = light->intensity;
+        environment.rotationRadians = light->rotationY * 0.017453292519943295f;
+        if (light->source == IblSource::StaticDDS && !light->rawEnvironmentPath.empty()) {
+            auto& resolver = asset::StreamedTextureResolver::Engine();
+            if (const auto* texture = resolver.ResolveAsset(ctx.resources, light->rawEnvironmentPath)) {
+                environment.rawTexture = texture->gpuHandle;
+                environment.pixels = rayEnvironmentCache.Load(texture->sourcePath, texture->gpuHandle,
+                    resolver.ResolveContentRevision(ctx.resources, light->rawEnvironmentPath), ctx.resources);
+                environment.ready = environment.pixels != nullptr;
+            }
+        }
+        break;
+    }
     for (auto& go : ctx.scene.GameObjects()) {
         if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
         if (!output.sky) if (const auto* sky = go.GetComponent<SkyRenderer>(); sky && sky->enabled)

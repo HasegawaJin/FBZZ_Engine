@@ -7,6 +7,14 @@
 #include <functional>
 
 namespace fbzz::renderer {
+/// @note BindPassHandles 後に呼ぶ。資源の世代・寸法と必須の Raster 経路を確認し、view に保存する。
+/// @note 未実装の Ray Scene / パス / RasterSurface は未準備。Scene の被覆対応を推測しない。
+/// @return view.renderPlan と同じ構成。要求設定は変更しない。
+[[nodiscard]] ResolvedRenderPlan PrepareViewRenderPlan(ResourceManager& resources,
+    IRenderer& renderer, const RenderSettings& settings, RenderViewResources& view,
+    const RenderSharedResources& shared, const RenderPassHandles& handles,
+    bool experimentalRayTracingEnabled = false);
+
 struct ShadowBounds {
     math::Vector3 center = math::Vector3::ZERO;
     float radius = 0.0f;
@@ -32,9 +40,15 @@ struct AdvancedViewInput {
     float weatherWetness = 0.0f;
     float weatherDarkening = 0.0f;
     float weatherPuddle = 0.0f;
+    bool reflectionProbeSelected = false;
 };
 /// @note Probe のアセット更新はホスト側で同期実行する。コールバックは保持しない。
 void PrepareAdvancedConstants(RenderPassContext& context, RenderViewResources& view,
     const AdvancedViewInput& input,
     const std::function<void(AdvancedGraphicsCB&)>& prepareProbes = {});
+
+/// @pre Reflection の記録可否が確定した TAA 実行直前に呼ぶ。
+/// @note provider 変更・非連続フレームでは現在の画像だけで履歴を再開する。画素別 RT motion は別契約。
+/// @note 先行 Draw/Dispatch が確保した定数は IConstantBuffer の immutable submit snapshot により変更されない。
+void PrepareTaaProviderHistory(RenderPassContext& context, RenderViewResources& view);
 }

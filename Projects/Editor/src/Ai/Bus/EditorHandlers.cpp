@@ -369,9 +369,12 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     JsonValue result = JsonValue::MakeObject();
     result.Set("profilerEnabled", JsonValue(profiler::Profiler::IsEnabled()));
     result.Set("frameIndex", JsonValue(static_cast<std::int64_t>(profiler::Profiler::GetLastFrameIndex())));
-    const double actualFrameMs = static_cast<double>(Time::unscaledDeltaTime) * 1000.0;
-    result.Set("frameMs", JsonValue(actualFrameMs));
-    result.Set("fps", JsonValue(actualFrameMs > 0.0 ? 1000.0 / actualFrameMs : 0.0));
+    const double engineFrameMs = static_cast<double>(Time::unscaledDeltaTime) * 1000.0;
+    result.Set("frameMs", JsonValue(engineFrameMs));
+    result.Set("fps", JsonValue(engineFrameMs > 0.0 ? 1000.0 / engineFrameMs : 0.0));
+    const bool lockstep = Time::GetLockstepDelta() > 0.0f;
+    result.Set("lockstep", JsonValue(lockstep));
+    result.Set("frameMsSource", JsonValue(lockstep ? "lockstep" : "engine-delta-time"));
     result.Set("cpuProfiledMs", JsonValue(frameMs));
     result.Set("drawCalls", JsonValue(rendering.renderStats.drawCalls));
     result.Set("triangles", JsonValue(rendering.renderStats.triangleCount));
@@ -402,14 +405,50 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
         cpuPasses.Push(std::move(pass));
     }
     JsonValue gpuPasses = JsonValue::MakeArray();
-    for (const auto& [name, elapsedMs] : rendering.gpuPassTimings) {
+    const auto metadataJson = [](const renderer::GpuProfilerViewMetadata& metadata) {
+        JsonValue value = JsonValue::MakeObject();
+        value.Set("applicationFrameSerial", JsonValue(static_cast<std::int64_t>(metadata.applicationFrameSerial)));
+        value.Set("viewId", JsonValue(static_cast<std::int64_t>(metadata.viewId)));
+        value.Set("sceneGeneration", JsonValue(static_cast<std::int64_t>(metadata.sceneGeneration)));
+        value.Set("planGeneration", JsonValue(static_cast<std::int64_t>(metadata.planGeneration)));
+        value.Set("resourceEpoch", JsonValue(static_cast<std::int64_t>(metadata.resourceEpoch)));
+        value.Set("outputId", JsonValue(static_cast<std::int64_t>(metadata.outputId)));
+        value.Set("outputGeneration", JsonValue(static_cast<std::int64_t>(metadata.outputGeneration)));
+        value.Set("width", JsonValue(static_cast<std::int64_t>(metadata.width)));
+        value.Set("height", JsonValue(static_cast<std::int64_t>(metadata.height)));
+        return value;
+    };
+    for (const auto& profile : rendering.gpuProfiler.passes) {
         JsonValue pass = JsonValue::MakeObject();
-        pass.Set("name", JsonValue(name));
-        pass.Set("elapsedMs", JsonValue(elapsedMs));
+        pass.Set("name", JsonValue(profile.name));
+        pass.Set("elapsedMs", JsonValue(profile.gpuMs));
+        pass.Set("source", metadataJson(profile.metadata));
+        pass.Set("physicalFrameSerial", JsonValue(static_cast<std::int64_t>(profile.physicalFrameSerial)));
+        pass.Set("deviceEpoch", JsonValue(static_cast<std::int64_t>(profile.deviceEpoch)));
+        pass.Set("available", JsonValue(profile.available));
         gpuPasses.Push(std::move(pass));
     }
     result.Set("cpuRenderPasses", std::move(cpuPasses));
     result.Set("gpuRenderPasses", std::move(gpuPasses));
+    const auto& gpu = rendering.gpuProfiler;
+    JsonValue gpuStatus = JsonValue::MakeObject();
+    gpuStatus.Set("supported", JsonValue(gpu.supported));
+    gpuStatus.Set("available", JsonValue(gpu.available));
+    gpuStatus.Set("complete", JsonValue(gpu.complete));
+    gpuStatus.Set("physicalFrameSerial", JsonValue(static_cast<std::int64_t>(gpu.physicalFrameSerial)));
+    gpuStatus.Set("deviceEpoch", JsonValue(static_cast<std::int64_t>(gpu.deviceEpoch)));
+    gpuStatus.Set("recordedPassCount", JsonValue(static_cast<std::int64_t>(gpu.recordedPassCount)));
+    gpuStatus.Set("droppedPassCount", JsonValue(static_cast<std::int64_t>(gpu.droppedPassCount)));
+    gpuStatus.Set("viewSampleCount", JsonValue(static_cast<std::int64_t>(gpu.passes.size())));
+    gpuStatus.Set("currentView", metadataJson(rendering.gpuCurrentView));
+    /// @note 合計・準備・別 queue はまだ未計測。0 ms を返すと高速だと誤認するため unavailable を明示する。
+    gpuStatus.Set("totalGpuTimeAvailable", JsonValue(gpu.totalGpuTimeAvailable));
+    gpuStatus.Set("totalGpuMs", gpu.totalGpuTimeAvailable ? JsonValue(gpu.totalGpuMs) : JsonValue());
+    gpuStatus.Set("preparationGpuTimeAvailable", JsonValue(gpu.preparationGpuTimeAvailable));
+    gpuStatus.Set("perQueueGpuTimeAvailable", JsonValue(gpu.perQueueGpuTimeAvailable));
+    gpuStatus.Set("queue", JsonValue("direct"));
+    gpuStatus.Set("sampleKind", JsonValue("completed-asynchronous-view-passes"));
+    result.Set("gpuProfiler", std::move(gpuStatus));
     if (ctx.memorySystem != nullptr) {
         const core::MemoryStats memory = ctx.memorySystem->GetTracker().GetTotalStats();
         JsonValue memoryJson = JsonValue::MakeObject();

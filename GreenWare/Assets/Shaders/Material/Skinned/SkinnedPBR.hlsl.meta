@@ -1,2 +1,13 @@
+# @file    SkinnedPBR.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-16
 [meta]
 guid = '192f4bf06a664016b7c0005485f14793'
+
+[shader]
+version = 1
+vertex = 'standard_skinned_v1'
+surface = 'metallic_roughness_v1'
+opacity = 'alpha_clip_v1'
+variants = 'standard_skinned_v1'

@@ -37,5 +37,6 @@ struct ConstantBufferTag {};
 struct PipelineStateTag {};
 struct RenderTargetTag {};
 struct StructuredBufferTag {}; ///< @note GPU StructuredBuffer (SRV) — DrawInstanced のインスタンスデータ用
+struct AccelerationStructureTag {};
 
 } /// @note namespace fbzz::renderer

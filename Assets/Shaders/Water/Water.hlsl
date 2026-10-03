@@ -87,7 +87,7 @@ cbuffer WaterCB : register(CB_OBJECT)
     float4   g_sssParams;            ///< @brief xyz=透過光の色, w=強度
     float4   g_reflectParams;        ///< @brief x=skyReflection(0で無効), y=波の群の深さ, z=水面基準Y, w=波高合計
     float4   g_flowParams;           ///< @brief xy=流れ方向(正規化), z=さざ波の異方比, w=うねり追従ワープ幅 [m]
-    float4   g_waveShapeParams;      ///< @brief x=方向広がり [0,1] (0 で 1 波 1 方向), y=流れの本数, zw=予約
+    float4   g_waveShapeParams;      ///< @brief x=方向広がり [0,1], y=流れの本数, zw=ビューごとの格子中心 (ローカル XZ)
     /// @brief xy=中心のワールド XZ [m], z=影響半径 [m], w=形の変位 [m] (穴は負・山は正)
     float4   g_surfaceFlowA[WATER_SURFACE_FLOW_COUNT];
     /// @brief x=流速 [m/s] (渦だけ回る向きの符号つき), y=減衰の指数, z=型 (WFF_*), w=質感へ回す強さ [0,1]
@@ -98,6 +98,7 @@ cbuffer WaterCB : register(CB_OBJECT)
     float4   g_surfaceFlowD[WATER_SURFACE_FLOW_COUNT];
     /// @brief xyz=Baked の箱の半径 [m], w=水面の基準面 Y − 場の中心 Y [m]
     float4   g_surfaceFlowE[WATER_SURFACE_FLOW_COUNT];
+    float4   g_gridParams; ///< @brief x=カメラ近傍への頂点集中, y=近景セル幅 [m], zw=各軸の分割数
 };
 
 /// @note 形の Gaussian の実効半径 / 影響半径。C++ の kWaterSurfaceFlowShapeRatio と同じ値。
@@ -197,7 +198,43 @@ struct WaterPSInput
     /// @brief xy = 流向、z = さざ波強度、w = 泡のムラ。頂点で評価して補間する。
     float4 flowDirectionDetail : TEXCOORD7;
     float2 flowFoam : TEXCOORD8;
+    float2 meshCellSize : TEXCOORD9; ///< @brief この頂点の隣接セル幅 [m]。遠景で落とした変位を法線へ渡す。
+    float2 baseWorldXZ : TEXCOORD10; ///< @brief 波変位前のワールド XZ。遠景の法線も頂点波と同じ位相で評価する。
 };
+
+/// @brief 有限矩形の外周を保ったまま、軸の中央へ近景の頂点を集める。
+/// @note Graphics/Effects/WaterGrid.hpp と同じ式。中心はセル単位で揃え、カメラ移動で近景の格子を滑らせない。
+/// @see https://developer.nvidia.com/gpugems/gpugems2/part-ii-shading-lighting-and-shadows/chapter-18-using-vertex-texture-displacement GPU Gems 2 Chapter 18, camera-centered grid
+float WaterGridAxisPosition(float coordinate, float extent, float resolution, float focus, float nearCellSize)
+{
+    float halfExtent = extent * 0.5f;
+    if (coordinate <= 0.0f) return -halfExtent;
+    if (coordinate >= 1.0f) return halfExtent;
+    float q = coordinate * 2.0f - 1.0f;
+    if (extent / resolution <= nearCellSize)
+        return q * halfExtent;
+
+    float nearHalfExtent = min(nearCellSize * resolution * 0.5f, halfExtent);
+    float focusLimit = halfExtent - nearHalfExtent;
+    focus = clamp(focus, -focusLimit, focusLimit);
+    focus = floor(focus / nearCellSize + 0.5f) * nearCellSize;
+    focus = clamp(focus, -focusLimit, focusLimit);
+    float sign = q < 0.0f ? -1.0f : 1.0f;
+    float t = abs(q);
+    float side = halfExtent - sign * focus;
+    float far = max(2.0f * t - 1.0f, 0.0f);
+    return focus + sign * (nearHalfExtent * t + (side - nearHalfExtent) * far * far * far);
+}
+
+/// @brief 位置と両隣の最大セル幅を返す。境界も同じ写像を使うのでチャンク間に裂け目を作らない。
+float2 ResolveWaterGridAxis(float coordinate, float extent, float resolution, float focus, float nearCellSize)
+{
+    float step = 1.0f / resolution;
+    float position = WaterGridAxisPosition(coordinate, extent, resolution, focus, nearCellSize);
+    float previous = WaterGridAxisPosition(max(coordinate - step, 0.0f), extent, resolution, focus, nearCellSize);
+    float next = WaterGridAxisPosition(min(coordinate + step, 1.0f), extent, resolution, focus, nearCellSize);
+    return float2(position, max(position - previous, next - position));
+}
 
 /// @brief 頂点グリッドで «刻めない» 波を寝かせる係数 [0,1]。C++ 側の WaveMeshFade と同じ式。
 /// @param cellSize 頂点グリッド 1 セルのワールド実寸 [m]。0 のときはフェードしない。
@@ -308,7 +345,7 @@ void ResolveWaveSpread(out float2 rotation, out float2 scales)
 /// @param basePos 変位«前»のワールド位置。Gerstner の位相はここで取る。
 /// @note 2x2 は sin だけで決まる (cos の項は縦方向にしか効かない)。過去を引くのに変位も法線も
 /// @note 要らないので、1 波あたり sin 2 回 (位相と群の包絡) で済む。
-float WaveFoldAt(float3 basePos, float time)
+float WaveFoldAt(float3 basePos, float time, float2 meshCellSize)
 {
     float txx = 1.0f, txz = 0.0f, bzx = 0.0f, bzz = 1.0f;
     float2 rotation, scales;
@@ -318,7 +355,7 @@ float WaveFoldAt(float3 basePos, float time)
     for (int i = 0; i < 4; ++i)
     {
         if (g_waveDir[i].w <= 0.0f) continue;
-        float fade = WaveMeshFade(g_waveParams[i].y, g_timeParams.xy);
+        float fade = WaveMeshFade(g_waveParams[i].y, meshCellSize);
         if (fade <= 0.0f) continue;
 
         [unroll]
@@ -536,13 +573,33 @@ WaterPSInput VSMain(WaterVSInput v)
 {
     WaterPSInput o;
     float time = g_timeParams.w;
-    float3 worldPos = mul(float4(v.position, 1.0f), g_worldMatrix).xyz;
+    float3 localPos = v.position;
+    float2 uv = v.uv;
+    float2 meshCellSize = g_timeParams.xy;
+    [branch]
+    if (g_gridParams.x > 0.5f)
+    {
+        float3 axisX = mul(float4(1.0f, 0.0f, 0.0f, 0.0f), g_worldMatrix).xyz;
+        float3 axisZ = mul(float4(0.0f, 0.0f, 1.0f, 0.0f), g_worldMatrix).xyz;
+        float2 axisScale = max(float2(length(axisX), length(axisZ)), 1.0e-4f);
+        float2 extent = g_normalParams.xy / axisScale;
+        float2 focus = g_waveShapeParams.zw;
+        float2 nearCellSize = g_gridParams.yy / axisScale;
+        float2 gridX = ResolveWaterGridAxis(v.uv.x, extent.x, g_gridParams.z, focus.x, nearCellSize.x);
+        float2 gridZ = ResolveWaterGridAxis(v.uv.y, extent.y, g_gridParams.w, focus.y, nearCellSize.y);
+        localPos.xz = float2(gridX.x, gridZ.x);
+        meshCellSize = float2(gridX.y, gridZ.y) * axisScale;
+        /// @note マスクと波紋は有限矩形に固定する。集中前の UV を渡すと岸の泡がカメラへ追従する。
+        uv = saturate(localPos.xz / extent + 0.5f);
+    }
+    float3 worldPos = mul(float4(localPos, 1.0f), g_worldMatrix).xyz;
     float3 tangent = float3(1.0f, 0.0f, 0.0f);
     float3 binormal = float3(0.0f, 0.0f, 1.0f);
     float3 disp = float3(0.0f, 0.0f, 0.0f);
 
     /// @note 変位前の位置は «水の粒» の識別子。泡の航跡を引くのに使うので取っておく。
     float3 basePos = worldPos;
+    o.baseWorldXZ = basePos.xz;
 
     float2 rotation, scales;
     ResolveWaveSpread(rotation, scales);
@@ -550,7 +607,7 @@ WaterPSInput VSMain(WaterVSInput v)
     [unroll]
     for (int i = 0; i < 4; ++i)
     {
-        float fade = WaveMeshFade(g_waveParams[i].y, g_timeParams.xy);
+        float fade = WaveMeshFade(g_waveParams[i].y, meshCellSize);
         [unroll]
         for (int part = 0; part < 2; ++part)
         {
@@ -586,7 +643,7 @@ WaterPSInput VSMain(WaterVSInput v)
             continue;
         }
         /// @note 焼いた場に解析微分は無い。1 セルぶんの前進差分で勾配を取る。
-        float  cell = max(max(g_timeParams.x, g_timeParams.y), 0.05f);
+        float  cell = max(max(meshCellSize.x, meshCellSize.y), 0.05f);
         float  h  = WaterBakedDisplacement(fi, basePos.xz);
         float  hx = WaterBakedDisplacement(fi, basePos.xz + float2(cell, 0.0f));
         float  hz = WaterBakedDisplacement(fi, basePos.xz + float2(0.0f, cell));
@@ -599,7 +656,7 @@ WaterPSInput VSMain(WaterVSInput v)
     /// @note いるので、ここは読んで足すだけ (water-waves.md の «波紋の帯分け»)。
     /// @note VS からのテクスチャ読みは SampleLevel。UV は波を乗せる前の頂点 UV で、CPU 側の
     /// @note GetSurfaceHeightAt も変位前の XZ で輪を引く。
-    worldPos.y += (g_rippleTex.SampleLevel(g_samplerClamp, v.uv, 0).b * 2.0f - 1.0f)
+    worldPos.y += (g_rippleTex.SampleLevel(g_samplerClamp, uv, 0).b * 2.0f - 1.0f)
                 * kRippleHeightScale;
 
     /// @note 水平方向のヤコビアン。正規化前の tangent/binormal がそのまま ∂(x+d)/∂x の 2x2 になる。
@@ -612,7 +669,7 @@ WaterPSInput VSMain(WaterVSInput v)
     [unroll]
     for (int tap = 1; tap <= WATER_FOAM_TRAIL_TAPS; ++tap)
     {
-        float past = saturate(1.0f - WaveFoldAt(basePos, time - kFoamTrailStep * (float)tap));
+        float past = saturate(1.0f - WaveFoldAt(basePos, time - kFoamTrailStep * (float)tap, meshCellSize));
         fold = max(fold, past * pow(kFoamTrailDecay, (float)tap));
     }
 
@@ -625,7 +682,8 @@ WaterPSInput VSMain(WaterVSInput v)
 
     o.svPosition = mul(float4(worldPos, 1.0f), viewProjection);
     o.worldPos = worldPos;
-    o.uv = v.uv;
+    o.uv = uv;
+    o.meshCellSize = meshCellSize;
     o.normal = normal;
     o.tangent = tangent;
     o.binormal = binormal;
@@ -643,8 +701,7 @@ WaterPSInput VSMain(WaterVSInput v)
 /// @param dqdx    q の画面 x 微分。異方フィルタの LOD 選択に使う。
 /// @param dqdy    q の画面 y 微分。
 /// @return xy = ∂h/∂q, z = 高さ [0,1]。
-/// @note SampleGrad を使うのは、呼び出し元のオクターブループが break を持ち、勾配が非一様制御流れの
-/// @note 中では未定義になるため。明示勾配なら break を残したまま正しい mip を選べる。
+/// @note 呼び出し元は帯域外の tap を分岐で省く。非一様制御流れでも mip を選べるよう画面微分を明示する。
 /// @note タイルの縮小は «勾配の平均» なので、遠景では自動的に平坦へ収束し、水面が鏡へ近づく。
 float3 WaterNoiseTile(float2 q, float2 dqdx, float2 dqdy)
 {
@@ -663,6 +720,8 @@ static const float2 kWaterDrift[WATER_DETAIL_OCTAVES] = {
 };
 /// @note 振幅 0.55^i (i = 0..4) の総和。途中で打ち切っても正規化がぶれないよう定数で持つ。
 static const float kWaterDetailNorm = 2.110381f;
+/// @note WaterNoiseBake.hpp の kGradientRms=0.5 の二乗。落とした勾配の分散を粗さへ渡す。
+static const float kWaterDetailGradientVariance = 0.25f;
 
 /// @brief さざ波の高さ勾配 (∂h/∂x, ∂h/∂z) をワールド XZ で積む。
 /// @param worldXZ   ワールド XZ [m]。UV で評価すると extent の違う水面どうしで粒度が揃わない。
@@ -670,7 +729,7 @@ static const float kWaterDetailNorm = 2.110381f;
 /// @param footprint このピクセルが覆うワールド距離 [m]。遠いほど・浅い角度ほど大きい。
 /// @param dWorldDx  worldXZ の画面 x 微分。タイルの異方フィルタへ渡す。
 /// @param dWorldDy  worldXZ の画面 y 微分。
-/// @return xy = 勾配, z = Nyquist で落とした細部の割合 (0 = 全部残った, 1 = 全部落ちた)。
+/// @return xy = 勾配, z = Nyquist で落とした傾きの 1 軸平均分散 (強度を掛ける前)。
 /// @note 風向に直交して座標を縮め、さざ波の «うね» を進行方向と直交させる。等方ノイズのままだと
 /// @note 粒の集まりにしか見えず、水というより «ブツブツした膜» になる。
 float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float time, float footprint,
@@ -691,7 +750,8 @@ float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float time, float foo
     const float2x2 step = float2x2(0.80f, -0.60f, 0.60f, 0.80f);
 
     float2 grad = float2(0.0f, 0.0f);
-    float amp = 1.0f, freq = scale, kept = 0.0f;
+    float amp = 1.0f, freq = scale, lostVariance = 0.0f;
+    float meanAxisScaleSq = 0.5f * (1.0f + 1.0f / (stretch * stretch));
 
     [loop]
     for (int i = 0; i < WATER_DETAIL_OCTAVES; ++i)
@@ -699,68 +759,98 @@ float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float time, float foo
         /// @note 1 ピクセルに 1 周期以上入るオクターブは、平均すれば «ざらつき» しか残らない。
         /// @note 残すとカメラが動くたびに遠景の水面が総毛立って明滅する。周期がピクセルの 2 倍を
         /// @note 切ったところから滑らかに寝かせ、«細部が消えて鏡に近づく» 見え方へ収束させる。
-        /// @note freq は単調増加なので、ここで潰れた先のオクターブはすべて潰れている。
+        /// @note 消えた後も分散だけは積む。振幅・周波数・異方スケールを含め、弱いさざ波を過剰にぼかさない。
         float fade = saturate(1.0f - footprint * freq * 2.0f);
-        if (fade <= 0.0f) break;
-
-        float2 q = mul(m, worldXZ) * freq + (flow + kWaterDrift[i] * (time * speed)) * freq;
-        float3 n = WaterNoiseTile(q, mul(m, dWorldDx) * freq, mul(m, dWorldDy) * freq);
-        /// @note 勾配は変換後の座標系で出るので、mul(g, m) = m^T g で元の軸へ戻す (連鎖律)。
-        grad += mul(n.xy, m) * (amp * freq * fade);
-        kept += amp * fade;
+        float slopeScale = amp * freq / kWaterDetailNorm;
+        lostVariance += kWaterDetailGradientVariance * meanAxisScaleSq
+                      * slopeScale * slopeScale * (1.0f - fade * fade);
+        if (fade > 0.0f)
+        {
+            float2 q = mul(m, worldXZ) * freq + (flow + kWaterDrift[i] * (time * speed)) * freq;
+            float3 n = WaterNoiseTile(q, mul(m, dWorldDx) * freq, mul(m, dWorldDy) * freq);
+            /// @note 勾配は変換後の座標系で出るので、mul(g, m) = m^T g で元の軸へ戻す (連鎖律)。
+            grad += mul(n.xy, m) * (amp * freq * fade);
+        }
         m     = mul(step, m);
         amp  *= 0.55f;
         freq *= 2.07f;
     }
 
     const float invNorm = 1.0f / kWaterDetailNorm;
-    return float3(grad * invNorm, saturate(1.0f - kept * invNorm));
+    return float3(grad * invNorm, lostVariance);
 }
 
 /// @brief 頂点グリッドで刻めなかった Gerstner 波を «法線だけ» 戻す。
-/// @param footprint このピクセルが覆うワールド距離 [m]。
-/// @param[out] lost ピクセルより細かくて捨てた量 [0,1]。粗さへ回す。
+/// @param dWorldDx,dWorldDy 波変位前のワールド XZ の画面微分 [m/pixel]。
+/// @param[out] lostVariance ピクセルより細かくて捨てた傾きの 1 軸平均分散。粗さへ回す。
 /// @return ワールド XZ の高さ勾配 (∂h/∂x, ∂h/∂z)。
 /// @note WaveMeshFade は海サイズの水面で 4 本すべてを寝かせる。変位を諦めるのは正しいが、法線まで
 /// @note 消すと «空を映すだけの板» になる。波長がピクセルより十分大きい間は傾きとして返せる。
 /// @note 傾きの上限 1.2 (約 50 度) は安全弁。ak > 1 の波は本来砕けており、変位を伴わないここでは
 /// @note そのままの傾きを出すと «壁» に見える。
-float2 WaterResidualWaveSlope(float2 worldXZ, float time, float footprint, out float lost)
+/// @note 位相の画面周波数は dot(D, dWorldDxy)/波長。直交した伸びは位相を変えず、両画面軸が 0.5 周期/pixel 未満なら Nyquist を満たす。
+/// @note 群の斜めの包絡も位相幅へ含め、基本波に直交した長い footprint で群だけが alias することを防ぐ。
+/// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems Chapter 1, directional wave phase and surface derivatives
+float2 WaterResidualWaveSlope(float2 worldXZ, float time, float2 dWorldDx, float2 dWorldDy,
+                              float2 meshCellSize, out float lostVariance)
 {
     float2 slope = float2(0.0f, 0.0f);
-    lost = 0.0f;
+    lostVariance = 0.0f;
+    float2 rotation, scales;
+    ResolveWaveSpread(rotation, scales);
+    float grouping = saturate(g_reflectParams.y);
 
     [unroll]
     for (int i = 0; i < 4; ++i)
     {
         if (g_waveDir[i].w <= 0.0f) continue;
         float wavelength = max(g_waveParams[i].y, 1.0e-4f);
-        float residual = 1.0f - WaveMeshFade(wavelength, g_timeParams.xy);
+        float meshFade = WaveMeshFade(wavelength, meshCellSize);
+        float residual = 1.0f - meshFade;
         if (residual <= 0.001f) continue;
-
-        float pixelFade = saturate(1.0f - footprint * 2.0f / wavelength);
-        float2 D = normalize(g_waveDir[i].xy);
-        float  A = g_waveParams[i].x * residual;
-        float  phi = g_waveParams[i].w * dot(D, worldXZ) - g_waveParams[i].z * time;
-        slope += D * (A * g_waveParams[i].w * cos(phi)) * pixelFade;
-        lost  += residual * (1.0f - pixelFade) * 0.25f;
+        [unroll]
+        for (int part = 0; part < 2; ++part)
+        {
+            float2 D = normalize(g_waveDir[i].xy);
+            float amplitudeScale;
+            ApplyWaveSpread(i, part, rotation, scales, D, amplitudeScale);
+            if (amplitudeScale <= 0.001f) continue;
+            float phaseFootprint = max(abs(dot(D, dWorldDx)), abs(dot(D, dWorldDy)));
+            float groupSign = (i & 1) ? -1.0f : 1.0f;
+            float2 groupDir = float2(D.x * kWaveGroupCos - D.y * groupSign * kWaveGroupSin,
+                                    D.x * groupSign * kWaveGroupSin + D.y * kWaveGroupCos);
+            float groupRatio = 0.09f + 0.035f * (float)i;
+            if (grouping > 0.0001f)
+                phaseFootprint += groupRatio * max(abs(dot(groupDir, dWorldDx)), abs(dot(groupDir, dWorldDy)));
+            float pixelFade = saturate(1.0f - phaseFootprint * 2.0f / wavelength);
+            float k = g_waveParams[i].w;
+            float amplitude = g_waveParams[i].x * amplitudeScale;
+            float envelope = WaveGroupEnvelope(i, D, k, g_waveParams[i].z, worldXZ, time);
+            float phi = k * dot(D, worldXZ) - g_waveParams[i].z * time;
+            slope += D * (amplitude * residual * envelope * k * cos(phi)) * pixelFade;
+            /// @note cos の平均二乗は 1/2。方向の trace を 2 軸へ均し、群の平均二乗と保持した振幅の二乗を含める。
+            float retained = meshFade + residual * pixelFade;
+            float amplitudeK = amplitude * k;
+            lostVariance += 0.25f * amplitudeK * amplitudeK * (1.0f + 0.5f * grouping * grouping)
+                          * (1.0f - retained * retained);
+        }
     }
 
     float len = length(slope);
     if (len > 1.2f) slope *= 1.2f / len;
-    lost = saturate(lost);
     return slope;
 }
 
 /// @brief 接空間法線。tangent = +X(world), binormal = +Z(world) なので xy がそのまま world XZ に対応する。
 /// @param geoNormal 頂点法線 (ワールド)。うねりの斜面を読み取り、さざ波の分布へ反映する。
 /// @param detailGain 流れの場が持ち上げるさざ波の強度倍率 (1 起点)。
-/// @return xyz = 接空間法線, w = 落とした細部量 (specular AA で粗さへ回す)。
+/// @return xyz = 接空間法線, w = 強度込みの落とした傾きの分散 (specular AA で粗さへ回す)。
 /// @note うねりの勾配でさざ波の座標をずらす (領域ワープ)。波が «さざ波を運ぶ» ので、ワープが無いと
 /// @note うねりとさざ波が別々の層として滑って見える。ワープ量は画面上でゆっくり変わるため、
 /// @note 異方フィルタへ渡す微分には含めていない。
 float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float time, float footprint,
-                         float2 dWorldDx, float2 dWorldDy, float3 geoNormal, float detailGain)
+                          float2 dWorldDx, float2 dWorldDy, float3 geoNormal, float detailGain,
+                          float2 meshCellSize, float2 baseWorldXZ, float2 dBaseDx, float2 dBaseDy)
 {
     float2 swellSlope = -geoNormal.xz / max(geoNormal.y, 0.2f);
     float2 warped = worldXZ + swellSlope * g_flowParams.w;
@@ -768,11 +858,11 @@ float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float time, 
     float3 detail = WaterDetailGradient(warped, flowDir, time, footprint, dWorldDx, dWorldDy);
     /// @note 風上を向いた斜面ほどさざ波が立ち、風下は凪ぐ。一様に散らすとうねりが «ただの起伏» に見える。
     float windward = saturate(0.5f + dot(swellSlope, flowDir));
-    float2 grad = detail.xy * max(g_detailParams.z, 0.0f) * lerp(0.55f, 1.35f, windward)
-                * max(detailGain, 0.0f);
+    float detailScale = max(g_detailParams.z, 0.0f) * lerp(0.55f, 1.35f, windward) * max(detailGain, 0.0f);
+    float2 grad = detail.xy * detailScale;
 
-    float residualLost = 0.0f;
-    grad += WaterResidualWaveSlope(worldXZ, time, footprint, residualLost);
+    float residualVariance = 0.0f;
+    grad += WaterResidualWaveSlope(baseWorldXZ, time, dBaseDx, dBaseDy, meshCellSize, residualVariance);
 
     float3 waveNormal = normalize(float3(-grad.x, -grad.y, 1.0f));
 
@@ -780,7 +870,8 @@ float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float time, 
     float3 rippleNormal = float3(ripple.xy, sqrt(saturate(1.0f - dot(ripple.xy, ripple.xy))));
     waveNormal = normalize(waveNormal + rippleNormal * 0.5f);
     return float4(normalize(lerp(float3(0.0f, 0.0f, 1.0f), waveNormal, g_normalParams.w)),
-                  saturate(max(detail.z, residualLost)));
+                  (detail.z * detailScale * detailScale + residualVariance)
+                      * g_normalParams.w * g_normalParams.w);
 }
 
 /// @brief 水面メッシュ外周のフェード係数。矩形の縁でアルファを落とす。
@@ -880,6 +971,8 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float2 footprintDX = ddx(p.worldPos.xz);
     float2 footprintDY = ddy(p.worldPos.xz);
     float  footprint   = max(length(footprintDX), length(footprintDY));
+    float2 baseDX = ddx(p.baseWorldXZ);
+    float2 baseDY = ddy(p.baseWorldXZ);
 
     /// @note 場の評価は頂点で行う。補間した向きは渦の中心でゼロになり得るため安全に正規化する。
     WaterFlowSample flowSample;
@@ -893,9 +986,9 @@ float4 PSMain(WaterPSInput p) : SV_Target0
 
     float4 normalSample  = SampleWaterNormal(p.worldPos.xz, p.uv, flowDir, time, footprint,
                                              footprintDX, footprintDY, p.normal,
-                                             flowSample.detailGain);
+                                              flowSample.detailGain, p.meshCellSize, p.baseWorldXZ, baseDX, baseDY);
     float3 tangentNormal = normalSample.xyz;
-    float  lostDetail    = normalSample.w;
+    float  lostSlopeVariance = normalSample.w;
 
     float3x3 tbn = float3x3(normalize(p.tangent), normalize(p.binormal), normalize(p.normal));
     float3 N = normalize(mul(tangentNormal, tbn));
@@ -906,13 +999,11 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     if (dot(p.normal, V) < 0.0f) N = -N;
     float NdotV = saturate(dot(N, V));
 
-    /// @note Schlick フレネル。g_surfaceParams.z を水の F0 (実測 0.02 前後) として扱う。
-    /// @warning 以前の bias + (1-bias)*pow は grazing 角以外でも下駄を履かせており、真上から見た
-    /// @note 水面まで一定量の反射が乗って «板に空が映っている» 見え方になっていた。
+    /// @note F0 は垂直入射の反射率。反射率を倍増すると浅い角度で飽和し、水中の散乱光が消える。
     /// @see https://doi.org/10.1111/1467-8659.1330233 Schlick, "An Inexpensive BRDF Model for Physically-based Rendering" (1994)
     float f0 = saturate(g_surfaceParams.z);
     float fresnel = f0 + (1.0f - f0) * pow(saturate(1.0f - NdotV), max(g_surfaceParams.w, 1.0f));
-    fresnel = saturate(fresnel * g_surfaceParams.y * 2.0f);
+    fresnel = saturate(fresnel * g_surfaceParams.y);
 
     float rawSceneDepth = g_sceneDepth.Sample(g_samplerClamp, screenUV).r;
     /// @note 深度が far plane に張り付く場所は Terrain / Mesh が無い背景ピクセルとして扱う。
@@ -951,7 +1042,11 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note 再描画せず透明水面らしい歪みを得る。現在描画中の HDR RT を直接読むと read/write
     /// @note 競合になるため、Water 直前にコピーした sceneColor を参照する。
     float refractionMask = shallowFactor * (1.0f - backgroundMask);
-    float2 refrOffset = tangentNormal.xy * g_refractionFlowParams.x * (1.0f - saturate(fresnel)) * refractionMask;
+    /// @note 水へ入る光は面の傾きと反対側へ曲がる。画面 UV の上下反転もカメラ空間で合わせる。
+    /// @see https://www.graphics.cornell.edu/~bjw/microfacetbsdf.pdf Walter et al. (2007) §4.2 Ideal Refraction
+    float3 viewNormal = mul(float4(N, 0.0f), view).xyz;
+    float2 refrOffset = float2(-viewNormal.x, viewNormal.y) * g_refractionFlowParams.x
+                      * (1.0f - fresnel) * refractionMask;
     float2 refrUV = saturate(screenUV + refrOffset);
 
     /// @note 屈折先が水面より手前 (= カメラと水面の間に物体がある) なら屈折させない。
@@ -968,10 +1063,15 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note 向き、さざ波が 1 つ揺れるだけで R が下半球 (ほぼ真っ黒) へ落ちて黒い帯が出る。
     float3 R = reflect(-V, N);
     R = normalize(float3(R.x, max(R.y, 0.02f), R.z));
-    /// @note 落とした細部はサブピクセルの法線ばらつきそのものなので粗さへ移す (specular AA)。
-    /// @note 移さないと «消えた細部» が反射とハイライトからだけ抜け落ち、遠景の水面が磨いた金属板になる。
+    /// @note 消失割合でなく強度込みの傾き分散を GGX の alpha^2 へ足す。弱いさざ波まで遠景で一律に粗さ 0.7 へしない。
+    /// @note 可視法線の画面内分散も含め、残した長いうねりのハイライトが subpixel へ縮む場合の明滅を抑える。
+    /// @see https://www.jp.square-enix.com/tech/library/pdf/ImprovedGeometricSpecularAA.pdf Tokuyoshi & Kaplanyan (2019), filtered NDF roughness
     float  roughness = saturate(1.0f - g_detailParams.w);
-    float  roughnessAA = saturate(roughness + lostDetail * (1.0f - roughness) * 0.70f);
+    float3 normalDX = ddx(N);
+    float3 normalDY = ddy(N);
+    float normalVariance = 0.15f * (dot(normalDX, normalDX) + dot(normalDY, normalDY));
+    float microfacetAlpha = roughness * roughness;
+    float roughnessAA = sqrt(sqrt(saturate(microfacetAlpha * microfacetAlpha + min(2.0f * (lostSlopeVariance + normalVariance), 0.25f))));
     /// @note 寝た視線では粗さを引き戻して環境キューブを鮮明な mip から引く。粗い mip は上下 90 度ぶんを
     /// @note 平均した色で、水平線際では空に地面が混ざって沈む。実際の水面は入射が浅いほど反射ローブが
     /// @note 細くなるのでこちらが正しい。ハイライト側は 1 ピクセルのちらつきを避けるため据え置く。
@@ -1062,16 +1162,14 @@ float4 PSMain(WaterPSInput p) : SV_Target0
 
     /// @note 太陽は点ではなく角半径 0.0047 rad の円盤。α に円盤ぶんを足して峰を広げないと、
     /// @note GGX の頂点が 1 ピクセルへ落ちて Bloom がちらつく (球光源の正規化と同じ扱い)。
-    /// @note 峰を広げたぶんだけ (α/α')^2 で落とす。これを掛けないと «広げた» のではなく
-    /// @note «明るくした» ことになり、光のエネルギーが増える。
+    /// @note GGX 分布は投影面積で正規化済み。粗さを広げた後に峰の比を全体へ掛けると裾の光まで失う。
     float sunAlpha = max(roughnessAA * roughnessAA, 1.0e-5f);
     float sunAlphaWide = saturate(sunAlpha + 0.0023f);
-    float sunEnergy = (sunAlpha / sunAlphaWide) * (sunAlpha / sunAlphaWide);
     float NdotL = saturate(dot(N, L));
     /// @see https://www.graphics.cornell.edu/~bjw/microfacetbsdf.pdf Walter et al., "Microfacet Models for Refraction through Rough Surfaces" (2007) §5.2 GGX
     float3 sunSpecular = BRDF_SpecularAdvanced(N, V, L, f0.xxx, sqrt(sunAlphaWide),
                                                specT, specB, specAniso)
-                       * (sunEnergy * NdotL * shadow * PI) * sunOverPi;
+                        * (NdotL * shadow * PI) * sunOverPi;
 
     /// @note 波の背面から透ける光 (subsurface)。«光を通す液体» に見えるかはここで決まり、
     /// @note 反射とスペキュラだけだと金属板のような水面になる。

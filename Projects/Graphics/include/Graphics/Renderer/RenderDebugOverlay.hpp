@@ -7,6 +7,7 @@
 #pragma once
 
 #include "ResourceHandle.hpp"
+#include "GpuProfiler.hpp"
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -68,8 +69,7 @@ public:
         /// @note 空のままにするとタイミング表示をスキップする。
         std::vector<std::pair<std::string, double>> passTimings;
 
-        /// @note GpuProfGetResults() から詰めた {パス名, GPU時間(ms)} リスト。
-        /// @note QUERY_LATENCY フレーム分溜まるまでは空。
+        /// @note 同じビュー・構成の完了済み非同期 sample。現在画像の計測値ではない。
         std::vector<std::pair<std::string, double>> gpuPassTimings;
 
         uint32_t width  = 0;
@@ -84,6 +84,8 @@ public:
         /// @note       毎フレーム動く数値は混ぜない。パス構成が変わったフレームだけ更新されるため、
         /// @note       そのままでは前回の内容が残る。
         std::string planDescription;
+        GpuProfilerViewMetadata gpuCurrentView;
+        GpuProfilerSnapshot gpuProfiler;
     };
 
     /// @note 最後の UpdateSnapshot() で保存されたスナップショットを返す。

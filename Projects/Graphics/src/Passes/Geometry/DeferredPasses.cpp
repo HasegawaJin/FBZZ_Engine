@@ -33,8 +33,9 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     UpdateShadowConstants(ctx);
     UpdatePunctualShadowConstants(ctx);
     if (!h.gbufferShader.IsValid()) return;
-    static renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
-    if (!materialCB.IsValid()) materialCB = resources.CreateConstantBuffer(96);
+    auto& materialCB = h.gbufferMaterialCB;
+    if (!resources.Get(materialCB)) materialCB = resources.CreateConstantBuffer(96);
+    if (!resources.Get(materialCB)) return;
     for (bool skinned : { false, true }) {
         std::vector<MeshEntry> queue;
         for (const auto& object : input.objects) {
@@ -97,11 +98,13 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
             dc.pipelineState = MaterialPipeline(ctx, material);
             dc.constantBuffers[0] = h.frameCB;
             if (material.valid) {
-                if (material.directGBufferParams) dc.constantBuffers[2] = material.paramsBuffer;
+                const auto params = MakeHybridGBufferParams(material.gbufferParams, material.surface);
+                if (material.directGBufferParams && params == material.gbufferParams)
+                    dc.constantBuffers[2] = material.paramsBuffer;
                 else {
-                    /// @note 共有 CB を更新する前に、前の材質を使うバッチを提出する。
+                    /// @note Typed marker changes use an immutable draw snapshot, never mutate the asset's material buffer or a pending instance batch.
                     batcher.Flush();
-                    resources.Update(materialCB, material.gbufferParams.data(), material.gbufferParams.size());
+                    resources.Update(materialCB, params.data(), params.size());
                     dc.constantBuffers[2] = materialCB;
                 }
             }
@@ -164,6 +167,16 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
 
     PostProcCB lightingPostData{};
     lightingPostData.ssaoIntensity = aoIntensity;
+    const bool rayReflectionActive = !ctx.hybridReflectionSourcePass && ctx.rayReflectionPassActive
+        && resources.Get(ctx.handles.rayReflectionResult);
+    lightingPostData.rayReflectionEnabled = rayReflectionActive ? 1.0f : 0.0f;
+    const bool reflectionResolveActive = ctx.hybridReflectionResolveActive && !ctx.hybridReflectionSourcePass;
+    const bool reflectionSsrActive = reflectionResolveActive && ctx.ssrPassActive
+        && resources.Get(h.ssrResult);
+    lightingPostData.reflectionResolveEnabled = static_cast<float>(ctx.hybridReflectionSourcePass
+        ? ReflectionResolveStage::SOURCE : (reflectionResolveActive
+            ? ReflectionResolveStage::FINAL : ReflectionResolveStage::LEGACY));
+    lightingPostData.reflectionSsrEnabled = reflectionSsrActive ? 1.0f : 0.0f;
     resources.Update(h.postprocCB, &lightingPostData, sizeof(PostProcCB));
 
     if (!h.deferredLightingShader.IsValid() || !ctx.Res().Target("GBuffer").IsValid()) return;
@@ -201,6 +214,8 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     dc.textures[5]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 0);
     /// @note TEX_GBUFFER1
     dc.textures[6]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
+    /// @note Deferred の t3 は材質の emissive texture ではなく、GBuffer に保持した線形 HDR emission。
+    dc.textures[3]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 2);
     /// @note TEX_DEPTH
     dc.textures[7]        = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
     /// @note TEX_SHADOW
@@ -219,6 +234,9 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     dc.textures[17]       = h.iblPrefilter;
     /// @note TEX_IBL_BRDF_LUT:   BRDF 積分テーブル
     dc.textures[18]       = h.iblBrdfLut;
+    /// @note t20 はこのパスと Composite のレイ反射用。無効時は b5 の gate で読まない。
+    if (rayReflectionActive) dc.textures[20] = ctx.handles.rayReflectionResult;
+    if (reflectionSsrActive) dc.textures[23] = h.ssrResult;
     /// @note TEX_LIGHT_PROBE_SH / _OUTER: 無効ハンドルなら未束縛 (b8 の probeVolumes[i].intensity が 0 で引かない)
     dc.textures[22]       = h.lightProbeSH[0];
     dc.textures[21]       = h.lightProbeSH[1];
@@ -338,10 +356,19 @@ void DeferredLightingPass::Setup(PassBuilder& builder, const RenderPassContext& 
     builder.Read("GBuffer").ReadWrite("HDR")
            .Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
     DeclareScreenSpaceOcclusionReads(builder, ctx);
+    if (!m_reflectionSource && ctx.rayReflectionPassActive)
+        builder.Read("RayReflectionResult", RenderGraph::ResourceAccessPurpose::SHADER_READ);
+    if (!m_reflectionSource && ctx.rayReflectionReconstructionPrepared)
+        builder.Read("RayReflectionRaw", RenderGraph::ResourceAccessPurpose::SHADER_READ);
+    if (!m_reflectionSource && ctx.hybridReflectionSsrPlanned)
+        builder.Read("SSRResult", RenderGraph::ResourceAccessPurpose::SHADER_READ);
 }
 
 void DeferredLightingPass::Execute(PassResources&, RenderPassContext& ctx)
 {
+    const bool previousSourcePass = ctx.hybridReflectionSourcePass;
+    ctx.hybridReflectionSourcePass = m_reflectionSource;
     ExecuteDeferredLightingPass(ctx);
+    ctx.hybridReflectionSourcePass = previousSourcePass;
 }
 }

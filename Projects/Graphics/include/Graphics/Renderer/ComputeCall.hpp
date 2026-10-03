@@ -7,6 +7,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <vector>
 #include "ResourceHandle.hpp"
 
 namespace fbzz::renderer {
@@ -44,9 +45,21 @@ struct ComputeCall {
     /// @note       BufferTag (頂点バッファ) 側で確保し、バインド口だけここに分けて持つ。
     ResourceHandle<BufferTag>                         uavVertexBuffer  = {};
 
+    /// @note TLAS shares the t0-t31 namespace; each slot must have exactly one resource type.
+    /// @note Initial ray dispatches run on DIRECT only; the backend rejects stale or unbuilt TLAS handles.
+    std::array<ResourceHandle<AccelerationStructureTag>, 32> accelerationStructures = {};
+
     uint32_t dispatchX = 1;
     uint32_t dispatchY = 1;
     uint32_t dispatchZ = 1;
+
+    /// @note ByteAddressBuffer SRV (t0-t31)。同じ番号の Texture / StructuredBuffer / TLAS とは排他。
+    std::array<ResourceHandle<BufferTag>, 32> srvRawBuffers = {};
+    /// @note GPU table の添字から間接的に読む全 Buffer。スロットを消費せず backend の状態と寿命追跡へ渡す。
+    /// @note 初期実装は DIRECT queue 限定。table は各 Buffer の現在の内容版と SRV 添字に一致させること。
+    std::vector<ResourceHandle<BufferTag>> indirectReadBuffers;
+    /// @note Every TextureTag indexed through a GPU material table; consumes no t-slot but requires graph declaration and DIRECT queue tracking.
+    std::vector<ResourceHandle<TextureTag>> indirectReadTextures;
 };
 
 } /// @note namespace fbzz::renderer

@@ -11,6 +11,7 @@
 #include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PostProcessProfile.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/SequenceAsset.hpp>
 #include <Engine/Asset/SynthAsset.hpp>
@@ -37,7 +38,7 @@ void NotifyAssetCreated(const std::string& path)
     Toast::Success("Created " + util::FileSystem::GetFilename(path));
 }
 
-} // namespace
+} /// @note namespace
 
 void AssetBrowserPanel::BeginRenameForPath(const std::string& path, EditorContext* ctx)
 {
@@ -141,8 +142,8 @@ void AssetBrowserPanel::DrawFbxContents(EditorContext& ctx)
         if (hov) ImGui::SetTooltip("%s", tooltip);
 
         /// @note 名前テキスト (省略、中央揃え)
-        ///       1 バイトずつ pop_back すると日本語のファイル名が文字の途中で切れる。
-        ///       文字境界を知っている共通の縮め方へ寄せる。
+        /// @note 1 バイトずつ pop_back すると日本語のファイル名が文字の途中で切れる。
+        /// @note 文字境界を知っている共通の縮め方へ寄せる。
         const std::string disp = widgets::ElideToWidth(displayName, sz, "..");
 
         const float ind = (sz - ImGui::CalcTextSize(disp.c_str()).x) * 0.5f;
@@ -239,7 +240,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Vector Field " + std::to_string(suffix++) + ".png";
         /// @note 既定は 32³ のカールノイズ。空のグリッドを置くと «貼っても何も起きない» という
-        ///       最も分かりにくい状態から始まるので、開いた時点で流れが見えるものを焼く。
+        /// @note 最も分かりにくい状態から始まるので、開いた時点で流れが見えるものを焼く。
         fluid::VectorFieldAsset field;
         fluid::BakeVectorField(fluid::VectorFieldRecipe::Curl, 32, { 5.0f, 5.0f, 5.0f },
                                /*seed=*/1, /*strength=*/1.0f, field);
@@ -255,7 +256,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Fluid " + std::to_string(suffix++) + ".fluid";
         /// @note 既定は煙のプリセット。空のレシピだと焼いても何も写らず、«壊れている» のか
-        ///       «設定が無い» のか区別できない。
+        /// @note «設定が無い» のか区別できない。
         if (asset::SaveFluidRecipe(newPath, asset::MakeFluidPreset(asset::FluidPreset::Smoke))) {
             NotifyAssetCreated(newPath);
             RefreshDirectory();
@@ -434,7 +435,15 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 while (util::FileSystem::Exists(newPath))
                     newPath = m_currentPath + "/New " + typeName + " " +
                         std::to_string(suffix++) + ".fzdata";
-                util::FileSystem::WriteText(newPath, "type = \"" + typeName + "\"\n");
+                if (typeName == asset::RenderPipelineAsset::TYPE_NAME) {
+                    if (!asset::CreateRenderPipelineAsset(newPath, renderer::RenderSettings{})) {
+                        FBZZ_LOG_ERROR("Pipeline asset creation failed: %s", newPath.c_str());
+                        continue;
+                    }
+                } else if (!util::FileSystem::WriteText(newPath, "type = \"" + typeName + "\"\n")) {
+                    FBZZ_LOG_ERROR("Data asset creation failed: %s", newPath.c_str());
+                    continue;
+                }
                 NotifyAssetCreated(newPath);
                 RefreshDirectory();
                 BeginRenameForPath(newPath, &ctx);
@@ -458,7 +467,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             "Destination: " + (resolvedScriptsDir.empty() ? projScriptsDir : resolvedScriptsDir);
 
         /// @note 生成先が 2 箇所ある (SDK 側ソースとプロジェクト側 Assets) のは既存仕様。
-        ///       種類が増えても分岐が散らないよう、コールバックの組み立てを 1 本化する。
+        /// @note 種類が増えても分岐が散らないよう、コールバックの組み立てを 1 本化する。
         auto makeCallback = [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath]
             (ScriptCodeGen::ScriptKind kind, const char* label) {
             return [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath, kind, label]
@@ -578,4 +587,4 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
 /// @name ファイル監視ヘルパー
 
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

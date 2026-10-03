@@ -51,7 +51,7 @@ renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
 }
 
 
-void UpdateShadowConstants(RenderPassContext& ctx)
+ShadowConstantsCB MakeShadowConstants(const RenderPassContext& ctx)
 {
     const auto& rs = ctx.settings;
     ShadowConstantsCB data{};
@@ -104,13 +104,17 @@ void UpdateShadowConstants(RenderPassContext& ctx)
     data.cloudShadowWindX    = ctx.cloudShadowWindX;
     data.cloudShadowWindZ    = ctx.cloudShadowWindZ;
 
-    ctx.resources.Update(ctx.handles.shadowCB, &data, sizeof(ShadowConstantsCB));
+    return data;
 }
 
-void UpdatePunctualShadowConstants(RenderPassContext& ctx)
+void UpdateShadowConstants(RenderPassContext& ctx)
 {
-    if (!ctx.handles.punctualShadowCB.IsValid()) return;
+    const auto data = MakeShadowConstants(ctx);
+    ctx.resources.Update(ctx.handles.shadowCB, &data, sizeof(data));
+}
 
+PunctualShadowConstantsCB MakePunctualShadowConstants(const RenderPassContext& ctx)
+{
     const auto& rs = ctx.settings;
     PunctualShadowConstantsCB data{};
 
@@ -171,8 +175,14 @@ void UpdatePunctualShadowConstants(RenderPassContext& ctx)
         };
     }
 
-    ctx.resources.Update(ctx.handles.punctualShadowCB, &data,
-                         sizeof(PunctualShadowConstantsCB));
+    return data;
+}
+
+void UpdatePunctualShadowConstants(RenderPassContext& ctx)
+{
+    if (!ctx.handles.punctualShadowCB.IsValid()) return;
+    const auto data = MakePunctualShadowConstants(ctx);
+    ctx.resources.Update(ctx.handles.punctualShadowCB, &data, sizeof(data));
 }
 
 

@@ -1,7 +1,7 @@
-// FBZZ Engine
-// PostProcess/Color/Composite.hlsl | PostProcess
-// 最終合成パス — HDR + Bloom を合成してトーンマップ・ガンマ補正し LDR に出力する
-// フォグ: 深度バッファから線形距離を復元して指数フォグを適用する
+/// @file    Composite.hlsl
+/// @brief   HDR と Bloom を合成し、トーンマップ・ガンマ補正した LDR を出力する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
 
 #include "Common/Constants.hlsli"
 #include "Common/Space.hlsli"
@@ -14,32 +14,35 @@
 #include "Common/FroxelFogConstants.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-FBZZ_TEX2D(texHDR, TEX_GBUFFER0_SLOT);        // ライティング結果 HDR バッファ
+FBZZ_TEX2D(texHDR, TEX_GBUFFER0_SLOT);        /// @note ライティング結果 HDR バッファ
 FBZZ_TEX2D(texBloom, TEX_BLOOM_SLOT);
-FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);           // 深度 (フォグ計算用)
-FBZZ_TEX3D(texLUT, TEX_LUT_COLOR_GRADE_SLOT); // 3D カラーグレーディング LUT (32x32x32 推奨)
-// ---- Advanced Graphics ----
-// SSR 反射 — ssrIntensity > 0 のとき alpha チャンネルをブレンド係数として HDR に乗せる
+FBZZ_TEX2D_T(float, texDepth, TEX_DEPTH_SLOT);           /// @note 深度 (フォグ計算用)
+FBZZ_TEX3D(texLUT, TEX_LUT_COLOR_GRADE_SLOT); /// @note 3D カラーグレーディング LUT (32x32x32 推奨)
+/// @note ---- Advanced Graphics ----
+/// @note SSR 反射 — ssrIntensity > 0 のとき alpha チャンネルをブレンド係数として HDR に乗せる
 FBZZ_TEX2D_T(float4, texSSR, TEX_SSR_SLOT);
-// 全画面フェッチはすべてこれ 1 本で引く。
-// WHY s0 (SAMPLER_DEFAULT) を使わないか: DX12 の静的サンプラーでは s0 が WRAP
-//     (メッシュテクスチャのタイリング用) になっている。色収差やレンズ歪みは uv を
-//     画面外へずらすので、s0 で引くと画面端が反対側の端を読み、上下左右がつながる。
+/// @note t20 carries the same binary validity adopted by DeferredLighting, never additive radiance here.
+FBZZ_TEX2D_T(float4, texRayReflection, 20);
+SamplerState sampPointClamp : register(SAMPLER_POINT_CLAMP);
+/// @note 全画面フェッチはすべてこれ 1 本で引く。
+/// @note s0 (SAMPLER_DEFAULT) を使わないか: DX12 の静的サンプラーでは s0 が WRAP
+/// @note (メッシュテクスチャのタイリング用) になっている。色収差やレンズ歪みは uv を
+/// @note 画面外へずらすので、s0 で引くと画面端が反対側の端を読み、上下左右がつながる。
 SamplerState       sampLinearClamp : register(SAMPLER_LINEAR_CLAMP);
 
-// ---- フロクセル ボリューメトリック フォグ ----
-// froxelGridZ == 0 のとき無効。b13 が未束縛なら全ゼロで読まれるので、そのまま素通りする。
+/// @note ---- フロクセル ボリューメトリック フォグ ----
+/// @note froxelGridZ == 0 のとき無効。b13 が未束縛なら全ゼロで読まれるので、そのまま素通りする。
 FBZZ_TEX3D_T(float4, texFroxelFog, TEX_FROXEL_FOG_SLOT);
 
-// ---- 自動露出 ----
-// [0] = 順応済みの平均輝度。ExposureAverage.cs.hlsl が毎フレーム書く。
-// autoExposureKey <= 0 のときは束縛されておらず、b5 の exposure をそのまま使う。
-FBZZ_SBUFFER_T(float, gAdaptedLuminance, SB_PUNCTUAL_LIGHTS_SLOT); // t29
+/// @note ---- 自動露出 ----
+/// @note [0] = 順応済みの平均輝度。ExposureAverage.cs.hlsl が毎フレーム書く。
+/// @note autoExposureKey <= 0 のときは束縛されておらず、b5 の exposure をそのまま使う。
+FBZZ_SBUFFER_T(float, gAdaptedLuminance, SB_PUNCTUAL_LIGHTS_SLOT); /// @note t29
 
-// ResolveExposure — b5 の手動 exposure と自動露出を 1 か所で合流させる。
-//
-// WHY 中間グレーで割るか: 露出とは「平均輝度を中間グレーへ持ってくる倍率」。
-//     0.18 は反射率 18% のグレーカード、つまり写真の露出計が基準にしている明るさ。
+/// @note ResolveExposure — b5 の手動 exposure と自動露出を 1 か所で合流させる。
+
+/// @note 中間グレーで割るか: 露出とは「平均輝度を中間グレーへ持ってくる倍率」。
+/// @note 0.18 は反射率 18% のグレーカード、つまり写真の露出計が基準にしている明るさ。
 float ResolveExposure()
 {
     if (autoExposureKey <= 0.0f)
@@ -48,7 +51,7 @@ float ResolveExposure()
     const float avg = max(gAdaptedLuminance[0], 1e-5f);
     float ev = log2(autoExposureKey / avg) + autoExposureCompensation;
     ev = clamp(ev, autoExposureMinEV, autoExposureMaxEV);
-    // 手動 exposure は自動露出の上に乗る倍率として残す。絵作りの最終調整に使える。
+    /// @note 手動 exposure は自動露出の上に乗る倍率として残す。絵作りの最終調整に使える。
     return exposure * exp2(ev);
 }
 
@@ -64,13 +67,13 @@ float LinearDepthFromNdc(float ndcZ)
     return LinearizeDepth(ndcZ, nearZ, farZ, isOrthographic);
 }
 
-// ApplyFroxelFog — 積分済みボリュームから「加算する光」と「背景の透過率」を取り出す。
-//   rgb = 視線に沿って散乱してきた光, a = 背景に掛ける透過率
+/// @note ApplyFroxelFog — 積分済みボリュームから「加算する光」と「背景の透過率」を取り出す。
+/// @note rgb = 視線に沿って散乱してきた光, a = 背景に掛ける透過率
 float3 ApplyFroxelFog(float3 hdr, float2 uv, float ndcDepth)
 {
     if (froxelGridZ == 0u) return hdr;
 
-    // 深度が最遠 (スカイドーム) のときは、グリッドの最終スライスまで積分した値になる。
+    /// @note 深度が最遠 (スカイドーム) のときは、グリッドの最終スライスまで積分した値になる。
     const float viewZ = LinearDepthFromNdc(ndcDepth);
 
     /// @note Load でなく Sample。スライス間を補間しないと、粗いグリッドの境界がそのまま画面上の縞になる。
@@ -93,8 +96,8 @@ float3 ApplyDepthOfFieldHDR(float3 hdr, float2 uv, float ndcDepth)
     if (dofBlurRadius <= 0.0f)
         return hdr;
 
-    // WHAT: 焦点距離から離れたピクセルほど、固定 8 点サンプルのぼかしを強く混ぜる。
-    // WHY: 専用 CoC バッファを増やさない軽量版として、Composite 内で完結させる。
+    /// @note WHAT: 焦点距離から離れたピクセルほど、固定 8 点サンプルのぼかしを強く混ぜる。
+    /// @note 専用 CoC バッファを増やさない軽量版として、Composite 内で完結させる。
     float depth = LinearDepthFromNdc(ndcDepth);
     float blur = saturate(abs(depth - dofFocusDistance) / max(dofFocusRange, 0.001f));
     float2 radius = texelSize * dofBlurRadius * blur;
@@ -117,8 +120,8 @@ float3 ApplySharpenHDR(float3 hdr, float2 uv)
     if (sharpenStrength <= 0.0f)
         return hdr;
 
-    // WHAT: 十字 4 近傍の平均を引いたアンシャープマスク。
-    // WHY: Sobel のような輪郭抽出より安価で、Bloom 後の HDR に自然な解像感を足せる。
+    /// @note WHAT: 十字 4 近傍の平均を引いたアンシャープマスク。
+    /// @note Sobel のような輪郭抽出より安価で、Bloom 後の HDR に自然な解像感を足せる。
     float2 r = texelSize * max(sharpenRadius, 0.25f);
     float3 blur =
         SampleHdrWithBloom(saturate(uv + float2( r.x, 0.0f))) +
@@ -135,10 +138,10 @@ float3 ApplyClarity(float3 ldr, float2 uv)
     if (clarityStrength <= 0.0f)
         return ldr;
 
-    // WHAT: 少し広い近傍平均との差分を LDR に戻すローカルコントラスト補正。
-    // WHY: シャープ化より大きい面の明暗差を強調し、ディテールが眠い画を自然に引き締める。
+    /// @note WHAT: 少し広い近傍平均との差分を LDR に戻すローカルコントラスト補正。
+    /// @note シャープ化より大きい面の明暗差を強調し、ディテールが眠い画を自然に引き締める。
     /// @note 中心も近傍と同じ経路 (HDR + Bloom → トーンマップ) で作り、その差だけを足す。
-    ///       完成した ldr と比べると、近傍に乗っていない霧・SSR・被写界深度まで «差» として強調される。
+    /// @note 完成した ldr と比べると、近傍に乗っていない霧・SSR・被写界深度まで «差» として強調される。
     const float  exposureValue = ResolveExposure();
     float2 r = texelSize * max(clarityRadius, 0.5f);
     const float3 center = FinalOutput(SampleHdrWithBloom(uv), exposureValue);
@@ -152,12 +155,12 @@ float3 ApplyClarity(float3 ldr, float2 uv)
     return saturate(ldr + (center - blur) * clarityStrength);
 }
 
-// 放射ブラー — 画面中心から外向きへ数タップ伸ばす。
-//
-// WHY 中心から «外» か: 起爆の «押し出され感» は、視界の端が後ろへ流れることで出る。
-//     逆向き (外から中心) にすると «吸い込まれる» になり、被弾の演出になってしまう。
-// WHY タップ数を固定するか: 強さで分岐すると、弱いフレームと強いフレームで
-//     コストが変わり、一番負荷が高い瞬間 (集束の起爆) だけ可変になる。
+/// @note 放射ブラー — 画面中心から外向きへ数タップ伸ばす。
+
+/// @note 中心から «外» か: 起爆の «押し出され感» は、視界の端が後ろへ流れることで出る。
+/// @note 逆向き (外から中心) にすると «吸い込まれる» になり、被弾の演出になってしまう。
+/// @note タップ数を固定するか: 強さで分岐すると、弱いフレームと強いフレームで
+/// @note コストが変わり、一番負荷が高い瞬間 (集束の起爆) だけ可変になる。
 float3 ApplyRadialBlur(Texture2D tex, SamplerState samp, float2 uv, float3 base, float strength)
 {
     if (strength <= 1.0e-5f) return base;
@@ -178,8 +181,8 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float2 uv = LensDistortUV(sourceUV, lensDistortion);
     if (any(uv < 0.0f) || any(uv > 1.0f))
         return float4(0.0f, 0.0f, 0.0f, 1.0f);
-    // 衝撃波リングは範囲判定の «後»。前に置くと、輪が画面端を抜ける最後の数フレームで
-    // ずらした先が範囲外になり、リングに沿って黒い帯が出る (端は sampLinearClamp が伸ばす)。
+    /// @note 衝撃波リングは範囲判定の «後»。前に置くと、輪が画面端を抜ける最後の数フレームで
+    /// @note ずらした先が範囲外になり、リングに沿って黒い帯が出る (端は sampLinearClamp が伸ばす)。
     uv = ShockRingUV(uv, shockRingCenter, shockRingRadius, shockRingWidth, shockRingAmplitude);
 
     float3 hdr;
@@ -195,8 +198,8 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     {
         hdr = texHDR.Sample(sampLinearClamp, uv).rgb;
     }
-    // 放射ブラーは色収差の «後»。先に掛けると RGB のずれごと引き伸ばされ、
-    // 中心から外へ虹が走る (収差ではなくプリズムに見える)。
+    /// @note 放射ブラーは色収差の «後»。先に掛けると RGB のずれごと引き伸ばされ、
+    /// @note 中心から外へ虹が走る (収差ではなくプリズムに見える)。
     hdr = ApplyRadialBlur(texHDR, sampLinearClamp, uv, hdr, radialBlur);
     [branch]
     if (bloomIntensity > 0.0f)
@@ -212,31 +215,36 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     hdr = ApplyDepthOfFieldHDR(hdr, uv, ndcDepth);
     hdr = ApplySharpenHDR(hdr, uv);
 
-    // ---- Advanced Graphics: SSR 反射をトーンマップ前 (HDR 空間) でブレンドする ----
-    // WHY: HDR 空間でブレンドすることで金属の映り込みが過露出部分でも正しく飽和する。
-    //      ssrIntensity=0 のときはテクスチャが未束縛でも 0 を返すため分岐不要。
-    if (ssrIntensity > 0.0f)
+    /// @note Hybrid の反射は DeferredLighting で鏡面間接光だけに解決済み。Raster の従来 SSR だけを残す。
+    [branch]
+    if (reflectionResolveEnabled <= 0.0f)
     {
-        float4 ssrSample = texSSR.Sample(sampLinearClamp, uv);
-        // alpha は Fresnel・roughness を含む信頼度。強度はここで一度だけ適用する。
-        hdr = lerp(hdr, ssrSample.rgb, saturate(ssrSample.a * ssrIntensity));
+        bool rayReflectionValid = false;
+        if (rayReflectionEnabled > 0.0f)
+            rayReflectionValid = texRayReflection.Sample(sampPointClamp, uv).a >= 1.0f;
+        if (ssrIntensity > 0.0f && !rayReflectionValid)
+        {
+            float4 ssrSample = texSSR.Sample(sampLinearClamp, uv);
+            /// @note Raster の alpha は Fresnel・roughness を含む。強度はここで一度だけ適用する。
+            hdr = lerp(hdr, ssrSample.rgb, saturate(ssrSample.a * ssrIntensity));
+        }
     }
-    // NOTE: Volumetric Light はここでは足さない。VolumetricLightPass が «水・半透明より前» で
-    //       HDR へ加算済み。ここで足すとレイの終端 (不透明深度) までの光芒が水面の手前へ
-    //       描かれ、水が光の靄で塗り潰される。
+    /// @note Volumetric Light はここでは足さない。VolumetricLightPass が «水・半透明より前» で
+    /// @note HDR へ加算済み。ここで足すとレイの終端 (不透明深度) までの光芒が水面の手前へ
+    /// @note 描かれ、水が光の靄で塗り潰される。
 
-    // フロクセル霧は HDR のまま、トーンマップより前に乗せる。
-    // WHY: 霧は光そのもので、露出とトーンマップを一緒に受けるべきもの。
-    //      LDR 側で足すと、明るいシーンで霧だけが白飛びして浮く。
+    /// @note フロクセル霧は HDR のまま、トーンマップより前に乗せる。
+    /// @note 霧は光そのもので、露出とトーンマップを一緒に受けるべきもの。
+    /// @note LDR 側で足すと、明るいシーンで霧だけが白飛びして浮く。
     hdr = ApplyFroxelFog(hdr, uv, ndcDepth);
 
-    // 露出 → ACES トーンマップ → sRGB ガンマ補正
+    /// @note 露出 → ACES トーンマップ → sRGB ガンマ補正
     float3 ldr = FinalOutput(hdr, ResolveExposure());
     ldr = ApplyClarity(ldr, uv);
 
-    // 深度から線形距離を復元してフォグを適用する。
+    /// @note 深度から線形距離を復元してフォグを適用する。
     /// @note 深度 0 (Reversed-Z の最遠) はスカイドームなので霧を掛けない。
-    // フォグの適用ロジック (ApplyFog) は共通で、色の出どころだけ fogSource で切り替える (§3-3)。
+    /// @note フォグの適用ロジック (ApplyFog) は共通で、色の出どころだけ fogSource で切り替える (§3-3)。
     if (fogDensity > 0.0f)
     {
         if (!IsFarDepth(ndcDepth))
@@ -245,29 +253,29 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
             float dist     = max(linDepth - fogFar, 0.0f);
             float factor   = FogFactor(dist, fogDensity);
 
-            float3 col = fogColor; // Exponential: 固定フォグ色
+            float3 col = fogColor; /// @note Exponential: 固定フォグ色
             if (fogSource > 0.5f)
             {
-                // Atmosphere (エアリアルパースペクティブ): 視線方向の大気 in-scatter をフォグ色に使う。
-                // 太陽から離れた遠景は青く、太陽方向は暖色に霞む。空ドームの見た目と整合する。
+                /// @note Atmosphere (エアリアルパースペクティブ): 視線方向の大気 in-scatter をフォグ色に使う。
+                /// @note 太陽から離れた遠景は青く、太陽方向は暖色に霞む。空ドームの見た目と整合する。
                 float3 worldPos  = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
                 float3 rayDir    = normalize(worldPos - cameraPos);
                 float3 sunDir    = normalize(-lightDir);
-                // skyDimmer を使う (Skydome / SunMoon と同じ軸)。lightIntensity を使うと
-                // DirectionalLight を強めただけでエアリアルパースが空ドームと食い違う。
+                /// @note skyDimmer を使う (Skydome / SunMoon と同じ軸)。lightIntensity を使うと
+                /// @note DirectionalLight を強めただけでエアリアルパースが空ドームと食い違う。
                 float  scaled    = sunIntensity * skyDimmer;
                 float3 inscatter = ComputeAtmosphericScattering(
                     rayDir, sunDir, rayleighScattering, mieScattering, mieG, scaled) * lightColor;
-                // フォグは LDR 空間で適用するため、in-scatter (HDR) を露出→トーンマップして合わせる。
+                /// @note フォグは LDR 空間で適用するため、in-scatter (HDR) を露出→トーンマップして合わせる。
                 col = FinalOutput(inscatter, ResolveExposure());
             }
             ldr = ApplyFog(ldr, factor, col);
         }
     }
 
-    // 水没カメラ用の全画面補正。
-    // WHY: 水面そのものは Water パスで描くが、カメラが水中に入った時の吸収・濁り・視界歪みは
-    //      画面全体にかかる効果なので Composite で一括処理する。
+    /// @note 水没カメラ用の全画面補正。
+    /// @note 水面そのものは Water パスで描くが、カメラが水中に入った時の吸収・濁り・視界歪みは
+    /// @note 画面全体にかかる効果なので Composite で一括処理する。
     if (underwaterStrength > 0.0f)
     {
         float depthFactor = underwaterStrength;
@@ -298,28 +306,28 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     ldr = ApplyVignette(ldr, uv, vignetteIntensity, vignetteSmoothness, vignetteRoundness, vignetteColor);
     ldr = ApplyFilmGrain(ldr, uv, filmGrainIntensity, filmGrainResponse);
 
-    // 3D LUT カラーグレーディング — フィルムグレイン・ビネットなど全エフェクト後に適用する。
-    // WHY: LUT はシネマティックな色調整（フィルムエミュレーション等）を 1 テクスチャルックアップで
-    //      表現できるため、個別パラメータの積み重ねより表現力が高い。
-    //      全エフェクト後に適用することで LUT が意図した最終カラーに確実に変換する。
+    /// @note 3D LUT カラーグレーディング — フィルムグレイン・ビネットなど全エフェクト後に適用する。
+    /// @note LUT はシネマティックな色調整（フィルムエミュレーション等）を 1 テクスチャルックアップで
+    /// @note 表現できるため、個別パラメータの積み重ねより表現力が高い。
+    /// @note 全エフェクト後に適用することで LUT が意図した最終カラーに確実に変換する。
     if (lutBlend > 0.0f)
     {
-        // 0.5/lutSize オフセットでテクセル中心をサンプルする
-        // WHY: 3D LUT は離散テクセルなので端に寄せると境界クランプが起きる
-        //      (lutSize - 1) / lutSize でデータ範囲を 0〜1 にマップし、
-        //      0.5 / lutSize でテクセル中心にオフセットする
+        /// @note 0.5/lutSize オフセットでテクセル中心をサンプルする
+        /// @note 3D LUT は離散テクセルなので端に寄せると境界クランプが起きる
+        /// @note (lutSize - 1) / lutSize でデータ範囲を 0〜1 にマップし、
+        /// @note 0.5 / lutSize でテクセル中心にオフセットする
         static const float lutSize = 32.0f;
         float3 lutUV   = saturate(ldr) * ((lutSize - 1.0f) / lutSize) + (0.5f / lutSize);
         float3 lutColor = texLUT.Sample(sampLinearClamp, lutUV).rgb;
         ldr = lerp(ldr, lutColor, saturate(lutBlend));
     }
 
-    // ユーザー設定の明るさはフェードより先に掛ける。
-    // WHY 順序が要るか: 逆にするとフェードアウトの黒が明るさで持ち上がり、暗転しきらない。
+    /// @note ユーザー設定の明るさはフェードより先に掛ける。
+    /// @note 順序が要るか: 逆にするとフェードアウトの黒が明るさで持ち上がり、暗転しきらない。
     ldr *= max(userBrightness, 0.0f);
 
-    // 画面フェード — 全エフェクト適用後の最終合成として上書きする。
-    // WHY: UI・ポストプロセス含む全レイヤーをひとつの lerp でカバーし、シーン遷移時のフラッシュを防ぐ。
+    /// @note 画面フェード — 全エフェクト適用後の最終合成として上書きする。
+    /// @note UI・ポストプロセス含む全レイヤーをひとつの lerp でカバーし、シーン遷移時のフラッシュを防ぐ。
     if (screenFadeAlpha > 0.0f)
         ldr = lerp(ldr, screenFadeColor, saturate(screenFadeAlpha));
 

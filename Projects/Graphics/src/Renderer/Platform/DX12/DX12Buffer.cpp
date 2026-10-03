@@ -8,8 +8,12 @@
 #include "DX12UploadArena.hpp"
 
 #include <Core/Logger.hpp>
+#include <Core/HResult.hpp>
 #include <cstring>
 #include <algorithm>
+#include <cassert>
+#include <limits>
+#include <utility>
 
 namespace fbzz::renderer {
 
@@ -23,6 +27,8 @@ DX12Buffer::~DX12Buffer()
     if (m_context) {
         /// @note リソース本体と同じフェンスで守る (DX12Texture のデストラクタと同じ理由)。
         m_context->FreeBindlessSlot(m_bindlessUavIndex);
+        m_context->FreeBindlessSlot(m_bindlessSrvIndex);
+        m_context->DeferRelease(m_srvResource);
         m_context->DeferRelease(m_resource);
     }
 }
@@ -37,6 +43,7 @@ bool DX12Buffer::Init(DX12Context* context, const void* data, size_t sizeBytes, 
     m_stride = stride;
     m_kind = kind;
     m_dataSize = data ? sizeBytes : 0;
+    m_contentVersion = 1;
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
     D3D12_RESOURCE_DESC desc{};
@@ -122,6 +129,80 @@ uint32_t DX12Buffer::GetBindlessUavIndex() const
     return slot;
 }
 
+uint32_t DX12Buffer::GetBindlessSrvIndex() const
+{
+    /// @note GPU 出力の descriptor は同じ実体を指す。再 Dispatch の内容版だけで枠を再確保しない。
+    if (IsGpuWritable() && m_bindlessSrvIndex != INVALID_BINDLESS_INDEX)
+        return m_bindlessSrvIndex;
+    if (m_bindlessSrvIndex != INVALID_BINDLESS_INDEX && m_srvContentVersion == m_contentVersion)
+        return m_bindlessSrvIndex;
+    const size_t readableBytes = GetDataSize();
+    if (!m_context || !m_resource || !m_context->SupportsBindless() || readableBytes == 0
+        || readableBytes % sizeof(uint32_t) != 0
+        || readableBytes / sizeof(uint32_t) > (std::numeric_limits<UINT>::max)())
+        return INVALID_BINDLESS_INDEX;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> readable;
+    if (!CreateRawReadSnapshot(readableBytes, readable)) return INVALID_BINDLESS_INDEX;
+    const uint32_t slot = m_context->AllocateBindlessSlot();
+    if (slot == INVALID_BINDLESS_INDEX) return INVALID_BINDLESS_INDEX;
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+    srv.Format = DXGI_FORMAT_R32_TYPELESS;
+    srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srv.Buffer.NumElements = static_cast<UINT>(readableBytes / sizeof(uint32_t));
+    srv.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_buffer_srv Raw buffer SRV layout
+    m_context->GetDevice()->CreateShaderResourceView(readable.Get(), &srv, m_context->GetBindlessCpu(slot));
+    m_context->FreeBindlessSlot(m_bindlessSrvIndex);
+    m_context->DeferRelease(m_srvResource);
+    m_srvResource = std::move(readable);
+    m_bindlessSrvIndex = slot;
+    m_srvContentVersion = m_contentVersion;
+    return slot;
+}
+
+bool DX12Buffer::CreateRawReadSnapshot(size_t readableBytes,
+                                      Microsoft::WRL::ComPtr<ID3D12Resource>& readable) const
+{
+    if (m_cpuData.empty()) {
+        readable = m_resource;
+        return true;
+    }
+    /// @note Update は GPU が使う元実体へ書かない。内容版ごとに新しい immutable snapshot へ公開する。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/upload-and-readback-of-texture-data#mapping-and-unmapping D3D12 resource renaming responsibility
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+    const D3D12_RESOURCE_DESC desc = m_resource->GetDesc();
+    Microsoft::WRL::ComPtr<ID3D12Resource> snapshot;
+    const HRESULT createResult = m_context->GetDevice()->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE,
+        &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&snapshot));
+    FBZZ_HR_CHECK(createResult);
+    void* mapped = nullptr;
+    const HRESULT mapResult = snapshot->Map(0, nullptr, &mapped);
+    FBZZ_HR_CHECK(mapResult);
+    std::memcpy(mapped, m_cpuData.data(), readableBytes);
+    snapshot->Unmap(0, nullptr);
+    readable = std::move(snapshot);
+    return true;
+}
+
+bool DX12Buffer::CopyData(size_t offset, size_t sizeBytes, void* output) const
+{
+    if (!m_mapped || !m_contentVersion || !output || !sizeBytes
+        || offset > m_dataSize || sizeBytes > m_dataSize - offset) return false;
+    const auto* source = m_cpuData.empty() ? m_mapped : m_cpuData.data();
+    std::memcpy(output, source + offset, sizeBytes);
+    return true;
+}
+
+void DX12Buffer::NotifyGpuWrite()
+{
+    if (!IsGpuWritable()) return;
+    assert(m_contentVersion != (std::numeric_limits<uint64_t>::max)());
+    ++m_contentVersion;
+}
+
 void DX12Buffer::Update(const void* data, size_t sizeBytes)
 {
     /// @note GPU 書き込み専用バッファは CPU から更新しない (m_mapped が null)。
@@ -129,7 +210,7 @@ void DX12Buffer::Update(const void* data, size_t sizeBytes)
         FBZZ_LOG_ERROR("DX12Buffer: GPU 書き込み専用バッファは CPU から更新できません");
         return;
     }
-    if (!data || sizeBytes > m_size) {
+    if (!data || sizeBytes == 0 || sizeBytes > m_size) {
         FBZZ_LOG_ERROR("DX12Buffer: 無効な更新サイズです (%zu / %zu)", sizeBytes, m_size);
         return;
     }
@@ -142,6 +223,7 @@ void DX12Buffer::Update(const void* data, size_t sizeBytes)
     std::memcpy(m_cpuData.data(), data, sizeBytes);
     m_dataSize = (std::max)(m_dataSize, sizeBytes);
     m_dirty = true;
+    ++m_contentVersion;
 }
 
 D3D12_GPU_VIRTUAL_ADDRESS DX12Buffer::PrepareForSubmit(DX12UploadArena& arena)
@@ -168,6 +250,20 @@ D3D12_INDEX_BUFFER_VIEW DX12Buffer::GetIndexView(DX12UploadArena& arena)
 {
     return {PrepareForSubmit(arena),
             static_cast<UINT>(m_cpuData.empty() ? m_size : m_dataSize), DXGI_FORMAT_R32_UINT};
+}
+
+bool DX12Buffer::ValidateIndexRange(uint32_t firstIndex, uint32_t indexCount, uint32_t vertexCount) const
+{
+    if (m_kind != Kind::Index || (static_cast<uint64_t>(firstIndex) + indexCount) * sizeof(uint32_t) > GetDataSize())
+        return false;
+    const uint8_t* data = m_cpuData.empty() ? m_mapped : m_cpuData.data();
+    if (!data) return false;
+    for (uint32_t index = 0; index < indexCount; ++index) {
+        uint32_t vertexIndex = 0;
+        std::memcpy(&vertexIndex, data + (static_cast<size_t>(firstIndex) + index) * sizeof(uint32_t), sizeof(vertexIndex));
+        if (vertexIndex >= vertexCount) return false;
+    }
+    return true;
 }
 
 } /// @note namespace fbzz::renderer

@@ -10,12 +10,11 @@
 #pragma once
 
 #include <Graphics/Renderer/RenderGraph.hpp>
+#include <Graphics/Renderer/GpuProfiler.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 
 #include <string>
 #include <vector>
-
-namespace fbzz::renderer { struct GpuPassProfile; }
 
 namespace fbzz::renderer {
 
@@ -110,8 +109,10 @@ public:
     void Begin(const std::vector<renderer::RenderGraph::RenderPass>& passes,
                const renderer::RenderGraph::ExecutionReport& report);
     void Capture(size_t graphIndex, RenderPassContext& ctx);
+    /// @note 非同期 GPU 値を別フレームの画像へ結合しない。未完了・欠損・出自不一致は gpuMs=-1。
     void Finish(const renderer::RenderGraph::ExecutionReport& report,
-                const std::vector<renderer::GpuPassProfile>& gpuTimings);
+                const GpuProfilerSnapshot& gpuSnapshot,
+                const GpuProfilerViewMetadata& capturedView);
     /// @note ResourceManager が生存している間に所有者が呼ぶ。
     void Release(renderer::ResourceManager& resources);
 

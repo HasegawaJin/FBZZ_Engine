@@ -43,9 +43,14 @@ bool DX12RenderTarget::InitCubemap(
     if (FAILED(device->CreateDescriptorHeap(&rtvHeap, IID_PPV_ARGS(&m_rtvHeap)))) return false;
     D3D12_DESCRIPTOR_HEAP_DESC srvHeap{};
     srvHeap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    srvHeap.NumDescriptors = 1;
+    srvHeap.NumDescriptors = 2;
     if (FAILED(device->CreateDescriptorHeap(&srvHeap, IID_PPV_ARGS(&m_srvHeap)))) return false;
+    D3D12_DESCRIPTOR_HEAP_DESC dsvHeap{};
+    dsvHeap.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    dsvHeap.NumDescriptors = m_mipCount;
+    if (FAILED(device->CreateDescriptorHeap(&dsvHeap, IID_PPV_ARGS(&m_dsvHeap)))) return false;
     m_rtvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    m_dsvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
     m_srvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -81,6 +86,30 @@ bool DX12RenderTarget::InitCubemap(
     srv.TextureCube.MipLevels = m_mipCount;
     device->CreateShaderResourceView(m_cube.Get(), &srv, GetCubeSrv());
     tracker->Register(m_cube.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    /// @note A shared 2D depth mip chain matches each face RTV's dimensions without allocating six redundant depth faces.
+    D3D12_RESOURCE_DESC depthDescription = desc;
+    depthDescription.DepthOrArraySize = 1;
+    depthDescription.Format = DXGI_FORMAT_R32_TYPELESS;
+    depthDescription.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+    D3D12_CLEAR_VALUE depthClear{};
+    depthClear.Format = DXGI_FORMAT_D32_FLOAT;
+    depthClear.DepthStencil.Depth = 1.0f;
+    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &depthDescription,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClear, IID_PPV_ARGS(&m_depth)))) return false;
+    for (uint32_t mip = 0; mip < m_mipCount; ++mip) {
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsv{};
+        dsv.Format = DXGI_FORMAT_D32_FLOAT;
+        dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        dsv.Texture2D.MipSlice = mip;
+        device->CreateDepthStencilView(m_depth.Get(), &dsv, GetDsv(mip));
+    }
+    D3D12_SHADER_RESOURCE_VIEW_DESC depthSrv{};
+    depthSrv.Format = DXGI_FORMAT_R32_FLOAT;
+    depthSrv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    depthSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    depthSrv.Texture2D.MipLevels = m_mipCount;
+    device->CreateShaderResourceView(m_depth.Get(), &depthSrv, GetDepthSrv());
+    tracker->Register(m_depth.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
     return true;
 }
 
@@ -125,6 +154,7 @@ bool DX12RenderTarget::Init(DX12Context* context, DX12StateTracker* tracker,
     heap.NumDescriptors = colorCount + 1;
     if (FAILED(device->CreateDescriptorHeap(&heap, IID_PPV_ARGS(&m_srvHeap)))) return false;
     m_rtvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    m_dsvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
     m_srvIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     D3D12_HEAP_PROPERTIES defaultHeap{};
@@ -188,10 +218,12 @@ D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetRtv(uint32_t index) const
 }
 
 /// @note 深度を持たない RT では DSV ヒープ自体を作らない。呼び出し側は HasDepth() で分岐する。
-D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetDsv() const
+D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetDsv(uint32_t mip) const
 {
-    return m_dsvHeap ? m_dsvHeap->GetCPUDescriptorHandleForHeapStart()
-                     : D3D12_CPU_DESCRIPTOR_HANDLE{};
+    if (!m_dsvHeap || mip >= m_mipCount) return {};
+    auto handle = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
+    handle.ptr += static_cast<SIZE_T>(mip) * m_dsvIncrement;
+    return handle;
 }
 D3D12_CPU_DESCRIPTOR_HANDLE DX12RenderTarget::GetColorSrv(uint32_t index) const
 {

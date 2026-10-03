@@ -4,30 +4,88 @@
 /// @date    2026-09-21
 #include <Graphics/Pipeline/ViewPipeline.hpp>
 #include <Graphics/Pipeline/GeometryPipeline.hpp>
+#include <Graphics/Pipeline/ViewPreparation.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Passes/Geometry/MeshTrailRenderPass.hpp>
 #include <Graphics/Passes/Geometry/TrailRenderPass.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
+#include <Core/Logger.hpp>
+#include <algorithm>
 
 namespace fbzz::renderer {
 void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     RenderViewResources& viewTargets, RenderSharedResources& shared,
     const ViewPipelineOptions& options, const ViewPipelineExtensions& extensions)
 {
+    pipeline.BeginBuild();
+    passCtx.rayPathViewActive = false;
+    passCtx.ssrPassActive = false;
+    passCtx.hybridReflectionResolveActive = false;
+    passCtx.hybridReflectionSourcePass = false;
+    passCtx.hybridReflectionSsrPlanned = false;
+    if (!options.renderPlan.IsValid()) {
+        FBZZ_LOG_ERROR("ViewPipeline: 実行できない描画構成です");
+        return;
+    }
     auto& resources = passCtx.resources;
     auto& passHandles = passCtx.handles;
     const auto& rs = passCtx.settings;
+    const bool taaOverriddenOff = std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
+        [](const RenderPassOverride& override) { return override.name == "TAA" && !override.enabled; });
+    if (!rs.IsTaaActive() || taaOverriddenOff) {
+        viewTargets.taaHistoryValid = false;
+        viewTargets.taaProviderHistory.valid = false;
+    }
+    const bool rayDebugReady = PrepareRayDebugView(passCtx, viewTargets, shared);
+    const bool rayReflectionReady = PrepareRayReflectionView(passCtx, viewTargets, shared,
+        options.renderPlan.rasterPlan);
+    const bool rayPathReady = PrepareRayPathView(passCtx, viewTargets, shared);
+    const auto renderPlan = PrepareViewRenderPlan(resources, passCtx.renderer, rs, viewTargets, shared, passHandles,
+        passCtx.experimentalRayTracingEnabled);
+    passCtx.rayReflectionPassActive = rayReflectionReady && renderPlan.reflection.enabled;
+    /// @note RT の縮退理由は保持し、使える Deferred 表面の SSR / IBL まで旧 HDR 合成へ戻さない。
+    passCtx.hybridReflectionResolveActive = passCtx.experimentalRayTracingEnabled
+        && rs.modeRequest.mode == RenderMode::HYBRID
+        && renderPlan.rasterPlan.UsesDeferredLighting() && !rs.IsUnlit() && !rs.IsWireframe()
+        && !IsRayDebugView(rs.viewMode);
+    if (!passCtx.rayReflectionPassActive) {
+        viewTargets.rayReflection.reconstruction.historyValid = false;
+        viewTargets.rayReflection.reconstruction.prepared = false;
+        passCtx.rayReflectionReconstructionPrepared = false;
+    }
+    if (!renderPlan.IsValid()) return;
+    if (rayPathReady && renderPlan.effectiveMode == RenderMode::PATH_TRACING) {
+        BuildRayPathViewPipeline(pipeline, passCtx, viewTargets, shared, extensions);
+        return;
+    }
+    viewTargets.rayPath.history.Reset();
     const auto outputRT = passCtx.outputRT;
     const uint32_t nativeW = passCtx.outputWidth;
     const uint32_t nativeH = passCtx.outputHeight;
     const bool needsUpscale = viewTargets.needsUpscale;
-    const auto& opaquePlan = options.opaquePlan;
+    const auto& opaquePlan = renderPlan.rasterPlan;
     const bool screenSpaceReady = opaquePlan.HasScreenSpaceInputs();
+    const bool ssrOverriddenOff = std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
+        [](const RenderPassOverride& override) { return override.name == "SSR" && !override.enabled; });
+    /// @note A persistent GBuffer is graph-readable after its producer is disabled, but cannot prove a new Hybrid surface or SSR receipt.
+    const bool hybridGBufferOverriddenOff = passCtx.hybridReflectionResolveActive
+        && std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
+            [](const RenderPassOverride& override) { return override.name == "DeferredGBuffer" && !override.enabled; });
+    const bool ssrAvailable = rs.ssr.enabled && screenSpaceReady && !ssrOverriddenOff && !hybridGBufferOverriddenOff
+        && resources.Get(passHandles.ssrShader) && resources.Get(viewTargets.ssrResult)
+        && resources.Get(viewTargets.gbuffer);
+    const bool ssrSourceOverriddenOff = std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
+        [](const RenderPassOverride& override) {
+            return override.name == "ReflectionSourceLighting" && !override.enabled;
+        });
+    /// @note source を止めたフレームは未照明 HDR を SSR として採用せず、RT-only resolve に戻す。
+    passCtx.hybridReflectionSsrPlanned = passCtx.hybridReflectionResolveActive
+        && ssrAvailable && !ssrSourceOverriddenOff;
     const bool ssaoEnabled = passCtx.ssaoEnabled;
     const bool selectionOutlineEnabled = passCtx.selectionOutlineEnabled;
     const bool objectMaskEnabled = passCtx.objectMaskEnabled;
-    const bool clusteredEnabled = options.clusteredEnabled;
+    const bool clusteredEnabled = renderPlan.clusteredLighting;
     const auto& customAfterOpaqueIndices = options.customAfterOpaqueIndices;
     const auto& customSceneHdrIndices = options.customSceneHdrIndices;
     const auto& customPostProcessIndices = options.customPostProcessIndices;
@@ -55,7 +113,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     auto& shadowMapRT = shared.shadowMapRT;
     auto& punctualShadowRT = shared.punctualShadowRT;
     auto& lightCookieRT = shared.lightCookieRT;
-    pipeline.BeginBuild();
     /// @note エディターが編集した «このパスは載せない / これを待つ» をこのフレームへ効かせる。
     pipeline.SetPassOverrides(rs.passOverrides);
     pipeline.SetSchedulePolicy(rs.schedulePolicy);
@@ -65,7 +122,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     using RU = renderer::RenderGraph::ResourceUsage;
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
-    /// @name 論理リソースの宣言
+    /// @note 論理リソースの宣言
     /// @note 申告 (依存解析に使う «形») と実体 (名前 → ハンドル) を同じ 1 行で渡す。宣言と登録を
     /// @note 分けると、片方だけ足しても Plan が通り «申告したのに実体が無い» が静かに成立してしまう。
     /// @note 登録簿は RenderPipeline がここから組み立てる。
@@ -115,12 +172,13 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     declareViewTexture("SSRResult",        ssrResult,        sHdrW, sHdrH);
     declareViewTexture("MotionBlurResult", motionBlurResult, sHdrW, sHdrH);
     declareViewTexture("VolumetricResult", volumetricResult, sHdrW, sHdrH);
+    declareViewTexture("VolumetricRaw", viewTargets.volumetricRaw, (sHdrW + 1u) / 2u, (sHdrH + 1u) / 2u);
 
     /// @note Forward もプリパスで GBuffer へ描くので、ここを Deferred 限定にすると
     /// @note 「宣言されていないリソース」への書き込みになり RenderGraph の検証が落ちる。
     if (screenSpaceReady)
         pipeline.DeclareTarget("GBuffer", gbufferRT,
-            { RK::RenderTarget, sHdrW, sHdrH, kResFormat, 2, true, false, false });
+            { RK::RenderTarget, sHdrW, sHdrH, kResFormat, GBUFFER_COLOR_COUNT, true, false, false });
 
     /// @note AO と接触影は半解像度で持つ (実体は curW/2 x curH/2)。ここをフル解像度で
     /// @note 申告していると、エイリアシングが全画面 RT と同じ枠を貸してしまう。
@@ -161,7 +219,10 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     };
 
     BuildGeometryPreparation(pipeline, clusteredEnabled);
-    BuildGeometryPipeline(pipeline, opaquePlan);
+    BuildGeometryPipeline(pipeline, opaquePlan, [&]() {
+        if (passCtx.rayReflectionPassActive)
+            BuildRayReflectionPipeline(pipeline, viewTargets, shared, passCtx);
+    }, passCtx.hybridReflectionSsrPlanned);
     BuildWaterComposition(pipeline);
 
     if (extensions.setup) extensions.setup();
@@ -174,18 +235,18 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note AfterOpaque 段のカスタムパスがマスクを読めなくなる (順序が閉じない)。
     pipeline.AddPass<ObjectMaskPass>();
 
-    /// @name AfterOpaque 段のユーザーシェーダー
+    /// @note AfterOpaque 段のユーザーシェーダー
     /// @note 背景だけが描かれていて、デカール・トレイル・パーティクル・半透明はまだ乗っていない。
     /// @note 画面を歪める効果をこの後 (SceneHDR) に置くと、既に描かれたパーティクルごと曲がって
     /// @note «エフェクトだけ別の場所に居る» 絵になる。
     appendCustomHdrPasses("CustomAfterOpaque", customAfterOpaqueIndices);
 
-    /// @name デカール用深度スナップショット
+    /// @note デカール用深度スナップショット
     /// @note 深度専用 RT (colorCount = 0)。カラーを持つ RT と貸し回してはいけない。
     declareViewTarget("DecalDepth", decalDepthRT, 0, true);
     pipeline.AddPass<DecalDepthCopyPass>();
 
-    /// @name Decal + Trail + Particle
+    /// @note Decal + Trail + Particle
     pipeline.AddPass<DecalPass>();
 
     pipeline.AddPass<MeshTrailRenderPass>();
@@ -209,10 +270,10 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
 
     if (extensions.userPasses) extensions.userPasses(UserRenderPassInjectionPoint::AfterTransparent);
 
-    /// @name Selection / Debug
+    /// @note Selection / Debug
     if (extensions.selectionMask) extensions.selectionMask();
 
-    /// @name SceneHDR 段のユーザーシェーダー
+    /// @note SceneHDR 段のユーザーシェーダー
     /// @note 絵が出揃っていて、まだブルームにも露出にも触れていない唯一の場所。
     /// @note Bloom より後ろへ置くと «光っているのに滲まない»、AutoExposure より後ろへ
     /// @note 置くと «明るくしたのに露出が反応しない» という、段を選べる意味が消える並びになる。
@@ -232,7 +293,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
 
     if (extensions.userPasses) extensions.userPasses(UserRenderPassInjectionPoint::BeforePostProcess);
 
-    /// @name モーションベクター
+    /// @note モーションベクター
     /// @note TAA とモーションブラーは深度再投影だけでは「カメラの動き」しか復元できない。
     /// @note 不透明ジオメトリの実際の移動量を専用 RT へ描いて両者へ供給する。
     /// @note 消費側が 1 つも無いフレームは丸ごと省く (不透明をもう一度ラスタライズするため)。
@@ -242,7 +303,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         pipeline.AddPass<VelocityPass>();
     }
 
-    /// @name PostProcess チェーン
+    /// @note PostProcess チェーン
     /// @note MotionBlur CS — HDR 空間で計算し motionBlurResult へ書く (Composite が hdrRT の代わりに読む)。
     /// @note Bloom の前に走らせるので blur 後の輝度が Bloom に乗る。
     if (rs.motionBlur.enabled) {
@@ -290,12 +351,16 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
             { hasPostCompositeEffects ? "LDR" : chainOutRes, RU::Write },
         };
         if (rs.postProcess.bloom.enabled) compositeAccesses.push_back({ "Bloom", RU::Read });
+        if (!passCtx.hybridReflectionResolveActive && ssrAvailable)
+            compositeAccesses.push_back({ "SSRResult", RU::Read });
+        if (passCtx.rayReflectionPassActive) compositeAccesses.push_back({ "RayReflectionResult", RU::Read });
+        if (passCtx.rayReflectionReconstructionPrepared) compositeAccesses.push_back({ "RayReflectionRaw", RU::Read });
         pipeline.AddRawPass("Composite", std::move(compositeAccesses), [&]() {
             ExecuteCompositePass(passCtx);
         });
     }
 
-    /// @name Post-composite チェーン
+    /// @note Post-composite チェーン
     /// @note ppCurrent は「LDR 空間の最新フレームを持つリソース名」。これを進めるだけで
     /// @note TAA/CustomPP/SelectionOutline/FXAA の任意の組み合わせが 1 本の直列チェーンになる。
     std::string ppCurrent  = hasPostCompositeEffects ? "LDR" : chainOutRes;
@@ -306,6 +371,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note 登録順が RenderGraph のタイブレークになる (Kahn's algorithm)。
     if (rs.IsTaaActive()) {
         const auto taaBody = [&]() {
+            PrepareTaaProviderHistory(passCtx, viewTargets);
             ExecuteTAAPass(passCtx);
             viewTargets.taaHistoryValid = true;
             /// @note taaFlip は ExecuteTAAPass 内で反転済み — 反転後のフラグで「書いた方」を特定する。
@@ -385,6 +451,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note 終端 RT はシーン深度を持たないので、深度テストが要る線は上の HDR 段に残してある。
     /// @note 同じ描き先を ReadWrite するので登録順がそのまま描画順。コライダーは破線で最後に描き、
     /// @note 同じ形のスクリプト Gizmo (実線) と重なっても両方読めるようにする。
+    if (rayDebugReady) BuildRayDebugPipeline(pipeline, viewTargets, shared, resources, chainOutRes);
     if (extensions.overlayDebug) extensions.overlayDebug(chainOutRes);
 
     /// @note Upscale — 内部解像度で仕上がった絵を出力先の実寸へ解像する。

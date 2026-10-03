@@ -2,7 +2,7 @@
 /// @brief   Boss03 の翼 6 枚の当たり判定を、骨から組み立てる
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
-///
+
 /// @note 翼 6 枚は同形で角度だけが違う。手置きだと寸法の食い違いが混ざり、リグ書き出しのたびに置き直しになるため骨のローカル軸 (+Y) から組み立てる。
 /// @note `Boss03AiComponent::Execute` は当たりの名前から翼を引く (`Boss03WingFromName`)。骨名を含む名前 (`HB_Wing_L_Upper` 等) にして対応表を 1 か所に閉じる。
 /// @note 翼を落とすのはとどめのみ (`Docs/break-parry.md`)。耐久は「斬った手応え」用の器で、削り切ると斬撃対象から外れるため高めに設定する。
@@ -62,32 +62,32 @@ public:
     void OnStart()  override;
     void OnUpdate() override;
 
-    /// 翼 i の当たり。まだ組めていなければ nullptr。
+    /// @note 翼 i の当たり。まだ組めていなければ nullptr。
     [[nodiscard]] GameObject* WingHitbox(int wing) const
     {
         if (wing < 0 || wing >= kBoss03WingCount) return nullptr;
         return m_wings[wing].Resolve(scene);
     }
-    /// 翼 i の骨。VFX が光の取り付け先として使う。
+    /// @note 翼 i の骨。VFX が光の取り付け先として使う。
     [[nodiscard]] GameObject* WingBone(int wing) const;
 
 private:
-    /// 当たり 1 つぶんの宣言。
+    /// @note 当たり 1 つぶんの宣言。
     struct Piece {
         std::string bone;
         float       radius = 0.5f;
-        /// 骨の +Y へ伸ばす長さ [m]。0 なら球。
+        /// @note 骨の +Y へ伸ばす長さ [m]。0 なら球。
         float       length = 0.0f;
-        /// 斬れる部位か (BossPartComponent を付ける)。
+        /// @note 斬れる部位か (BossPartComponent を付ける)。
         int         wing   = -1;
     };
 
     void Build();
-    /// 骨が居れば当たりを 1 つ作る。まだ骨が無ければ false。
+    /// @note 骨が居れば当たりを 1 つ作る。まだ骨が無ければ false。
     bool BuildPiece(const Piece& piece);
-    /// 落ちた翼の当たりを畳む。
+    /// @note 落ちた翼の当たりを畳む。
     void SyncDetached();
-    /// 斬られた翼を見つけて、加算レイヤーへ仰け反りを 1 発差し込む。
+    /// @note 斬られた翼を見つけて、加算レイヤーへ仰け反りを 1 発差し込む。
     void SyncFlinch();
 
     [[nodiscard]] Boss03AnimatorComponent* Anim() const
@@ -99,7 +99,7 @@ private:
     float     m_retryCooldown = 0.0f;
     bool      m_reported      = false;
     EntityRef m_wings[kBoss03WingCount];
-    /// 前フレームの «斬られた閃光»。立ち上がりだけを 1 発として拾う。
+    /// @note 前フレームの «斬られた閃光»。立ち上がりだけを 1 発として拾う。
     float     m_flash[kBoss03WingCount] = {};
 
     static constexpr float kRetryInterval = 0.20f;
@@ -107,7 +107,6 @@ private:
 };
 
 FBZZ_REFLECT(Boss03HitboxRigComponent)
-
 
 inline GameObject* Boss03HitboxRigComponent::WingBone(int wing) const
 {
@@ -149,51 +148,50 @@ inline void Boss03HitboxRigComponent::Build()
 
 inline bool Boss03HitboxRigComponent::BuildPiece(const Piece& piece)
 {
-    /// @note 生成のたびに引き直す。scene.Create が GameObject 配列を再確保するので、
-    ///       ループの外で掴んだポインタは 2 つ目以降で無効になる。
     GameObject* self = scene.Self();
     if (!self || !FindInSubtree(*self, piece.bone)) return false;
 
     const float radius = std::max(piece.radius, 0.01f);
 
-    GameObject& hitbox = scene.Create("HB_" + piece.bone);
+    GameObject* hitbox = scene.Create("HB_" + piece.bone);
+    if (!hitbox) return false;
     /// @note シーンには保存しない。Play のたびにその時点のリグから組み直す。
-    hitbox.runtimeGenerated = true;
+    hitbox->runtimeGenerated = true;
     /// @note 部位もボス本体と同じ «敵» として扱わせる。
-    hitbox.tag   = "Enemy";
-    hitbox.layer = hitboxLayer & 31;
+    hitbox->tag   = "Enemy";
+    hitbox->layer = hitboxLayer & 31;
 
     GameObject* owner = scene.Self();
     if (GameObject* parent = owner ? FindInSubtree(*owner, piece.bone) : nullptr)
-        hitbox.SetParent(*parent);
+        hitbox->SetParent(*parent);
 
     if (piece.length > radius * 2.0f) {
         /// @note 骨のローカル +Y が骨の向き (Blender の primary_bone_axis='Y' で書き出している)。
-        ///       根元から先端までを 1 本のカプセルで覆う。
-        hitbox.transform.position = { 0.0f, piece.length * 0.5f, 0.0f };
-        hitbox.transform.rotation = Quaternion::Identity();
-        auto& collider = hitbox.AddComponent<CapsuleColliderComponent>();
+        /// @note 根元から先端までを 1 本のカプセルで覆う。
+        hitbox->transform.position = { 0.0f, piece.length * 0.5f, 0.0f };
+        hitbox->transform.rotation = Quaternion::Identity();
+        auto& collider = hitbox->AddComponent<CapsuleColliderComponent>();
         collider.SetCapsule(radius, std::max(piece.length * 0.5f - radius, 0.01f));
         collider.isTrigger = true;
     } else {
-        hitbox.transform.position = Vector3::ZERO;
-        auto& collider = hitbox.AddComponent<SphereColliderComponent>();
+        hitbox->transform.position = Vector3::ZERO;
+        auto& collider = hitbox->AddComponent<SphereColliderComponent>();
         collider.SetRadius(radius);
         collider.isTrigger = true;
     }
 
     if (piece.wing < 0) {
-        auto& body = hitbox.AddScript<BossPartComponent>();
+        auto& body = hitbox->AddScript<BossPartComponent>();
         body.bodyTarget = true;
         body.hitRadius = radius;
         body.bossOwner = EntityRef{scene.Self()->GetID()};
     }
     if (piece.wing >= 0) {
-        auto& part = hitbox.AddScript<BossPartComponent>();
+        auto& part = hitbox->AddScript<BossPartComponent>();
         /// @note 扇の判定はレンダラーを持たない部位に対して «本人の申告» を使う。
         part.hitRadius = radius;
         part.maxHealth = std::max(wingHealth, 1);
-        m_wings[piece.wing] = EntityRef{ hitbox.GetID() };
+        m_wings[piece.wing] = EntityRef{ hitbox->GetID() };
     }
     return true;
 }
@@ -237,7 +235,7 @@ inline void Boss03HitboxRigComponent::SyncFlinch()
         m_flash[i] = flash;
 
         /// @note 立ち上がりだけを «1 発» として拾う。«光っているか» で見ると、閃光が
-        ///       減っていく途中のフレームでも斬られたと読んで、仰け反りが連続で鳴る。
+        /// @note 減っていく途中のフレームでも斬られたと読んで、仰け反りが連続で鳴る。
         if (previous > 0.0f || flash <= 0.0f) continue;
 
         /// @note 軽い重みに留める理由 (`BossAnimatorComponent` の Hit Layer): 斬撃は 1 セットで 5 回当たるため毎回満額だと «痙攣» に見える。深い仰け反りは弾き返した締めの取り分。
@@ -280,4 +278,4 @@ inline void Boss03HitboxRigComponent::OnUpdate()
     }
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

@@ -26,6 +26,16 @@ fbzz_use_unity_build(FBZZGraphics EXCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/src/Rende
 # @note DX12 のホットリロードと DXIL reflection は dxcompiler.dll を実行時に遅延ロードする。FBZZ_ENABLE_DX12=OFF には DXC を強制しない。
 get_filename_component(FBZZ_WINDOWS_SDK_BIN_DIRECTORY "${CMAKE_RC_COMPILER}" DIRECTORY)
 if(FBZZ_ENABLE_DX12)
+    # @note USE_PIX enables official named events in Release as well as Debug; SDK types never escape backend sources.
+    # @see https://github.com/microsoft/PixEvents Using the prebuilt runtime and pix3.h.
+    target_compile_definitions(FBZZGraphics PRIVATE USE_PIX)
+    target_link_libraries(FBZZGraphics PRIVATE WinPixEventRuntime)
+    add_custom_command(TARGET FBZZGraphics POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:WinPixEventRuntime>"
+            "$<TARGET_FILE_DIR:FBZZGraphics>/WinPixEventRuntime.dll"
+        VERBATIM
+    )
     if(DEFINED ENV{FBZZ_DXC} AND EXISTS "$ENV{FBZZ_DXC}")
         set(FBZZ_DXC_EXECUTABLE "$ENV{FBZZ_DXC}")
     else()

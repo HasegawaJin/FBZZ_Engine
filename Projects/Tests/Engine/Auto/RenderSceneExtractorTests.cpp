@@ -10,6 +10,7 @@
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <memory>
@@ -68,6 +69,65 @@ TEST_F(RenderSceneExtractorTest, KeepsOffscreenAndOtherLayerCandidatesButRejects
     EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).objects.empty());
 }
 
+TEST_F(RenderSceneExtractorTest, SelectsCanonicalLodZeroWithoutFilteringRasterHiddenRenderers)
+{
+    auto& selected = StaticObject();
+    const auto selectedId = selected.GetID();
+    selected.GetComponent<scene::MeshRenderer>()->lodVisible = true;
+    selected.GetComponent<scene::MeshRenderer>()->lodDither = 0.0f;
+    auto& hidden = SkinnedObject();
+    const auto hiddenId = hidden.GetID();
+    hidden.GetComponent<scene::SkinnedMeshRenderer>()->lodVisible = false;
+    hidden.GetComponent<scene::SkinnedMeshRenderer>()->lodDither = 0.0f;
+    const auto unrelatedId = StaticObject().GetID();
+    scene::LODGroupComponent group;
+    group.activeLevel = 0;
+    group.levels = {
+        { 0.75f, { { {}, selectedId } } },
+        { 0.25f, { { {}, hiddenId } } }
+    };
+    m_scene.CreateGameObject("LOD Group").AddComponent<scene::LODGroupComponent>(group);
+
+    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
+    ASSERT_EQ(snapshot.objects.size(), 3u);
+    for (const auto& object : snapshot.objects) {
+        const scene::EntityID source{ object.sourceIndex, object.sourceGeneration };
+        EXPECT_FALSE(object.rayLodSelectionRequired);
+        EXPECT_EQ(object.rayVisible, source != hiddenId);
+        if (source == selectedId) EXPECT_TRUE(object.lodVisible);
+        if (source == hiddenId) EXPECT_FALSE(object.lodVisible);
+        if (source == unrelatedId) EXPECT_FALSE(object.rayLodSelectionRequired);
+        EXPECT_FLOAT_EQ(object.lodDither, 0.0f);
+    }
+}
+
+TEST_F(RenderSceneExtractorTest, ResolvesLodGuidForMembershipWithoutChangingReferences)
+{
+    auto& member = StaticObject();
+    const auto memberId = member.GetID();
+    const auto instanceId = member.instanceId;
+    ASSERT_FALSE(instanceId.empty());
+    StaticObject();
+    scene::LODGroupComponent group;
+    group.levels = { { 0.5f, { { instanceId, scene::EntityID::INVALID } } } };
+    auto& owner = m_scene.CreateGameObject("LOD Group");
+    owner.AddComponent<scene::LODGroupComponent>(group);
+
+    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
+    ASSERT_EQ(snapshot.objects.size(), 2u);
+    for (const auto& object : snapshot.objects) {
+        const scene::EntityID source{ object.sourceIndex, object.sourceGeneration };
+        EXPECT_FALSE(object.rayLodSelectionRequired);
+        EXPECT_TRUE(object.rayVisible);
+    }
+    const auto* unchanged = owner.GetComponent<scene::LODGroupComponent>();
+    ASSERT_NE(unchanged, nullptr);
+    ASSERT_EQ(unchanged->levels.size(), 1u);
+    ASSERT_EQ(unchanged->levels[0].renderers.size(), 1u);
+    EXPECT_EQ(unchanged->levels[0].renderers[0].entity, scene::EntityID::INVALID);
+    EXPECT_EQ(unchanged->levels[0].renderers[0].instanceId, instanceId);
+}
+
 TEST_F(RenderSceneExtractorTest, SkinnedTextureQualityUsesAnimatedBoundsInsteadOfBindPose)
 {
     auto& go = SkinnedObject();
@@ -124,7 +184,7 @@ TEST_F(RenderSceneExtractorTest, LocalSlotsResolveReorderedSubmeshesAndMorphInpu
     EXPECT_EQ(snapshot.items[1].skinningVertexBuffer.id, 10u);
 }
 
-TEST_F(RenderSceneExtractorTest, DeformedOutputRequiresCurrentFrameAndMatchingModelAndNoMorph)
+TEST_F(RenderSceneExtractorTest, DeformedOutputRequiresCurrentFrameAndMatchingModelIncludingMorph)
 {
     auto& go = SkinnedObject();
     auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>();
@@ -141,7 +201,59 @@ TEST_F(RenderSceneExtractorTest, DeformedOutputRequiresCurrentFrameAndMatchingMo
     smr->skinnedBufferModel = &m_model;
     smr->morphVertexBuffers.resize(3);
     smr->morphVertexBuffers[2] = { 80, 1 };
-    EXPECT_FALSE(scene::ExtractRenderSceneGeometry(m_scene, 10).items[0].deformedVertexBuffer.IsValid());
+    EXPECT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).items[0].deformedVertexBuffer.id, 62u);
+}
+
+TEST_F(RenderSceneExtractorTest, RejectsRendererMembershipInMultipleLodGroups)
+{
+    const auto memberId = StaticObject().GetID();
+    scene::LODGroupComponent group;
+    group.levels = {{0.5f, {{{}, memberId}}}};
+    m_scene.CreateGameObject("First LOD").AddComponent<scene::LODGroupComponent>(group);
+    m_scene.CreateGameObject("Second LOD").AddComponent<scene::LODGroupComponent>(group);
+    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
+    ASSERT_EQ(snapshot.objects.size(), 1u);
+    EXPECT_TRUE(snapshot.objects[0].rayLodSelectionRequired);
+}
+
+TEST_F(RenderSceneExtractorTest, DiagnosesUnresolvedCanonicalLodInsteadOfPublishingAnEmptyShape)
+{
+    auto& lower = StaticObject();
+    lower.layer = 31;
+    const auto lowId = lower.GetID();
+    scene::LODGroupComponent group;
+    group.levels = {{0.75f, {{"unresolved-renderer-guid", scene::EntityID::INVALID}}},
+        {0.25f, {{{}, lowId}}}};
+    const auto ownerId = m_scene.CreateGameObject("Unresolved LOD").GetID();
+    m_scene.GetGameObject(ownerId)->AddComponent<scene::LODGroupComponent>(group);
+    const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
+    ASSERT_EQ(snapshot.objects.size(), 1u);
+    EXPECT_FALSE(snapshot.objects[0].rayVisible);
+    ASSERT_EQ(snapshot.rayLodDiagnostics.size(), 1u);
+    EXPECT_EQ(snapshot.rayLodDiagnostics[0].sourceIndex, ownerId.index);
+    EXPECT_EQ(snapshot.rayLodDiagnostics[0].sourceGeneration, ownerId.generation);
+    EXPECT_EQ(snapshot.rayLodDiagnostics[0].layerMask, UINT32_MAX);
+}
+
+TEST_F(RenderSceneExtractorTest, NormalExtractionSkipsUnresolvedRayLodDiagnosticsAndKeepsRasterGeometry)
+{
+    auto& lower = StaticObject();
+    lower.GetComponent<scene::MeshRenderer>()->lodVisible = true;
+    const auto lowerId = lower.GetID();
+    scene::LODGroupComponent group;
+    group.levels = {{0.75f, {{"unresolved-renderer-guid", scene::EntityID::INVALID}}},
+        {0.25f, {{{}, lowerId}}}};
+    m_scene.CreateGameObject("Unresolved LOD").AddComponent<scene::LODGroupComponent>(group);
+    const auto normal = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    ASSERT_EQ(normal.objects.size(), 1u);
+    EXPECT_TRUE(normal.objects[0].lodVisible);
+    EXPECT_FALSE(normal.objects[0].rayLodSelectionRequired);
+    EXPECT_TRUE(normal.rayLodDiagnostics.empty());
+    const auto experimental = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
+    ASSERT_EQ(experimental.objects.size(), 1u);
+    EXPECT_TRUE(experimental.objects[0].lodVisible);
+    EXPECT_FALSE(experimental.objects[0].rayVisible);
+    EXPECT_EQ(experimental.rayLodDiagnostics.size(), 1u);
 }
 
 TEST_F(RenderSceneExtractorTest, ParentAnimatorWinsOverReferencePoseAndPreservesPreviousPalette)
@@ -213,6 +325,34 @@ TEST_F(RenderSceneExtractorTest, MaterialSlotsStayIndependentAndHiddenSlotsRemai
     EXPECT_EQ(snapshot.items[0].material.capabilities.blend, renderer::BlendMode::ALPHA_BLEND);
     EXPECT_TRUE(snapshot.items[0].visible);
     EXPECT_FALSE(snapshot.items[1].visible);
+}
+
+TEST_F(RenderSceneExtractorTest, SceneGenerationIsStableAcrossViewsAndChangesBeforeEntityReuse)
+{
+    const auto originalId = StaticObject().GetID();
+    const auto first = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    const auto second = scene::ExtractRenderSceneGeometry(m_scene, 11);
+    EXPECT_NE(first.sceneGeneration, 0u);
+    EXPECT_EQ(first.sceneGeneration, second.sceneGeneration);
+    m_scene.Clear();
+    const auto reusedId = StaticObject().GetID();
+    const auto replaced = scene::ExtractRenderSceneGeometry(m_scene, 12);
+    EXPECT_EQ(originalId, reusedId);
+    EXPECT_NE(first.sceneGeneration, replaced.sceneGeneration);
+}
+
+TEST_F(RenderSceneExtractorTest, SceneMoveDoesNotReuseAnotherScenesRenderIdentity)
+{
+    StaticObject();
+    const auto sourceGeneration = m_scene.GetRenderSceneGeneration();
+    scene::Scene destination;
+    const auto destinationGeneration = destination.GetRenderSceneGeneration();
+    destination = std::move(m_scene);
+    const auto snapshot = scene::ExtractRenderSceneGeometry(destination, 10);
+    ASSERT_EQ(snapshot.objects.size(), 1u);
+    EXPECT_NE(snapshot.sceneGeneration, sourceGeneration);
+    EXPECT_NE(snapshot.sceneGeneration, destinationGeneration);
+    EXPECT_NE(snapshot.sceneGeneration, m_scene.GetRenderSceneGeneration());
 }
 
 } /// @note namespace

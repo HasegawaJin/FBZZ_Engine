@@ -2,12 +2,14 @@
 /// @brief   GBuffer と Forward の振り分け規則を表明する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
-///
 /// @note この規則が «どれにも当たらない» / «2 つに当たる» になると、物が消えるか二重に描かれる。
 /// @note どちらも絵を見て原因に辿りつけない壊れ方なので、全組み合わせを機械で押さえる。
-///
 /// @see Docs/design/pipeline-boundary.md
 #include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
+#include <TestKit/TempDir.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <string>
 
 #include <Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp>
 
@@ -28,7 +30,30 @@ constexpr GeometryMaterialInput GBufferBound()
     return input;
 }
 
-class GeometryRouteTest : public testkit::Fixture {};
+class GeometryRouteTest : public testkit::EngineFixture {
+protected:
+    void SetUp() override
+    {
+        EngineFixture::SetUp();
+        ASSERT_TRUE(m_temp.IsValid());
+        ASSERT_TRUE(WriteShader("PBR.hlsl", "standard_surface_v1", "metallic_roughness_v1", "standard_surface_v1"));
+        ASSERT_TRUE(WriteShader("SkinnedPBR.hlsl", "standard_skinned_v1", "metallic_roughness_v1", "standard_skinned_v1"));
+        ASSERT_TRUE(WriteShader("Lit.hlsl", "standard_surface_v1", "lambert_v1", "standard_surface_v1"));
+        ASSERT_TRUE(WriteShader("Fallback.hlsl", "standard_surface_v1", "unlit_v1", "standard_surface_v1"));
+    }
+
+    std::string ShaderPath(const std::string& name) const { return m_temp.File(name).generic_string(); }
+    bool WriteShader(const std::string& name, const std::string& vertex,
+                     const std::string& surface, const std::string& variants)
+    {
+        const std::string path = ShaderPath(name);
+        return util::FileSystem::WriteText(path, "float4 PSMain() : SV_Target { return 1; }\n")
+            && util::FileSystem::WriteText(path + ".meta", "[shader]\nversion=1\nvertex='" + vertex
+                + "'\nsurface='" + surface + "'\nopacity='alpha_clip_v1'\nvariants='" + variants + "'\n");
+    }
+
+    testkit::TempDir m_temp{"geometry-route"};
+};
 
 TEST_F(GeometryRouteTest, StandardOpaqueMaterialGoesToTheGBuffer)
 {
@@ -113,39 +138,24 @@ TEST_F(GeometryRouteTest, EveryCombinationResolvesToExactlyOneRoute)
     EXPECT_EQ(forwardOpaque, 7);
 }
 
-/// @note 空欄は «既定の材質» で、実際には Fallback (標準 PBR 相当) が使われる。
-/// @note ここを Forward に倒していたのが、Deferred なのに GBuffer がほとんど空だった原因。
-TEST_F(GeometryRouteTest, EmptyShaderPathCountsAsGBufferEquivalent)
+TEST_F(GeometryRouteTest, EmptyShaderPathDoesNotDeclareGBufferEquivalence)
 {
-    EXPECT_TRUE(scene::IsGBufferEquivalentShader(""));
+    EXPECT_FALSE(scene::IsGBufferEquivalentShader(""));
 }
 
 TEST_F(GeometryRouteTest, StandardPbrShadersAreGBufferEquivalent)
 {
-    EXPECT_TRUE(scene::IsGBufferEquivalentShader("Assets/Shaders/Material/Surface/PBR.hlsl"));
-    EXPECT_TRUE(scene::IsGBufferEquivalentShader("Assets/Shaders/Material/Surface/Lit.hlsl"));
-    EXPECT_TRUE(scene::IsGBufferEquivalentShader("Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl"));
-    /// @note `guid:...|パス` 形式でも同じ結論になること。参照の書き方で経路が変わってはいけない。
-    EXPECT_TRUE(scene::IsGBufferEquivalentShader(
-        "guid:b8a759120fac41289126bed4eabc9a3d|Assets/Shaders/Material/Surface/Lit.hlsl"));
-    /// @note プロジェクト側の複製も同じ結論になること (ファイル名で比べている根拠)。
-    EXPECT_TRUE(scene::IsGBufferEquivalentShader(
-        "GreenWare/Assets/Shaders/Material/Surface/PBR.hlsl"));
+    EXPECT_TRUE(scene::IsGBufferEquivalentShader(ShaderPath("PBR.hlsl")));
+    EXPECT_TRUE(scene::IsGBufferEquivalentShader(ShaderPath("SkinnedPBR.hlsl")));
+    EXPECT_FALSE(scene::IsGBufferEquivalentShader(
+        "guid:ffffffffffffffffffffffffffffffff|Assets/Shaders/Material/Surface/PBR.hlsl"));
 }
 
 /// @note シェーディングモデルが PBR でないものは、不透明でも GBuffer へ入れない。
 TEST_F(GeometryRouteTest, NonPbrLightingModelsAreNotGBufferEquivalent)
 {
-    for (const char* path : { "Assets/Shaders/Material/Surface/Unlit.hlsl",
-                              "Assets/Shaders/Material/Surface/Toon.hlsl",
-                              "Assets/Shaders/Material/Surface/RimLight.hlsl",
-                              "Assets/Shaders/Material/Surface/Dissolve.hlsl",
-                              "Assets/Shaders/Material/Surface/Cloth.hlsl",
-                              "Assets/Shaders/Material/Surface/Anisotropic.hlsl",
-                              "Assets/Shaders/Material/Surface/Subsurface.hlsl",
-                              "Assets/Shaders/Material/Skinned/SkinnedToon.hlsl",
-                              "Assets/Shaders/Material/Skinned/SkinnedDissolve.hlsl" }) {
-        EXPECT_FALSE(scene::IsGBufferEquivalentShader(path)) << path << " が GBuffer 相当になっている";
+    for (const char* name : { "Lit.hlsl", "Fallback.hlsl" }) {
+        EXPECT_FALSE(scene::IsGBufferEquivalentShader(ShaderPath(name))) << name;
     }
 }
 

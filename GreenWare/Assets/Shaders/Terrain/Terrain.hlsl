@@ -19,8 +19,8 @@ cbuffer CameraConstants : register(CB_CAMERA)
     float3   cameraPos;
     float    nearZ;
     float    farZ;
-    float    _camReserved;   ///< Water パスのみ waterSsrEnabled として使う枠
-    float    isOrthographic; ///< 1 = 平行投影
+    float    _camReserved;   ///< @note Water パスのみ waterSsrEnabled として使う枠
+    float    isOrthographic; ///< @note 1 = 平行投影
     float    _camPad;
 };
 
@@ -64,6 +64,9 @@ SamplerState g_linearClampSampler : register(SAMPLER_LINEAR_CLAMP);
 
 float4 PSMain(TerrainPSInput p) : SV_Target0
 {
+    /// @note 材質合成の分岐より前に現在の LOD 三角形の幾何微分を取り、影を法線マップ模様から独立させる。
+    const float3 worldPositionDx = ddx(p.worldPos);
+    const float3 worldPositionDy = ddy(p.worldPos);
     TerrainSurface surface = EvaluateTerrainSurface(p, 1.0f);
     float3 N = surface.normal;
     const float3 V = normalize(cameraPos - p.worldPos);
@@ -75,8 +78,9 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     const float3 albedo    = wet.albedo;
     const float  roughness = wet.roughness;
 
-    float shadow = ComputeShadow(g_shadowMap, g_shadowSampler, p.worldPos,
-        lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    float shadow = ComputeShadowSurface(g_shadowMap, g_shadowSampler, p.worldPos,
+        lightViewProjection, shadowMapTexelSize, shadowBias, surface.geometricNormal, L,
+        worldPositionDx, worldPositionDy);
     shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
     /// @note 層の AO (材質の凹凸) と画面空間 AO (形状同士の遮蔽) は別物なので掛け合わせる。
     const float ao = surface.ao * FBZZ_ScreenAO(p.svPosition.xy);

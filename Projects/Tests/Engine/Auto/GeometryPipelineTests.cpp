@@ -162,6 +162,26 @@ TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPa
     }
 }
 
+TEST_F(GeometryPipelineTest, HybridScreenFirstFreezesBaselineBeforeTracingAndResolvesBeforeTransparency)
+{
+    scene::RenderPipeline pipeline;
+    scene::BuildGeometryPipeline(pipeline, { OpaqueRenderPath::DEFERRED }, [&]() {
+        pipeline.AddRawPass("RayReflection", {}, {}, []() {});
+    }, true);
+    const std::vector<std::string> expected{
+        "DeferredGBuffer", "TerrainGBuffer", "DeferredDepthCopy", "GTAO", "ContactShadows", "SSAO",
+        "ReflectionSourceLighting", "Sky", "SunMoon", "SSR", "RayReflection",
+        "DeferredLighting", "VolumetricCloud", "DeferredSkinnedForward", "FiberForward", "DeferredForwardTransparent",
+    };
+    EXPECT_EQ(pipeline.RegisteredPassNames(), expected);
+    const auto names = pipeline.RegisteredPassNames();
+    EXPECT_EQ(std::count(names.begin(), names.end(), "SSR"), 1);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "Sky"), 1);
+    EXPECT_EQ(std::count(names.begin(), names.end(), "VolumetricCloud"), 1);
+    EXPECT_LT(std::find(names.begin(), names.end(), "DeferredLighting"),
+        std::find(names.begin(), names.end(), "VolumetricCloud"));
+}
+
 TEST_F(GeometryPipelineTest, SwitchingTechniqueRebuildsWithoutLeavingThePreviousPath)
 {
     scene::RenderPipeline pipeline;

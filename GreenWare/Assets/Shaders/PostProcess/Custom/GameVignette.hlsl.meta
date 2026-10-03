@@ -1,2 +1,14 @@
+# @file    GameVignette.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-07
 [meta]
 guid = '63097d5fe32529ff68da340f5a660fc1'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

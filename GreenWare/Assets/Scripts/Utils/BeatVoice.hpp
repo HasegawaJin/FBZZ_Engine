@@ -2,11 +2,11 @@
 /// @brief   音程を変えて鳴らす一発ものの声。拍に乗った合図の «音階» を鳴らす
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-///
+
 /// @note 持ち主の AudioSource では鳴らさない (LoopVoice と同じ理由) ─ pitch は一発ものにも
-///       掛かるため、音程を上げると同じ体から出る斬撃音や被弾音まで一緒に高くなる。
-///       主 voice を鳴らし直す単音にする ─ 拍の合図は 0.36 秒おきに上がる «旋律» で、
-///       前の音が残って重なると和音になり段の上がり方が耳から消える。
+/// @note 掛かるため、音程を上げると同じ体から出る斬撃音や被弾音まで一緒に高くなる。
+/// @note 主 voice を鳴らし直す単音にする ─ 拍の合図は 0.36 秒おきに上がる «旋律» で、
+/// @note 前の音が残って重なると和音になり段の上がり方が耳から消える。
 #pragma once
 
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
@@ -22,12 +22,12 @@ namespace sandbox::se {
 
 class BeatVoice {
 public:
-    /// 子オブジェクト名に使う識別子。持ち主ごとに一意でないと音源を奪い合う。
+    /// @note 子オブジェクト名に使う識別子。持ち主ごとに一意でないと音源を奪い合う。
     void SetKey(std::string key) { m_key = std::move(key); }
-    /// 出力先のバス。音源を作る前に 1 度だけ効く。
+    /// @note 出力先のバス。音源を作る前に 1 度だけ効く。
     void SetOutput(std::string bus) { m_bus = std::move(bus); }
 
-    /// path を pitch で 1 回鳴らす。鳴っている前の音は切れる。
+    /// @note path を pitch で 1 回鳴らす。鳴っている前の音は切れる。
     void Play(fbzz::scene::Script& owner, std::string_view path, float volume, float pitch);
 
 private:
@@ -37,7 +37,6 @@ private:
     std::string           m_bus = "SE";
     fbzz::scene::EntityID m_id  = fbzz::scene::EntityID::INVALID;
 };
-
 
 inline fbzz::scene::AudioSourceComponent* BeatVoice::Acquire(fbzz::scene::Script& owner)
 {
@@ -49,8 +48,9 @@ inline fbzz::scene::AudioSourceComponent* BeatVoice::Acquire(fbzz::scene::Script
         const std::string name = "SFX_Beat_" + m_key;
         object = owner.scene.Find(name, true);
         if (!object) {
-            const EntityID created = owner.scene.Create(name).GetID();
-            /// @note Create がコンポーネント配列を伸ばしうるので、設定は ID から引き直す。
+            object = owner.scene.Create(name);
+            if (!object) return nullptr;
+            const EntityID created = object->GetID();
             object = owner.scene.GetGameObject(created);
             if (!object) return nullptr;
             object->runtimeGenerated = true;
@@ -81,7 +81,7 @@ inline void BeatVoice::Play(fbzz::scene::Script& owner, std::string_view path,
     if (!source) return;
 
     /// @note 再生要求は AudioSystem が «今の voice を止めて鳴らし直す» ので、同じクリップでも
-    ///       毎回頭から鳴る。音程と音量は鳴らし直す瞬間の値が乗る。
+    /// @note 毎回頭から鳴る。音程と音量は鳴らし直す瞬間の値が乗る。
     source->clipPath      = std::string(path);
     source->loop          = false;
     source->volume        = fbzz::math::Clamp01(volume);
@@ -91,4 +91,4 @@ inline void BeatVoice::Play(fbzz::scene::Script& owner, std::string_view path,
     source->m_pendingStop = false;
 }
 
-} // namespace sandbox::se
+} /// @note namespace sandbox::se

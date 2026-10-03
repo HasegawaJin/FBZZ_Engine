@@ -75,6 +75,10 @@ constexpr uint64_t kReflectionAbiVersion = 6;
 /// @note 履歴: 1=初版 / 2=OnAnimatorMove 追加 / 3=RequiredComponents・OptionalComponents 追加 / 4=CollisionInfo へ relativeVelocity 等追加 / 5=ExecuteInEditMode 追加 / 6=OnSequenceEvent・OnSequenceFinished 追加 / 7=OnDrawGizmosSelected 追加、ScriptDebugDrawCommand へ rotation 等追加。
 constexpr uint64_t kScriptVtableAbiVersion = 8;
 
+/// @brief ScriptProxy の非仮想 API 契約の世代。署名・引数・戻り値の契約を変えたら上げる。
+/// @note 初版は ScriptSceneProxy::Create の参照から nullable pointer への変更。型の sizeof と vtable が同じでも旧 DLL は呼出し契約が異なる。
+constexpr uint64_t kScriptProxyApiAbiVersion = 1;
+
 namespace detail {
 
 /// @brief ComponentList の各型の sizeof/alignof を順に畳み込む。
@@ -126,6 +130,9 @@ template <std::size_t... I>
     const auto mix = [&](uint64_t v) constexpr { sig ^= v; sig *= FNV_PRIME; };
     mix(info.sizeofScript);
     mix(info.sizeofScene);
+    /// @note GameObject は unique_ptr 越しに共有されるため、Scene の sizeof だけではメンバー追加を検出できない。
+    mix(sizeof(GameObject));
+    mix(alignof(GameObject));
     mix(info.sizeofScriptComponent);
     /// @note vector 本体の sizeof には要素のレイアウトが現れない。
     mix(sizeof(ScriptEntry));
@@ -143,6 +150,7 @@ template <std::size_t... I>
     mix(kReflectionAbiVersion);
     /// @note Script vtable レイアウトの世代を署名へ反映する。
     mix(kScriptVtableAbiVersion);
+    mix(kScriptProxyApiAbiVersion);
     info.signature = sig;
 
     return info;

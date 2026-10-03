@@ -3,7 +3,6 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// 各 Phase の親子関係を維持するため、必要なタイミングで実行する。
 #pragma once
 #include "Engine/Core/Scheduler/ISystem.hpp"
 #include "Math/Quaternion.hpp"
@@ -11,18 +10,14 @@
 
 namespace fbzz::scene {
 
-/// 共通実装を持つ基底クラス（直接登録しない）
+/// @note Phase 別の派生クラスを登録する。
 class TransformSystem : public ISystem {
 public:
     ComponentAccess GetAccess() const override;
     void Update(SystemContext& ctx) override;
 };
 
-/// Phase ごとのタグサブクラス（メタデータだけ異なる、実装は TransformSystem から継承）
-
-/// Editor 停止中のみ動作。NavMeshBake が Transform を読む前に行列を更新する。
-/// @note Sim モードでは Physics 書き戻し後の Transform を翌フレーム先頭の NavMesh が読むため
-///       PreScript より後で足りる。Editor モードは Physics が無いため先頭で明示的に更新する。
+/// @note Editor 停止中は Physics の書き戻しが無いため、NavMeshBake より前に姿勢を確定する。
 class TransformEditorPreview final : public TransformSystem {
 public:
     std::string_view Name()       const override { return "TransformSystem.EditorPreview"; }
@@ -51,22 +46,25 @@ public:
     RunMode          GetRunMode() const override { return RunMode::Always; }
 };
 
-/// ユーティリティ関数
+/// @name 姿勢の同期
 
 class Scene;
 class GameObject;
 
-/// シーン内の全オブジェクトのワールド Transform を即時再計算する。
-/// スケジューラを経由せず直接 BFS を走らせるため、シーンロード直後や Stop 復元後など
-/// System 実行前にワールド値が必要な場合に使う。
+/// @brief シーン内の全オブジェクトのワールド姿勢をローカル値から即時再計算する。
 void FlushWorldTransforms(Scene& scene);
 
-/// 確定したワールド姿勢を GameObject へ書き、親から逆算した local も同時に更新する。
-/// @note world は local から再計算される派生値。FlushWorldTransforms が走った瞬間に local から
-///       上書きされるため、local を直さない書き込みは 1 フレームも保たない。
+/// @brief 祖先のローカル値を解決してから、対象と全子孫のワールド姿勢を即時再計算する。
+/// @note 非アクティブな子孫も含む。祖先の別の子孫と他のルートは更新しない。
+/// @see Docs/design/script-transform-contract.md
+void FlushWorldTransforms(GameObject& root);
+
+/// @brief ワールド姿勢を親から逆算したローカル値と対で書く。
+/// @pre 親のワールド姿勢は呼び出し前に確定済みであること。
+/// @note world は local の派生値。親のゼロスケール軸は local をゼロへ倒し、子孫の同期は呼び出し側で行う。
 void SetWorldPose(GameObject& go,
                   const math::Vector3& worldPosition,
                   const math::Quaternion& worldRotation,
                   const math::Vector3& worldScale);
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

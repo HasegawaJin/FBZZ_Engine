@@ -4,6 +4,7 @@
 /// @date    2026-09-17
 #include "BusInternal.hpp"
 
+#include <Editor/Ai/OperatorBridge.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
@@ -176,6 +177,7 @@ Outcome DoInputInject(editor::EditorContext& ctx, const JsonValue& payload, bool
     return applied ? Outcome::Ok(std::move(result)) : Outcome::Err("INPUT_REJECTED", "入力値が範囲外です");
 }
 
+/// @note Play のスナップショットとランタイム設定の所有権は、UI と共通の operator 経路で更新する。
 Outcome DoPlayControl(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
     const std::string type = "play.control";
@@ -184,25 +186,30 @@ Outcome DoPlayControl(editor::EditorContext& ctx, const JsonValue& payload, bool
     }
     const std::string action = StringField(payload, "action");
     if (dryRun) return DryRunPreview(type + ":" + action);
+    const char* operatorId = nullptr;
     if (action == "start") {
         if (ctx.scriptReloadBusy) return Outcome::Err("SCRIPT_RELOAD_BUSY", "Script のビルドまたは再読み込み中です");
         if (!ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "Play は Editor 状態からのみ開始できます");
-        ctx.playMode->Play(*ctx.activeScene);
+        operatorId = "play.start";
     } else if (action == "stop") {
         if (ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "Play Mode は開始されていません");
-        ctx.playMode->Stop(*ctx.activeScene);
+        operatorId = "play.stop";
     } else if (action == "pause") {
         if (!ctx.playMode->IsPlaying()) return Outcome::Err("INVALID_PLAY_STATE", "一時停止は Playing 状態でのみ実行できます");
-        ctx.playMode->Pause();
+        operatorId = "play.pause";
     } else if (action == "resume") {
         if (!ctx.playMode->IsPaused()) return Outcome::Err("INVALID_PLAY_STATE", "再開は Paused 状態でのみ実行できます");
-        ctx.playMode->Pause();
+        operatorId = "play.pause";
     } else if (action == "step") {
         if (!ctx.playMode->IsPaused()) return Outcome::Err("INVALID_PLAY_STATE", "ステップは Paused 状態でのみ実行できます");
-        ctx.playMode->RequestStep();
+        operatorId = "play.step";
     } else {
         return Outcome::Err("BAD_ARG", "未知の Play action: " + action);
     }
+    JsonValue operatorPayload = JsonValue::MakeObject();
+    operatorPayload.Set("id", JsonValue(operatorId));
+    Outcome invocation = FromBridge(InvokeOperator(ctx, operatorPayload, false));
+    if (!invocation.ok) return invocation;
     JsonValue result = JsonValue::MakeObject();
     result.Set("action", JsonValue(action));
     result.Set("playState", JsonValue(PlayStateName(*ctx.playMode)));
@@ -285,7 +292,7 @@ Outcome DoViewportSemanticQuery(BusCall& call)
     }
     return outcome;
 }
-} // namespace
+} /// @note namespace
 
 void RegisterPlayHandlers(BusHandlerTable& table)
 {
@@ -297,4 +304,4 @@ void RegisterPlayHandlers(BusHandlerTable& table)
     table.AddCommand("viewport.camera", [](BusCall& call) { return DoViewportCamera(call.ctx, call.payload, call.dryRun); });
 }
 
-} // namespace fbzz::editor::ai::bus
+} /// @note namespace fbzz::editor::ai::bus

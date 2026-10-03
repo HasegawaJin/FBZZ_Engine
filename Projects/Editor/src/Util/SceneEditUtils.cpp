@@ -6,6 +6,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
@@ -25,6 +26,14 @@ namespace {
 scene::Scene g_gameObjectClipboard;
 std::vector<scene::EntityID> g_gameObjectClipboardRoots;
 
+std::size_t CountHierarchyObjects(scene::GameObject& object)
+{
+    std::size_t count = 1;
+    for (int i = 0; i < object.GetChildCount(); ++i)
+        if (auto* child = object.GetChild(i)) count += CountHierarchyObjects(*child);
+    return count;
+}
+
 bool HasSelectedAncestor(EditorContext& ctx, scene::GameObject& go)
 {
     for (scene::GameObject* parent = go.GetParent(); parent; parent = parent->GetParent()) {
@@ -41,10 +50,14 @@ scene::EntityID CopyHierarchyToSceneRecursive(const scene::Scene& srcScene,
                                               scene::EntityID parentId,
                                               bool addCopySuffix)
 {
-    auto& dst = dstScene.CreateGameObject(src.name + (addCopySuffix ? " (Copy)" : ""));
+    auto* created = dstScene.TryCreateGameObject(src.name + (addCopySuffix ? " (Copy)" : ""));
+    if (!created) return scene::EntityID::INVALID;
+    auto& dst = *created;
     dst.tag             = src.tag;
     dst.layer           = src.layer;
     dst.prefabAssetPath = src.prefabAssetPath;
+    dst.prefabSourceId = src.prefabSourceId;
+    dst.prefabSourceSnapshot = src.prefabSourceSnapshot;
     dst.transform       = src.transform;
     dstScene.CopyComponentsFrom(srcScene, src.GetID(), dst.GetID());
 
@@ -54,8 +67,12 @@ scene::EntityID CopyHierarchyToSceneRecursive(const scene::Scene& srcScene,
     }
 
     for (int i = 0; i < src.GetChildCount(); ++i) {
-        if (auto* child = src.GetChild(i))
-            CopyHierarchyToSceneRecursive(srcScene, *child, dstScene, dst.GetID(), false);
+        if (auto* child = src.GetChild(i)) {
+            if (!CopyHierarchyToSceneRecursive(srcScene, *child, dstScene, dst.GetID(), false).IsValid()) {
+                dstScene.DestroyGameObject(dst.GetID());
+                return scene::EntityID::INVALID;
+            }
+        }
     }
     return dst.GetID();
 }
@@ -76,7 +93,7 @@ scene::EntityID FindUICanvasByGuid(scene::Scene& targetScene, const std::string&
     return canvas->GetID();
 }
 
-} // namespace
+} /// @note namespace
 
 std::unique_ptr<ICommand> MakeSceneEditCommand(EditorContext& ctx,
                                                const char* description,
@@ -145,14 +162,25 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
                                             scene::EntityID parentId,
                                             bool addCloneSuffix)
 {
+    if (!ctx.activeScene) return scene::EntityID::INVALID;
     auto* src = ctx.activeScene->GetGameObject(srcId);
     if (!src) return scene::EntityID::INVALID;
+    for (auto* parent = ctx.activeScene->GetGameObject(parentId); parent; parent = parent->GetParent())
+        if (parent == src) return scene::EntityID::INVALID;
+    if (!ctx.activeScene->CanCreateGameObjects(CountHierarchyObjects(*src))) {
+        FBZZ_LOG_WARN("Duplicate hierarchy: insufficient entity capacity");
+        return scene::EntityID::INVALID;
+    }
 
-    auto& dst = ctx.activeScene->CreateGameObject(
+    auto* created = ctx.activeScene->TryCreateGameObject(
         src->name + (addCloneSuffix ? " (Clone)" : ""));
+    if (!created) return scene::EntityID::INVALID;
+    auto& dst = *created;
     dst.tag       = src->tag;
     dst.layer     = src->layer;
     dst.prefabAssetPath = src->prefabAssetPath;
+    dst.prefabSourceId = src->prefabSourceId;
+    dst.prefabSourceSnapshot = src->prefabSourceSnapshot;
     dst.transform = src->transform;
     ctx.activeScene->DuplicateComponents(srcId, dst.GetID());
     ctx.editorSceneState.CopyComponentOrder(src->instanceId, dst.instanceId);
@@ -163,8 +191,12 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
     }
 
     for (int i = 0; i < src->GetChildCount(); ++i) {
-        if (auto* child = src->GetChild(i))
-            DuplicateHierarchyRecursive(ctx, child->GetID(), dst.GetID(), false);
+        if (auto* child = src->GetChild(i)) {
+            if (!DuplicateHierarchyRecursive(ctx, child->GetID(), dst.GetID(), false).IsValid()) {
+                ctx.activeScene->DestroyGameObject(dst.GetID());
+                return scene::EntityID::INVALID;
+            }
+        }
     }
     return dst.GetID();
 }
@@ -180,7 +212,20 @@ std::unique_ptr<ICommand> MakeDeleteSelectedCommand(EditorContext& ctx)
 std::unique_ptr<ICommand> MakeDuplicateSelectedCommand(EditorContext& ctx)
 {
     if (!ctx.activeScene || ctx.selectedEntities.empty()) return nullptr;
-    const std::vector<scene::EntityID> toDup = ctx.selectedEntities;
+    std::vector<scene::EntityID> toDup;
+    std::size_t required = 0;
+    for (scene::EntityID id : ctx.selectedEntities) {
+        auto* source = ctx.activeScene->GetGameObject(id);
+        if (!source || HasSelectedAncestor(ctx, *source) ||
+            std::find(toDup.begin(), toDup.end(), id) != toDup.end()) continue;
+        required += CountHierarchyObjects(*source);
+        toDup.push_back(id);
+    }
+    if (toDup.empty()) return nullptr;
+    if (!ctx.activeScene->CanCreateGameObjects(required)) {
+        FBZZ_LOG_WARN("Duplicate selection: insufficient entity capacity");
+        return nullptr;
+    }
     return MakeSceneEditCommand(ctx, "Duplicate GameObjects", [&ctx, toDup]() {
         std::vector<scene::EntityID> newIds;
         for (auto eid : toDup) {
@@ -189,8 +234,11 @@ std::unique_ptr<ICommand> MakeDuplicateSelectedCommand(EditorContext& ctx)
                 ? src->GetParent()->GetID() : scene::EntityID{};
             const scene::EntityID newId =
                 DuplicateHierarchyRecursive(ctx, eid, parentId, true);
-            if (newId != scene::EntityID::INVALID)
-                newIds.push_back(newId);
+            if (!newId.IsValid()) {
+                for (scene::EntityID created : newIds) ctx.activeScene->DestroyGameObject(created);
+                return;
+            }
+            newIds.push_back(newId);
         }
         if (!newIds.empty()) SelectEntities(ctx, newIds);
     });
@@ -219,7 +267,7 @@ std::unique_ptr<ICommand> MakeRenameNodeCommand(EditorContext& ctx,
     if (go == nullptr || go->name == newName) return nullptr;
 
     /// @note ポインタではなく EntityID を捕捉して毎回引き直す。Undo/Redo の途中でシーンが差し替わっても
-    ///       対象を取り違えず、解放後参照にもならない。
+    /// @note 対象を取り違えず、解放後参照にもならない。
     scene::Scene* scene = ctx.activeScene;
     const auto markDirty = ctx.markSceneDirty;
     const std::string oldName = go->name;
@@ -245,18 +293,23 @@ void CopySelectedToClipboard(EditorContext& ctx)
 {
     if (!ctx.activeScene || ctx.selectedEntities.empty()) return;
 
-    g_gameObjectClipboard.Clear();
-    g_gameObjectClipboardRoots.clear();
+    scene::Scene prepared;
+    std::vector<scene::EntityID> preparedRoots;
+    std::vector<scene::EntityID> sourceRoots;
 
     for (scene::EntityID id : ctx.selectedEntities) {
         auto* src = ctx.activeScene->GetGameObject(id);
-        if (!src || HasSelectedAncestor(ctx, *src)) continue;
+        if (!src || HasSelectedAncestor(ctx, *src) ||
+            std::find(sourceRoots.begin(), sourceRoots.end(), id) != sourceRoots.end()) continue;
+        sourceRoots.push_back(id);
 
         const scene::EntityID copiedRoot = CopyHierarchyToSceneRecursive(
-            *ctx.activeScene, *src, g_gameObjectClipboard, scene::EntityID{}, false);
-        if (copiedRoot != scene::EntityID::INVALID)
-            g_gameObjectClipboardRoots.push_back(copiedRoot);
+            *ctx.activeScene, *src, prepared, scene::EntityID{}, false);
+        if (!copiedRoot.IsValid()) return;
+        preparedRoots.push_back(copiedRoot);
     }
+    g_gameObjectClipboard = std::move(prepared);
+    g_gameObjectClipboardRoots = std::move(preparedRoots);
 }
 
 bool HasGameObjectClipboard()
@@ -267,6 +320,10 @@ bool HasGameObjectClipboard()
 std::unique_ptr<ICommand> MakePasteClipboardCommand(EditorContext& ctx, scene::EntityID parentId)
 {
     if (!ctx.activeScene || g_gameObjectClipboardRoots.empty()) return nullptr;
+    if (!ctx.activeScene->CanCreateGameObjects(g_gameObjectClipboard.GameObjectCount())) {
+        FBZZ_LOG_WARN("Paste clipboard: insufficient entity capacity");
+        return nullptr;
+    }
 
     const std::vector<scene::EntityID> roots = g_gameObjectClipboardRoots;
     return MakeSceneEditCommand(ctx, "Paste GameObjects", [&ctx, parentId, roots]() {
@@ -277,8 +334,11 @@ std::unique_ptr<ICommand> MakePasteClipboardCommand(EditorContext& ctx, scene::E
 
             const scene::EntityID pastedId = CopyHierarchyToSceneRecursive(
                 g_gameObjectClipboard, *sourceRoot, *ctx.activeScene, parentId, true);
-            if (pastedId != scene::EntityID::INVALID)
-                pastedIds.push_back(pastedId);
+            if (!pastedId.IsValid()) {
+                for (scene::EntityID created : pastedIds) ctx.activeScene->DestroyGameObject(created);
+                return;
+            }
+            pastedIds.push_back(pastedId);
         }
 
         if (!pastedIds.empty())
@@ -294,7 +354,7 @@ void PasteClipboardWithUndo(EditorContext& ctx, scene::EntityID parentId)
 
 namespace {
 
-/// 2 つの球を包含する最小球へ球 0 を拡張する
+/// @note 2 つの球を包含する最小球へ球 0 を拡張する
 void MergeSpheres(math::Vector3& c0, float& r0, const math::Vector3& c1, float r1)
 {
     const math::Vector3 d = { c1.x - c0.x, c1.y - c0.y, c1.z - c0.z };
@@ -309,7 +369,7 @@ void MergeSpheres(math::Vector3& c0, float& r0, const math::Vector3& c1, float r
     r0 = newR;
 }
 
-} // namespace
+} /// @note namespace
 
 void ComputeGameObjectBounds(scene::GameObject& go,
                              math::Vector3& outCenter,
@@ -339,8 +399,8 @@ void ComputeGameObjectBounds(scene::GameObject& go,
 
     if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
         /// @note この Renderer が描く submesh の境界球を合成する (フレーム選択の範囲)。
-        ///       非表示スロットの submesh は描画されないので境界にも含めない。
-        ///       i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
+        /// @note 非表示スロットの submesh は描画されないので境界にも含めない。
+        /// @note i はローカルスロット番号なので、マテリアルスロットとそのまま対応する。
         const auto* mat = go.GetComponent<scene::MaterialComponent>();
         for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
             const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
@@ -379,4 +439,4 @@ bool ComputeSelectionBounds(EditorContext& ctx,
     return true;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

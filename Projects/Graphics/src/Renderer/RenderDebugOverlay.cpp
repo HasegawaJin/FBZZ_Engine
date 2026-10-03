@@ -143,12 +143,23 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
     if (!snapshot.passTimings.empty()) {
         ImGui::Separator();
         ImGui::TextUnformatted("Pass timings  [CPU | GPU]");
+        if (snapshot.gpuProfiler.available && !snapshot.gpuProfiler.passes.empty()) {
+            ImGui::TextDisabled("GPU source frame %llu / view %llu%s",
+                static_cast<unsigned long long>(snapshot.gpuProfiler.passes.front().metadata.applicationFrameSerial),
+                static_cast<unsigned long long>(snapshot.gpuCurrentView.viewId),
+                snapshot.gpuProfiler.complete ? "" : " [partial]");
+        } else {
+            ImGui::TextDisabled("GPU unavailable");
+        }
         ImGui::Spacing();
 
         /// @note GPU 時間を名前引きできるよう map に変換する。
         std::unordered_map<std::string, double> gpuMap;
+        std::unordered_map<std::string, int> gpuNameCount;
         for (const auto& [name, ms] : snapshot.gpuPassTimings)
-            gpuMap[name] = ms;
+            ++gpuNameCount[name];
+        for (const auto& [name, ms] : snapshot.gpuPassTimings)
+            if (gpuNameCount[name] == 1) gpuMap[name] = ms;
 
         /// @note 最長パスを 1.0 として正規化する。
         double maxMs = 0.0;
@@ -179,13 +190,7 @@ void RenderDebugOverlay::Draw(IImGuiRenderer& imguiRenderer, ResourceManager& re
             auto gpuIt = gpuMap.find(name);
             if (isDup) {
                 const ImVec4 red{ 1.0f, 0.35f, 0.35f, 1.0f };
-                if (gpuIt != gpuMap.end()) {
-                    ImGui::TextColored(red, "%-20s  CPU %.3f ms  GPU %.3f ms  [DUP]",
-                                       name.c_str(), ms, gpuIt->second);
-                } else {
-                    ImGui::TextColored(red, "%-20s  CPU %.3f ms  [DUP]",
-                                       name.c_str(), ms);
-                }
+                ImGui::TextColored(red, "%-20s  CPU %.3f ms  [DUP]", name.c_str(), ms);
             } else {
                 if (gpuIt != gpuMap.end()) {
                     ImGui::Text("%-20s  CPU %.3f ms  GPU %.3f ms",

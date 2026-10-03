@@ -30,6 +30,15 @@ file(COPY "${EDITOR_DIR}/" DESTINATION "${SDK_ROOT}/tools/${CONFIG}/Editor")
 # @note Editor出力側のPOST_BUILD状態に依存せず、SDK生成時にも起動必須のimgui.dllをexe隣へ保証する。
 file(COPY "${IMGUI_DLL}" "${CORE_DLL}" "${GRAPHICS_DLL}" DESTINATION "${SDK_ROOT}/tools/${CONFIG}/Editor")
 
+if(DEFINED PIX_RUNTIME_DLL AND NOT "${PIX_RUNTIME_DLL}" STREQUAL "")
+    if(NOT EXISTS "${PIX_RUNTIME_DLL}")
+        message(FATAL_ERROR "StageFBZZSDK: PIX runtime is missing: ${PIX_RUNTIME_DLL}")
+    endif()
+    # @note Do not depend on a previous Editor POST_BUILD copy for the imported event runtime.
+    file(COPY "${PIX_RUNTIME_DLL}" DESTINATION "${SDK_ROOT}/bin/${CONFIG}")
+    file(COPY "${PIX_RUNTIME_DLL}" DESTINATION "${SDK_ROOT}/tools/${CONFIG}/Editor")
+endif()
+
 # @note DX12 の DXIL reflection は dxcompiler.dll を LoadLibraryW で exe 隣から解決する。
 # @note bin/ だけに置くとEditorからは見えず、shaderロードが全滅する。imgui.dll と同じく
 # @note Editor出力側のPOST_BUILD状態に依存せず、SDK生成時にexe隣へ保証する。

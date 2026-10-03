@@ -2,24 +2,69 @@
 /// @brief   未保存アセットの登録簿と、既定マテリアルパスの境界。
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
-///
-/// 登録簿は «閉じる前に保存を促す» の根拠になる。保存に失敗したものを clean 扱いすると
-/// 編集内容が黙って消えるので、失敗は必ず dirty のまま残らなければならない。
+/// @note 保存に失敗したアセットは dirty のまま残し、未保存の編集を閉じる前に検出する。
 #include <TestKit/TestKit.hpp>
+#include <TestKit/Editor/EditorFixture.hpp>
 
+#include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
+#include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
+#include <imgui.h>
+#include <imgui_internal.h>
+#include <fstream>
 #include <string>
+#include <string_view>
 
 namespace fbzz::tests {
 namespace {
 
 using editor::AssetDirtyRegistry;
 
-} // namespace
+/// @note Only ImGui's active-item/frame bookkeeping is needed; no window, renderer or GPU is created.
+class ScopedDataAssetImGuiContext {
+public:
+    ScopedDataAssetImGuiContext()
+        : m_previous(ImGui::GetCurrentContext()), m_context(ImGui::CreateContext())
+    {
+        ImGui::SetCurrentContext(m_context);
+    }
+    ~ScopedDataAssetImGuiContext()
+    {
+        ImGui::DestroyContext(m_context);
+        ImGui::SetCurrentContext(m_previous);
+    }
+    void Frame(int frame, bool active)
+    {
+        m_context->FrameCount = frame;
+        m_context->ActiveId = active ? 1u : 0u;
+    }
+private:
+    ImGuiContext* m_previous = nullptr;
+    ImGuiContext* m_context = nullptr;
+};
 
-/// 静的な登録簿。テスト間で持ち越さないよう毎回空にする。
+class EmptyPassNameEditor final : public scene::IReflector {
+public:
+    void Field(const char*, float&) override {}
+    void Field(const char*, int&) override {}
+    void Field(const char*, bool&) override {}
+    void Field(const char*, math::Vector2&) override {}
+    void Field(const char*, math::Vector3&) override {}
+    void Field(const char*, math::Vector4&) override {}
+    void Field(const char*, math::Quaternion&) override {}
+    void Field(const char* name, std::string& value) override
+    {
+        if (std::string_view(name) == "name") value.clear();
+    }
+};
+
+} /// @note namespace
+
+/// @note 静的な登録簿をテスト間で持ち越さない。
 class AssetDirtyRegistryTest : public testkit::Fixture {
 protected:
     void SetUp() override    { AssetDirtyRegistry::DiscardAll(); }
@@ -158,6 +203,221 @@ TEST_F(AssetDirtyRegistryTest, KeepsTheTypeLabelForDisplay)
     EXPECT_EQ(AssetDirtyRegistry::GetAll()[0].displayPath, "Assets/a.animcontroller");
 }
 
+class InspectorDataAssetSaveTest : public testkit::EditorFixture {
+protected:
+    void SetUp() override
+    {
+        EditorFixture::SetUp();
+        AssetDirtyRegistry::DiscardAll();
+        asset::DataAssetRegistry::ClearCache();
+        m_panel.OnShutdown();
+        Context().projectRoot = ProjectRoot().generic_string();
+        m_imgui.Frame(1, false);
+        editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    }
+    void TearDown() override
+    {
+        AssetDirtyRegistry::DiscardAll();
+        m_panel.OnShutdown();
+        asset::DataAssetRegistry::ClearCache();
+        EditorFixture::TearDown();
+    }
+    std::string Path(const char* name) const
+    {
+        return File(std::string("Assets/") + name).generic_string();
+    }
+    void Create(const std::string& path)
+    {
+        renderer::RenderSettings settings;
+        settings.shadowEnabled = true;
+        settings.passOverrides = {{"DeferredLighting", false, false, {}}};
+        ASSERT_TRUE(asset::CreateRenderPipelineAsset(path, settings));
+        ASSERT_NE(Resolve(path), nullptr);
+    }
+    asset::RenderPipelineAsset* Resolve(const std::string& path) const
+    {
+        auto* data = asset::DataAssetRegistry::Resolve(path);
+        if (!data || std::string_view(data->GetTypeName()) != asset::RenderPipelineAsset::TYPE_NAME)
+            return nullptr;
+        return static_cast<asset::RenderPipelineAsset*>(data);
+    }
+    void Edit(const std::string& path)
+    {
+        auto* data = Resolve(path);
+        ASSERT_NE(data, nullptr);
+        renderer::RenderSettings settings = data->Settings();
+        settings.shadowEnabled = false;
+        ASSERT_TRUE(data->Capture(settings));
+        editor::InspectorPanel::QueueDataAssetSave(path);
+    }
+    std::string Text(const std::string& path) const
+    {
+        std::string text;
+        EXPECT_TRUE(util::FileSystem::ReadText(path, text));
+        return text;
+    }
+    void Write(const std::string& path, const std::string& text) const
+    {
+        std::ofstream stream(path, std::ios::binary);
+        ASSERT_TRUE(stream.good());
+        stream << text;
+    }
+
+    ScopedDataAssetImGuiContext m_imgui;
+    editor::InspectorPanel m_panel;
+};
+
+TEST_F(InspectorDataAssetSaveTest, FlushesOldSelectionAndHiddenInspectorWithoutLosingEitherPath)
+{
+    const auto first = Path("First.fzdata");
+    const auto second = Path("Second.fzdata");
+    Create(first);
+    Create(second);
+    const auto firstDisk = Text(first);
+    const auto secondDisk = Text(second);
+    m_imgui.Frame(1, true);
+    Edit(first);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_EQ(Text(first), firstDisk);
+
+    m_imgui.Frame(2, true);
+    Edit(second);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_NE(Text(first), firstDisk);
+    EXPECT_EQ(Text(second), secondDisk);
+    EXPECT_FALSE(AssetDirtyRegistry::IsDirty(first));
+    EXPECT_TRUE(AssetDirtyRegistry::IsDirty(second));
+
+    /// @note A different panel may own the active item after Inspector closes.
+    m_imgui.Frame(3, true);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_NE(Text(second), secondDisk);
+    EXPECT_FALSE(AssetDirtyRegistry::HasAny());
+    EXPECT_TRUE(Context().requestAssetBrowserRefresh);
+    asset::DataAssetRegistry::ClearCache();
+    ASSERT_NE(Resolve(first), nullptr);
+    ASSERT_NE(Resolve(second), nullptr);
+    EXPECT_FALSE(Resolve(first)->Settings().shadowEnabled);
+    EXPECT_FALSE(Resolve(second)->Settings().shadowEnabled);
+}
+
+TEST_F(InspectorDataAssetSaveTest, DefersCurrentActiveInputUntilRelease)
+{
+    const auto path = Path("Active.fzdata");
+    Create(path);
+    const auto disk = Text(path);
+    m_imgui.Frame(1, true);
+    Edit(path);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_EQ(Text(path), disk);
+    EXPECT_TRUE(AssetDirtyRegistry::IsDirty(path));
+    EXPECT_FALSE(Context().requestAssetBrowserRefresh);
+
+    m_imgui.Frame(1, false);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_NE(Text(path), disk);
+    EXPECT_FALSE(AssetDirtyRegistry::IsDirty(path));
+}
+
+TEST_F(InspectorDataAssetSaveTest, RespectsDiscardAndDoesNotCarryPendingWritesAcrossShutdownOrProjects)
+{
+    const auto path = Path("Discard.fzdata");
+    Create(path);
+    const auto disk = Text(path);
+    m_imgui.Frame(1, true);
+    Edit(path);
+    AssetDirtyRegistry::DiscardAll();
+    m_imgui.Frame(2, false);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_EQ(Text(path), disk);
+    EXPECT_FALSE(AssetDirtyRegistry::HasAny());
+
+    Edit(path);
+    m_panel.OnShutdown();
+    m_imgui.Frame(3, false);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_EQ(Text(path), disk);
+    AssetDirtyRegistry::DiscardAll();
+    Edit(path);
+    Context().projectRoot += "/OtherProject";
+    m_imgui.Frame(4, false);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_EQ(Text(path), disk);
+}
+
+TEST_F(InspectorDataAssetSaveTest, InvalidTypedEditKeepsValidDiskAndDirtyFailure)
+{
+    const auto path = Path("Invalid.fzdata");
+    Create(path);
+    const auto disk = Text(path);
+    EmptyPassNameEditor edit;
+    Resolve(path)->Reflect(edit);
+    ASSERT_TRUE(asset::DataAssetRegistry::Snapshot(path).empty());
+    editor::InspectorPanel::QueueDataAssetSave(path);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_EQ(Text(path), disk);
+    EXPECT_TRUE(AssetDirtyRegistry::IsDirty(path));
+    EXPECT_FALSE(Context().requestAssetBrowserRefresh);
+    EXPECT_EQ(AssetDirtyRegistry::SaveAll(), 1);
+    EXPECT_EQ(Text(path), disk);
+}
+
+TEST_F(InspectorDataAssetSaveTest, SchemaFailureRetriesOnlyAfterAnotherEditOrExplicitSave)
+{
+    const auto path = Path("Future.fzdata");
+    Create(path);
+    const auto disk = Text(path);
+    const std::string future = "type='RenderPipelineAsset'\nschemaVersion=2\nfuture='keep'\n";
+    Write(path, future);
+    Edit(path);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_EQ(Text(path), future);
+    EXPECT_TRUE(AssetDirtyRegistry::IsDirty(path));
+    EXPECT_FALSE(Context().requestAssetBrowserRefresh);
+
+    Write(path, disk);
+    m_imgui.Frame(2, false);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_EQ(Text(path), disk);
+    EXPECT_TRUE(AssetDirtyRegistry::IsDirty(path));
+    Edit(path);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_NE(Text(path), disk);
+    EXPECT_FALSE(AssetDirtyRegistry::IsDirty(path));
+}
+
+TEST_F(InspectorDataAssetSaveTest, SaveAllUsesPathOnlyCallbacksAndKeepsOnlyActualFailures)
+{
+    const auto first = Path("Saved.fzdata");
+    const auto second = Path("Failed.fzdata");
+    Create(first);
+    Create(second);
+    const auto firstDisk = Text(first);
+    const auto secondDisk = Text(second);
+    const std::string future = "type='RenderPipelineAsset'\nschemaVersion=2\n";
+    m_imgui.Frame(1, true);
+    Edit(first);
+    Edit(second);
+    {
+        editor::EditorContext temporary;
+        temporary.projectRoot = Context().projectRoot;
+        editor::InspectorPanel::FlushPendingDataAssetSaves(temporary);
+    }
+    Write(second, future);
+    EXPECT_EQ(AssetDirtyRegistry::SaveAll(), 1);
+    EXPECT_NE(Text(first), firstDisk);
+    EXPECT_EQ(Text(second), future);
+    EXPECT_FALSE(AssetDirtyRegistry::IsDirty(first));
+    EXPECT_TRUE(AssetDirtyRegistry::IsDirty(second));
+    Write(second, secondDisk);
+    m_imgui.Frame(2, false);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_EQ(Text(second), secondDisk);
+    EXPECT_TRUE(AssetDirtyRegistry::Save(second));
+    EXPECT_NE(Text(second), secondDisk);
+    EXPECT_FALSE(AssetDirtyRegistry::HasAny());
+}
+
 /// @name 既定マテリアルパス
 
 TEST(TerrainWaterDefaults, ReturnsAPathForEveryTerrainLayer)
@@ -206,4 +466,4 @@ TEST(TerrainWaterDefaults, WaterPresetsStartWithTheDefaultAndPointAtDistinctMate
     }
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

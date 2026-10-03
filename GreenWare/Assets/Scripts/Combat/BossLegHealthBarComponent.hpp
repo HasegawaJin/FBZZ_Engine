@@ -2,10 +2,10 @@
 /// @brief   ボスの脚 4 本それぞれに、残り耐久の WorldSpace バーを追従させる
 /// @author  Hasegawa Jin
 /// @date    2026-08-29
-///
+
 /// @note ボス本体 HP (あと何発か) とは別の意味 (この脚は使えるか) なので独立表示する。
-///       選択判断は脚を見ながら行うため HUD でなく脚そばに置く。転倒判定を持つ
-///       BossRigComponent には同居させず、公開 API (LegDurabilityRatio / LegAnchor) だけを読む。
+/// @note 選択判断は脚を見ながら行うため HUD でなく脚そばに置く。転倒判定を持つ
+/// @note BossRigComponent には同居させず、公開 API (LegDurabilityRatio / LegAnchor) だけを読む。
 #pragma once
 
 #include <Engine/Scene/Components/UICanvas.hpp>
@@ -53,18 +53,18 @@ public:
     void OnDestroy() override;
 
 private:
-    /// Canvas のピクセル座標系とワールド単位の換算比。UICanvas::worldScale の逆数。
-    /// ボス本体のバーと同じ値に揃える ─ 別の比にすると、同じ Bar Width の
-    /// 数字が敵とボスで違う大きさになる。
+    /// @note Canvas のピクセル座標系とワールド単位の換算比。UICanvas::worldScale の逆数。
+    /// @note ボス本体のバーと同じ値に揃える ─ 別の比にすると、同じ Bar Width の
+    /// @note 数字が敵とボスで違う大きさになる。
     static constexpr float kPixelsPerUnit = 100.0f;
 
     [[nodiscard]] BossRigComponent* Rig() const
     { return scene.GetScript<BossRigComponent>(); }
 
-    /// 脚 1 本ぶんのバー名。DLL リロードで拾い直せるよう、所有者と脚で一意にする。
+    /// @note 脚 1 本ぶんのバー名。DLL リロードで拾い直せるよう、所有者と脚で一意にする。
     [[nodiscard]] std::string CanvasName(const GameObject& owner, int leg) const;
 
-    /// 生成済みのバーを拾い直せたら true。スクリプト DLL のリロード対策。
+    /// @note 生成済みのバーを拾い直せたら true。スクリプト DLL のリロード対策。
     bool Adopt(GameObject& owner);
     void Build(GameObject& owner);
     void LayoutOne(int leg, const Vector3& anchor);
@@ -110,48 +110,60 @@ inline bool BossLegHealthBarComponent::Adopt(GameObject& owner)
 
 inline void BossLegHealthBarComponent::Build(GameObject& owner)
 {
-    /// @note ボスの子にしない: 子だとローカル値になり回転/巡回順が影響する。ワールド座標を
-    ///       直接書き、位置は LegAnchor() 1 式だけで決める。scene.Create は配列を再確保する
-    ///       ため、4 本作り切ってから参照を取る (作りながら掴むと次の Create で無効になる)。
+    if (!scene.CanCreate(static_cast<std::size_t>(BossRigComponent::LegCount()) * 3)) return;
+    Bar bars[4]{};
+    const auto abandon = [&]() {
+        for (const Bar& bar : bars) {
+            if (GameObject* object = bar.background.Resolve(scene)) scene.Destroy(*object);
+            if (GameObject* object = bar.fill.Resolve(scene)) scene.Destroy(*object);
+            if (GameObject* object = bar.canvas.Resolve(scene)) scene.Destroy(*object);
+        }
+    };
+
+    /// @note バーはワールド空間のルートとし、位置を LegAnchor() だけで決める。
     for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) {
         const std::string name = CanvasName(owner, leg);
 
-        GameObject& canvasObject = scene.Create(name);
-        canvasObject.runtimeGenerated = true;
-        UICanvas& canvas  = canvasObject.AddComponent<UICanvas>();
+        GameObject* canvasObject = scene.Create(name);
+        if (!canvasObject) { abandon(); return; }
+        canvasObject->runtimeGenerated = true;
+        UICanvas& canvas  = canvasObject->AddComponent<UICanvas>();
         canvas.renderMode = UIRenderMode::WorldSpace;
         canvas.faceCamera = true;
         canvas.worldScale = 1.0f / kPixelsPerUnit;
-        m_bars[leg].canvas = EntityRef{ canvasObject.GetID() };
+        bars[leg].canvas = EntityRef{ canvasObject->GetID() };
     }
 
     for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) {
-        GameObject* canvasObject = m_bars[leg].canvas.Resolve(scene);
+        GameObject* canvasObject = bars[leg].canvas.Resolve(scene);
         if (!canvasObject) continue;
 
-        GameObject& backgroundObject = scene.Create("BossLegBar_Background");
-        backgroundObject.runtimeGenerated = true;
-        backgroundObject.AddComponent<UIImage>().sortOrder = 0;
-        m_bars[leg].background = EntityRef{ backgroundObject.GetID() };
+        GameObject* backgroundObject = scene.Create("BossLegBar_Background");
+        if (!backgroundObject) { abandon(); return; }
+        backgroundObject->runtimeGenerated = true;
+        backgroundObject->AddComponent<UIImage>().sortOrder = 0;
+        bars[leg].background = EntityRef{ backgroundObject->GetID() };
 
-        GameObject& fillObject = scene.Create("BossLegBar_Fill");
-        fillObject.runtimeGenerated = true;
-        UIImage& fill   = fillObject.AddComponent<UIImage>();
+        GameObject* fillObject = scene.Create("BossLegBar_Fill");
+        if (!fillObject) { abandon(); return; }
+        fillObject->runtimeGenerated = true;
+        UIImage& fill   = fillObject->AddComponent<UIImage>();
         fill.sortOrder  = 1;
         fill.fillOrigin = UIImageFillOrigin::Left;
-        m_bars[leg].fill = EntityRef{ fillObject.GetID() };
+        bars[leg].fill = EntityRef{ fillObject->GetID() };
     }
 
-    /// @note 親付けは全部作り終えてから。SetParent はワールド姿勢を保つ実装でも、
-    ///       生成の途中で掴んだ参照は無効になりうる。
+    /// @note 組み立てが完了した階層だけを m_bars へ公開する。
     for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) {
-        GameObject* canvasObject = m_bars[leg].canvas.Resolve(scene);
-        GameObject* background   = m_bars[leg].background.Resolve(scene);
-        GameObject* fillObject   = m_bars[leg].fill.Resolve(scene);
+        GameObject* canvasObject = bars[leg].canvas.Resolve(scene);
+        GameObject* background   = bars[leg].background.Resolve(scene);
+        GameObject* fillObject   = bars[leg].fill.Resolve(scene);
         if (!canvasObject || !background || !fillObject) continue;
         background->SetParent(*canvasObject);
         fillObject->SetParent(*canvasObject);
     }
+
+    for (int leg = 0; leg < BossRigComponent::LegCount(); ++leg) m_bars[leg] = bars[leg];
 }
 
 inline void BossLegHealthBarComponent::LayoutOne(int leg, const Vector3& anchor)
@@ -172,7 +184,7 @@ inline void BossLegHealthBarComponent::LayoutOne(int leg, const Vector3& anchor)
     }
 
     /// @note Canvas はルートなので local = world。この Layout は LateUpdate で走り、
-    ///       UI の描画はその後なので、world も書いておけば 1 フレーム遅れない。
+    /// @note UI の描画はその後なので、world も書いておけば 1 フレーム遅れない。
     canvasObject->transform.position      = anchor;
     canvasObject->transform.worldPosition = anchor;
 
@@ -196,7 +208,7 @@ inline void BossLegHealthBarComponent::OnStart()
     }
 
     /// @note 先に Adopt を試す: DLL リロードで EntityRef は空に戻るが GameObject は Scene に
-    ///       残る。無条件に Build すると、リロードのたびにバーが増える。
+    /// @note 残る。無条件に Build すると、リロードのたびにバーが増える。
     if (!Adopt(*owner))
         Build(*owner);
 }
@@ -216,7 +228,7 @@ inline void BossLegHealthBarComponent::OnLateUpdate()
         Vector3     anchor;
 
         /// @note 落ちた脚と、無傷で隠す設定の脚は畳む。位置も更新しない ─ もぎ取った後の
-        ///       当たり判定はボーンに付いたまま動くので、バーだけが空中に残る。
+        /// @note 当たり判定はボーンに付いたまま動くので、バーだけが空中に残る。
         const bool show = !rig->IsLegBroken(leg)
                        && (!hideWhenFull || ratio < 1.0f)
                        && rig->LegAnchor(leg, anchor);
@@ -239,7 +251,7 @@ inline void BossLegHealthBarComponent::OnLateUpdate()
 inline void BossLegHealthBarComponent::OnDestroy()
 {
     /// @note ランタイム生成なのでシーンには残らないが、Play を止めた瞬間にボスが消えても
-    ///       バーだけがアリーナに残る経路がある。持ち主が畳まれたら一緒に畳む。
+    /// @note バーだけがアリーナに残る経路がある。持ち主が畳まれたら一緒に畳む。
     for (Bar& bar : m_bars) {
         if (GameObject* canvasObject = bar.canvas.Resolve(scene))
             scene.Destroy(*canvasObject);
@@ -247,4 +259,4 @@ inline void BossLegHealthBarComponent::OnDestroy()
     }
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

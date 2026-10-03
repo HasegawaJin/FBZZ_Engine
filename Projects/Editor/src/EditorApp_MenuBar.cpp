@@ -2,7 +2,7 @@
 /// @brief   メインメニューバーの構築とホットキー登録。
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
-///
+
 /// @note UI 記述に特化した独立ファイル。ライフサイクル管理やシーン I/O と関心を分離する。
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
@@ -22,6 +22,7 @@
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Scene/ScriptValidation.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Cursor.hpp>
@@ -252,12 +253,16 @@ void EditorApp::InstallNativeMenuBar()
     constexpr uint16_t VIEW_UNLIT      = 411;
     constexpr uint16_t VIEW_WIRE_LIT   = 412;
     constexpr uint16_t VIEW_WIRE_UNLIT = 413;
+    constexpr uint16_t VIEW_RAY_HIT_DISTANCE = 440;
+    constexpr uint16_t VIEW_RAY_GEOMETRIC_NORMAL = 441;
+    constexpr uint16_t VIEW_RAY_INSTANCE_ID = 442;
     constexpr uint16_t TOGGLE_MAP       = 501;
     constexpr uint16_t OPEN_BUILD       = 502;
     constexpr uint16_t OPEN_IBL         = 503;
     constexpr uint16_t OPEN_NAVIGATION  = 504;
     constexpr uint16_t OPEN_ASSET_MAINT = 505;
     constexpr uint16_t OPEN_VOLUME_FLIPBOOK = 506;
+    constexpr uint16_t OPEN_PIX         = 507;
     constexpr uint16_t OPEN_AI_SETTINGS = 600;
     constexpr uint16_t PANEL_BASE       = 1000;
     constexpr uint16_t CREATE_EMPTY     = 2999;
@@ -283,6 +288,9 @@ void EditorApp::InstallNativeMenuBar()
     debugViewMode.push_back(command("Unlit", VIEW_UNLIT));
     debugViewMode.push_back(command("Wireframe Lit", VIEW_WIRE_LIT));
     debugViewMode.push_back(command("Wireframe Unlit", VIEW_WIRE_UNLIT));
+    debugViewMode.push_back(command("Ray Hit Distance", VIEW_RAY_HIT_DISTANCE));
+    debugViewMode.push_back(command("Ray Geometric Normal", VIEW_RAY_GEOMETRIC_NORMAL));
+    debugViewMode.push_back(command("Ray Instance ID", VIEW_RAY_INSTANCE_ID));
 
     MenuList terrainTools;
     terrainTools.push_back(command("Terrain Tool", 510));
@@ -358,7 +366,8 @@ void EditorApp::InstallNativeMenuBar()
         command("Build Settings...", OPEN_BUILD), command("IBL Baker...", OPEN_IBL),
         command("Volume Flipbook Baker...", OPEN_VOLUME_FLIPBOOK),
         command("Navigation...", OPEN_NAVIGATION),
-        command("Asset Maintenance...", OPEN_ASSET_MAINT)
+        command("Asset Maintenance...", OPEN_ASSET_MAINT),
+        command("Open PIX...", OPEN_PIX)
     }));
     menus.push_back(submenu("AI", { command("AI Settings...", OPEN_AI_SETTINGS) }));
 
@@ -435,9 +444,13 @@ void EditorApp::InstallNativeMenuBar()
         case VIEW_UNLIT:     InvokeViewMode("unlit"); break;
         case VIEW_WIRE_LIT:  InvokeViewMode("wireframe_lit"); break;
         case VIEW_WIRE_UNLIT:InvokeViewMode("wireframe_unlit"); break;
+        case VIEW_RAY_HIT_DISTANCE: InvokeViewMode("ray_hit_distance"); break;
+        case VIEW_RAY_GEOMETRIC_NORMAL: InvokeViewMode("ray_geometric_normal"); break;
+        case VIEW_RAY_INSTANCE_ID: InvokeViewMode("ray_instance_id"); break;
         case 700:            InvokeOperator("view.reset_ui_scale"); break;
         case TOGGLE_MAP:     InvokeOperator("tools.map_editing_mode"); break;
         case OPEN_BUILD:     InvokeOperator("tools.build_settings"); break;
+        case OPEN_PIX:       InvokeOperator("tools.pix_open"); break;
         /// @note パネルを前面に出すのは panel.focus 1 つで足りる。パネルごとに
         /// @note        operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         case OPEN_IBL:         InvokePanelFocus(m_iblBakePanel); break;
@@ -649,6 +662,11 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             viewModeItem("unlit",           "Unlit");
             viewModeItem("wireframe_lit",   "Wireframe Lit");
             viewModeItem("wireframe_unlit", "Wireframe Unlit");
+            if (core::DeveloperMode::IsEnabled()) {
+                viewModeItem("ray_hit_distance", "Ray Hit Distance");
+                viewModeItem("ray_geometric_normal", "Ray Geometric Normal");
+                viewModeItem("ray_instance_id", "Ray Instance ID");
+            }
             ImGui::EndMenu();
         }
         ImGui::Separator();
@@ -688,6 +706,13 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::EndMenu();
         }
         MenuItemOp("tools.build_settings");
+        ImGui::Separator();
+        MenuItemOp("tools.pix_open");
+        const auto pixStatus = InvokeOperator("tools.pix_status");
+        const auto* pixReady = pixStatus.data.Find("captureReady");
+        ImGui::TextDisabled("%s", LOC(pixReady && pixReady->AsBool()
+            ? "PIX: GPU capture ready" : "PIX: next launch with --pix-capture"));
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", pixStatus.message.c_str());
         ImGui::Separator();
         /// @note パネルごとに operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         /// @note        名前を引数で渡す 1 つの操作で足りる。
@@ -1003,7 +1028,7 @@ void EditorApp::DrawBuildNotificationBar(EditorContext& ctx)
     ImGui::PopStyleColor();
 }
 
-void EditorApp::DrawGuidConflictBar(EditorContext& /*ctx*/)
+void EditorApp::DrawGuidConflictBar(EditorContext&)
 {
     const size_t count = asset::AssetDatabase::GuidConflictCount();
     if (count == 0) return;
@@ -1108,10 +1133,10 @@ void EditorApp::StartPlayMode()
         static_cast<uint32_t>(m_ctx.gameViewportWidth),
         static_cast<uint32_t>(m_ctx.gameViewportHeight)
     );
-    /// @note graphics プロキシの書き換え先を Play 中だけ開ける。実体は ProjectSettings::render で
-    /// @note        終了時に toml へ保存されるので、スナップショットを取らないと Play 中の変更が焼き付く。
-    m_renderSettingsPlaySnapshot = m_ctx.projectSettings.render;
-    core::Application::Get().SetActiveRenderSettings(&m_ctx.projectSettings.render);
+    /// @note 実行中の品質変更は専用コピーへ限定し、アセットと編集側の自動保存を汚さない。
+    (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
+        m_ctx.projectSettings.renderPipelineAssetPath, m_playRenderSettings);
+    core::Application::Get().SetActiveRenderSettings(&m_playRenderSettings);
     /// @note Play 中の増加も Stop 後の残りも、この 1 つの基準から測る。
     if (m_ctx.resources != nullptr) {
         m_memoryLeakDiff.CaptureBaseline(*m_ctx.resources, "Play");
@@ -1129,14 +1154,8 @@ void EditorApp::StopPlayMode()
     if (!m_ctx.activeScene || m_playMode.IsInEditor())
         return;
     scene::ScriptRuntime::Override(nullptr);
-    /// @note Play 中のスクリプトが変えた画質・明るさを編集側へ持ち込まない。
-    /// @note        選択状態だけは編集の続きなので、復元から外して現在のものを残す。
+    /// @note 実行用コピーを切り離す。ProjectSettings は Play 中も編集側の正本を保持する。
     core::Application::Get().SetActiveRenderSettings(nullptr);
-    {
-        auto selection = std::move(m_ctx.projectSettings.render.selectedObjects);
-        m_ctx.projectSettings.render = m_renderSettingsPlaySnapshot;
-        m_ctx.projectSettings.render.selectedObjects = std::move(selection);
-    }
     /// @note AudioSystemはSimOnlyのため、EditModeへ戻った後ではループVoiceを停止できない。
     /// @note        PauseではなくPlay終了時だけ一括停止し、BGMがEditor操作中まで残ることを防ぐ。
     if (auto* audioManager = core::Application::Get().GetAudioManager())
@@ -1153,7 +1172,7 @@ void EditorApp::TogglePlayMode()
         StopPlayMode();
 }
 
-/// @note  描画モードを operator へ渡す小さな補助 (ネイティブメニューの 4 項目が使う)。
+/// @note ネイティブメニューも描画モード操作の登録簿を使う。
 void EditorApp::InvokeViewMode(const char* mode)
 {
     OpArgs args;

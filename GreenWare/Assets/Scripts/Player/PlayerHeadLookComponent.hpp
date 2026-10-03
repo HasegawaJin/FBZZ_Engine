@@ -2,11 +2,11 @@
 /// @brief   照準の先へ頭だけを向け、狙いの連鎖に「視線」の段を足す
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
-///
+
 /// @note 頭だけ IK で回す: 胸/腕は 9 セルのポーズ側で配分済みで同じ胴を回すと二重に効くが、
-///       頭は配分が薄く (15度 vs リグ限界60度) 余裕がある (配分表は minibot-animation-export.md)。
-///       移動中は体が進行方向へ固定されるため、頭だけが狙いを追える唯一の段になる。
-///       上流 (胸のひねり・足IK) が頭の姿勢を動かすため、解決は毎フレーム最後に行う。
+/// @note 頭は配分が薄く (15度 vs リグ限界60度) 余裕がある (配分表は minibot-animation-export.md)。
+/// @note 移動中は体が進行方向へ固定されるため、頭だけが狙いを追える唯一の段になる。
+/// @note 上流 (胸のひねり・足IK) が頭の姿勢を動かすため、解決は毎フレーム最後に行う。
 #pragma once
 #include <Scripts/Game/TimeManagerComponent.hpp>
 
@@ -32,7 +32,7 @@ namespace sandbox {
 class PlayerHeadLookComponent : public Script {
     FBZZ_SCRIPT(PlayerHeadLookComponent)
 
-    /// 無ければ OnStart で足す。IK が無い状態でも他のモジュールは成立するため必須にしない。
+    /// @note 無ければ OnStart で足す。IK が無い状態でも他のモジュールは成立するため必須にしない。
     FBZZ_OPTIONAL_COMPONENT(IKSolverComponent)
 
 public:
@@ -40,37 +40,37 @@ public:
     FBZZ_FIELD(std::string, headBoneName, "Head", "Head Bone")
     FBZZ_FIELD_RANGE(float, headWeight, 0.85f, "Head Weight", 0.0f, 1.0f)
     FBZZ_TOOLTIP("0 で無効。1 にすると頭のアニメーションを完全に上書きする")
-    /// リグの LIMIT_ROTATION は Head ヨー ±60 度。これを超える値を入れても
-    /// Blender 側の拘束と食い違うだけで、絵としては伸びない。
+    /// @note リグの LIMIT_ROTATION は Head ヨー ±60 度。これを超える値を入れても
+    /// @note Blender 側の拘束と食い違うだけで、絵としては伸びない。
     FBZZ_FIELD_RANGE(float, clampDegrees, 55.0f, "Clamp Degrees", 0.0f, 90.0f)
     FBZZ_TOOLTIP("首を回せる限界。リグの拘束が ±60 度なのでそれ以内に収める")
     /// @note 頭・胸・腕・腰が同じ速さで動くと、ひねりが一枚板に見える。腕より速くして
-    ///       頭が先に振れる時間差を作ると「人が振り向いた」に読み替えられる。
+    /// @note 頭が先に振れる時間差を作ると「人が振り向いた」に読み替えられる。
     FBZZ_FIELD_RANGE(float, response, 18.0f, "追従", 1.0f, 40.0f)
     FBZZ_TOOLTIP("腕 (Aim Response 14) より速くすると、頭が先に振れて体が追う段差が出る")
     FBZZ_FIELD_RANGE(float, weightResponse, 6.0f, "Weight Response", 1.0f, 30.0f)
     FBZZ_TOOLTIP("対象を失ったときに視線が正面へ戻る速さ")
     /// @note TickAimTurn は収納中の旋回を止めている (体だけ追うと不気味)。頭だけなら
-    ///       「気にしている」に読めるので、収納中かどうかの判断を持ち込まない。
+    /// @note 「気にしている」に読めるので、収納中かどうかの判断を持ち込まない。
     FBZZ_FIELD(bool, lookWhenHolstered, true, "Look When Holstered")
 
     FBZZ_GROUP("体ごと向く")
     /// @note 首の拘束は ±60 度 (clampDegrees) で、張り付いたまま回し続けると «頭が限界で
-    ///       固まった人» になる。限界で体を回して首を中央へ戻すのが TPS の «振り向いた»。
+    /// @note 固まった人» になる。限界で体を回して首を中央へ戻すのが TPS の «振り向いた»。
     FBZZ_FIELD(bool, turnBodyBeyondClamp, true, "限界を越えたら体ごと向く")
     FBZZ_FIELD_RANGE(float, bodyTurnDegrees, 50.0f, "体が動き出す角度", 10.0f, 180.0f)
     FBZZ_TOOLTIP("カメラ前方と体の正面がこれだけ開いたら体が回り始める。"
                  "Clamp Degrees より小さくしないと «首が限界で止まってから回る» になる")
     /// @note 入る角と同じ角で切ると、境目でカメラを微動させるたびに体が震える。
-    ///       止める角は入る角より内側に持つ。
+    /// @note 止める角は入る角より内側に持つ。
     FBZZ_FIELD_RANGE(float, bodyTurnReleaseDegrees, 12.0f, "止まる角度", 0.0f, 90.0f)
     FBZZ_FIELD_RANGE(float, bodyTurnMaxSpeed, 1.5f, "止まっているとみなす速さ [m/s]", 0.0f, 10.0f)
     FBZZ_TOOLTIP("歩いている間は進む向きが体を回すので、こちらは手を出さない")
     FBZZ_FIELD_READ_ONLY(float, debugHeadYaw, 0.0f, "カメラとのずれ [度]")
 
     FBZZ_GROUP("軸")
-    /// 頭のローカル軸のうちどれが前かは FBX の軸変換とボーンロールで決まり、
-    /// リグを差し替えると変わる。既定は実行時に解決し、狂ったときだけ手で入れる。
+    /// @note 頭のローカル軸のうちどれが前かは FBX の軸変換とボーンロールで決まり、
+    /// @note リグを差し替えると変わる。既定は実行時に解決し、狂ったときだけ手で入れる。
     FBZZ_FIELD(bool, autoResolveAxis, true, "Auto Resolve Axis")
     FBZZ_TOOLTIP("頭の姿勢からモデル正面 / 上に最も近いローカル軸を選ぶ")
     FBZZ_FIELD(Vector3, lookAxisOverride, (Vector3::FORWARD), "Look Axis")
@@ -82,15 +82,15 @@ public:
     FBZZ_FIELD_READ_ONLY(float, debugWeight, 0.0f, "Applied Weight")
     FBZZ_FIELD_READ_ONLY(std::string, debugAxes, "", "Resolved Axes")
 
-    /// PlayerComponent が内部モジュールとして持つときに、同じ PlayerAimComponent を渡す。
+    /// @note PlayerComponent が内部モジュールとして持つときに、同じ PlayerAimComponent を渡す。
     void SetAimComponent(PlayerAimComponent* aim) { m_aimOverride = aim; }
-    /// モデルのヨーオフセットを二重に持たないため、正面の定義は控えるほうから借りる。
+    /// @note モデルのヨーオフセットを二重に持たないため、正面の定義は控えるほうから借りる。
     void SetController(PlayerControllerComponent* controller) { m_controller = controller; }
-    /// 銃を構えているかは銃の側の事実。収納中に見るかどうかの判断に使う。
+    /// @note 銃を構えているかは銃の側の事実。収納中に見るかどうかの判断に使う。
     void SetWeaponRig(WeaponRigComponent* rig) { m_weaponRig = rig; }
 
 private:
-    /// 体を回している最中か。入る角と止まる角を別に持つためのラッチ。
+    /// @note 体を回している最中か。入る角と止まる角を別に持つためのラッチ。
     bool m_turningBody = false;
 public:
 
@@ -100,33 +100,33 @@ public:
 
 private:
     static constexpr const char* kTargetName = "HeadLookTarget";
-    /// 足 IK (0) や背骨 (20) より後。上流が動いた結果の頭へ最後に効かせる。
+    /// @note 足 IK (0) や背骨 (20) より後。上流が動いた結果の頭へ最後に効かせる。
     static constexpr int kChainOrder = 100;
-    /// 視線が要らない間も chain.weight をここまでしか下げない。
+    /// @note 視線が要らない間も chain.weight をここまでしか下げない。
     /// @note IKSystem は weight <= 0 のチェーンを丸ごと飛ばすが、SolveLookAt が持つ
-    ///       lookAtSmoothedRotation はワールドの絶対回転で、飛ばされている間は古い姿勢の
-    ///       まま凍る。薄く回し続けて FK の頭へ収束させないと、次に掴んだフレームで
-    ///       古い回転との差分が一度に効き、頭が一瞬あらぬ方向を向く。
+    /// @note lookAtSmoothedRotation はワールドの絶対回転で、飛ばされている間は古い姿勢の
+    /// @note まま凍る。薄く回し続けて FK の頭へ収束させないと、次に掴んだフレームで
+    /// @note 古い回転との差分が一度に効き、頭が一瞬あらぬ方向を向く。
     static constexpr float kWeightFloor = 0.002f;
-    /// 狙点が近すぎると向きが求まらないため、視線の的はこの距離へ置き直す。
+    /// @note 狙点が近すぎると向きが求まらないため、視線の的はこの距離へ置き直す。
     static constexpr float kIdleTargetDistance = 8.0f;
 
-    /// ベクトルに最も近い直交軸を単位ベクトルで返す。
+    /// @note ベクトルに最も近い直交軸を単位ベクトルで返す。
     [[nodiscard]] static Vector3 NearestCardinalAxis(const Vector3& v);
 
     [[nodiscard]] PlayerAimComponent* Aim() const;
     [[nodiscard]] std::string TargetName() const;
     [[nodiscard]] Quaternion ModelRotation() const;
     [[nodiscard]] GameObject* HeadBone();
-    /// 頭のローカル軸のうち、モデルの正面 / 上に最も近い直交軸を選ぶ。
+    /// @note 頭のローカル軸のうち、モデルの正面 / 上に最も近い直交軸を選ぶ。
     bool ResolveAxes(GameObject& headBone);
-    /// 首の限界を越えたぶんだけ体を回す。回している間は毎フレーム要求し続ける。
+    /// @note 首の限界を越えたぶんだけ体を回す。回している間は毎フレーム要求し続ける。
     void TurnBodyIfNeeded(const Vector3& cameraForward);
-    /// 視線の的を用意する。DLL リロードで Script だけ作り直されても増やさない。
+    /// @note 視線の的を用意する。DLL リロードで Script だけ作り直されても増やさない。
     void EnsureTarget();
-    /// Player は IKSolverComponent を持っていないので、視線を使う側が用意する。
+    /// @note Player は IKSolverComponent を持っていないので、視線を使う側が用意する。
     void EnsureSolver();
-    /// AimAt チェーンを 1 本だけ確保して返す。見つからなければ足す。
+    /// @note AimAt チェーンを 1 本だけ確保して返す。見つからなければ足す。
     [[nodiscard]] IKChain* EnsureChain(GameObject& proxy);
 
     PlayerAimComponent*        m_aimOverride = nullptr;
@@ -134,7 +134,7 @@ private:
     WeaponRigComponent*        m_weaponRig   = nullptr;
 
     EntityRef m_target;
-    /// 毎フレーム名前で探すと 58 ボーンを走査することになる。
+    /// @note 毎フレーム名前で探すと 58 ボーンを走査することになる。
     EntityRef   m_headBone;
     std::string m_cachedBoneName;
 
@@ -148,7 +148,6 @@ private:
 };
 
 FBZZ_REFLECT(PlayerHeadLookComponent)
-
 
 inline Vector3 PlayerHeadLookComponent::NearestCardinalAxis(const Vector3& v)
 {
@@ -180,7 +179,7 @@ inline Quaternion PlayerHeadLookComponent::ModelRotation() const
 inline GameObject* PlayerHeadLookComponent::HeadBone()
 {
     /// @note Inspector で名前を書き換えたら探し直す。キャッシュだけ古い骨を指し続けると、
-    ///       チェーンは新しい骨を回しているのに軸は古い骨から解決した値のままになる。
+    /// @note チェーンは新しい骨を回しているのに軸は古い骨から解決した値のままになる。
     if (m_cachedBoneName != headBoneName) {
         m_cachedBoneName = headBoneName;
         m_headBone       = {};
@@ -215,8 +214,8 @@ inline bool PlayerHeadLookComponent::ResolveAxes(GameObject& headBone)
         m_upAxis   = upAxisOverride;
     } else {
         /// @note コントローラー必須: モデルは 180 度のヨーオフセットを持つ。知らずに
-        ///       transform.worldRotation を正面にすると選ばれる軸が裏返り、頭が敵と
-        ///       正反対を向いたまま静かに成立する。
+        /// @note transform.worldRotation を正面にすると選ばれる軸が裏返り、頭が敵と
+        /// @note 正反対を向いたまま静かに成立する。
         if (!m_controller) {
             if (!m_warnedNoController) {
                 m_warnedNoController = true;
@@ -235,13 +234,13 @@ inline bool PlayerHeadLookComponent::ResolveAxes(GameObject& headBone)
         return false;
 
     /// @note 前と上が同じ軸に落ちるのは、頭が 45 度以上ピッチした姿勢で解決したとき。
-    ///       そのまま渡すとロール補正が退化するので、補正そのものを切る (エンジン側が
-    ///       lookAtUpAxis のゼロを「補正しない」として扱う)。
+    /// @note そのまま渡すとロール補正が退化するので、補正そのものを切る (エンジン側が
+    /// @note lookAtUpAxis のゼロを「補正しない」として扱う)。
     if (std::abs(Vector3::Dot(m_lookAxis, m_upAxis)) > 0.5f)
         m_upAxis = Vector3::ZERO;
 
     /// @note 手で入れているうちは latch しない。Inspector で軸を触った値がその場で効き、
-    ///       Auto へ戻したときも解決からやり直せる。
+    /// @note Auto へ戻したときも解決からやり直せる。
     m_axesResolved = autoResolveAxis;
     const auto axisLabel = [](const Vector3& axis) {
         return "(" + std::to_string(static_cast<int>(axis.x)) + ","
@@ -255,17 +254,18 @@ inline bool PlayerHeadLookComponent::ResolveAxes(GameObject& headBone)
 inline void PlayerHeadLookComponent::EnsureTarget()
 {
     /// @note スクリプト DLL リロードでこの Script は作り直され EntityRef は空に戻るが、
-    ///       的の GameObject は Scene 側に残る。先に拾い直さないとリロードのたびに増える。
+    /// @note 的の GameObject は Scene 側に残る。先に拾い直さないとリロードのたびに増える。
     if (GameObject* existing = scene.Find(TargetName(), true)) {
         m_target = EntityRef{ existing->GetID() };
         return;
     }
 
     /// @note 的は「頭が向くべきワールドの一点」でしかなく、プレイヤーの子にしない。
-    ///       親を持たせると置きたい座標をいちいち親のローカルへ落とす必要が出る。
-    GameObject& proxy = scene.Create(TargetName());
-    proxy.runtimeGenerated = true;
-    m_target = EntityRef{ proxy.GetID() };
+    /// @note 親を持たせると置きたい座標をいちいち親のローカルへ落とす必要が出る。
+    GameObject* proxy = scene.Create(TargetName());
+    if (!proxy) return;
+    proxy->runtimeGenerated = true;
+    m_target = EntityRef{ proxy->GetID() };
 }
 
 inline void PlayerHeadLookComponent::EnsureSolver()
@@ -275,7 +275,7 @@ inline void PlayerHeadLookComponent::EnsureSolver()
         return;
 
     /// @note コンポーネント追加は ECS の格納そのものを動かす。毎フレームの OnUpdate から
-    ///       行うと他のシステムが巡回中に配列が動きうるため、OnStart で 1 度だけ組み立てる。
+    /// @note 行うと他のシステムが巡回中に配列が動きうるため、OnStart で 1 度だけ組み立てる。
     auto* ik = self->GetComponent<IKSolverComponent>();
     if (!ik)
         ik = &self->AddComponent<IKSolverComponent>();
@@ -293,7 +293,7 @@ inline IKChain* PlayerHeadLookComponent::EnsureChain(GameObject& proxy)
         return nullptr;
 
     /// @note 名前ではなく order で見分ける。Inspector で Head Bone を書き換えた瞬間に
-    ///       名前で探すと一致しなくなり、古いチェーンを残したまま 2 本目を足してしまう。
+    /// @note 名前で探すと一致しなくなり、古いチェーンを残したまま 2 本目を足してしまう。
     for (IKChain& chain : ik->chains) {
         if (chain.type == IKSolverType::AimAt && chain.order == kChainOrder) {
             /// @note 的はランタイム生成なのでシーンには保存されない。参照は毎回張り直す。
@@ -339,7 +339,7 @@ inline void PlayerHeadLookComponent::OnUpdate()
         return;
 
     /// @note 自動解決は最初の 1 フレームだけ。OnStart の時点ではまだ Animator が
-    ///       ポーズを作っておらず、頭のワールド回転がバインドポーズのままになりうる。
+    /// @note ポーズを作っておらず、頭のワールド回転がバインドポーズのままになりうる。
     if (!m_axesResolved && !ResolveAxes(*head))
         return;
 
@@ -348,7 +348,7 @@ inline void PlayerHeadLookComponent::OnUpdate()
         return;
 
     /// @note Head Weight 0 は「首を触らない」という指示。薄く回し続ける必要も無い。
-    ///       lookAtHasState を落として、次に戻したときに FK の頭から始め直させる。
+    /// @note lookAtHasState を落として、次に戻したときに FK の頭から始め直させる。
     if (headWeight <= 0.0f) {
         chain->enabled        = false;
         chain->lookAtHasState = false;
@@ -358,8 +358,8 @@ inline void PlayerHeadLookComponent::OnUpdate()
     }
 
     /// @note ロックオン廃止後は頭が向くべき先が「選ばれた 1 体」でなく「今どこへ線を
-    ///       引こうとしているか」になる。頭はカメラ前方 (プレイヤーが見ている方) を向く。
-    ///       敵の方を向かせると、画面外の相手へ首が張り付いてあらぬ方向を向いたまま走る。
+    /// @note 引こうとしているか」になる。頭はカメラ前方 (プレイヤーが見ている方) を向く。
+    /// @note 敵の方を向かせると、画面外の相手へ首が張り付いてあらぬ方向を向いたまま走る。
     const bool drawn = !m_weaponRig || m_weaponRig->IsDrawn();
     Vector3 cameraForward = Vector3::ZERO;
     if (GameObject* camera = scene.GetMainCameraObject())
@@ -368,7 +368,7 @@ inline void PlayerHeadLookComponent::OnUpdate()
     const Vector3 headPosition = head->transform.worldPosition;
 
     /// @note kWeightFloor で薄く回し続けるため、見ない間も的を正面へ置き直す。
-    ///       置き去りにすると残りかすが古い方向へ効き続ける。
+    /// @note 置き去りにすると残りかすが古い方向へ効き続ける。
     const Vector3 lookPoint = headPosition
         + (wants ? cameraForward : (ModelRotation() * Vector3::FORWARD))
               * kIdleTargetDistance;
@@ -376,14 +376,14 @@ inline void PlayerHeadLookComponent::OnUpdate()
     proxy->transform.worldPosition = lookPoint;
 
     /// @note 有効/無効ではなくウェイトを補間する。銃を抜く/収める・カメラが向きを失う、
-    ///       いずれも wants は二値で切り替わるため、そのまま扱うと首が跳ねる。
+    /// @note いずれも wants は二値で切り替わるため、そのまま扱うと首が跳ねる。
     const float desired = wants ? Clamp01(headWeight) : 0.0f;
     const float res = 1.0f - std::exp(
         -std::max(weightResponse, 0.0f) * std::max(TimeManagerComponent::PlayerDeltaTime(), 0.0f));
     m_weight += (desired - m_weight) * res;
 
     /// @note Inspector で触った値がその場のフレームから効くよう、毎回入れ直す。
-    ///       ボーン名だけは毎フレーム組み直すと vector を作り直すことになるため、変化時のみ。
+    /// @note ボーン名だけは毎フレーム組み直すと vector を作り直すことになるため、変化時のみ。
     if (chain->boneNames.size() != 1 || chain->boneNames[0] != headBoneName)
         chain->boneNames = { headBoneName };
     chain->enabled          = true;
@@ -400,11 +400,11 @@ inline void PlayerHeadLookComponent::OnUpdate()
         debug.DrawLine(headPosition, lookPoint, { 0.4f, 0.8f, 1.0f, 1.0f });
 }
 
-/// 首が限界 (clampDegrees) に張り付く前に体を回し、視線を首の可動域の内側へ戻す。
+/// @note 首が限界 (clampDegrees) に張り付く前に体を回し、視線を首の可動域の内側へ戻す。
 /// @note 移動中は進む向きが体を回しているため手を出さない (両方が RequestFacing を
-///       出すと要求が毎フレーム入れ替わり体が震える)。斬撃と弾きが «斬る向き» で
-///       RequestFacing を出している間も手を出さない (上書きすると刃の向きがずれる。
-///       このモジュールは m_controller より後に回るため黙って勝ってしまう)。
+/// @note 出すと要求が毎フレーム入れ替わり体が震える)。斬撃と弾きが «斬る向き» で
+/// @note RequestFacing を出している間も手を出さない (上書きすると刃の向きがずれる。
+/// @note このモジュールは m_controller より後に回るため黙って勝ってしまう)。
 inline void PlayerHeadLookComponent::TurnBodyIfNeeded(const Vector3& cameraForward)
 {
     debugHeadYaw = 0.0f;
@@ -443,4 +443,4 @@ inline void PlayerHeadLookComponent::OnDestroy()
     m_target = {};
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

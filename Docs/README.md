@@ -1,3 +1,7 @@
+<!-- @file    README.md -->
+<!-- @brief   FBZZ Engine の設計文書と運用規約の索引。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-09-14 -->
 # Docs — 索引
 
 更新日: 2026-09-21。対象は現行作業ツリー (`CMakeLists.txt` のプロジェクト版 `0.9.1`)。リリース済みかどうかと、各機能の実装・検証状況は区別し、設計文書の状態行と検証記録を参照する。
@@ -51,9 +55,11 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [audio-system.md](design/audio-system.md) | 手続き音生成 (`.synth`) と Mixer Bus の階層 |
 | [cursor.md](design/cursor.md) | カーソルの要求スタックと見た目の分離 |
 | [crash-report.md](design/crash-report.md) | クラッシュ情報の収集と報告 |
+| [profiler.md](design/profiler.md) | Performance / Script Profiler と Memory Debug の分割、計測と履歴、障害復旧、既存 API の移行契約 (Draft) |
 | [developer-mode.md](design/developer-mode.md) | 開発者モードの設定と機能 |
 | [gamehub-update-notice.md](design/gamehub-update-notice.md) | GameHub の新しい版の通知 |
 | [script-dll-recovery.md](design/script-dll-recovery.md) | Scripts DLL の読み込み失敗と復帰 |
+| [scene-capacity.md](design/scene-capacity.md) | Entity 上限での安全な作成失敗と複数生成の容量確認 |
 | [benchmark-report.md](design/benchmark-report.md) | ベンチマークの計測と比較レポート |
 | [game-settings.md](design/game-settings.md) | ユーザー定義シリアライズと Option 画面。宣言 1 行で設定を増やす |
 | [sequence-system.md](design/sequence-system.md) | 演出タイムライン (`.sequence`) |
@@ -63,16 +69,20 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 
 | ファイル | 内容 |
 |---|---|
+| [dx12-agility-sdk.md](design/dx12-agility-sdk.md) | Agility SDK の EXE 指定、Graphics の非公開依存、SDK とゲーム配布、起動診断と受入条件 (Draft) |
 | [bindless.md](design/bindless.md) | ResourceDescriptorHeap によるディスクリプタ直引き。区画割り・枠の寿命・縮退規則 |
 | [dx11-removal.md](design/dx11-removal.md) | DirectX 11 の撤去理由・残した境界・旧設定の扱い。文書中の v1.0 表記は導入時の記録 |
 | [graphics-library.md](design/graphics-library.md) | Core / Graphics の物理分割、RenderScene 全入力の抽出、Forward / Deferred の構成境界、SDK と単独描画の検証。§8.2 が今回の実装範囲 |
 | [pipeline-boundary.md](design/pipeline-boundary.md) | 材質ごとの GBuffer / Forward 振り分け規則とスキンド描画の導入背景 |
 | [render-graph.md](design/render-graph.md) | RenderGraph の責務と資源・パスの依存関係 |
 | [render-pass-viewer.md](design/render-pass-viewer.md) | Render Pass Viewer による描画パスの確認 |
+| [pix-profiling.md](design/pix-profiling.md) | PIX の起動接続、イベント、Release キャプチャと性能検証の契約 |
+| [rt-experiment.md](design/rt-experiment.md) | DeveloperMode に保持する RT 実験、公開用 Reference 画像、撮影条件・保留理由・再開条件 |
 | [async-compute.md](design/async-compute.md) | 非同期コンピュートキュー |
 | [gpu-instancing.md](design/gpu-instancing.md) | 同じメッシュの自動インスタンシング |
 | [view-culling.md](design/view-culling.md) | ビューごとのカリング結果の共有 |
 | [shader-reload-lifetime.md](design/shader-reload-lifetime.md) | シェーダー再読み込みと描画キャッシュの寿命 |
+| [shader-capabilities.md](design/shader-capabilities.md) | 名前に依存しない表面・頂点・被覆・GBuffer 変種とプレビューの宣言 |
 | [light-probe-gi.md](design/light-probe-gi.md) | Light Probe Volume のベイク・GI と比較シナリオ |
 | [fiber-rendering.md](design/fiber-rendering.md) | 毛・草の Shell / Fin / Hybrid / Blade、スキニング・風・接触、Lifecycle 画像回帰 |
 | [terrain-layers.md](design/terrain-layers.md) | 地形の可変レイヤー・質感・穴・ブラシ |
@@ -95,6 +105,8 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | ファイル | 内容 |
 |---|---|
 | [vfx-prefab.md](design/vfx-prefab.md) | プレハブとしてのエフェクト (`.vfx`) |
+| [prefab-safety.md](design/prefab-safety.md) | GUID による出所・適用済み定義との差分・検証後の階層差し替え |
+| [script-transform-contract.md](design/script-transform-contract.md) | スクリプトのローカル / ワールド座標の書き込みと即時同期 |
 | [fluid-library.md](design/fluid-library.md) | Fluid の数式ライブラリと Engine 側の結合・実行の分離 |
 | [fluid-determinism.md](design/fluid-determinism.md) | 流体シミュレーションと素材生成の決定論 |
 | [flow-field.md](design/flow-field.md) | 媒質の速度を表す流れの場 |
@@ -107,6 +119,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | ファイル | 内容 |
 |---|---|
 | [blender-dcc-pipeline.md](design/blender-dcc-pipeline.md) | Blender × FBZZ の分業パイプライン。交換フォーマットと責務境界 (Draft) |
+| [geometry-authoring.md](design/geometry-authoring.md) | 独立 AssetEditor と Terrain / Mesh / Paint 共通基盤の検討記録。費用対効果により実装見送り |
 | [asset-streaming.md](design/asset-streaming.md) | アセットの非同期読み込み・ストリーミングと段階ごとの実装範囲 |
 | [material-reflection-types.md](design/material-reflection-types.md) | Material Reflection の型契約 |
 | [minibot-c-humanoid.md](design/minibot-c-humanoid.md) | MiniBot C — 人型リグと一刀モデルの制作仕様 |

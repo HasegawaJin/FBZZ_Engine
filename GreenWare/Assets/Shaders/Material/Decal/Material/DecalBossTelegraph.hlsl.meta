@@ -1,2 +1,14 @@
+# @file    DecalBossTelegraph.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-30
 [meta]
 guid = '95b1327590201c5ad1b5fee44db8b9c9'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'decal'

@@ -1,0 +1,14 @@
+# @file    ParticleGpuSortKeys.cs.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-10-02
+[meta]
+guid = 'd5b106c52d7f47919fb0b679865b9948'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'gpu_particle'

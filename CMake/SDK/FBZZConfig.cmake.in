@@ -1,12 +1,14 @@
-# FBZZ Engine
-# FBZZConfig.cmake | CMake
-# 外部ゲーム向け共有 SDK package と ABI 検証
+# @file    FBZZConfig.cmake.in
+# @brief   External game SDK package, ABI validation and runtime staging.
+# @author  Hasegawa Jin
+# @date    2026-07-15
 
 @PACKAGE_INIT@
 
 set(FBZZ_VERSION "@PROJECT_VERSION@")
 get_filename_component(FBZZ_SDK_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 set(FBZZ_ENGINE_ASSET_ROOT "${FBZZ_SDK_ROOT}/share/fbzz/Assets")
+set(FBZZ_ENGINE_LICENSE_ROOT "${FBZZ_SDK_ROOT}/share/fbzz/licenses")
 
 if(NOT MSVC)
     message(FATAL_ERROR "FBZZ SDK ${FBZZ_VERSION} supports MSVC only")
@@ -28,7 +30,7 @@ if(NOT "@FBZZ_SDK_MSVC_TOOLSET_VERSION@" STREQUAL "" AND
         "FBZZ SDK ABI mismatch: MSVC toolset=${CMAKE_VS_PLATFORM_TOOLSET_VERSION}, required=@FBZZ_SDK_MSVC_TOOLSET_VERSION@")
 endif()
 
-# Debug=/MDd、Development/Release=/MD を SDK と利用側で完全一致させる。
+# @note Debug=/MDd、Development/Release=/MD を SDK と利用側で完全一致させる。
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 include("${CMAKE_CURRENT_LIST_DIR}/FBZZTargets.cmake")
 
@@ -44,4 +46,12 @@ function(fbzz_stage_runtime TARGET_NAME)
             "${FBZZ_ENGINE_ASSET_ROOT}"
             "$<TARGET_FILE_DIR:${TARGET_NAME}>/EngineAssets"
         COMMENT "Staging FBZZ ${FBZZ_VERSION} runtime for ${TARGET_NAME}")
+    # @note Runtime notices follow the executable; SDKs without private licensed runtimes remain compatible.
+    if(EXISTS "${FBZZ_ENGINE_LICENSE_ROOT}")
+        add_custom_command(TARGET "${TARGET_NAME}" POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                "${FBZZ_ENGINE_LICENSE_ROOT}"
+                "$<TARGET_FILE_DIR:${TARGET_NAME}>/EngineLicenses"
+            COMMENT "Staging FBZZ ${FBZZ_VERSION} runtime licenses for ${TARGET_NAME}")
+    endif()
 endfunction()

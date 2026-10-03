@@ -8,6 +8,7 @@
 #include <Core/Logger.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
 #include <Graphics/Renderer/RenderBindingGuard.hpp>
+#include <Graphics/Renderer/IRenderer.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <algorithm>
 #include <unordered_set>
@@ -69,6 +70,38 @@ void RenderPipeline::DeclareTexture(std::string_view name,
     m_resources.push_back({ std::string(name), desc, {}, handle });
 }
 
+void RenderPipeline::DeclareBuffer(std::string_view name,
+                                  renderer::ResourceHandle<renderer::BufferTag> handle,
+                                  renderer::RenderGraph::ResourceDesc desc)
+{
+    desc.kind = renderer::RenderGraph::ResourceKind::Buffer;
+    m_resources.push_back({ std::string(name), desc, {}, {}, handle });
+}
+
+void RenderPipeline::DeclareBuffer(std::string_view name,
+                                  renderer::ResourceHandle<renderer::StructuredBufferTag> handle,
+                                  renderer::RenderGraph::ResourceDesc desc)
+{
+    DeclareStructuredBuffer(name, handle, desc);
+}
+
+void RenderPipeline::DeclareStructuredBuffer(std::string_view name,
+                                            renderer::ResourceHandle<renderer::StructuredBufferTag> handle,
+                                            renderer::RenderGraph::ResourceDesc desc)
+{
+    desc.kind = renderer::RenderGraph::ResourceKind::Buffer;
+    m_resources.push_back({ std::string(name), desc, {}, {}, {}, handle });
+}
+
+void RenderPipeline::DeclareAccelerationStructure(std::string_view name,
+                                                 renderer::ResourceHandle<renderer::AccelerationStructureTag> handle,
+                                                 renderer::RenderGraph::ResourceDesc desc)
+{
+    desc.kind = renderer::RenderGraph::ResourceKind::AccelerationStructure;
+    desc.allowAliasing = false;
+    m_resources.push_back({ std::string(name), desc, {}, {}, {}, {}, handle });
+}
+
 void RenderPipeline::BindDeclaredResources(RenderPassContext& ctx) const
 {
     /// @note 登録簿はこのフレームの宣言から «導かれる» もの。別に持ち回らない。
@@ -78,6 +111,12 @@ void RenderPipeline::BindDeclaredResources(RenderPassContext& ctx) const
             ctx.resourceRegistry.BindTarget(resource.name, resource.target);
         if (resource.texture.IsValid())
             ctx.resourceRegistry.BindTexture(resource.name, resource.texture);
+        if (resource.buffer.IsValid())
+            ctx.resourceRegistry.BindBuffer(resource.name, resource.buffer);
+        if (resource.structuredBuffer.IsValid())
+            ctx.resourceRegistry.BindStructuredBuffer(resource.name, resource.structuredBuffer);
+        if (resource.accelerationStructure.IsValid())
+            ctx.resourceRegistry.BindAccelerationStructure(resource.name, resource.accelerationStructure);
     }
 }
 
@@ -195,6 +234,9 @@ void RenderPipeline::GraphFingerprint::MixResource(
     MixBytes(&desc.withDepth, sizeof(desc.withDepth));
     MixBytes(&desc.external, sizeof(desc.external));
     MixBytes(&desc.transient, sizeof(desc.transient));
+    MixBytes(&desc.byteSize, sizeof(desc.byteSize));
+    MixBytes(&desc.stride, sizeof(desc.stride));
+    MixBytes(&desc.allowAliasing, sizeof(desc.allowAliasing));
 }
 
 void RenderPipeline::GraphFingerprint::MixOutput(std::string_view name)
@@ -211,6 +253,7 @@ void RenderPipeline::GraphFingerprint::MixPass(
     for (const auto& access : accesses) {
         MixString(access.name);
         MixBytes(&access.usage, sizeof(access.usage));
+        MixBytes(&access.purpose, sizeof(access.purpose));
     }
 }
 
@@ -280,9 +323,14 @@ void RenderPipeline::BuildGraph(renderer::RenderGraph& graph,
     }
 }
 
-bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture)
+bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
+                             const GpuProfilerViewMetadata* gpuView,
+                             const ResolvedRenderPlan* gpuPlan)
 {
     FBZZ_PROFILE_SCOPE("RenderPipeline::Execute");
+    m_lastGpuProfilerView = {};
+    if (capture)
+        capture->Invalidate();
 
     BindDeclaredResources(ctx);
 
@@ -303,7 +351,6 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture)
         },
         [](std::string_view) { profiler::Profiler::EndSample(); });
     graph.SetDebugLogHook([](const char* msg) { FBZZ_LOG_ERROR("%s", msg); });
-    graph.SetGpuProfilerHooks(m_gpuBegin, m_gpuEnd);
 
     /// @note Phase 1: Plan — トポロジが変わった場合のみ依存解決・カリング・ライフタイム解析を実行する。
     /// @note トポロジ不変フレームでは前フレームの結果を注入して Plan() をスキップする。
@@ -312,6 +359,7 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture)
         if (topologyChanged) {
             if (!graph.Plan()) {
                 m_planValid = false;
+                m_lastReport = graph.GetLastReport();
                 /// @note どのパスが有効か・カリングされたかを出力して依存関係の問題を特定する
                 FBZZ_LOG_ERROR("RenderGraph::Plan() failed — dependency cycle or missing resource writer.");
                 for (size_t i : enabledNow) {
@@ -334,6 +382,21 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture)
         }
     }
 
+    bool gpuViewOpened = false;
+    if (gpuView && gpuPlan) {
+        if (topologyChanged || !m_gpuProfileRenderPlanValid || m_gpuProfileRenderPlan != *gpuPlan) {
+            ++m_gpuProfilePlanGeneration;
+            m_gpuProfileRenderPlan = *gpuPlan;
+            m_gpuProfileRenderPlanValid = true;
+        }
+        m_lastGpuProfilerView = *gpuView;
+        m_lastGpuProfilerView.planGeneration = m_gpuProfilePlanGeneration;
+        gpuViewOpened = ctx.renderer.GpuProfBeginView(m_lastGpuProfilerView);
+    }
+    /// @note BeginView 失敗時に他ビューの計測へ混入させない。GPU 非依存の既存 hook 利用は維持する。
+    if (!gpuView || gpuViewOpened)
+        graph.SetGpuProfilerHooks(m_gpuBegin, m_gpuEnd);
+
     if (capture) {
         capture->Begin(graph.GetPasses(), graph.GetLastReport());
         graph.SetPassCompletedHook([capture, &ctx](size_t index) { capture->Capture(index, ctx); });
@@ -344,6 +407,8 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture)
         FBZZ_PROFILE_SCOPE("RenderPipeline::GraphExecute");
         ok = graph.Execute();
     }
+    if (gpuViewOpened)
+        ctx.renderer.GpuProfEndView();
     m_lastReport = graph.GetLastReport();
 
     return ok;

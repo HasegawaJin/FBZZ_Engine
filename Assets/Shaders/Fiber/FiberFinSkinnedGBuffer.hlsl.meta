@@ -1,2 +1,14 @@
+# @file    FiberFinSkinnedGBuffer.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-18
 [meta]
 guid = "88f5c81221464f9f90c1879b837583c2"
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_fin'

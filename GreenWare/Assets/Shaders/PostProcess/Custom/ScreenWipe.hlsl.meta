@@ -1,2 +1,14 @@
+# @file    ScreenWipe.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-09-07
 [meta]
 guid = '51bf0ad03f5b4308a12d554d7a9cd142'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

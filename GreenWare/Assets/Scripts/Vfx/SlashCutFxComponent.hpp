@@ -2,19 +2,10 @@
 /// @brief   斬撃が当たった瞬間の «一閃»。当たり点を斬った向きに横切る光の線を張る
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-///
-/// シーンへは付けない。PlayerComponent が内部モジュールとして持ち、BladeComponent が
-/// 当たったときだけ Play を呼ぶ。丸ごと外しても斬撃の芯は全部成立する。
-///
-/// @note 当たりに «線» が要る。刀の軌跡 (BladeTrail) は «振った»、火花と光条
-///       (FX_BLD_SlashHit) は «当たった» を言うが、«斬れた» を言う絵が無かった。
-///       当たり点を斬った向きに横切る線が白熱→冷めることで «今そこを斬った» が
-///       ヒットストップの間じゅう画面に残る。
-/// @note パーティクルでなく帯 (BeamTrailRendererComponent、断面は SlashCut.hlsl) で
-///       張る。パーティクルは発生時の回転が乱数で入り «斬った向き» を持てないが、
-///       帯は両端をワールド座標で渡せば向きが決まりカメラへ正対する。
-/// @note 時計はスケール時間で進める。世界の止め (timeScale 0.05) の間も線を閃光の
-///       まま留めたい。実時間で回すと止めの 0.08 秒で閃光が終わり画面に映らない。
+
+/// @note シーンへは付けず、PlayerComponent が内部モジュールとして所有し、BladeComponent の命中時だけ Play を呼ぶ。
+/// @note 帯の両端をワールド座標で渡し、ランダムな粒子回転に依存せず斬った方向を表す。
+/// @note スケール時間で進め、ヒットストップ中も閃光を保つ。実時間では停止中に閃光が終わってしまう。
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
@@ -40,7 +31,7 @@ class SlashCutFxComponent : public Script {
 
 public:
     /// @note フィールド名に cut を付ける。PlayerComponent は全モジュールの Reflect を
-    ///       1 つの名前空間へ平らに並べるため、length/width のような汎用名は衝突する。
+    /// @note 1 つの名前空間へ平らに並べるため、length/width のような汎用名は衝突する。
     FBZZ_GROUP("Slash Cut")
     FBZZ_FIELD_FILE(cutMaterial, "Assets/Materials/Effects/FX_BLD_Cut.mat", "Material", ".mat")
     FBZZ_FIELD_RANGE(float, cutLengthMin, 2.4f, "Length (light)", 0.2f, 8.0f)
@@ -66,8 +57,8 @@ public:
     FBZZ_TOOLTIP("同時に出せる線の数。超えたら最も古い 1 本を奪う")
     FBZZ_FIELD_READ_ONLY(int, debugLiveCuts, 0, "Live Cuts")
 
-    /// 一閃を出す。axis は線の向き (ワールド)、strength01 は当たりの強さ、
-    /// tint は振った刀の色、cross で 2 本を交差させる。
+    /// @note 一閃を出す。axis は線の向き (ワールド)、strength01 は当たりの強さ、
+    /// @note tint は振った刀の色、cross で 2 本を交差させる。
     void Play(const Vector3& point, const Vector3& axis, float strength01,
               const Vector4& tint, bool cross);
 
@@ -88,10 +79,10 @@ private:
         bool      live     = false;
     };
 
-    /// 線 1 本ぶんの GameObject を用意する。DLL リロードを跨いでも名前で拾い直す。
+    /// @note 線 1 本ぶんの GameObject を用意する。DLL リロードを跨いでも名前で拾い直す。
     [[nodiscard]] GameObject* EnsureObject(int index);
     [[nodiscard]] BeamTrailRendererComponent* RendererOf(const Slot& slot) const;
-    /// 空いている枠、無ければ最も古い枠。
+    /// @note 空いている枠、無ければ最も古い枠。
     [[nodiscard]] Slot& Claim();
     void Launch(const Vector3& center, const Vector3& axis, float strength, const Vector4& tint);
 
@@ -100,23 +91,22 @@ private:
 
 FBZZ_REFLECT(SlashCutFxComponent)
 
-
 inline GameObject* SlashCutFxComponent::EnsureObject(int index)
 {
     const std::string name = "SlashCut_" + std::to_string(index);
     /// @note 先に拾い直す。DLL リロードでこの Script は作り直されるが、線の GameObject
-    ///       はシーンに残るため、拾わず作るとリロードのたびに枠が増える。
+    /// @note はシーンに残るため、拾わず作るとリロードのたびに枠が増える。
     GameObject* object = scene.Find(name, true);
     if (!object) {
         /// @note 誰の子にもしない。LineRenderer はワールド点を所有者のローカルへ引き戻して
-        ///       焼くため、親の移動・回転がそのまま端点のずれになる。
-        GameObject& created = scene.Create(name);
-        created.runtimeGenerated = true;
-        object = &created;
+        /// @note 焼くため、親の移動・回転がそのまま端点のずれになる。
+        GameObject* created = scene.Create(name);
+        if (!created) return nullptr;
+        created->runtimeGenerated = true;
+        object = created;
     }
     if (!scene.GetScript<BeamTrailRendererComponent>(object))
         object->AddScript<BeamTrailRendererComponent>();
-    /// @note Create / AddScript はシーンの配列を伸ばしうる。返すのは名前から引き直した個体。
     return scene.Find(name, true);
 }
 
@@ -129,8 +119,8 @@ inline BeamTrailRendererComponent* SlashCutFxComponent::RendererOf(const Slot& s
 inline void SlashCutFxComponent::OnStart()
 {
     /// @note 最初に全部作る。実行時に足した Script は、次のフレームに ScriptSystem が
-    ///       OnStart を通すまで帯を張れない (IsReady) ため、当たった瞬間に作ると
-    ///       いちばん見せたい 1 コマ目が抜ける。
+    /// @note OnStart を通すまで帯を張れない (IsReady) ため、当たった瞬間に作ると
+    /// @note いちばん見せたい 1 コマ目が抜ける。
     const int count = std::clamp(cutSlots, 1, 8);
     m_slots.assign(static_cast<std::size_t>(count), Slot{});
     for (int i = 0; i < count; ++i)
@@ -197,7 +187,7 @@ inline void SlashCutFxComponent::Play(const Vector3& point, const Vector3& axis,
     }
 
     /// @note 交差は視線のまわりで開く。画面の上で «X» に見えることが目的なので、
-    ///       ワールドの上軸で回すと、見下ろしたときに 2 本が重なって 1 本に潰れる。
+    /// @note ワールドの上軸で回すと、見下ろしたときに 2 本が重なって 1 本に潰れる。
     const float half = ToRad(Clamp(cutCrossDegrees, 0.0f, 90.0f) * 0.5f);
     Launch(center, (Quaternion::FromAxisAngle(view,  half) * line).NormalizedOr(line), strength, tint);
     Launch(center, (Quaternion::FromAxisAngle(view, -half) * line).NormalizedOr(line), strength, tint);
@@ -283,4 +273,4 @@ inline void SlashCutFxComponent::OnUpdate()
     debugLiveCuts = live;
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

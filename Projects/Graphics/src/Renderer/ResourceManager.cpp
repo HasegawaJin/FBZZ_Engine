@@ -28,6 +28,29 @@ namespace fbzz::renderer {
 namespace {
 ResourceManager* s_activeResourceManager = nullptr;
 
+/// @note 表面宣言だけで標準 PBR と認定せず、実際にロードした PS に正規化可能な定数を要求する。
+ShaderCapabilities LoadedShaderCapabilities(const IShader& shader, const std::string& path)
+{
+    auto capabilities = ResolveShaderCapabilities(path);
+    if (!capabilities.IsStandardPbr()) return capabilities;
+    const auto& descriptor = shader.GetDescriptor();
+    const auto matches = [&](std::string_view name, uint8_t columns) {
+        const auto* variable = descriptor.FindVar(name);
+        return variable && variable->IsWritable() && variable->varType == ShaderVarType::Float
+            && variable->varClass == (columns == 1 ? ShaderVarClass::Scalar : ShaderVarClass::Vector)
+            && variable->rows == 1 && variable->columns == columns && variable->elements == 0
+            && variable->size == static_cast<uint32_t>(columns) * sizeof(float)
+            && variable->offset <= descriptor.cbufferSize
+            && static_cast<uint32_t>(columns) * sizeof(float) <= descriptor.cbufferSize - variable->offset;
+    };
+    if (!matches("albedo", 4) || !matches("metallic", 1) || !matches("roughness", 1)
+        || !matches("uvTiling", 2) || !matches("uvOffset", 2) || !matches("alphaCutoff", 1)) {
+        FBZZ_LOG_WARN("Shader capability contract does not match loaded constants: %s", path.c_str());
+        return {};
+    }
+    return capabilities;
+}
+
 /// @note Windows の '\\' とアセット記述で使う '/' を同一キーにし、同じ実ファイルの二重キャッシュを防ぐ。
 std::string TextureCacheKey(std::string_view path, bool flipGreen = false)
 {
@@ -102,9 +125,17 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
 
     /// @note 0 バイトとして登録: シェーダーバイトコードの実サイズはバックエンドの内側にあり、
     /// @note       ITexture/IBuffer のように寸法から復元することもできない。
+    const auto capabilities = LoadedShaderCapabilities(*shader, key);
     ResourceHandle<ShaderTag> handle = m_shaders.Insert(std::move(shader), 0, "Shader", __FILE__, __LINE__);
     m_shaderCache[key] = handle;
+    m_shaderCapabilities[(static_cast<uint64_t>(handle.gen) << 32) | handle.id] = capabilities;
     return handle;
+}
+
+ShaderCapabilities ResourceManager::GetShaderCapabilities(ResourceHandle<ShaderTag> handle) const
+{
+    const auto found = m_shaderCapabilities.find((static_cast<uint64_t>(handle.gen) << 32) | handle.id);
+    return found != m_shaderCapabilities.end() ? found->second : ShaderCapabilities{};
 }
 
 ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
@@ -120,11 +151,13 @@ ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
         FBZZ_LOG_ERROR("ReloadShader failed: %s", key.c_str());
         return it->second;
     }
+    const auto capabilities = LoadedShaderCapabilities(*newShader, key);
     if (!m_renderer.PrepareShaderReload()) {
         FBZZ_LOG_WARN("ReloadShader: renderer rejected reload of %s", key.c_str());
         return it->second;
     }
     m_shaders.Replace(it->second, std::move(newShader));
+    m_shaderCapabilities[(static_cast<uint64_t>(it->second.gen) << 32) | it->second.id] = capabilities;
     ++m_shaderVersion;
     return it->second;
 }
@@ -132,6 +165,7 @@ ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
 bool ResourceManager::ReloadAllShaders()
 {
     std::vector<std::pair<ResourceHandle<ShaderTag>, std::unique_ptr<IShader>>> pending;
+    std::vector<ShaderCapabilities> capabilities;
     pending.reserve(m_shaderCache.size());
     for (const auto& [path, handle] : m_shaderCache) {
         auto newShader = m_renderer.CreateNativeShader(path);
@@ -139,6 +173,7 @@ bool ResourceManager::ReloadAllShaders()
             FBZZ_LOG_WARN("ReloadAllShaders: failed to reload %s; keeping all previous shaders", path.c_str());
             return false;
         }
+        capabilities.push_back(LoadedShaderCapabilities(*newShader, path));
         pending.emplace_back(handle, std::move(newShader));
     }
     if (pending.empty()) return true;
@@ -146,8 +181,11 @@ bool ResourceManager::ReloadAllShaders()
         FBZZ_LOG_WARN("ReloadAllShaders: renderer rejected reload; keeping all previous shaders");
         return false;
     }
-    for (auto& [handle, shader] : pending)
+    std::size_t index = 0;
+    for (auto& [handle, shader] : pending) {
         m_shaders.Replace(handle, std::move(shader));
+        m_shaderCapabilities[(static_cast<uint64_t>(handle.gen) << 32) | handle.id] = capabilities[index++];
+    }
     ++m_shaderVersion;
     FBZZ_LOG_INFO("ResourceManager: %zu shader(s) hot-reloaded", pending.size());
     return true;
@@ -240,6 +278,8 @@ ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path,
     }
 
     /// @note ResourcePool のスロットを置換し、RenderSystem や Material が保持するハンドルを有効なまま保つ。
+    const auto* previousTexture = Get(it->second);
+    newTexture->AdoptContentVersion(previousTexture ? previousTexture->GetContentVersion() : 0);
     const std::size_t reloadedBytes = EstimateTextureBytes(*newTexture);
     m_textures.Replace(it->second, std::move(newTexture), reloadedBytes);
     return it->second;
@@ -339,7 +379,9 @@ ResourceHandle<TextureTag> ResourceManager::PublishTexture(std::string_view path
 bool ResourceManager::ReplaceTextureContents(ResourceHandle<TextureTag> target, ResourceHandle<TextureTag> uploaded)
 {
     if (target == uploaded || Get(target) == nullptr || Get(uploaded) == nullptr) return false;
+    const auto previousVersion = Get(target)->GetContentVersion();
     std::unique_ptr<ITexture> texture = m_textures.Take(uploaded);
+    texture->AdoptContentVersion(previousVersion);
     const std::size_t bytes = EstimateTextureBytes(*texture);
     /// @note 旧実体はここで破棄される。DX12Texture のデストラクタが資源と bindless 枠をフェンス付きで返すので、
     /// @note       このフレームまでに記録した描画は旧実体を読み終えてから回収される。新しい実体の枠は次に
@@ -477,10 +519,8 @@ ResourceHandle<RenderTargetTag> ResourceManager::CreateCubemapRenderTarget(uint3
     auto rt = m_renderer.CreateNativeCubemapRenderTarget(size, mipCount);
     if (!rt) return ResourceHandle<RenderTargetTag>::Null();
 
-    /// @note TextureCube SRV を 1 つの「カラーテクスチャ」として登録する。既存の
-    /// @note       m_renderTargetColors 経路に乗せることで Release()/シャットダウン時の解放処理を
-    /// @note       通常 RT と共有でき、キューブ専用のクリーンアップを書かずに済む。深度バッファは
-    /// @note       持たないため m_renderTargetDepths には登録しない。
+    /// @note Cube の色 SRV は通常 RT と同じ解放経路で管理し、face 描画用の内部 depth は backend が所有する。
+    /// @note 内部 depth は公開 SRV として登録しないため、GetDepthTexture は無効ハンドルを返す。
     std::vector<ResourceHandle<TextureTag>> colors;
     if (auto cubeTex = m_renderer.CreateNativeCubeTextureFromRenderTarget(*rt)) {
         /// @note 6 面ぶん。GetWidth/GetHeight は 1 面の寸法しか返さない。
@@ -589,6 +629,20 @@ IConstantBuffer* ResourceManager::Get(ResourceHandle<ConstantBufferTag> h) { ret
 IPipelineState* ResourceManager::Get(ResourceHandle<PipelineStateTag> h) { return m_pipelineStates.Get(h); }
 IRenderTarget* ResourceManager::Get(ResourceHandle<RenderTargetTag> h) { return m_renderTargets.Get(h); }
 IStructuredBuffer* ResourceManager::Get(ResourceHandle<StructuredBufferTag> h) { return m_structuredBuffers.Get(h); }
+IAccelerationStructure* ResourceManager::Get(ResourceHandle<AccelerationStructureTag> h) { return m_accelerationStructures.Get(h); }
+
+ResourceHandle<AccelerationStructureTag> ResourceManager::CreateAccelerationStructure(
+    const AccelerationStructureDesc& desc, Where where)
+{
+    auto structure = m_renderer.CreateNativeAccelerationStructure(desc, *this);
+    if (!structure) {
+        FBZZ_LOG_ERROR("ResourceManager: acceleration structure creation failed");
+        return {};
+    }
+    const size_t sizeBytes = structure->GetSize();
+    return m_accelerationStructures.Insert(std::move(structure), sizeBytes,
+        "AccelerationStructure", where.file_name(), static_cast<int>(where.line()));
+}
 
 ResourceHandle<TextureTag> ResourceManager::GetColorTexture(ResourceHandle<RenderTargetTag> rt, uint32_t index)
 {
@@ -623,7 +677,16 @@ void ResourceManager::Update(ResourceHandle<StructuredBufferTag> h, const void* 
         sb->Update(data, sizeBytes);
 }
 
-void ResourceManager::Release(ResourceHandle<ShaderTag> h) { m_shaders.Remove(h); }
+void ResourceManager::Release(ResourceHandle<ShaderTag> h)
+{
+    /// @note Released generations must not survive in the path cache; a later Load/Reload creates a new live handle.
+    for (auto it = m_shaderCache.begin(); it != m_shaderCache.end();) {
+        if (it->second == h) it = m_shaderCache.erase(it);
+        else ++it;
+    }
+    m_shaders.Remove(h);
+    m_shaderCapabilities.erase((static_cast<uint64_t>(h.gen) << 32) | h.id);
+}
 void ResourceManager::Release(ResourceHandle<TextureTag> h) { m_textures.Remove(h); }
 void ResourceManager::Release(ResourceHandle<BufferTag> h)
 {
@@ -632,6 +695,7 @@ void ResourceManager::Release(ResourceHandle<BufferTag> h)
 void ResourceManager::Release(ResourceHandle<ConstantBufferTag> h) { m_constantBuffers.Remove(h); }
 void ResourceManager::Release(ResourceHandle<PipelineStateTag> h) { m_pipelineStates.Remove(h); }
 void ResourceManager::Release(ResourceHandle<StructuredBufferTag> h) { m_structuredBuffers.Remove(h); }
+void ResourceManager::Release(ResourceHandle<AccelerationStructureTag> h) { m_accelerationStructures.Remove(h); }
 void ResourceManager::Release(ResourceHandle<RenderTargetTag> h)
 {
     if (m_renderResources) m_renderResources->ReleaseOutput(h);
@@ -661,10 +725,12 @@ void ResourceManager::ReleaseOwnedResourcesForShutdown()
     m_renderTargetColors.clear();
     m_renderTargetDepths.clear();
     m_shaderCache.clear();
+    m_shaderCapabilities.clear();
     m_textureCache.clear();
     m_texturesHandedOut.clear();
 
     m_renderTargets.ReleaseOwnedForShutdown();
+    m_accelerationStructures.ReleaseOwnedForShutdown();
     m_textures.ReleaseOwnedForShutdown();
     m_buffers.ReleaseOwnedForShutdown();
     m_constantBuffers.ReleaseOwnedForShutdown();
@@ -743,7 +809,8 @@ std::size_t ResourceManager::GetLiveDebugResourceBytes() const
          + m_constantBuffers.GetLiveDebugBytes()
          + m_pipelineStates.GetLiveDebugBytes()
          + m_renderTargets.GetLiveDebugBytes()
-         + m_structuredBuffers.GetLiveDebugBytes();
+         + m_structuredBuffers.GetLiveDebugBytes()
+         + m_accelerationStructures.GetLiveDebugBytes();
 }
 
 void ResourceManager::TickLeakWatchdog()
@@ -802,7 +869,8 @@ std::size_t ResourceManager::GetLiveDebugResourceCount() const
          + m_constantBuffers.GetLiveDebugCount()
          + m_pipelineStates.GetLiveDebugCount()
          + m_renderTargets.GetLiveDebugCount()
-         + m_structuredBuffers.GetLiveDebugCount();
+         + m_structuredBuffers.GetLiveDebugCount()
+         + m_accelerationStructures.GetLiveDebugCount();
 }
 
 void ResourceManager::CollectLiveDebugResources(std::vector<core::AllocationInfo>& out) const
@@ -814,6 +882,7 @@ void ResourceManager::CollectLiveDebugResources(std::vector<core::AllocationInfo
     m_pipelineStates.CollectLiveDebugInfo(out);
     m_renderTargets.CollectLiveDebugInfo(out);
     m_structuredBuffers.CollectLiveDebugInfo(out);
+    m_accelerationStructures.CollectLiveDebugInfo(out);
 }
 
 bool SizedRenderTarget::Ensure(ResourceManager& resources,

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// Structs.hlsli | Common
-// Shared shader input and interpolator structures
+/// @file    Structs.hlsli
+/// @brief   シェーダーの頂点入力・補間値と GBuffer の共通出力。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
 #ifndef STRUCTS_HLSLI
 #define STRUCTS_HLSLI
 
@@ -12,16 +13,7 @@ struct VSInput
     float2 uv       : TEXCOORD;
 };
 
-// 頂点カラーまで読む版。
-//
-// WHY VSInput へ足さず別に立てるか:
-//   入力レイアウトは VS のリフレクション結果を宣言順に詰めて作られる。COLOR を
-//   宣言しなければ従来どおりのオフセットになるので、色を使わないシェーダーは
-//   1 行も変えずに済む。renderer::Vertex の色は末尾にあるため、この 2 つの入力は
-//   同じ頂点バッファへ同時に噛み合う。
-//
-// 使い所: MeshBuilder で組んだ手続きメッシュ (斬撃・衝撃波・ビーム) のように、
-//         色とアルファを頂点へ持たせて減衰やグラデーションを表現するもの。
+/// @note COLOR を宣言する変種だけ頂点末尾を読む。色なし入力と同じ Vertex バッファを共有できる。
 struct VSInputColor
 {
     float3 position : POSITION;
@@ -31,7 +23,6 @@ struct VSInputColor
     float4 color    : COLOR;
 };
 
-// PSInput に頂点カラーを 1 本足した版。
 struct PSInputColor
 {
     float4 svPosition : SV_POSITION;
@@ -65,6 +56,8 @@ struct GBufferOut
 {
     float4 albedoRoughness : SV_Target0;
     float4 normalMetallic  : SV_Target1;
+    /// @note 線形 HDR RGB。影・AO・材質の albedo で減衰させない。A は予約。
+    float4 emission        : SV_Target2;
 };
 
 struct GBufferData
@@ -77,4 +70,4 @@ struct GBufferData
     float  ao;
 };
 
-#endif // STRUCTS_HLSLI
+#endif /// @note STRUCTS_HLSLI

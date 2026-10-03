@@ -3,11 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-01
 ///
-/// 値型の TOML 変換は util::TomlWrite/ReadReflector (Engine/Scene/TomlReflector.hpp) を使う。
+/// @note 汎用の値型変換は Engine/Scene/TomlReflector.hpp に委譲する。
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
+#include "RenderPipelineAssetCodec.hpp"
 /// @note scene::IReflector / DataAssetRef を使う。
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -23,6 +25,7 @@
 #include <cstdint>
 #include <memory>
 #include <sstream>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -39,9 +42,7 @@ std::string NormalizeKey(const std::string& path)
     return key;
 }
 
-/// 値型と入れ子スコープの TOML 変換は util の共通リフレクタへ委譲する。
-/// DataAsset が扱うのは値型 + 参照パス文字列だけなので、派生は要らない
-/// (DataAssetRef は IReflector の既定実装で path 文字列として往復する)。
+/// @note DataAssetRef は IReflector の既定実装で path 文字列として往復する。
 using util::TomlReadReflector;
 using util::TomlWriteReflector;
 
@@ -50,8 +51,7 @@ struct CacheEntry {
     std::unique_ptr<DataAsset> asset;
     std::string typeName;
 
-    /// ロードを試みた時点の型登録の世代。asset == nullptr のときだけ意味を持ち、
-    /// 「同じ登録状態なら結果も変わらない」判定に使う (Resolve の再試行条件)。
+    /// @note 失敗したロードの型登録世代。同世代では同じ失敗を再試行しない。
     std::uint64_t factoryEpoch = 0;
 };
 
@@ -61,11 +61,10 @@ std::unordered_map<std::string, CacheEntry>& Cache()
     return cache;
 }
 
-/// .fzdata をパースして型生成 + フィールド読み込みを行う。失敗時 nullptr。
+/// @return 読取・パース・型生成・typed 検証の失敗時は nullptr のエントリ。
 CacheEntry LoadFromDisk(const std::string& path)
 {
-    /// @note 失敗して返すエントリにも世代を刻む。Resolve はこの値を見て
-    ///       「型登録が変わったのでもう一度試す価値がある」かを判断する。
+    /// @note 失敗にも世代を刻み、型登録変更時だけ Resolve が再試行する。
     CacheEntry failed{ nullptr, {}, DataAssetFactory::RegistrationEpoch() };
 
     const std::string absPath = AssetManager::ResolveAssetPath(path);
@@ -95,19 +94,27 @@ CacheEntry LoadFromDisk(const std::string& path)
         return failed;
     }
 
-    TomlReadReflector reader(table);
-    asset->Reflect(reader);
+    if (typeName == RenderPipelineAsset::TYPE_NAME) {
+        if (!RenderPipelineAssetCodec::Load(table, static_cast<RenderPipelineAsset&>(*asset))) {
+            FBZZ_LOG_WARN("DataAssetRegistry: invalid RenderPipelineAsset -> %s", path.c_str());
+            return failed;
+        }
+    } else {
+        TomlReadReflector reader(table);
+        asset->Reflect(reader);
+    }
     return { std::move(asset), typeName, DataAssetFactory::RegistrationEpoch() };
 }
 
-/// DataAsset を toml::table へ書き出し (type キー + 全フィールド)。
-toml::table BuildTable(DataAsset& asset)
+/// @return typed アセットの編集内容が不正なら false。
+bool BuildTable(DataAsset& asset, toml::table& table)
 {
-    toml::table table;
+    if (std::string_view(asset.GetTypeName()) == RenderPipelineAsset::TYPE_NAME)
+        return RenderPipelineAssetCodec::Save(static_cast<const RenderPipelineAsset&>(asset), table);
     table.insert_or_assign("type", std::string(asset.GetTypeName()));
     TomlWriteReflector writer(table);
     asset.Reflect(writer);
-    return table;
+    return true;
 }
 
 bool WriteTableToDisk(const std::string& path, const toml::table& table)
@@ -115,17 +122,14 @@ bool WriteTableToDisk(const std::string& path, const toml::table& table)
     std::ostringstream oss;
     oss << table;
 
-    /// @note 参照が guid 形式のままここへ来て索引が引けないと、絶対パスが空になる。
-    ///       黙って書き損じると「編集したのに保存されていない」に化けるので必ず報告する。
+    /// @note GUID の索引が引けない保存は空の絶対パスになるため、黙って書き損じず報告する。
     const std::string absPath = AssetManager::ResolveAssetPath(path);
     if (absPath.empty()) {
         FBZZ_LOG_ERROR("DataAssetRegistry: cannot resolve save path -> %s", path.c_str());
         return false;
     }
 
-    /// @note .fzdata は Inspector のウィジェットを離すたびに自動保存される。通常の上書きだと
-    ///       切り詰め済みの状態が一瞬でも露出し、そこで落ちる・掴まれると壊れたファイルが
-    ///       原本として残る。アトミック置き換えなら旧版か新版のどちらかになる。
+    /// @note 自動保存中の中途半端なファイルを原本にしないよう、旧版か新版へアトミックに置き換える。
     if (!util::FileSystem::WriteTextAtomic(absPath, oss.str())) {
         FBZZ_LOG_ERROR("DataAssetRegistry: save failed -> %s", absPath.c_str());
         return false;
@@ -133,7 +137,7 @@ bool WriteTableToDisk(const std::string& path, const toml::table& table)
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 DataAsset* DataAssetRegistry::Resolve(const std::string& path)
 {
@@ -144,10 +148,7 @@ DataAsset* DataAssetRegistry::Resolve(const std::string& path)
     if (auto it = cache.find(key); it != cache.end()) {
         if (it->second.asset) return it->second.asset.get();
 
-        /// @note 失敗 (nullptr) もキャッシュして毎フレームのディスクアクセス・ログ連打を防ぐ。
-        ///       型登録が変わっていれば結果が変わりうるのでそのときだけ引き直す。型が登録される
-        ///       前に一度 Resolve されただけで参照が永久に死ぬのを防ぐ (DLL ロード順やホット
-        ///       リロードの過渡状態で普通に起こる)。
+        /// @note 失敗もキャッシュし、型登録が変わったときだけ再試行してログ連打と永久失敗を防ぐ。
         if (it->second.factoryEpoch == DataAssetFactory::RegistrationEpoch())
             return nullptr;
 
@@ -168,7 +169,18 @@ bool DataAssetRegistry::Save(const std::string& path)
     auto it = cache.find(key);
     if (it == cache.end() || !it->second.asset) return false;
 
-    const toml::table table = BuildTable(*it->second.asset);
+    if (it->second.typeName == RenderPipelineAsset::TYPE_NAME) {
+        /// @note Last-good reload values must not overwrite an incompatible or malformed disk revision.
+        std::string text;
+        if (!util::FileSystem::ReadText(AssetManager::ResolveAssetPath(key), text)) return false;
+        auto parsed = toml::parse(text);
+        if (!parsed) return false;
+        RenderPipelineAsset disk;
+        if (!RenderPipelineAssetCodec::Load(parsed.table(), disk)) return false;
+    }
+
+    toml::table table;
+    if (!BuildTable(*it->second.asset, table)) return false;
     return WriteTableToDisk(key, table);
 }
 
@@ -187,7 +199,8 @@ bool DataAssetRegistry::Create(const std::string& path, const std::string& typeN
         return false;
     }
 
-    const toml::table table = BuildTable(*asset);
+    toml::table table;
+    if (!BuildTable(*asset, table)) return false;
     if (!WriteTableToDisk(key, table)) return false;
 
     /// @note 生成直後の実体をそのままキャッシュへ載せる (次の Resolve でディスク再読込しない)。
@@ -204,7 +217,9 @@ std::string DataAssetRegistry::Snapshot(const std::string& path)
     if (it == cache.end() || !it->second.asset) return {};
 
     std::ostringstream oss;
-    oss << BuildTable(*it->second.asset);
+    toml::table table;
+    if (!BuildTable(*it->second.asset, table)) return {};
+    oss << table;
     return oss.str();
 }
 
@@ -223,10 +238,9 @@ bool DataAssetRegistry::RestoreSnapshot(const std::string& path, const std::stri
         return false;
     }
 
-    /// @note "type" キーは読み飛ばす。復元先は常に「今キャッシュされている実体」であり、
-    ///       スナップショットで型を差し替えることはしない (型が変わる操作は Undo 対象外)。
-    ///       構造体配列は BeginObjectList が保存時の要素数を返し、呼び出し側がその値で
-    ///       resize するため、スナップショットより要素が増えている状態からでも正しく縮む。
+    /// @note 現在の実体のアドレスを保持して復元し、Undo で型を差し替えない。配列は保存時の長さへ戻す。
+    if (it->second.typeName == RenderPipelineAsset::TYPE_NAME)
+        return RenderPipelineAssetCodec::Load(result.table(), static_cast<RenderPipelineAsset&>(*it->second.asset));
     TomlReadReflector reader(result.table());
     it->second.asset->Reflect(reader);
     return true;
@@ -236,8 +250,7 @@ int DataAssetRegistry::ReloadFile(const std::string& absPath)
 {
     if (absPath.empty()) return 0;
 
-    /// @note キャッシュキーは "Assets/..." 相対と guid 参照が混在する。監視イベントは絶対パス
-    ///       なので、キーを解決してから区切り文字と大小を無視して突き合わせる。
+    /// @note 相対/GUID キャッシュキーを解決し、監視イベントの絶対パスと区切り・大小を無視して比較する。
     const auto samePath = [](const std::string& a, const std::string& b) {
         if (a.size() != b.size()) return false;
         const auto fold = [](char c) {
@@ -268,8 +281,15 @@ int DataAssetRegistry::ReloadFile(const std::string& absPath)
 
         /// @note 型が同じなら実体は作り直さず、フィールドだけ上書きする。
         if (entry.asset && !typeName.empty() && entry.typeName == typeName) {
-            TomlReadReflector reader(table);
-            entry.asset->Reflect(reader);
+            if (typeName == RenderPipelineAsset::TYPE_NAME) {
+                if (!RenderPipelineAssetCodec::Load(table, static_cast<RenderPipelineAsset&>(*entry.asset))) {
+                    FBZZ_LOG_WARN("DataAssetRegistry: invalid pipeline reload, keeping previous -> %s", key.c_str());
+                    continue;
+                }
+            } else {
+                TomlReadReflector reader(table);
+                entry.asset->Reflect(reader);
+            }
             ++reloaded;
             continue;
         }
@@ -297,4 +317,4 @@ void DataAssetRegistry::ClearCache()
     Cache().clear();
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

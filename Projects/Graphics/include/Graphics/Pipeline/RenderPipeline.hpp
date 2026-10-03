@@ -7,12 +7,12 @@
 /// @note Execute(ctx) が呼ばれた時点ですべてのパスを RenderGraph に組み込んで実行する。
 /// @note 追加順が RenderGraph 上の優先度になる (依存関係が同一の場合のタイブレーク)。
 
-/// @note リソースの実体はまだ ViewRenderTargets が確保する。ただし «その名前がどれを指すか»
-/// @note は DeclareTarget / DeclareTexture で申告と一緒に受け取り、Execute() の冒頭で
-/// @note RenderPassContext の登録簿へ流す。パスは名前で引く (PassResources::Target / Texture)。
-/// @note 申告と実体を別々に書く経路は残っていない。
+/// @note GPU 実体の所有権は呼び出し側に残る。Declare 系 API が記述と型付きハンドルを同時に受け取る。
+/// @note Execute() の冒頭で登録簿へ流し、パスは PassResources から名前で引く。
 #pragma once
 #include "IRenderPass.hpp"
+#include <Graphics/Pipeline/ResolvedRenderPlan.hpp>
+#include <Graphics/Renderer/GpuProfiler.hpp>
 #include <Graphics/Renderer/RenderGraph.hpp>
 #include <Graphics/Renderer/RenderSettings.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
@@ -190,6 +190,22 @@ public:
                         renderer::ResourceHandle<renderer::TextureTag> handle,
                         renderer::RenderGraph::ResourceDesc desc);
 
+    /// @note 実体の所有権は呼び出し側に残る。stride は頂点幅 [byte]、raw / index Buffer では 0。
+    void DeclareBuffer(std::string_view name,
+                       renderer::ResourceHandle<renderer::BufferTag> handle,
+                       renderer::RenderGraph::ResourceDesc desc);
+    /// @note StructuredBuffer も ResourceKind::Buffer とし、byteSize / stride で記述する。
+    void DeclareBuffer(std::string_view name,
+                       renderer::ResourceHandle<renderer::StructuredBufferTag> handle,
+                       renderer::RenderGraph::ResourceDesc desc);
+    void DeclareStructuredBuffer(std::string_view name,
+                                 renderer::ResourceHandle<renderer::StructuredBufferTag> handle,
+                                 renderer::RenderGraph::ResourceDesc desc);
+    /// @note AS は transient 宣言でも alias しない。状態と build 同期は backend の契約。
+    void DeclareAccelerationStructure(std::string_view name,
+                                      renderer::ResourceHandle<renderer::AccelerationStructureTag> handle,
+                                      renderer::RenderGraph::ResourceDesc desc);
+
     void SetOutputs(std::initializer_list<std::string_view> outputs);
 
     /// @note エディターからのパス単位の上書き。BeginBuild では消えない (登録ではなく設定)。
@@ -207,7 +223,12 @@ public:
 
     /// @note 登録されたすべてのパスを RenderGraph に組み込んで実行する。
     /// @note IsEnabled が false のパスはスキップされる。
-    bool Execute(RenderPassContext& ctx, RenderPassCapture* capture = nullptr);
+    /// @note GPU の出自は最終解決済み Plan と実際の Graph 計画世代を記録する。準備処理は計測範囲外。
+    bool Execute(RenderPassContext& ctx, RenderPassCapture* capture = nullptr,
+                 const GpuProfilerViewMetadata* gpuView = nullptr,
+                 const ResolvedRenderPlan* gpuPlan = nullptr);
+
+    const GpuProfilerViewMetadata& LastGpuProfilerView() const { return m_lastGpuProfilerView; }
 
     const renderer::RenderGraph::ExecutionReport& LastReport() const { return m_lastReport; }
 
@@ -272,12 +293,15 @@ private:
     /// @note 増えて寿命が分かれたら、まず構成テキストで «何枚浮くか» を測ってから作り直す。
 
     /// @note 1 つの論理リソースについて «申告» と «実体» を同じ行に持つ。
-    /// @note target / texture はどちらか片方だけが有効になる (ResourceDesc::kind に対応)。
+    /// @note 各ハンドルのうち宣言した型だけが有効になる。StructuredBuffer は Buffer 種別。
     struct ResourceEntry {
         std::string                                         name;
         renderer::RenderGraph::ResourceDesc                 desc;
         renderer::ResourceHandle<renderer::RenderTargetTag> target;
         renderer::ResourceHandle<renderer::TextureTag>      texture;
+        renderer::ResourceHandle<renderer::BufferTag> buffer;
+        renderer::ResourceHandle<renderer::StructuredBufferTag> structuredBuffer;
+        renderer::ResourceHandle<renderer::AccelerationStructureTag> accelerationStructure;
     };
 
     std::vector<Entry> m_entries;
@@ -300,6 +324,10 @@ private:
     /// @note index 列だけでは Setup() の申告内容の変化 (設定トグル等) を検出できない。
     uint64_t m_lastGraphFingerprint = 0;
     bool m_planValid = false;
+    uint64_t m_gpuProfilePlanGeneration = 0;
+    ResolvedRenderPlan m_gpuProfileRenderPlan;
+    bool m_gpuProfileRenderPlanValid = false;
+    GpuProfilerViewMetadata m_lastGpuProfilerView;
 };
 
 } /// @note namespace fbzz::renderer

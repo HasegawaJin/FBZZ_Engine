@@ -1,2 +1,14 @@
+# @file    ExposureHistogram.cs.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-25
 [meta]
 guid = 'bf08c1a380b258e2c35c6bcb69e84137'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

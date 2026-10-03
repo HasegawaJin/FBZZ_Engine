@@ -2,15 +2,15 @@
 /// @brief   蛇の当たり判定を骨から組み立て、節を名指しで引けるようにする。付ける先は Boss02
 /// @author  Hasegawa Jin
 /// @date    2026-08-31
-///
+
 /// @note ボス 1 の BossHitboxRigComponent は流用しない。あちらは «胴 + 脚 4 本 × 4 節» の
-///       固定表で脚の接尾辞が判定・IK・輪郭を貫く設計。蛇は 29 本が同じ規則で並ぶ
-///       1 本の鎖で、共有できるのは «骨の間にカプセルを張る» だけ ─ そこを基底へ
-///       上げると四足の都合が鎖側へ降りてくる。
+/// @note 固定表で脚の接尾辞が判定・IK・輪郭を貫く設計。蛇は 29 本が同じ規則で並ぶ
+/// @note 1 本の鎖で、共有できるのは «骨の間にカプセルを張る» だけ ─ そこを基底へ
+/// @note 上げると四足の都合が鎖側へ降りてくる。
 /// @note 当たりはランタイム生成 (`runtimeGenerated`) でシーンに保存しない。Play のたびに
-///       組み直るため、古い当たり判定がシーンへ焼き付いたまま残らない。
+/// @note 組み直るため、古い当たり判定がシーンへ焼き付いたまま残らない。
 /// @note トリガーにする。衝突応答を持たせると当たりが床や羽を押し返し、経路に沿って
-///       «置かれる» だけの蛇 (物理で動いていない) が経路から外れる。
+/// @note «置かれる» だけの蛇 (物理で動いていない) が経路から外れる。
 #pragma once
 
 #include <Engine/Scene/Components/ColliderComponent.hpp>
@@ -60,18 +60,18 @@ public:
     FBZZ_FIELD_READ_ONLY(int, debugMissingBones, 0, "見つからないボーン")
     FBZZ_FIELD(bool, drawHitboxes, false, "Draw Hitboxes")
 
-    /// 頭からの添字 (0 = Head / 1..28 = Seg01..Seg28) のボーン。
+    /// @note 頭からの添字 (0 = Head / 1..28 = Seg01..Seg28) のボーン。
     [[nodiscard]] GameObject* SegmentBone(int headIndex) const;
-    /// その節の当たり判定オブジェクト。
+    /// @note その節の当たり判定オブジェクト。
     [[nodiscard]] GameObject* SegmentHitbox(int headIndex) const;
-    /// 当たったオブジェクトから節の番号を引く。読めなければ -1。
+    /// @note 当たったオブジェクトから節の番号を引く。読めなければ -1。
     [[nodiscard]] int SegmentOf(GameObject* hit) const;
-    /// 当たったオブジェクトから蛇の本体を引く。
+    /// @note 当たったオブジェクトから蛇の本体を引く。
     [[nodiscard]] static GameObject* SerpentRootOf(GameObject* hit);
 
-    /// 骨と骨の間隔 (静止時の実測)。頭からの添字 i の «次の骨へ» の長さ。
+    /// @note 骨と骨の間隔 (静止時の実測)。頭からの添字 i の «次の骨へ» の長さ。
     [[nodiscard]] float LinkLength(int headIndex) const;
-    /// 骨がすべて揃っているか。1 本でも欠けると胴が途中で切れる。
+    /// @note 骨がすべて揃っているか。1 本でも欠けると胴が途中で切れる。
     [[nodiscard]] bool IsBuilt() const { return m_built && debugMissingBones == 0; }
 
     void OnStart() override;
@@ -87,15 +87,15 @@ public:
 
 private:
     void Build();
-    /// 節 1 本ぶんのカプセルを張る。@return 作れたら true。
+    /// @note 節 1 本ぶんのカプセルを張る。@return 作れたら true。
     bool BuildSegment(int headIndex);
-    /// 骨のローカル位置から «次の骨まで» の長さを測る。
-    ///
+    /// @note 骨のローカル位置から «次の骨まで» の長さを測る。
+
     /// @note 定数にしない。モデルを割り直すと黙ってずれるため、書き出しの骨間隔から
-    ///       都度測れば必ず一致する。
+    /// @note 都度測れば必ず一致する。
     void MeasureLinks();
 
-    /// 骨と当たりの参照。DLL リロードで空へ戻るので «空なら引き直す» で書く。
+    /// @note 骨と当たりの参照。DLL リロードで空へ戻るので «空なら引き直す» で書く。
     EntityRef m_bones[serpent::kBoneCount];
     EntityRef m_hitboxes[serpent::kBoneCount];
     float     m_links[serpent::kBoneCount]{};
@@ -127,8 +127,8 @@ inline GameObject* SerpentHitboxRigComponent::SegmentHitbox(int headIndex) const
 inline int SerpentHitboxRigComponent::SegmentOf(GameObject* hit) const
 {
     /// @note 名前でなく生成時の参照で照合する。当たったのは «とどめ» が斬った物で節
-    ///       そのものとは限らない (子を挟むこともある)。参照を突き合わせれば命名を
-    ///       変えても番号の引き当ては外れない。
+    /// @note そのものとは限らない (子を挟むこともある)。参照を突き合わせれば命名を
+    /// @note 変えても番号の引き当ては外れない。
     for (GameObject* go = hit; go; go = go->GetParent())
         for (int i = 0; i < serpent::kBoneCount; ++i)
             if (SegmentHitbox(i) == go) return i;
@@ -147,9 +147,9 @@ inline void SerpentHitboxRigComponent::MeasureLinks()
     if (!self) return;
 
     /// @note 骨 i のローカル位置は «親 (骨 i+1) から見た自分» でそのまま節の長さになるが、
-    ///       そのまま信じない。Spine は死んだ節のリンクをローカル位置 0 へ畳むため、
-    ///       DLL リロード直後に読むと畳んだ 0 を «節の長さ» として拾う。ありえない値は
-    ///       既定値へ落とす。
+    /// @note そのまま信じない。Spine は死んだ節のリンクをローカル位置 0 へ畳むため、
+    /// @note DLL リロード直後に読むと畳んだ 0 を «節の長さ» として拾う。ありえない値は
+    /// @note 既定値へ落とす。
     for (int i = 0; i < serpent::kBoneCount; ++i) {
         float measured = 0.0f;
         if (GameObject* bone = SegmentBone(i)) measured = bone->transform.position.Length();
@@ -178,16 +178,21 @@ inline void SerpentHitboxRigComponent::OnStart()
 
 inline void SerpentHitboxRigComponent::Build()
 {
+    GameObject* owner = scene.Self();
+    if (!owner) return;
+    std::size_t missing = 0;
+    for (int i = 0; i < serpent::kBoneCount; ++i)
+        if (GameObject* bone = FindInSubtree(*owner, serpent::BoneName(i)))
+            if (!FindInSubtree(*bone, serpent::HitboxName(i))) ++missing;
+    if (!scene.CanCreate(missing)) return;
     debugHitboxes     = 0;
     debugMissingBones = 0;
 
-    /// @note 骨は先に全部掴む。scene.Create は GameObject 配列を再確保するので、
-    ///       生成を跨いで握ったポインタは無効になる。
     for (int i = 0; i < serpent::kBoneCount; ++i) {
         GameObject* self = scene.Self();
         if (!self) return;
         /// @note 骨名はシーン内で一意でない (プレイヤーにも Head と Root が居る)。
-        ///       必ず蛇の部分木だけを見る。
+        /// @note 必ず蛇の部分木だけを見る。
         if (GameObject* bone = FindInSubtree(*self, serpent::BoneName(i)))
             m_bones[i] = EntityRef{ bone->GetID() };
         else
@@ -211,7 +216,6 @@ inline void SerpentHitboxRigComponent::Build()
 
 inline bool SerpentHitboxRigComponent::BuildSegment(int headIndex)
 {
-    /// @note 生成のたびに引き直す。ループの外で掴んだ self は 2 本目の Create で無効になる。
     GameObject* bone = SegmentBone(headIndex);
     if (!bone) return false;
 
@@ -222,7 +226,7 @@ inline bool SerpentHitboxRigComponent::BuildSegment(int headIndex)
             0.02f);
 
     /// @note 節の «長さ» は骨の +Y 側にある。節 i の胴は骨 i から骨 i-1 までで、
-    ///       その長さは骨 i-1 のローカル位置 (= リンク i-1) になる。頭には次の骨が無い。
+    /// @note その長さは骨 i-1 のローカル位置 (= リンク i-1) になる。頭には次の骨が無い。
     const float length = headIndex <= 0 ? Max(headLength, 0.1f)
                                         : Max(m_links[headIndex - 1], 0.1f);
 
@@ -230,14 +234,14 @@ inline bool SerpentHitboxRigComponent::BuildSegment(int headIndex)
 
     GameObject* hitbox = FindInSubtree(*bone, name);
     if (!hitbox) {
-        GameObject& created = scene.Create(name);
-        created.runtimeGenerated = true;
+        GameObject* created = scene.Create(name);
+        if (!created) return false;
+        created->runtimeGenerated = true;
         /// @note 部位は蛇本体と同じ «敵» として扱わせる。接地レイキャストがタグで敵を
-        ///       捨てているので、これが無いと胴を地面と読んで胴の上に浮く。
-        created.tag = "Enemy";
-        hitbox = &created;
+        /// @note 捨てているので、これが無いと胴を地面と読んで胴の上に浮く。
+        created->tag = "Enemy";
+        hitbox = created;
 
-        /// @note 親を引き直してから繋ぐ。Create でポインタが動いている。
         if (GameObject* parent = SegmentBone(headIndex)) hitbox->SetParent(*parent);
     }
     m_hitboxes[headIndex] = EntityRef{ hitbox->GetID() };
@@ -251,7 +255,7 @@ inline bool SerpentHitboxRigComponent::BuildSegment(int headIndex)
     collider->isTrigger = true;
 
     /// @note 斬撃・照準・とどめは BossPart を列挙する。コライダーだけでは対象にならない。
-    ///       頭は切断対象でないため、胴の28節だけを登録する。
+    /// @note 頭は切断対象でないため、胴の28節だけを登録する。
     if (headIndex > 0) {
         auto* part = hitbox->GetScript<BossPartComponent>();
         if (!part) part = &hitbox->AddScript<BossPartComponent>();
@@ -265,8 +269,8 @@ inline bool SerpentHitboxRigComponent::BuildSegment(int headIndex)
 inline void SerpentHitboxRigComponent::OnUpdate()
 {
     /// @note 骨は掴めているが当たりが消えている状態 (DLL リロード直後) を拾い直す。骨が
-    ///       引けたときだけ組み直す ─ 毎フレーム作り直すと、骨名の違うリグを差した
-    ///       ときの Build() エラーがログを埋めて本当の原因が読めなくなる。
+    /// @note 引けたときだけ組み直す ─ 毎フレーム作り直すと、骨名の違うリグを差した
+    /// @note ときの Build() エラーがログを埋めて本当の原因が読めなくなる。
     if (!m_built || (m_bones[0].Resolve(scene) && !m_hitboxes[0].Resolve(scene))) {
         Build();
         return;
@@ -283,4 +287,4 @@ inline void SerpentHitboxRigComponent::OnUpdate()
     }
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

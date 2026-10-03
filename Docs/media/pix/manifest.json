@@ -1,0 +1,68 @@
+{
+  "_file": "manifest.json",
+  "_brief": "Actual PIX UI screenshots and preserved Hybrid RayReflection investigation records.",
+  "_author": "Hasegawa Jin",
+  "_date": "2026-10-03",
+  "capture": {
+    "source": "Scratch/PixCapture/ReflectionOptimized20261002/LateGpu.wpix",
+    "sha256": "A671E2FED1B2BBED95289A3E690FA05A54001C2BFED868C037C3166569B24A06",
+    "capturedDate": "2026-10-02",
+    "marker": "View=1 appFrame=65 scene=2 plan=1 resources=1 output=0:0 extent=1904x993",
+    "dispatchGlobalId": 56,
+    "dispatch": [
+      238,
+      125,
+      1
+    ],
+    "gpu": "NVIDIA GeForce RTX 4070",
+    "pixVersion": "2603.25"
+  },
+  "screenshots": [
+    {
+      "file": "pix-hybrid-events.jpg",
+      "sha256": "1D4B0B3917AEA035AC04BDCD1C9DBBD441E08529447A8D893C27C633B107F40F",
+      "width": 1920,
+      "height": 983,
+      "shownOn": "2026-10-03",
+      "description": "Actual PIX event list, selected Dispatch, pipeline state and constant-buffer contents.",
+      "processing": "None; original JPEG from Computer Use window screenshot, with the pointer outside the captured PIX window."
+    },
+    {
+      "file": "pix-hybrid-timeline.jpg",
+      "sha256": "63EB6FDDE00369E15B2D721A0CEC5C68BA65B134A7D603A51637FB53CA015B30",
+      "width": 1920,
+      "height": 1080,
+      "shownOn": "2026-10-03",
+      "description": "Actual PIX event list and GPU timeline.",
+      "processing": "None; original JPEG from Computer Use window screenshot, with the pointer outside the captured PIX window."
+    }
+  ],
+  "newUiReplay": {
+    "scope": "One replay collected only to display the saved capture for portfolio screenshots; excluded from the 2026-10-02 comparison.",
+    "rayReflectionEopMs": 340.913152,
+    "viewEopMs": 346.212352
+  },
+  "records": [
+    {
+      "file": "late-replay-comparison.json",
+      "source": "Scratch/ReflectionOptimize/LateReplayComparison.json",
+      "sha256": "0777460B12775295BBE2456B43C1B9B90336194DCC06364BAED99F283905BC1D"
+    },
+    {
+      "file": "application-timing-comparison.json",
+      "source": "Scratch/ReflectionOptimize/TimingComparison.json",
+      "sha256": "B19962F548769A4FCA199403BAAC501BFAB2C70BF0286D1702BDACA6D9F16D0E"
+    },
+    {
+      "file": "captured-bindings.json",
+      "source": "Scratch/ReflectionOptimize/PixCapturedBindings.json",
+      "sha256": "17DEBB8D1A889244A67E91DCD9F4252D6D9DB9E4174E6842DAA473A136512833"
+    }
+  ],
+  "limits": [
+    "Hybrid RayReflection pass investigation, separate from Reference PathTracing images.",
+    "The published reductions belong to the 2026-10-02 repeated comparison, not the 2026-10-03 screenshot replay.",
+    "Replay EOP and ordinary application GPU timestamp durations are separate workloads.",
+    "No full-frame GPU time, sustained FPS or 1080p/60fps claim."
+  ]
+}

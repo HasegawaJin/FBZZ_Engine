@@ -4,21 +4,24 @@
 /// @date    2026-05-21
 #include "Viewport/ViewportCommon.hpp"
 #include "MapToolCommon.hpp"
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/DragDropSet.hpp>
 #include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/ViewportCamera.hpp>
 #include <Engine/Core/Cursor.hpp>
+#include <Engine/Core/DeveloperMode.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <cstdio>
 #include <iterator>
+#include <string_view>
 
 namespace fbzz::editor {
 
 /// @brief Map Editing Mode 中に Scene ビューポート上端へ重ねる半透明ツールバー。
 /// @note ツール切替のたびに MapEditorPanel まで視線とマウスを往復しないよう、編集対象の上で
-///       持ち替えられるようにする (Unreal Landscape / Unity Terrain 同様)。状態確認もここで完結させる。
+/// @note 持ち替えられるようにする (Unreal Landscape / Unity Terrain 同様)。状態確認もここで完結させる。
 void DrawMapToolOverlay(EditorContext& ctx, const ImVec2& viewportMin)
 {
     if (!ctx.mapEditingMode) return;
@@ -72,7 +75,7 @@ bool HandleMapToolHotkeys(EditorContext& ctx)
     if (!ctx.mapEditingMode) return false;
     if (ImGui::GetIO().WantTextInput) return false;
     /// @note 定数 6 を持たない: ツールの増減で数字キーの本数だけ取り残されると kMapToolDefs の
-    ///       範囲外を読むため、割り当ては定義表から導出する。
+    /// @note 範囲外を読むため、割り当ては定義表から導出する。
     bool consumed = false;
     for (size_t i = 0; i < std::size(kMapToolDefs); ++i) {
         const ImGuiKey key = static_cast<ImGuiKey>(ImGuiKey_1 + static_cast<int>(i));
@@ -197,7 +200,7 @@ void DrawPlayCursorOverrideControl(EditorContext& ctx)
 
 /// @brief Game View の隅に出すカーソル状態のオーバーレイ。
 /// @note 拘束と非表示は «画面から消える» 形でしか現れず、思ったとおりに効いていないときに
-///       «誰が何を要求しているのか» を見る場所が無かった。要求はスタックで上から順に並べる。
+    /// @note «誰が何を要求しているのか» を見る場所が無かった。要求はスタックで上から順に並べる。
 void DrawCursorOverlay(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& size)
 {
     const core::CursorPolicy policy = core::Cursor::GetEffectivePolicy();
@@ -328,16 +331,19 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
     struct ModeEntry {
         const char*        label;
         const char*        tooltip;
-        renderer::ViewMode mode;
+        const char*        mode;
     };
     static constexpr ModeEntry kModes[] = {
-        { "Lit",    "Lit \xe2\x80\x94 full lighting",                    renderer::ViewMode::Lit            },
-        { "Unlit",  "Unlit \xe2\x80\x94 no lighting",                   renderer::ViewMode::Unlit          },
-        { "Wf Lit", "Wireframe Lit \xe2\x80\x94 wireframe + lighting",  renderer::ViewMode::WireframeLit   },
-        { "Wf",     "Wireframe Unlit \xe2\x80\x94 wireframe only",      renderer::ViewMode::WireframeUnlit },
+        { "Lit",    "Lit \xe2\x80\x94 full lighting",                   "lit" },
+        { "Unlit",  "Unlit \xe2\x80\x94 no lighting",                  "unlit" },
+        { "Wf Lit", "Wireframe Lit \xe2\x80\x94 wireframe + lighting", "wireframe_lit" },
+        { "Wf",     "Wireframe Unlit \xe2\x80\x94 wireframe only",     "wireframe_unlit" },
+        { "Ray T",  "Ray Hit Distance",                               "ray_hit_distance" },
+        { "Ray N",  "Ray Geometric Normal",                           "ray_geometric_normal" },
+        { "Ray ID", "Ray Instance ID",                                "ray_instance_id" },
     };
 
-    renderer::ViewMode& current = ctx.projectSettings.render.viewMode;
+    const auto* modeOperator = ctx.operators ? ctx.operators->Find("render.set_view_mode") : nullptr;
 
     ImGui::SetCursorScreenPos({ viewportMin.x + 6.0f, viewportMin.y + 6.0f });
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
@@ -346,13 +352,22 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
     overlaySurface.w = 0.90f;
 
     for (const auto& entry : kModes) {
-        const bool active = current == entry.mode;
+        if (std::string_view(entry.mode).starts_with("ray_") && !core::DeveloperMode::IsEnabled()) continue;
+        OpArgs args;
+        args.Set("mode", std::string(entry.mode));
+        bool active = false;
+        if (modeOperator && modeOperator->checked && ctx.undoStack) {
+            const OpContext context{ ctx, *ctx.undoStack };
+            active = modeOperator->checked(context, args);
+        }
         ImGui::PushStyleColor(ImGuiCol_Button,
             active ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
                    : overlaySurface);
 
+        ImGui::BeginDisabled(!CanInvokeOperator(ctx, "render.set_view_mode", args));
         if (ImGui::SmallButton(entry.label))
-            current = entry.mode;
+            (void)InvokeOperator(ctx, "render.set_view_mode", args);
+        ImGui::EndDisabled();
 
         ImGui::PopStyleColor();
 
@@ -491,7 +506,7 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
 
     /// @name Gizmo / Snap クイックトグル
     /// @note Gizmo Mode/Space・Snap の切替は従来ホットキーかメニュー依存だった。シーンビュー上に
-    ///       置くことで視線移動ゼロでモード切替できる (Unity/Godot のツールバー相当)。
+    /// @note 置くことで視線移動ゼロでモード切替できる (Unity/Godot のツールバー相当)。
     ImGui::SameLine(0.0f, 10.0f);
     const auto gizmoBtn = [&](const char* label, EditorContext::GizmoMode mode, const char* tip) {
         const bool active = ctx.gizmoMode == mode;
@@ -504,7 +519,7 @@ void DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
         ImGui::SameLine();
     };
     /// @note 記号が使えるときは絵にする。3 つ並ぶ切替は形の違いの方が速く読め、
-    ///       幅も詰まって «絵を見る» 面積が残る。読めない環境では従来の短い語へ落ちる。
+        /// @note 幅も詰まって «絵を見る» 面積が残る。読めない環境では従来の短い語へ落ちる。
     gizmoBtn(icons::Or(icons::kMove,   "Move"),  EditorContext::GizmoMode::Translate, "Translate gizmo");
     gizmoBtn(icons::Or(icons::kRotate, "Rot"),   EditorContext::GizmoMode::Rotate,    "Rotate gizmo");
     gizmoBtn(icons::Or(icons::kScale,  "Scale"), EditorContext::GizmoMode::Scale,     "Scale gizmo");
@@ -558,8 +573,8 @@ void ViewportPanel::OnBeforeBegin(EditorContext& ctx)
 {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, { 0.0f, 0.0f });
     /// @note ゲームが Locked でカーソルを握っている間は拘束範囲が窓を追う (EditorApp::
-    ///       UpdatePlayCursorControls) ため、この間に窓を動かす/広げると両者が互いを追いかけて
-    ///       増幅し画面外まで飛ぶ。握られている間だけ矩形を固定する (Escape で解放すれば掴める)。
+        /// @note UpdatePlayCursorControls) ため、この間に窓を動かす/広げると両者が互いを追いかけて
+        /// @note 増幅し画面外まで飛ぶ。握られている間だけ矩形を固定する (Escape で解放すれば掴める)。
     m_pinWindowRect = m_kind == Kind::Game
         && ctx.playMode != nullptr && !ctx.playMode->IsInEditor()
         && !core::Cursor::IsSuppressed()
@@ -596,7 +611,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     if (isGameView || isUIView) {
         /// @note UI Viewport は Game View の完成済み RT を共有するため表示枠も同じ比率にする。
-        ///       Canvas 比率で引き伸ばすと背景とクリック座標が Game 出力からずれる。
+                /// @note Canvas 比率で引き伸ばすと背景とクリック座標が Game 出力からずれる。
         const float viewportAspect = GetGameViewportAspectRatio(ctx.gameViewportAspect);
         size = FitSizeToAspect(size, viewportAspect);
         if (size.x < 1.0f) size.x = 1.0f;
@@ -635,7 +650,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     ImVec2 viewportMax = { viewportMin.x + size.x, viewportMin.y + size.y };
     bool viewportHovered = ImGui::IsMouseHoveringRect(viewportMin, viewportMax);
     /// @note GetImTextureID は RT が生きていても «描画側の枠が尽きた» ときに nullptr を返す。
-    ///       そのまま AddImage へ渡すと DX12 では無効なディスクリプタテーブルを束縛してしまう。
+            /// @note そのまま AddImage へ渡すと DX12 では無効なディスクリプタテーブルを束縛してしまう。
     void* rawTexID = (hdrRT.IsValid() && ctx.imguiRenderer && resources)
         ? ctx.imguiRenderer->GetImTextureID(hdrRT, *resources, 0)
         : nullptr;
@@ -656,14 +671,14 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         DrawCanvasEditorGuides(ctx, viewportMin, size);
 
     /// @note 仮適用したまま Scene View のドロップ処理を通らなくなった場合 (Play 開始・
-    ///       パネル種別の切り替え等) の保険。ドラッグ自体が終わっていれば必ず巻き戻す。
+        /// @note パネル種別の切り替え等) の保険。ドラッグ自体が終わっていれば必ず巻き戻す。
     if (m_materialDrag.applied && (!isSceneView || inPlayOrPause || !ImGui::IsDragDropActive()))
         CancelMaterialDragPreview(ctx, m_materialDrag);
 
     if (isSceneView && !inPlayOrPause) {
         const ImGuiID viewportDropId = ImGui::GetID("##scene_view_prefab_drop_target");
         /// @note ドラッグ中の .mat を「カーソル下へ仮適用 → 外れたら戻す → リリースで確定」
-        ///       という Unity と同じ挙動にするため、AcceptBeforeDelivery で配送前の状態も受け取る。
+        /// @note という Unity と同じ挙動にするため、AcceptBeforeDelivery で配送前の状態も受け取る。
         bool materialDragHandled = false;
         if (ImGui::BeginDragDropTargetCustom(ImRect(viewportMin, viewportMax), viewportDropId)) {
             const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
@@ -675,8 +690,8 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
                 if (ext == ".mat") {
                     materialDragHandled = true;
                     /// @note 仮適用 → (リリース) → 確定。ビューポート外から入ってきて
-                    ///       1 フレーム目でリリースされた場合も取りこぼさないよう、
-                    ///       配送フレームでも未適用なら先に仮適用してから確定する。
+                /// @note 1 フレーム目でリリースされた場合も取りこぼさないよう、
+                /// @note 配送フレームでも未適用なら先に仮適用してから確定する。
                     if (!payload->IsDelivery() || !m_materialDrag.applied)
                         UpdateMaterialDragPreview(ctx, m_materialDrag, assetPath, viewportMin);
                     if (payload->IsDelivery() && CommitMaterialDragPreview(ctx, m_materialDrag)) {
@@ -706,7 +721,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
                               || IsOrientationGizmoHovered() || IsOrientationGizmoActive();
     const bool anyToolActive = ctx.clothPinPainting || (ctx.terrainTool && ctx.terrainTool->IsActive());
     /// @note 頂点スナップ (V ドラッグ) / 面スナップ (Ctrl+Shift ドラッグ)。同じ左ドラッグを使うため、
-    ///       選択・矩形選択・ギズモより先に処理して「掴んでいる」間は他の解釈をさせない。
+        /// @note 選択・矩形選択・ギズモより先に処理して「掴んでいる」間は他の解釈をさせない。
     const bool snapping = (isSceneView && !inPlayOrPause && !ctx.clothPinPainting)
                         ? HandleViewportSnapping(ctx, viewportMin, size)
                         : false;
@@ -720,7 +735,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     /// @name 矩形 (ドラッグ) 選択
     /// @note 複数オブジェクトをまとめて動かす作業は Unity の箱選択が前提。クリック位置から
-    ///       しきい値以上ドラッグしたら矩形選択モードへ移行し、離した時点で矩形内の GO を選択する。
+        /// @note しきい値以上ドラッグしたら矩形選択モードへ移行し、離した時点で矩形内の GO を選択する。
     if (isSceneView && !inPlayOrPause && !snapping && !ctx.clothPinPainting) {
         /// @note px: クリックと区別するしきい値
         constexpr float kDragThreshold = 5.0f;
@@ -762,7 +777,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     if (isGameView && inPlayOrPause) {
         /// @note 「解放中にゲーム画面をクリックしたら捕獲へ戻す」入口。オーバーレイより先に判定
-        ///       しないと、バッジやポップアップの上のクリックまで拾い «見ようとしただけで取られる»。
+                /// @note しないと、バッジやポップアップの上のクリックまで拾い «見ようとしただけで取られる»。
         if (viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
             && !ImGui::IsAnyItemHovered()
             && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
@@ -778,14 +793,14 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     if (isSceneView && !inPlayOrPause) {
         DrawSceneIcons(ctx, viewportMin, size);
         /// @note スナップドラッグ中はギズモを出さない。同じ左ドラッグを ImGuizmo が掴むと
-        ///       吸着とギズモ移動が同時に走って挙動が二重になる。
+        /// @note 吸着とギズモ移動が同時に走って挙動が二重になる。
         if (!snapping && !ctx.clothPinPainting)
             DrawGizmo(ctx, viewportMin, size, m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
         DrawOrientationGizmo(ctx, viewportMin, size);
 
         /// @name スナップモードのヒント (修飾キーを押している間だけ)
         /// @note モーメンタリ操作は「今その状態に入っている」ことが画面で分からないと使われない。
-        ///       押した瞬間に何が起きるかを一行で出す。
+            /// @note 押した瞬間に何が起きるかを一行で出す。
         if (ctx.vertexSnapActive || ctx.surfaceSnapActive) {
             const char* hint = ctx.vertexSnapActive
                 ? "Vertex Snap — drag to snap a vertex onto another mesh's vertex"
@@ -821,7 +836,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
         /// @name 射影インジケーター (平行投影のときだけ)
         /// @note 正投影は «たまたま真横から見ているだけの遠近視点» と静止画では見分けが付かないため、
-        ///       寸法を信じてよい状態かどうかを明示する。
+        /// @note 寸法を信じてよい状態かどうかを明示する。
         if (IsEditorCameraOrthographic(ctx)) {
             const char*  label = " ORTHO ";
             const ImVec2 tsz   = ImGui::CalcTextSize(label);
@@ -856,7 +871,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
                 const ImVec2 pMax = { p.x + kSlotSz, p.y + kSlotSz };
 
                 /// @note DrawList の飾りだけだとクリックできない («押せそうで押せない» UI) ため、
-                ///       マウスでも保存/呼び出しできるようにする。
+            /// @note マウスでも保存/呼び出しできるようにする。
                 const bool hovered = ImGui::IsMouseHoveringRect(p, pMax);
                 bookmarkRowHovered |= hovered;
                 if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -893,22 +908,22 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         }
 
         /// @note オーバーレイ UI (表示モードボタン等、ブックマークスロット) をクリックした瞬間に
-        ///       背後の 3D ピッキングが同時に走ると選択が意図せず変わるため、このフレームのホバー
-        ///       状態を記録し、次フレームの PickEntity / 矩形選択開始を抑制する。
+        /// @note 背後の 3D ピッキングが同時に走ると選択が意図せず変わるため、このフレームのホバー
+        /// @note 状態を記録し、次フレームの PickEntity / 矩形選択開始を抑制する。
         m_prevOverlayHovered = bookmarkRowHovered || ImGui::IsAnyItemHovered();
 
         /// @note F フォーカス / Delete / Ctrl+D / Esc / Ctrl+A は
-        ///       EditorApp::RegisterDefaultHotkeys が HotkeyScope::SceneViewport として
-        ///       登録している。ここで直接キーを見ると、リバインドしても効かない
-        ///       ショートカットが増え、F1 の一覧とも食い違うため書かない。
+        /// @note EditorApp::RegisterDefaultHotkeys が HotkeyScope::SceneViewport として
+        /// @note 登録している。ここで直接キーを見ると、リバインドしても効かない
+        /// @note ショートカットが増え、F1 の一覧とも食い違うため書かない。
 
         /// @note Map Editing Mode 中は数字キー 1-6 をツール切替に使う (下のブックマークより優先)。
-        ///       ブックマークとツール切替が同じ 1-9 キーを共有するため、Map モードではツールの
-        ///       持ち替えを優先し往復操作を無くす。
+        /// @note ブックマークとツール切替が同じ 1-9 キーを共有するため、Map モードではツールの
+        /// @note 持ち替えを優先し往復操作を無くす。
         const bool mapToolConsumed = ctx.viewportFocused && HandleMapToolHotkeys(ctx);
 
         /// @note Camera bookmarks: Shift+1~9 to save, 1~9 to recall.
-        ///       Map モードでツール切替に消費されたフレームはブックマーク処理を丸ごとスキップする。
+        /// @note Map モードでツール切替に消費されたフレームはブックマーク処理を丸ごとスキップする。
         if (ctx.viewportFocused && ctx.editorCamera && !mapToolConsumed) {
             static const ImGuiKey kNumKeys[9] = {
                 ImGuiKey_1, ImGuiKey_2, ImGuiKey_3,
@@ -918,7 +933,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             const bool shiftHeld = ImGui::IsKeyDown(ImGuiKey_LeftShift)
                                 || ImGui::IsKeyDown(ImGuiKey_RightShift);
             /// @note Alt + 数字は軸ビュー (view.axis_*) が取る。ここで拾うと、視点を切り替える
-            ///       つもりの Alt+1 がブックマーク 1 へ飛んでしまう。
+        /// @note つもりの Alt+1 がブックマーク 1 へ飛んでしまう。
             const bool altHeld = ImGui::IsKeyDown(ImGuiKey_LeftAlt)
                               || ImGui::IsKeyDown(ImGuiKey_RightAlt);
             for (int i = 0; i < 9 && !altHeld; ++i) {
@@ -985,4 +1000,4 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

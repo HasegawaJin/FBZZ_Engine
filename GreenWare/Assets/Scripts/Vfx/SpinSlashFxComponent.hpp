@@ -2,17 +2,17 @@
 /// @brief   回転斬りの «一周»。刃が通る高さを追って、体のまわりを開いていく光の輪
 /// @author  Hasegawa Jin
 /// @date    2026-09-13
-///
-/// シーンへは付けない。PlayerComponent が内部モジュールとして持ち、BladeComponent が
-/// 回転斬りの段を振り出したときだけ Play を呼ぶ。丸ごと外しても斬撃の芯は全部成立する。
-///
+
+/// @note シーンへは付けない。PlayerComponent が内部モジュールとして持ち、BladeComponent が
+/// @note 回転斬りの段を振り出したときだけ Play を呼ぶ。丸ごと外しても斬撃の芯は全部成立する。
+
 /// @note 回転斬りだけ専用の層を持つ。軌跡 (BladeTrail) は体ごと 1 周する段でカメラの
-///       裏側を半周通り、その区間の帯は体に隠れるか面積 0 になる。«どこまで回ったか»
-///       を体の外側の輪で言えば、刃が裏へ回っている間も回転が絵に残る。
+/// @note 裏側を半周通り、その区間の帯は体に隠れるか面積 0 になる。«どこまで回ったか»
+/// @note を体の外側の輪で言えば、刃が裏へ回っている間も回転が絵に残る。
 /// @note 輪は最初から閉じない。完成した輪だと «そこに置かれた» になり回った順番が
-///       消えるため、振り出しの向きから刃と同じ側へ開いていく。
+/// @note 消えるため、振り出しの向きから刃と同じ側へ開いていく。
 /// @note 射程は持たない。輪の半径は BladeComponent の判定射程 (bladeRange) から来る
-///       比だけを持ち、見た目用の半径を別に置くと «届いていないのに輪は届く» が生まれる。
+/// @note 比だけを持ち、見た目用の半径を別に置くと «届いていないのに輪は届く» が生まれる。
 /// @note 時計はスケール時間で進める。実時間だとヒットストップ中に輪だけ回り切ってしまう。
 #pragma once
 
@@ -40,7 +40,7 @@ class SpinSlashFxComponent : public Script {
 
 public:
     /// @note フィールド名に spinRing を付ける。PlayerComponent は全モジュールの Reflect
-    ///       を 1 つの名前空間へ平らに並べるため、radius/width のような汎用名は衝突する。
+    /// @note を 1 つの名前空間へ平らに並べるため、radius/width のような汎用名は衝突する。
     FBZZ_GROUP("Spin Ring")
     FBZZ_FIELD_FILE(spinRingMaterial, "Assets/Materials/Effects/FX_BLD_SpinRing.mat",
                     "Material", ".mat")
@@ -74,11 +74,11 @@ public:
     FBZZ_TOOLTIP("1 周ぶんの折れ点数。少ないと輪が多角形に見える")
     FBZZ_FIELD_READ_ONLY(float, debugSpinRing, 0.0f, "Sweep (0-1)")
 
-    /// 輪を出す。center は足元 (プレイヤーの worldPosition)、forward は斬る向き、
-    /// reach は判定に使った射程 [m]、seconds はその一振りの発生、heat は «格» [0,1]。
+    /// @note 輪を出す。center は足元 (プレイヤーの worldPosition)、forward は斬る向き、
+    /// @note reach は判定に使った射程 [m]、seconds はその一振りの発生、heat は «格» [0,1]。
     void Play(const Vector3& center, const Vector3& forward, float reach,
               float seconds, float heat, const Vector4& tint);
-    /// 振りが打ち切られた (回避・弾き)。開きかけの輪をその場で消し込みへ回す。
+    /// @note 振りが打ち切られた (回避・弾き)。開きかけの輪をその場で消し込みへ回す。
     void Cut();
 
     void OnStart()   override;
@@ -86,15 +86,15 @@ public:
     void OnDestroy() override;
 
 private:
-    /// 輪の実体を確保する。DLL リロードを跨いでも名前で拾い直す。
+    /// @note 輪の実体を確保する。DLL リロードを跨いでも名前で拾い直す。
     [[nodiscard]] GameObject* EnsureObject();
     [[nodiscard]] BeamTrailRendererComponent* Renderer() const;
 
     static constexpr const char* kObjectName = "SpinSlashRing";
 
     EntityRef m_ref;
-    /// 輪を張る基準。振り出しの姿勢で固定する ─ 追従させると、踏み込みで
-    /// 前へ出たぶん «回った跡» が一緒に動いて、どこで回ったのかが消える。
+    /// @note 輪を張る基準。振り出しの姿勢で固定する ─ 追従させると、踏み込みで
+    /// @note 前へ出たぶん «回った跡» が一緒に動いて、どこで回ったのかが消える。
     Vector3 m_center  = Vector3::ZERO;
     Vector3 m_forward = Vector3::FORWARD;
     Vector3 m_right   = Vector3::RIGHT;
@@ -110,22 +110,21 @@ private:
 
 FBZZ_REFLECT(SpinSlashFxComponent)
 
-
 inline GameObject* SpinSlashFxComponent::EnsureObject()
 {
     /// @note 先に拾い直す。DLL リロードでこの Script は作り直されるが、輪の GameObject
-    ///       はシーンに残るため、拾わず作るとリロードのたびに枠が増える。
+    /// @note はシーンに残るため、拾わず作るとリロードのたびに枠が増える。
     GameObject* object = scene.Find(kObjectName, true);
     if (!object) {
         /// @note 誰の子にもしない。LineRenderer はワールド点を所有者のローカルへ引き戻して
-        ///       焼くため、親の移動・回転がそのまま輪のずれになる。
-        GameObject& created = scene.Create(kObjectName);
-        created.runtimeGenerated = true;
-        object = &created;
+        /// @note 焼くため、親の移動・回転がそのまま輪のずれになる。
+        GameObject* created = scene.Create(kObjectName);
+        if (!created) return nullptr;
+        created->runtimeGenerated = true;
+        object = created;
     }
     if (!scene.GetScript<BeamTrailRendererComponent>(object))
         object->AddScript<BeamTrailRendererComponent>();
-    /// @note Create / AddScript はシーンの配列を伸ばしうる。返すのは名前から引き直した個体。
     return scene.Find(kObjectName, true);
 }
 
@@ -138,8 +137,8 @@ inline BeamTrailRendererComponent* SpinSlashFxComponent::Renderer() const
 inline void SpinSlashFxComponent::OnStart()
 {
     /// @note 最初に作る。実行時に足した Script は、次のフレームに ScriptSystem が
-    ///       OnStart を通すまで帯を張れない (IsReady) ため、振り出しの 1 コマ目で
-    ///       作ると輪が開き «始める» ところが抜ける。
+    /// @note OnStart を通すまで帯を張れない (IsReady) ため、振り出しの 1 コマ目で
+    /// @note 作ると輪が開き «始める» ところが抜ける。
     if (GameObject* object = EnsureObject()) m_ref = EntityRef{ object->GetID() };
     m_age  = 0.0f;
     m_live = false;
@@ -166,7 +165,7 @@ inline void SpinSlashFxComponent::Play(const Vector3& center, const Vector3& for
     m_tint    = tint;
     m_radius  = Max(reach, 0.1f) * Max(spinRingReach, 0.1f);
     /// @note 発生をそのまま受け取る。ここに «輪用の長さ» をもう 1 つ持たせると、モーションを
-    ///       差し替えるたびに «体はもう止まっているのに輪だけ回り続ける» が生まれる。
+    /// @note 差し替えるたびに «体はもう止まっているのに輪だけ回り続ける» が生まれる。
     m_sweep   = Max(seconds, 0.02f) * Max(spinRingSweepScale, 0.05f);
     m_heat    = Clamp01(heat);
     m_age     = 0.0f;
@@ -177,7 +176,7 @@ inline void SpinSlashFxComponent::Cut()
 {
     if (!m_live) return;
     /// @note 開いている途中でも «そこまで回った輪» として消し込みへ送る。頭出しへ戻すと
-    ///       打ち切った瞬間に輪が消え、回避で切ったことが «絵の消失» として出る。
+    /// @note 打ち切った瞬間に輪が消え、回避で切ったことが «絵の消失» として出る。
     m_age = Max(m_age, m_sweep);
 }
 
@@ -205,10 +204,10 @@ inline void SpinSlashFxComponent::OnUpdate()
     }
 
     /// @note 開き: 頭は刃と同じ勢いで出て、閉じ際で詰まる。等速で回すと «一定速で描かれる輪»
-    ///       になり、刃の加速と輪の進みが別々の動きに見える。
+    /// @note になり、刃の加速と輪の進みが別々の動きに見える。
     const float sweep01 = Clamp01(m_age / m_sweep);
     /// @note 下限を置くのは «開き始めの 1 コマ» の保険。開きが 0 だと全部の点が 1 点に重なり、
-    ///       帯の向きを作る外積が縮退して LineRenderer が形を決められない。
+    /// @note 帯の向きを作る外積が縮退して LineRenderer が形を決められない。
     const float opened  = Max(1.0f - (1.0f - sweep01) * (1.0f - sweep01), 0.02f);
     debugSpinRing = opened;
 
@@ -221,7 +220,7 @@ inline void SpinSlashFxComponent::OnUpdate()
     const float span      = TWO_PI * spinRingTurns * opened;
 
     /// @note 開いた角の大きさに合わせて折れ点を減らす。1 周ぶんを常に積むと、開き始めの
-    ///       数度に 40 点が詰まって «その場で震える点» になる。
+    /// @note 数度に 40 点が詰まって «その場で震える点» になる。
     const int   full  = std::clamp(spinRingSegments, 8, 96);
     const float ratio = Clamp01(Abs(span) / TWO_PI);
     const int   steps = std::max(static_cast<int>(static_cast<float>(full) * ratio), 3);
@@ -230,7 +229,7 @@ inline void SpinSlashFxComponent::OnUpdate()
     m_points.reserve(static_cast<std::size_t>(steps) + 1u);
     for (int i = 0; i <= steps; ++i) {
         /// @note u = 0 が輪の尻 (振り出しの向き)、1 が刃先。uv.x もこの向きに並ぶので、
-        ///       シェーダーの «先を尖らせる» 側 (tipFade) が刃先に当たる。
+        /// @note シェーダーの «先を尖らせる» 側 (tipFade) が刃先に当たる。
         const float u     = static_cast<float>(i) / static_cast<float>(steps);
         const float angle = span * u;
         const Vector3 dir = m_forward * std::cos(angle) + m_right * std::sin(angle);
@@ -264,7 +263,7 @@ inline void SpinSlashFxComponent::OnUpdate()
     style.tiling      = 0.35f;
     style.scroll      = m_age * 1.4f;
 
-    renderer->ShowPath(m_points, style, /*loop=*/false);
+    renderer->ShowPath(m_points, style, false);
 }
 
-} // namespace sandbox
+} /// @note namespace sandbox

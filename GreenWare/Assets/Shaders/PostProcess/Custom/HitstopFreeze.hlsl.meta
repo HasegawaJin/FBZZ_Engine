@@ -1,2 +1,14 @@
+# @file    HitstopFreeze.hlsl.meta
+# @brief   シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-08-26
 [meta]
 guid = '1b64681c43fdedc0a57cce1b4321541b'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

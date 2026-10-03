@@ -204,6 +204,9 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
 void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& viewTargets,
     const AdvancedViewInput& input, const std::function<void(AdvancedGraphicsCB&)>& prepareProbes)
 {
+    /// @note 対応判定は定数バッファの到着前から固定し、ビュー間で共有する Probe の bake 完了と Reference を切り離す。
+    passCtx.rayPathLightingSupported = input.weatherWetness == 0.0f && input.weatherPuddle == 0.0f;
+    passCtx.rayHitLightingSupported = passCtx.rayPathLightingSupported && !input.reflectionProbeSelected;
     const auto& rs = passCtx.settings;
     const auto& camera = passCtx.camera;
     auto& resources = passCtx.resources;
@@ -212,7 +215,7 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
     const auto sHdrH = viewTargets.height;
     constexpr float kHalfResScale = 0.5f;
     /// @name AdvancedGraphicsCB (b8) を毎フレーム更新
-    /// @note 各パスはここで書いたデータを読むだけなので、更新はこの 1 か所に集中させる。
+    /// @note 照明定数をここで揃え、TAA feedback だけは実際の provider が確定した実行直前に更新する。
     if (viewTargets.advancedGraphicsCB.IsValid()) {
         AdvancedGraphicsCB agData{};
         /// @note 未バインド SRV をサンプルさせず、確実に ambient へフォールバックさせるための判定。
@@ -292,13 +295,41 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
         /// @note Light Probe Volume: 焼きを進め、焼き上がったボリュームの拡散 GI を IBL キューブに差し替える。
         /// @note 拡散 GI は IBL の拡散項の置き換えなので、IBL が引けないフレームでは効かせない (マテリアルが IBL 分岐に入らない)。
         if (iblResourcesReady && prepareProbes) prepareProbes(agData);
+        passCtx.rayHitLightingSupported = passCtx.rayHitLightingSupported
+            && agData.probeVolumes[0].intensity <= 0.0f && agData.probeVolumes[1].intensity <= 0.0f;
         resources.Update(viewTargets.advancedGraphicsCB, &agData, sizeof(AdvancedGraphicsCB));
+        viewTargets.advancedGraphicsSnapshot = agData;
+        viewTargets.advancedGraphicsSnapshotValid = true;
         /// @note ここはジッターを載せない。両方に載せるとジッター差分がそのまま「動き」として
         /// @note 現れ、履歴が毎フレームずれて収束しない。履歴はピクセル中心で収束した絵なので、
         /// @note 引く座標もピクセル中心でなければならない。
         /// @note シェーダーが今フレームの深度 (Reversed-Z) と並べて使うので GPU 用の行列で持つ。
         viewTargets.prevViewProjection    = camera.GetGpuViewProjection();
         viewTargets.invPrevViewProjection = math::Matrix4::Inverse(viewTargets.prevViewProjection);
+    }
+}
+
+void PrepareTaaProviderHistory(RenderPassContext& context, RenderViewResources& view)
+{
+    auto& history = view.taaProviderHistory;
+    const bool changed = !history.valid || history.mode != view.renderPlan.effectiveMode
+        || history.reflectionActive != context.rayReflectionPassActive
+        || history.reflectionResolveActive != context.hybridReflectionResolveActive
+        || history.screenReflectionActive != context.ssrPassActive
+        || context.frameStamp <= history.frameStamp || context.frameStamp - history.frameStamp != 1;
+    if (changed) {
+        view.taaHistoryValid = false;
+        ++history.epoch;
+    }
+    history.mode = view.renderPlan.effectiveMode;
+    history.reflectionActive = context.rayReflectionPassActive;
+    history.reflectionResolveActive = context.hybridReflectionResolveActive;
+    history.screenReflectionActive = context.ssrPassActive;
+    history.frameStamp = context.frameStamp;
+    history.valid = true;
+    if (view.advancedGraphicsSnapshotValid) {
+        view.advancedGraphicsSnapshot.taaFeedback = view.taaHistoryValid ? context.settings.taa.feedback : 0;
+        context.resources.Update(view.advancedGraphicsCB, &view.advancedGraphicsSnapshot, sizeof(AdvancedGraphicsCB));
     }
 }
 }

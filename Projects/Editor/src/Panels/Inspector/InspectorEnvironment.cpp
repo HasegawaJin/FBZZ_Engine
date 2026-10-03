@@ -24,9 +24,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::SeparatorText("Day Night");
             ImGui::Checkbox("Day Night Enabled", &sr.dayNightEnabled);
             if (sr.dayNightEnabled) {
-                /// @note 誰が何を決めているのかをここで明示する。有効な間 Light コンポーネントの
-                ///       Color / Intensity はここが上書きするため、向きだけがライト側に残ることを
-                ///       知らないと «ライトが効かない» と映る。
+                /// @note DayNight 有効時の Color / Intensity は空が上書きし、ライトは向きだけを指定する。
                 ImGui::TextDisabled("太陽の向きは Directional Light の Transform。\n"
                                     "有効な間、そのライトの Color / Intensity はここが決めます。");
 
@@ -46,16 +44,12 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                                       "夕方を作るには Directional Light を水平へ向けます。");
                 widgets::ColorEdit3("Night Color", sr.nightColor);
 
-                /// @note 太陽光の強さ = 地表のライティング。
-                ///       1.0 で「白い拡散面が albedo そのままの明るさ」になる単位
-                ///       (Lighting.hlsli の LIGHT_UNIT_SCALE)。
+                /// @note Intensity=1 は白い拡散面が albedo の明るさになる単位 (LIGHT_UNIT_SCALE)。
                 ImGui::DragFloat("Day Intensity", &sr.dayIntensity, 0.01f, 0.0f, 20.0f);
                 ImGui::DragFloat("Sunset Intensity", &sr.sunsetIntensity, 0.01f, 0.0f, 20.0f);
                 ImGui::DragFloat("Night Intensity", &sr.nightIntensity, 0.01f, 0.0f, 5.0f);
 
-                /// @note 空の見た目の明るさ = Skydome / 太陽ディスク / ボリューメトリック雲・
-                ///       光芒 / エアリアルパースに掛かる係数 (Sky Scatter Intensity への乗数)。
-                ///       上の太陽光と別軸なので、太陽だけ強めても空は白飛びしない。
+                /// @note 空の倍率は地表への太陽光と独立し、Sky Scatter Intensity に乗算する。
                 ImGui::DragFloat("Sky Day Brightness", &sr.skyDayBrightness, 0.01f, 0.0f, 20.0f);
                 ImGui::DragFloat("Sky Sunset Brightness", &sr.skySunsetBrightness, 0.01f, 0.0f, 20.0f);
                 ImGui::DragFloat("Sky Night Brightness", &sr.skyNightBrightness, 0.01f, 0.0f, 5.0f);
@@ -103,9 +97,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::DragFloat("Density", &cloud.density, 0.01f, 0.0f, 8.0f);
 
             ImGui::SeparatorText("Shape");
-            /// @note すべて «ワールド単位の大きさ» で編集する。中身は world→ノイズ座標のスケール
-            ///       (逆数) だが、そのまま出すと 0.000063 のような読めない値になり、
-            ///       «雲をどれくらいの大きさにしたいか» と数字が結びつかない。
+            /// @note world-to-noise の逆数をワールド寸法 [m] として編集する。
             ImGui::DragFloat("Cloud Size", &cloud.cloudSize, 5.0f, 50.0f, 100000.0f, "%.0f m");
             tip(
                 "雲塊 1 周期の大きさ。大きいほど雄大な雲になります。\n"
@@ -210,8 +202,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                 ImGui::SetTooltip("render_path = \"decal\" の .mat だけが使えます。\n"
                                   "空欄のときは下のテクスチャと色で組み込みシェーダーが描きます。");
 
-            /// @note .mat を割り当てると下の値はシェーダーへ渡らない。編集できたままだと
-            ///       「色を変えたのに絵が変わらない」原因が Inspector から読めなくなる。
+            /// @note .mat 指定時に組込みの値は渡らないため、編集を無効にする。
             const bool usesMaterial = !dc.materialPath.empty();
             ImGui::BeginDisabled(usesMaterial);
 
@@ -230,8 +221,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             ImGui::EndDisabled();
 
             ImGui::SeparatorText("Angle Fade");
-            /// @note 説明は RangeField へ渡す (行はゲージ / 数値 / ラベルの複数アイテムで構成されるため、
-            ///       呼び出し側の IsItemHovered() ではラベルの上でしか反応しない)。
+            /// @note 行に複数アイテムがあるため、hover 説明は RangeField の内部で扱う。
             widgets::RangeField("Angle Fade", dc.angleFadeStrength, 0.0f, 1.0f, "%.3f",
                 "受け面が投影軸から傾くほどデカールを薄くします (0 で無効)。\n"
                 "OBB 投影は斜めな面へ当てるとテクスチャが引き伸ばされ、長い筋になります。\n"
@@ -259,8 +249,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                 ImGui::SetTooltip("消える前のフェード時間。Lifetime が Permanent のときは効きません。");
             ImGui::BeginDisabled();
             ImGui::DragFloat("Age (s)", &dc.age, 0.0f, 0.0f, 0.0f, "%.2f s");
-            /// @note VFX のフェードカーブとスクリプトが書くランタイム倍率。保存はされない。
-            ///       表示しておかないと「薄いのに設定はどこも薄くない」の理由が読めない。
+            /// @note VFX / script が指定する保存されないランタイム倍率。
             ImGui::DragFloat("Opacity", &dc.opacity, 0.0f, 0.0f, 0.0f, "%.2f");
             ImGui::EndDisabled();
 
@@ -347,6 +336,8 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                 ImGui::SeparatorText("IBL Cubemaps (.dds)");
                 widgets::AssetPathField("Irradiance##iblIrr", elc.irradiancePath, ".dds,.hdr", ctx.projectRoot);
                 widgets::AssetPathField("Prefiltered##iblPre", elc.prefilterPath, ".dds,.hdr", ctx.projectRoot);
+                widgets::AssetPathField("Raw HDR##iblRaw", elc.rawEnvironmentPath, ".dds", ctx.projectRoot);
+                ImGui::DragFloat("Environment Rotation", &elc.rotationY, 0.5f, -360.0f, 360.0f, "%.1f deg");
             } else {
                 ImGui::TextDisabled("SkyRenderer の空を実行時に IBL へ焼き込みます。");
             }
@@ -488,9 +479,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
             ImGui::SeparatorText("Profile");
 
-            /// @note プロファイル参照スロット。.fzdata をドロップして割り当てる。このボリュームの
-            ///       ルックはすべてプロファイル側にあり、未アサインだとボリューム自体が何もしない
-            ///       ため、参照を最初に見せる。
+            /// @note 未割当の volume は何も適用しない。設定の所有者は共有 .fzdata。
             widgets::AssetPathField("Profile", ppv.profile.ref.path, ".fzdata", ctx.projectRoot);
             widgets::AcceptAssetPathDrop(ppv.profile.ref.path, ".fzdata");
 
@@ -504,9 +493,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                     "プロファイルを解決できません — パス切れか型が不一致です");
             }
 
-            /// @note このボリュームが実際に何を変えるのかを一覧で見せる。プロファイルが持つ効果しか
-            ///       適用されず «一部しか変わらない» のが正しい挙動なので、開かずに中身を読めることで
-            ///       誤解と、複数ボリュームの効き分けの比較しにくさを防ぐ。
+            /// @note プロファイルに定義された効果だけがこの volume の対象になる。
             if (usingProfile) {
                 std::string driven;
                 int inactiveCount = 0;
@@ -540,9 +527,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
                                       "0 にすると半径をまたいだ瞬間にルックが飛ぶ。");
             }
 
-            /// @note ここでルックを編集させないのは、プロファイルは複数のボリューム・複数シーンから
-            ///       共有される 1 実体で、どこから編集しても全参照へ届くため。ボリュームの Inspector に
-            ///       編集欄を置くと «このボリュームだけの設定» に見え、他所への波及を誤解させる。
+            /// @note プロファイル編集は全参照へ届くため、volume 固有の編集欄として表示しない。
             if (usingProfile) {
                 ImGui::Spacing();
                 ImGui::TextDisabled("ルックの編集は Project ウィンドウで .fzdata を選択して行います。");

@@ -1,5 +1,5 @@
 /// @file    DX12Texture.cpp
-/// @brief   RGBA8 へ展開した画像を同期または非同期で転送する。
+/// @brief   RGBA8 画像と native DDS cube を同期または非同期で転送する。
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #include "DX12Texture.hpp"
@@ -8,6 +8,8 @@
 #include "DX12StateTracker.hpp"
 #include <Core/Logger.hpp>
 #include <Graphics/Renderer/TextureFileDecoder.hpp>
+#include <Core/Util/StringUtils.hpp>
+#include <DirectXTex.h>
 #include <algorithm>
 #include <cstring>
 #include <string>
@@ -75,6 +77,11 @@ bool DX12Texture::Init(DX12Context* context, const std::string& path)
 {
     if (!context)
         return false;
+    if (util::StringUtils::EndsWith(util::StringUtils::ToLower(path), ".dds")) {
+        DirectX::TexMetadata metadata{};
+        if (SUCCEEDED(DirectX::GetMetadataFromDDSFile(util::StringUtils::ToWide(path).c_str(),
+            DirectX::DDS_FLAGS_NONE, metadata)) && metadata.IsCubemap()) return InitDdsCube(context, path);
+    }
     /// @note 展開は非同期ストリーミングと同じ関数を通す。経路ごとに変換を書くと同じ画像の画素が食い違う。
     DecodedTextureRGBA8 decoded;
     std::string error;
@@ -88,6 +95,95 @@ bool DX12Texture::Init(DX12Context* context, const std::string& path)
         FBZZ_LOG_ERROR("DX12Texture: テクスチャ転送に失敗しました: %s", path.c_str());
         return false;
     }
+    return true;
+}
+
+/// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/upload-and-readback-of-texture-data Texture subresource footprints and row pitches
+bool DX12Texture::InitDdsCube(DX12Context* context, const std::string& path)
+{
+    DirectX::TexMetadata metadata{};
+    DirectX::ScratchImage image;
+    if (FAILED(DirectX::LoadFromDDSFile(util::StringUtils::ToWide(path).c_str(),
+        DirectX::DDS_FLAGS_NONE, &metadata, image)) || !metadata.IsCubemap() || metadata.arraySize != 6
+        || metadata.dimension != DirectX::TEX_DIMENSION_TEXTURE2D || metadata.width != metadata.height
+        || metadata.width == 0 || metadata.width > D3D12_REQ_TEXTURECUBE_DIMENSION
+        || metadata.mipLevels == 0 || metadata.mipLevels > D3D12_REQ_MIP_LEVELS
+        || DirectX::IsTypeless(metadata.format) || DirectX::IsDepthStencil(metadata.format)) return false;
+    auto* device = context->GetDevice();
+    if (!device || !context->GetCommandQueue()) return false;
+    /// @note Native cube/SampleLevel の形式能力を要求し、planar と非 shader-readable view を発行前に拒否する。
+    D3D12_FEATURE_DATA_FORMAT_SUPPORT support{metadata.format};
+    if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support)))
+        || (support.Support1 & D3D12_FORMAT_SUPPORT1_TEXTURECUBE) == 0
+        || (support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE) == 0) return false;
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    D3D12_RESOURCE_DESC description{};
+    description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    description.Width = metadata.width; description.Height = static_cast<UINT>(metadata.height);
+    description.DepthOrArraySize = 6; description.MipLevels = static_cast<UINT16>(metadata.mipLevels);
+    description.Format = metadata.format; description.SampleDesc.Count = 1;
+    Microsoft::WRL::ComPtr<ID3D12Resource> texture;
+    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description,
+        D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&texture)))) return false;
+    const UINT count = static_cast<UINT>(metadata.mipLevels * 6);
+    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts(count);
+    std::vector<UINT> rows(count);
+    std::vector<UINT64> rowBytes(count);
+    UINT64 bytes = 0;
+    device->GetCopyableFootprints(&description, 0, count, 0, layouts.data(), rows.data(), rowBytes.data(), &bytes);
+    if (bytes == 0 || bytes == UINT64_MAX) return false;
+    heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+    D3D12_RESOURCE_DESC uploadDescription{};
+    uploadDescription.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    uploadDescription.Width = bytes; uploadDescription.Height = 1; uploadDescription.DepthOrArraySize = 1;
+    uploadDescription.MipLevels = 1; uploadDescription.SampleDesc.Count = 1;
+    uploadDescription.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    Microsoft::WRL::ComPtr<ID3D12Resource> upload;
+    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &uploadDescription,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload)))) return false;
+    for (UINT subresource = 0; subresource < count; ++subresource) {
+        const auto* source = image.GetImage(subresource % metadata.mipLevels, subresource / metadata.mipLevels, 0);
+        if (!source || source->rowPitch == 0 || source->rowPitch < rowBytes[subresource]
+            || source->slicePitch / source->rowPitch < rows[subresource]) return false;
+    }
+    void* mapped = nullptr;
+    if (FAILED(upload->Map(0, nullptr, &mapped))) return false;
+    auto* destination = static_cast<uint8_t*>(mapped);
+    for (UINT subresource = 0; subresource < count; ++subresource) {
+        const auto* source = image.GetImage(subresource % metadata.mipLevels, subresource / metadata.mipLevels, 0);
+        for (UINT row = 0; row < rows[subresource]; ++row)
+            std::memcpy(destination + layouts[subresource].Offset + static_cast<size_t>(row) * layouts[subresource].Footprint.RowPitch,
+                source->pixels + static_cast<size_t>(row) * source->rowPitch, static_cast<size_t>(rowBytes[subresource]));
+    }
+    upload->Unmap(0, nullptr);
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commands;
+    if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator)))
+        || FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr,
+            IID_PPV_ARGS(&commands)))) return false;
+    for (UINT subresource = 0; subresource < count; ++subresource) {
+        D3D12_TEXTURE_COPY_LOCATION target{};
+        target.pResource = texture.Get(); target.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        target.SubresourceIndex = subresource;
+        D3D12_TEXTURE_COPY_LOCATION source{};
+        source.pResource = upload.Get(); source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        source.PlacedFootprint = layouts[subresource];
+        commands->CopyTextureRegion(&target, 0, 0, 0, &source, nullptr);
+    }
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = texture.Get(); barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    commands->ResourceBarrier(1, &barrier);
+    if (FAILED(commands->Close())) return false;
+    ID3D12CommandList* lists[] = {commands.Get()};
+    context->GetCommandQueue()->ExecuteCommandLists(1, lists);
+    context->Flush();
+    if (!InitCubeFromResource(context, texture.Get(), metadata.format,
+        static_cast<uint32_t>(metadata.width), static_cast<uint32_t>(metadata.mipLevels))) return false;
+    m_contentVersion = 1;
     return true;
 }
 
@@ -114,7 +210,9 @@ bool DX12Texture::InitFromDataMipsAsync(DX12Context* context, const TextureMipDa
     m_width = mips[0].width;
     m_height = mips[0].height;
     m_mipLevels = mipCount;
-    return CreateSrv(context);
+    if (!CreateSrv(context)) return false;
+    m_contentVersion = 1;
+    return true;
 }
 
 bool DX12Texture::InitFromData(
@@ -127,7 +225,9 @@ bool DX12Texture::InitFromData(
     m_context = context;
     m_width = width;
     m_height = height;
-    return CreateSrv(context);
+    if (!CreateSrv(context)) return false;
+    m_contentVersion = 1;
+    return true;
 }
 
 bool DX12Texture::InitFromDataMips(
@@ -152,7 +252,9 @@ bool DX12Texture::InitFromDataMips(
     m_width = mips[0].width;
     m_height = mips[0].height;
     m_mipLevels = mipCount;
-    return CreateSrv(context);
+    if (!CreateSrv(context)) return false;
+    m_contentVersion = 1;
+    return true;
 }
 
 bool DX12Texture::InitFromData3D(
@@ -265,6 +367,8 @@ bool DX12Texture::InitFromData3D(
     srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srv.Texture3D.MipLevels = 1;
     device->CreateShaderResourceView(m_resource.Get(), &srv, GetSrvCpu());
+    m_depth = depth;
+    m_contentVersion = 1;
     return true;
 }
 
@@ -287,6 +391,9 @@ bool DX12Texture::InitCubeFromResource(DX12Context* context, ID3D12Resource* res
     m_context = context;
     m_resource = resource;
     m_width = m_height = size;
+    m_isCube = true;
+    m_format = srvFormat;
+    m_mipLevels = mipCount;
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = 1;
@@ -514,7 +621,9 @@ bool DX12Texture::InitDynamic(DX12Context* context, DX12StateTracker* tracker,
                               D3D12_RESOURCE_STATE_COPY_DEST))
         return false;
 
-    return CreateSrv(context, m_format);
+    if (!CreateSrv(context, m_format)) return false;
+    m_contentVersion = 1;
+    return true;
 }
 
 bool DX12Texture::UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
@@ -530,8 +639,10 @@ bool DX12Texture::UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t 
     }
 
     /// @note 通常運用時のリソース状態は PIXEL_SHADER_RESOURCE。そこから COPY_DEST へ落として戻す。
-    return UploadRegionInternal(x, y, width, height, pixels, srcRowPitch,
-                                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    if (!UploadRegionInternal(x, y, width, height, pixels, srcRowPitch,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)) return false;
+    ++m_contentVersion;
+    return true;
 }
 
 bool DX12Texture::UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, uint32_t height,

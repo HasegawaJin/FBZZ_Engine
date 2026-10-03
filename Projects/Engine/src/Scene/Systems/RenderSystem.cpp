@@ -2,7 +2,7 @@
 /// @brief   Scene から DrawCall を生成するオーケストレーター。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-/// @note /// @note 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
+/// @note 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
 #include <Engine/Asset/StreamedTextureResolver.hpp>
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Scene/SceneUtils.hpp"
@@ -32,6 +32,7 @@
 #include "RenderPasses/Debug/SelectionPasses.hpp"
 #include "Engine/Core/Application.hpp"
 #include "Engine/Core/Time.hpp"
+#include <Engine/Core/DeveloperMode.hpp>
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
@@ -279,7 +280,7 @@ void RenderSystem(Scene& scene,
     /// @note View<> を使わないのは GameObject が取れず activeInHierarchy() を見られないため。
     /// @note enabled (コンポーネントを切る) と activeInHierarchy() (オブジェクトごと切る) の
     /// @note どちらでも絵から消える必要がある。
-    /// @note /// @note EnvironmentLightComponent — シーン Inspector から IBL を上書きする。先着優先。
+    /// @note EnvironmentLightComponent — シーン Inspector から IBL を上書きする。先着優先。
     /// @note 空連動 IBL: 採用された EnvironmentLight の source
     IblSource activeIblSource = IblSource::StaticDDS;
     for (EntityID id : scene.GetEntities<EnvironmentLightComponent>()) {
@@ -447,8 +448,10 @@ void RenderSystem(Scene& scene,
     }
 
     const renderer::RenderSettings& rs = effectiveSettings;
+    const bool experimentalRayTracingEnabled = core::DeveloperMode::IsEnabled();
 
     auto& renderResources = resources.Rendering();
+    renderResources.SetExperimentalRayTracingEnabled(experimentalRayTracingEnabled);
     auto& shared = renderResources.Shared();
     if (shared.Prepare(resources, rs)) {
         ReleaseSkinningComputeCaches();
@@ -458,7 +461,12 @@ void RenderSystem(Scene& scene,
     }
     const uint32_t viewKey = uiOptions ? static_cast<uint32_t>(uiOptions->targetView) + 1u : 0u;
     auto& viewTargets = renderResources.View(viewKey);
-    if (!renderResources.PrepareView(viewTargets, renderer, outputRT, rs)) return;
+    if (!renderResources.PrepareView(viewTargets, renderer, outputRT, rs)) {
+        const auto failedPlan = renderer::PrepareViewRenderPlan(resources, renderer, rs,
+            viewTargets, shared, {}, experimentalRayTracingEnabled);
+        FBZZ_LOG_ERROR("RenderSystem: %s", renderer::DescribeRenderPlanReason(failedPlan.failureReason));
+        return;
+    }
     const uint32_t nativeW = viewTargets.nativeWidth;
     const uint32_t nativeH = viewTargets.nativeHeight;
     const bool needsUpscale = viewTargets.needsUpscale;
@@ -488,11 +496,6 @@ void RenderSystem(Scene& scene,
     auto& objectMaskSkinnedShader = shared.objectMaskSkinnedShader;
     auto& ssrShader = shared.ssrShader;
     auto& sEnvironmentResources = shared.sEnvironmentResources;
-    auto& gbufferShader = shared.gbufferShader;
-    auto& deferredLightingShader = shared.deferredLightingShader;
-    auto& depthCopyShader = shared.depthCopyShader;
-    auto& clusterCullCS = shared.clusterCullCS;
-    auto& clusterIndexBuffer = shared.clusterIndexBuffer;
     auto& clusterCB = shared.clusterCB;
     auto& clusterLinearCB = shared.clusterLinearCB;
     auto& selectionMaskPso = shared.selectionMaskPso;
@@ -501,7 +504,7 @@ void RenderSystem(Scene& scene,
     profiler::Profiler::BeginSample(
         profiler::ProfilerMarker("RenderSystem::LightingSetup", "Rendering"));
 
-    auto lighting = ExtractRenderLights(scene, camera, rs, punctualShadowRes);
+    auto lighting = ExtractRenderLights(scene, camera, rs, punctualShadowRes, experimentalRayTracingEnabled);
     auto& lightData = lighting.lightData;
     auto& dirCastShadows = lighting.dirCastShadows;
     auto& dirShadowBias = lighting.dirShadowBias;
@@ -539,11 +542,16 @@ void RenderSystem(Scene& scene,
     const auto& lightView = shadows.lightView;
     const auto& lightPos = shadows.lightPos;
 
-    const renderer::OpaqueRenderPlan opaquePlan = renderer::ResolveOpaqueRenderPlan(rs, {
-        gbufferRT.IsValid() && gbufferShader.IsValid(),
-        deferredLightingShader.IsValid(),
-        depthCopyShader.IsValid(),
-    });
+    RenderPassHandles passHandles{};
+    renderResources.BindPassHandles(viewTargets, passHandles);
+    const auto renderPlan = renderer::PrepareViewRenderPlan(
+        resources, renderer, rs, viewTargets, shared, passHandles, experimentalRayTracingEnabled);
+    if (!renderPlan.IsValid()) {
+        profiler::Profiler::EndSample();
+        FBZZ_LOG_ERROR("RenderSystem: %s", renderer::DescribeRenderPlanReason(renderPlan.failureReason));
+        return;
+    }
+    const auto& opaquePlan = renderPlan.rasterPlan;
     const bool screenSpaceReady = opaquePlan.HasScreenSpaceInputs();
 
     const bool ssaoEnabled =
@@ -619,8 +627,6 @@ void RenderSystem(Scene& scene,
     }
     profiler::Profiler::EndSample();
 
-    RenderPassHandles passHandles{};
-    renderResources.BindPassHandles(viewTargets, passHandles);
     passHandles.customPostProcessShaders.resize(rs.postProcess.customEffects.size());
     /// @note 走る段でリストを分ける。登録順が RenderGraph のタイブレークなので、
     /// @note 同じ段の中では customEffects に並べた順がそのまま適用順になる。
@@ -711,6 +717,7 @@ void RenderSystem(Scene& scene,
         outputRT, cullingMask, passHandles
     };
     passCtx.frustumCullingEnabled   = resolvedCulling.frustumCulling;
+    passCtx.experimentalRayTracingEnabled = experimentalRayTracingEnabled;
     passCtx.occlusionCullingEnabled = resolvedCulling.occlusionCulling;
     passCtx.cullingBoundsPadding    = resolvedCulling.cullingBoundsPadding;
     passCtx.cullMaxDistance         = resolvedCulling.maxDrawDistance;
@@ -820,9 +827,7 @@ void RenderSystem(Scene& scene,
     const bool punctualBufferReady =
         passHandles.punctualLightBuffer.IsValid() && clusterCB.IsValid();
     /// @note クラスタで絞れるか。カリング CS とインデックスバッファが揃って初めて成立する。
-    const bool canCullClusters = rs.UsesClusteredLighting()
-        && clusterIndexBuffer.IsValid() && clusterCullCS.IsValid()
-        && !rs.clustered.forceAllLights;
+    const bool canCullClusters = renderPlan.clusteredLighting;
 
     ClusterLightMode clusterMode = ClusterLightMode::Legacy;
     if (punctualBufferReady && !rs.IsUnlit()) {
@@ -832,6 +837,8 @@ void RenderSystem(Scene& scene,
     const bool clusteredEnabled = (clusterMode == ClusterLightMode::Clustered);
 
     passCtx.punctualLights    = std::move(punctualLights);
+    passCtx.rayLights = std::move(lighting.rayLights);
+    passCtx.rayLightsComplete = lighting.rayLightsComplete;
     passCtx.clusterLightMode  = clusterMode;
     /// @note 霧のフレーム間状態は描画中のビューが持つ (SceneView / GameView で混ざらないように)。
     passCtx.froxelFogState    = &viewTargets.froxelState;
@@ -927,6 +934,7 @@ void RenderSystem(Scene& scene,
     /// @note キャプチャ先と畳み込み出力は RenderGraph 管理外なのでグラフ実行前に直接呼ぶ。
     /// @note SkyCapture / SkyLightBake は dirty を内部判定し、不要フレームは即 return する。
     bool dynamicIblReady = false;
+    bool reflectionProbeSelected = false;
     float reflectionProbeIntensity = 1.0f;
     int dynamicIblMipCount = 0;
     if (activeIblSource == IblSource::DynamicSky) {
@@ -937,24 +945,37 @@ void RenderSystem(Scene& scene,
             passHandles.iblPrefilter  = sEnvironmentResources.skyPrefilter;
             dynamicIblReady = true;
             dynamicIblMipCount = static_cast<int>(sEnvironmentResources.prefilteredMipCount);
+            passCtx.iblIrradiancePublication = {sEnvironmentResources.immutableIrradiance, sEnvironmentResources.immutableIblOwner,
+                sEnvironmentResources.immutableIblEpoch};
+            passCtx.iblPrefilterPublication = {sEnvironmentResources.immutablePrefilter, sEnvironmentResources.immutableIblOwner,
+                sEnvironmentResources.immutableIblEpoch};
         }
     }
 
     /// @note 局所 Reflection Probe はカメラが影響範囲内にいるとき、グローバル IBL より優先する。
     /// @note IBL スロットを共有するので、マテリアル側に専用分岐も追加テクスチャも要らない。
     if (auto* localProbe = ExecuteReflectionProbeCapturePass(passCtx)) {
+        reflectionProbeSelected = true;
         passHandles.iblIrradiance = localProbe->runtimeIrradiance;
         passHandles.iblPrefilter  = localProbe->runtimePrefilter;
         dynamicIblReady = true;
         reflectionProbeIntensity = localProbe->intensity;
         dynamicIblMipCount = static_cast<int>(localProbe->runtimePrefilterMipCount);
+        passCtx.iblIrradiancePublication = {};
+        passCtx.iblPrefilterPublication = {};
+        if (localProbe->runtimeImmutablePublished) {
+            passCtx.iblIrradiancePublication = {localProbe->runtimePublishedIrradiance, localProbe->runtimePublicationOwner,
+                localProbe->runtimePublicationEpoch};
+            passCtx.iblPrefilterPublication = {localProbe->runtimePublishedPrefilter, localProbe->runtimePublicationOwner,
+                localProbe->runtimePublicationEpoch};
+        }
     }
 
     const ActiveWeather weather = FindActiveWeather(scene);
     renderer::PrepareAdvancedConstants(passCtx, viewTargets,
         { dynamicIblReady, reflectionProbeIntensity, dynamicIblMipCount,
           screenAoStrength, screenContactShadowStrength,
-          weather.wetness, weather.darkening, weather.puddleAmount },
+          weather.wetness, weather.darkening, weather.puddleAmount, reflectionProbeSelected },
         [&](AdvancedGraphicsCB& agData) {
             const LightProbeVolumeSelection gi = ExecuteLightProbeBakePass(passCtx, agData);
             const LightProbeVolumeSelection::Entry* slots[2] = { &gi.inner, &gi.outer };
@@ -1039,7 +1060,7 @@ void RenderSystem(Scene& scene,
         }
     };
     renderer::BuildViewPipeline(pipeline, passCtx, viewTargets, shared,
-        { opaquePlan, clusteredEnabled, customAfterOpaqueIndices,
+        { renderPlan, customAfterOpaqueIndices,
           customSceneHdrIndices, customPostProcessIndices }, extensions);
 
     {
@@ -1060,12 +1081,10 @@ void RenderSystem(Scene& scene,
 
     /// @note RenderPipeline 実行 + デバッグスナップショット更新
 
-    /// @note GPU Timestamp Query の前フレーム結果を収集してからフレームを開始する。
-    /// @note GpuProfCollect を先に呼ぶことで前フレームの非同期クエリが確定している可能性を最大化する。
+    /// @note GPU query 領域は renderer の物理フレームが所有する。ビュー開始で再初期化しない。
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::GpuProfilerSetup");
         renderer.GpuProfCollect();
-        renderer.GpuProfBeginFrame();
 
         /// @note GPU フックを RenderPipeline に設定する。CPU フックとは独立しているため、
         /// @note Profiler の CPU スコープ計測と干渉しない。
@@ -1075,11 +1094,19 @@ void RenderSystem(Scene& scene,
         );
     }
 
-    const bool graphExecuted = pipeline.Execute(passCtx, capture);
+    renderer::GpuProfilerViewMetadata gpuView;
+    gpuView.applicationFrameSerial = resources.FrameStamp();
+    gpuView.viewId = viewKey;
+    gpuView.sceneGeneration = scene.GetRenderSceneGeneration();
+    gpuView.resourceEpoch = resources.GetResetVersion();
+    gpuView.outputId = outputRT.id;
+    gpuView.outputGeneration = outputRT.gen;
+    gpuView.width = sHdrW;
+    gpuView.height = sHdrH;
+    const bool graphExecuted = pipeline.Execute(passCtx, capture, &gpuView, &viewTargets.renderPlan);
 
-    renderer.GpuProfEndFrame();
     if (capture)
-        capture->Finish(pipeline.LastReport(), renderer.GpuProfGetResults());
+        capture->Finish(pipeline.LastReport(), renderer.GpuProfGetSnapshot(), pipeline.LastGpuProfilerView());
     assert(graphExecuted);
     (void)graphExecuted;
     /// @note パスが書き換えたフレームをまたぐ状態をビューへ戻す。
@@ -1118,8 +1145,17 @@ void RenderSystem(Scene& scene,
         for (const auto& profile : pipeline.LastReport().profiles)
             dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
 
-        /// @note GPU 計測結果を Snapshot に詰める。QUERY_LATENCY フレーム以内は空になる。
-        for (const auto& gp : renderer.GpuProfGetResults())
+        /// @note 遅延値は出自を保持し、別ビュー・旧 Plan・再生成前の資源へ帰属させない。
+        dbgSnap.gpuCurrentView = pipeline.LastGpuProfilerView();
+        dbgSnap.gpuProfiler = renderer.GpuProfGetSnapshot();
+        std::erase_if(dbgSnap.gpuProfiler.passes, [&](const auto& gp) {
+            return !gp.available || !std::isfinite(gp.gpuMs) || gp.gpuMs < 0.0
+                || gp.physicalFrameSerial != dbgSnap.gpuProfiler.physicalFrameSerial
+                || gp.deviceEpoch != dbgSnap.gpuProfiler.deviceEpoch
+                || !renderer::IsGpuProfilerViewCompatible(gp.metadata, dbgSnap.gpuCurrentView, 8u);
+        });
+        dbgSnap.gpuProfiler.available = dbgSnap.gpuProfiler.available && !dbgSnap.gpuProfiler.passes.empty();
+        for (const auto& gp : dbgSnap.gpuProfiler.passes)
             dbgSnap.gpuPassTimings.push_back({ gp.name, gp.gpuMs });
 
         /// @note カリング統計を Snapshot に詰める

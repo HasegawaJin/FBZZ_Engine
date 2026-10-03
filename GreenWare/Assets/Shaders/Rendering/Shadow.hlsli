@@ -67,17 +67,15 @@ static const float pcssLightRadius = 1.0f;
 /// @note =========================================================================
 /// @note PCF (Percentage Closer Filtering) シャドウ
 /// @note shadowMap    : Texture2D<float> — シャドウデプスバッファ
-/// @note shadowSampler: SamplerComparisonState (GREATER_EQUAL / BORDER=1.0)
+/// @note shadowSampler: SamplerComparisonState (LESS_EQUAL / BORDER=1.0)
 /// @note uv           : シャドウマップ UV [0,1]
 /// @note depth        : ライト空間の深度値 - バイアス (比較基準)
 /// @note texelSize    : 1.0 / シャドウマップ解像度
 /// @note radius       : PCF カーネル半径 (1 = 3x3, 2 = 5x5)
 /// @note 戻り値        : 0.0=完全に影, 1.0=完全に照らされている
 
-/// @note GREATER_EQUAL の比較規則:
-/// @note SampleCmpLevelZero は "stored COMP compare" を評価する。
-/// @note 照らされているピクセル: stored ≈ receiver_depth >= receiver-bias → 1.0(lit) ✓
-/// @note 影のピクセル: stored = blocker_depth < receiver_depth → 0.0(shadow) ✓
+/// @note 通常 Z の比較は receiver-bias <= stored なら 1 (lit)、blocker の stored が小さければ 0 (shadow)。
+/// @see https://learn.microsoft.com/windows/win32/direct3dhlsl/dx-graphics-hlsl-to-samplecmplevelzero Microsoft — SampleCmpLevelZero.
 /// @note =========================================================================
 float SampleShadowPCF(Texture2D<float> shadowMap,
                       SamplerComparisonState shadowSampler,
@@ -329,6 +327,129 @@ float ComputeShadow(Texture2D<float> shadowMap,
 
 
 /// @note ============================================================
+
+/// @brief 現在の受光面をアトラス UV に投影した深度勾配を求める。
+/// @pre lightVP は方向光の正射影。位置の微分はカスケード選択より前に求めること。
+/// @return 退化・非有限・1 テクセル内で深度範囲の 1% を超える面は false。
+/// @see https://learn.microsoft.com/windows/win32/dxtecharts/cascaded-shadow-maps#calculating-a-per-texel-depth-bias-with-ddx-and-ddy-for-large-pcfs Microsoft — receiver plane depth bias.
+bool ShadowReceiverPlaneGradient(float3 worldPositionDx, float3 worldPositionDy,
+                                 float4x4 lightVP, float4 atlasRect, float2 texelSize,
+                                 out float2 depthGradient)
+{
+    depthGradient = float2(0.0f, 0.0f);
+    const float3 lightDx = mul(float4(worldPositionDx, 0.0f), lightVP).xyz;
+    const float3 lightDy = mul(float4(worldPositionDy, 0.0f), lightVP).xyz;
+    if (!all(isfinite(lightDx)) || !all(isfinite(lightDy)))
+        return false;
+    const float2 uvDx = lightDx.xy * float2(0.5f, -0.5f) * atlasRect.zw;
+    const float2 uvDy = lightDy.xy * float2(0.5f, -0.5f) * atlasRect.zw;
+    const float determinant = uvDx.x * uvDy.y - uvDx.y * uvDy.x;
+    const float determinantScale = length(uvDx) * length(uvDy);
+    /// @note 絶対 epsilon は遠方の正常な小さい UV 勾配まで無効にするため、逆行列の条件を相対値で判定する。
+    if (determinantScale <= 0.0f || abs(determinant) <= determinantScale * 1e-4f)
+        return false;
+    const float2 gradient = float2(
+        uvDy.y * lightDx.z - uvDx.y * lightDy.z,
+        uvDx.x * lightDy.z - uvDy.x * lightDx.z) / determinant;
+    /// @note シルエットの深度不連続やライトへ平行に近い面を、広域の影を消す補正へ拡大しない。
+    if (!all(isfinite(gradient)) || dot(abs(gradient), texelSize) > 0.01f)
+        return false;
+    depthGradient = gradient;
+    return true;
+}
+
+/// @brief PCF の各比較深度を、隣接テクセル位置における受光面の深度へ合わせる。
+/// @note 勾配が無効なら従来の slope bias へ戻る。有効な面の補正は材質の法線マップに依存しない。
+/// @see https://learn.microsoft.com/windows/win32/dxtecharts/cascaded-shadow-maps#depth-bias Microsoft — large PCF self-shadowing.
+float SampleShadowSurfacePCF(Texture2D<float> shadowMap,
+                             SamplerComparisonState shadowSampler,
+                             float2 uv, float depth, float4 atlasRect, float2 texelSize,
+                             float bias, float3 N, float3 L, float4x4 lightVP,
+                             float3 worldPositionDx, float3 worldPositionDy)
+{
+    float2 depthGradient;
+    const bool hasReceiverPlane = ShadowReceiverPlaneGradient(worldPositionDx, worldPositionDy,
+        lightVP, atlasRect, texelSize, depthGradient);
+    /// @note ハードウェアの線形比較は 4 テクセルへ同じ基準を渡すため、tap 内の最大 1 テクセル差だけ bias で覆う。
+    const float adjustedBias = hasReceiverPlane
+        ? bias + dot(abs(depthGradient), texelSize)
+        : ApplySlopeScaledBias(bias, N, L);
+    const float2 centerUV = CascadeUVToAtlas(uv, atlasRect);
+    const float2 inset = texelSize * (float(shadowPcfRadius) + 1.0f);
+    const float2 uvMin = atlasRect.xy + inset;
+    const float2 uvMax = atlasRect.xy + atlasRect.zw - inset;
+    float shadow = 0.0f;
+    float total = 0.0f;
+    for (int y = -shadowPcfRadius; y <= shadowPcfRadius; ++y)
+    for (int x = -shadowPcfRadius; x <= shadowPcfRadius; ++x)
+    {
+        const float2 sampleUV = clamp(centerUV + float2(x, y) * texelSize, uvMin, uvMax);
+        /// @note クランプした tap の実際の UV 差を使い、タイル端でも深度勾配と同じ単位で比較する。
+        const float sampleDepth = depth - adjustedBias + dot(sampleUV - centerUV, depthGradient);
+        shadow += shadowMap.SampleCmpLevelZero(shadowSampler, sampleUV, sampleDepth);
+        total += 1.0f;
+    }
+    return shadow / total;
+}
+
+/// @brief 幾何の微分がある不透明受光面に receiver plane 補正を適用する。
+/// @pre worldPositionDx / Dy は PS 内の分岐・discard・カスケード選択より前に求めること。
+/// @note 水面・体積光の既存 ComputeShadow はこの経路へ切り替えない。
+/// @see Docs/design/terrain-layers.md
+float ComputeShadowSurface(Texture2D<float> shadowMap,
+                           SamplerComparisonState shadowSampler,
+                           float3 worldPos, float4x4 lightVP,
+                           float2 texelSize, float bias, float3 N, float3 L,
+                           float3 worldPositionDx, float3 worldPositionDy)
+{
+    const float cloud = SampleCloudShadow(worldPos);
+    if (shadowStrength <= 0.0f)
+        return cloud;
+    if (cascadeCount <= 1)
+    {
+        float2 uv;
+        float depth;
+        WorldToShadowUV(worldPos, lightVP, uv, depth);
+        if (any(uv < 0.0f) || any(uv > 1.0f) || depth < 0.0f || depth > 1.0f)
+            return cloud;
+        const float factor = SampleShadowSurfacePCF(shadowMap, shadowSampler, uv, depth,
+            float4(0.0f, 0.0f, 1.0f, 1.0f), texelSize, bias, N, L, lightVP,
+            worldPositionDx, worldPositionDy);
+        return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
+    }
+
+    float2 uv;
+    float depth;
+    float edge;
+    const int index = SelectShadowCascade(worldPos, uv, depth, edge);
+    if (index < 0)
+        return cloud;
+    float factor = SampleShadowSurfacePCF(shadowMap, shadowSampler, uv, depth,
+        cascadeAtlasRect[index], texelSize, CascadeBiasAt(index), N, L,
+        cascadeViewProjection[index], worldPositionDx, worldPositionDy);
+    if (cascadeBlend > 0.0f && index + 1 < cascadeCount)
+    {
+        const float blendStart = 1.0f - cascadeBlend;
+        if (edge > blendStart)
+        {
+            float2 nextUV;
+            float nextDepth;
+            WorldToShadowUV(worldPos, cascadeViewProjection[index + 1], nextUV, nextDepth);
+            if (all(nextUV >= 0.0f) && all(nextUV <= 1.0f) &&
+                nextDepth >= 0.0f && nextDepth <= 1.0f)
+            {
+                const float nextFactor = SampleShadowSurfacePCF(shadowMap, shadowSampler,
+                    nextUV, nextDepth, cascadeAtlasRect[index + 1], texelSize,
+                    CascadeBiasAt(index + 1), N, L, cascadeViewProjection[index + 1],
+                    worldPositionDx, worldPositionDy);
+                const float blend = saturate((edge - blendStart) / max(cascadeBlend, 1e-4f));
+                factor = lerp(factor, nextFactor, blend);
+            }
+        }
+    }
+    return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
+}
+
 /// @note PCSS (Percentage Closer Soft Shadows)
 /// @note ============================================================
 /// @note ComputeShadowPCSS — PCSS アルゴリズムによるソフトシャドウ計算。

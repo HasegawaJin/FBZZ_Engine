@@ -1,0 +1,19 @@
+[editor]
+format_version = 2
+hidden_objects = []
+locked_objects = []
+
+    [[editor.game_objects]]
+    component_order = [ 'Post Process Volume' ]
+    instance_id = '6e13a473-ccfe-40e8-a8ac-64a0a037d97b'
+
+    [[editor.game_objects]]
+    component_order = [ 'Reflection Probe' ]
+    instance_id = 'e56949fd-608b-4371-a48f-d2a8638484b7'
+
+    [[editor.game_objects]]
+    component_order = [ 'Mesh Renderer', 'Material' ]
+    instance_id = '4ffad7cf-a907-4f38-acb8-6807ed8de052'
+
+[meta]
+guid = '2ed6026bb8788b351f05bfb22768b394'

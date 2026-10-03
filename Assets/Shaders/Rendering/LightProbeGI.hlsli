@@ -12,8 +12,14 @@
 #include "Common/BindlessIndices.hlsli"
 
 /// @note 1 プローブ = 7 texel。Z 方向へ [SHAr, SHAg, SHAb, SHBr, SHBg, SHBb, SHC] の順に gridZ 枚ずつ積む。
-FBZZ_TEX3D(gLightProbeSH, TEX_LIGHT_PROBE_SH_SLOT);
-FBZZ_TEX3D(gLightProbeSHOuter, TEX_LIGHT_PROBE_SH_OUTER_SLOT);
+#ifndef FBZZ_LIGHT_PROBE_SH_SLOT
+#define FBZZ_LIGHT_PROBE_SH_SLOT TEX_LIGHT_PROBE_SH_SLOT
+#endif
+#ifndef FBZZ_LIGHT_PROBE_SH_OUTER_SLOT
+#define FBZZ_LIGHT_PROBE_SH_OUTER_SLOT TEX_LIGHT_PROBE_SH_OUTER_SLOT
+#endif
+FBZZ_TEX3D(gLightProbeSH, FBZZ_LIGHT_PROBE_SH_SLOT);
+FBZZ_TEX3D(gLightProbeSHOuter, FBZZ_LIGHT_PROBE_SH_OUTER_SLOT);
 static const uint kLightProbeSHSlices = 7u;
 
 /// @brief 多項式形の L2 SH から、法線 n の拡散放射照度 / π を求める。
@@ -98,4 +104,4 @@ float FBZZ_ProbeSpecularOcclusion(float3 probeIrradiance, float3 skyIrradiance)
     return lerp(1.0f, ratio, saturate(probeSpecularOcclusion));
 }
 
-#endif // LIGHT_PROBE_GI_HLSLI
+#endif
