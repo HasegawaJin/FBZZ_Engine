@@ -8,6 +8,9 @@
 
 #include <Core/Logger.hpp>
 #include <Core/HResult.hpp>
+#include <Graphics/Renderer/RuntimePackageValidation.hpp>
+#include <Core/Util/StringUtils.hpp>
+#include "GraphicsRuntimeContract.hpp"
 #include <cstring>
 #include <cwchar>
 #include <algorithm>
@@ -41,6 +44,32 @@ bool CheckResult(HRESULT result, const char* operation)
     FBZZ_LOG_ERROR("DX12Context: %s に失敗しました (HRESULT=0x%08X)", operation,
                    static_cast<unsigned int>(result));
     return false;
+}
+
+/// @note 診断は既存モジュールの観測だけに限定し、Core の選択を変えない。
+/// @see https://microsoft.github.io/DirectX-Specs/d3d/D3D12Redistributable.html#using-the-redist OS runtime selection.
+void LogLoadedRuntime()
+{
+    wchar_t path[32768]{};
+    HMODULE module = GetModuleHandleW(L"D3D12Core.dll");
+    if (!module || !GetModuleFileNameW(module, path, static_cast<DWORD>(std::size(path)))) {
+        FBZZ_LOG_WARN("DX12Context: actual D3D12Core module unavailable");
+        return;
+    }
+    DWORD ignored = 0;
+    const DWORD size = GetFileVersionInfoSizeW(path, &ignored);
+    std::vector<unsigned char> buffer(size);
+    void* data = nullptr;
+    UINT length = 0;
+    if (size && GetFileVersionInfoW(path, 0, size, buffer.data())
+        && VerQueryValueW(buffer.data(), L"\\", &data, &length) && length >= sizeof(VS_FIXEDFILEINFO)) {
+        const auto* version = static_cast<const VS_FIXEDFILEINFO*>(data);
+        FBZZ_LOG_INFO("DX12Context: actual Core=%s version=%u.%u.%u.%u",
+            util::StringUtils::ToNarrow(path).c_str(), HIWORD(version->dwFileVersionMS), LOWORD(version->dwFileVersionMS),
+            HIWORD(version->dwFileVersionLS), LOWORD(version->dwFileVersionLS));
+    } else {
+        FBZZ_LOG_INFO("DX12Context: actual Core=%s version=unavailable", util::StringUtils::ToNarrow(path).c_str());
+    }
 }
 
 } /// @note namespace
@@ -80,20 +109,23 @@ bool DX12Context::Initialize(HWND hwnd, uint32_t width, uint32_t height)
     m_height = height;
     FBZZ_LOG_INFO("DX12Context::Initialize: 開始 (%ux%u)", width, height);
 
-#if defined(FBZZ_GPU_VALIDATION)
-    Microsoft::WRL::ComPtr<ID3D12Debug> debug;
-    /// @note `FBZZ_GPU_VALIDATION=0` を環境変数に入れると、ビルドし直さずに切れる。
-    if (gpuvalidation::IsEnabled() && SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
-        debug->EnableDebugLayer();
-        FBZZ_LOG_INFO("DX12Context: デバッグレイヤー有効化");
-        /// @note GPU-Based Validation は全 Draw/Dispatch へ検証処理を挿入し、Scene/Game の
-        /// @note       2 View を描く Editor では数十 FPS まで低下する。通常の Debug Layer は維持し、
-        /// @note       GPU-Based Validation は PIX 等で問題を局所調査するときだけ一時的に有効化する。
-        FBZZ_LOG_INFO("DX12Context: GPU-Based Validation 無効 (通常Debug実行)");
-    } else if (gpuvalidation::IsEnabled()) {
-        FBZZ_LOG_WARN("DX12Context: D3D12GetDebugInterface 取得不可 (デバッグレイヤーなしで続行)");
+    wchar_t hostPath[32768]{};
+    const DWORD hostLength = GetModuleFileNameW(nullptr, hostPath, static_cast<DWORD>(std::size(hostPath)));
+    std::string reason;
+    if (!hostLength || hostLength >= std::size(hostPath)
+        || !ValidateGraphicsRuntimePackage(std::filesystem::path(hostPath), reason)) {
+        FBZZ_LOG_ERROR("DX12Context: Agility package validation failed: %s", reason.c_str());
+        return false;
     }
-#endif
+    std::error_code packageError;
+    if (gpuvalidation::IsExplicitlyRequested()
+        && !std::filesystem::is_regular_file(std::filesystem::path(hostPath).parent_path() / "D3D12/d3d12SDKLayers.dll", packageError)) {
+        FBZZ_LOG_ERROR("DX12Context: FBZZ_GPU_VALIDATION=1 requires D3D12/d3d12SDKLayers.dll beside the host");
+        return false;
+    }
+    if (!gpuvalidation::InitializeD3D12()) return false;
+    FBZZ_LOG_INFO("DX12Context: requested Agility %s (SDK=%u), validation=%s",
+        runtimecontract::PACKAGE_VERSION, runtimecontract::SDK_VERSION, gpuvalidation::IsActive() ? "active" : "inactive");
 
     /// @note 各ステップの成否をログに残す。起動時サイレントクラッシュの切り分け用に、
     /// @note       「直前に出た INFO の次の段階で落ちている」と特定できるようにする。
@@ -117,12 +149,16 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     (void)hwnd;
     UINT flags = 0;
 #if defined(FBZZ_GPU_VALIDATION)
-    if (gpuvalidation::IsEnabled())
+    if (gpuvalidation::IsActive())
         flags |= DXGI_CREATE_FACTORY_DEBUG;
 #endif
     HRESULT factoryResult = CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory));
 #if defined(FBZZ_GPU_VALIDATION)
     if (FAILED(factoryResult) && (flags & DXGI_CREATE_FACTORY_DEBUG) != 0) {
+        if (gpuvalidation::IsExplicitlyRequested()) {
+            FBZZ_LOG_ERROR("DX12Context: explicitly requested DXGI validation unavailable (HRESULT=0x%08X)", static_cast<unsigned int>(factoryResult));
+            return false;
+        }
         /// @note 検証つきの Factory は «グラフィックス ツール» が入っていない機械では作れない。
         /// @note       検証が無いだけで動く構成を、起動できない構成にしない。
         FBZZ_LOG_WARN("DX12Context: 検証つき DXGI Factory を作れません "
@@ -136,11 +172,20 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
     FBZZ_LOG_INFO("DX12Context: DXGI Factory 生成 OK (flags=0x%X)", flags);
 
     Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+    HRESULT deviceResult = S_OK;
+    const auto createDevice = [this, &deviceResult](IDXGIAdapter* candidate) {
+        deviceResult = D3D12CreateDevice(candidate, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device));
+        if (deviceResult == D3D12_ERROR_INVALID_REDIST)
+            FBZZ_LOG_ERROR("DX12Context: D3D12_ERROR_INVALID_REDIST; requested Agility=%s SDK=%u path=%s HRESULT=0x%08X",
+                runtimecontract::PACKAGE_VERSION, runtimecontract::SDK_VERSION, runtimecontract::SDK_PATH,
+                static_cast<unsigned int>(deviceResult));
+        return SUCCEEDED(deviceResult);
+    };
     /// @note --warp はソフトウェアラスタライザ。GPU の無い CI で Playtest を回すための口 (Docs/design/ai-verification-loop.md)。
     if (wcsstr(GetCommandLineW(), L"--warp") != nullptr) {
         Microsoft::WRL::ComPtr<IDXGIAdapter> warp;
         if (SUCCEEDED(m_factory->EnumWarpAdapter(IID_PPV_ARGS(&warp)))
-            && SUCCEEDED(D3D12CreateDevice(warp.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)))) {
+            && createDevice(warp.Get())) {
             FBZZ_LOG_INFO("DX12Context: アダプター選択 [WARP] (--warp)");
         } else {
             FBZZ_LOG_ERROR("DX12Context: --warp が指定されたが WARP デバイスを作れません");
@@ -152,20 +197,33 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
         DXGI_ADAPTER_DESC1 desc{};
         adapter->GetDesc1(&desc);
         if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0
-            && SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
-                                           IID_PPV_ARGS(&m_device)))) {
+            && createDevice(adapter.Get())) {
             FBZZ_LOG_INFO("DX12Context: アダプター選択 [%ls] (VRAM=%lluMB)",
                           desc.Description,
                           static_cast<unsigned long long>(desc.DedicatedVideoMemory / (1024ull * 1024ull)));
             break;
         }
+        if (deviceResult == D3D12_ERROR_INVALID_REDIST) return false;
         adapter.Reset();
     }
-    if (!m_device && FAILED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device)))) {
+    if (!m_device && !createDevice(nullptr)) {
         FBZZ_LOG_ERROR("DX12Context: DirectX 12 対応デバイスが見つかりません");
         return false;
     }
     FBZZ_LOG_INFO("DX12Context: D3D12 Device 生成 OK");
+    LogLoadedRuntime();
+    Microsoft::WRL::ComPtr<IDXGIAdapter1> selectedAdapter;
+    LARGE_INTEGER driverVersion{};
+    /// @note IDXGIDevice の UMD 版は WDDM 2.3 以降 D3D9 / 11 / 12 の共通ドライバー版を返す。
+    /// @see https://learn.microsoft.com/windows/win32/api/dxgi/nf-dxgi-idxgiadapter-checkinterfacesupport pUMDVersion.
+    if (SUCCEEDED(m_factory->EnumAdapterByLuid(m_device->GetAdapterLuid(), IID_PPV_ARGS(&selectedAdapter)))
+        && SUCCEEDED(selectedAdapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driverVersion))) {
+        FBZZ_LOG_INFO("DX12Context: driver version=%u.%u.%u.%u",
+            HIWORD(driverVersion.HighPart), LOWORD(driverVersion.HighPart),
+            HIWORD(driverVersion.LowPart), LOWORD(driverVersion.LowPart));
+    } else {
+        FBZZ_LOG_INFO("DX12Context: driver version=unavailable");
+    }
 
     /// @note OS/runtime は未知の Shader Model を `E_INVALIDARG` で拒否するため新しい順に照会する。
     /// @note       コンパイル可能な SM と実機で実行可能な SM は別物で、DXR パスの安全な縮退に使う。
@@ -223,7 +281,7 @@ bool DX12Context::CreateFactoryAndDevice(HWND hwnd)
 
 #if defined(FBZZ_GPU_VALIDATION)
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
-    if (gpuvalidation::IsEnabled() && SUCCEEDED(m_device.As(&infoQueue))) {
+    if (gpuvalidation::IsActive() && SUCCEEDED(m_device.As(&infoQueue))) {
         /// @note DX11 と同じ方針: 検証は維持し読み出しは終了時の 1 回だけにする。D3D12 は
         /// @note       リソース遷移・ディスクリプタ操作の通知が多く、毎フレーム読み出すと
         /// @note       Development/Debug の CPU コストが Release と大きく離れる。

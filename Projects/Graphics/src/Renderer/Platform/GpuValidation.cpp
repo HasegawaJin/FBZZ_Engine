@@ -7,6 +7,8 @@
 #include <d3d12sdklayers.h>
 #include <cstddef>
 #include <vector>
+#include <d3d12.h>
+#include <atomic>
 #include "GpuValidation.hpp"
 
 #if defined(FBZZ_GPU_VALIDATION)
@@ -17,6 +19,49 @@
 #endif
 
 namespace fbzz::renderer::gpuvalidation {
+namespace {
+std::atomic<bool> g_validationActive{false};
+}
+
+bool IsExplicitlyRequested()
+{
+    static const bool required = [] {
+        wchar_t value[8]{};
+        const DWORD length = GetEnvironmentVariableW(L"FBZZ_GPU_VALIDATION", value, 8);
+        return length == 1 && value[0] == L'1';
+    }();
+    return required;
+}
+
+bool IsActive()
+{
+    return g_validationActive.load(std::memory_order_acquire);
+}
+
+bool InitializeD3D12()
+{
+    /// @note 関数ローカル static は C++ の同期済み初期化で再生成・複数 context でも一度だけ実行される。
+    static const bool success = [] {
+        if (!IsEnabled() && !IsExplicitlyRequested()) return true;
+#if defined(FBZZ_GPU_VALIDATION)
+        Microsoft::WRL::ComPtr<ID3D12Debug> debug;
+        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
+            debug->EnableDebugLayer();
+            g_validationActive.store(true, std::memory_order_release);
+            FBZZ_LOG_INFO("GpuValidation: D3D12 debug layer active; GPU-based validation disabled");
+            return true;
+        }
+#endif
+        if (IsExplicitlyRequested()) {
+            FBZZ_LOG_ERROR("GpuValidation: FBZZ_GPU_VALIDATION=1 requires compiled validation support and matching SDK layers / Windows Graphics Tools");
+            return false;
+        }
+        FBZZ_LOG_WARN("GpuValidation: default validation unavailable; rendering continues with validation inactive");
+        return true;
+    }();
+    return success;
+}
+
 void DrainStoredMessages(ID3D12InfoQueue& queue, const char* tag)
 {
     const std::uint64_t count = queue.GetNumStoredMessages();
@@ -78,13 +123,13 @@ bool IsEnabled()
 
 bool ShouldBreakOnError()
 {
-    return IsEnabled() && IsDebuggerPresent() != FALSE;
+    return IsActive() && IsDebuggerPresent() != FALSE;
 }
 
 void ReportLiveObjects(const GUID& apiId, const char* label)
 {
 #if defined(FBZZ_GPU_VALIDATION)
-    if (!IsEnabled())
+    if (!IsActive())
         return;
 
     Microsoft::WRL::ComPtr<IDXGIDebug1> dxgiDebug;

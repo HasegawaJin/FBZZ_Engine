@@ -5,6 +5,7 @@
 #include "DX12Shader.hpp"
 
 #include <Core/Logger.hpp>
+#include "GraphicsRuntimeContract.hpp"
 #include <Graphics/Renderer/ShaderCompileDiagnostics.hpp>
 #include <Graphics/Renderer/ShaderDependencyTracker.hpp>
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
@@ -47,22 +48,27 @@ std::wstring ResolveShaderPath(const std::string& path)
     return ResolveShaderFilePath(util::StringUtils::ToWide(path)).wstring();
 }
 
-/// @note dxcompiler.dll を遅延ロードして DXC API の静的リンク依存を避ける。
-/// @note Windows SDK や同梱 DXC の配置差を吸収し、DX11 のみを使う環境では DLL を要求しない。
+/// @note 配布物の欠落を PATH / 環境変数で補わず、EXE 基準の検証済み一式だけをロードする。
+/// @see https://learn.microsoft.com/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR.
 DxcCreateInstanceProc GetDxcCreateInstance()
 {
     static HMODULE module = [] {
-        HMODULE loaded = LoadLibraryW(L"dxcompiler.dll");
-        if (loaded) return loaded;
-
-        /// @note FBZZ_DXC が dxc.exe の絶対パスなら、同じディレクトリの DLL も探索する。
-        wchar_t compilerPath[32768]{};
-        const DWORD length = GetEnvironmentVariableW(
-            L"FBZZ_DXC", compilerPath, static_cast<DWORD>(std::size(compilerPath)));
-        if (length == 0 || length >= std::size(compilerPath)) return static_cast<HMODULE>(nullptr);
-        std::filesystem::path dllPath(compilerPath);
-        dllPath.replace_filename(L"dxcompiler.dll");
-        return LoadLibraryW(dllPath.c_str());
+        wchar_t hostPath[32768]{};
+        const DWORD length = GetModuleFileNameW(nullptr, hostPath, static_cast<DWORD>(std::size(hostPath)));
+        if (length == 0 || length >= std::size(hostPath)) return static_cast<HMODULE>(nullptr);
+        const auto dllPath = std::filesystem::path(hostPath).parent_path() / "dxcompiler.dll";
+        HMODULE loaded = LoadLibraryExW(dllPath.c_str(), nullptr,
+            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
+        wchar_t actualPath[32768]{};
+        if (loaded && (!GetModuleFileNameW(loaded, actualPath, static_cast<DWORD>(std::size(actualPath)))
+            || _wcsicmp(actualPath, dllPath.c_str()) != 0)) {
+            FBZZ_LOG_ERROR("DX12Shader: another DXC compiler is already loaded: %ls (expected %ls)", actualPath, dllPath.c_str());
+            FreeLibrary(loaded);
+            return static_cast<HMODULE>(nullptr);
+        }
+        if (loaded) FBZZ_LOG_INFO("DX12Shader: actual DXC compiler=%ls package=%s", actualPath, runtimecontract::DXC_PACKAGE_VERSION);
+        else FBZZ_LOG_ERROR("DX12Shader: DXC load failed: %s (error=%lu)", dllPath.string().c_str(), GetLastError());
+        return loaded;
     }();
     if (!module) return nullptr;
     return std::bit_cast<DxcCreateInstanceProc>(GetProcAddress(module, "DxcCreateInstance"));
@@ -76,6 +82,17 @@ bool CreateDxcServices(Microsoft::WRL::ComPtr<IDxcUtils>& utils,
     if (FAILED(createInstance(CLSID_DxcUtils, IID_PPV_ARGS(&utils)))) return false;
     return !compiler || SUCCEEDED(createInstance(
         CLSID_DxcCompiler, IID_PPV_ARGS(compiler->ReleaseAndGetAddressOf())));
+}
+
+/// @note 初期導入・DXC 一式更新時は時刻が新しい CSO でも再生成する。
+bool HasCompilerSignature(const std::string& csoPath, const char* entry, const char* profile)
+{
+    std::ifstream stamp(ResolveShaderPath(csoPath) + L".compiler", std::ios::binary);
+    std::string signature;
+    std::getline(stamp, signature);
+    const std::string expected = std::string(runtimecontract::DXC_SIGNATURE) + "|" + entry + "|"
+        + profile + "|FBZZ_BACKEND_DX12=1|HV2021";
+    return signature == expected;
 }
 
 /// @note DXBC は D3DReflect、DXIL は DXC の container reflection で同じ D3D12 API に正規化する。
@@ -108,7 +125,7 @@ std::vector<uint8_t> CompileShader(
     Microsoft::WRL::ComPtr<IDxcCompiler3> compiler;
     if (!CreateDxcServices(utils, &compiler)) {
         const std::string message =
-            "dxcompiler.dll を読み込めません。DXC を実行ファイルの隣へ配置するか FBZZ_DXC を設定してください";
+            "検証済み dxcompiler.dll / dxil.dll 一式を実行ファイルの隣へ配置してください";
         FBZZ_LOG_ERROR("DX12Shader: %s", message.c_str());
         ReportShaderCompileDiagnostic(path, entryPoint, target, message, true);
         return {};
@@ -194,6 +211,17 @@ std::vector<uint8_t> CompileShader(
         if (binary.is_open()) {
             binary.write(static_cast<const char*>(code->GetBufferPointer()),
                          static_cast<std::streamsize>(code->GetBufferSize()));
+            binary.flush();
+            if (binary.good()) {
+                std::ofstream stamp(output.wstring() + L".compiler", std::ios::binary);
+                stamp << runtimecontract::DXC_SIGNATURE << '|' << entryPoint << '|' << target
+                    << "|FBZZ_BACKEND_DX12=1|HV2021\n";
+#if defined(_DEBUG)
+                stamp << "-Zi -Qembed_debug -Od";
+#else
+                stamp << "-O3";
+#endif
+            }
             FBZZ_LOG_INFO("DX12Shader: CSOを更新しました: %s", csoSavePath.c_str());
         } else {
             FBZZ_LOG_WARN("DX12Shader: CSOを保存できません: %s", csoSavePath.c_str());
@@ -441,7 +469,8 @@ bool DX12Shader::Init(const std::string& path)
     const std::string base = CompiledBase(path);
     if (path.ends_with(".cs.hlsl")) {
         const std::string csoPath = base + ".cso";
-        const bool stale = shader_dependency::IsBinaryStale(path, csoPath);
+        const bool stale = shader_dependency::IsBinaryStale(path, csoPath)
+            || !HasCompilerSignature(csoPath, "CSMain", "cs_6_8");
         m_computeBlob = stale ? std::vector<uint8_t>{} : LoadBinary(csoPath);
         const bool loadedCso = !m_computeBlob.empty();
         if (m_computeBlob.empty()) {
@@ -455,8 +484,10 @@ bool DX12Shader::Init(const std::string& path)
     }
     const std::string vsPath = base + ".vs.cso";
     const std::string psPath = base + ".ps.cso";
-    const bool vsStale = shader_dependency::IsBinaryStale(path, vsPath);
-    const bool psStale = shader_dependency::IsBinaryStale(path, psPath);
+    const bool vsStale = shader_dependency::IsBinaryStale(path, vsPath)
+        || !HasCompilerSignature(vsPath, "VSMain", "vs_6_8");
+    const bool psStale = shader_dependency::IsBinaryStale(path, psPath)
+        || !HasCompilerSignature(psPath, "PSMain", "ps_6_8");
     m_vertexBlob = vsStale ? std::vector<uint8_t>{} : LoadBinary(vsPath);
     m_pixelBlob = psStale ? std::vector<uint8_t>{} : LoadBinary(psPath);
     const bool loadedCso = !m_vertexBlob.empty() && !m_pixelBlob.empty();

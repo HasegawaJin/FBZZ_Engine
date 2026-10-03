@@ -36,6 +36,13 @@ inline constexpr bool kDefaultOn =
 /// @note       1 を渡して追う日だけ立てられ、Debug で検証レイヤー自身を疑うときは 0 で外せる。
 [[nodiscard]] bool IsEnabled();
 
+/// @return 明示要求を満たせなければ false。既定 ON の失敗は警告で続行する。
+/// @note 最初の D3D12 デバイス生成前に呼ぶ。プロセス中一度だけ検証設定を確定する。
+/// @see https://learn.microsoft.com/windows/win32/api/d3d12sdklayers/nf-d3d12sdklayers-id3d12debug-enabledebuglayer
+[[nodiscard]] bool InitializeD3D12();
+[[nodiscard]] bool IsExplicitlyRequested();
+[[nodiscard]] bool IsActive();
+
 /// @note 検証エラーでデバッガーへ落とすか。
 /// @note デバッガー接続時だけに絞る理由: SetBreakOnSeverity はブレークポイント例外を投げるため、
 /// @note       デバッガーが居ない実行 (エディターを直接起動した場合) では «原因不明のクラッシュ» に
