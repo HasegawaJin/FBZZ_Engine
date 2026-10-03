@@ -66,11 +66,11 @@ public:
         for (const auto& entry : m_modules) {
             auto& module = *entry.script;
             if (m_hasStarted) module.ResetLifecycleState();
-            module.ExecuteCallback(&Script::OnAwake, "OnAwake");
+            module.ExecuteProfiledCallback(&Script::OnAwake, ScriptCallbackKind::AWAKE, "OnAwake");
             module.SynchronizeEnabledState(m_owner.scene.IsActiveAndEnabled());
             if (auto* object = m_owner.scene.Self())
                 if (!ValidateScriptRequirementsForStart(*object, module)) continue;
-            module.ExecuteCallback(&Script::OnStart, "OnStart");
+            module.ExecuteProfiledCallback(&Script::OnStart, ScriptCallbackKind::START, "OnStart");
         }
         m_hasStarted = true;
     }
@@ -94,17 +94,17 @@ public:
             if (module.scene.IsActiveAndEnabled()) module.UpdateInvocations(dt);
             if (module.scene.IsActiveAndEnabled()) module.UpdateCoroutines();
         }
-        Dispatch(m_update, &Script::OnUpdate, "OnUpdate");
+        Dispatch(m_update, &Script::OnUpdate, ScriptCallbackKind::UPDATE, "OnUpdate");
     }
 
     void LateUpdate()
     {
-        if (Synchronize()) Dispatch(m_late, &Script::OnLateUpdate, "OnLateUpdate");
+        if (Synchronize()) Dispatch(m_late, &Script::OnLateUpdate, ScriptCallbackKind::LATE_UPDATE, "OnLateUpdate");
     }
 
     void FixedUpdate()
     {
-        if (Synchronize()) Dispatch(m_fixed, &Script::OnFixedUpdate, "OnFixedUpdate");
+        if (Synchronize()) Dispatch(m_fixed, &Script::OnFixedUpdate, ScriptCallbackKind::FIXED_UPDATE, "OnFixedUpdate");
     }
 
     void Destroy()
@@ -114,7 +114,7 @@ public:
         Bind();
         for (const auto& entry : m_modules) {
             auto& module = *entry.script;
-            module.ExecuteCallback(&Script::OnDestroy, "OnDestroy");
+            module.ExecuteProfiledCallback(&Script::OnDestroy, ScriptCallbackKind::DESTROY, "OnDestroy");
             module.CancelInvoke();
             module.StopAllCoroutines();
             module.CancelEventSubscriptions();
@@ -129,7 +129,7 @@ public:
     {
         Bind();
         for (const auto& entry : m_modules)
-            entry.script->ExecuteCallback(&Script::OnDrawGizmos, "OnDrawGizmos");
+            entry.script->ExecuteProfiledCallback(&Script::OnDrawGizmos, ScriptCallbackKind::DRAW_GIZMOS, "OnDrawGizmos");
     }
 
     /// @note 既存シーンの保存キーを保つため平坦に展開する。親・子のフィールド名は一意にする。
@@ -171,12 +171,12 @@ private:
         return active;
     }
 
-    void Dispatch(const std::vector<Script*>& order, void (Script::*callback)(), const char* name)
+    void Dispatch(const std::vector<Script*>& order, void (Script::*callback)(), ScriptCallbackKind kind, const char* name)
     {
         for (auto* module : order) {
             const bool active = m_owner.scene.IsActiveAndEnabled();
             module->SynchronizeEnabledState(active);
-            if (active && module->enabled && !module->RequirementsBlocked()) module->ExecuteCallback(callback, name);
+            if (active && module->enabled && !module->RequirementsBlocked()) module->ExecuteProfiledCallback(callback, kind, name);
         }
     }
 

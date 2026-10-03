@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 ///
-/// Script コールバック (OnNavMeshTargetSpotted/Lost) で通知する。
-/// autoChase 中は同 GO の NavMeshAgentComponent と連携し、見失った直後は
-/// 最後に見えた位置まで一度だけ移動させてから巡回などへ戻れるようにする。
+/// @note Script コールバック (OnNavMeshTargetSpotted/Lost) で通知する。
+/// @note autoChase 中は同 GO の NavMeshAgentComponent と連携し、見失った直後は
+/// @note 最後に見えた位置まで一度だけ移動させてから巡回などへ戻れるようにする。
 #include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
@@ -24,18 +24,18 @@ namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
 
-void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*callback)())
+void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*callback)(), ScriptCallbackKind kind)
 {
     auto* scriptComp = scene.GetComponent<ScriptComponent>(eid);
     if (!scriptComp) return;
     for (auto& entry : scriptComp->scripts) {
         if (!entry.script || !entry.script->enabled) continue;
         entry.script->SetContext(&scene, &go);
-        entry.script->ExecuteCallback(callback, "NavMesh sensor callback");
+        entry.script->ExecuteProfiledCallback(callback, kind, "NavMesh sensor callback");
     }
 }
 
-} // namespace
+} /// @note namespace
 
 ComponentAccess NavMeshSensorSystem::GetAccess() const
 {
@@ -56,7 +56,7 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
 
         /// @name Behavior Tree との共存
         /// @note BT がある GO では autoChase を無視し、判断は BT に一本化する (両方が agent を
-        ///       掴むと追跡先が振動する)。検知情報 (targetVisible 等) は BT の有無に関わらず更新する。
+        /// @note 掴むと追跡先が振動する)。検知情報 (targetVisible 等) は BT の有無に関わらず更新する。
         const auto* behaviorTree = scene.GetComponent<BehaviorTreeComponent>(eid);
         const bool btOwnsAgent = behaviorTree != nullptr
                               && behaviorTree->enabled
@@ -74,7 +74,7 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
                         sensor->targetVisible  = false;
                         sensor->detectedTarget = EntityID::INVALID;
                         sensor->memoryTimer    = 0.0f;
-                        NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetLost);
+                        NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetLost, ScriptCallbackKind::NAV_TARGET_LOST);
                         if (autoChase) {
                             if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid))
                                 agent->SetDestination(sensor->lastKnownTargetPos);
@@ -142,7 +142,7 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
             sensor->memoryTimer        = sensor->memoryTime;
 
             if (!wasVisible)
-                NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetSpotted);
+                NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetSpotted, ScriptCallbackKind::NAV_TARGET_SPOTTED);
 
             if (autoChase) {
                 if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid))
@@ -161,7 +161,7 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
                 sensor->targetVisible  = false;
                 sensor->detectedTarget = EntityID::INVALID;
                 sensor->memoryTimer    = 0.0f;
-                NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetLost);
+                NotifyScripts(scene, eid, *go, &Script::OnNavMeshTargetLost, ScriptCallbackKind::NAV_TARGET_LOST);
 
                 if (autoChase) {
                     if (auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid))
@@ -172,4 +172,4 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

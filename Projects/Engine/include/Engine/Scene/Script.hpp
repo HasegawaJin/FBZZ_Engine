@@ -14,6 +14,7 @@
 /// @note DataAsset (純共有 ScriptableObject) 参照スロット。
 #include <Engine/Scene/DataAssetRef.hpp>
 #include <Engine/Scene/ScriptAssetRef.hpp>
+#include <Engine/Scene/ScriptCallbackKind.hpp>
 /// @note 自己登録リフレクション基盤 (ReflectTag / DisplayOr)。
 #include <Engine/Scene/Reflection.hpp>
 /// @note FBZZ_FIELD_CURVE / FBZZ_FIELD_GRADIENT の値型。
@@ -47,6 +48,8 @@
 #include <vector>
 
 namespace fbzz::scene {
+
+class ScriptProfiler;
 
 struct ColliderComponent;
 struct Transform;
@@ -1281,6 +1284,17 @@ public:
                          RenderPipeline& pipeline,
                          RenderPassContext& context);
     bool ExecuteCallback(const std::function<void()>& function, const char* callbackName);
+    /// @note 既知 callback は明示 kind を渡す。互換入口は UNKNOWN として記録する。
+    /// @see https://eel.is/c++draft/expr.eq#5.3 仮想メンバー関数ポインターの等値比較は unspecified。
+    bool ExecuteProfiledCallback(void (Script::*callback)(), ScriptCallbackKind kind, const char* callbackName);
+    bool ExecuteProfiledCallback(void (Script::*callback)(const CollisionInfo&), const CollisionInfo& info, ScriptCallbackKind kind, const char* callbackName);
+    bool ExecuteProfiledCallback(void (Script::*callback)(const AnimationEventInfo&), const AnimationEventInfo& info, ScriptCallbackKind kind, const char* callbackName);
+    bool ExecuteProfiledCallback(void (Script::*callback)(const SequenceEventInfo&), const SequenceEventInfo& info, ScriptCallbackKind kind, const char* callbackName);
+    bool ExecuteProfiledCallback(void (Script::*callback)(const char*), const char* argument, ScriptCallbackKind kind, const char* callbackName);
+    bool ExecuteProfiledCallback(void (Script::*callback)(const RootMotionInfo&), const RootMotionInfo& info, ScriptCallbackKind kind, const char* callbackName);
+    bool ExecuteProfiledCallback(void (Script::*callback)(RenderPipeline&, RenderPassContext&), RenderPipeline& pipeline, RenderPassContext& context, ScriptCallbackKind kind, const char* callbackName);
+    /// @note 明示した種別を一度だけ計測し、障害を受信側 Script に帰属させる。
+    bool ExecuteProfiledCallback(const std::function<void()>& function, ScriptCallbackKind kind, const char* callbackName);
     bool ResumeCoroutine(Coroutine& coroutine);
     void UpdateInvocations(float dt);
     void UpdateFrameDelays();
@@ -1320,6 +1334,7 @@ private:
     ScriptInspectionIdentity m_inspectionIdentity;
     bool m_requirementsBlocked = false;
     friend struct ScriptTransformProxy;
+    friend class ScriptProfiler;
     friend struct ScriptInputProxy;
     friend struct ScriptCursorProxy;
     friend struct ScriptApplicationProxy;

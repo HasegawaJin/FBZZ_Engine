@@ -1005,7 +1005,7 @@ void RenderSystem(Scene& scene,
                 if (!entry.script || !entry.script->enabled)
                     continue;
                 entry.script->SetContext(&scene, go);
-                entry.script->ExecuteCallback(&Script::OnSetupRenderPasses, pipeline, passCtx);
+                entry.script->ExecuteProfiledCallback(&Script::OnSetupRenderPasses, pipeline, passCtx, ScriptCallbackKind::SETUP_RENDER_PASSES, "OnSetupRenderPasses");
             }
         }
     };
@@ -1074,7 +1074,7 @@ void RenderSystem(Scene& scene,
                 if (!entry.script || !entry.script->enabled)
                     continue;
                 entry.script->SetContext(&scene, go);
-                entry.script->ExecuteCallback(&Script::OnPreRender, "OnPreRender");
+                entry.script->ExecuteProfiledCallback(&Script::OnPreRender, ScriptCallbackKind::PRE_RENDER, "OnPreRender");
             }
         }
     }
@@ -1126,7 +1126,7 @@ void RenderSystem(Scene& scene,
                 if (!entry.script || !entry.script->enabled)
                     continue;
                 entry.script->SetContext(&scene, go);
-                entry.script->ExecuteCallback(&Script::OnPostRender, "OnPostRender");
+                entry.script->ExecuteProfiledCallback(&Script::OnPostRender, ScriptCallbackKind::POST_RENDER, "OnPostRender");
             }
         }
     }

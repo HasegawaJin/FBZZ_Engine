@@ -122,7 +122,7 @@ void AttachQuadBillboardScript(EditorContext& ctx, scene::GameObject& go)
     if (!script) return;
     script->SetContext(ctx.activeScene, &go);
     script->Reset();
-    script->OnValidate();
+            script->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
     scene::ScriptComponent sc;
     scene::ScriptEntry entry;
     entry.script = std::move(script);

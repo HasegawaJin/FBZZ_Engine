@@ -51,7 +51,7 @@ void DrawQueuedCommand(renderer::IRenderer& r, const ScriptDebugDrawCommand& com
     DebugDraw::SetDepthTest(false);
 }
 
-} // namespace
+} /// @note namespace
 
 void CaptureScriptGizmos(RenderPassContext& ctx, renderer::DebugDrawCapture& out)
 {
@@ -71,10 +71,10 @@ void CaptureScriptGizmos(RenderPassContext& ctx, renderer::DebugDrawCapture& out
             if (!entry.script || !entry.script->enabled) continue;
             entry.script->SetContext(&scene, go);
             entry.script->gizmo.renderer = &ctx.renderer;
-            entry.script->ExecuteCallback(&Script::OnDrawGizmos, "OnDrawGizmos");
+            entry.script->ExecuteProfiledCallback(&Script::OnDrawGizmos, ScriptCallbackKind::DRAW_GIZMOS, "OnDrawGizmos");
             renderer::DebugDraw::SetDepthTest(false);
             if (selected) {
-                entry.script->ExecuteCallback(&Script::OnDrawGizmosSelected, "OnDrawGizmosSelected");
+                entry.script->ExecuteProfiledCallback(&Script::OnDrawGizmosSelected, ScriptCallbackKind::DRAW_GIZMOS_SELECTED, "OnDrawGizmosSelected");
                 renderer::DebugDraw::SetDepthTest(false);
             }
             entry.script->gizmo.renderer = nullptr;
@@ -103,4 +103,4 @@ void ScriptGizmoPass::Execute(PassResources&, RenderPassContext& ctx)
     renderer::DebugDraw::Flush();
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

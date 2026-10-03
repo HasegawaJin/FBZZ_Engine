@@ -14,6 +14,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <Engine/Profiler/ScriptProfiler.hpp>
 #include <span>
 #include <vector>
 
@@ -101,7 +102,7 @@ void Prepare(Scene& scene, const ScriptTarget& target, bool playMode)
         entry->script->SetContext(&scene, go);
         entry->script->SynchronizeEnabledState(false);
         if (!(entry = Resolve(scene, target))) return;
-        entry->script->ExecuteCallback(&Script::OnDestroy, "OnDestroy");
+        entry->script->ExecuteProfiledCallback(&Script::OnDestroy, ScriptCallbackKind::DESTROY, "OnDestroy");
         if (!(entry = Resolve(scene, target))) return;
         entry->script->ResetLifecycleState();
     }
@@ -118,9 +119,10 @@ void ScriptSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
     FBZZ_PROFILE_SCOPE("ScriptSystem");
-    if (IsPausedFrame(ctx)) return;
     const bool playMode = InPlayMode(ctx);
     Script::SetInPlayMode(playMode);
+    ScriptProfiler::ObserveScene(scene);
+    if (IsPausedFrame(ctx)) return;
 
     /// @note フレーム中の追加は次回から参加する。生成を繰り返す Awake でも必ず有限で終える。
     const auto targets = SnapshotScripts(scene);
@@ -131,7 +133,7 @@ void ScriptSystem::Update(SystemContext& ctx)
         if (!entry || entry->m_awoken) continue;
         entry->m_awoken = true;
         entry->m_lifecyclePlayMode = playMode;
-        entry->script->ExecuteCallback(&Script::OnAwake, "OnAwake");
+        entry->script->ExecuteProfiledCallback(&Script::OnAwake, ScriptCallbackKind::AWAKE, "OnAwake");
     }
 
     /// @note 他者の Awake が設定した状態を Start から参照できる。Start 同士の依存は作らない。
@@ -139,7 +141,7 @@ void ScriptSystem::Update(SystemContext& ctx)
         auto* entry = Runnable(scene, target, playMode);
         if (!entry || !entry->m_awoken || entry->m_started) continue;
         if (!ValidateScriptRequirementsForStart(*scene.GetGameObject(target.entity), *entry->script)) continue;
-        entry->script->ExecuteCallback(&Script::OnStart, "OnStart");
+        entry->script->ExecuteProfiledCallback(&Script::OnStart, ScriptCallbackKind::START, "OnStart");
         if ((entry = Resolve(scene, target))) entry->m_started = true;
     }
 
@@ -152,7 +154,7 @@ void ScriptSystem::Update(SystemContext& ctx)
         if (auto* script = active()) script->UpdateFrameDelays();
         if (auto* script = active()) script->UpdateInvocations(ctx.dt);
         if (auto* script = active()) script->UpdateCoroutines();
-        if (auto* script = active()) script->ExecuteCallback(&Script::OnUpdate, "OnUpdate");
+        if (auto* script = active()) script->ExecuteProfiledCallback(&Script::OnUpdate, ScriptCallbackKind::UPDATE, "OnUpdate");
     }
 }
 
@@ -200,7 +202,7 @@ void FixedScriptSystem::Update(SystemContext& ctx)
 
             s->SetContext(&scene, go);
             if (s->enabled)
-                s->ExecuteCallback(&Script::OnFixedUpdate, "OnFixedUpdate");
+                s->ExecuteProfiledCallback(&Script::OnFixedUpdate, ScriptCallbackKind::FIXED_UPDATE, "OnFixedUpdate");
         }
     }
 }
@@ -252,7 +254,7 @@ void LateScriptSystem::Update(SystemContext& ctx)
             if (sc->scripts[i].script.get() != s) continue;
 
             if (gameObjectActive && s->enabled)
-                s->ExecuteCallback(&Script::OnLateUpdate, "OnLateUpdate");
+                s->ExecuteProfiledCallback(&Script::OnLateUpdate, ScriptCallbackKind::LATE_UPDATE, "OnLateUpdate");
         }
     }
 }

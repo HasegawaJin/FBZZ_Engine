@@ -8,6 +8,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Input/InputActionMap.hpp>
+#include <Engine/Profiler/ScriptProfiler.hpp>
 
 namespace fbzz::editor {
 
@@ -22,10 +23,11 @@ void PlayModeController::Play(scene::Scene& scene)
         return;
     }
     m_state    = PlayState::Playing;
+    scene::ScriptProfiler::SetExecutionMode(true);
     /// @note Editor は同一プロセス内で Play を繰り返すため、前セッションの押下状態を新しい実行へ持ち越さない。
     input::Input::Reset();
     /// @note ゲーム入力のアクション層は Play 中のみ有効にする。編集中も評価していると、
-    ///       シーンビューで W を押しただけで "MoveY" が立ち、操作が二重発火する。
+    /// @note シーンビューで W を押しただけで "MoveY" が立ち、操作が二重発火する。
     input::InputActionMap::SetEnabled(true);
     FBZZ_LOG_INFO("PlayMode: → Playing");
 }
@@ -46,13 +48,14 @@ void PlayModeController::Stop(scene::Scene& scene)
     (void)scene;
     if (m_state == PlayState::Editor) return;
     /// @note Script が PlayMode 中にカーソルを非表示・拘束したまま Stop されても、
-    ///       Editor 操作へ戻れるように PlayMode 終了要求時点で必ず復元する。
+    /// @note Editor 操作へ戻れるように PlayMode 終了要求時点で必ず復元する。
     core::Cursor::ResetForEditor();
     /// @note Stop 要求時点でゲーム入力を止める。復元 (ApplyPendingRestore) は次フレームに
-    ///       走るため、待つとその 1 フレームぶん、破棄されるはずのシーンへ操作が届いてしまう。
+    /// @note 走るため、待つとその 1 フレームぶん、破棄されるはずのシーンへ操作が届いてしまう。
     input::InputActionMap::SetEnabled(false);
     if (m_snapshot.empty()) {
         m_state = PlayState::Editor;
+        scene::ScriptProfiler::SetExecutionMode(false);
         FBZZ_LOG_WARN("PlayMode: Stop called but snapshot is empty; forced → Editor");
         return;
     }
@@ -65,7 +68,10 @@ bool PlayModeController::ApplyPendingRestore(scene::Scene& scene)
     if (!m_restorePending) return false;
 
     FBZZ_LOG_DEBUG("PlayMode: restoring scene from snapshot");
+    /// @note 旧実体の破棄は寿命表の Play 文脈、新しく復元する実体は Edit 文脈に帰属する。
+    scene::ScriptProfiler::SetExecutionMode(false);
     if (!SceneIO::Deserialize(scene, m_snapshot)) {
+        scene::ScriptProfiler::SetExecutionMode(true);
         FBZZ_LOG_ERROR("PlayMode: scene restore failed; state remains Playing");
         return false;
     }
@@ -79,4 +85,4 @@ bool PlayModeController::ApplyPendingRestore(scene::Scene& scene)
     return true;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

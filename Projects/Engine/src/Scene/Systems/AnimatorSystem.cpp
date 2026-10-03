@@ -312,7 +312,7 @@ void DispatchAnimationEvents(GameObject& owner,
         if (scripts != nullptr)
             for (auto& entry : scripts->scripts)
                 if (entry.script)
-                    entry.script->ExecuteCallback(&Script::OnAnimationEvent, info);
+                    entry.script->ExecuteProfiledCallback(&Script::OnAnimationEvent, info, ScriptCallbackKind::ANIMATION_EVENT, "OnAnimationEvent");
     }
 }
 
@@ -1202,7 +1202,7 @@ struct WeightedClip {
     float                       ikWeight = 1.0f;
     /// @note クリップごとに持ち weight で合成する。1 本だけ見ると Walk↔Run が 0.5 を跨ぐ瞬間に移動量が飛ぶ。
     ResolvedRootMotion          rootMotion{};
-    bool                        reverse = false;   ///< ループ跨ぎの判定方向が反転する。
+    bool                        reverse = false;   ///< @note ループ跨ぎの判定方向が反転する。
 };
 
 std::vector<WeightedMotion> Compute1DWeights(const AnimatorComponent& animator,
@@ -2154,7 +2154,7 @@ void DispatchAnimatorMove(GameObject& owner, const AnimatorComponent& animator)
 
     for (auto& entry : scripts->scripts)
         if (entry.script && entry.script->enabled)
-            entry.script->ExecuteCallback(&Script::OnAnimatorMove, info);
+            entry.script->ExecuteProfiledCallback(&Script::OnAnimatorMove, info, ScriptCallbackKind::ANIMATOR_MOVE, "OnAnimatorMove");
 }
 
 /// @brief ルートモーションの抽出・適用・Script 通知をまとめて行う。
@@ -2171,7 +2171,7 @@ void ProcessRootMotion(AnimatorComponent& animator,
     DispatchAnimatorMove(owner, animator);
 }
 
-} // namespace
+} /// @note namespace
 
 /// @brief 現在ステートで最も weight が大きいクリップ。イベント・プロパティトラックの対象になる。
 static const asset::AnimationClip* ResolveStateMachineEffectClip(AnimatorComponent& animator)
@@ -2376,7 +2376,7 @@ struct LayerBonePose {
     math::Vector3    deltaScale   = math::Vector3::ZERO;
     float            accumWeight  = 0.0f;
     bool             hasRotation  = false;
-    float            boneWeight   = 0.0f;   ///< 積むたびに max で更新する。
+    float            boneWeight   = 0.0f;   ///< @note 積むたびに max で更新する。
 };
 
 /// @brief 1 レイヤーぶんのクリップ集合を評価し、ボーンごとのポーズを poses へ積む。
@@ -2922,4 +2922,4 @@ void AnimatorSystem::Update(SystemContext& ctx)
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

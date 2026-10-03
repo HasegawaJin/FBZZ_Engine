@@ -22,6 +22,7 @@
 #include "Engine/Input/InputActionMap.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"
 #include "Engine/Profiler/Profiler.hpp"
+#include <Engine/Profiler/ProfilerFrame.hpp>
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RendererFactory.hpp"
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
@@ -216,7 +217,7 @@ void Application::Run() {
         Time::Tick();
         if (auto* resources = renderer::ResourceManager::Active()) resources->AdvanceFrame();
         m_memorySystem.BeginFrame();
-        profiler::Profiler::BeginFrame();
+        profiler::BeginApplicationProfileFrame();
 
         {
             FBZZ_PROFILE_SCOPE("Input::Update");
@@ -238,7 +239,7 @@ void Application::Run() {
             input::InputActionMap::Update(Time::unscaledDeltaTime);
         }
         if (m_window->ShouldClose()) {
-            profiler::Profiler::EndFrame();
+            profiler::EndApplicationProfileFrame();
             m_memorySystem.EndFrame();
             Quit();
             break;
@@ -251,7 +252,7 @@ void Application::Run() {
             m_renderer->EndFrame();
         }
 
-        profiler::Profiler::EndFrame();
+        profiler::EndApplicationProfileFrame();
         m_memorySystem.EndFrame();
     }
 
@@ -272,7 +273,7 @@ void Application::Run(IModule& module) {
         Time::Tick();
         if (auto* resources = renderer::ResourceManager::Active()) resources->AdvanceFrame();
         m_memorySystem.BeginFrame();
-        profiler::Profiler::BeginFrame();
+        profiler::BeginApplicationProfileFrame();
 
         {
             FBZZ_PROFILE_SCOPE("Input::Update");
@@ -299,7 +300,7 @@ void Application::Run(IModule& module) {
         if (m_window->ShouldClose()) {
             /// @note BeginFrame() 済みの Profiler / MemorySystem を必ず対で閉じる。
             /// @note break 前に EndFrame() することで終了フレームでも診断状態を壊さない。
-            profiler::Profiler::EndFrame();
+            profiler::EndApplicationProfileFrame();
             m_memorySystem.EndFrame();
             Quit();
             break;
@@ -325,7 +326,7 @@ void Application::Run(IModule& module) {
 
         module.OnRender();
 
-        profiler::Profiler::EndFrame();
+        profiler::EndApplicationProfileFrame();
         m_memorySystem.EndFrame();
     }
 
