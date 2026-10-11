@@ -12,6 +12,7 @@
 #include <Editor/Util/DragDropSet.hpp>
 #include <Editor/Util/IcoImage.hpp>
 #include <Editor/Panels/FontPreview.hpp>
+#include <Editor/Panels/AssetBrowserThumbnail.hpp>
 #include <Editor/Panels/CurveAssetPreview.hpp>
 #include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -480,27 +481,6 @@ static ImTextureID ToImTextureID(void* ptr)
     return static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(ptr));
 }
 
-/// @brief .ico を GPU テクスチャにする。
-/// @note ResourceManager::LoadTexture を通さないのは、下地の DirectXTex (WIC) は .ico を読めるが
-///       «先頭フレーム» しか返さないため。.ico は 16px〜256px を束ねた形式で、ファイルによっては
-///       16px がサムネイルに出るので、面積最大のフレームを自前で選ぶ。
-static renderer::ResourceHandle<renderer::TextureTag> LoadIcoTexture(
-    renderer::ResourceManager& resources,
-    const std::string& path,
-    uint32_t& outWidth,
-    uint32_t& outHeight)
-{
-    IcoImage image;
-    std::string error;
-    if (!DecodeIcoFile(util::FileSystem::PathFromUtf8(path), image, error) || !image.IsValid()) {
-        FBZZ_LOG_WARN("Icon preview failed: %s (%s)", path.c_str(), error.c_str());
-        return {};
-    }
-    outWidth  = static_cast<uint32_t>(image.width);
-    outHeight = static_cast<uint32_t>(image.height);
-    return resources.CreateTexture(image.rgba.data(), outWidth, outHeight);
-}
-
 static std::string SelectMaterialPreviewTexture(const asset::MaterialAsset& mat)
 {
     return matpreview::RepresentativeTexturePath(mat);
@@ -512,7 +492,7 @@ static ImVec4 SelectMaterialColor(const asset::MaterialAsset& mat)
     return { color.x, color.y, color.z, color.w };
 }
 
-} // namespace
+} /// @note namespace
 
 bool AssetBrowserPanel::RebuildMaterialThumbnailGpuData(MaterialPreview& preview, EditorContext& ctx)
 {
@@ -735,6 +715,39 @@ static void MarkPreviewSucceeded(T& p) {
     p.retry  = {};
 }
 
+/// @note Leases use the existing engine decode/upload budgets; drawing never forces synchronous completion.
+template<typename T, typename P>
+static T* RequestPreviewAsset(asset::AssetLease<T>& lease, P& preview, const std::string& path)
+{
+    auto& streamer = asset::AssetStreamer::Engine();
+    if (!lease.IsHeld() && !preview.unsupported && CanAttemptPreview(preview)) {
+        lease = streamer.Request<T>(path, { asset::AssetPriority::Visible, 0 });
+        preview.pending = lease.IsHeld();
+        preview.unsupported = lease.RequestError() == asset::AssetLoadError::NoChannel;
+        if (!lease.IsHeld() && !preview.unsupported) MarkPreviewFailed(preview);
+    }
+    if (!lease.IsHeld()) return nullptr;
+    const auto status = streamer.GetStatus(lease.Handle());
+    if (status.state == asset::AssetLoadState::Failed || status.state == asset::AssetLoadState::Canceled) {
+        preview.pending = false;
+        if (!preview.failed) MarkPreviewFailed(preview);
+        if (CanAttemptPreview(preview) && streamer.Retry(lease.Handle())) {
+            preview.failed = false;
+            preview.pending = true;
+        }
+        return nullptr;
+    }
+    T* ready = streamer.TryGet(lease.Handle());
+    if (!ready) { preview.pending = true; return nullptr; }
+    if (preview.pending || preview.streamRevision != status.publishedRevision) {
+        MarkPreviewSucceeded(preview);
+        if constexpr (requires { preview.thumbnailRendered; }) preview.thumbnailRendered = false;
+    }
+    preview.pending = false;
+    preview.streamRevision = status.publishedRevision;
+    return ready;
+}
+
 template<typename T>
 static void EnsureThumbnailRT(T& t, EditorContext& ctx) {
     if (!t.thumbnailRT.IsValid()) {
@@ -761,12 +774,13 @@ static void ResetMaterialPreviewGpuState(T& preview, renderer::ResourceManager* 
 template<typename T>
 static bool DrawThumbnailIfReady(T& t, ImVec2 origin, float sz,
                                   EditorContext& ctx, bool hovered, const char* badge) {
-    if (!t.thumbnailRendered) return false;
+    if (!t.thumbnailRendered || !t.thumbnailRT.IsValid() || !ctx.resources || !ctx.imguiRenderer ||
+        !ctx.imguiRenderer->GetImTextureID(t.thumbnailRT, *ctx.resources, 0)) return false;
     DrawRenderTargetThumbnail(t.thumbnailRT, origin, sz, ctx, hovered, badge);
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 void AssetBrowserPanel::QueueAssetMove(const std::string& payloadPath, const std::string& targetDir)
 {
@@ -1220,6 +1234,10 @@ void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
     ImGui::TreeNodeEx(e.path.c_str(), flags, "%s", e.name.c_str());
 
     const bool hovered = ImGui::IsItemHovered();
+    m_thumbnailGui = ctx.imguiRenderer;
+    const ImVec2 rowMin = ImGui::GetItemRectMin();
+    DrawOriginalTypeIcon({ rowMin.x + ImGui::GetStyle().FramePadding.x,
+                           rowMin.y + ImGui::GetStyle().FramePadding.y }, ImGui::GetFontSize(), e);
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) m_treeRowDragStarted = false;
 
     /// @note グリッドと同じ payload を出し、ツリーからも参照欄へ直接ドロップできるようにする。
@@ -1268,6 +1286,7 @@ void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
 void AssetBrowserPanel::DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered,
                                        const ImVec4* colorOverride)
 {
+    if (!e.isDir && DrawOriginalTypeIcon(origin, sz, e)) return;
     const ImVec4 base  = colorOverride ? *colorOverride : EntryColor(e);
     const ImU32 cFill  = ImGui::ColorConvertFloat4ToU32(hovered ? Lighten(base) : base);
     const ImU32 cDark  = ImGui::ColorConvertFloat4ToU32(
@@ -1306,11 +1325,70 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         return;
     }
 
+    TouchAssetPreview(e.path);
+    const bool previewType = IsTextureExt(e.ext) || IsFontExt(e.ext) || IsMeshExt(e.ext) ||
+        e.isSpriteSubAsset || e.ext == ".tex" || e.ext == ".mat" || e.ext == ".prefab" ||
+        e.ext == ".vfx" || e.ext == ".terrain" || e.ext == ".curve" || e.ext == ".gradient";
+    const bool textPreview = e.ext == ".mat" || e.ext == ".prefab" || e.ext == ".vfx" ||
+        e.ext == ".terrain" || e.ext == ".curve" || e.ext == ".gradient";
+    if (textPreview) {
+        std::error_code error;
+        const auto bytes = std::filesystem::file_size(util::FileSystem::PathFromUtf8(e.path), error);
+        if (error || bytes > 1024 * 1024) {
+            DrawFileIconAt(origin, sz, e, hovered);
+            DrawAssetPreviewState(origin, sz, e, error ? assetthumbnail::State::FAILED : assetthumbnail::State::UNSUPPORTED);
+            return;
+        }
+    }
+    /// @note Cold 3D thumbnail work is limited to one visible entry per ImGui frame across this panel.
+    if (IsMeshExt(e.ext) || e.ext == ".mat" || e.ext == ".prefab" || e.ext == ".terrain") {
+        auto needsWork = [&](const auto& cache) {
+            const auto it = cache.find(e.path);
+            if (it == cache.end()) return true;
+            const auto& item = it->second;
+            if constexpr (requires { item.thumbnailRendered; }) {
+                if (item.thumbnailRendered || item.unsupported || !CanAttemptPreview(item)) return false;
+                if constexpr (requires { item.lease; }) {
+                    if (item.lease.IsHeld() && !asset::AssetStreamer::Engine().TryGet(item.lease.Handle())) return false;
+                }
+                if constexpr (requires { item.parsed; item.hasMesh; }) {
+                    if (item.parsed && !item.hasMesh) return false;
+                }
+                if constexpr (requires { item.asset; item.loaded; }) {
+                    if (item.loaded && matpreview::DetectFlavor(item.asset) == matpreview::Flavor::Unsupported) return false;
+                }
+                return true;
+            } else {
+                return !item.mat.thumbnailRendered && (!item.parsed || item.hasMaterial) && CanAttemptPreview(item.mat);
+            }
+        };
+        const bool work = e.ext == ".fbx" || e.isSubAsset ? needsWork(m_modelAssetPreviews)
+            : IsMeshExt(e.ext) ? needsWork(m_meshPreviews)
+            : e.ext == ".mat" ? needsWork(m_materialPreviews)
+            : e.ext == ".prefab" ? needsWork(m_prefabPreviews) : needsWork(m_terrainPreviews);
+        if (work) {
+            const int frame = ImGui::GetFrameCount();
+            if (m_thumbnailWorkFrame == frame) {
+                DrawFileIconAt(origin, sz, e, hovered);
+                DrawAssetPreviewState(origin, sz, e, assetthumbnail::State::PENDING);
+                return;
+            }
+            m_thumbnailWorkFrame = frame;
+        }
+    }
     if ((IsTextureExt(e.ext) || IsFontExt(e.ext) || e.isSpriteSubAsset) && ctx.resources && ctx.imguiRenderer) {
         const std::string& texturePath = e.isSpriteSubAsset ? e.sourceAssetPath : e.path;
+        TouchAssetPreview(texturePath);
         TexturePreview& preview = m_texturePreviews[texturePath];
-        if (!preview.handle.IsValid() && !preview.queued && CanAttemptPreview(preview)) {
+        const auto writeTime = ReadLastWriteTime(texturePath);
+        if (writeTime != preview.lastWriteTime) {
+            ReleaseOwnedTexturePreview(texturePath);
+            preview = {};
+            preview.lastWriteTime = writeTime;
+        }
+        if (!preview.handle.IsValid() && !preview.queued && !preview.unsupported && CanAttemptPreview(preview)) {
             preview.queued = true;
+            preview.ticket = ++m_thumbnailTicket;
             m_texLoadQueue.push_back(texturePath);
         }
 
@@ -1334,7 +1412,9 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     spritePreview.lastWriteTime = metaWriteTime;
                     asset::TextureAsset textureAsset;
                     asset::TexDescSerializer serializer;
-                    if (serializer.Load(metaPath, textureAsset))
+                    std::error_code error;
+                    const auto bytes = std::filesystem::file_size(util::FileSystem::PathFromUtf8(metaPath), error);
+                    if (!error && bytes <= 1024 * 1024 && serializer.Load(metaPath, textureAsset))
                         spritePreview.settings = std::move(textureAsset.settings);
                     spritePreview.loaded = true;
                 }
@@ -1365,31 +1445,21 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         TexDescPreview& preview = m_texDescPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
         if (currentWriteTime != preview.lastWriteTime) {
+            if (preview.lease.IsHeld()) asset::AssetStreamer::Engine().Reload(preview.lease.Handle());
             preview.lastWriteTime = currentWriteTime;
-            preview.handle = {};
             preview.width = preview.height = 0;
             /// @note 中身が変わったので失敗と再試行回数をやり直す
             MarkPreviewSucceeded(preview);
         }
-        if (!preview.handle.IsValid() && CanAttemptPreview(preview)) {
-            /// @note 前回の失敗は AssetManager の cache にも焼き付いている。掃除しないと
-            ///       再試行が同じ null を返すだけで、何度やっても復帰しない。
-            if (preview.retry.count > 0) asset::AssetManager::FlushFailed();
-            preview.handle = asset::AssetManager::Load<asset::TextureAsset>(e.path);
-            if (preview.handle.IsValid()) {
-                MarkPreviewSucceeded(preview);
-                if (const auto* ta = asset::AssetManager::Get(preview.handle)) {
-                    if (const auto* tex = ctx.resources->Get(ta->gpuHandle)) {
-                        preview.width  = tex->GetWidth();
-                        preview.height = tex->GetHeight();
-                    }
-                }
-            } else {
-                MarkPreviewFailed(preview);
+        if (const auto* textureAsset = RequestPreviewAsset(preview.lease, preview, e.path)) {
+            preview.handle = preview.lease.Handle();
+            if (const auto* texture = ctx.resources->Get(textureAsset->gpuHandle)) {
+                preview.width = texture->GetWidth();
+                preview.height = texture->GetHeight();
             }
         }
         if (preview.handle.IsValid()) {
-            if (const auto* ta = asset::AssetManager::Get(preview.handle)) {
+            if (const auto* ta = asset::AssetStreamer::Engine().TryGet(preview.lease.Handle())) {
                 void* rawID = ctx.imguiRenderer->GetImTextureID(ta->gpuHandle, *ctx.resources);
                 if (rawID) {
                     DrawTextureThumbnail(rawID, preview.width, preview.height, origin, sz, hovered);
@@ -1457,14 +1527,26 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 preview.thumbnailRendered = false;
             }
 
+            TexturePreview* representative = nullptr;
             if (!previewTexturePath.empty()) {
-                if (!preview.previewTexture.IsValid()) {
-                    preview.previewTexture = ctx.resources->LoadTexture(ToTextureLoadPath(previewTexturePath, ctx));
-                    if (auto* texture = ctx.resources->Get(preview.previewTexture)) {
-                        preview.previewTextureWidth = texture->GetWidth();
-                        preview.previewTextureHeight = texture->GetHeight();
-                    }
+                const std::string dependencyPath = ToTextureLoadPath(previewTexturePath, ctx);
+                TouchAssetPreview(dependencyPath);
+                auto& texture = m_texturePreviews[dependencyPath];
+                const auto writeTime = ReadLastWriteTime(dependencyPath);
+                if (writeTime != texture.lastWriteTime) {
+                    ReleaseOwnedTexturePreview(dependencyPath);
+                    texture = {};
+                    texture.lastWriteTime = writeTime;
                 }
+                if (!texture.handle.IsValid() && !texture.queued && !texture.unsupported && CanAttemptPreview(texture)) {
+                    texture.queued = true;
+                    texture.ticket = ++m_thumbnailTicket;
+                    m_texLoadQueue.push_back(dependencyPath);
+                }
+                representative = &texture;
+                preview.previewTexture = texture.handle;
+                preview.previewTextureWidth = texture.width;
+                preview.previewTextureHeight = texture.height;
             }
 
             /// @note 球に焼けない .mat はここで畳む。RT も確保しない (使わないまま 1 枚寝かせる)。
@@ -1480,6 +1562,10 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     }
                 }
                 DrawMaterialSwatchThumbnail(preview.asset, badge, origin, sz, hovered);
+                const auto state = representative && representative->queued ? assetthumbnail::State::PENDING
+                    : representative && representative->failed ? assetthumbnail::State::FAILED
+                    : assetthumbnail::State::UNSUPPORTED;
+                DrawAssetPreviewState(origin, sz, e, state);
                 return;
             }
 
@@ -1508,6 +1594,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             /// @note 球へは焼けるはずなのに焼けなかった .mat (シェーダーが壊れている・
             ///       ShaderDescriptor が引けない等) も、色だけは出して拡張子アイコンに落とさない。
             DrawMaterialSwatchThumbnail(preview.asset, "MAT", origin, sz, hovered);
+            if (preview.failed) DrawAssetPreviewState(origin, sz, e, assetthumbnail::State::FAILED);
             return;
         }
     }
@@ -1545,31 +1632,20 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             preview.slotMaterials.clear();
             preview.materialsLoaded = false;
             preview.lastWriteTime = currentWriteTime;
-            preview.handle = {};
+            if (preview.lease.IsHeld()) asset::AssetStreamer::Engine().Reload(preview.lease.Handle());
             preview.thumbnailRendered = false;
             MarkPreviewSucceeded(preview);
         }
         EnsureThumbnailRT(preview, ctx);
-        if (!preview.handle.IsValid() && CanAttemptPreview(preview)) {
-            FBZZ_LOG_INFO("AssetBrowserItems: Load<ModelAsset> [%s]", previewModelPath.c_str());
-            /// @note インポート直後やファイル監視直後は、生成前に一度 Load して Null が
-            ///       AssetManager にキャッシュされることがある。サムネイル再試行時は失敗 cache を掃除する。
-            asset::AssetManager::FlushFailed();
-            preview.handle = asset::AssetManager::Load<asset::ModelAsset>(previewModelPath);
-            if (preview.handle.IsValid()) {
-                MarkPreviewSucceeded(preview);
-            } else {
-                FBZZ_LOG_ERROR("AssetBrowserItems: ModelAsset load failed [%s]", previewModelPath.c_str());
-                MarkPreviewFailed(preview);
-            }
-        }
+        RequestPreviewAsset(preview.lease, preview, previewModelPath);
+        preview.handle = preview.lease.Handle();
         /// @note マテリアルスロットを初回ロード (materials/slotName.mat -> per-slot MaterialPreview)
-        if (preview.handle.IsValid() && !preview.materialsLoaded) {
+        if (asset::AssetStreamer::Engine().TryGet(preview.lease.Handle()) && !preview.materialsLoaded) {
             preview.materialsLoaded = true;
             const std::string matDir = util::FileSystem::NormalizePathSeparators(
                 util::FileSystem::PathToUtf8(
                     ResolveModelGeneratedDir(previewModelPath, "materials")));
-            if (const asset::ModelAsset* m0 = asset::AssetManager::Get(preview.handle)) {
+            if (const asset::ModelAsset* m0 = asset::AssetStreamer::Engine().TryGet(preview.lease.Handle())) {
                 preview.slotMaterials.resize(m0->materialSlotNames.size());
                 for (size_t si = 0; si < m0->materialSlotNames.size(); ++si) {
                     MaterialPreview& mp = preview.slotMaterials[si];
@@ -1579,8 +1655,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 }
             }
         }
-        if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid() && CanAttemptPreview(preview)) {
-            const asset::ModelAsset* m = asset::AssetManager::Get(preview.handle);
+        if (!preview.pending && !preview.unsupported && !preview.thumbnailRendered && preview.thumbnailRT.IsValid() && CanAttemptPreview(preview)) {
+            const asset::ModelAsset* m = asset::AssetStreamer::Engine().TryGet(preview.lease.Handle());
             if (m && !m->lods.empty() && !m->lods[0].submeshes.empty()) {
                 /// @note 全サブメッシュの AABB から共通カメラを計算 (Unity 同様すべてのメッシュが写る)
                 constexpr float kInf = std::numeric_limits<float>::max();
@@ -1664,19 +1740,15 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             const auto parentWriteTime = ReadLastWriteTime(parentPath);
             if (parentWriteTime != preview.lastWriteTime) {
                 preview.lastWriteTime    = parentWriteTime;
-                preview.handle           = {};
+                if (preview.lease.IsHeld()) asset::AssetStreamer::Engine().Reload(preview.lease.Handle());
                 preview.thumbnailRendered = false;
                 MarkPreviewSucceeded(preview);
             }
             EnsureThumbnailRT(preview, ctx);
-            if (!preview.handle.IsValid() && CanAttemptPreview(preview)) {
-                asset::AssetManager::FlushFailed();
-                preview.handle = asset::AssetManager::Load<asset::ModelAsset>(parentPath);
-                if (preview.handle.IsValid()) MarkPreviewSucceeded(preview);
-                else                          MarkPreviewFailed(preview);
-            }
-            if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid() && CanAttemptPreview(preview)) {
-                const asset::ModelAsset* m = asset::AssetManager::Get(preview.handle);
+            RequestPreviewAsset(preview.lease, preview, parentPath);
+            preview.handle = preview.lease.Handle();
+            if (!preview.pending && !preview.unsupported && !preview.thumbnailRendered && preview.thumbnailRT.IsValid() && CanAttemptPreview(preview)) {
+                const asset::ModelAsset* m = asset::AssetStreamer::Engine().TryGet(preview.lease.Handle());
                 if (m && !m->lods.empty() && submeshIdx < m->lods[0].submeshes.size() &&
                     m->lods[0].submeshes[submeshIdx].mesh) {
                     auto* mesh = m->lods[0].submeshes[submeshIdx].mesh.get();
@@ -1708,20 +1780,20 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
-    if (IsMeshExt(e.ext) && e.path.find("::mesh::") == std::string::npos && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
+    if (IsMeshExt(e.ext) && e.ext != ".fbx" && e.path.find("::mesh::") == std::string::npos && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
         MeshPreview& preview = m_meshPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
         if (currentWriteTime != preview.lastWriteTime) {
             preview.lastWriteTime = currentWriteTime;
             preview.model = nullptr;
+            if (preview.lease.IsHeld()) asset::AssetStreamer::Engine().Reload(preview.lease.Handle());
             preview.thumbnailRendered = false;
             MarkPreviewSucceeded(preview);
         }
         EnsureThumbnailRT(preview, ctx);
         const bool meshRetryAllowed = CanAttemptPreview(preview);
-        if (!preview.model && meshRetryAllowed)
-            preview.model = asset::AssetManager::LoadAndGet<asset::Model>(e.path);
-        if (!preview.thumbnailRendered && meshRetryAllowed && preview.thumbnailRT.IsValid()) {
+        preview.model = RequestPreviewAsset(preview.lease, preview, e.path);
+        if (preview.model && !preview.thumbnailRendered && meshRetryAllowed && preview.thumbnailRT.IsValid()) {
             if (preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
                 preview.thumbnailRendered = RenderMeshThumbnail(
                     *ctx.renderer,
@@ -1744,15 +1816,18 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             PrefabPreview& preview = m_prefabPreviews[e.path];
             const auto currentWriteTime = ReadLastWriteTime(e.path);
             if (currentWriteTime != preview.lastWriteTime) {
+                if (m_resources && preview.thumbnailRT.IsValid()) m_resources->Release(preview.thumbnailRT);
                 preview = {};
                 preview.lastWriteTime = currentWriteTime;
             }
             if (!preview.parsed) {
                 preview.parsed = true;
+                preview.failed = true;
                 std::string text;
                 if (util::FileSystem::ReadText(e.path, text)) {
                     toml::parse_result result = toml::parse(text);
                     if (result) {
+                        preview.failed = false;
                         if (auto* gos = result.table()["gameobjects"].as_array()) {
                             for (const auto& item : *gos) {
                                 const auto* goTbl = item.as_table();
@@ -1781,13 +1856,13 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             }
             if (preview.hasMesh && CanAttemptPreview(preview)) {
                 EnsureThumbnailRT(preview, ctx);
-                if (!preview.model) {
+                {
                     std::string absPath = preview.meshPath;
                     if (absPath.starts_with("Assets/") && !ctx.projectRoot.empty())
                         absPath = ctx.projectRoot + "/" + absPath;
-                    preview.model = asset::AssetManager::LoadAndGet<asset::Model>(absPath);
+                    preview.model = RequestPreviewAsset(preview.lease, preview, absPath);
                 }
-                if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid()) {
+                if (preview.model && !preview.thumbnailRendered && preview.thumbnailRT.IsValid()) {
                     if (preview.model && !preview.model->meshes.empty() && preview.model->meshes.front()) {
                         preview.thumbnailRendered = RenderMeshThumbnail(
                             *ctx.renderer, *ctx.resources,
@@ -1801,61 +1876,6 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 }
                 if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "PREFAB")) return;
             }
-        }
-        /// @note フォールバック: アイソメトリックキューブアイコン
-        {
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-            const ImU32 bg    = IM_COL32( 28,  68,  84, 255);
-            const ImU32 front = IM_COL32( 50, 140, 168, 255);
-            const ImU32 top   = IM_COL32( 72, 172, 200, 255);
-            const ImU32 right = IM_COL32( 36, 108, 132, 255);
-            const ImU32 brd   = IM_COL32(110, 215, 235, 255);
-            dl->AddRectFilled({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, bg, sz * 0.08f);
-            dl->AddRect      ({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, brd, sz * 0.08f, 0, 1.0f);
-
-            const float cx = origin.x + sz * 0.48f;
-            const float cy = origin.y + sz * 0.54f;
-            /// @note front face half-width
-            const float hw = sz * 0.22f;
-            /// @note front face half-height
-            const float hh = sz * 0.20f;
-            /// @note depth x-offset
-            const float dx = sz * 0.14f;
-            /// @note depth y-offset
-            const float dy = sz * 0.09f;
-
-            /// @note front face
-            ImVec2 frontFace[4] = {
-                { cx - hw,      cy - hh },
-                { cx + hw,      cy - hh },
-                { cx + hw,      cy + hh },
-                { cx - hw,      cy + hh },
-            };
-            dl->AddConvexPolyFilled(frontFace, 4, front);
-
-            /// @note top face
-            ImVec2 topFace[4] = {
-                { cx - hw,      cy - hh      },
-                { cx + hw,      cy - hh      },
-                { cx + hw + dx, cy - hh - dy },
-                { cx - hw + dx, cy - hh - dy },
-            };
-            dl->AddConvexPolyFilled(topFace, 4, top);
-
-            /// @note right face
-            ImVec2 rightFace[4] = {
-                { cx + hw,      cy - hh      },
-                { cx + hw + dx, cy - hh - dy },
-                { cx + hw + dx, cy + hh - dy },
-                { cx + hw,      cy + hh      },
-            };
-            dl->AddConvexPolyFilled(rightFace, 4, right);
-
-            dl->AddPolyline(frontFace, 4, brd, ImDrawFlags_Closed, 1.0f);
-            dl->AddPolyline(topFace,   4, brd, ImDrawFlags_Closed, 1.0f);
-            dl->AddPolyline(rightFace, 4, brd, ImDrawFlags_Closed, 1.0f);
-            DrawThumbnailLabel(dl, origin, sz, "PREFAB");
-            return;
         }
     }
 
@@ -1871,10 +1891,12 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
         if (!preview.parsed) {
             preview.parsed = true;
+            preview.failed = true;
             std::string text;
             if (util::FileSystem::ReadText(e.path, text)) {
                 toml::parse_result result = toml::parse(text);
                 if (result) {
+                    preview.failed = false;
                     if (auto* gos = result.table()["gameobjects"].as_array()) {
                         /// @note 主役は一番手前に描かれるエミッター。同値なら粒の大きい方。
                         std::string heroMaterial;
@@ -1917,9 +1939,12 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
         if (preview.hasTexture) {
             /// @note 読み込みは通常のテクスチャサムネイルと同じ列に積む (3 件/フレーム)。
+            TouchAssetPreview(preview.texturePath);
             TexturePreview& texture = m_texturePreviews[preview.texturePath];
-            if (!texture.handle.IsValid() && !texture.queued && CanAttemptPreview(texture)) {
+            if (!texture.handle.IsValid() && !texture.queued && !texture.unsupported && CanAttemptPreview(texture)) {
                 texture.queued = true;
+                texture.ticket = ++m_thumbnailTicket;
+                texture.lastWriteTime = ReadLastWriteTime(preview.texturePath);
                 m_texLoadQueue.push_back(preview.texturePath);
             }
             if (texture.handle.IsValid()) {
@@ -1933,36 +1958,14 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         /// @note 素材を引けなければ拡張子アイコンへ落とす (末尾の DrawFileIconAt)。
     }
 
-    /// @note .animcontroller: ステートマシン風アイコン (3ノード + 矢印)
-    if (e.ext == ".animcontroller") {
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        const ImU32 bg   = IM_COL32( 50,  90,  65, 255);
-        const ImU32 node = IM_COL32( 80, 200, 120, 255);
-        const ImU32 edge = IM_COL32(200, 255, 200, 180);
-        const ImU32 brd  = IM_COL32(160, 220, 160, 255);
-        dl->AddRectFilled({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, bg, sz * 0.08f);
-        dl->AddRect      ({ origin.x, origin.y }, { origin.x + sz, origin.y + sz }, brd, sz * 0.08f, 0, 1.0f);
-        /// @note node positions: left-mid, top-right, bottom-right
-        const float r = sz * 0.10f;
-        const ImVec2 n0 = { origin.x + sz * 0.22f, origin.y + sz * 0.50f };
-        const ImVec2 n1 = { origin.x + sz * 0.65f, origin.y + sz * 0.28f };
-        const ImVec2 n2 = { origin.x + sz * 0.65f, origin.y + sz * 0.72f };
-        dl->AddLine(n0, n1, edge, 1.0f);
-        dl->AddLine(n0, n2, edge, 1.0f);
-        dl->AddLine(n1, n2, edge, 1.0f);
-        dl->AddCircleFilled(n0, r * 1.2f, node);
-        dl->AddCircleFilled(n1, r,        node);
-        dl->AddCircleFilled(n2, r,        node);
-        DrawThumbnailLabel(dl, origin, sz, "CTRL");
-        return;
-    }
-
     /// @note .terrain: 最初に .mat を持つ層の diffuse でサムネイル、なければ丘アイコン
     if (e.ext == ".terrain") {
         if (ctx.renderer && ctx.resources && ctx.imguiRenderer) {
             TerrainPreview& preview = m_terrainPreviews[e.path];
             const auto currentWriteTime = ReadLastWriteTime(e.path);
             if (currentWriteTime != preview.lastWriteTime) {
+                if (m_resources && preview.mat.thumbnailRT.IsValid()) m_resources->Release(preview.mat.thumbnailRT);
+                matpreview::ResetGpuData(preview.mat.gpu, m_resources);
                 preview = {};
                 preview.lastWriteTime = currentWriteTime;
             }
@@ -2070,53 +2073,112 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
     }
 
     DrawFileIconAt(origin, sz, e, hovered);
+    if (previewType) {
+        auto state = assetthumbnail::State::UNSUPPORTED;
+        auto read = [&](const auto& cache, const std::string& key) {
+            const auto it = cache.find(key);
+            if (it == cache.end()) return;
+            if constexpr (requires { it->second.failed; }) {
+                const auto& preview = it->second;
+                if constexpr (requires { preview.unsupported; }) {
+                    if (preview.unsupported) { state = assetthumbnail::State::UNSUPPORTED; return; }
+                }
+                state = preview.failed ? assetthumbnail::State::FAILED : assetthumbnail::State::PENDING;
+                if constexpr (requires { preview.pending; }) if (preview.pending) state = assetthumbnail::State::PENDING;
+                if constexpr (requires { preview.parsed; preview.hasMesh; }) {
+                    if (preview.parsed && !preview.hasMesh) state = assetthumbnail::State::UNSUPPORTED;
+                }
+            }
+        };
+        read(m_texturePreviews, e.isSpriteSubAsset ? e.sourceAssetPath : e.path);
+        read(m_materialPreviews, e.path); read(m_meshPreviews, e.path);
+        read(m_modelAssetPreviews, e.path); read(m_prefabPreviews, e.path); read(m_texDescPreviews, e.path);
+        if (e.ext == ".vfx") {
+            const auto it = m_vfxPreviews.find(e.path);
+            if (it != m_vfxPreviews.end()) {
+                if (it->second.failed) state = assetthumbnail::State::FAILED;
+                else if (it->second.hasTexture) read(m_texturePreviews, it->second.texturePath);
+            }
+        }
+        if (e.ext == ".curve" || e.ext == ".gradient") state = assetthumbnail::State::FAILED;
+        DrawAssetPreviewState(origin, sz, e, state);
+    }
 }
 
 void AssetBrowserPanel::DrainTexLoadQueue(EditorContext& ctx)
 {
     if (!ctx.resources) return;
-    constexpr int kMaxPerFrame = 3;
-    for (int i = 0; i < kMaxPerFrame && !m_texLoadQueue.empty(); ++i) {
+    if (m_resources != ctx.resources || m_thumbnailResourceInstance != ctx.resources->GetInstanceId() ||
+        m_thumbnailResourceReset != ctx.resources->GetResetVersion()) {
+        /// @note Handles from a retired pool must not release a newly allocated resource with the same numeric id.
+        m_resources = nullptr;
+        ClearAllAssetPreviews();
+        m_typeIcons = {};
+        m_typeIconAttempted = {};
+        m_resources = ctx.resources;
+        m_thumbnailResourceInstance = ctx.resources->GetInstanceId();
+        m_thumbnailResourceReset = ctx.resources->GetResetVersion();
+    }
+    m_thumbnailGui = ctx.imguiRenderer;
+    if (m_typeIconRoot != ctx.engineRoot) {
+        if (m_resources) for (auto handle : m_typeIcons) if (handle.IsValid()) m_resources->Release(handle);
+        m_typeIcons = {};
+        m_typeIconAttempted = {};
+        m_typeIconRoot = ctx.engineRoot;
+    }
+    if (m_thumbnailFuture.valid()) {
+        if (m_thumbnailFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+        auto image = m_thumbnailFuture.get();
+        const auto it = m_texturePreviews.find(m_thumbnailJobPath);
+        if (it != m_texturePreviews.end() && it->second.ticket == m_thumbnailJobTicket) {
+            auto& preview = it->second;
+            preview.queued = false;
+            /// @note A changed, deleted, moved or reimported file must never publish an old decode.
+            if (ReadLastWriteTime(m_thumbnailJobPath) != m_thumbnailJobWriteTime) {
+                preview = {};
+            } else if (image.state == assetthumbnail::State::READY) {
+                preview.handle = ctx.resources->CreateTexture(image.rgba.data(), image.width, image.height);
+                preview.ownsTexture = preview.handle.IsValid();
+                preview.width = image.sourceWidth;
+                preview.height = image.sourceHeight;
+                if (preview.handle.IsValid()) MarkPreviewSucceeded(preview);
+                else MarkPreviewFailed(preview);
+            } else if (image.state == assetthumbnail::State::UNSUPPORTED) {
+                preview.unsupported = true;
+            } else MarkPreviewFailed(preview);
+        }
+        m_thumbnailJobPath.clear();
+    }
+    /// @note One bounded CPU decode per panel; no renderer or AssetDatabase calls occur in the worker.
+    while (!m_texLoadQueue.empty()) {
         const std::string path = std::move(m_texLoadQueue.front());
         m_texLoadQueue.pop_front();
         auto it = m_texturePreviews.find(path);
-        if (it == m_texturePreviews.end()) continue;
-        TexturePreview& preview = it->second;
-        /// @note キューから出した時点で「積んである」印を落とす。ここで戻さないと、
-        ///       再試行に回すべきエントリが二度と積み直されない。
-        preview.queued = false;
-        if (preview.handle.IsValid()) continue;
-        if (util::StringUtils::ToLower(util::FileSystem::GetExtension(path)) == ".ico") {
-            preview.handle = LoadIcoTexture(*ctx.resources, ToTextureLoadPath(path, ctx),
-                                            preview.width, preview.height);
-            preview.ownsTexture = preview.handle.IsValid();
-            if (preview.handle.IsValid()) MarkPreviewSucceeded(preview);
-            else                          MarkPreviewFailed(preview);
-            continue;
-        }
-        if (IsFontExt(util::StringUtils::ToLower(util::FileSystem::GetExtension(path)))) {
-            FontPreviewImage image;
-            if (RasterizeFontPreview(ToTextureLoadPath(path, ctx), false, image)) {
-                preview.handle = ctx.resources->CreateTexture(
-                    image.rgba.data(), image.width, image.height);
-                preview.width = image.width;
-                preview.height = image.height;
+        if (it == m_texturePreviews.end() || it->second.handle.IsValid() || !it->second.queued) continue;
+        m_thumbnailJobPath = path;
+        m_thumbnailJobTicket = it->second.ticket;
+        m_thumbnailJobWriteTime = ReadLastWriteTime(path);
+        const auto diskPath = util::FileSystem::PathFromUtf8(ToTextureLoadPath(path, ctx));
+        m_thumbnailFuture = std::async(std::launch::async, [diskPath] {
+            const std::string extension = util::StringUtils::ToLower(util::FileSystem::PathToUtf8(diskPath.extension()));
+            if (IsFontExt(extension)) {
+                assetthumbnail::Image out;
+                std::error_code error;
+                const auto bytes = std::filesystem::file_size(diskPath, error);
+                if (error || bytes < 12) return out;
+                if (bytes > assetthumbnail::MAX_FILE_BYTES) { out.state = assetthumbnail::State::UNSUPPORTED; return out; }
+                FontPreviewImage font;
+                if (RasterizeFontPreview(util::FileSystem::PathToUtf8(diskPath), false, font)) {
+                    out.width = out.sourceWidth = font.width;
+                    out.height = out.sourceHeight = font.height;
+                    out.rgba = std::move(font.rgba);
+                    out.state = assetthumbnail::State::READY;
+                }
+                return out;
             }
-            preview.ownsTexture = preview.handle.IsValid();
-            if (preview.handle.IsValid()) MarkPreviewSucceeded(preview);
-            else                          MarkPreviewFailed(preview);
-            continue;
-        }
-        preview.handle = ctx.resources->LoadTexture(ToTextureLoadPath(path, ctx));
-        if (preview.handle.IsValid()) {
-            MarkPreviewSucceeded(preview);
-            if (auto* texture = ctx.resources->Get(preview.handle)) {
-                preview.width  = texture->GetWidth();
-                preview.height = texture->GetHeight();
-            }
-        } else {
-            MarkPreviewFailed(preview);
-        }
+            return assetthumbnail::Decode(diskPath);
+        });
+        break;
     }
 }
 
@@ -2130,10 +2192,12 @@ void AssetBrowserPanel::ReleaseOwnedTexturePreview(const std::string& path)
     it->second.ownsTexture = false;
 }
 
-void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
+void AssetBrowserPanel::ResetSingleAssetPreviewCache(const std::string& path)
 {
     ReleaseOwnedTexturePreview(path);
     m_texturePreviews.erase(path);
+    m_previewAccess.erase(path);
+    std::erase(m_texLoadQueue, path);
     m_spritePreviews.erase(path);
     auto releaseAndErase = [&](auto& map) {
         auto it = map.find(path);
@@ -2226,6 +2290,7 @@ void AssetBrowserPanel::ClearAllAssetPreviews()
     m_vfxPreviews.clear();
     m_curveAssetPreviews.clear();
     m_texLoadQueue.clear();
+    m_previewAccess.clear();
 }
 
 void AssetBrowserPanel::ResyncAfterWatcherOverflow()
@@ -3199,4 +3264,4 @@ void AssetBrowserPanel::DrawFindRefsPopup()
 
 /// @name FBX 内容プレビュー (サブアセットアイコン)
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

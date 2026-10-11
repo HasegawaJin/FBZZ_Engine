@@ -7,7 +7,9 @@
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/Panels/MaterialPreviewCore.hpp>
+#include <Editor/Panels/AssetBrowserThumbnail.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
+#include <Engine/Asset/AssetStreaming.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
@@ -29,7 +31,7 @@
 #include <array>
 #include <imgui.h>
 
-namespace fbzz::renderer { class ResourceManager; }
+namespace fbzz::renderer { class ResourceManager; class IImGuiRenderer; }
 
 namespace fbzz::editor {
 
@@ -48,6 +50,7 @@ public:
     /// 2 枚目以降は既定で非表示。View > Panels から出す (Unity の Project ウィンドウと同じ)。
     bool GetDefaultVisibility() const override { return m_instanceIndex == 0; }
     void OnInit(EditorContext& ctx) override;
+    void OnShutdown() override;
     void OnLoadSettings(const EditorSettings& settings) override;
     void OnSaveSettings(EditorSettings& settings) const override;
     void SetRootPath(const std::string& rootPath);
@@ -148,12 +151,31 @@ private:
     /// 次に選ぶ色を配下のフォルダにも適用するか (Unreal の Set Color と同じ選択肢)。
     bool        m_folderColorApplyRecursive = false;
     /// colorOverride が非 null なら EntryColor の代わりにその色で描く (フォルダの色分け用)。
-    static void        DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered = false,
+    void               DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered = false,
                                       const ImVec4* colorOverride = nullptr);
     void               DrawAssetPreviewIconAt(ImVec2 origin, float sz, const Entry& e, EditorContext& ctx, bool hovered);
     void               ResetAssetPreviewCache(const std::string& path);
     /// 全プレビューの GPU リソースを解放して捨てる (次の描画で作り直される)。
     void               ClearAllAssetPreviews();
+    void               ResetSingleAssetPreviewCache(const std::string& path);
+    void               TouchAssetPreview(const std::string& path);
+    bool               DrawOriginalTypeIcon(ImVec2 origin, float size, const Entry& entry);
+    void               DrawAssetPreviewState(ImVec2 origin, float size, const Entry& entry,
+                                            assetthumbnail::State state);
+    std::unordered_map<std::string, uint64_t> m_previewAccess;
+    uint64_t m_previewAccessSerial = 0;
+    uint64_t m_thumbnailTicket = 0;
+    uint64_t m_thumbnailResourceInstance = 0;
+    uint64_t m_thumbnailResourceReset = 0;
+    int m_thumbnailWorkFrame = -1;
+    renderer::IImGuiRenderer* m_thumbnailGui = nullptr;
+    std::string m_typeIconRoot;
+    std::array<renderer::ResourceHandle<renderer::TextureTag>, 36> m_typeIcons{};
+    std::array<bool, 36> m_typeIconAttempted{};
+    std::future<assetthumbnail::Image> m_thumbnailFuture;
+    std::string m_thumbnailJobPath;
+    uint64_t m_thumbnailJobTicket = 0;
+    std::filesystem::file_time_type m_thumbnailJobWriteTime{};
     /// ファイル監視がイベントを取りこぼした後、一覧・プレビュー・索引を丸ごと作り直す。
     /// @note 個々のイベントに追従する仕組みは、そのイベント自体が失われると全て空振りする。
     ///       「エンジンを再起動すれば直る」状態を、再起動せずに作るための復旧経路。
@@ -424,6 +446,9 @@ private:
         renderer::ResourceHandle<renderer::RenderTargetTag> thumbnailRT;
         bool thumbnailRendered = false;
         bool failed = false;
+        bool pending = false;
+        bool unsupported = false;
+        uint32_t streamRevision = 0;
         PreviewRetry retry;
     };
     struct TexturePreview {
@@ -432,6 +457,9 @@ private:
         uint32_t height = 0;
         bool failed = false;
         bool queued = false;
+        bool unsupported = false;
+        uint64_t ticket = 0;
+        std::filesystem::file_time_type lastWriteTime{};
         /// .ico のように ResourceManager のパスキャッシュを通らず、このパネルが
         /// CreateTexture で作った実体を持つ場合だけ true。破棄時に解放が要る。
         bool ownsTexture = false;
@@ -454,10 +482,12 @@ private:
         uint64_t liveRevision = 0;
     };
     struct MeshPreview : ThumbnailBase {
+        asset::AssetLease<asset::Model> lease;
         asset::Model* model = nullptr;
         std::filesystem::file_time_type lastWriteTime{};
     };
     struct PrefabPreview : ThumbnailBase {
+        asset::AssetLease<asset::Model> lease;
         asset::Model* model = nullptr;
         std::string   meshPath;
         std::filesystem::file_time_type lastWriteTime{};
@@ -469,6 +499,7 @@ private:
     ///       拡張子アイコンより一覧性が上がる、という割り切り。中身を確かめる導線は Inspector の
     ///       «Open in Prefab Mode» が持つ。
     struct VfxPreview {
+        bool failed = false;
         std::filesystem::file_time_type lastWriteTime{};
         std::string texturePath; ///< m_texturePreviews のキー (実ファイルパス)
         bool parsed = false;
@@ -487,13 +518,18 @@ private:
         bool hasMaterial = false;
     };
     struct ModelAssetPreview : ThumbnailBase {
+        asset::AssetLease<asset::ModelAsset> lease;
         asset::AssetHandle<asset::ModelAsset> handle;
         std::filesystem::file_time_type lastWriteTime{};
         std::vector<MaterialPreview> slotMaterials; ///< materialSlotIndex → per-slot material GPU data
         bool materialsLoaded = false;
     };
     struct TexDescPreview {
+        asset::AssetLease<asset::TextureAsset> lease;
         asset::AssetHandle<asset::TextureAsset> handle;
+        bool pending = false;
+        bool unsupported = false;
+        uint32_t streamRevision = 0;
         uint32_t width  = 0;
         uint32_t height = 0;
         std::filesystem::file_time_type lastWriteTime{};

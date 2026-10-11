@@ -191,7 +191,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     DrawImportSettingsModal(ctx);
 
-    /// @note テクスチャ遅延ロードキューを処理 (3件/フレームに分散)
+    /// @note Complete one bounded asynchronous CPU thumbnail job without waiting on the renderer thread.
     {
         FBZZ_PROFILE_SCOPE("AssetBrowser::TextureQueue");
         DrainTexLoadQueue(ctx);
@@ -1023,7 +1023,10 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
                 ImGui::SameLine();
             }
             const ImVec4 col = ResolveEntryColor(e, ctx);
-            ImGui::TextColored(col, "%s", e.isDir ? "[D]" : EntryLabel(e));
+            if (!e.isDir && DrawOriginalTypeIcon(ImGui::GetCursorScreenPos(), ImGui::GetTextLineHeight(), e))
+                ImGui::Dummy({ ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight() });
+            else
+                ImGui::TextColored(col, "%s", e.isDir ? "[D]" : EntryLabel(e));
             ImGui::SameLine();
             ImGui::TextUnformatted(e.name.c_str());
 

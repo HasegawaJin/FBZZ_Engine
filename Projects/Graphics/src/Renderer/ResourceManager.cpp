@@ -21,12 +21,14 @@
 #include <Core/Logger.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 
 namespace fbzz::renderer {
 
 namespace {
 ResourceManager* s_activeResourceManager = nullptr;
+std::atomic<uint64_t> s_resourceManagerInstanceId{0};
 
 /// @note 表面宣言だけで標準 PBR と認定せず、実際にロードした PS に正規化可能な定数を要求する。
 ShaderCapabilities LoadedShaderCapabilities(const IShader& shader, const std::string& path)
@@ -78,6 +80,8 @@ std::size_t EstimateTextureBytes(const ITexture& texture, std::size_t bytesPerTe
 ResourceManager::ResourceManager(IRenderer& renderer)
     : m_renderer(renderer)
 {
+    m_instanceId = s_resourceManagerInstanceId.fetch_add(1, std::memory_order_relaxed) + 1;
+    assert(m_instanceId != 0 && "Resource manager identity exhausted");
     s_activeResourceManager = this;
 }
 

@@ -410,8 +410,23 @@ void AssetBrowserPanel::RefreshDirectory()
     evictStaleEntries(m_curveAssetPreviews);
     evictStaleEntries(m_terrainPreviews);
     evictStaleEntries(m_spritePreviews);
+    evictStaleEntries(m_modelAssetPreviews);
+    evictStaleEntries(m_texDescPreviews);
+    evictStaleEntries(m_previewAccess);
 
     /// @note キューを空にしたら「積んである」印も落とす。印を残したまま待ち行列だけ捨てると、そのテクスチャは二度と積み直されずサムネイルが永久に出ない。素材を一括で入れた直後はファイル監視が毎フレーム RefreshDirectory を呼ぶため、3 件/フレームの読み込みが追いつく前にほぼ全部がこの状態に落ちていた (再起動するまで直らなかった原因)。
+    auto retryFailures = [](auto& cache) {
+        for (auto& item : cache) {
+            auto& preview = item.second;
+            if constexpr (requires { preview.failed; preview.retry; }) {
+                preview.failed = false; preview.retry = {};
+                if constexpr (requires { preview.unsupported; }) preview.unsupported = false;
+            }
+        }
+    };
+    retryFailures(m_texturePreviews); retryFailures(m_materialPreviews);
+    retryFailures(m_meshPreviews); retryFailures(m_modelAssetPreviews);
+    retryFailures(m_prefabPreviews); retryFailures(m_texDescPreviews);
     m_texLoadQueue.clear();
     for (auto& entry : m_texturePreviews)
         if (!entry.second.handle.IsValid()) entry.second.queued = false;

@@ -68,6 +68,8 @@ public:
     /// @note 旧 D3D デバイスに紐づく COM リソースは新デバイスで再利用できないため。
     void Reset();
     [[nodiscard]] uint64_t GetResetVersion() const { return m_resetVersion; }
+    /// @note プロセス内で単調に割り当てる所有者 ID。アドレス再利用と Reset 世代を区別する。
+    [[nodiscard]] uint64_t GetInstanceId() const { return m_instanceId; }
     /// @brief flipGreen は法線画像の G を GPU 転送前に反転し、生画像とは別にキャッシュする。
     ResourceHandle<TextureTag> LoadTexture(std::string_view path, bool flipGreen = false);
     /// @note 同名ファイルを上書きした際、既存ハンドルを維持したまま GPU テクスチャを差し替える。
@@ -269,6 +271,7 @@ private:
     std::unordered_map<uint64_t, ResourceHandle<TextureTag>> m_renderTargetDepths;
     ResourceHandle<TextureTag> m_whiteTexture;
     uint64_t m_resetVersion = 1;
+    uint64_t m_instanceId = 0;
     uint64_t m_shaderVersion = 1;
 
     /// @note リーク見張りの状態。前フレームの合計と «増え続けた連続フレーム数»。
