@@ -11,12 +11,13 @@
 namespace fbzz::tests {
 namespace {
 double s_profileTimeMs = 0.0;
-double ReadProfileTime() { return s_profileTimeMs; }
+size_t s_profileClockReads = 0;
+double ReadProfileTime() { ++s_profileClockReads; return s_profileTimeMs; }
 } /// @note namespace
 
 class ProfileRecorderTest : public testkit::EngineFixture {
 protected:
-    void SetUp() override { EngineFixture::SetUp(); s_profileTimeMs = 0.0; }
+    void SetUp() override { EngineFixture::SetUp(); s_profileTimeMs = 0.0; s_profileClockReads = 0; }
 };
 
 TEST_F(ProfileRecorderTest, ComputesSelfAndParentLinksWithoutDoubleCounting)
@@ -445,6 +446,70 @@ TEST_F(ProfileRecorderTest, BoundsOwnedStringCapacitiesAndRetiresUnusedMarkerStr
     EXPECT_EQ(profiler::Profiler::GetSnapshot().droppedSampleCount, 0u);
     EXPECT_EQ(profiler::Profiler::GetSnapshot().descriptors.size(), 1u);
     profiler::Profiler::SetEnabled(enabled);
+}
+
+TEST_F(ProfileRecorderTest, FilteredScopesSkipTheClockAndKeepMatchingChildrenAndParentCorrespondence)
+{
+    profiler::ProfileRecorder recorder(true, ReadProfileTime);
+    recorder.BeginFrame(1, 0);
+    const auto root = recorder.Begin(1);
+    s_profileTimeMs = 1;
+    const auto excluded = recorder.Begin(0, false);
+    const auto checkpoint = recorder.Checkpoint();
+    recorder.Push(0, 10, profiler::ProfileSampleKind::EXTERNAL_DURATION, false);
+    EXPECT_EQ(s_profileClockReads, 1u);
+    const auto child = recorder.Begin(2);
+    s_profileTimeMs = 3;
+    recorder.End(child);
+    EXPECT_TRUE(recorder.Recover(checkpoint));
+    recorder.End(excluded);
+    s_profileTimeMs = 5;
+    recorder.End(root);
+    recorder.EndFrame();
+    const auto& snapshot = recorder.GetSnapshot();
+    ASSERT_EQ(snapshot.samples.size(), 2u);
+    EXPECT_EQ(snapshot.samples[1].parentSampleId, snapshot.samples[0].sampleId);
+    EXPECT_EQ(snapshot.samples[1].depth, 1u);
+    EXPECT_DOUBLE_EQ(snapshot.samples[0].inclusiveMs, 5);
+    EXPECT_DOUBLE_EQ(snapshot.samples[1].inclusiveMs, 2);
+    EXPECT_FALSE(snapshot.samples[0].selfAvailable);
+    EXPECT_TRUE(snapshot.samples[1].selfAvailable);
+    EXPECT_TRUE(snapshot.complete);
+    EXPECT_EQ(snapshot.filteredSampleCount, 2u);
+    EXPECT_EQ(snapshot.droppedSampleCount, 0u);
+    EXPECT_EQ(s_profileClockReads, 5u);
+}
+
+TEST_F(ProfileRecorderTest, ExplainsCapacityDepthDescriptorAndUnclosedScopeLossAndResetsCounters)
+{
+    profiler::ProfileRecorder recorder(true, ReadProfileTime);
+    recorder.BeginFrame(1, 0);
+    for (size_t i = 0; i < profiler::ProfileRecorder::MAX_SAMPLES + 3; ++i)
+        recorder.Push(1, 0, profiler::ProfileSampleKind::INSTANT);
+    const auto rejected = recorder.Begin(0);
+    recorder.End(rejected);
+    std::vector<profiler::ProfileToken> stack;
+    for (size_t i = 0; i < profiler::ProfileRecorder::MAX_DEPTH + 1; ++i) stack.push_back(recorder.Begin(1));
+    for (auto it = stack.rbegin(); it != stack.rend(); ++it) recorder.End(*it);
+    recorder.EndFrame();
+    const auto& lost = recorder.GetSnapshot();
+    EXPECT_FALSE(lost.complete);
+    EXPECT_EQ(lost.sampleCapacity, profiler::ProfileRecorder::MAX_SAMPLES);
+    EXPECT_EQ(lost.capacityDroppedSampleCount, 3u + profiler::ProfileRecorder::MAX_DEPTH);
+    EXPECT_EQ(lost.depthDroppedSampleCount, 1u);
+    EXPECT_EQ(lost.descriptorDroppedSampleCount, 1u);
+    EXPECT_EQ(lost.droppedSampleCount, lost.capacityDroppedSampleCount + lost.depthDroppedSampleCount + lost.descriptorDroppedSampleCount);
+    recorder.BeginFrame(2, 0);
+    recorder.Begin(0, false);
+    recorder.EndFrame();
+    EXPECT_EQ(recorder.GetSnapshot().filteredSampleCount, 1u);
+    EXPECT_EQ(recorder.GetSnapshot().abortedSampleCount, 1u);
+    EXPECT_EQ(recorder.GetSnapshot().droppedSampleCount, 0u);
+    EXPECT_FALSE(recorder.GetSnapshot().complete);
+    recorder.BeginFrame(3, 0); recorder.EndFrame();
+    EXPECT_EQ(recorder.GetSnapshot().filteredSampleCount, 0u);
+    EXPECT_EQ(recorder.GetSnapshot().abortedSampleCount, 0u);
+    EXPECT_TRUE(recorder.GetSnapshot().complete);
 }
 
 } /// @note namespace fbzz::tests

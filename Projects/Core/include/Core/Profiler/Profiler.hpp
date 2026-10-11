@@ -29,7 +29,15 @@ struct PerformanceDescriptor {
     uint32_t color = 0xFF4FA3FF;
 };
 
+struct PerformanceCaptureFilter {
+    /// @note category は完全一致、scope は大文字小文字を区別する部分一致。空欄は全対象。
+    std::string category;
+    std::string scope;
+    bool operator==(const PerformanceCaptureFilter&) const = default;
+};
+
 struct PerformanceSnapshot : ProfileSnapshot {
+    PerformanceCaptureFilter captureFilter;
     std::vector<PerformanceDescriptor> descriptors;
 };
 
@@ -43,14 +51,21 @@ struct ProfilerCheckpoint {
     uint32_t compatSuppressedDepth = 0;
 };
 
-/// @pre 全操作は main thread から呼ぶ。
+/// @note recorder、recording 要求、descriptor と公開 snapshot はスレッドごとに独立し、収集フィルタだけを共有する。
+/// @pre token/checkpoint の開始・終了・復元は同じスレッドで行うこと。
 class Profiler {
 public:
     /// @note 即時に token と公開データを失効させる旧契約。新 UI は RequestRecording を使う。
     static void SetEnabled(bool enabled);
     static bool IsEnabled();
+    /// @note frame 境界へ未適用の要求も含め、recording の意図を返す。
+    static bool IsRecordingRequested();
     static void RequestRecording(bool recording);
     static void RequestClear();
+    /// @note 全 Performance スレッドへ次の BeginFrame で適用し、変更時は新しい session を開始する。
+    /// @return category が128 byte、scope が256 byteを超える要求は変更せず false。
+    static bool RequestCaptureFilter(PerformanceCaptureFilter filter);
+    static PerformanceCaptureFilter GetRequestedCaptureFilter();
     static void BeginFrame();
     static void BeginFrame(uint64_t applicationFrameSerial, double frameStartMs);
     static void EndFrame();

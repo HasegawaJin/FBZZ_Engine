@@ -60,13 +60,20 @@ struct ProfileSnapshot {
     uint64_t unframedInvocationCount = 0;
     uint32_t recordedSampleCount = 0;
     uint32_t droppedSampleCount = 0;
+    uint32_t filteredSampleCount = 0;
+    uint32_t sampleCapacity = 8192;
+    uint32_t capacityDroppedSampleCount = 0;
+    uint32_t depthDroppedSampleCount = 0;
+    uint32_t descriptorDroppedSampleCount = 0;
+    uint32_t faultedSampleCount = 0;
+    uint32_t abortedSampleCount = 0;
     double wallFrameIntervalMs = 0.0;
     double cpuFrameElapsedMs = 0.0;
     double scopeRootSumMs = 0.0;
     std::vector<ProfileSample> samples;
 };
 
-/// @pre 全操作はホストの main thread から呼ぶ。
+/// @pre 各インスタンスの全操作は同じ所有スレッドから呼ぶ。
 /// @note 時刻は単調時計のミリ秒。注入時計はテストにも同じ契約を要求する。
 class ProfileRecorder {
 public:
@@ -79,6 +86,8 @@ public:
     static double NowMs();
     double ReadClock() const;
     bool IsRecording() const { return m_recording; }
+    /// @note 次の frame 境界で適用する要求があれば、その意図を現在値より優先する。
+    bool IsRecordingRequested() const { return m_hasPendingRecording ? m_pendingRecording : m_recording; }
     bool IsFrameOpen() const { return m_frameOpen; }
     void RequestRecording(bool recording);
     void RequestClear();
@@ -86,9 +95,10 @@ public:
     void SetRecordingImmediate(bool recording);
     void BeginFrame(uint64_t applicationFrameSerial, double frameStartMs);
     void EndFrame();
-    ProfileToken Begin(uint64_t sampleKey);
+    /// @note collect=false は意図的除外。時計・sample を確保せず、ネスト対応を保つ。子は独立して選択できる。
+    ProfileToken Begin(uint64_t sampleKey, bool collect = true);
     void End(ProfileToken token, ProfileSampleStatus status = ProfileSampleStatus::COMPLETE);
-    void Push(uint64_t sampleKey, double durationMs, ProfileSampleKind kind);
+    void Push(uint64_t sampleKey, double durationMs, ProfileSampleKind kind, bool collect = true);
     /// @note 抑制中の生存境界は最大 MAX_SAMPLES 件。超過は無効 checkpoint を返し、外側の既存境界は保持する。
     ProfileCheckpoint Checkpoint() const;
     bool Recover(ProfileCheckpoint checkpoint);
@@ -100,6 +110,9 @@ private:
         double childMs = 0.0;
         size_t sampleIndex = MAX_SAMPLES;
         bool selfAvailable = true;
+        bool filtered = false;
+        uint64_t nearestSampleId = 0;
+        uint32_t retainedDepth = 0;
     };
     struct SuppressionAnchor {
         uint64_t scopeId = 0;

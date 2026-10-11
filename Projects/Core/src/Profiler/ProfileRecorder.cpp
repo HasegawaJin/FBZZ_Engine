@@ -4,11 +4,12 @@
 /// @date    2026-10-03
 #include <Core/Profiler/ProfileRecorder.hpp>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 
 namespace fbzz::profiler {
 namespace {
-uint64_t s_nextRecorderId = 0;
+std::atomic<uint64_t> s_nextRecorderId{0};
 }
 
 ProfileRecorder::ProfileRecorder(bool recording, ClockFn clock)
@@ -82,6 +83,13 @@ void ProfileRecorder::BeginFrame(uint64_t applicationFrameSerial, double frameSt
     m_current.frameIndex = m_frameIndex;
     m_current.recordedSampleCount = 0;
     m_current.droppedSampleCount = 0;
+    m_current.filteredSampleCount = 0;
+    m_current.sampleCapacity = static_cast<uint32_t>(MAX_SAMPLES);
+    m_current.capacityDroppedSampleCount = 0;
+    m_current.depthDroppedSampleCount = 0;
+    m_current.descriptorDroppedSampleCount = 0;
+    m_current.faultedSampleCount = 0;
+    m_current.abortedSampleCount = 0;
     m_current.scopeRootSumMs = 0.0;
     m_current.unframedInvocationCount = m_unframedInvocationCount;
     m_unframedInvocationCount = 0;
@@ -103,36 +111,51 @@ void ProfileRecorder::MarkIncomplete()
     for (auto& scope : m_stack) scope.selfAvailable = false;
 }
 
-ProfileToken ProfileRecorder::Begin(uint64_t sampleKey)
+ProfileToken ProfileRecorder::Begin(uint64_t sampleKey, bool collect)
 {
     if (!m_recording) return {};
     if (!m_frameOpen) { ++m_unframedInvocationCount; return {}; }
     ProfileToken token{m_recorderId, m_generation, m_frameIndex, ++m_nextScopeId};
     token.depth = static_cast<uint32_t>(m_stack.size()) + m_suppressionDepth;
-    if (m_suppressionDepth || m_stack.size() == MAX_DEPTH || !sampleKey) {
+    if (m_suppressionDepth || m_stack.size() == MAX_DEPTH || (collect && !sampleKey)) {
         token.suppressed = true;
         token.parentScopeId = m_suppressionTopScopeId;
         m_suppressionTopScopeId = token.scopeId;
         ++m_suppressionDepth;
         ++m_current.droppedSampleCount;
+        if (m_suppressionDepth > 1 || m_stack.size() == MAX_DEPTH) ++m_current.depthDroppedSampleCount;
+        else ++m_current.descriptorDroppedSampleCount;
         MarkIncomplete();
         return token;
     }
     ActiveScope active;
     active.token = token;
+    active.filtered = !collect;
+    if (!m_stack.empty()) {
+        active.nearestSampleId = m_stack.back().nearestSampleId;
+        active.retainedDepth = m_stack.back().retainedDepth;
+    }
+    if (!collect) {
+        ++m_current.filteredSampleCount;
+        for (auto& ancestor : m_stack) ancestor.selfAvailable = false;
+        m_stack.push_back(active);
+        return token;
+    }
     active.startMs = ReadClock();
     if (m_current.samples.size() < MAX_SAMPLES) {
         ProfileSample sample;
         sample.sampleId = ++m_nextSampleId;
         sample.sampleKey = sampleKey;
-        sample.depth = token.depth;
+        sample.depth = active.retainedDepth;
+        sample.parentSampleId = active.nearestSampleId;
+        active.nearestSampleId = sample.sampleId;
+        ++active.retainedDepth;
         sample.startOffsetMs = std::max(0.0, active.startMs - m_frameStartMs);
-        if (!m_stack.empty() && m_stack.back().sampleIndex < m_current.samples.size())
-            sample.parentSampleId = m_current.samples[m_stack.back().sampleIndex].sampleId;
         active.sampleIndex = m_current.samples.size();
         m_current.samples.push_back(sample);
     } else {
         ++m_current.droppedSampleCount;
+        ++m_current.capacityDroppedSampleCount;
         MarkIncomplete();
         active.selfAvailable = false;
     }
@@ -156,6 +179,12 @@ void ProfileRecorder::End(ProfileToken token, ProfileSampleStatus status)
     if (m_suppressionDepth || m_stack.empty() || m_stack.back().token.scopeId != token.scopeId) return;
     const ActiveScope active = m_stack.back();
     m_stack.pop_back();
+    if (status == ProfileSampleStatus::FAULTED) ++m_current.faultedSampleCount;
+    if (status == ProfileSampleStatus::ABORTED) ++m_current.abortedSampleCount;
+    if (active.filtered) {
+        if (status != ProfileSampleStatus::COMPLETE) MarkIncomplete();
+        return;
+    }
     const double elapsedMs = std::max(0.0, ReadClock() - active.startMs);
     if (active.sampleIndex < m_current.samples.size()) {
         auto& sample = m_current.samples[active.sampleIndex];
@@ -168,24 +197,36 @@ void ProfileRecorder::End(ProfileToken token, ProfileSampleStatus status)
     }
     if (!m_stack.empty()) {
         m_stack.back().childMs += elapsedMs;
-        if (!active.selfAvailable || status != ProfileSampleStatus::COMPLETE) MarkIncomplete();
+        if (!active.selfAvailable) m_stack.back().selfAvailable = false;
     }
     if (status != ProfileSampleStatus::COMPLETE) MarkIncomplete();
 }
 
-void ProfileRecorder::Push(uint64_t sampleKey, double durationMs, ProfileSampleKind kind)
+void ProfileRecorder::Push(uint64_t sampleKey, double durationMs, ProfileSampleKind kind, bool collect)
 {
     if (!m_recording) return;
     if (!m_frameOpen) { ++m_unframedInvocationCount; return; }
+    if (!collect) {
+        ++m_current.filteredSampleCount;
+        if (kind != ProfileSampleKind::INSTANT)
+            for (auto& active : m_stack) active.selfAvailable = false;
+        return;
+    }
     if (!sampleKey || m_suppressionDepth || m_current.samples.size() == MAX_SAMPLES) {
         ++m_current.droppedSampleCount;
+        if (m_suppressionDepth) ++m_current.depthDroppedSampleCount;
+        else if (!sampleKey) ++m_current.descriptorDroppedSampleCount;
+        else ++m_current.capacityDroppedSampleCount;
         MarkIncomplete();
         return;
     }
     ProfileSample sample;
     sample.sampleId = ++m_nextSampleId;
     sample.sampleKey = sampleKey;
-    sample.depth = static_cast<uint32_t>(m_stack.size());
+    if (!m_stack.empty()) {
+        sample.depth = m_stack.back().retainedDepth;
+        sample.parentSampleId = m_stack.back().nearestSampleId;
+    }
     sample.sampleKind = kind;
     sample.inclusiveMs = kind == ProfileSampleKind::INSTANT ? 0.0 : std::max(0.0, durationMs);
     sample.selfMs = sample.inclusiveMs;
@@ -193,8 +234,6 @@ void ProfileRecorder::Push(uint64_t sampleKey, double durationMs, ProfileSampleK
     sample.selfAvailable = kind == ProfileSampleKind::INSTANT;
     sample.startOffsetMs = sample.startAvailable ? std::max(0.0, ReadClock() - m_frameStartMs) : 0.0;
     sample.completionOrder = ++m_completionOrder;
-    if (!m_stack.empty() && m_stack.back().sampleIndex < m_current.samples.size())
-        sample.parentSampleId = m_current.samples[m_stack.back().sampleIndex].sampleId;
     if (kind == ProfileSampleKind::EXTERNAL_DURATION)
         for (auto& active : m_stack) active.selfAvailable = false;
     if (!sample.parentSampleId) m_current.scopeRootSumMs += sample.inclusiveMs;

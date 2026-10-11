@@ -4,6 +4,8 @@
 /// @date    2026-06-02
 #include <Core/Profiler/Profiler.hpp>
 #include <algorithm>
+#include <atomic>
+#include <memory>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -34,19 +36,29 @@ struct DescriptorHash {
         return std::hash<std::string_view>{}(key.name) ^ (std::hash<std::string_view>{}(key.category) << 1) ^ key.color;
     }
 };
-ProfileRecorder s_recorder;
-PerformanceSnapshot s_snapshot;
-std::vector<PerformanceDescriptor> s_descriptors;
-std::unordered_map<DescriptorKey, uint64_t, DescriptorHash> s_descriptorKeys;
-std::vector<ProfileToken> s_compatStack;
-std::vector<ProfileRecord> s_records;
-size_t s_stringBytes = 0;
-uint64_t s_nextDescriptorId = 0;
-uint64_t s_hostSerial = 0;
-uint64_t s_lastFrameIndex = 0;
-uint32_t s_compatSuppressedDepth = 0;
-ProfileCheckpoint s_compatOverflowCheckpoint;
-uint64_t s_compatOverflowScopeId = 0;
+/// @note Main/Render の scope stack と descriptor の寿命を分け、並行記録で親子関係と snapshot を混ぜない。
+std::atomic<std::shared_ptr<const PerformanceCaptureFilter>> s_requestedFilter{std::make_shared<const PerformanceCaptureFilter>()};
+thread_local std::shared_ptr<const PerformanceCaptureFilter> s_captureFilter;
+thread_local ProfileRecorder s_recorder;
+thread_local PerformanceSnapshot s_snapshot;
+thread_local std::vector<PerformanceDescriptor> s_descriptors;
+thread_local std::unordered_map<DescriptorKey, uint64_t, DescriptorHash> s_descriptorKeys;
+thread_local std::vector<ProfileToken> s_compatStack;
+thread_local std::vector<ProfileRecord> s_records;
+thread_local size_t s_stringBytes = 0;
+thread_local uint64_t s_nextDescriptorId = 0;
+thread_local uint64_t s_hostSerial = 0;
+thread_local uint64_t s_lastFrameIndex = 0;
+thread_local uint32_t s_compatSuppressedDepth = 0;
+thread_local ProfileCheckpoint s_compatOverflowCheckpoint;
+thread_local uint64_t s_compatOverflowScopeId = 0;
+
+bool Collect(const ProfilerMarker& marker)
+{
+    if (!s_captureFilter) return true;
+    return (s_captureFilter->category.empty() || s_captureFilter->category == (marker.category ? marker.category : "General"))
+        && (s_captureFilter->scope.empty() || std::string_view(marker.name ? marker.name : "Unnamed").find(s_captureFilter->scope) != std::string_view::npos);
+}
 
 uint64_t Resolve(const ProfilerMarker& marker)
 {
@@ -105,8 +117,17 @@ void Profiler::SetEnabled(bool enabled)
     if (!enabled) { s_descriptorKeys.clear(); s_descriptors.clear(); s_stringBytes = 0; }
 }
 bool Profiler::IsEnabled() { return s_recorder.IsRecording(); }
+bool Profiler::IsRecordingRequested() { return s_recorder.IsRecordingRequested(); }
 void Profiler::RequestRecording(bool recording) { s_recorder.RequestRecording(recording); }
 void Profiler::RequestClear() { s_recorder.RequestClear(); }
+bool Profiler::RequestCaptureFilter(PerformanceCaptureFilter filter)
+{
+    if (filter.category.size() > 128 || filter.scope.size() > 256) return false;
+    const auto current = s_requestedFilter.load();
+    if (*current != filter) s_requestedFilter.store(std::make_shared<const PerformanceCaptureFilter>(std::move(filter)));
+    return true;
+}
+PerformanceCaptureFilter Profiler::GetRequestedCaptureFilter() { return *s_requestedFilter.load(); }
 void Profiler::BeginFrame() { BeginFrame(++s_hostSerial, ProfileRecorder::NowMs()); }
 void Profiler::BeginFrame(uint64_t applicationFrameSerial, double frameStartMs)
 {
@@ -115,6 +136,9 @@ void Profiler::BeginFrame(uint64_t applicationFrameSerial, double frameStartMs)
     s_compatOverflowCheckpoint = {};
     s_compatOverflowScopeId = 0;
     if (s_descriptors.size() > MAX_DESCRIPTORS / 2 || s_stringBytes > MAX_STRING_BYTES / 2) RetireDescriptors();
+    const auto requestedFilter = s_requestedFilter.load();
+    if (s_captureFilter && *s_captureFilter != *requestedFilter) s_recorder.RequestClear();
+    s_captureFilter = requestedFilter;
     s_recorder.BeginFrame(applicationFrameSerial, frameStartMs);
     if (s_snapshot.captureSessionId != s_recorder.GetSnapshot().captureSessionId) {
         s_records.clear();
@@ -128,6 +152,7 @@ void Profiler::EndFrame()
     if (!s_recorder.IsFrameOpen()) return;
     s_recorder.EndFrame();
     static_cast<ProfileSnapshot&>(s_snapshot) = s_recorder.GetSnapshot();
+    s_snapshot.captureFilter = *s_captureFilter;
     s_lastFrameIndex = s_snapshot.frameIndex;
     s_snapshot.descriptors.clear();
     std::unordered_set<uint64_t> used;
@@ -153,7 +178,11 @@ void Profiler::EndFrame()
     s_compatOverflowCheckpoint = {};
     s_compatOverflowScopeId = 0;
 }
-ProfileToken Profiler::BeginScope(const ProfilerMarker& marker) { return s_recorder.Begin(Resolve(marker)); }
+ProfileToken Profiler::BeginScope(const ProfilerMarker& marker)
+{
+    const bool collect = Collect(marker);
+    return s_recorder.Begin(collect ? Resolve(marker) : 0, collect);
+}
 void Profiler::EndScope(ProfileToken token) { s_recorder.End(token); }
 void Profiler::BeginSample(const ProfilerMarker& marker)
 {
@@ -181,8 +210,16 @@ void Profiler::EndSample()
     s_compatStack.pop_back();
     EndScope(token);
 }
-void Profiler::PushMarker(const ProfilerMarker& marker) { s_recorder.Push(Resolve(marker), 0.0, ProfileSampleKind::INSTANT); }
-void Profiler::PushSample(const ProfilerMarker& marker, double elapsedMs) { s_recorder.Push(Resolve(marker), elapsedMs, ProfileSampleKind::EXTERNAL_DURATION); }
+void Profiler::PushMarker(const ProfilerMarker& marker)
+{
+    const bool collect = Collect(marker);
+    s_recorder.Push(collect ? Resolve(marker) : 0, 0.0, ProfileSampleKind::INSTANT, collect);
+}
+void Profiler::PushSample(const ProfilerMarker& marker, double elapsedMs)
+{
+    const bool collect = Collect(marker);
+    s_recorder.Push(collect ? Resolve(marker) : 0, elapsedMs, ProfileSampleKind::EXTERNAL_DURATION, collect);
+}
 ProfilerCheckpoint Profiler::Checkpoint()
 {
     return {s_recorder.Checkpoint(), s_compatOverflowCheckpoint,

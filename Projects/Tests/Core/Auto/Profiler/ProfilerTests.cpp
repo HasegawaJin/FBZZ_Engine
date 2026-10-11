@@ -5,6 +5,8 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Core/Profiler/Profiler.hpp>
+#include <thread>
+#include <array>
 
 namespace fbzz::tests {
 
@@ -17,12 +19,15 @@ protected:
     {
         EngineFixture::SetUp();
         m_wasEnabled = Profiler::IsEnabled();
+        m_previousFilter = Profiler::GetRequestedCaptureFilter();
+        Profiler::RequestCaptureFilter({});
         Profiler::SetEnabled(false);
         Profiler::SetEnabled(true);
     }
 
     void TearDown() override
     {
+        Profiler::RequestCaptureFilter(m_previousFilter);
         Profiler::SetEnabled(false);
         Profiler::SetEnabled(m_wasEnabled);
         EngineFixture::TearDown();
@@ -30,6 +35,7 @@ protected:
 
 private:
     bool m_wasEnabled = true;
+    profiler::PerformanceCaptureFilter m_previousFilter;
 };
 
 TEST_F(ProfilerTest, PublishesSamplesOnlyWhenTheFrameEnds)
@@ -119,6 +125,78 @@ TEST_F(ProfilerTest, DisablingClearsPublishedAndPendingSamplesAndIgnoresCollecti
     Profiler::BeginFrame();
     Profiler::EndFrame();
     EXPECT_TRUE(Profiler::GetLastFrameRecords().empty());
+}
+
+TEST_F(ProfilerTest, FiltersBeforeDescriptorRegistrationAndAvoidsSyntheticCapacityOverflow)
+{
+    ASSERT_TRUE(Profiler::RequestCaptureFilter({"Rendering", "Extract"}));
+    Profiler::BeginFrame();
+    for (size_t i = 0; i < profiler::ProfileRecorder::MAX_SAMPLES + 512; ++i) {
+        const auto name = "Ignored" + std::to_string(i);
+        Profiler::PushMarker(ProfilerMarker(name.c_str(), "Scripts"));
+    }
+    Profiler::BeginSample(ProfilerMarker("excluded parent", "Rendering"));
+    Profiler::PushMarker(ProfilerMarker("Extract", "Rendering"));
+    Profiler::PushMarker(ProfilerMarker("extract", "Rendering"));
+    Profiler::PushMarker(ProfilerMarker("Extract", "Render"));
+    Profiler::EndSample();
+    Profiler::EndFrame();
+    const auto& snapshot = Profiler::GetSnapshot();
+    ASSERT_EQ(snapshot.samples.size(), 1u);
+    ASSERT_EQ(snapshot.descriptors.size(), 1u);
+    EXPECT_EQ(snapshot.descriptors[0].name, "Extract");
+    EXPECT_EQ(snapshot.samples[0].parentSampleId, 0u);
+    EXPECT_EQ(snapshot.samples[0].depth, 0u);
+    EXPECT_EQ(snapshot.filteredSampleCount, profiler::ProfileRecorder::MAX_SAMPLES + 515);
+    EXPECT_EQ(snapshot.droppedSampleCount, 0u);
+    EXPECT_TRUE(snapshot.complete);
+}
+
+TEST_F(ProfilerTest, AppliesFilterOnlyAtFrameBoundaryAndDoesNotChangeExistingTokens)
+{
+    Profiler::BeginFrame();
+    const auto parent = Profiler::BeginScope(ProfilerMarker("parent", "Physics"));
+    ASSERT_TRUE(Profiler::RequestCaptureFilter({"Rendering", ""}));
+    Profiler::PushMarker(ProfilerMarker("still current", "Physics"));
+    Profiler::EndScope(parent); Profiler::EndFrame();
+    const auto session = Profiler::GetSnapshot().captureSessionId;
+    EXPECT_EQ(Profiler::GetSnapshot().samples.size(), 2u);
+    EXPECT_TRUE(Profiler::GetSnapshot().captureFilter.category.empty());
+    Profiler::BeginFrame();
+    Profiler::PushMarker(ProfilerMarker("ignored", "Physics"));
+    Profiler::PushMarker(ProfilerMarker("selected", "Rendering"));
+    Profiler::EndScope(parent); Profiler::EndFrame();
+    EXPECT_GT(Profiler::GetSnapshot().captureSessionId, session);
+    EXPECT_EQ(Profiler::GetSnapshot().samples.size(), 1u);
+    EXPECT_TRUE(Profiler::GetSnapshot().complete);
+    EXPECT_FALSE(Profiler::RequestCaptureFilter({std::string(129, 'C'), ""}));
+    EXPECT_EQ(Profiler::GetRequestedCaptureFilter().category, "Rendering");
+}
+
+TEST_F(ProfilerTest, SharesCollectionFilterAcrossThreadsWhileKeepingStacksAndSnapshotsIndependent)
+{
+    ASSERT_TRUE(Profiler::RequestCaptureFilter({"Rendering", "selected"}));
+    std::array<profiler::PerformanceSnapshot, 2> snapshots;
+    std::array<uint64_t, 2> recorderIds{};
+    const auto collect = [&](size_t index) {
+        Profiler::BeginFrame(100 + index, profiler::ProfileRecorder::NowMs());
+        const auto wrapper = Profiler::BeginScope(ProfilerMarker("wrapper", "Scripts"));
+        const auto sample = Profiler::BeginScope(ProfilerMarker("selected", "Rendering"));
+        recorderIds[index] = sample.recorderId;
+        Profiler::EndScope(sample); Profiler::EndScope(wrapper); Profiler::EndFrame();
+        snapshots[index] = Profiler::GetSnapshot();
+    };
+    std::thread first(collect, 0), second(collect, 1);
+    first.join(); second.join();
+    EXPECT_NE(recorderIds[0], recorderIds[1]);
+    for (size_t i = 0; i < snapshots.size(); ++i) {
+        ASSERT_EQ(snapshots[i].samples.size(), 1u);
+        EXPECT_EQ(snapshots[i].samples[0].parentSampleId, 0u);
+        EXPECT_EQ(snapshots[i].captureFilter.category, "Rendering");
+        EXPECT_EQ(snapshots[i].applicationFrameSerial, 100 + i);
+        EXPECT_EQ(snapshots[i].filteredSampleCount, 1u);
+        EXPECT_TRUE(snapshots[i].complete);
+    }
 }
 
 } /// @note namespace fbzz::tests
