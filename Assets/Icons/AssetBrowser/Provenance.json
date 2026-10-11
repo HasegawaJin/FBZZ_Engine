@@ -1,0 +1,353 @@
+{
+  "generator": "built-in image_gen",
+  "date": "2026-10-11",
+  "intent": "Original AssetBrowser asset-type icons requested by user. No reference images, brand logos or third-party icons used.",
+  "processing": "Original alpha preserved; proportional raster resampling only for editor display sizes.",
+  "icons": [
+    {
+      "name": "Script",
+      "prompt": "Use case: stylized-concept\nAsset type: original FBZZ Engine AssetBrowser SCRIPT file-type icon, single isolated bitmap icon.\nSubject: a thick ivory folded code-page silhouette with two large opposing dark-blue angle brackets and one bold teal diagonal slash cut through the middle. Distinct recognisable silhouette without relying on color.\nStyle: restrained flat pictogram, rounded chunky edges, almost no shading, uniform 6-percent-of-canvas strokes, high contrast for a dark editor UI, original design with no borrowed logo.\nComposition: square canvas, centered mark occupying 74 percent of width and height, generous 13-percent transparent margins. Simple enough to read when reduced to 16, 24, 32 and 64 pixels. Produce one icon only.\nBackground: real transparent alpha, no background rectangle, no shadow outside silhouette.\nConstraints: no text, letters, numbers, watermark, brand marks, decorative scene, small details or hairline strokes.",
+      "original_sha256": "8505cc0011389989280946e8576997869d0aa14a44c3c6188a4abced82620490",
+      "original_path": "Docs/media/asset-browser-icons/Source/Script.png",
+      "files": [
+        {
+          "path": "Assets/Icons/AssetBrowser/Script16.png",
+          "sha256": "a283a4dd05c0065bf8fa6d8d740c79c55bd59a2c77e0aac520ba1f1f0090da93",
+          "size": 16
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Script24.png",
+          "sha256": "58709ac4a07e90c6d7a1ac3660a37c90f1c3d2f8c9d5ce7555901f7fc1de9a6a",
+          "size": 24
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Script32.png",
+          "sha256": "82395073380f166b52eddf184d5026cfd25df631293cb8f9e8084adf3f653078",
+          "size": 32
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Script64.png",
+          "sha256": "53489668351e3b0f096ca111c28488cd8eba95af9f519cf568b0f8d6fa20d29a",
+          "size": 64
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Script128.png",
+          "sha256": "e82a0698f7e90bc00d4dd7d7c0b757e88e2d9b326e97c19455fe5d054865462f",
+          "size": 128
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Script256.png",
+          "sha256": "f1bb6cf42125bf7d86e4b3faae0ff2b0a00a0e8b16ea6a3154ef5cfcab669c2b",
+          "size": 256
+        }
+      ],
+      "library_file_id": "libfile_610396764b548191b4902ac064aed00e",
+      "file_id": "file_000000005b0c820697370d3951a45889"
+    },
+    {
+      "name": "Scene",
+      "prompt": "Use case: stylized-concept\nAsset type: original FBZZ Engine AssetBrowser SCENE type icon, single bitmap pictogram.\nSubject: a sturdy ivory open stage frame enclosing a teal mountain-like triangular landscape, a navy base platform, and one large ivory floating sun circle. The wide stage frame and enclosed landscape must distinguish it from a cube Prefab or a code page Script.\nStyle: restrained flat pictogram, rounded chunky edges, broad deep navy outlines, uniform thick strokes, minimal shading, high contrast for dark editor UI, original design, no borrowed marks.\nComposition: square canvas, centered mark occupying 74 percent width and height, 13-percent transparent margins. Recognisable at 16,24,32,64 pixels. One icon only.\nBackground: real transparent alpha, no background rectangle, no outer shadow.\nConstraints: no text, letters, watermark, brand logos, tiny details or hairline strokes.",
+      "original_sha256": "5f3704b59f611498c773a58916751564fb2f409399c6f9730f40ec6da32f3bcb",
+      "original_path": "Docs/media/asset-browser-icons/Source/Scene.png",
+      "files": [
+        {
+          "path": "Assets/Icons/AssetBrowser/Scene16.png",
+          "sha256": "98affb6d83a8a975e69bf2df4a0b493d8a7dbfebf21fab483f030c07da2ac42d",
+          "size": 16
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Scene24.png",
+          "sha256": "614ee4e61c9093c18c370c49532691f096f8db86493b79bc7035b620f11900c5",
+          "size": 24
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Scene32.png",
+          "sha256": "5815c2a578d2aae66c5ec67cbd8e0b1e7f0ecad72d57fb4e7aba702a18eb56f3",
+          "size": 32
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Scene64.png",
+          "sha256": "edc5041f340bab7a0d8b1d8042e04dfd46bb5ec6ff324682c1aecd7e42d6aae0",
+          "size": 64
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Scene128.png",
+          "sha256": "e503edfd55ded761ef61d90126a47aa24337c5cffe706c109369a26f3864af51",
+          "size": 128
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Scene256.png",
+          "sha256": "8d1af460741c9d37ba3f27413fbe9fee698a2cbab16d7b66ecf02dbd6c822a97",
+          "size": 256
+        }
+      ],
+      "library_file_id": "libfile_6dd641a96fec8191a9673123ab1a4300",
+      "file_id": "file_00000000b7c08209aff146f7146dafeb"
+    },
+    {
+      "name": "Prefab",
+      "prompt": "Use case: stylized-concept\nAsset type: original FBZZ Engine AssetBrowser PREFAB type icon, single bitmap pictogram.\nSubject: one ivory and teal isometric assembled cube with one large separate ivory rectangular block hovering directly above it, indicating reusable construction. Distinct block-stack silhouette. Only two pieces, bold simple geometry.\nStyle: restrained flat pictogram, rounded chunky edges, broad deep navy outlines, uniform thick strokes, minimal shading, high contrast for dark editor UI, original design, no borrowed marks.\nComposition: square canvas, centered mark occupying 74 percent width and height, 13-percent transparent margins. Recognisable at 16,24,32,64 pixels. One icon only.\nBackground: real transparent alpha, no background rectangle, no outer shadow.\nConstraints: no text, letters, watermark, brand logos, tiny details, seams or hairline strokes.",
+      "original_sha256": "10efd0746ccf966d3fda2bc52f9f19ade7a81fbd9dc5dedb49d14ae0e0e0c5c5",
+      "original_path": "Docs/media/asset-browser-icons/Source/Prefab.png",
+      "files": [
+        {
+          "path": "Assets/Icons/AssetBrowser/Prefab16.png",
+          "sha256": "5bfa4b037f78c946113135f60642420ab70d11f7018e27d36ab50ee76a4b25b7",
+          "size": 16
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Prefab24.png",
+          "sha256": "02d2dea997670beb98e56921e80fcad51d8a972c296143517bfb605e96f5436c",
+          "size": 24
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Prefab32.png",
+          "sha256": "e19a1c74cf9ec9f7a22cd65234eabae00fdb5b4252798f434db0374033ec5108",
+          "size": 32
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Prefab64.png",
+          "sha256": "c2a259ef97ca25b003b89c1a144e0047ba326320e9e0045bf2fdd684f0c7c366",
+          "size": 64
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Prefab128.png",
+          "sha256": "cbe632e8c82c9a2239a9c68566969f23476d86a13136ab55f395de26e7be2687",
+          "size": 128
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Prefab256.png",
+          "sha256": "e043ded0e30dd8023c04bd0ac4f3dc1686b513ce9ccd5de72c6562844e6c6485",
+          "size": 256
+        }
+      ],
+      "library_file_id": "libfile_39a862cac7508191986a14bee24c5417",
+      "file_id": "file_000000001b9881f599b89a4d2ad0422b"
+    },
+    {
+      "name": "Audio",
+      "prompt": "Use case: stylized-concept\nAsset type: original FBZZ Engine AssetBrowser AUDIO type icon, single bitmap pictogram.\nSubject: an ivory speaker cone facing right with two broad teal sound arcs. The speaker has a broad rectangular base and bold triangular horn, three simple solid components, clear speaker silhouette even monochrome.\nStyle: restrained flat pictogram, rounded chunky edges, broad deep navy outlines, uniform thick strokes, minimal shading, high contrast for dark editor UI, original design, no borrowed marks.\nComposition: square canvas, centered mark occupying 74 percent width and height, 13-percent transparent margins. Recognisable at 16,24,32,64 pixels. One icon only.\nBackground: real transparent alpha, no background rectangle, no outer shadow.\nConstraints: no text, letters, watermark, brand logos, tiny details or hairline strokes.",
+      "original_sha256": "62cb44abd40d7e9041449bd800d8a9af42d099fff60d5396fdf3c3c56289130d",
+      "original_path": "Docs/media/asset-browser-icons/Source/Audio.png",
+      "files": [
+        {
+          "path": "Assets/Icons/AssetBrowser/Audio16.png",
+          "sha256": "ee1802b0541cd6f932fea59d2aa6b849c4ef1f11611b3a74cc468c529142d7b9",
+          "size": 16
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Audio24.png",
+          "sha256": "4d7a84ad397ee47474a806dd386dd363764b867a580bd34ddf40d63f98aa3574",
+          "size": 24
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Audio32.png",
+          "sha256": "6e70c532a1c91c94fc6c5a4a43f7ec334f111e30dd91553ad0a21ca63dca23f0",
+          "size": 32
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Audio64.png",
+          "sha256": "90924c4fb007d80634d97dedec4a5da6a9720d78f365ea3e9d2a8a4382ceb605",
+          "size": 64
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Audio128.png",
+          "sha256": "e7b981417d7c1bfaab080ec5ddcfd090029f531b28ff6c4441d9989ebb48c43e",
+          "size": 128
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Audio256.png",
+          "sha256": "097db0b1b9419585e00e0d392192f72d06b3aed3ba62d3d30deec3139662b2e2",
+          "size": 256
+        }
+      ],
+      "library_file_id": "libfile_313a470ac8888191bea7a7e927c0ff0f",
+      "file_id": "file_000000005cf08209b42ed8c514d3e4f4"
+    },
+    {
+      "name": "Animation",
+      "prompt": "Use case: stylized-concept\nAsset type: original FBZZ Engine AssetBrowser ANIMATION file-type bitmap icon, replacement revision 2, one isolated icon.\nPrimary request: make animation immediately understandable at 16, 24 and 32 pixels: a very short filmstrip with TWO large connected frames showing a simple chunky person in TWO visibly different poses, plus ONE large unmistakable triangular play badge overlapping the lower right corner. Only the two frames, the two pose silhouettes and the play badge; eliminate timeline diamonds and tiny details.\nStyle/medium: restrained flat pictogram matching the existing Script/Scene/Prefab/Audio icons: matte ivory shapes, deep navy thick rounded outlines, teal accent. Use a roughly 5–6 percent canvas-width stroke. Few large filled shapes, no delicate thin limbs, no gradients or glossy 3D effects.\nColor palette: warm ivory #F6F2E8, deep navy #103555, saturated teal #06B9BC. The filmstrip is ivory with navy divisions; the two simplified pose silhouettes are navy and the play triangle is teal outlined in navy. Pose difference and outer filmstrip/play silhouette should carry the meaning independently of color.\nComposition/framing: square transparent canvas; centered compact mark occupying about 74 percent of the canvas; generous clear margins, balanced optical weight. Film frames each large and readable, and the play triangle prominent rather than decorative. At most two bold film perforations per edge, if needed; no small ticks or circles.\nConstraints: real transparent alpha background, no background rectangle, no cast shadow outside the mark; no letters, text, numbers, watermark, other icon, company logo or existing brand mark. Produce exactly one animation icon, not a sheet.",
+      "original_sha256": "d730fb4f79ffbe59a73db24bb10de96f6c05d9bc06086caab391c13c8e6064c0",
+      "original_path": "Docs/media/asset-browser-icons/Source/Animation.png",
+      "files": [
+        {
+          "path": "Assets/Icons/AssetBrowser/Animation16.png",
+          "sha256": "acfd3453a2279cdfcc1d1671e453a7a6c6f3cea40a209bc4304743119dc6eed0",
+          "size": 16
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Animation24.png",
+          "sha256": "790772f1c40b47082bec632de37243f0602e37ec2bceb2a58168e66836a809ff",
+          "size": 24
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Animation32.png",
+          "sha256": "560154560fdbd38b932122b0918cbfd857c0f7ecbeb6d0117fe8cf3dd387ecbf",
+          "size": 32
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Animation64.png",
+          "sha256": "e89be292ab1ab68a64d2d9be1940991b5937c029d93f86a222710c9be6cebd6e",
+          "size": 64
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Animation128.png",
+          "sha256": "acbc01072c8a9aeb1fa2018f121f1f1f031dd80999fa2a77695adc8ee5d273da",
+          "size": 128
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Animation256.png",
+          "sha256": "4c17eedb39f81b5c0c2200e0ccc33c4ea139e19d27ebcd4834037f22ab44e0b8",
+          "size": 256
+        }
+      ],
+      "library_file_id": "libfile_c9437c41c4248191937870d22e93f579",
+      "file_id": "file_0000000009fc820980f5a0083b478f22",
+      "previous_versions": [
+        {
+          "name": "Animation",
+          "prompt": "Use case: stylized-concept\nAsset type: original FBZZ Engine AssetBrowser ANIMATION type icon, single bitmap pictogram.\nSubject: two broad horizontal ivory timeline rails with three large teal diamond keyframes, one diamond on upper rail and two lower. A bold navy right-pointing play wedge beside them. The timeline-diamond silhouette indicates motion/keyframe animation, distinct from audio speaker, cube, script page, and framed scene.\nStyle: restrained flat pictogram, rounded chunky edges, broad deep navy outlines, uniform thick strokes, minimal shading, high contrast for dark editor UI, original design, no borrowed marks.\nComposition: square canvas, centered mark occupying 74 percent width and height, 13-percent transparent margins. Recognisable at 16,24,32,64 pixels. One icon only.\nBackground: real transparent alpha, no background rectangle, no outer shadow.\nConstraints: no text, letters, watermark, brand logos, tiny details or hairline strokes.",
+          "original_sha256": "f474dd9fab6c2e51fbd8ab933a4408d1bb026a94a8f3e70fd1c95a70a6947d73",
+          "original_path": "Docs/media/asset-browser-icons/Archive/Revision1/Animation-source.png",
+          "files": [
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Animation16.png",
+              "sha256": "3248e9a37dd80ced0c3ade4b9fd028e4f9a9fbda06dc41279e19c1a9f60b6d61",
+              "size": 16
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Animation24.png",
+              "sha256": "ab2d70a0f698147efd54a28bdbddd445dc45c71ea39fc5d4c1fcf8237ea1e945",
+              "size": 24
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Animation32.png",
+              "sha256": "48b9f135d016531e1dfbe4f3a2bc752796f8189e765d2f8a1932aad120624b23",
+              "size": 32
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Animation64.png",
+              "sha256": "172a3d590f33925d313d40c3c57dcba52ff2065289b61df26c0bd4f365edb34e",
+              "size": 64
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Animation128.png",
+              "sha256": "84e0961d18f74a27cb97ce40a82470ab1d9a44b58f7856a9e610911a64d45a23",
+              "size": 128
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Animation256.png",
+              "sha256": "d35882de7073527eafef4b23bfe5d8bb34178bf91f6d5b95c96a39961e397723",
+              "size": 256
+            }
+          ],
+          "library_file_id": "libfile_2ed65865f07881919d3d1e0ed8dba337",
+          "file_id": "file_0000000054148206809a11191a16568e",
+          "revision": 1
+        }
+      ],
+      "revision": 2,
+      "revised_at_utc": "2026-10-11T16:31:25.138834+00:00",
+      "revision_reason": "User requested clearer Animation and Shader silhouettes at small display sizes."
+    },
+    {
+      "name": "Shader",
+      "prompt": "Use case: stylized-concept\nAsset type: original FBZZ Engine AssetBrowser SHADER file-type bitmap icon, replacement revision 2, one isolated icon.\nPrimary request: communicate a shader as a tiny processing graph feeding a shaded sphere. TWO chunky rounded-square nodes stacked on the left are connected by thick teal right-angle lines merging into ONE clear short right-pointing arrow that enters a large shaded sphere on the right. The graph-to-sphere outer silhouette is the identifying feature; eliminate microchip pins, diamonds and star emblems.\nStyle/medium: restrained flat pictogram matching the existing Script/Scene/Prefab/Audio icons: matte ivory shapes, deep navy thick rounded outlines, teal accent, almost no shading except the sphere's very simple two-tone curved shading. Roughly 5–6 percent canvas-width stroke, few large shapes, high contrast, robust at 16, 24 and 32 pixels.\nColor palette: warm ivory #F6F2E8, deep navy #103555, saturated teal #06B9BC. Nodes ivory with navy outlines; connections and the arrow teal with a navy border. Sphere has ivory upper-left half and teal lower-right curved half, a thick navy perimeter, and at most one broad highlight shape. No texture, shine, chrome or sparkle.\nComposition/framing: square genuinely transparent canvas; compact centered mark occupying about 74 percent width and height, generous clear margins and balanced visual weight. The sphere takes about half the mark's width. Nodes are large empty squares rather than detailed panels; thick clearly separated connections. Keep the nodes and arrow obvious so this cannot read as a generic material sphere alone.\nConstraints: real transparent alpha, no background rectangle, no cast shadow beyond silhouette, no text, letters, numbers, symbols inside nodes, watermark, company logo, borrowed icon or brand marks. Exactly one icon, not a sheet.",
+      "original_sha256": "ee30198147bb945b2a06e93c110aa6df8ed0324e00942eea11af20841afd323f",
+      "original_path": "Docs/media/asset-browser-icons/Source/Shader.png",
+      "files": [
+        {
+          "path": "Assets/Icons/AssetBrowser/Shader16.png",
+          "sha256": "295aa784d5d29db9ddd6b94d9ec85297574ee3d1a28323888824a7367cdb2193",
+          "size": 16
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Shader24.png",
+          "sha256": "29b8f9eed6ea92b896f110d54db144fb5a79ddf4612e6d179dd7ba598e670477",
+          "size": 24
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Shader32.png",
+          "sha256": "d98641ba640ebedf6a041d3fa4b589a09290933d3a6d9b51c2f26cd9c23ea3cb",
+          "size": 32
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Shader64.png",
+          "sha256": "d91469da670f20e7c7611591db4dbf8f6ea550994704f362d11cdbc6ceb16e05",
+          "size": 64
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Shader128.png",
+          "sha256": "df27e96dd8346a199c5c26efc96aeda4fc9de134d413a2bc90ed86f019c4fe85",
+          "size": 128
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Shader256.png",
+          "sha256": "3cbc9a0b9f5c02e897ec44ec55738a8b25b86508f2bba805fdc0b4a15e4d8c63",
+          "size": 256
+        }
+      ],
+      "library_file_id": "libfile_8ba58bc7483081919d9092b6d4e380bc",
+      "file_id": "file_00000000a70c8209911ccb55015f5477",
+      "previous_versions": [
+        {
+          "name": "Shader",
+          "prompt": "Use case: stylized-concept\nAsset type: original FBZZ Engine AssetBrowser SHADER type icon, single bitmap pictogram.\nSubject: one large ivory hexagonal processor plate, a bold teal four-point light sparkle in its center and three broad ivory input/output pins on left and right. Distinct chip-with-light silhouette for shader programming, unlike a script page.\nStyle: restrained flat pictogram, rounded chunky edges, broad deep navy outlines, uniform thick strokes, minimal shading, high contrast for dark editor UI, original design, no borrowed marks.\nComposition: square canvas, centered mark occupying 74 percent width and height, 13-percent transparent margins. Recognisable at 16,24,32,64 pixels. One icon only.\nBackground: real transparent alpha, no background rectangle, no outer shadow.\nConstraints: no text, letters, watermark, brand logos, tiny details or hairline strokes.",
+          "original_sha256": "a26e8153261f88fa2d4b65e78be8b7781e2e11907a51bd27d33b67c239d7135a",
+          "original_path": "Docs/media/asset-browser-icons/Archive/Revision1/Shader-source.png",
+          "files": [
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Shader16.png",
+              "sha256": "c4f8365ca79287f354a7756dd61760d4006c45d5d29be9c7923d808441e281c8",
+              "size": 16
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Shader24.png",
+              "sha256": "8dd38cd3ea308fac5d59b168b8b5d5908c7d29a7a539ea43ef1802ddb47333a7",
+              "size": 24
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Shader32.png",
+              "sha256": "274adad98aba7e9278049c54c465a90460ad2aff24fc7bcf450a1e2ea26f5775",
+              "size": 32
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Shader64.png",
+              "sha256": "f7fd512b50f344762d67e1cbf37071b46cd4fce0fabb5323e9649ab3ea9bfc7c",
+              "size": 64
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Shader128.png",
+              "sha256": "edd09a8c4961a55f0f36fff82c4742cb754972aa51fc311ee7402fb978d59887",
+              "size": 128
+            },
+            {
+              "path": "Docs/media/asset-browser-icons/Archive/Revision1/Shader256.png",
+              "sha256": "0046b4a50fbcbb7129681599dfb3dd8436d830b61ac2bd5f7cfd116b8052b646",
+              "size": 256
+            }
+          ],
+          "library_file_id": "libfile_153185d9a9188191ad913a2d263db633",
+          "file_id": "file_0000000083708209b84cee579256780e",
+          "revision": 1
+        }
+      ],
+      "revision": 2,
+      "revised_at_utc": "2026-10-11T16:31:25.138834+00:00",
+      "revision_reason": "User requested clearer Animation and Shader silhouettes at small display sizes."
+    }
+  ],
+  "revision_history": [
+    {
+      "revision": 2,
+      "changed_icons": [
+        "Animation",
+        "Shader"
+      ],
+      "timestamp_utc": "2026-10-11T16:31:25.138834+00:00",
+      "archive": "Docs/media/asset-browser-icons/Archive/Revision1",
+      "comparison_library_file_id": "libfile_b2c25ba46b28819191b1508d9f6be9f3",
+      "comparison_file_id": "file_000000006c7c8209880681e86069811a"
+    }
+  ]
+}
