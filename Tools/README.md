@@ -16,3 +16,4 @@
 | `VcBuild.ps1` | 人が使う VS Code タスクのビルド入口。全体ビルド後に同構成の SDK を公開 | `.vscode/tasks.json` |
 | `BenchCompare.ps1` | 基準と候補の TestBench をビルドして交互に計測し、比較レポートを作る | `Docs/design/benchmark-report.md` |
 | `Coverage/` | カバレッジの計測と要約 (C0: OpenCppCoverage / C1・C2: clang-cl + llvm-cov) | `.vscode/tasks.json`、`.github/workflows/tests.yml`、`Docs/conventions/test.md` |
+| `AssetAudit/` | モデル・画像・アニメ・GUID参照を入力不変検証付きで読み取り、JSON/HTMLに報告 | ユーザーの明示CLI呼び出し。契約と検査範囲は `Tools/AssetAudit/README.md` |

@@ -1,0 +1,29 @@
+{
+  "_file": "Config.example.json",
+  "_brief": "AssetAudit desktop budget and conservative read limits",
+  "_author": "Hasegawa Jin",
+  "_date": "2026-10-11",
+  "profile": "desktop",
+  "workers": 1,
+  "scope": "all",
+  "settleSeconds": 30,
+  "failOn": "error",
+  "maxFileBytes": 134217728,
+  "maxTextBytes": 16777216,
+  "maxHashBytes": 536870912,
+  "maxTotalHashBytes": 2147483648,
+  "maxElements": 20000000,
+  "maxInflatedBytes": 268435456,
+  "maxFiles": 25000,
+  "thresholds": {
+    "triangles": 500000,
+    "vertices": 1000000,
+    "bones": 256,
+    "maxWeightsPerVertex": 4,
+    "materials": 32,
+    "textureDimension": 8192,
+    "textureBytes": 67108864,
+    "durationSeconds": 600,
+    "keys": 1000000
+  }
+}

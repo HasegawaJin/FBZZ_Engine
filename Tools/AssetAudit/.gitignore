@@ -1,0 +1,5 @@
+# @file    .gitignore
+# @brief   Keep local audit reports outside versioned tool sources.
+# @author  Hasegawa Jin
+# @date    2026-10-11
+/Reports/
