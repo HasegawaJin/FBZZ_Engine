@@ -272,6 +272,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/AnimatorMaskAuditTests.cpp
     Editor/Auto/AppIconWriterTests.cpp
     Editor/Auto/AssetDirtyRegistryTests.cpp
+    Editor/Auto/AssetBrowserExplorerTests.cpp
     Editor/Auto/AssetPathTests.cpp
     Editor/Auto/AssetPickerTests.cpp
     Editor/Auto/ClothPinBrushTests.cpp

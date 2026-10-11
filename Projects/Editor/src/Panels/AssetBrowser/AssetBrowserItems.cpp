@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
+#include "AssetBrowserExplorer.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
@@ -17,7 +18,6 @@
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
-#include <Windows.h>
 #include <toml++/toml.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -1154,9 +1154,7 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
                 bks.erase(std::remove(bks.begin(), bks.end(), dir.path), bks.end());
             ImGui::Separator();
             if (ImGui::MenuItem("Reveal in Explorer")) {
-                const std::wstring wpath = util::FileSystem::PathFromUtf8(dir.path).wstring();
-                const std::wstring args  = L"/select," + wpath;
-                ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+                RevealAssetBrowserInExplorer(ctx.projectRoot, dir.path);
             }
             if (ImGui::MenuItem("Copy Path"))
                 ImGui::SetClipboardText(dir.path.c_str());
@@ -2649,10 +2647,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             ImGui::SetClipboardText(projectReference.c_str());
         }
         if (ImGui::MenuItem("Reveal Source in Explorer")) {
-            const std::wstring sourcePath =
-                util::FileSystem::PathFromUtf8(e.sourceAssetPath).wstring();
-            const std::wstring args = L"/select," + sourcePath;
-            ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+            RevealAssetBrowserInExplorer(ctx.projectRoot, e.sourceAssetPath);
         }
         ImGui::EndPopup();
         return;
@@ -2856,9 +2851,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         ImGui::Separator();
     }
     if (ImGui::MenuItem("Reveal in Explorer")) {
-        const std::wstring wpath = util::FileSystem::PathFromUtf8(e.path).wstring();
-        const std::wstring args  = L"/select," + wpath;
-        ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+        RevealAssetBrowserInExplorer(ctx.projectRoot, e.path);
     }
     if (ImGui::MenuItem("Copy Path")) {
         ImGui::SetClipboardText(e.path.c_str());
