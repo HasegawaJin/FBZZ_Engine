@@ -36,6 +36,14 @@ OpData Common(const profiler::ProfileSnapshot& snapshot, uint64_t evicted)
     result.Set("captureSessionId", Id(snapshot.captureSessionId)); result.Set("applicationFrameSerial", Id(snapshot.applicationFrameSerial));
     result.Set("frameIndex", Id(snapshot.frameIndex)); result.Set("recordedSampleCount", OpData(static_cast<int>(snapshot.recordedSampleCount)));
     result.Set("droppedSampleCount", OpData(static_cast<int>(snapshot.droppedSampleCount)));
+    result.Set("filteredSampleCount", OpData(snapshot.filteredSampleCount));
+    result.Set("sampleCapacity", OpData(snapshot.sampleCapacity));
+    result.Set("capacityDroppedSampleCount", OpData(snapshot.capacityDroppedSampleCount));
+    result.Set("depthDroppedSampleCount", OpData(snapshot.depthDroppedSampleCount));
+    result.Set("descriptorDroppedSampleCount", OpData(snapshot.descriptorDroppedSampleCount));
+    result.Set("faultedSampleCount", OpData(snapshot.faultedSampleCount));
+    result.Set("abortedSampleCount", OpData(snapshot.abortedSampleCount));
+    result.Set("warning", OpData(snapshot.available && (!snapshot.complete || snapshot.droppedSampleCount) ? "Incomplete CPU capture; scope totals and Self are partial. Narrow the collection filter before recording." : ""));
     result.Set("unframedInvocationCount", Id(snapshot.unframedInvocationCount)); result.Set("historyEvictedFrameCount", Id(evicted));
     return result;
 }
@@ -59,6 +67,29 @@ OpData GpuMetadata(const renderer::GpuProfilerViewMetadata& value)
     data.Set("outputId", OpData(static_cast<int>(value.outputId))); data.Set("outputGeneration", OpData(static_cast<int>(value.outputGeneration)));
     return data;
 }
+OpData CaptureFilter(const profiler::PerformanceCaptureFilter& filter)
+{
+    auto data = OpData::MakeObject();
+    data.Set("category", OpData(filter.category)); data.Set("scope", OpData(filter.scope));
+    data.Set("match", OpData("category_exact_scope_case_sensitive_substring"));
+    return data;
+}
+OpData BenchmarkComparison(const PerformanceBenchmarkReport& report)
+{
+    const auto* reference = GetPerformanceBenchmarkReference();
+    const auto comparison = ComparePerformanceBenchmarks(reference ? *reference : report, report);
+    auto data = OpData::MakeObject();
+    data.Set("referenceAvailable", OpData(reference != nullptr));
+    data.Set("eligible", OpData(comparison.comparable));
+    data.Set("comparable", OpData(reference && comparison.comparable));
+    data.Set("referenceLabel", reference ? OpData(reference->label) : OpData{});
+    data.Set("cpuP50DeltaMs", reference && comparison.comparable ? OpData(comparison.cpuP50DeltaMs) : OpData{});
+    data.Set("cpuP95DeltaMs", reference && comparison.comparable ? OpData(comparison.cpuP95DeltaMs) : OpData{});
+    auto warnings = OpData::MakeArray();
+    for (const auto& warning : comparison.warnings) warnings.Push(OpData(warning));
+    data.Set("warnings", std::move(warnings));
+    return data;
+}
 OpResult PerformanceQuery(const OpArgs& args)
 {
     const auto& history = GetPerformanceHistory();
@@ -70,6 +101,7 @@ OpResult PerformanceQuery(const OpArgs& args)
     const auto& rendering = requested != nullptr ? requested->rendering : renderer::RenderDebugOverlay::GetLastSnapshot();
     auto result = Common(snapshot, history.historyEvictedFrameCount);
     result.Set("retainedFrameCount", OpData(static_cast<int>(history.frames.size())));
+    result.Set("captureFilter", CaptureFilter(snapshot.captureFilter));
     result.Set("wallFrameIntervalAvailable", OpData(snapshot.wallFrameIntervalAvailable));
     result.Set("wallFrameIntervalMs", snapshot.wallFrameIntervalAvailable ? OpData(snapshot.wallFrameIntervalMs) : OpData{});
     result.Set("cpuFrameElapsedMs", snapshot.available ? OpData(snapshot.cpuFrameElapsedMs) : OpData{});
@@ -209,6 +241,145 @@ OpParam StringParam(const char* name, std::vector<std::string> choices = {})
 {
     OpParam param; param.name = name; param.type = OpParamType::String; param.required = false; param.enumValues = std::move(choices); return param;
 }
+const char* BenchmarkState(PerformanceBenchmarkState state)
+{
+    switch (state) {
+    case PerformanceBenchmarkState::WARMUP: return "warmup";
+    case PerformanceBenchmarkState::SAMPLING: return "sampling";
+    case PerformanceBenchmarkState::COMPLETE: return "complete";
+    case PerformanceBenchmarkState::FAILED: return "failed";
+    case PerformanceBenchmarkState::CANCELLED: return "cancelled";
+    default: return "idle";
+    }
+}
+const char* BenchmarkFailure(PerformanceBenchmarkFailure failure)
+{
+    switch (failure) {
+    case PerformanceBenchmarkFailure::SESSION_CHANGED: return "capture_session_changed";
+    case PerformanceBenchmarkFailure::FRAME_ORDER_CHANGED: return "frame_serial_moved_backwards";
+    case PerformanceBenchmarkFailure::RECORDING_STOPPED: return "performance_recording_stopped";
+    default: return "";
+    }
+}
+OpData BenchmarkStatus()
+{
+    const auto& capture = GetPerformanceBenchmarkCapture();
+    const auto& status = capture.Status();
+    auto data = OpData::MakeObject();
+    data.Set("schemaVersion", OpData(1)); data.Set("label", OpData(capture.Label()));
+    data.Set("state", OpData(BenchmarkState(status.state))); data.Set("active", OpData(capture.IsActive()));
+    data.Set("failure", OpData(BenchmarkFailure(status.failure)));
+    data.Set("captureSessionId", Id(status.captureSessionId));
+    data.Set("warmupFrames", OpData(static_cast<int64_t>(status.warmupFrames)));
+    data.Set("warmedFrames", OpData(static_cast<int64_t>(status.warmedFrames)));
+    data.Set("sampleFrames", OpData(static_cast<int64_t>(status.sampleFrames)));
+    data.Set("capturedFrames", OpData(static_cast<int64_t>(status.capturedFrames)));
+    data.Set("incompleteFrames", OpData(static_cast<int64_t>(status.incompleteFrames)));
+    data.Set("droppedSampleCount", Id(status.droppedSampleCount)); data.Set("missingFrameCount", Id(status.missingFrameCount));
+    const auto report = capture.Report();
+    auto conditions = OpData::MakeObject();
+    conditions.Set("scenario", OpData(report.conditions.scenario)); conditions.Set("camera", OpData(report.conditions.camera));
+    conditions.Set("configuration", OpData(report.conditions.configuration)); conditions.Set("declaredByCaller", OpData(true));
+    conditions.Set("renderingMetadataAvailable", OpData(report.renderingMetadataAvailable));
+    conditions.Set("width", OpData(report.width)); conditions.Set("height", OpData(report.height));
+    conditions.Set("sceneGeneration", Id(report.sceneGeneration)); conditions.Set("changedWhileSampling", OpData(report.renderingConditionsChanged));
+    data.Set("conditions", std::move(conditions)); data.Set("captureFilter", CaptureFilter(report.captureFilter));
+    data.Set("comparison", BenchmarkComparison(report));
+    return data;
+}
+OpData BenchmarkDistribution(const PerformanceBenchmarkDistribution& value)
+{
+    auto data = OpData::MakeObject();
+    data.Set("available", OpData(value.count != 0)); data.Set("count", OpData(static_cast<int64_t>(value.count)));
+    data.Set("p50Ms", value.count ? OpData(value.p50Ms) : OpData{});
+    data.Set("p95Ms", value.count ? OpData(value.p95Ms) : OpData{});
+    data.Set("p99Ms", value.count ? OpData(value.p99Ms) : OpData{});
+    data.Set("maxMs", value.count ? OpData(value.maxMs) : OpData{});
+    return data;
+}
+OpData BenchmarkPhysicsRow(const PhysicsBenchmarkRow& value)
+{
+    auto data = OpData::MakeObject();
+    data.Set("complete", OpData(value.complete)); data.Set("stepCount", OpData(value.stepCount));
+    data.Set("faultedScopeCount", OpData(value.faultedScopeCount));
+    data.Set("abortedScopeCount", OpData(value.abortedScopeCount));
+    data.Set("invalidScopeCount", OpData(value.invalidScopeCount));
+    auto scopes = OpData::MakeObject();
+    for (size_t index = 0; index < PHYSICS_BENCHMARK_SCOPE_COUNT; ++index) {
+        const auto& sample = value.scopes[index];
+        auto scope = OpData::MakeObject();
+        scope.Set("calls", OpData(sample.calls)); scope.Set("totalMs", OpData(sample.totalMs));
+        scopes.Set(PhysicsBenchmarkScopeName(static_cast<PhysicsBenchmarkScope>(index)), std::move(scope));
+    }
+    data.Set("scopes", std::move(scopes));
+    return data;
+}
+OpData BenchmarkPhysicsSummary(const PhysicsBenchmarkSummary& value)
+{
+    auto data = OpData::MakeObject();
+    data.Set("available", OpData(value.validFrames != 0));
+    data.Set("timingDefinition", OpData("Completed timed Physics scopes in complete, undropped frames; World::Step calls count fixed steps, not internal substeps. Inclusive stage totals overlap PhysicsSystem and World::Step."));
+    data.Set("perStepDistributionDefinition", OpData("Per-frame totalMs / completed World::Step calls for frames with at least one step. Zero-step frames contribute zero to frameMs only. meanMsPerStep weights all valid steps."));
+    data.Set("summaryIncludesIncompleteFrames", OpData(false));
+    data.Set("observedStepCount", Id(value.observedStepCount)); data.Set("stepCount", Id(value.stepCount));
+    data.Set("validFrames", Id(value.validFrames)); data.Set("excludedFrames", Id(value.excludedFrames));
+    data.Set("zeroStepFrames", Id(value.zeroStepFrames)); data.Set("multiStepFrames", Id(value.multiStepFrames));
+    data.Set("faultedScopeCount", Id(value.faultedScopeCount));
+    data.Set("abortedScopeCount", Id(value.abortedScopeCount)); data.Set("invalidScopeCount", Id(value.invalidScopeCount));
+    auto scopes = OpData::MakeObject();
+    for (size_t index = 0; index < PHYSICS_BENCHMARK_SCOPE_COUNT; ++index) {
+        const auto& summary = value.scopes[index];
+        auto scope = OpData::MakeObject();
+        scope.Set("calls", Id(summary.calls)); scope.Set("totalMs", OpData(summary.totalMs));
+        scope.Set("meanMsPerStepAvailable", OpData(value.stepCount != 0));
+        scope.Set("meanMsPerStep", value.stepCount ? OpData(summary.totalMs / value.stepCount) : OpData{});
+        scope.Set("frameMs", BenchmarkDistribution(summary.frameMs));
+        scope.Set("msPerStep", BenchmarkDistribution(summary.msPerStep));
+        scopes.Set(PhysicsBenchmarkScopeName(static_cast<PhysicsBenchmarkScope>(index)), std::move(scope));
+    }
+    data.Set("scopes", std::move(scopes));
+    return data;
+}
+OpResult BenchmarkResult(const OpArgs& args)
+{
+    const auto& capture = GetPerformanceBenchmarkCapture();
+    if (capture.Status().state != PerformanceBenchmarkState::COMPLETE)
+        return OpResult::Err("NOT_COMPLETE", "The benchmark must complete before results are read.");
+    const int offset = args.GetInt("offset", 0), count = args.GetInt("count", 256);
+    if (offset < 0 || count <= 0 || static_cast<size_t>(offset) > capture.Rows().size())
+        return OpResult::Err("BAD_ARG", "offset must address the result and count must be positive.");
+    auto data = BenchmarkStatus();
+    data.Set("timingDefinition", OpData("Completed application CPU frames; wall intervals include frame pacing. The capture window is independent of C# callbacks."));
+    data.Set("percentileMethod", OpData("nearest_rank"));
+    data.Set("summaryIncludesIncompleteFrames", OpData(true));
+    data.Set("cpu", BenchmarkDistribution(capture.CpuSummary())); data.Set("wall", BenchmarkDistribution(capture.WallSummary()));
+    data.Set("physics", BenchmarkPhysicsSummary(capture.PhysicsSummary()));
+    data.Set("offset", OpData(offset));
+    auto rows = OpData::MakeArray();
+    const size_t first = static_cast<size_t>(offset);
+    const size_t pageCount = (std::min)(static_cast<size_t>(count), capture.Rows().size() - first);
+    for (size_t index = first; index < first + pageCount; ++index) {
+        const auto& frame = capture.Rows()[index];
+        auto row = OpData::MakeObject();
+        row.Set("captureSessionId", Id(frame.captureSessionId)); row.Set("applicationFrameSerial", Id(frame.applicationFrameSerial));
+        row.Set("complete", OpData(frame.complete)); row.Set("droppedSampleCount", OpData(frame.droppedSampleCount));
+        row.Set("filteredSampleCount", OpData(frame.filteredSampleCount)); row.Set("recordedSampleCount", OpData(frame.recordedSampleCount));
+        row.Set("sampleCapacity", OpData(frame.sampleCapacity));
+        row.Set("cpuFrameElapsedAvailable", OpData(frame.cpuFrameElapsedAvailable));
+        row.Set("cpuFrameElapsedMs", frame.cpuFrameElapsedAvailable ? OpData(frame.cpuFrameElapsedMs) : OpData{});
+        row.Set("wallFrameIntervalAvailable", OpData(frame.wallFrameIntervalAvailable));
+        row.Set("wallFrameIntervalMs", frame.wallFrameIntervalAvailable ? OpData(frame.wallFrameIntervalMs) : OpData{});
+        row.Set("renderingAvailable", OpData(frame.renderingAvailable));
+        row.Set("drawCalls", frame.renderingAvailable ? OpData(frame.drawCalls) : OpData{});
+        row.Set("triangleCount", frame.renderingAvailable ? OpData(frame.triangleCount) : OpData{});
+        row.Set("physics", BenchmarkPhysicsRow(frame.physics));
+        rows.Push(std::move(row));
+    }
+    data.Set("rows", std::move(rows)); data.Set("count", OpData(static_cast<int64_t>(pageCount)));
+    data.Set("nextOffset", OpData(static_cast<int64_t>(first + pageCount)));
+    data.Set("hasMore", OpData(first + pageCount < capture.Rows().size()));
+    return OpResult::Data(std::move(data));
+}
 }
 void RegisterProfilerOperators(OperatorRegistry& registry)
 {
@@ -216,7 +387,34 @@ void RegisterProfilerOperators(OperatorRegistry& registry)
         EditorOperator op; op.id = script ? "profiler.script.set_recording" : "profiler.performance.set_recording";
         op.label = script ? "Record Script Profiler" : "Record Performance Profiler"; op.category = "Profiler"; op.kind = OpKind::Action;
         OpParam recording; recording.name = "recording"; recording.type = OpParamType::Bool; op.params.push_back(recording);
-        op.exec = [script](OpContext&, const OpArgs& args) { if (script) scene::ScriptProfiler::RequestRecording(args.GetBool("recording")); else profiler::Profiler::RequestRecording(args.GetBool("recording")); return OpResult::Ok(); };
+        op.exec = [script](OpContext&, const OpArgs& args) {
+            if (!script && GetPerformanceBenchmarkCapture().IsActive() && !args.GetBool("recording"))
+                return OpResult::Err("BENCHMARK_ACTIVE", "Cancel the benchmark before stopping Performance recording.");
+            if (script) scene::ScriptProfiler::RequestRecording(args.GetBool("recording"));
+            else profiler::Profiler::RequestRecording(args.GetBool("recording"));
+            return OpResult::Ok();
+        };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op; op.id = "profiler.performance.set_capture_filter"; op.label = "Set CPU Collection Filter";
+        op.category = "Profiler"; op.kind = OpKind::Action;
+        op.params.push_back(StringParam("category")); op.params.push_back(StringParam("scope"));
+        op.exec = [](OpContext&, const OpArgs& args) {
+            if (GetPerformanceBenchmarkCapture().IsActive()) return OpResult::Err("BENCHMARK_ACTIVE", "Cancel the benchmark before changing its collection range.");
+            if (!profiler::Profiler::RequestCaptureFilter({args.GetString("category"), args.GetString("scope")}))
+                return OpResult::Err("BAD_ARG", "category is at most 128 bytes and scope at most 256 bytes.");
+            return OpResult::Data(CaptureFilter(profiler::Profiler::GetRequestedCaptureFilter()));
+        };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op; op.id = "profiler.benchmark.set_reference"; op.label = "Use Benchmark As Comparison Reference";
+        op.category = "Profiler"; op.kind = OpKind::Action;
+        op.exec = [](OpContext&, const OpArgs&) {
+            if (!SetPerformanceBenchmarkReference()) return OpResult::Err("NOT_COMPLETE", "Complete a benchmark before retaining its comparison summary.");
+            return OpResult::Data(BenchmarkStatus());
+        };
         registry.Register(std::move(op));
     }
     for (const char* kind : {"performance", "script", "memory"}) {
@@ -231,6 +429,50 @@ void RegisterProfilerOperators(OperatorRegistry& registry)
             op.params.push_back(StringParam("sort", {"self", "inclusive", "calls", "max_call", "name"}));
         }
         op.exec = [domain](OpContext&, const OpArgs& args) { return domain == "script" ? ScriptQuery(args) : domain == "performance" ? PerformanceQuery(args) : MemoryQuery(args); };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op; op.id = "profiler.benchmark.start"; op.label = "Start Benchmark Capture";
+        op.category = "Profiler"; op.kind = OpKind::Action;
+        op.desc = "Capture completed application frames after warmup; start the C# workload separately at its READY boundary.";
+        auto label = StringParam("label"); label.required = true; op.params.push_back(std::move(label));
+        for (const char* name : {"scenario", "camera", "configuration"}) op.params.push_back(StringParam(name));
+        OpParam warmup; warmup.name = "warmupFrames"; warmup.type = OpParamType::Int; warmup.required = false; warmup.defaultValue = 0;
+        warmup.desc = "Number of completed frames to skip, at least zero."; op.params.push_back(std::move(warmup));
+        OpParam frames; frames.name = "sampleFrames"; frames.type = OpParamType::Int;
+        frames.desc = "Number of completed frames to retain, greater than zero."; op.params.push_back(std::move(frames));
+        op.exec = [](OpContext&, const OpArgs& args) {
+            const int warmup = args.GetInt("warmupFrames"), frames = args.GetInt("sampleFrames");
+            const std::string label = args.GetString("label");
+            if (label.empty() || warmup < 0 || frames <= 0) return OpResult::Err("BAD_ARG", "label must be nonempty, warmupFrames nonnegative, and sampleFrames positive.");
+            if (GetPerformanceBenchmarkCapture().IsActive()) return OpResult::Err("BENCHMARK_ACTIVE", "A benchmark capture is already active.");
+            PerformanceBenchmarkConditions conditions{args.GetString("scenario"), args.GetString("camera"), args.GetString("configuration")};
+            if (!StartPerformanceBenchmark(label, static_cast<size_t>(warmup), static_cast<size_t>(frames), std::move(conditions)))
+                return OpResult::Err("BAD_ARG", "Warmup/sample count must be at most 60000; scenario/camera at most 256 bytes and configuration at most 1024 bytes.");
+            return OpResult::Data(BenchmarkStatus());
+        };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op; op.id = "profiler.benchmark.status"; op.label = "Benchmark Capture Status";
+        op.category = "Profiler"; op.kind = OpKind::Query;
+        op.exec = [](OpContext&, const OpArgs&) { return OpResult::Data(BenchmarkStatus()); };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op; op.id = "profiler.benchmark.result"; op.label = "Benchmark Capture Result";
+        op.category = "Profiler"; op.kind = OpKind::Query;
+        for (const char* name : {"offset", "count"}) {
+            OpParam param; param.name = name; param.type = OpParamType::Int; param.required = false;
+            param.defaultValue = std::string_view(name) == "offset" ? 0 : 256; op.params.push_back(std::move(param));
+        }
+        op.exec = [](OpContext&, const OpArgs& args) { return BenchmarkResult(args); };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op; op.id = "profiler.benchmark.cancel"; op.label = "Cancel Benchmark Capture";
+        op.category = "Profiler"; op.kind = OpKind::Action;
+        op.exec = [](OpContext&, const OpArgs&) { CancelPerformanceBenchmark(); return OpResult::Data(BenchmarkStatus()); };
         registry.Register(std::move(op));
     }
 }

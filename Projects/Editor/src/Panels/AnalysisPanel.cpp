@@ -1579,7 +1579,17 @@ void DrawPerformanceCpu(EditorContext& ctx)
         ImGui::Text("CPU elapsed %.3f ms / scope roots %.3f ms", snapshot->cpuFrameElapsedMs, snapshot->scopeRootSumMs);
         if (snapshot->wallFrameIntervalAvailable) ImGui::Text("Measured frame interval %.3f ms", snapshot->wallFrameIntervalMs);
         else ImGui::TextDisabled("Measured frame interval unavailable.");
-        if (!snapshot->complete) ImGui::TextDisabled("Incomplete capture: excluded from normal scope averages.");
+        ImGui::Text("CPU samples %u / capacity %u; filtered %u; dropped %u", snapshot->recordedSampleCount,
+            snapshot->sampleCapacity, snapshot->filteredSampleCount, snapshot->droppedSampleCount);
+        if (!snapshot->captureFilter.category.empty() || !snapshot->captureFilter.scope.empty())
+            ImGui::TextDisabled("Collected category '%s', scope '%s'; scope totals cover this range only.",
+                snapshot->captureFilter.category.c_str(), snapshot->captureFilter.scope.c_str());
+        if (!snapshot->complete || snapshot->droppedSampleCount) {
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.2f, 1.0f), "INCOMPLETE CPU CAPTURE: scope totals are partial; narrow the collection range before recording.");
+            ImGui::Text("Dropped: capacity %u / depth or suppression %u / descriptors %u; faulted %u / aborted %u",
+                snapshot->capacityDroppedSampleCount, snapshot->depthDroppedSampleCount, snapshot->descriptorDroppedSampleCount,
+                snapshot->faultedSampleCount, snapshot->abortedSampleCount);
+        }
     }
 
     DrawAnalysisProfCategoryBar(s_profTree);

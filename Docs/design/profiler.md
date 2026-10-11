@@ -102,7 +102,7 @@ BeginFrame、更新と描画、EndFrame を一対にし、通常終了とウィ�
 
 Begin は recorder インスタンス、収集世代、フレーム、scope を識別する軽量 token を返す。通常 End は token を検証し LIFO で終了する。Checkpoint は同じ識別情報と現在の stack 境界、追跡上限後の suppression 状態を保持する。抑制中の checkpoint は保存した scope の生存 anchor も検証し、その scope を閉じて新しい分岐へ入った後の旧 checkpoint を復活させない。Performance facade の ProfilerCheckpoint は recorder 境界に加え、互換 BeginSample の stack、抑制深さ、元の overflow 境界と分岐 ID を保存する。native scope の抑制深さを互換 Begin/End の対応数へ流用しない。Recover は checkpoint より内側の未終了 scope を ABORTED として閉じ、suppression 状態も戻す。別 recorder、別フレーム、失効した世代、二重 End、復旧済み token は別 scope に作用させない。値型だけを SEH 入口へ渡せるようにする。
 
-初期実装は main thread 専用。ワーカーは既存の SystemScheduler と同じく外側で経過時間を測り、join 後に main thread から EXTERNAL_DURATION として追加する。開始位置を観測していなければ startAvailable と selfAvailable は false。表示上の親へ所属させても、その親から並列区間の和を差し引かない。重複区間を確定できない祖先の Self も unavailable とする。INSTANT は子時間へ加算しない。ワーカーの区間は観測できた範囲だけ公開し、main thread 上で順次実行した timeline に偽装しない。並列区間の合計をフレーム経過時間と呼ばない。
+Performance facade の recorder、descriptor、公開 snapshot は所有スレッドごとに独立し、収集フィルタだけを共有する。Editor 履歴は main thread の確定 snapshot を採り、全スレッドの timeline を自動統合しない。ワーカーは既存の SystemScheduler と同じく外側で経過時間を測り、join 後に main thread から EXTERNAL_DURATION として追加する。開始位置を観測していなければ startAvailable と selfAvailable は false。表示上の親へ所属させても、その親から並列区間の和を差し引かない。重複区間を確定できない祖先の Self も unavailable とする。INSTANT は子時間へ加算しない。ワーカーの区間は観測できた範囲だけ公開し、main thread 上で順次実行した timeline に偽装しない。並列区間の合計をフレーム経過時間と呼ばない。
 
 Script 詳細の無効時は descriptor 解決、名前複写、時計取得、sample 確保を行わない。障害復旧に必要な有効 Performance recorder の checkpoint は定数時間で取得する。収集有効時も初回の descriptor 登録以外は ID と予約済みの領域を使い、呼び出しごとの文字列生成を避ける。
 
@@ -112,11 +112,11 @@ Script 詳細の無効時は descriptor 解決、名前複写、時計取得、s
 
 ScriptProfiler の instance key は `runtimeEpoch`、Scene 世代、既存 `Script::InspectionId()` の組とする。同名のスクリプトや GameObject を統合しない。Scene 世代には現行 `GetRenderSceneGeneration()` を使う。この値は構築、Clear、移動で更新され、通常の描画編集では変わらない。
 
-型名は既存 `GetTypeName()`、対象は GameObject の `instanceId`、名前、世代付き EntityID から採る。内部 ScriptModules も自身の InspectionId で区別し、対象 GameObject を共有できる。型名を Script DLL 世代内の canonical な登録名として Engine の typeId に解決し、型別集計は typeId と世代で区切る。翻訳した表示文字列、GameObject の名前、アドレスを集計キーにしない。
+型名は既存 `GetTypeName()`、対象は GameObject の `instanceId`、名前、世代付き EntityID から採る。各 managed Script は自身の InspectionId で区別し、対象 GameObject を共有できる。型名を managed runtime 世代内の canonical な登録名として Engine の typeId に解決し、型別集計は typeId と世代で区切る。翻訳した表示文字列、GameObject の名前、アドレスを集計キーにしない。
 
-`runtimeEpoch` はプロジェクト切替、Edit と Play の遷移、スクリプト実体の再生成を伴う DLL 再読み込み試行で進める。再読み込みのロールバックでも生成し直した実体を旧 instance と同一視しない。
+`runtimeEpoch` はプロジェクト切替、Edit と Play の遷移、managed code generation の更新試行で進める。候補拒否でも生成し直した実体を旧 instance と同一視しない。
 
-各 sample の descriptor は不変の executionContextId を持ち、文脈表で runtimeEpoch、実行モード、Script DLL 世代、Scene 世代を解決する。旧実体の破棄は旧文脈、新実体の呼び出しは新文脈へ帰属させる。同じ application frame に旧 OnDestroy と新 OnAwake が入る場合も、一つの確定 snapshot が両文脈を所有する。
+各 sample の descriptor は不変の executionContextId を持ち、文脈表で runtimeEpoch、実行モード、managed generation、Scene 世代を解決する。旧実体の退役は旧文脈、新実体の呼び出しは新文脈へ帰属させる。同じ application frame に旧世代の退役通知と新世代の Awake が入る場合も、一つの確定 snapshot が両文脈を所有する。
 
 transitionFrame は状態変更操作によりフレーム内で runtimeEpoch、実行モード、DLL 世代が変わった場合に立てる。複数 Scene の文脈が並存することだけでは立てない。snapshot の単一 epoch や mode は全対象文脈で一致するときだけ応答する。異なる文脈や収集セッションを一つの平均に混ぜず、transitionFrame は通常のフレーム平均から除外する。
 
@@ -189,7 +189,7 @@ DLL 更新、対象削除、Play 終了後も古い履歴は表示できる。�
 
 所有文字列は長さだけでなく capacity() + 1 で課金する。実行側の descriptor と Script の型名表の合計を保守的に 1 MiB に制限し、最新 snapshot と初回登録中の候補文字列を含めて 4 MiB へ収める。候補を所有する前に長さと [MSVC basic_string の丸め](https://github.com/microsoft/STL/blob/main/stl/inc/xstring) へ 32 byte の余裕を見積り、保存後と退役後は実 capacity で再集計する。既存 descriptor と型名の検索キーは非所有 string_view とし、呼び出しごとの所有文字列を作らない。
 
-各 recorder は 8,192 samples の二重バッファ、128 件の active scope、最大 8,192 件の生存 suppression checkpoint anchor を初期予約する。Windows x64 の現在の値型では samples が 1 MiB、active scope が 10 KiB、anchor が 128 KiB で、両 recorder 合計は約 2.27 MiB となる。anchor 上限では当該 checkpoint を無効にし、保存済みの外側境界を維持する。descriptor オブジェクト自体は Core が 8,192 × sizeof(PerformanceDescriptor)、Script が 8,192 × sizeof(ScriptProfileDescriptor) を予約し、最新 snapshot もそれぞれ最大同数とする。descriptor 検索、Script 型 ID、instance、context の各表は最大 8,192 件で有限化する。これらのオブジェクトと索引の常駐容量は文字列の 4 MiB とは別に数え、Editor の snapshot 複写では全オブジェクトと文字列を履歴予算へ含める。
+各 recorder は 8,192 samples の二重バッファ、128 件の active scope、最大 8,192 件の生存 suppression checkpoint anchor を初期予約する。Windows x64 の現在の値型では samples が 1 MiB、active scope が 12 KiB、anchor が 128 KiB で、両 recorder 合計は約 2.27 MiB となる。anchor 上限では当該 checkpoint を無効にし、保存済みの外側境界を維持する。descriptor オブジェクト自体は Core が 8,192 × sizeof(PerformanceDescriptor)、Script が 8,192 × sizeof(ScriptProfileDescriptor) を予約し、最新 snapshot もそれぞれ最大同数とする。descriptor 検索、Script 型 ID、instance、context の各表は最大 8,192 件で有限化する。これらのオブジェクトと索引の常駐容量は文字列の 4 MiB とは別に数え、Editor の snapshot 複写では全オブジェクトと文字列を履歴予算へ含める。
 
 sample の出力枠は Begin 時に予約し、保存済みの子の親が出力から欠落しないようにする。出力上限後も、上限内の active stack では終了と子時間の集計を継続する。深さ上限では subtree 全体を suppression 状態にして深さと対応する End を追跡し、追跡しない子の End が保存済みの親を閉じないようにする。この状態は checkpoint にも含め、子時間を確定できない祖先の Self を unavailable にする。`recordedSampleCount`、`droppedSampleCount`、`complete`、`historyEvictedFrameCount` を公開する。容量超過はゲームの実行を止めず、完全な計測値とは表示しない。
 
@@ -257,6 +257,30 @@ Coroutine のテストを既存 Tween/Coroutine API へ置換し、最終コン�
 作業ツリーの初回検証では、未展開の Git LFS 画像と初回スクリプトビルド待ちの上限により起動準備が完了しなかった。共有済みローカルキャッシュから素材を展開し、原本と一致する `.meta` を持つ不足ベイクを補完した。ファイル内容、GUID、原本の変更を保持し、初回ビルドの待機上限を調整して再実行した。
 
 DLL 世代切替を模した旧型名の所有、失効した対象の選択拒否、複数文脈、SEH、容量と失効 token の境界は単体テストで確認した。実 GUI からの Freeze/Capture 操作と DLL 再読み込みの失敗復帰、GPU 遅延の実機注入はこの Playtest に含めていない。
+
+## 欠落を避ける収集範囲と同条件比較 (2026-10-11)
+
+CPU sample 上限は各 recorder/frame の 8192 件を維持する。上限を増やして毎フレームのコピーと履歴メモリを増やす前に、Performance Profiler の「CPU collection range」で対象を絞る。category は完全一致、scope は大文字小文字を区別する名前部分一致で、空欄は全対象。現在の Extract 全体だけを採る例は category=`General`, scope=`RenderSystem::ExtractRenderScene`。内訳の例は category=`Rendering`, scope=`Extract` で、明示的に Rendering に分類された MeshInputs / Materials / ObjectMasks 等を採る。FBZZ_PROFILE_SCOPE の既定 category は General のため、Rendering フィルタには全体 scope や General の細区間は含まれない。既存表の検索、カテゴリ、min ms は表示用のまま残す。
+
+`Profiler::RequestCaptureFilter` と Action `profiler.performance.set_capture_filter` は全 Performance 所有スレッドの次の BeginFrame で適用し、変更したスレッドの capture session を更新する。進行中の token を途中で失効させない。除外は descriptor 登録、時計取得、sample 確保より前に判定する。除外親の中にある一致した子も採取でき、最も近い記録済み祖先へ接続する。除外区間を含む祖先の Self は unavailable とし、除外そのものは frame を不完全にしない。元のスコープの深さは依然 128 に制限する。無限の入れ子を filter により許可しない。
+
+snapshot は `sampleCapacity`, `recordedSampleCount`, `filteredSampleCount`, `droppedSampleCount` を返す。意図的除外は filtered とし、欠落には加えない。欠落理由は `capacityDroppedSampleCount`, `depthDroppedSampleCount` (深さまたは抑制中), `descriptorDroppedSampleCount` に分け、未終了と障害は `abortedSampleCount`, `faultedSampleCount` を返す。CPU UI は不完全記録を色付きで明示し、件数、収集範囲、理由を表示する。`profiler.performance.snapshot` の warning にも部分的な scope totals であることを明記する。応答の `truncated` は行の出力 limit であり、収集欠落とは独立する。旧 ProfileRecord ABI は変更しない。
+
+既存の `profiler.benchmark.start/status/result/cancel`、scalar window、ウォームアップ、nearest-rank p50/p95/p99/max を再利用する。CPU UI の「Same-condition benchmark」で label (変更名や commit 識別子)、scenario (シーンと workload/replay の版)、camera (固定視点または再現可能な経路)、configuration (固定 dt、seed、品質、pacing、build 設定/hardware 等) を宣言し、warmup/sample frames を指定する。Profiler はシミュレーション、dt、seed、カメラを設定しない。利用者または既存 Playtest の固定条件を記録する。warmup 0..60000、samples 1..60000 とし、大きすぎる確保要求を拒否する。
+
+結果は宣言条件と収集フィルタ、warmup/sample 数、実際に採った件数、欠落と不完全 frame 数、同 serial の描画出自から採った scene generation と viewport 寸法を保持する。sampling 中の scene/viewport 変更は別の警告にする。GPU の timestamp や遅延結果との結合は変更しない。
+
+「Use as comparison reference」(Action `profiler.benchmark.set_reference`) は最新完了結果の条件・統計だけを保持し、frame/sample 複製を作らない。参照は履歴リセットまたは Editor 終了で破棄する。再起動を跨ぐ比較には各結果の summary JSON を保存し、条件・件数・品質 warning を併せて照合する。次の capture は同じ workload/camera/configuration、同じ collection range、同じ warmup/sample 数で開始する。条件未宣言、条件・出自の不一致、途中の viewport/scene 変更、欠落 frame、不完全記録、timing unavailable があれば比較 warning を返し、p50/p95 差分は unavailable とする。UI もその場合に差分を表示しない。scene を再生成して generation が変わった場合も出自不一致を再確認する。参照が無い結果でも `comparison.eligible` と warnings で比較用の品質を確認できる。
+
+CPU elapsed と wall interval の実測分布は不完全な scope 記録でもその frame の実測値を保持する既存契約を維持する (`summaryIncludesIncompleteFrames=true`)。これを欠落した scope 費用の改善証拠へ自動変換しない。nearest-rank p50 は偶数標本の下側の中央値相当で、平均値ではない。Physics の既存完全 frame 集計は、collection filter がある場合には未収集範囲を 0 ms と表示しないよう除外する。
+
+「Copy benchmark summary JSON」は既存 result API の条件・統計・比較 warning と最初の row をクリップボードへ保存する。全 row が必要なら `profiler.benchmark.result` の offset/count pagination を使う。recording 中の collection range 変更は Action が拒否し、Cancel 後に設定し直す。
+
+専用 CPU 回帰テストは注入時計での除外時の時計呼出し回数、除外親/一致子の親子関係と Self unavailable、8192 超過の理由と counter reset、大量の除外 descriptor を確保しないこと、境界適用と古い token、独立スレッドの recorder ID と snapshot、同条件差分、不完全比較 warning、viewport 変更、JSON 出力を検証する。テストは既存 ProfilerTests/ProfileRecorderTests/ProfilerBenchmarkTests に追加し、新しい CMake 登録は必要ない。
+
+2026-10-12 の CPU 検証では変更 C++ 9 単位の Release チェックがエラー・警告 0 (`check-20261012-005044-52188.log`)、CoreAuto の ProfilerTest / ProfileRecorderTest 27 件と EditorAuto の ProfilerBenchmarkTest / EditorBusProfilerSnapshotTest 18 件が全件合格した (`test-20261012-010433-57044.log`, `test-20261012-012625-55984.log`)。EditorAuto と EditorLauncher の Release 再ビルドもエラー・警告 0 (`build-20261012-010600-53572.log`)。旧 `profiler.snapshot` の既存キーと top samples limit を維持したまま、未収集・未終了・容量欠落の警告を返す親担当の追加テストも含む。
+
+実 Editor の操作・海中シーン・GPU 計測は統合担当による確認を要する。ここでは Editor を起動せず、SDK 反映も実行していない。公開 ProfileSnapshot の追加フィールドに合わせ、取り込み先では Core と利用する Engine / Editor / テストを同じヘッダーで再ビルドする。
 
 ## 参考と採用しない前提
 
