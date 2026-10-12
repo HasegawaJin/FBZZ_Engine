@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #include <TestKit/TestKit.hpp>
+#include "../../../Engine/src/Scene/Systems/BonePoseSharing.hpp"
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/BakedBoneAnimation.hpp>
 #include <Engine/Asset/AnimationSampling.hpp>
@@ -243,6 +244,70 @@ TEST_F(BakedBoneAnimationTest, CodecRoundTripPreservesSamplesAndRejectsCorruptOr
     auto bad = bytes; bad[150] ^= std::byte{1}; EXPECT_EQ(asset::DecodeBoneBake(bad, decoded), BoneBakeTestStatus::INVALID_DATA);
     bad = bytes; for (size_t i = 56; i < 60; ++i) bad[i] = std::byte{255}; RepairBoneBakeTestChecksum(bad);
     EXPECT_EQ(asset::DecodeBoneBake(bad, decoded), BoneBakeTestStatus::INVALID_DATA); EXPECT_EQ(decoded.clipFingerprint, 42u);
+}
+
+TEST_F(BakedBoneAnimationTest, SharedPoseIsOptInAndCopiesOutputsAcrossActors)
+{
+    const auto source = std::make_shared<const asset::BakedBoneAnimation>(MakeBoneBakeTestAsset());
+    scene::BonePoseSharing memo; asset::BakedBoneWorkspace workspace;
+    std::vector<math::Matrix4> palette,globals,reference,referenceGlobals;
+    auto frame = MakeBoneBakeTestFrame(*source,0.50001); asset::BakedBoneFrame targetFrame;
+    const auto original = frame; bool hit = false;
+    ASSERT_EQ(memo.Evaluate(1,10,0,source,frame,{},targetFrame,0,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
+    EXPECT_FALSE(hit); EXPECT_EQ(frame.first,original.first); EXPECT_EQ(frame.alpha,original.alpha);
+    ASSERT_EQ(asset::EvaluateBakedBoneAnimation(*source,original,reference,referenceGlobals),BoneBakeTestStatus::OK);
+    for (size_t index=0;index<palette.size();++index) ExpectBoneBakeTestMatrix(palette[index],reference[index]);
+    frame = MakeBoneBakeTestFrame(*source,0.50001);
+    ASSERT_EQ(memo.Evaluate(2,10,120,source,frame,{},targetFrame,0,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
+    EXPECT_FALSE(hit); const auto expected = palette;
+    palette[0].m[0][0] = -999;
+    frame = MakeBoneBakeTestFrame(*source,0.50002);
+    ASSERT_EQ(memo.Evaluate(2,10,120,source,frame,{},targetFrame,0,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
+    EXPECT_TRUE(hit);
+    for (size_t index=0;index<palette.size();++index) ExpectBoneBakeTestMatrix(palette[index],expected[index]);
+    ASSERT_EQ(memo.Evaluate(2,11,120,source,frame,{},targetFrame,0,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
+    EXPECT_FALSE(hit);
+    ASSERT_EQ(memo.Evaluate(3,11,120,source,frame,{},targetFrame,0,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
+    EXPECT_FALSE(hit);
+}
+
+TEST_F(BakedBoneAnimationTest, SharedPoseKeysIncludeTargetClipAndBlendWeight)
+{
+    auto clip = MakeBoneBakeTestSwim(); clip.tracks[1].rotations[1].value = math::Quaternion::FromAxisAngle(math::Vector3::UP,2.4f);
+    const auto source = std::make_shared<const asset::BakedBoneAnimation>(MakeBoneBakeTestAsset());
+    const auto target = std::make_shared<const asset::BakedBoneAnimation>(MakeBoneBakeTestAsset(MakeBoneBakeTestRig(),clip));
+    scene::BonePoseSharing memo; asset::BakedBoneWorkspace workspace;
+    std::vector<math::Matrix4> palette,globals; bool hit=false;
+    auto frame=MakeBoneBakeTestFrame(*source,0.5),other=MakeBoneBakeTestFrame(*target,0.5);
+    ASSERT_EQ(memo.Evaluate(1,10,120,source,frame,target,other,0.25f,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
+    EXPECT_FALSE(hit); const float first=palette[1].m[0][0];
+    ASSERT_EQ(memo.Evaluate(1,10,120,source,frame,target,other,0.75f,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
+    EXPECT_FALSE(hit); EXPECT_GT(std::abs(palette[1].m[0][0]-first),0.0001f);
+    ASSERT_EQ(memo.Evaluate(1,10,120,source,frame,source,other,0.75f,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
+    EXPECT_FALSE(hit);
+}
+
+TEST_F(BakedBoneAnimationTest, SharedPoseQuantizationBoundsReversePauseAndSeamTimeError)
+{
+    const auto source=MakeBoneBakeTestAsset();
+    for(uint32_t index=0;index<1000;++index) {
+        const double speed=index%3==0?-0.5:index%3==1?0:1.25;
+        asset::BakedBoneFrame frame;
+        ASSERT_EQ(asset::ResolveBakedBoneFrame(source,1.15,speed,index*0.007,true,frame),BoneBakeTestStatus::OK);
+        const double before=(frame.first+static_cast<double>(frame.alpha))*source.durationSeconds/(source.frameCount-1);
+        ASSERT_EQ(scene::BonePoseSharing::Quantize(source,120,frame),BoneBakeTestStatus::OK);
+        const double after=(frame.first+static_cast<double>(frame.alpha))*source.durationSeconds/(source.frameCount-1);
+        EXPECT_LE(std::abs(after-before),1.0/240.0+0.0000002);
+    }
+    auto before=MakeBoneBakeTestFrame(source,1.9999),after=MakeBoneBakeTestFrame(source,0.0001);
+    ASSERT_EQ(scene::BonePoseSharing::Quantize(source,120,before),BoneBakeTestStatus::OK);
+    ASSERT_EQ(scene::BonePoseSharing::Quantize(source,120,after),BoneBakeTestStatus::OK);
+    std::vector<math::Matrix4> a,b,g;
+    ASSERT_EQ(asset::EvaluateBakedBoneAnimation(source,before,a,g),BoneBakeTestStatus::OK);
+    ASSERT_EQ(asset::EvaluateBakedBoneAnimation(source,after,b,g),BoneBakeTestStatus::OK);
+    for(size_t index=0;index<a.size();++index) ExpectBoneBakeTestMatrix(a[index],b[index]);
+    before.alpha=std::numeric_limits<float>::quiet_NaN();
+    EXPECT_EQ(scene::BonePoseSharing::Quantize(source,120,before),BoneBakeTestStatus::INVALID_DATA);
 }
 
 } /// @note namespace fbzz::tests
