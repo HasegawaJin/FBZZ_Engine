@@ -50,6 +50,19 @@ public:
 
 class Scene;
 class GameObject;
+struct Transform;
+
+/// @brief 所有者へ触れず、ローカル値と親の確定姿勢からワールド値を計算する。
+/// @note シーンへの同期と入力の有限性検証は呼び出し側が行う。
+void UpdateWorldTransform(Transform& transform, const Transform* parent);
+
+/// @brief 所有者へ触れず、ワールド姿勢から親に対するローカル値を計算する。
+/// @note ゼロスケール軸は GameObject 版と同じくローカルをゼロへ投影する。
+void SetWorldPose(Transform& transform, const Transform* parent,
+                  const math::Vector3& worldPosition,
+                  const math::Quaternion& worldRotation,
+                  const math::Vector3& worldScale);
+
 
 /// @brief シーン内の全オブジェクトのワールド姿勢をローカル値から即時再計算する。
 void FlushWorldTransforms(Scene& scene);

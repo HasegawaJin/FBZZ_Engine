@@ -15,9 +15,7 @@
 
 namespace fbzz::scene {
 
-static void UpdateWorldTransform(GameObject& go, const Transform* parentTransform) {
-    Transform& tf = go.transform;
-
+void UpdateWorldTransform(Transform& tf, const Transform* parentTransform) {
     if (parentTransform) {
         math::Vector3 scaledLocal = {
             tf.position.x * parentTransform->worldScale.x,
@@ -36,6 +34,11 @@ static void UpdateWorldTransform(GameObject& go, const Transform* parentTransfor
         tf.worldPosition   = tf.position;
         tf.worldScale = tf.scale;
     }
+}
+
+static void UpdateWorldTransform(GameObject& go, const Transform* parentTransform)
+{
+    UpdateWorldTransform(go.transform, parentTransform);
 }
 
 static void UpdateWorldTransformQueue(std::queue<GameObject*>& queue)
@@ -151,7 +154,7 @@ void FlushWorldTransforms(GameObject& root)
     UpdateWorldTransformQueue(queue);
 }
 
-void SetWorldPose(GameObject& go,
+void SetWorldPose(Transform& tf, const Transform* parent,
                   const math::Vector3& worldPosition,
                   const math::Quaternion& worldRotation,
                   const math::Vector3& worldScale)
@@ -165,13 +168,12 @@ void SetWorldPose(GameObject& go,
         };
     };
 
-    Transform& tf = go.transform;
     tf.worldPosition = worldPosition;
     tf.worldRotation = worldRotation.Normalized();
     tf.worldScale    = worldScale;
 
-    if (const GameObject* parent = go.GetParent()) {
-        const Transform& pt = parent->transform;
+    if (parent) {
+        const Transform& pt = *parent;
         const math::Quaternion inverseParentRotation = pt.worldRotation.Inverse();
         tf.position = divideSafe(
             inverseParentRotation * (worldPosition - pt.worldPosition), pt.worldScale);
@@ -182,6 +184,16 @@ void SetWorldPose(GameObject& go,
         tf.rotation = worldRotation.Normalized();
         tf.scale    = worldScale;
     }
+}
+
+void SetWorldPose(GameObject& go,
+                  const math::Vector3& worldPosition,
+                  const math::Quaternion& worldRotation,
+                  const math::Vector3& worldScale)
+{
+    const GameObject* parent = go.GetParent();
+    SetWorldPose(go.transform, parent ? &parent->transform : nullptr,
+        worldPosition, worldRotation, worldScale);
 }
 
 } /// @note namespace fbzz::scene
