@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
 ///
-/// 編集の取り消しは «壊れても壊れたと分からない» 種類の機能で、気づくのは
-/// 「Undo したら別のものが消えた」という取り返しのつかない場面になる。
-/// 順序と境界をここで固定する。
+/// @note 編集の取り消しは «壊れても壊れたと分からない» 種類の機能で、気づくのは
+/// @note 「Undo したら別のものが消えた」という取り返しのつかない場面になる。
+/// @note 順序と境界をここで固定する。
 #include <TestKit/TestKit.hpp>
 
 #include <Editor/Util/UndoStack.hpp>
@@ -22,7 +22,7 @@ using editor::ICommand;
 using editor::LambdaCommand;
 using editor::UndoStack;
 
-/// 実行と取り消しの «順序» を記録する。値の一致だけ見ると順序の誤りを見逃す。
+/// @note 実行と取り消しの «順序» を記録する。値の一致だけ見ると順序の誤りを見逃す。
 std::unique_ptr<ICommand> Trace(std::vector<std::string>& log, const std::string& name)
 {
     return std::make_unique<LambdaCommand>(
@@ -40,7 +40,7 @@ std::unique_ptr<ICommand> Assign(int& target, int value, int previous,
         [&target, previous] { target = previous; });
 }
 
-} // namespace
+} /// @note namespace
 
 TEST(UndoStack, StartsEmpty)
 {
@@ -281,4 +281,29 @@ TEST(UndoStack, CompositeIgnoresNullMembers)
     EXPECT_TRUE(composite.Empty());
 }
 
-} // namespace fbzz::tests
+class CheckedUndoTest : public testkit::Fixture {};
+TEST_F(CheckedUndoTest, ConflictPreservesCursorHistoryAndRevisionAndStopsJump)
+{
+    UndoStack stack; int value = 0;
+    auto command = std::make_unique<editor::CheckedLambdaCommand>("checked",
+        [&value](std::string& reason) { if (value != 0) { reason = "redo conflict"; return false; } value = 1; return true; },
+        [&value](std::string& reason) { if (value != 1) { reason = "undo conflict"; return false; } value = 0; return true; });
+    ASSERT_TRUE(stack.Execute(std::move(command)));
+    const auto cursor = stack.GetCursor(), revision = stack.GetRevision(); value = 2;
+    EXPECT_FALSE(stack.Undo()); EXPECT_EQ(value, 2); EXPECT_EQ(stack.GetCursor(), cursor); EXPECT_EQ(stack.GetRevision(), revision);
+    EXPECT_EQ(stack.GetHistorySize(), 1u); EXPECT_EQ(stack.LastDiagnostic(), "undo conflict");
+    stack.JumpTo(0); EXPECT_EQ(stack.GetCursor(), cursor); EXPECT_EQ(value, 2);
+    value = 1; ASSERT_TRUE(stack.Undo()); const auto undoneRevision = stack.GetRevision(); value = 3;
+    EXPECT_FALSE(stack.Redo()); EXPECT_EQ(stack.GetCursor(), 0u); EXPECT_EQ(stack.GetRevision(), undoneRevision); EXPECT_EQ(value, 3);
+    EXPECT_EQ(stack.LastDiagnostic(), "redo conflict");
+}
+TEST_F(CheckedUndoTest, UnsupportedCompositeRejectsEveryChildBeforeMutation)
+{
+    UndoStack stack; int value = 0;
+    auto group = std::make_unique<CompositeCommand>("unsupported group");
+    group->Add(Assign(value, 1, 0));
+    group->Add(std::make_unique<editor::CheckedLambdaCommand>("checked", [&value](std::string&) { value = 2; return true; }, [&value](std::string&) { value = 1; return true; }));
+    EXPECT_FALSE(stack.Execute(std::move(group))); EXPECT_EQ(value, 0); EXPECT_EQ(stack.GetHistorySize(), 0u);
+    EXPECT_NE(stack.LastDiagnostic().find("atomic batch"), std::string::npos);
+}
+} /// @note namespace fbzz::tests

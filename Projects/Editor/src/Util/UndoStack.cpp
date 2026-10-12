@@ -1,139 +1,103 @@
 /// @file    UndoStack.cpp
-/// @brief   コマンドパターンによる Undo/Redo スタック実装。
+/// @brief   Checked command application preserves history on conflicts.
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Core/Logger.hpp>
+#include <algorithm>
 #include <cassert>
 
 namespace fbzz::editor {
-
-void UndoStack::SetRecordingEnabled(bool enabled)
+void CheckedLambdaCommand::Execute() { std::string reason; if (!TryExecute(reason)) FBZZ_LOG_WARN("Command failed: %s", reason.c_str()); }
+void CheckedLambdaCommand::Undo() { std::string reason; if (!TryUndo(reason)) FBZZ_LOG_WARN("Undo failed: %s", reason.c_str()); }
+void CompositeCommand::Add(std::unique_ptr<ICommand> command) { if (command) m_commands.push_back(std::move(command)); }
+bool CompositeCommand::SupportsLegacyComposition() const
+{ return std::all_of(m_commands.begin(), m_commands.end(), [](const auto& command) { return command->SupportsLegacyComposition(); }); }
+bool CompositeCommand::ValidateHistory(std::string& reason) const
 {
-    m_recordingEnabled = enabled;
+    if (!SupportsLegacyComposition()) { reason = "Checked transactions cannot be placed in a legacy composite; use one atomic batch."; return false; }
+    reason.clear(); return true;
 }
-
-void CompositeCommand::Add(std::unique_ptr<ICommand> command)
+bool CompositeCommand::TryExecute(std::string& reason)
 {
-    if (command)
-        m_commands.push_back(std::move(command));
+    if (!ValidateHistory(reason)) return false;
+    for (const auto& command : m_commands) command->Execute();
+    return true;
 }
-
-void CompositeCommand::Execute()
+bool CompositeCommand::TryUndo(std::string& reason)
 {
-    for (const auto& command : m_commands)
-        command->Execute();
+    if (!ValidateHistory(reason)) return false;
+    for (auto item = m_commands.rbegin(); item != m_commands.rend(); ++item) (*item)->Undo();
+    return true;
 }
-
-void CompositeCommand::Undo()
+void CompositeCommand::Execute() { std::string reason; if (!TryExecute(reason)) FBZZ_LOG_WARN("Composite rejected: %s", reason.c_str()); }
+void CompositeCommand::Undo() { std::string reason; if (!TryUndo(reason)) FBZZ_LOG_WARN("Composite Undo rejected: %s", reason.c_str()); }
+void UndoStack::SetRecordingEnabled(bool enabled) { m_recordingEnabled = enabled; }
+bool UndoStack::Failed()
 {
-    /// @note 複合操作は適用と逆順で戻す。親作成→子作成なら子→親の順で破棄する必要がある。
-    for (auto it = m_commands.rbegin(); it != m_commands.rend(); ++it)
-        (*it)->Undo();
+    if (m_lastDiagnostic.empty()) m_lastDiagnostic = "The command was rejected; no history transition was recorded.";
+    FBZZ_LOG_WARN("Editor history: %s", m_lastDiagnostic.c_str());
+    return false;
 }
-
-void UndoStack::Push(std::unique_ptr<ICommand> cmd)
+bool UndoStack::Push(std::unique_ptr<ICommand> command)
 {
-    assert(cmd && "UndoStack::Push requires a valid command");
-    if (!cmd || m_isApplyingCommand || !m_recordingEnabled) return;
-
-    /// @note カーソルより後ろの履歴を破棄 (新しい操作でやり直し履歴は消える — 線形履歴)
-    if (m_cursor < m_history.size())
-        m_history.erase(m_history.begin() + static_cast<std::ptrdiff_t>(m_cursor), m_history.end());
-
-    m_history.push_back(std::move(cmd));
-
-    /// @note 最大履歴数を超えた場合は最古のコマンドを削除する。
-    if (m_history.size() > MAX_HISTORY)
-        m_history.erase(m_history.begin());
-
-    m_cursor = m_history.size();
-    ++m_revision;
+    assert(command && "UndoStack::Push requires a valid command");
+    if (!command || m_isApplyingCommand || !m_recordingEnabled) return false;
+    if (!command->ValidateHistory(m_lastDiagnostic)) return Failed();
+    if (m_cursor < m_history.size()) m_history.erase(m_history.begin() + static_cast<std::ptrdiff_t>(m_cursor), m_history.end());
+    m_history.push_back(std::move(command));
+    if (m_history.size() > MAX_HISTORY) m_history.erase(m_history.begin());
+    m_cursor = m_history.size(); ++m_revision; m_lastDiagnostic.clear(); return true;
 }
-
-void UndoStack::Execute(std::unique_ptr<ICommand> cmd)
+bool UndoStack::Execute(std::unique_ptr<ICommand> command)
 {
-    assert(cmd && "UndoStack::Execute requires a valid command");
-    if (!cmd || m_isApplyingCommand) return;
-
-    /// @note Play/Pause 中もユーザー操作自体は適用するが、ランタイム編集は履歴へ残さない。
-    if (!m_recordingEnabled) {
-        m_isApplyingCommand = true;
-        cmd->Execute();
-        m_isApplyingCommand = false;
-        return;
-    }
-
-    m_isApplyingCommand = true;
-    cmd->Execute();
+    assert(command && "UndoStack::Execute requires a valid command");
+    if (!command || m_isApplyingCommand) return false;
+    if (!command->ValidateHistory(m_lastDiagnostic)) return Failed();
+    m_lastDiagnostic.clear(); m_isApplyingCommand = true;
+    const bool succeeded = command->TryExecute(m_lastDiagnostic);
     m_isApplyingCommand = false;
-    Push(std::move(cmd));
+    if (!succeeded) return Failed();
+    m_lastDiagnostic.clear();
+    return m_recordingEnabled ? Push(std::move(command)) : true;
 }
-
-void UndoStack::Undo()
+bool UndoStack::Undo()
 {
-    if (!CanUndo()) return;
-
-    m_isApplyingCommand = true;
-    --m_cursor;
-    m_history[m_cursor]->Undo();
+    if (!CanUndo()) return false;
+    m_lastDiagnostic.clear(); m_isApplyingCommand = true;
+    const bool succeeded = m_history[m_cursor - 1]->TryUndo(m_lastDiagnostic);
     m_isApplyingCommand = false;
+    if (!succeeded) return Failed();
+    --m_cursor; ++m_revision; m_lastDiagnostic.clear(); return true;
 }
-
-void UndoStack::Redo()
+bool UndoStack::Redo()
 {
-    if (!CanRedo()) return;
-
-    m_isApplyingCommand = true;
-    m_history[m_cursor]->Execute();
-    ++m_cursor;
+    if (!CanRedo()) return false;
+    m_lastDiagnostic.clear(); m_isApplyingCommand = true;
+    const bool succeeded = m_history[m_cursor]->TryExecute(m_lastDiagnostic);
     m_isApplyingCommand = false;
+    if (!succeeded) return Failed();
+    ++m_cursor; ++m_revision; m_lastDiagnostic.clear(); return true;
 }
-
-bool UndoStack::CanUndo() const
-{
-    return m_recordingEnabled && m_cursor > 0 && m_cursor <= m_history.size();
-}
-
-bool UndoStack::CanRedo() const
-{
-    return m_recordingEnabled && m_cursor < m_history.size();
-}
-
+bool UndoStack::CanUndo() const { return !m_isApplyingCommand && m_recordingEnabled && m_cursor > 0 && m_cursor <= m_history.size(); }
+bool UndoStack::CanRedo() const { return !m_isApplyingCommand && m_recordingEnabled && m_cursor < m_history.size(); }
 void UndoStack::Clear()
 {
     if (m_isApplyingCommand) return;
-
-    m_history.clear();
-    m_cursor = 0;
-    ++m_revision;
+    m_history.clear(); m_cursor = 0; ++m_revision; m_lastDiagnostic.clear();
 }
-
-std::string UndoStack::GetUndoDescription() const
-{
-    if (!CanUndo()) return "";
-    return m_history[m_cursor - 1]->GetDescription();
-}
-
-std::string UndoStack::GetRedoDescription() const
-{
-    if (!CanRedo()) return "";
-    return m_history[m_cursor]->GetDescription();
-}
-
+std::string UndoStack::GetUndoDescription() const { return CanUndo() ? m_history[m_cursor - 1]->GetDescription() : std::string{}; }
+std::string UndoStack::GetRedoDescription() const { return CanRedo() ? m_history[m_cursor]->GetDescription() : std::string{}; }
 void UndoStack::JumpTo(std::size_t index)
 {
-    if (index > m_history.size()) index = m_history.size();
-    while (m_cursor > index) Undo();
-    while (m_cursor < index) Redo();
+    index = std::min(index, m_history.size());
+    while (m_cursor > index) if (!Undo()) break;
+    while (m_cursor < index) if (!Redo()) break;
 }
-
 std::vector<UndoStack::HistoryEntry> UndoStack::GetHistory() const
 {
-    std::vector<HistoryEntry> result;
-    result.reserve(m_history.size());
-    for (std::size_t i = 0; i < m_history.size(); ++i)
-        result.push_back({ m_history[i]->GetDescription(), i < m_cursor });
+    std::vector<HistoryEntry> result; result.reserve(m_history.size());
+    for (std::size_t index = 0; index < m_history.size(); ++index) result.push_back({m_history[index]->GetDescription(), index < m_cursor});
     return result;
 }
-
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor
