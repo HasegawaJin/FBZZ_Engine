@@ -45,7 +45,7 @@ inline constexpr BlackboardKey Health01          = 6;
 inline constexpr BlackboardKey Awareness         = 7;
 inline constexpr BlackboardKey NoisePosition     = 8;
 inline constexpr std::uint16_t ReservedCount     = 9;
-} // namespace bb
+} /// @note namespace bb
 
 /// @brief 予約キーの定義列を返す (name / type / reserved が埋まったもの)。
 [[nodiscard]] const std::vector<BlackboardDef>& ReservedBlackboardDefs();
@@ -85,6 +85,11 @@ public:
     /// @brief 最後に書かれた時刻 [s]。一度も書かれていなければ 0。
     [[nodiscard]] float         GetLastWriteTime(BlackboardKey key) const;
     [[nodiscard]] bool          IsSet(BlackboardKey key) const;
+    /// @brief Reset、初回書き込み、値の変更を識別する世代。未初期化は 0。
+    /// @note 同値の再書き込みは世代を変えず履歴だけ更新する。Reset でも世代を戻さない。
+    /// @note float / Vector3 は通常の完全比較を使う。NaN は再書き込みでも変更とみなす。
+    /// @note 時刻条件の再評価には定期 tick または明示的な評価要求を併用する。
+    [[nodiscard]] std::uint64_t GetRevision() const { return m_revision; }
     /// @}
 
     /// @brief 現在の tick 番号と経過時刻を設定する。書き込み履歴の基準になる。
@@ -113,14 +118,17 @@ private:
         std::string     s;
     };
 
-    /// @brief 型が一致すれば書き込み記録を更新して Entry を返す。
+    /// @brief 型が一致する Entry を返す。書き込み記録はまだ更新しない。
     /// @return 不一致なら nullptr。
     Entry* Acquire(BlackboardKey key, BlackboardType expected);
+    void RecordWrite(Entry& entry, bool valueChanged);
+    void AdvanceRevision();
     [[nodiscard]] const Entry* Peek(BlackboardKey key, BlackboardType expected) const;
 
     std::vector<Entry> m_entries;
     std::uint32_t      m_tick = 0;
     float              m_time = 0.0f;
+    std::uint64_t      m_revision = 0;
 };
 
-} // namespace fbzz::ai
+} /// @note namespace fbzz::ai

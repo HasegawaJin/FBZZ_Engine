@@ -68,6 +68,7 @@ void Blackboard::Reset(const std::vector<BlackboardDef>& defs)
         entry.s = def.defaultString;
         entry.e = scene::EntityID::INVALID;
     }
+    AdvanceRevision();
 }
 
 Blackboard::Entry* Blackboard::Acquire(BlackboardKey key, BlackboardType expected)
@@ -76,10 +77,21 @@ Blackboard::Entry* Blackboard::Acquire(BlackboardKey key, BlackboardType expecte
     Entry& entry = m_entries[key];
     if (entry.type != expected) return nullptr;
 
+    return &entry;
+}
+
+void Blackboard::AdvanceRevision()
+{
+    /// @note 0 は未初期化を表すため、uint64 の周回時にも公開しない。
+    if (++m_revision == 0) ++m_revision;
+}
+
+void Blackboard::RecordWrite(Entry& entry, bool valueChanged)
+{
+    if (!entry.written || valueChanged) AdvanceRevision();
     entry.written       = true;
     entry.lastWriteTick = m_tick;
     entry.lastWriteTime = m_time;
-    return &entry;
 }
 
 const Blackboard::Entry* Blackboard::Peek(BlackboardKey key, BlackboardType expected) const
@@ -96,7 +108,9 @@ bool Blackboard::SetBool(BlackboardKey key, bool value)
 {
     Entry* entry = Acquire(key, BlackboardType::Bool);
     if (!entry) return false;
+    const bool changed = entry->b != value;
     entry->b = value;
+    RecordWrite(*entry, changed);
     return true;
 }
 
@@ -104,7 +118,9 @@ bool Blackboard::SetInt(BlackboardKey key, int value)
 {
     Entry* entry = Acquire(key, BlackboardType::Int);
     if (!entry) return false;
+    const bool changed = entry->i != value;
     entry->i = value;
+    RecordWrite(*entry, changed);
     return true;
 }
 
@@ -112,7 +128,9 @@ bool Blackboard::SetFloat(BlackboardKey key, float value)
 {
     Entry* entry = Acquire(key, BlackboardType::Float);
     if (!entry) return false;
+    const bool changed = entry->f != value;
     entry->f = value;
+    RecordWrite(*entry, changed);
     return true;
 }
 
@@ -120,7 +138,9 @@ bool Blackboard::SetVector3(BlackboardKey key, const math::Vector3& value)
 {
     Entry* entry = Acquire(key, BlackboardType::Vector3);
     if (!entry) return false;
+    const bool changed = entry->v.x != value.x || entry->v.y != value.y || entry->v.z != value.z;
     entry->v = value;
+    RecordWrite(*entry, changed);
     return true;
 }
 
@@ -128,7 +148,9 @@ bool Blackboard::SetEntity(BlackboardKey key, scene::EntityID value)
 {
     Entry* entry = Acquire(key, BlackboardType::Entity);
     if (!entry) return false;
+    const bool changed = entry->e != value;
     entry->e = value;
+    RecordWrite(*entry, changed);
     return true;
 }
 
@@ -136,7 +158,9 @@ bool Blackboard::SetString(BlackboardKey key, std::string_view value)
 {
     Entry* entry = Acquire(key, BlackboardType::String);
     if (!entry) return false;
-    entry->s.assign(value);
+    const bool changed = entry->s != value;
+    if (changed) entry->s.assign(value);
+    RecordWrite(*entry, changed);
     return true;
 }
 
@@ -216,4 +240,4 @@ BlackboardType Blackboard::TypeOf(BlackboardKey key) const
     return m_entries[key].type;
 }
 
-} // namespace fbzz::ai
+} /// @note namespace fbzz::ai

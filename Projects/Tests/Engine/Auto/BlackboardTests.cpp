@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
 ///
-/// 敵の «いま何を知っているか» は全部ここに乗る。型不一致を黙って通すと、
+/// @note 敵の «いま何を知っているか» は全部ここに乗る。型不一致を黙って通すと、
 /// float の枠へ入れた bool が «常に true» として読まれる。書き込み時刻が
 /// 進まないと「5 秒見失ったら警戒を解く」が永久に発火しない ── どちらも
 /// 「敵の動きがなんか変」としか見えない。
@@ -13,6 +13,7 @@
 #include <Engine/AI/Blackboard.hpp>
 
 #include <string>
+#include <limits>
 #include <vector>
 
 namespace fbzz::tests {
@@ -26,7 +27,7 @@ ai::BlackboardDef Define(std::string name, ai::BlackboardType type)
     return def;
 }
 
-/// 型ごとに 1 枠ずつ持つ盤面。添字は宣言順にそのままキーになる。
+/// @brief 型ごとに 1 枠ずつ持つ盤面。添字は宣言順にそのままキーになる。
 enum Key : ai::BlackboardKey { kBool = 0, kInt, kFloat, kVector, kEntity, kString };
 
 std::vector<ai::BlackboardDef> MixedLayout()
@@ -41,7 +42,7 @@ std::vector<ai::BlackboardDef> MixedLayout()
     };
 }
 
-} // namespace
+} /// @note namespace
 
 class BlackboardTest : public testkit::EngineFixture {
 protected:
@@ -242,6 +243,97 @@ TEST_F(BlackboardTest, TracksTheClockIndependentlyOfWrites)
     EXPECT_NEAR(board.GetTime(), 0.5f, testkit::kTolerance);
 }
 
+/// @name 変更世代
+
+TEST_F(BlackboardTest, PublishesRevisionForEveryResetAndFirstWriteAtDefaultValues)
+{
+    ai::Blackboard fresh;
+    EXPECT_EQ(fresh.GetRevision(), 0u);
+    fresh.Reset({});
+    EXPECT_EQ(fresh.GetRevision(), 1u);
+    fresh.Reset(MixedLayout());
+    EXPECT_EQ(fresh.GetRevision(), 2u);
+    const auto revision = fresh.GetRevision();
+
+    EXPECT_TRUE(fresh.SetBool(kBool, false));
+    EXPECT_TRUE(fresh.SetInt(kInt, 0));
+    EXPECT_TRUE(fresh.SetFloat(kFloat, 0.0f));
+    EXPECT_TRUE(fresh.SetVector3(kVector, math::Vector3::ZERO));
+    EXPECT_TRUE(fresh.SetEntity(kEntity, scene::EntityID::INVALID));
+    EXPECT_TRUE(fresh.SetString(kString, ""));
+
+    EXPECT_EQ(fresh.GetRevision(), revision + 6);
+    fresh.Reset(MixedLayout());
+    EXPECT_EQ(fresh.GetRevision(), revision + 7);
+    EXPECT_FALSE(fresh.IsSet(kBool));
+}
+
+TEST_F(BlackboardTest, RevisesTypedValueChangesWhileSameValueWritesRefreshOnlyHistory)
+{
+    const auto verify = [&](ai::BlackboardKey key, auto writeInitial, auto writeChanged) {
+        const auto initialRevision = board.GetRevision();
+        board.SetTick(5);
+        board.SetTime(0.5f);
+        ASSERT_TRUE(writeInitial());
+        EXPECT_EQ(board.GetRevision(), initialRevision + 1);
+
+        board.SetTick(60);
+        board.SetTime(1.0f);
+        ASSERT_TRUE(writeInitial());
+        EXPECT_EQ(board.GetRevision(), initialRevision + 1);
+        EXPECT_EQ(board.GetLastWriteTick(key), 60u);
+        EXPECT_NEAR(board.GetLastWriteTime(key), 1.0f, testkit::kTolerance);
+
+        ASSERT_TRUE(writeChanged());
+        EXPECT_EQ(board.GetRevision(), initialRevision + 2);
+        ASSERT_TRUE(writeChanged());
+        EXPECT_EQ(board.GetRevision(), initialRevision + 2);
+    };
+
+    verify(kBool, [&] { return board.SetBool(kBool, true); }, [&] { return board.SetBool(kBool, false); });
+    verify(kInt, [&] { return board.SetInt(kInt, 3); }, [&] { return board.SetInt(kInt, 4); });
+    verify(kFloat, [&] { return board.SetFloat(kFloat, 1.0f); }, [&] { return board.SetFloat(kFloat, 2.0f); });
+    verify(kVector, [&] { return board.SetVector3(kVector, { 1, 2, 3 }); },
+        [&] { return board.SetVector3(kVector, { 1, 2, 4 }); });
+    verify(kEntity, [&] { return board.SetEntity(kEntity, { 7, 2 }); },
+        [&] { return board.SetEntity(kEntity, { 7, 3 }); });
+    verify(kString, [&] { return board.SetString(kString, "calm"); },
+        [&] { return board.SetString(kString, "alert"); });
+}
+
+TEST_F(BlackboardTest, LeavesRevisionAndWriteHistoryUnchangedForReadsAndRejectedWrites)
+{
+    board.SetTick(5);
+    board.SetTime(0.5f);
+    ASSERT_TRUE(board.SetFloat(kFloat, 0.25f));
+    const auto revision = board.GetRevision();
+    board.SetTick(60);
+    board.SetTime(1.0f);
+    float value = 0.0f;
+
+    EXPECT_TRUE(board.GetFloat(kFloat, value));
+    EXPECT_FALSE(board.SetInt(kFloat, 2));
+    EXPECT_FALSE(board.SetBool(ai::kInvalidBlackboardKey, true));
+
+    EXPECT_EQ(board.GetRevision(), revision);
+    EXPECT_EQ(board.GetLastWriteTick(kFloat), 5u);
+    EXPECT_NEAR(board.GetLastWriteTime(kFloat), 0.5f, testkit::kTolerance);
+    EXPECT_FALSE(board.IsSet(kBool));
+}
+
+TEST_F(BlackboardTest, TreatsSignedZeroAsSameValueAndNaNAsAChange)
+{
+    ASSERT_TRUE(board.SetFloat(kFloat, 0.0f));
+    const auto revision = board.GetRevision();
+
+    ASSERT_TRUE(board.SetFloat(kFloat, -0.0f));
+    EXPECT_EQ(board.GetRevision(), revision);
+    ASSERT_TRUE(board.SetFloat(kFloat, std::numeric_limits<float>::quiet_NaN()));
+    EXPECT_EQ(board.GetRevision(), revision + 1);
+    ASSERT_TRUE(board.SetFloat(kFloat, std::numeric_limits<float>::quiet_NaN()));
+    EXPECT_EQ(board.GetRevision(), revision + 2);
+}
+
 /// @name 予約キー
 
 TEST_F(BlackboardTest, ReservedKeysSitAtTheirFixedIndices)
@@ -264,4 +356,4 @@ TEST_F(BlackboardTest, ReservedKeysAreMarkedReserved)
         EXPECT_TRUE(def.reserved) << def.name;
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests
