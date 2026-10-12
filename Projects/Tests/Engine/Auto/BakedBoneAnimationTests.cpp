@@ -3,6 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #include <TestKit/TestKit.hpp>
+#include "../../../Engine/src/Scene/Systems/BoneCbBatch.hpp"
+#include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/ResourceManager.hpp>
+#include <cstring>
+#include <functional>
 #include "../../../Engine/src/Scene/Systems/BonePoseSharing.hpp"
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/BakedBoneAnimation.hpp>
@@ -72,6 +77,34 @@ void RepairBoneBakeTestChecksum(std::vector<std::byte>& bytes)
     for (size_t i = 0; i < bytes.size() - 8; ++i) h = (h ^ std::to_integer<uint8_t>(bytes[i])) * 1099511628211ull;
     for (int i = 0; i < 8; ++i) bytes[bytes.size() - 8 + i] = static_cast<std::byte>((h >> (8 * i)) & 255);
 }
+class BoneBakeTestCpuRenderer : public renderer::IRenderer {
+public:
+    void Shutdown() override {}
+    void BeginFrame() override {}
+    void EndFrame() override {}
+    void Clear(const math::Vector4&) override {}
+    void Submit(const renderer::DrawCall&, renderer::ResourceManager&) override {}
+    void Dispatch(const renderer::ComputeCall&, renderer::ResourceManager&) override {}
+    void Resize(uint32_t,uint32_t) override {}
+    uint32_t GetWidth() const override { return 1; }
+    uint32_t GetHeight() const override { return 1; }
+    void SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>, renderer::ResourceManager&) override {}
+    void ClearDepth() override {}
+    void SetViewport(uint32_t,uint32_t,uint32_t,uint32_t) override {}
+    std::unique_ptr<renderer::IShader> CreateNativeShader(const std::string&) override { return {}; }
+    std::unique_ptr<renderer::IConstantBuffer> CreateNativeConstantBuffer(size_t) override { return {}; }
+    std::unique_ptr<renderer::IBuffer> CreateNativeVertexBuffer(const void*,size_t,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IBuffer> CreateNativeIndexBuffer(const void*,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTexture(const std::string&) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTextureFromData(const uint8_t*,uint32_t,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTexture3DFromData(const uint8_t*,uint32_t,uint32_t,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTextureFromRenderTarget(renderer::IRenderTarget&,uint32_t,renderer::RenderTargetTextureKind) override { return {}; }
+    std::unique_ptr<renderer::IPipelineState> CreateNativePipelineState(const renderer::PipelineStateDesc&) override { return {}; }
+    std::unique_ptr<renderer::IRenderTarget> CreateNativeRenderTarget(uint32_t,uint32_t,const renderer::RenderTargetDesc&) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeComputeTexture(uint32_t,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IStructuredBuffer> CreateNativeStructuredBuffer(const void*,uint32_t,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*,uint32_t,uint32_t) override { return {}; }
+};
 }
 class BakedBoneAnimationTest : public testkit::EngineFixture {};
 
@@ -308,6 +341,97 @@ TEST_F(BakedBoneAnimationTest, SharedPoseQuantizationBoundsReversePauseAndSeamTi
     for(size_t index=0;index<a.size();++index) ExpectBoneBakeTestMatrix(a[index],b[index]);
     before.alpha=std::numeric_limits<float>::quiet_NaN();
     EXPECT_EQ(scene::BonePoseSharing::Quantize(source,120,before),BoneBakeTestStatus::INVALID_DATA);
+}
+
+namespace {
+struct BoneBatchTestWrite { size_t buffer=0; std::vector<uint8_t> bytes; };
+class BoneBatchTestBuffer final : public renderer::IConstantBuffer {
+public:
+    BoneBatchTestBuffer(size_t size,size_t index,std::vector<BoneBatchTestWrite>& writes):m_size(size),m_index(index),m_writes(writes){}
+    void Update(const void* data,size_t size) override {
+        BoneBatchTestWrite record;record.buffer=m_index;record.bytes.resize(size);
+        std::memcpy(record.bytes.data(),data,size);m_writes.push_back(std::move(record));
+    }
+    size_t GetSize() const override {return m_size;}
+private:
+    size_t m_size=0,m_index=0;std::vector<BoneBatchTestWrite>& m_writes;
+};
+class BoneBatchTestRenderer final : public BoneBakeTestCpuRenderer {
+public:
+    std::unique_ptr<renderer::IConstantBuffer> CreateNativeConstantBuffer(size_t size) override {
+        return std::make_unique<BoneBatchTestBuffer>(size,nextBuffer++,writes);
+    }
+    bool IsRenderThread() const override {return rendering;}
+    /// @note Synchronous resource operations establish render-thread identity, including ResourceManager teardown.
+    void ExecuteResourceOperation(const std::function<void()>& operation) override {
+        const bool previous=rendering;rendering=true;operation();rendering=previous;
+    }
+    bool RecordResourceUpdate(std::function<void()> operation) override {operations.push_back(std::move(operation));return true;}
+    void Drain(){rendering=true;for(auto& operation:operations)operation();operations.clear();rendering=false;}
+    std::vector<BoneBatchTestWrite> writes;std::vector<std::function<void()>> operations;
+    size_t nextBuffer=0;bool rendering=false;
+};
+}
+TEST_F(BakedBoneAnimationTest, BatchedCompatibilityBytesKeepFullIdentityTailAndDeferredOwnership)
+{
+    BoneBatchTestRenderer renderer;renderer::ResourceManager resources(renderer);
+    const auto first=resources.CreateConstantBuffer(8192);
+    const auto second=resources.CreateConstantBuffer(8192);
+    ASSERT_TRUE(first.IsValid());ASSERT_TRUE(second.IsValid());
+    auto batch=std::make_shared<renderer::ConstantBufferUpdateBatch>();batch->bytes.resize(16384);
+    std::array<math::Matrix4,128> identity{};for(auto& matrix:identity)matrix=math::Matrix4::Identity();
+    std::memcpy(batch->bytes.data(),identity.data(),8192);std::memcpy(batch->bytes.data()+8192,identity.data(),8192);
+    const auto expected=batch->bytes;
+    batch->entries={{first,0,8192},{second,8192,8192}};
+    resources.UpdateConstantBuffers(batch);batch.reset();
+    EXPECT_TRUE(renderer.writes.empty());ASSERT_EQ(renderer.operations.size(),1u);
+    renderer.Drain();ASSERT_EQ(renderer.writes.size(),2u);
+    EXPECT_EQ(renderer.writes[0].buffer,0u);EXPECT_EQ(renderer.writes[1].buffer,1u);
+    EXPECT_EQ(renderer.writes[0].bytes,std::vector<uint8_t>(expected.begin(),expected.begin()+8192));
+    EXPECT_EQ(renderer.writes[1].bytes,std::vector<uint8_t>(expected.begin()+8192,expected.end()));
+}
+
+TEST_F(BakedBoneAnimationTest, InvalidBatchByteRangePublishesNoPartialUpdate)
+{
+    BoneBatchTestRenderer renderer;renderer::ResourceManager resources(renderer);
+    const auto handle=resources.CreateConstantBuffer(8192);ASSERT_TRUE(handle.IsValid());
+    auto batch=std::make_shared<renderer::ConstantBufferUpdateBatch>();batch->bytes.resize(8192);
+    batch->entries={{handle,0,8192},{handle,8191,8}};
+    resources.UpdateConstantBuffers(batch);renderer.Drain();EXPECT_TRUE(renderer.writes.empty());
+}
+
+TEST_F(BakedBoneAnimationTest, CpuBoneFallbackFlushesAnOwnedPacketBeforeIndividualUpdates)
+{
+    BoneBatchTestRenderer renderer;renderer::ResourceManager resources(renderer);
+    const auto first=resources.CreateConstantBuffer(8192);
+    const auto second=resources.CreateConstantBuffer(8192);
+    std::vector<math::Matrix4> palette{math::Matrix4::Identity()};
+    {
+        scene::BoneCbBatch batch(resources,true,2);batch.SetActorEligible(true);
+        scene::BoneCbBatch::UpdatePalette(resources,first,palette);
+        EXPECT_TRUE(renderer.operations.empty());
+        scene::BoneCbBatch::BeforeBoneHierarchy(resources);
+        ASSERT_EQ(renderer.operations.size(),1u);
+        scene::BoneCbBatch::UpdatePalette(resources,second,palette);
+        ASSERT_EQ(renderer.operations.size(),2u);
+    }
+    renderer.Drain();ASSERT_EQ(renderer.writes.size(),2u);
+    EXPECT_EQ(renderer.writes[0].buffer,0u);EXPECT_EQ(renderer.writes[1].buffer,1u);
+    for(const auto& write:renderer.writes) EXPECT_EQ(write.bytes.size(),8192u);
+}
+
+TEST_F(BakedBoneAnimationTest, ImmediateCompatibilityTemplatePreservesActualPaletteAndIdentityTail)
+{
+    BoneBatchTestRenderer renderer;renderer.rendering=true;renderer::ResourceManager resources(renderer);
+    const auto handle=resources.CreateConstantBuffer(8192);
+    const std::vector<math::Matrix4> palette{math::Matrix4::TRS({2,3,4},math::Quaternion::Identity(),{2,1,0.5f})};
+    scene::BoneCbBatch::UpdatePalette(resources,handle,palette);
+    ASSERT_EQ(renderer.writes.size(),1u);ASSERT_EQ(renderer.writes[0].bytes.size(),8192u);
+    EXPECT_EQ(std::memcmp(renderer.writes[0].bytes.data(),palette.data(),sizeof(math::Matrix4)),0);
+    const auto identity=math::Matrix4::Identity();
+    for(size_t bone=1;bone<128;++bone)
+        EXPECT_EQ(std::memcmp(renderer.writes[0].bytes.data()+bone*sizeof(math::Matrix4),&identity,sizeof(identity)),0);
+    EXPECT_TRUE(renderer.operations.empty());
 }
 
 } /// @note namespace fbzz::tests

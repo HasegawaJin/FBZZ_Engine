@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <functional>
 #include <string>
 #include <vector>
 #include "ComputeCall.hpp"
@@ -266,6 +267,14 @@ public:
         static const GpuProfilerSnapshot s_empty;
         return s_empty;
     }
+
+    /// @note ResourceManager の構造変更と native 資源寿命を直列化する。戻る前に operation が完了する。
+    virtual void ExecuteResourceOperation(const std::function<void()>& operation) { operation(); }
+    /// @note operation が参照する転送元は operation 自身が所有すること。
+    virtual bool RecordResourceUpdate(std::function<void()>) { return false; }
+    /// @note 非同期ラッパー内部の再入判定。通常 backend は呼び出し元を実行スレッドとして扱う。
+    [[nodiscard]] virtual bool IsRenderThread() const { return true; }
+
 };
 
 } /// @note namespace fbzz::renderer

@@ -671,8 +671,26 @@ void ResourceManager::Update(ResourceHandle<BufferTag> h, const void* data, size
 
 void ResourceManager::Update(ResourceHandle<ConstantBufferTag> h, const void* data, size_t sizeBytes)
 {
+    if (!m_renderer.IsRenderThread() && data && sizeBytes != 0) {
+        std::vector<uint8_t> bytes(sizeBytes);
+        std::memcpy(bytes.data(), data, sizeBytes);
+        if (m_renderer.RecordResourceUpdate([this, h, bytes = std::move(bytes)] { Update(h, bytes.data(), bytes.size()); })) return;
+    }
     if (IConstantBuffer* cb = Get(h))
         cb->Update(data, sizeBytes);
+}
+
+bool ResourceManager::DefersResourceUpdates() const { return !m_renderer.IsRenderThread(); }
+void ResourceManager::UpdateConstantBuffers(std::shared_ptr<const ConstantBufferUpdateBatch> batch)
+{
+    if (!batch || batch->entries.empty()) return;
+    for (const auto& entry : batch->entries)
+        if (entry.size == 0 || entry.offset > batch->bytes.size() || entry.size > batch->bytes.size() - entry.offset) return;
+    if (!m_renderer.IsRenderThread()
+        && m_renderer.RecordResourceUpdate([this,batch] { UpdateConstantBuffers(batch); })) return;
+    for (const auto& entry : batch->entries)
+        if (auto* cb = Get(entry.handle); cb && entry.size <= cb->GetSize())
+            cb->Update(batch->bytes.data() + entry.offset,entry.size);
 }
 
 void ResourceManager::Update(ResourceHandle<StructuredBufferTag> h, const void* data, size_t sizeBytes)

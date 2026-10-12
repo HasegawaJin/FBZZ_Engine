@@ -39,6 +39,10 @@ struct Mesh;
 
 class RenderResources;
 
+/// @note Byte storage is frozen while any queued renderer consumer owns the batch.
+struct ConstantBufferUpdateEntry { ResourceHandle<ConstantBufferTag> handle; size_t offset = 0, size = 0; };
+struct ConstantBufferUpdateBatch { std::vector<uint8_t> bytes; std::vector<ConstantBufferUpdateEntry> entries; };
+
 class ResourceManager {
 public:
     explicit ResourceManager(IRenderer& renderer);
@@ -210,6 +214,9 @@ public:
 
     void Update(ResourceHandle<BufferTag> h, const void* data, size_t sizeBytes);
     void Update(ResourceHandle<ConstantBufferTag> h, const void* data, size_t sizeBytes);
+    /// @note The existing executor owns immutable bytes; no byte copy or new RHI operation is introduced.
+    void UpdateConstantBuffers(std::shared_ptr<const ConstantBufferUpdateBatch> batch);
+    bool DefersResourceUpdates() const;
     void Update(ResourceHandle<StructuredBufferTag> h, const void* data, size_t sizeBytes);
 
     void Release(ResourceHandle<ShaderTag> h);
