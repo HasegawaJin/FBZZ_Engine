@@ -15,6 +15,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/FluidRecipeCodec.hpp>
+#include <Engine/Profiler/Profiler.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -972,6 +973,133 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
     const JsonValue* sphere = schema.Find("result")->Find("operators")->Find("source")->Find("fields")->Find("sphere");
     ASSERT_NE(sphere, nullptr);
     EXPECT_TRUE(ArrayHasString(sphere, "color_key")) << SerializeJson(*sphere);
+}
+
+namespace {
+JsonValue ReliablePayload(const std::string& type)
+{
+    JsonValue payload = JsonValue::MakeObject();
+    payload.Set("t", JsonValue(type));
+    return payload;
+}
+} /// @note namespace
+
+class EditorBusProfilerSnapshotTest : public testkit::EditorFixture {
+protected:
+    void SetUp() override
+    {
+        EditorFixture::SetUp();
+        m_wasEnabled = profiler::Profiler::IsEnabled();
+        m_previousFilter = profiler::Profiler::GetRequestedCaptureFilter();
+        ASSERT_TRUE(profiler::Profiler::RequestCaptureFilter({}));
+        profiler::Profiler::SetEnabled(false);
+        profiler::Profiler::SetEnabled(true);
+        m_dispatcher = std::make_unique<EditorBusDispatcher>(Context());
+    }
+
+    void TearDown() override
+    {
+        m_dispatcher.reset();
+        profiler::Profiler::RequestCaptureFilter(m_previousFilter);
+        profiler::Profiler::SetEnabled(false);
+        profiler::Profiler::SetEnabled(m_wasEnabled);
+        EditorFixture::TearDown();
+    }
+
+    JsonValue Snapshot(int limit = 20)
+    {
+        JsonValue payload = ReliablePayload("profiler.snapshot");
+        payload.Set("limit", JsonValue(limit));
+        const std::string line = m_dispatcher->Handle(MakePayloadRequest(payload, "query"));
+        const std::optional<JsonValue> parsed = ParseJson(line, nullptr);
+        EXPECT_TRUE(parsed.has_value()) << line;
+        return parsed.has_value() ? *parsed : JsonValue::MakeObject();
+    }
+
+private:
+    bool                                m_wasEnabled = true;
+    profiler::PerformanceCaptureFilter m_previousFilter;
+    std::unique_ptr<EditorBusDispatcher> m_dispatcher;
+};
+
+TEST_F(EditorBusProfilerSnapshotTest, WarnsWhenNoCpuCaptureIsAvailable)
+{
+    profiler::Profiler::SetEnabled(false);
+    ASSERT_FALSE(profiler::Profiler::GetSnapshot().available);
+
+    const JsonValue response = Snapshot();
+
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    const JsonValue* available = result->Find("cpuCaptureAvailable");
+    const JsonValue* complete = result->Find("cpuCaptureComplete");
+    const JsonValue* warning = result->Find("cpuCaptureWarning");
+    ASSERT_NE(available, nullptr);
+    ASSERT_NE(complete, nullptr);
+    ASSERT_NE(warning, nullptr);
+    EXPECT_FALSE(available->AsBool());
+    EXPECT_EQ(complete->AsBool(), profiler::Profiler::GetSnapshot().complete);
+    EXPECT_TRUE(warning->IsString());
+    EXPECT_FALSE(warning->AsString().empty());
+    EXPECT_NE(warning->AsString().find("unavailable"), std::string::npos);
+    const JsonValue* samples = result->Find("topSamples");
+    ASSERT_NE(samples, nullptr);
+    EXPECT_TRUE(samples->AsArray().empty());
+}
+
+TEST_F(EditorBusProfilerSnapshotTest, WarnsAboutAnAbortedCaptureEvenWhenNoSampleWasDropped)
+{
+    profiler::Profiler::BeginFrame();
+    profiler::Profiler::BeginScope(profiler::ProfilerMarker("unfinished", "McpContract"));
+    /// @note Ending the application frame closes the public scope as aborted; no private Profiler state is injected.
+    profiler::Profiler::EndFrame();
+    ASSERT_TRUE(profiler::Profiler::GetSnapshot().available);
+    ASSERT_FALSE(profiler::Profiler::GetSnapshot().complete);
+
+    const JsonValue response = Snapshot();
+
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    for (const char* key : { "cpuCaptureAvailable", "cpuCaptureComplete", "cpuAbortedSampleCount", "cpuDroppedSampleCount", "cpuCaptureWarning" })
+        ASSERT_NE(result->Find(key), nullptr) << key;
+    EXPECT_TRUE(result->Find("cpuCaptureAvailable")->AsBool());
+    EXPECT_FALSE(result->Find("cpuCaptureComplete")->AsBool());
+    EXPECT_EQ(result->Find("cpuAbortedSampleCount")->AsInt(), 1);
+    EXPECT_EQ(result->Find("cpuDroppedSampleCount")->AsInt(), 0);
+    EXPECT_FALSE(result->Find("cpuCaptureWarning")->AsString().empty());
+    EXPECT_NE(result->Find("cpuCaptureWarning")->AsString().find("partial"), std::string::npos);
+}
+
+TEST_F(EditorBusProfilerSnapshotTest, ExposesCapacityLossSeparatelyFromTheTopSamplesDisplayLimit)
+{
+    profiler::Profiler::BeginFrame();
+    for (std::size_t index = 0; index < profiler::ProfileRecorder::MAX_SAMPLES + 1; ++index)
+        profiler::Profiler::PushMarker(profiler::ProfilerMarker("bounded", "McpContract"));
+    profiler::Profiler::EndFrame();
+    ASSERT_EQ(profiler::Profiler::GetSnapshot().capacityDroppedSampleCount, 1u);
+
+    const JsonValue response = Snapshot(1);
+
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    for (const char* key : {
+            "cpuCaptureAvailable", "cpuCaptureComplete", "cpuRecordedSampleCount", "cpuSampleCapacity",
+            "cpuDroppedSampleCount", "cpuCapacityDroppedSampleCount", "cpuTopSamplesTruncated", "cpuCaptureWarning" })
+        ASSERT_NE(result->Find(key), nullptr) << key;
+    EXPECT_TRUE(result->Find("cpuCaptureAvailable")->AsBool());
+    EXPECT_FALSE(result->Find("cpuCaptureComplete")->AsBool());
+    EXPECT_EQ(result->Find("cpuRecordedSampleCount")->AsInt(), static_cast<int>(profiler::ProfileRecorder::MAX_SAMPLES));
+    EXPECT_EQ(result->Find("cpuSampleCapacity")->AsInt(), static_cast<int>(profiler::ProfileRecorder::MAX_SAMPLES));
+    EXPECT_EQ(result->Find("cpuDroppedSampleCount")->AsInt(), 1);
+    EXPECT_EQ(result->Find("cpuCapacityDroppedSampleCount")->AsInt(), 1);
+    EXPECT_TRUE(result->Find("cpuTopSamplesTruncated")->AsBool());
+    EXPECT_FALSE(result->Find("cpuCaptureWarning")->AsString().empty());
+    const JsonValue* samples = result->Find("topSamples");
+    ASSERT_NE(samples, nullptr);
+    EXPECT_EQ(samples->AsArray().size(), 1u);
 }
 
 } /// namespace fbzz::tests

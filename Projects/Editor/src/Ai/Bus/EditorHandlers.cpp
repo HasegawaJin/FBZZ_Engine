@@ -368,6 +368,27 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     const auto& rendering = renderer::RenderDebugOverlay::GetLastSnapshot();
     JsonValue result = JsonValue::MakeObject();
     result.Set("profilerEnabled", JsonValue(profiler::Profiler::IsEnabled()));
+    const auto& cpu = profiler::Profiler::GetSnapshot();
+    result.Set("cpuCaptureAvailable", JsonValue(cpu.available));
+    result.Set("cpuCaptureComplete", JsonValue(cpu.complete));
+    result.Set("cpuRecordedSampleCount", JsonValue(static_cast<std::int64_t>(cpu.recordedSampleCount)));
+    result.Set("cpuSampleCapacity", JsonValue(static_cast<std::int64_t>(cpu.sampleCapacity)));
+    result.Set("cpuDroppedSampleCount", JsonValue(static_cast<std::int64_t>(cpu.droppedSampleCount)));
+    result.Set("cpuFilteredSampleCount", JsonValue(static_cast<std::int64_t>(cpu.filteredSampleCount)));
+    result.Set("cpuCapacityDroppedSampleCount", JsonValue(static_cast<std::int64_t>(cpu.capacityDroppedSampleCount)));
+    result.Set("cpuDepthDroppedSampleCount", JsonValue(static_cast<std::int64_t>(cpu.depthDroppedSampleCount)));
+    result.Set("cpuDescriptorDroppedSampleCount", JsonValue(static_cast<std::int64_t>(cpu.descriptorDroppedSampleCount)));
+    result.Set("cpuFaultedSampleCount", JsonValue(static_cast<std::int64_t>(cpu.faultedSampleCount)));
+    result.Set("cpuAbortedSampleCount", JsonValue(static_cast<std::int64_t>(cpu.abortedSampleCount)));
+    result.Set("cpuTopSamplesTruncated", JsonValue(sorted.size() > static_cast<size_t>(limit)));
+    JsonValue collection = JsonValue::MakeObject();
+    collection.Set("category", JsonValue(cpu.captureFilter.category));
+    collection.Set("scope", JsonValue(cpu.captureFilter.scope));
+    result.Set("cpuCaptureFilter", std::move(collection));
+    result.Set("cpuCaptureWarning", JsonValue(!cpu.available
+        ? "CPU capture unavailable; enable profiler and record a completed frame."
+        : (!cpu.complete || cpu.droppedSampleCount)
+            ? "Incomplete CPU capture; scope totals and Self are partial. Narrow the collection filter before recording." : ""));
     result.Set("frameIndex", JsonValue(static_cast<std::int64_t>(profiler::Profiler::GetLastFrameIndex())));
     const double engineFrameMs = static_cast<double>(Time::unscaledDeltaTime) * 1000.0;
     result.Set("frameMs", JsonValue(engineFrameMs));
