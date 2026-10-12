@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-03
 #include <Engine/Profiler/ScriptProfiler.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Core/Profiler/Profiler.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -90,6 +91,7 @@ uint64_t Context(uint64_t sceneGeneration, const InstanceState& state)
 
 void Retire()
 {
+    FBZZ_PROFILE_SCOPE("ScriptProfiler::RetireDescriptors");
     std::unordered_set<uint64_t> keep;
     for (const auto& item : s_snapshot.descriptors) keep.insert(item.sampleKey);
     std::vector<ScriptProfileDescriptor> retained;
@@ -195,6 +197,7 @@ void ScriptProfiler::ObserveScene(const Scene& scene)
 
 void ScriptProfiler::BeginFrame(uint64_t applicationFrameSerial, double frameStartMs)
 {
+    FBZZ_PROFILE_SCOPE("ScriptProfiler::BeginFrame");
     s_frameContexts.clear();
     s_transitionFrame = false;
     if (s_descriptors.size() > MAX_DESCRIPTORS / 2 || s_stringBytes > MAX_STRING_BYTES / 2
@@ -278,6 +281,7 @@ void ScriptProfiler::EndInvocation(ScriptProfileInvocation invocation, bool succ
 
 void ScriptProfiler::EndFrame()
 {
+    FBZZ_PROFILE_SCOPE("ScriptProfiler::EndFrame");
     if (!s_recorder.IsFrameOpen()) return;
     s_recorder.EndFrame();
     static_cast<profiler::ProfileSnapshot&>(s_snapshot) = s_recorder.GetSnapshot();

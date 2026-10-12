@@ -296,6 +296,20 @@ scope graphの各点は保持したframeの位置を維持する。収集・派�
 
 ユーザーが報告した実Editorの周期的症状との一致は統合確認を要する。今回の検証では実Editorの終了・起動、GPU測定、SDK更新を実行していない。修正した画面を現在のEditorで確認するには、親担当がユーザーの都合に合わせてEditor反映と確認の枠を調整する。修正前後のCPU性能比較は、収集範囲・画面状態・Profiler実装版をそろえて基準を採り直す。
 
+## CPU 時間と同名 System scope の読み方 (2026-10-12)
+
+`cpuFrameElapsedMs` は所有スレッドの BeginFrame から EndFrame までの経過時間で、待機を含む。OS が計った CPU busy 時間ではない。`wallFrameIntervalMs` は前後の BeginFrame の間隔。各行の Inclusive は子を含む区間の合計、Self は測れた子を除いた区間。Flat の同名・同 category・同 color は、親経路が違っても呼び出しをまとめる。再帰や同名ネストも Inclusive に加算するため、Inclusive 行を足しても frame 経過時間にはならない。
+
+`scopeRootSumMs` は記録した最外 sample の Inclusive 合計。収集範囲に依存し、Scheduler が外部 duration として投入する並列 System の実行時間、queue wait 合計、main wait は互いに重なりうる。root 合計が frame 経過時間を超えても単位の誤りとは限らない。CPU画面は `Main thread frame elapsed`、`Root scope sum (may overlap)`、`Inclusive ms` を区別する。表の `% Roots` は root 合計を分母とし、Flat は Self、Hierarchy は Inclusive を分子とする。Avg/Peak も Flat は Self、Hierarchy は Inclusive とラベルで明示する。旧 ProfilerViewer の全 Inclusive 合計にも overlapping を付ける。
+
+Scheduler は直列 System の Update を `ISystem::Name()` で包み、並列実行でもその名前の外部 duration を投入する。この名前を維持し、LateScriptSystem 本体の内側だけを `LateScriptSystem::Dispatch` にする。配送区間には snapshot 作成、context/enabled 更新、各 callback、待機、計測の費用を含む。同名だった旧記録の外側 150ms・内側149ms は Flat 一行の Inclusive299ms / Calls2 にまとまる。変更後は外側150ms と Dispatch149ms に分かれるが、frame150ms、root150ms、両 Inclusive の合計299ms は変わらない。名前の変更を処理の速度改善として報告しない。
+
+旧 `LateScriptSystem` の canonical 外側名と Hierarchy の親は保持する。category/color、JSON キー、集計規則、公開 ABI は変更しない。scope 部分一致 filter の `LateScriptSystem` は両区間を採り、`LateScriptSystem::Dispatch` は配送だけを採る。旧記録の Flat 同名 Inclusive/Calls と新記録の外側だけの値は比較対象が変わるので直接比較しない。比較条件 configuration に `profilerScopes=dispatch-v1` 等の版を明記して基準を採り直す。既存保存記録の名前を後から書き換えない。
+
+同名外側/内側の計測は ScriptSystem、FixedScriptSystem、PhysicsSystem、AnimatorSystem、RenderSystem、RagdollSystem、SpringBoneSystem にもある。Physics benchmark は既に最外 PhysicsSystem だけを数える専用処理と回帰テストを持つ。今回は Late の内側一箇所に絞り、Scheduler と他 System の集計契約は変更しない。内側 scope を削る案は直接 Update を呼ぶ経路の計測を失うため採らない。
+
+専用 CPU テストは注入時計で nested Inclusive7ms / root5ms / frame10ms を区別し、並列外部 duration と wait の root250ms / frame50ms を確認する。Editor の実集計には同名ネストが Flat Inclusive299ms / Calls2 となり、配送名へ分けても経過時間・root・全 Inclusive 合計と canonical 外側 key が変わらない回帰を追加する。既存登録テストファイルへ追加し、CMake 変更は不要。隔離候補のため compile/test と実 Editor 確認は取り込み時に行う。
+
 ## 参考と採用しない前提
 
 RE ENGINE の用途別 profiler は [NavigationProfiler の公式紹介](https://www.docswell.com/s/CAPCOM_RandD/K987DX-RE2023) と [Effect Profiler の公式紹介](https://www.docswell.com/s/CAPCOM_RandD/Z8GQ31-RE2023) を参考にする。ScriptProfiler と PerformanceProfiler という正確な二名称や内部構造は公開資料で確認できていないため、本書の名称と分割は FBZZ の設計判断である。

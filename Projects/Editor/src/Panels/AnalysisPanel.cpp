@@ -744,12 +744,12 @@ void DrawSelectedFrameTime(float targetMs, float height)
     const auto& selected = GetPerformanceHistory().selected;
     if (!selected) { ImGui::TextDisabled("No completed Performance capture."); return; }
     ImGui::TextColored(widgets::FrameBudgetColor(static_cast<float>(selected->cpuFrameElapsedMs), targetMs),
-        "CPU elapsed %.3f ms", selected->cpuFrameElapsedMs);
+        "Main thread frame elapsed %.3f ms", selected->cpuFrameElapsedMs);
     if (selected->wallFrameIntervalAvailable) ImGui::Text("Measured frame interval %.3f ms", selected->wallFrameIntervalMs);
     else ImGui::TextDisabled("Measured frame interval unavailable.");
     if (!s_profHistory.elapsedMs.empty()) {
         const std::vector<float> values(s_profHistory.elapsedMs.begin(), s_profHistory.elapsedMs.end());
-        DrawAnalysisHistoryPlot("##cpuElapsedHistory", "CPU elapsed", "ms", values,
+        DrawAnalysisHistoryPlot("##cpuElapsedHistory", "Main thread frame elapsed (includes waits)", "ms", values,
                                 {-FLT_MIN, height}, s_profHistory.elapsedAutoFit);
     }
 }
@@ -977,20 +977,20 @@ constexpr ImGuiTableFlags kAnalysisProfTableFlags =
 void SetupAnalysisProfColumns(bool flat)
 {
     const float fontH = ImGui::GetFontSize();
-    const float numW  = fontH * 4.6f;
+    const float numW  = fontH * 7.0f;
     const ImGuiTableColumnFlags num = ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_PreferSortDescending;
     ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHide,
                             0.0f, static_cast<ImGuiID>(AnalysisProfCol::Name));
     ImGui::TableSetupColumn("Category", ImGuiTableColumnFlags_WidthFixed, fontH * 6.0f,
                             static_cast<ImGuiID>(AnalysisProfCol::Category));
-    ImGui::TableSetupColumn("Total ms", num, numW, static_cast<ImGuiID>(AnalysisProfCol::Total));
+    ImGui::TableSetupColumn("Inclusive ms", num, numW, static_cast<ImGuiID>(AnalysisProfCol::Total));
     /// @note Flat は «自分で使った時間» の多い順が本題なので、最初から Self で並べる。
     ImGui::TableSetupColumn("Self ms", num | (flat ? ImGuiTableColumnFlags_DefaultSort : 0), numW,
                             static_cast<ImGuiID>(AnalysisProfCol::Self));
-    ImGui::TableSetupColumn("% Frame", num, fontH * 6.0f, static_cast<ImGuiID>(AnalysisProfCol::Share));
+    ImGui::TableSetupColumn("% Roots", num, fontH * 6.0f, static_cast<ImGuiID>(AnalysisProfCol::Share));
     ImGui::TableSetupColumn("Calls", num, fontH * 3.2f, static_cast<ImGuiID>(AnalysisProfCol::Calls));
-    ImGui::TableSetupColumn("Avg ms", num, numW, static_cast<ImGuiID>(AnalysisProfCol::Avg));
-    ImGui::TableSetupColumn("Peak ms", num, numW, static_cast<ImGuiID>(AnalysisProfCol::Peak));
+    ImGui::TableSetupColumn(flat ? "Avg self ms" : "Avg incl ms", num, numW, static_cast<ImGuiID>(AnalysisProfCol::Avg));
+    ImGui::TableSetupColumn(flat ? "Peak self ms" : "Peak incl ms", num, numW, static_cast<ImGuiID>(AnalysisProfCol::Peak));
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 }
@@ -1155,7 +1155,7 @@ void DrawAnalysisProfGraph()
         if (!std::isfinite(value)) continue;
         peak = (std::max)(peak, value); sum += value; ++validCount;
     }
-    ImGui::TextUnformatted(hasSelection ? s_profilerFilter.selectedLabel.c_str() : "Scoped frame CPU");
+    ImGui::TextUnformatted(hasSelection ? s_profilerFilter.selectedLabel.c_str() : "Root scope sum (may overlap)");
     ImGui::SameLine();
     if (validCount == 0) ImGui::TextDisabled("No measured history; time unavailable.");
     else {
@@ -1179,7 +1179,7 @@ void DrawAnalysisProfGraph()
         ImGui::TextDisabled("No history yet.");
         return;
     }
-    DrawAnalysisHistoryPlot("##profHistory", hasSelection ? s_profilerFilter.selectedLabel.c_str() : "Scoped frame CPU",
+    DrawAnalysisHistoryPlot("##profHistory", hasSelection ? s_profilerFilter.selectedLabel.c_str() : "Root scope sum (may overlap)",
                              "ms", values, { -FLT_MIN, height }, s_profHistory.autoFit);
 }
 
@@ -1546,7 +1546,8 @@ void DrawPerformanceCpu(EditorContext& ctx)
         ImGui::Text("Session %llu / application frame %llu / internal frame %llu%s",
             static_cast<unsigned long long>(snapshot->captureSessionId), static_cast<unsigned long long>(snapshot->applicationFrameSerial),
             static_cast<unsigned long long>(snapshot->frameIndex), snapshot == performanceHistory.spike ? " / captured spike" : "");
-        ImGui::Text("CPU elapsed %.3f ms / scope roots %.3f ms", snapshot->cpuFrameElapsedMs, snapshot->scopeRootSumMs);
+        ImGui::Text("Main thread frame elapsed %.3f ms / root scope sum %.3f ms", snapshot->cpuFrameElapsedMs, snapshot->scopeRootSumMs);
+        ImGui::TextDisabled("Elapsed includes waits. Inclusive rows include children; parallel durations can overlap.");
         if (snapshot->wallFrameIntervalAvailable) ImGui::Text("Measured frame interval %.3f ms", snapshot->wallFrameIntervalMs);
         else ImGui::TextDisabled("Measured frame interval unavailable.");
         ImGui::Text("CPU samples %u / capacity %u; filtered %u; dropped %u", snapshot->recordedSampleCount,

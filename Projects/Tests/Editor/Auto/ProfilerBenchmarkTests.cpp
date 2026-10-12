@@ -719,4 +719,44 @@ TEST_F(ProfilerBenchmarkTest, KeepsTemporaryRecordingEnabledThroughSamplingThenR
     EXPECT_EQ(editor::GetPerformanceHistory().selected->applicationFrameSerial, 10009u);
 }
 
+
+TEST_F(ProfilerBenchmarkTest, DistinguishesSameNameNestedInclusiveFromElapsedAndPreservesCanonicalOuterScopeAfterRename)
+{
+    auto legacy = Frame(1, 150.0);
+    legacy.scopeRootSumMs = 150.0;
+    AddScope(legacy, 1, 0, "LateScriptSystem", 150.0);
+    AddScope(legacy, 2, 1, "LateScriptSystem", 149.0);
+    legacy.samples[0].selfMs = 1.0;
+    legacy.samples[1].selfMs = 149.0; legacy.samples[1].depth = 1;
+    legacy.recordedSampleCount = 2;
+    const auto merged = editor::detail::BuildRecordedProfTree(legacy);
+    ASSERT_TRUE(merged.complete);
+    ASSERT_EQ(merged.flat.size(), 1u);
+    ASSERT_EQ(merged.nodes.size(), 2u);
+    EXPECT_EQ(merged.flat[0].calls, 2);
+    EXPECT_DOUBLE_EQ(merged.flat[0].totalMs, 299.0);
+    EXPECT_DOUBLE_EQ(merged.flat[0].selfMs, 150.0);
+    EXPECT_DOUBLE_EQ(merged.frameMs, 150.0);
+    EXPECT_DOUBLE_EQ(legacy.cpuFrameElapsedMs, 150.0);
+    EXPECT_DOUBLE_EQ(merged.nodes[0].totalMs, 150.0);
+    EXPECT_DOUBLE_EQ(merged.nodes[1].totalMs, 149.0);
+
+    auto renamed = legacy;
+    renamed.descriptors[1].name = "LateScriptSystem::Dispatch";
+    const auto separated = editor::detail::BuildRecordedProfTree(renamed);
+    ASSERT_TRUE(separated.complete);
+    ASSERT_EQ(separated.flat.size(), 2u);
+    EXPECT_EQ(std::string(separated.flat[0].name), "LateScriptSystem");
+    EXPECT_EQ(std::string(separated.flat[1].name), "LateScriptSystem::Dispatch");
+    EXPECT_EQ(separated.flat[0].calls, 1); EXPECT_EQ(separated.flat[1].calls, 1);
+    EXPECT_DOUBLE_EQ(separated.flat[0].totalMs, 150.0);
+    EXPECT_DOUBLE_EQ(separated.flat[1].totalMs, 149.0);
+    EXPECT_DOUBLE_EQ(separated.flat[0].selfMs + separated.flat[1].selfMs, 150.0);
+    EXPECT_DOUBLE_EQ(separated.flat[0].totalMs + separated.flat[1].totalMs, 299.0);
+    EXPECT_EQ(separated.nodes[0].key, merged.nodes[0].key);
+    EXPECT_EQ(separated.flat[0].key, merged.flat[0].key);
+    EXPECT_DOUBLE_EQ(separated.frameMs, merged.frameMs);
+    EXPECT_DOUBLE_EQ(renamed.cpuFrameElapsedMs, legacy.cpuFrameElapsedMs);
+}
+
 } /// @note namespace fbzz::tests

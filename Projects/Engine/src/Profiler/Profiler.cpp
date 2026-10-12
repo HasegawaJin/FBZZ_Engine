@@ -54,7 +54,12 @@ void ProfilerViewer::Draw(bool* open)
 
     ImGui::Text("Frame: %llu", static_cast<unsigned long long>(Profiler::GetLastFrameIndex()));
     ImGui::Text("Samples: %zu", records.size());
-    ImGui::Text("Total CPU samples: %.3f ms", totalMs);
+    const auto& frame = Profiler::GetSnapshot();
+    if (frame.available) ImGui::Text("Main thread frame elapsed: %.3f ms", frame.cpuFrameElapsedMs);
+    else ImGui::TextDisabled("Main thread frame elapsed unavailable.");
+    if (frame.wallFrameIntervalAvailable) ImGui::Text("Measured frame interval: %.3f ms", frame.wallFrameIntervalMs);
+    ImGui::Text("Inclusive sample sum (overlapping): %.3f ms", totalMs);
+    ImGui::TextDisabled("Frame elapsed includes waits. Inclusive samples include children and may overlap.");
     ImGui::Separator();
 
     if (records.empty()) {

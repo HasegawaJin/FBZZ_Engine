@@ -561,4 +561,42 @@ TEST_F(ProfileRecorderTest, KeepsThousandsOfFramesBoundedAndDistinguishesZeroFro
     }
 }
 
+
+TEST_F(ProfileRecorderTest, NestedInclusiveSumIsNotTheFrameElapsed)
+{
+    profiler::ProfileRecorder recorder(true, ReadProfileTime);
+    recorder.BeginFrame(1, 0.0);
+    const auto parent = recorder.Begin(1);
+    s_profileTimeMs = 1.0; const auto child = recorder.Begin(2);
+    s_profileTimeMs = 3.0; recorder.End(child);
+    s_profileTimeMs = 5.0; recorder.End(parent);
+    s_profileTimeMs = 10.0; recorder.EndFrame();
+    const auto& frame = recorder.GetSnapshot();
+    ASSERT_EQ(frame.samples.size(), 2u);
+    EXPECT_TRUE(frame.complete);
+    EXPECT_DOUBLE_EQ(frame.cpuFrameElapsedMs, 10.0);
+    EXPECT_DOUBLE_EQ(frame.scopeRootSumMs, 5.0);
+    EXPECT_DOUBLE_EQ(frame.samples[0].inclusiveMs + frame.samples[1].inclusiveMs, 7.0);
+    EXPECT_DOUBLE_EQ(frame.samples[0].selfMs + frame.samples[1].selfMs, 5.0);
+}
+
+TEST_F(ProfileRecorderTest, ParallelExecutionAndQueueWaitSumsCanExceedFrameElapsed)
+{
+    profiler::ProfileRecorder recorder(true, ReadProfileTime);
+    recorder.BeginFrame(1, 0.0);
+    for (uint64_t task = 1; task <= 4; ++task)
+        recorder.Push(task, 50.0, profiler::ProfileSampleKind::EXTERNAL_DURATION);
+    recorder.Push(5, 25.0, profiler::ProfileSampleKind::EXTERNAL_DURATION);
+    recorder.Push(6, 25.0, profiler::ProfileSampleKind::EXTERNAL_DURATION);
+    s_profileTimeMs = 50.0; recorder.EndFrame();
+    const auto& frame = recorder.GetSnapshot();
+    EXPECT_DOUBLE_EQ(frame.cpuFrameElapsedMs, 50.0);
+    EXPECT_DOUBLE_EQ(frame.scopeRootSumMs, 250.0);
+    EXPECT_TRUE(frame.complete);
+    for (const auto& sample : frame.samples) {
+        EXPECT_FALSE(sample.startAvailable);
+        EXPECT_FALSE(sample.selfAvailable);
+    }
+}
+
 } /// @note namespace fbzz::tests

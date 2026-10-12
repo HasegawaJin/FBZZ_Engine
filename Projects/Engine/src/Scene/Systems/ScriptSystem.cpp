@@ -210,7 +210,8 @@ void FixedScriptSystem::Update(SystemContext& ctx)
 void LateScriptSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
-    FBZZ_PROFILE_SCOPE("LateScriptSystem");
+    /// @note Scheduler の外側 LateScriptSystem と配送区間を別名にし、Flat の同名 Inclusive 合算を避ける。
+    FBZZ_PROFILE_SCOPE("LateScriptSystem::Dispatch");
 
     if (IsPausedFrame(ctx)) return;
 
