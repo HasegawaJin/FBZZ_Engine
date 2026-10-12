@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// 評価モデル (Docs/design/game-ai-layer.md の D7): Running 中もルートから再入するが、
+/// @note 評価モデル (Docs/design/game-ai-layer.md の D7): Running 中もルートから再入するが、
 /// Composite は cursor[] に子スロットを持つので兄弟の再評価は起きず、根から Running リーフ
 /// までの O(depth) で済む。Decorator の TimeLimit/Cooldown はリーフへの経路上にあるため、
 /// リーフへ直接ジャンプすると評価がスキップされ時間切れが効かなくなる。
@@ -77,8 +77,9 @@ void RecordStatus(BTTickContext& ctx, std::uint16_t node, BTStatus status)
     }
 }
 
-/// 比較演算を型ごとに適用する。
-bool CompareValues(BTCompareOp op, float lhs, float rhs)
+/// @brief 比較演算を元の数値型で適用する。
+template<class T>
+bool CompareValues(BTCompareOp op, T lhs, T rhs)
 {
     switch (op) {
     case BTCompareOp::Equal:        return lhs == rhs;
@@ -91,7 +92,7 @@ bool CompareValues(BTCompareOp op, float lhs, float rhs)
     }
 }
 
-/// Blackboard の値と params の期待値を比較する。副作用なし。
+/// @brief Blackboard の値と params の期待値を比較する。副作用なし。
 bool EvaluateBlackboardCompare(const BTNodeParams& params, const Blackboard& blackboard)
 {
     if (params.key == kInvalidBlackboardKey) return false;
@@ -114,8 +115,7 @@ bool EvaluateBlackboardCompare(const BTNodeParams& params, const Blackboard& bla
     case BlackboardType::Int: {
         int value = 0;
         if (!blackboard.GetInt(params.key, value)) return false;
-        return CompareValues(params.compareOp, static_cast<float>(value),
-                             static_cast<float>(params.valueInt));
+        return CompareValues(params.compareOp, value, params.valueInt);
     }
     case BlackboardType::Float: {
         float value = 0.0f;
@@ -147,7 +147,7 @@ bool EvaluateBlackboardCompare(const BTNodeParams& params, const Blackboard& bla
     }
 }
 
-/// Wait / Cooldown / TimeLimit の実効時間。durationRandom でばらつかせる。
+/// @brief Wait / Cooldown / TimeLimit の実効時間。durationRandom でばらつかせる。
 float ResolveDuration(const BTNodeParams& params, std::uint32_t& rngState)
 {
     if (params.durationRandom <= 0.0f) return std::max(params.duration, 0.0f);
@@ -155,7 +155,7 @@ float ResolveDuration(const BTNodeParams& params, std::uint32_t& rngState)
     return std::max(params.duration + offset, 0.0f);
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name 条件評価 (副作用なし)
 
@@ -165,6 +165,7 @@ bool EvaluateBTCondition(const BehaviorTreeRuntime& tree, std::uint16_t node,
     if (node >= tree.nodes.size()) return false;
 
     const BTNode& btNode = tree.nodes[node];
+    if (btNode.paramIndex >= tree.params.size()) return false;
     const BTNodeParams& params = tree.params[btNode.paramIndex];
 
     switch (btNode.type) {
@@ -189,9 +190,143 @@ bool EvaluateBTCondition(const BehaviorTreeRuntime& tree, std::uint16_t node,
 
 namespace {
 
-/// 前方宣言 (Composite / Decorator が再帰する)
+/// @brief Composite / Decorator が再帰する評価の前方宣言。
 BTStatus TickNode(const BehaviorTreeRuntime& tree, std::uint16_t node,
                   BTInstanceState& state, Blackboard& blackboard, BTTickContext& ctx);
+
+/// @brief DFS preorder で直近の子スロットを解決する。
+/// @note 子の直後は孫の場合があるため、兄弟へは subtreeEnd で進む。
+std::uint16_t ChildAt(const BehaviorTreeRuntime& tree, std::uint16_t node,
+                      std::uint16_t slot)
+{
+    const BTNode& parent = tree.nodes[node];
+    if (slot >= parent.childCount) return kInvalidNode;
+    std::uint16_t child = parent.firstChild;
+    for (std::uint16_t i = 0; i < slot; ++i) {
+        if (child >= tree.nodes.size() || tree.subtreeEnd[child] <= child)
+            return kInvalidNode;
+        child = tree.subtreeEnd[child];
+    }
+    return child < tree.subtreeEnd[node] ? child : kInvalidNode;
+}
+
+bool IsHandledAction(BTNodeType type)
+{
+    switch (type) {
+    case BTNodeType::MoveTo:
+    case BTNodeType::Patrol:
+    case BTNodeType::LookAt:
+    case BTNodeType::PlayAnimation:
+    case BTNodeType::PlayAudio:
+    case BTNodeType::RunScript: return true;
+    default: return false;
+    }
+}
+
+void AbortRange(const BehaviorTreeRuntime& tree, BTInstanceState& state,
+                std::uint16_t lo, std::uint16_t hi, BTTickContext& ctx)
+{
+    const std::size_t end = std::min<std::size_t>(hi,
+        std::min(tree.nodes.size(), state.flags.size()));
+    for (std::size_t i = lo; i < end; ++i) {
+        if (!(state.flags[i] & BTNodeFlag::Running)) continue;
+        /// @note コールバック前に解除し、同じ Action の重複中断を防ぐ。
+        state.flags[i] &= static_cast<std::uint8_t>(~BTNodeFlag::Running);
+        if (ctx.actions && IsHandledAction(tree.nodes[i].type))
+            ctx.actions->Abort(tree, static_cast<std::uint16_t>(i), state, ctx);
+    }
+    state.ClearRange(lo, hi);
+    if (state.runningLeaf >= lo && state.runningLeaf < hi)
+        state.runningLeaf = kInvalidNode;
+}
+
+bool HasRunningRange(const BTInstanceState& state, std::uint16_t lo, std::uint16_t hi)
+{
+    const std::size_t end = std::min<std::size_t>(hi, state.flags.size());
+    for (std::size_t i = lo; i < end; ++i)
+        if (state.flags[i] & BTNodeFlag::Running) return true;
+    return false;
+}
+
+void RewindAncestors(const BehaviorTreeRuntime& tree, BTInstanceState& state,
+                     std::uint16_t child)
+{
+    while (tree.parent[child] != kInvalidNode) {
+        const auto parent = tree.parent[child];
+        if (tree.nodes[parent].type == BTNodeType::Sequence
+            || tree.nodes[parent].type == BTNodeType::Selector) {
+            std::uint16_t sibling = tree.nodes[parent].firstChild;
+            for (std::uint16_t slot = 0; slot < tree.nodes[parent].childCount; ++slot) {
+                if (sibling == child) { state.cursor[parent] = slot; break; }
+                sibling = tree.subtreeEnd[sibling];
+            }
+        }
+        child = parent;
+    }
+}
+
+/// @brief 候補の前提条件も成立しているときだけ低優先度枝を中断する。
+/// @note Sequence の別ガードが偽なら、毎 tick の無益な Abort と再入を起こさない。
+bool ObserverBranchEligible(const BehaviorTreeRuntime& tree, const BTInstanceState& state,
+                            std::uint16_t node,
+                            const Blackboard& blackboard, const BTTickContext& ctx)
+{
+    std::uint16_t child = node;
+    while (tree.parent[child] != kInvalidNode) {
+        const auto parent = tree.parent[child];
+        const auto type = tree.nodes[parent].type;
+        if (type == BTNodeType::BlackboardCondition
+            && !EvaluateBTCondition(tree, parent, blackboard, ctx)) return false;
+        if (type == BTNodeType::Cooldown && state.cooldowns[parent] > 0.0f) return false;
+        if (type == BTNodeType::Sequence) {
+            std::uint16_t sibling = tree.nodes[parent].firstChild;
+            while (sibling < child) {
+                if (BTNodeIsPureCondition(tree.nodes[sibling].type)
+                    && !EvaluateBTCondition(tree, sibling, blackboard, ctx)) return false;
+                sibling = tree.subtreeEnd[sibling];
+            }
+            /// @note 連続した leaf guard は全て成立する必要がある。
+            while (sibling < tree.subtreeEnd[parent]
+                   && BTNodeIsPureCondition(tree.nodes[sibling].type)
+                   && tree.nodes[sibling].childCount == 0) {
+                if (sibling != node && !EvaluateBTCondition(tree, sibling, blackboard, ctx)) return false;
+                sibling = tree.subtreeEnd[sibling];
+            }
+        }
+        if (type == BTNodeType::Parallel || type == BTNodeType::RandomSelector) break;
+        child = parent;
+    }
+    return true;
+}
+
+/// @brief 実行中の枝に関係する純粋条件だけを意思決定 tick で観測する。
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-behavior-tree-node-reference-decorators
+void ApplyObserverAborts(const BehaviorTreeRuntime& tree, BTInstanceState& state,
+                         const Blackboard& blackboard, BTTickContext& ctx)
+{
+    for (const BTAbortCandidate& candidate : tree.abortCandidates) {
+        if (candidate.node >= tree.nodes.size()
+            || !BTNodeIsPureCondition(tree.nodes[candidate.node].type)) continue;
+        const bool watchSelf = candidate.mode == AbortMode::Self || candidate.mode == AbortMode::Both;
+        const bool watchLower = candidate.mode == AbortMode::LowerPriority || candidate.mode == AbortMode::Both;
+        /// @note 経路上の条件 Decorator は通常評価が中断を処理するため再評価を重ねない。
+        const bool runningSelf = watchSelf && !BTNodeIsDecorator(tree.nodes[candidate.node].type)
+            && HasRunningRange(state, candidate.selfLo, candidate.selfHi);
+        const bool runningLower = watchLower && HasRunningRange(state, candidate.lowLo, candidate.lowHi);
+        if (!runningSelf && !runningLower) continue;
+
+        const bool passes = EvaluateBTCondition(tree, candidate.node, blackboard, ctx);
+        if (runningSelf && !passes) {
+            AbortRange(tree, state, candidate.selfLo, candidate.selfHi, ctx);
+            RewindAncestors(tree, state, candidate.selfLo);
+        } else if (runningLower && passes
+                   && ObserverBranchEligible(tree, state, candidate.node, blackboard, ctx)) {
+            AbortRange(tree, state, candidate.lowLo, candidate.lowHi, ctx);
+            AbortRange(tree, state, candidate.selfLo, candidate.selfHi, ctx);
+            RewindAncestors(tree, state, candidate.selfLo);
+        }
+    }
+}
 
 BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
                        BTInstanceState& state, Blackboard& blackboard, BTTickContext& ctx)
@@ -208,8 +343,10 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
 
     switch (btNode.type) {
     case BTNodeType::Sequence: {
-        for (std::uint16_t i = state.cursor[node]; i < count; ++i) {
-            const BTStatus status = TickNode(tree, static_cast<std::uint16_t>(first + i),
+        std::uint16_t child = ChildAt(tree, node, state.cursor[node]);
+        for (std::uint16_t i = state.cursor[node]; i < count; ++i, child = tree.subtreeEnd[child]) {
+            if (child >= tree.nodes.size()) return BTStatus::Failure;
+            const BTStatus status = TickNode(tree, child,
                                              state, blackboard, ctx);
             if (status == BTStatus::Running) {
                 state.cursor[node] = i;
@@ -228,8 +365,10 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
     }
 
     case BTNodeType::Selector: {
-        for (std::uint16_t i = state.cursor[node]; i < count; ++i) {
-            const BTStatus status = TickNode(tree, static_cast<std::uint16_t>(first + i),
+        std::uint16_t child = ChildAt(tree, node, state.cursor[node]);
+        for (std::uint16_t i = state.cursor[node]; i < count; ++i, child = tree.subtreeEnd[child]) {
+            if (child >= tree.nodes.size()) return BTStatus::Failure;
+            const BTStatus status = TickNode(tree, child,
                                              state, blackboard, ctx);
             if (status == BTStatus::Running) {
                 state.cursor[node] = i;
@@ -251,8 +390,9 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
         int succeeded = 0;
         int failed    = 0;
 
-        for (std::uint16_t i = 0; i < count; ++i) {
-            const auto child = static_cast<std::uint16_t>(first + i);
+        std::uint16_t child = first;
+        for (std::uint16_t i = 0; i < count; ++i, child = tree.subtreeEnd[child]) {
+            if (child >= tree.nodes.size()) return BTStatus::Failure;
 
             /// @note 既に決着した子は再実行しない (結果は子の flags に保存してある)。
             if (state.flags[child] & BTNodeFlag::Done) {
@@ -286,7 +426,7 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
         const bool success = requireAll ? (failed == 0) : (succeeded > 0);
 
         /// @note 決着したので子の状態を全部畳む (次回は最初から)。
-        state.ClearRange(first, tree.subtreeEnd[node]);
+        AbortRange(tree, state, first, tree.subtreeEnd[node], ctx);
         state.flags[node] &= static_cast<std::uint8_t>(~BTNodeFlag::Running);
         state.cursor[node] = 0;
         return success ? BTStatus::Success : BTStatus::Failure;
@@ -319,7 +459,7 @@ BTStatus TickComposite(const BehaviorTreeRuntime& tree, std::uint16_t node,
             state.cursor[node] = chosen;
         }
 
-        const BTStatus status = TickNode(tree, static_cast<std::uint16_t>(first + chosen),
+        const BTStatus status = TickNode(tree, ChildAt(tree, node, chosen),
                                          state, blackboard, ctx);
         if (status == BTStatus::Running) {
             state.flags[node] |= BTNodeFlag::Running;
@@ -370,6 +510,7 @@ BTStatus TickDecorator(const BehaviorTreeRuntime& tree, std::uint16_t node,
             return BTStatus::Success;
         }
 
+        state.ClearRange(child, tree.subtreeEnd[node]);
         ++state.cursor[node];
         /// @note repeatCount = 0 は無限ループ。永久に Running を返し続ける。
         if (params.repeatCount > 0 && state.cursor[node] >= params.repeatCount) {
@@ -401,8 +542,7 @@ BTStatus TickDecorator(const BehaviorTreeRuntime& tree, std::uint16_t node,
     case BTNodeType::BlackboardCondition: {
         if (!EvaluateBlackboardCompare(params, blackboard)) {
             /// @note 条件が偽なら子には入らない。実行中だった場合は畳む。
-            if (state.flags[node] & BTNodeFlag::Running)
-                state.ClearRange(node, tree.subtreeEnd[node]);
+            AbortRange(tree, state, node, tree.subtreeEnd[node], ctx);
             return BTStatus::Failure;
         }
         if (!hasChild) return BTStatus::Success;
@@ -420,7 +560,7 @@ BTStatus TickDecorator(const BehaviorTreeRuntime& tree, std::uint16_t node,
         const float limit = std::max(params.duration, 0.0f);
         if (limit > 0.0f && state.timers[node] > limit) {
             /// @note 時間切れ。子のサブツリーを畳んで Failure。
-            state.ClearRange(node, tree.subtreeEnd[node]);
+            AbortRange(tree, state, node, tree.subtreeEnd[node], ctx);
             return BTStatus::Failure;
         }
 
@@ -518,7 +658,8 @@ BTStatus TickLeaf(const BehaviorTreeRuntime& tree, std::uint16_t node,
 BTStatus TickNode(const BehaviorTreeRuntime& tree, std::uint16_t node,
                   BTInstanceState& state, Blackboard& blackboard, BTTickContext& ctx)
 {
-    if (node >= tree.nodes.size()) return BTStatus::Failure;
+    if (node >= tree.nodes.size() || tree.nodes[node].paramIndex >= tree.params.size())
+        return BTStatus::Failure;
 
     const BTNodeType type = tree.nodes[node].type;
     BTStatus status;
@@ -527,19 +668,24 @@ BTStatus TickNode(const BehaviorTreeRuntime& tree, std::uint16_t node,
     else if (BTNodeIsDecorator(type)) status = TickDecorator(tree, node, state, blackboard, ctx);
     else                              status = TickLeaf(tree, node, state, blackboard, ctx);
 
+    if (status == BTStatus::Running) state.flags[node] |= BTNodeFlag::Running;
+    else state.flags[node] &= static_cast<std::uint8_t>(~BTNodeFlag::Running);
     RecordStatus(ctx, node, status);
     return status;
 }
 
-} // namespace
+} /// @note namespace
 
 BTStatus TickBehaviorTree(const BehaviorTreeRuntime& tree, BTInstanceState& state,
                           Blackboard& blackboard, BTTickContext& ctx)
 {
-    if (tree.nodes.empty()) return BTStatus::Failure;
+    if (tree.nodes.empty() || tree.parent.size() != tree.nodes.size()
+        || tree.subtreeEnd.size() != tree.nodes.size()) return BTStatus::Failure;
 
     /// @note 木の差し替え後などでサイズが合っていなければ張り直す。
-    if (state.flags.size() != tree.nodes.size()) state.Resize(tree.nodes.size());
+    if (state.flags.size() != tree.nodes.size() || state.cursor.size() != tree.nodes.size()
+        || state.timers.size() != tree.nodes.size() || state.cooldowns.size() != tree.nodes.size())
+        state.Resize(tree.nodes.size());
 
     if (ctx.outNodeStatus) {
         if (ctx.outNodeStatus->size() != tree.nodes.size())
@@ -551,24 +697,25 @@ BTStatus TickBehaviorTree(const BehaviorTreeRuntime& tree, BTInstanceState& stat
 
     /// @note Running リーフは毎 tick で再確定させる。
     ///       (このリセットが無いと、中断で消えたリーフが残り続ける)
-    const std::uint16_t previousLeaf = state.runningLeaf;
     state.runningLeaf = kInvalidNode;
-    (void)previousLeaf;
+
+    ApplyObserverAborts(tree, state, blackboard, ctx);
 
     const BTStatus status = TickNode(tree, 0, state, blackboard, ctx);
 
     /// @note ルートが決着したら全状態を畳んで、次回は最初から始める。
     if (status != BTStatus::Running) {
-        state.runningLeaf = kInvalidNode;
-        /// @note cooldowns は保持する (木が一巡しただけでクールダウンが消えるのは誤り)。
-        for (std::size_t i = 0; i < state.flags.size(); ++i) {
-            state.flags[i]  = 0;
-            state.cursor[i] = 0;
-            state.timers[i] = 0.0f;
-        }
+        AbortBehaviorTree(tree, state, ctx);
     }
 
     return status;
 }
 
-} // namespace fbzz::ai
+void AbortBehaviorTree(const BehaviorTreeRuntime& tree, BTInstanceState& state,
+                       BTTickContext& ctx)
+{
+    AbortRange(tree, state, 0, static_cast<std::uint16_t>(tree.nodes.size()), ctx);
+    state.runningLeaf = kInvalidNode;
+}
+
+} /// @note namespace fbzz::ai

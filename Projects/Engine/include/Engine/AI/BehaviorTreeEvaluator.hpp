@@ -23,13 +23,14 @@ struct BTInstanceState {
     /// @note Cooldown の残り時間。中断でクリアしない。timers と分けるのは、中断で消すと「中断→即再突入」でクールダウンが無効化され連打できてしまうため。
     std::vector<float> cooldowns;
 
-    std::uint16_t runningLeaf = kInvalidNode;   ///< 現在 Running のリーフ。kInvalidNode なら実行中でない。
+    std::uint16_t runningLeaf = kInvalidNode;   ///< デバッグ用の代表 Running リーフ。Parallel の全実行状態は flags に保持する。
 
     /// @note RandomSelector 用の決定的 RNG 状態。インスタンスごとに持つのは、同じ木を使う敵が全員同じ選択をすると群れが機械的に見え、テストでは種を固定して再現する必要があるため。
     std::uint32_t rngState = 0x9E3779B9u;
 
     void Resize(std::size_t nodeCount);
     /// @brief 全状態を初期化する (木の差し替え / Restart)。
+    /// @pre 実行中の木は先に AbortBehaviorTree() で Action の後始末を通知する。
     void Clear();
     /// @brief [lo, hi) の範囲だけ初期化する。cooldowns は触らない。
     void ClearRange(std::uint16_t lo, std::uint16_t hi);
@@ -40,7 +41,7 @@ inline constexpr std::uint8_t Running     = 1 << 0;  ///< 前回 Running を返�
 inline constexpr std::uint8_t Done        = 1 << 1;  ///< Parallel の子: 完了済み
 inline constexpr std::uint8_t DoneSuccess = 1 << 2;  ///< Parallel の子: 完了結果が Success
 inline constexpr std::uint8_t Entered     = 1 << 3;  ///< 一度でも実行に入った (Wait の初期化用)
-} // namespace BTNodeFlag
+} /// @note namespace BTNodeFlag
 
 class IBTActionHandler;
 
@@ -99,10 +100,17 @@ BTStatus TickBehaviorTree(const BehaviorTreeRuntime& tree,
                           Blackboard& blackboard,
                           BTTickContext& ctx);
 
+/// @brief 全ての Running Action に一度ずつ中断を通知し、実行状態を初期化する。
+/// @note cooldowns と RNG は保持する。Restart はこの後で state.Clear() を呼ぶ。
+/// @pre 木の差し替え時は旧 tree と旧 state が生存している間に呼ぶ。
+void AbortBehaviorTree(const BehaviorTreeRuntime& tree,
+                       BTInstanceState& state,
+                       BTTickContext& ctx);
+
 /// @brief 副作用なしで条件ノードを評価する (observerAborts のチェックとテスト用)。
 [[nodiscard]] bool EvaluateBTCondition(const BehaviorTreeRuntime& tree,
                                        std::uint16_t node,
                                        const Blackboard& blackboard,
                                        const BTTickContext& ctx);
 
-} // namespace fbzz::ai
+} /// @note namespace fbzz::ai
