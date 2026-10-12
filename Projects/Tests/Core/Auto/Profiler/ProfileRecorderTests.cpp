@@ -512,4 +512,53 @@ TEST_F(ProfileRecorderTest, ExplainsCapacityDepthDescriptorAndUnclosedScopeLossA
     EXPECT_TRUE(recorder.GetSnapshot().complete);
 }
 
+TEST_F(ProfileRecorderTest, KeepsThousandsOfFramesBoundedAndDistinguishesZeroFromPeriodicLossAndRecovery)
+{
+    profiler::ProfileRecorder recorder(true, ReadProfileTime);
+    for (uint64_t serial = 1; serial <= 2048; ++serial) {
+        const double start = static_cast<double>(serial * 10);
+        const bool filteredParent = serial % 19 == 0;
+        const bool overflow = serial % 127 == 0;
+        const bool unclosed = serial % 181 == 0;
+        if (serial % 113 == 0) recorder.RequestClear();
+        s_profileTimeMs = start;
+        recorder.BeginFrame(serial, start);
+        const auto outer = recorder.Begin(1, !filteredParent);
+        s_profileTimeMs = start + 1.0;
+        const auto child = recorder.Begin(2);
+        if (!unclosed) {
+            s_profileTimeMs = start + 6.0; recorder.End(child);
+            s_profileTimeMs = start + 7.0; recorder.End(outer);
+        }
+        if (overflow) {
+            const size_t existing = filteredParent ? 1 : 2;
+            for (size_t index = existing; index <= profiler::ProfileRecorder::MAX_SAMPLES; ++index)
+                recorder.Push(3, 0.0, profiler::ProfileSampleKind::INSTANT);
+        }
+        s_profileTimeMs = start + 7.0;
+        recorder.EndFrame();
+        const auto& snapshot = recorder.GetSnapshot();
+        EXPECT_EQ(snapshot.applicationFrameSerial, serial);
+        EXPECT_EQ(snapshot.complete, !overflow && !unclosed);
+        EXPECT_EQ(snapshot.recordedSampleCount, overflow ? profiler::ProfileRecorder::MAX_SAMPLES : (filteredParent ? 1u : 2u));
+        EXPECT_EQ(snapshot.droppedSampleCount, overflow ? 1u : 0u);
+        EXPECT_EQ(snapshot.capacityDroppedSampleCount, overflow ? 1u : 0u);
+        EXPECT_EQ(snapshot.abortedSampleCount, unclosed ? 2u : 0u);
+        EXPECT_EQ(snapshot.filteredSampleCount, filteredParent ? 1u : 0u);
+        EXPECT_DOUBLE_EQ(snapshot.cpuFrameElapsedMs, 7.0);
+        if (!unclosed) {
+            const auto& measured = snapshot.samples[filteredParent ? 0 : 1];
+            EXPECT_DOUBLE_EQ(measured.inclusiveMs, 5.0);
+            EXPECT_TRUE(measured.selfAvailable);
+        }
+        if (overflow) {
+            const auto& zero = snapshot.samples.back();
+            EXPECT_EQ(zero.sampleKind, profiler::ProfileSampleKind::INSTANT);
+            EXPECT_DOUBLE_EQ(zero.inclusiveMs, 0.0);
+            EXPECT_TRUE(zero.selfAvailable);
+        }
+        EXPECT_EQ(recorder.GetSnapshot().samples.size(), snapshot.recordedSampleCount);
+    }
+}
+
 } /// @note namespace fbzz::tests

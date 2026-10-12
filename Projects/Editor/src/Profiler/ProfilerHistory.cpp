@@ -417,13 +417,12 @@ void ClearMemoryHistory() { Clear(s_memory); ++s_memorySession; }
 void TickProfilerHistory(EditorContext& ctx)
 {
     const auto& performance = profiler::Profiler::GetSnapshot();
-    if (s_benchmark.IsActive()) {
+    const bool benchmarking = s_benchmark.IsActive();
+    if (benchmarking) {
         s_benchmark.Feed(performance, renderer::RenderDebugOverlay::GetLastSnapshot(), profiler::Profiler::IsRecordingRequested());
         if (!s_benchmark.IsActive()) RestoreBenchmarkRecording();
-        /// @note benchmark の間は既存の所有 UI 履歴を保ち、sample/descriptor/memory の frame ごとの複製を停止する。
-        return;
     }
-    RestoreBenchmarkRecording();
+    if (!benchmarking) RestoreBenchmarkRecording();
     if (performance.available && performance.recording &&
         (performance.captureSessionId != s_performance.lastSession || performance.applicationFrameSerial != s_performance.lastSerial)) {
         PerformanceCapture capture;
@@ -431,6 +430,8 @@ void TickProfilerHistory(EditorContext& ctx)
         capture.rendering = renderer::RenderDebugOverlay::GetLastSnapshot();
         Capture(s_performance, std::move(capture));
     }
+    /// @note scalar benchmark中もCPU画面は最新の確定frameを採る。Script/Memoryの複製は従来どおり抑える。
+    if (benchmarking) return;
     const auto& script = scene::ScriptProfiler::GetSnapshot();
     if (script.available && script.recording &&
         (script.captureSessionId != s_script.lastSession || script.applicationFrameSerial != s_script.lastSerial)) Capture(s_script, script);

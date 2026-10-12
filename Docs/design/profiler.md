@@ -282,6 +282,20 @@ CPU elapsed と wall interval の実測分布は不完全な scope 記録でも�
 
 実 Editor の操作・海中シーン・GPU 計測は統合担当による確認を要する。ここでは Editor を起動せず、SDK 反映も実行していない。公開 ProfileSnapshot の追加フィールドに合わせ、取り込み先では Core と利用する Engine / Editor / テストを同じヘッダーで再ビルドする。
 
+## CPU集計の継続性と欠測 (2026-10-12)
+
+CPU画面の派生treeはsample索引と集約した実際の行を合わせて4MiB以内に保つ。8192件の反復呼び出しを同名兄弟へまとめられる場合、sample件数だけを理由にtree全体を破棄しない。異なる行が予算へ達したときは残せた行を表示し、派生集計の不完全を明示する。収集器の容量欠落と派生表示の予算を区別する。完全な入力に含まれるscope root sumとCPU elapsedのscalarは、派生行の上限から独立して保持する。
+
+CPUの履歴keyはdescriptorの番号から独立した名前・category・color・親経路に基づく。同じscopeのdescriptorが退役して再登録されてもAvg/Peak/選択seriesを別scopeへ分けない。セッション変更・Freeze・範囲変更では既存の所有履歴から投影し直し、同じ確定frameを読み直しても二重計上しない。CPU収集と所有履歴はbenchmarkのwarmup/sampling中も継続する。Script/Memoryの複写を抑える既存benchmark方針は維持する。benchmarkにもCPU履歴・表示の実行費用が含まれるので、比較時の画面状態と収集範囲も固定する。
+
+scope graphの各点は保持したframeの位置を維持する。収集・派生集計が不完全な点、選択範囲外のscope、Self unavailableはNaNの隙間で表し、時間0や詰めた時系列へ置き換えない。完全なframeで既知scopeの呼び出しが無かった場合は0、完了した0ms intervalも0として区別する。測れた点だけの統計には測定件数とunavailable件数を付ける。未終了・異常intervalのTotal/Selfはunavailableと表示する。
+
+実装のCPU集計はEditorのsrc側内部部品で、画面と専用テストが同じ実装を使う。注入時計の2048frame、記録の境界・clear・filter・停止再開、別threadの2048frame、繰り返す8192sample、descriptor番号の変更、遅い投影・Freeze・session変更、測定0と欠測、benchmark中の最新frame維持を検証する。CMakeの既存PRIVATE src includeと既存テストファイルを使い、SDK公開getterは追加しない。
+
+正式反映後、変更cpp 5単位を1単位ずつReleaseでチェックし、すべてエラー・警告0。CoreAutoとEditorAutoの再リンクもエラー・警告0 (`build-20261012-143357-51844.log`)。CPU profiler回帰54/54件 (Core30 / Editor24、新規9件を含む) が合格した (`test-20261012-143558-47900.log`)。個別checkは `check-20261012-142410-31568.log`, `check-20261012-142739-16568.log`, `check-20261012-143139-55664.log`, `check-20261012-143155-42852.log`, `check-20261012-143208-48136.log`。最初の新規テストcheckで既存アクセサー名の誤記を検出し、既存の GetPerformanceBenchmarkCapture に修正してから全件を検証した。
+
+ユーザーが報告した実Editorの周期的症状との一致は統合確認を要する。今回の検証では実Editorの終了・起動、GPU測定、SDK更新を実行していない。修正した画面を現在のEditorで確認するには、親担当がユーザーの都合に合わせてEditor反映と確認の枠を調整する。修正前後のCPU性能比較は、収集範囲・画面状態・Profiler実装版をそろえて基準を採り直す。
+
 ## 参考と採用しない前提
 
 RE ENGINE の用途別 profiler は [NavigationProfiler の公式紹介](https://www.docswell.com/s/CAPCOM_RandD/K987DX-RE2023) と [Effect Profiler の公式紹介](https://www.docswell.com/s/CAPCOM_RandD/Z8GQ31-RE2023) を参考にする。ScriptProfiler と PerformanceProfiler という正確な二名称や内部構造は公開資料で確認できていないため、本書の名称と分割は FBZZ の設計判断である。

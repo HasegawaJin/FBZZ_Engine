@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-02
 #include <Editor/Profiler/ProfilerWidgets.hpp>
+#include <Profiler/AnalysisProfilerCpu.hpp>
 #include <Editor/Profiler/ProfilerHistory.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/EditorContext.hpp>
@@ -26,6 +27,9 @@
 #include <algorithm>
 #include <cfloat>
 #include <cstdint>
+#include <cmath>
+#include <limits>
+#include <string_view>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -41,7 +45,287 @@
 
 namespace fbzz::editor {
 
+namespace detail {
 namespace {
+/// @see https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp MurmurHash3 x64 128 finalization。
+uint64_t MixProfilePathWord(uint64_t value)
+{
+    value ^= value >> 33; value *= 0xff51afd7ed558ccdULL;
+    value ^= value >> 33; value *= 0xc4ceb9fe1a85ec53ULL;
+    return value ^ (value >> 33);
+}
+/// @note 非暗号識別子。異なる意味の衝突を検出したframeは不完全とする。
+/// @see https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp MurmurHash3 x64 128 bodyと8 byte tail。
+ProfilePathId ExtendProfilePath(ProfilePathId parent, uint64_t word)
+{
+    const auto rotate = [](uint64_t value, unsigned amount) { return (value << amount) | (value >> (64 - amount)); };
+    constexpr uint64_t FIRST = 0x87c37b91114253d5ULL;
+    constexpr uint64_t SECOND = 0x4cf5ad432745937fULL;
+    uint64_t low = 0;
+    uint64_t high = 0;
+    uint64_t first = rotate(parent.low * FIRST, 31) * SECOND;
+    low ^= first; low = rotate(low, 27); low += high; low = low * 5 + 0x52dce729;
+    uint64_t second = rotate(parent.high * SECOND, 33) * FIRST;
+    high ^= second; high = rotate(high, 31); high += low; high = high * 5 + 0x38495ab5;
+    first = rotate(word * FIRST, 31) * SECOND; low ^= first;
+    low ^= 24; high ^= 24; low += high; high += low;
+    low = MixProfilePathWord(low); high = MixProfilePathWord(high); low += high; high += low;
+    return {low, high};
+}
+ProfilePathId DescriptorPath(const profiler::PerformanceDescriptor& descriptor)
+{
+    return ExtendProfilePath({std::hash<std::string_view>{}(descriptor.name),
+        std::hash<std::string_view>{}(descriptor.category)}, descriptor.color);
+}
+std::string ProfilePathKey(ProfilePathId path)
+{
+    char key[33];
+    std::snprintf(key, sizeof(key), "%016llx%016llx", static_cast<unsigned long long>(path.low),
+        static_cast<unsigned long long>(path.high));
+    return key;
+}
+bool SameDescriptor(const profiler::PerformanceDescriptor& first, const profiler::PerformanceDescriptor& second)
+{
+    return first.name == second.name && first.category == second.category && first.color == second.color;
+}
+struct PathHash {
+    size_t operator()(ProfilePathId path) const { return static_cast<size_t>(MixProfilePathWord(path.low ^ path.high)); }
+};
+struct NodeKey {
+    size_t parent = 0;
+    ProfilePathId descriptor;
+    bool operator==(const NodeKey&) const = default;
+};
+struct NodeHash {
+    size_t operator()(const NodeKey& key) const { return PathHash{}(key.descriptor) ^ key.parent; }
+};
+void MarkTreeIncomplete(AnalysisProfTree& tree, const char* reason)
+{
+    tree.complete = false;
+    if (!tree.unavailableReason) tree.unavailableReason = reason;
+}
+void RetireAnalysisProfFrame(AnalysisProfHistory& history)
+{
+    const auto retired = std::move(history.frames.front());
+    const auto unavailable = std::move(history.unavailableKeys.front());
+    history.frames.pop_front(); history.unavailableKeys.pop_front(); history.frameMs.pop_front();
+    if (history.completeFrames.front()) --history.completeFrameCount;
+    history.completeFrames.pop_front();
+    for (const auto& [key, value] : retired) {
+        history.retainedBytes -= key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+        const auto found = history.stats.find(key);
+        if (found == history.stats.end()) continue;
+        auto& stat = found->second;
+        stat.total -= value;
+        if (--stat.occurrences == 0) { history.stats.erase(found); continue; }
+        if (stat.peak == static_cast<double>(value)) {
+            const bool peakStillLatest = !history.frames.empty() && history.frames.back().contains(key) &&
+                history.frames.back().at(key) >= value;
+            if (!peakStillLatest) {
+                stat.peak = 0.0;
+                for (const auto& frame : history.frames)
+                    if (const auto item = frame.find(key); item != frame.end())
+                        stat.peak = (std::max)(stat.peak, static_cast<double>(item->second));
+            }
+        }
+    }
+    for (const auto& key : unavailable) {
+        history.retainedBytes -= key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+        const auto found = history.stats.find(key);
+        if (found == history.stats.end()) continue;
+        --found->second.unavailableCount;
+        if (--found->second.occurrences == 0) history.stats.erase(found);
+    }
+}
+} /// @note namespace
+
+AnalysisProfTree BuildRecordedProfTree(const profiler::PerformanceSnapshot& snapshot,
+    ProfilerCategory (*classify)(const profiler::ProfileRecord&))
+{
+    AnalysisProfTree tree;
+    tree.frameMs = snapshot.scopeRootSumMs;
+    tree.complete = snapshot.complete && snapshot.droppedSampleCount == 0;
+    tree.frameTotalAvailable = snapshot.available && snapshot.complete && snapshot.droppedSampleCount == 0 &&
+        snapshot.faultedSampleCount == 0 && snapshot.abortedSampleCount == 0 &&
+        std::isfinite(snapshot.scopeRootSumMs) && snapshot.scopeRootSumMs >= 0.0;
+    constexpr size_t TREE_BUDGET = 4 * 1024 * 1024;
+    constexpr size_t DESCRIPTOR_BYTES = 128;
+    constexpr size_t SAMPLE_INDEX_BYTES = 96;
+    constexpr size_t NODE_BYTES = sizeof(AnalysisProfNode) * 2 + 64 + 96 * 2 + 64;
+    constexpr size_t FLAT_BYTES = sizeof(AnalysisProfFlatRow) * 2 + 64 + 96;
+    if (snapshot.descriptors.size() > TREE_BUDGET / DESCRIPTOR_BYTES ||
+        snapshot.samples.size() > (TREE_BUDGET - snapshot.descriptors.size() * DESCRIPTOR_BYTES) / SAMPLE_INDEX_BYTES) {
+        MarkTreeIncomplete(tree, "Derived scope tree unavailable: bounded input indices exceeded their budget.");
+        return tree;
+    }
+    size_t bytes = snapshot.descriptors.size() * DESCRIPTOR_BYTES + snapshot.samples.size() * SAMPLE_INDEX_BYTES;
+    const size_t initial = (std::min)(size_t{64}, snapshot.samples.size());
+    tree.nodes.reserve(initial); tree.flat.reserve(initial); tree.roots.reserve(initial);
+    bytes += initial * (sizeof(AnalysisProfNode) + sizeof(AnalysisProfFlatRow) + sizeof(int));
+    struct DescriptorSlot { const profiler::PerformanceDescriptor* descriptor = nullptr; ProfilePathId path; };
+    std::unordered_map<uint64_t, DescriptorSlot> descriptors;
+    descriptors.reserve(snapshot.descriptors.size());
+    for (const auto& descriptor : snapshot.descriptors) {
+        const auto [slot, inserted] = descriptors.emplace(descriptor.sampleKey, DescriptorSlot{&descriptor, DescriptorPath(descriptor)});
+        if (!inserted && !SameDescriptor(*slot->second.descriptor, descriptor))
+            MarkTreeIncomplete(tree, "Derived scope tree partial: conflicting descriptor identities.");
+    }
+    struct RowSlot { size_t index = 0; const profiler::PerformanceDescriptor* descriptor = nullptr; };
+    std::unordered_map<uint64_t, size_t> sampleNodes;
+    std::unordered_map<NodeKey, RowSlot, NodeHash> nodes;
+    std::unordered_map<ProfilePathId, NodeKey, PathHash> paths;
+    std::unordered_map<ProfilePathId, RowSlot, PathHash> flat;
+    sampleNodes.reserve(snapshot.samples.size());
+    for (const auto& sample : snapshot.samples) {
+        const auto found = descriptors.find(sample.sampleKey);
+        if (found == descriptors.end()) {
+            MarkTreeIncomplete(tree, "Derived scope tree partial: a scope descriptor is missing."); continue;
+        }
+        const auto& descriptor = *found->second.descriptor;
+        const auto parent = sampleNodes.find(sample.parentSampleId);
+        const bool hasParent = sample.parentSampleId != 0 && parent != sampleNodes.end();
+        if (sample.parentSampleId != 0 && !hasParent) {
+            MarkTreeIncomplete(tree, "Derived scope tree partial: a scope parent is missing."); continue;
+        }
+        const size_t parentIndex = hasParent ? parent->second : snapshot.samples.size();
+        const NodeKey nodeKey{parentIndex, found->second.path};
+        auto node = nodes.find(nodeKey);
+        auto row = flat.find(found->second.path);
+        if ((node != nodes.end() && !SameDescriptor(*node->second.descriptor, descriptor)) ||
+            (row != flat.end() && !SameDescriptor(*row->second.descriptor, descriptor))) {
+            MarkTreeIncomplete(tree, "Derived scope tree partial: a semantic scope identity collision."); continue;
+        }
+        const bool newNode = node == nodes.end();
+        const bool newFlat = row == flat.end();
+        const size_t incoming = (newNode ? NODE_BYTES : 0) + (newFlat ? FLAT_BYTES : 0);
+        if (incoming > TREE_BUDGET - (std::min)(bytes, TREE_BUDGET)) {
+            MarkTreeIncomplete(tree, "Derived scope tree partial: bounded aggregation budget reached.");
+            if (!newFlat) { tree.flat[row->second.index].totalAvailable = false; tree.flat[row->second.index].selfAvailable = false; }
+            continue;
+        }
+        if (newNode) {
+            const auto parentPath = hasParent ? tree.nodes[parentIndex].pathId : ProfilePathId{};
+            const auto path = ExtendProfilePath(ExtendProfilePath(parentPath, nodeKey.descriptor.low), nodeKey.descriptor.high);
+            const auto [pathSlot, inserted] = paths.emplace(path, nodeKey);
+            if (!inserted && pathSlot->second != nodeKey) {
+                MarkTreeIncomplete(tree, "Derived scope tree partial: a parent path identity collision."); continue;
+            }
+            AnalysisProfNode item;
+            item.name = descriptor.name.c_str(); item.pathId = path; item.key = ProfilePathKey(path);
+            item.depth = hasParent ? tree.nodes[parentIndex].depth + 1 : 0;
+            profiler::ProfileRecord record; record.name = item.name; record.category = descriptor.category.c_str(); record.color = descriptor.color;
+            item.category = classify ? classify(record) : ProfilerCategory{record.category, record.color};
+            const size_t index = tree.nodes.size();
+            tree.nodes.push_back(std::move(item));
+            node = nodes.emplace(nodeKey, RowSlot{index, &descriptor}).first;
+            if (hasParent) tree.nodes[parentIndex].children.push_back(static_cast<int>(index));
+            else tree.roots.push_back(static_cast<int>(index));
+        }
+        if (newFlat) {
+            AnalysisProfFlatRow item;
+            item.name = descriptor.name.c_str(); item.category = tree.nodes[node->second.index].category;
+            item.key = std::string("\x1f") + ProfilePathKey(nodeKey.descriptor);
+            const size_t index = tree.flat.size(); tree.flat.push_back(std::move(item));
+            row = flat.emplace(nodeKey.descriptor, RowSlot{index, &descriptor}).first;
+        }
+        bytes += incoming;
+        sampleNodes[sample.sampleId] = node->second.index;
+        const bool totalAvailable = sample.status == profiler::ProfileSampleStatus::COMPLETE &&
+            std::isfinite(sample.inclusiveMs) && sample.inclusiveMs >= 0.0;
+        const bool selfAvailable = totalAvailable && sample.selfAvailable &&
+            sample.sampleKind != profiler::ProfileSampleKind::EXTERNAL_DURATION &&
+            std::isfinite(sample.selfMs) && sample.selfMs >= 0.0;
+        if (!totalAvailable) {
+            tree.frameTotalAvailable = false;
+            MarkTreeIncomplete(tree, "Derived scope tree partial: an interval is unfinished or invalid.");
+        }
+        auto& item = tree.nodes[node->second.index];
+        auto& flatItem = tree.flat[row->second.index];
+        if (totalAvailable) { item.totalMs += sample.inclusiveMs; flatItem.totalMs += sample.inclusiveMs; }
+        if (selfAvailable) { item.selfMs += sample.selfMs; flatItem.selfMs += sample.selfMs; }
+        item.totalAvailable &= totalAvailable; flatItem.totalAvailable &= totalAvailable;
+        item.selfAvailable &= selfAvailable; flatItem.selfAvailable &= selfAvailable;
+        ++item.calls; ++flatItem.calls;
+    }
+    return tree;
+}
+
+void UpdateAnalysisProfStats(AnalysisProfHistory& history)
+{
+    const double count = static_cast<double>((std::max)(size_t{1}, history.completeFrameCount));
+    for (auto& [key, stat] : history.stats) {
+        (void)key; stat.avg = stat.total / count;
+        stat.available = stat.unavailableCount == 0 && history.completeFrameCount != 0;
+    }
+}
+void PushAnalysisProfHistory(AnalysisProfHistory& history, const AnalysisProfTree& tree, double elapsedMs, size_t limit)
+{
+    limit = (std::max)(size_t{1}, limit);
+    history.elapsedMs.push_back(static_cast<float>(elapsedMs));
+    while (history.elapsedMs.size() > limit) history.elapsedMs.pop_front();
+    constexpr size_t ENTRY_BYTES = 64 * 2 + sizeof(std::string) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+    const size_t incomingBytes = (tree.nodes.size() + tree.flat.size()) * ENTRY_BYTES;
+    while (!history.frames.empty() && history.retainedBytes + incomingBytes > 4 * 1024 * 1024) {
+        history.budgetLimited = true; RetireAnalysisProfFrame(history);
+    }
+    std::unordered_map<std::string, float> frame;
+    std::unordered_set<std::string> unavailable;
+    const bool complete = tree.complete && incomingBytes <= 4 * 1024 * 1024;
+    if (complete) {
+        ++history.completeFrameCount;
+        frame.reserve(tree.nodes.size() + tree.flat.size());
+        for (const auto& node : tree.nodes) {
+            if (node.totalAvailable) frame[node.key] += static_cast<float>(node.totalMs);
+            else unavailable.insert(node.key);
+        }
+        for (const auto& row : tree.flat) {
+            if (row.selfAvailable) frame[row.key] = static_cast<float>(row.selfMs);
+            else unavailable.insert(row.key);
+        }
+    }
+    for (const auto& [key, value] : frame) {
+        history.retainedBytes += key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+        auto& stat = history.stats[key];
+        stat.total += value; stat.peak = (std::max)(stat.peak, static_cast<double>(value)); ++stat.occurrences;
+    }
+    for (const auto& key : unavailable) {
+        history.retainedBytes += key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
+        auto& stat = history.stats[key]; ++stat.unavailableCount; ++stat.occurrences;
+    }
+    history.frames.push_back(std::move(frame)); history.unavailableKeys.push_back(std::move(unavailable));
+    history.frameMs.push_back(tree.frameTotalAvailable ? static_cast<float>(tree.frameMs) : (std::numeric_limits<float>::quiet_NaN)());
+    history.completeFrames.push_back(complete);
+    if (incomingBytes > 4 * 1024 * 1024) history.budgetLimited = true;
+    while (history.frames.size() > limit || history.retainedBytes > 4 * 1024 * 1024) RetireAnalysisProfFrame(history);
+}
+std::vector<float> AnalysisProfSeriesValues(const AnalysisProfHistory& history, const std::string& key)
+{
+    const float missing = (std::numeric_limits<float>::quiet_NaN)();
+    const bool known = key.empty() || history.stats.contains(key);
+    std::vector<float> values;
+    values.reserve(history.frames.size());
+    for (size_t index = 0; index < history.frames.size(); ++index) {
+        if (key.empty()) { values.push_back(history.frameMs[index]); continue; }
+        if (!known || !history.completeFrames[index] || history.unavailableKeys[index].contains(key)) {
+            values.push_back(missing); continue;
+        }
+        const auto item = history.frames[index].find(key);
+        values.push_back(item == history.frames[index].end() ? 0.0f : item->second);
+    }
+    return values;
+}
+} /// @note namespace detail
+
+namespace {
+
+using detail::ProfilerCategory;
+using detail::DerivedHistoryCursor;
+using detail::AnalysisProfNode;
+using detail::AnalysisProfFlatRow;
+using detail::AnalysisProfTree;
+using detail::AnalysisProfHistory;
+using detail::BuildRecordedProfTree;
+using detail::ProjectSelectedHistory;
 
 /// @note 表示範囲とスパイク判定の cursor のみ保持し、計測値は所有履歴から読む。
 struct ProfilerDisplayState {
@@ -82,12 +366,6 @@ struct RenderingFilterState {
 };
 RenderingFilterState s_renderingFilter;
 
-struct DerivedHistoryCursor {
-    uint64_t session = 0;
-    uint64_t serial = 0;
-    size_t limit = 0;
-    bool frozen = false;
-};
 
 struct MemoryHistoryState {
     static constexpr std::size_t kMaxFrames = 128;
@@ -186,10 +464,6 @@ void DrawAnalysisHistoryPlot(const char* plotId, const char* seriesLabel, const 
 
 /// @brief Unity Profiler に近い粒度で処理を読むための表示カテゴリ。
 /// @note スコープ名ごとのランダム色は細かすぎるため、Rendering/Scripts/Physics 等の大枠へまとめる。
-struct ProfilerCategory {
-    const char* name = "Others";
-    ImU32 color = IM_COL32(140, 140, 140, 225);
-};
 
 /// @brief byte 数をデバッグ UI 向けに読みやすい単位へ変換する。
 /// @note MemoryStats は byte で保持するが、パネルでは KB / MB の方が増減を把握しやすい。
@@ -305,70 +579,6 @@ ProfilerCategory ClassifyProfileRecord(const profiler::ProfileRecord& record)
     return { "Others", IM_COL32(140, 140, 140, 225) };
 }
 
-struct ProfilePathId {
-    uint64_t low = 0;
-    uint64_t high = 0;
-};
-
-/// @brief 同名の兄弟をまとめた呼び出しツリーの 1 ノード。
-/// @note ProfileRecord は呼び出し毎に 1 件で数百件並ぶため、同じ親の下の同名スコープを畳み回数は Calls 列へ逃がす。
-struct AnalysisProfNode {
-    const char*      name = "";
-    ProfilerCategory category;
-    std::string      key;
-    ProfilePathId     pathId;
-    double           totalMs = 0.0;   ///< @note 子を含む
-    double           selfMs  = 0.0;   ///< @note 子を除く
-    bool             selfAvailable = true;
-    int              calls   = 0;
-    int              depth   = 0;
-    std::vector<int> children;
-};
-
-/// @brief ツリー全体から同名スコープを合算した Flat 表示の 1 行。
-struct AnalysisProfFlatRow {
-    const char*      name = "";
-    ProfilerCategory category;
-    std::string      key;
-    double           totalMs = 0.0;
-    double           selfMs  = 0.0;
-    bool             selfAvailable = true;
-    int              calls   = 0;
-};
-
-struct AnalysisProfTree {
-    std::vector<AnalysisProfNode>    nodes;   ///< @note 親は必ず子より前に並ぶ
-    std::vector<int>                 roots;
-    std::vector<AnalysisProfFlatRow> flat;
-    double                           frameMs = 0.0;
-    bool                             complete = true;
-    const char*                      unavailableReason = nullptr;
-};
-
-/// @brief グラフと Avg / Peak 列に使う key 単位の採取履歴。
-struct AnalysisProfHistory {
-    struct Stat {
-        double avg  = 0.0;
-        double peak = 0.0;
-        bool available = true;
-        double total = 0.0;
-        size_t occurrences = 0;
-        size_t unavailableCount = 0;
-    };
-    std::deque<std::unordered_map<std::string, float>> frames;  ///< @note Hierarchy は Total、Flat は Self
-    std::deque<float>                                  frameMs;
-    std::deque<bool>                                   completeFrames;
-    size_t                                            completeFrameCount = 0;
-    size_t                                            retainedBytes = 0;
-    bool                                              budgetLimited = false;
-    std::deque<float>                                  elapsedMs;
-    std::deque<std::unordered_set<std::string>>         unavailableKeys;
-    DerivedHistoryCursor                              cursor;
-    std::unordered_map<std::string, Stat>              stats;
-    bool                                              autoFit = true;
-    bool                                              elapsedAutoFit = true;
-};
-
 AnalysisProfTree    s_profTree;
 AnalysisProfHistory s_profHistory;
 std::weak_ptr<const PerformanceCapture> s_treeSource;
@@ -380,252 +590,26 @@ struct AnalysisProfSort {
     bool            descending = true;
 };
 
-/// @see https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp MurmurHash3 x64 128 の finalization。
-uint64_t MixProfilePathWord(uint64_t value)
-{
-    value ^= value >> 33; value *= 0xff51afd7ed558ccdULL;
-    value ^= value >> 33; value *= 0xc4ceb9fe1a85ec53ULL;
-    return value ^ (value >> 33);
-}
-
-/// @note 親の 128 bit ID と sampleKey の 24 byte を混ぜる。表示名・深さによって key の容量は増えない。
-/// @warning 非暗号識別子。フレーム内で異なる親/descriptor の衝突を検出した場合、その派生 tree を unavailable にする。
-/// @see https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp MurmurHash3 x64 128 の body と 8 byte tail。
-ProfilePathId ExtendProfilePath(ProfilePathId parent, uint64_t sampleKey)
-{
-    const auto rotate = [](uint64_t value, unsigned amount) { return (value << amount) | (value >> (64 - amount)); };
-    constexpr uint64_t FIRST = 0x87c37b91114253d5ULL;
-    constexpr uint64_t SECOND = 0x4cf5ad432745937fULL;
-    uint64_t low = 0;
-    uint64_t high = 0;
-    uint64_t first = rotate(parent.low * FIRST, 31) * SECOND;
-    low ^= first; low = rotate(low, 27); low += high; low = low * 5 + 0x52dce729;
-    uint64_t second = rotate(parent.high * SECOND, 33) * FIRST;
-    high ^= second; high = rotate(high, 31); high += low; high = high * 5 + 0x38495ab5;
-    first = rotate(sampleKey * FIRST, 31) * SECOND; low ^= first;
-    low ^= 24; high ^= 24; low += high; high += low;
-    low = MixProfilePathWord(low); high = MixProfilePathWord(high); low += high; high += low;
-    return {low, high};
-}
-
-std::string ProfilePathKey(ProfilePathId pathId)
-{
-    char key[33];
-    std::snprintf(key, sizeof(key), "%016llx%016llx", static_cast<unsigned long long>(pathId.low), static_cast<unsigned long long>(pathId.high));
-    return key;
-}
-
-std::string AnalysisProfFlatKey(uint64_t sampleKey)
-{
-    return std::string("\x1f") + std::to_string(sampleKey);
-}
-
-/// @note Tree と構築用索引を 4 MiB へ制限し、同時に保持する tree/CPU/GPU/preview 合計を 16 MiB の予約内へ収める。
-AnalysisProfTree BuildRecordedProfTree(const profiler::PerformanceSnapshot& snapshot)
-{
-    AnalysisProfTree tree;
-    tree.frameMs = snapshot.scopeRootSumMs;
-    tree.complete = snapshot.complete;
-    constexpr size_t TREE_BUDGET = 4 * 1024 * 1024;
-    constexpr size_t KEY_BYTES = 64;
-    constexpr size_t INDEX_ENTRY_BYTES = 96;
-    constexpr size_t SAMPLE_BYTES = sizeof(AnalysisProfNode) + sizeof(AnalysisProfFlatRow) + KEY_BYTES * 2 + INDEX_ENTRY_BYTES * 3 + 64;
-    constexpr size_t DESCRIPTOR_BYTES = INDEX_ENTRY_BYTES;
-    if (snapshot.descriptors.size() > TREE_BUDGET / DESCRIPTOR_BYTES ||
-        snapshot.samples.size() > (TREE_BUDGET - snapshot.descriptors.size() * DESCRIPTOR_BYTES) / SAMPLE_BYTES) {
-        tree.complete = false; tree.unavailableReason = "Derived scope tree unavailable: the 4 MiB construction budget was exceeded.";
-        return tree;
-    }
-    const size_t count = snapshot.samples.size();
-    tree.nodes.reserve(count); tree.flat.reserve(count); tree.roots.reserve(count);
-    std::unordered_map<uint64_t, const profiler::PerformanceDescriptor*> descriptors;
-    descriptors.reserve(snapshot.descriptors.size());
-    for (const auto& descriptor : snapshot.descriptors) descriptors[descriptor.sampleKey] = &descriptor;
-    struct PathSlot { size_t index = 0; size_t parent = 0; uint64_t sampleKey = 0; };
-    std::unordered_map<uint64_t, size_t> sampleNodes;
-    std::unordered_map<std::string, PathSlot> nodesByKey;
-    std::unordered_map<uint64_t, size_t> flatByKey;
-    sampleNodes.reserve(count); nodesByKey.reserve(count); flatByKey.reserve(count);
-    for (const auto& sample : snapshot.samples) {
-        const auto found = descriptors.find(sample.sampleKey);
-        if (found == descriptors.end()) continue;
-        const auto& descriptor = *found->second;
-        const auto parent = sampleNodes.find(sample.parentSampleId);
-        const bool hasParent = parent != sampleNodes.end();
-        const size_t parentIndex = hasParent ? parent->second : count;
-        const ProfilePathId pathId = ExtendProfilePath(hasParent ? tree.nodes[parentIndex].pathId : ProfilePathId{}, sample.sampleKey);
-        const std::string key = ProfilePathKey(pathId);
-        auto [nodeIndex, inserted] = nodesByKey.emplace(key, PathSlot{tree.nodes.size(), parentIndex, sample.sampleKey});
-        if (!inserted && (nodeIndex->second.parent != parentIndex || nodeIndex->second.sampleKey != sample.sampleKey)) {
-            AnalysisProfTree unavailable;
-            unavailable.frameMs = snapshot.scopeRootSumMs; unavailable.complete = false;
-            unavailable.unavailableReason = "Derived scope tree unavailable: a 128 bit path identity collision was detected.";
-            return unavailable;
-        }
-        if (inserted) {
-            AnalysisProfNode node;
-            node.name = descriptor.name.c_str(); node.key = key; node.pathId = pathId; node.depth = static_cast<int>(sample.depth);
-            profiler::ProfileRecord record; record.name = node.name; record.category = descriptor.category.c_str();
-            node.category = ClassifyProfileRecord(record);
-            tree.nodes.push_back(std::move(node));
-            if (hasParent) tree.nodes[parentIndex].children.push_back(static_cast<int>(nodeIndex->second.index));
-            else tree.roots.push_back(static_cast<int>(nodeIndex->second.index));
-        }
-        sampleNodes[sample.sampleId] = nodeIndex->second.index;
-        auto& node = tree.nodes[nodeIndex->second.index];
-        node.totalMs += sample.inclusiveMs; node.selfMs += sample.selfMs; ++node.calls;
-        node.selfAvailable = node.selfAvailable && sample.selfAvailable && sample.status == profiler::ProfileSampleStatus::COMPLETE;
-        auto [flatIndex, newFlat] = flatByKey.emplace(sample.sampleKey, tree.flat.size());
-        if (newFlat) {
-            AnalysisProfFlatRow row; row.name = node.name; row.category = node.category; row.key = AnalysisProfFlatKey(sample.sampleKey);
-            tree.flat.push_back(std::move(row));
-        }
-        auto& row = tree.flat[flatIndex->second];
-        row.totalMs += sample.inclusiveMs; row.selfMs += sample.selfMs; ++row.calls;
-        row.selfAvailable = row.selfAvailable && sample.selfAvailable && sample.status == profiler::ProfileSampleStatus::COMPLETE;
-    }
-    return tree;
-}
-
-/// @note 平均の分母は範囲内の完全な収集フレーム数。行がない完全フレームは 0 と数える。
-void UpdateAnalysisProfStats()
-{
-    const double count = static_cast<double>((std::max)(size_t{1}, s_profHistory.completeFrameCount));
-    for (auto& [key, stat] : s_profHistory.stats) {
-        (void)key;
-        stat.avg = stat.total / count;
-        stat.available = stat.unavailableCount == 0 && s_profHistory.completeFrameCount != 0;
-    }
-}
-
-void RetireAnalysisProfFrame()
-{
-    const auto retired = std::move(s_profHistory.frames.front());
-    const auto unavailable = std::move(s_profHistory.unavailableKeys.front());
-    s_profHistory.frames.pop_front(); s_profHistory.unavailableKeys.pop_front(); s_profHistory.frameMs.pop_front();
-    if (s_profHistory.completeFrames.front()) --s_profHistory.completeFrameCount;
-    s_profHistory.completeFrames.pop_front();
-    for (const auto& [key, value] : retired) {
-        s_profHistory.retainedBytes -= key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
-        const auto found = s_profHistory.stats.find(key);
-        if (found == s_profHistory.stats.end()) continue;
-        auto& stat = found->second;
-        stat.total -= value;
-        if (--stat.occurrences == 0) { s_profHistory.stats.erase(found); continue; }
-        if (stat.peak == static_cast<double>(value)) {
-            const auto& latest = s_profHistory.frames.back();
-            const auto current = latest.find(key);
-            if (current == latest.end() || current->second < value) {
-                stat.peak = 0.0;
-                for (const auto& frame : s_profHistory.frames)
-                    if (const auto item = frame.find(key); item != frame.end()) stat.peak = (std::max)(stat.peak, static_cast<double>(item->second));
-            }
-        }
-    }
-    for (const auto& key : unavailable) {
-        s_profHistory.retainedBytes -= key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
-        const auto found = s_profHistory.stats.find(key);
-        if (found == s_profHistory.stats.end()) continue;
-        --found->second.unavailableCount;
-        if (--found->second.occurrences == 0) s_profHistory.stats.erase(found);
-    }
-}
-
-void PushAnalysisProfHistory(const AnalysisProfTree& tree, double elapsedMs)
-{
-    const size_t limit = static_cast<size_t>((std::max)(1, s_profilerDisplay.historyFrameLimit));
-    s_profHistory.elapsedMs.push_back(static_cast<float>(elapsedMs));
-    while (s_profHistory.elapsedMs.size() > limit) s_profHistory.elapsedMs.pop_front();
-    constexpr size_t ENTRY_BYTES = 64 * 2 + sizeof(std::string) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
-    const size_t incomingBytes = (tree.nodes.size() + tree.flat.size()) * ENTRY_BYTES;
-    while (!s_profHistory.frames.empty() && s_profHistory.retainedBytes + incomingBytes > 4 * 1024 * 1024) {
-        s_profHistory.budgetLimited = true; RetireAnalysisProfFrame();
-    }
-    std::unordered_map<std::string, float> frame;
-    std::unordered_set<std::string> unavailable;
-    if (tree.complete && incomingBytes <= 4 * 1024 * 1024) {
-        ++s_profHistory.completeFrameCount;
-        frame.reserve(tree.nodes.size() + tree.flat.size());
-        for (const auto& node : tree.nodes) frame[node.key] += static_cast<float>(node.totalMs);
-        for (const auto& row : tree.flat) {
-            if (row.selfAvailable) frame[row.key] = static_cast<float>(row.selfMs);
-            else unavailable.insert(row.key);
-        }
-    }
-    for (const auto& [key, value] : frame) {
-        s_profHistory.retainedBytes += key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
-        auto& stat = s_profHistory.stats[key];
-        stat.total += value; stat.peak = (std::max)(stat.peak, static_cast<double>(value)); ++stat.occurrences;
-    }
-    for (const auto& key : unavailable) {
-        s_profHistory.retainedBytes += key.capacity() * 2 + sizeof(key) * 2 + sizeof(AnalysisProfHistory::Stat) + 128;
-        auto& stat = s_profHistory.stats[key]; ++stat.unavailableCount; ++stat.occurrences;
-    }
-    s_profHistory.frames.push_back(std::move(frame)); s_profHistory.unavailableKeys.push_back(std::move(unavailable));
-    s_profHistory.frameMs.push_back(static_cast<float>(tree.frameMs));
-    s_profHistory.completeFrames.push_back(tree.complete && incomingBytes <= 4 * 1024 * 1024);
-    if (incomingBytes > 4 * 1024 * 1024) s_profHistory.budgetLimited = true;
-    while (s_profHistory.frames.size() > limit || s_profHistory.retainedBytes > 4 * 1024 * 1024) RetireAnalysisProfFrame();
-}
-
-/// @note 再構築はセッション・選択・範囲変更時のみ。通常表示では未投影の確定フレームだけ追加する。
-/// @see Docs/design/profiler.md 履歴と CPU/GPU の対応契約。
-template<class Snapshot, class Append, class Reset>
-bool ProjectSelectedHistory(const ProfilerCaptureHistory<Snapshot>& history, DerivedHistoryCursor& cursor,
-                            size_t limit, Append append, Reset reset)
-{
-    if (!history.selected) {
-        if (cursor.session != 0) { reset(); cursor = {}; return true; }
-        return false;
-    }
-    const auto& selected = *history.selected;
-    if (cursor.session == selected.captureSessionId && cursor.serial == selected.applicationFrameSerial && cursor.limit == limit) {
-        cursor.frozen = history.frozen;
-        return false;
-    }
-    const bool rebuild = cursor.session != selected.captureSessionId || cursor.limit != limit || cursor.frozen ||
-                         history.frozen || selected.applicationFrameSerial < cursor.serial;
-    if (rebuild) reset();
-    size_t begin = history.frames.size();
-    size_t count = 0;
-    if (rebuild) {
-        for (size_t i = history.frames.size(); i-- > 0;) {
-            const auto& frame = history.frames[i];
-            if (frame->captureSessionId != selected.captureSessionId || frame->applicationFrameSerial > selected.applicationFrameSerial) continue;
-            begin = i;
-            if (++count == limit) break;
-        }
-    } else begin = 0;
-    for (size_t i = begin; i < history.frames.size(); ++i) {
-        const auto& frame = *history.frames[i];
-        if (frame.captureSessionId != selected.captureSessionId || frame.applicationFrameSerial > selected.applicationFrameSerial ||
-            (!rebuild && frame.applicationFrameSerial <= cursor.serial)) continue;
-        append(frame);
-    }
-    cursor = {selected.captureSessionId, selected.applicationFrameSerial, limit, history.frozen};
-    return true;
-}
-
 void SyncPerformanceView()
 {
     const auto& history = GetPerformanceHistory();
     if (!history.selected || s_treeSource.lock() != history.selected) {
         s_profTree = {};
-        if (history.selected) s_profTree = BuildRecordedProfTree(*history.selected);
+        if (history.selected) s_profTree = BuildRecordedProfTree(*history.selected, ClassifyProfileRecord);
         s_treeSource = history.selected;
     }
     const size_t limit = static_cast<size_t>((std::max)(1, s_profilerDisplay.historyFrameLimit));
     const bool changed = ProjectSelectedHistory(history, s_profHistory.cursor, limit,
         [&](const PerformanceCapture& frame) {
-            if (history.selected.get() == &frame) PushAnalysisProfHistory(s_profTree, frame.cpuFrameElapsedMs);
-            else PushAnalysisProfHistory(BuildRecordedProfTree(frame), frame.cpuFrameElapsedMs);
+            if (history.selected.get() == &frame) detail::PushAnalysisProfHistory(s_profHistory, s_profTree, frame.cpuFrameElapsedMs, limit);
+            else detail::PushAnalysisProfHistory(s_profHistory, BuildRecordedProfTree(frame, ClassifyProfileRecord), frame.cpuFrameElapsedMs, limit);
         }, [] {
             s_profHistory.frames.clear(); s_profHistory.frameMs.clear(); s_profHistory.elapsedMs.clear();
             s_profHistory.unavailableKeys.clear(); s_profHistory.completeFrames.clear(); s_profHistory.stats.clear();
             s_profHistory.completeFrameCount = 0; s_profHistory.retainedBytes = 0; s_profHistory.budgetLimited = false;
             s_profHistory.autoFit = true; s_profHistory.elapsedAutoFit = true;
         });
-    if (changed) UpdateAnalysisProfStats();
+    if (changed) detail::UpdateAnalysisProfStats(s_profHistory);
 }
 
 void SyncMemoryView()
@@ -834,7 +818,7 @@ void AnalysisShareBar(double value, double total, ImU32 color)
 /// @note Self で積む。Total だと入れ子のぶん同じ時間を何重にも数える。
 void DrawAnalysisProfCategoryBar(const AnalysisProfTree& tree)
 {
-    if (std::any_of(tree.nodes.begin(), tree.nodes.end(), [](const auto& node) { return !node.selfAvailable; })) {
+    if (!tree.complete || std::any_of(tree.nodes.begin(), tree.nodes.end(), [](const auto& node) { return !node.selfAvailable; })) {
         ImGui::TextDisabled("Self breakdown unavailable for external, faulted or incomplete intervals.");
         return;
     }
@@ -971,9 +955,9 @@ void DrawAnalysisProfValueCells(const Row& row, bool flat, double frameMs)
         ImGui::SetCursorScreenPos({ p.x + sq + 4.0f, p.y });
         ImGui::TextDisabled("%s", row.category.name);
     }
-    ImGui::TableNextColumn(); AnalysisCellMs(row.totalMs);
+    ImGui::TableNextColumn(); if (row.totalAvailable) AnalysisCellMs(row.totalMs); else ImGui::TextDisabled("unavailable");
     ImGui::TableNextColumn(); if (row.selfAvailable) AnalysisCellMs(row.selfMs); else ImGui::TextDisabled("unavailable");
-    ImGui::TableNextColumn(); if (row.selfAvailable) AnalysisShareBar(flat ? row.selfMs : row.totalMs, frameMs, row.category.color); else ImGui::TextDisabled("unavailable");
+    ImGui::TableNextColumn(); if (flat ? row.selfAvailable : row.totalAvailable) AnalysisShareBar(flat ? row.selfMs : row.totalMs, frameMs, row.category.color); else ImGui::TextDisabled("unavailable");
     ImGui::TableNextColumn();
     {
         char calls[16];
@@ -1080,7 +1064,6 @@ void DrawAnalysisProfTreeTable(float height)
     std::vector<char> visible(s_profTree.nodes.size(), 0);
     for (std::size_t i = s_profTree.nodes.size(); i-- > 0;) {
         const AnalysisProfNode& node = s_profTree.nodes[i];
-        if (node.totalMs <= 0.0 && node.children.empty()) continue;
         bool show = !filterActive || AnalysisProfMatches(node.name, node.category, node.totalMs, nameFilter);
         for (std::size_t c = 0; !show && c < node.children.size(); ++c)
             show = visible[static_cast<std::size_t>(node.children[c])] != 0;
@@ -1120,7 +1103,6 @@ void DrawAnalysisProfFlatTable(float height)
     rows.reserve(s_profTree.flat.size());
     for (std::size_t i = 0; i < s_profTree.flat.size(); ++i) {
         const AnalysisProfFlatRow& row = s_profTree.flat[i];
-        if (row.totalMs <= 0.0) continue;
         if (!AnalysisProfMatches(row.name, row.category, row.selfMs, nameFilter)) continue;
         rows.push_back(static_cast<int>(i));
     }
@@ -1165,36 +1147,24 @@ void DrawAnalysisProfFlatTable(float height)
 void DrawAnalysisProfGraph()
 {
     const bool hasSelection = !s_profilerFilter.selectedKey.empty();
-    if (hasSelection) {
-        const auto* stat = FindAnalysisProfStat(s_profilerFilter.selectedKey);
-        if (stat != nullptr && !stat->available) { ImGui::TextDisabled("Selected Self history unavailable."); return; }
-    }
-    std::vector<float> values;
-    values.reserve(s_profHistory.frames.size());
-    if (hasSelection) {
-        for (size_t i = 0; i < s_profHistory.frames.size(); ++i) {
-            if (!s_profHistory.completeFrames[i]) continue;
-            const auto& frame = s_profHistory.frames[i];
-            const auto it = frame.find(s_profilerFilter.selectedKey);
-            values.push_back(it == frame.end() ? 0.0f : it->second);
-        }
-    } else {
-        for (size_t i = 0; i < s_profHistory.frameMs.size(); ++i)
-            if (s_profHistory.completeFrames[i]) values.push_back(s_profHistory.frameMs[i]);
-    }
-
+    const auto values = detail::AnalysisProfSeriesValues(s_profHistory, hasSelection ? s_profilerFilter.selectedKey : std::string{});
     float peak = 0.0f;
     double sum = 0.0;
-    for (const float v : values) {
-        peak = (std::max)(peak, v);
-        sum += v;
+    size_t validCount = 0;
+    for (const float value : values) {
+        if (!std::isfinite(value)) continue;
+        peak = (std::max)(peak, value); sum += value; ++validCount;
     }
     ImGui::TextUnformatted(hasSelection ? s_profilerFilter.selectedLabel.c_str() : "Scoped frame CPU");
     ImGui::SameLine();
-    if (values.empty()) ImGui::TextDisabled("No complete history; time unavailable.");
-    else ImGui::TextDisabled("last complete %.3f  avg %.3f  peak %.3f ms  (%zu complete frames)",
-                            static_cast<double>(values.back()), sum / static_cast<double>(values.size()),
-                            static_cast<double>(peak), values.size());
+    if (validCount == 0) ImGui::TextDisabled("No measured history; time unavailable.");
+    else {
+        if (!values.empty() && std::isfinite(values.back())) ImGui::TextDisabled("last %.3f ms", static_cast<double>(values.back()));
+        else ImGui::TextDisabled("latest unavailable");
+        ImGui::SameLine();
+        ImGui::TextDisabled("avg %.3f / peak %.3f ms (%zu measured, %zu unavailable)",
+            sum / static_cast<double>(validCount), static_cast<double>(peak), validCount, values.size() - validCount);
+    }
     if (hasSelection) {
         ImGui::SameLine();
         if (ImGui::SmallButton("x##profGraphClose")) {
@@ -1571,7 +1541,7 @@ void DrawPerformanceCpu(EditorContext& ctx)
     SyncPerformanceView(); SyncRenderingView();
     if (performanceHistory.budgetBlocked) ImGui::TextDisabled("History paused: retained snapshot budget reached.");
     if (s_profHistory.budgetLimited) ImGui::TextDisabled("Scope history range reduced to its 4 MiB derived budget.");
-    if (s_profTree.unavailableReason != nullptr) ImGui::TextDisabled("%s", s_profTree.unavailableReason);
+    if (s_profTree.unavailableReason != nullptr) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.2f, 1.0f), "%s", s_profTree.unavailableReason);
     if (const auto& snapshot = performanceHistory.selected) {
         ImGui::Text("Session %llu / application frame %llu / internal frame %llu%s",
             static_cast<unsigned long long>(snapshot->captureSessionId), static_cast<unsigned long long>(snapshot->applicationFrameSerial),

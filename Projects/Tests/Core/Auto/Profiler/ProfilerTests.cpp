@@ -199,4 +199,68 @@ TEST_F(ProfilerTest, SharesCollectionFilterAcrossThreadsWhileKeepingStacksAndSna
     }
 }
 
+TEST_F(ProfilerTest, KeepsThousandsOfBoundaryFramesConsistentAcrossReadsClearRecordingAndFilterRequests)
+{
+    for (uint64_t serial = 1; serial <= 2048; ++serial) {
+        const bool recording = serial % 97 != 0;
+        const bool filtered = (serial / 128) % 2 != 0;
+        ASSERT_TRUE(Profiler::RequestCaptureFilter({{}, filtered ? "AnimationPass" : ""}));
+        Profiler::RequestRecording(recording);
+        if (serial % 251 == 0) Profiler::RequestClear();
+        Profiler::BeginFrame(serial, profiler::ProfileRecorder::NowMs());
+        const auto before = Profiler::GetSnapshot();
+        const auto previousCount = Profiler::GetLastFrameRecords().size();
+        Profiler::PushSample(ProfilerMarker("AnimationPass", "Animation"), 5.0);
+        Profiler::PushSample(ProfilerMarker("ZeroWork", "Animation"), 0.0);
+        Profiler::PushMarker(ProfilerMarker("EditorWork", "General"));
+        EXPECT_EQ(Profiler::GetSnapshot().applicationFrameSerial, before.applicationFrameSerial);
+        EXPECT_EQ(Profiler::GetLastFrameRecords().size(), previousCount);
+        Profiler::EndFrame();
+        Profiler::EndFrame();
+        const auto& snapshot = Profiler::GetSnapshot();
+        EXPECT_EQ(snapshot.recording, recording);
+        if (!recording) {
+            EXPECT_FALSE(snapshot.available);
+            EXPECT_TRUE(Profiler::GetLastFrameRecords().empty());
+            continue;
+        }
+        EXPECT_TRUE(snapshot.available);
+        EXPECT_TRUE(snapshot.complete);
+        EXPECT_EQ(snapshot.applicationFrameSerial, serial);
+        EXPECT_EQ(snapshot.recordedSampleCount, filtered ? 1u : 3u);
+        EXPECT_EQ(snapshot.filteredSampleCount, filtered ? 2u : 0u);
+        EXPECT_EQ(snapshot.droppedSampleCount, 0u);
+        ASSERT_EQ(Profiler::GetLastFrameRecords().size(), filtered ? 1u : 3u);
+        EXPECT_DOUBLE_EQ(Profiler::GetLastFrameRecords()[0].elapsedMs, 5.0);
+        if (!filtered) EXPECT_DOUBLE_EQ(Profiler::GetLastFrameRecords()[1].elapsedMs, 0.0);
+        EXPECT_EQ(Profiler::GetSnapshot().recordedSampleCount, snapshot.recordedSampleCount);
+    }
+}
+
+TEST_F(ProfilerTest, WorkerFramePublicationNeverReplacesTheOwningThreadDuringLongRecording)
+{
+    ASSERT_TRUE(Profiler::RequestCaptureFilter({}));
+    Profiler::BeginFrame(9000, profiler::ProfileRecorder::NowMs());
+    Profiler::PushSample(ProfilerMarker("MainPayload", "Main"), 5.0);
+    Profiler::EndFrame();
+    profiler::PerformanceSnapshot workerSnapshot;
+    std::thread worker([&] {
+        for (uint64_t serial = 1; serial <= 2048; ++serial) {
+            Profiler::BeginFrame(serial, profiler::ProfileRecorder::NowMs());
+            Profiler::PushSample(ProfilerMarker("WorkerPayload", "Worker"), 2.0);
+            Profiler::EndFrame();
+        }
+        workerSnapshot = Profiler::GetSnapshot();
+    });
+    worker.join();
+    ASSERT_EQ(workerSnapshot.samples.size(), 1u);
+    EXPECT_EQ(workerSnapshot.applicationFrameSerial, 2048u);
+    ASSERT_EQ(workerSnapshot.descriptors.size(), 1u);
+    EXPECT_EQ(workerSnapshot.descriptors[0].name, "WorkerPayload");
+    EXPECT_EQ(Profiler::GetSnapshot().applicationFrameSerial, 9000u);
+    ASSERT_EQ(Profiler::GetLastFrameRecords().size(), 1u);
+    EXPECT_STREQ(Profiler::GetLastFrameRecords()[0].name, "MainPayload");
+    EXPECT_DOUBLE_EQ(Profiler::GetLastFrameRecords()[0].elapsedMs, 5.0);
+}
+
 } /// @note namespace fbzz::tests

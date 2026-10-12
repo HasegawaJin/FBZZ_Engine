@@ -10,6 +10,8 @@
 #include <Editor/Util/UndoStack.hpp>
 #include <limits>
 #include <type_traits>
+#include <Profiler/AnalysisProfilerCpu.hpp>
+#include <cmath>
 
 namespace fbzz::tests {
 
@@ -51,6 +53,30 @@ protected:
         snapshot.captureSessionId = session; snapshot.applicationFrameSerial = serial;
         snapshot.cpuFrameElapsedMs = elapsed; snapshot.wallFrameIntervalAvailable = true;
         snapshot.wallFrameIntervalMs = elapsed * 2;
+        return snapshot;
+    }
+
+    static profiler::PerformanceSnapshot RepeatedCpuFrame(uint64_t serial, size_t childCalls)
+    {
+        auto snapshot = Frame(serial, 25.0);
+        snapshot.scopeRootSumMs = 20.0;
+        const uint64_t rootKey = serial * 2 + 1;
+        profiler::PerformanceDescriptor rootDescriptor;
+        rootDescriptor.sampleKey = rootKey; rootDescriptor.name = "Root"; rootDescriptor.category = "Animation";
+        profiler::PerformanceDescriptor childDescriptor;
+        childDescriptor.sampleKey = rootKey + 1; childDescriptor.name = "AnimationPass"; childDescriptor.category = "Animation";
+        snapshot.descriptors.push_back(std::move(rootDescriptor)); snapshot.descriptors.push_back(std::move(childDescriptor));
+        snapshot.samples.reserve(childCalls + 1);
+        profiler::ProfileSample root;
+        root.sampleId = 1; root.sampleKey = rootKey; root.inclusiveMs = 20.0; root.selfMs = childCalls == 0 ? 20.0 : 15.0;
+        snapshot.samples.push_back(root);
+        for (size_t index = 0; index < childCalls; ++index) {
+            profiler::ProfileSample child;
+            child.sampleId = index + 2; child.parentSampleId = 1; child.sampleKey = rootKey + 1; child.depth = 1;
+            child.inclusiveMs = 5.0 / static_cast<double>(childCalls); child.selfMs = child.inclusiveMs;
+            snapshot.samples.push_back(child);
+        }
+        snapshot.recordedSampleCount = static_cast<uint32_t>(snapshot.samples.size());
         return snapshot;
     }
 
@@ -507,6 +533,190 @@ TEST_F(ProfilerBenchmarkTest, OperatorsExposeLossReasonsCollectionRangeAndIncomp
     std::string json;
     EXPECT_TRUE(editor::WriteOpDataJson(result.data, json));
     EXPECT_NE(json.find("sampleCapacity"), std::string::npos);
+}
+
+TEST_F(ProfilerBenchmarkTest, MergesFullCapacityRepeatedScopesWithoutDiscardingACompleteCpuFrame)
+{
+    const auto snapshot = RepeatedCpuFrame(1, profiler::ProfileRecorder::MAX_SAMPLES - 1);
+    const auto tree = editor::detail::BuildRecordedProfTree(snapshot);
+    ASSERT_TRUE(tree.complete);
+    EXPECT_EQ(tree.unavailableReason, nullptr);
+    ASSERT_EQ(tree.nodes.size(), 2u);
+    ASSERT_EQ(tree.flat.size(), 2u);
+    ASSERT_EQ(tree.roots.size(), 1u);
+    EXPECT_EQ(tree.nodes[0].children.size(), 1u);
+    EXPECT_EQ(tree.nodes[1].calls, static_cast<int>(profiler::ProfileRecorder::MAX_SAMPLES - 1));
+    EXPECT_NEAR(tree.nodes[1].totalMs, 5.0, 1e-9);
+    EXPECT_NEAR(tree.flat[1].selfMs, 5.0, 1e-9);
+    EXPECT_DOUBLE_EQ(tree.nodes[0].totalMs, 20.0);
+}
+
+TEST_F(ProfilerBenchmarkTest, KeepsMergedCpuSeriesAcrossThousandsOfFramesDescriptorTurnoverAndSlowDisplayUpdates)
+{
+    editor::PerformanceHistory captures;
+    editor::detail::AnalysisProfHistory projected;
+    std::string key;
+    for (uint64_t serial = 1; serial <= 2048; ++serial) {
+        auto frame = std::make_shared<editor::PerformanceCapture>();
+        static_cast<profiler::PerformanceSnapshot&>(*frame) = RepeatedCpuFrame(serial,
+            serial % 17 == 0 ? profiler::ProfileRecorder::MAX_SAMPLES - 1 : 1);
+        frame->captureSessionId = serial <= 1024 ? 7 : 8;
+        if (serial % 127 == 0) { frame->complete = false; frame->droppedSampleCount = 1; }
+        captures.frames.push_back(frame);
+        while (captures.frames.size() > 240) captures.frames.pop_front();
+        captures.frozen = serial % 257 < 17;
+        if (!captures.frozen || !captures.selected) captures.selected = frame;
+        if (serial % 23 != 0 && serial != 2048) continue;
+        editor::detail::ProjectSelectedHistory(captures, projected.cursor, size_t{60},
+            [&](const editor::PerformanceCapture& capture) {
+                const auto tree = editor::detail::BuildRecordedProfTree(capture);
+                ASSERT_EQ(tree.complete, capture.complete);
+                ASSERT_EQ(tree.flat.size(), 2u);
+                if (key.empty()) key = tree.flat[1].key;
+                EXPECT_EQ(tree.flat[1].key, key);
+                editor::detail::PushAnalysisProfHistory(projected, tree, capture.cpuFrameElapsedMs, 60);
+            }, [&] { projected = {}; });
+        editor::detail::UpdateAnalysisProfStats(projected);
+        ASSERT_LE(projected.frames.size(), 60u);
+        ASSERT_TRUE(projected.stats.contains(key));
+        EXPECT_DOUBLE_EQ(projected.stats.at(key).avg, 5.0);
+        EXPECT_DOUBLE_EQ(projected.stats.at(key).peak, 5.0);
+        const auto values = editor::detail::AnalysisProfSeriesValues(projected, key);
+        ASSERT_EQ(values.size(), projected.frames.size());
+        for (size_t index = 0; index < values.size(); ++index) {
+            if (projected.completeFrames[index]) EXPECT_FLOAT_EQ(values[index], 5.0f);
+            else EXPECT_TRUE(std::isnan(values[index]));
+        }
+        EXPECT_FALSE(editor::detail::ProjectSelectedHistory(captures, projected.cursor, size_t{60},
+            [](const auto&) { ADD_FAILURE() << "Duplicate completed frame projection"; }, [] {}));
+    }
+    EXPECT_EQ(projected.cursor.session, 8u);
+    EXPECT_EQ(projected.cursor.serial, captures.selected->applicationFrameSerial);
+}
+
+TEST_F(ProfilerBenchmarkTest, DistinguishesMeasuredZeroAbsentCompleteScopeMissingRangeAndUnfinishedIntervals)
+{
+    editor::detail::AnalysisProfHistory history;
+    auto snapshot = RepeatedCpuFrame(1, 1);
+    const auto normal = editor::detail::BuildRecordedProfTree(snapshot);
+    ASSERT_EQ(normal.flat.size(), 2u);
+    const auto flatKey = normal.flat[1].key;
+    const auto totalKey = normal.nodes[1].key;
+    editor::detail::PushAnalysisProfHistory(history, normal, 10.0, 60);
+    auto zero = RepeatedCpuFrame(2, 1);
+    zero.samples[0].selfMs = 20.0; zero.samples[1].inclusiveMs = 0.0; zero.samples[1].selfMs = 0.0;
+    const auto zeroTree = editor::detail::BuildRecordedProfTree(zero);
+    ASSERT_TRUE(zeroTree.complete);
+    EXPECT_TRUE(zeroTree.flat[1].totalAvailable);
+    EXPECT_TRUE(zeroTree.flat[1].selfAvailable);
+    EXPECT_EQ(zeroTree.flat[1].calls, 1);
+    editor::detail::PushAnalysisProfHistory(history, zeroTree, 10.0, 60);
+    auto absent = RepeatedCpuFrame(3, 0);
+    editor::detail::PushAnalysisProfHistory(history, editor::detail::BuildRecordedProfTree(absent), 10.0, 60);
+    auto unfinished = RepeatedCpuFrame(4, 1);
+    unfinished.samples[1].status = profiler::ProfileSampleStatus::ABORTED;
+    const auto unfinishedTree = editor::detail::BuildRecordedProfTree(unfinished);
+    EXPECT_FALSE(unfinishedTree.complete);
+    EXPECT_FALSE(unfinishedTree.flat[1].totalAvailable);
+    editor::detail::PushAnalysisProfHistory(history, unfinishedTree, 10.0, 60);
+    auto filteredSelf = RepeatedCpuFrame(5, 1);
+    filteredSelf.samples[1].selfAvailable = false;
+    editor::detail::PushAnalysisProfHistory(history, editor::detail::BuildRecordedProfTree(filteredSelf), 10.0, 60);
+    editor::detail::UpdateAnalysisProfStats(history);
+    const auto selfValues = editor::detail::AnalysisProfSeriesValues(history, flatKey);
+    const auto totalValues = editor::detail::AnalysisProfSeriesValues(history, totalKey);
+    ASSERT_EQ(selfValues.size(), 5u);
+    EXPECT_FLOAT_EQ(selfValues[0], 5.0f);
+    EXPECT_FLOAT_EQ(selfValues[1], 0.0f);
+    EXPECT_FLOAT_EQ(selfValues[2], 0.0f);
+    EXPECT_TRUE(std::isnan(selfValues[3]));
+    EXPECT_TRUE(std::isnan(selfValues[4]));
+    EXPECT_TRUE(std::isnan(totalValues[3]));
+    EXPECT_FLOAT_EQ(totalValues[4], 5.0f);
+    for (float value : editor::detail::AnalysisProfSeriesValues(history, "outside captured range"))
+        EXPECT_TRUE(std::isnan(value));
+}
+
+TEST_F(ProfilerBenchmarkTest, PreservesPartialScopeRowsAndReliableFrameScalarWhenUniqueRowsReachTheBudget)
+{
+    auto snapshot = Frame(1, 10.0);
+    snapshot.scopeRootSumMs = 8.192;
+    snapshot.descriptors.reserve(profiler::ProfileRecorder::MAX_SAMPLES);
+    snapshot.samples.reserve(profiler::ProfileRecorder::MAX_SAMPLES);
+    for (uint64_t id = 1; id <= profiler::ProfileRecorder::MAX_SAMPLES; ++id) {
+        profiler::PerformanceDescriptor descriptor;
+        descriptor.sampleKey = id; descriptor.name = "Unique_" + std::to_string(id); descriptor.category = "Animation";
+        snapshot.descriptors.push_back(std::move(descriptor));
+        profiler::ProfileSample sample;
+        sample.sampleId = id; sample.sampleKey = id; sample.inclusiveMs = 0.001; sample.selfMs = 0.001;
+        snapshot.samples.push_back(sample);
+    }
+    const auto tree = editor::detail::BuildRecordedProfTree(snapshot);
+    ASSERT_FALSE(tree.complete);
+    ASSERT_NE(tree.unavailableReason, nullptr);
+    ASSERT_FALSE(tree.nodes.empty());
+    EXPECT_LT(tree.nodes.size(), snapshot.samples.size());
+    EXPECT_TRUE(tree.frameTotalAvailable);
+    editor::detail::AnalysisProfHistory history;
+    editor::detail::PushAnalysisProfHistory(history, tree, 10.0, 60);
+    EXPECT_TRUE(std::isnan(editor::detail::AnalysisProfSeriesValues(history, tree.nodes.front().key).front()));
+    EXPECT_FLOAT_EQ(editor::detail::AnalysisProfSeriesValues(history, {}).front(), 8.192f);
+    EXPECT_FLOAT_EQ(history.elapsedMs.front(), 10.0f);
+}
+
+TEST_F(ProfilerBenchmarkTest, UpdatesOwnedCpuHistoryThroughoutBenchmarkWarmupAndSamplingWithoutDuplicateFrames)
+{
+    profiler::Profiler::SetEnabled(false); profiler::Profiler::SetEnabled(true);
+    profiler::Profiler::BeginFrame(9000, profiler::ProfileRecorder::NowMs());
+    profiler::Profiler::PushSample(profiler::ProfilerMarker("AnimationPass", "Animation"), 5.0);
+    profiler::Profiler::EndFrame();
+    editor::TickProfilerHistory(Context());
+    editor::OpArgs args;
+    args.Set("label", std::string("live cpu")); args.Set("warmupFrames", 2); args.Set("sampleFrames", 64);
+    ASSERT_TRUE(editor::InvokeOperator(Context(), "profiler.benchmark.start", args).ok);
+    for (uint64_t serial = 9001; serial <= 9066; ++serial) {
+        profiler::Profiler::BeginFrame(serial, profiler::ProfileRecorder::NowMs());
+        profiler::Profiler::PushSample(profiler::ProfilerMarker("AnimationPass", "Animation"), 5.0);
+        profiler::Profiler::EndFrame();
+        editor::TickProfilerHistory(Context());
+        auto& history = editor::GetPerformanceHistory();
+        ASSERT_NE(history.selected, nullptr);
+        EXPECT_EQ(history.selected->applicationFrameSerial, serial);
+        EXPECT_EQ(history.frames.size(), serial - 8999);
+        const size_t count = history.frames.size();
+        editor::TickProfilerHistory(Context());
+        EXPECT_EQ(history.frames.size(), count);
+        EXPECT_EQ(history.selected->recordedSampleCount, 1u);
+    }
+    EXPECT_EQ(editor::GetPerformanceBenchmarkCapture().Status().state, editor::PerformanceBenchmarkState::COMPLETE);
+    EXPECT_EQ(editor::GetPerformanceBenchmarkCapture().Status().capturedFrames, 64u);
+}
+
+TEST_F(ProfilerBenchmarkTest, KeepsTemporaryRecordingEnabledThroughSamplingThenRestoresTheStoppedState)
+{
+    profiler::Profiler::SetEnabled(false);
+    editor::OpArgs args;
+    args.Set("label", std::string("temporary live cpu")); args.Set("warmupFrames", 2); args.Set("sampleFrames", 8);
+    ASSERT_TRUE(editor::InvokeOperator(Context(), "profiler.benchmark.start", args).ok);
+    for (uint64_t serial = 10000; serial < 10010; ++serial) {
+        profiler::Profiler::BeginFrame(serial, profiler::ProfileRecorder::NowMs());
+        profiler::Profiler::PushSample(profiler::ProfilerMarker("AnimationPass", "Animation"), 5.0);
+        profiler::Profiler::EndFrame();
+        editor::TickProfilerHistory(Context());
+        ASSERT_TRUE(profiler::Profiler::GetSnapshot().recording);
+        ASSERT_NE(editor::GetPerformanceHistory().selected, nullptr);
+        EXPECT_EQ(editor::GetPerformanceHistory().selected->applicationFrameSerial, serial);
+        if (serial < 10009) EXPECT_TRUE(profiler::Profiler::IsRecordingRequested());
+    }
+    EXPECT_EQ(editor::GetPerformanceBenchmarkCapture().Status().state, editor::PerformanceBenchmarkState::COMPLETE);
+    EXPECT_EQ(editor::GetPerformanceBenchmarkCapture().Status().capturedFrames, 8u);
+    EXPECT_FALSE(profiler::Profiler::IsRecordingRequested());
+    profiler::Profiler::BeginFrame(10010, profiler::ProfileRecorder::NowMs());
+    profiler::Profiler::EndFrame();
+    editor::TickProfilerHistory(Context());
+    EXPECT_FALSE(profiler::Profiler::IsEnabled());
+    EXPECT_FALSE(profiler::Profiler::GetSnapshot().available);
+    EXPECT_EQ(editor::GetPerformanceHistory().selected->applicationFrameSerial, 10009u);
 }
 
 } /// @note namespace fbzz::tests
