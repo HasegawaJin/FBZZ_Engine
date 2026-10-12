@@ -125,6 +125,8 @@ public:
     GameObject& CreateGameObject(const std::string& name = "GameObject");
 
     [[nodiscard]] size_t RemainingEntityCapacity() const;
+    /// @note 削除済みを含む index 領域の実際の長さ。Entity index を添字にする作業領域へ使う。
+    [[nodiscard]] size_t EntitySlotCount() const { return m_nextIndex; }
     /// @note 単一スレッドでの事前確認。枠を予約しないため、生成前の別処理による消費は防がない。
     [[nodiscard]] bool CanCreateGameObjects(size_t count = 1) const;
 

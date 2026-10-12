@@ -51,6 +51,8 @@ namespace fbzz::physics
         float GetInvMass() const { return (m_isStatic || m_isSleeping) ? 0.0f : m_invMass; }
         bool  IsStatic()   const { return m_isStatic; }
         bool  IsSleeping() const { return m_isSleeping; }
+        /// @return 蓄積した力・トルクと逆慣性を含む全数値状態が有限なら true。所有 pointer は参照しない。
+        [[nodiscard]] bool IsFiniteState() const;
         void  WakeUp();
         void  Sleep();
         void  UpdateSleepState(float dt, float linearThreshold, float angularThreshold, float sleepTime);
@@ -78,6 +80,8 @@ namespace fbzz::physics
         /// @}
 
         void SetInertiaFromCollider(const Collider* collider);
+        /// @note 非所有の慣性計算元。次の再計算前に呼び出し側が寿命を照合し、失効した pointer を参照しない。
+        [[nodiscard]] const Collider* GetInertiaCollider() const { return m_inertiaCollider; }
 
         /// @brief 媒質 (風・水流) との結合係数 [1/s]。FlowVolume が F = k * m * (v_flow - v) で使う。
         /// @note 既定 0 = 流れを受けない (オプトイン)。既定で全剛体が風に流されると、

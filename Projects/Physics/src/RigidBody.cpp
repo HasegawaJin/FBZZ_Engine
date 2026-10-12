@@ -9,6 +9,7 @@
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/CylinderCollider.hpp>
 #include <algorithm>
+#include <cmath>
 
 namespace fbzz::physics {
 
@@ -174,6 +175,21 @@ void RigidBody::Integrate(float dt)
     /// @note static ボディ含め毎フレームリセットする。力は「そのフレームだけ有効」な入力として扱う。
     m_force  = math::Vector3::ZERO;
     m_torque = math::Vector3::ZERO;
+}
+
+bool RigidBody::IsFiniteState() const
+{
+    const auto finiteVector = [](const math::Vector3& value) {
+        return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    };
+    return finiteVector(m_position) && finiteVector(m_velocity) && finiteVector(m_force)
+        && finiteVector(m_angularVelocity) && finiteVector(m_torque) && finiteVector(m_invInertiaDiag)
+        && std::isfinite(m_rotation.x) && std::isfinite(m_rotation.y)
+        && std::isfinite(m_rotation.z) && std::isfinite(m_rotation.w)
+        && std::isfinite(m_mass) && std::isfinite(m_invMass) && std::isfinite(m_flowCoupling)
+        && std::isfinite(m_charge) && std::isfinite(m_gravitationalMass) && std::isfinite(m_ccdRadius)
+        && std::isfinite(m_gravityScale) && std::isfinite(m_timeScale)
+        && std::isfinite(m_linearDrag) && std::isfinite(m_angularDrag) && std::isfinite(m_sleepTimer);
 }
 
 void RigidBody::WakeUp()

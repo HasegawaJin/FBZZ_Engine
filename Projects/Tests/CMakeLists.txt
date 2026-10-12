@@ -174,6 +174,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/Utf8Tests.cpp
         Engine/Auto/UuidTests.cpp
         Engine/Auto/AnimationSamplingTests.cpp
+        Engine/Auto/ManagedPhysicsBridgeTests.cpp
         Engine/Auto/BakedBoneAnimationTests.cpp
         Engine/Auto/AudioBusTests.cpp
         Engine/Auto/AudioStreamingTests.cpp
