@@ -178,6 +178,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/AudioStreamingTests.cpp
         Engine/Auto/BlackboardTests.cpp
         Engine/Auto/BehaviorTreeRuntimeTests.cpp
+        Engine/Auto/CrowdSimulationTests.cpp
         Engine/Auto/ComponentArrayTests.cpp
         Engine/Auto/FzAssetFormatTests.cpp
         Engine/Auto/InputActionMapTests.cpp
