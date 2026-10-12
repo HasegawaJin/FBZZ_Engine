@@ -265,6 +265,16 @@ target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/G
 target_include_directories(FBZZTestsEngineAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Engine/src")
 target_compile_definitions(FBZZTestsEngineAutoObj PRIVATE FBZZ_ENGINE_SHADER_ROOT="${CMAKE_SOURCE_DIR}/Assets/Shaders")
 
+fbzz_add_test_suite(RayTracingEngine OPT_IN
+    SOURCES
+        Engine/Auto/BakedBoneReplayTests.cpp
+    LINKS
+        FBZZTestKitEngine
+        FBZZPhysics
+)
+target_include_directories(FBZZTestsRayTracingEngineObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Engine/src")
+target_compile_definitions(FBZZTestsRayTracingEngineObj PRIVATE FBZZ_ENGINE_SHADER_ROOT="${CMAKE_SOURCE_DIR}/Assets/Shaders")
+
 # @note --- Editor -----------------------------------------------------------------
 # @note Editor をリンクするか: import 判定まわりは «起動のたびに全アセットを焼き直す»
 # @note という形でしか表に出ず、しかも直ったかどうかがローカルの mtime に左右される。

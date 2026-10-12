@@ -37,6 +37,15 @@ template <> struct DynamicBufferFactory<StructuredBufferTag> {
     }
 };
 
+struct WritableStructuredBufferFactory {
+    static constexpr std::size_t kMinCapacity = 16;
+    static ResourceHandle<StructuredBufferTag> Create(ResourceManager& resources, std::size_t capacity,
+        std::uint32_t stride, Where where)
+    {
+        return resources.CreateRWStructuredBuffer(nullptr, static_cast<uint32_t>(capacity), stride, where);
+    }
+};
+
 } /// @note namespace detail
 
 /// @brief 「CPU で組み直した中身を 1 フレームに何度も Submit / Dispatch する」用途のバッファ
@@ -47,11 +56,8 @@ template <> struct DynamicBufferFactory<StructuredBufferTag> {
 /// @note       貸し直すと GPU がまだ読んでいる中身を上書きする。フレームごとに貸出列を分けて回避する。
 /// @note 貸出順でなく容量クラスで列を分ける。貸出順は毎フレーム変わるため、順序で仕分けると
 /// @note       «一度でも大きな要求を受けた枠» が肥大したまま居座る。
-template <typename Tag>
+template <typename Tag, typename Factory = detail::DynamicBufferFactory<Tag>>
 class DynamicBufferPool {
-    /// @note 先頭で宣言するのは、コンストラクターの既定引数から引くため。MSVC はクラステンプレート
-    /// @note       の既定引数で «後に宣言されるメンバー型» を解決できない (C2653)。
-    using Factory = detail::DynamicBufferFactory<Tag>;
 
 public:
     /// @param minCapacity 容量クラスの下限 (要素数)。要求はこれ以上の 2 の冪へ切り上げる。
@@ -74,7 +80,8 @@ public:
         if (count == 0 || stride == 0) return {};
 
         /// @note ResourceManager::Reset() 後は旧ハンドルが無効なので、Release せずキャッシュだけ捨てる。
-        if (m_resetVersion != resources.GetResetVersion()) {
+        if (m_owner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()) {
+            m_owner = resources.GetInstanceId();
             m_resetVersion = resources.GetResetVersion();
             m_buckets.clear();
         }
@@ -103,6 +110,7 @@ public:
     /// @brief 抱えているバッファをすべて返す。プールごと畳むとき (シャットダウン) に呼ぶ。
     void ReleaseAll(ResourceManager& resources)
     {
+        if (m_owner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()) return;
         for (Bucket& bucket : m_buckets)
             for (auto& lane : bucket.lanes)
                 for (ResourceHandle<Tag> handle : lane)
@@ -148,9 +156,11 @@ private:
     std::uint64_t       m_frame        = UINT64_MAX;
     std::size_t         m_lane         = 0;
     std::uint64_t       m_resetVersion = 0;
+    std::uint64_t       m_owner = 0;
 };
 
 using DynamicVertexBufferPool     = DynamicBufferPool<BufferTag>;
 using DynamicStructuredBufferPool = DynamicBufferPool<StructuredBufferTag>;
+using DynamicRWStructuredBufferPool = DynamicBufferPool<StructuredBufferTag, detail::WritableStructuredBufferFactory>;
 
 } /// @note namespace fbzz::renderer

@@ -62,13 +62,14 @@ function(fbzz_stage_test_runtime TARGET)
     )
 endfunction()
 
-# @note fbzz_add_test_suite(<Suite> SOURCES <...> [LINKS <...>] [MANUAL])
+# @note fbzz_add_test_suite(<Suite> SOURCES <...> [LINKS <...>] [MANUAL|OPT_IN])
 
 # @note Suite   スイート名。FBZZTests<Suite>Obj と FBZZTests<Suite> を生成する。
 # @note LINKS   FBZZTestKit に加えてリンクするターゲット。
 # @note MANUAL  CTest に登録しない (手動テスト)。
+# @note OPT_IN  自動判定は維持し、通常ビルドと CTest から外す。明示ターゲットと exe で実行する。
 function(fbzz_add_test_suite SUITE)
-    cmake_parse_arguments(ARG "MANUAL" "" "SOURCES;LINKS" ${ARGN})
+    cmake_parse_arguments(ARG "MANUAL;OPT_IN" "" "SOURCES;LINKS" ${ARGN})
 
     if(NOT ARG_SOURCES)
         message(FATAL_ERROR "fbzz_add_test_suite(${SUITE}): SOURCES が空です")
@@ -92,7 +93,15 @@ function(fbzz_add_test_suite SUITE)
     fbzz_set_test_output_dir(${exeTarget})
     fbzz_stage_test_runtime(${exeTarget})
 
-    if(ARG_MANUAL)
+    if(ARG_OPT_IN)
+        # @note OBJECT 側も除外しないと、exe を外しても通常ビルドでテスト本体がコンパイルされる。
+        # @see https://cmake.org/cmake/help/latest/prop_tgt/EXCLUDE_FROM_ALL.html 通常の all ターゲットからの除外。
+        # @see https://cmake.org/cmake/help/latest/prop_tgt/EXCLUDE_FROM_DEFAULT_BUILD.html Visual Studio の Build Solution からの除外。
+        set_target_properties(${objTarget} ${exeTarget} PROPERTIES
+            EXCLUDE_FROM_ALL TRUE EXCLUDE_FROM_DEFAULT_BUILD TRUE)
+    endif()
+
+    if(ARG_MANUAL OR ARG_OPT_IN)
         return()
     endif()
 
