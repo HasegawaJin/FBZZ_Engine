@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #include "DX12Texture.hpp"
+#include <Graphics/Renderer/IRenderer.hpp>
 
 #include "DX12Context.hpp"
 #include "DX12StateTracker.hpp"
@@ -629,6 +630,11 @@ bool DX12Texture::InitDynamic(DX12Context* context, DX12StateTracker* tracker,
 bool DX12Texture::UpdateRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                                const void* pixels, uint32_t srcRowPitch)
 {
+    if (m_context && m_context->GetCpuExecutor() && !m_context->GetCpuExecutor()->IsRenderThread()) {
+        bool updated = false;
+        m_context->GetCpuExecutor()->ExecuteResourceOperation([&] { updated = UpdateRegion(x, y, width, height, pixels, srcRowPitch); });
+        return updated;
+    }
     if (!m_isDynamic || !m_resource || !m_context || !pixels) return false;
     if (width == 0 || height == 0) return true;
 
@@ -701,6 +707,26 @@ bool DX12Texture::UploadRegionInternal(uint32_t x, uint32_t y, uint32_t width, u
         }
     }
     upload->Unmap(0, nullptr);
+
+    /// @note In-frame updates preserve recorded draw/update/draw order without a CPU fence wait.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/uploading-resources Upload storage must outlive GPU consumption.
+    if (m_context->IsFrameOpen() && !m_context->IsComputeListOpen() && m_tracker) {
+        auto* commands = m_context->GetCommandList();
+        if (!commands) return false;
+        m_tracker->Transition(commands, m_resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
+        D3D12_TEXTURE_COPY_LOCATION destination{};
+        destination.pResource = m_resource.Get();
+        destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        D3D12_TEXTURE_COPY_LOCATION source{};
+        source.pResource = upload.Get();
+        source.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        source.PlacedFootprint = footprint;
+        commands->CopyTextureRegion(&destination, x, y, 0, &source, nullptr);
+        m_tracker->Transition(commands, m_resource.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+            | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        m_context->DeferRelease(upload);
+        return true;
+    }
 
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator>    allocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;

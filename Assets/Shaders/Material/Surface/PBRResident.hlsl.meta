@@ -1,0 +1,6 @@
+# @file    PBRResident.hlsl.meta
+# @brief   Shader identity for resident vegetation rendering.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = "73f78f11568a4d89943ea4aafd09037a"

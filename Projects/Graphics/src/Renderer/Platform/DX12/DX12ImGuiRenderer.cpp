@@ -108,15 +108,38 @@ void DX12ImGuiRenderer::ImGuiShutdown()
 
 void DX12ImGuiRenderer::ImGuiNewFrame()
 {
+    ImGuiPrepareGpuFrame();
+    ImGuiPreparePlatformFrame();
+}
+
+void DX12ImGuiRenderer::ImGuiPrepareGpuFrame()
+{
     if (!m_imguiInitialized) return;
     ++m_frameCounter;
     if (m_frameCounter % SWEEP_INTERVAL_FRAMES == 0)
         SweepReleasedDescriptors();
     ImGui_ImplDX12_NewFrame();
+}
+
+void DX12ImGuiRenderer::ImGuiPreparePlatformFrame()
+{
+    if (!m_imguiInitialized) return;
     ImGui_ImplWin32_NewFrame();
 }
 
 void DX12ImGuiRenderer::ImGuiRenderDrawData()
+{
+    if (auto* data = ImGui::GetDrawData()) ImGuiRenderDrawData(*data);
+}
+
+void DX12ImGuiRenderer::ImGuiPrepareTextures(ImDrawData& data)
+{
+    if (!m_imguiInitialized || !data.Textures) return;
+    for (auto* texture : *data.Textures)
+        if (texture && texture->Status != ImTextureStatus_OK) ImGui_ImplDX12_UpdateTexture(texture);
+}
+
+void DX12ImGuiRenderer::ImGuiRenderDrawData(ImDrawData& data)
 {
     if (!m_imguiInitialized || !m_context->IsFrameOpen())
         return;
@@ -125,17 +148,28 @@ void DX12ImGuiRenderer::ImGuiRenderDrawData()
     m_context->MarkPipelineStateDirty();
     ID3D12DescriptorHeap* heaps[] = {m_context->GetImGuiSrvHeap()};
     m_context->GetCommandList()->SetDescriptorHeaps(1, heaps);
-    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), m_context->GetCommandList());
+    ImGui_ImplDX12_RenderDrawData(&data, m_context->GetCommandList());
 }
 
 /// @note ImGui DX12 backend が追加 Window ごとに管理する SwapChain と CommandList を描画する。
 void DX12ImGuiRenderer::ImGuiRenderPlatformWindows()
+{
+    ImGuiPreparePlatformWindows();
+    ImGuiRenderPreparedPlatformWindows();
+}
+
+void DX12ImGuiRenderer::ImGuiPreparePlatformWindows()
 {
     if (!m_imguiInitialized
         || (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) == 0) {
         return;
     }
     ImGui::UpdatePlatformWindows();
+}
+
+void DX12ImGuiRenderer::ImGuiRenderPreparedPlatformWindows()
+{
+    if (!m_imguiInitialized || (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) == 0) return;
     ImGui::RenderPlatformWindowsDefault();
 }
 
@@ -220,7 +254,7 @@ void* DX12ImGuiRenderer::CacheDescriptor(const CacheKey& key, D3D12_CPU_DESCRIPT
     if (!source.ptr || !m_context) return nullptr;
     uint32_t index = 0;
     if (const auto found = m_textureCache.find(key); found != m_textureCache.end()) {
-        index = found->second;
+        return std::bit_cast<void*>(m_context->GetImGuiSrvGpu(found->second).ptr);
     } else {
         D3D12_CPU_DESCRIPTOR_HANDLE cpu{};
         D3D12_GPU_DESCRIPTOR_HANDLE gpu{};

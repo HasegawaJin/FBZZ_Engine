@@ -58,6 +58,8 @@ struct ComputeCall {
     /// @note GPU table の添字から間接的に読む全 Buffer。スロットを消費せず backend の状態と寿命追跡へ渡す。
     /// @note 初期実装は DIRECT queue 限定。table は各 Buffer の現在の内容版と SRV 添字に一致させること。
     std::vector<ResourceHandle<BufferTag>> indirectReadBuffers;
+    /// @note DIRECT-only bindless UAV destinations; backend validates every handle and publishes every successful write.
+    std::vector<ResourceHandle<BufferTag>> indirectWriteVertexBuffers;
     /// @note Every TextureTag indexed through a GPU material table; consumes no t-slot but requires graph declaration and DIRECT queue tracking.
     std::vector<ResourceHandle<TextureTag>> indirectReadTextures;
 };

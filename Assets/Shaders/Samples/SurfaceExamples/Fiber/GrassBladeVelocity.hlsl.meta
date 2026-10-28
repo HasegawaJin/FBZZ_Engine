@@ -1,0 +1,14 @@
+# @file    GrassBladeVelocity.hlsl.meta
+# @brief   Sample asset identity and explicit shared geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = 'afad42e74c604b71a4179b0583b1a038'
+
+[shader]
+version = 1
+vertex = 'fiber_blade_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_blade'

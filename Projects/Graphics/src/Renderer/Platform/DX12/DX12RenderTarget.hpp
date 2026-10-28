@@ -38,7 +38,7 @@ public:
     ID3D12Resource* GetDepthResource() const { return m_depth.Get(); }
     bool            HasDepth() const { return m_depth != nullptr; }
     /// @brief 深度が Reversed-Z か。深度を持たない RT では false。
-    bool            IsReversedZ() const { return m_reversedZ; }
+    bool            IsReversedZ() const override { return m_reversedZ; }
     DXGI_FORMAT GetColorFormat() const { return m_colorFormat; }
     void TransitionColorForRead(ID3D12GraphicsCommandList* commands, uint32_t index);
     bool IsCubemap() const { return m_isCubemap; }

@@ -4,6 +4,7 @@
 /// @date    2026-09-20
 #pragma once
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include <Graphics/Passes/Geometry/RenderSceneDraw.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/RenderVisibility.hpp>
 #include <cassert>
@@ -41,15 +42,24 @@ inline float DrawDistance(const RenderPassContext& ctx, const renderer::RenderOb
     return ctx.hasLayerCullDistances && layerDistance > 0.0f ? layerDistance : ctx.cullMaxDistance;
 }
 
-inline bool IsRenderObjectVisible(RenderPassContext& ctx, const renderer::RenderObject& object)
+inline bool IsRenderObjectVisible(RenderPassContext& ctx, const renderer::RenderObject& object, bool gpuFrustum = false)
 {
     const auto bounds = RenderBounds(ctx, object);
-    switch (renderer::EvaluateVisibility(CullingView(ctx),
+    auto view = CullingView(ctx);
+    bool gpuEstimateOutside = false;
+    /// @note Keep CPU counters as estimates while the instance batch owns the actual GPU frustum decision.
+    if (gpuFrustum && view.frustum) {
+        gpuEstimateOutside = !view.frustum->IntersectsSphere(bounds.center, bounds.radius);
+        view.frustum = nullptr;
+    }
+    switch (renderer::EvaluateVisibility(view,
         { bounds.center, bounds.radius, DrawDistance(ctx, object) })) {
     case renderer::VisibilityResult::DISTANCE_CULLED: ++ctx.statsDistanceCulled; return false;
     case renderer::VisibilityResult::SMALL_OBJECT_CULLED: ++ctx.statsSmallObjectCulled; return false;
     case renderer::VisibilityResult::FRUSTUM_CULLED: ++ctx.statsFrustumCulled; return false;
-    case renderer::VisibilityResult::VISIBLE: return true;
+    case renderer::VisibilityResult::VISIBLE:
+        if (gpuEstimateOutside) ++ctx.statsFrustumCulled;
+        return true;
     }
     return true;
 }
@@ -60,7 +70,15 @@ inline PerObjectCB ObjectConstants(const renderer::RenderObject& object)
     data.world = object.world;
     data.worldInvTranspose = object.worldInvTranspose;
     data.objectParams.x = object.lodDither;
+    data.objectParams.z = object.gpuBones.current.IsValid() ? 1.0f : 0.0f;
+    data.objectParams.w = static_cast<float>(object.gpuBones.currentOffset);
     return data;
+}
+
+/// @note t14/t15 belong to VS palette reads only; never attach them to particle or meshlet draws.
+inline void BindGpuBonePalette(DrawCall& draw, const RenderObject& object)
+{
+    if (object.gpuBones.current.IsValid()) { draw.vsBuffers[0] = object.gpuBones.current; draw.constantBuffers[7] = {}; }
 }
 
 inline auto MaterialPipeline(RenderPassContext& ctx, const renderer::RenderMaterial& material)
@@ -69,41 +87,50 @@ inline auto MaterialPipeline(RenderPassContext& ctx, const renderer::RenderMater
         material.doubleSided, material.depthBias, material.depthBiasSlope, ctx.settings.IsWireframe());
 }
 
-inline renderer::DrawCall ForwardDraw(RenderPassContext& ctx, const renderer::RenderObject& object,
-                                      const renderer::RenderMeshItem& item, bool bindIbl = true)
-{
-    const auto& material = item.forwardMaterial;
-    const auto& h = ctx.handles;
-    renderer::DrawCall dc;
-    dc.vertexBuffer = object.skinned ? item.skinningVertexBuffer : item.vertexBuffer;
-    dc.indexBuffer = item.indexBuffer;
-    dc.indexCount = item.indexCount;
-    dc.vertexCount = item.vertexCount;
-    dc.shader = material.shader;
-    dc.pipelineState = MaterialPipeline(ctx, item.material);
-    dc.layer = material.capabilities.blend == renderer::BlendMode::OPAQUE_BLEND
-        ? renderer::RenderLayer::OPAQUE_LAYER : renderer::RenderLayer::TRANSPARENT_LAYER;
-    dc.constantBuffers[0] = h.frameCB;
-    dc.constantBuffers[1] = h.objectCB;
-    dc.constantBuffers[2] = material.paramsBuffer;
-    dc.constantBuffers[3] = h.lightCB;
-    dc.constantBuffers[4] = h.shadowCB;
-    dc.constantBuffers[8] = h.advancedGraphicsCB;
-    if (object.skinned) dc.constantBuffers[7] = object.skinningPalette;
-    BindForwardShadingResources(dc, ctx);
-    for (size_t i = 0; i < material.textures.size(); ++i) dc.textures[i] = material.textures[i];
-    dc.textures[8] = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
-    if (bindIbl) {
-        dc.textures[16] = h.iblIrradiance;
-        dc.textures[17] = h.iblPrefilter;
-        dc.textures[18] = h.iblBrdfLut;
-    }
-    return dc;
-}
-
 inline bool HasColorGeometry(const renderer::RenderMeshItem& item)
 {
     return item.visible && item.vertexBuffer.IsValid() && item.indexBuffer.IsValid();
+}
+
+/// @note Borrow only this execution's resolved view resources; no registry or resource handle is retained across passes or views.
+/// @note Long registry names create owning temporary strings; resolve them once before the per-object loop.
+/// @see https://github.com/microsoft/STL/blob/main/stl/inc/xstring basic_string small storage and string_view construction.
+inline DrawCall ForwardPassBindings(RenderPassContext& ctx, bool bindIbl = true)
+{
+    const auto& h = ctx.handles;
+    DrawCall draw;
+    draw.constantBuffers[0] = h.frameCB;
+    draw.constantBuffers[1] = h.objectCB;
+    draw.constantBuffers[3] = h.lightCB;
+    draw.constantBuffers[4] = h.shadowCB;
+    draw.constantBuffers[8] = h.advancedGraphicsCB;
+    BindForwardShadingResources(draw, ctx);
+    draw.textures[8] = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+    if (bindIbl) {
+        draw.textures[16] = h.iblIrradiance;
+        draw.textures[17] = h.iblPrefilter;
+        draw.textures[18] = h.iblBrdfLut;
+    }
+    return draw;
+}
+
+inline DrawCall ForwardDrawWithBindings(RenderPassContext& ctx, const RenderObject& object,
+                                       const RenderMeshItem& item, const DrawCall& bindings)
+{
+    const auto& material = item.forwardMaterial;
+    DrawCall draw = bindings;
+    draw.vertexBuffer = object.skinned ? item.skinningVertexBuffer : item.vertexBuffer;
+    draw.indexBuffer = item.indexBuffer;
+    draw.indexCount = item.indexCount;
+    draw.vertexCount = item.vertexCount;
+    draw.shader = material.shader;
+    draw.pipelineState = MaterialPipeline(ctx, item.material);
+    draw.layer = material.capabilities.blend == BlendMode::OPAQUE_BLEND
+        ? RenderLayer::OPAQUE_LAYER : RenderLayer::TRANSPARENT_LAYER;
+    draw.constantBuffers[2] = material.paramsBuffer;
+    if (object.skinned) { draw.constantBuffers[7] = object.skinningPalette; BindGpuBonePalette(draw, object); }
+    for (size_t i = 0; i < material.textures.size(); ++i) draw.textures[i] = material.textures[i];
+    return draw;
 }
 
 } /// @note namespace fbzz::renderer

@@ -5,16 +5,25 @@
 /// @note IRenderer の非公開生成 API を呼び、ResourceHandle と実体を対応付ける。
 /// @note 実体の所有はここ 1 か所に集約し、上位システムはハンドルだけを持つ。
 #include <Graphics/Renderer/ResourceManager.hpp>
+#include "PreparedSkinningBackend.hpp"
+#include <Graphics/Renderer/RenderCpuTrace.hpp>
+#include "ResourceManagerLifetime.hpp"
+#include "MaterialTransferPayload.hpp"
+#include "BufferStateReadScope.hpp"
+#include <Graphics/Renderer/BuiltinShader.hpp>
+#include <Graphics/Renderer/Material.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Renderer/AssetPathService.hpp>
 #include <Graphics/Renderer/TextureFileDecoder.hpp>
 #include <cstdint>
+#include <functional>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/IBuffer.hpp>
 #include <Graphics/Renderer/IConstantBuffer.hpp>
 #include <Graphics/Renderer/IPipelineState.hpp>
 #include <Graphics/Renderer/IRenderTarget.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/IShader.hpp>
 #include <Graphics/Renderer/IStructuredBuffer.hpp>
 #include <Graphics/Renderer/ITexture.hpp>
@@ -23,16 +32,34 @@
 #include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <chrono>
+#include <cstring>
+#include <utility>
 
 namespace fbzz::renderer {
 
 namespace {
 ResourceManager* s_activeResourceManager = nullptr;
 std::atomic<uint64_t> s_resourceManagerInstanceId{0};
+/// @note GPU ハンドルを保持せず、終了した Manager の非所有参照を引かないための描画スレッド専用台帳。
+std::unordered_map<uint64_t, ResourceManager*>& LiveResourceManagers()
+{
+    static std::unordered_map<uint64_t, ResourceManager*> instances;
+    return instances;
+}
 
 /// @note 表面宣言だけで標準 PBR と認定せず、実際にロードした PS に正規化可能な定数を要求する。
 ShaderCapabilities LoadedShaderCapabilities(const IShader& shader, const std::string& path)
 {
+    if (IsErrorShader(path)) {
+        ShaderCapabilities result;
+        const bool skinned = path == ERROR_SKINNED_SHADER;
+        result.vertex = skinned ? ShaderVertexContract::STANDARD_SKINNED : ShaderVertexContract::STANDARD_SURFACE;
+        result.surface = ShaderSurfaceContract::UNLIT;
+        result.opacity = ShaderOpacityContract::OPAQUE_OUTPUT;
+        result.preview = skinned ? ShaderPreviewKind::SKINNED : ShaderPreviewKind::SURFACE;
+        return result;
+    }
     auto capabilities = ResolveShaderCapabilities(path);
     if (!capabilities.IsStandardPbr()) return capabilities;
     const auto& descriptor = shader.GetDescriptor();
@@ -54,12 +81,27 @@ ShaderCapabilities LoadedShaderCapabilities(const IShader& shader, const std::st
 }
 
 /// @note Windows の '\\' とアセット記述で使う '/' を同一キーにし、同じ実ファイルの二重キャッシュを防ぐ。
-std::string TextureCacheKey(std::string_view path, bool flipGreen = false)
+std::string TextureSourceKey(std::string_view path)
 {
     /// @note Sprite参照はGPU上では親Textureを共有する。サブアセット名をキャッシュキーへ
     /// @note       含めると同じ画像を重複ロードするため、ここで親パスへ正規化する。
     std::string key = NormalizeTextureKey(path);
     std::replace(key.begin(), key.end(), '\\', '/');
+    return key;
+}
+
+/// @note Source resolver へ渡す表記は従来のまま保ち、検索 identity の casefold と区別する。
+std::string TextureCacheKey(std::string_view path, bool flipGreen = false)
+{
+    std::string key = TextureSourceKey(path);
+#if defined(_WIN32)
+    /// @note Windows の通常のパス比較と Asset 層の ASCII casefold に揃え、stream 公開と reload のキーを共有する。
+    /// @note 非 Windows の case-sensitive なパスと、既存の Sprite/GUID/相対参照の解決順は変更しない。
+    for (char& character : key) {
+        if (character >= 'A' && character <= 'Z')
+            character = static_cast<char>(character + ('a' - 'A'));
+    }
+#endif
     if (flipGreen) key += "|flipGreen";
     return key;
 }
@@ -82,15 +124,19 @@ ResourceManager::ResourceManager(IRenderer& renderer)
 {
     m_instanceId = s_resourceManagerInstanceId.fetch_add(1, std::memory_order_relaxed) + 1;
     assert(m_instanceId != 0 && "Resource manager identity exhausted");
+    LiveResourceManagers().emplace(m_instanceId, this);
     s_activeResourceManager = this;
 }
 
 ResourceManager::~ResourceManager()
 {
+    prepared_skinning_detail::InvalidateResourceOwner(m_instanceId);
+    if (!m_rendererDetached) m_renderer.WaitForCpuFrame();
+    LiveResourceManagers().erase(m_instanceId);
     /// @note 解放より先に数える理由: ReleaseOwnedResourcesForShutdown() は台帳ごと畳むため、
     /// @note       後で数えると常に 0 になる (以前はここが逆で、報告が出ることは無かった)。
     LogLiveDebugResources();
-    ReleaseOwnedResourcesForShutdown();
+    if (!m_rendererDetached) ReleaseOwnedResourcesForShutdown();
 
     if (s_activeResourceManager == this)
         s_activeResourceManager = nullptr;
@@ -100,6 +146,15 @@ RenderResources& ResourceManager::Rendering()
 {
     if (!m_renderResources) m_renderResources = std::make_unique<RenderResources>(*this);
     return *m_renderResources;
+}
+
+void ResourceManager::PrepareRendererShutdown()
+{
+    if (m_rendererDetached) return;
+    prepared_skinning_detail::InvalidateResourceOwner(m_instanceId);
+    m_renderer.WaitForCpuFrame();
+    ReleaseOwnedResourcesForShutdown();
+    m_rendererDetached = true;
 }
 
 void ResourceManager::ReleaseRenderView(uint32_t key)
@@ -112,6 +167,27 @@ ResourceManager* ResourceManager::Active()
     return s_activeResourceManager;
 }
 
+ResourceManager* FindLiveResourceManager(uint64_t instanceId)
+{
+    const auto& instances = LiveResourceManagers();
+    const auto found = instances.find(instanceId);
+    return found == instances.end() ? nullptr : found->second;
+}
+
+namespace {
+/// @note Resolve an asset identity before the backend derives cache filenames; a derived GUID still identifies the original HLSL.
+std::string ResolveShaderSource(const std::string& reference)
+{
+    if (!reference.starts_with("guid:")) return reference;
+    const std::string source = ResolveAssetPath(reference);
+    if (source.empty() || source.starts_with("guid:")) {
+        FBZZ_LOG_ERROR("Shader asset reference is unresolved: %s", reference.c_str());
+        return {};
+    }
+    return source;
+}
+} /// @note namespace
+
 ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
 {
     /// @note LoadTexture と同様にパス区切りを統一し、大文字小文字の違いによる同一シェーダーの
@@ -121,7 +197,9 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
     auto it = m_shaderCache.find(key);
     if (it != m_shaderCache.end()) return it->second;
 
-    auto shader = m_renderer.CreateNativeShader(key);
+    const std::string source = ResolveShaderSource(key);
+    if (source.empty()) return ResourceHandle<ShaderTag>::Null();
+    auto shader = m_renderer.CreateNativeShader(source);
     if (!shader) {
         FBZZ_LOG_ERROR("Shader load failed: %s", key.c_str());
         return ResourceHandle<ShaderTag>::Null();
@@ -134,6 +212,15 @@ ResourceHandle<ShaderTag> ResourceManager::LoadShader(std::string_view path)
     m_shaderCache[key] = handle;
     m_shaderCapabilities[(static_cast<uint64_t>(handle.gen) << 32) | handle.id] = capabilities;
     return handle;
+}
+
+Material* ResourceManager::GetErrorMaterial(bool skinned)
+{
+    auto& material = skinned ? m_skinnedErrorMaterial : m_surfaceErrorMaterial;
+    if (!material) material = std::make_unique<Material>();
+    material->shaderPath = skinned ? ERROR_SKINNED_SHADER : ERROR_SURFACE_SHADER;
+    material->shader = LoadShader(material->shaderPath);
+    return Get(material->shader) ? material.get() : nullptr;
 }
 
 ShaderCapabilities ResourceManager::GetShaderCapabilities(ResourceHandle<ShaderTag> handle) const
@@ -150,7 +237,9 @@ ResourceHandle<ShaderTag> ResourceManager::ReloadShader(std::string_view path)
     if (it == m_shaderCache.end())
         return LoadShader(path);
 
-    auto newShader = m_renderer.CreateNativeShader(key);
+    const std::string source = ResolveShaderSource(key);
+    if (source.empty()) return it->second;
+    auto newShader = m_renderer.CreateNativeShader(source);
     if (!newShader) {
         FBZZ_LOG_ERROR("ReloadShader failed: %s", key.c_str());
         return it->second;
@@ -172,7 +261,9 @@ bool ResourceManager::ReloadAllShaders()
     std::vector<ShaderCapabilities> capabilities;
     pending.reserve(m_shaderCache.size());
     for (const auto& [path, handle] : m_shaderCache) {
-        auto newShader = m_renderer.CreateNativeShader(path);
+        const std::string source = ResolveShaderSource(path);
+        if (source.empty()) return false;
+        auto newShader = m_renderer.CreateNativeShader(source);
         if (!newShader) {
             FBZZ_LOG_WARN("ReloadAllShaders: failed to reload %s; keeping all previous shaders", path.c_str());
             return false;
@@ -197,6 +288,7 @@ bool ResourceManager::ReloadAllShaders()
 
 void ResourceManager::Reset()
 {
+    prepared_skinning_detail::InvalidateResourceOwner(m_instanceId);
     /// @note 所有リソースを全て手放し、ResourceHandle の gen を進めて旧ハンドルを無効化する。
     /// @note 描画状態も破棄し、旧デバイスのハンドルやビュー履歴を次の描画へ持ち越さない。
     ReleaseOwnedResourcesForShutdown();
@@ -235,23 +327,38 @@ ResourceHandle<TextureTag> ResourceManager::LoadTextureUnpinned(std::string_view
 ResourceHandle<TextureTag> ResourceManager::LoadTextureImpl(std::string_view path, bool pin,
                                                              bool flipGreen)
 {
-    const std::string sourceKey = TextureCacheKey(path);
+    const std::string sourceKey = TextureSourceKey(path);
     const std::string key = TextureCacheKey(path, flipGreen);
     /// @note 配った先がハンドルを持ち続けるかもしれない。一度でも配ったキーは非同期側から外さない。
     if (pin) m_texturesHandedOut.insert(key);
     auto it = m_textureCache.find(key);
     if (it != m_textureCache.end()) return it->second;
 
+    const auto loadBegin = std::chrono::steady_clock::now();
+    const auto recordSynchronousLoad = [&](bool succeeded) {
+        const double elapsedMs = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - loadBegin).count();
+        ++m_syncTextureLoadStats.attempts;
+        if (succeeded) ++m_syncTextureLoadStats.successes;
+        else ++m_syncTextureLoadStats.failures;
+        m_syncTextureLoadStats.totalMilliseconds += elapsedMs;
+        m_syncTextureLoadStats.lastMilliseconds = elapsedMs;
+        m_syncTextureLoadStats.maxMilliseconds = (std::max)(m_syncTextureLoadStats.maxMilliseconds, elapsedMs);
+        m_syncTextureLoadStats.lastPath = key;
+    };
+
     /// @note `.meta` サイドカー表記と生画像パスを同じ公開 API で扱う (ResolveTextureSource が
     /// @note       元画像へ解決)。.mat/Scene は Assets/ 起点の相対パスを保存するがテクスチャ実装は
     /// @note       実ファイルパスを要求するため、AssetManager と同じ解決規則を通して cwd 依存をなくす。
     std::string sourcePath;
     if (!ResolveTextureSource(ResolveAssetPath(sourceKey), sourcePath)) {
+        recordSynchronousLoad(false);
         FBZZ_LOG_ERROR("Texture path resolution failed: %s", key.c_str());
         return ResourceHandle<TextureTag>::Null();
     }
     auto texture = CreateTextureForPath(sourcePath, flipGreen);
     if (!texture) {
+        recordSynchronousLoad(false);
         FBZZ_LOG_ERROR("Texture load failed: %s", key.c_str());
         return ResourceHandle<TextureTag>::Null();
     }
@@ -260,6 +367,7 @@ ResourceHandle<TextureTag> ResourceManager::LoadTextureImpl(std::string_view pat
     ResourceHandle<TextureTag> handle =
         m_textures.Insert(std::move(texture), textureBytes, "Texture", __FILE__, __LINE__);
     m_textureCache[key] = handle;
+    recordSynchronousLoad(true);
     return handle;
 }
 
@@ -271,7 +379,7 @@ ResourceHandle<TextureTag> ResourceManager::ReloadTexture(std::string_view path,
         return LoadTexture(path, flipGreen);
 
     std::string sourcePath;
-    if (!ResolveTextureSource(ResolveAssetPath(TextureCacheKey(path)), sourcePath)) {
+    if (!ResolveTextureSource(ResolveAssetPath(TextureSourceKey(path)), sourcePath)) {
         FBZZ_LOG_ERROR("ReloadTexture path resolution failed: %s", key.c_str());
         return it->second;
     }
@@ -437,22 +545,32 @@ ResourceHandle<TextureTag> ResourceManager::CreateTexture3D(
 ResourceHandle<BufferTag> ResourceManager::CreateVertexBuffer(const void* data, size_t bytes, uint32_t stride,
                                                               Where where)
 {
-    return m_buffers.Insert(m_renderer.CreateNativeVertexBuffer(data, bytes, stride), bytes,
-                            "VertexBuffer", where.file_name(), static_cast<int>(where.line()));
+    ResourceHandle<BufferTag> handle = m_buffers.Insert(
+        m_renderer.CreateNativeVertexBuffer(data, bytes, stride), bytes,
+        "VertexBuffer", where.file_name(), static_cast<int>(where.line()));
+    RegisterBufferMetadata(handle, bytes, stride, data != nullptr && bytes != 0, false, false);
+    return handle;
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateGpuWritableVertexBuffer(size_t bytes, uint32_t stride,
                                                                          Where where)
 {
-    return m_buffers.Insert(m_renderer.CreateNativeGpuWritableVertexBuffer(bytes, stride), bytes,
-                            "GpuWritableVertexBuffer", where.file_name(), static_cast<int>(where.line()));
+    ResourceHandle<BufferTag> handle = m_buffers.Insert(
+        m_renderer.CreateNativeGpuWritableVertexBuffer(bytes, stride), bytes,
+        "GpuWritableVertexBuffer", where.file_name(), static_cast<int>(where.line()));
+    RegisterBufferMetadata(handle, bytes, stride, false, true, false);
+    return handle;
 }
 
 ResourceHandle<BufferTag> ResourceManager::CreateIndexBuffer(const void* data, uint32_t count, Where where)
 {
-    return m_buffers.Insert(m_renderer.CreateNativeIndexBuffer(data, count),
-                            static_cast<std::size_t>(count) * sizeof(uint32_t),
-                            "IndexBuffer", where.file_name(), static_cast<int>(where.line()));
+    const size_t sizeBytes = static_cast<size_t>(count) * sizeof(uint32_t);
+    ResourceHandle<BufferTag> handle = m_buffers.Insert(
+        m_renderer.CreateNativeIndexBuffer(data, count), sizeBytes,
+        "IndexBuffer", where.file_name(), static_cast<int>(where.line()));
+    RegisterBufferMetadata(handle, sizeBytes, sizeof(uint32_t), data != nullptr && count != 0,
+                           false, true);
+    return handle;
 }
 
 ResourceHandle<ConstantBufferTag> ResourceManager::CreateConstantBuffer(size_t sizeBytes, Where where)
@@ -570,20 +688,23 @@ ResourceHandle<TextureTag> ResourceManager::CreateComputeTexture3D(
 ResourceHandle<TextureTag> ResourceManager::CreateDynamicTexture(
     uint32_t width, uint32_t height, DynamicTextureFormat format, Where where)
 {
-    auto texture = m_renderer.CreateNativeDynamicTexture(width, height, format);
-    if (!texture) {
-        /// @note 未対応バックエンドでは nullptr が返る。呼び出し側は Null ハンドルで縮退を判断する。
-        FBZZ_LOG_WARN("CreateDynamicTexture: backend does not support dynamic textures (%ux%u)",
-                      width, height);
-        return ResourceHandle<TextureTag>::Null();
-    }
-    const std::size_t bytes =
-        EstimateTextureBytes(*texture, format == DynamicTextureFormat::R8 ? 1u : 4u);
-    return m_textures.Insert(std::move(texture), bytes, "DynamicTexture", where.file_name(), static_cast<int>(where.line()));
+    ResourceHandle<TextureTag> result;
+    /// @note Initial clearing records a transfer, so creation obeys the same synchronous render-thread boundary as updates.
+    m_renderer.ExecuteResourceOperation([&] {
+        auto texture = m_renderer.CreateNativeDynamicTexture(width, height, format);
+        if (!texture) {
+            FBZZ_LOG_WARN("CreateDynamicTexture: backend does not support dynamic textures (%ux%u)", width, height);
+            return;
+        }
+        const std::size_t bytes = EstimateTextureBytes(*texture, format == DynamicTextureFormat::R8 ? 1u : 4u);
+        result = m_textures.Insert(std::move(texture), bytes, "DynamicTexture", where.file_name(), static_cast<int>(where.line()));
+    });
+    return result;
 }
 
 ResourceHandle<TextureTag> ResourceManager::RegisterTexture(std::unique_ptr<ITexture> texture, Where where)
 {
+    m_renderer.WaitForCpuFrame();
     if (!texture) return ResourceHandle<TextureTag>::Null();
     const std::size_t bytes = EstimateTextureBytes(*texture);
     return m_textures.Insert(std::move(texture), bytes, "AdoptedTexture", where.file_name(), static_cast<int>(where.line()));
@@ -628,7 +749,209 @@ ResourceHandle<StructuredBufferTag> ResourceManager::CreateRWStructuredBuffer(co
 
 IShader* ResourceManager::Get(ResourceHandle<ShaderTag> h) { return m_shaders.Get(h); }
 ITexture* ResourceManager::Get(ResourceHandle<TextureTag> h) { return m_textures.Get(h); }
-IBuffer* ResourceManager::Get(ResourceHandle<BufferTag> h) { return m_buffers.Get(h); }
+IBuffer* ResourceManager::Get(ResourceHandle<BufferTag> h)
+{
+    const cpu_trace::SourceScope traceSource(cpu_trace::Source::BUFFER_GET, "ResourceManager::Get(Buffer)", true);
+    /// @note Static meshes have no deformed buffer; a null lookup has no shadow/version to synchronize and must not flush the CPU command frame.
+    if (!h.IsValid()) { cpu_trace::Count(cpu_trace::Counter::BUFFER_INVALID); return nullptr; }
+    /// @note CPU shadow と内容版は転送要求の完了後に読む。Render Thread の再入では待たない。
+    if (!m_rendererDetached && !m_renderer.IsRenderThread()) {
+        cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
+        m_renderer.WaitForCpuFrame();
+    } else {
+        cpu_trace::Count(m_rendererDetached ? cpu_trace::Counter::BUFFER_DETACHED : cpu_trace::Counter::BUFFER_WORKER);
+    }
+    return m_buffers.Get(h);
+}
+
+void ResourceManager::GetBufferStates(std::span<const ResourceHandle<BufferTag>> handles,
+                                      std::span<BufferResourceState> out)
+{
+    ReadBufferStates(handles, out, nullptr);
+}
+
+void ResourceManager::ReadBufferStates(std::span<const ResourceHandle<BufferTag>> handles,
+                                      std::span<BufferResourceState> out,
+                                      buffer_state_detail::BufferStateReadScope* scope)
+{
+    assert(handles.size() == out.size());
+    if (handles.size() != out.size()) return;
+    const cpu_trace::SourceScope traceSource(cpu_trace::Source::BUFFER_GET, "ResourceManager::GetBufferStates", true);
+    const bool hasValidHandle = std::any_of(handles.begin(), handles.end(), [](const auto handle) { return handle.IsValid(); });
+    if (hasValidHandle) {
+        if (!m_rendererDetached && !m_renderer.IsRenderThread()) {
+            cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
+            m_renderer.WaitForCpuFrame();
+        } else {
+            cpu_trace::Count(m_rendererDetached ? cpu_trace::Counter::BUFFER_DETACHED : cpu_trace::Counter::BUFFER_WORKER);
+        }
+    }
+    if (scope) scope->CaptureReadBoundary();
+    ReadNativeBufferStates(handles, out);
+}
+
+void ResourceManager::ReadNativeBufferStates(std::span<const ResourceHandle<BufferTag>> handles,
+                                            std::span<BufferResourceState> out)
+{
+    const uint64_t instance = GetInstanceId(), epoch = GetResetVersion(), frame = FrameStamp();
+    /// @note Resolve after the pump and between getters; callbacks may release, replace or reset any handle.
+    for (size_t index = 0; index < handles.size(); ++index) {
+        out[index] = {};
+        if (!handles[index].IsValid()) { cpu_trace::Count(cpu_trace::Counter::BUFFER_INVALID); continue; }
+        const auto resolve = [&]() -> const IBuffer* {
+            if (GetInstanceId() != instance || GetResetVersion() != epoch || FrameStamp() != frame) return nullptr;
+            return m_buffers.Get(handles[index]);
+        };
+        const auto* buffer = resolve();
+        if (!buffer) continue;
+        BufferResourceState state;
+        state.sizeBytes = buffer->GetSize();
+        buffer = resolve();
+        if (!buffer) continue;
+        state.stride = buffer->GetStride();
+        buffer = resolve();
+        if (!buffer) continue;
+        state.bindlessUavIndex = buffer->GetBindlessUavIndex();
+        buffer = resolve();
+        if (!buffer) continue;
+        state.contentVersion = buffer->GetContentVersion();
+        if (!resolve()) continue;
+        state.live = true;
+        out[index] = state;
+    }
+}
+
+namespace buffer_state_detail {
+namespace {
+thread_local BufferStateReadScope* s_bufferReadScope = nullptr;
+}
+
+BufferStateReadScope::BufferStateReadScope(ResourceManager& resources, IRenderer& expectedFacade) noexcept
+    : m_resources(resources), m_facade(expectedFacade), m_previous(std::exchange(s_bufferReadScope, this)) {}
+
+BufferStateReadScope::~BufferStateReadScope() { s_bufferReadScope = m_previous; }
+
+bool BufferStateReadScope::HasCurrentReadBoundary() const
+{
+    if (!m_armed || m_previous || s_bufferReadScope != this || m_resources.m_rendererDetached
+        || &m_resources.m_renderer != &m_facade || m_resources.GetInstanceId() != m_instance
+        || m_resources.GetResetVersion() != m_epoch || m_resources.FrameStamp() != m_frame) return false;
+    uint64_t submission = 0, revision = 0;
+    return TryObserveIdleReadBoundary(m_facade, submission, revision)
+        && submission == m_submission && revision == m_revision;
+}
+
+bool BufferStateReadScope::Read(std::span<const ResourceHandle<BufferTag>> handles, std::span<BufferResourceState> out)
+{
+    assert(handles.size() == out.size());
+    if (handles.size() != out.size()) return false;
+    if (HasCurrentReadBoundary()) {
+        const cpu_trace::SourceScope source(cpu_trace::Source::BUFFER_GET, "ResourceManager::ReadCurrentBufferStates", true);
+        if (std::any_of(handles.begin(), handles.end(), [](const auto handle) { return handle.IsValid(); }))
+            cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
+        m_resources.ReadNativeBufferStates(handles, out);
+        if (HasCurrentReadBoundary()) return true;
+        m_armed = false;
+        m_resources.GetBufferStates(handles, out);
+        return false;
+    }
+    m_armed = false;
+    m_resources.ReadBufferStates(handles, out, this);
+    if (!m_armed || HasCurrentReadBoundary()) return m_armed;
+    m_armed = false;
+    m_resources.GetBufferStates(handles, out);
+    return false;
+}
+
+IBuffer* BufferStateReadScope::Get(ResourceHandle<BufferTag> handle)
+{
+    if (HasCurrentReadBoundary()) {
+        const cpu_trace::SourceScope source(cpu_trace::Source::BUFFER_GET, "ResourceManager::GetAtCurrentReadBoundary", true);
+        if (!handle.IsValid()) { cpu_trace::Count(cpu_trace::Counter::BUFFER_INVALID); return nullptr; }
+        cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
+        return m_resources.m_buffers.Get(handle);
+    }
+    m_armed = false;
+    return m_resources.Get(handle);
+}
+
+void BufferStateReadScope::CaptureReadBoundary()
+{
+    if (!m_previous && s_bufferReadScope == this && !m_resources.m_rendererDetached
+        && &m_resources.m_renderer == &m_facade
+        && TryObserveIdleReadBoundary(m_facade, m_submission, m_revision)) {
+        m_instance = m_resources.GetInstanceId();
+        m_epoch = m_resources.GetResetVersion();
+        m_frame = m_resources.FrameStamp();
+        m_armed = true;
+    }
+}
+} /// @note namespace buffer_state_detail
+
+bool ResourceManager::GetBufferMetadata(ResourceHandle<BufferTag> handle,
+                                        BufferResourceMetadata& out) const
+{
+    if (!handle.IsValid()) return false;
+    std::lock_guard lock(m_bufferMetadataMutex);
+    if (handle.id >= m_bufferMetadata.size()) return false;
+    const BufferResourceMetadata& metadata = m_bufferMetadata[handle.id];
+    if (!metadata.live || metadata.generation != handle.gen) return false;
+    out = metadata;
+    return true;
+}
+
+MeshletGeometryCache& ResourceManager::Meshlets()
+{
+    if (!m_meshletGeometryCache)
+        m_meshletGeometryCache = std::make_unique<MeshletGeometryCache>();
+    return *m_meshletGeometryCache;
+}
+
+void ResourceManager::RegisterBufferMetadata(ResourceHandle<BufferTag> handle,
+                                             size_t sizeBytes, uint32_t stride,
+                                             bool cpuReadable, bool gpuWritable,
+                                             bool indexBuffer)
+{
+    if (!handle.IsValid()) return;
+    std::lock_guard lock(m_bufferMetadataMutex);
+    if (handle.id >= m_bufferMetadata.size())
+        m_bufferMetadata.resize(static_cast<size_t>(handle.id) + 1);
+    BufferResourceMetadata& metadata = m_bufferMetadata[handle.id];
+    metadata.generation = handle.gen;
+    metadata.sizeBytes = sizeBytes;
+    metadata.stride = stride;
+    metadata.contentVersion = 1;
+    metadata.cpuReadable = cpuReadable;
+    metadata.gpuWritable = gpuWritable;
+    metadata.indexBuffer = indexBuffer;
+    metadata.live = true;
+}
+
+bool ResourceManager::AdvanceBufferContentVersion(ResourceHandle<BufferTag> handle,
+                                                  size_t updateSizeBytes)
+{
+    if (!handle.IsValid() || updateSizeBytes == 0) return false;
+    std::lock_guard lock(m_bufferMetadataMutex);
+    if (handle.id >= m_bufferMetadata.size()) return false;
+    BufferResourceMetadata& metadata = m_bufferMetadata[handle.id];
+    if (!metadata.live || metadata.generation != handle.gen ||
+        metadata.gpuWritable || updateSizeBytes > metadata.sizeBytes)
+        return false;
+    ++metadata.contentVersion;
+    metadata.cpuReadable = true;
+    return true;
+}
+
+void ResourceManager::RemoveBufferMetadata(ResourceHandle<BufferTag> handle)
+{
+    if (!handle.IsValid()) return;
+    std::lock_guard lock(m_bufferMetadataMutex);
+    if (handle.id >= m_bufferMetadata.size()) return;
+    BufferResourceMetadata& metadata = m_bufferMetadata[handle.id];
+    if (metadata.live && metadata.generation == handle.gen)
+        metadata.live = false;
+}
+
 IConstantBuffer* ResourceManager::Get(ResourceHandle<ConstantBufferTag> h) { return m_constantBuffers.Get(h); }
 IPipelineState* ResourceManager::Get(ResourceHandle<PipelineStateTag> h) { return m_pipelineStates.Get(h); }
 IRenderTarget* ResourceManager::Get(ResourceHandle<RenderTargetTag> h) { return m_renderTargets.Get(h); }
@@ -665,19 +988,26 @@ ResourceHandle<TextureTag> ResourceManager::GetDepthTexture(ResourceHandle<Rende
 
 void ResourceManager::Update(ResourceHandle<BufferTag> h, const void* data, size_t sizeBytes)
 {
-    if (IBuffer* buffer = Get(h))
-        buffer->Update(data, sizeBytes);
-}
-
-void ResourceManager::Update(ResourceHandle<ConstantBufferTag> h, const void* data, size_t sizeBytes)
-{
     if (!m_renderer.IsRenderThread() && data && sizeBytes != 0) {
         std::vector<uint8_t> bytes(sizeBytes);
         std::memcpy(bytes.data(), data, sizeBytes);
-        if (m_renderer.RecordResourceUpdate([this, h, bytes = std::move(bytes)] { Update(h, bytes.data(), bytes.size()); })) return;
+        std::function<void()> transfer = [this, h, bytes = std::move(bytes)] {
+            if (IBuffer* buffer = m_buffers.Get(h)) buffer->Update(bytes.data(), bytes.size());
+        };
+        bool recorded = false;
+        {
+            const CpuShadowTransferScope classification(m_renderer);
+            recorded = m_renderer.RecordResourceUpdate(std::move(transfer));
+        }
+        if (recorded) {
+            static_cast<void>(AdvanceBufferContentVersion(h, sizeBytes));
+            return;
+        }
     }
-    if (IConstantBuffer* cb = Get(h))
-        cb->Update(data, sizeBytes);
+    if (IBuffer* buffer = Get(h)) {
+        buffer->Update(data, sizeBytes);
+        static_cast<void>(AdvanceBufferContentVersion(h, sizeBytes));
+    }
 }
 
 bool ResourceManager::DefersResourceUpdates() const { return !m_renderer.IsRenderThread(); }
@@ -686,21 +1016,93 @@ void ResourceManager::UpdateConstantBuffers(std::shared_ptr<const ConstantBuffer
     if (!batch || batch->entries.empty()) return;
     for (const auto& entry : batch->entries)
         if (entry.size == 0 || entry.offset > batch->bytes.size() || entry.size > batch->bytes.size() - entry.offset) return;
-    if (!m_renderer.IsRenderThread()
-        && m_renderer.RecordResourceUpdate([this,batch] { UpdateConstantBuffers(batch); })) return;
+    if (!m_renderer.IsRenderThread()) {
+        std::function<void()> transfer = [this, batch] { UpdateConstantBuffers(batch); };
+        bool recorded = false;
+        {
+            const CpuShadowTransferScope classification(m_renderer);
+            recorded = m_renderer.RecordResourceUpdate(std::move(transfer));
+        }
+        if (recorded) return;
+    }
     for (const auto& entry : batch->entries)
         if (auto* cb = Get(entry.handle); cb && entry.size <= cb->GetSize())
             cb->Update(batch->bytes.data() + entry.offset,entry.size);
 }
 
+bool ResourceManager::IsMaterialTransferProducer(const IRenderer* expectedFacade) const
+{
+    return expectedFacade == &m_renderer && !m_renderer.IsRenderThread();
+}
+
+void ResourceManager::UpdateOwnedMaterialBytes(ResourceHandle<ConstantBufferTag> handle,
+    std::shared_ptr<const material_transfer_detail::OwnedConstantBufferData> payload)
+{
+    if (!payload) return;
+    const auto bytes = payload->Bytes();
+    if (!m_renderer.IsRenderThread() && !bytes.empty()) {
+        /// @note Retain this strong owner even if recording unexpectedly rejects; the direct fallback never borrows a dead closure.
+        std::function<void()> transfer = [this, handle, payload] {
+            const auto ownedBytes = payload->Bytes();
+            Update(handle, ownedBytes.data(), ownedBytes.size());
+        };
+        bool recorded = false;
+        {
+            const CpuShadowTransferScope classification(m_renderer);
+            recorded = m_renderer.RecordResourceUpdate(std::move(transfer));
+        }
+        if (recorded) return;
+    }
+    if (IConstantBuffer* cb = Get(handle)) cb->Update(bytes.data(), bytes.size());
+}
+
+void ResourceManager::Update(ResourceHandle<ConstantBufferTag> h, const void* data, size_t sizeBytes)
+{
+    if (!m_renderer.IsRenderThread() && data && sizeBytes != 0) {
+        std::vector<uint8_t> bytes(sizeBytes);
+        std::memcpy(bytes.data(), data, sizeBytes);
+        std::function<void()> transfer = [this, h, bytes = std::move(bytes)] { Update(h, bytes.data(), bytes.size()); };
+        bool recorded = false;
+        {
+            const CpuShadowTransferScope classification(m_renderer);
+            recorded = m_renderer.RecordResourceUpdate(std::move(transfer));
+        }
+        if (recorded) return;
+    }
+    if (IConstantBuffer* cb = Get(h))
+        cb->Update(data, sizeBytes);
+}
+
 void ResourceManager::Update(ResourceHandle<StructuredBufferTag> h, const void* data, size_t sizeBytes)
 {
+    if (!m_renderer.IsRenderThread() && data && sizeBytes != 0) {
+        std::vector<uint8_t> bytes(sizeBytes);
+        std::memcpy(bytes.data(), data, sizeBytes);
+        if (m_renderer.RecordResourceUpdate([this, h, bytes = std::move(bytes)] { Update(h, bytes.data(), bytes.size()); })) return;
+    }
     if (IStructuredBuffer* sb = Get(h))
         sb->Update(data, sizeBytes);
 }
 
+bool ResourceManager::UpdateRegion(ResourceHandle<StructuredBufferTag> handle, const void* data, size_t bytes, size_t offset)
+{
+    if (!data || bytes==0) return false;
+    bool result=false;
+    m_renderer.ExecuteResourceOperation([&] {
+        if (auto* buffer=Get(handle); buffer && offset<=buffer->GetSize() && bytes<=buffer->GetSize()-offset)
+            result=buffer->UpdateRegion(data,bytes,offset);
+    });
+    return result;
+}
+
 void ResourceManager::Release(ResourceHandle<ShaderTag> h)
 {
+    /// @note Renderer shutdown already released owned resources; late Material/FontAtlas destructors must not call its detached reference.
+    if (m_rendererDetached) return;
+    if (!m_renderer.IsRenderThread()) {
+        m_renderer.ExecuteResourceOperation([&] { Release(h); });
+        return;
+    }
     /// @note Released generations must not survive in the path cache; a later Load/Reload creates a new live handle.
     for (auto it = m_shaderCache.begin(); it != m_shaderCache.end();) {
         if (it->second == h) it = m_shaderCache.erase(it);
@@ -709,17 +1111,49 @@ void ResourceManager::Release(ResourceHandle<ShaderTag> h)
     m_shaders.Remove(h);
     m_shaderCapabilities.erase((static_cast<uint64_t>(h.gen) << 32) | h.id);
 }
-void ResourceManager::Release(ResourceHandle<TextureTag> h) { m_textures.Remove(h); }
+void ResourceManager::Release(ResourceHandle<TextureTag> h)
+{
+    if (m_rendererDetached) return;
+    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
+    m_textures.Remove(h);
+}
 void ResourceManager::Release(ResourceHandle<BufferTag> h)
 {
+    if (m_rendererDetached) return;
+    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
+    if (m_meshletGeometryCache)
+        m_meshletGeometryCache->Invalidate(*this, h);
+    RemoveBufferMetadata(h);
     m_buffers.Remove(h);
 }
-void ResourceManager::Release(ResourceHandle<ConstantBufferTag> h) { m_constantBuffers.Remove(h); }
-void ResourceManager::Release(ResourceHandle<PipelineStateTag> h) { m_pipelineStates.Remove(h); }
-void ResourceManager::Release(ResourceHandle<StructuredBufferTag> h) { m_structuredBuffers.Remove(h); }
-void ResourceManager::Release(ResourceHandle<AccelerationStructureTag> h) { m_accelerationStructures.Remove(h); }
+void ResourceManager::Release(ResourceHandle<ConstantBufferTag> h)
+{
+    if (m_rendererDetached) return;
+    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
+    m_constantBuffers.Remove(h);
+}
+void ResourceManager::Release(ResourceHandle<PipelineStateTag> h)
+{
+    if (m_rendererDetached) return;
+    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
+    m_pipelineStates.Remove(h);
+}
+void ResourceManager::Release(ResourceHandle<StructuredBufferTag> h)
+{
+    if (m_rendererDetached) return;
+    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
+    m_structuredBuffers.Remove(h);
+}
+void ResourceManager::Release(ResourceHandle<AccelerationStructureTag> h)
+{
+    if (m_rendererDetached) return;
+    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
+    m_accelerationStructures.Remove(h);
+}
 void ResourceManager::Release(ResourceHandle<RenderTargetTag> h)
 {
+    if (m_rendererDetached) return;
+    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
     if (m_renderResources) m_renderResources->ReleaseOutput(h);
     const uint64_t key = Key(h);
     if (auto colors = m_renderTargetColors.find(key); colors != m_renderTargetColors.end()) {
@@ -741,6 +1175,14 @@ uint64_t ResourceManager::Key(ResourceHandle<RenderTargetTag> h)
 
 void ResourceManager::ReleaseOwnedResourcesForShutdown()
 {
+    if (!m_renderer.IsRenderThread()) {
+        m_renderer.ExecuteResourceOperation([&] { ReleaseOwnedResourcesForShutdown(); });
+        return;
+    }
+    if (m_meshletGeometryCache) {
+        m_meshletGeometryCache->Release(*this);
+        m_meshletGeometryCache.reset();
+    }
     m_renderResources.reset();
     /// @note RenderTarget 由来の TextureTag は RT の SRV を参照するラッパーなので、
     /// @note       マップを先に消して shutdown 時の重複解放経路を断つ。
@@ -759,6 +1201,11 @@ void ResourceManager::ReleaseOwnedResourcesForShutdown()
     m_pipelineStates.ReleaseOwnedForShutdown();
     m_structuredBuffers.ReleaseOwnedForShutdown();
     m_shaders.ReleaseOwnedForShutdown();
+    {
+        std::lock_guard lock(m_bufferMetadataMutex);
+        m_bufferMetadata.clear();
+        m_bufferMetadata.resize(1);
+    }
 }
 
 namespace {
@@ -835,6 +1282,18 @@ std::size_t ResourceManager::GetLiveDebugResourceBytes() const
          + m_accelerationStructures.GetLiveDebugBytes();
 }
 
+std::size_t ResourceManager::GetLiveDebugResourceCount() const
+{
+    return m_shaders.GetLiveDebugCount()
+         + m_textures.GetLiveDebugCount()
+         + m_buffers.GetLiveDebugCount()
+         + m_constantBuffers.GetLiveDebugCount()
+         + m_pipelineStates.GetLiveDebugCount()
+         + m_renderTargets.GetLiveDebugCount()
+         + m_structuredBuffers.GetLiveDebugCount()
+         + m_accelerationStructures.GetLiveDebugCount();
+}
+
 void ResourceManager::TickLeakWatchdog()
 {
 #if defined(FBZZ_GPU_VALIDATION)
@@ -881,18 +1340,6 @@ std::size_t ResourceManager::ReleaseMeshBuffers(Mesh& mesh)
     mesh.vertexBuffer = {};
     mesh.indexBuffer  = {};
     return released;
-}
-
-std::size_t ResourceManager::GetLiveDebugResourceCount() const
-{
-    return m_shaders.GetLiveDebugCount()
-         + m_textures.GetLiveDebugCount()
-         + m_buffers.GetLiveDebugCount()
-         + m_constantBuffers.GetLiveDebugCount()
-         + m_pipelineStates.GetLiveDebugCount()
-         + m_renderTargets.GetLiveDebugCount()
-         + m_structuredBuffers.GetLiveDebugCount()
-         + m_accelerationStructures.GetLiveDebugCount();
 }
 
 void ResourceManager::CollectLiveDebugResources(std::vector<core::AllocationInfo>& out) const

@@ -1,19 +1,21 @@
-// FBZZ Engine
-// Pipeline/Mask/ObjectMaskSkinned.hlsl | fbzz::renderer
-// GPU スキニングされたメッシュのオブジェクトマスク
+/// @file    ObjectMaskSkinned.hlsl
+/// @brief   ObjectMaskSkinned.hlsl の既存描画と共通頂点契約。
+/// @author  Hasegawa Jin
+/// @date    2026-08-29
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/Skinning.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
 cbuffer ObjectMaskConstants : register(CB_MATERIAL)
 {
     float4 objectMaskPayload;
-    float4 objectMaskFlags;    // x = visibleOnly
+    float4 objectMaskFlags;    ///< @note x = visibleOnly
 };
 
-// 遮蔽の判定はここで済ませる (ObjectMask.hlsl と同じ理由)。
+/// @note 遮蔽の判定はここで済ませる (ObjectMask.hlsl と同じ理由)。
 FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
 static const float kObjectMaskDepthBias = 0.00002f;
 
@@ -22,21 +24,10 @@ struct MaskPSInput
     float4 position : SV_POSITION;
 };
 
-float4x4 BlendSkinMatrix(SkinnedVSInput v)
-{
-    return boneMatrices[v.boneIndices.x] * v.boneWeights.x
-         + boneMatrices[v.boneIndices.y] * v.boneWeights.y
-         + boneMatrices[v.boneIndices.z] * v.boneWeights.z
-         + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
-}
-
 MaskPSInput VSMain(SkinnedVSInput input)
 {
     MaskPSInput output;
-    float4x4 skinMatrix = BlendSkinMatrix(input);
-    float3 localPos = mul(float4(input.position, 1.0f), skinMatrix).xyz;
-    float3 worldPos = mul(float4(localPos, 1.0f), world).xyz;
-    output.position = mul(float4(worldPos, 1.0f), viewProjection);
+    output.position = SkinningMaskClipPosition(input, world, viewProjection);
     return output;
 }
 

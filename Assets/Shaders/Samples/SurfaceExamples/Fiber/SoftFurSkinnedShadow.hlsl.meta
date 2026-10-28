@@ -1,0 +1,14 @@
+# @file    SoftFurSkinnedShadow.hlsl.meta
+# @brief   Sample asset identity and explicit shared geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = '312f4095afc64c30811d4f391b8a4a04'
+
+[shader]
+version = 1
+vertex = 'fiber_shell_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_shell'

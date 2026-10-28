@@ -1,39 +1,34 @@
-// FBZZ Engine
-// Material/Surface/Subsurface.hlsl | Material
-// 簡易サブサーフェス スキャッタリング (SSS) — 皮膚・蝋・葉など透過感のある素材向け
-//
-// ラップ拡散 (wrap diffuse) で影境界を柔らかくし、
-// ビュー依存バックスキャターで薄い部分の透過光を再現する。
-//
-// emissiveColor  : サブサーフェス散乱色 (皮膚なら赤みがかった肌色)
-// emissiveScale  : 散乱強度 (0 = 通常 Lambert, 1 = 強い SSS)
-// roughness      : ラップ量制御 (高いほど影側にも光が回り込む)
+/// @file    Subsurface.hlsl
+/// @brief   Subsurface.hlsl の既存描画と共通頂点契約。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/MaterialVertex.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Common/MaterialTextures.hlsli"
 
-// SSS で使うパラメータのみ宣言 (metallic は不要)
+/// @note SSS で使うパラメータのみ宣言 (metallic は不要)
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
-    float4 albedo;             // RGBA ベースカラー            offset  0
-    float  roughness;          // ラップ量制御 (高=光が回り込む) offset 16
-    float  normalStrength;     // 法線マップ強度                offset 20
-    float  occlusionStrength;  // AO ブレンド強度              offset 24
-    float  alphaCutoff;        // アルファカットオフ             offset 28
-    float3 emissiveColor;      // SSS 散乱色                   offset 32
-    float  emissiveScale;      // SSS 散乱強度                 offset 44
-    float2 uvTiling;           // UV タイリング                offset 48
-    float2 uvOffset;           // UV オフセット                offset 56
-    uint   textureMask;        // テクスチャフラグ              offset 64
+    float4 albedo;             /// @note RGBA ベースカラー            offset  0
+    float  roughness;          /// @note ラップ量制御 (高=光が回り込む) offset 16
+    float  normalStrength;     /// @note 法線マップ強度                offset 20
+    float  occlusionStrength;  /// @note AO ブレンド強度              offset 24
+    float  alphaCutoff;        /// @note アルファカットオフ             offset 28
+    float3 emissiveColor;      /// @note SSS 散乱色                   offset 32
+    float  emissiveScale;      /// @note SSS 散乱強度                 offset 44
+    float2 uvTiling;           /// @note UV タイリング                offset 48
+    float2 uvOffset;           /// @note UV オフセット                offset 56
+    uint   textureMask;        /// @note テクスチャフラグ              offset 64
 
-    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
-    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    /// @note bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    /// @note ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
     uint texAlbedoIndex;
     uint texNormalIndex;
     uint texAOIndex;
@@ -48,14 +43,7 @@ SamplerComparisonState sampShadow  : register(SAMPLER_SHADOW);
 
 PSInput VSMain(VSInput v)
 {
-    PSInput o;
-    float4 worldPos4 = mul(float4(v.position, 1.0f), world);
-    o.worldPos   = worldPos4.xyz;
-    o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(v.normal,  (float3x3)worldInvTranspose));
-    o.tangent    = normalize(mul(v.tangent, (float3x3)world));
-    o.uv         = v.uv;
-    return o;
+    return TransformMaterialVertex(v);
 }
 
 float4 PSMain(PSInput p) : SV_Target0
@@ -85,19 +73,19 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    // Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
+    /// @note Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
     shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
     ao *= FBZZ_ScreenAO(p.svPosition.xy);
 
-    // ラップ拡散: roughness が高いほど光が影側に回り込む。
-    // wrap=0 で通常 Lambert、wrap=1 で半球全体がほぼ均等に照らされる。
+    /// @note ラップ拡散: roughness が高いほど光が影側に回り込む。
+    /// @note wrap=0 で通常 Lambert、wrap=1 で半球全体がほぼ均等に照らされる。
     float  wrap        = roughness * 0.8f;
     float  NdotL_wrap  = saturate((dot(N, L) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
     float3 ambient     = col * 0.08f * ao;
     float3 diffuse     = col * lightColor * lightIntensity * NdotL_wrap * shadow;
 
-    // ビュー依存バックスキャター: カメラ-ライト-サーフェス が直線に近いほど強い透過光。
-    // 薄い素材 (耳、手など) で裏側からの透過光を模倣する。
+    /// @note ビュー依存バックスキャター: カメラ-ライト-サーフェス が直線に近いほど強い透過光。
+    /// @note 薄い素材 (耳、手など) で裏側からの透過光を模倣する。
     float  backScatter = pow(saturate(dot(V, -L)), 2.5f) * shadow;
     float3 scatter     = emissiveColor * emissiveScale
                        * (backScatter + 0.15f)
@@ -105,8 +93,8 @@ float4 PSMain(PSInput p) : SV_Target0
 
     float3 result = ambient + diffuse + scatter;
 
-    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
-    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    /// @note 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    /// @note (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
         float ndotlp = saturate((dot(N, ps.L) + wrap) / ((1.0f + wrap) * (1.0f + wrap)));
         result += col * ps.color * ps.intensity * ndotlp;

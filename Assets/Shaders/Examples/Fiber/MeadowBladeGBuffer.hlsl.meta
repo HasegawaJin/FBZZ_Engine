@@ -1,0 +1,14 @@
+# @file    MeadowBladeGBuffer.hlsl.meta
+# @brief   Asset identity and shared Fiber geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-21
+[meta]
+guid = '154a6f24a1d5460ab03bd5ad8b41c530'
+
+[shader]
+version = 1
+vertex = 'fiber_blade_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_blade'

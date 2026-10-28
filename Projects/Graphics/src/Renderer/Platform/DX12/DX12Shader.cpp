@@ -3,6 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #include "DX12Shader.hpp"
+#include <Graphics/Renderer/BuiltinShader.hpp>
+#include <Graphics/Renderer/Mesh.hpp>
+#include "ErrorSurfaceBytecode.inl"
+#include "ErrorSkinnedBytecode.inl"
+#include "ErrorPixelBytecode.inl"
 
 #include <Core/Logger.hpp>
 #include "GraphicsRuntimeContract.hpp"
@@ -206,6 +211,12 @@ std::vector<uint8_t> CompileShader(
                     normalized.substr(anchorIndex + anchor.size()));
         }
         error.clear();
+        /// @note A resolver may map an asset identity back to its source; cache writes must never target HLSL.
+        if (output.extension() != L".cso") {
+            FBZZ_LOG_WARN("DX12Shader: rejected non-CSO cache destination: %s", csoSavePath.c_str());
+            const auto* begin = static_cast<const uint8_t*>(code->GetBufferPointer());
+            return {begin, begin + code->GetBufferSize()};
+        }
         std::filesystem::create_directories(output.parent_path(), error);
         std::ofstream binary(output, std::ios::binary);
         if (binary.is_open()) {
@@ -466,7 +477,59 @@ bool DX12Shader::Init(const std::string& path)
 {
     m_cacheIdentity = NextShaderCacheIdentity();
     m_path = path;
+    m_vertexBlob.clear();
+    m_meshBlob.clear();
+    m_pixelBlob.clear();
+    m_computeBlob.clear();
+    if (IsErrorShader(path)) {
+        /// @note 固定入力の offset は CPU 頂点型から取得し、DXC DLL の reflection を呼ばない。
+        /// @see https://learn.microsoft.com/windows/win32/api/d3d12/ns-d3d12-d3d12_input_element_desc AlignedByteOffset.
+        const bool skinned = path == ERROR_SKINNED_SHADER;
+        const auto* vertex = skinned ? ERROR_SKINNED_BYTECODE : ERROR_SURFACE_BYTECODE;
+        const size_t vertexSize = skinned ? sizeof(ERROR_SKINNED_BYTECODE) : sizeof(ERROR_SURFACE_BYTECODE);
+        m_vertexBlob.assign(vertex, vertex + vertexSize);
+        m_meshBlob.clear();
+        m_pixelBlob.assign(std::begin(ERROR_PIXEL_BYTECODE), std::end(ERROR_PIXEL_BYTECODE));
+        m_computeBlob.clear();
+        m_descriptor = {};
+        m_semanticNames.clear();
+        m_inputElements = {{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,
+            static_cast<UINT>(offsetof(Vertex, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
+        if (skinned) {
+            m_inputElements.push_back({"BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_UINT, 0,
+                static_cast<UINT>(offsetof(SkinnedVertex, boneIndices)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0});
+            m_inputElements.push_back({"BLENDWEIGHT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0,
+                static_cast<UINT>(offsetof(SkinnedVertex, boneWeights)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0});
+        }
+        m_reflectedStride = skinned ? sizeof(SkinnedVertex) : sizeof(Vertex);
+        return true;
+    }
     const std::string base = CompiledBase(path);
+    if (path.ends_with(".ms.hlsl")) {
+        const std::string msPath = base + ".cso";
+        const std::string psPath = base + ".ps.cso";
+        /// @note The renderer's VS/PS/CS path currently requires SM 6.8; keep MS on that profile so
+        /// @note ResourceDescriptorHeap bindings are available to geometry and pixel stages alike.
+        /// @see https://github.com/microsoft/DirectX-Specs/blob/master/d3d/MeshShader.md Mesh Shader DXIL pipeline.
+        const bool msStale = shader_dependency::IsBinaryStale(path, msPath)
+            || !HasCompilerSignature(msPath, "MSMain", "ms_6_8");
+        const bool psStale = shader_dependency::IsBinaryStale(path, psPath)
+            || !HasCompilerSignature(psPath, "PSMain", "ps_6_8");
+        m_meshBlob = msStale ? std::vector<uint8_t>{} : LoadBinary(msPath);
+        m_pixelBlob = psStale ? std::vector<uint8_t>{} : LoadBinary(psPath);
+        if (m_meshBlob.empty())
+            m_meshBlob = CompileShader(path, "MSMain", "ms_6_8", msPath);
+        if (m_pixelBlob.empty())
+            m_pixelBlob = CompileShader(path, "PSMain", "ps_6_8", psPath);
+        if (m_meshBlob.empty() || m_pixelBlob.empty()) return false;
+        m_descriptor = BuildDescriptor(m_pixelBlob);
+        m_semanticNames.clear();
+        m_inputElements.clear();
+        m_reflectedStride = 0;
+        FBZZ_LOG_DEBUG("DX12Shader: MS/PS準備完了 [%s] ms=%zu ps=%zu",
+                      path.c_str(), m_meshBlob.size(), m_pixelBlob.size());
+        return true;
+    }
     if (path.ends_with(".cs.hlsl")) {
         const std::string csoPath = base + ".cso";
         const bool stale = shader_dependency::IsBinaryStale(path, csoPath)
@@ -559,6 +622,11 @@ D3D12_SHADER_BYTECODE DX12Shader::GetVertexBytecode() const
 D3D12_SHADER_BYTECODE DX12Shader::GetPixelBytecode() const
 {
     return {m_pixelBlob.data(), m_pixelBlob.size()};
+}
+
+D3D12_SHADER_BYTECODE DX12Shader::GetMeshBytecode() const
+{
+    return {m_meshBlob.data(), m_meshBlob.size()};
 }
 
 D3D12_SHADER_BYTECODE DX12Shader::GetComputeBytecode() const

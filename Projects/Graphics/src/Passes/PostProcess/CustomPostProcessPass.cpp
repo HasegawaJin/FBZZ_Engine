@@ -12,6 +12,7 @@
 /// @note 使い切っていて 3 枚目が無いため HDR 段限定にする。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Core/Logger.hpp>
@@ -66,7 +67,7 @@ void BindDeclaredInputs(renderer::DrawCall& dc, RenderPassContext& ctx,
         dc.textures[9] = ctx.Res().Texture("SSAO");
     if ((inputs & renderer::CUSTOM_PASS_INPUT_BLOOM) != 0u && ctx.Res().Texture("Bloom").IsValid())
         dc.textures[10] = ctx.Res().Texture("Bloom");
-    if ((inputs & renderer::CUSTOM_PASS_INPUT_VELOCITY) != 0u && ctx.Res().Target("Velocity").IsValid())
+    if ((inputs & renderer::CUSTOM_PASS_INPUT_VELOCITY) != 0u && ctx.velocityWritten && ctx.Res().Target("Velocity").IsValid())
         dc.textures[11] = resources.GetColorTexture(ctx.Res().Target("Velocity"), 0);
     if ((inputs & renderer::CUSTOM_PASS_INPUT_NORMAL) != 0u && ctx.Res().Target("GBuffer").IsValid())
         dc.textures[12] = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
@@ -78,21 +79,14 @@ renderer::ResourceHandle<renderer::PipelineStateTag> CustomPassPSO(
 {
     if (blend == renderer::BlendMode::OPAQUE_BLEND) return ctx.handles.postprocPSO;
 
-    static uint32_t s_resetVersion = ctx.resources.GetResetVersion();
-    static renderer::ResourceHandle<renderer::PipelineStateTag> s_pso[4];
-
-    if (s_resetVersion != ctx.resources.GetResetVersion()) {
-        s_resetVersion = ctx.resources.GetResetVersion();
-        for (auto& pso : s_pso) pso = {};
-    }
-
+    auto& states = ctx.resources.Rendering().Shared().customPassPSO;
     const auto slot = static_cast<std::size_t>(blend);
     if (slot >= 4) return ctx.handles.postprocPSO;
-    if (!s_pso[slot].IsValid()) {
-        s_pso[slot] = ctx.resources.CreatePipelineState(
+    if (!ctx.resources.Get(states[slot])) {
+        states[slot] = ctx.resources.CreatePipelineState(
             { renderer::RasterizerMode::SOLID, blend, renderer::DepthMode::DEPTH_OFF });
     }
-    return s_pso[slot];
+    return states[slot];
 }
 
 using ResolvedCustomPass = RenderCustomPostInput;

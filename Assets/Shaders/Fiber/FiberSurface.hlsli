@@ -56,25 +56,51 @@ struct FiberInput {
     float3 edgeVector;
 };
 
-/// @note 1 葉 72 頂点 = リボン 2 枚 × 高さ 6 区間 × 6 頂点。区間 h の 2 三角形は (h,0)(h,1)(h+1,0) と (h+1,0)(h,1)(h+1,1)。
+/// @note 1 葉はリボン 2 枚 × 高さ分割数 × 6 頂点。既定 6 分割は従来の 72 頂点と同じ根元・高さ・順序。
 static const uint FIBER_BLADE_CORNER_ROW[6] = { 0, 0, 1, 1, 0, 1 };
 static const uint FIBER_BLADE_CORNER_SIDE[6] = { 0, 1, 0, 0, 1, 1 };
 
-FiberInput FiberBladeInput(uint vertexId)
+FiberInput FiberBladeInputSegments(uint vertexId, uint segments)
 {
-    FiberBladeRoot blade = fiberBlades[vertexId / 72];
-    uint local = vertexId % 72;
-    uint ribbonVertex = local % 36;
+    uint ribbonVertices = segments * 6u;
+    uint bladeVertices = ribbonVertices * 2u;
+    FiberBladeRoot blade = fiberBlades[vertexId / bladeVertices];
+    uint local = vertexId % bladeVertices;
+    uint ribbonVertex = local % ribbonVertices;
     uint corner = ribbonVertex % 6;
     FiberInput v;
     v.position = blade.position;
     v.normal = blade.normal;
     v.uv = float2(blade.u, blade.v);
     v.faceNormal0 = float3(blade.height, blade.rank, 0.0f);
-    v.height = float(ribbonVertex / 6 + FIBER_BLADE_CORNER_ROW[corner]) / 6.0f;
+    v.height = float(ribbonVertex / 6 + FIBER_BLADE_CORNER_ROW[corner]) / float(segments);
     v.edgeCoordinate = float(FIBER_BLADE_CORNER_SIDE[corner]) * 2.0f - 1.0f;
-    v.edgeVector = local < 36 ? blade.side0 : blade.side1;
+    v.edgeVector = local < ribbonVertices ? blade.side0 : blade.side1;
     return v;
+}
+
+FiberInput FiberBladeInput(uint vertexId)
+{
+    /// @note 既定と代表品質は定数除算に保つ。低品質でも根元の順序と先端位置を変えない。
+    if (fiberLod.z <= 0.0f || fiberLod.z >= 6.0f) {
+        FiberBladeRoot blade = fiberBlades[vertexId / 72];
+        uint local = vertexId % 72;
+        uint ribbonVertex = local % 36;
+        uint corner = ribbonVertex % 6;
+        FiberInput v;
+        v.position = blade.position;
+        v.normal = blade.normal;
+        v.uv = float2(blade.u, blade.v);
+        v.faceNormal0 = float3(blade.height, blade.rank, 0.0f);
+        v.height = float(ribbonVertex / 6 + FIBER_BLADE_CORNER_ROW[corner]) / 6.0f;
+        v.edgeCoordinate = float(FIBER_BLADE_CORNER_SIDE[corner]) * 2.0f - 1.0f;
+        v.edgeVector = local < 36 ? blade.side0 : blade.side1;
+        return v;
+    }
+    uint segments = fiberLod.z > 0.0f ? uint(clamp(fiberLod.z, 1.0f, 6.0f)) : 6u;
+    if (segments == 3u) return FiberBladeInputSegments(vertexId, 3u);
+    if (segments == 1u) return FiberBladeInputSegments(vertexId, 1u);
+    return FiberBladeInputSegments(vertexId, segments);
 }
 #elif FIBER_FIN
 struct FiberInput {
@@ -280,6 +306,12 @@ FiberStrand FiberCoverage(FiberPixel p)
 #endif
 }
 
+/// @note Project hooks change albedo/lighting only; deformation and coverage stay shared in every pass.
+/// @see Docs/design/project-effect-shaders.md
+#ifdef FBZZ_FIBER_APPEARANCE
+#include FBZZ_FIBER_APPEARANCE
+#endif
+
 #if FIBER_PASS == 1
 void PSMain(FiberPixel p)
 {
@@ -293,7 +325,11 @@ GBufferOut PSMain(FiberPixel p)
     const float filteredRoughness = FilterSpecularRoughness(normal, saturate(roughness));
     FiberStrand strand = FiberCoverage(p);
     GBufferOut o;
-    o.albedoRoughness = float4(FiberStrandColor(strand, p.height), filteredRoughness);
+    float3 appearanceColor = FiberStrandColor(strand, p.height);
+#ifdef FBZZ_FIBER_APPEARANCE
+    appearanceColor = FiberAppearanceAlbedo(p, strand, appearanceColor);
+#endif
+    o.albedoRoughness = float4(appearanceColor, filteredRoughness);
     o.normalMetallic = float4(normal * 0.5f + 0.5f, 0.0f);
     /// @note Fiber の独自照明は後続の Forward パスで解決する。発光は保持しない。
     o.emission = float4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -312,7 +348,7 @@ float4 PSMain(FiberPixel p) : SV_Target0
         return float4(0, 0, 1, 0);
     float2 currentUv = NdcToUv(p.currentClip.xy / p.currentClip.w);
     float2 previousUv = NdcToUv(p.previousClip.xy / p.previousClip.w);
-    return float4(currentUv - previousUv, 1, 0);
+    return float4(currentUv - previousUv, 1, p.previousClip.z / p.previousClip.w);
 }
 #elif FIBER_PASS == 4
 float4 PSMain(FiberPixel p) : SV_Target0
@@ -324,6 +360,11 @@ float4 PSMain(FiberPixel p) : SV_Target0
 float4 PSMain(FiberPixel p) : SV_Target0
 {
     FiberStrand strand = FiberCoverage(p);
+#ifdef FBZZ_FIBER_APPEARANCE
+    float4 lighting = FiberLighting(p.worldPosition, p.normal, p.root, p.height, p.position.xy, p.localFlow, strand);
+    return float4(FiberAppearanceLighting(p, strand, lighting.rgb), lighting.a);
+#else
     return FiberLighting(p.worldPosition, p.normal, p.root, p.height, p.position.xy, p.localFlow, strand);
+#endif
 }
 #endif

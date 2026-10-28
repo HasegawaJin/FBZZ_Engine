@@ -2,14 +2,18 @@
 /// @brief   カスケードシャドウマップ描画 (静的メッシュ + スキンドメッシュ + Terrain)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-///
 /// @note 1 枚の深度テクスチャを 2x2 のタイルへ分け、カスケードごとに別タイルへ描き込む
 /// @note (アトラス)。カスケードの分割位置・行列・タイル矩形は RenderSystem が
 /// @note RenderPassContext::shadowCascades へ組み立て済みで、このパスは
 /// @note 「タイルを選ぶ → frameCB をそのカスケードの行列へ差し替える → caster を提出」
 /// @note を分割数ぶん繰り返すだけになっている。
 #include "RenderScenePassHelpers.hpp"
+#include <Graphics/Effects/ComputedSkinningOutput.hpp>
+#include "ShadowCasterVisibility.hpp"
+#include "../../Renderer/RenderSceneSpatialQueries.hpp"
 #include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
+#include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
+#include <Graphics/Pipeline/MeshletDrawHelpers.hpp>
 #include <Graphics/Pipeline/InstanceBatch.hpp>
 #include "Graphics/Passes/Geometry/TerrainRenderPass.hpp"
 #include "Graphics/Renderer/DrawCall.hpp"
@@ -20,6 +24,26 @@
 namespace fbzz::renderer {
 
 namespace {
+
+struct MaskedShadowResources {
+    uint64_t owner=0, epoch=UINT64_MAX;
+    std::array<ResourceHandle<ShaderTag>,3> shaders{};
+    ResourceHandle<ConstantBufferTag> material;
+    std::array<uint8_t,96> lastMaterial{};
+    bool hasMaterial=false;
+};
+MaskedShadowResources& MaskedShadows(ResourceManager& resources)
+{
+    static MaskedShadowResources state;
+    if (state.owner!=resources.GetInstanceId() || state.epoch!=resources.GetResetVersion()) {
+        state={}; state.owner=resources.GetInstanceId(); state.epoch=resources.GetResetVersion();
+    }
+    constexpr std::array<const char*,3> paths{"Assets/Shaders/Pipeline/Shadow/AlphaShadow.hlsl",
+        "Assets/Shaders/Pipeline/Shadow/AlphaShadowInstanced.hlsl","Assets/Shaders/Pipeline/Shadow/AlphaShadowSkinned.hlsl"};
+    for (size_t i=0; i<3; ++i) if (!resources.Get(state.shaders[i])) state.shaders[i]=resources.LoadShader(paths[i]);
+    if (!resources.Get(state.material)) state.material=resources.CreateConstantBuffer(96);
+    return state;
+}
 
 /// @brief ShadowCaster — 深度専用パスへ流す 1 描画分の最小情報。
 /// @note 光源に近い順に並べてから描く。シャドウマップは深度専用なので、手前を先に描けば
@@ -37,12 +61,16 @@ struct ShadowCaster {
     renderer::ResourceHandle<renderer::BufferTag>         vertexBuffer;
     renderer::ResourceHandle<renderer::BufferTag>         indexBuffer;
     uint32_t                                              indexCount = 0;
+    const renderer::RenderMeshItem*                       item = nullptr;
+    bool                                                  skinned = false;
     renderer::ResourceHandle<renderer::ShaderTag>         shader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB; ///< @note 無効 = 静的メッシュ
     math::Matrix4                                         world;
+    math::Vector4                                         worldSphere{0, 0, 0, -1};
     /// @note LOD クロスフェード中のディザしきい値。影も本体と同じ市松で抜かないと、
     /// @note 遷移中だけ 2 レベルぶんの影が重なって濃くなる。
     float                                                 lodDither = 0.0f;
+    RenderGpuBonePalette gpuBones;
 };
 
 /// @brief ライト空間の深度キー。ライトビューの第 3 行 (ライト前方への射影) で中心を射影し、
@@ -58,89 +86,22 @@ float ComputeLightDepthKey(const math::Matrix4& lightView, const math::Vector3& 
          + lightView.m[2][3];
 }
 
-/// @brief IsShadowRelevant — この caster がこのカスケード上で意味のある大きさを持つか。
-/// @note 影ボリュームは正射影なのでワールド半径がテクセル数に一意換算できる。直径が数テクセル
-/// @note 未満の caster は PCF (既定 5x5) で均されて絵に出ないため、DrawCall・頂点・ラスタライズの
-/// @note コストが無駄になる前に落とす。しきい値は PCF カーネルより小さく、影が消える方向の破綻は無い。
-/// @note 判定はカスケードごとに行う。遠いカスケードで切り捨てられる小物も、手前では十分な大きさを持つ。
-bool IsShadowRelevant(const ShadowCascade& cascade, const WorldBounds& bounds)
-{
-    /// @note テクセル情報が無ければカリングしない
-    if (cascade.texelWorldSize <= 0.0f) return true;
-    /// @note bounds 未計算メッシュも同様
-    if (bounds.radius <= 0.0f)          return true;
-
-    /// @note 直径が 2 テクセル未満なら影として解像できない。
-    constexpr float kMinTexelDiameter = 2.0f;
-    return (bounds.radius * 2.0f) >= cascade.texelWorldSize * kMinTexelDiameter;
-}
-
-/// @note ComputeCascadeMask — この bounds がどのカスケードへ提出されるかを一度に判定する。
-uint32_t ComputeCascadeMask(const RenderPassContext& ctx, int cascadeCount,
-                            const WorldBounds& bounds, bool hasBounds)
-{
-    if (!hasBounds) {
-        /// @note bounds が取れないメッシュはカリングせず全カスケードへ出す (従来の安全側)。
-        return (1u << cascadeCount) - 1u;
-    }
-
-    uint32_t mask = 0;
-    for (int i = 0; i < cascadeCount; ++i) {
-        const ShadowCascade& cascade = ctx.shadowCascades[i];
-        if (!cascade.frustum.IntersectsSphere(bounds.center, bounds.radius)) continue;
-        if (!IsShadowRelevant(cascade, bounds)) continue;
-        mask |= (1u << i);
-    }
-    return mask;
-}
-
-/// @brief ComputePunctualMask — この bounds がどの Spot / Point スロットへ提出されるか。
-/// @note 透視投影では 1 テクセルの覆うワールド距離がライトからの距離に比例し、カスケードの
-/// @note ような固定 texelWorldSize を持てないため、caster の見かけの角半径 (radius/distance)
-/// @note とテクセルの張る角度を直接比べる、深度に依存しない規則でカリングする。
-uint32_t ComputePunctualMask(const RenderPassContext& ctx,
-                             const WorldBounds& bounds, bool hasBounds)
-{
-    const int count = std::clamp(ctx.punctualShadowViewCount, 0, kMaxPunctualShadows);
-    if (count == 0) return 0;
-
-    uint32_t mask = 0;
-    for (int i = 0; i < count; ++i) {
-        const PunctualShadowView& view = ctx.punctualShadowViews[i];
-        if (hasBounds) {
-            if (!view.frustum.IntersectsSphere(bounds.center, bounds.radius)) continue;
-            if (bounds.radius > 0.0f && view.texelAngularSize > 0.0f) {
-                const math::Vector3 toLight = bounds.center - view.eyePos;
-                const float dist = toLight.Length();
-                /// @note 直径が 2 テクセルに満たない caster は PCF で完全に均されて絵に出ない。
-                /// @note ライトの内側にいる (dist <= radius) 場合は必ず描く。
-                if (dist > bounds.radius) {
-                    const float angularDiameter = 2.0f * bounds.radius / dist;
-                    if (angularDiameter < view.texelAngularSize * 2.0f) continue;
-                }
-            }
-        }
-        /// @note bounds が取れないメッシュはカリングせず全スロットへ出す (従来の安全側)。
-        mask |= (1u << i);
-    }
-    return mask;
-}
-
 void CollectMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
-    const math::Matrix4& sortView, std::vector<ShadowCaster>& outCasters, bool skinned)
+    const math::Matrix4& sortView, std::vector<ShadowCaster>& outCasters, bool skinned,
+    const spatial_detail::CandidateBatch* candidates)
 {
-    const auto& input = SceneInput(ctx);
+    const auto& input = candidates ? *candidates->snapshot : SceneInput(ctx);
     const auto& h = ctx.handles;
     if (skinned && !h.shadowSkinnedShader.IsValid()) return;
-    for (const auto& object : input.objects) {
-        if (object.skinned != skinned || !MatchesView(ctx, object) || !object.castShadows || !object.colorEligible) continue;
+    const auto collectObject = [&](const RenderObject& object) {
+        if (object.skinned != skinned || !MatchesView(ctx, object) || !object.castShadows || !object.colorEligible) return;
         const auto bounds = RenderBounds(ctx, object);
         const bool hasBounds = bounds.radius > 0.0f;
         if (hasBounds && !renderer::IsWithinDrawDistance(CullingView(ctx),
-            { bounds.center, bounds.radius, DrawDistance(ctx, object) })) continue;
-        const uint32_t cascadeMask = ComputeCascadeMask(ctx, cascadeCount, bounds, hasBounds);
-        const uint32_t punctualMask = ComputePunctualMask(ctx, bounds, hasBounds);
-        if (cascadeMask == 0 && punctualMask == 0) continue;
+            { bounds.center, bounds.radius, DrawDistance(ctx, object) })) return;
+        const uint32_t cascadeMask = shadow_visibility_detail::ComputeCascadeMask(ctx, cascadeCount, bounds, hasBounds);
+        const uint32_t punctualMask = shadow_visibility_detail::ComputePunctualMask(ctx, bounds, hasBounds);
+        if (cascadeMask == 0 && punctualMask == 0) return;
         const math::Vector3 worldPosition{ object.world.m[0][3], object.world.m[1][3], object.world.m[2][3] };
         const float depthKey = ComputeLightDepthKey(sortView, hasBounds ? bounds.center : worldPosition);
         for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
@@ -152,36 +113,47 @@ void CollectMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
             if (skinned && item.boundsRadius > 0.0f) {
                 const WorldBounds submeshBounds{ item.boundsCenter,
                     item.boundsRadius + (std::max)(ctx.cullingBoundsPadding, 0.0f) };
-                caster.cascadeMask &= ComputeCascadeMask(ctx, cascadeCount, submeshBounds, true);
-                caster.punctualMask &= ComputePunctualMask(ctx, submeshBounds, true);
+                caster.cascadeMask &= shadow_visibility_detail::ComputeCascadeMask(ctx, cascadeCount, submeshBounds, true);
+                caster.punctualMask &= shadow_visibility_detail::ComputePunctualMask(ctx, submeshBounds, true);
                 if (caster.cascadeMask == 0 && caster.punctualMask == 0) continue;
             }
             caster.depthKey = depthKey;
             caster.objectId = item.objectIndex + 1;
             caster.indexBuffer = item.indexBuffer;
             caster.indexCount = item.indexCount;
+            caster.item = &item;
+            caster.skinned = skinned;
             caster.world = object.world;
+            if (hasBounds) caster.worldSphere = {bounds.center.x, bounds.center.y, bounds.center.z, bounds.radius};
             caster.lodDither = object.lodDither;
-            const bool vertexSkinning = skinned && !item.deformedVertexBuffer.IsValid();
+            const bool vertexSkinning = skinned && !item.preparedSkinning && !item.deformedVertexBuffer.IsValid();
             caster.vertexBuffer = skinned ? (vertexSkinning ? item.skinningVertexBuffer
                 : item.deformedVertexBuffer) : item.vertexBuffer;
             caster.shader = vertexSkinning ? h.shadowSkinnedShader : h.shadowShader;
-            if (vertexSkinning) caster.skinningCB = object.skinningPalette;
+            if (vertexSkinning) { caster.skinningCB = object.skinningPalette; caster.gpuBones = object.gpuBones; }
             outCasters.push_back(caster);
         }
+    };
+    if (candidates) {
+        for (size_t position = 0; position < candidates->Size(); ++position)
+            collectObject(input.Objects()[candidates->ObjectIndex(position)]);
+    } else {
+        for (const auto& object : input.Objects()) collectObject(object);
     }
 }
 
 void CollectStaticMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
-    const math::Matrix4& sortView, std::vector<ShadowCaster>& outCasters)
+    const math::Matrix4& sortView, std::vector<ShadowCaster>& outCasters,
+    const spatial_detail::CandidateBatch* candidates = nullptr)
 {
-    CollectMeshShadowCasters(ctx, cascadeCount, sortView, outCasters, false);
+    CollectMeshShadowCasters(ctx, cascadeCount, sortView, outCasters, false, candidates);
 }
 
 void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
-    const math::Matrix4& sortView, std::vector<ShadowCaster>& outCasters)
+    const math::Matrix4& sortView, std::vector<ShadowCaster>& outCasters,
+    const spatial_detail::CandidateBatch* candidates = nullptr)
 {
-    CollectMeshShadowCasters(ctx, cascadeCount, sortView, outCasters, true);
+    CollectMeshShadowCasters(ctx, cascadeCount, sortView, outCasters, true, candidates);
 }
 
 /// @brief EmitShadowCasters — 収集済み caster のうち、指定ビューに属するものを描画する。
@@ -193,7 +165,8 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
 /// @note 効き方は変わらない (Docs/design/gpu-instancing.md «やらないこと»)。
 void EmitShadowCasters(RenderPassContext& ctx,
                        const std::vector<ShadowCaster>& casters,
-                       int viewIndex, bool punctual)
+                       int viewIndex, bool punctual,
+                       const math::Matrix4& viewProjection)
 {
     auto& h = ctx.handles;
 
@@ -201,11 +174,14 @@ void EmitShadowCasters(RenderPassContext& ctx,
 
     /// @note 変種を渡すのは静的メッシュ用のシェーダーで描く caster だけ。VS スキニングへ落ちた
     /// @note caster は shader が違うので prototype が一致せず、束ねられずに 1 件ずつ出る。
+    const auto gpuFrustum = math::Frustum::FromViewProjection(viewProjection);
+    auto& masked=MaskedShadows(ctx.resources);
+    InstanceBatcher maskedBatch(ctx,masked.shaders[0],ctx.settings.gpuInstancing ? masked.shaders[1] : ResourceHandle<ShaderTag>{},true,&gpuFrustum);
     InstanceBatcher batcher(ctx, h.shadowShader,
                             ctx.settings.gpuInstancing
                                 ? h.shadowInstancedShader
                                 : renderer::ResourceHandle<renderer::ShaderTag>{},
-                            true);
+                            true, &gpuFrustum);
 
     for (const ShadowCaster& caster : casters) {
         const uint32_t mask = punctual ? caster.punctualMask : caster.cascadeMask;
@@ -214,20 +190,59 @@ void EmitShadowCasters(RenderPassContext& ctx,
         PerObjectCB objData{};
         objData.world          = caster.world;
         objData.objectParams.x = caster.lodDither;
+        objData.objectParams.z = caster.gpuBones.current.IsValid() ? 1.0f : 0.0f;
+        objData.objectParams.w = static_cast<float>(caster.gpuBones.currentOffset);
 
         renderer::DrawCall dc;
         dc.vertexBuffer       = caster.vertexBuffer;
+        dc.vsBuffers[0] = caster.gpuBones.current;
+        if (caster.skinned && caster.item && !BindPreparedSkinningOutput(*caster.item, dc)) continue;
+        if (caster.skinned && caster.item && caster.item->deformedVertexBuffer.IsValid()
+            && !caster.skinningCB.IsValid()) dc.deformationSource = caster.item->skinningVertexBuffer;
         dc.indexBuffer        = caster.indexBuffer;
         dc.indexCount         = caster.indexCount;
         dc.shader             = caster.shader;
         dc.pipelineState      = h.defaultPSO;
         dc.constantBuffers[0] = h.frameCB;
-        if (caster.skinningCB.IsValid())
+        const bool alpha=caster.item && caster.item->material.surface.alphaCutoff>0;
+        if (caster.item) {
+            const auto& material=caster.item->material;
+            dc.pipelineState=GetOrCreateMaterialPSO(ctx.resources,BlendMode::OPAQUE_BLEND,material.doubleSided,
+                material.depthBias,material.depthBiasSlope,false);
+        }
+        if (alpha) {
+            batcher.Flush();
+            const auto& material=caster.item->material;
+            dc.shader=caster.skinningCB.IsValid() ? masked.shaders[2] : masked.shaders[0];
+            if (!ctx.resources.Get(dc.shader) || !ctx.resources.Get(masked.material)) continue;
+            if (!masked.hasMaterial || masked.lastMaterial!=material.gbufferParams) {
+                maskedBatch.Flush();
+                ctx.resources.Update(masked.material,material.gbufferParams.data(),material.gbufferParams.size());
+                masked.lastMaterial=material.gbufferParams; masked.hasMaterial=true;
+            }
+            dc.constantBuffers[2]=masked.material;
+            for (size_t i=0; i<material.textures.size(); ++i) dc.textures[i]=material.textures[i];
+        } else maskedBatch.Flush();
+        if (caster.skinningCB.IsValid() && !caster.gpuBones.current.IsValid())
             dc.constantBuffers[7] = caster.skinningCB;
         /// @note VS スキニングの caster は b1 の world も使うが、束ねないので従来どおり載る。
-        batcher.Add(dc, objData);
+        if (ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER && caster.item) {
+            renderer::DrawCall meshCall = dc;
+            if (TryPrepareMeshletDraw(ctx.resources, ctx.renderer, viewProjection, caster.world,
+                MeshletDrawPass::SHADOW, *caster.item, caster.skinned, meshCall)) {
+                batcher.Flush();
+                ctx.resources.Update(h.objectCB, &objData, sizeof(objData));
+                meshCall.constantBuffers[1] = h.objectCB;
+                SubmitCountedShadow(ctx, meshCall);
+                batcher.InvalidateObjectConstants();
+                continue;
+            }
+        }
+        if (alpha) maskedBatch.Add(dc,objData,caster.worldSphere);
+        else batcher.Add(dc, objData, caster.worldSphere);
     }
     batcher.Flush();
+    maskedBatch.Flush();
 }
 
 /// @note RenderShadowCascade — カスケード 1 枚をアトラスの担当タイルへ描く。
@@ -248,7 +263,8 @@ void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
     lightFrameData.isOrthographic = 1.0f;
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
-    EmitShadowCasters(ctx, casters, cascadeIndex, /*punctual=*/false);
+    EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection);
+    SubmitInstanceShadows(ctx,cascade.frustum,ctx.handles.frameCB);
     SubmitFiberShadowCasters(ctx, lightFrameData, cascade.frustum);
 
     /// @note Terrain は自前でチャンクを走査し、チャンク単位で objectCB を更新するため
@@ -273,7 +289,8 @@ void RenderPunctualShadowView(RenderPassContext& ctx, const PunctualShadowView& 
     lightFrameData.cameraPos = view.eyePos;
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
-    EmitShadowCasters(ctx, casters, viewIndex, /*punctual=*/true);
+    EmitShadowCasters(ctx, casters, viewIndex, true, view.viewProjection);
+    SubmitInstanceShadows(ctx,view.frustum,ctx.handles.frameCB);
     SubmitFiberShadowCasters(ctx, lightFrameData, view.frustum);
 
     /// @note 地形も Spot / Point の影を落とす。屋内の床が地形でできているシーンでは、
@@ -334,8 +351,18 @@ void ExecuteShadowPass(RenderPassContext& ctx)
 
     /// @note 並び順はカスケードによらず同じなので、ソート基準はカスケード 0 の view でよい。
     const math::Matrix4& sortView = ctx.shadowCascades[0].view;
-    CollectStaticMeshShadowCasters(ctx, cascadeCount, sortView, casters);
-    CollectSkinnedMeshShadowCasters(ctx, cascadeCount, sortView, casters);
+    /// @note Collected caster item pointers retain the same immutable owner through emission, even if a resource hook publishes another snapshot.
+    std::shared_ptr<const RenderScene> spatialSnapshot;
+    if (spatial_detail::MeshSpatialQueriesEnabled()) {
+        const auto candidates = spatial_detail::CollectShadowCandidates(ctx, cascadeCount);
+        spatialSnapshot = candidates.snapshot;
+        const auto* validCandidates = candidates.snapshot ? &candidates : nullptr;
+        CollectStaticMeshShadowCasters(ctx, cascadeCount, sortView, casters, validCandidates);
+        CollectSkinnedMeshShadowCasters(ctx, cascadeCount, sortView, casters, validCandidates);
+    } else {
+        CollectStaticMeshShadowCasters(ctx, cascadeCount, sortView, casters);
+        CollectSkinnedMeshShadowCasters(ctx, cascadeCount, sortView, casters);
+    }
 
     /// @note 光源に近い順。Hi-Z が後続の遮蔽フラグメントを捨てられるようにする。
     std::stable_sort(casters.begin(), casters.end(),

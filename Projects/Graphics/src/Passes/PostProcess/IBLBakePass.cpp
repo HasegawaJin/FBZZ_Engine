@@ -8,6 +8,7 @@
 /// @note 以降はスキップする。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Renderer/ComputeCall.hpp>
 
 namespace fbzz::renderer {
@@ -23,8 +24,8 @@ void ExecuteIBLBakeBrdfLutPass(RenderPassContext& ctx)
 
     /// @note 同じ LUT リソースに焼き済みの場合だけスキップする。bool だけだとデバイス
     /// @note リセット後に再生成された未初期化テクスチャも焼き済み扱いになってしまう。
-    static renderer::ResourceHandle<renderer::TextureTag> sBakedTarget;
-    if (sBakedTarget == h.iblBrdfLut) return;
+    auto& bakedTarget = resources.Rendering().Shared().bakedBrdfTarget;
+    if (bakedTarget == h.iblBrdfLut) return;
 
     /// @note 512x512 の BRDF LUT を 8x8 スレッドグループで Dispatch。
     /// @note UAV_BRDF_LUT (u0) の RG に scale/bias、BA に補助値を書き込む。
@@ -36,9 +37,7 @@ void ExecuteIBLBakeBrdfLutPass(RenderPassContext& ctx)
     bakeCS.dispatchX    = (512 + 7) / 8;
     bakeCS.dispatchY    = (512 + 7) / 8;
     bakeCS.dispatchZ    = 1;
-    r.Dispatch(bakeCS, resources);
-
-    sBakedTarget = h.iblBrdfLut;
+    if (r.TryDispatch(bakeCS, resources)) bakedTarget = h.iblBrdfLut;
 }
 
 

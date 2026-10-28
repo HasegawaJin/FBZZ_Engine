@@ -1,0 +1,6 @@
+# @file    MeshletGeometry.hlsli.meta
+# @brief   共通meshlet includeのアセット識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = '4a08457e2a864a709da431a20d8e709b'

@@ -123,6 +123,7 @@ static DXGI_FORMAT ToDxgi(Format format)
     case Format::RG16F:      return DXGI_FORMAT_R16G16_FLOAT;
     case Format::R16F:       return DXGI_FORMAT_R16_FLOAT;
     case Format::R8:         return DXGI_FORMAT_R8_UNORM;
+    case Format::RGBA32F:    return DXGI_FORMAT_R32G32B32A32_FLOAT;
     }
     return DXGI_FORMAT_R16G16B16A16_FLOAT;
 }

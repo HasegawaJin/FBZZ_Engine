@@ -1,0 +1,14 @@
+# @file    SoftFurFinSkinnedSelection.hlsl.meta
+# @brief   Sample asset identity and explicit shared geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = '5ab4cbf4415547449530c0620764771b'
+
+[shader]
+version = 1
+vertex = 'fiber_fin_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_fin'

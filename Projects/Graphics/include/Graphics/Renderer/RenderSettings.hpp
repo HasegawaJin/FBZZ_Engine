@@ -8,7 +8,9 @@
 #include <Graphics/Renderer/HybridQualitySettings.hpp>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
+#include <cmath>
 
 namespace fbzz::renderer {
 
@@ -19,6 +21,15 @@ enum class RenderingPipeline : uint8_t {
     /// @note 「点光源 / スポットをどう供給するか」だけが変わる。
     ForwardPlus  = 2,
     DeferredPlus = 3,
+};
+
+/// @note Experimental geometry paths retain the existing draw path on unsupported devices or inputs.
+/// @see Docs/design/gpu-driven-geometry.md
+enum class GeometryDrawMode : uint8_t {
+    CPU = 0,
+    GPU_INDIRECT = 1,
+    MESH_SHADER = 2,
+    GPU_INSTANCE_INDIRECT = 3,
 };
 
 /// @note クラスタライトカリング (Forward+ / Deferred+) の設定。
@@ -35,6 +46,8 @@ struct ClusteredSettings {
     /// @note 評価側のバグとカリング側のバグを切り分ける A/B スイッチ。true でレガシー経路と
     /// @note       絵が一致すれば評価側は正しいと確定できる。
     bool  forceAllLights = false;
+    bool manyLights = false;
+    int manyLightSamples = 8;
 };
 
 struct RenderSelectionID {
@@ -599,6 +612,10 @@ struct RenderSettings {
     /// @note       本当に束ねによるものだということを同じシーンで確かめられるようにするため。
     /// @see Docs/design/gpu-instancing.md
     bool gpuInstancing = true;
+    /// @note View-local comparison switch; preserve balanced water topology and custom shader fallback.
+    GeometryDrawMode geometryDrawMode = GeometryDrawMode::CPU;
+    /// @note Diagnostic comparison for the bulk placement renderer; authoring components do not expose backend choices.
+    bool bulkInstanceGpuCulling = true;
     /// @note 画面空間 Compute (今は AO) を非同期コンピュートキューへ出し、描画と重ねる。
     /// @note 既定 false。絵が 1 ピクセルも変わらないことと、速くなることを測ってから入れる。
     /// @note 機械がコンピュートキューを持たない場合は true でも描画キューのまま動く (絵は同じ)。
@@ -841,10 +858,27 @@ struct RenderSettings {
         return conflicts;
     }
 
-    /// @note 外部コードが未正規化の値を直接渡しても、描画時は安定した既存パスを優先する。
+    /// @note 登録順で最初の override を採用し、未指定のパスは許可する。
+    [[nodiscard]] bool IsPassEnabled(std::string_view name) const
+    {
+        for (const auto& override : passOverrides)
+            if (override.name == name) return override.enabled;
+        return true;
+    }
+
+    /// @note ジッター・履歴確保・パス登録を同じ実効判定に揃える。
     [[nodiscard]] bool IsTaaActive() const
     {
-        return taa.enabled && !postProcess.fxaaEnabled;
+        return taa.enabled && !postProcess.fxaaEnabled && IsPassEnabled("TAA");
+    }
+
+    /// @note 水域の存在では起動しない。大気・水中の積分、資源確保、Composite の読取を同じ設定に揃える。
+    /// @see Docs/design/volumetric-light.md
+    [[nodiscard]] bool IsVolumetricLightActive() const
+    {
+        return volumetricLight.enabled && IsPassEnabled("VolumetricLight") && volumetricLight.steps > 0
+            && std::isfinite(volumetricLight.intensity) && volumetricLight.intensity > 0.0f
+            && std::isfinite(volumetricLight.maxDist) && volumetricLight.maxDist > 0.0f;
     }
 
     [[nodiscard]] bool IsGtaoActive() const

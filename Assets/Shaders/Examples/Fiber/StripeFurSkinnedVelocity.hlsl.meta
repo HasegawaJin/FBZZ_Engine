@@ -1,0 +1,14 @@
+# @file    StripeFurSkinnedVelocity.hlsl.meta
+# @brief   Asset identity and shared Fiber geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-21
+[meta]
+guid = '1e2dbd11447746a78582eeb4ee90ee62'
+
+[shader]
+version = 1
+vertex = 'fiber_shell_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_shell'

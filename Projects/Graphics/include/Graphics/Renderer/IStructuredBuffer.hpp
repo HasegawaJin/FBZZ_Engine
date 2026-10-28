@@ -23,6 +23,12 @@ public:
 
     /// @note CPU → GPU へデータを転送する（Map/Unmap、毎フレーム呼び出し可）
     virtual void Update(const void* data, size_t sizeBytes) = 0;
+    /// @return False for unsupported or out-of-range updates; bytes outside the range remain unchanged.
+    virtual bool UpdateRegion(const void* data, size_t sizeBytes, size_t offsetBytes)
+    {
+        if (offsetBytes!=0 || sizeBytes!=GetSize()) return false;
+        Update(data,sizeBytes); return true;
+    }
 
     virtual uint32_t GetElementCount() const = 0;
     virtual uint32_t GetStride()       const = 0;

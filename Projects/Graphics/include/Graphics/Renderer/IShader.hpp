@@ -18,6 +18,8 @@ namespace fbzz::renderer
 
         virtual const std::string&      GetPath()       const = 0;
         virtual const ShaderDescriptor& GetDescriptor() const = 0;
+        /// @return Mesh Shader を持たない既存 shader の既定値は false。
+        virtual bool IsMeshShader() const { return false; }
     };
 
 } /// @note namespace fbzz::renderer

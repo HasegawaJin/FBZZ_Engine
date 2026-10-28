@@ -17,15 +17,20 @@
 #include <Graphics/Effects/RenderFiberInput.hpp>
 #include <Graphics/Effects/RenderMeshTrailInput.hpp>
 #include <Graphics/Effects/RenderParticleInput.hpp>
+#include <Graphics/Effects/RenderInstanceInput.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <array>
 #include <Graphics/Renderer/ShaderCapabilities.hpp>
 #include <cstdint>
+#include <memory>
+#include <span>
 #include <vector>
 
 namespace fbzz::renderer {
+
+class PreparedSkinningTicket;
 
 struct RenderMaterial {
     ShaderCapabilities shaderCapabilities;
@@ -54,6 +59,9 @@ struct RenderMeshItem {
     ResourceHandle<BufferTag> skinningVertexBuffer;
     /// @note 当該フレームに計算済みの静的レイアウト。VS スキニングへ渡してはならない。
     ResourceHandle<BufferTag> deformedVertexBuffer;
+    /// @note 元姿勢の出力 lease は Scene/handle の退役から独立し、古い snapshot の consumer も保持する。
+    std::shared_ptr<PreparedSkinningTicket> preparedSkinning;
+    uint32_t preparedSkinningWrite = UINT32_MAX;
     uint32_t indexCount = 0;
     uint32_t vertexCount = 0;
     /// @note 内容版 0 は未解決または GPU 変形専用。バッファの世代と独立して Update を識別する。
@@ -72,7 +80,13 @@ struct RenderMeshItem {
     float boundsRadius = 0.0f;
 };
 
+/// @note Palette handles are valid for this extracted frame only; ordinary snapshot GPU handle lifetime rules apply.
+struct RenderGpuBonePalette {
+    ResourceHandle<StructuredBufferTag> current, previous;
+    uint32_t currentOffset = 0, previousOffset = 0;
+};
 struct RenderObject {
+    RenderGpuBonePalette gpuBones;
     /// @note sceneGeneration と組にした Entity ID。vector 添字や入力への参照は snapshotSerial を跨いで持ち越さない。
     uint32_t sourceIndex = 0;
     uint32_t sourceGeneration = 0;
@@ -101,6 +115,24 @@ struct RenderObject {
     bool rayVisible = true;
 };
 
+struct RenderInstancePart {
+    RenderMeshItem mesh;
+    uint32_t lod=0;
+};
+struct RenderInstanceInput {
+    std::array<uint64_t,2> identity{};
+    uint32_t layer=0;
+    bool selected=false, castShadows=true;
+    float maxDistance=0;
+    math::Matrix4 world=math::Matrix4::Identity();
+    math::Vector3 localBoundsCenter{};
+    float localBoundsRadius=0;
+    std::array<float,4> lodHeights{};
+    uint32_t lodCount=0;
+    std::shared_ptr<const InstanceSetData> data;
+    std::vector<RenderInstancePart> parts;
+};
+
 struct RenderMaskGroup {
     math::Vector4 payload;
     bool visibleOnly = true;
@@ -123,8 +155,20 @@ struct RenderRayEffectSource {
     RenderRayUnsupportedEffect kind = RenderRayUnsupportedEffect::PARTICLE;
 };
 
+/// @brief Immutable bounds journal produced while current geometry inputs are validated.
+/// @note Nonzero versions identify geometry publications, independently of per-view snapshotSerial.
+/// @note A delta is complete only for the exact baseVersion, Scene generation and objectCount; gaps require full discovery.
+/// @note Ordinals address this publication's Objects(); membership, order or renderer lifetime changes require fullReplacement.
+struct RenderSpatialUpdate {
+    uint64_t version = 0;
+    uint64_t baseVersion = 0;
+    size_t objectCount = 0;
+    bool fullReplacement = true;
+    std::vector<uint32_t> changedObjectOrdinals;
+};
+
 /// @note GameObject / Component / Model / Mesh / Material のポインターを保持しない。
-/// @note GPU ハンドルは非所有。記録中の資源解放・差し替えを禁止し、GPU 退役は ResourceManager に委ねる。
+/// @note 通常 GPU ハンドルは非所有。preparedSkinning の出力だけは ticket が元入力と native lease を保持する。
 /// @note 候補はカメラで絞らない。各ビューがレイヤー・LOD・視錐台・距離を評価する。
 struct RenderScene {
     std::vector<RenderCustomPostInput> customPost;
@@ -135,17 +179,33 @@ struct RenderScene {
     std::vector<RenderTerrainInput> terrains;
     std::vector<RenderWaterInput> water;
     std::vector<RenderFiberInput> fibers;
+    std::vector<RenderInstanceInput> instances;
     std::vector<RenderMeshTrailInput> meshTrails;
     std::vector<RenderParticleInput> particles;
     uint64_t snapshotSerial = 0;
     uint64_t sceneGeneration = 0;
     uint64_t frameStamp = 0;
     std::vector<RenderObject> objects;
+    /// @note 同一フレームの姿勢は不変。各ビューの選択・材質・変形入力はこの配列へ書き込まない。
+    std::shared_ptr<const std::vector<RenderObject>> sharedObjects;
+    /// @note Absent for untrusted/manual sources; shared geometry and material-only publications retain the same immutable journal.
+    std::shared_ptr<const RenderSpatialUpdate> spatialUpdate;
+    std::vector<uint8_t> objectSelection;
     std::vector<RenderMeshItem> items;
     std::vector<RenderRayLodDiagnostic> rayLodDiagnostics;
     std::vector<RenderMaskGroup> maskGroups;
     uint32_t liveMaskRequests = 0;
     std::vector<RenderRayEffectSource> rayUnsupportedEffects;
+
+    [[nodiscard]] std::span<const RenderObject> Objects() const
+    {
+        return sharedObjects ? std::span<const RenderObject>(*sharedObjects) : std::span<const RenderObject>(objects);
+    }
+
+    [[nodiscard]] bool IsObjectSelected(size_t index) const
+    {
+        return objectSelection.empty() ? Objects()[index].selected : objectSelection[index] != 0;
+    }
 };
 
 } /// @note namespace fbzz::renderer

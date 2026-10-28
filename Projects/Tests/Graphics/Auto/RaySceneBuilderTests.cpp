@@ -8,6 +8,8 @@
 #include <limits>
 #include <cmath>
 #include <cstring>
+#include <memory>
+#include <utility>
 
 namespace fbzz::tests {
 namespace {
@@ -75,6 +77,35 @@ TEST_F(RaySceneBuilderTest, KeepsOffscreenAndRasterInvisibleCandidatesButFilters
     EXPECT_TRUE(result.diagnostics.empty());
     m_scene.objects[0].layer = 32;
     EXPECT_TRUE(renderer::BuildRayScene(m_scene, {1u << 7}).instances.empty());
+}
+TEST_F(RaySceneBuilderTest, ResidentInstancesDiagnoseExactOwnerAndRespectLayersAndInactivePlacements)
+{
+    auto data=std::make_shared<renderer::InstanceSetData>();data->placements.push_back({1,{},{},{1,1,1},true});
+    renderer::RenderInstanceInput input;input.identity={17,(uint64_t{3}<<32)|12};input.layer=7;input.data=data;
+    m_scene.instances.push_back(input);
+    const auto result=renderer::BuildRayScene(m_scene,{1u<<7});ASSERT_EQ(result.diagnostics.size(),1u);
+    EXPECT_EQ(result.diagnostics[0].objectId,(renderer::RayObjectId{17,12,3}));
+    EXPECT_EQ(result.diagnostics[0].issue,renderer::RaySceneIssue::NONMESH_GEOMETRY_UNSUPPORTED);
+    EXPECT_TRUE(renderer::BuildRayScene(m_scene,{1u<<6}).diagnostics.empty());
+    data->placements[0].active=false;EXPECT_TRUE(renderer::BuildRayScene(m_scene,{1u<<7}).diagnostics.empty());
+}
+
+TEST_F(RaySceneBuilderTest, ReadsSharedGeometryAfterTheOriginalViewRetires)
+{
+    AddObject(12, 3);
+    m_scene.objects[0].world = math::Matrix4::Translate({2, 3, 4});
+    m_scene.sharedObjects = std::make_shared<const std::vector<renderer::RenderObject>>(std::move(m_scene.objects));
+    renderer::RenderScene secondView = m_scene;
+    secondView.objectSelection = {1};
+    const auto first = renderer::BuildRayScene(m_scene);
+    ASSERT_EQ(first.instances.size(), 1u);
+    EXPECT_FLOAT_EQ(first.instances[0].world.m[0][3], 2);
+    m_scene = {};
+    const auto second = renderer::BuildRayScene(secondView);
+    ASSERT_EQ(second.instances.size(), 1u);
+    EXPECT_EQ(second.instances[0].objectId, (renderer::RayObjectId{17, 12, 3}));
+    EXPECT_FLOAT_EQ(second.instances[0].world.m[0][3], 2);
+    EXPECT_TRUE(secondView.IsObjectSelected(0));
 }
 
 TEST_F(RaySceneBuilderTest, EffectSourcesDiagnoseFullOwnersWithoutRasterDrawsAndRespectLayers)

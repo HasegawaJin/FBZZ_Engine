@@ -1,0 +1,6 @@
+# @file    GBufferResident.hlsl.meta
+# @brief   Shader identity for resident vegetation rendering.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = "88428d9e87774697a3565f97df85558e"

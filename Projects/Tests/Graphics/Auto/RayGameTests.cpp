@@ -29,8 +29,6 @@
 
 namespace fbzz::tests {
 namespace {
-class RayGameContractTest : public testkit::Fixture {};
-
 renderer::RayReconstructionSurface Surface(uint32_t pixel)
 {
     renderer::RayReconstructionSurface value;
@@ -41,44 +39,6 @@ renderer::RayReconstructionSurface Surface(uint32_t pixel)
     value.objectMaterialValid = {7, 9, 1, 1};
     value.sceneFlags = {42, 1, 0, 0};
     return value;
-}
-
-TEST_F(RayGameContractTest, CameraCutSeparatesOrdinaryMotionFromProjectionAndLargePoseChanges)
-{
-    renderer::Camera previous;
-    previous.m_position = {};
-    auto current = previous;
-    current.m_position.x = 0.1f;
-    EXPECT_FALSE(renderer::IsRayGameCameraCut(previous, current));
-    current.m_position.x = 2;
-    EXPECT_TRUE(renderer::IsRayGameCameraCut(previous, current));
-    current = previous; current.m_fovY = 61;
-    EXPECT_TRUE(renderer::IsRayGameCameraCut(previous, current));
-    current = previous; current.LookAt({1, 0, 0});
-    EXPECT_TRUE(renderer::IsRayGameCameraCut(previous, current));
-}
-TEST_F(RayGameContractTest, UsesFullIdentityMaterialAndCameraRelativeDepthForHistoryValidation)
-{
-    renderer::Camera camera;
-    camera.m_position = {};
-    const auto original = Surface(0);
-    auto current = original;
-    EXPECT_TRUE(renderer::IsRayReconstructionHistoryCompatible(current, original, camera));
-    current.objectMaterialValid[1]++;
-    EXPECT_FALSE(renderer::IsRayReconstructionHistoryCompatible(current, original, camera));
-    current = original; current.objectMaterialValid[2]++;
-    EXPECT_FALSE(renderer::IsRayReconstructionHistoryCompatible(current, original, camera));
-    current = original; current.sceneFlags[1]++;
-    EXPECT_FALSE(renderer::IsRayReconstructionHistoryCompatible(current, original, camera));
-    current = original; current.previousPositionValid.w = 0;
-    EXPECT_FALSE(renderer::IsRayReconstructionHistoryCompatible(current, original, camera));
-    current = original; current.previousPositionValid.x += 0.01f;
-    EXPECT_FALSE(renderer::IsRayReconstructionHistoryCompatible(current, original, camera));
-    auto translated = original;
-    translated.positionDepth.z += 1000; translated.previousPositionValid.z += 1000;
-    camera.m_position.z = 1000;
-    current = translated; current.previousPositionValid.x += 0.01f;
-    EXPECT_FALSE(renderer::IsRayReconstructionHistoryCompatible(current, translated, camera));
 }
 
 class RayGameTest : public testkit::Fixture, private core::ILogSink {

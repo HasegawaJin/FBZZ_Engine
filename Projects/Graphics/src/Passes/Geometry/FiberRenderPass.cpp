@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 #include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
+#include <Graphics/Effects/ComputedSkinningOutput.hpp>
 #include "RenderScenePassHelpers.hpp"
 #include <Graphics/Renderer/FiberGeometry.hpp>
 #include <algorithm>
@@ -35,6 +36,7 @@ struct FiberUpload {
 struct FiberResources {
     ResourceManager* owner = nullptr;
     uint64_t version = UINT64_MAX;
+    uint64_t ownerIdentity = 0;
     ResourceHandle<ConstantBufferTag> m_material, m_frame, m_motion, m_contacts;
     ResourceHandle<PipelineStateTag> m_pipeline, m_deferredPipeline;
     std::array<FiberShaderSlot, 30> m_shaders;
@@ -42,12 +44,16 @@ struct FiberResources {
     FiberUpload<FiberFrameCB> m_uploadedFrame;
     FiberUpload<FiberMotionCB> m_uploadedMotion;
     FiberUpload<FiberContactCB> m_uploadedContacts;
+    ResourceHandle<ConstantBufferTag> m_appearanceMaterial;
+    std::vector<uint8_t> m_appearanceBytes;
     std::map<std::array<uint64_t,3>, FiberMotionHistory> histories;
 };
 FiberResources& GetFiberResources(ResourceManager& resources) {
     static FiberResources cache;
-    if (cache.owner != &resources || cache.version != resources.GetResetVersion()) {
-        cache = {}; cache.owner = &resources; cache.version = resources.GetResetVersion();
+    if (cache.owner != &resources || cache.ownerIdentity != resources.GetInstanceId()
+        || cache.version != resources.GetResetVersion()) {
+        cache = {}; cache.owner = &resources; cache.ownerIdentity = resources.GetInstanceId();
+        cache.version = resources.GetResetVersion();
     }
     if (!cache.m_material.IsValid()) {
         cache.m_material = resources.CreateConstantBuffer(sizeof(FiberMaterialSettings));
@@ -74,8 +80,15 @@ void UploadIfChanged(renderer::ResourceManager& resources, renderer::ResourceHan
 
 /// @note 失敗したパスは 1 フレーム 1 回だけ再試行する。ファイル修正後の復帰とログの連打防止を両立する。
 renderer::ResourceHandle<renderer::ShaderTag> GetFiberShader(FiberResources& cache, renderer::ResourceManager& resources,
-                                                             FiberPassMode mode, FiberShape shape, bool skinned)
+                                                             FiberPassMode mode, FiberShape shape, bool skinned,
+                                                             const FiberAppearance* appearance = nullptr)
 {
+    if (appearance) {
+        const auto& family = shape == FiberShape::FIN && appearance->geometry == ShaderVertexContract::FIBER_SHELL
+            && appearance->supportsHybrid ? appearance->finShaders : appearance->shaders;
+        const auto handle = family[static_cast<size_t>(mode) * 2 + (skinned ? 1 : 0)];
+        if (handle.IsValid() && resources.Get(handle)) return handle;
+    }
     constexpr const char* SHAPES[]{"Shell", "Fin", "Blade"};
     constexpr const char* SUFFIXES[]{"", "GBuffer", "Velocity", "Shadow", "Selection"};
     auto& slot = cache.m_shaders[(static_cast<size_t>(mode) * 3 + static_cast<size_t>(shape)) * 2 + (skinned ? 1 : 0)];
@@ -169,16 +182,24 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             frame.m_lod.x=1.0f-0.75f*t;
             frame.m_lod.y=std::clamp((farDistance-distance)/(0.1f*(farDistance-nearDistance)),0.0f,1.0f);
         }
+        if (drawBlades) {
+            const int segments = mode == FiberPassMode::SHADOW && fiber.m_shadowBladeSegments > 0
+                ? fiber.m_shadowBladeSegments : fiber.m_bladeSegments;
+            frame.m_lod.z = static_cast<float>(std::clamp(segments, 1, 6));
+        }
         /// @note 影は層の隙間が見えにくく、カスケード・光源の面の数だけ全層を描くので層数を別に絞る。層間隔は fiberShellCount から求まるので視差の上乗せも自動で太る。
         if (mode == FiberPassMode::SHADOW)
             frame.m_shellCount = std::min(frame.m_shellCount, static_cast<float>(std::clamp(fiber.m_shadowShellCount, 1, 64)));
         frame.m_hybrid = fiber.m_mode == FiberRenderMode::HYBRID ? 1.0f : 0.0f;
-        const bool shellPreSkinned = skinned && surface.skinnedVertices.IsValid() && mode != FiberPassMode::VELOCITY;
-        const auto shellShader = drawShells ? GetFiberShader(cache, resources, mode, FiberShape::SHELL, skinned && !shellPreSkinned)
+        auto skinnedVertices = surface.skinnedVertices;
+        if (skinned && drawShells && surface.preparedSkinning && mode != FiberPassMode::VELOCITY
+            && !ResolvePreparedSkinningOutput(surface.preparedSkinning, surface.preparedSkinningWrite, skinnedVertices)) continue;
+        const bool shellPreSkinned = skinned && skinnedVertices.IsValid() && mode != FiberPassMode::VELOCITY;
+        const auto shellShader = drawShells ? GetFiberShader(cache, resources, mode, FiberShape::SHELL, skinned && !shellPreSkinned, surface.appearance.get())
                                             : renderer::ResourceHandle<renderer::ShaderTag>{};
-        const auto finShader = drawFins ? GetFiberShader(cache, resources, mode, FiberShape::FIN, skinned)
+        const auto finShader = drawFins ? GetFiberShader(cache, resources, mode, FiberShape::FIN, skinned, surface.appearance.get())
                                         : renderer::ResourceHandle<renderer::ShaderTag>{};
-        const auto bladeShader = drawBlades && !skinned ? GetFiberShader(cache, resources, mode, FiberShape::BLADE, false)
+        const auto bladeShader = drawBlades && !skinned ? GetFiberShader(cache, resources, mode, FiberShape::BLADE, false, surface.appearance.get())
                                                         : renderer::ResourceHandle<renderer::ShaderTag>{};
         if (!shellShader.IsValid() && !finShader.IsValid() && !bladeShader.IsValid()) continue;
         
@@ -195,6 +216,27 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         call.constantBuffers[0] = ctx.handles.frameCB;
         call.constantBuffers[1] = ctx.handles.objectCB;
         call.constantBuffers[2] = cache.m_material;
+        if (surface.appearance && surface.appearance->params.size() >= sizeof(settings)) {
+            const auto& appearance = *surface.appearance;
+            if (appearance.materialCB.IsValid()
+                && std::memcmp(appearance.params.data(), &settings, sizeof(settings)) == 0) {
+                call.constantBuffers[2] = appearance.materialCB;
+            } else {
+                auto bytes = appearance.params;
+                std::memcpy(bytes.data(), &settings, sizeof(settings));
+                const auto* buffer = resources.Get(cache.m_appearanceMaterial);
+                if (!buffer || buffer->GetSize() < bytes.size()) {
+                    if (cache.m_appearanceMaterial.IsValid()) resources.Release(cache.m_appearanceMaterial);
+                    cache.m_appearanceMaterial = resources.CreateConstantBuffer(static_cast<uint32_t>(bytes.size()));
+                    cache.m_appearanceBytes.clear();
+                }
+                if (cache.m_appearanceBytes != bytes) {
+                    resources.Update(cache.m_appearanceMaterial, bytes.data(), static_cast<uint32_t>(bytes.size()));
+                    cache.m_appearanceBytes = std::move(bytes);
+                }
+                call.constantBuffers[2] = cache.m_appearanceMaterial;
+            }
+        }
         call.constantBuffers[5] = cache.m_frame;
         call.constantBuffers[10] = cache.m_contacts;
         /// @note 局所 FlowField は VS の t2 (vsBuffers[1])、Baked の速度場アトラスは t26。GPU 粒子と同じ組。
@@ -213,8 +255,10 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             call.textures[8] = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
         }
         if (mode == FiberPassMode::VELOCITY) {
-            auto& history = AdvanceFiberHistory(cache, surface, ctx, object.world, frame, settings,
-                (static_cast<uint64_t>(surface.vertices.gen)<<32)|surface.vertices.id);
+            const uint64_t geometryIdentity = drawBlades
+                ? (static_cast<uint64_t>(surface.blades.m_blades.gen)<<32)|surface.blades.m_blades.id
+                : (static_cast<uint64_t>(surface.vertices.gen)<<32)|surface.vertices.id;
+            auto& history = AdvanceFiberHistory(cache, surface, ctx, object.world, frame, settings,geometryIdentity);
             const auto& prev = history.m_previous;
             FiberMotionCB motion{};
             motion.m_previousWorld = prev.m_world;
@@ -241,7 +285,11 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         }
         if (shellShader.IsValid()) {
             call.shader = shellShader;
-            call.vertexBuffer = shellPreSkinned ? surface.skinnedVertices : surface.vertices;
+            call.vertexBuffer = shellPreSkinned ? skinnedVertices : surface.vertices;
+            if (shellPreSkinned && surface.preparedSkinning) {
+                call.preparedSkinning = surface.preparedSkinning;
+                call.preparedSkinningRow = surface.preparedSkinningWrite;
+            }
             call.indexBuffer = surface.indices;
             call.indexCount = surface.indexCount;
             call.instanceCount = static_cast<uint32_t>(frame.m_shellCount);
@@ -249,6 +297,8 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             else SubmitCounted(ctx, call);
         }
         if (bladeShader.IsValid()) {
+            call.preparedSkinning.reset();
+            call.preparedSkinningRow = 0;
             const auto& blades=surface.blades;
             if (blades.m_blades.IsValid() && blades.m_bladeCount > 0) {
                 /// @note 頂点バッファなしの非インデックス描画。距離 LOD は先頭から提出本数を減らす。
@@ -257,7 +307,8 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
                 call.indexBuffer={};
                 call.indexCount=0;
                 call.vsBuffers[0]=blades.m_blades;
-                call.vertexCount=static_cast<uint32_t>(static_cast<float>(blades.m_bladeCount)*frame.m_lod.x)*renderer::FIBER_BLADE_VERTICES;
+                const auto verticesPerBlade = static_cast<uint32_t>(frame.m_lod.z) * 12u;
+                call.vertexCount=static_cast<uint32_t>(static_cast<float>(blades.m_bladeCount)*frame.m_lod.x)*verticesPerBlade;
                 if (call.vertexCount==0) continue;
                 call.instanceCount=1;
                 if (mode==FiberPassMode::SHADOW) SubmitCountedShadow(ctx,call); else SubmitCounted(ctx,call);
@@ -269,6 +320,8 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
 void FiberRenderPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     builder.ReadWrite("HDR").Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
+    if (ctx.waterMediumPassActive)
+        builder.Read("WaterMediumAtlas");
     DeclareScreenSpaceOcclusionReads(builder, ctx);
 }
 

@@ -6,6 +6,8 @@
 #pragma once
 #include "ResourceHandle.hpp"
 
+struct ImDrawData;
+
 namespace fbzz::renderer {
 
 class ResourceManager;
@@ -26,10 +28,23 @@ public:
 
     /// @note ImGui::Render() 後の DrawData を現在のバックバッファへ送信する。
     virtual void ImGuiRenderDrawData() = 0;
+    /// @note 所有済み頂点・インデックス・数値 Texture ID だけを持つ入力を記録する。
+    virtual void ImGuiRenderDrawData(ImDrawData&) { ImGuiRenderDrawData(); }
+    /// @note 動的アトラスの GPU 更新と ID 公開を、入力が producer に保持されている同期境界で確定する。
+    virtual void ImGuiPrepareTextures(ImDrawData&) {}
+    /// @note GPU backend の device objects と descriptor の更新を実行する。
+    virtual void ImGuiPrepareGpuFrame() {}
+    /// @note プラットフォーム入力だけを producer で更新する。
+    virtual void ImGuiPreparePlatformFrame() { ImGuiNewFrame(); }
 
     /// @note Multi-Viewport で生成された追加 OS ウィンドウを更新・描画する。
     /// @note Editor からバックエンド関数を直接呼ばず、API 固有の実装をこの境界へ閉じ込める。
     virtual void ImGuiRenderPlatformWindows() = 0;
+
+    /// @note 追加 OS ウィンドウの作成・破棄を producer で確定する。描画スレッドとの同期後に呼ぶ。
+    virtual void ImGuiPreparePlatformWindows() {}
+    /// @note 確定済み追加 viewport の GPU 記録と Present を行う。次の UI フレーム開始まで入力を保持する。
+    virtual void ImGuiRenderPreparedPlatformWindows() { ImGuiRenderPlatformWindows(); }
 
     /// @note RenderTarget を ImGui::Image が受け取れるテクスチャ ID へ変換する。
     /// @note ImGui 表示用の ID 解決は UI バックエンド固有の処理なので IRenderer から分離する。

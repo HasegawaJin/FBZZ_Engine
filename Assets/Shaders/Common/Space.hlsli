@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-23
 /// @note    カメラ視点の深度バッファは Reversed-Z (near → 1、far → 0、何も無い画素は 0)。
-///          影マップは通常の Z (near → 0、far → 1) のままで、ここの深度関数の対象外。
+/// @note 影マップは通常の Z (near → 0、far → 1) のままで、ここの深度関数の対象外。
 /// @see     https://developer.nvidia.com/content/depth-precision-visualized (NVIDIA, "Depth Precision Visualized")
 #ifndef SPACE_HLSLI
 #define SPACE_HLSLI
@@ -29,7 +29,7 @@ float3 ReconstructWorldPos(float2 uv, float ndcDepth, float4x4 invVP)
 /// @param isOrtho CameraConstants.isOrthographic をそのまま渡す (1 = 平行投影)。
 /// @note 平行投影では深度が既に線形で、透視の逆数式を通すと視空間 Z が大きく狂う。
 /// @note lerp でなく分岐にするのは、透視の式が平行投影の深度分布で 0 除算になりうるため。
-///       isOrtho は定数バッファ由来でワープ内一様なので分岐のコストは無い。
+/// @note isOrtho は定数バッファ由来でワープ内一様なので分岐のコストは無い。
 /// @note 透視: z_ndc = n (f - z) / (z (f - n)) の逆。1 - z_ndc を経由すると遠景の精度を失うので直接解く。
 /// @see https://developer.nvidia.com/content/depth-precision-visualized (NVIDIA, "Depth Precision Visualized")
 float LinearizeDepth(float ndcDepth, float near, float far, float isOrtho)
@@ -63,4 +63,21 @@ void WorldToShadowUV(float3 worldPos, float4x4 lightVP,
     out_depth  = lc.z;
 }
 
-#endif // SPACE_HLSLI
+/// @note ビューの平行移動を除き、Reversed-Z の最遠 z=0 に固定する。
+float4 SkyClipPosition(float3 position, float4x4 viewMatrix, float4x4 projectionMatrix)
+{
+    float3x3 rotView = (float3x3)viewMatrix;
+    float4 clip = mul(float4(mul(position, rotView), 1.0f), projectionMatrix);
+    return float4(clip.xy, 0.0f, clip.w);
+}
+
+/// @note 速度パスのジッター差に対し、視空間 Z で 1% + 2 cm の許容幅を保つ。
+bool VelocitySceneOccluded(float fragmentDepth, float sceneDepth, float nearClip, float farClip, float isOrtho)
+{
+    if (IsFarDepth(sceneDepth)) return false;
+    const float fragZ = LinearizeDepth(fragmentDepth, nearClip, farClip, isOrtho);
+    const float sceneZ = LinearizeDepth(sceneDepth, nearClip, farClip, isOrtho);
+    return fragZ > sceneZ * 1.01f + 0.02f;
+}
+
+#endif ///< @note SPACE_HLSLI

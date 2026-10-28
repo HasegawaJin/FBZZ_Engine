@@ -7,9 +7,11 @@
 #include <Math/Matrix4.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace fbzz::renderer {
+class PreparedSkinningTicket;
 
 enum class AccelerationStructureKind : uint8_t {
     BOTTOM_LEVEL,
@@ -28,6 +30,9 @@ struct RayTriangleGeometry {
     uint32_t firstIndex = 0;
     uint32_t indexCount = 0;
     bool opaque = true;
+    /// @note 捕捉済み変形を使う BLAS は native 頂点資源を build frame の完了まで所有する。
+    std::shared_ptr<const PreparedSkinningTicket> preparedSkinning;
+    uint32_t preparedSkinningRow = 0;
 };
 
 /// @note transform uses Math's column-vector convention and must be finite, affine and invertible.

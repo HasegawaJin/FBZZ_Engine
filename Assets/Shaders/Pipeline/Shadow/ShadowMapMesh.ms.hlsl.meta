@@ -1,0 +1,6 @@
+# @file    ShadowMapMesh.ms.hlsl.meta
+# @brief   静的meshlet影シェーダーのアセット識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = '5b40d3ee7f6e467a82195b4d7e985642'

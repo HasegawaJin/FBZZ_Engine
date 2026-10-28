@@ -22,7 +22,13 @@ public:
     void ImGuiShutdown() override;
     void ImGuiNewFrame() override;
     void ImGuiRenderDrawData() override;
+    void ImGuiRenderDrawData(ImDrawData& data) override;
+    void ImGuiPrepareTextures(ImDrawData& data) override;
+    void ImGuiPrepareGpuFrame() override;
+    void ImGuiPreparePlatformFrame() override;
     void ImGuiRenderPlatformWindows() override;
+    void ImGuiPreparePlatformWindows() override;
+    void ImGuiRenderPreparedPlatformWindows() override;
     void* GetImTextureID(ResourceHandle<RenderTargetTag>, ResourceManager&, int = 0) override;
     void* GetImTextureID(ResourceHandle<TextureTag>, ResourceManager&) override;
 

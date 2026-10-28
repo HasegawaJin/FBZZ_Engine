@@ -6,6 +6,7 @@
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/Skinning.hlsli"
 #include "Common/Math.hlsli"
 #include "Common/Space.hlsli"
 #include "Common/Color.hlsli"
@@ -35,23 +36,30 @@ PSInput GBufferVS(VSInput v, float4x4 objectWorld, float4x4 objectWorldInvTransp
     return o;
 }
 
-#if defined(FBZZ_SKINNED)
+#if defined(FBZZ_DEFORMED_INSTANCED)
+#include "Common/DeformedInstance.hlsli"
+PSInput VSMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
+{
+    ByteAddressBuffer vertices = DeformedVertices(instanceId);
+    const uint offset = vertexId * 60u;
+    VSInput v;
+    v.position = asfloat(vertices.Load3(offset));
+    v.normal = asfloat(vertices.Load3(offset + 12u));
+    v.tangent = asfloat(vertices.Load3(offset + 24u));
+    v.uv = asfloat(vertices.Load2(offset + 36u));
+    return GBufferVS(v, gDeformedInstances[instanceId].world, gDeformedInstances[instanceId].normal);
+}
+#elif defined(FBZZ_SKINNED)
 /// @note b7 のパレットで頂点を変形してから本体へ渡す。式は SkinnedPBR.hlsl と揃えること
 /// @note (ここだけ違うと «Deferred のときだけキャラの法線が違う» という形で出る)。
 /// @note コンピュートスキニングが効いているときはこの変種を使わない。変形済みの頂点が
 /// @note 静的メッシュと同じレイアウトで来るので、素の GBuffer.hlsl でそのまま描ける。
 /// @see Docs/design/pipeline-boundary.md §3
-float4x4 GBufferBlendSkinMatrix(SkinnedVSInput v)
-{
-    return boneMatrices[v.boneIndices.x] * v.boneWeights.x
-         + boneMatrices[v.boneIndices.y] * v.boneWeights.y
-         + boneMatrices[v.boneIndices.z] * v.boneWeights.z
-         + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
-}
+
 
 PSInput VSMain(SkinnedVSInput v)
 {
-    const float4x4 skin = GBufferBlendSkinMatrix(v);
+    const float4x4 skin = BlendSkinMatrix(v);
 
     VSInput deformed;
     deformed.position = mul(float4(v.position, 1.0f), skin).xyz;
@@ -64,8 +72,8 @@ PSInput VSMain(SkinnedVSInput v)
 /// @note 束ねた描画。world は b1 でなく VS の t0 から引く。@see Docs/design/gpu-instancing.md
 PSInput VSMain(VSInput v, uint instanceId : SV_InstanceID)
 {
-    return GBufferVS(v, gObjectInstances[instanceId].world,
-                        gObjectInstances[instanceId].worldInvTranspose);
+    return GBufferVS(v, FbzzObjectInstance(instanceId).world,
+                        FbzzObjectInstance(instanceId).worldInvTranspose);
 }
 #else
 PSInput VSMain(VSInput v)

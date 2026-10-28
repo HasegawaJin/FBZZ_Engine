@@ -2,12 +2,10 @@
 /// @brief   Deferred デカールパス
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
-///
-/// @note 各 DecalComponent に対してフルスクリーントライアングルを 1 draw 発行する。
+/// @note /// @note 各 DecalComponent に対してフルスクリーントライアングルを 1 draw 発行する。
 /// @note PS が深度バッファからワールド座標を復元し、デカール OBB 外のフラグメントを
 /// @note discard することで表面への投影を実現する。
-///
-/// @note マテリアルは 2 経路ある:
+/// @note /// @note マテリアルは 2 経路ある:
 /// @note materialPath 空  → 組み込み Decal.hlsl + コンポーネントの色・テクスチャ
 /// @note materialPath 有り → .mat (render_path = "decal") のシェーダーとパラメータ
 /// @note どちらの経路でも投影ボリューム・角度フェード・ライフタイムは b10 の
@@ -34,12 +32,12 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, uint32_t markMask)
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     const auto& input = SceneInput(ctx);
-    for (const auto& object : input.objects) {
+    for (const auto& object : input.Objects()) {
         if (!MatchesView(ctx, object)) continue;
         const bool markStatic = !object.skinned && ContainsLayer(markMask, 9);
         bool staticSiblingMarked = false;
         if (object.skinned && ContainsLayer(markMask, 9)) {
-            for (const auto& sibling : input.objects)
+            for (const auto& sibling : input.Objects())
                 if (!sibling.skinned && sibling.sourceIndex == object.sourceIndex && MatchesView(ctx, sibling)) {
                     const auto& mesh = input.items[sibling.firstItem];
                     staticSiblingMarked = mesh.vertexBuffer.IsValid() && mesh.indexBuffer.IsValid();
@@ -50,7 +48,7 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, uint32_t markMask)
             h.decalMaskSkinnedShader.IsValid() && ContainsLayer(markMask, object.layer);
         if (!markStatic && !markSkinned) continue;
         auto constants = ObjectConstants(object);
-        constants.objectParams = {};
+        constants.objectParams.x = 0.0f;
         resources.Update(h.objectCB, &constants, sizeof(constants));
         DecalReceiverCB layerData{};
         const int receiverLayer = markStatic ? 9 : static_cast<int>(object.layer);
@@ -67,7 +65,7 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, uint32_t markMask)
             dc.pipelineState = h.decalMaskPSO;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
-            if (object.skinned) dc.constantBuffers[7] = object.skinningPalette;
+            if (object.skinned) { dc.constantBuffers[7] = object.skinningPalette; BindGpuBonePalette(dc, object); }
             dc.constantBuffers[10] = h.decalReceiverCB;
             dc.textures[7] = depthTex;
             r.Submit(dc, resources);

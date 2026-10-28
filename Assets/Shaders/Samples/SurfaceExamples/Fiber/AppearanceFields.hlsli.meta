@@ -1,0 +1,6 @@
+# @file    AppearanceFields.hlsli.meta
+# @brief   Sample asset identity and explicit shared geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = '7d157127023243c0a7f72b0bd4a5a732'

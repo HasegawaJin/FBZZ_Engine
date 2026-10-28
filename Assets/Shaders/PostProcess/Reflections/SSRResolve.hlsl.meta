@@ -1,0 +1,14 @@
+# @file    SSRResolve.hlsl.meta
+# @brief   SSR 鏡面置換パスの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-10-09
+[meta]
+guid = '15af2d1bf5be463ebc998d77c3ec2e6c'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

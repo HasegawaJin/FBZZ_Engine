@@ -24,6 +24,36 @@ fbzz_use_std_pch(FBZZGraphics)
 fbzz_use_unity_build(FBZZGraphics EXCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/StbFontImpl.cpp")
 
 if(FBZZ_ENABLE_DX12)
+    # @note 診断用 DXIL は DLL へ埋め込み、実行時の Assets・GUID・DXC reflection に依存しない。
+    # @see https://github.com/microsoft/DirectXShaderCompiler/blob/main/include/dxc/Support/HLSLOptions.td -Fh / -Vn.
+    set(errorShaderSource "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/Platform/DX12/ErrorMaterial.hlsl")
+    foreach(variant Surface Skinned Pixel)
+        if(variant STREQUAL "Pixel")
+            set(errorEntry PSMain)
+            set(errorProfile ps_6_8)
+        else()
+            set(errorEntry VSMain)
+            set(errorProfile vs_6_8)
+        endif()
+        if(variant STREQUAL "Skinned")
+            set(errorSkinned 1)
+        else()
+            set(errorSkinned 0)
+        endif()
+        set(errorHeader "${CMAKE_CURRENT_BINARY_DIR}/Error${variant}Bytecode.inl")
+        string(TOUPPER "${variant}" errorVariantName)
+        add_custom_command(OUTPUT "${errorHeader}"
+            COMMAND "${FBZZ_DXC_EXECUTABLE}" "${errorShaderSource}"
+                -E ${errorEntry} -T ${errorProfile} -HV 2021 -O3
+                -D "FBZZ_ERROR_SKINNED=${errorSkinned}"
+                -Fh "${errorHeader}" -Vn "ERROR_${errorVariantName}_BYTECODE"
+            DEPENDS "${errorShaderSource}" "${FBZZ_DXC_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
+            VERBATIM)
+        list(APPEND errorShaderHeaders "${errorHeader}")
+    endforeach()
+    add_custom_target(FBZZEmbeddedShaders DEPENDS ${errorShaderHeaders})
+    add_dependencies(FBZZGraphics FBZZEmbeddedShaders)
+    target_sources(FBZZGraphics PRIVATE ${errorShaderHeaders})
     # @note DX 型と Agility / DXC ヘッダーは Graphics の非公開実装だけが使う。
     # @see https://devblogs.microsoft.com/directx/gettingstarted-dx12agility/ Include path ordering.
     target_include_directories(FBZZGraphics BEFORE PRIVATE

@@ -117,7 +117,7 @@ bool PrepareGameResources(RenderPassContext& context, RenderViewResources& view,
     for (const auto& light : state.pathScene.deltaLights) AppendGameWords(content, light);
     for (const auto& instance : state.scene.instances) {
         const auto& item = context.renderScene->items[instance.sourceItem];
-        const auto& object = context.renderScene->objects[item.objectIndex];
+        const auto& object = context.renderScene->Objects()[item.objectIndex];
         const auto& geometry = state.scene.geometries[instance.geometryIndex].key;
         AppendGameWords(content, instance.objectId.sceneGeneration);
         AppendGameWords(content, instance.objectId.index); AppendGameWords(content, instance.objectId.generation);
@@ -227,7 +227,7 @@ bool PrepareRayPathView(RenderPassContext& context, RenderViewResources& view, R
     for (const auto& instance : state.scene.instances) {
         const auto& key = state.scene.geometries[instance.geometryIndex].key;
         const auto& item = context.renderScene->items[instance.sourceItem];
-        const auto& object = context.renderScene->objects[item.objectIndex];
+        const auto& object = context.renderScene->Objects()[item.objectIndex];
         if (key.vertexStride != sizeof(Vertex) || key.positionOffset != offsetof(Vertex, position)
             || instance.doubleSided || object.rayLodSelectionRequired)
             view.rayPathCovered = false;

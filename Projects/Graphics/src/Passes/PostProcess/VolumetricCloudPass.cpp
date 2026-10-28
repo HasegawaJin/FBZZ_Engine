@@ -11,6 +11,7 @@
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
 #include <Math/Vector4.hpp>
 #include <algorithm>
 
@@ -35,10 +36,8 @@ void ExecuteVolumetricCloudPass(RenderPassContext& ctx)
     /// @note レイ終端判定の depth は専用 RT へコピーしてから t7 で SRV として読む。hdrRT を同時に
     /// @note RTV/DSV としても使う Forward では、同じ depth を t7 で直接読むと DX11 で競合する。
     /// @note GBuffer depth には地形が含まれないため使わず、常に hdrRT の depth (全不透明込み) を使う。
-    static auto depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-    static uint64_t s_resetVersion = 0;
-    if (s_resetVersion != ctx.resources.GetResetVersion()) {
-        s_resetVersion = ctx.resources.GetResetVersion();
+    auto& depthCopyShader = ctx.resources.Rendering().Shared().depthCopyShader;
+    if (!ctx.resources.Get(depthCopyShader)) {
         depthCopyShader = ctx.resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
     }
     /// @note 作業 RT はビューが持つ (理由は RenderPassHandles::cloudRT を参照)。

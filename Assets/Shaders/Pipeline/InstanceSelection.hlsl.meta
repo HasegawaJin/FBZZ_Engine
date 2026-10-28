@@ -1,0 +1,6 @@
+# @file    InstanceSelection.hlsl.meta
+# @brief   Shader identity for resident vegetation rendering.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = "01a69f1b24f841499a57ad7d17ebac11"

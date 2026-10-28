@@ -3,10 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #include <TestKit/TestKit.hpp>
+#include <TestKit/TempDir.hpp>
+#include <TestKit/Graphics/ShaderPath.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Graphics/Effects/RenderProbeInput.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
-#include <Graphics/Renderer/AssetPathService.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
@@ -48,15 +50,7 @@ static_assert(sizeof(ProbeMaterialConstants) == 160);
 
 std::filesystem::path ResolveProbeShader(const std::filesystem::path& requested)
 {
-    const auto relative = requested.generic_string();
-    constexpr std::string_view prefix = "Assets/Shaders/";
-    if (relative.starts_with(prefix))
-        return std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT) / relative.substr(prefix.size());
-    return requested;
-}
-std::string ResolveProbeAsset(const std::string& requested)
-{
-    return ResolveProbeShader(std::filesystem::path(requested)).generic_string();
+    return testkit::ResolveShaderPath(requested, FBZZ_GRAPHICS_SHADER_ROOT);
 }
 
 class ReflectionProbeCaptureTest : public testkit::Fixture, private core::ILogSink {
@@ -73,8 +67,11 @@ protected:
         ASSERT_NE(m_bundle.renderer, nullptr);
         m_bundle.renderer->SetRenderWhenOccluded(true);
         r::SetShaderPathResolver(ResolveProbeShader);
-        r::SetAssetPathService({ResolveProbeAsset});
         m_resources = std::make_unique<r::ResourceManager>(*m_bundle.renderer);
+        ASSERT_TRUE(m_assets.IsValid());
+        /// @note プロジェクト索引は一時領域へ書き、共有 Engine Assets は読み取り専用で IBL パスと GUID を解決する。
+        asset::AssetManager::Init(*m_resources, m_assets.Path().generic_string() + "/");
+        m_assetManagerInitialized = true;
         core::Logger::AddSink(this);
         const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
         m_inspector = m_resources->LoadShader((root / "../../Projects/Tests/Graphics/Shaders/ReflectionProbeCaptureState.hlsl").lexically_normal().generic_string());
@@ -147,12 +144,15 @@ protected:
     void TearDown() override
     {
         if (m_frameOpen && m_bundle.renderer) m_bundle.renderer->EndFrame();
+        if (m_assetManagerInitialized) {
+            asset::AssetManager::UnloadAll();
+            m_assetManagerInitialized = false;
+        }
         m_resources.reset();
         m_bundle.imguiRenderer.reset();
         if (m_bundle.renderer) m_bundle.renderer->Shutdown();
         m_bundle.renderer.reset();
         r::SetShaderPathResolver(nullptr);
-        r::SetAssetPathService({});
         core::Logger::RemoveSink(this);
         if (m_window) DestroyWindow(m_window);
         if (SUCCEEDED(m_comResult)) CoUninitialize();
@@ -296,6 +296,7 @@ protected:
     HRESULT m_comResult = E_FAIL;
     r::RendererBundle m_bundle;
     std::unique_ptr<r::ResourceManager> m_resources;
+    testkit::TempDir m_assets{"reflection-probe-assets"};
     r::Camera m_camera;
     r::RenderSettings m_settings;
     r::RenderPassHandles m_handles;
@@ -307,6 +308,7 @@ protected:
     r::ResourceHandle<r::RenderTargetTag> m_cube, m_output, m_bytes, m_shadow, m_punctual, m_cookie;
     r::ResourceHandle<r::TextureTag> m_screen;
     bool m_frameOpen = false;
+    bool m_assetManagerInitialized = false;
 private:
     void OnLog(const core::LogEntry& entry) override
     {
@@ -340,6 +342,43 @@ TEST_F(ReflectionProbeCaptureTest, IgnoresPreviousCameraProvidersAndKeepsMainCon
     ASSERT_TRUE(Capture(context));
     End();
     EXPECT_VEC3_NEAR(CubeColor(), (math::Vector3{}), 0.001f);
+}
+TEST_F(ReflectionProbeCaptureTest, ResidentInstancesMatchOrdinaryCaptureAcrossCameraAndProviderChanges)
+{
+    auto context=Context();ProbeMaterialConstants material;
+    Begin();m_resources->Update(m_material,&material,sizeof(material));ASSERT_TRUE(Capture(context));End();
+    const auto reference=CubeColor();ASSERT_GT(reference.x,0.05f);
+    auto mesh=m_scene->items[0];
+    mesh.material.shaderCapabilities={r::ShaderVertexContract::STANDARD_SURFACE,r::ShaderSurfaceContract::STANDARD_PBR,
+        r::ShaderOpacityContract::ALPHA_CLIP,r::ShaderVariantSet::STANDARD_SURFACE};
+    std::memcpy(mesh.material.gbufferParams.data(),&material,mesh.material.gbufferParams.size());
+    auto data=std::make_shared<r::InstanceSetData>();
+    for (uint32_t id=1;id<=64;++id) data->placements.push_back({id,{},{},{1,1,1},true});
+    r::RenderInstanceInput input;input.identity={1,(uint64_t{3}<<32)|7};input.data=data;
+    input.localBoundsCenter={0,0,2};input.localBoundsRadius=1.5f;input.lodCount=1;input.parts.push_back({mesh,0});
+    m_scene->objects.clear();m_scene->items.clear();m_scene->instances.push_back(input);
+    m_camera.m_position={80,30,-40};m_camera.LookAt({100,80,100});
+    for (bool gpu : {false,true}) {
+        m_settings.geometryDrawMode=gpu ? r::GeometryDrawMode::GPU_INDIRECT : r::GeometryDrawMode::CPU;
+        m_settings.bulkInstanceGpuCulling=gpu;Poison(context,true);
+        const auto before=ConstantBytes(m_handles.shadowCB,m_handles.punctualShadowCB);
+        Begin();ASSERT_TRUE(Capture(context));End();
+        EXPECT_VEC3_NEAR(CubeColor(),reference,0.003f);
+        EXPECT_EQ(ConstantBytes(m_handles.shadowCB,m_handles.punctualShadowCB),before);
+    }
+}
+TEST_F(ReflectionProbeCaptureTest, ResidentProbeOwnerDoesNotCaptureItself)
+{
+    auto context=Context();ProbeMaterialConstants material;
+    auto mesh=m_scene->items[0];std::memcpy(mesh.material.gbufferParams.data(),&material,mesh.material.gbufferParams.size());
+    mesh.material.shaderCapabilities={r::ShaderVertexContract::STANDARD_SURFACE,r::ShaderSurfaceContract::STANDARD_PBR,
+        r::ShaderOpacityContract::ALPHA_CLIP,r::ShaderVariantSet::STANDARD_SURFACE};
+    auto data=std::make_shared<r::InstanceSetData>();data->placements.push_back({1,{},{},{1,1,1},true});
+    r::RenderInstanceInput input;input.identity={1,99};input.data=data;input.localBoundsCenter={0,0,2};
+    input.localBoundsRadius=1.5f;input.lodCount=1;input.parts.push_back({mesh,0});
+    m_scene->objects.clear();m_scene->items.clear();m_scene->instances.push_back(input);
+    Begin();m_resources->Update(m_material,&material,sizeof(material));ASSERT_TRUE(Capture(context));End();
+    EXPECT_VEC3_NEAR(CubeColor(),(math::Vector3{}),0.001f);
 }
 
 TEST_F(ReflectionProbeCaptureTest, KeepsCurrentCloudAndLightShapeWhileUnbindingCameraTextures)
@@ -401,6 +440,137 @@ TEST_F(ReflectionProbeCaptureTest, KeepsCurrentCloudAndLightShapeWhileUnbindingC
     }
 }
 
+TEST_F(ReflectionProbeCaptureTest, CapturesLaterSubmeshWhenFirstMaterialIsInvalid)
+{
+    const auto second = m_scene->items[0];
+    m_scene->items.push_back(second);
+    m_scene->objects[0].itemCount = 2;
+    m_scene->items[0].material.valid = false;
+    auto context = Context();
+    Begin();
+    const ProbeMaterialConstants material;
+    m_resources->Update(m_material, &material, sizeof(material));
+    ASSERT_TRUE(Capture(context));
+    End();
+    EXPECT_GT(CubeColor().x, 0.05f);
+}
+
+TEST_F(ReflectionProbeCaptureTest, HiddenMaterialSlotDoesNotOccludeLaterVisibleSubmesh)
+{
+    auto second = m_scene->items[0];
+    second.materialSlot = 1;
+    const auto secondParams = m_resources->CreateConstantBuffer(sizeof(ProbeMaterialConstants));
+    ASSERT_TRUE(secondParams.IsValid());
+    second.material.paramsBuffer = secondParams;
+    m_scene->items.push_back(second);
+    m_scene->objects[0].itemCount = 2;
+    m_scene->items[0].slotVisible = false;
+    auto context = Context();
+    context.legacyShapedLightCount = 0;
+    Begin();
+    ProbeMaterialConstants material;
+    material.emission = {2, 0, 0}; material.emissionScale = 1;
+    m_resources->Update(m_material, &material, sizeof(material));
+    material.emission = {0, 2, 0};
+    m_resources->Update(secondParams, &material, sizeof(material));
+    ASSERT_TRUE(Capture(context));
+    End();
+    const auto color = CubeColor();
+    EXPECT_NEAR(color.x, 0, 0.001f);
+    EXPECT_GT(color.y, 1.0f);
+}
+
+TEST_F(ReflectionProbeCaptureTest, OpaqueCapturePrecedesTransparentEvenWhenSceneOrderIsReversed)
+{
+    auto opaque = m_scene->items[0];
+    const auto opaqueParams = m_resources->CreateConstantBuffer(sizeof(ProbeMaterialConstants));
+    ASSERT_TRUE(opaqueParams.IsValid());
+    opaque.material.paramsBuffer = opaqueParams;
+    m_scene->items[0].material.capabilities.blend = r::BlendMode::ALPHA_BLEND;
+    m_scene->items[0].material.renderQueue = 3000;
+    m_scene->items.push_back(opaque);
+    auto opaqueObject = m_scene->objects[0];
+    opaqueObject.sourceIndex = 8; opaqueObject.firstItem = 1;
+    m_scene->objects.push_back(opaqueObject);
+    m_scene->objects[0].world.m[2][3] = -0.25f;
+    auto context = Context(); context.legacyShapedLightCount = 0;
+    Begin();
+    ProbeMaterialConstants material;
+    material.albedo.w = 0.5f; material.emission = {2,0,0}; material.emissionScale = 1;
+    m_resources->Update(m_material, &material, sizeof(material));
+    material.albedo.w = 1; material.emission = {0,2,0};
+    m_resources->Update(opaqueParams, &material, sizeof(material));
+    ASSERT_TRUE(Capture(context)); End();
+    EXPECT_VEC3_NEAR(CubeColor(), (math::Vector3{1,1,0}), 0.01f);
+}
+
+TEST_F(ReflectionProbeCaptureTest, TransparentCaptureUsesFaceDepthInsteadOfSceneOrder)
+{
+    m_scene->items[0].material.capabilities.blend = r::BlendMode::ALPHA_BLEND;
+    m_scene->items[0].material.renderQueue = 3000;
+    m_scene->items[0].boundsCenter = {0,0,2};
+    auto farItem = m_scene->items[0];
+    farItem.objectIndex = 1; farItem.boundsCenter = {0,0,3};
+    const auto farParams = m_resources->CreateConstantBuffer(sizeof(ProbeMaterialConstants));
+    ASSERT_TRUE(farParams.IsValid());
+    farItem.material.paramsBuffer = farParams;
+    m_scene->items.push_back(farItem);
+    auto farObject = m_scene->objects[0];
+    farObject.sourceIndex = 8; farObject.firstItem = 1;
+    farObject.world.m[2][3] = 1;
+    m_scene->objects.push_back(farObject);
+    auto context = Context(); context.legacyShapedLightCount = 0;
+    Begin();
+    ProbeMaterialConstants material;
+    material.albedo.w = 0.5f; material.emission = {2,0,0}; material.emissionScale = 1;
+    m_resources->Update(m_material, &material, sizeof(material));
+    material.emission = {0,2,0};
+    m_resources->Update(farParams, &material, sizeof(material));
+    ASSERT_TRUE(Capture(context)); End();
+    EXPECT_VEC3_NEAR(CubeColor(), (math::Vector3{1,0.5f,0}), 0.01f);
+}
+
+TEST_F(ReflectionProbeCaptureTest, LightProbeCaptureIncludesLaterOpaqueSlotsAndRespectsHiddenSlots)
+{
+    auto context = Context(); context.legacyShapedLightCount = 0;
+    context.lightData.ambientColor = {1,1,1};
+    const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
+    m_handles.lightProbeCaptureFrameCB = m_resources->CreateConstantBuffer(sizeof(r::PerFrameCB));
+    m_handles.lightProbeCaptureAdvancedCB = m_resources->CreateConstantBuffer(sizeof(r::AdvancedGraphicsCB));
+    m_handles.lightProbeProjectCB = m_resources->CreateConstantBuffer(r::kLightProbeProjectCBSize);
+    m_handles.lightProbeProjectCS = m_resources->LoadShader((root / "IBL/LightProbeProject.cs.hlsl").generic_string());
+    ASSERT_TRUE(m_handles.lightProbeProjectCS.IsValid());
+    r::RenderLightProbeInput volume;
+    volume.sourceIndex = 99; volume.boxMin = {-1,-1,-1}; volume.boxSize = {2,2,2};
+    volume.runtimeGrid = {1,1,1}; volume.runtimeFaceSize = 32;
+    for (auto& face : volume.runtimeFaces) face = m_resources->CreateRenderTarget(32,32,1);
+    volume.runtimeRawVolume = m_resources->CreateComputeTexture3D(1,1,7);
+    volume.runtimeVisibility = m_resources->CreateComputeTexture3D(8,8,1);
+    auto later = m_scene->items[0]; later.materialSlot = 1;
+    const auto laterParams = m_resources->CreateConstantBuffer(sizeof(ProbeMaterialConstants));
+    later.material.paramsBuffer = laterParams;
+    m_scene->items.push_back(later); m_scene->objects[0].itemCount = 2;
+    for (bool hidden : {false, true}) {
+        SCOPED_TRACE(hidden);
+        m_scene->items[0].material.valid = hidden;
+        m_scene->items[0].slotVisible = !hidden;
+        Begin();
+        ProbeMaterialConstants material; material.emissionScale = 1; material.emission = {2,0,0};
+        m_resources->Update(m_material, &material, sizeof(material));
+        material.emission = {0,2,0}; m_resources->Update(laterParams, &material, sizeof(material));
+        const r::AdvancedGraphicsCB advanced{};
+        m_resources->Update(m_handles.lightProbeCaptureAdvancedCB, &advanced, sizeof(advanced));
+        m_resources->Update(m_handles.lightCB, &context.lightData, sizeof(context.lightData));
+        r::BakeLightProbe(context, volume, 0, {}); End();
+        std::vector<float> pixels; uint32_t width = 0, height = 0;
+        ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(volume.runtimeFaces[4], *m_resources, pixels, width, height));
+        ASSERT_EQ(width, 32u); ASSERT_EQ(height, 32u);
+        const auto center = (16 * 32 + 16) * 4;
+        EXPECT_NEAR(pixels[center], 0.0f, 0.01f);
+        EXPECT_NEAR(pixels[center+1], 2.0f, 0.01f);
+    }
+}
+
 TEST_F(ReflectionProbeCaptureTest, CaptureBuffersAreManagerOwnedAndRecreatedAfterReset)
 {
     r::ResourceManager other(*m_bundle.renderer);
@@ -431,5 +601,5 @@ TEST_F(ReflectionProbeCaptureTest, CaptureBuffersAreManagerOwnedAndRecreatedAfte
     EXPECT_NE(m_resources->Get(m_handles.reflectionProbeCaptureShadowCB), nullptr);
     EXPECT_NE(m_resources->Get(m_handles.reflectionProbeCapturePunctualCB), nullptr);
 }
-} /// @note namespace
-} /// @note namespace fbzz::tests
+} ///< @note namespace
+} ///< @note namespace fbzz::tests

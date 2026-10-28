@@ -10,9 +10,12 @@
 #include <Graphics/Renderer/IStructuredBuffer.hpp>
 #include <cmath>
 #include <limits>
+#include <mutex>
 
 namespace fbzz::renderer {
 namespace {
+/// @note Cache retirement can run from a pumped main-thread edit while the render executor is replaying.
+std::recursive_mutex s_boneReplayMutex;
 DynamicRWStructuredBufferPool s_boneReplayPalettePool;
 DynamicStructuredBufferPool s_boneReplayRowPool;
 struct ReplayProgram {
@@ -62,9 +65,16 @@ std::unique_ptr<BoneReplayGpuAsset> UploadBakedBoneReplay(ResourceManager& resou
     asset->samples = resources.CreateGpuLocalStructuredBuffer(source.samples.data(), asset->sampleCount, 48);
     asset->nodes = resources.CreateGpuLocalStructuredBuffer(source.nodes.data(), asset->nodeCount, 16);
     asset->bindings = resources.CreateGpuLocalStructuredBuffer(source.bindings.data(), asset->boneCount, 80);
-    if (!BoneReplayValidBuffer(resources, asset->samples, asset->sampleCount, 48)
+    if (asset->owner != resources.GetInstanceId() || asset->epoch != resources.GetResetVersion()
+        || !BoneReplayValidBuffer(resources, asset->samples, asset->sampleCount, 48)
         || !BoneReplayValidBuffer(resources, asset->nodes, asset->nodeCount, 16)
-        || !BoneReplayValidBuffer(resources, asset->bindings, asset->boneCount, 80)) { status = BoneReplayStatus::RESOURCE_FAILED; return {}; }
+        || !BoneReplayValidBuffer(resources, asset->bindings, asset->boneCount, 80)
+        || asset->owner != resources.GetInstanceId() || asset->epoch != resources.GetResetVersion()) {
+        /// @note Release returned handles individually: a reset during creation may leave some allocations in the new epoch.
+        resources.Release(asset->samples); resources.Release(asset->nodes); resources.Release(asset->bindings);
+        asset->samples = {}; asset->nodes = {}; asset->bindings = {};
+        status = BoneReplayStatus::RESOURCE_FAILED; return {};
+    }
     asset->residentBytes = source.samples.size() + source.nodes.size() + source.bindings.size();
     status = BoneReplayStatus::OK; return asset;
 }
@@ -72,6 +82,7 @@ std::unique_ptr<BoneReplayGpuAsset> UploadBakedBoneReplay(ResourceManager& resou
 BoneReplayResult ReplayBakedBones(RenderPassContext& ctx, const BoneReplayGpuAsset& asset,
                                  std::span<const BoneReplayRow> rows, ResourceHandle<ShaderTag> shaderOverride)
 {
+    std::lock_guard lock(s_boneReplayMutex);
     BoneReplayResult result;
     if (!ctx.renderer.GetCapabilities().bindless) return result;
     result.status = BoneReplayStatus::INVALID_SOURCE;
@@ -120,11 +131,20 @@ BoneReplayResult ReplayBakedBones(RenderPassContext& ctx, const BoneReplayGpuAss
 
 void ReleaseBakedBoneReplayCaches(ResourceManager& resources)
 {
-    s_boneReplayPalettePool.ReleaseAll(resources); s_boneReplayRowPool.ReleaseAll(resources);
-    if (s_boneReplayProgram.owner == resources.GetInstanceId() && s_boneReplayProgram.epoch == resources.GetResetVersion()) {
-        if (s_boneReplayProgram.shader.IsValid()) resources.Release(s_boneReplayProgram.shader);
-        if (s_boneReplayProgram.constants.IsValid()) resources.Release(s_boneReplayProgram.constants);
+    DynamicRWStructuredBufferPool palettes;
+    DynamicStructuredBufferPool rows;
+    ReplayProgram program;
+    {
+        std::lock_guard lock(s_boneReplayMutex);
+        palettes = std::move(s_boneReplayPalettePool); s_boneReplayPalettePool = DynamicRWStructuredBufferPool{};
+        rows = std::move(s_boneReplayRowPool); s_boneReplayRowPool = DynamicStructuredBufferPool{};
+        program = s_boneReplayProgram; s_boneReplayProgram = {};
     }
-    s_boneReplayProgram = {};
+    /// @note Resource retirement can synchronously enter the render executor. Never hold its replay mutex across that wait.
+    palettes.ReleaseAll(resources); rows.ReleaseAll(resources);
+    if (program.owner == resources.GetInstanceId() && program.epoch == resources.GetResetVersion()) {
+        if (program.shader.IsValid()) resources.Release(program.shader);
+        if (program.constants.IsValid()) resources.Release(program.constants);
+    }
 }
 }

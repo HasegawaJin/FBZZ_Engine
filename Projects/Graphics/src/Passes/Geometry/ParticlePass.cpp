@@ -7,6 +7,7 @@
 #include <Graphics/Effects/ParticleColorSpace.hpp>
 #include <Graphics/Effects/ParticleOverdrawStats.hpp>
 #include <Graphics/Renderer/DynamicBufferPool.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Renderer/ComputeCall.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
@@ -34,7 +35,7 @@ void BindParticleLighting(renderer::DrawCall& dc, const RenderParticleInput& emi
         dc.constantBuffers[9] = h.clusterCB;
         /// @note t29
         dc.psBuffers[0]       = h.punctualLightBuffer;
-        if (ctx.clusterLightMode == ClusterLightMode::Clustered)
+        if (UsesClusterLightIndices(ctx.clusterLightMode))
             /// @note t30
             dc.psBuffers[1]   = h.clusterIndexBuffer;
     }
@@ -80,12 +81,6 @@ bool PrepareParticleSelfShadowTarget(RenderPassContext& ctx, bool& inoutClearedT
     return true;
 }
 
-/// @brief ビルボード頂点をエミッター 1 個ぶんずつ貸し出すプール。
-/// @brief 共有 1 本だと DX12 で成立しない。Submit はコマンドリストへの記録でしかなく GPU が
-/// @brief 頂点を読むのはフレーム終端なので、2 個目の Update が 1 個目の Draw まで差し替える
-/// @brief (詳細は DynamicBufferPool.hpp)。
-renderer::DynamicVertexBufferPool g_particleVertexPool;
-
 /// @brief このフレームに本番描画したエミッターの記録 (どのバッファへ何クワッド積んだか)。
 /// @brief Overdraw 可視化は別パスなので、本番描画の結果を引き継がないと測る対象がずれる。
 struct ParticleDrawRecord {
@@ -101,10 +96,6 @@ struct GpuParticleDrawRecord {
     int                    maxParticles = 0;
 };
 std::vector<GpuParticleDrawRecord> g_gpuParticleDrawRecords;
-
-/// @brief 連続リボン (trailRibbon) の帯頂点用。帯はカメラへ正対するのでビューごとに形が変わり、
-/// @brief エミッターに 1 本だと Scene View と Game View が同じバッファを 2 回書いてしまう。
-renderer::DynamicVertexBufferPool g_trailRibbonVertexPool;
 
 /// @brief 1 エミッターぶんの密度を光源側 RT へ積む。
 /// @brief 呼ぶ位置が重要: 頂点バッファをアップロードした直後、本番描画の前
@@ -237,7 +228,7 @@ void DrawParticleTrailRibbons(RenderParticleInput& emitter, int,
     });
     cb.uvTiling = 1.0f;
     cb.flags = emitter.runtime.textureIsSrgb ? kTrailFlagSrgbTexture : 0u;
-    const auto ribbonVB = g_trailRibbonVertexPool.Acquire(
+    const auto ribbonVB = resources.Rendering().Shared().particleTrailVertexPool.Acquire(
         resources, vertices.size(), static_cast<std::uint32_t>(sizeof(TrailVertex)));
     if (!ribbonVB.IsValid()) return;
     resources.Update(emitter.runtime.trailRibbonCB, &cb, sizeof(cb));
@@ -344,7 +335,7 @@ void TickGpuEmitter(RenderParticleInput& emitter, ResourceHandle<TextureTag> sce
                     renderer.Dispatch(call, resources);
                 };
 
-            dispatchSortStage(h.particleGpuSortKeysCS, 0u, 0u, /*bindParticles=*/true);
+            dispatchSortStage(h.particleGpuSortKeysCS, 0u, 0u, true);
             for (std::uint32_t k = 2u; k <= padded; k <<= 1) {
                 for (std::uint32_t j = k >> 1; j > 0u; j >>= 1) {
                     if (j <= kParticleSortBlock / 2u) {
@@ -452,10 +443,8 @@ void ExecuteParticlePass(RenderPassContext& ctx)
         /// @note 退避先はビューが持つ (理由は `RenderPassHandles::particleSceneColorRT` のコメント参照)。
         if (!h.particleSceneColorRT) return {};
         renderer::SizedRenderTarget& sceneColorRT = *h.particleSceneColorRT;
-        static std::uint64_t resetVersion = 0;
-        static renderer::ResourceHandle<renderer::ShaderTag> copyShader;
-        if (resetVersion != resources.GetResetVersion()) {
-            resetVersion = resources.GetResetVersion();
+        auto& copyShader = resources.Rendering().Shared().copyColorShader;
+        if (!resources.Get(copyShader)) {
             copyShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
         }
         (void)sceneColorRT.Ensure(resources, ctx.width, ctx.height, 1);
@@ -600,7 +589,7 @@ void ExecuteParticlePass(RenderPassContext& ctx)
             continue;
 
         /// @note 頂点はエミッターごとに別バッファへ載せる (共有 1 本だと DX12 で先の Draw が壊れる)。
-        const auto particleVB = g_particleVertexPool.Acquire(
+        const auto particleVB = resources.Rendering().Shared().particleVertexPool.Acquire(
             resources, verts.size(), static_cast<uint32_t>(sizeof(ParticleVertex)));
         if (!particleVB.IsValid()) continue;
         resources.Update(particleVB, verts.data(),
@@ -664,12 +653,13 @@ void ExecuteParticleReactivePass(RenderPassContext& ctx)
     h.particleReactiveValid = false;
     if (h.particleReactiveRT == nullptr || !h.particleIB.IsValid()) return;
 
-    static renderer::ResourceHandle<renderer::ShaderTag> cpuShader;
-    static renderer::ResourceHandle<renderer::ShaderTag> gpuShader;
-    static std::uint64_t resetVersion = 0;
-    if (resetVersion != resources.GetResetVersion()) {
-        resetVersion = resources.GetResetVersion();
+    auto& shared = resources.Rendering().Shared();
+    auto& cpuShader = shared.particleReactiveShader;
+    auto& gpuShader = shared.particleReactiveGpuShader;
+    if (!resources.Get(cpuShader)) {
         cpuShader = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleReactive.hlsl");
+    }
+    if (!resources.Get(gpuShader)) {
         gpuShader = resources.LoadShader("Assets/Shaders/Material/Effects/ParticleReactiveGPU.hlsl");
     }
     if (!cpuShader.IsValid()) return;
@@ -736,12 +726,13 @@ void ExecuteParticleOverdrawPass(RenderPassContext& ctx)
     /// @note 計数先はビューが持つ (理由は `RenderPassHandles::particleOverdrawRT` のコメント参照)。
     if (!h.particleOverdrawRT) return;
     renderer::SizedRenderTarget& overdrawRT = *h.particleOverdrawRT;
-    static renderer::ResourceHandle<renderer::ShaderTag> countShader;
-    static renderer::ResourceHandle<renderer::ShaderTag> heatmapShader;
-    static std::uint64_t resetVersion = 0;
-    if (resetVersion != resources.GetResetVersion()) {
-        resetVersion = resources.GetResetVersion();
+    auto& shared = resources.Rendering().Shared();
+    auto& countShader = shared.particleOverdrawShader;
+    auto& heatmapShader = shared.particleHeatmapShader;
+    if (!resources.Get(countShader)) {
         countShader = resources.LoadShader("Assets/Shaders/Debug/ParticleOverdraw.hlsl");
+    }
+    if (!resources.Get(heatmapShader)) {
         heatmapShader = resources.LoadShader("Assets/Shaders/Debug/OverdrawHeatmap.hlsl");
     }
     if (!countShader.IsValid() || !heatmapShader.IsValid()) return;

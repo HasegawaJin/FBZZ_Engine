@@ -67,7 +67,9 @@ bool UpdateVolumetricCloudConstants(RenderPassContext& ctx);
 void ExecuteContactShadowsPass(RenderPassContext& ctx);
 
 /// @note TAA — テンポラルアンチエイリアシング。前フレームバッファと現フレームをブレンドする。
-void ExecuteTAAPass(RenderPassContext& ctx);
+/// @param staticView 前回と同じ非ジッター射影・幾何・被覆がホスト側で証明できる場合だけ true。
+/// @return 色・深度の同じ履歴世代へ描画を提出したら true。必須資源が無ければ false。
+bool ExecuteTAAPass(RenderPassContext& ctx, bool staticView = false);
 
 /// @note TAA_Blit — TAA 出力 (fxaaInput = taaHistoryA/B) を OutputRT に転送する。
 /// @note TAA は ping-pong 履歴バッファにのみ書き OutputRT には書かない。
@@ -112,6 +114,15 @@ public:
 };
 
 class SSRPass final : public IRenderPass {
+public:
+    std::string_view Name() const override;
+    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    bool IsEnabled(const RenderPassContext& ctx) const override;
+    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+};
+
+/// @note 不透明 HDR の環境鏡面だけを SSR 差分で置き換え、透明合成と Bloom より前に実行する。
+class SSRResolvePass final : public IRenderPass {
 public:
     std::string_view Name() const override;
     void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;

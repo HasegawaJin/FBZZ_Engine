@@ -1,17 +1,12 @@
-// FBZZ Engine
-// Material/Surface/Anisotropic.hlsl | Material
-// 異方性スペキュラ (Kajiya-Kay モデル) — 髪・ブラッシュドメタル向け
-//
-// タンジェント方向にスペキュラローブが伸びた金属感・髪質感を再現する。
-// UV の Y 方向をファイバー方向 (髪の流れ、研磨方向) に合わせると効果的。
-//
-// normalStrength : タンジェントを法線方向にシフトする量 (ハイライト帯の位置調整)
-// roughness      : スペキュラの広がり (低=細い鋭いハイライト、高=広いぼんやり)
-// metallic       : 色付きスペキュラの強度 (1=アルベドで染まる金属ハイライト)
+/// @file    Anisotropic.hlsl
+/// @brief   Anisotropic.hlsl の既存描画と共通頂点契約。
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/MaterialVertex.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
@@ -20,22 +15,22 @@
 
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
-    float4 albedo;             // RGBA ベースカラー              offset  0
-    float  metallic;           // 色付きスペキュラ強度 [0,1]      offset 16
-    float  roughness;          // スペキュラ広がり (低=鋭い)      offset 20
-    float  normalStrength;     // タンジェントシフト量            offset 24
-    float  occlusionStrength;  // AO 強度 [0,1]                  offset 28
-    float3 emissiveColor;      // エミッシブ色                   offset 32
-    float  emissiveScale;      // エミッシブ強度                 offset 44
-    float2 uvTiling;           // UV タイリング                  offset 48
-    float2 uvOffset;           // UV オフセット                  offset 56
-    float  alphaCutoff;        // アルファカットオフ               offset 64
-    float3 _pad0;              //                                offset 68
-    uint   textureMask;        // テクスチャフラグ                offset 80
-    float3 _pad1;              //                                offset 84
+    float4 albedo;             /// @note RGBA ベースカラー              offset  0
+    float  metallic;           /// @note 色付きスペキュラ強度 [0,1]      offset 16
+    float  roughness;          /// @note スペキュラ広がり (低=鋭い)      offset 20
+    float  normalStrength;     /// @note タンジェントシフト量            offset 24
+    float  occlusionStrength;  /// @note AO 強度 [0,1]                  offset 28
+    float3 emissiveColor;      /// @note エミッシブ色                   offset 32
+    float  emissiveScale;      /// @note エミッシブ強度                 offset 44
+    float2 uvTiling;           /// @note UV タイリング                  offset 48
+    float2 uvOffset;           /// @note UV オフセット                  offset 56
+    float  alphaCutoff;        /// @note アルファカットオフ               offset 64
+    float3 _pad0;              /// @note offset 68
+    uint   textureMask;        /// @note テクスチャフラグ                offset 80
+    float3 _pad1;              /// @note offset 84
 
-    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
-    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    /// @note bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
+    /// @note ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
     uint texAlbedoIndex;
     uint texNormalIndex;
     uint texMetallicIndex;
@@ -52,10 +47,10 @@ FBZZ_MATERIAL_TEX(texAO, texAOIndex);
 SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
 
-// Kajiya-Kay 異方性スペキュラ項。
-// T  : ファイバー方向 (法線シフト済みタンジェント)
-// H  : ハーフベクトル
-// shininess : 集中度
+/// @note Kajiya-Kay 異方性スペキュラ項。
+/// @note T  : ファイバー方向 (法線シフト済みタンジェント)
+/// @note H  : ハーフベクトル
+/// @note shininess : 集中度
 float KajiyaKaySpec(float3 T, float3 H, float shininess)
 {
     float TdotH = dot(T, H);
@@ -65,14 +60,7 @@ float KajiyaKaySpec(float3 T, float3 H, float shininess)
 
 PSInput VSMain(VSInput v)
 {
-    PSInput o;
-    float4 worldPos4 = mul(float4(v.position, 1.0f), world);
-    o.worldPos   = worldPos4.xyz;
-    o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(v.normal,  (float3x3)worldInvTranspose));
-    o.tangent    = normalize(mul(v.tangent, (float3x3)world));
-    o.uv         = v.uv;
-    return o;
+    return TransformMaterialVertex(v);
 }
 
 float4 PSMain(PSInput p) : SV_Target0
@@ -107,7 +95,7 @@ float4 PSMain(PSInput p) : SV_Target0
     if (textureMask & (1u << 4))
         ao = lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength);
 
-    // normalStrength でタンジェントを法線方向へシフト → ハイライト帯の縦位置を制御。
+    /// @note normalStrength でタンジェントを法線方向へシフト → ハイライト帯の縦位置を制御。
     float3 T = normalize(p.tangent + N * (normalStrength * 0.3f - 0.15f));
 
     float3 V      = normalize(cameraPos - p.worldPos);
@@ -115,14 +103,14 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 H      = normalize(V + L);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    // Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
+    /// @note Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
     shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
     ao *= FBZZ_ScreenAO(p.svPosition.xy);
 
     float  NdotL      = saturate(dot(N, L));
     float  shininess  = max(lerp(512.0f, 2.0f, rough), 2.0f);
     float  specTerm   = KajiyaKaySpec(T, H, shininess);
-    // 金属度で色付きスペキュラ / 無彩色スペキュラを補間する。
+    /// @note 金属度で色付きスペキュラ / 無彩色スペキュラを補間する。
     float3 specColor  = lerp(float3(1.0f, 1.0f, 1.0f), col, met);
     float3 specular   = specColor * lightColor * lightIntensity
                       * specTerm * (1.0f - rough) * shadow;
@@ -131,8 +119,8 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 diffuse    = col * lightColor * lightIntensity * NdotL * shadow;
     float3 result     = ambient + diffuse + specular;
 
-    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
-    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    /// @note 点光源 / スポットライト — 走査元は clusterLightMode が決める
+    /// @note (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
         float3 Hp     = normalize(V + ps.L);
         float  NdotLp = saturate(dot(N, ps.L));
@@ -140,7 +128,7 @@ float4 PSMain(PSInput p) : SV_Target0
         result += (col * NdotLp + specColor * specP) * ps.color * ps.intensity;
     FBZZ_PUNCTUAL_END
 
-    // エミッシブ
+    /// @note エミッシブ
     float3 emissiveTex = (textureMask & (1u << 3))
         ? texEmissive.Sample(sampDefault, uv).rgb
         : float3(1.0f, 1.0f, 1.0f);

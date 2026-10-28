@@ -5,6 +5,7 @@
 #pragma once
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <Graphics/RayTracing/RayEnvironment.hpp>
+#include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <optional>
@@ -37,12 +38,36 @@ struct RenderUnderwaterInput {
     float depth = 0.0f;
     float fogDensity = 0.0f;
     math::Vector3 color{};
+    bool opticalEnabled = false;
+    math::Vector3 absorption{};
+    math::Vector3 scattering{};
+    float phaseG = 0.0f;
+    float surfaceY = 0.0f;
+    float bottomY = 0.0f;
+    float maxDistance = 120.0f;
+    float lightStrength = 1.0f;
+    float waveAmplitude = 0.0f;
+    float waveFrequency = 0.12f;
+    float waveSpeed = 1.0f;
+    float distortion = 0.001f;
+    math::Vector2 center{};
+    math::Vector2 halfExtent{};
+    float cosYaw = 1.0f;
+    float sinYaw = 0.0f;
+    int lightSteps = 48;
 };
 struct RenderCausticsInput {
     bool enabled = false;
+    float maxDistance = 120.0f;
     float intensity = 0.0f, tiling = 1.0f, surfaceY = 0.0f, timeOffset = 0.0f;
     float centerX = 0.0f, centerZ = 0.0f, halfExtentX = 0.0f, halfExtentZ = 0.0f;
     float waveAmp = 0.0f, waveFreq = 0.12f, waveSpeed = 1.0f;
+    bool opticalEnabled = false;
+    math::Vector3 absorption{};
+    math::Vector3 scattering{};
+    float phaseG = 0.0f;
+    float cosYaw = 1.0f;
+    float sinYaw = 0.0f;
     ResourceHandle<TextureTag> texture;
 };
 struct RenderEnvironmentInput {

@@ -1,0 +1,14 @@
+# @file    SoftFur.hlsl.meta
+# @brief   Sample asset identity and explicit shared geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = '02258ab00c264176a6c5f9838762bb75'
+
+[shader]
+version = 1
+vertex = 'fiber_shell_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_shell'

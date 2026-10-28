@@ -1,9 +1,8 @@
-// FBZZ Engine
-// Pipeline/Mask/ObjectMask.hlsl | fbzz::renderer
-// オブジェクトマスク。申告された RGBA をそのままシルエットへ書く
-
-// b2 は «申告 1 件ぶんのペイロードとフラグ» に使う。マテリアルのパラメーターは
-// 要らない (マスクはシルエットしか描かない)。
+/// @file    ObjectMask.hlsl
+/// @brief   Render declared silhouette payload with scene-depth visibility.
+/// @author  Hasegawa Jin
+/// @date    2026-08-28
+/// @note b2 belongs to the request payload; the mask target can read scene depth independently.
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/BindlessIndices.hlsli"
@@ -11,19 +10,11 @@
 
 cbuffer ObjectMaskConstants : register(CB_MATERIAL)
 {
-    float4 objectMaskPayload;  // そのまま出力する RGBA
-    float4 objectMaskFlags;    // x = visibleOnly
+    float4 objectMaskPayload; ///< @note そのまま出力する RGBA
+    float4 objectMaskFlags; ///< @note x = visibleOnly
 };
-
-// シーン深度。マスクの時点で «見えている面» に絞るために読む。
-//
-// WHY 読む側 (カスタムパス) で遮蔽を判定しないか:
-//   後段が SceneHDR で走る場合、描き先は hdrRT でその深度は書き込み先として
-//   束縛されている。同じリソースを SRV として同時には読めない。マスクを描く
-//   ここは別の RT へ描いているので、シーン深度を自由に読める。
+/// @note The visible-only comparison uses reversed-Z scene depth and a small self-surface bias.
 FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
-
-// 自分自身との比較は等しくなるので、しきい値は «明らかに手前に別の面がある» 分だけ。
 static const float kObjectMaskDepthBias = 0.00002f;
 
 struct VSInput
@@ -35,8 +26,6 @@ struct PSInput
 {
     float4 position : SV_POSITION;
 };
-
-// @brief 本体。入口だけが変種ごとに違い、変換そのものは 1 か所に置く。
 PSInput ObjectMaskVS(VSInput input, float4x4 objectWorld)
 {
     PSInput output;
@@ -45,8 +34,16 @@ PSInput ObjectMaskVS(VSInput input, float4x4 objectWorld)
     return output;
 }
 
-#ifdef FBZZ_INSTANCED
-// @note 束ねたシルエット。@see Docs/design/gpu-instancing.md
+#if defined(FBZZ_DEFORMED_INSTANCED)
+#include "Common/DeformedInstance.hlsli"
+PSInput VSMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
+{
+    VSInput input;
+    input.position = DeformedPosition(vertexId, instanceId);
+    return ObjectMaskVS(input, gDeformedInstances[instanceId].world);
+}
+#elif defined(FBZZ_INSTANCED)
+/// @note 束ねたシルエット。@see Docs/design/gpu-instancing.md
 PSInput VSMain(VSInput input, uint instanceId : SV_InstanceID)
 {
     return ObjectMaskVS(input, gObjectInstances[instanceId].world);
@@ -61,8 +58,7 @@ PSInput VSMain(VSInput input)
 float4 PSMain(PSInput input) : SV_TARGET
 {
     if (objectMaskFlags.x > 0.5f) {
-        const float sceneDepth = texSceneDepth.Load(int3((int2)input.position.xy, 0));
-        /// @note カメラ深度は Reversed-Z (手前ほど大きい)。シーンより奥なら捨てる。
+        const float sceneDepth = texSceneDepth.Load(int3((int2)input.position.xy, 0)); ///< @note カメラ深度は Reversed-Z (手前ほど大きい)。シーンより奥なら捨てる。
         if (input.position.z < sceneDepth - kObjectMaskDepthBias) discard;
     }
     return objectMaskPayload;

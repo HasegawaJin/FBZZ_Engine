@@ -9,8 +9,32 @@
 
 #include "Rendering/BRDF.hlsli"
 #include "Rendering/IBL.hlsli"
+#include "Rendering/WaterMedium.hlsli"
 /// @note 画面空間 AO / 接触影の受け口。対象は «ライティングを持つ全マテリアル» で、このファイルを include するシェーダーとちょうど一致する。
 #include "Rendering/ScreenSpaceShading.hlsli"
+
+/// @brief Return source-side RGB transmission for a receiver already resolved inside water.
+/// @see https://www.pbr-book.org/4ed/Volume_Scattering/Transmittance PBRT, Transmittance.
+float3 Lighting_WaterSourceTransmittance(float3 worldPos, float3 towardSource,
+                                         float sourceDistance, bool receiverInWater,
+                                         FBZZWaterMediumSample receiverMedium)
+{
+    if (!receiverInWater || sourceDistance <= 0.0f)
+        return 1.0f;
+    return FBZZ_WaterSourceRGBTransmittance(worldPos, towardSource, sourceDistance,
+                                            receiverMedium);
+}
+
+/// @brief Return representative surface-to-receiver environment transmission.
+float3 Lighting_WaterEnvironmentTransmittance(float3 worldPos, bool receiverInWater,
+                                              FBZZWaterMediumSample receiverMedium)
+{
+    if (!receiverInWater)
+        return 1.0f;
+    const float surfaceDistance = max(receiverMedium.surfaceY - worldPos.y, 0.0f);
+    return Lighting_WaterSourceTransmittance(worldPos, float3(0.0f, 1.0f, 0.0f),
+        surfaceDistance, receiverInWater, receiverMedium);
+}
 
 /// @brief intensity のアーティスト単位換算。
 /// @note 拡散は Lambert を INV_PI で正規化している (BRDF.hlsli) ため、intensity を放射照度として扱うと白ライトを白い面へ当てても albedo × 0.318 にしかならず、π 正規化済みの IBL 環境光に対して直接光だけが π 倍暗く見えていた。
@@ -85,6 +109,37 @@ float3 Lighting_PBR(float3 N, float3 V, float3 L,
     return ambient + direct;
 }
 
+/// @brief PBR with source-side water transmission for direct and representative environment lighting.
+float3 Lighting_PBR_Resolved(float3 worldPos, float3 N, float3 V, float3 L,
+                    float3 albedo, float metallic, float roughness,
+                    float3 lightColor, float lightIntensity,
+                    float shadow, float ao, bool receiverInWater, FBZZWaterMediumSample medium)
+{
+    float3 directTransmittance = 1.0f;
+    /// @note A zero-radiance source has no contribution and needs no water source trace.
+    [branch] if (lightIntensity != 0.0f && any(lightColor != 0.0f))
+        directTransmittance = Lighting_WaterSourceTransmittance(worldPos, L,
+            receiverInWater ? medium.maxDistance : 0.0f, receiverInWater, medium);
+    const float3 environmentTransmittance = Lighting_WaterEnvironmentTransmittance(
+        worldPos, receiverInWater, medium);
+    lightIntensity *= LIGHT_UNIT_SCALE;
+    const BRDFResult brdf = EvaluateBRDF(N, V, L, albedo, metallic, roughness);
+    const float3 light = lightColor * directTransmittance * lightIntensity * shadow * brdf.NdotL;
+    const float3 direct = (brdf.diffuse + brdf.specular) * light;
+    const float3 ambient = albedo * ambientColor * ao * environmentTransmittance;
+    return ambient + direct;
+}
+
+float3 Lighting_PBR(float3 worldPos, float3 N, float3 V, float3 L,
+                    float3 albedo, float metallic, float roughness,
+                    float3 lightColor, float lightIntensity, float shadow, float ao)
+{
+    FBZZWaterMediumSample medium;
+    const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(worldPos, medium);
+    return Lighting_PBR_Resolved(worldPos, N, V, L, albedo, metallic, roughness,
+        lightColor, lightIntensity, shadow, ao, receiverInWater, medium);
+}
+
 /// @brief PBR + IBL。Lighting_PBR の定数環境光を EvaluateIBL に差し替えたもの。拡散はキューブだけ。
 /// @param ao 拡散環境光だけに掛かる遮蔽。EvaluateIBL が乗算済みなので戻り値へ再乗算しない。
 /// @param iblIntensity 環境光全体の倍率 (0 = IBL なし)。
@@ -123,7 +178,7 @@ float3 Lighting_PBR_IBL(
 
 /// @brief PBR + IBL の Light Probe Volume を受ける版。
 /// @param worldPos シェーディング点 [world]。ボリュームの中では拡散環境光がプローブから来る。
-float3 Lighting_PBR_IBL(
+float3 Lighting_PBR_IBL_Resolved(
     float3      worldPos,
     float3      N, float3 V, float3 L,
     float3      albedo, float metallic, float roughness,
@@ -137,20 +192,39 @@ float3 Lighting_PBR_IBL(
     float       diffuseScale,
     float       specularScale,
     SamplerState      samp,
-    SamplerState      sampClamp)
+    SamplerState      sampClamp, bool receiverInWater, FBZZWaterMediumSample medium)
 {
+    float3 directTransmittance = 1.0f;
+    [branch] if (lightIntensity != 0.0f && any(lightColor != 0.0f))
+        directTransmittance = Lighting_WaterSourceTransmittance(worldPos, L,
+            receiverInWater ? medium.maxDistance : 0.0f, receiverInWater, medium);
+    const float3 environmentTransmittance = Lighting_WaterEnvironmentTransmittance(
+        worldPos, receiverInWater, medium);
     lightIntensity *= LIGHT_UNIT_SCALE;
     BRDFResult brdf = EvaluateBRDF(N, V, L, albedo, metallic, roughness);
-    float3 light    = lightColor * lightIntensity * shadow * brdf.NdotL;
+    float3 light    = lightColor * directTransmittance * lightIntensity * shadow * brdf.NdotL;
     float3 direct   = (brdf.diffuse + brdf.specular) * light;
 
     float3 ambient = EvaluateIBL(worldPos, N, V, albedo, metallic, roughness, ao,
                                   irradianceMap, prefilterMap, brdfLUT,
                                   maxMipLevel, diffuseScale, specularScale,
                                   samp, sampClamp)
-                     * iblIntensity;
+                      * iblIntensity * environmentTransmittance;
 
     return ambient + direct;
+}
+
+float3 Lighting_PBR_IBL(float3 worldPos, float3 N, float3 V, float3 L,
+    float3 albedo, float metallic, float roughness, float3 lightColor, float lightIntensity,
+    float shadow, float ao, TextureCube irradianceMap, TextureCube prefilterMap,
+    Texture2D<float4> brdfLUT, int maxMipLevel, float iblIntensity,
+    float diffuseScale, float specularScale, SamplerState samp, SamplerState sampClamp)
+{
+    FBZZWaterMediumSample medium;
+    const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(worldPos, medium);
+    return Lighting_PBR_IBL_Resolved(worldPos, N, V, L, albedo, metallic, roughness,
+        lightColor, lightIntensity, shadow, ao, irradianceMap, prefilterMap, brdfLUT,
+        maxMipLevel, iblIntensity, diffuseScale, specularScale, samp, sampClamp, receiverInWater, medium);
 }
 
 /// @brief 拡張 PBR の直接光。
@@ -169,6 +243,24 @@ float3 Lighting_PBR_Advanced(
         clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor);
     const float3 light = lightColor * lightIntensity * shadow * brdf.NdotL;
     return (brdf.diffuse + brdf.specular) * light;
+}
+
+/// @brief Extended PBR direct lighting with water transmission from source to receiver.
+float3 Lighting_PBR_Advanced(
+    float3 worldPos, float3 N, float3 V, float3 L, float3 T, float3 B,
+    float3 albedo, float metallic, float roughness,
+    float clearcoat, float clearcoatRoughness,
+    float sheen, float anisotropy, float3 sheenColor,
+    float3 lightColor, float lightIntensity, float shadow)
+{
+    FBZZWaterMediumSample medium;
+    const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(worldPos, medium);
+    const float3 transmittance = Lighting_WaterSourceTransmittance(
+        worldPos, L, receiverInWater ? medium.maxDistance : 0.0f,
+        receiverInWater, medium);
+    return Lighting_PBR_Advanced(N, V, L, T, B, albedo, metallic, roughness,
+        clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
+        lightColor * transmittance, lightIntensity, shadow);
 }
 
 /// @brief 拡張 PBR + IBL。拡散はキューブだけ。
@@ -209,15 +301,23 @@ float3 Lighting_PBR_IBL_Advanced(
     float diffuseScale, float specularScale,
     SamplerState samp, SamplerState sampClamp)
 {
+    FBZZWaterMediumSample medium;
+    const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(worldPos, medium);
+    const float3 directTransmittance = Lighting_WaterSourceTransmittance(
+        worldPos, L, receiverInWater ? medium.maxDistance : 0.0f,
+        receiverInWater, medium);
+    const float3 environmentTransmittance = Lighting_WaterEnvironmentTransmittance(
+        worldPos, receiverInWater, medium);
     const float3 direct = Lighting_PBR_Advanced(
         N, V, L, T, B, albedo, metallic, roughness,
         clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
-        lightColor, lightIntensity, shadow);
+        lightColor * directTransmittance, lightIntensity, shadow);
     const float3 ambient = EvaluateIBLAdvanced(
         worldPos, N, V, T, B, anisotropy, albedo, metallic, roughness, ao,
         clearcoat, clearcoatRoughness, sheen, sheenColor,
         irradianceMap, prefilterMap, brdfLUT, maxMipLevel,
-        diffuseScale, specularScale, samp, sampClamp) * max(iblIntensity, 0.0f);
+        diffuseScale, specularScale, samp, sampClamp) * max(iblIntensity, 0.0f)
+        * environmentTransmittance;
     return ambient + direct;
 }
 
@@ -324,4 +424,25 @@ float3 Lighting_Toon_Direct(float3 N, float3 L,
 /// @note 点光源 / スポットの走査層。LightAttenuation / SpotConeWeight / SafeNormalize を呼ぶので定義より後に置く (HLSL に前方宣言は無い)。光源ループを持つシェーダーは例外なくこのファイルを include しているので、各ファイルへ足さずに行き渡る。
 #include "Rendering/ClusteredLights.hlsli"
 
-#endif // LIGHTING_HLSLI
+/// @brief Return local Point/Spot transmission using the existing receiver sample.
+float3 Lighting_WaterPunctualTransmittance(float3 worldPos, PunctualLight light,
+                                           PunctualSample punctual, bool receiverInWater,
+                                           FBZZWaterMediumSample receiverMedium)
+{
+    if (!receiverInWater || (light.type != FBZZ_LIGHT_TYPE_POINT && light.type != FBZZ_LIGHT_TYPE_SPOT))
+        return 1.0f;
+    const float sourceDistance = length(light.position - worldPos);
+    return Lighting_WaterSourceTransmittance(worldPos, punctual.L, sourceDistance,
+                                              receiverInWater, receiverMedium);
+}
+
+/// @note Deferred lighting reuses the validated table context across the fixed per-pixel light budget.
+float3 Lighting_WaterPunctualTransmittance(float3 worldPos, PunctualLight light,
+    PunctualSample punctual, bool receiverInWater, FBZZWaterMediumSample receiverMedium,
+    FBZZWaterMediumQueryContext context)
+{
+    if (!receiverInWater || (light.type != FBZZ_LIGHT_TYPE_POINT && light.type != FBZZ_LIGHT_TYPE_SPOT)) return 1.0f;
+    return FBZZ_WaterSourceRGBTransmittance(worldPos, punctual.L, length(light.position - worldPos), context, receiverMedium);
+}
+
+#endif

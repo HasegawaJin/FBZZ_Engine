@@ -47,8 +47,10 @@ void BuildForwardOpaque(RenderPipeline& pipeline, bool depthNormalPrepass)
     pipeline.AddPass<TerrainRenderPass>(TerrainDrawMode::Forward);
     BuildSkyComposition(pipeline);
 
-    if (depthNormalPrepass)
+    if (depthNormalPrepass) {
         pipeline.AddPass<SSRPass>();
+        pipeline.AddPass<SSRResolvePass>();
+    }
 }
 
 void BuildDeferredOpaque(RenderPipeline& pipeline, const std::function<void()>& deferredSurfaceReady,
@@ -71,9 +73,12 @@ void BuildDeferredOpaque(RenderPipeline& pipeline, const std::function<void()>& 
     else BuildSkyComposition(pipeline);
     pipeline.AddPass<DeferredSkinnedForwardPass>();
     pipeline.AddPass<FiberRenderPass>();
+    /// @note SSR は不透明 HDR から解決し、透明色を反射元や反射の受け手へ混入させない。
+    if (!hybridScreenFirst) {
+        pipeline.AddPass<SSRPass>();
+        pipeline.AddPass<SSRResolvePass>();
+    }
     pipeline.AddPass<DeferredForwardTransparentPass>();
-    /// @note Raster の透明描画後 SSR は互換経路。Hybrid は上で baseline を読んで完了している。
-    if (!hybridScreenFirst) pipeline.AddPass<SSRPass>();
 }
 
 } /// @note namespace
@@ -86,6 +91,7 @@ void BuildGeometryPreparation(RenderPipeline& pipeline, bool clusteredEnabled)
         pipeline.AddPass<ClusterLightCullPass>();
     pipeline.AddPass<LightCookiePass>();
     pipeline.AddPass<ShadowPass>();
+    pipeline.AddPass<WaterMediumAtlasPass>();
 }
 
 void BuildGeometryPipeline(RenderPipeline& pipeline, const renderer::OpaqueRenderPlan& plan,
@@ -99,6 +105,7 @@ void BuildGeometryPipeline(RenderPipeline& pipeline, const renderer::OpaqueRende
 
 void BuildWaterComposition(RenderPipeline& pipeline)
 {
+    pipeline.AddPass<WaterInterfacePass>();
     /// @note 水面の後で光芒・コースティクスを足すと、水底への効果が水面を覆う。
     pipeline.AddPass<VolumetricLightPass>();
     pipeline.AddPass<WaterCausticsPass>();

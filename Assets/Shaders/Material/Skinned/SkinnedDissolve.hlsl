@@ -1,11 +1,14 @@
-// FBZZ Engine
-// Material/Skinned/SkinnedDissolve.hlsl | Material
-// GPU スキニング + ディゾルブエフェクト
-// PS ロジックは Surface/Dissolve.hlsl と完全に一致させること。
+/// @file    SkinnedDissolve.hlsl
+/// @brief   Skinned PBR dissolve shading with an emissive transition edge.
+/// @author  Hasegawa Jin
+/// @date    2026-05-28
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
+#include "Rendering/DissolveNoise.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/MaterialVertex.hlsli"
+#include "Common/Skinning.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
@@ -29,8 +32,7 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     uint   textureMask;
     float3 _pad1;
 
-    // bindless のテクスチャ添字。Material::Upload が毎フレーム書き込む。
-    // ここに宣言した枠だけが Inspector に出る (Common/MaterialTextures.hlsli)。
+    /// @note Material::Upload writes these bindless texture indices; declared slots appear in the Inspector.
     uint texAlbedoIndex;
     uint texNormalIndex;
     uint texMetallicIndex;
@@ -47,54 +49,18 @@ FBZZ_MATERIAL_TEX(texAO, texAOIndex);
 SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
 
-float4x4 BlendSkinMatrix(SkinnedVSInput v)
-{
-    return boneMatrices[v.boneIndices.x] * v.boneWeights.x
-         + boneMatrices[v.boneIndices.y] * v.boneWeights.y
-         + boneMatrices[v.boneIndices.z] * v.boneWeights.z
-         + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
-}
+/// @brief Blend the four bone transforms by the vertex weights.
 
 PSInput VSMain(SkinnedVSInput v)
 {
-    PSInput o;
-    float4x4 skin    = BlendSkinMatrix(v);
-    float4 localPos  = mul(float4(v.position, 1.0f), skin);
-    float3 localN    = normalize(mul(v.normal,  (float3x3)skin));
-    float3 localT    = normalize(mul(v.tangent, (float3x3)skin));
-    float4 worldPos4 = mul(localPos, world);
-    o.worldPos   = worldPos4.xyz;
-    o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(localN, (float3x3)worldInvTranspose));
-    o.tangent    = normalize(mul(localT, (float3x3)world));
-    o.uv         = v.uv;
-    return o;
+    return TransformSkinnedMaterialVertex(v);
 }
 
-float Hash21(float2 p)
-{
-    p = frac(p * float2(127.1f, 311.7f));
-    p += dot(p, p + 19.19f);
-    return frac(p.x * p.y);
-}
+/// @brief Hash a 2D lattice coordinate into [0, 1].
 
-float ValueNoise(float2 p)
-{
-    float2 i = floor(p);
-    float2 f = frac(p);
-    float2 u = f * f * (3.0f - 2.0f * f);
-    return lerp(lerp(Hash21(i),                Hash21(i + float2(1.0f, 0.0f)), u.x),
-                lerp(Hash21(i + float2(0.0f, 1.0f)), Hash21(i + float2(1.0f, 1.0f)), u.x), u.y);
-}
+/// @brief Evaluate value noise with smooth interpolation between lattice values.
 
-float DissolveMask(float2 uv)
-{
-    float n  = ValueNoise(uv * 4.0f)  * 0.500f;
-          n += ValueNoise(uv * 8.0f)  * 0.250f;
-          n += ValueNoise(uv * 16.0f) * 0.125f;
-          n += ValueNoise(uv * 32.0f) * 0.125f;
-    return saturate(n);
-}
+/// @brief Combine four value-noise octaves into the dissolve mask.
 
 float4 PSMain(PSInput p) : SV_Target0
 {
@@ -137,24 +103,25 @@ float4 PSMain(PSInput p) : SV_Target0
     float3 L      = normalize(-lightDir);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
                                   lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
-    // NOTE: スキンドメッシュは GBuffer に描かれない (ExecuteGBufferPass が isSkinned を除外)。
-    //       画面空間 AO / 接触影を引くと、キャラの画素で「背景の遮蔽」を読んでしまうので使わない。
-    //       これは Deferred でも同じ (キャラは DeferredLighting を通らない) ため、差は生じない。
-    float3 result = Lighting_PBR(N, V, L, col, met, rough,
+    /// @note Skinned meshes bypass GBuffer, so screen-space AO and contact shadows would sample background pixels.
+    FBZZWaterMediumSample receiverMedium;
+    const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(p.worldPos, receiverMedium);
+    float3 result = Lighting_PBR(p.worldPos, N, V, L, col, met, rough,
                                  lightColor, lightIntensity, shadow, ao);
 
-    // 点光源 / スポットライト — 走査元は clusterLightMode が決める
-    // (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
+    /// @note ClusteredLights selects the Point/Spot source from the b3 array, structured buffer, or cluster list.
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        const float3 sourceTransmittance = Lighting_WaterPunctualTransmittance(
+            p.worldPos, _fbzzLight, ps, receiverInWater, receiverMedium);
         result += Lighting_PBR_Direct(N, V, ps.L, col, met, saturate(rough + ps.roughnessBias),
-            ps.color, ps.intensity);
+            ps.color * sourceTransmittance, ps.intensity);
     FBZZ_PUNCTUAL_END
 
     float3 emissiveTex = (textureMask & (1u << 3))
         ? texEmissive.Sample(sampDefault, uv).rgb
         : float3(1.0f, 1.0f, 1.0f);
     result += emissiveTex * emissiveColor * emissiveScale;
-    // WHY: 定数 2.0 でエッジ帯を通常エミッシブより明示的に強調する (Surface 版 Dissolve.hlsl と同じ理由)。
+    /// @note The edge band is twice the regular emissive scale; edgeFactor is one outside the band and zero at the cutoff.
     result += emissiveColor * emissiveScale * 2.0f * (1.0f - edgeFactor);
 
     return float4(result, alpha);

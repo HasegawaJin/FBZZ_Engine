@@ -26,6 +26,6 @@ roughness = 0.8
 specularStrength = 0.05
 transmission = 0.55
 rootOcclusion = 0.75
-grassShading = 1.0
+planarShading = 1.0
 worldMapping = 1.0
 finSilhouetteWidth = 0.4

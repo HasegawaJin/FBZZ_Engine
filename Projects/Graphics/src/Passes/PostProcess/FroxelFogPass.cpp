@@ -9,6 +9,7 @@
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Renderer/ComputeCall.hpp>
 #include <Graphics/Renderer/Camera.hpp>
+#include "UnderwaterPassHelpers.hpp"
 #include <Math/Matrix4.hpp>
 #include <algorithm>
 #include <cmath>
@@ -46,6 +47,8 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
     /// @note が無いフレームもここを通す必要があるため、null 判定は早期 return でなく canRun に畳む。
     const bool canRun =
         fog.enabled
+        /// @note 光学水中では水媒体が視界を担当し、粒子を含め空気の霧を重ねない。
+        && !UsesOpticalUnderwater(ctx.environment.underwater)
         && ctx.froxelFogState != nullptr
         && h.froxelInjectCS.IsValid() && h.froxelIntegrateCS.IsValid()
         && h.froxelScatter.IsValid()  && h.froxelIntegrated.IsValid();
@@ -140,7 +143,7 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
         inject.constantBuffers[9] = h.clusterCB;
         /// @note t29: 統合ライト配列
         inject.srvBuffers[29]     = h.punctualLightBuffer;
-        if (ctx.clusterLightMode == ClusterLightMode::Clustered)
+        if (UsesClusterLightIndices(ctx.clusterLightMode))
             /// @note t30: クラスタごとのライト番号
             inject.srvBuffers[30] = h.clusterIndexBuffer;
     }

@@ -1,0 +1,6 @@
+# @file    AlphaShadowSkinned.hlsl.meta
+# @brief   Shader identity for resident vegetation rendering.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = "8470a7bc0014416ca22facc113bca5d7"

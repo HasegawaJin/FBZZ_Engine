@@ -21,6 +21,8 @@
 
 namespace fbzz::renderer {
 
+class ResourceManager;
+
 /// @brief CreateRenderer が返す IRenderer + ImGui バックエンドのペア。
 /// @note 両者は同一デバイスを共有するため、個別生成では合成ルートが再びデバイス配線を
 /// @note       知る必要が出る。ペアで返すことで配線をファクトリ内部に閉じ込める。
@@ -36,5 +38,33 @@ struct RendererBundle {
 /// @note ImGui バックエンドの Win32 初期化 (ImGuiInit) は呼び出し側が別途行う。
 /// @note       ここで担うのは GPU デバイスへの紐づけのみ。
 RendererBundle CreateRenderer(RendererBackend backend, void* hwnd, uint32_t width, uint32_t height);
+
+/// @note 生成済み backend を有界 Render Thread で包む。Scene 抽出と ImGui の UI 構築は producer に残る。
+/// @note ResourceManager/ImGui の破棄より前に CPU 入力を完了させ、renderer を最後に破棄する。
+/// @see Docs/design/render-thread.md
+RendererBundle EnableRenderThread(RendererBundle native);
+
+/// @brief Classifies one owned CPU-shadow Buffer/CB transfer for the exact renderer facade.
+/// @pre Construct the owned closure before this scope; its only call is RecordResourceUpdate with a moved closure.
+/// @pre The transfer touches no Scene data, frame-bound resource, mapped StructuredBuffer, or producer-read mutable native state.
+/// @note Only ResourceManager can classify its three known transfer paths; public closures cannot create this scope.
+/// @note The first RecordResourceUpdate entry consumes the token before locks/allocations; nested calls are opaque.
+class CpuShadowTransferScope final {
+public:
+    ~CpuShadowTransferScope();
+    CpuShadowTransferScope(const CpuShadowTransferScope&) = delete;
+    CpuShadowTransferScope& operator=(const CpuShadowTransferScope&) = delete;
+private:
+    friend class ResourceManager;
+    explicit CpuShadowTransferScope(IRenderer& renderer) noexcept;
+    IRenderer* m_previous;
+};
+
+/// @brief Attempts once to publish the whole pending known CPU-shadow transfer vector without waiting.
+/// @return False leaves pending commands, CPU-frame state and submission serial unchanged.
+/// @pre The renderer and its resource managers remain alive until their existing completion barriers return.
+/// @note Accepted transfers are committed; CancelCpuFrame discards only commands that remain pending.
+/// @note Unknown/native renderers, opaque commands, reentry and any busy lock/slot fail closed.
+[[nodiscard]] bool TrySubmitPendingResourceUpdates(IRenderer& renderer);
 
 } /// @note namespace fbzz::renderer

@@ -14,6 +14,7 @@
 #include "DX12UploadArena.hpp"
 #include "DX12PsoCache.hpp"
 #include "DX12StateTracker.hpp"
+#include "DX12PreparedSkinning.hpp"
 
 namespace fbzz::renderer {
 
@@ -28,6 +29,9 @@ public:
     ~DX12Renderer() override;
 
     const char* GetBackendName() const override { return "DirectX 12"; }
+    bool SupportsIndirectDraw() const override { return m_context.GetDrawIndexedCommandSignature() != nullptr; }
+    bool SupportsMeshShaders() const override { return m_context.SupportsMeshShaders(); }
+    void SetCpuExecutor(IRenderer* executor) override { m_context.SetCpuExecutor(executor); }
     [[nodiscard]] GraphicsCapabilities GetCapabilities() const override;
     bool Init(HWND hwnd, uint32_t width, uint32_t height);
     void Shutdown() override;
@@ -50,6 +54,7 @@ public:
     void SetVSync(bool enabled) override;
     [[nodiscard]] bool GetVSync() const override;
     void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
+    bool SetRenderTargetColors(std::span<const RenderTargetColorAttachment> colors, ResourceManager& resources) override;
     void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
     void SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
                              uint32_t mip, ResourceManager& resources) override;
@@ -81,6 +86,10 @@ public:
     DX12Context& GetContext() { return m_context; }
 
 private:
+    static std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareCapturedNative(
+        IRenderer& native, ResourceManager& resources, ResourceHandle<ShaderTag> shader,
+        std::span<const CapturedSkinningRequest> requests, std::span<const math::Matrix4> matrices);
+    std::shared_ptr<class DX12PreparedSkinningPool> m_preparedSkinningPool;
     bool PrepareShaderReload() override;
     std::unique_ptr<IAccelerationStructure> CreateNativeAccelerationStructure(
         const AccelerationStructureDesc&, ResourceManager&) override;
@@ -132,13 +141,19 @@ private:
     /// @return バックバッファ束縛中、または束縛した RT が解放済みなら nullptr。
     /// @note 生ポインタを持たないのは、RT が描画の途中でも解放されるため
     /// @note       (ビューポートのリサイズ、ViewRenderTargets の作り直し)。
-    [[nodiscard]] class DX12RenderTarget* ResolveCurrentRenderTarget(ResourceManager* resources) const;
+    [[nodiscard]] class DX12RenderTarget* ResolveCurrentRenderTarget(ResourceManager* resources = nullptr) const;
+    [[nodiscard]] class DX12RenderTarget* ResolveCurrentColorAttachment(uint32_t index, ResourceManager* resources = nullptr) const;
+    void TransitionCurrentTargetForRead();
     /// @brief RT を束縛したのに、その RT が既に解放されているか。
     /// @note 描き先の書式も RTV も失われているので、Clear / Submit は何もしない。
-    [[nodiscard]] bool IsCurrentRenderTargetLost(ResourceManager* resources) const;
+    [[nodiscard]] bool IsCurrentRenderTargetLost(ResourceManager* resources = nullptr) const;
     void ReportLostRenderTarget(const char* where);
     /// @note 束縛中の RT。無効ハンドルはバックバッファを表す。
     ResourceHandle<RenderTargetTag> m_currentRenderTargetHandle;
+    /// @note ハンドルの数値は Manager 間で重複する。生ポインタを保存せず、生存台帳へ所有者 ID を照会する。
+    uint64_t m_currentRenderTargetOwner = 0;
+    std::array<RenderTargetColorAttachment, 8> m_currentColorAttachments{};
+    uint32_t m_currentColorAttachmentCount = 0;
     bool m_reportedLostRenderTarget = false;
     std::unique_ptr<class DX12IblBaker> m_iblBaker;
     D3D12_CPU_DESCRIPTOR_HANDLE m_currentCubeRtv{};
@@ -182,6 +197,13 @@ private:
     /// @note シェーダーごとに一度だけ警告するための記録。
     std::unordered_set<const void*> m_strideWarned;
     bool m_reportedMissingDrawResource = false;
+
+    /// @note Recording-thread options and diagnostics; fusion retains no resource pointer or binding across Submit calls.
+    bool m_bindingFusionEnabled = false, m_bindingDiagnostics = false;
+    uint64_t m_bindingDraws = 0, m_bindingUploads = 0, m_bindingFailures = 0;
+    uint64_t m_bindingResourceOwner = 0, m_bindingResourceFrame = 0;
+    bool m_bindingResourceCoherent = true;
+    double m_bindingSectionMs = 0;
 
     static constexpr uint32_t GPU_MAX_PASSES = GpuProfilerLedger::MAX_PASSES;
     bool InitializeGpuProfiler();

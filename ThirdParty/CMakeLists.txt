@@ -4,6 +4,7 @@
 # @date    2026-05-15
 # @note Dear ImGui uses the vendored docking branch.
 add_library(ImGui SHARED
+    "${CMAKE_SOURCE_DIR}/Projects/Graphics/ImGui/ImGuiContextStorage.cpp"
     ImGui/imgui.cpp
     ImGui/imgui_draw.cpp
     ImGui/imgui_tables.cpp
@@ -15,6 +16,8 @@ add_library(ImGui SHARED
 
 target_include_directories(ImGui
     PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/Projects/Graphics/include>"
+        "$<INSTALL_INTERFACE:include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ImGui>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ImGui/backends>"
         "$<INSTALL_INTERFACE:include/ThirdParty/ImGui>"
@@ -25,6 +28,7 @@ target_include_directories(ImGui
 # @see https://cmake.org/cmake/help/latest/manual/cmake-generator-expressions.7.html#target-properties TARGET_PROPERTY:prop consuming-target evaluation.
 target_compile_definitions(ImGui
     PUBLIC
+        "IMGUI_USER_CONFIG=\"Graphics/Renderer/ImGuiContextConfig.hpp\""
         "$<$<NOT:$<STREQUAL:$<TARGET_PROPERTY:NAME>,ImNodes>>:IMGUI_DEFINE_MATH_OPERATORS>"
     PRIVATE
         FBZZ_IMGUI_EXPORTS

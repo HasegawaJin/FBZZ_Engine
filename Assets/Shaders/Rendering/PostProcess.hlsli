@@ -1,6 +1,7 @@
-// FBZZ Engine
-// PostProcess.hlsli | Rendering
-// Common full-screen post-processing operators
+/// @file    PostProcess.hlsli
+/// @brief   全画面の色調整と画面効果を共有する。
+/// @author  Hasegawa Jin
+/// @date    2026-05-27
 #ifndef POSTPROCESS_HLSLI
 #define POSTPROCESS_HLSLI
 
@@ -15,16 +16,7 @@ float2 LensDistortUV(float2 uv, float amount)
     return centered * scale * 0.5f + 0.5f;
 }
 
-// 衝撃波リング — 中心から半径 radius の «輪» の上だけ、色を読む座標を外向きへずらす。
-//
-// WHY LensDistortUV で代用できないか: あちらは中心固定・r^2 比例の樽型で、
-//     «どこが今いちばん歪んでいるか» を選べない。叩きつけの «効いた感» は
-//     縁が通り過ぎることで出るので、半径を持つ細い帯でなければならない。
-// WHY 縦横比を補正するか: UV での等距離は画面上では楕円になる。16:9 では
-//     横へ 1.78 倍伸び、円ではなく «横へ広がる波» に見える。
-// WHY 帯の断面を (1-s^2)^2 にするか: (1-s^2) だと帯の縁で傾きが残り、
-//     歪みが切れる位置に «線» が出る。二乗すると縁で傾きも 0 になり、
-//     輪の外側と地続きになる。
+/// @note 画面の縦横比で円を保ち、二乗した帯域で輪の縁の変位と傾きをゼロにする。
 float2 ShockRingUV(float2 uv, float2 center, float radius, float width, float amplitude)
 {
     if (amplitude <= 1.0e-5f || width <= 1.0e-5f)
@@ -39,7 +31,7 @@ float2 ShockRingUV(float2 uv, float2 center, float radius, float width, float am
     const float s = clamp((radial - radius) / width, -1.0f, 1.0f);
     const float band = 1.0f - s * s;
     const float2 outward = toPixel / radial;
-    // ずらす «量» は画面空間で決め、UV へ戻すときに横方向だけ縦横比で割る。
+    /// @note 変位量は画面空間、戻り値は UV 空間。
     return uv + float2(outward.x / aspect, outward.y) * (amplitude * band * band);
 }
 
@@ -71,9 +63,7 @@ float3 ApplyColorAdjustments(float3 color,
                              float temperature,
                              float tint)
 {
-    // 各値の既定値が無効状態を表すため、無効な処理はピクセル単位でスキップする。
-    // WHY: Composite は全画面で実行されるので、ゼロ強度でも行列計算や sin/cos を
-    //      実行すると、見た目を変えない設定が常時コストになる。
+    /// @note 既定の設定では全画面の行列演算と三角関数を省く。
     [branch]
     if (abs(temperature) > 1.0e-4f || abs(tint) > 1.0e-4f)
         color = ApplyWhiteBalance(color, temperature, tint);
@@ -130,8 +120,7 @@ float2 ApplyPixelateUV(float2 uv, float pixelBlockSize)
     if (pixelBlockSize <= 1.0f)
         return uv;
 
-    // WHAT: 画面座標を指定ピクセル単位のグリッド中央へ丸める。
-    // WHY: 解像度依存の見た目を避けるため、UV ではなく screenSize 基準で量子化する。
+    /// @note ブロック幅は UV でなく画素単位。
     float2 block = max(float2(pixelBlockSize, pixelBlockSize), float2(1.0f, 1.0f));
     float2 pixel = floor(uv * screenSize / block) * block + block * 0.5f;
     return saturate(pixel / max(screenSize, float2(1.0f, 1.0f)));
@@ -171,8 +160,7 @@ float3 ApplyShadowHighlight(float3 color, float shadowAmount, float highlightAmo
     if (shadowAmount <= 0.0f && highlightAmount <= 0.0f)
         return color;
 
-    // WHAT: 暗部は持ち上げ、明部は軽く圧縮して白飛びを抑える。
-    // WHY: HDR トーンマップ後の LDR に対する軽量な見た目補正として、露出を変えずに階調を残す。
+    /// @note 露出を変えず、トーンマップ後の LDR の階調を補正する。
     float luma = Luminance(color);
     float shadowMask = 1.0f - smoothstep(0.08f, 0.45f, luma);
     float highlightMask = smoothstep(0.55f, 1.0f, luma);
@@ -186,9 +174,32 @@ float3 ApplyColorFilter(float3 color, float3 filterColor, float intensity)
     if (intensity <= 0.0f)
         return color;
 
-    // WHAT: ホワイトバランス後の最終色に薄いフィルター色を乗算する。
-    // WHY: LUT を導入せず、昼/夕方/室内などのルックをシーン設定だけで寄せられるようにする。
     return saturate(lerp(color, color * max(filterColor, 0.0f), saturate(intensity)));
 }
 
-#endif // POSTPROCESS_HLSLI
+/// @note Composite と HDR 履歴の再構成で同じ順序を使い、色調整・LUT・フェードの二重適用を防ぐ。
+float3 ApplyFinalColorEffects(float3 ldr, float2 uv, Texture3D lutTexture, SamplerState lutSampler)
+{
+    ldr = ApplyColorAdjustments(ldr, contrast, saturation, hueShift, temperature, tint);
+    ldr = ApplyShadowHighlight(ldr, shadowLift, highlightCompression);
+    ldr = ApplyColorFilter(ldr, colorFilter, colorFilterIntensity);
+    ldr = ApplySepia(ldr, sepiaIntensity);
+    ldr = ApplyInvert(ldr, invertIntensity);
+    ldr = ApplyPosterize(ldr, posterizeLevels);
+    ldr = ApplyVignette(ldr, uv, vignetteIntensity, vignetteSmoothness, vignetteRoundness, vignetteColor);
+    ldr = ApplyFilmGrain(ldr, uv, filmGrainIntensity, filmGrainResponse);
+    if (lutBlend > 0.0f)
+    {
+        /// @note 32³ LUT の両端をテクセル中心へ合わせる。
+        const float lutSize = 32.0f;
+        const float3 lutUV = saturate(ldr) * ((lutSize - 1.0f) / lutSize) + (0.5f / lutSize);
+        ldr = lerp(ldr, lutTexture.SampleLevel(lutSampler, lutUV, 0.0f).rgb, saturate(lutBlend));
+    }
+    /// @note 明るさはフェードより先に掛け、暗転の黒を持ち上げない。
+    ldr *= max(userBrightness, 0.0f);
+    if (screenFadeAlpha > 0.0f)
+        ldr = lerp(ldr, screenFadeColor, saturate(screenFadeAlpha));
+    return ldr;
+}
+
+#endif

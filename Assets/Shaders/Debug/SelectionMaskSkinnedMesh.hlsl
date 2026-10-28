@@ -1,30 +1,21 @@
-// FBZZ Engine
-// Debug/SelectionMaskSkinnedMesh.hlsl | fbzz::renderer
-// Editor selection mask for GPU-skinned meshes
+/// @file    SelectionMaskSkinnedMesh.hlsl
+/// @brief   SelectionMaskSkinnedMesh.hlsl の既存描画と共通頂点契約。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/Skinning.hlsli"
 
 struct MaskPSInput
 {
     float4 position : SV_POSITION;
 };
 
-float4x4 BlendSkinMatrix(SkinnedVSInput v)
-{
-    return boneMatrices[v.boneIndices.x] * v.boneWeights.x
-         + boneMatrices[v.boneIndices.y] * v.boneWeights.y
-         + boneMatrices[v.boneIndices.z] * v.boneWeights.z
-         + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
-}
-
 MaskPSInput VSMain(SkinnedVSInput input)
 {
     MaskPSInput output;
-    float4x4 skinMatrix = BlendSkinMatrix(input);
-    float3 localPos = mul(float4(input.position, 1.0f), skinMatrix).xyz;
-    float3 worldPos = mul(float4(localPos, 1.0f), world).xyz;
-    output.position = mul(float4(worldPos, 1.0f), viewProjection);
+    output.position = SkinningMaskClipPosition(input, world, viewProjection);
     return output;
 }
 

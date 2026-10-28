@@ -10,7 +10,9 @@
 #include <Graphics/Pipeline/RayTracingPipeline.hpp>
 #include <Graphics/Renderer/DynamicBufferPool.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
+#include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 namespace fbzz::renderer {
 /// @note GPU のボーンパレット契約。Engine の Skeleton と静的検証する。
@@ -71,6 +73,11 @@ struct RenderViewResources {
     renderer::ResourceHandle<renderer::TextureTag>        volumetricResult;    ///< @note Volumetric CS 出力
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;         ///< @note TAA ping-pong A
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;         ///< @note TAA ping-pong B
+    /// @note 8 位相の未蓄積色と画素別の履歴有効長。解像度変更と TAA 無効化で破棄する。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaRawHistory[8]{};
+    renderer::ResourceHandle<renderer::ConstantBufferTag> taaCycleCB;
+    /// @note 確保失敗後は次のリサイズか TAA 切替まで再試行せず、既存履歴の EMA を継続する。
+    bool taaRawHistoryAllocationFailed = false;
     /// @note TAA の ping-pong の向き。RenderPassHandles はフレームごとに作り直すので、
     /// @note ここに持たないと毎フレーム false から始まり «A を読んで B に書く» しか起きない。
     /// @note A は一度も書かれず、履歴は最初の中身のまま固定される。
@@ -98,6 +105,11 @@ struct RenderViewResources {
     /// @note 水面の屈折用コピー (ビュー単位・解像度依存)
     renderer::SizedRenderTarget waterSceneColorRT;
     renderer::SizedRenderTarget waterSceneDepthRT;
+    /// @note One view-local atlas and nearest visible interface mask shared by lighting and water composition.
+    renderer::SizedRenderTarget waterMediumAtlasRT;
+    renderer::SizedRenderTarget waterInterfaceRT;
+    /// @note Reused per-view rows; the pool's frame lanes protect recorded views from later updates.
+    renderer::DynamicStructuredBufferPool waterMediumTablePool{ 16 };
     /// @note 歪みパーティクルの背景退避 / 重なり計数 / コースティクスの深度コピー
     /// @note 水面と同じくビュー単位。共有すると 2 ビューで寸法を取り合い、毎フレーム作り直す。
     renderer::SizedRenderTarget particleSceneColorRT;
@@ -114,6 +126,9 @@ struct RenderViewResources {
     FroxelFogViewState           froxelState;
     math::Matrix4 prevViewProjection    = math::Matrix4::Identity();
     math::Matrix4 invPrevViewProjection = math::Matrix4::Identity();
+    /// @note 前回の VP と同じ射影の深度復元条件。
+    float previousNearZ = 0.1f, previousFarZ = 1000.0f;
+    bool previousOrthographic = false;
     /// @note TAA ジッター列の現在位置。ビュー別に持たないと SceneView と GameView が
     /// @note 同じ番号を取り合って、どちらもサンプル点が飛び飛びになる。
     uint32_t taaFrameIndex = 0;
@@ -122,6 +137,9 @@ struct RenderViewResources {
     /// @note 今のフレームだけで履歴を作り直す。リサイズでは保存・復元しないので false に戻る。
     bool taaHistoryValid = false;
     TaaProviderHistory taaProviderHistory;
+    /// @note 前回と今回の不透明深度入力を値で完全比較する。GPU 実体や Scene の所有権は保持しない。
+    std::vector<uint64_t> taaStaticViewPrevious;
+    std::vector<uint64_t> taaStaticViewCurrent;
     uint32_t width = 0;
     uint32_t height = 0;
     /// @note 当該ビューで最後に準備した構成。PrepareView の開始時に無効へ戻す。
@@ -136,9 +154,23 @@ struct RenderViewResources {
     ResourceHandle<ConstantBufferTag> gbufferMaterialCB;
 };
 
+/// @brief Shared shader and metadata-buffer state for static meshlet draws.
+/// @note GPU 実体は ResourceManager が所有し、この状態も同じ Manager の Reset/終了時に破棄する。
+struct MeshletDrawResources {
+    uint64_t ownerId = 0;
+    uint64_t resetVersion = 0;
+    uint64_t shaderVersion = 0;
+    bool gbufferShaderAttempted = false;
+    bool shadowShaderAttempted = false;
+    ResourceHandle<ShaderTag> gbufferShader{};
+    ResourceHandle<ShaderTag> shadowShader{};
+    ResourceHandle<ConstantBufferTag> geometryConstants{};
+};
+
 /// @note GPU 実体は ResourceManager が所有し、この状態も同じ Manager の Reset/終了時に破棄する。
 struct RenderSharedResources {
     RayGeometryCache rayGeometry;
+    MeshletDrawResources meshletDraw;
     ResourceHandle<ShaderTag> rayDebugShader;
     ResourceHandle<ShaderTag> rayReflectionShader;
     ResourceHandle<ShaderTag> rayReflectionReconstructionShader;
@@ -183,6 +215,7 @@ struct RenderSharedResources {
     ResourceHandle<ShaderTag> gtaoShader{};
     ResourceHandle<ShaderTag> gtaoBlurShader{};
     ResourceHandle<ShaderTag> ssrShader{};
+    ResourceHandle<ShaderTag> ssrResolveShader{};
     ResourceHandle<ShaderTag> volumetricShader{};
     ResourceHandle<ShaderTag> contactShadowShader{};
     ResourceHandle<ShaderTag> taaShader{};
@@ -280,6 +313,17 @@ struct RenderSharedResources {
     /// @note DynamicScene 捕捉は主カメラの前フレーム atlas を読まず、現在の光源だけを独立して束縛する。
     ResourceHandle<ConstantBufferTag> reflectionProbeCaptureShadowCB{};
     ResourceHandle<ConstantBufferTag> reflectionProbeCapturePunctualCB{};
+    /// @note 地形の描画資源は Manager ごとに所有し、Reset で他の共有資源と共に失効させる。
+    ResourceHandle<ShaderTag> terrainShader{}, terrainGBufferShader{};
+    ResourceHandle<PipelineStateTag> terrainPSO{}, terrainWireframePSO{};
+    ResourceHandle<ConstantBufferTag> terrainCameraCB{}, terrainObjectCB{};
+    /// @note 遅延生成する粒子・カスタム合成資源も Manager の寿命に閉じる。
+    ResourceHandle<ShaderTag> particleReactiveShader{}, particleReactiveGpuShader{};
+    ResourceHandle<ShaderTag> particleOverdrawShader{}, particleHeatmapShader{};
+    ResourceHandle<PipelineStateTag> customPassPSO[4]{};
+    DynamicVertexBufferPool particleVertexPool{}, particleTrailVertexPool{};
+    /// @note 記録に成功した LUT だけを焼き済みとして扱う。
+    ResourceHandle<TextureTag> bakedBrdfTarget{};
 
     void Initialize(ResourceManager& resources);
     bool Prepare(ResourceManager& resources, const RenderSettings& rs);

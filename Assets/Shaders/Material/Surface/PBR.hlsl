@@ -9,6 +9,7 @@
 #include "Common/Color.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Common/MaterialTextures.hlsli"
+#include "Common/ObjectInstance.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
@@ -20,19 +21,19 @@
 /// @note offset は C++ 側 MaterialConstants と一致させる。
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
-    float4 albedo;             ///< RGBA ベースカラー (線形)。offset 0
-    float  metallic;           ///< [0,1]。offset 16
-    float  roughness;          ///< [0,1]。offset 20
-    float  normalStrength;     ///< 0 でサーフェス法線。offset 24
-    float  occlusionStrength;  ///< [0,1]。offset 28
-    float3 emissiveColor;      ///< offset 32
-    float  emissiveScale;      ///< 0 で非発光。offset 44
-    float2 uvTiling;           ///< offset 48
-    float2 uvOffset;           ///< offset 56
-    float  alphaCutoff;        ///< offset 64
-    float3 _pad0;              ///< offset 68
-    uint   textureMask;        ///< bit0 albedo / 1 normal / 2 metalRough / 3 emissive / 4 AO。offset 80
-    float3 _pad1;              ///< offset 84
+    float4 albedo;             ///< @note RGBA ベースカラー (線形)。offset 0
+    float  metallic;           ///< @note [0,1]。offset 16
+    float  roughness;          ///< @note [0,1]。offset 20
+    float  normalStrength;     ///< @note 0 でサーフェス法線。offset 24
+    float  occlusionStrength;  ///< @note [0,1]。offset 28
+    float3 emissiveColor;      ///< @note offset 32
+    float  emissiveScale;      ///< @note 0 で非発光。offset 44
+    float2 uvTiling;           ///< @note offset 48
+    float2 uvOffset;           ///< @note offset 56
+    float  alphaCutoff;        ///< @note offset 64
+    float3 _pad0;              ///< @note offset 68
+    uint   textureMask;        ///< @note bit0 albedo / 1 normal / 2 metalRough / 3 emissive / 4 AO。offset 80
+    float3 _pad1;              ///< @note offset 84
     float  clearcoat;
     float  clearcoatRoughness;
     float  sheen;
@@ -64,14 +65,24 @@ SamplerState           sampDefault      : register(SAMPLER_DEFAULT);
 SamplerComparisonState sampShadow       : register(SAMPLER_SHADOW);
 SamplerState           sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP);
 
+#ifdef FBZZ_INSTANCED
+PSInput VSMain(VSInput v, uint instanceId : SV_InstanceID)
+#else
 PSInput VSMain(VSInput v)
+#endif
 {
+#ifdef FBZZ_INSTANCED
+    const ObjectInstance instance=FbzzObjectInstance(instanceId);
+    const float4x4 objectWorld=instance.world, objectNormal=instance.worldInvTranspose;
+#else
+    const float4x4 objectWorld=world, objectNormal=worldInvTranspose;
+#endif
     PSInput o;
-    float4 worldPos4 = mul(float4(v.position, 1.0f), world);
+    float4 worldPos4 = mul(float4(v.position, 1.0f), objectWorld);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = SafeNormalize(mul(v.normal,  (float3x3)worldInvTranspose), float3(0.0f, 1.0f, 0.0f));
-    o.tangent    = SafeNormalize(mul(v.tangent, (float3x3)world), float3(1.0f, 0.0f, 0.0f));
+    o.normal     = SafeNormalize(mul(v.normal,  (float3x3)objectNormal), float3(0.0f, 1.0f, 0.0f));
+    o.tangent    = SafeNormalize(mul(v.tangent, (float3x3)objectWorld), float3(1.0f, 0.0f, 0.0f));
     o.uv         = v.uv;
     return o;
 }
@@ -135,6 +146,8 @@ float4 PSMain(PSInput p) : SV_Target0
     /// @note Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
     shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
     ao *= FBZZ_ScreenAO(p.svPosition.xy);
+    FBZZWaterMediumSample receiverMedium;
+    const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(p.worldPos, receiverMedium);
     float3 result = iblIntensity > 0.0f
         ? Lighting_PBR_IBL_Advanced(p.worldPos, N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
@@ -142,15 +155,17 @@ float4 PSMain(PSInput p) : SV_Target0
               texIBLIrradiance, texIBLPrefilter, texBRDFLut, iblMaxMipLevel,
               iblIntensity, iblDiffuseScale, iblSpecularScale,
               sampDefault, sampLinearClamp)
-        : Lighting_PBR_Advanced(N, V, L, T, B, col, met, rough,
+        : Lighting_PBR_Advanced(p.worldPos, N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
               lightColor, lightIntensity, shadow);
 
     /// @note 点光源 / スポットの走査元は clusterLightMode が決める (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
-    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+    FBZZ_PUNCTUAL_BEGIN_PBR(p.worldPos, p.svPosition.xy, N, V, col, met, rough)
+        const float3 sourceTransmittance = Lighting_WaterPunctualTransmittance(
+            p.worldPos, _fbzzLight, ps, receiverInWater, receiverMedium);
         result += Lighting_PBR_Advanced(N, V, ps.L, T, B, col, met, saturate(rough + ps.roughnessBias),
             clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
-            ps.color, ps.intensity, 1.0f);
+            ps.color * sourceTransmittance, ps.intensity, 1.0f);
     FBZZ_PUNCTUAL_END
 
     /// @note エミッシブテクスチャは sRGB。

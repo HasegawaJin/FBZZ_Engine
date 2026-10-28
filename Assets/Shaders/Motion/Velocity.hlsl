@@ -1,18 +1,7 @@
-// FBZZ Engine
-// Motion/Velocity.hlsl | Motion
-// 静的メッシュのモーションベクター — 現フレーム UV と前フレーム UV の差を書く
-//
-// 出力: RG = uv - prevUv (画面 UV 単位)、B = 1 (書き込み済みフラグ)
-//   B を置くのは「速度 0 で描かれた画素」と「そもそも描かれていない画素 (空)」を
-//   読み手が区別できるようにするため。後者は従来どおり深度再投影へ落ちる。
-//
-// バインディング:
-//   b0 = CameraConstants          (viewProjection はジッター無しをセットすること)
-//   b1 = ObjectConstants          (world / prevWorld — 下で上書き宣言)
-//   b8 = AdvancedGraphicsConstants (prevViewProjection)
-
-// b1 の 2 枠目を prevWorld として使う。Velocity パスは法線を扱わないので
-// worldInvTranspose が要らない。CB のサイズは 128 バイトのまま変わらない。
+/// @file    Velocity.hlsl
+/// @brief   同じ被覆で速度と前フレーム深度を出力する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #define FBZZ_OBJECT_CONSTANTS
 #include "Common/Binding.hlsli"
 cbuffer ObjectConstants : register(CB_OBJECT)
@@ -29,17 +18,17 @@ cbuffer ObjectConstants : register(CB_OBJECT)
 
 /// @note t7 = 完成したシーン深度 (Reversed-Z)。静止物は速度を描かないので、Velocity RT 自身の深度には居ない。
 FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
+#ifdef FBZZ_VELOCITY_ALPHA
+FBZZ_TEX2D(velocityAlbedo, TEX_ALBEDO_SLOT);
+SamplerState velocitySampler : register(SAMPLER_DEFAULT);
+#endif
 
 /// @brief 静止物の裏に隠れた画素を捨てる。捨てないと手前の壁に奥の物体の速度が書かれ、壁がぶれる。
 /// @note 本描画はジッター込み、速度はジッター無しで描くので深度がわずかにずれる。視空間で 1% + 2 cm の余裕を取る。
 void DiscardIfOccludedByScene(float4 svPosition)
 {
     const float sceneDepth = texSceneDepth.Load(int3(int2(svPosition.xy), 0));
-    if (IsFarDepth(sceneDepth)) return;
-    const float fragZ  = LinearizeDepth(svPosition.z, nearZ, farZ, isOrthographic);
-    const float sceneZ = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
-    if (fragZ > sceneZ * 1.01f + 0.02f)
-        discard;
+    if (VelocitySceneOccluded(svPosition.z, sceneDepth, nearZ, farZ, isOrthographic)) discard;
 }
 
 struct VelocityVSInput
@@ -53,17 +42,23 @@ struct VelocityVSInput
 struct VelocityPSInput
 {
     float4 svPosition : SV_POSITION;
-    // クリップ座標を補間して PS で w 除算する。
-    // WHY svPosition から求めないか: SV_POSITION は PS ではスクリーン座標へ変換済みで、
-    //     前フレームぶんは持てない。両方を同じ扱いにしないと片方だけ歪む。
+    /// @note クリップ座標を補間して PS で w 除算する。
+    /// @note svPosition から求めないか: SV_POSITION は PS ではスクリーン座標へ変換済みで、
+    /// @note 前フレームぶんは持てない。両方を同じ扱いにしないと片方だけ歪む。
     float4 currClip   : TEXCOORD0;
     float4 prevClip   : TEXCOORD1;
+#ifdef FBZZ_VELOCITY_ALPHA
+    float2 uv : TEXCOORD2;
+#endif
 };
 
-// @brief 本体。入口だけが変種ごとに違い、変換そのものは 1 か所に置く。
+/// @brief 本体。入口だけが変種ごとに違い、変換そのものは 1 か所に置く。
 VelocityPSInput VelocityVS(VelocityVSInput v, float4x4 objectWorld, float4x4 objectPrevWorld)
 {
     VelocityPSInput o;
+#ifdef FBZZ_VELOCITY_ALPHA
+    o.uv=v.uv*uvTiling+uvOffset;
+#endif
     const float4 localPos = float4(v.position, 1.0f);
     const float4 currWorld = mul(localPos, objectWorld);
     const float4 prevWorldPos = mul(localPos, objectPrevWorld);
@@ -71,15 +66,16 @@ VelocityPSInput VelocityVS(VelocityVSInput v, float4x4 objectWorld, float4x4 obj
     o.currClip   = mul(currWorld, viewProjection);
     o.prevClip   = mul(prevWorldPos, prevViewProjection);
     o.svPosition = o.currClip;
+    o.currClip.xy -= float2(taaJitterX, taaJitterY) * o.currClip.w;
     return o;
 }
 
 #ifdef FBZZ_INSTANCED
-// @note 2 枠目を prevWorld として読む。@see Docs/design/gpu-instancing.md
+/// @note 2 枠目を prevWorld として読む。@see Docs/design/gpu-instancing.md
 VelocityPSInput VSMain(VelocityVSInput v, uint instanceId : SV_InstanceID)
 {
-    return VelocityVS(v, gObjectInstancesMotion[instanceId].world,
-                         gObjectInstancesMotion[instanceId].prevWorld);
+    return VelocityVS(v, FbzzObjectInstanceMotion(instanceId).world,
+                         FbzzObjectInstanceMotion(instanceId).prevWorld);
 }
 #else
 VelocityPSInput VSMain(VelocityVSInput v)
@@ -91,11 +87,15 @@ VelocityPSInput VSMain(VelocityVSInput v)
 float4 PSMain(VelocityPSInput p) : SV_Target0
 {
     DiscardIfOccludedByScene(p.svPosition);
-    // w が 0 近傍の頂点はカメラ平面上にあり UV が定義できない。速度 0 として扱う。
+#ifdef FBZZ_VELOCITY_ALPHA
+    clip(albedo.a*((textureMask&1u)!=0 ? velocityAlbedo.Sample(velocitySampler,p.uv).a : 1.0f)-alphaCutoff);
+#endif
+    /// @note w が 0 近傍の頂点はカメラ平面上にあり UV が定義できない。速度 0 として扱う。
     if (abs(p.currClip.w) < 1.0e-6f || abs(p.prevClip.w) < 1.0e-6f)
         return float4(0.0f, 0.0f, 1.0f, 0.0f);
 
     const float2 currUv = NdcToUv(p.currClip.xy / p.currClip.w);
     const float2 prevUv = NdcToUv(p.prevClip.xy / p.prevClip.w);
-    return float4(currUv - prevUv, 1.0f, 0.0f);
+    /// @note A は前フレームの NDC 深度。奥行き移動も TAA の履歴検証へ渡す。
+    return float4(currUv - prevUv, 1.0f, p.prevClip.z / p.prevClip.w);
 }

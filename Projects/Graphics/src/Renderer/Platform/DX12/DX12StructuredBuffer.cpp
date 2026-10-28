@@ -18,6 +18,8 @@ DX12StructuredBuffer::~DX12StructuredBuffer()
     m_mapped = nullptr;
     if (m_tracker) m_tracker->Remove(m_resource.Get());
     if (m_context) {
+        m_context->FreeCpuResourceDescriptor(m_srvCpuIndex);
+        m_context->FreeCpuResourceDescriptor(m_uavCpuIndex);
         /// @note リソース本体と同じフェンスで守る (DX12Texture のデストラクタと同じ理由)。
         m_context->FreeBindlessSlot(m_bindlessIndex);
         m_context->FreeBindlessSlot(m_bindlessUavIndex);
@@ -29,7 +31,7 @@ uint32_t DX12StructuredBuffer::GetBindlessIndex() const
 {
     if (m_bindlessIndex != INVALID_BINDLESS_INDEX)
         return m_bindlessIndex;
-    if (!m_context || !m_descriptorHeap || !m_context->SupportsBindless())
+    if (!m_context || m_srvCpuIndex == INVALID_BINDLESS_INDEX || !m_context->SupportsBindless())
         return INVALID_BINDLESS_INDEX;
 
     const uint32_t slot = m_context->AllocateBindlessSlot();
@@ -43,13 +45,24 @@ uint32_t DX12StructuredBuffer::GetBindlessIndex() const
     return slot;
 }
 
+bool DX12StructuredBuffer::UpdateRegion(const void* data, size_t bytes, size_t offset)
+{
+    if (!data || bytes==0 || offset>GetSize() || bytes>GetSize()-offset || m_gpuLocalReadOnly) return false;
+    if (!m_readWrite) { std::memcpy(m_mapped+offset,data,bytes); return true; }
+    if (!m_context || !m_context->IsFrameOpen()) return false;
+    m_tracker->Transition(m_context->GetCommandList(),m_resource.Get(),D3D12_RESOURCE_STATE_COPY_DEST);
+    const bool copied=m_context->StageBufferCopy(m_resource.Get(),data,bytes,offset);
+    m_tracker->Transition(m_context->GetCommandList(),m_resource.Get(),D3D12_RESOURCE_STATE_COMMON);
+    return copied;
+}
+
 uint32_t DX12StructuredBuffer::GetBindlessUavIndex() const
 {
     if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
         return m_bindlessUavIndex;
     /// @note 読み取り専用で作られたバッファは UAV ディスクリプタを持たない。ここで弾かないと
     /// @note       GetUav() が SRV 枠を指し、「書けるつもりの SRV」を配ってしまう。
-    if (!m_context || !m_readWrite || !m_descriptorHeap || !m_context->SupportsBindless())
+    if (!m_context || !m_readWrite || m_uavCpuIndex == INVALID_BINDLESS_INDEX || !m_context->SupportsBindless())
         return INVALID_BINDLESS_INDEX;
 
     const uint32_t slot = m_context->AllocateBindlessSlot();
@@ -94,20 +107,28 @@ bool DX12StructuredBuffer::Init(DX12Context* context, DX12StateTracker* tracker,
         desc.SampleDesc.Count = 1;
         desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_resource)))) return false;
+                D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_resource)))) {
+            FBZZ_LOG_ERROR("DX12StructuredBuffer: Upload resource allocation failed (bytes=%zu count=%u stride=%u bindless=%u/%u)",
+                sizeBytes, elementCount, stride, context->GetBindlessUsage(), context->GetBindlessCapacity());
+            return false;
+        }
         void* mapped = nullptr;
-        if (FAILED(m_resource->Map(0, nullptr, &mapped))) return false;
+        if (FAILED(m_resource->Map(0, nullptr, &mapped))) {
+            FBZZ_LOG_ERROR("DX12StructuredBuffer: Upload mapping failed (bytes=%zu count=%u stride=%u)",
+                sizeBytes, elementCount, stride);
+            return false;
+        }
         m_mapped = static_cast<uint8_t*>(mapped);
         if (data) std::memcpy(m_mapped, data, sizeBytes);
         tracker->Register(m_resource.Get(), D3D12_RESOURCE_STATE_GENERIC_READ);
     }
 
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.NumDescriptors = readWrite ? 2 : 1;
-    /// @note Resource SRV/UAVは動的shader-visibleテーブルへコピーするCPU stagingとして保持する。
-    if (FAILED(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_descriptorHeap)))) return false;
-    m_descriptorIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_srvCpuIndex = context->AllocateCpuResourceDescriptor();
+    if (m_srvCpuIndex == INVALID_BINDLESS_INDEX) return false;
+    if (readWrite) {
+        m_uavCpuIndex = context->AllocateCpuResourceDescriptor();
+        if (m_uavCpuIndex == INVALID_BINDLESS_INDEX) return false;
+    }
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = DXGI_FORMAT_UNKNOWN;
     srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
@@ -150,14 +171,12 @@ void DX12StructuredBuffer::Update(const void* data, size_t sizeBytes)
 
 D3D12_CPU_DESCRIPTOR_HANDLE DX12StructuredBuffer::GetSrv() const
 {
-    return m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    return m_context ? m_context->GetCpuResourceDescriptor(m_srvCpuIndex) : D3D12_CPU_DESCRIPTOR_HANDLE{};
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE DX12StructuredBuffer::GetUav() const
 {
-    auto handle = m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += m_descriptorIncrement;
-    return handle;
+    return m_context ? m_context->GetCpuResourceDescriptor(m_uavCpuIndex) : D3D12_CPU_DESCRIPTOR_HANDLE{};
 }
 
 } /// @note namespace fbzz::renderer

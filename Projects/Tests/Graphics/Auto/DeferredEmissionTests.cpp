@@ -5,12 +5,14 @@
 #include <TestKit/TestKit.hpp>
 #include <Graphics/Pipeline/RenderConstants.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
+#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Renderer/ComputeCall.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
+#include <Graphics/Renderer/RenderScene.hpp>
 #include <Core/ILogSink.hpp>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -77,6 +79,140 @@ struct GBufferMaterialCB {
     float padding1[3]{};
 };
 static_assert(sizeof(GBufferMaterialCB) == 96);
+
+TEST_F(DeferredEmissionTest, WaterParticleOutputGainKeepsLightingAndEmissionIndependent)
+{
+    constexpr uint32_t extent = 64;
+    auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, extent, extent);
+    ASSERT_NE(bundle.renderer, nullptr);
+    auto& device = *bundle.renderer;
+    device.SetRenderWhenOccluded(true);
+    {
+        renderer::ResourceManager resources(device);
+        renderer::RenderPassHandles handles;
+        handles.particleShader = resources.LoadShader((std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT)
+            / "Material/Effects/Particle.hlsl").generic_string());
+        const uint32_t quadIndices[]{0, 1, 2, 2, 1, 3};
+        handles.particleIB = resources.CreateIndexBuffer(quadIndices, 6);
+        handles.particlePSO = resources.CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,
+            renderer::BlendMode::ADDITIVE, renderer::DepthMode::DEPTH_READ});
+        handles.particleAlphaPSO = resources.CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,
+            renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_READ});
+        handles.frameCB = resources.CreateConstantBuffer(sizeof(renderer::PerFrameCB));
+        handles.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
+        handles.shadowCB = resources.CreateConstantBuffer(sizeof(renderer::ShadowConstantsCB));
+        handles.advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(renderer::AdvancedGraphicsCB));
+        const auto particleCB = resources.CreateConstantBuffer(sizeof(renderer::ParticleRenderCB));
+        const auto hdr = resources.CreateRenderTarget(extent, extent,
+            renderer::RenderTargetDesc{1, renderer::Format::RGBA16F, true, true});
+        const auto depth = resources.CreateRenderTarget(extent, extent, renderer::CameraDepthTargetDesc(0));
+        const uint8_t whiteRgba[]{255, 255, 255, 255};
+        const auto white = resources.CreateTexture(whiteRgba, 1, 1);
+        ASSERT_TRUE(handles.particleShader && handles.particleIB && handles.particlePSO && handles.particleAlphaPSO
+            && handles.frameCB && handles.lightCB && handles.shadowCB && handles.advancedGraphicsCB
+            && particleCB && hdr && depth && white);
+        renderer::Camera camera;
+        camera.m_position = {};
+        camera.LookAt({0, 0, 1});
+        camera.m_aspect = 1;
+        camera.m_near = 0.1f;
+        camera.m_far = 20;
+        renderer::PerFrameCB frame{};
+        frame.view = camera.GetViewMatrix();
+        frame.projection = camera.GetGpuProjectionMatrix();
+        frame.viewProjection = frame.projection * frame.view;
+        frame.invViewProjection = math::Matrix4::Inverse(frame.viewProjection);
+        frame.cameraPos = camera.m_position;
+        frame.nearZ = camera.m_near;
+        frame.farZ = camera.m_far;
+        renderer::RenderSettings settings;
+        renderer::RenderPassContext context{{}, device, resources, camera, settings, hdr, ~0u, handles};
+        context.width = context.height = extent;
+        context.resourceRegistry.BindTarget("HDR", hdr);
+        context.resourceRegistry.BindTarget("DecalDepth", depth);
+        context.resourceRegistry.BindTarget("ShadowMap", depth);
+
+        const auto render = [&](float intensity, float gain, bool sixWayMaps,
+                                renderer::ParticleBlendMode blend, math::Vector4 emission = {}) {
+            auto input = std::make_shared<renderer::RenderScene>();
+            renderer::RenderParticleInput emitter;
+            emitter.drawCount = 1;
+            emitter.settings.maxParticles = 1;
+            emitter.runtime.texture = white;
+            emitter.runtime.sixWayNegativeTexture = white;
+            emitter.runtime.renderCB = particleCB;
+            emitter.runtime.resolvedBlend = blend;
+            emitter.constants.effectsFlags = renderer::kParticleFxSixWay
+                | (sixWayMaps ? renderer::kParticleFxSixWayMaps : 0u)
+                | (blend == renderer::ParticleBlendMode::Additive ? renderer::kParticleFxAdditive : 0u);
+            emitter.constants.lightingStrength = 1;
+            emitter.constants.emissiveScale = gain;
+            emitter.constants.sixWayEmission = emission;
+            renderer::Particle particle{};
+            particle.position = {0, 0, 3};
+            particle.color = {1, 1, 1, 1};
+            particle.size = 2;
+            emitter.runtime.particles.push_back(particle);
+            input->particles.push_back(std::move(emitter));
+            context.renderScene = input;
+            renderer::LightConstantsCB light{};
+            light.lightDir = {0, 0, -1};
+            light.lightColor = {1, 0.5f, 0.25f};
+            light.lightIntensity = intensity;
+            light.ambientColor = {};
+            const renderer::ShadowConstantsCB shadow{};
+            const renderer::AdvancedGraphicsCB advanced{};
+            resources.AdvanceFrame();
+            device.BeginFrame();
+            resources.Update(handles.frameCB, &frame, sizeof(frame));
+            resources.Update(handles.lightCB, &light, sizeof(light));
+            resources.Update(handles.shadowCB, &shadow, sizeof(shadow));
+            resources.Update(handles.advancedGraphicsCB, &advanced, sizeof(advanced));
+            device.SetRenderTarget(depth, resources);
+            device.ClearDepth();
+            device.SetRenderTarget(hdr, resources);
+            device.Clear({0, 0, 0, 0});
+            renderer::ExecuteParticlePass(context);
+            device.SetRenderTarget({}, resources);
+            device.EndFrame();
+            std::vector<float> pixels;
+            uint32_t width = 0, height = 0;
+            if (!device.CaptureRenderTargetToLinearRGBA(hdr, resources, pixels, width, height)
+                || width != extent || height != extent || pixels.size() != extent * extent * 4u) {
+                ADD_FAILURE() << "Particle HDR readback failed";
+                return math::Vector3{};
+            }
+            const size_t center = (32u * extent + 32u) * 4u;
+            return math::Vector3{pixels[center], pixels[center + 1], pixels[center + 2]};
+        };
+
+        /// @note Water materials use the existing final-output gain of one; zero six-way emission, not gain zero, removes self emission.
+        /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/niagara-renderers?application_version=4.27 Sprite Renderer: material and color bindings determine sprite rendering.
+        for (const auto blend : {renderer::ParticleBlendMode::Additive, renderer::ParticleBlendMode::Alpha}) {
+            for (bool maps : {false, true}) {
+                SCOPED_TRACE(static_cast<int>(blend));
+                SCOPED_TRACE(maps);
+                const auto lit = render(1, 1, maps, blend);
+                EXPECT_GT(lit.x, 0.1f);
+                EXPECT_GT(lit.y, 0.05f);
+                EXPECT_GT(lit.z, 0.025f);
+                /// @note Keep light color nonzero to catch a disabled Sun whose intensity is ignored by the particle shader.
+                /// @see https://pbr-book.org/4ed/Light_Sources/Distant_Lights SampleLi scales emitted radiance once.
+                EXPECT_VEC3_NEAR(render(0, 1, maps, blend), math::Vector3{}, 0.001f);
+                EXPECT_VEC3_NEAR(render(-1, 1, maps, blend), math::Vector3{}, 0.001f);
+                EXPECT_VEC3_NEAR(render(1, 0, maps, blend), math::Vector3{}, 0.001f);
+                EXPECT_VEC3_NEAR(render(2, 1, maps, blend), lit * 2.0f, 0.004f);
+            }
+        }
+        const math::Vector4 selfEmission{0.25f, 0.125f, 0.0625f, 0};
+        const auto emissionOnly = render(0, 1, true, renderer::ParticleBlendMode::Alpha, selfEmission);
+        EXPECT_VEC3_NEAR(emissionOnly, (math::Vector3{selfEmission.x, selfEmission.y, selfEmission.z}), 0.002f);
+        EXPECT_VEC3_NEAR(render(0, 2, true, renderer::ParticleBlendMode::Alpha, selfEmission),
+            emissionOnly * 2.0f, 0.004f);
+        resources.Reset();
+    }
+    device.Shutdown();
+}
 
 TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlockerShadow)
 {
@@ -600,7 +736,7 @@ TEST_F(DeferredEmissionTest, ConsumesFinalGBufferRoughnessWithoutFilteringAcross
     device.Shutdown();
 }
 
-TEST_F(DeferredEmissionTest, SelectsRayReflectionAndSsrExclusivelyBeforeToneMapping)
+TEST_F(DeferredEmissionTest, CompositeDoesNotReapplyResolvedScreenOrRayReflections)
 {
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, 64, 64);
     ASSERT_NE(bundle.renderer, nullptr);
@@ -629,16 +765,19 @@ TEST_F(DeferredEmissionTest, SelectsRayReflectionAndSsrExclusivelyBeforeToneMapp
         const auto frameCB = resources.CreateConstantBuffer(sizeof(frame));
         const auto postCB = resources.CreateConstantBuffer(sizeof(post));
         const auto advancedCB = resources.CreateConstantBuffer(sizeof(advanced));
-        const auto render = [&](bool enabled, float validity, float ssrIntensity) {
+        const auto render = [&](bool enabled, float validity, float ssrIntensity,
+            math::Vector3 resolvedHdr = math::Vector3{0.125f, 0.25f, 0.5f}) {
             resources.AdvanceFrame();
             device.BeginFrame();
             device.SetRenderTarget(hdr, resources);
-            device.Clear({0.125f, 0.25f, 0.5f, 1});
+            device.Clear({resolvedHdr.x, resolvedHdr.y, resolvedHdr.z, 1});
             device.SetRenderTarget(ssr, resources);
             device.Clear({4, 1, 2, 1});
             device.SetRenderTarget(ray, resources);
             device.Clear({0.25f, 0.5f, 1, validity});
             post.rayReflectionEnabled = enabled ? 1.0f : 0.0f;
+            post.reflectionResolveEnabled = enabled ? 1.0f : 0.0f;
+            post.reflectionSsrEnabled = ssrIntensity > 0 ? 1.0f : 0.0f;
             advanced.ssrIntensity = ssrIntensity;
             resources.Update(frameCB, &frame, sizeof(frame));
             resources.Update(postCB, &post, sizeof(post));
@@ -667,11 +806,19 @@ TEST_F(DeferredEmissionTest, SelectsRayReflectionAndSsrExclusivelyBeforeToneMapp
             return math::Vector3{pixels[0], pixels[1], pixels[2]};
         };
         const auto original = render(false, 0, 0);
-        const auto ssrFallback = render(false, 0, 1);
-        EXPECT_GT((ssrFallback - original).LengthSq(), 0.01f);
-        EXPECT_VEC3_NEAR(render(true, 0, 1), ssrFallback, 0.002f);
+        EXPECT_GT(original.LengthSq(), 0.01f);
+        /// @note SSRResolve / DeferredLighting already own reflection composition; stale source textures must not modify Composite's HDR.
+        /// @see Docs/design/graphics-quality.md 不透明の鏡面反射。
+        EXPECT_VEC3_NEAR(render(false, 0, 1), original, 0.002f);
+        EXPECT_VEC3_NEAR(render(true, 0, 1), original, 0.002f);
         EXPECT_VEC3_NEAR(render(true, 1, 1), original, 0.002f);
-        EXPECT_VEC3_NEAR(render(false, 1, 1), ssrFallback, 0.002f);
+        EXPECT_VEC3_NEAR(render(false, 1, 1), original, 0.002f);
+        const math::Vector3 resolvedReflection{0.625f, 0.75f, 1.0f};
+        const auto resolved = render(false, 0, 0, resolvedReflection);
+        EXPECT_GT(resolved.x, original.x);
+        EXPECT_GT(resolved.y, original.y);
+        EXPECT_GT(resolved.z, original.z);
+        EXPECT_VEC3_NEAR(render(true, 1, 1, resolvedReflection), resolved, 0.002f);
         resources.Reset();
     }
     device.Shutdown();
@@ -926,7 +1073,7 @@ TEST_F(DeferredEmissionTest, RejectsStaleSsrReceiptBeforePublishingAnOldResult)
     device.Shutdown();
 }
 
-TEST_F(DeferredEmissionTest, ProducesWeightedHybridSsrWithMaterialIndependentConfidenceAndEdgeFade)
+TEST_F(DeferredEmissionTest, ProducesWeightedSsrWithMaterialIndependentConfidenceAndModeSpecificValidation)
 {
     constexpr uint32_t extent = 32;
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, 64, 64);
@@ -1007,7 +1154,7 @@ TEST_F(DeferredEmissionTest, ProducesWeightedHybridSsrWithMaterialIndependentCon
             device.Submit(fillMarker, resources);
             device.SetViewport(0, 0, extent, extent);
             device.SetRenderTarget(material, resources); device.Clear({0.2f, 0.4f, 0.8f, roughness});
-            /// @note The true target uses N.z=-3/4 at the receiver. SELF instead sends the reflection behind its own constant-depth surface, which legacy SSR accepts on the first step.
+            /// @note The true target uses N.z=-3/4 at the receiver; SELF reproduces Raster's coarse self-hit that Hybrid must reject.
             device.SetRenderTarget(normals, resources);
             device.Clear(targetCase == TargetCase::SELF ? math::Vector4{0.9f, 0.5f, 0.2f, metallic}
                 : math::Vector4{(std::sqrt(7.0f) / 4.0f + 1) * 0.5f, 0.5f, 0.125f, metallic});
@@ -1067,11 +1214,23 @@ TEST_F(DeferredEmissionTest, ProducesWeightedHybridSsrWithMaterialIndependentCon
         const auto black = render(0, true, 16, 8, {});
         EXPECT_FLOAT_EQ(black.x, 0); EXPECT_FLOAT_EQ(black.y, 0); EXPECT_FLOAT_EQ(black.z, 0);
         EXPECT_NEAR(black.w, dielectric.w, 0.001f);
-        const auto legacy = render(0, false);
-        EXPECT_NEAR(legacy.x, incident.x, 0.01f);
-        EXPECT_NEAR(legacy.y, incident.y, 0.01f);
-        EXPECT_NEAR(legacy.z, incident.z, 0.02f);
-        EXPECT_NEAR(legacy.w, dielectricFresnel, 0.002f);
+        /// @note With IBL disabled, Raster's signed delta equals Fresnel-weighted incident radiance times geometric confidence.
+        /// @see Docs/design/graphics-quality.md 不透明の鏡面反射。
+        const auto raster = render(0, false);
+        EXPECT_NEAR(raster.w, 1.0f, 0.001f);
+        EXPECT_NEAR(raster.x, incident.x * dielectricFresnel, 0.003f);
+        EXPECT_NEAR(raster.y, incident.y * dielectricFresnel, 0.005f);
+        EXPECT_NEAR(raster.z, incident.z * dielectricFresnel, 0.008f);
+        const auto rasterMetallic = render(1, false);
+        EXPECT_NEAR(rasterMetallic.w, raster.w, 0.001f);
+        EXPECT_NEAR(rasterMetallic.x, incident.x * (0.2f + 0.8f * fifthPower), 0.005f);
+        EXPECT_NEAR(rasterMetallic.y, incident.y * (0.4f + 0.6f * fifthPower), 0.01f);
+        EXPECT_NEAR(rasterMetallic.z, incident.z * (0.8f + 0.2f * fifthPower), 0.02f);
+        const auto rasterEdge = render(0, false, 29, 24);
+        EXPECT_GT(rasterEdge.w, 0); EXPECT_LT(rasterEdge.w, 0.5f);
+        EXPECT_NEAR(rasterEdge.x, incident.x * dielectricFresnel * rasterEdge.w, 0.003f);
+        EXPECT_NEAR(rasterEdge.y, incident.y * dielectricFresnel * rasterEdge.w, 0.005f);
+        EXPECT_NEAR(rasterEdge.z, incident.z * dielectricFresnel * rasterEdge.w, 0.008f);
         for (float marker : {1.0f, 2.0f}) {
             SCOPED_TRACE(marker);
             const auto receiverGlass = render(0, true, 16, 8, incident, TargetCase::FRONT_PLANE,
@@ -1089,11 +1248,18 @@ TEST_F(DeferredEmissionTest, ProducesWeightedHybridSsrWithMaterialIndependentCon
             const auto rejected = render(0, true, 16, 8, incident, falseHit);
             EXPECT_FLOAT_EQ(rejected.x, 0); EXPECT_FLOAT_EQ(rejected.y, 0);
             EXPECT_FLOAT_EQ(rejected.z, 0); EXPECT_FLOAT_EQ(rejected.w, 0);
-            if (falseHit != TargetCase::BACKGROUND) {
-                /// @note These three inputs reproduce actual old Hybrid false positives; legacy Raster retains its existing acceptance instead of silently changing.
-                const auto oldAccepted = render(0, false, 16, 8, incident, falseHit);
-                EXPECT_GT(oldAccepted.w, 0.01f);
-                EXPECT_GT(oldAccepted.x, 1);
+            const auto rasterCandidate = render(0, false, 16, 8, incident, falseHit);
+            if (falseHit == TargetCase::SELF || falseHit == TargetCase::BACK_FACE) {
+                /// @note Raster retains its coarse hit acceptance, but publishes weighted RGB and material-independent confidence.
+                const float remaining = falseHit == TargetCase::SELF ? 0.4f : 0.25f;
+                const float rasterFresnel = 0.04f + 0.96f * remaining * remaining * remaining * remaining * remaining;
+                EXPECT_GT(rasterCandidate.w, 0.01f);
+                EXPECT_NEAR(rasterCandidate.x, incident.x * rasterFresnel * rasterCandidate.w, 0.003f);
+                EXPECT_NEAR(rasterCandidate.y, incident.y * rasterFresnel * rasterCandidate.w, 0.005f);
+                EXPECT_NEAR(rasterCandidate.z, incident.z * rasterFresnel * rasterCandidate.w, 0.008f);
+            } else {
+                EXPECT_FLOAT_EQ(rasterCandidate.x, 0); EXPECT_FLOAT_EQ(rasterCandidate.y, 0);
+                EXPECT_FLOAT_EQ(rasterCandidate.z, 0); EXPECT_FLOAT_EQ(rasterCandidate.w, 0);
             }
         }
         for (float roughness : {0.25f, 0.5f}) {
@@ -1101,8 +1267,16 @@ TEST_F(DeferredEmissionTest, ProducesWeightedHybridSsrWithMaterialIndependentCon
             const auto rejected = render(0, true, 16, 8, incident, TargetCase::FRONT_PLANE, roughness);
             EXPECT_FLOAT_EQ(rejected.x, 0); EXPECT_FLOAT_EQ(rejected.y, 0);
             EXPECT_FLOAT_EQ(rejected.z, 0); EXPECT_FLOAT_EQ(rejected.w, 0);
-            const auto raster = render(0, false, 16, 8, incident, TargetCase::FRONT_PLANE, roughness);
-            EXPECT_GT(raster.w, 0);
+            const auto rasterRough = render(0, false, 16, 8, incident, TargetCase::FRONT_PLANE, roughness);
+            if (roughness < 0.35f) {
+                EXPECT_GT(rasterRough.w, 0); EXPECT_LT(rasterRough.w, raster.w);
+                EXPECT_NEAR(rasterRough.x, incident.x * dielectricFresnel * rasterRough.w, 0.003f);
+                EXPECT_NEAR(rasterRough.y, incident.y * dielectricFresnel * rasterRough.w, 0.005f);
+                EXPECT_NEAR(rasterRough.z, incident.z * dielectricFresnel * rasterRough.w, 0.008f);
+            } else {
+                EXPECT_FLOAT_EQ(rasterRough.x, 0); EXPECT_FLOAT_EQ(rasterRough.y, 0);
+                EXPECT_FLOAT_EQ(rasterRough.z, 0); EXPECT_FLOAT_EQ(rasterRough.w, 0);
+            }
         }
         const float invalid = std::numeric_limits<float>::quiet_NaN();
         const float infinite = std::numeric_limits<float>::infinity();

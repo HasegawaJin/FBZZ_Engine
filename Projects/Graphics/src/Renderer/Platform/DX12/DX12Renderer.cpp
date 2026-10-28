@@ -9,6 +9,7 @@
 #include "DX12AccelerationStructure.hpp"
 #include "DX12Buffer.hpp"
 #include "DX12ConstantBuffer.hpp"
+#include "DX12UploadArenaSizing.hpp"
 #include "DX12PipelineState.hpp"
 #include "DX12Shader.hpp"
 #include "DX12Texture.hpp"
@@ -18,6 +19,8 @@
 #include "DX12StructuredBuffer.hpp"
 #include <Graphics/Renderer/BindlessIndices.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
+#include <Graphics/Renderer/Mesh.hpp>
+#include "../../ResourceManagerLifetime.hpp"
 /// @note RT → PNG エンコードは AI 連携用の共通処理。
 #include "../RenderTargetCapture.hpp"
 #include <DirectXTex.h>
@@ -25,6 +28,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
+#include <chrono>
 
 namespace fbzz::renderer {
 
@@ -35,19 +40,51 @@ std::atomic<uint64_t> s_gpuProfilerDeviceEpoch{1};
 /// @note out-of-line 定義。ここは DX12IblBaker.hpp を include 済みなので、m_iblBaker
 /// @note (unique_ptr<DX12IblBaker>) のデリーターを完全型として実体化できる。
 DX12Renderer::DX12Renderer() = default;
-DX12Renderer::~DX12Renderer() = default;
+DX12Renderer::~DX12Renderer()
+{
+    prepared_skinning_detail::UnregisterBackend(*this);
+    StopPreparedSkinningPool(m_preparedSkinningPool);
+    if (m_preparedSkinningPool) m_context.Flush();
+}
 
 bool DX12Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 {
-    constexpr size_t UPLOAD_BYTES_PER_FRAME = 16u * 1024u * 1024u;
+    m_bindingFusionEnabled = false;
+    m_bindingDiagnostics = false;
+    if (const char* mode = std::getenv("FBZZ_DX12_BINDING_SCAN_FUSION"))
+        m_bindingFusionEnabled = std::strcmp(mode, "1") == 0;
+    if (const char* diagnostic = std::getenv("FBZZ_DX12_BINDLESS_INDICES_DIAGNOSTICS"))
+        m_bindingDiagnostics = std::strcmp(diagnostic, "1") == 0;
+    if (std::getenv("FBZZ_DX12_BINDING_SCAN_FUSION") || m_bindingDiagnostics)
+        std::fprintf(stderr, "DX12_BINDING_SCAN_CONFIG fused=%u diagnostic=%u\n",
+            static_cast<unsigned>(m_bindingFusionEnabled), static_cast<unsigned>(m_bindingDiagnostics));
+
+    char* configuredMiB = nullptr;
+    size_t configuredLength = 0;
+    const auto configReadResult = _dupenv_s(&configuredMiB, &configuredLength, "FBZZ_DX12_UPLOAD_ARENA_MIB");
+    const auto uploadSizing = upload_arena_detail::ParseUploadArenaMiB(
+        configuredMiB ? std::string_view{configuredMiB} : std::string_view{},
+        configuredMiB != nullptr || configReadResult != 0);
+    std::free(configuredMiB);
+    if (!uploadSizing.valid) {
+        FBZZ_LOG_WARN("DX12Renderer: invalid FBZZ_DX12_UPLOAD_ARENA_MIB; expected 16/32/64/128; using 16 MiB");
+    }
     if (!m_context.Initialize(hwnd, width, height)) {
         FBZZ_LOG_ERROR("DX12Renderer::Init: DX12Context 初期化失敗");
         return false;
     }
-    if (!m_uploadArena.Initialize(m_context.GetDevice(), UPLOAD_BYTES_PER_FRAME)) {
+    if (!m_uploadArena.Initialize(m_context.GetDevice(), uploadSizing.bytesPerFrame)) {
         FBZZ_LOG_ERROR("DX12Renderer::Init: UploadArena 初期化失敗");
         m_context.Shutdown();
         return false;
+    }
+    /// @note DX12UploadArena owns two committed upload resources; this is capacity, not observed usage.
+    FBZZ_LOG_INFO("DX12Renderer: UploadArena initialized (%zu bytes/frame, 2 frames, %zu bytes total)",
+        uploadSizing.bytesPerFrame, uploadSizing.bytesPerFrame * 2u);
+    if (uploadSizing.specified) {
+        /// @note Explicit diagnostic configuration remains observable when the harness suppresses INFO logs.
+        std::fprintf(stderr, "UPLOAD_ARENA_CONFIG bytesPerFrame=%zu frameCount=2 totalBytes=%zu\n",
+            uploadSizing.bytesPerFrame, uploadSizing.bytesPerFrame * 2u);
     }
     if (!m_psoCache.Initialize(m_context.GetDevice(), m_context.SupportsBindless())) {
         FBZZ_LOG_ERROR("DX12Renderer::Init: PsoCache/RootSignature 初期化失敗");
@@ -63,13 +100,28 @@ bool DX12Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
     if (!profilerReady) {
         FBZZ_LOG_WARN("DX12Renderer: GPUプロファイラーを初期化できませんでした");
     }
+    prepared_skinning_detail::RegisterBackend(*this, PrepareCapturedNative);
     return true;
+}
+
+std::unique_ptr<prepared_skinning_detail::NativeWork> DX12Renderer::PrepareCapturedNative(
+    IRenderer& native, ResourceManager& resources, ResourceHandle<ShaderTag> shader,
+    std::span<const CapturedSkinningRequest> requests, std::span<const math::Matrix4> matrices)
+{
+    auto& renderer = static_cast<DX12Renderer&>(native);
+    if (renderer.m_asyncComputeActive) return {};
+    if (!renderer.m_preparedSkinningPool) renderer.m_preparedSkinningPool = CreatePreparedSkinningPool(renderer.m_context);
+    return PrepareDX12Skinning(renderer.m_preparedSkinningPool, renderer.m_context, renderer.m_psoCache,
+        renderer.m_stateTracker, resources, shader, requests, matrices);
 }
 
 void DX12Renderer::Shutdown()
 {
+    prepared_skinning_detail::UnregisterBackend(*this);
+    StopPreparedSkinningPool(m_preparedSkinningPool);
     EndComputeBatch();
     m_context.Flush();
+    m_preparedSkinningPool.reset();
     m_iblBaker.reset();
     if (m_gpuReadback && m_gpuMappedTimestamps) m_gpuReadback->Unmap(0, nullptr);
     m_gpuMappedTimestamps = nullptr;
@@ -96,6 +148,11 @@ void DX12Renderer::InvalidateRootCbvCache()
 void DX12Renderer::BeginFrame()
 {
     if (m_context.BeginFrame()) {
+        m_bindingDraws = m_bindingUploads = m_bindingFailures = 0;
+        m_bindingResourceOwner = m_bindingResourceFrame = 0;
+        m_bindingResourceCoherent = true;
+        m_bindingSectionMs = 0;
+        BeginPreparedSkinningFrame(m_preparedSkinningPool);
         /// @note 既存 BeginFrame の slot fence 待機後に回収し、未回収 query を上書きしない。
         GpuProfCollect();
         m_gpuProfilerFrame = m_context.GetFrameIndex();
@@ -110,6 +167,8 @@ void DX12Renderer::BeginFrame()
         m_computeBatchActive = false;
         m_computeBatchWrittenResources.clear();
         m_currentRenderTargetHandle = {};
+    m_currentRenderTargetOwner = 0;
+        m_currentColorAttachmentCount = 0;
         m_currentCubeRtv = {};
         m_currentViewport = { 0.0f, 0.0f, static_cast<float>(m_context.GetWidth()),
                               static_cast<float>(m_context.GetHeight()), 0.0f, 1.0f };
@@ -167,20 +226,34 @@ void DX12Renderer::EndFrame()
     m_pixPassToken = m_pixViewToken = m_pixFrameToken = 0;
     m_pixViewName.clear();
     const uint64_t actualFence = m_context.EndFrame();
+    EndPreparedSkinningFrame(m_preparedSkinningPool, actualFence);
     if (recorded) m_gpuProfilerLedger.SubmitFrame(slot, actualFence);
+    if (m_bindingDiagnostics)
+        std::fprintf(stderr, "DX12_BINDING_SCAN_JSON {\"frame\":%llu,\"resourceOwner\":%llu,\"observedResourceFrame\":%llu,\"resourceCoherent\":%s,\"fused\":%s,\"visits\":%llu,\"uploads\":%llu,\"failures\":%llu,\"bindingSectionMs\":%.9f}\n",
+            static_cast<unsigned long long>(m_gpuPhysicalFrameSerial), static_cast<unsigned long long>(m_bindingResourceOwner),
+            static_cast<unsigned long long>(m_bindingResourceFrame), m_bindingResourceCoherent ? "true" : "false",
+            m_bindingFusionEnabled ? "true" : "false", static_cast<unsigned long long>(m_bindingDraws),
+            static_cast<unsigned long long>(m_bindingUploads), static_cast<unsigned long long>(m_bindingFailures), m_bindingSectionMs);
 }
 
 void DX12Renderer::Clear(const math::Vector4& color)
 {
     if (!m_context.IsFrameOpen())
         return;
-    ResourceManager* const resources = ResourceManager::Active();
-    if (IsCurrentRenderTargetLost(resources)) {
+    if (IsCurrentRenderTargetLost()) {
         ReportLostRenderTarget("Clear");
         return;
     }
     const float clearColor[] = {color.x, color.y, color.z, color.w};
-    if (DX12RenderTarget* const target = ResolveCurrentRenderTarget(resources)) {
+    if (m_currentColorAttachmentCount != 0) {
+        for (uint32_t index = 0; index < m_currentColorAttachmentCount; ++index) {
+            const auto* target = ResolveCurrentColorAttachment(index);
+            m_context.GetCommandList()->ClearRenderTargetView(
+                target->GetRtv(m_currentColorAttachments[index].colorIndex), clearColor, 0, nullptr);
+        }
+        return;
+    }
+    if (DX12RenderTarget* const target = ResolveCurrentRenderTarget()) {
         if (target->IsCubemap() && m_currentCubeRtv.ptr) {
             m_context.GetCommandList()->ClearRenderTargetView(m_currentCubeRtv, clearColor, 0, nullptr);
             m_context.GetCommandList()->ClearDepthStencilView(target->GetDsv(m_currentCubeMip),
@@ -197,6 +270,7 @@ void DX12Renderer::Clear(const math::Vector4& color)
                 target->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, FarDepth(target->IsReversedZ()), 0, 0, nullptr);
         }
     } else {
+        m_context.MarkBackBufferWritten();
         m_context.GetCommandList()->ClearRenderTargetView(m_context.GetCurrentRtv(), clearColor, 0, nullptr);
         /// @note バックバッファも DX11 と同じく色クリア時に深度を 1.0 へ戻す。
         m_context.GetCommandList()->ClearDepthStencilView(
@@ -206,14 +280,15 @@ void DX12Renderer::Clear(const math::Vector4& color)
 
 void DX12Renderer::ClearDepth()
 {
+    if (m_currentColorAttachmentCount != 0) return;
     if (m_context.IsFrameOpen()) {
-        ResourceManager* const resources = ResourceManager::Active();
-        if (IsCurrentRenderTargetLost(resources)) {
+        if (IsCurrentRenderTargetLost()) {
             ReportLostRenderTarget("ClearDepth");
             return;
         }
-        DX12RenderTarget* const target = ResolveCurrentRenderTarget(resources);
+        DX12RenderTarget* const target = ResolveCurrentRenderTarget();
         if (target && !target->HasDepth()) return;
+        if (!target) m_context.MarkBackBufferWritten();
         const auto dsv = target ? target->GetDsv(target->IsCubemap() ? m_currentCubeMip : 0) : m_context.GetDsv();
         const float farDepth = FarDepth(target && target->IsReversedZ());
         m_context.GetCommandList()->ClearDepthStencilView(
@@ -223,13 +298,47 @@ void DX12Renderer::ClearDepth()
 
 DX12RenderTarget* DX12Renderer::ResolveCurrentRenderTarget(ResourceManager* resources) const
 {
-    if (!resources || !m_currentRenderTargetHandle.IsValid()) return nullptr;
-    auto* base = resources->Get(m_currentRenderTargetHandle);
+    if (!m_currentRenderTargetHandle.IsValid()) return nullptr;
+    auto* owner = resources ? resources : FindLiveResourceManager(m_currentRenderTargetOwner);
+    if (!owner || owner->GetInstanceId() != m_currentRenderTargetOwner) return nullptr;
+    auto* base = owner->Get(m_currentRenderTargetHandle);
     return base ? static_cast<DX12RenderTarget*>(base) : nullptr;
+}
+
+DX12RenderTarget* DX12Renderer::ResolveCurrentColorAttachment(uint32_t index, ResourceManager* resources) const
+{
+    if (index >= m_currentColorAttachmentCount) return nullptr;
+    auto* owner = resources ? resources : FindLiveResourceManager(m_currentRenderTargetOwner);
+    if (!owner || owner->GetInstanceId() != m_currentRenderTargetOwner) return nullptr;
+    const auto& attachment = m_currentColorAttachments[index];
+    auto* base = owner->Get(attachment.target);
+    auto* target = base ? static_cast<DX12RenderTarget*>(base) : nullptr;
+    return target && !target->IsCubemap() && attachment.colorIndex < target->GetColorCount() ? target : nullptr;
+}
+
+void DX12Renderer::TransitionCurrentTargetForRead()
+{
+    if (m_currentColorAttachmentCount != 0) {
+        for (uint32_t index = 0; index < m_currentColorAttachmentCount; ++index)
+            if (auto* target = ResolveCurrentColorAttachment(index))
+                m_stateTracker.QueueTransition(target->GetColorResource(m_currentColorAttachments[index].colorIndex),
+                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        return;
+    }
+    if (auto* target = ResolveCurrentRenderTarget()) {
+        if (target->IsCubemap())
+            m_stateTracker.QueueTransition(target->GetCubeResource(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        else for (uint32_t index = 0; index < target->GetColorCount(); ++index)
+            m_stateTracker.QueueTransition(target->GetColorResource(index), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        if (target->HasDepth())
+            m_stateTracker.QueueTransition(target->GetDepthResource(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    }
 }
 
 bool DX12Renderer::IsCurrentRenderTargetLost(ResourceManager* resources) const
 {
+    for (uint32_t index = 0; index < m_currentColorAttachmentCount; ++index)
+        if (!ResolveCurrentColorAttachment(index, resources)) return true;
     return m_currentRenderTargetHandle.IsValid() && ResolveCurrentRenderTarget(resources) == nullptr;
 }
 
@@ -259,6 +368,14 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
 {
     if (!m_context.IsFrameOpen())
         return;
+    const auto* prepared = call.preparedSkinning
+        ? &prepared_skinning_detail::TicketFactory::Native(*call.preparedSkinning) : nullptr;
+    const uint32_t preparedRow = call.preparedSkinningRow;
+    const auto* preparedResource = prepared ? prepared->OutputResource(preparedRow) : nullptr;
+    if (prepared && (!preparedResource || prepared->DeviceIdentity() != m_context.GetDevice())) return;
+    const auto preparedRaw = [&](ResourceHandle<BufferTag> handle) {
+        return prepared && preparedRow < prepared->writes.size() && handle == prepared->writes[preparedRow].output;
+    };
     auto* shaderBase = resources.Get(call.shader);
     auto* stateBase = resources.Get(call.pipelineState);
     if (!shaderBase || !stateBase) {
@@ -273,21 +390,174 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
     auto* shader = static_cast<DX12Shader*>(shaderBase);
     auto* state = static_cast<DX12PipelineState*>(stateBase);
+    const bool hasIndirectArguments = call.indirectArguments.IsValid();
+    const bool meshDispatch = call.meshGroupCountX > 0;
+    const bool meshShader = shader->IsMeshShader();
+    if (meshDispatch != meshShader) {
+        FBZZ_LOG_ERROR("DX12Renderer::Submit: shader stage and meshGroupCountX disagree (shader=%s)",
+                       shader->GetPath().c_str());
+        return;
+    }
+    if (!hasIndirectArguments && (call.indirectArgumentOffset != 0 || call.indirectCommandCount != 1)) {
+        FBZZ_LOG_ERROR("DX12Renderer::Submit: indirect argument offset/count set without indirectArguments");
+        return;
+    }
+    if (call.indirectInstanceOffset && (!hasIndirectArguments || meshDispatch)) {
+        FBZZ_LOG_ERROR("DX12Renderer::Submit: indirectInstanceOffset requires indexed indirect arguments");
+        return;
+    }
+    if (!meshDispatch && (call.meshGroupCountY != 0 || call.meshGroupCountZ != 0)) {
+        FBZZ_LOG_ERROR("DX12Renderer::Submit: mesh group Y/Z set without a mesh dispatch");
+        return;
+    }
+    if (meshDispatch) {
+        if (!m_context.SupportsMeshShaders()
+            || (call.topology != PrimitiveTopology::TRIANGLE_LIST
+                && call.topology != PrimitiveTopology::LINE_LIST)
+            || call.vertexBuffer.IsValid() || call.indexBuffer.IsValid()) {
+            FBZZ_LOG_ERROR("DX12Renderer::Submit: unsupported mesh shader capability, topology or IA binding");
+            return;
+        }
+        if (!hasIndirectArguments) {
+            if (call.meshGroupCountY == 0 || call.meshGroupCountZ == 0
+                || call.meshGroupCountX >= 65536 || call.meshGroupCountY >= 65536
+                || call.meshGroupCountZ >= 65536) {
+                FBZZ_LOG_ERROR("DX12Renderer::Submit: direct mesh group counts exceed D3D12 limits");
+                return;
+            }
+            const uint64_t groupProduct = static_cast<uint64_t>(call.meshGroupCountX)
+                * call.meshGroupCountY * call.meshGroupCountZ;
+            if (groupProduct > (1u << 22u)) {
+                FBZZ_LOG_ERROR("DX12Renderer::Submit: direct mesh group count product exceeds D3D12 limits");
+                return;
+            }
+        }
+    }
+    if (call.topology != PrimitiveTopology::TRIANGLE_LIST
+        && call.topology != PrimitiveTopology::LINE_LIST
+        && (hasIndirectArguments || meshDispatch)) {
+        FBZZ_LOG_ERROR("DX12Renderer::Submit: invalid primitive topology for indirect/mesh draw");
+        return;
+    }
+    for (uint32_t slot = 0; slot < call.vsRawBuffers.size(); ++slot) {
+        if (call.vsRawBuffers[slot].IsValid() && call.vsBuffers[slot].IsValid()) {
+            FBZZ_LOG_ERROR("DX12Renderer::Submit: raw and structured VS buffer conflict at t%u",
+                           14u + slot);
+            return;
+        }
+        if (call.vsRawBuffers[slot].IsValid()) {
+            if (preparedRaw(call.vsRawBuffers[slot])) continue;
+            auto* rawBufferBase = resources.Get(call.vsRawBuffers[slot]);
+            if (!rawBufferBase || rawBufferBase->GetBindlessSrvIndex() == INVALID_BINDLESS_INDEX) {
+                FBZZ_LOG_ERROR("DX12Renderer::Submit: invalid or unreadable raw VS/MS buffer at t%u",
+                               14u + slot);
+                return;
+            }
+        }
+    }
+    for (const auto handle : call.indirectReadBuffers) {
+        const auto* buffer = resources.Get(handle);
+        if (!m_context.SupportsBindless() || !buffer || buffer->GetBindlessSrvIndex() == INVALID_BINDLESS_INDEX) {
+            FBZZ_LOG_ERROR("DX12Renderer::Submit: stale or unreadable indirect vertex buffer");
+            return;
+        }
+    }
+    if (hasIndirectArguments) {
+        const bool meshArguments = meshDispatch;
+        const uint32_t argumentStride = meshArguments
+            ? static_cast<uint32_t>(sizeof(D3D12_DISPATCH_MESH_ARGUMENTS))
+            : static_cast<uint32_t>(sizeof(D3D12_DRAW_INDEXED_ARGUMENTS)
+                + (call.indirectInstanceOffset ? sizeof(uint32_t) : 0u));
+        auto* argumentBase = resources.Get(call.indirectArguments);
+        auto* indexedCommandSignature = m_context.GetDrawIndexedCommandSignature();
+        auto* indexedInstanceOffsetCommandSignature = m_psoCache.GetIndexedInstanceOffsetCommandSignature();
+        auto* meshCommandSignature = m_context.GetDispatchMeshCommandSignature();
+        if (!call.indirectCommandCount || call.indirectArgumentOffset % 4u != 0
+            || (meshArguments ? (!m_context.SupportsMeshShaders() || !meshCommandSignature)
+                              : ((call.indirectInstanceOffset
+                                      ? !indexedInstanceOffsetCommandSignature : !indexedCommandSignature)
+                                  || !call.indexBuffer.IsValid()))) {
+            FBZZ_LOG_ERROR("DX12Renderer::Submit: invalid indirect command count/alignment/capability/binding");
+            return;
+        }
+        if (!argumentBase) {
+            FBZZ_LOG_ERROR("DX12Renderer::Submit: stale indirect argument buffer handle");
+            return;
+        }
+        auto* argumentBuffer = static_cast<DX12StructuredBuffer*>(argumentBase);
+        const uint64_t argumentBufferSize = static_cast<uint64_t>(argumentBuffer->GetSize());
+        if (argumentBuffer->GetStride() != argumentStride
+            || argumentBuffer->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX
+            || call.indirectArgumentOffset > argumentBufferSize
+            || call.indirectCommandCount > (argumentBufferSize - call.indirectArgumentOffset) / argumentStride) {
+            FBZZ_LOG_ERROR("DX12Renderer::Submit: indirect argument buffer stride/UAV/range invalid "
+                           "(stride=%u expected=%u offset=%llu count=%u size=%llu)",
+                           argumentBuffer->GetStride(), argumentStride,
+                           static_cast<unsigned long long>(call.indirectArgumentOffset),
+                           call.indirectCommandCount,
+                           static_cast<unsigned long long>(argumentBufferSize));
+            return;
+        }
+        if (call.instanceBuffer == call.indirectArguments
+            || std::find(call.vsBuffers.begin(), call.vsBuffers.end(), call.indirectArguments) != call.vsBuffers.end()
+            || std::find(call.psBuffers.begin(), call.psBuffers.end(), call.indirectArguments) != call.psBuffers.end()
+            || std::find(call.auxiliaryPsBuffers.begin(), call.auxiliaryPsBuffers.end(),
+                         call.indirectArguments) != call.auxiliaryPsBuffers.end()) {
+            FBZZ_LOG_ERROR("DX12Renderer::Submit: indirect argument buffer cannot be shader-readable in the same draw");
+            return;
+        }
+        if (!meshArguments) {
+            auto* indexBase = resources.Get(call.indexBuffer);
+            if (!indexBase || static_cast<DX12Buffer*>(indexBase)->GetKind() != DX12Buffer::Kind::Index) {
+                FBZZ_LOG_ERROR("DX12Renderer::Submit: DRAW_INDEXED indirect draw requires a valid index buffer");
+                return;
+            }
+        }
+    }
     if (IsCurrentRenderTargetLost(&resources)) {
         ReportLostRenderTarget("Submit");
         return;
     }
     const DX12RenderTarget* const currentTarget = ResolveCurrentRenderTarget(&resources);
+    if (m_currentColorAttachmentCount != 0) {
+        const auto overlapsOutput = [&](ResourceHandle<TextureTag> handle) {
+            const auto* textureBase = resources.Get(handle);
+            if (!textureBase) return false;
+            const auto* input = static_cast<const DX12Texture*>(textureBase)->GetResource();
+            for (uint32_t index = 0; index < m_currentColorAttachmentCount; ++index)
+                if (input == ResolveCurrentColorAttachment(index, &resources)->GetColorResource(
+                    m_currentColorAttachments[index].colorIndex)) return true;
+            return false;
+        };
+        if (std::any_of(call.textures.begin(), call.textures.end(), overlapsOutput)
+            || std::any_of(call.indirectReadTextures.begin(), call.indirectReadTextures.end(), overlapsOutput)) {
+            FBZZ_LOG_ERROR("DX12Renderer::Submit: color attachment cannot be shader-readable in the same draw");
+            return;
+        }
+    }
     const DXGI_FORMAT renderTargetFormat = currentTarget
         ? currentTarget->GetColorFormat() : DX12Context::BACK_BUFFER_FORMAT;
-    const uint32_t renderTargetCount = currentTarget
-        ? currentTarget->GetColorCount() : 1;
-    const bool reversedZ = currentTarget && currentTarget->IsReversedZ();
-    ID3D12PipelineState* pso = m_psoCache.GetOrCreate(
-        *shader, state->GetDesc(), call.topology, renderTargetFormat, renderTargetCount, reversedZ);
+    const uint32_t renderTargetCount = m_currentColorAttachmentCount != 0 ? m_currentColorAttachmentCount
+        : currentTarget ? currentTarget->GetColorCount() : 1;
+    const bool reversedZ = m_currentColorAttachmentCount == 0 && currentTarget && currentTarget->IsReversedZ();
+    ID3D12PipelineState* pso = meshDispatch
+        ? m_psoCache.GetOrCreateMesh(*shader, state->GetDesc(), call.topology,
+                                     renderTargetFormat, renderTargetCount, reversedZ)
+        : m_psoCache.GetOrCreate(*shader, state->GetDesc(), call.topology,
+                                 renderTargetFormat, renderTargetCount, reversedZ);
     if (!pso) return;
 
     ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
+    if (!commands) {
+        FBZZ_LOG_ERROR("DX12Renderer::Submit: graphics command list is unavailable");
+        return;
+    }
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList6> meshCommands;
+    if (meshDispatch && !hasIndirectArguments
+        && FAILED(commands->QueryInterface(IID_PPV_ARGS(&meshCommands)))) {
+        FBZZ_LOG_ERROR("DX12Renderer::Submit: Mesh Shader command list interface is unavailable");
+        return;
+    }
 
     /// @note Probe/Sky capture draws occur outside the main view graph; record their face and shader.
     const std::string cubeEventName = m_currentCubeRtv.ptr != 0
@@ -331,19 +601,49 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
     /// @note 状態遷移はテーブル再利用時も必ず発行する。同じテクスチャ集合でも間に挟まった別パス
     /// @note       (Compute の UAV 書き込み等) で状態が変わりうるため、コピーは省けても遷移は省けない。
+    /// @note Mesh Water の頂点評価も texture を読むため、mesh draw は pixel/non-pixel 両方で読める状態にする。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_resource_states D3D12 shader-resource states.
+    const D3D12_RESOURCE_STATES graphicsShaderResourceState = meshDispatch
+        ? D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE
+        : D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    BindlessIndicesConstants indices;
+    indices.Reset();
+    const bool fusedBindings = m_bindingFusionEnabled;
+    std::chrono::steady_clock::time_point diagnosticBegin;
+    if (m_bindingDiagnostics) {
+        diagnosticBegin = std::chrono::steady_clock::now();
+        if (m_bindingDraws == 0) {
+            m_bindingResourceOwner = resources.GetInstanceId(); m_bindingResourceFrame = resources.FrameStamp();
+        } else if (m_bindingResourceOwner != resources.GetInstanceId() || m_bindingResourceFrame != resources.FrameStamp())
+            m_bindingResourceCoherent = false;
+        ++m_bindingDraws;
+    }
     for (uint32_t slot = 0; slot < call.textures.size(); ++slot) {
         if (auto* textureBase = resources.Get(call.textures[slot])) {
             m_stateTracker.QueueTransition(static_cast<DX12Texture*>(textureBase)->GetResource(),
-                                           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                                           graphicsShaderResourceState);
+            if (fusedBindings) indices.pixel[slot] = textureBase->GetBindlessIndex();
         }
     }
-    /// @note t29〜t30 の PS-readable StructuredBuffer も同じピクセルテーブルへ入れる。
-    /// @note       クラスタライトのインデックスリストは直前に CS が UAV として書いているため、
-    /// @note       ここで PIXEL_SHADER_RESOURCE へ遷移させないと読み値が未定義になる。
-    for (const auto& handle : call.psBuffers) {
-        if (auto* bufferBase = resources.Get(handle)) {
+    for (const auto handle : call.indirectReadTextures) {
+        if (auto* textureBase = resources.Get(handle))
+            m_stateTracker.QueueTransition(static_cast<DX12Texture*>(textureBase)->GetResource(),
+                graphicsShaderResourceState);
+    }
+    /// @note t29〜t30 の StructuredBuffer はピクセルテーブルに入る。mesh draw では共有 shader-resource 状態へ遷移する。
+    /// @note       クラスタライトのインデックスリストは直前に CS が UAV として書いているため、読取状態が必要。
+    for (uint32_t i = 0; i < call.psBuffers.size(); ++i) {
+        if (auto* bufferBase = resources.Get(call.psBuffers[i])) {
             m_stateTracker.QueueTransition(static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
-                                           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                                           graphicsShaderResourceState);
+            if (fusedBindings) indices.pixel[kPsBufferBaseSlot + i] = bufferBase->GetBindlessIndex();
+        }
+    }
+    for (uint32_t i = 0; i < call.auxiliaryPsBuffers.size(); ++i) {
+        if (auto* bufferBase = resources.Get(call.auxiliaryPsBuffers[i])) {
+            m_stateTracker.QueueTransition(static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
+                                           graphicsShaderResourceState);
+            if (fusedBindings) indices.pixel[kAuxiliaryPsBufferBaseSlot + i] = bufferBase->GetBindlessIndex();
         }
     }
 
@@ -352,36 +652,53 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     /// @note       (どちらも同じリソースを指す)。添字はドローごとに変わるので毎回組み直し、
     /// @note       Reset() で全枠を INVALID 埋めして前ドローの値の混入を防ぐ。
     {
-        BindlessIndicesConstants indices;
-        indices.Reset();
-        for (uint32_t slot = 0; slot < call.textures.size(); ++slot) {
-            if (auto* textureBase = resources.Get(call.textures[slot]))
-                indices.pixel[slot] = textureBase->GetBindlessIndex();
-        }
-        for (uint32_t i = 0; i < call.psBuffers.size(); ++i) {
-            if (auto* bufferBase = resources.Get(call.psBuffers[i]))
-                indices.pixel[kPsBufferBaseSlot + i] = bufferBase->GetBindlessIndex();
+        /// @note Descriptor getters retain texture/PS/aux order; indirect dependencies never receive indices. VS getter/transition order remains unchanged.
+        if (!fusedBindings) {
+            for (uint32_t slot = 0; slot < call.textures.size(); ++slot) {
+                if (auto* textureBase = resources.Get(call.textures[slot]))
+                    indices.pixel[slot] = textureBase->GetBindlessIndex();
+            }
+            for (uint32_t i = 0; i < call.psBuffers.size(); ++i) {
+                if (auto* bufferBase = resources.Get(call.psBuffers[i]))
+                    indices.pixel[kPsBufferBaseSlot + i] = bufferBase->GetBindlessIndex();
+            }
+            for (uint32_t i = 0; i < call.auxiliaryPsBuffers.size(); ++i) {
+                if (auto* bufferBase = resources.Get(call.auxiliaryPsBuffers[i]))
+                    indices.pixel[kAuxiliaryPsBufferBaseSlot + i] = bufferBase->GetBindlessIndex();
+            }
         }
         if (auto* instanceBase = resources.Get(call.instanceBuffer))
             indices.vertex[0] = instanceBase->GetBindlessIndex();
         for (uint32_t i = 0; i < call.vsBuffers.size(); ++i) {
             if (auto* bufferBase = resources.Get(call.vsBuffers[i]))
                 indices.vertex[1 + i] = bufferBase->GetBindlessIndex();
+            if (preparedRaw(call.vsRawBuffers[i]))
+                indices.vertex[1 + i] = prepared->OutputSrv(preparedRow);
+            else if (auto* bufferBase = resources.Get(call.vsRawBuffers[i]))
+                indices.vertex[1 + i] = bufferBase->GetBindlessSrvIndex();
         }
 
         const auto block = m_uploadArena.Allocate(
             sizeof(BindlessIndicesConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
         if (block) {
+            if (m_bindingDiagnostics) ++m_bindingUploads;
             std::memcpy(block.cpu, &indices, sizeof(indices));
             commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam, block.gpu);
-        } else if (m_invalidBindlessAddress) {
+        } else {
+            if (m_bindingDiagnostics) ++m_bindingFailures;
+            if (m_invalidBindlessAddress) {
             /// @note アリーナ枯渇時のフォールバック。ゼロ埋めの m_nullConstantAddress は使わない
             /// @note       (添字 0 はヒープ先頭の有効なディスクリプタを指すため、無関係なリソースを読んでしまう)。
             /// @note       全枠 INVALID の専用ブロックを差せばシェーダー側の有効判定で弾ける。
-            commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam,
-                                                        m_invalidBindlessAddress);
+                commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam,
+                                                            m_invalidBindlessAddress);
+            }
         }
     }
+
+    if (m_bindingDiagnostics)
+        m_bindingSectionMs += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - diagnosticBegin).count();
 
     /// @note 状態遷移は bindless でも必ず要る。添字が同じでも、間に挟まった別パス
     /// @note       (Compute の UAV 書き込み等) でリソースの状態は変わっている。
@@ -394,14 +711,50 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
             m_stateTracker.QueueTransition(
                 static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    for (const auto handle : call.vsRawBuffers) {
+        if (preparedRaw(handle)) {
+            m_stateTracker.QueueTransition(const_cast<ID3D12Resource*>(static_cast<const ID3D12Resource*>(preparedResource)),
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            m_context.RetainPreparedSkinning(call.preparedSkinning);
+            continue;
+        }
+        if (auto* bufferBase = resources.Get(handle)) {
+            auto* buffer = static_cast<DX12Buffer*>(bufferBase);
+            /// @note Upload-heap snapshots are already GENERIC_READ; GPU-written DEFAULT resources need an explicit SRV transition.
+            if (buffer->IsGpuWritable())
+                m_stateTracker.QueueTransition(buffer->GetSrvResource(),
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        }
+    }
+    for (const auto handle : call.indirectReadBuffers) {
+        auto* buffer = static_cast<DX12Buffer*>(resources.Get(handle));
+        if (buffer->IsGpuWritable()) m_stateTracker.QueueTransition(buffer->GetSrvResource(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    }
+    if (auto* argumentBase = resources.Get(call.indirectArguments))
+        m_stateTracker.QueueTransition(
+            static_cast<DX12StructuredBuffer*>(argumentBase)->GetResource(),
+            D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
 
     /// @note テクスチャ/バッファ SRV ループで溜めた遷移をここで 1 回の ResourceBarrier にまとめて発行する。
     /// @note       Draw 呼び出しより前であれば記録順の制約を満たす。
     m_stateTracker.FlushBarriers(commands);
-    commands->IASetPrimitiveTopology(call.topology == PrimitiveTopology::LINE_LIST
-        ? D3D_PRIMITIVE_TOPOLOGY_LINELIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    if (!meshDispatch) {
+        commands->IASetPrimitiveTopology(call.topology == PrimitiveTopology::LINE_LIST
+            ? D3D_PRIMITIVE_TOPOLOGY_LINELIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    }
 
-    if (auto* vertexBase = resources.Get(call.vertexBuffer)) {
+    if (!meshDispatch && prepared) {
+        auto* resource = const_cast<ID3D12Resource*>(static_cast<const ID3D12Resource*>(preparedResource));
+        const bool rawRead = std::any_of(call.vsRawBuffers.begin(), call.vsRawBuffers.end(), preparedRaw);
+        const auto state = rawRead ? D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+            : D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+        m_stateTracker.Transition(commands, resource, state);
+        const D3D12_VERTEX_BUFFER_VIEW view{prepared->OutputAddress(preparedRow), prepared->OutputBytes(preparedRow), sizeof(Vertex)};
+        if (!view.BufferLocation) return;
+        m_context.RetainPreparedSkinning(call.preparedSkinning);
+        commands->IASetVertexBuffers(0, 1, &view);
+    } else if (!meshDispatch) if (auto* vertexBase = resources.Get(call.vertexBuffer)) {
         auto* vertexBuffer = static_cast<DX12Buffer*>(vertexBase);
         /// @note コンピュートスキニングの出力を頂点として読む場合、CS が書いた直後は UNORDERED_ACCESS の
         /// @note       ままなので VERTEX_AND_CONSTANT_BUFFER へ遷移させる。DX11 と違い DX12 は状態遷移が明示的で、
@@ -414,7 +767,7 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         if (view.BufferLocation == 0) return;
         commands->IASetVertexBuffers(0, 1, &view);
     }
-    if (auto* indexBase = resources.Get(call.indexBuffer)) {
+    if (!meshDispatch) if (auto* indexBase = resources.Get(call.indexBuffer)) {
         const auto view = static_cast<DX12Buffer*>(indexBase)->GetIndexView(m_uploadArena);
         if (view.BufferLocation == 0) return;
         commands->IASetIndexBuffer(&view);
@@ -444,21 +797,40 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     /// @note       IASetVertexBuffers のストライドは実バッファ値なので正しく先頭要素を読める正当なパターン。
     /// @note       大きい場合は要素オフセットが頂点境界をまたぎ、ジオメトリが壊れる。
     auto* vertexBufferBase = resources.Get(call.vertexBuffer);
-    const uint32_t actualStride = vertexBufferBase
+    const uint32_t actualStride = prepared && !meshDispatch ? sizeof(Vertex) : vertexBufferBase && !meshDispatch
         ? static_cast<DX12Buffer*>(vertexBufferBase)->GetStride() : 0;
-    const uint32_t reflectedStride = shader->GetReflectedStride();
+    const uint32_t reflectedStride = meshDispatch ? 0 : shader->GetReflectedStride();
     if (actualStride != 0 && reflectedStride > actualStride
         && m_strideWarned.insert(shader).second) {
         FBZZ_LOG_WARN("[DX12] 頂点ストライド不一致! shader=%s vb=%uB reflected=%uB "
                       "(入力レイアウトのオフセットが頂点境界をまたぎジオメトリが壊れます)",
                       shader->GetPath().c_str(), actualStride, reflectedStride);
     }
-    const uint32_t instanceCount = call.instanceCount == 0 ? 1 : call.instanceCount;
-    if (call.indexCount > 0) {
-        commands->DrawIndexedInstanced(call.indexCount, instanceCount, call.startIndex,
-                                       static_cast<INT>(call.baseVertex), 0);
-    } else if (call.vertexCount > 0) {
-        commands->DrawInstanced(call.vertexCount, instanceCount, 0, 0);
+    /// @note ExecuteIndirect が書いた root constant は完了時に 0 へ戻る。direct draw も b15 を明示初期化する。
+    /// @see https://github.com/microsoft/DirectX-Specs/blob/master/d3d/IndirectDrawing.md State leakage.
+    commands->SetGraphicsRoot32BitConstant(kIndirectInstanceOffsetRootParam, 0, 0);
+    if (prepared && !call.preparedSkinning->IsWriteCurrent(preparedRow)) return;
+    if (!currentTarget) m_context.MarkBackBufferWritten();
+    if (hasIndirectArguments) {
+        auto* argumentBuffer = static_cast<DX12StructuredBuffer*>(resources.Get(call.indirectArguments));
+        if (prepared && !call.preparedSkinning->IsWriteCurrent(preparedRow)) return;
+        /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-executeindirect ExecuteIndirect argument buffer state and range.
+        ID3D12CommandSignature* signature = meshDispatch ? m_context.GetDispatchMeshCommandSignature()
+            : call.indirectInstanceOffset ? m_psoCache.GetIndexedInstanceOffsetCommandSignature()
+                                          : m_context.GetDrawIndexedCommandSignature();
+        commands->ExecuteIndirect(signature,
+                                  call.indirectCommandCount, argumentBuffer->GetResource(),
+                                  call.indirectArgumentOffset, nullptr, 0);
+    } else if (meshDispatch) {
+        meshCommands->DispatchMesh(call.meshGroupCountX, call.meshGroupCountY, call.meshGroupCountZ);
+    } else {
+        const uint32_t instanceCount = call.instanceCount == 0 ? 1 : call.instanceCount;
+        if (call.indexCount > 0) {
+            commands->DrawIndexedInstanced(call.indexCount, instanceCount, call.startIndex,
+                                           static_cast<INT>(call.baseVertex), 0);
+        } else if (call.vertexCount > 0) {
+            commands->DrawInstanced(call.vertexCount, instanceCount, 0, 0);
+        }
     }
 }
 
@@ -504,6 +876,21 @@ bool DX12Renderer::TryDispatch(const ComputeCall& call, ResourceManager& resourc
     }
     for (const auto handle : call.indirectReadBuffers) {
         if (!validateRawRead(handle)) return false;
+    }
+    for (size_t i = 0; i < call.indirectWriteVertexBuffers.size(); ++i) {
+        const auto handle = call.indirectWriteVertexBuffers[i];
+        const auto* buffer = resources.Get(handle);
+        if (m_asyncComputeActive || !buffer || !m_context.SupportsBindless()
+            || !static_cast<const DX12Buffer*>(buffer)->IsGpuWritable()
+            || buffer->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX
+            || handle == call.uavVertexBuffer
+            || std::find(call.indirectReadBuffers.begin(), call.indirectReadBuffers.end(), handle) != call.indirectReadBuffers.end()
+            || std::find(call.srvRawBuffers.begin(), call.srvRawBuffers.end(), handle) != call.srvRawBuffers.end()
+            || std::find(call.indirectWriteVertexBuffers.begin(), call.indirectWriteVertexBuffers.begin() + i, handle)
+                != call.indirectWriteVertexBuffers.begin() + i) {
+            FBZZ_LOG_ERROR("DX12Renderer: invalid, aliased or duplicate indirect vertex UAV");
+            return false;
+        }
     }
     for (const auto handle : call.indirectReadTextures) {
         const auto* texture = resources.Get(handle);
@@ -603,7 +990,7 @@ bool DX12Renderer::TryDispatch(const ComputeCall& call, ResourceManager& resourc
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
     /// @note UAV の状態遷移と、Dispatch 後の UAV バリア対象の収集。
-    std::array<ID3D12Resource*, 10> writtenResources{};
+    std::vector<ID3D12Resource*> writtenResources(11u + call.indirectWriteVertexBuffers.size());
     uint32_t writtenCount = 0;
     for (uint32_t slot = 0; slot < kBindlessUavSlotCount; ++slot) {
         if (auto* textureBase = resources.Get(call.uavOutputs[slot])) {
@@ -630,6 +1017,12 @@ bool DX12Renderer::TryDispatch(const ComputeCall& call, ResourceManager& resourc
                 }
             }
         }
+    }
+
+    for (const auto handle : call.indirectWriteVertexBuffers) {
+        auto* buffer = static_cast<DX12Buffer*>(resources.Get(handle));
+        m_stateTracker.QueueTransition(buffer->GetResource(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        writtenResources[writtenCount++] = buffer->GetResource();
     }
 
     /// @name bindless 添字ブロック (b14)
@@ -670,6 +1063,8 @@ bool DX12Renderer::TryDispatch(const ComputeCall& call, ResourceManager& resourc
     commands->Dispatch(call.dispatchX, call.dispatchY, call.dispatchZ);
     if (auto* output = resources.Get(call.uavVertexBuffer); output && !m_asyncComputeActive)
         output->NotifyGpuWrite();
+    for (const auto handle : call.indirectWriteVertexBuffers)
+        resources.Get(handle)->NotifyGpuWrite();
     if (writtenCount > 0) {
         if (m_computeBatchActive) {
             /// @note バッチ内 Dispatch は相互依存しない契約なので、ここでは記録だけ行う。
@@ -683,7 +1078,7 @@ bool DX12Renderer::TryDispatch(const ComputeCall& call, ResourceManager& resourc
             }
         } else {
             /// @note 通常 Dispatch は後続 Dispatch が同じ UAV を読む可能性があるため即時同期する。
-            std::array<D3D12_RESOURCE_BARRIER, 10> uavBarriers{};
+            std::vector<D3D12_RESOURCE_BARRIER> uavBarriers(writtenCount);
             for (uint32_t index = 0; index < writtenCount; ++index) {
                 uavBarriers[index].Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
                 uavBarriers[index].UAV.pResource = writtenResources[index];
@@ -760,12 +1155,30 @@ ID3D12GraphicsCommandList* DX12Renderer::RecordingList() const
     return m_context.GetCommandList();
 }
 
-void DX12Renderer::RestoreGraphicsTargetState(ResourceManager& resources)
+void DX12Renderer::RestoreGraphicsTargetState(ResourceManager&)
 {
     ID3D12GraphicsCommandList* commands = m_context.GetCommandList();
     if (!commands) return;
+    if (IsCurrentRenderTargetLost()) {
+        ReportLostRenderTarget("RestoreGraphicsTargetState");
+        return;
+    }
+    if (m_currentColorAttachmentCount != 0) {
+        std::array<D3D12_CPU_DESCRIPTOR_HANDLE, DX12RenderTarget::MAX_COLOR> rtvs{};
+        for (uint32_t index = 0; index < m_currentColorAttachmentCount; ++index) {
+            const auto* target = ResolveCurrentColorAttachment(index);
+            const auto colorIndex = m_currentColorAttachments[index].colorIndex;
+            m_stateTracker.QueueTransition(target->GetColorResource(colorIndex), D3D12_RESOURCE_STATE_RENDER_TARGET);
+            rtvs[index] = target->GetRtv(colorIndex);
+        }
+        m_stateTracker.FlushBarriers(commands);
+        commands->OMSetRenderTargets(m_currentColorAttachmentCount, rtvs.data(), FALSE, nullptr);
+        commands->RSSetViewports(1, &m_currentViewport);
+        commands->RSSetScissorRects(1, &m_currentScissor);
+        return;
+    }
 
-    auto* target = ResolveCurrentRenderTarget(&resources);
+    auto* target = ResolveCurrentRenderTarget();
     if (target) {
         /// @note 区間へ入る前に COMMON へ落としてあるので、描ける状態へ戻す。状態表は 1 か所なので
         /// @note       ここで積んでおけば、次に束縛する側の判断とも食い違わない。
@@ -855,20 +1268,12 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
     /// @note       RT (リサイズで作り直された中間 RT 等) を «読める状態へ戻す» つもりで破棄済みの
     /// @note       オブジェクトから番地を引くことになる。解放済みなら Get が nullptr を返し、
     /// @note       戻し忘れたぶんの遷移は次にそのリソースを束縛する側が積み直す。
-    auto* previousBase = resources.Get(m_currentRenderTargetHandle);
-    auto* previous = previousBase ? static_cast<DX12RenderTarget*>(previousBase) : nullptr;
-    if (previous) {
-        for (uint32_t index = 0; index < previous->GetColorCount(); ++index)
-            m_stateTracker.QueueTransition(previous->GetColorResource(index),
-                                           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        if (previous->HasDepth()) {
-            m_stateTracker.QueueTransition(previous->GetDepthResource(),
-                                           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        }
-    }
+    TransitionCurrentTargetForRead();
     auto* targetBase = resources.Get(handle);
     auto* target = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
     m_currentRenderTargetHandle = target ? handle : ResourceHandle<RenderTargetTag>{};
+    m_currentRenderTargetOwner = target ? resources.GetInstanceId() : 0;
+    m_currentColorAttachmentCount = 0;
     m_currentCubeRtv = {};
     m_currentCubeMip = 0;
     if (!target) {
@@ -912,6 +1317,51 @@ void DX12Renderer::SetRenderTarget(ResourceHandle<RenderTargetTag> handle, Resou
     m_currentScissor = scissor;
 }
 
+bool DX12Renderer::SetRenderTargetColors(std::span<const RenderTargetColorAttachment> colors, ResourceManager& resources)
+{
+    if (!m_context.IsFrameOpen() || m_asyncComputeActive || colors.empty()
+        || colors.size() > DX12RenderTarget::MAX_COLOR) return false;
+    auto* commands = m_context.GetCommandList();
+    if (!commands) return false;
+    std::array<ID3D12Resource*, DX12RenderTarget::MAX_COLOR> nativeColors{};
+    std::array<D3D12_CPU_DESCRIPTOR_HANDLE, DX12RenderTarget::MAX_COLOR> rtvs{};
+    uint32_t width = 0, height = 0;
+    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+    for (size_t index = 0; index < colors.size(); ++index) {
+        const auto& attachment = colors[index];
+        auto* base = resources.Get(attachment.target);
+        auto* target = base ? static_cast<DX12RenderTarget*>(base) : nullptr;
+        if (!target || target->IsCubemap() || target->HasDepth()
+            || attachment.colorIndex >= target->GetColorCount()) return false;
+        if (index == 0) {
+            width = target->GetWidth(); height = target->GetHeight(); format = target->GetColorFormat();
+        } else if (target->GetWidth() != width || target->GetHeight() != height
+            || target->GetColorFormat() != format) return false;
+        nativeColors[index] = target->GetColorResource(attachment.colorIndex);
+        rtvs[index] = target->GetRtv(attachment.colorIndex);
+        if (!nativeColors[index] || !rtvs[index].ptr) return false;
+        for (size_t previous = 0; previous < index; ++previous)
+            if (nativeColors[index] == nativeColors[previous]) return false;
+    }
+    /// @note 全面を検証してから遷移と束縛を変更し、入力不正で既存の出力状態を失わない。
+    TransitionCurrentTargetForRead();
+    for (size_t index = 0; index < colors.size(); ++index)
+        m_stateTracker.QueueTransition(nativeColors[index], D3D12_RESOURCE_STATE_RENDER_TARGET);
+    m_stateTracker.FlushBarriers(commands);
+    m_currentColorAttachmentCount = static_cast<uint32_t>(colors.size());
+    std::copy(colors.begin(), colors.end(), m_currentColorAttachments.begin());
+    m_currentRenderTargetHandle = colors.front().target;
+    m_currentRenderTargetOwner = resources.GetInstanceId();
+    m_currentCubeRtv = {};
+    m_currentCubeMip = 0;
+    commands->OMSetRenderTargets(m_currentColorAttachmentCount, rtvs.data(), FALSE, nullptr);
+    m_currentViewport = {0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f};
+    m_currentScissor = {0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
+    commands->RSSetViewports(1, &m_currentViewport);
+    commands->RSSetScissorRects(1, &m_currentScissor);
+    return true;
+}
+
 void DX12Renderer::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
     /// @note SetRenderTarget が RT 全体へ張ったビューポートを、その一部へ絞り込む。
@@ -939,7 +1389,10 @@ void DX12Renderer::SetRenderTargetFace(
     auto* targetBase = resources.Get(handle);
     auto* target = targetBase ? static_cast<DX12RenderTarget*>(targetBase) : nullptr;
     if (!target || !target->IsCubemap() || face >= 6 || mip >= target->GetMipCount()) return;
+    TransitionCurrentTargetForRead();
     m_currentRenderTargetHandle = handle;
+    m_currentRenderTargetOwner = resources.GetInstanceId();
+    m_currentColorAttachmentCount = 0;
     m_currentCubeRtv = target->GetFaceRtv(face, mip);
     m_currentCubeFace = face;
     m_currentCubeMip = mip;
@@ -970,6 +1423,9 @@ bool DX12Renderer::RenderDebugPreview(const DrawCall& call, ResourceHandle<Rende
                                previewTarget->GetColorFormat(), previewTarget->GetColorCount(),
                                previewTarget->IsReversedZ())) return false;
     const auto previous = m_currentRenderTargetHandle;
+    const auto previousOwner = m_currentRenderTargetOwner;
+    const auto previousColors = m_currentColorAttachments;
+    const auto previousColorCount = m_currentColorAttachmentCount;
     const auto viewport = m_currentViewport;
     const auto scissor = m_currentScissor;
     const bool cube = m_currentCubeRtv.ptr != 0;
@@ -979,8 +1435,16 @@ bool DX12Renderer::RenderDebugPreview(const DrawCall& call, ResourceHandle<Rende
     SetRenderTarget(target, resources);
     Submit(call, resources);
     /// @note キューブ RT は通常添付の RTV を持たない。プレビューを外してから面として戻す。
-    SetRenderTarget(cube ? ResourceHandle<RenderTargetTag>{} : previous, resources);
-    if (cube) SetRenderTargetFace(previous, face, mip, resources);
+    auto* previousResources = FindLiveResourceManager(previousOwner);
+    if (previousResources) {
+        if (previousColorCount != 0) {
+            if (!SetRenderTargetColors(std::span{previousColors.data(), previousColorCount}, *previousResources))
+                SetRenderTarget({}, *previousResources);
+        } else {
+            SetRenderTarget(cube ? ResourceHandle<RenderTargetTag>{} : previous, *previousResources);
+            if (cube) SetRenderTargetFace(previous, face, mip, *previousResources);
+        }
+    } else SetRenderTarget({}, resources);
     auto* commands = m_context.GetCommandList();
     commands->RSSetViewports(1, &viewport);
     commands->RSSetScissorRects(1, &scissor);

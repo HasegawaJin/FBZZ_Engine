@@ -5,10 +5,49 @@
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
+#include "UnderwaterPassHelpers.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace fbzz::renderer {
+namespace {
+
+/// @brief 当該ビューに一定水深矩形があれば、画素ごとの証明で共通積分を特殊化する。
+/// @note 一般経路と同じowner判定を双方のshaderで使い、適合しない画素はcomplement passが描く。
+/// @see Docs/design/water-gameplay-visuals.md
+bool CanUseWaterRectangleComposite(const RenderPassContext& ctx)
+{
+    if (!ctx.renderScene) return false;
+    for (const auto& receipt : ctx.handles.waterMediumBodies) {
+        if (receipt.waterInputIndex >= ctx.renderScene->water.size()) continue;
+        const auto& input = ctx.renderScene->water[receipt.waterInputIndex];
+        const auto& medium = input.medium;
+        if (!medium.opticalEnabled || !medium.analyticRectangle
+            || (input.constants.terrainInfoParams.x > 0.5f && !medium.depthIsUniform)
+            || !medium.plumes.empty()) continue;
+        const auto& world = input.constants.worldMatrix;
+        float minimum = (std::numeric_limits<float>::max)();
+        float maximum = (std::numeric_limits<float>::lowest)();
+        for (uint32_t corner = 0; corner < 8; ++corner) {
+            const float x = (corner & 1u) != 0u ? input.aabbMax.x : input.aabbMin.x;
+            const float y = (corner & 2u) != 0u ? input.aabbMax.y : input.aabbMin.y;
+            const float z = (corner & 4u) != 0u ? input.aabbMax.z : input.aabbMin.z;
+            const float height = world.m[1][0] * x + world.m[1][1] * y + world.m[1][2] * z + world.m[1][3];
+            if (!std::isfinite(height)) return false;
+            minimum = (std::min)(minimum, height);
+            maximum = (std::max)(maximum, height);
+        }
+        const float verticalMargin = input.margin.vertical * (std::max)(1.0f, std::abs(world.m[1][1]))
+            + input.margin.horizontal * (std::abs(world.m[1][0]) + std::abs(world.m[1][2])) + 0.001f;
+        const float displacement = (std::max)(std::abs(minimum - medium.surfaceY), std::abs(maximum - medium.surfaceY)) + verticalMargin;
+        if (!std::isfinite(displacement)) continue;
+        return true;
+    }
+    return false;
+}
+
+} /// @note namespace
 
 void ExecuteCompositePass(RenderPassContext& ctx)
 {
@@ -90,19 +129,53 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     postData.screenFadeColor[0] = pp.screenFadeColor[0];
     postData.screenFadeColor[1] = pp.screenFadeColor[1];
     postData.screenFadeColor[2] = pp.screenFadeColor[2];
-    const auto underwater = ctx.environment.underwater;
-    if (underwater.enabled) {
-        postData.underwaterStrength = underwater.strength;
-        postData.underwaterDepth = underwater.depth;
-        postData.underwaterColor[0] = underwater.color.x;
-        postData.underwaterColor[1] = underwater.color.y;
-        postData.underwaterColor[2] = underwater.color.z;
-        postData.underwaterFogDensity = underwater.fogDensity;
+    const auto& underwater = ctx.environment.underwater;
+    const bool sceneHasOpticalWater = !ctx.rayPathViewActive && ctx.renderScene
+        && HasOpticalWaterMedium(*ctx.renderScene);
+    renderer::ResourceHandle<renderer::TextureTag> mediumAtlasTexture;
+    renderer::ResourceHandle<renderer::TextureTag> waterInterfaceTexture;
+    bool sharedWaterOptics = sceneHasOpticalWater && ctx.waterMediumPassActive
+        && ctx.waterInterfacePassActive && h.waterMediumTable.IsValid()
+        && resources.Get(h.waterMediumTable)
+        && ctx.resourceRegistry.Target("WaterMediumAtlas").IsValid()
+        && ctx.resourceRegistry.Target("WaterInterface").IsValid();
+    if (sharedWaterOptics) {
+        mediumAtlasTexture = resources.GetColorTexture(ctx.Res().Target("WaterMediumAtlas"), 0);
+        waterInterfaceTexture = resources.GetColorTexture(ctx.Res().Target("WaterInterface"), 0);
+        sharedWaterOptics = mediumAtlasTexture.IsValid() && waterInterfaceTexture.IsValid();
     }
+    if (!ctx.rayPathViewActive && !sceneHasOpticalWater)
+        FillUnderwaterConstants(postData, underwater);
+    if (sharedWaterOptics) {
+        postData.underwaterOpticalMode = 2.0f;
+        postData.underwaterStrength = 1.0f;
+        postData.underwaterMaxDistance = 0.0f;
+        postData.underwaterLightSteps = 16.0f;
+        for (const auto& packedBody : h.waterMediumBodies) {
+            if (packedBody.waterInputIndex >= ctx.renderScene->water.size()) continue;
+            const auto& body = ctx.renderScene->water[packedBody.waterInputIndex];
+            if (!body.medium.opticalEnabled) continue;
+            postData.underwaterMaxDistance = (std::max)(postData.underwaterMaxDistance,
+                                                         body.medium.maxDistance);
+            postData.underwaterLightSteps = (std::max)(postData.underwaterLightSteps,
+                                                        static_cast<float>(body.medium.lightSteps));
+        }
+    }
+    /// @note 共有水域の準備失敗は縮退させるが、従来の解決済み水中入力の当該フレームの光は保持する。
+    const bool legacyWaterOptics = !ctx.rayPathViewActive && !sceneHasOpticalWater
+        && UsesOpticalUnderwater(underwater);
+    const bool underwaterLightWritten = rs.IsVolumetricLightActive()
+        && (sharedWaterOptics || legacyWaterOptics) && ctx.underwaterLightPassActive
+        && h.volumetricResult.IsValid() && resources.Get(h.volumetricResult);
+    postData.underwaterLightReady = underwaterLightWritten ? 1.0f : 0.0f;
     resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
     renderer::DrawCall compositeDC;
     compositeDC.shader = h.compositeShader;
+    if (sharedWaterOptics && CanUseWaterRectangleComposite(ctx)) {
+        const auto specialized = resources.LoadShader("Assets/Shaders/PostProcess/Color/CompositeWaterRectangle.hlsl");
+        if (specialized.IsValid()) compositeDC.shader = specialized;
+    }
     compositeDC.pipelineState = h.postprocPSO;
     compositeDC.vertexCount = 3;
     compositeDC.constantBuffers[0] = h.frameCB;
@@ -148,17 +221,25 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     const bool bloomWritten = pp.bloom.enabled
         && h.bloomDownShader.IsValid() && h.bloomUpShader.IsValid();
     compositeDC.textures[10] = bloomWritten ? ctx.Res().Texture("Bloom") : renderer::ResourceHandle<renderer::TextureTag>{};
-    /// @note SSR 反射結果 (t19) — Composite.hlsl が ssrIntensity に基づいてブレンドする
-    if (!ctx.hybridReflectionResolveActive && ctx.ssrPassActive && h.ssrResult.IsValid())
-        compositeDC.textures[19] = h.ssrResult;
-    /// @note DeferredLighting が採用した画素では SSR を重ねず、間接鏡面の供給元を一つにする。
-    if (rayReflectionActive) compositeDC.textures[20] = ctx.handles.rayReflectionResult;
-    /// @note Volumetric Light はここでは束縛しない。VolumetricLightPass が水・半透明より前で
-    /// @note HDR へ加算済みで、ここで足すと二重になるうえ水面の手前へ光芒が乗る。
+    /// @note 空気の体積光はHDRへ加算済み。水中の散乱だけ透過後の背景へ一度合成する。
+    if (underwaterLightWritten)
+        compositeDC.textures[21] = ctx.Res().Texture("VolumetricResult");
+    if (sharedWaterOptics) {
+        compositeDC.auxiliaryPsBuffers[0] = h.waterMediumTable;
+        compositeDC.textures[13] = waterInterfaceTexture;
+        compositeDC.textures[15] = mediumAtlasTexture;
+    }
     /// @note Procedural LUT (t22) — Renderer互換の32^3 Texture3DをRenderSystemがCPU生成する。
     if (rs.lutColorGrading.enabled && h.proceduralColorLut.IsValid())
         compositeDC.textures[22] = h.proceduralColorLut;
     r.Submit(compositeDC, resources);
+    if (compositeDC.shader != h.compositeShader) {
+        /// @note Mode 3 suppresses precisely the pixels written by the fast shader; updates and draws retain their command order and use the original HDR source twice.
+        postData.underwaterOpticalMode = 3.0f;
+        resources.Update(h.postprocCB, &postData, sizeof(postData));
+        compositeDC.shader = h.compositeShader;
+        r.Submit(compositeDC, resources);
+    }
 
     /// @note 後段へ渡すのは今回の出力。終端へ直書きする構成では LDR を申告も更新もしない。
     h.postProcessInput = resources.GetColorTexture(ctx.compositeOutputRT, 0);

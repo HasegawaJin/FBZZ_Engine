@@ -1,5 +1,5 @@
 /// @file    VolumetricLightUpsample.cs.hlsl
-/// @brief   半解像度の体積光を深度に従って全解像度へ再構成する。
+/// @brief   半・1/4解像度の体積光を深度に従って全解像度へ再構成する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-03
 /// @note t5 の RGB は散乱光、A は視空間 Z / farZ (空だけ -1)。u4 の A は加算合成用の 1。
@@ -29,8 +29,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     bool targetSky = IsFarDepth(targetNdcDepth);
     float depthWidth = max(targetZ * VOLUMETRIC_DEPTH_WIDTH, 0.001f);
 
-    /// @note raw の各画素は元画像の 2×2 区画。奇数寸法でも同じ区画対応で末尾まで覆う。
-    float2 rawPosition = (float2(id.xy) + 0.5f) * 0.5f - 0.5f;
+    /// @note 積分時と同じ整数区画を使う。半・1/4解像度と奇数寸法を共通で扱う。
+    const uint2 stride = max((outputSize + rawSize - 1u) / rawSize, 1u);
+    float2 rawPosition = (float2(id.xy) + 0.5f) / float2(stride) - 0.5f;
     int2 basePixel = int2(floor(rawPosition));
     float2 fraction = frac(rawPosition);
     float3 sum = 0.0f;
@@ -39,11 +40,14 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float bestZ = 0.0f;
     float3 bestColor = 0.0f;
 
-    [unroll]
-    for (int y = 0; y < 2; ++y)
+    const bool quarter = any(stride >= 4u);
+    const int firstTap = quarter ? -1 : 0;
+    const int lastTap = quarter ? 2 : 1;
+    [loop]
+    for (int y = firstTap; y <= lastTap; ++y)
     {
-        [unroll]
-        for (int x = 0; x < 2; ++x)
+        [loop]
+        for (int x = firstTap; x <= lastTap; ++x)
         {
             int2 rawPixel = clamp(basePixel + int2(x, y), int2(0, 0), int2(rawSize) - 1);
             float4 sampleValue = texVolumetricRaw.Load(int3(rawPixel, 0));
@@ -59,7 +63,10 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             }
             float2 spatial = lerp(1.0f - fraction, fraction, float2(x, y));
             float relativeDelta = delta / depthWidth;
-            float weight = spatial.x * spatial.y * exp2(-relativeDelta * relativeDelta);
+            const float2 spatialDelta = float2(x, y) - fraction;
+            /// @note Low-frequency quarter-resolution volume estimates use a wider depth-aware reconstruction to suppress sparse-light noise.
+            float spatialWeight = quarter ? exp2(-dot(spatialDelta, spatialDelta)) : spatial.x * spatial.y;
+            float weight = spatialWeight * exp2(-relativeDelta * relativeDelta);
             sum += sampleValue.rgb * weight;
             weightSum += weight;
         }

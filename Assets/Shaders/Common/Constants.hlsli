@@ -204,6 +204,25 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float  reflectionResolveEnabled;
     /// @note Reads SSR only after a successful recording in this view and frame.
     float  reflectionSsrEnabled;
+    /// @note 水面と共有するRGB光学係数 [m^-1]。PostProcCB末尾と一致する。
+    float3 underwaterAbsorption;
+    float underwaterOpticalMode;
+    float3 underwaterScattering;
+    float underwaterPhaseG;
+    float underwaterSurfaceY;
+    float underwaterBottomY;
+    float underwaterMaxDistance;
+    float underwaterLightStrength;
+    float underwaterWaveAmplitude;
+    float underwaterWaveFrequency;
+    float underwaterWaveSpeed;
+    float underwaterDistortion;
+    float2 underwaterCenter;
+    float2 underwaterHalfExtent;
+    float underwaterCosYaw;
+    float underwaterSinYaw;
+    float underwaterLightSteps;
+    float underwaterLightReady;
 };
 
 /// @brief カスタムパスが入力テクスチャを引く UV。縮小して走るときの倍率を掛け、有効範囲の内側へ留める。

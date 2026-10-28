@@ -234,7 +234,7 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
         agData.ssrThickness          = rs.ssr.thickness;
         agData.ssrSteps              = rs.ssr.steps;
         agData.ssrIntensity          = rs.ssr.enabled ? rs.ssr.intensity : 0.0f;
-        agData.volLightIntensity     = rs.volumetricLight.enabled ? rs.volumetricLight.intensity : 0.0f;
+    agData.volLightIntensity     = rs.IsVolumetricLightActive() ? rs.volumetricLight.intensity : 0.0f;
         agData.volScattering         = rs.volumetricLight.scattering;
         agData.volSteps              = rs.volumetricLight.steps;
         agData.volMaxDist            = rs.volumetricLight.maxDist;
@@ -292,6 +292,9 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
         /// @note 前フレームの VP 行列 — TAA / Motion Blur が深度再投影で使う。ビュー別に持つ。
         agData.prevViewProjection    = viewTargets.prevViewProjection;
         agData.invPrevViewProjection = viewTargets.invPrevViewProjection;
+        agData.taaPreviousNearZ = viewTargets.previousNearZ;
+        agData.taaPreviousFarZ = viewTargets.previousFarZ;
+        agData.taaPreviousOrthographic = viewTargets.previousOrthographic ? 1.0f : 0.0f;
         /// @note Light Probe Volume: 焼きを進め、焼き上がったボリュームの拡散 GI を IBL キューブに差し替える。
         /// @note 拡散 GI は IBL の拡散項の置き換えなので、IBL が引けないフレームでは効かせない (マテリアルが IBL 分岐に入らない)。
         if (iblResourcesReady && prepareProbes) prepareProbes(agData);
@@ -306,6 +309,9 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
         /// @note シェーダーが今フレームの深度 (Reversed-Z) と並べて使うので GPU 用の行列で持つ。
         viewTargets.prevViewProjection    = camera.GetGpuViewProjection();
         viewTargets.invPrevViewProjection = math::Matrix4::Inverse(viewTargets.prevViewProjection);
+        viewTargets.previousNearZ = camera.m_near;
+        viewTargets.previousFarZ = camera.m_far;
+        viewTargets.previousOrthographic = camera.m_projection == ProjectionMode::Orthographic;
     }
 }
 

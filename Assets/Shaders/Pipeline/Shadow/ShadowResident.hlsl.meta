@@ -1,0 +1,6 @@
+# @file    ShadowResident.hlsl.meta
+# @brief   Shader identity for resident vegetation rendering.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = "cc272bc08c234b869daaff4e6d2c3cec"

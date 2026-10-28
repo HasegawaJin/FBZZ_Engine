@@ -27,10 +27,16 @@ public:
     void ClearPipelines();
     ID3D12RootSignature* GetRootSignature() const { return m_rootSignature.Get(); }
     ID3D12RootSignature* GetComputeRootSignature() const { return m_computeRootSignature.Get(); }
+    ID3D12CommandSignature* GetIndexedInstanceOffsetCommandSignature() const {
+        return m_indexedInstanceOffsetCommandSignature.Get();
+    }
     /// @param reversedZ 束縛中の RT の深度が Reversed-Z か。深度比較の向き (GREATER / LESS) を決める。
     ID3D12PipelineState* GetOrCreate(const DX12Shader& shader, const PipelineStateDesc& state,
                                     PrimitiveTopology topology, DXGI_FORMAT renderTargetFormat,
                                     uint32_t renderTargetCount, bool reversedZ);
+    ID3D12PipelineState* GetOrCreateMesh(const DX12Shader& shader, const PipelineStateDesc& state,
+                                        PrimitiveTopology topology, DXGI_FORMAT renderTargetFormat,
+                                        uint32_t renderTargetCount, bool reversedZ);
     ID3D12PipelineState* GetOrCreateCompute(const DX12Shader& shader);
 
 private:
@@ -54,6 +60,7 @@ private:
 
     bool CreateRootSignature();
     bool CreateComputeRootSignature();
+    void CreateIndexedInstanceOffsetCommandSignature();
     /// @brief 両ルートシグネチャに共通で載せるフラグ。
     /// @note bindless 非対応機では CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED を落とす。
     /// @note       非対応機で立てるとシリアライズが E_INVALIDARG で失敗し、起動できなくなる。
@@ -62,7 +69,9 @@ private:
     bool m_bindlessEnabled = false;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_computeRootSignature;
+    Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_indexedInstanceOffsetCommandSignature;
     std::unordered_map<Key, Microsoft::WRL::ComPtr<ID3D12PipelineState>, KeyHash> m_cache;
+    std::unordered_map<Key, Microsoft::WRL::ComPtr<ID3D12PipelineState>, KeyHash> m_meshCache;
     std::unordered_map<uint64_t, Microsoft::WRL::ComPtr<ID3D12PipelineState>> m_computeCache;
 };
 

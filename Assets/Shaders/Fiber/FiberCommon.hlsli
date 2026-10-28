@@ -16,38 +16,10 @@
 /// @note Asset/FiberMaterialSettings.hpp と一致。風の応答は [s]、長さと曲げ量はワールド [m]。
 cbuffer MaterialConstants : register(CB_MATERIAL)
 {
-    float4 rootColor;
-    float4 tipColor;
-    float fiberLength;
-    float fiberDensity;
-    float fiberThickness;
-    float fiberTaper;
-    float fiberFrequency;
-    float windResponse;
-    float maxBend;
-    float gravityBend;
-    float roughness;
-    float specularStrength;
-    float transmission;
-    float rootOcclusion;
-    float grassShading;
-    float worldMapping;
-    float finSilhouetteWidth;
-    /// @note 主ハイライトを毛先へ、副ハイライトを根元へずらす量 (接線を法線方向へ押す量)。
-    float specularShift;
-    /// @note 毛の色を帯びる副ハイライト (TRT) の強さ。0 で主ハイライトだけ。
-    float secondarySpecular;
-    /// @note 毛 1 本ごとの明度のばらつき [0,1]。
-    float colorVariation;
-    /// @note 毛先を束の中心へ寄せる強さ [0,1]。0 で束を作らない。
-    float clumping;
-    /// @note 束が根元から毛先までにねじれる回転数。向きは束ごとに乱数で決める。
-    float clumpTwist;
-    /// @note fiberMask (.mat の tex5) の bindless 添字。未設定でも CPU が白 1×1 の添字を入れるので常に有効。
-    FBZZ_MATERIAL_TEX_5
-    float _fiberPadding0;
-    float _fiberPadding1;
-    float _fiberPadding2;
+#include "Fiber/FiberMaterialFields.hlsli"
+#ifdef FBZZ_FIBER_MATERIAL_FIELDS
+#include FBZZ_FIBER_MATERIAL_FIELDS
+#endif
 };
 
 FBZZ_MATERIAL_TEX(fiberMaskTexture, tex5Index);
@@ -114,9 +86,9 @@ cbuffer FiberContactConstants : register(b10)
 
 float3 FiberContactOffset(float3 root, float3 normal, float height, float time, float lengthValue, bool previous = false)
 {
-    /// @note 戻り値は grassShading を掛けるので、毛皮 (0) と接触 0 件では頂点ごとの 32 回の走査を丸ごと省く。
+    /// @note 戻り値は planarShading を掛けるので、毛皮 (0) と接触 0 件では頂点ごとの 32 回の走査を丸ごと省く。
     uint count = min(previous ? fiberContactPreviousCount : fiberContactCount, 32u);
-    if (count == 0u || grassShading <= 0.0f) return float3(0.0f, 0.0f, 0.0f);
+    if (count == 0u || planarShading <= 0.0f) return float3(0.0f, 0.0f, 0.0f);
     float strongest = 0.0f;
     float3 direction = float3(1, 0, 0);
     [loop] for (uint j=0; j<count; ++j) {
@@ -133,7 +105,7 @@ float3 FiberContactOffset(float3 root, float3 normal, float height, float time, 
             direction = dot(direction,direction)>1.0e-8f ? normalize(direction) : float3(1,0,0);
         }
     }
-    return (direction-normal)*lengthValue*0.85f*strongest*height*height*grassShading;
+    return (direction-normal)*lengthValue*0.85f*strongest*height*height*planarShading;
 }
 
 FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
@@ -337,10 +309,10 @@ FiberStrand FiberClipFin(float coordinate, float height, float4 mask)
 }
 
 /// @brief 毛の色。根元→毛先の色を毛自身の長さで塗り、毛ごとに明度をばらつかせる。
-/// @note 草 (grassShading = 1) は従来どおり層の高さで塗る。fiberMask の A (colorMix) で毛先色への進みを抑え、縞や斑を描く。
+/// @note 草 (planarShading = 1) は従来どおり層の高さで塗る。fiberMask の A (colorMix) で毛先色への進みを抑え、縞や斑を描く。
 float3 FiberStrandColor(FiberStrand strand, float height)
 {
-    float t = lerp(saturate(strand.tip), height, grassShading) * saturate(strand.colorMix);
+    float t = lerp(saturate(strand.tip), height, planarShading) * saturate(strand.colorMix);
     float3 color = lerp(rootColor.rgb, tipColor.rgb, t);
     return color * max(1.0f + colorVariation * (strand.hash * 2.0f - 1.0f), 0.0f);
 }
@@ -381,23 +353,23 @@ float FiberStrandSpecular(float3 T, float3 V, float3 L, float exponent)
 float3 FiberDirect(float3 N, float3 strandNormal, float3 T, float3 V, float3 L, float3 color,
     FiberStrand strand, float selfShadow, float3 radiance)
 {
-    float fur = 1.0f - grassShading;
+    float strandWeight = 1.0f - planarShading;
     float NdotL = dot(N, L);
     float lambert = saturate(NdotL);
     /// @note lerp(0.25,1,N·L) で影の境界を裏へ回す (sin(T,L) は自己遮蔽なしでは明るすぎる)。毛の丸みは half-Lambert で掛ける。
     float wrapped = saturate(lerp(0.25f, 1.0f, NdotL));
-    float furDiffuse = wrapped * saturate(0.5f + 0.5f * dot(strandNormal, L));
-    float diffuse = lerp(lambert, furDiffuse, fur);
+    float strandDiffuse = wrapped * saturate(0.5f + 0.5f * dot(strandNormal, L));
+    float diffuse = lerp(lambert, strandDiffuse, strandWeight);
     float backlight = saturate(dot(-L, V)) * transmission * (1.0f - lambert);
-    float attenuation = lerp(1.0f, exp(-selfShadow / max(NdotL, 0.15f)), fur);
+    float attenuation = lerp(1.0f, exp(-selfShadow / max(NdotL, 0.15f)), strandWeight);
     float exponent = lerp(256.0f, 8.0f, roughness);
     float jitter = (frac(strand.hash * 7.31f) - 0.5f) * 0.3f;
     float primary = FiberStrandSpecular(FiberShiftTangent(T, strandNormal, jitter - specularShift), V, L, exponent);
     float sparkle = smoothstep(0.35f, 0.85f, frac(strand.hash * 13.7f));
     float secondary = FiberStrandSpecular(FiberShiftTangent(T, strandNormal, jitter + 1.5f * specularShift), V, L, exponent * 0.35f)
         * secondarySpecular * sparkle;
-    float3 specular = specularStrength * (primary + secondary * color) * wrapped * fur;
-    return radiance * ((color * diffuse + specular) * attenuation + color * (grassShading * backlight));
+    float3 specular = specularStrength * (primary + secondary * color) * wrapped * strandWeight;
+    return radiance * ((color * diffuse + specular) * attenuation + color * (planarShading * backlight));
 }
 
 /// @param localFlow 頂点で評価した局所 FlowField。ピクセルごとに場を引き直さない。

@@ -6,21 +6,239 @@
 #include <Graphics/Pipeline/GeometryPipeline.hpp>
 #include <Graphics/Pipeline/ViewPreparation.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include <Graphics/Passes/Geometry/WaterRenderPass.hpp>
 #include <Graphics/Passes/Geometry/MeshTrailRenderPass.hpp>
 #include <Graphics/Passes/Geometry/TrailRenderPass.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
+#include <Graphics/Renderer/ITexture.hpp>
+#include <Graphics/Renderer/RenderScene.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
 #include <Core/Logger.hpp>
+#include "../Passes/PostProcess/UnderwaterPassHelpers.hpp"
+#include "../Renderer/BufferStateReadScope.hpp"
 #include <algorithm>
+#include <array>
+#include <bit>
+#include <cmath>
+#include <string_view>
 
 namespace fbzz::renderer {
+namespace {
+
+void AppendTaaFloat(std::vector<uint64_t>& witness, float value)
+{
+    witness.push_back(std::bit_cast<uint32_t>(value));
+}
+
+template<typename Tag>
+void AppendTaaHandle(std::vector<uint64_t>& witness, ResourceHandle<Tag> handle)
+{
+    witness.push_back((static_cast<uint64_t>(handle.gen) << 32u) | handle.id);
+}
+
+bool AppendTaaWorld(std::vector<uint64_t>& witness, const math::Matrix4& matrix)
+{
+    for (const auto& row : matrix.m) {
+        for (const float value : row) {
+            if (!std::isfinite(value)) return false;
+            AppendTaaFloat(witness, value);
+        }
+    }
+    return true;
+}
+
+bool SameTaaCamera(const math::Matrix4& previous, const math::Matrix4& current)
+{
+    for (uint32_t row = 0; row < 4u; ++row)
+        for (uint32_t column = 0; column < 4u; ++column)
+            if (previous.m[row][column] != current.m[row][column]) return false;
+    return true;
+}
+
+/// @note 標準頂点契約だけが位置と UV の時間変形を持たない。alpha clip は全定数と実テクスチャ内容版まで比較する。
+/// @see Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl GBufferVS / PSMain; Assets/Shaders/Material/Surface/PBR.hlsl VSMain / PSMain.
+bool AppendTaaDepthMaterial(std::vector<uint64_t>& witness, const RenderMaterial& material,
+    ResourceManager& resources)
+{
+    const auto& contract = material.shaderCapabilities;
+    const bool standardOpaque = contract.vertex == ShaderVertexContract::STANDARD_SURFACE
+        && contract.HasOpaqueOutput();
+    const bool standardClip = contract.vertex == ShaderVertexContract::STANDARD_SURFACE
+        && contract.SupportsGBuffer() && material.capabilities.gbufferEquivalentShader;
+    if (!material.valid || (!standardOpaque && !standardClip)) return false;
+    AppendTaaHandle(witness, material.shader);
+    witness.push_back(static_cast<uint64_t>(contract.vertex));
+    witness.push_back(static_cast<uint64_t>(contract.surface));
+    witness.push_back(static_cast<uint64_t>(contract.opacity));
+    witness.push_back(static_cast<uint64_t>(contract.variants));
+    witness.push_back(static_cast<uint64_t>(contract.preview));
+    witness.push_back(static_cast<uint64_t>(material.capabilities.blend));
+    witness.push_back(material.capabilities.gbufferEquivalentShader);
+    witness.push_back(material.capabilities.advancedLobe);
+    witness.push_back(material.doubleSided);
+    witness.push_back(static_cast<uint32_t>(material.renderQueue));
+    witness.push_back(static_cast<uint32_t>(material.depthBias));
+    AppendTaaFloat(witness, material.depthBiasSlope);
+    const auto parameters = std::bit_cast<std::array<uint64_t, 12>>(material.gbufferParams);
+    witness.insert(witness.end(), parameters.begin(), parameters.end());
+    const auto& surface = material.surface;
+    witness.push_back(surface.standardSurfaceSupported);
+    witness.push_back(static_cast<uint64_t>(surface.issue));
+    AppendTaaFloat(witness, surface.baseColor.x);
+    AppendTaaFloat(witness, surface.baseColor.y);
+    AppendTaaFloat(witness, surface.baseColor.z);
+    AppendTaaFloat(witness, surface.baseColor.w);
+    AppendTaaFloat(witness, surface.alphaCutoff);
+    for (const float value : surface.uvTiling) AppendTaaFloat(witness, value);
+    for (const float value : surface.uvOffset) AppendTaaFloat(witness, value);
+    witness.push_back(surface.textureMask);
+    for (const auto handle : material.textures) {
+        AppendTaaHandle(witness, handle);
+        if (!handle.IsValid()) { witness.push_back(0u); continue; }
+        const auto* texture = resources.Get(handle);
+        if (!texture) return false;
+        const auto version = texture->GetContentVersion();
+        if (version == 0) return false;
+        witness.push_back(version);
+    }
+    return true;
+}
+
+/// @note 不透明深度の入力だけを証明する。透明色の静止や新しい多層履歴の保証は含めない。
+/// @see Docs/design/shader-capabilities.md
+bool BuildTaaDepthWitness(RenderPassContext& context, std::vector<uint64_t>& witness)
+{
+    witness.clear();
+    const auto input = context.renderScene;
+    if (!input || input->sceneGeneration == 0 || input->snapshotSerial == 0
+        || !input->terrains.empty() || !input->water.empty() || !input->fibers.empty()
+        || !input->instances.empty() || !input->customPost.empty() || !input->particles.empty()
+        || !input->trails.empty() || !input->meshTrails.empty() || !input->decals.empty()) return false;
+    auto& resources = context.resources;
+    const auto owner = resources.GetInstanceId();
+    const auto epoch = resources.GetResetVersion();
+    const auto shaders = resources.GetShaderVersion();
+    witness.push_back(owner);
+    witness.push_back(epoch);
+    witness.push_back(shaders);
+    witness.push_back(input->sceneGeneration);
+    witness.push_back(context.cullingMask);
+    witness.push_back(context.width);
+    witness.push_back(context.height);
+    witness.push_back(static_cast<uint64_t>(context.settings.viewMode));
+    witness.push_back(static_cast<uint64_t>(context.settings.geometryDrawMode));
+    witness.push_back(context.settings.gpuInstancing);
+    witness.push_back(context.frustumCullingEnabled);
+    witness.push_back(context.occlusionCullingEnabled);
+    witness.push_back(context.cullDistanceSpherical);
+    witness.push_back(context.hasLayerCullDistances);
+    AppendTaaFloat(witness, context.cullingBoundsPadding);
+    AppendTaaFloat(witness, context.cullMaxDistance);
+    AppendTaaFloat(witness, context.smallObjectScreenHeight);
+    for (const float distance : context.cullLayerDistances) AppendTaaFloat(witness, distance);
+    const auto objects = input->Objects();
+    witness.push_back(objects.size());
+    witness.push_back(input->items.size());
+    for (const auto& object : objects) {
+        if (object.skinned || object.firstItem > input->items.size()
+            || object.itemCount > input->items.size() - object.firstItem) return false;
+        witness.push_back(object.sourceIndex);
+        witness.push_back(object.sourceGeneration);
+        witness.push_back(object.firstItem);
+        witness.push_back(object.itemCount);
+        witness.push_back(object.layer);
+        witness.push_back(object.lodVisible);
+        witness.push_back(object.colorEligible);
+        witness.push_back(object.castShadows);
+        AppendTaaFloat(witness, object.lodDither);
+        AppendTaaFloat(witness, object.boundsCenter.x);
+        AppendTaaFloat(witness, object.boundsCenter.y);
+        AppendTaaFloat(witness, object.boundsCenter.z);
+        AppendTaaFloat(witness, object.boundsRadius);
+        AppendTaaFloat(witness, object.sortPosition.x);
+        AppendTaaFloat(witness, object.sortPosition.y);
+        AppendTaaFloat(witness, object.sortPosition.z);
+        if (!AppendTaaWorld(witness, object.world)) return false;
+    }
+    buffer_state_detail::BufferStateReadScope readScope(resources, context.renderer);
+    for (const auto& item : input->items) {
+        if (item.objectIndex >= objects.size()) return false;
+        witness.push_back(item.objectIndex);
+        witness.push_back(item.materialSlot);
+        witness.push_back(item.sourceSubmesh);
+        witness.push_back(item.visible);
+        witness.push_back(item.slotVisible);
+        witness.push_back(static_cast<uint64_t>(item.material.capabilities.blend));
+        const bool transparent = item.material.capabilities.blend != BlendMode::OPAQUE_BLEND;
+        if (transparent) continue;
+        if (item.deformedVertexBuffer.IsValid() || item.preparedSkinning) return false;
+        AppendTaaHandle(witness, item.vertexBuffer);
+        AppendTaaHandle(witness, item.indexBuffer);
+        witness.push_back(item.vertexCount);
+        witness.push_back(item.indexCount);
+        witness.push_back(item.vertexStride);
+        witness.push_back(item.vertexPositionOffset);
+        witness.push_back(item.reliableOccluder);
+        AppendTaaFloat(witness, item.boundsCenter.x);
+        AppendTaaFloat(witness, item.boundsCenter.y);
+        AppendTaaFloat(witness, item.boundsCenter.z);
+        AppendTaaFloat(witness, item.boundsRadius);
+        const std::array<ResourceHandle<BufferTag>, 2> handles{item.vertexBuffer, item.indexBuffer};
+        std::array<BufferResourceState, 2> states{};
+        for (const auto handle : handles) {
+            BufferResourceMetadata metadata;
+            if (!resources.GetBufferMetadata(handle, metadata) || metadata.gpuWritable) return false;
+        }
+        /// @note 一度の CPU drain 境界だけを再利用し、借用 IBuffer::Update を含む実版は各入力から読み直す。
+        readScope.Read(handles, states);
+        for (const auto& state : states) {
+            if (!state.live || state.contentVersion == 0 || state.bindlessUavIndex != UINT32_MAX) return false;
+            witness.push_back(state.sizeBytes);
+            witness.push_back(state.stride);
+            witness.push_back(state.contentVersion);
+        }
+        const bool deferred = context.settings.UsesGBuffer()
+            && ResolveGeometryRoute(item.material.capabilities, true) == GeometryRoute::GBuffer;
+        const auto& material = deferred ? item.material : item.forwardMaterial;
+        if (!AppendTaaDepthMaterial(witness, material, resources)) return false;
+    }
+    return input == context.renderScene && owner == resources.GetInstanceId()
+        && epoch == resources.GetResetVersion() && shaders == resources.GetShaderVersion();
+}
+
+bool PrepareTaaStaticView(RenderPassContext& context, RenderViewResources& view)
+{
+    if (!view.taaHistoryValid) {
+        view.taaStaticViewPrevious.clear();
+        view.taaStaticViewCurrent.clear();
+    }
+    if (!BuildTaaDepthWitness(context, view.taaStaticViewCurrent)) {
+        view.taaStaticViewPrevious.clear();
+        view.taaStaticViewCurrent.clear();
+        return false;
+    }
+    const bool cameraUnchanged = view.advancedGraphicsSnapshotValid
+        && SameTaaCamera(view.advancedGraphicsSnapshot.prevViewProjection, context.camera.GetGpuViewProjection());
+    const bool staticView = cameraUnchanged && !view.taaStaticViewPrevious.empty()
+        && view.taaStaticViewPrevious == view.taaStaticViewCurrent;
+    view.taaStaticViewPrevious.swap(view.taaStaticViewCurrent);
+    view.taaStaticViewCurrent.clear();
+    return staticView;
+}
+
+} /// @note namespace
+
 void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     RenderViewResources& viewTargets, RenderSharedResources& shared,
     const ViewPipelineOptions& options, const ViewPipelineExtensions& extensions)
 {
+    const profiler::ProfileScope buildPipelineScope(
+        profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
     pipeline.BeginBuild();
     passCtx.rayPathViewActive = false;
     passCtx.ssrPassActive = false;
+    passCtx.velocityWritten = false;
+    passCtx.underwaterLightPassActive = false;
     passCtx.hybridReflectionResolveActive = false;
     passCtx.hybridReflectionSourcePass = false;
     passCtx.hybridReflectionSsrPlanned = false;
@@ -31,18 +249,32 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     auto& resources = passCtx.resources;
     auto& passHandles = passCtx.handles;
     const auto& rs = passCtx.settings;
-    const bool taaOverriddenOff = std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
-        [](const RenderPassOverride& override) { return override.name == "TAA" && !override.enabled; });
-    if (!rs.IsTaaActive() || taaOverriddenOff) {
+    passCtx.waterMediumPassActive = false;
+    passCtx.waterInterfacePassActive = false;
+    passCtx.waterMediumQualityLimited = false;
+    passHandles.waterMediumAtlasRT = &viewTargets.waterMediumAtlasRT;
+    passHandles.waterInterfaceRT = &viewTargets.waterInterfaceRT;
+    passHandles.waterMediumTable = {};
+    passHandles.waterMediumBodyCount = 0;
+    passHandles.waterMediumTileResolution = 0;
+    passHandles.waterMediumBodies.clear();
+    passHandles.waterMediumDisabledOwnerKeys.clear();
+    passHandles.waterMediumQualityLimitedOwnerKeys.clear();
+    if (!rs.IsTaaActive()) {
         viewTargets.taaHistoryValid = false;
         viewTargets.taaProviderHistory.valid = false;
+        viewTargets.taaStaticViewPrevious.clear();
+        viewTargets.taaStaticViewCurrent.clear();
     }
+    const auto rayViewPreparationToken = profiler::Profiler::BeginScope(
+        profiler::ProfilerMarker("RenderSystem::RayViewPreparation", "Rendering"));
     const bool rayDebugReady = PrepareRayDebugView(passCtx, viewTargets, shared);
     const bool rayReflectionReady = PrepareRayReflectionView(passCtx, viewTargets, shared,
         options.renderPlan.rasterPlan);
     const bool rayPathReady = PrepareRayPathView(passCtx, viewTargets, shared);
     const auto renderPlan = PrepareViewRenderPlan(resources, passCtx.renderer, rs, viewTargets, shared, passHandles,
         passCtx.experimentalRayTracingEnabled);
+    profiler::Profiler::EndScope(rayViewPreparationToken);
     passCtx.rayReflectionPassActive = rayReflectionReady && renderPlan.reflection.enabled;
     /// @note RT の縮退理由は保持し、使える Deferred 表面の SSR / IBL まで旧 HDR 合成へ戻さない。
     passCtx.hybridReflectionResolveActive = passCtx.experimentalRayTracingEnabled
@@ -60,6 +292,30 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         return;
     }
     viewTargets.rayPath.history.Reset();
+    PrepareWaterMediumResources(passCtx, viewTargets);
+    const auto passOverriddenOff = [&](std::string_view name) {
+        return std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
+            [&](const RenderPassOverride& override) { return override.name == name && !override.enabled; });
+    };
+    if (passOverriddenOff("WaterMediumAtlas")) {
+        for (const auto& body : passHandles.waterMediumBodies) {
+            if (passCtx.renderScene && body.waterInputIndex < passCtx.renderScene->water.size()) {
+                const uint64_t ownerKey = passCtx.renderScene->water[body.waterInputIndex].medium.stableOwnerKey;
+                if (std::find(passHandles.waterMediumDisabledOwnerKeys.begin(),
+                              passHandles.waterMediumDisabledOwnerKeys.end(), ownerKey)
+                    == passHandles.waterMediumDisabledOwnerKeys.end())
+                    passHandles.waterMediumDisabledOwnerKeys.push_back(ownerKey);
+            }
+        }
+        passCtx.waterMediumPassActive = false;
+        passCtx.waterInterfacePassActive = false;
+        passHandles.waterMediumTable = {};
+        passHandles.waterMediumBodyCount = 0;
+        passHandles.waterMediumTileResolution = 0;
+        passHandles.waterMediumBodies.clear();
+    }
+    if (passOverriddenOff("WaterInterface"))
+        passCtx.waterInterfacePassActive = false;
     const auto outputRT = passCtx.outputRT;
     const uint32_t nativeW = passCtx.outputWidth;
     const uint32_t nativeH = passCtx.outputHeight;
@@ -120,8 +376,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note 読むものが構成で変わるパスは vector を渡す。
     using RA = renderer::RenderGraph::ResourceAccess;
     using RU = renderer::RenderGraph::ResourceUsage;
-    profiler::Profiler::BeginSample(
-        profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
     /// @note 論理リソースの宣言
     /// @note 申告 (依存解析に使う «形») と実体 (名前 → ハンドル) を同じ 1 行で渡す。宣言と登録を
     /// @note 分けると、片方だけ足しても Plan が通り «申告したのに実体が無い» が静かに成立してしまう。
@@ -163,6 +417,16 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     declareViewTarget("CustomPostProcess0", customPostProcessRT[0], 1, false);
     declareViewTarget("CustomPostProcess1", customPostProcessRT[1], 1, false);
 
+    const bool taaRawHistoryReady = rs.IsTaaActive() && resources.Get(passHandles.taaCycleCB)
+        && std::all_of(passHandles.taaRawHistory, passHandles.taaRawHistory + 8,
+            [&](const auto history) { return resources.Get(history) != nullptr; });
+    if (taaRawHistoryReady) {
+        /// @note 各位相は前フレーム以前の外部履歴。未初期化の画素は TAA の有効長で拒否し、transient として貸し回さない。
+        for (uint32_t phase = 0; phase < 8u; ++phase)
+            pipeline.DeclareTarget("TaaRawHistory" + std::to_string(phase), passHandles.taaRawHistory[phase],
+                { RK::RenderTarget, sHdrW, sHdrH, kResFormat, 1, false, true, false });
+    }
+
     /// @note 実体は upscaleSrcRT。等倍のフレームは誰も触らないので申告もしない。
     const bool upscaleActive = needsUpscale && upscaleSrcRT.IsValid();
     if (upscaleActive)
@@ -173,6 +437,16 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     declareViewTexture("MotionBlurResult", motionBlurResult, sHdrW, sHdrH);
     declareViewTexture("VolumetricResult", volumetricResult, sHdrW, sHdrH);
     declareViewTexture("VolumetricRaw", viewTargets.volumetricRaw, (sHdrW + 1u) / 2u, (sHdrH + 1u) / 2u);
+
+    if (passCtx.waterMediumPassActive && viewTargets.waterMediumAtlasRT.IsValid()) {
+        pipeline.DeclareTarget("WaterMediumAtlas", viewTargets.waterMediumAtlasRT,
+            { RK::RenderTarget, viewTargets.waterMediumAtlasRT.Width(), viewTargets.waterMediumAtlasRT.Height(),
+              renderer::Format::RGBA32F, 1, true, false, true });
+    }
+    if (passCtx.waterInterfacePassActive && viewTargets.waterInterfaceRT.IsValid()) {
+        pipeline.DeclareTarget("WaterInterface", viewTargets.waterInterfaceRT,
+            { RK::RenderTarget, sHdrW, sHdrH, renderer::Format::RGBA32F, 1, true, false, true });
+    }
 
     /// @note Forward もプリパスで GBuffer へ描くので、ここを Deferred 限定にすると
     /// @note 「宣言されていないリソース」への書き込みになり RenderGraph の検証が落ちる。
@@ -298,7 +572,8 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note 不透明ジオメトリの実際の移動量を専用 RT へ描いて両者へ供給する。
     /// @note 消費側が 1 つも無いフレームは丸ごと省く (不透明をもう一度ラスタライズするため)。
     const bool velocityNeeded =
-        velocityRT.IsValid() && (rs.motionBlur.enabled || rs.IsTaaActive());
+        velocityRT.IsValid() && rs.IsPassEnabled("Velocity")
+        && (rs.motionBlur.enabled || rs.IsTaaActive());
     if (velocityNeeded) {
         pipeline.AddPass<VelocityPass>();
     }
@@ -351,8 +626,26 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
             { hasPostCompositeEffects ? "LDR" : chainOutRes, RU::Write },
         };
         if (rs.postProcess.bloom.enabled) compositeAccesses.push_back({ "Bloom", RU::Read });
-        if (!passCtx.hybridReflectionResolveActive && ssrAvailable)
-            compositeAccesses.push_back({ "SSRResult", RU::Read });
+        const auto& underwater = passCtx.environment.underwater;
+        const bool sceneHasOpticalWater = !passCtx.rayPathViewActive && passCtx.renderScene
+            && HasOpticalWaterMedium(*passCtx.renderScene);
+        const bool sharedWaterOptics = sceneHasOpticalWater && passCtx.waterMediumPassActive
+            && passCtx.waterInterfacePassActive
+            && viewTargets.waterMediumAtlasRT.IsValid()
+            && viewTargets.waterInterfaceRT.IsValid();
+        if (sharedWaterOptics) {
+            compositeAccesses.push_back({ "WaterMediumAtlas", RU::Read });
+            compositeAccesses.push_back({ "WaterInterface", RU::Read });
+        }
+        const bool sharedVolumeNeeded = sharedWaterOptics
+            && HasOpticalWaterMedium(*passCtx.renderScene, true) && rs.IsVolumetricLightActive()
+            && viewTargets.volumetricResult.IsValid();
+        const bool legacyVolumeNeeded = !sceneHasOpticalWater && UsesOpticalUnderwater(underwater)
+            && underwater.lightStrength > 0.0f && rs.IsVolumetricLightActive()
+            && viewTargets.volumetricResult.IsValid();
+        /// @note 光を切った構成では一時結果の書き手が存在せず、未生成のread宣言がグラフ全体を無効にする。
+        if (sharedVolumeNeeded || legacyVolumeNeeded)
+            compositeAccesses.push_back({ "VolumetricResult", RU::Read });
         if (passCtx.rayReflectionPassActive) compositeAccesses.push_back({ "RayReflectionResult", RU::Read });
         if (passCtx.rayReflectionReconstructionPrepared) compositeAccesses.push_back({ "RayReflectionRaw", RU::Read });
         pipeline.AddRawPass("Composite", std::move(compositeAccesses), [&]() {
@@ -372,7 +665,13 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     if (rs.IsTaaActive()) {
         const auto taaBody = [&]() {
             PrepareTaaProviderHistory(passCtx, viewTargets);
-            ExecuteTAAPass(passCtx);
+            const bool staticView = PrepareTaaStaticView(passCtx, viewTargets);
+            if (!ExecuteTAAPass(passCtx, staticView)) {
+                viewTargets.taaHistoryValid = false;
+                viewTargets.taaStaticViewPrevious.clear();
+                viewTargets.taaStaticViewCurrent.clear();
+                return;
+            }
             viewTargets.taaHistoryValid = true;
             /// @note taaFlip は ExecuteTAAPass 内で反転済み — 反転後のフラグで「書いた方」を特定する。
             auto& taaOut = passHandles.taaFlip ? passHandles.taaHistoryB : passHandles.taaHistoryA;
@@ -385,7 +684,15 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         /// @note MotionBlur と同じ理由で Velocity は要るときだけ足す。
         /// @note HDR は深度 (t7) を読むための申告。速度の無い画素の再投影に使う。
         std::vector<RA> taaAccesses = { { ppCurrent, RU::ReadWrite }, { "HDR", RU::Read } };
+        if (rs.UsesGBuffer() && !rs.IsUnlit() && !rs.IsWireframe())
+            taaAccesses.push_back({ "GBuffer", RU::Read });
         if (velocityNeeded) taaAccesses.push_back({ "Velocity", RU::Read });
+        if (taaRawHistoryReady) {
+            const auto writePhase = static_cast<uint32_t>(passCtx.frameStamp % 8u);
+            for (uint32_t phase = 0; phase < 8u; ++phase)
+                taaAccesses.push_back({ "TaaRawHistory" + std::to_string(phase),
+                    phase == writePhase ? RU::Write : RU::Read });
+        }
         pipeline.AddRawPass("TAA", std::move(taaAccesses), taaBody);
     }
 
@@ -463,6 +770,5 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     }
 
     if (extensions.ui) extensions.ui();
-    profiler::Profiler::EndSample();
 }
 }

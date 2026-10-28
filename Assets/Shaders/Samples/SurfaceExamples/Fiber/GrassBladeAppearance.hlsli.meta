@@ -1,0 +1,6 @@
+# @file    GrassBladeAppearance.hlsli.meta
+# @brief   Sample asset identity and explicit shared geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = '8a1b239b90314067b7aeccb8d5b9727b'

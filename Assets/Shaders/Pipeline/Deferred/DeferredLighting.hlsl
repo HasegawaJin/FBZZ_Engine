@@ -5,6 +5,7 @@
 /// @note 頂点バッファなしのフルスクリーン三角形で描き、PS が GBuffer + 深度から worldPos を復元する。
 
 #include "Common/Constants.hlsli"
+#include "Common/Fullscreen.hlsli"
 #include "Common/Space.hlsli"
 /// @note 画面空間 AO / 接触影はこのパスが t9 / t24 を自前で宣言するので、共有ヘッダー側の宣言を外して二重定義を避ける。
 #define FBZZ_NO_SCREEN_SHADING 1
@@ -38,23 +39,13 @@ FBZZ_TEXCUBE(texIBLPrefilter, TEX_IBL_PREFILTER_SLOT);   ///< @note t17: 鏡面 
 FBZZ_TEX2D_T(float4, texBRDFLut, TEX_IBL_BRDF_LUT_SLOT);   ///< @note t18: RG=scale/bias。起動時に BRDFIntegration.cs.hlsl がベイク
 SamplerState      sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP); ///< @note s2。BRDF LUT の UV を [0,1] に収めるため Clamp
 
-struct FSTriVSOut
-{
-    float4 svPosition : SV_POSITION;
-    float2 uv         : TEXCOORD0;
-};
-
 /// @brief 頂点 ID だけでフルスクリーン三角形の UV / クリップ座標を作る。
-FSTriVSOut VSMain(uint id : SV_VertexID)
+FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 {
-    FSTriVSOut o;
-    o.uv          = float2((id & 1u) ? 2.0f : 0.0f,
-                           (id & 2u) ? 2.0f : 0.0f);
-    o.svPosition  = float4(o.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
-    return o;
+    return FBZZMakeFullscreenVertex(id);
 }
 
-float4 PSMain(FSTriVSOut p) : SV_Target0
+float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
 {
     float2 uv = p.uv;
 
@@ -140,20 +131,24 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
         : (rayReflectionValid ? 0.0f : iblSpecularScale);
 
     /// @note IBL 有効時は環境光を IBL に差し替えて ambientColor を使わない。無効時は定数 ambient (albedo * ambientColor * ao)。
+    FBZZWaterMediumSample receiverMedium = (FBZZWaterMediumSample)0;
+    FBZZWaterMediumQueryContext receiverContext;
+    const bool receiverInWater = FBZZ_WaterMediumHeader(receiverContext)
+        && FBZZ_QueryWaterReceiverMediumWithContext(worldPos, receiverContext, receiverMedium);
     float3 result;
     if (iblIntensity > 0.0f)
     {
-        result = Lighting_PBR_IBL(worldPos, N, V, L, col, met, rough,
+        result = Lighting_PBR_IBL_Resolved(worldPos, N, V, L, col, met, rough,
                                    lightColor, lightIntensity, shadow, ao,
                                    texIBLIrradiance, texIBLPrefilter, texBRDFLut,
                                    iblMaxMipLevel, iblIntensity,
                                    iblDiffuseScale, environmentSpecularScale,
-                                   sampDefault, sampLinearClamp);
+                                    sampDefault, sampLinearClamp, receiverInWater, receiverMedium);
     }
     else
     {
-        result = Lighting_PBR(N, V, L, col, met, rough,
-                              lightColor, lightIntensity, shadow, ao);
+        result = Lighting_PBR_Resolved(worldPos, N, V, L, col, met, rough,
+                              lightColor, lightIntensity, shadow, ao, receiverInWater, receiverMedium);
     }
     /// @note SCREEN_FIRST は鏡面間接光だけを分配し、直接光・拡散 GI・自発光を変更しない。
     if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL)
@@ -165,8 +160,11 @@ float4 PSMain(FSTriVSOut p) : SV_Target0
     else if (rayReflectionValid) result += rayReflection.rgb;
 
     /// @note 点光源 / スポットの走査元 (b3 の固定長配列 / StructuredBuffer / クラスタリスト) は ClusteredLights.hlsli が clusterLightMode で切り替える。
-    FBZZ_PUNCTUAL_BEGIN(worldPos, p.svPosition.xy, N)
-        result += Lighting_PBR_Direct(N, V, ps.L, col, met, saturate(rough + ps.roughnessBias), ps.color, ps.intensity);
+    FBZZ_PUNCTUAL_BEGIN_PBR(worldPos, p.svPosition.xy, N, V, col, met, rough)
+        const float3 sourceTransmittance = Lighting_WaterPunctualTransmittance(
+            worldPos, _fbzzLight, ps, receiverInWater, receiverMedium, receiverContext);
+        result += Lighting_PBR_Direct(N, V, ps.L, col, met, saturate(rough + ps.roughnessBias),
+            ps.color * sourceTransmittance, ps.intensity);
     FBZZ_PUNCTUAL_END
 
     /// @note カスケード可視化。無効時は白。Split Lambda と境界ブレンド幅を地面や壁で目視調整するため不透明の主経路に置く。

@@ -1,6 +1,10 @@
+<!-- @file    gpu-instancing.md -->
+<!-- @brief   既存Sceneの自動batchと大量配置用インスタンス管理。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-09-20 -->
 # 同じメッシュを 1 回の描画へ束ねる (自動インスタンシング)
 
-同じメッシュ・同じマテリアルの物体を、シーンの書き方を変えずに 1 回の `DrawIndexedInstanced` へ束ねる。**既存のシーンがそのまま軽くなる**ことを条件にするので、`InstancedMeshRenderer` のような新しいコンポーネントは足さない。
+同じメッシュ・同じマテリアルの物体を、シーンの書き方を変えずに 1 回の `DrawIndexedInstanced` へ束ねる。この自動batchでは既存Sceneを維持する。大量配置を個体配列として保持するInstancedMeshComponentは別用途として追加する（[Instanced Mesh](instanced-mesh.md)）。
 
 ## 1. 今の形
 
@@ -59,7 +63,7 @@ struct PerInstanceData {
 `Common/ObjectInstance.hlsli` を足し、変種側のファイルは 2 行だけにする。
 
 ```hlsl
-// Pipeline/Deferred/GBufferInstanced.hlsl
+/// @file Pipeline/Deferred/GBufferInstanced.hlsl
 #define FBZZ_INSTANCED 1
 #include "GBuffer.hlsl"
 ```
@@ -76,7 +80,7 @@ PSInput VSMain(VSInput v) { return GBufferVS(v, world, worldInvTranspose); }
 ```
 
 - instanceBuffer は `FBZZ_VS_SBUFFER(..., VS_SB_INSTANCE_SLOT)` で宣言する。bindless 移行中でも他のバッファと同じ経路に乗る
-- シェーダーは `Assets/Shaders/` と `GreenWare/Assets/Shaders/` の 2 本立てなので、**変種も両方へ置く** (AGENTS.md «アセット»)
+- エンジンの `Assets/Shaders/` と SDK の共有アセットを同じ版へ揃える。使用中プロジェクトがコピーを持つ場合は同じ差分を反映し GUID を保持する。GreenWare は旧 SDK の別リポジトリなので新 SDK の検証対象から外す。
 
 ## 5. 対象にするパス
 
@@ -87,7 +91,7 @@ PSInput VSMain(VSInput v) { return GBufferVS(v, world, worldInvTranspose); }
 | Velocity | **する** | per-instance の 2 枠目の意味だけが違う (`worldInvTranspose` → `prevWorld`)。§5.1 |
 | ObjectMask | **する** | 同じ仕組み。申告 1 件ぶんが束ねの単位。§5.2 |
 | Forward 不透明 | **しない** | マテリアルのシェーダーをそのまま使うため変種を用意できない (§1) |
-| スキンド | **しない** | 頂点バッファが物体ごとに違う (スキニング結果) ので、そもそも同じ描画にならない |
+| スキンド | **条件付き** | [群れ描画](skinned-crowds.md) の変形済み頂点 SRV を個体ごとに参照する。GBuffer・Shadow・ObjectMask の対応変種に限る。Velocity と特殊材質は従来描画 |
 
 ### 5.1 Velocity — 2 枠目の意味だけが違う
 
@@ -106,10 +110,10 @@ per-instance 側も同じ 128 バイトのままで、読む名前だけが変�
 b2 (`objectMaskCB`) は申告ごとに書き換わるハンドル共有の CB なので、申告を跨いで束ねると
 **先に積んだシルエットまで後の色で描かれる**。束ねるスコープを申告 1 件に閉じる。
 
-木を再帰で降りる経路なので、スキンド用の `Flush()` は「スキンドを実際に描くと決まってから」
+木を再帰で降りる経路なので、VS スキニングへ戻る描画の `Flush()` は「実際に描くと決まってから」
 呼ぶこと。判定より前に置くと、スキンドを持たない GameObject でも束が切れて 1 つも束ねられない。
 
-同じ経路はスキンド描画で b1 を自分で書くため、`InvalidateObjectConstants()` で束ね側の
+同じ経路は VS スキニング描画で b1 を自分で書くため、`InvalidateObjectConstants()` で束ね側の
 「載せ直しの省略」を明示的に捨てる。
 
 ## 6. 測り方
@@ -119,12 +123,12 @@ b2 (`objectMaskCB`) は申告ごとに書き換わるハンドル共有の CB �
 - `RenderPassContext` の `statsDrawCalls` / `statsShadowDrawCalls` が「実際に発行した数」。三角形・頂点の統計は `DrawCallTriangleCount` が既に `instanceCount` を掛けているので、束ねても総量は変わらず**ドロー数だけが落ちる**
 - 束ねた回数と、束ねたことで減ったドロー数を `statsInstancedBatches` / `statsInstancedDrawsSaved` として並べる
 - `RenderSettings::gpuInstancing` で切れるようにする。同じシーンで on / off を切り替えて比べられないと、減った数が何によるものか言えない
-- 測る場面: 同じメッシュを並べた検証シーンと、GreenWare の Stage_01〜03
+- 測る場面: 同じメッシュを並べた検証シーンと、使用中 SDK プロジェクトの対象シーン。
 
 ## 7. やらないこと
 
 - **描画順の入れ替え**。GBuffer は既にマテリアル順、影は深度順に並んでいる。束ねるために並べ替えると、前者はそのまま、後者は early-Z の効きが変わる。今回は**既存の並びの中で連続している同一描画だけ**を束ねる。並べ替えの損得は測ってから別に決める
-- **Forward / スキンドへの拡張** (§5)
+- **Forward への拡張** (§5)。計算済みスキンド頂点の GBuffer・影・ObjectMask は [群れ描画](skinned-crowds.md) の安全条件で拡張する。
 - **GPU 側でのカリング・間接描画**。CPU で束ねた結果を `DrawIndexedInstanced` へ渡すところまで。`ExecuteIndirect` と GPU カリングはこの上に載る別の段
 
 ## @see

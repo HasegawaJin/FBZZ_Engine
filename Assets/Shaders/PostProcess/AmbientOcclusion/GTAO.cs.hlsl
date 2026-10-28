@@ -96,9 +96,13 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     const int   steps  = max(gtaoStepsPerSlice, 1);
     const float minS   = kMinSamplePixels / radiusPixels;
 
-    /// @note スライス角とステップ位置を画素ごと・時間ごとにずらし、固定パターンの縞を TAA と空間ブラーで均す。
-    const float sliceNoise = Hash2D(uv + float2(time * 0.1f, time * 0.07f));
-    const float stepNoise  = Hash2D(uv.yx * 1.37f + float2(time * 0.05f, time * 0.11f));
+    /// @note TAA 有効時は雑音も8相に固定し、静止した形状の AO が時間だけで変わるのを防ぐ。
+    /// @see Docs/design/graphics-quality.md TAA の有限窓と画面空間 AO の標本周期。
+    const bool temporalAA = taaFeedback > 0.0f;
+    const float2 phaseNoise = float2(taaJitterX * screenWidth * 0.5f, -taaJitterY * screenHeight * 0.5f);
+    const float sliceNoise = Hash2D(uv + (temporalAA ? phaseNoise : float2(time * 0.1f, time * 0.07f)));
+    const float stepNoise  = Hash2D(uv.yx * 1.37f + (temporalAA ? phaseNoise.yx * float2(0.71f, 1.13f)
+        : float2(time * 0.05f, time * 0.11f)));
 
     float visibility = 0.0f;
     [loop]

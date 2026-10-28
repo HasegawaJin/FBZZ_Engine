@@ -6,9 +6,13 @@
 /// @note 明示リクエストで間引く。昼夜変化だけを追う用途には DynamicSky、室内・配置物の反射には
 /// @note DynamicScene を使う。
 #include "RenderScenePassHelpers.hpp"
+#include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
+#include <Math/Quaternion.hpp>
 #include <Graphics/Effects/RenderProbeInput.hpp>
 #include <Graphics/Renderer/ITexture.hpp>
 #include <Math/MathUtils.hpp>
+#include <algorithm>
+#include <vector>
 namespace fbzz::renderer {
 namespace {
 struct CubeFaceBasis { math::Vector3 forward; math::Vector3 up; };
@@ -74,12 +78,50 @@ void RenderSceneFace(RenderPassContext& ctx, const RenderReflectionProbeInput& p
     resources.Update(h.frameCB, &frame, sizeof(frame));
 
     const auto& input = SceneInput(ctx);
-    for (const auto& object : input.objects) {
+    struct CaptureItem {
+        const RenderObject* object;
+        const RenderMeshItem* mesh;
+        float depth;
+    };
+    std::vector<CaptureItem> items;
+    for (const auto& object : input.Objects()) {
         if (object.skinned || !object.colorEligible || !MatchesView(ctx, object) ||
             (object.sourceIndex == probeObject.sourceIndex && object.sourceGeneration == probeObject.sourceGeneration)) continue;
-        const auto& item = input.items[object.firstItem];
+        for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
+            const auto& item = input.items[i];
+            if (!item.visible || !item.slotVisible || !HasColorGeometry(item)
+                || !item.material.valid || !item.material.shader.IsValid()) continue;
+            const auto offset = item.boundsCenter - position;
+            const auto& forward = kCubeFaces[face].forward;
+            items.push_back({ &object, &item, offset.x * forward.x + offset.y * forward.y + offset.z * forward.z });
+        }
+    }
+    /// @note 捕捉面の視線で透明物を奥から並べる。主カメラの並びや Scene の登録順は使わない。
+    std::stable_sort(items.begin(), items.end(), [](const CaptureItem& a, const CaptureItem& b) {
+        const bool aTransparent = a.mesh->material.capabilities.blend != BlendMode::OPAQUE_BLEND;
+        const bool bTransparent = b.mesh->material.capabilities.blend != BlendMode::OPAQUE_BLEND;
+        if (aTransparent != bTransparent) return !aTransparent;
+        if (a.mesh->material.renderQueue != b.mesh->material.renderQueue)
+            return a.mesh->material.renderQueue < b.mesh->material.renderQueue;
+        if (a.depth != b.depth) return aTransparent ? a.depth > b.depth : a.depth < b.depth;
+        if (a.object->sourceIndex != b.object->sourceIndex) return a.object->sourceIndex < b.object->sourceIndex;
+        if (a.object->sourceGeneration != b.object->sourceGeneration)
+            return a.object->sourceGeneration < b.object->sourceGeneration;
+        return a.mesh->materialSlot < b.mesh->materialSlot;
+    });
+    bool instancesDrawn=false;
+    const auto captureInstances=[&] {
+        Camera camera;camera.m_position=position;camera.m_fovY=90;camera.m_aspect=1;camera.m_near=0.1f;camera.m_far=500;
+        camera.m_rotation=math::Quaternion::LookRotation(kCubeFaces[face].forward,kCubeFaces[face].up);
+        ExecuteInstanceCapture(ctx,camera,probeObject.resolution,probeObject.sourceIndex,probeObject.sourceGeneration);
+        resources.Update(h.frameCB,&frame,sizeof(frame));
+        instancesDrawn=true;
+    };
+    for (const auto& entry : items) {
+        if (!instancesDrawn && entry.mesh->material.capabilities.blend!=BlendMode::OPAQUE_BLEND) captureInstances();
+        const auto& object = *entry.object;
+        const auto& item = *entry.mesh;
         const auto& material = item.material;
-        if (!HasColorGeometry(item) || !material.valid || !material.shader.IsValid()) continue;
         auto constants = ObjectConstants(object);
         constants.objectParams = {};
         resources.Update(h.objectCB, &constants, sizeof(constants));
@@ -104,6 +146,7 @@ void RenderSceneFace(RenderPassContext& ctx, const RenderReflectionProbeInput& p
         for (const uint32_t slot : {8u, 23u, 24u, 28u, 31u}) draw.textures[slot] = {};
         ctx.renderer.Submit(draw, resources);
     }
+    if (!instancesDrawn) captureInstances();
 }
 
 }

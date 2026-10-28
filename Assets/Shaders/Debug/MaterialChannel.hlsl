@@ -1,24 +1,26 @@
-// FBZZ Engine
-// Debug/MaterialChannel.hlsl | Debug
-// Material Preview のチャンネル分離表示 (Albedo / Normal / Roughness / Metallic / AO / Emissive / UV)
+/// @file    MaterialChannel.hlsl
+/// @brief   MaterialChannel.hlsl の既存描画と共通頂点契約。
+/// @author  Hasegawa Jin
+/// @date    2026-09-16
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/MaterialVertex.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
 
-// WHY cbuffer 名を MaterialConstants にしないか:
-//   シェーダーリフレクションは "MaterialConstants" という名前を «.mat が編集できる
-//   パラメータ» として拾う (DX11Shader/DX12Shader::BuildDescriptor)。このシェーダーは
-//   プレビュー専用で .mat から選ばれてはならないので、別名にして拾わせない。
+/// @note cbuffer 名を MaterialConstants にしないか:
+/// @note シェーダーリフレクションは "MaterialConstants" という名前を «.mat が編集できる
+/// @note パラメータ» として拾う (DX11Shader/DX12Shader::BuildDescriptor)。このシェーダーは
+/// @note プレビュー専用で .mat から選ばれてはならないので、別名にして拾わせない。
 cbuffer MaterialChannelConstants : register(CB_MATERIAL)
 {
-    float4 channelBaseColor;   // rgb = albedo フォールバック, a = アルファ
-    float4 channelPbr;         // x=metallic y=roughness z=occlusionStrength w=normalStrength
-    float4 channelUv;          // xy=uvTiling zw=uvOffset
-    float4 channelEmissive;    // rgb=emissiveColor a=emissiveScale
-    uint   channelTextureMask; // bit0..4 = albedo / normal / metallicRough / emissive / ao
+    float4 channelBaseColor;   /// @note rgb = albedo フォールバック, a = アルファ
+    float4 channelPbr;         /// @note x=metallic y=roughness z=occlusionStrength w=normalStrength
+    float4 channelUv;          /// @note xy=uvTiling zw=uvOffset
+    float4 channelEmissive;    /// @note rgb=emissiveColor a=emissiveScale
+    uint   channelTextureMask; /// @note bit0..4 = albedo / normal / metallicRough / emissive / ao
     uint   channelMode;
     float2 _channelPad;
 };
@@ -40,14 +42,7 @@ SamplerState sampDefault      : register(SAMPLER_DEFAULT);
 
 PSInput VSMain(VSInput v)
 {
-    PSInput o;
-    float4 worldPos4 = mul(float4(v.position, 1.0f), world);
-    o.worldPos   = worldPos4.xyz;
-    o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = normalize(mul(v.normal,  (float3x3)worldInvTranspose));
-    o.tangent    = normalize(mul(v.tangent, (float3x3)world));
-    o.uv         = v.uv;
-    return o;
+    return TransformMaterialVertex(v);
 }
 
 float3 ShadingNormal(PSInput p, float2 uv)
@@ -62,8 +57,8 @@ float3 ShadingNormal(PSInput p, float2 uv)
     return normalize(mul(tangentNormal, float3x3(T, B, N)));
 }
 
-// UV の向きと密度を同時に読ませる市松。輝度だけの市松は 90 度回転や
-// V 反転を見分けられないので、色で U / V の軸を示す。
+/// @note UV の向きと密度を同時に読ませる市松。輝度だけの市松は 90 度回転や
+/// @note V 反転を見分けられないので、色で U / V の軸を示す。
 float3 UvChecker(float2 uv)
 {
     float2 cell = floor(uv * 8.0f);
@@ -103,7 +98,7 @@ float4 PSMain(PSInput p) : SV_Target0
     } else if (channelMode == FBZZ_CHANNEL_METALLIC) {
         value = channelPbr.x;
         if (channelTextureMask & 4u) value *= texMetallicRough.Sample(sampDefault, uv).r;
-    } else { // FBZZ_CHANNEL_AO
+    } else { /// @note FBZZ_CHANNEL_AO
         float occlusion = (channelTextureMask & 16u)
             ? texAO.Sample(sampDefault, uv).r
             : 1.0f;

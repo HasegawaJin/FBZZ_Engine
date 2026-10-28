@@ -16,6 +16,6 @@ float3 FBZZ_DiffuseIndirectResponse(float3 N, float3 V, float3 albedo, float met
     return (1.0f - F) * (1.0f - metallic) * irradiance * albedo * max(diffuseScale, 0.0f);
 }
 
-/// @note 既存 Raster の小さな中立バウンス近似。物理 GI や AO ではなく、照明へ一度だけ加算する。
-float3 FBZZ_DiffuseIndirectFloor(float3 albedo) { return albedo * 0.025f; }
+/// @note 遮蔽や金属度を無視する定数光は加えない。間接光の供給元が暗ければ暗いまま返す。
+float3 FBZZ_DiffuseIndirectFloor(float3 albedo) { return 0.0f; }
 #endif

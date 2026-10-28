@@ -4,6 +4,7 @@
 /// @date    2026-09-20
 ///
 /// @see Docs/design/gpu-instancing.md
+/// @see Docs/design/skinned-crowds.md
 #pragma once
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
@@ -25,7 +26,7 @@ static_assert(sizeof(PerInstanceData) == 128, "ObjectInstance.hlsli と同じ 12
 static_assert(sizeof(PerObjectCB) == 144, "PerObjectCB に詰め物が入っていないこと");
 
 /// @brief 2 つの DrawCall を「同じインスタンス束へ入れてよいか」で比べる。
-/// @return b1 (ObjectConstants) と instanceBuffer / instanceCount 以外がすべて一致すれば true。
+/// @return Object/instance bindings may differ; deformed draws may also differ in output vertices when their source identity matches.
 /// @note 「メッシュとマテリアルが同じなら束ねる」という鍵を手書きしない理由: テクスチャ 32 枠・
 /// @note 定数バッファ 14 枠のどれか 1 つでも違えば絵が変わる。鍵を手書きすると枠を増やしたときに
 /// @note 束ね条件だけが古くなり、別のテクスチャで描かれても絵から原因に辿りつけない。
@@ -47,7 +48,7 @@ public:
     InstanceBatcher(RenderPassContext& ctx,
                     renderer::ResourceHandle<renderer::ShaderTag> baseShader,
                     renderer::ResourceHandle<renderer::ShaderTag> instancedShader,
-                    bool shadow);
+                    bool shadow, const math::Frustum* gpuFrustum = nullptr);
     /// @note 溜めたまま捨てると描画が黙って消えるため、デストラクタでも吐き出す。
     ~InstanceBatcher();
 
@@ -57,7 +58,9 @@ public:
     /// @brief 描画を 1 件積む。直前と束ねられなければ、溜まっていた束を先に吐き出す。
     /// @param prototype b1 と instanceBuffer / instanceCount を空にした DrawCall。
     /// @param object この物体の b1 の中身。objectParams.x != 0 (LOD 遷移中) は束ねない。
-    void Add(const renderer::DrawCall& prototype, const PerObjectCB& object);
+    /// @param worldSphere Conservative world-space bounds; a negative radius disables GPU compaction for this batch.
+    void Add(const renderer::DrawCall& prototype, const PerObjectCB& object,
+        const math::Vector4& worldSphere = {0, 0, 0, -1});
 
     /// @brief 溜まっている束を吐き出す。描画先やビューポートを切り替える前に必ず呼ぶこと。
     void Flush();
@@ -69,6 +72,8 @@ public:
     void InvalidateObjectConstants() { m_hasLastObject = false; }
 
 private:
+    const math::Frustum* m_gpuFrustum = nullptr;
+    std::vector<math::Vector4> m_gpuBounds;
     void SubmitOne(const renderer::DrawCall& call);
     /// @brief b1 を更新する。直前に載せた内容と同じなら何もしない。
     void BindObjectConstants(renderer::DrawCall& call, const PerObjectCB& object);
@@ -80,6 +85,8 @@ private:
 
     renderer::DrawCall       m_prototype{};
     std::vector<PerObjectCB> m_pending;
+    renderer::ResourceHandle<renderer::ShaderTag> m_deformedShader;
+    std::vector<renderer::ResourceHandle<renderer::BufferTag>> m_deformedVertices;
 
     PerObjectCB m_lastObject{};
     bool        m_hasLastObject = false;

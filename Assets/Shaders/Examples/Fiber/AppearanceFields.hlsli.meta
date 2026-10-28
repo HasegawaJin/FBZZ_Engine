@@ -1,0 +1,6 @@
+# @file    AppearanceFields.hlsli.meta
+# @brief   Asset identity and shared Fiber geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-21
+[meta]
+guid = 'dbe4e4d66c7a4ce897dc55c46856b978'

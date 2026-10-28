@@ -121,6 +121,9 @@ float3 ShadeParticle(ParticlePSIn p, float3 base, float4 positive, float4 negati
     const bool punctual = (gEffectsFlags & FBZZ_PFX_PUNCTUAL) != 0u;
     const bool premultiplied = (gEffectsFlags & FBZZ_PFX_PREMULTIPLIED) != 0u;
     const bool hasColorMaps = (gEffectsFlags & FBZZ_PFX_SIX_WAY_COLOR_MAPS) != 0u;
+    /// @note LightSystem supplies directional color and intensity independently; scale incoming radiance once, leaving ambient and emission separate.
+    /// @see https://pbr-book.org/4ed/Light_Sources/Distant_Lights Distant lights: emitted radiance is the direct-light source.
+    const float3 directionalRadiance = lightColor * max(lightIntensity, 0.0f);
     float3 rgb;
 
     if ((gEffectsFlags & FBZZ_PFX_SIX_WAY_MAPS) != 0u)
@@ -133,7 +136,7 @@ float3 ShadeParticle(ParticlePSIn p, float3 base, float4 positive, float4 negati
         const float3 axisBack = normalize(cross(axisRight, axisUp));
         const float3 L = float3(dot(toLight, axisRight), dot(toLight, axisUp), dot(toLight, axisBack));
         float3 light = SixWayAmbientIbl(positive.rgb, negative.rgb, axisRight, axisUp, axisBack)
-                     + lightColor * (SixWayResponse(positive.rgb, negative.rgb, L) * shadow);
+                     + directionalRadiance * (SixWayResponse(positive.rgb, negative.rgb, L) * shadow);
         if (punctual)
             light += ParticlePunctualLight(p, axisRight, axisUp, axisBack, positive.rgb, negative.rgb, true);
         if (hasColorMaps)
@@ -170,7 +173,7 @@ float3 ShadeParticle(ParticlePSIn p, float3 base, float4 positive, float4 negati
         const float diffuse = ParticleWrappedDiffuse(dot(normal, toLight), saturate(gSmokeWrap));
         const float back = ParticleBackScatter(viewDir, toLight, gSmokeBackScatterPower, gSmokeTransmission);
         /// @note 影は直接光成分だけに掛け、環境光を残して煙が黒く潰れるのを防ぐ。
-        float3 lit = ParticleAmbientIsotropic() + lightColor * ((diffuse + back) * shadow);
+        float3 lit = ParticleAmbientIsotropic() + directionalRadiance * ((diffuse + back) * shadow);
         if (punctual)
             lit += ParticlePunctualLight(p, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false);
         rgb = base * lerp(float3(1.0f, 1.0f, 1.0f), lit, saturate(gLightingStrength));

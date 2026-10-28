@@ -1,0 +1,29 @@
+# @file    BaseSurface.mat
+# @brief   Neutral standard PBR material for the sample meshes beneath Water and Fiber.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+version = 1
+shader = 'guid:73d100e5a351425aaf52953c23425438|Assets/Shaders/Material/Surface/PBR.hlsl'
+blend_mode = 'Opaque'
+double_sided = false
+depth_write = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+
+[params]
+albedo = [0.18, 0.18, 0.18, 1.0]
+metallic = 0.0
+roughness = 0.85
+normalStrength = 1.0
+occlusionStrength = 1.0
+emissiveColor = [0.0, 0.0, 0.0]
+emissiveScale = 0.0
+uvTiling = [1.0, 1.0]
+uvOffset = [0.0, 0.0]
+alphaCutoff = 0.5
+clearcoat = 0.0
+clearcoatRoughness = 0.85
+sheen = 0.0
+anisotropy = 0.0
+sheenColor = [0.0, 0.0, 0.0]

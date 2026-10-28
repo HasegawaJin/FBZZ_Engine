@@ -1,0 +1,6 @@
+# @file    ManyLightSampling.hlsli.meta
+# @brief   大量ライト共通サンプリングの識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-09
+[meta]
+guid = "5c35bef34e1545ac9e8df648efe1aaad"

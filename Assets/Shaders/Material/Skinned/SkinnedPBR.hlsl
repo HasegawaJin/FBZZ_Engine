@@ -2,12 +2,13 @@
 /// @brief   GPU スキニング + Cook-Torrance PBR のフォワードパス。
 /// @author  Hasegawa Jin
 /// @date    2026-05-19
-///
+
 /// @note PS の処理は Surface/PBR.hlsl と完全に一致させる (画面空間 AO / 接触影を引かない点だけが違う)。
 
 #define FBZZ_MATERIAL_CONSTANTS
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/Skinning.hlsli"
 #include "Common/Color.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
@@ -61,13 +62,7 @@ FBZZ_TEXCUBE(texIBLPrefilter, TEX_IBL_PREFILTER_SLOT);
 FBZZ_TEX2D_T(float4, texBRDFLut, TEX_IBL_BRDF_LUT_SLOT);
 SamplerState           sampLinearClamp  : register(SAMPLER_LINEAR_CLAMP);
 
-float4x4 BlendSkinMatrix(SkinnedVSInput v)
-{
-    return boneMatrices[v.boneIndices.x] * v.boneWeights.x
-         + boneMatrices[v.boneIndices.y] * v.boneWeights.y
-         + boneMatrices[v.boneIndices.z] * v.boneWeights.z
-         + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
-}
+
 
 PSInput VSMain(SkinnedVSInput v)
 {
@@ -132,6 +127,8 @@ float4 PSMain(PSInput p) : SV_Target0
     if (textureMask & (1u << 4))
         ao = lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength);
 
+    FBZZWaterMediumSample receiverMedium;
+    const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(p.worldPos, receiverMedium);
     float3 V      = SafeNormalize(cameraPos - p.worldPos, N);
     float3 L      = SafeNormalize(-lightDir, N);
     float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
@@ -145,15 +142,17 @@ float4 PSMain(PSInput p) : SV_Target0
               texIBLIrradiance, texIBLPrefilter, texBRDFLut, iblMaxMipLevel,
               iblIntensity, iblDiffuseScale, iblSpecularScale,
               sampDefault, sampLinearClamp)
-        : Lighting_PBR_Advanced(N, V, L, T, B, col, met, rough,
+        : Lighting_PBR_Advanced(p.worldPos, N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
               lightColor, lightIntensity, shadow);
 
     /// @note 点光源 / スポットの走査元は clusterLightMode が決める (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
-    FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+    FBZZ_PUNCTUAL_BEGIN_PBR(p.worldPos, p.svPosition.xy, N, V, col, met, rough)
+        const float3 sourceTransmittance = Lighting_WaterPunctualTransmittance(
+            p.worldPos, _fbzzLight, ps, receiverInWater, receiverMedium);
         result += Lighting_PBR_Advanced(N, V, ps.L, T, B, col, met, saturate(rough + ps.roughnessBias),
             clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
-            ps.color, ps.intensity, 1.0f);
+            ps.color * sourceTransmittance, ps.intensity, 1.0f);
     FBZZ_PUNCTUAL_END
 
     float3 emissiveTex = (textureMask & (1u << 3))

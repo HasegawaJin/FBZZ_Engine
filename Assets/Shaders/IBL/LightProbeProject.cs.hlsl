@@ -20,23 +20,24 @@
 /// @note LAYOUT: LightProbeBakePass.cpp の LightProbeProjectCB と一致させること (448 bytes)。
 cbuffer LightProbeProjectConstants : register(b0)
 {
-    float4x4 faceInvViewProj[6];   ///< 面ごとの逆 ViewProjection
-    float3   probePos;             ///< プローブ位置 [world]
-    uint     faceSize;             ///< 面の 1 辺 [px]
-    uint3    probeCoord;           ///< 書き込むプローブの格子座標
-    uint     gridZ;                ///< Z 方向のプローブ数 (係数区画の厚み)
-    float    skyRadianceLimit;     ///< 空の輝度上限。IrradianceConvolution の DIFFUSE_RADIANCE_LIMIT と揃える
-    float    surfaceRadianceLimit; ///< 面の輝度上限。発光面の一点が全体を白くするのを防ぐ
-    float    environmentMip;       ///< 環境キューブを引く mip
-    uint     hasEnvironment;       ///< 0 なら空は黒
-    float    deringing;            ///< リンギング抑制の強さ [0,1]
-    uint     hasFacing;            ///< 0 なら表裏を見ずに常に有効
-    float    backfaceLimit;        ///< 裏面の立体角の割合がこれを超えたら無効 [0,1]
-    float    _pad;
+    float4x4 faceInvViewProj[6];   ///< @note 面ごとの逆 ViewProjection
+    float3   probePos;             ///< @note プローブ位置 [world]
+    uint     faceSize;             ///< @note 面の 1 辺 [px]
+    uint3    probeCoord;           ///< @note 書き込むプローブの格子座標
+    uint     gridZ;                ///< @note Z 方向のプローブ数 (係数区画の厚み)
+    float    skyRadianceLimit;     ///< @note 空の輝度上限。IrradianceConvolution の DIFFUSE_RADIANCE_LIMIT と揃える
+    float    surfaceRadianceLimit; ///< @note 面の輝度上限。発光面の一点が全体を白くするのを防ぐ
+    float    environmentMip;       ///< @note 環境キューブを引く mip
+    uint     hasEnvironment;       ///< @note 0 なら空は黒
+    float    deringing;            ///< @note リンギング抑制の強さ [0,1]
+    uint     hasFacing;            ///< @note 0 なら表裏を見ずに常に有効
+    float    backfaceLimit;        ///< @note 裏面の立体角の割合がこれを超えたら無効 [0,1]
+    float    visibilityFar;
 };
 
 FBZZ_TEXCUBE(gEnvironment, LIGHT_PROBE_ENVIRONMENT_SLOT);
 FBZZ_RWTEX3D_T(float4, gProbeSH, UAV_OUTPUT_SLOT);
+FBZZ_RWTEX3D_T(float4, gProbeVisibility, 1);
 SamplerState sampLinearClamp : register(SAMPLER_LINEAR_CLAMP);
 
 groupshared float3 gsSH[9][LIGHT_PROBE_THREADS];
@@ -63,6 +64,46 @@ float Luminance(float3 c) { return dot(c, float3(0.2126f, 0.7152f, 0.0722f)); }
 float3 ClampLuminance(float3 c, float limit)
 {
     return c * min(1.0f, limit / max(Luminance(c), 1e-6f));
+}
+
+/// @brief octahedral UV から球面方向へ戻す。
+float3 VisibilityDirection(float2 uv)
+{
+    const float2 p = uv * 2.0f - 1.0f;
+    float3 n = float3(p, 1.0f - abs(p.x) - abs(p.y));
+    const float t = saturate(-n.z);
+    n.xy += float2(n.x >= 0.0f ? -t : t, n.y >= 0.0f ? -t : t);
+    return normalize(n);
+}
+/// @brief 捕捉した不透明深度を radial distance / visibilityFar へ変換する。
+float VisibilityDistance(float3 direction)
+{
+    uint bestFace = 0u;
+    float bestDot = -1.0f;
+    float2 bestNdc = 0.0f;
+    [unroll] for (uint face = 0u; face < 6u; ++face)
+    {
+        const float4 centerH = mul(float4(0.0f, 0.0f, 0.5f, 1.0f), faceInvViewProj[face]);
+        const float4 rightH = mul(float4(1.0f, 0.0f, 0.5f, 1.0f), faceInvViewProj[face]);
+        const float4 upH = mul(float4(0.0f, 1.0f, 0.5f, 1.0f), faceInvViewProj[face]);
+        const float3 center = centerH.xyz / centerH.w;
+        const float3 forward = normalize(center - probePos);
+        const float d = dot(direction, forward);
+        if (d > bestDot)
+        {
+            bestFace = face; bestDot = d;
+            bestNdc = float2(dot(direction, normalize(rightH.xyz / rightH.w - center)),
+                dot(direction, normalize(upH.xyz / upH.w - center))) / max(d, 1e-6f);
+        }
+    }
+    const float2 uv = bestNdc * float2(0.5f, -0.5f) + 0.5f;
+    const int2 pixel = clamp(int2(uv * faceSize), 0, int(faceSize) - 1);
+    Texture2D<float> depthTex = ResourceDescriptorHeap[NonUniformResourceIndex(FbzzPixelSlot(LIGHT_PROBE_FACE_DEPTH_SLOT + bestFace))];
+    const float depth = depthTex.Load(int3(pixel, 0));
+    if (depth >= 0.99999f) return 1.0f;
+    const float2 pixelNdc = (float2(pixel) + 0.5f) / faceSize * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+    const float4 hit = mul(float4(pixelNdc, depth, 1.0f), faceInvViewProj[bestFace]);
+    return saturate(length(hit.xyz / hit.w - probePos) / max(visibilityFar, 1e-3f));
 }
 
 [numthreads(LIGHT_PROBE_THREADS, 1, 1)]
@@ -131,6 +172,24 @@ void CSMain(uint tid : SV_GroupIndex)
         GroupMemoryBarrierWithGroupSync();
     }
 
+    /// @note 8x8 タイルは SH と同じプローブへ書く。距離の1次・2次モーメントで補間時の遮蔽を判定する。
+    /// @see https://jcgt.org/published/0008/02/01/paper-lowres.pdf Section 5.2: visibility-aware probe weighting
+    const float backfaceRatioForVisibility = gsBackface[0] / max(gsWeight[0], 1e-6f);
+    const float visibilityValidity = hasFacing != 0u
+        ? 1.0f - smoothstep(max(backfaceLimit - 0.1f, 0.0f), backfaceLimit, backfaceRatioForVisibility) : 1.0f;
+    if (IsBindlessValid(FbzzUavSlot(1)) && visibilityFar > 0.0f)
+    {
+        const uint2 tile = uint2(tid % 8u, tid / 8u);
+        float2 moments = 0.0f;
+        [unroll] for (int y = -1; y <= 1; ++y)
+        [unroll] for (int x = -1; x <= 1; ++x)
+        {
+            const float2 uv = saturate((float2(tile) + 0.5f + float2(x, y) * 0.25f) / 8.0f);
+            const float distance = VisibilityDistance(VisibilityDirection(uv));
+            moments += float2(distance, distance * distance);
+        }
+        gProbeVisibility[uint3(probeCoord.xy * 8u + tile, probeCoord.z)] = float4(moments / 9.0f, visibilityFar, visibilityValidity);
+    }
     if (tid >= 7u) return;
 
     /// @note 立体角を 4π へ正規化し、余弦ローブの畳み込み Â_l / π (1, 2/3, 1/4) を焼き込む。一様な放射輝度 L が L を返す単位になり、irradiance キューブと揃う。

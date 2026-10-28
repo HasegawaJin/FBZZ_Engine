@@ -48,6 +48,14 @@ public:
         uint64_t skinningVertexCount = 0;
         /// @note SkinningComputePass の Dispatch 数
         uint32_t skinningDispatchCount = 0;
+        uint64_t skinningPaletteUploadBytes = 0;
+        uint32_t skinningPaletteUploads = 0;
+        uint64_t skinningDemandMode = 0;
+        uint64_t skinningDemandCandidates = 0;
+        uint64_t skinningDemandRequired = 0;
+        uint64_t skinningDemandPrepared = 0;
+        uint64_t skinningDemandSubmitted = 0;
+        uint64_t skinningDemandSkipped = 0;
         /// @note シャドウマップは同じジオメトリを光源視点で再描画する別パスのため、
         /// @note       カメラ統計に混ぜず内訳として分けて表示する。
         int shadowDrawCalls     = 0;

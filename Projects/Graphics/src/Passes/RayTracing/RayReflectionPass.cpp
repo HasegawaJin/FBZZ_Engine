@@ -25,6 +25,9 @@ void RayReflectionPass::Setup(PassBuilder& builder, const RenderPassContext& con
     if (m_lighting.diffuseIndirectEnabled) {
         builder.Read("RayReflectionLightProbe0", Purpose::SHADER_READ);
         builder.Read("RayReflectionLightProbe1", Purpose::SHADER_READ);
+        for (size_t slot = 0; slot < 2; ++slot)
+            if (context.handles.lightProbeVisibility[slot].IsValid())
+                builder.Read("RayReflectionProbeVisibility" + std::to_string(slot), Purpose::SHADER_READ);
     }
     if (m_lighting.emitterCount) builder.Read("RayReflectionEmitters", Purpose::SHADER_READ);
     if (m_lighting.deltaLightCount) builder.Read("RayReflectionDeltaLights", Purpose::SHADER_READ);
@@ -139,6 +142,9 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
     if (constants.diffuseIndirectEnabled) {
         call.srvInputs[11] = resources.Texture("RayReflectionLightProbe0");
         call.srvInputs[12] = resources.Texture("RayReflectionLightProbe1");
+        for (size_t slot = 0; slot < 2; ++slot)
+            if (const auto texture = resources.Texture("RayReflectionProbeVisibility" + std::to_string(slot)); texture.IsValid())
+                call.indirectReadTextures.push_back(texture);
     }
     if (m_lighting.emitterCount) call.srvBuffers[3] = resources.StructuredBuffer("RayReflectionEmitters");
     if (m_lighting.deltaLightCount) call.srvBuffers[4] = resources.StructuredBuffer("RayReflectionDeltaLights");

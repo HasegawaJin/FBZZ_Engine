@@ -10,6 +10,8 @@
 #include <Core/Logger.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
+#include <array>
+#include <utility>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -146,12 +148,37 @@ void AddArc(const math::Vector3& center,
     }
 }
 
+/// @note AddArcと同じstep * indexを保ち、25点はthread-safeなlocal-static初期化後に不変となる。
+/// @see Microsoft Learn, Thread-safe local static initialization, https://learn.microsoft.com/en-us/cpp/build/reference/zc-threadsafeinit-thread-safe-local-static-initialization?view=msvc-170
+const std::array<std::pair<float, float>, CIRCLE_SEGMENTS + 1>& CircleTrigonometry()
+{
+    static const std::array<std::pair<float, float>, CIRCLE_SEGMENTS + 1> points = [] {
+        std::array<std::pair<float, float>, CIRCLE_SEGMENTS + 1> result{};
+        const float step = (2.0f * PI) / static_cast<float>(CIRCLE_SEGMENTS);
+        for (int i = 0; i <= CIRCLE_SEGMENTS; ++i) {
+            const float angle = step * static_cast<float>(i);
+            result[static_cast<size_t>(i)] = { std::cos(angle), std::sin(angle) };
+        }
+        return result;
+    }();
+    return points;
+}
+
 void AddCircle(const math::Vector3& center,
                const math::Vector3& axis1,
                const math::Vector3& axis2,
                float radius, const math::Vector4& color)
 {
-    AddArc(center, axis1, axis2, radius, color, 0.0f, 2.0f * PI, CIRCLE_SEGMENTS);
+    const auto& points = CircleTrigonometry();
+    const auto pointAt = [&](size_t index) {
+        return center + axis1 * (radius * points[index].first) + axis2 * (radius * points[index].second);
+    };
+    math::Vector3 previous = pointAt(0);
+    for (int i = 0; i < CIRCLE_SEGMENTS; ++i) {
+        const math::Vector3 next = pointAt(static_cast<size_t>(i + 1));
+        AddSegment(previous, next, color);
+        previous = next;
+    }
 }
 
 void AddFilledTriangle(const math::Vector3& a, const math::Vector3& b, const math::Vector3& c,
@@ -217,7 +244,7 @@ void DebugDraw::EndCapture()
     s_depthTest = false;
 }
 
-void DebugDraw::Replay(IRenderer& /*r*/, const DebugDrawCapture& capture, DebugDrawLayer layers)
+void DebugDraw::Replay(IRenderer&, const DebugDrawCapture& capture, DebugDrawLayer layers)
 {
     assert(s_renderer && !s_capture && "DebugDraw::Replay must be called between BeginFrame and Flush");
     const auto has = [layers](DebugDrawLayer layer) {
@@ -241,7 +268,7 @@ size_t DebugDraw::PendingTriangleVertices() { return s_triBatch.size(); }
 
 size_t DebugDraw::MaxBatchVertices() { return MAX_DEBUG_VERTICES; }
 
-void DebugDraw::Line(IRenderer& /*r*/,
+void DebugDraw::Line(IRenderer&,
                      const math::Vector3& from, const math::Vector3& to,
                      const math::Vector4& color)
 {
@@ -249,7 +276,7 @@ void DebugDraw::Line(IRenderer& /*r*/,
     AddSegment(from, to, color);
 }
 
-void DebugDraw::LineDepthTested(IRenderer& /*r*/,
+void DebugDraw::LineDepthTested(IRenderer&,
                                 const math::Vector3& from, const math::Vector3& to,
                                 const math::Vector4& color)
 {
@@ -257,7 +284,7 @@ void DebugDraw::LineDepthTested(IRenderer& /*r*/,
     AddSegmentTo(true, from, to, color);
 }
 
-void DebugDraw::LineDashed(IRenderer& /*r*/,
+void DebugDraw::LineDashed(IRenderer&,
                            const math::Vector3& from, const math::Vector3& to,
                            const math::Vector4& color,
                            float dashLength, int maxDashes)
@@ -286,7 +313,7 @@ size_t DebugDraw::DashedLineMaxVertices(int maxDashes)
     return static_cast<size_t>((std::max)(maxDashes, 1)) * 2u;
 }
 
-void DebugDraw::Polyline(IRenderer& /*r*/, std::span<const math::Vector3> points, bool closed,
+void DebugDraw::Polyline(IRenderer&, std::span<const math::Vector3> points, bool closed,
                          const math::Vector4& color)
 {
     assert(CanDraw() && "DebugDraw::BeginFrame must be called first");
@@ -304,7 +331,7 @@ void DebugDraw::Box(IRenderer& r,
     Box(r, center, h, math::Quaternion::Identity(), color);
 }
 
-void DebugDraw::Box(IRenderer& /*r*/,
+void DebugDraw::Box(IRenderer&,
                     const math::Vector3& center, const math::Vector3& h,
                     const math::Quaternion& rotation,
                     const math::Vector4& color)
@@ -330,7 +357,7 @@ void DebugDraw::Box(IRenderer& /*r*/,
     AddSegment(c[2], c[6], color); AddSegment(c[3], c[7], color);
 }
 
-void DebugDraw::Sphere(IRenderer& /*r*/,
+void DebugDraw::Sphere(IRenderer&,
                        const math::Vector3& center, float radius,
                        const math::Vector4& color)
 {
@@ -349,7 +376,7 @@ void DebugDraw::Capsule(IRenderer& r,
     Capsule(r, center, radius, halfHeight, math::Quaternion::Identity(), color);
 }
 
-void DebugDraw::Capsule(IRenderer& /*r*/,
+void DebugDraw::Capsule(IRenderer&,
                         const math::Vector3& center, float radius, float halfHeight,
                         const math::Quaternion& rotation,
                         const math::Vector4& color)
@@ -377,7 +404,7 @@ void DebugDraw::Capsule(IRenderer& /*r*/,
     AddSegment(top + Z * -radius, bottom + Z * -radius, color);
 }
 
-void DebugDraw::Circle(IRenderer& /*r*/, const math::Vector3& center, const math::Vector3& normal,
+void DebugDraw::Circle(IRenderer&, const math::Vector3& center, const math::Vector3& normal,
                        float radius, const math::Vector4& color)
 {
     assert(CanDraw() && "DebugDraw::BeginFrame must be called first");
@@ -388,7 +415,7 @@ void DebugDraw::Circle(IRenderer& /*r*/, const math::Vector3& center, const math
     AddCircle(center, right, up, radius, color);
 }
 
-void DebugDraw::Arc(IRenderer& /*r*/, const math::Vector3& center, const math::Vector3& normal,
+void DebugDraw::Arc(IRenderer&, const math::Vector3& center, const math::Vector3& normal,
                     const math::Vector3& fromDirection, float radius, float angleRadians,
                     const math::Vector4& color)
 {
@@ -407,7 +434,7 @@ void DebugDraw::Arc(IRenderer& /*r*/, const math::Vector3& center, const math::V
     AddArc(center, axis1, axis2, radius, color, 0.0f, angleRadians, segments);
 }
 
-void DebugDraw::Arrow(IRenderer& /*r*/,
+void DebugDraw::Arrow(IRenderer&,
                       const math::Vector3& from, const math::Vector3& to,
                       float headLength, float headRadius,
                       const math::Vector4& color)
@@ -433,7 +460,7 @@ void DebugDraw::Arrow(IRenderer& /*r*/,
     AddSegment(to, shaftTip - up    * headRadius, color);
 }
 
-void DebugDraw::Cone(IRenderer& /*r*/,
+void DebugDraw::Cone(IRenderer&,
                      const math::Vector3& apex, const math::Vector3& direction,
                      float height, float baseRadius,
                      const math::Vector4& color)
@@ -455,7 +482,7 @@ void DebugDraw::Cone(IRenderer& /*r*/,
     AddSegment(apex, baseCenter - up    * baseRadius, color);
 }
 
-void DebugDraw::FilledPolygon(IRenderer& /*r*/, const math::Vector3* verts, size_t count,
+void DebugDraw::FilledPolygon(IRenderer&, const math::Vector3* verts, size_t count,
                               const math::Vector4& color)
 {
     assert(CanDraw() && "DebugDraw::BeginFrame must be called first");

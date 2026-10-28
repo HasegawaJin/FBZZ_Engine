@@ -1,5 +1,5 @@
 /// @file    BufferReadTests.cpp
-/// @brief   Raw Buffer SRV の内容版・GPU snapshot と間接依存の検証を実デバイスで行う。
+/// @brief   Raw Buffer SRV と同期転送中の記録済み GPU 資源の寿命を実デバイスで検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
 #include <TestKit/TestKit.hpp>
@@ -7,13 +7,18 @@
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
+#include <Core/ILogSink.hpp>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <objbase.h>
 #pragma comment(lib, "ole32.lib")
 #include <filesystem>
 #include <memory>
+#include <array>
+#include <string>
 #include <vector>
+#include <fstream>
+#include <Graphics/Renderer/BindlessIndices.hpp>
 
 namespace fbzz::tests {
 namespace {
@@ -135,6 +140,388 @@ protected:
     HRESULT m_comResult = E_FAIL;
     bool m_frameOpen = false;
 };
+
+TEST_F(BufferReadTest, InputAssemblyBindingsFollowBufferSnapshotsTopologyAndFrameChanges)
+{
+    testkit::TempDir temporary("graphics_input_assembly");
+    ASSERT_TRUE(temporary.IsValid());
+    const auto path = temporary.File("InputAssembly.hlsl");
+    {
+        std::ofstream stream(path, std::ios::binary);
+        stream << R"hlsl(/// @file    InputAssembly.hlsl
+/// @brief   Observe input-assembler vertex and index snapshots through native rasterization.
+/// @author  Hasegawa Jin
+/// @date    2026-10-23
+struct Input { float4 position : POSITION; float4 color : COLOR; };
+struct Output { float4 position : SV_Position; float4 color : COLOR; };
+Output VSMain(Input input) { Output result; result.position = input.position; result.color = input.color; return result; }
+float4 PSMain(Output input) : SV_Target0 { return input.color; }
+)hlsl";
+        ASSERT_TRUE(stream.good());
+    }
+    const auto computePath = temporary.File("InputAssembly.cs.hlsl");
+    {
+        std::ofstream stream(computePath, std::ios::binary);
+        stream << R"hlsl(/// @file    InputAssembly.cs.hlsl
+/// @brief   Change compute state between draws which share input-assembler resources.
+/// @author  Hasegawa Jin
+/// @date    2026-10-23
+cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2]; };
+[numthreads(1, 1, 1)] void CSMain() {
+    RWTexture2D<float4> output = ResourceDescriptorHeap[uav[0].x]; output[uint2(0, 0)] = 1;
+}
+)hlsl";
+        ASSERT_TRUE(stream.good());
+    }
+    const auto shader = m_resources->LoadShader(path.generic_string());
+    const auto compute = m_resources->LoadShader(computePath.generic_string());
+    ASSERT_TRUE(shader.IsValid() && compute.IsValid());
+    struct Vertex { math::Vector4 position; math::Vector4 color; };
+    struct PaddedVertex { Vertex value; math::Vector4 padding; };
+    const std::array<math::Vector4, 5> positions{{{-1, -1, 0, 1}, {-1, 3, 0, 1}, {3, -1, 0, 1}, {-1, 0, 0, 1}, {1, 0, 0, 1}}};
+    std::array<Vertex, 5> red{}, green{}, blue{};
+    std::array<PaddedVertex, 5> yellow{};
+    for (size_t index = 0; index < positions.size(); ++index) {
+        red[index] = {positions[index], {1, 0, 0, 1}};
+        green[index] = {positions[index], {0, 1, 0, 1}};
+        blue[index] = {positions[index], {0, 0, 1, 1}};
+        yellow[index] = {{positions[index], {1, 1, 0, 1}}, {}};
+    }
+    const uint32_t triangle[]{0, 1, 2}, degenerate[]{0, 0, 0}, line[]{3, 4, 4};
+    const uint32_t arguments[]{3, 1, 0, 0, 0};
+    const auto firstVertices = m_resources->CreateVertexBuffer(red.data(), sizeof(red), sizeof(Vertex));
+    const auto secondVertices = m_resources->CreateVertexBuffer(green.data(), sizeof(green), sizeof(Vertex));
+    const auto paddedVertices = m_resources->CreateVertexBuffer(yellow.data(), sizeof(yellow), sizeof(PaddedVertex));
+    const auto indices = m_resources->CreateIndexBuffer(triangle, 3);
+    const auto lineIndices = m_resources->CreateIndexBuffer(line, 3);
+    const auto indirect = m_resources->CreateRWStructuredBuffer(arguments, 1, sizeof(arguments));
+    ASSERT_TRUE(firstVertices.IsValid() && secondVertices.IsValid() && paddedVertices.IsValid()
+        && indices.IsValid() && lineIndices.IsValid() && indirect.IsValid());
+    std::array<renderer::ResourceHandle<renderer::RenderTargetTag>, 11> targets;
+    for (auto& target : targets) {
+        target = m_resources->CreateRenderTarget(8, 8, {1, renderer::Format::RGBA16F, false});
+        ASSERT_TRUE(target.IsValid());
+    }
+    m_bundle.renderer->SetRenderWhenOccluded(true);
+
+    /// @note Read back only after all rows: earlier draws must retain old CPU-updated snapshots across the frame ring.
+    for (uint32_t frame = 0; frame < 4; ++frame) {
+        SCOPED_TRACE(frame);
+        m_resources->Update(secondVertices, green.data(), sizeof(green));
+        m_resources->Update(indices, triangle, sizeof(triangle));
+        BeginFrame();
+        for (size_t row = 0; row < targets.size(); ++row) {
+            if (row == 3) {
+                m_resources->Update(secondVertices, blue.data(), sizeof(blue));
+                renderer::ComputeCall dispatch;
+                dispatch.shader = compute; dispatch.uavOutputs[0] = m_output;
+                ASSERT_TRUE(m_bundle.renderer->TryDispatch(dispatch, *m_resources));
+            }
+            if (row == 4) m_resources->Update(indices, degenerate, sizeof(degenerate));
+            if (row == 5) m_resources->Update(indices, triangle, sizeof(triangle));
+            renderer::DrawCall draw;
+            draw.shader = shader; draw.pipelineState = m_state;
+            draw.vertexBuffer = row < 2 ? firstVertices : row == 10 ? paddedVertices : secondVertices;
+            draw.indexBuffer = row == 6 ? lineIndices : indices;
+            draw.indexCount = row == 6 ? 2u : 3u;
+            draw.topology = row == 6 ? renderer::PrimitiveTopology::LINE_LIST : renderer::PrimitiveTopology::TRIANGLE_LIST;
+            if (row == 8) draw.indirectArguments = indirect;
+            m_bundle.renderer->SetRenderTarget(targets[row], *m_resources);
+            m_bundle.renderer->Clear({0, 0, 0, 0});
+            m_bundle.renderer->Submit(draw, *m_resources);
+        }
+        m_bundle.renderer->SetRenderTarget({}, *m_resources);
+        m_bundle.renderer->EndFrame();
+        m_frameOpen = false;
+
+        for (size_t row = 0; row < targets.size(); ++row) {
+            SCOPED_TRACE(row);
+            std::vector<float> rgba;
+            uint32_t width = 0, height = 0;
+            ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(targets[row], *m_resources, rgba, width, height));
+            ASSERT_EQ(width, 8u); ASSERT_EQ(height, 8u); ASSERT_EQ(rgba.size(), 256u);
+            const math::Vector4 expected = row < 2 ? math::Vector4{1, 0, 0, 1}
+                : row == 2 ? math::Vector4{0, 1, 0, 1} : row == 10 ? math::Vector4{1, 1, 0, 1} : math::Vector4{0, 0, 1, 1};
+            uint32_t colored = 0;
+            for (size_t pixel = 0; pixel < rgba.size(); pixel += 4) {
+                if (rgba[pixel + 3] == 0) continue;
+                ++colored;
+                EXPECT_FLOAT_EQ(rgba[pixel], expected.x); EXPECT_FLOAT_EQ(rgba[pixel + 1], expected.y);
+                EXPECT_FLOAT_EQ(rgba[pixel + 2], expected.z); EXPECT_FLOAT_EQ(rgba[pixel + 3], 1);
+            }
+            if (row == 4) EXPECT_EQ(colored, 0u);
+            else if (row == 6) { EXPECT_GT(colored, 0u); EXPECT_LT(colored, 64u); }
+            else EXPECT_EQ(colored, 64u);
+        }
+    }
+}
+
+TEST_F(BufferReadTest, ConsecutiveGraphicsBindingsKeepEveryIndexAndSurviveFrameAndComputeChanges)
+{
+    testkit::TempDir temporary("graphics_bindless_indices");
+    ASSERT_TRUE(temporary.IsValid());
+    const auto path = temporary.File("Indices.hlsl");
+    {
+        std::ofstream stream(path, std::ios::binary);
+        stream << R"hlsl(/// @file    Indices.hlsl
+/// @brief   Observe the complete graphics b14 payload through a native draw.
+/// @author  Hasegawa Jin
+/// @date    2026-10-23
+cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2]; };
+float4 VSMain(uint id : SV_VertexID) : SV_Position {
+    return float4(id == 2 ? 3 : -1, id == 1 ? 3 : -1, 0, 1);
+}
+uint Mix(uint value, uint index) { return (value * 17 + index % 251) % 251; }
+float4 PSMain() : SV_Target0 {
+    uint p = 0, v = 0, u = 0;
+    for (uint i = 0; i < 32; ++i) p = Mix(p, pixel[i >> 2][i & 3]);
+    for (uint j = 0; j < 4; ++j) v = Mix(v, vertex[0][j]);
+    for (uint k = 0; k < 8; ++k) u = Mix(u, uav[k >> 2][k & 3]);
+    return float4(p, v, u, 1);
+}
+)hlsl";
+        ASSERT_TRUE(stream.good());
+    }
+    const auto shader = m_resources->LoadShader(path.generic_string());
+    ASSERT_TRUE(shader.IsValid());
+    const auto computePath = temporary.File("Change.cs.hlsl");
+    {
+        std::ofstream stream(computePath, std::ios::binary);
+        stream << R"hlsl(/// @file    Change.cs.hlsl
+/// @brief   Change native compute bindings between identical graphics payloads.
+/// @author  Hasegawa Jin
+/// @date    2026-10-23
+cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2]; };
+[numthreads(1, 1, 1)] void CSMain() {
+    RWTexture2D<float4> output = ResourceDescriptorHeap[uav[0].x];
+    output[uint2(0, 0)] = float4(1, 2, 3, 4);
+}
+)hlsl";
+        ASSERT_TRUE(stream.good());
+    }
+    const auto compute = m_resources->LoadShader(computePath.generic_string());
+    ASSERT_TRUE(compute.IsValid());
+    const math::Vector4 value{1, 2, 3, 4};
+    const auto structured = m_resources->CreateStructuredBuffer(&value, 1, sizeof(value));
+    const auto raw = m_resources->CreateVertexBuffer(&value, sizeof(value), sizeof(value));
+    ASSERT_TRUE(structured.IsValid() && raw.IsValid());
+    std::array<renderer::ResourceHandle<renderer::RenderTargetTag>, 8> targets;
+    for (auto& target : targets) {
+        target = m_resources->CreateRenderTarget(1, 1, {1, renderer::Format::RGBA16F, false});
+        ASSERT_TRUE(target.IsValid());
+    }
+    const auto fingerprint = [](const auto& indices) {
+        uint32_t result = 0;
+        for (const uint32_t index : indices) result = (result * 17 + index % 251) % 251;
+        return static_cast<float>(result);
+    };
+    /// @note Four frames cross the frame ring; readback occurs after all draws to detect overwritten prior payloads.
+    for (uint32_t frame = 0; frame < 4; ++frame) {
+        SCOPED_TRACE(frame);
+        BeginFrame();
+        std::array<math::Vector4, 8> expected;
+        for (size_t row = 0; row < targets.size(); ++row) {
+            SCOPED_TRACE(row);
+            renderer::DrawCall draw;
+            draw.shader = shader;
+            draw.pipelineState = m_state;
+            draw.vertexCount = 3;
+            renderer::BindlessIndicesConstants indices;
+            indices.Reset();
+            if (row >= 2 && row <= 6) {
+                draw.textures[0] = m_output;
+                indices.pixel[0] = m_resources->Get(m_output)->GetBindlessIndex();
+            }
+            if (row == 4) {
+                draw.textures[31] = m_output;
+                indices.pixel[31] = indices.pixel[0];
+            }
+            if (row == 5 || row == 6) {
+                draw.psBuffers[0] = structured;
+                draw.auxiliaryPsBuffers.back() = structured;
+                draw.vsBuffers.back() = structured;
+                indices.pixel[renderer::kPsBufferBaseSlot] = m_resources->Get(structured)->GetBindlessIndex();
+                indices.pixel[renderer::kAuxiliaryPsBufferBaseSlot + draw.auxiliaryPsBuffers.size() - 1] = indices.pixel[renderer::kPsBufferBaseSlot];
+                indices.vertex[draw.vsBuffers.size()] = indices.pixel[renderer::kPsBufferBaseSlot];
+            }
+            if (row == 6) {
+                draw.instanceBuffer = structured;
+                draw.vsBuffers.back() = {};
+                draw.vsRawBuffers.back() = raw;
+                indices.vertex[0] = m_resources->Get(structured)->GetBindlessIndex();
+                indices.vertex[draw.vsRawBuffers.size()] = m_resources->Get(raw)->GetBindlessSrvIndex();
+            }
+            if (row == 3) {
+                renderer::ComputeCall dispatch;
+                dispatch.shader = compute;
+                dispatch.uavOutputs[0] = m_output;
+                ASSERT_TRUE(m_bundle.renderer->TryDispatch(dispatch, *m_resources));
+            }
+            expected[row] = {fingerprint(indices.pixel), fingerprint(indices.vertex), fingerprint(indices.uav), 1};
+            m_bundle.renderer->SetRenderTarget(targets[row], *m_resources);
+            m_bundle.renderer->Submit(draw, *m_resources);
+        }
+        m_bundle.renderer->SetRenderTarget({}, *m_resources);
+        m_bundle.renderer->EndFrame();
+        m_frameOpen = false;
+        for (size_t row = 0; row < targets.size(); ++row) {
+            SCOPED_TRACE(row);
+            std::vector<float> rgba;
+            uint32_t width = 0, height = 0;
+            ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(targets[row], *m_resources, rgba, width, height));
+            ASSERT_EQ(rgba.size(), 4u);
+            EXPECT_FLOAT_EQ(rgba[0], expected[row].x);
+            EXPECT_FLOAT_EQ(rgba[1], expected[row].y);
+            EXPECT_FLOAT_EQ(rgba[2], expected[row].z);
+            EXPECT_FLOAT_EQ(rgba[3], 1);
+        }
+    }
+}
+
+class SynchronousUploadTest : public BufferReadTest, private core::ILogSink {
+protected:
+    void SetUp() override
+    {
+        /// @note Force the existing DIRECT fallback only during renderer creation, then restore the process environment.
+        struct CopyQueueEnvironment {
+            std::wstring previous;
+            bool hadValue = false;
+            bool changed = false;
+            ~CopyQueueEnvironment()
+            {
+                if (changed)
+                    EXPECT_TRUE(SetEnvironmentVariableW(L"FBZZ_COPY_QUEUE", hadValue ? previous.c_str() : nullptr));
+            }
+        } environment;
+        SetLastError(ERROR_SUCCESS);
+        const DWORD capacity = GetEnvironmentVariableW(L"FBZZ_COPY_QUEUE", nullptr, 0);
+        if (capacity == 0) {
+            const DWORD error = GetLastError();
+            ASSERT_TRUE(error == ERROR_SUCCESS || error == ERROR_ENVVAR_NOT_FOUND);
+            environment.hadValue = error != ERROR_ENVVAR_NOT_FOUND;
+        } else {
+            environment.hadValue = true;
+            environment.previous.resize(capacity);
+            const DWORD length = GetEnvironmentVariableW(L"FBZZ_COPY_QUEUE", environment.previous.data(), capacity);
+            ASSERT_LT(length, capacity);
+            ASSERT_GT(length, 0u);
+            environment.previous.resize(length);
+        }
+        ASSERT_TRUE(SetEnvironmentVariableW(L"FBZZ_COPY_QUEUE", L"0"));
+        environment.changed = true;
+        core::Logger::AddSink(this);
+        m_sinkAdded = true;
+        BufferReadTest::SetUp();
+        if (m_bundle.renderer) m_bundle.renderer->SetRenderWhenOccluded(true);
+    }
+
+    void TearDown() override
+    {
+        BufferReadTest::TearDown();
+        if (m_sinkAdded) core::Logger::RemoveSink(this);
+        EXPECT_EQ(m_gpuErrors, 0u);
+    }
+
+    void OnLog(const core::LogEntry& entry) override
+    {
+        const std::string text = entry.message;
+        if (entry.level == core::LogLevel::LOG_ERROR
+            || (entry.level == core::LogLevel::WARNING
+                && (text.find("[WARNING]") != std::string::npos
+                    || text.find("[ERROR]") != std::string::npos
+                    || text.find("[CORRUPTION]") != std::string::npos))) ++m_gpuErrors;
+    }
+
+    void DrawTexture(renderer::ResourceHandle<renderer::TextureTag> texture,
+                     renderer::ResourceHandle<renderer::RenderTargetTag> target)
+    {
+        m_bundle.renderer->SetRenderTarget(target, *m_resources);
+        m_bundle.renderer->Clear({0, 0, 0, 0});
+        renderer::DrawCall draw;
+        draw.shader = m_copy;
+        draw.pipelineState = m_state;
+        draw.vertexCount = 3;
+        draw.textures[5] = texture;
+        m_bundle.renderer->Submit(draw, *m_resources);
+    }
+
+    void ExpectColor(renderer::ResourceHandle<renderer::RenderTargetTag> target,
+                     const math::Vector3& expected)
+    {
+        std::vector<float> rgba;
+        uint32_t width = 0, height = 0;
+        ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(target, *m_resources, rgba, width, height));
+        ASSERT_EQ(width, 3u);
+        ASSERT_EQ(height, 1u);
+        ASSERT_EQ(rgba.size(), 12u);
+        for (size_t pixel = 0; pixel < 3; ++pixel)
+            EXPECT_VEC3_NEAR((math::Vector3{rgba[pixel * 4], rgba[pixel * 4 + 1], rgba[pixel * 4 + 2]}), expected, 0.001f);
+    }
+
+    uint32_t m_gpuErrors = 0;
+    bool m_sinkAdded = false;
+};
+
+TEST_F(SynchronousUploadTest, TextureAndBufferWaitsKeepRecordingFrameRetirementPending)
+{
+    const std::array<uint8_t, 4> red{255, 0, 0, 255};
+    const std::array<uint8_t, 4> green{0, 255, 0, 255};
+    const std::array<uint8_t, 4> blue{0, 0, 255, 255};
+    const auto oldTexture = m_resources->CreateTexture(red.data(), 1, 1);
+    const auto oldTarget = m_resources->CreateRenderTarget(3, 1,
+        renderer::RenderTargetDesc{1, renderer::Format::RGBA16F, false});
+    const auto newTarget = m_resources->CreateRenderTarget(3, 1,
+        renderer::RenderTargetDesc{1, renderer::Format::RGBA16F, false});
+    ASSERT_TRUE(oldTexture && oldTarget && newTarget);
+    const uint32_t oldDescriptor = m_resources->Get(oldTexture)->GetBindlessIndex();
+    ASSERT_NE(oldDescriptor, renderer::INVALID_BINDLESS_INDEX);
+    const math::Vector3 value{1, 2, 3};
+    const uint32_t index = 17;
+    const auto vertices = m_resources->CreateVertexBuffer(&value, sizeof(value), sizeof(value));
+    const auto indices = m_resources->CreateIndexBuffer(&index, 1);
+    ASSERT_TRUE(vertices && indices);
+
+    BeginFrame();
+    DrawTexture(oldTexture, oldTarget);
+    m_resources->Release(oldTexture);
+    const renderer::TextureMipData mip{green.data(), 1, 1};
+    uint64_t pendingToken = 0;
+    const auto pending = m_resources->BeginTextureUpload(&mip, 1, pendingToken);
+    ASSERT_TRUE(pending);
+    ASSERT_NE(pendingToken, 0u);
+    /// @note DIRECT fallback tokens share the frame submission boundary, including the retired texture's recorded draw.
+    EXPECT_FALSE(m_resources->IsUploadComplete(pendingToken));
+    const auto newTexture = m_resources->CreateTexture(blue.data(), 1, 1);
+    ASSERT_TRUE(newTexture);
+    EXPECT_NE(m_resources->Get(newTexture)->GetBindlessIndex(), oldDescriptor);
+    EXPECT_NE(m_resources->Get(pending)->GetBindlessIndex(), oldDescriptor);
+    EXPECT_FALSE(m_resources->IsUploadComplete(pendingToken));
+    DrawTexture(newTexture, newTarget);
+    m_resources->Release(newTexture);
+
+    BufferReadInput input;
+    input.vertexDescriptor = m_resources->Get(vertices)->GetBindlessSrvIndex();
+    input.indexDescriptor = m_resources->Get(indices)->GetBindlessSrvIndex();
+    input.outputPixel = 2;
+    const auto table = m_resources->CreateGpuLocalStructuredBuffer(&input, 1, sizeof(input));
+    ASSERT_TRUE(table);
+    EXPECT_FALSE(m_resources->IsUploadComplete(pendingToken));
+    renderer::ComputeCall dispatch;
+    dispatch.shader = m_compute;
+    dispatch.srvBuffers[14] = table;
+    dispatch.srvRawBuffers[0] = vertices;
+    dispatch.srvRawBuffers[1] = indices;
+    dispatch.uavOutputs[0] = m_output;
+    m_bundle.renderer->Dispatch(dispatch, *m_resources);
+    m_resources->Release(table);
+    const auto result = FinishAndReadback();
+    ASSERT_EQ(result.size(), 3u);
+    EXPECT_VEC3_NEAR((math::Vector3{result[2].x, result[2].y, result[2].z}), value, 0.0f);
+    EXPECT_FLOAT_EQ(result[2].w, static_cast<float>(index));
+    EXPECT_TRUE(m_resources->IsUploadComplete(pendingToken));
+    ExpectColor(oldTarget, {1, 0, 0});
+    ExpectColor(newTarget, {0, 0, 1});
+}
 
 TEST_F(BufferReadTest, CpuUpdatesPublishNewSnapshotsWithoutChangingRecordedReads)
 {

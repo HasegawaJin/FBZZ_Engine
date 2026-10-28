@@ -1,0 +1,40 @@
+# @file    GrassBlade.mat
+# @brief   Editable project appearance over shared Fiber geometry.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+version = 1
+shader = 'guid:4b4dd7e834054768a0f67c4a0603ab09|Assets/Shaders/Samples/SurfaceExamples/Fiber/GrassBlade.hlsl'
+blend_mode = 'Opaque'
+double_sided = true
+depth_write = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2450
+
+[params]
+rootColor = [0.025, 0.065, 0.008, 1.0]
+tipColor = [0.18, 0.42, 0.035, 1.0]
+fiberLength = 0.28
+fiberDensity = 0.8
+fiberThickness = 0.34
+fiberTaper = 0.95
+fiberFrequency = 60.0
+windResponse = 0.05
+maxBend = 0.12
+gravityBend = 0.005
+roughness = 0.8
+specularStrength = 0.05
+transmission = 0.55
+rootOcclusion = 0.75
+planarShading = 1.0
+worldMapping = 1.0
+finSilhouetteWidth = 0.4
+
+accentColor = [0.35, 0.75, 1.0, 1.0]
+patternScale = 4.0
+patternStrength = 0.85
+colorBands = 3
+enablePattern = true
+
+[textures]
+albedo = 'guid:5ea29307a0a64a8a89566cfad2d46c9c|Assets/Textures/Samples/SurfaceExamples/Pattern.png'

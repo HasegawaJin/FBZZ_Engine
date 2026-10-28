@@ -1,0 +1,7 @@
+# @file    GpuInstanceCull.cs.hlsl.meta
+# @brief   GPU geometry shader identity.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = '7a3a6bf945a193fcb64f1a0e1afb2bb4'
+

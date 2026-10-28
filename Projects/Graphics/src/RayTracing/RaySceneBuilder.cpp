@@ -5,8 +5,10 @@
 #include <Graphics/RayTracing/RayScene.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
+#include <Graphics/Effects/ComputedSkinningOutput.hpp>
 #include <cmath>
 #include <functional>
+#include <optional>
 #include <unordered_map>
 
 namespace fbzz::renderer {
@@ -126,8 +128,8 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
         if ((diagnostic.layerMask & options.layerMask) != 0)
             output.diagnostics.push_back({{scene.sceneGeneration, diagnostic.sourceIndex,
                 diagnostic.sourceGeneration}, UINT32_MAX, RaySceneIssue::LOD_SELECTION_UNRESOLVED});
-    for (uint32_t objectIndex = 0; objectIndex < scene.objects.size(); ++objectIndex) {
-        const auto& object = scene.objects[objectIndex];
+    for (uint32_t objectIndex = 0; objectIndex < scene.Objects().size(); ++objectIndex) {
+        const auto& object = scene.Objects()[objectIndex];
         if (!MatchesLayer(object.layer, options.layerMask)) continue;
         const RayObjectId objectId{scene.sceneGeneration, object.sourceIndex, object.sourceGeneration};
         if (object.rayLodSelectionRequired) {
@@ -145,8 +147,18 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
         }
         for (uint32_t offset = 0; offset < object.itemCount; ++offset) {
             const uint32_t sourceItem = object.firstItem + offset;
-            const auto& item = scene.items[sourceItem];
-            if (!item.slotVisible || item.material.rayCapabilities.opacity == RayOpacity::EMPTY) continue;
+            const auto& capturedItem = scene.items[sourceItem];
+            if (!capturedItem.slotVisible || capturedItem.material.rayCapabilities.opacity == RayOpacity::EMPTY) continue;
+            std::optional<RenderMeshItem> resolvedItem;
+            if (object.skinned && capturedItem.preparedSkinning) {
+                resolvedItem = capturedItem;
+                if (!ResolvePreparedSkinningOutput(capturedItem.preparedSkinning, capturedItem.preparedSkinningWrite,
+                    resolvedItem->deformedVertexBuffer, &resolvedItem->deformedContentVersion)) {
+                    output.diagnostics.push_back({objectId, sourceItem, RaySceneIssue::SKINNED_UNSUPPORTED});
+                    continue;
+                }
+            }
+            const auto& item = resolvedItem ? *resolvedItem : capturedItem;
             if (!item.material.surface.standardSurfaceSupported
                 && !(options.allowSolidDielectrics && item.material.surface.solidDielectricSupported))
                 output.surfaceDiagnostics.push_back({objectId, sourceItem,
@@ -175,6 +187,8 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
             if (inserted) {
                 output.geometries.push_back({key, {key.vertices, key.indices, key.firstVertex,
                     key.vertexCount, key.positionOffset, key.firstIndex, key.indexCount, key.opaque}});
+                output.geometries.back().triangles.preparedSkinning = item.preparedSkinning;
+                output.geometries.back().triangles.preparedSkinningRow = item.preparedSkinningWrite;
             }
             RaySceneInstance instance;
             instance.objectId = objectId;
@@ -195,6 +209,12 @@ RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options)
     DiagnoseUnsupported(scene.water, output);
     DiagnoseUnsupported(scene.trails, output);
     DiagnoseUnsupported(scene.meshTrails, output);
+    /// @note Resident raster instances are not yet TLAS instances; report coverage loss instead of silently omitting trees from ray reflections/shadows.
+    for (const auto& source : scene.instances)
+        if (MatchesLayer(source.layer,output.layerMask) && source.data
+            && std::any_of(source.data->placements.begin(),source.data->placements.end(),[](const auto& value){return value.active;}))
+            output.diagnostics.push_back({{source.identity[0],static_cast<uint32_t>(source.identity[1]),static_cast<uint32_t>(source.identity[1]>>32)},
+                UINT32_MAX,RaySceneIssue::NONMESH_GEOMETRY_UNSUPPORTED});
     for (const auto& source : scene.rayUnsupportedEffects) {
         if ((source.layerMask & output.layerMask) != 0)
             output.diagnostics.push_back({{output.sceneGeneration, source.sourceIndex, source.sourceGeneration},
@@ -224,7 +244,7 @@ const char* DescribeRaySceneIssue(RaySceneIssue issue)
     case RaySceneIssue::CUSTOM_GEOMETRY_UNSUPPORTED: return "Custom shader geometry unsupported";
     case RaySceneIssue::ALPHA_TEST_UNSUPPORTED: return "Alpha / opacity evaluation unsupported";
     case RaySceneIssue::TRANSPARENT_UNSUPPORTED: return "Transparent surface unsupported";
-    case RaySceneIssue::NONMESH_GEOMETRY_UNSUPPORTED: return "Terrain / water / VFX / decal unsupported";
+    case RaySceneIssue::NONMESH_GEOMETRY_UNSUPPORTED: return "Instanced mesh / terrain / water / VFX / decal unsupported";
     case RaySceneIssue::INSTANCE_LIMIT_EXCEEDED: return "DXR 24-bit instance ID capacity exceeded";
     case RaySceneIssue::SOLID_DIELECTRIC_UNSUPPORTED: return "Solid dielectric requires Path opt-in and supported material";
     case RaySceneIssue::LOD_SELECTION_UNRESOLVED: return "Ray LOD0 selection is ambiguous";

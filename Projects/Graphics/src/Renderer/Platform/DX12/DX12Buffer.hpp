@@ -8,6 +8,7 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 #include <vector>
+#include <memory>
 
 namespace fbzz::renderer {
 
@@ -15,6 +16,7 @@ class DX12Context;
 class DX12UploadArena;
 
 class DX12StateTracker;
+namespace prepared_skinning_detail { struct BufferWriteVersion; }
 
 class DX12Buffer final : public IBuffer {
 public:
@@ -23,8 +25,7 @@ public:
     bool Init(DX12Context* context, const void* data, size_t sizeBytes, uint32_t stride, Kind kind);
 
     /// @note CS が書き込み、IA が頂点として読むバッファを確保する (コンピュートスキニングの出力先)。
-    /// @note DEFAULT ヒープ+ALLOW_UNORDERED_ACCESS で作り、UAV デスクリプタは CPU ステージング用
-    /// @note       ヒープに保持する (Dispatch 時に shader-visible テーブルへコピーする既存方式に合わせる)。
+    /// @note DEFAULT ヒープ+ALLOW_UNORDERED_ACCESS で作り、UAV は Context の CPU staging ページで保持する。
     /// @note DX12 は状態遷移が明示的なため、書くとき UNORDERED_ACCESS、読むとき
     /// @note       VERTEX_AND_CONSTANT_BUFFER へ遷移させる必要がある。遷移は DX12Renderer の
     /// @note       Dispatch/Submit が StateTracker 経由で行う。
@@ -43,7 +44,7 @@ public:
 
     /// @note InitGpuWritableVertex で作った場合のみ有効。それ以外は nullptr / 空ハンドル。
     ID3D12Resource*             GetResource() const { return m_resource.Get(); }
-    bool                        IsGpuWritable() const { return m_descriptorHeap != nullptr; }
+    bool                        IsGpuWritable() const { return m_uavCpuIndex != INVALID_BINDLESS_INDEX; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetUav() const;
 
     /// @brief UAV 側の永続 bindless 添字。GPU 書き込み不可のバッファは INVALID を返す。
@@ -51,8 +52,10 @@ public:
     uint32_t GetBindlessUavIndex() const override;
     /// @note CPU 更新後だけ immutable 読取り snapshot を作り、旧実体と descriptor はフェンス経由で退役する。
     uint32_t GetBindlessSrvIndex() const override;
-    uint64_t GetContentVersion() const override { return m_contentVersion; }
+    uint64_t GetContentVersion() const override;
     void NotifyGpuWrite() override;
+    /// @note 未公開の出力だけに使い、wrapper 退役後も native ticket が内容版を所有する。
+    std::shared_ptr<prepared_skinning_detail::BufferWriteVersion> RetainPreparedWriteVersion();
     /// @pre GetBindlessSrvIndex が成功した直後に使う。
     ID3D12Resource* GetSrvResource() const { return m_srvResource.Get(); }
     bool CopyData(size_t offset, size_t sizeBytes, void* output) const override;
@@ -66,14 +69,14 @@ private:
     D3D12_GPU_VIRTUAL_ADDRESS m_cachedAddress = 0;
     bool m_dirty = false;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_resource;
-    /// @note GPU 書き込み可能バッファの UAV を置く CPU 専用ヒープ。
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
+    uint32_t m_uavCpuIndex = INVALID_BINDLESS_INDEX;
     /// @note 永続 bindless 枠 (UAV)。初回参照で確保するため mutable。
     mutable uint32_t m_bindlessUavIndex = INVALID_BINDLESS_INDEX;
     mutable uint32_t m_bindlessSrvIndex = INVALID_BINDLESS_INDEX;
     mutable uint64_t m_srvContentVersion = 0;
     mutable Microsoft::WRL::ComPtr<ID3D12Resource> m_srvResource;
     uint64_t m_contentVersion = 0;
+    std::shared_ptr<prepared_skinning_detail::BufferWriteVersion> m_preparedWriteVersion;
     DX12StateTracker* m_tracker = nullptr;
     uint8_t* m_mapped = nullptr;
     size_t m_size = 0;

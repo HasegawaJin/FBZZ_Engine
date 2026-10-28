@@ -20,6 +20,7 @@ public:
               uint32_t elementCount, uint32_t stride, bool readWrite,
               bool gpuLocalReadOnly = false);
     void Update(const void* data, size_t sizeBytes) override;
+    bool UpdateRegion(const void* data, size_t sizeBytes, size_t offsetBytes) override;
     uint32_t GetElementCount() const override { return m_elementCount; }
     uint32_t GetStride() const override { return m_stride; }
     size_t GetSize() const override { return static_cast<size_t>(m_elementCount) * m_stride; }
@@ -40,9 +41,9 @@ private:
     DX12StateTracker* m_tracker = nullptr;
     DX12Context* m_context = nullptr;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_resource;
-    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
+    uint32_t m_srvCpuIndex = INVALID_BINDLESS_INDEX;
+    uint32_t m_uavCpuIndex = INVALID_BINDLESS_INDEX;
     uint8_t* m_mapped = nullptr;
-    uint32_t m_descriptorIncrement = 0;
     uint32_t m_elementCount = 0;
     uint32_t m_stride = 0;
     bool m_readWrite = false;

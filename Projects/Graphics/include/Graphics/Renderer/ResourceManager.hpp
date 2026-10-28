@@ -12,13 +12,16 @@
 #include <Graphics/Renderer/ShaderCapabilities.hpp>
 #include <Graphics/Renderer/ResourcePool.hpp>
 #include <Graphics/Renderer/RenderState.hpp>
+#include <Graphics/Renderer/MeshletGeometry.hpp>
 /// @note DynamicTextureFormat を CreateDynamicTexture の引数に取るため、ITexture の前方宣言
 /// @note       だけでは足りず実体が要る (ヘッダ自体は cstdint のみに依存する軽量なもの)。
 #include <Graphics/Renderer/ITexture.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <source_location>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -36,8 +39,46 @@ class IShader;
 class IStructuredBuffer;
 class ITexture;
 struct Mesh;
+class Material;
+namespace material_transfer_detail { class OwnedConstantBufferData; class MaterialTransferPayloadScope; }
+namespace buffer_state_detail { class BufferStateReadScope; }
+namespace prepared_skinning_detail { struct TicketFactory; }
 
 class RenderResources;
+
+/// @brief Non-blocking metadata snapshot for a buffer handle.
+struct BufferResourceMetadata {
+    uint32_t generation = 0;
+    size_t sizeBytes = 0;
+    uint32_t stride = 0;
+    /// @note Advances on ResourceManager CPU updates; GPU-writable output buffers are excluded.
+    uint64_t contentVersion = 0;
+    bool cpuReadable = false;
+    bool gpuWritable = false;
+    bool indexBuffer = false;
+    bool live = false;
+};
+
+/// @brief Native buffer values read after queued CPU work has completed.
+/// @note Unlike BufferResourceMetadata, contentVersion includes recorded GPU writes; no resource pointer is retained.
+struct BufferResourceState {
+    size_t sizeBytes = 0;
+    uint32_t stride = 0;
+    uint64_t contentVersion = 0;
+    uint32_t bindlessUavIndex = UINT32_MAX;
+    bool live = false;
+};
+
+/// @brief ResourceManager を通る同期テクスチャ読み込みの累積時間と直近の対象。
+struct SynchronousTextureLoadStats {
+    uint64_t attempts = 0;
+    uint64_t successes = 0;
+    uint64_t failures = 0;
+    double totalMilliseconds = 0.0;
+    double lastMilliseconds = 0.0;
+    double maxMilliseconds = 0.0;
+    std::string lastPath;
+};
 
 /// @note Byte storage is frozen while any queued renderer consumer owns the batch.
 struct ConstantBufferUpdateEntry { ResourceHandle<ConstantBufferTag> handle; size_t offset = 0, size = 0; };
@@ -47,6 +88,8 @@ class ResourceManager {
 public:
     explicit ResourceManager(IRenderer& renderer);
     ~ResourceManager();
+    /// @note Application より長く生存する Manager から renderer の参照を切る終了境界。以後の GPU 操作は禁止。
+    void PrepareRendererShutdown();
     /// @note 描画状態は Manager ごとに独立し、Reset で GPU 実体とともに破棄する。
     RenderResources& Rendering();
     void ReleaseRenderView(uint32_t key);
@@ -58,6 +101,9 @@ public:
     static ResourceManager* Active();
 
     ResourceHandle<ShaderTag> LoadShader(std::string_view path);
+    /// @return Manager が所有するマゼンタ材質。バックエンドが診断シェーダーを生成できなければ nullptr。
+    /// @note 外部アセットを読まない。Reset 後も次回取得で再生成する。呼び手は内容を変更しない。
+    Material* GetErrorMaterial(bool skinned);
     /// @note 成功した shader load / reload と同じ版の能力を返す。失敗した reload は旧能力を保持する。
     [[nodiscard]] ShaderCapabilities GetShaderCapabilities(ResourceHandle<ShaderTag> handle) const;
 
@@ -135,6 +181,12 @@ public:
     /// @note 呼ぶたびに CreateTexture すると «誰も返さない 1 枚» が実体ごとに増える。
     /// @note       パーティクル / トレイルは寿命が短く数も多いので、そのぶんだけ漏れ続ける。
     [[nodiscard]] ResourceHandle<TextureTag> GetWhiteTexture();
+    /// @brief 同期テクスチャ読み込みの計測値を返す。
+    /// @note LoadTexture 系のキャッシュミスを計測する。ResourceManager のレンダースレッドから読む。
+    [[nodiscard]] const SynchronousTextureLoadStats& GetSynchronousTextureLoadStats() const
+    {
+        return m_syncTextureLoadStats;
+    }
     /// @note CPU生成したRGBA8ボリュームから3D Textureを作る。Color LUTなどに使用する。
     ResourceHandle<TextureTag> CreateTexture3D(
         const uint8_t* rgba, uint32_t width, uint32_t height, uint32_t depth,
@@ -203,6 +255,23 @@ public:
     IStructuredBuffer* Get(ResourceHandle<StructuredBufferTag> h);
     IAccelerationStructure* Get(ResourceHandle<AccelerationStructureTag> h);
 
+    /// @brief Resolves adjacent native buffer reads after a single CPU-frame drain.
+    /// @pre Both spans have the same size and remain valid during wait-pump callbacks.
+    /// @note Invalid/stale handles receive empty states; an entirely invalid input does not wait.
+    /// @note Values belong to this read only; resource mutation or creation requires another read before reuse.
+    void GetBufferStates(std::span<const ResourceHandle<BufferTag>> handles,
+                         std::span<BufferResourceState> out);
+
+    /// @brief Reads mirrored buffer metadata without resolving a native resource or waiting for the CPU frame.
+    /// @param handle Generation-checked buffer handle.
+    /// @param out Receives the metadata only when the handle is live.
+    /// @return False for stale or unknown handles; out remains unchanged.
+    [[nodiscard]] bool GetBufferMetadata(ResourceHandle<BufferTag> handle,
+                                         BufferResourceMetadata& out) const;
+
+    /// @brief Returns the manager-owned static meshlet geometry cache.
+    [[nodiscard]] MeshletGeometryCache& Meshlets();
+
     /// @return Null on unsupported hardware or invalid geometry; creation does not record GPU work.
     ResourceHandle<AccelerationStructureTag> CreateAccelerationStructure(
         const AccelerationStructureDesc& desc, Where where = Where::current());
@@ -218,7 +287,7 @@ public:
     void UpdateConstantBuffers(std::shared_ptr<const ConstantBufferUpdateBatch> batch);
     bool DefersResourceUpdates() const;
     void Update(ResourceHandle<StructuredBufferTag> h, const void* data, size_t sizeBytes);
-
+    [[nodiscard]] bool UpdateRegion(ResourceHandle<StructuredBufferTag> h, const void* data, size_t sizeBytes, size_t offsetBytes);
     void Release(ResourceHandle<ShaderTag> h);
     void Release(ResourceHandle<TextureTag> h);
     void Release(ResourceHandle<BufferTag> h);
@@ -228,7 +297,6 @@ public:
     void Release(ResourceHandle<StructuredBufferTag> h);
     void Release(ResourceHandle<AccelerationStructureTag> h);
 
-    [[nodiscard]] std::size_t GetLiveDebugResourceCount() const;
     /// @note 生存中のリソース追跡情報を全プールぶん out へ追記する。
     /// @note 台帳は疎な固定長配列なので、索引で 1 件ずつ取る API は先頭から数え直すことになる。
     /// @note       全件を舐める用途 (一覧・差分・終了時の集計) しか無いので、それを許すと必ず
@@ -236,6 +304,8 @@ public:
     void CollectLiveDebugResources(std::vector<core::AllocationInfo>& out) const;
     /// @note 生存中リソースの申告バイト合計 (O(1))。
     [[nodiscard]] std::size_t GetLiveDebugResourceBytes() const;
+    /// @note 詳細台帳を列挙せず、生存中の追跡件数を全プールから集計する (O(1))。
+    [[nodiscard]] std::size_t GetLiveDebugResourceCount() const;
 
     /// @note フレームごとの増加を見張り、増え続けたら発生位置つきで警告する。フレームに 1 回呼ぶ。
     /// @note 「毎フレーム少しずつ増える」類はパネルを開いて見比べない限り気付けないため、
@@ -243,13 +313,29 @@ public:
     /// @note 検証構成 (FBZZ_GPU_VALIDATION) でだけ動く。Release では何もしない。
     void TickLeakWatchdog();
 
-    /// @note Mesh の頂点 / インデックスバッファを返し、ハンドルを空にする。@return 返した本数。
+    /// @note Mesh の頂点 / インデックスバッファを返し、ハンドルを空にする。
+    /// @return 返した本数。
     /// @note Mesh は «形» を持つだけの構造体で ResourceManager を知らない。持たせると、
     /// @note       マネージャーより長生きする静的キャッシュ上の Mesh が終了後に返しにいく。
     /// @note       所有者 (Model / ProceduralMesh などの Component) が畳まれる場所で明示的に呼ぶ。
     std::size_t ReleaseMeshBuffers(Mesh& mesh);
 
 private:
+    friend struct prepared_skinning_detail::TicketFactory;
+    friend class Material;
+    friend class material_transfer_detail::MaterialTransferPayloadScope;
+    friend class buffer_state_detail::BufferStateReadScope;
+    void ReadBufferStates(std::span<const ResourceHandle<BufferTag>> handles,
+                          std::span<BufferResourceState> out,
+                          buffer_state_detail::BufferStateReadScope* scope);
+    /// @note Re-resolves each generation between native getters because custom RHI getters can call back into resource mutation.
+    void ReadNativeBufferStates(std::span<const ResourceHandle<BufferTag>> handles,
+                                std::span<BufferResourceState> out);
+    /// @note Called only after exact registered-facade proof; recheck the facade and producer for each Material upload.
+    [[nodiscard]] bool IsMaterialTransferProducer(const IRenderer* expectedFacade) const;
+    /// @note Each destination keeps its ordered update; the shared owner contains no GPU or manager reference.
+    void UpdateOwnedMaterialBytes(ResourceHandle<ConstantBufferTag> handle,
+        std::shared_ptr<const material_transfer_detail::OwnedConstantBufferData> payload);
     std::unique_ptr<RenderResources> m_renderResources;
     uint64_t m_frameStamp = 0;
     static uint64_t Key(ResourceHandle<RenderTargetTag> h);
@@ -257,6 +343,12 @@ private:
     std::unique_ptr<ITexture> CreateTextureForPath(const std::string& sourcePath, bool flipGreen);
     void ReleaseOwnedResourcesForShutdown();
     void LogLiveDebugResources() const;
+    void RegisterBufferMetadata(ResourceHandle<BufferTag> handle, size_t sizeBytes,
+                                uint32_t stride, bool cpuReadable,
+                                bool gpuWritable, bool indexBuffer);
+    [[nodiscard]] bool AdvanceBufferContentVersion(ResourceHandle<BufferTag> handle,
+                                                   size_t updateSizeBytes);
+    void RemoveBufferMetadata(ResourceHandle<BufferTag> handle);
 
     IRenderer& m_renderer;
 
@@ -269,16 +361,24 @@ private:
     ResourcePool<IStructuredBuffer, StructuredBufferTag> m_structuredBuffers;
     ResourcePool<IAccelerationStructure, AccelerationStructureTag> m_accelerationStructures;
 
+    mutable std::mutex m_bufferMetadataMutex;
+    std::vector<BufferResourceMetadata> m_bufferMetadata = std::vector<BufferResourceMetadata>(1);
+    std::unique_ptr<MeshletGeometryCache> m_meshletGeometryCache;
+
     std::unordered_map<std::string, ResourceHandle<ShaderTag>> m_shaderCache;
     std::unordered_map<uint64_t, ShaderCapabilities> m_shaderCapabilities;
     std::unordered_map<std::string, ResourceHandle<TextureTag>> m_textureCache;
+    SynchronousTextureLoadStats m_syncTextureLoadStats;
     /// @note LoadTexture で外へ配ったキー。配られた先がハンドルを持ち続けるかもしれないので、非同期側は外さない。
     std::unordered_set<std::string> m_texturesHandedOut;
     std::unordered_map<uint64_t, std::vector<ResourceHandle<TextureTag>>> m_renderTargetColors;
     std::unordered_map<uint64_t, ResourceHandle<TextureTag>> m_renderTargetDepths;
     ResourceHandle<TextureTag> m_whiteTexture;
+    std::unique_ptr<Material> m_surfaceErrorMaterial;
+    std::unique_ptr<Material> m_skinnedErrorMaterial;
     uint64_t m_resetVersion = 1;
     uint64_t m_instanceId = 0;
+    bool m_rendererDetached = false;
     uint64_t m_shaderVersion = 1;
 
     /// @note リーク見張りの状態。前フレームの合計と «増え続けた連続フレーム数»。

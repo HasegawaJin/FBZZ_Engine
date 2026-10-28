@@ -210,6 +210,9 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     if (targets.volumetricResult.IsValid())      resources.Release(targets.volumetricResult);
     if (targets.taaHistoryA.IsValid())           resources.Release(targets.taaHistoryA);
     if (targets.taaHistoryB.IsValid())           resources.Release(targets.taaHistoryB);
+    for (auto& history : targets.taaRawHistory)
+        if (history.IsValid())                  resources.Release(history);
+    if (targets.taaCycleCB.IsValid())            resources.Release(targets.taaCycleCB);
     if (targets.motionBlurResult.IsValid())      resources.Release(targets.motionBlurResult);
     if (targets.gtaoRaw.IsValid())               resources.Release(targets.gtaoRaw);
     if (targets.gtaoBlur.IsValid())              resources.Release(targets.gtaoBlur);
@@ -221,6 +224,8 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     auto savedPrevVP     = targets.prevViewProjection;
     auto savedPrevInvVP  = targets.invPrevViewProjection;
     auto savedTaaIndex   = targets.taaFrameIndex;
+    const auto savedNear = targets.previousNearZ, savedFar = targets.previousFarZ;
+    const bool savedOrthographic = targets.previousOrthographic;
     /// @note フロクセル霧のボリュームは解像度非依存なので、リサイズで作り直さない。
     /// @note 作り直すと 14MB の確保が走ってフレームが飛ぶうえ、履歴が切れて霧が 1 度暗転する。
     auto savedFroxelA     = targets.froxelScatter;
@@ -237,6 +242,9 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     targets.cloudRT.Release(resources);
     targets.waterSceneColorRT.Release(resources);
     targets.waterSceneDepthRT.Release(resources);
+    targets.waterMediumAtlasRT.Release(resources);
+    targets.waterInterfaceRT.Release(resources);
+    targets.waterMediumTablePool.ReleaseAll(resources);
     targets.particleSceneColorRT.Release(resources);
     targets.particleOverdrawRT.Release(resources);
     targets.particleReactiveRT.Release(resources);
@@ -264,6 +272,9 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     targets.prevViewProjection    = savedPrevVP;
     targets.invPrevViewProjection = savedPrevInvVP;
     targets.taaFrameIndex         = savedTaaIndex;
+    targets.previousNearZ = savedNear;
+    targets.previousFarZ = savedFar;
+    targets.previousOrthographic = savedOrthographic;
 }
 
 }
@@ -327,6 +338,7 @@ void RenderSharedResources::Initialize(ResourceManager& resources)
     gtaoShader = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAO.cs.hlsl");
     gtaoBlurShader = resources.LoadShader("Assets/Shaders/PostProcess/AmbientOcclusion/GTAOBlur.cs.hlsl");
     ssrShader = resources.LoadShader("Assets/Shaders/PostProcess/Reflections/SSR.cs.hlsl");
+    ssrResolveShader = resources.LoadShader("Assets/Shaders/PostProcess/Reflections/SSRResolve.hlsl");
     volumetricShader = resources.LoadShader("Assets/Shaders/PostProcess/Lighting/VolumetricLight.cs.hlsl");
     contactShadowShader = resources.LoadShader("Assets/Shaders/PostProcess/Shadow/ContactShadows.cs.hlsl");
     taaShader = resources.LoadShader("Assets/Shaders/PostProcess/AntiAliasing/TAA.hlsl");
@@ -675,6 +687,9 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
     viewTargets.rayPath.dispatchSucceeded = false;
     viewTargets.rayPathCovered = false;
     viewTargets.rayPathPrepared = false;
+    /// @note 無効なパスの Execute は呼ばれないため、準備側で順応の失効を確定する。
+    if (!rs.autoExposure.enabled || !rs.IsPassEnabled("AutoExposure"))
+        viewTargets.exposureResetGeneration = 0;
     auto& resources = m_resources;
     if (!resources.Get(viewTargets.gbufferMaterialCB))
         viewTargets.gbufferMaterialCB = resources.CreateConstantBuffer(96);
@@ -754,7 +769,6 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
 
             ReleaseRenderViewResources(viewTargets, resources);
             hdrRT           = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
-            ldrRT           = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             /// @note 選択マスクと輪郭マスクはジオメトリを描き、深度も読まれる。
             selectionMaskRT = resources.CreateRenderTarget(curW, curH, cameraDepthRT(1));
             outlineRT       = resources.CreateRenderTarget(curW, curH, kPostChainRT);
@@ -784,11 +798,6 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
             ssaoBlur        = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
     /// @note Advanced Graphics per-view テクスチャ
             ssrResult           = resources.CreateComputeTexture(curW, curH);
-            /// @note 奇数の辺でも最後の画素を落とさず、半解像度の積分結果を全画面へ再構成する。
-            volumetricRaw       = resources.CreateComputeTexture((curW + 1u) / 2u, (curH + 1u) / 2u);
-            volumetricResult    = resources.CreateComputeTexture(curW, curH);
-            taaHistoryA         = resources.CreateRenderTarget(curW, curH, kPostChainRT);
-            taaHistoryB         = resources.CreateRenderTarget(curW, curH, kPostChainRT);
             motionBlurResult    = resources.CreateComputeTexture(curW, curH);
             /// @note 半解像度 AO
             gtaoRaw             = resources.CreateComputeTexture((std::max)(1u, curW / 2), (std::max)(1u, curH / 2));
@@ -800,6 +809,99 @@ bool RenderResources::PrepareView(RenderViewResources& viewTargets, IRenderer& r
             sHdrH = curH;
         }
 
+        const bool sampledTaa = rs.IsTaaActive() && rs.UsesClusteredLighting()
+            && rs.clustered.manyLights && !rs.clustered.forceAllLights;
+        const uint32_t compositeColorCount = sampledTaa ? 2u : 1u;
+        const auto* compositeTarget = resources.Get(ldrRT);
+        if (!compositeTarget || compositeTarget->GetColorCount() != compositeColorCount) {
+            if (ldrRT.IsValid()) resources.Release(ldrRT);
+            /// @note 確率照明の TAA だけ露出済み HDR 面を追加し、通常描画には追加面を持たせない。
+            ldrRT = resources.CreateRenderTarget(curW, curH,
+                {compositeColorCount, renderer::Format::RGBA16F, false});
+            viewTargets.taaHistoryValid = false;
+            viewTargets.taaProviderHistory.valid = false;
+        }
+        const uint32_t volumeDivisor = rs.UsesClusteredLighting() && rs.clustered.manyLights
+            && !rs.clustered.forceAllLights ? 4u : 2u;
+        const uint32_t volumeWidth = (curW + volumeDivisor - 1u) / volumeDivisor;
+        const uint32_t volumeHeight = (curH + volumeDivisor - 1u) / volumeDivisor;
+        /// @note 無効時は積分・再構成用 UAV を確保しない。同寸法での切替でも前回の結果を失効させる。
+        if (rs.IsVolumetricLightActive()) {
+            const auto* volumeTexture = resources.Get(volumetricRaw);
+            if (!volumeTexture || volumeTexture->GetWidth() != volumeWidth || volumeTexture->GetHeight() != volumeHeight) {
+                if (volumetricRaw.IsValid()) resources.Release(volumetricRaw);
+                volumetricRaw = resources.CreateComputeTexture(volumeWidth, volumeHeight);
+            }
+            const auto* volumeResult = resources.Get(volumetricResult);
+            if (!volumeResult || volumeResult->GetWidth() != curW || volumeResult->GetHeight() != curH) {
+                if (volumetricResult.IsValid()) resources.Release(volumetricResult);
+                volumetricResult = resources.CreateComputeTexture(curW, curH);
+            }
+        } else {
+            if (volumetricRaw.IsValid()) resources.Release(volumetricRaw);
+            if (volumetricResult.IsValid()) resources.Release(volumetricResult);
+            volumetricRaw = {};
+            volumetricResult = {};
+        }
+        /// @note FXAA や AA 無効時は TAA の色・深度履歴を持たない。切替時は未初期化履歴を採用しない。
+        const bool taaRequested = rs.IsTaaActive();
+        if (taaRequested) {
+            if (!resources.Get(taaHistoryA) || !resources.Get(taaHistoryB)) {
+                if (taaHistoryA.IsValid()) resources.Release(taaHistoryA);
+                if (taaHistoryB.IsValid()) resources.Release(taaHistoryB);
+                constexpr renderer::RenderTargetDesc taaHistoryDesc{ 2, renderer::Format::RGBA16F, false };
+                taaHistoryA = resources.CreateRenderTarget(curW, curH, taaHistoryDesc);
+                taaHistoryB = resources.CreateRenderTarget(curW, curH, taaHistoryDesc);
+                viewTargets.taaHistoryValid = false;
+                viewTargets.taaProviderHistory.valid = false;
+                viewTargets.taaFlip = false;
+            }
+            if (!resources.Get(viewTargets.taaCycleCB) && !viewTargets.taaRawHistoryAllocationFailed)
+                viewTargets.taaCycleCB = resources.CreateConstantBuffer(sizeof(TaaCycleCB));
+            const bool rawHistoryReady = std::all_of(viewTargets.taaRawHistory, viewTargets.taaRawHistory + 8,
+                [&](const auto history) { return resources.Get(history) != nullptr; });
+            if (!rawHistoryReady && !viewTargets.taaRawHistoryAllocationFailed) {
+                /// @note 一部だけの位相履歴を公開しない。確保失敗時は色・深度の既存 TAA へ戻す。
+                for (auto& history : viewTargets.taaRawHistory) {
+                    if (history.IsValid()) resources.Release(history);
+                    history = {};
+                }
+                ResourceHandle<RenderTargetTag> pendingHistory[8]{};
+                bool complete = resources.Get(viewTargets.taaCycleCB) != nullptr;
+                for (auto& history : pendingHistory) {
+                    if (!complete) break;
+                    history = resources.CreateRenderTarget(curW, curH, { 1, renderer::Format::RGBA16F, false });
+                    complete = resources.Get(history) != nullptr;
+                }
+                if (complete) {
+                    for (uint32_t phase = 0; phase < 8u; ++phase)
+                        viewTargets.taaRawHistory[phase] = pendingHistory[phase];
+                } else {
+                    for (auto& history : pendingHistory)
+                        if (history.IsValid()) resources.Release(history);
+                    viewTargets.taaRawHistoryAllocationFailed = true;
+                    FBZZ_LOG_WARN("TAA: phase history allocation failed; using the previous temporal resolve");
+                }
+                viewTargets.taaHistoryValid = false;
+                viewTargets.taaProviderHistory.valid = false;
+            }
+        } else {
+            if (taaHistoryA.IsValid()) resources.Release(taaHistoryA);
+            if (taaHistoryB.IsValid()) resources.Release(taaHistoryB);
+            taaHistoryA = {}; taaHistoryB = {};
+            for (auto& history : viewTargets.taaRawHistory) {
+                if (history.IsValid()) resources.Release(history);
+                history = {};
+            }
+            if (viewTargets.taaCycleCB.IsValid()) resources.Release(viewTargets.taaCycleCB);
+            viewTargets.taaCycleCB = {};
+            viewTargets.taaRawHistoryAllocationFailed = false;
+            viewTargets.taaHistoryValid = false;
+            viewTargets.taaProviderHistory.valid = false;
+            viewTargets.taaFlip = false;
+            viewTargets.taaStaticViewPrevious.clear();
+            viewTargets.taaStaticViewCurrent.clear();
+        }
         /// @note アップスケール元。等倍のときは 1 枚まるごと無駄なので持たない。
         /// @note 上のリサイズ判定とは別に見る: 内部解像度は kMinRenderWidth で床に張り付くので、
         /// @note 出力先だけが動いて curW/curH が変わらないフレームがある。そこで倍率が等倍を
@@ -931,6 +1033,8 @@ void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPa
     passHandles.compositeShader   = shared.compositeShader;
     passHandles.causticsShader    = shared.causticsShader;
     passHandles.volumetricCloudShader = shared.volumetricCloudShader;
+    passHandles.waterMediumAtlasRT = &viewTargets.waterMediumAtlasRT;
+    passHandles.waterInterfaceRT = &viewTargets.waterInterfaceRT;
     passHandles.cloudUpscaleShader    = shared.cloudUpscaleShader;
     passHandles.selectionMaskShader       = shared.selectionMaskShader;
     passHandles.selectionMaskSkinnedShader = shared.selectionMaskSkinnedShader;
@@ -1039,6 +1143,8 @@ void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPa
     passHandles.lightProbeFacingShader      = shared.lightProbeFacingShader;
     passHandles.lightProbeSH[0]             = {};
     passHandles.lightProbeSH[1]             = {};
+    passHandles.lightProbeVisibility[0]     = {};
+    passHandles.lightProbeVisibility[1]     = {};
     passHandles.particleShader       = shared.particleShader;
     passHandles.particlePSO          = shared.particlePSO;
     passHandles.particleAlphaPSO     = shared.particleAlphaPSO;
@@ -1083,12 +1189,16 @@ void RenderResources::BindPassHandles(RenderViewResources& viewTargets, RenderPa
     /// @note SSR
     passHandles.ssrResult            = ssrResult;
     passHandles.ssrShader            = shared.ssrShader;
+    passHandles.ssrResolveShader     = shared.ssrResolveShader;
     /// @note Volumetric Lighting
     passHandles.volumetricResult     = volumetricResult;
     passHandles.volumetricShader     = shared.volumetricShader;
     /// @note TAA (ping-pong)
     passHandles.taaHistoryA          = taaHistoryA;
     passHandles.taaHistoryB          = taaHistoryB;
+    for (uint32_t phase = 0; phase < 8u; ++phase)
+        passHandles.taaRawHistory[phase] = viewTargets.taaRawHistory[phase];
+    passHandles.taaCycleCB           = viewTargets.taaCycleCB;
     passHandles.taaFlip              = viewTargets.taaFlip;
     passHandles.taaShader            = shared.taaShader;
     passHandles.taaPSO               = shared.taaPSO;

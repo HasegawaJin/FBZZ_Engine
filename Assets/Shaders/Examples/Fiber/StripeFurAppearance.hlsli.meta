@@ -1,0 +1,6 @@
+# @file    StripeFurAppearance.hlsli.meta
+# @brief   Asset identity and shared Fiber geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-21
+[meta]
+guid = 'f6877905cd194bce9d76a3984476d917'

@@ -1,0 +1,6 @@
+# @file    VelocityAlpha.hlsl.meta
+# @brief   Shader identity for resident vegetation rendering.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = "c575894b591f468195407247f6d95349"

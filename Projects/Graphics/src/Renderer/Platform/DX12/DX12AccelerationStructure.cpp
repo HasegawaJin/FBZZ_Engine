@@ -7,6 +7,8 @@
 #include "DX12Context.hpp"
 #include "DX12StateTracker.hpp"
 #include "DX12UploadArena.hpp"
+#include "../../PreparedSkinningBackend.hpp"
+#include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Core/HResult.hpp>
 #include <cmath>
@@ -84,15 +86,19 @@ bool DX12AccelerationStructure::ResolveGeometry(ResourceManager& resources, DX12
     geometry.reserve(m_desc.geometries.size());
     uint64_t primitiveCount = 0;
     for (const auto& source : m_desc.geometries) {
+        const auto* prepared = source.preparedSkinning
+            ? &prepared_skinning_detail::TicketFactory::Native(*source.preparedSkinning) : nullptr;
+        if (prepared && (!m_context || prepared->DeviceIdentity() != m_context->GetDevice()
+            || !prepared->OutputResource(source.preparedSkinningRow))) return false;
         auto* vertices = static_cast<DX12Buffer*>(resources.Get(source.vertices));
         auto* indices = static_cast<DX12Buffer*>(resources.Get(source.indices));
-        if (!vertices || vertices->GetKind() != DX12Buffer::Kind::Vertex || source.vertexCount == 0)
+        if ((!prepared && (!vertices || vertices->GetKind() != DX12Buffer::Kind::Vertex)) || source.vertexCount == 0)
             return false;
-        const uint32_t stride = vertices->GetStride();
+        const uint32_t stride = prepared ? sizeof(Vertex) : vertices->GetStride();
         if (stride < 12 || stride % 4 != 0 || source.positionOffset % 4 != 0
             || source.positionOffset > stride - 12)
             return false;
-        const uint64_t availableVertices = vertices->GetDataSize() / stride;
+        const uint64_t availableVertices = (prepared ? prepared->OutputBytes(source.preparedSkinningRow) : vertices->GetDataSize()) / stride;
         if (source.vertexCount > availableVertices || source.firstVertex > availableVertices - source.vertexCount)
             return false;
         if (source.indices.IsValid()) {
@@ -106,7 +112,7 @@ bool DX12AccelerationStructure::ResolveGeometry(ResourceManager& resources, DX12
         primitiveCount += (indices ? source.indexCount : source.vertexCount) / 3;
         /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#geometry-limits DXR per-BLAS primitive limit
         if (primitiveCount > (1u << 29)) return false;
-        const auto vertexAddress = arena ? vertices->GetVertexView(*arena).BufferLocation
+        const auto vertexAddress = prepared ? prepared->OutputAddress(source.preparedSkinningRow) : arena ? vertices->GetVertexView(*arena).BufferLocation
                                          : vertices->GetResource()->GetGPUVirtualAddress();
         const auto indexAddress = indices ? (arena ? indices->GetIndexView(*arena).BufferLocation
                                                    : indices->GetResource()->GetGPUVirtualAddress()) : 0;
@@ -154,6 +160,7 @@ bool DX12AccelerationStructure::Init(DX12Context& context, DX12StateTracker& tra
 {
     if (!context.GetDevice() || !context.SupportsInlineRaytracing() || !context.SupportsBindless())
         return false;
+    m_context = &context;
     const bool bottomLevel = desc.kind == AccelerationStructureKind::BOTTOM_LEVEL;
     if ((!bottomLevel && desc.kind != AccelerationStructureKind::TOP_LEVEL)
         || (bottomLevel ? (desc.geometries.empty() || !desc.instances.empty())
@@ -212,6 +219,14 @@ bool DX12AccelerationStructure::Build(ID3D12GraphicsCommandList4& commands,
     if (bottomLevel) {
         build.Inputs.pGeometryDescs = geometry.data();
         for (const auto& source : m_desc.geometries) {
+            if (source.preparedSkinning) {
+                const auto& prepared = prepared_skinning_detail::TicketFactory::Native(*source.preparedSkinning);
+                auto* resource = const_cast<ID3D12Resource*>(static_cast<const ID3D12Resource*>(prepared.OutputResource(source.preparedSkinningRow)));
+                if (!resource) return false;
+                m_tracker->QueueTransition(resource, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                m_context->RetainPreparedSkinning(source.preparedSkinning);
+                continue;
+            }
             auto* vertices = static_cast<DX12Buffer*>(resources.Get(source.vertices));
             if (vertices->IsGpuWritable())
                 m_tracker->QueueTransition(vertices->GetResource(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -229,6 +244,8 @@ bool DX12AccelerationStructure::Build(ID3D12GraphicsCommandList4& commands,
     build.ScratchAccelerationStructureData = m_scratch->GetGPUVirtualAddress();
     m_tracker->QueueTransition(m_scratch.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     m_tracker->FlushBarriers(&commands);
+    if (bottomLevel) for (const auto& source : m_desc.geometries)
+        if (source.preparedSkinning && !source.preparedSkinning->IsWriteCurrent(source.preparedSkinningRow)) return false;
     commands.BuildRaytracingAccelerationStructure(&build, 0, nullptr);
     /// @note AS remains in AS state; UAV synchronization makes the build visible to TLAS construction and trace.
     /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#synchronizing-acceleration-structure-memory-writesreads AS synchronization

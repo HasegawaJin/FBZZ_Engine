@@ -1,0 +1,6 @@
+# @file    VelocityResident.hlsl.meta
+# @brief   Shader identity for resident vegetation rendering.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = "1d5ba36d9305466380aaebcfc4d64aae"

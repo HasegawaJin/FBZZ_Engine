@@ -9,6 +9,8 @@
 #include "Common/Space.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Rendering/HybridGlassPolicy.hlsli"
+#define FBZZ_NO_SCREEN_SHADING 1
+#include "Rendering/Lighting.hlsli"
 
 
 /// @note t5 は SSR / RT をまだ合成していない不変の HDR 入力。
@@ -20,6 +22,9 @@ FBZZ_TEX2D(texGBufferEmission, 22);
 FBZZ_TEX2D_T(float, texDepth, 7);
 /// @note Raster では Forward 不透明物も含む深度、Hybrid では反射源 HDR と同じ時点の深度。
 FBZZ_TEX2D_T(float, texSceneDepth, TEX_SCENE_DEPTH_SLOT);
+FBZZ_TEXCUBE(texIrradiance, TEX_IBL_IRRADIANCE_SLOT);
+FBZZ_TEXCUBE(texPrefilter, TEX_IBL_PREFILTER_SLOT);
+FBZZ_TEX2D_T(float4, texBrdf, TEX_IBL_BRDF_LUT_SLOT);
 
 /// @note 全画面フェッチなので clamp (s0 は DX12 では WRAP で、画面端が反対側の色を拾う)。
 SamplerState       sampDefault : register(SAMPLER_LINEAR_CLAMP);
@@ -308,12 +313,27 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             return;
         }
 
-        /// @note Raster の従来出力は RGB tint と Fresnel 込み alpha をそのまま維持する。
-        float  confidence = saturate(reflectance * roughnessConfidence);
-        float3 reflectionTint = fresnel / max(reflectance, 1e-4f);
-
-        /// @note Raster の ssrIntensity は Composite で一度だけ適用する。
-        OutputSSR[id.xy] = float4(hitColor.rgb * reflectionTint, confidence);
+        /// @note Raster は HDR 全体を混ぜず、環境鏡面から画面反射への符号付き差分だけを出す。
+        float3 environmentSpecular = 0.0f;
+        if (iblIntensity > 0.0f && IsBindlessValid(FbzzPixelSlot(TEX_IBL_PREFILTER_SLOT))
+            && IsBindlessValid(FbzzPixelSlot(TEX_IBL_BRDF_LUT_SLOT))
+            && IsBindlessValid(FbzzPixelSlot(TEX_IBL_IRRADIANCE_SLOT)))
+        {
+            const float3 sky = texIrradiance.SampleLevel(sampDefault, N, 0.0f).rgb;
+            const DiffuseGI gi = FBZZ_DiffuseIrradianceFromSky(worldPos, N, sky, sampDefault);
+            FBZZWaterMediumSample medium;
+            const bool inWater = FBZZ_QueryWaterMedium(worldPos, medium);
+            environmentSpecular = EvaluateSpecularIBL(N, -V, baseColor, saturate(met), max(rough, 0.045f),
+                gi.specularOcclusion, texPrefilter, texBrdf, iblMaxMipLevel,
+                iblSpecularScale, sampDefault, sampDefault) * iblIntensity
+                * Lighting_WaterEnvironmentTransmittance(worldPos, inWater, medium);
+        }
+        const float2 edgePixels = min(hitUV, 1.0f - hitUV) * outputSize;
+        const float edgeConfidence = smoothstep(0.0f, 8.0f, min(edgePixels.x, edgePixels.y));
+        /// @note 単一方向のレイでは粗いローブを積分できない。粗い面は畳み込み済み IBL へ戻す。
+        const float confidence = (1.0f - smoothstep(0.1f, 0.35f, rough)) * edgeConfidence;
+        const float3 delta = (max(hitColor.rgb, 0.0f) * fresnel - environmentSpecular) * confidence;
+        OutputSSR[id.xy] = all(isfinite(delta)) ? float4(delta, confidence) : 0.0f;
     }
     else
     {

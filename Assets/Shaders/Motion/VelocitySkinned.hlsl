@@ -1,28 +1,19 @@
-// FBZZ Engine
-// Motion/VelocitySkinned.hlsl | Motion
-// スキンドメッシュのモーションベクター — 現在と前フレームのボーンパレットで 2 回スキニングする
-//
-// WHY 前フレームの頂点バッファを読まないか:
-//   コンピュートスキニングの出力は GPU 書き込み頂点バッファで、VS から SRV として
-//   読める保証がない。パレットを 2 本渡して VS 側で組み直す方がバックエンド非依存。
-//
-// バインディング:
-//   b0 = CameraConstants          (viewProjection はジッター無し)
-//   b1 = ObjectConstants          (world / prevWorld)
-//   b2 = 前フレームのボーンパレット (CB_PREV_SKINNING)
-//   b7 = 現フレームのボーンパレット (CB_SKINNING)
-//   b8 = AdvancedGraphicsConstants (prevViewProjection)
-
+/// @file    VelocitySkinned.hlsl
+/// @brief   同じ被覆で速度と前フレーム深度を出力する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-25
 #define FBZZ_OBJECT_CONSTANTS
 #include "Common/Binding.hlsli"
 cbuffer ObjectConstants : register(CB_OBJECT)
 {
     float4x4 world;
     float4x4 prevWorld;
+    float4 objectParams;
 };
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/Skinning.hlsli"
 #include "Common/Space.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
@@ -35,11 +26,7 @@ FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
 void DiscardIfOccludedByScene(float4 svPosition)
 {
     const float sceneDepth = texSceneDepth.Load(int3(int2(svPosition.xy), 0));
-    if (IsFarDepth(sceneDepth)) return;
-    const float fragZ  = LinearizeDepth(svPosition.z, nearZ, farZ, isOrthographic);
-    const float sceneZ = LinearizeDepth(sceneDepth, nearZ, farZ, isOrthographic);
-    if (fragZ > sceneZ * 1.01f + 0.02f)
-        discard;
+    if (VelocitySceneOccluded(svPosition.z, sceneDepth, nearZ, farZ, isOrthographic)) discard;
 }
 
 cbuffer PrevSkinningConstants : register(CB_PREV_SKINNING)
@@ -54,20 +41,18 @@ struct VelocityPSInput
     float4 prevClip   : TEXCOORD1;
 };
 
-float4x4 BlendSkinMatrix(SkinnedVSInput v)
+FBZZ_VS_SBUFFER(float4x4, sharedPreviousBoneMatrices, VS_SB_BUFFER1_SLOT);
+float4x4 ReadPreviousSkinMatrix(uint bone)
 {
-    return boneMatrices[v.boneIndices.x] * v.boneWeights.x
-         + boneMatrices[v.boneIndices.y] * v.boneWeights.y
-         + boneMatrices[v.boneIndices.z] * v.boneWeights.z
-         + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
+    if (objectParams.z > 0.5f) return sharedPreviousBoneMatrices[uint(objectParams.x) + bone];
+    return prevBoneMatrices[bone];
 }
-
 float4x4 BlendPrevSkinMatrix(SkinnedVSInput v)
 {
-    return prevBoneMatrices[v.boneIndices.x] * v.boneWeights.x
-         + prevBoneMatrices[v.boneIndices.y] * v.boneWeights.y
-         + prevBoneMatrices[v.boneIndices.z] * v.boneWeights.z
-         + prevBoneMatrices[v.boneIndices.w] * v.boneWeights.w;
+    return ReadPreviousSkinMatrix(v.boneIndices.x) * v.boneWeights.x
+         + ReadPreviousSkinMatrix(v.boneIndices.y) * v.boneWeights.y
+         + ReadPreviousSkinMatrix(v.boneIndices.z) * v.boneWeights.z
+         + ReadPreviousSkinMatrix(v.boneIndices.w) * v.boneWeights.w;
 }
 
 VelocityPSInput VSMain(SkinnedVSInput v)
@@ -81,6 +66,7 @@ VelocityPSInput VSMain(SkinnedVSInput v)
     o.currClip   = mul(mul(currLocal, world),     viewProjection);
     o.prevClip   = mul(mul(prevLocal, prevWorld), prevViewProjection);
     o.svPosition = o.currClip;
+    o.currClip.xy -= float2(taaJitterX, taaJitterY) * o.currClip.w;
     return o;
 }
 
@@ -92,5 +78,5 @@ float4 PSMain(VelocityPSInput p) : SV_Target0
 
     const float2 currUv = NdcToUv(p.currClip.xy / p.currClip.w);
     const float2 prevUv = NdcToUv(p.prevClip.xy / p.prevClip.w);
-    return float4(currUv - prevUv, 1.0f, 0.0f);
+    return float4(currUv - prevUv, 1.0f, p.prevClip.z / p.prevClip.w);
 }

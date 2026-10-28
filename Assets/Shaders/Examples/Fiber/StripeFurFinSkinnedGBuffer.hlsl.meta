@@ -1,0 +1,14 @@
+# @file    StripeFurFinSkinnedGBuffer.hlsl.meta
+# @brief   Asset identity and shared Fin companion geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-21
+[meta]
+guid = '8d8cf47991634fc6b5d3675f195bf5d5'
+
+[shader]
+version = 1
+vertex = 'fiber_fin_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_fin'

@@ -47,7 +47,7 @@ float3 FBZZ_EvaluateSHIrradiance(float4 shAr, float4 shAg, float4 shAb,
 /// @param irradiance 出力。IBL キューブの irradiance と同じ単位。
 /// @return 混合率 [0,1]。箱の縁で 0 へ落ちる。無効または箱の外なら 0 (出力も 0)。
 /// @note 点を法線方向へ normalBias だけ押し出して引く。壁に埋まったプローブは焼いた後に周りの有効なプローブで埋めてあるが、補間の裾はなお壁の向こうへ届くため。
-float FBZZ_SampleProbeVolume(ProbeVolumeParams volume, Texture3D sh, float3 worldPos, float3 N,
+float FBZZ_SampleProbeVolume(ProbeVolumeParams volume, Texture3D sh, uint visibilityIndex, float3 worldPos, float3 N,
                              SamplerState linearClamp, out float3 irradiance)
 {
     irradiance = 0.0f;
@@ -64,6 +64,56 @@ float FBZZ_SampleProbeVolume(ProbeVolumeParams volume, Texture3D sh, float3 worl
     /// @note 箱を格子に割った各セルの中心にプローブがある (texel 中心 = プローブ)。縁の半セルは最寄りのプローブで埋まる。
     /// @note 角に置くと壁面上のプローブが壁の裏 (空) を見て、壁際だけ明るく漏れる。
     const float3 grid   = float3(volume.grid);
+    if (IsBindlessValid(visibilityIndex))
+    {
+        Texture3D<float4> visibility = ResourceDescriptorHeap[NonUniformResourceIndex(visibilityIndex)];
+        const float3 cage = clamp(t * grid - 0.5f, 0.0f, grid - 1.0f);
+        const int3 base = int3(floor(cage));
+        const float3 fraction = frac(cage);
+        const float3 samplePosition = worldPos + N * volume.normalBias;
+        float total = 0.0f;
+        float3 sum = 0.0f;
+        /// @note 距離モーメント・法線・格子重みを掛けてから正規化し、壁の反対側の SH を混ぜない。
+        /// @see https://jcgt.org/published/0008/02/01/paper-lowres.pdf Section 5.2
+        [unroll] for (int z = 0; z < 2; ++z)
+        [unroll] for (int y = 0; y < 2; ++y)
+        [unroll] for (int x = 0; x < 2; ++x)
+        {
+            const int3 offset = int3(x, y, z);
+            const int3 index = min(base + offset, int3(volume.grid) - 1);
+            const float3 weights = lerp(1.0f - fraction, fraction, float3(offset));
+            const float trilinear = weights.x * weights.y * weights.z;
+            if (trilinear <= 0.0f) continue;
+            const float3 probe = volume.boxMin + (float3(index) + 0.5f) / grid * size;
+            const float3 delta = samplePosition - probe;
+            const float distance = length(delta);
+            const float3 direction = distance > 1e-5f ? delta / distance : N;
+            float3 oct = direction / max(abs(direction.x) + abs(direction.y) + abs(direction.z), 1e-5f);
+            float2 octUV = oct.xy;
+            if (oct.z < 0.0f)
+                octUV = (1.0f - abs(oct.yx)) * float2(oct.x >= 0.0f ? 1.0f : -1.0f, oct.y >= 0.0f ? 1.0f : -1.0f);
+            const float2 tileUV = clamp((octUV * 0.5f + 0.5f) * 8.0f, 0.5f, 7.5f);
+            const float3 visUV = float3((float2(index.xy) * 8.0f + tileUV) / (grid.xy * 8.0f), (index.z + 0.5f) / grid.z);
+            const float4 moments = visibility.SampleLevel(linearClamp, visUV, 0.0f);
+            if (!all(isfinite(moments)) || moments.w < 0.5f || moments.z <= 0.0f) continue;
+            const float normalizedDistance = distance / moments.z;
+            const float variance = max(moments.y - moments.x * moments.x, 1e-8f);
+            const float difference = max(normalizedDistance - moments.x, 0.0f);
+            float visible = variance / (variance + difference * difference);
+            visible = visible * visible * visible;
+            if (visible < 0.01f) continue;
+            const float facing = distance > 1e-5f ? saturate(dot(N, -direction) * 0.5f + 0.5f) : 1.0f;
+            const float w = trilinear * visible * max(facing * facing, 1e-3f) * saturate(moments.w);
+            float4 c[kLightProbeSHSlices];
+            [unroll] for (uint k = 0; k < kLightProbeSHSlices; ++k)
+                c[k] = sh.Load(int4(index.xy, index.z + int(volume.grid.z * k), 0));
+            sum += FBZZ_EvaluateSHIrradiance(c[0], c[1], c[2], c[3], c[4], c[5], c[6].rgb, N) * w;
+            total += w;
+        }
+        /// @note 全近傍が遮蔽される領域は黒を返す。空の fallback へ戻すと閉じた部屋へ光が漏れる。
+        irradiance = total > 1e-5f ? sum / total * volume.intensity : 0.0f;
+        return weight;
+    }
     const float2 uv     = t.xy;
     /// @note Z は係数ごとの区画の中だけで補間する。[0.5, gridZ - 0.5] へ留めて隣の係数の区画と混ぜない。
     const float  texelZ = clamp(t.z * grid.z, 0.5f, grid.z - 0.5f);
@@ -85,8 +135,8 @@ float3 FBZZ_ApplyLightProbes(float3 worldPos, float3 N, SamplerState linearClamp
                              out float coverage)
 {
     float3 outer, inner;
-    const float outerWeight = FBZZ_SampleProbeVolume(probeVolumes[1], gLightProbeSHOuter, worldPos, N, linearClamp, outer);
-    const float innerWeight = FBZZ_SampleProbeVolume(probeVolumes[0], gLightProbeSH, worldPos, N, linearClamp, inner);
+    const float outerWeight = FBZZ_SampleProbeVolume(probeVolumes[1], gLightProbeSHOuter, probeVisibilityIndices[1], worldPos, N, linearClamp, outer);
+    const float innerWeight = FBZZ_SampleProbeVolume(probeVolumes[0], gLightProbeSH, probeVisibilityIndices[0], worldPos, N, linearClamp, inner);
     coverage = 1.0f - (1.0f - outerWeight) * (1.0f - innerWeight);
     return lerp(lerp(fallback, outer, outerWeight), inner, innerWeight);
 }

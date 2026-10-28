@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <functional>
 #include <string>
 #include <vector>
@@ -41,6 +42,12 @@ enum class RenderTargetTextureKind : uint8_t {
     Depth,
 };
 
+/// @note 複数の描画先が所有するカラー面を、指定順で同じ MRT へ束縛する。
+struct RenderTargetColorAttachment {
+    ResourceHandle<RenderTargetTag> target;
+    uint32_t colorIndex = 0;
+};
+
 class IRenderer {
 public:
     virtual ~IRenderer() = default;
@@ -48,6 +55,13 @@ public:
     /// @note アクティブな描画バックエンドの表示名。
     /// @note ウィンドウタイトル等の UI 表示用。上位が具象型へダウンキャストしないための情報提供 API。
     virtual const char* GetBackendName() const { return "Unknown"; }
+
+    /// @brief ExecuteIndirect による描画を実行できるか。
+    /// @return 未対応バックエンドの既定値は false。
+    virtual bool SupportsIndirectDraw() const { return false; }
+    /// @brief Mesh Shader による描画を実行できるか。
+    /// @return 未対応バックエンドの既定値は false。
+    virtual bool SupportsMeshShaders() const { return false; }
 
     /// @note GPU バックエンドが保持するパイプライン参照を解除し、デバイス破棄前の状態を確定する。
     /// @note バインド中のリソースはバックエンド側に参照が残るため、ResourceManager が
@@ -173,6 +187,7 @@ public:
 
 private:
     friend class ResourceManager;
+    friend class ThreadedRenderer;
 
     virtual std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void* data, size_t sizeBytes, uint32_t stride) = 0;
     /// @note CS が書き込み、IA が頂点として読むバッファ。コンピュートスキニングの出力先。
@@ -268,13 +283,37 @@ public:
         return s_empty;
     }
 
+    /// @note ゲーム更新より前に開始し、EndFrame で所有済み RHI 入力を提出する。
+    /// @note 単一スレッドの backend は no-op。Scene/Script の処理を Render Thread へ移さない。
+    virtual void BeginCpuFrame(uint64_t) {}
+    /// @note 前フレームの CPU 描画完了を待つ。ImGui の次フレーム開始と寿命変更の境界。
+    virtual void WaitForCpuFrame() {}
+    /// @note 未提出入力を破棄する。GPU に提出済みのフレームは WaitForCpuFrame で待つ。
+    virtual void CancelCpuFrame() {}
     /// @note ResourceManager の構造変更と native 資源寿命を直列化する。戻る前に operation が完了する。
     virtual void ExecuteResourceOperation(const std::function<void()>& operation) { operation(); }
+    /// @return 更新を所有済み入力へ取り込んだら true。false なら呼び出し元が同期実行する。
     /// @note operation が参照する転送元は operation 自身が所有すること。
     virtual bool RecordResourceUpdate(std::function<void()>) { return false; }
     /// @note 非同期ラッパー内部の再入判定。通常 backend は呼び出し元を実行スレッドとして扱う。
     [[nodiscard]] virtual bool IsRenderThread() const { return true; }
+    /// @note native 資源の直接更新を同じ CPU executor へ橋渡しする。非所有で、Shutdown 前に解除する。
+    virtual void SetCpuExecutor(IRenderer*) {}
+    /// @note 起動時に host が設定する。描画完了待ち中のプラットフォーム送信メッセージを処理する。
+    virtual void SetRenderWaitPump(void (*)()) {}
 
+    /// @return true は計測区間の受付。native の開始成功や GPU 完了を保証しない。
+    /// @pre true の場合だけ GpuProfEndRecordedView と対応させ、物理フレーム内で閉じる。
+    /// @note 開始失敗時のパス計測と終了は executor が抑止する。描画命令は実行する。
+    /// @see https://docs.godotengine.org/en/stable/classes/class_renderingserver.html#class-renderingserver-method-call-on-render-thread Render-thread callable ownership.
+    virtual bool GpuProfRecordView(const GpuProfilerViewMetadata& metadata) { return GpuProfBeginView(metadata); }
+    virtual void GpuProfEndRecordedView() { GpuProfEndView(); }
+
+    /// @brief 同寸法・同形式の深度なしカラー面を 1〜8 面、MRT へ束縛する。
+    /// @return 未対応・無効・重複する面では false。失敗時は既存の描画先を変更しない。
+    /// @note カラー面の所有権は ResourceManager に残す。通常の SetRenderTarget で解除できる。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-omsetrendertargets OMSetRenderTargets independent descriptor array.
+    virtual bool SetRenderTargetColors(std::span<const RenderTargetColorAttachment>, ResourceManager&) { return false; }
 };
 
 } /// @note namespace fbzz::renderer

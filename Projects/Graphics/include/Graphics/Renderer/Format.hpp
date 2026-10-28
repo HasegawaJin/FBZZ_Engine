@@ -18,6 +18,7 @@ enum class Format {
     RG16F,       ///< @note 2 成分 (モーションベクターなど)。1 画素 4 バイト
     R16F,        ///< @note 1 成分の中間精度。1 画素 2 バイト
     R8,          ///< @note 1 成分のマスク。1 画素 1 バイト
+    RGBA32F,     ///< @note 水域の高さ・深度・IDなど、半精度で丸められない数値情報。1画素16バイト。
 };
 
 /// @note レンダーターゲットの «形». 寸法は別引数で渡す (呼び出し側の書き味を変えないため)。
@@ -57,6 +58,7 @@ struct RenderTargetDesc {
     case Format::RG16F:      return 4;
     case Format::R16F:       return 2;
     case Format::R8:         return 1;
+    case Format::RGBA32F:    return 16;
     }
     return 8;
 }

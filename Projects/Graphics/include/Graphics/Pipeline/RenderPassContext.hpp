@@ -4,6 +4,7 @@
 /// @date    2026-06-18
 #pragma once
 #include <Graphics/Renderer/RenderLightingInput.hpp>
+#include <Graphics/Renderer/SurfacePatchLod.hpp>
 #include <Graphics/Pipeline/RenderConstants.hpp>
 #include <Graphics/Effects/RenderSkinningInput.hpp>
 namespace fbzz::renderer {
@@ -29,6 +30,8 @@ struct RenderPassContext : RenderLightingInput {
     /// @note 既定値付きフィールドを挿すと呼び出し側の初期化子が 1 つずつずれるため、
     /// @note 新しい設定は必ず handles より後ろへ追加すること。
     RenderPassHandles& handles;
+    /// @note Invocation-exclusive pure geometry; RenderSystem may lease a bounded view owner, while direct callers keep local storage.
+    SurfacePatchSelectionCache surfacePatchSelectionCache;
     /// @note ホストが実験 RT のセッション許可を渡す。保存された描画要求や実機能力とは独立する。
     /// @see Docs/design/developer-mode.md
     bool experimentalRayTracingEnabled = false;
@@ -36,7 +39,10 @@ struct RenderPassContext : RenderLightingInput {
     /// @note スキニング完了後に抽出し、派生ビューを含む記録終了まで共有する不変入力。
     std::shared_ptr<const renderer::RenderScene> renderScene;
     std::vector<RenderSkinningInput> skinningRequests;
+    std::vector<math::Matrix4> skinningMatrices;
     bool skinningExecuted = false;
+    /// @note The opt-in worker returns values only; no native pointer or producer input is borrowed by this receipt.
+    RenderSkinningBatchReceipt skinningBatchReceipt;
     uint64_t frameStamp = 0;
     float time = 0.0f;
     float deltaTime = 0.0f;
@@ -118,8 +124,17 @@ struct RenderPassContext : RenderLightingInput {
     /// @note 出力先 (ssrResult) は RenderGraph の外にある永続テクスチャで、設定が有効でも
     /// @note パスが登録されない / 早期 return する経路がある (GBuffer 無し、Unlit、シェーダー未ロード)。
     /// @note 設定だけを見て Composite が読むと、最後に書かれた絵がそのまま毎フレーム乗り続ける。
-    /// @note VolumetricLight は自分のパス内で HDR へ加算するので、この種のフラグは要らない。
     bool ssrPassActive = false;
+    /// @note 当該ビューの Velocity がクリア・更新済みの場合だけ消費側へ公開する。
+    bool velocityWritten = false;
+    /// @note 水中の散乱だけCompositeへ遅延合成する。今フレームの記録成功をビュー単位で保持する。
+    bool underwaterLightPassActive = false;
+    /// @note Water receiver lighting can read the view-local medium table and world-XZ atlas this frame.
+    bool waterMediumPassActive = false;
+    /// @note Water interface mask is valid only after its graph pass writes the current view.
+    bool waterInterfacePassActive = false;
+    /// @note Quality is reduced when visible water bodies share the fixed atlas pixel budget.
+    bool waterMediumQualityLimited = false;
     /// @note HYBRID を要求した Lit Deferred の反射 resolver。RT 縮退・記録失敗でも全 HDR 補間へ戻さない。
     bool hybridReflectionResolveActive = false;
     /// @note SSR の照明入力を作る間だけ true。RT と SSR の差し替え前の baseline を描く。
@@ -233,10 +248,21 @@ struct RenderPassContext : RenderLightingInput {
     /// @see Docs/design/gpu-instancing.md
     int statsInstancedBatches    = 0;
     int statsInstancedDrawsSaved = 0;
+    /// @note Bytes copied for persistent placement rows; zero after warmup on an unchanged set.
+    uint64_t statsInstanceUploadBytes = 0;
     /// @note SkinningComputePass がこのフレームのポーズについて実際に処理した仕事量。
     /// @note Scene/Game View が結果を共有した場合も、後側のビューへ同じ値を引き継ぐ。
     uint64_t statsSkinningVertexCount = 0;
     uint32_t statsSkinningDispatchCount = 0;
+    uint64_t statsSkinningPaletteUploadBytes = 0;
+    uint32_t statsSkinningPaletteUploads = 0;
+    /// @note demand の候補・準備・実投入を分け、CPU 側の保留を GPU 省略として誤計上しない。
+    uint64_t statsSkinningDemandMode = 0;
+    uint64_t statsSkinningDemandCandidates = 0;
+    uint64_t statsSkinningDemandRequired = 0;
+    uint64_t statsSkinningDemandPrepared = 0;
+    uint64_t statsSkinningDemandSubmitted = 0;
+    uint64_t statsSkinningDemandSkipped = 0;
     /// @note シャドウマップ描画は同じジオメトリを光源視点で再描画するため、
     /// @note カメラ統計に混ぜず独立したカウンターへ集計する。
     int statsShadowDrawCalls     = 0;

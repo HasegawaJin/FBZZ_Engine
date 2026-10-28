@@ -68,6 +68,27 @@ std::array<D3D12_STATIC_SAMPLER_DESC, 9> MakeStaticSamplers()
     return samplers;
 }
 
+template <D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type, typename Value>
+struct alignas(void*) MeshPipelineSubobject {
+    D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type = Type;
+    Value value{};
+};
+
+struct alignas(void*) MeshPipelineStream {
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE, ID3D12RootSignature*> rootSignature;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS, D3D12_SHADER_BYTECODE> meshShader;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS, D3D12_SHADER_BYTECODE> pixelShader;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND, D3D12_BLEND_DESC> blend;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_MASK, UINT> sampleMask;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER, D3D12_RASTERIZER_DESC> rasterizer;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL, D3D12_DEPTH_STENCIL_DESC> depthStencil;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY,
+        D3D12_PRIMITIVE_TOPOLOGY_TYPE> primitiveTopology;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS, D3D12_RT_FORMAT_ARRAY> renderTargets;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT, DXGI_FORMAT> depthFormat;
+    MeshPipelineSubobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC, DXGI_SAMPLE_DESC> sampleDesc;
+};
+
 }
 
 size_t DX12PsoCache::KeyHash::operator()(const Key& key) const
@@ -90,7 +111,32 @@ bool DX12PsoCache::Initialize(ID3D12Device* device, bool bindlessEnabled)
     if (!device) return false;
     m_device = device;
     m_bindlessEnabled = bindlessEnabled;
-    return CreateRootSignature() && CreateComputeRootSignature();
+    if (!CreateRootSignature() || !CreateComputeRootSignature()) return false;
+    CreateIndexedInstanceOffsetCommandSignature();
+    return true;
+}
+
+void DX12PsoCache::CreateIndexedInstanceOffsetCommandSignature()
+{
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device-createcommandsignature CONSTANT and DRAW_INDEXED command arguments.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_indirect_argument_desc Constant.Num32BitValuesToSet.
+    std::array<D3D12_INDIRECT_ARGUMENT_DESC, 2> arguments{};
+    arguments[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
+    arguments[0].Constant.RootParameterIndex = kIndirectInstanceOffsetRootParam;
+    arguments[0].Constant.DestOffsetIn32BitValues = 0;
+    arguments[0].Constant.Num32BitValuesToSet = 1;
+    arguments[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
+
+    D3D12_COMMAND_SIGNATURE_DESC desc{};
+    desc.ByteStride = sizeof(uint32_t) + sizeof(D3D12_DRAW_INDEXED_ARGUMENTS);
+    desc.NumArgumentDescs = static_cast<UINT>(arguments.size());
+    desc.pArgumentDescs = arguments.data();
+    const HRESULT result = m_device->CreateCommandSignature(
+        &desc, m_rootSignature.Get(), IID_PPV_ARGS(&m_indexedInstanceOffsetCommandSignature));
+    if (FAILED(result)) {
+        FBZZ_LOG_WARN("DX12PsoCache: 24 byte DRAW_INDEXED command signature を作成できません (HRESULT=0x%08X)",
+                      static_cast<unsigned>(result));
+    }
 }
 
 D3D12_ROOT_SIGNATURE_FLAGS DX12PsoCache::BaseRootSignatureFlags() const
@@ -106,6 +152,7 @@ D3D12_ROOT_SIGNATURE_FLAGS DX12PsoCache::BaseRootSignatureFlags() const
 void DX12PsoCache::Shutdown()
 {
     ClearPipelines();
+    m_indexedInstanceOffsetCommandSignature.Reset();
     m_computeRootSignature.Reset();
     m_rootSignature.Reset();
     m_device.Reset();
@@ -114,6 +161,7 @@ void DX12PsoCache::Shutdown()
 void DX12PsoCache::ClearPipelines()
 {
     m_cache.clear();
+    m_meshCache.clear();
     m_computeCache.clear();
 }
 
@@ -155,22 +203,29 @@ bool DX12PsoCache::CreateRootSignature()
 {
     /// @note param 0〜13 : 定数バッファ b0〜b13 (root CBV)
     /// @note param 14    : bindless 添字ブロック b14 (root CBV)
-    /// @note     /// @note かつてここに «ピクセル SRV テーブル (t0〜t31)» と «頂点 SRV テーブル» があったが、
+    /// @note param 15    : 間接 instance offset b15 (1 DWORD root constant)。
+    /// @note かつてここに「ピクセル SRV テーブル (t0〜t31)」と「頂点 SRV テーブル」があったが、
     /// @note 全シェーダーが ResourceDescriptorHeap から直接引くようになったため撤去した。
     /// @note ディスクリプタテーブルが 1 つも無いので、ドローごとの CopyDescriptors も消えている。
     /// @note       @see Docs/design/bindless.md
-    std::array<D3D12_ROOT_PARAMETER1, 15> parameters{};
+    std::array<D3D12_ROOT_PARAMETER1, 16> parameters{};
     for (UINT slot = 0; slot < 14; ++slot) {
         parameters[slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[slot].Descriptor.ShaderRegister = slot;
         parameters[slot].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
         parameters[slot].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     }
-    /// @note bindless 添字ブロック (b14)。VS / PS / GS のどこからでも引くので ALL 可視。
+    /// @note bindless 添字ブロック (b14)。VS / PS / GS / MS / AS のどこからでも引くため ALL 可視。
+    /// @see https://github.com/microsoft/DirectX-Specs/blob/master/d3d/MeshShader.md Mesh Shader root signature visibility.
     parameters[kBindlessIndicesRootParam].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     parameters[kBindlessIndicesRootParam].Descriptor.ShaderRegister = kBindlessIndicesRegister;
     parameters[kBindlessIndicesRootParam].Descriptor.Flags = D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE;
     parameters[kBindlessIndicesRootParam].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    parameters[kIndirectInstanceOffsetRootParam].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    parameters[kIndirectInstanceOffsetRootParam].Constants.ShaderRegister = kIndirectInstanceOffsetRootParam;
+    parameters[kIndirectInstanceOffsetRootParam].Constants.RegisterSpace = 0;
+    parameters[kIndirectInstanceOffsetRootParam].Constants.Num32BitValues = 1;
+    parameters[kIndirectInstanceOffsetRootParam].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
     const auto samplers = MakeStaticSamplers();
 
@@ -296,6 +351,114 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     FBZZ_LOG_DEBUG("DX12PsoCache: Graphics PSO生成 [%s] rtCount=%u format=%u topology=%u",
                   shader.GetPath().c_str(), renderTargetCount,
                   static_cast<unsigned>(renderTargetFormat), static_cast<unsigned>(topology));
+    return result;
+}
+
+ID3D12PipelineState* DX12PsoCache::GetOrCreateMesh(
+    const DX12Shader& shader, const PipelineStateDesc& state, PrimitiveTopology topology,
+    DXGI_FORMAT renderTargetFormat, uint32_t renderTargetCount, bool reversedZ)
+{
+    if (!shader.IsMeshShader() || renderTargetCount > D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT) {
+        FBZZ_LOG_ERROR("DX12PsoCache: invalid Mesh Shader stage or render target count (%u)",
+                       renderTargetCount);
+        return nullptr;
+    }
+    const Key key{shader.GetCacheIdentity(), state.rasterizer, state.blend, state.depth, topology,
+                  renderTargetFormat, renderTargetCount, reversedZ,
+                  state.depthBias, state.depthBiasSlope};
+    if (const auto found = m_meshCache.find(key); found != m_meshCache.end())
+        return found->second.Get();
+
+    /// @note Mesh PSOs omit VS and input layout; the mesh stage declares its output topology in HLSL.
+    /// @see https://github.com/microsoft/DirectX-Specs/blob/master/d3d/MeshShader.md Mesh Shader, CreatePipelineState.
+    MeshPipelineStream stream{};
+    stream.rootSignature.value = m_rootSignature.Get();
+    stream.meshShader.value = shader.GetMeshBytecode();
+    stream.pixelShader.value = shader.GetPixelBytecode();
+    stream.sampleMask.value = UINT_MAX;
+    stream.primitiveTopology.value = topology == PrimitiveTopology::LINE_LIST
+        ? D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE : D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    stream.depthFormat.value = DX12Context::DEPTH_FORMAT;
+    stream.sampleDesc.value.Count = 1;
+    stream.renderTargets.value.NumRenderTargets = renderTargetCount;
+    for (uint32_t index = 0; index < renderTargetCount; ++index)
+        stream.renderTargets.value.RTFormats[index] = renderTargetFormat;
+
+    D3D12_RASTERIZER_DESC& rasterizer = stream.rasterizer.value;
+    rasterizer.FillMode = state.rasterizer == RasterizerMode::WIREFRAME
+        || state.rasterizer == RasterizerMode::WIREFRAME_NOCULL
+        ? D3D12_FILL_MODE_WIREFRAME : D3D12_FILL_MODE_SOLID;
+    rasterizer.CullMode = (state.rasterizer == RasterizerMode::SOLID_NOCULL
+        || state.rasterizer == RasterizerMode::WIREFRAME_NOCULL)
+        ? D3D12_CULL_MODE_NONE : state.rasterizer == RasterizerMode::SOLID_FRONT_CULL
+        ? D3D12_CULL_MODE_FRONT : D3D12_CULL_MODE_BACK;
+    rasterizer.DepthClipEnable = TRUE;
+    rasterizer.DepthBias = reversedZ ? state.depthBias : -state.depthBias;
+    rasterizer.SlopeScaledDepthBias = reversedZ ? state.depthBiasSlope : -state.depthBiasSlope;
+
+    D3D12_BLEND_DESC& blendState = stream.blend.value;
+    blendState.IndependentBlendEnable = renderTargetCount > 1;
+    for (uint32_t index = 0; index < renderTargetCount; ++index) {
+        auto& blend = blendState.RenderTarget[index];
+        blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        blend.SrcBlend = D3D12_BLEND_ONE;
+        blend.DestBlend = D3D12_BLEND_ZERO;
+        blend.BlendOp = D3D12_BLEND_OP_ADD;
+        blend.SrcBlendAlpha = D3D12_BLEND_ONE;
+        blend.DestBlendAlpha = D3D12_BLEND_ZERO;
+        blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        blend.LogicOp = D3D12_LOGIC_OP_NOOP;
+        if (state.blend == BlendMode::OPAQUE_BLEND) continue;
+        blend.BlendEnable = TRUE;
+        if (state.blend == BlendMode::ADDITIVE) {
+            blend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+            blend.DestBlend = D3D12_BLEND_ONE;
+        } else if (state.blend == BlendMode::PREMULTIPLIED) {
+            blend.SrcBlend = D3D12_BLEND_ONE;
+            blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        } else {
+            blend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+            blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        }
+        blend.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+    }
+
+    D3D12_DEPTH_STENCIL_DESC& depth = stream.depthStencil.value;
+    depth.DepthEnable = state.depth != DepthMode::DEPTH_OFF;
+    depth.DepthWriteMask = state.depth == DepthMode::DEPTH_ON
+        ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+    depth.DepthFunc = reversedZ
+        ? (state.depth == DepthMode::DEPTH_SKY ? D3D12_COMPARISON_FUNC_GREATER_EQUAL : D3D12_COMPARISON_FUNC_GREATER)
+        : (state.depth == DepthMode::DEPTH_SKY ? D3D12_COMPARISON_FUNC_LESS_EQUAL : D3D12_COMPARISON_FUNC_LESS);
+    depth.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
+    depth.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+    depth.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+    depth.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+    depth.FrontFace.StencilPassOp = D3D12_STENCIL_OP_KEEP;
+    depth.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+    depth.BackFace = depth.FrontFace;
+
+    Microsoft::WRL::ComPtr<ID3D12Device2> device;
+    if (FAILED(m_device.As(&device))) {
+        FBZZ_LOG_ERROR("DX12PsoCache: Mesh Shader PSO に必要な ID3D12Device2 がありません");
+        return nullptr;
+    }
+    D3D12_PIPELINE_STATE_STREAM_DESC desc{};
+    desc.SizeInBytes = sizeof(stream);
+    desc.pPipelineStateSubobjectStream = &stream;
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> pso;
+    const HRESULT createResult = device->CreatePipelineState(&desc, IID_PPV_ARGS(&pso));
+    if (FAILED(createResult)) {
+        FBZZ_LOG_ERROR("DX12PsoCache: Mesh PSO の生成に失敗しました: %s (HRESULT=0x%08X, removed=0x%08X)",
+                       shader.GetPath().c_str(), static_cast<unsigned>(createResult),
+                       static_cast<unsigned>(m_device->GetDeviceRemovedReason()));
+        return nullptr;
+    }
+    ID3D12PipelineState* result = pso.Get();
+    m_meshCache.emplace(key, std::move(pso));
+    FBZZ_LOG_DEBUG("DX12PsoCache: Mesh PSO生成 [%s] rtCount=%u format=%u topology=%u",
+                   shader.GetPath().c_str(), renderTargetCount,
+                   static_cast<unsigned>(renderTargetFormat), static_cast<unsigned>(topology));
     return result;
 }
 

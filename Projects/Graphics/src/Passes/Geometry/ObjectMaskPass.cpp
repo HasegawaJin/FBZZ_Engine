@@ -6,6 +6,7 @@
 /// @note マスクの RGBA はエンジンが意味を決めない。申告した側 (スクリプト) と読む側
 /// @note (カスタムパスのシェーダー) の取り決めで、輪郭の色にも強さにもボカし量にもなる。
 #include "RenderScenePassHelpers.hpp"
+#include <Graphics/Effects/ComputedSkinningOutput.hpp>
 #include <Graphics/Pipeline/InstanceBatch.hpp>
 #include <Core/Logger.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
@@ -32,26 +33,30 @@ void DrawObjectMask(const renderer::RenderObject& object, RenderPassContext& ctx
     const auto shader = object.skinned ? h.objectMaskSkinnedShader : h.objectMaskShader;
     if (!shader.IsValid()) return;
     auto constants = ObjectConstants(object);
-    constants.objectParams = {};
+    constants.objectParams.x = 0.0f;
     for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
         const auto& item = input.items[i];
         if (!item.vertexBuffer.IsValid() || !item.indexBuffer.IsValid() || (object.skinned && !item.slotVisible)) continue;
         renderer::DrawCall dc;
-        dc.vertexBuffer = object.skinned ? item.skinningVertexBuffer : item.vertexBuffer;
+        dc.vertexBuffer = object.skinned ? (item.deformedVertexBuffer.IsValid()
+            ? item.deformedVertexBuffer : item.skinningVertexBuffer) : item.vertexBuffer;
+        if (object.skinned && !BindPreparedSkinningOutput(item, dc)) continue;
+        if (object.skinned && item.deformedVertexBuffer.IsValid()) dc.deformationSource = item.skinningVertexBuffer;
         dc.indexBuffer = item.indexBuffer;
         dc.indexCount = item.indexCount;
         dc.vertexCount = item.vertexCount;
-        dc.shader = shader;
+        dc.shader = object.skinned && (item.preparedSkinning || item.deformedVertexBuffer.IsValid()) ? h.objectMaskShader : shader;
         dc.pipelineState = h.selectionMaskPSO;
         dc.constantBuffers[0] = h.frameCB;
         dc.constantBuffers[2] = h.objectMaskCB;
         dc.textures[7] = ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
-        if (object.skinned) {
+        if (object.skinned && !item.preparedSkinning && !item.deformedVertexBuffer.IsValid()) {
             batcher.Flush();
             ctx.resources.Update(h.objectCB, &constants, sizeof(constants));
             batcher.InvalidateObjectConstants();
             dc.constantBuffers[1] = h.objectCB;
             dc.constantBuffers[7] = object.skinningPalette;
+            BindGpuBonePalette(dc, object);
             ctx.renderer.Submit(dc, ctx.resources);
         } else batcher.Add(dc, constants);
         ++g_objectMaskDraws;
@@ -90,7 +95,7 @@ void ExecuteObjectMaskPass(RenderPassContext& ctx)
                                     ? h.objectMaskInstancedShader
                                     : renderer::ResourceHandle<renderer::ShaderTag>{},
                                 false);
-        for (uint32_t index : group.objectIndices) DrawObjectMask(input.objects[index], ctx, batcher);
+        for (uint32_t index : group.objectIndices) DrawObjectMask(input.Objects()[index], ctx, batcher);
     }
 
     /// @note 内訳が変わったときだけ 1 行。毎フレーム出すとログが埋まって本当のエラーが見えなくなる

@@ -158,14 +158,25 @@ function Get-ShaderJobs {
         $sourceText = ($dependencyInfo.Files | ForEach-Object { [IO.File]::ReadAllText($_) }) -join "`n"
         $stages = New-Object System.Collections.Generic.List[object]
 
-        if ([Text.RegularExpressions.Regex]::IsMatch($sourceText, '\bVSMain\s*\(')) {
-            $stages.Add([PSCustomObject]@{ Name = "VS"; Entry = "VSMain" })
-        }
-        if ([Text.RegularExpressions.Regex]::IsMatch($sourceText, '\bPSMain\s*\(')) {
-            $stages.Add([PSCustomObject]@{ Name = "PS"; Entry = "PSMain" })
-        }
-        if ([Text.RegularExpressions.Regex]::IsMatch($sourceText, '\bCSMain\s*\(')) {
-            $stages.Add([PSCustomObject]@{ Name = "CS"; Entry = "CSMain" })
+        if ($relativePath.EndsWith(".ms.hlsl", [StringComparison]::OrdinalIgnoreCase)) {
+            # @note .ms.hlsl は Mesh Shader と対応する PS だけを生成し、既存 runtime と同じ MS 6.8 profile を使う。
+            # @see https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html Mesh Shader pipeline stages and profiles.
+            if ([Text.RegularExpressions.Regex]::IsMatch($sourceText, '\bMSMain\s*\(')) {
+                $stages.Add([PSCustomObject]@{ Name = "MS"; Entry = "MSMain" })
+            }
+            if ([Text.RegularExpressions.Regex]::IsMatch($sourceText, '\bPSMain\s*\(')) {
+                $stages.Add([PSCustomObject]@{ Name = "PS"; Entry = "PSMain" })
+            }
+        } else {
+            if ([Text.RegularExpressions.Regex]::IsMatch($sourceText, '\bVSMain\s*\(')) {
+                $stages.Add([PSCustomObject]@{ Name = "VS"; Entry = "VSMain" })
+            }
+            if ([Text.RegularExpressions.Regex]::IsMatch($sourceText, '\bPSMain\s*\(')) {
+                $stages.Add([PSCustomObject]@{ Name = "PS"; Entry = "PSMain" })
+            }
+            if ([Text.RegularExpressions.Regex]::IsMatch($sourceText, '\bCSMain\s*\(')) {
+                $stages.Add([PSCustomObject]@{ Name = "CS"; Entry = "CSMain" })
+            }
         }
 
         if ($stages.Count -eq 0) {
@@ -174,7 +185,7 @@ function Get-ShaderJobs {
                 Stage = "DISCOVERY"
                 Entry = "-"
                 Source = $relativePath
-                Message = "No VSMain, PSMain, or CSMain entry point was found. Include-only files must use .hlsli."
+                Message = "No stage entry point was found (MSMain for .ms.hlsl, otherwise VSMain, PSMain, or CSMain). Include-only files must use .hlsli."
             })
             continue
         }
@@ -182,7 +193,9 @@ function Get-ShaderJobs {
         $outputBase = ($relativePath -replace '\.hlsl$', '') -replace '[/\\]', '.'
 
         foreach ($stage in $stages) {
-            if ($stage.Name -eq "CS") {
+            if ($stage.Name -eq "MS") {
+                $outputName = "$outputBase.cso"
+            } elseif ($stage.Name -eq "CS") {
                 $outputName = if ($outputBase.EndsWith(".cs", [StringComparison]::OrdinalIgnoreCase)) {
                     "$outputBase.cso"
                 } else {

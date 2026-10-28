@@ -154,6 +154,15 @@ public:
     using Access = renderer::RenderGraph::ResourceAccess;
     using Purpose = renderer::RenderGraph::ResourceAccessPurpose;
 
+    PassBuilder() = default;
+    /// @note 前回の申告内容を捨て容量だけを借り、Setup 後の MoveOut で呼出し元へ返す。
+    PassBuilder(std::vector<Access>&& accesses, std::string&& autoTarget)
+        : m_accesses(std::move(accesses)), m_autoTarget(std::move(autoTarget))
+    {
+        m_accesses.clear();
+        m_autoTarget.clear();
+    }
+
     PassBuilder& Read(std::string_view name)      { return Add(name, Usage::Read); }
     PassBuilder& Write(std::string_view name)     { return Add(name, Usage::Write); }
     PassBuilder& ReadWrite(std::string_view name) { return Add(name, Usage::ReadWrite); }

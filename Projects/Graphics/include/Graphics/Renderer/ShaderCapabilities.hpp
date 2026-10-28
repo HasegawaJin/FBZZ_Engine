@@ -7,7 +7,7 @@
 
 namespace fbzz::renderer {
 
-enum class ShaderVertexContract : uint8_t { UNKNOWN, STANDARD_SURFACE, STANDARD_SKINNED };
+enum class ShaderVertexContract : uint8_t { UNKNOWN, STANDARD_SURFACE, STANDARD_SKINNED, WATER_SURFACE, FIBER_SHELL, FIBER_FIN, FIBER_BLADE };
 enum class ShaderSurfaceContract : uint8_t { UNKNOWN, STANDARD_PBR, LAMBERT, UNLIT, WATER, TERRAIN };
 enum class ShaderOpacityContract : uint8_t { UNKNOWN, OPAQUE_OUTPUT, ALPHA_CLIP };
 enum class ShaderVariantSet : uint8_t { NONE, STANDARD_SURFACE, STANDARD_SKINNED };
@@ -30,7 +30,19 @@ struct ShaderCapabilities {
     [[nodiscard]] constexpr bool HasOpaqueOutput() const { return opacity == ShaderOpacityContract::OPAQUE_OUTPUT; }
     [[nodiscard]] constexpr bool HasStandardGeometry() const
     {
-        return vertex != ShaderVertexContract::UNKNOWN && opacity != ShaderOpacityContract::UNKNOWN;
+        return (vertex == ShaderVertexContract::STANDARD_SURFACE || vertex == ShaderVertexContract::STANDARD_SKINNED)
+            && opacity != ShaderOpacityContract::UNKNOWN;
+    }
+    /// @note The shader uses the unmodified shared water vertex/patch ABI; appearance and b2 remain project-owned.
+    [[nodiscard]] constexpr bool SupportsWaterGeometry() const
+    {
+        return vertex == ShaderVertexContract::WATER_SURFACE && surface == ShaderSurfaceContract::WATER;
+    }
+    /// @note Each family member must declare the matching shell/fin/blade ABI; arbitrary displacement is not implied.
+    [[nodiscard]] constexpr bool SupportsFiberGeometry() const
+    {
+        return vertex == ShaderVertexContract::FIBER_SHELL || vertex == ShaderVertexContract::FIBER_FIN
+            || vertex == ShaderVertexContract::FIBER_BLADE;
     }
     /// @note 標準の変形・UV・alpha clip を共有する static / instanced / skinned GBuffer 変種の組を要求する。
     [[nodiscard]] constexpr bool HasStandardVariants() const

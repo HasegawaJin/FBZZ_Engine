@@ -1,0 +1,16 @@
+# @file    Pattern.png.meta
+# @brief   Sample asset identity and explicit shared geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = '5ea29307a0a64a8a89566cfad2d46c9c'
+
+[texture]
+type = 'color'
+srgb = true
+mipmaps = true
+filter = 'Bilinear'
+wrap_u = 'Repeat'
+wrap_v = 'Repeat'
+compression = 'None'
+max_size = 32

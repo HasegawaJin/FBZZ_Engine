@@ -233,6 +233,14 @@ inline PerFrameCB MakeCameraFrameCB(const renderer::Camera& camera,
     return frameData;
 }
 
+/// @note b2 は TAA 専用。位相は連続した資源フレーム番号の剰余で、ビューのジッター位置と固定対応する。
+struct alignas(16) TaaCycleCB {
+    uint32_t phaseIndex = 0;
+    uint32_t enabled = 0;
+    uint32_t reserved[2]{};
+};
+static_assert(sizeof(TaaCycleCB) == 16);
+
 struct PerObjectCB {
     math::Matrix4 world;
     math::Matrix4 worldInvTranspose;
@@ -259,7 +267,8 @@ inline constexpr uint32_t kMaxLightsPerCluster = 64;
 /// @note クラスタ 1 個分の uint 数。先頭がライト数、続けてライト番号が並ぶ。
 inline constexpr uint32_t kClusterStride = kMaxLightsPerCluster + 1;
 /// @note 点光源 + スポットを統合した配列の上限 (従来は点 8 / スポット 4 だった)。
-inline constexpr uint32_t kMaxPunctualLights = 256;
+inline constexpr uint32_t kMaxPunctualLights = 1024;
+inline constexpr uint32_t MANY_LIGHT_POOL_SIZE = 32;
 
 /// @note ライト供給モード。ClusterConstants.hlsli の FBZZ_LIGHT_MODE_* と一致させること。
 /// @note cbuffer 未束縛のパスは中身が全ゼロで読まれるため 0 = Legacy にしておくと、
@@ -268,7 +277,13 @@ enum class ClusterLightMode : uint32_t {
     Legacy    = 0, ///< @note b3 の固定長 cbuffer (点 8 / スポット 4)
     Linear    = 1, ///< @note StructuredBuffer を全数走査 (カリング無効・A/B 検証用)
     Clustered = 2, ///< @note クラスタが持つライトだけ走査
+    SAMPLED   = 3, ///< @note 重要度に基づく固定プールから確率補正付きで評価する。
 };
+
+[[nodiscard]] constexpr bool UsesClusterLightIndices(ClusterLightMode mode)
+{
+    return mode == ClusterLightMode::Clustered || mode == ClusterLightMode::SAMPLED;
+}
 
 /// @note PunctualLightGPU::type。ClusterConstants.hlsli の FBZZ_LIGHT_TYPE_* と一致させること。
 enum class PunctualLightType : uint32_t {
@@ -454,7 +469,8 @@ struct ClusterConstantsCB {
     uint32_t clusterLightMode;   ///< @note ClusterLightMode
     uint32_t punctualLightCount;
     uint32_t clusterDebugMode;   ///< @note 0=通常, 1=クラスタあたりライト数のヒートマップ
-    uint32_t _clusterPad0 = 0;
+    /// @note Low six bits are the 1..32 evaluation budget; upper bits seed temporal sampling. Zero retains exact lighting.
+    uint32_t manyLightControl = 0;
 };
 static_assert(sizeof(ClusterConstantsCB) == 32,
     "ClusterConstantsCB must match ClusterConstants in Common/ClusterConstants.hlsli (32 bytes)");
@@ -543,7 +559,7 @@ struct AdvancedGraphicsCB {
     /// @note Volumetric
     float volLightIntensity;  float volScattering;       int   volSteps;           float volMaxDist;
     /// @note TAA
-    float taaFeedback;        float taaJitterX;          float taaJitterY;         float _taaPad;
+    float taaFeedback;        float taaJitterX;          float taaJitterY;         float taaPreviousOrthographic = 0.0f;
     /// @note Motion Blur
     /// @note screenWidth/screenHeight は MotionBlur CS が b5 非バインド下で screenSize の代替として参照する
     float motionBlurStrength; int   motionBlurSamples;   float screenWidth;         float screenHeight;
@@ -554,7 +570,7 @@ struct AdvancedGraphicsCB {
     /// @note Lens Flare
     float lensFlareIntensity; int   lensFlareGhostCount; float lensFlareHaloWidth; float lensFlareDistort;
     /// @note PCSS
-    float pcssLightRadius;    int   pcssEnabled;         float _pcssPad0;          float _pcssPad1;
+    float pcssLightRadius;    int   pcssEnabled;         float taaPreviousNearZ = 0.1f; float taaPreviousFarZ = 1000.0f;
     /// @note LUT / 天候 (weather* は LUT ブロックの空き 3 枠を流用。Constants.hlsli 側も同じ)
     float lutBlend;           float weatherWetness;      float weatherDarkening;   float weatherPuddle;
     /// @note Reprojection 行列 (TAA / Motion Blur 共用)
@@ -579,7 +595,8 @@ struct AdvancedGraphicsCB {
     /// @see Assets/Shaders/Rendering/LightProbeGI.hlsli
     ProbeVolumeParamsCB probeVolumes[2]{};
     float probeSpecularOcclusion = 0.0f;     ///< @note プローブの暗さを鏡面 IBL へ移す強さ [0,1]
-    float _probePad[3]{};
+    uint32_t probeVisibilityIndices[2] = { renderer::INVALID_BINDLESS_INDEX, renderer::INVALID_BINDLESS_INDEX };
+    float _probePad = 0.0f;
 };
 static_assert(sizeof(AdvancedGraphicsCB) == 464,
     "AdvancedGraphicsCB must match AdvancedGraphicsConstants in AdvancedGraphicsConstants.hlsli (464 bytes)");
@@ -701,9 +718,30 @@ struct PostProcCB {
     float reflectionResolveEnabled = 0.0f;
     /// @note このビューで SSR の記録に成功したときだけ読み、有効性と材質応答を分離する。
     float reflectionSsrEnabled = 0.0f;
+    /// @note 水面と共有するRGB係数 [m^-1]。mode=0は旧水中表示を維持する。
+    float underwaterAbsorption[3]{};
+    float underwaterOpticalMode = 0.0f;
+    float underwaterScattering[3]{};
+    float underwaterPhaseG = 0.0f;
+    /// @note カメラ列の水平slabと積分距離 [m]。Splineの遠方側面はslab近似。
+    float underwaterSurfaceY = 0.0f;
+    float underwaterBottomY = 0.0f;
+    float underwaterMaxDistance = 0.0f;
+    float underwaterLightStrength = 0.0f;
+    float underwaterWaveAmplitude = 0.0f;
+    float underwaterWaveFrequency = 0.0f;
+    float underwaterWaveSpeed = 0.0f;
+    float underwaterDistortion = 0.0f;
+    float underwaterCenter[2]{};
+    float underwaterHalfExtent[2]{};
+    float underwaterCosYaw = 1.0f;
+    float underwaterSinYaw = 0.0f;
+    float underwaterLightSteps = 48.0f;
+    /// @note 当該ビューで今フレームの水中散乱を記録した場合だけSRVを読む。
+    float underwaterLightReady = 0.0f;
 };
 /// @note HLSL 側 (Common/Constants.hlsli の PostProcConstants) は複数コピーある。サイズがずれたら全コピーを直す。
-static_assert(sizeof(PostProcCB) == 416, "PostProcCB must match PostProcConstants in Constants.hlsli (416 bytes)");
+static_assert(sizeof(PostProcCB) == 512, "PostProcCB must match PostProcConstants in Constants.hlsli (512 bytes)");
 
 /// @note 画面サイズ由来のフィールドだけを埋めた PostProcCB を返す。
 /// @note b5 は全ポストプロセスで共有され、各パスが構造体ごと上書きする。texelSize/screenSize を
@@ -974,8 +1012,10 @@ struct TerrainObjectCB {
     std::uint32_t layerCount       = 0;
     std::uint32_t splatColumns     = 1;
     std::uint32_t splatRows        = 1;
+    /// @note 非一様スケールと親からの shear に対応する法線の変換。
+    math::Matrix4 worldInvTranspose = math::Matrix4::Identity();
 };
-static_assert(sizeof(TerrainObjectCB) == 176, "TerrainObjectCB size mismatch");
+static_assert(sizeof(TerrainObjectCB) == 240, "TerrainObjectCB size mismatch");
 
 /// @brief 地形 1 層ぶんの GPU パラメーター (StructuredBuffer の 1 要素)。
 /// @note LAYOUT: TerrainSurface.hlsli の TerrainLayer と一致させること。テクスチャ添字に無効値を入れない。
@@ -1011,8 +1051,10 @@ static_assert(sizeof(TerrainLayerGpu) == 96, "TerrainLayerGpu size mismatch");
 struct WaterVertex {
     math::Vector3 position;
     math::Vector2 uv;
+    /// @note x=スプラインの水深 [m]、yz=ワールド XZ 流速 [m/s]、w=スプライン頂点なら 1。
+    math::Vector4 splineData{};
 };
-static_assert(sizeof(WaterVertex) == 20, "WaterVertex size mismatch");
+static_assert(sizeof(WaterVertex) == 36, "WaterVertex size mismatch");
 
 /// @note WaterCB — Water シェーダーの b1。
 /// @note LAYOUT: Assets/Shaders/Water/Water.hlsl の WaterCB と完全に一致させること。
@@ -1026,8 +1068,8 @@ struct WaterCB {
     math::Vector4 timeParams;
     math::Vector4 foamParams;
     math::Vector4 refractionFlowParams;
-    math::Vector4 waveDir[4];
-    math::Vector4 waveParams[4];
+    math::Vector4 waveDir[16];
+    math::Vector4 waveParams[16];
     math::Vector4 detailParams;
     math::Vector4 sssParams;
     math::Vector4 reflectParams;
@@ -1049,10 +1091,38 @@ struct WaterCB {
     math::Vector4 surfaceFlowE[8];
     /// @note x=近景格子の有効フラグ、y=近景の頂点間隔 [m]、zw=元格子の X/Z 分割数。
     math::Vector4 gridParams;
+    /// @note xy/zw は水域全体に対するパッチの UV 最小/最大。patchCellSize.z=0 は旧格子。
+    math::Vector4 patchRect{};
+    math::Vector4 patchCellSize{};
+    /// @note MIN_X/MAX_X/MIN_Z/MAX_Z の世界セル幅。角は incident patch の最大幅を使う。
+    math::Vector4 patchEdgeCellSize[4]{};
+    math::Vector4 patchCornerCellSize[4]{};
+    /// @note x/y=正の波高比による白波の開始/遷移幅、z=強度、w=泡の減衰時間 [s]。
+    math::Vector4 crestFoamParams{};
+    /// @note xyz=泡の線形アルベド、w=泡の粗さ。
+    math::Vector4 foamColorRoughness{};
+    /// @note x=遠景海面有効、y=遠景パッチ、z=有限水域外の波紋減衰距離 [m]。
+    math::Vector4 farOceanParams{};
+    /// @note x=地形情報有効、y=符号付き水深の復号範囲 [m]、zw=情報テクスチャの寸法。
+    math::Vector4 terrainInfoParams{};
+    /// @note 16基波の初期位相 [rad]。各Vector4に4基波を格納する。
+    math::Vector4 wavePhasePacked[4]{};
+    /// @note x=有効基波数、w=明示count。w=0は従来の手書きCBを4基波として読む。
+    math::Vector4 waveControls{};
+    math::Vector4 absorptionCoefficients{};
+    math::Vector4 scatteringCoefficients{};
+    /// @note x=係数光学有効、y=Henyey–Greenstein非対称係数。
+    math::Vector4 opticalParams{};
+    math::Vector4 patchMorphView{};
+    math::Vector4 patchMorphForward{};
+    math::Vector4 patchMorphMetric{};
+    math::Vector4 patchMorphParams{};
+    math::Vector4 patchMorphCellSize{};
+    /// @note x=浅水波の減衰開始深度 [m]、y=不変水深場有効。0深度は旧波のまま。
+    math::Vector4 waveDepthParams{};
 };
-/// @note Matrix4 x2 (128) + float4 x7 (112) + waveDir[4]/waveParams[4] (128) + float4 x5 (80)
-/// @note + surfaceFlowA〜E[8] (640) + gridParams (16)
-static_assert(sizeof(WaterCB) == 1104, "WaterCB size mismatch");
+/// @note 旧1328bytes + 追加12基波(384) + 位相/count(80) + 光学(48) + モーフ(80) + 浅水(16)。
+static_assert(sizeof(WaterCB) == 1936, "WaterCB size mismatch");
 
 /// @note WaterEffectParams — Water.hlsl の MaterialConstants (b2) の C++ ミラー。
 struct WaterEffectParams {
@@ -1217,6 +1287,25 @@ struct RenderPassHandles {
     /// @note 水面が 1 つも見えないフレームでは確保しない。
     renderer::SizedRenderTarget* waterSceneColorRT = nullptr;
     renderer::SizedRenderTarget* waterSceneDepthRT = nullptr;
+    /// @note Water Medium atlas and nearest visible water interface are view-owned graph targets.
+    renderer::SizedRenderTarget* waterMediumAtlasRT = nullptr;
+    renderer::SizedRenderTarget* waterInterfaceRT = nullptr;
+    /// @note PS t14. The atlas texture is bound at t15 by passes that consume water-medium data.
+    renderer::ResourceHandle<renderer::StructuredBufferTag> waterMediumTable;
+    uint32_t waterMediumBodyCount = 0;
+    uint32_t waterMediumTileResolution = 0;
+    /// @note The table row and atlas tile share this body order for one immutable RenderScene snapshot.
+    struct WaterMediumViewBody {
+        uint32_t waterInputIndex = 0;
+        uint32_t tileX = 0;
+        uint32_t tileY = 0;
+        math::Vector4 worldBoundsXZ{};
+    };
+    std::vector<WaterMediumViewBody> waterMediumBodies;
+    /// @note Owners omitted by view resource limits fail closed in color, selection, and interface passes.
+    std::vector<uint64_t> waterMediumDisabledOwnerKeys;
+    /// @note Owners assigned a reduced atlas tile are listed for per-owner quality diagnostics.
+    std::vector<uint64_t> waterMediumQualityLimitedOwnerKeys;
     /// @}
 
     /// @name パーティクル / コースティクスの作業 RT (ビュー単位)
@@ -1354,6 +1443,7 @@ struct RenderPassHandles {
     /// @note SSR (Screen Space Reflections)
     renderer::ResourceHandle<renderer::TextureTag>        ssrResult;       ///< @note SSR Compute 出力テクスチャ
     renderer::ResourceHandle<renderer::ShaderTag>         ssrShader;       ///< @note CS
+    renderer::ResourceHandle<renderer::ShaderTag>         ssrResolveShader;
     /// @note a=1 は重み付け済み鏡面間接光、a=2 はガラスの全放射輝度。a=0 は従来反射へ戻す。
     renderer::ResourceHandle<renderer::TextureTag>        rayReflectionResult;
 
@@ -1376,6 +1466,9 @@ struct RenderPassHandles {
     /// @note 再生成し、毎フレーム ping-pong で入れ替える。
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryA;     ///< @note ping-pong バッファ A
     renderer::ResourceHandle<renderer::RenderTargetTag>   taaHistoryB;     ///< @note ping-pong バッファ B
+    /// @note 各位相の未蓄積色と画素別の履歴有効長。既存の色・深度履歴と同じビュー寿命で保持する。
+    renderer::ResourceHandle<renderer::RenderTargetTag>   taaRawHistory[8]{};
+    renderer::ResourceHandle<renderer::ConstantBufferTag> taaCycleCB;
     renderer::ResourceHandle<renderer::ShaderTag>         taaShader;       ///< @note VS+PS
     renderer::ResourceHandle<renderer::PipelineStateTag>  taaPSO;
     /// @note A→B→A... の ping-pong フラグ。この構造体はフレームごとに作り直されるので、
@@ -1404,6 +1497,7 @@ struct RenderPassHandles {
     /// @{
     /// @note このフレームのライティングが引く SH ボリューム。[0] = 内側 (t22)、[1] = 外側 (t21)。無効ハンドルなら束縛しない。
     renderer::ResourceHandle<renderer::TextureTag>        lightProbeSH[2];
+    renderer::ResourceHandle<renderer::TextureTag>        lightProbeVisibility[2];
     /// @note 6 面を SH へ射影する CS と、その定数 (b0)。
     renderer::ResourceHandle<renderer::ShaderTag>         lightProbeProjectCS;
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightProbeProjectCB;

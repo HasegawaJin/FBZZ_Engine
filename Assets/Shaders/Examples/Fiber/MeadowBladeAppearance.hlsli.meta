@@ -1,0 +1,6 @@
+# @file    MeadowBladeAppearance.hlsli.meta
+# @brief   Asset identity and shared Fiber geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-21
+[meta]
+guid = 'c2782e9bb73f49c08c1be324519921de'

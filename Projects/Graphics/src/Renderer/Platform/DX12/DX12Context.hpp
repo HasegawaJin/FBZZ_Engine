@@ -5,6 +5,7 @@
 #pragma once
 
 #include <span>
+#include <memory>
 
 #include <array>
 #include <cstdint>
@@ -15,6 +16,9 @@
 #include "DX12PixEventStack.hpp"
 
 namespace fbzz::renderer {
+
+class IRenderer;
+class PreparedSkinningTicket;
 
 /// @note DX12Renderer と各 DX12 サブシステムが共有する GPU 実行コンテキスト。リソースごとに Device や
 /// @note Fence の所有権を持たせず、破棄順序と同期点を一箇所へ集約する。
@@ -35,9 +39,16 @@ public:
     uint64_t EndFrame();
     void Resize(uint32_t width, uint32_t height);
     void Flush();
+    /// @note 描画 list の fence 通過まで保持し、専用 compute fence の完了だけで output を再利用しない。
+    void RetainPreparedSkinning(std::shared_ptr<const PreparedSkinningTicket> ticket);
+    /// @note Context と同じ寿命の非所有 executor。native 資源の同期更新を描画スレッドへ橋渡しする。
+    void SetCpuExecutor(IRenderer* executor) { m_cpuExecutor = executor; }
+    [[nodiscard]] IRenderer* GetCpuExecutor() const { return m_cpuExecutor; }
 
     ID3D12Device* GetDevice() const { return m_device.Get(); }
     ID3D12CommandQueue* GetCommandQueue() const { return m_commandQueue.Get(); }
+    ID3D12CommandQueue* GetComputeCommandQueue() const { return m_computeQueue.Get(); }
+    ID3D12Fence* GetFrameRetirementFence() const { return m_fence.Get(); }
     ID3D12GraphicsCommandList* GetCommandList() const { return m_commandList.Get(); }
     /// @note GPU timestamp の区間が同一 DIRECT command list 内にあるか検証する Reset 世代。
     uint64_t GetGraphicsCommandListSerial() const { return m_graphicsCommandListSerial; }
@@ -111,7 +122,7 @@ public:
     /// @}
     bool CreateDefaultBuffer(const void* data, size_t sizeBytes,
                              Microsoft::WRL::ComPtr<ID3D12Resource>& buffer);
-    bool StageBufferCopy(ID3D12Resource* destination, const void* data, size_t sizeBytes);
+    bool StageBufferCopy(ID3D12Resource* destination, const void* data, size_t sizeBytes, size_t destinationOffset = 0);
     void DeferRelease(Microsoft::WRL::ComPtr<ID3D12Resource>& resource);
     uint32_t GetWidth() const { return m_width; }
     uint32_t GetHeight() const { return m_height; }
@@ -119,6 +130,7 @@ public:
     uint32_t GetSrvDescriptorIncrement() const { return m_srvIncrement; }
     bool IsFrameOpen() const { return m_frameOpen; }
     void SetRenderWhenOccluded(bool enabled) { m_renderWhenOccluded = enabled; }
+    void MarkBackBufferWritten() { m_backBufferWritten = true; }
 
     /// @note Present の垂直同期。既定は無効 (フレームレート制御は Time::targetFps)。
     /// @note 有効時は SyncInterval=1 にし、tearing フラグは落とす (併用は DXGI が拒否する)。
@@ -132,13 +144,27 @@ public:
     /// @note       は「直前に何を束縛したか」を覚えて冗長設定を弾くため、外部が状態を触ったらこの世代を
     /// @note       上げて知らせる契約にする (ルートシグネチャの再設定は全ルート引数を無効化するため、
     /// @note       黙って踏むと描画が壊れる)。
-    void MarkPipelineStateDirty() { ++m_pipelineStateGeneration; }
+    /// @note 外部記録は描画先を追跡できないため、バックバッファへの書き込みも保守的に扱う。
+    void MarkPipelineStateDirty() { ++m_pipelineStateGeneration; MarkBackBufferWritten(); }
     uint64_t GetPipelineStateGeneration() const { return m_pipelineStateGeneration; }
     uint64_t GetCompletedFenceValue() const { return m_fence ? m_fence->GetCompletedValue() : 0; }
     uint64_t GetFrameFenceValue(uint32_t index) const { return m_frames[index % FRAME_COUNT].fenceValue; }
     /// @note DXIL / DXR パス選択に使う実機 capability。シェーダーマクロだけで対応可否を決めない。
     D3D_SHADER_MODEL GetHighestShaderModel() const { return m_highestShaderModel; }
     D3D12_RAYTRACING_TIER GetRaytracingTier() const { return m_raytracingTier; }
+    /// @brief DXGI Options7 で取得した Mesh Shader Tier。
+    D3D12_MESH_SHADER_TIER GetMeshShaderTier() const { return m_meshShaderTier; }
+    /// @brief Mesh Shader pipeline と bindless geometry bindings を使えるか。
+    /// @note This renderer reads geometry through ResourceDescriptorHeap, which requires SM 6.6 and binding tier 3.
+    bool SupportsMeshShaders() const {
+        return m_meshShaderTier >= D3D12_MESH_SHADER_TIER_1
+            && m_highestShaderModel >= D3D_SHADER_MODEL_6_6
+            && m_resourceBindingTier >= D3D12_RESOURCE_BINDING_TIER_3;
+    }
+    /// @brief Indexed ExecuteIndirect command signature を作成できたか。
+    ID3D12CommandSignature* GetDrawIndexedCommandSignature() const { return m_drawIndexedCommandSignature.Get(); }
+    /// @brief Mesh ExecuteIndirect command signature を作成できたか。
+    ID3D12CommandSignature* GetDispatchMeshCommandSignature() const { return m_dispatchMeshCommandSignature.Get(); }
     bool SupportsRaytracingPipeline() const {
         return m_raytracingTier >= D3D12_RAYTRACING_TIER_1_0;
     }
@@ -186,7 +212,20 @@ public:
     uint32_t GetBindlessUsage() const { return m_bindlessNextSlot - static_cast<uint32_t>(m_bindlessFreeList.size()); }
     /// @}
 
+    /// @note 描画スレッド専用。CPU staging は共有ページへ置き、buffer ごとの native heap 生成を避ける。
+    /// @return 失敗時は INVALID_BINDLESS_INDEX。GPU の bindless 添字とは別の索引。
+    /// @see Docs/design/dx12-resource-descriptors.md
+    uint32_t AllocateCpuResourceDescriptor();
+    /// @note CPU staging は CopyDescriptorsSimple 完了後 GPU から参照されず、即時に再利用できる。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device-copydescriptorssimple Immediate descriptor copy.
+    void FreeCpuResourceDescriptor(uint32_t index);
+    D3D12_CPU_DESCRIPTOR_HANDLE GetCpuResourceDescriptor(uint32_t index) const;
+
 private:
+    static constexpr uint32_t CPU_RESOURCE_DESCRIPTOR_PAGE_SIZE = 4096;
+    std::vector<Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>> m_cpuResourceDescriptorPages;
+    std::vector<uint32_t> m_cpuResourceDescriptorFreeList;
+    uint32_t m_cpuResourceDescriptorNext = 0;
     static constexpr uint32_t IMGUI_DESCRIPTOR_CAPACITY = 4096;
     /// @note 永続 bindless レンジの枠数。1 テクスチャ = 1 枠で、シーン中の全テクスチャが同時に載る想定。
     /// @note 16384 の根拠: Stage_02 (最大シーン) の実測でテクスチャは 3 桁に収まる。Editor の
@@ -200,6 +239,7 @@ private:
     struct FrameResource {
         Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
         uint64_t fenceValue = 0;
+        std::vector<std::shared_ptr<const PreparedSkinningTicket>> preparedSkinning;
     };
 
     bool CreateFactoryAndDevice(HWND hwnd);
@@ -210,6 +250,9 @@ private:
     bool CreateCommandsAndFence();
     bool ApplyResize(uint32_t width, uint32_t height);
     void WaitForFence(uint64_t value);
+    /// @brief Wait for already submitted DIRECT work without completing the recording frame's retirement fence.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/user-mode-heap-synchronization Fences: one progress timeline per fence.
+    bool WaitForSynchronousQueue();
     void TransitionBackBuffer(D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after);
     void CollectDeferredReleases();
 
@@ -244,10 +287,13 @@ private:
 
     Microsoft::WRL::ComPtr<IDXGIFactory6> m_factory;
     Microsoft::WRL::ComPtr<ID3D12Device> m_device;
+    IRenderer* m_cpuExecutor = nullptr;
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_commandQueue;
     Microsoft::WRL::ComPtr<IDXGISwapChain3> m_swapChain;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_commandList;
     Microsoft::WRL::ComPtr<ID3D12Fence> m_fence;
+    /// @note Upload waits must not signal the fence value reserved by DeferRelease for an unsubmitted frame.
+    Microsoft::WRL::ComPtr<ID3D12Fence> m_synchronousFence;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_imguiSrvHeap;
@@ -256,7 +302,9 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> m_depthBuffer;
     std::array<FrameResource, FRAME_COUNT> m_frames;
     HANDLE m_fenceEvent = nullptr;
+    HANDLE m_synchronousFenceEvent = nullptr;
     uint64_t m_nextFenceValue = 1;
+    uint64_t m_nextSynchronousFenceValue = 1;
     uint32_t m_frameIndex = 0;
     uint32_t m_backBufferIndex = 0;
     uint32_t m_rtvIncrement = 0;
@@ -297,6 +345,7 @@ private:
     bool m_allowTearing = false;
     bool m_vsync = false;
     bool m_frameOpen = false;
+    bool m_backBufferWritten = false;
     DX12PixEventStack m_graphicsPixEvents;
     DX12PixEventStack m_computePixEvents;
     uint64_t m_graphicsCommandListSerial = 0;
@@ -310,6 +359,9 @@ private:
     D3D_SHADER_MODEL m_highestShaderModel = D3D_SHADER_MODEL_5_1;
     D3D12_RAYTRACING_TIER m_raytracingTier = D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
     D3D12_RESOURCE_BINDING_TIER m_resourceBindingTier = D3D12_RESOURCE_BINDING_TIER_1;
+    D3D12_MESH_SHADER_TIER m_meshShaderTier = D3D12_MESH_SHADER_TIER_NOT_SUPPORTED;
+    Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_drawIndexedCommandSignature;
+    Microsoft::WRL::ComPtr<ID3D12CommandSignature> m_dispatchMeshCommandSignature;
 };
 
 /// @note Uses context tokens rather than SDK RAII so split, failed Reset, and Shutdown retire safely.

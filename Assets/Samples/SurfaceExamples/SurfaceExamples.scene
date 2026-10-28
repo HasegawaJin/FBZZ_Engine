@@ -1,0 +1,196 @@
+# @file    SurfaceExamples.scene
+# @brief   Small project-authored Water, Grass and Hybrid Fur scene.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[scene]
+format_version = 2
+
+[environment]
+windEnabled = true
+windDirection = [1.0, 0.0, 0.25]
+windSpeed = 1.0
+windTurbulence = 0.15
+windPulseFrequency = 1.0
+[[gameobjects]]
+active = true
+instanceId = '9d9b5c99-1e19-41ee-8a3d-cebc503615aa'
+layer = 0
+name = 'SurfaceExamplesCamera'
+parent = ''
+parentInstanceId = ''
+tag = 'MainCamera'
+
+[gameobjects.transform]
+position = [0.0, 4.0, -9.0]
+rotation = [0.173648, 0.0, 0.0, 0.984808]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.CameraComponent]
+enabled = true
+isMain = true
+aspectRatio = 1.7777778
+backgroundColor = [0.025, 0.04, 0.06, 1.0]
+clearMode = 0
+fovY = 50.0
+nearZ = 0.1
+farZ = 60.0
+frustumCulling = true
+occlusionCulling = false
+[[gameobjects]]
+active = true
+instanceId = 'f4bbde76-2daf-42a7-ae02-bb19674503d0'
+layer = 0
+name = 'SurfaceExamplesSun'
+parent = ''
+parentInstanceId = ''
+tag = 'Untagged'
+
+[gameobjects.transform]
+position = [0.0, 4.0, 0.0]
+rotation = [0.382683, 0.0, 0.0, 0.923880]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.LightComponent]
+enabled = true
+type = 'Directional'
+color = [1.0, 0.95, 0.86]
+intensity = 2.0
+[[gameobjects]]
+active = true
+instanceId = '28901c0b-42c3-49ab-aee7-607398342212'
+layer = 0
+name = '01_CustomWater'
+parent = ''
+parentInstanceId = ''
+tag = 'Untagged'
+
+[gameobjects.transform]
+position = [-3.0, 0.0, 1.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+
+[gameobjects.WaterComponent]
+enabled = true
+extentX = 2.5
+extentZ = 3.0
+resolutionX = 24
+resolutionZ = 24
+chunkCount = 1
+adaptivePatchLod = true
+lodMaxPatches = 16
+lodMaxDepth = 4
+lodPatchResolution = 8
+lodNearCellSize = 0.25
+lodTargetPixels = 10.0
+lodMorphEnabled = true
+lodMorphTransitionWidth = 0.25
+farOceanEnabled = false
+cameraFocusedGrid = false
+enableGerstnerWaves = true
+waveAmplitudeScale = 1.0
+buoyancyEnabled = true
+splashEnabled = false
+materialPath = 'guid:768942cb26074999bd78718850ca4c33|Assets/Materials/Samples/SurfaceExamples/CustomWater.mat'
+
+[gameobjects.WaterComponent.interactionSettings]
+enabled = false
+bubblesEnabled = false
+sedimentEnabled = false
+bubbleMaterialPath = ''
+sedimentMaterialPath = ''
+[[gameobjects]]
+active = true
+instanceId = 'e3ad845a-a467-4f35-9139-ecef47b1b355'
+layer = 0
+name = 'WaterBottom'
+parent = ''
+parentInstanceId = ''
+tag = 'Untagged'
+
+[gameobjects.transform]
+position = [-3.0, -0.65, 1.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [2.5, 0.1, 3.0]
+
+[gameobjects.MeshRenderer]
+enabled = true
+castShadows = true
+mesh = 'primitive:cube'
+
+[gameobjects.MaterialComponent]
+enabled = true
+material = 'guid:25b2f0a66c604b23925727eb9031d8fa|Assets/Materials/Samples/SurfaceExamples/BaseSurface.mat'
+[[gameobjects]]
+active = true
+instanceId = 'd35360be-6b58-4039-803a-ddec0dcef3b0'
+layer = 0
+name = '02_GrassBlade'
+parent = ''
+parentInstanceId = ''
+tag = 'Untagged'
+
+[gameobjects.transform]
+position = [0.0, 0.0, 1.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [2.0, 1.0, 3.0]
+
+[gameobjects.MeshRenderer]
+enabled = true
+castShadows = true
+mesh = 'primitive:plane'
+
+[gameobjects.MaterialComponent]
+enabled = true
+material = 'guid:25b2f0a66c604b23925727eb9031d8fa|Assets/Materials/Samples/SurfaceExamples/BaseSurface.mat'
+
+[gameobjects.FiberComponent]
+enabled = true
+mode = 3
+materialPath = 'guid:b2f65b4a9a3448b8987f131485f3ea30|Assets/Materials/Samples/SurfaceExamples/GrassBlade.mat'
+chunkedPlacement = true
+chunkSize = 1.0
+maxSlope = 55.0
+maxBlades = 2000
+bladeDensity = 80.0
+bladeWidth = 0.025
+bladeSegments = 3
+shadowBladeSegments = 0
+seed = 17
+distanceLod = true
+lodNear = 10.0
+lodFar = 30.0
+flowChannels = 0
+[[gameobjects]]
+active = true
+instanceId = '34adc166-449e-4dd8-b22d-49240045f458'
+layer = 0
+name = '03_SoftFurHybrid'
+parent = ''
+parentInstanceId = ''
+tag = 'Untagged'
+
+[gameobjects.transform]
+position = [3.0, 0.6, 1.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.2, 1.2, 1.2]
+
+[gameobjects.MeshRenderer]
+enabled = true
+castShadows = true
+mesh = 'primitive:sphere'
+
+[gameobjects.MaterialComponent]
+enabled = true
+material = 'guid:25b2f0a66c604b23925727eb9031d8fa|Assets/Materials/Samples/SurfaceExamples/BaseSurface.mat'
+
+[gameobjects.FiberComponent]
+enabled = true
+mode = 2
+materialPath = 'guid:13040c7a29504f3581b36ef7ac94f437|Assets/Materials/Samples/SurfaceExamples/SoftFur.mat'
+shellCount = 12
+minShellCount = 6
+shadowShellCount = 4
+distanceLod = true
+lodNear = 10.0
+lodFar = 30.0
+flowChannels = 0

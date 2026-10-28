@@ -19,8 +19,11 @@ public:
     uint64_t GetCacheIdentity() const { return m_cacheIdentity; }
     const std::string& GetPath() const override { return m_path; }
     const ShaderDescriptor& GetDescriptor() const override { return m_descriptor; }
+    bool IsMeshShader() const override { return !m_meshBlob.empty(); }
     D3D12_SHADER_BYTECODE GetVertexBytecode() const;
     D3D12_SHADER_BYTECODE GetPixelBytecode() const;
+    /// @brief .ms.hlsl の MSMain から作成した DXIL bytecode。
+    D3D12_SHADER_BYTECODE GetMeshBytecode() const;
     D3D12_SHADER_BYTECODE GetComputeBytecode() const;
     bool IsCompute() const { return !m_computeBlob.empty(); }
     const std::vector<D3D12_INPUT_ELEMENT_DESC>& GetInputLayout() const { return m_inputElements; }
@@ -39,6 +42,7 @@ private:
     std::string m_path;
     ShaderDescriptor m_descriptor;
     std::vector<uint8_t> m_vertexBlob;
+    std::vector<uint8_t> m_meshBlob;
     std::vector<uint8_t> m_pixelBlob;
     std::vector<uint8_t> m_computeBlob;
     std::vector<std::string> m_semanticNames;

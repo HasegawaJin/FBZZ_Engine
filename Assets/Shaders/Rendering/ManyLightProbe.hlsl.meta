@@ -1,0 +1,13 @@
+# @file    ManyLightProbe.hlsl.meta
+# @brief   大量ライトの実GPU検査shader識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-09
+[meta]
+guid = "cb7b81e4d09a4c6f9e41c63058dbf3cd"
+[shader]
+version = 1
+vertex = "custom"
+surface = "custom"
+opacity = "custom"
+variants = "none"
+preview = "none"

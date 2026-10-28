@@ -1,0 +1,6 @@
+# @file    UIDepthCopy.hlsl.meta
+# @brief   Scene-depth copy shader identity.
+# @author  Hasegawa Jin
+# @date    2026-10-27
+[meta]
+guid = 'e163d9959c5644a0a81fc395a0a31027'

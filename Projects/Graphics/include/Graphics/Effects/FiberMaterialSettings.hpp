@@ -22,7 +22,8 @@ struct FiberMaterialSettings {
     float m_specular = 0.25f;
     float m_transmission = 0.0f;
     float m_rootOcclusion = 0.65f;
-    float m_grass = 0.0f;
+    /// @note 0 は繊維の異方性照明、1 は平面の Lambert 照明と裏面透過。用途ではなく照明モデルを選ぶ。
+    float m_planarShading = 0.0f;
     float m_worldMapping = 0.0f;
     float m_finWidth = 0.35f;
     /// @note 以下の毛皮の質感は既定 0 (無効)。Inspector が欠けたキーを 0 で埋めるのと揃える。

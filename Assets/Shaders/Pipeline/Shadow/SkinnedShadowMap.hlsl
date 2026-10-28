@@ -1,9 +1,11 @@
-// FBZZ Engine
-// Pipeline/Shadow/SkinnedShadowMap.hlsl | Pipeline
-// Depth-only shadow map pass for GPU-skinned meshes
+/// @file    SkinnedShadowMap.hlsl
+/// @brief   SkinnedShadowMap.hlsl の既存描画と共通頂点契約。
+/// @author  Hasegawa Jin
+/// @date    2026-06-23
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
+#include "Common/Skinning.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/LodDither.hlsli"
 
@@ -12,13 +14,7 @@ struct SMPSInput
     float4 svPosition : SV_POSITION;
 };
 
-float4x4 BlendSkinMatrix(SkinnedVSInput v)
-{
-    return boneMatrices[v.boneIndices.x] * v.boneWeights.x
-         + boneMatrices[v.boneIndices.y] * v.boneWeights.y
-         + boneMatrices[v.boneIndices.z] * v.boneWeights.z
-         + boneMatrices[v.boneIndices.w] * v.boneWeights.w;
-}
+
 
 SMPSInput VSMain(SkinnedVSInput v)
 {

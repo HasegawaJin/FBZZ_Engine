@@ -1,0 +1,16 @@
+{
+  "name": "SurfaceExamples",
+  "scene": "Assets/Samples/SurfaceExamples/SurfaceExamples.scene",
+  "lockstep": 0.016666666666666666,
+  "steps": [
+    {"do":"assert","query":{"t":"scene.validate"},"path":"valid","op":"==","value":true},
+    {"do":"assert","query":{"t":"scene.find","comp":"WaterComponent"},"path":"count","op":"==","value":1},
+    {"do":"assert","query":{"t":"scene.find","comp":"FiberComponent"},"path":"count","op":"==","value":2},
+    {"do":"play"},
+    {"do":"frames","count":60},
+    {"do":"capture","view":"game","name":"SurfaceExamples_Time1"},
+    {"do":"frames","count":120},
+    {"do":"capture","view":"game","name":"SurfaceExamples_Time3"},
+    {"do":"stop"}
+  ]
+}

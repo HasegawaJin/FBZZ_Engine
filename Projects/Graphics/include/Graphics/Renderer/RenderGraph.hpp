@@ -246,7 +246,16 @@ public:
 
     /// @note 外部で計算済みの ExecutionReport を注入して次回 Execute() の Plan() をスキップさせる。
     /// @note profiles は Execute() が毎回書き直すためここでクリアする。
-    void InjectPlan(ExecutionReport rep)
+    void InjectPlan(const ExecutionReport& rep)
+    {
+        m_report.executionOrder = rep.executionOrder;
+        m_report.culledPasses = rep.culledPasses;
+        m_report.lifetimes = rep.lifetimes;
+        m_report.profiles.clear();
+    }
+
+    /// @note 呼出し元が使わない plan の所有を受け取り、毎回の配列・文字列コピーを避ける。
+    void InjectPlan(ExecutionReport&& rep)
     {
         rep.profiles.clear();
         m_report = std::move(rep);
@@ -295,6 +304,12 @@ public:
     [[nodiscard]] const ExecutionReport& GetLastReport() const
     {
         return m_report;
+    }
+
+    /// @note plan と今回の計測値の所有を呼出し元へ移し、グラフ側の report を空にする。
+    [[nodiscard]] ExecutionReport TakeLastReport()
+    {
+        return std::exchange(m_report, ExecutionReport{});
     }
 
     void SetProfilerHooks(std::function<void(std::string_view)> begin,

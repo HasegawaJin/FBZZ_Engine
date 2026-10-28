@@ -27,6 +27,9 @@ inline constexpr uint32_t kBindlessIndicesRegister = 14;
 /// @note       ResourceDescriptorHeap から直接引くようになったので撤去してある。
 inline constexpr uint32_t kBindlessIndicesRootParam = 14;
 
+/// @note Root signature parameter 15 maps to the one-DWORD shader constant at b15 and ExecuteIndirect CONSTANT writes.
+inline constexpr uint32_t kIndirectInstanceOffsetRootParam = 15;
+
 /// @note ピクセル/コンピュート側の SRV 添字の本数。旧ピクセル SRV テーブル (t0〜t31) と同じ幅。
 inline constexpr uint32_t kBindlessPixelSlotCount = 32;
 
@@ -44,7 +47,7 @@ inline constexpr uint32_t kBindlessUavSlotCount = 8;
 struct BindlessIndicesConstants {
     /// @note 旧 DrawCall::textures[0..31] と psBuffers (t29/t30) に対応する添字。
     std::array<uint32_t, kBindlessPixelSlotCount>  pixel{};
-    /// @note [0] = instanceBuffer、[1] = vsBuffers[0]、[2] = vsBuffers[1]、[3] = 予約。
+    /// @note [0] = instanceBuffer、[1..2] = vsBuffers または vsRawBuffers、[3] = 予約。
     /// @note 頂点側を別配列にするのは、旧モデルで VS の t0 と PS の t0 が別テーブルを
     /// @note       指していたため。bindless の添字空間は平坦なので、ここで分けないと
     /// @note       instanceBuffer と Albedo が同じ枠を奪い合う。

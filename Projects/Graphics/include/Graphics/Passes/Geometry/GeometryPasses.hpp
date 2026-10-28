@@ -19,6 +19,10 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx);
 void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx);
 void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx);
 void ExecuteSkinningRequests(RenderPassContext& ctx);
+/// @return Invalid when batching is disabled or the backend/program cannot consume bindless output rows.
+ResourceHandle<ShaderTag> ResolveSkinningBatchShader(RenderPassContext& ctx);
+/// @note Called after outstanding frame packets finish, before scene skinning caches are discarded.
+void ReleaseSkinningRequestCaches(ResourceManager& resources);
 class SkinningComputePass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "SkinningCompute"; }
@@ -52,6 +56,18 @@ inline void ClearForCamera(renderer::IRenderer& renderer, const renderer::Camera
 inline void BindForwardShadingResources(renderer::DrawCall& drawCall, const RenderPassContext& ctx,
                                         bool forceLinearLights = false)
 {
+    const auto mediumAtlas = ctx.waterMediumPassActive && ctx.handles.waterMediumAtlasRT
+        && ctx.handles.waterMediumAtlasRT->IsValid()
+        ? ctx.resources.GetColorTexture(*ctx.handles.waterMediumAtlasRT, 0)
+        : renderer::ResourceHandle<renderer::TextureTag>{};
+    if (ctx.waterMediumPassActive && ctx.handles.waterMediumTable.IsValid() && mediumAtlas.IsValid()) {
+        drawCall.auxiliaryPsBuffers[0] = ctx.handles.waterMediumTable;
+        drawCall.textures[15] = mediumAtlas;
+    } else {
+        drawCall.auxiliaryPsBuffers[0] = {};
+        drawCall.textures[15] = {};
+    }
+
     /// @note t23 / t24: 画面空間 AO と接触影。Deferred は DeferredLighting が全画面でまとめて適用できるが Forward には合流点が無いため、各マテリアルが自分の画素で引く。
     /// @note Deferred の中の Forward 描画 (半透明・エフェクト・スキンド) は DeferredLighting を通らないためここでも同じ遮蔽が要る。DeferredLighting 本体は自前で t9/t24 を宣言し共有ヘッダーをコンパイル時に外しているため二重適用にはならない。
     if (ctx.screenAoTexture.IsValid())
@@ -63,6 +79,7 @@ inline void BindForwardShadingResources(renderer::DrawCall& drawCall, const Rend
         drawCall.textures[22] = ctx.handles.lightProbeSH[0];
     if (ctx.handles.lightProbeSH[1].IsValid())
         drawCall.textures[21] = ctx.handles.lightProbeSH[1];
+    drawCall.indirectReadTextures = { ctx.handles.lightProbeVisibility[0], ctx.handles.lightProbeVisibility[1] };
 
     if (ctx.handles.punctualShadowCB.IsValid()) {
         /// @note b12
@@ -87,7 +104,7 @@ inline void BindForwardShadingResources(renderer::DrawCall& drawCall, const Rend
 
     drawCall.constantBuffers[9] = ctx.handles.clusterCB;
     drawCall.psBuffers[0]       = ctx.handles.punctualLightBuffer;
-    if (ctx.clusterLightMode == ClusterLightMode::Clustered)
+    if (UsesClusterLightIndices(ctx.clusterLightMode))
         drawCall.psBuffers[1]   = ctx.handles.clusterIndexBuffer;
 }
 

@@ -193,7 +193,7 @@ std::vector<size_t> RenderPipeline::CollectEnabledSetups(RenderPassContext& ctx)
         setup.allowCulling = true;
     }
     for (const size_t i : enabled) {
-        PassBuilder builder;
+        PassBuilder builder(std::move(m_setups[i].accesses), std::move(m_setups[i].autoTarget));
         m_entries[i]->Setup(builder, ctx);
         PassSetup& setup = m_setups[i];
         builder.MoveOut(setup.accesses, setup.autoTarget);
@@ -359,7 +359,7 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
         if (topologyChanged) {
             if (!graph.Plan()) {
                 m_planValid = false;
-                m_lastReport = graph.GetLastReport();
+                m_lastReport = graph.TakeLastReport();
                 /// @note どのパスが有効か・カリングされたかを出力して依存関係の問題を特定する
                 FBZZ_LOG_ERROR("RenderGraph::Plan() failed — dependency cycle or missing resource writer.");
                 for (size_t i : enabledNow) {
@@ -382,7 +382,7 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
         }
     }
 
-    bool gpuViewOpened = false;
+    bool gpuViewAccepted = false;
     if (gpuView && gpuPlan) {
         if (topologyChanged || !m_gpuProfileRenderPlanValid || m_gpuProfileRenderPlan != *gpuPlan) {
             ++m_gpuProfilePlanGeneration;
@@ -391,10 +391,10 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
         }
         m_lastGpuProfilerView = *gpuView;
         m_lastGpuProfilerView.planGeneration = m_gpuProfilePlanGeneration;
-        gpuViewOpened = ctx.renderer.GpuProfBeginView(m_lastGpuProfilerView);
+        gpuViewAccepted = ctx.renderer.GpuProfRecordView(m_lastGpuProfilerView);
     }
-    /// @note BeginView 失敗時に他ビューの計測へ混入させない。GPU 非依存の既存 hook 利用は維持する。
-    if (!gpuView || gpuViewOpened)
+    /// @note 受付後の native 開始失敗は executor がパス計測だけを抑止し、他ビューへの混入を防ぐ。
+    if (!gpuView || gpuViewAccepted)
         graph.SetGpuProfilerHooks(m_gpuBegin, m_gpuEnd);
 
     if (capture) {
@@ -407,9 +407,9 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
         FBZZ_PROFILE_SCOPE("RenderPipeline::GraphExecute");
         ok = graph.Execute();
     }
-    if (gpuViewOpened)
-        ctx.renderer.GpuProfEndView();
-    m_lastReport = graph.GetLastReport();
+    if (gpuViewAccepted)
+        ctx.renderer.GpuProfEndRecordedView();
+    m_lastReport = graph.TakeLastReport();
 
     return ok;
 }

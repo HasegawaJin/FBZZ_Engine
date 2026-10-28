@@ -8,6 +8,8 @@
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Renderer/ComputeCall.hpp>
+#include <Graphics/Renderer/DrawCall.hpp>
+#include <algorithm>
 
 namespace fbzz::renderer {
 
@@ -54,6 +56,20 @@ void ExecuteSSRPass(RenderPassContext& ctx)
     if (ctx.hybridReflectionResolveActive) {
         ssrDC.srvInputs[22] = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 2);
         if (!resources.Get(ssrDC.srvInputs[22])) return;
+    } else {
+        ssrDC.srvInputs[16] = h.iblIrradiance;
+        ssrDC.srvInputs[17] = h.iblPrefilter;
+        ssrDC.srvInputs[18] = h.iblBrdfLut;
+        ssrDC.srvInputs[21] = h.lightProbeSH[1];
+        ssrDC.srvInputs[22] = h.lightProbeSH[0];
+        for (const auto texture : h.lightProbeVisibility)
+            if (texture.IsValid()) ssrDC.indirectReadTextures.push_back(texture);
+        /// @note 水中の環境鏡面を差し引くときも、本描画と同じ媒質と光路を評価する。
+        if (ctx.waterMediumPassActive && h.waterMediumTable.IsValid() && h.waterMediumAtlasRT
+            && h.waterMediumAtlasRT->IsValid()) {
+            ssrDC.srvBuffers[14] = h.waterMediumTable;
+            ssrDC.srvInputs[15] = resources.GetColorTexture(*h.waterMediumAtlasRT, 0);
+        }
     }
     for (const uint32_t slot : {0u, 5u, 6u, 7u, 25u})
         if (!resources.Get(ssrDC.srvInputs[slot])) return;
@@ -78,9 +94,9 @@ std::string_view SSRPass::Name() const { return "SSR"; }
 void SSRPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     builder.Read("GBuffer").Write("SSRResult");
-    /// @note Hybrid は source を変更しない。旧 Raster の順序依存だけ ReadWrite 宣言で維持する。
-    if (ctx.hybridReflectionResolveActive) builder.Read("HDR");
-    else builder.ReadWrite("HDR");
+    builder.Read("HDR");
+    if (!ctx.hybridReflectionResolveActive && ctx.waterMediumPassActive)
+        builder.Read("WaterMediumAtlas");
 }
 
 bool SSRPass::IsEnabled(const RenderPassContext& ctx) const
@@ -92,6 +108,31 @@ bool SSRPass::IsEnabled(const RenderPassContext& ctx) const
 void SSRPass::Execute(PassResources&, RenderPassContext& ctx)
 {
     ExecuteSSRPass(ctx);
+}
+
+std::string_view SSRResolvePass::Name() const { return "SSRResolve"; }
+void SSRResolvePass::Setup(PassBuilder& builder, const RenderPassContext&) const
+{
+    builder.Read("SSRResult").ReadWrite("HDR");
+}
+bool SSRResolvePass::IsEnabled(const RenderPassContext& ctx) const
+{
+    return ctx.settings.ssr.enabled && !ctx.hybridReflectionResolveActive
+        && !std::any_of(ctx.settings.passOverrides.begin(), ctx.settings.passOverrides.end(),
+            [](const RenderPassOverride& override) { return override.name == "SSR" && !override.enabled; });
+}
+void SSRResolvePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    auto& h = ctx.handles;
+    if (!ctx.ssrPassActive || !ctx.resources.Get(h.ssrResolveShader) || !ctx.resources.Get(h.causticsPSO)) return;
+    ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
+    DrawCall draw;
+    draw.shader = h.ssrResolveShader;
+    draw.pipelineState = h.causticsPSO;
+    draw.vertexCount = 3;
+    draw.constantBuffers[8] = h.advancedGraphicsCB;
+    draw.textures[19] = h.ssrResult;
+    ctx.renderer.Submit(draw, ctx.resources);
 }
 
 } /// @note namespace fbzz::renderer

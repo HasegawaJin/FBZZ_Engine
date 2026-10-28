@@ -16,7 +16,7 @@ void ExecuteClusterLightCullPass(RenderPassContext& ctx)
     auto& h         = ctx.handles;
 
     /// @note Clustered モード以外 (Legacy / Linear) ではリストを作る必要がない。Linear (全ライト線形評価の検証モード) もクラスタリストを引かないため対象外。
-    if (ctx.clusterLightMode != ClusterLightMode::Clustered)
+    if (!UsesClusterLightIndices(ctx.clusterLightMode))
         return;
     if (!h.clusterCullCS.IsValid()
         || !h.punctualLightBuffer.IsValid()

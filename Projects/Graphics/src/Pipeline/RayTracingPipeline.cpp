@@ -131,7 +131,7 @@ bool PrepareRayReflectionView(RenderPassContext& context, RenderViewResources& v
         const auto& key = state.scene.geometries[instance.geometryIndex].key;
         const auto& item = context.renderScene->items[instance.sourceItem];
         if (key.vertexStride != sizeof(Vertex) || key.positionOffset != offsetof(Vertex, position)
-            || context.renderScene->objects[item.objectIndex].rayLodSelectionRequired)
+            || context.renderScene->Objects()[item.objectIndex].rayLodSelectionRequired)
             view.rayReflectionCovered = false;
     }
     /// @note Glass-free scenes retain authored instance culling and their existing unsupported-backface fallback.
@@ -312,6 +312,10 @@ void BuildRayReflectionPipeline(RenderPipeline& pipeline, RenderViewResources& v
         declareLightingTexture("RayReflectionLightProbe" + std::to_string(slot),
             state.diffuseIndirectEnabled && view.advancedGraphicsSnapshot.probeVolumes[slot].intensity > 0
                 ? context.handles.lightProbeSH[slot] : ResourceHandle<TextureTag>{});
+    for (size_t slot = 0; slot < 2; ++slot)
+        declareLightingTexture("RayReflectionProbeVisibility" + std::to_string(slot),
+            state.diffuseIndirectEnabled && view.advancedGraphicsSnapshot.probeVolumes[slot].intensity > 0
+                ? context.handles.lightProbeVisibility[slot] : ResourceHandle<TextureTag>{});
     imported.byteSize = state.pathScene.emitters.size() * sizeof(RayPathEmitterRecord);
     imported.stride = sizeof(RayPathEmitterRecord);
     pipeline.DeclareStructuredBuffer("RayReflectionEmitters", state.emitters, imported);

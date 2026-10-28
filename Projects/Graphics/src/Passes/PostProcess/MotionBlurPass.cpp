@@ -41,7 +41,7 @@ void ExecuteMotionBlurPass(RenderPassContext& ctx)
     mbDC.srvInputs[7]       = resources.GetDepthTexture(ctx.Res().Target("HDR"));
     /// @note t26: モーションベクター。VelocityPass が動かなかったフレームは無効ハンドルのままで、
     /// @note シェーダーは B=0 を読んで深度再投影へフォールバックする。
-    if (ctx.Res().Target("Velocity").IsValid())
+    if (ctx.velocityWritten && ctx.Res().Target("Velocity").IsValid())
         mbDC.srvInputs[26]  = resources.GetColorTexture(ctx.Res().Target("Velocity"), 0);
     /// @note u5: UAV_MOTION_BLUR
     mbDC.uavOutputs[5]      = h.motionBlurResult;

@@ -14,16 +14,21 @@
 #include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/ITexture.hpp>
 #include <Core/ILogSink.hpp>
+#include <Core/Memory/AllocationInfo.hpp>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <objbase.h>
 #pragma comment(lib, "ole32.lib")
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cmath>
 #include <filesystem>
 #include <limits>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace fbzz::tests {
@@ -586,7 +591,17 @@ TEST_F(RayTracingTest, FailedTlasRebuildDoesNotRetireReusedImmutableTablesOrPubl
     const auto first = cache.Prepare(scene, context);
     ASSERT_TRUE(first.ready);
     scene.instances[0].world.m[0][3] = 1;
-    const auto liveCount = resources.GetLiveDebugResourceCount();
+    const auto collectLiveResources = [&]() {
+        std::vector<core::AllocationInfo> live;
+        resources.CollectLiveDebugResources(live);
+        std::unordered_map<const void*, std::pair<std::string, std::uint64_t>> identities;
+        for (const auto& allocation : live)
+            identities.emplace(allocation.pointer,
+                std::pair<std::string, std::uint64_t>{allocation.allocatorName, allocation.allocationId});
+        return identities;
+    };
+    /// @note Allocation identities also detect a leaked candidate masked by retiring an unrelated resource or reusing its address.
+    const auto liveBefore = collectLiveResources();
     /// @note A rejected DIRECT build retires only its new TLAS and changed table; the reused counterpart and prior entry remain live but are not published as current.
     for (const bool changeHit : {false, true}) {
         SCOPED_TRACE(changeHit);
@@ -597,7 +612,7 @@ TEST_F(RayTracingTest, FailedTlasRebuildDoesNotRetireReusedImmutableTablesOrPubl
         device.EndComputeBatch();
         EXPECT_FALSE(failed.ready);
         EXPECT_FALSE(failed.topLevel || failed.hitRecords || failed.surfaceMaterials);
-        EXPECT_EQ(resources.GetLiveDebugResourceCount(), liveCount);
+        EXPECT_EQ(collectLiveResources(), liveBefore);
         EXPECT_NE(resources.Get(first.topLevel), nullptr);
         EXPECT_NE(resources.Get(first.hitRecords), nullptr);
         EXPECT_NE(resources.Get(first.surfaceMaterials), nullptr);

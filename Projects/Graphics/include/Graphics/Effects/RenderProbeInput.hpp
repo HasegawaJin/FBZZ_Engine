@@ -29,7 +29,7 @@ struct RenderLightProbeInput {
     math::Vector3 boxMin, boxSize;
     std::array<int, 3> runtimeGrid{};
     std::array<ResourceHandle<RenderTargetTag>, 6> runtimeFaces{}, runtimeFacing{};
-    ResourceHandle<TextureTag> runtimeRawVolume, runtimeVolume;
+    ResourceHandle<TextureTag> runtimeRawVolume, runtimeVolume, runtimeVisibility;
     int runtimeFaceSize = 0;
     bool rejectInsideGeometry = false;
     float deringing = 0;

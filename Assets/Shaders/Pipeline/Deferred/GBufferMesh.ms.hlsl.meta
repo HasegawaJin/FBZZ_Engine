@@ -1,0 +1,6 @@
+# @file    GBufferMesh.ms.hlsl.meta
+# @brief   静的meshlet GBufferシェーダーのアセット識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = '77b63e6649464a7a814fb20eb0935fd7'

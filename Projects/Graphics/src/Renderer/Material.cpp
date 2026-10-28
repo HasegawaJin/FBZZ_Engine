@@ -5,6 +5,7 @@
 #include "Graphics/Renderer/Material.hpp"
 #include "Graphics/Renderer/ResourceManager.hpp"
 #include "Graphics/Renderer/IConstantBuffer.hpp"
+#include "MaterialTransferPayload.hpp"
 #include <cstring>
 #include <utility>
 
@@ -24,6 +25,69 @@ void ReleaseParamsBuffer(ResourceHandle<ConstantBufferTag>& buffer)
 }
 
 } /// @note namespace
+
+namespace material_transfer_detail {
+namespace {
+thread_local MaterialTransferPayloadScope* s_currentMaterialTransfer = nullptr;
+
+uint64_t PayloadHash(std::span<const uint8_t> bytes)
+{
+    uint64_t hash = 14695981039346656037ull;
+    for (const uint8_t value : bytes) hash = (hash ^ value) * 1099511628211ull;
+    return hash;
+}
+
+/// @note Hash, comparison, allocation and entry publication are one reentry-protected interval.
+class MaterialTransferBusyScope final {
+public:
+    explicit MaterialTransferBusyScope(bool& busy) : m_busy(busy) { m_busy = true; }
+    ~MaterialTransferBusyScope() { m_busy = false; }
+private:
+    bool& m_busy;
+};
+} /// @note namespace
+
+MaterialTransferPayloadScope::MaterialTransferPayloadScope(ResourceManager& resources) noexcept
+    : m_previous(s_currentMaterialTransfer), m_resources(&resources), m_facade(&resources.m_renderer)
+    , m_resourceInstance(resources.GetInstanceId())
+{
+    if (m_previous) m_depth = m_previous->m_depth < MAX_DEPTH
+        ? static_cast<uint8_t>(m_previous->m_depth + 1) : static_cast<uint8_t>(MAX_DEPTH + 1);
+    m_eligible = m_depth <= MAX_DEPTH && IsRegisteredOwnedTransferProducer(*m_facade);
+    s_currentMaterialTransfer = this;
+}
+
+MaterialTransferPayloadScope::~MaterialTransferPayloadScope()
+{
+    s_currentMaterialTransfer = m_previous;
+}
+
+std::shared_ptr<const OwnedConstantBufferData> MaterialTransferPayloadScope::CopyOrReuse(
+    ResourceManager& resources, std::span<const uint8_t> bytes)
+{
+    auto* scope = s_currentMaterialTransfer;
+    if (!scope || !scope->m_eligible || scope->m_busy || scope->m_resources != &resources
+        || scope->m_resourceInstance != resources.GetInstanceId()
+        || !resources.IsMaterialTransferProducer(scope->m_facade)
+        || bytes.empty() || bytes.size() > MAX_PAYLOAD_BYTES) return {};
+    const MaterialTransferBusyScope busy(scope->m_busy);
+    const uint64_t hash = PayloadHash(bytes);
+    for (size_t i = 0; i < scope->m_count; ++i) {
+        const auto& entry = scope->m_entries[i];
+        const auto stored = entry.payload->Bytes();
+        if (entry.hash == hash && stored.size() == bytes.size()
+            && std::memcmp(stored.data(), bytes.data(), bytes.size()) == 0) return entry.payload;
+    }
+    if (scope->m_count == MAX_ENTRIES || bytes.size() > MAX_SCOPE_BYTES - scope->m_ownedBytes) return {};
+    auto payload = std::make_shared<const OwnedConstantBufferData>(bytes);
+    /// @note Hash the owned copy itself; no raw input or entry reference leaves the helper.
+    scope->m_entries[scope->m_count] = {PayloadHash(payload->Bytes()), payload};
+    ++scope->m_count;
+    scope->m_ownedBytes += payload->Bytes().size();
+    return payload;
+}
+
+} /// @note namespace material_transfer_detail
 
 SurfaceMaterialData Material::ResolveRaySurface(const std::array<uint8_t, 96>& canonicalParams,
     bool standardPbr, uint32_t declaredTextureMask, bool unresolvedTexture, bool advancedLobes,
@@ -139,8 +203,11 @@ void Material::Upload(ResourceManager& resources, const ShaderDescriptor& desc, 
         std::memcpy(paramData.data() + bind.constantOffset, &index, sizeof(uint32_t));
     }
 
-    resources.Update(paramsBuffer, paramData.data(),
-                     static_cast<uint32_t>(paramData.size()));
+    if (auto payload = material_transfer_detail::MaterialTransferPayloadScope::CopyOrReuse(resources, paramData))
+        resources.UpdateOwnedMaterialBytes(paramsBuffer, std::move(payload));
+    else
+        resources.Update(paramsBuffer, paramData.data(),
+                         static_cast<uint32_t>(paramData.size()));
 }
 
 } /// @note namespace fbzz::renderer

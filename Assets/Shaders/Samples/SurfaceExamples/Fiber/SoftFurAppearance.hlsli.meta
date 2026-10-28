@@ -1,0 +1,6 @@
+# @file    SoftFurAppearance.hlsli.meta
+# @brief   Sample asset identity and explicit shared geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = 'b835d4e4aac345629c6423333d9b33ba'

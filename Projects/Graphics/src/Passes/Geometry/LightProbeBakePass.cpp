@@ -27,7 +27,7 @@ struct LightProbeProjectCB {
     float         deringing;
     uint32_t      hasFacing;
     float         backfaceLimit;
-    float         _pad;
+    float         visibilityFar;
 };
 static_assert(sizeof(LightProbeProjectCB) == kLightProbeProjectCBSize,
               "LightProbeProjectCB must match LightProbeProjectConstants (448 bytes)");
@@ -95,17 +95,19 @@ void CollectCaptureItems(RenderPassContext& ctx, const RenderLightProbeInput& vo
 {
     items.clear();
     const auto& input = SceneInput(ctx);
-    for (const auto& object : input.objects) {
+    for (const auto& object : input.Objects()) {
         if (object.skinned || !object.colorEligible || !MatchesView(ctx, object) ||
             (object.sourceIndex == volume.sourceIndex && object.sourceGeneration == volume.sourceGeneration)) continue;
-        const auto& item = input.items[object.firstItem];
-        const auto& material = item.material;
-        if (!HasColorGeometry(item) || !material.valid || !material.shader.IsValid() ||
-            material.capabilities.blend != renderer::BlendMode::OPAQUE_BLEND) continue;
         if (object.boundsRadius > 0.0f && !frustum.IntersectsSphere(object.boundsCenter, object.boundsRadius)) continue;
-        items.push_back({ &object, &item, &material,
-            GetOrCreateMaterialPSO(ctx.resources, material.capabilities.blend,
-                material.doubleSided, material.depthBias, material.depthBiasSlope, false) });
+        for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
+            const auto& item = input.items[i];
+            const auto& material = item.material;
+            if (!item.slotVisible || !HasColorGeometry(item) || !material.valid || !material.shader.IsValid()
+                || material.capabilities.blend != renderer::BlendMode::OPAQUE_BLEND) continue;
+            items.push_back({ &object, &item, &material,
+                GetOrCreateMaterialPSO(ctx.resources, material.capabilities.blend,
+                    material.doubleSided, material.depthBias, material.depthBiasSlope, false) });
+        }
     }
 }
 
@@ -165,10 +167,12 @@ math::Matrix4 RenderFace(RenderPassContext& ctx, const RenderLightProbeInput& vo
         draw.textures[17] = h.iblPrefilter;
         draw.textures[18] = h.iblBrdfLut;
         /// @note クラスタリストはメインカメラの視錐台向けなので、プローブ位置から描くここでは Linear へ落とす。
-        BindForwardShadingResources(draw, ctx, /*forceLinearLights=*/true);
+        BindForwardShadingResources(draw, ctx, true);
         /// @note 多重反射の焼きでは «このボリュームの前回の結果» だけを受けた面を描く。メインビューが選んだボリュームとは限らないので上書きする。
         draw.textures[22] = probeInput;
         draw.textures[21] = {};
+        if (probeInput.IsValid() && volume.runtimeVisibility.IsValid())
+            draw.indirectReadTextures = { volume.runtimeVisibility, {} };
         ctx.renderer.Submit(draw, resources);
     }
 
@@ -176,7 +180,7 @@ math::Matrix4 RenderFace(RenderPassContext& ctx, const RenderLightProbeInput& vo
         /// @note 表裏はカリング無しで描かないと分からない (裏面カリングのマテリアル PSO では裏が消え、壁の中から外が素通しで見える)。
         ctx.renderer.SetRenderTarget(volume.runtimeFacing[face], resources);
         ctx.renderer.Clear({ 1.0f, 1.0f, 1.0f, 1.0f });
-        const auto cullNone = GetOrCreateMaterialPSO(resources, renderer::BlendMode::OPAQUE_BLEND, /*doubleSided=*/true);
+        const auto cullNone = GetOrCreateMaterialPSO(resources, renderer::BlendMode::OPAQUE_BLEND, true);
         for (const CaptureItem& item : items) {
             UpdateObjectCB(ctx, *item.object);
             renderer::DrawCall draw{};
@@ -224,6 +228,7 @@ void BakeProbe(RenderPassContext& ctx, const RenderLightProbeInput& volume, int 
     project.deringing = std::clamp(volume.deringing, 0.0f, 1.0f);
     project.hasFacing = useFacing ? 1u : 0u;
     project.backfaceLimit = kBackfaceLimit;
+    project.visibilityFar = kCaptureFar;
     resources.Update(h.lightProbeProjectCB, &project, sizeof(project));
 
     renderer::ComputeCall call;
@@ -237,6 +242,7 @@ void BakeProbe(RenderPassContext& ctx, const RenderLightProbeInput& volume, int 
     }
     if (h.iblPrefilter.IsValid()) call.srvInputs[kEnvironmentSlot] = h.iblPrefilter;
     call.uavOutputs[0] = volume.runtimeRawVolume;
+    call.uavOutputs[1] = volume.runtimeVisibility;
     ctx.renderer.Dispatch(call, resources);
 }
 

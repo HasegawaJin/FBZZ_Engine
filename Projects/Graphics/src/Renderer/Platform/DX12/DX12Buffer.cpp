@@ -6,6 +6,7 @@
 #include "DX12Context.hpp"
 #include "DX12StateTracker.hpp"
 #include "DX12UploadArena.hpp"
+#include "../../PreparedSkinningBackend.hpp"
 
 #include <Core/Logger.hpp>
 #include <Core/HResult.hpp>
@@ -23,8 +24,10 @@ DX12Buffer::~DX12Buffer()
         m_resource->Unmap(0, nullptr);
     m_mapped = nullptr;
     /// @note 状態追跡から外してから解放する。残すと同アドレスへ載った別リソースの状態を誤認する。
-    if (m_tracker) m_tracker->Remove(m_resource.Get());
+    if (m_tracker && (!m_preparedWriteVersion || m_preparedWriteVersion.use_count() == 1))
+        m_tracker->Remove(m_resource.Get());
     if (m_context) {
+        m_context->FreeCpuResourceDescriptor(m_uavCpuIndex);
         /// @note リソース本体と同じフェンスで守る (DX12Texture のデストラクタと同じ理由)。
         m_context->FreeBindlessSlot(m_bindlessUavIndex);
         m_context->FreeBindlessSlot(m_bindlessSrvIndex);
@@ -85,14 +88,9 @@ bool DX12Buffer::InitGpuWritableVertex(DX12Context* context, DX12StateTracker* t
         return false;
     tracker->Register(m_resource.Get(), D3D12_RESOURCE_STATE_COMMON);
 
-    /// @note UAV は CPU 専用ヒープへ置き、Dispatch 時に shader-visible テーブルへコピーする
-    /// @note       (DX12StructuredBuffer と同じ方式)。
     ID3D12Device* device = context->GetDevice();
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-    heapDesc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.NumDescriptors = 1;
-    if (FAILED(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_descriptorHeap))))
-        return false;
+    m_uavCpuIndex = context->AllocateCpuResourceDescriptor();
+    if (m_uavCpuIndex == INVALID_BINDLESS_INDEX) return false;
 
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
     /// @note Structured は UNKNOWN 固定
@@ -106,16 +104,14 @@ bool DX12Buffer::InitGpuWritableVertex(DX12Context* context, DX12StateTracker* t
 
 D3D12_CPU_DESCRIPTOR_HANDLE DX12Buffer::GetUav() const
 {
-    if (!m_descriptorHeap) return {};
-    return m_descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    return m_context ? m_context->GetCpuResourceDescriptor(m_uavCpuIndex) : D3D12_CPU_DESCRIPTOR_HANDLE{};
 }
 
 uint32_t DX12Buffer::GetBindlessUavIndex() const
 {
     if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)
         return m_bindlessUavIndex;
-    /// @note m_descriptorHeap を持つのは GPU 書き込み可能な頂点バッファだけ (IsGpuWritable と同じ条件)。
-    if (!m_context || !m_descriptorHeap || !m_context->SupportsBindless())
+    if (!m_context || !IsGpuWritable() || !m_context->SupportsBindless())
         return INVALID_BINDLESS_INDEX;
 
     const uint32_t slot = m_context->AllocateBindlessSlot();
@@ -199,8 +195,23 @@ bool DX12Buffer::CopyData(size_t offset, size_t sizeBytes, void* output) const
 void DX12Buffer::NotifyGpuWrite()
 {
     if (!IsGpuWritable()) return;
-    assert(m_contentVersion != (std::numeric_limits<uint64_t>::max)());
-    ++m_contentVersion;
+    assert(GetContentVersion() != (std::numeric_limits<uint64_t>::max)());
+    if (m_preparedWriteVersion) m_contentVersion = m_preparedWriteVersion->value.fetch_add(1, std::memory_order_acq_rel) + 1;
+    else ++m_contentVersion;
+}
+
+uint64_t DX12Buffer::GetContentVersion() const
+{
+    return m_preparedWriteVersion ? m_preparedWriteVersion->value.load(std::memory_order_acquire) : m_contentVersion;
+}
+
+std::shared_ptr<prepared_skinning_detail::BufferWriteVersion> DX12Buffer::RetainPreparedWriteVersion()
+{
+    if (!m_preparedWriteVersion) {
+        m_preparedWriteVersion = std::make_shared<prepared_skinning_detail::BufferWriteVersion>();
+        m_preparedWriteVersion->value.store(m_contentVersion, std::memory_order_relaxed);
+    }
+    return m_preparedWriteVersion;
 }
 
 void DX12Buffer::Update(const void* data, size_t sizeBytes)

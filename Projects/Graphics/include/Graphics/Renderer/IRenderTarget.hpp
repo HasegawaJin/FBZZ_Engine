@@ -16,6 +16,8 @@ namespace fbzz::renderer {
         virtual uint32_t GetWidth()      const = 0;
         virtual uint32_t GetHeight()     const = 0;
         virtual uint32_t GetColorCount() const = 0;
+        /// @note 深度を持たない描画先と従来のバックバッファは通常 Z として扱う。
+        virtual bool IsReversedZ() const { return false; }
 
         /// @note ImGui Viewport 表示用ネイティブテクスチャハンドル
         /// @note DX12 は GPU descriptor handle を uint64_t として扱う
