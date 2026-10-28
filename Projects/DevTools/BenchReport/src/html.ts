@@ -1,6 +1,7 @@
-// FBZZ Engine
-// html.ts | Projects/DevTools/BenchReport
-// ポートフォリオにそのまま置ける 1 ファイル完結の HTML レポート (外部の CSS / JS / フォントを読まない)。
+/// @file    html.ts
+/// @brief   単一 HTML ファイルの比較レポート描画。
+/// @author  Hasegawa Jin
+/// @date    2026-09-18
 
 import {
     DescribeCommit, FormatChange, FormatValue, NEUTRAL_BAND, PhaseText, REGRESSION_THRESHOLD, VERDICT_TEXT,
@@ -14,11 +15,13 @@ import { EscapeXml } from './text.ts';
 const KIND_TITLE: Record<ResultKind, string> = {
     scene: '物理の場面',
     micro: 'Math の演算',
+    water: 'Water TargetPoint workset',
 };
 
 const KIND_NOTE: Record<ResultKind, string> = {
     scene: 'TestBench の各場面を固定刻みで進めたときの 1 刻みあたりの時間',
     micro: '1024 要素の入力を繰り返し処理したときの 1 演算あたりの時間',
+    water: 'GPU と UI を使わず、Transform 同期・参照解決・水面/Zone snapshot を個別に計時した CPU workset',
 };
 
 const PAGE_STYLE = `
@@ -85,7 +88,7 @@ footer { color: var(--muted); font-size: 12.5px; margin-top: 48px; }
 
 function SummaryTiles(comparison: Comparison): string {
     const tiles: string[] = [];
-    for (const kind of ['scene', 'micro'] as const) {
+    for (const kind of ['scene', 'micro', 'water'] as const) {
         const summary = comparison.summary[kind];
         if (!summary) continue;
         const tone = summary.change <= -NEUTRAL_BAND ? 'improved' : summary.change >= REGRESSION_THRESHOLD ? 'regressed'
@@ -163,6 +166,7 @@ ${warning}
 </section>
 ${KindSection(comparison, 'scene')}
 ${KindSection(comparison, 'micro')}
+${KindSection(comparison, 'water')}
 <section>
 <h2>測定条件</h2>
 <div class="panel"><dl>

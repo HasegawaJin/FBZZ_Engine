@@ -73,6 +73,18 @@ jobs:
           npm install --no-audit --no-fund
           npm test
 
+  managed-authoring:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: SDK-only C# starter tests
+        working-directory: Projects/GameHub
+        run: npm run test:authoring
+
   test:
     runs-on: windows-latest
 
@@ -87,6 +99,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      - name: Set up the pinned managed SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: Projects/Managed/global.json
 
       - name: Set up compiler cache
         id: compiler-cache
@@ -148,7 +165,8 @@ jobs:
 
       # @brief テスト exe とその依存だけを建てる (Sandbox / EditorLauncher は建てない)。
       # @note  EditorAuto が FBZZEditor をリンクするので Editor も建つ。AI 連携や import 判定は起動しないと分からない壊れ方をするため CI で押さえる。
-      # @warning スイートを足したら --target にも足す。漏れると «ビルドされないだけ» で通り、CTest に NOT_BUILT が 1 件出るだけになる。
+      # @warning 既定スイートを足したら --target にも足す。漏れると «ビルドされないだけ» で通り、CTest に NOT_BUILT が 1 件出るだけになる。
+      # @note GraphicsStandalone / RayTracing / RayTracingEngine は明示実行専用。通常の CI ビルドには含めない。
       - name: Build test targets
         shell: pwsh
         run: |
@@ -157,7 +175,7 @@ jobs:
           sccache --zero-stats
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel 4 `
-            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto FBZZTestsGraphicsStandalone
+            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto FBZZTestsGraphicsAuto FBZZManagedTests
 
       # @note テスト失敗時もヒット・ミス・キャッシュ不可の件数を残し、キャッシュが働かない理由を切り分ける。
       - name: Report compiler cache
@@ -172,6 +190,7 @@ jobs:
 
       # @note --timeout で止まったテストを打ち切り残りを走らせる。無いと 1 件のハングでジョブ上限まで待つ。
       # @note --no-tests=error でテストが 1 件も登録されていない状態を成功にしない。
+      # @note GraphicsStandalone / RayTracing / RayTracingEngine は CTest 未登録なので、ここでは実行しない。
       - name: Run tests
         shell: pwsh
         run: >
@@ -189,7 +208,8 @@ jobs:
       # @warning ctest を通すと gtest_discover_tests が登録した «1 テスト 1 プロセス» (2148 本) すべてで OpenCppCoverage が PDB を読み直す。テスト本体は全スイート合わせて 25 秒なのに、起動だけで 20 分 (開発機) / 47 分超 (ランナー) かかりジョブの上限で落ちる。
       # @note --cover_children はテスト exe が起動する子まで追うために残す。
       # @note 計測対象は «自作で、テストを書くと決めた» 4 つに絞る。Renderer / Editor を混ぜると分母が意味を失う。
-      # @warning スイートを足したらここにも足す。漏れるとそのスイートが踏んだ行が «未到達» に化ける。
+      # @warning 計測対象の既定スイートを足したらここにも足す。漏れるとそのスイートが踏んだ行が «未到達» に化ける。
+      # @note GraphicsStandalone / RayTracing / RayTracingEngine は CI のカバレッジ計測にも含めない。
       - name: Measure coverage
         if: steps.scope.outputs.measure == 'true'
         shell: pwsh
@@ -197,7 +217,7 @@ jobs:
           $testDir = "$env:BUILD_DIR/Binaries/$env:BUILD_CONFIG/Tests"
           $suites  = @(
             "FBZZTestsMathAuto", "FBZZTestsCoreAuto", "FBZZTestsPhysicsAuto",
-            "FBZZTestsFluidAuto", "FBZZTestsEngineAuto", "FBZZTestsEditorAuto"
+            "FBZZTestsFluidAuto", "FBZZTestsEngineAuto", "FBZZTestsEditorAuto", "FBZZTestsGraphicsAuto"
           )
 
           $inputs = @()

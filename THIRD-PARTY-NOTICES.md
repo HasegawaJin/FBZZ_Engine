@@ -1,3 +1,7 @@
+<!-- @file    THIRD-PARTY-NOTICES.md -->
+<!-- @brief   ベンダー依存と外部ツールチェーンの配布告知。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
 # Third-Party Notices
 
 FBZZ Engine 本体は MIT License ([LICENSE](LICENSE)) で配布する。
@@ -43,6 +47,7 @@ FBZZ Engine 本体は MIT License ([LICENSE](LICENSE)) で配布する。
 | FXC (`fxc.exe`) | Windows SDK | DX11 用シェーダーコンパイラー。ビルド時のみ使用 |
 | Electron / React / Node.js 依存 (GameHub) | npm | `Projects/GameHub/package.json` と `node_modules` 配下の各ライセンスに従う |
 | MCP SDK ほか (EditorMcp) | npm | `Projects/EditorMcp/package.json` と `node_modules` 配下の各ライセンスに従う |
+| .NET 10 SDK / runtime hosting pack | インストール済み Microsoft .NET SDK | native hosting headers はビルド時だけ使用。`nethost.dll` は製品へ配置し、供給元の `LICENSE.txt` / `ThirdPartyNotices.txt` を `EngineLicenses/DotNet/` に同梱する。runtime 本体は利用者のインストール済み環境を使う |
 
 ### 外部アセット
 
@@ -51,7 +56,7 @@ FBZZ Engine 本体は MIT License ([LICENSE](LICENSE)) で配布する。
 | 一部テレインテクスチャ | [ambientCG](https://ambientcg.com/) | CC0 1.0 (パブリックドメイン) |
 | `Assets/Models/DebugCharacter/` のモデルとアニメーション | [Mixamo](https://www.mixamo.com/) | Adobe 無償ライセンス |
 
-`GreenWare/` のキャラクター・ボス・武器・マップは Blender で自作したもので、本体と同じ MIT License の対象。
+GreenWareのソースとゲーム素材は[別リポジトリ](https://github.com/HasegawaJin/GreenWare)で管理し、このEngine/SDKの配布範囲には含めない。ゲーム側のライセンスと素材の出典は同リポジトリを参照する。
 
 ---
 

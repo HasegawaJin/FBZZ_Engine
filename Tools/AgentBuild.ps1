@@ -1,5 +1,5 @@
 ﻿# @file    AgentBuild.ps1
-# @brief   AI エージェントがエンジン C++ を検証する入口。出力を file:line の 1 行に畳む。
+# @brief   C++ と C# のビルド・検証を直列実行し、診断を file:line の 1 行へ畳む。
 # @author  Hasegawa Jin
 # @date    2026-09-17
 #
@@ -12,10 +12,12 @@
 # @note build <target...> [-Preset <p>] [-BuildDirectory <dir>]: エンジンまたは構成済み SDK consumer をビルドする。
 # @note test [-Filter <regex>] [-Preset <p>]: ctest を回す。
 # @note configure [-Preset <p>]: CMake を作り直す (GLOB に新規ファイルを載せる)。
+# @note managed-build <csproj> [-ManagedOutputDirectory <dir>]: C# だけをビルドし、必要時は候補世代へ配置する。
+# @note managed-test [csproj]: NuGet を使わない managed 検証 runner をビルドして実行する。
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet('check', 'build', 'test', 'configure')]
+    [ValidateSet('check', 'build', 'test', 'configure', 'managed-build', 'managed-test')]
     [string] $Verb,
 
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
@@ -26,6 +28,18 @@ param(
 
     # @note build のみ。リポジトリ内の構成済み Visual Studio consumer のビルド先を指定する。
     [string] $BuildDirectory = '',
+
+    # @note managed-build のみ。Editor はロード中の DLL を上書きしない固有の世代ディレクトリを指定する。
+    [string] $ManagedOutputDirectory = '',
+
+    # @note ゲーム csproj の FbzzScriptApiPath を、Editor と共有する ScriptApi DLL へ固定する。
+    [string] $ManagedApiPath = '',
+
+    # @note 成功した MSBuild の評価済み入力を atomic replace し、Editor の依存監視へ渡す。
+    [string] $ManagedInputManifest = '',
+
+    # @note managed の調査時だけ MSBuild task / target 所要時間を全文ログへ追加する。
+    [switch] $ManagedProfile,
 
     [string] $Filter = '',
 
@@ -40,6 +54,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepositoryRoot = Split-Path -Parent $PSScriptRoot
+$IsInstalledSdk = Test-Path -LiteralPath (Join-Path $RepositoryRoot 'fbzz-sdk.toml') -PathType Leaf
 
 # @note 日本語版 VS の CP932 出力は PowerShell 5.1 のパイプで化けるため、診断本文を英語へ固定する。
 $env:VSLANG = '1033'
@@ -54,6 +69,16 @@ $PresetLayout = [ordered]@{
 }
 
 function Write-Line([string] $text) { [Console]::Out.WriteLine($text) }
+
+# @note 公開 SDK の同じ入口は外部ゲームの managed project だけを扱う。native 開発の configure/check/build はソースツリーに残す。
+if ($IsInstalledSdk -and $Verb -notin @('managed-build', 'managed-test')) {
+    Write-Line 'RESULT env-error native build/check/configure requires the FBZZ Engine source tree; the installed SDK supports managed-build/managed-test'
+    exit 2
+}
+if ($IsInstalledSdk -and $Items.Count -ne 1) {
+    Write-Line 'RESULT env-error installed SDK managed-build/managed-test requires one game csproj'
+    exit 2
+}
 
 # @brief リポジトリ内の実在ディレクトリを絶対解決する。リンク経由の外部参照も拒否する。
 function Resolve-RepositoryDirectory([string] $path, [ref] $reason) {
@@ -161,6 +186,16 @@ if ($UsesBuildDirectory) {
 }
 
 $AgentDirectory = Join-Path $RepositoryRoot 'build/agent'
+if ($IsInstalledSdk) {
+    # @note SDK 自体を読み取り専用で配布できるよう、ログは対象ゲームの Library に置く。
+    $sdkGameProject = if ([System.IO.Path]::IsPathRooted($Items[0])) { $Items[0] } else { Join-Path $RepositoryRoot $Items[0] }
+    $sdkGameProject = [System.IO.Path]::GetFullPath($sdkGameProject)
+    if ([System.IO.Path]::GetExtension($sdkGameProject) -ne '.csproj' -or -not (Test-Path -LiteralPath $sdkGameProject -PathType Leaf)) {
+        Write-Line "RESULT env-error managed project is missing: $sdkGameProject"
+        exit 2
+    }
+    $AgentDirectory = Join-Path ([System.IO.Path]::GetDirectoryName($sdkGameProject)) 'Library/ManagedBuild/agent'
+}
 New-Item -ItemType Directory -Force -Path $AgentDirectory | Out-Null
 # @note ログは実行ごとに別ファイル。同じログを別プロセスが掴むと Set-Content で落ちるため。
 # @note 最新の 1 本は last-<verb>.txt が指す。
@@ -168,13 +203,15 @@ $LogPath = Join-Path $AgentDirectory ("{0}-{1:yyyyMMdd-HHmmss}-{2}.log" -f $Verb
 Set-Content -LiteralPath (Join-Path $AgentDirectory "last-$Verb.txt") -Value $LogPath -Encoding UTF8 -ErrorAction SilentlyContinue
 Set-Content -LiteralPath $LogPath -Value "[AgentBuild] $Verb preset=$PresetKey $(Get-Date -Format o)" -Encoding UTF8
 
-. (Join-Path $PSScriptRoot 'VsEnvironment.ps1')
-try {
-    Import-VisualStudioEnvironment
-}
-catch {
-    Write-Line "RESULT env-error $($_.Exception.Message)"
-    exit 2
+if ($Verb -notin @('managed-build', 'managed-test')) {
+    . (Join-Path $PSScriptRoot 'VsEnvironment.ps1')
+    try {
+        Import-VisualStudioEnvironment
+    }
+    catch {
+        Write-Line "RESULT env-error $($_.Exception.Message)"
+        exit 2
+    }
 }
 Set-Location -LiteralPath $RepositoryRoot
 
@@ -200,12 +237,59 @@ function Add-Diagnostic([string] $severity, [string] $text) {
     if ($severity -eq 'ERROR') { $script:Errors.Add($text) } else { $script:Warnings.Add($text) }
 }
 
+# @brief managed stamp/receipt を streaming SHA256 で検証する。
+# @note Editor child の PSModulePath/autoload に依存しない。入力の日時・内容は変更せず、読めない入力を hash 不一致として許可しない。
+function Get-ManagedContentHash([string] $path) {
+    $stream = $null
+    $algorithm = $null
+    try {
+        $stream = [System.IO.File]::Open($path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+        $algorithm = [System.Security.Cryptography.SHA256]::Create()
+        return [System.BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '')
+    }
+    catch {
+        Add-Diagnostic 'ERROR' "$(ConvertTo-RepoPath $path) FBZZ0102 Managed input could not be hashed: $($_.Exception.Message)"
+        return $null
+    }
+    finally {
+        if ($null -ne $algorithm) { $algorithm.Dispose() }
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
+}
+
 $script:CompiledNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+# @brief 全 verb と外部コマンドの入口で test 診断の一時文脈を初期化する。
+function Reset-TestDiagnosticContext {
+    $script:ActiveTestName = ''
+    $script:InCtestFailureFooter = $false
+}
+Reset-TestDiagnosticContext
 
 # @brief MSVC / MSBuild / CMake / gtest の 1 行を分類する。対象外の行は捨てる。
 function Read-DiagnosticLine([string] $line) {
     # @note 末尾の .vcxproj 注記はプロジェクトごとに同じ診断を重複させるので落とす。
-    $text = $line -replace '\s+\[[^\]]+\.vcxproj\]\s*$', ''
+    $text = $line -replace '\s+\[[^\]]+\.(vcxproj|csproj)\]\s*$', ''
+    # @note abort は gtest FAILED 行まで到達しない。実行中の test と ctest failure footer も記録する。
+    if ($text -match '^\s*(?:\[\s*RUN\s*\]\s+|Start\s+\d+:\s+)(?<name>\S+)') {
+        $script:ActiveTestName = $Matches.name
+        return
+    }
+    if ($text -match '^\s*The following tests FAILED:') { $script:InCtestFailureFooter = $true; return }
+    if ($script:InCtestFailureFooter -and $text -match '^\s*\d+\s*-\s*(?<name>.+?)\s+\((?<status>[^)]+)\)') {
+        if ($Matches.status -notmatch '^(Passed|Skipped)$') { Add-Diagnostic 'ERROR' "test FAILED $($Matches.name.Trim())" }
+        return
+    }
+    if ($text -match '^\s*Assertion failed:\s*(?<expression>.*),\s*file\s+(?<file>.+),\s*line\s+(?<line>\d+)\s*$') {
+        Add-Diagnostic 'ERROR' "$(ConvertTo-RepoPath $Matches.file):$($Matches.line) ASSERT $($Matches.expression)"
+        if ($script:ActiveTestName) { Add-Diagnostic 'ERROR' "test FAILED $script:ActiveTestName" }
+        return
+    }
+    if ($text -match '^\s*Assertion failed:\s*(?<expression>.+)$') {
+        Add-Diagnostic 'ERROR' "native ASSERT $($Matches.expression)"
+        if ($script:ActiveTestName) { Add-Diagnostic 'ERROR' "test FAILED $script:ActiveTestName" }
+        return
+    }
 
     # @note 別のビルドと出力を奪い合った印。分類はこの後も通常どおり続ける。
     # @note C1083 は include 欠落と同じ番号なので Permission denied のときだけ拾う。
@@ -221,7 +305,7 @@ function Read-DiagnosticLine([string] $line) {
 
     if ($text -match '^\s*(?<file>[A-Za-z]:[^()]+?)\((?<line>\d+)(,(?<col>\d+))?\)\s*:\s*(?<sev>fatal error|error|warning)\s+(?<code>[A-Z]+\d+)\s*:\s*(?<msg>.*)$') {
         $location = "$(ConvertTo-RepoPath $Matches.file):$($Matches.line)"
-        if ($Matches.col) { $location += ":$($Matches.col)" }
+        if ($Matches.ContainsKey('col')) { $location += ":$($Matches.col)" }
         $severity = if ($Matches.sev -eq 'warning') { 'WARN' } else { 'ERROR' }
         Add-Diagnostic $severity "$location $($Matches.code) $($Matches.msg.Trim())"
         return
@@ -242,12 +326,30 @@ function Read-DiagnosticLine([string] $line) {
         Add-Diagnostic 'ERROR' "$(ConvertTo-RepoPath $Matches.file) $($Matches.code) $($Matches.msg.Trim())"
         return
     }
+    if ($text -match '^\s*(?<file>.+?)\s*:\s*(?<sev>error|warning)\s+(?<code>(CS|NETSDK|MSB|NU|FBZZ)\d+)\s*:\s*(?<msg>.*)$') {
+        $severity = if ($Matches.sev -eq 'warning') { 'WARN' } else { 'ERROR' }
+        Add-Diagnostic $severity "$(ConvertTo-RepoPath $Matches.file) $($Matches.code) $($Matches.msg.Trim())"
+        return
+    }
+    # @note custom MSBuild task は code を付けない診断も出す。MSBUILD は分類名で、元ログに無い error code を捏造しない。
+    if ($text -match '^\s*(?<file>.+?)(?:\((?<line>\d+)(?:,(?<col>\d+))?\))?\s*:\s*(?<sev>error|warning)\s*:\s*(?<msg>.*)$') {
+        $location = ConvertTo-RepoPath $Matches.file.Trim()
+        if ($Matches.ContainsKey('line')) { $location += ":$($Matches.line)" }
+        if ($Matches.ContainsKey('col')) { $location += ":$($Matches.col)" }
+        $severity = if ($Matches.sev -eq 'warning') { 'WARN' } else { 'ERROR' }
+        Add-Diagnostic $severity "$location MSBUILD $($Matches.msg.Trim())"
+        return
+    }
+    if ($text -match '^\[FAIL\]\s*(?<msg>.+)$') {
+        Add-Diagnostic 'ERROR' "managed TEST $($Matches.msg)"
+        return
+    }
     if ($text -match '^CMake Error at (?<where>[^:]+):(?<line>\d+)') {
         Add-Diagnostic 'ERROR' "$(ConvertTo-RepoPath $Matches.where):$($Matches.line) CMAKE $text"
         return
     }
     if ($text -match '^\[\s+FAILED\s+\]\s+(?<name>\S+\.\S+)') {
-        Add-Diagnostic 'ERROR' "gtest FAILED $($Matches.name)"
+        Add-Diagnostic 'ERROR' "test FAILED $($Matches.name)"
         return
     }
 }
@@ -255,6 +357,7 @@ function Read-DiagnosticLine([string] $line) {
 # @brief 外部コマンドを回し、全行をログへ、診断行を分類器へ流す。
 # @return 外部コマンドの終了コード。
 function Invoke-Logged([string] $exe, [string[]] $arguments) {
+    Reset-TestDiagnosticContext
     Add-Content -LiteralPath $LogPath -Value "> $exe $($arguments -join ' ')" -Encoding UTF8
     $writer = New-Object System.IO.StreamWriter($LogPath, $true, (New-Object System.Text.UTF8Encoding($false)))
     # @note PowerShell 5.1 は Stop のまま native の stderr を 2>&1 で拾うと最初の 1 行で例外にする。
@@ -357,19 +460,20 @@ function Invoke-Check {
     }
 
     $units = New-Object System.Collections.Generic.List[string]
+    $unitPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($item in $Items) {
         $full = if ([System.IO.Path]::IsPathRooted($item)) { $item } else { Join-Path $RepositoryRoot $item }
         if (-not (Test-Path -LiteralPath $full)) { Write-Line "SKIP $item (not found)"; continue }
         $full = (Resolve-Path -LiteralPath $full).Path
         $extension = [System.IO.Path]::GetExtension($full).ToLowerInvariant()
         if ($extension -in @('.cpp', '.cc', '.cxx', '.c')) {
-            $units.Add($full)
+            if ($unitPaths.Add($full)) { $units.Add($full) }
         }
         elseif ($extension -in @('.hpp', '.h', '.inl')) {
             $includers = Find-Includers $full
             if ($includers.Count -eq 0) { Write-Line "SKIP $item (no .cpp includes it)"; continue }
             foreach ($unit in $includers) {
-                if (-not $units.Contains($unit)) { $units.Add($unit) }
+                if ($unitPaths.Add($unit)) { $units.Add($unit) }
             }
             Write-Line "[AgentBuild] $(ConvertTo-RepoPath $full) -> $(( $includers | ForEach-Object { ConvertTo-RepoPath $_ }) -join ', ')"
         }
@@ -418,6 +522,8 @@ function Invoke-Check {
             "`"$project`"", '/t:ClCompile', "/p:Configuration=$Configuration", '/p:Platform=x64',
             "/p:SelectedFiles=`"$($selected -join ';')`"", '/nologo', '/v:m', '/m:1')
         [System.IO.File]::WriteAllLines($responseFile, $responseLines, (New-Object System.Text.UTF8Encoding($false)))
+        # @note Only this project's invocation can prove its requested units compiled.
+        $script:CompiledNames.Clear()
         $code = Invoke-Logged 'msbuild' @("@$responseFile")
         if ($code -ne 0) { $exitCode = 1 }
         foreach ($unit in $byProject[$project]) {
@@ -469,6 +575,176 @@ function Invoke-Test {
     exit 0
 }
 
+# @brief SDK の workload resolver を使わず、通常の SDK-style C# プロジェクトをビルドする。
+# @note 内容 stamp を CoreCompile の入力へ足し、mtime を保持した変更でも通常の増分ビルドを無効化する。
+# @see https://learn.microsoft.com/dotnet/core/tools/dotnet-build dotnet build
+# @see https://github.com/dotnet/roslyn/blob/main/src/Compilers/Core/MSBuildTask/Microsoft.CSharp.Core.targets CoreCompile / CustomAdditionalCompileInputs
+function Invoke-ManagedBuild([string] $project, [string] $outputDirectory = '') {
+    $arguments = New-Object System.Collections.Generic.List[string]
+    $managedConfiguration = if ($Configuration -eq 'Release') { 'Release' } else { 'Debug' }
+    $arguments.AddRange([string[]]@('build', $project, '--configuration', $managedConfiguration,
+        '--nologo', '--verbosity', 'minimal', '-m:1', '-nodeReuse:false',
+        '-p:MSBuildEnableWorkloadResolver=false', '-p:UseSharedCompilation=false', '-p:Platform=AnyCPU'))
+    if ($ManagedProfile) { $arguments.Add('-clp:PerformanceSummary') }
+    if (-not [string]::IsNullOrWhiteSpace($ManagedApiPath)) {
+        $apiPath = [System.IO.Path]::GetFullPath($ManagedApiPath)
+        if (-not (Test-Path -LiteralPath $apiPath -PathType Leaf)) {
+            Write-Line "RESULT env-error managed ScriptApi is missing: $apiPath"
+            exit 2
+        }
+        $arguments.Add("-p:FbzzScriptApiPath=$apiPath")
+    }
+    $env:MSBuildEnableWorkloadResolver = 'false'
+    $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+    Write-Line "[AgentBuild] managed-build $(ConvertTo-RepoPath $project) config=$managedConfiguration"
+    # @note Roslyn analyzer と compiler は同じ固定 SDK で動かす。ゲーム csproj は絶対パスのまま渡す。
+    $sdkSelectionDirectory = Join-Path $RepositoryRoot 'Projects/Managed'
+    if (-not (Test-Path -LiteralPath (Join-Path $sdkSelectionDirectory 'global.json') -PathType Leaf)) {
+        Write-Line 'RESULT env-error managed SDK selection global.json is missing from the FBZZ package'
+        return 2
+    }
+    Push-Location $sdkSelectionDirectory
+    try {
+        $stageWatch = [System.Diagnostics.Stopwatch]::StartNew()
+        $taskAssembly = Join-Path $RepositoryRoot "bin/$Configuration/Managed/Fbzz.ManagedBuildTasks.dll"
+        if (-not $IsInstalledSdk) {
+            $taskProject = Join-Path $sdkSelectionDirectory 'Fbzz.ManagedBuildTasks/Fbzz.ManagedBuildTasks.csproj'
+            $taskOutput = Join-Path $AgentDirectory "ManagedBuildTasks/$managedConfiguration"
+            $taskAssembly = Join-Path $taskOutput 'Fbzz.ManagedBuildTasks.dll'
+            $taskStamp = Join-Path $taskOutput 'inputs.txt'
+            $taskInputs = @(Get-ChildItem -LiteralPath (Split-Path -Parent $taskProject) -File | Where-Object { $_.Extension -in @('.cs', '.csproj', '.targets') } | Sort-Object FullName)
+            $taskInputs += Get-Item -LiteralPath (Join-Path $sdkSelectionDirectory 'Directory.Build.props'), (Join-Path $sdkSelectionDirectory 'global.json')
+            $taskVersions = New-Object 'System.Collections.Generic.List[string]'
+            foreach ($taskInput in $taskInputs) {
+                $hash = Get-ManagedContentHash $taskInput.FullName
+                if ($null -eq $hash) { return 1 }
+                $taskVersions.Add("$($taskInput.FullName)|$hash")
+            }
+            $taskVersion = [string]::Join("`n", $taskVersions.ToArray())
+            if (-not [System.IO.File]::Exists($taskAssembly) -or -not [System.IO.File]::Exists($taskStamp) -or [System.IO.File]::ReadAllText($taskStamp) -cne $taskVersion) {
+                Write-Line 'STAGE managed-build-tasks state=running'
+                $bootstrapCode = Invoke-Logged 'dotnet' @('build', $taskProject, '--configuration', $managedConfiguration,
+                    '--output', $taskOutput, '--no-incremental', '--nologo', '--verbosity', 'minimal', '-m:1', '-nodeReuse:false',
+                    '-p:MSBuildEnableWorkloadResolver=false', '-p:UseSharedCompilation=false', '-p:Platform=AnyCPU')
+                if ($bootstrapCode -ne 0) { return $bootstrapCode }
+                [System.IO.File]::WriteAllText($taskStamp, $taskVersion, (New-Object System.Text.UTF8Encoding($false)))
+                Write-Line 'STAGE managed-build-tasks state=completed'
+            }
+        }
+        if (-not [System.IO.File]::Exists($taskAssembly)) {
+            Add-Diagnostic 'ERROR' "managed BUILD_TASKS_MISSING SDK build task assembly is missing: $taskAssembly"
+            return 2
+        }
+        $targetsPath = Join-Path ([System.IO.Path]::GetDirectoryName($taskAssembly)) 'ManagedIncremental.targets'
+        if (-not [System.IO.File]::Exists($targetsPath)) {
+            Add-Diagnostic 'ERROR' "managed BUILD_TARGETS_MISSING SDK incremental targets are missing: $targetsPath"
+            return 2
+        }
+        $inputsPath = [System.IO.Path]::ChangeExtension($LogPath, '.managed.inputs')
+        $receiptPath = [System.IO.Path]::ChangeExtension($LogPath, '.managed.receipt')
+        # @note targets 自身の内容と日時は固定し、ビルドごとの候補パスで CoreCompile を無効化しない。
+
+        $arguments.Add("-p:CustomAfterMicrosoftCommonTargets=$targetsPath")
+        $arguments.Add("-p:FbzzManagedBuildTasksPath=$taskAssembly")
+        $arguments.Add("-p:FbzzManagedInputManifest=$inputsPath")
+        $arguments.Add("-p:FbzzManagedInputReceipt=$receiptPath")
+        $arguments.Add("-p:FbzzManagedRootProject=$project")
+        $candidateDirectory = if ([string]::IsNullOrWhiteSpace($outputDirectory)) { '' } else { $outputDirectory + '.pending' }
+        if (-not [string]::IsNullOrWhiteSpace($outputDirectory) -and
+            ((Test-Path -LiteralPath $outputDirectory) -or (Test-Path -LiteralPath $candidateDirectory))) {
+            Add-Diagnostic 'ERROR' "managed CANDIDATE_EXISTS Candidate directory must be new: $outputDirectory"
+            return 1
+        }
+        $arguments.Add("-p:FbzzManagedCandidateDirectory=$candidateDirectory")
+        Write-Line 'STAGE managed-compile state=running'
+        $code = Invoke-Logged 'dotnet' $arguments.ToArray()
+        Write-Line "STAGE managed-compile state=completed elapsedMs=$($stageWatch.ElapsedMilliseconds) exitCode=$code"
+        if ($code -eq 0) {
+            Write-Line 'STAGE managed-verify-inputs state=running'
+            if (-not [System.IO.File]::Exists($receiptPath)) { $code = 1 }
+            else {
+                foreach ($line in [System.IO.File]::ReadAllLines($receiptPath) | Sort-Object -Unique) {
+                    $parts = $line.Split('|')
+                    if ($parts.Count -lt 2) { $code = 1; break }
+                    if ($parts[0] -eq 'M') {
+                        if ([System.IO.File]::Exists($parts[1])) { $code = 1; break }
+                    } elseif ($parts[0] -eq 'H' -and $parts.Count -eq 3) {
+                        if (-not [System.IO.File]::Exists($parts[1]) -or (Get-ManagedContentHash $parts[1]) -cne $parts[2]) { $code = 1; break }
+                    } else { $code = 1; break }
+                }
+            }
+            if ($code -ne 0) { Add-Diagnostic 'ERROR' 'managed FBZZ0102 Managed inputs changed during compilation; retry the latest source version.' }
+            Write-Line "STAGE managed-verify-inputs state=completed exitCode=$code"
+        }
+        if ($code -eq 0 -and -not [string]::IsNullOrWhiteSpace($candidateDirectory)) {
+            [System.IO.Directory]::Move($candidateDirectory, $outputDirectory)
+        }
+        if ($code -ne 0 -and -not [string]::IsNullOrWhiteSpace($candidateDirectory) -and [System.IO.Directory]::Exists($candidateDirectory)) {
+            # @note 自分が作成した候補の staging だけを消し、最終成果物や既存世代へ再帰操作をしない。
+            $resolvedCandidate = [System.IO.Path]::GetFullPath($candidateDirectory)
+            $expectedCandidate = [System.IO.Path]::GetFullPath($outputDirectory) + '.pending'
+            if ($resolvedCandidate.Equals($expectedCandidate, [System.StringComparison]::OrdinalIgnoreCase) -and
+                -not $resolvedCandidate.Equals([System.IO.Path]::GetPathRoot($resolvedCandidate), [System.StringComparison]::OrdinalIgnoreCase)) {
+                Remove-Item -LiteralPath $resolvedCandidate -Recurse -Force
+            }
+        }
+        if ($code -eq 0 -and -not [string]::IsNullOrWhiteSpace($ManagedInputManifest)) {
+            if (-not (Test-Path -LiteralPath $inputsPath -PathType Leaf)) {
+                Add-Diagnostic 'ERROR' 'managed INPUT_MANIFEST_MISSING MSBuild did not report evaluated inputs'
+                return 1
+            }
+            $manifestPath = [System.IO.Path]::GetFullPath($ManagedInputManifest)
+            [void][System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($manifestPath))
+            $pendingManifest = $manifestPath + '.pending'
+            [System.IO.File]::WriteAllLines($pendingManifest, [string[]]([System.IO.File]::ReadAllLines($inputsPath) | Sort-Object -Unique), (New-Object System.Text.UTF8Encoding($false)))
+            # @note 派生 manifest は pending と同じ親の権限を使い、sandbox が拒む ACL metadata の merge を要求しない。
+            # @see https://learn.microsoft.com/dotnet/api/system.io.file.replace ignoreMetadataErrors
+            if ([System.IO.File]::Exists($manifestPath)) { [System.IO.File]::Replace($pendingManifest, $manifestPath, [NullString]::Value, $true) }
+            else { [System.IO.File]::Move($pendingManifest, $manifestPath) }
+        }
+        return $code
+    }
+    finally { Pop-Location }
+}
+
+# @brief managed project の検証と実行を既存の診断・排他契約へ接続する。
+function Invoke-Managed {
+    if ($null -eq (Get-Command 'dotnet' -ErrorAction SilentlyContinue)) {
+        Write-Line 'RESULT env-error .NET SDK is missing; install the SDK required by the managed project'
+        exit 2
+    }
+    $project = if ($Items.Count -eq 0 -and $Verb -eq 'managed-test') {
+        Join-Path $RepositoryRoot 'Projects/Managed/Fbzz.ManagedTests/Fbzz.ManagedTests.csproj'
+    } elseif ($Items.Count -eq 1) {
+        if ([System.IO.Path]::IsPathRooted($Items[0])) { $Items[0] } else { Join-Path $RepositoryRoot $Items[0] }
+    } else {
+        Write-Line 'RESULT env-error managed-build requires one csproj; managed-test accepts zero or one csproj'
+        exit 2
+    }
+    $project = [System.IO.Path]::GetFullPath($project)
+    if ([System.IO.Path]::GetExtension($project) -ne '.csproj' -or -not (Test-Path -LiteralPath $project -PathType Leaf)) {
+        Write-Line "RESULT env-error managed project is missing: $project"
+        exit 2
+    }
+    if ($Verb -ne 'managed-build' -and -not [string]::IsNullOrWhiteSpace($ManagedOutputDirectory)) {
+        Write-Line 'RESULT env-error -ManagedOutputDirectory requires managed-build'
+        exit 2
+    }
+    $outputDirectory = ''
+    if (-not [string]::IsNullOrWhiteSpace($ManagedOutputDirectory)) {
+        $outputDirectory = [System.IO.Path]::GetFullPath($ManagedOutputDirectory)
+    }
+    $code = Invoke-ManagedBuild $project $outputDirectory
+    if ($code -eq 0 -and $Verb -eq 'managed-test') {
+        $managedConfiguration = if ($Configuration -eq 'Release') { 'Release' } else { 'Debug' }
+        $code = Invoke-Logged 'dotnet' @('run', '--project', $project, '--configuration', $managedConfiguration,
+            '--no-build', '--no-restore', '-p:MSBuildEnableWorkloadResolver=false', '-p:Platform=AnyCPU')
+    }
+    Write-Summary $code "project=$(ConvertTo-RepoPath $project)"
+    if ($code -ne 0 -or $script:Errors.Count -gt 0) { exit 1 }
+    exit 0
+}
+
 # @name 他のビルドとの重なり
 
 # @brief 走っている cl / link / MSBuild / cmake / ctest を返す。1 本でもあれば BUSY で始めない。
@@ -476,17 +752,35 @@ function Invoke-Test {
 # @note 別ツリーでも断る。cl.exe は 1 本 1〜2GB 使い、並列の 2 本でメモリを使い切る。
 # @note 上書きの引数は意図して持たない。逃げ道があると AI は BUSY のたびにそれを使う。
 function Get-ConcurrentBuild {
-    $names = "Name='cl.exe' OR Name='link.exe' OR Name='MSBuild.exe' OR Name='cmake.exe' OR Name='ctest.exe'"
+    $names = "Name='cl.exe' OR Name='link.exe' OR Name='MSBuild.exe' OR Name='cmake.exe' OR Name='ctest.exe' OR Name='dotnet.exe'"
     $found = @()
     foreach ($process in @(Get-CimInstance Win32_Process -Filter $names -ErrorAction SilentlyContinue)) {
         $commandLine = [string]$process.CommandLine
         # @note /nodemode: はノード再利用で待機しているだけのワーカー。実ビルド中は親の MSBuild / cl.exe が別にいる。
-        if ($process.Name -eq 'MSBuild.exe' -and $commandLine -match '/nodemode:') { continue }
+        if ($process.Name -in @('MSBuild.exe', 'dotnet.exe') -and $commandLine -match '/nodemode:') { continue }
+        # @note Editor の .NET host と待機中の compiler server はビルドではない。
+        if ($process.Name -eq 'dotnet.exe' -and $commandLine -notmatch '\s(build|publish|test|run|msbuild)\b|MSBuild\.dll') { continue }
         $found += $process
     }
     return $found
 }
 
+# @note プロセス走査だけでは同時開始を防げない。C++ と managed の全入口で同じ repository mutex を保持する。
+$hashAlgorithm = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $rootBytes = [System.Text.Encoding]::UTF8.GetBytes([System.IO.Path]::GetFullPath($RepositoryRoot).ToLowerInvariant())
+    $rootHash = [System.BitConverter]::ToString($hashAlgorithm.ComputeHash($rootBytes)).Replace('-', '')
+}
+finally { $hashAlgorithm.Dispose() }
+$buildMutex = New-Object System.Threading.Mutex($false, "Local\FBZZAgentBuild-$rootHash")
+$ownsMutex = $false
+try {
+    try { $ownsMutex = $buildMutex.WaitOne(0) }
+    catch [System.Threading.AbandonedMutexException] { $ownsMutex = $true }
+    if (-not $ownsMutex) {
+        Write-Line "RESULT busy running=1 preset=$PresetKey log=$(ConvertTo-RepoPath $LogPath)"
+        exit 2
+    }
 $running = @(Get-ConcurrentBuild)
 if ($running.Count -gt 0) {
     foreach ($process in $running) {
@@ -503,10 +797,17 @@ switch ($Verb) {
     'check'     { Invoke-Check }
     'build'     { Invoke-Build }
     'test'      { Invoke-Test }
+    'managed-build' { Invoke-Managed }
+    'managed-test'  { Invoke-Managed }
     'configure' {
         $code = Invoke-Configure
         Write-Summary $code
         if ($code -ne 0) { exit 1 }
         exit 0
     }
+}
+}
+finally {
+    if ($ownsMutex) { $buildMutex.ReleaseMutex() }
+    $buildMutex.Dispose()
 }

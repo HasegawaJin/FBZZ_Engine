@@ -12,15 +12,18 @@
 
 #include "MicroCases.hpp"
 #include "Scenes/Scenes.hpp"
+#include "WaterControlPointCases.hpp"
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,11 +38,14 @@ namespace {
 
 /// @brief 1 項目ぶんの計時結果。
 struct Result {
-    const char*         kind;   ///< "scene" / "micro"
+    std::string         kind;
     std::string         name;
-    const char*         phase;  ///< scene: "simulate" / "present"、micro: "op"
-    const char*         unit;   ///< "us/step" / "ns/op"
+    std::string         phase;
+    std::string         unit;
     std::vector<double> samples;
+    std::vector<std::uint64_t> regenerationSamples;
+    std::optional<std::uint64_t> allocationsPerIteration;
+    std::string note;
 };
 
 /// @brief 正の整数を読む。
@@ -148,11 +154,34 @@ double Median(std::vector<double> samples)
     return samples[samples.size() / 2];
 }
 
+double Percentile(std::vector<double> samples, double fraction)
+{
+    std::sort(samples.begin(), samples.end());
+    const double position = fraction * static_cast<double>(samples.size() - 1);
+    const auto lower = static_cast<std::size_t>(position);
+    const auto upper = (std::min)(lower + 1, samples.size() - 1);
+    const double blend = position - static_cast<double>(lower);
+    return samples[lower] + (samples[upper] - samples[lower]) * blend;
+}
+
+std::uint64_t Median(std::vector<std::uint64_t> samples)
+{
+    std::sort(samples.begin(), samples.end());
+    return samples[samples.size() / 2];
+}
+
 void PrintResult(const Result& result)
 {
     const auto [minIt, maxIt] = std::minmax_element(result.samples.begin(), result.samples.end());
-    std::printf("%-6s %-9s %12.3f %12.3f %12.3f  %-8s %s\n", result.kind, result.phase,
-                Median(result.samples), *minIt, *maxIt, result.unit, result.name.c_str());
+    const std::string allocation = result.allocationsPerIteration
+        ? std::to_string(*result.allocationsPerIteration) : "n/a";
+    const std::string regenerations = result.regenerationSamples.empty()
+        ? "n/a" : std::to_string(Median(result.regenerationSamples));
+    std::printf("%-6s %-20s %12.3f %12.3f %12.3f %12.3f  %-12s alloc=%-5s regen=%-5s %s\n",
+                result.kind.c_str(), result.phase.c_str(), Median(result.samples),
+                Percentile(result.samples, 0.95), *minIt, *maxIt, result.unit.c_str(),
+                allocation.c_str(), regenerations.c_str(), result.name.c_str());
+    if (!result.note.empty()) std::printf("       %s\n", result.note.c_str());
     std::fflush(stdout);
 }
 
@@ -161,7 +190,7 @@ bool WriteJson(const MeasureOptions& options, const std::string& startedAt, cons
     std::FILE* file = nullptr;
     if (fopen_s(&file, options.jsonPath.c_str(), "wb") != 0 || file == nullptr) return false;
 
-    std::fprintf(file, "{\n  \"schema\": \"fbzz-bench/1\",\n");
+    std::fprintf(file, "{\n  \"schema\": \"fbzz-bench/2\",\n");
     std::fprintf(file, "  \"label\": %s,\n", QuoteJson(options.label).c_str());
     std::fprintf(file, "  \"startedAt\": %s,\n", QuoteJson(startedAt).c_str());
     std::fprintf(file, "  \"environment\": {\"commit\": %s, \"dirty\": %s, \"cpu\": %s, \"logicalCores\": %lu, "
@@ -172,22 +201,42 @@ bool WriteJson(const MeasureOptions& options, const std::string& startedAt, cons
                  QuoteJson(FBZZ_BENCH_CONFIG).c_str());
     std::fprintf(file, "  \"settings\": {\"steps\": %d, \"warmup\": %d, \"repeats\": %d, \"ops\": %d, \"fixedStep\": %.7f},\n",
                  options.steps, options.warmupSteps, options.repeats, options.ops, kBenchFixedStep);
+    std::fprintf(file, "  \"waterCoverage\": {\"gpu\": \"not measured\", \"ui\": \"not measured\", "
+                       "\"standardAllocatorCounts\": \"unavailable\"},\n");
     std::fprintf(file, "  \"results\": [\n");
     for (size_t i = 0; i < results.size(); ++i) {
         const Result& result = results[i];
         const auto [minIt, maxIt] = std::minmax_element(result.samples.begin(), result.samples.end());
-        std::fprintf(file, "    {\"kind\": \"%s\", \"name\": %s, \"phase\": \"%s\", \"unit\": \"%s\", \"samples\": [",
-                     result.kind, QuoteJson(result.name).c_str(), result.phase, result.unit);
+        std::fprintf(file, "    {\"kind\": %s, \"name\": %s, \"phase\": %s, \"unit\": %s, \"samples\": [",
+                     QuoteJson(result.kind).c_str(), QuoteJson(result.name).c_str(),
+                     QuoteJson(result.phase).c_str(), QuoteJson(result.unit).c_str());
         for (size_t s = 0; s < result.samples.size(); ++s)
             std::fprintf(file, "%s%.4f", s == 0 ? "" : ", ", result.samples[s]);
-        std::fprintf(file, "], \"median\": %.4f, \"min\": %.4f, \"max\": %.4f}%s\n",
-                     Median(result.samples), *minIt, *maxIt, i + 1 < results.size() ? "," : "");
+        std::fprintf(file, "], \"median\": %.4f, \"p95\": %.4f, \"min\": %.4f, \"max\": %.4f, ",
+                     Median(result.samples), Percentile(result.samples, 0.95), *minIt, *maxIt);
+        if (result.allocationsPerIteration)
+            std::fprintf(file, "\"allocationsPerIteration\": %llu, ",
+                static_cast<unsigned long long>(*result.allocationsPerIteration));
+        else
+            std::fprintf(file, "\"allocationsPerIteration\": null, ");
+        if (result.regenerationSamples.empty()) {
+            std::fprintf(file, "\"regenerationSamples\": null, \"regenerationsPerIteration\": null");
+        } else {
+            std::fprintf(file, "\"regenerationSamples\": [");
+            for (size_t s = 0; s < result.regenerationSamples.size(); ++s)
+                std::fprintf(file, "%s%llu", s == 0 ? "" : ", ",
+                    static_cast<unsigned long long>(result.regenerationSamples[s]));
+            std::fprintf(file, "], \"regenerationsPerIteration\": %llu",
+                static_cast<unsigned long long>(Median(result.regenerationSamples)));
+        }
+        std::fprintf(file, ", \"note\": %s}%s\n", QuoteJson(result.note).c_str(),
+            i + 1 < results.size() ? "," : "");
     }
     std::fprintf(file, "  ]\n}\n");
     return std::fclose(file) == 0;
 }
 
-} // namespace
+} /// @note namespace
 
 bool ParseMeasureOptions(int argc, char** argv, MeasureOptions& out)
 {
@@ -241,7 +290,10 @@ int RunMeasure(const MeasureOptions& options)
 
     std::printf("steps=%d warmup=%d repeats=%d ops=%d label=%s\n", options.steps, options.warmupSteps,
                 options.repeats, options.ops, options.label.empty() ? "-" : options.label.c_str());
-    std::printf("%-6s %-9s %12s %12s %12s  %-8s %s\n", "kind", "phase", "median", "min", "max", "unit", "name");
+    std::printf("water warmup=%d repeats=%d; GPU/UI not measured; standard allocator counts unavailable\n",
+        (std::min)(options.warmupSteps, 2), options.repeats);
+    std::printf("%-6s %-20s %12s %12s %12s %12s  %-12s %-11s %-11s %s\n",
+        "kind", "phase", "median", "p95", "min", "max", "unit", "alloc/iter", "regen/iter", "name");
 
     const auto elapsed = [](auto begin, auto end) {
         return std::chrono::duration<double, std::micro>(end - begin).count();
@@ -293,6 +345,21 @@ int RunMeasure(const MeasureOptions& options)
         results.push_back(std::move(result));
     }
 
+    std::vector<WaterControlPointMeasureResult> waterResults;
+    if (!RunWaterControlPointMeasures((std::min)(options.warmupSteps, 2), options.repeats, waterResults)) {
+        std::fprintf(stderr, "Water TargetPoint workset の数値 snapshot を生成できませんでした。\n");
+        return 1;
+    }
+    for (WaterControlPointMeasureResult& water : waterResults) {
+        Result result{"water", std::move(water.name), std::move(water.phase),
+            std::move(water.unit), std::move(water.samples)};
+        result.regenerationSamples = std::move(water.regenerationSamples);
+        result.allocationsPerIteration = water.allocationsPerIteration;
+        result.note = std::move(water.note);
+        PrintResult(result);
+        results.push_back(std::move(result));
+    }
+
     if (!options.jsonPath.empty() && !WriteJson(options, startedAt, results)) {
         std::fprintf(stderr, "JSON を書けません: %s\n", options.jsonPath.c_str());
         return 1;
@@ -300,4 +367,4 @@ int RunMeasure(const MeasureOptions& options)
     return 0;
 }
 
-} // namespace fbzz::bench
+} /// @note namespace fbzz::bench

@@ -1,0 +1,60 @@
+{
+  "name": "ParticleAuthoringSmoke",
+  "scene": "Assets/Samples/ParticleAuthoring/ParticleAuthoring.scene",
+  "lockstep": 0.016666666666666666,
+  "steps": [
+    {
+      "do": "play"
+    },
+    {
+      "do": "frames",
+      "count": 30
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.find",
+        "comp": "ParticleEmitter"
+      },
+      "path": "count",
+      "op": "==",
+      "value": 4
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "ParticleAuthoring_050s"
+    },
+    {
+      "do": "frames",
+      "count": 120
+    },
+    {
+      "do": "capture",
+      "view": "game",
+      "name": "ParticleAuthoring_250s"
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "scene.validate"
+      },
+      "path": "valid",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "console.logs",
+        "minLevel": "error"
+      },
+      "path": "count",
+      "op": "==",
+      "value": 0
+    },
+    {
+      "do": "stop"
+    }
+  ]
+}

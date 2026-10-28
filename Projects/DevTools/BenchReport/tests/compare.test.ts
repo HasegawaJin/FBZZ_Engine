@@ -95,6 +95,52 @@ test('描画結果は項目名と題名をエスケープする', () => {
     assert.ok(listing.includes('[テスト <比較> & 検証](2026-09-18-test/report.md)'));
 });
 
+test('ParseRun は fbzz-bench/1 と /2 を比較へ渡し、v2 の optional fields を保つ', () => {
+    const makeText = (schema: string, label: string, resultFields: Record<string, unknown>) => JSON.stringify({
+        schema,
+        label,
+        startedAt: '2026-09-18T00:00:00Z',
+        environment: { commit: `${label}-commit`, dirty: false, cpu: 'Test CPU', logicalCores: 8,
+            compiler: 'MSVC 19.51.0', config: 'Development' },
+        settings: { steps: 600, warmup: 120, repeats: 7, ops: 200000, fixedStep: 1 / 60 },
+        ...(schema === 'fbzz-bench/2' ? {
+            waterCoverage: { gpu: 'not measured', ui: 'not measured', standardAllocatorCounts: 'unavailable' },
+        } : {}),
+        results: [{ kind: 'water', name: 'Zone.Build', phase: 'build', unit: 'us/iteration',
+            samples: [1, 2, 3, 4, 5], median: 3, min: 1, max: 5, ...resultFields }],
+    });
+    const legacy = ParseRun(makeText('fbzz-bench/1', 'base', {}), 'legacy.json');
+    const current = ParseRun(makeText('fbzz-bench/2', 'candidate', {
+        p95: 4.8,
+        allocationsPerIteration: null,
+        regenerationSamples: [0, 2],
+        regenerationsPerIteration: 1,
+    }), 'current.json');
+    const optionalFields = ParseRun(makeText('fbzz-bench/2', 'candidate-no-p95', {
+        allocationsPerIteration: null,
+        regenerationSamples: null,
+        regenerationsPerIteration: null,
+    }), 'optional-fields.json');
+
+    assert.equal(legacy.results[0].p95, 4.8);
+    assert.equal(legacy.results[0].allocationsPerIteration, undefined);
+    assert.equal(legacy.results[0].regenerationSamples, undefined);
+    assert.equal(current.results[0].p95, 4.8);
+    assert.equal(current.results[0].allocationsPerIteration, null);
+    assert.deepEqual(current.results[0].regenerationSamples, [0, 2]);
+    assert.equal(current.results[0].regenerationsPerIteration, 1);
+    assert.equal(optionalFields.results[0].p95, 4.8);
+    assert.equal(optionalFields.results[0].allocationsPerIteration, null);
+    assert.equal(optionalFields.results[0].regenerationSamples, null);
+    assert.equal(optionalFields.results[0].regenerationsPerIteration, null);
+
+    const [baseline, candidate] = GroupByLabel([legacy, current]);
+    const comparison = Compare(baseline, candidate);
+    assert.equal(comparison.rows[0].name, 'Zone.Build');
+    assert.equal(comparison.rows[0].baseline.value, 3);
+    assert.equal(comparison.rows[0].candidate.value, 3);
+});
+
 test('ParseRun は未対応の schema を拒む', () => {
     assert.throws(() => ParseRun('{"schema":"fbzz-bench/0"}', 'x.json'), /未対応の schema/);
     assert.throws(() => ParseRun('not json', 'y.json'), /JSON として読めない/);

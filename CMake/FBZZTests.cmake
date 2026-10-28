@@ -62,14 +62,15 @@ function(fbzz_stage_test_runtime TARGET)
     )
 endfunction()
 
-# @note fbzz_add_test_suite(<Suite> SOURCES <...> [LINKS <...>] [MANUAL|OPT_IN])
+# @note fbzz_add_test_suite(<Suite> SOURCES <...> [LINKS <...>] [LABELS <...>] [MANUAL|OPT_IN])
 
 # @note Suite   スイート名。FBZZTests<Suite>Obj と FBZZTests<Suite> を生成する。
 # @note LINKS   FBZZTestKit に加えてリンクするターゲット。
 # @note MANUAL  CTest に登録しない (手動テスト)。
 # @note OPT_IN  自動判定は維持し、通常ビルドと CTest から外す。明示ターゲットと exe で実行する。
+# @note LABELS  CTest の領域選択に使う。未指定なら Auto / Standalone 接尾辞を除いた Suite 名。
 function(fbzz_add_test_suite SUITE)
-    cmake_parse_arguments(ARG "MANUAL;OPT_IN" "" "SOURCES;LINKS" ${ARGN})
+    cmake_parse_arguments(ARG "MANUAL;OPT_IN" "" "SOURCES;LINKS;LABELS" ${ARGN})
 
     if(NOT ARG_SOURCES)
         message(FATAL_ERROR "fbzz_add_test_suite(${SUITE}): SOURCES が空です")
@@ -105,10 +106,14 @@ function(fbzz_add_test_suite SUITE)
         return()
     endif()
 
+    if(NOT ARG_LABELS)
+        string(REGEX REPLACE "(Auto|Standalone)$" "" ARG_LABELS "${SUITE}")
+    endif()
+
     gtest_discover_tests(${exeTarget}
         DISCOVERY_TIMEOUT 60
         WORKING_DIRECTORY "${FBZZ_TEST_OUTPUT_DIR}"
-        PROPERTIES TIMEOUT ${FBZZ_TEST_TIMEOUT}
+        PROPERTIES TIMEOUT ${FBZZ_TEST_TIMEOUT} LABELS "${ARG_LABELS}"
     )
     set_property(GLOBAL APPEND PROPERTY FBZZ_TEST_SUITES ${SUITE})
 endfunction()

@@ -1,10 +1,14 @@
-﻿# 手元でカバレッジを取る。CI と同じ計測対象・同じ要約を出す。
-#
-#   .\Tools\Coverage\RunCoverage.ps1                     # build/Debug を計測
-#   .\Tools\Coverage\RunCoverage.ps1 -BuildDir build/ci  # 別のビルドディレクトリ
-#
-# 事前に OpenCppCoverage が要る:  winget install OpenCppCoverage.OpenCppCoverage
-# ビルド自体は Visual Studio / VSCode から済ませておくこと (このスクリプトはビルドしない)。
+﻿# @file    RunCoverage.ps1
+# @brief   カバレッジを計測し、ログとレポートを出力先へ保存する。
+# @author  Hasegawa Jin
+# @date    2026-10-28
+# @note 手元でカバレッジを取る。CI と同じ計測対象・同じ要約を出す。
+
+# @note .\Tools\Coverage\RunCoverage.ps1                     # build/Debug を計測
+# @note .\Tools\Coverage\RunCoverage.ps1 -BuildDir build/ci  # 別のビルドディレクトリ
+
+# @note 事前に OpenCppCoverage が要る:  winget install OpenCppCoverage.OpenCppCoverage
+# @note ビルド自体は Visual Studio / VSCode から済ませておくこと (このスクリプトはビルドしない)。
 
 [CmdletBinding()]
 param(
@@ -19,8 +23,8 @@ Set-Location $repoRoot
 
 $openCppCoverage = (Get-Command OpenCppCoverage.exe -ErrorAction SilentlyContinue).Source
 if (-not $openCppCoverage) {
-    # インストーラーが書いた PATH は起動済みプロセスに伝播しない。VSCode の再起動を
-    # 強いないよう、レジストリの PATH と既定の導入先まで見に行く。
+    # @note インストーラーが書いた PATH は起動済みプロセスに伝播しない。VSCode の再起動を
+    # @note 強いないよう、レジストリの PATH と既定の導入先まで見に行く。
     $env:Path = @(
         [Environment]::GetEnvironmentVariable('Path', 'Machine'),
         [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -39,38 +43,47 @@ if (-not (Test-Path $BuildDir)) {
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+$BuildDir = (Resolve-Path -LiteralPath $BuildDir).Path
+$OutputDir = (Resolve-Path -LiteralPath $OutputDir).Path
 $cobertura = Join-Path $OutputDir 'coverage.xml'
 $html      = Join-Path $OutputDir 'html'
 $summary   = Join-Path $OutputDir 'summary.md'
 $reportDir = Join-Path $OutputDir 'report'
-# 履歴は測定ごとに 1 ファイル増えていく。消すと推移グラフの過去分が丸ごと消える。
+# @note 履歴は測定ごとに 1 ファイル増えていく。消すと推移グラフの過去分が丸ごと消える。
 $historyDir = Join-Path $OutputDir 'history'
 
-# --cover_children: ctest が起動する各テスト exe まで追う。
-#
-# 計測対象は «テストで守ると決めた領域» だけに絞る。Renderer や ImGui のパネルまで
-# 混ぜると、そもそもテストしない領域が分母に入って数値が意味を失う。
-#
-# 分母は CI (.github/workflows/tests.yml) と RunCoverageLLVM.ps1 と同じ 4 つに揃える
-# (Docs/conventions/test.md «計測対象を広げない»)。Asset / Editor のテストは回るが分母には入れない。
-# Projects\Core は Logger とアロケーター (FBZZCore.dll)、Projects\Engine\src\Core は
-# Time / Scheduler / TaskSystem / CrashHandler (FBZZEngine.dll) で、置き場所は別だが同じ «基盤» の分母。
-# Core\Platform はウィンドウ・カーソル・起動の OS 層で、テストでは生成しないので外す。
-& $openCppCoverage `
-    --cover_children `
-    --sources "Projects\Math" `
-    --sources "Projects\Physics" `
-    --sources "Projects\Core" `
-    --sources "Projects\Engine\src\Core" `
-    --excluded_sources "Projects\Engine\src\Core\Platform" `
-    --excluded_sources "Projects\Tests" `
-    --excluded_sources "ThirdParty" `
-    --export_type "cobertura:$cobertura" `
-    --export_type "html:$html" `
-    -- ctest --test-dir $BuildDir -C $Config --output-on-failure
+# @note --cover_children: ctest が起動する各テスト exe まで追う。
 
-# OpenCppCoverage の出す «ドライブ文字 + 開発機の絶対パス» を、リポジトリ相対へ直す。
-# これを挟まないと ReportGenerator も Coverage Gutters もソースを開けない。
+# @note 計測対象は «テストで守ると決めた領域» だけに絞る。Renderer や ImGui のパネルまで
+# @note 混ぜると、そもそもテストしない領域が分母に入って数値が意味を失う。
+
+# @note 分母は CI (.github/workflows/tests.yml) と RunCoverageLLVM.ps1 と同じ 4 つに揃える
+# @note (Docs/conventions/test.md «計測対象を広げない»)。Asset / Editor のテストは回るが分母には入れない。
+# @note Projects\Core は Logger とアロケーター (FBZZCore.dll)、Projects\Engine\src\Core は
+# @note Time / Scheduler / TaskSystem / CrashHandler (FBZZEngine.dll) で、置き場所は別だが同じ «基盤» の分母。
+# @note Core\Platform はウィンドウ・カーソル・起動の OS 層で、テストでは生成しないので外す。
+# @note OpenCppCoverage の LastCoverageResults.log もレポートと同じ出力先へ閉じる。
+Push-Location $OutputDir
+try {
+    & $openCppCoverage `
+        --cover_children `
+        --sources "Projects\Math" `
+        --sources "Projects\Physics" `
+        --sources "Projects\Core" `
+        --sources "Projects\Engine\src\Core" `
+        --excluded_sources "Projects\Engine\src\Core\Platform" `
+        --excluded_sources "Projects\Tests" `
+        --excluded_sources "ThirdParty" `
+        --export_type "cobertura:$cobertura" `
+        --export_type "html:$html" `
+        -- ctest --test-dir $BuildDir -C $Config --output-on-failure
+}
+finally {
+    Pop-Location
+}
+
+# @note OpenCppCoverage の出す «ドライブ文字 + 開発機の絶対パス» を、リポジトリ相対へ直す。
+# @note これを挟まないと ReportGenerator も Coverage Gutters もソースを開けない。
 & (Join-Path $PSScriptRoot 'NormalizeCoverageXml.ps1') -CoberturaPath $cobertura
 
 & (Join-Path $PSScriptRoot 'CoverageReport.ps1') -CoberturaPath $cobertura -OutputPath $summary

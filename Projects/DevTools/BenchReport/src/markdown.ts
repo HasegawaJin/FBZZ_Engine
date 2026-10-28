@@ -1,6 +1,7 @@
-// FBZZ Engine
-// markdown.ts | Projects/DevTools/BenchReport
-// README・PR・コミット本文へそのまま貼れる Markdown のレポート。
+/// @file    markdown.ts
+/// @brief   Markdown 比較レポートの描画。
+/// @author  Hasegawa Jin
+/// @date    2026-09-18
 
 import {
     DescribeCommit, FormatChange, FormatValue, NEUTRAL_BAND, PhaseText, REGRESSION_THRESHOLD, VERDICT_TEXT,
@@ -11,15 +12,16 @@ import { EscapeMarkdownCell } from './text.ts';
 
 export interface ReportMeta {
     title: string;
-    /** レポートを作った日 (YYYY-MM-DD)。 */
+    /// @brief レポートを作った日 (YYYY-MM-DD)。
     date: string;
-    /** 出力先から Docs/design/benchmark-report.md への相対パス (/ 区切り)。 */
+    /// @brief 出力先から Docs/design/benchmark-report.md への相対パス (/ 区切り)。
     designLink: string;
 }
 
 const KIND_TITLE: Record<ResultKind, string> = {
     scene: '物理の場面 (1 刻みあたり)',
     micro: 'Math の演算 (1 演算あたり)',
+    water: 'Water TargetPoint workset',
 };
 
 function Table(rows: Row[]): string[] {
@@ -44,7 +46,7 @@ export function RenderMarkdown(comparison: Comparison, meta: ReportMeta, chartFi
 
     lines.push(`# ${meta.title}`, '');
     const headline: string[] = [];
-    for (const kind of ['scene', 'micro'] as const) {
+    for (const kind of ['scene', 'micro', 'water'] as const) {
         const summary = comparison.summary[kind];
         if (summary) headline.push(`${KIND_TITLE[kind]}: **${FormatChange(summary.change)}** (${summary.count} 項目の幾何平均)`);
     }
@@ -52,7 +54,7 @@ export function RenderMarkdown(comparison: Comparison, meta: ReportMeta, chartFi
     lines.push(`改善 ${comparison.counts.improved} / 変化なし ${comparison.counts.neutral} / 注意 ${comparison.counts.caution} / 悪化 ${comparison.counts.regressed}`, '');
     lines.push(`![${EscapeMarkdownCell(candidate.label)} の変化率](${chartFile})`, '');
 
-    for (const kind of ['scene', 'micro'] as const) {
+    for (const kind of ['scene', 'micro', 'water'] as const) {
         const rows = comparison.rows.filter((row) => row.kind === kind);
         if (rows.length === 0) continue;
         lines.push(`## ${KIND_TITLE[kind]}`, '', ...Table(rows), '');

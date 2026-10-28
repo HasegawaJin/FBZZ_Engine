@@ -23,11 +23,10 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 const CPP_EXTENSIONS = new Set(['.hpp', '.cpp', '.inl', '.h']);
 const SHADER_EXTENSIONS = new Set(['.hlsl', '.hlsli']);
-const GENERATED_FILES = new Set(['ScriptList.inl', 'DataAssetList.inl']);
 
 /** シェーダーの複製がある根。同じ相対パスのファイルは中身が一致していなければならない。 */
 function ShaderRoots() {
-    const roots = ['Assets/Shaders', 'GreenWare/Assets/Shaders'];
+    const roots = ['Assets/Shaders'];
     const templates = path.join(REPO_ROOT, 'Projects/GameHub/Templates');
     if (existsSync(templates)) {
         for (const name of readdirSync(templates)) {
@@ -46,7 +45,7 @@ function ToRepoPath(file) {
 function IsLintTarget(repoPath) {
     if (/(^|\/)(ThirdParty|node_modules|build|dist|out|Binaries|Library|SDK)\//.test(repoPath)) return false;
     const extension = path.extname(repoPath).toLowerCase();
-    if (CPP_EXTENSIONS.has(extension)) return repoPath.startsWith('Projects/') || /^[^/]+\/Assets\/Scripts\//.test(repoPath);
+    if (CPP_EXTENSIONS.has(extension)) return repoPath.startsWith('Projects/');
     if (SHADER_EXTENSIONS.has(extension)) return true;
     if (path.basename(repoPath) === 'CMakeLists.txt' || extension === '.cmake') return true;
     if (extension === '.ps1') return true;
@@ -130,7 +129,6 @@ function LintCpp(repoPath, source) {
     const baseName = path.basename(repoPath);
     const extension = path.extname(repoPath).toLowerCase();
     const isHeader = extension === '.hpp' || extension === '.h';
-    const isScript = /^[^/]+\/Assets\//.test(repoPath);
     const isRendererBackend = /Renderer\/DX1[12]|RenderDX1[12]|\/DX1[12]\//.test(repoPath);
     /// @note `new` の唯一の置き場。ここが nothrow new を書くので «失敗したら nullptr» を全体へ配れる (AGENTS.md «絶対制約»)。
     const isAllocationPrimitive = /(^|\/)Memory\/MakeUnique\.hpp$/.test(repoPath);
@@ -140,8 +138,6 @@ function LintCpp(repoPath, source) {
     const add = (severity, rule, line, message, keyText = (lines[line - 1] ?? '')) => findings.push({
         severity, rule, line, message, key: `${rule}|${keyText.replace(/\s+/g, ' ').trim()}`,
     });
-
-    if (GENERATED_FILES.has(baseName)) return findings;
 
     // 4 行ヘッダー
     const header = lines.slice(0, 4);
@@ -180,7 +176,7 @@ function LintCpp(repoPath, source) {
     ].filter(({ rule }) => !(isAllocationPrimitive && rule === 'no-new'));
     if (isHeader) {
         rules.push({ rule: 'no-windows-h-in-header', re: /#\s*include\s*<(W|w)indows\.h>/, message: 'ヘッダーへ <Windows.h> 禁止。.cpp に閉じる' });
-        if (!isScript) rules.push({ rule: 'no-using-namespace-in-header', re: /^\s*using\s+namespace\b/, message: 'エンジン .hpp での using namespace 禁止' });
+        rules.push({ rule: 'no-using-namespace-in-header', re: /^\s*using\s+namespace\b/, message: 'エンジン .hpp での using namespace 禁止' });
     }
     if (!isRendererBackend) {
         rules.push({ rule: 'no-backend-downcast', re: /\bDX1[12]Renderer\s*[*&]/, message: 'DX11Renderer* / DX12Renderer* 禁止。IRenderer& のみ' });
@@ -214,7 +210,6 @@ function LintCpp(repoPath, source) {
         const isDoxygen = text.startsWith('///') || text.startsWith('/**') || text.startsWith('//!');
         if (!isDoxygen) {
             if (/^\/\/\s*(NOLINT|clang-format|namespace\b)/.test(text)) continue;
-            if (/^\/\/ @@FBZZ_/.test(text)) continue; // ScriptCodeGen / GameHub が `"// " + marker` の完全一致で探す。`///` にすると自動同期が壊れる
             if (/^\/\*\s*\w*\s*=?\s*\*\/$/.test(text)) continue; // 引数名のコメント `/*unused*/` `/*poolTag=*/`
             const codeBefore = codeLines[comment.line - 1] ?? '';
             if (/^\s*#\s*endif\b/.test(codeBefore)) continue;
@@ -297,7 +292,7 @@ function LintTestRegistration(repoPath) {
 
 /**
  * 入場を索引 (各根の README.md) で管理するツール置き場。
- * [根, 直下の項目名] を取り出す。GreenWare/Tools のような «プロジェクト/Tools» も含む。
+ * [根, 直下の項目名] を取り出す。`<Project>/Tools` のような «プロジェクト/Tools» も含む。
  */
 const TOOL_ROOTS = [
     /^(Tools)\/([^/]+)/,
@@ -403,11 +398,6 @@ export function LintFile(file, { all = false, base = 'HEAD' } = {}) {
     const findings = LintToolRegistration(repoPath);
     if (!IsLintTarget(repoPath)) return findings.map((finding) => ({ ...finding, file: repoPath }));
 
-    if (GENERATED_FILES.has(path.basename(repoPath))) {
-        findings.push({ severity: 'error', rule: 'generated-file', line: 1, key: 'generated-file',
-            message: `${path.basename(repoPath)} は生成物。手で編集しない (ScriptCodeGen が作り直す)` });
-        return findings.map((finding) => ({ ...finding, file: repoPath }));
-    }
     const source = readFileSync(absolute, 'utf8');
     let contentFindings = LintContent(repoPath, source);
     if (!all) {
@@ -425,7 +415,7 @@ export function LintFile(file, { all = false, base = 'HEAD' } = {}) {
 /** CI 用: base から HEAD までに変わったファイル (PR の差分)。 */
 function ChangedSince(base) {
     return execFileSync('git', ['diff', '--name-only', '--diff-filter=ACMR', `${base}...HEAD`], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
-        .split(/\r?\n/).filter(Boolean).filter((file) => !GENERATED_FILES.has(path.basename(file)));
+        .split(/\r?\n/).filter(Boolean);
 }
 
 function ChangedFiles() {
@@ -433,8 +423,7 @@ function ChangedFiles() {
         .split(/\r?\n/).filter(Boolean);
     const tracked = run(['diff', '--name-only', '--diff-filter=ACMR', 'HEAD']);
     const untracked = run(['ls-files', '--others', '--exclude-standard']);
-    // 生成物は ScriptCodeGen が書き換えるので、変更一覧の走査では咎めない (フックの時だけ見る)。
-    return [...new Set([...tracked, ...untracked])].filter((file) => !GENERATED_FILES.has(path.basename(file)));
+    return [...new Set([...tracked, ...untracked])];
 }
 
 function Format(findings, limit = 30) {

@@ -35,23 +35,15 @@ set(FBZZ_SDK_ROOT "${FBZZ_SDK_STORE_ROOT}/${FBZZ_SDK_ID}")
 set(FBZZ_SDK_GENERATED_DIR "${CMAKE_BINARY_DIR}/Generated/FBZZSDK")
 file(MAKE_DIRECTORY "${FBZZ_SDK_GENERATED_DIR}")
 
-# @note Script DLL は Engine の C++ 型を共有するため、版数と構成をコンパイル単位へ伝播させる。
-# @note ScriptDllAbi.hpp の実行時署名と detect_mismatch の双方がこの値を利用する。
-#
-# @note これらのマクロが無い翻訳単位では «"0.0.0-unconfigured"» という既定値へ落ち、
-# @note detect_mismatch が同じ DLL の中で食い違って LNK2038 になる。現状は各モジュールが
-# @note FBZZMath をリンクしているおかげで PUBLIC 定義が «たまたま» 流れているだけで、
-# @note リンク先を 1 つ減らした瞬間に壊れる。宛先を明示して事故を断つ。
+# @note Engine モジュールへ版数定義を明示し、クラッシュレポートへ正しい版を記録する。
 get_property(FBZZ_ENGINE_MODULE_TARGETS GLOBAL PROPERTY FBZZ_ENGINE_MODULES)
-foreach(FBZZ_ABI_TARGET FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZGraphics FBZZEngine FBZZEditor
+foreach(FBZZ_VERSION_TARGET FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZGraphics FBZZEngine FBZZEditor
                         ${FBZZ_ENGINE_MODULE_TARGETS})
-    target_compile_definitions(${FBZZ_ABI_TARGET} PUBLIC
+    target_compile_definitions(${FBZZ_VERSION_TARGET} PUBLIC
         FBZZ_ENGINE_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
         FBZZ_ENGINE_VERSION_MINOR=${PROJECT_VERSION_MINOR}
         FBZZ_ENGINE_VERSION_PATCH=${PROJECT_VERSION_PATCH}
         FBZZ_ENGINE_VERSION_STRING="${PROJECT_VERSION}"
-        "FBZZ_BUILD_CONFIG_ID=$<IF:$<CONFIG:Debug>,1,$<IF:$<CONFIG:Development>,2,3>>"
-        "FBZZ_BUILD_CONFIG_NAME=$<IF:$<CONFIG:Debug>,\"Debug\",$<IF:$<CONFIG:Development>,\"Development\",\"Release\">>"
     )
 endforeach()
 
@@ -139,6 +131,24 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/ThirdParty/ImGui/"
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/Assets/"
     DESTINATION "share/fbzz/Assets"
 )
+# @note Framework-dependent managed hosting uses the user's .NET 10 runtime; nethost and SDK assemblies accompany each Engine configuration.
+install(FILES "${FBZZ_DOTNET_HOST_PACK}/nethost.dll" DESTINATION "bin/$<CONFIG>")
+install(DIRECTORY "${FBZZ_MANAGED_OUTPUT_DIRECTORY}/" DESTINATION "bin/$<CONFIG>/Managed")
+# @note ソース checkout の無い GameHub project も既存の直列ビルド入口と同じ固定 Roslyn SDK でコンパイルする。
+install(FILES "${CMAKE_SOURCE_DIR}/Tools/AgentBuild.ps1" DESTINATION "Tools")
+install(FILES "${CMAKE_SOURCE_DIR}/Projects/Managed/global.json" DESTINATION "Projects/Managed")
+# @note GameHub and SDK-only authoring use the same starter and canonical documentation.
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/Projects/Managed/Authoring/ManagedStarter/"
+    DESTINATION "share/fbzz/managed/ManagedStarter"
+    PATTERN "bin" EXCLUDE PATTERN "obj" EXCLUDE PATTERN "Library" EXCLUDE)
+install(FILES "${CMAKE_SOURCE_DIR}/Projects/Managed/global.json"
+    DESTINATION "share/fbzz/managed/ManagedStarter")
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/Docs/" DESTINATION "share/fbzz/Docs"
+    FILES_MATCHING PATTERN "*.md" PATTERN "*.svg" PATTERN "*.png")
+install(FILES "${CMAKE_SOURCE_DIR}/Projects/Managed/README.md"
+    DESTINATION "share/fbzz/Projects/Managed")
+install(FILES "${FBZZ_DOTNET_ROOT}/LICENSE.txt" "${FBZZ_DOTNET_ROOT}/ThirdPartyNotices.txt"
+    DESTINATION "share/fbzz/licenses/DotNet")
 install(FILES
     "${FBZZ_SDK_GENERATED_DIR}/FBZZConfig.cmake"
     "${FBZZ_SDK_GENERATED_DIR}/FBZZConfigVersion.cmake"
@@ -189,49 +199,86 @@ endif()
 
 # @note Visual Studio から FBZZSDK ターゲットをビルドすると、同じ構成の lib/bin と
 # @note 構成非依存の headers/package/assets/tools を版別 SDK へ同期する。
-add_custom_target(FBZZSDK
-    # @note 公開を始める前に成功状態を落とし、途中失敗した構成を選択不能にする。
-    COMMAND ${CMAKE_COMMAND}
-        "-DSDK_ROOT=${FBZZ_SDK_ROOT}" "-DCONFIG=$<CONFIG>"
-        "-DPUBLISH_BEGIN=ON" "-DMANIFEST_TEMPLATE=${FBZZ_SDK_GENERATED_DIR}/fbzz-sdk.toml"
-        -P "${CMAKE_SOURCE_DIR}/CMake/SDK/StageFBZZSDK.cmake"
-    # @note 同じフォルダーを再利用するため、前回公開したheaderが残り続ける。
-    # @note 削除したAPIをゲーム側がincludeできてしまう退行を避けたいので、公開前に捨てる。
-    # @note lib/bin/shareは同名fileの上書きで最新化される。Assetsは350MB超あり毎回消して
-    # @note 再コピーすると公開が遅くなりすぎるため、実害の大きいincludeだけに絞る。
-    COMMAND ${CMAKE_COMMAND} -E rm -rf "${FBZZ_SDK_ROOT}/include"
-    COMMAND ${CMAKE_COMMAND}
-        --install "${CMAKE_BINARY_DIR}"
-        --config "$<CONFIG>"
-        --prefix "${FBZZ_SDK_ROOT}"
-    COMMAND ${CMAKE_COMMAND}
-        "-DSDK_ROOT=${FBZZ_SDK_ROOT}"
-        "-DCONFIG=$<CONFIG>"
-        "-DASSIMP_DLL=$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
-        "-DEDITOR_DIR=$<TARGET_FILE_DIR:FBZZEditorLauncher>"
-        "-DPIX_RUNTIME_DLL=${FBZZ_SDK_PIX_RUNTIME_DLL}"
-        "-DDX12_ENABLED=${FBZZ_ENABLE_DX12}"
-        "-DAGILITY_ROOT=${CMAKE_SOURCE_DIR}/ThirdParty/AgilitySDK"
-        "-DDXC_ROOT=${CMAKE_SOURCE_DIR}/ThirdParty/DXC"
-        -P "${CMAKE_SOURCE_DIR}/CMake/SDK/StageFBZZSDK.cmake"
-    COMMAND ${CMAKE_COMMAND}
-        "-DSDK_ROOT=${FBZZ_SDK_ROOT}"
-        "-DSDK_ID=${FBZZ_SDK_ID}"
-        "-DCONFIG=$<CONFIG>"
-        "-DPIX_REQUIRED=${FBZZ_SDK_PIX_REQUIRED}"
-        -P "${CMAKE_SOURCE_DIR}/CMake/SDK/ValidateFBZZSDK.cmake"
-    # @note 検証を通った後にだけ、旧方式が残した同一versionの世代を回収する。
-    # @note 先に消すと、公開に失敗した時点で「新しいSDKは不完全・古いSDKは無い」
-    # @note という戻り先の無い状態になる。
-    COMMAND ${CMAKE_COMMAND}
-        "-DSDK_STORE_ROOT=${FBZZ_SDK_STORE_ROOT}"
-        "-DKEEP_SDK_ID=${FBZZ_SDK_ID}"
-        -P "${CMAKE_SOURCE_DIR}/CMake/SDK/PruneFBZZSDKStore.cmake"
-    DEPENDS FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZGraphics FBZZEngine FBZZEditorLauncher
-    COMMENT "Publishing immutable FBZZ SDK ${FBZZ_SDK_ID}"
-    VERBATIM
-)
-set_target_properties(FBZZSDK PROPERTIES FOLDER "SDK")
+add_custom_target(FBZZManagedAuthoringSample
+    COMMAND ${CMAKE_COMMAND} -E env MSBuildEnableWorkloadResolver=false DOTNET_CLI_TELEMETRY_OPTOUT=1
+        "${FBZZ_DOTNET_EXECUTABLE}" build
+        "${CMAKE_SOURCE_DIR}/Projects/Managed/Authoring/ManagedStarter/Starter.Scripts.csproj"
+        --configuration "${FBZZ_MANAGED_CONFIGURATION}" --nologo --verbosity minimal
+        --output "${CMAKE_BINARY_DIR}/ManagedAuthoring/$<CONFIG>/bin"
+        -m:1 -nodeReuse:false -p:UseSharedCompilation=false -p:Platform=AnyCPU
+        "-p:FbzzScriptApiPath=${FBZZ_MANAGED_OUTPUT_DIRECTORY}/Fbzz.ScriptApi.dll"
+        "-p:FbzzScriptGeneratorPath=${FBZZ_MANAGED_OUTPUT_DIRECTORY}/Fbzz.ScriptGenerator.dll"
+        "-p:BaseIntermediateOutputPath=${CMAKE_BINARY_DIR}/ManagedAuthoring/$<CONFIG>/obj/"
+        "-p:RestoreSources=${CMAKE_SOURCE_DIR}/Projects/Managed"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Projects/Managed"
+    DEPENDS FBZZManagedHost
+    COMMENT "Compiling the canonical SDK-only C# authoring example"
+    VERBATIM)
+set_target_properties(FBZZManagedAuthoringSample PROPERTIES FOLDER "Managed")
+
+function(FBZZAddSdkTarget target sdkRoot preview)
+    set(previewGuardCommands)
+    set(pruneCommands)
+    if(preview)
+        # @note Resolve existing links before any staging write or removal; preview owns only a binary-directory child.
+        list(APPEND previewGuardCommands COMMAND ${CMAKE_COMMAND}
+            "-DBINARY_ROOT=${CMAKE_BINARY_DIR}" "-DSDK_ROOT=${sdkRoot}" "-DSDK_ID=${FBZZ_SDK_ID}"
+            -P "${CMAKE_SOURCE_DIR}/CMake/SDK/GuardFBZZSDKPreview.cmake")
+        set(targetComment "Validating isolated FBZZ SDK preview ${FBZZ_SDK_ID}")
+    else()
+        # @note The official publisher retains its existing version-store cleanup after validation.
+        list(APPEND pruneCommands COMMAND ${CMAKE_COMMAND}
+            "-DSDK_STORE_ROOT=${FBZZ_SDK_STORE_ROOT}"
+            "-DKEEP_SDK_ID=${FBZZ_SDK_ID}"
+            -P "${CMAKE_SOURCE_DIR}/CMake/SDK/PruneFBZZSDKStore.cmake")
+        set(targetComment "Publishing immutable FBZZ SDK ${FBZZ_SDK_ID}")
+    endif()
+    add_custom_target(${target}
+        ${previewGuardCommands}
+        # @note 公開を始める前に成功状態を落とし、途中失敗した構成を選択不能にする。
+        COMMAND ${CMAKE_COMMAND}
+            "-DSDK_ROOT=${sdkRoot}" "-DCONFIG=$<CONFIG>"
+            "-DPUBLISH_BEGIN=ON" "-DMANIFEST_TEMPLATE=${FBZZ_SDK_GENERATED_DIR}/fbzz-sdk.toml"
+            -P "${CMAKE_SOURCE_DIR}/CMake/SDK/StageFBZZSDK.cmake"
+        # @note 同じフォルダーを再利用するため、前回公開したheaderが残り続ける。
+        # @note 削除したAPIをゲーム側がincludeできてしまう退行を避けたいので、公開前に捨てる。
+        # @note lib/bin/shareは同名fileの上書きで最新化される。Assetsは350MB超あり毎回消して
+        # @note 再コピーすると公開が遅くなりすぎるため、実害の大きいincludeだけに絞る。
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${sdkRoot}/include"
+        COMMAND ${CMAKE_COMMAND}
+            --install "${CMAKE_BINARY_DIR}"
+            --config "$<CONFIG>"
+            --prefix "${sdkRoot}"
+        COMMAND ${CMAKE_COMMAND}
+            "-DSDK_ROOT=${sdkRoot}"
+            "-DCONFIG=$<CONFIG>"
+            "-DASSIMP_DLL=$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
+            "-DEDITOR_DIR=$<TARGET_FILE_DIR:FBZZEditorLauncher>"
+            "-DPIX_RUNTIME_DLL=${FBZZ_SDK_PIX_RUNTIME_DLL}"
+            "-DDX12_ENABLED=${FBZZ_ENABLE_DX12}"
+            "-DAGILITY_ROOT=${CMAKE_SOURCE_DIR}/ThirdParty/AgilitySDK"
+            "-DDXC_ROOT=${CMAKE_SOURCE_DIR}/ThirdParty/DXC"
+            -P "${CMAKE_SOURCE_DIR}/CMake/SDK/StageFBZZSDK.cmake"
+        COMMAND ${CMAKE_COMMAND}
+            "-DSDK_ROOT=${sdkRoot}"
+            "-DSDK_ID=${FBZZ_SDK_ID}"
+            "-DCONFIG=$<CONFIG>"
+            "-DPIX_REQUIRED=${FBZZ_SDK_PIX_REQUIRED}"
+            -P "${CMAKE_SOURCE_DIR}/CMake/SDK/ValidateFBZZSDK.cmake"
+        # @note 検証を通った後にだけ、旧方式が残した同一versionの世代を回収する。
+        # @note 先に消すと、公開に失敗した時点で「新しいSDKは不完全・古いSDKは無い」
+        # @note という戻り先の無い状態になる。
+        ${pruneCommands}
+        DEPENDS FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZGraphics FBZZEngine FBZZEditorLauncher FBZZManagedHost FBZZManagedAuthoringSample
+        COMMENT "${targetComment}"
+        VERBATIM
+    )
+    set_target_properties(${target} PROPERTIES FOLDER "SDK")
+endfunction()
+
+FBZZAddSdkTarget(FBZZSDK "${FBZZ_SDK_ROOT}" OFF)
+# @note Preview uses fresh native/managed outputs and the exact official install/stage/validator path without publishing or pruning the SDK store.
+FBZZAddSdkTarget(FBZZSDKPreview "${CMAKE_BINARY_DIR}/SDKPreview/${FBZZ_SDK_ID}" ON)
 
 # @note GameHubはTypeScript版へ分離したため、SDKは明示的にFBZZSDKターゲットをビルドして生成する。
 # @note Electron版GameHubはCMake依存グラフに参加しないため、SDK側からHubへの逆向き依存を持たせない。

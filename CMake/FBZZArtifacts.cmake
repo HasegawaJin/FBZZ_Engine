@@ -1,22 +1,24 @@
-# 生成物レイアウトの正本と、そこから外れた残骸の掃除。
-#
-#   Binaries/<Config>/          共有 DLL だけ (FBZZMath / FBZZPhysics / FBZZFluid / FBZZEngine / ImGui / assimp / dxc)
-#   Binaries/<Config>/Editor/   FBZZEditor.exe        (ターゲット名は FBZZEditorLauncher)
-#   Binaries/<Config>/Sandbox/  Sandbox.exe / SandboxStandalone.exe / SandboxScripts.dll
-#   Binaries/<Config>/Tests/    FBZZTests*.exe / FBZZTestBench.exe
-#
-# exe は必ずどれかのサブディレクトリに出る。ルート直下の exe は、出力先を分ける前の
-# ビルドが置いていった死骸で、名前だけ現行と同じで中身が古い。
-# CMake はターゲットの出力先を変えても、ターゲットを消しても、既に置いた成果物を消さない。
+# @file    FBZZArtifacts.cmake
+# @brief   実行時生成物の配置と退役ターゲットの整理。
+# @author  Hasegawa Jin
+# @date    2026-09-21
+# @note 生成物レイアウトの正本と、そこから外れた残骸の掃除。
+# @note Binaries/<Config>/          共有 DLL だけ (FBZZMath / FBZZPhysics / FBZZFluid / FBZZEngine / ImGui / assimp / dxc)
+# @note Binaries/<Config>/Editor/   FBZZEditor.exe        (ターゲット名は FBZZEditorLauncher)
+# @note Binaries/<Config>/Sandbox/  Sandbox.exe / SandboxStandalone.exe
+# @note Binaries/<Config>/Tests/    FBZZTests*.exe / FBZZTestBench.exe
+# @note exe は必ずどれかのサブディレクトリに出る。ルート直下の exe は、出力先を分ける前の
+# @note ビルドが置いていった死骸で、名前だけ現行と同じで中身が古い。
+# @note CMake はターゲットの出力先を変えても、ターゲットを消しても、既に置いた成果物を消さない。
 
-# 退役したターゲットの名前。サブディレクトリからも掃除する。
+# @note 退役したターゲットの名前。サブディレクトリからも掃除する。
 set(FBZZ_RETIRED_RUNTIME_TARGETS
     FBZZVFXEditor
 )
 
-# 残骸を configure 時に消す。
-# WHY ビルド時ではなく configure 時か: 掃除の判断材料は「今どのターゲットがどこへ出るか」で、
-#     それが決まるのは configure。ビルド時に走らせると、掃除と生成の順序が構成次第になる。
+# @note 残骸を configure 時に消す。
+# @note ビルド時ではなく configure 時か: 掃除の判断材料は「今どのターゲットがどこへ出るか」で、
+# @note それが決まるのは configure。ビルド時に走らせると、掃除と生成の順序が構成次第になる。
 function(fbzz_prune_stale_runtime_artifacts)
     set(binariesRoot "${CMAKE_BINARY_DIR}/Binaries")
     if(NOT IS_DIRECTORY "${binariesRoot}")

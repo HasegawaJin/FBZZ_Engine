@@ -1,5 +1,5 @@
 /// @file    Measure.hpp
-/// @brief   画面を出さずに各場面と Math の演算を計時する (--measure)。
+/// @brief   画面を出さずに各場面・Math 演算・Water TargetPoint workset を計時する (--measure)。
 /// @author  Hasegawa Jin
 /// @date    2026-09-18
 #pragma once
@@ -23,10 +23,10 @@ struct MeasureOptions {
 /// @return --measure が無ければ false。out は未変更。
 [[nodiscard]] bool ParseMeasureOptions(int argc, char** argv, MeasureOptions& out);
 
-/// @brief 全場面の Simulate / Present と全 micro 計測を計時し、標準出力と JSON へ書く。
-/// @note 形式は schema "fbzz-bench/1"。
+/// @brief 全場面・micro 演算・Water workset を計時し、標準出力と JSON へ書く。
+/// @note 形式は schema "fbzz-bench/2"。比較用の代表値は中央値。
 /// @see Docs/design/benchmark-report.md
 /// @return プロセスの終了コード。引数が不正か JSON を書けなければ 1。
 int RunMeasure(const MeasureOptions& options);
 
-} // namespace fbzz::bench
+} /// @note namespace fbzz::bench

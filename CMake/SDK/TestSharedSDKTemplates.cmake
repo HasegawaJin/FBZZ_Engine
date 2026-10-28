@@ -20,7 +20,7 @@ foreach(TEMPLATE_KIND standard empty)
             message(FATAL_ERROR "${TEMPLATE_KIND}: CMakeLists.txt is missing ${REQUIRED_TEXT}")
         endif()
     endforeach()
-    foreach(FORBIDDEN_TEXT "FBZZ_ENGINE_ROOT" "add_subdirectory")
+    foreach(FORBIDDEN_TEXT "FBZZ_ENGINE_ROOT" "add_subdirectory" "ScriptsDll.cpp" "Scripts SHARED")
         string(FIND "${CMAKE_TEXT}" "${FORBIDDEN_TEXT}" FORBIDDEN_POS)
         if(NOT FORBIDDEN_POS EQUAL -1)
             message(FATAL_ERROR "${TEMPLATE_KIND}: CMakeLists.txt still contains ${FORBIDDEN_TEXT}")
@@ -65,17 +65,92 @@ endif()
 set(FIXTURE_SDK "${FIXTURE_ROOT}/SDK")
 set(FIXTURE_INPUT "${FIXTURE_ROOT}/Input")
 set(FIXTURE_EDITOR "${FIXTURE_ROOT}/InputEditor")
+
+# @note SDK preview guards run before install/stage and must reject redirected output paths without touching the external target.
+function(AssertSdkPreviewGuard binaryRoot sdkRoot shouldSucceed)
+    execute_process(COMMAND "${CMAKE_COMMAND}"
+        "-DBINARY_ROOT=${binaryRoot}" "-DSDK_ROOT=${sdkRoot}" "-DSDK_ID=0.9.1"
+        -P "${SOURCE_ROOT}/CMake/SDK/GuardFBZZSDKPreview.cmake"
+        RESULT_VARIABLE guardResult OUTPUT_VARIABLE guardOutput ERROR_VARIABLE guardError)
+    if(shouldSucceed AND NOT guardResult EQUAL 0)
+        message(FATAL_ERROR "SDK preview guard rejected its fixed output: ${guardOutput}${guardError}")
+    elseif(NOT shouldSucceed AND guardResult EQUAL 0)
+        message(FATAL_ERROR "SDK preview guard accepted an unsafe output: ${sdkRoot}")
+    endif()
+endfunction()
+
+function(CreateSdkPreviewFixtureLink linkPath targetPath)
+    if(WIN32)
+        execute_process(COMMAND powershell.exe -NoProfile -File
+            "${SOURCE_ROOT}/CMake/SDK/CreateSDKPreviewTestJunction.ps1"
+            -LinkPath "${linkPath}" -TargetPath "${targetPath}"
+            RESULT_VARIABLE linkResult OUTPUT_VARIABLE linkOutput ERROR_VARIABLE linkError)
+        if(NOT linkResult EQUAL 0)
+            message(FATAL_ERROR "SDK preview junction fixture failed: ${linkOutput}${linkError}")
+        endif()
+    else()
+        file(CREATE_LINK "${targetPath}" "${linkPath}" SYMBOLIC RESULT linkResult)
+        if(NOT linkResult STREQUAL "0")
+            message(FATAL_ERROR "SDK preview symlink fixture failed: ${linkResult}")
+        endif()
+    endif()
+endfunction()
+
+set(previewBinary "${FIXTURE_ROOT}/PreviewBuild")
+set(previewOutput "${previewBinary}/SDKPreview/0.9.1")
+set(previewExternal "${FIXTURE_ROOT}/OutsidePreview")
+file(MAKE_DIRECTORY "${previewBinary}" "${previewExternal}")
+file(WRITE "${previewExternal}/untouched.txt" "SDK preview guard fixture\n")
+file(SHA256 "${previewExternal}/untouched.txt" previewExternalHash)
+AssertSdkPreviewGuard("${previewBinary}" "${previewOutput}" TRUE)
+AssertSdkPreviewGuard("${previewBinary}" "${previewExternal}" FALSE)
+file(MAKE_DIRECTORY "${previewOutput}/include")
+AssertSdkPreviewGuard("${previewBinary}" "${previewOutput}" TRUE)
+
+set(previewAncestorBinary "${FIXTURE_ROOT}/PreviewAncestorBuild")
+file(MAKE_DIRECTORY "${previewAncestorBinary}")
+CreateSdkPreviewFixtureLink("${previewAncestorBinary}/SDKPreview" "${previewExternal}")
+AssertSdkPreviewGuard("${previewAncestorBinary}" "${previewAncestorBinary}/SDKPreview/0.9.1" FALSE)
+CreateSdkPreviewFixtureLink("${previewOutput}/linked" "${previewExternal}")
+AssertSdkPreviewGuard("${previewBinary}" "${previewOutput}" FALSE)
+set(previewIncludeBinary "${FIXTURE_ROOT}/PreviewIncludeBuild")
+set(previewIncludeOutput "${previewIncludeBinary}/SDKPreview/0.9.1")
+file(MAKE_DIRECTORY "${previewIncludeOutput}")
+CreateSdkPreviewFixtureLink("${previewIncludeOutput}/include" "${previewExternal}")
+AssertSdkPreviewGuard("${previewIncludeBinary}" "${previewIncludeOutput}" FALSE)
+file(SHA256 "${previewExternal}/untouched.txt" previewExternalHashAfter)
+if(NOT previewExternalHash STREQUAL previewExternalHashAfter)
+    message(FATAL_ERROR "SDK preview guard changed its external fixture")
+endif()
 set(FIXTURE_CONFIG "Release")
 set(FIXTURE_ID "pix-runtime-regression")
 file(MAKE_DIRECTORY "${FIXTURE_INPUT}" "${FIXTURE_EDITOR}" "${FIXTURE_SDK}/share/fbzz/Assets/Shaders")
 
 # @note Fixture files model install/export output without compiling or loading any DLL.
 foreach(FIXTURE_PATH
+        "Tools/AgentBuild.ps1" "Projects/Managed/global.json"
+        "share/fbzz/Docs/csharp-start.md" "share/fbzz/Docs/design/csharp-authoring.md"
+        "share/fbzz/Docs/design/ai-script-workflow.md" "share/fbzz/Docs/design/csharp-scripting.md"
+        "share/fbzz/managed/ManagedStarter/Starter.Scripts.csproj"
+        "share/fbzz/managed/ManagedStarter/Assets/Scripts/Managed/MoveForwardComponent.cs"
+        "share/fbzz/managed/ManagedStarter/global.json" "share/fbzz/managed/ManagedStarter/AGENTS.md"
+        "share/fbzz/managed/ManagedStarter/.vscode/launch.json"
         "cmake/FBZZ/FBZZConfig.cmake" "cmake/FBZZ/FBZZConfigVersion.cmake" "cmake/FBZZ/build.config.in"
         "cmake/FBZZ/FBZZAgilitySDK.cmake" "cmake/FBZZ/StageAgilitySDK.cmake" "cmake/FBZZ/AgilitySDKExports.cpp.in"
-        "include/Engine/Scene/ScriptDllAbi.hpp" "include/Physics/World.hpp" "include/Fluid/FluidSolver.hpp"
+        "include/Engine/Scene/ManagedBridgeAbi.hpp" "include/Engine/Scene/ManagedBridgeContract.inl"
+        "include/Physics/World.hpp" "include/Fluid/FluidSolver.hpp"
         "include/Math/Vector3.hpp" "include/Core/Logger.hpp" "include/Graphics/Renderer/RenderScene.hpp")
     file(WRITE "${FIXTURE_SDK}/${FIXTURE_PATH}" "")
+endforeach()
+# @note Managed artifacts model the same install contract without running CoreCLR or requiring an SDK build for this layout regression.
+file(WRITE "${FIXTURE_SDK}/bin/${FIXTURE_CONFIG}/nethost.dll" "installed nethost\n")
+foreach(MANAGED_FILE Fbzz.ScriptApi.dll Fbzz.ScriptApi.xml Fbzz.ScriptGenerator.dll Fbzz.ManagedBuildTasks.dll ManagedIncremental.targets Fbzz.ManagedHost.dll Fbzz.ManagedHost.runtimeconfig.json Fbzz.ManagedHost.deps.json)
+    file(WRITE "${FIXTURE_SDK}/bin/${FIXTURE_CONFIG}/Managed/${MANAGED_FILE}" "managed ${MANAGED_FILE}\n")
+    file(WRITE "${FIXTURE_EDITOR}/Managed/${MANAGED_FILE}" "managed ${MANAGED_FILE}\n")
+endforeach()
+foreach(MANAGED_NOTICE LICENSE.txt ThirdPartyNotices.txt)
+    file(WRITE "${FIXTURE_SDK}/share/fbzz/licenses/DotNet/${MANAGED_NOTICE}" "managed notice ${MANAGED_NOTICE}\n")
+    file(WRITE "${FIXTURE_EDITOR}/EngineLicenses/DotNet/${MANAGED_NOTICE}" "managed notice ${MANAGED_NOTICE}\n")
 endforeach()
 set(FIXTURE_TARGETS "")
 foreach(FIXTURE_LIBRARY Math Physics Fluid Engine Core Graphics)
@@ -225,8 +300,10 @@ foreach(FIXTURE_NOTICE LICENSE VERSION ThirdPartyNotices.txt)
     endif()
 endforeach()
 
-# @note Each mandatory PIX artifact is removed independently so an unrelated missing file cannot satisfy a negative case.
+# @note Each mandatory artifact is removed independently so an unrelated missing file cannot satisfy a negative case.
 foreach(MISSING_PATH
+        "Tools/AgentBuild.ps1"
+        "Projects/Managed/global.json"
         "bin/${FIXTURE_CONFIG}/WinPixEventRuntime.dll"
         "tools/${FIXTURE_CONFIG}/Editor/WinPixEventRuntime.dll"
         "share/fbzz/licenses/WinPixEventRuntime/LICENSE"
@@ -246,7 +323,7 @@ foreach(MISSING_PATH
     string(REGEX REPLACE "[ \t\r\n]+" " " VALIDATE_NORMALIZED "${VALIDATE_LOG}")
     string(FIND "${VALIDATE_NORMALIZED}" "${MISSING_PATH} is missing" MISSING_POS)
     if("${VALIDATE_RESULT}" STREQUAL "0" OR MISSING_POS EQUAL -1)
-        message(FATAL_ERROR "Missing PIX artifact was not rejected precisely: ${MISSING_PATH}: ${VALIDATE_LOG}")
+        message(FATAL_ERROR "Missing SDK artifact was not rejected precisely: ${MISSING_PATH}: ${VALIDATE_LOG}")
     endif()
 endforeach()
 

@@ -1,6 +1,7 @@
 # BenchReport
 
-`FBZZTestBench --measure` の JSON (`fbzz-bench/1`) から、比較レポートと一覧を作る。
+`FBZZTestBench --measure` が出力する `fbzz-bench/1` と `fbzz-bench/2` の JSON から、比較レポートと一覧を作る。
+`/2` は実行内 p95 と optional な確保数・再生成数を持つ。値が `null` の計測項目は利用できないことを示す。
 ふだんは `Tools/BenchCompare.ps1` から呼ばれる。設計は [Docs/design/benchmark-report.md](../../../Docs/design/benchmark-report.md)。
 
 ```

@@ -76,6 +76,26 @@ catch {
 
 Set-Location -LiteralPath $RepositoryRoot
 
+# @note Editor の C# build と AI の C++ build も同じ repository mutex を使う。
+$buildMutex = $null
+$ownsMutex = $false
+if ($Verb -ne 'run') {
+    $hashAlgorithm = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $rootBytes = [System.Text.Encoding]::UTF8.GetBytes([System.IO.Path]::GetFullPath($RepositoryRoot).ToLowerInvariant())
+        $rootHash = [System.BitConverter]::ToString($hashAlgorithm.ComputeHash($rootBytes)).Replace('-', '')
+    }
+    finally { $hashAlgorithm.Dispose() }
+    $buildMutex = New-Object System.Threading.Mutex($false, "Local\FBZZAgentBuild-$rootHash")
+    try { $ownsMutex = $buildMutex.WaitOne(0) }
+    catch [System.Threading.AbandonedMutexException] { $ownsMutex = $true }
+    if (-not $ownsMutex) {
+        $buildMutex.Dispose()
+        Write-Host '[VcBuild] 別のビルドが実行中です。完了後に同じタスクを再実行してください。' -ForegroundColor Yellow
+        exit 2
+    }
+}
+try {
 switch ($Verb) {
     'configure' {
         & cmake --preset $ConfigurePreset
@@ -146,4 +166,8 @@ switch ($Verb) {
         & $executable @CMakeArguments
         exit $LASTEXITCODE
     }
+}
+}
+finally {
+    if ($ownsMutex) { $buildMutex.ReleaseMutex(); $buildMutex.Dispose() }
 }

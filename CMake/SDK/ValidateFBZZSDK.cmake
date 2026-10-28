@@ -37,7 +37,19 @@ set(REQUIRED_PATHS
     "cmake/FBZZ/StageAgilitySDK.cmake"
     "cmake/FBZZ/AgilitySDKExports.cpp.in"
     "share/fbzz/Assets/Shaders"
-    "include/Engine/Scene/ScriptDllAbi.hpp"
+    "include/Engine/Scene/ManagedBridgeAbi.hpp"
+    "include/Engine/Scene/ManagedBridgeContract.inl"
+    "Tools/AgentBuild.ps1"
+    "Projects/Managed/global.json"
+    "share/fbzz/Docs/csharp-start.md"
+    "share/fbzz/Docs/design/csharp-authoring.md"
+    "share/fbzz/Docs/design/ai-script-workflow.md"
+    "share/fbzz/Docs/design/csharp-scripting.md"
+    "share/fbzz/managed/ManagedStarter/Starter.Scripts.csproj"
+    "share/fbzz/managed/ManagedStarter/Assets/Scripts/Managed/MoveForwardComponent.cs"
+    "share/fbzz/managed/ManagedStarter/global.json"
+    "share/fbzz/managed/ManagedStarter/AGENTS.md"
+    "share/fbzz/managed/ManagedStarter/.vscode/launch.json"
     "include/Physics/World.hpp"
     "include/Fluid/FluidSolver.hpp"
     "include/Math/Vector3.hpp"
@@ -53,9 +65,37 @@ set(REQUIRED_PATHS
     # @note 作業世代の最新性判定が公開時刻に依存するので、stamp も契約に含める。
     "bin/${CONFIG}/published.stamp"
     "tools/${CONFIG}/Editor/FBZZEditor.exe"
+    "bin/${CONFIG}/nethost.dll"
+    "bin/${CONFIG}/Managed/Fbzz.ScriptApi.dll"
+    "bin/${CONFIG}/Managed/Fbzz.ScriptApi.xml"
+    "bin/${CONFIG}/Managed/Fbzz.ScriptGenerator.dll"
+    "bin/${CONFIG}/Managed/Fbzz.ManagedBuildTasks.dll"
+    "bin/${CONFIG}/Managed/ManagedIncremental.targets"
+    "bin/${CONFIG}/Managed/Fbzz.ManagedHost.dll"
+    "bin/${CONFIG}/Managed/Fbzz.ManagedHost.runtimeconfig.json"
+    "bin/${CONFIG}/Managed/Fbzz.ManagedHost.deps.json"
+    "tools/${CONFIG}/Editor/nethost.dll"
+    "tools/${CONFIG}/Editor/Managed/Fbzz.ScriptApi.dll"
+    "tools/${CONFIG}/Editor/Managed/Fbzz.ScriptApi.xml"
+    "tools/${CONFIG}/Editor/Managed/Fbzz.ScriptGenerator.dll"
+    "tools/${CONFIG}/Editor/Managed/Fbzz.ManagedBuildTasks.dll"
+    "tools/${CONFIG}/Editor/Managed/ManagedIncremental.targets"
+    "tools/${CONFIG}/Editor/Managed/Fbzz.ManagedHost.dll"
+    "tools/${CONFIG}/Editor/Managed/Fbzz.ManagedHost.runtimeconfig.json"
+    "tools/${CONFIG}/Editor/Managed/Fbzz.ManagedHost.deps.json"
+    "share/fbzz/licenses/DotNet/LICENSE.txt"
+    "share/fbzz/licenses/DotNet/ThirdPartyNotices.txt"
+    "tools/${CONFIG}/Editor/EngineLicenses/DotNet/LICENSE.txt"
+    "tools/${CONFIG}/Editor/EngineLicenses/DotNet/ThirdPartyNotices.txt"
 )
+# @note ゲーム作者向けnative Scriptの廃止済みヘッダーを配布しない。
+foreach(RETIRED_SCRIPT_HEADER ScriptDllAbi.hpp ScriptModules.hpp)
+    if(EXISTS "${SDK_ROOT}/include/Engine/Scene/${RETIRED_SCRIPT_HEADER}")
+        message(FATAL_ERROR "FBZZ SDK validation failed: retired native Script header ${RETIRED_SCRIPT_HEADER}")
+    endif()
+endforeach()
 # @note Every Editor module must be the same installed configuration, including SDKs without DX12.
-set(EDITOR_RUNTIME_DLLS FBZZMath.dll FBZZPhysics.dll FBZZFluid.dll FBZZEngine.dll FBZZCore.dll FBZZGraphics.dll imgui.dll)
+set(EDITOR_RUNTIME_DLLS FBZZMath.dll FBZZPhysics.dll FBZZFluid.dll FBZZEngine.dll FBZZCore.dll FBZZGraphics.dll imgui.dll nethost.dll)
 if(CONFIG STREQUAL "Debug")
     list(APPEND EDITOR_RUNTIME_DLLS assimp-vc145-mtd.dll)
 else()

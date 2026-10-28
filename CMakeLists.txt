@@ -3,10 +3,10 @@
 # @author  Hasegawa Jin
 # @date    2026-05-15
 cmake_minimum_required(VERSION 3.25)
-# @note 版はリリースのタグ (vX.Y.Z) と揃える。SDK の置き場所 SDK/<版>/ と Script DLL の ABI 署名もこの値から決まる (Docs/conventions/git.md)。
+# @note 版はリリースのタグとSDKの置き場所に使う。C#専用構成は旧0.9.1 SDKへ上書きしない。
 # @note Editor の miniz.c は C としてコンパイルするため、Ninja でも C のビルドルールを生成する。
 # @see https://cmake.org/cmake/help/latest/command/project.html LANGUAGES
-project(FBZZEngine VERSION 0.9.1 LANGUAGES C CXX)
+project(FBZZEngine VERSION 0.10.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -71,9 +71,6 @@ include("${CMAKE_SOURCE_DIR}/CMake/FBZZCoverage.cmake")
 set(FBZZ_RUNTIME_BUILD_EXE_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/Sandbox/SandboxStandalone.exe")
 set(FBZZ_RUNTIME_BUILD_EXE_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/Sandbox/SandboxStandalone.exe")
 set(FBZZ_RUNTIME_BUILD_EXE_DEVELOPMENT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/Sandbox/SandboxStandalone.exe")
-set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/Sandbox/SandboxScripts.dll")
-set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/Sandbox/SandboxScripts.dll")
-set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEVELOPMENT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/Sandbox/SandboxScripts.dll")
 
 configure_file(
     "${CMAKE_SOURCE_DIR}/CMake/build.config.in"
@@ -145,6 +142,78 @@ include(CMake/AppManifest.cmake)
 # @note ThirdParty/CMakeLists.txt が gtest / gmock をこのオプションで囲うので、add_subdirectory より前に確定させる。
 option(FBZZ_BUILD_TESTS "Build unit tests" ON)
 option(FBZZ_ENABLE_DX12 "Build the Direct3D 12 backend" ON)
+# @note .NET hosting headers は実装モジュールの PRIVATE 依存で、SDK の公開 C++ ヘッダーへ出さない。
+# @see https://learn.microsoft.com/dotnet/core/tutorials/netcore-hosting Native .NET hosting
+find_program(FBZZ_DOTNET_EXECUTABLE NAMES dotnet.exe dotnet REQUIRED)
+get_filename_component(FBZZ_DOTNET_EXECUTABLE_REAL "${FBZZ_DOTNET_EXECUTABLE}" REALPATH)
+get_filename_component(FBZZ_DOTNET_ROOT "${FBZZ_DOTNET_EXECUTABLE_REAL}" DIRECTORY)
+set(FBZZ_DOTNET_HOST_PACK "" CACHE PATH ".NET 10 win-x64 native hosting pack directory")
+if(NOT FBZZ_DOTNET_HOST_PACK)
+    file(GLOB FBZZ_HOST_PACK_CANDIDATES LIST_DIRECTORIES true
+        "${FBZZ_DOTNET_ROOT}/packs/Microsoft.NETCore.App.Host.win-x64/10.*/runtimes/win-x64/native")
+    list(SORT FBZZ_HOST_PACK_CANDIDATES COMPARE NATURAL ORDER DESCENDING)
+    if(FBZZ_HOST_PACK_CANDIDATES)
+        list(GET FBZZ_HOST_PACK_CANDIDATES 0 FBZZ_DOTNET_HOST_PACK)
+    endif()
+endif()
+foreach(FBZZ_HOST_FILE nethost.h hostfxr.h coreclr_delegates.h nethost.lib nethost.dll)
+    if(NOT EXISTS "${FBZZ_DOTNET_HOST_PACK}/${FBZZ_HOST_FILE}")
+        message(FATAL_ERROR ".NET 10 win-x64 hosting pack is missing ${FBZZ_HOST_FILE}; install the .NET 10 SDK or set FBZZ_DOTNET_HOST_PACK")
+    endif()
+endforeach()
+foreach(FBZZ_DOTNET_NOTICE LICENSE.txt ThirdPartyNotices.txt)
+    if(NOT EXISTS "${FBZZ_DOTNET_ROOT}/${FBZZ_DOTNET_NOTICE}")
+        message(FATAL_ERROR ".NET distribution notice is missing: ${FBZZ_DOTNET_ROOT}/${FBZZ_DOTNET_NOTICE}")
+    endif()
+endforeach()
+set(FBZZ_MANAGED_CONFIGURATION "$<IF:$<CONFIG:Release>,Release,Debug>")
+set(FBZZ_MANAGED_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Managed")
+add_custom_target(FBZZManagedHost
+    COMMAND ${CMAKE_COMMAND} -E env MSBuildEnableWorkloadResolver=false DOTNET_CLI_TELEMETRY_OPTOUT=1
+        "${FBZZ_DOTNET_EXECUTABLE}" build
+        "${CMAKE_SOURCE_DIR}/Projects/Managed/Fbzz.ManagedBuildTasks/Fbzz.ManagedBuildTasks.csproj"
+        --configuration "${FBZZ_MANAGED_CONFIGURATION}" --output "${FBZZ_MANAGED_OUTPUT_DIRECTORY}"
+        --nologo --verbosity minimal -m:1 -nodeReuse:false
+        -p:MSBuildEnableWorkloadResolver=false -p:UseSharedCompilation=false -p:Platform=AnyCPU
+    COMMAND ${CMAKE_COMMAND} -E env MSBuildEnableWorkloadResolver=false DOTNET_CLI_TELEMETRY_OPTOUT=1
+        "${FBZZ_DOTNET_EXECUTABLE}" build
+        "${CMAKE_SOURCE_DIR}/Projects/Managed/Fbzz.ScriptGenerator/Fbzz.ScriptGenerator.csproj"
+        --configuration "${FBZZ_MANAGED_CONFIGURATION}" --output "${FBZZ_MANAGED_OUTPUT_DIRECTORY}"
+        --no-incremental --nologo --verbosity minimal -m:1 -nodeReuse:false
+        -p:MSBuildEnableWorkloadResolver=false -p:UseSharedCompilation=false -p:Platform=AnyCPU
+    COMMAND ${CMAKE_COMMAND} -E env MSBuildEnableWorkloadResolver=false DOTNET_CLI_TELEMETRY_OPTOUT=1
+        "${FBZZ_DOTNET_EXECUTABLE}" build
+        "${CMAKE_SOURCE_DIR}/Projects/Managed/Fbzz.ManagedHost/Fbzz.ManagedHost.csproj"
+        --configuration "${FBZZ_MANAGED_CONFIGURATION}" --output "${FBZZ_MANAGED_OUTPUT_DIRECTORY}"
+        --no-incremental --nologo --verbosity minimal -m:1 -nodeReuse:false
+        -p:MSBuildEnableWorkloadResolver=false -p:UseSharedCompilation=false -p:Platform=AnyCPU
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Editor"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${FBZZ_MANAGED_OUTPUT_DIRECTORY}"
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Editor/Managed"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FBZZ_DOTNET_HOST_PACK}/nethost.dll"
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/nethost.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FBZZ_DOTNET_HOST_PACK}/nethost.dll"
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Editor/nethost.dll"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FBZZ_DOTNET_HOST_PACK}/nethost.dll"
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Tests/nethost.dll"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Sandbox"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FBZZ_DOTNET_HOST_PACK}/nethost.dll"
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Sandbox/nethost.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${FBZZ_MANAGED_OUTPUT_DIRECTORY}"
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Sandbox/Managed"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Editor/EngineLicenses/DotNet"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${FBZZ_DOTNET_ROOT}/LICENSE.txt" "${FBZZ_DOTNET_ROOT}/ThirdPartyNotices.txt"
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Editor/EngineLicenses/DotNet"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Sandbox/EngineLicenses/DotNet"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${FBZZ_DOTNET_ROOT}/LICENSE.txt" "${FBZZ_DOTNET_ROOT}/ThirdPartyNotices.txt"
+        "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Sandbox/EngineLicenses/DotNet"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Projects/Managed"
+    COMMENT "Building the resident managed host and author SDK"
+    VERBATIM)
+set_target_properties(FBZZManagedHost PROPERTIES FOLDER "Managed")
 include(CMake/FBZZAgilitySDK.cmake)
 if(FBZZ_BUILD_TESTS)
     enable_testing()
@@ -162,6 +231,8 @@ add_subdirectory(Projects/Graphics)
 add_subdirectory(Projects/Engine)
 add_subdirectory(Projects/Editor)
 add_subdirectory(Projects/EditorLauncher)
+add_dependencies(FBZZEngine FBZZManagedHost)
+add_dependencies(FBZZEditorLauncher FBZZManagedHost)
 # @note GameHub は Electron 版 (Projects/GameHubNext) で完結するので CMake のビルド対象に含めない。
 add_subdirectory(Projects/Sandbox)
 
@@ -172,6 +243,35 @@ set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Sandbox)
 
 if(FBZZ_BUILD_TESTS)
     add_subdirectory(Projects/Tests)
+    add_custom_target(FBZZManagedTests
+        COMMAND ${CMAKE_COMMAND} -E env MSBuildEnableWorkloadResolver=false DOTNET_CLI_TELEMETRY_OPTOUT=1
+            "${FBZZ_DOTNET_EXECUTABLE}" build
+            "${CMAKE_SOURCE_DIR}/Projects/Managed/Fbzz.ManagedTests/Fbzz.ManagedTests.csproj"
+            --configuration "${FBZZ_MANAGED_CONFIGURATION}" --no-incremental --nologo --verbosity minimal
+            -m:1 -nodeReuse:false -p:MSBuildEnableWorkloadResolver=false -p:UseSharedCompilation=false -p:Platform=AnyCPU
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/Projects/Managed/Fbzz.ManagedTests/bin/${FBZZ_MANAGED_CONFIGURATION}/net10.0/Fixtures"
+            "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/ManagedFixtures"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Projects/Managed"
+        COMMENT "Building deterministic managed scripting tests"
+        VERBATIM)
+    set_target_properties(FBZZManagedTests PROPERTIES FOLDER "Tests")
+    # @note CTest executes the already built Host and generator runner without rebuilding managed artifacts.
+    add_test(NAME FBZZManagedTests
+        COMMAND "${FBZZ_DOTNET_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/Projects/Managed/Fbzz.ManagedTests/bin/${FBZZ_MANAGED_CONFIGURATION}/net10.0/Fbzz.ManagedTests.dll")
+    set_tests_properties(FBZZManagedTests PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/Projects/Managed"
+        LABELS "Managed"
+        TIMEOUT ${FBZZ_TEST_TIMEOUT})
+    add_dependencies(FBZZManagedTests FBZZManagedHost)
+    add_dependencies(FBZZTestsEngineAuto FBZZManagedTests)
+    add_dependencies(FBZZTestsEditorAuto FBZZManagedTests)
+    target_compile_definitions(FBZZTestsEngineAutoObj PRIVATE
+        FBZZ_MANAGED_HOST_TEST_DIRECTORY="${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Managed"
+        FBZZ_MANAGED_FIXTURE_TEST_ASSEMBLY="${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/ManagedFixtures/V1/Fbzz.ManagedFixtures.dll"
+        FBZZ_MANAGED_FIXTURE_V2_TEST_ASSEMBLY="${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/ManagedFixtures/V2/Fbzz.ManagedFixtures.dll"
+        FBZZ_MANAGED_INVALID_TEST_ASSEMBLY="${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/ManagedFixtures/Invalid/Fbzz.ManagedFixtures.dll")
 endif()
 
 # @note 計装範囲は OpenCppCoverage の --sources と揃える (Projects/Core = FBZZCore、Projects/Engine/src/Core = FBZZEnginePlatform)。
@@ -179,4 +279,81 @@ endif()
 if(FBZZ_COVERAGE)
     fbzz_instrument_for_coverage(FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZEnginePlatform)
     fbzz_link_coverage_runtime(FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZEngine)
+endif()
+
+# @note Release LTO is opt-in; explicit environment selection supports the AgentBuild configure entry point.
+# @see https://cmake.org/cmake/help/latest/prop_tgt/INTERPROCEDURAL_OPTIMIZATION.html
+option(FBZZ_RELEASE_LTO "Enable interprocedural optimization for native Release runtime modules" OFF)
+if(DEFINED ENV{FBZZ_RELEASE_LTO})
+    set(FBZZ_RELEASE_LTO "$ENV{FBZZ_RELEASE_LTO}" CACHE BOOL
+        "Enable interprocedural optimization for native Release runtime modules" FORCE)
+endif()
+if(FBZZ_RELEASE_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT FBZZ_IPO_SUPPORTED OUTPUT FBZZ_IPO_REASON LANGUAGES CXX)
+    if(NOT FBZZ_IPO_SUPPORTED)
+        message(FATAL_ERROR "Release LTO is unsupported: ${FBZZ_IPO_REASON}")
+    endif()
+    # @note CMake's automatic COFF export scan cannot read MSVC /GL objects. Use a source- and compiler-checked normal-build export map.
+    # @see https://learn.microsoft.com/en-us/cpp/build/reference/gl-whole-program-optimization
+    set(FBZZ_LTO_EXPORTS_DIRECTORY "${CMAKE_BINARY_DIR}/lto-exports" CACHE PATH "Verified normal-build DLL export maps for Release LTO")
+    if(NOT EXISTS "${FBZZ_LTO_EXPORTS_DIRECTORY}/inputs.cmake")
+        message(FATAL_ERROR "Release LTO requires normal-build export maps in FBZZ_LTO_EXPORTS_DIRECTORY; build Release without LTO and prepare the maps first.")
+    endif()
+    include("${FBZZ_LTO_EXPORTS_DIRECTORY}/inputs.cmake")
+    if(NOT FBZZ_LTO_EXPORT_COMPILER STREQUAL CMAKE_CXX_COMPILER_VERSION)
+        message(FATAL_ERROR "Release LTO export maps were built by a different compiler.")
+    endif()
+    file(GLOB_RECURSE FBZZ_LTO_CURRENT_PATHS RELATIVE "${CMAKE_SOURCE_DIR}" CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/CMake/*.cmake" "${CMAKE_SOURCE_DIR}/CMake/*.in")
+    list(APPEND FBZZ_LTO_CURRENT_PATHS "CMakeLists.txt")
+    foreach(FBZZ_LTO_MODULE IN ITEMS Engine Graphics Core Math Physics Fluid)
+        file(GLOB_RECURSE FBZZ_LTO_MODULE_PATHS RELATIVE "${CMAKE_SOURCE_DIR}" LIST_DIRECTORIES FALSE CONFIGURE_DEPENDS
+            "${CMAKE_SOURCE_DIR}/Projects/${FBZZ_LTO_MODULE}/src/*"
+            "${CMAKE_SOURCE_DIR}/Projects/${FBZZ_LTO_MODULE}/include/*")
+        list(APPEND FBZZ_LTO_CURRENT_PATHS ${FBZZ_LTO_MODULE_PATHS} "Projects/${FBZZ_LTO_MODULE}/CMakeLists.txt")
+    endforeach()
+    list(SORT FBZZ_LTO_CURRENT_PATHS)
+    if(NOT FBZZ_LTO_CURRENT_PATHS STREQUAL FBZZ_LTO_EXPORT_PATHS)
+        message(FATAL_ERROR "Release LTO native source membership changed; rebuild without LTO and regenerate export maps.")
+    endif()
+    foreach(FBZZ_LTO_INPUT IN LISTS FBZZ_LTO_EXPORT_INPUTS)
+        string(REPLACE "|" ";" FBZZ_LTO_INPUT_PARTS "${FBZZ_LTO_INPUT}")
+        list(GET FBZZ_LTO_INPUT_PARTS 0 FBZZ_LTO_INPUT_PATH)
+        list(GET FBZZ_LTO_INPUT_PARTS 1 FBZZ_LTO_INPUT_HASH)
+        file(SHA256 "${CMAKE_SOURCE_DIR}/${FBZZ_LTO_INPUT_PATH}" FBZZ_LTO_CURRENT_HASH)
+        if(NOT FBZZ_LTO_CURRENT_HASH STREQUAL FBZZ_LTO_INPUT_HASH)
+            message(FATAL_ERROR "Release LTO export map is stale: ${FBZZ_LTO_INPUT_PATH}; rebuild without LTO and regenerate it.")
+        endif()
+    endforeach()
+    # @note A Release export map cannot describe Debug STL symbols; this opt-in tree exposes Release only. Other presets remain unchanged.
+    if(CMAKE_GENERATOR MATCHES "Visual Studio")
+        set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "LTO build configurations" FORCE)
+    endif()
+    # @note MSVC emits the legacy helper COMDATs in the PCH creation object; an ordinary empty TU does not retain them.
+    if(NOT MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "Verified export-map LTO currently requires the MSVC toolchain.")
+    endif()
+    set(FBZZ_LTO_COMPAT_SOURCE "${FBZZ_LTO_EXPORTS_DIRECTORY}/LtoExportCompatibility.cpp")
+    file(GENERATE OUTPUT "${FBZZ_LTO_COMPAT_SOURCE}" CONTENT
+        "/// @file    LtoExportCompatibility.cpp\n/// @brief   Preserve vendor-header COMDATs through a normal PCH creation object.\n/// @author  Hasegawa Jin\n/// @date    2026-10-19\n#include <cwchar>\nnamespace fbzz::build_detail {\n/// @note Taking the vendor implementation address keeps its real COMDAT available to legacy DLL exports.\nauto* volatile vendorMemoryOrder = &::_Check_memory_order;\n/// @note Cold operations retain compiler-injected vendor helper definitions; this function is never called by runtime systems.\nvoid RetainVendorOperations(std::atomic<void*>& atomicValue, void* value, void* destination, const void* source, size_t bytes,\n    wchar_t* wideDestination, const wchar_t* wideSource, size_t characters) {\n    atomicValue.store(value, std::memory_order_release);\n    (void)atomicValue.load(std::memory_order_acquire);\n    std::memcpy(destination, source, bytes);\n    std::wmemcpy(wideDestination, wideSource, characters);\n}\n}\n")
+    set_source_files_properties("${FBZZ_LTO_COMPAT_SOURCE}" PROPERTIES GENERATED TRUE)
+    add_library(FBZZLtoExportCompatibility OBJECT "${FBZZ_LTO_COMPAT_SOURCE}")
+    target_precompile_headers(FBZZLtoExportCompatibility PRIVATE ${FBZZ_STD_PCH_HEADERS} <atomic>)
+    target_compile_options(FBZZLtoExportCompatibility PRIVATE /Zc:inline-)
+    set_target_properties(FBZZLtoExportCompatibility PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE FALSE FOLDER "Engine/Build")
+    foreach(FBZZ_LTO_DLL IN ITEMS FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZGraphics FBZZEngine)
+        if(NOT EXISTS "${FBZZ_LTO_EXPORTS_DIRECTORY}/${FBZZ_LTO_DLL}.def")
+            message(FATAL_ERROR "Missing Release LTO export map for ${FBZZ_LTO_DLL}")
+        endif()
+        set_property(TARGET ${FBZZ_LTO_DLL} PROPERTY WINDOWS_EXPORT_ALL_SYMBOLS FALSE)
+        target_sources(${FBZZ_LTO_DLL} PRIVATE "${FBZZ_LTO_EXPORTS_DIRECTORY}/${FBZZ_LTO_DLL}.def")
+        target_sources(${FBZZ_LTO_DLL} PRIVATE "$<TARGET_OBJECTS:FBZZLtoExportCompatibility>")
+        target_link_options(${FBZZ_LTO_DLL} PRIVATE /INCLUDE:_Avx2WmemEnabledWeakValue)
+    endforeach()
+
+    get_property(FBZZ_LTO_ENGINE_MODULES GLOBAL PROPERTY FBZZ_ENGINE_MODULES)
+    foreach(FBZZ_LTO_TARGET IN ITEMS FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZGraphics FBZZEngine ${FBZZ_LTO_ENGINE_MODULES})
+        set_property(TARGET ${FBZZ_LTO_TARGET} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    endforeach()
 endif()
