@@ -1,6 +1,6 @@
 ---
 name: playtest
-description: FBZZ Engine / GreenWare の挙動や見た目の変化を Playtest シナリオ (*.playtest.json) で機械判定する手順。ゲームの挙動を変えた・描画を変えた・「動くか確かめて」「回帰してないか」「基準画像を更新して」と言われたとき、入力の記録/再生、絵の比較、--batch 実行に使う。
+description: FBZZ Engine または SDK consumer の挙動や見た目の変化を Playtest シナリオ (*.playtest.json) で機械判定する手順。ゲームの挙動を変えた・描画を変えた・「動くか確かめて」「回帰してないか」「基準画像を更新して」と言われたとき、入力の記録/再生、絵の比較、--batch 実行に使う。
 ---
 
 # Playtest シナリオ
@@ -16,7 +16,7 @@ description: FBZZ Engine / GreenWare の挙動や見た目の変化を Playtest 
 | 基準画像 | `<Project>/Tests/Golden/<baseline>.png` |
 | レポート・実画像・差分画像 | `<Project>/Library/Playtests/<Name>/` (追跡しない) |
 
-見本: `GreenWare/Tests/Playtests/TitleSmoke.playtest.json`
+見本: `<Project>/Tests/Playtests/<Name>.playtest.json`
 
 ## 形式
 
@@ -43,7 +43,7 @@ description: FBZZ Engine / GreenWare の挙動や見た目の変化を Playtest 
 ## 回し方
 
 - エディター起動中: MCP `scenario_run {path}` → `scenario_status` を state が running でなくなるまで。失敗なら `failure` と `steps` を読む
-- エディター無し: `FBZZEditor.exe --project <GreenWare> --batch <scenario> --hidden --report <json>`。終了コード 0/1/2
+- エディター無し: `FBZZEditor.exe --project <Project> --batch <scenario> --hidden --report <json>`。終了コード 0/1/2
 - GPU の無い環境: `--warp --skip-images` (WARP の絵は GPU と一致しない)
 
 ## 絵の比較

@@ -1,15 +1,15 @@
 # FBZZ Engine
 
-**C++20 で書いている自作 3D ゲームエンジン (Windows)。**
-数学と物理をゼロから実装し、描画を独立した **Graphics ライブラリ**へ分離している。DirectX 12 の実装は `IRenderer` の背後に閉じ、Engine が抽出した `RenderScene` を使って Forward / Deferred を構成する。RenderGraph、クラスタードライティング、スクリプト DLL のホットリロード、アニメーショングラフ、NavMesh、地形・水面・天候、毛・草、VFX / 流体オーサリング、ImGui エディター、MCP 経由の AI 連携を備える。
+**C++20 の Engine と C# ゲームスクリプトを備える自作 3D ゲームエンジン (Windows)。**
+数学と物理をゼロから実装し、描画を独立した **Graphics ライブラリ**へ分離している。DirectX 12 の実装は `IRenderer` の背後に閉じ、Engine が抽出した `RenderScene` を使って Forward / Deferred を構成する。RenderGraph、クラスタードライティング、C# スクリプトのホットリロード、アニメーショングラフ、NavMesh、地形・水面・天候、毛・草、VFX / 流体オーサリング、ImGui エディター、MCP 経由の AI 連携を備える。
 
-更新日: **2026-09-21**。現行作業ツリーのプロジェクト版は **0.9.1** (`CMakeLists.txt`)。以下はリリース済み機能の一覧ではなく、現在の実装を説明する。設計と検証状況は [Docs の索引](Docs/README.md) を参照。
+更新日: **2026-10-06**。現行作業ツリーのプロジェクト版は **0.10.0** (`CMakeLists.txt`)。以下はリリース済み機能の一覧ではなく、現在の実装を説明する。設計と検証状況は [Docs の索引](Docs/README.md) を参照。
 
-エンジンだけでは「動くもの」にならないので、**サンプルゲーム 2 本**を同梱している。エディター既定プロジェクトの TPS サンプルと、エンジンの全機能を使って制作中の剣戟アクション **GreenWare**。
+エンジンだけでは「動くもの」にならないので、エディター既定プロジェクトに TPS サンプルを含めている。SDK 0.9.1 で制作した旧作 **[GreenWare](https://github.com/HasegawaJin/GreenWare)** は別の非公開リポジトリへ分離した。現行 SDK のゲームスクリプトは C# を対象とする。
 
 | | |
 |---|---|
-| 言語 / 規格 | C++20 (一部 TypeScript / HLSL / PowerShell) |
+| 言語 / 規格 | Engine: C++20、ゲーム Script: C#、一部 TypeScript / HLSL / PowerShell |
 | プラットフォーム | Windows 10 / 11・DirectX 12 (SM 6.x) |
 | 名前空間 | `fbzz::` (`math` / `physics` / `fluid` / `renderer` / `scene` / `editor`) |
 | 依存方向 | アプリ → Engine → Graphics / Physics / Fluid。Graphics → Core / Math、Physics / Fluid → Math |
@@ -83,23 +83,7 @@ Vector2/3/4・Matrix3/4・Quaternion・Ray・Segment・Frustum・Plane を GLM �
 
 ### 3. リフレクションはヘッダーに閉じる
 
-`FBZZ_FIELD` を宣言と同じ場所に 1 行足すと、**Inspector の表示・TOML シリアライズ・Undo・AI バスへの公開**が同時に追従する。コード生成ファイル (`.generated.hpp`) は廃止済みで、ビルド前ステップもマクロ展開だけ。
-
-```cpp
-class DashComponent : public Script {
-    FBZZ_SCRIPT(DashComponent)
-
-public:
-    FBZZ_GROUP("動き")
-    FBZZ_FIELD_RANGE(float, speed,    12.0f,  "速度",   1.0f, 40.0f)
-    FBZZ_FIELD_RANGE(float, duration, 0.18f,  "持続 [s]", 0.05f, 1.0f)
-    FBZZ_TOOLTIP("押してから止まるまでの時間")
-
-    void OnUpdate() override;
-};
-
-FBZZ_REFLECT(DashComponent)
-```
+Engine の C++ Component は `FBZZ_FIELD` で reflection schema を宣言できる。ゲーム作成者向け API は C# SDK にあり、native gameplay Script 用マクロは現行 SDK の登録口ではない。
 
 `SceneSerializer` は各コンポーネントの `Reflect()` を唯一の真実として往復する。手書きの分岐は畳み終えている。
 
@@ -109,11 +93,11 @@ FBZZ_REFLECT(DashComponent)
 
 `Editor/Op/` の `EditorOperator` に 1 件登録すると、6 面すべてに同じ実行条件で現れる。各面はその**投影**であり、実体も `CanExecute` も持たない。
 
-### 5. スクリプトは DLL 境界を越えない
+### 5. ゲームスクリプトは C#、Engine は C++
 
-ゲームスクリプトは `Assets/Scripts/Xxx.hpp` に**ヘッダー 1 枚**書くだけ。`.cpp` も登録コードも要らない。エンジン機能へは `transform` / `input` / `physics` … といった **ScriptProxy のメンバー**経由で触り、Engine の実装型を直接 include しない。
+ゲームスクリプトは `Assets/Scripts/XxxComponent.cs` に `Script` 派生型を書き、公開 SDK の `Fbzz` API を使う。Scene・物理・描画などの Engine 機能とアルゴリズムは C++ に置き、C ABI と不透明 ID の managed bridge から呼び出す。旧 GreenWare の C++ Script は SDK 0.9.1 の履歴資料として扱う。
 
-おかげで Play 中にスクリプト DLL を再ビルドして差し替えられる。ABI の版が合わなければ `ScriptDllAbi` が起動時に弾く。
+Play 中は managed assembly を検証して世代単位で差し替える。Engine と C# Host の固定 ABI を変えた場合は Editor / 製品を再ビルドする。
 
 ---
 
@@ -136,7 +120,6 @@ FBZZ_Engine/
 │   ├── Sandbox/        エンジン検証用の最小アプリ
 │   └── Tests/          GoogleTest スイート + TestKit + 目視ベンチ
 ├── Assets/             エディター既定プロジェクト (Shaders / Scenes / Models / Fonts …)
-├── GreenWare/          デモゲーム (独立プロジェクト)
 ├── SDK/                版ごとに publish されたエンジン SDK
 ├── ThirdParty/         Assimp / DirectXTex / ImGui / ImPlot / ImGuizmo / ImNodes / toml++ / stb / TinyEXR / GoogleTest
 ├── CMake/              ビルド基盤 (PCH / Unity / SDK publish / カバレッジ / テスト登録)
@@ -164,7 +147,6 @@ graph LR
         EditorLauncher
         GameHub
         Sandbox
-        GreenWare
         Tests
     end
 
@@ -182,7 +164,6 @@ graph LR
     TP --> Editor
     Engine --> Editor
     Engine --> Sandbox
-    Engine --> GreenWare
     Engine --> Tests
     Editor --> EditorLauncher
     GameHub -. プロセス起動 .-> EditorLauncher
@@ -474,68 +455,18 @@ graph LR
 
 ## スクリプティング
 
-### 1 スクリプト = 1 ヘッダー
+### C# ゲームコード
 
-```cpp
-/// @file    DashComponent.hpp
-/// @brief   回避ダッシュ。無敵時間と移動を持つ。
-/// @author  Hasegawa Jin
-/// @date    2026-09-01
-#pragma once
-#include <Engine/Scene/Script.hpp>
-
-using namespace fbzz::scene;
-using namespace fbzz::math;
-
-namespace sandbox {
-
-class DashComponent : public Script {
-    FBZZ_SCRIPT(DashComponent)
-    FBZZ_REQUIRE_COMPONENT(CharacterControllerComponent)
-
-public:
-    FBZZ_FIELD_RANGE(float, speed, 12.0f, "速度", 1.0f, 40.0f)
-
-    void OnUpdate() override
-    {
-        if (input.GetActionDown("Dodge")) {
-            character.Move(transform.forward * speed);
-        }
-    }
-};
-
-FBZZ_REFLECT(DashComponent)
-
-} // namespace sandbox
-```
+ゲームスクリプトの現行契約と利用方法は [C# 導入手順](Docs/csharp-start.md)、[作者向け API](Docs/design/csharp-authoring.md)、[C# 専用 gameplay 方針](Docs/design/csharp-only-gameplay.md)を参照。
 
 | 機能 | 概要 |
 |---|---|
-| `ScriptCodeGen` | `FBZZ_SCRIPT` / `FBZZ_DATA_ASSET` を走査して登録リスト (`ScriptList.inl` / `DataAssetList.inl`) を同期 |
-| `ScriptDllLoader` | スクリプトを別 DLL としてビルド・ロード |
-| ホットリロード | Play 中に DLL を再ビルドして差し替え。`ScriptDllAbi` が版の不一致を検出して弾く |
-| `FBZZ_REQUIRE_COMPONENT` | 必要なコンポーネントを宣言。Inspector の赤帯 + `Fix` ボタン・Play 開始時の検証・実行時警告が同じ宣言を共有する |
-| `FBZZ_EXECUTE_ALWAYS` | 編集中も動かす (HUD やレイアウトの組み立て用) |
-| `FBZZ_REF(...)` | 他のコンポーネントやオブジェクトへの参照フィールド |
-| `DataAsset` (`.fzdata`) | 複数スクリプトで共有する調整値をアセット化 |
+| Script API | C# の `Script` / `Component` 基底と SDK 公開の Engine facade |
+| ビルド・差し替え | managed assembly をビルドし、検証済み世代を Editor / 製品へ適用 |
+| データ | public field と `Setting` 等の schema を Inspector・保存・AI が共有 |
+| DataAsset (`.fzdata`) | 複数 C# スクリプトで共有する調整値をアセット化 |
 
-### ScriptProxy
-
-DLL 境界を越えてエンジン実装型へ直接依存しないためのプロキシ層。スクリプト側は**メンバー名**で呼ぶ (`transform.position` / `input.GetKeyDown(...)`)。
-
-| 領域 | プロキシ (メンバー名) |
-|---|---|
-| 基本 | `transform` `scene` `app` `time` `input` `cursor` `random` `lifetime` `memory` `debug` |
-| 物理 | `physics` `collider` `character` `ragdoll` `springBone` `joint` |
-| 描画 | `camera` `light` `material` `mesh` `graphics` `display` `postprocess` `volume` `reflectionProbe` `objectMask` `decal` |
-| アニメーション | `animator` `ik` `motionWarp` `sequence` `tween` |
-| エフェクト | `particle` `particleForceField` `vfx` `trail` `meshTrail` |
-| 環境 | `environment` `water` `terrain` `wind` `cloud` `sunMoon` |
-| UI / 音 | `ui` `uiAnimator` `audio` |
-| ゲーム | `gameplay` `save` `config` `events` `navigation` `patrol` |
-| エディター | `gizmo` |
-
-正本は [`ScriptProxyMembers.inl`](Projects/Engine/include/Engine/Scene/ScriptProxy/ScriptProxyMembers.inl)。ABI のオフセットを保つため、新規プロキシは末尾に追加する。
+Engine 実装型を直接公開せず、SDK の C# facade と固定 bridge から機能を提供する。API の正本は配布 SDK と [`script.api.catalog`](Docs/csharp-start.md)である。
 
 ---
 
@@ -659,7 +590,7 @@ ImGui 製。主なパネルは以下のとおり。
 | `UndoStack` / `SceneDirtyTracker` | 任意操作の Undo / Redo と未保存変更の追跡 |
 | `PlayModeController` | Play / Stop によるシーン状態のスナップショット復元 (`SceneSerializer` 往復) |
 | `BuildPipeline` / `Compiler` / `ToolchainLocator` | アセットパッキングを含むゲームビルドと MSVC ツールチェーンの呼び出し |
-| `ScriptDllLoader` | スクリプト DLL のビルドとホットリロード |
+| ManagedScriptRuntime | C# assembly の候補検証・実行・世代更新 |
 | `ImGuiReflector` | `TypeSchema` から Inspector UI を自動生成する |
 | ローカライズ | 鍵は英語原文。`"訳###原文"` 形式で日英を切り替える |
 
@@ -700,7 +631,7 @@ Unity Hub に相当する Electron / React / TypeScript 製プロジェクト管
 
 ### SDK publish とスタンドアロン
 
-現行版は `SDK/0.9.1/`。Core / Graphics も公開ヘッダーと DLL を配布する。Development 構成では `include/Core/`・`include/Graphics/`、`lib/Development/FBZZCore.lib`・`FBZZGraphics.lib`、`bin/Development/FBZZCore.dll`・`FBZZGraphics.dll` に配置する。
+現行版は `SDK/0.10.0/`。Core / Graphics も公開ヘッダーと DLL を配布する。Development 構成では `include/Core/`・`include/Graphics/`、`lib/Development/FBZZCore.lib`・`FBZZGraphics.lib`、`bin/Development/FBZZCore.dll`・`FBZZGraphics.dll` に配置する。SDK 0.9.1 は GreenWare 用の旧版として保持する。
 
 `.lib` は DLL のインポートライブラリ。実行時は Graphics / Core と必要なランタイム DLL を同梱する。SDK と利用側は同じ構成・共有 CRT を使う (Debug は `/MDd`、Development / Release は `/MD`)。
 
@@ -723,9 +654,9 @@ Editor の通常起動も SDK を正本にする。VS Code の Build Editor は�
 
 シーン遷移はフェード付き (`SceneManagerScript`)。操作は `PlayerControllerComponent`、カメラは `TpsCameraComponent`。エンジンの導線を一通り踏む最小構成になっている。
 
-### GreenWare — デモゲーム (`GreenWare/`)
+### GreenWare — SDK 0.9.1 の旧作
 
-エンジンの全機能を使って制作中の、二刀の剣戟ボスアクション。**弾いて崩す**——敵の攻撃を弾いて体勢を崩し、部位を破壊して決着させる。
+SDK 0.9.1 で制作した二刀の剣戟ボスアクション。C++ Script の原本とゲーム資産は[専用リポジトリ](https://github.com/HasegawaJin/GreenWare)に保持し、現行 SDK のゲーム例・互換性試験には含めない。
 
 | 要素 | 内容 |
 |---|---|
@@ -733,9 +664,9 @@ Editor の通常起動も SDK を正本にする。VS Code の Build Editor は�
 | ボス | 4 足歩行の「ポラリティ・コア」と、節を折って進める蛇型の「ポラリティ・サーペント」 |
 | 戦闘 | 5 連撃・溜め斬り・ロックオン・ジャスト回避・ジャストパリィ。拍 (リズム) に乗ると手応えが返る |
 | 演出 | 刀身が通った面を張る軌跡・当たりの一閃・ヒットストップ・部位破壊の増悪・ラグドール撃破 |
-| 独立性 | `Assets/` `Src/` `ProjectSettings/` を持つ独立プロジェクト。設計文書は [`GreenWare/Assets/Docs/`](GreenWare/Assets/Docs/) |
+| 独立性 | `Assets/` `Src/` `ProjectSettings/` を持つ独立プロジェクト。設計文書は[専用リポジトリの `Assets/Docs/`](https://github.com/HasegawaJin/GreenWare/tree/main/Assets/Docs) |
 
-プレイヤーモデル (MiniBot C) は Blender で自作し、`GreenWare/Tools/BlenderExport/` のスクリプトで LOD 3 段・54 骨・22 クリップを書き出している。
+プレイヤーモデル (MiniBot C) は Blender で自作し、専用リポジトリの `Tools/BlenderExport/` で LOD 3 段・54 骨・22 クリップを書き出している。
 
 ---
 
@@ -802,7 +733,7 @@ GoogleTest / GoogleMock による自動テスト。規約は [`Docs/conventions/
 | `FBZZTestsCoreAuto` | アロケーター 4 種 / Scheduler / TaskSystem / Signal / Logger / Time |
 | `FBZZTestsGraphicsStandalone` | Engine をリンクしない Forward / Deferred 構成、描画入力の独立性、DX12 描画と CPU 読み戻し |
 | `FBZZTestsEngineAuto` | RenderGraph / SceneSerializer / AssetDatabase / GUID / Transform / パーティクル・流体・フリップブックの各コーデックとソルバー / ラグドール |
-| `FBZZTestsEditorAuto` | AI バスのプロトコル / import 指紋判定 / Undo / プレハブオーバーライド / 地形ブラシ / ScriptCodeGen |
+| `FBZZTestsEditorAuto` | AI バスのプロトコル / import 指紋判定 / Undo / プレハブオーバーライド / 地形ブラシ / managed script completion |
 | `FBZZTestsCoreManual` | Window / Cursor (OS 状態を書き換える) |
 
 共通の土台は `FBZZTestKit`。数学型の近似比較マクロ、失敗メッセージ用の `PrintTo`、テスト名から決まる固定シード乱数、一時ディレクトリ、Logger の fake と mock を持つ。
@@ -902,7 +833,7 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 | [`CLAUDE.md`](CLAUDE.md) | ディレクトリ地図とタスク別の入口 |
 | [`Docs/conventions/`](Docs/conventions/) | ビルド時間・Git 運用・テストの規約 |
 | [`Docs/design/`](Docs/design/) | 機能単位の設計文書 (ラグドール・オーディオ・シーケンス・流体ベイク・Blender パイプラインなど) |
-| [`GreenWare/Assets/Docs/`](GreenWare/Assets/Docs/) | デモゲームの企画書と仕様 |
+| [GreenWare の専用リポジトリ](https://github.com/HasegawaJin/GreenWare/tree/main/Assets/Docs) | デモゲームの企画書と仕様 |
 | [`LICENSE`](LICENSE) / [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) | 本体のライセンスと、サードパーティの告知一覧 |
 
 ### 主な規約
@@ -944,7 +875,6 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 
 - 一部テレインテクスチャ: [ambientCG](https://ambientcg.com/) (CC0)
 - エディター既定プロジェクトのデバッグキャラクター・アニメーション: [Mixamo](https://www.mixamo.com/) (Adobe 無償ライセンス)
-- GreenWare のキャラクター・ボス・武器・マップ: Blender で自作
 
 ---
 
@@ -952,7 +882,7 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 
 **MIT License** — 詳細は [LICENSE](LICENSE) を参照。
 
-適用範囲は、このリポジトリで自作したソースコード (`Projects/` `Assets/Shaders/` `CMake/` `Tools/` `Docs/`) と GreenWare のスクリプト・アセット。
+適用範囲は、このリポジトリで自作したソースコード (`Projects/` `Assets/Shaders/` `CMake/` `Tools/` `Docs/`) とテスト用 JetFlame PNG fixture。GreenWare のソース・アセットは専用リポジトリ側のライセンスに従う。
 
 `ThirdParty/` のベンダー済みライブラリと、上記「使用アセット」の外部アセットは対象外で、それぞれの提供元の条件に従う。一覧とライセンス全文は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) にまとめてある (各ライブラリの `ThirdParty/<Name>/LICENSE` にも同じものを置いている)。
 

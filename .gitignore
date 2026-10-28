@@ -8,13 +8,16 @@ out/
 build_log.txt
 .cache/
 /SDK/
+# @note SDK-style managed project の中間生成物はソースと分ける。
+**/bin/
+**/obj/
 # @note レポート類の置き場。リポジトリ直下 (coverage) と、各ゲームプロジェクト直下
 # @note (エディターが吐く RenderGraph の構成テキストなど) の両方に出る。
 Artifacts/
 # @note OpenCppCoverage が計測のたびに作業ディレクトリへ吐く実行ログ。
 LastCoverageResults.log
 # @note ゲームプロジェクトの配布ビルド出力。exe / dll だけでなく、その隣へ複製される
-# @note EngineAssets / Library まで丸ごと入るため (GreenWare で 480MB) ディレクトリごと除外する。
+# @note EngineAssets / Library まで丸ごと入るため、ディレクトリごと除外する。
 Binaries/
 # @note BuildSettings.outputDirectory の既定先 (<Project>/Builds/<name>)。
 # @note 複製された Assets 配下は .toml / .meta / .scene など拡張子ルールに掛からない
@@ -143,29 +146,6 @@ Projects/GameHub/Templates/**/*.meta
 **/Assets/**/compile_log.txt
 **/Assets/**/compile_ui_log.txt
 
-# @note GreenWare だけは例外で素材を追跡する (Git LFS 経由。対象は .gitattributes)。
-# @note 素材が無いと clone しても GreenWare が起動せず、公開する意味が無い。
-# @note 除外したままなのはベイク出力 (.fzasset / .anim / .skel / .cso / .ibl) と
-# @note IBL の .dds — いずれもソースから再生成でき、LFS は差分を持たないため
-# @note 焼き直すたびに旧版のフルコピーが無料枠を食う。
-!GreenWare/Assets/**/*.fbx
-!GreenWare/Assets/**/*.png
-!GreenWare/Assets/**/*.jpg
-!GreenWare/Assets/**/*.jpeg
-!GreenWare/Assets/**/*.bmp
-!GreenWare/Assets/**/*.tga
-!GreenWare/Assets/**/*.hdr
-!GreenWare/Assets/**/*.exr
-!GreenWare/Assets/**/*.wav
-!GreenWare/Assets/**/*.mp3
-!GreenWare/Assets/**/*.ogg
-
-# @note DCC の作業ファイル置き場 (.blend)。MiniBotC と Boss03 だけで 4.5GB あり、
-# @note LFS の無料枠 (1GB) にも GitHub の推奨リポジトリサイズにも収まらない。
-# @note エンジンは読まないので、clone 側は Assets/ に配備済みの FBX だけで動く。
-GreenWare/Assets/_src/
-GreenWare/Assets/_src.meta
-
 # @note モデル制作の記録 (レンダー画像・検証動画・Tripo への入力 zip)。112MB。
 # @note Assets/ の外なので LFS の対象にもならず、通常 blob で履歴に積み上がる。
 Docs/Art/
@@ -173,7 +153,7 @@ Docs/Art/
 # @note Projects 内の大容量アセット (100MB 超) — GitHub 上限のため除外
 Projects/GameHub/Templates/standard/Assets/Nature/Tree/**
 
-# @note Python bytecode (GreenWare/Tools/BlenderExport など)
+# @note Python bytecode
 __pycache__/
 *.pyc
 

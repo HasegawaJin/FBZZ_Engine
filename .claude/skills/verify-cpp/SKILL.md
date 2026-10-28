@@ -1,6 +1,6 @@
 ---
 name: verify-cpp
-description: FBZZ Engine の C++ を変更した後、自分でコンパイル・テストして結果を確かめる手順。Projects/ や GreenWare/Assets/Scripts の .cpp/.hpp を編集したとき、報告の前に必ず使う。「ビルドして」「コンパイル通る？」「テスト回して」にも使う。
+description: FBZZ Engine の C++ を変更した後、自分でコンパイル・テストして結果を確かめる手順。Projects/ や依頼で指定された SDK consumer の .cpp/.hpp を編集したとき、報告の前に必ず使う。「ビルドして」「コンパイル通る？」「テスト回して」にも使う。
 ---
 
 # C++ の検証ループ
@@ -50,7 +50,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 test -F
 ## 4. 規約
 
 - 編集ごとに PostToolUse フックの `Projects/DevTools/AgentLint/lint.mjs` が走る。`ERROR` は直してから進む。まとめて見るなら `node Projects/DevTools/AgentLint/lint.mjs --changed`
-- シェーダーを直したら `Assets/Shaders` と `GreenWare/Assets/Shaders` の両方を同じ内容にする (lint の `shader-copies`)
+- シェーダー複製を直すときは、lint `shader-copies` が列挙する Engine と GameHub template のすべてで内容を一致させる。外部 consumer は依頼で対象に含む場合だけ確認する
 
 ## 5. 報告
 

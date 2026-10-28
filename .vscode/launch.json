@@ -19,16 +19,16 @@
             "name": "FBZZEditor (Development)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.10.0/tools/Development/Editor/FBZZEditor.exe",
             "args": [
                 "--project",
                 "${input:fbzzProjectPath}"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.10.0/tools/Development/Editor",
             "environment": [
-                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.10.0" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.10.0/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
             "console": "integratedTerminal",
@@ -40,16 +40,16 @@
             "name": "FBZZEditor (Debug)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/SDK/0.9.1/tools/Debug/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.10.0/tools/Debug/Editor/FBZZEditor.exe",
             "args": [
                 "--project",
                 "${input:fbzzProjectPath}"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Debug/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.10.0/tools/Debug/Editor",
             "environment": [
-                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.10.0" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.10.0/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
             "console": "integratedTerminal",
@@ -64,16 +64,16 @@
             "name": "FBZZEditor (Development + GPU Validation)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.10.0/tools/Development/Editor/FBZZEditor.exe",
             "args": [
                 "--project",
                 "${input:fbzzProjectPath}"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.10.0/tools/Development/Editor",
             "environment": [
-                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.10.0" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.10.0/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" },
                 { "name": "FBZZ_GPU_VALIDATION", "value": "1" }
             ],
@@ -86,13 +86,13 @@
             "name": "FBZZEditor (Development + DeveloperMode)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.10.0/tools/Development/Editor/FBZZEditor.exe",
             "args": [ "--project", "${input:fbzzProjectPath}", "--developer" ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Development/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.10.0/tools/Development/Editor",
             "environment": [
-                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.10.0" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.10.0/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
             "console": "integratedTerminal",
@@ -104,13 +104,13 @@
             "name": "FBZZEditor (Debug + DeveloperMode)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/SDK/0.9.1/tools/Debug/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.10.0/tools/Debug/Editor/FBZZEditor.exe",
             "args": [ "--project", "${input:fbzzProjectPath}", "--developer" ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Debug/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.10.0/tools/Debug/Editor",
             "environment": [
-                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.10.0" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.10.0/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
             "console": "integratedTerminal",
@@ -122,13 +122,13 @@
             "name": "FBZZEditor (Release)",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/SDK/0.9.1/tools/Release/Editor/FBZZEditor.exe",
+            "program": "${workspaceFolder}/SDK/0.10.0/tools/Release/Editor/FBZZEditor.exe",
             "args": [ "--project", "${input:fbzzProjectPath}" ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/SDK/0.9.1/tools/Release/Editor",
+            "cwd": "${workspaceFolder}/SDK/0.10.0/tools/Release/Editor",
             "environment": [
-                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.9.1" },
-                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.9.1/share/fbzz/Assets" },
+                { "name": "FBZZ_SDK_ROOT", "value": "${workspaceFolder}/SDK/0.10.0" },
+                { "name": "FBZZ_ENGINE_ASSET_ROOT", "value": "${workspaceFolder}/SDK/0.10.0/share/fbzz/Assets" },
                 { "name": "FBZZ_SKIP_ENGINE_REBUILD", "value": "1" }
             ],
             "console": "integratedTerminal",
@@ -374,12 +374,11 @@
     ],
     "inputs": [
         {
-            // @note 既定はリポジトリ同梱のサンプルプロジェクト。
-            // @note 空プロジェクトから確認したい時は Projects/GameHub/Templates/standard を指定する。
+            // @note 既定はユーザーの Downloads 内のゲームプロジェクト。起動時に別のフォルダーへ変更できる。
             "id": "fbzzProjectPath",
             "type": "promptString",
-            "description": "FBZZ プロジェクトフォルダー",
-            "default": "${workspaceFolder}/GreenWare"
+            "description": "FBZZ プロジェクトフォルダー (.fbzz_proj があるフォルダーの絶対パス)",
+            "default": "${env:USERPROFILE}/Downloads/FBZZCTestProject"
         },
         {
             "id": "gtestFilter",

@@ -2,7 +2,6 @@
 // @brief   VS Code C/C++ 拡張の IntelliSense 設定。includePath が唯一の情報源。
 // @author  Hasegawa Jin
 // @date    2026-05-19
-//
 // @note compileCommands は使わない。VS ジェネレーターは CMAKE_EXPORT_COMPILE_COMMANDS を無視し compile_commands.json を作らない。
 // @note compilerPath は書かない。未指定なら拡張が vswhere で最新 MSVC を検出し、VS 更新で壊れず VcBuild.ps1 ともずれない。
 {
@@ -10,10 +9,12 @@
         {
             "name": "FBZZ Engine",
             "includePath": [
-                // @name 自作レイヤー
+                // @note 自作レイヤー
                 "${workspaceFolder}/Projects/Math/include",
                 "${workspaceFolder}/Projects/Physics/include",
                 "${workspaceFolder}/Projects/Fluid/include",
+                "${workspaceFolder}/Projects/Core/include",
+                "${workspaceFolder}/Projects/Graphics/include",
                 "${workspaceFolder}/Projects/Engine/include",
                 "${workspaceFolder}/Projects/Engine/src",
                 "${workspaceFolder}/Projects/Editor/include",
@@ -21,7 +22,7 @@
                 "${workspaceFolder}/Projects/EditorLauncher/src",
                 "${workspaceFolder}/Projects/Sandbox/src",
                 "${workspaceFolder}/Projects/Tests",
-                // @name サードパーティ
+                // @note サードパーティ
                 "${workspaceFolder}/ThirdParty/ImGui",
                 "${workspaceFolder}/ThirdParty/ImGui/backends",
                 "${workspaceFolder}/ThirdParty/ImGuizmo/src",

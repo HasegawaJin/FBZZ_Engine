@@ -1,34 +1,26 @@
 ---
 name: add-script-proxy
-description: ゲームスクリプト (GreenWare/Assets/Scripts) から新しいエンジン機能を呼べるよう ScriptProxy を追加・拡張する手順。「スクリプトから〇〇を操作したい」「プロキシに関数を足す」「Script から Engine の型を使いたい」のときに使う。スクリプトから Engine 実装型を直接 include するのは禁止なので必ずこの経路を通す。
+description: C#ゲームからEngine機能を呼べる公開APIを拡張する。C# facadeと固定 managed bridgeを実装し、C#からEngine内部型を隠す。
 ---
 
-# ScriptProxy の追加
+# C# SDK API の追加
 
-スクリプトは SDK 越しの DLL なので、Engine 内部型を見せない薄い窓口 (プロキシ) だけを通す。
+ゲーム作者向け API は C# SDK に置き、Engine 内部型は C++ 実装へ閉じる。ゲーム logic は C#、大量処理や共有 Engine 機能は既存 Engine service へ接続する。
 
-## 既存プロキシに関数を足す
+## 既存 API の拡張
 
-1. `Projects/Engine/include/Engine/Scene/ScriptProxy/ScriptXxxProxy.hpp` に宣言。引数・戻り値は `math::` の値型・`std::string`・プリミティブ・既存プロキシ型だけ (Engine 内部型を露出しない)。単位と失敗時の振る舞いを `@note` / `@return` に書く
-2. `Projects/Engine/src/Scene/ScriptProxies.cpp` の該当プロキシ節に実装。`script` が nullptr / GameObject が無いときは何もしない・既定値を返す (落とさない)
+1. `script_api_catalog` と `Docs/design/csharp-authoring.md` で既存 public signature・単位・座標・許可callbackを確認する。
+2. facade を `Projects/Managed/Fbzz.ScriptApi/` に追加し、固定 ABI を `Projects/Engine/include/Engine/Scene/ManagedBridgeContract.inl` と対応する ScriptApi binding / Engine bridge に実装する。
+3. 引数・戻り値は値型か不透明 ID に限定し、Engine 内部型を C# に露出しない。失敗・単位・所有者・実行スレッドを API 契約へ記録する。
 
-## 新しいプロキシを作る
+## 新しい Engine service 接続
 
-上の 2 つに加えて:
+- 既存 Component / System / ScriptProxy kernel を再利用し、ゲーム規則を Engine service に移さない。
+- 更新した API catalog / SDK XML と必要な source generator binding を同期する。
+- C ABI に CLR object や所有ポインターを渡さない。Entity・Script・Component の寿命と callback 権限を検証する。
 
-3. `Projects/Engine/include/Engine/Scene/ScriptProxy/ScriptProxyMembers.inl` に `FBZZ_PROXY_MEMBER(ScriptXxxProxy, xxx)` を 1 行 (メンバー名の正本)
-4. `Projects/Engine/include/Engine/Scene/ScriptProxy/AllScriptProxies.hpp` に include を 1 行
-5. メンバー名は `lifetime` / `time` / `random` 等の既存名と衝突させない (スクリプト側で再宣言すると基底が隠れる)
+## ABI と検証
 
-## ABI
-
-- `Script` 基底に仮想関数を足すときは vtable 末尾に置き、`ScriptDllAbi.hpp` の `kScriptVtableAbiVersion` を上げる
-- プロキシ構造体のメンバー追加も SDK の再発行が要る。スクリプト DLL は SDK → Scripts の順でビルドされる
-
-## 検証
-
-```
-powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check Projects/Engine/src/Scene/ScriptProxies.cpp Projects/Engine/include/Engine/Scene/ScriptProxy/ScriptXxxProxy.hpp
-```
-
-呼び出し側のスクリプトの確認は SDK の再発行とスクリプト DLL のビルドが要るので、ユーザーに `GameHub + SDK: Build` タスクを依頼する。
+- 固定 ABI の契約を変更した場合は Editor / Engine 実行ファイルを再ビルドする。通常の C# authoring 変更は Engine の再リンクを要しない。
+- Engine C++ を変更したら `Tools/AgentBuild.ps1 check <変更したC++ bridge/header>` でコンパイル確認する。
+- managed SDK を更新したら managed build と Editor / Playtest 経路で確認する。C# API の追加だけを理由にゲーム側へ Engine 内部ソースを要求しない。
