@@ -1,0 +1,94 @@
+--- before/Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp
++++ Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp
+@@ -113,6 +113,9 @@
+     m_lastGraphicsRootSignature = nullptr;
+     m_lastPipelineState = nullptr;
+     m_lastDescriptorHeap = nullptr;
++    m_lastVertexView = {};
++    m_lastIndexView = {};
++    m_lastPrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+ }
+ 
+ void DX12Renderer::BeginFrame()
+@@ -616,10 +619,24 @@
+     /// @note       Draw 呼び出しより前であれば記録順の制約を満たす。
+     m_stateTracker.FlushBarriers(commands);
+     if (!meshDispatch) {
+-        commands->IASetPrimitiveTopology(call.topology == PrimitiveTopology::LINE_LIST
+-            ? D3D_PRIMITIVE_TOPOLOGY_LINELIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+-    }
+-
++        const auto topology = call.topology == PrimitiveTopology::LINE_LIST
++            ? D3D_PRIMITIVE_TOPOLOGY_LINELIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
++        if (m_lastPrimitiveTopology != topology) {
++            commands->IASetPrimitiveTopology(topology);
++            m_lastPrimitiveTopology = topology;
++        }
++    }
++
++    /// @note IA bindings persist on this command list; reset them with the existing graphics-state invalidation boundaries.
++    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/managing-graphics-pipeline-state-in-direct3d-12 Graphics pipeline state inheritance.
++    const auto bindVertices = [&](const D3D12_VERTEX_BUFFER_VIEW& view) {
++        if (m_lastVertexView.BufferLocation != view.BufferLocation
++            || m_lastVertexView.SizeInBytes != view.SizeInBytes
++            || m_lastVertexView.StrideInBytes != view.StrideInBytes) {
++            commands->IASetVertexBuffers(0, 1, &view);
++            m_lastVertexView = view;
++        }
++    };
+     if (!meshDispatch && prepared) {
+         auto* resource = const_cast<ID3D12Resource*>(static_cast<const ID3D12Resource*>(preparedResource));
+         const bool rawRead = std::any_of(call.vsRawBuffers.begin(), call.vsRawBuffers.end(), preparedRaw);
+@@ -629,7 +646,7 @@
+         const D3D12_VERTEX_BUFFER_VIEW view{prepared->OutputAddress(preparedRow), prepared->OutputBytes(preparedRow), sizeof(Vertex)};
+         if (!view.BufferLocation) return;
+         m_context.RetainPreparedSkinning(call.preparedSkinning);
+-        commands->IASetVertexBuffers(0, 1, &view);
++        bindVertices(view);
+     } else if (!meshDispatch) if (auto* vertexBase = resources.Get(call.vertexBuffer)) {
+         auto* vertexBuffer = static_cast<DX12Buffer*>(vertexBase);
+         /// @note コンピュートスキニングの出力を頂点として読む場合、CS が書いた直後は UNORDERED_ACCESS の
+@@ -641,12 +658,17 @@
+         }
+         const auto view = vertexBuffer->GetVertexView(m_uploadArena);
+         if (view.BufferLocation == 0) return;
+-        commands->IASetVertexBuffers(0, 1, &view);
++        bindVertices(view);
+     }
+     if (!meshDispatch) if (auto* indexBase = resources.Get(call.indexBuffer)) {
+         const auto view = static_cast<DX12Buffer*>(indexBase)->GetIndexView(m_uploadArena);
+         if (view.BufferLocation == 0) return;
+-        commands->IASetIndexBuffer(&view);
++        if (m_lastIndexView.BufferLocation != view.BufferLocation
++            || m_lastIndexView.SizeInBytes != view.SizeInBytes
++            || m_lastIndexView.Format != view.Format) {
++            commands->IASetIndexBuffer(&view);
++            m_lastIndexView = view;
++        }
+     }
+ 
+     /// @note b0〜b13 を差分で束縛する (未指定スロットは null CBV で埋める契約は従来どおり)。
+@@ -696,6 +718,10 @@
+         commands->ExecuteIndirect(signature,
+                                   call.indirectCommandCount, argumentBuffer->GetResource(),
+                                   call.indirectArgumentOffset, nullptr, 0);
++        /// @note Indirect signatures may reset their IA bindings to NULL; the next direct draw must resolve and bind its views again.
++        /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/indirect-drawing Command signatures and state reset.
++        m_lastVertexView = {};
++        m_lastIndexView = {};
+     } else if (meshDispatch) {
+         meshCommands->DispatchMesh(call.meshGroupCountX, call.meshGroupCountY, call.meshGroupCountZ);
+     } else {
+--- before/Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.hpp
++++ Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.hpp
+@@ -181,6 +181,10 @@
+     ID3D12RootSignature* m_lastGraphicsRootSignature = nullptr;
+     ID3D12PipelineState* m_lastPipelineState = nullptr;
+     ID3D12DescriptorHeap* m_lastDescriptorHeap = nullptr;
++    /// @note Compare resolved GPU views, including snapshot addresses; handles alone do not identify mutable buffer contents.
++    D3D12_VERTEX_BUFFER_VIEW m_lastVertexView{};
++    D3D12_INDEX_BUFFER_VIEW m_lastIndexView{};
++    D3D_PRIMITIVE_TOPOLOGY m_lastPrimitiveTopology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+     /// @note 共有コマンドリストへ他所が記録したことを検知するための世代 (DX12Context 側が上げる)。
+     uint64_t m_seenPipelineStateGeneration = 0;
+ 

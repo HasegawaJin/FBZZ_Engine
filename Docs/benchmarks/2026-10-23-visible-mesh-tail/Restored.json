@@ -1,0 +1,373 @@
+{
+  "tests": 27,
+  "failures": 0,
+  "disabled": 2,
+  "errors": 0,
+  "random_seed": 1023,
+  "timestamp": "2026-10-23T14:32:51Z",
+  "time": "12.418s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "GraphicsStandaloneTest",
+      "tests": 4,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T14:33:02Z",
+      "time": "1.518s",
+      "testsuite": [
+        {
+          "name": "CubeFacesKeepDepthAcrossRebindsAndClearEachSelectedMip",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 249,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:33:02Z",
+          "time": "0.392s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "15211879365079191780"
+        },
+        {
+          "name": "GpuProfilerKeepsPhysicalSubmissionAndViewPlanProvenance",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 134,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:33:03Z",
+          "time": "0.35s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "9140284495681418881"
+        },
+        {
+          "name": "EmbeddedErrorShadersDrawWithoutExternalFilesAndRespectSkinning",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 40,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:33:03Z",
+          "time": "0.37s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "3770541736910723189"
+        },
+        {
+          "name": "DrawsAndReadsBackWithoutEngine",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 379,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:33:03Z",
+          "time": "0.402s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "6934284081805384849"
+        }
+      ]
+    },
+    {
+      "name": "GpuGeometrySelectionTest",
+      "tests": 3,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T14:32:51Z",
+      "time": "1.867s",
+      "testsuite": [
+        {
+          "name": "ResourceManagerSwitchAndResourceFailurePreserveFallbackOutput",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GpuGeometrySelectionTests.cpp",
+          "line": 290,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:51Z",
+          "time": "0.904s",
+          "classname": "GpuGeometrySelectionTest",
+          "rng_seed": "4672194753263205992"
+        },
+        {
+          "name": "DispatchesOrderedIndexedArgumentsAndCullsOutsideCandidates",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GpuGeometrySelectionTests.cpp",
+          "line": 171,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:52Z",
+          "time": "0.529s",
+          "classname": "GpuGeometrySelectionTest",
+          "rng_seed": "15809193164470387320"
+        },
+        {
+          "name": "MeshShaderMatchesGpuSelectedIndexedLodAndInstanceRows",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GpuGeometrySelectionTests.cpp",
+          "line": 240,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:53Z",
+          "time": "0.432s",
+          "classname": "GpuGeometrySelectionTest",
+          "rng_seed": "12877110946788130306"
+        }
+      ]
+    },
+    {
+      "name": "InstancedMeshTest",
+      "tests": 7,
+      "failures": 0,
+      "disabled": 1,
+      "errors": 0,
+      "timestamp": "2026-10-23T14:32:59Z",
+      "time": "3.115s",
+      "testsuite": [
+        {
+          "name": "GpuCullingMatchesIndividualAndCpuInstancedPixelsAcrossViews",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 185,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:59Z",
+          "time": "0.558s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "2198201032287298755"
+        },
+        {
+          "name": "AssetReplacementWithEqualRevisionDoesNotReuseStaleRows",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 226,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:33:00Z",
+          "time": "0.509s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "10321774993227621240"
+        },
+        {
+          "name": "UnchangedPlacementsUploadNothingAndOneEditUploadsOneRow",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 203,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:33:00Z",
+          "time": "0.527s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "13594332406699946947"
+        },
+        {
+          "name": "MaskedDoubleSidedShadowsMatchAcrossLodsAndBackViews",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 193,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:33:01Z",
+          "time": "0.501s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "10781401807892404121"
+        },
+        {
+          "name": "ShadowAlphaCoverageMatchesStandardGBufferIncludingVertexColorContract",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 215,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:33:01Z",
+          "time": "0.512s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "16507635317069341416"
+        },
+        {
+          "name": "CameraDistancePaddingSmallObjectAndLayerPoliciesMatchCpuAndGpu",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 232,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:33:02Z",
+          "time": "0.503s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "4123897332006694642"
+        },
+        {
+          "name": "DISABLED_MeasureTenThousandInstancesWithNativeProfiler",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 245,
+          "status": "NOTRUN",
+          "result": "SUPPRESSED",
+          "timestamp": "1970-01-01T09:00:00Z",
+          "time": "0s",
+          "classname": "InstancedMeshTest"
+        }
+      ]
+    },
+    {
+      "name": "MeshletGeometryShaderTest",
+      "tests": 9,
+      "failures": 0,
+      "disabled": 1,
+      "errors": 0,
+      "timestamp": "2026-10-23T14:32:53Z",
+      "time": "4.224s",
+      "testsuite": [
+        {
+          "name": "ProductionShadowMeshletsPreserveDepthAtTransformedFrustumBoundaries",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\MeshletGeometryShaderTests.cpp",
+          "line": 715,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:53Z",
+          "time": "0.606s",
+          "classname": "MeshletGeometryShaderTest",
+          "rng_seed": "10693322459666580983"
+        },
+        {
+          "name": "ProductionMeshletsPreserveOpaqueAndCutoutGBufferAttachments",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\MeshletGeometryShaderTests.cpp",
+          "line": 693,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:54Z",
+          "time": "0.57s",
+          "classname": "MeshletGeometryShaderTest",
+          "rng_seed": "4085558281015119087"
+        },
+        {
+          "name": "DISABLED_SteadyHighDensityGeometryComparison",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\MeshletGeometryShaderTests.cpp",
+          "line": 799,
+          "status": "NOTRUN",
+          "result": "SUPPRESSED",
+          "timestamp": "1970-01-01T09:00:00Z",
+          "time": "0s",
+          "classname": "MeshletGeometryShaderTest"
+        },
+        {
+          "name": "InvalidMeshletRangePreservesTheCallerIndexedFallback",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\MeshletGeometryShaderTests.cpp",
+          "line": 781,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:54Z",
+          "time": "0.459s",
+          "classname": "MeshletGeometryShaderTest",
+          "rng_seed": "16437815591551604794"
+        },
+        {
+          "name": "ProductionDrawAdapterPreservesCountsBindingsAndPixels",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\MeshletGeometryShaderTests.cpp",
+          "line": 557,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:55Z",
+          "time": "0.503s",
+          "classname": "MeshletGeometryShaderTest",
+          "rng_seed": "4789628537615113365"
+        },
+        {
+          "name": "ProductionAdapterUsesMeshletsOnlyForMeaningfulClipping",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\MeshletGeometryShaderTests.cpp",
+          "line": 626,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:55Z",
+          "time": "0.531s",
+          "classname": "MeshletGeometryShaderTest",
+          "rng_seed": "8659604613568311934"
+        },
+        {
+          "name": "ProductionMeshletCacheRecoversAfterReleaseAndReset",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\MeshletGeometryShaderTests.cpp",
+          "line": 665,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:56Z",
+          "time": "0.492s",
+          "classname": "MeshletGeometryShaderTest",
+          "rng_seed": "12893999941644322041"
+        },
+        {
+          "name": "DisabledFrustumCullingIgnoresOtherwiseRejectingPlanes",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\MeshletGeometryShaderTests.cpp",
+          "line": 729,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:56Z",
+          "time": "0.532s",
+          "classname": "MeshletGeometryShaderTest",
+          "rng_seed": "15066287813765105601"
+        },
+        {
+          "name": "UpdatingSourceBuffersRebuildsTheProductionMeshletImage",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\MeshletGeometryShaderTests.cpp",
+          "line": 742,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:57Z",
+          "time": "0.525s",
+          "classname": "MeshletGeometryShaderTest",
+          "rng_seed": "11262627298708580833"
+        }
+      ]
+    },
+    {
+      "name": "BufferReadTest",
+      "tests": 3,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T14:32:58Z",
+      "time": "1.279s",
+      "testsuite": [
+        {
+          "name": "CpuUpdatesPublishNewSnapshotsWithoutChangingRecordedReads",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 411,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:58Z",
+          "time": "0.414s",
+          "classname": "BufferReadTest",
+          "rng_seed": "15873810547032872311"
+        },
+        {
+          "name": "StaleIndirectDependenciesRejectTheDispatchBeforeWriting",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 467,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:58Z",
+          "time": "0.417s",
+          "classname": "BufferReadTest",
+          "rng_seed": "1138282013515155788"
+        },
+        {
+          "name": "ConsecutiveGraphicsBindingsKeepEveryIndexAndSurviveFrameAndComputeChanges",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 144,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:59Z",
+          "time": "0.445s",
+          "classname": "BufferReadTest",
+          "rng_seed": "16222333545610219595"
+        }
+      ]
+    },
+    {
+      "name": "SynchronousUploadTest",
+      "tests": 1,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T14:32:57Z",
+      "time": "0.41s",
+      "testsuite": [
+        {
+          "name": "TextureAndBufferWaitsKeepRecordingFrameRetirementPending",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 350,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:32:57Z",
+          "time": "0.41s",
+          "classname": "SynchronousUploadTest",
+          "rng_seed": "13398133637335666152"
+        }
+      ]
+    }
+  ]
+}

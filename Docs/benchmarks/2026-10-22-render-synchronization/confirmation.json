@@ -1,0 +1,140 @@
+[
+  {
+    "backend": "cpu",
+    "views": 2,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0094,
+          "processMedians": [
+            0.0111,
+            0.0094,
+            0.0091
+          ]
+        },
+        "completeMs": {
+          "median": 0.0112,
+          "processMedians": [
+            0.0134,
+            0.0112,
+            0.0109
+          ]
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0058,
+          "processMedians": [
+            0.0063,
+            0.0058,
+            0.0055
+          ]
+        },
+        "completeMs": {
+          "median": 0.0163,
+          "processMedians": [
+            0.0181,
+            0.0163,
+            0.0162
+          ]
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": -38.29787234042554,
+      "completeMs": 45.53571428571428
+    }
+  },
+  {
+    "backend": "gpu",
+    "views": 1,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0273,
+          "processMedians": [
+            0.0273,
+            0.0278,
+            0.026
+          ]
+        },
+        "completeMs": {
+          "median": 0.1585,
+          "processMedians": [
+            0.1659,
+            0.145,
+            0.1585
+          ]
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0026,
+          "processMedians": [
+            0.0028,
+            0.0026,
+            0.0026
+          ]
+        },
+        "completeMs": {
+          "median": 0.1336,
+          "processMedians": [
+            0.1336,
+            0.1399,
+            0.1211
+          ]
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": -90.47619047619048,
+      "completeMs": -15.709779179810724
+    }
+  },
+  {
+    "backend": "gpu",
+    "views": 2,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0531,
+          "processMedians": [
+            0.0531,
+            0.0517,
+            0.0594
+          ]
+        },
+        "completeMs": {
+          "median": 0.1881,
+          "processMedians": [
+            0.1881,
+            0.1862,
+            0.1987
+          ]
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0042,
+          "processMedians": [
+            0.0042,
+            0.0043,
+            0.0039
+          ]
+        },
+        "completeMs": {
+          "median": 0.1525,
+          "processMedians": [
+            0.1482,
+            0.1525,
+            0.1581
+          ]
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": -92.090395480226,
+      "completeMs": -18.926103136629447
+    }
+  }
+]

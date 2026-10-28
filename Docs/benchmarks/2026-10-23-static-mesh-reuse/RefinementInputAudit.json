@@ -1,0 +1,30 @@
+{
+  "changed": [
+    "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp"
+  ],
+  "beforeSha256": "c51a8afd5d1b52fbd9e0ec6632006c7a4413d141ecb0a059c4fe7e5bff11c2d4",
+  "afterSha256": "f0feee85e8800cbd561500bfcf82a564bcf509c15a53f50aa7087a52e6107e65",
+  "publicHeadersUnchanged": true,
+  "exportsUnchanged": true,
+  "postLinkExportVerificationRequired": true,
+  "previous": {
+    "changed": [
+      "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp"
+    ],
+    "beforeSha256": "ce7d835ab41dae6878c7aeb216d32c3d6031b0327d120d20a9273d8638c4ccbb",
+    "afterSha256": "c51a8afd5d1b52fbd9e0ec6632006c7a4413d141ecb0a059c4fe7e5bff11c2d4",
+    "publicHeadersUnchanged": true,
+    "exportsUnchanged": true,
+    "postLinkExportVerificationRequired": true,
+    "previous": {
+      "changed": [
+        "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp"
+      ],
+      "beforeSha256": "c429e2e55ef6fde086fb608ec87316ee61d363e3773bc4d0cc9bacc201d31767",
+      "afterSha256": "ce7d835ab41dae6878c7aeb216d32c3d6031b0327d120d20a9273d8638c4ccbb",
+      "publicHeadersUnchanged": true,
+      "exportsUnchanged": true,
+      "postLinkExportVerificationRequired": true
+    }
+  }
+}

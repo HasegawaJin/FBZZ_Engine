@@ -1,0 +1,27 @@
+﻿{
+    "measuredInputsUnchanged":  true,
+    "runtimeMatchesMeasuredDlls":  true,
+    "releaseLtoRestored":  true,
+    "physicsTestsPassed":  596,
+    "physicsTestLog":  "build/agent/test-20261022-164719-34696.log",
+    "mutationTestFailedAsExpected":  "BroadPhaseIncrementalTest.RefitsOneMovedLeafAndItsSharedAncestors",
+    "mutationLog":  "build/agent/test-20261022-163441-17168.log",
+    "builtTargets":  [
+                         "FBZZPhysicsBroadPhaseBench",
+                         "FBZZTestsPhysicsAuto",
+                         "FBZZEngine",
+                         "FBZZEditorLauncher",
+                         "SandboxStandalone"
+                     ],
+    "finalApplicationBuildLog":  "build/agent/build-20261022-165550-22924.log",
+    "sourceBaseline":  [
+                           {
+                               "sha256":  "5538E9623B2059F9C6C4368BE01294B0C0EA5D59996CA0E2CA982CC1AA9F369C",
+                               "path":  "Projects/Physics/src/PhysicsSolver.cpp"
+                           },
+                           {
+                               "sha256":  "FC038CD507114C85AB2F0ADF838D343B326498C3834700DB1C07E487DA99BC3E",
+                               "path":  "Projects/Physics/include/Physics/PhysicsSolver.hpp"
+                           }
+                       ]
+}

@@ -1,0 +1,2272 @@
+[
+  {
+    "file": "Reproduce-profile-AllVisible1000-r0-Baseline.out",
+    "frames": 600,
+    "complete": 600,
+    "slowSerials": [
+      897,
+      788,
+      1076,
+      898,
+      918,
+      696
+    ],
+    "scopes": [
+      {
+        "scope": "RenderSystem",
+        "field": "inclusiveMs",
+        "median": 0.950050056,
+        "tail": 1.2163000099999999,
+        "increase": 0.26624995399999984
+      },
+      {
+        "scope": "RenderSystem::ExtractRenderScene",
+        "field": "inclusiveMs",
+        "median": 0.2714500425,
+        "tail": 0.4302499295,
+        "increase": 0.15879988700000003
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryBuild",
+        "field": "inclusiveMs",
+        "median": 0.127699971,
+        "tail": 0.23210001,
+        "increase": 0.104400039
+      },
+      {
+        "scope": "RenderSceneExtractor::Geometry",
+        "field": "inclusiveMs",
+        "median": 0.113600016,
+        "tail": 0.213649988,
+        "increase": 0.10004997200000001
+      },
+      {
+        "scope": "DX12Frame::End",
+        "field": "inclusiveMs",
+        "median": 0.1444999575,
+        "tail": 0.239549994,
+        "increase": 0.09505003649999999
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryObjects",
+        "field": "inclusiveMs",
+        "median": 0.104349971,
+        "tail": 0.197449982,
+        "increase": 0.093100011
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryObjects",
+        "field": "selfMs",
+        "median": 0.104349971,
+        "tail": 0.197449982,
+        "increase": 0.093100011
+      },
+      {
+        "scope": "RenderPipeline::Execute",
+        "field": "inclusiveMs",
+        "median": 0.5783500075,
+        "tail": 0.641449988,
+        "increase": 0.06309998049999999
+      },
+      {
+        "scope": "DX12Frame::Present",
+        "field": "inclusiveMs",
+        "median": 0.0945000648,
+        "tail": 0.1553500295,
+        "increase": 0.06084996469999998
+      },
+      {
+        "scope": "DX12Frame::Present",
+        "field": "selfMs",
+        "median": 0.0945000648,
+        "tail": 0.1553500295,
+        "increase": 0.06084996469999998
+      },
+      {
+        "scope": "RenderPipeline::GraphExecute",
+        "field": "inclusiveMs",
+        "median": 0.557000041,
+        "tail": 0.610850036,
+        "increase": 0.053849994999999984
+      },
+      {
+        "scope": "ForwardOpaque",
+        "field": "inclusiveMs",
+        "median": 0.5196999904999999,
+        "tail": 0.5609999895,
+        "increase": 0.04129999900000003
+      },
+      {
+        "scope": "ForwardOpaque",
+        "field": "selfMs",
+        "median": 0.5196999904999999,
+        "tail": 0.5609999895,
+        "increase": 0.04129999900000003
+      },
+      {
+        "scope": "RenderSceneExtractor::Materials",
+        "field": "inclusiveMs",
+        "median": 0.12975001349999998,
+        "tail": 0.1647000315,
+        "increase": 0.03495001800000003
+      },
+      {
+        "scope": "DX12Frame::End",
+        "field": "selfMs",
+        "median": 0.0494000912,
+        "tail": 0.08239996435,
+        "increase": 0.03299987314999999
+      },
+      {
+        "scope": "RenderSceneExtractor::Materials",
+        "field": "selfMs",
+        "median": 0.1072999835,
+        "tail": 0.129700065,
+        "increase": 0.022400081500000002
+      },
+      {
+        "scope": "RenderSceneExtractor::ShaderCapabilities",
+        "field": "inclusiveMs",
+        "median": 0.0218999386,
+        "tail": 0.0354499817,
+        "increase": 0.013550043100000003
+      },
+      {
+        "scope": "RenderSceneExtractor::ShaderCapabilities",
+        "field": "selfMs",
+        "median": 0.0218999386,
+        "tail": 0.0354499817,
+        "increase": 0.013550043100000003
+      },
+      {
+        "scope": "RenderSystem::LightingSetup",
+        "field": "inclusiveMs",
+        "median": 0.0464500189,
+        "tail": 0.0586000085,
+        "increase": 0.012149989600000001
+      },
+      {
+        "scope": "RenderSystem::ComputeShadowBounds",
+        "field": "inclusiveMs",
+        "median": 0.0426000357,
+        "tail": 0.05234998465,
+        "increase": 0.009749948950000004
+      },
+      {
+        "scope": "RenderSystem::ComputeShadowBounds",
+        "field": "selfMs",
+        "median": 0.0426000357,
+        "tail": 0.05234998465,
+        "increase": 0.009749948950000004
+      },
+      {
+        "scope": "DX12Frame::Begin",
+        "field": "inclusiveMs",
+        "median": 0.0112000704,
+        "tail": 0.01784998175,
+        "increase": 0.006649911350000001
+      },
+      {
+        "scope": "DX12Frame::Begin",
+        "field": "selfMs",
+        "median": 0.0109000206,
+        "tail": 0.017499983349999998,
+        "increase": 0.006599962749999999
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryMaterialCapabilities",
+        "field": "inclusiveMs",
+        "median": 0.007600009445,
+        "tail": 0.01284998655,
+        "increase": 0.0052499771049999994
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryMaterialCapabilities",
+        "field": "selfMs",
+        "median": 0.007600009445,
+        "tail": 0.01284998655,
+        "increase": 0.0052499771049999994
+      },
+      {
+        "scope": "Shadow",
+        "field": "inclusiveMs",
+        "median": 0.008849978445,
+        "tail": 0.0136500001,
+        "increase": 0.004800021655
+      },
+      {
+        "scope": "Shadow",
+        "field": "selfMs",
+        "median": 0.008849978445,
+        "tail": 0.0136500001,
+        "increase": 0.004800021655
+      },
+      {
+        "scope": "RenderSystem::SkinningResourceValidation",
+        "field": "inclusiveMs",
+        "median": 0.00520002842,
+        "tail": 0.009949982159999999,
+        "increase": 0.004749953739999999
+      },
+      {
+        "scope": "RenderSystem::SkinningResourceValidation",
+        "field": "selfMs",
+        "median": 0.00520002842,
+        "tail": 0.009949982159999999,
+        "increase": 0.004749953739999999
+      },
+      {
+        "scope": "RenderPipeline::Execute",
+        "field": "selfMs",
+        "median": 0.0128000975,
+        "tail": 0.01664996145,
+        "increase": 0.003849863950000001
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryCachePublish",
+        "field": "inclusiveMs",
+        "median": 0.0125999451,
+        "tail": 0.0159499645,
+        "increase": 0.003350019400000001
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryCachePublish",
+        "field": "selfMs",
+        "median": 0.0125999451,
+        "tail": 0.0159499645,
+        "increase": 0.003350019400000001
+      },
+      {
+        "scope": "RenderSystem::BuildPipeline",
+        "field": "inclusiveMs",
+        "median": 0.00810003281,
+        "tail": 0.01129990815,
+        "increase": 0.00319987534
+      },
+      {
+        "scope": "RenderSystem::BuildPipeline",
+        "field": "selfMs",
+        "median": 0.00719988346,
+        "tail": 0.009799838065,
+        "increase": 0.0025999546050000004
+      },
+      {
+        "scope": "RenderSystem::DebugSnapshot",
+        "field": "inclusiveMs",
+        "median": 0.00380003452,
+        "tail": 0.006350040435,
+        "increase": 0.002550005915
+      },
+      {
+        "scope": "RenderSystem::DebugSnapshot",
+        "field": "selfMs",
+        "median": 0.00380003452,
+        "tail": 0.006350040435,
+        "increase": 0.002550005915
+      },
+      {
+        "scope": "RenderSystem::Cleanup",
+        "field": "inclusiveMs",
+        "median": 0.00440001488,
+        "tail": 0.0067499876,
+        "increase": 0.0023499727200000002
+      },
+      {
+        "scope": "RenderSystem::Cleanup",
+        "field": "selfMs",
+        "median": 0.00440001488,
+        "tail": 0.0067499876,
+        "increase": 0.0023499727200000002
+      },
+      {
+        "scope": "RenderSystem::SkinningCompute",
+        "field": "inclusiveMs",
+        "median": 0.0101999044,
+        "tail": 0.0124499798,
+        "increase": 0.002250075400000001
+      },
+      {
+        "scope": "RenderPipeline::BuildGraph",
+        "field": "inclusiveMs",
+        "median": 0.0071999430650000005,
+        "tail": 0.009350001810000001,
+        "increase": 0.0021500587450000008
+      },
+      {
+        "scope": "RenderPipeline::BuildGraph",
+        "field": "selfMs",
+        "median": 0.0071999430650000005,
+        "tail": 0.009350001810000001,
+        "increase": 0.0021500587450000008
+      },
+      {
+        "scope": "DecalDepthCopy",
+        "field": "inclusiveMs",
+        "median": 0.00490009785,
+        "tail": 0.007049977779999999,
+        "increase": 0.0021498799299999993
+      },
+      {
+        "scope": "DecalDepthCopy",
+        "field": "selfMs",
+        "median": 0.00490009785,
+        "tail": 0.007049977779999999,
+        "increase": 0.0021498799299999993
+      },
+      {
+        "scope": "RenderSystem::LightingSetup",
+        "field": "selfMs",
+        "median": 0.00379991531,
+        "tail": 0.005649983884999999,
+        "increase": 0.0018500685749999993
+      },
+      {
+        "scope": "RenderPipeline::GraphExecute",
+        "field": "selfMs",
+        "median": 0.00619995594,
+        "tail": 0.00805002451,
+        "increase": 0.0018500685700000002
+      },
+      {
+        "scope": "RenderSystem",
+        "field": "selfMs",
+        "median": 0.00609993935,
+        "tail": 0.00784999132,
+        "increase": 0.0017500519699999995
+      },
+      {
+        "scope": "Composite",
+        "field": "inclusiveMs",
+        "median": 0.00339996815,
+        "tail": 0.005100011825,
+        "increase": 0.0017000436750000004
+      },
+      {
+        "scope": "Composite",
+        "field": "selfMs",
+        "median": 0.00339996815,
+        "tail": 0.005100011825,
+        "increase": 0.0017000436750000004
+      },
+      {
+        "scope": "RenderSystem::ExtractRenderScene",
+        "field": "selfMs",
+        "median": 0.00450015068,
+        "tail": 0.0060998797399999995,
+        "increase": 0.0015997290599999991
+      },
+      {
+        "scope": "RenderSceneExtractor::Water",
+        "field": "inclusiveMs",
+        "median": 0.00279998779,
+        "tail": 0.004200041295,
+        "increase": 0.0014000535049999998
+      },
+      {
+        "scope": "RenderSystem::ResolveViewSettings",
+        "field": "inclusiveMs",
+        "median": 0.0013999939,
+        "tail": 0.00265002251,
+        "increase": 0.0012500286099999998
+      },
+      {
+        "scope": "RenderSystem::SkinningDispatch",
+        "field": "inclusiveMs",
+        "median": 0.0056000948,
+        "tail": 0.0068500638,
+        "increase": 0.001249969
+      },
+      {
+        "scope": "RenderSystem::SkinningDispatch",
+        "field": "selfMs",
+        "median": 0.0056000948,
+        "tail": 0.0068500638,
+        "increase": 0.001249969
+      },
+      {
+        "scope": "RenderSceneExtractor::Environment",
+        "field": "inclusiveMs",
+        "median": 0.00150001049,
+        "tail": 0.00260007381,
+        "increase": 0.0011000633199999999
+      },
+      {
+        "scope": "RenderSceneExtractor::Environment",
+        "field": "selfMs",
+        "median": 0.00150001049,
+        "tail": 0.00260007381,
+        "increase": 0.0011000633199999999
+      },
+      {
+        "scope": "RenderSystem::PassContextSetup",
+        "field": "inclusiveMs",
+        "median": 0.00290000439,
+        "tail": 0.00400000811,
+        "increase": 0.0011000037199999997
+      },
+      {
+        "scope": "RenderSystem::ResolveViewSettings",
+        "field": "selfMs",
+        "median": 0.000900030136,
+        "tail": 0.00199997425,
+        "increase": 0.0010999441140000002
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryBuild",
+        "field": "selfMs",
+        "median": 0.00150001049,
+        "tail": 0.002550005915,
+        "increase": 0.001049995425
+      },
+      {
+        "scope": "RenderSystem::PassContextSetup",
+        "field": "selfMs",
+        "median": 0.00250005722,
+        "tail": 0.003500044345,
+        "increase": 0.0009999871249999999
+      },
+      {
+        "scope": "RenderSceneExtractor::Fibers",
+        "field": "inclusiveMs",
+        "median": 0.0012999773,
+        "tail": 0.0022500157350000003,
+        "increase": 0.0009500384350000003
+      },
+      {
+        "scope": "RenderSceneExtractor::Fibers",
+        "field": "selfMs",
+        "median": 0.0012999773,
+        "tail": 0.0022500157350000003,
+        "increase": 0.0009500384350000003
+      },
+      {
+        "scope": "RenderSystem::SkinningCompute",
+        "field": "selfMs",
+        "median": 0.00450003147,
+        "tail": 0.005349993705,
+        "increase": 0.0008499622350000005
+      },
+      {
+        "scope": "WaterPrepare::DepthFields",
+        "field": "inclusiveMs",
+        "median": 0.000599980354,
+        "tail": 0.0013999938949999999,
+        "increase": 0.0008000135409999999
+      },
+      {
+        "scope": "WaterPrepare::DepthFields",
+        "field": "selfMs",
+        "median": 0.000599980354,
+        "tail": 0.0013999938949999999,
+        "increase": 0.0008000135409999999
+      },
+      {
+        "scope": "RenderSceneExtractor::Geometry",
+        "field": "selfMs",
+        "median": 0.0013999939,
+        "tail": 0.0020001530650000003,
+        "increase": 0.0006001591650000003
+      },
+      {
+        "scope": "RenderSystem::RayViewPreparation",
+        "field": "inclusiveMs",
+        "median": 0.000899910927,
+        "tail": 0.0014500617950000002,
+        "increase": 0.0005501508680000002
+      },
+      {
+        "scope": "RenderSystem::RayViewPreparation",
+        "field": "selfMs",
+        "median": 0.000899910927,
+        "tail": 0.0014500617950000002,
+        "increase": 0.0005501508680000002
+      },
+      {
+        "scope": "IBLBrdfBake",
+        "field": "inclusiveMs",
+        "median": 0.00119996071,
+        "tail": 0.001749932765,
+        "increase": 0.0005499720550000001
+      },
+      {
+        "scope": "IBLBrdfBake",
+        "field": "selfMs",
+        "median": 0.00119996071,
+        "tail": 0.001749932765,
+        "increase": 0.0005499720550000001
+      },
+      {
+        "scope": "RenderSceneExtractor::Terrains",
+        "field": "inclusiveMs",
+        "median": 0.000800013542,
+        "tail": 0.0013000965149999998,
+        "increase": 0.0005000829729999998
+      },
+      {
+        "scope": "RenderSceneExtractor::Terrains",
+        "field": "selfMs",
+        "median": 0.000800013542,
+        "tail": 0.0013000965149999998,
+        "increase": 0.0005000829729999998
+      },
+      {
+        "scope": "Particle",
+        "field": "inclusiveMs",
+        "median": 0.00049996376,
+        "tail": 0.001000046728,
+        "increase": 0.000500082968
+      },
+      {
+        "scope": "Particle",
+        "field": "selfMs",
+        "median": 0.00049996376,
+        "tail": 0.001000046728,
+        "increase": 0.000500082968
+      },
+      {
+        "scope": "WaterPrepare::Surfaces",
+        "field": "inclusiveMs",
+        "median": 0.000800013542,
+        "tail": 0.00125002861,
+        "increase": 0.00045001506799999995
+      },
+      {
+        "scope": "WaterPrepare::Surfaces",
+        "field": "selfMs",
+        "median": 0.000800013542,
+        "tail": 0.00125002861,
+        "increase": 0.00045001506799999995
+      },
+      {
+        "scope": "RenderSystem::ViewResourceSetup",
+        "field": "inclusiveMs",
+        "median": 0.00109994411,
+        "tail": 0.00149995089,
+        "increase": 0.00040000678
+      },
+      {
+        "scope": "TerrainForward",
+        "field": "inclusiveMs",
+        "median": 0.0013999939,
+        "tail": 0.001799941065,
+        "increase": 0.0003999471649999999
+      },
+      {
+        "scope": "TerrainForward",
+        "field": "selfMs",
+        "median": 0.0013999939,
+        "tail": 0.001799941065,
+        "increase": 0.0003999471649999999
+      },
+      {
+        "scope": "SkinningCompute",
+        "field": "inclusiveMs",
+        "median": 0.00279998779,
+        "tail": 0.00309997797,
+        "increase": 0.0002999901799999997
+      },
+      {
+        "scope": "SkinningCompute",
+        "field": "selfMs",
+        "median": 0.00279998779,
+        "tail": 0.00309997797,
+        "increase": 0.0002999901799999997
+      },
+      {
+        "scope": "RenderSystem::PipelineExtensions",
+        "field": "inclusiveMs",
+        "median": 0.000799894333,
+        "tail": 0.001049995423,
+        "increase": 0.00025010109000000004
+      },
+      {
+        "scope": "RenderSystem::PipelineExtensions",
+        "field": "selfMs",
+        "median": 0.000799894333,
+        "tail": 0.001049995423,
+        "increase": 0.00025010109000000004
+      },
+      {
+        "scope": "RenderSceneExtractor::Particles",
+        "field": "inclusiveMs",
+        "median": 0.000400066376,
+        "tail": 0.000649988651,
+        "increase": 0.000249922275
+      },
+      {
+        "scope": "RenderSceneExtractor::Particles",
+        "field": "selfMs",
+        "median": 0.000400066376,
+        "tail": 0.000649988651,
+        "increase": 0.000249922275
+      },
+      {
+        "scope": "RenderSceneExtractor::Water",
+        "field": "selfMs",
+        "median": 0.00119996071,
+        "tail": 0.0014001131050000002,
+        "increase": 0.00020015239500000026
+      },
+      {
+        "scope": "RenderSceneExtractor::Trails",
+        "field": "inclusiveMs",
+        "median": 0.000199913979,
+        "tail": 0.000400006771,
+        "increase": 0.000200092792
+      },
+      {
+        "scope": "RenderSceneExtractor::Trails",
+        "field": "selfMs",
+        "median": 0.000199913979,
+        "tail": 0.000400006771,
+        "increase": 0.000200092792
+      },
+      {
+        "scope": "RenderSystem::ResizeRenderTargets",
+        "field": "inclusiveMs",
+        "median": 0.00049996376,
+        "tail": 0.0006999969479999999,
+        "increase": 0.00020003318799999997
+      },
+      {
+        "scope": "RenderSystem::ResizeRenderTargets",
+        "field": "selfMs",
+        "median": 0.00049996376,
+        "tail": 0.0006999969479999999,
+        "increase": 0.00020003318799999997
+      },
+      {
+        "scope": "RenderPipeline::Plan",
+        "field": "inclusiveMs",
+        "median": 0.00049996376,
+        "tail": 0.0006999969479999999,
+        "increase": 0.00020003318799999997
+      },
+      {
+        "scope": "RenderPipeline::Plan",
+        "field": "selfMs",
+        "median": 0.00049996376,
+        "tail": 0.0006999969479999999,
+        "increase": 0.00020003318799999997
+      },
+      {
+        "scope": "Decal",
+        "field": "inclusiveMs",
+        "median": 0.00160002708,
+        "tail": 0.001800000665,
+        "increase": 0.00019997358499999982
+      },
+      {
+        "scope": "Decal",
+        "field": "selfMs",
+        "median": 0.00160002708,
+        "tail": 0.001800000665,
+        "increase": 0.00019997358499999982
+      },
+      {
+        "scope": "RenderSystem::CustomPostProcessSetup",
+        "field": "inclusiveMs",
+        "median": 0.000200033188,
+        "tail": 0.000400006771,
+        "increase": 0.00019997358300000002
+      },
+      {
+        "scope": "RenderSystem::CustomPostProcessSetup",
+        "field": "selfMs",
+        "median": 0.000200033188,
+        "tail": 0.000400006771,
+        "increase": 0.00019997358300000002
+      },
+      {
+        "scope": "RenderSystem::PostProcessVolumes",
+        "field": "inclusiveMs",
+        "median": 0.000300049782,
+        "tail": 0.000500023365,
+        "increase": 0.000199973583
+      },
+      {
+        "scope": "RenderSystem::PostProcessVolumes",
+        "field": "selfMs",
+        "median": 0.000300049782,
+        "tail": 0.000500023365,
+        "increase": 0.000199973583
+      },
+      {
+        "scope": "RenderSystem::ViewResourceSetup",
+        "field": "selfMs",
+        "median": 0.000599980354,
+        "tail": 0.0007500052455,
+        "increase": 0.00015002489150000003
+      },
+      {
+        "scope": "WaterForward",
+        "field": "inclusiveMs",
+        "median": 0.000800013542,
+        "tail": 0.0009500384330000001,
+        "increase": 0.00015002489100000003
+      },
+      {
+        "scope": "WaterForward",
+        "field": "selfMs",
+        "median": 0.000800013542,
+        "tail": 0.0009500384330000001,
+        "increase": 0.00015002489100000003
+      },
+      {
+        "scope": "RenderSystem::LightBufferUpload",
+        "field": "inclusiveMs",
+        "median": 0.000399947166,
+        "tail": 0.0005499720569999999,
+        "increase": 0.00015002489099999992
+      },
+      {
+        "scope": "RenderSystem::LightBufferUpload",
+        "field": "selfMs",
+        "median": 0.000399947166,
+        "tail": 0.0005499720569999999,
+        "increase": 0.00015002489099999992
+      },
+      {
+        "scope": "RenderSceneExtractor::Instances",
+        "field": "inclusiveMs",
+        "median": 0.000299930573,
+        "tail": 0.000449955463,
+        "increase": 0.00015002488999999998
+      },
+      {
+        "scope": "RenderSceneExtractor::Instances",
+        "field": "selfMs",
+        "median": 0.000299930573,
+        "tail": 0.000449955463,
+        "increase": 0.00015002488999999998
+      },
+      {
+        "scope": "RenderSystem::EnvironmentSetup",
+        "field": "inclusiveMs",
+        "median": 0.00110006332,
+        "tail": 0.00125002861,
+        "increase": 0.00014996528999999988
+      },
+      {
+        "scope": "RenderSystem::SharedResourceSetup",
+        "field": "inclusiveMs",
+        "median": 0.00049996376,
+        "tail": 0.000600039959,
+        "increase": 0.00010007619900000001
+      },
+      {
+        "scope": "RenderSystem::SharedResourceSetup",
+        "field": "selfMs",
+        "median": 0.00049996376,
+        "tail": 0.000600039959,
+        "increase": 0.00010007619900000001
+      },
+      {
+        "scope": "RenderSystem::AdvancedConstants",
+        "field": "inclusiveMs",
+        "median": 0.000699996948,
+        "tail": 0.000800013542,
+        "increase": 0.00010001659399999998
+      },
+      {
+        "scope": "RenderSystem::AdvancedConstants",
+        "field": "selfMs",
+        "median": 0.000699996948,
+        "tail": 0.000800013542,
+        "increase": 0.00010001659399999998
+      },
+      {
+        "scope": "Trail",
+        "field": "inclusiveMs",
+        "median": 0.000699996948,
+        "tail": 0.000800013542,
+        "increase": 0.00010001659399999998
+      },
+      {
+        "scope": "Trail",
+        "field": "selfMs",
+        "median": 0.000699996948,
+        "tail": 0.000800013542,
+        "increase": 0.00010001659399999998
+      },
+      {
+        "scope": "RenderSystem::ReferencePoseBuffers",
+        "field": "inclusiveMs",
+        "median": 0.00170004368,
+        "tail": 0.00180006027,
+        "increase": 0.00010001659000000011
+      },
+      {
+        "scope": "RenderSystem::ReferencePoseBuffers",
+        "field": "selfMs",
+        "median": 0.00170004368,
+        "tail": 0.00180006027,
+        "increase": 0.00010001659000000011
+      },
+      {
+        "scope": "RenderSceneExtractor::ObjectMasks",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.0001999735835,
+        "increase": 9.995698949999999e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::ObjectMasks",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.0001999735835,
+        "increase": 9.995698949999999e-05
+      },
+      {
+        "scope": "RenderSystem::ScreenEffects",
+        "field": "inclusiveMs",
+        "median": 0.0,
+        "tail": 9.99569893e-05,
+        "increase": 9.99569893e-05
+      },
+      {
+        "scope": "RenderSystem::ScreenEffects",
+        "field": "selfMs",
+        "median": 0.0,
+        "tail": 9.99569893e-05,
+        "increase": 9.99569893e-05
+      },
+      {
+        "scope": "FroxelFog",
+        "field": "inclusiveMs",
+        "median": 0.000300049782,
+        "tail": 0.000400006771,
+        "increase": 9.995698900000001e-05
+      },
+      {
+        "scope": "FroxelFog",
+        "field": "selfMs",
+        "median": 0.000300049782,
+        "tail": 0.000400006771,
+        "increase": 9.995698900000001e-05
+      },
+      {
+        "scope": "VolumetricCloud",
+        "field": "inclusiveMs",
+        "median": 0.000300049782,
+        "tail": 0.000400006771,
+        "increase": 9.995698900000001e-05
+      },
+      {
+        "scope": "VolumetricCloud",
+        "field": "selfMs",
+        "median": 0.000300049782,
+        "tail": 0.000400006771,
+        "increase": 9.995698900000001e-05
+      },
+      {
+        "scope": "RenderSystem::ReflectionProbeCapture",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000199913979,
+        "increase": 9.989738500000002e-05
+      },
+      {
+        "scope": "RenderSystem::ReflectionProbeCapture",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000199913979,
+        "increase": 9.989738500000002e-05
+      },
+      {
+        "scope": "MeshTrail",
+        "field": "inclusiveMs",
+        "median": 0.000600099564,
+        "tail": 0.000699996948,
+        "increase": 9.989738400000003e-05
+      },
+      {
+        "scope": "MeshTrail",
+        "field": "selfMs",
+        "median": 0.000600099564,
+        "tail": 0.000699996948,
+        "increase": 9.989738400000003e-05
+      },
+      {
+        "scope": "WaterPrepare::TerrainSources",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "WaterPrepare::TerrainSources",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::MeshTrails",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::MeshTrails",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::CustomPost",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::CustomPost",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "RenderSystem::CameraShake",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "RenderSystem::CameraShake",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "RenderSystem::ScriptPreRender",
+        "field": "inclusiveMs",
+        "median": 0.0,
+        "tail": 5.0008297e-05,
+        "increase": 5.0008297e-05
+      },
+      {
+        "scope": "RenderSystem::ScriptPreRender",
+        "field": "selfMs",
+        "median": 0.0,
+        "tail": 5.0008297e-05,
+        "increase": 5.0008297e-05
+      },
+      {
+        "scope": "RenderSystem::ResolveIblTextures",
+        "field": "inclusiveMs",
+        "median": 0.0,
+        "tail": 5.0008297e-05,
+        "increase": 5.0008297e-05
+      },
+      {
+        "scope": "RenderSystem::ResolveIblTextures",
+        "field": "selfMs",
+        "median": 0.0,
+        "tail": 5.0008297e-05,
+        "increase": 5.0008297e-05
+      },
+      {
+        "scope": "RenderSystem::EnvironmentSetup",
+        "field": "selfMs",
+        "median": 0.000300049782,
+        "tail": 0.00034999847399999997,
+        "increase": 4.994869199999996e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::MeshInputs",
+        "field": "inclusiveMs",
+        "median": 0.00050008297,
+        "tail": 0.0005499720569999999,
+        "increase": 4.988908699999988e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::MeshInputs",
+        "field": "selfMs",
+        "median": 0.00050008297,
+        "tail": 0.0005499720569999999,
+        "increase": 4.988908699999988e-05
+      },
+      {
+        "scope": "WaterCaustics",
+        "field": "inclusiveMs",
+        "median": 0.000299930573,
+        "tail": 0.000300049782,
+        "increase": 1.1920900000000857e-07
+      },
+      {
+        "scope": "WaterCaustics",
+        "field": "selfMs",
+        "median": 0.000299930573,
+        "tail": 0.000300049782,
+        "increase": 1.1920900000000857e-07
+      },
+      {
+        "scope": "DX12Frame::WaitForFence",
+        "field": "inclusiveMs",
+        "median": 0.000199913979,
+        "tail": 0.0001999735835,
+        "increase": 5.960449999997718e-08
+      },
+      {
+        "scope": "DX12Frame::WaitForFence",
+        "field": "selfMs",
+        "median": 0.000199913979,
+        "tail": 0.0001999735835,
+        "increase": 5.960449999997718e-08
+      },
+      {
+        "scope": "LightCookie",
+        "field": "inclusiveMs",
+        "median": 0.000300049782,
+        "tail": 0.000300049782,
+        "increase": 0.0
+      },
+      {
+        "scope": "LightCookie",
+        "field": "selfMs",
+        "median": 0.000300049782,
+        "tail": 0.000300049782,
+        "increase": 0.0
+      },
+      {
+        "scope": "SunMoon",
+        "field": "inclusiveMs",
+        "median": 0.000300049782,
+        "tail": 0.000300049782,
+        "increase": 0.0
+      },
+      {
+        "scope": "SunMoon",
+        "field": "selfMs",
+        "median": 0.000300049782,
+        "tail": 0.000300049782,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSystem::ScriptPostRender",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSystem::ScriptPostRender",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSceneExtractor::Decals",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSceneExtractor::Decals",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "Sky",
+        "field": "inclusiveMs",
+        "median": 0.000399947166,
+        "tail": 0.00034999847399999997,
+        "increase": -4.994869200000002e-05
+      },
+      {
+        "scope": "Sky",
+        "field": "selfMs",
+        "median": 0.000399947166,
+        "tail": 0.00034999847399999997,
+        "increase": -4.994869200000002e-05
+      },
+      {
+        "scope": "DX12Frame::RetireResources",
+        "field": "inclusiveMs",
+        "median": 0.000199913979,
+        "tail": 0.0001499652865,
+        "increase": -4.9948692500000015e-05
+      },
+      {
+        "scope": "DX12Frame::RetireResources",
+        "field": "selfMs",
+        "median": 0.000199913979,
+        "tail": 0.0001499652865,
+        "increase": -4.9948692500000015e-05
+      },
+      {
+        "scope": "RenderSystem::ScriptGizmos",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 5.0008297e-05,
+        "increase": -5.0008297e-05
+      },
+      {
+        "scope": "RenderSystem::ScriptGizmos",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 5.0008297e-05,
+        "increase": -5.0008297e-05
+      },
+      {
+        "scope": "RenderSystem::GpuProfilerSetup",
+        "field": "inclusiveMs",
+        "median": 0.00250005722,
+        "tail": 0.0019000172600000002,
+        "increase": -0.0006000399599999998
+      },
+      {
+        "scope": "RenderSystem::GpuProfilerSetup",
+        "field": "selfMs",
+        "median": 0.00250005722,
+        "tail": 0.0019000172600000002,
+        "increase": -0.0006000399599999998
+      }
+    ]
+  },
+  {
+    "file": "Reproduce-profile-AllVisible1000-r1-Candidate.out",
+    "frames": 600,
+    "complete": 600,
+    "slowSerials": [
+      1076,
+      884,
+      1077,
+      975,
+      781,
+      1125
+    ],
+    "scopes": [
+      {
+        "scope": "RenderSystem",
+        "field": "inclusiveMs",
+        "median": 0.9684499504999999,
+        "tail": 1.3829,
+        "increase": 0.4144500495000001
+      },
+      {
+        "scope": "RenderPipeline::Execute",
+        "field": "inclusiveMs",
+        "median": 0.5716500284999999,
+        "tail": 0.7779999975,
+        "increase": 0.20634996900000013
+      },
+      {
+        "scope": "RenderPipeline::GraphExecute",
+        "field": "inclusiveMs",
+        "median": 0.550450027,
+        "tail": 0.7491999865,
+        "increase": 0.19874995949999996
+      },
+      {
+        "scope": "ForwardOpaque",
+        "field": "inclusiveMs",
+        "median": 0.5135499834999999,
+        "tail": 0.6881499885,
+        "increase": 0.17460000500000006
+      },
+      {
+        "scope": "ForwardOpaque",
+        "field": "selfMs",
+        "median": 0.5135499834999999,
+        "tail": 0.6881499885,
+        "increase": 0.17460000500000006
+      },
+      {
+        "scope": "RenderSystem::ExtractRenderScene",
+        "field": "inclusiveMs",
+        "median": 0.274949968,
+        "tail": 0.40694993749999997,
+        "increase": 0.13199996949999998
+      },
+      {
+        "scope": "DX12Frame::End",
+        "field": "inclusiveMs",
+        "median": 0.144400001,
+        "tail": 0.19625002149999998,
+        "increase": 0.05185002049999998
+      },
+      {
+        "scope": "RenderSceneExtractor::Materials",
+        "field": "inclusiveMs",
+        "median": 0.1314499975,
+        "tail": 0.168350041,
+        "increase": 0.03690004350000001
+      },
+      {
+        "scope": "RenderSystem::LightingSetup",
+        "field": "inclusiveMs",
+        "median": 0.0461500287,
+        "tail": 0.07980000975,
+        "increase": 0.03364998105
+      },
+      {
+        "scope": "DX12Frame::End",
+        "field": "selfMs",
+        "median": 0.0489000082,
+        "tail": 0.07550001145,
+        "increase": 0.026600003250000004
+      },
+      {
+        "scope": "DX12Frame::Present",
+        "field": "inclusiveMs",
+        "median": 0.0949499607,
+        "tail": 0.12075001,
+        "increase": 0.025800049300000003
+      },
+      {
+        "scope": "DX12Frame::Present",
+        "field": "selfMs",
+        "median": 0.0949499607,
+        "tail": 0.12075001,
+        "increase": 0.025800049300000003
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryBuild",
+        "field": "inclusiveMs",
+        "median": 0.1289500595,
+        "tail": 0.1526499985,
+        "increase": 0.023699939000000003
+      },
+      {
+        "scope": "RenderSceneExtractor::Materials",
+        "field": "selfMs",
+        "median": 0.109000087,
+        "tail": 0.13239997650000002,
+        "increase": 0.02339988950000002
+      },
+      {
+        "scope": "RenderSceneExtractor::Geometry",
+        "field": "inclusiveMs",
+        "median": 0.1154500245,
+        "tail": 0.1387999655,
+        "increase": 0.023349941000000013
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryObjects",
+        "field": "inclusiveMs",
+        "median": 0.1047500375,
+        "tail": 0.12564998900000002,
+        "increase": 0.020899951500000014
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryObjects",
+        "field": "selfMs",
+        "median": 0.1047500375,
+        "tail": 0.12564998900000002,
+        "increase": 0.020899951500000014
+      },
+      {
+        "scope": "RenderSystem::ComputeShadowBounds",
+        "field": "inclusiveMs",
+        "median": 0.0422999859,
+        "tail": 0.0501999855,
+        "increase": 0.007899999599999999
+      },
+      {
+        "scope": "RenderSystem::ComputeShadowBounds",
+        "field": "selfMs",
+        "median": 0.0422999859,
+        "tail": 0.0501999855,
+        "increase": 0.007899999599999999
+      },
+      {
+        "scope": "RenderSceneExtractor::ShaderCapabilities",
+        "field": "inclusiveMs",
+        "median": 0.0221999884,
+        "tail": 0.02844995265,
+        "increase": 0.00624996425
+      },
+      {
+        "scope": "RenderSceneExtractor::ShaderCapabilities",
+        "field": "selfMs",
+        "median": 0.0221999884,
+        "tail": 0.02844995265,
+        "increase": 0.00624996425
+      },
+      {
+        "scope": "DecalDepthCopy",
+        "field": "inclusiveMs",
+        "median": 0.00499999523,
+        "tail": 0.0108499527,
+        "increase": 0.00584995747
+      },
+      {
+        "scope": "DecalDepthCopy",
+        "field": "selfMs",
+        "median": 0.00499999523,
+        "tail": 0.0108499527,
+        "increase": 0.00584995747
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryMaterialCapabilities",
+        "field": "inclusiveMs",
+        "median": 0.00919997692,
+        "tail": 0.01275002955,
+        "increase": 0.00355005263
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryMaterialCapabilities",
+        "field": "selfMs",
+        "median": 0.00919997692,
+        "tail": 0.01275002955,
+        "increase": 0.00355005263
+      },
+      {
+        "scope": "Shadow",
+        "field": "inclusiveMs",
+        "median": 0.00910007954,
+        "tail": 0.0126000047,
+        "increase": 0.0034999251600000003
+      },
+      {
+        "scope": "Shadow",
+        "field": "selfMs",
+        "median": 0.00910007954,
+        "tail": 0.0126000047,
+        "increase": 0.0034999251600000003
+      },
+      {
+        "scope": "RenderSystem::BuildPipeline",
+        "field": "inclusiveMs",
+        "median": 0.0082000494,
+        "tail": 0.011300027399999999,
+        "increase": 0.0030999779999999998
+      },
+      {
+        "scope": "RenderSystem::BuildPipeline",
+        "field": "selfMs",
+        "median": 0.00720000267,
+        "tail": 0.0101000667,
+        "increase": 0.00290006403
+      },
+      {
+        "scope": "RenderSystem::Cleanup",
+        "field": "inclusiveMs",
+        "median": 0.00450003147,
+        "tail": 0.007149994375,
+        "increase": 0.002649962905
+      },
+      {
+        "scope": "RenderSystem::Cleanup",
+        "field": "selfMs",
+        "median": 0.00450003147,
+        "tail": 0.007149994375,
+        "increase": 0.002649962905
+      },
+      {
+        "scope": "RenderPipeline::GraphExecute",
+        "field": "selfMs",
+        "median": 0.00610017776,
+        "tail": 0.00870013237,
+        "increase": 0.002599954610000001
+      },
+      {
+        "scope": "RenderPipeline::Execute",
+        "field": "selfMs",
+        "median": 0.0130000114,
+        "tail": 0.01555001735,
+        "increase": 0.00255000595
+      },
+      {
+        "scope": "RenderPipeline::BuildGraph",
+        "field": "inclusiveMs",
+        "median": 0.0068000555,
+        "tail": 0.00909996031,
+        "increase": 0.0022999048100000004
+      },
+      {
+        "scope": "RenderPipeline::BuildGraph",
+        "field": "selfMs",
+        "median": 0.0068000555,
+        "tail": 0.00909996031,
+        "increase": 0.0022999048100000004
+      },
+      {
+        "scope": "DX12Frame::Begin",
+        "field": "inclusiveMs",
+        "median": 0.011300087,
+        "tail": 0.013599991799999999,
+        "increase": 0.0022999047999999987
+      },
+      {
+        "scope": "DX12Frame::Begin",
+        "field": "selfMs",
+        "median": 0.010999977599999999,
+        "tail": 0.01319998505,
+        "increase": 0.002200007450000001
+      },
+      {
+        "scope": "RenderSystem::SkinningCompute",
+        "field": "inclusiveMs",
+        "median": 0.0104000568,
+        "tail": 0.0126000047,
+        "increase": 0.0021999479000000006
+      },
+      {
+        "scope": "RenderSystem::DebugSnapshot",
+        "field": "inclusiveMs",
+        "median": 0.00390005112,
+        "tail": 0.00600004196,
+        "increase": 0.00209999084
+      },
+      {
+        "scope": "RenderSystem::DebugSnapshot",
+        "field": "selfMs",
+        "median": 0.00390005112,
+        "tail": 0.00600004196,
+        "increase": 0.00209999084
+      },
+      {
+        "scope": "RenderSystem::SkinningResourceValidation",
+        "field": "inclusiveMs",
+        "median": 0.00510001183,
+        "tail": 0.00695002079,
+        "increase": 0.0018500089599999998
+      },
+      {
+        "scope": "RenderSystem::SkinningResourceValidation",
+        "field": "selfMs",
+        "median": 0.00510001183,
+        "tail": 0.00695002079,
+        "increase": 0.0018500089599999998
+      },
+      {
+        "scope": "TerrainForward",
+        "field": "inclusiveMs",
+        "median": 0.0013999939,
+        "tail": 0.003149986265,
+        "increase": 0.0017499923649999998
+      },
+      {
+        "scope": "TerrainForward",
+        "field": "selfMs",
+        "median": 0.0013999939,
+        "tail": 0.003149986265,
+        "increase": 0.0017499923649999998
+      },
+      {
+        "scope": "RenderSystem::ExtractRenderScene",
+        "field": "selfMs",
+        "median": 0.00460028648,
+        "tail": 0.006349980829999999,
+        "increase": 0.001749694349999999
+      },
+      {
+        "scope": "Composite",
+        "field": "inclusiveMs",
+        "median": 0.00339996815,
+        "tail": 0.00504994392,
+        "increase": 0.00164997577
+      },
+      {
+        "scope": "Composite",
+        "field": "selfMs",
+        "median": 0.00339996815,
+        "tail": 0.00504994392,
+        "increase": 0.00164997577
+      },
+      {
+        "scope": "RenderSystem",
+        "field": "selfMs",
+        "median": 0.006199777125,
+        "tail": 0.007700026035,
+        "increase": 0.0015002489099999999
+      },
+      {
+        "scope": "RenderSystem::LightingSetup",
+        "field": "selfMs",
+        "median": 0.00380003452,
+        "tail": 0.005100011825,
+        "increase": 0.0012999773050000004
+      },
+      {
+        "scope": "RenderSystem::SkinningDispatch",
+        "field": "inclusiveMs",
+        "median": 0.00580000877,
+        "tail": 0.00704997778,
+        "increase": 0.00124996901
+      },
+      {
+        "scope": "RenderSystem::SkinningDispatch",
+        "field": "selfMs",
+        "median": 0.00580000877,
+        "tail": 0.00704997778,
+        "increase": 0.00124996901
+      },
+      {
+        "scope": "Decal",
+        "field": "inclusiveMs",
+        "median": 0.00160002708,
+        "tail": 0.0023500323299999997,
+        "increase": 0.0007500052499999996
+      },
+      {
+        "scope": "Decal",
+        "field": "selfMs",
+        "median": 0.00160002708,
+        "tail": 0.0023500323299999997,
+        "increase": 0.0007500052499999996
+      },
+      {
+        "scope": "IBLBrdfBake",
+        "field": "inclusiveMs",
+        "median": 0.00120007992,
+        "tail": 0.0019500255550000001,
+        "increase": 0.0007499456350000002
+      },
+      {
+        "scope": "IBLBrdfBake",
+        "field": "selfMs",
+        "median": 0.00120007992,
+        "tail": 0.0019500255550000001,
+        "increase": 0.0007499456350000002
+      },
+      {
+        "scope": "RenderSystem::PassContextSetup",
+        "field": "inclusiveMs",
+        "median": 0.00289988518,
+        "tail": 0.003600001335,
+        "increase": 0.000700116155
+      },
+      {
+        "scope": "RenderSceneExtractor::Geometry",
+        "field": "selfMs",
+        "median": 0.0013999939,
+        "tail": 0.001999974255,
+        "increase": 0.0005999803550000001
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryCachePublish",
+        "field": "inclusiveMs",
+        "median": 0.0118000507,
+        "tail": 0.012399971499999999,
+        "increase": 0.0005999207999999989
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryCachePublish",
+        "field": "selfMs",
+        "median": 0.0118000507,
+        "tail": 0.012399971499999999,
+        "increase": 0.0005999207999999989
+      },
+      {
+        "scope": "RenderSceneExtractor::GeometryBuild",
+        "field": "selfMs",
+        "median": 0.00140011311,
+        "tail": 0.002000033855,
+        "increase": 0.0005999207450000002
+      },
+      {
+        "scope": "RenderSystem::PassContextSetup",
+        "field": "selfMs",
+        "median": 0.00249993801,
+        "tail": 0.003049969675,
+        "increase": 0.0005500316649999998
+      },
+      {
+        "scope": "RenderSceneExtractor::Fibers",
+        "field": "inclusiveMs",
+        "median": 0.0012999773,
+        "tail": 0.0018500089649999998,
+        "increase": 0.0005500316649999998
+      },
+      {
+        "scope": "RenderSceneExtractor::Fibers",
+        "field": "selfMs",
+        "median": 0.0012999773,
+        "tail": 0.0018500089649999998,
+        "increase": 0.0005500316649999998
+      },
+      {
+        "scope": "RenderSystem::SkinningCompute",
+        "field": "selfMs",
+        "median": 0.00450003147,
+        "tail": 0.005050003525,
+        "increase": 0.0005499720550000003
+      },
+      {
+        "scope": "RenderSceneExtractor::Water",
+        "field": "inclusiveMs",
+        "median": 0.00299990177,
+        "tail": 0.00349998474,
+        "increase": 0.0005000829699999998
+      },
+      {
+        "scope": "RenderSceneExtractor::Terrains",
+        "field": "inclusiveMs",
+        "median": 0.000800013542,
+        "tail": 0.00130003691,
+        "increase": 0.0005000233679999999
+      },
+      {
+        "scope": "RenderSceneExtractor::Terrains",
+        "field": "selfMs",
+        "median": 0.000800013542,
+        "tail": 0.00130003691,
+        "increase": 0.0005000233679999999
+      },
+      {
+        "scope": "WaterForward",
+        "field": "inclusiveMs",
+        "median": 0.000800013542,
+        "tail": 0.001249969005,
+        "increase": 0.00044995546300000003
+      },
+      {
+        "scope": "WaterForward",
+        "field": "selfMs",
+        "median": 0.000800013542,
+        "tail": 0.001249969005,
+        "increase": 0.00044995546300000003
+      },
+      {
+        "scope": "RenderSystem::ResolveViewSettings",
+        "field": "inclusiveMs",
+        "median": 0.0012999773,
+        "tail": 0.001699984075,
+        "increase": 0.000400006775
+      },
+      {
+        "scope": "RenderSystem::ResolveViewSettings",
+        "field": "selfMs",
+        "median": 0.000800132751,
+        "tail": 0.00120007992,
+        "increase": 0.000399947169
+      },
+      {
+        "scope": "RenderSystem::ReferencePoseBuffers",
+        "field": "inclusiveMs",
+        "median": 0.00170004368,
+        "tail": 0.002099990845,
+        "increase": 0.0003999471650000001
+      },
+      {
+        "scope": "RenderSystem::ReferencePoseBuffers",
+        "field": "selfMs",
+        "median": 0.00170004368,
+        "tail": 0.002099990845,
+        "increase": 0.0003999471650000001
+      },
+      {
+        "scope": "RenderSystem::GpuProfilerSetup",
+        "field": "inclusiveMs",
+        "median": 0.00249993801,
+        "tail": 0.002850055695,
+        "increase": 0.0003501176849999999
+      },
+      {
+        "scope": "RenderSystem::GpuProfilerSetup",
+        "field": "selfMs",
+        "median": 0.00249993801,
+        "tail": 0.002850055695,
+        "increase": 0.0003501176849999999
+      },
+      {
+        "scope": "SkinningCompute",
+        "field": "inclusiveMs",
+        "median": 0.00279998779,
+        "tail": 0.0031500458699999997,
+        "increase": 0.00035005807999999956
+      },
+      {
+        "scope": "SkinningCompute",
+        "field": "selfMs",
+        "median": 0.00279998779,
+        "tail": 0.0031500458699999997,
+        "increase": 0.00035005807999999956
+      },
+      {
+        "scope": "RenderSceneExtractor::Water",
+        "field": "selfMs",
+        "median": 0.00129985809,
+        "tail": 0.00154995918,
+        "increase": 0.00025010109000000004
+      },
+      {
+        "scope": "Particle",
+        "field": "inclusiveMs",
+        "median": 0.00049996376,
+        "tail": 0.0007500052450000001,
+        "increase": 0.0002500414850000001
+      },
+      {
+        "scope": "Particle",
+        "field": "selfMs",
+        "median": 0.00049996376,
+        "tail": 0.0007500052450000001,
+        "increase": 0.0002500414850000001
+      },
+      {
+        "scope": "RenderSystem::CustomPostProcessSetup",
+        "field": "inclusiveMs",
+        "median": 0.000200033188,
+        "tail": 0.000400066376,
+        "increase": 0.000200033188
+      },
+      {
+        "scope": "RenderSystem::CustomPostProcessSetup",
+        "field": "selfMs",
+        "median": 0.000200033188,
+        "tail": 0.000400066376,
+        "increase": 0.000200033188
+      },
+      {
+        "scope": "RenderPipeline::Plan",
+        "field": "inclusiveMs",
+        "median": 0.00049996376,
+        "tail": 0.0006999969479999999,
+        "increase": 0.00020003318799999997
+      },
+      {
+        "scope": "RenderPipeline::Plan",
+        "field": "selfMs",
+        "median": 0.00049996376,
+        "tail": 0.0006999969479999999,
+        "increase": 0.00020003318799999997
+      },
+      {
+        "scope": "RenderSceneExtractor::Particles",
+        "field": "inclusiveMs",
+        "median": 0.000400066376,
+        "tail": 0.0005999803540000001,
+        "increase": 0.00019991397800000007
+      },
+      {
+        "scope": "RenderSceneExtractor::Particles",
+        "field": "selfMs",
+        "median": 0.000400066376,
+        "tail": 0.0005999803540000001,
+        "increase": 0.00019991397800000007
+      },
+      {
+        "scope": "WaterPrepare::DepthFields",
+        "field": "inclusiveMs",
+        "median": 0.000600099564,
+        "tail": 0.000800013542,
+        "increase": 0.00019991397800000002
+      },
+      {
+        "scope": "WaterPrepare::DepthFields",
+        "field": "selfMs",
+        "median": 0.000600099564,
+        "tail": 0.000800013542,
+        "increase": 0.00019991397800000002
+      },
+      {
+        "scope": "RenderSystem::LightBufferUpload",
+        "field": "inclusiveMs",
+        "median": 0.000399947166,
+        "tail": 0.000550031662,
+        "increase": 0.00015008449600000006
+      },
+      {
+        "scope": "RenderSystem::LightBufferUpload",
+        "field": "selfMs",
+        "median": 0.000399947166,
+        "tail": 0.000550031662,
+        "increase": 0.00015008449600000006
+      },
+      {
+        "scope": "WaterCaustics",
+        "field": "inclusiveMs",
+        "median": 0.00029999017750000003,
+        "tail": 0.000450074673,
+        "increase": 0.00015008449549999995
+      },
+      {
+        "scope": "WaterCaustics",
+        "field": "selfMs",
+        "median": 0.00029999017750000003,
+        "tail": 0.000450074673,
+        "increase": 0.00015008449549999995
+      },
+      {
+        "scope": "RenderSceneExtractor::Environment",
+        "field": "inclusiveMs",
+        "median": 0.0013999939,
+        "tail": 0.0015499591850000002,
+        "increase": 0.0001499652850000001
+      },
+      {
+        "scope": "RenderSceneExtractor::Environment",
+        "field": "selfMs",
+        "median": 0.0013999939,
+        "tail": 0.0015499591850000002,
+        "increase": 0.0001499652850000001
+      },
+      {
+        "scope": "RenderSystem::EnvironmentSetup",
+        "field": "inclusiveMs",
+        "median": 0.00110006332,
+        "tail": 0.001249969005,
+        "increase": 0.00014990568499999996
+      },
+      {
+        "scope": "VolumetricCloud",
+        "field": "inclusiveMs",
+        "median": 0.000300049782,
+        "tail": 0.000449955463,
+        "increase": 0.00014990568099999997
+      },
+      {
+        "scope": "VolumetricCloud",
+        "field": "selfMs",
+        "median": 0.000300049782,
+        "tail": 0.000449955463,
+        "increase": 0.00014990568099999997
+      },
+      {
+        "scope": "RenderSystem::SharedResourceSetup",
+        "field": "inclusiveMs",
+        "median": 0.000400066376,
+        "tail": 0.0005499720569999999,
+        "increase": 0.00014990568099999992
+      },
+      {
+        "scope": "RenderSystem::SharedResourceSetup",
+        "field": "selfMs",
+        "median": 0.000400066376,
+        "tail": 0.0005499720569999999,
+        "increase": 0.00014990568099999992
+      },
+      {
+        "scope": "RenderSystem::RayViewPreparation",
+        "field": "inclusiveMs",
+        "median": 0.000900030136,
+        "tail": 0.0010499358155,
+        "increase": 0.00014990567950000009
+      },
+      {
+        "scope": "RenderSystem::RayViewPreparation",
+        "field": "selfMs",
+        "median": 0.000900030136,
+        "tail": 0.0010499358155,
+        "increase": 0.00014990567950000009
+      },
+      {
+        "scope": "Sky",
+        "field": "inclusiveMs",
+        "median": 0.000399947166,
+        "tail": 0.000500023365,
+        "increase": 0.00010007619900000001
+      },
+      {
+        "scope": "Sky",
+        "field": "selfMs",
+        "median": 0.000399947166,
+        "tail": 0.000500023365,
+        "increase": 0.00010007619900000001
+      },
+      {
+        "scope": "RenderSystem::PostProcessVolumes",
+        "field": "inclusiveMs",
+        "median": 0.000299930573,
+        "tail": 0.000400006771,
+        "increase": 0.00010007619800000002
+      },
+      {
+        "scope": "RenderSystem::PostProcessVolumes",
+        "field": "selfMs",
+        "median": 0.000299930573,
+        "tail": 0.000400006771,
+        "increase": 0.00010007619800000002
+      },
+      {
+        "scope": "RenderSystem::ViewResourceSetup",
+        "field": "inclusiveMs",
+        "median": 0.00109994411,
+        "tail": 0.0011999607050000001,
+        "increase": 0.00010001659500000009
+      },
+      {
+        "scope": "RenderSystem::AdvancedConstants",
+        "field": "inclusiveMs",
+        "median": 0.000699996948,
+        "tail": 0.000800013542,
+        "increase": 0.00010001659399999998
+      },
+      {
+        "scope": "RenderSystem::AdvancedConstants",
+        "field": "selfMs",
+        "median": 0.000699996948,
+        "tail": 0.000800013542,
+        "increase": 0.00010001659399999998
+      },
+      {
+        "scope": "Trail",
+        "field": "inclusiveMs",
+        "median": 0.000699996948,
+        "tail": 0.000800013542,
+        "increase": 0.00010001659399999998
+      },
+      {
+        "scope": "Trail",
+        "field": "selfMs",
+        "median": 0.000699996948,
+        "tail": 0.000800013542,
+        "increase": 0.00010001659399999998
+      },
+      {
+        "scope": "WaterPrepare::Surfaces",
+        "field": "inclusiveMs",
+        "median": 0.000900030136,
+        "tail": 0.001000046728,
+        "increase": 0.00010001659199999999
+      },
+      {
+        "scope": "WaterPrepare::Surfaces",
+        "field": "selfMs",
+        "median": 0.000900030136,
+        "tail": 0.001000046728,
+        "increase": 0.00010001659199999999
+      },
+      {
+        "scope": "DX12Frame::RetireResources",
+        "field": "inclusiveMs",
+        "median": 0.000200033188,
+        "tail": 0.00029999017750000003,
+        "increase": 9.995698950000003e-05
+      },
+      {
+        "scope": "DX12Frame::RetireResources",
+        "field": "selfMs",
+        "median": 0.000200033188,
+        "tail": 0.00029999017750000003,
+        "increase": 9.995698950000003e-05
+      },
+      {
+        "scope": "RenderSystem::ReflectionProbeCapture",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.0001999735835,
+        "increase": 9.995698949999999e-05
+      },
+      {
+        "scope": "RenderSystem::ReflectionProbeCapture",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.0001999735835,
+        "increase": 9.995698949999999e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::Decals",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.0001999735835,
+        "increase": 9.995698949999999e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::Decals",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.0001999735835,
+        "increase": 9.995698949999999e-05
+      },
+      {
+        "scope": "RenderSystem::PipelineExtensions",
+        "field": "inclusiveMs",
+        "median": 0.000699996948,
+        "tail": 0.0007999539375,
+        "increase": 9.995698949999995e-05
+      },
+      {
+        "scope": "RenderSystem::PipelineExtensions",
+        "field": "selfMs",
+        "median": 0.000699996948,
+        "tail": 0.0007999539375,
+        "increase": 9.995698949999995e-05
+      },
+      {
+        "scope": "MeshTrail",
+        "field": "inclusiveMs",
+        "median": 0.000600099564,
+        "tail": 0.000699996948,
+        "increase": 9.989738400000003e-05
+      },
+      {
+        "scope": "MeshTrail",
+        "field": "selfMs",
+        "median": 0.000600099564,
+        "tail": 0.000699996948,
+        "increase": 9.989738400000003e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::Instances",
+        "field": "inclusiveMs",
+        "median": 0.000299930573,
+        "tail": 0.000350058079,
+        "increase": 5.0127506e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::Instances",
+        "field": "selfMs",
+        "median": 0.000299930573,
+        "tail": 0.000350058079,
+        "increase": 5.0127506e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::Trails",
+        "field": "inclusiveMs",
+        "median": 0.000199913979,
+        "tail": 0.000250041485,
+        "increase": 5.0127506e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::Trails",
+        "field": "selfMs",
+        "median": 0.000199913979,
+        "tail": 0.000250041485,
+        "increase": 5.0127506e-05
+      },
+      {
+        "scope": "SunMoon",
+        "field": "inclusiveMs",
+        "median": 0.000299930573,
+        "tail": 0.00034999847399999997,
+        "increase": 5.006790099999997e-05
+      },
+      {
+        "scope": "SunMoon",
+        "field": "selfMs",
+        "median": 0.000299930573,
+        "tail": 0.00034999847399999997,
+        "increase": 5.006790099999997e-05
+      },
+      {
+        "scope": "RenderSystem::ViewResourceSetup",
+        "field": "selfMs",
+        "median": 0.000599980354,
+        "tail": 0.000649988651,
+        "increase": 5.0008297000000046e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::MeshTrails",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::MeshTrails",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000150024891,
+        "increase": 5.0008297000000005e-05
+      },
+      {
+        "scope": "RenderSystem::ScriptPreRender",
+        "field": "inclusiveMs",
+        "median": 0.0,
+        "tail": 5.0008297e-05,
+        "increase": 5.0008297e-05
+      },
+      {
+        "scope": "RenderSystem::ScriptPreRender",
+        "field": "selfMs",
+        "median": 0.0,
+        "tail": 5.0008297e-05,
+        "increase": 5.0008297e-05
+      },
+      {
+        "scope": "WaterPrepare::TerrainSources",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "WaterPrepare::TerrainSources",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSystem::ScreenEffects",
+        "field": "inclusiveMs",
+        "median": 0.0,
+        "tail": 0.0,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSystem::ScreenEffects",
+        "field": "selfMs",
+        "median": 0.0,
+        "tail": 0.0,
+        "increase": 0.0
+      },
+      {
+        "scope": "LightCookie",
+        "field": "inclusiveMs",
+        "median": 0.000300049782,
+        "tail": 0.000300049782,
+        "increase": 0.0
+      },
+      {
+        "scope": "LightCookie",
+        "field": "selfMs",
+        "median": 0.000300049782,
+        "tail": 0.000300049782,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSceneExtractor::CustomPost",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSceneExtractor::CustomPost",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "FroxelFog",
+        "field": "inclusiveMs",
+        "median": 0.000399947166,
+        "tail": 0.000399947166,
+        "increase": 0.0
+      },
+      {
+        "scope": "FroxelFog",
+        "field": "selfMs",
+        "median": 0.000399947166,
+        "tail": 0.000399947166,
+        "increase": 0.0
+      },
+      {
+        "scope": "DX12Frame::WaitForFence",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "DX12Frame::WaitForFence",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSceneExtractor::MeshInputs",
+        "field": "inclusiveMs",
+        "median": 0.000699996948,
+        "tail": 0.000699996948,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSceneExtractor::MeshInputs",
+        "field": "selfMs",
+        "median": 0.000699996948,
+        "tail": 0.000699996948,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSystem::ScriptPostRender",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSystem::ScriptPostRender",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 0.000100016594,
+        "increase": 0.0
+      },
+      {
+        "scope": "RenderSystem::CameraShake",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 9.99569893e-05,
+        "increase": -5.960470000000077e-08
+      },
+      {
+        "scope": "RenderSystem::CameraShake",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 9.99569893e-05,
+        "increase": -5.960470000000077e-08
+      },
+      {
+        "scope": "RenderSystem::EnvironmentSetup",
+        "field": "selfMs",
+        "median": 0.000300049782,
+        "tail": 0.000299930573,
+        "increase": -1.1920900000000857e-07
+      },
+      {
+        "scope": "RenderSceneExtractor::ObjectMasks",
+        "field": "inclusiveMs",
+        "median": 9.98973846e-05,
+        "tail": 4.99486923e-05,
+        "increase": -4.99486923e-05
+      },
+      {
+        "scope": "RenderSceneExtractor::ObjectMasks",
+        "field": "selfMs",
+        "median": 9.98973846e-05,
+        "tail": 4.99486923e-05,
+        "increase": -4.99486923e-05
+      },
+      {
+        "scope": "RenderSystem::ResizeRenderTargets",
+        "field": "inclusiveMs",
+        "median": 0.00049996376,
+        "tail": 0.000449955463,
+        "increase": -5.000829699999999e-05
+      },
+      {
+        "scope": "RenderSystem::ResizeRenderTargets",
+        "field": "selfMs",
+        "median": 0.00049996376,
+        "tail": 0.000449955463,
+        "increase": -5.000829699999999e-05
+      },
+      {
+        "scope": "RenderSystem::ScriptGizmos",
+        "field": "inclusiveMs",
+        "median": 0.000100016594,
+        "tail": 4.99486923e-05,
+        "increase": -5.00679017e-05
+      },
+      {
+        "scope": "RenderSystem::ScriptGizmos",
+        "field": "selfMs",
+        "median": 0.000100016594,
+        "tail": 4.99486923e-05,
+        "increase": -5.00679017e-05
+      },
+      {
+        "scope": "RenderSystem::ResolveIblTextures",
+        "field": "inclusiveMs",
+        "median": 9.98973846e-05,
+        "tail": 0.0,
+        "increase": -9.98973846e-05
+      },
+      {
+        "scope": "RenderSystem::ResolveIblTextures",
+        "field": "selfMs",
+        "median": 9.98973846e-05,
+        "tail": 0.0,
+        "increase": -9.98973846e-05
+      }
+    ]
+  }
+]

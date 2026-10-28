@@ -1,0 +1,44 @@
+{
+  "candidateAdopted": false,
+  "nativeInputsExactlyRestored": 1358,
+  "configuration": "Release LTO",
+  "exportsVerified": {
+    "FBZZMath": {
+      "sha256": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+      "exports": 100
+    },
+    "FBZZPhysics": {
+      "sha256": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+      "exports": 6112
+    },
+    "FBZZFluid": {
+      "sha256": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+      "exports": 1056
+    },
+    "FBZZCore": {
+      "sha256": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+      "exports": 2464
+    },
+    "FBZZGraphics": {
+      "sha256": "89f92e56a9a7353b2f7b6339afe3b495536045f2737dbbcfa438e395d6e71e56",
+      "exports": 23268
+    },
+    "FBZZEngine": {
+      "sha256": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+      "exports": 15122
+    }
+  },
+  "restoredBackendNativeRegressionTests": 4,
+  "diagnosticTrials": 6,
+  "validCycleFrames": 3600,
+  "identicalBinaryControlsVerified": [
+    "Control",
+    "Diagnostic"
+  ],
+  "remainingChanges": [
+    "GPU readback regression test",
+    "opt-in benchmark thread-cycle diagnostics",
+    "measurement evidence and report"
+  ],
+  "cycleApiConvertedToMilliseconds": false
+}

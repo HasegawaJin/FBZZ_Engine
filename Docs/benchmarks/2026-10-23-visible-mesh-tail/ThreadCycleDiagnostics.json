@@ -1,0 +1,252 @@
+{
+  "trials": [
+    {
+      "file": "Diagnostic-gpu-AllVisible1000-r0-Baseline.out",
+      "medianWallMs": 1.3179000049999998,
+      "medianThreadCycles": 2780236.5,
+      "slowestSixMedianWallMs": 1.8786500099999999,
+      "slowestSixMedianThreadCycles": 3960528.5,
+      "wallStretch": 1.4254875202007455,
+      "cycleStretch": 1.4245293520892917,
+      "slowestSix": [
+        {
+          "serial": 1021,
+          "frameMs": 2.08990002,
+          "threadCycles": 4407744
+        },
+        {
+          "serial": 1020,
+          "frameMs": 1.94770002,
+          "threadCycles": 4105094
+        },
+        {
+          "serial": 959,
+          "frameMs": 1.90869999,
+          "threadCycles": 4034342
+        },
+        {
+          "serial": 1123,
+          "frameMs": 1.84860003,
+          "threadCycles": 3858835
+        },
+        {
+          "serial": 1188,
+          "frameMs": 1.84449995,
+          "threadCycles": 3459879
+        },
+        {
+          "serial": 1168,
+          "frameMs": 1.84029996,
+          "threadCycles": 3886715
+        }
+      ]
+    },
+    {
+      "file": "Diagnostic-gpu-AllVisible1000-r1-Candidate.out",
+      "medianWallMs": 1.2974,
+      "medianThreadCycles": 2734935.5,
+      "slowestSixMedianWallMs": 3.459200085,
+      "slowestSixMedianThreadCycles": 7289251.5,
+      "wallStretch": 2.666255653614922,
+      "cycleStretch": 2.6652370778031145,
+      "slowestSix": [
+        {
+          "serial": 1012,
+          "frameMs": 3.73199999,
+          "threadCycles": 7859173
+        },
+        {
+          "serial": 1016,
+          "frameMs": 3.52719998,
+          "threadCycles": 7434451
+        },
+        {
+          "serial": 1013,
+          "frameMs": 3.5164001,
+          "threadCycles": 7410375
+        },
+        {
+          "serial": 1015,
+          "frameMs": 3.40200007,
+          "threadCycles": 7168128
+        },
+        {
+          "serial": 981,
+          "frameMs": 3.28600001,
+          "threadCycles": 6926304
+        },
+        {
+          "serial": 980,
+          "frameMs": 3.23710001,
+          "threadCycles": 6803175
+        }
+      ]
+    },
+    {
+      "file": "Diagnostic-gpu-AllVisible1000-r2-Candidate.out",
+      "medianWallMs": 1.40870005,
+      "medianThreadCycles": 2968627.5,
+      "slowestSixMedianWallMs": 2.7897999899999997,
+      "slowestSixMedianThreadCycles": 5858266.0,
+      "wallStretch": 1.980407390487421,
+      "cycleStretch": 1.9733920810206063,
+      "slowestSix": [
+        {
+          "serial": 658,
+          "frameMs": 2.8355,
+          "threadCycles": 5980127
+        },
+        {
+          "serial": 680,
+          "frameMs": 2.81190002,
+          "threadCycles": 5931131
+        },
+        {
+          "serial": 674,
+          "frameMs": 2.80489993,
+          "threadCycles": 5873472
+        },
+        {
+          "serial": 664,
+          "frameMs": 2.77470005,
+          "threadCycles": 5843060
+        },
+        {
+          "serial": 662,
+          "frameMs": 2.75950003,
+          "threadCycles": 5809478
+        },
+        {
+          "serial": 665,
+          "frameMs": 2.75650001,
+          "threadCycles": 5813701
+        }
+      ]
+    },
+    {
+      "file": "Diagnostic-gpu-AllVisible1000-r3-Baseline.out",
+      "medianWallMs": 1.2199999099999999,
+      "medianThreadCycles": 2547178.0,
+      "slowestSixMedianWallMs": 1.727749945,
+      "slowestSixMedianThreadCycles": 3642672.0,
+      "wallStretch": 1.4161885839811252,
+      "cycleStretch": 1.4300814469974223,
+      "slowestSix": [
+        {
+          "serial": 828,
+          "frameMs": 1.86759996,
+          "threadCycles": 3936768
+        },
+        {
+          "serial": 884,
+          "frameMs": 1.84739995,
+          "threadCycles": 3878688
+        },
+        {
+          "serial": 885,
+          "frameMs": 1.73009992,
+          "threadCycles": 3646790
+        },
+        {
+          "serial": 893,
+          "frameMs": 1.72539997,
+          "threadCycles": 3638554
+        },
+        {
+          "serial": 901,
+          "frameMs": 1.70729995,
+          "threadCycles": 3581318
+        },
+        {
+          "serial": 891,
+          "frameMs": 1.70379996,
+          "threadCycles": 3590822
+        }
+      ]
+    },
+    {
+      "file": "Diagnostic-gpu-AllVisible1000-r4-Baseline.out",
+      "medianWallMs": 1.1259500349999998,
+      "medianThreadCycles": 2358999.0,
+      "slowestSixMedianWallMs": 1.3346500350000001,
+      "slowestSixMedianThreadCycles": 2793436.5,
+      "wallStretch": 1.18535458369607,
+      "cycleStretch": 1.1841617991359894,
+      "slowestSix": [
+        {
+          "serial": 958,
+          "frameMs": 2.00779998,
+          "threadCycles": 4231391
+        },
+        {
+          "serial": 1015,
+          "frameMs": 1.42370009,
+          "threadCycles": 3008333
+        },
+        {
+          "serial": 845,
+          "frameMs": 1.33510005,
+          "threadCycles": 2767353
+        },
+        {
+          "serial": 954,
+          "frameMs": 1.33420002,
+          "threadCycles": 2819520
+        },
+        {
+          "serial": 1076,
+          "frameMs": 1.33280003,
+          "threadCycles": 2715398
+        },
+        {
+          "serial": 851,
+          "frameMs": 1.32200003,
+          "threadCycles": 2673370
+        }
+      ]
+    },
+    {
+      "file": "Diagnostic-gpu-AllVisible1000-r5-Candidate.out",
+      "medianWallMs": 1.117049995,
+      "medianThreadCycles": 2349811.0,
+      "slowestSixMedianWallMs": 1.49124998,
+      "slowestSixMedianThreadCycles": 3073699.0,
+      "wallStretch": 1.334989469294076,
+      "cycleStretch": 1.3080622228766483,
+      "slowestSix": [
+        {
+          "serial": 612,
+          "frameMs": 1.55479991,
+          "threadCycles": 3269587
+        },
+        {
+          "serial": 646,
+          "frameMs": 1.50300002,
+          "threadCycles": 3158918
+        },
+        {
+          "serial": 1195,
+          "frameMs": 1.50089991,
+          "threadCycles": 2931667
+        },
+        {
+          "serial": 648,
+          "frameMs": 1.48160005,
+          "threadCycles": 3118578
+        },
+        {
+          "serial": 1197,
+          "frameMs": 1.43709993,
+          "threadCycles": 3022272
+        },
+        {
+          "serial": 615,
+          "frameMs": 1.43330002,
+          "threadCycles": 3028820
+        }
+      ]
+    }
+  ],
+  "cyclesConvertedToTime": false,
+  "scope": "main native frame thread; queries immediately outside the timed region; excludes other CPU threads"
+}

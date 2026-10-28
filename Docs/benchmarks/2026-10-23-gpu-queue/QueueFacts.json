@@ -1,0 +1,197 @@
+[
+  {
+    "pid": 32288,
+    "contexts": 8,
+    "hardwareQueues": 18,
+    "dmaCounts": {
+      "450": 10917,
+      "451": 10917
+    },
+    "pendingFlipHistogram": {
+      "0": 10917
+    },
+    "samples": [
+      {
+        "qpc": 5547004363636,
+        "pid": 4,
+        "tid": 1608,
+        "schema": 99,
+        "cpu": 10,
+        "activity": "00000000-0000-0000-0000-000000000000",
+        "data": {
+          "hHwQueue": 18446634167686021648,
+          "ProgressFenceValue": 6,
+          "pDmaBuffer": 68141056,
+          "ntStatus": 0,
+          "NumberOfQueuedPendingFlip": 0
+        },
+        "schemaName": "DmaPacket",
+        "schemaId": 450,
+        "nodeOrdinal": 4
+      },
+      {
+        "qpc": 5547004365650,
+        "pid": 32288,
+        "tid": 32500,
+        "schema": 100,
+        "cpu": 5,
+        "activity": "00000000-0000-0000-0000-000000000000",
+        "data": {
+          "hHwQueue": 18446634167686021648,
+          "ProgressFenceValue": 6
+        },
+        "schemaName": "DmaPacket",
+        "schemaId": 451,
+        "nodeOrdinal": 4
+      },
+      {
+        "qpc": 5547004434025,
+        "pid": 4,
+        "tid": 1608,
+        "schema": 99,
+        "cpu": 10,
+        "activity": "00000000-0000-0000-0000-000000000000",
+        "data": {
+          "hHwQueue": 18446634168310286496,
+          "ProgressFenceValue": 14,
+          "pDmaBuffer": 117522432,
+          "ntStatus": 0,
+          "NumberOfQueuedPendingFlip": 0
+        },
+        "schemaName": "DmaPacket",
+        "schemaId": 450,
+        "nodeOrdinal": 0
+      }
+    ]
+  },
+  {
+    "pid": 47020,
+    "contexts": 8,
+    "hardwareQueues": 18,
+    "dmaCounts": {
+      "450": 10917,
+      "451": 10917
+    },
+    "pendingFlipHistogram": {
+      "0": 10917
+    },
+    "samples": [
+      {
+        "qpc": 5547061004420,
+        "pid": 4,
+        "tid": 1608,
+        "schema": 99,
+        "cpu": 10,
+        "activity": "00000000-0000-0000-0000-000000000000",
+        "data": {
+          "hHwQueue": 18446634167686019184,
+          "ProgressFenceValue": 6,
+          "pDmaBuffer": 68141056,
+          "ntStatus": 0,
+          "NumberOfQueuedPendingFlip": 0
+        },
+        "schemaName": "DmaPacket",
+        "schemaId": 450,
+        "nodeOrdinal": 4
+      },
+      {
+        "qpc": 5547061006604,
+        "pid": 0,
+        "tid": 0,
+        "schema": 100,
+        "cpu": 2,
+        "activity": "00000000-0000-0000-0000-000000000000",
+        "data": {
+          "hHwQueue": 18446634167686019184,
+          "ProgressFenceValue": 6
+        },
+        "schemaName": "DmaPacket",
+        "schemaId": 451,
+        "nodeOrdinal": 4
+      },
+      {
+        "qpc": 5547061126694,
+        "pid": 4,
+        "tid": 1608,
+        "schema": 99,
+        "cpu": 9,
+        "activity": "00000000-0000-0000-0000-000000000000",
+        "data": {
+          "hHwQueue": 18446634167686018480,
+          "ProgressFenceValue": 14,
+          "pDmaBuffer": 117522432,
+          "ntStatus": 0,
+          "NumberOfQueuedPendingFlip": 0
+        },
+        "schemaName": "DmaPacket",
+        "schemaId": 450,
+        "nodeOrdinal": 0
+      }
+    ]
+  },
+  {
+    "pid": 50792,
+    "contexts": 8,
+    "hardwareQueues": 18,
+    "dmaCounts": {
+      "450": 10917,
+      "451": 10917
+    },
+    "pendingFlipHistogram": {
+      "0": 10917
+    },
+    "samples": [
+      {
+        "qpc": 5546948673559,
+        "pid": 4,
+        "tid": 1608,
+        "schema": 99,
+        "cpu": 10,
+        "activity": "00000000-0000-0000-0000-000000000000",
+        "data": {
+          "hHwQueue": 18446634168310269424,
+          "ProgressFenceValue": 6,
+          "pDmaBuffer": 68141056,
+          "ntStatus": 0,
+          "NumberOfQueuedPendingFlip": 0
+        },
+        "schemaName": "DmaPacket",
+        "schemaId": 450,
+        "nodeOrdinal": 4
+      },
+      {
+        "qpc": 5546948700619,
+        "pid": 0,
+        "tid": 0,
+        "schema": 100,
+        "cpu": 2,
+        "activity": "00000000-0000-0000-0000-000000000000",
+        "data": {
+          "hHwQueue": 18446634168310269424,
+          "ProgressFenceValue": 6
+        },
+        "schemaName": "DmaPacket",
+        "schemaId": 451,
+        "nodeOrdinal": 4
+      },
+      {
+        "qpc": 5546948768098,
+        "pid": 4,
+        "tid": 1608,
+        "schema": 99,
+        "cpu": 6,
+        "activity": "00000000-0000-0000-0000-000000000000",
+        "data": {
+          "hHwQueue": 18446634168310269776,
+          "ProgressFenceValue": 14,
+          "pDmaBuffer": 117522432,
+          "ntStatus": 0,
+          "NumberOfQueuedPendingFlip": 0
+        },
+        "schemaName": "DmaPacket",
+        "schemaId": 450,
+        "nodeOrdinal": 0
+      }
+    ]
+  }
+]

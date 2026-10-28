@@ -1,0 +1,369 @@
+{
+  "stages": {
+    "Final": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "8e55ad3928287a2189f3944ca5f7c8d39cc7c4826d7a53f7c911d23164d07f4a",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    },
+    "Confirm": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "8e55ad3928287a2189f3944ca5f7c8d39cc7c4826d7a53f7c911d23164d07f4a",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    },
+    "Control": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    },
+    "SmallConfirm": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "8e55ad3928287a2189f3944ca5f7c8d39cc7c4826d7a53f7c911d23164d07f4a",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    },
+    "SmallControl": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    },
+    "PoolMemory": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "8e55ad3928287a2189f3944ca5f7c8d39cc7c4826d7a53f7c911d23164d07f4a",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    },
+    "SmallMemory": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "8e55ad3928287a2189f3944ca5f7c8d39cc7c4826d7a53f7c911d23164d07f4a",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    },
+    "FinalObjects": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "8e55ad3928287a2189f3944ca5f7c8d39cc7c4826d7a53f7c911d23164d07f4a",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "7559fab02573756dcc31925a231997b88d747e4b56b9e7aec70f42d9c49cfd2a",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    },
+    "Phases": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "67f3685c6c5b8ad2d5c436db42fce51db7f7733df9fefc6906df1b68513fa116",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "67f3685c6c5b8ad2d5c436db42fce51db7f7733df9fefc6906df1b68513fa116",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    },
+    "Discovery": {
+      "Baseline": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "67f3685c6c5b8ad2d5c436db42fce51db7f7733df9fefc6906df1b68513fa116",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      },
+      "Candidate": {
+        "assimp-vc145-mt.dll": "fc5593ddcb0dd9ad5b3ecf3010b95daa3058338c6e4e266f899248da58c3d088",
+        "dxcompiler.dll": "0689e2fee0a1c9df8662a59680469f24e2a3ad7ce6bbbcc9284f7a83172bfc59",
+        "dxil.dll": "64be2368211d257a038a7d4ea6bb3e24c878eb8d588c7b8414fccf759b69c2ac",
+        "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+        "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+        "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+        "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+        "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+        "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+        "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+        "FBZZTestsRayTracingEngine.exe": "67f3685c6c5b8ad2d5c436db42fce51db7f7733df9fefc6906df1b68513fa116",
+        "imgui.dll": "743781819a6a09540bd2db262dad78a0c584650afa824c211fc8dc6b749bbc3b",
+        "nethost.dll": "e36f2f5e5b6074734ca8c58c2efbfb19d043371f5986920e335ffcca849019e5",
+        "WinPixEventRuntime.dll": "81adcfd8253c3489be720da7e30f16004dc9a1f02a8b418c6c3aef4993032e6d"
+      }
+    }
+  },
+  "sources": {
+    "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp": {
+      "before": "745c0297a77d17af682e90b0b64bbe47482ee8a5d07922755926d9b20d2d8947",
+      "after": "a2e531c7779619efb6b096e31cdc28067af21845bdd066120c602145a1892572"
+    },
+    "Projects/Tests/Engine/Auto/RenderSceneExtractorTests.cpp": {
+      "before": "ea71b2b1f331f93a66d1c0a2349eaa8659a577494554da1d2c006c86816e95e7",
+      "after": "a07d4a78aec44b5e94a27ca5696b60800ef41081d3fcde0ef36966d0430921bb"
+    },
+    "Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp": {
+      "before": "0e48c2ae3706a27dc7f83156946a178eff91b8641d8792a14f7be56abae32b0b",
+      "after": "f699c06920ab9cb9509a772b19e715119ae84bbf5147a0fe1bf2e6c3d8547486"
+    },
+    "Docs/design/static-mesh-render-reuse.md": {
+      "before": "701981460605c11f654e79c84d9ff096b1cbfa1620e7a2feb9300d0fa64f64bd",
+      "after": "8841030ea15b4d1f4e8ba4d5d3b1649647a0100cacf68d246ff1d0f878cb94b4"
+    }
+  },
+  "exportsUnchanged": true,
+  "productionChangedModules": [
+    "FBZZEngine"
+  ],
+  "mutationSameExecutable": true,
+  "passedDistinctTests": 692,
+  "freeCapacityLimitMiBPerExtractionThread": 48
+}

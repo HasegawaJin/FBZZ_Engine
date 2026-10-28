@@ -1,0 +1,209 @@
+--- before/Projects/Tests/Graphics/Auto/BufferReadTests.cpp
++++ Projects/Tests/Graphics/Auto/BufferReadTests.cpp
+@@ -17,6 +17,8 @@
+ #include <array>
+ #include <string>
+ #include <vector>
++#include <fstream>
++#include <Graphics/Renderer/BindlessIndices.hpp>
+ 
+ namespace fbzz::tests {
+ namespace {
+@@ -138,6 +140,128 @@
+     HRESULT m_comResult = E_FAIL;
+     bool m_frameOpen = false;
+ };
++
++TEST_F(BufferReadTest, ConsecutiveGraphicsBindingsKeepEveryIndexAndSurviveFrameAndComputeChanges)
++{
++    testkit::TempDir temporary("graphics_bindless_indices");
++    ASSERT_TRUE(temporary.IsValid());
++    const auto path = temporary.File("Indices.hlsl");
++    {
++        std::ofstream stream(path, std::ios::binary);
++        stream << R"hlsl(/// @file    Indices.hlsl
++/// @brief   Observe the complete graphics b14 payload through a native draw.
++/// @author  Hasegawa Jin
++/// @date    2026-10-23
++cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2]; };
++float4 VSMain(uint id : SV_VertexID) : SV_Position {
++    return float4(id == 2 ? 3 : -1, id == 1 ? 3 : -1, 0, 1);
++}
++uint Mix(uint value, uint index) { return (value * 17 + index % 251) % 251; }
++float4 PSMain() : SV_Target0 {
++    uint p = 0, v = 0, u = 0;
++    for (uint i = 0; i < 32; ++i) p = Mix(p, pixel[i >> 2][i & 3]);
++    for (uint j = 0; j < 4; ++j) v = Mix(v, vertex[0][j]);
++    for (uint k = 0; k < 8; ++k) u = Mix(u, uav[k >> 2][k & 3]);
++    return float4(p, v, u, 1);
++}
++)hlsl";
++        ASSERT_TRUE(stream.good());
++    }
++    const auto shader = m_resources->LoadShader(path.generic_string());
++    ASSERT_TRUE(shader.IsValid());
++    const auto computePath = temporary.File("Change.cs.hlsl");
++    {
++        std::ofstream stream(computePath, std::ios::binary);
++        stream << R"hlsl(/// @file    Change.cs.hlsl
++/// @brief   Change native compute bindings between identical graphics payloads.
++/// @author  Hasegawa Jin
++/// @date    2026-10-23
++cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2]; };
++[numthreads(1, 1, 1)] void CSMain() {
++    RWTexture2D<float4> output = ResourceDescriptorHeap[uav[0].x];
++    output[uint2(0, 0)] = float4(1, 2, 3, 4);
++}
++)hlsl";
++        ASSERT_TRUE(stream.good());
++    }
++    const auto compute = m_resources->LoadShader(computePath.generic_string());
++    ASSERT_TRUE(compute.IsValid());
++    const math::Vector4 value{1, 2, 3, 4};
++    const auto structured = m_resources->CreateStructuredBuffer(&value, 1, sizeof(value));
++    const auto raw = m_resources->CreateVertexBuffer(&value, sizeof(value), sizeof(value));
++    ASSERT_TRUE(structured.IsValid() && raw.IsValid());
++    std::array<renderer::ResourceHandle<renderer::RenderTargetTag>, 8> targets;
++    for (auto& target : targets) {
++        target = m_resources->CreateRenderTarget(1, 1, {1, renderer::Format::RGBA16F, false});
++        ASSERT_TRUE(target.IsValid());
++    }
++    const auto fingerprint = [](const auto& indices) {
++        uint32_t result = 0;
++        for (const uint32_t index : indices) result = (result * 17 + index % 251) % 251;
++        return static_cast<float>(result);
++    };
++    /// @note Four frames cross the three-frame upload arena ring; readback occurs after all draws to detect overwritten prior payloads.
++    for (uint32_t frame = 0; frame < 4; ++frame) {
++        SCOPED_TRACE(frame);
++        BeginFrame();
++        std::array<math::Vector4, 8> expected;
++        for (size_t row = 0; row < targets.size(); ++row) {
++            SCOPED_TRACE(row);
++            renderer::DrawCall draw;
++            draw.shader = shader;
++            draw.pipelineState = m_state;
++            draw.vertexCount = 3;
++            renderer::BindlessIndicesConstants indices;
++            indices.Reset();
++            if (row >= 2 && row <= 6) {
++                draw.textures[0] = m_output;
++                indices.pixel[0] = m_resources->Get(m_output)->GetBindlessIndex();
++            }
++            if (row == 4) {
++                draw.textures[31] = m_output;
++                indices.pixel[31] = indices.pixel[0];
++            }
++            if (row == 5 || row == 6) {
++                draw.psBuffers[0] = structured;
++                draw.auxiliaryPsBuffers.back() = structured;
++                draw.vsBuffers.back() = structured;
++                indices.pixel[renderer::kPsBufferBaseSlot] = m_resources->Get(structured)->GetBindlessIndex();
++                indices.pixel[renderer::kAuxiliaryPsBufferBaseSlot + draw.auxiliaryPsBuffers.size() - 1] = indices.pixel[renderer::kPsBufferBaseSlot];
++                indices.vertex[draw.vsBuffers.size()] = indices.pixel[renderer::kPsBufferBaseSlot];
++            }
++            if (row == 6) {
++                draw.instanceBuffer = structured;
++                draw.vsBuffers.back() = {};
++                draw.vsRawBuffers.back() = raw;
++                indices.vertex[0] = m_resources->Get(structured)->GetBindlessIndex();
++                indices.vertex[draw.vsRawBuffers.size()] = m_resources->Get(raw)->GetBindlessSrvIndex();
++            }
++            if (row == 3) {
++                renderer::ComputeCall dispatch;
++                dispatch.shader = compute;
++                dispatch.uavOutputs[0] = m_output;
++                ASSERT_TRUE(m_bundle.renderer->TryDispatch(dispatch, *m_resources));
++            }
++            expected[row] = {fingerprint(indices.pixel), fingerprint(indices.vertex), fingerprint(indices.uav), 1};
++            m_bundle.renderer->SetRenderTarget(targets[row], *m_resources);
++            m_bundle.renderer->Submit(draw, *m_resources);
++        }
++        m_bundle.renderer->SetRenderTarget({}, *m_resources);
++        m_bundle.renderer->EndFrame();
++        m_frameOpen = false;
++        for (size_t row = 0; row < targets.size(); ++row) {
++            SCOPED_TRACE(row);
++            std::vector<float> rgba;
++            uint32_t width = 0, height = 0;
++            ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(targets[row], *m_resources, rgba, width, height));
++            ASSERT_EQ(rgba.size(), 4u);
++            EXPECT_FLOAT_EQ(rgba[0], expected[row].x);
++            EXPECT_FLOAT_EQ(rgba[1], expected[row].y);
++            EXPECT_FLOAT_EQ(rgba[2], expected[row].z);
++            EXPECT_FLOAT_EQ(rgba[3], 1);
++        }
++    }
++}
+ 
+ class SynchronousUploadTest : public BufferReadTest, private core::ILogSink {
+ protected:
+--- before/Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
++++ Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
+@@ -98,6 +98,10 @@
+ 
+ struct RegularMeshFrame {
+     uint64_t serial = 0;
++    /// @note Diagnostic CPU cycles include user/kernel work and must not be converted to elapsed milliseconds.
++    /// @see https://learn.microsoft.com/en-us/windows/win32/api/realtimeapiset/nf-realtimeapiset-querythreadcycletime QueryThreadCycleTime remarks.
++    uint64_t threadCycles = 0;
++    bool threadCyclesValid = false;
+     double frameMs = 0;
+     double waitCpuMs = 0;
+     double beginMs = 0;
+@@ -130,6 +134,7 @@
+         m_savedFilter = profiler::Profiler::GetRequestedCaptureFilter();
+         profiler::Profiler::RequestCaptureFilter({});
+         m_timingOnly = FrameSetting("FBZZ_REGULAR_MESH_TIMING_ONLY", 0) == 1;
++        m_measureThreadCycles = FrameSetting("FBZZ_REGULAR_MESH_THREAD_CYCLES", 0) == 1;
+         profiler::Profiler::RequestRecording(!m_timingOnly);
+         m_com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+         ASSERT_TRUE(SUCCEEDED(m_com));
+@@ -730,6 +735,9 @@
+         auto& device = *m_bundle.renderer;
+         auto& resources = *m_resources;
+         RegularMeshFrame result;
++        ULONG64 cycleStart = 0;
++        const bool readCycles = measured && m_measureThreadCycles;
++        const bool cycleStartValid = readCycles && QueryThreadCycleTime(GetCurrentThread(), &cycleStart) != 0;
+         const double frameStart = profiler::ProfileRecorder::NowMs();
+         profiler::Profiler::BeginFrame(++m_serial, frameStart);
+         for (size_t index = 0; index < m_entities.size() * m_changedPercent / 100; ++index) {
+@@ -769,6 +777,12 @@
+         device.EndFrame();
+         m_frameOpen = false;
+         const double frameEnd = profiler::ProfileRecorder::NowMs();
++        if (readCycles) {
++            ULONG64 cycleEnd = 0;
++            result.threadCyclesValid = QueryThreadCycleTime(GetCurrentThread(), &cycleEnd) != 0
++                && cycleStartValid && cycleEnd >= cycleStart;
++            if (result.threadCyclesValid) result.threadCycles = cycleEnd - cycleStart;
++        }
+         profiler::Profiler::EndFrame();
+         result.serial = resources.FrameStamp();
+         if (measured) {
+@@ -839,6 +853,7 @@
+             << ",\"warmup\":" << warmup << ",\"samples\":" << samples
+             << ",\"gpuInstancing\":" << (batching ? "true" : "false")
+             << ",\"frameGeometryCache\":" << (m_useFrameCache ? "true" : "false")
++            << ",\"threadCyclesEnabled\":" << (m_measureThreadCycles ? "true" : "false")
+             << ",\"viewsPerFrame\":" << (m_twoViews ? 2 : 1)
+             << ",\"changedPercent\":" << m_changedPercent << ",\"timingOnly\":" << (m_timingOnly ? "true" : "false")
+             << ",\"secondWidth\":" << (m_twoViews ? kSecondWidth : 0)
+@@ -854,6 +869,8 @@
+         for (const auto& frame : m_frames) {
+             output << "REGULAR_MESH_JSON {\"kind\":\"cpu\",\"case\":" << JsonString(name)
+                 << ",\"serial\":" << frame.serial << ",\"frameMs\":" << frame.frameMs
++                << ",\"threadCyclesValid\":" << (frame.threadCyclesValid ? "true" : "false")
++                << ",\"threadCycles\":" << frame.threadCycles
+                 << ",\"waitCpuMs\":" << frame.waitCpuMs << ",\"beginMs\":" << frame.beginMs
+                 << ",\"renderMs\":" << frame.renderMs << ",\"endMs\":" << frame.endMs
+                 << ",\"firstViewRenderMs\":" << frame.firstViewRenderMs << ",\"secondViewRenderMs\":" << frame.secondViewRenderMs
+@@ -940,6 +957,7 @@
+     bool m_useFrameCache = true;
+     bool m_twoViews = false;
+     bool m_timingOnly = false;
++    bool m_measureThreadCycles = false;
+ };
+ 
+ TEST_F(RegularMeshRenderPerformanceTest, ProjectHybridAppearanceRendersShellAndFinWithSharedCoverage)

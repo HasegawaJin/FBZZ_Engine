@@ -1,0 +1,34 @@
+{
+  "nativeInputs": 1358,
+  "configuration": "Release LTO",
+  "modules": {
+    "FBZZMath": {
+      "exports": 100,
+      "sha256": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd"
+    },
+    "FBZZPhysics": {
+      "exports": 6112,
+      "sha256": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed"
+    },
+    "FBZZFluid": {
+      "exports": 1056,
+      "sha256": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c"
+    },
+    "FBZZCore": {
+      "exports": 2464,
+      "sha256": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69"
+    },
+    "FBZZGraphics": {
+      "exports": 23268,
+      "sha256": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f"
+    },
+    "FBZZEngine": {
+      "exports": 15122,
+      "sha256": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f"
+    }
+  },
+  "executables": {
+    "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99",
+    "FBZZTestsRayTracingEngine.exe": "67f3685c6c5b8ad2d5c436db42fce51db7f7733df9fefc6906df1b68513fa116"
+  }
+}

@@ -1,0 +1,229 @@
+{
+  "normalCpu": {
+    "tests": 302,
+    "failures": 0,
+    "disabled": 0,
+    "errors": 0
+  },
+  "ltoCpu": {
+    "tests": 303,
+    "failures": 0,
+    "exitCode": 0
+  },
+  "restoredAddedTests": {
+    "tests": 9,
+    "failures": 0,
+    "disabled": 0,
+    "errors": 0
+  },
+  "gpu": {
+    "tests": 6,
+    "failures": 0,
+    "disabled": 0,
+    "errors": 0
+  },
+  "skinning": {
+    "tests": 58,
+    "failures": 0,
+    "disabled": 0,
+    "errors": 0
+  },
+  "exitCodes": {
+    "cpuExit": 0,
+    "cpuLog": "build/agent/test-20261022-180717-10048.log",
+    "skinningExit": 0,
+    "phase": "Lto",
+    "gpuExit": 0,
+    "cpuTests": 303
+  },
+  "mutation": {
+    "beforeSha256": "04FB34FE5A03C10D149086F25800373561C6592FC0D8D3CCD5087CAD143C098E",
+    "afterSha256": "04FB34FE5A03C10D149086F25800373561C6592FC0D8D3CCD5087CAD143C098E",
+    "mutatedTestExit": 1
+  },
+  "traces": [
+    {
+      "file": "trace-cpu-v2-r0-Baseline.csv",
+      "frames": 4,
+      "counters": {
+        "source-operations": 12,
+        "sync-calls": 8,
+        "packets": 12,
+        "commands": 408,
+        "cpu-frame-wait-calls": 4,
+        "empty-submit": 4
+      },
+      "packets": 12,
+      "captureComplete": true
+    },
+    {
+      "file": "trace-cpu-v2-r1-Candidate.csv",
+      "frames": 4,
+      "counters": {
+        "source-operations": 4,
+        "cpu-frame-wait-calls": 4,
+        "empty-submit": 4,
+        "packets": 4,
+        "commands": 408
+      },
+      "packets": 4,
+      "captureComplete": true
+    },
+    {
+      "file": "trace-gpu-v2-r0-Baseline.csv",
+      "frames": 4,
+      "counters": {
+        "source-operations": 12,
+        "sync-calls": 8,
+        "packets": 12,
+        "commands": 416,
+        "cpu-frame-wait-calls": 4,
+        "empty-submit": 4
+      },
+      "packets": 12,
+      "captureComplete": true
+    },
+    {
+      "file": "trace-gpu-v2-r1-Candidate.csv",
+      "frames": 4,
+      "counters": {
+        "source-operations": 4,
+        "cpu-frame-wait-calls": 4,
+        "empty-submit": 4,
+        "packets": 4,
+        "commands": 416
+      },
+      "packets": 4,
+      "captureComplete": true
+    }
+  ],
+  "allMeasurementsValid": true,
+  "sourceAudit": {
+    "sourceInputs": 1358,
+    "unbuiltSourceChanges": [],
+    "taskFiles": {
+      "Projects/Graphics/include/Graphics/Renderer/IRenderer.hpp": "ae2d40ecc4f64e94a5d6b7483428cc46e183f5d4a6b7861a4426f8634ecb6ac2",
+      "Projects/Graphics/src/Renderer/ThreadedRenderer.cpp": "04fb34fe5a03c10d149086f25800373561c6592fc0d8d3ccd5087cad143c098e",
+      "Projects/Graphics/src/Pipeline/RenderPipeline.cpp": "9b3298b8878b03f0526acef5690758bf8c795bb4e19bfd8cc69a9502bebac9aa",
+      "Projects/Engine/src/Scene/Systems/RenderPasses/Geometry/SkinningComputePass.cpp": "545188d6d7091feac43efee0b839ecde878756ed21ea122e652adb7274e5442f",
+      "Projects/Tests/CMakeLists.txt": "7d63e132550e1131bfdf3642856a861a23b8e3651039036cfecc4efe12c88eab",
+      "Docs/design/render-thread.md": "8ace5a17f59b6780b813fed341f4a9b1b86a78d19b7f1d5625fc7b9ea086e668"
+    }
+  },
+  "artifacts": {
+    "utc": "2026-10-23T00:04:59.3796869Z",
+    "cpu": {
+      "Name": "Intel(R) Core(TM) i7-14700F",
+      "NumberOfCores": 20,
+      "NumberOfLogicalProcessors": 28
+    },
+    "gpu": {
+      "Name": "NVIDIA GeForce RTX 4070",
+      "DriverVersion": "32.0.16.1088"
+    },
+    "affinity": 240,
+    "priority": "High",
+    "paths": {
+      "Candidate": [
+        {
+          "sha256": "0689E2FEE0A1C9DF8662A59680469F24E2A3AD7CE6BBBCC9284F7A83172BFC59",
+          "name": "dxcompiler.dll"
+        },
+        {
+          "sha256": "64BE2368211D257A038A7D4EA6BB3E24C878EB8D588C7B8414FCCF759B69C2AC",
+          "name": "dxil.dll"
+        },
+        {
+          "sha256": "7EBB2DCCF6DAAB2F6D7D9E7DE7519A4A8B2368FD91F4D9335B05D3FCC102E217",
+          "name": "FBZZCore.dll"
+        },
+        {
+          "sha256": "C96850B78F0ACD8EA5E515A3CABA904AF678CA7C12721F908B8478BD9904E87B",
+          "name": "FBZZEngine.dll"
+        },
+        {
+          "sha256": "B32254A04826839C1DADAE3558733F7FFF6C4BFFD853B3A462FB7E7AB835ED2D",
+          "name": "FBZZFluid.dll"
+        },
+        {
+          "sha256": "9EC7BEC789B82B764E96F836F3BA6CC96C9E905A820AB4FF557697A565885B18",
+          "name": "FBZZGraphics.dll"
+        },
+        {
+          "sha256": "CF83B71BE8F226BB8A70574574C5CFD60FF47ED46F72225D181669FC7E0A742C",
+          "name": "FBZZMath.dll"
+        },
+        {
+          "sha256": "B8BCE6B644AF93FA0E908E4C21F72827D13A53F7FD422506E0A2B8FC1A171BE8",
+          "name": "FBZZPhysics.dll"
+        },
+        {
+          "sha256": "501CC29A5867B7EA3268D9817769446DEA8C5040518459675B6740C381F70F0A",
+          "name": "FBZZRenderSynchronizationBench.exe"
+        },
+        {
+          "sha256": "743781819A6A09540BD2DB262DAD78A0C584650AFA824C211FC8DC6B749BBC3B",
+          "name": "imgui.dll"
+        },
+        {
+          "sha256": "E36F2F5E5B6074734CA8C58C2EFBFB19D043371F5986920E335FFCCA849019E5",
+          "name": "nethost.dll"
+        },
+        {
+          "sha256": "81ADCFD8253C3489BE720DA7E30F16004DC9A1F02A8B418C6C3AEF4993032E6D",
+          "name": "WinPixEventRuntime.dll"
+        }
+      ],
+      "Baseline": [
+        {
+          "sha256": "0689E2FEE0A1C9DF8662A59680469F24E2A3AD7CE6BBBCC9284F7A83172BFC59",
+          "name": "dxcompiler.dll"
+        },
+        {
+          "sha256": "64BE2368211D257A038A7D4EA6BB3E24C878EB8D588C7B8414FCCF759B69C2AC",
+          "name": "dxil.dll"
+        },
+        {
+          "sha256": "B89F02A1197F239F3888B71D5FB7B3889A73BFED8FBEE8745AAF5394716D74C4",
+          "name": "FBZZCore.dll"
+        },
+        {
+          "sha256": "4DB3FD4A35E524067A1304F5CD96DC7F26360FAEFA45C6D0CE078B1B8D966622",
+          "name": "FBZZEngine.dll"
+        },
+        {
+          "sha256": "A3869E670366241D83AAF47F0E62188DBB250CE8FF8ECB0614DD8696DA1C129C",
+          "name": "FBZZFluid.dll"
+        },
+        {
+          "sha256": "AD10AD629C19E2504CA50AED9BD656A67F5DE8199CE5264CD0DAC86A9FF28464",
+          "name": "FBZZGraphics.dll"
+        },
+        {
+          "sha256": "F5B19938A5A05BC129091E9E0080F03E3D2C06E7863A1AB62B3B388854BC1311",
+          "name": "FBZZMath.dll"
+        },
+        {
+          "sha256": "739C5391477574EBD034BA680A8EF92DB6DE1223E4893E3E921A7FA19ECDE65A",
+          "name": "FBZZPhysics.dll"
+        },
+        {
+          "sha256": "501CC29A5867B7EA3268D9817769446DEA8C5040518459675B6740C381F70F0A",
+          "name": "FBZZRenderSynchronizationBench.exe"
+        },
+        {
+          "sha256": "743781819A6A09540BD2DB262DAD78A0C584650AFA824C211FC8DC6B749BBC3B",
+          "name": "imgui.dll"
+        },
+        {
+          "sha256": "E36F2F5E5B6074734CA8C58C2EFBFB19D043371F5986920E335FFCCA849019E5",
+          "name": "nethost.dll"
+        },
+        {
+          "sha256": "81ADCFD8253C3489BE720DA7E30F16004DC9A1F02A8B418C6C3AEF4993032E6D",
+          "name": "WinPixEventRuntime.dll"
+        }
+      ]
+    }
+  }
+}

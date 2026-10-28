@@ -1,0 +1,12 @@
+{
+  "changedFromPreviousMap": [],
+  "changedFromTaskBaseline": [
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp",
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.hpp"
+  ],
+  "sourceSha256": {
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp": "a646678d0465da8a7d99bf13bbbf8b29cee174d0f3f320b3e9e07e553c99df92",
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.hpp": "c4bf54985957397ca249d4ff56edc90048bd9f01a272564e3eb7088345687831"
+  },
+  "exportsUnchanged": true
+}

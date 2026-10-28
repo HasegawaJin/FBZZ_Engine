@@ -1,0 +1,128 @@
+{
+  "First": {
+    "Baseline": [
+      {
+        "file": "First-gpu-AllVisible1000-r0-Baseline.out",
+        "p50": 0.9827499985,
+        "p95": 1.1086800005,
+        "p99": 1.2260939311999999
+      },
+      {
+        "file": "First-gpu-AllVisible1000-r3-Baseline.out",
+        "p50": 0.990950048,
+        "p95": 1.095189933,
+        "p99": 1.1695399804999997
+      },
+      {
+        "file": "First-gpu-AllVisible1000-r4-Baseline.out",
+        "p50": 1.0289500349999998,
+        "p95": 1.1523350060000002,
+        "p99": 1.2495259207
+      }
+    ],
+    "Candidate": [
+      {
+        "file": "First-gpu-AllVisible1000-r1-Candidate.out",
+        "p50": 0.7790499925000001,
+        "p95": 0.8585499880499998,
+        "p99": 0.9902120255399999
+      },
+      {
+        "file": "First-gpu-AllVisible1000-r2-Candidate.out",
+        "p50": 0.7791500685,
+        "p95": 0.8596499562999999,
+        "p99": 0.92991204961
+      },
+      {
+        "file": "First-gpu-AllVisible1000-r5-Candidate.out",
+        "p50": 0.824000001,
+        "p95": 0.9314500390999999,
+        "p99": 1.0486500798999998
+      }
+    ]
+  },
+  "Final": {
+    "Baseline": [
+      {
+        "file": "Final-gpu-AllVisible1000-r0-Baseline.out",
+        "p50": 0.988399982,
+        "p95": 1.0935599939999991,
+        "p99": 1.2148959804
+      },
+      {
+        "file": "Final-gpu-AllVisible1000-r3-Baseline.out",
+        "p50": 1.029150005,
+        "p95": 1.1991849019999998,
+        "p99": 1.3766170292000002
+      },
+      {
+        "file": "Final-gpu-AllVisible1000-r4-Baseline.out",
+        "p50": 1.041199985,
+        "p95": 1.3997299349999999,
+        "p99": 1.6645910794999998
+      }
+    ],
+    "Candidate": [
+      {
+        "file": "Final-gpu-AllVisible1000-r1-Candidate.out",
+        "p50": 0.778999925,
+        "p95": 0.8673200007499998,
+        "p99": 0.95490600971
+      },
+      {
+        "file": "Final-gpu-AllVisible1000-r2-Candidate.out",
+        "p50": 0.7851499915,
+        "p95": 0.92580996765,
+        "p99": 1.0619490198
+      },
+      {
+        "file": "Final-gpu-AllVisible1000-r5-Candidate.out",
+        "p50": 0.8222500085,
+        "p95": 0.9337999879500001,
+        "p99": 1.0700640498999998
+      }
+    ]
+  },
+  "Confirm": {
+    "Baseline": [
+      {
+        "file": "Confirm-gpu-AllVisible1000-r0-Baseline.out",
+        "p50": 1.06099999,
+        "p95": 1.2433100489999998,
+        "p99": 1.4375849997999999
+      },
+      {
+        "file": "Confirm-gpu-AllVisible1000-r3-Baseline.out",
+        "p50": 1.007449985,
+        "p95": 1.169125033,
+        "p99": 1.3723669116
+      },
+      {
+        "file": "Confirm-gpu-AllVisible1000-r4-Baseline.out",
+        "p50": 0.984300017,
+        "p95": 1.0884999724999997,
+        "p99": 1.2192910206999998
+      }
+    ],
+    "Candidate": [
+      {
+        "file": "Confirm-gpu-AllVisible1000-r1-Candidate.out",
+        "p50": 0.822399974,
+        "p95": 0.94077993635,
+        "p99": 1.0983629597
+      },
+      {
+        "file": "Confirm-gpu-AllVisible1000-r2-Candidate.out",
+        "p50": 0.7932500245,
+        "p95": 0.9025100173499999,
+        "p99": 1.0055099403999999
+      },
+      {
+        "file": "Confirm-gpu-AllVisible1000-r5-Candidate.out",
+        "p50": 0.8330000040000001,
+        "p95": 0.9649550018999998,
+        "p99": 1.1043720189
+      }
+    ]
+  }
+}

@@ -1,0 +1,196 @@
+﻿[AgentBuild] test preset=release 2026-10-23T11:57:37.7502350+09:00
+> ctest --test-dir K:\FBZZ_Engine\build\Release -C Release --output-on-failure --timeout 60 --no-tests=error -R StaticMeshRenderReuse|RenderSceneExtractor|GuidMeshResolution|RenderVisibility|GeometryPipeline|InstanceBatch|ManagedRenderComponentServices
+Test project K:/FBZZ_Engine/build/Release
+      Start 1901: ManagedRenderComponentServicesTest.RenderingRowsUseBirthsAndPendingRemovalAboveOldBoundary
+ 1/93 Test #1901: ManagedRenderComponentServicesTest.RenderingRowsUseBirthsAndPendingRemovalAboveOldBoundary ..............................   Passed    0.03 sec
+      Start 1902: ManagedRenderComponentServicesTest.NativeLineProxyRejectsUnknownEnumsAndKeepsPointOutputOnFailure
+ 2/93 Test #1902: ManagedRenderComponentServicesTest.NativeLineProxyRejectsUnknownEnumsAndKeepsPointOutputOnFailure .......................   Passed    0.03 sec
+      Start 1903: ManagedRenderComponentServicesTest.NativeLineProxyReadsPointObjectsAndNumericWritesSelectInlineWithoutDeletingTargets
+ 3/93 Test #1903: ManagedRenderComponentServicesTest.NativeLineProxyReadsPointObjectsAndNumericWritesSelectInlineWithoutDeletingTargets ...   Passed    0.03 sec
+      Start 1904: ManagedRenderComponentServicesTest.NativePatrolProxyReadsAndMaterializesPointObjectsForNumericWrites
+ 4/93 Test #1904: ManagedRenderComponentServicesTest.NativePatrolProxyReadsAndMaterializesPointObjectsForNumericWrites ....................   Passed    0.03 sec
+      Start 1905: ManagedRenderComponentServicesTest.ManagedLineBatchCommitSelectsInlineLiveAndRetainsPointMetadata
+ 5/93 Test #1905: ManagedRenderComponentServicesTest.ManagedLineBatchCommitSelectsInlineLiveAndRetainsPointMetadata .......................   Passed    0.02 sec
+      Start 1906: ManagedRenderComponentServicesTest.LinePairsRejectMalformedPacketsAndPreserveScalarPrecision
+ 6/93 Test #1906: ManagedRenderComponentServicesTest.LinePairsRejectMalformedPacketsAndPreserveScalarPrecision ............................   Passed    0.03 sec
+      Start 1907: ManagedRenderComponentServicesTest.TrailStopKeepsSamplesWhenFadeWasRequestedAndRequiresPlay
+ 7/93 Test #1907: ManagedRenderComponentServicesTest.TrailStopKeepsSamplesWhenFadeWasRequestedAndRequiresPlay .............................   Passed    0.02 sec
+      Start 1908: ManagedRenderComponentServicesTest.StaticMeshClearRemovesShapeWithoutChangingRendererEnable
+ 8/93 Test #1908: ManagedRenderComponentServicesTest.StaticMeshClearRemovesShapeWithoutChangingRendererEnable .............................   Passed    0.02 sec
+      Start 1909: ManagedRenderComponentServicesTest.FreshStaticMeshPrimitiveAndModelClearDoNotRequireAProceduralRow
+ 9/93 Test #1909: ManagedRenderComponentServicesTest.FreshStaticMeshPrimitiveAndModelClearDoNotRequireAProceduralRow ......................   Passed    0.02 sec
+      Start 1910: ManagedRenderComponentServicesTest.OptionalRemovalOfAbsentInvalidAndExpiredEntitiesPreservesExistingRows
+10/93 Test #1910: ManagedRenderComponentServicesTest.OptionalRemovalOfAbsentInvalidAndExpiredEntitiesPreservesExistingRows ................   Passed    0.02 sec
+      Start 2710: GeometryPipelineTest.LightingListChoiceDoesNotChangeTheOpaqueTechnique
+11/93 Test #2710: GeometryPipelineTest.LightingListChoiceDoesNotChangeTheOpaqueTechnique ..................................................   Passed    0.03 sec
+      Start 2711: GeometryPipelineTest.EachDeferredResourceIsRequiredBeforeSelectingDeferred
+12/93 Test #2711: GeometryPipelineTest.EachDeferredResourceIsRequiredBeforeSelectingDeferred ..............................................   Passed    0.03 sec
+      Start 2712: GeometryPipelineTest.DeferredFallbackCanStillProvideForwardScreenSpaceInputs
+13/93 Test #2712: GeometryPipelineTest.DeferredFallbackCanStillProvideForwardScreenSpaceInputs ............................................   Passed    0.03 sec
+      Start 2713: GeometryPipelineTest.EveryScreenSpaceConsumerRequestsTheForwardPrepass
+14/93 Test #2713: GeometryPipelineTest.EveryScreenSpaceConsumerRequestsTheForwardPrepass ..................................................   Passed    0.02 sec
+      Start 2714: GeometryPipelineTest.UnlitSkipsOnlyTheForwardScreenSpacePrepass
+15/93 Test #2714: GeometryPipelineTest.UnlitSkipsOnlyTheForwardScreenSpacePrepass .........................................................   Passed    0.02 sec
+      Start 2715: GeometryPipelineTest.RegistrationPreservesTheExistingPassOrderForEveryPath
+16/93 Test #2715: GeometryPipelineTest.RegistrationPreservesTheExistingPassOrderForEveryPath ..............................................   Passed    0.03 sec
+      Start 2716: GeometryPipelineTest.HybridScreenFirstFreezesBaselineBeforeTracingAndResolvesBeforeTransparency
+17/93 Test #2716: GeometryPipelineTest.HybridScreenFirstFreezesBaselineBeforeTracingAndResolvesBeforeTransparency .........................   Passed    0.03 sec
+      Start 2717: GeometryPipelineTest.SwitchingTechniqueRebuildsWithoutLeavingThePreviousPath
+18/93 Test #2717: GeometryPipelineTest.SwitchingTechniqueRebuildsWithoutLeavingThePreviousPath ............................................   Passed    0.03 sec
+      Start 2718: RenderVisibilityTest.UnknownBoundsRemainVisible
+19/93 Test #2718: RenderVisibilityTest.UnknownBoundsRemainVisible .........................................................................   Passed    0.03 sec
+      Start 2719: RenderVisibilityTest.DistanceUsesNearestSpherePointAndKeepsBoundary
+20/93 Test #2719: RenderVisibilityTest.DistanceUsesNearestSpherePointAndKeepsBoundary .....................................................   Passed    0.03 sec
+      Start 2720: RenderVisibilityTest.SphericalAndDepthDistancesUseTheSelectedView
+21/93 Test #2720: RenderVisibilityTest.SphericalAndDepthDistancesUseTheSelectedView .......................................................   Passed    0.03 sec
+      Start 2721: RenderVisibilityTest.OrthographicSizeDoesNotShrinkWithDistance
+22/93 Test #2721: RenderVisibilityTest.OrthographicSizeDoesNotShrinkWithDistance ..........................................................   Passed    0.03 sec
+      Start 2722: RenderVisibilityTest.ScreenSizeBoundaryAndNonpositiveDepthRemainVisible
+23/93 Test #2722: RenderVisibilityTest.ScreenSizeBoundaryAndNonpositiveDepthRemainVisible .................................................   Passed    0.03 sec
+      Start 2723: RenderVisibilityTest.FirstRejectionReasonIsStable
+24/93 Test #2723: RenderVisibilityTest.FirstRejectionReasonIsStable .......................................................................   Passed    0.03 sec
+      Start 2724: RenderVisibilityTest.FrustumUsesSphereIntersection
+25/93 Test #2724: RenderVisibilityTest.FrustumUsesSphereIntersection ......................................................................   Passed    0.03 sec
+      Start 2725: RenderVisibilityTest.DistanceOnlyQueryIgnoresSizeAndFrustum
+26/93 Test #2725: RenderVisibilityTest.DistanceOnlyQueryIgnoresSizeAndFrustum .............................................................   Passed    0.03 sec
+      Start 2726: RenderSceneExtractorTest.SparseCameraQueriesPreserveScenePriorityAndObserveSameFrameEdits
+27/93 Test #2726: RenderSceneExtractorTest.SparseCameraQueriesPreserveScenePriorityAndObserveSameFrameEdits ...............................   Passed    0.03 sec
+      Start 2727: RenderSceneExtractorTest.KeepsOffscreenAndOtherLayerCandidatesButRejectsInactiveHierarchy
+28/93 Test #2727: RenderSceneExtractorTest.KeepsOffscreenAndOtherLayerCandidatesButRejectsInactiveHierarchy ...............................   Passed    0.03 sec
+      Start 2728: RenderSceneExtractorTest.PreservesSceneOrderForLateRendererRegistrationAndMixedRenderersAmongBones
+29/93 Test #2728: RenderSceneExtractorTest.PreservesSceneOrderForLateRendererRegistrationAndMixedRenderersAmongBones ......................   Passed    0.03 sec
+      Start 2729: RenderSceneExtractorTest.RefreshesRendererMembershipAndHierarchyActivityWithinTheSameFrame
+30/93 Test #2729: RenderSceneExtractorTest.RefreshesRendererMembershipAndHierarchyActivityWithinTheSameFrame ..............................   Passed    0.03 sec
+      Start 2730: RenderSceneExtractorTest.PreservesOrderAcrossDestroyCallbacksCompactionAndEntityReuse
+31/93 Test #2730: RenderSceneExtractorTest.PreservesOrderAcrossDestroyCallbacksCompactionAndEntityReuse ...................................   Passed    0.03 sec
+      Start 2731: RenderSceneExtractorTest.SelectsCanonicalLodZeroWithoutFilteringRasterHiddenRenderers
+32/93 Test #2731: RenderSceneExtractorTest.SelectsCanonicalLodZeroWithoutFilteringRasterHiddenRenderers ...................................   Passed    0.03 sec
+      Start 2732: RenderSceneExtractorTest.ResolvesLodGuidForMembershipWithoutChangingReferences
+33/93 Test #2732: RenderSceneExtractorTest.ResolvesLodGuidForMembershipWithoutChangingReferences ..........................................   Passed    0.02 sec
+      Start 2733: RenderSceneExtractorTest.SkinnedTextureQualityUsesAnimatedBoundsInsteadOfBindPose
+34/93 Test #2733: RenderSceneExtractorTest.SkinnedTextureQualityUsesAnimatedBoundsInsteadOfBindPose .......................................   Passed    0.02 sec
+      Start 2734: RenderSceneExtractorTest.CopiesWorldBoundsAndHandlesWithoutOwningTheSourceMesh
+35/93 Test #2734: RenderSceneExtractorTest.CopiesWorldBoundsAndHandlesWithoutOwningTheSourceMesh ..........................................   Passed    0.03 sec
+      Start 2735: RenderSceneExtractorTest.WarmRendererIndexKeepsCurrentValuesAndOldGeometrySnapshotsIndependent
+36/93 Test #2735: RenderSceneExtractorTest.WarmRendererIndexKeepsCurrentValuesAndOldGeometrySnapshotsIndependent ..........................   Passed    0.03 sec
+      Start 2736: RenderSceneExtractorTest.StaticBoundsUseCurrentRotatedNegativeNonuniformScaleAcrossViews
+37/93 Test #2736: RenderSceneExtractorTest.StaticBoundsUseCurrentRotatedNegativeNonuniformScaleAcrossViews ................................   Passed    0.03 sec
+      Start 2737: RenderSceneExtractorTest.SkinnedSubmeshBoundsKeepRendererScaleAndAnimatorOwnerSphereIndependent
+38/93 Test #2737: RenderSceneExtractorTest.SkinnedSubmeshBoundsKeepRendererScaleAndAnimatorOwnerSphereIndependent .........................   Passed    0.03 sec
+      Start 2738: RenderSceneExtractorTest.LocalSlotsResolveReorderedSubmeshesAndMorphInputs
+39/93 Test #2738: RenderSceneExtractorTest.LocalSlotsResolveReorderedSubmeshesAndMorphInputs ..............................................   Passed    0.03 sec
+      Start 2739: RenderSceneExtractorTest.DeformedOutputRequiresCurrentFrameAndMatchingModelIncludingMorph
+40/93 Test #2739: RenderSceneExtractorTest.DeformedOutputRequiresCurrentFrameAndMatchingModelIncludingMorph ...............................   Passed    0.03 sec
+      Start 2740: RenderSceneExtractorTest.RejectsRendererMembershipInMultipleLodGroups
+41/93 Test #2740: RenderSceneExtractorTest.RejectsRendererMembershipInMultipleLodGroups ...................................................   Passed    0.02 sec
+      Start 2741: RenderSceneExtractorTest.DiagnosesUnresolvedCanonicalLodInsteadOfPublishingAnEmptyShape
+42/93 Test #2741: RenderSceneExtractorTest.DiagnosesUnresolvedCanonicalLodInsteadOfPublishingAnEmptyShape .................................   Passed    0.03 sec
+      Start 2742: RenderSceneExtractorTest.NormalExtractionSkipsUnresolvedRayLodDiagnosticsAndKeepsRasterGeometry
+43/93 Test #2742: RenderSceneExtractorTest.NormalExtractionSkipsUnresolvedRayLodDiagnosticsAndKeepsRasterGeometry .........................   Passed    0.02 sec
+      Start 2743: RenderSceneExtractorTest.ParentAnimatorWinsOverReferencePoseAndPreservesPreviousPalette
+44/93 Test #2743: RenderSceneExtractorTest.ParentAnimatorWinsOverReferencePoseAndPreservesPreviousPalette .................................   Passed    0.02 sec
+      Start 2744: RenderSceneExtractorTest.ReferencePosePrecedesIdentityFallbackWithoutAnimator
+45/93 Test #2744: RenderSceneExtractorTest.ReferencePosePrecedesIdentityFallbackWithoutAnimator ...........................................   Passed    0.02 sec
+      Start 2745: RenderSceneExtractorTest.PreviousWorldAdvancesOnceAcrossViewsAndResetsAfterGap
+46/93 Test #2745: RenderSceneExtractorTest.PreviousWorldAdvancesOnceAcrossViewsAndResetsAfterGap ..........................................   Passed    0.03 sec
+      Start 2746: RenderSceneExtractorTest.InitialFrameDoesNotTreatUninitializedHistoryAsPreviousFrame
+47/93 Test #2746: RenderSceneExtractorTest.InitialFrameDoesNotTreatUninitializedHistoryAsPreviousFrame ....................................   Passed    0.03 sec
+      Start 2747: RenderSceneExtractorTest.MaterialSlotsStayIndependentAndHiddenSlotsRemainAddressable
+48/93 Test #2747: RenderSceneExtractorTest.MaterialSlotsStayIndependentAndHiddenSlotsRemainAddressable ....................................   Passed    0.02 sec
+      Start 2748: RenderSceneExtractorTest.SceneGenerationIsStableAcrossViewsAndChangesBeforeEntityReuse
+49/93 Test #2748: RenderSceneExtractorTest.SceneGenerationIsStableAcrossViewsAndChangesBeforeEntityReuse ..................................   Passed    0.03 sec
+      Start 2749: RenderSceneExtractorTest.SceneMoveDoesNotReuseAnotherScenesRenderIdentity
+50/93 Test #2749: RenderSceneExtractorTest.SceneMoveDoesNotReuseAnotherScenesRenderIdentity ...............................................   Passed    0.03 sec
+      Start 2750: RenderSceneExtractorTest.DenseGeometryKeepsChunkEdgesSharedMeshEditsAndSnapshotOwnership
+51/93 Test #2750: RenderSceneExtractorTest.DenseGeometryKeepsChunkEdgesSharedMeshEditsAndSnapshotOwnership ................................   Passed    0.03 sec
+      Start 2751: RenderSceneExtractorMaterialTest.ResolvesEachShaderOnceWhilePreservingIndependentMaterialOverrides
+52/93 Test #2751: RenderSceneExtractorMaterialTest.ResolvesEachShaderOnceWhilePreservingIndependentMaterialOverrides ......................   Passed    0.06 sec
+      Start 2752: RenderSceneExtractorMaterialTest.RechecksChangedAndRemovedShaderMetadataWithoutAdvancingTheRenderFrame
+53/93 Test #2752: RenderSceneExtractorMaterialTest.RechecksChangedAndRemovedShaderMetadataWithoutAdvancingTheRenderFrame ..................   Passed    0.04 sec
+      Start 2753: RenderSceneExtractorMaterialTest.FullExtractionDefersItemCapabilitiesUntilMaterialSynchronization
+54/93 Test #2753: RenderSceneExtractorMaterialTest.FullExtractionDefersItemCapabilitiesUntilMaterialSynchronization .......................   Passed    0.04 sec
+      Start 2754: RenderSceneExtractorMaterialTest.FullViewsRecheckMetadataAndSlotEditsWithoutChangingRetainedSnapshots
+55/93 Test #2754: RenderSceneExtractorMaterialTest.FullViewsRecheckMetadataAndSlotEditsWithoutChangingRetainedSnapshots ...................   Passed    0.04 sec
+      Start 2755: RenderSceneExtractorMaterialTest.SharesPosesAcrossViewsWhileKeepingSelectionAndMaterialsIndependent
+56/93 Test #2755: RenderSceneExtractorMaterialTest.SharesPosesAcrossViewsWhileKeepingSelectionAndMaterialsIndependent .....................   Passed    0.03 sec
+      Start 2756: RenderSceneExtractorMaterialTest.CompactFrameGeometryPreservesStaticAndSkinnedInputsAcrossViews
+57/93 Test #2756: RenderSceneExtractorMaterialTest.CompactFrameGeometryPreservesStaticAndSkinnedInputsAcrossViews .........................   Passed    0.03 sec
+      Start 2757: RenderSceneExtractorMaterialTest.ManagedMeshWritesInvalidateSharedViewsWithoutRebuildingUnchangedMath
+58/93 Test #2757: RenderSceneExtractorMaterialTest.ManagedMeshWritesInvalidateSharedViewsWithoutRebuildingUnchangedMath ...................   Passed    0.03 sec
+      Start 2758: RenderSceneExtractorMaterialTest.MeshNotificationsInvalidateSameFrameGeometryWithoutMutatingPublishedViews
+59/93 Test #2758: RenderSceneExtractorMaterialTest.MeshNotificationsInvalidateSameFrameGeometryWithoutMutatingPublishedViews ..............   Passed    0.03 sec
+      Start 2759: RenderSceneExtractorMaterialTest.CompactFrameGeometryRebuildsMovedBoundsAndRendererMembershipEveryFrame
+60/93 Test #2759: RenderSceneExtractorMaterialTest.CompactFrameGeometryRebuildsMovedBoundsAndRendererMembershipEveryFrame .................   Passed    0.03 sec
+      Start 2760: RenderSceneExtractorMaterialTest.CompactCachedItemsRetainOffCameraShadowProbeAndRayDemand
+61/93 Test #2760: RenderSceneExtractorMaterialTest.CompactCachedItemsRetainOffCameraShadowProbeAndRayDemand ...............................   Passed    0.03 sec
+      Start 2761: RenderSceneExtractorMaterialTest.IndexedMasksRetainBothRendererKindsAndRespectEachViewsLayerAndChildren
+62/93 Test #2761: RenderSceneExtractorMaterialTest.IndexedMasksRetainBothRendererKindsAndRespectEachViewsLayerAndChildren .................   Passed    0.03 sec
+      Start 2762: RenderSceneExtractorMaterialTest.KeepsSharedPosesAliveAfterCacheRetirementAndSceneGenerationChanges
+63/93 Test #2762: RenderSceneExtractorMaterialTest.KeepsSharedPosesAliveAfterCacheRetirementAndSceneGenerationChanges .....................   Passed    0.03 sec
+      Start 2763: RenderSceneExtractorMaterialTest.EmptyEffectExtractionObservesComponentsAddedAndRemovedWithinTheSameFrame
+64/93 Test #2763: RenderSceneExtractorMaterialTest.EmptyEffectExtractionObservesComponentsAddedAndRemovedWithinTheSameFrame ...............   Passed    0.14 sec
+      Start 2764: RenderSceneExtractorMaterialTest.TypedEnvironmentCandidatesKeepScenePrecedenceAndRefreshWithinOneFrame
+65/93 Test #2764: RenderSceneExtractorMaterialTest.TypedEnvironmentCandidatesKeepScenePrecedenceAndRefreshWithinOneFrame ..................   Passed    0.03 sec
+      Start 2765: RenderSceneExtractorMaterialTest.DemandDiagnosticCandidatePreservesMaskRejectedItemsAndMutableSlots
+66/93 Test #2765: RenderSceneExtractorMaterialTest.DemandDiagnosticCandidatePreservesMaskRejectedItemsAndMutableSlots .....................   Passed    0.04 sec
+      Start 2772: GuidMeshResolutionTest.RepeatedGuidLoadsObserveExplicitUnloadAndCurrentModelContents
+67/93 Test #2772: GuidMeshResolutionTest.RepeatedGuidLoadsObserveExplicitUnloadAndCurrentModelContents ....................................   Passed    0.14 sec
+      Start 2773: GuidMeshResolutionTest.StableGuidFollowsIndexMovesAndOldPathHints
+68/93 Test #2773: GuidMeshResolutionTest.StableGuidFollowsIndexMovesAndOldPathHints .......................................................   Passed    0.03 sec
+      Start 2774: GuidMeshResolutionTest.ProjectRetirementDoesNotReviveCachedModelHandles
+69/93 Test #2774: GuidMeshResolutionTest.ProjectRetirementDoesNotReviveCachedModelHandles .................................................   Passed    0.04 sec
+      Start 2775: StaticMeshRenderReuseTest.ReusesUnchangedGeometryAndRebuildsOnlyChangedInputs
+70/93 Test #2775: StaticMeshRenderReuseTest.ReusesUnchangedGeometryAndRebuildsOnlyChangedInputs ...........................................   Passed    0.02 sec
+      Start 2776: StaticMeshRenderReuseTest.ObservesRawPoseMeshAndPresentationWritesWithoutNotifications
+71/93 Test #2776: StaticMeshRenderReuseTest.ObservesRawPoseMeshAndPresentationWritesWithoutNotifications ..................................   Passed    0.02 sec
+      Start 2777: StaticMeshRenderReuseTest.RebuildsRotatedBoundsAndSeparatesSkinnedMeshInputs
+72/93 Test #2777: StaticMeshRenderReuseTest.RebuildsRotatedBoundsAndSeparatesSkinnedMeshInputs ............................................   Passed    0.02 sec
+      Start 2778: StaticMeshRenderReuseTest.AdvancesPreviousWorldOnReuseAndResetsAfterMissingFrames
+73/93 Test #2778: StaticMeshRenderReuseTest.AdvancesPreviousWorldOnReuseAndResetsAfterMissingFrames .......................................   Passed    0.02 sec
+      Start 2779: StaticMeshRenderReuseTest.SeparatesComponentEntityAndSceneLifetimes
+74/93 Test #2779: StaticMeshRenderReuseTest.SeparatesComponentEntityAndSceneLifetimes .....................................................   Passed    0.03 sec
+      Start 2780: StaticMeshRenderReuseTest.ObservesParentMotionReparentingAndHierarchyActivation
+75/93 Test #2780: StaticMeshRenderReuseTest.ObservesParentMotionReparentingAndHierarchyActivation .........................................   Passed    0.02 sec
+      Start 2781: StaticMeshRenderReuseTest.RevalidatesAfterBoundedSceneEvictionAndRendererReordering
+76/93 Test #2781: StaticMeshRenderReuseTest.RevalidatesAfterBoundedSceneEvictionAndRendererReordering .....................................   Passed    0.02 sec
+      Start 2782: StaticMeshRenderReuseTest.KeepsMovingGeometryCurrentAndReentersReuseAfterMotionStops
+77/93 Test #2782: StaticMeshRenderReuseTest.KeepsMovingGeometryCurrentAndReentersReuseAfterMotionStops ....................................   Passed    0.03 sec
+      Start 2783: StaticMeshRenderReuseTest.LeavesColdScenesOnTheOriginalPathBeforeCreatingReusableValues
+78/93 Test #2783: StaticMeshRenderReuseTest.LeavesColdScenesOnTheOriginalPathBeforeCreatingReusableValues .................................   Passed    0.03 sec
+      Start 2784: StaticMeshRenderReuseTest.RechecksVolatileScenesWithinABoundedNumberOfBuildsAfterMotionStops
+79/93 Test #2784: StaticMeshRenderReuseTest.RechecksVolatileScenesWithinABoundedNumberOfBuildsAfterMotionStops ............................   Passed    0.03 sec
+      Start 2788: InstanceBatchTest.IdenticalCallsShareABatch
+80/93 Test #2788: InstanceBatchTest.IdenticalCallsShareABatch .............................................................................   Passed    0.02 sec
+      Start 2789: InstanceBatchTest.DifferentCapturedPoseRowsDoNotShareABatch
+81/93 Test #2789: InstanceBatchTest.DifferentCapturedPoseRowsDoNotShareABatch .............................................................   Passed    0.02 sec
+      Start 2790: InstanceBatchTest.ObjectConstantBufferIsIgnored
+82/93 Test #2790: InstanceBatchTest.ObjectConstantBufferIsIgnored .........................................................................   Passed    0.02 sec
+      Start 2791: InstanceBatchTest.InstanceFieldsAreIgnored
+83/93 Test #2791: InstanceBatchTest.InstanceFieldsAreIgnored ..............................................................................   Passed    0.02 sec
+      Start 2792: InstanceBatchTest.DifferentMeshBreaksTheBatch
+84/93 Test #2792: InstanceBatchTest.DifferentMeshBreaksTheBatch ...........................................................................   Passed    0.02 sec
+      Start 2793: InstanceBatchTest.IndependentDeformedBuffersRequireTheSameSourceAndAllMaterialBindings
+85/93 Test #2793: InstanceBatchTest.IndependentDeformedBuffersRequireTheSameSourceAndAllMaterialBindings ..................................   Passed    0.02 sec
+      Start 2794: InstanceBatchTest.DifferentSubmeshRangeBreaksTheBatch
+86/93 Test #2794: InstanceBatchTest.DifferentSubmeshRangeBreaksTheBatch ...................................................................   Passed    0.03 sec
+      Start 2795: InstanceBatchTest.DifferentShaderOrPipelineStateBreaksTheBatch
+87/93 Test #2795: InstanceBatchTest.DifferentShaderOrPipelineStateBreaksTheBatch ..........................................................   Passed    0.02 sec
+      Start 2796: InstanceBatchTest.AnyOtherConstantBufferBreaksTheBatch
+88/93 Test #2796: InstanceBatchTest.AnyOtherConstantBufferBreaksTheBatch ..................................................................   Passed    0.03 sec
+      Start 2797: InstanceBatchTest.AnyTextureSlotBreaksTheBatch
+89/93 Test #2797: InstanceBatchTest.AnyTextureSlotBreaksTheBatch ..........................................................................   Passed    0.02 sec
+      Start 2798: InstanceBatchTest.StructuredBufferSlotsBreakTheBatch
+90/93 Test #2798: InstanceBatchTest.StructuredBufferSlotsBreakTheBatch ....................................................................   Passed    0.02 sec
+      Start 2799: InstanceBatchTest.PassSpecificObjectConstantMeaningDoesNotAffectTheCondition
+91/93 Test #2799: InstanceBatchTest.PassSpecificObjectConstantMeaningDoesNotAffectTheCondition ............................................   Passed    0.02 sec
+      Start 2800: InstanceBatchTest.LayerAndTopologyBreakTheBatch
+92/93 Test #2800: InstanceBatchTest.LayerAndTopologyBreakTheBatch .........................................................................   Passed    0.02 sec
+      Start 2801: InstanceBatchTest.GpuResourceBindingsAndCommandsBreakTheBatch
+93/93 Test #2801: InstanceBatchTest.GpuResourceBindingsAndCommandsBreakTheBatch ...........................................................   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 93
+
+Label Time Summary:
+Engine    =   2.76 sec*proc (93 tests)
+
+Total Test time (real) =   3.11 sec

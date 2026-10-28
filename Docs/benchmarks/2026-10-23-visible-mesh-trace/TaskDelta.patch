@@ -1,0 +1,119 @@
+--- before/Projects/Graphics/src/Passes/Geometry/ForwardPasses.cpp
++++ Projects/Graphics/src/Passes/Geometry/ForwardPasses.cpp
+@@ -7,6 +7,7 @@
+ #include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
+ #include <algorithm>
+ #include <vector>
++#include <optional>
+ 
+ namespace fbzz::renderer {
+ namespace {
+@@ -58,11 +59,13 @@
+     std::sort(skinnedOpaque.begin(), skinnedOpaque.end(), frontToBack);
+     const bool occlusion = ctx.occlusionCuller && ctx.occlusionCullingEnabled;
+     if (occlusion) ctx.occlusionCuller->Reset(ctx.camera);
++    std::optional<DrawCall> bindings;
+     auto submit = [&](const Entry& entry) {
+         if (!entry.item->forwardMaterial.valid || !entry.item->forwardMaterial.shader.IsValid()) return;
++        if (!bindings) bindings = ForwardPassBindings(ctx);
+         const auto constants = ObjectConstants(*entry.object);
+         resources.Update(h.objectCB, &constants, sizeof(constants));
+-        SubmitCounted(ctx, ForwardDraw(ctx, *entry.object, *entry.item));
++        SubmitCounted(ctx, ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings));
+     };
+     for (const auto& entry : staticOpaque) {
+         if (!entry.item->forwardMaterial.valid || !entry.item->forwardMaterial.shader.IsValid()) continue;
+@@ -77,6 +80,8 @@
+     for (const auto& entry : skinnedOpaque) submit(entry);
+     ExecuteInstanceForward(ctx);
+     ExecuteFiberPass(ctx);
++    /// @note Instance/fiber execution may touch view state; resolve the transparent group's bindings again at its own boundary.
++    bindings.reset();
+     std::sort(transparent.begin(), transparent.end(), [](const Entry& a, const Entry& b) {
+         if (a.item->material.renderQueue != b.item->material.renderQueue)
+             return a.item->material.renderQueue < b.item->material.renderQueue;
+--- before/Projects/Graphics/src/Passes/Geometry/RenderSceneDraw.cpp
++++ Projects/Graphics/src/Passes/Geometry/RenderSceneDraw.cpp
+@@ -10,33 +10,7 @@
+ DrawCall ForwardDraw(RenderPassContext& ctx, const RenderObject& object,
+                      const RenderMeshItem& item, bool bindIbl)
+ {
+-    const auto& material = item.forwardMaterial;
+-    const auto& h = ctx.handles;
+-    renderer::DrawCall dc;
+-    dc.vertexBuffer = object.skinned ? item.skinningVertexBuffer : item.vertexBuffer;
+-    dc.indexBuffer = item.indexBuffer;
+-    dc.indexCount = item.indexCount;
+-    dc.vertexCount = item.vertexCount;
+-    dc.shader = material.shader;
+-    dc.pipelineState = MaterialPipeline(ctx, item.material);
+-    dc.layer = material.capabilities.blend == renderer::BlendMode::OPAQUE_BLEND
+-        ? renderer::RenderLayer::OPAQUE_LAYER : renderer::RenderLayer::TRANSPARENT_LAYER;
+-    dc.constantBuffers[0] = h.frameCB;
+-    dc.constantBuffers[1] = h.objectCB;
+-    dc.constantBuffers[2] = material.paramsBuffer;
+-    dc.constantBuffers[3] = h.lightCB;
+-    dc.constantBuffers[4] = h.shadowCB;
+-    dc.constantBuffers[8] = h.advancedGraphicsCB;
+-    if (object.skinned) { dc.constantBuffers[7] = object.skinningPalette; BindGpuBonePalette(dc, object); }
+-    BindForwardShadingResources(dc, ctx);
+-    for (size_t i = 0; i < material.textures.size(); ++i) dc.textures[i] = material.textures[i];
+-    dc.textures[8] = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+-    if (bindIbl) {
+-        dc.textures[16] = h.iblIrradiance;
+-        dc.textures[17] = h.iblPrefilter;
+-        dc.textures[18] = h.iblBrdfLut;
+-    }
+-    return dc;
++    return ForwardDrawWithBindings(ctx, object, item, ForwardPassBindings(ctx, bindIbl));
+ }
+ 
+ }
+--- before/Projects/Graphics/src/Passes/Geometry/RenderScenePassHelpers.hpp
++++ Projects/Graphics/src/Passes/Geometry/RenderScenePassHelpers.hpp
+@@ -92,4 +92,45 @@
+     return item.visible && item.vertexBuffer.IsValid() && item.indexBuffer.IsValid();
+ }
+ 
++/// @note Borrow only this execution's resolved view resources; no registry or resource handle is retained across passes or views.
++/// @note Long registry names create owning temporary strings; resolve them once before the per-object loop.
++/// @see https://github.com/microsoft/STL/blob/main/stl/inc/xstring basic_string small storage and string_view construction.
++inline DrawCall ForwardPassBindings(RenderPassContext& ctx, bool bindIbl = true)
++{
++    const auto& h = ctx.handles;
++    DrawCall draw;
++    draw.constantBuffers[0] = h.frameCB;
++    draw.constantBuffers[1] = h.objectCB;
++    draw.constantBuffers[3] = h.lightCB;
++    draw.constantBuffers[4] = h.shadowCB;
++    draw.constantBuffers[8] = h.advancedGraphicsCB;
++    BindForwardShadingResources(draw, ctx);
++    draw.textures[8] = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
++    if (bindIbl) {
++        draw.textures[16] = h.iblIrradiance;
++        draw.textures[17] = h.iblPrefilter;
++        draw.textures[18] = h.iblBrdfLut;
++    }
++    return draw;
++}
++
++inline DrawCall ForwardDrawWithBindings(RenderPassContext& ctx, const RenderObject& object,
++                                       const RenderMeshItem& item, const DrawCall& bindings)
++{
++    const auto& material = item.forwardMaterial;
++    DrawCall draw = bindings;
++    draw.vertexBuffer = object.skinned ? item.skinningVertexBuffer : item.vertexBuffer;
++    draw.indexBuffer = item.indexBuffer;
++    draw.indexCount = item.indexCount;
++    draw.vertexCount = item.vertexCount;
++    draw.shader = material.shader;
++    draw.pipelineState = MaterialPipeline(ctx, item.material);
++    draw.layer = material.capabilities.blend == BlendMode::OPAQUE_BLEND
++        ? RenderLayer::OPAQUE_LAYER : RenderLayer::TRANSPARENT_LAYER;
++    draw.constantBuffers[2] = material.paramsBuffer;
++    if (object.skinned) { draw.constantBuffers[7] = object.skinningPalette; BindGpuBonePalette(draw, object); }
++    for (size_t i = 0; i < material.textures.size(); ++i) draw.textures[i] = material.textures[i];
++    return draw;
++}
++
+ } /// @note namespace fbzz::renderer

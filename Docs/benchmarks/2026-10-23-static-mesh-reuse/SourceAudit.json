@@ -1,0 +1,49 @@
+{
+  "files": [
+    {
+      "path": "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp",
+      "sha256": "3d597f99b09da70a65137076eaea27f84fcbb27dd1bac8ea64a5d7973dcafd0b"
+    },
+    {
+      "path": "Projects/Engine/include/Engine/Scene/Systems/RenderSceneExtractor.hpp",
+      "sha256": "10683b1a0ed26d7387e333f16d182728c1317d938baa7a2e6676c3159ec78bf0"
+    },
+    {
+      "path": "Projects/Engine/src/Scene/Systems/RuntimeMeshSystem.cpp",
+      "sha256": "7c77af353978b2381aa59de31d64a7a507f21a1a1df5f7c4db1475a542112ef6"
+    },
+    {
+      "path": "Projects/Engine/src/Scene/Managed/ManagedRenderComponentServices.cpp",
+      "sha256": "a646df0d521257c0703603781c5a130a1fcdd0f486a2ab5c40a89466c9c2bc9f"
+    },
+    {
+      "path": "Projects/Tests/CMakeLists.txt",
+      "sha256": "69f3290552c812bcc3000a35b06afa33ae90e5a95d11d90c8b02b1a8c3ab6d4f"
+    },
+    {
+      "path": "Projects/Tests/Engine/Auto/RenderSceneExtractorTests.cpp",
+      "sha256": "ea71b2b1f331f93a66d1c0a2349eaa8659a577494554da1d2c006c86816e95e7"
+    },
+    {
+      "path": "Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp",
+      "sha256": "5c27f9689c16444ed91972e6bee1eadecb60ce6e9a296d7f318047073cff0245"
+    },
+    {
+      "path": "Projects/Tests/Engine/Auto/StaticMeshRenderReuseTests.cpp",
+      "sha256": "fdaeae10472ba617ea960bb8398a1605ee372229902f51a9640cb6aa54ac4376"
+    },
+    {
+      "path": "Projects/Tests/Bench/StaticMeshReuseMeasure.cpp",
+      "sha256": "d41a410a580e3396e2b144e1a0b54d5418d540146558ba937c68e9b779492cc4"
+    },
+    {
+      "path": "Projects/Tests/Engine/Auto/StaticMeshRenderMotionTests.cpp",
+      "sha256": "2786c28052916d2ec02f1b01ec81c8c0e19eac8f14b58c38fb984bccfb2ccf34"
+    },
+    {
+      "path": "Projects/Tests/Engine/Fixtures/StaticMeshRenderReuseFixture.hpp",
+      "sha256": "cc3322305fbd35c27b8b768ef6c524b33191bc4aee543afa647bd611fd163c4e"
+    }
+  ],
+  "legacyComments": []
+}

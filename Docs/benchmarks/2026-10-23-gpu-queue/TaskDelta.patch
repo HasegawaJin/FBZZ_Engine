@@ -1,0 +1,205 @@
+--- before/Projects/Graphics/src/Renderer/Platform/DX12/DX12Context.cpp
++++ Projects/Graphics/src/Renderer/Platform/DX12/DX12Context.cpp
+@@ -638,6 +638,7 @@
+         || !CheckResult(m_commandList->Reset(frame.allocator.Get(), nullptr), "CommandList::Reset"))
+         return false;
+     ++m_graphicsCommandListSerial;
++    m_backBufferWritten = false;
+     /// @note このフレームのコンピュート用アロケーターもここで 1 回だけ巻き戻す。同じフレームの
+     /// @note       描画フェンスを待った後なので、そのフレームのコンピュートも既に終わっている
+     /// @note       (描画キューが区間の完了を待ってから最後の Signal を出すため)。
+@@ -684,6 +685,12 @@
+     m_frameOpen = false;
+     FBZZ_HR_CHECK(signalResult);
+     m_frames[m_frameIndex].fenceValue = fenceValue;
++    /// @note 画面外出力を継続する呼び手では、表示更新のないフレームも GPU 送信とフェンス更新は完了させる。
++    /// @see https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-present Present submits the next image for display.
++    if (m_renderWhenOccluded && !m_backBufferWritten) {
++        m_frameIndex = (m_frameIndex + 1) % FRAME_COUNT;
++        return fenceValue;
++    }
+     const UINT syncInterval = m_vsync ? 1u : 0u;
+     const UINT presentFlags = (!m_vsync && m_allowTearing) ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+     HRESULT presentResult;
+--- before/Projects/Graphics/src/Renderer/Platform/DX12/DX12Context.hpp
++++ Projects/Graphics/src/Renderer/Platform/DX12/DX12Context.hpp
+@@ -130,6 +130,7 @@
+     uint32_t GetSrvDescriptorIncrement() const { return m_srvIncrement; }
+     bool IsFrameOpen() const { return m_frameOpen; }
+     void SetRenderWhenOccluded(bool enabled) { m_renderWhenOccluded = enabled; }
++    void MarkBackBufferWritten() { m_backBufferWritten = true; }
+ 
+     /// @note Present の垂直同期。既定は無効 (フレームレート制御は Time::targetFps)。
+     /// @note 有効時は SyncInterval=1 にし、tearing フラグは落とす (併用は DXGI が拒否する)。
+@@ -143,7 +144,8 @@
+     /// @note       は「直前に何を束縛したか」を覚えて冗長設定を弾くため、外部が状態を触ったらこの世代を
+     /// @note       上げて知らせる契約にする (ルートシグネチャの再設定は全ルート引数を無効化するため、
+     /// @note       黙って踏むと描画が壊れる)。
+-    void MarkPipelineStateDirty() { ++m_pipelineStateGeneration; }
++    /// @note 外部記録は描画先を追跡できないため、バックバッファへの書き込みも保守的に扱う。
++    void MarkPipelineStateDirty() { ++m_pipelineStateGeneration; MarkBackBufferWritten(); }
+     uint64_t GetPipelineStateGeneration() const { return m_pipelineStateGeneration; }
+     uint64_t GetCompletedFenceValue() const { return m_fence ? m_fence->GetCompletedValue() : 0; }
+     uint64_t GetFrameFenceValue(uint32_t index) const { return m_frames[index % FRAME_COUNT].fenceValue; }
+@@ -343,6 +345,7 @@
+     bool m_allowTearing = false;
+     bool m_vsync = false;
+     bool m_frameOpen = false;
++    bool m_backBufferWritten = false;
+     DX12PixEventStack m_graphicsPixEvents;
+     DX12PixEventStack m_computePixEvents;
+     uint64_t m_graphicsCommandListSerial = 0;
+--- before/Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp
++++ Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp
+@@ -221,6 +221,7 @@
+                 target->GetDsv(), D3D12_CLEAR_FLAG_DEPTH, FarDepth(target->IsReversedZ()), 0, 0, nullptr);
+         }
+     } else {
++        m_context.MarkBackBufferWritten();
+         m_context.GetCommandList()->ClearRenderTargetView(m_context.GetCurrentRtv(), clearColor, 0, nullptr);
+         /// @note バックバッファも DX11 と同じく色クリア時に深度を 1.0 へ戻す。
+         m_context.GetCommandList()->ClearDepthStencilView(
+@@ -237,6 +238,7 @@
+         }
+         DX12RenderTarget* const target = ResolveCurrentRenderTarget();
+         if (target && !target->HasDepth()) return;
++        if (!target) m_context.MarkBackBufferWritten();
+         const auto dsv = target ? target->GetDsv(target->IsCubemap() ? m_currentCubeMip : 0) : m_context.GetDsv();
+         const float farDepth = FarDepth(target && target->IsReversedZ());
+         m_context.GetCommandList()->ClearDepthStencilView(
+@@ -686,6 +688,7 @@
+     /// @see https://github.com/microsoft/DirectX-Specs/blob/master/d3d/IndirectDrawing.md State leakage.
+     commands->SetGraphicsRoot32BitConstant(kIndirectInstanceOffsetRootParam, 0, 0);
+     if (prepared && !call.preparedSkinning->IsWriteCurrent(preparedRow)) return;
++    if (!currentTarget) m_context.MarkBackBufferWritten();
+     if (hasIndirectArguments) {
+         auto* argumentBuffer = static_cast<DX12StructuredBuffer*>(resources.Get(call.indirectArguments));
+         if (prepared && !call.preparedSkinning->IsWriteCurrent(preparedRow)) return;
+--- before/Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
++++ Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
+@@ -14,6 +14,7 @@
+ #include <cstring>
+ #include <fstream>
+ #include <Core/Profiler/Profiler.hpp>
++#include <Core/Profiler/FrameTimeline.hpp>
+ #include <Engine/Asset/AssetManager.hpp>
+ #include <Engine/Asset/MaterialAsset.hpp>
+ #include <Engine/Asset/Model.hpp>
+@@ -122,7 +123,7 @@
+ };
+ 
+ /// @note This is a direct native renderer baseline, not Editor producer/worker throughput.
+-/// @note EndFrame includes DXGI Present with VSync disabled. No capture, readback or console I/O is timed.
++/// @note EndFrame includes presentation when required, with VSync disabled. No capture, readback or console I/O is timed.
+ class RegularMeshRenderPerformanceTest : public testkit::EngineFixture {
+ protected:
+     void SetUp() override
+@@ -144,6 +145,7 @@
+         profiler::Profiler::RequestCaptureFilter(std::move(captureFilter));
+         m_timingOnly = FrameSetting("FBZZ_REGULAR_MESH_TIMING_ONLY", 0) == 1;
+         m_measureThreadCycles = FrameSetting("FBZZ_REGULAR_MESH_THREAD_CYCLES", 0) == 1;
++        m_backBufferPeriod = FrameSetting("FBZZ_REGULAR_MESH_BACKBUFFER_PERIOD", 0);
+         profiler::Profiler::RequestRecording(!m_timingOnly);
+         m_com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+         ASSERT_TRUE(SUCCEEDED(m_com));
+@@ -153,7 +155,8 @@
+         renderer::SetShaderPathResolver(ResolveRegularMeshShader);
+         m_bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, kWidth, kHeight);
+         ASSERT_NE(m_bundle.renderer, nullptr);
+-        m_bundle.renderer->SetRenderWhenOccluded(true);
++        m_continueWhenOccluded = FrameSetting("FBZZ_REGULAR_MESH_DISABLE_OCCLUDED_CONTINUATION", 0) != 1;
++        m_bundle.renderer->SetRenderWhenOccluded(m_continueWhenOccluded);
+         m_bundle.renderer->SetVSync(false);
+         m_resources = std::make_unique<renderer::ResourceManager>(*m_bundle.renderer);
+         asset::AssetManager::Init(*m_resources, m_temp.Path().generic_string() + "/");
+@@ -217,6 +220,7 @@
+         m_bundle.imguiRenderer.reset();
+         if (m_bundle.renderer) m_bundle.renderer->Shutdown();
+         m_bundle.renderer.reset();
++        if (m_captureTimeline) EXPECT_TRUE(profiler::frame_timeline::WriteAfterStop());
+         renderer::SetShaderPathResolver(nullptr);
+         if (m_window) DestroyWindow(m_window);
+         if (SUCCEEDED(m_com)) CoUninitialize();
+@@ -669,6 +673,7 @@
+         scene::FlushWorldTransforms(m_scene);
+         const uint32_t warmup = FrameSetting("FBZZ_REGULAR_MESH_WARMUP", 12);
+         const uint32_t measured = FrameSetting("FBZZ_REGULAR_MESH_SAMPLES", 30);
++        m_captureTimeline = profiler::frame_timeline::ArmFromEnvironment(1, warmup, measured);
+         for (uint32_t index = 0; index < warmup; ++index) RenderFrame(false);
+         m_firstMeasured = m_resources->FrameStamp() + 1;
+         m_lastMeasured = m_firstMeasured + measured - 1;
+@@ -749,6 +754,8 @@
+         const bool cycleStartValid = readCycles && QueryThreadCycleTime(GetCurrentThread(), &cycleStart) != 0;
+         const double frameStart = profiler::ProfileRecorder::NowMs();
+         profiler::Profiler::BeginFrame(++m_serial, frameStart);
++        if (m_captureTimeline)
++            profiler::frame_timeline::BeginApplicationFrame(m_serial, resources.FrameStamp() + 1, frameStart);
+         for (size_t index = 0; index < m_entities.size() * m_changedPercent / 100; ++index) {
+             auto* object = m_scene.GetGameObject(m_entities[index]);
+             object->transform.position.z = object->transform.worldPosition.z = m_serial % 2 == 0 ? 0.125f : -0.125f;
+@@ -782,10 +789,15 @@
+                 m_useFrameCache ? &geometry : nullptr);
+             m_secondView = renderer::RenderDebugOverlay::GetLastSnapshot().gpuCurrentView;
+         }
++        if (m_backBufferPeriod != 0 && m_serial % m_backBufferPeriod == 0) {
++            device.SetRenderTarget({}, resources);
++            device.Clear({0.2f, 0.3f, 0.4f, 1.0f});
++        }
+         const double endStart = profiler::ProfileRecorder::NowMs();
+         device.EndFrame();
+         m_frameOpen = false;
+         const double frameEnd = profiler::ProfileRecorder::NowMs();
++        if (m_captureTimeline) profiler::frame_timeline::EndApplicationFrame(frameEnd);
+         if (readCycles) {
+             ULONG64 cycleEnd = 0;
+             result.threadCyclesValid = QueryThreadCycleTime(GetCurrentThread(), &cycleEnd) != 0
+@@ -878,13 +890,15 @@
+             << ",\"gpuInstancing\":" << (batching ? "true" : "false")
+             << ",\"frameGeometryCache\":" << (m_useFrameCache ? "true" : "false")
+             << ",\"threadCyclesEnabled\":" << (m_measureThreadCycles ? "true" : "false")
++            << ",\"backBufferPeriod\":" << m_backBufferPeriod
++            << ",\"continueWhenOccluded\":" << (m_continueWhenOccluded ? "true" : "false")
+             << ",\"viewsPerFrame\":" << (m_twoViews ? 2 : 1)
+             << ",\"changedPercent\":" << m_changedPercent << ",\"timingOnly\":" << (m_timingOnly ? "true" : "false")
+             << ",\"secondWidth\":" << (m_twoViews ? kSecondWidth : 0)
+             << ",\"secondHeight\":" << (m_twoViews ? kSecondHeight : 0)
+             << ",\"backend\":" << JsonString(m_bundle.renderer->GetBackendName())
+             << ",\"logicalProcessors\":" << GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)
+-            << ",\"rendererThreaded\":false,\"vsync\":false,\"endIncludesPresent\":true"
++            << ",\"rendererThreaded\":false,\"vsync\":false,\"endIncludesPresentWhenRequired\":true"
+             << ",\"totalGpuTimeAvailable\":false,\"strictCpuGpuJoined\":false}\n";
+         output << "REGULAR_MESH_JSON {\"kind\":\"validation\",\"case\":" << JsonString(name)
+             << ",\"pixelHash\":" << JsonString(std::to_string(m_pixelHash))
+@@ -971,6 +985,7 @@
+     uint64_t m_savedFrame = 0;
+     uint32_t m_nonBackgroundPixels = 0;
+     uint32_t m_secondNonBackgroundPixels = 0;
++    uint32_t m_backBufferPeriod = 0;
+     float m_savedTime = 0;
+     float m_savedUnscaledTime = 0;
+     float m_savedDelta = 0;
+@@ -979,11 +994,13 @@
+     HWND m_window = nullptr;
+     bool m_assetInitialized = false;
+     bool m_frameOpen = false;
++    bool m_captureTimeline = false;
+     bool m_savedRecording = false;
+     bool m_useFrameCache = true;
+     bool m_twoViews = false;
+     bool m_timingOnly = false;
+     bool m_measureThreadCycles = false;
++    bool m_continueWhenOccluded = true;
+ };
+ 
+ TEST_F(RegularMeshRenderPerformanceTest, ProjectHybridAppearanceRendersShellAndFinWithSharedCoverage)
+--- before/Docs/design/graphics-library.md
++++ Docs/design/graphics-library.md
+@@ -11,6 +11,8 @@
+ ## 1. 分離で保証すること
+ 
+ **Scene / GameObject / Component / AssetDatabase を持たないプログラムでも、Graphics へデータを渡して描画できる。** これを分離完了の基準にする。
++
++DX12 の画面外バッチは既存の `SetRenderWhenOccluded(true)` で継続を明示する。この場合、バックバッファへの Clear・Draw・外部コマンド記録がないフレームは Present を省く。コマンドリストの送信、実フェンスの Signal、フレームスロットの再利用待ち、リソース退役、GPU 計測は維持する。描画先の再束縛だけでは表示更新とはしない。通常モードは毎フレーム Present し、継続モードでもバックバッファを更新すれば Present する。ImGui など外部記録は描画先を完全に追えないため、既存の状態変更通知で保守的に表示更新ありとする。[GPU キュー調査と計測](../benchmarks/2026-10-23-gpu-queue/Report.md)。
+ 
+ Engine 側のシーン構造と、Graphics 側の描画方式を別々に変更できるようにする。単に `Renderer/` を移してリンク対象を増やすだけでは、この境界は成立しない。
+ 

@@ -1,0 +1,148 @@
+[
+  {
+    "run": "Diagnostic-profile-AllVisible1000-r0-Baseline.out",
+    "completeFrames": 600,
+    "samples": 600,
+    "slowBoundaryFrames": [
+      {
+        "serial": 727,
+        "frameMs": 1.2658,
+        "beginMs": 0.0146000385,
+        "renderMs": 0.721099973,
+        "endMs": 0.529700041,
+        "profilerComplete": true,
+        "droppedSamples": 0,
+        "scopes": {
+          "DX12Frame::Begin": 0.00990009308,
+          "DX12Frame::End": 0.526600003,
+          "DX12Frame::Present": 0.486199975,
+          "DX12Frame::RetireResources": 0.000200033188,
+          "DX12Frame::WaitForFence": 0.000200033188
+        }
+      },
+      {
+        "serial": 606,
+        "frameMs": 1.14690006,
+        "beginMs": 0.0142999887,
+        "renderMs": 0.721099973,
+        "endMs": 0.41110003,
+        "profilerComplete": true,
+        "droppedSamples": 0,
+        "scopes": {
+          "DX12Frame::Begin": 0.00999999046,
+          "DX12Frame::End": 0.407599926,
+          "DX12Frame::Present": 0.364599943,
+          "DX12Frame::RetireResources": 0.000100016594,
+          "DX12Frame::WaitForFence": 0.000200033188
+        }
+      },
+      {
+        "serial": 1111,
+        "frameMs": 1.10470009,
+        "beginMs": 0.0128999949,
+        "renderMs": 0.69659996,
+        "endMs": 0.394800067,
+        "profilerComplete": true,
+        "droppedSamples": 0,
+        "scopes": {
+          "DX12Frame::Begin": 0.00920009613,
+          "DX12Frame::End": 0.391100049,
+          "DX12Frame::Present": 0.349300027,
+          "DX12Frame::RetireResources": 9.98973846e-05,
+          "DX12Frame::WaitForFence": 0.000100016594
+        }
+      },
+      {
+        "serial": 1162,
+        "frameMs": 1.04500008,
+        "beginMs": 0.0123999119,
+        "renderMs": 0.693199992,
+        "endMs": 0.338900089,
+        "profilerComplete": true,
+        "droppedSamples": 0,
+        "scopes": {
+          "DX12Frame::Begin": 0.00880002975,
+          "DX12Frame::End": 0.335399985,
+          "DX12Frame::Present": 0.162899971,
+          "DX12Frame::RetireResources": 9.98973846e-05,
+          "DX12Frame::WaitForFence": 0.000100016594
+        }
+      }
+    ],
+    "maximumBeginMs": 0.0611000061,
+    "maximumFenceScopeMs": 0.000400066376
+  },
+  {
+    "run": "Diagnostic-profile-AllVisible1000-r1-Candidate.out",
+    "completeFrames": 600,
+    "samples": 600,
+    "slowBoundaryFrames": [
+      {
+        "serial": 764,
+        "frameMs": 1.11940002,
+        "beginMs": 0.0125000477,
+        "renderMs": 0.670499921,
+        "endMs": 0.436000109,
+        "profilerComplete": true,
+        "droppedSamples": 0,
+        "scopes": {
+          "DX12Frame::Begin": 0.00870001316,
+          "DX12Frame::End": 0.126399994,
+          "DX12Frame::Present": 0.081799984,
+          "DX12Frame::RetireResources": 0.000100016594,
+          "DX12Frame::WaitForFence": 0.000100016594
+        }
+      },
+      {
+        "serial": 1115,
+        "frameMs": 1.07529998,
+        "beginMs": 0.0125999451,
+        "renderMs": 0.662799954,
+        "endMs": 0.399500012,
+        "profilerComplete": true,
+        "droppedSamples": 0,
+        "scopes": {
+          "DX12Frame::Begin": 0.00880002975,
+          "DX12Frame::End": 0.395900011,
+          "DX12Frame::Present": 0.349900007,
+          "DX12Frame::RetireResources": 0.000199913979,
+          "DX12Frame::WaitForFence": 0.000100016594
+        }
+      },
+      {
+        "serial": 873,
+        "frameMs": 0.899999976,
+        "beginMs": 0.0130000114,
+        "renderMs": 0.646999955,
+        "endMs": 0.23969996,
+        "profilerComplete": true,
+        "droppedSamples": 0,
+        "scopes": {
+          "DX12Frame::Begin": 0.00890004635,
+          "DX12Frame::End": 0.236500025,
+          "DX12Frame::Present": 0.195199966,
+          "DX12Frame::RetireResources": 9.98973846e-05,
+          "DX12Frame::WaitForFence": 0.000100016594
+        }
+      },
+      {
+        "serial": 1116,
+        "frameMs": 0.980200052,
+        "beginMs": 0.0273000002,
+        "renderMs": 0.729799986,
+        "endMs": 0.222599983,
+        "profilerComplete": true,
+        "droppedSamples": 0,
+        "scopes": {
+          "DX12Frame::Begin": 0.0189999342,
+          "DX12Frame::End": 0.218400002,
+          "DX12Frame::Present": 0.0978999138,
+          "DX12Frame::RetireResources": 0.000100016594,
+          "DX12Frame::WaitForFence": 0.000300049782
+        }
+      }
+    ],
+    "maximumBeginMs": 0.0415000916,
+    "maximumFenceScopeMs": 0.00240004063
+  }
+]

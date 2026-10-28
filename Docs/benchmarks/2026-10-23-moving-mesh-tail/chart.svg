@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="fbzz-chart" viewBox="0 0 760 204" width="760" height="204" role="img" aria-labelledby="chart-title chart-desc">
+<title id="chart-title">変更後 の 変更前 に対する変化率</title>
+<desc id="chart-desc">1,000体・全件可視 Frame P99: +29.0% (悪化)。10,000体・無変更 Frame P99: −18.0% (改善)。10,000体・1%変更 Frame P99: −30.8% (改善)。10,000体・全件変更 Frame P99: −35.0% (改善)。10,000体・2ビュー Frame P99: −16.0% (改善)</desc>
+<style>
+  .fbzz-chart { --improved:#1a7f37; --neutral:#8c959f; --caution:#9a6700; --regressed:#cf222e;
+                --ink:#1f2328; --muted:#59636e; --grid:#d1d9e0; font-family: system-ui, -apple-system, "Segoe UI", "Yu Gothic UI", sans-serif; }
+  @media (prefers-color-scheme: dark) {
+    .fbzz-chart { --improved:#3fb950; --neutral:#6e7681; --caution:#d29922; --regressed:#f85149;
+                  --ink:#e6edf3; --muted:#9198a1; --grid:#3d444d; }
+  }
+  .fbzz-chart .label { fill: var(--ink); font-size: 12px; }
+  .fbzz-chart .sub { fill: var(--muted); font-size: 11px; }
+  .fbzz-chart .value { fill: var(--ink); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .fbzz-chart .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .fbzz-chart .grid { stroke: var(--grid); stroke-width: 1; }
+  .fbzz-chart .zero { stroke: var(--muted); stroke-width: 1.25; }
+  .fbzz-chart .bar-improved { fill: var(--improved); }
+  .fbzz-chart .bar-neutral { fill: var(--neutral); }
+  .fbzz-chart .bar-caution { fill: var(--caution); }
+  .fbzz-chart .bar-regressed { fill: var(--regressed); }
+</style>
+<text class="sub" x="522" y="18" text-anchor="end">← 速くなった</text>
+<text class="sub" x="538" y="18">遅くなった →</text>
+<line class="grid" x1="364" x2="364" y1="32" y2="174"/>
+<text class="tick" x="364" y="192" text-anchor="middle">−50.0%</text>
+<line class="grid" x1="447" x2="447" y1="32" y2="174"/>
+<text class="tick" x="447" y="192" text-anchor="middle">−25.0%</text>
+<line class="grid" x1="613" x2="613" y1="32" y2="174"/>
+<text class="tick" x="613" y="192" text-anchor="middle">+25.0%</text>
+<line class="grid" x1="696" x2="696" y1="32" y2="174"/>
+<text class="tick" x="696" y="192" text-anchor="middle">+50.0%</text>
+<text class="tick" x="530" y="192" text-anchor="middle">0%</text>
+<text class="label" x="292" y="57" text-anchor="end">1,000体・全件可視<tspan class="sub"> · Frame P99</tspan></text>
+<rect class="bar-regressed" x="530.0" y="46.0" width="96.4" height="14" rx="2"><title>1,000体・全件可視 Frame P99: +29.0%</title></rect>
+<text class="value" x="632.4" y="57" text-anchor="start">+29.0%</text>
+<text class="label" x="292" y="83" text-anchor="end">10,000体・無変更<tspan class="sub"> · Frame P99</tspan></text>
+<rect class="bar-improved" x="470.4" y="72.0" width="59.6" height="14" rx="2"><title>10,000体・無変更 Frame P99: −18.0%</title></rect>
+<text class="value" x="464.4" y="83" text-anchor="end">−18.0%</text>
+<text class="label" x="292" y="109" text-anchor="end">10,000体・1%変更<tspan class="sub"> · Frame P99</tspan></text>
+<rect class="bar-improved" x="427.7" y="98.0" width="102.3" height="14" rx="2"><title>10,000体・1%変更 Frame P99: −30.8%</title></rect>
+<text class="value" x="421.7" y="109" text-anchor="end">−30.8%</text>
+<text class="label" x="292" y="135" text-anchor="end">10,000体・全件変更<tspan class="sub"> · Frame P99</tspan></text>
+<rect class="bar-improved" x="413.7" y="124.0" width="116.3" height="14" rx="2"><title>10,000体・全件変更 Frame P99: −35.0%</title></rect>
+<text class="value" x="407.7" y="135" text-anchor="end">−35.0%</text>
+<text class="label" x="292" y="161" text-anchor="end">10,000体・2ビュー<tspan class="sub"> · Frame P99</tspan></text>
+<rect class="bar-improved" x="477.0" y="150.0" width="53.0" height="14" rx="2"><title>10,000体・2ビュー Frame P99: −16.0%</title></rect>
+<text class="value" x="471.0" y="161" text-anchor="end">−16.0%</text>
+<line class="zero" x1="530" x2="530" y1="32" y2="174"/>
+</svg>

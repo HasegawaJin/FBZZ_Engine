@@ -1,0 +1,258 @@
+{
+  "traces": {
+    "TraceV3": {
+      "meaning": "Full built-in GPU baseline",
+      "path": "K:\\FBZZ_Engine\\Scratch\\GpuQueue20261023\\TraceV3\\Cpu.etl",
+      "bytes": 1538260992,
+      "sha256": "c3f197aed88a8ff7917664515ebe93a46894dad763957ed883a0a3827811a3c5",
+      "state": {
+        "startedUtc": "2026-10-23T10:12:41.1989663Z",
+        "finishedUtc": "2026-10-23T10:13:10.1380452Z",
+        "phase": "complete",
+        "elevated": true,
+        "traceStarted": true,
+        "traceStopped": true,
+        "startExit": 0,
+        "stopExit": 0,
+        "failure": null,
+        "runs": [
+          {
+            "run": 0,
+            "pid": 50792,
+            "exit": 0
+          },
+          {
+            "run": 1,
+            "pid": 32288,
+            "exit": 0
+          },
+          {
+            "run": 2,
+            "pid": 47020,
+            "exit": 0
+          }
+        ]
+      }
+    },
+    "TraceV4": {
+      "meaning": "Custom runtime-only baseline; no DxgKrnl events",
+      "path": "K:\\FBZZ_Engine\\Scratch\\GpuQueue20261023\\TraceV4\\Cpu.etl",
+      "bytes": 200278016,
+      "sha256": "1ea417ea6a32b898e8195e4d8e65566ff89bff1f909e2446227a292ac10e07a3",
+      "state": {
+        "startedUtc": "2026-10-23T10:21:21.2621596Z",
+        "finishedUtc": "2026-10-23T10:21:36.8893154Z",
+        "phase": "complete",
+        "elevated": true,
+        "traceStarted": true,
+        "traceStopped": true,
+        "startExit": 0,
+        "stopExit": 0,
+        "failure": null,
+        "runs": [
+          {
+            "run": 0,
+            "pid": 31500,
+            "exit": 0
+          },
+          {
+            "run": 1,
+            "pid": 50488,
+            "exit": 0
+          },
+          {
+            "run": 2,
+            "pid": 24364,
+            "exit": 0
+          }
+        ]
+      }
+    },
+    "TraceV5": {
+      "meaning": "Custom runtime controls; normal-mode zero setting rejected by harness, excluded as normal-mode evidence",
+      "path": "K:\\FBZZ_Engine\\Scratch\\GpuQueue20261023\\TraceV5\\Cpu.etl",
+      "bytes": 256901120,
+      "sha256": "42caf99345a796f5ed330e27e62b459e50220e428a5a5e54fd35449222aa2bbf",
+      "state": {
+        "startedUtc": "2026-10-23T10:41:43.9776724Z",
+        "finishedUtc": "2026-10-23T10:42:04.9384714Z",
+        "phase": "complete",
+        "elevated": true,
+        "traceStarted": true,
+        "traceStopped": true,
+        "startExit": 0,
+        "stopExit": 0,
+        "failure": null,
+        "runs": [
+          {
+            "run": 0,
+            "pid": 56896,
+            "exit": 0
+          },
+          {
+            "run": 1,
+            "pid": 61852,
+            "exit": 0
+          },
+          {
+            "run": 2,
+            "pid": 54384,
+            "exit": 0
+          },
+          {
+            "run": 3,
+            "pid": 66436,
+            "exit": 0
+          }
+        ]
+      }
+    },
+    "TraceV6": {
+      "meaning": "Full built-in GPU with corrected explicit normal-mode control",
+      "path": "K:\\FBZZ_Engine\\Scratch\\GpuQueue20261023\\TraceV6\\Cpu.etl",
+      "bytes": 1350565888,
+      "sha256": "1d390a653d3224eb63ee8b9f30b9cc9327d7436c71f5958694d74b26b5fb028b",
+      "state": {
+        "startedUtc": "2026-10-23T10:52:16.6733987Z",
+        "finishedUtc": "2026-10-23T10:52:46.2529918Z",
+        "phase": "complete",
+        "elevated": true,
+        "traceStarted": true,
+        "traceStopped": true,
+        "startExit": 0,
+        "stopExit": 0,
+        "failure": null,
+        "runs": [
+          {
+            "run": 0,
+            "pid": 62940,
+            "exit": 0
+          },
+          {
+            "run": 1,
+            "pid": 60016,
+            "exit": 0
+          },
+          {
+            "run": 2,
+            "pid": 16756,
+            "exit": 0
+          },
+          {
+            "run": 3,
+            "pid": 42356,
+            "exit": 0
+          }
+        ]
+      }
+    }
+  },
+  "tests": {
+    "NativeGraphics": {
+      "tests": 233,
+      "disabled": 3,
+      "failures": 0,
+      "errors": 0,
+      "time": "134.83s",
+      "identity": {
+        "exitCode": 0,
+        "graphics": "3614F0AB1849D6E616C5F9F6EE96FE2B638AFA0F43EEDEA888A8FFA6C9CEF02F",
+        "exe": "715BC70E248D631CC6070B4AD730FF6AE6C370DB8612B6B37C286D56F6964687"
+      }
+    },
+    "GraphicsCpu": {
+      "tests": 304,
+      "disabled": 0,
+      "failures": 0,
+      "errors": 0,
+      "time": "0.993s",
+      "identity": {
+        "exitCode": 0,
+        "graphics": "3614F0AB1849D6E616C5F9F6EE96FE2B638AFA0F43EEDEA888A8FFA6C9CEF02F",
+        "exe": "E9EE88CEA174E32D39599D33320F4E227082EE7CDA02C110DB1E91461D5BEB12"
+      }
+    },
+    "Skinning": {
+      "tests": 58,
+      "disabled": 0,
+      "failures": 0,
+      "errors": 0,
+      "time": "23.072s",
+      "identity": {
+        "exitCode": 0,
+        "graphics": "3614F0AB1849D6E616C5F9F6EE96FE2B638AFA0F43EEDEA888A8FFA6C9CEF02F",
+        "exe": "DF9861F87F45A7B521903AFEC7B951B5A7F8231A7E4406C16355D4A6E2879A74"
+      }
+    }
+  },
+  "finalComparedBinaries": {
+    "Baseline": {
+      "FBZZTestsRayTracingEngine.exe": "67f3685c6c5b8ad2d5c436db42fce51db7f7733df9fefc6906df1b68513fa116",
+      "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+      "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+      "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+      "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+      "FBZZGraphics.dll": "d92ba50ccfe19e1cc6d21bd1869661d5f9572fa3a0bc8866857c85b57881608d",
+      "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f"
+    },
+    "Candidate": {
+      "FBZZTestsRayTracingEngine.exe": "67f3685c6c5b8ad2d5c436db42fce51db7f7733df9fefc6906df1b68513fa116",
+      "FBZZMath.dll": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+      "FBZZPhysics.dll": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+      "FBZZFluid.dll": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+      "FBZZCore.dll": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+      "FBZZGraphics.dll": "3614f0ab1849d6e616c5f9f6ee96fe2b638afa0f43eedea888a8ffa6c9cef02f",
+      "FBZZEngine.dll": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f"
+    }
+  },
+  "productionSources": {
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Context.cpp": "d8879898ecd29c5b38c0941b1e197707eb33bd94bcecfa5da9db6d4b8b470984",
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Context.hpp": "ff1113fa2c4f7a785f46642120eec7a2280328555f14715de99e28e4af717627",
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp": "6905283ec23bd7b5eefc8f45cb1f823ea267428e0918f599246f81540cc088e4",
+    "Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp": "0e48c2ae3706a27dc7f83156946a178eff91b8641d8792a14f7be56abae32b0b",
+    "Docs/design/graphics-library.md": "daf7e08965a91410dfa4f68bc684eefe3a3ca4647f94037bf1a0b4d64680a854"
+  },
+  "formalHarness": {
+    "originalCommonExe": "df9861f87f45a7b521903afec7b951b5a7f8231a7e4406c16355d4a6e2879a74",
+    "correctedDiagnosticAndVerifiedCommonExe": "67f3685c6c5b8ad2d5c436db42fce51db7f7733df9fefc6906df1b68513fa116",
+    "difference": "Only optional normal-mode setup control and its configuration logging changed after First/Confirm/Control/Tail comparisons. Default offscreen settings and timed operations are identical."
+  },
+  "fullGpuMetadata": {
+    "header": {
+      "ReservedFlags": 1,
+      "PerfFreq": 10000000,
+      "EventsLost": 0,
+      "BuffersLost": 0,
+      "PointerSize": 8,
+      "StartTime": 134372263372240211,
+      "EndTime": 134372263582143202,
+      "BootTime": 134366692995000000
+    },
+    "loss": {
+      "events": 0,
+      "buffers": 0
+    },
+    "eventsRead": {
+      "allEvents": 17442329
+    },
+    "gpuEventsRetained": 654646,
+    "unresolvedSchemas": {
+      "('9b79ee91-b5fd-41c0-a243-4248e266e9d0', (0, 0, 33), 1168)": 1,
+      "('b3e675d7-2554-4f18-830b-2762732560de', (0, 0, 64), 1168)": 1,
+      "('e43445e0-0903-48c3-b878-ff0fccebdd04', (0, 2, 53), 1168)": 1,
+      "('bbccf6c1-6cd1-48c4-80ff-839482e37671', (0, 0, 32), 1168)": 1,
+      "('a688ee40-d8d9-4736-b6f9-6b74935ba3b1', (2, 0, 3), 1168)": 1,
+      "('5d8087dd-3a9b-4f56-90df-49196cdc4f11', (166, 1, 0), 1168)": 164,
+      "('5d8087dd-3a9b-4f56-90df-49196cdc4f11', (164, 1, 0), 1168)": 24,
+      "('5d8087dd-3a9b-4f56-90df-49196cdc4f11', (47, 2, 1), 1168)": 12,
+      "('5d8087dd-3a9b-4f56-90df-49196cdc4f11', (48, 2, 2), 1168)": 12,
+      "('ed54dff8-c409-4cf6-bf83-05e1e61a09c4', (0, 0, 33), 1168)": 1
+    },
+    "targetPids": [
+      16756,
+      42356,
+      60016,
+      62940
+    ]
+  }
+}

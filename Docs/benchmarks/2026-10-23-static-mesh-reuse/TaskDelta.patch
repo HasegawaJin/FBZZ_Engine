@@ -1,0 +1,1099 @@
+--- original/Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp
++++ Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp
+@@ -134,6 +134,65 @@
+ /// @note 候補収集から姿勢抽出までは callback を呼ばず、終了時に ID を消してスレッド別の容量だけを保持する。
+ thread_local std::vector<EntityID> s_renderGeometryCandidates;
+ 
++/// @note Only values cross frames; Scene identity includes its lifetime generation and component replacement includes its lifetime token.
++/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/mesh-drawing-pipeline-in-unreal-engine Cached inputs and resource lifetime.
++struct StaticGeometryEntry {
++    EntityID entity;
++    uint64_t lifetime = 0;
++    uint64_t lastExtractFrame = UINT64_MAX, lastPoseChangeFrame = UINT64_MAX;
++    const renderer::Mesh* mesh = nullptr;
++    std::array<uint32_t, 10> pose{};
++    std::array<uint32_t, 13> meshInputs{};
++    math::Matrix4 world, inverseTranspose;
++    math::Vector3 center{};
++    float radius = 0;
++    bool reliable = false, valid = false;
++};
++struct StaticSceneGeometry {
++    const Scene* scene = nullptr;
++    uint64_t generation = 0, revision = 0;
++    bool primed = false;
++    bool highChangeLastBuild = false;
++    uint32_t denseBuildsRemaining = 0;
++    std::vector<StaticGeometryEntry> entries;
++};
++/// @note Geometry traversal is callback-free; release every reference before material extraction can reenter or evict a slot.
++thread_local std::array<StaticSceneGeometry, 4> s_staticGeometry;
++thread_local size_t s_nextStaticGeometry = 0;
++thread_local uint64_t s_staticGeometryRevision = 0;
++
++StaticSceneGeometry* FindStaticGeometry(Scene& scene, bool create)
++{
++    for (auto& cache : s_staticGeometry)
++        if (cache.scene == &scene && cache.generation == scene.GetRenderSceneGeneration()) return &cache;
++    if (!create) return nullptr;
++    auto& cache = s_staticGeometry[s_nextStaticGeometry];
++    s_nextStaticGeometry = (s_nextStaticGeometry + 1) % s_staticGeometry.size();
++    cache = {};
++    cache.scene = &scene;
++    cache.generation = scene.GetRenderSceneGeneration();
++    cache.revision = ++s_staticGeometryRevision;
++    return &cache;
++}
++
++std::array<uint32_t, 10> StaticPoseInputs(const Transform& transform)
++{
++    const auto& p = transform.worldPosition;
++    const auto& q = transform.worldRotation;
++    const auto& s = transform.worldScale;
++    return std::bit_cast<std::array<uint32_t, 10>>(std::array<float, 10>{p.x, p.y, p.z, q.x, q.y, q.z, q.w, s.x, s.y, s.z});
++}
++
++std::array<uint32_t, 13> StaticMeshInputs(const renderer::Mesh& mesh)
++{
++    const auto& c = mesh.boundsCenter;
++    const auto& e = mesh.boundsExtents;
++    return {mesh.vertexBuffer.id, mesh.vertexBuffer.gen, mesh.indexBuffer.id, mesh.indexBuffer.gen,
++        mesh.vertexCount, mesh.indexCount, std::bit_cast<uint32_t>(c.x), std::bit_cast<uint32_t>(c.y),
++        std::bit_cast<uint32_t>(c.z), std::bit_cast<uint32_t>(mesh.boundsRadius),
++        std::bit_cast<uint32_t>(e.x), std::bit_cast<uint32_t>(e.y), std::bit_cast<uint32_t>(e.z)};
++}
++
+ /// @note Only internally published immutable snapshots use this bounded index; unknown or evicted snapshots retain full discovery.
+ struct PreparedSnapshotItems {
+     const renderer::RenderScene* identity = nullptr;
+@@ -1034,6 +1093,14 @@
+ public:
+     DenseGeometryBatch(renderer::RenderScene& output, size_t hint) : m_output(output)
+     { m_output.objects.reserve(hint); m_output.items.reserve(hint); m_meshes.reserve(32); }
++    void MarkMovingGeometry()
++    {
++        if (m_movingSeen) return;
++        m_movingSeen = true;
++        FBZZ_PROFILE_MARKER("RenderSceneExtractor::MovingGeometry");
++    }
++    void MarkExistingChange() { ++m_existingChanges; }
++    size_t ExistingChanges() const { return m_existingChanges; }
+     renderer::RenderMeshItem& Append(const renderer::Mesh& mesh, const math::Matrix4& world, float maximumScale)
+     {
+         if (m_lastMesh != &mesh) {
+@@ -1071,12 +1138,86 @@
+     std::unordered_map<const renderer::Mesh*, size_t> m_meshIndices;
+     const renderer::Mesh* m_lastMesh = nullptr;
+     size_t m_lastIndex = 0;
++    bool m_movingSeen = false;
++    size_t m_existingChanges = 0;
+ };
++
++/// @note A cold Scene uses the original path; repeatedly moving entries avoid copying current matrices back into the persistent cache.
++/// @see https://learn.microsoft.com/en-us/cpp/cpp/inline-functions-cpp __forceinline keeps the aggregate-return helper eligible for caller substitution.
++__forceinline renderer::RenderObject ExtractUncachedStaticObject(GameObject& go, MeshRenderer& component, uint64_t frame,
++    renderer::RenderScene& output, DenseGeometryBatch& denseGeometry)
++{
++    auto object = ExtractObject(go, component, frame);
++    object.firstItem = static_cast<uint32_t>(output.items.size());
++    auto& item = denseGeometry.Append(*component.mesh, object.world, ComputeWorldBoundsScale(object.world));
++    object.boundsCenter = item.boundsCenter; object.boundsRadius = item.boundsRadius;
++    object.itemCount = 1;
++    item.objectIndex = static_cast<uint32_t>(output.objects.size());
++    return object;
++}
++
++/// @note Exact current-input witnesses rebuild only changed math; notifications invalidate shared snapshots, including presentation-only writes.
++/// @see https://github.com/godotengine/godot/blob/master/servers/rendering/renderer_scene_cull.h Instance dependency notifications.
++renderer::RenderObject ExtractStaticObject(Scene& scene, StaticSceneGeometry& cache, size_t slot,
++    GameObject& go, MeshRenderer& component, uint64_t frame, renderer::RenderScene& output, DenseGeometryBatch& denseGeometry)
++{
++    if (slot == cache.entries.size()) cache.entries.emplace_back();
++    auto& entry = cache.entries[slot];
++    const auto entity = go.GetID();
++    const auto lifetime = scene.GetComponentLifetime<MeshRenderer>(entity);
++    const auto pose = StaticPoseInputs(go.transform);
++    const bool sameOwner = entry.entity == entity && entry.lifetime == lifetime && entry.mesh == component.mesh;
++    const bool poseChanged = entry.pose != pose;
++    const bool newFrame = entry.lastExtractFrame != frame;
++    entry.lastExtractFrame = frame;
++    if (sameOwner && poseChanged && newFrame && frame > 0 && entry.lastPoseChangeFrame == frame - 1) {
++        entry.pose = pose; entry.lastPoseChangeFrame = frame; entry.valid = false;
++        denseGeometry.MarkExistingChange();
++        denseGeometry.MarkMovingGeometry();
++        return ExtractUncachedStaticObject(go, component, frame, output, denseGeometry);
++    }
++    if (!sameOwner) entry.lastPoseChangeFrame = UINT64_MAX;
++    else if (poseChanged) entry.lastPoseChangeFrame = frame;
++    const auto meshInputs = StaticMeshInputs(*component.mesh);
++    if (!entry.valid || entry.entity != entity || entry.lifetime != lifetime || entry.mesh != component.mesh
++        || entry.pose != pose || entry.meshInputs != meshInputs) {
++        if (entry.entity.IsValid()) denseGeometry.MarkExistingChange();
++        std::optional<profiler::ProfileScope> rebuildProfile;
++        if (profiler::Profiler::IsEnabled()) rebuildProfile.emplace(
++            profiler::ProfilerMarker("RenderSceneExtractor::StaticGeometryRebuild"));
++        entry.entity = entity; entry.lifetime = lifetime; entry.mesh = component.mesh;
++        entry.pose = pose; entry.meshInputs = meshInputs;
++        entry.world = go.transform.GetWorldMatrix();
++        entry.inverseTranspose = math::Matrix4::InverseTransposeAffine(entry.world);
++        const auto bounds = ComputeWorldBounds(entry.world, ComputeWorldBoundsScale(entry.world), *component.mesh);
++        entry.center = bounds.center;
++        entry.radius = component.mesh->boundsRadius > 0.0f ? bounds.radius : 0.0f;
++        entry.reliable = IsReliableOccluder(*component.mesh);
++        entry.valid = true;
++    }
++    renderer::RenderObject object;
++    object.sourceIndex = entity.index; object.sourceGeneration = entity.generation;
++    object.layer = static_cast<uint32_t>(go.layer);
++    object.world = entry.world; object.worldInvTranspose = entry.inverseTranspose;
++    object.previousWorld = AdvanceWorld(component, object.world, frame);
++    object.sortPosition = go.transform.position;
++    object.castShadows = component.castShadows; object.lodVisible = component.lodVisible; object.lodDither = component.lodDither;
++    object.firstItem = static_cast<uint32_t>(output.items.size()); object.itemCount = 1;
++    object.boundsCenter = entry.center; object.boundsRadius = entry.radius;
++    auto& item = output.items.emplace_back();
++    item.objectIndex = static_cast<uint32_t>(output.objects.size());
++    item.vertexBuffer = item.skinningVertexBuffer = component.mesh->vertexBuffer;
++    item.indexBuffer = component.mesh->indexBuffer;
++    item.vertexCount = component.mesh->vertexCount; item.indexCount = component.mesh->indexCount;
++    item.vertexStride = sizeof(renderer::Vertex);
++    item.boundsCenter = entry.center; item.boundsRadius = entry.radius; item.reliableOccluder = entry.reliable;
++    return object;
++}
+ 
+ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp,
+     renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette, bool rayTracingInputs,
+     GeometryMaterialCache& materialCache, const renderer::ResourceManager* resources = nullptr,
+-    bool extractItemMaterialState = true)
++    bool extractItemMaterialState = true, uint64_t* staticRevision = nullptr)
+ {
+     FBZZ_PROFILE_SCOPE("RenderSceneExtractor::Geometry");
+     renderer::RenderScene output;
+@@ -1090,23 +1231,32 @@
+     auto& candidates = s_renderGeometryCandidates;
+     scene.CopyRendererEntities(candidates);
+     DenseGeometryBatch denseGeometry(output, candidates.size());
++    auto& staticGeometry = *FindStaticGeometry(scene, true);
++    const bool denseOnly = staticGeometry.primed && staticGeometry.denseBuildsRemaining > 0;
++    if (denseOnly) {
++        --staticGeometry.denseBuildsRemaining;
++        FBZZ_PROFILE_MARKER("RenderSceneExtractor::DenseGeometryFallback");
++    } else if (!staticGeometry.primed) {
++        FBZZ_PROFILE_MARKER("RenderSceneExtractor::ColdGeometry");
++    }
++    const bool reuseStaticGeometry = staticGeometry.primed && !denseOnly;
++    const size_t staticHint = reuseStaticGeometry ? scene.GetEntities<MeshRenderer>().size() : 0;
++    if (staticGeometry.entries.capacity() < staticHint) staticGeometry.entries.reserve(staticHint);
++    size_t staticCount = 0;
+     for (EntityID id : candidates) {
+         auto* source = scene.GetGameObject(id);
+         if (!source) continue;
+         auto& go = *source;
+         if (!go.activeInHierarchy()) continue;
+         if (auto* mr = go.GetComponent<MeshRenderer>(); mr && mr->enabled && mr->mesh && !mr->mesh->isSkinned) {
+-            auto object = ExtractObject(go, *mr, frameStamp);
++            auto object = reuseStaticGeometry
++                ? ExtractStaticObject(scene, staticGeometry, staticCount, go, *mr, frameStamp, output, denseGeometry)
++                : ExtractUncachedStaticObject(go, *mr, frameStamp, output, denseGeometry);
++            ++staticCount;
+             if (const auto lod = lodRenderers.find(EntityKey(go.GetID())); lod != lodRenderers.end()) {
+                 object.rayVisible = lod->second.visible;
+                 object.rayLodSelectionRequired = lod->second.ambiguous;
+             }
+-            object.firstItem = static_cast<uint32_t>(output.items.size());
+-            auto& item = denseGeometry.Append(*mr->mesh, object.world, ComputeWorldBoundsScale(object.world));
+-            object.boundsCenter = item.boundsCenter;
+-            object.boundsRadius = item.boundsRadius;
+-            object.itemCount = 1;
+-            item.objectIndex = static_cast<uint32_t>(output.objects.size());
+             output.objects.push_back(object);
+         }
+         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
+@@ -1156,6 +1306,19 @@
+         object.itemCount = static_cast<uint32_t>(output.items.size()) - object.firstItem;
+         output.objects.push_back(object);
+     }
++    if (reuseStaticGeometry && staticCount < staticGeometry.entries.size()) {
++        staticGeometry.entries.resize(staticCount);
++    }
++    if (reuseStaticGeometry) {
++        /// @note Two high-change observations avoid penalizing one teleport; bounded dense builds amortize tracking in continuously volatile Scenes.
++        const bool highChange = staticCount >= 64 && denseGeometry.ExistingChanges() >= staticCount - staticCount / 4;
++        if (highChange && staticGeometry.highChangeLastBuild) {
++            staticGeometry.denseBuildsRemaining = 16;
++            staticGeometry.highChangeLastBuild = false;
++        } else staticGeometry.highChangeLastBuild = highChange;
++    }
++    staticGeometry.primed = true;
++    if (staticRevision) *staticRevision = staticGeometry.revision;
+     candidates.clear();
+     profiler::Profiler::EndScope(objectsProfile);
+     const auto materialCapabilitiesProfile = profiler::Profiler::BeginScope(
+@@ -1246,6 +1409,13 @@
+ }
+ } /// @note namespace
+ 
++void NotifyMeshRendererChanged(Scene& scene, EntityID entity)
++{
++    if (!entity.IsValid()) return;
++    if (auto* cache = FindStaticGeometry(scene, false)) cache->revision = ++s_staticGeometryRevision;
++}
++
++
+ renderer::RenderScene ExtractRenderSceneGeometry(Scene& scene, uint64_t frameStamp,
+     renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette, bool rayTracingInputs)
+ {
+@@ -1440,10 +1610,13 @@
+     std::shared_ptr<renderer::RenderScene> output;
+     const uint64_t resetVersion = ctx.resources.GetResetVersion();
+     const bool rayTracingInputs = CurrentRayMaterialInputs(ctx);
+-    if (frameGeometry && frameGeometry->geometry && frameGeometry->scene == &ctx.scene &&
++    const auto* staticGeometry = FindStaticGeometry(ctx.scene, false);
++    const uint64_t staticRevision = staticGeometry ? staticGeometry->revision : 0;
++    if (staticGeometry && frameGeometry && frameGeometry->geometry && frameGeometry->scene == &ctx.scene &&
+         frameGeometry->geometry->sceneGeneration == ctx.scene.GetRenderSceneGeneration() &&
+         frameGeometry->resources == &ctx.resources && frameGeometry->frameStamp == Time::frameCount &&
+         frameGeometry->resetVersion == resetVersion &&
++        frameGeometry->staticGeometryRevision == staticRevision &&
+         frameGeometry->rayTracingInputs == rayTracingInputs &&
+         frameGeometry->identityPalette == ctx.handles.bindPoseSkinningCB &&
+         CachedGeometryColorEligibilityMatches(ctx.scene, *frameGeometry->geometry)) {
+@@ -1459,15 +1632,17 @@
+         output->snapshotSerial = ++s_renderSceneSerial;
+     } else {
+         FBZZ_PROFILE_SCOPE("RenderSceneExtractor::GeometryBuild");
++        uint64_t builtStaticRevision = 0;
+         output = std::make_shared<renderer::RenderScene>(
+             BuildRenderSceneGeometry(ctx.scene, Time::frameCount, ctx.handles.bindPoseSkinningCB,
+-                rayTracingInputs, materialCache, &ctx.resources, false));
++                rayTracingInputs, materialCache, &ctx.resources, false, &builtStaticRevision));
+         if (frameGeometry) {
+             FBZZ_PROFILE_SCOPE("RenderSceneExtractor::GeometryCachePublish");
+             frameGeometry->scene = &ctx.scene;
+             frameGeometry->resources = &ctx.resources;
+             frameGeometry->frameStamp = Time::frameCount;
+             frameGeometry->resetVersion = resetVersion;
++            frameGeometry->staticGeometryRevision = builtStaticRevision;
+             frameGeometry->rayTracingInputs = rayTracingInputs;
+             frameGeometry->identityPalette = ctx.handles.bindPoseSkinningCB;
+             auto geometry = std::make_shared<renderer::RenderScene>();
+--- original/Projects/Engine/include/Engine/Scene/Systems/RenderSceneExtractor.hpp
++++ Projects/Engine/include/Engine/Scene/Systems/RenderSceneExtractor.hpp
+@@ -9,9 +9,10 @@
+ namespace fbzz::renderer { class ResourceManager; }
+ namespace fbzz::scene {
+ class Scene;
++struct EntityID;
+ struct RenderPassContext;
+ /// @brief Camera-independent mesh inputs retained between views of one frame without material payloads.
+-/// @note Rebuilt every frame; current transforms, bounds, renderer membership and GPU handles are never reused across frames.
++/// @note Each frame validates current inputs; unchanged static transforms and bounds may reuse private value data across frames.
+ struct RenderFrameGeometryItem {
+     uint32_t objectIndex = 0;
+     uint32_t materialSlot = 0;
+@@ -44,7 +45,12 @@
+     std::shared_ptr<const renderer::RenderScene> geometry;
+     /// @note geometry owns immutable object poses; itemGeometry deliberately omits per-view material and visibility state.
+     std::vector<RenderFrameGeometryItem> itemGeometry;
++    uint64_t staticGeometryRevision = 0;
+ };
++/// @note Call after a MeshRenderer write on the Scene update/extraction thread; invalidates retained geometry without retaining the component.
++/// @note Direct field writes remain supported through current-input validation at the next geometry build.
++/// @see Docs/design/static-mesh-render-reuse.md
++void NotifyMeshRendererChanged(Scene& scene, EntityID entity);
+ /// @return 品質要求用の投影直径 [px]。境界・射影が不明なら 0 (最高品質)。
+ [[nodiscard]] float EstimateRenderTexturePixels(const renderer::RenderObject& object,
+     const renderer::RenderMeshItem& item, const math::Vector3& cameraPosition,
+--- original/Projects/Engine/src/Scene/Systems/RuntimeMeshSystem.cpp
++++ Projects/Engine/src/Scene/Systems/RuntimeMeshSystem.cpp
+@@ -3,6 +3,7 @@
+ /// @author  Hasegawa Jin
+ /// @date    2026-08-26
+ #include <Engine/Scene/Systems/RuntimeMeshSystem.hpp>
++#include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
+ 
+ #include <Engine/Core/Memory/MakeUnique.hpp>
+ #include <Engine/Core/Scheduler/SystemContext.hpp>
+@@ -110,6 +111,7 @@
+         if (!meshRenderer || !meshRenderer->meshPathDirty) continue;
+         meshRenderer->meshPathDirty = false;
+         meshRenderer->mesh = ResolveMeshPath(meshRenderer->meshPath, resources);
++        NotifyMeshRendererChanged(ctx.scene, id);
+     }
+ 
+     for (EntityID id : ctx.scene.GetEntities<ProceduralMeshComponent>()) {
+@@ -117,7 +119,8 @@
+         auto* procedural = ctx.scene.GetComponent<ProceduralMeshComponent>(id);
+         if (!go || !procedural) continue;
+ 
+-        if (procedural->dirty != MeshDirty::None) {
++        const bool uploaded = procedural->dirty != MeshDirty::None;
++        if (uploaded) {
+             UploadProceduralMesh(*procedural, resources);
+             procedural->dirty = MeshDirty::None;
+         }
+@@ -125,8 +128,12 @@
+ 
+         auto* meshRenderer = go->GetComponent<MeshRenderer>();
+         if (!meshRenderer) meshRenderer = &go->AddComponent<MeshRenderer>();
+-        meshRenderer->mesh = procedural->enabled && procedural->builder.TriangleCount() > 0
++        auto* currentMesh = procedural->enabled && procedural->builder.TriangleCount() > 0
+             ? procedural->runtimeMesh.Current() : nullptr;
++        if (uploaded || meshRenderer->mesh != currentMesh) {
++            meshRenderer->mesh = currentMesh;
++            NotifyMeshRendererChanged(ctx.scene, id);
++        }
+ 
+         if (procedural->materialPath.empty()
+             || procedural->materialPath == procedural->appliedMaterialPath)
+--- original/Projects/Engine/src/Scene/Managed/ManagedRenderComponentServices.cpp
++++ Projects/Engine/src/Scene/Managed/ManagedRenderComponentServices.cpp
+@@ -6,6 +6,7 @@
+ #include "ManagedServicesBridge.hpp"
+ #include "ManagedObjectControls.hpp"
+ #include <Engine/Scene/Scene.hpp>
++#include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
+ #include <Engine/Scene/Script.hpp>
+ #include <Engine/Scene/Components/PresentationComponents.hpp>
+ #include <Engine/Scene/Components/TrailComponent.hpp>
+@@ -378,6 +379,8 @@
+     case ManagedBridgeOp::SERVICE_MESH:
+     case ManagedBridgeOp::SERVICE_SKINNED_MESH: {
+         const bool skinned = request.op == ManagedBridgeOp::SERVICE_SKINNED_MESH;
++        auto* const ownerScene = target.GetScene();
++        const auto ownerId = target.GetID();
+         auto* mesh = target.GetComponent<MeshRenderer>();
+         auto* skin = target.GetComponent<SkinnedMeshRenderer>();
+         if ((skinned ? skin == nullptr : mesh == nullptr) || ManagedObjectControls::IsPendingComponentRemoval(target, skinned ? 41U : 40U)) return Status::NOT_FOUND;
+@@ -445,6 +448,8 @@
+         }
+         default: return Status::INVALID_ARGUMENT;
+         }
++        if (!skinned && !read && status == Status::OK)
++            NotifyMeshRendererChanged(*ownerScene, ownerId);
+         break;
+     }
+ 
+--- original/Projects/Tests/CMakeLists.txt
++++ Projects/Tests/CMakeLists.txt
+@@ -258,6 +258,8 @@
+         Engine/Auto/GeometryPipelineTests.cpp
+         Engine/Auto/RenderVisibilityTests.cpp
+         Engine/Auto/RenderSceneExtractorTests.cpp
++        Engine/Auto/StaticMeshRenderReuseTests.cpp
++        Engine/Auto/StaticMeshRenderMotionTests.cpp
+         Engine/Auto/RenderLightExtractorTests.cpp
+         Engine/Auto/InstanceBatchTests.cpp
+         Engine/Auto/InstanceSetTests.cpp
+@@ -458,6 +460,12 @@
+ fbzz_set_test_output_dir(FBZZRenderSynchronizationBench)
+ fbzz_stage_test_runtime(FBZZRenderSynchronizationBench)
+ 
++add_executable(FBZZStaticMeshReuseBench Bench/StaticMeshReuseMeasure.cpp)
++target_link_libraries(FBZZStaticMeshReuseBench PRIVATE FBZZEngine)
++set_target_properties(FBZZStaticMeshReuseBench PROPERTIES FOLDER "Tests")
++fbzz_set_test_output_dir(FBZZStaticMeshReuseBench)
++fbzz_stage_test_runtime(FBZZStaticMeshReuseBench)
++
+ # @note --- 手動テスト -------------------------------------------------------------
+ # @note Window / Cursor は OS の状態を書き換えるため CTest に登録しない。
+ # @note 開発者が Visual Studio から意図的に起動したときだけ実行する。
+--- original/Projects/Tests/Engine/Auto/RenderSceneExtractorTests.cpp
++++ Projects/Tests/Engine/Auto/RenderSceneExtractorTests.cpp
+@@ -3,6 +3,8 @@
+ /// @author  Hasegawa Jin
+ /// @date    2026-09-21
+ #include <TestKit/TestKit.hpp>
++#include "../../../Engine/src/Scene/Managed/ManagedRenderComponentServices.hpp"
++#include "../../../Engine/src/Scene/Managed/ManagedServicesBridge.hpp"
+ #include "../../../Engine/src/Scene/Systems/MaterialDemandTrace.hpp"
+ #include <limits>
+ #include <TestKit/Engine/EngineFixture.hpp>
+@@ -1066,6 +1068,63 @@
+     EXPECT_EQ(second->items[2].sourceSubmesh, 0u);
+ }
+ 
++TEST_F(RenderSceneExtractorMaterialTest, ManagedMeshWritesInvalidateSharedViewsWithoutRebuildingUnchangedMath)
++{
++    auto& owner = StaticObject();
++    scene::RenderFrameGeometryCache cache;
++    (void)ExtractView({}, cache);
++    ++Time::frameCount;
++    const auto retained = ExtractView({}, cache);
++    const bool previousPlay = scene::Script::IsInPlayMode();
++    scene::Script::SetInPlayMode(true);
++    scene::Script view;
++    view.SetContext(&m_scene, &owner);
++    scene::ManagedBridgeRequest request;
++    request.op = scene::ManagedBridgeOp::SERVICE_MESH; request.index = 3;
++    scene::managed_detail::ManagedServiceResult result;
++    const auto status = scene::managed_detail::RunRenderComponentServices(m_scene, view, owner, nullptr,
++        request, 0, {}, {}, result);
++    view.SetContext(nullptr, nullptr);
++    scene::Script::SetInPlayMode(previousPlay);
++    ASSERT_EQ(status, scene::ManagedBridgeStatus::OK);
++    profiler::Profiler::BeginFrame();
++    const auto changed = ExtractView({}, cache);
++    profiler::Profiler::EndFrame();
++    ASSERT_EQ(changed->Objects().size(), 1u);
++    EXPECT_FALSE(changed->Objects()[0].castShadows);
++    EXPECT_TRUE(retained->Objects()[0].castShadows);
++    EXPECT_NE(changed->Objects().data(), retained->Objects().data());
++    const auto& records = profiler::Profiler::GetLastFrameRecords();
++    EXPECT_TRUE(std::none_of(records.begin(), records.end(), [](const auto& record) {
++        return std::string_view(record.name) == "RenderSceneExtractor::StaticGeometryRebuild";
++    }));
++}
++
++TEST_F(RenderSceneExtractorMaterialTest, MeshNotificationsInvalidateSameFrameGeometryWithoutMutatingPublishedViews)
++{
++    auto& owner = StaticObject();
++    scene::RenderFrameGeometryCache cache;
++    const auto first = ExtractView({}, cache);
++    const auto shared = ExtractView({}, cache);
++    ASSERT_EQ(first->Objects().size(), 1u);
++    EXPECT_EQ(first->Objects().data(), shared->Objects().data());
++
++    owner.transform.position = owner.transform.worldPosition = {13, 2, 3};
++    scene::NotifyMeshRendererChanged(m_scene, owner.GetID());
++    const auto moved = ExtractView({}, cache);
++    ASSERT_EQ(moved->Objects().size(), 1u);
++    EXPECT_NE(moved->Objects().data(), first->Objects().data());
++    EXPECT_FLOAT_EQ(moved->Objects()[0].world.m[0][3], 13);
++    EXPECT_FLOAT_EQ(first->Objects()[0].world.m[0][3], 0);
++
++    owner.GetComponent<scene::MeshRenderer>()->enabled = false;
++    scene::NotifyMeshRendererChanged(m_scene, owner.GetID());
++    EXPECT_TRUE(ExtractView({}, cache)->Objects().empty());
++    owner.GetComponent<scene::MeshRenderer>()->enabled = true;
++    scene::NotifyMeshRendererChanged(m_scene, owner.GetID());
++    EXPECT_EQ(ExtractView({}, cache)->Objects().size(), 1u);
++}
++
+ TEST_F(RenderSceneExtractorMaterialTest, CompactFrameGeometryRebuildsMovedBoundsAndRendererMembershipEveryFrame)
+ {
+     m_mesh.vertexBuffer = {11, 2};
+--- original/Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
++++ Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
+@@ -40,6 +40,7 @@
+ #pragma comment(lib, "ole32.lib")
+ #include <algorithm>
+ #include <array>
++#include <bit>
+ #include <cmath>
+ #include <cstdint>
+ #include <cstdlib>
+@@ -128,7 +129,8 @@
+         m_savedRecording = profiler::Profiler::IsRecordingRequested();
+         m_savedFilter = profiler::Profiler::GetRequestedCaptureFilter();
+         profiler::Profiler::RequestCaptureFilter({});
+-        profiler::Profiler::RequestRecording(true);
++        m_timingOnly = FrameSetting("FBZZ_REGULAR_MESH_TIMING_ONLY", 0) == 1;
++        profiler::Profiler::RequestRecording(!m_timingOnly);
+         m_com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+         ASSERT_TRUE(SUCCEEDED(m_com));
+         m_window = CreateWindowExW(0, L"STATIC", L"Ordinary MeshRenderer measurement", WS_POPUP,
+@@ -623,7 +625,7 @@
+     }
+ 
+     void RunCase(uint32_t count, uint32_t visiblePercent, bool batching = false,
+-        bool useFrameCache = true, bool twoViews = false)
++        bool useFrameCache = true, bool twoViews = false, uint32_t changedPercent = 0)
+     {
+         const uint32_t columns = static_cast<uint32_t>(std::ceil(std::sqrt(static_cast<double>(count))));
+         const uint32_t rows = (count + columns - 1) / columns;
+@@ -632,6 +634,7 @@
+         m_settings.gpuInstancing = batching;
+         m_useFrameCache = useFrameCache;
+         m_twoViews = twoViews;
++        m_changedPercent = changedPercent;
+         if (m_twoViews) {
+             m_secondTarget = m_resources->CreateRenderTarget(kSecondWidth, kSecondHeight);
+             ASSERT_TRUE(m_secondTarget.IsValid());
+@@ -643,6 +646,7 @@
+             auto& object = m_scene.CreateGameObject("Regular mesh");
+             object.AddComponent<scene::MeshRenderer>().mesh = m_mesh;
+             object.AddComponent<scene::MaterialComponent>().SetMaterialAsset(m_material);
++            m_entities.push_back(object.GetID());
+             object.transform.position = {
+                 (static_cast<float>(index % columns) - static_cast<float>(columns - 1) * 0.5f) * 1.1f
+                     + (index < visibleCount ? 0.0f : 10000.0f),
+@@ -665,6 +669,8 @@
+         ASSERT_EQ(captureWidth, kWidth);
+         ASSERT_EQ(captureHeight, kHeight);
+         ASSERT_EQ(pixels.size(), static_cast<size_t>(kWidth) * kHeight * 4);
++        m_pixelHash = 14695981039346656037ULL;
++        for (float value : pixels) m_pixelHash = (m_pixelHash ^ std::bit_cast<uint32_t>(value)) * 1099511628211ULL;
+         for (size_t index = 0; index < pixels.size(); index += 4) {
+             ASSERT_TRUE(std::isfinite(pixels[index]) && std::isfinite(pixels[index + 1]) && std::isfinite(pixels[index + 2]));
+             const float difference = std::abs(pixels[index] - pixels[0])
+@@ -726,6 +732,10 @@
+         RegularMeshFrame result;
+         const double frameStart = profiler::ProfileRecorder::NowMs();
+         profiler::Profiler::BeginFrame(++m_serial, frameStart);
++        for (size_t index = 0; index < m_entities.size() * m_changedPercent / 100; ++index) {
++            auto* object = m_scene.GetGameObject(m_entities[index]);
++            object->transform.position.z = object->transform.worldPosition.z = m_serial % 2 == 0 ? 0.125f : -0.125f;
++        }
+         resources.AdvanceFrame();
+         Time::frameCount = m_serial;
+         Time::deltaTime = Time::unscaledDeltaTime = 1.0f / 60;
+@@ -816,17 +826,21 @@
+ 
+     void WriteResults(uint32_t count, uint32_t visiblePercent, bool batching, uint32_t warmup, uint32_t samples)
+     {
++        wchar_t enginePath[MAX_PATH]{};
++        ASSERT_NE(GetModuleFileNameW(GetModuleHandleW(L"FBZZEngine.dll"), enginePath, MAX_PATH), 0u);
+         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+         const std::string name = info->name();
+         std::ostringstream output;
+         output << std::setprecision(9);
+         output << "REGULAR_MESH_JSON {\"kind\":\"config\",\"case\":" << JsonString(name)
++            << ",\"enginePath\":" << JsonString(std::filesystem::path(enginePath).generic_string())
+             << ",\"objects\":" << count << ",\"visiblePercent\":" << visiblePercent
+             << ",\"width\":" << kWidth << ",\"height\":" << kHeight
+             << ",\"warmup\":" << warmup << ",\"samples\":" << samples
+             << ",\"gpuInstancing\":" << (batching ? "true" : "false")
+             << ",\"frameGeometryCache\":" << (m_useFrameCache ? "true" : "false")
+             << ",\"viewsPerFrame\":" << (m_twoViews ? 2 : 1)
++            << ",\"changedPercent\":" << m_changedPercent << ",\"timingOnly\":" << (m_timingOnly ? "true" : "false")
+             << ",\"secondWidth\":" << (m_twoViews ? kSecondWidth : 0)
+             << ",\"secondHeight\":" << (m_twoViews ? kSecondHeight : 0)
+             << ",\"backend\":" << JsonString(m_bundle.renderer->GetBackendName())
+@@ -834,6 +848,7 @@
+             << ",\"rendererThreaded\":false,\"vsync\":false,\"endIncludesPresent\":true"
+             << ",\"totalGpuTimeAvailable\":false,\"strictCpuGpuJoined\":false}\n";
+         output << "REGULAR_MESH_JSON {\"kind\":\"validation\",\"case\":" << JsonString(name)
++            << ",\"pixelHash\":" << JsonString(std::to_string(m_pixelHash))
+             << ",\"nonBackgroundPixels\":" << m_nonBackgroundPixels
+             << ",\"secondNonBackgroundPixels\":" << m_secondNonBackgroundPixels << ",\"readbackTimed\":false}\n";
+         for (const auto& frame : m_frames) {
+@@ -901,9 +916,12 @@
+     renderer::GpuProfilerViewMetadata m_firstView;
+     renderer::GpuProfilerViewMetadata m_secondView;
+     std::vector<RegularMeshFrame> m_frames;
++    std::vector<scene::EntityID> m_entities;
+     std::vector<renderer::GpuProfilerSnapshot> m_gpuSamples;
+     profiler::PerformanceCaptureFilter m_savedFilter;
+     uint64_t m_serial = 0;
++    uint64_t m_pixelHash = 0;
++    uint32_t m_changedPercent = 0;
+     uint64_t m_firstMeasured = 0;
+     uint64_t m_lastMeasured = 0;
+     uint64_t m_lastGpuPhysical = 0;
+@@ -921,6 +939,7 @@
+     bool m_savedRecording = false;
+     bool m_useFrameCache = true;
+     bool m_twoViews = false;
++    bool m_timingOnly = false;
+ };
+ 
+ TEST_F(RegularMeshRenderPerformanceTest, ProjectHybridAppearanceRendersShellAndFinWithSharedCoverage)
+@@ -954,6 +973,8 @@
+ TEST_F(RegularMeshRenderPerformanceTest, BatchedControlPartial10000) { RunCase(10000, 50, true); }
+ TEST_F(RegularMeshRenderPerformanceTest, UncachedSingleViewOffscreenHeavy10000) { RunCase(10000, 1, false, false); }
+ TEST_F(RegularMeshRenderPerformanceTest, TwoViewsOppositeOffscreenHeavy10000) { RunCase(10000, 1, false, true, true); }
++TEST_F(RegularMeshRenderPerformanceTest, OnePercentMovingOffscreenHeavy10000) { RunCase(10000, 1, false, true, false, 1); }
++TEST_F(RegularMeshRenderPerformanceTest, AllMovingOffscreenHeavy10000) { RunCase(10000, 1, false, true, false, 100); }
+ 
+ } /// @note namespace
+ } /// @note namespace fbzz::tests
+--- original/Projects/Tests/Engine/Auto/StaticMeshRenderReuseTests.cpp
++++ Projects/Tests/Engine/Auto/StaticMeshRenderReuseTests.cpp
+@@ -0,0 +1,181 @@
++/// @file    StaticMeshRenderReuseTests.cpp
++/// @brief   静的Meshの再利用・通知・公開フィールド照合とsnapshotの独立性を検証する。
++/// @author  Hasegawa Jin
++/// @date    2026-10-23
++#include "../Fixtures/StaticMeshRenderReuseFixture.hpp"
++
++namespace fbzz::tests {
++TEST_F(StaticMeshRenderReuseTest, ReusesUnchangedGeometryAndRebuildsOnlyChangedInputs)
++{
++    auto& first = Object(m_scene);
++    auto& second = Object(m_scene);
++    const auto original = Extract(100);
++    EXPECT_EQ(Rebuilds(), 2u);
++
++    const auto unchanged = Extract(101);
++    EXPECT_EQ(Rebuilds(), 0u);
++    ASSERT_EQ(unchanged.items.size(), 2u);
++    EXPECT_VEC3_NEAR(unchanged.items[0].boundsCenter, (math::Vector3{1, 0, 0}), testkit::kTolerance);
++    first.transform.worldPosition.x = 2;
++    scene::NotifyMeshRendererChanged(m_scene, first.GetID());
++    const auto notified = Extract(102);
++    EXPECT_EQ(Rebuilds(), 1u);
++    EXPECT_FLOAT_EQ(notified.Objects()[0].world.m[0][3], 2);
++    EXPECT_EQ(notified.items[1].vertexBuffer, m_mesh.vertexBuffer);
++
++    second.transform.worldPosition = {7, 0, 0};
++    const auto changed = Extract(103);
++    EXPECT_EQ(Rebuilds(), 1u);
++    EXPECT_VEC3_NEAR(changed.items[1].boundsCenter, (math::Vector3{8, 0, 0}), testkit::kTolerance);
++    EXPECT_VEC3_NEAR(original.items[1].boundsCenter, (math::Vector3{1, 0, 0}), testkit::kTolerance);
++}
++
++TEST_F(StaticMeshRenderReuseTest, ObservesRawPoseMeshAndPresentationWritesWithoutNotifications)
++{
++    auto& object = Object(m_scene);
++    const auto original = Extract(10);
++    object.transform.position = {90, 0, 0};
++    object.transform.worldPosition = {3, 4, 5};
++    object.transform.worldScale = {-2, 3, 1};
++    object.layer = 7;
++    auto& mesh = *object.GetComponent<scene::MeshRenderer>();
++    mesh.castShadows = false; mesh.lodVisible = false; mesh.lodDither = 0.25f;
++    const auto moved = Extract(11);
++    ASSERT_EQ(moved.Objects().size(), 1u);
++    const auto& value = moved.Objects()[0];
++    EXPECT_EQ(Rebuilds(), 1u);
++    EXPECT_VEC3_NEAR(value.boundsCenter, (math::Vector3{1, 4, 5}), testkit::kTolerance);
++    EXPECT_FLOAT_EQ(value.boundsRadius, 6);
++    EXPECT_FLOAT_EQ(value.worldInvTranspose.m[0][0], -0.5f);
++    EXPECT_NEAR(value.worldInvTranspose.m[1][1], 1.0f / 3, testkit::kTolerance);
++    EXPECT_VEC3_NEAR(value.sortPosition, (math::Vector3{90, 0, 0}), testkit::kTolerance);
++    EXPECT_EQ(value.layer, 7u); EXPECT_FALSE(value.castShadows); EXPECT_FALSE(value.lodVisible);
++    EXPECT_FLOAT_EQ(value.lodDither, 0.25f);
++    EXPECT_VEC3_NEAR(original.items[0].boundsCenter, (math::Vector3{1, 0, 0}), testkit::kTolerance);
++
++    m_mesh.vertexBuffer.gen = 9; m_mesh.indexBuffer = {52, 7};
++    m_mesh.vertexCount = 10; m_mesh.indexCount = 12;
++    m_mesh.boundsCenter = {0, 1, 0}; m_mesh.boundsRadius = 4; m_mesh.boundsExtents = {0.01f, 4, 4};
++    const auto edited = Extract(12);
++    EXPECT_EQ(Rebuilds(), 1u);
++    EXPECT_EQ(edited.items[0].vertexBuffer, m_mesh.vertexBuffer);
++    EXPECT_EQ(edited.items[0].indexBuffer, m_mesh.indexBuffer);
++    EXPECT_EQ(edited.items[0].vertexCount, 10u); EXPECT_EQ(edited.items[0].indexCount, 12u);
++    EXPECT_VEC3_NEAR(edited.items[0].boundsCenter, (math::Vector3{3, 7, 5}), testkit::kTolerance);
++    EXPECT_FLOAT_EQ(edited.items[0].boundsRadius, 12); EXPECT_FALSE(edited.items[0].reliableOccluder);
++    EXPECT_TRUE(original.items[0].reliableOccluder);
++}
++
++TEST_F(StaticMeshRenderReuseTest, RebuildsRotatedBoundsAndSeparatesSkinnedMeshInputs)
++{
++    auto& object = Object(m_scene);
++    (void)Extract(1);
++    object.transform.worldRotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, math::PI);
++    const auto rotated = Extract(2);
++    EXPECT_EQ(Rebuilds(), 1u);
++    EXPECT_VEC3_NEAR(rotated.items[0].boundsCenter, (math::Vector3{-1, 0, 0}), testkit::kTolerance);
++    (void)Extract(3);
++    EXPECT_EQ(Rebuilds(), 0u);
++    m_mesh.isSkinned = true;
++    EXPECT_TRUE(Extract(4).Objects().empty());
++    m_mesh.isSkinned = false;
++    const auto restored = Extract(5);
++    EXPECT_EQ(Rebuilds(), 1u);
++    EXPECT_VEC3_NEAR(restored.items[0].boundsCenter, (math::Vector3{-1, 0, 0}), testkit::kTolerance);
++}
++
++TEST_F(StaticMeshRenderReuseTest, AdvancesPreviousWorldOnReuseAndResetsAfterMissingFrames)
++{
++    auto& object = Object(m_scene);
++    (void)Extract(20);
++    object.transform.worldPosition.x = 5;
++    const auto moved = Extract(21);
++    EXPECT_FLOAT_EQ(moved.Objects()[0].previousWorld.m[0][3], 0);
++    const auto stable = Extract(22);
++    EXPECT_EQ(Rebuilds(), 0u);
++    EXPECT_FLOAT_EQ(stable.Objects()[0].previousWorld.m[0][3], 5);
++    object.transform.worldPosition.x = 9;
++    const auto sameFrame = Extract(22);
++    EXPECT_FLOAT_EQ(sameFrame.Objects()[0].world.m[0][3], 9);
++    EXPECT_FLOAT_EQ(sameFrame.Objects()[0].previousWorld.m[0][3], 5);
++    const auto gap = Extract(30);
++    EXPECT_EQ(Rebuilds(), 0u);
++    EXPECT_FLOAT_EQ(gap.Objects()[0].previousWorld.m[0][3], 9);
++}
++
++TEST_F(StaticMeshRenderReuseTest, SeparatesComponentEntityAndSceneLifetimes)
++{
++    auto& object = Object(m_scene);
++    const auto id = object.GetID();
++    const auto retained = Extract(1);
++    object.RemoveComponent<scene::MeshRenderer>();
++    object.AddComponent<scene::MeshRenderer>().mesh = &m_mesh;
++    (void)Extract(2);
++    EXPECT_EQ(Rebuilds(), 1u);
++    ASSERT_TRUE(m_scene.DestroyGameObject(id));
++    auto& replacement = Object(m_scene);
++    replacement.transform.worldPosition = {-8, 0, 0};
++    const auto replaced = Extract(3);
++    ASSERT_EQ(replaced.Objects().size(), 1u);
++    EXPECT_EQ(replaced.Objects()[0].sourceGeneration, replacement.GetID().generation);
++    EXPECT_VEC3_NEAR(replaced.items[0].boundsCenter, (math::Vector3{-7, 0, 0}), testkit::kTolerance);
++    m_scene.Clear();
++    Object(m_scene).transform.worldPosition = {20, 0, 0};
++    const auto cleared = Extract(4);
++    EXPECT_VEC3_NEAR(cleared.items[0].boundsCenter, (math::Vector3{21, 0, 0}), testkit::kTolerance);
++    EXPECT_VEC3_NEAR(retained.items[0].boundsCenter, (math::Vector3{1, 0, 0}), testkit::kTolerance);
++}
++
++TEST_F(StaticMeshRenderReuseTest, ObservesParentMotionReparentingAndHierarchyActivation)
++{
++    auto& parent = m_scene.CreateGameObject("Parent");
++    auto& child = Object(m_scene);
++    child.SetParent(parent);
++    child.transform.position = {2, 0, 0};
++    scene::FlushWorldTransforms(m_scene);
++    (void)Extract(1);
++    parent.transform.position = {10, 0, 0};
++    scene::FlushWorldTransforms(m_scene);
++    const auto moved = Extract(2);
++    EXPECT_EQ(Rebuilds(), 1u);
++    EXPECT_VEC3_NEAR(moved.items[0].boundsCenter, (math::Vector3{13, 0, 0}), testkit::kTolerance);
++    parent.SetActive(false);
++    EXPECT_TRUE(Extract(3).Objects().empty());
++    parent.SetActive(true);
++    ASSERT_TRUE(child.ClearParent());
++    child.transform.position = {-3, 0, 0};
++    scene::FlushWorldTransforms(m_scene);
++    const auto detached = Extract(4);
++    ASSERT_EQ(detached.items.size(), 1u);
++    EXPECT_VEC3_NEAR(detached.items[0].boundsCenter, (math::Vector3{-2, 0, 0}), testkit::kTolerance);
++    EXPECT_VEC3_NEAR(moved.items[0].boundsCenter, (math::Vector3{13, 0, 0}), testkit::kTolerance);
++}
++
++TEST_F(StaticMeshRenderReuseTest, RevalidatesAfterBoundedSceneEvictionAndRendererReordering)
++{
++    const auto firstId = Object(m_scene).GetID();
++    auto& second = Object(m_scene);
++    second.transform.worldPosition = {10, 0, 0};
++    (void)Extract(1);
++    std::array<std::unique_ptr<scene::Scene>, 5> others;
++    for (auto& owner : others) {
++        owner = std::make_unique<scene::Scene>(); Object(*owner);
++        (void)scene::ExtractRenderSceneGeometry(*owner, 1);
++    }
++    (void)Extract(2);
++    EXPECT_EQ(Rebuilds(), 0u);
++    EXPECT_EQ(SampleCount("RenderSceneExtractor::ColdGeometry"), 1u);
++    ASSERT_TRUE(m_scene.DestroyGameObject(firstId));
++    auto& added = Object(m_scene);
++    added.transform.worldPosition = {-2, 0, 0};
++    const auto result = Extract(3);
++    ASSERT_EQ(result.Objects().size(), 2u);
++    scene::NotifyMeshRendererChanged(m_scene, added.GetID());
++    (void)Extract(4);
++    EXPECT_EQ(Rebuilds(), 0u);
++    scene::NotifyMeshRendererChanged(m_scene, second.GetID());
++    (void)Extract(5);
++    EXPECT_EQ(Rebuilds(), 0u);
++}
++
++}
+--- original/Projects/Tests/Bench/StaticMeshReuseMeasure.cpp
++++ Projects/Tests/Bench/StaticMeshReuseMeasure.cpp
+@@ -0,0 +1,151 @@
++/// @file    StaticMeshReuseMeasure.cpp
++/// @brief   静的Mesh抽出の無変更・部分変更・全変更・寿命変更を同じ入力で計測する。
++/// @author  Hasegawa Jin
++/// @date    2026-10-23
++#define WIN32_LEAN_AND_MEAN
++#include <Windows.h>
++#include <Core/Profiler/Profiler.hpp>
++#include <Engine/Scene/Scene.hpp>
++#include <Engine/Scene/Components/MeshRenderer.hpp>
++#include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
++#include <Engine/Renderer/Mesh.hpp>
++#include <Engine/Scene/Script.hpp>
++#include "../../Engine/src/Scene/Managed/ManagedRenderComponentServices.hpp"
++#include "../../Engine/src/Scene/Managed/ManagedServicesBridge.hpp"
++#include <algorithm>
++#include <array>
++#include <bit>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
++#include <memory>
++#include <string>
++#include <vector>
++
++namespace fbzz::bench {
++namespace {
++void HashWord(uint64_t& hash, uint32_t value) { hash = (hash ^ value) * 1099511628211ULL; }
++void HashFloat(uint64_t& hash, float value) { HashWord(hash, std::bit_cast<uint32_t>(value)); }
++uint64_t HashGeometry(const renderer::RenderScene& snapshot)
++{
++    uint64_t hash = 14695981039346656037ULL;
++    for (const auto& object : snapshot.Objects()) {
++        HashWord(hash, object.sourceIndex); HashWord(hash, object.sourceGeneration);
++        HashWord(hash, object.firstItem); HashWord(hash, object.itemCount); HashWord(hash, object.layer);
++        HashWord(hash, object.castShadows); HashWord(hash, object.lodVisible);
++        HashFloat(hash, object.lodDither);
++        for (const auto* matrix : {&object.world, &object.worldInvTranspose, &object.previousWorld})
++            for (const auto& row : matrix->m) for (float value : row) HashFloat(hash, value);
++        for (const auto& v : {object.sortPosition, object.boundsCenter}) {
++            HashFloat(hash, v.x); HashFloat(hash, v.y); HashFloat(hash, v.z);
++        }
++        HashFloat(hash, object.boundsRadius);
++    }
++    for (const auto& item : snapshot.items) {
++        HashWord(hash, item.objectIndex); HashWord(hash, item.vertexCount); HashWord(hash, item.indexCount);
++        HashWord(hash, item.vertexBuffer.id); HashWord(hash, item.vertexBuffer.gen);
++        HashWord(hash, item.indexBuffer.id); HashWord(hash, item.indexBuffer.gen);
++        HashWord(hash, item.vertexStride); HashWord(hash, item.reliableOccluder);
++        HashFloat(hash, item.boundsCenter.x); HashFloat(hash, item.boundsCenter.y);
++        HashFloat(hash, item.boundsCenter.z); HashFloat(hash, item.boundsRadius);
++    }
++    return hash;
++}
++}
++int Measure(int argc, char** argv)
++{
++    if (argc != 5 && argc != 6) return 2;
++    const int count = std::atoi(argv[1]), samples = std::atoi(argv[3]);
++    const int warmup = argc == 6 ? std::atoi(argv[5]) : 120;
++    const std::string mode(argv[2]);
++    const bool service = mode.starts_with("service-");
++    const bool pair = mode == "initial-pair";
++    if (count <= 0 || samples <= 0 || warmup < 0 || (mode != "static" && mode != "one-percent" && mode != "all"
++        && mode != "churn" && mode != "cold" && !pair && mode != "service-one-percent"
++        && mode != "service-all" && mode != "service-churn")) return 2;
++    profiler::Profiler::SetEnabled(false);
++    scene::Scene scene;
++    std::array<renderer::Mesh, 8> meshes;
++    for (uint32_t index = 0; index < meshes.size(); ++index) {
++        auto& mesh = meshes[index];
++        mesh.vertexBuffer = {10 + index, 2}; mesh.indexBuffer = {30 + index, 3};
++        mesh.vertexCount = 24; mesh.indexCount = 36;
++        mesh.boundsCenter = {0.25f, -0.5f, 0.75f}; mesh.boundsRadius = 1.25f;
++        mesh.boundsExtents = {1, 1, 1};
++    }
++    std::vector<scene::EntityID> entities;
++    entities.reserve(count);
++    const auto create = [&](int index) {
++        auto& object = scene.CreateGameObject("Static mesh measurement");
++        object.AddComponent<scene::MeshRenderer>().mesh = &meshes[index % meshes.size()];
++        object.transform.position = object.transform.worldPosition = {static_cast<float>(index % 100), static_cast<float>(index / 100), 0};
++        object.transform.scale = object.transform.worldScale = {2, -3, 1};
++        return object.GetID();
++    };
++    for (int index = 0; index < count; ++index) entities.push_back(create(index));
++    std::vector<double> timings;
++    std::vector<uint64_t> hashes;
++    scene::Script serviceView;
++    const bool previousPlay = scene::Script::IsInPlayMode();
++    if (service) scene::Script::SetInPlayMode(true);
++    scene::ManagedBridgeRequest request;
++    request.op = scene::ManagedBridgeOp::SERVICE_MESH; request.index = 3;
++    scene::managed_detail::ManagedServiceResult serviceResult;
++    bool valid = true;
++    for (int frame = 0; frame < samples + warmup; ++frame) {
++        if (mode == "cold" || pair) {
++            scene.Clear();
++            for (int index = 0; index < count; ++index) entities[index] = create(index);
++        }
++        const auto updateStart = std::chrono::steady_clock::now();
++        const int changed = mode == "all" || mode == "service-all" ? count
++            : mode == "one-percent" || mode == "churn" || mode == "service-one-percent" || mode == "service-churn"
++                ? (std::max)(1, count / 100) : 0;
++        for (int index = 0; index < changed; ++index) {
++            if (mode == "churn" || mode == "service-churn") {
++                valid = scene.DestroyGameObject(entities[index]) && valid;
++                entities[index] = create(index);
++            }
++            auto* object = scene.GetGameObject(entities[index]);
++            object->transform.position.z = object->transform.worldPosition.z = frame % 2 == 0 ? 0.125f : -0.125f;
++            if (service) {
++                serviceView.SetContext(&scene, object);
++                valid = scene::managed_detail::RunRenderComponentServices(scene, serviceView, *object, nullptr,
++                    request, frame % 2, {}, {}, serviceResult) == scene::ManagedBridgeStatus::OK && valid;
++            }
++        }
++        if (service) serviceView.SetContext(nullptr, nullptr);
++        const auto start = std::chrono::steady_clock::now();
++        const uint64_t stamp = static_cast<uint64_t>(frame + 1) * (pair ? 2 : 1);
++        if (pair) { const auto first = scene::ExtractRenderSceneGeometry(scene, stamp - 1); valid = valid && first.items.size() == static_cast<size_t>(count); }
++        const auto snapshot = scene::ExtractRenderSceneGeometry(scene, stamp);
++        const auto end = std::chrono::steady_clock::now();
++        valid = valid && snapshot.Objects().size() == static_cast<size_t>(count) && snapshot.items.size() == static_cast<size_t>(count);
++        if (frame >= warmup) {
++            timings.push_back(std::chrono::duration<double, std::milli>(end - (service ? updateStart : start)).count());
++            hashes.push_back(HashGeometry(snapshot));
++        }
++    }
++    if (service) scene::Script::SetInPlayMode(previousPlay);
++    HMODULE engine = GetModuleHandleW(L"FBZZEngine.dll");
++    wchar_t modulePath[MAX_PATH]{};
++    if (!engine || !GetModuleFileNameW(engine, modulePath, MAX_PATH)) return 3;
++    std::FILE* output = nullptr;
++    if (fopen_s(&output, argv[4], "wb") != 0 || !output) return 4;
++    const std::unique_ptr<std::FILE, decltype(&std::fclose)> ownedOutput(output, &std::fclose);
++    std::fprintf(output, "{\"valid\":%s,\"objects\":%d,\"mode\":\"%s\",\"warmup\":%d,\"samples\":%d,\"boundary\":\"%s\",\"extractionsPerSample\":%d,\"enginePath\":\"",
++        valid ? "true" : "false", count, mode.c_str(), warmup, samples,
++        service ? "native-service-and-extraction" : "extraction", pair ? 2 : 1);
++    for (wchar_t ch : std::wstring(modulePath)) {
++        if (ch == L'\\') std::fputs("/", output);
++        else if (ch < 128) std::fputc(static_cast<char>(ch), output);
++        else valid = false;
++    }
++    std::fputs("\",\"frames\":[", output);
++    for (size_t index = 0; index < timings.size(); ++index)
++        std::fprintf(output, "%s{\"ms\":%.9f,\"hash\":\"%016llx\"}", index ? "," : "", timings[index], static_cast<unsigned long long>(hashes[index]));
++    std::fputs("]}\n", output);
++    return valid ? 0 : 5;
++}
++}
++int main(int argc, char** argv) { return fbzz::bench::Measure(argc, argv); }
+--- original/Projects/Tests/Engine/Auto/StaticMeshRenderMotionTests.cpp
++++ Projects/Tests/Engine/Auto/StaticMeshRenderMotionTests.cpp
+@@ -0,0 +1,73 @@
++/// @file    StaticMeshRenderMotionTests.cpp
++/// @brief   初回Sceneと連続移動を従来経路へ戻し、停止後の再利用とsnapshotを検証する。
++/// @author  Hasegawa Jin
++/// @date    2026-10-23
++#include "../Fixtures/StaticMeshRenderReuseFixture.hpp"
++
++namespace fbzz::tests {
++TEST_F(StaticMeshRenderReuseTest, KeepsMovingGeometryCurrentAndReentersReuseAfterMotionStops)
++{
++    auto& owner = Object(m_scene);
++    const auto retained = Extract(1);
++    owner.transform.worldPosition.x = 1;
++    (void)Extract(2);
++    owner.transform.worldPosition.x = 2;
++    const auto moving = Extract(3);
++    EXPECT_EQ(SampleCount("RenderSceneExtractor::MovingGeometry"), 1u);
++    EXPECT_FLOAT_EQ(moving.Objects()[0].world.m[0][3], 2);
++    EXPECT_FLOAT_EQ(moving.Objects()[0].previousWorld.m[0][3], 1);
++    owner.transform.worldPosition.x = 3;
++    const auto continued = Extract(4);
++    EXPECT_EQ(SampleCount("RenderSceneExtractor::MovingGeometry"), 1u);
++    EXPECT_FLOAT_EQ(continued.Objects()[0].world.m[0][3], 3);
++    EXPECT_VEC3_NEAR(continued.items[0].boundsCenter, (math::Vector3{4, 0, 0}), testkit::kTolerance);
++    const auto stopped = Extract(5);
++    EXPECT_EQ(Rebuilds(), 1u);
++    EXPECT_FLOAT_EQ(stopped.Objects()[0].world.m[0][3], 3);
++    EXPECT_VEC3_NEAR(stopped.items[0].boundsCenter, (math::Vector3{4, 0, 0}), testkit::kTolerance);
++    (void)Extract(6);
++    EXPECT_EQ(Rebuilds(), 0u);
++    EXPECT_FLOAT_EQ(retained.Objects()[0].world.m[0][3], 0);
++}
++
++TEST_F(StaticMeshRenderReuseTest, LeavesColdScenesOnTheOriginalPathBeforeCreatingReusableValues)
++{
++    scene::Scene cold;
++    Object(cold);
++    for (uint64_t frame = 1; frame <= 3; ++frame) {
++        profiler::Profiler::BeginFrame();
++        const auto result = scene::ExtractRenderSceneGeometry(cold, frame);
++        profiler::Profiler::EndFrame();
++        ASSERT_EQ(result.items.size(), 1u);
++        EXPECT_VEC3_NEAR(result.items[0].boundsCenter, (math::Vector3{1, 0, 0}), testkit::kTolerance);
++        EXPECT_EQ(SampleCount("RenderSceneExtractor::ColdGeometry"), frame == 1 ? 1u : 0u);
++        EXPECT_EQ(Rebuilds(), frame == 2 ? 1u : 0u);
++    }
++}
++
++TEST_F(StaticMeshRenderReuseTest, RechecksVolatileScenesWithinABoundedNumberOfBuildsAfterMotionStops)
++{
++    std::array<scene::EntityID, 128> entities;
++    for (auto& id : entities) id = Object(m_scene).GetID();
++    (void)Extract(1);
++    for (uint64_t frame = 2; frame <= 4; ++frame) {
++        for (auto id : entities) m_scene.GetGameObject(id)->transform.worldPosition.x = static_cast<float>(frame);
++        const auto moving = Extract(frame);
++        ASSERT_EQ(moving.Objects().size(), entities.size());
++        EXPECT_FLOAT_EQ(moving.Objects().back().world.m[0][3], static_cast<float>(frame));
++    }
++    EXPECT_EQ(SampleCount("RenderSceneExtractor::DenseGeometryFallback"), 1u);
++    bool rebuilt = false, reusedAfterRebuild = false;
++    for (uint64_t frame = 5; frame < 30; ++frame) {
++        const auto stopped = Extract(frame);
++        ASSERT_EQ(stopped.Objects().size(), entities.size());
++        EXPECT_FLOAT_EQ(stopped.Objects()[0].world.m[0][3], 4);
++        EXPECT_FLOAT_EQ(stopped.Objects()[0].previousWorld.m[0][3], 4);
++        EXPECT_VEC3_NEAR(stopped.items.back().boundsCenter, (math::Vector3{5, 0, 0}), testkit::kTolerance);
++        if (Rebuilds() != 0) rebuilt = true;
++        else if (rebuilt && SampleCount("RenderSceneExtractor::DenseGeometryFallback") == 0) reusedAfterRebuild = true;
++    }
++    EXPECT_TRUE(rebuilt);
++    EXPECT_TRUE(reusedAfterRebuild);
++}
++}
+--- original/Projects/Tests/Engine/Fixtures/StaticMeshRenderReuseFixture.hpp
++++ Projects/Tests/Engine/Fixtures/StaticMeshRenderReuseFixture.hpp
+@@ -0,0 +1,82 @@
++/// @file    StaticMeshRenderReuseFixture.hpp
++/// @brief   静的Meshの再利用と動的fallbackを公開snapshot・Profilerで観測する共通fixture。
++/// @author  Hasegawa Jin
++/// @date    2026-10-23
++#pragma once
++#include <TestKit/TestKit.hpp>
++#include <TestKit/Engine/EngineFixture.hpp>
++#include <Core/Profiler/Profiler.hpp>
++#include <Engine/Scene/Scene.hpp>
++#include <Engine/Scene/SceneUtils.hpp>
++#include <Engine/Scene/Components/MeshRenderer.hpp>
++#include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
++#include <Engine/Scene/Systems/TransformSystem.hpp>
++#include <Engine/Renderer/Mesh.hpp>
++#include <Engine/Scene/Script.hpp>
++#include "../../../Engine/src/Scene/Managed/ManagedRenderComponentServices.hpp"
++#include "../../../Engine/src/Scene/Managed/ManagedServicesBridge.hpp"
++#include <algorithm>
++#include <array>
++#include <memory>
++#include <string_view>
++
++namespace fbzz::tests {
++class StaticMeshRenderReuseTest : public testkit::EngineFixture {
++protected:
++    void SetUp() override
++    {
++        EngineFixture::SetUp();
++        m_playing = scene::Script::IsInPlayMode();
++        scene::Script::SetInPlayMode(true);
++        m_enabled = profiler::Profiler::IsEnabled();
++        m_recording = profiler::Profiler::IsRecordingRequested();
++        m_filter = profiler::Profiler::GetRequestedCaptureFilter();
++        profiler::Profiler::SetEnabled(false); profiler::Profiler::SetEnabled(true);
++        profiler::Profiler::RequestRecording(true); profiler::Profiler::RequestCaptureFilter({});
++        m_mesh.vertexBuffer = {11, 2}; m_mesh.indexBuffer = {12, 3};
++        m_mesh.vertexCount = 24; m_mesh.indexCount = 36;
++        m_mesh.boundsCenter = {1, 0, 0}; m_mesh.boundsRadius = 2; m_mesh.boundsExtents = {1, 1, 1};
++        profiler::Profiler::BeginFrame();
++        (void)scene::ExtractRenderSceneGeometry(m_scene, 0);
++        profiler::Profiler::EndFrame();
++    }
++    void TearDown() override
++    {
++        m_scene.Clear();
++        scene::Script::SetInPlayMode(m_playing);
++        profiler::Profiler::RequestCaptureFilter(m_filter);
++        profiler::Profiler::RequestRecording(m_recording);
++        profiler::Profiler::SetEnabled(false); profiler::Profiler::SetEnabled(m_enabled);
++        EngineFixture::TearDown();
++    }
++    scene::GameObject& Object(scene::Scene& owner)
++    {
++        auto& object = owner.CreateGameObject("Static reuse");
++        object.AddComponent<scene::MeshRenderer>().mesh = &m_mesh;
++        return object;
++    }
++    renderer::RenderScene Extract(uint64_t frame)
++    {
++        profiler::Profiler::BeginFrame();
++        auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, frame);
++        profiler::Profiler::EndFrame();
++        return snapshot;
++    }
++    size_t Rebuilds() const
++    {
++        return SampleCount("RenderSceneExtractor::StaticGeometryRebuild");
++    }
++    size_t SampleCount(std::string_view name) const
++    {
++        const auto& records = profiler::Profiler::GetLastFrameRecords();
++        return static_cast<size_t>(std::count_if(records.begin(), records.end(), [name](const auto& record) {
++            return std::string_view(record.name) == name;
++        }));
++    }
++    scene::Scene m_scene;
++    renderer::Mesh m_mesh;
++private:
++    bool m_enabled = false, m_recording = false, m_playing = false;
++    profiler::PerformanceCaptureFilter m_filter;
++};
++}

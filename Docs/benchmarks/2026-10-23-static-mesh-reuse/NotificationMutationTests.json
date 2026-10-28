@@ -1,0 +1,43 @@
+{
+  "tests": 1,
+  "failures": 1,
+  "disabled": 0,
+  "errors": 0,
+  "timestamp": "2026-10-23T11:54:27Z",
+  "time": "0.006s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "RenderSceneExtractorMaterialTest",
+      "tests": 1,
+      "failures": 1,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T11:54:27Z",
+      "time": "0.004s",
+      "testsuite": [
+        {
+          "name": "ManagedMeshWritesInvalidateSharedViewsWithoutRebuildingUnchangedMath",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1071,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:54:27Z",
+          "time": "0.004s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "8292688019054426330",
+          "failures": [
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp:1094\nValue of: changed->Objects()[0].castShadows\n  Actual: true\nExpected: false\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp:1096\nExpected: (changed->Objects().data()) != (retained->Objects().data()), actual: 000001E0F8EC8AB0 vs 000001E0F8EC8AB0\n",
+              "type": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

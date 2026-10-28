@@ -1,0 +1,68 @@
+{
+  "tests": 1,
+  "failures": 1,
+  "disabled": 0,
+  "errors": 0,
+  "random_seed": 1023,
+  "timestamp": "2026-10-23T14:29:29Z",
+  "time": "0.758s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "BufferReadTest",
+      "tests": 1,
+      "failures": 1,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T14:29:29Z",
+      "time": "0.755s",
+      "testsuite": [
+        {
+          "name": "ConsecutiveGraphicsBindingsKeepEveryIndexAndSurviveFrameAndComputeChanges",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 144,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:29:29Z",
+          "time": "0.754s",
+          "classname": "BufferReadTest",
+          "rng_seed": "16222333545610219595",
+          "failures": [
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp:258\nExpected equality of these values:\n  rgba[0]\n    Which is: 116\n  expected[row].x\n    Which is: 103\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(253): 2\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(205): 0\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp:258\nExpected equality of these values:\n  rgba[0]\n    Which is: 103\n  expected[row].x\n    Which is: 232\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(253): 4\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(205): 0\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp:258\nExpected equality of these values:\n  rgba[0]\n    Which is: 116\n  expected[row].x\n    Which is: 103\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(253): 2\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(205): 1\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp:258\nExpected equality of these values:\n  rgba[0]\n    Which is: 103\n  expected[row].x\n    Which is: 232\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(253): 4\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(205): 1\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp:258\nExpected equality of these values:\n  rgba[0]\n    Which is: 116\n  expected[row].x\n    Which is: 103\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(253): 2\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(205): 2\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp:258\nExpected equality of these values:\n  rgba[0]\n    Which is: 103\n  expected[row].x\n    Which is: 232\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(253): 4\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(205): 2\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp:258\nExpected equality of these values:\n  rgba[0]\n    Which is: 116\n  expected[row].x\n    Which is: 103\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(253): 2\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(205): 3\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp:258\nExpected equality of these values:\n  rgba[0]\n    Which is: 103\n  expected[row].x\n    Which is: 232\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(253): 4\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp(205): 3\n",
+              "type": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

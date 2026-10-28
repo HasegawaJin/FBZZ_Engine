@@ -1,0 +1,8 @@
+{
+  "changedFromPreviousMap": [],
+  "privateInputs": {
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp": "d5df53b9e92004fb7a33ff59893bde59a450917617cfd8007fbd81e88c704ec9",
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.hpp": "5e3271ba86b294efa11d429d2ae18be71c0a32d45bc78be919365cdd9dc633cb"
+  },
+  "exportsUnchanged": true
+}

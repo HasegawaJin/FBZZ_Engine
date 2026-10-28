@@ -1,0 +1,394 @@
+rowType,threadLifetimeId,applicationFrame,resourceFrame,token,viewOrdinal,parentViewOrdinal,viewId,resourceInstance,resourceEpoch,sceneGeneration,outputId,outputGeneration,role,depth,phase,source,api,waitKind,metric,value,auxiliary,available,packetSerial,commandCount,accepted,rowComplete,captureIncomplete,dropped
+meta,0,0,0,0,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,selected-frames,4,4,1,0,0,0,1,0,0
+meta,0,0,0,0,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,warmup,120,0,1,0,0,0,1,0,0
+meta,0,0,0,0,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,stride,1,0,1,0,0,0,1,0,0
+meta,0,0,0,0,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,cpu-queries,36,0,1,0,0,0,1,0,0
+meta,0,0,0,0,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,wall-queries,60,0,1,0,0,0,1,0,0
+meta,0,0,0,0,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,cycle-queries,36,0,1,0,0,0,1,0,0
+meta,0,0,0,0,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,os-cpu-time-coarse,1,0,1,0,0,0,1,0,0
+meta,0,0,0,0,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,cycle-counter-raw,1,0,1,0,0,0,1,0,0
+meta,0,0,0,0,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,mutex-timing,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,source-operations,1,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,sync-calls,2,0,1,0,0,0,1,0,0
+counter,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,packets,2,0,1,0,0,0,1,0,0
+counter,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,commands,53,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,calls,2,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,calls,2,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,calls,2,2,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,inclusive-ns,56100,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,leaf-ns,56100,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,max-wait-depth,1,0,1,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,source-operations,2,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,calls,2,1,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,inclusive-ns,131800,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,leaf-ns,131800,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,max-wait-depth,1,0,1,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,cpu-frame-wait-calls,1,0,1,0,0,0,1,0,0
+counter,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,empty-submit,1,0,1,0,0,0,1,0,0
+counter,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,packets,1,0,1,0,0,0,1,0,0
+counter,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,commands,51,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,calls,1,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,121,0,1,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,source-operations,1,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,sync-calls,2,0,1,0,0,0,1,0,0
+counter,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,packets,2,0,1,0,0,0,1,0,0
+counter,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,commands,53,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,calls,2,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,calls,2,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,calls,2,2,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,inclusive-ns,55000,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,leaf-ns,55000,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,max-wait-depth,1,0,1,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,source-operations,2,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,calls,2,1,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,inclusive-ns,110700,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,leaf-ns,110700,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,max-wait-depth,1,0,1,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,cpu-frame-wait-calls,1,0,1,0,0,0,1,0,0
+counter,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,empty-submit,1,0,1,0,0,0,1,0,0
+counter,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,packets,1,0,1,0,0,0,1,0,0
+counter,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,commands,51,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,calls,1,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,122,0,2,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,source-operations,1,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,sync-calls,2,0,1,0,0,0,1,0,0
+counter,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,packets,2,0,1,0,0,0,1,0,0
+counter,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,commands,53,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,calls,2,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,calls,2,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,calls,2,2,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,inclusive-ns,51500,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,leaf-ns,51500,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,max-wait-depth,1,0,1,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,source-operations,2,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,calls,2,1,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,inclusive-ns,109500,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,leaf-ns,109500,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,max-wait-depth,1,0,1,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,cpu-frame-wait-calls,1,0,1,0,0,0,1,0,0
+counter,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,empty-submit,1,0,1,0,0,0,1,0,0
+counter,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,packets,1,0,1,0,0,0,1,0,0
+counter,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,commands,51,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,calls,1,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,123,0,3,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::BeginFrame::AtFront",unspecified,source-operations,1,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,sync-calls,2,0,1,0,0,0,1,0,0
+counter,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,packets,2,0,1,0,0,0,1,0,0
+counter,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,commands,53,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,calls,2,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",slot,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,calls,2,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",acceptance,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,calls,2,2,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,inclusive-ns,41900,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,leaf-ns,41900,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,max-wait-depth,1,0,1,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",completion,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"OpaqueQueue::GpuProfiler::AtFront",unspecified,source-operations,2,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,calls,2,1,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,inclusive-ns,107500,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,leaf-ns,107500,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,max-wait-depth,1,0,1,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",slot,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,calls,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+counter,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,cpu-frame-wait-calls,1,0,1,0,0,0,1,0,0
+counter,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,empty-submit,1,0,1,0,0,0,1,0,0
+counter,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,packets,1,0,1,0,0,0,1,0,0
+counter,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",unspecified,commands,51,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,calls,1,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,inclusive-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,leaf-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,pump-ns,0,0,1,0,0,0,1,0,0
+wait,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,max-wait-depth,0,0,1,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,execution-mutex-ns,0,0,0,0,0,0,1,0,0
+acquire,1,124,0,4,0,0,0,0,0,0,0,0,producer,0,outside,unknown,"",acceptance,thread-mutex-ns,0,0,0,0,0,0,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,20000,0,1,366,3,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,366,3,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,366,3,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,40339,0,1,366,3,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,1100,0,1,366,3,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,366,3,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,366,3,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,1478,0,1,366,3,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,18000,0,1,367,50,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,367,50,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,367,50,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,36960,0,1,367,50,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,1300,0,1,367,50,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,367,50,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,367,50,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,2112,0,1,367,50,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,wall-ns,122900,0,1,368,51,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,kernel-100ns,0,0,1,368,51,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,user-100ns,0,0,1,368,51,1,1,0,0
+packet-execute,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,cpu-cycles,234009,0,1,368,51,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,wall-ns,1300,0,1,368,51,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,kernel-100ns,0,0,1,368,51,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,user-100ns,0,0,1,368,51,1,1,0,0
+packet-destroy,1,121,0,1,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,cpu-cycles,1901,0,1,368,51,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,19000,0,1,369,3,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,369,3,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,369,3,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,39706,0,1,369,3,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,900,0,1,369,3,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,369,3,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,369,3,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,1479,0,1,369,3,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,17600,0,1,370,50,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,370,50,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,370,50,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,36960,0,1,370,50,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,1300,0,1,370,50,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,370,50,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,370,50,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,2112,0,1,370,50,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,wall-ns,102300,0,1,371,51,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,kernel-100ns,0,0,1,371,51,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,user-100ns,0,0,1,371,51,1,1,0,0
+packet-execute,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,cpu-cycles,215847,0,1,371,51,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,wall-ns,1300,0,1,371,51,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,kernel-100ns,0,0,1,371,51,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,user-100ns,0,0,1,371,51,1,1,0,0
+packet-destroy,1,122,0,2,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,cpu-cycles,1901,0,1,371,51,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,17200,0,1,372,3,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,372,3,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,372,3,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,36115,0,1,372,3,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,900,0,1,372,3,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,372,3,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,372,3,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,1478,0,1,372,3,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,17300,0,1,373,50,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,373,50,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,373,50,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,35904,0,1,373,50,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,1100,0,1,373,50,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,373,50,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,373,50,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,1901,0,1,373,50,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,wall-ns,100800,0,1,374,51,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,kernel-100ns,0,0,1,374,51,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,user-100ns,0,0,1,374,51,1,1,0,0
+packet-execute,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,cpu-cycles,212890,0,1,374,51,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,wall-ns,1400,0,1,374,51,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,kernel-100ns,0,0,1,374,51,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,user-100ns,0,0,1,374,51,1,1,0,0
+packet-destroy,1,123,0,3,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,cpu-cycles,1901,0,1,374,51,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,17900,0,1,375,3,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,375,3,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,375,3,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,37593,0,1,375,3,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,1000,0,1,375,3,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,375,3,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,375,3,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,1689,0,1,375,3,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,15200,0,1,376,50,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,376,50,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,376,50,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,32314,0,1,376,50,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,wall-ns,1100,0,1,376,50,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,kernel-100ns,0,0,1,376,50,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,user-100ns,0,0,1,376,50,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"bool __cdecl fbzz::renderer::ThreadedRenderer::GpuProfBeginView(const struct fbzz::renderer::GpuProfilerViewMetadata &)",unspecified,cpu-cycles,1690,0,1,376,50,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,wall-ns,98400,0,1,377,51,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,kernel-100ns,0,0,1,377,51,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,user-100ns,0,0,1,377,51,1,1,0,0
+packet-execute,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,cpu-cycles,207821,0,1,377,51,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,wall-ns,1300,0,1,377,51,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,kernel-100ns,0,0,1,377,51,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,user-100ns,0,0,1,377,51,1,1,0,0
+packet-destroy,1,124,0,4,0,0,0,0,0,0,0,0,worker,0,outside,unknown,"",unspecified,cpu-cycles,1900,0,1,377,51,1,1,0,0

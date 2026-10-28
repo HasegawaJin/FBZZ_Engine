@@ -1,0 +1,13 @@
+{
+  "gitStatusEntries": 4758,
+  "statusAddedSinceTaskStart": [
+    "?? Docs/benchmarks/2026-10-23-visible-mesh-trace/"
+  ],
+  "statusRemovedSinceTaskStart": [],
+  "scopedDiffCheck": "PASS",
+  "archiveIntegrity": "PASS",
+  "rawRoundTrip": "PASS",
+  "comments": "PASS",
+  "reportLinks": "PASS",
+  "finalArtifactFiles": 88
+}

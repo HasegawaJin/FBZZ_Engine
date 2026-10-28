@@ -1,0 +1,12 @@
+{
+  "nativeInputChangesFromBaseline": [
+    "Projects/Graphics/src/Passes/Geometry/ForwardPasses.cpp",
+    "Projects/Graphics/src/Passes/Geometry/RenderSceneDraw.cpp",
+    "Projects/Graphics/src/Passes/Geometry/RenderScenePassHelpers.hpp"
+  ],
+  "baselineDllIdentity": true,
+  "negativeAndRestoredTestExecutableIdentical": true,
+  "restoredGraphicsIsFinalCandidate": true,
+  "benchmarkExecutableIsCommonToBothVariants": true,
+  "productionPublicHeadersChanged": false
+}

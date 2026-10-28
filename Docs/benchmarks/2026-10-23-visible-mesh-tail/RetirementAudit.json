@@ -1,0 +1,9 @@
+{
+  "candidateAdopted": false,
+  "nativeInputsExactlyMatchTaskBaseline": 1358,
+  "restoredSources": [
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp",
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.hpp"
+  ],
+  "reason": "P99 reduction did not reproduce; independent repeat regressed and identical-binary control varied substantially"
+}

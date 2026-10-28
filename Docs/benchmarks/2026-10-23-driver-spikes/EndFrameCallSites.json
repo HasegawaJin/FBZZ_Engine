@@ -1,0 +1,64 @@
+{
+  "imageBase": "0x180000000",
+  "begin": "0x180121d30",
+  "end": "0x1801221fd",
+  "sampledReturnAddresses": {
+    "0x180122136": 234,
+    "0x180121fda": 59,
+    "0x180121ebf": 8,
+    "0x18012200b": 5,
+    "0x180121e13": 1,
+    "0x180122146": 1
+  },
+  "tailSamples": [
+    {
+      "run": "r0.out",
+      "serial": 895,
+      "frameMs": 2.68119991,
+      "returnAddress": "0x180122136",
+      "leaf": "nvwgf2umx.dll+0x2d618c"
+    },
+    {
+      "run": "r1.out",
+      "serial": 1088,
+      "frameMs": 1.34249997,
+      "returnAddress": "0x180122136",
+      "leaf": "ntdll.dll+0x1feb0"
+    },
+    {
+      "run": "r1.out",
+      "serial": 1104,
+      "frameMs": 1.21310008,
+      "returnAddress": "0x180122136",
+      "leaf": "ntoskrnl.exe+0x378f9f"
+    },
+    {
+      "run": "r2.out",
+      "serial": 631,
+      "frameMs": 1.25919998,
+      "returnAddress": "0x180122136",
+      "leaf": "nvlddmkm.sys+0x9fd8a"
+    },
+    {
+      "run": "r2.out",
+      "serial": 651,
+      "frameMs": 1.42999995,
+      "returnAddress": "0x180122136",
+      "leaf": "ntoskrnl.exe+0x370a79"
+    },
+    {
+      "run": "r2.out",
+      "serial": 720,
+      "frameMs": 1.29610002,
+      "returnAddress": "0x180121fda",
+      "leaf": "nvlddmkm.sys+0xdd3179"
+    },
+    {
+      "run": "r2.out",
+      "serial": 849,
+      "frameMs": 1.61669993,
+      "returnAddress": "0x180122136",
+      "leaf": "nvwgf2umx.dll+0x2bb569"
+    }
+  ]
+}

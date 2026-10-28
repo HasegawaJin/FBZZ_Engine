@@ -1,0 +1,44 @@
+{
+  "decision": "rejected",
+  "nativeInputs": 1358,
+  "allNativeInputsRestoredToTaskBaseline": true,
+  "inputMapRestoredExactly": true,
+  "configuration": "Release LTO",
+  "modules": {
+    "FBZZMath": {
+      "exports": 100,
+      "sha256": "ecd3dd1977545350dd8dc20a1b155b16d63db5e35067b22ad3aeaa549bfdbcfd",
+      "byteIdenticalToOriginal": true
+    },
+    "FBZZPhysics": {
+      "exports": 6112,
+      "sha256": "5c8e9b916146ffe0a3321f74cadaf3d341187f444db27c3ec24d3b6d901448ed",
+      "byteIdenticalToOriginal": true
+    },
+    "FBZZFluid": {
+      "exports": 1056,
+      "sha256": "0d9e2d14d5bab8f86724e6659a89dcb898d1877d3ada935ded1ca1d910682a2c",
+      "byteIdenticalToOriginal": true
+    },
+    "FBZZCore": {
+      "exports": 2464,
+      "sha256": "733e3b353f84b93995601ed46f0e4b64757438969df397373e61c811cc023c69",
+      "byteIdenticalToOriginal": true
+    },
+    "FBZZGraphics": {
+      "exports": 23268,
+      "sha256": "d92ba50ccfe19e1cc6d21bd1869661d5f9572fa3a0bc8866857c85b57881608d",
+      "byteIdenticalToOriginal": false
+    },
+    "FBZZEngine": {
+      "exports": 15122,
+      "sha256": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+      "byteIdenticalToOriginal": true
+    }
+  },
+  "commonBenchmarkExe": {
+    "FBZZTestsRayTracingEngine.exe": "209e5e42197fc7e2bca5c5aba87f8a43c37af2604213840bef7c1a01794c37f7",
+    "FBZZStaticMeshReuseBench.exe": "f4d831c24f61915067bdc2c555fdae5a5de605ace4fd47a9c861fe170e406e99"
+  },
+  "controlDllsIdentical": true
+}

@@ -1,0 +1,56 @@
+﻿{
+    "cpu":  "Intel(R) Core(TM) i7-14700F",
+    "os":  "Microsoft Windows NT 10.0.26300.0",
+    "logicalProcessors":  28,
+    "configuration":  "Release; FBZZ_RELEASE_LTO=ON",
+    "affinityMask":  16,
+    "priority":  "High",
+    "measurement":  "steady_clock; BroadPhase input mutation and validation excluded; World sync+Step included",
+    "unit":  "us/call",
+    "order":  [
+                  "Baseline",
+                  "Candidate",
+                  "Candidate",
+                  "Baseline",
+                  "Baseline",
+                  "Candidate"
+              ],
+    "files":  [
+                  {
+                      "sha256":  "297A3EF2C50353B5DE4AC01C4A9D17E43CB9AC615A79FF5FB62B68805D068C43",
+                      "path":  "K:\\FBZZ_Engine\\Scratch\\BroadPhase20261022\\Baseline\\FBZZPhysicsBroadPhaseBench.exe"
+                  },
+                  {
+                      "sha256":  "6A97739AB67F5589CCFADAF761786B3140CB340BE00830EF4EBEB21D13E14F96",
+                      "path":  "K:\\FBZZ_Engine\\Scratch\\BroadPhase20261022\\Baseline\\FBZZPhysics.dll"
+                  },
+                  {
+                      "sha256":  "2162FD12F4F5C2E4837391DB5A3B0B4793C1CF05F9EC496167560CF6AB659AF5",
+                      "path":  "K:\\FBZZ_Engine\\Scratch\\BroadPhase20261022\\Baseline\\FBZZMath.dll"
+                  },
+                  {
+                      "sha256":  "14823874E47B9FC1C5829B3295CF912EAE3D3D0BD614494D673230FFE6BBC541",
+                      "path":  "K:\\FBZZ_Engine\\Scratch\\BroadPhase20261022\\Candidate\\FBZZPhysicsBroadPhaseBench.exe"
+                  },
+                  {
+                      "sha256":  "739C5391477574EBD034BA680A8EF92DB6DE1223E4893E3E921A7FA19ECDE65A",
+                      "path":  "K:\\FBZZ_Engine\\Scratch\\BroadPhase20261022\\Candidate\\FBZZPhysics.dll"
+                  },
+                  {
+                      "sha256":  "F5B19938A5A05BC129091E9E0080F03E3D2C06E7863A1AB62B3B388854BC1311",
+                      "path":  "K:\\FBZZ_Engine\\Scratch\\BroadPhase20261022\\Candidate\\FBZZMath.dll"
+                  },
+                  {
+                      "sha256":  "6C71BA94ABE536F34B6703187E0981DDBD6E5EA88B1DB61D5F8E4C21ADFE771C",
+                      "path":  "K:\\FBZZ_Engine\\Projects\\Physics\\src\\PhysicsSolver.cpp"
+                  },
+                  {
+                      "sha256":  "38EA58AB54125A8E4A0A900B84E026C959C26C37956FB17B462D6C811774503B",
+                      "path":  "K:\\FBZZ_Engine\\Projects\\Physics\\include\\Physics\\PhysicsSolver.hpp"
+                  },
+                  {
+                      "sha256":  "96C96266F4848A48CF8E042A4E268E87F62BC43F7A4C5E788293BA9EF1CEF612",
+                      "path":  "K:\\FBZZ_Engine\\Projects\\Tests\\Bench\\PhysicsBroadPhaseMeasure.cpp"
+                  }
+              ]
+}

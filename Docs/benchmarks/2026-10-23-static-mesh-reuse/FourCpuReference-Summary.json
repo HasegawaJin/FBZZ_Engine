@@ -1,0 +1,763 @@
+{
+  "label": "Verified",
+  "kind": "cpu",
+  "smoke": false,
+  "groups": {
+    "1000-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.13605,
+            0.12655,
+            0.1456
+          ],
+          "pooled": {
+            "p50": 0.13845000000000002,
+            "p95": 0.30971,
+            "p99": 0.3418439999999999
+          },
+          "files": [
+            "Verified-cpu-1000-all-r0-Baseline.json",
+            "Verified-cpu-1000-all-r3-Baseline.json",
+            "Verified-cpu-1000-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.1495,
+            0.1527,
+            0.144
+          ],
+          "pooled": {
+            "p50": 0.1488,
+            "p95": 0.313515,
+            "p99": 0.36996199999999996
+          },
+          "files": [
+            "Verified-cpu-1000-all-r1-Candidate.json",
+            "Verified-cpu-1000-all-r2-Candidate.json",
+            "Verified-cpu-1000-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.13605,
+      "candidateMedianMs": 0.1495,
+      "changePercent": 9.886071297317155
+    },
+    "1000-churn": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.1585,
+            0.1531,
+            0.1531
+          ],
+          "pooled": {
+            "p50": 0.1547,
+            "p95": 0.334705,
+            "p99": 0.379327
+          },
+          "files": [
+            "Verified-cpu-1000-churn-r0-Baseline.json",
+            "Verified-cpu-1000-churn-r3-Baseline.json",
+            "Verified-cpu-1000-churn-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.1247,
+            0.1261,
+            0.12484999999999999
+          ],
+          "pooled": {
+            "p50": 0.1251,
+            "p95": 0.28321,
+            "p99": 0.31672199999999995
+          },
+          "files": [
+            "Verified-cpu-1000-churn-r1-Candidate.json",
+            "Verified-cpu-1000-churn-r2-Candidate.json",
+            "Verified-cpu-1000-churn-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.1531,
+      "candidateMedianMs": 0.12484999999999999,
+      "changePercent": -18.451992161985643
+    },
+    "1000-cold": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.1559,
+            0.1479,
+            0.1468
+          ],
+          "pooled": {
+            "p50": 0.15,
+            "p95": 0.34663,
+            "p99": 0.36785399999999996
+          },
+          "files": [
+            "Verified-cpu-1000-cold-r0-Baseline.json",
+            "Verified-cpu-1000-cold-r3-Baseline.json",
+            "Verified-cpu-1000-cold-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.15715,
+            0.1524,
+            0.1509
+          ],
+          "pooled": {
+            "p50": 0.1536,
+            "p95": 0.3479499999999999,
+            "p99": 0.388211
+          },
+          "files": [
+            "Verified-cpu-1000-cold-r1-Candidate.json",
+            "Verified-cpu-1000-cold-r2-Candidate.json",
+            "Verified-cpu-1000-cold-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.1479,
+      "candidateMedianMs": 0.1524,
+      "changePercent": 3.0425963488843744
+    },
+    "1000-initial-pair": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.2795,
+            0.27785,
+            0.29585
+          ],
+          "pooled": {
+            "p50": 0.28335,
+            "p95": 0.46626499999999993,
+            "p99": 0.504315
+          },
+          "files": [
+            "Verified-cpu-1000-initial-pair-r0-Baseline.json",
+            "Verified-cpu-1000-initial-pair-r3-Baseline.json",
+            "Verified-cpu-1000-initial-pair-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.36415,
+            0.32845,
+            0.30874999999999997
+          ],
+          "pooled": {
+            "p50": 0.33615,
+            "p95": 0.6565,
+            "p99": 0.7862319999999999
+          },
+          "files": [
+            "Verified-cpu-1000-initial-pair-r1-Candidate.json",
+            "Verified-cpu-1000-initial-pair-r2-Candidate.json",
+            "Verified-cpu-1000-initial-pair-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.2795,
+      "candidateMedianMs": 0.32845,
+      "changePercent": 17.51341681574239
+    },
+    "1000-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.15245,
+            0.1275,
+            0.15065
+          ],
+          "pooled": {
+            "p50": 0.1474,
+            "p95": 0.30510499999999996,
+            "p99": 0.37613399999999997
+          },
+          "files": [
+            "Verified-cpu-1000-one-percent-r0-Baseline.json",
+            "Verified-cpu-1000-one-percent-r3-Baseline.json",
+            "Verified-cpu-1000-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.1059,
+            0.1046,
+            0.107
+          ],
+          "pooled": {
+            "p50": 0.1058,
+            "p95": 0.241805,
+            "p99": 0.2864889999999999
+          },
+          "files": [
+            "Verified-cpu-1000-one-percent-r1-Candidate.json",
+            "Verified-cpu-1000-one-percent-r2-Candidate.json",
+            "Verified-cpu-1000-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.15065,
+      "candidateMedianMs": 0.1059,
+      "changePercent": -29.704613342183873
+    },
+    "1000-service-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.186,
+            0.19155,
+            0.1752
+          ],
+          "pooled": {
+            "p50": 0.18695,
+            "p95": 0.35073,
+            "p99": 0.38761
+          },
+          "files": [
+            "Verified-cpu-1000-service-all-r0-Baseline.json",
+            "Verified-cpu-1000-service-all-r3-Baseline.json",
+            "Verified-cpu-1000-service-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.1847,
+            0.20955000000000001,
+            0.17404999999999998
+          ],
+          "pooled": {
+            "p50": 0.18835000000000002,
+            "p95": 0.410825,
+            "p99": 0.5094259999999999
+          },
+          "files": [
+            "Verified-cpu-1000-service-all-r1-Candidate.json",
+            "Verified-cpu-1000-service-all-r2-Candidate.json",
+            "Verified-cpu-1000-service-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.186,
+      "candidateMedianMs": 0.1847,
+      "changePercent": -0.6989247311827929
+    },
+    "1000-service-churn": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.198,
+            0.1947,
+            0.20855
+          ],
+          "pooled": {
+            "p50": 0.1999,
+            "p95": 0.35541999999999996,
+            "p99": 0.38804999999999995
+          },
+          "files": [
+            "Verified-cpu-1000-service-churn-r0-Baseline.json",
+            "Verified-cpu-1000-service-churn-r3-Baseline.json",
+            "Verified-cpu-1000-service-churn-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.1676,
+            0.16025,
+            0.1589
+          ],
+          "pooled": {
+            "p50": 0.1619,
+            "p95": 0.30551999999999996,
+            "p99": 0.33291999999999994
+          },
+          "files": [
+            "Verified-cpu-1000-service-churn-r1-Candidate.json",
+            "Verified-cpu-1000-service-churn-r2-Candidate.json",
+            "Verified-cpu-1000-service-churn-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.198,
+      "candidateMedianMs": 0.16025,
+      "changePercent": -19.065656565656564
+    },
+    "1000-service-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.1319,
+            0.13495000000000001,
+            0.1753
+          ],
+          "pooled": {
+            "p50": 0.1392,
+            "p95": 0.355715,
+            "p99": 0.575301
+          },
+          "files": [
+            "Verified-cpu-1000-service-one-percent-r0-Baseline.json",
+            "Verified-cpu-1000-service-one-percent-r3-Baseline.json",
+            "Verified-cpu-1000-service-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.105,
+            0.1027,
+            0.1431
+          ],
+          "pooled": {
+            "p50": 0.10594999999999999,
+            "p95": 0.3416,
+            "p99": 0.371807
+          },
+          "files": [
+            "Verified-cpu-1000-service-one-percent-r1-Candidate.json",
+            "Verified-cpu-1000-service-one-percent-r2-Candidate.json",
+            "Verified-cpu-1000-service-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.13495000000000001,
+      "candidateMedianMs": 0.105,
+      "changePercent": -22.19340496480179
+    },
+    "1000-static": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.13965,
+            0.14024999999999999,
+            0.15034999999999998
+          ],
+          "pooled": {
+            "p50": 0.1445,
+            "p95": 0.294215,
+            "p99": 0.33326199999999995
+          },
+          "files": [
+            "Verified-cpu-1000-static-r0-Baseline.json",
+            "Verified-cpu-1000-static-r3-Baseline.json",
+            "Verified-cpu-1000-static-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.10905000000000001,
+            0.1039,
+            0.1082
+          ],
+          "pooled": {
+            "p50": 0.108,
+            "p95": 0.2682,
+            "p99": 0.32021499999999997
+          },
+          "files": [
+            "Verified-cpu-1000-static-r1-Candidate.json",
+            "Verified-cpu-1000-static-r2-Candidate.json",
+            "Verified-cpu-1000-static-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.14024999999999999,
+      "candidateMedianMs": 0.1082,
+      "changePercent": -22.85204991087343
+    },
+    "10000-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            5.17995,
+            4.0807,
+            3.4619
+          ],
+          "pooled": {
+            "p50": 4.1912,
+            "p95": 5.854639999999999,
+            "p99": 6.527286999999999
+          },
+          "files": [
+            "Verified-cpu-10000-all-r0-Baseline.json",
+            "Verified-cpu-10000-all-r3-Baseline.json",
+            "Verified-cpu-10000-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            5.4483999999999995,
+            5.8374,
+            3.55175
+          ],
+          "pooled": {
+            "p50": 5.25105,
+            "p95": 6.827929999999996,
+            "p99": 8.24715
+          },
+          "files": [
+            "Verified-cpu-10000-all-r1-Candidate.json",
+            "Verified-cpu-10000-all-r2-Candidate.json",
+            "Verified-cpu-10000-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 4.0807,
+      "candidateMedianMs": 5.4483999999999995,
+      "changePercent": 33.516308476486856
+    },
+    "10000-churn": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.88055,
+            4.0565,
+            3.5073499999999997
+          ],
+          "pooled": {
+            "p50": 3.84275,
+            "p95": 4.71787,
+            "p99": 5.35915
+          },
+          "files": [
+            "Verified-cpu-10000-churn-r0-Baseline.json",
+            "Verified-cpu-10000-churn-r3-Baseline.json",
+            "Verified-cpu-10000-churn-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.91545,
+            4.2379,
+            3.2546
+          ],
+          "pooled": {
+            "p50": 3.7477,
+            "p95": 5.2599,
+            "p99": 6.498026
+          },
+          "files": [
+            "Verified-cpu-10000-churn-r1-Candidate.json",
+            "Verified-cpu-10000-churn-r2-Candidate.json",
+            "Verified-cpu-10000-churn-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.88055,
+      "candidateMedianMs": 3.91545,
+      "changePercent": 0.8993570499027159
+    },
+    "10000-cold": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.43155,
+            3.60565,
+            3.6859
+          ],
+          "pooled": {
+            "p50": 3.6008,
+            "p95": 3.9660200000000003,
+            "p99": 4.437939
+          },
+          "files": [
+            "Verified-cpu-10000-cold-r0-Baseline.json",
+            "Verified-cpu-10000-cold-r3-Baseline.json",
+            "Verified-cpu-10000-cold-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.69125,
+            3.8350999999999997,
+            3.65315
+          ],
+          "pooled": {
+            "p50": 3.70265,
+            "p95": 4.137854999999999,
+            "p99": 4.644923999999999
+          },
+          "files": [
+            "Verified-cpu-10000-cold-r1-Candidate.json",
+            "Verified-cpu-10000-cold-r2-Candidate.json",
+            "Verified-cpu-10000-cold-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.60565,
+      "candidateMedianMs": 3.69125,
+      "changePercent": 2.3740518353140283
+    },
+    "10000-initial-pair": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            7.2492,
+            7.46905,
+            7.5113
+          ],
+          "pooled": {
+            "p50": 7.4257,
+            "p95": 8.053579999999998,
+            "p99": 8.469778999999999
+          },
+          "files": [
+            "Verified-cpu-10000-initial-pair-r0-Baseline.json",
+            "Verified-cpu-10000-initial-pair-r3-Baseline.json",
+            "Verified-cpu-10000-initial-pair-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            8.20125,
+            8.15855,
+            8.197700000000001
+          ],
+          "pooled": {
+            "p50": 8.18735,
+            "p95": 8.776299999999999,
+            "p99": 9.371316
+          },
+          "files": [
+            "Verified-cpu-10000-initial-pair-r1-Candidate.json",
+            "Verified-cpu-10000-initial-pair-r2-Candidate.json",
+            "Verified-cpu-10000-initial-pair-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 7.46905,
+      "candidateMedianMs": 8.197700000000001,
+      "changePercent": 9.755591407207076
+    },
+    "10000-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            4.181649999999999,
+            4.20045,
+            4.24635
+          ],
+          "pooled": {
+            "p50": 4.21345,
+            "p95": 5.0945149999999995,
+            "p99": 5.503412
+          },
+          "files": [
+            "Verified-cpu-10000-one-percent-r0-Baseline.json",
+            "Verified-cpu-10000-one-percent-r3-Baseline.json",
+            "Verified-cpu-10000-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            4.2113,
+            3.97325,
+            5.06775
+          ],
+          "pooled": {
+            "p50": 4.3499,
+            "p95": 6.1205549999999995,
+            "p99": 6.7909679999999994
+          },
+          "files": [
+            "Verified-cpu-10000-one-percent-r1-Candidate.json",
+            "Verified-cpu-10000-one-percent-r2-Candidate.json",
+            "Verified-cpu-10000-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 4.20045,
+      "candidateMedianMs": 4.2113,
+      "changePercent": 0.25830565772713143
+    },
+    "10000-service-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.40565,
+            3.41075,
+            3.4227499999999997
+          ],
+          "pooled": {
+            "p50": 3.41255,
+            "p95": 3.81241,
+            "p99": 4.377453999999999
+          },
+          "files": [
+            "Verified-cpu-10000-service-all-r0-Baseline.json",
+            "Verified-cpu-10000-service-all-r3-Baseline.json",
+            "Verified-cpu-10000-service-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.47655,
+            3.551,
+            3.5085
+          ],
+          "pooled": {
+            "p50": 3.5063,
+            "p95": 3.8668649999999998,
+            "p99": 4.332203
+          },
+          "files": [
+            "Verified-cpu-10000-service-all-r1-Candidate.json",
+            "Verified-cpu-10000-service-all-r2-Candidate.json",
+            "Verified-cpu-10000-service-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.41075,
+      "candidateMedianMs": 3.5085,
+      "changePercent": 2.8659385765594125
+    },
+    "10000-service-churn": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            4.63565,
+            4.75755,
+            4.66185
+          ],
+          "pooled": {
+            "p50": 4.6928,
+            "p95": 5.03601,
+            "p99": 5.400048
+          },
+          "files": [
+            "Verified-cpu-10000-service-churn-r0-Baseline.json",
+            "Verified-cpu-10000-service-churn-r3-Baseline.json",
+            "Verified-cpu-10000-service-churn-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            4.367699999999999,
+            4.5108999999999995,
+            4.4925999999999995
+          ],
+          "pooled": {
+            "p50": 4.47265,
+            "p95": 4.8288899999999995,
+            "p99": 5.2639499999999995
+          },
+          "files": [
+            "Verified-cpu-10000-service-churn-r1-Candidate.json",
+            "Verified-cpu-10000-service-churn-r2-Candidate.json",
+            "Verified-cpu-10000-service-churn-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 4.66185,
+      "candidateMedianMs": 4.4925999999999995,
+      "changePercent": -3.630532942930398
+    },
+    "10000-service-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.17425,
+            3.22845,
+            3.1704
+          ],
+          "pooled": {
+            "p50": 3.18605,
+            "p95": 3.55434,
+            "p99": 3.9177999999999997
+          },
+          "files": [
+            "Verified-cpu-10000-service-one-percent-r0-Baseline.json",
+            "Verified-cpu-10000-service-one-percent-r3-Baseline.json",
+            "Verified-cpu-10000-service-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.22255,
+            3.0035999999999996,
+            3.1005
+          ],
+          "pooled": {
+            "p50": 3.0656499999999998,
+            "p95": 3.62124,
+            "p99": 3.86734
+          },
+          "files": [
+            "Verified-cpu-10000-service-one-percent-r1-Candidate.json",
+            "Verified-cpu-10000-service-one-percent-r2-Candidate.json",
+            "Verified-cpu-10000-service-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.17425,
+      "candidateMedianMs": 3.1005,
+      "changePercent": -2.3233834764117556
+    },
+    "10000-static": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.9766500000000002,
+            4.4574,
+            4.3584
+          ],
+          "pooled": {
+            "p50": 4.3443000000000005,
+            "p95": 6.196629999999999,
+            "p99": 7.721661999999999
+          },
+          "files": [
+            "Verified-cpu-10000-static-r0-Baseline.json",
+            "Verified-cpu-10000-static-r3-Baseline.json",
+            "Verified-cpu-10000-static-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            4.433450000000001,
+            5.27255,
+            4.1286
+          ],
+          "pooled": {
+            "p50": 4.6561,
+            "p95": 6.109094999999999,
+            "p99": 6.785727
+          },
+          "files": [
+            "Verified-cpu-10000-static-r1-Candidate.json",
+            "Verified-cpu-10000-static-r2-Candidate.json",
+            "Verified-cpu-10000-static-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 4.3584,
+      "candidateMedianMs": 4.433450000000001,
+      "changePercent": 1.721962187958903
+    }
+  }
+}

@@ -1,0 +1,321 @@
+--- a/Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp
++++ b/Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp
+@@ -171,6 +171,100 @@
+ 
+ std::atomic<uint64_t> s_renderSceneSerial{ 0 };
+ 
++/// @note Retain empty allocation capacity only: two item buffers up to 16 MiB each and two object buffers up to 8 MiB each per extraction thread.
++class RenderGeometryStorage {
++public:
++    static constexpr size_t MAXIMUM_OBJECT_BYTES = 8u * 1024u * 1024u;
++    void Borrow(renderer::RenderScene& output)
++    {
++        const std::lock_guard lock(m_mutex);
++        Take(m_items, output.items);
++        Take(m_objects, output.objects);
++    }
++    void RecycleItems(std::vector<renderer::RenderMeshItem>&& items)
++    {
++        /// @note Release skinning tickets before taking the pool lock; an idle pool never extends native resource ownership.
++        items.clear();
++        Return(m_items, std::move(items), 16u * 1024u * 1024u);
++    }
++    void RecycleObjects(std::vector<renderer::RenderObject>&& objects)
++    {
++        objects.clear();
++        Return(m_objects, std::move(objects), MAXIMUM_OBJECT_BYTES);
++    }
++private:
++    template<typename T>
++    static void Take(std::array<std::vector<T>, 2>& buffers, std::vector<T>& output)
++    {
++        auto* selected = &buffers.front();
++        for (auto& buffer : buffers)
++            if (buffer.capacity() > selected->capacity()) selected = &buffer;
++        output.swap(*selected);
++    }
++    template<typename T>
++    void Return(std::array<std::vector<T>, 2>& buffers, std::vector<T>&& values, size_t maximumBytes)
++    {
++        if (values.capacity() == 0 || values.capacity() > maximumBytes / sizeof(T)) return;
++        /// @note The last immutable owner may retire on a render worker; it returns storage to its origin pool rather than that worker's TLS.
++        const std::lock_guard lock(m_mutex);
++        for (auto& buffer : buffers) {
++            if (buffer.capacity() != 0) continue;
++            buffer = std::move(values);
++            return;
++        }
++    }
++    std::mutex m_mutex;
++    std::array<std::vector<renderer::RenderMeshItem>, 2> m_items;
++    std::array<std::vector<renderer::RenderObject>, 2> m_objects;
++};
++
++const std::shared_ptr<RenderGeometryStorage>& GeometryStorage()
++{
++    thread_local const auto storage = std::make_shared<RenderGeometryStorage>();
++    return storage;
++}
++
++struct RenderSnapshotLease {
++    explicit RenderSnapshotLease(std::shared_ptr<RenderGeometryStorage> owner) : storage(std::move(owner))
++    {
++        storage->Borrow(snapshot);
++    }
++    ~RenderSnapshotLease()
++    {
++        storage->RecycleItems(std::move(snapshot.items));
++        storage->RecycleObjects(std::move(snapshot.objects));
++    }
++    std::shared_ptr<RenderGeometryStorage> storage;
++    renderer::RenderScene snapshot;
++};
++
++std::shared_ptr<renderer::RenderScene> MakeRenderSnapshot()
++{
++    auto lease = std::make_shared<RenderSnapshotLease>(GeometryStorage());
++    auto* snapshot = &lease->snapshot;
++    /// @note Aliasing ownership recycles storage only after the last const snapshot owner retires, including nested extraction and retained views.
++    /// @see https://eel.is/c++draft/util.smartptr.shared.const Aliasing shared_ptr constructors preserve the ownership group's lifetime.
++    return std::shared_ptr<renderer::RenderScene>(std::move(lease), snapshot);
++}
++
++struct RenderObjectLease {
++    RenderObjectLease(std::shared_ptr<RenderGeometryStorage> owner, std::vector<renderer::RenderObject>&& values)
++        : storage(std::move(owner)), objects(std::move(values)) {}
++    ~RenderObjectLease() { storage->RecycleObjects(std::move(objects)); }
++    std::shared_ptr<RenderGeometryStorage> storage;
++    std::vector<renderer::RenderObject> objects;
++};
++
++std::shared_ptr<const std::vector<renderer::RenderObject>> FreezeRenderObjects(std::vector<renderer::RenderObject>&& objects)
++{
++    /// @note Oversized snapshots keep the original owning allocation; their capacity is never retained by the bounded pool.
++    if (objects.capacity() > RenderGeometryStorage::MAXIMUM_OBJECT_BYTES / sizeof(renderer::RenderObject))
++        return std::make_shared<const std::vector<renderer::RenderObject>>(std::move(objects));
++    auto lease = std::make_shared<RenderObjectLease>(GeometryStorage(), std::move(objects));
++    const auto* values = &lease->objects;
++    return std::shared_ptr<const std::vector<renderer::RenderObject>>(std::move(lease), values);
++}
++
+ /// @note 候補収集から姿勢抽出までは callback を呼ばず、終了時に ID を消してスレッド別の容量だけを保持する。
+ thread_local std::vector<EntityID> s_renderGeometryCandidates;
+ 
+@@ -1257,10 +1351,14 @@
+ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp,
+     renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette, bool rayTracingInputs,
+     GeometryMaterialCache& materialCache, const renderer::ResourceManager* resources = nullptr,
+-    bool extractItemMaterialState = true, uint64_t* staticRevision = nullptr)
++    bool extractItemMaterialState = true, uint64_t* staticRevision = nullptr, renderer::RenderScene* reusableStorage = nullptr)
+ {
+     FBZZ_PROFILE_SCOPE("RenderSceneExtractor::Geometry");
+     renderer::RenderScene output;
++    if (reusableStorage) {
++        output.items.swap(reusableStorage->items);
++        output.objects.swap(reusableStorage->objects);
++    }
+     output.snapshotSerial = ++s_renderSceneSerial;
+     output.sceneGeneration = scene.GetRenderSceneGeneration();
+     output.frameStamp = frameStamp;
+@@ -1668,7 +1766,7 @@
+         frameGeometry->identityPalette == ctx.handles.bindPoseSkinningCB &&
+         CachedGeometryColorEligibilityMatches(ctx.scene, *frameGeometry->geometry)) {
+         FBZZ_PROFILE_SCOPE("RenderSceneExtractor::CachedGeometryInputs");
+-        output = std::make_shared<renderer::RenderScene>();
++        output = MakeRenderSnapshot();
+         output->sharedObjects = frameGeometry->geometry->sharedObjects;
+         output->items.reserve(frameGeometry->itemGeometry.size());
+         for (const auto& item : frameGeometry->itemGeometry)
+@@ -1680,9 +1778,9 @@
+     } else {
+         FBZZ_PROFILE_SCOPE("RenderSceneExtractor::GeometryBuild");
+         uint64_t builtStaticRevision = 0;
+-        output = std::make_shared<renderer::RenderScene>(
+-            BuildRenderSceneGeometry(ctx.scene, Time::frameCount, ctx.handles.bindPoseSkinningCB,
+-                rayTracingInputs, materialCache, &ctx.resources, false, &builtStaticRevision));
++        output = MakeRenderSnapshot();
++        *output = BuildRenderSceneGeometry(ctx.scene, Time::frameCount, ctx.handles.bindPoseSkinningCB,
++            rayTracingInputs, materialCache, &ctx.resources, false, &builtStaticRevision, output.get());
+         if (frameGeometry) {
+             FBZZ_PROFILE_SCOPE("RenderSceneExtractor::GeometryCachePublish");
+             frameGeometry->scene = &ctx.scene;
+@@ -1693,7 +1791,7 @@
+             frameGeometry->rayTracingInputs = rayTracingInputs;
+             frameGeometry->identityPalette = ctx.handles.bindPoseSkinningCB;
+             auto geometry = std::make_shared<renderer::RenderScene>();
+-            output->sharedObjects = std::make_shared<const std::vector<renderer::RenderObject>>(std::move(output->objects));
++            output->sharedObjects = FreezeRenderObjects(std::move(output->objects));
+             geometry->sharedObjects = output->sharedObjects;
+             frameGeometry->itemGeometry.clear();
+             frameGeometry->itemGeometry.reserve(output->items.size());
+--- a/Projects/Tests/Engine/Auto/RenderSceneExtractorTests.cpp
++++ b/Projects/Tests/Engine/Auto/RenderSceneExtractorTests.cpp
+@@ -46,6 +46,7 @@
+ #include <string>
+ #include <string_view>
+ #include <system_error>
++#include <thread>
+ 
+ namespace fbzz::tests {
+ namespace {
+@@ -223,6 +224,59 @@
+     bool m_wasProfilerEnabled = true;
+     uint64_t m_previousFrame = 0;
+ };
++
++TEST_F(RenderSceneExtractorMaterialTest, RetainedSnapshotsStayImmutableAfterWorkerRetirementAndSceneClear)
++{
++    m_mesh.vertexBuffer = {11, 2}; m_mesh.indexBuffer = {12, 3};
++    m_mesh.vertexCount = 3; m_mesh.indexCount = 3; m_mesh.boundsRadius = 1;
++    auto& object = StaticObject();
++    auto& material = object.AddComponent<scene::MaterialComponent>();
++    material.enabled = false;
++    object.transform.position = object.transform.worldPosition = {1, 0, 0};
++    renderer::RenderSettings settings;
++    scene::RenderFrameGeometryCache firstCache;
++    Time::frameCount = 1;
++    const auto retained = ExtractView(settings, firstCache);
++    ASSERT_EQ(retained->Objects().size(), 1u);
++    ASSERT_EQ(retained->items.size(), 1u);
++    firstCache.geometry.reset();
++
++    object.transform.position = object.transform.worldPosition = {2, 0, 0};
++    scene::RenderFrameGeometryCache secondCache;
++    Time::frameCount = 2;
++    auto retiring = ExtractView(settings, secondCache);
++    ASSERT_EQ(retiring->items.size(), 1u);
++    secondCache.geometry.reset();
++    std::thread worker([snapshot = std::move(retiring)]() mutable { snapshot.reset(); });
++    worker.join();
++
++    object.transform.position = object.transform.worldPosition = {3, 0, 0};
++    m_mesh.vertexCount = 6; m_mesh.indexCount = 12;
++    material.SetVisible(false);
++    scene::RenderFrameGeometryCache thirdCache;
++    Time::frameCount = 3;
++    auto current = ExtractView(settings, thirdCache);
++    ASSERT_EQ(current->Objects().size(), 1u);
++    ASSERT_EQ(current->items.size(), 1u);
++    EXPECT_FLOAT_EQ(current->Objects()[0].world.m[0][3], 3);
++    EXPECT_FLOAT_EQ(current->Objects()[0].previousWorld.m[0][3], 2);
++    EXPECT_EQ(current->items[0].vertexCount, 6u);
++    EXPECT_EQ(current->items[0].indexCount, 12u);
++    EXPECT_FALSE(current->items[0].slotVisible);
++    EXPECT_FLOAT_EQ(retained->Objects()[0].world.m[0][3], 1);
++    EXPECT_EQ(retained->items[0].vertexCount, 3u);
++    EXPECT_TRUE(retained->items[0].slotVisible);
++
++    current.reset(); thirdCache.geometry.reset();
++    m_scene.Clear();
++    scene::RenderFrameGeometryCache emptyCache;
++    Time::frameCount = 4;
++    const auto empty = ExtractView(settings, emptyCache);
++    EXPECT_TRUE(empty->Objects().empty());
++    EXPECT_TRUE(empty->items.empty());
++    EXPECT_FLOAT_EQ(retained->Objects()[0].world.m[0][3], 1);
++    EXPECT_EQ(retained->items[0].vertexCount, 3u);
++}
+ 
+ TEST_F(RenderSceneExtractorTest, SparseCameraQueriesPreserveScenePriorityAndObserveSameFrameEdits)
+ {
+--- a/Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
++++ b/Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
+@@ -37,6 +37,7 @@
+ #include <Graphics/Renderer/ShaderPathResolver.hpp>
+ #define WIN32_LEAN_AND_MEAN
+ #include <Windows.h>
++#include <psapi.h>
+ #include <objbase.h>
+ #pragma comment(lib, "ole32.lib")
+ #include <algorithm>
+@@ -103,6 +104,10 @@
+     /// @see https://learn.microsoft.com/en-us/windows/win32/api/realtimeapiset/nf-realtimeapiset-querythreadcycletime QueryThreadCycleTime remarks.
+     uint64_t threadCycles = 0;
+     bool threadCyclesValid = false;
++    /// @note Process-wide faults include soft faults; this diagnostic does not imply disk I/O or isolate background renderer threads.
++    /// @see https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-process_memory_counters PageFaultCount.
++    uint32_t renderPageFaults = 0;
++    bool renderPageFaultsValid = false;
+     /// @note MSVC steady_clock shares the QPC epoch; retain absolute frame boundaries for offline ETW correlation.
+     /// @see https://github.com/microsoft/STL/blob/main/stl/inc/__msvc_chrono.hpp steady_clock wraps QueryPerformanceCounter.
+     double frameBeginMs = 0;
+@@ -145,6 +150,7 @@
+         profiler::Profiler::RequestCaptureFilter(std::move(captureFilter));
+         m_timingOnly = FrameSetting("FBZZ_REGULAR_MESH_TIMING_ONLY", 0) == 1;
+         m_measureThreadCycles = FrameSetting("FBZZ_REGULAR_MESH_THREAD_CYCLES", 0) == 1;
++        m_measurePageFaults = FrameSetting("FBZZ_REGULAR_MESH_PAGE_FAULTS", 0) == 1;
+         m_backBufferPeriod = FrameSetting("FBZZ_REGULAR_MESH_BACKBUFFER_PERIOD", 0);
+         profiler::Profiler::RequestRecording(!m_timingOnly);
+         m_com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+@@ -770,6 +776,9 @@
+         const double beginStart = profiler::ProfileRecorder::NowMs();
+         device.BeginFrame();
+         m_frameOpen = true;
++        PROCESS_MEMORY_COUNTERS memoryStart{};
++        const bool memoryStartValid = measured && m_measurePageFaults
++            && GetProcessMemoryInfo(GetCurrentProcess(), &memoryStart, sizeof(memoryStart)) != 0;
+         const double renderStart = profiler::ProfileRecorder::NowMs();
+         scene::RenderFrameGeometryCache geometry;
+         scene::RenderSystemUIOptions firstUi;
+@@ -794,6 +803,12 @@
+             device.Clear({0.2f, 0.3f, 0.4f, 1.0f});
+         }
+         const double endStart = profiler::ProfileRecorder::NowMs();
++        if (memoryStartValid) {
++            PROCESS_MEMORY_COUNTERS memoryEnd{};
++            result.renderPageFaultsValid = GetProcessMemoryInfo(GetCurrentProcess(), &memoryEnd, sizeof(memoryEnd)) != 0
++                && memoryEnd.PageFaultCount >= memoryStart.PageFaultCount;
++            if (result.renderPageFaultsValid) result.renderPageFaults = memoryEnd.PageFaultCount - memoryStart.PageFaultCount;
++        }
+         device.EndFrame();
+         m_frameOpen = false;
+         const double frameEnd = profiler::ProfileRecorder::NowMs();
+@@ -890,6 +905,9 @@
+             << ",\"gpuInstancing\":" << (batching ? "true" : "false")
+             << ",\"frameGeometryCache\":" << (m_useFrameCache ? "true" : "false")
+             << ",\"threadCyclesEnabled\":" << (m_measureThreadCycles ? "true" : "false")
++            << ",\"pageFaultsEnabled\":" << (m_measurePageFaults ? "true" : "false")
++            << ",\"renderObjectBytes\":" << sizeof(renderer::RenderObject)
++            << ",\"renderItemBytes\":" << sizeof(renderer::RenderMeshItem)
+             << ",\"backBufferPeriod\":" << m_backBufferPeriod
+             << ",\"continueWhenOccluded\":" << (m_continueWhenOccluded ? "true" : "false")
+             << ",\"viewsPerFrame\":" << (m_twoViews ? 2 : 1)
+@@ -913,6 +931,8 @@
+                 << ",\"threadCycles\":" << frame.threadCycles
+                 << ",\"waitCpuMs\":" << frame.waitCpuMs << ",\"beginMs\":" << frame.beginMs
+                 << ",\"renderMs\":" << frame.renderMs << ",\"endMs\":" << frame.endMs
++                << ",\"renderPageFaults\":" << frame.renderPageFaults
++                << ",\"renderPageFaultsValid\":" << (frame.renderPageFaultsValid ? "true" : "false")
+                 << ",\"firstViewRenderMs\":" << frame.firstViewRenderMs << ",\"secondViewRenderMs\":" << frame.secondViewRenderMs
+                 << ",\"profilerComplete\":" << (frame.profilerComplete ? "true" : "false")
+                 << ",\"droppedSamples\":" << frame.droppedSamples
+@@ -1000,6 +1020,7 @@
+     bool m_twoViews = false;
+     bool m_timingOnly = false;
+     bool m_measureThreadCycles = false;
++    bool m_measurePageFaults = false;
+     bool m_continueWhenOccluded = true;
+ };
+ 
+--- a/Docs/design/static-mesh-render-reuse.md
++++ b/Docs/design/static-mesh-render-reuse.md
+@@ -30,6 +30,14 @@
+ 
+ `previousWorld`は再利用しない。各抽出で従来の`AdvanceWorld`を呼び、同一フレームの複数view、連続フレーム、欠落フレーム、巻き戻しの規則を維持する。SkinnedMeshRenderer、パレット、GPU変形の成功ticketは従来どおり現在フレームから抽出する。材質・選択・visibilityはviewごとに解決する。
+ 
++## 公開snapshotの保存領域
++
++`ExtractRenderScene`は、最後の所有snapshotと共有姿勢が退役した後の空vector容量だけを次の抽出へ貸す。公開値の再利用や、使用中のsnapshotへの上書きは行わない。`RenderScene`と共有姿勢vectorはそれぞれ所有leaseの内部に置き、aliasing `shared_ptr`で従来の公開型と所有期間を保つ。同じSceneの次フレーム、別Scene、材質callbackの再入、同一フレームの複数viewでも、退役前の保存領域は貸し出さない。
++
++スレッドごとのorigin poolはitem用を最大2本・各16MiB、object用を最大2本・各8MiBまで保持し、空き容量の上限は合計48MiB。上限を超える配列や空きslotがない配列は従来どおり解放する。全所有者が保持しているsnapshot自体の必要容量は、この空き容量上限とは別に存在する。退役が別スレッドでもorigin poolへmutexで返し、poolの寿命はleaseが保持する。返却前にitemをclearして変形ticket等の所有権を解放するため、空きpoolはScene・Component・GPU leaseを保持しない。
++
++値返しの`ExtractRenderSceneGeometry`は従来どおり呼び手がvectorを所有する。同一フレーム共有用のcompact item配列は現在もフレームごとに確保する。変更は公開layout/APIに加えず、CPU保存領域の確保とページの初回使用を減らす。[変更あり1万体の調査と同条件比較](../benchmarks/2026-10-23-moving-mesh-tail/Report.md)。
++
+ ## 検証と計測
+ 
+ `StaticMeshRenderReuseTests.cpp`は入力差分だけの再計算、直接書き込み、previous world、Entity/Component/Scene寿命、親子変更、最大Scene数を超えた後の再構築を公開snapshotと既存Profilerで検証する。`RenderSceneExtractorTests.cpp`はC#サービスからの通知による同一フレーム共有geometryの失効と、無変更の行列の再利用を検証する。`StaticMeshRenderMotionTests.cpp`は初回・連続移動・Scene単位のfallbackと停止後の復帰を検証する。
+@@ -42,3 +50,4 @@
+ 
+ - [Godot RendererSceneCull](https://github.com/godotengine/godot/blob/master/servers/rendering/renderer_scene_cull.h)：instance依存の変更通知と更新対象の管理を参考にした。FBZZの公開フィールドを通知だけで追跡できるとは仮定していない。
+ - [Unreal Engine Mesh Drawing Pipeline](https://dev.epicgames.com/documentation/en-us/unreal-engine/mesh-drawing-pipeline-in-unreal-engine)：static入力の保持と動的入力の分離、cacheが参照する資源寿命の考え方を参考にした。今回の実装はMeshDrawCommand cacheではない。
++- [C++ shared_ptrのaliasing constructor](https://eel.is/c++draft/util.smartptr.shared.const)：内部のsnapshotを参照しながら、保存領域を持つleaseと所有期間を共有する。

@@ -1,0 +1,16 @@
+{
+  "currentCacheLto": false,
+  "measuredCacheLto": true,
+  "rootDllsStillMatchMeasured": true,
+  "exportsStillMatch": true,
+  "nativeInputs": 1358,
+  "sourceMembershipMatches": false,
+  "addedCurrentInputs": [
+    "Projects/Core/include/Core/Containers/DeferredDirtySet.hpp",
+    "Projects/Graphics/src/Renderer/RenderMeshSpatialIndex.hpp"
+  ],
+  "removedCurrentInputs": [],
+  "currentlyStaleSources": [],
+  "cacheModifiedUtc": "2026-10-23T12:02:20.840121+00:00",
+  "mutatedSharedConfiguration": false
+}

@@ -1,0 +1,763 @@
+{
+  "label": "Stable",
+  "kind": "cpu",
+  "smoke": false,
+  "groups": {
+    "1000-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.131,
+            0.1289,
+            0.1261
+          ],
+          "pooled": {
+            "p50": 0.1286,
+            "p95": 0.31182,
+            "p99": 0.34523099999999995
+          },
+          "files": [
+            "Stable-cpu-1000-all-r0-Baseline.json",
+            "Stable-cpu-1000-all-r3-Baseline.json",
+            "Stable-cpu-1000-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.13805,
+            0.137,
+            0.13645000000000002
+          ],
+          "pooled": {
+            "p50": 0.1372,
+            "p95": 0.313005,
+            "p99": 0.3433819999999999
+          },
+          "files": [
+            "Stable-cpu-1000-all-r1-Candidate.json",
+            "Stable-cpu-1000-all-r2-Candidate.json",
+            "Stable-cpu-1000-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.1289,
+      "candidateMedianMs": 0.137,
+      "changePercent": 6.283941039565577
+    },
+    "1000-churn": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.15234999999999999,
+            0.1525,
+            0.3192
+          ],
+          "pooled": {
+            "p50": 0.1536,
+            "p95": 0.3368,
+            "p99": 0.370408
+          },
+          "files": [
+            "Stable-cpu-1000-churn-r0-Baseline.json",
+            "Stable-cpu-1000-churn-r3-Baseline.json",
+            "Stable-cpu-1000-churn-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.1194,
+            0.1196,
+            0.12165000000000001
+          ],
+          "pooled": {
+            "p50": 0.12,
+            "p95": 0.298815,
+            "p99": 0.324312
+          },
+          "files": [
+            "Stable-cpu-1000-churn-r1-Candidate.json",
+            "Stable-cpu-1000-churn-r2-Candidate.json",
+            "Stable-cpu-1000-churn-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.1525,
+      "candidateMedianMs": 0.1196,
+      "changePercent": -21.57377049180328
+    },
+    "1000-cold": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.3015,
+            0.3243,
+            0.1408
+          ],
+          "pooled": {
+            "p50": 0.30245,
+            "p95": 0.34651499999999996,
+            "p99": 0.385111
+          },
+          "files": [
+            "Stable-cpu-1000-cold-r0-Baseline.json",
+            "Stable-cpu-1000-cold-r3-Baseline.json",
+            "Stable-cpu-1000-cold-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.1521,
+            0.1473,
+            0.1458
+          ],
+          "pooled": {
+            "p50": 0.1478,
+            "p95": 0.17662999999999998,
+            "p99": 0.341703
+          },
+          "files": [
+            "Stable-cpu-1000-cold-r1-Candidate.json",
+            "Stable-cpu-1000-cold-r2-Candidate.json",
+            "Stable-cpu-1000-cold-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.3015,
+      "candidateMedianMs": 0.1473,
+      "changePercent": -51.14427860696517
+    },
+    "1000-initial-pair": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.26795,
+            0.2648,
+            0.6765
+          ],
+          "pooled": {
+            "p50": 0.2685,
+            "p95": 0.711105,
+            "p99": 0.780826
+          },
+          "files": [
+            "Stable-cpu-1000-initial-pair-r0-Baseline.json",
+            "Stable-cpu-1000-initial-pair-r3-Baseline.json",
+            "Stable-cpu-1000-initial-pair-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.2947,
+            0.2955,
+            0.28695
+          ],
+          "pooled": {
+            "p50": 0.2918,
+            "p95": 0.3143,
+            "p99": 0.500916
+          },
+          "files": [
+            "Stable-cpu-1000-initial-pair-r1-Candidate.json",
+            "Stable-cpu-1000-initial-pair-r2-Candidate.json",
+            "Stable-cpu-1000-initial-pair-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.26795,
+      "candidateMedianMs": 0.2947,
+      "changePercent": 9.983205821981711
+    },
+    "1000-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.12625,
+            0.1264,
+            0.1274
+          ],
+          "pooled": {
+            "p50": 0.1266,
+            "p95": 0.272515,
+            "p99": 0.296419
+          },
+          "files": [
+            "Stable-cpu-1000-one-percent-r0-Baseline.json",
+            "Stable-cpu-1000-one-percent-r3-Baseline.json",
+            "Stable-cpu-1000-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.0975,
+            0.09935,
+            0.1008
+          ],
+          "pooled": {
+            "p50": 0.09995000000000001,
+            "p95": 0.25770499999999996,
+            "p99": 0.282104
+          },
+          "files": [
+            "Stable-cpu-1000-one-percent-r1-Candidate.json",
+            "Stable-cpu-1000-one-percent-r2-Candidate.json",
+            "Stable-cpu-1000-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.1264,
+      "candidateMedianMs": 0.09935,
+      "changePercent": -21.40031645569621
+    },
+    "1000-service-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.1439,
+            0.1446,
+            0.1448
+          ],
+          "pooled": {
+            "p50": 0.1444,
+            "p95": 0.34724999999999995,
+            "p99": 0.378206
+          },
+          "files": [
+            "Stable-cpu-1000-service-all-r0-Baseline.json",
+            "Stable-cpu-1000-service-all-r3-Baseline.json",
+            "Stable-cpu-1000-service-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.15075,
+            0.1543,
+            0.15065
+          ],
+          "pooled": {
+            "p50": 0.1517,
+            "p95": 0.402,
+            "p99": 0.414811
+          },
+          "files": [
+            "Stable-cpu-1000-service-all-r1-Candidate.json",
+            "Stable-cpu-1000-service-all-r2-Candidate.json",
+            "Stable-cpu-1000-service-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.1446,
+      "candidateMedianMs": 0.15075,
+      "changePercent": 4.253112033195006
+    },
+    "1000-service-churn": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.35415,
+            0.16405,
+            0.16285
+          ],
+          "pooled": {
+            "p50": 0.1661,
+            "p95": 0.371,
+            "p99": 0.407327
+          },
+          "files": [
+            "Stable-cpu-1000-service-churn-r0-Baseline.json",
+            "Stable-cpu-1000-service-churn-r3-Baseline.json",
+            "Stable-cpu-1000-service-churn-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.1344,
+            0.1346,
+            0.1348
+          ],
+          "pooled": {
+            "p50": 0.1346,
+            "p95": 0.3313,
+            "p99": 0.3615019999999998
+          },
+          "files": [
+            "Stable-cpu-1000-service-churn-r1-Candidate.json",
+            "Stable-cpu-1000-service-churn-r2-Candidate.json",
+            "Stable-cpu-1000-service-churn-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.16405,
+      "candidateMedianMs": 0.1346,
+      "changePercent": -17.951843950015245
+    },
+    "1000-service-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.1261,
+            0.1261,
+            0.12555
+          ],
+          "pooled": {
+            "p50": 0.126,
+            "p95": 0.331025,
+            "p99": 0.359305
+          },
+          "files": [
+            "Stable-cpu-1000-service-one-percent-r0-Baseline.json",
+            "Stable-cpu-1000-service-one-percent-r3-Baseline.json",
+            "Stable-cpu-1000-service-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.0969,
+            0.09615,
+            0.098
+          ],
+          "pooled": {
+            "p50": 0.0971,
+            "p95": 0.29961,
+            "p99": 0.323808
+          },
+          "files": [
+            "Stable-cpu-1000-service-one-percent-r1-Candidate.json",
+            "Stable-cpu-1000-service-one-percent-r2-Candidate.json",
+            "Stable-cpu-1000-service-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.1261,
+      "candidateMedianMs": 0.0969,
+      "changePercent": -23.156225218080884
+    },
+    "1000-static": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            0.1296,
+            0.29584999999999995,
+            0.12875
+          ],
+          "pooled": {
+            "p50": 0.12995,
+            "p95": 0.316805,
+            "p99": 0.343201
+          },
+          "files": [
+            "Stable-cpu-1000-static-r0-Baseline.json",
+            "Stable-cpu-1000-static-r3-Baseline.json",
+            "Stable-cpu-1000-static-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            0.0974,
+            0.1022,
+            0.0958
+          ],
+          "pooled": {
+            "p50": 0.0986,
+            "p95": 0.28611000000000003,
+            "p99": 0.303705
+          },
+          "files": [
+            "Stable-cpu-1000-static-r1-Candidate.json",
+            "Stable-cpu-1000-static-r2-Candidate.json",
+            "Stable-cpu-1000-static-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 0.1296,
+      "candidateMedianMs": 0.0974,
+      "changePercent": -24.845679012345677
+    },
+    "10000-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.24825,
+            3.3091999999999997,
+            3.23065
+          ],
+          "pooled": {
+            "p50": 3.25745,
+            "p95": 3.63501,
+            "p99": 3.935275
+          },
+          "files": [
+            "Stable-cpu-10000-all-r0-Baseline.json",
+            "Stable-cpu-10000-all-r3-Baseline.json",
+            "Stable-cpu-10000-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.4956500000000004,
+            3.46975,
+            3.3247
+          ],
+          "pooled": {
+            "p50": 3.4396,
+            "p95": 3.812455,
+            "p99": 4.145885
+          },
+          "files": [
+            "Stable-cpu-10000-all-r1-Candidate.json",
+            "Stable-cpu-10000-all-r2-Candidate.json",
+            "Stable-cpu-10000-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.24825,
+      "candidateMedianMs": 3.46975,
+      "changePercent": 6.819056414992675
+    },
+    "10000-churn": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.5643000000000002,
+            3.59955,
+            3.5763499999999997
+          ],
+          "pooled": {
+            "p50": 3.5755,
+            "p95": 4.02274,
+            "p99": 4.621605
+          },
+          "files": [
+            "Stable-cpu-10000-churn-r0-Baseline.json",
+            "Stable-cpu-10000-churn-r3-Baseline.json",
+            "Stable-cpu-10000-churn-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.5592,
+            3.3762499999999998,
+            3.33995
+          ],
+          "pooled": {
+            "p50": 3.39155,
+            "p95": 4.15975,
+            "p99": 4.774623
+          },
+          "files": [
+            "Stable-cpu-10000-churn-r1-Candidate.json",
+            "Stable-cpu-10000-churn-r2-Candidate.json",
+            "Stable-cpu-10000-churn-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.5763499999999997,
+      "candidateMedianMs": 3.3762499999999998,
+      "changePercent": -5.595089966026812
+    },
+    "10000-cold": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.6063,
+            3.7564,
+            3.65895
+          ],
+          "pooled": {
+            "p50": 3.67875,
+            "p95": 4.2113,
+            "p99": 4.628718999999999
+          },
+          "files": [
+            "Stable-cpu-10000-cold-r0-Baseline.json",
+            "Stable-cpu-10000-cold-r3-Baseline.json",
+            "Stable-cpu-10000-cold-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.7455,
+            3.85625,
+            3.69895
+          ],
+          "pooled": {
+            "p50": 3.755,
+            "p95": 4.471204999999999,
+            "p99": 4.795034
+          },
+          "files": [
+            "Stable-cpu-10000-cold-r1-Candidate.json",
+            "Stable-cpu-10000-cold-r2-Candidate.json",
+            "Stable-cpu-10000-cold-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.65895,
+      "candidateMedianMs": 3.7455,
+      "changePercent": 2.365432706104209
+    },
+    "10000-initial-pair": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            7.3012999999999995,
+            7.383649999999999,
+            6.1061
+          ],
+          "pooled": {
+            "p50": 7.19425,
+            "p95": 8.322004999999999,
+            "p99": 8.719485
+          },
+          "files": [
+            "Stable-cpu-10000-initial-pair-r0-Baseline.json",
+            "Stable-cpu-10000-initial-pair-r3-Baseline.json",
+            "Stable-cpu-10000-initial-pair-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            8.42005,
+            8.4231,
+            7.0646
+          ],
+          "pooled": {
+            "p50": 8.2782,
+            "p95": 9.17012,
+            "p99": 9.873762
+          },
+          "files": [
+            "Stable-cpu-10000-initial-pair-r1-Candidate.json",
+            "Stable-cpu-10000-initial-pair-r2-Candidate.json",
+            "Stable-cpu-10000-initial-pair-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 7.3012999999999995,
+      "candidateMedianMs": 8.42005,
+      "changePercent": 15.322613781107485
+    },
+    "10000-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.26675,
+            3.2994000000000003,
+            3.277
+          ],
+          "pooled": {
+            "p50": 3.27835,
+            "p95": 3.647215,
+            "p99": 4.001211
+          },
+          "files": [
+            "Stable-cpu-10000-one-percent-r0-Baseline.json",
+            "Stable-cpu-10000-one-percent-r3-Baseline.json",
+            "Stable-cpu-10000-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.06465,
+            3.1776999999999997,
+            3.0354
+          ],
+          "pooled": {
+            "p50": 3.1032,
+            "p95": 3.49482,
+            "p99": 3.787845
+          },
+          "files": [
+            "Stable-cpu-10000-one-percent-r1-Candidate.json",
+            "Stable-cpu-10000-one-percent-r2-Candidate.json",
+            "Stable-cpu-10000-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.277,
+      "candidateMedianMs": 3.06465,
+      "changePercent": -6.480012206286245
+    },
+    "10000-service-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.1757999999999997,
+            3.0763,
+            3.1672000000000002
+          ],
+          "pooled": {
+            "p50": 3.137,
+            "p95": 3.64173,
+            "p99": 4.018066
+          },
+          "files": [
+            "Stable-cpu-10000-service-all-r0-Baseline.json",
+            "Stable-cpu-10000-service-all-r3-Baseline.json",
+            "Stable-cpu-10000-service-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.20255,
+            3.52965,
+            3.18285
+          ],
+          "pooled": {
+            "p50": 3.2562,
+            "p95": 4.043839999999999,
+            "p99": 5.090850999999997
+          },
+          "files": [
+            "Stable-cpu-10000-service-all-r1-Candidate.json",
+            "Stable-cpu-10000-service-all-r2-Candidate.json",
+            "Stable-cpu-10000-service-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.1672000000000002,
+      "candidateMedianMs": 3.20255,
+      "changePercent": 1.1161278100530359
+    },
+    "10000-service-churn": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            4.901949999999999,
+            4.2749500000000005,
+            4.30015
+          ],
+          "pooled": {
+            "p50": 4.4221,
+            "p95": 5.82452,
+            "p99": 7.851608999999998
+          },
+          "files": [
+            "Stable-cpu-10000-service-churn-r0-Baseline.json",
+            "Stable-cpu-10000-service-churn-r3-Baseline.json",
+            "Stable-cpu-10000-service-churn-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            4.0405999999999995,
+            4.0499,
+            4.1041
+          ],
+          "pooled": {
+            "p50": 4.068,
+            "p95": 4.61071,
+            "p99": 5.11037
+          },
+          "files": [
+            "Stable-cpu-10000-service-churn-r1-Candidate.json",
+            "Stable-cpu-10000-service-churn-r2-Candidate.json",
+            "Stable-cpu-10000-service-churn-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 4.30015,
+      "candidateMedianMs": 4.0499,
+      "changePercent": -5.8195644337988295
+    },
+    "10000-service-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            2.8244,
+            2.8535000000000004,
+            2.8657500000000002
+          ],
+          "pooled": {
+            "p50": 2.85015,
+            "p95": 3.224215,
+            "p99": 3.4904
+          },
+          "files": [
+            "Stable-cpu-10000-service-one-percent-r0-Baseline.json",
+            "Stable-cpu-10000-service-one-percent-r3-Baseline.json",
+            "Stable-cpu-10000-service-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            2.57695,
+            2.60145,
+            3.04125
+          ],
+          "pooled": {
+            "p50": 2.7022500000000003,
+            "p95": 3.6458949999999994,
+            "p99": 5.249785999999999
+          },
+          "files": [
+            "Stable-cpu-10000-service-one-percent-r1-Candidate.json",
+            "Stable-cpu-10000-service-one-percent-r2-Candidate.json",
+            "Stable-cpu-10000-service-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 2.8535000000000004,
+      "candidateMedianMs": 2.60145,
+      "changePercent": -8.833012090415293
+    },
+    "10000-static": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.29205,
+            3.23685,
+            3.2392
+          ],
+          "pooled": {
+            "p50": 3.25285,
+            "p95": 3.6351699999999996,
+            "p99": 4.025555
+          },
+          "files": [
+            "Stable-cpu-10000-static-r0-Baseline.json",
+            "Stable-cpu-10000-static-r3-Baseline.json",
+            "Stable-cpu-10000-static-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            2.9762,
+            2.9780499999999996,
+            3.0846999999999998
+          ],
+          "pooled": {
+            "p50": 3.0189000000000004,
+            "p95": 3.401039999999999,
+            "p99": 3.776516
+          },
+          "files": [
+            "Stable-cpu-10000-static-r1-Candidate.json",
+            "Stable-cpu-10000-static-r2-Candidate.json",
+            "Stable-cpu-10000-static-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.2392,
+      "candidateMedianMs": 2.9780499999999996,
+      "changePercent": -8.062175845887875
+    }
+  }
+}

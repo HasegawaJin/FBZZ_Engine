@@ -1,0 +1,133 @@
+﻿{
+    "utc":  "2026-10-23T10:48:57.9942595Z",
+    "affinity":  240,
+    "priority":  "High",
+    "highQosVerified":  true,
+    "paths":  {
+                  "Candidate":  [
+                                    {
+                                        "sha256":  "FC5593DDCB0DD9AD5B3ECF3010B95DAA3058338C6E4E266F899248DA58C3D088",
+                                        "name":  "assimp-vc145-mt.dll"
+                                    },
+                                    {
+                                        "sha256":  "0689E2FEE0A1C9DF8662A59680469F24E2A3AD7CE6BBBCC9284F7A83172BFC59",
+                                        "name":  "dxcompiler.dll"
+                                    },
+                                    {
+                                        "sha256":  "64BE2368211D257A038A7D4EA6BB3E24C878EB8D588C7B8414FCCF759B69C2AC",
+                                        "name":  "dxil.dll"
+                                    },
+                                    {
+                                        "sha256":  "733E3B353F84B93995601ED46F0E4B64757438969DF397373E61C811CC023C69",
+                                        "name":  "FBZZCore.dll"
+                                    },
+                                    {
+                                        "sha256":  "39499C68A2081EA073262AD5180434036BFBB3E2F08BB67D6CEFD3D7BA722F1F",
+                                        "name":  "FBZZEngine.dll"
+                                    },
+                                    {
+                                        "sha256":  "0D9E2D14D5BAB8F86724E6659A89DCB898D1877D3ADA935DED1CA1D910682A2C",
+                                        "name":  "FBZZFluid.dll"
+                                    },
+                                    {
+                                        "sha256":  "D92BA50CCFE19E1CC6D21BD1869661D5F9572FA3A0BC8866857C85B57881608D",
+                                        "name":  "FBZZGraphics.dll"
+                                    },
+                                    {
+                                        "sha256":  "ECD3DD1977545350DD8DC20A1B155B16D63DB5E35067B22AD3AEAA549BFDBCFD",
+                                        "name":  "FBZZMath.dll"
+                                    },
+                                    {
+                                        "sha256":  "5C8E9B916146FFE0A3321F74CADAF3D341187F444DB27C3EC24D3B6D901448ED",
+                                        "name":  "FBZZPhysics.dll"
+                                    },
+                                    {
+                                        "sha256":  "F4D831C24F61915067BDC2C555FDAE5A5DE605ACE4FD47A9C861FE170E406E99",
+                                        "name":  "FBZZStaticMeshReuseBench.exe"
+                                    },
+                                    {
+                                        "sha256":  "DF9861F87F45A7B521903AFEC7B951B5A7F8231A7E4406C16355D4A6E2879A74",
+                                        "name":  "FBZZTestsRayTracingEngine.exe"
+                                    },
+                                    {
+                                        "sha256":  "743781819A6A09540BD2DB262DAD78A0C584650AFA824C211FC8DC6B749BBC3B",
+                                        "name":  "imgui.dll"
+                                    },
+                                    {
+                                        "sha256":  "E36F2F5E5B6074734CA8C58C2EFBFB19D043371F5986920E335FFCCA849019E5",
+                                        "name":  "nethost.dll"
+                                    },
+                                    {
+                                        "sha256":  "81ADCFD8253C3489BE720DA7E30F16004DC9A1F02A8B418C6C3AEF4993032E6D",
+                                        "name":  "WinPixEventRuntime.dll"
+                                    }
+                                ],
+                  "Baseline":  [
+                                   {
+                                       "sha256":  "FC5593DDCB0DD9AD5B3ECF3010B95DAA3058338C6E4E266F899248DA58C3D088",
+                                       "name":  "assimp-vc145-mt.dll"
+                                   },
+                                   {
+                                       "sha256":  "0689E2FEE0A1C9DF8662A59680469F24E2A3AD7CE6BBBCC9284F7A83172BFC59",
+                                       "name":  "dxcompiler.dll"
+                                   },
+                                   {
+                                       "sha256":  "64BE2368211D257A038A7D4EA6BB3E24C878EB8D588C7B8414FCCF759B69C2AC",
+                                       "name":  "dxil.dll"
+                                   },
+                                   {
+                                       "sha256":  "733E3B353F84B93995601ED46F0E4B64757438969DF397373E61C811CC023C69",
+                                       "name":  "FBZZCore.dll"
+                                   },
+                                   {
+                                       "sha256":  "39499C68A2081EA073262AD5180434036BFBB3E2F08BB67D6CEFD3D7BA722F1F",
+                                       "name":  "FBZZEngine.dll"
+                                   },
+                                   {
+                                       "sha256":  "0D9E2D14D5BAB8F86724E6659A89DCB898D1877D3ADA935DED1CA1D910682A2C",
+                                       "name":  "FBZZFluid.dll"
+                                   },
+                                   {
+                                       "sha256":  "D92BA50CCFE19E1CC6D21BD1869661D5F9572FA3A0BC8866857C85B57881608D",
+                                       "name":  "FBZZGraphics.dll"
+                                   },
+                                   {
+                                       "sha256":  "ECD3DD1977545350DD8DC20A1B155B16D63DB5E35067B22AD3AEAA549BFDBCFD",
+                                       "name":  "FBZZMath.dll"
+                                   },
+                                   {
+                                       "sha256":  "5C8E9B916146FFE0A3321F74CADAF3D341187F444DB27C3EC24D3B6D901448ED",
+                                       "name":  "FBZZPhysics.dll"
+                                   },
+                                   {
+                                       "sha256":  "F4D831C24F61915067BDC2C555FDAE5A5DE605ACE4FD47A9C861FE170E406E99",
+                                       "name":  "FBZZStaticMeshReuseBench.exe"
+                                   },
+                                   {
+                                       "sha256":  "DF9861F87F45A7B521903AFEC7B951B5A7F8231A7E4406C16355D4A6E2879A74",
+                                       "name":  "FBZZTestsRayTracingEngine.exe"
+                                   },
+                                   {
+                                       "sha256":  "743781819A6A09540BD2DB262DAD78A0C584650AFA824C211FC8DC6B749BBC3B",
+                                       "name":  "imgui.dll"
+                                   },
+                                   {
+                                       "sha256":  "E36F2F5E5B6074734CA8C58C2EFBFB19D043371F5986920E335FFCCA849019E5",
+                                       "name":  "nethost.dll"
+                                   },
+                                   {
+                                       "sha256":  "81ADCFD8253C3489BE720DA7E30F16004DC9A1F02A8B418C6C3AEF4993032E6D",
+                                       "name":  "WinPixEventRuntime.dll"
+                                   }
+                               ]
+              },
+    "cpu":  {
+                "Name":  "Intel(R) Core(TM) i7-14700F",
+                "NumberOfCores":  20,
+                "NumberOfLogicalProcessors":  28
+            },
+    "gpu":  {
+                "Name":  "NVIDIA GeForce RTX 4070",
+                "DriverVersion":  "32.0.16.1088"
+            }
+}

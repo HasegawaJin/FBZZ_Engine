@@ -1,0 +1,60 @@
+{
+  "tests": 1,
+  "failures": 1,
+  "disabled": 0,
+  "errors": 0,
+  "random_seed": 1023,
+  "timestamp": "2026-10-23T17:55:55Z",
+  "time": "0.004s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "WaterFarRenderPassTest",
+      "tests": 1,
+      "failures": 1,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T17:55:55Z",
+      "time": "0.003s",
+      "testsuite": [
+        {
+          "name": "ForwardGroupsKeepPerObjectBindingsAndRefreshSharedResourcesForEachView",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp",
+          "line": 293,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T17:55:55Z",
+          "time": "0.002s",
+          "classname": "WaterFarRenderPassTest",
+          "rng_seed": "84362533807639659",
+          "failures": [
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp:363\nExpected equality of these values:\n  draw.textures[28]\n    Which is: 8-byte object <00-00 00-00 00-00 00-00>\n  view == 2 ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.GetDepthTexture(shadow)\n    Which is: 8-byte object <06-00 00-00 01-00 00-00>\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(356): 0\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(337): 0\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp:363\nExpected equality of these values:\n  draw.textures[28]\n    Which is: 8-byte object <00-00 00-00 00-00 00-00>\n  view == 2 ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.GetDepthTexture(shadow)\n    Which is: 8-byte object <06-00 00-00 01-00 00-00>\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(356): 1\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(337): 0\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp:363\nExpected equality of these values:\n  draw.textures[28]\n    Which is: 8-byte object <00-00 00-00 00-00 00-00>\n  view == 2 ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.GetDepthTexture(shadow)\n    Which is: 8-byte object <06-00 00-00 01-00 00-00>\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(356): 2\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(337): 0\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp:363\nExpected equality of these values:\n  draw.textures[28]\n    Which is: 8-byte object <00-00 00-00 00-00 00-00>\n  view == 2 ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.GetDepthTexture(shadow)\n    Which is: 8-byte object <09-00 00-00 01-00 00-00>\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(356): 0\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(337): 1\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp:363\nExpected equality of these values:\n  draw.textures[28]\n    Which is: 8-byte object <00-00 00-00 00-00 00-00>\n  view == 2 ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.GetDepthTexture(shadow)\n    Which is: 8-byte object <09-00 00-00 01-00 00-00>\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(356): 1\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(337): 1\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp:363\nExpected equality of these values:\n  draw.textures[28]\n    Which is: 8-byte object <00-00 00-00 00-00 00-00>\n  view == 2 ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.GetDepthTexture(shadow)\n    Which is: 8-byte object <09-00 00-00 01-00 00-00>\nGoogle Test trace:\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(356): 2\nK:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\WaterFarRenderPassTests.cpp(337): 1\n",
+              "type": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2633 @@
+{
+  "etl": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\TraceV2\\Cpu.etl",
+  "bytes": 648019968,
+  "sha256": "f53a674199d8f3327ea15963b3004505abe577e5889f4e0447008e332433f6c1",
+  "state": {
+    "startedUtc": "2026-10-23T09:31:32.0793195Z",
+    "finishedUtc": "2026-10-23T09:32:08.7425958Z",
+    "phase": "complete",
+    "elevated": true,
+    "traceStarted": true,
+    "traceStopped": true,
+    "startExit": 0,
+    "stopExit": 0,
+    "failure": null,
+    "runs": [
+      {
+        "run": 0,
+        "pid": 49408,
+        "exit": 0
+      },
+      {
+        "run": 1,
+        "pid": 41944,
+        "exit": 0
+      },
+      {
+        "run": 2,
+        "pid": 59080,
+        "exit": 0
+      }
+    ]
+  },
+  "metadata": {
+    "header": {
+      "ReservedFlags": 1,
+      "PerfFreq": 10000000,
+      "EventsLost": 0,
+      "BuffersLost": 0,
+      "PointerSize": 8,
+      "StartTime": 134372214922848491,
+      "EndTime": 134372215245654125,
+      "BootTime": 134366692995000000
+    },
+    "loss": {
+      "events": 0,
+      "buffers": 0
+    },
+    "eventsRead": 4628388,
+    "counts": {
+      "allEvents": 4628388
+    },
+    "firstEventQpc": 5522223981443,
+    "schemas": [
+      {
+        "schema": [
+          "sample",
+          2,
+          16
+        ],
+        "count": 84531
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          24
+        ],
+        "count": 1625
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          192
+        ],
+        "count": 28631
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          136
+        ],
+        "count": 48924
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          152
+        ],
+        "count": 46101
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          304
+        ],
+        "count": 6521
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          264
+        ],
+        "count": 8840
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          80
+        ],
+        "count": 211413
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          336
+        ],
+        "count": 4817
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          88
+        ],
+        "count": 137396
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          124
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          114
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          112
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          126
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          130
+        ],
+        "count": 36
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          132
+        ],
+        "count": 30
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          128
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          140
+        ],
+        "count": 94
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          118
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          122
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          136
+        ],
+        "count": 72
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          134
+        ],
+        "count": 32
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          142
+        ],
+        "count": 22
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          138
+        ],
+        "count": 60
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          120
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          144
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          146
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          230
+        ],
+        "count": 108
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          156
+        ],
+        "count": 576
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          166
+        ],
+        "count": 3396
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          152
+        ],
+        "count": 78
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          148
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          242
+        ],
+        "count": 208
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          266
+        ],
+        "count": 84
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          262
+        ],
+        "count": 150
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          150
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          154
+        ],
+        "count": 936
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          238
+        ],
+        "count": 148
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          244
+        ],
+        "count": 214
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          278
+        ],
+        "count": 174
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          264
+        ],
+        "count": 80
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          286
+        ],
+        "count": 136
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          250
+        ],
+        "count": 212
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          234
+        ],
+        "count": 114
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          158
+        ],
+        "count": 5968
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          302
+        ],
+        "count": 76
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          222
+        ],
+        "count": 132
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          282
+        ],
+        "count": 102
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          246
+        ],
+        "count": 120
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          162
+        ],
+        "count": 10567
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          344
+        ],
+        "count": 14218
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          178
+        ],
+        "count": 773
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          280
+        ],
+        "count": 3571
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          160
+        ],
+        "count": 10065
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          180
+        ],
+        "count": 1236
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          168
+        ],
+        "count": 1790
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          164
+        ],
+        "count": 9444
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          196
+        ],
+        "count": 258
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          192
+        ],
+        "count": 286
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          170
+        ],
+        "count": 388
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          206
+        ],
+        "count": 278
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          182
+        ],
+        "count": 186
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          198
+        ],
+        "count": 346
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          202
+        ],
+        "count": 306
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          172
+        ],
+        "count": 381
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          176
+        ],
+        "count": 787
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          464
+        ],
+        "count": 333
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          320
+        ],
+        "count": 5790
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          184
+        ],
+        "count": 28380
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          40
+        ],
+        "count": 58375
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          200
+        ],
+        "count": 14375
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          72
+        ],
+        "count": 101747
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          64
+        ],
+        "count": 53940
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          168
+        ],
+        "count": 46808
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          188
+        ],
+        "count": 342
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          488
+        ],
+        "count": 152
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          112
+        ],
+        "count": 51731
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          48
+        ],
+        "count": 107270
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          128
+        ],
+        "count": 59049
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          656
+        ],
+        "count": 95
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          194
+        ],
+        "count": 252
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          160
+        ],
+        "count": 42247
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          208
+        ],
+        "count": 13223
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          200
+        ],
+        "count": 162
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          270
+        ],
+        "count": 118
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          190
+        ],
+        "count": 206
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          174
+        ],
+        "count": 618
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          104
+        ],
+        "count": 68484
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          184
+        ],
+        "count": 342
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          120
+        ],
+        "count": 89232
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          240
+        ],
+        "count": 11187
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          144
+        ],
+        "count": 31344
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          312
+        ],
+        "count": 9307
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          496
+        ],
+        "count": 619
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          376
+        ],
+        "count": 4620
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          256
+        ],
+        "count": 3534
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          360
+        ],
+        "count": 12091
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          216
+        ],
+        "count": 18833
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          224
+        ],
+        "count": 11494
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          368
+        ],
+        "count": 5297
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          56
+        ],
+        "count": 22358
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          680
+        ],
+        "count": 3122
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          608
+        ],
+        "count": 42
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          784
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          432
+        ],
+        "count": 3993
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          328
+        ],
+        "count": 2521
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          792
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          176
+        ],
+        "count": 40277
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          448
+        ],
+        "count": 625
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          288
+        ],
+        "count": 4601
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          252
+        ],
+        "count": 86
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          520
+        ],
+        "count": 1453
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          260
+        ],
+        "count": 130
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          472
+        ],
+        "count": 284
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          440
+        ],
+        "count": 1354
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          186
+        ],
+        "count": 156
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          584
+        ],
+        "count": 84
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          480
+        ],
+        "count": 1377
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          568
+        ],
+        "count": 129
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          210
+        ],
+        "count": 122
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          544
+        ],
+        "count": 110
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          350
+        ],
+        "count": 74
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          456
+        ],
+        "count": 429
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          216
+        ],
+        "count": 106
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          408
+        ],
+        "count": 1064
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          504
+        ],
+        "count": 271
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          204
+        ],
+        "count": 94
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          352
+        ],
+        "count": 3696
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          384
+        ],
+        "count": 2461
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          560
+        ],
+        "count": 118
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          416
+        ],
+        "count": 2167
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          640
+        ],
+        "count": 26
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          720
+        ],
+        "count": 24
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          346
+        ],
+        "count": 106
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          332
+        ],
+        "count": 54
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          292
+        ],
+        "count": 58
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          364
+        ],
+        "count": 26
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          384
+        ],
+        "count": 14
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          382
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          378
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          228
+        ],
+        "count": 148
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          536
+        ],
+        "count": 139
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          208
+        ],
+        "count": 80
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          212
+        ],
+        "count": 138
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          330
+        ],
+        "count": 106
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          214
+        ],
+        "count": 94
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          248
+        ],
+        "count": 4868
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          220
+        ],
+        "count": 114
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          348
+        ],
+        "count": 212
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          632
+        ],
+        "count": 24
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          400
+        ],
+        "count": 2782
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          232
+        ],
+        "count": 13561
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          96
+        ],
+        "count": 15363
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          296
+        ],
+        "count": 4120
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          226
+        ],
+        "count": 70
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          424
+        ],
+        "count": 1045
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          248
+        ],
+        "count": 108
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          236
+        ],
+        "count": 178
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          254
+        ],
+        "count": 127
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          304
+        ],
+        "count": 50
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          272
+        ],
+        "count": 116
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          258
+        ],
+        "count": 100
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          32
+        ],
+        "count": 25127
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          528
+        ],
+        "count": 334
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          392
+        ],
+        "count": 2340
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          284
+        ],
+        "count": 124
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          648
+        ],
+        "count": 20
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          552
+        ],
+        "count": 121
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          224
+        ],
+        "count": 118
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          310
+        ],
+        "count": 52
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          374
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          370
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          342
+        ],
+        "count": 100
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          338
+        ],
+        "count": 26
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          318
+        ],
+        "count": 108
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          298
+        ],
+        "count": 40
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          314
+        ],
+        "count": 28
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          274
+        ],
+        "count": 74
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          322
+        ],
+        "count": 46
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          386
+        ],
+        "count": 12
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          326
+        ],
+        "count": 58
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          358
+        ],
+        "count": 82
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          256
+        ],
+        "count": 118
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          334
+        ],
+        "count": 84
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          300
+        ],
+        "count": 114
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          354
+        ],
+        "count": 20
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          232
+        ],
+        "count": 110
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          308
+        ],
+        "count": 40
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          290
+        ],
+        "count": 110
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          276
+        ],
+        "count": 58
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          288
+        ],
+        "count": 118
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          268
+        ],
+        "count": 106
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          312
+        ],
+        "count": 22
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          294
+        ],
+        "count": 36
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          316
+        ],
+        "count": 52
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          296
+        ],
+        "count": 44
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          280
+        ],
+        "count": 98
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          240
+        ],
+        "count": 162
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          218
+        ],
+        "count": 58
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          324
+        ],
+        "count": 110
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          320
+        ],
+        "count": 56
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          512
+        ],
+        "count": 377
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          306
+        ],
+        "count": 14
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          344
+        ],
+        "count": 64
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          624
+        ],
+        "count": 48
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          368
+        ],
+        "count": 18
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          372
+        ],
+        "count": 26
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          600
+        ],
+        "count": 47
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          576
+        ],
+        "count": 74
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          728
+        ],
+        "count": 12
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          336
+        ],
+        "count": 64
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          340
+        ],
+        "count": 68
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          380
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          616
+        ],
+        "count": 49
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          360
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          366
+        ],
+        "count": 50
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          768
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          952
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          664
+        ],
+        "count": 16
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          390
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          328
+        ],
+        "count": 14
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          398
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          272
+        ],
+        "count": 9290
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          414
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          356
+        ],
+        "count": 38
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          362
+        ],
+        "count": 30
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          400
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          352
+        ],
+        "count": 32
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          484
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          416
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          446
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          696
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          438
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          526
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          592
+        ],
+        "count": 49
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          428
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          406
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          394
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          410
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          712
+        ],
+        "count": 11
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          688
+        ],
+        "count": 9
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          760
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          704
+        ],
+        "count": 9
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          848
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          430
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          396
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          736
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          2000
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          2064
+        ],
+        "count": 90
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          864
+        ],
+        "count": 230
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          672
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1272
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          904
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          776
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1176
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          936
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          744
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          832
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1048
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1752
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1432
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          800
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          896
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1216
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1280
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          816
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          968
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          2008
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1080
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1208
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1000
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          992
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1328
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1304
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1344
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1336
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1264
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1288
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1248
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1632
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1032
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          824
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          872
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1040
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1424
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1416
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1496
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1856
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          840
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          984
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          976
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1704
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1064
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          752
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1016
+        ],
+        "count": 1
+      }
+    ],
+    "targetSamples": 6727,
+    "targetStacks": 58897,
+    "images": 1030,
+    "targetSchedulerEvents": 26089
+  },
+  "symbolMethod": "Exact local PE export start matched to runtime function begin; unexported functions remain module+RVA; ICF aliases flagged",
+  "callSites": {
+    "imageBase": "0x180000000",
+    "begin": "0x180121d30",
+    "end": "0x1801221fd",
+    "sampledReturnAddresses": {
+      "0x180122136": 234,
+      "0x180121fda": 59,
+      "0x180121ebf": 8,
+      "0x18012200b": 5,
+      "0x180121e13": 1,
+      "0x180122146": 1
+    },
+    "tailSamples": [
+      {
+        "run": "r0.out",
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "returnAddress": "0x180122136",
+        "leaf": "nvwgf2umx.dll+0x2d618c"
+      },
+      {
+        "run": "r1.out",
+        "serial": 1088,
+        "frameMs": 1.34249997,
+        "returnAddress": "0x180122136",
+        "leaf": "ntdll.dll+0x1feb0"
+      },
+      {
+        "run": "r1.out",
+        "serial": 1104,
+        "frameMs": 1.21310008,
+        "returnAddress": "0x180122136",
+        "leaf": "ntoskrnl.exe+0x378f9f"
+      },
+      {
+        "run": "r2.out",
+        "serial": 631,
+        "frameMs": 1.25919998,
+        "returnAddress": "0x180122136",
+        "leaf": "nvlddmkm.sys+0x9fd8a"
+      },
+      {
+        "run": "r2.out",
+        "serial": 651,
+        "frameMs": 1.42999995,
+        "returnAddress": "0x180122136",
+        "leaf": "ntoskrnl.exe+0x370a79"
+      },
+      {
+        "run": "r2.out",
+        "serial": 720,
+        "frameMs": 1.29610002,
+        "returnAddress": "0x180121fda",
+        "leaf": "nvlddmkm.sys+0xdd3179"
+      },
+      {
+        "run": "r2.out",
+        "serial": 849,
+        "frameMs": 1.61669993,
+        "returnAddress": "0x180122136",
+        "leaf": "nvwgf2umx.dll+0x2bb569"
+      }
+    ]
+  },
+  "limits": [
+    "Switch-out stacks were absent for the long blocked intervals; wait reason alone does not identify a D3D12 fence.",
+    "Scheduled time includes kernel/driver activity and does not prove engine CPU work.",
+    "CPU tracing does not establish the complete GPU hardware-queue chronology or causality of a particular vendor driver routine."
+  ]
+}

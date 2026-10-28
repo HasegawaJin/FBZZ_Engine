@@ -1,0 +1,175 @@
+--- before/Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp
++++ Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp
+@@ -67,11 +67,48 @@
+ thread_local uint32_t s_bindingCompletionDepth = 0;
+ }
+ 
++/// @note Exact decision inputs exclude padding and pointer identity; copy frustum plane values to observe in-place edits.
++using BindingDemandWitness = std::array<uint32_t, 44 + math::Frustum::PLANE_COUNT * 4>;
++
++BindingDemandWitness CaptureBindingDemandWitness(const View& view)
++{
++    BindingDemandWitness result{};
++    size_t offset = 0;
++    const auto put = [&](float value) { result[offset++] = std::bit_cast<uint32_t>(value); };
++    for (const auto& vector : {view.culling.position, view.culling.forward}) {
++        put(vector.x); put(vector.y); put(vector.z);
++    }
++    put(view.culling.projectionScaleY); put(view.culling.smallObjectScreenHeight);
++    put(view.maxDistance); put(view.boundsPadding);
++    for (float distance : view.layerDistances) put(distance);
++    result[offset++] = view.mask;
++    result[offset++] = static_cast<uint32_t>(view.culling.frustum != nullptr)
++        | (static_cast<uint32_t>(view.culling.distanceSpherical) << 1)
++        | (static_cast<uint32_t>(view.culling.orthographic) << 2)
++        | (static_cast<uint32_t>(view.hasLayerDistances) << 3)
++        | (static_cast<uint32_t>(view.staticGpuFrustumPossible) << 4)
++        | (static_cast<uint32_t>(view.directionalShadowPotential) << 5)
++        | (static_cast<uint32_t>(view.punctualShadowPotential) << 6)
++        | (static_cast<uint32_t>(view.reflectionProbePotential) << 7)
++        | (static_cast<uint32_t>(view.lightProbePotential) << 8)
++        | (static_cast<uint32_t>(view.rayPotential) << 9)
++        | (static_cast<uint32_t>(view.consumerScopeCertified) << 10)
++        | (static_cast<uint32_t>(view.materialCoverageKnown) << 11);
++    if (view.culling.frustum) {
++        for (int index = 0; index < math::Frustum::PLANE_COUNT; ++index) {
++            const auto plane = view.culling.frustum->GetPlane(index);
++            put(plane.normal.x); put(plane.normal.y); put(plane.normal.z); put(plane.distance);
++        }
++    }
++    return result;
++}
++
+ struct PendingBindings {
+     std::shared_ptr<const renderer::RenderScene> snapshot;
+     std::vector<uint32_t> items;
+     uint64_t resourceOwner = 0, resourceEpoch = 0, resourceFrame = 0;
+     int assetGeneration = 0;
++    std::optional<BindingDemandWitness> noDemandWitness;
+ };
+ 
+ BindingDemandScope::BindingDemandScope(const RenderPassContext& context) : m_previous(s_bindingDemandContext)
+@@ -123,7 +160,10 @@
+ {
+     if (s_bindingDemandScope && s_bindingDemandScope->m_pending
+         && s_bindingDemandScope->m_pending->snapshot == previous)
++    {
+         s_bindingDemandScope->m_pending->snapshot = completed;
++        s_bindingDemandScope->m_pending->noDemandWitness.reset();
++    }
+ }
+ } /// @note namespace material_demand_detail
+ 
+@@ -1531,14 +1571,21 @@
+ {
+     if (s_bindingCompletionDepth != 0 || s_bindingDemandContext != &context
+         || !s_bindingDemandScope || !s_bindingDemandScope->m_pending) return;
+-    const auto& pending = *s_bindingDemandScope->m_pending;
++    auto& pending = *s_bindingDemandScope->m_pending;
+     if (context.renderScene != pending.snapshot) { s_bindingDemandScope->m_pending.reset();return; }
+     const auto view = CurrentMaterialDemandView(context, CurrentRayMaterialInputs(context), true);
+     const bool changed = pending.resourceOwner != context.resources.GetInstanceId()
+         || pending.resourceEpoch != context.resources.GetResetVersion() || pending.resourceFrame != context.resources.FrameStamp()
+         || pending.snapshot->sceneGeneration != context.scene.GetRenderSceneGeneration()
+         || pending.assetGeneration != asset::AssetManager::GetAssetGeneration();
+-    if (!changed && !NeedsMaterialBindings(view, *pending.snapshot, pending.items)) return;
++    if (!changed) {
++        const auto witness = CaptureBindingDemandWitness(view);
++        if (pending.noDemandWitness && *pending.noDemandWitness == witness) return;
++        if (!NeedsMaterialBindings(view, *pending.snapshot, pending.items)) {
++            pending.noDemandWitness = witness;
++            return;
++        }
++    }
+     FBZZ_PROFILE_SCOPE("RenderSceneExtractor::CompleteMaterialBindings");
+     /// @note Detach before resource callbacks; nested completion cannot repair the same publication twice.
+     auto owned = std::move(s_bindingDemandScope->m_pending);
+--- before/Projects/Tests/Engine/Auto/ShaderReloadTests.cpp
++++ Projects/Tests/Engine/Auto/ShaderReloadTests.cpp
+@@ -2710,9 +2710,86 @@
+     context.cullingMask=0;scene::material_demand_detail::BindingDemandScope demand(context);
+     scene::ExtractRenderScene(context);const auto original=context.renderScene;
+     ASSERT_FALSE(original->items[0].material.valid);
++    scene::material_demand_detail::CompleteBindings(context);
++    scene::material_demand_detail::CompleteBindings(context);
+     object.AddComponent<scene::ScriptComponent>().scripts.emplace_back().script=std::make_unique<GeometryRenderWriter>();
+     scene::material_demand_detail::CompleteBindings(context);
+     ASSERT_NE(context.renderScene,original);EXPECT_TRUE(context.renderScene->items[0].material.valid);
++    EXPECT_FALSE(original->items[0].material.valid);
++}
++
++TEST_F(MaterialExtractionSharingTest, MaterialDemandRechecksInPlaceFrustumEditsAfterRepeatedNoDemandBoundaries)
++{
++    AddObject(20);
++    m_mesh.vertexBuffer = {10, 1}; m_mesh.indexBuffer = {20, 1};
++    r::RenderSettings settings; settings.shadowEnabled = false;
++    r::Camera camera; r::RenderPassHandles handles;
++    auto frustum = math::Frustum::FromViewProjection(math::Matrix4::Identity());
++    scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
++    context.frustumCullingEnabled = true; context.cameraFrustum = &frustum;
++    context.cullProjScaleY = 1; context.height = 600;
++    scene::material_demand_detail::BindingDemandScope demand(context);
++    scene::ExtractRenderScene(context);
++    const auto original = context.renderScene;
++    ASSERT_EQ(original->items.size(), 1u);
++    ASSERT_FALSE(original->items[0].material.valid);
++
++    scene::material_demand_detail::CompleteBindings(context);
++    scene::material_demand_detail::CompleteBindings(context);
++    EXPECT_EQ(context.renderScene, original);
++    auto wider = math::Matrix4::Identity(); wider.m[2][2] = 0.01f;
++    frustum = math::Frustum::FromViewProjection(wider);
++    scene::material_demand_detail::CompleteBindings(context);
++
++    ASSERT_NE(context.renderScene, original);
++    EXPECT_TRUE(context.renderScene->items[0].material.valid);
++    EXPECT_FALSE(original->items[0].material.valid);
++}
++
++TEST_F(MaterialExtractionSharingTest, MaterialDemandRechecksLayerDistanceAfterNoDemandBoundaries)
++{
++    AddObject(20);
++    m_mesh.vertexBuffer = {10, 1}; m_mesh.indexBuffer = {20, 1};
++    r::RenderSettings settings; settings.shadowEnabled = false;
++    r::Camera camera; r::RenderPassHandles handles;
++    scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
++    context.frustumCullingEnabled = false; context.hasLayerCullDistances = true;
++    context.cullLayerDistances[0] = 5; context.cullProjScaleY = 1; context.height = 600;
++    scene::material_demand_detail::BindingDemandScope demand(context);
++    scene::ExtractRenderScene(context);
++    const auto original = context.renderScene;
++    ASSERT_EQ(original->items.size(), 1u);
++    ASSERT_FALSE(original->items[0].material.valid);
++
++    scene::material_demand_detail::CompleteBindings(context);
++    scene::material_demand_detail::CompleteBindings(context);
++    context.cullLayerDistances[0] = 30;
++    scene::material_demand_detail::CompleteBindings(context);
++    ASSERT_NE(context.renderScene, original);
++    EXPECT_TRUE(context.renderScene->items[0].material.valid);
++    EXPECT_FALSE(original->items[0].material.valid);
++}
++
++TEST_F(MaterialExtractionSharingTest, MaterialDemandRechecksResourceFrameAfterNoDemandBoundaries)
++{
++    AddObject(20);
++    r::RenderSettings settings; settings.shadowEnabled = false;
++    r::Camera camera; r::RenderPassHandles handles;
++    scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
++    context.cullingMask = 0;
++    scene::material_demand_detail::BindingDemandScope demand(context);
++    scene::ExtractRenderScene(context);
++    const auto original = context.renderScene;
++    ASSERT_EQ(original->items.size(), 1u);
++    ASSERT_FALSE(original->items[0].material.valid);
++
++    scene::material_demand_detail::CompleteBindings(context);
++    scene::material_demand_detail::CompleteBindings(context);
++    m_resources->AdvanceFrame();
++    scene::material_demand_detail::CompleteBindings(context);
++
++    ASSERT_NE(context.renderScene, original);
++    EXPECT_TRUE(context.renderScene->items[0].material.valid);
+     EXPECT_FALSE(original->items[0].material.valid);
+ }
+ 

@@ -1,0 +1,12 @@
+{
+  "beforeSourceSha256": "745c0297a77d17af682e90b0b64bbe47482ee8a5d07922755926d9b20d2d8947",
+  "mutantSourceSha256": "246a88f35a0d65b76490124e7fb42bbce0f3432d7d7b965b391797185ea6df9b",
+  "beforeInputsSha256": "e0cd6dc02048128be52c0ff68138cf884e92b9deb1213e2fa31d551cfdd2191a",
+  "mutations": [
+    "if (view.culling.frustum) {",
+    "for (float distance : view.layerDistances) put(distance);",
+    "(static_cast<uint32_t>(view.consumerScopeCertified) << 10)",
+    "|| pending.resourceFrame != context.resources.FrameStamp()"
+  ],
+  "exactRestorationVerified": true
+}

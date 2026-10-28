@@ -1,0 +1,498 @@
+[
+  {
+    "backend": "cpu",
+    "views": 0,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0002,
+          "processMedians": [
+            0.0001,
+            0.0002,
+            0.0002
+          ],
+          "minProcessMedian": 0.0001,
+          "maxProcessMedian": 0.0002,
+          "medianP95": 0.0002,
+          "medianP99": 0.0002
+        },
+        "completeMs": {
+          "median": 0.0014,
+          "processMedians": [
+            0.0014,
+            0.0014,
+            0.0014
+          ],
+          "minProcessMedian": 0.0014,
+          "maxProcessMedian": 0.0014,
+          "medianP95": 0.0022,
+          "medianP99": 0.0029
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0002,
+          "processMedians": [
+            0.0001,
+            0.0002,
+            0.0002
+          ],
+          "minProcessMedian": 0.0001,
+          "maxProcessMedian": 0.0002,
+          "medianP95": 0.0002,
+          "medianP99": 0.0003
+        },
+        "completeMs": {
+          "median": 0.0016,
+          "processMedians": [
+            0.0014,
+            0.0016,
+            0.0016
+          ],
+          "minProcessMedian": 0.0014,
+          "maxProcessMedian": 0.0016,
+          "medianP95": 0.0023,
+          "medianP99": 0.0028
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": 0.0,
+      "completeMs": 14.285714285714302
+    }
+  },
+  {
+    "backend": "cpu",
+    "views": 1,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0048,
+          "processMedians": [
+            0.0051,
+            0.0046,
+            0.0048
+          ],
+          "minProcessMedian": 0.0046,
+          "maxProcessMedian": 0.0051,
+          "medianP95": 0.0056,
+          "medianP99": 0.0091
+        },
+        "completeMs": {
+          "median": 0.0065,
+          "processMedians": [
+            0.0069,
+            0.0065,
+            0.0064
+          ],
+          "minProcessMedian": 0.0064,
+          "maxProcessMedian": 0.0069,
+          "medianP95": 0.008,
+          "medianP99": 0.0133
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0028,
+          "processMedians": [
+            0.0028,
+            0.0028,
+            0.0028
+          ],
+          "minProcessMedian": 0.0028,
+          "maxProcessMedian": 0.0028,
+          "medianP95": 0.0031,
+          "medianP99": 0.0039
+        },
+        "completeMs": {
+          "median": 0.0049,
+          "processMedians": [
+            0.0049,
+            0.0049,
+            0.005
+          ],
+          "minProcessMedian": 0.0049,
+          "maxProcessMedian": 0.005,
+          "medianP95": 0.0065,
+          "medianP99": 0.0103
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": -41.666666666666664,
+      "completeMs": -24.615384615384617
+    }
+  },
+  {
+    "backend": "cpu",
+    "views": 2,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0092,
+          "processMedians": [
+            0.0092,
+            0.0092,
+            0.01
+          ],
+          "minProcessMedian": 0.0092,
+          "maxProcessMedian": 0.01,
+          "medianP95": 0.0107,
+          "medianP99": 0.0164
+        },
+        "completeMs": {
+          "median": 0.0112,
+          "processMedians": [
+            0.0112,
+            0.0109,
+            0.0119
+          ],
+          "minProcessMedian": 0.0109,
+          "maxProcessMedian": 0.0119,
+          "medianP95": 0.013,
+          "medianP99": 0.0238
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0057,
+          "processMedians": [
+            0.0057,
+            0.0057,
+            0.0062
+          ],
+          "minProcessMedian": 0.0057,
+          "maxProcessMedian": 0.0062,
+          "medianP95": 0.0063,
+          "medianP99": 0.0068
+        },
+        "completeMs": {
+          "median": 0.0143,
+          "processMedians": [
+            0.0138,
+            0.0152,
+            0.0143
+          ],
+          "minProcessMedian": 0.0138,
+          "maxProcessMedian": 0.0152,
+          "medianP95": 0.0198,
+          "medianP99": 0.0241
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": -38.043478260869556,
+      "completeMs": 27.67857142857144
+    }
+  },
+  {
+    "backend": "cpu",
+    "views": 8,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0377,
+          "processMedians": [
+            0.0362,
+            0.0377,
+            0.0379
+          ],
+          "minProcessMedian": 0.0362,
+          "maxProcessMedian": 0.0379,
+          "medianP95": 0.0513,
+          "medianP99": 0.0972
+        },
+        "completeMs": {
+          "median": 0.0398,
+          "processMedians": [
+            0.0383,
+            0.0398,
+            0.0399
+          ],
+          "minProcessMedian": 0.0383,
+          "maxProcessMedian": 0.0399,
+          "medianP95": 0.0561,
+          "medianP99": 0.109
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0205,
+          "processMedians": [
+            0.0203,
+            0.0205,
+            0.022150000000000003
+          ],
+          "minProcessMedian": 0.0203,
+          "maxProcessMedian": 0.022150000000000003,
+          "medianP95": 0.0219,
+          "medianP99": 0.03
+        },
+        "completeMs": {
+          "median": 0.0353,
+          "processMedians": [
+            0.0353,
+            0.0353,
+            0.0379
+          ],
+          "minProcessMedian": 0.0353,
+          "maxProcessMedian": 0.0379,
+          "medianP95": 0.0417,
+          "medianP99": 0.082
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": -45.623342175066306,
+      "completeMs": -11.306532663316593
+    }
+  },
+  {
+    "backend": "gpu",
+    "views": 0,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0004,
+          "processMedians": [
+            0.0004,
+            0.0004,
+            0.0004
+          ],
+          "minProcessMedian": 0.0004,
+          "maxProcessMedian": 0.0004,
+          "medianP95": 0.0007,
+          "medianP99": 0.0009
+        },
+        "completeMs": {
+          "median": 0.12304999999999999,
+          "processMedians": [
+            0.1101,
+            0.12304999999999999,
+            0.12695
+          ],
+          "minProcessMedian": 0.1101,
+          "maxProcessMedian": 0.12695,
+          "medianP95": 0.3481,
+          "medianP99": 0.7689
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0004,
+          "processMedians": [
+            0.0004,
+            0.0004,
+            0.0004
+          ],
+          "minProcessMedian": 0.0004,
+          "maxProcessMedian": 0.0004,
+          "medianP95": 0.0007,
+          "medianP99": 0.001
+        },
+        "completeMs": {
+          "median": 0.12035,
+          "processMedians": [
+            0.12035,
+            0.11615,
+            0.1387
+          ],
+          "minProcessMedian": 0.11615,
+          "maxProcessMedian": 0.1387,
+          "medianP95": 0.2672,
+          "medianP99": 0.6642
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": 0.0,
+      "completeMs": -2.194229987809826
+    }
+  },
+  {
+    "backend": "gpu",
+    "views": 1,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0278,
+          "processMedians": [
+            0.0291,
+            0.0278,
+            0.0267
+          ],
+          "minProcessMedian": 0.0267,
+          "maxProcessMedian": 0.0291,
+          "medianP95": 0.0471,
+          "medianP99": 0.1089
+        },
+        "completeMs": {
+          "median": 0.1486,
+          "processMedians": [
+            0.1688,
+            0.1486,
+            0.1439
+          ],
+          "minProcessMedian": 0.1439,
+          "maxProcessMedian": 0.1688,
+          "medianP95": 0.2385,
+          "medianP99": 0.363
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.00275,
+          "processMedians": [
+            0.0034,
+            0.00275,
+            0.0027
+          ],
+          "minProcessMedian": 0.0027,
+          "maxProcessMedian": 0.0034,
+          "medianP95": 0.0041,
+          "medianP99": 0.0053
+        },
+        "completeMs": {
+          "median": 0.1793,
+          "processMedians": [
+            0.1793,
+            0.1547,
+            0.18425
+          ],
+          "minProcessMedian": 0.1547,
+          "maxProcessMedian": 0.18425,
+          "medianP95": 0.2747,
+          "medianP99": 0.3406
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": -90.10791366906474,
+      "completeMs": 20.659488559892303
+    }
+  },
+  {
+    "backend": "gpu",
+    "views": 2,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.0596,
+          "processMedians": [
+            0.0606,
+            0.0596,
+            0.0542
+          ],
+          "minProcessMedian": 0.0542,
+          "maxProcessMedian": 0.0606,
+          "medianP95": 0.0827,
+          "medianP99": 0.1824
+        },
+        "completeMs": {
+          "median": 0.19865,
+          "processMedians": [
+            0.18365,
+            0.2126,
+            0.19865
+          ],
+          "minProcessMedian": 0.18365,
+          "maxProcessMedian": 0.2126,
+          "medianP95": 0.2783,
+          "medianP99": 0.368
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0047,
+          "processMedians": [
+            0.0045,
+            0.0049,
+            0.0047
+          ],
+          "minProcessMedian": 0.0045,
+          "maxProcessMedian": 0.0049,
+          "medianP95": 0.0064,
+          "medianP99": 0.0069
+        },
+        "completeMs": {
+          "median": 0.14875,
+          "processMedians": [
+            0.1502,
+            0.14350000000000002,
+            0.14875
+          ],
+          "minProcessMedian": 0.14350000000000002,
+          "maxProcessMedian": 0.1502,
+          "medianP95": 0.2344,
+          "medianP99": 0.5812
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": -92.11409395973155,
+      "completeMs": -25.119557009816262
+    }
+  },
+  {
+    "backend": "gpu",
+    "views": 8,
+    "variants": {
+      "Baseline": {
+        "recordMs": {
+          "median": 0.2303,
+          "processMedians": [
+            0.2632,
+            0.2303,
+            0.2248
+          ],
+          "minProcessMedian": 0.2248,
+          "maxProcessMedian": 0.2632,
+          "medianP95": 0.3004,
+          "medianP99": 0.3711
+        },
+        "completeMs": {
+          "median": 0.37570000000000003,
+          "processMedians": [
+            0.42385,
+            0.37570000000000003,
+            0.36965
+          ],
+          "minProcessMedian": 0.36965,
+          "maxProcessMedian": 0.42385,
+          "medianP95": 0.4852,
+          "medianP99": 0.5903
+        }
+      },
+      "Candidate": {
+        "recordMs": {
+          "median": 0.0159,
+          "processMedians": [
+            0.016,
+            0.0159,
+            0.0139
+          ],
+          "minProcessMedian": 0.0139,
+          "maxProcessMedian": 0.016,
+          "medianP95": 0.0222,
+          "medianP99": 0.023
+        },
+        "completeMs": {
+          "median": 0.24625,
+          "processMedians": [
+            0.24625,
+            0.2364,
+            0.2511
+          ],
+          "minProcessMedian": 0.2364,
+          "maxProcessMedian": 0.2511,
+          "medianP95": 0.3399,
+          "medianP99": 0.4203
+        }
+      }
+    },
+    "deltaPercent": {
+      "recordMs": -93.09596178897091,
+      "completeMs": -34.45568272557893
+    }
+  }
+]

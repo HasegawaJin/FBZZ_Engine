@@ -1,0 +1,12 @@
+{
+  "changedNativeInputs": [
+    "Projects/Engine/include/Engine/Scene/Systems/RenderSceneExtractor.hpp",
+    "Projects/Engine/src/Scene/Managed/ManagedRenderComponentServices.cpp",
+    "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp",
+    "Projects/Engine/src/Scene/Systems/RuntimeMeshSystem.cpp"
+  ],
+  "unchangedNativeInputs": 1354,
+  "baselineDllsMatchOriginal": true,
+  "rawArchivesVerified": 256,
+  "localReportLinksVerified": true
+}

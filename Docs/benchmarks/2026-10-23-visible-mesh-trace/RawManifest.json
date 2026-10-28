@@ -1,0 +1,366 @@
+[
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Confirm-gpu-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "57cca23aae7a03d8ef71e910922fd74cdcd7596e4e69acbbcce6bc0e0a337bc8",
+    "archiveSha256": "9a9ba6224b742af43d1fe070809418f69d3ce46b028fb14640dba678f8e0c81d"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Confirm-gpu-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "34e0dc0b585eb4d6801f284d63444d06a4523fdc788cd45a52ee691f69bb01c8",
+    "archiveSha256": "2ef91c6e0a3fe9d40536ec6cd76ef271f8e28426636d52271f85688faca87212"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Confirm-gpu-AllVisible1000-r2-Candidate.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "89dc0045e810959c19cb40882e6d22f08bda5a11624adc7bf1ec23d179566216",
+    "archiveSha256": "97b69a033454bf6c9f3af8e0ae8efb8dbfe456c272e85a6bc2c7f272f74e1ad1"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Confirm-gpu-AllVisible1000-r3-Baseline.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "35c42a0fb6bda7d74360615cef644b20e7f186304835f898a963a72b1968657c",
+    "archiveSha256": "48f51df3d07f14feef68e7a7b7f5a977d69b9df870a557908007a804944867b7"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Confirm-gpu-AllVisible1000-r4-Baseline.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "575fac253a14873160c72ccce808d23b349bad6160b46b89bbc0ad416c90b6b3",
+    "archiveSha256": "aad99f1caf385b07a3502af6911eb7a64ce0fad4860c401c2473773b5bc79322"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Confirm-gpu-AllVisible1000-r5-Candidate.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "7340e67d01ff094d1273d6fe0629f5154baa928009d516b7b595362010c00de6",
+    "archiveSha256": "8fd9fd6903d8156d24f73b21a2a770c5dafb06df74ea44bdcfdfb48f2f20b01c"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "5c68cd759167c6848b1fdf271b95aedbeea189f3e6e9f27069fe877e42da416c",
+    "archiveSha256": "65065522fb9aa22b2d60dbbc99fba25cca8a2a3b381025cba091c9d889b49c23"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "2d873964de2b9914d68f9c414d79b8deae9d76a2aad2d61eedd01afdf40998b0",
+    "archiveSha256": "99c8b28ae30312a54d85da378b57ee0e893e0b4688186977099aa06951a917a0"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "5b99ad2d84bcc443b7ff7b57fc88eff9745703f67ad95ea10cdddd2b7c5d4a36",
+    "archiveSha256": "3fbe886af19a942c5a57fe6e0fb766aa15086985c910a7d6b9350fc23d4d409a"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "0b5452ed449c1b46fec05afc8edaa12f39ef4c049d3d5da40c75e442bb7cf97f",
+    "archiveSha256": "6fbff8ef196313884460fe0ff624417115607c4a930063ca78253fcabead6a82"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "238f895412b72a592993add190504cb86e0053ea4cd64817187299a249c03362",
+    "archiveSha256": "e416d38f28ec330d5cdeafee1595dc3ed5e3bc1b174dd58dfbe2d52b8e8f15d8"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "535d1c644fa74801a69dcf09ed9fb45e77b6071510381a6e154b569daa17f603",
+    "archiveSha256": "9c6af43042454b56a4e4e730d8619666dbad27d62aae0064e3341015dd8c08b5"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "e84ea72d1178ad05a3d98d61c8f5b215b0f5d94d8dddaae2e3692b65a104bbc4",
+    "archiveSha256": "f9b67511364000c1f8d715b733249bf8f7bf0c8968f1418b2565afb0804c32b4"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "edc9acc54d63df7cecec5a137d13e88378963b2092c09a1e150ad9f07cb4b7cb",
+    "archiveSha256": "c63425e0086f3707c506cad2812115b6db831ba8d5821e484aaa6707d7002f69"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllVisible1000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "3ee3d08e2eb7d1bbbb45eeea5d9f0c6bcac92a364cfdd59de9fb391a82dbacb0",
+    "archiveSha256": "8bc3b68ec711a3a611d3a3ebb715f7eb6f21521c930ae294b7f98d9b4a407590"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllVisible1000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "6adc144991d8ae821fb4a1c26a34a6341e19b614afde7df0601a7967451a4751",
+    "archiveSha256": "2c9bcd9bc26de5f5dff711a85d1b6ca280805315001e861a2dae0ec1d51f4226"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllVisible1000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "3382563dd6ca89d9e57513a07927ef2d8d0023e8c3bd8f8cbb39c0c682d3a638",
+    "archiveSha256": "4776c66d376b9994af6a79654c3fd0befb42a2255a1c6537662d2185cbb3a034"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-AllVisible1000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "810bb1594164037c89a675eaf246412be2a48a8380a13f0b92c2178bc355e224",
+    "archiveSha256": "dd728e1c94958fceee0dea0950291807fd421b3bd6dc900d8bef99b236a49a02"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "bbed0dfc8a6a3326f562d1c5bb7a428e4db48976446a8798824c4de758748f83",
+    "archiveSha256": "7dfec956387582c227341b93140bc0779914225284bab05afefdb066bb4e2d42"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "3a32686d51088a725d6bf723152197c5e4eaac3775fc564da7ae4ed31f610d72",
+    "archiveSha256": "15cd2f4592ab4505739871d1d65573ccd563df728fdbceab7290664da6768cb5"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "57832a4f9a9433ad221224bd62ab3bb07b332d253146f6e1535602c004a2b9b9",
+    "archiveSha256": "31253bd7137dc33ce3088194a2d69df2fec6c9990bb6b8f372b2c2f307075d3e"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "9550bb56eb2617e8f13c39e5a935c1b48ee70c32fa3f4d3401735a6a8f4b7027",
+    "archiveSha256": "97d793a2a0815f7a54977a35dd9a415bb57022f09d27c7dae42d716615a8e2b4"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "75657dcac9fa60bbc4ef335fc937d40e34a740dd12571724a3dd0a1d9d3f2fab",
+    "archiveSha256": "64edb48bf46ae602ff61aba40b61e7a8bf1f5a561c1f829c984532455c378821"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "197351f07551c47190a457b08e30821ada188403542b9ce2cd15b93118e94f10",
+    "archiveSha256": "873825b183e8edaf8ef30c0de57b25178b34a4e61a12ac3ae79a22e41f348378"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "038e64fb8e7fc6d73278756c16860c9e854ad60bdf171e810139cf703425c396",
+    "archiveSha256": "e0a3d4a20d5186ef3589f650fcf96b24cc09adf0895b6345d249637338c0072c"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "8368da1745da396290343fd4f0c7bcef3e2664162c60a78337c5bd05f091a088",
+    "archiveSha256": "4d2c7c9435ed69964ad506b938d1e1a857e7ae88c9aecb0fcacba42de753dcfe"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "8285bcb237886ebe11815770397dd8eef9fed316daf02f7330813a772628469d",
+    "archiveSha256": "1fdc60119bc98caa68624e873f09d2e2d0f4d936592f6575c4c37d37351aafb9"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "dc8ecc8c3cf0045022b7f79cb427009ebee00c4c1affd6ff7d2df3ad959217c9",
+    "archiveSha256": "e5088887d24d6c0b972b31ec5702664247331d7e487621ef4f6a3f301b300110"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "938ddd59e9aa60eed0cc91424a5b5c0dc956aa4c62c232131062d97b7d419b9a",
+    "archiveSha256": "529eb3b575542b33a7d765547507bdc17bdd501bf85fad19472e2dbd2464dd73"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "e28b37e1ec80cb8afe0613da925fa713ac44724661fd243c9a9ffdea1a997343",
+    "archiveSha256": "da4132327705ec80e3369b5f908639a36692eec40b175dcfd721b12a6b075d67"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "662458510ebd26d26148c2169c36f5c91155820deb9011f0eccc78cf5f8d069e",
+    "archiveSha256": "06e9ec307c8c7f5a48f0246577363f0500e4de67910814be63d4249b1649cedc"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "84ca859bc5142d6bca5ca8bd99ffe23481d7a83d4850fe9ad3fbbc08f77724f9",
+    "archiveSha256": "d90510cd010ea1c647ccead5c52a5118e442afa9c2d1d54a06386acfb75a2c47"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "c52f5e5c41797ed9460884b6db1a4e8c174fe9afd70d770cfde00f39558ddeba",
+    "archiveSha256": "0127efad5011c1745c031f70f2336c191a369d252b397ff75ac88918f53d8e06"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "822a2903f1ea4e7e1d6a4ae7f9b9651f842d045ae9ff7b6fd8a55517d97c2fbc",
+    "archiveSha256": "7bce073c1bea3cb1ecd2c16b3629b45c8810d9110969cba168299f27e7227f9e"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "689a425ea1907004dfe11d34a6294ba23b7ab529d2a7e4edee6849b84402aabe",
+    "archiveSha256": "ce43e8f51ebb1d215185cf2c9afc6c70178b8369e152b82eb8ae555cd73c7a47"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "4e8d3d7422983978f71bd7b72d78ee24a13a3c5c3838d02a2c49e1579a0c9e03",
+    "archiveSha256": "44696664176e2c5080bcddd38fa329959b517966e8bc3aa93cf9dee4eb635b53"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-profile-AllMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 572,
+    "rawSha256": "c5269f75d6780026690f1bedc0750d1e455063349371c8963d9d12e3483ac070",
+    "archiveSha256": "83280a035228772fadcc3f9c30d16f741b958b54544fda9d709130510e7abace"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-profile-AllMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 572,
+    "rawSha256": "2ae5a54d197a803ea492e32bcc27e1491cc1d1e0ee71ec42db8c7fa4fa036777",
+    "archiveSha256": "4bb7f99439c8691e1a0d479e085c4434669bc5d3d0472beddb7f6250e7ad07cf"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/Final-profile-AllVisible1000-r0-Baseline.jsonl.gz",
+    "records": 572,
+    "rawSha256": "57f441be37402fab984ce8037710b703de85eda4a593168558ab4ef72014c00b",
+    "archiveSha256": "61328414a881c6fc3e4481ee1282f28d3146e7b79d9f96b623b6b4e2a12e31d6"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/Final-profile-AllVisible1000-r1-Candidate.jsonl.gz",
+    "records": 572,
+    "rawSha256": "a3fda808e15ebf4eaae7bb6e202528e899dd9674cd045ce7b19bf8ba66f8c79b",
+    "archiveSha256": "48daa96c7b181d9aab1b5f0e4c6de40a75406657b926487261cc0fb5c3d7081b"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-OffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-profile-OffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 572,
+    "rawSha256": "9f50165d1970a549c35143819a209634045371d01e97b77a8433cf7c13a33cc8",
+    "archiveSha256": "0628677217ed7352ee686cbcbe0d95e7d6d44cf71532b1540dbeacffed309633"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-OffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-profile-OffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 572,
+    "rawSha256": "8dc5575c48f849096fe3ab2f3ee4d2312b8e6056afa15e3ad5f0a16ba9e595e2",
+    "archiveSha256": "66aababd8d3edc0ecd3aa0dd8ddb6ca3b17b701ad046a2a841403b2fe2ec71a5"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 572,
+    "rawSha256": "c5d6e6588d1887b4451c5ec7553ff8be9d9415aa6395076696ea200716b2cea2",
+    "archiveSha256": "90f4c66226f6d0277324556523b59b892604662178beb33b72c66d862bdba4b8"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 572,
+    "rawSha256": "0668fea603d1bf5498153cf36b6d362da290fa8eccfb1d9f37f01fdcb94e4bdd",
+    "archiveSha256": "8e2146e771005f4e953fe75403498589f0dcb8c88d40539015edf2685470406d"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-profile-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 1112,
+    "rawSha256": "d0ebc78ab58d9426a89d4a97ec3884d83a04348a08dc1dbdef77b63258fda75d",
+    "archiveSha256": "92f19221b2cf734c9a2aec4b932b054eb9771c7977bfc1bfda9575320631d353"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\Final-profile-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-profile-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 1112,
+    "rawSha256": "5f87d871c261786a756bbd11d5da51ff4ebfa55f1ceafd05f2150c83401bcdaa",
+    "archiveSha256": "3968f576a1a6b98ea51cf89d274abff1ef73c9fff402b3fedea4eee0fa802776"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\First-gpu-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/First-gpu-AllVisible1000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "aeef99a5c160f40d7e2e3e3e6047c3d8057b2ee27bf59a6207b313c0ec1cfad8",
+    "archiveSha256": "7833244fa86f34a1227294dc3f03170d4e35d521a1df37331ad1c5f401c56b82"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\First-gpu-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/First-gpu-AllVisible1000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "e6acb084b239409d17431c394be2b3f6693ef4e34c8ecc7bbb8605c809bc40dc",
+    "archiveSha256": "57f59c9965873dc00d84128dff12a8dccb4beadd8556d05c173befb2fe14dc5e"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\First-gpu-AllVisible1000-r2-Candidate.out",
+    "archive": "raw/First-gpu-AllVisible1000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "436e0af02cc5b10d5c6af98bdbecd8d6d7eac1ed3811bb98c0235e02ada5c47e",
+    "archiveSha256": "bbe234834295e35d1854fa8438828d4146f00b8924365741abdbab4ab79f164e"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\First-gpu-AllVisible1000-r3-Baseline.out",
+    "archive": "raw/First-gpu-AllVisible1000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "9f99fc5a6058fe5cc6b37b4dcfb12d364f52dcacdc423d76133606e207c53dae",
+    "archiveSha256": "5918c2b4d93b26bd17f0b8f00c4298b05efee5fb79513a4fdf9656d2b46c4499"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\First-gpu-AllVisible1000-r4-Baseline.out",
+    "archive": "raw/First-gpu-AllVisible1000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "f83e363fd2c9c04faa81c2db4e94de2c81e73249adbd039588001fee37d10e14",
+    "archiveSha256": "b02e37264f4358dddcfe3d6e02bf21eb2c29ffb62749338a2d6acc3c2e6f7fac"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\VisibleMeshTrace20261023\\Raw\\First-gpu-AllVisible1000-r5-Candidate.out",
+    "archive": "raw/First-gpu-AllVisible1000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "e8a8e0b933d8e03c62fa4724f3d9adb94c8795b36c0e0d2cb42b27be8c881bc4",
+    "archiveSha256": "824ac664059e1442cb07e83f8587d7a723af5c55f1c0f6f360e2e8f02a1264e8"
+  }
+]

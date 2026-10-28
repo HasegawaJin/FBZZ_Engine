@@ -1,0 +1,770 @@
+[
+  {
+    "file": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "a349620efb7fa018db9f246058c79fdd3ade87f47d981ee1b800ded3dd6ab22e",
+    "sha256": "f17262e7d8f4197c08240960e72cd8163f13fac7dd1afec526809ec22bc1b6b2",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "5fbb16c9ae879569b8c7becdc20f259f63f3b70dd79185926a8a700fdf42cf7e",
+    "sha256": "693f93b15b38d82b53ed67190b8be58ab09d4769168b984d1e84e1dd66bf29c9",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "70abc72fed41a44698f92f049e7bb50ba8d13e44def69c537a2d4e87ef6836fd",
+    "sha256": "3162537bc9ede5f6ef8239261384887807427c7f76e6dc7ec26f63f066731507",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "721ae7bf68ddb24d03028e66a92f9e3f17c8d69c267af263a56c6a0267f3ce5a",
+    "sha256": "eec188b4364f4a79947fdbf635ec53797aa639b6a5639ac81d64339e69b3b876",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "4f07a91c4bd6d501299ad0f532362611cde2bd7f49d56619a9305228402b1ea7",
+    "sha256": "4320e53b6d6001095b2f89afb997fafa0c9c3f39b6fa6818946a0cb4cb1be432",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "e4cffe3d526ee3dbec30089102572b8a71672313044ae876cc32c97b24b7b1ce",
+    "sha256": "b40bbe90d3ca7f5da6ff4370745e3d90ff7ca05ff43989f1b5475cb80b85384d",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllVisible1000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllVisible1000-r0-Baseline.out",
+    "sourceSha256": "7114b7d3bc31efd27386e42dcd77c99bf1e5a151f2f7be1b625b15b6702542d4",
+    "sha256": "32dd1dbbbfe5331d3a75078374ac0c96b4db08303344c1b8bbbc19caab4163e1",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllVisible1000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllVisible1000-r1-Candidate.out",
+    "sourceSha256": "4eb66d0ae200bff3595b0b0e4fceef0b7b2980e82cd41378a98d0316cf777a19",
+    "sha256": "9ca9acdc84c3e37d12b9e1727fc3193ba43479ed78f6b07545532099e58b1719",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllVisible1000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllVisible1000-r2-Candidate.out",
+    "sourceSha256": "9f03a501bb3a2a7d4b55b2adb91b993c4a51784606f56bf0a719074d43717858",
+    "sha256": "d4e7738ca5b1ccbdbdd35e2c358c8b1ae4da3d693c20c7c8062b1542abdeff55",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllVisible1000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllVisible1000-r3-Baseline.out",
+    "sourceSha256": "50cc25573508c48b4ab99afcf3862a6d1a088f203efff7c7d1a6deaa07ed3aeb",
+    "sha256": "632aa27ba7ed5da067595cdc7ad785e81e9e7fad6bcba4f0ec7124028fc75590",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllVisible1000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllVisible1000-r4-Baseline.out",
+    "sourceSha256": "d14df5783cfbbafd47a4df61d1286ac4f569cfa63411b8fab9a7b58242594e52",
+    "sha256": "8822c5ea2c76dc2fdc4020e47f5ae7f8ea82c86f571e3543a41174763178cc5b",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-AllVisible1000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-AllVisible1000-r5-Candidate.out",
+    "sourceSha256": "a769a99bc24050ebd6138c17a7736e970dd1dcc21c7ab7af4ec0c2701309c321",
+    "sha256": "93ca4a229efb267a1a9f79f45261fc140db5c855975f23e57db1bd5de60a68e7",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "b8fcd535caddab19e39dc7d3a081ca91e9a155bb7ec68d8d4ffefafaebcafd4c",
+    "sha256": "19325dee3bdb8a9ded8bc5f8d4101e6df8877b5ac6defdab461420189b1a554c",
+    "case": "OffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "b212c7c50c3f5f9a01086126e5206aafb6fabc19d6db86a07b4bd9ed4ae6b281",
+    "sha256": "e69a9e1548c07f5eb8b6d0f577798b650fae87b19e784b6c20b4fa24190a813a",
+    "case": "OffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "964c426ace0363600bfd47ce45894322abd83a0195416c891b6df6d90d3176c4",
+    "sha256": "4c0538cd0ed378986e03511eaf054c0a6214469008f1ec11410440fa504dda61",
+    "case": "OffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "fd26609acb2392d18740092198bd862eb4b64a6406f3b7827cb04c718b8c0b86",
+    "sha256": "7b7a89ade256e8c10d401d5569832f52f6fdbe450605827b579bcec64dcbb517",
+    "case": "OffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "d268d4da4da74ff1e051628c78e86c719fbb2ef5a7b6fd38dc294417967bbec3",
+    "sha256": "35c2cf9c78d71f0f5347b406a593dc9ac7dac73344389c06997c5a8e0edd6075",
+    "case": "OffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "9cf7894c6a3e590fbde5c95b292b5dcd67e0f3464d170576f8eed73839e0e066",
+    "sha256": "53ae69e10cd03d7b269c933ad2878d11844e92ff44efdff4daeb86a15226d88c",
+    "case": "OffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "8e4294f60fdc2733f1cbb9206d8e72355956d49e117408d5c16ba55322b4ce5e",
+    "sha256": "5b9565b11feef8fe5953d5bda1bc0693ade1db840c61fc921a0e21a008d6b434",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "50a21765abe94f32857f18c4599a32ac190c2a87841bc53341e639ff32bd7b02",
+    "sha256": "3ec2185051b16b407a09ad1f5fd5c2476e0f22a85184d3440ac109fd240c8e2d",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "1ca16df9c59c2355eb5925dfb137c52726bee46b2447bd2112d9628317bccd81",
+    "sha256": "84a97a4d3ad6a6461424e1c31085e1f26036262912879974677a27a5d039efbd",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "4d7700c3aa206982eabfc118526df28d5189f2750ca9e7499ef3d66574bcf14b",
+    "sha256": "f0c3bc3d136265117fde655936cd086deaa6848cec7303823790418ff582f9d7",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "0cf10f8f1876e8345b8d70c0b14d11d74d1beeac16aad3f0f2b6042d4155738e",
+    "sha256": "e9a2536138888a1e999c0048890e24974b835fece7f1f85e95f27e2eb21100cc",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "bab9d013aa7744add2515ee7ecc4ff39341197ba05e8f03f03e0cabeea92f1d4",
+    "sha256": "4ec04b0cbde06a8bf0a4eb94178e55ceea5a97c34c700a12c3ef3fa926864ccf",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "482144fb6c124753ea895a88f66adcdff6c5f35d8416d2dc90188651f230024b",
+    "sha256": "77a9dff607a728db34b5caea007d66ba1d9a1a66dc7c1274b86619500385c1d1",
+    "case": "TwoViewsOppositeOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "c6b8d0fdbb376476667d000db2a05be346547226ee41b49fe40ff3acad38e0ce",
+    "sha256": "8a938fe5548e8da07853e88ba103961f0f13159412b1aa8ecc678e0aade85ad6",
+    "case": "TwoViewsOppositeOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "c18f90cecb1b0a956c50b42e8b9f2e07c8f32156d23882ba9a674c0450065e47",
+    "sha256": "d68ba236fab8322787a63447d6afde1185439da205e2eba74b6154b8f9a5ce8b",
+    "case": "TwoViewsOppositeOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "1e85d8b8911fadec2125fd7070b957f781b84afce26e2bf9d3692a0bc91593b2",
+    "sha256": "50a05e72ff9c7330b606b528a3c9a606bcab64051ba079761f2fd2b3eb4737f2",
+    "case": "TwoViewsOppositeOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "0730f37653a6ec6134e9041899183332d67f758d17cba35a12ae609f7e76afb1",
+    "sha256": "1eff4ca72006a06ce6d1794cb1b6ea47edbdfc5fb0f0cfc2af812c3cd85b4a50",
+    "case": "TwoViewsOppositeOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "51020922441627b6b5976172a16d75acac2d161ef21f01de1b2632fd419cd2eb",
+    "sha256": "309223dd164b0fd07f6cc8bfe95c054e76b9ba3bf76a6d3a10d5a5b58c9677dc",
+    "case": "TwoViewsOppositeOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "20ab133cf036390c2a78befa64d86000776a4fb90f38571d25c54241316e84de",
+    "sha256": "5158c85d4deda7e12cff3a38b43af669b864262cd7d848d8d135a52773a4687b",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "a8d5bc555a4cf33360727bcb3c62c6066cd1a6e5dc403bd267843bc44df9c2e3",
+    "sha256": "1dce4805b5328df20b9e4303a7a6364fe8594f922f3ffbf85c8d33ca63f5b3a9",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "f6124116fd586260aa5af2c7cba7ceb46f6a3319646bcceb45e5a5ff8b145df9",
+    "sha256": "d98c42e454da1a3f507b1d1ff3546609f94cffa62bff0abac4024fd124f07a0b",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "d229b2552b651e4af7a2b83377c156345df21aadf7b0748231eaa99c54f0e823",
+    "sha256": "6e3f159a69adc6559db614877843e98cb1927843abafefbecc5606eac796403e",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "114c3f503b6aa9adf3dc04636da34d648feccb497f4aaa832a464ffbfcc1bcd8",
+    "sha256": "78e1c06be672edb1a1dfcf58ac571d241c45ea6518f6d00aad3b1a7c2aa714f1",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "0e6265dada78bd4c712e1ddbffce2de4cd6f3ec39fb683de1fb06ce554515daf",
+    "sha256": "91f372a10f71bfcdaeeac7a9786b0d01af5a3c22170ac04bdcc20ab42cee864e",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "db93894bc8ba09353555f0fe9523ebde34cc9374767450097c80e34ffa073168",
+    "sha256": "9a6d02951a73cdd4688160866ee5bc1b99e97f931c06e5ce4bdf5f12450f33e4",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "caa70f7112bd091eeb97a4ef7cc8fbe20b576b771d2b511a6853b02f5bb29d9a",
+    "sha256": "3dfa1254b6f7d6c8875d7c88f144cd0d7578d55472cd1ca79bb46a8981e0d163",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "f4ea9939d2baceb6d436df8d4de2f3e3ca8b536fa568673ec4db59d3f8b8685d",
+    "sha256": "de96ceff9e0030d1cb04647e0e0106bfb92723420ff2e267d04e3440c26c4765",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "5df94f85008d6d3d4057b503ead07d892d1a4d845152f0ff65e66f02b0407f4a",
+    "sha256": "f6bc255b73a1aa5a4961d0b7341ce7d3056fd5847c07a3dd9fa91a0c8afefeda",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "395522363196b6aca7b7ab5f76b862fc0c3b1a68a71a6f2ed5421ec9cb2161f3",
+    "sha256": "8198425bf3919b1329166deabcb4107c493f6b932b38ce677b4c23d16809edb2",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Confirm-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "52fab1d9e0c397fa17bf61eed9336f54ef43ad08254875622b9079e380ba199a",
+    "sha256": "a8970ab57ba2bfcc363887bdf5ac9dfd196d7a34893452e86e92efeb5950deb3",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "d437723f23fb5fddbb6f00601119c06784653ab4b73757c7cb8ac80f3bbcdf64",
+    "sha256": "f2651e0fb0cd98744e61a7a1674083a3021f9d7a2ad42bca5341f16869a216a9",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "e220f217ee453129bc855f6c9d1f2c46860bedd96252277cdd0bb2d8e464956c",
+    "sha256": "320d3255828d710328dbc7464bee4ca69f7d894119ee8ccada2c873f34ed3e40",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "738d4d27299203d856935cd9755bf78d532925e7b6b9c6ff503af25b13447366",
+    "sha256": "611d68b362a459c6b8659513b8cde15f03f6fbaec2923d9f9756dd46793b6c42",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "ec96267b46ef42ade8ceddb744aad587fc6ea241b0b781ea388e44bfea527c4d",
+    "sha256": "f413f1538e85ad6b1fd7ee1bb030889d6597821e79973447214682d94ff57873",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "91e62f7e8a999b4867e34d0206c3b62aefe9c569140dc0d7ce93749a70e11d92",
+    "sha256": "5172c6058e984caf5c462811074e30f83a4d8b1b216c28febc74dc8f594255ae",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "8262c2e759539789ddef6a7c6674e6249aedf3f42b9f26c1196dfe075cabcdce",
+    "sha256": "35648b6ea886ed8deee4159c66045cd0156770dab3b0980200f0663160d19595",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "bb595f2d1b0b3832eb063e6285c3dae5e8a08fd7b5660d1a6e1e3ba94c856854",
+    "sha256": "2f6173177e5a44deca01785cbd00c8105e5e2ea31e41acc8b6d491c056f77c8d",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "dd5429d30b75e87b69dccf25d20ab6ed51bd37ef17ca292e90441ab6c5e852fe",
+    "sha256": "c38079ed4e93030e8e5aa7785e41566a76ad0285256fe816b4be12224ecad0cd",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "1f825c5d4b6ff3d833581838835a6ac2c5949705d1a63cbe1599e3d3bfa85578",
+    "sha256": "509ba2c233a541ccb1a0c6f0657fa945f7acd76a7997d7f28904a92fa6f9b17e",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "28e3fe0761ff2508916d98e34a56579f70d534f65497a9193bc76b0944e4b32f",
+    "sha256": "08b8a75d39f56b0f89f8d912c5621dea584019730c7a91019336991689270841",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "72664b1ba812c74504e29f42f57a7da7c761ffcd3b1c04afd62f23a8a2fa0eec",
+    "sha256": "b6702aaf108a5abb01fe502030e85b14290bdc4474b2e8d23f89c7b5083b89ac",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Control-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Control-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "95a426dbd84e80873a4950b1c03bd7e64866bd76ecdea1af2e3f8b17f1bd79d2",
+    "sha256": "5340487f414e4559a2aabd1761d0214b2854071c617d26b8780334cbf5457a01",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallConfirm-gpu-AllVisible1000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallConfirm-gpu-AllVisible1000-r0-Baseline.out",
+    "sourceSha256": "733d4296100f7e51f7e989aaf3c4cef3988fe44b321adf3067036b23badcfe51",
+    "sha256": "206eaa9d48219c5d8b1fe668ccb8895a910a7f870a406ac89594dbe0db60722d",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallConfirm-gpu-AllVisible1000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallConfirm-gpu-AllVisible1000-r1-Candidate.out",
+    "sourceSha256": "12d07d669e4f53b81996aa77947c99fc0a2552d99ec4deea8c551fc916aba419",
+    "sha256": "5393d371f50c968a4e157deff2e5644327e4213682f2c76d58b00c7d986e5c3c",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallConfirm-gpu-AllVisible1000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallConfirm-gpu-AllVisible1000-r2-Candidate.out",
+    "sourceSha256": "e574e1249166d27f7f83c60865944527fec30656fffe01cf538948eee9125c1d",
+    "sha256": "a65377a0b3d4144327e04fc91e9cad6ac924900046cf2625527a290ee92a0036",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallConfirm-gpu-AllVisible1000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallConfirm-gpu-AllVisible1000-r3-Baseline.out",
+    "sourceSha256": "8a745f6c5fd5429a2746d0491a34b417cdfac84f38cf01ffa9204aede7810297",
+    "sha256": "ae95630839a1ee6229cd5af9273f9859dbb33639a43da2a40256929a8dee637b",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallConfirm-gpu-AllVisible1000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallConfirm-gpu-AllVisible1000-r4-Baseline.out",
+    "sourceSha256": "44610f774e44ab61d0149500cc701c8062984305d3f56ce15d95b3bed121b845",
+    "sha256": "4ecf26f44cc343dada83fc3a976716ac8ee9dbe3cb3271c242bb239e2b5ba59a",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallConfirm-gpu-AllVisible1000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallConfirm-gpu-AllVisible1000-r5-Candidate.out",
+    "sourceSha256": "c262d85098f759369ddddbb921e7eab50122cae36249063719463cc3b794dc71",
+    "sha256": "879affef842caadda6a6cff3dc13f0255118b3a5d410c3d31e129d45ad127586",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallControl-gpu-AllVisible1000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallControl-gpu-AllVisible1000-r0-Baseline.out",
+    "sourceSha256": "4a4c64193fe79a19c75354a159d8ccef2af94980fd083aa149b4588de984e07a",
+    "sha256": "5144eeddf391c31d2735eb7c7af10bcc9dd03e93f4e9ded7e2375b7ea63f7869",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallControl-gpu-AllVisible1000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallControl-gpu-AllVisible1000-r1-Candidate.out",
+    "sourceSha256": "f013808762855c9ca7a18b9c0cd8ee0911780321433cedf0bbc93e65ce223bd3",
+    "sha256": "5d535b66f77b8c7ca7505dd4b16b1492281d1c0122c65b2d4caa4a47ac20c766",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallControl-gpu-AllVisible1000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallControl-gpu-AllVisible1000-r2-Candidate.out",
+    "sourceSha256": "947da03d829bd120fd64b96d65c977405faef41e9bf46939049010cf4c64f6d8",
+    "sha256": "268859a69db2357e056bcceb08aaf02bcf066fdedffd93c000db506a15e4c8fe",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallControl-gpu-AllVisible1000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallControl-gpu-AllVisible1000-r3-Baseline.out",
+    "sourceSha256": "373c30f03f1af05859948f687063596744ee391c35e956a4eef40cccbe8aa117",
+    "sha256": "ebfd81f6977d84c7323739afc50327a83f8b3f4491c40ecc2f26d1cf11c2a507",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallControl-gpu-AllVisible1000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallControl-gpu-AllVisible1000-r4-Baseline.out",
+    "sourceSha256": "9f450cbf88e46a2fc1d6f4f134672d366ddc663c0cb5ee5d99215e5874861db2",
+    "sha256": "2a7d07d7e60087f699a905bf582959a57c8f788582b92b00146d555d0a2f03c8",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallControl-gpu-AllVisible1000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallControl-gpu-AllVisible1000-r5-Candidate.out",
+    "sourceSha256": "955178107beb375952ad8a75e17654688ac18dc72de24e4c3b4a6e5bd3e2bf25",
+    "sha256": "4c5e64e9d28f2a597367f520d2d25144e7ef44a3dcdf27e9aa214dec8e60eaea",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "a681950c4c44968551cee73cd1ec6bff66b04ce4e73dccaf0a81519846ee99c6",
+    "sha256": "0957df487006cbb2eb910b601825ccf049c2404473b77e4990ced8da4870c736",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "b798cc4c1894a027d186e37c0c0008e295eb8ea06562b1c4b3db243434b6ea9b",
+    "sha256": "3173ab9f07c3d1fdd71e37a6479136497140a25df58e3e80c6cf06d39242adef",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "b33f1a8ee2e5614553c348e971b1c1b63276bc964619a43460eea5757843e500",
+    "sha256": "74a37a44847b5e0a13137dab2794434b8f6d583aacaa3f113decb58f73e0c9fe",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "92aebbb7857ac2a56788e2f98f998e70b31435ada204eb6c877f940d60a81744",
+    "sha256": "c32d13fca2ef171c55abb089035dc48d18d2516c6cb61c13a57b7e7e3246db97",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "793e112afb5848aa7183f18579470321b0a2c201f35ec201b4936ed6075e17d4",
+    "sha256": "3134f6d88b77d3aa4b67a9b73cd9c282ede68caf0debdd24eb283891b2cff395",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "cba611a70b6758a61e2919a574c97853bfba7f30afce410e26970a8b02a1f348",
+    "sha256": "b99ce4127bde32a7eb40baf73d0168855a4a6940e80678df524a196500c8b300",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "b7946c531155176f8ef493dbe134b21b30397d2d336c6c9fb4b4526f49728ce2",
+    "sha256": "7fdb2ec4abc31448fd07916d9b85d801b2c13adf4b62ddddc01ec83614dfb2dc",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "cc74527156cd4995bb5b22ecc046c31a19fb06c50b56b964faca53a9968c587a",
+    "sha256": "bd7fae75bff53364b9cc877b6900cf6d55d7ec39d5e3daf561a09fc2e26c7411",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "sourceSha256": "00fa129445fd3d8a75efe79c78afa95f521e4f349b7fb3726e5813435125269f",
+    "sha256": "983e12bd237f06fe5cf23c3195cac610a44740106c18cfcba60e2e1f9ac8ea9b",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "sourceSha256": "cc2db301381a435d68a07f049b7c16d342ece1a84b5429b3bfaaaad4c050819d",
+    "sha256": "49150788e1fe755715563388c832638fc53fc53a5e3db8397044c2b7dddf3a08",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "sourceSha256": "0d39b530b4730aedee4489f9ef3fed98306a7efd9a9242c932196e52a63c52c2",
+    "sha256": "ba0567c461342224a74dc0f114095a3aaad3064ece84ed972415486e301d92a0",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\PoolMemory-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "sourceSha256": "b1f03f988969a8ff40b1b32adca69da90c407fc9572aa59c0dc7d961fc73b87a",
+    "sha256": "39ce324c52428ba4a5fdd70e91460ad25b02e8fd3414bc698996347b714e5614",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallMemory-gpu-AllVisible1000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallMemory-gpu-AllVisible1000-r0-Baseline.out",
+    "sourceSha256": "c9d3d000d1e5b94eb4be2e95625d2747bf83999ed201b2bd82953f16d987b7a9",
+    "sha256": "b0e2c377523c4fe6063c302df53615435512ef42cbff02dba52c47541732594f",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallMemory-gpu-AllVisible1000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallMemory-gpu-AllVisible1000-r1-Candidate.out",
+    "sourceSha256": "c1a12f93b347000cf093de4b0c1b7a0fcc7cbbcdd1e799841e492c2385d2a66d",
+    "sha256": "810ed1cc4f5851eebe63e66f1b7a9d9131a075d6e405a936e6c357260da29692",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallMemory-gpu-AllVisible1000-r2-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallMemory-gpu-AllVisible1000-r2-Candidate.out",
+    "sourceSha256": "ea2984bd4a3a42a704e12b9e2b50c689349c93cf0640c3d7de4ddb3cfc563c55",
+    "sha256": "4c0da4257025e7d68b4bffec1d0ef8e991795728341f9178af6d20d364510865",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallMemory-gpu-AllVisible1000-r3-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallMemory-gpu-AllVisible1000-r3-Baseline.out",
+    "sourceSha256": "db956553fae2fe541a89afa9c88736178152fad555911bd9a8a5244a5e585310",
+    "sha256": "8ff3f338eb7c077d42a074341bd4afbbce258ce5127dc5f93df217d756a0a9b2",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallMemory-gpu-AllVisible1000-r4-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallMemory-gpu-AllVisible1000-r4-Baseline.out",
+    "sourceSha256": "d7cd87831d6e4d8eb7020900a504780555083bcb679c9589ce23dbaf5223abbb",
+    "sha256": "97f3a8e50527628ac90768f01a083a5decbfdae568e86f5aa7f7330455c387d7",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/SmallMemory-gpu-AllVisible1000-r5-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\SmallMemory-gpu-AllVisible1000-r5-Candidate.out",
+    "sourceSha256": "e0ab0e9ab50351301a6bf144670f66daad85ca62e64325d158e844f627041278",
+    "sha256": "41f5c2dfced1ca9ff942396c1b43ea88eb24616c4578a70afcf4227d6be9e547",
+    "case": "AllVisible1000",
+    "frames": 600
+  },
+  {
+    "file": "raw/FinalObjects-profile-AllMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\FinalObjects-profile-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "347c089cfee03750ff703af6436ddea5634a814631eb8225f98d46b7c72809d6",
+    "sha256": "160bc2b7e2069f34c781335f758de0f502a42433e6554cc73d299f91cb0f9609",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/FinalObjects-profile-AllMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\FinalObjects-profile-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "50b52b4e3067ae8c935509b99cb8061cbb6e030481f29da914ac499e43ca0702",
+    "sha256": "855944543b93eff5fa21370c2919f924a60c78e86e284e5e581c71bda35b2292",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/FinalObjects-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\FinalObjects-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "100a7bff04840b20c90ae5a8fa7db5b9c2112d3eef5f424dd2e5a09401b61252",
+    "sha256": "9029386b374a282d1e8f5e1d722e31a1a73c0eb04182a212e653084f8fe2ea6e",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/FinalObjects-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\FinalObjects-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "894b0de8b96ec19259ca4b34c4da496116f48011c5eca7718d686f6fdfbeadb7",
+    "sha256": "df8fb8a4fa6429ff02f816f0bcf828751462b3af99084ae366761f9df2ee1d7c",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Phases-profile-AllMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Phases-profile-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "6acc5ac210f1c2939d862799301111f3ce9a9dcf97b9fa4bfcc7845dfa4f0c9a",
+    "sha256": "e537c9731836185f8d9ff590248d577d69bee017dbaef12e301ceb0da03ba489",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Phases-profile-AllMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Phases-profile-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "837aeff90767506902b40db6b41bead85033a7e21c03f1c29c82a085dabe20f2",
+    "sha256": "b1edf9f1ae7de696efc6f9c3903b29cc9fd210511b1e8b3389c7f083768132d2",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Phases-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Phases-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "7922063ddb91b59d92bbb04d0986216c4c99c098cb1bf3145abb159a8af51962",
+    "sha256": "5cd9e88e08d32801790b7e88ec1a564b63eb5d6290f9631b05a0513e78053cc4",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Phases-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Phases-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "d94345c190be3d9169eda4c54d41b8c241bf6f1b2213b518c2e17ba2e08db839",
+    "sha256": "3bf863c428ef958ea18df50c3dd86bb8c2bb7f299aac45f0e46cbe43288dec22",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Discovery-profile-AllMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Discovery-profile-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "172d705a2bf9b47f8eadc3f5e05cae874fd9f7a28234be8f76375a84dec59b29",
+    "sha256": "4a69e4a8b95b52e56672974628f1ba702fe82d7ebfd4ce7d669055026f76ea29",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Discovery-profile-AllMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Discovery-profile-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "2e683f60fdf8b150cb54a7c854cd05c0009dc0166bff7ad22a8196e3feea5060",
+    "sha256": "e3c6b1749182b0628aae2453cf1ad19010d79a03d2fa5826fcdbe6c623d8af9a",
+    "case": "AllMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Discovery-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Discovery-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "sourceSha256": "8a741e21b57715592e58a181ea54657754b101d9012620ef09e282f75bfda78f",
+    "sha256": "0c869bbe9f5a948cb08c76c72566eacb2a4b5d474056b815f69c11890ba3658f",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  },
+  {
+    "file": "raw/Discovery-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.json.gz",
+    "source": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\Raw\\Discovery-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "sourceSha256": "ab9698e9ac076d2f9a44b597d839349e8149d118c3751065dd6a0bb1a550fbd1",
+    "sha256": "f5f70587082b85b78d42cf8759ca0fab6cd971f94bd82bc92dba509cd27fa37f",
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "frames": 600
+  }
+]

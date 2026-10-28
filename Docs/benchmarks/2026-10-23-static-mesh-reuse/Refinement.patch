@@ -1,0 +1,247 @@
+--- iteration1/Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp
++++ Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp
+@@ -139,6 +139,7 @@
+ struct StaticGeometryEntry {
+     EntityID entity;
+     uint64_t lifetime = 0;
++    uint64_t lastExtractFrame = UINT64_MAX, lastPoseChangeFrame = UINT64_MAX;
+     const renderer::Mesh* mesh = nullptr;
+     std::array<uint32_t, 10> pose{};
+     std::array<uint32_t, 13> meshInputs{};
+@@ -150,6 +151,9 @@
+ struct StaticSceneGeometry {
+     const Scene* scene = nullptr;
+     uint64_t generation = 0, revision = 0;
++    bool primed = false, indexDirty = true;
++    bool highChangeLastBuild = false;
++    uint32_t denseBuildsRemaining = 0;
+     std::vector<StaticGeometryEntry> entries;
+     std::unordered_map<uint64_t, size_t> entitySlots;
+ };
+@@ -952,53 +956,6 @@
+     return ExtractMesh(world, ComputeWorldBoundsScale(world), mesh);
+ }
+ 
+-/// @note Public pose/mesh fields are witnessed bit-for-bit on every build; notifications additionally invalidate identical-value replacements.
+-/// @see https://github.com/godotengine/godot/blob/master/servers/rendering/renderer_scene_cull.h Instance dependency notifications.
+-renderer::RenderObject ExtractStaticObject(Scene& scene, StaticSceneGeometry& cache, size_t slot,
+-    GameObject& go, MeshRenderer& component, uint64_t frame, renderer::RenderScene& output)
+-{
+-    if (slot == cache.entries.size()) cache.entries.emplace_back();
+-    auto& entry = cache.entries[slot];
+-    const auto entity = go.GetID();
+-    if (entry.entity != entity) {
+-        ForgetStaticSlot(cache, slot);
+-        cache.entitySlots[(static_cast<uint64_t>(entity.generation) << 32) | entity.index] = slot;
+-    }
+-    const auto lifetime = scene.GetComponentLifetime<MeshRenderer>(entity);
+-    const auto pose = StaticPoseInputs(go.transform);
+-    const auto meshInputs = StaticMeshInputs(*component.mesh);
+-    if (!entry.valid || entry.entity != entity || entry.lifetime != lifetime || entry.mesh != component.mesh
+-        || entry.pose != pose || entry.meshInputs != meshInputs) {
+-        FBZZ_PROFILE_SCOPE("RenderSceneExtractor::StaticGeometryRebuild");
+-        entry.entity = entity; entry.lifetime = lifetime; entry.mesh = component.mesh;
+-        entry.pose = pose; entry.meshInputs = meshInputs;
+-        entry.world = go.transform.GetWorldMatrix();
+-        entry.inverseTranspose = math::Matrix4::InverseTransposeAffine(entry.world);
+-        const auto bounds = ComputeWorldBounds(entry.world, ComputeWorldBoundsScale(entry.world), *component.mesh);
+-        entry.center = bounds.center;
+-        entry.radius = component.mesh->boundsRadius > 0.0f ? bounds.radius : 0.0f;
+-        entry.reliable = IsReliableOccluder(*component.mesh);
+-        entry.valid = true;
+-    }
+-    renderer::RenderObject object;
+-    object.sourceIndex = entity.index; object.sourceGeneration = entity.generation;
+-    object.layer = static_cast<uint32_t>(go.layer);
+-    object.world = entry.world; object.worldInvTranspose = entry.inverseTranspose;
+-    object.previousWorld = AdvanceWorld(component, object.world, frame);
+-    object.sortPosition = go.transform.position;
+-    object.castShadows = component.castShadows; object.lodVisible = component.lodVisible; object.lodDither = component.lodDither;
+-    object.firstItem = static_cast<uint32_t>(output.items.size()); object.itemCount = 1;
+-    object.boundsCenter = entry.center; object.boundsRadius = entry.radius;
+-    auto& item = output.items.emplace_back();
+-    item.objectIndex = static_cast<uint32_t>(output.objects.size());
+-    item.vertexBuffer = item.skinningVertexBuffer = component.mesh->vertexBuffer;
+-    item.indexBuffer = component.mesh->indexBuffer;
+-    item.vertexCount = component.mesh->vertexCount; item.indexCount = component.mesh->indexCount;
+-    item.vertexStride = sizeof(renderer::Vertex);
+-    item.boundsCenter = entry.center; item.boundsRadius = entry.radius; item.reliableOccluder = entry.reliable;
+-    return object;
+-}
+-
+ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* material,
+                   renderer::ResourceManager& resources, const MaterialSlot& slot, GeometryMaterialCache& cache)
+ {
+@@ -1145,6 +1102,14 @@
+ public:
+     DenseGeometryBatch(renderer::RenderScene& output, size_t hint) : m_output(output)
+     { m_output.objects.reserve(hint); m_output.items.reserve(hint); m_meshes.reserve(32); }
++    void MarkMovingGeometry()
++    {
++        if (m_movingSeen) return;
++        m_movingSeen = true;
++        FBZZ_PROFILE_MARKER("RenderSceneExtractor::MovingGeometry");
++    }
++    void MarkExistingChange() { ++m_existingChanges; }
++    size_t ExistingChanges() const { return m_existingChanges; }
+     renderer::RenderMeshItem& Append(const renderer::Mesh& mesh, const math::Matrix4& world, float maximumScale)
+     {
+         if (m_lastMesh != &mesh) {
+@@ -1182,7 +1147,84 @@
+     std::unordered_map<const renderer::Mesh*, size_t> m_meshIndices;
+     const renderer::Mesh* m_lastMesh = nullptr;
+     size_t m_lastIndex = 0;
++    bool m_movingSeen = false;
++    size_t m_existingChanges = 0;
+ };
++
++/// @note A cold Scene uses the original path; repeatedly moving entries avoid copying current matrices back into the persistent cache.
++renderer::RenderObject ExtractUncachedStaticObject(GameObject& go, MeshRenderer& component, uint64_t frame,
++    renderer::RenderScene& output, DenseGeometryBatch& denseGeometry)
++{
++    auto object = ExtractObject(go, component, frame);
++    object.firstItem = static_cast<uint32_t>(output.items.size());
++    auto& item = denseGeometry.Append(*component.mesh, object.world, ComputeWorldBoundsScale(object.world));
++    object.boundsCenter = item.boundsCenter; object.boundsRadius = item.boundsRadius;
++    object.itemCount = 1;
++    item.objectIndex = static_cast<uint32_t>(output.objects.size());
++    return object;
++}
++
++/// @note Public pose/mesh fields are witnessed bit-for-bit on every build; notifications additionally invalidate identical-value replacements.
++/// @see https://github.com/godotengine/godot/blob/master/servers/rendering/renderer_scene_cull.h Instance dependency notifications.
++renderer::RenderObject ExtractStaticObject(Scene& scene, StaticSceneGeometry& cache, size_t slot,
++    GameObject& go, MeshRenderer& component, uint64_t frame, renderer::RenderScene& output, DenseGeometryBatch& denseGeometry)
++{
++    if (slot == cache.entries.size()) cache.entries.emplace_back();
++    auto& entry = cache.entries[slot];
++    const auto entity = go.GetID();
++    if (entry.entity != entity) {
++        if (!cache.indexDirty) ForgetStaticSlot(cache, slot);
++        cache.indexDirty = true;
++    }
++    const auto lifetime = scene.GetComponentLifetime<MeshRenderer>(entity);
++    const auto pose = StaticPoseInputs(go.transform);
++    const bool sameOwner = entry.entity == entity && entry.lifetime == lifetime && entry.mesh == component.mesh;
++    const bool poseChanged = entry.pose != pose;
++    const bool newFrame = entry.lastExtractFrame != frame;
++    entry.lastExtractFrame = frame;
++    if (sameOwner && poseChanged && newFrame && frame > 0 && entry.lastPoseChangeFrame == frame - 1) {
++        entry.pose = pose; entry.lastPoseChangeFrame = frame; entry.valid = false;
++        denseGeometry.MarkExistingChange();
++        denseGeometry.MarkMovingGeometry();
++        return ExtractUncachedStaticObject(go, component, frame, output, denseGeometry);
++    }
++    if (!sameOwner) entry.lastPoseChangeFrame = UINT64_MAX;
++    else if (poseChanged) entry.lastPoseChangeFrame = frame;
++    const auto meshInputs = StaticMeshInputs(*component.mesh);
++    if (!entry.valid || entry.entity != entity || entry.lifetime != lifetime || entry.mesh != component.mesh
++        || entry.pose != pose || entry.meshInputs != meshInputs) {
++        if (entry.entity.IsValid()) denseGeometry.MarkExistingChange();
++        std::optional<profiler::ProfileScope> rebuildProfile;
++        if (profiler::Profiler::IsEnabled()) rebuildProfile.emplace(
++            profiler::ProfilerMarker("RenderSceneExtractor::StaticGeometryRebuild"));
++        entry.entity = entity; entry.lifetime = lifetime; entry.mesh = component.mesh;
++        entry.pose = pose; entry.meshInputs = meshInputs;
++        entry.world = go.transform.GetWorldMatrix();
++        entry.inverseTranspose = math::Matrix4::InverseTransposeAffine(entry.world);
++        const auto bounds = ComputeWorldBounds(entry.world, ComputeWorldBoundsScale(entry.world), *component.mesh);
++        entry.center = bounds.center;
++        entry.radius = component.mesh->boundsRadius > 0.0f ? bounds.radius : 0.0f;
++        entry.reliable = IsReliableOccluder(*component.mesh);
++        entry.valid = true;
++    }
++    renderer::RenderObject object;
++    object.sourceIndex = entity.index; object.sourceGeneration = entity.generation;
++    object.layer = static_cast<uint32_t>(go.layer);
++    object.world = entry.world; object.worldInvTranspose = entry.inverseTranspose;
++    object.previousWorld = AdvanceWorld(component, object.world, frame);
++    object.sortPosition = go.transform.position;
++    object.castShadows = component.castShadows; object.lodVisible = component.lodVisible; object.lodDither = component.lodDither;
++    object.firstItem = static_cast<uint32_t>(output.items.size()); object.itemCount = 1;
++    object.boundsCenter = entry.center; object.boundsRadius = entry.radius;
++    auto& item = output.items.emplace_back();
++    item.objectIndex = static_cast<uint32_t>(output.objects.size());
++    item.vertexBuffer = item.skinningVertexBuffer = component.mesh->vertexBuffer;
++    item.indexBuffer = component.mesh->indexBuffer;
++    item.vertexCount = component.mesh->vertexCount; item.indexCount = component.mesh->indexCount;
++    item.vertexStride = sizeof(renderer::Vertex);
++    item.boundsCenter = entry.center; item.boundsRadius = entry.radius; item.reliableOccluder = entry.reliable;
++    return object;
++}
+ 
+ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp,
+     renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette, bool rayTracingInputs,
+@@ -1202,11 +1244,16 @@
+     scene.CopyRendererEntities(candidates);
+     DenseGeometryBatch denseGeometry(output, candidates.size());
+     auto& staticGeometry = *FindStaticGeometry(scene, true);
+-    const size_t staticHint = scene.GetEntities<MeshRenderer>().size();
+-    if (staticGeometry.entries.capacity() < staticHint) {
+-        staticGeometry.entries.reserve(staticHint);
+-        staticGeometry.entitySlots.reserve(staticHint);
+-    }
++    const bool denseOnly = staticGeometry.primed && staticGeometry.denseBuildsRemaining > 0;
++    if (denseOnly) {
++        --staticGeometry.denseBuildsRemaining;
++        FBZZ_PROFILE_MARKER("RenderSceneExtractor::DenseGeometryFallback");
++    } else if (!staticGeometry.primed) {
++        FBZZ_PROFILE_MARKER("RenderSceneExtractor::ColdGeometry");
++    }
++    const bool reuseStaticGeometry = staticGeometry.primed && !denseOnly;
++    const size_t staticHint = reuseStaticGeometry ? scene.GetEntities<MeshRenderer>().size() : 0;
++    if (staticGeometry.entries.capacity() < staticHint) staticGeometry.entries.reserve(staticHint);
+     size_t staticCount = 0;
+     for (EntityID id : candidates) {
+         auto* source = scene.GetGameObject(id);
+@@ -1214,7 +1261,10 @@
+         auto& go = *source;
+         if (!go.activeInHierarchy()) continue;
+         if (auto* mr = go.GetComponent<MeshRenderer>(); mr && mr->enabled && mr->mesh && !mr->mesh->isSkinned) {
+-            auto object = ExtractStaticObject(scene, staticGeometry, staticCount++, go, *mr, frameStamp, output);
++            auto object = reuseStaticGeometry
++                ? ExtractStaticObject(scene, staticGeometry, staticCount, go, *mr, frameStamp, output, denseGeometry)
++                : ExtractUncachedStaticObject(go, *mr, frameStamp, output, denseGeometry);
++            ++staticCount;
+             if (const auto lod = lodRenderers.find(EntityKey(go.GetID())); lod != lodRenderers.end()) {
+                 object.rayVisible = lod->second.visible;
+                 object.rayLodSelectionRequired = lod->second.ambiguous;
+@@ -1268,8 +1318,20 @@
+         object.itemCount = static_cast<uint32_t>(output.items.size()) - object.firstItem;
+         output.objects.push_back(object);
+     }
+-    for (size_t slot = staticCount; slot < staticGeometry.entries.size(); ++slot) ForgetStaticSlot(staticGeometry, slot);
+-    staticGeometry.entries.resize(staticCount);
++    if (reuseStaticGeometry && staticCount < staticGeometry.entries.size()) {
++        if (!staticGeometry.indexDirty) ForgetStaticSlot(staticGeometry, staticCount);
++        staticGeometry.indexDirty = true;
++        staticGeometry.entries.resize(staticCount);
++    }
++    if (reuseStaticGeometry) {
++        /// @note Two high-change observations avoid penalizing one teleport; bounded dense builds amortize tracking in continuously volatile Scenes.
++        const bool highChange = staticCount >= 64 && denseGeometry.ExistingChanges() >= staticCount - staticCount / 4;
++        if (highChange && staticGeometry.highChangeLastBuild) {
++            staticGeometry.denseBuildsRemaining = 16;
++            staticGeometry.highChangeLastBuild = false;
++        } else staticGeometry.highChangeLastBuild = highChange;
++    }
++    staticGeometry.primed = true;
+     if (staticRevision) *staticRevision = staticGeometry.revision;
+     candidates.clear();
+     profiler::Profiler::EndScope(objectsProfile);
+@@ -1366,6 +1428,15 @@
+     auto* cache = FindStaticGeometry(scene, false);
+     if (!cache) return;
+     cache->revision = ++s_staticGeometryRevision;
++    if (cache->indexDirty) {
++        cache->entitySlots.clear();
++        cache->entitySlots.reserve(cache->entries.size());
++        for (size_t slot = 0; slot < cache->entries.size(); ++slot) {
++            const auto id = cache->entries[slot].entity;
++            cache->entitySlots[(static_cast<uint64_t>(id.generation) << 32) | id.index] = slot;
++        }
++        cache->indexDirty = false;
++    }
+     const auto found = cache->entitySlots.find((static_cast<uint64_t>(entity.generation) << 32) | entity.index);
+     if (found != cache->entitySlots.end()) cache->entries[found->second].valid = false;
+ }

@@ -1,0 +1,133 @@
+{
+  "label": "Stamp",
+  "kind": "cpu",
+  "smoke": false,
+  "groups": {
+    "10000-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            2.81405,
+            2.8137999999999996,
+            2.8794000000000004
+          ],
+          "pooled": {
+            "p50": 2.8423499999999997,
+            "p95": 3.1844849999999996,
+            "p99": 3.431638
+          },
+          "files": [
+            "Stamp-cpu-10000-all-r0-Baseline.json",
+            "Stamp-cpu-10000-all-r3-Baseline.json",
+            "Stamp-cpu-10000-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            2.7628500000000003,
+            2.8053,
+            2.7976
+          ],
+          "pooled": {
+            "p50": 2.78515,
+            "p95": 3.1590499999999997,
+            "p99": 3.387127
+          },
+          "files": [
+            "Stamp-cpu-10000-all-r1-Candidate.json",
+            "Stamp-cpu-10000-all-r2-Candidate.json",
+            "Stamp-cpu-10000-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 2.81405,
+      "candidateMedianMs": 2.7976,
+      "changePercent": -0.5845667276700772
+    },
+    "10000-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            2.52395,
+            2.5347999999999997,
+            2.5533
+          ],
+          "pooled": {
+            "p50": 2.5368,
+            "p95": 2.9331499999999995,
+            "p99": 3.317945
+          },
+          "files": [
+            "Stamp-cpu-10000-one-percent-r0-Baseline.json",
+            "Stamp-cpu-10000-one-percent-r3-Baseline.json",
+            "Stamp-cpu-10000-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            2.59715,
+            2.5126,
+            2.50425
+          ],
+          "pooled": {
+            "p50": 2.54125,
+            "p95": 2.904105,
+            "p99": 3.29623
+          },
+          "files": [
+            "Stamp-cpu-10000-one-percent-r1-Candidate.json",
+            "Stamp-cpu-10000-one-percent-r2-Candidate.json",
+            "Stamp-cpu-10000-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 2.5347999999999997,
+      "candidateMedianMs": 2.5126,
+      "changePercent": -0.8758087423070715
+    },
+    "10000-static": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            2.5031,
+            2.5049,
+            2.4947
+          ],
+          "pooled": {
+            "p50": 2.5015,
+            "p95": 2.85208,
+            "p99": 3.177661
+          },
+          "files": [
+            "Stamp-cpu-10000-static-r0-Baseline.json",
+            "Stamp-cpu-10000-static-r3-Baseline.json",
+            "Stamp-cpu-10000-static-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            2.52035,
+            2.5143500000000003,
+            2.52815
+          ],
+          "pooled": {
+            "p50": 2.5214999999999996,
+            "p95": 2.879055,
+            "p99": 3.185534
+          },
+          "files": [
+            "Stamp-cpu-10000-static-r1-Candidate.json",
+            "Stamp-cpu-10000-static-r2-Candidate.json",
+            "Stamp-cpu-10000-static-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 2.5031,
+      "candidateMedianMs": 2.52035,
+      "changePercent": 0.6891454596300584
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "changed": [
+    "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp"
+  ],
+  "beforeSha256": "1c4a86181033780ed9ddb10922b4a6c83e9443b2e9db8c26d3f2c2a1112388c6",
+  "afterSha256": "745c0297a77d17af682e90b0b64bbe47482ee8a5d07922755926d9b20d2d8947",
+  "exportsUnchanged": true,
+  "postLinkVerificationRequired": true
+}

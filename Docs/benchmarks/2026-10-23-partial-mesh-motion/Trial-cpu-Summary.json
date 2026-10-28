@@ -1,0 +1,133 @@
+{
+  "label": "Trial",
+  "kind": "cpu",
+  "smoke": false,
+  "groups": {
+    "10000-all": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            3.2963500000000003,
+            3.3398000000000003,
+            3.3511
+          ],
+          "pooled": {
+            "p50": 3.323,
+            "p95": 3.711575,
+            "p99": 4.172454999999999
+          },
+          "files": [
+            "Trial-cpu-10000-all-r0-Baseline.json",
+            "Trial-cpu-10000-all-r3-Baseline.json",
+            "Trial-cpu-10000-all-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.29555,
+            3.3576,
+            3.35665
+          ],
+          "pooled": {
+            "p50": 3.3371500000000003,
+            "p95": 3.7225249999999996,
+            "p99": 4.161014
+          },
+          "files": [
+            "Trial-cpu-10000-all-r1-Candidate.json",
+            "Trial-cpu-10000-all-r2-Candidate.json",
+            "Trial-cpu-10000-all-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 3.3398000000000003,
+      "candidateMedianMs": 3.35665,
+      "changePercent": 0.5045212288161016
+    },
+    "10000-one-percent": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            2.9562,
+            2.94195,
+            2.9684999999999997
+          ],
+          "pooled": {
+            "p50": 2.9543,
+            "p95": 3.3516649999999997,
+            "p99": 4.173988
+          },
+          "files": [
+            "Trial-cpu-10000-one-percent-r0-Baseline.json",
+            "Trial-cpu-10000-one-percent-r3-Baseline.json",
+            "Trial-cpu-10000-one-percent-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            2.9642,
+            3.0105,
+            2.9913999999999996
+          ],
+          "pooled": {
+            "p50": 2.9875999999999996,
+            "p95": 3.4031249999999997,
+            "p99": 4.241319999999999
+          },
+          "files": [
+            "Trial-cpu-10000-one-percent-r1-Candidate.json",
+            "Trial-cpu-10000-one-percent-r2-Candidate.json",
+            "Trial-cpu-10000-one-percent-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 2.9562,
+      "candidateMedianMs": 2.9913999999999996,
+      "changePercent": 1.1907178134090923
+    },
+    "10000-static": {
+      "parity": true,
+      "variants": {
+        "Baseline": {
+          "runP50": [
+            2.9855,
+            2.95505,
+            2.94225
+          ],
+          "pooled": {
+            "p50": 2.95915,
+            "p95": 3.340365,
+            "p99": 3.7945959999999994
+          },
+          "files": [
+            "Trial-cpu-10000-static-r0-Baseline.json",
+            "Trial-cpu-10000-static-r3-Baseline.json",
+            "Trial-cpu-10000-static-r4-Baseline.json"
+          ]
+        },
+        "Candidate": {
+          "runP50": [
+            3.01775,
+            2.9965,
+            2.9438
+          ],
+          "pooled": {
+            "p50": 2.9802,
+            "p95": 3.546925,
+            "p99": 4.641062
+          },
+          "files": [
+            "Trial-cpu-10000-static-r1-Candidate.json",
+            "Trial-cpu-10000-static-r2-Candidate.json",
+            "Trial-cpu-10000-static-r5-Candidate.json"
+          ]
+        }
+      },
+      "baselineMedianMs": 2.95505,
+      "candidateMedianMs": 2.9965,
+      "changePercent": 1.4026835417336514
+    }
+  }
+}

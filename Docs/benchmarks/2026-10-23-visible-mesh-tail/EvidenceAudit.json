@@ -1,0 +1,32 @@
+{
+  "restoredSourceSha256": "a646678d0465da8a7d99bf13bbbf8b29cee174d0f3f320b3e9e07e553c99df92",
+  "negativeDetected": true,
+  "exactBytesRestored": true,
+  "unchangedSource": {
+    "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp": "745c0297a77d17af682e90b0b64bbe47482ee8a5d07922755926d9b20d2d8947",
+    "Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp": "5c27f9689c16444ed91972e6bee1eadecb60ce6e9a296d7f318047073cff0245",
+    "Projects/Tests/Engine/Auto/ShaderReloadTests.cpp": "f72b437aa9405f61ad47d12722c823144aaa2e8501bda7e3dbd0448b3a61ff8c"
+  },
+  "testCounts": {
+    "Restored": {
+      "listed": 27,
+      "completed": 25,
+      "disabled": 2,
+      "failures": 0
+    },
+    "GraphicsCpu": {
+      "listed": 303,
+      "completed": 303,
+      "disabled": 0,
+      "failures": 0
+    },
+    "Skinning": {
+      "listed": 58,
+      "completed": 58,
+      "disabled": 0,
+      "failures": 0
+    }
+  },
+  "publicApiChanged": false,
+  "benchmarkHarnessChanged": false
+}

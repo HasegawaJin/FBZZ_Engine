@@ -1,0 +1,78 @@
+{
+  "tests": 4,
+  "failures": 0,
+  "disabled": 0,
+  "errors": 0,
+  "random_seed": 1023,
+  "timestamp": "2026-10-23T14:47:18Z",
+  "time": "2.063s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "BufferReadTest",
+      "tests": 3,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T14:47:19Z",
+      "time": "1.239s",
+      "testsuite": [
+        {
+          "name": "CpuUpdatesPublishNewSnapshotsWithoutChangingRecordedReads",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 411,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:47:19Z",
+          "time": "0.425s",
+          "classname": "BufferReadTest",
+          "rng_seed": "15873810547032872311"
+        },
+        {
+          "name": "StaleIndirectDependenciesRejectTheDispatchBeforeWriting",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 467,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:47:19Z",
+          "time": "0.403s",
+          "classname": "BufferReadTest",
+          "rng_seed": "1138282013515155788"
+        },
+        {
+          "name": "ConsecutiveGraphicsBindingsKeepEveryIndexAndSurviveFrameAndComputeChanges",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 144,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:47:20Z",
+          "time": "0.409s",
+          "classname": "BufferReadTest",
+          "rng_seed": "16222333545610219595"
+        }
+      ]
+    },
+    {
+      "name": "SynchronousUploadTest",
+      "tests": 1,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T14:47:18Z",
+      "time": "0.821s",
+      "testsuite": [
+        {
+          "name": "TextureAndBufferWaitsKeepRecordingFrameRetirementPending",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 350,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T14:47:18Z",
+          "time": "0.82s",
+          "classname": "SynchronousUploadTest",
+          "rng_seed": "13398133637335666152"
+        }
+      ]
+    }
+  ]
+}

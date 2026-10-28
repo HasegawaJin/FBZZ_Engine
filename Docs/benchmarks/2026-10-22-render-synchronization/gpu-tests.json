@@ -1,0 +1,99 @@
+{
+  "tests": 6,
+  "failures": 0,
+  "disabled": 0,
+  "errors": 0,
+  "timestamp": "2026-10-22T18:07:28Z",
+  "time": "2.272s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "GraphicsStandaloneTest",
+      "tests": 2,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-22T18:07:28Z",
+      "time": "0.876s",
+      "testsuite": [
+        {
+          "name": "GpuProfilerKeepsPhysicalSubmissionAndViewPlanProvenance",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 134,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-22T18:07:28Z",
+          "time": "0.454s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "9140284495681418881"
+        },
+        {
+          "name": "DrawsAndReadsBackWithoutEngine",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 379,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-22T18:07:29Z",
+          "time": "0.421s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "6934284081805384849"
+        }
+      ]
+    },
+    {
+      "name": "ThreadedRenderingTest",
+      "tests": 4,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-22T18:07:29Z",
+      "time": "1.396s",
+      "testsuite": [
+        {
+          "name": "RecordsRealDrawAndKeepsSubmittedConstantBytes",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\ThreadedRenderingTests.cpp",
+          "line": 97,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-22T18:07:29Z",
+          "time": "0.324s",
+          "classname": "ThreadedRenderingTest",
+          "rng_seed": "18417253319742926457"
+        },
+        {
+          "name": "RecordedProfilerViewsKeepPixelsAndRejectedViewOutOfCompletedSnapshot",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\ThreadedRenderingTests.cpp",
+          "line": 138,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-22T18:07:30Z",
+          "time": "0.337s",
+          "classname": "ThreadedRenderingTest",
+          "rng_seed": "6899737271433647079"
+        },
+        {
+          "name": "ImGuiFrameSurvivesNextUiFrameOnProducer",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\ThreadedRenderingTests.cpp",
+          "line": 181,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-22T18:07:30Z",
+          "time": "0.376s",
+          "classname": "ThreadedRenderingTest",
+          "rng_seed": "6570888815965896596"
+        },
+        {
+          "name": "AdditionalNativeWindowCanRenderResizeAndClose",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\ThreadedRenderingTests.cpp",
+          "line": 215,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-22T18:07:30Z",
+          "time": "0.357s",
+          "classname": "ThreadedRenderingTest",
+          "rng_seed": "13142255650257470127"
+        }
+      ]
+    }
+  ]
+}

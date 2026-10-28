@@ -1,0 +1,638 @@
+[
+  {
+    "source": "Final-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 3646432,
+    "uncompressedSha256": "517b9329af893fe99a088a7169f68c7477e407846dd84bb51ddcf14a5e725e81"
+  },
+  {
+    "source": "Final-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 3646570,
+    "uncompressedSha256": "e802557d30d2806d75a3d54975131ecaf78c8b023c25f4f516bdc1bf037269b5"
+  },
+  {
+    "source": "Final-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "bytes": 3645341,
+    "uncompressedSha256": "d2d45fa21c7aec0a28d1900a492342b7100673b417af750848740f6aae4045da"
+  },
+  {
+    "source": "Final-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "bytes": 3645721,
+    "uncompressedSha256": "5c5aa58c19c7ad0e353729549781c9ece1d6554e559e93acb88eff5eba9f6504"
+  },
+  {
+    "source": "Final-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "bytes": 3645647,
+    "uncompressedSha256": "89f3a508720e22015329d915225ae37fb317a5612ae65985d956d71f03183ef1"
+  },
+  {
+    "source": "Final-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "bytes": 3646369,
+    "uncompressedSha256": "eafa0984c9d7e0d09d77d82e9099488fa7493be44c1d69076caf0d2847142ef7"
+  },
+  {
+    "source": "Final-gpu-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r0-Baseline.jsonl.gz",
+    "bytes": 3472102,
+    "uncompressedSha256": "3a48b8452dc824efccdc56078331cb4861b19f8e30f2ac2332d531d4ec26f06a"
+  },
+  {
+    "source": "Final-gpu-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r1-Candidate.jsonl.gz",
+    "bytes": 3490106,
+    "uncompressedSha256": "cced2bd5ea73d0bdb6fd21fd4b3b163fe49beb8a37c378ece5c2496eb2e5b141"
+  },
+  {
+    "source": "Final-gpu-AllVisible1000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r2-Candidate.jsonl.gz",
+    "bytes": 3494639,
+    "uncompressedSha256": "5fdce2751c3174f76a5bc6a273e4494732cdc0bf2a81e082715e09a01d740b7c"
+  },
+  {
+    "source": "Final-gpu-AllVisible1000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r3-Baseline.jsonl.gz",
+    "bytes": 3494376,
+    "uncompressedSha256": "15d497694fe1e695c9270e0482202b3cb01c101f1126ff722c1c18b984faec8f"
+  },
+  {
+    "source": "Final-gpu-AllVisible1000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r4-Baseline.jsonl.gz",
+    "bytes": 3490709,
+    "uncompressedSha256": "e4de253edc6f7de5b18c5386a5d961d1e0e69234f632407ac9cd6396bc11b9b0"
+  },
+  {
+    "source": "Final-gpu-AllVisible1000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r5-Candidate.jsonl.gz",
+    "bytes": 3339433,
+    "uncompressedSha256": "1e578a53d0511a500fdefb21351a190d112860821a3a729a8dfe388731a7c9a4"
+  },
+  {
+    "source": "Final-gpu-OffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 3543713,
+    "uncompressedSha256": "51f714231b9d6b55a3d000955eedec25277f12ab0ad7e1f45bbd0bf6ec756c9c"
+  },
+  {
+    "source": "Final-gpu-OffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 3543957,
+    "uncompressedSha256": "8d5c4fd0db3e4fcdda1ca3eee38e6d26a81f506d6a009f422083fc02898aef33"
+  },
+  {
+    "source": "Final-gpu-OffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "bytes": 3543871,
+    "uncompressedSha256": "18713273dd1789bc999ed2226126fe7621b98123cee9a11afa48e3436b07a35e"
+  },
+  {
+    "source": "Final-gpu-OffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "bytes": 3543683,
+    "uncompressedSha256": "bbae47ef088da6b151716d0545a8ab53e87fc1bbdcaab7460d34688721f75c99"
+  },
+  {
+    "source": "Final-gpu-OffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "bytes": 3542377,
+    "uncompressedSha256": "0bc074a9045dd7aa992ba5bf2bb0d11f9011de3e1143513937b0dd69ec280f8e"
+  },
+  {
+    "source": "Final-gpu-OffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "bytes": 3543397,
+    "uncompressedSha256": "61c4ac58fa1343f635126a3abef6855f4bff7f707777090cfdc5d1bcae1384e3"
+  },
+  {
+    "source": "Final-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 3725359,
+    "uncompressedSha256": "b840696045ad798eebe1721b60c023bd17bea6280f8de443f347597b971053eb"
+  },
+  {
+    "source": "Final-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 3726410,
+    "uncompressedSha256": "bf670cdaf2bd6e49917285072df5e7a02e0727be2b6d99068d9f84f518e7fe7d"
+  },
+  {
+    "source": "Final-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "bytes": 3726401,
+    "uncompressedSha256": "0b27f1d7eb49343cf152e4015839b59e7c8143a39e2be30212b43bf00380dd8b"
+  },
+  {
+    "source": "Final-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "bytes": 3726321,
+    "uncompressedSha256": "8f46c679bc1723147fbac739e4c0e38dc683ded57e181dc83262a24b27baab74"
+  },
+  {
+    "source": "Final-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "bytes": 3726133,
+    "uncompressedSha256": "9fee0737c28f8357d54695154c4369d94ee8be4923294792df4d0f6a9e91f0dc"
+  },
+  {
+    "source": "Final-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "bytes": 3726190,
+    "uncompressedSha256": "e0ed90356789e0db5188996d08ca9453ea05261ecccac9485493773ea03e552d"
+  },
+  {
+    "source": "Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 6741829,
+    "uncompressedSha256": "74d9e778c2f66d68eea5e47ca980b6eb246ff7331a893090e82217f702994a5c"
+  },
+  {
+    "source": "Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 6742282,
+    "uncompressedSha256": "8ae6d4038eab835e54eba34103a188491919c232220ba70f67284d00528ccd01"
+  },
+  {
+    "source": "Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "bytes": 6741372,
+    "uncompressedSha256": "944f8bb895ab63f7608f93c52ae9f33d9683b54fcebcda96d839f9edd7c8342a"
+  },
+  {
+    "source": "Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "bytes": 6741625,
+    "uncompressedSha256": "a71041deefb0a742aa9d8f684ab7e0046a92e8728faefb5bbdedd272e23c23d8"
+  },
+  {
+    "source": "Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "bytes": 6741972,
+    "uncompressedSha256": "727b317a399a5337e941631cdd1cdae63d643b7bc25bfcd80eee5a5ecc937d32"
+  },
+  {
+    "source": "Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "bytes": 6742274,
+    "uncompressedSha256": "5bd452862ffd5aa24b98b2d19c2ef05246aa085ff4319c8e7a6555d556d83ae2"
+  },
+  {
+    "source": "Final-profile-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-profile-AllMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 456700,
+    "uncompressedSha256": "eda184ba834f42382ad78831069ce558c4bcff78bfeecf846ddf0fb68a999977"
+  },
+  {
+    "source": "Final-profile-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-profile-AllMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 455761,
+    "uncompressedSha256": "3a2781d5d9bd65fe5a34112c550b9903043b39e2949e832745887023f11614b9"
+  },
+  {
+    "source": "Final-profile-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/Final-profile-AllVisible1000-r0-Baseline.jsonl.gz",
+    "bytes": 459610,
+    "uncompressedSha256": "307327ea05c733099fb741711d332d1322d335c9f18af12258df81f46c44f492"
+  },
+  {
+    "source": "Final-profile-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/Final-profile-AllVisible1000-r1-Candidate.jsonl.gz",
+    "bytes": 459481,
+    "uncompressedSha256": "870aedaef318523b9892b478bd83b8719ecb26f336ee2307dbf26a3163b7685e"
+  },
+  {
+    "source": "Final-profile-OffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-profile-OffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 461000,
+    "uncompressedSha256": "a742f93f74ba2556ee123f57139bfe45853954d0a0b33e486abda0aeda9f4dc9"
+  },
+  {
+    "source": "Final-profile-OffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-profile-OffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 460095,
+    "uncompressedSha256": "10472156be67506bafa93ce73cf5e37b08f4bddf623a34a2508ded42b14ec362"
+  },
+  {
+    "source": "Final-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 472785,
+    "uncompressedSha256": "bb7f379f7ade1a6188517caacb63f39a07aaf443245a21174ba60f417d8dd905"
+  },
+  {
+    "source": "Final-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 472589,
+    "uncompressedSha256": "2d2b8f5cd7d91c7e6ff8b65a23a13a070dcb10cdb8a4a169d74793efe9882969"
+  },
+  {
+    "source": "Final-profile-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-profile-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 623718,
+    "uncompressedSha256": "bf7653fd2783420f839ccf01af33ab0b619938433d52a779696b22081dffe163"
+  },
+  {
+    "source": "Final-profile-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-profile-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 623533,
+    "uncompressedSha256": "aaa58b2ea14c2920cac1e1efb2f55bf7cd0c6e5b3e14cfaf27196fa5004e8cb1"
+  },
+  {
+    "source": "Memo-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Memo-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 3726310,
+    "uncompressedSha256": "b93d10ca4a7a6b5bce19057e726461f9bb95e75d22191973783c5558bc026e21"
+  },
+  {
+    "source": "Memo-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Memo-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 3726461,
+    "uncompressedSha256": "929583384ebbace3e02bb3256fca4b81aa79d8f47ef31ea3f2ebf7b850a35cdf"
+  },
+  {
+    "source": "Memo-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Memo-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "bytes": 3726394,
+    "uncompressedSha256": "3d30f95cc6a22067d593d18803e6ef9056791d9bb1563276e6a9b7cce71f3fff"
+  },
+  {
+    "source": "Memo-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Memo-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "bytes": 3726231,
+    "uncompressedSha256": "ffd74c7ea1ade6bb411d00252a2e474cb907cf2cfbac9a829a6c90da18540c1e"
+  },
+  {
+    "source": "Memo-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Memo-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "bytes": 3726478,
+    "uncompressedSha256": "ac52b7fb0a29883d95367a4b75b409623563a0a1ae4bcbc9cebcba926ec5c210"
+  },
+  {
+    "source": "Memo-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Memo-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "bytes": 3726286,
+    "uncompressedSha256": "f48a8625a20187585d3fc41fa3178fdccd6aa7cbb3ce5419da647379a36214cc"
+  },
+  {
+    "source": "Memo-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Memo-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 473211,
+    "uncompressedSha256": "2967819ddcc68553f3605ce1332a63555ee9bb04f925689ab8f0ec373306e2cd"
+  },
+  {
+    "source": "Memo-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Memo-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 473056,
+    "uncompressedSha256": "10e2d0634921211a3cd57ae4fa972eb69d0a36a52a579e926f859838cf5bd0e0"
+  },
+  {
+    "source": "Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 3726077,
+    "uncompressedSha256": "4a6667c7c8c1dde86592add54116429843c05c48b543a2669b2a279d44e3d41f"
+  },
+  {
+    "source": "Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 3725996,
+    "uncompressedSha256": "8b8a94c81ecaf441c25cebccca649bb795856ac47c0661c09bc786f8095fec2f"
+  },
+  {
+    "source": "Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "bytes": 3726555,
+    "uncompressedSha256": "a44de42e5a4b6022d2dcfd83b0c3efecf7dd92b96e78d8d18b62ab09798876fc"
+  },
+  {
+    "source": "Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "bytes": 3726587,
+    "uncompressedSha256": "f6cf27d2efedec6c1590c48a7b1b53bcf3beb8713e5dcfcff46651fea58134c3"
+  },
+  {
+    "source": "Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "bytes": 3726532,
+    "uncompressedSha256": "e33e163798570ea0cd76e5abbbe7347adde9e9366c8e5f047890e12530b5bdde"
+  },
+  {
+    "source": "Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Reproduce-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "bytes": 3726549,
+    "uncompressedSha256": "99892d4f750600266059b60fe282cdbfaf2e902557cbc15aa36957b6d7779640"
+  },
+  {
+    "source": "Reproduce-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Reproduce-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 469857,
+    "uncompressedSha256": "0ef1aa448b7e42819f6fafe4e8870c19a32f64252a1f5e3ba2741346197f73bb"
+  },
+  {
+    "source": "Reproduce-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Reproduce-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 473794,
+    "uncompressedSha256": "70e67d651c8afbbf78ae07481d9c1d42f3de8b81c032e993a4cee1df27f4621f"
+  },
+  {
+    "source": "Stamp-cpu-10000-all-r0-Baseline.json",
+    "archive": "raw/Stamp-cpu-10000-all-r0-Baseline.json.gz",
+    "bytes": 18222,
+    "uncompressedSha256": "492563a5073b85b88c30817b4076c1fe94825dcac17323ed2fecd563847dcdc5"
+  },
+  {
+    "source": "Stamp-cpu-10000-all-r1-Candidate.json",
+    "archive": "raw/Stamp-cpu-10000-all-r1-Candidate.json.gz",
+    "bytes": 18223,
+    "uncompressedSha256": "784cc20dd4f6c29163b5b67b7eb9d9de78a86530800d31cfe3b1bf1674709f8d"
+  },
+  {
+    "source": "Stamp-cpu-10000-all-r2-Candidate.json",
+    "archive": "raw/Stamp-cpu-10000-all-r2-Candidate.json.gz",
+    "bytes": 18223,
+    "uncompressedSha256": "8f598f45b2a568c3f341f6ef5b8e19b0d10c43a51daf6919a9efa7c617b52c1b"
+  },
+  {
+    "source": "Stamp-cpu-10000-all-r3-Baseline.json",
+    "archive": "raw/Stamp-cpu-10000-all-r3-Baseline.json.gz",
+    "bytes": 18222,
+    "uncompressedSha256": "13af3d1d988fb8f0c9d4b0237aa095b7ad7058baa2635dd6c46191414d0b2c3f"
+  },
+  {
+    "source": "Stamp-cpu-10000-all-r4-Baseline.json",
+    "archive": "raw/Stamp-cpu-10000-all-r4-Baseline.json.gz",
+    "bytes": 18222,
+    "uncompressedSha256": "9e6993023a3003c6f682cc35788b8118e967d39619118c5471a8b559c25a039a"
+  },
+  {
+    "source": "Stamp-cpu-10000-all-r5-Candidate.json",
+    "archive": "raw/Stamp-cpu-10000-all-r5-Candidate.json.gz",
+    "bytes": 18223,
+    "uncompressedSha256": "4242064564d72d5b0781b82f6f7937fe11ee279bac9bde3cd29814b7433772a4"
+  },
+  {
+    "source": "Stamp-cpu-10000-one-percent-r0-Baseline.json",
+    "archive": "raw/Stamp-cpu-10000-one-percent-r0-Baseline.json.gz",
+    "bytes": 18230,
+    "uncompressedSha256": "3cad064485d4b7a203b3d23446748589b0713f20bcc5adc0472116b826c07b85"
+  },
+  {
+    "source": "Stamp-cpu-10000-one-percent-r1-Candidate.json",
+    "archive": "raw/Stamp-cpu-10000-one-percent-r1-Candidate.json.gz",
+    "bytes": 18231,
+    "uncompressedSha256": "6f6b81f1bd56c81408715c68f75f2fc6b5ca8292c02f0c3aefb2c5b25aeeb58f"
+  },
+  {
+    "source": "Stamp-cpu-10000-one-percent-r2-Candidate.json",
+    "archive": "raw/Stamp-cpu-10000-one-percent-r2-Candidate.json.gz",
+    "bytes": 18231,
+    "uncompressedSha256": "4dcad0f7c95a1641c9e0cd5ddd8765ad76cacf5f578f421e7cd6f90059299ec2"
+  },
+  {
+    "source": "Stamp-cpu-10000-one-percent-r3-Baseline.json",
+    "archive": "raw/Stamp-cpu-10000-one-percent-r3-Baseline.json.gz",
+    "bytes": 18230,
+    "uncompressedSha256": "e877b6ac428ede010cf75c0de9fc6e722b7baae6a4699f01dae08f5b24edbb4c"
+  },
+  {
+    "source": "Stamp-cpu-10000-one-percent-r4-Baseline.json",
+    "archive": "raw/Stamp-cpu-10000-one-percent-r4-Baseline.json.gz",
+    "bytes": 18230,
+    "uncompressedSha256": "346f516404566e5b161ba06534926300c5420d44aa932a19b495042bfd4c50c4"
+  },
+  {
+    "source": "Stamp-cpu-10000-one-percent-r5-Candidate.json",
+    "archive": "raw/Stamp-cpu-10000-one-percent-r5-Candidate.json.gz",
+    "bytes": 18231,
+    "uncompressedSha256": "9905bfe6adbb840917b8b9acec00c51b33881beb0a1855445a9181b1f5508cff"
+  },
+  {
+    "source": "Stamp-cpu-10000-static-r0-Baseline.json",
+    "archive": "raw/Stamp-cpu-10000-static-r0-Baseline.json.gz",
+    "bytes": 18225,
+    "uncompressedSha256": "be72d6510b9907b2c32b4d6d4c26f1a86320bc1602515e96098bded84913e3d5"
+  },
+  {
+    "source": "Stamp-cpu-10000-static-r1-Candidate.json",
+    "archive": "raw/Stamp-cpu-10000-static-r1-Candidate.json.gz",
+    "bytes": 18226,
+    "uncompressedSha256": "a5f8059822e587dd19d0fd72cda3b9b4c5ed08cb325d56e4dfa18952df73b490"
+  },
+  {
+    "source": "Stamp-cpu-10000-static-r2-Candidate.json",
+    "archive": "raw/Stamp-cpu-10000-static-r2-Candidate.json.gz",
+    "bytes": 18226,
+    "uncompressedSha256": "697b67748e5855005e50a330b00ca7b82c5892ad6f3392a9b17f5f7853dc44dc"
+  },
+  {
+    "source": "Stamp-cpu-10000-static-r3-Baseline.json",
+    "archive": "raw/Stamp-cpu-10000-static-r3-Baseline.json.gz",
+    "bytes": 18225,
+    "uncompressedSha256": "65b244a9a8a7a1111672ac793fea4bc4ba71fd3cee2a0d693ddb8c201b69aa5a"
+  },
+  {
+    "source": "Stamp-cpu-10000-static-r4-Baseline.json",
+    "archive": "raw/Stamp-cpu-10000-static-r4-Baseline.json.gz",
+    "bytes": 18225,
+    "uncompressedSha256": "28cd6d0f72b74f2154cd2f3886339b860acd1cb6ee7c19d2496bd8728f28569d"
+  },
+  {
+    "source": "Stamp-cpu-10000-static-r5-Candidate.json",
+    "archive": "raw/Stamp-cpu-10000-static-r5-Candidate.json.gz",
+    "bytes": 18226,
+    "uncompressedSha256": "e298bb7acccbca412b78de86caeaf6436a51c0b67877cbea78980e9e3856968d"
+  },
+  {
+    "source": "Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 3726429,
+    "uncompressedSha256": "21fee90ef83f7af82c8d6397b3b4420cbf0b1e7a42def402637dd768fee3c6af"
+  },
+  {
+    "source": "Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 3726389,
+    "uncompressedSha256": "5d6dc28ef32a1770ad43910c176b9a14a3f85d7effecc6eaa30cb346486d26a0"
+  },
+  {
+    "source": "Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "bytes": 3726344,
+    "uncompressedSha256": "1a1e0ce7029081456077a14d9691358e69e8d15e186071e3fca482336ed77b40"
+  },
+  {
+    "source": "Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "bytes": 3726364,
+    "uncompressedSha256": "4bae768cb0dfabb09df688a08514ca4450692655c5a46c0b8f3ffa2cea2a20d0"
+  },
+  {
+    "source": "Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "bytes": 3726431,
+    "uncompressedSha256": "5cb59f4bd8797a98d62745d353553c9b66bdf78a4d5676cec102f42c844c41c8"
+  },
+  {
+    "source": "Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Stamp-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "bytes": 3726247,
+    "uncompressedSha256": "79cf5bb8031293beead26d6c671e05f45367572571d1a2e98d04b1d668160d84"
+  },
+  {
+    "source": "Trial-cpu-10000-all-r0-Baseline.json",
+    "archive": "raw/Trial-cpu-10000-all-r0-Baseline.json.gz",
+    "bytes": 18222,
+    "uncompressedSha256": "c3aaf3510602d60ce91357cf8c8d169c0aee7d40a84bf87963c19c81fe3fbcad"
+  },
+  {
+    "source": "Trial-cpu-10000-all-r1-Candidate.json",
+    "archive": "raw/Trial-cpu-10000-all-r1-Candidate.json.gz",
+    "bytes": 18223,
+    "uncompressedSha256": "38845289269eea83368d89343910fce6e1bd3ea6dbab780ce0fbdc6d7298a4c7"
+  },
+  {
+    "source": "Trial-cpu-10000-all-r2-Candidate.json",
+    "archive": "raw/Trial-cpu-10000-all-r2-Candidate.json.gz",
+    "bytes": 18223,
+    "uncompressedSha256": "12adba939e25790cbe383bd6f2e93dd860fb436937ec64bad9387aca13287475"
+  },
+  {
+    "source": "Trial-cpu-10000-all-r3-Baseline.json",
+    "archive": "raw/Trial-cpu-10000-all-r3-Baseline.json.gz",
+    "bytes": 18222,
+    "uncompressedSha256": "84c800dd48c895c7171eb83f58234bdcf4ed45ac5939767fd3d966fd339ca4b6"
+  },
+  {
+    "source": "Trial-cpu-10000-all-r4-Baseline.json",
+    "archive": "raw/Trial-cpu-10000-all-r4-Baseline.json.gz",
+    "bytes": 18222,
+    "uncompressedSha256": "3150bf9513337a1c2da7987c2b31e87fb9251c126af5b4c6f2951edaeee32334"
+  },
+  {
+    "source": "Trial-cpu-10000-all-r5-Candidate.json",
+    "archive": "raw/Trial-cpu-10000-all-r5-Candidate.json.gz",
+    "bytes": 18223,
+    "uncompressedSha256": "8e61c3193778ace5be88d915d30eee7a210a6e46a23d4cfca8180baf81d897a7"
+  },
+  {
+    "source": "Trial-cpu-10000-one-percent-r0-Baseline.json",
+    "archive": "raw/Trial-cpu-10000-one-percent-r0-Baseline.json.gz",
+    "bytes": 18230,
+    "uncompressedSha256": "c0ebbda6d21ea63ca9e34a3356ce365dbfd26398c43b06faaefcb15ad51f3a55"
+  },
+  {
+    "source": "Trial-cpu-10000-one-percent-r1-Candidate.json",
+    "archive": "raw/Trial-cpu-10000-one-percent-r1-Candidate.json.gz",
+    "bytes": 18231,
+    "uncompressedSha256": "74477e400ddd6940f373d348d9f7cac5b64b9bfab77be2578895bb5c35d0420b"
+  },
+  {
+    "source": "Trial-cpu-10000-one-percent-r2-Candidate.json",
+    "archive": "raw/Trial-cpu-10000-one-percent-r2-Candidate.json.gz",
+    "bytes": 18231,
+    "uncompressedSha256": "13d180bc3e79c32944591d8819106a1570fec6f0fc04f2afb8cfd352153c7579"
+  },
+  {
+    "source": "Trial-cpu-10000-one-percent-r3-Baseline.json",
+    "archive": "raw/Trial-cpu-10000-one-percent-r3-Baseline.json.gz",
+    "bytes": 18230,
+    "uncompressedSha256": "e615297505dd6e338ed7c2aab3691480e74088ff13c425f56c0fd5066d45bc78"
+  },
+  {
+    "source": "Trial-cpu-10000-one-percent-r4-Baseline.json",
+    "archive": "raw/Trial-cpu-10000-one-percent-r4-Baseline.json.gz",
+    "bytes": 18230,
+    "uncompressedSha256": "9a80810626e75dc383caf88b0dcabe0cf346413904cb7536961bdd83034eef6f"
+  },
+  {
+    "source": "Trial-cpu-10000-one-percent-r5-Candidate.json",
+    "archive": "raw/Trial-cpu-10000-one-percent-r5-Candidate.json.gz",
+    "bytes": 18231,
+    "uncompressedSha256": "df8e83e41961f2c3a773d96f3bd8781f20946ee4c473242afd9f1c4d1a88fdb2"
+  },
+  {
+    "source": "Trial-cpu-10000-static-r0-Baseline.json",
+    "archive": "raw/Trial-cpu-10000-static-r0-Baseline.json.gz",
+    "bytes": 18225,
+    "uncompressedSha256": "ff3a2332ab3da915828c8141a138d3a8af910bc35ee2c7b6cb1ce06f998c86f5"
+  },
+  {
+    "source": "Trial-cpu-10000-static-r1-Candidate.json",
+    "archive": "raw/Trial-cpu-10000-static-r1-Candidate.json.gz",
+    "bytes": 18226,
+    "uncompressedSha256": "15c487948093638266ed85ff4a11b130c381583d35c9e049c8237012f834fc2b"
+  },
+  {
+    "source": "Trial-cpu-10000-static-r2-Candidate.json",
+    "archive": "raw/Trial-cpu-10000-static-r2-Candidate.json.gz",
+    "bytes": 18226,
+    "uncompressedSha256": "ba409dee2e444c447fda95af42cb5f7caeb677da3085510a79df2230664aacb6"
+  },
+  {
+    "source": "Trial-cpu-10000-static-r3-Baseline.json",
+    "archive": "raw/Trial-cpu-10000-static-r3-Baseline.json.gz",
+    "bytes": 18225,
+    "uncompressedSha256": "f4d5fa59ad0808459a749c8bdbe5c522afc97bd78325c76ba8af1e16c0fa26ac"
+  },
+  {
+    "source": "Trial-cpu-10000-static-r4-Baseline.json",
+    "archive": "raw/Trial-cpu-10000-static-r4-Baseline.json.gz",
+    "bytes": 18225,
+    "uncompressedSha256": "449a9d6045b7300c682bce0b1f12aa2b98dfd5c6649ea49194cc3d97f3ed55fe"
+  },
+  {
+    "source": "Trial-cpu-10000-static-r5-Candidate.json",
+    "archive": "raw/Trial-cpu-10000-static-r5-Candidate.json.gz",
+    "bytes": 18226,
+    "uncompressedSha256": "44eb12efdd06739fc86c79796d211c290a410c11b5ace55d4cd25e1141a92add"
+  },
+  {
+    "source": "Trial-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Trial-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 3725295,
+    "uncompressedSha256": "9a35bc8852200b102be8a57d8b01206a4f49cca7f1b371135d6087144ed7f56a"
+  },
+  {
+    "source": "Trial-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Trial-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 3725920,
+    "uncompressedSha256": "955a54064ced666e02906ad17eae9c4a9af8bb3d77b330d6f353ceada5db2feb"
+  },
+  {
+    "source": "Trial-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Trial-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "bytes": 3726497,
+    "uncompressedSha256": "660d753370f142eca573e7bb5dc3f6654b34aa46ad169f3c95c923d6bbb63872"
+  },
+  {
+    "source": "Trial-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Trial-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "bytes": 3726426,
+    "uncompressedSha256": "8e02bbb732ba92bc3865789164b60f1595017e6192a3543f8f2b189307c0b15d"
+  },
+  {
+    "source": "Trial-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Trial-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "bytes": 3726502,
+    "uncompressedSha256": "2283255db9bce3d93b0e7e1fad59461cbadc0d812f0f261ba201741e286ba9b7"
+  },
+  {
+    "source": "Trial-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Trial-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "bytes": 3726164,
+    "uncompressedSha256": "2aee974a4d3e4e753f5eaca593568b39f8293875e1f14741f56616ff0cdac157"
+  },
+  {
+    "source": "Trial-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Trial-profile-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "bytes": 473803,
+    "uncompressedSha256": "facd69ac6db21c8c96b29e5a4ef3b650448f839be2bb5c2422327a6fd6e9b0d3"
+  },
+  {
+    "source": "Trial-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Trial-profile-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "bytes": 473168,
+    "uncompressedSha256": "f4e3a5332ac8d63f9ba15b7eb7865f2e981ed09ccab9dcee606ea96bdce32530"
+  }
+]

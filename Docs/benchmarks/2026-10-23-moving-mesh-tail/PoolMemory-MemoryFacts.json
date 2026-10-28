@@ -1,0 +1,54 @@
+[
+  {
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "variant": "Baseline",
+    "frames": 1800,
+    "objectBytes": 296,
+    "itemBytes": 968,
+    "faultMedian": 3427.0,
+    "faultMin": 3426,
+    "faultMax": 3492,
+    "faultTailMean": 3426.1666666666665,
+    "threadCycleMedian": 15229103.5,
+    "renderMedianMs": 7.08649999
+  },
+  {
+    "case": "OnePercentMovingOffscreenHeavy10000",
+    "variant": "Candidate",
+    "frames": 1800,
+    "objectBytes": 296,
+    "itemBytes": 968,
+    "faultMedian": 333.0,
+    "faultMin": 333,
+    "faultMax": 398,
+    "faultTailMean": 333.05555555555554,
+    "threadCycleMedian": 10156608.0,
+    "renderMedianMs": 4.73395002
+  },
+  {
+    "case": "AllMovingOffscreenHeavy10000",
+    "variant": "Baseline",
+    "frames": 1800,
+    "objectBytes": 296,
+    "itemBytes": 968,
+    "faultMedian": 3426.0,
+    "faultMin": 3425,
+    "faultMax": 3491,
+    "faultTailMean": 3425.277777777778,
+    "threadCycleMedian": 16110018.0,
+    "renderMedianMs": 7.426450015
+  },
+  {
+    "case": "AllMovingOffscreenHeavy10000",
+    "variant": "Candidate",
+    "frames": 1800,
+    "objectBytes": 296,
+    "itemBytes": 968,
+    "faultMedian": 333.0,
+    "faultMin": 333,
+    "faultMax": 398,
+    "faultTailMean": 333,
+    "threadCycleMedian": 10939209.5,
+    "renderMedianMs": 5.03250003
+  }
+]

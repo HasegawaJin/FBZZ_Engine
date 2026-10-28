@@ -1,0 +1,60 @@
+{
+  "tests": 2,
+  "failures": 2,
+  "disabled": 0,
+  "errors": 0,
+  "timestamp": "2026-10-22T17:56:55Z",
+  "time": "0.001s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "RecordedGpuProfilerViewTest",
+      "tests": 2,
+      "failures": 2,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-22T17:56:55Z",
+      "time": "0.001s",
+      "testsuite": [
+        {
+          "name": "RejectsNativeViewWithoutDroppingDrawsOrEndingAnotherView",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\RecordedGpuProfilerViewTests.cpp",
+          "line": 40,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-22T17:56:55Z",
+          "time": "0s",
+          "classname": "RecordedGpuProfilerViewTest",
+          "rng_seed": "4259499657391298345",
+          "failures": [
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\RecordedGpuProfilerViewTests.cpp:46\nExpected equality of these values:\n  m_result.passes\n    Which is: 1\n  0u\n    Which is: 0\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "SuppressesRejectedNestedScopeAndRestoresParentMarkers",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\RecordedGpuProfilerViewTests.cpp",
+          "line": 49,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-22T17:56:55Z",
+          "time": "0s",
+          "classname": "RecordedGpuProfilerViewTest",
+          "rng_seed": "1716835793994040354",
+          "failures": [
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\RecordedGpuProfilerViewTests.cpp:56\nExpected equality of these values:\n  m_result.passes\n    Which is: 3\n  2u\n    Which is: 2\n",
+              "type": ""
+            },
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\RecordedGpuProfilerViewTests.cpp:57\nExpected equality of these values:\n  m_result.events\n    Which is: { \"frame\", \"begin:1\", \"pass:before\", \"draw\", \"end-pass:before\", \"begin:2\", \"pass:nested\", \"draw\", \"pass:after\", \"draw\", \"end-pass:after\", \"end\", \"end-frame\" }\n  (std::vector<std::string>{\"frame\", \"begin:1\", \"pass:before\", \"draw\", \"end-pass:before\", \"begin:2\", \"draw\", \"pass:after\", \"draw\", \"end-pass:after\", \"end\", \"end-frame\"})\n    Which is: { \"frame\", \"begin:1\", \"pass:before\", \"draw\", \"end-pass:before\", \"begin:2\", \"draw\", \"pass:after\", \"draw\", \"end-pass:after\", \"end\", \"end-frame\" }\n",
+              "type": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

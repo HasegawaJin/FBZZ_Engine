@@ -1,0 +1,149 @@
+--- before/Projects/Tests/Graphics/Auto/BufferReadTests.cpp
++++ Projects/Tests/Graphics/Auto/BufferReadTests.cpp
+@@ -141,6 +141,121 @@
+     bool m_frameOpen = false;
+ };
+ 
++TEST_F(BufferReadTest, InputAssemblyBindingsFollowBufferSnapshotsTopologyAndFrameChanges)
++{
++    testkit::TempDir temporary("graphics_input_assembly");
++    ASSERT_TRUE(temporary.IsValid());
++    const auto path = temporary.File("InputAssembly.hlsl");
++    {
++        std::ofstream stream(path, std::ios::binary);
++        stream << R"hlsl(/// @file    InputAssembly.hlsl
++/// @brief   Observe input-assembler vertex and index snapshots through native rasterization.
++/// @author  Hasegawa Jin
++/// @date    2026-10-23
++struct Input { float4 position : POSITION; float4 color : COLOR; };
++struct Output { float4 position : SV_Position; float4 color : COLOR; };
++Output VSMain(Input input) { Output result; result.position = input.position; result.color = input.color; return result; }
++float4 PSMain(Output input) : SV_Target0 { return input.color; }
++)hlsl";
++        ASSERT_TRUE(stream.good());
++    }
++    const auto computePath = temporary.File("InputAssembly.cs.hlsl");
++    {
++        std::ofstream stream(computePath, std::ios::binary);
++        stream << R"hlsl(/// @file    InputAssembly.cs.hlsl
++/// @brief   Change compute state between draws which share input-assembler resources.
++/// @author  Hasegawa Jin
++/// @date    2026-10-23
++cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2]; };
++[numthreads(1, 1, 1)] void CSMain() {
++    RWTexture2D<float4> output = ResourceDescriptorHeap[uav[0].x]; output[uint2(0, 0)] = 1;
++}
++)hlsl";
++        ASSERT_TRUE(stream.good());
++    }
++    const auto shader = m_resources->LoadShader(path.generic_string());
++    const auto compute = m_resources->LoadShader(computePath.generic_string());
++    ASSERT_TRUE(shader.IsValid() && compute.IsValid());
++    struct Vertex { math::Vector4 position; math::Vector4 color; };
++    struct PaddedVertex { Vertex value; math::Vector4 padding; };
++    const std::array<math::Vector4, 5> positions{{{-1, -1, 0, 1}, {-1, 3, 0, 1}, {3, -1, 0, 1}, {-1, 0, 0, 1}, {1, 0, 0, 1}}};
++    std::array<Vertex, 5> red{}, green{}, blue{};
++    std::array<PaddedVertex, 5> yellow{};
++    for (size_t index = 0; index < positions.size(); ++index) {
++        red[index] = {positions[index], {1, 0, 0, 1}};
++        green[index] = {positions[index], {0, 1, 0, 1}};
++        blue[index] = {positions[index], {0, 0, 1, 1}};
++        yellow[index] = {{positions[index], {1, 1, 0, 1}}, {}};
++    }
++    const uint32_t triangle[]{0, 1, 2}, degenerate[]{0, 0, 0}, line[]{3, 4, 4};
++    const uint32_t arguments[]{3, 1, 0, 0, 0};
++    const auto firstVertices = m_resources->CreateVertexBuffer(red.data(), sizeof(red), sizeof(Vertex));
++    const auto secondVertices = m_resources->CreateVertexBuffer(green.data(), sizeof(green), sizeof(Vertex));
++    const auto paddedVertices = m_resources->CreateVertexBuffer(yellow.data(), sizeof(yellow), sizeof(PaddedVertex));
++    const auto indices = m_resources->CreateIndexBuffer(triangle, 3);
++    const auto lineIndices = m_resources->CreateIndexBuffer(line, 3);
++    const auto indirect = m_resources->CreateRWStructuredBuffer(arguments, 1, sizeof(arguments));
++    ASSERT_TRUE(firstVertices.IsValid() && secondVertices.IsValid() && paddedVertices.IsValid()
++        && indices.IsValid() && lineIndices.IsValid() && indirect.IsValid());
++    std::array<renderer::ResourceHandle<renderer::RenderTargetTag>, 11> targets;
++    for (auto& target : targets) {
++        target = m_resources->CreateRenderTarget(8, 8, {1, renderer::Format::RGBA16F, false});
++        ASSERT_TRUE(target.IsValid());
++    }
++    m_bundle.renderer->SetRenderWhenOccluded(true);
++
++    /// @note Read back only after all rows: earlier draws must retain old CPU-updated snapshots across the frame ring.
++    for (uint32_t frame = 0; frame < 4; ++frame) {
++        SCOPED_TRACE(frame);
++        m_resources->Update(secondVertices, green.data(), sizeof(green));
++        m_resources->Update(indices, triangle, sizeof(triangle));
++        BeginFrame();
++        for (size_t row = 0; row < targets.size(); ++row) {
++            if (row == 3) {
++                m_resources->Update(secondVertices, blue.data(), sizeof(blue));
++                renderer::ComputeCall dispatch;
++                dispatch.shader = compute; dispatch.uavOutputs[0] = m_output;
++                ASSERT_TRUE(m_bundle.renderer->TryDispatch(dispatch, *m_resources));
++            }
++            if (row == 4) m_resources->Update(indices, degenerate, sizeof(degenerate));
++            if (row == 5) m_resources->Update(indices, triangle, sizeof(triangle));
++            renderer::DrawCall draw;
++            draw.shader = shader; draw.pipelineState = m_state;
++            draw.vertexBuffer = row < 2 ? firstVertices : row == 10 ? paddedVertices : secondVertices;
++            draw.indexBuffer = row == 6 ? lineIndices : indices;
++            draw.indexCount = row == 6 ? 2u : 3u;
++            draw.topology = row == 6 ? renderer::PrimitiveTopology::LINE_LIST : renderer::PrimitiveTopology::TRIANGLE_LIST;
++            if (row == 8) draw.indirectArguments = indirect;
++            m_bundle.renderer->SetRenderTarget(targets[row], *m_resources);
++            m_bundle.renderer->Clear({0, 0, 0, 0});
++            m_bundle.renderer->Submit(draw, *m_resources);
++        }
++        m_bundle.renderer->SetRenderTarget({}, *m_resources);
++        m_bundle.renderer->EndFrame();
++        m_frameOpen = false;
++
++        for (size_t row = 0; row < targets.size(); ++row) {
++            SCOPED_TRACE(row);
++            std::vector<float> rgba;
++            uint32_t width = 0, height = 0;
++            ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(targets[row], *m_resources, rgba, width, height));
++            ASSERT_EQ(width, 8u); ASSERT_EQ(height, 8u); ASSERT_EQ(rgba.size(), 256u);
++            const math::Vector4 expected = row < 2 ? math::Vector4{1, 0, 0, 1}
++                : row == 2 ? math::Vector4{0, 1, 0, 1} : row == 10 ? math::Vector4{1, 1, 0, 1} : math::Vector4{0, 0, 1, 1};
++            uint32_t colored = 0;
++            for (size_t pixel = 0; pixel < rgba.size(); pixel += 4) {
++                if (rgba[pixel + 3] == 0) continue;
++                ++colored;
++                EXPECT_FLOAT_EQ(rgba[pixel], expected.x); EXPECT_FLOAT_EQ(rgba[pixel + 1], expected.y);
++                EXPECT_FLOAT_EQ(rgba[pixel + 2], expected.z); EXPECT_FLOAT_EQ(rgba[pixel + 3], 1);
++            }
++            if (row == 4) EXPECT_EQ(colored, 0u);
++            else if (row == 6) { EXPECT_GT(colored, 0u); EXPECT_LT(colored, 64u); }
++            else EXPECT_EQ(colored, 64u);
++        }
++    }
++}
++
+ TEST_F(BufferReadTest, ConsecutiveGraphicsBindingsKeepEveryIndexAndSurviveFrameAndComputeChanges)
+ {
+     testkit::TempDir temporary("graphics_bindless_indices");
+@@ -200,7 +315,7 @@
+         for (const uint32_t index : indices) result = (result * 17 + index % 251) % 251;
+         return static_cast<float>(result);
+     };
+-    /// @note Four frames cross the three-frame upload arena ring; readback occurs after all draws to detect overwritten prior payloads.
++    /// @note Four frames cross the frame ring; readback occurs after all draws to detect overwritten prior payloads.
+     for (uint32_t frame = 0; frame < 4; ++frame) {
+         SCOPED_TRACE(frame);
+         BeginFrame();
+--- before/Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
++++ Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
+@@ -136,7 +136,12 @@
+         m_savedUnscaledDelta = Time::unscaledDeltaTime;
+         m_savedRecording = profiler::Profiler::IsRecordingRequested();
+         m_savedFilter = profiler::Profiler::GetRequestedCaptureFilter();
+-        profiler::Profiler::RequestCaptureFilter({});
++        profiler::PerformanceCaptureFilter captureFilter;
++        char scopeFilter[256]{};
++        const DWORD scopeLength = GetEnvironmentVariableA("FBZZ_REGULAR_MESH_PROFILE_SCOPE", scopeFilter, sizeof(scopeFilter));
++        ASSERT_LT(scopeLength, sizeof(scopeFilter));
++        if (scopeLength != 0) captureFilter.scope.assign(scopeFilter, scopeLength);
++        profiler::Profiler::RequestCaptureFilter(std::move(captureFilter));
+         m_timingOnly = FrameSetting("FBZZ_REGULAR_MESH_TIMING_ONLY", 0) == 1;
+         m_measureThreadCycles = FrameSetting("FBZZ_REGULAR_MESH_THREAD_CYCLES", 0) == 1;
+         profiler::Profiler::RequestRecording(!m_timingOnly);

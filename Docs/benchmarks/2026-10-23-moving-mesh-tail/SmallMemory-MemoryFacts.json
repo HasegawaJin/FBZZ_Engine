@@ -1,0 +1,28 @@
+[
+  {
+    "case": "AllVisible1000",
+    "variant": "Baseline",
+    "frames": 1800,
+    "objectBytes": 296,
+    "itemBytes": 968,
+    "faultMedian": 0.0,
+    "faultMin": 0,
+    "faultMax": 77,
+    "faultTailMean": 0,
+    "threadCycleMedian": 1528032.0,
+    "renderMedianMs": 0.6725500225000001
+  },
+  {
+    "case": "AllVisible1000",
+    "variant": "Candidate",
+    "frames": 1800,
+    "objectBytes": 296,
+    "itemBytes": 968,
+    "faultMedian": 0.0,
+    "faultMin": 0,
+    "faultMax": 65,
+    "faultTailMean": 0,
+    "threadCycleMedian": 1654329.0,
+    "renderMedianMs": 0.735399961
+  }
+]

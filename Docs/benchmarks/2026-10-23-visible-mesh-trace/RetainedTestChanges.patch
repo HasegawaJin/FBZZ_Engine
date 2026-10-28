@@ -1,0 +1,176 @@
+--- before/Projects/Tests/Graphics/Auto/WaterFarRenderPassTests.cpp
++++ Projects/Tests/Graphics/Auto/WaterFarRenderPassTests.cpp
+@@ -6,6 +6,8 @@
+ #include <Graphics/Pipeline/ViewPipeline.hpp>
+ #include <Graphics/Pipeline/ViewPreparation.hpp>
+ #include <Graphics/Passes/Geometry/WaterRenderPass.hpp>
++#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
++#include <Graphics/Passes/Geometry/RenderSceneDraw.hpp>
+ #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
+ #include <Graphics/Renderer/DrawCall.hpp>
+ #include <Graphics/Renderer/AssetPathService.hpp>
+@@ -143,6 +145,7 @@
+     renderer::ResourceHandle<renderer::BufferTag> watchedVertices;
+     std::vector<renderer::WaterCB> draws;
+     std::vector<FarPassDrawSnapshot> drawSnapshots;
++    std::vector<renderer::DrawCall> submittedCalls;
+     std::vector<FarPassDispatchSnapshot> dispatchSnapshots;
+     std::unordered_map<const renderer::IConstantBuffer*, FarPassConstants*> constants;
+     renderer::GraphicsCapabilities capabilities{true, false, false};
+@@ -157,6 +160,7 @@
+     void Clear(const math::Vector4&) override {}
+     void Submit(const renderer::DrawCall& draw, renderer::ResourceManager& resources) override
+     {
++        submittedCalls.push_back(draw);
+         if (draw.vertexBuffer == watchedVertices) {
+             const auto* buffer = resources.Get(draw.constantBuffers[1]);
+             const auto found = constants.find(buffer);
+@@ -284,6 +288,93 @@
+     const uint32_t calls = backend.threadChecks;
+     EXPECT_EQ(resources.Get(renderer::ResourceHandle<renderer::BufferTag>{}), nullptr);
+     EXPECT_EQ(backend.threadChecks, calls);
++}
++
++TEST_F(WaterFarRenderPassTest, ForwardGroupsKeepPerObjectBindingsAndRefreshSharedResourcesForEachView)
++{
++    FarPassRenderer backend;
++    renderer::ResourceManager resources(backend);
++    renderer::Camera camera;
++    renderer::RenderSettings settings;
++    settings.shadowEnabled = false;
++    renderer::RenderPassHandles handles;
++    handles.frameCB = resources.CreateConstantBuffer(sizeof(renderer::PerFrameCB));
++    handles.objectCB = resources.CreateConstantBuffer(sizeof(renderer::PerObjectCB));
++    handles.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
++    handles.shadowCB = resources.CreateConstantBuffer(sizeof(renderer::ShadowConstantsCB));
++    handles.advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(renderer::AdvancedGraphicsCB));
++    const auto punctual = resources.CreateConstantBuffer(sizeof(renderer::PunctualShadowConstantsCB));
++    const uint8_t pixel[]{255, 255, 255, 255};
++    const auto firstTexture = resources.CreateTexture(pixel, 1, 1);
++    const auto secondTexture = resources.CreateTexture(pixel, 1, 1);
++    const auto output = resources.CreateRenderTarget(8, 8, renderer::CameraDepthTargetDesc(1));
++    const uint32_t indices[]{0, 1, 2};
++    const auto indexBuffer = resources.CreateIndexBuffer(indices, 3);
++    const math::Vector4 row{};
++    const auto palette = resources.CreateStructuredBuffer(&row, 1, sizeof(row));
++    auto input = std::make_shared<renderer::RenderScene>();
++    for (uint32_t index = 0; index < 3; ++index) {
++        renderer::RenderObject object;
++        object.firstItem = index; object.itemCount = 1; object.colorEligible = true;
++        object.skinned = index == 1;
++        object.gpuBones.current = object.skinned ? palette : renderer::ResourceHandle<renderer::StructuredBufferTag>{};
++        renderer::RenderMeshItem item;
++        item.vertexBuffer = item.skinningVertexBuffer = resources.CreateVertexBuffer(&row, sizeof(row), sizeof(row));
++        item.indexBuffer = indexBuffer; item.indexCount = item.vertexCount = 3;
++        item.forwardMaterial.valid = true;
++        item.forwardMaterial.shader = resources.LoadShader("ForwardBindingFixture.hlsl");
++        item.forwardMaterial.paramsBuffer = resources.CreateConstantBuffer(64);
++        item.forwardMaterial.textures[0] = index == 1 ? secondTexture : firstTexture;
++        item.material.capabilities.blend = item.forwardMaterial.capabilities.blend = index == 2
++            ? renderer::BlendMode::ALPHA_BLEND : renderer::BlendMode::OPAQUE_BLEND;
++        input->objects.push_back(object); input->items.push_back(item);
++    }
++    renderer::RenderPassContext context{{}, backend, resources, camera, settings, output, ~0u, handles};
++    context.renderScene = input; context.frustumCullingEnabled = false;
++    context.resourceRegistry.BindTarget("HDR", output);
++    /// @note Reuse the same context address and resource frame across views, then remove bindings to expose stale pass-local state.
++    for (uint32_t view = 0; view < 3; ++view) {
++        SCOPED_TRACE(view);
++        const auto shadow = resources.CreateRenderTarget(8, 8, renderer::CameraDepthTargetDesc(1));
++        const auto cookie = resources.CreateRenderTarget(8, 8, {1, renderer::Format::RGBA8, false});
++        context.resourceRegistry.Clear();
++        context.resourceRegistry.BindTarget("HDR", output);
++        context.resourceRegistry.BindTarget("ShadowMap", shadow);
++        context.resourceRegistry.BindTarget("PunctualShadowMap", shadow);
++        context.resourceRegistry.BindTarget("LightCookieAtlas", cookie);
++        handles.punctualShadowCB = view == 2 ? renderer::ResourceHandle<renderer::ConstantBufferTag>{} : punctual;
++        handles.iblIrradiance = handles.iblPrefilter = handles.iblBrdfLut = view == 2
++            ? renderer::ResourceHandle<renderer::TextureTag>{} : view == 0 ? firstTexture : secondTexture;
++        context.screenAoTexture = view == 2 ? renderer::ResourceHandle<renderer::TextureTag>{} : firstTexture;
++        context.screenContactShadowTexture = view == 1 ? secondTexture : renderer::ResourceHandle<renderer::TextureTag>{};
++        backend.submittedCalls.clear();
++
++        renderer::ExecuteForwardPasses(context);
++
++        ASSERT_EQ(backend.submittedCalls.size(), 3u);
++        for (uint32_t index = 0; index < 3; ++index) {
++            SCOPED_TRACE(index);
++            const auto& draw = backend.submittedCalls[index];
++            EXPECT_EQ(draw.vertexBuffer, input->items[index].vertexBuffer);
++            EXPECT_EQ(draw.constantBuffers[2], input->items[index].forwardMaterial.paramsBuffer);
++            EXPECT_EQ(draw.textures[0], input->items[index].forwardMaterial.textures[0]);
++            EXPECT_EQ(draw.textures[8], resources.GetDepthTexture(shadow));
++            EXPECT_EQ(draw.constantBuffers[12], handles.punctualShadowCB);
++            EXPECT_EQ(draw.textures[28], view == 2 ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.GetDepthTexture(shadow));
++            EXPECT_EQ(draw.textures[31], view == 2 ? renderer::ResourceHandle<renderer::TextureTag>{} : resources.GetColorTexture(cookie, 0));
++            EXPECT_EQ(draw.textures[16], handles.iblIrradiance);
++            EXPECT_EQ(draw.textures[17], handles.iblPrefilter);
++            EXPECT_EQ(draw.textures[18], handles.iblBrdfLut);
++            EXPECT_EQ(draw.textures[23], context.screenAoTexture);
++            EXPECT_EQ(draw.textures[24], context.screenContactShadowTexture);
++            EXPECT_EQ(draw.vsBuffers[0], index == 1 ? palette : renderer::ResourceHandle<renderer::StructuredBufferTag>{});
++            EXPECT_EQ(draw.layer, index == 2 ? renderer::RenderLayer::TRANSPARENT_LAYER : renderer::RenderLayer::OPAQUE_LAYER);
++        }
++        const auto withoutIbl = renderer::ForwardDraw(context, input->objects[0], input->items[0], false);
++        EXPECT_FALSE(withoutIbl.textures[16].IsValid());
++        EXPECT_FALSE(withoutIbl.textures[17].IsValid());
++        EXPECT_FALSE(withoutIbl.textures[18].IsValid());
++    }
+ }
+ 
+ TEST_F(WaterFarRenderPassTest, LateReleaseAfterRendererDetachNeverCallsTheExpiredRenderer)
+--- before/Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
++++ Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp
+@@ -102,6 +102,10 @@
+     /// @see https://learn.microsoft.com/en-us/windows/win32/api/realtimeapiset/nf-realtimeapiset-querythreadcycletime QueryThreadCycleTime remarks.
+     uint64_t threadCycles = 0;
+     bool threadCyclesValid = false;
++    /// @note MSVC steady_clock shares the QPC epoch; retain absolute frame boundaries for offline ETW correlation.
++    /// @see https://github.com/microsoft/STL/blob/main/stl/inc/__msvc_chrono.hpp steady_clock wraps QueryPerformanceCounter.
++    double frameBeginMs = 0;
++    double frameEndMs = 0;
+     double frameMs = 0;
+     double waitCpuMs = 0;
+     double beginMs = 0;
+@@ -786,6 +790,8 @@
+         profiler::Profiler::EndFrame();
+         result.serial = resources.FrameStamp();
+         if (measured) {
++            result.frameBeginMs = frameStart;
++            result.frameEndMs = frameEnd;
+             result.frameMs = frameEnd - frameStart;
+             result.waitCpuMs = beginStart - waitStart;
+             result.beginMs = renderStart - beginStart;
+@@ -844,10 +850,23 @@
+         ASSERT_NE(GetModuleFileNameW(GetModuleHandleW(L"FBZZEngine.dll"), enginePath, MAX_PATH), 0u);
+         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+         const std::string name = info->name();
++        LARGE_INTEGER qpcFrequency{}, qpcBefore{}, qpcAfter{};
++        ASSERT_TRUE(QueryPerformanceFrequency(&qpcFrequency));
++        ASSERT_TRUE(QueryPerformanceCounter(&qpcBefore));
++        const double clockCalibrationMs = profiler::ProfileRecorder::NowMs();
++        ASSERT_TRUE(QueryPerformanceCounter(&qpcAfter));
++        const double calibrationQpc = clockCalibrationMs * static_cast<double>(qpcFrequency.QuadPart) / 1000;
++        ASSERT_GE(calibrationQpc, static_cast<double>(qpcBefore.QuadPart) - 1);
++        ASSERT_LE(calibrationQpc, static_cast<double>(qpcAfter.QuadPart) + 1);
+         std::ostringstream output;
+         output << std::setprecision(9);
+         output << "REGULAR_MESH_JSON {\"kind\":\"config\",\"case\":" << JsonString(name)
+             << ",\"enginePath\":" << JsonString(std::filesystem::path(enginePath).generic_string())
++            << ",\"processId\":" << GetCurrentProcessId() << ",\"osThreadId\":" << GetCurrentThreadId()
++            << ",\"qpcFrequency\":" << qpcFrequency.QuadPart
++            << ",\"clockCalibrationQpcBefore\":" << qpcBefore.QuadPart
++            << ",\"clockCalibrationQpcAfter\":" << qpcAfter.QuadPart
++            << ",\"clockCalibrationMs\":" << std::setprecision(17) << clockCalibrationMs << std::setprecision(9)
+             << ",\"objects\":" << count << ",\"visiblePercent\":" << visiblePercent
+             << ",\"width\":" << kWidth << ",\"height\":" << kHeight
+             << ",\"warmup\":" << warmup << ",\"samples\":" << samples
+@@ -869,6 +888,8 @@
+         for (const auto& frame : m_frames) {
+             output << "REGULAR_MESH_JSON {\"kind\":\"cpu\",\"case\":" << JsonString(name)
+                 << ",\"serial\":" << frame.serial << ",\"frameMs\":" << frame.frameMs
++                << ",\"frameBeginMs\":" << std::setprecision(17) << frame.frameBeginMs
++                << ",\"frameEndMs\":" << frame.frameEndMs << std::setprecision(9)
+                 << ",\"threadCyclesValid\":" << (frame.threadCyclesValid ? "true" : "false")
+                 << ",\"threadCycles\":" << frame.threadCycles
+                 << ",\"waitCpuMs\":" << frame.waitCpuMs << ",\"beginMs\":" << frame.beginMs

@@ -1,0 +1,9 @@
+{
+  "changedFromPreviousMap": [
+    "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp"
+  ],
+  "privateInputs": {
+    "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp": "5d48c1e80bf6bfd7cabf42fb1f50e5ba407671751076606eab5e67ca679a1eb8"
+  },
+  "exportsUnchanged": true
+}

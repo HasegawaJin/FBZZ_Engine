@@ -1,0 +1,15 @@
+{
+  "decision": "rejected",
+  "productionFilesRestoredExactly": {
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp": {
+      "rejectedSha256": "d5df53b9e92004fb7a33ff59893bde59a450917617cfd8007fbd81e88c704ec9",
+      "restoredSha256": "812d0014cf553a9f1f79847c902a3b77afca221830d3151f77980ed19acd03e7"
+    },
+    "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.hpp": {
+      "rejectedSha256": "5e3271ba86b294efa11d429d2ae18be71c0a32d45bc78be919365cdd9dc633cb",
+      "restoredSha256": "fac0dc9c5b27f0abb93e2e92ebd9efc6e0fe560ff5550be6e0ad9c3a4198921b"
+    }
+  },
+  "inputMapRestoredExactly": true,
+  "retainedProductionOptimizations": 0
+}

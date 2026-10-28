@@ -1,0 +1,90 @@
+{
+  "tests": 4,
+  "failures": 4,
+  "disabled": 0,
+  "errors": 0,
+  "timestamp": "2026-10-23T13:12:16Z",
+  "time": "0.028s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "MaterialExtractionSharingTest",
+      "tests": 4,
+      "failures": 4,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T13:12:16Z",
+      "time": "0.025s",
+      "testsuite": [
+        {
+          "name": "MaterialDemandLateNativeSetupHookCompletesAPreviouslyPublishedSnapshot",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "line": 2705,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T13:12:16Z",
+          "time": "0.008s",
+          "classname": "MaterialExtractionSharingTest",
+          "rng_seed": "17483725298252065215",
+          "failures": [
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp:2717\nExpected: (context.renderScene) != (original), actual: (ptr = 000002E466EF8090, value = 9808-byte object <00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 ... 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00>) vs (ptr = 000002E466EF8090, value = 9808-byte object <00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 ... 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00>)\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "MaterialDemandRechecksInPlaceFrustumEditsAfterRepeatedNoDemandBoundaries",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "line": 2721,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T13:12:16Z",
+          "time": "0.005s",
+          "classname": "MaterialExtractionSharingTest",
+          "rng_seed": "15957269818795299342",
+          "failures": [
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp:2744\nExpected: (context.renderScene) != (original), actual: (ptr = 000002E467EC4FA0, value = 9808-byte object <00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 ... 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00>) vs (ptr = 000002E467EC4FA0, value = 9808-byte object <00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 ... 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00>)\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "MaterialDemandRechecksLayerDistanceAfterNoDemandBoundaries",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "line": 2749,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T13:12:16Z",
+          "time": "0.005s",
+          "classname": "MaterialExtractionSharingTest",
+          "rng_seed": "11669382492140796409",
+          "failures": [
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp:2768\nExpected: (context.renderScene) != (original), actual: (ptr = 000002E467EC9C80, value = 9808-byte object <00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 ... 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00>) vs (ptr = 000002E467EC9C80, value = 9808-byte object <00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 ... 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00>)\n",
+              "type": ""
+            }
+          ]
+        },
+        {
+          "name": "MaterialDemandRechecksResourceFrameAfterNoDemandBoundaries",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "line": 2773,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T13:12:16Z",
+          "time": "0.005s",
+          "classname": "MaterialExtractionSharingTest",
+          "rng_seed": "6680092811560990812",
+          "failures": [
+            {
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp:2791\nExpected: (context.renderScene) != (original), actual: (ptr = 000002E467E30F60, value = 9808-byte object <00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 ... 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00>) vs (ptr = 000002E467E30F60, value = 9808-byte object <00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 ... 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00 00-00>)\n",
+              "type": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

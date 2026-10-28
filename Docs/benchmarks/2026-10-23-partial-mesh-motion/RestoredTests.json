@@ -1,0 +1,66 @@
+{
+  "tests": 4,
+  "failures": 0,
+  "disabled": 0,
+  "errors": 0,
+  "timestamp": "2026-10-23T13:13:03Z",
+  "time": "0.026s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "MaterialExtractionSharingTest",
+      "tests": 4,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T13:13:03Z",
+      "time": "0.023s",
+      "testsuite": [
+        {
+          "name": "MaterialDemandLateNativeSetupHookCompletesAPreviouslyPublishedSnapshot",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "line": 2705,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T13:13:03Z",
+          "time": "0.007s",
+          "classname": "MaterialExtractionSharingTest",
+          "rng_seed": "17483725298252065215"
+        },
+        {
+          "name": "MaterialDemandRechecksInPlaceFrustumEditsAfterRepeatedNoDemandBoundaries",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "line": 2721,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T13:13:03Z",
+          "time": "0.004s",
+          "classname": "MaterialExtractionSharingTest",
+          "rng_seed": "15957269818795299342"
+        },
+        {
+          "name": "MaterialDemandRechecksLayerDistanceAfterNoDemandBoundaries",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "line": 2749,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T13:13:03Z",
+          "time": "0.005s",
+          "classname": "MaterialExtractionSharingTest",
+          "rng_seed": "11669382492140796409"
+        },
+        {
+          "name": "MaterialDemandRechecksResourceFrameAfterNoDemandBoundaries",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "line": 2773,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T13:13:03Z",
+          "time": "0.005s",
+          "classname": "MaterialExtractionSharingTest",
+          "rng_seed": "6680092811560990812"
+        }
+      ]
+    }
+  ]
+}

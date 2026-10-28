@@ -1,0 +1,352 @@
+[
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Confirm-gpu-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "b8853f11578badac0515c4d4f325b2a3288aadcb377890cb54ddff3bb8ff5677",
+    "archiveSha256": "331d59b08643970fc45c551a622970ab9fdb1dc960a7f6982af343d11740c50e"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Confirm-gpu-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "2699cbee92b404c9992246d3102228f5d59330a39fd6228d5cbf8aabfadfee8e",
+    "archiveSha256": "5a9ff66232b288ef486813d2394811b2067d5afad1f7c252eb51ef188ee05c0d"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Confirm-gpu-AllVisible1000-r2-Candidate.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "e0b24aeec2c1f6c19b1fa956c1949cb0ccec78d314a9e2033c511127a4c27fcf",
+    "archiveSha256": "b3a292bb47e21a2534435ac85f0fd76bfc5c6978488523011fb53bb2fb0bad4b"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Confirm-gpu-AllVisible1000-r3-Baseline.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "015786a954441dd6106918c6fdf3f79388453a0407aa0a93cad7bc598e619b72",
+    "archiveSha256": "c63c1c38f1401c0c6d0ec1ae954fc581adf197bedef3556c82fabd899c7644fb"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Confirm-gpu-AllVisible1000-r4-Baseline.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "ab4463d58db37d6a33bd792340256242aa12b9bd41945f36466da93df41647bd",
+    "archiveSha256": "3e85666794f2371ed4a8f231f458193295fc8fc9d608981b5eafec17d8ad6b3b"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Confirm-gpu-AllVisible1000-r5-Candidate.out",
+    "archive": "raw/Confirm-gpu-AllVisible1000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "c8dcf4d1d6a65bf72e207bd53a48459157e76e317ec70b23a5adceab5497df0f",
+    "archiveSha256": "71878a3432fa670e25237a9b0401474bea6cd6afaccf76c655aff8d68f1a017c"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Control-gpu-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/Control-gpu-AllVisible1000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "20bf30daabd86778c54453d9900b53b6f9892689d3b5b394864afe00ae6377ac",
+    "archiveSha256": "f121c4cbcbfe884dd7b7d8efdfedb2d4eaf834a2724265ee4b28dbbe6e89f1a9"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Control-gpu-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/Control-gpu-AllVisible1000-r1-Candidate.jsonl.gz",
+    "records": 11384,
+    "rawSha256": "35ceaafdf3020d678b4542458505a3723e12b0f180690de2c5d786c2aca05c66",
+    "archiveSha256": "fd9bc99dfda862c38f9767441ee2e3f39328bc1ebcd1a9d902866db96e9c2b4d"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Control-gpu-AllVisible1000-r2-Candidate.out",
+    "archive": "raw/Control-gpu-AllVisible1000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "939f7f8a455e81b67c81c67aa3fe11eaf1593a5bccd5e6e544a2f2b9a46ba1c4",
+    "archiveSha256": "05ecf27f433ca6c2f5c6d2f8d3cbf37e823cd10576bb8681a5f70e82a5764f5f"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Control-gpu-AllVisible1000-r3-Baseline.out",
+    "archive": "raw/Control-gpu-AllVisible1000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "ab77a5ab17521fbd43c90188cdc9d0f6d8993295e25167d79319db512d6f8acf",
+    "archiveSha256": "872ec81948af6816de27c51e4e350d7dd4f67cb25eaa41c0b240f5d34df2ea19"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Control-gpu-AllVisible1000-r4-Baseline.out",
+    "archive": "raw/Control-gpu-AllVisible1000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "6ab5ad392c791f928362ae677dda3e74198c302f8afc72fd6007a7ef6662a547",
+    "archiveSha256": "25b6b3e11fb2b143947917b8187d6debb9965e67136730d5ce282973b28b6772"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Control-gpu-AllVisible1000-r5-Candidate.out",
+    "archive": "raw/Control-gpu-AllVisible1000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "2fccb8abdfb0161e3f9b6f450014a4eec1a825c4a2b58d08ae0ccac9a4d37e1c",
+    "archiveSha256": "7a7af8875d4ae4ad3f6569500dae070e57024fa39240477be11c518a2dae5676"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Diagnostic-profile-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/Diagnostic-profile-AllVisible1000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "a9be631c6e680b22e92d7a8fe5f3944d0e27148d76f891c8d5a40da78e7c916c",
+    "archiveSha256": "e0d4905eb9bdec314400f169b0a01ae86f77f8336849590e23ccd8c222de4f69"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Diagnostic-profile-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/Diagnostic-profile-AllVisible1000-r1-Candidate.jsonl.gz",
+    "records": 11384,
+    "rawSha256": "4a85e88cc86a41352fa3fcc11a5651d8712e8cf48e1620f2398052c37ac6da8f",
+    "archiveSha256": "8a26d45606effd59f0c52f266fd3213da870d79c5c3811a79dd668b42b670f47"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "1e5e3686107c3ac44f790308dc4b46741458700094ed5079277b463667f48da0",
+    "archiveSha256": "9cb0bf26e2d1e8a59ba895fba3095331b045be9ad85246de1270e095f910e73f"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "58d4077b83d794373f8d38d981705158f17b2ad6baf662f507c7a9c2c505bea4",
+    "archiveSha256": "fe677d5bb5a7e3cb1cf19bd9eec077785ec751065c5f26469b9eda9588edf2d5"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "29a9db7a289b32b83ee95b15a91b8a32d3662152ae8213872a3ea967f01dea97",
+    "archiveSha256": "0d11342115a507c0b30a569051748f12aa77ac2075c30f041e1ddd79c321ee26"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "f40d4d979e0ea4e4c67c7ff71befd7cab20ca116bbcb30bd6a3243608df64054",
+    "archiveSha256": "e9b6b6639cc9b58604865e2f98ede0965a888eed3186047f11ff71566ca3e402"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "23304f786cc1681c8a7eda1254d7464cdddb80cd33faf8ab8c747b647a503532",
+    "archiveSha256": "09437fd095d88217f2c9d5d93c5ea65a6260823fb24cb0dfb643c2d7ea6686d3"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-AllMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "118bf699fea91458df7b5cb8e5ef6b820f0a3f528d7e5d4f98fef80748ada624",
+    "archiveSha256": "7467b998757abdeb3a81bb5959e5a2486491fb395b1879ac555e70a6af033870"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "2a06f20d99740939b7867cc4beccd38f6e7532ebe61ec948636a0e220ec77b24",
+    "archiveSha256": "e76d47342375033f4a123bb0d8cea13f8bc900165d4012bbe0584e6d6b55579d"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r1-Candidate.jsonl.gz",
+    "records": 11384,
+    "rawSha256": "f9b2a660c886e31f59ec22fe8995b3197033d0bf7781b371fc2c9a2cb26172fb",
+    "archiveSha256": "ac133259eb683646b3f207a8ef4e885f1abc9be197d8847ac3d40004411fbfc6"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllVisible1000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "106e26dfe857f1f73ddc790fb2c6027b209d9adbed89b233e3cc95593f3ad55c",
+    "archiveSha256": "bcff1a230cf6036b6d595e36b94c4aa05cf3762bf8f35afbb42b46af79206ba9"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllVisible1000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "55d65c927faf2323b3caed4e43a74ba85910ac52f5ee5ff05284bbdd1e3eb2f1",
+    "archiveSha256": "a15c92e421c35f2fb3e96512066980d9aa56899cdeb6ae6f70540d1f4bd56ab3"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllVisible1000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "f546ec55be40f67ab06a99ee216f8f6b73f6032b12cc802fb77a10a87cf3c10e",
+    "archiveSha256": "c61e05b3d0e22682222c037f3c3f453042f953b487f3af7696ad441e2820d5a3"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-AllVisible1000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-AllVisible1000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "901429e1dde71d5a01fc1404593fbef02130029629ff487f91cf5e6af5948d08",
+    "archiveSha256": "147594c861170d883b5d25feb142642e50979b05ce01a9ffdd477f87698c4124"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "2db79e3f51308e3a5e92cc110b1085f33d88873aabd7700b13037be6856ee726",
+    "archiveSha256": "d70b02db38e04cc8056b244e9b65f346cd405c26541cd079ca0d96d2570d2542"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "46246eb4a8a9feb5f32883ad459a280f1ce7c8b73fea181465e011e99a2b9dfe",
+    "archiveSha256": "d29a4a6ed5ee168e9a61629e8f3d2d2f068fda5430a55687a696d05af42ab4fd"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "04a90fd26d4bcd1644e2bfda283db7f47100593ae96fa4f885ebb7c3da081de0",
+    "archiveSha256": "49434fcfe3b928f353e2332841ed2b43936d7a0da0d18341ad36bf9a5829b83d"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "45477c923a0b0f2a19312e90cd21502a53e80398b8523b595ac45d4a097f3454",
+    "archiveSha256": "ab7cc769c1b6cdb563362b1c463201c812065b824b3f57e0f38eb1912834ab30"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "59bc8ee2a553e32355176fe67c6cff4ba816e7a3021421e26ace7bc829e22618",
+    "archiveSha256": "add7678e0119a415cdad6838377f0199be21ee0c92229c5f32f3d1d1c29287c2"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-OffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "8764d1460d222f02309b91194bd90baddbea8bbe7d02924be876e41b37b8c306",
+    "archiveSha256": "33060c57ff391031b721dbedcab84d6eee081e2d927ce15d31feacce1fd55a19"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "b67d4451bd8394ce23532b6598c59190911283667c4c9e5da23fa64fa7db3655",
+    "archiveSha256": "0d642520b16eea49cab292ba6e5c87bb28916c1c8e3fec9fb013187f548fe6f2"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "ed6bbf775e297ef5a5c8cad38319a51806c9c016f080c270b3758a03fab4826d",
+    "archiveSha256": "f292e6bf8cf68f2034e91c5f3a6aca277f57f4887ef06dac6ba6d0e2cb54ee50"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "a31bb1d47af824a8cfe977a37135b465265c5b80c3e1db7d131668e233ce7774",
+    "archiveSha256": "000d12e90a08560164a0328b006169f233931e6acfb865f8456df8797997604e"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "fd405ac2c502274759486677267d166167d33d2d1f1230409fe0c40a0223b879",
+    "archiveSha256": "9ecd83ba7a6615ad71a24f93a06b588e7eddd04698af6cf1f697c301f3e777ab"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "a62cf0ab8a56d8233eb447617a39be339e2208c9a6c25428be67e4646f992a6f",
+    "archiveSha256": "93d9f9f88ec71c050ccd788f65a0e75758cf92cee503b9fa5016ebb330545fb0"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-OnePercentMovingOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "27fb93ad58bb2ab4216fe532d4c87632cbe413b9a5f4711361bc733f94593d4b",
+    "archiveSha256": "dcd17ae69f5a59e862306b37caf10160581b74f2e60cb13d0d6d1dc6c3b45ada"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r0-Baseline.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "ef4f9cf8cd32d07e4aa4e94c4d844eaf6b424b35111ece98680c7a475a9f1fe5",
+    "archiveSha256": "bb178e7888e3afe82edc53f406fab42394bdb2dc81ca7d0bff9bad89f5c6b481"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r1-Candidate.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "99ac25b38907ad046c1f3954cd01eedeca59f42cc489fc42b7aeb725cd2bb0c2",
+    "archiveSha256": "25fc4b812238e791eb80a1a05bbf5ffc9b6d3ea68ca7c57e2c46c87b08bb7955"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r2-Candidate.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r2-Candidate.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "c9d36fad0e76ee5fe512002c8f866a1a7e62b89f8851727b4c761956e9da5f02",
+    "archiveSha256": "fb904f4ee4744d6ebb06055aa7b72f2fdd26c2c8ba23753a4cc829d6a735b58e"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r3-Baseline.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r3-Baseline.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "1ecfdc04afdc8a3a61cc42a0fdc28c44b18905cd485c491efefed1bab86e7d5f",
+    "archiveSha256": "8ce4e6aafc2652f55f3efa052dd158917aa30f87cf1b34a49338c922b5fb6951"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r4-Baseline.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r4-Baseline.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "2c03a6cd1341e58a0f6a7af49d8900ff4156ef8bdba6917b49adcce3ad6a17e9",
+    "archiveSha256": "e5922c7739ccf7a1077fa6d561aa500516e554a80e8859359a01576df380f99f"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r5-Candidate.out",
+    "archive": "raw/Final-gpu-TwoViewsOppositeOffscreenHeavy10000-r5-Candidate.jsonl.gz",
+    "records": 22202,
+    "rawSha256": "81dfcd7ec7467f112e2a0ac704d31d834852080b66b3561e01c2183d66ac3312",
+    "archiveSha256": "c99bd979cc119106ec28881d855f2a6962036875b2f0a915a15415d4567fd1f1"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\First-gpu-AllVisible1000-r0-Baseline.out",
+    "archive": "raw/First-gpu-AllVisible1000-r0-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "5399aeb4c6f422e0d6a58316f006bc91f9d6f23caa16bec40593b8e1e7d3890f",
+    "archiveSha256": "bc2cf93ef0c94895931a8060fa09ee9844f67be5156a273b99dc4b9d54ab172b"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\First-gpu-AllVisible1000-r1-Candidate.out",
+    "archive": "raw/First-gpu-AllVisible1000-r1-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "f3b5e24982dbd703be43c51ba974fa37ccad11360f5cfc3fd4174dd609fb91a2",
+    "archiveSha256": "35589c2cce652678a2b88b564869d0108647cd116995dc5458a9fb9ace8f0f96"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\First-gpu-AllVisible1000-r2-Candidate.out",
+    "archive": "raw/First-gpu-AllVisible1000-r2-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "dcc51873160403f9dc79de8725efffca84adb8efbc47952318191c6677cbdb48",
+    "archiveSha256": "85b2ab498bbe8cbf16ca10de51f9567a41a5ae48fd4942bceaff4ae4e4aa345d"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\First-gpu-AllVisible1000-r3-Baseline.out",
+    "archive": "raw/First-gpu-AllVisible1000-r3-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "3634d38ce5758dc7b8d575ca3ef7c65b7b60877c1e023f1625c45fcf86825e07",
+    "archiveSha256": "ce399528a5a246270d6c5f06c0aca5f536439b8d038b349130809d313d876d5a"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\First-gpu-AllVisible1000-r4-Baseline.out",
+    "archive": "raw/First-gpu-AllVisible1000-r4-Baseline.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "594c8f374e3686079703ab8234fd849a13e7737c5905a809932d539e5b4fd431",
+    "archiveSha256": "fb861dce59c5b8f5bfd4fa710af159297a5f90371fb09e89ad35daa02dff0ad4"
+  },
+  {
+    "source": "K:\\FBZZ_Engine\\Scratch\\DriverSpikes20261023\\Raw\\First-gpu-AllVisible1000-r5-Candidate.out",
+    "archive": "raw/First-gpu-AllVisible1000-r5-Candidate.jsonl.gz",
+    "records": 11402,
+    "rawSha256": "0ba986dbc7bcb2fa1badb0aba5012bdc8f6e2ad29a2768da1a6fe3a8d76c2298",
+    "archiveSha256": "70eea80f178641161da3a20f2c99f08ee85634b76a844f774e623e15a4cc5c73"
+  }
+]

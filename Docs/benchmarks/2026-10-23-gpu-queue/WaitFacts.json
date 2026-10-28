@@ -1,0 +1,1889 @@
+{
+  "Verbose": [
+    {
+      "run": "r0-timeline.csv",
+      "pid": 50792,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 1.1242,
+      "largestBeginFrames": [
+        {
+          "serial": 1140,
+          "frameMs": 2.29789996,
+          "frameBeginMs": 554699495.8732,
+          "frameEndMs": 554699498.1711,
+          "beginMs": 0.124199986,
+          "renderMs": 1.27600002,
+          "endMs": 0.895099998,
+          "scopes": {
+            "DX12Frame::Begin": 0.10649991,
+            "DX12Frame::End": 0.884699941,
+            "DX12Frame::Present": 0.647500038,
+            "DX12Frame::RetireResources": 0.000800013542,
+            "DX12Frame::WaitForFence": 0.00049996376
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1140,
+              "tid": 47880,
+              "beginQpc": 5546994973068,
+              "endQpc": 5546994974998,
+              "ms": 0.193,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1140,
+              "tid": 47880,
+              "beginQpc": 5546994975232,
+              "endQpc": 5546994981701,
+              "ms": 0.6469,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1176,
+          "frameMs": 2.21689999,
+          "frameBeginMs": 554699559.4455,
+          "frameEndMs": 554699561.6624,
+          "beginMs": 0.108700037,
+          "renderMs": 1.11140001,
+          "endMs": 0.993299961,
+          "scopes": {
+            "DX12Frame::Begin": 0.0853999853,
+            "DX12Frame::End": 0.982800007,
+            "DX12Frame::Present": 0.727800012,
+            "DX12Frame::RetireResources": 0.000800013542,
+            "DX12Frame::WaitForFence": 0.000400066376
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1176,
+              "tid": 47880,
+              "beginQpc": 5546995607086,
+              "endQpc": 5546995609118,
+              "ms": 0.2032,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1176,
+              "tid": 47880,
+              "beginQpc": 5546995609341,
+              "endQpc": 5546995616614,
+              "ms": 0.7273,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1108,
+          "frameMs": 2.15859997,
+          "frameBeginMs": 554699434.3117,
+          "frameEndMs": 554699436.4703,
+          "beginMs": 0.108200073,
+          "renderMs": 1.14389992,
+          "endMs": 0.903699994,
+          "scopes": {
+            "DX12Frame::Begin": 0.0913999081,
+            "DX12Frame::End": 0.897600055,
+            "DX12Frame::Present": 0.671700001,
+            "DX12Frame::RetireResources": 0.000800013542,
+            "DX12Frame::WaitForFence": 0.00049996376
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1108,
+              "tid": 47880,
+              "beginQpc": 5546994355927,
+              "endQpc": 5546994357756,
+              "ms": 0.1829,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1108,
+              "tid": 47880,
+              "beginQpc": 5546994357982,
+              "endQpc": 5546994364694,
+              "ms": 0.6712,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    },
+    {
+      "run": "r1-timeline.csv",
+      "pid": 32288,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 1.4844,
+      "largestBeginFrames": [
+        {
+          "serial": 1072,
+          "frameMs": 2.21860003,
+          "frameBeginMs": 554704959.8468,
+          "frameEndMs": 554704962.0654,
+          "beginMs": 0.308699965,
+          "renderMs": 1.06770003,
+          "endMs": 0.840299964,
+          "scopes": {
+            "DX12Frame::Begin": 0.293600082,
+            "DX12Frame::End": 0.833500028,
+            "DX12Frame::Present": 0.60679996,
+            "DX12Frame::RetireResources": 0.000199913979,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1072,
+              "tid": 32500,
+              "beginQpc": 5547049612480,
+              "endQpc": 5547049614366,
+              "ms": 0.1886,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1072,
+              "tid": 32500,
+              "beginQpc": 5547049614579,
+              "endQpc": 5547049620642,
+              "ms": 0.6063,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 869,
+          "frameMs": 3.02449989,
+          "frameBeginMs": 554704523.6713,
+          "frameEndMs": 554704526.6958,
+          "beginMs": 0.298900008,
+          "renderMs": 1.57499993,
+          "endMs": 1.1487,
+          "scopes": {
+            "DX12Frame::Begin": 0.273100019,
+            "DX12Frame::End": 1.13479996,
+            "DX12Frame::Present": 0.823200107,
+            "DX12Frame::RetireResources": 0.000299930573,
+            "DX12Frame::WaitForFence": 0.000399947166
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 869,
+              "tid": 32500,
+              "beginQpc": 5547045255974,
+              "endQpc": 5547045258479,
+              "ms": 0.2505,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 869,
+              "tid": 32500,
+              "beginQpc": 5547045258719,
+              "endQpc": 5547045266945,
+              "ms": 0.8226,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1088,
+          "frameMs": 2.42739999,
+          "frameBeginMs": 554704991.3785,
+          "frameEndMs": 554704993.8059,
+          "beginMs": 0.241400003,
+          "renderMs": 1.33880007,
+          "endMs": 0.845199943,
+          "scopes": {
+            "DX12Frame::Begin": 0.2227,
+            "DX12Frame::End": 0.838800073,
+            "DX12Frame::Present": 0.624199986,
+            "DX12Frame::RetireResources": 0.000299930573,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1088,
+              "tid": 32500,
+              "beginQpc": 5547049929869,
+              "endQpc": 5547049931605,
+              "ms": 0.1736,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1088,
+              "tid": 32500,
+              "beginQpc": 5547049931814,
+              "endQpc": 5547049938051,
+              "ms": 0.6237,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    },
+    {
+      "run": "r2-timeline.csv",
+      "pid": 47020,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 0.9886,
+      "largestBeginFrames": [
+        {
+          "serial": 904,
+          "frameMs": 2.03149998,
+          "frameBeginMs": 554709702.2548,
+          "frameEndMs": 554709704.2863,
+          "beginMs": 0.423700094,
+          "renderMs": 0.916499972,
+          "endMs": 0.689899921,
+          "scopes": {
+            "DX12Frame::Begin": 0.413900018,
+            "DX12Frame::End": 0.685099959,
+            "DX12Frame::Present": 0.51030004,
+            "DX12Frame::RetireResources": 0.000199913979,
+            "DX12Frame::WaitForFence": 0.000300049782
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 904,
+              "tid": 51720,
+              "beginQpc": 5547097036157,
+              "endQpc": 5547097037574,
+              "ms": 0.1417,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 904,
+              "tid": 51720,
+              "beginQpc": 5547097037757,
+              "endQpc": 5547097042856,
+              "ms": 0.5099,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 673,
+          "frameMs": 1.9224,
+          "frameBeginMs": 554709337.4652,
+          "frameEndMs": 554709339.3876,
+          "beginMs": 0.271000028,
+          "renderMs": 0.820700049,
+          "endMs": 0.829299927,
+          "scopes": {
+            "DX12Frame::Begin": 0.261500001,
+            "DX12Frame::End": 0.824900031,
+            "DX12Frame::Present": 0.656599998,
+            "DX12Frame::RetireResources": 0.000100016594,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 673,
+              "tid": 51720,
+              "beginQpc": 5547093385745,
+              "endQpc": 5547093387131,
+              "ms": 0.1386,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 673,
+              "tid": 51720,
+              "beginQpc": 5547093387307,
+              "endQpc": 5547093393868,
+              "ms": 0.6561,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 672,
+          "frameMs": 2.00829995,
+          "frameBeginMs": 554709335.4436,
+          "frameEndMs": 554709337.4519,
+          "beginMs": 0.217900038,
+          "renderMs": 0.978299975,
+          "endMs": 0.810600042,
+          "scopes": {
+            "DX12Frame::Begin": 0.0360000134,
+            "DX12Frame::End": 0.806699991,
+            "DX12Frame::Present": 0.641900063,
+            "DX12Frame::RetireResources": 0.000100016594,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 672,
+              "tid": 51720,
+              "beginQpc": 5547093366574,
+              "endQpc": 5547093367924,
+              "ms": 0.135,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 672,
+              "tid": 51720,
+              "beginQpc": 5547093368097,
+              "endQpc": 5547093374508,
+              "ms": 0.6411,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    }
+  ],
+  "Light-": [
+    {
+      "run": "r0-timeline.csv",
+      "pid": 31500,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 0.5127,
+      "largestBeginFrames": [
+        {
+          "serial": 1097,
+          "frameMs": 1.06519997,
+          "frameBeginMs": 555216140.0913,
+          "frameEndMs": 555216141.1565,
+          "beginMs": 0.0587999821,
+          "renderMs": 0.779299974,
+          "endMs": 0.225499988,
+          "scopes": {
+            "DX12Frame::Begin": 0.0468999147,
+            "DX12Frame::End": 0.220300078,
+            "DX12Frame::Present": 0.158600092,
+            "DX12Frame::RetireResources": 0.000400066376,
+            "DX12Frame::WaitForFence": 0.0126000643
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1097,
+              "tid": 62312,
+              "beginQpc": 5552161409497,
+              "endQpc": 5552161409936,
+              "ms": 0.0439,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1097,
+              "tid": 62312,
+              "beginQpc": 5552161409976,
+              "endQpc": 5552161411557,
+              "ms": 0.1581,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1099,
+          "frameMs": 0.984899998,
+          "frameBeginMs": 555216142.1739,
+          "frameEndMs": 555216143.1588,
+          "beginMs": 0.0424000025,
+          "renderMs": 0.745100021,
+          "endMs": 0.19630003,
+          "scopes": {
+            "DX12Frame::Begin": 0.0372999907,
+            "DX12Frame::End": 0.192699909,
+            "DX12Frame::Present": 0.143199921,
+            "DX12Frame::RetireResources": 0.000200033188,
+            "DX12Frame::WaitForFence": 0.000199913979
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1099,
+              "tid": 62312,
+              "beginQpc": 5552161429760,
+              "endQpc": 5552161430116,
+              "ms": 0.0356,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1099,
+              "tid": 62312,
+              "beginQpc": 5552161430154,
+              "endQpc": 5552161431582,
+              "ms": 0.1428,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 730,
+          "frameMs": 0.910899997,
+          "frameBeginMs": 555215793.3053,
+          "frameEndMs": 555215794.2162,
+          "beginMs": 0.040899992,
+          "renderMs": 0.674899936,
+          "endMs": 0.194100022,
+          "scopes": {
+            "DX12Frame::Begin": 0.0356000662,
+            "DX12Frame::End": 0.190999985,
+            "DX12Frame::Present": 0.143299937,
+            "DX12Frame::RetireResources": 0.000199913979,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 730,
+              "tid": 62312,
+              "beginQpc": 5552157940347,
+              "endQpc": 5552157940685,
+              "ms": 0.0338,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 730,
+              "tid": 62312,
+              "beginQpc": 5552157940728,
+              "endQpc": 5552157942157,
+              "ms": 0.1429,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    },
+    {
+      "run": "r1-timeline.csv",
+      "pid": 50488,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 0.4778,
+      "largestBeginFrames": [
+        {
+          "serial": 983,
+          "frameMs": 1.22649992,
+          "frameBeginMs": 555219588.8954,
+          "frameEndMs": 555219590.1219,
+          "beginMs": 0.340800047,
+          "renderMs": 0.691799998,
+          "endMs": 0.192899942,
+          "scopes": {
+            "DX12Frame::Begin": 0.333699942,
+            "DX12Frame::End": 0.18930006,
+            "DX12Frame::Present": 0.139999986,
+            "DX12Frame::RetireResources": 0.000200033188,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 983,
+              "tid": 31836,
+              "beginQpc": 5552195899422,
+              "endQpc": 5552195899781,
+              "ms": 0.0359,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 983,
+              "tid": 31836,
+              "beginQpc": 5552195899816,
+              "endQpc": 5552195901213,
+              "ms": 0.1397,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 961,
+          "frameMs": 1.00010002,
+          "frameBeginMs": 555219567.7264,
+          "frameEndMs": 555219568.7265,
+          "beginMs": 0.0467000008,
+          "renderMs": 0.727900028,
+          "endMs": 0.22329998,
+          "scopes": {
+            "DX12Frame::Begin": 0.0375000238,
+            "DX12Frame::End": 0.219599962,
+            "DX12Frame::Present": 0.164499998,
+            "DX12Frame::RetireResources": 0.000200033188,
+            "DX12Frame::WaitForFence": 0.000299930573
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 961,
+              "tid": 31836,
+              "beginQpc": 5552195685178,
+              "endQpc": 5552195685576,
+              "ms": 0.0398,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 961,
+              "tid": 31836,
+              "beginQpc": 5552195685616,
+              "endQpc": 5552195687258,
+              "ms": 0.1642,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1044,
+          "frameMs": 1.15349996,
+          "frameBeginMs": 555219647.1505,
+          "frameEndMs": 555219648.304,
+          "beginMs": 0.0454000235,
+          "renderMs": 0.881199956,
+          "endMs": 0.225300074,
+          "scopes": {
+            "DX12Frame::Begin": 0.0381999016,
+            "DX12Frame::End": 0.221500039,
+            "DX12Frame::Present": 0.164600015,
+            "DX12Frame::RetireResources": 0.000199913979,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1044,
+              "tid": 31836,
+              "beginQpc": 5552196480939,
+              "endQpc": 5552196481337,
+              "ms": 0.0398,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1044,
+              "tid": 31836,
+              "beginQpc": 5552196481391,
+              "endQpc": 5552196483034,
+              "ms": 0.1643,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    },
+    {
+      "run": "r2-timeline.csv",
+      "pid": 24364,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 0.4602,
+      "largestBeginFrames": [
+        {
+          "serial": 739,
+          "frameMs": 1.12330008,
+          "frameBeginMs": 555222920.3251,
+          "frameEndMs": 555222921.4484,
+          "beginMs": 0.0493000746,
+          "renderMs": 0.843799949,
+          "endMs": 0.228700042,
+          "scopes": {
+            "DX12Frame::Begin": 0.0403000116,
+            "DX12Frame::End": 0.224099994,
+            "DX12Frame::Present": 0.161000013,
+            "DX12Frame::RetireResources": 0.000199913979,
+            "DX12Frame::WaitForFence": 0.000300049782
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 739,
+              "tid": 66404,
+              "beginQpc": 5552229212375,
+              "endQpc": 5552229212823,
+              "ms": 0.0448,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 739,
+              "tid": 66404,
+              "beginQpc": 5552229212870,
+              "endQpc": 5552229214476,
+              "ms": 0.1606,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1041,
+          "frameMs": 0.967100024,
+          "frameBeginMs": 555223208.6363,
+          "frameEndMs": 555223209.6034,
+          "beginMs": 0.0447000265,
+          "renderMs": 0.710999966,
+          "endMs": 0.210399985,
+          "scopes": {
+            "DX12Frame::Begin": 0.0393999815,
+            "DX12Frame::End": 0.206799984,
+            "DX12Frame::Present": 0.151400089,
+            "DX12Frame::RetireResources": 9.98973846e-05,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1041,
+              "tid": 66404,
+              "beginQpc": 5552232094067,
+              "endQpc": 5552232094466,
+              "ms": 0.0399,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1041,
+              "tid": 66404,
+              "beginQpc": 5552232094518,
+              "endQpc": 5552232096025,
+              "ms": 0.1507,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1077,
+          "frameMs": 0.911000013,
+          "frameBeginMs": 555223243.5886,
+          "frameEndMs": 555223244.4996,
+          "beginMs": 0.0364999771,
+          "renderMs": 0.687600017,
+          "endMs": 0.185800076,
+          "scopes": {
+            "DX12Frame::Begin": 0.0314999819,
+            "DX12Frame::End": 0.182200074,
+            "DX12Frame::Present": 0.133700013,
+            "DX12Frame::RetireResources": 0.000100016594,
+            "DX12Frame::WaitForFence": 0.000100016594
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1077,
+              "tid": 66404,
+              "beginQpc": 5552232443271,
+              "endQpc": 5552232443608,
+              "ms": 0.0337,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1077,
+              "tid": 66404,
+              "beginQpc": 5552232443657,
+              "endQpc": 5552232444990,
+              "ms": 0.1333,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    }
+  ],
+  "Validation-": [
+    {
+      "run": "r0-timeline.csv",
+      "pid": 56896,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 0.5935,
+      "largestBeginFrames": [
+        {
+          "serial": 752,
+          "frameMs": 1.52939999,
+          "frameBeginMs": 556438597.2095,
+          "frameEndMs": 556438598.7389,
+          "beginMs": 0.275099993,
+          "renderMs": 0.94599998,
+          "endMs": 0.306999922,
+          "scopes": {
+            "DX12Frame::Begin": 0.264799953,
+            "DX12Frame::End": 0.301599979,
+            "DX12Frame::Present": 0.227599978,
+            "DX12Frame::RetireResources": 0.000300049782,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 752,
+              "tid": 30768,
+              "beginQpc": 5564385984531,
+              "endQpc": 5564385985053,
+              "ms": 0.0522,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 752,
+              "tid": 30768,
+              "beginQpc": 5564385985110,
+              "endQpc": 5564385987377,
+              "ms": 0.2267,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 912,
+          "frameMs": 2.50639999,
+          "frameBeginMs": 556438849.8873,
+          "frameEndMs": 556438852.3937,
+          "beginMs": 0.103600025,
+          "renderMs": 1.93649995,
+          "endMs": 0.462900043,
+          "scopes": {
+            "DX12Frame::Begin": 0.0741999149,
+            "DX12Frame::End": 0.452200055,
+            "DX12Frame::Present": 0.322999954,
+            "DX12Frame::RetireResources": 0.00150001049,
+            "DX12Frame::WaitForFence": 0.000300049782
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 912,
+              "tid": 30768,
+              "beginQpc": 5564388519713,
+              "endQpc": 5564388520638,
+              "ms": 0.0925,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 912,
+              "tid": 30768,
+              "beginQpc": 5564388520701,
+              "endQpc": 5564388523926,
+              "ms": 0.3225,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 990,
+          "frameMs": 1.88609993,
+          "frameBeginMs": 556438973.9213,
+          "frameEndMs": 556438975.8074,
+          "beginMs": 0.0937999487,
+          "renderMs": 1.35880005,
+          "endMs": 0.430899978,
+          "scopes": {
+            "DX12Frame::Begin": 0.0724999905,
+            "DX12Frame::End": 0.422100067,
+            "DX12Frame::Present": 0.305899978,
+            "DX12Frame::RetireResources": 0.000599980354,
+            "DX12Frame::WaitForFence": 0.000400066376
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 990,
+              "tid": 30768,
+              "beginQpc": 5564389754133,
+              "endQpc": 5564389754929,
+              "ms": 0.0796,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 990,
+              "tid": 30768,
+              "beginQpc": 5564389755009,
+              "endQpc": 5564389758061,
+              "ms": 0.3052,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    },
+    {
+      "run": "r1-timeline.csv",
+      "pid": 61852,
+      "measuredFrames": 600,
+      "fenceWaitCount": 7,
+      "maxFenceWaitMs": 0.4911,
+      "maxPresentMs": 0,
+      "largestBeginFrames": [
+        {
+          "serial": 1155,
+          "frameMs": 1.28359997,
+          "frameBeginMs": 556442982.6681,
+          "frameEndMs": 556442983.9517,
+          "beginMs": 0.520799994,
+          "renderMs": 0.708799958,
+          "endMs": 0.0530999899,
+          "scopes": {
+            "DX12Frame::Begin": 0.513500094,
+            "DX12Frame::End": 0.0497999191,
+            "DX12Frame::RetireResources": 0.000300049782,
+            "DX12Frame::WaitForFence": 0.491600037
+          },
+          "intervals": [
+            {
+              "event": "fence-wait",
+              "serial": 1155,
+              "tid": 2080,
+              "beginQpc": 5564429826697,
+              "endQpc": 5564429831608,
+              "ms": 0.4911,
+              "targetSerial": 1153,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "queue-submit",
+              "serial": 1155,
+              "tid": 2080,
+              "beginQpc": 5564429839125,
+              "endQpc": 5564429839468,
+              "ms": 0.0343,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 996,
+          "frameMs": 1.13770008,
+          "frameBeginMs": 556442857.0508,
+          "frameEndMs": 556442858.1885,
+          "beginMs": 0.340399981,
+          "renderMs": 0.744500041,
+          "endMs": 0.0519000292,
+          "scopes": {
+            "DX12Frame::Begin": 0.332299948,
+            "DX12Frame::End": 0.0484000444,
+            "DX12Frame::RetireResources": 0.000400066376,
+            "DX12Frame::WaitForFence": 0.30580008
+          },
+          "intervals": [
+            {
+              "event": "fence-wait",
+              "serial": 996,
+              "tid": 2080,
+              "beginQpc": 5564428570523,
+              "endQpc": 5564428573576,
+              "ms": 0.3053,
+              "targetSerial": 994,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "queue-submit",
+              "serial": 996,
+              "tid": 2080,
+              "beginQpc": 5564428581508,
+              "endQpc": 5564428581846,
+              "ms": 0.0338,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 892,
+          "frameMs": 1.0000999,
+          "frameBeginMs": 556442774.6382,
+          "frameEndMs": 556442775.6383,
+          "beginMs": 0.226000071,
+          "renderMs": 0.702899933,
+          "endMs": 0.0700999498,
+          "scopes": {
+            "DX12Frame::Begin": 0.219499946,
+            "DX12Frame::End": 0.0667999983,
+            "DX12Frame::RetireResources": 0.000200033188,
+            "DX12Frame::WaitForFence": 0.200800061
+          },
+          "intervals": [
+            {
+              "event": "fence-wait",
+              "serial": 892,
+              "tid": 2080,
+              "beginQpc": 5564427746399,
+              "endQpc": 5564427748404,
+              "ms": 0.2005,
+              "targetSerial": 890,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "queue-submit",
+              "serial": 892,
+              "tid": 2080,
+              "beginQpc": 5564427755810,
+              "endQpc": 5564427756127,
+              "ms": 0.0317,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": [
+        {
+          "event": "fence-wait",
+          "serial": 1155,
+          "tid": 2080,
+          "beginQpc": 5564429826697,
+          "endQpc": 5564429831608,
+          "ms": 0.4911,
+          "targetSerial": 1153,
+          "valueBegin": 0,
+          "valueEnd": 0
+        },
+        {
+          "event": "fence-wait",
+          "serial": 996,
+          "tid": 2080,
+          "beginQpc": 5564428570523,
+          "endQpc": 5564428573576,
+          "ms": 0.3053,
+          "targetSerial": 994,
+          "valueBegin": 0,
+          "valueEnd": 0
+        },
+        {
+          "event": "fence-wait",
+          "serial": 892,
+          "tid": 2080,
+          "beginQpc": 5564427746399,
+          "endQpc": 5564427748404,
+          "ms": 0.2005,
+          "targetSerial": 890,
+          "valueBegin": 0,
+          "valueEnd": 0
+        }
+      ]
+    },
+    {
+      "run": "r2-timeline.csv",
+      "pid": 54384,
+      "measuredFrames": 600,
+      "fenceWaitCount": 5,
+      "maxFenceWaitMs": 0.3788,
+      "maxPresentMs": 0.4309,
+      "largestBeginFrames": [
+        {
+          "serial": 706,
+          "frameMs": 1.27929997,
+          "frameBeginMs": 556446153.1898,
+          "frameEndMs": 556446154.4691,
+          "beginMs": 0.418199897,
+          "renderMs": 0.80340004,
+          "endMs": 0.0568000078,
+          "scopes": {
+            "DX12Frame::Begin": 0.410300016,
+            "DX12Frame::End": 0.0526999235,
+            "DX12Frame::RetireResources": 0.00050008297,
+            "DX12Frame::WaitForFence": 0.379600048
+          },
+          "intervals": [
+            {
+              "event": "fence-wait",
+              "serial": 706,
+              "tid": 15712,
+              "beginQpc": 5564461531913,
+              "endQpc": 5564461535701,
+              "ms": 0.3788,
+              "targetSerial": 704,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "queue-submit",
+              "serial": 706,
+              "tid": 15712,
+              "beginQpc": 5564461544276,
+              "endQpc": 5564461544646,
+              "ms": 0.037,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 979,
+          "frameMs": 1.15839994,
+          "frameBeginMs": 556446402.9944,
+          "frameEndMs": 556446404.1528,
+          "beginMs": 0.170499921,
+          "renderMs": 0.927999973,
+          "endMs": 0.0590000153,
+          "scopes": {
+            "DX12Frame::Begin": 0.162700057,
+            "DX12Frame::End": 0.0552999973,
+            "DX12Frame::RetireResources": 0.000400066376,
+            "DX12Frame::WaitForFence": 0.134500027
+          },
+          "intervals": [
+            {
+              "event": "fence-wait",
+              "serial": 979,
+              "tid": 15712,
+              "beginQpc": 5564464029959,
+              "endQpc": 5564464031298,
+              "ms": 0.1339,
+              "targetSerial": 977,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "queue-submit",
+              "serial": 979,
+              "tid": 15712,
+              "beginQpc": 5564464041090,
+              "endQpc": 5564464041447,
+              "ms": 0.0357,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1162,
+          "frameMs": 1.25660002,
+          "frameBeginMs": 556446571.6881,
+          "frameEndMs": 556446572.9447,
+          "beginMs": 0.154899955,
+          "renderMs": 0.788300037,
+          "endMs": 0.312299967,
+          "scopes": {
+            "DX12Frame::Begin": 0.147000074,
+            "DX12Frame::End": 0.308799982,
+            "DX12Frame::Present": 0.256200075,
+            "DX12Frame::RetireResources": 0.000300049782,
+            "DX12Frame::WaitForFence": 0.117300034
+          },
+          "intervals": [
+            {
+              "event": "fence-wait",
+              "serial": 1162,
+              "tid": 15712,
+              "beginQpc": 5564465716898,
+              "endQpc": 5564465718064,
+              "ms": 0.1166,
+              "targetSerial": 1160,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "queue-submit",
+              "serial": 1162,
+              "tid": 15712,
+              "beginQpc": 5564465726471,
+              "endQpc": 5564465726832,
+              "ms": 0.0361,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1162,
+              "tid": 15712,
+              "beginQpc": 5564465726881,
+              "endQpc": 5564465729440,
+              "ms": 0.2559,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": [
+        {
+          "event": "fence-wait",
+          "serial": 706,
+          "tid": 15712,
+          "beginQpc": 5564461531913,
+          "endQpc": 5564461535701,
+          "ms": 0.3788,
+          "targetSerial": 704,
+          "valueBegin": 0,
+          "valueEnd": 0
+        },
+        {
+          "event": "fence-wait",
+          "serial": 979,
+          "tid": 15712,
+          "beginQpc": 5564464029959,
+          "endQpc": 5564464031298,
+          "ms": 0.1339,
+          "targetSerial": 977,
+          "valueBegin": 0,
+          "valueEnd": 0
+        },
+        {
+          "event": "fence-wait",
+          "serial": 1162,
+          "tid": 15712,
+          "beginQpc": 5564465716898,
+          "endQpc": 5564465718064,
+          "ms": 0.1166,
+          "targetSerial": 1160,
+          "valueBegin": 0,
+          "valueEnd": 0
+        }
+      ]
+    },
+    {
+      "run": "r3-timeline.csv",
+      "pid": 66436,
+      "measuredFrames": 600,
+      "fenceWaitCount": 5,
+      "maxFenceWaitMs": 0.213,
+      "maxPresentMs": 0,
+      "largestBeginFrames": [
+        {
+          "serial": 938,
+          "frameMs": 1.28329992,
+          "frameBeginMs": 556449864.0189,
+          "frameEndMs": 556449865.3022,
+          "beginMs": 0.260900021,
+          "renderMs": 0.932600021,
+          "endMs": 0.0886999369,
+          "scopes": {
+            "DX12Frame::Begin": 0.250399947,
+            "DX12Frame::End": 0.0824999809,
+            "DX12Frame::RetireResources": 0.00049996376,
+            "DX12Frame::WaitForFence": 0.213900089
+          },
+          "intervals": [
+            {
+              "event": "fence-wait",
+              "serial": 938,
+              "tid": 58564,
+              "beginQpc": 5564498640208,
+              "endQpc": 5564498642338,
+              "ms": 0.213,
+              "targetSerial": 936,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "queue-submit",
+              "serial": 938,
+              "tid": 58564,
+              "beginQpc": 5564498652361,
+              "endQpc": 5564498652944,
+              "ms": 0.0583,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 850,
+          "frameMs": 1.22189999,
+          "frameBeginMs": 556449780.2708,
+          "frameEndMs": 556449781.4927,
+          "beginMs": 0.258299947,
+          "renderMs": 0.898900032,
+          "endMs": 0.0635999441,
+          "scopes": {
+            "DX12Frame::Begin": 0.24909997,
+            "DX12Frame::End": 0.058999896,
+            "DX12Frame::RetireResources": 0.00050008297,
+            "DX12Frame::WaitForFence": 0.213400006
+          },
+          "intervals": [
+            {
+              "event": "fence-wait",
+              "serial": 850,
+              "tid": 58564,
+              "beginQpc": 5564497802727,
+              "endQpc": 5564497804851,
+              "ms": 0.2124,
+              "targetSerial": 848,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "queue-submit",
+              "serial": 850,
+              "tid": 58564,
+              "beginQpc": 5564497814474,
+              "endQpc": 5564497814880,
+              "ms": 0.0406,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1111,
+          "frameMs": 1.09759998,
+          "frameBeginMs": 556450030.0598,
+          "frameEndMs": 556450031.1574,
+          "beginMs": 0.164299965,
+          "renderMs": 0.871800065,
+          "endMs": 0.060199976,
+          "scopes": {
+            "DX12Frame::Begin": 0.156400084,
+            "DX12Frame::End": 0.0561999083,
+            "DX12Frame::RetireResources": 0.000299930573,
+            "DX12Frame::WaitForFence": 0.1329
+          },
+          "intervals": [
+            {
+              "event": "fence-wait",
+              "serial": 1111,
+              "tid": 58564,
+              "beginQpc": 5564500300623,
+              "endQpc": 5564500301944,
+              "ms": 0.1321,
+              "targetSerial": 1109,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "queue-submit",
+              "serial": 1111,
+              "tid": 58564,
+              "beginQpc": 5564500311134,
+              "endQpc": 5564500311527,
+              "ms": 0.0393,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": [
+        {
+          "event": "fence-wait",
+          "serial": 938,
+          "tid": 58564,
+          "beginQpc": 5564498640208,
+          "endQpc": 5564498642338,
+          "ms": 0.213,
+          "targetSerial": 936,
+          "valueBegin": 0,
+          "valueEnd": 0
+        },
+        {
+          "event": "fence-wait",
+          "serial": 850,
+          "tid": 58564,
+          "beginQpc": 5564497802727,
+          "endQpc": 5564497804851,
+          "ms": 0.2124,
+          "targetSerial": 848,
+          "valueBegin": 0,
+          "valueEnd": 0
+        },
+        {
+          "event": "fence-wait",
+          "serial": 1111,
+          "tid": 58564,
+          "beginQpc": 5564500300623,
+          "endQpc": 5564500301944,
+          "ms": 0.1321,
+          "targetSerial": 1109,
+          "valueBegin": 0,
+          "valueEnd": 0
+        }
+      ]
+    }
+  ],
+  "Full-": [
+    {
+      "run": "r0-timeline.csv",
+      "pid": 62940,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 1.8749,
+      "largestBeginFrames": [
+        {
+          "serial": 632,
+          "frameMs": 2.90530002,
+          "frameBeginMs": 557072203.539,
+          "frameEndMs": 557072206.4443,
+          "beginMs": 0.461099982,
+          "renderMs": 0.950700045,
+          "endMs": 1.4914,
+          "scopes": {
+            "DX12Frame::Begin": 0.448699951,
+            "DX12Frame::End": 1.48430002,
+            "DX12Frame::Present": 1.27059996,
+            "DX12Frame::RetireResources": 0.000200033188,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 632,
+              "tid": 53548,
+              "beginQpc": 5570722049747,
+              "endQpc": 5570722051506,
+              "ms": 0.1759,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 632,
+              "tid": 53548,
+              "beginQpc": 5570722051718,
+              "endQpc": 5570722064408,
+              "ms": 1.269,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 930,
+          "frameMs": 2.20510006,
+          "frameBeginMs": 557072728.4532,
+          "frameEndMs": 557072730.6583,
+          "beginMs": 0.136899948,
+          "renderMs": 0.907100081,
+          "endMs": 1.15939999,
+          "scopes": {
+            "DX12Frame::Begin": 0.0383999348,
+            "DX12Frame::End": 1.15439999,
+            "DX12Frame::Present": 0.959100008,
+            "DX12Frame::RetireResources": 0.000199913979,
+            "DX12Frame::WaitForFence": 0.000100016594
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 930,
+              "tid": 53548,
+              "beginQpc": 5570727295184,
+              "endQpc": 5570727296781,
+              "ms": 0.1597,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 930,
+              "tid": 53548,
+              "beginQpc": 5570727296987,
+              "endQpc": 5570727306573,
+              "ms": 0.9586,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 613,
+          "frameMs": 2.46790004,
+          "frameBeginMs": 557072160.9611,
+          "frameEndMs": 557072163.429,
+          "beginMs": 0.109400034,
+          "renderMs": 1.18360007,
+          "endMs": 1.17289996,
+          "scopes": {
+            "DX12Frame::Begin": 0.0936999321,
+            "DX12Frame::End": 1.16680002,
+            "DX12Frame::Present": 0.950900078,
+            "DX12Frame::RetireResources": 0.000400066376,
+            "DX12Frame::WaitForFence": 0.00049996376
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 613,
+              "tid": 53548,
+              "beginQpc": 5570721622776,
+              "endQpc": 5570721624425,
+              "ms": 0.1649,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 613,
+              "tid": 53548,
+              "beginQpc": 5570721624775,
+              "endQpc": 5570721634275,
+              "ms": 0.95,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    },
+    {
+      "run": "r1-timeline.csv",
+      "pid": 60016,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 0,
+      "largestBeginFrames": [
+        {
+          "serial": 636,
+          "frameMs": 1.20770001,
+          "frameBeginMs": 557077280.7413,
+          "frameEndMs": 557077281.949,
+          "beginMs": 0.0848999023,
+          "renderMs": 0.911300063,
+          "endMs": 0.209699988,
+          "scopes": {
+            "DX12Frame::Begin": 0.0636999607,
+            "DX12Frame::End": 0.202099919,
+            "DX12Frame::RetireResources": 0.000200033188,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 636,
+              "tid": 47292,
+              "beginQpc": 5570772817658,
+              "endQpc": 5570772819272,
+              "ms": 0.1614,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 715,
+          "frameMs": 1.12590003,
+          "frameBeginMs": 557077363.3986,
+          "frameEndMs": 557077364.5245,
+          "beginMs": 0.0643000603,
+          "renderMs": 0.888000011,
+          "endMs": 0.172199965,
+          "scopes": {
+            "DX12Frame::Begin": 0.0576999187,
+            "DX12Frame::End": 0.168499947,
+            "DX12Frame::RetireResources": 0.000200033188,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 715,
+              "tid": 47292,
+              "beginQpc": 5570773643687,
+              "endQpc": 5570773645047,
+              "ms": 0.136,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1182,
+          "frameMs": 0.982800007,
+          "frameBeginMs": 557077850.021,
+          "frameEndMs": 557077851.0038,
+          "beginMs": 0.0630999804,
+          "renderMs": 0.777899981,
+          "endMs": 0.140300035,
+          "scopes": {
+            "DX12Frame::Begin": 0.0573999882,
+            "DX12Frame::End": 0.136899948,
+            "DX12Frame::RetireResources": 9.98973846e-05,
+            "DX12Frame::WaitForFence": 0.000100016594
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1182,
+              "tid": 47292,
+              "beginQpc": 5570778508775,
+              "endQpc": 5570778509852,
+              "ms": 0.1077,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    },
+    {
+      "run": "r2-timeline.csv",
+      "pid": 16756,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 0.9896,
+      "largestBeginFrames": [
+        {
+          "serial": 1151,
+          "frameMs": 1.20719993,
+          "frameBeginMs": 557082462.5447,
+          "frameEndMs": 557082463.7519,
+          "beginMs": 0.141199946,
+          "renderMs": 0.908900023,
+          "endMs": 0.155699968,
+          "scopes": {
+            "DX12Frame::Begin": 0.134899974,
+            "DX12Frame::End": 0.151800036,
+            "DX12Frame::RetireResources": 0.000199913979,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1151,
+              "tid": 67400,
+              "beginQpc": 5570824636133,
+              "endQpc": 5570824637322,
+              "ms": 0.1189,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 973,
+          "frameMs": 2.00150001,
+          "frameBeginMs": 557082256.4634,
+          "frameEndMs": 557082258.4649,
+          "beginMs": 0.125699997,
+          "renderMs": 0.970099926,
+          "endMs": 0.898400068,
+          "scopes": {
+            "DX12Frame::Begin": 0.104400039,
+            "DX12Frame::End": 0.892799973,
+            "DX12Frame::Present": 0.732500076,
+            "DX12Frame::RetireResources": 0.000200033188,
+            "DX12Frame::WaitForFence": 0.000199913979
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 973,
+              "tid": 67400,
+              "beginQpc": 5570822575905,
+              "endQpc": 5570822577127,
+              "ms": 0.1222,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 973,
+              "tid": 67400,
+              "beginQpc": 5570822577318,
+              "endQpc": 5570822584634,
+              "ms": 0.7316,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 1117,
+          "frameMs": 1.02910006,
+          "frameBeginMs": 557082416.3218,
+          "frameEndMs": 557082417.3509,
+          "beginMs": 0.0992000103,
+          "renderMs": 0.788900018,
+          "endMs": 0.139600039,
+          "scopes": {
+            "DX12Frame::Begin": 0.0910999775,
+            "DX12Frame::End": 0.13620007,
+            "DX12Frame::RetireResources": 0.000100016594,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1117,
+              "tid": 67400,
+              "beginQpc": 5570824172264,
+              "endQpc": 5570824173315,
+              "ms": 0.1051,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    },
+    {
+      "run": "r3-timeline.csv",
+      "pid": 42356,
+      "measuredFrames": 600,
+      "fenceWaitCount": 0,
+      "maxFenceWaitMs": 0,
+      "maxPresentMs": 1.1476,
+      "largestBeginFrames": [
+        {
+          "serial": 1101,
+          "frameMs": 1.83169997,
+          "frameBeginMs": 557087252.1005,
+          "frameEndMs": 557087253.9322,
+          "beginMs": 0.364500046,
+          "renderMs": 0.787199974,
+          "endMs": 0.678599954,
+          "scopes": {
+            "DX12Frame::Begin": 0.355700016,
+            "DX12Frame::End": 0.675199986,
+            "DX12Frame::Present": 0.510400057,
+            "DX12Frame::RetireResources": 0.000199913979,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 1101,
+              "tid": 1680,
+              "beginQpc": 5570872532684,
+              "endQpc": 5570872534035,
+              "ms": 0.1351,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 1101,
+              "tid": 1680,
+              "beginQpc": 5570872534215,
+              "endQpc": 5570872539314,
+              "ms": 0.5099,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 863,
+          "frameMs": 2.22230005,
+          "frameBeginMs": 557086850.2772,
+          "frameEndMs": 557086852.4995,
+          "beginMs": 0.283400059,
+          "renderMs": 0.86469996,
+          "endMs": 1.07280004,
+          "scopes": {
+            "DX12Frame::Begin": 0.274600029,
+            "DX12Frame::End": 1.06859994,
+            "DX12Frame::Present": 0.896399975,
+            "DX12Frame::RetireResources": 0.000199913979,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 863,
+              "tid": 1680,
+              "beginQpc": 5570868514437,
+              "endQpc": 5570868515834,
+              "ms": 0.1397,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 863,
+              "tid": 1680,
+              "beginQpc": 5570868516027,
+              "endQpc": 5570868524986,
+              "ms": 0.8959,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        },
+        {
+          "serial": 793,
+          "frameMs": 1.71500003,
+          "frameBeginMs": 557086733.9943,
+          "frameEndMs": 557086735.7093,
+          "beginMs": 0.129700065,
+          "renderMs": 0.774699926,
+          "endMs": 0.809300065,
+          "scopes": {
+            "DX12Frame::Begin": 0.122099996,
+            "DX12Frame::End": 0.805599928,
+            "DX12Frame::Present": 0.643099904,
+            "DX12Frame::RetireResources": 9.98973846e-05,
+            "DX12Frame::WaitForFence": 0.000200033188
+          },
+          "intervals": [
+            {
+              "event": "queue-submit",
+              "serial": 793,
+              "tid": 1680,
+              "beginQpc": 5570867349154,
+              "endQpc": 5570867350483,
+              "ms": 0.1329,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            },
+            {
+              "event": "present",
+              "serial": 793,
+              "tid": 1680,
+              "beginQpc": 5570867350658,
+              "endQpc": 5570867357076,
+              "ms": 0.6418,
+              "targetSerial": 0,
+              "valueBegin": 0,
+              "valueEnd": 0
+            }
+          ]
+        }
+      ],
+      "largestFenceWaits": []
+    }
+  ]
+}

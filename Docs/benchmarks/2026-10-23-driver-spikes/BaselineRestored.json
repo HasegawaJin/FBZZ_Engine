@@ -1,0 +1,660 @@
+{
+  "tests": 54,
+  "failures": 0,
+  "disabled": 1,
+  "errors": 0,
+  "random_seed": 1023,
+  "timestamp": "2026-10-23T18:57:12Z",
+  "time": "25.836s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "GraphicsStandaloneTest",
+      "tests": 4,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T18:57:37Z",
+      "time": "1.297s",
+      "testsuite": [
+        {
+          "name": "CubeFacesKeepDepthAcrossRebindsAndClearEachSelectedMip",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 249,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:37Z",
+          "time": "0.328s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "15211879365079191780"
+        },
+        {
+          "name": "GpuProfilerKeepsPhysicalSubmissionAndViewPlanProvenance",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 134,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:37Z",
+          "time": "0.297s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "9140284495681418881"
+        },
+        {
+          "name": "EmbeddedErrorShadersDrawWithoutExternalFilesAndRespectSkinning",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 40,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:37Z",
+          "time": "0.318s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "3770541736910723189"
+        },
+        {
+          "name": "DrawsAndReadsBackWithoutEngine",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsStandaloneTests.cpp",
+          "line": 379,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:38Z",
+          "time": "0.349s",
+          "classname": "GraphicsStandaloneTest",
+          "rng_seed": "6934284081805384849"
+        }
+      ]
+    },
+    {
+      "name": "InstancedMeshTest",
+      "tests": 7,
+      "failures": 0,
+      "disabled": 1,
+      "errors": 0,
+      "timestamp": "2026-10-23T18:57:34Z",
+      "time": "2.784s",
+      "testsuite": [
+        {
+          "name": "GpuCullingMatchesIndividualAndCpuInstancedPixelsAcrossViews",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 185,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:34Z",
+          "time": "0.492s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "2198201032287298755"
+        },
+        {
+          "name": "AssetReplacementWithEqualRevisionDoesNotReuseStaleRows",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 226,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:34Z",
+          "time": "0.449s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "10321774993227621240"
+        },
+        {
+          "name": "UnchangedPlacementsUploadNothingAndOneEditUploadsOneRow",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 203,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:35Z",
+          "time": "0.462s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "13594332406699946947"
+        },
+        {
+          "name": "MaskedDoubleSidedShadowsMatchAcrossLodsAndBackViews",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 193,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:35Z",
+          "time": "0.466s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "10781401807892404121"
+        },
+        {
+          "name": "ShadowAlphaCoverageMatchesStandardGBufferIncludingVertexColorContract",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 215,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:36Z",
+          "time": "0.451s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "16507635317069341416"
+        },
+        {
+          "name": "CameraDistancePaddingSmallObjectAndLayerPoliciesMatchCpuAndGpu",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 232,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:36Z",
+          "time": "0.458s",
+          "classname": "InstancedMeshTest",
+          "rng_seed": "4123897332006694642"
+        },
+        {
+          "name": "DISABLED_MeasureTenThousandInstancesWithNativeProfiler",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\InstancedMeshTests.cpp",
+          "line": 245,
+          "status": "NOTRUN",
+          "result": "SUPPRESSED",
+          "timestamp": "1970-01-01T09:00:00Z",
+          "time": "0s",
+          "classname": "InstancedMeshTest"
+        }
+      ]
+    },
+    {
+      "name": "GraphicsQualityShaderTest",
+      "tests": 38,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T18:57:12Z",
+      "time": "20.088s",
+      "testsuite": [
+        {
+          "name": "TerrainRendersWhenManagersAlternateAndOneResets",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 477,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:12Z",
+          "time": "0.837s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "5854379323757583239"
+        },
+        {
+          "name": "SampledSpatialReconstructionPreservesMaterialNormalAndDepthEdges",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 84,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:13Z",
+          "time": "0.492s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "1671105245594033323"
+        },
+        {
+          "name": "AutoExposureResumesAtCurrentBrightnessAfterSettingsOrPassDisable",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 766,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:14Z",
+          "time": "0.528s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "2306004018484012782"
+        },
+        {
+          "name": "TaaCurrentOutputRemovesRasterJitterEvenWithoutHistory",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 50,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:14Z",
+          "time": "0.497s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "15397414129858490696"
+        },
+        {
+          "name": "EnvironmentSpecularRetainsItsColor",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 117,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:15Z",
+          "time": "0.487s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "3681207902464155359"
+        },
+        {
+          "name": "ReflectionResolveAddsSignedSpecularDeltaAndKeepsAlpha",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 151,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:15Z",
+          "time": "0.492s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "13531196289677368463"
+        },
+        {
+          "name": "ReflectionMissPreservesTransparentCameraBackground",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 164,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:16Z",
+          "time": "0.496s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "8182007611347115079"
+        },
+        {
+          "name": "SampledSpatialReconstructionReusesNeighborRadiance",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 80,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:16Z",
+          "time": "0.488s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "386688290670976452"
+        },
+        {
+          "name": "VisibilityPreservesOpenCageLighting",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 146,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:17Z",
+          "time": "0.495s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "7994128413207626549"
+        },
+        {
+          "name": "SampledTaaAveragesRadianceBeforeToneMapping",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 57,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:17Z",
+          "time": "0.531s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "16099269951525220792"
+        },
+        {
+          "name": "SampledHdrTaaRetainsBrightnessAndFadeAfterAccumulation",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 65,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:18Z",
+          "time": "0.529s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "17322581299775324759"
+        },
+        {
+          "name": "TerrainGbufferRetainsAuthoredRoughnessAndNormalStrength",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 221,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:18Z",
+          "time": "0.522s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "9945091581775927925"
+        },
+        {
+          "name": "OccludedDiffuseDoesNotAcquireConstantAmbientFloor",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 128,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:19Z",
+          "time": "0.497s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "14555854045747225877"
+        },
+        {
+          "name": "SampledTaaStillRejectsDisoccludedAndReactiveHistory",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 44,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:19Z",
+          "time": "0.495s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "17399442283326021769"
+        },
+        {
+          "name": "BrdfBakeAndCustomBlendRemainValidAcrossManagersAndReset",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 802,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:20Z",
+          "time": "0.554s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "4852480639150384717"
+        },
+        {
+          "name": "SampledTaaAccumulatesSpatiallyConstantLightEstimates",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 39,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:20Z",
+          "time": "0.484s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "17732981253329012213"
+        },
+        {
+          "name": "MotionBlurIgnoresOldVelocityUntilTheCurrentViewWritesIt",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 619,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:21Z",
+          "time": "0.497s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "10600483813515578732"
+        },
+        {
+          "name": "TaaIgnoresOldVelocityUntilTheCurrentViewWritesIt",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 590,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:21Z",
+          "time": "0.499s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "5676530893121142395"
+        },
+        {
+          "name": "ForwardSkinnedSurfaceReceivesEnvironmentSpecular",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 536,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:22Z",
+          "time": "0.518s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "11681559256064537724"
+        },
+        {
+          "name": "EntirelyOccludedCageDoesNotLeakSkyFallback",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 142,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:22Z",
+          "time": "0.497s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "15731663971346551295"
+        },
+        {
+          "name": "TaaAccumulatesMatchingDepthWithOpaqueOutput",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 17,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:23Z",
+          "time": "0.502s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "12167176951438117841"
+        },
+        {
+          "name": "TaaAccumulatesObjectMovingInDepthUsingItsPreviousSurface",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 23,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:23Z",
+          "time": "0.494s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "3173319100583113658"
+        },
+        {
+          "name": "TaaStillRejectsDifferentSurfaceWithDepthMotion",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 29,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:24Z",
+          "time": "0.501s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "7862853372713469203"
+        },
+        {
+          "name": "ViewGraphKeepsTaaAndMotionBlurWorkingWhenVelocityIsDisabled",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 648,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:24Z",
+          "time": "0.651s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "15773190364539591225"
+        },
+        {
+          "name": "ViewGraphDeclaresWaterResourcesForTheFirstWaterFrame",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 684,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:25Z",
+          "time": "0.686s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "13394728522888394976"
+        },
+        {
+          "name": "TaaRejectsSkyHistoryOnGeometry",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 13,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:26Z",
+          "time": "0.482s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "17132543275494756172"
+        },
+        {
+          "name": "InFrameTextureUpdatesPreserveDrawOrderAndRetainReleasedStorage",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 91,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:26Z",
+          "time": "0.514s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "8641927049988399407"
+        },
+        {
+          "name": "ClearKeepsItsBoundOwnerAndRecoversAfterThatManagerIsDestroyed",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 857,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:27Z",
+          "time": "0.496s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "13992768764933154347"
+        },
+        {
+          "name": "GBufferGroupsEqualValuesWithoutMutatingInstanceMaterialBuffers",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 336,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:27Z",
+          "time": "0.544s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "8274948905320166749"
+        },
+        {
+          "name": "ParticleReactiveMaskRejectsMostHistory",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 34,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:28Z",
+          "time": "0.527s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "4579054250693843724"
+        },
+        {
+          "name": "TaaRejectsNewlyExposedDepth",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 8,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:28Z",
+          "time": "0.509s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "5137652627317811430"
+        },
+        {
+          "name": "PreparedMaterialKeepsPerInstanceOverridesAndRejectsStaleResourceGenerations",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 263,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:29Z",
+          "time": "0.578s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "5181358099069906600"
+        },
+        {
+          "name": "MovingLaterSubmeshWritesVelocityWhenFirstSlotIsHidden",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 177,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:29Z",
+          "time": "0.509s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "2484741522001507774"
+        },
+        {
+          "name": "TaaResourcesAreLazyRetiredAndRecreatedWithoutOldHistory",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 424,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:30Z",
+          "time": "0.511s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "10652345573084851333"
+        },
+        {
+          "name": "SampledHdrCompositeIsLazyAndSwitchingModesRejectsOldHistory",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityLifetimeTests.cpp",
+          "line": 451,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:30Z",
+          "time": "0.512s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "17157670100793226765"
+        },
+        {
+          "name": "CompilesTerrainReflectionAndProbeProductionShaders",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 283,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:31Z",
+          "time": "0.574s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "3067592077222276754"
+        },
+        {
+          "name": "VisibilitySuppressesBrightProbeBehindThinWall",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 137,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:31Z",
+          "time": "0.513s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "17574719958114349040"
+        },
+        {
+          "name": "SampledHdrTaaRejectsOtherDepthAndLdrHistory",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\GraphicsQualityShaderTests.cpp",
+          "line": 72,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:32Z",
+          "time": "0.511s",
+          "classname": "GraphicsQualityShaderTest",
+          "rng_seed": "9202051567832403788"
+        }
+      ]
+    },
+    {
+      "name": "BufferReadTest",
+      "tests": 4,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T18:57:33Z",
+      "time": "1.34s",
+      "testsuite": [
+        {
+          "name": "CpuUpdatesPublishNewSnapshotsWithoutChangingRecordedReads",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 526,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:33Z",
+          "time": "0.311s",
+          "classname": "BufferReadTest",
+          "rng_seed": "15873810547032872311"
+        },
+        {
+          "name": "StaleIndirectDependenciesRejectTheDispatchBeforeWriting",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 582,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:33Z",
+          "time": "0.311s",
+          "classname": "BufferReadTest",
+          "rng_seed": "1138282013515155788"
+        },
+        {
+          "name": "InputAssemblyBindingsFollowBufferSnapshotsTopologyAndFrameChanges",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 144,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:33Z",
+          "time": "0.367s",
+          "classname": "BufferReadTest",
+          "rng_seed": "10602500271915029161"
+        },
+        {
+          "name": "ConsecutiveGraphicsBindingsKeepEveryIndexAndSurviveFrameAndComputeChanges",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 259,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:34Z",
+          "time": "0.344s",
+          "classname": "BufferReadTest",
+          "rng_seed": "16222333545610219595"
+        }
+      ]
+    },
+    {
+      "name": "SynchronousUploadTest",
+      "tests": 1,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T18:57:32Z",
+      "time": "0.322s",
+      "testsuite": [
+        {
+          "name": "TextureAndBufferWaitsKeepRecordingFrameRetirementPending",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Graphics\\Auto\\BufferReadTests.cpp",
+          "line": 465,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T18:57:32Z",
+          "time": "0.32s",
+          "classname": "SynchronousUploadTest",
+          "rng_seed": "13398133637335666152"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+--- before/Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp
++++ Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp
+@@ -110,6 +110,7 @@
+ {
+     m_lastRootCbv.fill(0);
+     m_rootCbvCacheValid = false;
++    m_lastBindlessAddress = 0;
+     m_lastGraphicsRootSignature = nullptr;
+     m_lastPipelineState = nullptr;
+     m_lastDescriptorHeap = nullptr;
+@@ -532,10 +533,7 @@
+         }
+     }
+ 
+-    /// @name bindless 添字ブロック (b14)
+-    /// @note 移行はシェーダー単位で段階的に進めるため、テーブルと添字を併存させる
+-    /// @note       (どちらも同じリソースを指す)。添字はドローごとに変わるので毎回組み直し、
+-    /// @note       Reset() で全枠を INVALID 埋めして前ドローの値の混入を防ぐ。
++    /// @note 添字は毎 Draw の現在資源から組み直し、未束縛枠は必ず INVALID に戻す。
+     {
+         BindlessIndicesConstants indices;
+         indices.Reset();
+@@ -562,17 +560,26 @@
+                 indices.vertex[1 + i] = bufferBase->GetBindlessSrvIndex();
+         }
+ 
+-        const auto block = m_uploadArena.Allocate(
+-            sizeof(BindlessIndicesConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+-        if (block) {
+-            std::memcpy(block.cpu, &indices, sizeof(indices));
+-            commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam, block.gpu);
+-        } else if (m_invalidBindlessAddress) {
+-            /// @note アリーナ枯渇時のフォールバック。ゼロ埋めの m_nullConstantAddress は使わない
+-            /// @note       (添字 0 はヒープ先頭の有効なディスクリプタを指すため、無関係なリソースを読んでしまう)。
+-            /// @note       全枠 INVALID の専用ブロックを差せばシェーダー側の有効判定で弾ける。
+-            commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam,
+-                                                        m_invalidBindlessAddress);
++        /// @note ハンドルではなく現在の全添字を比較する。資源の世代変更・未束縛化・Raw SRV の優先を反映する。
++        /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-a-root-signature Using a Root Signature: binding persistence.
++        const bool unchanged = m_lastBindlessAddress != 0
++            && indices.pixel == m_lastBindlessIndices.pixel
++            && indices.vertex == m_lastBindlessIndices.vertex
++            && indices.uav == m_lastBindlessIndices.uav;
++        if (!unchanged) {
++            const auto block = m_uploadArena.Allocate(
++                sizeof(BindlessIndicesConstants), D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
++            m_lastBindlessAddress = 0;
++            if (block) {
++                std::memcpy(block.cpu, &indices, sizeof(indices));
++                commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam, block.gpu);
++                m_lastBindlessIndices = indices;
++                m_lastBindlessAddress = block.gpu;
++            } else if (m_invalidBindlessAddress) {
++                /// @note 添字 0 は有効なので、枯渇時は全枠 INVALID の専用領域を束縛し再利用を解除する。
++                commands->SetGraphicsRootConstantBufferView(kBindlessIndicesRootParam,
++                                                            m_invalidBindlessAddress);
++            }
+         }
+     }
+ 
+--- before/Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.hpp
++++ Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.hpp
+@@ -6,6 +6,7 @@
+ 
+ #include <Graphics/Renderer/IRenderer.hpp>
+ #include <Graphics/Renderer/GpuProfilerLedger.hpp>
++#include <Graphics/Renderer/BindlessIndices.hpp>
+ #include <unordered_map>
+ #include <unordered_set>
+ #include <vector>
+@@ -162,10 +163,10 @@
+     /// @note       有効なディスクリプタと解釈されてしまうため、専用に持つ。
+     D3D12_GPU_VIRTUAL_ADDRESS m_invalidBindlessAddress = 0;
+ 
+-    /// @note かつてここに «ピクセル/頂点 SRV テーブルのフレーム内キャッシュ» があった。
+-    /// @note       bindless 移行で 1 ドローあたりのディスクリプタコピーが無くなり、
+-    /// @note       «同じ束縛なら再利用する» という最適化そのものが不要になったため撤去した。
+-    /// @note       @see Docs/design/bindless.md
++    /// @note 同じコマンドリスト内の連続 Draw だけ、全添字が一致する不変の b14 転送領域を再利用する。
++    /// @note VA はアリーナの現在フレームだけ有効。ルート束縛の無効化と同時に破棄する。
++    BindlessIndicesConstants m_lastBindlessIndices{};
++    D3D12_GPU_VIRTUAL_ADDRESS m_lastBindlessAddress = 0;
+ 
+     /// @note 直前に root スロットへ束縛した CBV の GPU VA。変化したスロットだけ再設定するために持つ。
+     /// @note 毎 Draw 全 14 スロットを null 埋め→実 CB で上書きすると最大 28 回の

@@ -1,0 +1,328 @@
+{
+  "aggregation": "median of three process medians; median of three process p95 values",
+  "samplesPerProcessPerCase": 720,
+  "processesPerVariant": 3,
+  "validation": "all benchmark cases passed; candidate PhysicsAuto 596 passed in normal and LTO builds",
+  "results": [
+    {
+      "name": "broadphase/256/unchanged",
+      "Baseline": {
+        "median": 14.9,
+        "p95": 19.2,
+        "runMedianMin": 14.7,
+        "runMedianMax": 14.9
+      },
+      "Candidate": {
+        "median": 3.3,
+        "p95": 3.4,
+        "runMedianMin": 3.2,
+        "runMedianMax": 3.4
+      },
+      "changePercent": -77.85234899328859
+    },
+    {
+      "name": "broadphase/256/one",
+      "Baseline": {
+        "median": 14.9,
+        "p95": 15.9,
+        "runMedianMin": 14.7,
+        "runMedianMax": 14.9
+      },
+      "Candidate": {
+        "median": 3.5,
+        "p95": 3.6,
+        "runMedianMin": 3.4,
+        "runMedianMax": 3.6
+      },
+      "changePercent": -76.51006711409396
+    },
+    {
+      "name": "broadphase/256/one-percent",
+      "Baseline": {
+        "median": 14.9,
+        "p95": 15.1,
+        "runMedianMin": 14.7,
+        "runMedianMax": 15.4
+      },
+      "Candidate": {
+        "median": 3.5,
+        "p95": 3.6,
+        "runMedianMin": 3.4,
+        "runMedianMax": 3.5
+      },
+      "changePercent": -76.51006711409396
+    },
+    {
+      "name": "broadphase/256/all",
+      "Baseline": {
+        "median": 14.9,
+        "p95": 17.3,
+        "runMedianMin": 14.7,
+        "runMedianMax": 15.5
+      },
+      "Candidate": {
+        "median": 5.9,
+        "p95": 5.9,
+        "runMedianMin": 5.6,
+        "runMedianMax": 5.9
+      },
+      "changePercent": -60.40268456375839
+    },
+    {
+      "name": "broadphase/256/shuffle",
+      "Baseline": {
+        "median": 18.3,
+        "p95": 19.1,
+        "runMedianMin": 17.6,
+        "runMedianMax": 18.4
+      },
+      "Candidate": {
+        "median": 18.6,
+        "p95": 20.3,
+        "runMedianMin": 18.0,
+        "runMedianMax": 18.9
+      },
+      "changePercent": 1.6393442622950838
+    },
+    {
+      "name": "broadphase/256/churn",
+      "Baseline": {
+        "median": 19.6,
+        "p95": 20.2,
+        "runMedianMin": 18.8,
+        "runMedianMax": 19.6
+      },
+      "Candidate": {
+        "median": 19.7,
+        "p95": 20.9,
+        "runMedianMin": 18.8,
+        "runMedianMax": 19.9
+      },
+      "changePercent": 0.5102040816326481
+    },
+    {
+      "name": "broadphase/256/static",
+      "Baseline": {
+        "median": 14.6,
+        "p95": 15.0,
+        "runMedianMin": 14.1,
+        "runMedianMax": 14.7
+      },
+      "Candidate": {
+        "median": 2.8,
+        "p95": 2.9,
+        "runMedianMin": 2.8,
+        "runMedianMax": 2.9
+      },
+      "changePercent": -80.82191780821918
+    },
+    {
+      "name": "broadphase/256/sleep",
+      "Baseline": {
+        "median": 14.8,
+        "p95": 16.4,
+        "runMedianMin": 14.3,
+        "runMedianMax": 15.1
+      },
+      "Candidate": {
+        "median": 3.0,
+        "p95": 3.1,
+        "runMedianMin": 2.9,
+        "runMedianMax": 3.1
+      },
+      "changePercent": -79.72972972972974
+    },
+    {
+      "name": "broadphase/256/cold",
+      "Baseline": {
+        "median": 15.2,
+        "p95": 17.5,
+        "runMedianMin": 14.7,
+        "runMedianMax": 15.2
+      },
+      "Candidate": {
+        "median": 17.1,
+        "p95": 27.9,
+        "runMedianMin": 16.7,
+        "runMedianMax": 17.4
+      },
+      "changePercent": 12.500000000000021
+    },
+    {
+      "name": "broadphase/5000/unchanged",
+      "Baseline": {
+        "median": 1017.7,
+        "p95": 1271.8,
+        "runMedianMin": 1005.4,
+        "runMedianMax": 1034.7
+      },
+      "Candidate": {
+        "median": 247.6,
+        "p95": 324.7,
+        "runMedianMin": 245.0,
+        "runMedianMax": 249.8
+      },
+      "changePercent": -75.67062985162622
+    },
+    {
+      "name": "broadphase/5000/one",
+      "Baseline": {
+        "median": 1018.6,
+        "p95": 1286.8,
+        "runMedianMin": 1005.5,
+        "runMedianMax": 1081.1
+      },
+      "Candidate": {
+        "median": 249.0,
+        "p95": 315.2,
+        "runMedianMin": 244.2,
+        "runMedianMax": 252.5
+      },
+      "changePercent": -75.55468289809542
+    },
+    {
+      "name": "broadphase/5000/one-percent",
+      "Baseline": {
+        "median": 1015.0,
+        "p95": 1276.8,
+        "runMedianMin": 1014.5,
+        "runMedianMax": 1080.1
+      },
+      "Candidate": {
+        "median": 250.4,
+        "p95": 351.0,
+        "runMedianMin": 247.2,
+        "runMedianMax": 251.5
+      },
+      "changePercent": -75.33004926108374
+    },
+    {
+      "name": "broadphase/5000/all",
+      "Baseline": {
+        "median": 1029.4,
+        "p95": 1306.5,
+        "runMedianMin": 1015.6,
+        "runMedianMax": 1086.3
+      },
+      "Candidate": {
+        "median": 377.0,
+        "p95": 515.5,
+        "runMedianMin": 352.7,
+        "runMedianMax": 377.3
+      },
+      "changePercent": -63.37672430542063
+    },
+    {
+      "name": "broadphase/5000/shuffle",
+      "Baseline": {
+        "median": 1038.7,
+        "p95": 1288.6,
+        "runMedianMin": 1010.4,
+        "runMedianMax": 1078.2
+      },
+      "Candidate": {
+        "median": 1059.9,
+        "p95": 1332.5,
+        "runMedianMin": 1038.3,
+        "runMedianMax": 1101.2
+      },
+      "changePercent": 2.041012804467135
+    },
+    {
+      "name": "broadphase/5000/churn",
+      "Baseline": {
+        "median": 1011.8,
+        "p95": 1275.5,
+        "runMedianMin": 1008.0,
+        "runMedianMax": 1031.1
+      },
+      "Candidate": {
+        "median": 1037.4,
+        "p95": 1262.3,
+        "runMedianMin": 1033.8,
+        "runMedianMax": 1051.1
+      },
+      "changePercent": 2.5301442972919697
+    },
+    {
+      "name": "broadphase/5000/static",
+      "Baseline": {
+        "median": 916.6,
+        "p95": 1147.4,
+        "runMedianMin": 909.8,
+        "runMedianMax": 918.8
+      },
+      "Candidate": {
+        "median": 158.0,
+        "p95": 196.9,
+        "runMedianMin": 156.3,
+        "runMedianMax": 159.6
+      },
+      "changePercent": -82.76238271874318
+    },
+    {
+      "name": "broadphase/5000/sleep",
+      "Baseline": {
+        "median": 919.8,
+        "p95": 1174.6,
+        "runMedianMin": 919.2,
+        "runMedianMax": 942.1
+      },
+      "Candidate": {
+        "median": 161.6,
+        "p95": 205.7,
+        "runMedianMin": 161.0,
+        "runMedianMax": 164.9
+      },
+      "changePercent": -82.43096325288106
+    },
+    {
+      "name": "broadphase/5000/cold",
+      "Baseline": {
+        "median": 1073.6,
+        "p95": 1390.8,
+        "runMedianMin": 1032.7,
+        "runMedianMax": 1086.8
+      },
+      "Candidate": {
+        "median": 1057.7,
+        "p95": 1310.9,
+        "runMedianMin": 1049.5,
+        "runMedianMax": 1058.4
+      },
+      "changePercent": -1.480998509687026
+    },
+    {
+      "name": "world-sync-step/256/free-motion",
+      "Baseline": {
+        "median": 24.5,
+        "p95": 31.3,
+        "runMedianMin": 24.2,
+        "runMedianMax": 28.9
+      },
+      "Candidate": {
+        "median": 14.9,
+        "p95": 16.1,
+        "runMedianMin": 14.5,
+        "runMedianMax": 14.9
+      },
+      "changePercent": -39.183673469387756
+    },
+    {
+      "name": "world-sync-step/1024/free-motion",
+      "Baseline": {
+        "median": 143.9,
+        "p95": 199.8,
+        "runMedianMin": 143.8,
+        "runMedianMax": 152.9
+      },
+      "Candidate": {
+        "median": 60.3,
+        "p95": 77.6,
+        "runMedianMin": 59.0,
+        "runMedianMax": 60.7
+      },
+      "changePercent": -58.0958999305073
+    }
+  ]
+}

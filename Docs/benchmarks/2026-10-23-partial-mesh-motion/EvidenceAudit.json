@@ -1,0 +1,17 @@
+{
+  "changedNativeInputs": [
+    "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp"
+  ],
+  "unchangedNativeInputs": 1357,
+  "harnessSourceUnchanged": true,
+  "onlyEngineDllChanged": true,
+  "baselineDllsMatchOriginal": true,
+  "exportsUnchanged": true,
+  "negativeTests": 4,
+  "restoredTests": 4,
+  "legacyComments": 0,
+  "sourceHashes": {
+    "Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp": "745c0297a77d17af682e90b0b64bbe47482ee8a5d07922755926d9b20d2d8947",
+    "Projects/Tests/Engine/Auto/ShaderReloadTests.cpp": "f72b437aa9405f61ad47d12722c823144aaa2e8501bda7e3dbd0448b3a61ff8c"
+  }
+}

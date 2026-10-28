@@ -1,0 +1,9 @@
+{
+  "changedFromPreviousMap": [],
+  "privateInputs": {
+    "Projects/Graphics/src/Passes/Geometry/ForwardPasses.cpp": "c237b8a5ccf367606f769573413fd6ab41bf7b964df30755d6b3fb6e2498b088",
+    "Projects/Graphics/src/Passes/Geometry/RenderSceneDraw.cpp": "5e81abf06821d9103b5d2c1fa2a6d55638a7427038574d351d1ff39433c088b5",
+    "Projects/Graphics/src/Passes/Geometry/RenderScenePassHelpers.hpp": "c7ceb1a1d7a0be5d59ef5c4691e014123a9c7cf57fb398410ec47aecdf69aa32"
+  },
+  "exportsUnchanged": true
+}

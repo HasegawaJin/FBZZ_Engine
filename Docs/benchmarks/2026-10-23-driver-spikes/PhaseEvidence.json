@@ -1,0 +1,600 @@
+[
+  {
+    "run": "r0.out",
+    "tailFrames": [
+      {
+        "serial": 896,
+        "frameMs": 5.3132,
+        "renderMs": 1.04039991,
+        "beginMs": 3.82550001,
+        "endMs": 0.446799994,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.5261,
+          "blocked": 3.7697000000000003,
+          "ready": 0.0174
+        }
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "renderMs": 0.686499953,
+        "beginMs": 0.0169999599,
+        "endMs": 1.977,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.6513,
+          "blocked": 0.9588000000000001,
+          "ready": 0.07110000000000001
+        }
+      },
+      {
+        "serial": 807,
+        "frameMs": 1.45050001,
+        "renderMs": 0.922000051,
+        "beginMs": 0.0377999544,
+        "endMs": 0.49000001,
+        "waitCpuMs": 0.000200033188,
+        "schedulerMs": {
+          "scheduled": 1.3397999999999999,
+          "blocked": 0.1004,
+          "ready": 0.0103
+        }
+      },
+      {
+        "serial": 897,
+        "frameMs": 1.37389994,
+        "renderMs": 0.953400016,
+        "beginMs": 0.0328000784,
+        "endMs": 0.386799932,
+        "waitCpuMs": 9.98973846e-05,
+        "schedulerMs": {
+          "scheduled": 1.3329,
+          "blocked": 0.0277,
+          "ready": 0.0133
+        }
+      },
+      {
+        "serial": 910,
+        "frameMs": 1.33280003,
+        "renderMs": 0.715900064,
+        "beginMs": 0.0164999962,
+        "endMs": 0.599900007,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.0176,
+          "blocked": 0.3057,
+          "ready": 0.0095
+        }
+      },
+      {
+        "serial": 673,
+        "frameMs": 1.27469993,
+        "renderMs": 0.816500068,
+        "beginMs": 0.0207999945,
+        "endMs": 0.4368999,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.1985000000000001,
+          "blocked": 0.0569,
+          "ready": 0.019299999999999998
+        }
+      }
+    ],
+    "driverInclusiveSamples": 123,
+    "endFrameDriverSamples": 86,
+    "submitDriverSamples": 26,
+    "blocking": [
+      {
+        "serial": 896,
+        "frameMs": 5.3132,
+        "waitReason": 6,
+        "blockedMs": 3.7562,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260578500,
+        "endQpc": 5522260616062,
+        "phase": "BeginFrame/earlier"
+      },
+      {
+        "serial": 910,
+        "frameMs": 1.33280003,
+        "waitReason": 27,
+        "blockedMs": 0.3057,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260771732,
+        "endQpc": 5522260774789,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 728,
+        "frameMs": 1.18480003,
+        "waitReason": 27,
+        "blockedMs": 0.2171,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522258947461,
+        "endQpc": 5522258949632,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 646,
+        "frameMs": 1.1638999,
+        "waitReason": 27,
+        "blockedMs": 0.1943,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522258147840,
+        "endQpc": 5522258149783,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 873,
+        "frameMs": 1.18270004,
+        "waitReason": 27,
+        "blockedMs": 0.172,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260346671,
+        "endQpc": 5522260348391,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "waitReason": 0,
+        "blockedMs": 0.1493,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260559963,
+        "endQpc": 5522260561456,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 1060,
+        "frameMs": 1.10320008,
+        "waitReason": 27,
+        "blockedMs": 0.1415,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522262229894,
+        "endQpc": 5522262231309,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "waitReason": 0,
+        "blockedMs": 0.1238,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260568415,
+        "endQpc": 5522260569653,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "waitReason": 0,
+        "blockedMs": 0.116,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260570736,
+        "endQpc": 5522260571896,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 1083,
+        "frameMs": 1.06439996,
+        "waitReason": 27,
+        "blockedMs": 0.1105,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522262460311,
+        "endQpc": 5522262461416,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "waitReason": 0,
+        "blockedMs": 0.1053,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260574626,
+        "endQpc": 5522260575679,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 957,
+        "frameMs": 1.11939991,
+        "waitReason": 27,
+        "blockedMs": 0.1029,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522261233478,
+        "endQpc": 5522261234507,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "waitReason": 0,
+        "blockedMs": 0.102,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260566893,
+        "endQpc": 5522260567913,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 807,
+        "frameMs": 1.45050001,
+        "waitReason": 27,
+        "blockedMs": 0.1004,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522259712287,
+        "endQpc": 5522259713291,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "waitReason": 0,
+        "blockedMs": 0.0913,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260576297,
+        "endQpc": 5522260577210,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "waitReason": 0,
+        "blockedMs": 0.0911,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260572879,
+        "endQpc": 5522260573790,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "waitReason": 0,
+        "blockedMs": 0.0882,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260562457,
+        "endQpc": 5522260563339,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 1002,
+        "frameMs": 1.12159991,
+        "waitReason": 27,
+        "blockedMs": 0.0837,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522261669303,
+        "endQpc": 5522261670140,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 895,
+        "frameMs": 2.68119991,
+        "waitReason": 0,
+        "blockedMs": 0.0811,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260564220,
+        "endQpc": 5522260565031,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 1194,
+        "frameMs": 1.01689994,
+        "waitReason": 27,
+        "blockedMs": 0.0747,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522263519587,
+        "endQpc": 5522263520334,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 1071,
+        "frameMs": 1.05669999,
+        "waitReason": 27,
+        "blockedMs": 0.0742,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522262339955,
+        "endQpc": 5522262340697,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 869,
+        "frameMs": 1.02250004,
+        "waitReason": 27,
+        "blockedMs": 0.0721,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522260307403,
+        "endQpc": 5522260308124,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 751,
+        "frameMs": 1.07140005,
+        "waitReason": 27,
+        "blockedMs": 0.0605,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522259170798,
+        "endQpc": 5522259171403,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 1186,
+        "frameMs": 1.01339996,
+        "waitReason": 27,
+        "blockedMs": 0.0595,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522263442843,
+        "endQpc": 5522263443438,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 776,
+        "frameMs": 1.02130008,
+        "waitReason": 27,
+        "blockedMs": 0.059,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522259411579,
+        "endQpc": 5522259412169,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 1102,
+        "frameMs": 0.988200068,
+        "waitReason": 27,
+        "blockedMs": 0.0584,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522262647821,
+        "endQpc": 5522262648405,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 1096,
+        "frameMs": 1.04589999,
+        "waitReason": 27,
+        "blockedMs": 0.0552,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522262589671,
+        "endQpc": 5522262590223,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 673,
+        "frameMs": 1.27469993,
+        "waitReason": 27,
+        "blockedMs": 0.0525,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522258413312,
+        "endQpc": 5522258413837,
+        "phase": "EndFrame"
+      }
+    ]
+  },
+  {
+    "run": "r1.out",
+    "tailFrames": [
+      {
+        "serial": 1088,
+        "frameMs": 1.34249997,
+        "renderMs": 1.05569994,
+        "beginMs": 0.0134000778,
+        "endMs": 0.272899985,
+        "waitCpuMs": 9.98973846e-05,
+        "schedulerMs": {
+          "scheduled": 1.2669000000000001,
+          "ready": 0.0756
+        }
+      },
+      {
+        "serial": 629,
+        "frameMs": 1.2565999,
+        "renderMs": 0.661300063,
+        "beginMs": 0.0140999556,
+        "endMs": 0.580799937,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.2566
+        }
+      },
+      {
+        "serial": 678,
+        "frameMs": 1.23049998,
+        "renderMs": 0.973500013,
+        "beginMs": 0.0144000053,
+        "endMs": 0.242199898,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.0082,
+          "ready": 0.2223
+        }
+      },
+      {
+        "serial": 867,
+        "frameMs": 1.22829998,
+        "renderMs": 0.965499997,
+        "beginMs": 0.0146000385,
+        "endMs": 0.247799993,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.1157,
+          "ready": 0.1126
+        }
+      },
+      {
+        "serial": 1104,
+        "frameMs": 1.21310008,
+        "renderMs": 0.95539999,
+        "beginMs": 0.0144999027,
+        "endMs": 0.2427001,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.0925,
+          "ready": 0.1206
+        }
+      },
+      {
+        "serial": 815,
+        "frameMs": 1.1925,
+        "renderMs": 0.852900028,
+        "beginMs": 0.0985000134,
+        "endMs": 0.24059999,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.1873,
+          "ready": 0.0052
+        }
+      }
+    ],
+    "driverInclusiveSamples": 121,
+    "endFrameDriverSamples": 68,
+    "submitDriverSamples": 34,
+    "blocking": []
+  },
+  {
+    "run": "r2.out",
+    "tailFrames": [
+      {
+        "serial": 849,
+        "frameMs": 1.61669993,
+        "renderMs": 0.724300027,
+        "beginMs": 0.0152000189,
+        "endMs": 0.876699924,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.2768,
+          "blocked": 0.322,
+          "ready": 0.0179
+        }
+      },
+      {
+        "serial": 651,
+        "frameMs": 1.42999995,
+        "renderMs": 0.85710001,
+        "beginMs": 0.016100049,
+        "endMs": 0.556299925,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.43
+        }
+      },
+      {
+        "serial": 720,
+        "frameMs": 1.29610002,
+        "renderMs": 0.986500025,
+        "beginMs": 0.0163999796,
+        "endMs": 0.292700052,
+        "waitCpuMs": 0.000200033188,
+        "schedulerMs": {
+          "scheduled": 1.2961
+        }
+      },
+      {
+        "serial": 631,
+        "frameMs": 1.25919998,
+        "renderMs": 0.985599995,
+        "beginMs": 0.0147000551,
+        "endMs": 0.258399963,
+        "waitCpuMs": 0.000100016594,
+        "schedulerMs": {
+          "scheduled": 1.2592
+        }
+      },
+      {
+        "serial": 767,
+        "frameMs": 1.25440001,
+        "renderMs": 0.973799944,
+        "beginMs": 0.0249000788,
+        "endMs": 0.255100012,
+        "waitCpuMs": 0.000199913979,
+        "schedulerMs": {
+          "scheduled": 1.2544
+        }
+      },
+      {
+        "serial": 637,
+        "frameMs": 1.24599993,
+        "renderMs": 0.841300011,
+        "beginMs": 0.0170999765,
+        "endMs": 0.386999965,
+        "waitCpuMs": 0.000200033188,
+        "schedulerMs": {
+          "scheduled": 1.246
+        }
+      }
+    ],
+    "driverInclusiveSamples": 131,
+    "endFrameDriverSamples": 75,
+    "submitDriverSamples": 23,
+    "blocking": [
+      {
+        "serial": 849,
+        "frameMs": 1.61669993,
+        "waitReason": 0,
+        "blockedMs": 0.1552,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522328735645,
+        "endQpc": 5522328737197,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 849,
+        "frameMs": 1.61669993,
+        "waitReason": 0,
+        "blockedMs": 0.1024,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522328739501,
+        "endQpc": 5522328740525,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 1194,
+        "frameMs": 1.06659997,
+        "waitReason": 27,
+        "blockedMs": 0.1019,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522331947509,
+        "endQpc": 5522331948528,
+        "phase": "EndFrame"
+      },
+      {
+        "serial": 849,
+        "frameMs": 1.61669993,
+        "waitReason": 0,
+        "blockedMs": 0.0644,
+        "stack": [],
+        "ips": [],
+        "beginQpc": 5522328738253,
+        "endQpc": 5522328738897,
+        "phase": "EndFrame"
+      }
+    ]
+  }
+]

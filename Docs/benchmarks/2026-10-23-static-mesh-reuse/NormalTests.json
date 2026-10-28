@@ -1,0 +1,639 @@
+{
+  "tests": 53,
+  "failures": 0,
+  "disabled": 0,
+  "errors": 0,
+  "random_seed": 1023,
+  "timestamp": "2026-10-23T11:57:36Z",
+  "time": "0.167s",
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "RenderSceneExtractorTest",
+      "tests": 25,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T11:57:36Z",
+      "time": "0.007s",
+      "testsuite": [
+        {
+          "name": "MaterialSlotsStayIndependentAndHiddenSlotsRemainAddressable",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 754,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "9947809761189707218"
+        },
+        {
+          "name": "NormalExtractionSkipsUnresolvedRayLodDiagnosticsAndKeepsRasterGeometry",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 678,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "5593976705112904185"
+        },
+        {
+          "name": "DiagnosesUnresolvedCanonicalLodInsteadOfPublishingAnEmptyShape",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 659,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "14568684343388453889"
+        },
+        {
+          "name": "WarmRendererIndexKeepsCurrentValuesAndOldGeometrySnapshotsIndependent",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 503,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "709554002610325121"
+        },
+        {
+          "name": "PreservesSceneOrderForLateRendererRegistrationAndMixedRenderersAmongBones",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 282,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "9272389842799179892"
+        },
+        {
+          "name": "RejectsRendererMembershipInMultipleLodGroups",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 647,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "2190509159945615488"
+        },
+        {
+          "name": "RefreshesRendererMembershipAndHierarchyActivityWithinTheSameFrame",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 333,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "1485652707407868589"
+        },
+        {
+          "name": "DenseGeometryKeepsChunkEdgesSharedMeshEditsAndSnapshotOwnership",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1615,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "11190230803774318828"
+        },
+        {
+          "name": "KeepsOffscreenAndOtherLayerCandidatesButRejectsInactiveHierarchy",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 265,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "15549783970734059975"
+        },
+        {
+          "name": "SkinnedSubmeshBoundsKeepRendererScaleAndAnimatorOwnerSphereIndependent",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 561,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "18310065435099663473"
+        },
+        {
+          "name": "SceneMoveDoesNotReuseAnotherScenesRenderIdentity",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 784,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "9245391829939358430"
+        },
+        {
+          "name": "SceneGenerationIsStableAcrossViewsAndChangesBeforeEntityReuse",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 770,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "16205313560404468929"
+        },
+        {
+          "name": "ResolvesLodGuidForMembershipWithoutChangingReferences",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 437,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "6284370822278350028"
+        },
+        {
+          "name": "StaticBoundsUseCurrentRotatedNegativeNonuniformScaleAcrossViews",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 535,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "8565266634548213088"
+        },
+        {
+          "name": "SkinnedTextureQualityUsesAnimatedBoundsInsteadOfBindPose",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 464,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "13758287452473456122"
+        },
+        {
+          "name": "PreviousWorldAdvancesOnceAcrossViewsAndResetsAfterGap",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 728,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "6052180955768845284"
+        },
+        {
+          "name": "ReferencePosePrecedesIdentityFallbackWithoutAnimator",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 717,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "12824641922016684171"
+        },
+        {
+          "name": "SparseCameraQueriesPreserveScenePriorityAndObserveSameFrameEdits",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 227,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "1537731215291132459"
+        },
+        {
+          "name": "SelectsCanonicalLodZeroWithoutFilteringRasterHiddenRenderers",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 405,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "10630981442471780648"
+        },
+        {
+          "name": "InitialFrameDoesNotTreatUninitializedHistoryAsPreviousFrame",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 743,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "15996175965206230249"
+        },
+        {
+          "name": "LocalSlotsResolveReorderedSubmeshesAndMorphInputs",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 610,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "18418980061732815020"
+        },
+        {
+          "name": "CopiesWorldBoundsAndHandlesWithoutOwningTheSourceMesh",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 482,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "6902070474441131320"
+        },
+        {
+          "name": "ParentAnimatorWinsOverReferencePoseAndPreservesPreviousPalette",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 699,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "6915362985794565085"
+        },
+        {
+          "name": "PreservesOrderAcrossDestroyCallbacksCompactionAndEntityReuse",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 369,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.001s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "13841709756743764064"
+        },
+        {
+          "name": "DeformedOutputRequiresCurrentFrameAndMatchingModelIncludingMorph",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 627,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "RenderSceneExtractorTest",
+          "rng_seed": "17039318702604277404"
+        }
+      ]
+    },
+    {
+      "name": "RenderSceneExtractorMaterialTest",
+      "tests": 15,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T11:57:36Z",
+      "time": "0.121s",
+      "testsuite": [
+        {
+          "name": "KeepsSharedPosesAliveAfterCacheRetirementAndSceneGenerationChanges",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1257,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.018s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "12270549046719128719"
+        },
+        {
+          "name": "FullViewsRecheckMetadataAndSlotEditsWithoutChangingRetainedSnapshots",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 953,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.015s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "5745636875554838723"
+        },
+        {
+          "name": "SharesPosesAcrossViewsWhileKeepingSelectionAndMaterialsIndependent",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 995,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.002s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "2692365014255702552"
+        },
+        {
+          "name": "FullExtractionDefersItemCapabilitiesUntilMaterialSynchronization",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 894,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.011s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "10475729228357813891"
+        },
+        {
+          "name": "MeshNotificationsInvalidateSameFrameGeometryWithoutMutatingPublishedViews",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1103,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.002s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "1534843506377733130"
+        },
+        {
+          "name": "TypedEnvironmentCandidatesKeepScenePrecedenceAndRefreshWithinOneFrame",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1319,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.002s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "16640423885081529036"
+        },
+        {
+          "name": "CompactFrameGeometryPreservesStaticAndSkinnedInputsAcrossViews",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1020,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.003s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "1998929210560253852"
+        },
+        {
+          "name": "DemandDiagnosticCandidatePreservesMaskRejectedItemsAndMutableSlots",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1507,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.012s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "11398065954069632986"
+        },
+        {
+          "name": "RechecksChangedAndRemovedShaderMetadataWithoutAdvancingTheRenderFrame",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 841,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.012s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "9593278046042322346"
+        },
+        {
+          "name": "CompactFrameGeometryRebuildsMovedBoundsAndRendererMembershipEveryFrame",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1128,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.002s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "491839994183763766"
+        },
+        {
+          "name": "CompactCachedItemsRetainOffCameraShadowProbeAndRayDemand",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1181,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.002s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "14273159032752218536"
+        },
+        {
+          "name": "IndexedMasksRetainBothRendererKindsAndRespectEachViewsLayerAndChildren",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1224,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.002s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "5805493923560052437"
+        },
+        {
+          "name": "ResolvesEachShaderOnceWhilePreservingIndependentMaterialOverrides",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 798,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.025s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "12431879899443445618"
+        },
+        {
+          "name": "EmptyEffectExtractionObservesComponentsAddedAndRemovedWithinTheSameFrame",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1279,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.002s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "8891482176837925968"
+        },
+        {
+          "name": "ManagedMeshWritesInvalidateSharedViewsWithoutRebuildingUnchangedMath",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1071,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.002s",
+          "classname": "RenderSceneExtractorMaterialTest",
+          "rng_seed": "8292688019054426330"
+        }
+      ]
+    },
+    {
+      "name": "GuidMeshResolutionTest",
+      "tests": 3,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T11:57:36Z",
+      "time": "0.035s",
+      "testsuite": [
+        {
+          "name": "RepeatedGuidLoadsObserveExplicitUnloadAndCurrentModelContents",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1578,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.018s",
+          "classname": "GuidMeshResolutionTest",
+          "rng_seed": "239064048412305707"
+        },
+        {
+          "name": "ProjectRetirementDoesNotReviveCachedModelHandles",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1605,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.009s",
+          "classname": "GuidMeshResolutionTest",
+          "rng_seed": "12734144767136956742"
+        },
+        {
+          "name": "StableGuidFollowsIndexMovesAndOldPathHints",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "line": 1592,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0.006s",
+          "classname": "GuidMeshResolutionTest",
+          "rng_seed": "79330994000510314"
+        }
+      ]
+    },
+    {
+      "name": "StaticMeshRenderReuseTest",
+      "tests": 10,
+      "failures": 0,
+      "disabled": 0,
+      "errors": 0,
+      "timestamp": "2026-10-23T11:57:36Z",
+      "time": "0.002s",
+      "testsuite": [
+        {
+          "name": "LeavesColdScenesOnTheOriginalPathBeforeCreatingReusableValues",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderMotionTests.cpp",
+          "line": 33,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "6730088183745877248"
+        },
+        {
+          "name": "SeparatesComponentEntityAndSceneLifetimes",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "line": 106,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "5133413522151377581"
+        },
+        {
+          "name": "ReusesUnchangedGeometryAndRebuildsOnlyChangedInputs",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "line": 8,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "12232989010107663968"
+        },
+        {
+          "name": "RechecksVolatileScenesWithinABoundedNumberOfBuildsAfterMotionStops",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderMotionTests.cpp",
+          "line": 48,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "10224224190817456116"
+        },
+        {
+          "name": "RevalidatesAfterBoundedSceneEvictionAndRendererReordering",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "line": 154,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "4890463221882291145"
+        },
+        {
+          "name": "ObservesParentMotionReparentingAndHierarchyActivation",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "line": 129,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "15666248566783869256"
+        },
+        {
+          "name": "RebuildsRotatedBoundsAndSeparatesSkinnedMeshInputs",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "line": 69,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "7005450022140758305"
+        },
+        {
+          "name": "AdvancesPreviousWorldOnReuseAndResetsAfterMissingFrames",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "line": 87,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "4312100627237331576"
+        },
+        {
+          "name": "ObservesRawPoseMeshAndPresentationWritesWithoutNotifications",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "line": 33,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "1028945430525042208"
+        },
+        {
+          "name": "KeepsMovingGeometryCurrentAndReentersReuseAfterMotionStops",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderMotionTests.cpp",
+          "line": 8,
+          "status": "RUN",
+          "result": "COMPLETED",
+          "timestamp": "2026-10-23T11:57:36Z",
+          "time": "0s",
+          "classname": "StaticMeshRenderReuseTest",
+          "rng_seed": "3985405569188513767"
+        }
+      ]
+    }
+  ]
+}

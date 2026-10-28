@@ -1,0 +1,6056 @@
+{
+  "state": {
+    "startedUtc": "2026-10-23T12:01:54.7583119Z",
+    "finishedUtc": "2026-10-23T12:02:37.2237610Z",
+    "phase": "complete",
+    "elevated": true,
+    "traceStarted": true,
+    "traceStopped": true,
+    "startExit": 0,
+    "stopExit": 0,
+    "failure": null,
+    "runs": [
+      {
+        "run": 0,
+        "pid": 45856,
+        "exit": 0
+      },
+      {
+        "run": 1,
+        "pid": 45544,
+        "exit": 0
+      },
+      {
+        "run": 2,
+        "pid": 61312,
+        "exit": 0
+      },
+      {
+        "run": 3,
+        "pid": 56932,
+        "exit": 0
+      }
+    ]
+  },
+  "metadata": {
+    "header": {
+      "ReservedFlags": 1,
+      "PerfFreq": 10000000,
+      "EventsLost": 0,
+      "BuffersLost": 0,
+      "PointerSize": 8,
+      "StartTime": 134372305151147124,
+      "EndTime": 134372305523130203,
+      "BootTime": 134366692995000000
+    },
+    "loss": {
+      "events": 0,
+      "buffers": 0
+    },
+    "eventsRead": 8879774,
+    "counts": {
+      "allEvents": 8879774
+    },
+    "firstEventQpc": 5612452280076,
+    "schemas": [
+      {
+        "schema": [
+          "sample",
+          2,
+          16
+        ],
+        "count": 216582
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          96
+        ],
+        "count": 51660
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          64
+        ],
+        "count": 116676
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          72
+        ],
+        "count": 197203
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          136
+        ],
+        "count": 78311
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          152
+        ],
+        "count": 35715
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          304
+        ],
+        "count": 8348
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          120
+        ],
+        "count": 211616
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          80
+        ],
+        "count": 625317
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          112
+        ],
+        "count": 112104
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          184
+        ],
+        "count": 68092
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          192
+        ],
+        "count": 77902
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          128
+        ],
+        "count": 140593
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          88
+        ],
+        "count": 784422
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          124
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          114
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          112
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          126
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          130
+        ],
+        "count": 36
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          132
+        ],
+        "count": 30
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          128
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          140
+        ],
+        "count": 94
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          118
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          122
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          136
+        ],
+        "count": 72
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          134
+        ],
+        "count": 32
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          142
+        ],
+        "count": 22
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          138
+        ],
+        "count": 60
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          120
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          144
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          146
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          230
+        ],
+        "count": 110
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          156
+        ],
+        "count": 710
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          166
+        ],
+        "count": 3800
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          152
+        ],
+        "count": 76
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          148
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          242
+        ],
+        "count": 162
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          266
+        ],
+        "count": 84
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          262
+        ],
+        "count": 162
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          160
+        ],
+        "count": 72886
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          150
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          154
+        ],
+        "count": 1122
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          238
+        ],
+        "count": 118
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          244
+        ],
+        "count": 208
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          278
+        ],
+        "count": 170
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          264
+        ],
+        "count": 88
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          286
+        ],
+        "count": 144
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          250
+        ],
+        "count": 229
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          234
+        ],
+        "count": 98
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          158
+        ],
+        "count": 6548
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          302
+        ],
+        "count": 124
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          222
+        ],
+        "count": 134
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          282
+        ],
+        "count": 104
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          246
+        ],
+        "count": 102
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          162
+        ],
+        "count": 11718
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          176
+        ],
+        "count": 63964
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          344
+        ],
+        "count": 5814
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          200
+        ],
+        "count": 18563
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          368
+        ],
+        "count": 14110
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          624
+        ],
+        "count": 331
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          248
+        ],
+        "count": 15725
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          48
+        ],
+        "count": 166775
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          144
+        ],
+        "count": 38504
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          168
+        ],
+        "count": 108133
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          208
+        ],
+        "count": 28692
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          104
+        ],
+        "count": 78151
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          760
+        ],
+        "count": 65
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          440
+        ],
+        "count": 1413
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          56
+        ],
+        "count": 22488
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          312
+        ],
+        "count": 3728
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          360
+        ],
+        "count": 2306
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          416
+        ],
+        "count": 2978
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          216
+        ],
+        "count": 43295
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          336
+        ],
+        "count": 4350
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          448
+        ],
+        "count": 1726
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          178
+        ],
+        "count": 835
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          232
+        ],
+        "count": 9671
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          160
+        ],
+        "count": 11080
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          320
+        ],
+        "count": 3141
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          328
+        ],
+        "count": 4747
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          180
+        ],
+        "count": 1350
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          168
+        ],
+        "count": 2013
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          164
+        ],
+        "count": 10324
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          196
+        ],
+        "count": 291
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          192
+        ],
+        "count": 363
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          40
+        ],
+        "count": 12615
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          170
+        ],
+        "count": 449
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          240
+        ],
+        "count": 11275
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          206
+        ],
+        "count": 268
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          182
+        ],
+        "count": 209
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          800
+        ],
+        "count": 455
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          198
+        ],
+        "count": 419
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          202
+        ],
+        "count": 326
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          172
+        ],
+        "count": 416
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          176
+        ],
+        "count": 942
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          272
+        ],
+        "count": 10091
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          280
+        ],
+        "count": 6147
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          256
+        ],
+        "count": 6447
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          504
+        ],
+        "count": 1403
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          188
+        ],
+        "count": 370
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1008
+        ],
+        "count": 21
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          464
+        ],
+        "count": 1571
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          352
+        ],
+        "count": 6554
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          24
+        ],
+        "count": 7141
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          632
+        ],
+        "count": 387
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          194
+        ],
+        "count": 348
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          254
+        ],
+        "count": 128
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          200
+        ],
+        "count": 164
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          536
+        ],
+        "count": 876
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          270
+        ],
+        "count": 134
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          190
+        ],
+        "count": 218
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          512
+        ],
+        "count": 892
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1080
+        ],
+        "count": 7
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          174
+        ],
+        "count": 672
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          184
+        ],
+        "count": 380
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          568
+        ],
+        "count": 431
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          296
+        ],
+        "count": 10284
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          224
+        ],
+        "count": 16793
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          252
+        ],
+        "count": 74
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          288
+        ],
+        "count": 4490
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          260
+        ],
+        "count": 142
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          186
+        ],
+        "count": 160
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          400
+        ],
+        "count": 2292
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          520
+        ],
+        "count": 731
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          664
+        ],
+        "count": 267
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          210
+        ],
+        "count": 144
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          350
+        ],
+        "count": 116
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          216
+        ],
+        "count": 122
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          204
+        ],
+        "count": 132
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          408
+        ],
+        "count": 2149
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          384
+        ],
+        "count": 2597
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          346
+        ],
+        "count": 200
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          332
+        ],
+        "count": 105
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          292
+        ],
+        "count": 58
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          656
+        ],
+        "count": 275
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          364
+        ],
+        "count": 32
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          384
+        ],
+        "count": 14
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          584
+        ],
+        "count": 680
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          382
+        ],
+        "count": 12
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          378
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          496
+        ],
+        "count": 1359
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          456
+        ],
+        "count": 1337
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          228
+        ],
+        "count": 156
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          392
+        ],
+        "count": 2801
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          208
+        ],
+        "count": 66
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          212
+        ],
+        "count": 142
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          330
+        ],
+        "count": 179
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          214
+        ],
+        "count": 110
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          220
+        ],
+        "count": 142
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          348
+        ],
+        "count": 332
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          488
+        ],
+        "count": 895
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          424
+        ],
+        "count": 1664
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          226
+        ],
+        "count": 70
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          432
+        ],
+        "count": 1469
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          248
+        ],
+        "count": 110
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          236
+        ],
+        "count": 162
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          304
+        ],
+        "count": 38
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          272
+        ],
+        "count": 131
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          258
+        ],
+        "count": 104
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          284
+        ],
+        "count": 130
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          224
+        ],
+        "count": 120
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          310
+        ],
+        "count": 92
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          374
+        ],
+        "count": 20
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          370
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          342
+        ],
+        "count": 185
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          338
+        ],
+        "count": 33
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          318
+        ],
+        "count": 183
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          298
+        ],
+        "count": 54
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          314
+        ],
+        "count": 51
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          274
+        ],
+        "count": 72
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          322
+        ],
+        "count": 73
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          386
+        ],
+        "count": 22
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          326
+        ],
+        "count": 61
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          358
+        ],
+        "count": 163
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          256
+        ],
+        "count": 163
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          334
+        ],
+        "count": 201
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          300
+        ],
+        "count": 155
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          354
+        ],
+        "count": 41
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          232
+        ],
+        "count": 106
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          308
+        ],
+        "count": 75
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          290
+        ],
+        "count": 124
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          276
+        ],
+        "count": 64
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          288
+        ],
+        "count": 100
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          268
+        ],
+        "count": 102
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          312
+        ],
+        "count": 24
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          294
+        ],
+        "count": 36
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          316
+        ],
+        "count": 104
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          296
+        ],
+        "count": 84
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          280
+        ],
+        "count": 100
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          240
+        ],
+        "count": 146
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          218
+        ],
+        "count": 62
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          324
+        ],
+        "count": 210
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          320
+        ],
+        "count": 118
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          306
+        ],
+        "count": 24
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          264
+        ],
+        "count": 6794
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          344
+        ],
+        "count": 150
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          928
+        ],
+        "count": 13
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          472
+        ],
+        "count": 1014
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          376
+        ],
+        "count": 2582
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          552
+        ],
+        "count": 811
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          32
+        ],
+        "count": 1822
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          368
+        ],
+        "count": 37
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          372
+        ],
+        "count": 45
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          680
+        ],
+        "count": 191
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          600
+        ],
+        "count": 636
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          480
+        ],
+        "count": 923
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          872
+        ],
+        "count": 44
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          336
+        ],
+        "count": 110
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          340
+        ],
+        "count": 154
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          544
+        ],
+        "count": 812
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          380
+        ],
+        "count": 37
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          360
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          366
+        ],
+        "count": 95
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          672
+        ],
+        "count": 187
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          390
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          328
+        ],
+        "count": 18
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          688
+        ],
+        "count": 84
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          356
+        ],
+        "count": 111
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          362
+        ],
+        "count": 66
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          352
+        ],
+        "count": 80
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          768
+        ],
+        "count": 432
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          528
+        ],
+        "count": 646
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          792
+        ],
+        "count": 85
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          752
+        ],
+        "count": 65
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          824
+        ],
+        "count": 65
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1752
+        ],
+        "count": 9
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          2064
+        ],
+        "count": 281
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          398
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          414
+        ],
+        "count": 24
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          560
+        ],
+        "count": 694
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          880
+        ],
+        "count": 80
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          592
+        ],
+        "count": 789
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          576
+        ],
+        "count": 550
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          720
+        ],
+        "count": 131
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          744
+        ],
+        "count": 389
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          728
+        ],
+        "count": 119
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          648
+        ],
+        "count": 229
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          848
+        ],
+        "count": 46
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1488
+        ],
+        "count": 7
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          712
+        ],
+        "count": 138
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          704
+        ],
+        "count": 416
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          608
+        ],
+        "count": 571
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          736
+        ],
+        "count": 335
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          696
+        ],
+        "count": 154
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          400
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1656
+        ],
+        "count": 28
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          484
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          416
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          446
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          616
+        ],
+        "count": 589
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          438
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          526
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          428
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          406
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          394
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          896
+        ],
+        "count": 42
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          912
+        ],
+        "count": 32
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          410
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          856
+        ],
+        "count": 47
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          376
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          388
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          430
+        ],
+        "count": 18
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          396
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1632
+        ],
+        "count": 16
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          888
+        ],
+        "count": 57
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          784
+        ],
+        "count": 73
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1640
+        ],
+        "count": 24
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1672
+        ],
+        "count": 40
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          776
+        ],
+        "count": 284
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          968
+        ],
+        "count": 23
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          832
+        ],
+        "count": 57
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          992
+        ],
+        "count": 11
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1064
+        ],
+        "count": 13
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          864
+        ],
+        "count": 53
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          816
+        ],
+        "count": 55
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          840
+        ],
+        "count": 39
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          640
+        ],
+        "count": 381
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          904
+        ],
+        "count": 31
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          920
+        ],
+        "count": 26
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1000
+        ],
+        "count": 18
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1104
+        ],
+        "count": 7
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1168
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1264
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1280
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1304
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          808
+        ],
+        "count": 68
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1688
+        ],
+        "count": 14
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          936
+        ],
+        "count": 16
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1448
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1368
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          2024
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1016
+        ],
+        "count": 21
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          960
+        ],
+        "count": 15
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1664
+        ],
+        "count": 36
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1072
+        ],
+        "count": 8
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1136
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1144
+        ],
+        "count": 7
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1120
+        ],
+        "count": 7
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1192
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1112
+        ],
+        "count": 5
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1096
+        ],
+        "count": 20
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          984
+        ],
+        "count": 17
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1040
+        ],
+        "count": 9
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1648
+        ],
+        "count": 18
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1088
+        ],
+        "count": 10
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1328
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1184
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1616
+        ],
+        "count": 11
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1712
+        ],
+        "count": 11
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1736
+        ],
+        "count": 11
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1480
+        ],
+        "count": 8
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1312
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1744
+        ],
+        "count": 7
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1152
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1696
+        ],
+        "count": 18
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1608
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1680
+        ],
+        "count": 23
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1048
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1720
+        ],
+        "count": 7
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1256
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1568
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1232
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1784
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1024
+        ],
+        "count": 13
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1032
+        ],
+        "count": 15
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1056
+        ],
+        "count": 8
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1512
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1160
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1776
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1760
+        ],
+        "count": 9
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1576
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          952
+        ],
+        "count": 15
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1208
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1400
+        ],
+        "count": 5
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1416
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1504
+        ],
+        "count": 5
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          944
+        ],
+        "count": 14
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1344
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1376
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1600
+        ],
+        "count": 7
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          976
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1584
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1592
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1768
+        ],
+        "count": 5
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1728
+        ],
+        "count": 8
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1624
+        ],
+        "count": 8
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1704
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1128
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1840
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1224
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1552
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1496
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1424
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1880
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1384
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1976
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1432
+        ],
+        "count": 6
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1464
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1808
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1800
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1456
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1336
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          2048
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1528
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1904
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          2056
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1472
+        ],
+        "count": 4
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1536
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          2016
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1984
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1440
+        ],
+        "count": 5
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1920
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1544
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1792
+        ],
+        "count": 3
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1520
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1216
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1832
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1968
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1408
+        ],
+        "count": 5
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1352
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "image",
+          3,
+          392
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1176
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1392
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1240
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1928
+        ],
+        "count": 2
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1560
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1992
+        ],
+        "count": 1
+      },
+      {
+        "schema": [
+          "stack",
+          32,
+          2,
+          1360
+        ],
+        "count": 1
+      }
+    ],
+    "targetSamples": 29412,
+    "targetStacks": 39315,
+    "unresolvedCachedStackReferences": 0,
+    "images": 1218,
+    "targetSchedulerEvents": 29503
+  },
+  "etl": {
+    "path": "K:\\FBZZ_Engine\\Scratch\\MovingMeshTail20261023\\TraceV1\\Cpu.etl",
+    "bytes": 723517440,
+    "sha256": "e020c6b64b5a13e27bcdb42e646ee5646d0a8b1a6bad1dfb832b0625dd191f1c"
+  },
+  "baselineEngineSha256": "39499c68a2081ea073262ad5180434036bfbb3e2f08bb67d6cefd3d7ba722f1f",
+  "baselineExeSha256": "67f3685c6c5b8ad2d5c436db42fce51db7f7733df9fefc6906df1b68513fa116",
+  "symbolMethod": "Exact local PE export start matched to runtime function begin; unexported functions remain module+RVA; ICF aliases flagged",
+  "trials": [
+    {
+      "case": "OnePercentMovingOffscreenHeavy10000",
+      "pid": 45856,
+      "frames": 600,
+      "samplesInFrames": 4928,
+      "renderSystemSamples": 4781,
+      "extractSamples": 3540,
+      "itemVectorTidySamples": 290,
+      "tailRenderSystemSamples": 93,
+      "tailExtractSamples": 70,
+      "tailFrames": [
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 366,
+          "frameMs": 16.9705,
+          "frameBeginMs": 561251171.8834,
+          "frameEndMs": 561251188.8539,
+          "threadCyclesValid": true,
+          "threadCycles": 35544747,
+          "waitCpuMs": 0.000200033188,
+          "beginMs": 0.0621999502,
+          "renderMs": 16.7612001,
+          "endMs": 0.14259994,
+          "firstViewRenderMs": 16.7609,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0117
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0087
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.1137
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3897
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0058
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0026
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0175
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0035
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0015
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0019
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0095
+            }
+          ],
+          "beginQpc": 5612511718834,
+          "endQpc": 5612511888539,
+          "schedulerMs": {
+            "scheduled": 16.9705
+          },
+          "samples": 17
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 370,
+          "frameMs": 15.7069,
+          "frameBeginMs": 561251235.0956,
+          "frameEndMs": 561251250.8025,
+          "threadCyclesValid": true,
+          "threadCycles": 32909185,
+          "waitCpuMs": 0.000300049782,
+          "beginMs": 0.12379992,
+          "renderMs": 15.4285001,
+          "endMs": 0.146499991,
+          "firstViewRenderMs": 15.4284,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0244
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0073
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0589
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3227
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0042
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0021
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0118
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0041
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0079
+            }
+          ],
+          "beginQpc": 5612512350956,
+          "endQpc": 5612512508025,
+          "schedulerMs": {
+            "scheduled": 15.7069
+          },
+          "samples": 16
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 386,
+          "frameMs": 15.1823,
+          "frameBeginMs": 561251435.0058,
+          "frameEndMs": 561251450.1881,
+          "threadCyclesValid": true,
+          "threadCycles": 31840510,
+          "waitCpuMs": 0.000100016594,
+          "beginMs": 0.0450000763,
+          "renderMs": 14.9198999,
+          "endMs": 0.2148,
+          "firstViewRenderMs": 14.9196999,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0134
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0105
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0502
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3872
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0066
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0015
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0023
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0141
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.004
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0015
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0024
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0097
+            }
+          ],
+          "beginQpc": 5612514350058,
+          "endQpc": 5612514501881,
+          "schedulerMs": {
+            "scheduled": 15.1823
+          },
+          "samples": 15
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 368,
+          "frameMs": 15.1718999,
+          "frameBeginMs": 561251204.085,
+          "frameEndMs": 561251219.2569,
+          "threadCyclesValid": true,
+          "threadCycles": 31801654,
+          "waitCpuMs": 0.000299930573,
+          "beginMs": 0.048699975,
+          "renderMs": 14.9041001,
+          "endMs": 0.215199947,
+          "firstViewRenderMs": 14.9038,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0129
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0093
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0462
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3793
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0066
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0021
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0158
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0041
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.009
+            }
+          ],
+          "beginQpc": 5612512040850,
+          "endQpc": 5612512192569,
+          "schedulerMs": {
+            "scheduled": 15.1719
+          },
+          "samples": 15
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 407,
+          "frameMs": 14.9450001,
+          "frameBeginMs": 561251700.0041,
+          "frameEndMs": 561251714.9491,
+          "threadCyclesValid": true,
+          "threadCycles": 31308918,
+          "waitCpuMs": 0.00049996376,
+          "beginMs": 0.0818001032,
+          "renderMs": 14.6509,
+          "endMs": 0.206699967,
+          "firstViewRenderMs": 14.6506,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0076
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.007
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.037
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3315
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0039
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0019
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.011
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0031
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0016
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0079
+            }
+          ],
+          "beginQpc": 5612517000041,
+          "endQpc": 5612517149491,
+          "schedulerMs": {
+            "scheduled": 14.945
+          },
+          "samples": 15
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 387,
+          "frameMs": 14.7546,
+          "frameBeginMs": 561251450.8082,
+          "frameEndMs": 561251465.5628,
+          "threadCyclesValid": true,
+          "threadCycles": 30950094,
+          "waitCpuMs": 0.000400066376,
+          "beginMs": 0.0789999962,
+          "renderMs": 14.53,
+          "endMs": 0.140400052,
+          "firstViewRenderMs": 14.5297999,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.007
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0058
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.051
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.291
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0043
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0099
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.003
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0076
+            }
+          ],
+          "beginQpc": 5612514508082,
+          "endQpc": 5612514655628,
+          "schedulerMs": {
+            "scheduled": 14.7546
+          },
+          "samples": 15
+        }
+      ]
+    },
+    {
+      "case": "AllMovingOffscreenHeavy10000",
+      "pid": 45544,
+      "frames": 600,
+      "samplesInFrames": 5060,
+      "renderSystemSamples": 4891,
+      "extractSamples": 3737,
+      "itemVectorTidySamples": 266,
+      "tailRenderSystemSamples": 104,
+      "tailExtractSamples": 84,
+      "tailFrames": [
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 204,
+          "frameMs": 20.2189,
+          "frameBeginMs": 561259020.5576,
+          "frameEndMs": 561259040.7765,
+          "threadCyclesValid": true,
+          "threadCycles": 42332288,
+          "waitCpuMs": 0.00049996376,
+          "beginMs": 0.0930000544,
+          "renderMs": 19.7485,
+          "endMs": 0.199000001,
+          "firstViewRenderMs": 19.7481,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0129
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0082
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0762
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.4062
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0089
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0015
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0032
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0181
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0032
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.002
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0021
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0024
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0121
+            }
+          ],
+          "beginQpc": 5612590205576,
+          "endQpc": 5612590407765,
+          "schedulerMs": {
+            "scheduled": 20.2189
+          },
+          "samples": 20
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 198,
+          "frameMs": 18.8829,
+          "frameBeginMs": 561258921.919,
+          "frameEndMs": 561258940.8019,
+          "threadCyclesValid": true,
+          "threadCycles": 39534106,
+          "waitCpuMs": 0.000699996948,
+          "beginMs": 0.0978000164,
+          "renderMs": 18.4248,
+          "endMs": 0.160099983,
+          "firstViewRenderMs": 18.4246,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.011
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0078
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0383
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3637
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.005
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0005
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0022
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0132
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0035
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0075
+            }
+          ],
+          "beginQpc": 5612589219190,
+          "endQpc": 5612589408019,
+          "schedulerMs": {
+            "scheduled": 18.8829
+          },
+          "samples": 19
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 205,
+          "frameMs": 18.2126,
+          "frameBeginMs": 561259041.3589,
+          "frameEndMs": 561259059.5715,
+          "threadCyclesValid": true,
+          "threadCycles": 38192559,
+          "waitCpuMs": 0.000699996948,
+          "beginMs": 0.0893999338,
+          "renderMs": 17.7315,
+          "endMs": 0.188599944,
+          "firstViewRenderMs": 17.7308,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0088
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0074
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0384
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3652
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0049
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0022
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0129
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.003
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0079
+            }
+          ],
+          "beginQpc": 5612590413589,
+          "endQpc": 5612590595715,
+          "schedulerMs": {
+            "scheduled": 18.2126
+          },
+          "samples": 18
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 199,
+          "frameMs": 17.4575,
+          "frameBeginMs": 561258941.341,
+          "frameEndMs": 561258958.7985,
+          "threadCyclesValid": true,
+          "threadCycles": 36522392,
+          "waitCpuMs": 0.00049996376,
+          "beginMs": 0.0762000084,
+          "renderMs": 16.9883001,
+          "endMs": 0.196999907,
+          "firstViewRenderMs": 16.9881001,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0148
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0091
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0486
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.4104
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0111
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0019
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0164
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0037
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.002
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0015
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0102
+            }
+          ],
+          "beginQpc": 5612589413410,
+          "endQpc": 5612589587985,
+          "schedulerMs": {
+            "scheduled": 17.4575
+          },
+          "samples": 17
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 206,
+          "frameMs": 17.051,
+          "frameBeginMs": 561259060.0668,
+          "frameEndMs": 561259077.1178,
+          "threadCyclesValid": true,
+          "threadCycles": 35714344,
+          "waitCpuMs": 0.0013999939,
+          "beginMs": 0.0881000757,
+          "renderMs": 16.5263,
+          "endMs": 0.211199999,
+          "firstViewRenderMs": 16.5259999,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0101
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0092
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0437
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3744
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0081
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0018
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0146
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0032
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0015
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0019
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0098
+            }
+          ],
+          "beginQpc": 5612590600668,
+          "endQpc": 5612590771178,
+          "schedulerMs": {
+            "scheduled": 17.051
+          },
+          "samples": 17
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 194,
+          "frameMs": 16.7489001,
+          "frameBeginMs": 561258858.5114,
+          "frameEndMs": 561258875.2603,
+          "threadCyclesValid": true,
+          "threadCycles": 35101654,
+          "waitCpuMs": 0.000699996948,
+          "beginMs": 0.0849000216,
+          "renderMs": 16.2337999,
+          "endMs": 0.238100052,
+          "firstViewRenderMs": 16.2330999,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0119
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0109
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0436
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3892
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.006
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0022
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0132
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0033
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0016
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0088
+            }
+          ],
+          "beginQpc": 5612588585114,
+          "endQpc": 5612588752603,
+          "schedulerMs": {
+            "scheduled": 16.7489
+          },
+          "samples": 17
+        }
+      ]
+    },
+    {
+      "case": "OnePercentMovingOffscreenHeavy10000",
+      "pid": 61312,
+      "frames": 600,
+      "samplesInFrames": 5225,
+      "renderSystemSamples": 5122,
+      "extractSamples": 3794,
+      "itemVectorTidySamples": 379,
+      "tailRenderSystemSamples": 73,
+      "tailExtractSamples": 57,
+      "tailFrames": [
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 673,
+          "frameMs": 13.2122,
+          "frameBeginMs": 561272201.606,
+          "frameEndMs": 561272214.8182,
+          "threadCyclesValid": true,
+          "threadCycles": 27607641,
+          "waitCpuMs": 0.000399947166,
+          "beginMs": 0.0636999607,
+          "renderMs": 12.9927001,
+          "endMs": 0.151899934,
+          "firstViewRenderMs": 12.9922,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0087
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0081
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0554
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3055
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0039
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0004
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0118
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0027
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0069
+            }
+          ],
+          "beginQpc": 5612722016060,
+          "endQpc": 5612722148182,
+          "schedulerMs": {
+            "scheduled": 13.1942,
+            "ready": 0.018
+          },
+          "samples": 13
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 386,
+          "frameMs": 13.181,
+          "frameBeginMs": 561269534.5385,
+          "frameEndMs": 561269547.7195,
+          "threadCyclesValid": true,
+          "threadCycles": 27681983,
+          "waitCpuMs": 0.000300049782,
+          "beginMs": 0.040199995,
+          "renderMs": 13.0242,
+          "endMs": 0.113999963,
+          "firstViewRenderMs": 13.0239999,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0048
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0057
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.025
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.2604
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0031
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0005
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.008
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0025
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0062
+            }
+          ],
+          "beginQpc": 5612695345385,
+          "endQpc": 5612695477195,
+          "schedulerMs": {
+            "scheduled": 13.181
+          },
+          "samples": 13
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 624,
+          "frameMs": 12.8099999,
+          "frameBeginMs": 561271705.1065,
+          "frameEndMs": 561271717.9165,
+          "threadCyclesValid": true,
+          "threadCycles": 26812895,
+          "waitCpuMs": 0.000199913979,
+          "beginMs": 0.0412000418,
+          "renderMs": 12.5956,
+          "endMs": 0.170799971,
+          "firstViewRenderMs": 12.5954,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.035
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0093
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0411
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3557
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0068
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0016
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0023
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0173
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0043
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0019
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0018
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0102
+            }
+          ],
+          "beginQpc": 5612717051065,
+          "endQpc": 5612717179165,
+          "schedulerMs": {
+            "scheduled": 12.81
+          },
+          "samples": 13
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 646,
+          "frameMs": 12.0204,
+          "frameBeginMs": 561271921.7627,
+          "frameEndMs": 561271933.7831,
+          "threadCyclesValid": true,
+          "threadCycles": 25128576,
+          "waitCpuMs": 0.000599980354,
+          "beginMs": 0.0530000925,
+          "renderMs": 11.8065,
+          "endMs": 0.156700015,
+          "firstViewRenderMs": 11.8061,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0101
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0067
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0358
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.325
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0034
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0018
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0102
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0027
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0016
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0079
+            }
+          ],
+          "beginQpc": 5612719217627,
+          "endQpc": 5612719337831,
+          "schedulerMs": {
+            "scheduled": 12.0204
+          },
+          "samples": 12
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 601,
+          "frameMs": 11.6281999,
+          "frameBeginMs": 561271471.8868,
+          "frameEndMs": 561271483.515,
+          "threadCyclesValid": true,
+          "threadCycles": 24067086,
+          "waitCpuMs": 0.000200033188,
+          "beginMs": 0.037899971,
+          "renderMs": 11.4352001,
+          "endMs": 0.152599931,
+          "firstViewRenderMs": 11.4348,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0074
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0062
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0281
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.2736
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0035
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0005
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0088
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0023
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0068
+            }
+          ],
+          "beginQpc": 5612714718868,
+          "endQpc": 5612714835150,
+          "schedulerMs": {
+            "scheduled": 11.6282
+          },
+          "samples": 12
+        },
+        {
+          "kind": "cpu",
+          "case": "OnePercentMovingOffscreenHeavy10000",
+          "serial": 650,
+          "frameMs": 11.3834,
+          "frameBeginMs": 561271968.74,
+          "frameEndMs": 561271980.1234,
+          "threadCyclesValid": true,
+          "threadCycles": 23821247,
+          "waitCpuMs": 0.000399947166,
+          "beginMs": 0.046399951,
+          "renderMs": 11.1991,
+          "endMs": 0.13440001,
+          "firstViewRenderMs": 11.1989001,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0076
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0069
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0341
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3077
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.005
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0004
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0019
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0129
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0031
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0015
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0075
+            }
+          ],
+          "beginQpc": 5612719687400,
+          "endQpc": 5612719801234,
+          "schedulerMs": {
+            "scheduled": 11.3834
+          },
+          "samples": 11
+        }
+      ]
+    },
+    {
+      "case": "AllMovingOffscreenHeavy10000",
+      "pid": 56932,
+      "frames": 600,
+      "samplesInFrames": 4648,
+      "renderSystemSamples": 4498,
+      "extractSamples": 3381,
+      "itemVectorTidySamples": 201,
+      "tailRenderSystemSamples": 70,
+      "tailExtractSamples": 54,
+      "tailFrames": [
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 317,
+          "frameMs": 13.886,
+          "frameBeginMs": 561277900.3323,
+          "frameEndMs": 561277914.2183,
+          "threadCyclesValid": true,
+          "threadCycles": 29111810,
+          "waitCpuMs": 0.000200033188,
+          "beginMs": 0.0975999832,
+          "renderMs": 13.3594,
+          "endMs": 0.159999967,
+          "firstViewRenderMs": 13.3592,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0093
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0087
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0366
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3472
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0054
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0005
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0025
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0108
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0032
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0015
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0081
+            }
+          ],
+          "beginQpc": 5612779003323,
+          "endQpc": 5612779142183,
+          "schedulerMs": {
+            "scheduled": 13.886
+          },
+          "samples": 14
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 490,
+          "frameMs": 12.5135,
+          "frameBeginMs": 561279440.1504,
+          "frameEndMs": 561279452.6639,
+          "threadCyclesValid": true,
+          "threadCycles": 25823003,
+          "waitCpuMs": 0.000300049782,
+          "beginMs": 0.084299922,
+          "renderMs": 12.0436001,
+          "endMs": 0.19599998,
+          "firstViewRenderMs": 12.0426,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0095
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0077
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0423
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3181
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0066
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0021
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0136
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0031
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0016
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0081
+            }
+          ],
+          "beginQpc": 5612794401504,
+          "endQpc": 5612794526639,
+          "schedulerMs": {
+            "scheduled": 12.5135
+          },
+          "samples": 13
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 318,
+          "frameMs": 12.3520999,
+          "frameBeginMs": 561277914.4831,
+          "frameEndMs": 561277926.8352,
+          "threadCyclesValid": true,
+          "threadCycles": 25912761,
+          "waitCpuMs": 0.000699996948,
+          "beginMs": 0.060199976,
+          "renderMs": 11.8564,
+          "endMs": 0.268599987,
+          "firstViewRenderMs": 11.8554001,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0091
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0073
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0337
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3054
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0042
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0019
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0111
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0033
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0073
+            }
+          ],
+          "beginQpc": 5612779144831,
+          "endQpc": 5612779268352,
+          "schedulerMs": {
+            "scheduled": 12.3521
+          },
+          "samples": 12
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 316,
+          "frameMs": 11.8577,
+          "frameBeginMs": 561277888.1231,
+          "frameEndMs": 561277899.9808,
+          "threadCyclesValid": true,
+          "threadCycles": 24896044,
+          "waitCpuMs": 0.00179994106,
+          "beginMs": 0.0928000212,
+          "renderMs": 11.2088001,
+          "endMs": 0.35769999,
+          "firstViewRenderMs": 11.2082,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0099
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0083
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.0695
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3449
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0048
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0025
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0131
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0032
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0014
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0013
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.009
+            }
+          ],
+          "beginQpc": 5612778881231,
+          "endQpc": 5612778999808,
+          "schedulerMs": {
+            "scheduled": 11.8577
+          },
+          "samples": 12
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 408,
+          "frameMs": 11.4439,
+          "frameBeginMs": 561278718.1989,
+          "frameEndMs": 561278729.6428,
+          "threadCyclesValid": true,
+          "threadCycles": 24000768,
+          "waitCpuMs": 0.000999927521,
+          "beginMs": 0.0654000044,
+          "renderMs": 11.0479001,
+          "endMs": 0.192899942,
+          "firstViewRenderMs": 11.0475,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0098
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0085
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.0007
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.043
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3652
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.0075
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0015
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0025
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0156
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0039
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0017
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.012
+            }
+          ],
+          "beginQpc": 5612787181989,
+          "endQpc": 5612787296428,
+          "schedulerMs": {
+            "scheduled": 11.4439
+          },
+          "samples": 12
+        },
+        {
+          "kind": "cpu",
+          "case": "AllMovingOffscreenHeavy10000",
+          "serial": 481,
+          "frameMs": 11.2795999,
+          "frameBeginMs": 561279356.1634,
+          "frameEndMs": 561279367.443,
+          "threadCyclesValid": true,
+          "threadCycles": 23680588,
+          "waitCpuMs": 0.00049996376,
+          "beginMs": 0.0758999586,
+          "renderMs": 10.8924,
+          "endMs": 0.134799957,
+          "firstViewRenderMs": 10.8922,
+          "secondViewRenderMs": 0,
+          "profilerComplete": false,
+          "droppedSamples": 0,
+          "objects": 10000,
+          "frustumCulled": 9900,
+          "drawCalls": 100,
+          "triangles": 1200,
+          "instancedBatches": 0,
+          "instancedDrawsSaved": 0,
+          "firstViewObjects": 0,
+          "firstViewFrustumCulled": 0,
+          "firstViewDrawCalls": 0,
+          "scopes": [],
+          "passes": [
+            {
+              "name": "IBLBrdfBake",
+              "cpuMs": 0.0106
+            },
+            {
+              "name": "SkinningCompute",
+              "cpuMs": 0.0087
+            },
+            {
+              "name": "LightCookie",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Shadow",
+              "cpuMs": 0.04
+            },
+            {
+              "name": "ForwardOpaque",
+              "cpuMs": 0.3075
+            },
+            {
+              "name": "TerrainForward",
+              "cpuMs": 0.004
+            },
+            {
+              "name": "Sky",
+              "cpuMs": 0.0009
+            },
+            {
+              "name": "SunMoon",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "VolumetricCloud",
+              "cpuMs": 0.0006
+            },
+            {
+              "name": "WaterCaustics",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "WaterForward",
+              "cpuMs": 0.0018
+            },
+            {
+              "name": "DecalDepthCopy",
+              "cpuMs": 0.0097
+            },
+            {
+              "name": "Decal",
+              "cpuMs": 0.0027
+            },
+            {
+              "name": "MeshTrail",
+              "cpuMs": 0.001
+            },
+            {
+              "name": "Trail",
+              "cpuMs": 0.0011
+            },
+            {
+              "name": "FroxelFog",
+              "cpuMs": 0.0008
+            },
+            {
+              "name": "Particle",
+              "cpuMs": 0.0012
+            },
+            {
+              "name": "Composite",
+              "cpuMs": 0.0068
+            }
+          ],
+          "beginQpc": 5612793561634,
+          "endQpc": 5612793674430,
+          "schedulerMs": {
+            "scheduled": 11.2796
+          },
+          "samples": 11
+        }
+      ]
+    }
+  ],
+  "scope": "Four baseline-only diagnostic trials after formal comparisons; sampled counts are not duration fractions; scheduled includes interrupt execution; unresolved kernel functions remain module+RVA."
+}
