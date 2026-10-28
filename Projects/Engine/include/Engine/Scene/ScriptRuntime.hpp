@@ -13,11 +13,22 @@ namespace fbzz::renderer { class IRenderer; }
 namespace fbzz::scene {
 
 struct ScriptRuntime {
+    using QuitHandler = void (*)(void*, uint64_t);
+    using DisplayHandler = bool (*)(void*, uint64_t, uint32_t, uint32_t, uint32_t);
     SceneManager*        sceneManager   = nullptr;
     renderer::IRenderer* renderer       = nullptr;
     /// @note ゲームビューポートのピクセルサイズ。0 のとき GetCurrent() 内で renderer->GetWidth/Height() を使う。Editor ではビューポートがウィンドウより小さいため、WorldToScreenPoint 等の座標変換に正しいサイズが必要。
     uint32_t             viewportWidth  = 0;
     uint32_t             viewportHeight = 0;
+    /// @note 非所有 host hook。owner は解除してから破棄する。callback は終了 intent だけを保持し Scene を即時破棄しない。
+    QuitHandler          requestQuit = nullptr;
+    void*                quitContext = nullptr;
+    /// @note 所有 host が frame 境界で適用する表示 intent。Editor は登録しても window 変更を受け付けない。
+    DisplayHandler       requestDisplay = nullptr;
+    void*                displayContext = nullptr;
+    static bool RequestDisplay(uint64_t sceneLifetime, uint32_t operation, uint32_t first, uint32_t second = 0);
+    /// @return 非 Play または Scene lifetime=0 は false。Standalone は終了 flag、host は次の安全な frame で処理する。
+    static bool RequestQuit(uint64_t sceneLifetime);
 
     /// @brief 現在のランタイムを値で返す。
     /// @return Override が設定されていれば Override、なければ Application のデフォルトを構築して返す。

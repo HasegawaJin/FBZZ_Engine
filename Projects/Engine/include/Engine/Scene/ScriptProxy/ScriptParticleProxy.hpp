@@ -53,12 +53,11 @@ enum class ParticleGpuFallbackReason {
     /// @note 保つ必要もあるため GPU 非対応 (載せるなら CB の再設計が要る)。
     SpeedModule,
     /// @brief 予約: 速度場 (速度場 PNG) は 2026-09-11 に GPU 対応済み (VelocityFieldAtlas)。
-    /// @note 枠を残す理由: Script DLL は数値で受け取るため、詰めると未再ビルドの DLL が
-    /// @note SpeedModule を別の理由として誤読する。
+    /// @note managed facade の数値契約を維持するため、この予約値は詰めない。
     ReservedVectorField,
     /// @brief Lights モジュール (light.lightEnabled)。GPU 粒子は位置が GPU にしかないため、
     /// @brief 点光源化 (RenderSystem が runtime.particles を読む) には CPU へ縮退する。
-    /// @note 追加は必ず末尾へ。途中へ挿すと未再ビルドの DLL が以降の理由を 1 つずれて読む。
+    /// @note managed facade の数値契約を維持するため、新しい理由は末尾へ追加する。
     Light,
 };
 

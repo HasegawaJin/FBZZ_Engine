@@ -1,0 +1,16 @@
+// @file    launch.json
+// @brief   Attach the VS Code CoreCLR debugger to an already-running FBZZ Editor.
+// @author  Hasegawa Jin
+// @date    2026-10-05
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to FBZZ Editor (CoreCLR)",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickProcess}",
+      "justMyCode": true
+    }
+  ]
+}

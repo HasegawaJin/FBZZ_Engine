@@ -18,6 +18,7 @@ namespace fbzz::scene {
 
 class GameObject;
 class Script;
+struct EntityRef;
 
 struct ScriptSceneProxy {
     Script* script = nullptr;
@@ -32,6 +33,8 @@ struct ScriptSceneProxy {
     /// @}
     GameObject* Self() const;
     GameObject* GetGameObject(EntityID id) const;
+    /// @return 現在のScript Sceneで解決できない永続参照はnullptr。
+    GameObject* ResolveReference(const EntityRef& reference) const;
     GameObject* GetMainCameraObject() const;
     /// @return Scene 未接続または容量不足なら nullptr。Scene は変更しない。
     [[nodiscard]] GameObject* Create(std::string_view name = "GameObject") const;
@@ -55,8 +58,14 @@ struct ScriptSceneProxy {
     /// @note 遷移要求。未登録のシーン名なら false を返す (演出を巻き戻す判断に使う)。
     bool LoadScene(std::string_view name) const;
     std::string GetSceneName() const;
+    /// @return 有効な地形のworldXZ鉛直最上面Y [m]。未交差はlowest()、入力Yは用いない。
     float GetTerrainHeightAt(const math::Vector3& worldPos) const;
+    /// @return GetTerrainHeightAtと同じ最上面の単位world法線。未交差はUP。
     math::Vector3 GetTerrainNormalAt(const math::Vector3& worldPos) const;
+    /// @return Nearest floor below reference across active Terrain, within maxDistance world metres. False leaves outs unchanged.
+    bool TryGetTerrainFloorAt(const math::Vector3& reference, float maxDistance, math::Vector3& position, math::Vector3& normal) const;
+    /// @return Nearest ceiling above reference across active Terrain. False leaves outs unchanged.
+    bool TryGetTerrainCeilingAt(const math::Vector3& reference, float maxDistance, math::Vector3& position, math::Vector3& normal) const;
     float GetWaterSurfaceHeight(const math::Vector3& worldPos, float time) const;
 
     /// @note 自 GO の name / tag ショートハンドプロパティ

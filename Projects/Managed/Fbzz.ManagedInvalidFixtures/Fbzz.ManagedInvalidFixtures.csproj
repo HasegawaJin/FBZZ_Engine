@@ -1,0 +1,14 @@
+<!-- @file    Fbzz.ManagedInvalidFixtures.csproj -->
+<!-- @brief   constructor 中の Engine API 呼び出しで棄却される候補。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fbzz.ManagedFixtures</AssemblyName>
+    <Nullable>warnings</Nullable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fbzz.ScriptApi/Fbzz.ScriptApi.csproj" />
+  </ItemGroup>
+</Project>

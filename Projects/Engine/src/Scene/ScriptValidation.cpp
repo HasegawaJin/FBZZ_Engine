@@ -6,6 +6,8 @@
 
 #include <Engine/Scene/ComponentOps.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/Managed/ManagedScriptAdapter.hpp>
+#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
@@ -166,6 +168,27 @@ void CollectScriptRequirementIssues(GameObject& go,
             out.push_back(MakeIssue(go, script, ScriptRequirementKind::Script, type,
                 "requires one attached script '" + type + "', found " + std::to_string(matches)));
     }
+    if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(const_cast<Script*>(&script))) {
+        /// @note The Host checks nested required references against existing tokens after owner binding; Inspector collection does not latch a stopped entry.
+        adapter->SetContext(go.GetScene(), &go);
+        if (!adapter->RefreshOwnerBinding() || !adapter->ValidateReferences()) {
+            std::string diagnostic = ManagedScriptRuntime::Instance().LastDiagnostic();
+            std::string fieldKey;
+            for (const auto& field : adapter->Fields()) {
+                const std::string prefix = "." + field.name;
+                const auto offset = diagnostic.find(prefix);
+                const auto boundary = offset == std::string::npos ? std::string::npos : offset + prefix.size();
+                if (boundary != std::string::npos && boundary < diagnostic.size()
+                    && (diagnostic[boundary] == ':' || diagnostic[boundary] == '.' || diagnostic[boundary] == '[')) {
+                    fieldKey = field.name;
+                    break;
+                }
+            }
+            if (diagnostic.empty()) diagnostic = "Managed settings or required references could not be validated.";
+            out.push_back(MakeIssue(go, script, ScriptRequirementKind::Reference, std::move(fieldKey), std::move(diagnostic)));
+        }
+        return;
+    }
     RequirementReflector reflector(go, script, out, resolveAssets);
     /// @note Reflect の既存 ABI は非 const。検証用 reflector は値・参照を書き換えず観測 getter も呼ばない。
     const_cast<Script&>(script).Reflect(reflector);
@@ -214,7 +237,7 @@ std::string FormatScriptRequirementIssue(const ScriptRequirementIssue& issue)
     if (issue.unknown) {
         /// @note 宣言側の誤り。足しても直らないので、文面もそう読めるようにする。
         text += "unknown component type '" + issue.componentType +
-                "' in FBZZ_REQUIRE_COMPONENT";
+                "' in RequireComponentAttribute";
         return text;
     }
     text += (issue.optional ? "optional component '" : "requires '")

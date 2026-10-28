@@ -4,6 +4,7 @@
 /// @date    2026-10-11
 #pragma once
 #include "ManagedTransformBatch.hpp"
+#include <cstddef>
 #include <vector>
 
 namespace fbzz::scene::managed_detail {
@@ -28,14 +29,16 @@ private:
     };
     void BeginEpoch(const Scene& scene);
     Transform* Shadow(GameObject& object);
+    /// @note Topology is validated once per packet; every intermediate pose still receives its arithmetic validation.
     bool Update(GameObject& object);
-    bool Synchronize(GameObject& root);
     bool Stage(Entry& entry);
     bool ValidateHierarchy(const Scene& scene);
     std::vector<Entry> m_entries;
     std::vector<Transform> m_shadow;
-    std::vector<uint32_t> m_cloneEpoch, m_targetEpoch;
-    std::vector<GameObject*> m_publish, m_ancestors, m_queue;
+    std::vector<uint32_t> m_cloneEpoch, m_targetEpoch, m_ancestorEpoch, m_pathEpoch, m_subtreeEpoch;
+    /// @note Slot-indexed ranges address the packet's immutable, parent-before-child subtree workset.
+    std::vector<std::size_t> m_subtreeBegin, m_subtreeEnd;
+    std::vector<GameObject*> m_publish, m_ancestors, m_ancestorOrder, m_roots, m_queue;
     uint32_t m_epoch = 0;
 };
 

@@ -1,0 +1,20 @@
+<!-- @file    FBZZManaged.slnx -->
+<!-- @brief   C# エディターが読み込むエンジン開発用プロジェクトを限定する。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-07 -->
+<Solution>
+  <!-- @note 配布テンプレートと生成されたテスト用プロジェクトは独立した SDK 参照を必要とするため含めない。 -->
+  <!-- @see https://code.visualstudio.com/docs/csharp/project-management Solution Explorer -->
+  <Project Path="Fbzz.ManagedBuildTasks/Fbzz.ManagedBuildTasks.csproj" />
+  <Project Path="Fbzz.ManagedDependencyFixtures/Fbzz.ManagedDependencyFixtures.csproj" />
+  <Project Path="Fbzz.ManagedFixtures/Fbzz.ManagedFixtures.csproj" />
+  <Project Path="Fbzz.ManagedFixturesV2/Fbzz.ManagedFixturesV2.csproj" />
+  <Project Path="Fbzz.ManagedFixtureUtility/Fbzz.ManagedFixtureUtility.csproj" />
+  <Project Path="Fbzz.ManagedHost/Fbzz.ManagedHost.csproj" />
+  <Project Path="Fbzz.ManagedInvalidFixtures/Fbzz.ManagedInvalidFixtures.csproj" />
+  <Project Path="Fbzz.ManagedTests/Fbzz.ManagedTests.csproj" />
+  <Project Path="Fbzz.ScriptApi/Fbzz.ScriptApi.csproj" />
+  <Project Path="Fbzz.ScriptGenerator/Fbzz.ScriptGenerator.csproj" />
+  <Project Path="Fbzz.ScriptGeneratorTests/Fbzz.ScriptGeneratorTests.csproj" />
+  <Project Path="Fbzz.SdkDocumentation/Fbzz.SdkDocumentation.csproj" />
+</Solution>

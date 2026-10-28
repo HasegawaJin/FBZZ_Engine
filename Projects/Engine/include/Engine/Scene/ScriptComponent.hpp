@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// std::unique_ptr の配列で複数 Script を保持し、owner を注入する。
-/// 実行順とライフサイクル呼び出しは ScriptSystem が担う。
+/// @note std::unique_ptr の配列で複数 Script を保持し、owner を注入する。
+/// @note 実行順とライフサイクル呼び出しは ScriptSystem が担う。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
@@ -19,6 +19,7 @@ struct SerializedScriptData {
     std::string type;
     std::string fieldsToml;
     bool enabled = true;
+    std::string savedScriptId;
 };
 
 struct ScriptEntry {
@@ -30,13 +31,17 @@ struct ScriptEntry {
 
     /// @note 保存しない。vector の移動では保持し、削除・複製・Scene 復元で再発行する。
     std::string inspectionId = util::GenerateUUID();
+    /// @note owner GUID と組み合わせる保存 ID。複製先 owner と保存・Undo・Play 復元でも保持する。
+    std::string savedScriptId = util::GenerateUUID();
     std::unique_ptr<Script> script;
-    /// @note エディタ起動直後や DLL ビルド失敗時は ScriptFactory が未登録で `.fbzz` 内の Script をインスタンス化できないことがある。その状態で保存しても情報を失わないよう元の type/fields を保持する。
+    /// @note managed catalog が未ロードのときも `.fbzz` 内の Script 情報を失わないよう、元の type/fields を保持する。
     std::unique_ptr<SerializedScriptData> serialized;
     bool m_awoken = false;
     bool m_started = false;
-    /// @note OnAwake を通したとき Play 中だったか (FBZZ_EXECUTE_ALWAYS 用)。Play の開始・停止では Script インスタンスが作り直されないため編集中に立てた m_awoken/m_started がそのまま残り OnStart が呼ばれなくなる。初期化したモードを覚えておき、食い違ったら張り直す。
+    /// @note OnAwake を通したとき Play 中だったか (managed ExecuteAlways 用)。Play の開始・停止では Script インスタンスが作り直されないため編集中に立てた m_awoken/m_started がそのまま残り OnStart が呼ばれなくなる。初期化したモードを覚えておき、食い違ったら張り直す。
     bool m_lifecyclePlayMode = false;
+    /// @note callback 中に個体を解放せず、Cleanup の安全点まで enabled=false のまま保持する。
+    bool m_pendingRemoval = false;
 };
 
 struct ScriptComponent {
@@ -50,4 +55,4 @@ struct ScriptComponent {
     std::vector<ScriptEntry> scripts;
 };
 
-} /// namespace fbzz::scene
+} /// @note namespace fbzz::scene

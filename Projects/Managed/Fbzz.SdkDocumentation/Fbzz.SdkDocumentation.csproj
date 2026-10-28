@@ -1,0 +1,15 @@
+<!-- @file    Fbzz.SdkDocumentation.csproj -->
+<!-- @brief   SDK の標準 XML を生成するビルド専用 MSBuild task。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fbzz.SdkDocumentation</AssemblyName>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Build/NormalizeSdkDocumentation.cs" Link="NormalizeSdkDocumentation.cs" />
+    <Reference Include="Microsoft.Build.Framework" HintPath="$(MSBuildBinPath)/Microsoft.Build.Framework.dll" Private="false" />
+    <Reference Include="Microsoft.Build.Utilities.Core" HintPath="$(MSBuildBinPath)/Microsoft.Build.Utilities.Core.dll" Private="false" />
+  </ItemGroup>
+</Project>

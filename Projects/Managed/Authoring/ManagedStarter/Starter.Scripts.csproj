@@ -1,0 +1,38 @@
+<!-- @file    Starter.Scripts.csproj -->
+<!-- @brief   SDK and GameHub share this independently buildable C# starter. -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-05 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>warnings</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>14.0</LangVersion>
+    <Deterministic>true</Deterministic>
+    <ChecksumAlgorithm>SHA256</ChecksumAlgorithm>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>$(MSBuildProjectName)</AssemblyName>
+    <OutputPath>Library/ManagedScripts/$(Configuration)/Local/</OutputPath>
+    <FbzzSdkRoot Condition="'$(FbzzSdkRoot)' == ''">$(FBZZ_SDK_ROOT)</FbzzSdkRoot>
+  </PropertyGroup>
+  <!-- @note GameHub records the selected SDK; explicit properties/environment take precedence. -->
+  <Import Project="Fbzz.Sdk.props" Condition="Exists('Fbzz.Sdk.props')" />
+  <PropertyGroup>
+    <FbzzSdkConfiguration Condition="'$(FbzzSdkConfiguration)' == ''">Development</FbzzSdkConfiguration>
+    <FbzzScriptApiPath Condition="'$(FbzzScriptApiPath)' == ''">$(FBZZ_SCRIPT_API_PATH)</FbzzScriptApiPath>
+    <FbzzScriptApiPath Condition="'$(FbzzScriptApiPath)' == '' and '$(FbzzSdkRoot)' != ''">$(FbzzSdkRoot)/bin/$(FbzzSdkConfiguration)/Managed/Fbzz.ScriptApi.dll</FbzzScriptApiPath>
+    <FbzzScriptGeneratorPath Condition="'$(FbzzScriptGeneratorPath)' == '' and '$(FbzzScriptApiPath)' != ''">$([System.IO.Path]::GetDirectoryName('$(FbzzScriptApiPath)'))/Fbzz.ScriptGenerator.dll</FbzzScriptGeneratorPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
+    <Compile Include="Assets/Scripts/**/*.cs" />
+    <Reference Include="Fbzz.ScriptApi" HintPath="$(FbzzScriptApiPath)" Private="false" />
+    <Analyzer Include="$(FbzzScriptGeneratorPath)" />
+  </ItemGroup>
+  <Target Name="RequireFbzzSdk" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(FbzzScriptApiPath)')" Code="FBZZ0001"
+      Text="Select a published SDK in GameHub, set FBZZ_SDK_ROOT, or pass FbzzScriptApiPath. See SDK share/fbzz/Docs/csharp-start.md." />
+    <Error Condition="!Exists('$(FbzzScriptGeneratorPath)')" Code="FBZZ0002"
+      Text="The matching Fbzz.ScriptGenerator.dll must accompany Fbzz.ScriptApi.dll." />
+  </Target>
+</Project>

@@ -1,0 +1,28 @@
+<!-- @file    Fbzz.ScriptApi.csproj -->
+<!-- @brief   常駐するゲーム作者向け managed API。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fbzz.ScriptApi</AssemblyName>
+    <RootNamespace>Fbzz</RootNamespace>
+    <FbzzBindingTarget>Sdk</FbzzBindingTarget>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- @note Doxygen の必須 file header は member XML でない。自明 member の XML 要求だけを契約コメントから区別する。 -->
+    <NoWarn>$(NoWarn);CS1591;CS1587</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fbzz.ScriptGenerator/Fbzz.ScriptGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Fbzz.SdkDocumentation/Fbzz.SdkDocumentation.csproj" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="OutputPath;OutDir" />
+    <AdditionalFiles Include="../../Engine/include/Engine/Scene/ManagedBridgeContract.inl" />
+    <CompilerVisibleProperty Include="FbzzBindingTarget" />
+    <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
+  </ItemGroup>
+  <UsingTask TaskName="FbzzNormalizeSdkDocumentation"
+             AssemblyFile="$(MSBuildThisFileDirectory)../Fbzz.SdkDocumentation/bin/$(Configuration)/$(TargetFramework)/Fbzz.SdkDocumentation.dll" />
+  <!-- @note Compiler の Doxygen XML と宣言属性だけから標準 XML を作り、copy/install 前に正本を同期する。 -->
+  <Target Name="NormalizeSdkDocumentation" AfterTargets="CoreCompile" BeforeTargets="CopyFilesToOutputDirectory"
+          Condition="'$(DesignTimeBuild)' != 'true' and Exists('@(IntermediateAssembly)') and Exists('$(DocumentationFile)')">
+    <FbzzNormalizeSdkDocumentation AssemblyPath="@(IntermediateAssembly)" DocumentationPath="$(DocumentationFile)" />
+  </Target>
+</Project>

@@ -2,8 +2,7 @@
 /// @brief   Script から IKSolverComponent のチェーンを操作するショートハンド。
 /// @author  Hasegawa Jin
 /// @date    2026-06-23
-///
-/// ターゲット名でチェーンを特定するため、Inspector で設定した targetName と一致させること。
+/// @note ターゲット名はチェーン識別ラベル。接続先の変更でも書き換えない。
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
@@ -32,10 +31,13 @@ struct ScriptIKProxy {
     /// @brief IK ターゲット GameObject を動的に差し替える。
     void SetChainTarget(std::string_view targetName, EntityID target) const;
     void SetChainTarget(std::string_view targetName, const GameObject& target) const;
+    /// @brief Poleを同じSceneのGOへ接続する。INVALIDは明示解除。
+    void SetChainPole(std::string_view targetName, EntityID target) const;
+    void SetChainPole(std::string_view targetName, const GameObject& target) const;
 
     /// @brief IKSolverComponent 自体の有効/無効。
     void SetEnabled(bool enabled) const;
     bool IsEnabled() const;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

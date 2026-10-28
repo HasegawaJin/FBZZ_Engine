@@ -1,0 +1,15 @@
+<!-- @file    Fbzz.ManagedBuildTasks.csproj -->
+<!-- @brief   固定 MSBuild が読み込む C# 入力評価 task の内部ライブラリ。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-05 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fbzz.ManagedBuildTasks</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="ManagedIncremental.targets" CopyToOutputDirectory="PreserveNewest" />
+    <Reference Include="Microsoft.Build"><HintPath>$(MSBuildSDKsPath)/../Microsoft.Build.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Microsoft.Build.Framework"><HintPath>$(MSBuildSDKsPath)/../Microsoft.Build.Framework.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Microsoft.Build.Utilities.Core"><HintPath>$(MSBuildSDKsPath)/../Microsoft.Build.Utilities.Core.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

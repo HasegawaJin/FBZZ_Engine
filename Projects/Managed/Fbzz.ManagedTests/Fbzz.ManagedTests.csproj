@@ -1,0 +1,47 @@
+<!-- @file    Fbzz.ManagedTests.csproj -->
+<!-- @brief   NuGet 依存を持たない Host の決定的な検証 runner。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Fbzz.ManagedTests</AssemblyName>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fbzz.ManagedHost/Fbzz.ManagedHost.csproj" />
+    <ProjectReference Include="../Fbzz.ScriptGeneratorTests/Fbzz.ScriptGeneratorTests.csproj" />
+    <ProjectReference Include="../Fbzz.ManagedFixtures/Fbzz.ManagedFixtures.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Fbzz.ManagedFixturesV2/Fbzz.ManagedFixturesV2.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Fbzz.ManagedInvalidFixtures/Fbzz.ManagedInvalidFixtures.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../Fbzz.ManagedDependencyFixtures/Fbzz.ManagedDependencyFixtures.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <!-- @note Compile exactly the project/example shipped to SDK users, using the API just built. -->
+  <Target Name="BuildManagedAuthoringStarter" AfterTargets="Build">
+    <ItemGroup>
+      <AuthoringApi Include="@(ReferencePath)" Condition="'%(Filename)' == 'Fbzz.ScriptApi'" />
+      <AuthoringGenerator Include="@(ReferencePath)" Condition="'%(Filename)' == 'Fbzz.ScriptGenerator'" />
+    </ItemGroup>
+    <Error Condition="'@(AuthoringApi)' == '' or '@(AuthoringGenerator)' == ''"
+      Text="Managed authoring validation requires the API and generator built for this test configuration." />
+    <PropertyGroup>
+      <AuthoringApiPath>@(AuthoringApi->'%(FullPath)')</AuthoringApiPath>
+      <AuthoringGeneratorPath>@(AuthoringGenerator->'%(FullPath)')</AuthoringGeneratorPath>
+    </PropertyGroup>
+    <MSBuild Projects="../Authoring/ManagedStarter/Starter.Scripts.csproj" Targets="Restore;Build"
+      Properties="Configuration=$(Configuration);FbzzScriptApiPath=$(AuthoringApiPath);FbzzScriptGeneratorPath=$(AuthoringGeneratorPath);RestoreSources=$(MSBuildThisFileDirectory)" />
+  </Target>
+  <Target Name="StageFixtures" AfterTargets="Build">
+    <ItemGroup>
+      <FixtureV1 Include="../Fbzz.ManagedFixtures/bin/$(Configuration)/net10.0/Fbzz.ManagedFixtures.*" />
+      <FixtureV2 Include="../Fbzz.ManagedFixturesV2/bin/$(Configuration)/net10.0/Fbzz.ManagedFixtures.*" />
+      <InvalidFixture Include="../Fbzz.ManagedInvalidFixtures/bin/$(Configuration)/net10.0/Fbzz.ManagedFixtures.*" />
+      <DependencyFixture Include="../Fbzz.ManagedDependencyFixtures/bin/$(Configuration)/net10.0/Fbzz.ManagedDependencyFixtures.*" />
+      <DependencyUtility Include="../Fbzz.ManagedDependencyFixtures/bin/$(Configuration)/net10.0/Fbzz.ManagedFixtureUtility.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FixtureV1)" DestinationFolder="$(OutDir)Fixtures/V1" />
+    <Copy SourceFiles="@(FixtureV2)" DestinationFolder="$(OutDir)Fixtures/V2" />
+    <Copy SourceFiles="@(InvalidFixture)" DestinationFolder="$(OutDir)Fixtures/Invalid" />
+    <Copy SourceFiles="@(DependencyFixture);@(DependencyUtility)" DestinationFolder="$(OutDir)Fixtures/Dependency" />
+  </Target>
+</Project>

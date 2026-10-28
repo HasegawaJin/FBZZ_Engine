@@ -6,37 +6,51 @@
 
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
+#include <Engine/Scene/Entity.hpp>
+#include <cstdint>
 
 namespace fbzz::scene {
 
 class Script;
+class GameObject;
+enum class MotionWarpPointMode : std::uint8_t;
 
 struct ScriptMotionWarpProxy {
     Script* script = nullptr;
 
-    /// duration 秒かけて position へ寄せる。攻撃の踏み込み開始時に 1 回呼ぶ。
+    /// @note duration秒でworld位置へ寄せる。配置点のLIVE追従から数値入力へ切り替える。
     void WarpTo(const math::Vector3& position, float duration) const;
 
-    /// 位置に加えて向きも合わせる。斬りつける方向を相手へ向けたいときに使う。
+    /// @note 位置と回転はworld。配置点のLIVE追従から数値入力へ切り替える。
     void WarpToPose(const math::Vector3& position,
                     const math::Quaternion& rotation,
                     float duration) const;
 
-    /// 軸ごとの補正率 [0,1]。既定は { 1, 0, 1 } で高さを動かさない。
+    /// @brief 同じSceneのTargetPointを配置目標へ設定する。INVALIDは明示解除。
+    /// @return 無効な対象・modeならfalseで接続と進行中warpは未変更。
+    [[nodiscard]] bool SetTargetPoint(EntityID target, MotionWarpPointMode mode) const;
+    [[nodiscard]] bool SetTargetPoint(const GameObject& target, MotionWarpPointMode mode) const;
+    /// @brief 設定済み配置点のworld姿勢を捕捉して新しいwarpを始める。
+    /// @return 未解決・不正な入力ならfalseで進行中warpは未変更。
+    [[nodiscard]] bool WarpToTarget(float duration) const;
+    [[nodiscard]] GameObject* GetTargetPoint() const;
+    [[nodiscard]] MotionWarpPointMode GetTargetPointMode() const;
+
+    /// @note 軸ごとの補正率 [0,1]。既定は { 1, 0, 1 } で高さを動かさない。
     void SetAxisWeight(const math::Vector3& weight) const;
 
-    /// 補正だけで進んでよい速さの上限 [m/s]。0 で無制限。
+    /// @note 補正だけで進んでよい速さの上限 [m/s]。0 で無制限。
     void SetMaxSpeed(float metersPerSecond) const;
 
-    /// 寄せを打ち切る。以降のフレームはクリップのルートモーションだけになる。
+    /// @note 寄せを打ち切る。以降のフレームはクリップのルートモーションだけになる。
     void Cancel() const;
 
     void SetEnabled(bool enabled) const;
 
     [[nodiscard]] bool  IsWarping() const;
     [[nodiscard]] float GetRemainingTime() const;
-    /// 目標までの残り距離 [m]。届いたかの判定に使う。
+    /// @note 目標までの残り距離 [m]。届いたかの判定に使う。
     [[nodiscard]] float GetRemainingDistance() const;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

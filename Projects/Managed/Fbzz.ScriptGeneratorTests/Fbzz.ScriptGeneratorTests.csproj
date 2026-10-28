@@ -1,0 +1,23 @@
+<!-- @file    Fbzz.ScriptGeneratorTests.csproj -->
+<!-- @brief   実 Roslyn generator と限定 warning suppression の決定的な検証。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Fbzz.ScriptGeneratorTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../Engine/include/Engine/Scene/ManagedBridgeContract.inl" LogicalName="Fbzz.ManagedBridgeContract" />
+    <ProjectReference Include="../Fbzz.ScriptGenerator/Fbzz.ScriptGenerator.csproj" />
+    <ProjectReference Include="../Fbzz.ScriptApi/Fbzz.ScriptApi.csproj" />
+    <Reference Include="Microsoft.CodeAnalysis">
+      <HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.CodeAnalysis.CSharp">
+      <HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

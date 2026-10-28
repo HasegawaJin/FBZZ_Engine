@@ -1,5 +1,5 @@
 /// @file    ScriptValidation.hpp
-/// @brief   FBZZ_REQUIRE_COMPONENT / FBZZ_OPTIONAL_COMPONENT の充足検査。
+/// @brief   managed RequireComponentAttribute の充足検査。
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
 ///
@@ -30,13 +30,13 @@ struct ScriptRequirementIssue {
     std::string scriptType;      ///< @note 要求した Script の型名
     std::string componentType;   ///< @note 不足しているコンポーネントの型名 (serializedName)
     std::string componentDisplay;///< @note 人間向け表示名。未登録型なら componentType と同じ
-    bool optional = false;       ///< @note FBZZ_OPTIONAL_COMPONENT 由来。エラーではなく情報として扱う。
+    bool optional = false;       ///< @note optional requirement は情報として扱う。
     bool unknown = false;        ///< @note ComponentRegistry に存在しない型名。宣言側の誤りで「足せば直る」ものではない (Fix ボタンを出してはいけない)。
     bool addable = false;        ///< @note 登録されてはいるが Add Component メニューに出ない内部型。手では足せない。
 };
 
 /// @brief script が要求するもののうち go に足りていないものを out へ追加する。
-/// @param includeOptional false のとき FBZZ_OPTIONAL_COMPONENT ぶんは収集しない。
+/// @param includeOptional false のとき optional requirement は収集しない。
 void CollectScriptRequirementIssues(GameObject& go,
                                     const Script& script,
                                     std::vector<ScriptRequirementIssue>& out,

@@ -1,0 +1,19 @@
+<!-- @file    Fbzz.ManagedFixtures.csproj -->
+<!-- @brief   本物の collectible Host へロードする決定的な C# Script fixture。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fbzz.ManagedFixtures</AssemblyName>
+    <Nullable>warnings</Nullable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ChecksumAlgorithm>SHA256</ChecksumAlgorithm>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="UppercaseSource.CS" />
+    <Compile Include="UppercaseSource.CS" />
+    <ProjectReference Include="../Fbzz.ScriptApi/Fbzz.ScriptApi.csproj" />
+    <ProjectReference Include="../Fbzz.ScriptGenerator/Fbzz.ScriptGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
+  </ItemGroup>
+</Project>

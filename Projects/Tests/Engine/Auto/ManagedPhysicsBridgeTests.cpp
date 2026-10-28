@@ -149,6 +149,217 @@ void ExpectOwnerQueryEquivalent(scene::Scene& queryScene, const physics::World& 
         }
 }
 } /// @note namespace
+TEST_F(ManagedPhysicsBridgeTest, BodyValuesMatchNativeLocksSleepStaticAndZeroMass)
+{
+    auto& object = m_scene.CreateGameObject("Body");
+    auto& component = Body(object);
+    auto& body = *component.rigidBody;
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::MASS, {2, 0, 0}), scene::ManagedBridgeStatus::OK);
+    ASSERT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::IMPULSE, {4, 6, 8}), scene::ManagedBridgeStatus::OK);
+    EXPECT_VEC3_NEAR(body.GetVelocity(), (math::Vector3{2, 3, 4}), testkit::kTolerance);
+    ASSERT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::FREEZE_POSITION, {}, 5), scene::ManagedBridgeStatus::OK);
+    EXPECT_VEC3_NEAR(body.GetVelocity(), (math::Vector3{0, 3, 0}), testkit::kTolerance);
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::ANGULAR_VELOCITY, {2, 3, 4}), scene::ManagedBridgeStatus::OK);
+    ASSERT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::FREEZE_ROTATION, {}, 2), scene::ManagedBridgeStatus::OK);
+    EXPECT_VEC3_NEAR(body.GetAngularVelocity(), (math::Vector3{2, 0, 4}), testkit::kTolerance);
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::GRAVITY_SCALE, {-2, 0, 0}), scene::ManagedBridgeStatus::OK);
+    EXPECT_NEAR(body.m_gravityScale, -2, testkit::kTolerance);
+    ASSERT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::SLEEP), scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(body.IsSleeping());
+    ASSERT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::WAKE), scene::ManagedBridgeStatus::OK);
+    EXPECT_FALSE(body.IsSleeping());
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::IS_STATIC, {1, 0, 0}), scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(body.IsStatic()); EXPECT_EQ(body.GetInvMass(), 0.0f);
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::IS_STATIC, {}), scene::ManagedBridgeStatus::OK);
+    EXPECT_NEAR(body.GetInvMass(), 0.5f, testkit::kTolerance);
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::MASS, {}), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(body.GetMass(), 0.0f); EXPECT_EQ(body.GetInvMass(), 0.0f);
+}
+
+TEST_F(ManagedPhysicsBridgeTest, RejectsMissingDisabledWrongPhaseAndInvalidInputWithoutMutation)
+{
+    auto& object = m_scene.CreateGameObject("Body");
+    scene::ManagedBridgeRequest read;
+    read.op = scene::ManagedBridgeOp::PHYSICS_BODY_READ;
+    read.index = static_cast<uint32_t>(scene::ManagedPhysicsBodyValue::EXISTS);
+    scene::ManagedBridgeReply reply;
+    EXPECT_EQ(m_kernel.RunBody(object, read, reply, false), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(reply.integer, 0);
+    auto& component = Body(object);
+    auto& body = *component.rigidBody;
+    component.enabled = false;
+    EXPECT_EQ(m_kernel.RunBody(object, read, reply, false), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(reply.integer, 1);
+    EXPECT_EQ(Write(object, scene::ManagedPhysicsBodyValue::VELOCITY, {1, 2, 3}), scene::ManagedBridgeStatus::NOT_FOUND);
+    component.enabled = true;
+    EXPECT_EQ(BodyRequest(object, scene::ManagedBridgeOp::PHYSICS_BODY_WRITE,
+        static_cast<uint32_t>(scene::ManagedPhysicsBodyValue::VELOCITY), {1, 2, 3}, false), scene::ManagedBridgeStatus::INVALID_SCOPE);
+    EXPECT_EQ(Write(object, scene::ManagedPhysicsBodyValue::MASS, {-1, 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(Write(object, scene::ManagedPhysicsBodyValue::MASS, {std::numeric_limits<float>::denorm_min(), 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(Write(object, scene::ManagedPhysicsBodyValue::IS_STATIC, {2, 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(Write(object, scene::ManagedPhysicsBodyValue::VELOCITY, {std::numeric_limits<float>::infinity(), 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::FREEZE_POSITION, {}, 8), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(BodyRequest(object, scene::ManagedBridgeOp::PHYSICS_BODY_COMMAND, 999), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(body.GetMass(), 1.0f); EXPECT_FALSE(body.IsStatic());
+    EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
+}
+
+TEST_F(ManagedPhysicsBridgeTest, RejectsAccumulationAndImpulseOverflowBeforeTouchingLiveState)
+{
+    auto& object = m_scene.CreateGameObject("Body");
+    auto& body = *Body(object).rigidBody;
+    const float maximum = std::numeric_limits<float>::max();
+    ASSERT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::FORCE, {maximum, 0, 0}), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::FORCE, {maximum, 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_TRUE(body.IsFiniteState());
+    body.Integrate(0.25f);
+    EXPECT_NEAR(body.GetVelocity().x / maximum, 0.25f, testkit::kTolerance);
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::VELOCITY, {maximum, 0, 0}), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::IMPULSE, {maximum, 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(body.GetVelocity().x, maximum);
+    body.SetVelocity({});
+    ASSERT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::TORQUE, {maximum, 0, 0}), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(Command(object, scene::ManagedPhysicsBodyCommand::TORQUE, {maximum, 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_TRUE(body.IsFiniteState());
+    physics::RigidBody expected = body;
+    expected.Integrate(1.0e-20f); body.Integrate(1.0e-20f);
+    EXPECT_VEC3_NEAR(body.GetAngularVelocity(), expected.GetAngularVelocity(), testkit::kTolerance);
+    body.Sleep();
+    const std::array<float, 3> point{maximum, maximum, maximum};
+    scene::ManagedBridgeRequest request;
+    request.op = scene::ManagedBridgeOp::PHYSICS_BODY_COMMAND;
+    request.index = static_cast<uint32_t>(scene::ManagedPhysicsBodyCommand::FORCE_AT_POINT);
+    request.x = maximum; request.input = std::bit_cast<const char*>(point.data()); request.inputBytes = 12;
+    scene::ManagedBridgeReply reply;
+    EXPECT_EQ(m_kernel.RunBody(object, request, reply, true), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_TRUE(body.IsSleeping()); EXPECT_TRUE(body.IsFiniteState());
+}
+
+TEST_F(ManagedPhysicsBridgeTest, MassAndStaticRefreshOnlyLiveSceneOwnedInertiaSources)
+{
+    auto& object = m_scene.CreateGameObject("Body");
+    auto& body = *Body(object).rigidBody;
+    auto& sphere = object.AddComponent<scene::SphereColliderComponent>();
+    body.SetInertiaFromCollider(sphere.collider.get());
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::MASS, {2, 0, 0}), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(body.GetInertiaCollider(), sphere.collider.get());
+    body.ApplyAngularImpulse({1, 0, 0});
+    EXPECT_VEC3_NEAR(body.GetAngularVelocity(), (math::Vector3{5, 0, 0}), testkit::kTolerance);
+    object.RemoveComponent<scene::SphereColliderComponent>();
+    body.SetAngularVelocity({});
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::MASS, {4, 0, 0}), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(body.GetInertiaCollider(), nullptr);
+    body.ApplyAngularImpulse({1, 0, 0});
+    EXPECT_VEC3_NEAR(body.GetAngularVelocity(), (math::Vector3{0.25f, 0, 0}), testkit::kTolerance);
+    auto& replacement = object.AddComponent<scene::SphereColliderComponent>();
+    body.SetInertiaFromCollider(replacement.collider.get());
+    const physics::Collider* oldSource = body.GetInertiaCollider();
+    replacement.SetRadius(2);
+    ASSERT_NE(oldSource, replacement.collider.get());
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::IS_STATIC, {1, 0, 0}), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(body.GetInertiaCollider(), nullptr); EXPECT_TRUE(body.IsStatic()); EXPECT_TRUE(body.IsFiniteState());
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::IS_STATIC, {}), scene::ManagedBridgeStatus::OK);
+    body.SetAngularVelocity({}); body.ApplyAngularImpulse({1, 0, 0});
+    EXPECT_VEC3_NEAR(body.GetAngularVelocity(), (math::Vector3{0.25f, 0, 0}), testkit::kTolerance);
+    body.SetInertiaFromCollider(replacement.collider.get());
+    ASSERT_EQ(Write(object, scene::ManagedPhysicsBodyValue::MASS, {2, 0, 0}), scene::ManagedBridgeStatus::OK);
+    body.SetAngularVelocity({}); body.ApplyAngularImpulse({1, 0, 0});
+    EXPECT_VEC3_NEAR(body.GetAngularVelocity(), (math::Vector3{0.3125f, 0, 0}), testkit::kTolerance);
+}
+
+TEST_F(ManagedPhysicsBridgeTest, TeleportSynchronizesHierarchyLocksAndSubsequentPhysicsStep)
+{
+    auto& parent = m_scene.CreateGameObject("Parent");
+    auto& target = m_scene.CreateGameObject("Body");
+    auto& child = m_scene.CreateGameObject("Child");
+    ASSERT_TRUE(target.SetParent(&parent)); ASSERT_TRUE(child.SetParent(&target));
+    parent.transform.position = {10, 2, 3}; parent.transform.scale = {2, 3, 4};
+    parent.transform.rotation = math::Quaternion::FromEuler({0.2f, -0.4f, 0.1f});
+    target.transform.position = {1, 2, 3}; child.transform.position = {1, 0, 0}; child.SetActive(false);
+    scene::FlushWorldTransforms(m_scene);
+    auto& component = Body(target);
+    auto& body = *component.rigidBody;
+    body.SetPosition(target.transform.worldPosition); body.SetRotation(target.transform.worldRotation);
+    body.SetVelocity({1, 2, 3}); body.SetFreezePosition({false, true, false});
+    const float frozenY = body.GetPosition().y;
+    const math::Quaternion localRotation = target.transform.rotation;
+    const math::Vector3 localScale = target.transform.scale;
+    ASSERT_EQ(Command(target, scene::ManagedPhysicsBodyCommand::TELEPORT, {20, 40, 60}), scene::ManagedBridgeStatus::OK);
+    EXPECT_VEC3_NEAR(body.GetPosition(), (math::Vector3{20, frozenY, 60}), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(target.transform.worldPosition, body.GetPosition(), testkit::kTolerance);
+    EXPECT_QUAT_NEAR(target.transform.rotation, localRotation, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(target.transform.scale, localScale, testkit::kTolerance);
+    EXPECT_TRUE(component.hasPhysicsSyncState); EXPECT_TRUE(component.hasPhysicsPoseHistory);
+    EXPECT_VEC3_NEAR(component.lastPhysicsPosition, target.transform.worldPosition, testkit::kTolerance);
+    scene::Transform expectedChild = child.transform;
+    scene::UpdateWorldTransform(expectedChild, &target.transform);
+    EXPECT_VEC3_NEAR(child.transform.worldPosition, expectedChild.worldPosition, testkit::kTolerance);
+    scene::PhysicsSystem system;
+    SystemContext context{m_scene, m_world, nullptr, nullptr, 0.01f, 0.01f, true, true};
+    system.Update(context);
+    EXPECT_VEC3_NEAR(body.GetPosition(), (math::Vector3{20.01f, frozenY, 60.03f}), 1.0e-4f);
+    EXPECT_VEC3_NEAR(target.transform.worldPosition, body.GetPosition(), 1.0e-4f);
+    EXPECT_VEC3_NEAR(body.GetVelocity(), (math::Vector3{1, 0, 3}), testkit::kTolerance);
+}
+
+TEST_F(ManagedPhysicsBridgeTest, TeleportRejectsZeroScaleProjectionAndDescendantOverflowAtomically)
+{
+    auto& parent = m_scene.CreateGameObject("Parent");
+    auto& target = m_scene.CreateGameObject("Body");
+    auto& child = m_scene.CreateGameObject("Child");
+    ASSERT_TRUE(target.SetParent(&parent)); ASSERT_TRUE(child.SetParent(&target));
+    parent.transform.scale = {0, 1, 1}; target.transform.position = {3, 0, 0};
+    scene::FlushWorldTransforms(m_scene);
+    auto& component = Body(target);
+    component.rigidBody->SetPosition(target.transform.worldPosition);
+    const scene::Transform oldTarget = target.transform;
+    EXPECT_EQ(Command(target, scene::ManagedPhysicsBodyCommand::TELEPORT, {1, 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_VEC3_NEAR(target.transform.position, oldTarget.position, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(component.rigidBody->GetPosition(), math::Vector3::ZERO, testkit::kTolerance);
+    EXPECT_FALSE(component.hasPhysicsSyncState);
+    parent.transform.scale = {1, 1, 1}; child.transform.position = {std::numeric_limits<float>::max(), 0, 0};
+    target.transform.worldPosition = {123, 0, 0}; parent.transform.worldPosition = {321, 0, 0};
+    const math::Vector3 oldParent = parent.transform.worldPosition;
+    EXPECT_EQ(Command(target, scene::ManagedPhysicsBodyCommand::TELEPORT, {std::numeric_limits<float>::max(), 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_VEC3_NEAR(target.transform.worldPosition, (math::Vector3{123, 0, 0}), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(parent.transform.worldPosition, oldParent, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(component.rigidBody->GetPosition(), math::Vector3::ZERO, testkit::kTolerance);
+}
+
+TEST_F(ManagedPhysicsBridgeTest, TeleportZeroScaleDoesNotRelaxProjectionAtLargeWorldCoordinates)
+{
+    auto& parent = m_scene.CreateGameObject("Parent");
+    auto& target = m_scene.CreateGameObject("Body");
+    ASSERT_TRUE(target.SetParent(&parent));
+    parent.transform.position = {1.0e6f, 0, 0}; parent.transform.scale = {0, 1, 1};
+    target.transform.position = {3, 0, 0}; scene::FlushWorldTransforms(m_scene);
+    auto& component = Body(target);
+    component.rigidBody->SetPosition(target.transform.worldPosition);
+    EXPECT_EQ(Command(target, scene::ManagedPhysicsBodyCommand::TELEPORT, {1.0e6f + 1, 0, 0}), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_VEC3_NEAR(target.transform.worldPosition, (math::Vector3{1.0e6f, 0, 0}), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(component.rigidBody->GetPosition(), target.transform.worldPosition, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(target.transform.position, (math::Vector3{3, 0, 0}), testkit::kTolerance);
+    EXPECT_FALSE(component.hasPhysicsSyncState);
+}
+
+TEST_F(ManagedPhysicsBridgeTest, WorldReadsValidateLayerBoundsAndPreserveCollisionMatrix)
+{
+    m_world.SetGravity({1, -2, 3});
+    LayerCollisionMatrix matrix; matrix.Set(3, 7, false); m_world.SetCollisionMatrix(matrix);
+    scene::ManagedBridgeRequest request; scene::ManagedBridgeReply reply;
+    request.op = scene::ManagedBridgeOp::PHYSICS_WORLD_READ;
+    ASSERT_EQ(m_kernel.RunWorld(m_world, request, reply), scene::ManagedBridgeStatus::OK);
+    EXPECT_VEC3_NEAR((math::Vector3{reply.x, reply.y, reply.z}), (math::Vector3{1, -2, 3}), testkit::kTolerance);
+    request.index = static_cast<uint32_t>(scene::ManagedPhysicsWorldValue::LAYERS_COLLIDE);
+    request.x = 3; request.y = 7;
+    ASSERT_EQ(m_kernel.RunWorld(m_world, request, reply), scene::ManagedBridgeStatus::OK); EXPECT_EQ(reply.integer, 0);
+    request.x = 32;
+    EXPECT_EQ(m_kernel.RunWorld(m_world, request, reply), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    request.x = 3.5f;
+    EXPECT_EQ(m_kernel.RunWorld(m_world, request, reply), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_FALSE(m_world.LayersCollide(3, 7));
+}
+
 TEST_F(ManagedPhysicsBridgeTest, QueriesKeepShapeHitsButDeduplicateOverlapAndFilterSceneOwnership)
 {
     auto& object = m_scene.CreateGameObject("TwoShapes");
@@ -191,6 +402,27 @@ TEST_F(ManagedPhysicsBridgeTest, QueriesRejectMalformedInputAndIgnoreRemovedColl
     EXPECT_TRUE(hits.empty());
 }
 
+TEST_F(ManagedPhysicsBridgeTest, LargestFiniteNoHitAndDegenerateNormalsNeverBecomePhantomHits)
+{
+    auto& object = m_scene.CreateGameObject("OffAxis");
+    auto& sphere = object.AddComponent<scene::SphereColliderComponent>();
+    m_world.BeginSceneSync(); Sync(sphere, {20, 0, 5}); m_world.EndSceneSync();
+    std::vector<scene::managed_detail::ManagedPhysicsHit> hits;
+    const float maximum = std::numeric_limits<float>::max();
+    ASSERT_EQ(Query(scene::ManagedBridgeOp::PHYSICS_RAYCAST, {}, math::Vector3::FORWARD, maximum, 0, hits), scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(hits.empty());
+    ASSERT_EQ(Query(scene::ManagedBridgeOp::PHYSICS_SPHERE_CAST, {}, math::Vector3::FORWARD, maximum, 1, hits), scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(hits.empty());
+    ASSERT_EQ(Query(scene::ManagedBridgeOp::PHYSICS_RAYCAST, {}, {}, maximum, 0, hits), scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(hits.empty());
+    auto* native = static_cast<physics::SphereCollider*>(sphere.collider.get()); native->m_radius = 0;
+    native->Update({}, math::Quaternion::Identity());
+    ASSERT_EQ(Query(scene::ManagedBridgeOp::PHYSICS_RAYCAST, {}, math::Vector3::FORWARD, 10, 0, hits), scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(hits.empty());
+    ASSERT_EQ(Query(scene::ManagedBridgeOp::PHYSICS_SPHERE_CAST, {}, math::Vector3::FORWARD, 10, 0, hits), scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(hits.empty());
+}
+
 TEST_F(ManagedPhysicsBridgeTest, CandidateOwnersMatchOldFiltersClosestAllSphereAndCompoundOverlap)
 {
     auto& near=m_scene.CreateGameObject("Compound");near.layer=3;
@@ -207,7 +439,6 @@ TEST_F(ManagedPhysicsBridgeTest, CandidateOwnersMatchOldFiltersClosestAllSphereA
     near.layer=7;trigger.enabled=false;inactive.SetActive(true);
     ExpectOwnerQueryEquivalent(m_scene,m_world,m_kernel);
 }
-
 TEST_F(ManagedPhysicsBridgeTest, CandidateOwnersDoNotSurviveRemovalTypeReplacementSceneClearOrExchange)
 {
     auto& object=m_scene.CreateGameObject("Replace");object.layer=3;
@@ -228,7 +459,6 @@ TEST_F(ManagedPhysicsBridgeTest, CandidateOwnersDoNotSurviveRemovalTypeReplaceme
     m_world.BeginSceneSync();Sync(newShape,{0,0,8});m_world.EndSceneSync();
     ExpectOwnerQueryEquivalent(m_scene,m_world,m_kernel);
 }
-
 TEST_F(ManagedPhysicsBridgeTest, BroadCandidateFallbackMatchesOldMapWithoutScanningDecorationObjects)
 {
     for (int i=0;i<128;++i) m_scene.CreateGameObject("Decoration");
@@ -239,6 +469,166 @@ TEST_F(ManagedPhysicsBridgeTest, BroadCandidateFallbackMatchesOldMapWithoutScann
     }
     m_world.EndSceneSync();
     ExpectOwnerQueryEquivalent(m_scene,m_world,m_kernel);
+}
+class PhysicsSpatialDebugBridgeTest : public ManagedPhysicsBridgeTest {
+protected:
+    scene::PhysicsSystem m_system;
+
+    void SetUp() override
+    {
+        ManagedPhysicsBridgeTest::SetUp();
+        scene::PhysicsSystem::InvalidateSpatialDebugSnapshot();
+        m_world.SetGravity(math::Vector3::ZERO);
+        m_world.SetSubsteps(1);
+    }
+
+    void TearDown() override
+    {
+        scene::PhysicsSystem::InvalidateSpatialDebugSnapshot();
+        scene::Script::SetPhysicsWorld(nullptr);
+        ManagedPhysicsBridgeTest::TearDown();
+    }
+
+    scene::GameObject& DebugCollider(const std::string& name)
+    {
+        auto& object = m_scene.CreateGameObject(name);
+        object.AddComponent<scene::SphereColliderComponent>();
+        Body(object).rigidBody->m_allowSleeping = false;
+        return object;
+    }
+
+    scene::PhysicsSpatialDebugRequest Request(scene::EntityID selected = {})
+    {
+        scene::PhysicsSpatialDebugRequest request;
+        request.sceneGeneration = m_scene.GetRenderSceneGeneration();
+        request.selectedEntity = selected;
+        request.physics.enabled = true;
+        request.physics.bounds = true;
+        return request;
+    }
+
+    void StepDebug(scene::PhysicsSystem& system)
+    {
+        SystemContext context{m_scene, m_world, nullptr, nullptr, 0.02f, 0.02f, true, true};
+        system.Update(context);
+    }
+};
+
+TEST_F(PhysicsSpatialDebugBridgeTest, ReusesRequestRevisionAndRetiresChangedOrWrongScenePublications)
+{
+    auto& object = DebugCollider("Debug collider");
+    auto request = Request(object.GetID());
+    const uint64_t revision = scene::PhysicsSystem::SetSpatialDebugRequest(request);
+    EXPECT_EQ(scene::PhysicsSystem::SetSpatialDebugRequest(request), revision);
+    request.physics.selected = {123u, 456u};
+    request.physics.selectedWorldEpoch = 999u;
+    EXPECT_EQ(scene::PhysicsSystem::SetSpatialDebugRequest(request), revision);
+    EXPECT_EQ(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration), nullptr);
+    StepDebug(m_system);
+    const auto first = scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration);
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->revision, revision);
+    EXPECT_EQ(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration + 1u), nullptr);
+
+    request.physics.maxProxies = 1;
+    EXPECT_GT(scene::PhysicsSystem::SetSpatialDebugRequest(request), revision);
+    EXPECT_EQ(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration), nullptr);
+    StepDebug(m_system);
+    ASSERT_NE(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration), nullptr);
+    ++request.sceneGeneration;
+    scene::PhysicsSystem::SetSpatialDebugRequest(request);
+    StepDebug(m_system);
+    EXPECT_EQ(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration), nullptr);
+    EXPECT_EQ(m_world.GetBroadPhaseDebugSnapshot(), nullptr);
+}
+
+TEST_F(PhysicsSpatialDebugBridgeTest, ResolvesFirstActiveSyncedColliderAndRejectsStaleOrNonColliderSelection)
+{
+    auto& object = DebugCollider("Compound debug collider");
+    object.AddComponent<scene::AabbColliderComponent>().enabled = false;
+    object.AddComponent<scene::BoxColliderComponent>();
+    auto request = Request(object.GetID());
+    request.physics.selectedOnly = true;
+    scene::PhysicsSystem::SetSpatialDebugRequest(request);
+    StepDebug(m_system);
+    const auto publication = scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration);
+    ASSERT_NE(publication, nullptr);
+    ASSERT_NE(publication->physics, nullptr);
+    const auto expected = object.GetComponent<scene::BoxColliderComponent>()->colliderHandle;
+    EXPECT_TRUE(expected.IsValid());
+    EXPECT_EQ(publication->physics->request.selected.slot, expected.slot);
+    EXPECT_EQ(publication->physics->request.selected.generation, expected.generation);
+    EXPECT_EQ(publication->physics->request.selectedWorldEpoch, m_world.GetBroadPhaseDebugWorldEpoch());
+    EXPECT_TRUE(publication->physics->selectionValid);
+
+    ++request.selectedEntity.generation;
+    scene::PhysicsSystem::SetSpatialDebugRequest(request);
+    StepDebug(m_system);
+    auto invalid = scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration);
+    ASSERT_NE(invalid, nullptr);
+    EXPECT_FALSE(invalid->physics->selectionValid);
+    EXPECT_TRUE(invalid->physics->nodes.empty());
+    EXPECT_TRUE(invalid->physics->proxies.empty());
+    EXPECT_TRUE(invalid->physics->pairs.empty());
+
+    request.selectedEntity = m_scene.CreateGameObject("No collider").GetID();
+    scene::PhysicsSystem::SetSpatialDebugRequest(request);
+    StepDebug(m_system);
+    invalid = scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration);
+    ASSERT_NE(invalid, nullptr);
+    EXPECT_FALSE(invalid->physics->selectionValid);
+    EXPECT_TRUE(invalid->physics->proxies.empty());
+}
+
+TEST_F(PhysicsSpatialDebugBridgeTest, DisableRetiresPublicationAndReplacementOwnerDisablesWorldCapture)
+{
+    auto& object = DebugCollider("Debug collider");
+    const auto request = Request(object.GetID());
+    scene::PhysicsSystem::SetSpatialDebugRequest(request);
+    StepDebug(m_system);
+    ASSERT_NE(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration), nullptr);
+    ASSERT_NE(m_world.GetBroadPhaseDebugSnapshot(), nullptr);
+
+    scene::PhysicsSystem::InvalidateSpatialDebugSnapshot();
+    EXPECT_EQ(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration), nullptr);
+    scene::PhysicsSystem replacementOwner;
+    StepDebug(replacementOwner);
+    EXPECT_EQ(m_world.GetBroadPhaseDebugSnapshot(), nullptr);
+    EXPECT_EQ(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration), nullptr);
+}
+
+TEST_F(PhysicsSpatialDebugBridgeTest, SceneGenerationChangeRejectsOldPublicationAndRetainedValuesStayImmutable)
+{
+    auto& object = DebugCollider("Old scene collider");
+    const auto request = Request(object.GetID());
+    scene::PhysicsSystem::SetSpatialDebugRequest(request);
+    StepDebug(m_system);
+    const auto retained = scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration);
+    ASSERT_NE(retained, nullptr);
+    ASSERT_NE(retained->physics, nullptr);
+    const uint64_t sequence = retained->physics->sequence;
+    const auto proxyCount = retained->physics->proxies.size();
+    ASSERT_GT(proxyCount, 0u);
+    const auto oldHandle = retained->physics->proxies.front().handle;
+
+    m_scene.Clear();
+    const uint64_t currentGeneration = m_scene.GetRenderSceneGeneration();
+    ASSERT_NE(currentGeneration, request.sceneGeneration);
+    EXPECT_EQ(scene::PhysicsSystem::GetSpatialDebugSnapshot(currentGeneration), nullptr);
+    StepDebug(m_system);
+    EXPECT_EQ(m_world.GetBroadPhaseDebugSnapshot(), nullptr);
+    auto& replacement = DebugCollider("New scene collider");
+    scene::PhysicsSystem::SetSpatialDebugRequest(Request(replacement.GetID()));
+    EXPECT_EQ(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration), nullptr);
+    StepDebug(m_system);
+    const auto current = scene::PhysicsSystem::GetSpatialDebugSnapshot(currentGeneration);
+    ASSERT_NE(current, nullptr);
+    EXPECT_EQ(current->sceneGeneration, currentGeneration);
+    EXPECT_EQ(retained->sceneGeneration, request.sceneGeneration);
+    EXPECT_EQ(retained->physics->sequence, sequence);
+    EXPECT_EQ(retained->physics->proxies.size(), proxyCount);
+    EXPECT_EQ(retained->physics->proxies.front().handle.slot, oldHandle.slot);
+    EXPECT_EQ(retained->physics->proxies.front().handle.generation, oldHandle.generation);
 }
 
 } /// @note namespace fbzz::tests

@@ -5,7 +5,7 @@
 ///
 /// @note postprocess は PostProcessVolume が自由に差し替える「シーンの見た目」の面。
 ///       プレイヤー設定をそこへ置くとボリューム進入時に消えるため、別レイヤーに置く。
-/// @note 触る先は実行中の RenderSettings。編集中 (FBZZ_EXECUTE_ALWAYS) から呼んでも
+/// @note 触る先は実行中の RenderSettings。編集中 (ExecuteAlways) から呼んでも
 ///       ProjectSettings.toml へ保存されてしまうため何も起きない。
 /// @see Docs/design/game-settings.md
 #pragma once

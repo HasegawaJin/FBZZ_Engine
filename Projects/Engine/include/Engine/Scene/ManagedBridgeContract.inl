@@ -9,7 +9,8 @@ FBZZ_MANAGED_CONST(uint32_t, uint, kManagedBridgeAbiVersion, VERSION, 1)
 /// @note Animator service selector50 adds opt-in distance/interval pose LOD; existing selectors and packet meanings are unchanged.
 FBZZ_MANAGED_CONST(uint32_t, uint, kManagedAnimatorUpdateLodSelector, ANIMATOR_UPDATE_LOD_SELECTOR, 50)
 /// @note 世代 0B は CREATE の保存 Script ID、GET_TYPE の schema/要件/実行順、exact Component 寿命と Script 存在 query を共有する。
-FBZZ_MANAGED_CONST(uint64_t, ulong, kManagedBridgeSchemaHash, SCHEMA_HASH, 0x46425A5A4D414E14)
+FBZZ_MANAGED_CONST(uint64_t, ulong, kManagedBridgeSchemaHash, SCHEMA_HASH, 0x46425A5A4D414E15)
+/// @note Generation15 adds owned runtime textures: Assets201 selectors10-16, raw byte stages12-14, Material191 selector42.
 /// @note Generation 14 ships Audio181 selectors46-56, Terrain194 selectors16-17/Scene190 selectors2-3, and AI340 index0 crowd/index1 world poses together.
 /// @note 世代13は描画/実行Componentのexact birth、可変長の線/mesh転送とnative通知をC#へ公開する。
 /// @note 世代12 は全幅 primitive、bounded store/material転送、COUNT由来のComponent容量とTerrain/Water/VFX/Sequence/Joint/Render/Display/Assetsを共有する。

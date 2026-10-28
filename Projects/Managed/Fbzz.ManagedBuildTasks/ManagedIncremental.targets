@@ -1,0 +1,64 @@
+<!-- @file    ManagedIncremental.targets -->
+<!-- @brief   評価済み入力の内容を増分コンパイルの契約へ追加する。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-05 -->
+<Project>
+  <!-- @see https://learn.microsoft.com/dotnet/api/microsoft.build.evaluation.project.imports Project.Imports -->
+  <!-- @see https://learn.microsoft.com/dotnet/api/microsoft.build.framework.ibuildengine6.getglobalproperties IBuildEngine6.GetGlobalProperties -->
+  <UsingTask TaskName="Fbzz.ManagedBuildTasks.ManagedReadImports" AssemblyFile="$(FbzzManagedBuildTasksPath)" />
+  <UsingTask TaskName="Fbzz.ManagedBuildTasks.ManagedHashInputs" AssemblyFile="$(FbzzManagedBuildTasksPath)" />
+  <PropertyGroup>
+    <_FbzzAgentTargets>$(MSBuildThisFileFullPath)</_FbzzAgentTargets>
+  </PropertyGroup>
+  <!-- @note 所有する世代出力を RAR の CandidateAssemblyFiles へ混ぜない。 -->
+  <Target Name="FbzzExcludeManagedGenerations" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <None Remove="Library/ManagedScripts/**/*;$(MSBuildProjectDirectory)/Library/ManagedScripts/**/*" />
+      <Content Remove="Library/ManagedScripts/**/*;$(MSBuildProjectDirectory)/Library/ManagedScripts/**/*" />
+    </ItemGroup>
+  </Target>
+  <Target Name="FbzzManagedContentInputs" BeforeTargets="CoreCompile">
+    <ManagedReadImports ProjectPath="$(MSBuildProjectFullPath)" CacheDirectory="$(MSBuildProjectDirectory)/$(IntermediateOutputPath)">
+      <Output TaskParameter="Imports" ItemName="_FbzzImports" />
+      <Output TaskParameter="ImportDirectories" ItemName="_FbzzImportDirectories" />
+      <Output TaskParameter="RecursiveImportDirectories" ItemName="_FbzzRecursiveImportDirectories" />
+    </ManagedReadImports>
+    <ItemGroup>
+      <_FbzzContentInputs Include="$(MSBuildProjectFullPath);@(_FbzzImports);@(Compile);@(AdditionalFiles);@(EmbeddedFiles);@(Analyzer);@(EditorConfigFiles);@(ReferencePath)" />
+      <_FbzzMissingInputs Include="@(_FbzzContentInputs)" Condition="!Exists('%(_FbzzContentInputs.Identity)')" />
+      <_FbzzContentInputs Remove="@(_FbzzContentInputs)" Condition="!Exists('%(_FbzzContentInputs.Identity)')" />
+      <_FbzzContentInputs Remove="$(_FbzzAgentTargets)" />
+    </ItemGroup>
+    <ManagedHashInputs Files="@(_FbzzContentInputs)">
+      <Output TaskParameter="Items" ItemName="_FbzzHashedInputs" />
+    </ManagedHashInputs>
+    <PropertyGroup>
+      <_FbzzContentStamp>$(IntermediateOutputPath)fbzz-content-inputs.txt</_FbzzContentStamp>
+    </PropertyGroup>
+    <!-- @note 固定 SDK の WriteOnlyWhenDifferent は BOM 付き UTF-8 を毎回更新するため既定の BOM なしを使う。 -->
+    <!-- @see https://github.com/dotnet/msbuild/blob/main/src/Tasks/FileIO/WriteLinesToFile.cs FilesAreIdentical -->
+    <WriteLinesToFile File="$(_FbzzContentStamp)" Lines="@(_FbzzHashedInputs->'%(FullPath)|%(FileHash)')" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <CustomAdditionalCompileInputs Include="$(_FbzzContentStamp)" />
+      <_FbzzObservedInputs Include="$(MSBuildProjectFullPath);@(_FbzzImports);@(Compile);@(AdditionalFiles);@(EmbeddedFiles);@(EditorConfigFiles)" />
+      <_FbzzObservedInputs Include="@(Analyzer)" Condition="'%(Analyzer.MSBuildSourceProjectFile)' == ''" />
+      <_FbzzObservedInputs Include="@(ReferencePath)" Condition="'%(ReferencePath.ReferenceSourceTarget)' != 'ProjectReference'" />
+      <_FbzzObservedInputs Remove="$(_FbzzAgentTargets)" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(FbzzManagedInputManifest)" Lines="P|$(MSBuildProjectFullPath);@(_FbzzObservedInputs->'F|%(FullPath)');@(_FbzzImportDirectories->'D|%(FullPath)');@(_FbzzRecursiveImportDirectories->'R|%(FullPath)')" Overwrite="false" />
+    <WriteLinesToFile File="$(FbzzManagedInputReceipt)" Lines="@(_FbzzHashedInputs->'H|%(FullPath)|%(FileHash)');@(_FbzzMissingInputs->'M|%(FullPath)')" Overwrite="false" />
+  </Target>
+  <Target Name="FbzzManagedVerifyContentInputs" AfterTargets="CoreCompile">
+    <ManagedHashInputs Files="@(_FbzzContentInputs)" Expected="@(_FbzzHashedInputs)" />
+  </Target>
+  <!-- @note MSBuild CopyLocal の時刻・サイズ一致では内容変更を検出できない。 -->
+  <Target Name="FbzzRefreshManagedCopyLocal" AfterTargets="CopyFilesToOutputDirectory">
+    <Copy SourceFiles="@(ReferenceCopyLocalPaths)" DestinationFiles="@(ReferenceCopyLocalPaths->'$(TargetDir)%(DestinationSubDirectory)%(Filename)%(Extension)')" SkipUnchangedFiles="false" />
+  </Target>
+  <Target Name="FbzzStageManagedCandidate" AfterTargets="Build" Condition="'$(MSBuildProjectFullPath)' == '$(FbzzManagedRootProject)' and '$(FbzzManagedCandidateDirectory)' != ''">
+    <ItemGroup>
+      <_FbzzCandidateFiles Include="$(TargetDir)**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_FbzzCandidateFiles)" DestinationFiles="@(_FbzzCandidateFiles->'$(FbzzManagedCandidateDirectory)/%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+</Project>

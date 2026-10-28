@@ -1,0 +1,19 @@
+<!-- @file    Fbzz.ManagedHost.csproj -->
+<!-- @brief   C++ から起動する常駐 managed Host。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fbzz.ManagedHost</AssemblyName>
+    <RootNamespace>Fbzz.ManagedHost</RootNamespace>
+    <FbzzBindingTarget>Host</FbzzBindingTarget>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fbzz.ScriptApi/Fbzz.ScriptApi.csproj" />
+    <ProjectReference Include="../Fbzz.ScriptGenerator/Fbzz.ScriptGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="../../Engine/include/Engine/Scene/ManagedBridgeContract.inl" />
+    <CompilerVisibleProperty Include="FbzzBindingTarget" />
+    <CompilerVisibleProperty Include="MSBuildProjectDirectory" />
+  </ItemGroup>
+</Project>

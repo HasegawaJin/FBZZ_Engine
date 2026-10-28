@@ -39,6 +39,11 @@ void Script::SetPrefabInstantiationCallback(PrefabInstantiateFn fn)
     s_instantiateFn = std::move(fn);
 }
 
+bool Script::HasPrefabInstantiationCallback()
+{
+    return static_cast<bool>(s_instantiateFn);
+}
+
 bool Script::InstantiatePrefab(Scene& scene, const std::string& path, std::vector<EntityID>& roots)
 {
     /// @note コールバックを注入するのは Editor だけなので、未設定時は既定実装 (InstantiatePrefabAsset)
@@ -61,7 +66,6 @@ void Script::SetContext(Scene* scene, GameObject* gameObject)
     if (m_scene != scene || m_gameObject != gameObject) ReleaseOwnedAudioLoops();
     m_scene      = scene;
     m_gameObject = gameObject;
-    m_contextOwner = nullptr;
     ScriptProfiler::RegisterInstance(*this);
 }
 
@@ -94,6 +98,24 @@ bool GuardedInvoke(const Callback& callback)
 
 } /// @note namespace
 
+/// @see https://learn.microsoft.com/en-us/cpp/cpp/pointers-to-members?view=msvc-170 メンバー関数ポインターによる仮想ディスパッチ。
+template<typename Argument, typename Callback>
+bool Script::ExecuteProfiledCallbackWithArgument(Callback callback, const Argument& argument,
+                                                  ScriptCallbackKind kind, const char* callbackName)
+{
+    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
+    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
+    const bool nativeSucceeded = GuardedInvoke([&] { (this->*callback)(argument); });
+    const bool succeeded = nativeSucceeded && !m_runtimeFaulted;
+    ScriptProfiler::EndInvocation(invocation, succeeded);
+    if (!succeeded) {
+        m_runtimeFaulted = true;
+        if (!nativeSucceeded) HandleRuntimeFault(*this, callbackName);
+        else enabled = false;
+    }
+    return succeeded;
+}
+
 bool Script::ExecuteCallback(void (Script::*callback)(), const char* callbackName)
 {
     return ExecuteProfiledCallback(callback, ScriptCallbackKind::UNKNOWN, callbackName);
@@ -109,11 +131,14 @@ bool Script::ExecuteProfiledCallback(void (Script::*callback)(), ScriptCallbackK
     /// @note 初回起動と再生成時の旧文脈を、新しい OnEnable/OnAwake より先に切り替える。
     if (kind == ScriptCallbackKind::AWAKE || kind == ScriptCallbackKind::ENABLE) ScriptProfiler::RebindInstance(*this);
     const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
-    const bool succeeded = GuardedInvoke([&] { (this->*callback)(); });
+    const bool nativeSucceeded = GuardedInvoke([&] { (this->*callback)(); });
+    /// @note managed Adapter は C ABI の失敗を latch へ変換するので、SEH の結果だけで成功扱いしない。
+    const bool succeeded = nativeSucceeded && !m_runtimeFaulted;
     ScriptProfiler::EndInvocation(invocation, succeeded);
     if (!succeeded) {
         m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, callbackName);
+        if (!nativeSucceeded) HandleRuntimeFault(*this, callbackName);
+        else enabled = false;
     }
     return succeeded;
 }
@@ -125,15 +150,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const CollisionInfo&), con
 
 bool Script::ExecuteProfiledCallback(void (Script::*callback)(const CollisionInfo&), const CollisionInfo& info, ScriptCallbackKind kind, const char* callbackName)
 {
-    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
-    const bool succeeded = GuardedInvoke([&] { (this->*callback)(info); });
-    ScriptProfiler::EndInvocation(invocation, succeeded);
-    if (!succeeded) {
-        m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, callbackName);
-    }
-    return succeeded;
+    return ExecuteProfiledCallbackWithArgument(callback, info, kind, callbackName);
 }
 
 bool Script::ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&), const AnimationEventInfo& info)
@@ -143,15 +160,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const AnimationEventInfo&)
 
 bool Script::ExecuteProfiledCallback(void (Script::*callback)(const AnimationEventInfo&), const AnimationEventInfo& info, ScriptCallbackKind kind, const char* callbackName)
 {
-    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
-    const bool succeeded = GuardedInvoke([&] { (this->*callback)(info); });
-    ScriptProfiler::EndInvocation(invocation, succeeded);
-    if (!succeeded) {
-        m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, callbackName);
-    }
-    return succeeded;
+    return ExecuteProfiledCallbackWithArgument(callback, info, kind, callbackName);
 }
 
 bool Script::ExecuteCallback(void (Script::*callback)(const SequenceEventInfo&), const SequenceEventInfo& info)
@@ -161,15 +170,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const SequenceEventInfo&),
 
 bool Script::ExecuteProfiledCallback(void (Script::*callback)(const SequenceEventInfo&), const SequenceEventInfo& info, ScriptCallbackKind kind, const char* callbackName)
 {
-    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
-    const bool succeeded = GuardedInvoke([&] { (this->*callback)(info); });
-    ScriptProfiler::EndInvocation(invocation, succeeded);
-    if (!succeeded) {
-        m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, callbackName);
-    }
-    return succeeded;
+    return ExecuteProfiledCallbackWithArgument(callback, info, kind, callbackName);
 }
 
 bool Script::ExecuteCallback(void (Script::*callback)(const char*), const char* argument, const char* callbackName)
@@ -179,15 +180,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const char*), const char* 
 
 bool Script::ExecuteProfiledCallback(void (Script::*callback)(const char*), const char* argument, ScriptCallbackKind kind, const char* callbackName)
 {
-    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
-    const bool succeeded = GuardedInvoke([&] { (this->*callback)(argument); });
-    ScriptProfiler::EndInvocation(invocation, succeeded);
-    if (!succeeded) {
-        m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, callbackName);
-    }
-    return succeeded;
+    return ExecuteProfiledCallbackWithArgument(callback, argument, kind, callbackName);
 }
 
 bool Script::ExecuteCallback(void (Script::*callback)(const RootMotionInfo&), const RootMotionInfo& info)
@@ -197,15 +190,7 @@ bool Script::ExecuteCallback(void (Script::*callback)(const RootMotionInfo&), co
 
 bool Script::ExecuteProfiledCallback(void (Script::*callback)(const RootMotionInfo&), const RootMotionInfo& info, ScriptCallbackKind kind, const char* callbackName)
 {
-    if (!callback || m_runtimeFaulted || m_requirementsBlocked) return false;
-    const auto invocation = ScriptProfiler::BeginInvocation(*this, kind, callbackName);
-    const bool succeeded = GuardedInvoke([&] { (this->*callback)(info); });
-    ScriptProfiler::EndInvocation(invocation, succeeded);
-    if (!succeeded) {
-        m_runtimeFaulted = true;
-        HandleRuntimeFault(*this, callbackName);
-    }
-    return succeeded;
+    return ExecuteProfiledCallbackWithArgument(callback, info, kind, callbackName);
 }
 
 bool Script::ExecuteCallback(void (Script::*callback)(RenderPipeline&, RenderPassContext&), RenderPipeline& pipeline, RenderPassContext& context)
@@ -457,6 +442,11 @@ void Script::CancelEventSubscriptions()
 void Script::SetPhysicsWorld(physics::World* world)
 {
     s_physicsWorld = world;
+}
+
+physics::World* Script::GetPhysicsWorld()
+{
+    return s_physicsWorld;
 }
 
 void Script::SetInPlayMode(bool inPlayMode)

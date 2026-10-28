@@ -1,0 +1,12 @@
+<!-- @file    Fbzz.ManagedFixtureUtility.csproj -->
+<!-- @brief   collectible ゲーム依存 DLL の型同一性を確認する fixture。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fbzz.ManagedFixtureUtility</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fbzz.ScriptApi/Fbzz.ScriptApi.csproj" />
+  </ItemGroup>
+</Project>

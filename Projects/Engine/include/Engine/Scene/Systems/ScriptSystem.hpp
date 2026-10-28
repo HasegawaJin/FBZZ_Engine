@@ -9,7 +9,7 @@
 
 namespace fbzz::scene {
 
-/// @note RunMode::Always: FBZZ_EXECUTE_ALWAYS の Script は編集中も回す。System 単位で SimOnly
+/// @note RunMode::Always: ExecuteAlways の Script は編集中も回す。System 単位で SimOnly
 ///       にすると「編集中実行の Script が居るか」を ShouldRun で毎フレーム走査することになる
 ///       ため、選別は Script 単位で Update 内に置く。
 class ScriptSystem final : public ISystem {
@@ -25,7 +25,7 @@ public:
 /// @note Phase::Physics に置く: SystemScheduler の固定ステップ (アキュムレータ) の対象は
 ///       ここだけで、1 フレームに 0〜N 回実行される。PhysicsSystem より前に走らせることで
 ///       スクリプトが加えた力が同じステップで積分される。
-/// @note FBZZ_EXECUTE_ALWAYS でも編集中は回さない: PhysicsSystem が SimOnly のため、
+/// @note ExecuteAlways でも編集中は回さない: PhysicsSystem が SimOnly のため、
 ///       積分する相手が居ず「効かない AddForce」が積み上がるだけになる。
 class FixedScriptSystem final : public ISystem {
 public:

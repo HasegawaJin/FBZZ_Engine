@@ -1,0 +1,13 @@
+<!-- @file    Fbzz.ManagedDependencyFixtures.csproj -->
+<!-- @brief   utility DLL 継承と世代別 typed lookup の実 Host fixture。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fbzz.ManagedDependencyFixtures</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fbzz.ScriptApi/Fbzz.ScriptApi.csproj" />
+    <ProjectReference Include="../Fbzz.ManagedFixtureUtility/Fbzz.ManagedFixtureUtility.csproj" />
+  </ItemGroup>
+</Project>

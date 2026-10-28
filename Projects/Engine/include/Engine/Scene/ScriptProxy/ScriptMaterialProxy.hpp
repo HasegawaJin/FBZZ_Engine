@@ -6,6 +6,7 @@
 
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/ScriptAssetRef.hpp>
+#include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Matrix4.hpp>
@@ -77,6 +78,9 @@ public:
     bool SetVector4(MaterialPropertyId property, const math::Vector4& value) const;
     bool SetColor(MaterialPropertyId property, const math::Vector4& value) const;
     bool SetTexture(MaterialPropertyId property, const TextureRef& texture) const;
+    /// @note Binds a validated transient texture; the caller owns its GPU lifetime and the slot never serializes the handle.
+    bool SetRuntimeTexture(MaterialPropertyId property, renderer::ResourceHandle<renderer::TextureTag> texture,
+        uint64_t resourceOwner, uint64_t resetVersion) const;
 
     bool TryGetFloat(MaterialPropertyId property, float& value) const;
     bool TryGetInt(MaterialPropertyId property, int& value) const;
@@ -86,6 +90,8 @@ public:
     bool TryGetMatrix(MaterialPropertyId property, math::Matrix4& value) const;
     /// @return 未設定・型/要素数不一致は false。出力は未変更。
     bool TryGetValues(MaterialPropertyId property, std::vector<double>& values) const;
+    /// @return 未設定・型/要素数/範囲不一致は false。出力は未変更。値列の変換・確保は行わない。
+    bool TryGetValueCount(MaterialPropertyId property, size_t& count) const;
     bool TryGetVector3(MaterialPropertyId property, math::Vector3& value) const;
     bool TryGetVector4(MaterialPropertyId property, math::Vector4& value) const;
     bool TryGetColor(MaterialPropertyId property, math::Vector4& value) const;

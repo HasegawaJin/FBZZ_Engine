@@ -4,11 +4,16 @@
 /// @date    2026-09-10
 #include "DebugPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Renderer/DebugDraw.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
+#include <Core/Profiler/ProfileScope.hpp>
+#include <algorithm>
+#include <vector>
+#include <string>
 
 namespace fbzz::scene {
 
@@ -55,42 +60,69 @@ void DrawQueuedCommand(renderer::IRenderer& r, const ScriptDebugDrawCommand& com
 
 void CaptureScriptGizmos(RenderPassContext& ctx, renderer::DebugDrawCapture& out)
 {
+    FBZZ_PROFILE_SCOPE("RenderSystem::ScriptGizmos");
     out.Clear();
-    if (!ctx.settings.showScriptGizmos) return;
+    const auto spatialCommands = ctx.uiOptions
+        ? ctx.uiOptions->spatialDebugCommands : std::span<const ScriptDebugDrawCommand>{};
+    if (!ctx.settings.showScriptGizmos && spatialCommands.empty()) return;
 
     Scene& scene = ctx.scene;
     renderer::DebugDraw::BeginCapture(out);
 
-    for (EntityID id : scene.GetEntities<ScriptComponent>()) {
-        auto* sc = scene.GetComponent<ScriptComponent>(id);
-        auto* go = scene.GetGameObject(id);
-        /// @note ScriptSystem が Update を止める条件に合わせる。止まったギズモが残ると生死が読めない。
-        if (!sc || !go || !go->activeInHierarchy()) continue;
-        const bool selected = IsSelectedForDebug(*go, ctx);
-        for (auto& entry : sc->scripts) {
-            if (!entry.script || !entry.script->enabled) continue;
-            entry.script->SetContext(&scene, go);
-            entry.script->gizmo.renderer = &ctx.renderer;
-            entry.script->ExecuteProfiledCallback(&Script::OnDrawGizmos, ScriptCallbackKind::DRAW_GIZMOS, "OnDrawGizmos");
-            renderer::DebugDraw::SetDepthTest(false);
-            if (selected) {
-                entry.script->ExecuteProfiledCallback(&Script::OnDrawGizmosSelected, ScriptCallbackKind::DRAW_GIZMOS_SELECTED, "OnDrawGizmosSelected");
-                renderer::DebugDraw::SetDepthTest(false);
-            }
-            entry.script->gizmo.renderer = nullptr;
+    if (ctx.settings.showScriptGizmos) {
+        struct Target { EntityID entity; std::string entry; std::string instance; bool selected; };
+        std::vector<Target> targets;
+        for (const EntityID id : scene.GetEntities<ScriptComponent>()) {
+            auto* sc = scene.GetComponent<ScriptComponent>(id);
+            auto* go = scene.GetGameObject(id);
+            /// @note ScriptSystem が Update を止める条件に合わせる。止まったギズモが残ると生死が読めない。
+            if (!sc || !go || !go->activeInHierarchy()) continue;
+            const bool selected = IsSelectedForDebug(*go, ctx);
+            for (const auto& entry : sc->scripts)
+                if (entry.script && entry.script->enabled && !entry.m_pendingRemoval)
+                    targets.push_back({id, entry.inspectionId, entry.script->InspectionId(), selected});
         }
+        const auto resolve = [&](const Target& target, bool runnable = true) -> Script* {
+            GameObject* owner = scene.GetGameObject(target.entity);
+            auto* scripts = scene.GetComponent<ScriptComponent>(target.entity);
+            if (!owner || !scripts || (runnable && !owner->activeInHierarchy())) return nullptr;
+            for (const auto& entry : scripts->scripts)
+                if (entry.inspectionId == target.entry && entry.script && entry.script->InspectionId() == target.instance
+                    && (!runnable || (entry.script->enabled && !entry.m_pendingRemoval && !entry.script->IsRuntimeFaulted()))) {
+                    entry.script->SetContext(&scene, owner);
+                    return entry.script.get();
+                }
+            return nullptr;
+        };
+        /// @note callback を越えて Script/Entry pointer を保持せず、追加は次描画 snapshot から参加する。
+        for (const auto& target : targets) {
+            if (Script* script = resolve(target)) {
+                script->gizmo.renderer = &ctx.renderer;
+                script->ExecuteProfiledCallback(&Script::OnDrawGizmos, ScriptCallbackKind::DRAW_GIZMOS, "OnDrawGizmos");
+            }
+            renderer::DebugDraw::SetDepthTest(false);
+            if (target.selected) if (Script* script = resolve(target)) {
+                script->gizmo.renderer = &ctx.renderer;
+                script->ExecuteProfiledCallback(&Script::OnDrawGizmosSelected, ScriptCallbackKind::DRAW_GIZMOS_SELECTED, "OnDrawGizmosSelected");
+            }
+            renderer::DebugDraw::SetDepthTest(false);
+            if (Script* script = resolve(target, false)) script->gizmo.renderer = nullptr;
+        }
+
+        /// @note OnDrawGizmos 内の debug.Draw* もここで拾うため、キューはコールバックの後に読む。
+        for (const auto& command : scene.GetScriptDebugDrawCommands())
+            DrawQueuedCommand(ctx.renderer, command);
     }
 
-    /// @note OnDrawGizmos 内の debug.Draw* もここで拾うため、キューはコールバックの後に読む。
-    for (const auto& command : scene.GetScriptDebugDrawCommands())
+    constexpr std::size_t MAX_SPATIAL_COMMANDS = 8192;
+    for (const auto& command : spatialCommands.first((std::min)(spatialCommands.size(), MAX_SPATIAL_COMMANDS)))
         DrawQueuedCommand(ctx.renderer, command);
 
     renderer::DebugDraw::EndCapture();
 }
 
-bool ScriptGizmoPass::IsEnabled(const RenderPassContext& ctx) const
+bool ScriptGizmoPass::IsEnabled(const RenderPassContext&) const
 {
-    if (!ctx.settings.showScriptGizmos) return false;
     return m_layer == renderer::DebugDrawLayer::DepthTested
         ? !(m_capture.depthLines.empty() && m_capture.triangles.empty())
         : !m_capture.overlayLines.empty();
@@ -98,7 +130,11 @@ bool ScriptGizmoPass::IsEnabled(const RenderPassContext& ctx) const
 
 void ScriptGizmoPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
+    /// @note 深度付きは TAA 前の HDR、Overlay は TAA 後の画素中心へ描く。
+    const auto viewProjection = m_layer == renderer::DebugDrawLayer::DepthTested
+        ? MakeJitteredViewProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY)
+        : ctx.camera.GetGpuViewProjection();
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, viewProjection);
     renderer::DebugDraw::Replay(ctx.renderer, m_capture, m_layer);
     renderer::DebugDraw::Flush();
 }

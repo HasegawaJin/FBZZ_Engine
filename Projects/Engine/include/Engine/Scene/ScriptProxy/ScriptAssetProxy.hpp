@@ -16,10 +16,12 @@ class Script;
 /// @note ID は実行中だけの値。シリアライズしない (保存するならパスを保存する)。
 /// @see Docs/design/asset-streaming.md «識別子・利用権・API 契約»
 struct ScriptAssetProxy {
+    /// @note 要求台帳と AssetStreamer は、このプロキシを持つ Script より先に構築して長く生存させる。
+    explicit ScriptAssetProxy(Script* owner = nullptr);
     Script* script = nullptr;
     ~ScriptAssetProxy();
 
-    /// 無効な要求 ID。
+    /// @brief 無効な要求 ID。
     static constexpr std::uint64_t kInvalid = 0;
 
     /// @brief テクスチャ・モデル (.fbx / .fzasset)・マテリアル (.mat) を拡張子で見分けて要求する。
@@ -42,4 +44,4 @@ struct ScriptAssetProxy {
     [[nodiscard]] float GetScenePrefetchProgress(std::string_view sceneName) const;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

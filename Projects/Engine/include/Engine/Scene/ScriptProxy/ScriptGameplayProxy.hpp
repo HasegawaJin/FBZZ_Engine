@@ -1,17 +1,20 @@
 /// @file    ScriptGameplayProxy.hpp
-/// @brief   新しい汎用ComponentをScript DLL境界から基本型だけで操作するProxy。
+/// @brief   汎用 Component の native 操作をまとめ、検証済み managed dispatcher から再利用する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #pragma once
 
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
+#include <cstddef>
 #include <span>
 #include <string_view>
 
 namespace fbzz::scene {
 
 class Script;
+enum class LineSpace : int;
+enum class LineShape : int;
 
 struct ScriptGameplayProxy {
     explicit ScriptGameplayProxy(Script* owner) : script(owner) {}
@@ -21,22 +24,31 @@ struct ScriptGameplayProxy {
     bool SetSpriteColor(float r, float g, float b, float a) const;
 
     /// @name Line Renderer
-    /// 2 点以上を結ぶ帯状の線。動いている 2 体の間にラインを張り続けるような
-    /// 「毎フレーム両端が変わる」用途を想定している。
-    /// @note LineRendererComponent は Engine 実装型なので、スクリプトから直接触ると
-    ///       DLL 境界を越えた実装依存になる。この Proxy が唯一の口。
-    /// @note 描画メッシュは points から毎フレーム自動で再構築される。呼び出し側が
-    ///       キャッシュの無効化を気にする必要はない。点が 2 個未満のときは描画されない。
+    /// @note managed facade は実 row の寿命と scope を dispatcher で検証し、native 操作と row の query を組み合わせる。
+    /// @note PresentationSystem が全入力 snapshot を比較するため、呼び出し側で cache を無効化しない。2 点未満では描画しない。
+    /// @note Point queries read the runtime-selected values during Play and current authoring values during Edit.
     ///@{
     [[nodiscard]] bool HasLineRenderer() const;
+    /// @return 未存在または無効な入力なら 0。POINT_OBJECTS の点数も返す。
+    [[nodiscard]] size_t GetLinePointCount() const;
+    /// @return 未存在・範囲外なら false と出力未変更。座標は現在の LineSpace。
+    [[nodiscard]] bool TryGetLinePoint(size_t index, math::Vector3& point) const;
     bool SetLineEnabled(bool enabled) const;
+    bool SetLineLoop(bool loop) const;
+    bool SetLineBillboard(bool billboard) const;
+    /// @return 未存在・定義外 enum なら false と row 未変更。
+    bool SetLineSpace(LineSpace space) const;
+    bool SetLineShape(LineShape shape) const;
+    /// @return 未存在・3..32 の範囲外なら false と row 未変更。
+    bool SetLineRadialSegments(int segments) const;
+    bool SetLineSorting(int layer, int order) const;
     /// @brief 2 点だけの線を張る。
-    /// @param worldSpace true なら引数はワールド座標として扱われ、ライン自身の
-    ///        GameObject の Transform に関係なく指定した位置に出る。
+    /// @param worldSpace true なら引数と幅を world の m として扱う。false は local の m。
     bool SetLine(const math::Vector3& start,
                  const math::Vector3& end,
                  bool worldSpace = true) const;
-    /// @brief 3 点以上の折れ線。空や 1 点を渡した場合は線が消えるだけで、エラーにはならない。
+    /// @brief Numeric point update. Empty or one-point input hides the line; larger inputs replace the selected source.
+    /// @note Writes select INLINE+LIVE and retain inactive target bindings and bake metadata.
     bool SetLinePoints(std::span<const math::Vector3> points, bool worldSpace = true) const;
     /// @brief 始点側と終点側の色 (RGBA)。異極を結ぶ線を赤→青にする、といった用途。
     bool SetLineColors(const math::Vector4& startColor, const math::Vector4& endColor) const;
@@ -58,4 +70,4 @@ struct ScriptGameplayProxy {
     bool SetAudioMixerSend(std::string_view busName, float level) const;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

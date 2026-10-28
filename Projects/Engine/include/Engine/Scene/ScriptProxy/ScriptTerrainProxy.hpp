@@ -20,9 +20,20 @@ struct ScriptTerrainProxy {
     /// @return ローカル XZ [m] の地形高さ (ローカル Y [m])。
     float GetHeightLocal(float localX, float localZ) const;
     math::Vector3 GetNormalLocal(float localX, float localZ) const;
-    /// @return ワールド XZ 直下の地形高さ (ワールド Y [m])。Terrain が無ければ worldPos.y。
+    /// @return worldXZ 鉛直線と地形三角形の最上交点Y [m]。欠損・穴・範囲外・無効姿勢では worldPos.y。
     float GetHeightWorld(const math::Vector3& worldPos) const;
+    /// @return worldXZ 鉛直線と地形三角形の最上面。欠損・穴・範囲外・無効姿勢では false、両 out 未変更。
+    /// @note 非一様/負 scale と任意回転を含む world TRS を用い、初期化済み Physics collider を要求しない。
+    bool TryGetSurfaceWorld(float worldX, float worldZ, math::Vector3& position, math::Vector3& normal) const;
+    /// @return worldPos を Terrain local XZ へ逆変換して標本化した単位ワールド法線。欠損・非有限入力・非可逆 scale は UP。
+    /// @note 法線は world TRS の逆転置で変換し、負の scale と非一様 scale を含む。
+    /// @see https://pbr-book.org/4ed/Geometry_and_Transformations/Applying_Transformations#Normals PBRT 3.10.3 Normals。
     math::Vector3 GetNormalWorld(const math::Vector3& worldPos) const;
+
+    /// @return Nearest floor below reference in world metres. False leaves outs unchanged.
+    bool TryGetFloorWorld(const math::Vector3& reference, float maxDistance, math::Vector3& position, math::Vector3& normal) const;
+    /// @return Nearest ceiling above reference in world metres. False leaves outs unchanged.
+    bool TryGetCeilingWorld(const math::Vector3& reference, float maxDistance, math::Vector3& position, math::Vector3& normal) const;
 
     bool SetHeightAtGrid(int x, int z, float worldHeight) const;
     /// @brief 頂点 (x, z) の layer の重みを weight [0, 1] に置く。

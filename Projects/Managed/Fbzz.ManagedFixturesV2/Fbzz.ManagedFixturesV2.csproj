@@ -1,0 +1,33 @@
+<!-- @file    Fbzz.ManagedFixturesV2.csproj -->
+<!-- @brief   同じ型名と assembly 名で既定値だけを変えた reload 候補。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-04 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fbzz.ManagedFixtures</AssemblyName>
+    <Nullable>warnings</Nullable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DefineConstants>$(DefineConstants);FIXTURE_VERSION_TWO</DefineConstants>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Fbzz.ManagedFixtures/Fixtures.cs" Link="Fixtures.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/TransformPoseComponent.cs" Link="TransformPoseComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/QuaternionMathComponent.cs" Link="QuaternionMathComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/ObjectLifecycleComponent.cs" Link="ObjectLifecycleComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/ObjectControlsComponent.cs" Link="ObjectControlsComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/ServicesComponent.cs" Link="ServicesComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/PhysicsComponent.cs" Link="PhysicsComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/CollisionComponent.cs" Link="CollisionComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/EngineNotificationComponent.cs" Link="EngineNotificationComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/CompletionComponent.cs" Link="CompletionComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/FaultRecoveryComponent.cs" Link="FaultRecoveryComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/RequiredReferenceComponent.cs" Link="RequiredReferenceComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/TypedReferenceComponent.cs" Link="TypedReferenceComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/PortableProfileDataAsset.cs" Link="PortableProfileDataAsset.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/LargeDataAssetLoadComponent.cs" Link="LargeDataAssetLoadComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/WorldFamiliesComponent.cs" Link="WorldFamiliesComponent.cs" />
+    <Compile Include="../Fbzz.ManagedFixtures/RuntimeComponentsComponent.cs" Link="RuntimeComponentsComponent.cs" />
+    <ProjectReference Include="../Fbzz.ScriptApi/Fbzz.ScriptApi.csproj" />
+  </ItemGroup>
+</Project>
