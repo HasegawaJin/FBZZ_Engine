@@ -239,9 +239,11 @@ node-based コンテナで要素のアドレスが安定し、かつ `Shutdown` 
 
 ### 6.4 Play/Stop 往復での状態
 
-`ClipId` は**シリアライズしない**。Play→Stop で `SceneSerializer` 往復が走るため、
-スクリプトが保持した `SynthClip` メンバーは Play のたびに `OnStart` で作り直す前提とする
-(`.synth` アセット参照はパスなので往復しても生き残る)。ヘッダーにこの制約を明記する。
+`ClipId` は**シリアライズしない**。Play 用 Scene は Edit の保存対象の値から別個体として複製するため、
+Play 側の `SynthClip` メンバーは毎回 `OnStart` で作り直す。保存された `.synth` アセット参照は複製へ引き継ぐ。
+停止時は Play 個体を破棄して保持中の Edit 個体へ戻り、Edit Scene を再デシリアライズしない。
+音声バックエンドはプロセス共有であり、この個体の分離だけで音声資源全体の分離を保証しない。
+現在の所有権と復帰の契約は [C# 設定トランザクション](csharp-settings-transactions.md) を参照する。
 
 ---
 
@@ -622,3 +624,30 @@ Pause はキューを捨てない。ループは終端から先頭へ seek し�
 参照: [XAudio2 のストリーミング](https://learn.microsoft.com/en-us/windows/win32/xaudio2/how-to--stream-a-sound-from-disk)、[送り先別の出力行列](https://learn.microsoft.com/en-us/windows/win32/api/xaudio2/nf-xaudio2-ixaudio2voice-setoutputmatrix)、[Media Foundation Source Reader](https://learn.microsoft.com/en-us/windows/win32/medfound/processing-media-data-with-the-source-reader)。対応する実装にも参照を記載する。
 
 検証 (2026-09-21): `AudioStreamingTests` でブロック上限・PCM 一致・終端・巻き戻し・不正入力、実 XAudio2 の Pause/Resume・センド変更・停止・バス再構築、AudioSystem の主音量維持、BGM のフェードと設定のシリアライズを確認した。音声・アセット・描画関連 272 テストが全件合格。`FBZZTestsEngineAuto` と `FBZZEditorLauncher` の最終ビルドはエラー・警告ともに 0。聴感評価は含まない。
+
+## 14. 移動音源の所有権と局所ミックス (2026-10-11)
+
+`AudioSource.PlayOneShot` は所有元の Transform と選択中の Listener を毎フレーム参照し、距離減衰・パン・Doppler・遮蔽・局所 low-pass・補助センドを更新する。主 voice と重ねて鳴るが `IsPlaying` は従来どおり主 voice の状態を返す。`PlayAtPoint` は従来の開始時位置を固定する契約を維持する。音源の Pause/Resume/Stop は所有 OneShot にも適用する。disable・階層 inactive・Component 除去・owner 削除・Scene 世代変更で所有 voice を停止し、20 ms の通常停止フェード後に回収する。AudioSystem の追跡表は生存 voice のハンドルだけを保持し、個体ごとの新規 GameObject を作らない。
+
+単一音源は 1 フレーム最大 16 要求、再生中 OneShot 最大 16。active 上限超過は追加要求を捨て、再生中の音を再起動しない。生成クリップ要求は上限拒否時も参照を返す。既存のグローバル voice limit (既定 48、設定の最小 4) と priority を維持する。高い priority の新規音は最も低い priority の非 loop を奪い、同値は古い voice を奪う。loop/BGM は自動で奪わない。priority/streaming の変更は次の voice 起動から適用する。奪われたハンドルへのパラメーター・Pause/Resume は無視する。
+
+**Listener 不在時の変更:** 2D (`spatialBlend=0`) の従来動作を維持し、3D の寄与を 0 にする。ブレンド値 b の音量倍率は `1-b`。以前の完全 3D は Listener 不在でも full volume だったため、Listener を付け忘れた既存 Scene の音が止まる。この意図した互換上の変更は、距離ゼロと誤認して大音量になることを防ぐ。有効な Listener が戻れば同じ voice の空間更新を再開する。
+
+保存される `AudioSourceComponent.lowPassCutoff` は既定 1 (無加工)、範囲 0–1 の正規化値であり Hz ではない。旧 Scene の欠損フィールドは 1 となる。音源の距離・背後・遮蔽フィルターと最も低い cutoff を使い、Project の共有バスを変更しない。`FadeLowPassTo` は現在値から Sim 時間で線形補間し、再要求は途中の現在値から始める。0 秒は即時、負値・非有限・範囲外は未変更。補間中の時計と目標は保存しない。既存 `FadeTo` の独立した voice gain と併用できる。
+
+C# `AudioSource` の既存サービス 181 / selector 0–45 を維持し、次の selector を予約する。読み取りは Edit/Play と readonly query、変更は live Play の scope に限定する。失効した component birth token は従来どおり拒否する。
+
+| Property / operation | Read | Write | Range / effect |
+|---|---:|---:|---|
+| `Priority` | 46 | 47 | signed int; next voice allocation |
+| `Streaming` | 48 | 49 | bool; next voice start |
+| `AirAbsorption` | 50 | 51 | finite 0–1; moving voices |
+| `DopplerLevel` | 52 | 53 | finite 0–1; moving voices |
+| `LowPassCutoff` | 54 | 55 | finite 0–1; local filter; cancels filter fade |
+| `FadeLowPassTo(cutoff, seconds)` | — | 56 | finite cutoff 0–1, seconds ≥ 0 |
+
+水面出入りはゲーム側が状態遷移を検出し、例えば `source.FadeLowPassTo(submerged ? 0.25f : 1f, 0.6f)` と既存 `source.FadeTo` を一度ずつ要求する。エンジンは特定の Water、深度、昼夜、SE バスを強制しない。深度・昼夜で変える音色は少数の環境 loop の音量を補間し、生物の効果音は近距離の代表個体・クールダウン・小さな pitch/gain variation をゲーム側で選ぶ。1000 匹へ 1000 音源を増やす設計にせず、少数の代表音源を再使用する。
+
+専用 AudioSource Inspector の登録は ComponentInspectorMode::Custom と ComponentSerializationMode::Automatic を組み合わせ、保存は Reflect の既存経路を維持する。専用 AudioSource Inspector は Playback、Distance and Motion、Local Mix and Voice Budget に分け、実際の距離曲線と maxDistance で残る 2D 寄与を表示する。clip は既存 Audio 拡張子/GUID picker、bus は既存 Project bus picker。共通カードの enabled・Undo・clipboard・並べ替えを使う。Inspector 表示だけでは音を再生しない。
+
+回帰テストは `AudioSourceTests` の記録用 `IAudioDevice` で再生中パラメーター、所有音の停止、16/global 上限、priority、stale handle、volume/filter fade と旧保存形式を確認する。`AudioSourceApiTests` は C# packet、寿命、有限入力と API catalog を確認する。CPU 検証は聴感・出力デバイス・GPU/Editor 操作の検証を含まない。

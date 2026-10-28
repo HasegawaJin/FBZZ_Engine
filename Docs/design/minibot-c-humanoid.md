@@ -15,7 +15,7 @@
 
 ## 現在の完成版
 
-正本は [MiniBotC_PlayerMotions.blend](../../GreenWare/Assets/_src/MiniBotC/MiniBotC_PlayerMotions.blend)。
+正本は [MiniBotC_PlayerMotions.blend](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/_src/MiniBotC/MiniBotC_PlayerMotions.blend)。
 Nタブ「モーション」で22本を確認できる。基準姿勢は別に1本保持する。
 Player・剣・おともの各3LOD、54骨のPlayerと4骨のおとも、使用画像19枚を出力対象として整理した。
 [FBZZ向け書き出し仕様](minibot-c-fbzz-export.md) に、座標系・単位・剣ソケット・ループ設定を定義する。
@@ -28,7 +28,7 @@ Player は54出力骨・358操作骨、Companion は4骨。全 LOD は最大4ウ
 左右の4指を独立した関節パーツへ補修し、Tripo の元カラーを新しい指へ投影している。
 ゲーム骨格は位置・回転を受け取り、Rigify の非一様スケールを持ち込まない。
 制作開始用 `Player_NewAction` と可動確認用 `DEMO_RigCheck`、単一テイクの FBX ベイクスクリプトを同梱。
-[操作と検証範囲](../../GreenWare/Assets/Models/MiniBotC_AnimationReady/README.md)。
+[操作と検証範囲](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Models/MiniBotC_AnimationReady/README.md)。
 
 Blender の FBX importer が自動接続する親子骨は再読込時に非接続へ戻す。
 これで元の親子関係とボーン移動キーを保ち、確認した7ポーズの表面座標が 0.000002 m 未満の差で一致した。
@@ -40,13 +40,13 @@ FBZZ 実機での再生・既製モーションのリターゲットは未実施
 `GreenWare/Assets/Models/MiniBotC_Tripo/` を使う。
 旧 Player・Sword は Blender から削除済み。Tripo の新しい配色を採用し、元カラー画像を保存した上で最適化した。
 3 体の合計は原本 4,292,409 三角形から LOD0=85,992、LOD1=42,992、LOD2=18,192。
-[使用方法と検証範囲](../../GreenWare/Assets/Models/MiniBotC_Tripo/README.md)。
+[使用方法と検証範囲](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Models/MiniBotC_Tripo/README.md)。
 
 ## 2026-09-13 の旧版実装結果（置換前の履歴）
 
 この版の作業ファイル名は `GreenWare/Assets/_src/MiniBotC/MiniBotC_GameReady.blend` だった。
 このファイルはその後の Tripo モデル読み込みに使われ、以下の旧メッシュは削除されている。旧データは高密度原本・削除前のアーカイブと旧出力に残る。
-[操作方法・アセット一覧](../../GreenWare/Assets/Models/MiniBotC_GameReady/README.md)。
+[操作方法・アセット一覧](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Models/MiniBotC_GameReady/README.md)。
 
 | 対象 | Tripo 原本の三角形数 | LOD0 | LOD1 |
 |---|---:|---:|---:|

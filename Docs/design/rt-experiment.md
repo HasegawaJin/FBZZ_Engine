@@ -17,9 +17,9 @@
 
 ## 動作するデモと公開画像
 
-正本は [CornellBox.scene](../../GreenWare/Assets/Scenes/Test/CornellBox.scene)。赤・緑の側壁、拡散球・金属球・ガラス球、発光灯具と Area Light を持つ。対応範囲は Reference PathTracing の光輸送、確率的 BSDF sampling、NEE / MIS、Russian roulette、蓄積、ガラスの反射・屈折・媒体吸収などである。実装・回帰検証の範囲は [RayTracing.md](RayTracing.md) の現在契約を正本にする。
+正本は [CornellBox.scene](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Scenes/Test/CornellBox.scene)。赤・緑の側壁、拡散球・金属球・ガラス球、発光灯具と Area Light を持つ。対応範囲は Reference PathTracing の光輸送、確率的 BSDF sampling、NEE / MIS、Russian roulette、蓄積、ガラスの反射・屈折・媒体吸収などである。実装・回帰検証の範囲は [RayTracing.md](RayTracing.md) の現在契約を正本にする。
 
-再開用の [CornellReference.playtest.json](../../GreenWare/Tests/Playtests/CornellReference.playtest.json) は当時の 24 手順を保持する。既存 GreenWare のシーン・材質・PostProcess・シェーダーを使うため、`Scratch/` の隔離プロジェクトを必要としない。DeveloperMode で起動し、Project Settings > Graphics の保存済み要求を `PathTracing` / `Reference` にした状態で実行する。シナリオ自身は描画モードや project settings を変更せず、通常起動や別 profile では Trace の表明が失敗する。再開に伴う設定変更は既存 project settings の通常保存として扱い、デモ保存時には元設定を変更しない。
+再開用の [CornellReference.playtest.json](https://github.com/HasegawaJin/GreenWare/blob/main/Tests/Playtests/CornellReference.playtest.json) は当時の 24 手順を保持する。既存 GreenWare のシーン・材質・PostProcess・シェーダーを使うため、`Scratch/` の隔離プロジェクトを必要としない。DeveloperMode で起動し、Project Settings > Graphics の保存済み要求を `PathTracing` / `Reference` にした状態で実行する。シナリオ自身は描画モードや project settings を変更せず、通常起動や別 profile では Trace の表明が失敗する。再開に伴う設定変更は既存 project settings の通常保存として扱い、デモ保存時には元設定を変更しない。
 
 2026-10-01 の完成した Development バイナリと production HLSL / CSO による画像を、追跡外の `Scratch/` から [Docs/media/path-tracing/](../media/path-tracing/) へ無加工で複製した。元データは `Scratch/CornellGlassCapture/OutputExpansionCompleteReference20261001/`。原本を隔離コピーし、有効な Area Light (強度 18)、発光灯具、ガラス、ReflectionProbe、black Sky を維持した。
 

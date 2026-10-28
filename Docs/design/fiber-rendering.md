@@ -1,10 +1,43 @@
-<!--
-/// @file    fiber-rendering.md
-/// @brief   毛皮と短い芝が共有する Shell / Fin 描画の契約と段階導入。
-/// @author  Hasegawa Jin
-/// @date    2026-09-17
--->
-# 表面繊維 — Fur と Grass の共通描画
+<!-- @file    fiber-rendering.md -->
+<!-- @brief   用途を限定しない表面繊維の Shell / Fin / Blade 描画契約。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-09-17 -->
+# Fiber — 表面繊維の共通描画
+
+## 静的 Mesh の表面ペイントと大量配置 (2026-10-11)
+
+Scene View で Mesh またはモデルの親を選び、`Add Grass` で Short lawn / Meadow / Tall grass を追加する。
+`Start empty` なら空から塗り、通常は全面配置から道などを消す。親を選ぶと子の静的 Mesh を一括登録する。
+既存の `FiberComponent` を使い、用途別の Component 型は増やさない。
+
+- `chunkedPlacement` は新規の静的 Blade 配置を選ぶ。旧シーンの既定は false で、従来の根元・密度単位を維持する。
+- 新規配置の `bladeDensity` はワールド面積 m² あたり。幅はワールド m。非一様スケールも面積と幅へ反映する。
+- `chunkSize` はローカル m。草だけを内部チャンクに分け、Mesh と Hierarchy は変更しない。
+- `maxSlope` はワールド上方向からの度数。既定 55 度で側面・裏面を除く。
+- `maxBlades` は個体全体の根元数の予算 (既定 100 万、最大 200 万)。32,768 本は GPU バッファ 1 ページの上限として維持し、必要なページ数へ分割する。
+- `bladeSegments` は高さの分割数 [1,6]。既定 6 は従来と同じ 72 頂点、3 は 36 頂点、1 は 12 頂点。根元・幅・毛丈・風・接触は共通だが、少ない分割は曲がった輪郭を直線で近似するため同品質ではない。短い芝を遠くから見る用途で明示して選ぶ。
+- `shadowBladeSegments` は影だけの高さ分割数 [0,6]。既定 0 は本描画を継承し、1〜6 は影だけを上書きする。例えば本描画 3・影 1 で提出頂点を減らせる。既存シーンとマテリアルは 6・0 のまま外観を維持する。距離 LOD の密度・消失距離とは独立した設定で、自動の段階切替は行わない。
+- `.fiberpaint` は個体別の CPU アセット。Component の `paintPath` は GUID 参照。共有 `.mat` は変更しない。
+- ペイントは元の三角形番号と重心座標の格子へ保存する。材質 UV は使わず、UV なし・重複 UV を受理する。追加時は最大ワールドスケールから格子の目安 0.5 m、チャンクの目安 4 m をローカル単位へ変換する。長辺の最大分割数は 512、総セル数の上限は 1,048,576。
+- トポロジー・頂点位置の署名が変わったペイントは拒否する。`Add Grass` で新しい面へ結合し直す。同じ形状へのプリセット変更は既存の塗りを複製して保持する。
+- ファイルは `version=1`、`mesh_signature`、`cell_size`、`default_density`、`default_length` と疎な `cells` を持つ。位置・草の根元一覧・GPU 資源・ランタイム世代は保存しない。検証後に原子的保存する。
+- 密度は候補根元の生成時に一度だけ反映する。従来の fiberMask (tex5) は独立した材質マスクとして残す。密度 0 のセル・長さ 0 のセルは根元を確保しない。
+- 乱数は三角形・格子セル・候補番号・Seed から独立に決める。消去・高さ変更で他の根元を並び直さない。
+- 個体ごとに配置キャッシュを持ち、入力世代が同じ間は三角形・マスクを走査しない。編集時も内容署名が変わったチャンクだけ根元と GPU ページを作り直す。
+- ページごとの毛丈・曲げ込み bounds と安定した描画 ID を既存 Fiber パスへ渡す。画面外判定・距離 LOD・影・選択・velocity・風・踏み倒しは共通経路を使う。根元バッファ更新時は velocity 履歴をリセットする。
+
+`Paint Grass` は Density / Height / Smooth、ワールド半径、Softness、選択 (子孫を含む) / 登録済み Mesh 全体、Visible surface only を提供する。
+可視面限定はセル中心からカメラへの三角形交差で遮蔽物も確認し、正投影では平行な視線を使う。
+高速ドラッグは画面の線分上でレイを補間する。ヒットのない区間は結ばない。
+ドラッグ中は適用候補の線とブラシを表示し、離したときに一括適用する。Esc / カメラ操作 / Play / 選択・シーン・履歴変更では中断する。
+Density / Height の目標値は同じ範囲への再適用で累積しない。Smooth は近傍値を平均する。
+
+操作は `fiber.add` / `fiber.paint_mode` / `fiber.stroke` / `fiber.fill` / `fiber.commit_stroke` に登録する。
+ストロークと一括追加はそれぞれ一件の Undo。Undo/Redo はシーン、Component 寿命、形状、ペイント内容を検証し、衝突時は履歴もデータも変更しない。
+未保存の塗りは AssetDirtyRegistry の型付き draft に保持する。Ctrl+S / Save All と終了時確認へ接続し、Discard はディスクの内容へ戻す。
+
+Terrain は既存の層ペイントによる Fiber 配置を使う。ここでの面ペイントは静的 Mesh 向け。
+GPU 間接描画・複数個体の描画一括化・スキン Blade は次の段階とし、現在のページは共通パスへ個別提出する。
 
 ## 境界
 
@@ -112,7 +145,7 @@ velocity は土台の world 行列が静止していても描く。ビューご�
 - `bladeDensity`・`bladeWidth`・`seed` で分布を制御する。CPU / GPU の過剰確保を避けるため 1 メッシュ / 地形パッチは最大 32768 葉。超過時は警告して生成を拒否するので、密度かパッチを小さくする。
 - Blade は頂点バッファを持たない。CPU は 1 葉 64 バイトの根元 (`FiberBladeRoot`: 位置・相対高さ・法線・乱数・2 リボンの半幅ベクトル・UV) だけを作り、GPU ローカルの StructuredBuffer (VS の `vsBuffers[0]`) に置く。VS が `SV_VertexID` から 1 葉 72 頂点 (リボン 2 × 高さ 6 区間 × 6 頂点) を組み立て、インデックスなしで描く。三角形の並びと各頂点の高さ・左右は旧インデックスバッファと同じで、乱数の消費順も変えていないため形状は一致する。32768 葉で以前は約 108 MB (28 頂点 × 108 バイト + 72 インデックス) を CPU で生成・転送していたが、約 2 MB になる。距離 LOD は提出する頂点数を 72 の倍数で減らす。
 - `distanceLod` を有効にすると `lodNear`～`lodFar` で Shell 層数と Blade の提出本数を減らす。最後の 10% は根元の決定的ディザで消し、far 以降は提出しない。影も同じ閲覧カメラの LOD を使う。層数が変わったフレームは速度履歴をリセットする。
-- 接触の走査は頂点ごとに最大 32 枠。b10 の末尾 (`FiberContactCB::m_count` / `m_previousCount`) までで打ち切り、接触 0 件と `grassShading = 0` (毛皮) では走査しない。今フレームは発生済みで回復しきっていない最後の枠 + 1、前フレームは評価時刻が速度履歴でずれるため半径を持つ最後の枠 + 1 (`UpdateFiberContactCounts`)。
+- 接触の走査は頂点ごとに最大 32 枠。b10 の末尾 (`FiberContactCB::m_count` / `m_previousCount`) までで打ち切り、接触 0 件と `planarShading = 0` (毛皮) では走査しない。今フレームは発生済みで回復しきっていない最後の枠 + 1、前フレームは評価時刻が速度履歴でずれるため半径を持つ最後の枠 + 1 (`UpdateFiberContactCounts`)。
 - `FiberInteractorComponent` は足元のワールド位置を中心とする球。`radius` は m、`strength` は 0～1、`recoverySeconds` は復元にかかる秒数。32 接触の循環履歴を保持し、静止中の接触は近い記録を更新する。現在と前フレームの履歴を分け、踏み倒し・復元も velocity に含める。草への見た目の変形であり、物理力ではない。
 - 選択マスクも同じ頂点変形・Alpha Clip・距離 LOD を使い、両面を描く。元の表面だけを囲む輪郭を繊維まで拡張する。
 
@@ -130,7 +163,7 @@ velocity は土台の world 行列が静止していても描く。ビューご�
 - 本編と同じシェーダーと b2 (`ResolveFiberMaterial` で丸めた値) / b5 (`FiberFrameCB`) / b10 (`FiberContactCB`) のレイアウトを使う。両 CB は `FiberRenderPass.hpp` が正本。接触と局所 FlowField は 0 件、環境風はパネルの Wind スライダー (+X 方向 [m/s]、風速の半分の突風付き) だけ。
 - .mat は描画方式を持たないので、パネルで Shell / Fin / Hybrid / Blade と層数を切り替える。サムネイルはシェーダー名から推した方式 (現行の .mat はすべて Shell)。Blade の密度・幅は FiberComponent の既定 (400 / 0.015)。上限を超える形状では密度を半分ずつ下げる。
 - 土台は根元色を暗くした単色 Lit。本編の MeshRenderer 側の材質はプレビューに含めない。枠は形状の境界に毛丈と曲げ上限を足して決める。
-- サムネイルの形状は、草 (`grassShading >= 0.5`) なら平面、毛皮なら球。表示チャンネルは Shaded のみ。
+- サムネイルの形状は、草 (`planarShading >= 0.5`) なら平面、毛皮なら球。表示チャンネルは Shaded のみ。
 
 ## 使用と比較
 
@@ -214,3 +247,15 @@ Fiber の色パスは `iblIntensity > 0` の場合、定数の ambientColor を�
 - [流れの場](flow-field.md): 媒質の流速と消費者側の応答係数の分離。
 
 参照 URL は該当する C++ / HLSL の `@see` にも置く。論文どおりの実装と独自の軽量近似をコメントで区別する。
+
+## 内部名と保存キーの互換性 (2026-10-11)
+
+`FiberComponent` と登録・保存型キー `FiberComponent` は既に汎用名なので維持する。毛・芝などは用途例で、別の Component 型を増やさない。
+
+| 旧名 | 正本 | 意味 |
+|---|---|---|
+| `FiberMaterialSettings::m_grass` | `m_planarShading` | 0 は繊維方向の照明、1 は平面の Lambert / 透過照明、その間は補間 |
+| HLSL / `.mat` の `grassShading` | `planarShading` | 照明モデルの選択を用途名から分離 |
+| HLSL の `fur` / `furDiffuse` | `strandWeight` / `strandDiffuse` | 繊維側の照明項 |
+
+読込と保存で旧 `.mat` キーを正規化し、両方ある場合は新キーを優先する。C# の Material API の署名は維持し、旧 property 文字列による照会・取得・設定・解除も同じ正本値に接続する。旧・新シェーダーへの描画束縛と個体 override にも互換を設ける。定数バッファの順序・サイズは変えない。`Fur.mat` / `Grass.mat` / `TallGrass.mat` は実際の外観を表すプリセット名として保持し、GUID を変更しない。

@@ -1,3 +1,7 @@
+<!-- @file    light-probe-gi.md -->
+<!-- @brief   格子 SH と距離モーメントによる間接光と可視性補間。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-09-19 -->
 # Light Probe GI (Light Probe Volume)
 
 - 状態: 実装済み (2026-09-19)。比較シーン `GreenWare/Assets/Scenes/Test/LightProbeGI.scene` とシナリオ `GreenWare/Tests/Playtests/LightProbeGI.playtest.json`
@@ -110,8 +114,7 @@ Z の補間は係数の区画の中に閉じる (texel.z ∈ [0.5, gridZ − 0.5
 
 ## 限界
 
-- 可視性 (深度モーメント) を持たないので、薄い壁 1 枚を挟んだ両側のプローブは補間で混ざる。
-  DDGI のように深度モーメントを持てば消せるが、ボリュームが 3 倍になる。格子を壁に合わせるか、部屋ごとにボリュームを分ける。
+- 2026-10-09 から捕捉深度をプローブごとの 8x8 octahedral 距離モーメントへ保存し、8 近傍の SH を可視性・法線・格子重みで補間する。薄壁越しの光漏れを抑える近似であり、低い角度解像度やプローブの疎さによる限界は残る。詳細は [画質の共通契約](graphics-quality.md)。
 - 同時に効くボリュームは 2 つ。3 つ目以降は遠いものから落ちる。
 - IBL が引けないフレーム (Environment Light 無効) では効かず、焼きも進まない。拡散 IBL の置き換えなので。
 - パーティクルは受けない。

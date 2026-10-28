@@ -2,11 +2,11 @@
 
 - 更新: 2026-09-14
 - 状態: **Playerとして31本のFBXを出力・再読み込み検証済み。新Controllerと3マスクを構築済み。FBZZでのインポート・再生検証は未実施。**
-- 制作の正本: [MiniBotC_PlayerMotions.blend](../../GreenWare/Assets/_src/MiniBotC/MiniBotC_PlayerMotions.blend)
-- 機械可読の一覧: [ExportManifest.json](../../GreenWare/Assets/Models/Player/ExportManifest.json)
-- クリップ表: [Clips.csv](../../GreenWare/Assets/Models/Player/Clips.csv)
-- 設定と事前検証: [prepare_minibot_c_export.py](../../GreenWare/Tools/BlenderExport/prepare_minibot_c_export.py)
-- 実出力: [export_minibot_c_player.py](../../GreenWare/Tools/BlenderExport/export_minibot_c_player.py)
+- 制作の正本: [MiniBotC_PlayerMotions.blend](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/_src/MiniBotC/MiniBotC_PlayerMotions.blend)
+- 機械可読の一覧: [ExportManifest.json](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Models/Player/ExportManifest.json)
+- クリップ表: [Clips.csv](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Models/Player/Clips.csv)
+- 設定と事前検証: [prepare_minibot_c_export.py](https://github.com/HasegawaJin/GreenWare/blob/main/Tools/BlenderExport/prepare_minibot_c_export.py)
+- 実出力: [export_minibot_c_player.py](https://github.com/HasegawaJin/GreenWare/blob/main/Tools/BlenderExport/export_minibot_c_player.py)
 - Controller・シーン撤去: [設計](player-export-controller.md)、実行記録は `Docs/Art/MiniBotC/ExportDelivery/DeliveryReport.json` (追跡外)
 
 ## 1. 出力するデータ
@@ -163,9 +163,9 @@ Blenderの実際の `axis_conversion(to_forward='-Z', to_up='Y')` と、
    各ファイルのテイク数を1本にする。モデルFBXは `bake_anim=False` とする。
 6. 終了時は一時リグ・一時Action・一時メッシュを片付け、元のAction・スロット・フレーム・選択を戻す。
 
-親子ローカルへの変換は [export_animation_ready_clip.py](../../GreenWare/Tools/BlenderExport/export_animation_ready_clip.py) の
+親子ローカルへの変換は [export_animation_ready_clip.py](https://github.com/HasegawaJin/GreenWare/blob/main/Tools/BlenderExport/export_animation_ready_clip.py) の
 `convert_local_to_pose(..., invert=True)` が参考になる。
-1クリップ1FBXと基準姿勢の初期化は [fbzz_export_minibot.py](../../GreenWare/Tools/BlenderExport/fbzz_export_minibot.py) を参考にする。
+1クリップ1FBXと基準姿勢の初期化は [fbzz_export_minibot.py](https://github.com/HasegawaJin/GreenWare/blob/main/Tools/BlenderExport/fbzz_export_minibot.py) を参考にする。
 ただしどちらも **完成版の剣ソケット処理と下記の取り込み設定を追加してから** 出力に使用する。
 `prepare_minibot_c_export.py` は一覧生成・検証・整理専用で、これらのFBXベイク処理は実行しない。
 

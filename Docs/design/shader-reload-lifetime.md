@@ -13,6 +13,14 @@
 - UI のマテリアルキャッシュはシェーダー版数も監視し、定数バッファの配置情報と GPU バッファを再構築する。
 - Material の再確保判定は CPU 配列長ではなく GPU バッファの容量を使う。呼び出し側が先に配列を新レイアウトへ更新しても、旧容量の GPU バッファを再利用しない。
 
+## Editor の HLSL ソース監視
+
+HLSL/HLSLI と compile_shaders.ps1 のパス・更新時刻・サイズによる指紋を比較し、追加・更新・削除・改名を検出する。compiled / compiled_dx12 と CSO / meta は対象から除外する。
+
+起動時の確認以降は、読み取り専用の走査を TaskSystem の共有プールへ最大 1 件だけ投入する。main thread は待機時間 0 の完了確認と結果の適用だけを行い、定期的なツリー列挙やファイル属性取得で描画を止めない。完了後から次の走査まで 0.5 秒置き、変更時の 500 ms debounce と再コンパイル・差し替えの既存経路を維持する。
+
+worker は監視ルートのコピーだけを所有し、Editor、Scene、コンパイラー、描画リソースに触れない。監視先の再初期化では旧 future を捨て、旧ルートの結果を新しいプロジェクトへ適用しない。共有プールが終了時に worker を回収する。プロファイラの HotReload::PollHlsl は main thread の受付・完了確認だけを計測する。
+
 ## Standalone の入力初期化
 
 Standalone はウィンドウとレンダラーの設定を得るため、Application::Init より先に ProjectSettings を読む。

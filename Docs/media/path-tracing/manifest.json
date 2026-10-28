@@ -10,6 +10,9 @@
   "debugLayer": true,
   "gpuBasedValidation": false,
   "scene": "GreenWare/Assets/Scenes/Test/CornellBox.scene",
+  "sceneRepository": "https://github.com/HasegawaJin/GreenWare",
+  "sceneRepositoryPath": "Assets/Scenes/Test/CornellBox.scene",
+  "legacySdkVersion": "0.9.1",
   "condition": "原本を隔離コピー。有効なArea Light (強度18)、発光灯具、ガラス、ReflectionProbe、black Skyを維持。",
   "images": [
     {

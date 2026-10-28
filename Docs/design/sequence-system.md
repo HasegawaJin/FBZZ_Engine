@@ -174,7 +174,7 @@ bool driven = false;   // true の間、AnimatorSystem は time を進めない 
 > **WHY レイヤー合成を自前でやらないか:** マスク・Additive 参照ポーズ・レイヤー重みの合成規則は
 > `AnimatorSystem` にしかない。シーケンスが独自にポーズを混ぜると、ボスの `Aim` (Override) と
 > `Add_Hit` (Additive) をどう扱うかが 2 か所に分かれる
-> ([Boss/README.md](../../GreenWare/Assets/Models/Boss/README.md) の 2 レイヤー構成)。
+> ([Boss/README.md](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Models/Boss/README.md) の 2 レイヤー構成)。
 > Slot に流し込む形なら、合成は今までどおり Animator が 1 か所で決める。
 
 **制約: 1 AnimationTrack = 1 レイヤー。** Slot はレイヤーごとに 1 本しかないので、
@@ -624,7 +624,7 @@ class SequenceImporter final : public IAssetImporter<SequenceAsset> {
 ## 10. ボス演出への当てはめ
 
 企画書 8 章 / 10.6 のボス「ポラリティ・コア」。クリップの時刻は
-[Boss/README.md](../../GreenWare/Assets/Models/Boss/README.md) の実測値。
+[Boss/README.md](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Models/Boss/README.md) の実測値。
 
 **共通のバインディング**: `Boss` / `BossCore` (発光メッシュ) / `Camera` / `Director` (未使用、Event は broadcast)。
 

@@ -16,6 +16,8 @@ IsEnabled() = 起動で強制 || 設定
 - 起動で強制しているあいだは、メニューからオフにできない (`FORCED_BY_LAUNCH` で拒否する)
 - 入口 (EditorLauncher・Sandbox・各ゲームの AppMain) は、`CrashHandler::Install` の直後に `DeveloperMode::InitFromCommandLine()` を呼ぶ
 - ビルド構成 (Debug / Development / Release) では決めない。構成が同じでも、ゲームを作る人とエンジンを作る人がいるため
+- 起動引数の解析は `src/Core/DeveloperModeLaunch.hpp` の内部契約に閉じる。公開 API は通常の起動初期化・設定・結果の問い合わせを持ち、テスト専用の強制 setter は持たない
+- テストは環境変数を入力に `InitFromCommandLine()` を通し、設定と強制状態の関係を結果から検証する。引数の字句規則は本番も使う内部解析関数で検証する。fixture は元の環境変数・設定・起動時の判定を復元する
 
 ## 2. エディター
 

@@ -289,3 +289,18 @@ IblBaker の一時枠はスコープガードで返す。失敗経路が 3 つ�
 - `ComputeCall::uavOutputs` の 8 枠 (撤去済み DX11 SM 5.0 の CS UAV 上限の名残) を解く。
   UAV も `ResourceDescriptorHeap` から引けるので、段 C の直後が自然
 - 定数バッファも bindless 化するかは未決。root CBV 14 本で足りている間は動かさない
+
+
+## Graphicsの参照解決を一つのSubmit内でまとめる（検証用）
+
+`FBZZ_DX12_BINDING_SCAN_FUSION=1` をデバイス生成前に設定すると、texture / PS StructuredBuffer / auxiliary PS bufferの必須状態遷移とb14添字取得で、同じResourceManager lookupを二度行わない。未設定・0・未知値は従来経路。性能比較の予定反復が背景負荷で完了していないため、標準では有効にしない。
+
+添字は毎SubmitでINVALIDから再構築し、現在のhandleを解決する。フレーム間・描画間の値やpointerのキャッシュは持たず、全遷移、b14 upload、root書込みは維持する。texture→PS→auxiliaryのdescriptor取得・重ね書き順序も維持する。instance / VS / rawの取得と遷移は従来どおりで、GetBindlessSrvIndexがGetSrvResourceより先に必要なraw SRVの遅延生成契約も変えない。indirect依存は遷移専用のまま。
+
+D=Submit数、K=対象texture/PS/auxiliaryスロット数なら、該当lookupを2DK回からDK回へ減らす。計算量は引き続きO(DK)、Kは既定の固定配列幅。永続的なbinding cache、メモリ容量削減、Draw数・LOD・シェーダー品質変更はない。b14 uploadの描画間再利用は比較でCPU frame全体の改善が確認できず撤回した。
+
+## 分離した診断
+
+Profiler capture filterのscopeを`ForwardOpaque`へ明示した実行だけ、可視判定、object upload、draw preparation、Submit呼出しの集約時計を取る。`CullingAggregate`は`Gather`と重複する合計で、連続した子区間ではない。`SubmitCallAggregate`はunthreadedならnative記録、threaded facadeならproducerのqueueingや受理待ちを含み、workerでの実行時間とは別。
+
+`FBZZ_DX12_BINDLESS_INDICES_DIAGNOSTICS=1` はnative側のtexture遷移からb14 uploadまでの`bindingSectionMs`と回数をframe終端に記録する。VS遷移やbarrier flush以降はこの区間に含まない。`observedResourceFrame`は観測したResourceManagerの時計で、全呼出しが同じowner/frameだったかを`resourceCoherent`で示す。physical frameとapplication frameを無条件に同一視しない。診断時のper-draw時計・出力負荷を通常性能比較に混ぜない。無効時はper-draw時計と診断出力を行わない。

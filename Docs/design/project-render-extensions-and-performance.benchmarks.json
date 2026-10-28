@@ -1,0 +1,4668 @@
+{
+  "schema": "fbzz-project-render-benchmark-summary/1",
+  "dateUtc": "2026-10-21T12:27:16.010020+00:00",
+  "author": "Hasegawa Jin",
+  "hardware": {
+    "Cpu": "Intel(R) Core(TM) i7-14700F",
+    "LogicalProcessors": 28,
+    "Gpu": "NVIDIA GeForce RTX 4070 (actual DX12 startup log)",
+    "VramMiB": 12010,
+    "OsVersion": "26H2",
+    "OsBuild": "26300",
+    "OsRevision": 9711,
+    "MemoryGiB": null,
+    "Configuration": "Release",
+    "GraphicsApi": "DX12",
+    "Resolution": [
+      1920,
+      1080
+    ],
+    "HardwareReadNote": "CIM query unavailable; CPU/OS from read-only registry, GPU from actual renderer log.",
+    "gpuDriverVersion": "610.88",
+    "nvidiaSmiTotalMemoryMiB": 12282,
+    "gpuDriverEvidence": "nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader"
+  },
+  "configuration": {
+    "ReleaseLto": "ON before and after, verified by parent",
+    "resolution": [
+      1920,
+      1080
+    ]
+  },
+  "authoringDocs": [
+    "water-appearance-authoring.md",
+    "water-waves.md",
+    "fiber-project-appearance.md",
+    "fiber-rendering.md"
+  ],
+  "culling": {
+    "objects": 10000,
+    "pipeline": "Forward/Unlit",
+    "gpuInstancing": false,
+    "frameGeometryCache": true,
+    "warmupFrames": 12,
+    "sampleFrames": 60,
+    "viewsPerFrame": 1,
+    "beforeCaseCount": 7,
+    "afterCaseCount": 9,
+    "completeCpuFramesPerCase": 60,
+    "cpuDroppedSamples": 0,
+    "drawFrustumTriangleCountsMatch": true,
+    "afterReadbackNonBackgroundAssert": true,
+    "beforePixelEqualityVerified": false,
+    "totalGpuTimeAvailable": false,
+    "strictCpuGpuJoined": false,
+    "cases": [
+      {
+        "name": "AllVisible10000",
+        "visiblePercent": 100,
+        "frameMedianReductionPercent": 15.243470816486129,
+        "frameP95ReductionPercent": 15.160808146022084,
+        "before": {
+          "frameMs": {
+            "count": 60,
+            "median": 13.49135,
+            "p95": 14.2499,
+            "max": 14.6209
+          },
+          "extractCpuMs": {
+            "count": 60,
+            "median": 6.321649995,
+            "p95": 6.84009999,
+            "max": 7.10509998
+          },
+          "cachePublishCpuMs": {
+            "count": 60,
+            "median": 1.72030005,
+            "p95": 1.9702,
+            "max": 2.13380003
+          },
+          "forwardGpuMs": {
+            "count": 60,
+            "median": 0.157696,
+            "p95": 0.17408,
+            "max": 0.247808
+          },
+          "fenceWaitCpuMs": {
+            "count": 60,
+            "median": 0.000399947166,
+            "p95": 0.000800013542,
+            "max": 0.000899970531
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              0
+            ],
+            "drawCalls": [
+              10000
+            ],
+            "triangles": [
+              120000
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          }
+        },
+        "after": {
+          "frameMs": {
+            "count": 60,
+            "median": 11.4348,
+            "p95": 12.0895,
+            "max": 12.2919
+          },
+          "extractCpuMs": {
+            "count": 60,
+            "median": 4.510850015,
+            "p95": 4.91159999,
+            "max": 5.25120002
+          },
+          "cachePublishCpuMs": {
+            "count": 60,
+            "median": 0.33094999199999997,
+            "p95": 0.450699985,
+            "max": 0.624100029
+          },
+          "forwardGpuMs": {
+            "count": 60,
+            "median": 0.151552,
+            "p95": 0.166912,
+            "max": 0.214016
+          },
+          "fenceWaitCpuMs": {
+            "count": 60,
+            "median": 0.000299990177,
+            "p95": 0.000500023365,
+            "max": 0.000799953938
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              0
+            ],
+            "drawCalls": [
+              10000
+            ],
+            "triangles": [
+              120000
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          }
+        }
+      },
+      {
+        "name": "Partial10000",
+        "visiblePercent": 50,
+        "frameMedianReductionPercent": 18.76917545349419,
+        "frameP95ReductionPercent": 15.27267464764953,
+        "before": {
+          "frameMs": {
+            "count": 60,
+            "median": 11.71735,
+            "p95": 12.4379,
+            "max": 13.0008
+          },
+          "extractCpuMs": {
+            "count": 60,
+            "median": 6.560299994999999,
+            "p95": 7.16210002,
+            "max": 7.58709997
+          },
+          "cachePublishCpuMs": {
+            "count": 60,
+            "median": 1.9618499900000002,
+            "p95": 2.255,
+            "max": 2.7015
+          },
+          "forwardGpuMs": {
+            "count": 60,
+            "median": 0.075776,
+            "p95": 0.088064,
+            "max": 0.150528
+          },
+          "fenceWaitCpuMs": {
+            "count": 60,
+            "median": 0.000299990177,
+            "p95": 0.000599980354,
+            "max": 0.000999987125
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              5000
+            ],
+            "drawCalls": [
+              5000
+            ],
+            "triangles": [
+              60000
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          }
+        },
+        "after": {
+          "frameMs": {
+            "count": 60,
+            "median": 9.518100019999999,
+            "p95": 10.5383,
+            "max": 11.4426
+          },
+          "extractCpuMs": {
+            "count": 60,
+            "median": 4.611049980000001,
+            "p95": 5.24369997,
+            "max": 5.41329998
+          },
+          "cachePublishCpuMs": {
+            "count": 60,
+            "median": 0.3402999635,
+            "p95": 0.440199971,
+            "max": 0.728000045
+          },
+          "forwardGpuMs": {
+            "count": 60,
+            "median": 0.074752,
+            "p95": 0.08704,
+            "max": 0.096256
+          },
+          "fenceWaitCpuMs": {
+            "count": 60,
+            "median": 0.000400006771,
+            "p95": 0.000699996948,
+            "max": 0.000800013542
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              5000
+            ],
+            "drawCalls": [
+              5000
+            ],
+            "triangles": [
+              60000
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          }
+        }
+      },
+      {
+        "name": "OffscreenHeavy10000",
+        "visiblePercent": 1,
+        "frameMedianReductionPercent": 26.887436386001294,
+        "frameP95ReductionPercent": 24.0821404489686,
+        "before": {
+          "frameMs": {
+            "count": 60,
+            "median": 10.36525,
+            "p95": 10.7669,
+            "max": 11.3136
+          },
+          "extractCpuMs": {
+            "count": 60,
+            "median": 7.18090001,
+            "p95": 7.56810004,
+            "max": 8.07699996
+          },
+          "cachePublishCpuMs": {
+            "count": 60,
+            "median": 2.1182500099999997,
+            "p95": 2.32080001,
+            "max": 2.45719999
+          },
+          "forwardGpuMs": {
+            "count": 60,
+            "median": 0.014336,
+            "p95": 0.014336,
+            "max": 0.044032
+          },
+          "fenceWaitCpuMs": {
+            "count": 60,
+            "median": 0.000299990177,
+            "p95": 0.00049996376,
+            "max": 0.000599980354
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              9900
+            ],
+            "drawCalls": [
+              100
+            ],
+            "triangles": [
+              1200
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          }
+        },
+        "after": {
+          "frameMs": {
+            "count": 60,
+            "median": 7.5783000000000005,
+            "p95": 8.17400002,
+            "max": 8.3994
+          },
+          "extractCpuMs": {
+            "count": 60,
+            "median": 4.60034999,
+            "p95": 4.90090001,
+            "max": 5.3186
+          },
+          "cachePublishCpuMs": {
+            "count": 60,
+            "median": 0.32189998,
+            "p95": 0.445199966,
+            "max": 0.495500028
+          },
+          "forwardGpuMs": {
+            "count": 60,
+            "median": 0.014336,
+            "p95": 0.014336,
+            "max": 0.016384
+          },
+          "fenceWaitCpuMs": {
+            "count": 60,
+            "median": 0.000299990177,
+            "p95": 0.000699996948,
+            "max": 0.000700056553
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              9900
+            ],
+            "drawCalls": [
+              100
+            ],
+            "triangles": [
+              1200
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          }
+        }
+      }
+    ],
+    "afterOnlyControls": {
+      "UncachedSingleViewOffscreenHeavy10000": {
+        "beforeMeasured": false,
+        "frameMedianMs": 7.320900025,
+        "frameP95Ms": 7.97260004,
+        "counts": {
+          "objects": [
+            10000
+          ],
+          "frustumCulled": [
+            9900
+          ],
+          "drawCalls": [
+            100
+          ],
+          "triangles": [
+            1200
+          ],
+          "instancedBatches": [
+            0
+          ],
+          "instancedDrawsSaved": [
+            0
+          ]
+        },
+        "firstViewCounts": {
+          "firstViewObjects": [
+            0
+          ],
+          "firstViewFrustumCulled": [
+            0
+          ],
+          "firstViewDrawCalls": [
+            0
+          ]
+        },
+        "validation": [
+          {
+            "kind": "validation",
+            "case": "UncachedSingleViewOffscreenHeavy10000",
+            "nonBackgroundPixels": 6800,
+            "secondNonBackgroundPixels": 0,
+            "readbackTimed": false
+          }
+        ]
+      },
+      "TwoViewsOppositeOffscreenHeavy10000": {
+        "beforeMeasured": false,
+        "frameMedianMs": 16.97855,
+        "frameP95Ms": 17.7902,
+        "counts": {
+          "objects": [
+            10000
+          ],
+          "frustumCulled": [
+            100
+          ],
+          "drawCalls": [
+            9900
+          ],
+          "triangles": [
+            118800
+          ],
+          "instancedBatches": [
+            0
+          ],
+          "instancedDrawsSaved": [
+            0
+          ]
+        },
+        "firstViewCounts": {
+          "firstViewObjects": [
+            10000
+          ],
+          "firstViewFrustumCulled": [
+            9900
+          ],
+          "firstViewDrawCalls": [
+            100
+          ]
+        },
+        "validation": [
+          {
+            "kind": "validation",
+            "case": "TwoViewsOppositeOffscreenHeavy10000",
+            "nonBackgroundPixels": 6800,
+            "secondNonBackgroundPixels": 19880,
+            "readbackTimed": false
+          }
+        ]
+      }
+    }
+  },
+  "grass": {
+    "surfaceMeters": [
+      50,
+      50
+    ],
+    "warmupFrames": 30,
+    "sampleFrames": 120,
+    "distanceLod": false,
+    "rootsGpuResident": true,
+    "baselineQuality": {
+      "bladeSegments": 6,
+      "shadowBladeSegments": 0,
+      "effectiveShadowSegments": 6,
+      "source": "baseline invocation assumptions in comparison artifacts"
+    },
+    "defaultQuality": {
+      "bladeSegments": 6,
+      "shadowBladeSegments": 0,
+      "effectiveShadowSegments": 6,
+      "changedDefault": false
+    },
+    "optionalQuality": {
+      "bladeSegments": 3,
+      "shadowBladeSegments": 1,
+      "effectiveShadowSegments": 1,
+      "classification": "quality_tradeoff_not_equal_quality_optimization"
+    },
+    "defaultSpeedupEstablished": false,
+    "statisticallyCausalRegressionEstablished": false,
+    "gpuIntervalsAreTotalGpuFrame": false,
+    "cases": {
+      "1m-all": {
+        "baseline6": {
+          "roots": 1000032,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 0,
+          "submittedVertices": 72002304,
+          "shadowTriangles": null,
+          "frustumCulledPages": 0,
+          "coveredPixels": 181835,
+          "cpuMedianMs": 0.1092,
+          "cpuP95Ms": 0.1486,
+          "frameWallMedianMs": 3.2563,
+          "frameWallP95Ms": 3.4709,
+          "gpuColorMedianMs": 3.18976,
+          "gpuShadowMedianMs": null,
+          "gpuIntervalsMedianMs": 3.18976,
+          "gpuIntervalsP95Ms": 3.23277,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        },
+        "currentDefault6": {
+          "roots": 1000032,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 0,
+          "submittedVertices": 72002304,
+          "shadowTriangles": 0,
+          "frustumCulledPages": 0,
+          "coveredPixels": 181835,
+          "cpuMedianMs": 0.1127,
+          "cpuP95Ms": 0.1423,
+          "frameWallMedianMs": 3.2824,
+          "frameWallP95Ms": 3.5012,
+          "gpuColorMedianMs": 3.21126,
+          "gpuShadowMedianMs": null,
+          "gpuIntervalsMedianMs": 3.21126,
+          "gpuIntervalsP95Ms": 3.27373,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        },
+        "repeatDefault6": {
+          "roots": 1000032,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 0,
+          "submittedVertices": 72002304,
+          "shadowTriangles": 0,
+          "frustumCulledPages": 0,
+          "coveredPixels": 181835,
+          "cpuMedianMs": 0.1237,
+          "cpuP95Ms": 0.1611,
+          "frameWallMedianMs": 3.2546,
+          "frameWallP95Ms": 3.4272,
+          "gpuColorMedianMs": 3.17645,
+          "gpuShadowMedianMs": null,
+          "gpuIntervalsMedianMs": 3.17645,
+          "gpuIntervalsP95Ms": 3.22867,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        },
+        "optional3Shadow1": {
+          "roots": 1000032,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 0,
+          "submittedVertices": 36001152,
+          "shadowTriangles": 0,
+          "frustumCulledPages": 0,
+          "coveredPixels": 182419,
+          "cpuMedianMs": 0.1059,
+          "cpuP95Ms": 0.1355,
+          "frameWallMedianMs": 1.7728,
+          "frameWallP95Ms": 1.905,
+          "gpuColorMedianMs": 1.69779,
+          "gpuShadowMedianMs": null,
+          "gpuIntervalsMedianMs": 1.69779,
+          "gpuIntervalsP95Ms": 1.75718,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        }
+      },
+      "250k-all": {
+        "baseline6": {
+          "roots": 250036,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 0,
+          "submittedVertices": 18002592,
+          "shadowTriangles": null,
+          "frustumCulledPages": 0,
+          "coveredPixels": 53618,
+          "cpuMedianMs": 0.0762,
+          "cpuP95Ms": 0.1071,
+          "frameWallMedianMs": 1.0097,
+          "frameWallP95Ms": 1.1218,
+          "gpuColorMedianMs": 0.928768,
+          "gpuShadowMedianMs": null,
+          "gpuIntervalsMedianMs": 0.928768,
+          "gpuIntervalsP95Ms": 0.955392,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        },
+        "currentDefault6": {
+          "roots": 250036,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 0,
+          "submittedVertices": 18002592,
+          "shadowTriangles": 0,
+          "frustumCulledPages": 0,
+          "coveredPixels": 53618,
+          "cpuMedianMs": 0.101,
+          "cpuP95Ms": 0.1259,
+          "frameWallMedianMs": 1.0045,
+          "frameWallP95Ms": 1.1605,
+          "gpuColorMedianMs": 0.951296,
+          "gpuShadowMedianMs": null,
+          "gpuIntervalsMedianMs": 0.951296,
+          "gpuIntervalsP95Ms": 0.98304,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        },
+        "repeatDefault6": {
+          "roots": 250036,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 0,
+          "submittedVertices": 18002592,
+          "shadowTriangles": 0,
+          "frustumCulledPages": 0,
+          "coveredPixels": 53618,
+          "cpuMedianMs": 0.0867,
+          "cpuP95Ms": 0.1369,
+          "frameWallMedianMs": 1.101,
+          "frameWallP95Ms": 1.2459,
+          "gpuColorMedianMs": 1.02298,
+          "gpuShadowMedianMs": null,
+          "gpuIntervalsMedianMs": 1.02298,
+          "gpuIntervalsP95Ms": 1.07827,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        },
+        "optional3Shadow1": {
+          "roots": 250036,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 0,
+          "submittedVertices": 9001296,
+          "shadowTriangles": 0,
+          "frustumCulledPages": 0,
+          "coveredPixels": 53899,
+          "cpuMedianMs": 0.0751,
+          "cpuP95Ms": 0.1097,
+          "frameWallMedianMs": 0.6879,
+          "frameWallP95Ms": 0.8008,
+          "gpuColorMedianMs": 0.61952,
+          "gpuShadowMedianMs": null,
+          "gpuIntervalsMedianMs": 0.61952,
+          "gpuIntervalsP95Ms": 0.628736,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        }
+      },
+      "250k-all-shadow": {
+        "baseline6": {
+          "roots": 250036,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 169,
+          "submittedVertices": 18002592,
+          "shadowTriangles": null,
+          "frustumCulledPages": 0,
+          "coveredPixels": 53618,
+          "cpuMedianMs": 0.1725,
+          "cpuP95Ms": 0.2085,
+          "frameWallMedianMs": 1.8111,
+          "frameWallP95Ms": 1.9343,
+          "gpuColorMedianMs": 0.905216,
+          "gpuShadowMedianMs": 0.816128,
+          "gpuIntervalsMedianMs": 1.72237,
+          "gpuIntervalsP95Ms": 1.77152,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        },
+        "currentDefault6": {
+          "roots": 250036,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 169,
+          "submittedVertices": 18002592,
+          "shadowTriangles": 6000864,
+          "frustumCulledPages": 0,
+          "coveredPixels": 53618,
+          "cpuMedianMs": 0.1788,
+          "cpuP95Ms": 0.2463,
+          "frameWallMedianMs": 1.8473,
+          "frameWallP95Ms": 2.0688,
+          "gpuColorMedianMs": 0.917504,
+          "gpuShadowMedianMs": 0.838656,
+          "gpuIntervalsMedianMs": 1.75923,
+          "gpuIntervalsP95Ms": 1.82477,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        },
+        "repeatDefault6": {
+          "roots": 250036,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 169,
+          "submittedVertices": 18002592,
+          "shadowTriangles": 6000864,
+          "frustumCulledPages": 0,
+          "coveredPixels": 53618,
+          "cpuMedianMs": 0.1734,
+          "cpuP95Ms": 0.2187,
+          "frameWallMedianMs": 1.8375,
+          "frameWallP95Ms": 2.0563,
+          "gpuColorMedianMs": 0.912384,
+          "gpuShadowMedianMs": 0.831488,
+          "gpuIntervalsMedianMs": 1.74797,
+          "gpuIntervalsP95Ms": 1.82682,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        },
+        "optional3Shadow1": {
+          "roots": 250036,
+          "pages": 169,
+          "draws": 169,
+          "shadowDraws": 169,
+          "submittedVertices": 9001296,
+          "shadowTriangles": 1000144,
+          "frustumCulledPages": 0,
+          "coveredPixels": 53899,
+          "cpuMedianMs": 0.1783,
+          "cpuP95Ms": 0.2434,
+          "frameWallMedianMs": 0.8924,
+          "frameWallP95Ms": 1.0524,
+          "gpuColorMedianMs": 0.535552,
+          "gpuShadowMedianMs": 0.278528,
+          "gpuIntervalsMedianMs": 0.81408,
+          "gpuIntervalsP95Ms": 0.857088,
+          "gpuSamples": 120,
+          "gpuMissingSamples": 0
+        }
+      }
+    },
+    "sameQualityPng": [
+      {
+        "file": "100k-all.png",
+        "baselineSha256": "17385d55da830759d0e15a5598be3af24f09a1f6b88845b43b48e1d2cda692f3",
+        "default6Matches": true,
+        "repeatDefault6Matches": true
+      },
+      {
+        "file": "1m-all.png",
+        "baselineSha256": "f5405412852bbe0dcc36dd61f9a067f331e7637668cfd9c7274020f7e3edd932",
+        "default6Matches": true,
+        "repeatDefault6Matches": true
+      },
+      {
+        "file": "1m-offscreen.png",
+        "baselineSha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+        "default6Matches": true,
+        "repeatDefault6Matches": true
+      },
+      {
+        "file": "1m-partial.png",
+        "baselineSha256": "e84a94aafe8caa34f84b98f111f086b30b54ddf9fd85df44885eb252ca5eec76",
+        "default6Matches": true,
+        "repeatDefault6Matches": true
+      },
+      {
+        "file": "250k-all-shadow.png",
+        "baselineSha256": "1be7ca1f38b662ba9dc2588bb9993d9a79231e4405b94c758b3870c107c35a9d",
+        "default6Matches": true,
+        "repeatDefault6Matches": true
+      },
+      {
+        "file": "250k-all.png",
+        "baselineSha256": "3fa45aef24e281d2e24692fa2c330dda4a363dcb8e5b06e65cb8c7e58bc6e421",
+        "default6Matches": true,
+        "repeatDefault6Matches": true
+      },
+      {
+        "file": "empty-all.png",
+        "baselineSha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+        "default6Matches": true,
+        "repeatDefault6Matches": true
+      }
+    ],
+    "missingGpuSamples": [
+      {
+        "run": "GrassDefault6",
+        "case": "1m-offscreen",
+        "received": 119,
+        "requested": 120,
+        "missing": 1
+      },
+      {
+        "run": "GrassDefault6Repeat",
+        "case": "1m-offscreen",
+        "received": 119,
+        "requested": 120,
+        "missing": 1
+      },
+      {
+        "run": "GrassSelected3Shadow1",
+        "case": "empty-all",
+        "received": 119,
+        "requested": 120,
+        "missing": 1
+      },
+      {
+        "run": "GrassSelected3Shadow1",
+        "case": "1m-offscreen",
+        "received": 119,
+        "requested": 120,
+        "missing": 1
+      }
+    ]
+  },
+  "validationReportedByParent": {
+    "finalQa": {
+      "passed": 4,
+      "total": 4
+    },
+    "ship": {
+      "passedScenarios": 7,
+      "steps": 660,
+      "actualViews": [
+        "Realistic",
+        "Toon"
+      ]
+    }
+  },
+  "unresolvedTestFailures": [],
+  "measurementLimits": [
+    "Culling before/after one fixed-order run; grass baseline one run, current default two fixed-order runs.",
+    "Clock, thermals, power, allocator/cache and other-process load not independently controlled; per-window percentiles are not cross-run confidence intervals.",
+    "Culling gains apply to the explicitly enabled frame-geometry-cache path; no before baselines for uncached or two-view controls.",
+    "Culling old baseline has no pixel assertion; image equality unverified.",
+    "Grass quality3/1 reduces blade/shadow approximation; not same-quality speedup.",
+    "Root generation/upload and Engine extraction are outside grass draw timers; GPU intervals are not total GPU frame time or FPS."
+  ],
+  "sourceSha256": {
+    "Hardware.json": "bb4336a33c332c10b69c2eca8c410fe464a5674a9a27bae5cb5eca15ae259454",
+    "CullingComparison.md": "fae1c4b8bb76e53b10f9426d231bb78a7530db2e91c7ce10eb053e7476e92312",
+    "CullingComparison.json": "fb4849df11c67545bce6e225c0eee6bad61c9e5a14010dbd149fdd026b185951",
+    "GrassBaseline.json": "2a6e8257cb716e65a5998617cc55334f86780ed517ad85bef7bdbbd45099fa85",
+    "GrassDefault6-Comparison.md": "247c89dbb862eb7bae054f60198be8080569625218ebe030d330efac546491bd",
+    "GrassDefault6-Comparison.json": "dbccd9c84a09316ae6088b992d1df4cd52eca0214168c9aff72331c3f40a2281",
+    "GrassDefault6Repeat-Comparison.md": "93ad1e980c98f4e9799c822499add8f0920ca9b1279298a8dfe5fcf1024dcd2d",
+    "GrassDefault6Repeat-Comparison.json": "5e2606dd8a114a861d7fe5d5b5c2419cc4c5f8e9c88175ba2f90e807241b6df7",
+    "GrassSelected3-Comparison.md": "0a1b4b60ac116482001efaef7dc686d8e35058051695007d72eca6aaf3237617",
+    "GrassSelected3-Comparison.json": "ed5e628fb6d11378ef527e5d4f9fa48d0317b00aaa7e925697075c731e8a44a6",
+    "GrassSelected3Shadow1-Comparison.md": "292b41d415dac8d2e33f1d28274ce13e206069ce8146275cdcfa4cbec6f45868",
+    "GrassSelected3Shadow1-Comparison.json": "c303cff451c54eeeec12829589c221ae9d2d208709a7aadc8b56749730461916",
+    "GrassDefault6/report.json": "5f4aacaf315c9c5cb2c4eff6ae0371855c244470db0b0f0b5de432ffec79b82e",
+    "GrassDefault6Repeat/report.json": "8c4350c78e0ac9c8e6f776e5952ed4422ce56fe2787cb05af7f682a111a97286",
+    "GrassSelected3Shadow1/report.json": "e35a260ae6fba6de5fcc227f88b306d5d287722ae7d85da81face2fe7cf80a58"
+  },
+  "finalDefaultShaderInvestigation": {
+    "version": "C_FastDefault",
+    "warmupFrames": 3000,
+    "samplesPerCase": 120,
+    "sequence": [
+      "01_A_PreQuality",
+      "02_C_FastDefault",
+      "03_C_FastDefault",
+      "04_A_PreQuality"
+    ],
+    "scope": "Same current native binary; isolate only quality shader vertex decode; not complete old native baseline.",
+    "comparisons": [
+      {
+        "case": "100k-all",
+        "metric": "gpuColorMedianMs",
+        "preQualityMeanOfTwoMediansMs": 0.4224,
+        "finalMeanOfTwoMediansMs": 0.42547199999999996,
+        "changePercent": 0.7272727272727098
+      },
+      {
+        "case": "250k-all",
+        "metric": "gpuColorMedianMs",
+        "preQualityMeanOfTwoMediansMs": 0.873472,
+        "finalMeanOfTwoMediansMs": 0.8739840000000001,
+        "changePercent": 0.058616647127784915
+      },
+      {
+        "case": "1m-all",
+        "metric": "gpuColorMedianMs",
+        "preQualityMeanOfTwoMediansMs": 3.239935,
+        "finalMeanOfTwoMediansMs": 3.2419849999999997,
+        "changePercent": 0.06327287430147877
+      },
+      {
+        "case": "1m-partial",
+        "metric": "gpuColorMedianMs",
+        "preQualityMeanOfTwoMediansMs": 0.313344,
+        "finalMeanOfTwoMediansMs": 0.31590399999999996,
+        "changePercent": 0.8169934640522625
+      },
+      {
+        "case": "250k-all-shadow",
+        "metric": "gpuIntervalsMedianMs",
+        "preQualityMeanOfTwoMediansMs": 1.695745,
+        "finalMeanOfTwoMediansMs": 1.69011,
+        "changePercent": -0.33230232139855875
+      }
+    ],
+    "optionalQuality3Shadow1": [
+      {
+        "case": "1m-all",
+        "metric": "gpuColorMedianMs",
+        "finalDefaultMeanOfTwoMediansMs": 3.2419849999999997,
+        "finalSelectedQualityMedianMs": 1.70701,
+        "reductionPercent": 47.346764405140675
+      },
+      {
+        "case": "250k-all",
+        "metric": "gpuColorMedianMs",
+        "finalDefaultMeanOfTwoMediansMs": 0.8739840000000001,
+        "finalSelectedQualityMedianMs": 0.546816,
+        "reductionPercent": 37.4340949033392
+      },
+      {
+        "case": "250k-all-shadow",
+        "metric": "gpuIntervalsMedianMs",
+        "finalDefaultMeanOfTwoMediansMs": 1.69011,
+        "finalSelectedQualityMedianMs": 0.779264,
+        "reductionPercent": 53.892705208536725
+      }
+    ],
+    "limitations": [
+      "Clocks monitored, not locked; two runs per A/C, one selected-quality run.",
+      "No equal-quality speedup or zero-cost claim. Earlier 250k increases retained as historical observations.",
+      "One GPU sample missing in an offscreen no-work control."
+    ],
+    "evidenceSha256": {
+      "GrassShaderAB/Comparison.json": "29db20d92fc8fac37b6e12a80e4f3dd8bf5e7fc34f41448c25204eb2a28e5f1c",
+      "GrassShaderAB/ComparisonFastDefault.json": "bad2e27c6d5f3347704b7d8100aee0af75bdc2e5c832abe47015fe5ec9de1e1c",
+      "GrassShaderAB/SourceManifest.json": "709db9e5e2f4cfd017fa4fc0c5f7144fafe1a291490253043470831b5662bce5",
+      "GrassShaderAB/FastDefaultManifest.json": "a89fc3bf8424831d0c1c61b765f60a8e7a251d17898b00be109c01f78fd5e920",
+      "FinalFastDefaultVerification/Quality3Shadow1/report.json": "da19af67e7682bb212fa9158bb5b0912eeb7e80d5638664353ee3feb428f6fa5"
+    }
+  },
+  "finalGpuVerification": [
+    {
+      "Name": "Quality3Shadow1",
+      "ExitCode": 0,
+      "Completed": 1,
+      "Failures": 0,
+      "Expected": 1,
+      "StartedUtc": "2026-10-21T12:25:17.4961622Z",
+      "FinishedUtc": "2026-10-21T12:25:34.7787892Z",
+      "Directory": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration3\\FinalFastDefaultVerification\\Quality3Shadow1"
+    },
+    {
+      "Name": "GraphicsGpu",
+      "ExitCode": 0,
+      "Completed": 10,
+      "Failures": 0,
+      "Expected": 10,
+      "StartedUtc": "2026-10-21T12:25:34.8014689Z",
+      "FinishedUtc": "2026-10-21T12:25:44.3991025Z",
+      "Directory": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration3\\FinalFastDefaultVerification\\GraphicsGpu"
+    },
+    {
+      "Name": "SceneFiberGpu",
+      "ExitCode": 0,
+      "Completed": 2,
+      "Failures": 0,
+      "Expected": 2,
+      "StartedUtc": "2026-10-21T12:25:44.4083014Z",
+      "FinishedUtc": "2026-10-21T12:25:47.8167777Z",
+      "Directory": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration3\\FinalFastDefaultVerification\\SceneFiberGpu"
+    }
+  ],
+  "initialUnresolvedTestFailures": [
+    {
+      "test": "InspectorDataAssetSaveTest.RelativeAbsoluteAndGuidPathsShareEditsSavesAndUndoSnapshots",
+      "areaModifiedInThisScope": false,
+      "baselineStatus": "not_verified",
+      "cause": "undetermined",
+      "status": "failed_unresolved"
+    },
+    {
+      "test": "PackageBuildTest.PlayPausedRestoreAndPendingCompilersRejectBeforeAnyStart",
+      "areaModifiedInThisScope": false,
+      "baselineStatus": "not_verified",
+      "cause": "undetermined",
+      "status": "failed_unresolved"
+    }
+  ],
+  "sourceSha256Scope": "Source hashes retained for the original measurements; final source preservation and hashes are indexed by finalization.finalLogIndex.",
+  "finalization": {
+    "recordedUtc": "2026-10-21T23:55:15.028047+00:00",
+    "scope": "Scoped final rendering, persistence, package and ShipCombat checks; not all repository tests.",
+    "sdkBuild": {
+      "result": {
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\FinalLtoSdkBuild.stdout.log",
+          "sha256": "d632688de33ecf5516078093763ffc568980d76dbb9e2fcb5f688fe94c115184",
+          "bytes": 430
+        },
+        "results": [
+          "RESULT ok errors=0 warnings=23 preset=release targets=FBZZTestsEngineAuto,FBZZTestsGraphicsAuto,FBZZTestsEditorAuto,FBZZTestsGraphicsStandalone,FBZZTestsRayTracingEngine,FBZZSDK log=build/agent/build-20261022-083217-45316.log"
+        ]
+      },
+      "receipt": {
+        "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\FinalLtoSdkBuild.result.json",
+        "sha256": "df7543acec47d183098ebef22ed913dcc99ee456706d9cf01326b9cb4ed49e82",
+        "bytes": 202
+      },
+      "exitCode": 0,
+      "releaseLto": "ON"
+    },
+    "resolvedTests": [
+      {
+        "test": "InspectorDataAssetSaveTest.RelativeAbsoluteAndGuidPathsShareEditsSavesAndUndoSnapshots",
+        "status": "resolved_and_regression_passed",
+        "cause": "The fixture initialized AssetDatabase without AssetManager and used the wrong project-relative asset path.",
+        "fix": "Initialize the production AssetManager project context and verify canonical relative, absolute and GUID identity while retaining save and undo assertions.",
+        "causeJa": "テスト環境の AssetManager 初期化とプロジェクト相対パスが実際の起動条件に合っていなかった。正しい初期化と同一アセット参照を検証し、保存・Undo の判定を維持した。"
+      },
+      {
+        "test": "PackageBuildTest.PlayPausedRestoreAndPendingCompilersRejectBeforeAnyStart",
+        "status": "resolved_and_regression_passed",
+        "cause": "PackageBuildService::CanStart did not reject the shared ctx.managedBuildBusy state.",
+        "fix": "Reject the shared managed-build busy state before starting, allocating request IDs or changing package settings; retain the original failed assertions and regression coverage.",
+        "causeJa": "Package の開始判定が共有状態 ctx.managedBuildBusy を見ていなかった。要求 ID の生成・処理開始・設定変更より前に拒否するよう修正し、元の判定と回帰を維持した。"
+      }
+    ],
+    "verification": [
+      {
+        "name": "EngineFocused",
+        "target": "FBZZTestsEngineAuto",
+        "completed": 157,
+        "passed": 157,
+        "failures": 0,
+        "declaredDisabled": 0,
+        "skippedCases": [],
+        "suppressedCases": [],
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\EngineFocused.json",
+          "sha256": "7ffc4471b3c3f10040380b4211484f316b7bc4e8a28ca471acd3a0f759d8b134",
+          "bytes": 73948
+        },
+        "log": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\EngineFocused.log",
+          "sha256": "24b4a26a7eaf9080c5dfe9173780cbe973cf12a2a6bcbe8a95582b366d874dbc",
+          "bytes": 85682
+        }
+      },
+      {
+        "name": "GraphicsAuto",
+        "target": "FBZZTestsGraphicsAuto",
+        "completed": 294,
+        "passed": 294,
+        "failures": 0,
+        "declaredDisabled": 0,
+        "skippedCases": [],
+        "suppressedCases": [],
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\GraphicsAuto.json",
+          "sha256": "c4a22da4497f9d26484b3b97baeb48e97ca7c50af27303d63f86ee6a54a299f4",
+          "bytes": 139323
+        },
+        "log": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\GraphicsAuto.log",
+          "sha256": "c2be071596c824315656b8b68a32c3eae67a2cb2742429a792e4b84bf8edc7bb",
+          "bytes": 157402
+        }
+      },
+      {
+        "name": "ProductionWaterGpu",
+        "target": "FBZZTestsGraphicsStandalone",
+        "completed": 2,
+        "passed": 2,
+        "failures": 0,
+        "declaredDisabled": 0,
+        "skippedCases": [],
+        "suppressedCases": [],
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\ProductionWaterGpu.json",
+          "sha256": "9406ec55ae510b2544bf7e03394af7a7453b24eb45570a75bffb4f7b6e5aa5e9",
+          "bytes": 1603
+        },
+        "log": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\ProductionWaterGpu.log",
+          "sha256": "ce3fc2490f5c115395d96b1a3418b2a0a9859c7c5b420dc23fcb10aaf22c7c1e",
+          "bytes": 12543
+        }
+      },
+      {
+        "name": "WaterGpu",
+        "target": "FBZZTestsGraphicsStandalone",
+        "completed": 39,
+        "passed": 39,
+        "failures": 0,
+        "declaredDisabled": 0,
+        "skippedCases": [],
+        "suppressedCases": [],
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\WaterGpu.json",
+          "sha256": "aff6122000b9ecf270dadfc756ea20b4940ebe7f141557d2ed9ba45fcf068f3f",
+          "bytes": 18141
+        },
+        "log": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\WaterGpu.log",
+          "sha256": "25834ea5d657d37f7ff6118016f65f60ab1a64294b36b007fbe4cc90639c3ca6",
+          "bytes": 190137
+        }
+      },
+      {
+        "name": "PreviewFiberGpu",
+        "target": "FBZZTestsGraphicsStandalone",
+        "completed": 13,
+        "passed": 13,
+        "failures": 0,
+        "declaredDisabled": 1,
+        "skippedCases": [],
+        "suppressedCases": [
+          "FiberRenderPerfTest.DISABLED_MeasuresResidentBladePagesWithNativeProfiler"
+        ],
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\PreviewFiberGpu.json",
+          "sha256": "9f303a3de37ff1f88fc6f9e55e99a11d89503a1698d04402a270c557b3aecbcb",
+          "bytes": 13472
+        },
+        "log": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\PreviewFiberGpu.log",
+          "sha256": "5b1905ce46c347aba6f46a43289a3f30d2ea82527f5686ac27e98c8f7f1ee8ae",
+          "bytes": 65780
+        }
+      },
+      {
+        "name": "FiberRuntimeGpu",
+        "target": "FBZZTestsRayTracingEngine",
+        "completed": 5,
+        "passed": 5,
+        "failures": 0,
+        "declaredDisabled": 0,
+        "skippedCases": [],
+        "suppressedCases": [],
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\FiberRuntimeGpu.json",
+          "sha256": "5066a4f5896e10d0410453fc75d14893724efe07605485162040bf2d0f46489b",
+          "bytes": 4702
+        },
+        "log": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\FiberRuntimeGpu.log",
+          "sha256": "b76d3baf2b2128c4ef4ec8e95a985cb982f77d1372beb178ae5973392bad3b89",
+          "bytes": 16302
+        }
+      },
+      {
+        "name": "SkinningGpu",
+        "target": "FBZZTestsRayTracingEngine",
+        "completed": 58,
+        "passed": 58,
+        "failures": 0,
+        "declaredDisabled": 0,
+        "skippedCases": [],
+        "suppressedCases": [],
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\SkinningGpu.json",
+          "sha256": "a526a37fdb41ec0cf31c9307553925f332a224ba55781796795825921916972f",
+          "bytes": 27370
+        },
+        "log": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Verification-Final-20261021-234036\\SkinningGpu.log",
+          "sha256": "23eaaf57e05eb172b391ff0f34e34b68397bbe7121c4e25f3cdb7aab1d074acd",
+          "bytes": 132990
+        }
+      }
+    ],
+    "aggregate": {
+      "directory": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Aggregate-20261021-234210",
+      "receipt": {
+        "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Aggregate-20261021-234210\\Result.json",
+        "sha256": "71609ecf09f3f4f1740ce8fb0717d94baa6300f63a56bc05c95c798451660393",
+        "bytes": 569
+      },
+      "agentBuild": {
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Aggregate-20261021-234210\\AgentBuild.log",
+          "sha256": "ce952ac0ebb91316038f9bc11c82f4788497e02689b191727f60f93b9aef5c37",
+          "bytes": 578
+        },
+        "results": [
+          "RESULT ok errors=0 warnings=0 preset=release  log=build/agent/test-20261022-084211-6836.log"
+        ]
+      },
+      "nativeCTestLog": {
+        "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\Aggregate-20261021-234210\\CTest.log",
+        "sha256": "3aab5c584777275b98a35a98245f67b52deda7cb48379bfc4e4581ede548e6e3",
+        "bytes": 84957
+      },
+      "passed": 311,
+      "failed": 0,
+      "originalFailuresNowPassed": [
+        "InspectorDataAssetSaveTest.RelativeAbsoluteAndGuidPathsShareEditsSavesAndUndoSnapshots",
+        "PackageBuildTest.PlayPausedRestoreAndPendingCompilersRejectBeforeAnyStart"
+      ],
+      "scope": "^(ShaderCapabilitiesTest|ShaderReloadTest|ShaderCapabilityReloadTest|ShaderDependency.*Test|MaterialExtractionSharingTest|WaterWavesAssetTest|FiberTest|RenderSceneExtractor.*|WaterFarRenderPassTest|MaterialReflectionTest|WaterInspectorRuntimeTest|InspectorDataAssetSaveTest|AssetDirtyRegistryTest|AssetInspectorPersistenceTest|ManagedDataAssetInspectorTest|PackageBuildTest|ManagedCompletionTest)\\.",
+      "allRepositoryTestsClaimed": false
+    },
+    "ship": {
+      "scenarioCount": 7,
+      "completedSteps": 660,
+      "runsManifest": {
+        "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\ShipCombatRegression-20261021-234653\\Runs.json",
+        "sha256": "421ee30d1ff6f0269f6e2aee6bc1e86cf3fdf700ada622c632743144ead91490",
+        "bytes": 2740
+      },
+      "reports": [
+        {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\ShipCombatRegression-20261021-234653\\Core.report.json",
+          "sha256": "0520005f91ab69a4b539ea9671f03998ba3f331021d02a0e54c49508e58ea05e",
+          "bytes": 45042
+        },
+        {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\ShipCombatRegression-20261021-234653\\WaveCover.report.json",
+          "sha256": "e63e695e4c64c8130e0724f2312d9a73af0175d80280981f32b5bd12d32e0fe7",
+          "bytes": 39801
+        },
+        {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\ShipCombatRegression-20261021-234653\\CalmControl.report.json",
+          "sha256": "7ab09afb62280e3a4c7d8874475d4a6b379a014ec53a0094e33fb265d301ac0d",
+          "bytes": 26952
+        },
+        {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\ShipCombatRegression-20261021-234653\\Win.report.json",
+          "sha256": "3aec6fc176eaa724a3c365c1717c1648da92c1a45df5ad8ed51023c731ea4746",
+          "bytes": 9782
+        },
+        {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\ShipCombatRegression-20261021-234653\\Lose.report.json",
+          "sha256": "82735d179dca76dd926b7e5acf20f353fed50703f2802ea9c575d4011f7a6fd5",
+          "bytes": 5883
+        },
+        {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\ShipCombatRegression-20261021-234653\\WaterRealisticExtension.report.json",
+          "sha256": "f949baf7e6537b8edd461c89d6a117631f593de358fc4db0163fd92441eb4ff2",
+          "bytes": 40084
+        },
+        {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\ShipCombatRegression-20261021-234653\\WaterToonExtension.report.json",
+          "sha256": "3ba7c3f0ff6a2ab3ca64129470580c475b1723fb0cba3b272d404569b4a72286",
+          "bytes": 40009
+        }
+      ]
+    },
+    "performance": {
+      "artifacts": {
+        "before": {
+          "grassGTest": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\GrassGTest.json",
+            "sha256": "5b097077dbf19e34dcdb332c8f3c6564658e838b38cf3f9ebb9ad7914c1c8f17",
+            "bytes": 1018
+          },
+          "cullingGTest": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\CullingGTest.json",
+            "sha256": "dc31d3086d5a011f4d0d2d831956093acbf505702d8cb0228aa632a4ba2be688",
+            "bytes": 2196
+          },
+          "grassMeasurements": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\Grass.json",
+            "sha256": "3cfde2869e357e520b126002640fc6ea4c3f7ba78b7e188731ac84019147da1f",
+            "bytes": 28376
+          },
+          "cullingLog": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\Culling.log",
+            "sha256": "f90d2e0af99f26bddb6a26dbf89709522d5798a00ffde581fe749451323ffb84",
+            "bytes": 4104133
+          }
+        },
+        "after": {
+          "grassGTest": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\GrassGTest.json",
+            "sha256": "f164d449aaaaa80d214cfae8204b1a1cab3ee37f2ac098e01efb6a1861854aa4",
+            "bytes": 1017
+          },
+          "cullingGTest": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\CullingGTest.json",
+            "sha256": "1bb123a92ce234b51b71f84894358ad8ea1b2ca23809acbf78193968a918ec8e",
+            "bytes": 2198
+          },
+          "grassMeasurements": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\Grass.json",
+            "sha256": "89d06ea22fe0298c89a27942c5b2bb5caa8a7b3eb796c1a930bcd95391bde83e",
+            "bytes": 28383
+          },
+          "cullingLog": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\Culling.log",
+            "sha256": "0f34978c08d0fbdffe0dbd2dc79a2852f39dfcfd95fa4b6fb64ef96656d0b40d",
+            "bytes": 4105428
+          }
+        }
+      },
+      "cullingAnalyzer": {
+        "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration3\\RegularMesh\\AnalyzeRegularMeshBenchmark.py",
+        "sha256": "715f907d8d8b4e6c7ccf3eb6125f1aa41c7454dc2328932474a7a6856458115a",
+        "bytes": 3832
+      },
+      "grassConfig": {
+        "schema": "fbzz-fiber-benchmark/1",
+        "resolution": [
+          1920,
+          1080
+        ],
+        "surfaceMeters": [
+          50,
+          50
+        ],
+        "warmupFrames": 3000,
+        "sampleFrames": 120,
+        "bladeSegments": 6,
+        "shadowBladeSegments": 0,
+        "rawSamplesIncluded": true,
+        "scope": "production Fiber forward color and optional one 2048 shadow view; resident native 64-byte roots; no distance LOD; fixed time/seed; no Engine extraction, ground, Present, postprocess or readback in pass timers; frameWall includes Begin/EndFrame and profiler collection; gpuIntervals is measured color+shadow intervals, not total GPU frame time"
+      },
+      "grass": {
+        "empty-all": {
+          "counts": {
+            "requestedRoots": 0,
+            "roots": 0,
+            "pages": 0,
+            "draws": 0,
+            "shadowDraws": 0,
+            "bladeSegments": 6,
+            "shadowBladeSegments": 0,
+            "submittedVertices": 0,
+            "shadowTriangles": 0,
+            "frustumCulledPages": 0,
+            "coveredPixels": 0
+          },
+          "timingsMs": {
+            "cpuMedianMs": {
+              "before": 0.0001,
+              "after": 0.0001,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "cpuP95Ms": {
+              "before": 0.0002,
+              "after": 0.0002,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "frameWallMedianMs": {
+              "before": 0.1689,
+              "after": 0.1316,
+              "difference": -0.0373,
+              "observedChangePercent": -22.084073416222616
+            },
+            "frameWallP95Ms": {
+              "before": 0.2983,
+              "after": 0.1988,
+              "difference": -0.0995,
+              "observedChangePercent": -33.3556821991284
+            },
+            "gpuColorMedianMs": {
+              "before": 0,
+              "after": 0,
+              "difference": 0,
+              "observedChangePercent": null
+            },
+            "gpuShadowMedianMs": {
+              "before": null,
+              "after": null,
+              "difference": null,
+              "observedChangePercent": null
+            },
+            "gpuIntervalsMedianMs": {
+              "before": 0,
+              "after": 0,
+              "difference": 0,
+              "observedChangePercent": null
+            },
+            "gpuIntervalsP95Ms": {
+              "before": 0,
+              "after": 0,
+              "difference": 0,
+              "observedChangePercent": null
+            }
+          },
+          "gpuSamples": {
+            "before": 108,
+            "after": 120
+          },
+          "gpuMissingSamples": {
+            "before": 12,
+            "after": 0
+          },
+          "images": {
+            "before": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\empty-all.png",
+              "sha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+              "bytes": 8185
+            },
+            "after": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\empty-all.png",
+              "sha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+              "bytes": 8185
+            }
+          },
+          "samePngBytes": true
+        },
+        "100k-all": {
+          "counts": {
+            "requestedRoots": 100000,
+            "roots": 99978,
+            "pages": 169,
+            "draws": 169,
+            "shadowDraws": 0,
+            "bladeSegments": 6,
+            "shadowBladeSegments": 0,
+            "submittedVertices": 7198416,
+            "shadowTriangles": 0,
+            "frustumCulledPages": 0,
+            "coveredPixels": 22245
+          },
+          "timingsMs": {
+            "cpuMedianMs": {
+              "before": 0.1406,
+              "after": 0.0992,
+              "difference": -0.041400000000000006,
+              "observedChangePercent": -29.445234708392608
+            },
+            "cpuP95Ms": {
+              "before": 0.2567,
+              "after": 0.1553,
+              "difference": -0.10139999999999999,
+              "observedChangePercent": -39.50136345929099
+            },
+            "frameWallMedianMs": {
+              "before": 0.5878,
+              "after": 0.499,
+              "difference": -0.08879999999999999,
+              "observedChangePercent": -15.107179312691388
+            },
+            "frameWallP95Ms": {
+              "before": 1.0154,
+              "after": 0.6484,
+              "difference": -0.3670000000000001,
+              "observedChangePercent": -36.143391766791424
+            },
+            "gpuColorMedianMs": {
+              "before": 0.454656,
+              "after": 0.42496,
+              "difference": -0.029696,
+              "observedChangePercent": -6.531531531531531
+            },
+            "gpuShadowMedianMs": {
+              "before": null,
+              "after": null,
+              "difference": null,
+              "observedChangePercent": null
+            },
+            "gpuIntervalsMedianMs": {
+              "before": 0.454656,
+              "after": 0.42496,
+              "difference": -0.029696,
+              "observedChangePercent": -6.531531531531531
+            },
+            "gpuIntervalsP95Ms": {
+              "before": 0.74752,
+              "after": 0.448512,
+              "difference": -0.29900799999999994,
+              "observedChangePercent": -39.99999999999999
+            }
+          },
+          "gpuSamples": {
+            "before": 119,
+            "after": 120
+          },
+          "gpuMissingSamples": {
+            "before": 1,
+            "after": 0
+          },
+          "images": {
+            "before": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\100k-all.png",
+              "sha256": "17385d55da830759d0e15a5598be3af24f09a1f6b88845b43b48e1d2cda692f3",
+              "bytes": 94303
+            },
+            "after": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\100k-all.png",
+              "sha256": "17385d55da830759d0e15a5598be3af24f09a1f6b88845b43b48e1d2cda692f3",
+              "bytes": 94303
+            }
+          },
+          "samePngBytes": true
+        },
+        "250k-all": {
+          "counts": {
+            "requestedRoots": 250000,
+            "roots": 250036,
+            "pages": 169,
+            "draws": 169,
+            "shadowDraws": 0,
+            "bladeSegments": 6,
+            "shadowBladeSegments": 0,
+            "submittedVertices": 18002592,
+            "shadowTriangles": 0,
+            "frustumCulledPages": 0,
+            "coveredPixels": 53618
+          },
+          "timingsMs": {
+            "cpuMedianMs": {
+              "before": 0.1149,
+              "after": 0.1056,
+              "difference": -0.009300000000000003,
+              "observedChangePercent": -8.093994778067891
+            },
+            "cpuP95Ms": {
+              "before": 0.2223,
+              "after": 0.1491,
+              "difference": -0.07319999999999999,
+              "observedChangePercent": -32.928475033738195
+            },
+            "frameWallMedianMs": {
+              "before": 1.1205,
+              "after": 1.0671,
+              "difference": -0.053400000000000114,
+              "observedChangePercent": -4.7657295850067065
+            },
+            "frameWallP95Ms": {
+              "before": 1.6655,
+              "after": 1.5394,
+              "difference": -0.12609999999999988,
+              "observedChangePercent": -7.571299909936946
+            },
+            "gpuColorMedianMs": {
+              "before": 0.904192,
+              "after": 0.881664,
+              "difference": -0.022527999999999992,
+              "observedChangePercent": -2.491506228765572
+            },
+            "gpuShadowMedianMs": {
+              "before": null,
+              "after": null,
+              "difference": null,
+              "observedChangePercent": null
+            },
+            "gpuIntervalsMedianMs": {
+              "before": 0.904192,
+              "after": 0.881664,
+              "difference": -0.022527999999999992,
+              "observedChangePercent": -2.491506228765572
+            },
+            "gpuIntervalsP95Ms": {
+              "before": 1.54931,
+              "after": 1.48582,
+              "difference": -0.06349000000000005,
+              "observedChangePercent": -4.097953282428957
+            }
+          },
+          "gpuSamples": {
+            "before": 120,
+            "after": 120
+          },
+          "gpuMissingSamples": {
+            "before": 0,
+            "after": 0
+          },
+          "images": {
+            "before": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\250k-all.png",
+              "sha256": "3fa45aef24e281d2e24692fa2c330dda4a363dcb8e5b06e65cb8c7e58bc6e421",
+              "bytes": 182330
+            },
+            "after": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\250k-all.png",
+              "sha256": "3fa45aef24e281d2e24692fa2c330dda4a363dcb8e5b06e65cb8c7e58bc6e421",
+              "bytes": 182330
+            }
+          },
+          "samePngBytes": true
+        },
+        "1m-all": {
+          "counts": {
+            "requestedRoots": 1000000,
+            "roots": 1000032,
+            "pages": 169,
+            "draws": 169,
+            "shadowDraws": 0,
+            "bladeSegments": 6,
+            "shadowBladeSegments": 0,
+            "submittedVertices": 72002304,
+            "shadowTriangles": 0,
+            "frustumCulledPages": 0,
+            "coveredPixels": 181835
+          },
+          "timingsMs": {
+            "cpuMedianMs": {
+              "before": 0.1213,
+              "after": 0.1163,
+              "difference": -0.0050000000000000044,
+              "observedChangePercent": -4.12201154163232
+            },
+            "cpuP95Ms": {
+              "before": 0.1583,
+              "after": 0.172,
+              "difference": 0.01369999999999999,
+              "observedChangePercent": 8.65445356917245
+            },
+            "frameWallMedianMs": {
+              "before": 3.2948,
+              "after": 3.7057,
+              "difference": 0.41090000000000027,
+              "observedChangePercent": 12.471166686900581
+            },
+            "frameWallP95Ms": {
+              "before": 3.9932,
+              "after": 3.8985,
+              "difference": -0.0947,
+              "observedChangePercent": -2.37153160372634
+            },
+            "gpuColorMedianMs": {
+              "before": 3.21946,
+              "after": 3.6096,
+              "difference": 0.3901399999999997,
+              "observedChangePercent": 12.118181309909115
+            },
+            "gpuShadowMedianMs": {
+              "before": null,
+              "after": null,
+              "difference": null,
+              "observedChangePercent": null
+            },
+            "gpuIntervalsMedianMs": {
+              "before": 3.21946,
+              "after": 3.6096,
+              "difference": 0.3901399999999997,
+              "observedChangePercent": 12.118181309909115
+            },
+            "gpuIntervalsP95Ms": {
+              "before": 3.99258,
+              "after": 3.79904,
+              "difference": -0.1935399999999996,
+              "observedChangePercent": -4.847492097841489
+            }
+          },
+          "gpuSamples": {
+            "before": 120,
+            "after": 120
+          },
+          "gpuMissingSamples": {
+            "before": 0,
+            "after": 0
+          },
+          "images": {
+            "before": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\1m-all.png",
+              "sha256": "f5405412852bbe0dcc36dd61f9a067f331e7637668cfd9c7274020f7e3edd932",
+              "bytes": 477099
+            },
+            "after": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\1m-all.png",
+              "sha256": "f5405412852bbe0dcc36dd61f9a067f331e7637668cfd9c7274020f7e3edd932",
+              "bytes": 477099
+            }
+          },
+          "samePngBytes": true
+        },
+        "1m-partial": {
+          "counts": {
+            "requestedRoots": 1000000,
+            "roots": 1000032,
+            "pages": 169,
+            "draws": 22,
+            "shadowDraws": 0,
+            "bladeSegments": 6,
+            "shadowBladeSegments": 0,
+            "submittedVertices": 7598016,
+            "shadowTriangles": 0,
+            "frustumCulledPages": 147,
+            "coveredPixels": 60664
+          },
+          "timingsMs": {
+            "cpuMedianMs": {
+              "before": 0.0339,
+              "after": 0.0313,
+              "difference": -0.002599999999999998,
+              "observedChangePercent": -7.669616519174038
+            },
+            "cpuP95Ms": {
+              "before": 0.0487,
+              "after": 0.0378,
+              "difference": -0.0109,
+              "observedChangePercent": -22.381930184804933
+            },
+            "frameWallMedianMs": {
+              "before": 0.3865,
+              "after": 0.383,
+              "difference": -0.003500000000000003,
+              "observedChangePercent": -0.9055627425614499
+            },
+            "frameWallP95Ms": {
+              "before": 0.5272,
+              "after": 0.4776,
+              "difference": -0.04959999999999998,
+              "observedChangePercent": -9.408194233687405
+            },
+            "gpuColorMedianMs": {
+              "before": 0.314368,
+              "after": 0.313344,
+              "difference": -0.0010239999999999694,
+              "observedChangePercent": -0.32573289902279035
+            },
+            "gpuShadowMedianMs": {
+              "before": null,
+              "after": null,
+              "difference": null,
+              "observedChangePercent": null
+            },
+            "gpuIntervalsMedianMs": {
+              "before": 0.314368,
+              "after": 0.313344,
+              "difference": -0.0010239999999999694,
+              "observedChangePercent": -0.32573289902279035
+            },
+            "gpuIntervalsP95Ms": {
+              "before": 0.325632,
+              "after": 0.314368,
+              "difference": -0.011263999999999996,
+              "observedChangePercent": -3.459119496855345
+            }
+          },
+          "gpuSamples": {
+            "before": 120,
+            "after": 120
+          },
+          "gpuMissingSamples": {
+            "before": 0,
+            "after": 0
+          },
+          "images": {
+            "before": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\1m-partial.png",
+              "sha256": "e84a94aafe8caa34f84b98f111f086b30b54ddf9fd85df44885eb252ca5eec76",
+              "bytes": 204850
+            },
+            "after": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\1m-partial.png",
+              "sha256": "e84a94aafe8caa34f84b98f111f086b30b54ddf9fd85df44885eb252ca5eec76",
+              "bytes": 204850
+            }
+          },
+          "samePngBytes": true
+        },
+        "1m-offscreen": {
+          "counts": {
+            "requestedRoots": 1000000,
+            "roots": 1000032,
+            "pages": 169,
+            "draws": 0,
+            "shadowDraws": 0,
+            "bladeSegments": 6,
+            "shadowBladeSegments": 0,
+            "submittedVertices": 0,
+            "shadowTriangles": 0,
+            "frustumCulledPages": 169,
+            "coveredPixels": 0
+          },
+          "timingsMs": {
+            "cpuMedianMs": {
+              "before": 0.0117,
+              "after": 0.012,
+              "difference": 0.0002999999999999999,
+              "observedChangePercent": 2.564102564102555
+            },
+            "cpuP95Ms": {
+              "before": 0.0147,
+              "after": 0.0156,
+              "difference": 0.0008999999999999998,
+              "observedChangePercent": 6.1224489795918435
+            },
+            "frameWallMedianMs": {
+              "before": 0.1591,
+              "after": 0.1614,
+              "difference": 0.0022999999999999965,
+              "observedChangePercent": 1.445631678189807
+            },
+            "frameWallP95Ms": {
+              "before": 0.2332,
+              "after": 0.2327,
+              "difference": -0.0005000000000000004,
+              "observedChangePercent": -0.21440823327615322
+            },
+            "gpuColorMedianMs": {
+              "before": 0,
+              "after": 0,
+              "difference": 0,
+              "observedChangePercent": null
+            },
+            "gpuShadowMedianMs": {
+              "before": null,
+              "after": null,
+              "difference": null,
+              "observedChangePercent": null
+            },
+            "gpuIntervalsMedianMs": {
+              "before": 0,
+              "after": 0,
+              "difference": 0,
+              "observedChangePercent": null
+            },
+            "gpuIntervalsP95Ms": {
+              "before": 0,
+              "after": 0,
+              "difference": 0,
+              "observedChangePercent": null
+            }
+          },
+          "gpuSamples": {
+            "before": 119,
+            "after": 120
+          },
+          "gpuMissingSamples": {
+            "before": 1,
+            "after": 0
+          },
+          "images": {
+            "before": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\1m-offscreen.png",
+              "sha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+              "bytes": 8185
+            },
+            "after": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\1m-offscreen.png",
+              "sha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+              "bytes": 8185
+            }
+          },
+          "samePngBytes": true
+        },
+        "250k-all-shadow": {
+          "counts": {
+            "requestedRoots": 250000,
+            "roots": 250036,
+            "pages": 169,
+            "draws": 169,
+            "shadowDraws": 169,
+            "bladeSegments": 6,
+            "shadowBladeSegments": 0,
+            "submittedVertices": 18002592,
+            "shadowTriangles": 6000864,
+            "frustumCulledPages": 0,
+            "coveredPixels": 53618
+          },
+          "timingsMs": {
+            "cpuMedianMs": {
+              "before": 0.2182,
+              "after": 0.204,
+              "difference": -0.014200000000000018,
+              "observedChangePercent": -6.5077910174152205
+            },
+            "cpuP95Ms": {
+              "before": 0.2642,
+              "after": 0.2333,
+              "difference": -0.030899999999999983,
+              "observedChangePercent": -11.695685087055253
+            },
+            "frameWallMedianMs": {
+              "before": 1.7739,
+              "after": 1.783,
+              "difference": 0.009099999999999886,
+              "observedChangePercent": 0.5129939680929008
+            },
+            "frameWallP95Ms": {
+              "before": 2.2311,
+              "after": 1.8814,
+              "difference": -0.3497000000000001,
+              "observedChangePercent": -15.673882838061948
+            },
+            "gpuColorMedianMs": {
+              "before": 0.858112,
+              "after": 0.852992,
+              "difference": -0.005120000000000013,
+              "observedChangePercent": -0.5966587112171906
+            },
+            "gpuShadowMedianMs": {
+              "before": 0.828416,
+              "after": 0.836608,
+              "difference": 0.008191999999999977,
+              "observedChangePercent": 0.9888751545117369
+            },
+            "gpuIntervalsMedianMs": {
+              "before": 1.68755,
+              "after": 1.69267,
+              "difference": 0.005119999999999791,
+              "observedChangePercent": 0.3033984178246518
+            },
+            "gpuIntervalsP95Ms": {
+              "before": 1.88314,
+              "after": 1.73158,
+              "difference": -0.15156000000000014,
+              "observedChangePercent": -8.048259821362203
+            }
+          },
+          "gpuSamples": {
+            "before": 120,
+            "after": 120
+          },
+          "gpuMissingSamples": {
+            "before": 0,
+            "after": 0
+          },
+          "images": {
+            "before": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\250k-all-shadow.png",
+              "sha256": "b2a6bf66eb018aa6031ed00de07e0d1b23324a10e83240c74273a7d9b5461c51",
+              "bytes": 186010
+            },
+            "after": {
+              "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\250k-all-shadow.png",
+              "sha256": "b2a6bf66eb018aa6031ed00de07e0d1b23324a10e83240c74273a7d9b5461c51",
+              "bytes": 186010
+            }
+          },
+          "samePngBytes": true
+        }
+      },
+      "culling": {
+        "AllVisible10000": {
+          "config": {
+            "kind": "config",
+            "case": "AllVisible10000",
+            "objects": 10000,
+            "visiblePercent": 100,
+            "width": 1920,
+            "height": 1080,
+            "warmup": 12,
+            "samples": 60,
+            "gpuInstancing": false,
+            "frameGeometryCache": true,
+            "viewsPerFrame": 1,
+            "secondWidth": 0,
+            "secondHeight": 0,
+            "backend": "DirectX 12",
+            "logicalProcessors": 28,
+            "rendererThreaded": false,
+            "vsync": false,
+            "endIncludesPresent": true,
+            "totalGpuTimeAvailable": false,
+            "strictCpuGpuJoined": false
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              0
+            ],
+            "drawCalls": [
+              10000
+            ],
+            "triangles": [
+              120000
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          },
+          "wallMedianMs": {
+            "frameMs": {
+              "before": 15.14845,
+              "after": 11.70385,
+              "difference": -3.444600000000001,
+              "observedChangePercent": -22.73896009162655
+            },
+            "waitCpuMs": {
+              "before": 0.000200033188,
+              "after": 0.000100016594,
+              "difference": -0.000100016594,
+              "observedChangePercent": -50.0
+            },
+            "beginMs": {
+              "before": 0.0378499925,
+              "after": 0.0372999907,
+              "difference": -0.0005500017999999982,
+              "observedChangePercent": -1.4531094028618297
+            },
+            "renderMs": {
+              "before": 14.69465,
+              "after": 11.21745,
+              "difference": -3.4772,
+              "observedChangePercent": -23.663033825235715
+            },
+            "endMs": {
+              "before": 0.4080500005,
+              "after": 0.440900028,
+              "difference": 0.03285002749999999,
+              "observedChangePercent": 8.050490738818162
+            }
+          },
+          "cpuScopeMedianMs": {
+            "RenderSystem::ExtractRenderScene": {
+              "before": 6.2288,
+              "after": 4.619949995,
+              "difference": -1.6088500049999999,
+              "observedChangePercent": -25.82921276971487
+            },
+            "RenderSceneExtractor::GeometryCachePublish": {
+              "before": 0.4950999915,
+              "after": 0.3425499795,
+              "difference": -0.152550012,
+              "observedChangePercent": -30.811960133107785
+            }
+          },
+          "gpuPassMedianMs": {
+            "IBLBrdfBake": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "SkinningCompute": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "LightCookie": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Shadow": {
+              "before": 0.012288,
+              "after": 0.013312,
+              "difference": 0.0010239999999999989,
+              "observedChangePercent": 8.333333333333325
+            },
+            "ForwardOpaque": {
+              "before": 0.24576,
+              "after": 0.1536,
+              "difference": -0.09216000000000002,
+              "observedChangePercent": -37.500000000000014
+            },
+            "TerrainForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Sky": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "SunMoon": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "VolumetricCloud": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "WaterCaustics": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "WaterForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "DecalDepthCopy": {
+              "before": 0.032768,
+              "after": 0.032768,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "Decal": {
+              "before": 0.002048,
+              "after": 0.002048,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "MeshTrail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Trail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "FroxelFog": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Particle": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Composite": {
+              "before": 0.113664,
+              "after": 0.113664,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            }
+          },
+          "completeProfilerFrames": {
+            "before": 60,
+            "after": 60
+          },
+          "droppedProfilerSamples": {
+            "before": 0,
+            "after": 0
+          },
+          "totalGpuTimeAvailable": false,
+          "strictCpuGpuJoined": false
+        },
+        "Partial10000": {
+          "config": {
+            "kind": "config",
+            "case": "Partial10000",
+            "objects": 10000,
+            "visiblePercent": 50,
+            "width": 1920,
+            "height": 1080,
+            "warmup": 12,
+            "samples": 60,
+            "gpuInstancing": false,
+            "frameGeometryCache": true,
+            "viewsPerFrame": 1,
+            "secondWidth": 0,
+            "secondHeight": 0,
+            "backend": "DirectX 12",
+            "logicalProcessors": 28,
+            "rendererThreaded": false,
+            "vsync": false,
+            "endIncludesPresent": true,
+            "totalGpuTimeAvailable": false,
+            "strictCpuGpuJoined": false
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              5000
+            ],
+            "drawCalls": [
+              5000
+            ],
+            "triangles": [
+              60000
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          },
+          "wallMedianMs": {
+            "frameMs": {
+              "before": 10.97465,
+              "after": 9.72179997,
+              "difference": -1.2528500300000012,
+              "observedChangePercent": -11.41585408190695
+            },
+            "waitCpuMs": {
+              "before": 0.000199973583,
+              "after": 0.000100016594,
+              "difference": -9.9956989e-05,
+              "observedChangePercent": -49.98509678150839
+            },
+            "beginMs": {
+              "before": 0.0377999842,
+              "after": 0.0348500013,
+              "difference": -0.002949982899999995,
+              "observedChangePercent": -7.804190828206736
+            },
+            "renderMs": {
+              "before": 10.48565,
+              "after": 9.2394,
+              "difference": -1.2462499999999999,
+              "observedChangePercent": -11.885290849875785
+            },
+            "endMs": {
+              "before": 0.397049993,
+              "after": 0.41724997799999997,
+              "difference": 0.020199984999999976,
+              "observedChangePercent": 5.08751677524899
+            }
+          },
+          "cpuScopeMedianMs": {
+            "RenderSystem::ExtractRenderScene": {
+              "before": 5.4159999800000005,
+              "after": 4.64720002,
+              "difference": -0.7687999600000008,
+              "observedChangePercent": -14.194977157293131
+            },
+            "RenderSceneExtractor::GeometryCachePublish": {
+              "before": 0.4466499685,
+              "after": 0.33219999050000004,
+              "difference": -0.11444997799999995,
+              "observedChangePercent": -25.62408733271856
+            }
+          },
+          "gpuPassMedianMs": {
+            "IBLBrdfBake": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "SkinningCompute": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "LightCookie": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Shadow": {
+              "before": 0.013312,
+              "after": 0.012288,
+              "difference": -0.0010239999999999989,
+              "observedChangePercent": -7.692307692307687
+            },
+            "ForwardOpaque": {
+              "before": 0.068608,
+              "after": 0.074752,
+              "difference": 0.006143999999999997,
+              "observedChangePercent": 8.955223880597018
+            },
+            "TerrainForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Sky": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "SunMoon": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "VolumetricCloud": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "WaterCaustics": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "WaterForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "DecalDepthCopy": {
+              "before": 0.032768,
+              "after": 0.032768,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "Decal": {
+              "before": 0.002048,
+              "after": 0.002048,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "MeshTrail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Trail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "FroxelFog": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Particle": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Composite": {
+              "before": 0.111616,
+              "after": 0.111616,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            }
+          },
+          "completeProfilerFrames": {
+            "before": 60,
+            "after": 60
+          },
+          "droppedProfilerSamples": {
+            "before": 0,
+            "after": 0
+          },
+          "totalGpuTimeAvailable": false,
+          "strictCpuGpuJoined": false
+        },
+        "OffscreenHeavy10000": {
+          "config": {
+            "kind": "config",
+            "case": "OffscreenHeavy10000",
+            "objects": 10000,
+            "visiblePercent": 1,
+            "width": 1920,
+            "height": 1080,
+            "warmup": 12,
+            "samples": 60,
+            "gpuInstancing": false,
+            "frameGeometryCache": true,
+            "viewsPerFrame": 1,
+            "secondWidth": 0,
+            "secondHeight": 0,
+            "backend": "DirectX 12",
+            "logicalProcessors": 28,
+            "rendererThreaded": false,
+            "vsync": false,
+            "endIncludesPresent": true,
+            "totalGpuTimeAvailable": false,
+            "strictCpuGpuJoined": false
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              9900
+            ],
+            "drawCalls": [
+              100
+            ],
+            "triangles": [
+              1200
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          },
+          "wallMedianMs": {
+            "frameMs": {
+              "before": 7.90419999,
+              "after": 7.70074999,
+              "difference": -0.20345000000000013,
+              "observedChangePercent": -2.5739480308873075
+            },
+            "waitCpuMs": {
+              "before": 0.000100016594,
+              "after": 0.000100016594,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "beginMs": {
+              "before": 0.0356500149,
+              "after": 0.0329999924,
+              "difference": -0.0026500225000000016,
+              "observedChangePercent": -7.433440090932475
+            },
+            "renderMs": {
+              "before": 7.43850002,
+              "after": 7.271049975,
+              "difference": -0.16745004499999983,
+              "observedChangePercent": -2.2511264979468204
+            },
+            "endMs": {
+              "before": 0.4021999835,
+              "after": 0.374149978,
+              "difference": -0.02805000550000003,
+              "observedChangePercent": -6.974143871390792
+            }
+          },
+          "cpuScopeMedianMs": {
+            "RenderSystem::ExtractRenderScene": {
+              "before": 4.74605,
+              "after": 4.678849995,
+              "difference": -0.06720000500000012,
+              "observedChangePercent": -1.415914391968065
+            },
+            "RenderSceneExtractor::GeometryCachePublish": {
+              "before": 0.3515999915,
+              "after": 0.34149995450000004,
+              "difference": -0.01010003699999995,
+              "observedChangePercent": -2.8725930728584648
+            }
+          },
+          "gpuPassMedianMs": {
+            "IBLBrdfBake": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "SkinningCompute": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "LightCookie": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Shadow": {
+              "before": 0.012288,
+              "after": 0.012288,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "ForwardOpaque": {
+              "before": 0.013312,
+              "after": 0.014336,
+              "difference": 0.0010240000000000006,
+              "observedChangePercent": 7.692307692307687
+            },
+            "TerrainForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Sky": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "SunMoon": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "VolumetricCloud": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "WaterCaustics": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "WaterForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "DecalDepthCopy": {
+              "before": 0.03072,
+              "after": 0.03072,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "Decal": {
+              "before": 0.002048,
+              "after": 0.002048,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "MeshTrail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Trail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "FroxelFog": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Particle": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "Composite": {
+              "before": 0.111616,
+              "after": 0.111616,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            }
+          },
+          "completeProfilerFrames": {
+            "before": 60,
+            "after": 60
+          },
+          "droppedProfilerSamples": {
+            "before": 0,
+            "after": 0
+          },
+          "totalGpuTimeAvailable": false,
+          "strictCpuGpuJoined": false
+        },
+        "TwoViewsOppositeOffscreenHeavy10000": {
+          "config": {
+            "kind": "config",
+            "case": "TwoViewsOppositeOffscreenHeavy10000",
+            "objects": 10000,
+            "visiblePercent": 1,
+            "width": 1920,
+            "height": 1080,
+            "warmup": 12,
+            "samples": 60,
+            "gpuInstancing": false,
+            "frameGeometryCache": true,
+            "viewsPerFrame": 2,
+            "secondWidth": 320,
+            "secondHeight": 180,
+            "backend": "DirectX 12",
+            "logicalProcessors": 28,
+            "rendererThreaded": false,
+            "vsync": false,
+            "endIncludesPresent": true,
+            "totalGpuTimeAvailable": false,
+            "strictCpuGpuJoined": false
+          },
+          "counts": {
+            "objects": [
+              10000
+            ],
+            "frustumCulled": [
+              100
+            ],
+            "drawCalls": [
+              9900
+            ],
+            "triangles": [
+              118800
+            ],
+            "instancedBatches": [
+              0
+            ],
+            "instancedDrawsSaved": [
+              0
+            ]
+          },
+          "wallMedianMs": {
+            "frameMs": {
+              "before": 18.80825,
+              "after": 17.5177,
+              "difference": -1.2905499999999996,
+              "observedChangePercent": -6.861616577831531
+            },
+            "waitCpuMs": {
+              "before": 0.000100016594,
+              "after": 0.000100016594,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "beginMs": {
+              "before": 0.0379000008,
+              "after": 0.0376500189,
+              "difference": -0.0002499819000000014,
+              "observedChangePercent": -0.659582835681638
+            },
+            "renderMs": {
+              "before": 18.3351,
+              "after": 17.02645,
+              "difference": -1.30865,
+              "observedChangePercent": -7.1374031229717865
+            },
+            "endMs": {
+              "before": 0.434649974,
+              "after": 0.445900023,
+              "difference": 0.011250048999999984,
+              "observedChangePercent": 2.5883008565416254
+            }
+          },
+          "cpuScopeMedianMs": {
+            "RenderSystem::ExtractRenderScene": {
+              "before": 8.309499945,
+              "after": 7.9382999850000004,
+              "difference": -0.3711999600000002,
+              "observedChangePercent": -4.467175671905011
+            },
+            "RenderSceneExtractor::GeometryCachePublish": {
+              "before": 0.37094998349999997,
+              "after": 0.3366000355,
+              "difference": -0.034349947999999964,
+              "observedChangePercent": -9.25999448116972
+            }
+          },
+          "gpuPassMedianMs": {
+            "view2:IBLBrdfBake": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:SkinningCompute": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:LightCookie": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:Shadow": {
+              "before": 0.013312,
+              "after": 0.012288,
+              "difference": -0.0010239999999999989,
+              "observedChangePercent": -7.692307692307687
+            },
+            "view2:ForwardOpaque": {
+              "before": 0.018432,
+              "after": 0.018432,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "view2:TerrainForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:Sky": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:SunMoon": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:VolumetricCloud": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:WaterCaustics": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:WaterForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:DecalDepthCopy": {
+              "before": 0.03072,
+              "after": 0.03072,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "view2:Decal": {
+              "before": 0.002048,
+              "after": 0.002048,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "view2:MeshTrail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:Trail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:FroxelFog": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:Particle": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view2:Composite": {
+              "before": 0.11264,
+              "after": 0.11264,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "view1:IBLBrdfBake": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:SkinningCompute": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:LightCookie": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:Shadow": {
+              "before": 0.01024,
+              "after": 0.01024,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "view1:ForwardOpaque": {
+              "before": 0.137216,
+              "after": 0.12953599999999998,
+              "difference": -0.00768000000000002,
+              "observedChangePercent": -5.597014925373145
+            },
+            "view1:TerrainForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:Sky": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:SunMoon": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:VolumetricCloud": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:WaterCaustics": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:WaterForward": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:DecalDepthCopy": {
+              "before": 0.003072,
+              "after": 0.003072,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            },
+            "view1:Decal": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:MeshTrail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:Trail": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:FroxelFog": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:Particle": {
+              "before": 0.0,
+              "after": 0.0,
+              "difference": 0.0,
+              "observedChangePercent": null
+            },
+            "view1:Composite": {
+              "before": 0.009216,
+              "after": 0.009216,
+              "difference": 0.0,
+              "observedChangePercent": 0.0
+            }
+          },
+          "completeProfilerFrames": {
+            "before": 60,
+            "after": 60
+          },
+          "droppedProfilerSamples": {
+            "before": 0,
+            "after": 0
+          },
+          "totalGpuTimeAvailable": false,
+          "strictCpuGpuJoined": false
+        }
+      },
+      "hardware": {
+        "before": {
+          "artifact": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\HardwareRead.json",
+            "sha256": "589f63bd19983f0348e8c468f4eb459eab5ee2f8cadf0ed15011e05bdc0e581e",
+            "bytes": 402
+          },
+          "values": {
+            "CapturedUtc": "2026-10-21T22:52:51.4910205Z",
+            "Cpu": "Intel(R) Core(TM) i7-14700F",
+            "LogicalProcessors": 28,
+            "OsDisplayVersion": "26H2",
+            "OsBuild": "26300",
+            "OsRevision": 9711,
+            "Gpu": "NVIDIA GeForce RTX 4070",
+            "DriverVersion": "610.88",
+            "GpuMemory": "12282 MiB",
+            "Evidence": "Read-only registry selected values and nvidia-smi; no benchmark or native modification"
+          }
+        },
+        "after": {
+          "artifact": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1\\HardwareRead.json",
+            "sha256": "701c2118a53ecceaed1f7d6d77d496927be71dfcc1b22aeab14a28979760a15b",
+            "bytes": 411
+          },
+          "values": {
+            "CapturedUtc": "2026-10-21T23:48:42.7608737Z",
+            "Cpu": "Intel(R) Core(TM) i7-14700F",
+            "LogicalProcessors": 28,
+            "OsDisplayVersion": "26H2",
+            "OsBuild": "26300",
+            "OsRevision": 9711,
+            "Gpu": "NVIDIA GeForce RTX 4070",
+            "DriverVersion": "610.88",
+            "GpuMemory": "12282 MiB",
+            "Evidence": "Read-only Win32_Processor, selected OS registry fields and nvidia-smi; no configuration changes"
+          }
+        }
+      },
+      "interpretation": "Observed timings only, not a causal or statistical speedup claim. Positive change percent means slower. Grass intervals are individual passes; Culling wall includes Present; neither is total GPU frame time. PNG byte changes require visual review."
+    },
+    "performanceHistory": {
+      "primaryComparison": {
+        "directory": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterRetry1",
+        "selection": "Retain completed Retry1 including elevated timings; not selected for faster results."
+      },
+      "confirmationComparison": {
+        "directory": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm",
+        "performance": {
+          "artifacts": {
+            "before": {
+              "grassGTest": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\GrassGTest.json",
+                "sha256": "5b097077dbf19e34dcdb332c8f3c6564658e838b38cf3f9ebb9ad7914c1c8f17",
+                "bytes": 1018
+              },
+              "cullingGTest": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\CullingGTest.json",
+                "sha256": "dc31d3086d5a011f4d0d2d831956093acbf505702d8cb0228aa632a4ba2be688",
+                "bytes": 2196
+              },
+              "grassMeasurements": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\Grass.json",
+                "sha256": "3cfde2869e357e520b126002640fc6ea4c3f7ba78b7e188731ac84019147da1f",
+                "bytes": 28376
+              },
+              "cullingLog": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\Culling.log",
+                "sha256": "f90d2e0af99f26bddb6a26dbf89709522d5798a00ffde581fe749451323ffb84",
+                "bytes": 4104133
+              }
+            },
+            "after": {
+              "grassGTest": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\GrassGTest.json",
+                "sha256": "94d4aafd3320519999bf32cab0da735decc1bfff2ea2e0abbda3e791d0e4d89d",
+                "bytes": 1018
+              },
+              "cullingGTest": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\CullingGTest.json",
+                "sha256": "be8738511d4fefe49c3ac6dd23bc6807f173c79c3d677ba590dd80ab55a47190",
+                "bytes": 2198
+              },
+              "grassMeasurements": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\Grass.json",
+                "sha256": "f8a5ed0825eddc9d41769977aceb9f190593574cb04cb7c8b2835f3033824254",
+                "bytes": 28377
+              },
+              "cullingLog": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\Culling.log",
+                "sha256": "87423a8ccd2a6f56b59547e429b3894b38b382f5adec2a2e718b234dd45f0405",
+                "bytes": 4104058
+              }
+            }
+          },
+          "cullingAnalyzer": {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration3\\RegularMesh\\AnalyzeRegularMeshBenchmark.py",
+            "sha256": "715f907d8d8b4e6c7ccf3eb6125f1aa41c7454dc2328932474a7a6856458115a",
+            "bytes": 3832
+          },
+          "grassConfig": {
+            "schema": "fbzz-fiber-benchmark/1",
+            "resolution": [
+              1920,
+              1080
+            ],
+            "surfaceMeters": [
+              50,
+              50
+            ],
+            "warmupFrames": 3000,
+            "sampleFrames": 120,
+            "bladeSegments": 6,
+            "shadowBladeSegments": 0,
+            "rawSamplesIncluded": true,
+            "scope": "production Fiber forward color and optional one 2048 shadow view; resident native 64-byte roots; no distance LOD; fixed time/seed; no Engine extraction, ground, Present, postprocess or readback in pass timers; frameWall includes Begin/EndFrame and profiler collection; gpuIntervals is measured color+shadow intervals, not total GPU frame time"
+          },
+          "grass": {
+            "empty-all": {
+              "counts": {
+                "requestedRoots": 0,
+                "roots": 0,
+                "pages": 0,
+                "draws": 0,
+                "shadowDraws": 0,
+                "bladeSegments": 6,
+                "shadowBladeSegments": 0,
+                "submittedVertices": 0,
+                "shadowTriangles": 0,
+                "frustumCulledPages": 0,
+                "coveredPixels": 0
+              },
+              "timingsMs": {
+                "cpuMedianMs": {
+                  "before": 0.0001,
+                  "after": 0.0001,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "cpuP95Ms": {
+                  "before": 0.0002,
+                  "after": 0.0002,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "frameWallMedianMs": {
+                  "before": 0.1689,
+                  "after": 0.142,
+                  "difference": -0.026900000000000007,
+                  "observedChangePercent": -15.926583777383074
+                },
+                "frameWallP95Ms": {
+                  "before": 0.2983,
+                  "after": 0.206,
+                  "difference": -0.09230000000000002,
+                  "observedChangePercent": -30.942004693261826
+                },
+                "gpuColorMedianMs": {
+                  "before": 0,
+                  "after": 0,
+                  "difference": 0,
+                  "observedChangePercent": null
+                },
+                "gpuShadowMedianMs": {
+                  "before": null,
+                  "after": null,
+                  "difference": null,
+                  "observedChangePercent": null
+                },
+                "gpuIntervalsMedianMs": {
+                  "before": 0,
+                  "after": 0,
+                  "difference": 0,
+                  "observedChangePercent": null
+                },
+                "gpuIntervalsP95Ms": {
+                  "before": 0,
+                  "after": 0,
+                  "difference": 0,
+                  "observedChangePercent": null
+                }
+              },
+              "gpuSamples": {
+                "before": 108,
+                "after": 120
+              },
+              "gpuMissingSamples": {
+                "before": 12,
+                "after": 0
+              },
+              "images": {
+                "before": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\empty-all.png",
+                  "sha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+                  "bytes": 8185
+                },
+                "after": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\empty-all.png",
+                  "sha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+                  "bytes": 8185
+                }
+              },
+              "samePngBytes": true
+            },
+            "100k-all": {
+              "counts": {
+                "requestedRoots": 100000,
+                "roots": 99978,
+                "pages": 169,
+                "draws": 169,
+                "shadowDraws": 0,
+                "bladeSegments": 6,
+                "shadowBladeSegments": 0,
+                "submittedVertices": 7198416,
+                "shadowTriangles": 0,
+                "frustumCulledPages": 0,
+                "coveredPixels": 22245
+              },
+              "timingsMs": {
+                "cpuMedianMs": {
+                  "before": 0.1406,
+                  "after": 0.0986,
+                  "difference": -0.04200000000000001,
+                  "observedChangePercent": -29.871977240398294
+                },
+                "cpuP95Ms": {
+                  "before": 0.2567,
+                  "after": 0.1494,
+                  "difference": -0.10729999999999998,
+                  "observedChangePercent": -41.799766264121544
+                },
+                "frameWallMedianMs": {
+                  "before": 0.5878,
+                  "after": 0.4996,
+                  "difference": -0.0882,
+                  "observedChangePercent": -15.005103776794826
+                },
+                "frameWallP95Ms": {
+                  "before": 1.0154,
+                  "after": 0.6214,
+                  "difference": -0.39400000000000013,
+                  "observedChangePercent": -38.80244238723657
+                },
+                "gpuColorMedianMs": {
+                  "before": 0.454656,
+                  "after": 0.427008,
+                  "difference": -0.027648000000000006,
+                  "observedChangePercent": -6.081081081081086
+                },
+                "gpuShadowMedianMs": {
+                  "before": null,
+                  "after": null,
+                  "difference": null,
+                  "observedChangePercent": null
+                },
+                "gpuIntervalsMedianMs": {
+                  "before": 0.454656,
+                  "after": 0.427008,
+                  "difference": -0.027648000000000006,
+                  "observedChangePercent": -6.081081081081086
+                },
+                "gpuIntervalsP95Ms": {
+                  "before": 0.74752,
+                  "after": 0.454656,
+                  "difference": -0.29286399999999996,
+                  "observedChangePercent": -39.17808219178082
+                }
+              },
+              "gpuSamples": {
+                "before": 119,
+                "after": 120
+              },
+              "gpuMissingSamples": {
+                "before": 1,
+                "after": 0
+              },
+              "images": {
+                "before": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\100k-all.png",
+                  "sha256": "17385d55da830759d0e15a5598be3af24f09a1f6b88845b43b48e1d2cda692f3",
+                  "bytes": 94303
+                },
+                "after": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\100k-all.png",
+                  "sha256": "17385d55da830759d0e15a5598be3af24f09a1f6b88845b43b48e1d2cda692f3",
+                  "bytes": 94303
+                }
+              },
+              "samePngBytes": true
+            },
+            "250k-all": {
+              "counts": {
+                "requestedRoots": 250000,
+                "roots": 250036,
+                "pages": 169,
+                "draws": 169,
+                "shadowDraws": 0,
+                "bladeSegments": 6,
+                "shadowBladeSegments": 0,
+                "submittedVertices": 18002592,
+                "shadowTriangles": 0,
+                "frustumCulledPages": 0,
+                "coveredPixels": 53618
+              },
+              "timingsMs": {
+                "cpuMedianMs": {
+                  "before": 0.1149,
+                  "after": 0.104,
+                  "difference": -0.010900000000000007,
+                  "observedChangePercent": -9.486510008703231
+                },
+                "cpuP95Ms": {
+                  "before": 0.2223,
+                  "after": 0.1622,
+                  "difference": -0.06009999999999999,
+                  "observedChangePercent": -27.035537561853353
+                },
+                "frameWallMedianMs": {
+                  "before": 1.1205,
+                  "after": 0.9415,
+                  "difference": -0.17900000000000005,
+                  "observedChangePercent": -15.975011155734054
+                },
+                "frameWallP95Ms": {
+                  "before": 1.6655,
+                  "after": 1.0849,
+                  "difference": -0.5806,
+                  "observedChangePercent": -34.86040228159711
+                },
+                "gpuColorMedianMs": {
+                  "before": 0.904192,
+                  "after": 0.8704,
+                  "difference": -0.033792000000000044,
+                  "observedChangePercent": -3.737259343148358
+                },
+                "gpuShadowMedianMs": {
+                  "before": null,
+                  "after": null,
+                  "difference": null,
+                  "observedChangePercent": null
+                },
+                "gpuIntervalsMedianMs": {
+                  "before": 0.904192,
+                  "after": 0.8704,
+                  "difference": -0.033792000000000044,
+                  "observedChangePercent": -3.737259343148358
+                },
+                "gpuIntervalsP95Ms": {
+                  "before": 1.54931,
+                  "after": 0.907264,
+                  "difference": -0.642046,
+                  "observedChangePercent": -41.44077040747172
+                }
+              },
+              "gpuSamples": {
+                "before": 120,
+                "after": 120
+              },
+              "gpuMissingSamples": {
+                "before": 0,
+                "after": 0
+              },
+              "images": {
+                "before": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\250k-all.png",
+                  "sha256": "3fa45aef24e281d2e24692fa2c330dda4a363dcb8e5b06e65cb8c7e58bc6e421",
+                  "bytes": 182330
+                },
+                "after": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\250k-all.png",
+                  "sha256": "3fa45aef24e281d2e24692fa2c330dda4a363dcb8e5b06e65cb8c7e58bc6e421",
+                  "bytes": 182330
+                }
+              },
+              "samePngBytes": true
+            },
+            "1m-all": {
+              "counts": {
+                "requestedRoots": 1000000,
+                "roots": 1000032,
+                "pages": 169,
+                "draws": 169,
+                "shadowDraws": 0,
+                "bladeSegments": 6,
+                "shadowBladeSegments": 0,
+                "submittedVertices": 72002304,
+                "shadowTriangles": 0,
+                "frustumCulledPages": 0,
+                "coveredPixels": 181835
+              },
+              "timingsMs": {
+                "cpuMedianMs": {
+                  "before": 0.1213,
+                  "after": 0.1075,
+                  "difference": -0.013800000000000007,
+                  "observedChangePercent": -11.376751854905198
+                },
+                "cpuP95Ms": {
+                  "before": 0.1583,
+                  "after": 0.1483,
+                  "difference": -0.010000000000000009,
+                  "observedChangePercent": -6.317119393556547
+                },
+                "frameWallMedianMs": {
+                  "before": 3.2948,
+                  "after": 3.2812,
+                  "difference": -0.013599999999999834,
+                  "observedChangePercent": -0.4127716401602477
+                },
+                "frameWallP95Ms": {
+                  "before": 3.9932,
+                  "after": 3.3692,
+                  "difference": -0.6239999999999997,
+                  "observedChangePercent": -15.626565160773309
+                },
+                "gpuColorMedianMs": {
+                  "before": 3.21946,
+                  "after": 3.20922,
+                  "difference": -0.010240000000000027,
+                  "observedChangePercent": -0.3180657625812988
+                },
+                "gpuShadowMedianMs": {
+                  "before": null,
+                  "after": null,
+                  "difference": null,
+                  "observedChangePercent": null
+                },
+                "gpuIntervalsMedianMs": {
+                  "before": 3.21946,
+                  "after": 3.20922,
+                  "difference": -0.010240000000000027,
+                  "observedChangePercent": -0.3180657625812988
+                },
+                "gpuIntervalsP95Ms": {
+                  "before": 3.99258,
+                  "after": 3.24198,
+                  "difference": -0.7505999999999999,
+                  "observedChangePercent": -18.799873765835628
+                }
+              },
+              "gpuSamples": {
+                "before": 120,
+                "after": 120
+              },
+              "gpuMissingSamples": {
+                "before": 0,
+                "after": 0
+              },
+              "images": {
+                "before": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\1m-all.png",
+                  "sha256": "f5405412852bbe0dcc36dd61f9a067f331e7637668cfd9c7274020f7e3edd932",
+                  "bytes": 477099
+                },
+                "after": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\1m-all.png",
+                  "sha256": "f5405412852bbe0dcc36dd61f9a067f331e7637668cfd9c7274020f7e3edd932",
+                  "bytes": 477099
+                }
+              },
+              "samePngBytes": true
+            },
+            "1m-partial": {
+              "counts": {
+                "requestedRoots": 1000000,
+                "roots": 1000032,
+                "pages": 169,
+                "draws": 22,
+                "shadowDraws": 0,
+                "bladeSegments": 6,
+                "shadowBladeSegments": 0,
+                "submittedVertices": 7598016,
+                "shadowTriangles": 0,
+                "frustumCulledPages": 147,
+                "coveredPixels": 60664
+              },
+              "timingsMs": {
+                "cpuMedianMs": {
+                  "before": 0.0339,
+                  "after": 0.0328,
+                  "difference": -0.0010999999999999968,
+                  "observedChangePercent": -3.2448377581120846
+                },
+                "cpuP95Ms": {
+                  "before": 0.0487,
+                  "after": 0.0411,
+                  "difference": -0.007600000000000003,
+                  "observedChangePercent": -15.605749486652986
+                },
+                "frameWallMedianMs": {
+                  "before": 0.3865,
+                  "after": 0.4087,
+                  "difference": 0.022199999999999998,
+                  "observedChangePercent": 5.743855109961182
+                },
+                "frameWallP95Ms": {
+                  "before": 0.5272,
+                  "after": 0.7876,
+                  "difference": 0.26039999999999996,
+                  "observedChangePercent": 49.39301972685888
+                },
+                "gpuColorMedianMs": {
+                  "before": 0.314368,
+                  "after": 0.314368,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "gpuShadowMedianMs": {
+                  "before": null,
+                  "after": null,
+                  "difference": null,
+                  "observedChangePercent": null
+                },
+                "gpuIntervalsMedianMs": {
+                  "before": 0.314368,
+                  "after": 0.314368,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "gpuIntervalsP95Ms": {
+                  "before": 0.325632,
+                  "after": 0.710656,
+                  "difference": 0.385024,
+                  "observedChangePercent": 118.23899371069184
+                }
+              },
+              "gpuSamples": {
+                "before": 120,
+                "after": 120
+              },
+              "gpuMissingSamples": {
+                "before": 0,
+                "after": 0
+              },
+              "images": {
+                "before": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\1m-partial.png",
+                  "sha256": "e84a94aafe8caa34f84b98f111f086b30b54ddf9fd85df44885eb252ca5eec76",
+                  "bytes": 204850
+                },
+                "after": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\1m-partial.png",
+                  "sha256": "e84a94aafe8caa34f84b98f111f086b30b54ddf9fd85df44885eb252ca5eec76",
+                  "bytes": 204850
+                }
+              },
+              "samePngBytes": true
+            },
+            "1m-offscreen": {
+              "counts": {
+                "requestedRoots": 1000000,
+                "roots": 1000032,
+                "pages": 169,
+                "draws": 0,
+                "shadowDraws": 0,
+                "bladeSegments": 6,
+                "shadowBladeSegments": 0,
+                "submittedVertices": 0,
+                "shadowTriangles": 0,
+                "frustumCulledPages": 169,
+                "coveredPixels": 0
+              },
+              "timingsMs": {
+                "cpuMedianMs": {
+                  "before": 0.0117,
+                  "after": 0.0122,
+                  "difference": 0.0005000000000000004,
+                  "observedChangePercent": 4.2735042735042805
+                },
+                "cpuP95Ms": {
+                  "before": 0.0147,
+                  "after": 0.0146,
+                  "difference": -9.99999999999994e-05,
+                  "observedChangePercent": -0.6802721088435382
+                },
+                "frameWallMedianMs": {
+                  "before": 0.1591,
+                  "after": 0.1766,
+                  "difference": 0.017500000000000016,
+                  "observedChangePercent": 10.999371464487751
+                },
+                "frameWallP95Ms": {
+                  "before": 0.2332,
+                  "after": 0.3201,
+                  "difference": 0.0869,
+                  "observedChangePercent": 37.26415094339623
+                },
+                "gpuColorMedianMs": {
+                  "before": 0,
+                  "after": 0,
+                  "difference": 0,
+                  "observedChangePercent": null
+                },
+                "gpuShadowMedianMs": {
+                  "before": null,
+                  "after": null,
+                  "difference": null,
+                  "observedChangePercent": null
+                },
+                "gpuIntervalsMedianMs": {
+                  "before": 0,
+                  "after": 0,
+                  "difference": 0,
+                  "observedChangePercent": null
+                },
+                "gpuIntervalsP95Ms": {
+                  "before": 0,
+                  "after": 0,
+                  "difference": 0,
+                  "observedChangePercent": null
+                }
+              },
+              "gpuSamples": {
+                "before": 119,
+                "after": 112
+              },
+              "gpuMissingSamples": {
+                "before": 1,
+                "after": 8
+              },
+              "images": {
+                "before": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\1m-offscreen.png",
+                  "sha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+                  "bytes": 8185
+                },
+                "after": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\1m-offscreen.png",
+                  "sha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+                  "bytes": 8185
+                }
+              },
+              "samePngBytes": true
+            },
+            "250k-all-shadow": {
+              "counts": {
+                "requestedRoots": 250000,
+                "roots": 250036,
+                "pages": 169,
+                "draws": 169,
+                "shadowDraws": 169,
+                "bladeSegments": 6,
+                "shadowBladeSegments": 0,
+                "submittedVertices": 18002592,
+                "shadowTriangles": 6000864,
+                "frustumCulledPages": 0,
+                "coveredPixels": 53618
+              },
+              "timingsMs": {
+                "cpuMedianMs": {
+                  "before": 0.2182,
+                  "after": 0.2015,
+                  "difference": -0.016699999999999993,
+                  "observedChangePercent": -7.6535288725939505
+                },
+                "cpuP95Ms": {
+                  "before": 0.2642,
+                  "after": 0.2322,
+                  "difference": -0.032,
+                  "observedChangePercent": -12.11203633610901
+                },
+                "frameWallMedianMs": {
+                  "before": 1.7739,
+                  "after": 1.7844,
+                  "difference": 0.010499999999999954,
+                  "observedChangePercent": 0.5919161170302667
+                },
+                "frameWallP95Ms": {
+                  "before": 2.2311,
+                  "after": 1.866,
+                  "difference": -0.3651,
+                  "observedChangePercent": -16.3641253193492
+                },
+                "gpuColorMedianMs": {
+                  "before": 0.858112,
+                  "after": 0.85504,
+                  "difference": -0.0030719999999999636,
+                  "observedChangePercent": -0.35799522673030104
+                },
+                "gpuShadowMedianMs": {
+                  "before": 0.828416,
+                  "after": 0.838656,
+                  "difference": 0.010239999999999916,
+                  "observedChangePercent": 1.23609394313966
+                },
+                "gpuIntervalsMedianMs": {
+                  "before": 1.68755,
+                  "after": 1.69779,
+                  "difference": 0.010239999999999805,
+                  "observedChangePercent": 0.6067968356493036
+                },
+                "gpuIntervalsP95Ms": {
+                  "before": 1.88314,
+                  "after": 1.72442,
+                  "difference": -0.15871999999999997,
+                  "observedChangePercent": -8.42847584353792
+                }
+              },
+              "gpuSamples": {
+                "before": 120,
+                "after": 120
+              },
+              "gpuMissingSamples": {
+                "before": 0,
+                "after": 0
+              },
+              "images": {
+                "before": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\250k-all-shadow.png",
+                  "sha256": "b2a6bf66eb018aa6031ed00de07e0d1b23324a10e83240c74273a7d9b5461c51",
+                  "bytes": 186010
+                },
+                "after": {
+                  "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\250k-all-shadow.png",
+                  "sha256": "b2a6bf66eb018aa6031ed00de07e0d1b23324a10e83240c74273a7d9b5461c51",
+                  "bytes": 186010
+                }
+              },
+              "samePngBytes": true
+            }
+          },
+          "culling": {
+            "AllVisible10000": {
+              "config": {
+                "kind": "config",
+                "case": "AllVisible10000",
+                "objects": 10000,
+                "visiblePercent": 100,
+                "width": 1920,
+                "height": 1080,
+                "warmup": 12,
+                "samples": 60,
+                "gpuInstancing": false,
+                "frameGeometryCache": true,
+                "viewsPerFrame": 1,
+                "secondWidth": 0,
+                "secondHeight": 0,
+                "backend": "DirectX 12",
+                "logicalProcessors": 28,
+                "rendererThreaded": false,
+                "vsync": false,
+                "endIncludesPresent": true,
+                "totalGpuTimeAvailable": false,
+                "strictCpuGpuJoined": false
+              },
+              "counts": {
+                "objects": [
+                  10000
+                ],
+                "frustumCulled": [
+                  0
+                ],
+                "drawCalls": [
+                  10000
+                ],
+                "triangles": [
+                  120000
+                ],
+                "instancedBatches": [
+                  0
+                ],
+                "instancedDrawsSaved": [
+                  0
+                ]
+              },
+              "wallMedianMs": {
+                "frameMs": {
+                  "before": 15.14845,
+                  "after": 12.4966,
+                  "difference": -2.6518499999999996,
+                  "observedChangePercent": -17.50575141351095
+                },
+                "waitCpuMs": {
+                  "before": 0.000200033188,
+                  "after": 0.000199973583,
+                  "difference": -5.960500000000229e-08,
+                  "observedChangePercent": -0.029797555393662467
+                },
+                "beginMs": {
+                  "before": 0.0378499925,
+                  "after": 0.0354000032,
+                  "difference": -0.0024499892999999967,
+                  "observedChangePercent": -6.472892431880927
+                },
+                "renderMs": {
+                  "before": 14.69465,
+                  "after": 12.0433,
+                  "difference": -2.651349999999999,
+                  "observedChangePercent": -18.042961213775076
+                },
+                "endMs": {
+                  "before": 0.4080500005,
+                  "after": 0.391049981,
+                  "difference": -0.01700001950000002,
+                  "observedChangePercent": -4.1661608820412255
+                }
+              },
+              "cpuScopeMedianMs": {
+                "RenderSystem::ExtractRenderScene": {
+                  "before": 6.2288,
+                  "after": 4.88655001,
+                  "difference": -1.34224999,
+                  "observedChangePercent": -21.54909436809659
+                },
+                "RenderSceneExtractor::GeometryCachePublish": {
+                  "before": 0.4950999915,
+                  "after": 0.35295000649999997,
+                  "difference": -0.14214998500000003,
+                  "observedChangePercent": -28.71136890334607
+                }
+              },
+              "gpuPassMedianMs": {
+                "IBLBrdfBake": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "SkinningCompute": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "LightCookie": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Shadow": {
+                  "before": 0.012288,
+                  "after": 0.012288,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "ForwardOpaque": {
+                  "before": 0.24576,
+                  "after": 0.150528,
+                  "difference": -0.09523200000000001,
+                  "observedChangePercent": -38.75000000000001
+                },
+                "TerrainForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Sky": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "SunMoon": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "VolumetricCloud": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "WaterCaustics": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "WaterForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "DecalDepthCopy": {
+                  "before": 0.032768,
+                  "after": 0.032768,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "Decal": {
+                  "before": 0.002048,
+                  "after": 0.002048,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "MeshTrail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Trail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "FroxelFog": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Particle": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Composite": {
+                  "before": 0.113664,
+                  "after": 0.113664,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                }
+              },
+              "completeProfilerFrames": {
+                "before": 60,
+                "after": 60
+              },
+              "droppedProfilerSamples": {
+                "before": 0,
+                "after": 0
+              },
+              "totalGpuTimeAvailable": false,
+              "strictCpuGpuJoined": false
+            },
+            "Partial10000": {
+              "config": {
+                "kind": "config",
+                "case": "Partial10000",
+                "objects": 10000,
+                "visiblePercent": 50,
+                "width": 1920,
+                "height": 1080,
+                "warmup": 12,
+                "samples": 60,
+                "gpuInstancing": false,
+                "frameGeometryCache": true,
+                "viewsPerFrame": 1,
+                "secondWidth": 0,
+                "secondHeight": 0,
+                "backend": "DirectX 12",
+                "logicalProcessors": 28,
+                "rendererThreaded": false,
+                "vsync": false,
+                "endIncludesPresent": true,
+                "totalGpuTimeAvailable": false,
+                "strictCpuGpuJoined": false
+              },
+              "counts": {
+                "objects": [
+                  10000
+                ],
+                "frustumCulled": [
+                  5000
+                ],
+                "drawCalls": [
+                  5000
+                ],
+                "triangles": [
+                  60000
+                ],
+                "instancedBatches": [
+                  0
+                ],
+                "instancedDrawsSaved": [
+                  0
+                ]
+              },
+              "wallMedianMs": {
+                "frameMs": {
+                  "before": 10.97465,
+                  "after": 9.51640001,
+                  "difference": -1.4582499900000006,
+                  "observedChangePercent": -13.287439599440532
+                },
+                "waitCpuMs": {
+                  "before": 0.000199973583,
+                  "after": 0.000100016594,
+                  "difference": -9.9956989e-05,
+                  "observedChangePercent": -49.98509678150839
+                },
+                "beginMs": {
+                  "before": 0.0377999842,
+                  "after": 0.034249991199999996,
+                  "difference": -0.0035499930000000013,
+                  "observedChangePercent": -9.391519798571768
+                },
+                "renderMs": {
+                  "before": 10.48565,
+                  "after": 9.07795,
+                  "difference": -1.4077000000000002,
+                  "observedChangePercent": -13.425014186054273
+                },
+                "endMs": {
+                  "before": 0.397049993,
+                  "after": 0.39520001400000004,
+                  "difference": -0.001849978999999946,
+                  "observedChangePercent": -0.46593099927342285
+                }
+              },
+              "cpuScopeMedianMs": {
+                "RenderSystem::ExtractRenderScene": {
+                  "before": 5.4159999800000005,
+                  "after": 4.6376,
+                  "difference": -0.7783999800000005,
+                  "observedChangePercent": -14.372230112157435
+                },
+                "RenderSceneExtractor::GeometryCachePublish": {
+                  "before": 0.4466499685,
+                  "after": 0.32895001749999997,
+                  "difference": -0.11769995100000002,
+                  "observedChangePercent": -26.3517204300441
+                }
+              },
+              "gpuPassMedianMs": {
+                "IBLBrdfBake": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "SkinningCompute": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "LightCookie": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Shadow": {
+                  "before": 0.013312,
+                  "after": 0.013312,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "ForwardOpaque": {
+                  "before": 0.068608,
+                  "after": 0.0768,
+                  "difference": 0.008191999999999991,
+                  "observedChangePercent": 11.940298507462677
+                },
+                "TerrainForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Sky": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "SunMoon": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "VolumetricCloud": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "WaterCaustics": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "WaterForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "DecalDepthCopy": {
+                  "before": 0.032768,
+                  "after": 0.032768,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "Decal": {
+                  "before": 0.002048,
+                  "after": 0.002048,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "MeshTrail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Trail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "FroxelFog": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Particle": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Composite": {
+                  "before": 0.111616,
+                  "after": 0.11264,
+                  "difference": 0.0010239999999999971,
+                  "observedChangePercent": 0.917431192660545
+                }
+              },
+              "completeProfilerFrames": {
+                "before": 60,
+                "after": 60
+              },
+              "droppedProfilerSamples": {
+                "before": 0,
+                "after": 0
+              },
+              "totalGpuTimeAvailable": false,
+              "strictCpuGpuJoined": false
+            },
+            "OffscreenHeavy10000": {
+              "config": {
+                "kind": "config",
+                "case": "OffscreenHeavy10000",
+                "objects": 10000,
+                "visiblePercent": 1,
+                "width": 1920,
+                "height": 1080,
+                "warmup": 12,
+                "samples": 60,
+                "gpuInstancing": false,
+                "frameGeometryCache": true,
+                "viewsPerFrame": 1,
+                "secondWidth": 0,
+                "secondHeight": 0,
+                "backend": "DirectX 12",
+                "logicalProcessors": 28,
+                "rendererThreaded": false,
+                "vsync": false,
+                "endIncludesPresent": true,
+                "totalGpuTimeAvailable": false,
+                "strictCpuGpuJoined": false
+              },
+              "counts": {
+                "objects": [
+                  10000
+                ],
+                "frustumCulled": [
+                  9900
+                ],
+                "drawCalls": [
+                  100
+                ],
+                "triangles": [
+                  1200
+                ],
+                "instancedBatches": [
+                  0
+                ],
+                "instancedDrawsSaved": [
+                  0
+                ]
+              },
+              "wallMedianMs": {
+                "frameMs": {
+                  "before": 7.90419999,
+                  "after": 8.473300009999999,
+                  "difference": 0.5691000199999987,
+                  "observedChangePercent": 7.199969898534908
+                },
+                "waitCpuMs": {
+                  "before": 0.000100016594,
+                  "after": 0.000100016594,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "beginMs": {
+                  "before": 0.0356500149,
+                  "after": 0.0342999995,
+                  "difference": -0.0013500154000000014,
+                  "observedChangePercent": -3.786857884314665
+                },
+                "renderMs": {
+                  "before": 7.43850002,
+                  "after": 8.032999995,
+                  "difference": 0.5944999750000006,
+                  "observedChangePercent": 7.992202371466828
+                },
+                "endMs": {
+                  "before": 0.4021999835,
+                  "after": 0.4129999875,
+                  "difference": 0.010800003999999974,
+                  "observedChangePercent": 2.685232332934695
+                }
+              },
+              "cpuScopeMedianMs": {
+                "RenderSystem::ExtractRenderScene": {
+                  "before": 4.74605,
+                  "after": 5.2844999999999995,
+                  "difference": 0.5384499999999992,
+                  "observedChangePercent": 11.345223923051773
+                },
+                "RenderSceneExtractor::GeometryCachePublish": {
+                  "before": 0.3515999915,
+                  "after": 0.4057500065,
+                  "difference": 0.054150014999999996,
+                  "observedChangePercent": 15.401028529319527
+                }
+              },
+              "gpuPassMedianMs": {
+                "IBLBrdfBake": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "SkinningCompute": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "LightCookie": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Shadow": {
+                  "before": 0.012288,
+                  "after": 0.012288,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "ForwardOpaque": {
+                  "before": 0.013312,
+                  "after": 0.013312,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "TerrainForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Sky": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "SunMoon": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "VolumetricCloud": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "WaterCaustics": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "WaterForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "DecalDepthCopy": {
+                  "before": 0.03072,
+                  "after": 0.03072,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "Decal": {
+                  "before": 0.002048,
+                  "after": 0.002048,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "MeshTrail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Trail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "FroxelFog": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Particle": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "Composite": {
+                  "before": 0.111616,
+                  "after": 0.111616,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                }
+              },
+              "completeProfilerFrames": {
+                "before": 60,
+                "after": 60
+              },
+              "droppedProfilerSamples": {
+                "before": 0,
+                "after": 0
+              },
+              "totalGpuTimeAvailable": false,
+              "strictCpuGpuJoined": false
+            },
+            "TwoViewsOppositeOffscreenHeavy10000": {
+              "config": {
+                "kind": "config",
+                "case": "TwoViewsOppositeOffscreenHeavy10000",
+                "objects": 10000,
+                "visiblePercent": 1,
+                "width": 1920,
+                "height": 1080,
+                "warmup": 12,
+                "samples": 60,
+                "gpuInstancing": false,
+                "frameGeometryCache": true,
+                "viewsPerFrame": 2,
+                "secondWidth": 320,
+                "secondHeight": 180,
+                "backend": "DirectX 12",
+                "logicalProcessors": 28,
+                "rendererThreaded": false,
+                "vsync": false,
+                "endIncludesPresent": true,
+                "totalGpuTimeAvailable": false,
+                "strictCpuGpuJoined": false
+              },
+              "counts": {
+                "objects": [
+                  10000
+                ],
+                "frustumCulled": [
+                  100
+                ],
+                "drawCalls": [
+                  9900
+                ],
+                "triangles": [
+                  118800
+                ],
+                "instancedBatches": [
+                  0
+                ],
+                "instancedDrawsSaved": [
+                  0
+                ]
+              },
+              "wallMedianMs": {
+                "frameMs": {
+                  "before": 18.80825,
+                  "after": 17.452599999999997,
+                  "difference": -1.3556500000000042,
+                  "observedChangePercent": -7.207741283745184
+                },
+                "waitCpuMs": {
+                  "before": 0.000100016594,
+                  "after": 0.000199973583,
+                  "difference": 9.9956989e-05,
+                  "observedChangePercent": 99.94040488921267
+                },
+                "beginMs": {
+                  "before": 0.0379000008,
+                  "after": 0.036250025,
+                  "difference": -0.0016499758000000017,
+                  "observedChangePercent": -4.353498061139883
+                },
+                "renderMs": {
+                  "before": 18.3351,
+                  "after": 16.9434,
+                  "difference": -1.3917000000000002,
+                  "observedChangePercent": -7.590359474450647
+                },
+                "endMs": {
+                  "before": 0.434649974,
+                  "after": 0.435200006,
+                  "difference": 0.0005500319999999781,
+                  "observedChangePercent": 0.12654596408649965
+                }
+              },
+              "cpuScopeMedianMs": {
+                "RenderSystem::ExtractRenderScene": {
+                  "before": 8.309499945,
+                  "after": 7.90289995,
+                  "difference": -0.40659999500000055,
+                  "observedChangePercent": -4.89319450858966
+                },
+                "RenderSceneExtractor::GeometryCachePublish": {
+                  "before": 0.37094998349999997,
+                  "after": 0.330850005,
+                  "difference": -0.040099978499999966,
+                  "observedChangePercent": -10.81007690623067
+                }
+              },
+              "gpuPassMedianMs": {
+                "view2:IBLBrdfBake": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:SkinningCompute": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:LightCookie": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:Shadow": {
+                  "before": 0.013312,
+                  "after": 0.013312,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "view2:ForwardOpaque": {
+                  "before": 0.018432,
+                  "after": 0.018432,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "view2:TerrainForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:Sky": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:SunMoon": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:VolumetricCloud": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:WaterCaustics": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:WaterForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:DecalDepthCopy": {
+                  "before": 0.03072,
+                  "after": 0.031744,
+                  "difference": 0.0010240000000000006,
+                  "observedChangePercent": 3.3333333333333437
+                },
+                "view2:Decal": {
+                  "before": 0.002048,
+                  "after": 0.002048,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "view2:MeshTrail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:Trail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:FroxelFog": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:Particle": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view2:Composite": {
+                  "before": 0.11264,
+                  "after": 0.111616,
+                  "difference": -0.0010239999999999971,
+                  "observedChangePercent": -0.9090909090909038
+                },
+                "view1:IBLBrdfBake": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:SkinningCompute": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:LightCookie": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:Shadow": {
+                  "before": 0.01024,
+                  "after": 0.01024,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "view1:ForwardOpaque": {
+                  "before": 0.137216,
+                  "after": 0.125952,
+                  "difference": -0.011263999999999996,
+                  "observedChangePercent": -8.208955223880599
+                },
+                "view1:TerrainForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:Sky": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:SunMoon": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:VolumetricCloud": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:WaterCaustics": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:WaterForward": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:DecalDepthCopy": {
+                  "before": 0.003072,
+                  "after": 0.003072,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                },
+                "view1:Decal": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:MeshTrail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:Trail": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:FroxelFog": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:Particle": {
+                  "before": 0.0,
+                  "after": 0.0,
+                  "difference": 0.0,
+                  "observedChangePercent": null
+                },
+                "view1:Composite": {
+                  "before": 0.009216,
+                  "after": 0.009216,
+                  "difference": 0.0,
+                  "observedChangePercent": 0.0
+                }
+              },
+              "completeProfilerFrames": {
+                "before": 60,
+                "after": 60
+              },
+              "droppedProfilerSamples": {
+                "before": 0,
+                "after": 0
+              },
+              "totalGpuTimeAvailable": false,
+              "strictCpuGpuJoined": false
+            }
+          },
+          "hardware": {
+            "before": {
+              "artifact": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceBeforeResume\\HardwareRead.json",
+                "sha256": "589f63bd19983f0348e8c468f4eb459eab5ee2f8cadf0ed15011e05bdc0e581e",
+                "bytes": 402
+              },
+              "values": {
+                "CapturedUtc": "2026-10-21T22:52:51.4910205Z",
+                "Cpu": "Intel(R) Core(TM) i7-14700F",
+                "LogicalProcessors": 28,
+                "OsDisplayVersion": "26H2",
+                "OsBuild": "26300",
+                "OsRevision": 9711,
+                "Gpu": "NVIDIA GeForce RTX 4070",
+                "DriverVersion": "610.88",
+                "GpuMemory": "12282 MiB",
+                "Evidence": "Read-only registry selected values and nvidia-smi; no benchmark or native modification"
+              }
+            },
+            "after": {
+              "artifact": {
+                "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfterConfirm\\HardwareRead.json",
+                "sha256": "8603fc026f506385174594787e63d98f3e0236b5ca6c13ca1639f3de07a436b2",
+                "bytes": 411
+              },
+              "values": {
+                "CapturedUtc": "2026-10-21T23:53:26.4830067Z",
+                "Cpu": "Intel(R) Core(TM) i7-14700F",
+                "LogicalProcessors": 28,
+                "OsDisplayVersion": "26H2",
+                "OsBuild": "26300",
+                "OsRevision": 9711,
+                "Gpu": "NVIDIA GeForce RTX 4070",
+                "DriverVersion": "610.88",
+                "GpuMemory": "12282 MiB",
+                "Evidence": "Read-only Win32_Processor, selected OS registry fields and nvidia-smi; no configuration changes"
+              }
+            }
+          },
+          "interpretation": "Observed timings only, not a causal or statistical speedup claim. Positive change percent means slower. Grass intervals are individual passes; Culling wall includes Present; neither is total GPU frame time. PNG byte changes require visual review."
+        }
+      },
+      "interruptedAttempt": {
+        "directory": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfter",
+        "status": "incomplete",
+        "cause": "undetermined",
+        "missingRequiredReports": [
+          "Grass.json",
+          "GrassGTest.json",
+          "Culling.log",
+          "CullingGTest.json"
+        ],
+        "availableArtifacts": [
+          {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfter\\100k-all.png",
+            "sha256": "17385d55da830759d0e15a5598be3af24f09a1f6b88845b43b48e1d2cda692f3",
+            "bytes": 94303
+          },
+          {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfter\\250k-all.png",
+            "sha256": "3fa45aef24e281d2e24692fa2c330dda4a363dcb8e5b06e65cb8c7e58bc6e421",
+            "bytes": 182330
+          },
+          {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfter\\empty-all.png",
+            "sha256": "f80a2b5c4507246a47aeea954da55181fc6f2c9539ea55c6047f73455eb05e8b",
+            "bytes": 8185
+          },
+          {
+            "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\PerformanceAfter\\Grass.log",
+            "sha256": "a2336539258a50b39eaa1249d64d63289e133994ebc98b05dcd746a3917ff6db",
+            "bytes": 374
+          }
+        ]
+      },
+      "shaderComparison": {
+        "artifact": {
+          "path": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\FastDefaultFinalComparison.json",
+          "sha256": "1f624d352eec8c580b8dcdf57e5c7b31f129dad51ae75dffc25f2cda43880fa2",
+          "bytes": 136991
+        },
+        "findings": {
+          "allRecordedSourcesIdentical": true,
+          "allFourDxilContainersIdentical": true,
+          "allRecordedSettingsIdentical": true,
+          "allSevenCaseCountsIdentical": true,
+          "allSevenPngFilesIdentical": true
+        },
+        "recordedSourceCount": 328,
+        "cachedDxilCount": 4
+      },
+      "timingDifferenceCause": "undetermined",
+      "causalSpeedupClaimed": false
+    },
+    "finalLogIndex": "C:\\Users\\jinhs\\Documents\\Codex\\2026-10-21\\task\\EngineIteration4\\FinalReport.md",
+    "allRepositoryTestsClaimed": false,
+    "dx12ValidationCleanClaimed": false,
+    "untested": [
+      "Imported clip playback with custom Fur appearance",
+      "Custom compute pre-skin with custom Fur appearance"
+    ],
+    "unsupportedAutomaticCapability": "Arbitrary HLSL vertex deformation does not synthesize matching CPU water physics or bounds.",
+    "textureContract": {
+      "slots": 8,
+      "fiberMaskSlot": "tex5"
+    }
+  }
+}

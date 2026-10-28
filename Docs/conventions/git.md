@@ -74,8 +74,8 @@ gh release create v0.9.1 --verify-tag --title "v0.9.1" --notes-file <リリー�
 - **`vMAJOR.MINOR.PATCH` の 3 桁で書く** (`v0.9.1`)。`v0.9` のような 2 桁は使わない (旧タグ `v0.5`〜`v0.9` は `v0.5.0`〜`v0.9.0` へ改名済み)
 - MINOR は機能の区切り (旧 Step 完了相当)、PATCH は同じ区切りの中の修正・整備
 - **タグと SDK の版は同じ番号にする**。リリース前に develop で `CMakeLists.txt` の `project(FBZZEngine VERSION X.Y.Z)` を上げ、その版でタグを打つ
-  - 版は SDK の置き場所 `SDK/<版>/`・`find_package(FBZZ <版> EXACT)`・Script DLL の ABI 署名に効く。上げたら GreenWare の `CMakeLists.txt` と `.fbzz_proj` (`engine_version` / `sdk_root`)、`.vscode/launch.json` の SDK 起動先も揃え、SDK を公開し直す
-  - 版を上げるとスクリプト DLL は再ビルドが要る (旧版の DLL は ABI 署名の不一致で読み込みを拒否される)
+  - 版は SDK の置き場所 `SDK/<版>/` と `find_package(FBZZ <版> EXACT)` に効く。上げたら利用するゲームの SDK 参照を揃え、SDK を公開し直す。GreenWare は SDK 0.9.1 の旧作として扱う
+  - C# ゲームは選択した SDK の ScriptApi / ManagedHost と互換の managed package を使う。C++ Engine の変更は通常の SDK バージョン互換で扱う
 
 ---
 

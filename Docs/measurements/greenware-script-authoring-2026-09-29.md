@@ -1,4 +1,6 @@
-# GreenWare：最新 Script API の適用と記述量
+# GreenWare：SDK 0.9.1 旧作 Script API の適用と記述量
+
+> 旧資料: C++ Script authoring の測定であり、現行 SDK の API や互換性を示さない。
 
 2026-09-29。ゲームで使用している実スクリプトを変更し、変更前の Git 履歴と比較した。
 

@@ -4,7 +4,7 @@
 <!-- @date    2026-09-14 -->
 # Docs — 索引
 
-更新日: 2026-09-21。対象は現行作業ツリー (`CMakeLists.txt` のプロジェクト版 `0.9.1`)。リリース済みかどうかと、各機能の実装・検証状況は区別し、設計文書の状態行と検証記録を参照する。
+更新日: 2026-10-06。現行 Engine / SDK は C# ゲームスクリプトを対象とする。GreenWare は SDK 0.9.1 時点の旧作を置く別リポジトリであり、現行 SDK の動作保証に含めない。
 
 FBZZ Engine のドキュメントの入口を以下にまとめる。
 
@@ -15,7 +15,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [`../CLAUDE.md`](../CLAUDE.md) | ディレクトリ地図とタスク別の入口 | 「この作業はどのファイルか」を引くとき |
 | [`conventions/`](conventions/) | 守るべき運用ルール | ビルド・コミット・テストを触るとき |
 | [`design/`](design/) | 機能単位の設計判断と、なぜそうしたか | 既存機能を直す / 似た機能を足すとき |
-| [`../GreenWare/Assets/Docs/`](../GreenWare/Assets/Docs/) | デモゲーム GreenWare の企画書と仕様 | ゲーム側の仕様を引くとき |
+| [GreenWare 専用リポジトリ](https://github.com/HasegawaJin/GreenWare/tree/main/Assets/Docs) | デモゲーム GreenWare の企画書と仕様 | ゲーム側の仕様を引くとき |
 
 ライセンス関係は [`../LICENSE`](../LICENSE) と [`../THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md)。
 
@@ -26,7 +26,7 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | Core / Graphics | `Projects/Core` と `Projects/Graphics` を独立 DLL に分割済み。Graphics の公開依存は Core / Math。Engine / Physics / Fluid へ依存しない ([設計と検証](design/graphics-library.md)) |
 | 描画入力 | メッシュ・スキニングに加え、ライト・環境・各エフェクト固有入力を Engine で抽出し、`RenderScene` の値と非所有 GPU ハンドルで Graphics へ渡す |
 | Forward / Deferred | Graphics 内のパイプライン構成として分離。材質ごとの経路と共通処理は [graphics-library.md](design/graphics-library.md)、導入背景は [pipeline-boundary.md](design/pipeline-boundary.md) |
-| SDK | `SDK/0.9.1/` に Core / Graphics のヘッダー・ライブラリ・DLL を配布。`lib/Development/FBZZGraphics.lib` はインポートライブラリで、実行時には `bin/Development/FBZZGraphics.dll` も必要 |
+| SDK | `SDK/0.10.0/` に Core / Graphics と managed starter のヘッダー・ライブラリ・DLL を配布。`lib/Development/FBZZGraphics.lib` はインポートライブラリで、実行時には `bin/Development/FBZZGraphics.dll` も必要。SDK 0.9.1 は GreenWare 用の旧版 |
 | 描画検証 | 関連 369 テストと Graphics 単独の DX12 描画を検証。FiberLifecycle は基準画像更新後、93 手順合格・10 枚すべて画素差 0 ([記録](design/fiber-rendering.md)) |
 
 ---
@@ -58,7 +58,11 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [profiler.md](design/profiler.md) | Performance / Script Profiler と Memory Debug の分割、計測と履歴、障害復旧、既存 API の移行契約 (Draft) |
 | [developer-mode.md](design/developer-mode.md) | 開発者モードの設定と機能 |
 | [gamehub-update-notice.md](design/gamehub-update-notice.md) | GameHub の新しい版の通知 |
-| [script-dll-recovery.md](design/script-dll-recovery.md) | Scripts DLL の読み込み失敗と復帰 |
+| [csharp-start.md](csharp-start.md) | ソースなしSDKからのC#導入、GameHub、共通雛形・コンパイル例、AIの入口 |
+| [csharp-only-gameplay.md](design/csharp-only-gameplay.md) | C# ゲームスクリプトと C++ Engine の責務境界 |
+| [csharp-scripting.md](design/csharp-scripting.md) | C# API境界・参照・保存・差し替えと配布の現行契約 |
+| [csharp-authoring.md](design/csharp-authoring.md) | protected override lifecycle、属性ゼロの基本設定、公開API・単位・座標・階層・配列の契約 |
+| [ai-script-workflow.md](design/ai-script-workflow.md) | Script の宣言から共通 schema、AI の追加・設定・参照接続、保存・Playtest へ進む制作経路 (Draft) |
 | [scene-capacity.md](design/scene-capacity.md) | Entity 上限での安全な作成失敗と複数生成の容量確認 |
 | [benchmark-report.md](design/benchmark-report.md) | ベンチマークの計測と比較レポート |
 | [game-settings.md](design/game-settings.md) | ユーザー定義シリアライズと Option 画面。宣言 1 行で設定を増やす |
@@ -88,6 +92,14 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [fiber-rendering.md](design/fiber-rendering.md) | 毛・草の Shell / Fin / Hybrid / Blade、スキニング・風・接触、Lifecycle 画像回帰 |
 | [terrain-layers.md](design/terrain-layers.md) | 地形の可変レイヤー・質感・穴・ブラシ |
 | [water-waves.md](design/water-waves.md) | 水面の波の周波数帯と接続 |
+| [water-foundation.md](design/water-foundation.md) | 水域照会・座標・物理と描画品質の分離 |
+| [water-surface-quality.md](design/water-surface-quality.md) | 白波・遠景海面・Terrain の岸泡と水深情報 |
+| [water-wave-optics-morph.md](design/water-wave-optics-morph.md) | 波アセット・浅水減衰・汎用LODモーフ・吸収と散乱 |
+| [water-spline-surface.md](design/water-spline-surface.md) | 湖と川のスプライン形状・水深・流速を描画と物理へ共有 |
+| [water-zone.md](design/water-zone.md) | 接続水域の共通メッシュ・重なりの優先順位・河口の共有属性 |
+| [control-point-authoring.md](design/control-point-authoring.md) | 共通TargetPoint・用途別Binding・Gizmo/Undo・複製・数値snapshotと静的ベイクの設計 |
+| [control-point-usage-audit.md](design/control-point-usage-audit.md) | Camera・IK・VFX・AI・NavLink等のTargetPoint利用箇所と追加adapterの優先順位 |
+| [surface-patch-lod.md](design/surface-patch-lod.md) | 連続面の汎用パッチ LOD・共有格子・境界の縫合 |
 | [water-flow-optimization.md](design/water-flow-optimization.md) | 水面評価と速度場 PNG |
 
 ### 物理・アニメーション
@@ -128,13 +140,14 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [minibot-c-fbzz-export.md](design/minibot-c-fbzz-export.md) | MiniBot C — 書き出し仕様と FBZZ への受け渡し |
 | [player-export-controller.md](design/player-export-controller.md) | Player 完成版の Controller 構築と旧シーンの撤去 |
 
-### GreenWare (デモゲーム側)
+### GreenWare (SDK 0.9.1 の旧作資料)
 
-ゲームの**仕様**は [`../GreenWare/Assets/Docs/`](../GreenWare/Assets/Docs/) が正本。ここに置くのは、エンジンとの境界に関わるものだけ。
+GreenWare は SDK 0.9.1 で作られた旧作で、C++ ゲーム Script の資料・測定は現行 SDK の使用例ではない。ゲームの**仕様**は[専用リポジトリ](https://github.com/HasegawaJin/GreenWare/tree/main/Assets/Docs)が正本。
+
+この索引以降に残る GreenWare 固有のパス・実行記録は、別記がなければ専用リポジトリのルートからの相対パスであり、SDK 0.9.1 時点の履歴を表す。
 
 | ファイル | 内容 |
 |---|---|
-| [greenware-script-engine-boundary.md](design/greenware-script-engine-boundary.md) | どこまでをエンジンに持たせ、どこからをスクリプトに置くか |
 | [greenware-vfx-improvement-inventory.md](design/greenware-vfx-improvement-inventory.md) | エフェクトの改善・制作リスト |
 | [player-camera-follow.md](design/player-camera-follow.md) | プレイヤーの画面内移動とカメラ追従 |
 | [stage03-crown-island.md](design/stage03-crown-island.md) | Stage03 — 六翼の浮遊機兵と海上の孤島 |
@@ -155,4 +168,4 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 - 先頭に**状態行**を置く (`- 状態: 実装済み / 一部未着手 / Draft` など)。読む側が「これは現行の仕様か、計画か」を最初の 1 行で判別できるようにする
 - 相対日付を書かない。「先週」ではなく `2026-09-13` と書く
 - 取り下げた設計は**消さずに残し**、状態行へ取り下げた日と理由を書く。同じ案を作り直さないため
-- `Docs/Art/` と `GreenWare/Assets/_src/` は制作時の作業記録 (レンダー画像・.blend) で、容量のため**追跡していない**。設計文書から参照するときはリンクにせず、追跡外である旨を添えてパスだけ書く
+- `Docs/Art/` は制作時の作業記録 (レンダー画像・.blend) で、容量のため**追跡していない**。GreenWare の作業ファイルは[専用リポジトリ](https://github.com/HasegawaJin/GreenWare)側で管理する

@@ -12,6 +12,8 @@
 
 **Scene / GameObject / Component / AssetDatabase を持たないプログラムでも、Graphics へデータを渡して描画できる。** これを分離完了の基準にする。
 
+DX12 の画面外バッチは既存の `SetRenderWhenOccluded(true)` で継続を明示する。この場合、バックバッファへの Clear・Draw・外部コマンド記録がないフレームは Present を省く。コマンドリストの送信、実フェンスの Signal、フレームスロットの再利用待ち、リソース退役、GPU 計測は維持する。描画先の再束縛だけでは表示更新とはしない。通常モードは毎フレーム Present し、継続モードでもバックバッファを更新すれば Present する。ImGui など外部記録は描画先を完全に追えないため、既存の状態変更通知で保守的に表示更新ありとする。[GPU キュー調査と計測](../benchmarks/2026-10-23-gpu-queue/Report.md)。
+
 Engine 側のシーン構造と、Graphics 側の描画方式を別々に変更できるようにする。単に `Renderer/` を移してリンク対象を増やすだけでは、この境界は成立しない。
 
 初期の対象外は、別リポジトリへの公開、他 OS 対応、DX11 の復活、描画スレッドの新設、RenderGraph の作り直し、GBuffer の拡張、OIT の導入。現行バックエンドは DX12 だけである ([dx11-removal.md](dx11-removal.md))。
@@ -151,6 +153,8 @@ CPU 記録終了と GPU 資源の寿命を別に扱う。入力をフレーム�
 
 `RenderPipeline` は登録・グラフ実行、構成関数はどのパスを組むか、個々のパスは Setup / Execute を担当する。この 3 つを別の責務として保つ。現段階で仮想 `IRenderingPipeline` やプラグイン探索機構は増やさない。
 
+Forward の通常 Mesh 描画では、影・Cookie・IBL・画面空間入力の共通バインドを実行中の描画グループ内だけで再利用する。最初の有効な描画で解決し、不透明グループと、Instance / Fiber 実行後の半透明グループでそれぞれ作り直す。別パス・別ビュー・別フレームへ保持しない。材質・物体・スキニングのバインドと ResourceManager による状態遷移は各描画で維持する。長い名前の Registry 検索が一時 `std::string` を毎回構築する費用を、この境界で削減する。検証と計測は [2026-10-23 のトレース分析](../benchmarks/2026-10-23-visible-mesh-trace/Report.md) を参照。
+
 ### 5.3 材質ごとの経路
 
 既存 `ResolveGeometryRoute` を唯一の色描画先の決定規則として維持する。
@@ -232,7 +236,7 @@ Script の呼び出し、UI のレイアウト / ヒットテスト、Physics / 
 
 型付き IRenderPass とラムダによるパス登録は両方残す。拡張パスは資源アクセスと挿入点を宣言する。Engine アダプターが Scene を捕捉することは移行中に許すが、Graphics の公開型へ Scene を持ち込まない。コールバックは記録スレッドでフレーム内だけ実行し、Scene の構造を変更しない。
 
-スクリプト DLL のアンロード前に登録済みコールバックを破棄する。既存の Script 仮想関数の署名・並びは移設だけで変更しない。新しい仮想口が必要なら末尾へ追加し、`ScriptDllAbi.hpp` の ABI 版を更新する。互換アダプターを経由して段階移行する。
+managed Script 世代の退役前に Engine 所有の callback / subscription を解放する。C# の lifecycle は固定 managed bridge の契約を使い、Engine の共通 Script substrate は互換性を確認して変更する。
 
 Render Pass Viewer は Graphics のレポート・資源一覧・Capture を読む。Graphics から Editor を呼ばない。ImGui の Win32 初期化はホスト側、同一 GPU デバイスとの橋渡しは任意の非公開バックエンドモジュールに残す。ImGui の型を Graphics の基本入力 API に露出しない。
 

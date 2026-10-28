@@ -28,29 +28,36 @@ FBZZTestBench.exe --measure [--steps 600] [--warmup 120] [--repeats 7] [--ops 20
 |------|------|------|-----------|
 | `scene` | TestBench の各場面の `Simulate` と `Present` | us/step | Reset → warmup → steps 回 |
 | `micro` | Math の演算 (行列積・回転・視錐台判定・正規化) | ns/op | 1024 要素の入力を ops 回ぶん回す |
+| `water` | Water TargetPoint workset の Transform 同期・参照解決・mesh/BVH・Zone 生成 | us/iteration | 10 / 100 / 1,000 / 10,000 点。owner あたり最大 256 点 |
 
 - 繰り返し (`repeats`) のたびに `Reset` し、どの回も同じ軌道の同じ区間を測る。代表値は中央値
 - 計時中はスレッドを 1 コアへ固定し、優先度を上げる
 - `micro` の入力は固定の線形合同法で作る (乱数ライブラリも時刻も使わない)。結果は checksum に畳み、最適化で消されないよう volatile へ書く
+- `water` は scene/TargetPoint/Zone の構築を計時前に終え、同期・数値解決・mesh/BVH 生成・Zone 生成を別々に測る。LIVE の静止 / 1 点移動 / 全点移動と BAKED_STATIC の静止 / 移動を含む
+- `water` は GPU / UI を使わず、asset load も行わない。標準 allocator は Engine MemoryTracker の対象外なので確保回数は `null`、再生成数は builder 実行数から記録する
 
-### JSON (`schema: "fbzz-bench/1"`)
+### JSON (`schema: "fbzz-bench/2"`)
 
 ```json
 {
-  "schema": "fbzz-bench/1",
+  "schema": "fbzz-bench/2",
   "label": "candidate",
   "startedAt": "2026-09-18T15:20:00+09:00",
   "environment": { "commit": "28bd01a2", "dirty": false, "cpu": "…", "logicalCores": 16,
                    "compiler": "MSVC 19.51.36231", "config": "Development" },
   "settings": { "steps": 600, "warmup": 120, "repeats": 7, "ops": 200000, "fixedStep": 0.0166667 },
+  "waterCoverage": { "gpu": "not measured", "ui": "not measured", "standardAllocatorCounts": "unavailable" },
   "results": [
-    { "kind": "scene", "name": "XPBD: 関節の鎖", "phase": "simulate", "unit": "us/step",
-      "samples": [7.1, 7.3], "median": 7.29, "min": 7.1, "max": 7.7 }
+    { "kind": "water", "name": "TargetPoint / 1000 / live-move-one", "phase": "resolve-signature", "unit": "us/iteration",
+      "samples": [7.1, 7.3], "median": 7.2, "p95": 7.29, "min": 7.1, "max": 7.3,
+      "allocationsPerIteration": null, "regenerationSamples": [0, 0], "regenerationsPerIteration": 0,
+      "note": "CPU-only; GPU/UI not measured; STL allocation counts unavailable." }
   ]
 }
 ```
 
 - 1 回の実行 = 1 ファイル。`commit` / `dirty` は exe が知らないので呼び出し側 (`BenchCompare.ps1`) が渡す
+- `p95` は 1 実行内の sample を線形補間する。BenchReport は `fbzz-bench/1` と `/2` を読み、比較の代表値は中央値を保つ
 - 形を変えるときは `schema` の番号を上げ、BenchReport が古い番号を読めるようにする
 
 ## 3. 比較 (`BenchReport`)

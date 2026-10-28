@@ -16,6 +16,7 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 
 ## 1. AgentBuild
 
+- 検証ログの保存先は `build/agent/`。手動で標準出力・標準エラーを保存する場合もこの配下へ絶対パスで指定し、リポジトリ直下へ `*-console.log` を生成しない。通常は `RESULT` 行の `log=` を使い、ログを重複保存しない。
 - **ターミナルからのビルド禁止は «VS 開発者環境を知っているのが `VcBuild.ps1` だけ» が理由。** `AgentBuild.ps1` は同じ `Import-VisualStudioEnvironment` を通るので規約と両立する。AI が叩いてよいビルドの入口はこれだけ。
 - `check <files...>`: 所有する `.vcxproj` を探して `ClCompile` + `SelectedFiles` でコンパイルだけ行う (リンクしない = 起動中のエディターが DLL を掴んでいても通る)。ヘッダーを渡すと、それを include する `.cpp` を最大 3 本選んで代わりにコンパイルする。どの `.vcxproj` にも無いファイルは GLOB が古いので 1 度だけ再 configure する。
 - `build <target>` / `test [-Filter]`: `cmake --build` / `ctest`。LNK1168 はエディター起動中として分類して返す。
@@ -53,8 +54,11 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 ```
 
 - **手順の語彙は Command Bus そのもの。** `bus` / `waitUntil` / `assert` はバスの要求をプロセス内で `EditorBusDispatcher::Handle` へ流す。シナリオ専用の問い合わせ API を作らないので、MCP で読めるものは全部シナリオで表明できる。
-- `path` はドット区切り (`nodes.0.name`)。`op` は `exists` / `missing` / `==` / `!=` / `<` / `<=` / `>` / `>=` / `contains` / `length==` / `length>=`。
+- `path` はドット区切り (`nodes.0.name`)、または `/` 開始の [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901#section-4) (`/fields/Namespace.Type.observedSeconds`)。後者は完全修飾キーのドットを保持し、`~0` / `~1` をそれぞれ `~` / `/` に単回復号する。不正なエスケープ・範囲外添字・配列添字の先頭ゼロは未解決とする。空文字は応答全体。`op` は `exists` / `missing` / `==` / `!=` / `<` / `<=` / `>` / `>=` / `contains` / `length==` / `length>=`。
 - `waitUntil` は毎フレーム評価し、`timeoutFrames` を越えたら失敗。`frames` は単に進める。
+- `waitSeconds` は `seconds`（0〜3600）の実時間を単調時計で待ち、描画を継続する。FPS、simulation time、timeScale、lockstep に依存しない。完了した手順の result に requestedSeconds・elapsedSeconds・clock を残す。描画準備完了を確認する waitUntil の後に置けば、その成立後の待機時間を保証できる。
+- `bus` / `assert` / 成立した `waitUntil` は `"capture":{"plan":"planToken"}` で成功応答の指定パスを保存できる。空パスは応答全体を保存する。後続の要求と比較値に `{"$ref":"plan"}` を置くと、文字列・数値・配列・null の型を保って値を渡す。例えば Configure preview の plan token を apply へ渡し、build.run の managedRequestId をその要求の build.status へ渡せる。
+- 保存名は英数字と underscore の 64 文字以内、最大 64 名・合計 1 MiB。各 Start で消去する。未取得の参照、曖昧な `$ref` オブジェクト、不正 capture は手順を失敗させ、未取得の参照を含む要求はバスへ送らない。失敗応答は保存しない。保存対象の command 応答もレポートへ残す。
 - `replay` は記録した入力列 (`*.inputrec.json`) をフレーム番号どおりに注入する。
 - 手順が 1 つ失敗した時点で打ち切り、Play を止めてレポートを書く (後続の手順は前提が崩れているため)。
 

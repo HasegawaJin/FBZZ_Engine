@@ -27,4 +27,6 @@ ResourceManager は成功した shader load / reload の能力をハンドルと
 
 プレビュー入力も `preview` に明示できる。値は `surface` / `skinned` / `water` / `terrain` / `ui` / `particle` / `trail` / `decal` / `post_process` / `mesh_trail` / `gpu_particle` / `fiber_shell` / `fiber_fin` / `fiber_blade`。省略時は宣言済みの標準頂点と Water / Terrain 表面からのみ補う。GPU Particle と MeshTrail は通常の材質プレビュー用頂点では描けないため非対応表示にする。Material の既存 `render_path` と `mesh_type` も尊重し、名前による救済は行わない。
 
-`.meta` の CPU 読み取りは更新時刻でキャッシュする。実際の shader コードが宣言した数学的意味を満たすことは作者の契約であり、反射のレイアウト検査だけで任意のコードの意味を証明できるとはしない。新しい変形・BSDF・独自 GBuffer の追加は、対応する variant と検証を別途実装してから契約の版を追加する。
+`.meta` の CPU 読み取りは更新時刻でキャッシュする。本体の存在と `.meta` の更新時刻は各照会で確認し、通知なしの変更・削除・復旧も次の照会へ反映する。再利用するのは参照の解析、GUID 索引の版に対応するパス、UTF-8 から native path への変換結果だけとする。保存域はスレッドごとに件数を制限し、GUID 索引の変更・初期化・終了で解決先を引き直す。通常のパス参照は毎回解決し、新しい project 側ファイルが共有 Engine asset より優先される規則を保つ。
+
+実際の shader コードが宣言した数学的意味を満たすことは作者の契約であり、反射のレイアウト検査だけで任意のコードの意味を証明できるとはしない。新しい変形・BSDF・独自 GBuffer の追加は、対応する variant と検証を別途実装してから契約の版を追加する。

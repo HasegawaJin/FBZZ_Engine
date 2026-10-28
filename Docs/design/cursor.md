@@ -50,22 +50,12 @@
 
 ---
 
-## 3. 書き方
+## 3. ゲームからの利用
 
-```cpp
-class PauseMenu : public Script {
-    FBZZ_SCRIPT(PauseMenu)
-    CursorRequest m_cursor;      // ← メンバーで持つ。これが要ぶん
-
-    void Open()  { m_cursor = cursor.Push(CursorLockMode::Confined, true,
-                                          CursorPriority::Modal); }
-    void Close() { m_cursor.Release(); }   // TPS カメラの Locked へ自動で戻る
-};
-```
+カーソル要求は C# SDK の公開 API を使う。要求の優先順位・解放・基底値の契約はこの Engine 設計に従う。公開署名は [C# API 契約](csharp-authoring.md)と SDK catalog を参照する。
 
 - **戻す値を覚える必要が無い**。`Release` すると、残っている要求のうち最も強いものが実効値になる。
-- **取り下げ忘れが起きない**。`CursorRequest` のデストラクタが `Release` するので、
-  スクリプトの破棄・シーン遷移・DLL リロードのどれでも自動的に外れる。
+- **取り下げ忘れが起きない**。`CursorRequest` は所有者が破棄されると自動的に解放される。
 - 主張し続けたまま中身だけ変えるときは `Set(mode, visible)`。`Release` → `Push` だと
   同値の後勝ち順序が変わり、他の要求との強弱が黙って入れ替わる。
 - 主張者が 1 つしか居ない画面なら `SetLockMode` / `SetVisible` (基底) で足りる。
@@ -79,7 +69,7 @@ class PauseMenu : public Script {
 
 ### `FBZZ_EXECUTE_ALWAYS` の注意
 
-編集中も `OnStart` / `OnUpdate` が走るので、`app.IsPlaying()` で囲まないと
+編集中も opt-in の callback が走るので、Play 状態を確認しないと
 **シーンを開いただけで Editor のカーソルが消える**。Editor 側も非 Play 中は
 毎フレーム `SetSuppressed(true)` を張る防波堤を持つが、要求自体は積まないこと。
 
@@ -90,7 +80,7 @@ class PauseMenu : public Script {
 `SceneManager::Update` の切り替え地点で `Cursor::ClearRequests()` を呼び、
 **要求も基底も既定へ戻す**。スクリプトの要求は Scene の破棄で自動的に外れるが、
 `SetLockMode` で基底を直接書いた分は誰も外さないまま次の画面へ持ち越される。
-新しい Scene のスクリプトは同じ Update で名乗り直すので、既定へ戻る瞬間は画面に出ない。
+新しい Scene の Script は同じ Update で名乗り直すので、既定へ戻る瞬間は画面に出ない。
 
 ---
 
@@ -118,8 +108,7 @@ hardware = true
 
 ### ハードウェアとソフトの使い分け
 
-自前で UIImage を動かすカーソル ([GameCursorComponent](../../GreenWare/Assets/Scripts/Utils/GameCursorComponent.hpp))
-は «前フレームの位置» を描くので、マウスを速く振ると必ず遅れて見える。
+自前で UIImage を動かすカーソルは «前フレームの位置» を描くので、マウスを速く振ると必ず遅れて見える。
 マウス操作中は OS のカーソル (`visible = true` + `Default` の画像)、パッド操作中は
 UIImage、と機器で切り替えるのが正解。パッドは OS カーソルを動かせないので選択肢が無い。
 

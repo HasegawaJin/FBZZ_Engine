@@ -119,7 +119,7 @@ AGENTS.mdに従いVS CodeのBuild All / Tests: Build & Run Suiteで実施する�
 Active モード（立ったまま筋力で支える）は成立している。目標を毎フレーム取り直すので、
 無負荷なら釣り合い点がアニメーションそのものになり、押されたぶんだけ沈んで戻る。
 GreenWare のボスの被弾ひるみはこの経路を使っている
-([`BossRagdollComponent::Stagger`](../../GreenWare/Assets/Scripts/Combat/BossRagdollComponent.hpp))。
+([`BossRagdollComponent::Stagger`](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Scripts/Combat/BossRagdollComponent.hpp))。
 
 ### 1.2 構造的な限界 — 「回転を持っていない」
 
@@ -702,14 +702,14 @@ operator `render.show_ragdoll`)。剛体のカプセルは水色、関節の可�
 ### A.1 移動そのものは簡単
 
 ボスは既に物理剛体で、
-[`MoveHorizontal` / `StopHorizontal`](../../GreenWare/Assets/Scripts/Combat/BossAiComponent.hpp)
+[`MoveHorizontal` / `StopHorizontal`](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Scripts/Combat/BossAiComponent.hpp)
 が毎フレーム水平速度を**上書き**している。したがって剛体へインパルスを入れても次のフレームで消える。
 `BossAiComponent` に減衰するノックバック速度を持たせ、この 2 関数が設定する速度へ上乗せすればよい。
 壁で止まるのは剛体が接触を解くので自動で、**壁際へ追い込める**挙動もそのまま出る。
 
 ### A.2 だが足が動かない
 
-[`BossAnimatorComponent::SampleLocomotion`](../../GreenWare/Assets/Scripts/Combat/BossAnimatorComponent.hpp) は
+[`BossAnimatorComponent::SampleLocomotion`](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Scripts/Combat/BossAnimatorComponent.hpp) は
 
 ```cpp
 const float speed = delta.Length() / dt;   // 符号なし

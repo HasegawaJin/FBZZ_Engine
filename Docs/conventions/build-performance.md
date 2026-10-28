@@ -186,6 +186,8 @@ MSBuild の `/clp:PerformanceSummary` がタスク別 (CL / Link / Lib) の合�
 
 ### 4-1. `WINDOWS_EXPORT_ALL_SYMBOLS` (リンク時間)
 
+2026-10-11 の Development では export 定義が 65,730 件となり、import library の member 上限で LNK1189 が発生した。Engine 本体と OBJECT モジュールに既存 Release と同じ `/Zc:inline` を適用し、未参照 inline COMDAT の出力を抑止する。Debug の `/Od` ではこの最適化は適用されない。公開 API の明示化は引き続き下記の設計課題とする。[MSVC の公式仕様](https://learn.microsoft.com/en-us/cpp/build/reference/zc-inline-remove-unreferenced-comdat?view=msvc-170)。
+
 `FBZZEngine` は **46,544 シンボル**を export している (`FBZZPhysics` 4,553 / `FBZZMath` 106)。
 `WINDOWS_EXPORT_ALL_SYMBOLS ON` は全オブジェクトをスキャンして `.def` を作り、
 そのうえでリンクし直す 2 パス処理になる。生成物も `FBZZEngine.exp` 31MB /

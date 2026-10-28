@@ -1,5 +1,7 @@
 # GreenWare の制作からスクリプト API へ戻す改善
 
+> 旧資料: SDK 0.9.1 の C++ Script 制作記録。現行 SDK のゲーム authoring 契約ではない。
+
 2026-09-29。既存の ScriptModules、必須 Component 検証、AudioSource / AudioSystem を拡張する。
 
 ## 初期化

@@ -117,20 +117,20 @@ DXC は独立した依存として維持する。Agility の取り込みだけ�
 
 `fbzz_enable_agility_sdk(target)` を EXECUTABLE 型専用の共通 CMake helper として実装した。版情報から生成した短い `.cpp` を EXE の直接ソースへ追加し、C linkage のデータシンボル `D3D12SDKVersion` / `D3D12SDKPath` を `__declspec(dllexport)` で export する。整数は 32 bit、パスは NUL 終端文字列へのポインター。生成ソースは DX / Windows ヘッダーを必要としない。
 
-Graphics / Engine / Script DLL に export を置かず、STATIC archive 内の参照されない翻訳単位にも閉じ込めない。helper は二重適用で重複せず、DLL 型への適用は configure 時に拒否する。DX12 無効構成では省略する。[EXE export の公式契約](https://microsoft.github.io/DirectX-Specs/d3d/D3D12Redistributable.html#application-and-games)
+Graphics / Engine DLL に export を置かず、STATIC archive 内の参照されない翻訳単位にも閉じ込めない。helper は二重適用で重複せず、DLL 型への適用は configure 時に拒否する。DX12 無効構成では省略する。[EXE export の公式契約](https://microsoft.github.io/DirectX-Specs/d3d/D3D12Redistributable.html#application-and-games)
 
 | ホスト | 適用先 |
 |---|---|
 | Editor | `Projects/EditorLauncher` の `FBZZEditorLauncher`。成果物は `FBZZEditor.exe` |
 | Sandbox | `Sandbox` / `SandboxStandalone` |
-| GreenWare | `GreenWareStandalone` |
+| GreenWare | SDK 0.9.1 の旧作。現行 SDK のホスト EXE 対象外 |
 | SDK から作るゲーム | `standard` / `empty` テンプレートの Standalone EXE |
 | テストとベンチ | Graphics を初期化する EXE。Graphics 単独テストも含む |
 | 外部の Graphics 単独利用 | 公開 helper を描画ホスト EXE に適用 |
 
-Electron の GameHub 本体と Scripts DLL は描画ホストに含めない。`fbzz_stage_runtime(Scripts)` は現行でも使われるため、汎用配置関数へ無条件に export を追加しない。
+Electron の GameHub 本体と managed Script package は描画ホストに含めない。managed runtime の配置は専用 package 経路で扱い、描画 EXE 用の export helper と混同しない。
 
-SDK の `cmake/FBZZ/` に helper と `.cpp.in` テンプレートを収録する。`fbzz_stage_runtime` は DLL にも使える配置関数のまま、SDK 指定は別 helper が担う。描画 EXE のテンプレートは両方を呼ぶ。既存 SDK consumer は helper を追加して移行し、C++ の起動コードへ export をコピーしない。
+SDK の `cmake/FBZZ/` に helper と `.cpp.in` テンプレートを収録する。`fbzz_stage_runtime` は一般 DLL の配置関数のまま、SDK 指定は別 helper が担う。描画 EXE のテンプレートは両方を呼ぶ。既存 SDK consumer は helper を追加して移行し、C++ の起動コードへ export をコピーしない。
 
 既存ゲームの CMake は SDK 更新だけでは書き換わらない。起動前の配置確認と配布検証で、ホスト EXE の両データ export の存在・整数版・パスを Graphics の要求契約と照合する。Core が置かれているだけでは移行済みと判定しない。OS 標準 Core が新しい環境でも、export の欠落・旧版・旧パスは consumer の移行不足として失敗し、helper の適用と EXE の再リンクを案内する。
 
@@ -210,7 +210,7 @@ Graphics の DX12 初期化に、版情報から生成した内部定数に基�
 
 デバイス生成後に、ロードされた `D3D12Core.dll` の絶対パスとファイル版、要求パッケージ / SDK 版、GPU / ドライバー、SM、Binding Tier、debug layer の有効状態を記録する。Windows の診断 API は Graphics の非公開 `.cpp` に閉じる。未取得項目は未取得とし、要求版を実ロード版として代入しない。診断のために Core を追加ロードしたり、プロセスの SDK 指定を変更したりしない。
 
-SDK 指定はプロセス開始時から有効であり、Editor 設定、Script DLL ホットリロード、Play 開始・停止で切り替えない。版更新は EXE と DLL と配置物を更新し、プロセスを再起動する作業とする。
+SDK 指定はプロセス開始時から有効であり、Editor 設定、managed Script 更新、Play 開始・停止で切り替えない。版更新は EXE と DLL と配置物を更新し、プロセスを再起動する作業とする。
 
 ## 実装の変更範囲
 

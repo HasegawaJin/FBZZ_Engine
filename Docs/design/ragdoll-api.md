@@ -41,7 +41,7 @@ rootBoneName / extraRootBones / excludedRootBonesはInspectorで編集でき、�
 - Atは指定原点からの距離で減衰し、radius <= 0は全剛体へ一律。
 - 入力の意味はGuardや駆動モードで変えない。方向・配分・演出上限は呼び出し側が決める。
 
-## GreenWareへの移行
+## GreenWareへの旧移行記録 (SDK 0.9.1)
 
 `Assets/Scripts/Utils/RagdollPresentation.hpp`が立位設定セットと演出用の並進／回転配分を持つ。
 Playerの周期的な揺れと入力タイミングはPlayerComponentに残す。
@@ -49,7 +49,7 @@ Boss01の除外名Yaw_FR / Yaw_FL / Yaw_BR / Yaw_BLはBossRigComponentとStage_0
 
 旧preserveLegAnimationとSetLegAnimationPreservedは削除し、該当シーン・スクリプトを移行した。
 旧SetStandingGuard(distance, degrees, human)は独立した設定APIへ置き換えた。
-今回追加したユーティリティはScript登録マクロを持たず、ScriptCodeGenの登録対象ではない。
+当時追加したユーティリティは Engine の C++ API であり、ゲーム作者向け Script API ではない。
 
 ## 検証
 

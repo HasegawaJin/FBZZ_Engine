@@ -1,6 +1,20 @@
+<!-- @file    volumetric-light.md -->
+<!-- @brief   明示した PostProcess 設定による体積光の積分・再構成と品質予算。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-03 -->
 # VolumetricLight — 半解像度の積分と深度を考慮した再構成
 
 `VolumetricLight` は不透明面までの視線をシャドウマップと同じ雲密度場で遮蔽し、散乱光を HDR へ加算する。重いレイマーチを縦横半分の解像度へ移し、全解像度の深度を使って輪郭を保ちながら戻す。積分ステップや光の設定を下げて速度を得る設計にはしていない。
+
+## 有効条件と品質予算
+
+大気・水中とも、PostProcess の `volumetricLight.enabled` と最初の pass override が明示的に許可した場合だけ実行する。光学水域の存在、カメラの水中判定、Water 材質の光強度では起動しない。強度または距離が非有限・零以下、steps が零以下の場合も処理しない。`RenderSettings::IsVolumetricLightActive()` をパスの判定、実行時の防御、資源確保、Composite の読取、GPU 定数の共通条件にする。
+
+オフ時は VolumetricRaw / VolumetricResult を確保せず、同じ画面寸法でのオン→オフでも解放する。RenderGraph に積分の実行と結果の read を残さず、前フレームの散乱結果を読まない。水の RGB 消散と環境光、水面・界面・物体照明はこの体積光の opt-in と独立に維持する。
+
+水中の積分ステップは材質側の上限と PostProcess の steps (16〜64へclamp) の小さい方、カメラからの積分距離は材質側の上限と PostProcess の maxDist の小さい方を使う。材質の水中光強度へ PostProcess の intensity を一度だけ掛ける。RGB 光学係数・位相は水域の設定を正本に保つ。オン時の品質変更はこの明示した予算に従い、解像度や多数ライトのモードから黙って steps を下げない。
+
+共有水域の積分では、header の保守的な XZ / 垂直外接範囲と ray が交差しない画素を積分前に除く。交差する ray は元の stepDistance・ディザ位相・cell 添字を保ち、水を含まない前後のセルだけを走査から外す。両端は一セル広げ、部分セルを落とさない。完全なジオメトリの影では寄与が零なので、雲と光源側の媒体積分を省く。透過率の小ささによる積分全体の打ち切りは行わない。
 
 ## リソースと処理順
 
@@ -8,12 +22,14 @@
 
 | 登録名 | 寸法 | 内容 | 形式 |
 |---|---|---|---|
-| `VolumetricRaw` | `ceil(width / 2)` × `ceil(height / 2)` | RGB = 積分後の散乱光、A = 代表画素の線形深度 | RGBA16F |
+| `VolumetricRaw` | 通常は各軸`ceil(size / 2)`、Many Lightsは`ceil(size / 4)` | RGB = 積分後の散乱光、A = 代表画素の線形深度 | RGBA16F |
 | `VolumetricResult` | `width` × `height` | RGB = 再構成した散乱光、A = 1 | RGBA16F |
 
-1. `VolumetricLight.cs.hlsl` が半解像度で積分する。
-2. `VolumetricLightUpsample.cs.hlsl` が全解像度の HDR 深度を読み、4 tap で再構成する。
+1. `VolumetricLight.cs.hlsl` が半または1/4解像度で積分する。
+2. `VolumetricLightUpsample.cs.hlsl` が全解像度の HDR 深度を読み、半解像度は4 tap、1/4解像度は16 tapで再構成する。
 3. 既存の `CopyColor.hlsl` を加算ブレンドで HDR へ描く。
+
+bindless経路の積分と再構成は、一つの同期native operation内で順番にTryDispatchする。RenderThreadへ渡す完了待ちを二回から一回へまとめるが、戻り値は両方が実際に記録された結果であり、非同期受付を成功にしない。初段失敗では後段を呼ばず、どちらかが失敗した場合は水中結果の公開と大気HDR加算を行わない。既に記録した初段はrollbackせず、その出力を合成へ公開しない。各dispatchのUAV/SRV遷移と既存の散乱量・解像度・step予算を維持する。非bindlessの互換経路は従来の二回Dispatchを使う。
 
 不透明描画と Terrain の後、Water と半透明描画の前に加算する。レイ終端は **HDR の深度**から取得する。GBuffer の深度には Terrain が含まれないため、そこを読むと地形の奥まで積分した光が手前へ漏れる。水底まで積分した光を透明描画後の Composite で足すと、水面より手前へ乗るため、現在のパス順を保つ。
 
@@ -89,6 +105,43 @@ ShowcaseCoast の保存カメラ `[0,220,-1200]` を使い、60 フレームの�
 半解像度段階と固定 4 tap 段階は同じ `-Od` であり、影の分離による差を比較できる。
 最終パスの値には全解像度の再構成と加算合成を含む。画像は近景、時間経過、旋回、移動、岸辺を撮影した。
 `GreenWare/Tests/Playtests/WaterLighting.playtest.json` の 63 ステップを完走し、遠景を含む 11 枚を撮影、シェーダー診断 0 件を確認した。
+
+## 2026-10-10 の有効条件の検証
+
+- C++ compile check と Development の Graphics / GraphicsStandalone / EngineAuto ビルドはエラー・警告0。関連CPU回帰84件と実DX12のUnderwaterShaderTest36件が合格した。
+- 共有水域の外接範囲を緩くした入力と厳密な入力で、元の積分格子を保つ区間削減の画素結果が一致した。透視・平行投影と完全な水域外の視線を検証した。
+- `NightLightsLab` の1,000灯を隔離コピーで実行し、コピー側だけPostProcessのVolumetricLightを明示的にオフにした。Release SDKPreview / RTX 4070 / Game view 1904×893、全数評価と32サンプル評価で61手順が合格した。
+- 各モード60フレームのウォームアップ後、10フレーム間隔で12回ずつ採ったGPU snapshotは24件すべてavailable / complete。804件の描画パス記録にVolumetricLightは0件で、水面・媒体・Compositeは継続していた。元入力と検証コピーのScene / profileの署名も保持した。
+- 不在のパスへ仮の0msを付けず、GPU実行の不在として記録する。オン時の同条件の高速化率はこの検証から主張しない。
+
+記録: [CPU結果](../../build/agent/test-20261009-235306-66448.log)、[実GPU結果](../../Scratch/VolumetricLightFix/GpuResults.json)、[NightLightsLab結果](../../Scratch/VolumetricLightFixCheck-01a120b5/NightVolumetricOff.report.json)、[GPU記録の検査](../../Scratch/VolumetricLightFixCheck-01a120b5/VerificationSummary.json)、[検証SDKビルド](../../build/agent/build-20261010-000907-56448.log)。
+
+## 2026-10-10 の同期統合の検証
+
+積分と再構成の実記録確認を一回の同期操作へまとめ、ThreadedRendererのpending commandも同期operationと同じpacketへ載せる。待機中のpumpが追加したcommandはFlushのdrainループで完了まで回収する。散乱・解像度・step・Light Samplesは変更していない。
+
+Release / DX12 / RTX 4070、隔離したNightLightsLabの1,000灯、sampled-8、CPU geometry、Scene/Game各1904×893、96フレームのwarmupと600フレームの測定。同じCore/Engine DLLとshaderを固定し、同期だけを従来方式へ切り替えた比較版を測ってから最終実装へ復帰した。
+
+| 同期方式 | frame中央値 | p99 | 最大 | VolumetricLight GPU中央値 | VolumetricLight CPU中央値 |
+|---|---:|---:|---:|---:|---:|
+| 分離した同期の比較版 | 15.213 ms | 22.436 ms | 27.169 ms | 1.614 ms | 0.276 ms |
+| 統合後の最終実装 | 14.502 ms | 22.881 ms | 40.345 ms | 1.614 ms | 0.197 ms |
+
+frame分布は600フレーム。CPU pass値は測定後の16個の詳細snapshotにおけるScene/Game合計、GPU値はGameの8標本であり、frame最大値と同一フレームの内訳ではない。同期全体のCPU中央値は3.957→2.607 ms、packet提出回数の中央値は82→50。Syncと内側のSubmitPacketはinclusive値が重なるため加算しない。
+
+中央値は約4.7%改善したが、p99と最大の改善は確認できなかった。別の統合後2回も中央値14.581 / 14.629 msだった。以前のEditor DLLでは中央値12.615 msの記録もあり、共有Core/Engine等の更新を含むため今回の同期変更だけの比較に使わない。RenderThreadが40 msのスパイク原因であるとは断定できず、120 FPS達成もこの結果からは主張しない。
+
+最終ソースへbyte一致で復帰し、EditorLauncher / GraphicsAuto / GraphicsStandaloneのReleaseビルドがerrors=0 / warnings=0。同期・水中pass lifecycleのCPU32件、ThreadedRendering / WaterMedium / Underwaterの実GPU67件が合格した。SDK反映は保留。
+
+記録: `build/agent/build-20261010-175526-40180.log`、`build/agent/test-20261010-175737-26112.log`、`build/agent/water-reference-gpu.json`、`Scratch/VolumetricLightFixCheck-01a120b5/VolumeLegacyCurrentCore/NightVolumetricOn600.report.json`、`Scratch/VolumetricLightFixCheck-01a120b5/VolumeCoalescedMatchedFinal/NightVolumetricOn600.report.json`。
+
+## 2026-10-10 の再開後のスパイク調査
+
+600フレームの無問い合わせ性能窓とは別に、300フレームの詳細snapshotを採取した。遅い診断フレームではLightRangeDebugの自己時間5～6 ms、Scene/GameのMaterial抽出、同期のpacket完了待ちが目立った。VolumetricLightのCPU scopeは中央値0.199 ms、最大0.673 msだった。snapshot問い合わせとJSON生成の負荷が診断区間へ入るため、性能窓の35 ms前後のフレーム原因へ直接対応付けない。GPU timestampにも2フレームのageがあり、同一フレームのGPU原因とは断定しない。
+
+ライト範囲の円周係数と隣接頂点を再利用し、全ライト・24分割・形・色を維持した。[デバッグ描画の設計と計測](debug-draw-performance.md)を参照。共有ソース固定で旧方式へ一時復帰した比較では、frame中央値13.710→12.635 / 12.776 ms、LightRangeDebug CPU中央値2.563→1.618 / 1.471 ms。VolumetricLight GPU中央値は約1.61～1.62 msを維持した。再確認で最大39.572 msが残るためスパイク解消と120 FPS達成は主張しない。
+
+本変更はC++のデバッグ円生成だけで、水面・水中のshaderや品質予算は変更していない。ライトのpixel不変計算を共有するshader候補はScratchで準備したが、実GPU A/B未実行で本番へ採用していない。CPU35件とRelease Editor/GraphicsAutoビルドが合格。別チャットの共有GPU fixtureの検証状況は、本変更の検証結果と区別する。
 
 ## 実装と根拠
 

@@ -1,5 +1,7 @@
 # VFX — プレハブとしてのエフェクト (`.vfx`)
 
+> SDK 0.9.1 の GreenWare に関する C++ Script 例は旧作の履歴資料であり、現行 SDK の authoring 手順ではない。現行のゲームコードは C# SDK を使う。
+
 エフェクトを**シーンに置く普通の GameObject 階層**として作り、`.vfx` (= プレハブ) として保存・生成する。
 専用のグラフ言語・専用のエディタ・専用の設定構造体をすべて捨て、
 「シーンに置けるものはエフェクトにも置ける / エフェクトに置けるものはシーンにも置ける」を成立させる。
@@ -238,12 +240,12 @@ struct VFXComponent {
 
 ---
 
-## 6. パラメーター — 廃止してスクリプト公開フィールドへ
+## 6. パラメーター — 旧作の公開フィールド接続
 
 `VFXParamDefinition` / `VFXParamBinding` / `VFXVariantSet` / `VFXSubGraphForward` /
 `VFXSignalNode` / `VFXSignalOutput` / `VFXParamOverride` をすべて削除する。
 
-代わりに **`.vfx` のルートに置いた Script の公開フィールド**が唯一の入口になる。
+SDK 0.9.1 の GreenWare では **`.vfx` のルートに置いた C++ Script の公開フィールド**を入口としていた。これは現行 SDK の C# API 契約ではない。
 
 ```cpp
 // GreenWare/Assets/Scripts/Vfx/ImpactVfxComponent.hpp
@@ -260,7 +262,7 @@ public:
 };
 ```
 
-呼び出し側 ([VfxManagerComponent.hpp](../../GreenWare/Assets/Scripts/Game/VfxManagerComponent.hpp)) は:
+呼び出し側 ([VfxManagerComponent.hpp](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Scripts/Game/VfxManagerComponent.hpp)) は:
 
 ```cpp
 GameObject* go = PrefabPool::Spawn(scene, impactVfxPath, point, rotation);

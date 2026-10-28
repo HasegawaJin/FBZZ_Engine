@@ -3,7 +3,7 @@
 GoogleTest / GoogleMock による自動テストと、開発者が目で確かめる手動テストの運用ルール。
 `git.md` と同じく、ポートフォリオとして採用担当者に読まれることを前提にしている。
 
-新しいテストを追加する前に、**「分類」** と **「追加手順」** の 2 章だけは必ず読むこと。
+新しいテストを追加する前に、**「分類」**、**「テスト対象の境界と公開 API」**、**「追加手順」** を必ず読むこと。
 
 ---
 
@@ -13,7 +13,7 @@ GoogleTest / GoogleMock による自動テストと、開発者が目で確か�
 
 | 層 | 置き場所 | CTest 登録 | 判定 | 目的 |
 |---|---|---|---|---|
-| **Auto** | `<Domain>/Auto/` | する | コードが自動判定 | 契約の回帰検出。CI で毎回回す |
+| **Auto** | `<Domain>/Auto/` | 既定スイートはする | コードが自動判定 | 契約の回帰検出。既定は CI、明示実行は必要なときに回す |
 | **Manual** | `<Domain>/ManualTest/` | **しない** | 開発者が目で判定 | OS 状態やデバイスを触る確認 |
 | **Bench** | `Projects/Tests/Bench/` | しない | 開発者が絵を見て判定 (+ 場面自身の異常検知) | 数値では正しさが決まらない挙動の可視化 |
 
@@ -31,6 +31,43 @@ GoogleTest / GoogleMock による自動テストと、開発者が目で確か�
 
 **Auto に書けるものを Manual に逃がさない。** 「実行に 3 秒かかるから」「たまに落ちるから」は
 Manual へ移す理由にならない。前者は設計、後者はテストかコードのバグ。
+
+### 既定実行と明示実行
+
+合否の判定と実行環境を分けて決める。実 DX12/DXR デバイスを作成し、描画・GPU 計算・
+読戻しを行うテストは **Auto のまま明示実行専用**とする。既存の `OPT_IN` により
+通常ビルドから外し、CTest に登録しない。テスト本体と失敗時の判定は維持する。
+
+CPU の値・fake backend・描画計画・履歴・キャッシュ・光源/粒子抽出・設定の契約は通常の
+CTest / CI に残す。名前に Render / Ray / GPU があることだけでは除外しない。
+混在ファイルはケースを分割し、CPU スイートの exe を直接起動するカバレッジでも GPU を回さない。
+
+| スイート | 実行対象 | 通常ビルド / CTest / CI | CTest ラベル |
+|---|---|---|---|
+| `FBZZTestsMathAuto` / `FBZZTestsCoreAuto` / `FBZZTestsPhysicsAuto` | 数学 / メモリ / 衝突・拘束 | 含む | `Math` / `Core` / `Physics` |
+| `FBZZTestsFluidAuto` | 流体演算 / GPU 向け CPU パッキング | 含む | `Fluid` |
+| `FBZZTestsEngineAuto` / `FBZZTestsEditorAuto` | シーン / アセット / CPU 抽出・設定 / エディター契約 | 含む | `Engine` / `Editor` |
+| `FBZZTestsGraphicsAuto` | CPU 描画計画 / 履歴 / キャッシュ / fake profiler | 含む | `Graphics` |
+| `FBZZTestsGraphicsStandalone` | 実 DX12 描画 / GPU 計測 / 読戻し | **明示指定のみ、CTest 非登録** | 未登録 |
+| `FBZZTestsRayTracing` | DXR / Hybrid / PathTracing の GPU 検証 | **明示指定のみ、CTest 非登録** | 未登録 |
+| `FBZZTestsRayTracingEngine` | GPU skinning / HDR 抽出 | **明示指定のみ、CTest 非登録** | 未登録 |
+
+通常の `AgentBuild test` / `VcBuild test` / 生の `ctest` と標準 CI は CPU スイートを実行する。
+描画スイートは標準 CI・カバレッジのビルド/実行対象へ加えない。
+DX12、対象シェーダー、DXC runtime を準備し、DXR ケースは DXR 対応 GPU/ドライバで実行する。
+Microsoft Basic Render Driver / WARP で DXR が使えるとは仮定しない。
+
+`Tests: Build & Run Graphics (Debug)` / `Tests: Build & Run RayTracing (Debug)` が明示実行入口。
+短い確認では以下のように対象を絞る（exe 直接実行には CTest の TIMEOUT は適用されない）。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 build FBZZTestsGraphicsStandalone -Preset debug
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/VcBuild.ps1 run debug FBZZTestsGraphicsStandalone --gtest_list_tests
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/VcBuild.ps1 run debug FBZZTestsGraphicsStandalone --gtest_filter=GraphicsStandaloneTest.DrawsAndReadsBackWithoutEngine
+```
+
+RayTracing は `AgentBuild build FBZZTestsRayTracing FBZZTestsRayTracingEngine -Preset debug` と
+`VcBuild run debug FBZZTestsRayTracing --gtest_filter=<ケース名>` で同様に選ぶ。
 
 ### Manual が満たすこと
 
@@ -92,8 +129,9 @@ build/<Preset>/Binaries/<Config>/
 └── Tests/      FBZZTests<Suite>.exe / FBZZTestBench.exe
 ```
 
-スイート名と exe 名は 1 対 1（`MathAuto` → `FBZZTestsMathAuto.exe`）。`Auto` を省いた
-`FBZZTestsPhysics.exe` のような名前は存在しない。
+スイート名と exe 名は 1 対 1（`MathAuto` → `FBZZTestsMathAuto.exe`）。
+`GraphicsStandalone` / `RayTracing` / `RayTracingEngine` もそのまま exe 名に対応する。
+`FBZZTestsPhysics.exe` のように既存スイート名から `Auto` を省いた名前は存在しない。
 
 > **ルート直下に `FBZZTests*.exe` を見つけたら、それは古いビルドの死骸。**
 > CMake はターゲットの出力先を変えても既に置いた成果物を消さないため、
@@ -118,17 +156,18 @@ TEST_F(<対象>Test, <主語が省略された仕様文>)
 - 条件がある場合は `WhenXxx` / `ForXxx` を後置する
 
 ```cpp
-// 良い ─ 落ちたときに、何の契約が壊れたか読める
+/// @note 失敗時に、どの契約が壊れたかを名前から読める例。
 TEST_F(Vector3Test, CrossProductFollowsRightHandRule)
 TEST_F(Vector3Test, NormalizedPreservesDirectionForTinyVectors)
 TEST_F(PoolAllocatorTest, ReturnsNullptrWhenExhausted)
 TEST_F(XPBDSolverTest, RestPositionIsIndependentOfSubstepCount)
 
-// 悪い
-TEST_F(Vector3Test, Test1)            // 何も分からない
-TEST_F(Vector3Test, Cross)            // 何を期待しているのか無い
-TEST_F(Vector3Test, ShouldWorkCorrectly)  // 全テストに当てはまる
-TEST_F(Vector3Test, バグ修正)          // 検索できない・CI ログで化ける
+/// @warning 次の名前は検証する契約を表さない。
+TEST_F(Vector3Test, Test1)
+TEST_F(Vector3Test, Cross)
+TEST_F(Vector3Test, ShouldWorkCorrectly)
+/// @warning 日本語識別子は検索しにくく、CI ログで文字化けすることがある。
+TEST_F(Vector3Test, バグ修正)
 ```
 
 ---
@@ -148,7 +187,7 @@ TEST_F(Vector3Test, バグ修正)          // 検索できない・CI ログで�
 fixture が本当に空でよい場合も、TestKit の基底 fixture を使う。
 
 ```cpp
-// Arrange をメンバに持たせ、TearDown で必ず状態を戻す
+/// @note グローバルな Logger 設定と非所有 sink は TearDown で必ず戻す。
 class LoggerTest : public testkit::EngineFixture {
 protected:
     void SetUp() override {
@@ -158,7 +197,8 @@ protected:
     }
     void TearDown() override {
         core::Logger::RemoveSink(&sink);
-        EngineFixture::TearDown();   // 最小レベルもここで戻る
+        /// @note EngineFixture が最小ログレベルも復帰する。
+        EngineFixture::TearDown();
     }
     testkit::RecordingLogSink sink;
 };
@@ -167,12 +207,97 @@ protected:
 例外は、**型パラメータ化テスト** (`TYPED_TEST`) と **値パラメータ化テスト** (`TEST_P`)。
 アロケーター 4 種のように同じ契約を複数の型に課す場合は `TYPED_TEST` を積極的に使う。
 
+### テスト対象の境界と公開 API
+
+**テストは製品の契約を検証する。テストを成立させるためだけに製品の公開 API を増やさない。**
+公開ヘッダーのメンバー、SDK、ScriptProxy、Editor の操作・バスも同じ基準で扱う。
+テストが無くても利用者や本番の依存先に必要な操作・問い合わせだけを公開する。
+
+`TryGet` という名前や「現在の呼び出し元がテストだけ」という事実だけで違反とは決めない。
+失敗を安全に返す問い合わせが製品の契約として必要なら正当な API である。
+内部コンテナ・途中状態を観測するためだけの getter、内部フラグを作るためだけの setter は追加しない。
+診断 API も、エディターや運用など独立した利用目的と契約があるものを使う。
+
+#### 検証方法を選ぶ順序
+
+1. **守る契約を先に書く。** 入力、結果、失敗時の状態、必要な順序・所有権・座標系を決める。
+   private のメンバー名やコンテナ構造を期待値にしない。
+2. **本番と同じ操作で前提を作り、対象を実行する。** コンストラクター、通常の設定、登録、
+   読み込み、Command などを使う。対象の private 状態を書いて実行経路を省略しない。
+3. **既存の境界で結果を観測する。** 戻り値、利用者向け問い合わせ、保存結果、イベント、
+   依存先へ渡したデータなど、守る契約に対応するものを比較する。
+4. **外部依存をテスト側で制御する。** 既存の `I` インターフェースへ fake / mock を渡す。
+   fake は入力の制御と出力の記録を担い、検証したい本体の処理を代行しない。
+5. **独立した内部ロジックに契約があるなら、その責務を分離する。** 本番が使う同じ実装を
+   内部部品として試験し、元の型にも利用者から結果までを通すテストを残す。
+   既存の設計と依存方向に従い、設計が無ければ抽出案を提示してから実装する。
+
+| 検証したいこと | 使う境界 | 追加しない入口 |
+|---|---|---|
+| 登録・検索の結果 | 通常の登録と利用者向け検索 | 内部 map を返す getter |
+| コマンドの適用・拒否 | Command / バスの応答と対象の結果 | dispatcher の内部表を読む getter |
+| 失敗時の復帰 | 不正入力、fake が返す失敗、処理後の結果 | 本体の失敗フラグを直接立てる setter |
+| 非同期処理の公開・破棄 | 依存側の完了を制御し、通常の進行 API と出力を観測 | private の段階や完了フラグの書き換え |
+| 保存・読み込み | `TempDir` 内の保存結果と読み込み後の契約 | シリアライザーの作業バッファの公開 |
+| メモリ・リソースの退役 | 既存の診断出力や依存先への解放通知 | テストだけが使う追加の内部件数 getter |
+
+fixture は前提の組み立てと後始末、TestKit は共通 helper・記録 fake を持つ。
+テスト側のコードから製品へ依存させ、製品から TestKit / GoogleTest / GoogleMock へ依存させない。
+実装と同じ計算をテストへコピーせず、仕様に基づく既知の値・解析解・不変条件を期待値にする。
+成功だけでなく、境界値・失敗・再試行など契約に必要な条件を選ぶ。
+
+#### 内部部品と private 検証の例外
+
+公開 API 経由では対象の契約を十分に切り分けられない場合、まず内部部品への責務分離を検討する。
+内部宣言は各プロジェクトの `src/` 側に置き、テスト target に必要な include path だけを
+`PRIVATE` で与える。SDK、公開 include path、ScriptProxy に追加しない。
+内部部品の `public` はその部品の契約であり、利用者向けクラスの内部状態を公開する代替ではない。
+本番と異なる実装のコピーをビルドして試験しない。
+
+分離が不適切で、外部結果から確認できない重要な不変条件が残る場合だけ、
+**限定した friend fixture / TestAccess** を例外として使える。
+検証する不変条件、通常の境界で確認できない理由、アクセス範囲を宣言側の `/// @note` に残す。
+helper の定義はテスト側へ置き、アクセスは必要な読み取り・操作に絞る。
+private の全体を返す万能 accessor、内部状態の捏造、実行すべき本番処理の省略に使わない。
+friend へ付け替えるだけで既存テストを移行したことにしない。
+
+次の手段は使わない。
+
+- テスト目的の `public` / `protected` 化、`TryGet...` / `Get...ForTesting` / `Set...ForTesting` の追加。
+- テスト目的での具象クラスの virtual 化や、不要な差し替えインターフェースの追加。
+- `#define private public` / `#define protected public`、対象の `.cpp` の直接 include。
+- `#ifdef TEST` 等で製品クラスの宣言・配置や対象の挙動を変える別実装。
+- friend や内部ヘッダーで得た途中状態を、利用者から見える結果の検証の代わりにすること。
+
+#### 既存テストを見直すとき
+
+宣言と全呼び出し元を追い、製品上の必要性とテストの観測目的を別々に確認する。
+必要な契約を保つテストへ書き換えてから、不要な公開入口を削除・内部化する。
+アサーションを削る、失敗ケースを skip する、期待値を実装に合わせることで解決しない。
+
+例えば `EditorBusDispatcher` の契約突き合わせテストは、テスト専用だった `RegisteredTypes()` を
+削除し、既存の `Handle()` に `editor.bus.list` を渡した応答から一覧と重複を検証する。
+`DeveloperMode` も `SetForcedByLaunch()` を削除し、実際の環境変数と `InitFromCommandLine()` から
+起動条件を検証する。引数の字句規則は本番も使う `src/Core/DeveloperModeLaunch.hpp` の内部契約で守る。
+`ManagedScriptEditor` の完了・Stop 検証は `src/ManagedScriptPublicationState.hpp` に分離し、
+本番も同じ部品を使う。内部状態を捏造する friend を削除し、サービスとの接続も公開の診断・適用結果で守る。
+
+記録 fake の既存例は `Projects/Tests/Engine/Auto/AudioStreamingTests.cpp` の `IAudioDevice` と、
+`Projects/Tests/Core/Auto/Scheduler/SchedulerExecutionTests.cpp` の `ISystem`。
+本体の内部を公開せず、既存の依存境界へ渡された操作を記録する。
+
+参考: [GoogleTest: Testing Private Code](https://google.github.io/googletest/advanced.html#testing-private-code) は
+公開インターフェースからの検証を基本とし、必要に応じた内部部品の分離・friend による検証を説明する。
+ここでは friend を上記の条件に絞る。
+[C++ Core Guidelines C.9](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#c9-minimize-exposure-of-members) の
+公開範囲を最小にする方針にも従う。
+
 ---
 
 ## 5. テスト本体の構造
 
-**Arrange / Act / Assert の 3 段を、空行で区切って必ずこの順に書く。** コメントで
-`// Arrange` と書く必要はない（空行で読めるなら冗長）。書くのは、区切りが自明でないときだけ。
+**Arrange / Act / Assert の 3 段を、空行で区切って必ずこの順に書く。**
+区切りをコメントで繰り返さない。補足が必要なら、コードから読めない理由を `/// @note` で書く。
 
 ```cpp
 TEST_F(PoolAllocatorTest, ReusesTheMostRecentlyFreedBlock)
@@ -215,14 +340,17 @@ TEST_F(PoolAllocatorTest, ReusesTheMostRecentlyFreedBlock)
 マクロを使う。理由は、失敗メッセージに「どの成分が」「どれだけ」ずれたかを出すため。
 
 ```cpp
-// 良い
+/// @note 成分ごとの差分と許容誤差が失敗ログに出る。
 EXPECT_VEC3_NEAR(actual, math::Vector3(0.0f, 1.0f, 0.0f), testkit::kTolerance);
-EXPECT_QUAT_NEAR(rotation, expected, testkit::kTolerance);   // -q と q を同一視する
+/// @note q と -q は同じ回転として比較する。
+EXPECT_QUAT_NEAR(rotation, expected, testkit::kTolerance);
 
-// 悪い
-EXPECT_EQ(v.x, 1.0f);                       // 丸めで落ちる
-EXPECT_NEAR(v.x, 1.0f, 0.001f);             // y と z を見ていない
-EXPECT_TRUE(a == b);                        // 失敗時に値が出ない
+/// @warning 丸め誤差を許容しない。
+EXPECT_EQ(v.x, 1.0f);
+/// @warning y と z を検証できず、許容誤差の根拠も不明。
+EXPECT_NEAR(v.x, 1.0f, 0.001f);
+/// @warning 失敗時に比較した値が出ない。
+EXPECT_TRUE(a == b);
 ```
 
 許容誤差は**マジックナンバーを書かず**、意味のある定数を使う。
@@ -261,7 +389,7 @@ TEST_F(LoggerTest, DoesNotForwardEntriesBelowTheMinimumLevel)
     core::Logger::AddSink(&sink);
     core::Logger::SetMinLevel(core::LogLevel::WARN);
 
-    EXPECT_CALL(sink, OnLog(testing::_)).Times(0);   // これが契約そのもの
+    EXPECT_CALL(sink, OnLog(testing::_)).Times(0);
 
     core::Logger::Info("dropped");
     core::Logger::RemoveSink(&sink);
@@ -294,7 +422,7 @@ TEST_F(LoggerTest, DoesNotForwardEntriesBelowTheMinimumLevel)
 「1 ms 待てば終わっているはず」は、CI の負荷次第で必ずいつか落ちる。
 
 ```cpp
-// 良い ─ 完了を待ってから、合計値という順序に依らない不変条件を見る
+/// @note 合計値はタスクの実行順に依存しない。
 TEST_F(TaskSystemTest, ExecutesEverySubmittedTaskExactlyOnce)
 {
     std::atomic<int> sum{0};
@@ -305,7 +433,7 @@ TEST_F(TaskSystemTest, ExecutesEverySubmittedTaskExactlyOnce)
     EXPECT_EQ(sum.load(), 5050);
 }
 
-// 悪い
+/// @warning sleep の長さで完了を推測すると実行環境の負荷に依存する。
 std::this_thread::sleep_for(10ms);
 EXPECT_EQ(sum.load(), 5050);
 ```
@@ -332,20 +460,28 @@ EXPECT_EQ(sum.load(), 5050);
 |---|---|
 | **Tests: Build & Run Suite (Debug)** | スイートを選んでビルド → 実行。結果がそのままターミナルに出る |
 | Tests: Shuffle Suite (Debug) | 順序を混ぜて 10 回。実行順に依存したテストを炙り出す |
-| CMake: Build Tests (Debug) | 全スイート + ベンチをビルド |
-| Tests: Run (Debug) | CTest で全件 |
+| Tests: Build & Run Graphics (Debug) | 実 DX12 描画・読戻しスイートを明示ビルド → 実行 |
+| Tests: Build & Run RayTracing (Debug) | RayTracing の GPU / Engine スイートをビルドし、順に実行 |
+| CMake: Build Tests (Debug) | CPU スイート + Manual + ベンチをビルド。実 GPU の Graphics / RayTracing は含まない |
+| Tests: Run (Debug) | CTest の CPU スイート全件。GPU / Manual / Bench は含まない |
 | Tests: Coverage (Debug) | 行 (C0) カバレッジを計測して HTML / バッジ / lcov を出す |
 | Coverage: Branch + MC/DC (clang-cl) | 分岐 (C1) / 条件・MC/DC (C2) カバレッジを計測する |
 | Bench: Build & Run (Debug) | ビジュアル検証ベンチ |
 
+Graphics / RayTracing には `Tests: Build ... (Debug)` と `Tests: Run ... (Debug)` もある。
+Run は既存の exe を実行するため、変更後は Build & Run を選ぶ。
+Suite の選択肢から `RayTracing GPU` / `RayTracing Engine` を選ぶと、片方だけ実行できる。
+スイートを分離した既存ツリーでは `CMake: Build Tests` を一度実行する。
+CTest のケース一覧は exe のリンク後に更新されるため、configure や compile check だけでは旧一覧が残る。
+
 デバッガーを付けたいときは `F5`（実行とデバッグ）から
 `Tests: Math Auto (Debug)` などを選ぶ。`--gtest_filter` を対話で聞かれる。
 
-> **スイートを追加したら `.vscode/tasks.json` の `CMake: Build Tests (*)` へ
+> **既定スイートを追加したら `.vscode/tasks.json` の `CMake: Build Tests (*)` へ
 > `--target` を 1 行足すこと。** 書き漏らしたスイートは「ビルドされない」だけで、
 > エラーも警告も出ない。実際に Math とベンチが丸ごと抜けたことがある。
 > `Coverage: Build (clang-cl)` も同じ理由で `--target` の列挙を持っている。
-> （計測スクリプト側は `FBZZTests*Auto.exe` を名前で拾うので追記不要）
+> 明示実行スイートは通常ビルド / CI / 計測の列挙へ足さず、Suite の選択肢と専用タスクへ足す。
 
 ### Visual Studio
 
@@ -358,7 +494,11 @@ EXPECT_EQ(sum.load(), 5050);
 | `FBZZTestsMathAuto` | Vector / Quaternion / Matrix |
 | `FBZZTestsPhysicsAuto` | GJK / EPA / Collider / AABB / BVH / XPBD |
 | `FBZZTestsCoreAuto` | アロケーター / Scheduler / TaskSystem / Signal / Logger / Time |
-| `FBZZTestsEngineAuto` | RagdollRig |
+| `FBZZTestsEngineAuto` | シーン / アセット / RagdollRig / CPU 抽出・設定 |
+| `FBZZTestsGraphicsAuto` | CPU 描画計画 / 履歴 / キャッシュ |
+| `FBZZTestsGraphicsStandalone` | 実 DX12 描画 / 読戻し（明示実行） |
+| `FBZZTestsRayTracing` | RayTracing GPU（明示的にビルドして起動） |
+| `FBZZTestsRayTracingEngine` | GPU skinning / HDR 抽出（明示的にビルドして起動） |
 
 結果はコンソールに出る。**終了時に自動で閉じない** — 最後に「すべて成功 / 失敗あり」を
 出して入力待ちで止まるので、緑と赤をそのまま読める。
@@ -370,12 +510,22 @@ EXPECT_EQ(sum.load(), 5050);
 文字が小さい / 大きいときは環境変数 `FBZZ_CONSOLE_FONT_SIZE` で上書きできる
 （96dpi 基準の px。既定 17、画面の DPI に合わせて自動で拡大する）。
 
-### CTest（CI / 全件確認）
+### CTest（CI / 既定スイートの確認）
 
 ```bash
 ctest --test-dir build/Debug --output-on-failure -C Debug
-ctest --test-dir build/Debug -C Debug -R "Physics"        # 名前で絞る
+ctest --test-dir build/Debug -C Debug -L '^Graphics$' --output-on-failure --no-tests=error
+ctest --test-dir build/Debug -C Debug -L '^Physics$' --output-on-failure --no-tests=error
+ctest --test-dir build/Debug -C Debug -L '^Managed$' --output-on-failure --no-tests=error
 ```
+
+`Managed` ラベルの `FBZZManagedTests` は、ビルド済みの Host・generator 検査 runner を一つの CTest ケースとして実行する。EngineAuto / EditorAuto または `FBZZManagedTests` target のビルドで runner と fixture を用意する。Debug / Development は managed Debug、Release は managed Release を使い、ビルドの作業ディレクトリを `Projects/Managed` に固定して同じ `global.json` を適用する。
+
+`Tools/AgentBuild.ps1 test -Filter '^FBZZManagedTests$' -Preset debug` はこの CTest ケースだけを実行する。`Tools/AgentBuild.ps1 managed-test -Preset debug` は従来どおり managed runner をビルドして実行する。CTest の名前フィルターは runner 内の個々の検査 group を分割しない。
+
+`-L` で領域を選ぶ。ラベルは `Math` / `Core` / `Physics` / `Fluid` / `Engine` /
+`Editor` / `Graphics` / `Managed`。`-R` は領域ではなくテスト名を絞る。
+GraphicsStandalone と RayTracing の 2 スイートは未登録なので、`-L` / `-R` では実行できない。
 
 `--test-dir` は CMakePresets の `binaryDir`（構成ごとに `build/<Preset>`）を指す。
 `build` を渡しても `CTestTestfile.cmake` が無く「テスト 0 件」で成功扱いになる。
@@ -393,8 +543,8 @@ ctest --test-dir build/Debug -C Debug -R "Physics"        # 名前で絞る
 | 無限ループ・異常に遅い | **1 テスト 30 秒で強制終了**し、Timeout として記録して次へ進む | `CMake/FBZZTests.cmake` の `FBZZ_TEST_TIMEOUT`（`gtest_discover_tests` の `PROPERTIES TIMEOUT`）と `Tools/VcBuild.ps1` / CI の `--timeout` |
 | 押されるまで消えないダイアログ<br>（`assert` 失敗・`abort`・アクセス違反） | 自動実行では**ダイアログを出さず stderr へ流して落とす** | `TestKit::SuppressBlockingErrorDialogs()` を `Main.cpp` が自動実行時だけ呼ぶ |
 
-- **上限を延ばして通そうとしない。** 30 秒に届く自動テストは、書き方かコードのどちらかが
-  間違っている。自動テストは 1 件あたり数 ms で終わる前提で設計している（`sleep` 禁止・固定刻み）
+- **既定スイートの上限を延ばして通そうとしない。** 30 秒に届くテストは、書き方かコードを見直す。
+  CPU の契約テストは 1 件あたり数 ms で終わる前提で設計する（`sleep` 禁止・固定刻み）
 - **ダイアログ抑止は自動実行のときだけ。** 対話実行（Visual Studio / ターミナル）では
   そのまま出す。人が居るなら、デバッガーで止めてスタックを見られる方が有益
 - CI と `Tests: Run (Debug)` には `--no-tests=error` も付けてある。フィルタの打ち間違いで
@@ -404,9 +554,14 @@ ctest --test-dir build/Debug -C Debug -R "Physics"        # 名前で絞る
 
 ```bash
 FBZZTestsPhysicsAuto.exe --gtest_filter=GJKTest.*
-FBZZTestsPhysicsAuto.exe --gtest_repeat=100 --gtest_shuffle   # 順序依存の炙り出し
-FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデバッガに落とす
+FBZZTestsPhysicsAuto.exe --gtest_repeat=100 --gtest_shuffle
+FBZZTestsPhysicsAuto.exe --gtest_break_on_failure
 ```
+
+RayTracing は専用 Build タスクでビルドした後、
+`build/Debug/Binaries/Debug/Tests/FBZZTestsRayTracing.exe` と
+`FBZZTestsRayTracingEngine.exe` を直接実行する。`--gtest_filter` も使用できる。
+この経路では CTest の 1 ケース 30 秒という制限は適用されない。
 
 **`--gtest_shuffle` は定期的に回すこと。** 実行順に依存したテスト（`TearDown` の書き漏れ）は
 これでしか見つからない。
@@ -434,7 +589,7 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 
 ## 11. 新しいテストを追加する手順
 
-1. 「3 つの層」のフローチャートで **Auto / Manual / Bench** を決める
+1. 「テスト対象の境界と公開 API」で守る契約と観測方法を決め、「3 つの層」のフローチャートで **Auto / Manual / Bench** を決める。Auto は領域と既定 / 明示実行も決める
 2. `Projects/Tests/<Domain>/Auto/<対象>Tests.cpp` を作り、ファイルヘッダーを書く
 3. `Projects/Tests/CMakeLists.txt` の該当スイートの `SOURCES` に**ファイルパスを 1 行足す**
    （`file(GLOB)` は使わない。新規ファイルが CMake 再実行まで拾われず、
@@ -447,6 +602,9 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 ### レビュー観点（自分で見る）
 
 - [ ] テスト名だけ読んで、何の契約か分かるか
+- [ ] テストだけのために製品の公開 API・virtual・差し替え口を増やしていないか
+- [ ] 本番の操作を通し、戻り値・保存結果・イベント・依存先への出力で契約を検証しているか
+- [ ] 内部部品・friend が必要なら、その理由とアクセス範囲が明確か
 - [ ] Arrange / Act / Assert が空行で分かれているか
 - [ ] float を `EXPECT_EQ` で比べていないか
 - [ ] グローバル状態を触ったなら `TearDown` で戻しているか
@@ -500,11 +658,11 @@ FBZZTestsPhysicsAuto.exe --gtest_break_on_failure             # 失敗行でデ�
 ### 実行
 
 ```powershell
-# C0 — 事前に winget install OpenCppCoverage.OpenCppCoverage
-#      HTML / バッジ / lcov も要るなら dotnet tool install -g dotnet-reportgenerator-globaltool
+# @pre C0 は winget install OpenCppCoverage.OpenCppCoverage で計測ツールを入れる。
+# @pre HTML / バッジ / lcov は dotnet tool install -g dotnet-reportgenerator-globaltool も要る。
 .\Tools\Coverage\RunCoverage.ps1
 
-# C1 / C2 — VS Code タスク "Coverage: Build (clang-cl)" でビルドしてから
+# @pre C1 / C2 は VS Code タスク "Coverage: Build (clang-cl)" でビルドする。
 .\Tools\Coverage\RunCoverageLLVM.ps1
 ```
 
@@ -544,11 +702,12 @@ OS のウィンドウと起動の層でテストから生成しないため、Co
 - `.github/workflows/tests.yml` «Decide scope» の `$pattern`
   (ここに無いディレクトリだけを触った PR は、そもそも計測されない)
 
-### CI は ctest を通さずテスト exe を直接走らせる
+### CI のカバレッジはテスト exe を直接走らせる
 
 CI の «Measure coverage» は、スイートごとに exe を 1 回ずつ計測して binary で出し、
-最後に `--input_coverage` で 1 本のレポートへ統合する。**スイートを足したら
+最後に `--input_coverage` で 1 本のレポートへ統合する。**計測対象の既定スイートを足したら
 同ステップの `$suites` にも足すこと。**忘れるとそのスイートが踏んだ行が「未到達」に化ける。
+RayTracing / RayTracingEngine はこの列挙にも含めない。
 
 > ctest を通すと `gtest_discover_tests` が登録した **1 テスト 1 プロセス**(2148 本)すべてで
 > OpenCppCoverage が PDB を読み直す。テスト本体は全スイート合わせて 25 秒なのに、
@@ -583,8 +742,7 @@ CI の «Measure coverage» は、スイートごとに exe を 1 回ずつ計�
 
 ```jsonc
 {
-    // Artifacts/ の下だけを探す。既定値 (`**`) だと
-    // Projects/GameHub/node_modules/**/.tap/coverage まで拾う。
+    // @note 既定値の ** は node_modules 内も拾うので Artifacts/ に限定する。
     "coverage-gutters.coverageBaseDir": "Artifacts/**",
     "coverage-gutters.coverageFileNames": ["lcov.info", "coverage.xml"],
     "coverage-gutters.showGutterCoverage": true,

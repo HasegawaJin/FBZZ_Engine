@@ -66,7 +66,7 @@
 | 武器 | `WeaponRigComponent` / `WeaponSockets.hpp` は左右2本・旧ソケット名を前提にする | クリップ差し替えに先立ち、右手1本の所有へ対応させる |
 | FBZZ内の新モデル | 新しい骨格・モーションのゲーム内再生は未検証 | 全量制作前に代表クリップでインポートから実再生まで通す |
 
-旧 [player-motions.md](../../GreenWare/Assets/Docs/player-motions.md) は必要機能の棚卸しに使う。
+旧 [player-motions.md](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Docs/player-motions.md) は必要機能の棚卸しに使う。
 そこにある骨名、角度制限、フレーム数、二刀のポーズは新モデルの仕様として継承しない。
 コメント・旧文書・アセットで数値が異なる箇所は、実シーンと現在の実装を確認してから接続値を確定する。
 

@@ -17,6 +17,8 @@
 
 Editor のビルド入口は同じ構成の `FBZZSDK` とする。SDK target が Engine、各 DLL、EditorLauncher をビルドし、install、配置、検証を順に実行する。VS Code の Build Editor はこの target を使い、Build All は通常の全体ビルド成功後に同じ preset の SDK を直列公開する。テスト、ベンチ、compile check だけの入口へ SDK 公開は追加しない。
 
+配布変更を正式ストアへ公開せず検証する場合は `Tools/AgentBuild.ps1 build FBZZSDKPreview -Preset debug` を使う。同じnative/managed依存をビルドし、公式SDKと共通のinstall・Stage・Validateを `build/<Preset>/SDKPreview/<version>/` だけへ実行する。正式 `SDK/` の公開・旧世代pruneは行わない。既存symlink / junctionによる出力先や子要素の転送は、書き込み前のREAL_PATH検査で拒否する。全体ビルドと直列に実行し、Previewの成功は正式ストアへの公開完了を意味しない。
+
 SDK Editor の DLL は `SDK/bin/<Config>/` に install 済みの一式から同期する。source Editor の POST_BUILD が実行されたかどうかに依存しない。Engine、Math、Physics、Fluid、Core、Graphics と runtime DLL は公開 SDK の同構成と一致させ、manifest と validator でも確認する。Editor 内部だけの変更でも Editor EXE を公開する。失敗した公開は有効な構成として扱わない。
 
 公開開始時は共通ファイルの更新中に古い構成を使えないよう、全構成を一時的に無効化する。以前の成功記録は内部候補へ保存し、公開と検証が成功した後、共有ファイルの SHA256 と必須 DLL の一致を再検査できた構成だけを有効へ戻す。publisher・validator も共通契約の fingerprint に含め、同じ版名でも古い配置契約を有効として残さない。
@@ -34,6 +36,12 @@ GameHub に保存されている Editor 実行ファイルの手動指定は互�
 初回の GameHub 構成は、そのパッケージをビルドした構成に合わせる。ユーザーが保存した有効な構成選択は維持する。SDK の一覧探索では配置と manifest の一致を調べ、実際の起動境界では Engine DLL 一式の実ファイル SHA256 を同構成の記録と照合する。別フォルダーの Editor や変更された DLL は起動せず、同構成の SDK 公開を案内する。
 
 ゲームスクリプトのホットリロードは consumer の Build と SDK 参照を使い、ゲーム DLL を更新する。Engine の更新は SDK 公開の役割とし、起動中に SDK を部分上書きしない。
+
+## 共有アセットの参照
+
+AssetManagerの初期化時、AssetDatabaseはプロジェクトAssetsと読み取り専用EngineAssetsを別のGUID索引へ登録する。プロジェクトを優先し、共有側は既存の`.meta`だけを読み、生成・修復・GUID再割り当てを行わない。共有側のGUID衝突は解決を拒否する。保存は共有アセットのGUIDを維持し、移動できない開発マシンの絶対パスをSceneへ埋め込まない。プロジェクトの索引ファイルへ共有側のエントリーを混ぜない。
+
+`Samples/WaterLab`は共通シェーダー・粒子材質・フォントを複製せず、独自の水と観察用材質だけを持つ開発用のシーン例である。通常のSDK起動と、公開前のソースEditorによる検証を[操作手順](../../Samples/WaterLab/README.md)で区別する。
 
 ## 検証
 

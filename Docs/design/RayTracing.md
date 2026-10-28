@@ -875,7 +875,7 @@ GPU 予算はゲーム描画だけの値と、Editor の全ビューを含むフ
 
 ## 比較用 Cornell Box サンプル
 
-[CornellBox.scene](../../GreenWare/Assets/Scenes/Test/CornellBox.scene) は、赤・緑の側壁、白い床・天井・奥壁、白球・金属球・透明球、天井発光面と矩形 Area Light を持つ開いた箱である。専用の 7 材質を `GreenWare/Assets/Materials/Demo/CornellBox/`、露出・Bloom の設定を `Assets/PostProcess/CornellBox.fzdata` に分け、GUID で参照する。
+[CornellBox.scene](https://github.com/HasegawaJin/GreenWare/blob/main/Assets/Scenes/Test/CornellBox.scene) は、赤・緑の側壁、白い床・天井・奥壁、白球・金属球・透明球、天井発光面と矩形 Area Light を持つ開いた箱である。専用の 7 材質を `GreenWare/Assets/Materials/Demo/CornellBox/`、露出・Bloom の設定を `Assets/PostProcess/CornellBox.fzdata` に分け、GUID で参照する。
 
 Raster / Reference Path の動作比較用で、DynamicScene ReflectionProbe を配置している。Raster のキャプチャには SkyRenderer が必要なので黒い室外環境を置く。天井は標準 PBR の発光を使い、Deferred の GBuffer に保持してから Bloom へ渡す。Reference では Area Light と発光メッシュを一つの矩形代理面として扱い、LightComponent の放射輝度を正本にする。現行の強度値と露出は見た目の比較用であり、Raster と Reference の物理量が一致する参照条件としては未認定である。
 

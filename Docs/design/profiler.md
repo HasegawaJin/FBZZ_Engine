@@ -315,3 +315,17 @@ Scheduler は直列 System の Update を `ISystem::Name()` で包み、並列�
 RE ENGINE の用途別 profiler は [NavigationProfiler の公式紹介](https://www.docswell.com/s/CAPCOM_RandD/K987DX-RE2023) と [Effect Profiler の公式紹介](https://www.docswell.com/s/CAPCOM_RandD/Z8GQ31-RE2023) を参考にする。ScriptProfiler と PerformanceProfiler という正確な二名称や内部構造は公開資料で確認できていないため、本書の名称と分割は FBZZ の設計判断である。
 
 実装時は SEH、時計、GPU の API 契約を参照する箇所の直近にも、対応する公式資料を Doxygen の @see で残す。本書だけの参考リンクで代用しない。
+
+## Passive application frame elapsed (2026-10-13)
+
+Performance/Script recordingをともにOFFへ適用済みの通常Playでは、独立したprivate observerで実Begin/Endのscalarだけを観測できる。scope/descriptorの記録やNative公開snapshotの停止契約は変更しない。profiler.frame_elapsed.start/status/result/cancel/set_referenceは従来profiler.benchmarkとは別familyで、相互の同時captureを拒否する。Start/終了/Cancelはcollector recording/filter/Play/品質/pacingを変更しない。Script/Memory historyも通常どおり更新する。
+
+Begin時刻は共通境界の既存時計を再使用する。active observerのEndだけ追加clockを1回読み、Script End後・Performance End前をCPU終点とする。旧Native recorderの未終了scope処理後のCPU終点とは異なる。CPU elapsedは待機を含む経過時間で、OS CPU busyではない。wallは実Begin-to-Beginで、境界外のTime::Tick、BeginCpuFrameやpacingを含む。inactive observerに追加clockやallocationはない。
+
+arm/stopは次Beginで適用する。observer session/publication ordinal/application serial、Native実効/要求状態とsession、Script実効状態/session/runtime epoch/DLL generationを各frameに保持する。最初のwall、非有限/負のclock、境界中断、巻戻り、publication欠落を0や停止Native snapshotで埋めない。warmupとsampleはdistinct完成publicationだけを数え、scalar windowは最大60000行。percentileはavailable finite非負値のnearest-rankで、欠測・中断は比較を非eligibleにする。
+
+resultは完了後のpaginationのみ。schemaVersion=1、instrumentationMode=application-frame-elapsed/passive-v1、CPU境界定義と各frame witnessを返す。scope/Physics/GPU全体時間はunavailable/null。描画metadataは既存RenderDebugOverlayのconst参照からsmall scalarだけ読み、serial一致かつ有効なview/scene/viewport出自だけ利用する。別serialや未設定はnullとしてmissingRenderingMetadataFramesへ数える。同serial metadataを全行で得られない場合もwall raw分布は返せるが、描画出自を確認した比較にはしない。
+
+scenario/camera/configurationとruntimeHash/scenarioHashは呼出元の宣言であり、observerはファイルhashを毎frame計算しない。configurationにはMemory/GPU/private collectors、viewport/品質/seed/dt/pacing等の固定条件を記す。比較はpassive report同士の完全な同条件だけで行い、Native ONの旧結果や別instrumentation modeの速度改善へ読み替えない。runtime staging時はRootがDLL群とscenarioの実hashを別に照合する。
+
+Passive reportのCPU/wall availabilityはcountと別の明示fieldとして保持し、pure comparison gateもbaseline OFFと両availabilityを直接確認する。outputIdはRenderTargetのhandle IDであり、0はinvalid。generationが正でもID0の描画metadataは採らない。
