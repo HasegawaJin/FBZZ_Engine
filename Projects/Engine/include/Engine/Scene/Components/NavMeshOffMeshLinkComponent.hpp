@@ -1,40 +1,46 @@
 /// @file    NavMeshOffMeshLinkComponent.hpp
-/// @brief   NavMesh 上の非連続エリアを接続するオフメッシュリンク（Unity の Off-Mesh Link 相当）。
+/// @brief   Authored numeric or TargetPoint-backed endpoints for a NavMesh off-mesh link.
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
-///
-/// GO をリンクの起点側に置き、startPoint / endPoint をワールド座標で指定する。
-/// NavMeshBakeSystem がベイク完了後に最近傍ポリゴンへ自動接続する。
 #pragma once
+
+#include <Engine/Scene/ControlPointModes.hpp>
+#include <Engine/Scene/ObjectReference.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector3.hpp>
 
 namespace fbzz::scene {
 
+/// @brief Connect two NavMesh polygons with numeric world-space endpoints.
 struct NavMeshOffMeshLinkComponent {
-    math::Vector3 startPoint = math::Vector3::ZERO; ///< リンク起点（ワールド座標）
-    math::Vector3 endPoint   = math::Vector3::ZERO; ///< リンク終点（ワールド座標）
-    bool enabled        = true;
-    bool bidirectional  = true;   ///< true: 双方向、false: startPoint → endPoint のみ
-    bool activated      = true;   ///< false: A* がこのリンクを無視する
-    float traversalTime = 0.3f;   ///< 通過アニメーション時間 [s]（0 = 即座に移動）
-    /// このリンクを使える agentTypeId のビットマスク。-1 = すべての Agent Type が通過可。
-    /// 例: agentTypeId=1 の Agent のみ → agentTypeMask = (1 << 1) = 2
-    int agentTypeMask   = -1;
+    math::Vector3 startPoint = math::Vector3::ZERO;
+    math::Vector3 endPoint = math::Vector3::ZERO;
+    ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE;
+    ObjectReference startTarget;
+    ObjectReference endTarget;
+    bool enabled = true;
+    bool bidirectional = true;
+    bool activated = true;
+    float traversalTime = 0.3f;
+    int agentTypeMask = -1;
 
+    /// @brief Return the Inspector component label.
     const char* GetTypeName() const { return "Off-Mesh Link"; }
-    void Reflect(IReflector& r)
+
+    /// @brief Reflect legacy endpoints and optional typed TargetPoint endpoints.
+    void Reflect(IReflector& reflector)
     {
-        /// @note enabled は保存されていたのに Reflect に無く、AI バスと汎用 Inspector から
-        ///       だけ見えない状態だった。キー名は保存済みシーンに合わせる。
-        r.Field("enabled",       enabled);
-        r.Field("startPoint",    startPoint);
-        r.Field("endPoint",      endPoint);
-        r.Field("bidirectional", bidirectional);
-        r.Field("activated",     activated);
-        r.Field("traversalTime", traversalTime);
-        r.Field("agentTypeMask", agentTypeMask);
+        reflector.Field("enabled", enabled);
+        reflector.Field("startPoint", startPoint);
+        reflector.Field("endPoint", endPoint);
+        ReflectControlPointSourceMode(reflector, "pointSourceMode", pointSourceMode);
+        reflector.TypedObjectReferenceField("startTarget", startTarget, "TargetPointComponent");
+        reflector.TypedObjectReferenceField("endTarget", endTarget, "TargetPointComponent");
+        reflector.Field("bidirectional", bidirectional);
+        reflector.Field("activated", activated);
+        reflector.Field("traversalTime", traversalTime);
+        reflector.Field("agentTypeMask", agentTypeMask);
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

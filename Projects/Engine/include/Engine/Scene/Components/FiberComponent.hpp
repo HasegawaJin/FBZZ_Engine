@@ -30,7 +30,21 @@ struct FiberComponent {
     float m_lodFar = 40.0f;
     float m_bladeDensity = 400.0f;
     float m_bladeWidth = 0.015f;
+    /// @note Blade の高さ分割数。既定 6 は従来の 72 頂点。少ない分割は曲げの輪郭を粗くする。
+    int m_bladeSegments = 6;
+    /// @note 0 は本描画の分割数を継承。影だけ粗くしても本描画の形状は変えない。
+    int m_shadowBladeSegments = 0;
     int m_seed = 1;
+    /// @note 新規の静的 Blade 配置。旧シーンは false のまま従来のローカル面積分布を維持する。
+    bool m_chunkedPlacement = false;
+    float m_chunkSize = 4.0f;
+    float m_maxSlope = 55.0f;
+    int m_maxBlades = 1000000;
+    std::string m_paintPath;
+    /// @note 描画抽出が更新する統計。反射・シリアライズの対象外。
+    uint32_t m_placementRootCount = 0;
+    uint32_t m_placementChunkCount = 0;
+    bool m_placementFailed = false;
     int m_terrainPatchCells = 2;
     /// @note 地形の層番号。-1 は全面、0 以上はその層の重みで葉を間引く。
     /// @see Docs/design/terrain-layers.md §5 Fiber を層で制御する
@@ -72,9 +86,22 @@ struct FiberComponent {
         r.FloatRange("lodNear", m_lodNear, 0.0f, 1000.0f);
         r.FloatRange("lodFar", m_lodFar, 0.1f, 2000.0f);
         r.FloatRange("bladeDensity", m_bladeDensity, 1.0f, 2000.0f);
-        r.Tooltip("Blade の本数 / ローカル面積。近距離で途切れない連続した葉を配置します。");
+        r.Tooltip("Blade の本数 / 面積。chunkedPlacement はワールド m²、旧方式はローカル面積です。");
         r.FloatRange("bladeWidth", m_bladeWidth, 0.001f, 0.5f);
+        r.IntRange("bladeSegments", m_bladeSegments, 1, 6);
+        r.Tooltip("Blade の高さ分割。6 = 従来品質、3 = 半分の頂点、1 = 最小。強い風や接写では曲がり方の差が見えます。");
+        r.IntRange("shadowBladeSegments", m_shadowBladeSegments, 0, 6);
+        r.Tooltip("影の Blade 分割。0 = 本描画を継承。影だけ軽くする場合は 1〜6 を明示します。");
         r.IntRange("seed", m_seed, 0, 65535);
+        r.Field("chunkedPlacement", m_chunkedPlacement);
+        r.Tooltip("静的 Mesh の草を内部チャンクへ分割します。草を追加すると自動で有効になります。");
+        r.FloatRange("chunkSize", m_chunkSize, 0.025f, 128.0f);
+        r.Tooltip("草のチャンクサイズ / ローカル m。元の Mesh は分割しません。");
+        r.FloatRange("maxSlope", m_maxSlope, 0.0f, 90.0f);
+        r.Tooltip("上向き面からの最大傾斜 / 度。側面・裏面への配置を制限します。");
+        r.IntRange("maxBlades", m_maxBlades, 1, 2000000);
+        r.FileField("paintPath", m_paintPath, ".fiberpaint");
+        r.Tooltip("この個体の密度・高さペイント。空なら全面へ配置します。UV には依存しません。");
         r.IntRange("terrainPatchCells", m_terrainPatchCells, 1, 32);
         r.IntRange("terrainLayer", m_terrainLayer, -1, 254);
         r.Tooltip("Terrain の層番号。-1 = 地形全体。0 以上ならその層の重みで生やします。");

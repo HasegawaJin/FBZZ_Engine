@@ -8,6 +8,8 @@
 #pragma once
 #include <Engine/Scene/Entity.hpp>
 #include <toml++/toml.hpp>
+#include <memory>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -16,6 +18,25 @@
 namespace fbzz::scene {
 
 class Scene;
+struct PrefabInstantiationContext;
+
+/// @note 同一 main thread の連続生成だけで使い、スコープ終了時に準備済み定義を解放する。
+/// @note Script の復元 callback がある定義では、名前と既存実体の索引を生成ごとに取り直す。
+/// @pre 呼び出し間に Scene の名前・構造を変える場合、先に DisableSceneCache を呼ぶこと。
+class PrefabInstantiationBatch final {
+public:
+    explicit PrefabInstantiationBatch(Scene& scene);
+    ~PrefabInstantiationBatch();
+    PrefabInstantiationBatch(const PrefabInstantiationBatch&) = delete;
+    PrefabInstantiationBatch& operator=(const PrefabInstantiationBatch&) = delete;
+    /// @note 注入 callback などが Scene の名前・構造を変更できる場合、呼び出す直前に使う。
+    void DisableSceneCache();
+    /// @note 任意の Scene 変更が可能な callback を通った場合は false。生成後の追加実体の保護に使う。
+    [[nodiscard]] bool CanReuseSceneCache() const;
+
+private:
+    std::unique_ptr<PrefabInstantiationContext> m_context;
+};
 
 /// @brief GUID と旧パスを共通のアセット解決口でディスク上のパスへ戻す。
 /// @return GUID が未登録なら空文字列。
@@ -77,6 +98,12 @@ void RemapScenePrefabEntityReferences(Scene& scene,
 void CopyPreparedPrefabComponents(Scene& source, Scene& destination,
                                     const std::vector<std::pair<EntityID, EntityID>>& replacements);
 
+/// @brief 複製 forest 内だけを型付き参照として再対応し、外部参照を Scene 間で安全に扱う。
+/// @note 同一 Scene の範囲外参照は保持し、別 Scene の範囲外参照は ObjectReference の GUID を残して EntityID を失効させる。
+void RemapCopiedObjectReferences(Scene& source, Scene& destination,
+                                 const std::vector<std::pair<EntityID, EntityID>>& replacements,
+                                 std::span<const EntityID> copiedOwners);
+
 /// @brief プレファブアセットを展開してシーンへ追加する。
 /// @param path 絶対パスまたはプロジェクトルートからのパス。拡張子が無ければ .prefab を補う。
 /// @param overrides 渡すと展開後に該当プロパティだけをその値で上書きする (個別調整を保ったまま作り直す用)。
@@ -98,5 +125,17 @@ bool ReplacePrefabInstanceAsset(Scene& scene,
                                  const std::string& reference,
                                  std::vector<EntityID>& outRootEntities,
                                  const PrefabOverrideSet* overrides = nullptr);
+
+/// @brief Replace a reviewed in-memory hierarchy using the same prepare/append/remap/destroy transaction as an asset.
+/// @note sourceSnapshot is the actual template baseline, independent of local overrides in document.
+/// @note preserveGuids includes instance-only keys so retained local objects keep their saved identity.
+/// @pre document has one root with stable source IDs; caller revalidates its review and source before publication.
+bool ReplacePrefabInstanceDocument(Scene& scene,
+                                    EntityID rootEntity,
+                                    const std::string& reference,
+                                    const toml::table& document,
+                                    const std::string& sourceSnapshot,
+                                    const std::unordered_map<std::string, std::string>& preserveGuids,
+                                    std::vector<EntityID>& outRootEntities);
 
 } /// @note namespace fbzz::scene

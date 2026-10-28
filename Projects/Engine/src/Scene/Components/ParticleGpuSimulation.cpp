@@ -93,7 +93,7 @@ const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason)
     case ParticleGpuFallbackReason::Prewarm:
         return "prewarm のため CPU で実行されます。"
                "「最初から定常状態で存在する」表現は GPU の逐次積分では作れません。";
-    /// @note 予約 (Script DLL の ABI)。GPU 経路でも補間・Motion Vector を描けるので返らない。
+    /// @note 予約値を維持する。GPU 経路でも補間・Motion Vector を描けるので返らない。
     case ParticleGpuFallbackReason::FlipbookFrameBlending:
     case ParticleGpuFallbackReason::MotionVectorFlipbook:
         return "GPU シミュレーションで実行されます。";

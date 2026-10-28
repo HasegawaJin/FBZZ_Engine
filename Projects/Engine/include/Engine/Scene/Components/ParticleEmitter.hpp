@@ -40,6 +40,8 @@ struct ParticleInjectedSpawn {
     /// @brief 発火元のワールド速度 [m/s]。継ぐ割合は受け側の subEmitterInheritVelocity が決める。
     math::Vector3 velocity;
     int           count = 1;
+    /// @note Runtime-only CPU spawn override; zero retains the emitter's authored lifetime distribution.
+    float         lifetime = 0.0f;
 };
 
 /// @brief ParticleBurst — 再生時間上の繰り返しBurst設定。
@@ -188,6 +190,9 @@ struct ParticleRuntime {
     uint32_t                                                   runtimeGradientSourceCount = 0;
     std::array<ParticleCurveKey, kMaxParticleCurveKeys>        runtimeGradientTemperatureKeys{};
     uint32_t                                                   runtimeGradientTemperatureCount = 0;
+    ParticleCurveInterpolation runtimeGradientSourceInterpolation = ParticleCurveInterpolation::Linear;
+    ParticleCurveInterpolation runtimeGradientTemperatureInterpolation = ParticleCurveInterpolation::Linear;
+    ParticleColorSpace runtimeGradientSourceColorSpace = ParticleColorSpace::Gamma;
 
     /// @brief GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
     renderer::ResourceHandle<renderer::StructuredBufferTag> gpuParticleBuffer; ///< @brief RWStructuredBuffer: CS が更新
@@ -769,9 +774,9 @@ struct ParticleEmitterSettings {
 };
 
 /// @brief runtimeGradient を作り直す。入力が変わっていなければ何もしないので、どこから呼んでもよい。
-/// @note 黒体モードでは各キーの時刻で温度カーブを引き、色温度 → リニア RGB → オーサリング空間
-/// @note (sRGB) へ戻して格納する。オーサリング空間で持つのは、CPU 経路も GPU 経路も
-/// @note 「補間 → リニア化」という同じ順序を通すため。ここだけ別空間にすると片方が破綻する。
+/// @note 黒体モードでは各キーの時刻で温度カーブを引き、色温度 → リニア RGB → sRGB で
+/// @note 格納する。キーは常にsRGBで、colorSpaceは格納空間ではなくキー間の補間空間を選ぶ。
+/// @note CPUとGPUは同じタグで補間し、描画色を最後にリニアへ戻す。
 /// @note 自由関数にしたのは、焼き込みが settings→runtime の純粋な変換で済むため。実体を持たない
 /// @note VFX グラフのノードでも、Inspector が焼き込み後の色を出せる。
 inline void RefreshParticleRuntimeGradient(const ParticleEmitterSettings& settings, ParticleRuntime& runtime)
@@ -784,6 +789,9 @@ inline void RefreshParticleRuntimeGradient(const ParticleEmitterSettings& settin
         && runtime.runtimeGradientIntensity == settings.blackbodyIntensity
         && runtime.runtimeGradientSourceKeys == settings.colorGradient.keys
         && runtime.runtimeGradientSourceCount == settings.colorGradient.keyCount
+        && runtime.runtimeGradientSourceInterpolation == settings.colorGradient.interpolation
+        && runtime.runtimeGradientSourceColorSpace == settings.colorGradient.colorSpace
+        && runtime.runtimeGradientTemperatureInterpolation == settings.temperatureCurve.interpolation
         && runtime.runtimeGradientTemperatureKeys == settings.temperatureCurve.keys
         && runtime.runtimeGradientTemperatureCount == settings.temperatureCurve.keyCount) {
         return;
@@ -794,6 +802,9 @@ inline void RefreshParticleRuntimeGradient(const ParticleEmitterSettings& settin
     runtime.runtimeGradientIntensity = settings.blackbodyIntensity;
     runtime.runtimeGradientSourceKeys = settings.colorGradient.keys;
     runtime.runtimeGradientSourceCount = settings.colorGradient.keyCount;
+    runtime.runtimeGradientSourceInterpolation = settings.colorGradient.interpolation;
+    runtime.runtimeGradientSourceColorSpace = settings.colorGradient.colorSpace;
+    runtime.runtimeGradientTemperatureInterpolation = settings.temperatureCurve.interpolation;
     runtime.runtimeGradientTemperatureKeys = settings.temperatureCurve.keys;
     runtime.runtimeGradientTemperatureCount = settings.temperatureCurve.keyCount;
 
@@ -842,8 +853,7 @@ struct ParticleEmitter {
         runtime.emitterVelocity        = {};
         runtime.distanceEmitAccum      = 0.0f;
         runtime.randomState            = settings.randomSeed != 0 ? settings.randomSeed : 1;
-        runtime.particles.clear();
-        runtime.gpuClearPending        = true;
+        ClearParticles();
         /// @note ロード直後やスクラブ開始時に、再生が 1 フレームも進まないまま粒子色を
         /// @note 引かれることがある。実効グラデーションを先に用意しておく。
         RefreshRuntimeGradient();
@@ -869,9 +879,12 @@ struct ParticleEmitter {
         if (clear) ClearParticles();
     }
 
+    /// @note Requests are bounded by the authored pool capacity; excess requests are dropped this frame.
     void Burst(int count)
     {
-        if (count > 0) runtime.burstPending += count;
+        const int capacity = (std::max)(settings.maxParticles, 0);
+        const int pending = std::clamp(runtime.burstPending, 0, capacity);
+        if (count > 0) runtime.burstPending = pending + (std::min)(count, capacity - pending);
     }
 
     void ClearParticles()
@@ -887,6 +900,10 @@ struct ParticleEmitter {
         runtime.gpuSpawnCount = 0;
         runtime.collisionCountThisFrame = 0;
         runtime.prewarmSpawnPending = 0;
+        runtime.emitThisFrame = false;
+        runtime.visibleParticleCount = 0;
+        runtime.isCulledThisFrame = false;
+        runtime.deathCountThisFrame = 0;
     }
 
     const char* GetTypeName() const { return "Particle Emitter"; }

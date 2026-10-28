@@ -2,6 +2,7 @@
 /// @brief   VFX Line の端点の解決・形の生成・帯メッシュと per-instance パラメーターの書き込み
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/Systems/VFXLineSystem.hpp>
 
 #include <Math/CurlNoise.hpp>
@@ -13,6 +14,8 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/VFXSystem.hpp>
+#include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/VFXLineGeometry.hpp>
 
 #include <algorithm>
@@ -28,13 +31,13 @@ math::Vector3 DivideSafe(const math::Vector3& value, const math::Vector3& scale)
     return { divide(value.x, scale.x), divide(value.y, scale.y), divide(value.z, scale.z) };
 }
 
-/// 線を出さないフレームは帯を畳む。前の形が残って «消したのに光っている» にならないように。
+/// @note 線を出さないフレームは帯を畳む。前の形が残って «消したのに光っている» にならないように。
 void Hide(GameObject& go)
 {
     if (auto* procedural = go.GetComponent<ProceduralMeshComponent>()) procedural->enabled = false;
 }
 
-} // namespace
+} /// @note namespace
 
 ComponentAccess VFXLineSystem::GetAccess() const
 {
@@ -44,11 +47,13 @@ ComponentAccess VFXLineSystem::GetAccess() const
 OrderingHints VFXLineSystem::GetOrder() const
 {
     /// @note 端点は «今フレームのワールド位置»。VFXSystem が生存窓で有効 / 無効を決めた後に形を作る。
-    return OrderingHints{}.After<VFXSystem>();
+    return OrderingHints{}.After<VFXSystem>().After<AnimatorSystem>().After<TransformLateUpdate>();
 }
 
 void VFXLineSystem::Update(SystemContext& ctx)
 {
+    if (ctx.scene.GetEntities<VFXLineComponent>().empty()) return;
+    FlushWorldTransforms(ctx.scene);
     const float dt = (std::max)(Time::deltaTime, 0.0f);
     std::vector<VFXLineStrand> strands;
     for (const EntityID id : ctx.scene.GetEntities<VFXLineComponent>()) {
@@ -65,8 +70,8 @@ void VFXLineSystem::Update(SystemContext& ctx)
         const Transform& tf = go->transform;
         bool missing = false;
         math::Vector3 from = tf.worldPosition + line.fromOffset;
-        if (line.fromEntity.IsValid()) {
-            if (GameObject* target = ctx.scene.GetGameObject(line.fromEntity.id))
+        if (line.fromEntity.IsAssigned()) {
+            if (GameObject* target = line.fromEntity.Resolve(ctx.scene); target && target->activeInHierarchy())
                 from = target->transform.worldPosition + line.fromOffset;
             else
                 missing = true;
@@ -74,8 +79,8 @@ void VFXLineSystem::Update(SystemContext& ctx)
         math::Vector3 to = tf.worldPosition
             + tf.worldRotation * math::Vector3{ line.toPoint.x * tf.worldScale.x, line.toPoint.y * tf.worldScale.y,
                                                 line.toPoint.z * tf.worldScale.z };
-        if (line.toEntity.IsValid()) {
-            if (GameObject* target = ctx.scene.GetGameObject(line.toEntity.id))
+        if (line.toEntity.IsAssigned()) {
+            if (GameObject* target = line.toEntity.Resolve(ctx.scene); target && target->activeInHierarchy())
                 to = target->transform.worldPosition;
             else
                 missing = true;
@@ -108,7 +113,7 @@ void VFXLineSystem::Update(SystemContext& ctx)
         procedural->materialPath = line.materialPath;
 
         /// @note 中心線だけを積む。帯へ広げるのは VS (VFXLine.hlsl) で、描いているビューのカメラへ向ける。
-        ///       NORMAL = 線の向き / TANGENT.x = 半幅 / UV = (進み, 左右) / COLOR = 本流と枝の明るさ
+        /// @note NORMAL = 線の向き / TANGENT.x = 半幅 / UV = (進み, 左右) / COLOR = 本流と枝の明るさ
         MeshBuilder& builder = procedural->builder;
         builder.Clear();
         const math::Quaternion inverseRotation = tf.worldRotation.Inverse();
@@ -146,15 +151,19 @@ void VFXLineSystem::Update(SystemContext& ctx)
         auto* material = go->GetComponent<MaterialComponent>();
         if (material == nullptr) material = &go->AddComponent<MaterialComponent>();
         const float brightness = VFXLineBrightness(line, line.time, line.strikeIndex, line.strikeClock);
-        material->paramOverrides["albedo"] = { line.color.x, line.color.y, line.color.z, line.color.w };
-        material->paramOverrides["coreColor"] = { line.coreColor.x, line.coreColor.y, line.coreColor.z, line.coreColor.w };
-        material->paramOverrides["intensity"] = { (std::max)(line.intensity, 0.0f) * brightness };
-        material->paramOverrides["phase"] = { line.time };
-        material->paramOverrides["coreWidth"] = { line.coreWidth };
-        material->paramOverrides["breakup"] = { line.breakup };
-        material->paramOverrides["pulseSpeed"] = { line.pulseSpeed };
-        material->paramOverrides["pulseDensity"] = { line.pulseDensity };
+        auto materialEdit = material->BeginAuthoringEdit();
+        auto& materialValues = materialEdit.Draft();
+        materialValues.paramOverrides["albedo"] = { line.color.x, line.color.y, line.color.z, line.color.w };
+        materialValues.paramOverrides["coreColor"] = { line.coreColor.x, line.coreColor.y, line.coreColor.z, line.coreColor.w };
+        materialValues.paramOverrides["intensity"] = { (std::max)(line.intensity, 0.0f) * brightness };
+        materialValues.paramOverrides["phase"] = { line.time };
+        materialValues.paramOverrides["coreWidth"] = { line.coreWidth };
+        materialValues.paramOverrides["breakup"] = { line.breakup };
+        materialValues.paramOverrides["pulseSpeed"] = { line.pulseSpeed };
+        materialValues.paramOverrides["pulseDensity"] = { line.pulseDensity };
+        if (materialEdit.Commit(*material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT)
+            FBZZ_LOG_WARN("VFX line material parameters conflicted with a newer edit.");
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

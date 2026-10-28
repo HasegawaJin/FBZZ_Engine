@@ -7,6 +7,8 @@
 #include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Renderer/Material.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
+#include <memory>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/RenderState.hpp>
@@ -23,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
 
 namespace fbzz::scene {
 bool IsEffectTextureSrgb(const std::string& texturePath);
@@ -239,6 +242,23 @@ renderer::Material* SyncMaterialSlot(
     MaterialComponent& mc, size_t slotIndex, renderer::ResourceManager& resources,
     bool preferSkinnedFallback = false, float screenPixels = 0.0f);
 
+/// @note One extraction owns its immutable asset/descriptor snapshots and CPU bytes; instance overrides, Sprite UV and streamed texture bindings are applied afterwards.
+struct PreparedMaterialParams {
+    asset::MaterialAsset::AuthoringSnapshotPtr source;
+    std::shared_ptr<const renderer::ShaderDescriptor> descriptor;
+    renderer::ResourceHandle<renderer::ShaderTag> shader;
+    std::string shaderPath;
+    uint64_t resourceOwner = 0;
+    uint64_t resetVersion = 0;
+    uint64_t shaderVersion = 0;
+    bool standardDescriptorVerified = false;
+    std::vector<uint8_t> bytes;
+};
+/// @note Reuse only matching asset, shader descriptor and ResourceManager generations; invalid preparation falls back to ordinary synchronization.
+renderer::Material* SyncMaterialSlotPrepared(MaterialComponent& mc, size_t slotIndex,
+    renderer::ResourceManager& resources, bool preferSkinnedFallback, float screenPixels,
+    const PreparedMaterialParams* prepared);
+
 /// @brief メッシュのワールド境界球を画面へ投影した直径 [px]。求められなければ 0。
 /// @note 極小カリングと同じ射影の縦倍率 (cullProjScaleY) を使う。NDC の縦 2 が描画先の高さに当たる。
 [[nodiscard]] float EstimateScreenPixels(const RenderPassContext& ctx, const GameObject& go,
@@ -290,6 +310,12 @@ ActiveWeather FindActiveWeather(Scene& scene);
 
 WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh,
                                float padding = 0.0f);
+
+/// @return Maximum axis norm of the current world matrix, preserving nonuniform and negative scale bounds.
+float ComputeWorldBoundsScale(const math::Matrix4& world);
+/// @pre maximumScale was computed from this same world matrix; both values belong to one callback-free extraction.
+WorldBounds ComputeWorldBounds(const math::Matrix4& world, float maximumScale,
+                               const renderer::Mesh& mesh, float padding = 0.0f);
 
 /// @brief SkinnedMeshRenderer の全 submesh bounds を 1 つの保守的なワールド球へまとめる。false の場合は CPU bounds 未生成などで安全にカリングできないため、呼び出し側は描画を継続する。
 /// @note Transform でなく GameObject を受ける。骨がバインドポーズから大きく離れる構成ではバインドポーズ球が実体と別の場所に残るため、親をたどって Animator を引き、そこに焼かれた «いまの骨の広がり» を使う (AnimatorSystem::UpdateSkinnedBounds)。

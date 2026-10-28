@@ -30,10 +30,13 @@ void CopyOwned(const renderer::RenderSettings& source, renderer::RenderSettings&
     const bool cascadeDebug = target.shadow.debugVisualizeCascades;
     target.shadow = source.shadow;
     target.shadow.debugVisualizeCascades = cascadeDebug;
+    target.geometryDrawMode = source.geometryDrawMode;
     target.gpuInstancing = source.gpuInstancing;
     target.asyncCompute = source.asyncCompute;
     target.clustered.enabled = source.clustered.enabled;
     target.clustered.maxDistance = source.clustered.maxDistance;
+    target.clustered.manyLights = source.clustered.manyLights;
+    target.clustered.manyLightSamples = source.clustered.manyLightSamples;
     target.particleBudget = source.particleBudget;
     target.particleBudgetEnabled = source.particleBudgetEnabled;
     target.froxelFog.gridX = source.froxelFog.gridX;
@@ -45,6 +48,7 @@ void CopyOwned(const renderer::RenderSettings& source, renderer::RenderSettings&
 
 bool Valid(const renderer::RenderSettings& value)
 {
+    if (static_cast<unsigned>(value.geometryDrawMode) > static_cast<unsigned>(renderer::GeometryDrawMode::GPU_INSTANCE_INDIRECT)) return false;
     if (!renderer::IsHybridQualityValid(value.hybridQuality)) return false;
     const auto& shadow = value.shadow;
     if (static_cast<unsigned>(value.pipeline) > static_cast<unsigned>(renderer::RenderingPipeline::DeferredPlus)
@@ -60,7 +64,8 @@ bool Valid(const renderer::RenderSettings& value)
         || !std::isfinite(shadow.autoFitDistance) || shadow.autoFitDistance < 0
         || !std::isfinite(shadow.pcssLightRadius) || shadow.pcssLightRadius < 0
         || !std::isfinite(shadow.punctualShadowDistance) || shadow.punctualShadowDistance < 0
-        || !std::isfinite(value.clustered.maxDistance) || value.clustered.maxDistance <= 0) return false;
+        || !std::isfinite(value.clustered.maxDistance) || value.clustered.maxDistance <= 0
+        || value.clustered.manyLightSamples < 1 || value.clustered.manyLightSamples > 32) return false;
     for (uint32_t dimension : {value.froxelFog.gridX, value.froxelFog.gridY, value.froxelFog.gridZ})
         if (!dimension || dimension > static_cast<uint32_t>(std::numeric_limits<int>::max())) return false;
     for (const auto& entry : value.passOverrides) {
@@ -134,12 +139,17 @@ bool Read(const toml::table& table, const char* key, std::string& out)
 
 bool ReadRequest(const toml::table& table, renderer::RenderSettings& value)
 {
-    std::string pipeline = "Forward", mode = "Raster", profile = "Reference";
-    if (!Read(table, "pipeline", pipeline) || !Read(table, "mode", mode) || !Read(table, "pathProfile", profile)
+    std::string pipeline = "Forward", mode = "Raster", profile = "Reference", geometry = "cpu";
+    if (!Read(table, "geometryMode", geometry) || !Read(table, "pipeline", pipeline) || !Read(table, "mode", mode) || !Read(table, "pathProfile", profile)
         || !Read(table, "rayShadow", value.modeRequest.rayShadow)
         || !Read(table, "rayReflection", value.modeRequest.rayReflection)
         || !Read(table, "rayDiffuseGi", value.modeRequest.rayDiffuseGi)
         || !Read(table, "gpuInstancing", value.gpuInstancing) || !Read(table, "asyncCompute", value.asyncCompute)) return false;
+    if (geometry == "cpu") value.geometryDrawMode = renderer::GeometryDrawMode::CPU;
+    else if (geometry == "indirect") value.geometryDrawMode = renderer::GeometryDrawMode::GPU_INDIRECT;
+    else if (geometry == "instances") value.geometryDrawMode = renderer::GeometryDrawMode::GPU_INSTANCE_INDIRECT;
+    else if (geometry == "mesh") value.geometryDrawMode = renderer::GeometryDrawMode::MESH_SHADER;
+    else return false;
     if (pipeline == "Forward") value.pipeline = renderer::RenderingPipeline::Forward;
     else if (pipeline == "Deferred") value.pipeline = renderer::RenderingPipeline::Deferred;
     else if (pipeline == "Forward+") value.pipeline = renderer::RenderingPipeline::ForwardPlus;
@@ -207,6 +217,10 @@ void RenderPipelineAsset::Reflect(scene::IReflector& r)
     r.Field("rayReflection", m_settings.modeRequest.rayReflection);
     r.Field("rayDiffuseGi", m_settings.modeRequest.rayDiffuseGi);
     r.SetFieldEnabled(true);
+    int geometry = static_cast<int>(m_settings.geometryDrawMode);
+    static constexpr const char* GEOMETRIES[] = {"cpu", "indirect", "mesh", "instances"};
+    r.Enum("geometryMode", geometry, GEOMETRIES);
+    m_settings.geometryDrawMode = static_cast<renderer::GeometryDrawMode>(geometry);
     r.Field("gpuInstancing", m_settings.gpuInstancing);
     r.Field("asyncCompute", m_settings.asyncCompute);
     r.Group("Hybrid quality (DeveloperMode)");
@@ -257,6 +271,8 @@ void RenderPipelineAsset::Reflect(scene::IReflector& r)
     r.Group("Clustered lighting");
     r.Field("clusteredEnabled", m_settings.clustered.enabled);
     r.Field("clusteredMaxDistance", m_settings.clustered.maxDistance);
+    r.Field("manyLightsEnabled", m_settings.clustered.manyLights);
+    r.IntRange("manyLightSamples", m_settings.clustered.manyLightSamples, 1, 32);
     r.Group("Resource budgets");
     r.Field("particleBudgetEnabled", m_settings.particleBudgetEnabled);
     r.Field("particleBudget", m_settings.particleBudget);
@@ -322,7 +338,9 @@ bool RenderPipelineAssetCodec::Load(const toml::table& table, RenderPipelineAsse
             || !Read(*shadow, "punctualShadowDistance", s.punctualShadowDistance)) return false;
     }
     if (const auto* clustered = ReadTable(table, "clustered", valid))
-        if (!Read(*clustered, "enabled", value.clustered.enabled) || !Read(*clustered, "maxDistance", value.clustered.maxDistance)) return false;
+        if (!Read(*clustered, "enabled", value.clustered.enabled) || !Read(*clustered, "maxDistance", value.clustered.maxDistance)
+            || !Read(*clustered, "manyLights", value.clustered.manyLights)
+            || !Read(*clustered, "manyLightSamples", value.clustered.manyLightSamples)) return false;
     if (const auto* particles = ReadTable(table, "particles", valid))
         if (!Read(*particles, "enabled", value.particleBudgetEnabled) || !Read(*particles, "budget", value.particleBudget)) return false;
     if (const auto* froxel = ReadTable(table, "froxel", valid))
@@ -388,6 +406,9 @@ bool RenderPipelineAssetCodec::Save(const RenderPipelineAsset& asset, toml::tabl
     render.insert_or_assign("rayShadow", value.modeRequest.rayShadow);
     render.insert_or_assign("rayReflection", value.modeRequest.rayReflection);
     render.insert_or_assign("rayDiffuseGi", value.modeRequest.rayDiffuseGi);
+    render.insert_or_assign("geometryMode", value.geometryDrawMode == renderer::GeometryDrawMode::GPU_INSTANCE_INDIRECT ? "instances"
+        : value.geometryDrawMode == renderer::GeometryDrawMode::GPU_INDIRECT
+        ? "indirect" : value.geometryDrawMode == renderer::GeometryDrawMode::MESH_SHADER ? "mesh" : "cpu");
     render.insert_or_assign("gpuInstancing", value.gpuInstancing);
     render.insert_or_assign("asyncCompute", value.asyncCompute);
     SaveHybridQuality(value.hybridQuality, EnsureTable(table, "hybrid"));
@@ -409,6 +430,8 @@ bool RenderPipelineAssetCodec::Save(const RenderPipelineAsset& asset, toml::tabl
     auto& clustered = EnsureTable(table, "clustered");
     clustered.insert_or_assign("enabled", value.clustered.enabled);
     clustered.insert_or_assign("maxDistance", static_cast<double>(value.clustered.maxDistance));
+    clustered.insert_or_assign("manyLights", value.clustered.manyLights);
+    clustered.insert_or_assign("manyLightSamples", std::clamp(value.clustered.manyLightSamples, 1, 32));
     auto& particles = EnsureTable(table, "particles");
     particles.insert_or_assign("enabled", value.particleBudgetEnabled);
     particles.insert_or_assign("budget", value.particleBudget);

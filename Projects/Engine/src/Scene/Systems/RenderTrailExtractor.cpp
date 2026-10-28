@@ -105,7 +105,8 @@ void EnsureResources(TrailComponent& trail, RenderPassContext& ctx)
             trail.loadedTexturePath.clear();
         }
         const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(trail.materialPath);
-        if (const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
+        if (const auto matAuthoringSnapshot = asset::ReadMaterialAuthoring(matHandle); matAuthoringSnapshot) {
+            const auto* mat = &matAuthoringSnapshot->Data();
             const auto it = mat->textures.find("albedo");
             const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
             {
@@ -181,6 +182,7 @@ void UpdateTrailPoints(TrailComponent& trail, const math::Vector3& currentPos, f
 }
 }
 void ExtractRenderTrails(RenderPassContext& ctx, renderer::RenderScene& output) {
+    if (ctx.scene.GetEntities<TrailComponent>().empty()) return;
     const float currentTime = Time::time;
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeInHierarchy())

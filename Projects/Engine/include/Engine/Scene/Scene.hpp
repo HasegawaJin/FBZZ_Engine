@@ -33,7 +33,7 @@ namespace fbzz::scene {
 template<typename... Ts> class SceneView;
 
 /// @brief Script から要求されたデバッグ描画の形状種別。
-/// @note 値の並びは DLL 境界を越える。末尾へ足し、kScriptVtableAbiVersion を上げる。
+/// @note Managed bridge と Scene scheduler の間で共有する値。既存の数値はシリアライズ契約のため変更しない。
 enum class ScriptDebugDrawType {
     Line,
     Sphere,
@@ -82,7 +82,7 @@ struct IsInList<T, std::tuple<Ts...>>
 
 } /// @note namespace detail
 
-/// @note Scene が所有する GameObject を非所有参照で走査する。
+/// @note Scene が所有する生存 GameObject を非所有参照で走査する。破棄中の空所有位置は返さない。
 class GameObjectRange {
     using VecT = std::vector<std::unique_ptr<GameObject>>;
     VecT::iterator m_begin, m_end;
@@ -91,37 +91,45 @@ public:
 
     struct Iterator {
         VecT::iterator it;
+        VecT::iterator end;
+        Iterator(VecT::iterator current, VecT::iterator last) : it(current), end(last) { Advance(); }
+        void Advance() { while (it != end && !*it) ++it; }
         GameObject& operator*()  const { return **it; }
-        Iterator&   operator++() { ++it; return *this; }
+        Iterator&   operator++() { ++it; Advance(); return *this; }
         bool        operator!=(const Iterator& o) const { return it != o.it; }
     };
 
-    Iterator begin() { return { m_begin }; }
-    Iterator end()   { return { m_end   }; }
+    Iterator begin() { return { m_begin, m_end }; }
+    Iterator end()   { return { m_end, m_end }; }
 };
 
 class Scene {
 public:
-    static constexpr uint32_t MAX_ENTITIES = ComponentArray<uint8_t>::MAX;
+    /// @note EntityID の数値表現限界。保存領域は実際の slot 数に応じて拡張する。
+    static constexpr uint32_t MAX_ENTITIES = EntityID::INVALID_INDEX;
 
     Scene();
     /// @note Component が個体ごとに確保した GPU リソースは ResourceManager 側の実体のため、Component 破棄だけでは返らない。畳むときに必ず返す口をここに置く。
     ~Scene();
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
+    /// @pre 移動元と移動先で個体破棄 callback を実行していないこと。
     Scene(Scene&& other) noexcept;
+    /// @pre 移動元と移動先で個体破棄 callback を実行していないこと。
     Scene& operator=(Scene&& other) noexcept;
 
     /// @note 保存しない寿命識別値。Clear / 移動代入で更新し、再利用された EntityID と区別する。
     [[nodiscard]] uint64_t GetRenderSceneGeneration() const { return m_renderSceneGeneration; }
+    /// @note Parking suspends owned event delivery without changing authoring active/enabled fields or destroying cached runtime objects.
+    void SetExecutionParked(bool parked) { m_executionParked = parked; }
+    [[nodiscard]] bool IsExecutionParked() const { return m_executionParked; }
 
-    /// @return 容量不足なら nullptr。既存 GameObject、Component と Entity の割り当て状態は変更しない。
-    /// @note 非アクティブな GameObject と破棄待ちの GameObject も容量を使う。
+    /// @return EntityID の数値表現限界なら nullptr。既存の割り当て状態は変更しない。
     /// @see Docs/design/scene-capacity.md
     [[nodiscard]] GameObject* TryCreateGameObject(const std::string& name = "GameObject");
 
-    /// @pre 空き容量を確保済みの内部処理か、容量が既知の初期構築でだけ呼ぶ。
-    /// @note 外部入力や実行中の生成には TryCreateGameObject を使い、容量不足を呼び出し側で扱う。
+    /// @pre EntityID の数値表現内で作成できること。
+    /// @note 外部入力や実行中の生成には TryCreateGameObject を使う。
     GameObject& CreateGameObject(const std::string& name = "GameObject");
 
     [[nodiscard]] size_t RemainingEntityCapacity() const;
@@ -143,10 +151,13 @@ public:
     std::vector<GameObject*> GetRootGameObjects() const;
 
     GameObjectRange GameObjects();
-    size_t GameObjectCount() const { return m_gameObjects.size(); }
+    size_t GameObjectCount() const { return m_gameObjectCount; }
 
     /// @note 保存・Undo のフラット順を維持する階層操作。
     bool DestroyGameObject(EntityID id);
+    /// @note 入力順に子孫から退役し、所有配列は一度だけ整理する。失効 ID と重複 ID は無視する。
+    /// @note callback が Scene 世代を変えた場合は旧要求の続きを実行しない。
+    void DestroyGameObjects(std::span<const EntityID> ids);
     bool MoveGameObject(EntityID id, int offset);
     bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
     /// @brief ルート GO をルート同士の並び順で newRootIndex 位置へ移動する。Hierarchy のドラッグ並べ替え用。
@@ -194,34 +205,67 @@ public:
     /// @name GameObject / SceneView の template 本体から呼ばれる内部 API
     /// @{
 
+    /// @note 追加は既存 Component のアドレスを保つ。Entity 走査 Span は追加で失効し得る。
     template<typename T> T&   AddComponent(EntityID id, T component);
     template<typename T> T*   GetComponent(EntityID id);
+    /// @return Component row の追加時 identity。未存在・失効 Entity は 0。mutable array を公開しない。
+    template<typename T> [[nodiscard]] uint64_t GetComponentLifetime(EntityID id) const { return GetArray<T>().GetLifetime(id); }
     template<typename T> bool HasComponent(EntityID id) const;
+    /// @note 未存在の Component と失効・無効な Entity の除去は何も変更しない。
     template<typename T> void RemoveComponent(EntityID id);
     template<typename T> std::vector<T*> GetComponents();
     template<typename T> std::vector<const T*> GetComponents() const;
 
     void DuplicateComponents(EntityID src, EntityID dst);
+    /// @brief Component を受動的に複製する。Script は保存値だけを作り、forest 後段まで実体化しない。
+    void DuplicateComponentsPassive(EntityID src, EntityID dst);
     /// @brief 別 Scene 上の src から dst へ全 Component をコピーする (Prefab / Clipboard 用)。
     /// @note Prefab は一時 Scene に通常ロードしてから現在の Scene へ追加するため、Scene 内複製だけでは全 Component 対応を共有できない。
     void CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst);
+    /// @brief 別 Scene から受動的に Component を複製する。Script callback は後段へ遅延する。
+    void CopyComponentsFromPassive(const Scene& srcScene, EntityID src, EntityID dst);
+    /// @brief 複製 forest の参照再対応後に Script 実体と保存値を準備する。
+    void PreparePassiveCopiedScripts(std::span<const EntityID> owners);
+    /// @brief 全参照再対応後に managed cache 解決と Script callback を実行する。
+    void FinalizePassiveCopiedScripts(std::span<const EntityID> owners);
 
     template<typename T>
     std::span<const EntityID> GetEntities() const;
 
+    /// @pre callback 中に Component の追加、削除、Clear を行わないこと。
+    /// @note 同じ添字の EntityID と Component を chunk ごとの連続 span で渡す。
+    template<typename T, typename Fn>
+    void ForEachComponentChunk(Fn&& callback) { GetArray<T>().ForEachChunk(std::forward<Fn>(callback)); }
+    template<typename T, typename Fn>
+    void ForEachComponentChunk(Fn&& callback) const { GetArray<T>().ForEachChunk(std::forward<Fn>(callback)); }
+
     GameObject* GetGameObject(EntityID id) const;
+    /// @note GameObjects と同じ相対順に並べ、重複は保持する。失効 ID は末尾へ index・generation 順に置く。
+    /// @pre 並べ替え中に Scene の生成・破棄・所有順の変更を行わないこと。
+    void SortEntitiesBySceneOrder(std::span<EntityID> entities) const;
+    enum class RendererEntitySet : uint8_t { GEOMETRY, SKINNED, GEOMETRY_AND_TERRAIN };
+    /// @brief Renderer を持つ Entity を GameObjects と同じ相対順で重複なくコピーする。
+    /// @note 非アクティブ・無効 Renderer も含む。所属と所有位置の構造識別値だけを再利用し、Component の値や借用 span を保持しない。
+    /// @note 呼出し後の Scene 変更で output は変わらない。利用時は現在の Entity と Component を再解決する。
+    /// @pre コピー中に Component の所属や Scene の所有順を並行変更しないこと。
+    void CopyRendererEntities(std::vector<EntityID>& output, RendererEntitySet set = RendererEntitySet::GEOMETRY) const;
     /// @}
 
 private:
     uint64_t m_renderSceneGeneration = 0;
-    uint32_t              m_generations[MAX_ENTITIES] = {};
+    /// @note 既存個体の所有位置を変える整理・並べ替え・move で更新する。末尾生成と穴化は既存位置を変えない。
+    uint64_t m_rendererOwnerRevision = 0;
+    bool m_executionParked = false;
+    std::vector<uint32_t> m_generations;
     uint32_t              m_nextIndex   = 0;
     std::vector<uint32_t> m_freeIndices;
 
     std::vector<std::unique_ptr<GameObject>> m_gameObjects;
+    size_t m_gameObjectCount = 0;
+    size_t m_destroyBatchDepth = 0;
 
     /// @note EntityID.index から非所有 GameObject 参照を引く。
-    GameObject* m_entityToGameObject[MAX_ENTITIES] = {};
+    std::vector<GameObject*> m_entityToGameObject;
 
     detail::ArrayTuple<ComponentList> m_arrays;
 
@@ -241,6 +285,9 @@ private:
 
     EntityID TryAllocateEntity();
     void     DestroyImmediate(EntityID id);
+    /// @note 生存個体の相対順を保って空位置を詰め、所有位置を更新する。
+    /// @see Docs/design/ecs-bulk-processing.md
+    void     CompactGameObjects();
     void     FixupOwnership();
     void     RemoveAllComponents(EntityID id);
 
@@ -283,6 +330,7 @@ private:
     }
 
     void CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityID dst);
+    void CopyScriptComponentPassive(const Scene& srcScene, EntityID src, EntityID dst);
 
     template<typename... Ts> friend class SceneView;
     friend class GameObject;
@@ -417,8 +465,9 @@ bool Scene::HasComponent(EntityID id) const {
 template<typename T>
 void Scene::RemoveComponent(EntityID id) {
     /// @note Component を配列から外すと誰がハンドルを持っていたか辿れなくなるため、GPU リソースの解放はここで済ませる (放置すると定数バッファ/頂点バッファが残り続ける)。
-    if (T* component = GetComponent<T>(id))
-        ReleaseComponentGpuResources(*component);
+    T* component = GetComponent<T>(id);
+    if (!component) return;
+    ReleaseComponentGpuResources(*component);
     GetArray<T>().Remove(id);
 }
 
@@ -466,16 +515,6 @@ void GameObject::RemoveComponent() {
     if (m_scene) m_scene->RemoveComponent<T>(m_id);
 }
 
-template<typename T, typename... Args>
-T& GameObject::AddScript(Args&&... args) {
-    auto* sc = GetComponent<ScriptComponent>();
-    if (!sc)
-        sc = &AddComponent<ScriptComponent>();
-    ScriptEntry& entry = sc->scripts.emplace_back();
-    entry.script = std::make_unique<T>(std::forward<Args>(args)...);
-    return static_cast<T&>(*entry.script);
-}
-
 template<typename T>
 T* GameObject::GetScript() {
     auto* sc = GetComponent<ScriptComponent>();
@@ -516,7 +555,7 @@ std::vector<GameObject*> ScriptSceneProxy::FindObjectsOfType(bool includeInactiv
 {
     if (!script || !script->m_scene) return {};
     /// @note Script 派生型は ECS に登録されていないため GameObject を全走査し `GetScript<T>()` で探す。Component 型は `Scene::FindObjectsOfType<T>()` (ECS) に委譲する。
-    /// @note `is_base_of<Script, T>` で判定しないのは、横断インターフェース (FBZZ_SCRIPT_INTERFACE) が Script を継承せずコンパイルが通らなくなるため。`FbzzAsType` で引ける型かで振り分ける。
+    /// @note Script 派生型とその型情報を公開する基底は `FbzzAsType` で引ける型として扱う。
     if constexpr (detail::kIsScriptQueryable<T>) {
         std::vector<GameObject*> result;
         for (auto& go : script->m_scene->GameObjects())

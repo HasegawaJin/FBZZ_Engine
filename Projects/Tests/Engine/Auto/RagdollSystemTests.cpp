@@ -14,13 +14,14 @@
 #include <Engine/Scene/Ragdoll/RagdollPlayback.hpp>
 #include <Engine/Scene/SkinnedPoseBounds.hpp>
 #include <Engine/Scene/Systems/RagdollSystem.hpp>
+#include "../../../Engine/src/Scene/Managed/ManagedObjectControls.hpp"
+#include <Physics/OBBCollider.hpp>
 #include <Physics/World.hpp>
 #include <limits>
 
 namespace fbzz::tests {
 
 namespace {
-class RagdollProbe final : public scene::Script {};
 }
 
 class RagdollSystemTest : public testkit::EngineFixture {
@@ -148,37 +149,6 @@ TEST_F(RagdollSystemTest, EndingDuringBlendInDoesNotJumpToFullWeight)
     EXPECT_NEAR(ragdoll.weight, 0.2f * (1.0f - (1.0f / 60.0f) / 0.4f), 1.0e-6f);
 }
 
-TEST_F(RagdollSystemTest, EndCancelsBeginWhileAssetsAreStillMissing)
-{
-    RagdollProbe probe;
-    probe.SetContext(&m_scene, &Actor());
-    probe.ragdoll.BeginActive();
-    Tick();
-    EXPECT_TRUE(Ragdoll().beginRequested);
-    probe.ragdoll.End();
-    Actor().AddComponent<scene::AnimatorComponent>();
-    PrepareModel();
-    PrepareBones();
-    Tick();
-    EXPECT_FALSE(Ragdoll().beginRequested);
-    EXPECT_EQ(Ragdoll().phase, scene::RagdollPhase::Idle);
-}
-
-TEST_F(RagdollSystemTest, BeginActiveDuringBlendOutContinuesFromCurrentWeight)
-{
-    auto& ragdoll = Ragdoll();
-    ragdoll.mode = scene::RagdollMode::Active;
-    ragdoll.phase = scene::RagdollPhase::BlendOut;
-    ragdoll.weight = 0.2f;
-    ragdoll.blendIn = 0.4f;
-    RagdollProbe probe;
-    probe.SetContext(&m_scene, &Actor());
-    probe.ragdoll.BeginActive();
-    EXPECT_NEAR(ragdoll.weight, 0.2f, 1.0e-6f);
-    scene::AdvanceRagdollPhase(ragdoll, 1.0f / 60.0f);
-    EXPECT_NEAR(ragdoll.weight, 0.2f + 0.8f * (1.0f / 60.0f) / 0.4f, 1.0e-6f);
-}
-
 TEST_F(RagdollSystemTest, FixedClockPreservesElapsedTimeAcrossFrameRates)
 {
     for (int fps : {15, 30, 60, 120, 240}) {
@@ -252,36 +222,6 @@ TEST_F(RagdollSystemTest, ExcludedBranchesRebuildAndOverrideAdditionalRoots)
     EXPECT_EQ(Ragdoll().runtime.bones.size(), 4u);
 }
 
-TEST_F(RagdollSystemTest, StandingGuardOnlyChangesItsOwnSettings)
-{
-    auto& component = Ragdoll();
-    component.profile = scene::RagdollProfileKind::Mech;
-    component.gravity = 3.0f;
-    component.rootAnchor = 2.5f;
-    component.rootAnchorTilt = 0.4f;
-    component.contactSelf = true;
-    component.contactWhileActive = true;
-    component.groundPlane = true;
-    component.collapseDistance = 1.2f;
-    RagdollProbe probe;
-    probe.SetContext(&m_scene, &Actor());
-    probe.ragdoll.SetStandingGuard(true, 2.0f, 60.0f);
-    EXPECT_TRUE(component.standingGuard);
-    EXPECT_NEAR(component.standingMaxDistance, 2.0f, 1.0e-6f);
-    EXPECT_NEAR(component.standingMaxDegrees, 60.0f, 1.0e-6f);
-    EXPECT_EQ(component.profile, scene::RagdollProfileKind::Mech);
-    EXPECT_NEAR(component.gravity, 3.0f, 1.0e-6f);
-    EXPECT_NEAR(component.rootAnchor, 2.5f, 1.0e-6f);
-    EXPECT_NEAR(component.rootAnchorTilt, 0.4f, 1.0e-6f);
-    EXPECT_TRUE(component.contactSelf);
-    EXPECT_TRUE(component.contactWhileActive);
-    EXPECT_TRUE(component.groundPlane);
-    EXPECT_NEAR(component.collapseDistance, 1.2f, 1.0e-6f);
-    EXPECT_FALSE(component.beginRequested);
-    probe.ragdoll.SetStandingGuard(false, 2.0f, 60.0f);
-    EXPECT_FALSE(component.standingGuard);
-}
-
 TEST_F(RagdollSystemTest, BoneSelectionListsSurviveSerialization)
 {
     auto& source = Ragdoll();
@@ -292,19 +232,6 @@ TEST_F(RagdollSystemTest, BoneSelectionListsSurviveSerialization)
     scene::DeserializeReflected(data, restored);
     EXPECT_EQ(restored.extraRootBones, source.extraRootBones);
     EXPECT_EQ(restored.excludedRootBones, source.excludedRootBones);
-}
-
-TEST_F(RagdollSystemTest, GuardDoesNotConvertPassiveRequestsToActive)
-{
-    Actor().AddComponent<scene::AnimatorComponent>();
-    PrepareModel();
-    PrepareBones();
-    RagdollProbe probe;
-    probe.SetContext(&m_scene, &Actor());
-    probe.ragdoll.SetStandingGuard(true, 0.2f, 20.0f);
-    probe.ragdoll.Begin();
-    Tick();
-    EXPECT_EQ(Ragdoll().mode, scene::RagdollMode::Passive);
 }
 
 TEST_F(RagdollSystemTest, PauseDoesNotAdvancePhysicsOrPlayback)
@@ -321,4 +248,39 @@ TEST_F(RagdollSystemTest, PauseDoesNotAdvancePhysicsOrPlayback)
     EXPECT_NEAR(Ragdoll().phaseTimer, phaseTimer, 1.0e-6f);
 }
 
-} // namespace fbzz::tests
+TEST_F(RagdollSystemTest, ManagedRemovalReleasesActiveContactSolverAndReaddGetsFreshRig)
+{
+    Actor().AddComponent<scene::AnimatorComponent>(); PrepareModel(); PrepareBones();
+    Ragdoll().beginRequested = true; Ragdoll().contactWorld = true;
+    physics::OBBCollider floor{{20, 1, 20}}; floor.Update({0, -1, 0}, math::Quaternion::Identity());
+    const physics::PhysicsMaterial material;
+    m_world.BeginSceneSync(); m_world.SyncCollider({}, physics::ColliderInstance{&floor, nullptr, &material, math::Vector3::ZERO, false, 0}); m_world.EndSceneSync();
+    Tick();
+    ASSERT_NE(Ragdoll().runtime.rig, nullptr);
+    auto& rig = *Ragdoll().runtime.rig; ASSERT_GT(rig.GetBodyCount(), 0);
+    ASSERT_NE(rig.GetBody(0), nullptr); rig.GetBody(0)->SetPosition({0, -0.1f, 0}); rig.RefreshContacts(&m_world);
+    ASSERT_GT(rig.GetContactCount(), 0);
+    const uint64_t original = m_scene.GetComponentLifetime<scene::RagdollComponent>(m_actor);
+    const uint64_t animator = m_scene.GetComponentLifetime<scene::AnimatorComponent>(m_actor);
+    using Controls = scene::managed_detail::ManagedObjectControls;
+    const auto kind = static_cast<uint32_t>(scene::ManagedNativeComponentKind::RAGDOLL);
+    bool exists = false; uint64_t held = original;
+    ASSERT_EQ(Controls::Component(Actor(), kind, scene::ManagedBridgeOp::COMPONENT_REMOVE, exists), scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(exists);
+    ASSERT_EQ(Controls::Component(Actor(), kind, scene::ManagedBridgeOp::COMPONENT_READ, exists, &held), scene::ManagedBridgeStatus::OK);
+    EXPECT_FALSE(exists); EXPECT_EQ(held, 0U);
+    Controls::FlushScriptRemovals(m_scene);
+    EXPECT_EQ(Actor().GetComponent<scene::RagdollComponent>(), nullptr);
+    EXPECT_EQ(m_scene.GetComponentLifetime<scene::AnimatorComponent>(m_actor), animator);
+    EXPECT_TRUE(m_world.GetConstraints().empty()); m_world.Step(1.0f / 60.0f); Tick();
+    const auto hits = m_world.RaycastAll({0, 2, 0}, {0, -1, 0}, 10);
+    ASSERT_EQ(hits.size(), 1U); EXPECT_EQ(hits[0].collider, &floor);
+    uint64_t replacement = 0;
+    ASSERT_EQ(Controls::Component(Actor(), kind, scene::ManagedBridgeOp::COMPONENT_ADD, exists, &replacement), scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(exists); EXPECT_NE(replacement, original); EXPECT_EQ(Ragdoll().runtime.rig, nullptr);
+    EXPECT_FALSE(Ragdoll().beginRequested); EXPECT_TRUE(Ragdoll().pendingImpulses.empty());
+    Ragdoll().beginRequested = true; Tick(); ASSERT_NE(Ragdoll().runtime.rig, nullptr); EXPECT_GT(Ragdoll().runtimeBodyCount, 0);
+    m_world.BeginSceneSync(); m_world.EndSceneSync();
+}
+
+} /// @note namespace fbzz::tests

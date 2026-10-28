@@ -4,6 +4,7 @@
 /// @date    2026-09-19
 #include <Engine/Asset/TextureStreamCache.hpp>
 #include <Engine/Asset/ChunkFile.hpp>
+#include <Engine/Core/Logger.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -122,7 +123,10 @@ bool BakeDistributionTexture(const std::string& sourcePath, std::string& outErro
 bool Write(const std::string& cachePath, uint64_t sourceStamp,
            const renderer::DecodedTextureRGBA8& full, AssetQuality lowest)
 {
-    if (full.mips.empty()) return false;
+    if (full.mips.empty()) {
+        FBZZ_LOG_WARN("TextureStreamCache: cache='%s' has no decoded mip data; cache was not published", cachePath.c_str());
+        return false;
+    }
     ChunkFileWriter writer;
     CacheMeta meta;
     meta.sourceMipCount = static_cast<uint32_t>(full.mips.size());

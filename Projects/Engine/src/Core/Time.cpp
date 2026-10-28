@@ -3,7 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include "Engine/Core/Time.hpp"
+#include <Core/Profiler/FrameTimeline.hpp>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 #include <algorithm>
 
@@ -25,6 +29,10 @@ float    Time::s_lockstepDelta   = 0.0f;
 
 void Time::Tick()
 {
+    auto timelineContext = profiler::frame_timeline::CurrentContext();
+    timelineContext.detail = static_cast<uint32_t>(targetFps > 0 ? targetFps : 0);
+    const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::TIME_TICK, timelineContext,
+        s_lockstepDelta > 0.0f ? 1u : 0u);
     /// @note FPS キャップは sleep で大半を消費し、最後の 2ms はビジーウェイトで精度を確保する。ロックステップ中は待たない。
     if (targetFps > 0 && s_frequency > 0 && s_lockstepDelta <= 0.0f) {
         const int   clamped     = std::max(targetFps, 30);
@@ -110,4 +118,4 @@ float Time::GetLockstepDelta()
     return s_lockstepDelta;
 }
 
-} // namespace fbzz
+} /// @note namespace fbzz

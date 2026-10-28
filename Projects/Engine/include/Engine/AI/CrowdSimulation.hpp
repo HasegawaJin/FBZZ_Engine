@@ -126,10 +126,29 @@ public:
     /// @brief Preallocates capacity before measured or real-time work.
     void Reserve(std::size_t capacity);
 private:
+    /// @note Spheres are rebuilt per batch; candidates are original input indices and never escape StepCrowd.
+    struct SpatialIndex {
+        struct Bounds { double minimum[3]{}, maximum[3]{}; };
+        struct Node { Bounds bounds; std::uint16_t begin = 0, end = 0, left = 0, right = 0; };
+        std::vector<Bounds> m_bounds;
+        std::vector<Node> m_nodes;
+        std::vector<std::uint16_t> m_order;
+        std::size_t m_count = 0;
+        std::size_t m_nodeCount = 0;
+        void Reserve(std::size_t capacity);
+        template<class Sphere> void Build(std::span<const Sphere> spheres);
+        /// @note Returns every index in original order when the query is unsafe or traversal exceeds its fixed budget.
+        std::size_t Query(math::Vector3 position, float radius, std::span<std::uint16_t> candidates) const;
+        std::size_t All(std::span<std::uint16_t> candidates) const;
+        /// @note Bounds include operand-scaled float slack so the unchanged rounded sphere test remains authoritative.
+        static Bounds MakeBounds(math::Vector3 position, float radius);
+        static bool Overlaps(const Bounds& left, const Bounds& right);
+    };
     struct Cell { int x = 0, y = 0, z = 0, head = -1; std::uint32_t stamp = 0; };
     std::vector<Cell> m_cells;
     std::vector<int> m_next;
     std::uint32_t m_stamp = 0;
+    SpatialIndex m_threats, m_obstacles;
     friend bool StepCrowd(const CrowdSettings&, std::span<const CrowdProfile>, std::span<const CrowdAgent>,
                           std::span<const CrowdThreat>, std::span<const CrowdObstacle>, std::span<CrowdAgent>,
                           CrowdStats&, CrowdWorkspace&);

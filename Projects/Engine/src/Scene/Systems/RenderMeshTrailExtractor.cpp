@@ -97,7 +97,9 @@ const TrailMaterialBinding* ResolveTrailMaterialBinding(
     binding.resolvedPass = g_trailPassSerial;
 
     const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
-    const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle);
+    const auto matAuthoringSnapshot = asset::ReadMaterialAuthoring(matHandle);
+
+    const auto* mat = matAuthoringSnapshot ? &matAuthoringSnapshot->Data() : nullptr;
     if (!mat) return nullptr;
 
     const bool declaredForTrails = (mat->renderPath == asset::RenderPath::Trail);
@@ -328,7 +330,8 @@ void EnsureComponentResources(MeshTrailComponent& trail, renderer::ResourceManag
             trail.loadedTexturePath.clear();
         }
         const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(trail.materialPath);
-        if (const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
+        if (const auto matAuthoringSnapshot = asset::ReadMaterialAuthoring(matHandle); matAuthoringSnapshot) {
+            const auto* mat = &matAuthoringSnapshot->Data();
             const auto it = mat->textures.find("albedo");
             const std::string& resolvedTex = (it != mat->textures.end()) ? it->second : std::string{};
             {
@@ -427,6 +430,7 @@ void ExtractRenderMeshTrails(RenderPassContext& ctx, renderer::RenderScene& outp
     /// @note .mat の解決をこのパスで 1 回だけやり直すための通番。編集が次のフレームで
     /// @note 絵へ出つつ、同じ .mat を共有する実体ぶん引き直さない。
     ++g_trailPassSerial;
+    if (ctx.scene.GetEntities<MeshTrailComponent>().empty()) return;
 
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeInHierarchy())

@@ -56,7 +56,7 @@ public:
 
 } // namespace fbzz::asset
 
-/// @brief DataAsset 型を DataAssetFactory に静的登録するマクロ (FBZZ_REGISTER_SCRIPT と同方針)。
+/// @brief DataAsset 型を DataAssetFactory に静的登録するマクロ。
 #define FBZZ_DATA_ASSET_FACTORY_CONCAT_INNER(a, b) a##b
 #define FBZZ_DATA_ASSET_FACTORY_CONCAT(a, b) FBZZ_DATA_ASSET_FACTORY_CONCAT_INNER(a, b)
 #define FBZZ_REGISTER_DATA_ASSET(T) \

@@ -4,11 +4,14 @@
 /// @date    2026-09-17
 #pragma once
 #include <Engine/Scene/Components/PresentationComponents.hpp>
+#include <Engine/Scene/ControlPointAdapters.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/MeshBuilder.hpp>
 #include <Engine/Asset/ClothAsset.hpp>
 #include <Physics/Cloth/ClothSolver.hpp>
+#include <algorithm>
 #include <array>
+#include <cstdint>
 
 namespace fbzz::scene {
 class Scene;
@@ -20,7 +23,18 @@ struct ClothAttachment {
     EntityID target{};
     math::Vector3 localPosition{};
     float maxDistance = 0.0f;
-    bool operator==(const ClothAttachment&) const = default;
+    std::uint32_t bindingId = 0;
+    ObjectReference targetReference;
+    std::uint64_t topologySignature = 0;
+    bool operator==(const ClothAttachment& other) const
+    {
+        return bindingId == other.bindingId && particle == other.particle && target == other.target
+            && targetReference.guid == other.targetReference.guid
+            && targetReference.id == other.targetReference.id
+            && targetReference.sceneGeneration == other.targetReference.sceneGeneration
+            && topologySignature == other.topologySignature
+            && localPosition == other.localPosition && maxDistance == other.maxDistance;
+    }
 };
 /// @note 質点ごとの最大移動距離 [m]。未指定は skinMaxDistance を継承し、非スキン布では拘束なし。
 /// @see https://nvidiagameworks.github.io/PhysX/3.3/PhysXGuide/Manual/Cloth.html#motion-constraints Motion Constraints。
@@ -129,8 +143,13 @@ struct ClothComponent {
         for (size_t i = 0; i < attachmentCount; ++i) {
             r.BeginObjectElement(i);
             auto& attachment = attachments[i];
+            int bindingId = static_cast<int>((std::min)(attachment.bindingId, 0x7fffffffu));
+            r.Field("bindingId", bindingId);
+            attachment.bindingId = bindingId < 0 ? 0u : static_cast<std::uint32_t>(bindingId);
             r.Field("particle", attachment.particle);
             r.Field("target", attachment.target);
+            r.ObjectReferenceField("targetReference", attachment.targetReference);
+            ReflectControlPointSignature(r, "topologySignature", attachment.topologySignature);
             r.Field("localPosition", attachment.localPosition);
             r.Field("maxDistance", attachment.maxDistance);
             r.EndObjectElement();

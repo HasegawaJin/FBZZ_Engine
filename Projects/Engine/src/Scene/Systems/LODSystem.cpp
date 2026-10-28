@@ -2,8 +2,8 @@
 /// @brief   LODGroupComponent の参照解決と Renderer 可視性の更新。
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
-///
-/// enabled と lodVisible を分離し、ユーザーが設定した Renderer 有効状態を上書きしない。
+
+/// @note enabled と lodVisible を分離し、ユーザーが設定した Renderer 有効状態を上書きしない。
 #include <Engine/Scene/Systems/LODSystem.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
@@ -13,13 +13,16 @@
 #include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/ControlPointResolver.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <algorithm>
 #include <cmath>
 
 namespace fbzz::scene {
 namespace {
 
-/// dither: Rendering/LodDither.hlsli のしきい値。0 = 遷移なし、>0 = 出現中、<0 = 退場中。
+/// @note dither: Rendering/LodDither.hlsli のしきい値。0 = 遷移なし、>0 = 出現中、<0 = 退場中。
 void SetRendererVisible(Scene& scene, LODRendererReference& reference, bool visible,
                         float dither = 0.0f)
 {
@@ -39,13 +42,13 @@ void SetRendererVisible(Scene& scene, LODRendererReference& reference, bool visi
     }
 }
 
-} // namespace
+} /// @note namespace
 
 ComponentAccess LODSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<CameraComponent, Transform>()
-        .Writes<LODGroupComponent, MeshRenderer, SkinnedMeshRenderer>();
+        .Reads<CameraComponent, TargetPointComponent>()
+        .Writes<LODGroupComponent, MeshRenderer, SkinnedMeshRenderer, Transform>();
 }
 
 OrderingHints LODSystem::GetOrder() const
@@ -55,6 +58,8 @@ OrderingHints LODSystem::GetOrder() const
 
 void LODSystem::Update(SystemContext& ctx)
 {
+    if (!ctx.scene.GetEntities<LODGroupComponent>().empty())
+        FlushWorldTransforms(ctx.scene);
     /// @note LODGroup が削除・無効化された直後も、前フレームの非表示状態を Renderer に残さない。
     for (EntityID id : ctx.scene.GetEntities<MeshRenderer>())
         if (auto* renderer = ctx.scene.GetComponent<MeshRenderer>(id)) {
@@ -100,7 +105,35 @@ void LODSystem::Update(SystemContext& ctx)
             continue;
         }
 
-        const float distance = (go->transform.worldPosition - cameraTransform->worldPosition).Length();
+        math::Vector3 center = go->transform.worldPosition;
+        bool centerValid = group->centerSourceMode == ControlPointSourceMode::INLINE;
+        if (group->centerSourceMode == ControlPointSourceMode::POINT_OBJECTS) {
+            GameObject* target = nullptr;
+            if (!group->centerTarget.guid.empty()) {
+                EntityRef reference{group->centerTarget.id, group->centerTarget.guid, group->centerTarget.sceneGeneration};
+                target = reference.Resolve(ctx.scene);
+                group->centerTarget.id = reference.id;
+                group->centerTarget.sceneGeneration = reference.sceneGeneration;
+            }
+            centerValid = target && target->activeInHierarchy() && target->GetComponent<TargetPointComponent>();
+            if (centerValid) {
+                center = target->transform.worldPosition;
+                centerValid = std::isfinite(center.x) && std::isfinite(center.y) && std::isfinite(center.z);
+            }
+        }
+        if (!centerValid) {
+            if (group->runtimeCenterValid || group->runtimeCenterDiagnosticGuid != group->centerTarget.guid)
+                FBZZ_LOG_WARN("LODGroup: center reference is missing, inactive or invalid on entity %u:%u.", id.index, id.generation);
+            group->runtimeCenterValid = false;
+            group->runtimeCenterDiagnosticGuid = group->centerTarget.guid;
+            for (auto& level : group->levels)
+                for (auto& renderer : level.renderers) SetRendererVisible(ctx.scene, renderer, true);
+            group->activeLevel = -1; group->fadingLevel = -1; group->fadeElapsed = 0.0f;
+            continue;
+        }
+        group->runtimeCenterValid = true;
+        group->runtimeCenterDiagnosticGuid.clear();
+        const float distance = (center - cameraTransform->worldPosition).Length();
         const float halfFov = (std::max)(camera->fovY, 1.0f) * 0.5f * DEG_TO_RAD;
         const float worldScale = (std::max)(
             (std::max)(std::fabs(go->transform.worldScale.x),
@@ -122,12 +155,12 @@ void LODSystem::Update(SystemContext& ctx)
             selected = group->levels.size() - 1;
 
         /// @note selected == levels.size() は「最後のレベルより遠い = カリング」を意味する。
-        ///       遷移状態も同じ番号で持ち、-1 は「まだ一度も決まっていない」だけに使う。
+        /// @note 遷移状態も同じ番号で持ち、-1 は「まだ一度も決まっていない」だけに使う。
         const int selectedLevel = static_cast<int>(selected);
 
         if (group->activeLevel != selectedLevel) {
             /// @note 遷移中にさらに切り替わったら、退場中だったレベルは即座に消す。3 レベルを
-            ///       同時にディザすると市松が噛み合わず穴が開く。速く動くカメラでは 1 段飛ばしが普通に起きる。
+            /// @note 同時にディザすると市松が噛み合わず穴が開く。速く動くカメラでは 1 段飛ばしが普通に起きる。
             group->fadingLevel = (group->activeLevel >= 0) ? group->activeLevel : -1;
             group->activeLevel = selectedLevel;
             group->fadeElapsed = 0.0f;
@@ -158,4 +191,4 @@ void LODSystem::Update(SystemContext& ctx)
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

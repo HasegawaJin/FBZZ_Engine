@@ -6,11 +6,12 @@
 #include <Engine/Renderer/GeometryRoute.hpp>
 #include <string_view>
 
-namespace fbzz::asset { struct MaterialAsset; }
+namespace fbzz::asset { struct MaterialAsset; struct MaterialAssetAuthoring; }
 
 namespace fbzz::scene {
 
 struct MaterialSlot;
+struct MaterialSlotAuthoring;
 
 /// @note 既存の Scene 描画パス向け互換名。Renderer からこのヘッダーを参照しない。
 using renderer::GeometryRoute;
@@ -27,6 +28,15 @@ using renderer::GeometryRoute;
 /// @note 呼び出し側で共有アセットを解決済みの場合の入口。nullptr は未解決として扱う。
 [[nodiscard]] renderer::GeometryMaterialInput ExtractGeometryMaterial(
     const MaterialSlot& slot, const asset::MaterialAsset* material);
+
+/// @note 解決済みのシェーダー能力を使う。アセットの探索や .meta の照会は行わない。
+/// @note nullptr はシェーダー能力にかかわらず未解決として扱う。
+[[nodiscard]] renderer::GeometryMaterialInput ExtractGeometryMaterial(
+    const MaterialSlot& slot, const asset::MaterialAsset* material, bool shaderSupportsGBuffer);
+
+/// @note Pure route derivation over owned immutable values; no asset/resource access occurs here.
+[[nodiscard]] renderer::GeometryMaterialInput ExtractGeometryMaterial(
+    const MaterialSlotAuthoring& slot, const asset::MaterialAssetAuthoring* material, bool shaderSupportsGBuffer);
 
 /// @note フレーム入力へ移行中の描画パス用。抽出後は Renderer の規則に委ねる。
 [[nodiscard]] GeometryRoute ResolveGeometryRoute(const MaterialSlot& slot, bool gbufferPipeline);

@@ -2,9 +2,9 @@
 /// @brief   シーン遷移とアクティブ Scene 管理。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// LoadScene 要求を保持し、フレーム境界で安全に切り替える。
-/// Scene の所有は manager が持ち、利用側は非所有参照で扱う。
+
+/// @note LoadScene 要求を保持し、フレーム境界で安全に切り替える。
+/// @note Scene の所有は manager が持ち、利用側は非所有参照で扱う。
 #pragma once
 #include "Scene.hpp"
 #include "Engine/Asset/AssetLeaseSet.hpp"
@@ -30,7 +30,7 @@ public:
 
     void Register(const std::string& name, SceneFactory factory);
 
-    /// .fbzz ファイルからシーンを登録する。ロードは LoadScene 呼び出し時に行う
+    /// @note .fbzz ファイルからシーンを登録する。ロードは LoadScene 呼び出し時に行う
     void RegisterFromFile(const std::string& name, const std::string& path,
                           renderer::ResourceManager& resources);
 
@@ -38,18 +38,18 @@ public:
     /// @note 遷移はフェードアウトの後に呼ばれることが多く、失敗を黙って捨てると「暗転したまま何も起きない」形で気付かれずに止まる。
     bool LoadScene(const std::string& name);
 
-    /// 外部所有シーンをバインドする。null を渡すと LoadScene で作成した m_active を使用する
+    /// @note 外部所有シーンをバインドする。null を渡すと LoadScene で作成した m_active を使用する
     void SetScene(Scene* scene);
 
     /// @brief 外部所有 Scene と Manager 所有 Scene を両方破棄し、遷移要求も取り消す。
-    /// @note Script DLL を FreeLibrary する前に、どちらの Scene に残る派生 Script も破棄する必要がある。
+    /// @note 外部 Scene と Manager 所有 Scene の両方に残る Script を同じ操作で破棄する。
     void ClearScenes();
 
     /// @brief LoadScene で作った Manager 所有 Scene だけを破棄し、保留中の遷移要求も捨てる。
     /// @note Editor は Stop で外部 Scene へ戻るが、遷移先の Scene は誰も Update しないまま Script ごと生き残る。保留要求も残すと、Stop の次フレームに外部バインドがもう一度外れて編集シーンが動かなくなる。
     void ReleaseOwnedScene();
 
-    /// 最後の LoadScene で切り替えた登録名。外部 Scene をバインドし直すと空に戻る。
+    /// @note 最後の LoadScene で切り替えた登録名。外部 Scene をバインドし直すと空に戻る。
     [[nodiscard]] const std::string& ActiveSceneName() const { return m_activeName; }
 
     /// @name シーン単位の先読みと利用権
@@ -64,31 +64,31 @@ public:
     void CancelScenePrefetch(const std::string& name);
     /// @}
 
-    /// 固定タイムステップの Hz (デフォルト 60)
+    /// @note 固定タイムステップの Hz (デフォルト 60)
     void SetPhysicsHz(int hz);
 
-    /// false のとき EditorOnly System のみ実行する (エディタ停止中)
+    /// @note false のとき EditorOnly System のみ実行する (エディタ停止中)
     void SetSimulating(bool simulating);
-    /// Play セッションが続いているか。Pause 中も true のまま (simulating だけ false になる)。
-    /// 呼ばない場合は simulating と同じ扱いになる (Standalone / プレビュー用途)。
+    /// @note Play セッションが続いているか。Pause 中も true のまま (simulating だけ false になる)。
+    /// @note 呼ばない場合は simulating と同じ扱いになる (Standalone / プレビュー用途)。
     void SetPlaying(bool playing);
 
-    /// AudioSystem に渡す AudioManager を設定する（null を渡すと AudioSystem はスキップ）
+    /// @note AudioSystem に渡す AudioManager を設定する（null を渡すと AudioSystem はスキップ）
     void SetAudioManager(audio::AudioManager* audioManager);
 
-    /// true のとき accumulator を無視して physics を 1 回だけ実行する (frame step 用)
+    /// @note true のとき accumulator を無視して physics を 1 回だけ実行する (frame step 用)
     void SetSingleStep(bool singleStep);
 
-    /// Phase PreScript 〜 Cleanup
-    /// RenderSystem はゲームループ側から BeginFrame/EndFrame の間に直接呼ぶこと
+    /// @note Phase PreScript 〜 Cleanup
+    /// @note RenderSystem はゲームループ側から BeginFrame/EndFrame の間に直接呼ぶこと
     void Update(float dt, physics::World& world);
 
-    /// Phase LateUpdate のみ
+    /// @note Phase LateUpdate のみ
     void LateUpdate(float dt, physics::World& world);
 
     Scene* GetActive();
 
-    /// 名前で System インスタンスを取得（エディタ統合用）。
+    /// @note 名前で System インスタンスを取得（エディタ統合用）。
     [[nodiscard]] ISystem* FindSystem(std::string_view name) const {
         return m_scheduler.FindSystem(name);
     }
@@ -100,9 +100,9 @@ private:
     bool AcquireSceneLeases(const std::string& name, asset::AssetPriority priority);
 
     std::unordered_map<std::string, SceneFactory> m_factories;
-    /// RegisterFromFile の本文の場所。先読みで参照を拾うのに使う。
+    /// @note RegisterFromFile の本文の場所。先読みで参照を拾うのに使う。
     std::unordered_map<std::string, std::string>  m_scenePaths;
-    /// シーンごとの利用権。切り替えが成功したら旧シーンの束だけを手放す (共有物は他の束が持ち続ける)。
+    /// @note シーンごとの利用権。切り替えが成功したら旧シーンの束だけを手放す (共有物は他の束が持ち続ける)。
     std::unordered_map<std::string, asset::AssetLeaseSet> m_sceneLeases;
     std::unique_ptr<Scene>                        m_active;
     std::string                                   m_pendingLoad;
@@ -110,9 +110,12 @@ private:
     Scene*                                        m_externalScene  = nullptr;
     bool                                          m_simulating     = true;
     bool                                          m_playing        = false;
+    /// @note 開始前に一度だけstatic bakeを検証し、runtime中の非追従TargetPoint移動を再Bake要求へ変えない。
+    uint64_t m_staticBakeValidationScene = 0;
+    bool m_staticBakeValidationSucceeded = true;
     audio::AudioManager*                          m_audioManager   = nullptr;
 
     SystemScheduler m_scheduler;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

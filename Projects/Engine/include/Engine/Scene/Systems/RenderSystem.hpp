@@ -2,23 +2,24 @@
 /// @brief   Scene から DrawCall を生成する描画 System。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
 /// @note MeshRenderer / Light / Camera / Transform を集約し、IRenderer へ送信する。
 /// @note Renderer の具体実装には依存せず、ResourceManager とインターフェースだけを使う。
 #pragma once
 #include <Graphics/Pipeline/RenderPassCapture.hpp>
 #include <Physics/Layer.hpp>
 #include <memory>
+#include <span>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
 
-namespace fbzz::scene    { class Scene; struct RenderFrameGeometryCache; }
+namespace fbzz::scene    { class Scene; struct RenderFrameGeometryCache; struct ScriptDebugDrawCommand; }
 namespace fbzz::physics  { class World; }
 namespace fbzz::renderer {
     class IRenderer;
     class Camera;
     class ResourceManager;
+    class SurfacePatchSelectionCacheOwner;
     struct RenderSettings;
 }
 
@@ -41,6 +42,11 @@ struct RenderSystemUIOptions {
     /// @note 複数 Viewport が同フレームに UISystem を呼ぶときインスタンスを分離し、定数バッファの
     /// @note 上書き競合を防ぐ。
     UISystemContext* context = nullptr;
+    /// @note True for runtime Game View/standalone; false preserves raw Editor authoring preview input.
+    bool gameplayInput = false;
+    /// @note Borrowed only for this RenderSystem call; DebugDraw captures owned line/triangle values.
+    /// @note Per-view diagnostics bypass the script flag and queue; at most 8192 commands are captured.
+    std::span<const ScriptDebugDrawCommand> spatialDebugCommands;
 };
 
 void RenderSystem(Scene& scene,
@@ -58,6 +64,8 @@ void RenderSystem(Scene& scene,
                   /// @note 持ち込まないよう明示的に既定値を渡す。
                   const CameraCullingSettings* cullingSettings = nullptr,
                   RenderPassCapture* capture = nullptr,
-                  RenderFrameGeometryCache* frameGeometry = nullptr);
+                  RenderFrameGeometryCache* frameGeometry = nullptr,
+                  /// @note Optional caller-owned pure Water LOD cache; pinned for this call on the recording thread.
+                  std::shared_ptr<renderer::SurfacePatchSelectionCacheOwner> surfacePatchPlans = {});
 
 } /// @note namespace fbzz::scene

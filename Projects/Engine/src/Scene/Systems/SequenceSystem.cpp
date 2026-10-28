@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 #include <Engine/Scene/Systems/SequenceSystem.hpp>
+#include "AnimationClipHelpers.hpp"
 
 #include <Engine/Asset/AnimationSampling.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -47,7 +48,7 @@ GameObject* ResolveBinding(Scene& scene,
     if (track.binding == "$self") return &owner;
     for (const auto& binding : player.bindings) {
         if (binding.key != track.binding) continue;
-        return binding.target.IsValid() ? binding.target.Resolve(scene) : nullptr;
+        return binding.target.IsAssigned() ? binding.target.Resolve(scene) : nullptr;
     }
     return nullptr;
 }
@@ -150,21 +151,7 @@ void ApplyTransformTrack(const asset::SequenceTrack& track,
 
 /// @name Animation
 
-const asset::AnimationClip* FindLoadedClip(const AnimatorComponent& animator,
-                                           const std::string& sourcePath,
-                                           const std::string& clipName)
-{
-    if (sourcePath.empty()) return nullptr;
-    const asset::AnimationClip* firstFromSource = nullptr;
-    for (size_t i = 0; i < animator.clips.size(); ++i) {
-        if (i >= animator.clipSourcePaths.size() ||
-            animator.clipSourcePaths[i] != sourcePath) continue;
-        if (!firstFromSource) firstFromSource = &animator.clips[i];
-        if (!clipName.empty() && animator.clips[i].name == clipName)
-            return &animator.clips[i];
-    }
-    return firstFromSource;
-}
+
 
 /// @brief このトラックが参照するクリップを Animator のロード対象へ加える。
 /// @note LoadClips はステートから辿れるクリップしか読まない。演出専用のクリップはどの
@@ -248,7 +235,7 @@ void ApplyAnimationTrack(const asset::SequenceTrack& track,
     for (size_t i = 0; i < track.animationClips.size(); ++i) {
         const auto& clip = track.animationClips[i];
         const asset::AnimationClip* loaded =
-            FindLoadedClip(*animator, clip.sourcePath, clip.clipName);
+            animation_clip_detail::FindClipBySource(*animator, clip.sourcePath, clip.clipName);
         const double length = loaded ? loaded->GetDurationSeconds() : 0.0;
         const double end = ClipRegionEnd(track, i, length, sequenceDuration);
         if (t < clip.start || t >= end) continue;

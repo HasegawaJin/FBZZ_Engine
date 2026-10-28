@@ -39,6 +39,7 @@ public:
     RunMode          GetRunMode() const override { return RunMode::SimOnly; }
 };
 
+/// @note シミュレーション中は local と物理履歴から描画 world を一度の階層走査で確定する。
 class TransformLateUpdate final : public TransformSystem {
 public:
     std::string_view Name()       const override { return "TransformSystem.LateUpdate"; }
@@ -62,7 +63,6 @@ void SetWorldPose(Transform& transform, const Transform* parent,
                   const math::Vector3& worldPosition,
                   const math::Quaternion& worldRotation,
                   const math::Vector3& worldScale);
-
 
 /// @brief シーン内の全オブジェクトのワールド姿勢をローカル値から即時再計算する。
 void FlushWorldTransforms(Scene& scene);

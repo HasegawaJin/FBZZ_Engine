@@ -4,7 +4,9 @@
 /// @date    2026-06-18
 
 #include <Engine/Asset/StreamedTextureResolver.hpp>
+#include <Core/Profiler/ProfileScope.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
+#include "RenderEntitySlotMask.hpp"
 #include <Engine/Scene/Systems/RenderParticleExtractor.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include "RenderPasses/Geometry/FlowFieldGpu.hpp"
@@ -39,6 +41,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -48,14 +51,6 @@
 namespace fbzz::scene {
 
 namespace {
-
-inline math::Vector4 LerpVec4(const math::Vector4& a, const math::Vector4& b, float t)
-{
-    return { a.x + (b.x - a.x) * t,
-             a.y + (b.y - a.y) * t,
-             a.z + (b.z - a.z) * t,
-             a.w + (b.w - a.w) * t };
-}
 
 float Clamp01(float value)
 {
@@ -154,7 +149,7 @@ math::Vector4 EvaluateParticleColorLinear(const ParticleEmitter& emitter,
 {
     math::Vector4 color = emitter.settings.useColorGradient
         ? emitter.runtime.runtimeGradient.EvaluateLinear(normalizedAge)
-        : ParticleSrgbToLinear(LerpVec4(particle.startColor, particle.endColor,
+        : ParticleSrgbToLinear(math::Vector4::Lerp(particle.startColor, particle.endColor,
                                         std::pow(normalizedAge, emitter.settings.colorCurvePower)));
     color.x *= particle.colorScale.x;
     color.y *= particle.colorScale.y;
@@ -448,7 +443,7 @@ uint64_t                                                 g_particlePassSerial = 
 renderer::ResourceHandle<renderer::ConstantBufferTag> ResolveParticleMaterialParams(
     renderer::ResourceManager& resources,
     const std::string& materialPath,
-    const asset::MaterialAsset& material,
+    const asset::MaterialAssetAuthoring& material,
     renderer::ResourceHandle<renderer::ShaderTag> shader)
 {
     if (!shader.IsValid()) return {};
@@ -521,9 +516,8 @@ renderer::ResourceHandle<renderer::TextureTag> LoadParticleTextureOrWhite(
     return resources.GetWhiteTexture();
 }
 
-
 /// @brief .mat の [textures] から 1 スロット引く。未設定なら空文字列。
-const std::string& ParticleMaterialTexture(const asset::MaterialAsset& material, const char* slot)
+const std::string& ParticleMaterialTexture(const asset::MaterialAssetAuthoring& material, const char* slot)
 {
     static const std::string kEmpty;
     const auto it = material.textures.find(slot);
@@ -551,7 +545,8 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             emitter.runtime.loadedTexturePath.clear();
         }
         const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(resolvedMaterial);
-        if (const auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
+        if (const auto matAuthoringSnapshot = asset::ReadMaterialAuthoring(matHandle); matAuthoringSnapshot) {
+            const auto* mat = &matAuthoringSnapshot->Data();
             const std::string& resolvedTex = ParticleMaterialTexture(*mat, "albedo");
             {
                 emitter.runtime.texture = LoadParticleTextureOrWhite(resources, resolvedTex);
@@ -587,20 +582,16 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             }
             const std::string& sixWayColorTex = mat->particle.sixWayMaps
                 ? ParticleMaterialTexture(*mat, "six_way_color") : kNoTexture;
-            if (emitter.runtime.loadedSixWayAlbedoColorTexturePath != sixWayColorTex) {
-                emitter.runtime.sixWayAlbedoColorTexture = sixWayColorTex.empty()
-                    ? renderer::ResourceHandle<renderer::TextureTag>::Null()
-                    : resources.LoadTexture(sixWayColorTex);
-                emitter.runtime.loadedSixWayAlbedoColorTexturePath = sixWayColorTex;
-            }
+            emitter.runtime.sixWayAlbedoColorTexture = sixWayColorTex.empty()
+                ? renderer::ResourceHandle<renderer::TextureTag>::Null()
+                : LoadParticleTextureOrWhite(resources, sixWayColorTex);
+            emitter.runtime.loadedSixWayAlbedoColorTexturePath = sixWayColorTex;
             const std::string& sixWayEmissionTex = mat->particle.sixWayMaps
                 ? ParticleMaterialTexture(*mat, "six_way_emission") : kNoTexture;
-            if (emitter.runtime.loadedSixWayEmissionColorTexturePath != sixWayEmissionTex) {
-                emitter.runtime.sixWayEmissionColorTexture = sixWayEmissionTex.empty()
-                    ? renderer::ResourceHandle<renderer::TextureTag>::Null()
-                    : resources.LoadTexture(sixWayEmissionTex);
-                emitter.runtime.loadedSixWayEmissionColorTexturePath = sixWayEmissionTex;
-            }
+            emitter.runtime.sixWayEmissionColorTexture = sixWayEmissionTex.empty()
+                ? renderer::ResourceHandle<renderer::TextureTag>::Null()
+                : LoadParticleTextureOrWhite(resources, sixWayEmissionTex);
+            emitter.runtime.loadedSixWayEmissionColorTexturePath = sixWayEmissionTex;
             /// @note .mat の [params] albedo を色調整として引き継ぐ。
             /// @note オーサリング値は sRGB なので、他の色と同じくリニアへ揃えて渡す。
             math::Vector4 tint{ 1.0f, 1.0f, 1.0f, 1.0f };
@@ -629,7 +620,8 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
             }
             const std::string shaderPath =
                 (usingFallback || !declaredForParticles) ? std::string{} : mat->shaderPath;
-            if (emitter.runtime.loadedShaderPath != shaderPath) {
+            if (emitter.runtime.loadedShaderPath != shaderPath
+                || (!shaderPath.empty() && !resources.Get(emitter.runtime.customShader))) {
                 emitter.runtime.loadedShaderPath = shaderPath;
                 emitter.runtime.customShader = shaderPath.empty()
                     ? renderer::ResourceHandle<renderer::ShaderTag>{}
@@ -637,7 +629,8 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
                 /// @note 黙って組み込みへ落ちると、テクスチャを持たない .mat では «白い四角» が並ぶ。
                 /// @note 手続きシェーダーほどテクスチャを持たないので、一番起きやすい失敗が
                 /// @note 一番分かりにくい絵になる。
-                if (!shaderPath.empty() && !emitter.runtime.customShader.IsValid()) {
+                if (!shaderPath.empty() && !emitter.runtime.customShader.IsValid()
+                    && WarnParticleMaterialOnce(resolvedMaterial + "|shader|" + shaderPath)) {
                     FBZZ_LOG_WARN("Particle material '%s' references shader '%s' but it failed to "
                                   "load (not compiled?). Falling back to the built-in particle "
                                   "shader; a material without an albedo texture will draw as "
@@ -669,6 +662,18 @@ void EnsureParticleTexture(ParticleEmitter& emitter, renderer::ResourceManager& 
     emitter.runtime.distortionTexture = {};
     emitter.runtime.motionVectorTexture = {};
     emitter.runtime.sixWayNegativeTexture = {};
+    /// @note 正常材質から読込失敗へ移った場合も、前材質のシェーダー・色・補助画像を残さない。
+    emitter.runtime.customShader = {};
+    emitter.runtime.loadedShaderPath.clear();
+    emitter.runtime.materialParamsCB = {};
+    emitter.runtime.materialTint = {1, 1, 1, 1};
+    emitter.runtime.sixWayAlbedoColorTexture = {};
+    emitter.runtime.sixWayEmissionColorTexture = {};
+    emitter.runtime.loadedDistortionTexturePath.clear();
+    emitter.runtime.loadedMotionVectorTexturePath.clear();
+    emitter.runtime.loadedSixWayNegativeTexturePath.clear();
+    emitter.runtime.loadedSixWayAlbedoColorTexturePath.clear();
+    emitter.runtime.loadedSixWayEmissionColorTexturePath.clear();
     {
         emitter.runtime.texture = LoadParticleTextureOrWhite(resources, {});
         emitter.runtime.loadedTexturePath.clear();
@@ -992,6 +997,8 @@ void SpawnParticle(ParticleEmitter& emitter, const Transform& transform,
         + (emitter.settings.angularVelocityMax - emitter.settings.angularVelocityMin) * Random01(emitter);
     p.spriteSeed = Random01(emitter);
     p.lifetime = (std::max)(0.001f, emitter.settings.lifetime * (1.0f + RandomSigned01(emitter) * Clamp01(emitter.settings.lifetimeRandom)));
+    if (injected && std::isfinite(injected->lifetime) && injected->lifetime > 0.0f)
+        p.lifetime = injected->lifetime;
     p.startSize = emitter.settings.sizeStart;
     p.endSize = emitter.settings.sizeEnd;
     p.startColor = emitter.settings.colorStart;
@@ -1440,24 +1447,124 @@ void PrepareGpuEmitter(ParticleEmitter&                     emitter,
 }
 void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
 {
-    /// @note 現在の粒子位置とサイズから球 Bounds を再計算する。粒子がない間は将来位置を予測して保守的に保持する。
-    math::Vector3 center = TransformEmitterPoint(tf, emitter.settings.emitPosition);
-    float radius = (std::max)(emitter.settings.sizeStart, emitter.settings.sizeEnd) + emitter.settings.culling.cullingBoundsPadding;
+    const auto& settings = emitter.settings;
+    const bool localSpace = settings.simulationSpace == ParticleSimulationSpace::Local;
+    bool uncertain = false;
+    const auto finitePoint = [](const math::Vector3& point) {
+        return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
+    };
+    const auto finiteValue = [&](float value, double fallback = 0.0) {
+        if (std::isfinite(value)) return static_cast<double>(value);
+        uncertain = true;
+        return fallback;
+    };
+    const auto distance = [&](const math::Vector3& first, const math::Vector3& second) {
+        if (!finitePoint(first) || !finitePoint(second)) {
+            uncertain = true;
+            return 0.0;
+        }
+        /// @note Subtract in double: finite, distant float positions can overflow Vector3::LengthSq().
+        const double x = static_cast<double>(first.x) - second.x;
+        const double y = static_cast<double>(first.y) - second.y;
+        const double z = static_cast<double>(first.z) - second.z;
+        return std::sqrt(x * x + y * y + z * z);
+    };
+    const auto worldPoint = [&](const math::Vector3& point) {
+        return localSpace ? TransformEmitterPoint(tf, point) : point;
+    };
+    math::Vector3 center = TransformEmitterPoint(tf, settings.emitPosition);
+    if (!finitePoint(center)) {
+        uncertain = true;
+        center = finitePoint(tf.worldPosition) ? tf.worldPosition : math::Vector3{};
+    }
+    const double padding = (std::max)(finiteValue(settings.culling.cullingBoundsPadding), 0.0);
+    const double axisX = (std::max)(finiteValue(settings.sizeAxisScale.x), 0.0001);
+    const double axisY = (std::max)(finiteValue(settings.sizeAxisScale.y), 0.0001);
+    const double stretchLength = (std::max)(finiteValue(settings.stretchedLengthScale), 0.0);
+    const double stretchVelocity = (std::max)(finiteValue(settings.stretchedVelocityScale), 0.0);
+    const auto cardRadius = [&](float size, double speed) {
+        double stretch = 1.0;
+        if (settings.renderMode == ParticleRenderMode::StretchedBillboard && speed > 1.0e-4)
+            stretch = stretchLength + speed * stretchVelocity;
+        /// @note ParticleCommon rotates a square BEFORE axis scaling; any rotation fits sqrt(2)/2 * max axis.
+        return std::abs(finiteValue(size)) * 0.7071067811865476
+            * (std::max)(axisX, axisY * stretch);
+    };
+    double radius = 0.01;
+    const auto include = [&](const math::Vector3& point, double extent) {
+        radius = (std::max)(radius, distance(point, center) + extent + padding);
+    };
     if (!emitter.runtime.particles.empty()) {
-        center = emitter.settings.simulationSpace == ParticleSimulationSpace::Local
-            ? TransformEmitterPoint(tf, emitter.runtime.particles.front().position)
-            : emitter.runtime.particles.front().position;
+        const math::Vector3 first = worldPoint(emitter.runtime.particles.front().position);
+        if (finitePoint(first)) center = first;
+        else uncertain = true;
+        const double widthScale = settings.trail.trailEnabled
+            ? (std::max)(1.0, std::abs(finiteValue(settings.trail.trailWidthScale))) : 1.0;
+        const int historyLimit = std::clamp(settings.trail.trailPointCount, 1, kMaxParticleTrailPoints);
         for (const Particle& particle : emitter.runtime.particles) {
-            const math::Vector3 position = emitter.settings.simulationSpace == ParticleSimulationSpace::Local
-                ? TransformEmitterPoint(tf, particle.position) : particle.position;
-            radius = (std::max)(radius, (position - center).Length()
-                + particle.size + emitter.settings.culling.cullingBoundsPadding);
+            const double speed = settings.renderMode == ParticleRenderMode::StretchedBillboard
+                ? distance(localSpace ? TransformEmitterVector(tf, particle.velocity) : particle.velocity, {}) : 0.0;
+            const double bodyRadius = cardRadius(particle.size, speed);
+            double historyRadius = bodyRadius * widthScale;
+            if (settings.trail.trailEnabled && settings.trail.trailRibbon) {
+                const double configuredWidth = finiteValue(settings.trail.trailRibbonWidth);
+                const double width = configuredWidth > 0.0 ? configuredWidth : std::abs(finiteValue(particle.size));
+                /// @note Ribbon half width * miter limit 2; BuildRibbonMiterNormals clamps 1/cos to 2.
+                historyRadius = width * widthScale;
+            }
+            include(worldPoint(particle.position), settings.trail.trailEnabled
+                ? (std::max)(bodyRadius, historyRadius) : bodyRadius);
+            if (!settings.trail.trailEnabled) continue;
+            const int used = (std::min)(static_cast<int>(particle.trailCount), historyLimit);
+            for (int point = 0; point < used; ++point)
+                include(worldPoint(particle.trailPoints[static_cast<std::size_t>(point)]), historyRadius);
         }
     } else {
-        radius += emitter.settings.emitVelocity.Length() * emitter.settings.lifetime;
+        /// @note Empty/CPU-unreadable GPU pools need a spawn and travel envelope, including negative Transform scale.
+        const double transformScale = (std::max)({std::abs(finiteValue(tf.worldScale.x)),
+            std::abs(finiteValue(tf.worldScale.y)), std::abs(finiteValue(tf.worldScale.z))});
+        double shapeRadius = 0.0;
+        if (settings.shape == ParticleEmitterShape::Sphere) shapeRadius = std::abs(finiteValue(settings.sphereRadius));
+        if (settings.shape == ParticleEmitterShape::Cone) shapeRadius = std::abs(finiteValue(settings.coneRadius));
+        if (settings.shape == ParticleEmitterShape::Box) shapeRadius = distance(settings.boxExtents, {});
+        if (settings.shape == ParticleEmitterShape::MeshSurface) {
+            for (const auto& vertex : emitter.runtime.meshShapeVertices)
+                shapeRadius = (std::max)(shapeRadius, distance(vertex.position, {}));
+        }
+        const double lifetime = (std::max)(finiteValue(settings.lifetime), 0.0)
+            * (1.0 + std::clamp(finiteValue(settings.lifetimeRandom), 0.0, 1.0));
+        const double speed = distance(settings.emitVelocity, {})
+            + std::sqrt(3.0) * std::abs(finiteValue(settings.velocitySpread))
+            + std::abs(finiteValue(settings.inheritVelocity)) * distance(emitter.runtime.emitterVelocity, {})
+            + distance(settings.gravity, {}) * lifetime;
+        double travelScale = 1.0;
+        if (settings.useVelocityCurve) {
+            travelScale = 0.0;
+            const auto count = (std::min)(settings.velocityCurve.keyCount,
+                static_cast<uint32_t>(settings.velocityCurve.keys.size()));
+            for (uint32_t key = 0; key < count; ++key)
+                travelScale = (std::max)(travelScale, finiteValue(settings.velocityCurve.keys[key].value));
+        }
+        const float size = static_cast<float>((std::max)(std::abs(finiteValue(settings.sizeStart)),
+            std::abs(finiteValue(settings.sizeEnd))));
+        const double positionScale = localSpace ? transformScale : 1.0;
+        radius += shapeRadius * transformScale + speed * lifetime * travelScale * positionScale + cardRadius(size, speed) + padding;
+        /// @note GPU flow tracking already bounds actual spawn/history positions without a readback; retain that envelope.
+        if (emitter.runtime.gpuInitialized && !emitter.runtime.gpuClearPending
+            && emitter.runtime.flowMinimumAge < emitter.runtime.flowMaxLifetime) {
+            const double flowSpeed = (std::max)(finiteValue(emitter.runtime.flowSpeedBound), speed);
+            include(emitter.runtime.flowBoundsCenter, (std::max)(finiteValue(emitter.runtime.flowBoundsRadius), 0.0)
+                + cardRadius(size, flowSpeed));
+        }
     }
-    emitter.runtime.boundsCenter = center;
-    emitter.runtime.boundsRadius = (std::max)(radius, 0.01f);
+    /// @note Invalid input fails open with a finite sphere, rather than letting NaN silently discard the entire emitter.
+    const double maximumRadius = (std::numeric_limits<float>::max)();
+    const bool radiusOverflow = !std::isfinite(radius) || radius * 1.00001 + 1.0e-4 > maximumRadius;
+    const bool unbounded = uncertain || radiusOverflow;
+    emitter.runtime.boundsCenter = radiusOverflow ? math::Vector3{} : center;
+    emitter.runtime.boundsRadius = unbounded
+        ? static_cast<float>(maximumRadius)
+        : static_cast<float>((std::min)(radius * 1.00001 + 1.0e-4, maximumRadius));
 }
 
 /// @brief world は null 可。描画パス側が RenderPassContext::physicsWorld をそのまま渡せるよう
@@ -1632,7 +1739,7 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
     UpdateParticleBounds(emitter, tf);
 }
 
-} /// @note namespace
+} ///< @note namespace
 
 /// @brief 再生進行の正本。ParticleSimulationSystem (LateUpdate) と ParticlePass の両方がこれを呼ぶ。
 /// @note 以前は System と Pass に別実装があり、rateOverDistance の基準点が食い違っていた
@@ -1709,7 +1816,7 @@ static bool AdvanceParticleEmitterPlaybackAtFrame(ParticleEmitter& emitter, cons
         while (fired < cycles
                && emitter.runtime.playTime >= burst.time + burst.interval * static_cast<float>(fired)) {
             if (Random01(emitter) <= Clamp01(burst.probability))
-                emitter.runtime.burstPending += (std::max)(burst.count, 0);
+                emitter.Burst(burst.count);
             ++fired;
         }
     }
@@ -1720,7 +1827,7 @@ static bool AdvanceParticleEmitterPlaybackAtFrame(ParticleEmitter& emitter, cons
         const int warmCount = static_cast<int>((std::max)(emitter.settings.emitRate, 0.0f)
             * (std::max)(warmDuration, 0.0f));
         const int clampedWarmCount = (std::min)(warmCount, (std::max)(emitter.settings.maxParticles, 0));
-        emitter.runtime.burstPending += clampedWarmCount;
+        emitter.Burst(clampedWarmCount);
         emitter.runtime.prewarmSpawnPending += clampedWarmCount;
         emitter.runtime.prewarmed = true;
     }
@@ -1870,7 +1977,7 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
             while (fired < cycles
                    && emitter.runtime.playTime >= burst.time + burst.interval * static_cast<float>(fired)) {
                 if (Random01(emitter) <= Clamp01(burst.probability))
-                    emitter.runtime.burstPending += (std::max)(burst.count, 0);
+                    emitter.Burst(burst.count);
                 ++fired;
             }
         }
@@ -1914,15 +2021,38 @@ void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& outpu
     int particleBudget = ctx.settings.particleBudgetEnabled
         ? (std::max)(ctx.settings.particleBudget, 0) : 0;
 
+    bool collectParticlePhases = false;
+    if (profiler::Profiler::IsEnabled()) {
+        const auto requestedFilter = profiler::Profiler::GetRequestedCaptureFilter();
+        collectParticlePhases = requestedFilter.scope == "RenderSceneExtractor::Particles"
+            && (requestedFilter.category.empty() || requestedFilter.category == "General");
+    }
+    std::optional<profiler::ProfileScope> phaseScope;
+    /// @note Only the explicit parent filter opens bounded phase scopes; the applied frame filter still controls recording.
+    const auto beginPhase = [&](const char* name) {
+        if (!collectParticlePhases) return;
+        phaseScope.reset();
+        phaseScope.emplace(profiler::ProfilerMarker(name, "General"));
+    };
+    beginPhase("RenderSceneExtractor::Particles::CollectAndSort");
     /// @note 描画順を renderPriority → カメラ距離 (遠い順) で確定させる。GameObject の並び順の
     /// @note ままだと「炎の手前に煙」が保証されず、シーンを編集しただけで前後が入れ替わる。
     /// @note 距離はバウンズ更新前なので Transform 位置で近似する (順序決定には十分)。
     std::vector<GameObject*> sortedEmitters;
-    for (auto& candidate : ctx.scene.GameObjects()) {
-        if (!ShouldRenderGameObject(candidate, ctx.cullingMask)) continue;
-        auto* candidateEmitter = candidate.GetComponent<ParticleEmitter>();
-        if (candidateEmitter == nullptr || !candidateEmitter->settings.enabled) continue;
-        sortedEmitters.push_back(&candidate);
+    {
+        /// @note Collection calls no resource or gameplay callback; Scene order remains the stable-sort tie breaker.
+        const auto emitters = ctx.scene.GetEntities<ParticleEmitter>();
+        std::vector<EntityID> candidates(emitters.begin(), emitters.end());
+        ctx.scene.SortEntitiesBySceneOrder(candidates);
+        for (EntityID entity : candidates) {
+            auto* owner = ctx.scene.GetGameObject(entity);
+            if (!owner) continue;
+            auto& candidate = *owner;
+            if (!ShouldRenderGameObject(candidate, ctx.cullingMask)) continue;
+            auto* candidateEmitter = candidate.GetComponent<ParticleEmitter>();
+            if (candidateEmitter == nullptr || !candidateEmitter->settings.enabled) continue;
+            sortedEmitters.push_back(&candidate);
+        }
     }
     const math::Vector3 cameraPosition = ctx.camera.m_position;
     /// @note GetComponent は非 const 版しかないため、比較関数も非 const ポインタで受ける。
@@ -1936,6 +2066,7 @@ void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& outpu
             return math::Vector3::Dot(deltaA, deltaA) > math::Vector3::Dot(deltaB, deltaB);
         });
 
+    beginPhase("RenderSceneExtractor::Particles::EmitterInputsAndResources");
     for (GameObject* emitterObject : sortedEmitters) {
         GameObject& go = *emitterObject;
         auto* emitter = go.GetComponent<ParticleEmitter>();
@@ -2055,6 +2186,7 @@ void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& outpu
         input.runtime.material.selfShadowStrength = emitter->runtime.material.selfShadowStrength;
         output.particles.push_back(std::move(input));
     }
+    if (collectParticlePhases) phaseScope.reset();
     ExtractRayParticleSources(ctx.scene, output, ctx.experimentalRayTracingEnabled);
 }
 }

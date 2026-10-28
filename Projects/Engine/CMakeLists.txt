@@ -88,6 +88,7 @@ function(fbzz_engine_module TARGET)
     # @note OBJECT ライブラリはリンクしない。受け取るのは include パスとコンパイル定義だけで、リンクは FBZZEngine が行う。
     target_link_libraries(${TARGET} PRIVATE FBZZGraphics FBZZPhysics FBZZFluid FBZZMath TomlPlusPlus ImGui)
     target_compile_definitions(${TARGET} PRIVATE ${FBZZ_ENGINE_DEFINES})
+    fbzz_engine_remove_unused_optimized_comdats(${TARGET})
 
     # @note CMake は FBZZEngine_EXPORTS を SHARED にしか定義しない。無いと Time.hpp / Cursor.hpp が dllimport に落ちて C2491 になる。
     # @todo WINDOWS_EXPORT_ALL_SYMBOLS を FBZZ_API へ置き換えるとき、この判定ごと生成ヘッダーへ統合して消す。
@@ -96,13 +97,23 @@ function(fbzz_engine_module TARGET)
     fbzz_use_std_pch(${TARGET} EXTRA ${ARG_PCH_EXTRA})
     fbzz_use_unity_build(${TARGET} EXCLUDE ${FBZZ_ENGINE_UNITY_EXCLUDE})
 
-    # @note CMake/FBZZSDK.cmake がこの登録簿を ABI 定義 (FBZZ_ENGINE_VERSION_* / FBZZ_BUILD_CONFIG_*) の配布先として読む。
+    # @note CMake/FBZZSDK.cmakeがクラッシュ記録用のEngine版数を内部モジュールへ配布する。
     set_property(GLOBAL APPEND PROPERTY FBZZ_ENGINE_MODULES ${TARGET})
 endfunction()
 
 define_property(GLOBAL PROPERTY FBZZ_ENGINE_MODULES
     BRIEF_DOCS "fbzz_engine_module で生成した Engine 内部モジュール"
     FULL_DOCS  "FBZZEngine.dll を構成する OBJECT ライブラリの一覧")
+
+# @brief Engine DLL の最適化構成で未参照 inline COMDAT の出力を抑止する。
+# @param TARGET Engine DLL を構成するコンパイル対象。
+# @note WINDOWS_EXPORT_ALL_SYMBOLS が object 内の不要な template/inline symbol まで exports.def に含め、import library の member 数を増やす。
+# @see https://learn.microsoft.com/en-us/cpp/build/reference/zc-inline-remove-unreferenced-comdat?view=msvc-170 MSVC /Zc:inline removes unreferenced COMDAT functions and data.
+function(fbzz_engine_remove_unused_optimized_comdats TARGET)
+    if(MSVC)
+        target_compile_options(${TARGET} PRIVATE "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:/Zc:inline>")
+    endif()
+endfunction()
 
 # @name FBZZEnginePlatform
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
@@ -144,9 +155,15 @@ list(APPEND ENGINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler/ProfilerFrame.cpp"
 )
 
+# @note Runtime hosting headers are confined to this module; Scene adapters expose only FBZZ POD ABI types.
+file(GLOB_RECURSE MANAGED_SOURCES CONFIGURE_DEPENDS src/Scene/Managed/*.cpp src/Scene/Managed/*.hpp)
+list(REMOVE_ITEM ENGINE_SOURCES ${MANAGED_SOURCES})
+fbzz_engine_module(FBZZEngineManaged SOURCES ${MANAGED_SOURCES}
+    PRIVATE_INCLUDES "${FBZZ_DOTNET_HOST_PACK}")
+
 # @note 新ディレクトリをモジュールへ足し忘れると、リンクエラーか実行時の機能欠落としてしか現れないので configure で落とす。
 file(GLOB_RECURSE FBZZ_ALL_ENGINE_CPP CONFIGURE_DEPENDS src/*.cpp)
-set(FBZZ_CLAIMED_CPP ${CORE_SOURCES} ${ENGINE_SOURCES})
+set(FBZZ_CLAIMED_CPP ${CORE_SOURCES} ${ENGINE_SOURCES} ${MANAGED_SOURCES})
 list(FILTER FBZZ_CLAIMED_CPP INCLUDE REGEX "\\.cpp$")
 set(FBZZ_UNCLAIMED_CPP ${FBZZ_ALL_ENGINE_CPP})
 list(REMOVE_ITEM FBZZ_UNCLAIMED_CPP ${FBZZ_CLAIMED_CPP})
@@ -161,9 +178,11 @@ endif()
 add_library(FBZZEngine SHARED
     ${ENGINE_SOURCES}
     $<TARGET_OBJECTS:FBZZEnginePlatform>
+    $<TARGET_OBJECTS:FBZZEngineManaged>
 )
 fbzz_use_std_pch(FBZZEngine)
 fbzz_use_unity_build(FBZZEngine EXCLUDE ${FBZZ_ENGINE_UNITY_EXCLUDE})
+fbzz_engine_remove_unused_optimized_comdats(FBZZEngine)
 set_target_properties(FBZZEngine PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS ON
     OUTPUT_NAME "FBZZEngine"
@@ -173,6 +192,7 @@ target_compile_definitions(FBZZEngine PRIVATE ${FBZZ_ENGINE_DEFINES})
 
 # @note src を include パスへ入れない。入れると "Platform/DX12/DX12Renderer.hpp" が届き、バックエンドの隔離が破れる。
 target_include_directories(FBZZEngine
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler"
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:include>"
@@ -202,6 +222,7 @@ target_link_libraries(FBZZEngine
         dxguid
         d3dcompiler
     PRIVATE
+        "${FBZZ_DOTNET_HOST_PACK}/nethost.lib"
         # @note Engine 実装専用だが install(EXPORT) がリンク依存先も要求するので、SDK では FBZZ::ImGui として出す。
         ImGui
         # @note CrashHandler の MiniDumpWriteDump。落ちてから LoadLibrary しないよう起動時に読ませる。

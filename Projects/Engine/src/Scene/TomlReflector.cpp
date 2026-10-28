@@ -6,6 +6,7 @@
 #include <Engine/Core/Logger.hpp>
 #include <sstream>
 #include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
+#include <limits>
 
 /// @note カーブ / グラデーションの TOML 表現は .vfx と .scene で既に 1 つに統一されているため、
 /// @note ここで別形式を作ると同じ型なのに出どころによって読めるファイルと読めないファイルが生まれる。
@@ -108,6 +109,25 @@ static input::KeyCode KeyCodeFromString(const std::string& s)
 {
     double value = 0.0;
     return ReadNumber(node, value) ? static_cast<float>(value) : fallback;
+}
+
+enum class Int32ReadResult {
+    INVALID,
+    VALID,
+    OUT_OF_RANGE,
+};
+
+[[nodiscard]] Int32ReadResult ReadInt32(const toml::node& node, int& out)
+{
+    const auto value = node.value<int64_t>();
+    if (!value) return Int32ReadResult::INVALID;
+    if (*value < (std::numeric_limits<int>::min)()
+        || *value > (std::numeric_limits<int>::max)()) {
+        out = (std::numeric_limits<int>::min)();
+        return Int32ReadResult::OUT_OF_RANGE;
+    }
+    out = static_cast<int>(*value);
+    return Int32ReadResult::VALID;
 }
 
 /// @note 配列から先頭 N 要素を float として取り出す。要素数が足りなければ既定値を返す。
@@ -380,7 +400,10 @@ const toml::node* TomlReadReflector::FindNode(const char* fallback) const
     const toml::table* table = Current();
     /// @note 欠損スコープの内側
     if (!table) return nullptr;
-    return table->get(PersistentKey(fallback));
+    if (const toml::node* node = table->get(PersistentKey(fallback))) return node;
+    for (const std::string& key : PreviousFieldKeys())
+        if (const toml::node* node = table->get(key)) return node;
+    return nullptr;
 }
 
 const toml::array* TomlReadReflector::FindArray(const char* fallback) const
@@ -398,8 +421,10 @@ void TomlReadReflector::Field(const char* name, float& v)
 
 void TomlReadReflector::Field(const char* name, int& v)
 {
-    if (const toml::node* node = FindNode(name))
-        v = static_cast<int>(node->value_or(static_cast<int64_t>(v)));
+    if (const toml::node* node = FindNode(name)) {
+        if (ReadInt32(*node, v) == Int32ReadResult::OUT_OF_RANGE)
+            FBZZ_LOG_WARN("TOML integer field '%s' is outside signed 32-bit range", name);
+    }
 }
 
 void TomlReadReflector::Field(const char* name, bool& v)
@@ -440,8 +465,14 @@ void TomlReadReflector::ListField(const char* name, std::vector<int>& values)
     if (!array) return;
     values.clear();
     values.reserve(array->size());
-    for (const auto& node : *array)
-        values.push_back(static_cast<int>(node.value_or(int64_t{ 0 })));
+    bool outOfRange = false;
+    for (const auto& node : *array) {
+        int value = 0;
+        outOfRange = ReadInt32(node, value) == Int32ReadResult::OUT_OF_RANGE || outOfRange;
+        values.push_back(value);
+    }
+    if (outOfRange)
+        FBZZ_LOG_WARN("TOML integer list field '%s' contains values outside signed 32-bit range", name);
 }
 
 void TomlReadReflector::ListField(const char* name, std::vector<bool>& values)

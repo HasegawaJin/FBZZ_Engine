@@ -155,17 +155,17 @@ AlphaMode StrToAlphaMode(std::string_view s) {
     return AlphaMode::Straight;
 }
 
-} // namespace
+} /// @note namespace
 
 bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPath) const
 {
     const TextureImportSettings& s = asset.settings;
 
     /// @note 既存 .meta の [meta] セクション (guid 等) を先に読む。guid は Sprite ID を
-    ///       補完する種でもあり、Load 側も [meta] guid を種にしているため、ここで absPath を
-    ///       種にすると同じ Sprite に別の ID が付き、書いた瞬間に全参照が切れる。
+    /// @note 補完する種でもあり、Load 側も [meta] guid を種にしているため、ここで absPath を
+    /// @note 種にすると同じ Sprite に別の ID が付き、書いた瞬間に全参照が切れる。
     /// @note guid は AssetDatabase が発行する恒久 ID。テクスチャ設定の保存で消すとこの画像への
-    ///       参照が全て切れるため、[texture] 以外は必ず残す。
+    /// @note 参照が全て切れるため、[texture] 以外は必ず残す。
     toml::table root;
     std::string spriteIdentity = absPath;
     std::string existing;
@@ -217,7 +217,7 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
         }
 
         /// @note 名前は「別名キー」なので、テクスチャ内で一意でなければ参照が曖昧になる。
-        ///       直すのは編集側 (Sprite Editor) の仕事なので、ここでは黙って書き換えず報告だけする。
+        /// @note 直すのは編集側 (Sprite Editor) の仕事なので、ここでは黙って書き換えず報告だけする。
         for (std::size_t i = 0; i < spriteSources.size(); ++i) {
             for (std::size_t j = i + 1; j < spriteSources.size(); ++j) {
                 if (spriteSources[i].name.empty()
@@ -255,10 +255,10 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
 
     std::ostringstream ss;
     ss << root;
-    if (!util::FileSystem::WriteText(absPath, ss.str())) return false;
+    if (!util::FileSystem::WriteTextAtomic(absPath, ss.str())) return false;
 
     /// @note 書いた本人が共有キャッシュを潰す。書き込み時刻でも気付けるが、
-    ///       同一秒内の連続 Apply では時刻が動かないことがある。
+    /// @note 同一秒内の連続 Apply では時刻が動かないことがある。
     InvalidateTextureImportSettings(absPath);
     return true;
 }
@@ -280,7 +280,7 @@ bool TexDescSerializer::Load(const std::string& absPath, TextureAsset& outAsset)
     const auto* tex = tbl["texture"].as_table();
     if (!tex) {
         /// @note guid のみの .meta ([meta] セクションだけ) は正当な形式。
-        ///       テクスチャ設定なし = デフォルト適用なので、エラーではなく静かに false を返す。
+        /// @note テクスチャ設定なし = デフォルト適用なので、エラーではなく静かに false を返す。
         return false;
     }
 
@@ -364,7 +364,7 @@ bool TexDescSerializer::ResolveSourcePath(
     }
 
     /// @note 二重拡張子サイドカー: `Foo.png.meta` から末尾 `.meta` を除いた `Foo.png` が元画像。
-    ///       source= を持たず、ファイル名だけで元画像を一意に導出する (TOML パース不要で高速)。
+    /// @note source= を持たず、ファイル名だけで元画像を一意に導出する (TOML パース不要で高速)。
     constexpr std::string_view kMetaExt = ".meta";
     outSourcePath = inputPath.substr(0, inputPath.size() - kMetaExt.size());
 
@@ -380,4 +380,4 @@ bool TexDescSerializer::ResolveSourcePath(
     return true;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

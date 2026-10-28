@@ -10,8 +10,34 @@
 #include <Engine/Util/StringUtils.hpp>
 #include <Physics/Layer.hpp>
 #include <algorithm>
+#include <vector>
 
 namespace fbzz::scene {
+
+namespace {
+/// @note Callback-free query: inspect live Camera values in Scene ownership order and retain only scratch capacity.
+GameObject* FindMainCameraOwner(Scene& scene)
+{
+    const auto cameras = scene.GetEntities<CameraComponent>();
+    if (cameras.empty()) return nullptr;
+    thread_local std::vector<EntityID> candidates;
+    candidates.assign(cameras.begin(), cameras.end());
+    scene.SortEntitiesBySceneOrder(candidates);
+    GameObject* selected = nullptr;
+    for (EntityID id : candidates) {
+        auto* owner = scene.GetGameObject(id);
+        const auto* camera = scene.GetComponent<CameraComponent>(id);
+        if (owner && owner->activeInHierarchy() && camera && camera->enabled && camera->isMain) {
+            selected = owner;
+            break;
+        }
+    }
+    candidates.clear();
+    return selected;
+}
+}
+
+
 
 void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings)
 {
@@ -38,9 +64,9 @@ core::Window::Config MakeWindowConfig(const ProjectSettings& settings)
 
 renderer::Camera ResolveGameCamera(Scene& scene, float aspectRatio)
 {
-    for (auto& go : scene.GameObjects()) {
+    if (auto* owner = FindMainCameraOwner(scene)) {
+        auto& go = *owner;
         auto* cam = go.GetComponent<CameraComponent>();
-        if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
 
         renderer::Camera result;
         result.m_position = go.transform.worldPosition;
@@ -69,9 +95,9 @@ renderer::Camera ResolveEditorGameCamera(Scene& scene,
     renderer::Camera camera = editorFallback;
     camera.m_aspect = aspectRatio;
 
-    for (auto& go : scene.GameObjects()) {
+    if (auto* owner = FindMainCameraOwner(scene)) {
+        auto& go = *owner;
         auto* cam = go.GetComponent<CameraComponent>();
-        if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
 
         camera.m_position = go.transform.worldPosition;
         camera.m_rotation = go.transform.worldRotation;
@@ -82,7 +108,6 @@ renderer::Camera ResolveEditorGameCamera(Scene& scene,
         camera.m_clearMode       = cam->clearMode;
         cam->aspectRatio  = aspectRatio;
         camera.m_aspect   = cam->aspectRatio;
-        break;
     }
 
     return camera;
@@ -90,9 +115,9 @@ renderer::Camera ResolveEditorGameCamera(Scene& scene,
 
 math::Vector4 ResolveGameBackgroundColor(Scene& scene)
 {
-    for (auto& go : scene.GameObjects()) {
+    if (auto* owner = FindMainCameraOwner(scene)) {
+        auto& go = *owner;
         auto* cam = go.GetComponent<CameraComponent>();
-        if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
         return cam->backgroundColor;
     }
     return renderer::kDefaultBackgroundColor;
@@ -100,28 +125,28 @@ math::Vector4 ResolveGameBackgroundColor(Scene& scene)
 
 fbzz::LayerMask ResolveGameCullingMask(Scene& scene)
 {
-    for (auto& go : scene.GameObjects()) {
+    if (auto* owner = FindMainCameraOwner(scene)) {
+        auto& go = *owner;
         auto* cam = go.GetComponent<CameraComponent>();
-        if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
         return cam->cullingMask;
     }
     return fbzz::Layer::Everything;
 }
 
-/// レイヤー数が Physics 側とずれると層ごとの距離が 1 つずつずれる。
-/// CameraCullingSettings.hpp は Layer.hpp を引かない方針なので、突き合わせはここで行う。
+/// @note レイヤー数が Physics 側とずれると層ごとの距離が 1 つずつずれる。
+/// @note CameraCullingSettings.hpp は Layer.hpp を引かない方針なので、突き合わせはここで行う。
 static_assert(kCullLayerCount == 32, "CameraCullingSettings must cover fbzz::Layer 0-31");
 
 CameraCullingSettings ResolveGameCullingSettings(Scene& scene)
 {
-    for (auto& go : scene.GameObjects()) {
+    if (auto* owner = FindMainCameraOwner(scene)) {
+        auto& go = *owner;
         auto* cam = go.GetComponent<CameraComponent>();
-        if (!go.activeInHierarchy() || !cam || !cam->enabled || !cam->isMain) continue;
         CameraCullingSettings settings;
         settings.frustumCulling       = cam->frustumCulling;
         settings.occlusionCulling     = cam->occlusionCulling;
         /// @note 負値は球を縮める / 距離を反転させるだけで意味を持たないので入口で 0 に潰し、
-        ///       各パスが毎オブジェクト符号を気にする必要をなくす。
+        /// @note 各パスが毎オブジェクト符号を気にする必要をなくす。
         settings.cullingBoundsPadding = (std::max)(cam->cullingBoundsPadding, 0.0f);
         settings.maxDrawDistance      = (std::max)(cam->maxDrawDistance, 0.0f);
         settings.cullDistanceSpherical = cam->cullDistanceSpherical;
@@ -133,4 +158,4 @@ CameraCullingSettings ResolveGameCullingSettings(Scene& scene)
     return CameraCullingSettings{};
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

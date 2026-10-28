@@ -119,6 +119,8 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
 
 ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& ctx)
 {
+    /// @note No probe means no capture, selection or budget mutation; reevaluate live membership on every view.
+    if (ctx.scene.GetEntities<ReflectionProbeComponent>().empty()) return nullptr;
     struct CaptureCandidate { GameObject* owner; ReflectionProbeComponent* probe; };
     std::vector<CaptureCandidate> dueProbes;
     const bool bounded = ctx.experimentalRayTracingEnabled

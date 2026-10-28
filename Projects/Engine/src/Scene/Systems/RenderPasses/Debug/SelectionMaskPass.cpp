@@ -4,6 +4,7 @@
 /// @date    2026-06-18
 #include "SelectionPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
+#include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 /// @note `FindAnimator` (親方向探索) を共用する。
 #include "../Geometry/RenderScenePassHelpers.hpp"
@@ -203,12 +204,13 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
     const auto& input = SceneInput(ctx);
-    for (const auto& object : input.objects) {
-        if (!object.selected || !MatchesView(ctx, object)) continue;
+    for (size_t objectIndex = 0; objectIndex < input.Objects().size(); ++objectIndex) {
+        const auto& object = input.Objects()[objectIndex];
+        if (!input.IsObjectSelected(objectIndex) || !MatchesView(ctx, object)) continue;
         const auto shader = object.skinned ? h.selectionMaskSkinnedShader : h.selectionMaskShader;
         if (!shader.IsValid()) continue;
         auto constants = ObjectConstants(object);
-        constants.objectParams = {};
+        constants.objectParams.x = 0.0f;
         resources.Update(h.objectCB, &constants, sizeof(constants));
         for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
             const auto& item = input.items[i];
@@ -222,7 +224,10 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
             dc.pipelineState = h.selectionMaskPSO;
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[1] = h.objectCB;
-            if (object.skinned) dc.constantBuffers[7] = object.skinningPalette;
+            if (object.skinned) {
+                if (object.gpuBones.current.IsValid()) dc.vsBuffers[0] = object.gpuBones.current;
+                else dc.constantBuffers[7] = object.skinningPalette;
+            }
             r.Submit(dc, resources);
         }
     }
@@ -243,6 +248,7 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
         }
     }
 
+    renderer::ExecuteInstanceSelection(ctx);
     ExecuteFiberSelectionMask(ctx);
     TerrainSelectionMaskSystem(ctx);
     WaterSelectionMaskSystem(ctx);
@@ -252,9 +258,11 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
 }
 
 
-void SelectionMaskPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+void SelectionMaskPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     builder.Read("HDR").Write("SelectionMask");
+    if (ctx.waterMediumPassActive && ctx.resourceRegistry.Target("WaterMediumAtlas").IsValid())
+        builder.Read("WaterMediumAtlas");
 }
 
 bool SelectionMaskPass::IsEnabled(const RenderPassContext& ctx) const

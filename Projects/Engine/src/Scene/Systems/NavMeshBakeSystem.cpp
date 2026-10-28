@@ -3,21 +3,24 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 ///
-/// collectObjects == ThisObject は自身の TerrainComponent だけを、Volume は worldPosition
-/// 中心の size ボックス内だけをベイクソースにする。パイプラインは Recast の rcConfig に
-/// 対応: Voxelize (歩行可否判定) → Erode (agentRadius ぶん内側へ削る) → Triangulate →
-/// Hertel-Mehlhorn 凸合成 → Polygon Mesh (NavMeshPolygon 構築 + Portal 接続)。
+/// @note collectObjects == ThisObject は自身の TerrainComponent だけを、Volume は worldPosition
+/// @note 中心の size ボックス内だけをベイクソースにする。パイプラインは Recast の rcConfig に
+/// @note 対応: Voxelize (歩行可否判定) → Erode (agentRadius ぶん内側へ削る) → Triangulate →
+/// @note Hertel-Mehlhorn 凸合成 → Polygon Mesh (NavMeshPolygon 構築 + Portal 接続)。
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
+#include "Engine/Scene/NavigationControlPoints.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/NavMeshSurfaceComponent.hpp"
 #include "Engine/Scene/Components/NavMeshModifierComponent.hpp"
 #include "Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp"
+#include "Engine/Scene/Components/TargetPointComponent.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include "Engine/Scene/Components/ColliderComponent.hpp"
 #include "Engine/Scene/Systems/ColliderSync.hpp"
+#include "Engine/Scene/Systems/TransformSystem.hpp"
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 #include <algorithm>
@@ -29,7 +32,6 @@
 #include <future>
 #include <limits>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -40,8 +42,8 @@ namespace {
 constexpr float kPi        = 3.14159265358979323846f;
 constexpr float kNoSurface = -1.0e30f;
 
-/// NavigationSystem.cpp の同名関数と同一ロジック。
-/// BakeSystem は別 TU のためローカルコピーを持つ。
+/// @note NavigationSystem.cpp の同名関数と同一ロジック。
+/// @note BakeSystem は別 TU のためローカルコピーを持つ。
 int FindNearestPolygon(const NavMesh& navMesh, const math::Vector3& pos)
 {
     int best = -1;
@@ -87,8 +89,8 @@ bool TryGetObstacle(Scene& scene, EntityID eid, const GameObject& go, Obstacle& 
         return true;
     }
     /// @note Mesh/ConvexHull の physics::Collider は PhysicsSystem (RunMode::SimOnly) が構築する。
-    ///       Play していない状態で Bake すると nullptr のままで障害物として無視されるため、
-    ///       ここで ColliderSync の遅延構築を明示的に走らせ、停止中の Bake でも同じ結果にする。
+    /// @note Play していない状態で Bake すると nullptr のままで障害物として無視されるため、
+    /// @note ここで ColliderSync の遅延構築を明示的に走らせ、停止中の Bake でも同じ結果にする。
     if (GameObject* mutableGo = scene.GetGameObject(eid)) {
         if (auto* meshCol = scene.GetComponent<MeshColliderComponent>(eid))
             EnsureMeshCollider(*mutableGo, *meshCol);
@@ -242,7 +244,7 @@ float SampleTerrainHeight(const TerrainBakeData& td, float wx, float wz)
     return td.GetHeightAt(localX, localZ) + td.origin.y;
 }
 
-/// 複数 Terrain の最大高さを返す（上側の面を優先）。
+/// @brief 複数 Terrain の最大高さを返す（上側の面を優先）。
 float SampleAllTerrainsHeight(const std::vector<TerrainBakeData>& terrains, float wx, float wz)
 {
     float best = kNoSurface;
@@ -339,34 +341,19 @@ struct AutoBounds {
     }
 };
 
-/// count を hw スレッドで分割して fn(i) を並列実行する。
-/// スレッド起動オーバーヘッドが無駄にならないよう count が小さい場合はシリアル実行。
+/// @brief 入力範囲を呼び出し元スレッドで処理する。
+/// @note ベイク本体は共有プールのワーカーで実行されるため、内側から同じプールへ投入して待つと全ワーカーが塞がる。
 template<class Fn>
 static void ParallelFor(int count, Fn fn)
 {
-    const int hw       = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
-    const int nThreads = (count >= 64 && hw > 1) ? std::min(count / 8, hw) : 1;
-    if (nThreads <= 1) {
-        for (int i = 0; i < count; ++i) fn(i);
-        return;
-    }
-    const int chunk = (count + nThreads - 1) / nThreads;
-    std::vector<std::future<void>> futures;
-    futures.reserve(static_cast<size_t>(nThreads));
-    for (int t = 0; t < nThreads; ++t) {
-        const int beg = t * chunk;
-        const int end = std::min(beg + chunk, count);
-        if (beg >= end) break;
-        futures.push_back(TaskSystem::Submit([=, &fn]{ for (int i = beg; i < end; ++i) fn(i); }));
-    }
-    for (auto& f : futures) f.wait();
+    for (int i = 0; i < count; ++i) fn(i);
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name バックグラウンド Bake 関数
-/// BakeInput のコピーだけを使い、シーンのいかなるポインタにも触れない純粋な計算関数。
-/// std::async で任意のスレッドから呼ばれる。
+/// @note BakeInput のコピーだけを使い、シーンのいかなるポインタにも触れない純粋な計算関数。
+/// @note std::async で任意のスレッドから呼ばれる。
 
 static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progress = nullptr)
 {
@@ -421,7 +408,7 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
     const int cornerCols = gridW + 1;
 
     /// @note セル 1 個につき WorkPoly を 2 個確保するので、Cell Size を 0.1 にしただけで
-    ///       数 GB を要求してエディタごと落ちる。落ちる前に理由を返す。
+    /// @note 数 GB を要求してエディタごと落ちる。落ちる前に理由を返す。
     constexpr int64_t kMaxBakeCells = 4000000;
     if (static_cast<int64_t>(gridW) * gridD > kMaxBakeCells)
         return fail("格子が大きすぎます (" + std::to_string(gridW) + " x " + std::to_string(gridD) +
@@ -506,16 +493,16 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
             }
 
             /// @note 段差判定は Walkable modifier の縁だけに掛ける。連続した Terrain では隣り合う
-            ///       セルが同じ角を共有し段差が生まれず、坂の登れなさは maxSlopeAngleDeg が
-            ///       受け持つ。全セルへ掛けると同じ性質を 2 設定が別々に決め、45 度許可の坂が
-            ///       maxClimb で先に落ちる。
+            /// @note セルが同じ角を共有し段差が生まれず、坂の登れなさは maxSlopeAngleDeg が
+            /// @note 受け持つ。全セルへ掛けると同じ性質を 2 設定が別々に決め、45 度許可の坂が
+            /// @note maxClimb で先に落ちる。
             if (state == NavMeshBakeCell::Walkable && anyRaised && maxClimb > 0.0f
              && cornerMax - cornerMin > maxClimb)
                 state = NavMeshBakeCell::TooHighStep;
 
             if (state == NavMeshBakeCell::Walkable && !obstacles.empty()) {
                 /// @note 有効な角だけで平均する。面の縁では kNoSurface (-1e30) が混ざり、
-                ///       4 で割った高さが -2.5e29 になって障害物判定が常に外れていた。
+                /// @note 4 で割った高さが -2.5e29 になって障害物判定が常に外れていた。
                 const math::Vector3 wp = { worldX, cornerSum / static_cast<float>(cornerCount), worldZ };
                 for (const auto& obs : obstacles) {
                     if (PointInObstacle(wp, obs)) { state = NavMeshBakeCell::Obstructed; break; }
@@ -547,7 +534,7 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
 
     /// @name Erode (Recast の rcErodeWalkableArea 相当)
     /// @note 非歩行セルからのチャンファー距離場を作り、agentRadius に満たないセルを落とす。
-    ///       距離の単位は 1 セル = 2 で、直交 2 / 斜め 3 (Recast と同じ整数近似)。
+    /// @note 距離の単位は 1 セル = 2 で、直交 2 / 斜め 3 (Recast と同じ整数近似)。
     const uint16_t erodeThreshold =
         static_cast<uint16_t>((std::max(0.0f, inp.agentRadius) / cellSize) * 2.0f);
     if (erodeThreshold > 0) {
@@ -555,8 +542,8 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
         std::vector<uint16_t> dist(cellState.size(), kFar);
 
         /// @note 格子の外を歩行可能扱いにする。ThisObject では外周 1 マスぶんが NoSurface なので
-        ///       面の縁は正しく削れるが、Volume では箱が地形の途中を切っているだけなので、
-        ///       境界から削ると存在しない壁ぞいの隙間が空く。
+        /// @note 面の縁は正しく削れるが、Volume では箱が地形の途中を切っているだけなので、
+        /// @note 境界から削ると存在しない壁ぞいの隙間が空く。
         const auto seedNeighbor = [&](int x, int z) {
             if (x < 0 || x >= gridW || z < 0 || z >= gridD) return false;
             return cellState[static_cast<size_t>(z) * gridW + x] != kWalkable;
@@ -636,9 +623,9 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
             WorkPoly& low  = polys[lowId];
             WorkPoly& high = polys[highId];
             /// @note TerrainRenderSystem と同じ対角線 (br→tl) で分割し、NavMesh 面の補間高さを
-            ///       Terrain 描画面と一致させる。旧実装 (bl→tr 対角) は分割が異なるため、
-            ///       「谷型」地形で NavMesh 面が Terrain 面より大幅に低くなり、エージェントが
-            ///       地面の裏にスナップされるバグがあった。
+            /// @note Terrain 描画面と一致させる。旧実装 (bl→tr 対角) は分割が異なるため、
+            /// @note 「谷型」地形で NavMesh 面が Terrain 面より大幅に低くなり、エージェントが
+            /// @note 地面の裏にスナップされるバグがあった。
             low.verts  = { bl, br, tl }; low.alive  = true; low.neighbors  = { -1, static_cast<int>(highId), -1 };
             high.verts = { br, tr, tl }; high.alive = true; high.neighbors = { -1, -1, static_cast<int>(lowId) };
             if (CellWalkable(ix,   iz-1)) low.neighbors[0]  = static_cast<int>((static_cast<size_t>(iz-1)*gridW+ix)*2+1);
@@ -750,8 +737,8 @@ namespace {
 constexpr uint64_t kFnvOffset = 1469598103934665603ull;
 constexpr uint64_t kFnvPrime  = 1099511628211ull;
 
-/// FNV-1a を 8 byte ずつ回したもの。求めるのは「前回のベイク以降に変わったか」だけなので、
-/// 暗号強度ではなく Terrain の heightData 数 MB を数百 µs で畳めることを優先する。
+/// @note FNV-1a を 8 byte ずつ回したもの。求めるのは「前回のベイク以降に変わったか」だけなので、
+/// @note 暗号強度ではなく Terrain の heightData 数 MB を数百 µs で畳めることを優先する。
 void HashBytes(uint64_t& h, const void* data, size_t size)
 {
     const auto* p = static_cast<const unsigned char*>(data);
@@ -775,7 +762,7 @@ void HashTransform(uint64_t& h, const GameObject& go)
     HashValue(h, go.transform.worldScale);
 }
 
-} // namespace
+} /// @note namespace
 
 uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
 {
@@ -802,6 +789,9 @@ uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
         HashValue(h, terrainGo.transform.worldPosition);
         if (!t.heightData.empty())
             HashBytes(h, t.heightData.data(), t.heightData.size() * sizeof(float));
+        HashValue(h, static_cast<std::uint64_t>(t.holeData.size()));
+        if (!t.holeData.empty())
+            HashBytes(h, t.holeData.data(), t.holeData.size() * sizeof(std::uint8_t));
     };
 
     if (surface->collectObjects == NavMeshCollectObjects::ThisObject) {
@@ -816,7 +806,7 @@ uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
     }
 
     /// @note 種類ごとに書き並べる。「ベイクが古い」の判定はここが拾い漏らすと成立しないため、
-    ///       ベイクソースを増やしたらこの関数にも同じものを足すこと。
+    /// @note ベイクソースを増やしたらこの関数にも同じものを足すこと。
     for (EntityID meid : scene.GetEntities<NavMeshModifierComponent>()) {
         auto* mod   = scene.GetComponent<NavMeshModifierComponent>(meid);
         auto* modGo = scene.GetGameObject(meid);
@@ -840,12 +830,20 @@ uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
 
     for (EntityID leid : scene.GetEntities<NavMeshOffMeshLinkComponent>()) {
         auto* link = scene.GetComponent<NavMeshOffMeshLinkComponent>(leid);
+        auto* linkGo = scene.GetGameObject(leid);
         if (!link) continue;
-        HashValue(h, link->startPoint);
-        HashValue(h, link->endPoint);
+        HashValue(h, leid.index);
+        HashValue(h, leid.generation);
+        HashValue(h, linkGo && linkGo->activeInHierarchy());
+        HashValue(h, link->enabled);
         HashValue(h, link->activated);
         HashValue(h, link->bidirectional);
+        HashValue(h, link->traversalTime);
         HashValue(h, link->agentTypeMask);
+        const NavMeshOffMeshLinkSnapshot endpoints = ResolveNavMeshOffMeshLinkEndpoints(
+            scene, leid, *link);
+        HashValue(h, endpoints.status);
+        HashValue(h, endpoints.inputSignature);
     }
     return h;
 }
@@ -855,8 +853,9 @@ uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId)
 ComponentAccess NavMeshBakeSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<TerrainComponent, NavMeshSurfaceComponent, NavMeshModifierComponent>()
-        .Writes<NavMeshSurfaceComponent>();
+        .Reads<TerrainComponent, NavMeshModifierComponent, TargetPointComponent,
+            BoxColliderComponent, AabbColliderComponent>()
+        .Writes<NavMeshSurfaceComponent, NavMeshOffMeshLinkComponent, Transform>();
 }
 
 float NavMeshBakeSystem::BakeProgress(uint32_t surfaceId) const
@@ -869,10 +868,37 @@ float NavMeshBakeSystem::BakeProgress(uint32_t surfaceId) const
 void NavMeshBakeSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
+    if (!scene.GetEntities<NavMeshSurfaceComponent>().empty())
+        FlushWorldTransforms(scene);
+    for (auto it = m_jobs.begin(); it != m_jobs.end();) {
+        const BakeJob& job = it->second;
+        const bool staleOwner = job.sceneGeneration != scene.GetRenderSceneGeneration()
+            || job.surfaceComponentLifetime
+                != scene.GetComponentLifetime<NavMeshSurfaceComponent>(job.surfaceEntity);
+        if (staleOwner
+            && job.future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            it->second.future.get();
+            it = m_jobs.erase(it);
+        } else {
+            ++it;
+        }
+    }
     /// @note Phase 1: 完了した Future を適用する
     for (EntityID eid : scene.GetEntities<NavMeshSurfaceComponent>()) {
         auto it = m_jobs.find(eid.index);
         if (it == m_jobs.end()) continue;
+
+        if (it->second.surfaceEntity != eid) {
+            if (it->second.future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                it->second.future.get();
+                m_jobs.erase(it);
+            }
+            continue;
+        }
+
+        if (it->second.sceneGeneration != scene.GetRenderSceneGeneration()
+            || it->second.surfaceComponentLifetime
+                != scene.GetComponentLifetime<NavMeshSurfaceComponent>(eid)) continue;
 
         auto* surface = scene.GetComponent<NavMeshSurfaceComponent>(eid);
         if (surface)
@@ -880,40 +906,48 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
 
         if (it->second.future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
 
+        BakeJob completedJob = std::move(it->second);
+        m_jobs.erase(it);
         if (surface) {
-            NavMeshBakeResult baked = it->second.future.get();
+            NavMeshBakeResult baked = completedJob.future.get();
+            const std::uint64_t currentSignature = HashNavMeshBakeSources(scene, eid);
+            if (currentSignature == 0 || currentSignature != completedJob.sourceSignature) {
+                surface->navMesh = {};
+                surface->bakeStats = {};
+                surface->bakeStats.failReason = "NavMesh inputs changed during bake; scheduling a fresh bake.";
+                surface->bakeDebug = {};
+                surface->bakeState = NavMeshBakeState::Idle;
+                surface->bakeProgress = 0.0f;
+                surface->needsBake = true;
+                continue;
+            }
             surface->navMesh      = std::move(baked.navMesh);
             surface->bakeStats    = std::move(baked.stats);
             surface->bakeDebug    = std::move(baked.debug);
             surface->bakeState    = NavMeshBakeState::Done;
             surface->bakeProgress = 1.0f;
 
-            /// @note ベイク完了後に NavMeshOffMeshLinkComponent を走査してポリゴンへ接続する。
-            ///       activated==false のリンクは A* から無視されるためスキップする。
             NavMesh& nm = surface->navMesh;
             nm.offMeshLinks.clear();
-            for (EntityID leid : scene.GetEntities<NavMeshOffMeshLinkComponent>()) {
-                auto* link = scene.GetComponent<NavMeshOffMeshLinkComponent>(leid);
-                if (!link || !link->activated) continue;
-
-                const int polyA = FindNearestPolygon(nm, link->startPoint);
-                const int polyB = FindNearestPolygon(nm, link->endPoint);
+            for (const NavMeshBakeOffMeshLinkInput& link : completedJob.offMeshLinks) {
+                const int polyA = FindNearestPolygon(nm, link.startPoint);
+                const int polyB = FindNearestPolygon(nm, link.endPoint);
                 if (polyA < 0 || polyB < 0 || polyA == polyB) continue;
 
                 OffMeshConnection conn;
                 conn.polyA         = polyA;
                 conn.polyB         = polyB;
-                conn.posA          = link->startPoint;
-                conn.posB          = link->endPoint;
-                conn.bidirectional = link->bidirectional;
-                conn.traversalTime = link->traversalTime;
-                conn.agentTypeMask = link->agentTypeMask;
+                conn.posA          = link.startPoint;
+                conn.posB          = link.endPoint;
+                conn.bidirectional = link.bidirectional;
+                conn.traversalTime = link.traversalTime;
+                conn.agentTypeMask = link.agentTypeMask;
                 nm.offMeshLinks.push_back(conn);
             }
 
             /// @note Walkable modifier の areaType をポリゴンへ後処理で割り当てる。
-            ///       ポリゴン Center の XZ 座標がモディファイアの AABB 内にあれば areaType を上書きする。
-            ///       areaType 0 以外の modifier が優先される (数値が大きいほど後勝ち)。
+            /// @note ポリゴン Center の XZ 座標がモディファイアの AABB 内にあれば areaType を上書きする。
+            /// @note areaType 0 以外の modifier が優先される (数値が大きいほど後勝ち)。
             for (EntityID meid : scene.GetEntities<NavMeshModifierComponent>()) {
                 auto* mod   = scene.GetComponent<NavMeshModifierComponent>(meid);
                 auto* modGo = scene.GetGameObject(meid);
@@ -923,7 +957,7 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
                 if (mod->areaType == 0) continue;
 
                 /// @note モディファイアの AABB をワールド空間で簡易取得する。
-                ///       Collider がなければ position ± (scale/2) を使う。
+                /// @note Collider がなければ position ± (scale/2) を使う。
                 const math::Vector3& wp = modGo->transform.worldPosition;
                 const math::Vector3& ws = modGo->transform.worldScale;
                 const float hx = std::abs(ws.x) * 0.5f + 0.05f;
@@ -938,10 +972,8 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
                 }
             }
         } else {
-            /// @note 破棄
-            it->second.future.get();
+            completedJob.future.get();
         }
-        m_jobs.erase(it);
     }
 
     /// @note Phase 2: needsBake が立っているものを非同期ジョブとして投入する
@@ -953,12 +985,44 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
         /// @note 既に実行中
         if (m_jobs.count(eid.index)) continue;
 
-        surface->needsBake      = false;
-        surface->bakeState      = NavMeshBakeState::Baking;
-        surface->bakeProgress   = 0.0f;
-        surface->navMesh.polygons.clear();
-        surface->bakeStats      = {};
-        surface->bakeDebug      = {};
+        std::vector<NavMeshBakeOffMeshLinkInput> capturedLinks;
+        bool validLinks = true;
+        for (const EntityID linkId : scene.GetEntities<NavMeshOffMeshLinkComponent>()) {
+            const auto* link = scene.GetComponent<NavMeshOffMeshLinkComponent>(linkId);
+            const auto* linkGo = scene.GetGameObject(linkId);
+            if (!link || !linkGo || !linkGo->activeInHierarchy()
+                || !link->enabled || !link->activated) continue;
+            const NavMeshOffMeshLinkSnapshot endpoints = ResolveNavMeshOffMeshLinkEndpoints(
+                scene, linkId, *link);
+            if (!endpoints.valid) {
+                surface->needsBake = false;
+                surface->bakeState = NavMeshBakeState::Idle;
+                surface->bakeProgress = 0.0f;
+                surface->navMesh = {};
+                surface->bakeStats = {};
+                surface->bakeStats.failReason = "An enabled Off-Mesh Link has invalid endpoints.";
+                surface->bakeDebug = {};
+                validLinks = false;
+                break;
+            }
+            NavMeshBakeOffMeshLinkInput captured;
+            captured.entity = linkId;
+            captured.inputSignature = endpoints.inputSignature;
+            captured.startPoint = endpoints.startPoint;
+            captured.endPoint = endpoints.endPoint;
+            captured.bidirectional = link->bidirectional;
+            captured.traversalTime = link->traversalTime;
+            captured.agentTypeMask = link->agentTypeMask;
+            capturedLinks.push_back(captured);
+        }
+        if (!validLinks) continue;
+
+        surface->needsBake       = false;
+        surface->bakeState       = NavMeshBakeState::Baking;
+        surface->bakeProgress    = 0.0f;
+        surface->navMesh         = {};
+        surface->bakeStats       = {};
+        surface->bakeDebug       = {};
         surface->bakedSourceHash = HashNavMeshBakeSources(scene, eid);
 
         /// @note シーンデータをコピーして BakeInput を構築する
@@ -1016,6 +1080,11 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
 
         auto bakeProgress = std::make_shared<std::atomic<float>>(0.0f);
         BakeJob job;
+        job.surfaceEntity = eid;
+        job.sceneGeneration = scene.GetRenderSceneGeneration();
+        job.surfaceComponentLifetime = scene.GetComponentLifetime<NavMeshSurfaceComponent>(eid);
+        job.sourceSignature = surface->bakedSourceHash;
+        job.offMeshLinks = std::move(capturedLinks);
         job.progress = bakeProgress;
         job.future = TaskSystem::Submit([inp = std::move(input), p = bakeProgress]() mutable {
             return RunNavMeshBake(std::move(inp), p.get());
@@ -1024,4 +1093,4 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

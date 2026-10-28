@@ -102,7 +102,7 @@ BTNodeParams MakeParams(const BTNodeDef& def, const std::vector<BlackboardDef>& 
     return params;
 }
 
-} // namespace
+} /// @note namespace
 
 BlackboardKey BehaviorTreeRuntime::FindKey(std::string_view name) const
 {
@@ -133,6 +133,12 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         const BTNodeDef& def = asset.nodes[i];
         if (def.id == 0) {
             SetError(outError, "id = 0 のノードがあります (0 は無効値として予約)");
+            return false;
+        }
+        if (def.type >= BTNodeType::Count || def.abortMode > AbortMode::Both
+            || (def.abortMode != AbortMode::None && !BTNodeIsPureCondition(def.type))) {
+            SetError(outError, "Invalid node type or observer abort mode (node id "
+                               + std::to_string(def.id) + ")");
             return false;
         }
         if (!indexOfId.emplace(def.id, i).second) {
@@ -235,6 +241,11 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         const auto& childList = children[frame.assetIndex];
 
         if (frame.nextChild < childList.size()) {
+            /// @note The evaluator follows the execution path recursively.
+            if (stack.size() >= 256) {
+                SetError(outError, "Behavior Tree execution depth exceeds 256 nodes");
+                return false;
+            }
             const std::size_t childAsset = childList[frame.nextChild];
             ++frame.nextChild;
 
@@ -247,7 +258,7 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
 
             const std::uint16_t childEmitted = emit(childAsset, frame.emittedIndex);
 
-            /// @note 最初の子を記録し、以降は連番になることを利用して個数だけ数える。
+            /// @note 直近の子の個数を記録する。兄弟の添字は subtreeEnd で辿る。
             BTNode& parentNode = out.nodes[frame.emittedIndex];
             if (parentNode.childCount == 0) parentNode.firstChild = childEmitted;
             ++parentNode.childCount;
@@ -305,8 +316,9 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         std::uint16_t cur = scope;
         while (out.parent[cur] != kInvalidNode) {
             const std::uint16_t parentIndex = out.parent[cur];
-            if (!isPriorityComposite(parentIndex)) break;
-            hi  = out.subtreeEnd[parentIndex];
+            if (!isPriorityComposite(parentIndex)
+                && !BTNodeIsDecorator(out.nodes[parentIndex].type)) break;
+            if (isPriorityComposite(parentIndex)) hi = out.subtreeEnd[parentIndex];
             cur = parentIndex;
         }
         candidate.lowLo = lo;
@@ -322,4 +334,4 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
     return true;
 }
 
-} // namespace fbzz::ai
+} /// @note namespace fbzz::ai

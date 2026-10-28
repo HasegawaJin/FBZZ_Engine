@@ -61,7 +61,7 @@ Pixels ToPixels(const DirectX::Image& image)
     result.width = static_cast<int>(image.width);
     result.height = static_cast<int>(image.height);
     result.rgba.resize(static_cast<std::size_t>(result.width) * result.height * 4);
-    const auto* source = reinterpret_cast<const float*>(image.pixels);
+    const auto* source = static_cast<const float*>(static_cast<const void*>(image.pixels));
     const std::size_t rowFloats = image.rowPitch / sizeof(float);
     for (int y = 0; y < result.height; ++y) {
         for (int x = 0; x < result.width; ++x) {
@@ -337,20 +337,20 @@ void BuildRecommendations(TextureAnalysis& out)
     const bool isFlipbook = !out.flipbookCandidates.empty();
     if (isFlipbook) {
         const FlipbookGridCandidate& best = out.flipbookCandidates.front();
-        add("material.particle.flipbook.spriteColumns", std::to_string(best.columns),
+        add("authoring.particle.flipbook.spriteColumns", std::to_string(best.columns),
             "タイル境界の不連続からコマ割りを検出しました (境界比 "
                 + std::to_string(best.seamScore).substr(0, 4) + ")");
-        add("material.particle.flipbook.spriteRows", std::to_string(best.rows),
+        add("authoring.particle.flipbook.spriteRows", std::to_string(best.rows),
             "同上。誤検出が疑われる場合は flipbookCandidates の他候補を試してください");
-        add("material.particle.flipbook.spriteEndFrame", std::to_string(best.columns * best.rows - 1),
+        add("authoring.particle.flipbook.spriteEndFrame", std::to_string(best.columns * best.rows - 1),
             "全コマを再生する場合の終端フレーム");
-        add("material.particle.flipbook.spriteRandomStartFrame", "true",
+        add("authoring.particle.flipbook.spriteRandomStartFrame", "true",
             "同時に湧いた粒子が全部同じコマで回るのを防ぎます");
     }
 
     /// @note alphaSource — アルファが機能していない素材は輝度から抜くしかない。
     if (!out.alphaIsMeaningful) {
-        add("material.particle.alphaSource", "1",
+        add("authoring.particle.alphaSource", "1",
             "アルファチャンネルが実データを持たない (min=" + std::to_string(out.alphaMin).substr(0, 4)
                 + " max=" + std::to_string(out.alphaMax).substr(0, 4)
                 + ") ため、Luminance からアルファを取る必要があります。"
@@ -377,7 +377,7 @@ void BuildRecommendations(TextureAnalysis& out)
 
     /// @note softParticles — 硬い縁の素材は交差面が線として見える。
     if (out.edgeHardness > 0.35f && out.alphaIsMeaningful) {
-        add("material.particle.softParticles", "true",
+        add("authoring.particle.softParticles", "true",
             "縁のアルファ勾配が大きい (硬い) 素材です。地面や壁と交差したとき"
             "切り口が直線として出るため、深度フェードで隠します");
     }
@@ -491,15 +491,17 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
 
     result.success = true;
     result.resolvedPath = materialPath;
-    result.shaderPath = material.shaderPath;
-    result.blendMode = BlendModeName(material.blendMode);
-    result.renderPath = RenderPathName(material.renderPath);
-    result.doubleSided = material.doubleSided;
-    result.depthWrite = material.depthWrite;
-    result.renderQueue = static_cast<int>(material.renderQueue);
+    const auto authoringSnapshot = material.ReadAuthoring();
+    const auto& authoring = authoringSnapshot->Data();
+    result.shaderPath = authoring.shaderPath;
+    result.blendMode = BlendModeName(authoring.blendMode);
+    result.renderPath = RenderPathName(authoring.renderPath);
+    result.doubleSided = authoring.doubleSided;
+    result.depthWrite = authoring.depthWrite;
+    result.renderQueue = static_cast<int>(authoring.renderQueue);
 
-    if (const auto albedo = material.textures.find("albedo");
-        albedo != material.textures.end() && !albedo->second.empty()) {
+    if (const auto albedo = authoring.textures.find("albedo");
+        albedo != authoring.textures.end() && !albedo->second.empty()) {
         result.albedoTexturePath = albedo->second;
         result.hasAlbedoTexture = true;
         result.albedoAnalysis = AnalyzeTexture(albedo->second);
@@ -516,13 +518,13 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
     /// @name ParticleEmitter へ割り当てる前提での診断
 
     /// @note render_path が particle でないと ParticlePass のシェーダー変数と噛み合わない。
-    if (material.renderPath != RenderPath::Particle)
+    if (authoring.renderPath != RenderPath::Particle)
         addFinding("render_path が \"" + result.renderPath
                    + "\" です。ParticleEmitter へ割り当てるなら \"particle\" にしてください "
                      "(ParticlePass が albedo と blendMode を読む経路が変わります)");
 
     /// @note 不透明のままの .mat をパーティクルへ割り当てると、粒子が板として重なる。
-    if (material.blendMode == renderer::BlendMode::OPAQUE_BLEND)
+    if (authoring.blendMode == renderer::BlendMode::OPAQUE_BLEND)
         addFinding("blend_mode が Opaque です。パーティクルは半透明前提なので、"
                    "Alpha / Additive / Premultiplied のいずれかにしてください");
 
@@ -559,7 +561,7 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
 
         /// @note アルファの取り出し方も .mat の [particle]。
         if (!texture.alphaIsMeaningful)
-            addRecommendation("material.particle.alphaSource", "1",
+            addRecommendation("authoring.particle.alphaSource", "1",
                               "albedo テクスチャのアルファが実データを持たない (min="
                                   + std::to_string(texture.alphaMin).substr(0, 4) + " max="
                                   + std::to_string(texture.alphaMax).substr(0, 4)
@@ -568,17 +570,17 @@ MaterialAnalysis AnalyzeMaterial(const std::string& materialPath)
         /// @note flipbook のコマ割りも .mat の [particle]。
         if (!texture.flipbookCandidates.empty()) {
             const auto& best = texture.flipbookCandidates.front();
-            addRecommendation("material.particle.flipbook.spriteColumns", std::to_string(best.columns),
+            addRecommendation("authoring.particle.flipbook.spriteColumns", std::to_string(best.columns),
                               "albedo テクスチャがアトラスです (コマ割りは .mat の [particle])");
-            addRecommendation("material.particle.flipbook.spriteRows", std::to_string(best.rows),
+            addRecommendation("authoring.particle.flipbook.spriteRows", std::to_string(best.rows),
                               "同上");
-            addRecommendation("material.particle.flipbook.spriteEndFrame",
+            addRecommendation("authoring.particle.flipbook.spriteEndFrame",
                               std::to_string(best.columns * best.rows - 1), "全コマを再生する終端");
         }
 
         /// @note 描画順だけは «いつどこに出すか» の側なので Emitter が持つ。
-        if (material.blendMode == renderer::BlendMode::ALPHA_BLEND
-            || material.blendMode == renderer::BlendMode::PREMULTIPLIED)
+        if (authoring.blendMode == renderer::BlendMode::ALPHA_BLEND
+            || authoring.blendMode == renderer::BlendMode::PREMULTIPLIED)
             addRecommendation("particle.sortMode", "1",
                               ".mat が " + result.blendMode
                                   + " なので、描画順が結果を変えます。BackToFront が必須です");

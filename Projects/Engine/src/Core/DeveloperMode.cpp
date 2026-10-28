@@ -5,6 +5,7 @@
 /// @see Docs/design/developer-mode.md
 #include "Engine/Core/DeveloperMode.hpp"
 #include "Engine/Core/Logger.hpp"
+#include "DeveloperModeLaunch.hpp"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -22,6 +23,7 @@ bool g_developerForcedByLaunch = false;
 bool g_developerPreference     = false;
 
 /// @brief 環境変数 FBZZ_DEVELOPER_MODE が "1" か。
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-getenvironmentvariablew GetEnvironmentVariableW buffer length and missing variables
 bool DeveloperEnvironmentFlag()
 {
     wchar_t value[8] = {};
@@ -29,18 +31,11 @@ bool DeveloperEnvironmentFlag()
     return length == 1 && value[0] == L'1';
 }
 
-} // namespace
+} /// @note namespace
 
-void DeveloperMode::InitFromCommandLine()
+bool detail::HasDeveloperLaunchFlag(std::wstring_view commandLine)
 {
-    g_developerForcedByLaunch = HasLaunchFlag(GetCommandLineW()) || DeveloperEnvironmentFlag();
-    if (g_developerForcedByLaunch)
-        FBZZ_LOG_INFO("DeveloperMode: 起動引数か環境変数で有効にしました");
-}
-
-bool DeveloperMode::HasLaunchFlag(std::wstring_view commandLine)
-{
-    /// @note 引用符とスペースの規則はシェルと同じにする (パスの中の "--developer" を拾わない)。
+    /// @note パスの中の --developer を拾わないよう、Windows の引数分割規則を使う。
     const std::wstring terminated(commandLine);
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(terminated.c_str(), &argc);
@@ -50,6 +45,13 @@ bool DeveloperMode::HasLaunchFlag(std::wstring_view commandLine)
         found = std::wstring_view(argv[i]) == L"--developer";
     LocalFree(argv);
     return found;
+}
+
+void DeveloperMode::InitFromCommandLine()
+{
+    g_developerForcedByLaunch = detail::HasDeveloperLaunchFlag(GetCommandLineW()) || DeveloperEnvironmentFlag();
+    if (g_developerForcedByLaunch)
+        FBZZ_LOG_INFO("DeveloperMode: 起動引数か環境変数で有効にしました");
 }
 
 bool DeveloperMode::IsEnabled()
@@ -72,9 +74,4 @@ void DeveloperMode::SetPreference(bool enabled)
     g_developerPreference = enabled;
 }
 
-void DeveloperMode::SetForcedByLaunch(bool forced)
-{
-    g_developerForcedByLaunch = forced;
-}
-
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

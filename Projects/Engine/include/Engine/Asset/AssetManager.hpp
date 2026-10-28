@@ -3,14 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// `AssetManager::Load<T>(path)` → `AssetHandle<T>`、`Get<T>(h)` → `T*`、`Unload<T>(path)`。
-/// 対応型: Model, ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
-/// TerrainAsset, AnimatorControllerAsset, SequenceAsset
-/// RegisterImporter<T>() で IAssetImporter<T> を登録してから使う (Init で実施)
+/// @note `AssetManager::Load<T>(path)` → `AssetHandle<T>`、`Get<T>(h)` → `T*`、`Unload<T>(path)`。
+/// @note 対応型: Model, ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
+/// @note TerrainAsset, AnimatorControllerAsset, SequenceAsset
+/// @note RegisterImporter<T>() で IAssetImporter<T> を登録してから使う (Init で実施)
 ///
 /// @note テクスチャの GPU 実体は ResourceManager::LoadTexture() が持つ。
 /// @see Docs/design/ — Model は .fzasset (ModelAsset) から組み立てる旧表現で、
-///      メッシュ・マテリアル・クリップを一括保持する。新規コードは ModelAsset を使う。
+/// @note メッシュ・マテリアル・クリップを一括保持する。新規コードは ModelAsset を使う。
 #pragma once
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/AssetStreaming.hpp>
@@ -38,6 +38,7 @@ struct AnimatorControllerAsset;
 struct ModelAsset;
 struct PhysicsMaterialAsset;
 struct ClothAsset;
+struct FiberPaintAsset;
 struct SequenceAsset;
 struct TerrainAsset;
 struct TextureAsset;
@@ -51,7 +52,7 @@ public:
         std::unique_ptr<T> asset;
         uint32_t gen      = 1;
         bool     occupied = false;
-        /// 同期 Load<T> が配ったスロット。明示的な Unload まで自動 eviction の対象にしない。
+        /// @note 同期 Load<T> が配ったスロット。明示的な Unload まで自動 eviction の対象にしない。
         bool     pinned   = false;
     };
 
@@ -125,7 +126,7 @@ public:
     }
 
     /// @note 世代は捨てずに床へ畳む。0 から数え直すと、Clear 前に配った {id, gen} が次のプロジェクトの
-    ///       別アセットを指して «蘇る»。
+    /// @note 別アセットを指して «蘇る»。
     void Clear() {
         uint32_t highest = genFloor;
         for (const Slot& s : slots) highest = (std::max)(highest, s.gen);
@@ -138,7 +139,7 @@ public:
 
     std::vector<Slot>                               slots;
     std::vector<uint32_t>                           freeList;
-    /// 新しく作るスロットの初期世代。Clear を跨いで増え続ける。
+    /// @note 新しく作るスロットの初期世代。Clear を跨いで増え続ける。
     uint32_t                                        genFloor = 1;
     std::unordered_map<std::string, AssetHandle<T>> cache;
     std::unique_ptr<IAssetImporter<T>>              importer;
@@ -154,12 +155,12 @@ public:
     static void FlushFailed();
     static int  GetFlushGeneration();
 
-    /// 指定ファイルを参照しているキャッシュ済みアセットを、ハンドルを保ったまま再取り込みする。
+    /// @note 指定ファイルを参照しているキャッシュ済みアセットを、ハンドルを保ったまま再取り込みする。
     /// @param absPath 監視イベントが返す絶対パス
     /// @return 差し替えた件数。0 ならこのファイルはどのストアにも載っていない
     ///
-    /// 取り込みに失敗した場合は既存の中身を残す。書き込み途中のファイルを掴んで
-    /// 動いていたアセットを壊さないため。
+    /// @note 取り込みに失敗した場合は既存の中身を残す。書き込み途中のファイルを掴んで
+    /// @note 動いていたアセットを壊さないため。
     static int ReloadPath(const std::string& absPath);
 
     /// @brief ホットリロードで「その場で中身を差し替えられる」拡張子の一覧。
@@ -211,7 +212,7 @@ public:
         const auto it = store.cache.find(key);
         if (it != store.cache.end()) {
             /// @note 非同期ロードが予約中のスロット。同期 API の契約 (戻った時点で読めている) を守るため、
-            ///       ここで読んで埋め、実行中の非同期結果は棄却させる。
+            /// @note ここで読んで埋め、実行中の非同期結果は棄却させる。
             if (store.IsPending(it->second) && store.importer) {
                 if (std::unique_ptr<T> filled = store.importer->Import(ResolvePath(key, S_base()), S_res())) {
                     store.Replace(it->second, std::move(filled));
@@ -251,7 +252,7 @@ public:
         return AssetStore<T>::Get().GetPtr(h);
     }
 
-    /// Load<T>() してそのまま実体を引く。ハンドルを持ち回らない呼び出し元向け。
+    /// @note Load<T>() してそのまま実体を引く。ハンドルを持ち回らない呼び出し元向け。
     /// @return ロードに失敗したら nullptr。
     /// @warning 返り値はストアの所有物。UnloadAll / Unload<T>() を跨いで保持しないこと。
     template<typename T>
@@ -310,6 +311,10 @@ private:
     /// @}
 };
 
+/// @note Material registration enters the same DLL-owned store as its explicit Load/Get/Unload specializations.
+template<>
+void AssetManager::RegisterImporter<MaterialAsset>(std::unique_ptr<IAssetImporter<MaterialAsset>> imp);
+
 template<>
 AssetHandle<Model> AssetManager::Load<Model>(const std::string& relativePath);
 template<>
@@ -328,6 +333,8 @@ template<>
 AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const std::string& relativePath);
 template<>
 AssetHandle<ClothAsset> AssetManager::Load<ClothAsset>(const std::string& relativePath);
+template<>
+AssetHandle<FiberPaintAsset> AssetManager::Load<FiberPaintAsset>(const std::string& relativePath);
 template<>
 AssetHandle<SequenceAsset> AssetManager::Load<SequenceAsset>(const std::string& relativePath);
 
@@ -350,6 +357,8 @@ PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<Physic
 template<>
 ClothAsset* AssetManager::Get<ClothAsset>(AssetHandle<ClothAsset> h);
 template<>
+FiberPaintAsset* AssetManager::Get<FiberPaintAsset>(AssetHandle<FiberPaintAsset> h);
+template<>
 SequenceAsset* AssetManager::Get<SequenceAsset>(AssetHandle<SequenceAsset> h);
 
 template<>
@@ -371,6 +380,8 @@ void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath)
 template<>
 void AssetManager::Unload<ClothAsset>(const std::string& relativePath);
 template<>
+void AssetManager::Unload<FiberPaintAsset>(const std::string& relativePath);
+template<>
 void AssetManager::Unload<SequenceAsset>(const std::string& relativePath);
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

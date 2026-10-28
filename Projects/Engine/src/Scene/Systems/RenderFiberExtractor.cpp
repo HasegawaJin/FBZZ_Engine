@@ -28,6 +28,8 @@
 #include <Engine/Renderer/DynamicBufferPool.hpp>
 #include <Engine/Scene/Fields/FlowFieldFrame.hpp>
 #include "RenderPasses/Geometry/FiberSurfaceSources.hpp"
+#include "RenderPasses/Geometry/FiberPlacementResources.hpp"
+#include "RenderPasses/Geometry/FiberAppearanceResources.hpp"
 #include "RenderPasses/Geometry/FlowFieldGpu.hpp"
 #include "RenderPasses/Debug/SelectionPasses.hpp"
 
@@ -53,6 +55,9 @@ struct FiberFinBuffers {
 struct FiberMaterialEntry {
     asset::FiberMaterialSettings m_settings;
     FiberMaskSlot m_mask;
+    FiberAppearanceResources m_appearance;
+    asset::MaterialAsset::AuthoringSnapshotPtr m_snapshot;
+    uint64_t m_shaderVersion = UINT64_MAX;
     uint64_t m_frame = (std::numeric_limits<uint64_t>::max)();
     bool m_valid = false;
 };
@@ -77,9 +82,11 @@ struct FiberFlowCache {
 struct FiberResources {
     renderer::ResourceManager* m_owner = nullptr;
     uint64_t m_resetVersion = 0;
+    uint64_t m_ownerIdentity = 0;
     uint64_t m_sweptFrame = (std::numeric_limits<uint64_t>::max)();
     std::map<std::array<uint32_t, 8>, FiberFinBuffers> m_fins;
     std::map<std::pair<const Scene*,std::string>,FiberTerrainCache> m_terrains;
+    std::map<std::pair<const Scene*,std::string>,FiberPlacementResources> m_placements;
     std::map<const Scene*,FiberContactCache> m_contactStates;
     std::unordered_map<std::string, FiberMaterialEntry> m_materials;
     /// @note FiberComponent::m_maskPath による個体ごとの差し替え。パスごとに 1 枠。
@@ -140,11 +147,20 @@ const FiberMaterialEntry& GetFiberMaterial(FiberResources& cache, renderer::Reso
     if (entry.m_frame == Time::frameCount) return entry;
     entry.m_frame = Time::frameCount;
     const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
-    const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(handle);
+    const auto authoringSnapshot = asset::ReadMaterialAuthoring(handle);
+    const auto* material = authoringSnapshot ? &authoringSnapshot->Data() : nullptr;
     entry.m_valid = material != nullptr;
     if (material) {
-        entry.m_settings = asset::ResolveFiberMaterial(material);
-        ResolveFiberMaskTexture(entry.m_settings, material, resources, entry.m_mask);
+        entry.m_settings = asset::ResolveFiberMaterial(*material);
+        const auto found = material->textures.find(asset::FIBER_MASK_TEXTURE_KEY);
+        const std::string maskPath = found != material->textures.end() ? found->second : std::string{};
+        ResolveFiberMaskTexture(entry.m_settings, maskPath, resources, entry.m_mask);
+        if (entry.m_snapshot != authoringSnapshot || entry.m_appearance.resolved
+            || entry.m_shaderVersion != resources.GetShaderVersion()) {
+            ResolveFiberAppearance(entry.m_appearance, *material, entry.m_settings, entry.m_mask.m_texture, resources);
+            entry.m_snapshot = authoringSnapshot;
+            entry.m_shaderVersion = resources.GetShaderVersion();
+        }
     }
     return entry;
 }
@@ -170,16 +186,31 @@ asset::FiberMaterialSettings ApplyFiberOverrides(const asset::FiberMaterialSetti
 FiberResources& GetFiberResources(renderer::ResourceManager& resources)
 {
     static FiberResources cache;
-    if (cache.m_owner != &resources || cache.m_resetVersion != resources.GetResetVersion()) {
+    if (cache.m_owner != &resources || cache.m_ownerIdentity != resources.GetInstanceId()
+        || cache.m_resetVersion != resources.GetResetVersion()) {
+        /// @note Old handles may already be reclaimed or belong to another manager; never release them through Active().
+        for (auto& [path, entry] : cache.m_materials) entry.m_appearance.material.paramsBuffer = {};
         cache = FiberResources{};
         cache.m_owner = &resources;
+        cache.m_ownerIdentity = resources.GetInstanceId();
         cache.m_resetVersion = resources.GetResetVersion();
     }
     /// @note 世代切れの掃除は 1 フレーム 1 回。影のカスケード・面ごとに繰り返さない。
     if (cache.m_sweptFrame == Time::frameCount) return cache;
     cache.m_sweptFrame = Time::frameCount;
+    for (auto it = cache.m_placements.begin(); it != cache.m_placements.end();) {
+        if (Time::frameCount > it->second.seen && Time::frameCount-it->second.seen > 120) {
+            ReleaseFiberPlacement(it->second,resources);
+            it = cache.m_placements.erase(it);
+        } else ++it;
+    }
     for (auto it = cache.m_materials.begin(); it != cache.m_materials.end();) {
-        if (Time::frameCount > it->second.m_frame && Time::frameCount - it->second.m_frame > 120) it = cache.m_materials.erase(it);
+        if (Time::frameCount > it->second.m_frame && Time::frameCount - it->second.m_frame > 120) {
+            auto& buffer = it->second.m_appearance.material.paramsBuffer;
+            if (buffer.IsValid()) resources.Release(buffer);
+            buffer = {};
+            it = cache.m_materials.erase(it);
+        }
         else ++it;
     }
     for (auto it=cache.m_terrains.begin();it!=cache.m_terrains.end();) {
@@ -318,8 +349,10 @@ void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const asset
     renderer::ResourceManager& resources, FiberMaskSlot& slot)
 {
     std::string path;
-    if (material) {
-        if (const auto it = material->textures.find(asset::FIBER_MASK_TEXTURE_KEY); it != material->textures.end())
+    const auto snapshot = material ? material->ReadAuthoring() : asset::MaterialAsset::AuthoringSnapshotPtr{};
+    const auto* values = snapshot ? &snapshot->Data() : nullptr;
+    if (values) {
+        if (const auto it = values->textures.find(asset::FIBER_MASK_TEXTURE_KEY); it != values->textures.end())
             path = it->second;
     }
     ResolveFiberMaskTexture(settings, path, resources, slot);
@@ -391,6 +424,7 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
     UpdateFiberContacts(contacts,ctx.scene);
 
     const auto& flows = UpdateFiberFlows(cache, ctx.scene, resources);
+    if (ctx.scene.GetEntities<FiberComponent>().empty()) return;
     /// @note 風・時刻はパス内で共通。物体・面ごとに検証し直さない。
     FiberFrameCB frameBase;
     frameBase.m_time = std::isfinite(Time::time) ? Time::time : 0.0f;
@@ -413,6 +447,8 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
         bool densityFromAlpha=false;  ///< @brief 地形の層指定時だけ true。葉の密度を頂点色 A で間引く
         /// @note コンピュートスキニング済みの頂点 (静的メッシュと同じ並び)。有効なら Shell は VS でスキニングし直さない。
         renderer::ResourceHandle<renderer::BufferTag> skinnedVertices;
+        std::shared_ptr<renderer::PreparedSkinningTicket> preparedSkinning;
+        uint32_t preparedSkinningWrite = UINT32_MAX;
         /// @note スキンの今の姿勢のワールド球 (毛丈込み)。得られないときは false で、カリングせずに描く。
         bool hasSkinBounds=false;
         WorldBounds skinBounds{};
@@ -446,6 +482,12 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
                 if (!mesh || (baseMaterial && !baseMaterial->SlotAt(i).visible)) continue;
                 Surface surface{mesh,smr->ResolveSlotVertexBuffer(i,mesh->vertexBuffer),skin,prev,smr->castShadows,valid,smr->lodDither};
                 surface.skinnedVertices=smr->ResolveSlotSkinnedVertexBuffer(i);
+                const uint32_t submesh = smr->SubmeshAt(i);
+                if (smr->preparedSkinning && smr->preparedSkinningFrame == Time::frameCount
+                    && submesh < smr->preparedSkinningRows.size()) {
+                    surface.preparedSkinning = smr->preparedSkinning;
+                    surface.preparedSkinningWrite = smr->preparedSkinningRows[submesh];
+                }
                 surface.hasSkinBounds=hasSkinBounds;
                 surface.skinBounds=skinBounds;
                 surfaces.push_back(surface);
@@ -466,6 +508,8 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             input.layer = static_cast<uint32_t>(go.layer);
             input.selected = IsSelectedForOutline(go, ctx.settings);
             input.skinned = mesh->isSkinned;
+            input.preparedSkinning = surface.preparedSkinning;
+            input.preparedSkinningWrite = surface.preparedSkinningWrite;
             input.cast = surface.cast;
             input.validPreviousSkin = surface.validPreviousSkin;
             input.object.world = go.transform.GetWorldMatrix();
@@ -481,10 +525,13 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             input.settings.m_shellCount = fiber.m_shellCount;
             input.settings.m_minShellCount = fiber.m_minShellCount;
             input.settings.m_shadowShellCount = fiber.m_shadowShellCount;
+            input.settings.m_bladeSegments = fiber.m_bladeSegments;
+            input.settings.m_shadowBladeSegments = fiber.m_shadowBladeSegments;
             input.settings.m_distanceLod = fiber.m_distanceLod;
             input.settings.m_lodNear = fiber.m_lodNear;
             input.settings.m_lodFar = fiber.m_lodFar;
             input.material = settings;
+            input.appearance = FiberAppearanceFor(materialEntry.m_appearance, fiber.m_mode);
             input.frame = frameBase;
             input.frame.m_flowChannels = static_cast<uint32_t>(fiber.m_flowChannels);
             input.frame.m_flowCount = CountFiberFlows(flows.m_current, input.frame.m_flowChannels, input.boundsCenter, input.boundsRadius);
@@ -500,10 +547,33 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
                 return renderer::FiberResolvedGeometry{buffers.m_vertices, buffers.m_indices, buffers.m_indexCount, buffers.m_blades, buffers.m_bladeCount};
             };
             if (fiber.m_mode == FiberRenderMode::FIN || fiber.m_mode == FiberRenderMode::HYBRID) input.fins = resolveShape(false);
+            if (fiber.m_mode == FiberRenderMode::BLADE && !input.skinned && fiber.m_chunkedPlacement
+                && go.GetComponent<MeshRenderer>()) {
+                auto& placement = cache.m_placements[{&ctx.scene,go.instanceId}];
+                UpdateFiberPlacementResources(placement,*mesh,fiber,input.object.world,resources);
+                if (placement.valid) {
+                    const float maxScale = std::max({std::abs(go.transform.worldScale.x),std::abs(go.transform.worldScale.y),std::abs(go.transform.worldScale.z)});
+                    for (const auto& [key,page] : placement.pages) {
+                        auto chunkInput = input;
+                        chunkInput.identity = page.identity;
+                        chunkInput.blades.m_blades = page.buffer; chunkInput.blades.m_bladeCount = page.count;
+                        const auto center = input.object.world*math::Vector4{page.center.x,page.center.y,page.center.z,1};
+                        chunkInput.hasBounds = true;
+                        chunkInput.boundsCenter = {center.x,center.y,center.z};
+                        chunkInput.lodCenter = chunkInput.boundsCenter;
+                        chunkInput.boundsRadius = page.radius*maxScale+fiberPadding+fiber.m_bladeWidth;
+                        chunkInput.frame.m_flowCount = CountFiberFlows(flows.m_current,chunkInput.frame.m_flowChannels,chunkInput.boundsCenter,chunkInput.boundsRadius);
+                        chunkInput.frame.m_flowPreviousCount = CountFiberFlows(flows.m_previous,chunkInput.frame.m_flowChannels,chunkInput.boundsCenter,chunkInput.boundsRadius);
+                        output.fibers.push_back(std::move(chunkInput));
+                    }
+                }
+                continue;
+            }
             if (fiber.m_mode == FiberRenderMode::BLADE && !input.skinned) input.blades = resolveShape(true);
             output.fibers.push_back(std::move(input));
         }
     }
+    surfaces.clear();
     ExtractRayFiberSources(ctx.scene, resources, output, ctx.experimentalRayTracingEnabled);
 }
 }

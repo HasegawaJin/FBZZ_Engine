@@ -11,7 +11,9 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -35,7 +37,8 @@ protected:
         EngineFixture::TearDown();
     }
 
-    std::filesystem::path AssetsRoot() const { return m_temp.File("Assets"); }
+    std::filesystem::path AssetsRoot() const { return m_temp.File("Project/Assets"); }
+    std::filesystem::path SharedRoot() const { return m_temp.File("EngineAssets"); }
 
     /// Assets 配下へファイルを作り、その絶対パス (正規化済み) を返す。
     std::string CreateAsset(const std::string& relativePath)
@@ -48,7 +51,31 @@ protected:
         return full.generic_string();
     }
 
-    void InitDatabase() { asset::AssetDatabase::Init(AssetsRoot().generic_string()); }
+    /// @brief Writes a shared asset and its immutable fixture GUID metadata.
+    std::string CreateSharedAsset(const std::string& relativePath,
+                                  const std::string& guid,
+                                  bool writeMeta = true)
+    {
+        const std::filesystem::path full = SharedRoot() / "Assets" / relativePath;
+        std::filesystem::create_directories(full.parent_path());
+        std::ofstream out(full, std::ios::binary);
+        out << "shared content";
+        out.close();
+        if (writeMeta) {
+            std::ofstream meta(full.string() + ".meta", std::ios::binary);
+            meta << "[meta]\nguid = '" << guid << "'\n";
+        }
+        return util::FileSystem::PathToUtf8(full);
+    }
+
+    /// @brief Initializes a project index with an optional read-only Engine root.
+    void InitDatabase(const std::filesystem::path& sharedRoot = {})
+    {
+        asset::AssetDatabase::Init(util::FileSystem::PathToUtf8(AssetsRoot()),
+                                   sharedRoot.empty()
+                                       ? std::string{}
+                                       : util::FileSystem::PathToUtf8(sharedRoot));
+    }
 
 private:
     testkit::TempDir m_temp{"guidref"};
@@ -121,6 +148,126 @@ TEST_F(GuidRefCodecTest, DecodesBackToTheRuntimeRelativePath)
     const std::string decoded = asset::DecodeGuidRef(asset::EncodeGuidRef(texture));
 
     EXPECT_EQ(decoded, "Assets/Textures/Player.png");
+}
+
+TEST_F(GuidRefCodecTest, RoundTripsSharedEngineAssetsByGuidWithoutCopyingThemIntoTheProject)
+{
+    const std::string guid = "1234567890abcdef1234567890abcdef";
+    const std::string shared = CreateSharedAsset("Materials/Water/Ocean.mat", guid);
+    InitDatabase(SharedRoot());
+
+    const std::string encoded = asset::EncodeGuidRef(shared);
+
+    EXPECT_EQ(encoded, "guid:" + guid);
+    EXPECT_TRUE(std::filesystem::exists(shared));
+    EXPECT_FALSE(std::filesystem::exists(AssetsRoot() / "Materials" / "Water" / "Ocean.mat"));
+    EXPECT_EQ(asset::AssetDatabase::PathFromGuid(guid), shared);
+    EXPECT_EQ(asset::AssetManager::ResolveAssetPath(encoded), shared);
+    EXPECT_EQ(asset::DecodeGuidRef(encoded), shared);
+}
+
+TEST_F(GuidRefCodecTest, SharedGuidDecodePreservesSubassetSuffixAndSurvivesAProjectClone)
+{
+    const std::string guid = "abcdefabcdefabcdefabcdefabcdefab";
+    const std::string shared = CreateSharedAsset("Models/Water.fbx", guid);
+    InitDatabase(SharedRoot());
+
+    const std::string encoded = asset::EncodeGuidRef(shared + ":2");
+    EXPECT_EQ(encoded, "guid:" + guid + ":2");
+    EXPECT_EQ(asset::DecodeGuidRef(encoded), shared + ":2");
+
+    const std::filesystem::path cloneAssets = AssetsRoot().parent_path() / "Clone" / "Assets";
+    std::filesystem::create_directories(cloneAssets);
+    asset::AssetDatabase::Shutdown();
+    asset::AssetDatabase::Init(util::FileSystem::PathToUtf8(cloneAssets),
+                               util::FileSystem::PathToUtf8(SharedRoot()));
+
+    EXPECT_EQ(asset::DecodeGuidRef(encoded), shared + ":2");
+}
+
+TEST_F(GuidRefCodecTest, ProjectCopyWinsOverSharedAssetWithTheSameGuid)
+{
+    const std::string guid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const std::string shared = CreateSharedAsset("Materials/Water/Ocean.mat", guid);
+    const std::string project = CreateAsset("Materials/Water/Ocean.mat");
+    std::ofstream meta(project + ".meta", std::ios::binary);
+    meta << "[meta]\nguid = '" << guid << "'\n";
+    meta.close();
+    InitDatabase(SharedRoot());
+
+    EXPECT_EQ(asset::AssetDatabase::PathFromGuid(guid), project);
+    EXPECT_EQ(asset::AssetDatabase::TryGetGuidFromPath(shared), guid);
+    EXPECT_EQ(asset::AssetDatabase::GuidConflictCount(), 0u);
+    EXPECT_EQ(asset::DecodeGuidRef("guid:" + guid + "|Assets/Materials/Water/Ocean.mat"),
+              "Assets/Materials/Water/Ocean.mat");
+}
+
+TEST_F(GuidRefCodecTest, DifferentProjectAndSharedAssetsWithOneGuidAreReported)
+{
+    const std::string guid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const std::string shared = CreateSharedAsset("Materials/Water/Ocean.mat", guid);
+    const std::string project = CreateAsset("Materials/Local/Other.mat");
+    std::ofstream meta(project + ".meta", std::ios::binary);
+    meta << "[meta]\nguid = '" << guid << "'\n";
+    meta.close();
+    InitDatabase(SharedRoot());
+
+    EXPECT_EQ(asset::AssetDatabase::GuidConflictCount(), 1u);
+    EXPECT_EQ(asset::AssetDatabase::PathFromGuid(guid), project);
+    EXPECT_EQ(asset::AssetDatabase::TryGetGuidFromPath(shared), guid);
+}
+
+TEST_F(GuidRefCodecTest, SharedAssetWithoutMatchingMetadataRemainsUnresolvedAndUnchanged)
+{
+    const std::string guid = "fedcba0987654321fedcba0987654321";
+    const std::string shared = CreateSharedAsset("Materials/Water/Missing.mat", guid,
+                                                 false);
+    InitDatabase(SharedRoot());
+    const std::string ref = "guid:" + guid + "|Assets/Materials/Water/Missing.mat";
+
+    EXPECT_EQ(asset::AssetDatabase::PathFromGuid(guid), "");
+    EXPECT_EQ(asset::DecodeGuidRef(ref), ref);
+    EXPECT_EQ(asset::AssetManager::ResolveAssetPath(ref), "");
+    EXPECT_EQ(asset::AssetDatabase::GuidFromPath(shared), "");
+    EXPECT_FALSE(std::filesystem::exists(shared + ".meta"));
+}
+
+TEST_F(GuidRefCodecTest, DifferentSharedAssetsWithOneGuidRemainAmbiguous)
+{
+    const std::string guid = "0123456789abcdef0123456789abcdef";
+    const std::string first = CreateSharedAsset("Materials/Water/First.mat", guid);
+    const std::string second = CreateSharedAsset("Materials/Water/Second.mat", guid);
+    InitDatabase(SharedRoot());
+
+    EXPECT_EQ(asset::AssetDatabase::PathFromGuid(guid), "");
+    EXPECT_EQ(asset::AssetDatabase::TryGetGuidFromPath(first), "");
+    EXPECT_EQ(asset::AssetDatabase::TryGetGuidFromPath(second), "");
+    EXPECT_EQ(asset::EncodeGuidRef(first), first);
+    EXPECT_EQ(asset::AssetManager::ResolveAssetPath("guid:" + guid), "");
+}
+
+TEST_F(GuidRefCodecTest, ReassigningSharedGuidLeavesMetadataAndBakedContainerUnchanged)
+{
+    const std::string guid = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    const std::string shared = CreateSharedAsset("Models/Immutable.fbx", guid);
+    const auto baked = AssetsRoot().parent_path() / "Library" / "Baked" / guid;
+    std::filesystem::create_directories(baked);
+    {
+        std::ofstream payload(baked / "payload.fzasset", std::ios::binary);
+        payload << "immutable baked payload";
+    }
+    InitDatabase(SharedRoot());
+    std::string replacement = "untouched";
+
+    EXPECT_FALSE(asset::AssetDatabase::ReassignGuid(shared, replacement));
+    const auto alias = AssetsRoot() / ".." / ".." / "EngineAssets" / "Assets" / "Models" / "Immutable.fbx";
+    EXPECT_FALSE(asset::AssetDatabase::ReassignGuid(util::FileSystem::PathToUtf8(alias), replacement));
+    EXPECT_EQ(replacement, "untouched");
+    EXPECT_EQ(asset::EncodeGuidRef(shared), "guid:" + guid);
+    EXPECT_TRUE(std::filesystem::exists(baked / "payload.fzasset"));
+    std::string metadata;
+    ASSERT_TRUE(util::FileSystem::ReadText(shared + ".meta", metadata));
+    EXPECT_EQ(metadata, "[meta]\nguid = '" + guid + "'\n");
 }
 
 TEST_F(GuidRefCodecTest, DecodingLeavesPlainPathsAlone)

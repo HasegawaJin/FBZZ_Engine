@@ -260,7 +260,8 @@ public:
             return result;
         }
         const std::string textureType(AssetStreamTypeName<TextureAsset>());
-        for (const auto& [slot, reference] : decoded->asset->textures) {
+        const auto materialSnapshot = decoded->asset->ReadAuthoring();
+        for (const auto& [slot, reference] : materialSnapshot->Data().textures) {
             if (reference.empty()) continue;
             /// @note Sprite 参照は親テクスチャを要求する。接尾辞込みだと Sprite の数だけ同じ画像を読む。
             std::string texturePath;

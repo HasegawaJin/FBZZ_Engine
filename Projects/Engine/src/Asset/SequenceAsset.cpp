@@ -11,9 +11,11 @@
 #include <toml++/toml.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <span>
 #include <sstream>
+#include <type_traits>
 #include <utility>
 
 namespace fbzz::asset {
@@ -127,6 +129,12 @@ void ReadKeys(const toml::table& table, std::string_view name,
         Key key;
         key.time = ReadDouble(*keyTable, "time", 0.0);
         readValue(*keyTable, key);
+        /// @note Unordered times invalidate stable_sort; malformed keys must not reach sampling.
+        if (!std::isfinite(key.time)) continue;
+        if constexpr (std::is_same_v<Key, FloatKey>) {
+            if (!std::isfinite(key.value) || !std::isfinite(key.inTangent)
+                || !std::isfinite(key.outTangent)) continue;
+        }
         outKeys.push_back(std::move(key));
     }
     std::stable_sort(outKeys.begin(), outKeys.end(),
@@ -567,12 +575,19 @@ bool LoadSequenceAsset(const std::string& path, SequenceAsset& outAsset)
             if (const toml::table* trackTable = element.as_table())
                 loaded.tracks.push_back(ReadTrack(*trackTable));
 
+    if (!std::isfinite(loaded.duration)) return false;
     outAsset = std::move(loaded);
     return true;
 }
 
 bool SaveSequenceAsset(const std::string& path, const SequenceAsset& asset)
 {
+    /// @note Reject invalid authored floats before opening the destination, preserving its last good contents.
+    if (!std::isfinite(asset.duration)) return false;
+    for (const auto& track : asset.tracks)
+        for (const auto& key : track.property.floatKeys)
+            if (!std::isfinite(key.time) || !std::isfinite(key.value)
+                || !std::isfinite(key.inTangent) || !std::isfinite(key.outTangent)) return false;
     toml::table root;
     root.insert("version", kSequenceFormatVersion);
 

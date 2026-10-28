@@ -15,6 +15,27 @@ namespace fbzz::asset {
 namespace {
 
 template<typename T>
+const std::vector<T>* FindShadingCompatibleValues(
+    const std::unordered_map<std::string, std::vector<T>>& values, std::string_view name)
+{
+    if (name == "grassShading" || name == "planarShading") {
+        if (const auto it = values.find("planarShading"); it != values.end()) return &it->second;
+        name = "grassShading";
+    }
+    const auto it = values.find(std::string(name));
+    return it == values.end() ? nullptr : &it->second;
+}
+
+/// @note 同じ定数バッファ配置を持つ旧 Fiber シェーダーにも新キーを束縛する。
+const renderer::ShaderVarDesc* FindShadingCompatibleVariable(
+    const renderer::ShaderDescriptor& descriptor, std::string_view name)
+{
+    const auto canonical = name == "grassShading" ? std::string_view{"planarShading"} : name;
+    if (const auto* variable = descriptor.FindVar(canonical)) return variable;
+    return canonical == "planarShading" ? descriptor.FindVar("grassShading") : nullptr;
+}
+
+template<typename T>
 bool ValidateValues(const renderer::ShaderVarDesc& variable, std::span<const T> values)
 {
     if (!variable.IsWritable() || values.size() != variable.ValueCount()) return false;
@@ -97,15 +118,27 @@ bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable, std::span<c
     return ValidateValues(variable, values);
 }
 
+bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable, std::span<const float> values)
+{
+    return ValidateValues(variable, values);
+}
+
+bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable, std::span<const int64_t> values)
+{
+    return ValidateValues(variable, values);
+}
+
 bool WriteMaterialValues(const renderer::ShaderVarDesc& variable, std::span<const double> values,
                          std::span<uint8_t> destination)
 {
     return WriteValues(variable, values, destination);
 }
 
-const std::vector<float>* FindMaterialParam(const MaterialAsset& asset,
+const std::vector<float>* FindMaterialParam(const MaterialAssetAuthoring& asset,
                                             std::string_view shaderVarName)
 {
+    if (shaderVarName == "grassShading" || shaderVarName == "planarShading")
+        return FindShadingCompatibleValues(asset.params, shaderVarName);
     auto it = asset.params.find(std::string(shaderVarName));
     if (it != asset.params.end()) return &it->second;
 
@@ -187,13 +220,13 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc,
     setFloat3("emissiveColor", white3);
 }
 
-void ApplyMaterialAssetParams(const MaterialAsset& asset,
+void ApplyMaterialAssetParams(const MaterialAssetAuthoring& asset,
                               const renderer::ShaderDescriptor& desc,
                               std::vector<uint8_t>& paramData)
 {
     for (const auto& v : desc.vars) {
-        if (const auto it = asset.integerParams.find(v.name); it != asset.integerParams.end()) {
-            ApplyValues(v, it->second, paramData);
+        if (const auto* values = FindShadingCompatibleValues(asset.integerParams, v.name)) {
+            ApplyValues(v, *values, paramData);
             continue;
         }
         const auto* values = FindMaterialParam(asset, v.name);
@@ -209,7 +242,8 @@ void ApplyMaterialParamOverrides(
 {
     for (const auto& [name, values] : overrides) {
         if (values.empty()) continue;
-        const auto* v = desc.FindVar(name);
+        if (name == "grassShading" && overrides.contains("planarShading")) continue;
+        const auto* v = FindShadingCompatibleVariable(desc, name);
         if (v) ApplyValues(*v, values, paramData);
     }
 }
@@ -218,12 +252,14 @@ void ApplyMaterialIntegerOverrides(
     const std::unordered_map<std::string, std::vector<int64_t>>& overrides,
     const renderer::ShaderDescriptor& desc, std::vector<uint8_t>& paramData)
 {
-    for (const auto& [name, values] : overrides)
-        if (const auto* variable = desc.FindVar(name)) ApplyValues(*variable, values, paramData);
+    for (const auto& [name, values] : overrides) {
+        if (name == "grassShading" && overrides.contains("planarShading")) continue;
+        if (const auto* variable = FindShadingCompatibleVariable(desc, name)) ApplyValues(*variable, values, paramData);
+    }
 }
 
 std::array<std::string, kMaterialTextureSlotNames.size()>
-ResolveMaterialTexturePaths(const MaterialAsset& asset)
+ResolveMaterialTexturePaths(const MaterialAssetAuthoring& asset)
 {
     std::array<std::string, kMaterialTextureSlotNames.size()> paths{};
     for (size_t i = 0; i < kMaterialTextureSlotNames.size(); ++i) {
@@ -233,4 +269,23 @@ ResolveMaterialTexturePaths(const MaterialAsset& asset)
     return paths;
 }
 
-} // namespace fbzz::asset
+/// @pre Returned values are borrowed until the next authoring edit/reload; callback-spanning users retain ReadAuthoring and use the value overload.
+const std::vector<float>* FindMaterialParam(const MaterialAsset& asset, std::string_view name)
+{
+    return FindMaterialParam(asset.Authoring(), name);
+}
+
+void ApplyMaterialAssetParams(const MaterialAsset& asset, const renderer::ShaderDescriptor& descriptor,
+    std::vector<uint8_t>& destination)
+{
+    const auto snapshot = asset.ReadAuthoring();
+    if (snapshot) ApplyMaterialAssetParams(snapshot->Data(), descriptor, destination);
+}
+
+std::array<std::string, kMaterialTextureSlotNames.size()> ResolveMaterialTexturePaths(const MaterialAsset& asset)
+{
+    const auto snapshot = asset.ReadAuthoring();
+    return snapshot ? ResolveMaterialTexturePaths(snapshot->Data()) : std::array<std::string, kMaterialTextureSlotNames.size()>{};
+}
+
+} /// @note namespace fbzz::asset

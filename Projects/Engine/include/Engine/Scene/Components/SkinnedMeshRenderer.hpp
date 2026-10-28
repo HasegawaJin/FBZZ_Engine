@@ -8,6 +8,7 @@
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Matrix4.hpp>
+#include <Graphics/Effects/PreparedSkinning.hpp>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -76,17 +77,16 @@ struct SkinnedMeshRenderer {
 
     /// @name コンピュートスキニングの出力
     /// @{
-    /// @brief submesh ごとの「変形済み頂点」。レイアウトは静的メッシュの renderer::Vertex と同一で、
-    ///        シャドウや GBuffer からは普通の静的メッシュとして読める。
-    /// @note VS スキニングだとシャドウと画面で同じ変形を描くたび計算し直す。1 回だけ計算して共有する置き場。
+    /// @brief 従来の全 dispatch 経路が再利用する mutable 出力。配列自体は現在姿勢の公開境界ではない。
+    /// @note 現在の可用性と変形入力は ResolveSkinnedVertexBuffer / ResolveSlotSkinnedVertexBuffer で解決する。
+    /// @note 遅延 ticket は専用世代を持ち、この配列へ別所有の lease を混ぜない。
     std::vector<renderer::ResourceHandle<renderer::BufferTag>> skinnedVertexBuffers;
     /// @brief skinnedVertexBuffers を確保したときのモデル。model が差し替わったら作り直す。
     /// @note バッファは submesh の頂点数に合わせて確保するため、古いバッファを使い回すと
     ///       頂点数が足りず描画が途中で切れる / 範囲外へ書き込む。
     const asset::Model* skinnedBufferModel = nullptr;
     /// @brief このフレームで GPU スキニングが成立したか。
-    /// @note false のときは従来の VS スキニング経路を使う (Animator 未評価・モーフ有効・
-    ///       バックエンド未対応などで成立しないことがある)。
+    /// @note false は未投入 ticket も含む。既知の描画 consumer は RenderScene の元入力 ticket を必要時に完了する。
     bool gpuSkinnedThisFrame = false;
     /// @brief 最後にポーズを GPU へ展開したエンジンフレーム。
     /// @note Scene View と Game View は同じ Time::frameCount 内で別々に RenderSystem を実行するため、
@@ -97,6 +97,12 @@ struct SkinnedMeshRenderer {
     uint32_t gpuSkinningDispatchCount = 0;
     /// @note 入力の完全比較で同じポーズの再 Dispatch を省く。保存せず、model / resource 世代が変われば棄却する。
     std::vector<uint32_t> gpuSkinningContent;
+    /// @note 未使用の元姿勢は GPU 未投入のまま所有する。mutable 出力とは別世代で古い snapshot も保持できる。
+    std::shared_ptr<renderer::PreparedSkinningTicket> preparedSkinning;
+    /// @note model->meshes 添字から ticket の行への対応。未担当 submesh は UINT32_MAX。
+    std::vector<uint32_t> preparedSkinningRows;
+    /// @note 元入力の一致を確認したエンジンフレーム。ticket の RHI frame や成功投入 frame とは別である。
+    uint64_t preparedSkinningFrame = (std::numeric_limits<uint64_t>::max)();
     /// @}
 
     /// @note VelocityPass だけが読み書きする。シーンへは保存しない。ボーンの動きは
@@ -112,6 +118,12 @@ struct SkinnedMeshRenderer {
     ///       こちらを VS スキニング用シェーダーへ渡すと二重に変形がかかって崩れる。
     renderer::ResourceHandle<renderer::BufferTag> ResolveSkinnedVertexBuffer(size_t index) const
     {
+        if (gpuSkinnedThisFrame && preparedSkinning && index < preparedSkinningRows.size()) {
+            const uint32_t row = preparedSkinningRows[index];
+            const auto writes = preparedSkinning->Writes();
+            if (row < writes.size() && writes[row].recorded && preparedSkinning->IsWriteCurrent(row)) return writes[row].output;
+            return {};
+        }
         if (!gpuSkinnedThisFrame || index >= skinnedVertexBuffers.size()) return {};
         return skinnedVertexBuffers[index];
     }
@@ -157,4 +169,4 @@ struct SkinnedMeshRenderer {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

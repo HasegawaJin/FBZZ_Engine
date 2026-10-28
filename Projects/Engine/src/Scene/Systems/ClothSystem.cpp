@@ -9,7 +9,9 @@
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Components/ClothComponent.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -24,6 +26,7 @@
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
 
 namespace fbzz::scene {
 namespace {
@@ -162,23 +165,60 @@ bool MotionConstraints(Scene& scene, const ClothComponent& cloth, std::vector<ph
     const bool reuse = state.appliedAttachments == cloth.attachments
         && state.attachmentCenters.size() == cloth.attachments.size();
     std::vector<unsigned char> used(state.restLocal.size(), 0);
+    std::vector<ObjectReference> targetReferences;
+    std::vector<ControlPointBinding> targetBindings;
+    std::unordered_set<std::uint32_t> stableBindingIds;
+    targetReferences.reserve(cloth.attachments.size());
+    targetBindings.reserve(cloth.attachments.size());
     for (size_t i = 0; i < cloth.attachments.size(); ++i) {
         const auto& attachment = cloth.attachments[i];
         if (attachment.particle < 0 || static_cast<size_t>(attachment.particle) >= used.size()
             || !std::isfinite(attachment.maxDistance) || attachment.maxDistance < 0.0f) return false;
+        if (attachment.bindingId != 0 && !stableBindingIds.insert(attachment.bindingId).second) return false;
         const uint32_t particle = static_cast<uint32_t>(attachment.particle);
         if (used[particle]) return false;
         used[particle] = 1;
-        const auto* target = scene.GetGameObject(attachment.target);
-        if (!target || !target->activeInHierarchy()) return false;
-        const auto& t = target->transform;
-        const auto& q = t.worldRotation;
-        const float values[]{q.x, q.y, q.z, q.w, t.worldScale.x, t.worldScale.y, t.worldScale.z};
+        std::uint64_t topologySignature = 0;
+        std::uint32_t topologyParticleCount = 0;
+        if (!ResolveClothTopologyForParticle(source, static_cast<std::uint32_t>(cloth.segments),
+                attachment.particle, topologySignature, topologyParticleCount)
+            || topologyParticleCount != state.restLocal.size()
+            || (attachment.topologySignature != 0
+                && attachment.topologySignature != topologySignature)) return false;
+        ObjectReference reference = attachment.targetReference;
+        if (reference.guid.empty() && attachment.target.IsValid()) {
+            /// @note Legacy Cloth attachments store only EntityID; create the canonical temporary reference without mutating authored data.
+            if (const GameObject* legacyTarget = scene.GetGameObject(attachment.target)) {
+                reference.guid = legacyTarget->instanceId;
+                reference.id = legacyTarget->GetID();
+                reference.sceneGeneration = scene.GetRenderSceneGeneration();
+            }
+        }
+        targetReferences.push_back(std::move(reference));
+        targetBindings.push_back({static_cast<std::uint32_t>(i + 1), &targetReferences.back()});
+    }
+    std::vector<ResolvedControlPoint> resolvedTargets;
+    ControlPointResolveStatus resolveStatus = ControlPointResolveStatus::SUCCESS;
+    std::uint64_t resolveSignature = 0;
+    if (!ResolveControlPointBindings(scene, state.owner, targetBindings, false,
+            resolvedTargets, resolveStatus, resolveSignature)) return false;
+
+    for (size_t i = 0; i < cloth.attachments.size(); ++i) {
+        const auto& attachment = cloth.attachments[i];
+        const ResolvedControlPoint& target = resolvedTargets[i];
+        const auto& q = target.worldRotation;
+        const float values[]{q.x, q.y, q.z, q.w,
+            target.worldScale.x, target.worldScale.y, target.worldScale.z};
         for (float value : values) if (!std::isfinite(value)) return false;
         if (std::abs(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w - 1.0f) > 0.01f
-            || t.worldScale.x <= 0.0001f || t.worldScale.y <= 0.0001f || t.worldScale.z <= 0.0001f) return false;
-        const Vector3 center = ToWorld(t, attachment.localPosition);
+            || target.worldScale.x <= 0.0001f || target.worldScale.y <= 0.0001f
+            || target.worldScale.z <= 0.0001f) return false;
+        const Vector3 scaledOffset{attachment.localPosition.x * target.worldScale.x,
+            attachment.localPosition.y * target.worldScale.y,
+            attachment.localPosition.z * target.worldScale.z};
+        const Vector3 center = target.worldPosition + target.worldRotation * scaledOffset;
         if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)) return false;
+        const uint32_t particle = static_cast<uint32_t>(attachment.particle);
         const Vector3 previous = reuse ? state.attachmentCenters[i]
             : (attachment.maxDistance == 0.0f ? state.solver.Positions()[particle] : center);
         result.push_back({particle, previous, center, attachment.maxDistance});
@@ -364,7 +404,7 @@ bool Upload(ClothComponent& cloth, renderer::ResourceManager& resources)
 
 ComponentAccess ClothSystem::GetAccess() const
 {
-    return ComponentAccess{}.Reads<Transform, SphereColliderComponent, CapsuleColliderComponent, SkinnedMeshRenderer, FlowField>().Writes<ClothComponent, RigidBodyComponent>();
+    return ComponentAccess{}.Reads<Transform, TargetPointComponent, SphereColliderComponent, CapsuleColliderComponent, SkinnedMeshRenderer, FlowField>().Writes<ClothComponent, RigidBodyComponent>();
 }
 OrderingHints ClothSystem::GetOrder() const { return OrderingHints{}.After<PhysicsSystem>(); }
 void ClothSystem::Update(SystemContext& ctx)
@@ -477,7 +517,7 @@ void ClothRenderSystem::Update(SystemContext& ctx)
         if (!cloth->materialPath.empty() && state.appliedMaterial != cloth->materialPath) {
             auto* material = go->GetComponent<MaterialComponent>();
             if (!material) material = &go->AddComponent<MaterialComponent>();
-            material->materialPath = cloth->materialPath;
+            material->SetMaterialPath(cloth->materialPath);
             state.appliedMaterial = cloth->materialPath;
         }
     }

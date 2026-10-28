@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #include <TestKit/Fixture.hpp>
+#include <TestKit/Approx.hpp>
 #include <Engine/AI/CrowdSimulation.hpp>
 #include <gtest/gtest.h>
 #include <algorithm>
@@ -152,5 +153,126 @@ TEST_F(CrowdSimulationTest, InactiveSlotsRetainStateAndEmitNoRepeatedEvents) {
     Populate(1); input[0].flags = 0; input[0].events = 63; input[0].position = {1, 2, 3};
     ASSERT_TRUE(Step()); EXPECT_EQ(output[0].events, 0U); EXPECT_FLOAT_EQ(output[0].position.x, 1);
     EXPECT_EQ(stats.decisions, 0U);
+}
+TEST_F(CrowdSimulationTest, SpatialThreatsRetainInputOrderStrengthTiesAndIntermediateMemory) {
+    Populate(1); settings.deltaSeconds = 0; settings.maximumDecisions = 0;
+    std::vector<ai::CrowdThreat> threats(64);
+    for (auto& threat : threats) threat.position = {90, 90, 90};
+    threats[3] = {{-1, 0, 0}, 1, 0.4f, 20, UINT32_MAX};
+    threats[42] = {{1, 0, 0}, 1, 0.8f, 1, UINT32_MAX};
+    threats[63] = {{0, 0, 1}, 1, 0.8f, 100, UINT32_MAX};
+    threats[33] = {{0, 0, 0}, 1, 1, 100, 7};
+
+    ASSERT_TRUE(Step(threats));
+
+    EXPECT_VEC3_NEAR(output[0].dangerPosition, (math::Vector3{1, 0, 0}), 1e-6f);
+    EXPECT_FLOAT_EQ(output[0].fear, 0.8f); EXPECT_FLOAT_EQ(output[0].threatIn, 20);
+    EXPECT_EQ(stats.threatReactions, 1U); EXPECT_EQ(stats.decisions, 0U);
+}
+TEST_F(CrowdSimulationTest, SpatialThreatsUseExactSphereBoundaryAndZeroRadius) {
+    Populate(1); settings.deltaSeconds = 0; settings.maximumDecisions = 0;
+    std::vector<ai::CrowdThreat> threats(16);
+    for (auto& threat : threats) threat.position = {90, 90, 90};
+    threats[0] = {{1, 1, 1}, 1.5f, 1, 1, UINT32_MAX};
+    threats[15] = {{0, -2, 0}, 2, 0.5f, 1, UINT32_MAX};
+
+    ASSERT_TRUE(Step(threats));
+    EXPECT_FLOAT_EQ(output[0].fear, 0.5f);
+    EXPECT_VEC3_NEAR(output[0].dangerPosition, (math::Vector3{0, -2, 0}), 1e-6f);
+    threats[15].position = {}; threats[15].radius = 0;
+    ASSERT_TRUE(Step(threats)); EXPECT_FLOAT_EQ(output[0].fear, 0.5f);
+}
+TEST_F(CrowdSimulationTest, SpatialBoundsRetainRoundedLargeRadiusThreats) {
+    Populate(1); settings.deltaSeconds = 0; settings.maximumDecisions = 0;
+    input[0].position = {9.98f, 0, 0};
+    std::vector<ai::CrowdThreat> threats(16);
+    for (auto& threat : threats) threat.position = {90, 90, 90};
+    threats[15] = {{1000000, 0, 0}, 999990, 1, 1, UINT32_MAX};
+
+    ASSERT_TRUE(Step(threats));
+
+    EXPECT_FLOAT_EQ(output[0].fear, 1); EXPECT_EQ(stats.threatReactions, 1U);
+}
+TEST_F(CrowdSimulationTest, SpatialAvoidanceUsesLookaheadPaddingAndStrictSphereDistance) {
+    Populate(1); settings.deltaSeconds = 0.1f; settings.maximumDecisions = 0;
+    settings.avoidanceLookahead = 4; input[0].velocity = {0, 0, 1}; input[0].intent = ai::CrowdIntent::EXTERNAL;
+    profiles[0].bodyRadius = 0.25f; profiles[0].separationRadius = 0.5f;
+    profiles[0].cruiseSpeed = 10; profiles[0].maximumAcceleration = 1000; profiles[0].maximumTurnRate = 1000;
+    std::vector<ai::CrowdObstacle> obstacles(16);
+    for (auto& obstacle : obstacles) obstacle.position = {90, 90, 90};
+    obstacles[0] = {{0.9f, 0.9f, 4.9f}, 0.25f}; obstacles[12] = {{0.875f, 0, 4}, 0.25f};
+
+    ASSERT_TRUE(Step({}, obstacles));
+    EXPECT_VEC3_NEAR(output[0].velocity, (math::Vector3{-10, 0, 0}), 1e-5f);
+    EXPECT_VEC3_NEAR(output[0].position, (math::Vector3{-1, 0, 0}), 1e-5f);
+    obstacles[12].position.x = 1;
+    ASSERT_TRUE(Step({}, obstacles));
+    EXPECT_VEC3_NEAR(output[0].velocity, (math::Vector3{}), 1e-6f);
+}
+TEST_F(CrowdSimulationTest, ProjectionRequeriesLaterSpheresWithoutRevisitingEarlierIndices) {
+    Populate(1); settings.deltaSeconds = 0; settings.maximumDecisions = 0;
+    profiles[0].bodyRadius = 0.25f; input[0].velocity = {1, 0, 0};
+    std::vector<ai::CrowdObstacle> obstacles(16);
+    for (auto& obstacle : obstacles) obstacle.position = {90, 90, 90};
+    obstacles[0] = {{0, 0, 0}, 1}; obstacles[1] = {{1.75f, 0, 0}, 1};
+
+    ASSERT_TRUE(Step({}, obstacles));
+
+    EXPECT_VEC3_NEAR(output[0].position, (math::Vector3{0.5f, 0, 0}), 1e-6f);
+    EXPECT_EQ(stats.constraints, 1U);
+}
+TEST_F(CrowdSimulationTest, LongProjectionCascadeRetainsTheSingleForwardPass) {
+    Populate(1); settings.deltaSeconds = 0; settings.maximumDecisions = 0;
+    profiles[0].bodyRadius = 0.25f; input[0].velocity = {1, 0, 0};
+    std::vector<ai::CrowdObstacle> obstacles(32);
+    for (auto& obstacle : obstacles) obstacle.position = {90, 90, 90};
+    const float centers[] = {0, 1.5f, 0.5f, 2, 1, 2.5f};
+    for (std::size_t index = 0; index < 6; ++index) obstacles[index] = {{centers[index], 0, 0}, 0.75f};
+
+    ASSERT_TRUE(Step({}, obstacles));
+
+    EXPECT_VEC3_NEAR(output[0].position, (math::Vector3{1.5f, 0, 0}), 1e-6f);
+}
+TEST_F(CrowdSimulationTest, MaximumDenseInputsPreserveExactProjectionAndThreatReaction) {
+    Populate(1); settings.deltaSeconds = 0; settings.maximumDecisions = 0;
+    profiles[0].bodyRadius = 0.25f; input[0].velocity = {1, 0, 0};
+    std::vector<ai::CrowdThreat> threats(64);
+    std::vector<ai::CrowdObstacle> obstacles(256);
+
+    ASSERT_TRUE(Step(threats, obstacles));
+
+    EXPECT_VEC3_NEAR(output[0].position, (math::Vector3{1.25f, 0, 0}), 1e-6f);
+    EXPECT_FLOAT_EQ(output[0].fear, 1); EXPECT_EQ(stats.threatReactions, 1U);
+    EXPECT_EQ(stats.constraints, 1U);
+}
+TEST_F(CrowdSimulationTest, OversizedLookaheadAndPaddingRetainSafeLinearFallback) {
+    Populate(1); settings.deltaSeconds = 0; settings.maximumDecisions = 0;
+    settings.avoidanceLookahead = 1000000; input[0].velocity = {1000000, 0, 0};
+    std::vector<ai::CrowdObstacle> obstacles(16);
+    for (auto& obstacle : obstacles) obstacle.position = {90, 90, 90};
+    ASSERT_TRUE(Step({}, obstacles)); EXPECT_VEC3_NEAR(output[0].position, (math::Vector3{}), 1e-6f);
+
+    settings.minimum = {-1000000, -1000000, -1000000}; settings.maximum = {1000000, 1000000, 1000000};
+    input[0].floor = -1000000; input[0].ceiling = 1000000; input[0].velocity = {};
+    profiles[0].bodyRadius = 999999; profiles[0].neighborRadius = profiles[0].separationRadius = 1000000;
+    for (auto& obstacle : obstacles) { obstacle.position = {1000000, 1000000, 1000000}; obstacle.radius = 0; }
+    obstacles[0] = {{500000, 0, 0}, 1000000};
+    ASSERT_TRUE(Step({}, obstacles));
+    EXPECT_VEC3_NEAR(output[0].position, (math::Vector3{-1, 0, 0}), 1e-6f);
+}
+TEST_F(CrowdSimulationTest, ReusedSpatialWorkspaceDropsOldAndShrunkenSphereInputs) {
+    Populate(1); settings.deltaSeconds = 0; settings.maximumDecisions = 0;
+    std::vector<ai::CrowdThreat> threats(64);
+    std::vector<ai::CrowdObstacle> obstacles(256);
+    ASSERT_TRUE(Step(threats, obstacles)); EXPECT_EQ(stats.threatReactions, 1U);
+
+    ASSERT_TRUE(Step());
+    EXPECT_FLOAT_EQ(output[0].fear, 0); EXPECT_EQ(stats.constraints, 0U);
+    EXPECT_VEC3_NEAR(output[0].position, (math::Vector3{}), 1e-6f);
+    ai::CrowdObstacle distant{{90, 90, 90}, 0};
+    ASSERT_TRUE(Step({}, {&distant, 1})); EXPECT_EQ(stats.constraints, 0U);
+    output[0].fear = 0.7f; stats.decisions = 123;
+    distant.radius = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(Step({}, {&distant, 1})); EXPECT_FLOAT_EQ(output[0].fear, 0.7f); EXPECT_EQ(stats.decisions, 123U);
 }
 }

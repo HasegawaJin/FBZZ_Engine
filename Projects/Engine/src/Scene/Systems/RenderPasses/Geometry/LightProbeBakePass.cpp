@@ -10,6 +10,7 @@
 #include <Graphics/Effects/RenderProbeInput.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
+#include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -50,13 +51,18 @@ uint64_t SettingsKey(const LightProbeVolumeComponent& volume)
 bool EnsureRuntime(renderer::ResourceManager& resources, LightProbeVolumeComponent& volume)
 {
     const auto grid = volume.ClampedGrid();
-    if (!volume.runtimeVolume.IsValid() || !volume.runtimeRawVolume.IsValid() || volume.runtimeGrid != grid) {
+    if (!volume.runtimeVolume.IsValid() || !volume.runtimeRawVolume.IsValid()
+        || !volume.runtimeVisibility.IsValid() || volume.runtimeGrid != grid) {
         for (auto* texture : { &volume.runtimeVolume, &volume.runtimeRawVolume }) {
             if (texture->IsValid()) resources.Release(*texture);
             *texture = resources.CreateComputeTexture3D(
                 static_cast<uint32_t>(grid[0]), static_cast<uint32_t>(grid[1]),
                 static_cast<uint32_t>(grid[2] * kSHSlices));
         }
+        if (volume.runtimeVisibility.IsValid()) resources.Release(volume.runtimeVisibility);
+        volume.runtimeVisibility = resources.CreateComputeTexture3D(
+            static_cast<uint32_t>(grid[0] * 8), static_cast<uint32_t>(grid[1] * 8),
+            static_cast<uint32_t>(grid[2]));
         volume.runtimeGrid  = grid;
         /// @note 作り直した直後の中身は未定義。1 回目を焼き終えるまで描画には使わない。
         volume.runtimeReady = false;
@@ -75,7 +81,7 @@ bool EnsureRuntime(renderer::ResourceManager& resources, LightProbeVolumeCompone
         }
         volume.runtimeFaceSize = faceSize;
     }
-    return volume.runtimeVolume.IsValid() && volume.runtimeRawVolume.IsValid()
+    return volume.runtimeVolume.IsValid() && volume.runtimeRawVolume.IsValid() && volume.runtimeVisibility.IsValid()
         && !missing(volume.runtimeFaces) && !missing(volume.runtimeFacing);
 }
 
@@ -118,6 +124,8 @@ void FillLightProbeVolumeConstants(const GameObject& owner, const LightProbeVolu
 
 LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, const AdvancedGraphicsCB& mainData)
 {
+    /// @note Empty live membership has no bake/publication work and never changes capture resources.
+    if (ctx.scene.GetEntities<LightProbeVolumeComponent>().empty()) return {};
     auto& h = ctx.handles;
     auto& resources = ctx.resources;
     const bool canBake = h.lightProbeProjectCS.IsValid() && h.lightProbeProjectCB.IsValid()
@@ -156,10 +164,15 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
             capture.screenContactShadowStrength = 0.0f;
             capture.probeVolumes[0] = {};
             capture.probeVolumes[1] = {};
+            capture.probeVisibilityIndices[0] = renderer::INVALID_BINDLESS_INDEX;
+            capture.probeVisibilityIndices[1] = renderer::INVALID_BINDLESS_INDEX;
             capture.probeSpecularOcclusion = std::clamp(volume->specularOcclusion, 0.0f, 1.0f);
             /// @note 2 回目以降は前回の結果を受けた面を描くので、反射が 1 回ずつ増える (同じボリュームを読み書きしながら進めるので、途中は新旧が混ざる)。
             const bool multiBounce = volume->bounces > 1 && volume->runtimeReady && volume->runtimePass > 0;
-            if (multiBounce) FillLightProbeVolumeConstants(go, *volume, capture.probeVolumes[0]);
+            if (multiBounce) {
+                FillLightProbeVolumeConstants(go, *volume, capture.probeVolumes[0]);
+                capture.probeVisibilityIndices[0] = resources.Get(volume->runtimeVisibility)->GetBindlessIndex();
+            }
             resources.Update(h.lightProbeCaptureAdvancedCB, &capture, sizeof(capture));
             resources.Update(h.lightCB, &ctx.lightData, sizeof(ctx.lightData));
 
@@ -172,6 +185,7 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
             input.runtimeGrid = volume->runtimeGrid;
             input.runtimeFaces = volume->runtimeFaces; input.runtimeFacing = volume->runtimeFacing;
             input.runtimeRawVolume = volume->runtimeRawVolume; input.runtimeVolume = volume->runtimeVolume;
+            input.runtimeVisibility = volume->runtimeVisibility;
             input.runtimeFaceSize = volume->runtimeFaceSize;
             input.rejectInsideGeometry = volume->rejectInsideGeometry; input.deringing = volume->deringing;
             const int probeCount = volume->ProbeCount();

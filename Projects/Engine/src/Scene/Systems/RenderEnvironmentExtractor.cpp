@@ -3,25 +3,120 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #include <Engine/Scene/Systems/RenderEnvironmentExtractor.hpp>
+#include <Core/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/WaterSurfaceQuery.hpp>
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Fields/FlowFieldFrame.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/WaterOpticalSettings.hpp>
 #include <Engine/Asset/StreamedTextureResolver.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Util/Mathf.hpp>
+#include <Engine/Scene/Systems/WaterSystem.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include <algorithm>
 #include <cmath>
+#include <memory>
+#include <optional>
+#include <span>
+#include <vector>
 namespace fbzz::scene {
 namespace {
+struct EnvironmentCandidatePool {
+    std::vector<std::unique_ptr<std::vector<EntityID>>> entries;
+    size_t depth = 0;
+};
+
+EnvironmentCandidatePool& EnvironmentCandidates()
+{
+    thread_local EnvironmentCandidatePool pool;
+    return pool;
+}
+
+/// @note Preserve GameObjects precedence for late Component registration without visiting unrelated skeleton nodes.
+class EnvironmentCandidateLease {
+public:
+    explicit EnvironmentCandidateLease(Scene& scene)
+    {
+        auto& pool = EnvironmentCandidates();
+        if (pool.depth == pool.entries.size())
+            pool.entries.push_back(std::make_unique<std::vector<EntityID>>());
+        m_entities = pool.entries[pool.depth++].get();
+        const auto skies = scene.GetEntities<SkyRenderer>();
+        const auto suns = scene.GetEntities<SunMoonRenderer>();
+        m_entities->assign(skies.begin(), skies.end());
+        m_entities->insert(m_entities->end(), suns.begin(), suns.end());
+        scene.SortEntitiesBySceneOrder(*m_entities);
+        m_entities->erase(std::unique(m_entities->begin(), m_entities->end()), m_entities->end());
+    }
+    ~EnvironmentCandidateLease() { m_entities->clear(); --EnvironmentCandidates().depth; }
+    EnvironmentCandidateLease(const EnvironmentCandidateLease&) = delete;
+    EnvironmentCandidateLease& operator=(const EnvironmentCandidateLease&) = delete;
+    std::span<const EntityID> Entities() const { return *m_entities; }
+private:
+    std::vector<EntityID>* m_entities = nullptr;
+};
+
+float ReadBoundedMaterialFloat(const asset::MaterialAssetAuthoring* material, const char* key,
+    float fallback, float minimum, float maximum)
+{
+    if (!material) return fallback;
+    const auto found = material->params.find(key);
+    if (found == material->params.end() || found->second.empty() || !std::isfinite(found->second[0]))
+        return fallback;
+    return std::clamp(found->second[0], minimum, maximum);
+}
+
+struct WaterWaveSummary {
+    float amplitude = 0.0f;
+    float frequency = 0.12f;
+    float speed = 1.0f;
+};
+
+WaterWaveSummary SummarizeWaterWaves(const WaterComponent& water)
+{
+    WaterWaveSummary result;
+    if (!water.enableGerstnerWaves) return result;
+    double totalAmplitude = 0.0;
+    double weightedFrequency = 0.0;
+    double weightedSpeed = 0.0;
+    const size_t count = (std::min)(static_cast<size_t>(water.waveCount), water.waves.size());
+    for (size_t i = 0; i < count; ++i) {
+        const auto& wave = water.waves[i];
+        if (!std::isfinite(wave.amplitude) || !std::isfinite(wave.wavelength)
+            || wave.amplitude <= 0.0f || wave.wavelength <= math::EPSILON) continue;
+        const double frequency = static_cast<double>(math::TWO_PI) / wave.wavelength;
+        totalAmplitude += wave.amplitude;
+        weightedFrequency += frequency * wave.amplitude;
+        weightedSpeed += std::sqrt(9.8 * frequency) * wave.amplitude;
+    }
+    if (totalAmplitude <= math::EPSILON) return result;
+
+    /// @note Match the existing caustics displacement scale while deriving frequency and phase speed from active waves.
+    result.amplitude = static_cast<float>(std::clamp(totalAmplitude * 0.12, 0.015, 0.18));
+    result.frequency = static_cast<float>(weightedFrequency / totalAmplitude);
+    result.speed = static_cast<float>(weightedSpeed / totalAmplitude);
+    return result;
+}
+
+bool GetWaterYaw(const Transform& transform, float& cosYaw, float& sinYaw)
+{
+    const math::Vector3 forward = transform.worldRotation * math::Vector3::FORWARD;
+    const float horizontalLength = std::sqrt(forward.x * forward.x + forward.z * forward.z);
+    if (!std::isfinite(horizontalLength) || horizontalLength <= 1.0e-6f) return false;
+    cosYaw = forward.z / horizontalLength;
+    sinYaw = forward.x / horizontalLength;
+    return std::isfinite(cosYaw) && std::isfinite(sinYaw);
+}
+
 renderer::RenderUnderwaterInput EvaluateUnderwaterInfo(const RenderPassContext& ctx)
 {
     renderer::RenderUnderwaterInput best{};
@@ -30,32 +125,31 @@ renderer::RenderUnderwaterInput EvaluateUnderwaterInfo(const RenderPassContext& 
     /// @note 親ごと無効化された水面は拾わない。View は GameObject を返さないので実体から引く。
     for (const EntityID waterId : ctx.scene.GetEntities<WaterComponent>()) {
         const GameObject* waterObject = ctx.scene.GetGameObject(waterId);
-        const auto* waterPtr = ctx.scene.GetComponent<WaterComponent>(waterId);
-        if (!waterObject || !waterPtr || !waterPtr->enabled || !waterObject->activeInHierarchy()) continue;
-        const WaterComponent& water = *waterPtr;
-        const Transform& transform = waterObject->transform;
+        auto* waterPtr = ctx.scene.GetComponent<WaterComponent>(waterId);
+        if (!waterObject || !waterPtr || !waterPtr->enabled
+            || WaterSurfaceZoneOwner(*waterPtr, WaterSurfaceReadView::SIMULATION).IsValid()
+            || !waterObject->activeInHierarchy()) continue;
+        const uint32_t layer = static_cast<uint32_t>(waterObject->layer);
+        if (layer >= 32u || (ctx.cullingMask & (1u << layer)) == 0u) continue;
+        WaterComponent& water = *waterPtr;
+        const Transform& transform = WaterSurfaceTransform(water, waterObject->transform,
+            WaterSurfaceReadView::SIMULATION);
 
-        const float localX = ctx.camera.m_position.x - transform.position.x;
-        const float localZ = ctx.camera.m_position.z - transform.position.z;
-        if (std::abs(localX) > water.extentX * 0.5f || std::abs(localZ) > water.extentZ * 0.5f) {
-            continue;
-        }
-
-        /// @note 水面は GPU で揺らすが、カメラ水没判定はポストプロセス前に CPU で決める必要が
-        /// @note あるため、WaterComponent の Gerstner 評価を再利用し描画された水面と近い高さで判定する。
-        const float relativeY = ctx.camera.m_position.y - transform.position.y;
-        const float heightBound = water.SurfaceHeightBound();
-        if (relativeY >= heightBound) continue;
-        const float surfaceY = transform.position.y
-            + water.GetSurfaceHeightAt(ctx.camera.m_position.x, ctx.camera.m_position.z, time);
-        const float depth = surfaceY - ctx.camera.m_position.y;
-        if (depth <= 0.0f || depth <= best.depth) continue;
+        WaterSurfaceHeightSample sample;
+        if (!TrySampleWaterSurfaceHeightWorld(water, transform, ctx.camera.m_position, time, sample,
+                WaterSurfaceReadView::SIMULATION)
+            || !sample.underwater || sample.depth <= best.depth) continue;
+        const float depth = sample.depth;
 
         /// @note 視覚パラメータは fzmat から読む。未設定時は WaterComponent のデフォルト値と揃えた定数を使う。
-        const asset::MaterialAsset* mat = nullptr;
+        asset::MaterialAsset::AuthoringSnapshotPtr matAuthoringSnapshot;
+        const asset::MaterialAssetAuthoring* mat = nullptr;
         if (!water.materialPath.empty()) {
             const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath);
-            mat = asset::AssetManager::Get<asset::MaterialAsset>(handle);
+            {
+                matAuthoringSnapshot = asset::ReadMaterialAuthoring(handle);
+                mat = matAuthoringSnapshot ? &matAuthoringSnapshot->Data() : nullptr;
+            }
         }
         auto getF = [mat](const char* name, float def) -> float {
             if (!mat) return def;
@@ -75,49 +169,56 @@ renderer::RenderUnderwaterInput EvaluateUnderwaterInfo(const RenderPassContext& 
         const float t = util::Mathf::Clamp01(depth / deepDepth);
         const auto shallowColor = getF3("shallowColor", { 0.20f, 0.60f, 0.70f });
         const auto deepColor    = getF3("deepColor",    { 0.00f, 0.10f, 0.30f });
+        const asset::WaterOpticalSettings optics = (mat ? asset::ResolveWaterOpticalSettings(*mat) : asset::WaterOpticalSettings{});
+        const bool boundedRectangle = WaterSurfaceEffectiveShape(water, WaterSurfaceReadView::SIMULATION)
+                == WaterSurfaceShape::RECTANGLE
+            && !UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)
+            && !WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION);
+        float cosYaw = 1.0f;
+        float sinYaw = 0.0f;
+        if (optics.enabled && boundedRectangle && !GetWaterYaw(transform, cosYaw, sinYaw)) continue;
         best.enabled = true;
         best.depth = depth;
-        best.strength = util::Mathf::Clamp01(depth / 2.0f);
-        best.fogDensity = util::Mathf::Lerp(0.04f, 0.35f, t);
-        best.color = {
-            util::Mathf::Lerp(shallowColor.x, deepColor.x, t),
-            util::Mathf::Lerp(shallowColor.y, deepColor.y, t),
-            util::Mathf::Lerp(shallowColor.z, deepColor.z, t)
-        };
+        best.opticalEnabled = optics.enabled;
+        if (optics.enabled) {
+            const float transitionDepth = ReadBoundedMaterialFloat(mat, "underwaterTransitionDepth", 0.15f, 0.001f, 2.0f);
+            const float transition = util::Mathf::Clamp01(depth / transitionDepth);
+            best.strength = transition * transition * (3.0f - 2.0f * transition);
+            best.absorption = optics.absorption;
+            best.scattering = optics.scattering;
+            best.phaseG = optics.phaseG;
+            best.surfaceY = sample.position.y;
+            best.bottomY = sample.position.y - sample.waterDepthLimit;
+            best.maxDistance = ReadBoundedMaterialFloat(mat, "underwaterMaxDistance", 120.0f, 1.0f, 10000.0f);
+            best.lightStrength = ReadBoundedMaterialFloat(mat, "underwaterLightStrength", 1.0f, 0.0f, 8.0f);
+            const float steps = ReadBoundedMaterialFloat(mat, "underwaterLightSteps", 48.0f, 16.0f, 64.0f);
+            best.lightSteps = static_cast<int>(std::lround(steps));
+            best.distortion = ReadBoundedMaterialFloat(mat, "underwaterDistortion", 0.001f, 0.0f, 0.01f);
+            const WaterWaveSummary waves = SummarizeWaterWaves(water);
+            best.waveAmplitude = waves.amplitude;
+            best.waveFrequency = waves.frequency;
+            best.waveSpeed = waves.speed;
+            best.center = { transform.worldPosition.x, transform.worldPosition.z };
+            if (boundedRectangle) {
+                best.halfExtent = {
+                    water.extentX * 0.5f * std::abs(transform.worldScale.x),
+                    water.extentZ * 0.5f * std::abs(transform.worldScale.z)
+                };
+                best.cosYaw = cosYaw;
+                best.sinYaw = sinYaw;
+            }
+        } else {
+            best.strength = util::Mathf::Clamp01(depth / 2.0f);
+            best.fogDensity = util::Mathf::Lerp(0.04f, 0.35f, t);
+            best.color = {
+                util::Mathf::Lerp(shallowColor.x, deepColor.x, t),
+                util::Mathf::Lerp(shallowColor.y, deepColor.y, t),
+                util::Mathf::Lerp(shallowColor.z, deepColor.z, t)
+            };
+        }
     }
 
     return best;
-}
-
-bool IsCameraUnderwater(const RenderPassContext& ctx)
-{
-    const float time = Time::time;
-    /// @note 親ごと無効化された水面は拾わない。View は GameObject を返さないので実体から引く。
-    for (const EntityID waterId : ctx.scene.GetEntities<WaterComponent>()) {
-        const GameObject* waterObject = ctx.scene.GetGameObject(waterId);
-        const auto* waterPtr = ctx.scene.GetComponent<WaterComponent>(waterId);
-        if (!waterObject || !waterPtr || !waterPtr->enabled || !waterObject->activeInHierarchy()) continue;
-        const WaterComponent& water = *waterPtr;
-        const Transform& transform = waterObject->transform;
-
-        const float localX = ctx.camera.m_position.x - transform.position.x;
-        const float localZ = ctx.camera.m_position.z - transform.position.z;
-        if (std::abs(localX) > water.extentX * 0.5f || std::abs(localZ) > water.extentZ * 0.5f) {
-            continue;
-        }
-
-        /// @note 水中では画面全体の濁りと散乱が支配的になり SSAO の接触影がノイズに見えやすいため、Deferred 合成時点で強度だけ 0 にして既存の SSAO パス構成を変えずに無効化する。
-        const float relativeY = ctx.camera.m_position.y - transform.position.y;
-        const float heightBound = water.SurfaceHeightBound();
-        if (relativeY >= heightBound) continue;
-        if (relativeY < -heightBound) return true;
-        const float surfaceY = transform.position.y
-            + water.GetSurfaceHeightAt(ctx.camera.m_position.x, ctx.camera.m_position.z, time);
-        if (ctx.camera.m_position.y < surfaceY) {
-            return true;
-        }
-    }
-    return false;
 }
 
 renderer::RenderCausticsInput FindCausticsSource(RenderPassContext& ctx)
@@ -127,14 +228,27 @@ renderer::RenderCausticsInput FindCausticsSource(RenderPassContext& ctx)
     for (const EntityID waterId : ctx.scene.GetEntities<WaterComponent>()) {
         const GameObject* waterObject = ctx.scene.GetGameObject(waterId);
         const auto* waterPtr = ctx.scene.GetComponent<WaterComponent>(waterId);
-        if (!waterObject || !waterPtr || !waterPtr->enabled || !waterObject->activeInHierarchy()) continue;
+        if (!waterObject || !waterPtr || !waterPtr->enabled
+            || WaterSurfaceZoneOwner(*waterPtr, WaterSurfaceReadView::SIMULATION).IsValid()
+            || !waterObject->activeInHierarchy()) continue;
+        const uint32_t layer = static_cast<uint32_t>(waterObject->layer);
+        if (layer >= 32u || (ctx.cullingMask & (1u << layer)) == 0u) continue;
         const WaterComponent& water = *waterPtr;
-        const Transform& transform = waterObject->transform;
+        const Transform& transform = WaterSurfaceTransform(water, waterObject->transform,
+            WaterSurfaceReadView::SIMULATION);
+        /// @note 旧Causticsは矩形マスクだけを持ち、Splineの輪郭外へ光を漏らすため対象にしない。
+        if (WaterSurfaceEffectiveShape(water, WaterSurfaceReadView::SIMULATION) != WaterSurfaceShape::RECTANGLE
+            || UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)) continue;
+        if (!IsWaterSurfaceSupported(water, transform, WaterSurfaceReadView::SIMULATION)) continue;
 
-        const asset::MaterialAsset* mat = nullptr;
+        asset::MaterialAsset::AuthoringSnapshotPtr matAuthoringSnapshot;
+        const asset::MaterialAssetAuthoring* mat = nullptr;
         if (!water.materialPath.empty()) {
             const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath);
-            mat = asset::AssetManager::Get<asset::MaterialAsset>(handle);
+            {
+                matAuthoringSnapshot = asset::ReadMaterialAuthoring(handle);
+                mat = matAuthoringSnapshot ? &matAuthoringSnapshot->Data() : nullptr;
+            }
         }
 
         auto getF = [mat](const char* name, float def) -> float {
@@ -150,6 +264,8 @@ renderer::RenderCausticsInput FindCausticsSource(RenderPassContext& ctx)
             return {};
         };
 
+        const asset::WaterOpticalSettings optics = (mat ? asset::ResolveWaterOpticalSettings(*mat) : asset::WaterOpticalSettings{});
+
         const float enableCaustics  = getF("enableCaustics", 0.0f);
         if (enableCaustics < 0.5f) continue;
 
@@ -158,7 +274,8 @@ renderer::RenderCausticsInput FindCausticsSource(RenderPassContext& ctx)
 
         float totalAmp = 0.0f;
         float weightedWaveFreq = 0.0f;
-        for (const auto& wave : water.waves) {
+        for (size_t i = 0; i < (std::min)(static_cast<size_t>(water.waveCount), water.waves.size()); ++i) {
+            const auto& wave = water.waves[i];
             if (wave.amplitude <= 0.0f || wave.wavelength <= math::EPSILON) continue;
             totalAmp += wave.amplitude;
             weightedWaveFreq += (math::TWO_PI / wave.wavelength) * wave.amplitude;
@@ -166,16 +283,27 @@ renderer::RenderCausticsInput FindCausticsSource(RenderPassContext& ctx)
 
         /// @note 複数水面は最も強い設定を代表値として扱う。1 回のフルスクリーン加算で済ませるため、代表水面のみを投影元にする。
         if (result.enabled && intensity <= result.intensity) continue;
+        float cosYaw = 1.0f;
+        float sinYaw = 0.0f;
+        if (!GetWaterYaw(transform, cosYaw, sinYaw)) continue;
 
         result.enabled     = true;
         result.intensity   = intensity;
+        result.maxDistance = ReadBoundedMaterialFloat(mat, "underwaterMaxDistance", 120.0f, 1.0f, 10000.0f);
         result.tiling      = getF("causticsTiling", 4.0f);
-        result.surfaceY    = transform.position.y;
+        result.surfaceY    = transform.worldPosition.y;
         result.timeOffset  = Time::time * getF("causticsSpeed", 0.5f);
-        result.centerX     = transform.position.x;
-        result.centerZ     = transform.position.z;
-        result.halfExtentX = water.extentX * 0.5f;
-        result.halfExtentZ = water.extentZ * 0.5f;
+        result.centerX     = transform.worldPosition.x;
+        result.centerZ     = transform.worldPosition.z;
+        const bool horizon = WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION);
+        result.halfExtentX = horizon ? 0.0f : water.extentX * 0.5f * std::abs(transform.worldScale.x);
+        result.halfExtentZ = horizon ? 0.0f : water.extentZ * 0.5f * std::abs(transform.worldScale.z);
+        result.cosYaw = cosYaw;
+        result.sinYaw = sinYaw;
+        result.opticalEnabled = optics.enabled;
+        result.absorption = optics.absorption;
+        result.scattering = optics.scattering;
+        result.phaseG = optics.phaseG;
         result.waveAmp     = getF("causticsWaveAmp", math::Clamp(totalAmp * 0.12f, 0.015f, 0.18f));
         result.waveFreq    = getF("causticsWaveFreq", totalAmp > math::EPSILON ? weightedWaveFreq / totalAmp : 0.12f);
         result.waveSpeed   = getF("causticsWaveSpeed", 1.0f);
@@ -287,8 +415,25 @@ void ExtractCloud(RenderPassContext& ctx, renderer::RenderEnvironmentInput& envi
 }
 renderer::RenderEnvironmentInput ExtractRenderEnvironment(RenderPassContext& ctx)
 {
+    bool collectEnvironmentPhases = false;
+    if (profiler::Profiler::IsEnabled()) {
+        const auto requestedFilter = profiler::Profiler::GetRequestedCaptureFilter();
+        collectEnvironmentPhases = requestedFilter.scope == "RenderSceneExtractor::Environment"
+            && (requestedFilter.category.empty() || requestedFilter.category == "General");
+    }
+    std::optional<profiler::ProfileScope> phaseScope;
+    /// @note Only the explicit parent filter opens bounded phase scopes; the applied frame filter still controls recording.
+    const auto beginPhase = [&](const char* name) {
+        if (!collectEnvironmentPhases) return;
+        phaseScope.reset();
+        phaseScope.emplace(profiler::ProfilerMarker(name, "General"));
+    };
+    beginPhase("RenderSceneExtractor::Environment::WaterPrepare");
+    PrepareWaterSceneSurfaces(ctx.scene);
+    if (collectEnvironmentPhases) phaseScope.reset();
     renderer::RenderEnvironmentInput output;
     static renderer::RayEnvironmentCache rayEnvironmentCache;
+    beginPhase("RenderSceneExtractor::Environment::RayEnvironment");
     if (!ctx.experimentalRayTracingEnabled) rayEnvironmentCache.Reset();
     /// @note Global IBL と同じ component order/active 条件で同じ owner を選ぶ。
     if (ctx.experimentalRayTracingEnabled) for (const EntityID id : ctx.scene.GetEntities<EnvironmentLightComponent>()) {
@@ -310,24 +455,33 @@ renderer::RenderEnvironmentInput ExtractRenderEnvironment(RenderPassContext& ctx
         }
         break;
     }
-    for (auto& go : ctx.scene.GameObjects()) {
-        if (!ShouldRenderGameObject(go, ctx.cullingMask)) continue;
-        if (!output.sky) if (const auto* sky = go.GetComponent<SkyRenderer>(); sky && sky->enabled)
-            output.sky = renderer::RenderSkyInput{sky->rayleighScattering, sky->mieScattering,
-                sky->planetRadius, sky->atmosphereRadius, sky->skyScatterIntensity, sky->mieG};
-        if (!output.sunMoon) if (const auto* sun = go.GetComponent<SunMoonRenderer>(); sun && sun->enabled)
-            output.sunMoon = renderer::RenderSunMoonInput{sun->sunEnabled, sun->sunDiskIntensity,
-                sun->moonEnabled, sun->moonSize, sun->moonBrightness, sun->moonColor};
+    beginPhase("RenderSceneExtractor::Environment::SkySunCollect");
+    if (!ctx.scene.GetEntities<SkyRenderer>().empty()
+        || !ctx.scene.GetEntities<SunMoonRenderer>().empty()) {
+        const EnvironmentCandidateLease candidates(ctx.scene);
+        for (const EntityID id : candidates.Entities()) {
+            const auto* go = ctx.scene.GetGameObject(id);
+            if (!go || !ShouldRenderGameObject(*go, ctx.cullingMask)) continue;
+            if (!output.sky) if (const auto* sky = ctx.scene.GetComponent<SkyRenderer>(id); sky && sky->enabled)
+                output.sky = renderer::RenderSkyInput{sky->rayleighScattering, sky->mieScattering,
+                    sky->planetRadius, sky->atmosphereRadius, sky->skyScatterIntensity, sky->mieG};
+            if (!output.sunMoon) if (const auto* sun = ctx.scene.GetComponent<SunMoonRenderer>(id); sun && sun->enabled)
+                output.sunMoon = renderer::RenderSunMoonInput{sun->sunEnabled, sun->sunDiskIntensity,
+                    sun->moonEnabled, sun->moonSize, sun->moonBrightness, sun->moonColor};
+        }
     }
+    beginPhase("RenderSceneExtractor::Environment::UnderwaterAndCaustics");
     output.underwater = EvaluateUnderwaterInfo(ctx);
-    output.cameraUnderwater = IsCameraUnderwater(ctx);
+    output.cameraUnderwater = output.underwater.enabled;
     output.caustics = FindCausticsSource(ctx);
+    beginPhase("RenderSceneExtractor::Environment::CloudAndLightCookies");
     ExtractCloud(ctx, output);
     for (int i = 0; i < ctx.lightCookieViewCount; ++i) {
         auto& cookie = ctx.lightCookieViews[i];
         cookie.sourceTexture = asset::StreamedTextureResolver::Engine().ResolveGpu(ctx.resources, cookie.sourcePath);
         cookie.srgb = IsEffectTextureSrgb(cookie.sourcePath);
     }
+    if (collectEnvironmentPhases) phaseScope.reset();
     return output;
 }
 }

@@ -4,7 +4,7 @@
 /// @date    2026-06-29
 ///
 /// @note スクリプト間連携が scene.Find(...)->GetScript<T>()->Method() のような文字列合成に頼るとリネームで壊れ型安全でない。Signal<Args...> は発火側が type-safe に通知し購読側がラムダで受ける観測者パターンを提供する。
-/// @note グローバル状態を持たないため EXE/Script DLL の二重レジストリ問題 (ScriptFactory と同種の ABI 境界問題) を回避できる。コンポーネント/スクリプトのメンバーとして公開イベントを表現するのに使う。
+/// @note グローバル状態を持たないため二重レジストリ問題を避け、コンポーネント/スクリプトのメンバーとして公開イベントを表現できる。
 #pragma once
 #include <cstdint>
 #include <functional>

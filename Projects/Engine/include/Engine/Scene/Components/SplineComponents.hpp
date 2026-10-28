@@ -6,6 +6,7 @@
 
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/ControlPointAdapters.hpp>
 #include <Math/Vector3.hpp>
 #include <vector>
 
@@ -14,13 +15,33 @@ namespace fbzz::scene {
 struct SplineComponent {
     bool enabled = true;
     std::vector<math::Vector3> points;
+    ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE;
+    ControlPointRuntimeMode pointRuntimeMode = ControlPointRuntimeMode::LIVE;
+    std::vector<SplineControlPointBinding> pointBindings;
+    std::vector<SplineControlPointValue> bakedPoints;
+    std::uint64_t bakedInputSignature = 0;
+    ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE;
+    std::uint32_t bakedAdapterVersion = 0;
+    /// @brief Whether the retained point sequence closes its last segment back to the first.
+    bool bakedClosed = false;
+    bool bakeValid = false;
     bool closed = false;
 
     const char* GetTypeName() const { return "Spline"; }
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
-        r.ListField("points", points);
+        ReflectControlPointSourceMode(r, "pointSourceMode", pointSourceMode);
+        ReflectControlPointRuntimeMode(r, "pointRuntimeMode", pointRuntimeMode);
+        if (pointSourceMode == ControlPointSourceMode::INLINE)
+            r.ListField("points", points);
+        ReflectSplineControlPointBindings(r, pointBindings);
+        ReflectSplineControlPointValues(r, "bakedPoints", bakedPoints);
+        ReflectControlPointSignature(r, "bakedInputSignature", bakedInputSignature);
+        ReflectControlPointSourceMode(r, "bakedSourceMode", bakedSourceMode);
+        ReflectControlPointVersion(r, "bakedAdapterVersion", bakedAdapterVersion);
+        r.Field("bakedClosed", bakedClosed);
+        r.Field("bakeValid", bakeValid);
         r.Field("closed", closed);
     }
 };
@@ -55,4 +76,4 @@ struct SplineFollowerComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

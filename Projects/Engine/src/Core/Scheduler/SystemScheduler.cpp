@@ -190,31 +190,44 @@ void SystemScheduler::RunPhase(Phase p, SystemContext& ctx)
             }
             if (toRun.empty()) continue;
 
-            if (toRun.size() == 1) {
-                FBZZ_PROFILE_SCOPE(toRun[0]->Name().data());
-                toRun[0]->Update(c);
+            if (toRun.size() == 1 || TaskSystem::WorkerCount() <= 1) {
+                for (ISystem* sys : toRun) {
+                    FBZZ_PROFILE_SCOPE(sys->Name().data());
+                    sys->Update(c);
+                }
             } else {
                 /// @note Profiler は s_stack を素の static で持つ main スレッド専用の作りで、
                 ///       ワーカーから Begin/End を呼ぶとスタックが壊れるため、ここで計測し
                 ///       join 後に main から積む。計測しないと重い System を名指しできなくなる。
                 std::vector<std::future<void>> futs;
                 std::vector<double> elapsedMs(toRun.size(), 0.0);
+                std::vector<double> queueWaitMs(toRun.size(), 0.0);
                 futs.reserve(toRun.size());
                 for (size_t i = 0; i < toRun.size(); ++i) {
                     ISystem* sys = toRun[i];
                     double*  out = &elapsedMs[i];
-                    futs.push_back(TaskSystem::Submit([sys, &c, out] {
+                    double* queueWait = &queueWaitMs[i];
+                    const auto submittedAt = std::chrono::steady_clock::now();
+                    futs.push_back(TaskSystem::Submit([sys, &c, out, queueWait, submittedAt] {
                         const auto begin = std::chrono::steady_clock::now();
+                        *queueWait = std::chrono::duration<double, std::milli>(begin - submittedAt).count();
                         sys->Update(c);
                         *out = std::chrono::duration<double, std::milli>(
                             std::chrono::steady_clock::now() - begin).count();
                     }));
                 }
+                const auto waitBegin = std::chrono::steady_clock::now();
                 for (auto& f : futs) f.get();
+                const double mainWaitMs = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - waitBegin).count();
+                double totalQueueWaitMs = 0.0;
                 for (size_t i = 0; i < toRun.size(); ++i) {
+                    totalQueueWaitMs += queueWaitMs[i];
                     profiler::Profiler::PushSample(
                         profiler::ProfilerMarker(toRun[i]->Name().data()), elapsedMs[i]);
                 }
+                profiler::Profiler::PushSample(profiler::ProfilerMarker("Scheduler queue wait"), totalQueueWaitMs);
+                profiler::Profiler::PushSample(profiler::ProfilerMarker("Scheduler main wait"), mainWaitMs);
             }
         }
     };
@@ -317,4 +330,4 @@ void SystemScheduler::DumpGraph() const
     FBZZ_LOG_INFO("%s", oss.str().c_str());
 }
 
-} // namespace fbzz
+} /// @note namespace fbzz

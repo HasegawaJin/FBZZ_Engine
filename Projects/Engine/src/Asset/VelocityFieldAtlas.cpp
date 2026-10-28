@@ -20,6 +20,8 @@ constexpr uint32_t kTile      = VelocityFieldAtlas::kTileResolution;
 constexpr size_t   kTileTexels = static_cast<size_t>(kTile) * kTile * kTile;
 
 struct AtlasState {
+    uint64_t ownerInstanceId = 0;
+    uint64_t resetVersion = 0;
     /// @brief 常駐表。キーは «その場の実体»。AssetStore のスロットは読み込み中は動かないので、
     /// @brief ポインタで引ける。プロジェクトを切り替えたら Reset() で丸ごと捨てる。
     std::unordered_map<const fluid::VectorFieldAsset*, int> tiles;
@@ -44,6 +46,18 @@ struct AtlasState {
 AtlasState& State()
 {
     static AtlasState state;
+    return state;
+}
+
+/// @note 他の Manager や Reset 前のハンドルを返さず、退役資源も新しい所有者へ解放しない。
+AtlasState& State(renderer::ResourceManager& resources)
+{
+    auto& state = State();
+    if (state.ownerInstanceId != resources.GetInstanceId() || state.resetVersion != resources.GetResetVersion()) {
+        state = {};
+        state.ownerInstanceId = resources.GetInstanceId();
+        state.resetVersion = resources.GetResetVersion();
+    }
     return state;
 }
 
@@ -93,11 +107,11 @@ void FlushRetired(AtlasState& state, renderer::ResourceManager& resources)
         state.retired.end());
 }
 
-} // namespace
+} /// @note namespace
 
 int VelocityFieldAtlas::Acquire(const fluid::VectorFieldAsset& field, renderer::ResourceManager& resources)
 {
-    AtlasState& state = State();
+    AtlasState& state = State(resources);
     FlushRetired(state, resources);
 
     if (state.unsupported || field.Empty()) return -1;
@@ -134,7 +148,7 @@ int VelocityFieldAtlas::Acquire(const fluid::VectorFieldAsset& field, renderer::
 renderer::ResourceHandle<renderer::TextureTag>
 VelocityFieldAtlas::Texture(renderer::ResourceManager& resources)
 {
-    AtlasState& state = State();
+    AtlasState& state = State(resources);
     if (state.texture.IsValid()) return state.texture;
 
     /// @note 場が 1 枚も無いときの 1x1x1。CS は tile < 0 で読まないので中身は何でもよいが、
@@ -151,7 +165,7 @@ VelocityFieldAtlas::Texture(renderer::ResourceManager& resources)
 
 void VelocityFieldAtlas::Invalidate(renderer::ResourceManager& resources)
 {
-    AtlasState& state = State();
+    AtlasState& state = State(resources);
     if (state.tiles.empty() && !state.texture.IsValid()) return;
 
     /// @note テクスチャは «すぐには» 捨てない。前フレームのコマンドリストがまだ読んでいる

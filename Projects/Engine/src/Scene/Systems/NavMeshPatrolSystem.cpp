@@ -1,68 +1,119 @@
 /// @file    NavMeshPatrolSystem.cpp
-/// @brief   NavMeshPatrolComponent のウェイポイントを順送りし、同一 GO の NavMeshAgentComponent へ。
+/// @brief   Resolve patrol points and submit throttled NavMesh destinations.
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
-///
-/// SetDestination する。到達判定そのものは NavigationSystem (destinationReached) に委ねる。
-#include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
-#include "Engine/Core/Scheduler/SystemContext.hpp"
-#include "Engine/Scene/Systems/NavMeshSensorSystem.hpp"
-#include "Engine/Scene/Scene.hpp"
-#include "Engine/Scene/Components/NavMeshPatrolComponent.hpp"
-#include "Engine/Scene/Components/NavMeshAgentComponent.hpp"
+#include <Engine/Scene/Systems/NavMeshPatrolSystem.hpp>
+
+#include <Engine/Core/Scheduler/SystemContext.hpp>
+#include <Engine/Core/Logger.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
+#include <Engine/Scene/NavigationControlPoints.hpp>
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Components/BehaviorTreeComponent.hpp>
+#include <Engine/Scene/Systems/NavMeshSensorSystem.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
+#include <algorithm>
+#include <cmath>
 
 namespace fbzz::scene {
-
 namespace {
 
-void AdvanceWaypoint(NavMeshPatrolComponent& patrol)
+void AdvanceWaypoint(NavMeshPatrolComponent& patrol, std::size_t count)
 {
-    const size_t count = patrol.waypoints.size();
     if (count <= 1) return;
-
     if (patrol.mode == NavMeshPatrolComponent::Mode::LOOP) {
         patrol.currentIndex = (patrol.currentIndex + 1) % count;
         return;
     }
 
-    /// @note PING_PONG: 端に達したら進行方向を反転する。
     if (patrol.currentIndex == 0) patrol.direction = 1;
     else if (patrol.currentIndex == count - 1) patrol.direction = -1;
-    patrol.currentIndex = static_cast<size_t>(static_cast<int>(patrol.currentIndex) + patrol.direction);
+    patrol.currentIndex = static_cast<std::size_t>(
+        static_cast<int>(patrol.currentIndex) + patrol.direction);
 }
 
-/// ウェイポイント i の待機時間を返す。waypointWaitTimes が使えなければ共通 waitTime を返す。
-float GetWaitTime(const NavMeshPatrolComponent& patrol, size_t i)
-{
-    if (i < patrol.waypointWaitTimes.size())
-        return patrol.waypointWaitTimes[i];
-    return patrol.waitTime;
-}
-
-/// ウェイポイント i の移動速度を返す (0 以下 = Agent のデフォルト速度を使う)。
-float GetWaypointSpeed(const NavMeshPatrolComponent& patrol, size_t i)
-{
-    if (i < patrol.waypointSpeeds.size())
-        return patrol.waypointSpeeds[i];
-    return 0.0f;
-}
-
-/// @brief Agent の移動速度を一時的に上書きする。speed <= 0 なら元の maxSpeed を維持する。
-/// @note 前の速度を保存して復元する方式は複数フレームをまたぐ状態管理が複雑になるため、
-///       毎フレーム maxSpeed を必要な値へクランプする方式にしている。
 void ApplyWaypointSpeed(NavMeshAgentComponent& agent, float speed)
 {
-    if (speed > 0.0f)
-        agent.maxSpeed = speed;
+    if (speed > 0.0f) agent.maxSpeed = speed;
 }
 
-} // namespace
+const NavMeshPatrolPointValue* SelectCurrentPoint(
+    NavMeshPatrolComponent& patrol,
+    const NavMeshPatrolPointSnapshot& snapshot,
+    bool hasStableBindings)
+{
+    if (snapshot.points.empty()) return nullptr;
+    if (!hasStableBindings) {
+        if (patrol.currentIndex >= snapshot.points.size()) patrol.currentIndex = 0;
+        return &snapshot.points[patrol.currentIndex];
+    }
+
+    if (patrol.currentWaypointId == 0) {
+        if (patrol.currentIndex >= snapshot.points.size()) patrol.currentIndex = 0;
+        patrol.currentWaypointId = snapshot.points[patrol.currentIndex].stableId;
+        return &snapshot.points[patrol.currentIndex];
+    }
+
+    const auto found = std::find_if(snapshot.points.begin(), snapshot.points.end(),
+        [&patrol](const NavMeshPatrolPointValue& point) {
+            return point.stableId == patrol.currentWaypointId;
+        });
+    if (found == snapshot.points.end()) return nullptr;
+    patrol.currentIndex = static_cast<std::size_t>(found - snapshot.points.begin());
+    return &*found;
+}
+
+void SyncCurrentBinding(NavMeshPatrolComponent& patrol,
+    const NavMeshPatrolPointSnapshot& snapshot, bool hasStableBindings)
+{
+    if (!hasStableBindings || snapshot.points.empty()
+        || patrol.currentIndex >= snapshot.points.size()) return;
+    patrol.currentWaypointId = snapshot.points[patrol.currentIndex].stableId;
+}
+
+void SubmitDestination(NavMeshPatrolComponent& patrol,
+    NavMeshAgentComponent& agent, const NavMeshPatrolPointValue& point,
+    bool trackLiveBinding)
+{
+    agent.SetDestination(point.worldPosition);
+    ApplyWaypointSpeed(agent, point.speed);
+    if (trackLiveBinding) {
+        patrol.lastSubmittedPosition = point.worldPosition;
+        patrol.hasSubmittedPosition = true;
+        patrol.liveRepathTimer = 0.0f;
+    }
+}
+
+void StopPatrolDestination(NavMeshPatrolComponent& patrol, NavMeshAgentComponent& agent)
+{
+    agent.Stop();
+    patrol.started = false;
+    patrol.waiting = false;
+    patrol.waitTimer = 0.0f;
+    patrol.hasSubmittedPosition = false;
+    patrol.liveRepathTimer = 0.0f;
+}
+
+void ReportInvalidPatrolInput(NavMeshPatrolComponent& patrol, EntityID entity,
+    const NavMeshPatrolPointSnapshot& snapshot)
+{
+    if (snapshot.inputSignature == patrol.lastDiagnosticSignature) return;
+    patrol.lastDiagnosticSignature = snapshot.inputSignature;
+    FBZZ_LOG_ERROR("NavMeshPatrolSystem: invalid patrol input on entity %u:%u (status=%u, resolve=%u).",
+        entity.index, entity.generation, static_cast<unsigned>(snapshot.status),
+        static_cast<unsigned>(snapshot.resolveStatus));
+}
+
+} /// @note namespace
 
 ComponentAccess NavMeshPatrolSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<NavMeshPatrolComponent, NavMeshSensorComponent>()
-        .Writes<NavMeshAgentComponent>();
+        .Reads<NavMeshSensorComponent, TargetPointComponent, BehaviorTreeComponent>()
+        .Writes<NavMeshPatrolComponent, NavMeshAgentComponent, Transform>();
 }
 
 OrderingHints NavMeshPatrolSystem::GetOrder() const
@@ -73,49 +124,85 @@ OrderingHints NavMeshPatrolSystem::GetOrder() const
 void NavMeshPatrolSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
+    if (scene.GetEntities<NavMeshPatrolComponent>().empty()) return;
     const float dt = ctx.dt;
-    for (EntityID eid : scene.GetEntities<NavMeshPatrolComponent>()) {
+    FlushWorldTransforms(scene);
+    for (const EntityID eid : scene.GetEntities<NavMeshPatrolComponent>()) {
         auto* patrol = scene.GetComponent<NavMeshPatrolComponent>(eid);
-        auto* agent  = scene.GetComponent<NavMeshAgentComponent>(eid);
-        auto* go     = scene.GetGameObject(eid);
+        auto* agent = scene.GetComponent<NavMeshAgentComponent>(eid);
+        auto* go = scene.GetGameObject(eid);
         if (!patrol || !agent || !go || !go->activeInHierarchy()
             || !patrol->enabled || !agent->enabled) continue;
-        if (patrol->waypoints.empty()) continue;
-        if (patrol->currentIndex >= patrol->waypoints.size()) patrol->currentIndex = 0;
+        if (agent->target.IsAssigned()) continue;
+        /// @note A loaded behavior tree owns route activation; its Patrol action retains permission between decision ticks.
+        if (const auto* bt = scene.GetComponent<BehaviorTreeComponent>(eid); bt && bt->runtime && !bt->patrolRequested) continue;
 
-        /// @note 追跡対象に切り替わっている間 (Target Follow 中) は巡回を中断する。
-        if (agent->target.IsValid()) continue;
+        const NavMeshPatrolPointSnapshot snapshot = ResolveNavMeshPatrolPoints(
+            scene, eid, *patrol, ControlPointReadContext::RUNTIME);
+        if (!snapshot.valid) {
+            ReportInvalidPatrolInput(*patrol, eid, snapshot);
+            StopPatrolDestination(*patrol, *agent);
+            continue;
+        }
+        patrol->lastDiagnosticSignature = 0;
+        if (snapshot.points.empty()) {
+            if (patrol->pointSourceMode == ControlPointSourceMode::POINT_OBJECTS)
+                StopPatrolDestination(*patrol, *agent);
+            continue;
+        }
+        const bool hasStableBindings = patrol->pointSourceMode == ControlPointSourceMode::POINT_OBJECTS;
+        const bool trackLiveBinding = hasStableBindings
+            && patrol->pointRuntimeMode == ControlPointRuntimeMode::LIVE;
+        const NavMeshPatrolPointValue* current = SelectCurrentPoint(
+            *patrol, snapshot, hasStableBindings);
+        if (!current) {
+            StopPatrolDestination(*patrol, *agent);
+            continue;
+        }
 
         if (patrol->waiting) {
             patrol->waitTimer -= dt;
             if (patrol->waitTimer > 0.0f) continue;
             patrol->waiting = false;
-            AdvanceWaypoint(*patrol);
-            agent->SetDestination(patrol->waypoints[patrol->currentIndex]);
-            ApplyWaypointSpeed(*agent, GetWaypointSpeed(*patrol, patrol->currentIndex));
+            AdvanceWaypoint(*patrol, snapshot.points.size());
+            SyncCurrentBinding(*patrol, snapshot, hasStableBindings);
+            current = SelectCurrentPoint(*patrol, snapshot, hasStableBindings);
+            if (current) SubmitDestination(*patrol, *agent, *current, trackLiveBinding);
             continue;
         }
 
         if (!patrol->started) {
             patrol->started = true;
-            agent->SetDestination(patrol->waypoints[patrol->currentIndex]);
-            ApplyWaypointSpeed(*agent, GetWaypointSpeed(*patrol, patrol->currentIndex));
+            SubmitDestination(*patrol, *agent, *current, trackLiveBinding);
             continue;
         }
 
-        /// @note NavigationSystem が到達済みと判定したら、待機 or 次のウェイポイントへ進む。
+        if (trackLiveBinding) {
+            patrol->liveRepathTimer += dt;
+            const float minimumInterval = (std::max)(0.0f, patrol->liveRepathInterval);
+            const float minimumDistance = (std::max)(0.0f, patrol->liveRepathDistance);
+            const math::Vector3 delta = current->worldPosition - patrol->lastSubmittedPosition;
+            const float distanceSquared = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+            if (patrol->hasSubmittedPosition && patrol->liveRepathTimer >= minimumInterval
+                && std::isfinite(distanceSquared) && distanceSquared > 0.0f
+                && distanceSquared >= minimumDistance * minimumDistance) {
+                SubmitDestination(*patrol, *agent, *current, true);
+                continue;
+            }
+        }
+
         if (agent->destinationReached && !agent->hasDestination) {
-            const float wt = GetWaitTime(*patrol, patrol->currentIndex);
-            if (wt > 0.0f) {
-                patrol->waiting   = true;
-                patrol->waitTimer = wt;
+            if (current->waitTime > 0.0f) {
+                patrol->waiting = true;
+                patrol->waitTimer = current->waitTime;
             } else {
-                AdvanceWaypoint(*patrol);
-                agent->SetDestination(patrol->waypoints[patrol->currentIndex]);
-                ApplyWaypointSpeed(*agent, GetWaypointSpeed(*patrol, patrol->currentIndex));
+                AdvanceWaypoint(*patrol, snapshot.points.size());
+                SyncCurrentBinding(*patrol, snapshot, hasStableBindings);
+                current = SelectCurrentPoint(*patrol, snapshot, hasStableBindings);
+                if (current) SubmitDestination(*patrol, *agent, *current, trackLiveBinding);
             }
         }
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

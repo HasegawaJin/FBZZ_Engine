@@ -19,6 +19,7 @@
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/Uuid.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <sstream>
@@ -28,22 +29,47 @@
 #include <utility>
 
 namespace fbzz::scene {
+
+struct PreparedPrefabDefinition {
+    toml::table document;
+    std::string sourceSnapshot;
+    bool hasScripts = false;
+};
+
+struct PrefabInstantiationContext {
+    explicit PrefabInstantiationContext(Scene& destination) : scene(&destination) {}
+    Scene* scene;
+    PrefabInstantiationContext* previous = nullptr;
+    std::string diskPath;
+    uint64_t revision = 0;
+    std::shared_ptr<const PreparedPrefabDefinition> prepared;
+    bool sceneReuseAllowed = true;
+    bool scenePrepared = false;
+    std::unordered_set<uint32_t> existingEntities;
+    std::unordered_set<std::string> usedNames;
+    std::unordered_map<std::string, size_t> nextSuffixes;
+};
+
 namespace {
 
-std::string UniqueName(const std::string& base, std::unordered_set<std::string>& used)
+thread_local PrefabInstantiationContext* s_prefabBatch = nullptr;
+
+std::string UniqueName(const std::string& base, std::unordered_set<std::string>& used,
+    std::unordered_map<std::string, size_t>* nextSuffixes = nullptr)
 {
     if (!used.contains(base)) {
         used.insert(base);
         return base;
     }
-    for (int index = 1; index < 10000; ++index) {
+    size_t index = nextSuffixes ? std::max(size_t{1}, (*nextSuffixes)[base]) : 1;
+    for (; ; ++index) {
         const std::string candidate = base + " (" + std::to_string(index) + ")";
         if (!used.contains(candidate)) {
             used.insert(candidate);
+            if (nextSuffixes) (*nextSuffixes)[base] = index + 1;
             return candidate;
         }
     }
-    return base + " (Prefab)";
 }
 
 bool ReadToml(const std::string& path, toml::table& outTable)
@@ -62,13 +88,15 @@ bool ReadToml(const std::string& path, toml::table& outTable)
 /// @note 展開は «読む → TOML 解析 → 木を複製する» の順で、同じファイルなら結果が変わらないため
 /// @note 取り置く。更新時刻を見るのは保存し直したら次の生成から反映させるためで、読み直すより
 /// @note 時刻の問い合わせの方が桁で安い。
-const toml::table* CachedPrefabDoc(const std::string& diskPath)
+const toml::table* CachedPrefabDoc(const std::string& diskPath, uint64_t* revision = nullptr)
 {
     struct Entry {
         toml::table                    doc;
         std::filesystem::file_time_type stamp{};
+        uint64_t revision = 0;
     };
     static std::unordered_map<std::string, Entry> cache;
+    static uint64_t nextRevision = 0;
 
     std::error_code error;
     const std::filesystem::file_time_type stamp =
@@ -76,17 +104,48 @@ const toml::table* CachedPrefabDoc(const std::string& diskPath)
 
     const auto found = cache.find(diskPath);
     /// @note 実体の削除・読込失敗を古い取り置きで隠さず、差し替えを拒否する。
-    if (!error && found != cache.end() && found->second.stamp == stamp)
+    if (!error && found != cache.end() && found->second.stamp == stamp) {
+        if (revision) *revision = found->second.revision;
         return &found->second.doc;
+    }
 
     Entry entry;
     if (!ReadToml(diskPath, entry.doc)) return nullptr;
     entry.stamp = error ? std::filesystem::file_time_type{} : stamp;
+    entry.revision = ++nextRevision;
 
-    return &(cache[diskPath] = std::move(entry)).doc;
+    Entry& stored = cache[diskPath] = std::move(entry);
+    if (revision) *revision = stored.revision;
+    return &stored.doc;
 }
 
 } /// @note namespace
+
+PrefabInstantiationBatch::PrefabInstantiationBatch(Scene& scene)
+    : m_context(std::make_unique<PrefabInstantiationContext>(scene))
+{
+    m_context->previous = s_prefabBatch;
+    s_prefabBatch = m_context.get();
+}
+
+PrefabInstantiationBatch::~PrefabInstantiationBatch()
+{
+    s_prefabBatch = m_context->previous;
+}
+
+void PrefabInstantiationBatch::DisableSceneCache()
+{
+    m_context->sceneReuseAllowed = false;
+    m_context->scenePrepared = false;
+    m_context->existingEntities.clear();
+    m_context->usedNames.clear();
+    m_context->nextSuffixes.clear();
+}
+
+bool PrefabInstantiationBatch::CanReuseSceneCache() const
+{
+    return m_context->sceneReuseAllowed;
+}
 
 std::string ResolvePrefabAssetPath(const std::string& reference, const std::string& projectRoot)
 {
@@ -298,7 +357,9 @@ bool InstantiatePrefabAssetImpl(Scene& scene,
                             std::vector<EntityID>& outRootEntities,
                             const PrefabOverrideSet* overrides,
                             const std::unordered_map<std::string, std::string>* preserveGuids,
-                            EntityID replacingRoot)
+                            EntityID replacingRoot,
+                            const toml::table* reviewedDocument = nullptr,
+                            const std::string* reviewedSourceSnapshot = nullptr)
 {
     outRootEntities.clear();
     if (overrides && overrides->hasStructuralOverrides) {
@@ -309,18 +370,53 @@ bool InstantiatePrefabAssetImpl(Scene& scene,
     const std::string diskPath = ResolvePrefabAssetPath(path);
 
     /// @note 取り置きは «読むだけ»。振り直しはすべて下の copied 側で行うので共有して問題ない。
-    const toml::table* prefabDoc = CachedPrefabDoc(diskPath);
+    uint64_t revision = 0;
+    const toml::table* prefabDoc = reviewedDocument ? reviewedDocument : CachedPrefabDoc(diskPath, &revision);
     if (!prefabDoc) {
         FBZZ_LOG_ERROR("Prefab load failed: %s", diskPath.c_str());
         return false;
     }
 
-    toml::table preparedDoc = *prefabDoc;
-    auto* prefabObjects = preparedDoc["gameobjects"].as_array();
-    if (!prefabObjects || !PreparePrefabObjects(*prefabObjects)) {
-        FBZZ_LOG_ERROR("Prefab has an invalid hierarchy: %s", diskPath.c_str());
-        return false;
+    PrefabInstantiationContext* batch = s_prefabBatch && s_prefabBatch->scene == &scene
+        && !overrides && !preserveGuids && !reviewedDocument && !replacingRoot.IsValid() ? s_prefabBatch : nullptr;
+    toml::table localPrepared;
+    std::string localSnapshot;
+    const toml::table* preparedDoc = nullptr;
+    if (batch && batch->diskPath == diskPath && batch->revision == revision) {
+        preparedDoc = &batch->prepared->document;
+    } else {
+        localPrepared = *prefabDoc;
+        auto* objects = localPrepared["gameobjects"].as_array();
+        if (!objects || !PreparePrefabObjects(*objects)) {
+            FBZZ_LOG_ERROR("Prefab has an invalid hierarchy: %s", diskPath.c_str());
+            return false;
+        }
+        std::ostringstream baselineStream;
+        baselineStream << localPrepared;
+        localSnapshot = baselineStream.str();
+        if (reviewedSourceSnapshot) localSnapshot = *reviewedSourceSnapshot;
+        if (batch) {
+            batch->scenePrepared = false;
+            batch->nextSuffixes.clear();
+            auto definition = std::make_shared<PreparedPrefabDefinition>();
+            for (const auto& item : *objects) {
+                const auto* scripts = (*item.as_table())["ScriptComponents"].as_array();
+                definition->hasScripts = definition->hasScripts || (scripts && !scripts->empty());
+            }
+            if (definition->hasScripts) batch->sceneReuseAllowed = false;
+            definition->document = std::move(localPrepared);
+            definition->sourceSnapshot = std::move(localSnapshot);
+            batch->prepared = std::move(definition);
+            batch->diskPath = diskPath;
+            batch->revision = revision;
+            preparedDoc = &batch->prepared->document;
+        } else {
+            preparedDoc = &localPrepared;
+        }
     }
+    /// @note 復元 callback が別の Prefab を再入生成しても、この呼び出しの定義を生かす。
+    const auto retainedDefinition = batch ? batch->prepared : nullptr;
+    const auto* prefabObjects = (*preparedDoc)["gameobjects"].as_array();
     if (replacingRoot.IsValid()) {
         std::size_t rootCount = 0;
         for (const auto& item : *prefabObjects)
@@ -330,7 +426,7 @@ bool InstantiatePrefabAssetImpl(Scene& scene,
             return false;
         }
     }
-    if (prefabObjects->size() > Scene::MAX_ENTITIES - scene.GameObjectCount()) {
+    if (!scene.CanCreateGameObjects(prefabObjects->size())) {
         FBZZ_LOG_ERROR("Prefab needs %zu free entities before replacing the old hierarchy: %s",
                        prefabObjects->size(), diskPath.c_str());
         return false;
@@ -341,18 +437,24 @@ bool InstantiatePrefabAssetImpl(Scene& scene,
         if (!oldRoot) return false;
         CollectReplacementIdentity(*oldRoot, replacedIdentities);
     }
-    std::unordered_set<uint32_t> existingEntities;
+    std::unordered_set<uint32_t> localExistingEntities;
     std::unordered_set<std::string> replacedGuids;
     for (const auto& identity : replacedIdentities) replacedGuids.insert(identity.guid);
-    std::ostringstream baselineStream;
-    baselineStream << preparedDoc;
-    const std::string sourceSnapshot = baselineStream.str();
+    const std::string& sourceSnapshot = retainedDefinition ? retainedDefinition->sourceSnapshot : localSnapshot;
 
     auto* resources = renderer::ResourceManager::Active();
-    std::unordered_set<std::string> usedNames;
-    for (auto& gameObject : scene.GameObjects()) {
-        existingEntities.insert(gameObject.GetID().index);
-        if (!replacedGuids.contains(gameObject.instanceId)) usedNames.insert(gameObject.name);
+    std::unordered_set<std::string> localUsedNames;
+    const bool reuseScene = batch && batch->sceneReuseAllowed && !retainedDefinition->hasScripts;
+    auto& existingEntities = reuseScene ? batch->existingEntities : localExistingEntities;
+    auto& usedNames = reuseScene ? batch->usedNames : localUsedNames;
+    if (!reuseScene || !batch->scenePrepared) {
+        existingEntities.clear();
+        usedNames.clear();
+        for (auto& gameObject : scene.GameObjects()) {
+            existingEntities.insert(gameObject.GetID().index);
+            if (!replacedGuids.contains(gameObject.instanceId)) usedNames.insert(gameObject.name);
+        }
+        if (reuseScene) batch->scenePrepared = true;
     }
 
     /// @note guidMap:       instanceId (旧) → 新規 UUID (新)
@@ -369,7 +471,8 @@ bool InstantiatePrefabAssetImpl(Scene& scene,
         if (!source) continue;
 
         const std::string oldName = (*source)["name"].value_or(std::string{"GameObject"});
-        const std::string newName = UniqueName(oldName, usedNames);
+        const std::string newName = UniqueName(oldName, usedNames,
+            reuseScene ? &batch->nextSuffixes : nullptr);
         nameMap[oldName] = newName;
 
         const std::string oldGuid = (*source)["instanceId"].value_or(std::string{});
@@ -523,13 +626,17 @@ bool InstantiatePrefabAssetImpl(Scene& scene,
         std::vector<EntityID> addedEntities;
         for (auto& object : scene.GameObjects())
             if (!existingEntities.contains(object.GetID().index)) addedEntities.push_back(object.GetID());
-        for (const auto id : addedEntities) scene.DestroyGameObject(id);
+        scene.DestroyGameObjects(addedEntities);
         for (const auto& identity : replacedIdentities)
             if (auto* object = scene.GetGameObject(identity.entity)) {
                 object->instanceId = identity.guid;
                 object->name = identity.name;
             }
         outRootEntities.clear();
+        if (batch) {
+            batch->scenePrepared = false;
+            batch->nextSuffixes.clear();
+        }
         return false;
     }
     std::vector<std::pair<EntityID, EntityID>> preparedEntities;
@@ -537,6 +644,11 @@ bool InstantiatePrefabAssetImpl(Scene& scene,
         if (auto* target = scene.FindByGuid(sourceObject.instanceId))
             preparedEntities.emplace_back(sourceObject.GetID(), target->GetID());
     }
+    if (reuseScene)
+        for (const auto& [source, live] : preparedEntities) {
+            (void)source;
+            existingEntities.insert(live.index);
+        }
     CopyPreparedPrefabComponents(*prefabScene, scene, preparedEntities);
 
     /// @note 補完コピーしたコンポーネント内の EntityID 参照を現在の Scene の EntityID へ張り直す。
@@ -666,6 +778,31 @@ bool ReplacePrefabInstanceAsset(Scene& scene, EntityID rootEntity,
         if (auto* object = scene.GetGameObject(identity.entity); object && !object->prefabSourceId.empty())
             preserveGuids.emplace(object->prefabSourceId, identity.guid);
     return InstantiatePrefabAssetImpl(scene, reference, outRootEntities, overrides, &preserveGuids, rootEntity);
+}
+
+bool ReplacePrefabInstanceDocument(Scene& scene, EntityID rootEntity,
+                                    const std::string& reference,
+                                    const toml::table& document,
+                                    const std::string& sourceSnapshot,
+                                    const std::unordered_map<std::string, std::string>& preserveGuids,
+                                    std::vector<EntityID>& outRootEntities)
+{
+    outRootEntities.clear();
+    auto* root = scene.GetGameObject(rootEntity);
+    if (!root || reference.empty() || sourceSnapshot.empty()) return false;
+    const auto parsedBaseline = toml::parse(sourceSnapshot);
+    if (!parsedBaseline || !parsedBaseline.table()["gameobjects"].as_array()) return false;
+    std::vector<SavedPrefabIdentity> identities;
+    CollectReplacementIdentity(*root, identities);
+    std::unordered_set<std::string> ownedGuids;
+    for (const auto& identity : identities) ownedGuids.insert(identity.guid);
+    std::unordered_set<std::string> usedGuids;
+    for (const auto& [sourceId, guid] : preserveGuids) {
+        if (sourceId.empty() || guid.empty() || !usedGuids.insert(guid).second) return false;
+        if (scene.FindByGuid(guid) && !ownedGuids.contains(guid)) return false;
+    }
+    return InstantiatePrefabAssetImpl(scene, reference, outRootEntities, nullptr, &preserveGuids,
+        rootEntity, &document, &sourceSnapshot);
 }
 
 } /// @note namespace fbzz::scene

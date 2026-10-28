@@ -8,6 +8,7 @@
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/RenderPipelineAsset.hpp>
 #include "RenderPipelineAssetCodec.hpp"
 /// @note scene::IReflector / DataAssetRef を使う。
@@ -23,9 +24,11 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <sstream>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <vector>
 
@@ -33,12 +36,35 @@ namespace fbzz::asset {
 
 namespace {
 
-/// @name パスキー正規化 (区切りを / に統一)
+/// @note Only absolute-path spelling is retained; live GUID resolution, disk checks and locale folding still run on every lookup.
+std::unordered_map<std::string, std::string>& AbsolutePathKeys()
+{
+    static std::unordered_map<std::string, std::string> keys;
+    return keys;
+}
+
+/// @note 相対パス・絶対パス・GUID 参照は同じ共有実体と Undo を使う。
 std::string NormalizeKey(const std::string& path)
 {
-    std::string key = path;
-    for (char& c : key)
+    if (path.empty()) return {};
+    const std::string resolved = AssetManager::ResolveAssetPath(path);
+    if (resolved.empty()) return {};
+    auto& absoluteKeys = AbsolutePathKeys();
+    std::string key;
+    if (const auto found = absoluteKeys.find(resolved); found != absoluteKeys.end()) key = found->second;
+    else {
+        const auto native = util::FileSystem::PathFromUtf8(resolved);
+        std::error_code error;
+        const auto absolute = std::filesystem::absolute(native, error);
+        if (error) return {};
+        key = util::FileSystem::PathToUtf8(absolute.lexically_normal());
+        /// @note Relative spellings depend on the current directory; failures and relative inputs never enter this bounded pure-path cache.
+        if (native.is_absolute() && absoluteKeys.size() < 4096) absoluteKeys.emplace(resolved, key);
+    }
+    for (char& c : key) {
         if (c == '\\') c = '/';
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
     return key;
 }
 
@@ -59,6 +85,22 @@ std::unordered_map<std::string, CacheEntry>& Cache()
 {
     static std::unordered_map<std::string, CacheEntry> cache;
     return cache;
+}
+
+/// @note Keep canonical keys, never asset pointers. Index retirement reopens the original resolution path; reload/undo read the current registry entry.
+struct LoadedGuidKeys {
+    uint64_t revision = UINT64_MAX;
+    std::unordered_map<std::string, std::string> keys;
+    void Refresh(uint64_t current)
+    {
+        if (revision == current) return;
+        keys.clear(); revision = current;
+    }
+};
+LoadedGuidKeys& GuidKeys()
+{
+    static LoadedGuidKeys keys;
+    return keys;
 }
 
 /// @return 読取・パース・型生成・typed 検証の失敗時は nullptr のエントリ。
@@ -142,24 +184,40 @@ bool WriteTableToDisk(const std::string& path, const toml::table& table)
 DataAsset* DataAssetRegistry::Resolve(const std::string& path)
 {
     if (path.empty()) return nullptr;
-    const std::string key = NormalizeKey(path);
-
+    const bool guid = AssetDatabase::IsGuidRef(path);
+    const uint64_t revision = guid ? AssetDatabase::Revision() : 0;
+    auto& aliases = GuidKeys();
     auto& cache = Cache();
+    if (guid) {
+        aliases.Refresh(revision);
+        if (const auto key = aliases.keys.find(path); key != aliases.keys.end()) {
+            const auto found = cache.find(key->second);
+            if (found != cache.end() && found->second.asset) return found->second.asset.get();
+        }
+    }
+    const std::string key = NormalizeKey(path);
+    if (key.empty()) return nullptr;
+    const auto remember = [&](DataAsset* value) {
+        /// @note Already-loaded GUID assets need no disk polling per render frame. Missing/failed loads retain the original retry and diagnostic path.
+        if (value && guid && AssetDatabase::Revision() == revision && aliases.keys.size() < 4096)
+            aliases.keys.insert_or_assign(path, key);
+        return value;
+    };
     if (auto it = cache.find(key); it != cache.end()) {
-        if (it->second.asset) return it->second.asset.get();
+        if (it->second.asset) return remember(it->second.asset.get());
 
         /// @note 失敗もキャッシュし、型登録が変わったときだけ再試行してログ連打と永久失敗を防ぐ。
         if (it->second.factoryEpoch == DataAssetFactory::RegistrationEpoch())
             return nullptr;
 
         it->second = LoadFromDisk(key);
-        return it->second.asset.get();
+        return remember(it->second.asset.get());
     }
 
     CacheEntry entry = LoadFromDisk(key);
     DataAsset* ptr = entry.asset.get();
     cache.emplace(key, std::move(entry));
-    return ptr;
+    return remember(ptr);
 }
 
 bool DataAssetRegistry::Save(const std::string& path)
@@ -315,6 +373,8 @@ std::string DataAssetRegistry::TypeOf(const std::string& path)
 void DataAssetRegistry::ClearCache()
 {
     Cache().clear();
+    AbsolutePathKeys().clear();
+    GuidKeys().keys.clear();
 }
 
 } /// @note namespace fbzz::asset

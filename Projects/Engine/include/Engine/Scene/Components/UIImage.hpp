@@ -145,6 +145,8 @@ struct UIImage {
 
     /// ピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW, texH) で正規化した UV ペアに変換する。
     /// スクリプトからスプライトシートの切り抜き範囲を設定するときに使う。
+    bool overrideThemeColor = false;
+
     static std::pair<math::Vector2, math::Vector2> PixelRectToUV(
         float x, float y, float w, float h, float texW, float texH)
     {
@@ -176,6 +178,8 @@ struct UIImage {
     void Reflect(IReflector& r)
     {
         r.Field("enabled",     enabled);
+        r.Field("overrideThemeColor", overrideThemeColor);
+        r.Tooltip("Use this image's local tint instead of the Canvas theme.");
         anchoring.Reflect(r);
         r.Field("materialPath", materialPath);
         r.Tooltip("UI マテリアル (.mat)。空欄で組み込みのスプライト描画。"

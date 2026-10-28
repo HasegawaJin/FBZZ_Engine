@@ -2,21 +2,23 @@
 /// @brief   NavMeshAgentComponent の毎フレーム更新: パス計算 (A* + Funnel Algorithm) と移動 (Steering)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
-///
 /// @note 複数 NavMeshSurface: agentTypeId が一致する Surface を各 Agent が個別に選択する。
 /// @note オフメッシュリンク: NavMesh::offMeshLinks を A* のエッジとして扱い、TRAVERSING_LINK 状態で補間移動。
 /// @note NavMesh スナップ: snapToNavMesh=true のとき移動後に NavMesh 面の Y へ補正する。
 /// @note Agent に親 GO がある場合は PhysicsSystem と同じ式で world pose を親ローカルへ逆変換して書き戻す。
 #include "Engine/Scene/Systems/NavigationSystem.hpp"
+#include "WorldPoseHelpers.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/NavMeshQuery.hpp"
 #include "Engine/Scene/Systems/NavMeshPatrolSystem.hpp"
+#include "Engine/Core/Logger.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/NavMeshSurfaceComponent.hpp"
 #include "Engine/Scene/Components/NavMeshAgentComponent.hpp"
 #include "Engine/Scene/Components/ColliderComponent.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
+#include "Engine/Scene/Systems/TransformSystem.hpp"
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 #include <algorithm>
@@ -24,11 +26,12 @@
 #include <cmath>
 #include <cstdint>
 #include <queue>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace fbzz::scene {
+
+using world_pose_detail::WriteWorldPoseToTransform;
 
 namespace {
 
@@ -148,31 +151,8 @@ static float ColliderFloorOffset(GameObject& go)
     return 0.0f;
 }
 
-/// @note World pose を Transform へ書き込む。親 GO があれば PhysicsSystem::WriteWorldPoseToTransform と
-/// @note 同じ式で親ローカル空間へ逆変換する (TransformSystem は次フレームまで動かないため、
-/// @note 同フレームの Collider 位置・Script 参照との整合性を保つために world 側も直接更新する)。
-void WriteWorldPoseToTransform(GameObject& go, const math::Vector3& worldPosition, const math::Quaternion& worldRotation)
-{
-    auto& tf = go.transform;
-    if (auto* parent = go.GetParent()) {
-        const auto& parentTf = parent->transform;
-        const math::Quaternion invParentRot = parentTf.worldRotation.Inverse();
-        const math::Vector3 parentSpace = invParentRot * (worldPosition - parentTf.worldPosition);
 
-        tf.position = {
-            parentTf.worldScale.x == 0.0f ? 0.0f : parentSpace.x / parentTf.worldScale.x,
-            parentTf.worldScale.y == 0.0f ? 0.0f : parentSpace.y / parentTf.worldScale.y,
-            parentTf.worldScale.z == 0.0f ? 0.0f : parentSpace.z / parentTf.worldScale.z
-        };
-        tf.rotation = (invParentRot * worldRotation).Normalized();
-    } else {
-        tf.position = worldPosition;
-        tf.rotation = worldRotation;
-    }
 
-    tf.worldPosition = worldPosition;
-    tf.worldRotation = worldRotation;
-}
 
 /// @note callback: Script のメンバ関数ポインタ (OnNavMeshDestinationReached / OnNavMeshPathFailed)。
 void NotifyScripts(Scene& scene, EntityID eid, GameObject& go, void (Script::*callback)(), ScriptCallbackKind kind)
@@ -195,17 +175,40 @@ struct BucketKey {
     int x = 0, z = 0;
     bool operator==(const BucketKey&) const = default;
 };
-struct BucketKeyHash {
-    size_t operator()(const BucketKey& k) const
-    {
-        return (static_cast<size_t>(static_cast<uint32_t>(k.x)) * 73856093u)
-             ^ (static_cast<size_t>(static_cast<uint32_t>(k.z)) * 19349663u);
-    }
-};
 
 BucketKey BucketKeyFor(const math::Vector3& pos, float bucketSize)
 {
     return { static_cast<int>(std::floor(pos.x / bucketSize)), static_cast<int>(std::floor(pos.z / bucketSize)) };
+}
+
+std::uint64_t TargetDiagnosticSignature(const EntityRef& target, std::uint64_t reason)
+{
+    std::uint64_t hash = 14695981039346656037ull;
+    const auto mix = [&hash](std::uint64_t value) {
+        for (std::size_t byte = 0; byte < sizeof(value); ++byte) {
+            hash ^= static_cast<std::uint8_t>(value >> (byte * 8));
+            hash *= 1099511628211ull;
+        }
+    };
+    for (const unsigned char character : target.guid) {
+        hash ^= character;
+        hash *= 1099511628211ull;
+    }
+    mix(target.id.index);
+    mix(target.id.generation);
+    mix(target.sceneGeneration);
+    mix(reason);
+    return hash == 0 ? 1 : hash;
+}
+
+void ReportInvalidTarget(NavMeshAgentComponent& agent, EntityID agentId,
+    std::uint64_t reason, const char* message)
+{
+    const std::uint64_t signature = TargetDiagnosticSignature(agent.target, reason);
+    if (signature == agent.lastTargetDiagnosticSignature) return;
+    agent.lastTargetDiagnosticSignature = signature;
+    FBZZ_LOG_WARN("NavigationSystem: agent %u:%u target is %s.",
+        agentId.index, agentId.generation, message);
 }
 
 } /// @note namespace
@@ -213,8 +216,9 @@ BucketKey BucketKeyFor(const math::Vector3& pos, float bucketSize)
 ComponentAccess NavigationSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<NavMeshAgentComponent, NavMeshSurfaceComponent>()
-        .Writes<NavMeshAgentComponent>();
+        .Reads<NavMeshSurfaceComponent, ScriptComponent, CapsuleColliderComponent,
+            CylinderColliderComponent, BoxColliderComponent, SphereColliderComponent>()
+        .Writes<NavMeshAgentComponent, Transform>();
 }
 
 OrderingHints NavigationSystem::GetOrder() const
@@ -222,36 +226,79 @@ OrderingHints NavigationSystem::GetOrder() const
     return OrderingHints{}.After<NavMeshPatrolSystem>();
 }
 
+NavigationSystem::AvoidanceBucket& NavigationSystem::FindAvoidanceBucket(int x, int z)
+{
+    const size_t hash = (static_cast<size_t>(static_cast<uint32_t>(x)) * 73856093u)
+        ^ (static_cast<size_t>(static_cast<uint32_t>(z)) * 19349663u);
+    size_t index = hash & (m_avoidanceBuckets.size() - 1);
+    while (m_avoidanceBuckets[index].first != SIZE_MAX
+        && (m_avoidanceBuckets[index].x != x || m_avoidanceBuckets[index].z != z))
+        index = (index + 1) & (m_avoidanceBuckets.size() - 1);
+    return m_avoidanceBuckets[index];
+}
+
+NavigationSystem::SurfaceEntry& NavigationSystem::FindSurfaceSlot(int agentTypeId)
+{
+    size_t index = static_cast<size_t>(static_cast<uint32_t>(agentTypeId)) & (m_surfaces.size() - 1);
+    while (m_surfaces[index].surface && m_surfaces[index].agentTypeId != agentTypeId)
+        index = (index + 1) & (m_surfaces.size() - 1);
+    return m_surfaces[index];
+}
+
 void NavigationSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
     const float dt = ctx.dt;
+    const auto agentSpan = scene.GetEntities<NavMeshAgentComponent>();
+    if (agentSpan.empty()) return;
+    /// @note 通知中の Component 追加で元 span が再確保されても、フレーム先頭の処理対象と順序を保つ。
+    m_agentEntities.assign(agentSpan.begin(), agentSpan.end());
+    const auto& agentEntities = m_agentEntities;
+    FlushWorldTransforms(scene);
     /// @note agentTypeId → NavMeshSurface のマップを構築する。
     /// @note 同じ typeId が複数ある場合は最初に見つかった有効な Surface を使う。
-    std::unordered_map<int, NavMeshSurfaceComponent*> surfaceMap;
+    m_surfaces.clear();
+    const auto surfaceEntities = scene.GetEntities<NavMeshSurfaceComponent>();
+    if (!surfaceEntities.empty()) {
+        size_t surfaceCount = 8;
+        while (surfaceCount / 2 < surfaceEntities.size()) surfaceCount *= 2;
+        m_surfaces.assign(surfaceCount, {});
+    }
     float minCellSize = 1.0f;
-    for (EntityID veid : scene.GetEntities<NavMeshSurfaceComponent>()) {
+    for (EntityID veid : surfaceEntities) {
         auto* v = scene.GetComponent<NavMeshSurfaceComponent>(veid);
         auto* surfaceGo = scene.GetGameObject(veid);
         if (!v || !surfaceGo || !surfaceGo->activeInHierarchy()
             || !v->enabled || !v->navMesh.IsValid()) continue;
-        if (!surfaceMap.count(v->agentTypeId)) {
-            surfaceMap[v->agentTypeId] = v;
+        auto& entry = FindSurfaceSlot(v->agentTypeId);
+        if (!entry.surface) {
+            entry = {v->agentTypeId, v};
             minCellSize = std::min(minCellSize, v->cellSize);
         }
     }
-    if (surfaceMap.empty()) return;
-
-    const auto agentEntities = scene.GetEntities<NavMeshAgentComponent>();
-
-    /// @note 回避用の空間ハッシュをフレーム先頭で 1 回構築する。
+    /// @note 占有率を半分以下に保つ flat hash と入力順の連結添字で、セルごとの確保と再ソートを避ける。
     const float bucketSize = std::max(0.5f, minCellSize * 2.0f);
-    std::unordered_map<BucketKey, std::vector<EntityID>, BucketKeyHash> avoidanceBuckets;
-    for (EntityID id : agentEntities) {
+    m_avoidanceEntries.clear();
+    size_t bucketCount = 8;
+    while (bucketCount / 2 < agentEntities.size()) bucketCount *= 2;
+    m_avoidanceBuckets.assign(bucketCount, {});
+    for (size_t order = 0; order < agentEntities.size(); ++order) {
+        const EntityID id = agentEntities[order];
         auto* a = scene.GetComponent<NavMeshAgentComponent>(id);
         auto* g = scene.GetGameObject(id);
         if (!a || !g || !g->activeInHierarchy() || !a->enabled) continue;
-        avoidanceBuckets[BucketKeyFor(g->transform.worldPosition, bucketSize)].push_back(id);
+        const auto key = BucketKeyFor(g->transform.worldPosition, bucketSize);
+        auto& bucket = FindAvoidanceBucket(key.x, key.z);
+        const size_t entryIndex = m_avoidanceEntries.size();
+        m_avoidanceEntries.push_back({id, SIZE_MAX});
+        if (bucket.first == SIZE_MAX) {
+            bucket.x = key.x;
+            bucket.z = key.z;
+            bucket.first = entryIndex;
+        } else {
+            m_avoidanceEntries[bucket.last].next = entryIndex;
+        }
+        bucket.last = entryIndex;
     }
 
     for (EntityID eid : agentEntities) {
@@ -259,31 +306,50 @@ void NavigationSystem::Update(SystemContext& ctx)
         auto* go    = scene.GetGameObject(eid);
         if (!agent || !go || !go->activeInHierarchy() || !agent->enabled) continue;
 
+        const bool hasAssignedTarget = agent->target.IsAssigned();
+        GameObject* targetGo = nullptr;
+        if (hasAssignedTarget) {
+            targetGo = agent->target.Resolve(scene);
+            if (!targetGo) {
+                ReportInvalidTarget(*agent, eid, 1, "unresolved");
+                HaltKeepingTarget(*agent);
+                continue;
+            }
+            if (targetGo == go || targetGo->IsDescendantOf(*go)) {
+                ReportInvalidTarget(*agent, eid, 2, "inside its own hierarchy");
+                HaltKeepingTarget(*agent);
+                continue;
+            }
+            if (!targetGo->activeInHierarchy()) {
+                ReportInvalidTarget(*agent, eid, 3, "inactive");
+                HaltKeepingTarget(*agent);
+                continue;
+            }
+            agent->lastTargetDiagnosticSignature = 0;
+        } else {
+            agent->lastTargetDiagnosticSignature = 0;
+        }
+
         /// @note この Agent が使う NavMeshSurface を agentTypeId で引く。
         /// @note 対応する Surface がなければスキップ (agentTypeId の Surface をまだ置いていない場合等)。
-        auto surfIt = surfaceMap.find(agent->agentTypeId);
-        if (surfIt == surfaceMap.end()) continue;
-        const NavMeshSurfaceComponent& surf = *surfIt->second;
+        if (m_surfaces.empty()) continue;
+        const auto* surface = FindSurfaceSlot(agent->agentTypeId).surface;
+        if (!surface) continue;
+        const NavMeshSurfaceComponent& surf = *surface;
         const NavMesh& navMesh = surf.navMesh;
         const float agentCellSize = surf.cellSize;
 
         /// @name Target Follow: 追跡対象が設定されていれば定期的に destination を更新する
-        if (agent->target.IsValid()) {
-            auto* targetGo = scene.GetGameObject(agent->target);
-            if (!targetGo) {
-                agent->ClearTarget();
-            } else {
-                agent->repathTimer -= dt;
-                const float movedSq = (targetGo->transform.worldPosition - agent->lastTargetPos).LengthSq();
-                const float repathMoveDist = agentCellSize;
-                if (agent->repathTimer <= 0.0f || movedSq > repathMoveDist * repathMoveDist) {
-                    /// @note SetDestination がクリアするので退避する
-                    const EntityID savedTarget = agent->target;
-                    agent->SetDestination(targetGo->transform.worldPosition);
-                    agent->target          = savedTarget;
-                    agent->lastTargetPos   = targetGo->transform.worldPosition;
-                    agent->repathTimer     = agent->repathInterval;
-                }
+        if (hasAssignedTarget) {
+            agent->repathTimer -= dt;
+            const float movedSq = (targetGo->transform.worldPosition - agent->lastTargetPos).LengthSq();
+            const float repathMoveDist = agentCellSize;
+            if (agent->repathTimer <= 0.0f || movedSq > repathMoveDist * repathMoveDist) {
+                const EntityRef savedTarget = agent->target;
+                agent->SetDestination(targetGo->transform.worldPosition);
+                agent->target = savedTarget;
+                agent->lastTargetPos = targetGo->transform.worldPosition;
+                agent->repathTimer = agent->repathInterval;
             }
         }
 
@@ -305,7 +371,7 @@ void NavigationSystem::Update(SystemContext& ctx)
                 agent->pathLinkTimes  = std::move(pwl.linkTimes);
                 agent->currentWaypoint = 0;
             } else {
-                if (agent->target.IsValid()) HaltKeepingTarget(*agent);
+                if (hasAssignedTarget) HaltKeepingTarget(*agent);
                 else agent->Stop();
                 NotifyScripts(scene, eid, *go, &Script::OnNavMeshPathFailed, ScriptCallbackKind::NAV_PATH_FAILED);
                 continue;
@@ -421,7 +487,7 @@ void NavigationSystem::Update(SystemContext& ctx)
         if (distance <= arriveThreshold) {
             if (isLastWaypoint) {
                 agent->destinationReached = true;
-                if (agent->target.IsValid()) HaltKeepingTarget(*agent);
+                if (hasAssignedTarget) HaltKeepingTarget(*agent);
                 else agent->Stop();
                 NotifyScripts(scene, eid, *go, &Script::OnNavMeshDestinationReached, ScriptCallbackKind::NAV_DESTINATION_REACHED);
                 continue;
@@ -457,10 +523,10 @@ void NavigationSystem::Update(SystemContext& ctx)
         const BucketKey selfBucket = BucketKeyFor(pos, bucketSize);
         for (int bz = -1; bz <= 1; ++bz) {
         for (int bx = -1; bx <= 1; ++bx) {
-            const auto it = avoidanceBuckets.find({ selfBucket.x + bx, selfBucket.z + bz });
-            if (it == avoidanceBuckets.end()) continue;
-
-            for (EntityID otherEid : it->second) {
+            const BucketKey key{selfBucket.x + bx, selfBucket.z + bz};
+            const auto& bucket = FindAvoidanceBucket(key.x, key.z);
+            for (size_t index = bucket.first; index != SIZE_MAX; index = m_avoidanceEntries[index].next) {
+                const EntityID otherEid = m_avoidanceEntries[index].entity;
                 if (otherEid == eid) continue;
                 auto* other   = scene.GetComponent<NavMeshAgentComponent>(otherEid);
                 auto* otherGo = scene.GetGameObject(otherEid);
@@ -536,6 +602,10 @@ void NavigationSystem::Update(SystemContext& ctx)
         else if (agent->updateRotation)
             WriteWorldPoseToTransform(*go, go->transform.worldPosition, newRot);
     }
+    m_agentEntities.clear();
+    m_surfaces.clear();
+    m_avoidanceEntries.clear();
+    m_avoidanceBuckets.clear();
 }
 
 } /// @note namespace fbzz::scene

@@ -6,6 +6,7 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/FiberMaterialSettings.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Renderer/FiberGeometry.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -13,6 +14,7 @@
 #include <Engine/Scene/Components/FiberComponent.hpp>
 #include <Engine/Scene/Components/FiberInteractorComponent.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <cstring>
 #include <limits>
 
@@ -31,17 +33,17 @@ renderer::Mesh FiberTriangle()
     mesh.cpuIndices = {0, 2, 1};
     return mesh;
 }
-} // namespace
+} /// @note namespace
 
 TEST_F(FiberTest, ClampsMaterialAndRejectsNonFiniteValues)
 {
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     material.params["fiberLength"] = {-5.0f};
     material.params["fiberDensity"] = {5.0f};
     material.params["maxBend"] = {std::numeric_limits<float>::infinity()};
     material.params["fiberFrequency"] = {std::numeric_limits<float>::quiet_NaN()};
     material.params["rootColor"] = {0.2f, std::numeric_limits<float>::quiet_NaN(), 0.1f};
-    const auto settings = asset::ResolveFiberMaterial(&material);
+    const auto settings = asset::ResolveFiberMaterial(material);
     const auto defaults = asset::ResolveFiberMaterial(nullptr);
     EXPECT_FLOAT_EQ(settings.m_length, 0.0f);
     EXPECT_FLOAT_EQ(settings.m_density, 1.0f);
@@ -50,19 +52,81 @@ TEST_F(FiberTest, ClampsMaterialAndRejectsNonFiniteValues)
     EXPECT_FLOAT_EQ(settings.m_rootColor.x, defaults.m_rootColor.x);
 }
 
-TEST_F(FiberTest, FurLookParametersDefaultOffAndClamp)
+TEST_F(FiberTest, StrandLookParametersDefaultOffAndClamp)
 {
     const auto defaults = asset::ResolveFiberMaterial(nullptr);
     EXPECT_FLOAT_EQ(defaults.m_clumping, 0.0f);
     EXPECT_FLOAT_EQ(defaults.m_secondarySpecular, 0.0f);
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     material.params["clumping"] = {3.0f};
     material.params["clumpTwist"] = {-9.0f};
     material.params["specularShift"] = {std::numeric_limits<float>::quiet_NaN()};
-    const auto settings = asset::ResolveFiberMaterial(&material);
+    const auto settings = asset::ResolveFiberMaterial(material);
     EXPECT_FLOAT_EQ(settings.m_clumping, 1.0f);
     EXPECT_FLOAT_EQ(settings.m_clumpTwist, -2.0f);
     EXPECT_FLOAT_EQ(settings.m_specularShift, defaults.m_specularShift);
+}
+
+TEST_F(FiberTest, LegacyShaderAndOverridesKeepTheirValuesWithCanonicalPriority)
+{
+    for (const char* name : {"grassShading", "planarShading"}) {
+        SCOPED_TRACE(name);
+        renderer::ShaderDescriptor descriptor;
+        renderer::ShaderVarDesc variable;
+        variable.name = name;
+        variable.size = 4;
+        variable.varType = renderer::ShaderVarType::Float;
+        descriptor.vars.push_back(variable);
+        std::vector<uint8_t> bytes(4);
+        const auto read = [&] { float value = 0; std::memcpy(&value, bytes.data(), 4); return value; };
+        asset::MaterialAssetAuthoring material;
+        material.params["grassShading"] = {0.8f};
+        material.params["planarShading"] = {0.3f};
+        asset::ApplyMaterialAssetParams(material, descriptor, bytes);
+        EXPECT_FLOAT_EQ(read(), 0.3f);
+        std::unordered_map<std::string, std::vector<float>> overrides{
+            {"grassShading", {0.6f}}, {"planarShading", {0.4f}}};
+        asset::ApplyMaterialParamOverrides(overrides, descriptor, bytes);
+        EXPECT_FLOAT_EQ(read(), 0.4f);
+        overrides.erase("planarShading");
+        asset::ApplyMaterialParamOverrides(overrides, descriptor, bytes);
+        EXPECT_FLOAT_EQ(read(), 0.6f);
+        material.params.clear();
+        material.integerParams["planarShading"] = {0};
+        asset::ApplyMaterialAssetParams(material, descriptor, bytes);
+        EXPECT_FLOAT_EQ(read(), 0.0f);
+    }
+}
+
+TEST_F(FiberTest, LegacyShadingKeyLoadsAndSavesCanonicallyWithoutChangingItsValue)
+{
+    testkit::TempDir temp{"fiber-shading-migration"};
+    ASSERT_TRUE(temp.IsValid());
+    const auto path = temp.File("Legacy.mat").generic_string();
+    ASSERT_TRUE(util::FileSystem::WriteText(path, "version=1\n[params]\ngrassShading=0.75\n"));
+    asset::MaterialAssetAuthoring material;
+    ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path, material));
+    EXPECT_FALSE(material.params.contains("grassShading"));
+    EXPECT_FLOAT_EQ(asset::ResolveFiberMaterial(material).m_planarShading, 0.75f);
+    ASSERT_TRUE(asset::SaveMaterialAssetToFile(path, material));
+    std::string saved;
+    ASSERT_TRUE(util::FileSystem::ReadText(path, saved));
+    EXPECT_EQ(saved.find("grassShading"), std::string::npos);
+    EXPECT_NE(saved.find("planarShading"), std::string::npos);
+    asset::MaterialAssetAuthoring reloaded;
+    ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path, reloaded));
+    EXPECT_FLOAT_EQ(asset::ResolveFiberMaterial(reloaded).m_planarShading, 0.75f);
+}
+
+TEST_F(FiberTest, CanonicalShadingKeyWinsOverLegacyAndInvalidValuesUseTheDefault)
+{
+    asset::MaterialAssetAuthoring material;
+    material.params["grassShading"] = {0.9f};
+    EXPECT_FLOAT_EQ(asset::ResolveFiberMaterial(material).m_planarShading, 0.9f);
+    material.params["planarShading"] = {0.2f};
+    EXPECT_FLOAT_EQ(asset::ResolveFiberMaterial(material).m_planarShading, 0.2f);
+    material.params["planarShading"] = {std::numeric_limits<float>::quiet_NaN()};
+    EXPECT_FLOAT_EQ(asset::ResolveFiberMaterial(material).m_planarShading, 0.0f);
 }
 
 TEST_F(FiberTest, ComponentDefaultsFitCharacterBudget)
@@ -71,14 +135,16 @@ TEST_F(FiberTest, ComponentDefaultsFitCharacterBudget)
     EXPECT_EQ(fiber.m_shellCount, 16);
     EXPECT_TRUE(fiber.m_distanceLod);
     EXPECT_LE(fiber.m_shadowShellCount, fiber.m_shellCount);
+    EXPECT_EQ(fiber.m_bladeSegments, 6);
+    EXPECT_EQ(fiber.m_shadowBladeSegments, 0);
 }
 
 TEST_F(FiberTest, RejectsWrongParameterArity)
 {
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     material.params["fiberLength"] = {1.0f, 2.0f};
     material.params["tipColor"] = {1.0f};
-    const auto settings = asset::ResolveFiberMaterial(&material);
+    const auto settings = asset::ResolveFiberMaterial(material);
     const auto defaults = asset::ResolveFiberMaterial(nullptr);
     EXPECT_FLOAT_EQ(settings.m_length, defaults.m_length);
     EXPECT_FLOAT_EQ(settings.m_tipColor.y, defaults.m_tipColor.y);
@@ -408,6 +474,8 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
     fiber.m_distanceLod=true;
     fiber.m_bladeDensity=600;
     fiber.m_bladeWidth=0.025f;
+    fiber.m_bladeSegments=3;
+    fiber.m_shadowBladeSegments=0;
     fiber.m_terrainPatchCells=3;
     fiber.m_terrainLayer=2;
     fiber.m_terrainLayerThreshold=0.6f;
@@ -426,6 +494,8 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
     EXPECT_EQ(loaded->m_mode,scene::FiberRenderMode::BLADE);
     EXPECT_TRUE(loaded->m_distanceLod);
     EXPECT_FLOAT_EQ(loaded->m_bladeDensity,600);
+    EXPECT_EQ(loaded->m_bladeSegments,3);
+    EXPECT_EQ(loaded->m_shadowBladeSegments,0);
     EXPECT_EQ(loaded->m_terrainPatchCells,3);
     EXPECT_EQ(loaded->m_terrainLayer,2);
     EXPECT_FLOAT_EQ(loaded->m_terrainLayerThreshold,0.6f);
@@ -439,4 +509,93 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
     EXPECT_FLOAT_EQ(contact->m_recoverySeconds,3);
 }
 
-} // namespace fbzz::tests
+
+TEST_F(FiberTest, ProjectAppearanceKeepsTypedExtensionsThroughMaterialSaveReload)
+{
+    testkit::TempDir temp{"fiber-project-appearance"};
+    ASSERT_TRUE(temp.IsValid());
+    asset::MaterialAssetAuthoring values;
+    values.shaderPath = "Assets/Shaders/MyFiber/MyGrass.hlsl";
+    values.params["accentColor"] = {0.15f, 0.45f, 0.8f, 1.0f};
+    values.params["patternScale"] = {6.5f};
+    values.integerParams["colorBands"] = {3};
+    values.integerParams["enablePattern"] = {1};
+    values.textures["albedo"] = "Assets/Textures/MyPattern.png";
+    values.textures["tex5"] = "Assets/Textures/GeometryMask.png";
+    const auto path = temp.File("ProjectFiber.mat").generic_string();
+    ASSERT_TRUE(asset::SaveMaterialAssetToFile(path, values));
+    asset::MaterialAssetAuthoring loaded;
+    ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path, loaded));
+    EXPECT_EQ(loaded.shaderPath, values.shaderPath);
+    EXPECT_EQ(loaded.params.at("accentColor"), values.params.at("accentColor"));
+    /// @note Exactly representable small integers normalize to params; reflection restores UInt/Bool below.
+    ASSERT_TRUE(loaded.params.contains("colorBands"));
+    ASSERT_TRUE(loaded.params.contains("enablePattern"));
+    EXPECT_EQ(loaded.params.at("colorBands"), std::vector<float>{3.0f});
+    EXPECT_EQ(loaded.params.at("enablePattern"), std::vector<float>{1.0f});
+    EXPECT_EQ(loaded.textures.at("albedo"), values.textures.at("albedo"));
+    EXPECT_EQ(loaded.textures.at("tex5"), values.textures.at("tex5"));
+    renderer::ShaderDescriptor descriptor;
+    descriptor.cbufferSize = 176;
+    renderer::ShaderVarDesc color;
+    color.name = "accentColor"; color.offset = 128; color.size = 16; color.columns = 4;
+    color.varClass = renderer::ShaderVarClass::Vector;
+    descriptor.vars.push_back(color);
+    renderer::ShaderVarDesc bands;
+    bands.name = "colorBands"; bands.offset = 152; bands.size = 4;
+    bands.varType = renderer::ShaderVarType::UInt;
+    descriptor.vars.push_back(bands);
+    renderer::ShaderVarDesc enabled = bands;
+    enabled.name = "enablePattern"; enabled.offset = 156; enabled.varType = renderer::ShaderVarType::Bool;
+    descriptor.vars.push_back(enabled);
+    std::vector<uint8_t> bytes(176);
+    asset::InitDefaultMaterialParams(descriptor, bytes);
+    asset::ApplyMaterialAssetParams(loaded, descriptor, bytes);
+    uint32_t bandValue = 0, enabledValue = 0;
+    std::memcpy(&bandValue, bytes.data() + 152, 4);
+    std::memcpy(&enabledValue, bytes.data() + 156, 4);
+    EXPECT_EQ(bandValue, 3u);
+    EXPECT_EQ(enabledValue, 1u);
+    EXPECT_EQ(bytes[0], 0u);
+}
+
+TEST_F(FiberTest, ProjectAppearanceGeometryContractRequiresCompleteHybridAndRejectsWrongShape)
+{
+    using renderer::ShaderVertexContract;
+    using renderer::FiberRenderMode;
+    EXPECT_TRUE(renderer::MatchesFiberAppearance(ShaderVertexContract::FIBER_SHELL, FiberRenderMode::SHELL));
+    EXPECT_TRUE(renderer::MatchesFiberAppearance(ShaderVertexContract::FIBER_FIN, FiberRenderMode::FIN));
+    EXPECT_TRUE(renderer::MatchesFiberAppearance(ShaderVertexContract::FIBER_BLADE, FiberRenderMode::BLADE));
+    EXPECT_FALSE(renderer::MatchesFiberAppearance(ShaderVertexContract::FIBER_SHELL, FiberRenderMode::HYBRID));
+    EXPECT_TRUE(renderer::MatchesFiberAppearance(ShaderVertexContract::FIBER_SHELL, FiberRenderMode::HYBRID, true));
+    EXPECT_FALSE(renderer::MatchesFiberAppearance(ShaderVertexContract::FIBER_FIN, FiberRenderMode::HYBRID, true));
+    EXPECT_FALSE(renderer::MatchesFiberAppearance(ShaderVertexContract::FIBER_BLADE, FiberRenderMode::SHELL));
+    EXPECT_FALSE(renderer::MatchesFiberAppearance(ShaderVertexContract::STANDARD_SURFACE, FiberRenderMode::BLADE));
+}
+
+
+TEST_F(FiberTest, ProjectFamilyRejectsDifferentExtendedFieldsAndTextureBindings)
+{
+    renderer::ShaderDescriptor shell;
+    shell.cbufferSize = 160;
+    shell.textureMaskOffset = 128;
+    renderer::ShaderVarDesc field;
+    field.name = "accentColor"; field.offset = 128; field.size = 16;
+    field.columns = 4; field.varClass = renderer::ShaderVarClass::Vector;
+    shell.vars.push_back(field);
+    shell.textures.push_back({"texAlbedoIndex", 0, 144});
+    auto companion = shell;
+    EXPECT_TRUE(renderer::HaveMatchingFiberMaterialLayouts(shell, companion));
+    companion.vars.front().offset = 144;
+    EXPECT_FALSE(renderer::HaveMatchingFiberMaterialLayouts(shell, companion));
+    companion = shell; companion.vars.front().varType = renderer::ShaderVarType::UInt;
+    EXPECT_FALSE(renderer::HaveMatchingFiberMaterialLayouts(shell, companion));
+    companion = shell; companion.textures.front().constantOffset = 148;
+    EXPECT_FALSE(renderer::HaveMatchingFiberMaterialLayouts(shell, companion));
+    companion = shell; companion.textureMaskOffset = 132;
+    EXPECT_FALSE(renderer::HaveMatchingFiberMaterialLayouts(shell, companion));
+    companion = shell; companion.cbufferSize = 176;
+    EXPECT_FALSE(renderer::HaveMatchingFiberMaterialLayouts(shell, companion));
+}
+
+} /// @note namespace fbzz::tests

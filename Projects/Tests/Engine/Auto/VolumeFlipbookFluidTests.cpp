@@ -45,7 +45,7 @@ asset::PackedFluidVolume SolveByHand(const fluid::FluidRecipe& recipe, int resol
     return packed;
 }
 
-} // namespace
+} /// @note namespace
 
 TEST(VolumeFlipbookFluidTest, PackKeepsTheGridLayoutAndScales)
 {
@@ -161,6 +161,27 @@ TEST(VolumeFlipbookFluidTest, StreamCountsFramesLikeThe2DBake)
     EXPECT_TRUE(same);
 }
 
+TEST(VolumeFlipbookFluidTest, CancelKeepsWorkerOwnedSolverAliveUntilCompletionIsCollected)
+{
+    const fluid::FluidRecipe recipe = SmokeRecipe();
+    asset::FluidVolumeStream stream;
+    std::string error;
+    ASSERT_TRUE(stream.Open(recipe, 64, 1.0f / 24.0f, 1.0f, error));
+    ASSERT_TRUE(stream.Request(30));
+
+    stream.Cancel();
+    EXPECT_TRUE(stream.IsOpen());
+    asset::PackedFluidVolume discarded;
+    for (int attempt = 0; stream.Busy() && attempt < 4000; ++attempt) {
+        (void)stream.Poll(discarded);
+        if (stream.Busy()) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_FALSE(stream.Busy());
+    EXPECT_TRUE(stream.IsOpen());
+    stream.Close();
+    EXPECT_FALSE(stream.IsOpen());
+}
+
 TEST(VolumeFlipbookFluidTest, LiquidRecipeSolvesIn3D)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
@@ -182,4 +203,4 @@ TEST(VolumeFlipbookFluidTest, LiquidRecipeSolvesIn3D)
     EXPECT_TRUE(anyLiquid);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

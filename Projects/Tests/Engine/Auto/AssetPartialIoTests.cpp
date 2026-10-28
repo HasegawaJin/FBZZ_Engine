@@ -6,6 +6,9 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/TempDir.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
+#include <TestKit/Engine/LogSinks.hpp>
+#include "../../../Engine/src/Asset/AtomicChunkFileWrite.hpp"
+#include <Engine/Util/FileSystem.hpp>
 
 #include <Engine/Asset/ChunkFile.hpp>
 #include <Engine/Asset/FzModelFormat.hpp>
@@ -15,7 +18,12 @@
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/TextureFileDecoder.hpp>
 
+#include <array>
+#include <barrier>
+#include <cerrno>
 #include <cstdio>
+#include <memory>
+#include <thread>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -33,6 +41,49 @@ protected:
 
     [[nodiscard]] std::string PathOf(const std::string& name) const { return m_temp.File(name).string(); }
 };
+
+/// @note Dependency fake changes only filesystem outcomes; the production publication procedure owns all ordering and failure decisions.
+struct AtomicChunkIoFake {
+    using Error = asset::detail::AtomicWriteError;
+    Error parentFailure, openFailure, writeFailure, flushFailure, closeFailure, renameFailure, cleanupFailure;
+    std::vector<std::string> calls;
+    bool temporaryExists = false;
+    bool opened = false;
+    bool targetUnchanged = true;
+
+    Error CreateParent() { calls.emplace_back("parent"); return parentFailure; }
+    Error Open() {
+        calls.emplace_back("open");
+        if (!openFailure) { temporaryExists = true; opened = true; }
+        return openFailure;
+    }
+    Error Write() { calls.emplace_back("write"); return writeFailure; }
+    Error Flush() { calls.emplace_back("flush"); return flushFailure; }
+    Error Close() { calls.emplace_back("close"); opened = false; return closeFailure; }
+    Error Publish() {
+        calls.emplace_back("rename");
+        if (!renameFailure) { targetUnchanged = false; temporaryExists = false; }
+        return renameFailure;
+    }
+    Error Cleanup() {
+        calls.emplace_back("cleanup");
+        if (!cleanupFailure) temporaryExists = false;
+        return cleanupFailure;
+    }
+};
+
+asset::detail::AtomicWriteError AtomicFailure(std::errc code, unsigned long nativeCode)
+{
+    return {std::make_error_code(code), nativeCode};
+}
+
+std::size_t TemporaryCount(const std::filesystem::path& directory)
+{
+    std::size_t count = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(directory))
+        if (entry.path().wstring().find(L".tmp") != std::wstring::npos) ++count;
+    return count;
+}
 
 std::vector<uint8_t> Bytes(std::initializer_list<uint8_t> values) { return values; }
 
@@ -218,6 +269,206 @@ TEST_F(AssetPartialIoTest, AtomicWriteReplacesAnExistingFile)
     EXPECT_EQ(leftovers, 0u) << "一時ファイルを残さない";
 }
 
+TEST_F(AssetPartialIoTest, AtomicWriteAllowsRetainedReadersToReadTheirOldSnapshotAfterReplacement)
+{
+    const std::string path = PathOf("retained.fztc");
+    asset::ChunkFileWriter first;
+    /// @note Seek beyond the stdio read buffer after replacement so the retained OS handle, not only buffered bytes, is exercised.
+    first.AddChunk(99, std::vector<uint8_t>(8192, 0x55));
+    first.AddChunk(1, Bytes({1, 2, 3}));
+    ASSERT_TRUE(first.WriteAtomically(path, 1, 11));
+    asset::ChunkFileReader retained;
+    ASSERT_TRUE(retained.Open(path));
+    asset::ChunkFileWriter replacement;
+    replacement.AddChunk(1, Bytes({7, 8, 9, 10}));
+
+    ASSERT_TRUE(replacement.WriteAtomically(path, 1, 22));
+
+    std::vector<uint8_t> oldBytes, newBytes;
+    ASSERT_TRUE(retained.ReadChunk(1, oldBytes));
+    EXPECT_EQ(retained.Header().sourceStamp, 11u);
+    EXPECT_EQ(oldBytes, Bytes({1, 2, 3}));
+    asset::ChunkFileReader current;
+    ASSERT_TRUE(current.Open(path));
+    ASSERT_TRUE(current.ReadChunk(1, newBytes));
+    EXPECT_EQ(current.Header().sourceStamp, 22u);
+    EXPECT_EQ(newBytes, Bytes({7, 8, 9, 10}));
+    EXPECT_EQ(TemporaryCount(m_temp.Path()), 0u);
+}
+
+TEST_F(AssetPartialIoTest, AtomicWriteKeepsValidTargetAndUnrelatedTemporaryWhenAnExternalReaderBlocksRename)
+{
+    SetLogLevel(core::LogLevel::WARNING);
+    testkit::RecordingLogSink sink;
+    testkit::ScopedLogSink recording(&sink);
+    const std::string path = PathOf("externally-locked.fztc");
+    asset::ChunkFileWriter first;
+    first.AddChunk(1, Bytes({2, 4, 6}));
+    ASSERT_TRUE(first.WriteAtomically(path, 1, 11));
+    const auto unrelated = m_temp.File("other.fztc.tmp123_456");
+    WriteFileBytes(unrelated.string(), Bytes({42}));
+    std::FILE* raw = nullptr;
+    ASSERT_EQ(_wfopen_s(&raw, util::FileSystem::PathFromUtf8(path).c_str(), L"rb"), 0);
+    ASSERT_NE(raw, nullptr);
+    const std::unique_ptr<std::FILE, decltype(&std::fclose)> blocker(raw, &std::fclose);
+    asset::ChunkFileWriter replacement;
+    replacement.AddChunk(1, Bytes({8, 10}));
+
+    EXPECT_FALSE(replacement.WriteAtomically(path, 1, 22));
+
+    asset::ChunkFileReader current;
+    ASSERT_TRUE(current.Open(path));
+    std::vector<uint8_t> bytes;
+    ASSERT_TRUE(current.ReadChunk(1, bytes));
+    EXPECT_EQ(current.Header().sourceStamp, 11u);
+    EXPECT_EQ(bytes, Bytes({2, 4, 6}));
+    const auto* failure = sink.Find("stage=rename");
+    ASSERT_NE(failure, nullptr);
+    EXPECT_NE(failure->message.find("category=system"), std::string::npos);
+    EXPECT_NE(failure->message.find("externally-locked.fztc"), std::string::npos);
+    EXPECT_EQ(TemporaryCount(m_temp.Path()), 1u);
+    std::vector<uint8_t> preserved;
+    ASSERT_TRUE(util::FileSystem::ReadBinary(unrelated, preserved));
+    EXPECT_EQ(preserved, Bytes({42}));
+}
+
+TEST_F(AssetPartialIoTest, AtomicWriteReportsParentCreationFailureWithoutOpeningATemporary)
+{
+    SetLogLevel(core::LogLevel::WARNING);
+    testkit::RecordingLogSink sink;
+    testkit::ScopedLogSink recording(&sink);
+    const auto parentFile = m_temp.File("not-a-directory");
+    WriteFileBytes(parentFile.string(), Bytes({1, 3, 5}));
+    asset::ChunkFileWriter writer;
+    writer.AddChunk(1, Bytes({2}));
+
+    EXPECT_FALSE(writer.WriteAtomically(util::FileSystem::PathToUtf8(parentFile / "blocked.fztc"), 1, 1));
+
+    ASSERT_NE(sink.Find("stage=create-parent"), nullptr);
+    std::vector<uint8_t> preserved;
+    ASSERT_TRUE(util::FileSystem::ReadBinary(parentFile, preserved));
+    EXPECT_EQ(preserved, Bytes({1, 3, 5}));
+    EXPECT_EQ(TemporaryCount(m_temp.Path()), 0u);
+}
+
+TEST_F(AssetPartialIoTest, AtomicWriteSupportsUnicodePathsWithoutChangingThePublishedBytes)
+{
+    const auto path = m_temp.Path() / std::filesystem::path(L"共有読み込み_キャッシュ.fztc");
+    asset::ChunkFileWriter writer;
+    writer.AddChunk(1, Bytes({0, 128, 255}));
+
+    ASSERT_TRUE(writer.WriteAtomically(util::FileSystem::PathToUtf8(path), 1, 91));
+
+    asset::ChunkFileReader reader;
+    ASSERT_TRUE(reader.Open(util::FileSystem::PathToUtf8(path)));
+    std::vector<uint8_t> bytes;
+    ASSERT_TRUE(reader.ReadChunk(1, bytes));
+    EXPECT_EQ(bytes, Bytes({0, 128, 255}));
+}
+
+TEST_F(AssetPartialIoTest, ConcurrentAtomicWritersPublishOneCompletePayloadWithoutLeavingTemporaries)
+{
+    const std::string path = PathOf("concurrent.fztc");
+    asset::ChunkFileWriter first, second;
+    first.AddChunk(1, std::vector<uint8_t>(8192, 0x11));
+    first.AddChunk(2, Bytes({1, 2}));
+    second.AddChunk(1, std::vector<uint8_t>(16384, 0x77));
+    second.AddChunk(2, Bytes({7, 8, 9}));
+    std::barrier start(3);
+    std::array<bool, 2> completed{};
+    std::jthread a([&] { start.arrive_and_wait(); completed[0] = first.WriteAtomically(path, 1, 11); });
+    std::jthread b([&] { start.arrive_and_wait(); completed[1] = second.WriteAtomically(path, 1, 77); });
+
+    start.arrive_and_wait();
+    a.join(); b.join();
+
+    EXPECT_TRUE(completed[0] || completed[1]);
+    asset::ChunkFileReader reader;
+    ASSERT_TRUE(reader.Open(path));
+    const bool firstWon = reader.Header().sourceStamp == 11;
+    EXPECT_TRUE(firstWon || reader.Header().sourceStamp == 77);
+    std::vector<uint8_t> large, small;
+    ASSERT_TRUE(reader.ReadChunk(1, large));
+    ASSERT_TRUE(reader.ReadChunk(2, small));
+    EXPECT_EQ(large, std::vector<uint8_t>(firstWon ? 8192 : 16384, firstWon ? 0x11 : 0x77));
+    EXPECT_EQ(small, firstWon ? Bytes({1, 2}) : Bytes({7, 8, 9}));
+    EXPECT_EQ(TemporaryCount(m_temp.Path()), 0u);
+}
+
+TEST_F(AssetPartialIoTest, AtomicPublicationDoesNotCleanAnUnownedTemporaryAfterExclusiveOpenFailure)
+{
+    AtomicChunkIoFake io;
+    io.temporaryExists = true;
+    io.openFailure = AtomicFailure(std::errc::file_exists, 80);
+
+    const auto result = asset::detail::WriteAtomicChunkFile(io, [](auto& output) { return output.Write(); });
+
+    EXPECT_FALSE(result.published);
+    EXPECT_EQ(result.open.code, std::make_error_code(std::errc::file_exists));
+    EXPECT_EQ(result.open.nativeCode, 80u);
+    EXPECT_FALSE(result.cleanupAttempted);
+    EXPECT_TRUE(io.targetUnchanged);
+    EXPECT_TRUE(io.temporaryExists);
+    EXPECT_EQ(io.calls, (std::vector<std::string>{"parent", "open"}));
+}
+
+TEST_F(AssetPartialIoTest, AtomicPublicationPreservesWriteCloseAndCleanupErrorsIndependently)
+{
+    AtomicChunkIoFake io;
+    io.writeFailure = AtomicFailure(std::errc::no_space_on_device, 112);
+    io.closeFailure = AtomicFailure(std::errc::io_error, 1117);
+    io.cleanupFailure = AtomicFailure(std::errc::permission_denied, 5);
+
+    const auto result = asset::detail::WriteAtomicChunkFile(io, [](auto& output) { return output.Write(); });
+
+    EXPECT_FALSE(result.published);
+    EXPECT_EQ(result.write.code, std::make_error_code(std::errc::no_space_on_device));
+    EXPECT_EQ(result.write.nativeCode, 112u);
+    EXPECT_EQ(result.close.code, std::make_error_code(std::errc::io_error));
+    EXPECT_EQ(result.close.nativeCode, 1117u);
+    EXPECT_EQ(result.cleanup.code, std::make_error_code(std::errc::permission_denied));
+    EXPECT_EQ(result.cleanup.nativeCode, 5u);
+    EXPECT_FALSE(io.opened);
+    EXPECT_TRUE(io.targetUnchanged);
+    EXPECT_TRUE(io.temporaryExists);
+    EXPECT_EQ(io.calls, (std::vector<std::string>{"parent", "open", "write", "close", "cleanup"}));
+}
+
+TEST_F(AssetPartialIoTest, AtomicPublicationRejectsFlushFailureBeforePublishingAndStillCleansTheClosedTemporary)
+{
+    AtomicChunkIoFake io;
+    io.flushFailure = AtomicFailure(std::errc::no_space_on_device, 112);
+
+    const auto result = asset::detail::WriteAtomicChunkFile(io, [](auto& output) { return output.Write(); });
+
+    EXPECT_FALSE(result.published);
+    EXPECT_EQ(result.flush.code, std::make_error_code(std::errc::no_space_on_device));
+    EXPECT_EQ(result.flush.nativeCode, 112u);
+    EXPECT_TRUE(result.cleanupAttempted);
+    EXPECT_FALSE(io.opened);
+    EXPECT_TRUE(io.targetUnchanged);
+    EXPECT_FALSE(io.temporaryExists);
+    EXPECT_EQ(io.calls, (std::vector<std::string>{"parent", "open", "write", "flush", "close", "cleanup"}));
+}
+
+TEST_F(AssetPartialIoTest, AtomicPublicationRetainsRenameFailureWhenTemporaryCleanupAlsoFails)
+{
+    AtomicChunkIoFake io;
+    io.renameFailure = AtomicFailure(std::errc::permission_denied, 32);
+    io.cleanupFailure = AtomicFailure(std::errc::device_or_resource_busy, 32);
+
+    const auto result = asset::detail::WriteAtomicChunkFile(io, [](auto& output) { return output.Write(); });
+
+    EXPECT_FALSE(result.published);
+    EXPECT_EQ(result.publish.code, std::make_error_code(std::errc::permission_denied));
+    EXPECT_EQ(result.publish.nativeCode, 32u);
+    EXPECT_EQ(result.cleanup.code, std::make_error_code(std::errc::device_or_resource_busy));
+    EXPECT_TRUE(io.targetUnchanged);
+    EXPECT_TRUE(io.temporaryExists);
+    EXPECT_FALSE(io.opened);
+    EXPECT_EQ(io.calls, (std::vector<std::string>{"parent", "open", "write", "flush", "close", "rename", "cleanup"}));
+}
+
 /// @name テクスチャの品質段キャッシュ
 
 TEST_F(AssetPartialIoTest, GreenFlipChangesEveryMipWithoutChangingOtherChannels)
@@ -292,6 +543,25 @@ TEST_F(AssetPartialIoTest, StaleOrMissingCacheIsNotUsed)
     EXPECT_FALSE(asset::texturecache::ReadQuality(path, 6, 0, cached)) << "元画像が変わったら使わない";
     EXPECT_FALSE(asset::texturecache::ReadQuality(path, 5, 2, cached)) << "書いていない品質段は元画像から作り直させる";
     EXPECT_FALSE(asset::texturecache::ReadQuality(PathOf("none.fztc"), 5, 0, cached));
+}
+
+TEST_F(AssetPartialIoTest, EmptyTextureCacheWritePreservesTheExistingValidCacheAndReportsFailure)
+{
+    SetLogLevel(core::LogLevel::WARNING);
+    testkit::RecordingLogSink sink;
+    testkit::ScopedLogSink recording(&sink);
+    const auto path = PathOf("keep-valid.fztc");
+    const auto full = MakeSingleMip(4, 4);
+    ASSERT_TRUE(asset::texturecache::Write(path, 7, full, 2));
+
+    EXPECT_FALSE(asset::texturecache::Write(path, 8, {}, 2));
+
+    ASSERT_NE(sink.Find("has no decoded mip data"), nullptr);
+    DecodedTextureRGBA8 current;
+    ASSERT_TRUE(asset::texturecache::ReadQuality(path, 7, 0, current));
+    ASSERT_EQ(current.mips.size(), 1u);
+    EXPECT_EQ(current.mips[0].rgba, full.mips[0].rgba);
+    EXPECT_EQ(TemporaryCount(m_temp.Path()), 0u);
 }
 
 TEST_F(AssetPartialIoTest, CacheFileNameIgnoresCaseAndSeparators)

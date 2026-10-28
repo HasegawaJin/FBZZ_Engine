@@ -62,11 +62,11 @@ struct CursorPolicy {
 /// @brief 要求の強さ。同じ値なら «後から積んだ方» が勝つ。
 /// @note 視点操作とメニューが同居したときどちらが勝つべきかはゲームごとに変わらないため、名前を付ける。数値を直接書かせると「なぜ 50 なのか」が残らない。
 namespace CursorPriority {
-inline constexpr int Camera   = 0;    ///< 視点操作。ゲームの地の状態
-inline constexpr int Gameplay = 100;  ///< 照準・ドラッグなど遊びの都合
-inline constexpr int UI       = 200;  ///< ゲーム内カーソル・メニュー
-inline constexpr int Modal    = 300;  ///< ポーズ・ダイアログ。何より優先する
-} // namespace CursorPriority
+inline constexpr int Camera   = 0;    ///< @note 視点操作。ゲームの地の状態
+inline constexpr int Gameplay = 100;  ///< @note 照準・ドラッグなど遊びの都合
+inline constexpr int UI       = 200;  ///< @note ゲーム内カーソル・メニュー
+inline constexpr int Modal    = 300;  ///< @note ポーズ・ダイアログ。何より優先する
+} /// @note namespace CursorPriority
 
 using CursorRequestId = std::uint32_t;
 inline constexpr CursorRequestId kInvalidCursorRequest = 0;
@@ -77,14 +77,46 @@ struct CursorRequestInfo {
     CursorRequestId id       = kInvalidCursorRequest;
     int             priority = 0;
     CursorPolicy    policy{};
-    std::uint32_t   owner    = 0;      ///< 要求元の EntityID の生値 (0 = 無所属)
-    char            label[32]{};       ///< 要求元の名前 (スクリプトの型名など)
-    bool            active   = false;  ///< 今この要求が実効値を決めているか
+    std::uint32_t   owner    = 0;      ///< @note 要求元の EntityID の生値 (0 = 無所属)
+    char            label[32]{};       ///< @note 要求元の名前 (スクリプトの型名など)
+    bool            active   = false;  ///< @note 今この要求が実効値を決めているか
+};
+
+/// @brief Input ownership is independent of cursor visibility and movement restriction.
+enum class CursorInputOwner { HOST = 0, GAME = 1 };
+enum class CursorSuspendReason {
+    NONE = 0, NOT_PLAYING, RELEASED, WINDOW_INACTIVE, GAME_VIEW_UNFOCUSED,
+    PAUSED, HOST_OVERRIDE, TARGET_UNAVAILABLE, WINDOW_MOVING
+};
+FBZZ_ENGINE_API const char* ToString(CursorInputOwner owner);
+FBZZ_ENGINE_API const char* ToString(CursorSuspendReason reason);
+
+/// @brief Requested game settings and cursor state currently applied by the host.
+/// @note Input owner GAME includes visible, unrestricted pointer interaction.
+struct CursorState {
+    CursorPolicy requested{};
+    CursorPolicy effective{};
+    CursorInputOwner inputOwner = CursorInputOwner::HOST;
+    CursorSuspendReason suspendedReason = CursorSuspendReason::NOT_PLAYING;
+    bool windowActive = false;
 };
 
 struct FBZZ_ENGINE_API Cursor {
+    /// @note Legacy IsVisible/GetLockMode/GetEffectivePolicy return the winning requested settings.
+    /// @see https://docs.unity3d.com/ScriptReference/Cursor-visible.html Requested visibility and locked effective visibility.
+    [[nodiscard]] static CursorPolicy GetRequestedPolicy();
+    [[nodiscard]] static CursorState GetState();
+
+    /// @brief Explicit host handoff; focus return alone never reacquires game input.
+    /// @note Consumes controls already held by the host until their individual release; raw Editor UI input is preserved.
+    /// @return False while the application is inactive.
+    static bool AcquireGameInput();
+    static void ReleaseGameInput(CursorSuspendReason reason = CursorSuspendReason::RELEASED);
+    [[nodiscard]] static bool IsGameInputOwned();
+    [[nodiscard]] static bool CanReadGameInput();
+
     /// @name 基底の要求
-    /// 誰も Push していないときの状態。Unity の Cursor.visible / lockState 相当で、「1 画面に主張者が 1 つしか居ない」単純なゲームはこれだけで足りる。
+    /// @note 誰も Push していないときの状態。Unity の Cursor.visible / lockState 相当で、「1 画面に主張者が 1 つしか居ない」単純なゲームはこれだけで足りる。
     /// @{
     static void SetVisible(bool visible);
     static bool IsVisible();
@@ -96,7 +128,7 @@ struct FBZZ_ENGINE_API Cursor {
     /// @}
 
     /// @name 要求スタック
-    /// 「今このスクリプトが居る間だけ、この状態にしたい」を積む。
+    /// @note 「今このスクリプトが居る間だけ、この状態にしたい」を積む。
     /// @note ポーズメニューが閉じるとき «元が何だったか» を覚えているのはメニュー側になり、画面が増えるほど復元の組み合わせが増えて 1 つ忘れると戻らない。積んで畳む形にすると、戻す先は常に «残っている要求のうち最も強いもの» で済む。
     /// @{
 
@@ -110,6 +142,8 @@ struct FBZZ_ENGINE_API Cursor {
     /// @note Release → Push だと «同値なら後勝ち» の順序が変わるため、状態だけを変えたい側はこちらを使う。
     static void UpdateRequest(CursorRequestId id, const CursorPolicy& policy);
     static void Release(CursorRequestId id);
+    /// @return ClearRequests / Release 後は false。優先順位の勝者かとは区別する。
+    [[nodiscard]] static bool IsRequestActive(CursorRequestId id);
     static void ReleaseByOwner(std::uint32_t owner);
 
     /// @brief 全ての要求を畳み、基底も既定 (拘束なし・表示) へ戻す。シーン遷移と Play 終了で呼ぶ。
@@ -121,6 +155,7 @@ struct FBZZ_ENGINE_API Cursor {
     static bool GetRequest(std::size_t index, CursorRequestInfo& out);
 
     /// @brief 実効値 (要求スタックの勝者。無ければ基底)。IsVisible / GetLockMode と同じ出所。
+    /// @deprecated Use GetRequestedPolicy for game intent or GetState for effective OS state. Kept with its original meaning.
     [[nodiscard]] static CursorPolicy GetEffectivePolicy();
     [[nodiscard]] static CursorPolicy GetBasePolicy();
     /// @}
@@ -189,4 +224,4 @@ private:
     static CursorShape s_shape;
 };
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

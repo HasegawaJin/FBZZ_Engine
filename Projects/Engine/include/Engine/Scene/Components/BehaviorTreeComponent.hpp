@@ -39,6 +39,10 @@ struct BehaviorTreeComponent {
     ai::Blackboard       blackboard;
     ai::BTInstanceState  state;
     float                tickTimer        = 0.0f;
+    float                tickElapsed      = 0.0f;
+    bool                 evaluationRequested = false;
+    bool                 patrolRequested = false;
+    std::uint64_t        evaluatedRevision = 0;
     float                elapsedTime      = 0.0f;   ///< Blackboard の時間条件の基準
     bool                 initialized      = false;
     bool                 reloadRequested  = false;
@@ -79,6 +83,9 @@ struct BehaviorTreeComponent {
 
     /// 木を最初から評価し直す (Blackboard は保持する)。
     void Restart() { restartRequested = true; }
+
+    /// @brief Wakes the next system update without discarding running action state.
+    void RequestEvaluation() { evaluationRequested = true; }
 
     [[nodiscard]] bool IsRunning() const { return lastRootStatus == ai::BTStatus::Running; }
     /// @}

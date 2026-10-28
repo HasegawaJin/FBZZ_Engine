@@ -5,6 +5,8 @@
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
+#include <Engine/Scene/ControlPointModes.hpp>
+#include <Engine/Scene/ObjectReference.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
@@ -18,18 +20,22 @@
 
 namespace fbzz::scene {
 
-/// CPU で組み直すメッシュを 2 枚持ち、書くたびに入れ替える置き場。
-/// PresentationSystem が Sprite / Line の帯を焼くのに使う (シーンへは保存しない)。
+/// @note CPU で組み直すメッシュを 2 枚持ち、書くたびに入れ替える置き場。
+/// @note PresentationSystem が Sprite / Line の帯を焼くのに使う (シーンへは保存しない)。
 /// @note 2 枚必要: DX12 は BeginFrame が 2 フレーム前のフェンスまでしか待たないため、1 枚だと
-///       GPU が読んでいる最中の頂点を上書きする (DX11 は WRITE_DISCARD で無害、DX12 でのみ壊れる)。
+/// @note GPU が読んでいる最中の頂点を上書きする (DX11 は WRITE_DISCARD で無害、DX12 でのみ壊れる)。
 /// @note 毎フレーム作り直さない: 以前は Release+CreateBuffer を焼くたびに行い、電極 61 本で
-///       15ms 掛かっていた。unique_ptr 単独所有にして、複製時は「まだ焼いていない」状態から
-///       始める (次フレームで焼き直す)。所有者は常に 1 つなので shared_ptr の参照カウントは不要。
+/// @note 15ms 掛かっていた。unique_ptr 単独所有にして、複製時は「まだ焼いていない」状態から
+/// @note 始める (次フレームで焼き直す)。所有者は常に 1 つなので shared_ptr の参照カウントは不要。
 struct DoubleBufferedMesh {
     std::unique_ptr<renderer::Mesh> slots[2];
-    /// 入力が変わっていないかの判定に使う。変わらなければ書き直さない。
+    /// @note 入力が変わっていないかの判定に使う。変わらなければ書き直さない。
     std::size_t signature = 0;
-    /// 今 slots のどちらを描いているか。
+    /// @note 頂点生成に使った全値を順序付きで保持する。candidate は毎更新の比較用領域を再利用する。
+    std::vector<float> geometryInputs;
+    std::vector<float> candidateInputs;
+    bool geometryValid = false;
+    /// @note 今 slots のどちらを描いているか。
     std::uint32_t current = 0;
 
     DoubleBufferedMesh() = default;
@@ -38,10 +44,16 @@ struct DoubleBufferedMesh {
     DoubleBufferedMesh& operator=(DoubleBufferedMesh&&) noexcept = default;
 
     /// @note コピーで中身を連れていかないのは、Component の複製・プレファブ展開が値コピーのため。
-    ///       GPU バッファまで写すと 2 つの GameObject が同じバッファへ交互に書き、片方が畳まれた
-    ///       時点でもう片方が消えたバッファを描く。複製先は «まだ焼いていない» 状態から始める。
+    /// @note GPU バッファまで写すと 2 つの GameObject が同じバッファへ交互に書き、片方が畳まれた
+    /// @note 時点でもう片方が消えたバッファを描く。複製先は «まだ焼いていない» 状態から始める。
     DoubleBufferedMesh(const DoubleBufferedMesh&) {}
-    DoubleBufferedMesh& operator=(const DoubleBufferedMesh&) { return *this; }
+    DoubleBufferedMesh& operator=(const DoubleBufferedMesh&)
+    {
+        slots[0].reset(); slots[1].reset();
+        signature = 0; current = 0; geometryValid = false;
+        geometryInputs.clear(); candidateInputs.clear();
+        return *this;
+    }
 
     [[nodiscard]] renderer::Mesh* Current() const { return slots[current].get(); }
     [[nodiscard]] bool HasMesh() const { return static_cast<bool>(slots[current]); }
@@ -56,11 +68,11 @@ struct SpriteRendererComponent {
     math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector2 size = { 1.0f, 1.0f };
     math::Vector2 pivot = { 0.5f, 0.5f };
-    /// size と pivot を Sprite の .meta から取る (Pixels Per Unit と Pivot)。
+    /// @note size と pivot を Sprite の .meta から取る (Pixels Per Unit と Pivot)。
     /// @note 既定 false: 既存シーンの size / pivot は手で決めた値で、素材由来の値へ勝手に
-    ///       置き換えると全部の見た目が変わる。
+    /// @note 置き換えると全部の見た目が変わる。
     /// @note 1 回きりのボタンではなく常時追従にする: Sprite Editor で Pivot を直したら、
-    ///       その絵を使う全オブジェクトが直ってほしいため。
+    /// @note その絵を使う全オブジェクトが直ってほしいため。
     bool useSpriteNativeSize = false;
     SpriteDrawMode drawMode = SpriteDrawMode::Simple;
     int sortingLayer = 0;
@@ -109,16 +121,55 @@ struct SortingGroupComponent {
 
 enum class LineSpace : int { Local = 0, World = 1 };
 
-/// 点列を «どんな断面で» 押し出すか。
+/// @note 点列を «どんな断面で» 押し出すか。
 /// @note Tube を足したのは、Ribbon (板 1 枚をカメラへ向ける) だと «太さのあるもの» (レーザー筒・
-///       パイプ) が視線が寄ると潰れ、地形へ突き刺さる端が板の切り口として出て刺さって見えないため。
+/// @note パイプ) が視線が寄ると潰れ、地形へ突き刺さる端が板の切り口として出て刺さって見えないため。
 /// @note Ribbon も残すのは、軌跡・放電・UI の線は «常にこちらを向く» ことが読みやすさそのもので、
-///       Tube にすると細い線ほど画面上で消えるため。用途が違うので選択式にする。
+/// @note Tube にすると細い線ほど画面上で消えるため。用途が違うので選択式にする。
 enum class LineShape : int { Ribbon = 0, Tube = 1 };
+
+/// @brief Stable reference row for one authored Line point.
+struct LineControlPointBinding {
+    std::uint32_t id = 0;
+    ObjectReference target;
+
+    /// @brief Reflect the stable id and typed TargetPoint reference.
+    void Reflect(IReflector& reflector);
+    bool operator==(const LineControlPointBinding& other) const;
+};
+
+/// @brief Numeric Line point retained by a static bake.
+struct LineControlPointValue {
+    std::uint32_t id = 0;
+    math::Vector3 position = math::Vector3::ZERO;
+
+    /// @brief Reflect the stable id and captured position.
+    void Reflect(IReflector& reflector);
+    bool operator==(const LineControlPointValue& other) const = default;
+};
+
+/// @brief Reflect ordered Line point bindings without changing their order or attributes.
+void ReflectLineControlPointBindings(IReflector& reflector,
+    std::vector<LineControlPointBinding>& bindings);
+
+/// @brief Reflect stable-ID numeric Line points.
+void ReflectLineControlPointValues(IReflector& reflector, const char* fieldName,
+    std::vector<LineControlPointValue>& points);
 
 struct LineRendererComponent {
     bool enabled = true;
     std::vector<math::Vector3> points;
+    ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE;
+    ControlPointRuntimeMode pointRuntimeMode = ControlPointRuntimeMode::LIVE;
+    std::vector<LineControlPointBinding> pointBindings;
+    std::vector<LineControlPointValue> bakedPoints;
+    std::uint64_t bakedInputSignature = 0;
+    ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE;
+    /// @brief Coordinate interpretation retained with the numeric point bake.
+    /// @note Changing authored space marks the bake stale; saved points keep this interpretation until rebake.
+    LineSpace bakedSpace = LineSpace::Local;
+    std::uint32_t bakedAdapterVersion = 0;
+    bool bakeValid = false;
     std::string materialPath = "Assets/Materials/Fallback/VFXMeshFallback.mat";
     math::Vector4 startColor = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector4 endColor = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -126,10 +177,10 @@ struct LineRendererComponent {
     float endWidth = 0.05f;
     LineSpace space = LineSpace::Local;
     bool loop = false;
-    /// Ribbon のときだけ意味を持つ。Tube は形が視点に依存しない。
+    /// @note Ribbon のときだけ意味を持つ。Tube は形が視点に依存しない。
     bool billboard = true;
     LineShape shape = LineShape::Ribbon;
-    /// Tube の円周分割数。小さいと角が見え、大きくしても遠目には変わらない。
+    /// @note Tube の円周分割数。小さいと角が見え、大きくしても遠目には変わらない。
     int radialSegments = 8;
     int sortingLayer = 0;
     int orderInLayer = 0;
@@ -139,7 +190,20 @@ struct LineRendererComponent {
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
-        r.ListField("points", points);
+        ReflectControlPointSourceMode(r, "pointSourceMode", pointSourceMode);
+        ReflectControlPointRuntimeMode(r, "pointRuntimeMode", pointRuntimeMode);
+        if (pointSourceMode == ControlPointSourceMode::INLINE)
+            r.ListField("points", points);
+        ReflectLineControlPointBindings(r, pointBindings);
+        ReflectLineControlPointValues(r, "bakedPoints", bakedPoints);
+        ReflectControlPointSignature(r, "bakedInputSignature", bakedInputSignature);
+        ReflectControlPointSourceMode(r, "bakedSourceMode", bakedSourceMode);
+        ReflectControlPointVersion(r, "bakedAdapterVersion", bakedAdapterVersion);
+        int bakedSpaceValue = static_cast<int>(bakedSpace);
+        static constexpr const char* BAKED_SPACES[] = { "Local", "World" };
+        r.Enum("bakedSpace", bakedSpaceValue, BAKED_SPACES);
+        bakedSpace = static_cast<LineSpace>(bakedSpaceValue < 0 || bakedSpaceValue > 1 ? 0xff : bakedSpaceValue);
+        r.Field("bakeValid", bakeValid);
         r.Field("materialPath", materialPath);
         r.ColorField("startColor", startColor);
         r.ColorField("endColor", endColor);
@@ -185,9 +249,9 @@ enum class ProjectorShape : int { Box = 0, Perspective = 1 };
 struct ProjectorComponent {
     bool enabled = true;
     ProjectorShape shape = ProjectorShape::Box;
-    /// render_path = "decal" の .mat はシェーダーごと DecalComponent へ渡る。
-    /// それ以外の .mat は albedo / normal / emissive のテクスチャだけを抜き出して
-    /// 組み込みデカール描画へ載せる (旧来の Projector 設定を壊さないため)。
+    /// @note render_path = "decal" の .mat はシェーダーごと DecalComponent へ渡る。
+    /// @note それ以外の .mat は albedo / normal / emissive のテクスチャだけを抜き出して
+    /// @note 組み込みデカール描画へ載せる (旧来の Projector 設定を壊さないため)。
     std::string materialPath;
     math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
     float fieldOfView = 45.0f;
@@ -215,4 +279,4 @@ struct ProjectorComponent {
     }
 };
 
-} // namespace fbzz::scene
+} ///< @note namespace fbzz::scene

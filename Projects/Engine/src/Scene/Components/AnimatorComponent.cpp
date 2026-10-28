@@ -5,6 +5,8 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/Model.hpp>
 
 #include <mutex>
 #include <string>
@@ -14,11 +16,11 @@ namespace fbzz::scene {
 
 namespace {
 
-/// 既に報告した (API, レイヤー名) の組。
+/// @note 既に報告した (API, レイヤー名) の組。
 /// @note 名前引きに失敗する呼び出しは «毎フレーム» 来る。SetLayerWeight を Update から流している
-///       Script が名前を間違えると、抑止が無ければログが毎フレーム埋まり、他の手掛かりごと
-///       流してしまうため覚える。同じ Controller を使う敵が 20 体いても原因は 1 つで、
-///       20 行出しても情報は増えないため、プロセス全体で 1 つに持つ。
+/// @note       Script が名前を間違えると、抑止が無ければログが毎フレーム埋まり、他の手掛かりごと
+/// @note       流してしまうため覚える。同じ Controller を使う敵が 20 体いても原因は 1 つで、
+/// @note       20 行出しても情報は増えないため、プロセス全体で 1 つに持つ。
 std::mutex& ReportedMutex()
 {
     static std::mutex mutex;
@@ -31,17 +33,29 @@ std::unordered_set<std::string>& ReportedKeys()
     return keys;
 }
 
-} // namespace
+} /// @note namespace
+
+const asset::AnimationClip& AnimatorComponent::ClipAt(std::size_t index) const
+{
+    static const asset::AnimationClip empty;
+    if (!clips.empty()) return index < clips.size() ? clips[index] : empty;
+    if (index >= sharedClips.size()) return empty;
+    const auto& reference = sharedClips[index];
+    if (const auto* clip = asset::AssetManager::Get(reference.clip)) return *clip;
+    const auto* model = asset::AssetManager::Get(reference.model);
+    return model && reference.modelClipIndex < model->clips.size()
+        ? model->clips[reference.modelClipIndex] : empty;
+}
 
 void ReportUnknownAnimationLayer(const char* api,
                                  std::string_view layerName,
                                  const std::vector<AnimationLayer>& available)
 {
     /// @note レイヤーが 1 本も無いのは «名前の間違い» ではなく «まだ何も入っていない» で、
-    ///       Controller の読み込みが済む前に Script が先に走った瞬間に起きる (Script は
-    ///       AnimatorSystem より前に動く)。ここで鳴らすと、正しい名前を書いていても
-    ///       起動直後に必ず警告が出る。名前の取り違えは «候補があるのに一致しない» ときだけ
-    ///       判定できるので、空のときは黙る。
+    /// @note       Controller の読み込みが済む前に Script が先に走った瞬間に起きる (Script は
+    /// @note       AnimatorSystem より前に動く)。ここで鳴らすと、正しい名前を書いていても
+    /// @note       起動直後に必ず警告が出る。名前の取り違えは «候補があるのに一致しない» ときだけ
+    /// @note       判定できるので、空のときは黙る。
     if (available.empty()) return;
 
     const char* apiName = api ? api : "?";
@@ -67,4 +81,4 @@ void ReportUnknownAnimationLayer(const char* api,
         apiName, requested.c_str(), names.c_str());
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -11,6 +11,8 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace fbzz::asset {
 namespace {
@@ -19,6 +21,74 @@ struct CachedCapabilities {
     std::filesystem::file_time_type timestamp;
     renderer::ShaderCapabilities value;
 };
+
+struct PreparedShaderReference {
+    std::string reference;
+    std::string guid;
+    std::string path;
+    std::string metaPath;
+    std::filesystem::path nativeSourcePath;
+    std::filesystem::path nativeMetaPath;
+    uint64_t databaseRevision = 0;
+    bool hasDatabaseRevision = false;
+};
+
+/// @note Only reference parsing and native path conversion are retained; existence and metadata timestamps are queried on every resolution.
+class PreparedShaderReferences {
+public:
+    PreparedShaderReference& Select(std::string_view reference)
+    {
+        for (auto& entry : m_entries)
+            if (entry.reference == reference) return entry;
+        PreparedShaderReference prepared;
+        prepared.reference = reference;
+        if (AssetDatabase::IsGuidRef(reference)) prepared.guid = AssetDatabase::GuidFromRef(reference);
+        if (m_entries.size() < MAXIMUM_REFERENCES) {
+            if (m_entries.empty()) m_entries.reserve(MAXIMUM_REFERENCES);
+            m_entries.push_back(std::move(prepared));
+            return m_entries.back();
+        }
+        auto& entry = m_entries[m_nextEviction];
+        m_nextEviction = (m_nextEviction + 1u) % MAXIMUM_REFERENCES;
+        entry = std::move(prepared);
+        return entry;
+    }
+private:
+    static constexpr size_t MAXIMUM_REFERENCES = 32;
+    std::vector<PreparedShaderReference> m_entries;
+    size_t m_nextEviction = 0;
+};
+
+PreparedShaderReference& PrepareShaderReference(std::string_view reference)
+{
+    const bool guidReference = AssetDatabase::IsGuidRef(reference);
+    /// @note Reporting callbacks can edit the caller's input; retain the original non-GUID bytes before resolution and cache selection.
+    std::string ownedReference;
+    std::string resolvedPath;
+    if (!guidReference) {
+        ownedReference.assign(reference);
+        reference = ownedReference;
+        resolvedPath = AssetManager::ResolveAssetPath(ownedReference);
+    }
+    thread_local PreparedShaderReferences preparedReferences;
+    auto& prepared = preparedReferences.Select(reference);
+    if (guidReference) {
+        /// @note Database revision advances for all GUID mapping/ambiguity changes, including Init and Shutdown; metadata freshness remains independent.
+        const uint64_t revision = AssetDatabase::Revision();
+        if (prepared.hasDatabaseRevision && prepared.databaseRevision == revision) return prepared;
+        resolvedPath = AssetDatabase::PathFromGuid(prepared.guid);
+        /// @note Tag with the revision read before PathFromGuid; a concurrent mapping edit forces the next call to resolve again.
+        prepared.databaseRevision = revision;
+        prepared.hasDatabaseRevision = true;
+    }
+    if (prepared.path != resolvedPath) {
+        prepared.path = std::move(resolvedPath);
+        prepared.metaPath = prepared.path + ".meta";
+        prepared.nativeSourcePath = util::FileSystem::PathFromUtf8(prepared.path);
+        prepared.nativeMetaPath.clear();
+    }
+    return prepared;
+}
 
 renderer::ShaderCapabilities ReadCapabilities(const std::string& path)
 {
@@ -39,6 +109,10 @@ renderer::ShaderCapabilities ReadCapabilities(const std::string& path)
     const std::string variants = table["variants"].value_or(std::string{});
     if (vertex == "standard_surface_v1") result.vertex = ShaderVertexContract::STANDARD_SURFACE;
     else if (vertex == "standard_skinned_v1") result.vertex = ShaderVertexContract::STANDARD_SKINNED;
+    else if (vertex == "water_surface_v1") result.vertex = ShaderVertexContract::WATER_SURFACE;
+    else if (vertex == "fiber_shell_v1") result.vertex = ShaderVertexContract::FIBER_SHELL;
+    else if (vertex == "fiber_fin_v1") result.vertex = ShaderVertexContract::FIBER_FIN;
+    else if (vertex == "fiber_blade_v1") result.vertex = ShaderVertexContract::FIBER_BLADE;
     else if (vertex != "custom") return {};
     if (surface == "metallic_roughness_v1") result.surface = ShaderSurfaceContract::STANDARD_PBR;
     else if (surface == "lambert_v1") result.surface = ShaderSurfaceContract::LAMBERT;
@@ -82,22 +156,26 @@ renderer::ShaderCapabilities ReadCapabilities(const std::string& path)
 renderer::ShaderCapabilities ResolveShaderCapabilities(std::string_view shaderReference)
 {
     if (shaderReference.empty()) return {};
-    const std::string reference(shaderReference);
-    const std::string path = AssetDatabase::IsGuidRef(reference)
-        ? AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(reference))
-        : AssetManager::ResolveAssetPath(reference);
-    if (path.empty() || !util::FileSystem::Exists(path)) return {};
-    const std::string metaPath = path + ".meta";
+    auto& prepared = PrepareShaderReference(shaderReference);
+    /// @note The native-path overload uses the same GetFileAttributesW existence contract, including source symlinks.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesw GetFileAttributesW symbolic-link behavior.
+    if (prepared.path.empty() || !util::FileSystem::Exists(prepared.nativeSourcePath)) return {};
+    /// @note Preserve conversion order for absent sources; an empty native metadata path records only that conversion has not run.
+    if (prepared.nativeMetaPath.empty()) {
+        prepared.nativeMetaPath = std::filesystem::u8path(prepared.metaPath);
+    }
     std::error_code error;
-    const auto timestamp = std::filesystem::last_write_time(std::filesystem::u8path(metaPath), error);
+    /// @note Keep standard-library target timestamp and sharing-violation handling; no filesystem result enters the prepared-reference cache.
+    /// @see https://github.com/microsoft/STL/blob/main/stl/src/filesystem.cpp __std_fs_get_stats follows reparse points and handles sharing violations.
+    const auto timestamp = std::filesystem::last_write_time(prepared.nativeMetaPath, error);
     if (error) return {};
     static std::unordered_map<std::string, CachedCapabilities> cache;
     static std::mutex cacheMutex;
     const std::lock_guard lock(cacheMutex);
-    const auto found = cache.find(metaPath);
+    const auto found = cache.find(prepared.metaPath);
     if (found != cache.end() && found->second.timestamp == timestamp) return found->second.value;
-    const auto capabilities = ReadCapabilities(metaPath);
-    cache.insert_or_assign(metaPath, CachedCapabilities{timestamp, capabilities});
+    const auto capabilities = ReadCapabilities(prepared.metaPath);
+    cache.insert_or_assign(prepared.metaPath, CachedCapabilities{timestamp, capabilities});
     return capabilities;
 }
 

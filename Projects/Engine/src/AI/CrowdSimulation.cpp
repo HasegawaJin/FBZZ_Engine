@@ -1,9 +1,11 @@
 /// @file    CrowdSimulation.cpp
-/// @brief   Stamped spatial hashing, budgeted decisions and safety-constrained 3D steering.
+/// @brief   Bounded spatial queries, budgeted decisions and safety-constrained 3D steering.
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #include <Engine/AI/CrowdSimulation.hpp>
 #include <algorithm>
+#include <array>
+#include <cassert>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -12,6 +14,10 @@ namespace fbzz::ai {
 namespace {
 using V = math::Vector3;
 constexpr float EPS = 0.00001f;
+constexpr std::size_t SPHERE_LINEAR_LIMIT = 8;
+constexpr std::size_t SPHERE_NODE_BUDGET = 64;
+constexpr std::size_t PROJECTION_REQUERY_LIMIT = 4;
+float Axis(V value, int axis) { return axis == 0 ? value.x : axis == 1 ? value.y : value.z; }
 bool Scalar(float v) { return std::isfinite(v) && std::abs(v) <= 1000000; }
 bool Vector(V v) { return Scalar(v.x) && Scalar(v.y) && Scalar(v.z); }
 bool Nonnegative(float v) { return Scalar(v) && v >= 0; }
@@ -81,12 +87,102 @@ V Turn(V velocity, V desired, float maximumAngle) {
 }
 }
 
+void CrowdWorkspace::SpatialIndex::Reserve(std::size_t capacity) {
+    if (m_bounds.size() < capacity) m_bounds.resize(capacity);
+    if (m_order.size() < capacity) m_order.resize(capacity);
+    if (m_nodes.size() < capacity * 2 - 1) m_nodes.resize(capacity * 2 - 1);
+}
+
+CrowdWorkspace::SpatialIndex::Bounds CrowdWorkspace::SpatialIndex::MakeBounds(V position, float radius) {
+    Bounds result;
+    constexpr double SLACK = 16.0 * std::numeric_limits<float>::epsilon();
+    for (int axis = 0; axis < 3; ++axis) {
+        const double center = Axis(position, axis);
+        /// @note Expanding only the final endpoint misses cancellation cases such as 1000000 - 999990 near a rounded sphere boundary.
+        const double margin = SLACK * (std::abs(center) + radius + 1.0);
+        result.minimum[axis] = center - radius - margin;
+        result.maximum[axis] = center + radius + margin;
+    }
+    return result;
+}
+
+bool CrowdWorkspace::SpatialIndex::Overlaps(const Bounds& left, const Bounds& right) {
+    for (int axis = 0; axis < 3; ++axis)
+        if (left.maximum[axis] < right.minimum[axis] || right.maximum[axis] < left.minimum[axis]) return false;
+    return true;
+}
+
+/// @see https://pbr-book.org/4ed/Primitives_and_Intersection_Acceleration/Bounding_Volume_Hierarchies Equal-count primitive subdivision bounds binary-tree storage.
+template<class Sphere> void CrowdWorkspace::SpatialIndex::Build(std::span<const Sphere> spheres) {
+    m_count = spheres.size(); m_nodeCount = 0;
+    if (m_count <= SPHERE_LINEAR_LIMIT) return;
+    for (std::size_t index = 0; index < m_count; ++index) {
+        m_bounds[index] = MakeBounds(spheres[index].position, spheres[index].radius);
+        m_order[index] = static_cast<std::uint16_t>(index);
+    }
+    const auto build = [&](auto&& self, std::uint16_t begin, std::uint16_t end) -> std::uint16_t {
+        const auto index = static_cast<std::uint16_t>(m_nodeCount++);
+        auto& node = m_nodes[index];
+        node.begin = begin; node.end = end; node.left = node.right = 0;
+        node.bounds = m_bounds[m_order[begin]];
+        for (std::size_t item = begin + 1; item < end; ++item)
+            for (int axis = 0; axis < 3; ++axis) {
+                node.bounds.minimum[axis] = std::min(node.bounds.minimum[axis], m_bounds[m_order[item]].minimum[axis]);
+                node.bounds.maximum[axis] = std::max(node.bounds.maximum[axis], m_bounds[m_order[item]].maximum[axis]);
+            }
+        if (end - begin <= 4) return index;
+        int splitAxis = 0;
+        for (int axis = 1; axis < 3; ++axis)
+            if (node.bounds.maximum[axis] - node.bounds.minimum[axis] > node.bounds.maximum[splitAxis] - node.bounds.minimum[splitAxis]) splitAxis = axis;
+        const auto middle = static_cast<std::uint16_t>(begin + (end - begin) / 2);
+        std::nth_element(m_order.begin() + begin, m_order.begin() + middle, m_order.begin() + end,
+            [&](std::uint16_t left, std::uint16_t right) {
+                const float a = Axis(spheres[left].position, splitAxis), b = Axis(spheres[right].position, splitAxis);
+                return a == b ? left < right : a < b;
+            });
+        node.left = self(self, begin, middle); node.right = self(self, middle, end);
+        return index;
+    };
+    build(build, 0, static_cast<std::uint16_t>(m_count));
+}
+
+std::size_t CrowdWorkspace::SpatialIndex::All(std::span<std::uint16_t> candidates) const {
+    assert(candidates.size() >= m_count);
+    for (std::size_t index = 0; index < m_count; ++index) candidates[index] = static_cast<std::uint16_t>(index);
+    return m_count;
+}
+
+std::size_t CrowdWorkspace::SpatialIndex::Query(V position, float radius, std::span<std::uint16_t> candidates) const {
+    assert(candidates.size() >= m_count);
+    if (!m_nodeCount || !Vector(position) || !Nonnegative(radius)) return All(candidates);
+    const Bounds query = MakeBounds(position, radius);
+    std::array<std::uint16_t, 16> stack{};
+    std::size_t pending = 1, visited = 0, found = 0;
+    while (pending) {
+        if (++visited > SPHERE_NODE_BUDGET) return All(candidates);
+        const auto& node = m_nodes[stack[--pending]];
+        if (!Overlaps(node.bounds, query)) continue;
+        if (node.left == node.right) {
+            for (std::size_t item = node.begin; item < node.end; ++item)
+                if (Overlaps(m_bounds[m_order[item]], query)) candidates[found++] = m_order[item];
+        } else {
+            if (pending + 2 > stack.size()) return All(candidates);
+            stack[pending++] = node.left; stack[pending++] = node.right;
+        }
+    }
+    /// @note Tree traversal order must not change threat strength ties, remembered duration or sequential obstacle projection.
+    if (found == m_count) return All(candidates);
+    std::sort(candidates.begin(), candidates.begin() + found);
+    return found;
+}
+
 void CrowdWorkspace::Reserve(std::size_t capacity) {
     capacity = std::min<std::size_t>(capacity, 4096);
     std::size_t cells = 8;
     while (cells < capacity * 2) cells <<= 1;
     if (m_cells.size() < cells) m_cells.resize(cells);
     if (m_next.size() < capacity) m_next.resize(capacity);
+    m_threats.Reserve(64); m_obstacles.Reserve(256);
 }
 
 bool StepCrowd(const CrowdSettings& s, std::span<const CrowdProfile> profiles, std::span<const CrowdAgent> agents,
@@ -100,6 +196,8 @@ bool StepCrowd(const CrowdSettings& s, std::span<const CrowdProfile> profiles, s
     const std::size_t count = agents.size();
     CrowdStats result;
     w.Reserve(count);
+    w.m_threats.Build(threats); w.m_obstacles.Build(obstacles);
+    std::array<std::uint16_t, 256> sphereCandidates{};
     if (++w.m_stamp == 0) { for (auto& cell : w.m_cells) cell.stamp = 0; ++w.m_stamp; }
     float cellSize = 0.001f;
     for (const auto& p : profiles) cellSize = std::max(cellSize, p.neighborRadius);
@@ -126,7 +224,9 @@ bool StepCrowd(const CrowdSettings& s, std::span<const CrowdProfile> profiles, s
         a.decisionIn -= elapsed; a.decisionAge += elapsed;
         a.threatIn = std::max(0.0f, a.threatIn - elapsed); a.fear = std::max(0.0f, a.fear - s.fearDecay * elapsed);
         float strongest = 0;
-        for (const auto& t : threats) {
+        const std::size_t threatCount = w.m_threats.Query(a.position, 0, sphereCandidates);
+        for (std::size_t candidate = 0; candidate < threatCount; ++candidate) {
+            const auto& t = threats[sphereCandidates[candidate]];
             if (t.group != UINT32_MAX && t.group != a.group) continue;
             if ((a.position - t.position).LengthSq() > t.radius * t.radius || t.strength <= strongest) continue;
             strongest = t.strength; a.dangerPosition = t.position;
@@ -215,7 +315,9 @@ bool StepCrowd(const CrowdSettings& s, std::span<const CrowdProfile> profiles, s
         if (a.mode == CrowdMode::FLEE) desired = Unit(a.position - (a.threatIn > 0 ? a.dangerPosition : a.target)) * p.fleeSpeed;
         if (p.followFloor) desired.y += (std::clamp(a.floor + p.floorOffset + radius, lo.y, hi.y) - a.position.y) * p.floorAttraction;
         const V ahead = a.position + a.velocity * s.avoidanceLookahead;
-        for (const auto& o : obstacles) {
+        const std::size_t avoidanceCount = w.m_obstacles.Query(ahead, radius + p.separationRadius, sphereCandidates);
+        for (std::size_t candidate = 0; candidate < avoidanceCount; ++candidate) {
+            const auto& o = obstacles[sphereCandidates[candidate]];
             const V away = ahead - o.position; const float safe = o.radius + radius + p.separationRadius;
             if (away.LengthSq() < safe * safe) desired += Unit(away, Unit(a.position - o.position)) * p.maximumAcceleration;
         }
@@ -235,9 +337,21 @@ bool StepCrowd(const CrowdSettings& s, std::span<const CrowdProfile> profiles, s
             if ((a.goal - a.position).Length() > p.arrivalRadius) a.events |= CrowdEvents::ARRIVED;
             a.desiredVelocity = {};
         }
-        for (const auto& o : obstacles) {
+        std::size_t projectionCount = w.m_obstacles.Query(next, radius, sphereCandidates), projectionQueries = 0;
+        for (std::size_t candidate = 0; candidate < projectionCount;) {
+            const auto obstacleIndex = sphereCandidates[candidate++];
+            const auto& o = obstacles[obstacleIndex];
             const V away = next - o.position; const float safe = o.radius + radius;
-            if (away.LengthSq() < safe * safe) { next = o.position + Unit(away, Unit(a.velocity)) * safe; a.events |= CrowdEvents::CONSTRAINED; }
+            if (away.LengthSq() < safe * safe) {
+                next = o.position + Unit(away, Unit(a.velocity)) * safe; a.events |= CrowdEvents::CONSTRAINED;
+                if (projectionCount != obstacles.size()) {
+                    /// @note A projection can enter a later sphere outside the previous query; earlier indices were already passed by the original scan.
+                    projectionCount = projectionQueries++ < PROJECTION_REQUERY_LIMIT
+                        ? w.m_obstacles.Query(next, radius, sphereCandidates) : w.m_obstacles.All(sphereCandidates);
+                    candidate = static_cast<std::size_t>(std::lower_bound(sphereCandidates.begin(), sphereCandidates.begin() + projectionCount,
+                        static_cast<std::uint16_t>(obstacleIndex + 1)) - sphereCandidates.begin());
+                }
+            }
         }
         const V constrained = Clamp(next, lo, hi);
         if ((constrained - next).LengthSq() > EPS * EPS || blocked) a.events |= CrowdEvents::CONSTRAINED;

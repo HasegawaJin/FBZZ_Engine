@@ -9,8 +9,8 @@
 #include <Engine/Input/InputActionMap.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include "Asset/RenderPipelineAssetCodec.hpp"
+#include "Util/TomlFloatNormalization.hpp"
 #include <toml++/toml.hpp>
-#include <cmath>
 #include <filesystem>
 #include <sstream>
 #include <string_view>
@@ -34,34 +34,6 @@ std::vector<audio::BusDesc> AudioSettings::BuildBusLayout() const
 }
 
 namespace {
-
-double RoundTomlFloat(double value)
-{
-    constexpr double SCALE = 1000000.0;
-    const double rounded = std::round(value * SCALE) / SCALE;
-    return rounded == 0.0 ? 0.0 : rounded;
-}
-
-void NormalizeTomlFloats(toml::node& node)
-{
-    if (auto* value = node.as_floating_point()) {
-        value->get() = RoundTomlFloat(value->get());
-        return;
-    }
-
-    if (auto* table = node.as_table()) {
-        for (auto&& [key, child] : *table) {
-            (void)key;
-            NormalizeTomlFloats(child);
-        }
-        return;
-    }
-
-    if (auto* array = node.as_array()) {
-        for (auto& child : *array)
-            NormalizeTomlFloats(child);
-    }
-}
 
 toml::array Vec3ToArr(const math::Vector3& v)
 {
@@ -312,7 +284,15 @@ bool ProjectSettings::Load(const std::string& path)
         render.shadow.pcssEnabled     = ReadBool(*renderTbl,  "pcssEnabled",     render.shadow.pcssEnabled);
         render.shadow.pcssLightRadius = ReadFloat(*renderTbl, "pcssLightRadius", render.shadow.pcssLightRadius);
 
+        const auto geometry = (*renderTbl)["geometryMode"].value_or(std::string{"cpu"});
+        render.geometryDrawMode = geometry == "instances" ? renderer::GeometryDrawMode::GPU_INSTANCE_INDIRECT
+            : geometry == "indirect" ? renderer::GeometryDrawMode::GPU_INDIRECT
+            : geometry == "mesh" ? renderer::GeometryDrawMode::MESH_SHADER : renderer::GeometryDrawMode::CPU;
+
         render.clustered.enabled = ReadBool(*renderTbl, "clusteredEnabled", render.clustered.enabled);
+        render.clustered.manyLights = ReadBool(*renderTbl, "manyLightsEnabled", render.clustered.manyLights);
+        render.clustered.manyLightSamples = static_cast<int>(std::clamp<int64_t>(
+            (*renderTbl)["manyLightSamples"].value_or(static_cast<int64_t>(render.clustered.manyLightSamples)), 1, 32));
         render.clustered.maxDistance = ReadFloat(
             *renderTbl, "clusteredMaxDistance", render.clustered.maxDistance);
         render.clustered.debugHeatmap = ReadBool(
@@ -569,7 +549,12 @@ std::string ProjectSettings::ToToml() const
     renderTbl.insert("pcssEnabled",       render.shadow.pcssEnabled);
     renderTbl.insert("pcssLightRadius",   (double)render.shadow.pcssLightRadius);
 
+    renderTbl.insert("geometryMode", render.geometryDrawMode == renderer::GeometryDrawMode::GPU_INSTANCE_INDIRECT ? "instances"
+        : render.geometryDrawMode == renderer::GeometryDrawMode::GPU_INDIRECT
+        ? "indirect" : render.geometryDrawMode == renderer::GeometryDrawMode::MESH_SHADER ? "mesh" : "cpu");
     renderTbl.insert("clusteredEnabled",        render.clustered.enabled);
+    renderTbl.insert("manyLightsEnabled", render.clustered.manyLights);
+    renderTbl.insert("manyLightSamples", std::clamp(render.clustered.manyLightSamples, 1, 32));
     renderTbl.insert("clusteredMaxDistance",    (double)render.clustered.maxDistance);
     renderTbl.insert("clusteredDebugHeatmap",   render.clustered.debugHeatmap);
     renderTbl.insert("clusteredForceAllLights", render.clustered.forceAllLights);
@@ -683,7 +668,7 @@ std::string ProjectSettings::ToToml() const
     root.insert("cursor",  std::move(cursorTbl));
     root.insert("ui",      std::move(uiTbl));
 
-    NormalizeTomlFloats(root);
+    util::NormalizeTomlFloats(root);
 
     std::ostringstream ss;
     ss << root;

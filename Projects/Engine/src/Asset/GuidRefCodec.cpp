@@ -8,22 +8,14 @@
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
-#include <algorithm>
+#include <Engine/Util/StringUtils.hpp>
 #include <cctype>
-#include <utility>
 
 namespace fbzz::asset {
 
 namespace {
 
-std::string LowerCopy(std::string s)
-{
-    std::transform(s.begin(), s.end(), s.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return s;
-}
-
-/// 大文字小文字を無視した前方一致 (Windows パス比較用)。
+/// @note Windows のパス比較として大文字小文字を無視する。
 bool StartsWithCI(const std::string& s, const std::string& prefix)
 {
     if (s.size() < prefix.size()) return false;
@@ -40,9 +32,7 @@ struct AssetReferenceParts {
 };
 
 /// @brief スプライト名やサブメッシュ番号を、GUID が指す本体パスから分離する。
-/// @note `foo.fbx:2` / `foo.png::sprite::Run` の拡張子をそのまま残すと `.fbx:2` /
-///       `.png::sprite::Run` になり AssetDatabase の対象判定を通らない。後半はサブアセット
-///       固有情報なので GUID の外側へそのまま保持する。
+/// @note サブアセット接尾辞を拡張子判定から除き、本体の GUID の外側へ保持する。
 AssetReferenceParts SplitAssetReference(const std::string& value)
 {
     constexpr std::string_view kSpriteMarker = "::sprite::";
@@ -71,7 +61,6 @@ AssetReferenceParts SplitAssetReference(const std::string& value)
     return { value, {} };
 }
 
-/// 文字列値に変換関数を適用しながら TOML ツリーを再帰走査する。
 template<typename Fn>
 void TransformStrings(toml::table& tbl, const Fn& fn);
 
@@ -105,8 +94,8 @@ void TransformStrings(toml::table& tbl, const Fn& fn)
     }
 }
 
-/// 絶対パスをプロジェクト相対 ("Assets/..." / "Library/Baked/...") へ落とす。
-/// プロジェクト外なら空文字列。ヒントは git に載るので、機械固有の絶対パスは書かない。
+/// @return プロジェクト相対パス。プロジェクト外なら空文字列。
+/// @note 保存されるヒントに機械固有の絶対パスを載せない。
 std::string ToProjectRelative(const std::string& absPath)
 {
     const std::string root = AssetDatabase::ProjectRoot();
@@ -115,8 +104,7 @@ std::string ToProjectRelative(const std::string& absPath)
 }
 
 /// @brief ランタイム標準の参照形式へ戻す (`Assets/...` 相対、それ以外は絶対パスのまま)。
-/// @note Inspector の表示も既存の比較ロジックも `Assets/...` 前提で、ここだけ絶対パスを
-///       返すと同じアセットが 2 通りの文字列で流通するため相対に寄せる。
+/// @note Inspector と比較処理の `Assets/...` 規約に合わせ、同じアセットを 2 通りの文字列で流通させない。
 std::string ToRuntimeRef(const std::string& absPath, const std::string& suffix)
 {
     const std::string root = AssetDatabase::AssetsRoot();
@@ -125,13 +113,11 @@ std::string ToRuntimeRef(const std::string& absPath, const std::string& suffix)
     return absPath + suffix;
 }
 
-/// Sprite の接尾辞を、保存形 (ID) と読める形 (名前) の 2 つに分けて返す。
-/// 権威は ID、ヒントは名前、という規約はパスヒントとまったく同じ。
-/// ID が引けなかったときに «名前で書かれた参照» をそのまま通すため、変換できない
-/// トークンは触らずに返す (データを勝手に捨てない)。
+/// @note Sprite は ID を正本、名前を復旧用ヒントとする。
+/// @note ID を引けない場合は名前の参照を保持し、変換できないトークンを捨てない。
 struct SpriteSuffixParts {
-    std::string authority;  ///< `::sprite::<id>` (引けなければ入力のまま)
-    std::string hintName;   ///< `<name>` (引けなければ空)
+    std::string authority;  ///< @note `::sprite::<id>` (引けなければ入力のまま)
+    std::string hintName;   ///< @note `<name>` (引けなければ空)
 };
 
 SpriteSuffixParts SplitSpriteSuffix(const std::string& absTexturePath,
@@ -148,9 +134,7 @@ SpriteSuffixParts SplitSpriteSuffix(const std::string& absTexturePath,
 }
 
 /// @brief 保存された ID が .meta から消えていたら、併記した名前で拾い直す。
-/// @note パスヒントによるファイル復旧と同じ考え方。権威 (ID) が引けなくなったときだけ
-///       読める側の控えで生かし、復旧したことは必ずログに出す (黙って拾うとアトラスを
-///       切り直すたびに参照が入れ替わっても気付けない)。
+/// @note ID が引けないときだけ名前の控えで復旧し、アトラスの切り直しによる参照変更をログへ残す。
 std::string ReconcileSpriteSuffix(const std::string& absTexturePath,
                                   const std::string& suffix,
                                   const std::string& hintName)
@@ -167,33 +151,29 @@ std::string ReconcileSpriteSuffix(const std::string& absTexturePath,
     return std::string(kSpriteMarker) + hintName;
 }
 
-} // namespace
+} /// @note namespace
 
 std::string EncodeGuidRef(const std::string& pathOrRef)
 {
     if (pathOrRef.empty()) return pathOrRef;
-    /// @note 既にエンコード済み
     if (AssetDatabase::IsGuidRef(pathOrRef)) return pathOrRef;
 
     const AssetReferenceParts parts = SplitAssetReference(pathOrRef);
     /// @note ファイル名で高速に足切りする。baked (.fzasset/.mesh/.skel) や通常文字列はここで素通り。
-    const std::string name = LowerCopy(util::FileSystem::GetFilename(parts.base));
+    const std::string name = util::StringUtils::ToLowerCopy(util::FileSystem::GetFilename(parts.base));
     if (!AssetDatabase::ShouldHaveMeta(name)) return pathOrRef;
 
     /// @note 相対 ("Assets/...") も絶対パスも AssetManager の解決規則で実パス化してから索引を引く。
-    ///       未登録 (実在しない / Assets 外) なら元の文字列を返し、データを壊さない。
+    /// @note 未登録 (実在しない / Assets 外) なら元の文字列を返し、データを壊さない。
     const std::string absPath = AssetManager::ResolveAssetPath(parts.base);
     const std::string guid = AssetDatabase::TryGetGuidFromPath(absPath);
     if (guid.empty()) return pathOrRef;
 
-    /// @note Sprite は「保存は ID、併記は名前」へ正規化する。名前で書かれた参照
-    ///       ("Atlas.png::sprite::Key_W") はここで ID へ寄せられ、ディスク上には
-    ///       リネームに強い形だけが残る。
+    /// @note 名前の Sprite 参照を ID へ正規化し、ディスク上の参照をリネームに強い形へ揃える。
     const SpriteSuffixParts sprite = SplitSpriteSuffix(absPath, parts.suffix);
     std::string encoded = std::string(AssetDatabase::kGuidPrefix) + guid + sprite.authority;
 
-    /// @note 読める形を後ろへ併記する。権威はあくまで guid で、ヒントは読み手のためと
-    ///       guid が引けなくなったときの復旧経路にしか使わない。
+    /// @note guid を正本とし、読めるパスを表示と参照切れの復旧に使うヒントとして併記する。
     if (std::string hint = ToProjectRelative(absPath); !hint.empty()) {
         if (!sprite.hintName.empty()) hint += "::sprite::" + sprite.hintName;
         encoded += AssetDatabase::kRefHintSeparator + hint;
@@ -205,8 +185,7 @@ std::string DecodeGuidRef(const std::string& ref)
 {
     if (!AssetDatabase::IsGuidRef(ref)) return ref;
 
-    /// @note ヒントを先に切り離す。パスにはドットもコロンも入りうるので、
-    ///       SplitAssetReference へ渡す前に落とさないとサブアセット接尾辞と混ざる。
+    /// @note ドットやコロンを含むヒントを先に切り離し、サブアセット接尾辞との混同を防ぐ。
     const std::string hintRaw = AssetDatabase::HintFromRef(ref);
     const size_t sep = ref.find(AssetDatabase::kRefHintSeparator);
     const std::string guidRef = sep == std::string::npos ? ref : ref.substr(0, sep);
@@ -216,24 +195,19 @@ std::string DecodeGuidRef(const std::string& ref)
     std::string hintSpriteName;
     (void)ParseSpriteReference(hintRaw, hint, hintSpriteName);
 
-    /// @note guid 参照の本体は `guid:` + 32hex で長さが決まっている。サブアセット接尾辞は
-    ///       その後ろだけを取る (SplitAssetReference は使わない)。あちらは `foo.fbx:2` のように
-    ///       «最後のコロンの後ろが全部数字なら submesh 番号» と見なすため、guid が偶然 10 進
-    ///       数字だけで構成されていると `guid:` 自身のコロンを区切りと誤読してしまう。
+    /// @note `guid:` + 32hex の長さで接尾辞を分離し、数字だけの GUID を submesh 番号と誤読することを防ぐ。
     const std::string guid = AssetDatabase::GuidFromRef(guidRef);
     const std::size_t bodyLength = AssetDatabase::kGuidPrefix.size() + guid.size();
     const std::string suffix =
         bodyLength < guidRef.size() ? guidRef.substr(bodyLength) : std::string{};
 
     const std::string abs = AssetDatabase::PathFromGuid(guid);
-    /// @note 索引に載っていてもファイルを消していれば参照は切れているため実体の有無まで見る。
-    ///       索引だけで成功扱いにすると、その先の読み込み失敗が「空のアセット」として
-    ///       静かに流れ、Console にも何も出ないまま見た目だけが壊れる。
+    /// @note 索引だけで成功扱いにすると空のアセットで描画が壊れるため、実体の有無も確認する。
     if (!abs.empty() && util::FileSystem::Exists(abs))
         return ToRuntimeRef(abs, ReconcileSpriteSuffix(abs, suffix, hintSpriteName));
 
     /// @note guid が引けない / 実体が消えている。.meta を作り直した後などに起きる。
-    ///       ヒントの実体が残っているなら、そちらで拾い直して参照を生かす。
+    /// @note ヒントの実体が残っているなら、そちらで拾い直して参照を生かす。
     if (!hint.empty()) {
         const std::string recovered = AssetDatabase::ProjectRoot() + hint;
         if (util::FileSystem::Exists(recovered)) {
@@ -244,8 +218,7 @@ std::string DecodeGuidRef(const std::string& ref)
         }
     }
 
-    /// @note 復旧もできない。索引の実パスが分かっているならそちらを返し、
-    ///       後段のロードエラーが guid ではなくファイル名で読めるようにする。
+    /// @note 復旧できない場合は索引の実パスを返し、後段のロードエラーをファイル名で読めるようにする。
     if (!abs.empty()) {
         FBZZ_LOG_ERROR("GuidRefCodec: asset file is missing [%s]\n  guid ref: %s",
                        abs.c_str(), ref.c_str());
@@ -269,4 +242,4 @@ void DecodeGuidRefs(toml::table& root)
     TransformStrings(root, [](const std::string& v) { return DecodeGuidRef(v); });
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

@@ -11,6 +11,7 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Scene/Components/UIRect.hpp>
+#include "../../../Engine/src/Scene/Systems/CanvasWorklist.hpp"
 
 #include <Math/Vector2.hpp>
 
@@ -19,9 +20,67 @@ namespace {
 
 constexpr math::Vector2 kParent{ 1000.0f, 600.0f };
 
-} // namespace
+} /// @note namespace
 
 class UIRectTest : public testkit::EngineFixture {};
+
+TEST_F(UIRectTest, CanvasWorklistRetainsDepthFirstOrderInsteadOfComponentInsertionOrder)
+{
+    scene::Scene world;
+    auto& first = world.CreateGameObject("first");
+    auto& second = world.CreateGameObject("second");
+    auto& secondCanvas = world.CreateGameObject("secondCanvas");
+    secondCanvas.SetParent(second);
+    auto& firstCanvas = world.CreateGameObject("firstCanvas");
+    firstCanvas.SetParent(first);
+    secondCanvas.AddComponent<scene::UICanvas>();
+    firstCanvas.AddComponent<scene::UICanvas>();
+    first.AddComponent<scene::UICanvas>();
+    EXPECT_EQ(scene::ui_detail::CollectCanvasEntities(world),
+        (std::vector<scene::EntityID>{first.GetID(), firstCanvas.GetID(), secondCanvas.GetID()}));
+}
+
+TEST_F(UIRectTest, CanvasWorklistFollowsRootSiblingAndParentChanges)
+{
+    scene::Scene world;
+    auto& first = world.CreateGameObject("first");
+    auto& second = world.CreateGameObject("second");
+    auto& a = world.CreateGameObject("a"); a.SetParent(first);
+    auto& b = world.CreateGameObject("b"); b.SetParent(first);
+    auto& c = world.CreateGameObject("c"); c.SetParent(second);
+    b.AddComponent<scene::UICanvas>(); c.AddComponent<scene::UICanvas>(); a.AddComponent<scene::UICanvas>();
+    b.SetSiblingIndex(0);
+    EXPECT_EQ(scene::ui_detail::CollectCanvasEntities(world),
+        (std::vector<scene::EntityID>{b.GetID(), a.GetID(), c.GetID()}));
+    ASSERT_TRUE(world.SetRootSiblingIndex(second.GetID(), 0));
+    EXPECT_EQ(scene::ui_detail::CollectCanvasEntities(world),
+        (std::vector<scene::EntityID>{c.GetID(), b.GetID(), a.GetID()}));
+    a.SetParent(second);
+    EXPECT_EQ(scene::ui_detail::CollectCanvasEntities(world),
+        (std::vector<scene::EntityID>{c.GetID(), a.GetID(), b.GetID()}));
+}
+
+TEST_F(UIRectTest, CanvasWorklistReevaluatesEmptySingleDisabledAndNewMembers)
+{
+    scene::Scene world;
+    auto& root = world.CreateGameObject("root");
+    auto& child = world.CreateGameObject("child"); child.SetParent(root);
+    auto& other = world.CreateGameObject("other");
+    EXPECT_TRUE(scene::ui_detail::CollectCanvasEntities(world).empty());
+    child.AddComponent<scene::UICanvas>();
+    EXPECT_EQ(scene::ui_detail::CollectCanvasEntities(world), (std::vector<scene::EntityID>{child.GetID()}));
+    root.SetActive(false);
+    EXPECT_TRUE(scene::ui_detail::CollectCanvasEntities(world).empty());
+    other.AddComponent<scene::UICanvas>().enabled = false;
+    EXPECT_TRUE(scene::ui_detail::CollectCanvasEntities(world).empty());
+    root.SetActive(true);
+    other.GetComponent<scene::UICanvas>()->enabled = true;
+    EXPECT_EQ(scene::ui_detail::CollectCanvasEntities(world),
+        (std::vector<scene::EntityID>{child.GetID(), other.GetID()}));
+    child.RemoveComponent<scene::UICanvas>();
+    EXPECT_EQ(scene::ui_detail::CollectCanvasEntities(world), (std::vector<scene::EntityID>{other.GetID()}));
+}
+
 
 /// @name 矩形そのもの
 
@@ -263,4 +322,4 @@ TEST_F(UIRectTest, StretchingBetweenPartialAnchorsUsesThatSpan)
     EXPECT_NEAR(rect.size.x, 500.0f, testkit::kTolerance);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

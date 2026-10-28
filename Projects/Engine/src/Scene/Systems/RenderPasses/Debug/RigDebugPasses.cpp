@@ -68,7 +68,7 @@ GameObject* FindDescendantByName(GameObject& base, const std::string& name)
     return nullptr;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name IK
 
@@ -207,7 +207,7 @@ void AttachmentDebugPass::Execute(PassResources&, RenderPassContext& ctx)
         const math::Vector3 self = go->transform.worldPosition;
 
         /// @note 目標が空なら親を起点にする (ソケットは祖先側のリグに生えていることが多い)。
-        GameObject* base = socket->target.IsValid() ? socket->target.Resolve(ctx.scene) : go->GetParent();
+        GameObject* base = socket->target.IsAssigned() ? socket->target.Resolve(ctx.scene) : go->GetParent();
         GameObject* anchor = base;
         if (base && !socket->socketName.empty())
             anchor = FindDescendantByName(*base, socket->socketName);
@@ -241,4 +241,4 @@ void AttachmentDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     renderer::DebugDraw::Flush();
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

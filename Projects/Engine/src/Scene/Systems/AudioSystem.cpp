@@ -40,8 +40,8 @@ struct SourceEffects {
 ComponentAccess AudioSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<Transform>()
-        .Writes<AudioSourceComponent, AudioListenerComponent>();
+        .Reads<Transform, AudioMixerSendComponent, AudioReverbZoneComponent>()
+        .Writes<AudioSourceComponent, AudioListenerComponent, AudioOcclusionComponent>();
 }
 
 OrderingHints AudioSystem::GetOrder() const
@@ -53,6 +53,51 @@ void AudioSystem::Update(SystemContext& ctx)
 {
     if (!ctx.audioManager) return;
     audio::AudioManager& audioManager = *ctx.audioManager;
+    const uint64_t generation = ctx.scene.GetRenderSceneGeneration();
+    if (m_sceneGeneration != generation) {
+        for (const auto& owned : m_ownedVoices) audioManager.StopVoice(owned.voiceId);
+        m_ownedVoices.clear();
+        m_sceneGeneration = generation;
+    }
+    /// @note owner の削除・Component の差し替え・無効化を検出する。停止フェードを毎フレーム再開始しない。
+    std::erase_if(m_ownedVoices, [&](const OwnedVoice& owned) {
+        if (!audioManager.IsVoicePlaying(owned.voiceId)) return true;
+        const auto* object = ctx.scene.GetGameObject(owned.owner);
+        const auto* source = ctx.scene.GetComponent<AudioSourceComponent>(owned.owner);
+        const bool associated = source && (owned.oneShot
+            ? std::any_of(source->m_activeOneShots.begin(), source->m_activeOneShots.end(),
+                [&](const auto& voice) { return voice.voiceId == owned.voiceId; })
+            : source->m_voiceId == owned.voiceId);
+        if (associated && source->enabled && object && object->activeInHierarchy()) return false;
+        audioManager.StopVoice(owned.voiceId);
+        return true;
+    });
+    const auto trackVoice = [&](EntityID owner, uint32_t voiceId, bool oneShot) {
+        if (voiceId == 0) return;
+        std::erase_if(m_ownedVoices, [&](const OwnedVoice& owned) {
+            return !audioManager.IsVoicePlaying(owned.voiceId);
+        });
+        if (std::none_of(m_ownedVoices.begin(), m_ownedVoices.end(),
+            [&](const OwnedVoice& owned) { return owned.voiceId == voiceId; }))
+            m_ownedVoices.push_back({owner, voiceId, oneShot});
+    };
+    const auto stopOwned = [&](EntityID id, AudioSourceComponent& source) {
+        audioManager.StopVoice(source.m_voiceId);
+        for (const auto& voice : source.m_activeOneShots) audioManager.StopVoice(voice.voiceId);
+        source.m_voiceId = 0;
+        source.m_activeOneShots.clear();
+        source.m_isPlaying = false;
+        source.m_isPaused = false;
+        std::erase_if(m_ownedVoices, [id](const OwnedVoice& owned) { return owned.owner == id; });
+    };
+    const auto discardPending = [&](AudioSourceComponent& source) {
+        if (source.m_pendingClipId != 0) audioManager.ReleaseClip(source.m_pendingClipId);
+        source.m_pendingClipId = 0;
+        for (const auto& request : source.m_pendingOneShots)
+            if (request.clipId != 0) audioManager.ReleaseClip(request.clipId);
+        source.m_pendingOneShots.clear();
+        source.m_pendingPlay = source.m_pendingStop = source.m_pendingPause = source.m_pendingResume = false;
+    };
 
     /// @note priority 最大の有効な Listener を受聴点にする。同値なら Scene 登録順。
     AudioListenerComponent* listener = nullptr;
@@ -113,7 +158,9 @@ void AudioSystem::Update(SystemContext& ctx)
         outAttenuation = 1.0f;
         outPan         = 0.0f;
         outLowPass     = 1.0f;
-        if (!listener || !listenerTransform || spatialBlend <= 0.0f) return;
+        const float blend = std::clamp(spatialBlend, 0.0f, 1.0f);
+        if (!listener || !listenerTransform) { outAttenuation = 1.0f - blend; return; }
+        if (blend <= 0.0f) return;
 
         const math::Vector3 offset = worldPosition - listenerTransform->worldPosition;
         const float distance = offset.Length();
@@ -123,7 +170,7 @@ void AudioSystem::Update(SystemContext& ctx)
             (distance - minDistance) / (maxDistance - minDistance), 0.0f, 1.0f);
         const float rolloff = (std::max)(rolloffIn, 0.01f);
         const float distanceGain = std::pow(1.0f - normalized, rolloff);
-        const float blend = std::clamp(spatialBlend, 0.0f, 1.0f);
+
         outAttenuation = (1.0f - blend) + blend * distanceGain;
 
         if (distance <= 0.0001f) return;
@@ -229,7 +276,9 @@ void AudioSystem::Update(SystemContext& ctx)
         audioManager.SetVoicePitch(voiceId, pitch);
         audioManager.SetVoicePan(voiceId, pan);
         audioManager.SetVoiceSend(voiceId, effects.sendBus, effects.sendLevel);
-        audioManager.SetVoiceLowPass(voiceId, (std::min)(lowPass, effects.lowPass));
+        const float localCutoff = std::isfinite(source.lowPassCutoff)
+            ? std::clamp(source.lowPassCutoff, 0.0f, 1.0f) : 1.0f;
+        audioManager.SetVoiceLowPass(voiceId, (std::min)({lowPass, effects.lowPass, localCutoff}));
     };
 
     for (EntityID id : ctx.scene.GetEntities<AudioSourceComponent>()) {
@@ -239,8 +288,8 @@ void AudioSystem::Update(SystemContext& ctx)
             continue;
         AudioSourceComponent& source = *sourcePointer;
         if (source.m_scriptLoopLifetime && !source.m_scriptLoopLifetime->active) {
-            audioManager.StopVoice(source.m_voiceId);
-            source.m_voiceId = 0;
+            stopOwned(id, source);
+            discardPending(source);
             GameObject::Destroy(*sourceObject);
             continue;
         }
@@ -251,13 +300,22 @@ void AudioSystem::Update(SystemContext& ctx)
         }
 
         if (!source.enabled || !sourceObject->activeInHierarchy()) {
-            audioManager.StopVoice(source.m_voiceId);
-            source.m_voiceId = 0;
-            source.m_isPlaying = false;
+            stopOwned(id, source);
+            discardPending(source);
             source.m_hasPreviousPosition = false;
             continue;
         }
 
+        std::erase_if(source.m_activeOneShots, [&](const auto& voice) {
+            return !audioManager.IsVoicePlaying(voice.voiceId);
+        });
+        if (source.m_voiceId == 0 && source.m_activeOneShots.empty()) source.m_isPaused = false;
+        if (source.m_lowPassFading && std::isfinite(ctx.dt) && ctx.dt > 0.0f) {
+            source.m_lowPassElapsed = (std::min)(source.m_lowPassElapsed + ctx.dt, source.m_lowPassDuration);
+            const float t = source.m_lowPassElapsed / source.m_lowPassDuration;
+            source.lowPassCutoff = source.m_lowPassFrom + (source.m_lowPassTarget - source.m_lowPassFrom) * t;
+            if (t >= 1.0f) source.m_lowPassFading = false;
+        }
         /// @note 無効の間は履歴を捨てる。残すと再有効化した最初のフレームが巨大な速度になる。
         math::Vector3 sourceVelocity = math::Vector3::ZERO;
         if (source.dopplerLevel > 0.0f) {
@@ -270,34 +328,26 @@ void AudioSystem::Update(SystemContext& ctx)
         }
 
         if (source.m_pendingStop) {
-            audioManager.StopVoice(source.m_voiceId);
-            source.m_voiceId = 0;
-            source.m_isPlaying = false;
-            source.m_isPaused = false;
-            source.m_pendingStop = false;
-            source.m_pendingPlay = false;
-            source.m_pendingPause = false;
+            /// @note 明示 Stop はまだ発火していない PlayOnAwake も取り消す。後の明示 Play は可能。
+            source.m_played = true;
+            stopOwned(id, source);
+            discardPending(source);
         }
-
-        /// @note voice は破棄せず止めるだけなので、Resume で続きから鳴る。
+        /// @note 音源の OneShot も Pause/Resume に従い、同じ voice と再生位置を保つ。
         if (source.m_pendingPause) {
-            if (source.m_isPlaying && source.m_voiceId != 0) {
-                audioManager.PauseVoice(source.m_voiceId);
-                source.m_isPlaying = false;
-                source.m_isPaused = true;
-            }
+            audioManager.PauseVoice(source.m_voiceId);
+            for (const auto& voice : source.m_activeOneShots) audioManager.PauseVoice(voice.voiceId);
+            source.m_isPlaying = false;
+            source.m_isPaused = source.m_voiceId != 0 || !source.m_activeOneShots.empty();
             source.m_pendingPause = false;
         }
-
         if (source.m_pendingResume) {
-            if (source.m_isPaused && source.m_voiceId != 0) {
-                audioManager.ResumeVoice(source.m_voiceId);
-                source.m_isPaused = false;
-                source.m_isPlaying = true;
-            }
+            audioManager.ResumeVoice(source.m_voiceId);
+            for (const auto& voice : source.m_activeOneShots) audioManager.ResumeVoice(voice.voiceId);
+            source.m_isPaused = false;
+            source.m_isPlaying = source.m_voiceId != 0;
             source.m_pendingResume = false;
         }
-
         const audio::BusIndex bus = audioManager.FindBus(source.busName);
         audio::AudioManager::PlayParams params;
         params.priority = source.priority;
@@ -324,22 +374,30 @@ void AudioSystem::Update(SystemContext& ctx)
             source.m_isPlaying = source.m_voiceId != 0;
         }
 
+        trackVoice(id, source.m_voiceId, false);
         if (source.m_voiceId != 0 && source.m_scriptLoopLifetime)
             audioManager.BindVoiceLifetime(source.m_voiceId, source.m_scriptLoopLifetime);
 
         const SourceEffects effects = evaluateEffects(sourceObject, transform);
 
         for (const auto& request : source.m_pendingOneShots) {
-            const uint32_t oneShot = request.clipId != 0
-                ? audioManager.PlayClipVoice(request.clipId, false, bus, params)
-                : audioManager.PlayVoice(request.path, false, bus, params);
-            applyVoiceParameters(oneShot, source, transform, effects, sourceVelocity,
-                                 request.volumeScale);
-            /// @note 要求が握っていた参照を返す。再生中は voice 側が実体を押さえる。
+            if (source.m_activeOneShots.size() < AudioSourceComponent::MAX_ACTIVE_ONE_SHOTS) {
+                const uint32_t oneShot = request.clipId != 0
+                    ? audioManager.PlayClipVoice(request.clipId, false, bus, params)
+                    : audioManager.PlayVoice(request.path, false, bus, params);
+                if (oneShot != 0) {
+                    source.m_activeOneShots.push_back({oneShot, request.volumeScale});
+                    trackVoice(id, oneShot, true);
+                    if (source.m_isPaused) audioManager.PauseVoice(oneShot);
+                }
+            }
+            /// @note 上限による拒否・起動失敗でも要求が握っていた参照を返す。
             if (request.clipId != 0) audioManager.ReleaseClip(request.clipId);
         }
         source.m_pendingOneShots.clear();
 
+        for (const auto& voice : source.m_activeOneShots)
+            applyVoiceParameters(voice.voiceId, source, transform, effects, sourceVelocity, voice.volumeScale);
         applyVoiceParameters(source.m_voiceId, source, transform, effects, sourceVelocity);
     }
 

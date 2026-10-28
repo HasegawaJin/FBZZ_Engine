@@ -11,6 +11,7 @@
 #include <Engine/Scene/Components/WeatherComponent.hpp>
 #include <Engine/Scene/Systems/GameplayComponentSystems.hpp>
 #include <Engine/Scene/Systems/WeatherSystem.hpp>
+#include "Scene/Systems/RenderPasses/Geometry/GeometryPasses.hpp"
 #include <Physics/World.hpp>
 
 namespace fbzz::tests {
@@ -32,8 +33,7 @@ protected:
 
     SystemContext Context(bool playing)
     {
-        return SystemContext{ m_scene, m_world, nullptr, nullptr, 1.0f / 60.0f, 1.0f / 60.0f,
-                              /*simulating=*/playing, /*playing=*/playing };
+        return SystemContext{ m_scene, m_world, nullptr, nullptr, 1.0f / 60.0f, 1.0f / 60.0f, playing, playing };
     }
 };
 
@@ -58,7 +58,7 @@ TEST_F(InactiveHierarchyTest, WeatherUnderInactiveParentDoesNotAdvance)
 
     parent->SetActive(false);
     scene::WeatherSystem system;
-    SystemContext ctx = Context(/*playing=*/true);
+    SystemContext ctx = Context(true);
     for (int i = 0; i < 30; ++i) system.Update(ctx);
     EXPECT_NEAR(child->GetComponent<scene::WeatherComponent>()->wetness, 0.0f, testkit::kTolerance);
 
@@ -83,7 +83,7 @@ TEST_F(InactiveHierarchyTest, CameraFollowUnderInactiveParentStaysPut)
 
     parent->SetActive(false);
     scene::CameraRigSystem system;
-    SystemContext ctx = Context(/*playing=*/true);
+    SystemContext ctx = Context(true);
     system.Update(ctx);
     EXPECT_VEC3_NEAR(child->transform.worldPosition, math::Vector3::ZERO, testkit::kTolerance);
 
@@ -92,5 +92,54 @@ TEST_F(InactiveHierarchyTest, CameraFollowUnderInactiveParentStaysPut)
     EXPECT_GT(child->transform.worldPosition.x, 1.0f);
 }
 
-} // namespace
-} // namespace fbzz::tests
+TEST_F(InactiveHierarchyTest, RenderWeatherPreservesSceneOrderAndCurrentHierarchyAndEnabledState)
+{
+    for (int index = 0; index < 100; ++index) m_scene.CreateGameObject("NonWeather");
+    auto& first = m_scene.CreateGameObject("FirstWeather");
+    auto& second = m_scene.CreateGameObject("SecondWeather");
+    auto& parent = m_scene.CreateGameObject("WeatherParent");
+    second.AddComponent<scene::WeatherComponent>().wetness = 0.25f;
+    scene::WeatherComponent initial;
+    initial.wetness = 2; initial.darkening = -1; initial.puddleAmount = 3;
+    first.AddComponent<scene::WeatherComponent>(initial);
+    first.SetParent(parent);
+
+    auto selected = scene::FindActiveWeather(m_scene);
+    EXPECT_FLOAT_EQ(selected.wetness, 1);
+    EXPECT_FLOAT_EQ(selected.darkening, 0);
+    EXPECT_FLOAT_EQ(selected.puddleAmount, 1);
+    first.GetComponent<scene::WeatherComponent>()->enabled = false;
+    EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0.25f);
+    first.GetComponent<scene::WeatherComponent>()->enabled = true;
+    parent.SetActive(false);
+    EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0.25f);
+    parent.SetActive(true);
+    first.GetComponent<scene::WeatherComponent>()->wetness = 0.75f;
+    EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0.75f);
+}
+
+TEST_F(InactiveHierarchyTest, RenderWeatherRefreshesRemovedAndRecreatedCandidatesWithoutReorderingLiveOwners)
+{
+    auto& first = m_scene.CreateGameObject("RemovedWeather");
+    const auto firstId = first.GetID();
+    first.AddComponent<scene::WeatherComponent>().wetness = 0.1f;
+    auto& second = m_scene.CreateGameObject("RetainedWeather");
+    second.AddComponent<scene::WeatherComponent>().wetness = 0.2f;
+    EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0.1f);
+    ASSERT_TRUE(m_scene.DestroyGameObject(firstId));
+    EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0.2f);
+    auto& replacement = m_scene.CreateGameObject("RecreatedWeather");
+    EXPECT_NE(replacement.GetID(), firstId);
+    replacement.AddComponent<scene::WeatherComponent>().wetness = 0.3f;
+    EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0.2f);
+    second.RemoveComponent<scene::WeatherComponent>();
+    EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0.3f);
+    replacement.RemoveComponent<scene::WeatherComponent>();
+    EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0);
+    m_scene.Clear();
+    m_scene.CreateGameObject("OtherSceneWeather").AddComponent<scene::WeatherComponent>().wetness = 0.4f;
+    EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0.4f);
+}
+
+} /// @note namespace
+} /// @note namespace fbzz::tests

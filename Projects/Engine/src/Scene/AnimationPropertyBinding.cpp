@@ -2,6 +2,7 @@
 /// @brief   propertyName から Reflect() の 1 フィールドを引き当てて読み書きする
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/AnimationPropertyBinding.hpp>
 
 #include <Engine/Asset/AnimationSampling.hpp>
@@ -184,7 +185,7 @@ void VisitComponent(GameObject& target,
     }
 }
 
-} // namespace
+} /// @note namespace
 
 void ApplyComponentProperty(GameObject& target,
                             const asset::PropertyAnimationTrack& track,
@@ -204,7 +205,9 @@ void ApplyMaterialProperty(GameObject& target,
     if (!material || track.propertyName.empty()) return;
     /// @note materialSlot が submesh (= マテリアルスロット) を選ぶ。負値は主スロット。
     const size_t slotIndex = track.materialSlot > 0 ? static_cast<size_t>(track.materialSlot) : 0u;
-    auto& values = material->SlotAt(slotIndex).paramOverrides[track.propertyName];
+    auto& slot = material->SlotAt(slotIndex);
+    auto edit = slot.BeginAuthoringEdit();
+    auto& values = edit.Draft().paramOverrides[track.propertyName];
     switch (track.valueType) {
     case asset::AnimValueType::Float:
         values = { asset::SampleFloatKeys(track.floatKeys, ticks, track.interp) };
@@ -234,7 +237,9 @@ void ApplyMaterialProperty(GameObject& target,
         if (!track.boolKeys.empty())
             values = { asset::SampleDiscreteKey(track.boolKeys, ticks).value ? 1.0f : 0.0f };
         break;
-    }
+    }
+    if (edit.Commit(slot) == asset::detail::MaterialAuthoringCommitResult::CONFLICT)
+        FBZZ_LOG_WARN("Animation material property conflicted with a newer edit: %s", track.propertyName.c_str());
 }
 
 AnimationPropertySample CaptureComponentProperty(GameObject& target,
@@ -268,7 +273,9 @@ bool CaptureMaterialProperty(GameObject& target,
     if (!material || track.propertyName.empty()) return false;
     const size_t slotIndex = track.materialSlot > 0 ? static_cast<size_t>(track.materialSlot) : 0u;
     if (slotIndex >= material->SlotCount()) return false;
-    auto& overrides = material->SlotAt(slotIndex).paramOverrides;
+    const auto snapshot = material->SlotAt(slotIndex).ReadAuthoring();
+    if (!snapshot) return false;
+    const auto& overrides = snapshot->Data().paramOverrides;
     const auto it = overrides.find(track.propertyName);
     if (it == overrides.end()) return false;
     outValues = it->second;
@@ -284,10 +291,14 @@ void RestoreMaterialProperty(GameObject& target,
     if (!material || track.propertyName.empty()) return;
     const size_t slotIndex = track.materialSlot > 0 ? static_cast<size_t>(track.materialSlot) : 0u;
     if (slotIndex >= material->SlotCount()) return;
-    auto& overrides = material->SlotAt(slotIndex).paramOverrides;
+    auto& slot = material->SlotAt(slotIndex);
+    auto edit = slot.BeginAuthoringEdit();
+    auto& overrides = edit.Draft().paramOverrides;
     /// @note 演出が付けた override は、演出が終わったら跡形もなく消えるのが正しい。
     if (!hadOverride) overrides.erase(track.propertyName);
-    else              overrides[track.propertyName] = values;
+    else              overrides[track.propertyName] = values;
+    if (edit.Commit(slot) == asset::detail::MaterialAuthoringCommitResult::CONFLICT)
+        FBZZ_LOG_WARN("Animation material restoration conflicted with a newer edit: %s", track.propertyName.c_str());
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

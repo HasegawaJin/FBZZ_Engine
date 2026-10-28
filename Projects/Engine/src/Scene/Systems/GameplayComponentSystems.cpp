@@ -7,15 +7,23 @@
 #include <Engine/Core/Memory/MakeUnique.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/CameraRigComponents.hpp>
 #include <Engine/Scene/Components/ConstraintComponents.hpp>
 #include <Engine/Scene/Components/PresentationComponents.hpp>
+#include <Engine/Scene/Systems/PresentationGeometry.hpp>
+#include <Engine/Scene/PresentationControlPoints.hpp>
+#include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/SplineCurve.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/RagdollComponent.hpp>
 #include <Engine/Scene/Components/SplineComponents.hpp>
+#include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -26,7 +34,9 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <span>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace fbzz::scene {
@@ -53,8 +63,123 @@ math::Vector3 DivideSafe(const math::Vector3& a, const math::Vector3& b)
     };
 }
 
-void SetWorldPosition(GameObject& go, const math::Vector3& value)
+/// @note 数学型の近似比較では微小な実移動の同期を落とすため、変更検出には成分の厳密比較を使う。
+bool ExactlyEqual(const math::Vector3& a, const math::Vector3& b)
 {
+    return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+bool ExactlyEqual(const math::Quaternion& a, const math::Quaternion& b)
+{
+    return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
+}
+
+bool Finite(const math::Vector3& value)
+{
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+bool FiniteRotation(const math::Quaternion& value)
+{
+    const float length = value.Length();
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) && std::isfinite(value.w)
+        && std::isfinite(length) && length >= math::EPSILON;
+}
+
+bool ValidLocalHierarchy(const GameObject& object)
+{
+    for (const auto* current = &object; current; current = current->GetParent()) {
+        const auto& pose = current->transform;
+        if (!Finite(pose.position) || !Finite(pose.scale) || !FiniteRotation(pose.rotation)) return false;
+    }
+    return true;
+}
+
+bool ValidWorldPose(const Transform& pose)
+{
+    return Finite(pose.worldPosition) && Finite(pose.worldScale) && FiniteRotation(pose.worldRotation);
+}
+
+bool ValidInverseParent(const GameObject& object)
+{
+    const auto* parent = object.GetParent();
+    if (!parent) return true;
+    const auto& pose = parent->transform;
+    return ValidWorldPose(pose) && std::abs(pose.worldScale.x) > 1.0e-6f
+        && std::abs(pose.worldScale.y) > 1.0e-6f && std::abs(pose.worldScale.z) > 1.0e-6f;
+}
+
+bool ValidFollowTarget(const GameObject& owner, const GameObject& target)
+{
+    return target.activeInHierarchy() && &owner != &target && !target.IsDescendantOf(owner)
+        && ValidLocalHierarchy(owner) && ValidLocalHierarchy(target);
+}
+
+bool NormalizeDirection(const math::Vector3& value, math::Vector3& out)
+{
+    const double lengthSquared = static_cast<double>(value.x) * value.x
+        + static_cast<double>(value.y) * value.y + static_cast<double>(value.z) * value.z;
+    if (!Finite(value) || !std::isfinite(lengthSquared) || lengthSquared <= 1.0e-6) return false;
+    const double inverse = 1.0 / std::sqrt(lengthSquared);
+    out = {static_cast<float>(value.x * inverse), static_cast<float>(value.y * inverse), static_cast<float>(value.z * inverse)};
+    return true;
+}
+
+/// @note 入力姿勢は段階の最初に一度確定し、次の段階まで書き込み順を変えずに local へ蓄積する。
+/// @see Docs/design/script-transform-contract.md
+class WorldTransformSynchronization {
+public:
+    explicit WorldTransformSynchronization(Scene& scene) : m_scene(scene) {}
+
+    void SynchronizeInputs()
+    {
+        if (m_synchronized) return;
+        FlushWorldTransforms(m_scene);
+        m_synchronized = true;
+    }
+
+    void MarkChanged(bool changed) { m_changed |= changed; }
+
+    void FlushChanges()
+    {
+        if (!m_changed) return;
+        FlushWorldTransforms(m_scene);
+        m_synchronized = true;
+        m_changed = false;
+    }
+
+private:
+    Scene& m_scene;
+    bool m_synchronized = false;
+    bool m_changed = false;
+};
+
+template<typename T>
+bool HasActivePoseProducer(Scene& scene)
+{
+    for (EntityID id : scene.GetEntities<T>()) {
+        const auto* component = scene.GetComponent<T>(id);
+        const auto* object = scene.GetGameObject(id);
+        if (component && component->enabled && object && object->activeInHierarchy())
+            return true;
+    }
+    return false;
+}
+
+/// @note Animator の任意 local トラックと骨補正後の非骨子孫は、従来の Constraint 前の同期境界を必要とする。
+/// @note Ragdoll は GPU 資源なしでも姿勢を書けるため、資源を要求する他の生成側と分ける。
+/// @see Docs/design/script-transform-contract.md
+bool RequiresAnimationSynchronization(const SystemContext& ctx)
+{
+    return HasActivePoseProducer<RagdollComponent>(ctx.scene)
+        || (ctx.resources && (HasActivePoseProducer<AnimatorComponent>(ctx.scene)
+            || HasActivePoseProducer<IKSolverComponent>(ctx.scene)
+            || HasActivePoseProducer<SpringBoneComponent>(ctx.scene)));
+}
+
+bool SetWorldPosition(GameObject& go, const math::Vector3& value)
+{
+    const math::Vector3 previous = go.transform.position;
     if (GameObject* parent = go.GetParent()) {
         const math::Vector3 delta = parent->transform.worldRotation.Inverse()
             * (value - parent->transform.worldPosition);
@@ -62,27 +187,30 @@ void SetWorldPosition(GameObject& go, const math::Vector3& value)
     } else {
         go.transform.position = value;
     }
+    return !ExactlyEqual(previous, go.transform.position);
 }
 
-void SetWorldRotation(GameObject& go, const math::Quaternion& value)
+bool SetWorldRotation(GameObject& go, const math::Quaternion& value)
 {
+    const math::Quaternion previous = go.transform.rotation;
     if (GameObject* parent = go.GetParent())
         go.transform.rotation = (parent->transform.worldRotation.Inverse() * value).Normalized();
     else
         go.transform.rotation = value.Normalized();
+    return !ExactlyEqual(previous, go.transform.rotation);
 }
 
-void SetWorldScale(GameObject& go, const math::Vector3& value)
+bool SetWorldScale(GameObject& go, const math::Vector3& value)
 {
+    const math::Vector3 previous = go.transform.scale;
     if (GameObject* parent = go.GetParent())
         go.transform.scale = DivideSafe(value, parent->transform.worldScale);
     else
         go.transform.scale = value;
+    return !ExactlyEqual(previous, go.transform.scale);
 }
 
-/// この GameObject 自身がソケット名に一致するか。
-/// @note 名前と BoneComponent の両方を見る。ソケットは FBX 由来の骨ノードのことも手動配置の
-///       空 GameObject のこともあり、片方だけでは一方の運用でしか引けない。
+/// @note FBX の骨名と手動配置ノード名の両方をソケット名として扱う。
 [[nodiscard]] bool MatchesSocket(GameObject& node, const std::string& socketName)
 {
     if (socketName.empty())
@@ -107,14 +235,8 @@ GameObject* FindSocket(GameObject* root, const std::string& socketName)
     return nullptr;
 }
 
-/// target 未設定時、自分の祖先を根へ辿りながらソケットを探す。
-///
-/// @note target 省略可: Prefab はシーン内オブジェクトを参照できず、JsonReflector も
-///       参照型を書き戻さないため、target 必須では Prefab 自身が追従を宣言できない。
-/// @note 祖先方向へ辿る (シーン全体検索でない): 同名ソケットが複数箇所にあり得るため、
-///       祖先方向なら常に自分に最も近いソケットが決定的に見つかる。
-/// @note 自分が辿ってきた部分木は探索から除外する: 自分側にも同名ソケットがあり得て、
-///       先に拾うと自己参照で動かなくなるため。
+/// @note Prefab 内では追従先を省略でき、同名ソケットは最も近い祖先側から決定的に選ぶ。
+/// @note 自分側の部分木は同名ソケットによる自己参照を防ぐため除外する。
 GameObject* FindSocketInAncestors(GameObject& self, const std::string& socketName)
 {
     if (socketName.empty())
@@ -133,48 +255,6 @@ GameObject* FindSocketInAncestors(GameObject& self, const std::string& socketNam
         }
     }
     return nullptr;
-}
-
-math::Vector3 CatmullRom(const SplineComponent& spline, float normalized)
-{
-    const int count = static_cast<int>(spline.points.size());
-    if (count == 0)
-        return math::Vector3::ZERO;
-    if (count == 1)
-        return spline.points.front();
-    const int segmentCount = spline.closed ? count : count - 1;
-    const float scaled = Clamp01(normalized) * static_cast<float>(segmentCount);
-    const int segment = std::min(static_cast<int>(scaled), segmentCount - 1);
-    const float t = scaled - static_cast<float>(segment);
-    auto point = [&](int index) -> const math::Vector3& {
-        if (spline.closed) {
-            index = (index % count + count) % count;
-            return spline.points[static_cast<size_t>(index)];
-        }
-        return spline.points[static_cast<size_t>(std::clamp(index, 0, count - 1))];
-    };
-    const math::Vector3& p0 = point(segment - 1);
-    const math::Vector3& p1 = point(segment);
-    const math::Vector3& p2 = point(segment + 1);
-    const math::Vector3& p3 = point(segment + 2);
-    const float t2 = t * t;
-    const float t3 = t2 * t;
-    return (p1 * 2.0f + (p2 - p0) * t
-        + (p0 * 2.0f - p1 * 5.0f + p2 * 4.0f - p3) * t2
-        + (-p0 + p1 * 3.0f - p2 * 3.0f + p3) * t3) * 0.5f;
-}
-
-float EstimateLength(const SplineComponent& spline)
-{
-    constexpr int SAMPLES = 32;
-    float length = 0.0f;
-    math::Vector3 previous = CatmullRom(spline, 0.0f);
-    for (int index = 1; index <= SAMPLES; ++index) {
-        const math::Vector3 current = CatmullRom(spline, static_cast<float>(index) / SAMPLES);
-        length += (current - previous).Length();
-        previous = current;
-    }
-    return std::max(length, 0.0001f);
 }
 
 float SmoothFactor(float damping, float dt)
@@ -199,17 +279,30 @@ GameObject* FindMainCamera(Scene& scene)
     return nullptr;
 }
 
-} // namespace
+} ///< @note namespace
 
-ComponentAccess ConstraintSystem::GetAccess() const { return ComponentAccess{}.Unrestricted(); }
+ComponentAccess ConstraintSystem::GetAccess() const
+{
+    return ComponentAccess{}.Reads<BoneComponent, AnimatorComponent, IKSolverComponent, SpringBoneComponent, RagdollComponent>()
+        .Writes<SocketAttachmentComponent, TransformConstraintComponent, Transform>();
+}
 ComponentAccess SplineSystem::GetAccess() const { return ComponentAccess{}.Unrestricted(); }
-ComponentAccess CameraRigSystem::GetAccess() const { return ComponentAccess{}.Unrestricted(); }
+ComponentAccess CameraRigSystem::GetAccess() const
+{
+    return ComponentAccess{}.Writes<CameraComponent, VirtualCameraComponent, CameraFollowComponent,
+        CameraBlendComponent, CameraShakeComponent, Transform>();
+}
 ComponentAccess BillboardSystem::GetAccess() const { return ComponentAccess{}.Unrestricted(); }
 ComponentAccess PresentationSystem::GetAccess() const { return ComponentAccess{}.Unrestricted(); }
+OrderingHints PresentationSystem::GetOrder() const
+{
+    return OrderingHints{}.After<TransformLateUpdate>().After<AnimatorSystem>();
+}
 
 void ConstraintSystem::Update(SystemContext& ctx)
 {
-    FlushWorldTransforms(ctx.scene);
+    WorldTransformSynchronization transforms(ctx.scene);
+    if (RequiresAnimationSynchronization(ctx)) transforms.SynchronizeInputs();
     for (EntityID id : ctx.scene.GetEntities<SocketAttachmentComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* attachment = ctx.scene.GetComponent<SocketAttachmentComponent>(id);
@@ -218,13 +311,13 @@ void ConstraintSystem::Update(SystemContext& ctx)
         GameObject* targetRoot = attachment->target.Resolve(ctx.scene);
 
         /// @note 追従先が書き換わった瞬間だけを「切り替え」として拾う (イベント通知ではなく
-        ///       差分検出)。呼び出し側は socketName へ代入するだけでよく、通知の取りこぼしで
-        ///       補間が始まらないまま行き先だけ変わる (瞬間移動する) 事態も起きない。
+        /// @note 差分検出)。呼び出し側は socketName へ代入するだけでよく、通知の取りこぼしで
+        /// @note 補間が始まらないまま行き先だけ変わる (瞬間移動する) 事態も起きない。
         if (attachment->socketName != attachment->appliedSocketName) {
             attachment->blendFromSocketName = attachment->appliedSocketName;
             attachment->appliedSocketName   = attachment->socketName;
             /// @note 初回 (補間元が無い) と編集中はスナップする。編集中に補間を進めると、
-            ///       Play していないのに Inspector の値が毎フレーム変わって見える。
+            /// @note Play していないのに Inspector の値が毎フレーム変わって見える。
             attachment->blendRemaining =
                 (attachment->blendFromSocketName.empty() || !ctx.simulating)
                     ? 0.0f
@@ -232,18 +325,18 @@ void ConstraintSystem::Update(SystemContext& ctx)
         }
 
         /// @note target が指定されていればその部分木から、省略されていれば自分の祖先から探す。
-        ///       どちらの経路でも「見つかったソケットのワールド姿勢に合わせる」以降は同一。
+        /// @note どちらの経路でも「見つかったソケットのワールド姿勢に合わせる」以降は同一。
         const auto resolveSocket = [&](const std::string& name) -> GameObject* {
-            return targetRoot ? FindSocket(targetRoot, name)
-                              : FindSocketInAncestors(*go, name);
+            if (attachment->target.IsAssigned()) return targetRoot ? FindSocket(targetRoot, name) : nullptr;
+            return FindSocketInAncestors(*go, name);
         };
 
         GameObject* socket = resolveSocket(attachment->socketName);
         if (!socket) {
             /// @note 見つからない場合は探索経路 (Target subtree / ancestors) まで含めて警告する。
-            ///       黙って抜けると綴り違い・別枝配置・Target 指定漏れが区別できない。
-            ///       解決は毎フレーム試みるため、name+socketName の組で 1 度だけ出す
-            ///       (毎フレーム出すと Console が埋まる)。
+            /// @note 黙って抜けると綴り違い・別枝配置・Target 指定漏れが区別できない。
+            /// @note 解決は毎フレーム試みるため、name+socketName の組で 1 度だけ出す
+            /// @note (毎フレーム出すと Console が埋まる)。
             if (!attachment->socketName.empty()) {
                 static std::unordered_set<std::string> reported;
                 if (reported.insert(go->name + '\n' + attachment->socketName).second) {
@@ -254,6 +347,10 @@ void ConstraintSystem::Update(SystemContext& ctx)
             }
             continue;
         }
+        if (!ValidFollowTarget(*go, *socket) || !Finite(attachment->positionOffset)
+            || !Finite(attachment->rotationOffsetDegrees) || !Finite(attachment->scaleMultiplier)) continue;
+        transforms.SynchronizeInputs();
+        if (!ValidWorldPose(go->transform) || !ValidWorldPose(socket->transform) || !ValidInverseParent(*go)) continue;
         const math::Quaternion offsetRotation =
             math::Quaternion::FromEuler(attachment->rotationOffsetDegrees * DEG_TO_RAD);
 
@@ -274,12 +371,12 @@ void ConstraintSystem::Update(SystemContext& ctx)
         poseOf(*socket, desiredPosition, desiredRotation, desiredScale);
 
         /// @note 切り替え中は旧ソケットと新ソケットの「その瞬間の」姿勢を混ぜる。
-        ///       両方ともアニメーションで動き続けるので、キャラが歩いていても置き去りにならない。
+        /// @note 両方ともアニメーションで動き続けるので、キャラが歩いていても置き去りにならない。
         if (attachment->blendRemaining > 0.0f) {
             attachment->blendRemaining =
                 std::max(0.0f, attachment->blendRemaining - std::max(ctx.dt, 0.0f));
             GameObject* from = resolveSocket(attachment->blendFromSocketName);
-            if (from && attachment->blendDuration > 0.0f) {
+            if (from && ValidWorldPose(from->transform) && attachment->blendDuration > 0.0f) {
                 const float linear =
                     Clamp01(1.0f - attachment->blendRemaining / attachment->blendDuration);
                 /// @note smoothstep。等速で移すと出だしと着地が硬く、手に「置いた」感が出ない。
@@ -299,10 +396,11 @@ void ConstraintSystem::Update(SystemContext& ctx)
         }
 
         /// @note 自分側の合わせ点。「この子ソケットが相手ソケットに重なる」ように原点をずらす。
-        ///       相対姿勢は自分のローカル空間で測るため、自分自身の現在姿勢には依存しない。
+        /// @note 相対姿勢は自分のローカル空間で測るため、自分自身の現在姿勢には依存しない。
         if (!attachment->localSocketName.empty()) {
             GameObject* localSocket = FindSocket(go, attachment->localSocketName);
             if (localSocket && localSocket != go) {
+                if (!ValidWorldPose(localSocket->transform)) continue;
                 const math::Quaternion selfInverse = go->transform.worldRotation.Inverse();
                 const math::Quaternion localRotation =
                     (selfInverse * localSocket->transform.worldRotation).Normalized();
@@ -313,20 +411,27 @@ void ConstraintSystem::Update(SystemContext& ctx)
             }
         }
 
+        if (!Finite(desiredPosition) || !Finite(desiredScale) || !FiniteRotation(desiredRotation)) continue;
         if (attachment->followPosition)
-            SetWorldPosition(*go, desiredPosition);
+            transforms.MarkChanged(SetWorldPosition(*go, desiredPosition));
         if (attachment->followRotation)
-            SetWorldRotation(*go, desiredRotation);
+            transforms.MarkChanged(SetWorldRotation(*go, desiredRotation));
         if (attachment->followScale)
-            SetWorldScale(*go, desiredScale);
+            transforms.MarkChanged(SetWorldScale(*go, desiredScale));
     }
-    FlushWorldTransforms(ctx.scene);
+    transforms.FlushChanges();
     for (EntityID id : ctx.scene.GetEntities<TransformConstraintComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* constraint = ctx.scene.GetComponent<TransformConstraintComponent>(id);
         GameObject* target = constraint ? constraint->target.Resolve(ctx.scene) : nullptr;
-        if (!go || !constraint || !constraint->enabled || !target || !go->activeInHierarchy())
+        if (!go || !constraint || !constraint->enabled || !target || !go->activeInHierarchy()
+            || !ValidFollowTarget(*go, *target) || !std::isfinite(constraint->weight)
+            || static_cast<int>(constraint->mode) < 0 || static_cast<int>(constraint->mode) > 5
+            || (constraint->maintainOffset && (!Finite(constraint->positionOffset)
+                || !Finite(constraint->rotationOffsetDegrees) || !Finite(constraint->scaleMultiplier))))
             continue;
+        transforms.SynchronizeInputs();
+        if (!ValidWorldPose(go->transform) || !ValidWorldPose(target->transform) || !ValidInverseParent(*go)) continue;
         const float weight = Clamp01(constraint->weight);
         const math::Quaternion rotationOffset = constraint->maintainOffset
             ? math::Quaternion::FromEuler(constraint->rotationOffsetDegrees * DEG_TO_RAD)
@@ -335,54 +440,95 @@ void ConstraintSystem::Update(SystemContext& ctx)
             ? constraint->positionOffset : math::Vector3::ZERO;
         const math::Vector3 scaleMultiplier = constraint->maintainOffset
             ? constraint->scaleMultiplier : math::Vector3::ONE;
+        math::Vector3 nextPosition = go->transform.worldPosition;
+        math::Quaternion nextRotation = go->transform.worldRotation;
+        math::Vector3 nextScale = go->transform.worldScale;
+        bool writePosition = false, writeRotation = false, writeScale = false;
         if (constraint->mode == TransformConstraintMode::Parent
             || constraint->mode == TransformConstraintMode::Position) {
             const math::Vector3 desired = target->transform.worldPosition
                 + target->transform.worldRotation * positionOffset;
-            SetWorldPosition(*go, math::Vector3::Lerp(go->transform.worldPosition, desired, weight));
+            nextPosition = math::Vector3::Lerp(go->transform.worldPosition, desired, weight);
+            writePosition = true;
         }
         if (constraint->mode == TransformConstraintMode::Parent
             || constraint->mode == TransformConstraintMode::Rotation) {
             const math::Quaternion desired = target->transform.worldRotation * rotationOffset;
-            SetWorldRotation(*go, math::Quaternion::Slerp(go->transform.worldRotation, desired, weight));
+            nextRotation = math::Quaternion::Slerp(go->transform.worldRotation, desired, weight);
+            writeRotation = true;
         }
         if (constraint->mode == TransformConstraintMode::Parent
             || constraint->mode == TransformConstraintMode::Scale) {
             const math::Vector3 desired = Multiply(target->transform.worldScale, scaleMultiplier);
-            SetWorldScale(*go, math::Vector3::Lerp(go->transform.worldScale, desired, weight));
+            nextScale = math::Vector3::Lerp(go->transform.worldScale, desired, weight);
+            writeScale = true;
         }
         if (constraint->mode == TransformConstraintMode::Aim
             || constraint->mode == TransformConstraintMode::LookAt) {
-            const math::Vector3 direction = target->transform.worldPosition - go->transform.worldPosition;
-            if (direction.LengthSq() > 0.000001f) {
-                const math::Vector3 aimAxis = constraint->aimAxis.LengthSq() > 0.000001f
-                    ? constraint->aimAxis.Normalized() : math::Vector3::FORWARD;
+            if (!Finite(constraint->aimAxis) || !Finite(constraint->upAxis)) continue;
+            math::Vector3 direction;
+            if (NormalizeDirection(target->transform.worldPosition - go->transform.worldPosition, direction)) {
+                math::Vector3 aimAxis = math::Vector3::FORWARD, upAxis = math::Vector3::UP;
+                (void)NormalizeDirection(constraint->aimAxis, aimAxis);
+                (void)NormalizeDirection(constraint->upAxis, upAxis);
                 const math::Quaternion axisCorrection =
-                    math::Quaternion::LookRotation(aimAxis, constraint->upAxis).Inverse();
+                    math::Quaternion::LookRotation(aimAxis, upAxis).Inverse();
                 math::Quaternion desired =
-                    math::Quaternion::LookRotation(direction.Normalized(), constraint->upAxis)
+                    math::Quaternion::LookRotation(direction, upAxis)
                     * axisCorrection;
                 desired *= rotationOffset;
-                SetWorldRotation(*go, math::Quaternion::Slerp(go->transform.worldRotation, desired, weight));
+                nextRotation = math::Quaternion::Slerp(go->transform.worldRotation, desired, weight);
+                writeRotation = true;
             }
         }
+        if (!Finite(nextPosition) || !Finite(nextScale) || !FiniteRotation(nextRotation)) continue;
+        if (writePosition) transforms.MarkChanged(SetWorldPosition(*go, nextPosition));
+        if (writeRotation) transforms.MarkChanged(SetWorldRotation(*go, nextRotation));
+        if (writeScale) transforms.MarkChanged(SetWorldScale(*go, nextScale));
     }
-    FlushWorldTransforms(ctx.scene);
+    transforms.FlushChanges();
 }
 
 void SplineSystem::Update(SystemContext& ctx)
 {
+    WorldTransformSynchronization transforms(ctx.scene);
+    struct RuntimeSplineCurve {
+        std::vector<math::Vector3> points;
+        bool closed = false;
+    };
+    std::unordered_map<std::uint64_t, RuntimeSplineCurve> resolvedPoints;
     for (EntityID id : ctx.scene.GetEntities<SplineFollowerComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* follower = ctx.scene.GetComponent<SplineFollowerComponent>(id);
         GameObject* splineObject = follower ? follower->spline.Resolve(ctx.scene) : nullptr;
         auto* spline = splineObject ? splineObject->GetComponent<SplineComponent>() : nullptr;
         if (!go || !go->activeInHierarchy() || !follower || !follower->enabled || !spline
-            || !spline->enabled || !splineObject->activeInHierarchy() || spline->points.size() < 2)
+            || !spline->enabled || !splineObject->activeInHierarchy())
             continue;
+        transforms.SynchronizeInputs();
+        const std::uint64_t splineKey = (static_cast<std::uint64_t>(splineObject->GetID().generation) << 32)
+            | splineObject->GetID().index;
+        auto pointsIt = resolvedPoints.find(splineKey);
+        if (pointsIt == resolvedPoints.end()) {
+            SplineControlPointSnapshot resolved = ResolveSplinePoints(
+                ctx.scene, splineObject->GetID(), *spline,
+                ctx.playing || ctx.simulating ? ControlPointReadContext::RUNTIME
+                                             : ControlPointReadContext::AUTHORING);
+            if (!resolved.valid) continue;
+            RuntimeSplineCurve curve;
+            curve.closed = resolved.closed;
+            curve.points.reserve(resolved.points.size());
+            for (const SplineControlPointValue& point : resolved.points)
+                curve.points.push_back(point.localPosition);
+            pointsIt = resolvedPoints.emplace(splineKey, std::move(curve)).first;
+        }
+        const std::span<const math::Vector3> points{pointsIt->second.points};
+        const bool closed = pointsIt->second.closed;
+        if (points.size() < 2) continue;
         if (ctx.simulating && follower->playing) {
             const float direction = follower->reverse ? -1.0f : 1.0f;
-            follower->normalizedPosition += direction * follower->speed * ctx.dt / EstimateLength(*spline);
+            follower->normalizedPosition += direction * follower->speed * ctx.dt
+                / EstimateSplineCurveLength(points, closed, splineObject->transform.worldScale);
             if (follower->wrapMode == SplineWrapMode::Loop) {
                 follower->normalizedPosition -= std::floor(follower->normalizedPosition);
             } else if (follower->wrapMode == SplineWrapMode::PingPong) {
@@ -395,24 +541,26 @@ void SplineSystem::Update(SystemContext& ctx)
                 follower->playing = false;
             }
         }
-        const math::Vector3 localPosition = CatmullRom(*spline, follower->normalizedPosition);
+        const math::Vector3 localPosition = EvaluateSplineCurve(points, closed,
+            follower->normalizedPosition);
         const math::Vector3 worldPosition = splineObject->transform.worldPosition
             + splineObject->transform.worldRotation * Multiply(localPosition, splineObject->transform.worldScale);
-        SetWorldPosition(*go, worldPosition);
+        transforms.MarkChanged(SetWorldPosition(*go, worldPosition));
         if (follower->orientToPath) {
-            const float next = std::min(follower->normalizedPosition + 0.001f, 1.0f);
-            const math::Vector3 tangent =
-                splineObject->transform.worldRotation * (CatmullRom(*spline, next) - localPosition);
+            const math::Vector3 tangent = splineObject->transform.worldRotation
+                * Multiply(EvaluateSplineCurveTangent(points, closed,
+                    follower->normalizedPosition), splineObject->transform.worldScale);
             if (tangent.LengthSq() > 0.000001f)
-                SetWorldRotation(*go, math::Quaternion::LookRotation(tangent.Normalized()));
+                transforms.MarkChanged(SetWorldRotation(*go,
+                    math::Quaternion::LookRotation(tangent.Normalized())));
         }
     }
-    FlushWorldTransforms(ctx.scene);
+    transforms.FlushChanges();
 }
 
 void CameraRigSystem::Update(SystemContext& ctx)
 {
-    FlushWorldTransforms(ctx.scene);
+    WorldTransformSynchronization transforms(ctx.scene);
     GameObject* selected = nullptr;
     int selectedPriority = -2147483647;
     for (EntityID id : ctx.scene.GetEntities<VirtualCameraComponent>()) {
@@ -445,22 +593,31 @@ void CameraRigSystem::Update(SystemContext& ctx)
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* follow = ctx.scene.GetComponent<CameraFollowComponent>(id);
         GameObject* target = follow ? follow->target.Resolve(ctx.scene) : nullptr;
-        if (!go || !go->activeInHierarchy() || !follow || !follow->enabled || !target)
+        if (!go || !go->activeInHierarchy() || !follow || !follow->enabled || !target
+            || !ValidFollowTarget(*go, *target) || !Finite(follow->offset)
+            || !std::isfinite(follow->positionDamping) || !std::isfinite(follow->rotationDamping)
+            || !std::isfinite(ctx.dt))
             continue;
+        transforms.SynchronizeInputs();
+        if (!ValidWorldPose(go->transform) || !ValidWorldPose(target->transform) || !ValidInverseParent(*go)) continue;
         const math::Vector3 targetPosition = target->transform.worldPosition;
         const math::Quaternion targetRotation = target->transform.worldRotation;
         const math::Vector3 offset = follow->useTargetRotation
             ? targetRotation * follow->offset : follow->offset;
         const math::Vector3 desired = targetPosition + offset;
-        SetWorldPosition(*go, math::Vector3::Lerp(go->transform.worldPosition, desired,
-            SmoothFactor(follow->positionDamping, ctx.dt)));
+        const auto nextPosition = math::Vector3::Lerp(go->transform.worldPosition, desired,
+            SmoothFactor(follow->positionDamping, ctx.dt));
+        math::Quaternion nextRotation = go->transform.worldRotation;
+        if (!Finite(desired) || !Finite(nextPosition)) continue;
         if (follow->lookAtTarget) {
-            const math::Vector3 direction = targetPosition - desired;
-            if (direction.LengthSq() > 0.000001f)
-                SetWorldRotation(*go, math::Quaternion::Slerp(go->transform.worldRotation,
-                    math::Quaternion::LookRotation(direction.Normalized()),
-                    SmoothFactor(follow->rotationDamping, ctx.dt)));
+            math::Vector3 direction;
+            if (NormalizeDirection(targetPosition - desired, direction))
+                nextRotation = math::Quaternion::Slerp(go->transform.worldRotation,
+                    math::Quaternion::LookRotation(direction), SmoothFactor(follow->rotationDamping, ctx.dt));
         }
+        if (!FiniteRotation(nextRotation)) continue;
+        transforms.MarkChanged(SetWorldPosition(*go, nextPosition));
+        if (follow->lookAtTarget) transforms.MarkChanged(SetWorldRotation(*go, nextRotation));
     }
     for (EntityID id : ctx.scene.GetEntities<CameraBlendComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
@@ -469,13 +626,16 @@ void CameraRigSystem::Update(SystemContext& ctx)
         GameObject* to = blend ? blend->toCamera.Resolve(ctx.scene) : nullptr;
         if (!go || !go->activeInHierarchy() || !blend || !blend->enabled || !blend->playing || !from || !to)
             continue;
+        transforms.SynchronizeInputs();
         blend->elapsed += ctx.dt;
         float t = blend->curve == CameraBlendCurve::Cut ? 1.0f
             : Clamp01(blend->elapsed / std::max(blend->duration, 0.0001f));
         if (blend->curve == CameraBlendCurve::EaseInOut)
             t = t * t * (3.0f - 2.0f * t);
-        SetWorldPosition(*go, math::Vector3::Lerp(from->transform.worldPosition, to->transform.worldPosition, t));
-        SetWorldRotation(*go, math::Quaternion::Slerp(from->transform.worldRotation, to->transform.worldRotation, t));
+        transforms.MarkChanged(SetWorldPosition(*go,
+            math::Vector3::Lerp(from->transform.worldPosition, to->transform.worldPosition, t)));
+        transforms.MarkChanged(SetWorldRotation(*go,
+            math::Quaternion::Slerp(from->transform.worldRotation, to->transform.worldRotation, t)));
         if (auto* camera = go->GetComponent<CameraComponent>()) {
             const auto* fromCamera = from->GetComponent<CameraComponent>();
             const auto* toCamera = to->GetComponent<CameraComponent>();
@@ -494,13 +654,23 @@ void CameraRigSystem::Update(SystemContext& ctx)
             shake->runtimeInitialized = true;
             shake->playing = shake->playing || shake->playOnAwake;
         }
+        const bool hasAppliedShake = !ExactlyEqual(shake->appliedPositionOffset, math::Vector3::ZERO)
+            || !ExactlyEqual(shake->appliedRotationOffset, math::Quaternion::Identity());
+        const bool playing = shake->enabled && shake->playing && go->activeInHierarchy();
+        if (!hasAppliedShake && !playing) continue;
+        transforms.SynchronizeInputs();
+        const math::Vector3 previousPosition = go->transform.position;
+        const math::Quaternion previousRotation = go->transform.rotation;
         go->transform.position -= shake->appliedPositionOffset;
         go->transform.rotation = (go->transform.rotation * shake->appliedRotationOffset.Inverse()).Normalized();
         shake->appliedPositionOffset = math::Vector3::ZERO;
         shake->appliedRotationOffset = math::Quaternion::Identity();
         /// @note 前フレームのずらしは無効化されても上で必ず戻す (戻さないとカメラがずれたまま止まる)。進めるのは有効なときだけ。
-        if (!shake->enabled || !shake->playing || !go->activeInHierarchy())
+        if (!playing) {
+            transforms.MarkChanged(!ExactlyEqual(previousPosition, go->transform.position)
+                || !ExactlyEqual(previousRotation, go->transform.rotation));
             continue;
+        }
         shake->elapsed += ctx.dt;
         const float progress = Clamp01(shake->elapsed / std::max(shake->duration, 0.0001f));
         const float strength = std::pow(1.0f - progress, std::max(shake->falloffPower, 0.0f));
@@ -518,26 +688,31 @@ void CameraRigSystem::Update(SystemContext& ctx)
         shake->appliedRotationOffset = math::Quaternion::FromEuler(rotationDegrees * DEG_TO_RAD);
         go->transform.position += shake->appliedPositionOffset;
         go->transform.rotation = (go->transform.rotation * shake->appliedRotationOffset).Normalized();
+        transforms.MarkChanged(!ExactlyEqual(previousPosition, go->transform.position)
+            || !ExactlyEqual(previousRotation, go->transform.rotation));
         if (progress >= 1.0f) {
             shake->playing = false;
             shake->elapsed = 0.0f;
         }
     }
-    FlushWorldTransforms(ctx.scene);
+    transforms.FlushChanges();
 }
 
 void BillboardSystem::Update(SystemContext& ctx)
 {
+    if (ctx.scene.GetEntities<BillboardComponent>().empty()) return;
     GameObject* camera = FindMainCamera(ctx.scene);
     if (!camera)
         return;
+    WorldTransformSynchronization transforms(ctx.scene);
     for (EntityID id : ctx.scene.GetEntities<BillboardComponent>()) {
         GameObject* go = ctx.scene.GetGameObject(id);
         auto* billboard = ctx.scene.GetComponent<BillboardComponent>(id);
         if (!go || !billboard || !billboard->enabled || !go->activeInHierarchy())
             continue;
+        transforms.SynchronizeInputs();
         if (billboard->mode == BillboardMode::MatchCamera) {
-            SetWorldRotation(*go, camera->transform.worldRotation);
+            transforms.MarkChanged(SetWorldRotation(*go, camera->transform.worldRotation));
             continue;
         }
         math::Vector3 direction = camera->transform.worldPosition - go->transform.worldPosition;
@@ -546,9 +721,10 @@ void BillboardSystem::Update(SystemContext& ctx)
         if (billboard->mode == BillboardMode::YAxisOnly)
             direction.y = 0.0f;
         if (direction.LengthSq() > 0.000001f)
-            SetWorldRotation(*go, math::Quaternion::LookRotation(direction.Normalized()));
+            transforms.MarkChanged(SetWorldRotation(*go,
+                math::Quaternion::LookRotation(direction.Normalized())));
     }
-    FlushWorldTransforms(ctx.scene);
+    transforms.FlushChanges();
 }
 
 void PresentationSystem::Update(SystemContext& ctx)
@@ -558,9 +734,9 @@ void PresentationSystem::Update(SystemContext& ctx)
     renderer::ResourceManager& resources = *ctx.resources;
     GameObject* mainCamera = FindMainCamera(ctx.scene);
     /// @note 2 枚を交互に使い、確保済みの容量に収まる限り中身だけ差し替える。
-    ///       作り直しに戻る条件と、なぜ 1 枚では駄目かは DoubleBufferedMesh のヘッダーを参照。
+    /// @note 作り直しに戻る条件と、なぜ 1 枚では駄目かは DoubleBufferedMesh のヘッダーを参照。
     /// @note 容量は 2 の冪で確保する。線の頂点数は毎フレーム増減するため、ぴったり確保すると
-    ///       1 頂点増えただけで作り直しに逆戻りする。
+    /// @note 1 頂点増えただけで作り直しに逆戻りする。
     const auto uploadMesh = [&](DoubleBufferedMesh& target,
                                 std::vector<renderer::Vertex> vertices,
                                 std::vector<uint32_t> indices) {
@@ -604,33 +780,18 @@ void PresentationSystem::Update(SystemContext& ctx)
 
     };
     const auto applyMaterial = [](GameObject& go, const std::string& path,
-                                  const math::Vector4& color, const std::string& texture,
-                                  int sortValue) {
+                                   const math::Vector4& color, const std::string& texture,
+                                   int64_t sortValue, bool receiveLighting) {
         auto* material = go.GetComponent<MaterialComponent>();
-        if (!material)
-            material = &go.AddComponent<MaterialComponent>();
-        material->enabled = true;
-        material->materialPath = path;
-        material->paramOverrides["albedo"] = { color.x, color.y, color.z, color.w };
-        if (!texture.empty())
-            material->textureOverrides["albedo"] = texture;
-        /// @note 合成方法は上書きしない (.mat の blend_mode が正本、詳細は
-        ///       ParticleMaterialSettings.hpp)。hasBlendModeOverride を立てないのは
-        ///       ScriptMaterialProxy::SetBlendMode の明示指定を毎フレーム剥がさないため。
-        /// @note 両面と描画キューは毎フレーム上書きし続ける。帯メッシュはカメラ向きに
-        ///       組み直すため巻き順が裏返り片面では消える。描画キューは
-        ///       sortingLayer/orderInLayer 由来で .mat には決めようがない。
-        material->hasDoubleSidedOverride = true;
-        material->doubleSidedOverride = true;
-        material->hasRenderQueueOverride = true;
-        material->renderQueueOverride = 3000 + sortValue;
+        if (!material) material = &go.AddComponent<MaterialComponent>();
+        material->SetPresentationDefaults(path, color, texture, sortValue, receiveLighting);
     };
     const auto inheritedSort = [](GameObject& go) {
-        int result = 0;
+        int64_t result = 0;
         for (GameObject* parent = go.GetParent(); parent; parent = parent->GetParent()) {
             if (const auto* group = parent->GetComponent<SortingGroupComponent>();
                 group && group->enabled)
-                result += group->sortingLayer * 1000 + group->orderInLayer;
+                result += static_cast<int64_t>(group->sortingLayer) * 1000 + group->orderInLayer;
         }
         return result;
     };
@@ -640,68 +801,37 @@ void PresentationSystem::Update(SystemContext& ctx)
         auto* sprite = ctx.scene.GetComponent<SpriteRendererComponent>(id);
         if (!go || !sprite)
             continue;
-        std::string texturePath = sprite->spritePath;
-        math::Vector2 uvMin = math::Vector2::ZERO;
-        math::Vector2 uvMax = math::Vector2::ONE;
+        asset::ResolvedSprite resolved;
+        resolved.texturePath = sprite->spritePath;
         if (!sprite->spritePath.empty()) {
-            /// @note 非同期台帳の利用権越しに引く。矩形は元画像の寸法で UV へ直す (品質段で縮小していても)。
-            uint32_t sourceWidth = 0;
-            uint32_t sourceHeight = 0;
+            uint32_t sourceWidth = 0, sourceHeight = 0;
             (void)asset::StreamedTextureResolver::Engine().ResolveGpuWithSourceSize(
                 resources, sprite->spritePath, sourceWidth, sourceHeight);
-            const asset::ResolvedSprite resolved = asset::ResolveSpriteReference(
-                sprite->spritePath, static_cast<float>(sourceWidth), static_cast<float>(sourceHeight));
-            texturePath = resolved.texturePath;
-
-            if (resolved.resolved) {
-                uvMin = resolved.uvMin;
-                uvMax = resolved.uvMax;
-            } else if (!resolved.isSpriteReference && sprite->drawMode == SpriteDrawMode::Tiled) {
-                uvMax = sprite->size;
-            }
-
-            /// @note 素材が持つ寸法と基準点をそのまま採る。1 単位 = pixelsPerUnit ピクセル。
-            if (sprite->useSpriteNativeSize && resolved.pixelsPerUnit > 0.0f
-                && resolved.sizePixels.x > 0.0f && resolved.sizePixels.y > 0.0f) {
-                sprite->size = { resolved.sizePixels.x / resolved.pixelsPerUnit,
-                                 resolved.sizePixels.y / resolved.pixelsPerUnit };
+            resolved = asset::ResolveSpriteReference(sprite->spritePath,
+                static_cast<float>(sourceWidth), static_cast<float>(sourceHeight));
+            if (sprite->useSpriteNativeSize && resolved.pixelsPerUnit > 0
+                && resolved.sizePixels.x > 0 && resolved.sizePixels.y > 0) {
+                sprite->size = {resolved.sizePixels.x / resolved.pixelsPerUnit,
+                    resolved.sizePixels.y / resolved.pixelsPerUnit};
                 sprite->pivot = resolved.pivot;
             }
-        } else if (sprite->drawMode == SpriteDrawMode::Tiled) {
-            uvMax = sprite->size;
         }
-        std::size_t signature = std::hash<std::string>{}(sprite->spritePath);
-        signature ^= std::hash<float>{}(sprite->size.x) + (std::hash<float>{}(sprite->size.y) << 1);
-        signature ^= std::hash<float>{}(sprite->pivot.x) + (std::hash<float>{}(sprite->pivot.y) << 1);
-        signature ^= static_cast<std::size_t>(sprite->flipX) << 5;
-        signature ^= static_cast<std::size_t>(sprite->flipY) << 6;
-        signature ^= std::hash<float>{}(uvMin.x + uvMin.y * 7.0f + uvMax.x * 31.0f + uvMax.y * 127.0f);
-        if (!sprite->runtimeMesh.HasMesh() || sprite->runtimeMesh.signature != signature) {
-            const float left = -sprite->pivot.x * sprite->size.x;
-            const float top = (1.0f - sprite->pivot.y) * sprite->size.y;
-            const float right = left + sprite->size.x;
-            const float bottom = top - sprite->size.y;
-            const float u0 = sprite->flipX ? uvMax.x : uvMin.x;
-            const float u1 = sprite->flipX ? uvMin.x : uvMax.x;
-            const float v0 = sprite->flipY ? uvMax.y : uvMin.y;
-            const float v1 = sprite->flipY ? uvMin.y : uvMax.y;
-            const math::Vector3 normal = math::Vector3::FORWARD;
-            const math::Vector3 tangent = math::Vector3::RIGHT;
-            uploadMesh(sprite->runtimeMesh, {
-                {{left, top, 0.0f}, normal, tangent, {u0, v0}},
-                {{right, top, 0.0f}, normal, tangent, {u1, v0}},
-                {{right, bottom, 0.0f}, normal, tangent, {u1, v1}},
-                {{left, bottom, 0.0f}, normal, tangent, {u0, v1}}
-            }, {0, 1, 2, 0, 2, 3});
-            sprite->runtimeMesh.signature = signature;
+        if (sprite->drawMode == SpriteDrawMode::Tiled && !resolved.isSpriteReference)
+            resolved.uvMax = sprite->size;
+        CaptureSpriteGeometryInputs(*sprite, resolved, sprite->runtimeMesh.candidateInputs);
+        if (!sprite->runtimeMesh.HasMesh() || sprite->runtimeMesh.geometryInputs != sprite->runtimeMesh.candidateInputs) {
+            std::vector<renderer::Vertex> vertices;
+            std::vector<uint32_t> indices;
+            sprite->runtimeMesh.geometryValid = BuildSpriteGeometry(*sprite, resolved, vertices, indices);
+            uploadMesh(sprite->runtimeMesh, std::move(vertices), std::move(indices));
+            sprite->runtimeMesh.geometryInputs = sprite->runtimeMesh.candidateInputs;
         }
         auto* meshRenderer = go->GetComponent<MeshRenderer>();
         if (!meshRenderer)
             meshRenderer = &go->AddComponent<MeshRenderer>();
-        meshRenderer->mesh = sprite->runtimeMesh.Current();
-        meshRenderer->enabled = sprite->enabled;
-        applyMaterial(*go, sprite->materialPath, sprite->color, texturePath,
-            inheritedSort(*go) + sprite->sortingLayer * 1000 + sprite->orderInLayer);
+        meshRenderer->mesh = sprite->enabled && sprite->runtimeMesh.geometryValid ? sprite->runtimeMesh.Current() : nullptr;
+        applyMaterial(*go, sprite->materialPath, sprite->color, resolved.texturePath,
+            inheritedSort(*go) + static_cast<int64_t>(sprite->sortingLayer) * 1000 + sprite->orderInLayer, sprite->receiveLighting);
     }
 
     for (EntityID id : ctx.scene.GetEntities<LineRendererComponent>()) {
@@ -709,149 +839,32 @@ void PresentationSystem::Update(SystemContext& ctx)
         auto* line = ctx.scene.GetComponent<LineRendererComponent>(id);
         if (!go || !line)
             continue;
-        std::size_t signature = line->points.size();
-        for (const math::Vector3& point : line->points)
-            signature ^= std::hash<float>{}(point.x + point.y * 31.0f + point.z * 997.0f);
-        signature ^= std::hash<float>{}(line->startWidth) ^ (std::hash<float>{}(line->endWidth) << 1);
-        signature ^= static_cast<std::size_t>(line->loop) << 4;
-        signature ^= static_cast<std::size_t>(line->shape) << 6;
-        signature ^= static_cast<std::size_t>(line->radialSegments) << 8;
-        if (line->space == LineSpace::World)
-            signature ^= std::hash<float>{}(go->transform.worldPosition.x
-                + go->transform.worldPosition.y * 31.0f + go->transform.worldPosition.z * 997.0f);
-        /// @note 筒 (Tube) はカメラをキーに混ぜない。形が視点に依存しないため、混ぜるとカメラが
-        ///       動いただけで毎フレーム焼き直すことになる (板 (Ribbon) は向きを作り直すので要る)。
-        if (line->shape == LineShape::Ribbon && line->billboard && mainCamera)
-            signature ^= std::hash<float>{}(mainCamera->transform.worldPosition.x
-                + mainCamera->transform.worldPosition.y * 31.0f
-                + mainCamera->transform.worldPosition.z * 997.0f);
-        if ((!line->runtimeMesh.HasMesh() || line->runtimeMesh.signature != signature)
-            && line->points.size() >= 2 && line->shape == LineShape::Tube) {
-            /// @name 筒
-            /// @note 点ごとに円環を 1 枚置き、隣の環と繋いで押し出す。基準ベクトルは平行移動
-            ///       フレームで組む (毎回 UP との外積で作り直さない)。毎回作り直すと線が
-            ///       真上を向いた区間で基準が反転し、そこだけ 180 度ねじれるため。
-            std::vector<renderer::Vertex> vertices;
-            std::vector<uint32_t> indices;
-            const int  radial = std::clamp(line->radialSegments, 3, 32);
-            const size_t ringCount = line->points.size();
-            const size_t spanCount = line->loop ? ringCount : ringCount - 1;
-
-            /// @note 経路をローカルへ落とす。板側と同じ規則。
-            std::vector<math::Vector3> path;
-            path.reserve(ringCount);
-            for (const math::Vector3& point : line->points) {
-                path.push_back(line->space == LineSpace::World
-                    ? DivideSafe(go->transform.worldRotation.Inverse()
-                        * (point - go->transform.worldPosition), go->transform.worldScale)
-                    : point);
+        const auto* cameraPosition = mainCamera ? &mainCamera->transform.worldPosition : nullptr;
+        const ControlPointReadContext readContext = ctx.playing
+            ? ControlPointReadContext::RUNTIME : ControlPointReadContext::AUTHORING;
+        const LineControlPointSnapshot linePoints = ResolveLineControlPoints(ctx.scene, id, *line, readContext);
+        if (!linePoints.valid) {
+            line->runtimeMesh.geometryValid = false;
+            line->runtimeMesh.geometryInputs.clear();
+            line->runtimeMesh.candidateInputs.clear();
+        } else {
+            const LineGeometryView geometry{*line, linePoints.points, linePoints.space};
+            CaptureLineGeometryInputs(geometry, go->transform, cameraPosition, line->runtimeMesh.candidateInputs);
+            if (!line->runtimeMesh.HasMesh() || line->runtimeMesh.geometryInputs != line->runtimeMesh.candidateInputs) {
+                std::vector<renderer::Vertex> vertices;
+                std::vector<uint32_t> indices;
+                line->runtimeMesh.geometryValid = BuildLineGeometry(geometry, go->transform, cameraPosition, vertices, indices);
+                uploadMesh(line->runtimeMesh, std::move(vertices), std::move(indices));
+                line->runtimeMesh.geometryInputs = line->runtimeMesh.candidateInputs;
             }
-
-            /// @note 最初の基準。軸が真上に近いときだけ前方へ倒す (外積が縮退するため)。
-            math::Vector3 firstAxis =
-                (path.size() > 1 ? (path[1] - path[0]) : math::Vector3::FORWARD)
-                    .NormalizedOr(math::Vector3::FORWARD);
-            math::Vector3 reference = std::fabs(firstAxis.y) > 0.9f
-                ? math::Vector3::FORWARD : math::Vector3::UP;
-            math::Vector3 normalRef =
-                math::Vector3::Cross(firstAxis, reference).NormalizedOr(math::Vector3::RIGHT);
-
-            for (size_t ring = 0; ring < ringCount; ++ring) {
-                /// @note 環の軸は前後の区間の平均。折れ点で筒が角張らない。
-                const math::Vector3 back = ring > 0 ? (path[ring] - path[ring - 1])
-                                                    : math::Vector3::ZERO;
-                const math::Vector3 forward = ring + 1 < ringCount ? (path[ring + 1] - path[ring])
-                                                                   : math::Vector3::ZERO;
-                const math::Vector3 axis = (back + forward).NormalizedOr(firstAxis);
-
-                /// @note 前の基準を新しい軸へ直交させる (平行移動フレーム)。
-                normalRef = (normalRef - axis * math::Vector3::Dot(normalRef, axis))
-                                .NormalizedOr(normalRef);
-                const math::Vector3 binormal =
-                    math::Vector3::Cross(axis, normalRef).NormalizedOr(math::Vector3::UP);
-
-                const float t = ringCount > 1
-                    ? static_cast<float>(ring) / static_cast<float>(ringCount - 1) : 0.0f;
-                const float w = (line->startWidth + (line->endWidth - line->startWidth) * t) * 0.5f;
-
-                for (int step = 0; step <= radial; ++step) {
-                    /// @note 継ぎ目のため最後の 1 本を重ねる (uv が 1 で閉じる)。
-                    const float angle = static_cast<float>(step) / static_cast<float>(radial)
-                                      * 6.28318530718f;
-                    const math::Vector3 outward =
-                        normalRef * std::cos(angle) + binormal * std::sin(angle);
-                    vertices.push_back({ path[ring] + outward * w, outward, axis,
-                                         { t, static_cast<float>(step) / static_cast<float>(radial) } });
-                }
-            }
-
-            const uint32_t stride = static_cast<uint32_t>(radial) + 1u;
-            for (size_t span = 0; span < spanCount; ++span) {
-                const uint32_t a = static_cast<uint32_t>(span) * stride;
-                const uint32_t b = static_cast<uint32_t>((span + 1) % ringCount) * stride;
-                for (int step = 0; step < radial; ++step) {
-                    const uint32_t i0 = a + static_cast<uint32_t>(step);
-                    const uint32_t i1 = a + static_cast<uint32_t>(step) + 1u;
-                    const uint32_t j0 = b + static_cast<uint32_t>(step);
-                    const uint32_t j1 = b + static_cast<uint32_t>(step) + 1u;
-                    indices.insert(indices.end(), { i0, j0, j1, i0, j1, i1 });
-                }
-            }
-            uploadMesh(line->runtimeMesh, std::move(vertices), std::move(indices));
-            line->runtimeMesh.signature = signature;
-        } else if ((!line->runtimeMesh.HasMesh() || line->runtimeMesh.signature != signature)
-            && line->points.size() >= 2) {
-            std::vector<renderer::Vertex> vertices;
-            std::vector<uint32_t> indices;
-            const size_t segmentCount = line->loop ? line->points.size() : line->points.size() - 1;
-            for (size_t index = 0; index < segmentCount; ++index) {
-                math::Vector3 a = line->points[index];
-                math::Vector3 b = line->points[(index + 1) % line->points.size()];
-                if (line->space == LineSpace::World) {
-                    a = DivideSafe(go->transform.worldRotation.Inverse()
-                        * (a - go->transform.worldPosition), go->transform.worldScale);
-                    b = DivideSafe(go->transform.worldRotation.Inverse()
-                        * (b - go->transform.worldPosition), go->transform.worldScale);
-                }
-                /// @note 同じ点が 2 つ並んだ区間は面積 0 で描くものが無い。方向も作れないので飛ばす。
-                ///       頂点は区間ごとに独立しているため、抜けても残りの帯は繋がったままになる。
-                if ((b - a).LengthSq() < 0.000001f) continue;
-                const math::Vector3 direction = (b - a).Normalized();
-                math::Vector3 viewDirection = math::Vector3::FORWARD;
-                if (line->billboard && mainCamera) {
-                    const math::Vector3 cameraLocal = DivideSafe(go->transform.worldRotation.Inverse()
-                        * (mainCamera->transform.worldPosition - go->transform.worldPosition),
-                        go->transform.worldScale);
-                    /// @note カメラが区間の中点に重なると向きが決まらない。板の面は side 側で
-                    ///       作り直されるので、既定の前方を入れておけば絵は崩れない。
-                    viewDirection = (cameraLocal - (a + b) * 0.5f)
-                        .NormalizedOr(math::Vector3::FORWARD);
-                }
-                math::Vector3 side = math::Vector3::Cross(direction, viewDirection);
-                if (side.LengthSq() < 0.000001f)
-                    side = math::Vector3::UP;
-                side = side.Normalized();
-                const float t0 = static_cast<float>(index) / static_cast<float>(segmentCount);
-                const float t1 = static_cast<float>(index + 1) / static_cast<float>(segmentCount);
-                const float w0 = (line->startWidth + (line->endWidth - line->startWidth) * t0) * 0.5f;
-                const float w1 = (line->startWidth + (line->endWidth - line->startWidth) * t1) * 0.5f;
-                const uint32_t base = static_cast<uint32_t>(vertices.size());
-                vertices.push_back({a - side * w0, math::Vector3::FORWARD, direction, {t0, 0.0f}});
-                vertices.push_back({a + side * w0, math::Vector3::FORWARD, direction, {t0, 1.0f}});
-                vertices.push_back({b + side * w1, math::Vector3::FORWARD, direction, {t1, 1.0f}});
-                vertices.push_back({b - side * w1, math::Vector3::FORWARD, direction, {t1, 0.0f}});
-                indices.insert(indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
-            }
-            uploadMesh(line->runtimeMesh, std::move(vertices), std::move(indices));
-            line->runtimeMesh.signature = signature;
         }
         auto* meshRenderer = go->GetComponent<MeshRenderer>();
         if (!meshRenderer)
             meshRenderer = &go->AddComponent<MeshRenderer>();
-        meshRenderer->mesh = line->runtimeMesh.Current();
-        meshRenderer->enabled = line->enabled && line->points.size() >= 2;
-        applyMaterial(*go, line->materialPath, line->startColor, "",
-            inheritedSort(*go) + line->sortingLayer * 1000 + line->orderInLayer);
+        meshRenderer->mesh = line->enabled && line->runtimeMesh.geometryValid ? line->runtimeMesh.Current() : nullptr;
+        /// @note 線の全 RGBA は頂点側に置く。材質 tint の既定白で startColor の二重乗算を避ける。
+        applyMaterial(*go, line->materialPath, {1, 1, 1, 1}, "",
+            inheritedSort(*go) + static_cast<int64_t>(line->sortingLayer) * 1000 + line->orderInLayer, false);
     }
 
     for (EntityID id : ctx.scene.GetEntities<ProjectorComponent>()) {
@@ -874,17 +887,19 @@ void PresentationSystem::Update(SystemContext& ctx)
             && projector->runtimeLoadedMaterialPath != projector->materialPath
             && asset::LoadMaterialAssetFromFile(projector->materialPath, materialAsset)) {
             /// @note render_path = "decal" の .mat はシェーダーごと DecalComponent へ渡せるが、
-            ///       それ以外はメッシュ用シェーダーを指しデカールパスで描けないため、
-            ///       テクスチャだけ抜いて組み込み描画へ載せる。
-            if (materialAsset.renderPath == asset::RenderPath::Decal) {
+            /// @note それ以外はメッシュ用シェーダーを指しデカールパスで描けないため、
+            /// @note テクスチャだけ抜いて組み込み描画へ載せる。
+            const auto authoringSnapshot = materialAsset.ReadAuthoring();
+            const auto& authoring = authoringSnapshot->Data();
+            if (authoring.renderPath == asset::RenderPath::Decal) {
                 decal->materialPath = projector->materialPath;
             } else {
                 decal->materialPath.clear();
-                if (auto it = materialAsset.textures.find("albedo"); it != materialAsset.textures.end())
+                if (auto it = authoring.textures.find("albedo"); it != authoring.textures.end())
                     decal->albedoTexPath = it->second;
-                if (auto it = materialAsset.textures.find("normal"); it != materialAsset.textures.end())
+                if (auto it = authoring.textures.find("normal"); it != authoring.textures.end())
                     decal->normalTexPath = it->second;
-                if (auto it = materialAsset.textures.find("emissive"); it != materialAsset.textures.end())
+                if (auto it = authoring.textures.find("emissive"); it != authoring.textures.end())
                     decal->emissiveTexPath = it->second;
             }
             projector->runtimeLoadedMaterialPath = projector->materialPath;
@@ -894,7 +909,7 @@ void PresentationSystem::Update(SystemContext& ctx)
             decal->materialPath.clear();
         }
         /// @note .mat 経路では albedoColor が効かないので、投影の濃さは opacity へ回す。
-        ///       組み込み経路は albedoColor[3] が担うため 1.0 のままにする (二重掛けを避ける)。
+        /// @note 組み込み経路は albedoColor[3] が担うため 1.0 のままにする (二重掛けを避ける)。
         decal->opacity = decal->materialPath.empty()
             ? 1.0f : std::clamp(projector->color.w, 0.0f, 1.0f);
         if (projector->shape == ProjectorShape::Perspective) {
@@ -906,4 +921,4 @@ void PresentationSystem::Update(SystemContext& ctx)
     }
 }
 
-} // namespace fbzz::scene
+} ///< @note namespace fbzz::scene

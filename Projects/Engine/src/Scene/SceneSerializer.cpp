@@ -42,11 +42,13 @@
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/IKTargetReferences.hpp>
 #include <Engine/Scene/Components/RagdollComponent.hpp>
 #include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/ControlPointAdapters.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
@@ -57,6 +59,8 @@
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
+#include <Engine/Scene/Managed/ManagedScriptAdapter.hpp>
+#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
 #include <Engine/Input/KeyCode.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Renderer/Material.hpp>
@@ -76,6 +80,7 @@
 #include <Physics/OBBCollider.hpp>
 #include <Physics/CapsuleCollider.hpp>
 #include <Physics/SphereCollider.hpp>
+#include "../Util/TomlFloatNormalization.hpp"
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <cmath>
@@ -85,6 +90,7 @@
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <cctype>
 #include <cassert>
 
@@ -106,12 +112,38 @@ std::size_t CountSceneObjects(const toml::array& objects, bool skipRuntimeNames)
     return count;
 }
 
+/// @note 全 owner を構築前に検査し、重複 ID で append の既存 Scene や user constructor を変更しない。
+bool ValidateSavedScriptIds(const toml::array& objects)
+{
+    for (const auto& item : objects) {
+        const auto* owner = item.as_table();
+        const auto* scripts = owner ? (*owner)["ScriptComponents"].as_array() : nullptr;
+        if (!scripts) continue;
+        std::unordered_set<std::string> ids;
+        for (const auto& node : *scripts) {
+            const auto* script = node.as_table();
+            if (!script || (*script)["type"].value_or(std::string{}).empty()) continue;
+            if (!script->contains("savedScriptId")) continue;
+            const auto id = (*script)["savedScriptId"].value<std::string>();
+            if (!id || !ScriptFactory::IsValidSavedScriptId(*id) || !ids.insert(*id).second) {
+                FBZZ_LOG_ERROR("SceneSerializer: invalid or duplicate saved Script identity in owner '%s'",
+                    (*owner)["instanceId"].value_or(std::string{}).c_str());
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 /// @note Prefab の GUID と適用済み定義は編集の正本なので、コンポーネント用のパス復号から外す。
+/// @note C# 設定は managed codec が GUID 値を所有するため、native のアセットパス変換を適用しない。
 /// @see Docs/design/prefab-safety.md
+/// @see Docs/design/csharp-authoring.md 型付きアセット参照。
 template<typename Fn>
 void TransformSceneAssetRefs(toml::table& document, const Fn& transform)
 {
     std::vector<std::pair<toml::table*, toml::table>> metadata;
+    std::vector<std::pair<toml::table*, toml::table>> managedSettings;
     if (auto* objects = document["gameobjects"].as_array()) {
         for (auto& item : *objects) {
             auto* object = item.as_table();
@@ -124,6 +156,18 @@ void TransformSceneAssetRefs(toml::table& document, const Fn& transform)
                 }
             }
             if (!fields.empty()) metadata.emplace_back(object, std::move(fields));
+            if (auto* scripts = (*object)["ScriptComponents"].as_array()) {
+                for (auto& entry : *scripts) {
+                    auto* script = entry.as_table();
+                    if (!script) continue;
+                    const auto type = (*script)["type"].value<std::string>();
+                    if (!type || (!type->starts_with("cs:") && !type->starts_with("cs-internal:"))) continue;
+                    if (auto* settings = (*script)["fields"].as_table()) {
+                        managedSettings.emplace_back(script, std::move(*settings));
+                        script->erase("fields");
+                    }
+                }
+            }
         }
     }
     transform(document);
@@ -133,6 +177,8 @@ void TransformSceneAssetRefs(toml::table& document, const Fn& transform)
         for (const auto& [key, value] : fields)
             object->insert(key.str(), value);
     }
+    for (auto& [script, fields] : managedSettings)
+        script->insert("fields", std::move(fields));
 }
 
 /// @note LightComponent を読む。`type` が文字列で書かれた旧シーンをここで吸収する。
@@ -284,34 +330,6 @@ void MigrateAmbientFlowFields(Scene& scene)
     }
 }
 
-double RoundTomlFloat(double value)
-{
-    constexpr double SCALE = 1000000.0;
-    const double rounded = std::round(value * SCALE) / SCALE;
-    return rounded == 0.0 ? 0.0 : rounded;
-}
-
-void NormalizeTomlFloats(toml::node& node)
-{
-    if (auto* value = node.as_floating_point()) {
-        value->get() = RoundTomlFloat(value->get());
-        return;
-    }
-
-    if (auto* table = node.as_table()) {
-        for (auto&& [key, child] : *table) {
-            (void)key;
-            NormalizeTomlFloats(child);
-        }
-        return;
-    }
-
-    if (auto* array = node.as_array()) {
-        for (auto& child : *array)
-            NormalizeTomlFloats(child);
-    }
-}
-
 /// @note 値型 ⇔ TOML 配列の変換は util 共通版を使う (Engine/Scene/TomlReflector.hpp)。
 using util::ArrToQuat;
 using util::ArrToVec2;
@@ -355,28 +373,24 @@ toml::table SerializeCollider(const ColliderComponent& col)
 /// @note 1 か所に集約して差異が生まれないようにする。
 MaterialComponent ReadMaterialComponent(const toml::table& matTbl)
 {
-    MaterialComponent mc{};
-    mc.enabled      = matTbl["enabled"].value_or(true);
-    mc.visible      = matTbl["visible"].value_or(true);
-    mc.materialPath = matTbl["material"].value_or(std::string{});
-    if (!mc.materialPath.empty())
-        mc.materialAsset = asset::AssetManager::Load<asset::MaterialAsset>(mc.materialPath);
-
-    /// @note submesh 1 以降のスロット (無い場合は単一マテリアルのオブジェクト)。
-    if (const auto* slotArr = matTbl["slots"].as_array()) {
-        mc.extraSlots.reserve(slotArr->size());
-        for (const auto& node : *slotArr) {
-            const auto* slotTbl = node.as_table();
-            if (!slotTbl) continue;
-            MaterialSlot slot{};
-            slot.materialPath = (*slotTbl)["material"].value_or(std::string{});
-            slot.visible      = (*slotTbl)["visible"].value_or(true);
-            if (!slot.materialPath.empty())
-                slot.materialAsset = asset::AssetManager::Load<asset::MaterialAsset>(slot.materialPath);
-            mc.extraSlots.push_back(std::move(slot));
+MaterialComponent material;
+    material.SetEnabled(matTbl["enabled"].value_or(true));
+    material.SetVisible(matTbl["visible"].value_or(true));
+    material.SetMaterialPath(matTbl["material"].value_or(std::string{}));
+    if (!material.GetMaterialPath().empty()) (void)material.EnsureMaterialAsset();
+    if (const auto* slots = matTbl["slots"].as_array()) {
+        for (const auto& node : *slots) {
+            const auto* table = node.as_table();
+            if (!table) continue;
+            const size_t index = material.SlotCount();
+            material.ResizeSlots(index + 1u);
+            auto& slot = material.RawSlotAt(index);
+            slot.SetMaterialPath((*table)["material"].value_or(std::string{}));
+            slot.SetVisible((*table)["visible"].value_or(true));
+            if (!slot.GetMaterialPath().empty()) (void)material.EnsureRawMaterialAsset(index);
         }
     }
-    return mc;
+    return material;
 }
 
 void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
@@ -469,7 +483,8 @@ void ReadCylinderCollider(const toml::table& colTbl, CylinderColliderComponent& 
     col.collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight);
 }
 
-void ReadMeshCollider(const toml::table& colTbl, MeshColliderComponent& col)
+template<typename ColliderT>
+void ReadMeshColliderFields(const toml::table& colTbl, ColliderT& col)
 {
     ReadColliderCommon(colTbl, col);
     col.meshPath = colTbl["meshPath"].value_or(std::string{});
@@ -477,12 +492,14 @@ void ReadMeshCollider(const toml::table& colTbl, MeshColliderComponent& col)
     col.useTransformScale = colTbl["useTransformScale"].value_or(true);
 }
 
+void ReadMeshCollider(const toml::table& colTbl, MeshColliderComponent& col)
+{
+    ReadMeshColliderFields(colTbl, col);
+}
+
 void ReadConvexHullCollider(const toml::table& colTbl, ConvexHullColliderComponent& col)
 {
-    ReadColliderCommon(colTbl, col);
-    col.meshPath = colTbl["meshPath"].value_or(std::string{});
-    col.meshIndex = (int)colTbl["meshIndex"].value_or((int64_t)0);
-    col.useTransformScale = colTbl["useTransformScale"].value_or(true);
+    ReadMeshColliderFields(colTbl, col);
 }
 
 
@@ -541,6 +558,7 @@ public:
     /// @note ロード後に索引を作り直す場面 (複製など) で出し直すと、同じ 1 件が操作のたびに
     /// @note 並ぶだけで、新しいことは何も判らない。
     explicit GuidIndex(Scene& scene, bool reportDuplicates = true)
+        : m_sceneGeneration(scene.GetRenderSceneGeneration())
     {
         for (GameObject& go : scene.GameObjects()) {
             if (go.instanceId.empty()) continue;
@@ -565,8 +583,11 @@ public:
         return it == m_objects.end() ? nullptr : it->second;
     }
 
+    [[nodiscard]] uint64_t SceneGeneration() const { return m_sceneGeneration; }
+
 private:
     std::unordered_map<std::string, GameObject*> m_objects;
+    uint64_t m_sceneGeneration = 0;
 };
 
 /// @note GameObject 参照とアセット参照を Scene の文脈で解決する書き込みリフレクタ。
@@ -592,11 +613,30 @@ public:
         Put(name, GuidOfEntity(v));
     }
 
+    void Field(const char* name, EntityRef& value) override
+    {
+        Put(name, value.guid.empty() ? GuidOfEntity(value.id) : value.guid);
+    }
+
 
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
         toml::array array;
-        for (const auto& value : values) array.push_back(GuidOfEntity(value.id));
+        for (const auto& value : values)
+            array.push_back(value.guid.empty() ? GuidOfEntity(value.id) : value.guid);
+        Put(name, std::move(array));
+    }
+
+    void ObjectReferenceField(const char* name, ObjectReference& value) override
+    {
+        Put(name, GuidOfReference(value));
+    }
+
+    void ObjectReferenceListField(const char* name, std::vector<ObjectReference>& values) override
+    {
+        toml::array array;
+        for (const ObjectReference& value : values)
+            array.push_back(GuidOfReference(value));
         Put(name, std::move(array));
     }
 
@@ -625,6 +665,11 @@ private:
         return go ? go->instanceId : std::string{};
     }
 
+    [[nodiscard]] std::string GuidOfReference(const ObjectReference& reference) const
+    {
+        return reference.guid;
+    }
+
     const Scene* m_scene = nullptr;
 };
 
@@ -637,6 +682,7 @@ public:
     explicit SceneReadReflector(const toml::table& table, const GuidIndex* guids = nullptr)
         : util::TomlReadReflector(table)
         , m_guids(guids)
+        , m_sceneGeneration(guids ? guids->SceneGeneration() : 0)
     {
     }
 
@@ -650,6 +696,15 @@ public:
             v = EntityFromGuid(*node);
     }
 
+    void Field(const char* name, EntityRef& value) override
+    {
+        if (const toml::node* node = FindNode(name)) {
+            value.guid = node->value_or(value.guid);
+            value.id = EntityFromGuid(*node);
+            value.sceneGeneration = m_sceneGeneration;
+        }
+    }
+
 
 
 
@@ -661,7 +716,26 @@ public:
         values.clear();
         values.reserve(array->size());
         for (const auto& node : *array)
-            values.push_back(EntityRef{ EntityFromGuid(node) });
+            values.push_back(EntityRef{EntityFromGuid(node), node.value_or(std::string{}), m_sceneGeneration});
+    }
+
+    void ObjectReferenceField(const char* name, ScriptObjectReference& value) override
+    {
+        const toml::node* node = FindNode(name);
+        if (!node) return;
+        value.guid = node->value_or(value.guid);
+        value.id = EntityFromGuid(*node);
+        value.sceneGeneration = m_sceneGeneration;
+    }
+
+    void ObjectReferenceListField(const char* name, std::vector<ScriptObjectReference>& values) override
+    {
+        const toml::array* array = FindArray(name);
+        if (!array) return;
+        values.clear();
+        values.reserve(array->size());
+        for (const auto& node : *array)
+            values.push_back(ObjectReference{node.value_or(std::string{}), EntityFromGuid(node), m_sceneGeneration});
     }
 
 
@@ -692,6 +766,7 @@ protected:
     }
 
     const GuidIndex* m_guids = nullptr;
+    uint64_t m_sceneGeneration = 0;
 };
 
 /// @note GameObject 参照だけを解決し直す読み込みリフレクタ。
@@ -702,7 +777,11 @@ protected:
 /// @note 値フィールドを無効化してあるのは「解決のためだけのパス」だと型で示すため。
 class EntityRefResolveReflector : public SceneReadReflector {
 public:
-    using SceneReadReflector::SceneReadReflector;
+    explicit EntityRefResolveReflector(const toml::table& table, const GuidIndex* guids)
+        : SceneReadReflector(table, guids)
+    {
+        SetResolveObjectReferences(true);
+    }
 
     void Field(const char*, float&) override {}
     void Field(const char*, int&) override {}
@@ -713,6 +792,15 @@ public:
     void Field(const char*, std::string&) override {}
     void Field(const char*, math::Quaternion&) override {}
     void Field(const char*, input::KeyCode&) override {}
+
+    void ObjectReferenceField(const char* name, ObjectReference& value) override
+    {
+        SceneReadReflector::ObjectReferenceField(name, value);
+        if (value.guid.empty()) {
+            value.id = EntityID::INVALID;
+            value.sceneGeneration = m_sceneGeneration;
+        }
+    }
 
     void ListField(const char*, std::vector<float>&) override {}
     void ListField(const char*, std::vector<int>&) override {}
@@ -738,6 +826,20 @@ public:
         value.value->Reflect(child);
     }
 };
+
+/// @brief Resolve the reflected object references of a custom-codec component.
+template<class T>
+void ResolveReflectedComponentReferences(GameObject& go,
+                                         const toml::table& gameObjectTable,
+                                         const GuidIndex& guids,
+                                         const char* key)
+{
+    const toml::table* componentTable = gameObjectTable[key].as_table();
+    T* component = go.GetComponent<T>();
+    if (!componentTable || !component) return;
+    EntityRefResolveReflector reflector(*componentTable, &guids);
+    component->Reflect(reflector);
+}
 
 /// @note Registry で Automatic 指定された標準コンポーネントを Reflect() だけで保存する。
 /// @note 新型追加時に SceneSerializer へ型別 if ブロックを増やさず、単純データを共通経路へ流す。
@@ -773,6 +875,250 @@ void ReadAutomaticComponents(GameObject& go, const toml::table& gameObjectTable)
     });
 }
 
+/// @brief Read the custom Water schema shared by full loads and object appends.
+WaterComponent ReadWaterComponent(const toml::table& waterTable)
+{
+    WaterComponent water{};
+    water.enabled = waterTable["enabled"].value_or(true);
+    water.materialPath = waterTable["materialPath"].value_or(std::string{});
+    water.wavesAssetRef.path = waterTable["wavesAssetRef"].value_or(std::string{});
+    water.extentX = static_cast<float>(waterTable["extentX"].value_or(100.0));
+    water.extentZ = static_cast<float>(waterTable["extentZ"].value_or(100.0));
+    water.resolutionX = static_cast<uint32_t>(
+        std::max<int64_t>(1, waterTable["resolutionX"].value_or(int64_t{64})));
+    water.resolutionZ = static_cast<uint32_t>(
+        std::max<int64_t>(1, waterTable["resolutionZ"].value_or(int64_t{64})));
+    water.chunkCount = static_cast<uint32_t>(
+        std::max<int64_t>(1, waterTable["chunkCount"].value_or(int64_t{4})));
+    water.cameraFocusedGrid = waterTable["cameraFocusedGrid"].value_or(false);
+    const float nearCellSize = static_cast<float>(waterTable["nearCellSize"].value_or(2.0));
+    water.nearCellSize = std::isfinite(nearCellSize)
+        ? std::clamp(nearCellSize, 0.25f, 10.0f) : 2.0f;
+    const auto lodInteger = [&waterTable](const char* key, int64_t fallback, int64_t minimum, int64_t maximum) {
+        const auto* node = waterTable[key].as_integer();
+        return static_cast<uint32_t>((std::clamp)(node ? node->get() : fallback, minimum, maximum));
+    };
+    const auto lodFloat = [&waterTable](const char* key, float fallback, double minimum, double maximum) {
+        const double value = waterTable[key].value_or(static_cast<double>(fallback));
+        return std::isfinite(value) ? static_cast<float>((std::clamp)(value, minimum, maximum)) : fallback;
+    };
+    water.adaptivePatchLod = waterTable["adaptivePatchLod"].value_or(false);
+    const uint32_t patchResolution = lodInteger("lodPatchResolution", 16, 2, 64);
+    water.lodPatchResolution = 2;
+    while (water.lodPatchResolution < patchResolution) water.lodPatchResolution *= 2;
+    water.lodMaxDepth = lodInteger("lodMaxDepth", 9, 0, 10);
+    water.lodMaxPatches = lodInteger("lodMaxPatches", 1024, 1, 4096);
+    water.lodTargetPixels = lodFloat("lodTargetPixels", 8.0f, 1.0, 64.0);
+    water.lodNearDistance = lodFloat("lodNearDistance", 256.0f, 0.0, 10000.0);
+    water.lodNearCellSize = lodFloat("lodNearCellSize", 2.0f, 0.25, 100.0);
+    water.lodMorphEnabled = waterTable["lodMorphEnabled"].value_or(false);
+    water.lodMorphTransitionWidth = lodFloat("lodMorphTransitionWidth", 0.25f, 0.05, 1.0);
+    water.surfaceShape = static_cast<WaterSurfaceShape>(lodInteger("surfaceShape", 0, 0, 2));
+    water.bakedSurfaceShape = static_cast<WaterSurfaceShape>(lodInteger(
+        "bakedSurfaceShape", static_cast<int64_t>(water.surfaceShape), 0, 2));
+    water.splineSamplesPerSegment = lodInteger("splineSamplesPerSegment", 8, 1, 64);
+    water.splineMeshCellSize = lodFloat("splineMeshCellSize", 2.0f, 0.05, 100.0);
+    SceneReadReflector pointReader(waterTable);
+    ReflectControlPointSourceMode(pointReader, "pointSourceMode", water.pointSourceMode);
+    ReflectControlPointRuntimeMode(pointReader, "pointRuntimeMode", water.pointRuntimeMode);
+    pointReader.Field("lakePlaneHeight", water.lakePlaneHeight);
+    pointReader.Field("bakedLakePlaneHeight", water.bakedLakePlaneHeight);
+    ReflectWaterControlPointBindings(pointReader, water.pointBindings);
+    ReflectWaterControlPointValues(pointReader, "bakedSplinePoints", water.bakedSplinePoints);
+    ReflectControlPointSignature(pointReader, "bakedInputSignature", water.bakedInputSignature);
+    ReflectControlPointSourceMode(pointReader, "bakedSourceMode", water.bakedSourceMode);
+    ReflectControlPointVersion(pointReader, "bakedAdapterVersion", water.bakedAdapterVersion);
+    pointReader.Field("bakeValid", water.bakeValid);
+    if (water.pointSourceMode == ControlPointSourceMode::INLINE)
+        ReflectWaterControlPointValues(pointReader, "splinePoints", water.splinePoints);
+    water.farOceanEnabled = waterTable["farOceanEnabled"].value_or(false);
+    water.farOceanCoverageScale = lodFloat("farOceanCoverageScale", 1.05f, 1.0, 2.0);
+    water.farOceanRippleFadeDistance = lodFloat("farOceanRippleFadeDistance", 4.0f, 0.1, 1000.0);
+    water.enableGerstnerWaves = waterTable["enableGerstnerWaves"].value_or(true);
+    water.waveAmplitudeScale = static_cast<float>(waterTable["waveAmplitudeScale"].value_or(1.0));
+    water.buoyancyEnabled = waterTable["buoyancyEnabled"].value_or(true);
+    water.buoyancy = static_cast<float>(waterTable["buoyancy"].value_or(15.0));
+    water.waterDrag = static_cast<float>(waterTable["waterDrag"].value_or(2.0));
+    water.buoyancyDepth = static_cast<float>(waterTable["buoyancyDepth"].value_or(10.0));
+    water.waveAttenuationDepth = lodFloat("waveAttenuationDepth", 0.0f, 0.0, 10000.0);
+    water.splashEnabled = waterTable["splashEnabled"].value_or(true);
+    if (const toml::table* interactionTable = waterTable["interactionSettings"].as_table()) {
+        SceneReadReflector interactionReader(*interactionTable);
+        water.interactionSettings.Reflect(interactionReader);
+    }
+    water.meshDirty = true;
+    water.foamDirty = true;
+    water.texDirty = true;
+    return water;
+}
+
+/// @brief Read the custom LOD level list and reflected center binding through one codec.
+LODGroupComponent ReadLODGroupComponent(const toml::table& lodTable)
+{
+    LODGroupComponent lodGroup{};
+    lodGroup.fadeDuration = 0.0f;
+    SceneReadReflector reflector(lodTable);
+    lodGroup.Reflect(reflector);
+    if (const auto* levels = lodTable["levels"].as_array()) {
+        for (const auto& levelNode : *levels) {
+            const auto* levelTable = levelNode.as_table();
+            if (!levelTable) continue;
+            LODLevel level{};
+            level.screenRelativeHeight = static_cast<float>(
+                (*levelTable)["screenRelativeHeight"].value_or(0.5));
+            if (const auto* renderers = (*levelTable)["renderers"].as_array()) {
+                for (const auto& rendererNode : *renderers) {
+                    LODRendererReference reference{};
+                    reference.instanceId = rendererNode.value_or(std::string{});
+                    level.renderers.push_back(std::move(reference));
+                }
+            }
+            lodGroup.levels.push_back(std::move(level));
+        }
+    }
+    return lodGroup;
+}
+
+/// @brief Read reflected patrol bindings while preserving the legacy INLINE waypoint arrays.
+NavMeshPatrolComponent ReadNavMeshPatrolComponent(const toml::table& patrolTable)
+{
+    NavMeshPatrolComponent patrol{};
+    const std::string mode = patrolTable["mode"].value_or(std::string{"Loop"});
+    patrol.mode = mode == "PingPong"
+        ? NavMeshPatrolComponent::Mode::PING_PONG : NavMeshPatrolComponent::Mode::LOOP;
+    SceneReadReflector reflector(patrolTable);
+    patrol.Reflect(reflector);
+    if (patrol.pointSourceMode == ControlPointSourceMode::INLINE) {
+        if (const auto* waypoints = patrolTable["waypoints"].as_array()) {
+            for (const auto& node : *waypoints)
+                patrol.waypoints.push_back(ArrToVec3(node.as_array(), math::Vector3::ZERO));
+        }
+        if (const auto* waits = patrolTable["waypointWaitTimes"].as_array()) {
+            for (const auto& node : *waits)
+                patrol.waypointWaitTimes.push_back(static_cast<float>(node.value_or(0.0)));
+        }
+        if (const auto* speeds = patrolTable["waypointSpeeds"].as_array()) {
+            for (const auto& node : *speeds)
+                patrol.waypointSpeeds.push_back(static_cast<float>(node.value_or(0.0)));
+        }
+    }
+    return patrol;
+}
+
+/// @brief Read IK chains and preserve canonical-reference presence separately from legacy aliases.
+IKSolverComponent ReadIKSolverComponent(const toml::table& ikTable)
+{
+    IKSolverComponent ikSolver{};
+    SceneReadReflector componentReader(ikTable);
+    ikSolver.Reflect(componentReader);
+    if (const auto* chains = ikTable["chains"].as_array()) {
+        for (const auto& chainNode : *chains) {
+            const auto* chainTable = chainNode.as_table();
+            if (!chainTable) continue;
+            IKChain chain{};
+            const int64_t solverType = (*chainTable)["type"].value_or(
+                static_cast<int64_t>(IKSolverType::TwoBone));
+            chain.type = solverType >= static_cast<int64_t>(IKSolverType::TwoBone) &&
+                         solverType <= static_cast<int64_t>(IKSolverType::FullBodyBiped)
+                ? static_cast<IKSolverType>(solverType) : IKSolverType::TwoBone;
+            chain.order = static_cast<int>((*chainTable)["order"].value_or(int64_t{0}));
+            chain.weight = static_cast<float>((*chainTable)["weight"].value_or(1.0));
+            chain.enabled = (*chainTable)["enabled"].value_or(true);
+            if (const auto* boneNames = (*chainTable)["boneNames"].as_array()) {
+                for (const auto& boneName : *boneNames)
+                    if (auto value = boneName.value<std::string>()) chain.boneNames.push_back(*value);
+            }
+            chain.maxExtension = static_cast<float>((*chainTable)["maxExtension"].value_or(0.98));
+            chain.softness = static_cast<float>((*chainTable)["softness"].value_or(0.05));
+            chain.minBendAngleDegrees = static_cast<float>(
+                (*chainTable)["minBendAngleDegrees"].value_or(0.0));
+            chain.maxBendAngleDegrees = static_cast<float>(
+                (*chainTable)["maxBendAngleDegrees"].value_or(175.0));
+            chain.targetOffset = ArrToVec3((*chainTable)["targetOffset"].as_array(), math::Vector3::ZERO);
+            chain.autoPoleLocalDirection = ArrToVec3(
+                (*chainTable)["autoPoleLocalDirection"].as_array(), math::Vector3::ZERO);
+            if (const auto* rotation = (*chainTable)["handRotationOffset"].as_array())
+                chain.handRotationOffset = ArrToQuat(rotation);
+            chain.handRotationWeight = static_cast<float>(
+                (*chainTable)["handRotationWeight"].value_or(1.0));
+            chain.fullBodyIterations = static_cast<int>(
+                (*chainTable)["fullBodyIterations"].value_or(int64_t{4}));
+            chain.fullBodyMaxRotationDegrees = static_cast<float>(
+                (*chainTable)["fullBodyMaxRotationDegrees"].value_or(75.0));
+            chain.fullBodyTolerance = static_cast<float>(
+                (*chainTable)["fullBodyTolerance"].value_or(0.005));
+            chain.targetName = (*chainTable)["targetName"].value_or(std::string{});
+            chain.targetGuid = (*chainTable)["targetGuid"].value_or(std::string{});
+            chain.poleName = (*chainTable)["poleName"].value_or(std::string{});
+            chain.poleGuid = (*chainTable)["poleGuid"].value_or(std::string{});
+            chain.autoPole = (*chainTable)["autoPole"].value_or(false);
+            chain.useAnimatorIKWeight = (*chainTable)["useAnimatorIKWeight"].value_or(true);
+            chain.rayUpRatio = static_cast<float>((*chainTable)["rayUpRatio"].value_or(0.5));
+            chain.rayDownRatio = static_cast<float>((*chainTable)["rayDownRatio"].value_or(1.2));
+            chain.footSurfaceOffset = static_cast<float>(
+                (*chainTable)["footSurfaceOffset"].value_or(0.05));
+            chain.correctionDeadZone = static_cast<float>(
+                (*chainTable)["correctionDeadZone"].value_or(0.025));
+            chain.maxCorrection = static_cast<float>((*chainTable)["maxCorrection"].value_or(0.12));
+            chain.footPlantDistance = static_cast<float>(
+                (*chainTable)["footPlantDistance"].value_or(0.06));
+            chain.smoothTime = static_cast<float>((*chainTable)["smoothTime"].value_or(0.10));
+            chain.footNormalAxis = ArrToVec3(
+                (*chainTable)["footNormalAxis"].as_array(), math::Vector3::ZERO);
+            chain.adjustHip = (*chainTable)["adjustHip"].value_or(true);
+            chain.hipBoneName = (*chainTable)["hipBoneName"].value_or(std::string{"Hips"});
+            chain.spineAutoWeight = (*chainTable)["spineAutoWeight"].value_or(false);
+            chain.spineFlatWeight = static_cast<float>(
+                (*chainTable)["spineFlatWeight"].value_or(0.05));
+            chain.spineSlopeRampMeters = static_cast<float>(
+                (*chainTable)["spineSlopeRampMeters"].value_or(0.10));
+            chain.lookAtAxis = ArrToVec3(
+                (*chainTable)["lookAtAxis"].as_array(), math::Vector3::FORWARD);
+            chain.lookAtUpAxis = ArrToVec3(
+                (*chainTable)["lookAtUpAxis"].as_array(), math::Vector3::UP);
+            chain.lookAtClampAngle = static_cast<float>(
+                (*chainTable)["lookAtClampAngle"].value_or(90.0));
+            chain.lookAtSpeed = static_cast<float>((*chainTable)["lookAtSpeed"].value_or(10.0));
+
+            SceneReadReflector chainReader(*chainTable);
+            chainReader.ObjectReferenceField("targetReference", chain.targetReference);
+            chainReader.ObjectReferenceField("poleReference", chain.poleReference);
+            chain.targetReferenceMigrationPending = !chainTable->contains("targetReference");
+            chain.poleReferenceMigrationPending = !chainTable->contains("poleReference");
+            ikSolver.chains.push_back(std::move(chain));
+        }
+    }
+    return ikSolver;
+}
+
+/// @brief Select the canonical IK GUID without reviving cleared references from cached EntityIDs.
+std::string SavedIKReferenceGuid(const ObjectReference& reference,
+                                 bool migrationPending,
+                                 EntityID legacyEntity,
+                                 const std::string& legacyGuid,
+                                 const Scene& scene)
+{
+    if (!migrationPending) return reference.guid;
+    if (!reference.guid.empty()) return reference.guid;
+    if (legacyEntity.IsValid()) {
+        const GameObject* target = scene.GetGameObject(legacyEntity);
+        if (target && !target->instanceId.empty()) return target->instanceId;
+    }
+    return legacyGuid;
+}
+
+/// @brief Keep the old IK name alias only while a canonical target remains assigned.
+std::string SavedIKReferenceName(const std::string& guid,
+                                 const std::string& legacyName,
+                                 bool migrationPending,
+                                 const Scene& scene)
+{
+    if (guid.empty()) return migrationPending ? legacyName : std::string{};
+    if (!legacyName.empty()) return legacyName;
+    const GameObject* target = scene.FindByGuid(guid);
+    return target ? target->name : legacyName;
+}
+
 /// @note 全 GameObject 生成後に呼ぶ。コンポーネントとスクリプトの GameObject 参照を
 /// @note instanceId から EntityID へ解決する。
 void ResolveEntityReferences(GameObject& go,
@@ -791,6 +1137,32 @@ void ResolveEntityReferences(GameObject& go,
             }
         }
     });
+
+    ResolveReflectedComponentReferences<WaterComponent>(go, gameObjectTable, guids, "WaterComponent");
+    ResolveReflectedComponentReferences<LODGroupComponent>(go, gameObjectTable, guids, "LODGroupComponent");
+    ResolveReflectedComponentReferences<NavMeshAgentComponent>(
+        go, gameObjectTable, guids, "NavMeshAgentComponent");
+    ResolveReflectedComponentReferences<NavMeshOffMeshLinkComponent>(
+        go, gameObjectTable, guids, "NavMeshOffMeshLinkComponent");
+    ResolveReflectedComponentReferences<NavMeshPatrolComponent>(
+        go, gameObjectTable, guids, "NavMeshPatrolComponent");
+
+    if (const toml::table* ikTable = gameObjectTable["IKSolverComponent"].as_table()) {
+        if (IKSolverComponent* solver = go.GetComponent<IKSolverComponent>()) {
+            if (const auto* chains = (*ikTable)["chains"].as_array()) {
+                const std::size_t count = (std::min)(chains->size(), solver->chains.size());
+                for (std::size_t index = 0; index < count; ++index) {
+                    const toml::table* chainTable = (*chains)[index].as_table();
+                    if (!chainTable) continue;
+                    EntityRefResolveReflector reflector(*chainTable, &guids);
+                    reflector.ObjectReferenceField(
+                        "targetReference", solver->chains[index].targetReference);
+                    reflector.ObjectReferenceField(
+                        "poleReference", solver->chains[index].poleReference);
+                }
+            }
+        }
+    }
 
     auto* sc = go.GetComponent<ScriptComponent>();
     const auto* scriptsArr = gameObjectTable["ScriptComponents"].as_array();
@@ -836,11 +1208,12 @@ toml::table TomlTableFromString(const std::string& text)
     return std::move(result.table());
 }
 
-toml::table MakeScriptEntryTable(const std::string& type, bool enabled, toml::table fieldsTbl)
+toml::table MakeScriptEntryTable(const SerializedScriptData& saved, toml::table fieldsTbl)
 {
     toml::table scTbl;
-    scTbl.insert("type", type);
-    scTbl.insert("enabled", enabled);
+    scTbl.insert("type", saved.type);
+    scTbl.insert("enabled", saved.enabled);
+    scTbl.insert("savedScriptId", saved.savedScriptId);
     scTbl.insert("fields", std::move(fieldsTbl));
     return scTbl;
 }
@@ -906,6 +1279,13 @@ ScriptComponent CloneScriptComponent(const ScriptComponent& src,
     if (dstScene) guids.emplace(*dstScene, false);
 
     ScriptComponent dst{};
+    std::unordered_set<std::string> savedIds;
+    for (const auto& entry : src.scripts) {
+        if (!ScriptFactory::IsValidSavedScriptId(entry.savedScriptId) || !savedIds.insert(entry.savedScriptId).second) {
+            FBZZ_LOG_ERROR("CloneScriptComponent: invalid or duplicate saved Script identity");
+            return {};
+        }
+    }
     for (const auto& srcEntry : src.scripts) {
         std::string type;
         bool        enabled = true;
@@ -931,12 +1311,14 @@ ScriptComponent CloneScriptComponent(const ScriptComponent& src,
         if (type.empty()) continue;
 
         ScriptEntry& dstEntry = dst.scripts.emplace_back();
+        dstEntry.savedScriptId = srcEntry.savedScriptId;
         dstEntry.serialized = core::MakeUnique<SerializedScriptData>();
         dstEntry.serialized->type       = type;
         dstEntry.serialized->enabled    = enabled;
         dstEntry.serialized->fieldsToml = fieldsToml;
+        dstEntry.serialized->savedScriptId = dstEntry.savedScriptId;
 
-        dstEntry.script = ScriptFactory::Create(type);
+        dstEntry.script = ScriptFactory::Create(type, dstEntry.savedScriptId);
         if (!dstEntry.script) continue;
 
         dstEntry.script->SetContext(dstScene, dstOwner);
@@ -945,9 +1327,116 @@ ScriptComponent CloneScriptComponent(const ScriptComponent& src,
         const toml::table fields = TomlTableFromString(fieldsToml);
         SceneReadReflector reader(fields, guids ? &*guids : nullptr);
         dstEntry.script->Reflect(reader);
-        dstEntry.script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
+        /// @note 呼出元が全 entry を ComponentArray へ登録した後に callback と typed reference 接続を行う。
     }
     return dst;
+}
+
+ScriptComponent CloneScriptComponentPassive(const ScriptComponent& src, const Scene* srcScene)
+{
+    ScriptComponent dst{};
+    std::unordered_set<std::string> savedIds;
+    for (const auto& entry : src.scripts) {
+        if (!ScriptFactory::IsValidSavedScriptId(entry.savedScriptId) || !savedIds.insert(entry.savedScriptId).second) {
+            FBZZ_LOG_ERROR("CloneScriptComponentPassive: invalid or duplicate saved Script identity");
+            return {};
+        }
+    }
+    for (const auto& srcEntry : src.scripts) {
+        std::string type;
+        bool enabled = true;
+        std::string fieldsToml;
+        if (srcEntry.script) {
+            Script& script = *srcEntry.script;
+            toml::table fields;
+            SceneWriteReflector writer(fields, srcScene);
+            script.Reflect(writer);
+            type = script.GetTypeName();
+            enabled = script.enabled;
+            fieldsToml = TomlTableToString(fields);
+        } else if (srcEntry.serialized) {
+            type = srcEntry.serialized->type;
+            enabled = srcEntry.serialized->enabled;
+            fieldsToml = srcEntry.serialized->fieldsToml;
+        }
+        if (type.empty()) continue;
+
+        ScriptEntry& dstEntry = dst.scripts.emplace_back();
+        dstEntry.savedScriptId = srcEntry.savedScriptId;
+        dstEntry.serialized = core::MakeUnique<SerializedScriptData>();
+        dstEntry.serialized->type = type;
+        dstEntry.serialized->enabled = enabled;
+        dstEntry.serialized->fieldsToml = std::move(fieldsToml);
+        dstEntry.serialized->savedScriptId = dstEntry.savedScriptId;
+    }
+    return dst;
+}
+
+void PreparePassiveCopiedScripts(Scene& scene, std::span<const EntityID> owners)
+{
+    GuidIndex guids(scene, false);
+    for (EntityID ownerId : owners) {
+        GameObject* owner = scene.GetGameObject(ownerId);
+        ScriptComponent* scripts = owner ? owner->GetComponent<ScriptComponent>() : nullptr;
+        if (!scripts) continue;
+        for (ScriptEntry& entry : scripts->scripts) {
+            if (entry.script || !entry.serialized || entry.serialized->type.empty()) continue;
+            entry.script = ScriptFactory::Create(entry.serialized->type, entry.savedScriptId);
+            if (!entry.script) continue;
+            entry.script->SetContext(&scene, owner);
+            entry.script->enabled = entry.serialized->enabled;
+            const toml::table fields = TomlTableFromString(entry.serialized->fieldsToml);
+            SceneReadReflector reader(fields, &guids);
+            entry.script->Reflect(reader);
+        }
+    }
+}
+
+void FinalizePassiveCopiedScripts(Scene& scene, std::span<const EntityID> owners)
+{
+    struct Identity {
+        EntityID owner;
+        std::string entry;
+        std::string birth;
+    };
+    std::vector<Identity> identities;
+    for (EntityID ownerId : owners) {
+        GameObject* owner = scene.GetGameObject(ownerId);
+        ScriptComponent* scripts = owner ? owner->GetComponent<ScriptComponent>() : nullptr;
+        if (!scripts) continue;
+        for (ScriptEntry& entry : scripts->scripts) {
+            if (!entry.script || entry.m_pendingRemoval) continue;
+            identities.push_back({ownerId, entry.inspectionId, entry.script->InspectionId()});
+            if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()))
+                adapter->RefreshOwnerBinding();
+        }
+    }
+
+    const auto findEntry = [&scene](const Identity& identity) -> ScriptEntry* {
+        GameObject* owner = scene.GetGameObject(identity.owner);
+        ScriptComponent* scripts = owner ? owner->GetComponent<ScriptComponent>() : nullptr;
+        if (!scripts) return nullptr;
+        const auto found = std::find_if(scripts->scripts.begin(), scripts->scripts.end(),
+            [&identity](const ScriptEntry& entry) {
+                return entry.inspectionId == identity.entry && !entry.m_pendingRemoval
+                    && entry.script && entry.script->InspectionId() == identity.birth;
+            });
+        return found == scripts->scripts.end() ? nullptr : &*found;
+    };
+
+    for (const Identity& identity : identities) {
+        ScriptEntry* entry = findEntry(identity);
+        if (entry) {
+            if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(entry->script.get()))
+                adapter->ResolveSavedComponentReferences();
+        }
+    }
+    for (const Identity& identity : identities) {
+        ScriptEntry* entry = findEntry(identity);
+        if (entry)
+            entry->script->ExecuteProfiledCallback(&Script::OnAfterDeserialize,
+                ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
+    }
 }
 
 /// @note Save
@@ -956,11 +1445,151 @@ bool SceneSerializer::Save(Scene& scene, const std::string& path)
     const std::string text = SaveToText(scene, path);
     if (text.empty()) return false;
     util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(path));
-    return util::FileSystem::WriteText(path, text);
+    return util::FileSystem::WriteTextAtomic(path, text);
 }
 
 std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePath)
 {
+    std::string diagnostic;
+    return SaveToText(scene, scenePath, diagnostic);
+}
+
+std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePath, std::string& diagnostic)
+{ return SaveToTextCore(scene, scenePath, diagnostic, false); }
+
+std::string SceneSerializer::CapturePassiveClone(Scene& scene, std::string& diagnostic)
+{ return SaveToTextCore(scene, {}, diagnostic, true); }
+
+std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& scenePath, std::string& diagnostic, bool passiveClone)
+{
+    diagnostic.clear();
+    struct ScriptSnapshot {
+        EntityID owner;
+        std::string ownerGuid;
+        std::string entryId;
+        std::string savedScriptId;
+        Script* expected = nullptr;
+        toml::table fields;
+        SerializedScriptData saved;
+    };
+    std::unordered_map<std::string, ScriptSnapshot> scriptSnapshots;
+    std::vector<std::string> scriptOrder;
+    std::unordered_map<std::string, EntityID> objectIdentities;
+    for (auto& go : scene.GameObjects()) {
+        if (go.runtimeGenerated) continue;
+        objectIdentities.emplace(go.instanceId, go.GetID());
+        auto* scripts = go.GetComponent<ScriptComponent>();
+        if (!scripts) continue;
+        std::unordered_set<std::string> savedIds;
+        for (auto& entry : scripts->scripts) {
+            const auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
+            if (!ScriptFactory::IsValidSavedScriptId(entry.savedScriptId) || !savedIds.insert(entry.savedScriptId).second
+                || (adapter && adapter->SavedScriptId() != entry.savedScriptId)) {
+                diagnostic = "Invalid, duplicate or mismatched saved Script identity for owner " + go.instanceId;
+                FBZZ_LOG_ERROR("SceneSerializer: %s", diagnostic.c_str());
+                return {};
+            }
+            ScriptSnapshot snapshot;
+            snapshot.owner = go.GetID();
+            snapshot.ownerGuid = go.instanceId;
+            snapshot.entryId = entry.inspectionId;
+            snapshot.savedScriptId = entry.savedScriptId;
+            snapshot.expected = entry.script.get();
+            scriptOrder.push_back(entry.inspectionId);
+            if (!scriptSnapshots.emplace(entry.inspectionId, std::move(snapshot)).second) {
+                diagnostic = "Script inspection identities are not unique.";
+                FBZZ_LOG_ERROR("SceneSerializer: Script serialization failed: %s", diagnostic.c_str());
+                return {};
+            }
+        }
+    }
+    const auto resolveEntry = [&](const ScriptSnapshot& snapshot) -> ScriptEntry* {
+        GameObject* owner = scene.GetGameObject(snapshot.owner);
+        if (!owner || owner->runtimeGenerated || owner->instanceId != snapshot.ownerGuid) return nullptr;
+        auto* scripts = owner->GetComponent<ScriptComponent>();
+        if (!scripts) return nullptr;
+        for (auto& entry : scripts->scripts)
+            if (entry.inspectionId == snapshot.entryId && entry.savedScriptId == snapshot.savedScriptId
+                && entry.script.get() == snapshot.expected) return &entry;
+        return nullptr;
+    };
+    const auto collectionUnchanged = [&]() {
+        size_t objectCount = 0;
+        size_t scriptCount = 0;
+        for (auto& go : scene.GameObjects()) {
+            if (go.runtimeGenerated) continue;
+            ++objectCount;
+            const auto object = objectIdentities.find(go.instanceId);
+            if (object == objectIdentities.end() || object->second != go.GetID()) return false;
+            auto* scripts = go.GetComponent<ScriptComponent>();
+            if (!scripts) continue;
+            for (auto& entry : scripts->scripts) {
+                ++scriptCount;
+                const auto snapshot = scriptSnapshots.find(entry.inspectionId);
+                if (snapshot == scriptSnapshots.end() || snapshot->second.owner != go.GetID()
+                    || snapshot->second.savedScriptId != entry.savedScriptId
+                    || snapshot->second.expected != entry.script.get()) return false;
+            }
+        }
+        return objectCount == objectIdentities.size() && scriptCount == scriptSnapshots.size();
+    };
+    const auto changedCollection = [&]() -> std::string {
+        diagnostic = "GameObject or Script collection changed during serialization.";
+        FBZZ_LOG_ERROR("SceneSerializer: Script serialization failed: %s", diagnostic.c_str());
+        return {};
+    };
+    /// @note Script の全取得を外部 Terrain 等の書き出しより前に終え、途中失敗で旧設定やディスクを変更しない。
+    for (const auto& entryId : scriptOrder) {
+        auto& snapshot = scriptSnapshots.find(entryId)->second;
+        ScriptEntry* entry = resolveEntry(snapshot);
+        if (!entry) return changedCollection();
+        if (!entry->script) {
+            if (entry->serialized) {
+                snapshot.saved = *entry->serialized;
+                snapshot.saved.savedScriptId = entry->savedScriptId;
+                snapshot.fields = TomlTableFromString(entry->serialized->fieldsToml);
+            }
+            continue;
+        }
+        GameObject* owner = scene.GetGameObject(snapshot.owner);
+        const std::string ownerName = owner->name;
+        entry->script->SetContext(&scene, owner);
+        SceneWriteReflector reflector(snapshot.fields, &scene);
+        auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(entry->script.get());
+        if (adapter) {
+            if (!adapter->ReflectForSerialization(reflector, diagnostic, !passiveClone)) {
+                diagnostic = ownerName + ": " + diagnostic;
+                FBZZ_LOG_ERROR("SceneSerializer: Script serialization failed: %s", diagnostic.c_str());
+                return {};
+            }
+        } else {
+            if (!passiveClone) entry->script->ExecuteProfiledCallback(&Script::OnBeforeSerialize, ScriptCallbackKind::BEFORE_SERIALIZE, "OnBeforeSerialize");
+            entry = resolveEntry(snapshot);
+            if (!entry) return changedCollection();
+            entry->script->Reflect(reflector);
+        }
+        /// @note user callback を越えて ScriptEntry や GameObject の pointer を保持しない。
+        entry = resolveEntry(snapshot);
+        if (!entry) return changedCollection();
+        if (adapter && entry->serialized) {
+            const toml::parse_result parsed = toml::parse(entry->serialized->fieldsToml);
+            if (!parsed) {
+                diagnostic = ownerName + ": " + entry->script->GetTypeName() + ": Previous saved fields are malformed.";
+                FBZZ_LOG_ERROR("SceneSerializer: Script serialization failed: %s", diagnostic.c_str());
+                return {};
+            }
+            const toml::table& preserved = parsed.table();
+            for (const auto& [key, value] : preserved) {
+                const std::string_view savedKey = key.str();
+                const bool recognized = std::any_of(adapter->Fields().begin(), adapter->Fields().end(), [&](const ManagedFieldDescriptor& field) {
+                    return field.name == savedKey || std::find(field.previousKeys.begin(), field.previousKeys.end(), savedKey) != field.previousKeys.end();
+                });
+                if (!recognized) snapshot.fields.insert(key, value);
+            }
+        }
+        snapshot.saved = {entry->script->GetTypeName(), TomlTableToString(snapshot.fields), entry->script->enabled, entry->savedScriptId};
+    }
+    if (!collectionUnchanged()) return changedCollection();
     /// @note Terrain のレイヤーマテリアルは «シーンの隣» へ書き出す副作用がある。
     /// @note 保存先が決まらない呼び出し (テキストだけ欲しい場合) では書き出さない。
     const std::string& path = scenePath;
@@ -1028,17 +1657,18 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         /// @note MaterialComponent
         if (auto* mc = go.GetComponent<MaterialComponent>(); mc) {
             toml::table matTbl;
-            matTbl.insert("material", mc->materialPath);
-            matTbl.insert("enabled",  mc->enabled);
-            matTbl.insert("visible",  mc->visible);
+            matTbl.insert("material", mc->GetMaterialPath());
+            matTbl.insert("enabled",  mc->IsEnabled());
+            matTbl.insert("visible",  mc->IsVisible());
             /// @note submesh 1 以降のマテリアルスロット。単一マテリアルのオブジェクトでは
             /// @note 空配列を書かず、既存シーンの diff を増やさない。
-            if (!mc->extraSlots.empty()) {
+            if (mc->SlotCount() > 1u) {
                 toml::array slotArr;
-                for (const auto& slot : mc->extraSlots) {
+                for (size_t index = 1; index < mc->SlotCount(); ++index) {
+                    const auto& slot = mc->RawSlotAt(index);
                     toml::table slotTbl;
-                    slotTbl.insert("material", slot.materialPath);
-                    slotTbl.insert("visible",  slot.visible);
+                    slotTbl.insert("material", slot.GetMaterialPath());
+                    slotTbl.insert("visible",  slot.IsVisible());
                     slotArr.push_back(std::move(slotTbl));
                 }
                 matTbl.insert("slots", std::move(slotArr));
@@ -1122,10 +1752,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         /// @note LODGroupComponent
         if (auto* lodGroup = go.GetComponent<LODGroupComponent>()) {
             toml::table lodTbl;
-            lodTbl.insert("enabled", lodGroup->enabled);
-            lodTbl.insert("size", (double)lodGroup->size);
-            lodTbl.insert("cullBelowLastLevel", lodGroup->cullBelowLastLevel);
-            lodTbl.insert("fadeDuration", (double)lodGroup->fadeDuration);
+            SceneWriteReflector lodWriter(lodTbl, &scene);
+            lodGroup->Reflect(lodWriter);
             toml::array levelsArr;
             for (auto& level : lodGroup->levels) {
                 toml::table levelTbl;
@@ -1246,6 +1874,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             auto& body = *rb->rigidBody;
             toml::table rbTbl;
             rbTbl.insert("enabled",                rb->enabled);
+            rbTbl.insert("poseDriven",             rb->poseDriven);
             /// @note 質量の決め方。未記載の既存シーンは Manual として読まれる (従来どおり)。
             rbTbl.insert("massMode",               (int64_t)rb->massMode);
             /// @note 媒質との結合係数 [1/s]。未記載の既存シーンは 0 = 流れを受けない。
@@ -1348,6 +1977,15 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             animTbl.insert("enabled",   anim->enabled);
             animTbl.insert("playing",   anim->playing);
             animTbl.insert("externalPose", anim->externalPose);
+            animTbl.insert("poseLodEnabled", anim->poseLodEnabled);
+            animTbl.insert("boneBakeMode", (int64_t)anim->boneBakeMode);
+            animTbl.insert("boneBakeSampleRate", (double)anim->boneBakeSampleRate);
+            animTbl.insert("boneBakeMinDistance", (double)anim->boneBakeMinDistance);
+            animTbl.insert("boneBakeRequireCpuBones", anim->boneBakeRequireCpuBones);
+            animTbl.insert("poseLodNearDistance", (double)anim->poseLodNearDistance);
+            animTbl.insert("poseLodFarDistance", (double)anim->poseLodFarDistance);
+            animTbl.insert("poseLodMidInterval", (double)anim->poseLodMidInterval);
+            animTbl.insert("poseLodFarInterval", (double)anim->poseLodFarInterval);
             animTbl.insert("rootMotionMode",     (int64_t)anim->rootMotion.mode);
             animTbl.insert("rootMotionSource",   (int64_t)anim->rootMotion.source);
             animTbl.insert("rootMotionPoseMode", (int64_t)anim->rootMotion.poseMode);
@@ -1523,7 +2161,8 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         /// @note 参照先 GameObject の名前として保存し、ロード後の Pass 3 で解決する。
         if (auto* ikSolver = go.GetComponent<IKSolverComponent>()) {
             toml::table ikTbl;
-            ikTbl.insert("enabled", ikSolver->enabled);
+            SceneWriteReflector ikWriter(ikTbl, &scene);
+            ikSolver->Reflect(ikWriter);
             toml::array chainsArr;
             for (const auto& chain : ikSolver->chains) {
                 toml::table chainTbl;
@@ -1564,32 +2203,33 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
                 chainTbl.insert("lookAtUpAxis",        Vec3ToArr(chain.lookAtUpAxis));
                 chainTbl.insert("lookAtClampAngle",    (double)chain.lookAtClampAngle);
                 chainTbl.insert("lookAtSpeed",         (double)chain.lookAtSpeed);
-                /// @note EntityID が有効なら実 GameObject から名前と GUID を取り、無効なら
-                /// @note 文字列フィールドを使う。Inspector でテキスト直打ちしたまま Resolve せずに
-                /// @note 保存すると EntityID は INVALID で targetName にだけ正しい値がある。
-                /// @note GUID 優先で保存し、古いシーンとの互換性のため名前も残す。
-                std::string savedTargetName;
-                std::string savedTargetGuid;
-                if (chain.targetEntity.IsValid())
-                    if (auto* tgt = scene.GetGameObject(chain.targetEntity)) {
-                        savedTargetName = tgt->name;
-                        savedTargetGuid = tgt->instanceId;
-                    }
-                if (savedTargetName.empty()) savedTargetName = chain.targetName;
-                if (savedTargetGuid.empty()) savedTargetGuid = chain.targetGuid;
+                const std::string savedTargetGuid = SavedIKReferenceGuid(
+                    chain.targetReference, chain.targetReferenceMigrationPending,
+                    chain.targetEntity, chain.targetGuid, scene);
+                if (!chain.targetReferenceMigrationPending || !savedTargetGuid.empty()) {
+                    ObjectReference targetReference = chain.targetReference;
+                    targetReference.guid = savedTargetGuid;
+                    SceneWriteReflector chainWriter(chainTbl, &scene);
+                    chainWriter.ObjectReferenceField("targetReference", targetReference);
+                }
+                const std::string savedTargetName = SavedIKReferenceName(
+                    savedTargetGuid, chain.targetName,
+                    chain.targetReferenceMigrationPending, scene);
                 chainTbl.insert("targetName", savedTargetName);
                 chainTbl.insert("targetGuid", savedTargetGuid);
 
-                /// @note pole: 同上
-                std::string savedPoleName;
-                std::string savedPoleGuid;
-                if (chain.poleEntity.IsValid())
-                    if (auto* pole = scene.GetGameObject(chain.poleEntity)) {
-                        savedPoleName = pole->name;
-                        savedPoleGuid = pole->instanceId;
-                    }
-                if (savedPoleName.empty()) savedPoleName = chain.poleName;
-                if (savedPoleGuid.empty()) savedPoleGuid = chain.poleGuid;
+                const std::string savedPoleGuid = SavedIKReferenceGuid(
+                    chain.poleReference, chain.poleReferenceMigrationPending,
+                    chain.poleEntity, chain.poleGuid, scene);
+                if (!chain.poleReferenceMigrationPending || !savedPoleGuid.empty()) {
+                    ObjectReference poleReference = chain.poleReference;
+                    poleReference.guid = savedPoleGuid;
+                    SceneWriteReflector chainWriter(chainTbl, &scene);
+                    chainWriter.ObjectReferenceField("poleReference", poleReference);
+                }
+                const std::string savedPoleName = SavedIKReferenceName(
+                    savedPoleGuid, chain.poleName,
+                    chain.poleReferenceMigrationPending, scene);
                 chainTbl.insert("poleName", savedPoleName);
                 chainTbl.insert("poleGuid", savedPoleGuid);
                 chainTbl.insert("autoPole", chain.autoPole);
@@ -1665,14 +2305,22 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
                 /// @note scenePath が空 = «テキストだけ欲しい» 呼び出しなので、副作用は起こさない。
                 if (!path.empty() && !layerMaterial.empty()) {
                     auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(layerMaterial);
-                    if (auto* mat = asset::AssetManager::Get<asset::MaterialAsset>(matHandle)) {
+                    if (const auto snapshot = asset::ReadMaterialAuthoring(matHandle)) {
                         const std::string matDiskPath =
                             ResolveAssetDiskPathForScene(path, layerMaterial);
-                        (void)asset::SaveMaterialAssetToFile(matDiskPath, *mat);
+                        (void)asset::SaveMaterialAssetToFile(matDiskPath, snapshot->Data());
                     }
                 }
             }
             terrainTbl.insert("layerMaterials", std::move(layerMatArr));
+            if (tc->terrainAssetPath.empty() || path.empty()) {
+                std::string text;
+                if (TerrainAssetSerializer::Serialize(*tc, text)) {
+                    auto data = toml::parse(text);
+                    if (data && data.table()["terrain"].as_table())
+                        terrainTbl.insert("inlineData", *data.table()["terrain"].as_table());
+                }
+            }
 
             goTbl.insert("TerrainComponent", std::move(terrainTbl));
         }
@@ -1695,12 +2343,29 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             goTbl.insert("TerrainGridComponent", std::move(tbl));
         }
 
-        /// @note WaterComponent — ジオメトリ・個体の補正・浮力・materialPath のみ保存。
-        /// @note 水の種類 (色・波・風・水流) は .mat が持つ。waves / current は WaterSystem が毎フレーム作る。
+        /// @note 解決済み波・水深snapshot・GPU資源は保存せず、材質と型指定波Assetへの参照を保存する。
         if (auto* water = go.GetComponent<WaterComponent>()) {
             toml::table waterTbl;
             waterTbl.insert("enabled",             water->enabled);
             waterTbl.insert("materialPath",        water->materialPath);
+            waterTbl.insert("wavesAssetRef",       water->wavesAssetRef.path);
+            waterTbl.insert("surfaceShape", static_cast<int64_t>(water->surfaceShape));
+            waterTbl.insert("bakedSurfaceShape", static_cast<int64_t>(water->bakedSurfaceShape));
+            waterTbl.insert("splineSamplesPerSegment", static_cast<int64_t>(water->splineSamplesPerSegment));
+            waterTbl.insert("splineMeshCellSize", static_cast<double>(water->splineMeshCellSize));
+            SceneWriteReflector waterPointWriter(waterTbl, &scene);
+            ReflectControlPointSourceMode(waterPointWriter, "pointSourceMode", water->pointSourceMode);
+            ReflectControlPointRuntimeMode(waterPointWriter, "pointRuntimeMode", water->pointRuntimeMode);
+            waterPointWriter.Field("lakePlaneHeight", water->lakePlaneHeight);
+            waterPointWriter.Field("bakedLakePlaneHeight", water->bakedLakePlaneHeight);
+            ReflectWaterControlPointBindings(waterPointWriter, water->pointBindings);
+            ReflectWaterControlPointValues(waterPointWriter, "bakedSplinePoints", water->bakedSplinePoints);
+            ReflectControlPointSignature(waterPointWriter, "bakedInputSignature", water->bakedInputSignature);
+            ReflectControlPointSourceMode(waterPointWriter, "bakedSourceMode", water->bakedSourceMode);
+            ReflectControlPointVersion(waterPointWriter, "bakedAdapterVersion", water->bakedAdapterVersion);
+            waterPointWriter.Field("bakeValid", water->bakeValid);
+            if (water->pointSourceMode == ControlPointSourceMode::INLINE)
+                ReflectWaterControlPointValues(waterPointWriter, "splinePoints", water->splinePoints);
             waterTbl.insert("extentX",             static_cast<double>(water->extentX));
             waterTbl.insert("extentZ",             static_cast<double>(water->extentZ));
             waterTbl.insert("resolutionX",         static_cast<int64_t>(water->resolutionX));
@@ -1708,13 +2373,29 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
             waterTbl.insert("chunkCount",          static_cast<int64_t>(water->chunkCount));
             waterTbl.insert("cameraFocusedGrid",   water->cameraFocusedGrid);
             waterTbl.insert("nearCellSize",        static_cast<double>(water->nearCellSize));
+            waterTbl.insert("adaptivePatchLod",    water->adaptivePatchLod);
+            waterTbl.insert("lodPatchResolution",  static_cast<int64_t>(water->lodPatchResolution));
+            waterTbl.insert("lodMaxDepth",         static_cast<int64_t>(water->lodMaxDepth));
+            waterTbl.insert("lodMaxPatches",       static_cast<int64_t>(water->lodMaxPatches));
+            waterTbl.insert("lodTargetPixels",     static_cast<double>(water->lodTargetPixels));
+            waterTbl.insert("lodNearDistance",     static_cast<double>(water->lodNearDistance));
+            waterTbl.insert("lodNearCellSize",     static_cast<double>(water->lodNearCellSize));
+            waterTbl.insert("lodMorphEnabled",     water->lodMorphEnabled);
+            waterTbl.insert("lodMorphTransitionWidth", static_cast<double>(water->lodMorphTransitionWidth));
+            waterTbl.insert("farOceanEnabled",      water->farOceanEnabled);
+            waterTbl.insert("farOceanCoverageScale", static_cast<double>(water->farOceanCoverageScale));
+            waterTbl.insert("farOceanRippleFadeDistance", static_cast<double>(water->farOceanRippleFadeDistance));
             waterTbl.insert("enableGerstnerWaves", water->enableGerstnerWaves);
             waterTbl.insert("waveAmplitudeScale",  static_cast<double>(water->waveAmplitudeScale));
             waterTbl.insert("buoyancyEnabled",     water->buoyancyEnabled);
             waterTbl.insert("buoyancy",            static_cast<double>(water->buoyancy));
             waterTbl.insert("waterDrag",           static_cast<double>(water->waterDrag));
             waterTbl.insert("buoyancyDepth",       static_cast<double>(water->buoyancyDepth));
+            waterTbl.insert("waveAttenuationDepth", static_cast<double>(water->waveAttenuationDepth));
             waterTbl.insert("splashEnabled",       water->splashEnabled);
+            waterPointWriter.BeginObject("interactionSettings");
+            water->interactionSettings.Reflect(waterPointWriter);
+            waterPointWriter.EndObject();
             goTbl.insert("WaterComponent", std::move(waterTbl));
         }
 
@@ -1734,21 +2415,23 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         /// @note NavMeshPatrolComponent — ウェイポイント・巡回設定を保存。進行状態はランタイムのため非保存。
         if (auto* patrol = go.GetComponent<NavMeshPatrolComponent>()) {
             toml::table patrolTbl;
-            patrolTbl.insert("enabled",  patrol->enabled);
+            SceneWriteReflector patrolWriter(patrolTbl, &scene);
+            patrol->Reflect(patrolWriter);
             patrolTbl.insert("mode",     patrol->mode == NavMeshPatrolComponent::Mode::PING_PONG ? "PingPong" : "Loop");
-            patrolTbl.insert("waitTime", static_cast<double>(patrol->waitTime));
-            toml::array wpArr;
-            for (const auto& wp : patrol->waypoints)
-                wpArr.push_back(Vec3ToArr(wp));
-            patrolTbl.insert("waypoints", std::move(wpArr));
-            toml::array waitArr;
-            for (float wait : patrol->waypointWaitTimes)
-                waitArr.push_back(static_cast<double>(wait));
-            patrolTbl.insert("waypointWaitTimes", std::move(waitArr));
-            toml::array speedArr;
-            for (float speed : patrol->waypointSpeeds)
-                speedArr.push_back(static_cast<double>(speed));
-            patrolTbl.insert("waypointSpeeds", std::move(speedArr));
+            if (patrol->pointSourceMode == ControlPointSourceMode::INLINE) {
+                toml::array waypoints;
+                for (const auto& waypoint : patrol->waypoints)
+                    waypoints.push_back(Vec3ToArr(waypoint));
+                patrolTbl.insert("waypoints", std::move(waypoints));
+                toml::array waits;
+                for (float wait : patrol->waypointWaitTimes)
+                    waits.push_back(static_cast<double>(wait));
+                patrolTbl.insert("waypointWaitTimes", std::move(waits));
+                toml::array speeds;
+                for (float speed : patrol->waypointSpeeds)
+                    speeds.push_back(static_cast<double>(speed));
+                patrolTbl.insert("waypointSpeeds", std::move(speeds));
+            }
             goTbl.insert("NavMeshPatrolComponent", std::move(patrolTbl));
         }
 
@@ -1760,25 +2443,11 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
         if (auto* sc = go.GetComponent<ScriptComponent>()) {
             toml::array scriptsArr;
             for (auto& entry : sc->scripts) {
-                toml::table fieldsTbl;
-                if (entry.script) {
-                    entry.script->SetContext(&scene, &go);
-                    entry.script->ExecuteProfiledCallback(&Script::OnBeforeSerialize, ScriptCallbackKind::BEFORE_SERIALIZE, "OnBeforeSerialize");
-                    SceneWriteReflector reflector(fieldsTbl, &scene);
-                    entry.script->Reflect(reflector);
-                    const std::string type = entry.script->GetTypeName();
-                    const bool enabled = entry.script->enabled;
-                    if (!entry.serialized)
-                        entry.serialized = core::MakeUnique<SerializedScriptData>();
-                    entry.serialized->type = type;
-                    entry.serialized->enabled = enabled;
-                    entry.serialized->fieldsToml = TomlTableToString(fieldsTbl);
-                    scriptsArr.push_back(MakeScriptEntryTable(type, enabled, std::move(fieldsTbl)));
-                } else if (entry.serialized && !entry.serialized->type.empty()) {
-                    scriptsArr.push_back(MakeScriptEntryTable(
-                        entry.serialized->type,
-                        entry.serialized->enabled,
-                        TomlTableFromString(entry.serialized->fieldsToml)));
+                const auto found = scriptSnapshots.find(entry.inspectionId);
+                if (found == scriptSnapshots.end() || found->second.expected != entry.script.get()) return changedCollection();
+                auto& snapshot = found->second;
+                if (!snapshot.saved.type.empty()) {
+                    scriptsArr.push_back(MakeScriptEntryTable(snapshot.saved, std::move(snapshot.fields)));
                 }
             }
 
@@ -1792,7 +2461,7 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
 
     doc.insert("gameobjects", std::move(goArr));
 
-    NormalizeTomlFloats(doc);
+    util::NormalizeTomlFloats(doc);
 
     /// @note ディスク上のアセット参照は guid: 形式にする (リネーム・移動耐性)。
     /// @note ランタイム側のコンポーネントは "Assets/..." パスのままなので、この一点で変換が完結する。
@@ -1800,7 +2469,16 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
 
     std::ostringstream oss;
     oss << doc;
-    return oss.str();
+    const std::string text = oss.str();
+    if (!collectionUnchanged()) return changedCollection();
+    for (auto& [entryId, snapshot] : scriptSnapshots) {
+        if (passiveClone) break;
+        if (!snapshot.expected) continue;
+        ScriptEntry* entry = resolveEntry(snapshot);
+        if (!entry->serialized) entry->serialized = core::MakeUnique<SerializedScriptData>();
+        *entry->serialized = std::move(snapshot.saved);
+    }
+    return text;
 }
 
 /// @note Load
@@ -1847,6 +2525,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr) return scene;
+    if (!ValidateSavedScriptIds(*goArr)) return nullptr;
     if (!scene->CanCreateGameObjects(CountSceneObjects(*goArr, true))) {
         FBZZ_LOG_ERROR("SceneSerializer: entity capacity exceeded in [%s]", sourcePath.c_str());
         return nullptr;
@@ -1997,34 +2676,9 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             go.AddComponent<CameraComponent>(cc);
         }
 
-        /// @note LODGroupComponent — Renderer の EntityID は LODSystem が instanceId から遅延解決する。
-        if (auto* lodTbl = (*goTbl)["LODGroupComponent"].as_table()) {
-            LODGroupComponent lodGroup{};
-            lodGroup.enabled = (*lodTbl)["enabled"].value_or(true);
-            lodGroup.size = (float)(*lodTbl)["size"].value_or(1.0);
-            lodGroup.cullBelowLastLevel = (*lodTbl)["cullBelowLastLevel"].value_or(false);
-            /// @note 既存シーンにキーが無いときは 0 (従来どおり即差し替え) にする。既定値 0.25 を
-            /// @note 使うと保存済みのシーンの見え方を勝手に変えてしまうため。
-            lodGroup.fadeDuration = (float)(*lodTbl)["fadeDuration"].value_or(0.0);
-            if (const auto* levelsArr = (*lodTbl)["levels"].as_array()) {
-                for (const auto& levelNode : *levelsArr) {
-                    const auto* levelTbl = levelNode.as_table();
-                    if (!levelTbl) continue;
-                    LODLevel level{};
-                    level.screenRelativeHeight =
-                        (float)(*levelTbl)["screenRelativeHeight"].value_or(0.5);
-                    if (const auto* renderersArr = (*levelTbl)["renderers"].as_array()) {
-                        for (const auto& rendererNode : *renderersArr) {
-                            LODRendererReference reference{};
-                            reference.instanceId = rendererNode.value_or(std::string{});
-                            level.renderers.push_back(std::move(reference));
-                        }
-                    }
-                    lodGroup.levels.push_back(std::move(level));
-                }
-            }
-            go.AddComponent<LODGroupComponent>(std::move(lodGroup));
-        }
+        /// @note LOD levels use the custom codec; center target uses the reflected typed reference.
+        if (const auto* lodTable = (*goTbl)["LODGroupComponent"].as_table())
+            go.AddComponent<LODGroupComponent>(ReadLODGroupComponent(*lodTable));
 
         /// @note EnvironmentLightComponent
         ReadComponentReflected<EnvironmentLightComponent>(go, *goTbl, "EnvironmentLightComponent");
@@ -2118,6 +2772,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
         if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
             RigidBodyComponent rb{};
             rb.enabled = (*rbTbl)["enabled"].value_or(true);
+            rb.poseDriven = (*rbTbl)["poseDriven"].value_or(false);
             rb.massMode = static_cast<MassMode>(
                 (*rbTbl)["massMode"].value_or((int64_t)MassMode::Manual));
             rb.flowCoupling = (float)(*rbTbl)["flowCoupling"].value_or(0.0);
@@ -2212,6 +2867,16 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             anim.enabled   = (*animTbl)["enabled"].value_or(true);
             anim.playing   = (*animTbl)["playing"].value_or(true);
             anim.externalPose = (*animTbl)["externalPose"].value_or(false);
+            anim.boneBakeMode = (int)(*animTbl)["boneBakeMode"].value_or((int64_t)BoneBakeMode::LEGACY);
+            anim.boneBakeSampleRate = (float)(*animTbl)["boneBakeSampleRate"].value_or(60.0);
+            anim.boneBakeMinDistance = (float)(*animTbl)["boneBakeMinDistance"].value_or(20.0);
+            anim.boneBakeRequireCpuBones = (*animTbl)["boneBakeRequireCpuBones"].value_or(true);
+            if (!anim.SetUpdateLod((*animTbl)["poseLodEnabled"].value_or(false),
+                (float)(*animTbl)["poseLodNearDistance"].value_or(20.0),
+                (float)(*animTbl)["poseLodFarDistance"].value_or(60.0),
+                (float)(*animTbl)["poseLodMidInterval"].value_or(1.0 / 30.0),
+                (float)(*animTbl)["poseLodFarInterval"].value_or(1.0 / 15.0)))
+                core::Logger::Warn("SceneSerializer: invalid Animator update LOD; using full-rate defaults");
 
             const auto readEnum = [&animTbl](const char* key, int fallback) {
                 return (int)(*animTbl)[key].value_or((int64_t)fallback);
@@ -2432,81 +3097,9 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             go.AddComponent<AnimatorComponent>(std::move(anim));
         }
 
-        /// @note IKSolverComponent
-        if (auto* ikTbl = (*goTbl)["IKSolverComponent"].as_table()) {
-            IKSolverComponent ikSolver{};
-            ikSolver.enabled = (*ikTbl)["enabled"].value_or(true);
-            if (const auto* chainsArr = (*ikTbl)["chains"].as_array()) {
-                for (const auto& elem : *chainsArr) {
-                    const auto* chainTbl = elem.as_table();
-                    if (!chainTbl) continue;
-                    IKChain chain{};
-                    const int64_t solverType = (*chainTbl)["type"].value_or(
-                        static_cast<int64_t>(IKSolverType::TwoBone));
-                    chain.type = solverType >= static_cast<int64_t>(IKSolverType::TwoBone) &&
-                                 solverType <= static_cast<int64_t>(IKSolverType::FullBodyBiped)
-                        ? static_cast<IKSolverType>(solverType)
-                        : IKSolverType::TwoBone;
-                    chain.order          = (int)(*chainTbl)["order"].value_or((int64_t)0);
-                    chain.weight        = (float)(*chainTbl)["weight"].value_or(1.0);
-                    chain.enabled       = (*chainTbl)["enabled"].value_or(true);
-                    if (const auto* boneNames = (*chainTbl)["boneNames"].as_array()) {
-                        for (const auto& boneName : *boneNames) {
-                            if (auto value = boneName.value<std::string>())
-                                chain.boneNames.push_back(*value);
-                        }
-                    }
-                    chain.maxExtension = (float)(*chainTbl)["maxExtension"].value_or(0.98);
-                    chain.softness     = (float)(*chainTbl)["softness"].value_or(0.05);
-                    chain.minBendAngleDegrees =
-                        (float)(*chainTbl)["minBendAngleDegrees"].value_or(0.0);
-                    chain.maxBendAngleDegrees =
-                        (float)(*chainTbl)["maxBendAngleDegrees"].value_or(175.0);
-                    chain.targetOffset    = ArrToVec3((*chainTbl)["targetOffset"].as_array(),
-                                                       math::Vector3::ZERO);
-                    chain.autoPoleLocalDirection =
-                        ArrToVec3((*chainTbl)["autoPoleLocalDirection"].as_array(),
-                                  math::Vector3::ZERO);
-                    if (const auto* rotation = (*chainTbl)["handRotationOffset"].as_array())
-                        chain.handRotationOffset = ArrToQuat(rotation);
-                    chain.handRotationWeight =
-                        (float)(*chainTbl)["handRotationWeight"].value_or(1.0);
-                    chain.fullBodyIterations =
-                        (int)(*chainTbl)["fullBodyIterations"].value_or((int64_t)4);
-                    chain.fullBodyMaxRotationDegrees =
-                        (float)(*chainTbl)["fullBodyMaxRotationDegrees"].value_or(75.0);
-                    chain.fullBodyTolerance =
-                        (float)(*chainTbl)["fullBodyTolerance"].value_or(0.005);
-                    /// @note targetEntity / poleEntity は Pass 3 で解決するため識別子だけ保持
-                    chain.targetName = (*chainTbl)["targetName"].value_or(std::string{});
-                    chain.targetGuid = (*chainTbl)["targetGuid"].value_or(std::string{});
-                    chain.poleName   = (*chainTbl)["poleName"].value_or(std::string{});
-                    chain.poleGuid   = (*chainTbl)["poleGuid"].value_or(std::string{});
-                    chain.autoPole   = (*chainTbl)["autoPole"].value_or(false);
-                    chain.useAnimatorIKWeight = (*chainTbl)["useAnimatorIKWeight"].value_or(true);
-                    chain.rayUpRatio = (float)(*chainTbl)["rayUpRatio"].value_or(0.5);
-                    chain.rayDownRatio = (float)(*chainTbl)["rayDownRatio"].value_or(1.2);
-                    chain.footSurfaceOffset = (float)(*chainTbl)["footSurfaceOffset"].value_or(0.05);
-                    chain.correctionDeadZone = (float)(*chainTbl)["correctionDeadZone"].value_or(0.025);
-                    chain.maxCorrection = (float)(*chainTbl)["maxCorrection"].value_or(0.12);
-                    chain.footPlantDistance =
-                        (float)(*chainTbl)["footPlantDistance"].value_or(0.06);
-                    chain.smoothTime = (float)(*chainTbl)["smoothTime"].value_or(0.10);
-                    chain.footNormalAxis = ArrToVec3((*chainTbl)["footNormalAxis"].as_array(), math::Vector3::ZERO);
-                    chain.adjustHip = (*chainTbl)["adjustHip"].value_or(true);
-                    chain.hipBoneName = (*chainTbl)["hipBoneName"].value_or(std::string{ "Hips" });
-                    chain.spineAutoWeight = (*chainTbl)["spineAutoWeight"].value_or(false);
-                    chain.spineFlatWeight = (float)(*chainTbl)["spineFlatWeight"].value_or(0.05);
-                    chain.spineSlopeRampMeters = (float)(*chainTbl)["spineSlopeRampMeters"].value_or(0.10);
-                    chain.lookAtAxis = ArrToVec3((*chainTbl)["lookAtAxis"].as_array(), math::Vector3::FORWARD);
-                    chain.lookAtUpAxis = ArrToVec3((*chainTbl)["lookAtUpAxis"].as_array(), math::Vector3::UP);
-                    chain.lookAtClampAngle = (float)(*chainTbl)["lookAtClampAngle"].value_or(90.0);
-                    chain.lookAtSpeed = (float)(*chainTbl)["lookAtSpeed"].value_or(10.0);
-                    ikSolver.chains.push_back(std::move(chain));
-                }
-            }
-            go.AddComponent<IKSolverComponent>(std::move(ikSolver));
-        }
+        /// @note IKSolverComponent uses a shared custom reader for full loads and appends.
+        if (const auto* ikTable = (*goTbl)["IKSolverComponent"].as_table())
+            go.AddComponent<IKSolverComponent>(ReadIKSolverComponent(*ikTable));
 
         /// @note SpringBoneComponent
         if (auto* springTbl = (*goTbl)["SpringBoneComponent"].as_table()) {
@@ -2585,6 +3178,12 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             } else {
                 tc.InitFlat(0.0f);
             }
+            if (const auto* inlineData = (*terrainTbl)["inlineData"].as_table()) {
+                std::ostringstream text;
+                text << *inlineData;
+                if (!TerrainAssetSerializer::Deserialize(text.str(), tc))
+                    FBZZ_LOG_WARN("SceneSerializer: invalid inline terrain geometry");
+            }
 
             /// @note 層数は可変。配列の長さをそのまま層数にする (番号が層数を超える頂点は描画が既定層で補う)。
             if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array()) {
@@ -2617,36 +3216,9 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             go.AddComponent<TerrainGridComponent>(std::move(tgc));
         }
 
-        /// @note WaterComponent — ジオメトリ・個体の補正・浮力・materialPath のみロード。水の種類は .mat から。
+        /// @note 旧シーンの波Asset・浅水減衰・モーフは無効として、材質4基波との互換を維持する。
         if (auto* waterTbl = (*goTbl)["WaterComponent"].as_table()) {
-            WaterComponent water{};
-            water.enabled             = (*waterTbl)["enabled"].value_or(true);
-            water.materialPath        = (*waterTbl)["materialPath"].value_or(std::string{});
-            water.extentX             = static_cast<float>((*waterTbl)["extentX"].value_or(100.0));
-            water.extentZ             = static_cast<float>((*waterTbl)["extentZ"].value_or(100.0));
-            water.resolutionX         = static_cast<uint32_t>(
-                std::max<int64_t>(1, (*waterTbl)["resolutionX"].value_or(int64_t{64})));
-            water.resolutionZ         = static_cast<uint32_t>(
-                std::max<int64_t>(1, (*waterTbl)["resolutionZ"].value_or(int64_t{64})));
-            water.chunkCount          = static_cast<uint32_t>(
-                std::max<int64_t>(1, (*waterTbl)["chunkCount"].value_or(int64_t{4})));
-            water.cameraFocusedGrid   = (*waterTbl)["cameraFocusedGrid"].value_or(false);
-            const float nearCellSize = static_cast<float>((*waterTbl)["nearCellSize"].value_or(2.0));
-            water.nearCellSize = std::isfinite(nearCellSize)
-                ? std::clamp(nearCellSize, 0.25f, 10.0f) : 2.0f;
-            water.enableGerstnerWaves = (*waterTbl)["enableGerstnerWaves"].value_or(true);
-            water.waveAmplitudeScale  = static_cast<float>((*waterTbl)["waveAmplitudeScale"].value_or(1.0));
-            water.buoyancyEnabled     = (*waterTbl)["buoyancyEnabled"].value_or(true);
-            water.buoyancy            = static_cast<float>((*waterTbl)["buoyancy"].value_or(15.0));
-            water.waterDrag           = static_cast<float>((*waterTbl)["waterDrag"].value_or(2.0));
-            water.buoyancyDepth       = static_cast<float>((*waterTbl)["buoyancyDepth"].value_or(10.0));
-            water.splashEnabled       = (*waterTbl)["splashEnabled"].value_or(true);
-            /// @note 旧形式の "waves" 配列は読まない。波は .mat へ移った (理由は WaterComponent.hpp を参照)。
-
-            water.meshDirty = true;
-            water.foamDirty = true;
-            water.texDirty  = true;
-            go.AddComponent<WaterComponent>(std::move(water));
+            go.AddComponent<WaterComponent>(ReadWaterComponent(*waterTbl));
         }
 
         /// @note NavMeshSurfaceComponent
@@ -2683,27 +3255,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
 
         ReadComponentReflected<NavMeshOffMeshLinkComponent>(go, *goTbl, "NavMeshOffMeshLinkComponent");
 
-        if (auto* patrolTbl = (*goTbl)["NavMeshPatrolComponent"].as_table()) {
-            NavMeshPatrolComponent patrol{};
-            patrol.enabled  = (*patrolTbl)["enabled"].value_or(true);
-            const std::string modeStr = (*patrolTbl)["mode"].value_or(std::string{"Loop"});
-            patrol.mode = (modeStr == "PingPong") ? NavMeshPatrolComponent::Mode::PING_PONG
-                                                   : NavMeshPatrolComponent::Mode::LOOP;
-            patrol.waitTime = static_cast<float>((*patrolTbl)["waitTime"].value_or(0.0));
-            if (auto* wpArr = (*patrolTbl)["waypoints"].as_array()) {
-                for (auto& wpNode : *wpArr)
-                    patrol.waypoints.push_back(ArrToVec3(wpNode.as_array(), math::Vector3::ZERO));
-            }
-            if (auto* waitArr = (*patrolTbl)["waypointWaitTimes"].as_array()) {
-                for (auto& waitNode : *waitArr)
-                    patrol.waypointWaitTimes.push_back(static_cast<float>(waitNode.value_or(0.0)));
-            }
-            if (auto* speedArr = (*patrolTbl)["waypointSpeeds"].as_array()) {
-                for (auto& speedNode : *speedArr)
-                    patrol.waypointSpeeds.push_back(static_cast<float>(speedNode.value_or(0.0)));
-            }
-            go.AddComponent<NavMeshPatrolComponent>(std::move(patrol));
-        }
+        if (const auto* patrolTable = (*goTbl)["NavMeshPatrolComponent"].as_table())
+            go.AddComponent<NavMeshPatrolComponent>(ReadNavMeshPatrolComponent(*patrolTable));
 
         ReadComponentReflected<NavMeshSensorComponent>(go, *goTbl, "NavMeshSensorComponent");
 
@@ -2720,16 +3273,23 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             }
 
             ScriptEntry& entry = sc.scripts.emplace_back();
+            entry.savedScriptId = scTbl["savedScriptId"].value_or(entry.savedScriptId);
             entry.serialized = core::MakeUnique<SerializedScriptData>();
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;
+            entry.serialized->savedScriptId = entry.savedScriptId;
 
-            auto script = ScriptFactory::Create(type);
+            auto script = ScriptFactory::Create(type, entry.savedScriptId);
             if (script) {
                 script->SetContext(scene.get(), &go);
                 script->enabled = enabled;
-                if (auto* fieldsTbl = scTbl["fields"].as_table()) {
+                if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script.get())) {
+                    if (!ManagedScriptRuntime::Instance().RestoreSettingsToml(*adapter, preservedFieldsToml)) {
+                        FBZZ_LOG_ERROR("SceneSerializer: invalid managed settings retained as Missing Script '%s'", type.c_str());
+                        return;
+                    }
+                } else if (auto* fieldsTbl = scTbl["fields"].as_table()) {
                     SceneReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
@@ -2789,33 +3349,10 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             ResolveEntityReferences(*go, *goTbl, guids);
     }
 
-    /// @note IKSolverComponent: targetEntity / poleEntity を GUID 優先・名前フォールバックで解決する。
-    /// @note GUID はリネームに耐性があり複数インスタンス時も衝突しない。古いシーンファイルには
-    /// @note GUID が無いため名前フォールバックで後方互換を保つ。
-    for (auto& go : scene->GameObjects()) {
-        auto* ik = go.GetComponent<IKSolverComponent>();
-        if (!ik) continue;
-        for (auto& chain : ik->chains) {
-            /// @note target
-            {
-                GameObject* resolved = nullptr;
-                if (!chain.targetGuid.empty())
-                    resolved = guids.Find(chain.targetGuid);
-                if (!resolved && !chain.targetName.empty())
-                    resolved = scene->Find(chain.targetName);
-                if (resolved) chain.targetEntity = resolved->GetID();
-            }
-            /// @note pole
-            {
-                GameObject* resolved = nullptr;
-                if (!chain.poleGuid.empty())
-                    resolved = guids.Find(chain.poleGuid);
-                if (!resolved && !chain.poleName.empty())
-                    resolved = scene->Find(chain.poleName);
-                if (resolved) chain.poleEntity = resolved->GetID();
-            }
-        }
-    }
+    /// @note Initialize canonical/legacy IK references after every component reference has resolved.
+    for (GameObject& go : scene->GameObjects())
+        if (IKSolverComponent* solver = go.GetComponent<IKSolverComponent>())
+            InitializeIKTargetReferences(*scene, *solver);
 
     /// @note BoneComponent: skinnedMeshEntity
     /// @note オーナーの EntityID は Pass 1 では確定しないので、識別子をここで変換する。
@@ -2884,7 +3421,14 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
                 if (entry.script) entry.script->SetContext(scene.get(), &gameObject);
         }
     }
+    /// @note Forward Script 参照のため全 managed owner を先に登録する。保存アドレスは Scene 構築完了時だけ解決する。
+    for (Script* script : pendingDeserializedScripts)
+        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script)) adapter->RefreshOwnerBinding();
+    for (Script* script : pendingDeserializedScripts)
+        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script)) adapter->ResolveSavedComponentReferences();
     for (Script* script : pendingDeserializedScripts) {
+        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script); adapter && !adapter->ValidateReferences())
+            adapter->BlockForMissingRequirements();
         script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
         script->ExecuteProfiledCallback(&Script::OnValidate, ScriptCallbackKind::VALIDATE, "OnValidate");
     }
@@ -2971,6 +3515,7 @@ bool SceneSerializer::AppendObjects(
 
     auto* goArr = doc["gameobjects"].as_array();
     if (!goArr || goArr->empty()) return false;
+    if (!ValidateSavedScriptIds(*goArr)) return false;
     const std::size_t objectCount = CountSceneObjects(*goArr, false);
     if (!scene.CanCreateGameObjects(objectCount)) {
         FBZZ_LOG_WARN("AppendObjects: insufficient entity capacity");
@@ -3112,9 +3657,21 @@ bool SceneSerializer::AppendObjects(
             go.AddComponent<TerrainColliderComponent>(std::move(col));
         }
 
+        if (const auto* waterTbl = (*goTbl)["WaterComponent"].as_table())
+            go.AddComponent<WaterComponent>(ReadWaterComponent(*waterTbl));
+
+        ReadComponentReflected<NavMeshAgentComponent>(go, *goTbl, "NavMeshAgentComponent");
+        if (const auto* lodTable = (*goTbl)["LODGroupComponent"].as_table())
+            go.AddComponent<LODGroupComponent>(ReadLODGroupComponent(*lodTable));
+        if (const auto* ikTable = (*goTbl)["IKSolverComponent"].as_table())
+            go.AddComponent<IKSolverComponent>(ReadIKSolverComponent(*ikTable));
+        if (const auto* patrolTable = (*goTbl)["NavMeshPatrolComponent"].as_table())
+            go.AddComponent<NavMeshPatrolComponent>(ReadNavMeshPatrolComponent(*patrolTable));
+
         if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
             RigidBodyComponent rb{};
             rb.enabled = (*rbTbl)["enabled"].value_or(true);
+            rb.poseDriven = (*rbTbl)["poseDriven"].value_or(false);
             rb.massMode = static_cast<MassMode>(
                 (*rbTbl)["massMode"].value_or((int64_t)MassMode::Manual));
             rb.flowCoupling = (float)(*rbTbl)["flowCoupling"].value_or(0.0);
@@ -3154,15 +3711,22 @@ bool SceneSerializer::AppendObjects(
             if (auto* fieldsTbl = scTbl["fields"].as_table())
                 preservedFieldsToml = TomlTableToString(*fieldsTbl);
             ScriptEntry& entry = sc.scripts.emplace_back();
+            entry.savedScriptId = scTbl["savedScriptId"].value_or(entry.savedScriptId);
             entry.serialized = core::MakeUnique<SerializedScriptData>();
             entry.serialized->type = type;
             entry.serialized->enabled = enabled;
             entry.serialized->fieldsToml = preservedFieldsToml;
-            auto script = ScriptFactory::Create(type);
+            entry.serialized->savedScriptId = entry.savedScriptId;
+            auto script = ScriptFactory::Create(type, entry.savedScriptId);
             if (script) {
                 script->SetContext(&scene, &go);
                 script->enabled = enabled;
-                if (auto* fieldsTbl = scTbl["fields"].as_table()) {
+                if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script.get())) {
+                    if (!ManagedScriptRuntime::Instance().RestoreSettingsToml(*adapter, preservedFieldsToml)) {
+                        FBZZ_LOG_ERROR("AppendObjects: invalid managed settings retained as Missing Script '%s'", type.c_str());
+                        return;
+                    }
+                } else if (auto* fieldsTbl = scTbl["fields"].as_table()) {
                     SceneReadReflector reflector(*fieldsTbl);
                     script->Reflect(reflector);
                 }
@@ -3212,24 +3776,16 @@ bool SceneSerializer::AppendObjects(
             ResolveEntityReferences(*go, *goTbl, guids);
     }
 
-    for (auto& go : scene.GameObjects()) {
-        auto* ik = go.GetComponent<IKSolverComponent>();
-        if (!ik) continue;
-        for (auto& chain : ik->chains) {
-            {
-                GameObject* resolved = nullptr;
-                if (!chain.targetGuid.empty()) resolved = guids.Find(chain.targetGuid);
-                if (!resolved && !chain.targetName.empty()) resolved = scene.Find(chain.targetName);
-                if (resolved) chain.targetEntity = resolved->GetID();
-            }
-            {
-                GameObject* resolved = nullptr;
-                if (!chain.poleGuid.empty()) resolved = guids.Find(chain.poleGuid);
-                if (!resolved && !chain.poleName.empty()) resolved = scene.Find(chain.poleName);
-                if (resolved) chain.poleEntity = resolved->GetID();
-            }
-        }
+    /// @note Initialize IK references for appended owners only after their reference pass is complete.
+    for (const auto& item : *goArr) {
+        const auto* goTable = item.as_table();
+        if (!goTable) continue;
+        const std::string guid = (*goTable)["instanceId"].value_or(std::string{});
+        GameObject* go = guid.empty() ? nullptr : guids.Find(guid);
+        IKSolverComponent* solver = go ? go->GetComponent<IKSolverComponent>() : nullptr;
+        if (solver) InitializeIKTargetReferences(scene, *solver);
     }
+
     for (size_t i = 0; i < goArr->size(); ++i) {
         auto* goTbl = (*goArr)[i].as_table();
         if (!goTbl) continue;
@@ -3250,7 +3806,14 @@ bool SceneSerializer::AppendObjects(
         if (!owner && !ownerName.empty()) owner = scene.Find(ownerName);
         if (owner) bone->skinnedMeshEntity = owner->GetID();
     }
+    /// @note Append の全新規 owner 構築後、保存された typed reference を明示的に接続する。
+    for (Script* script : pendingDeserializedScripts)
+        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script)) adapter->RefreshOwnerBinding();
+    for (Script* script : pendingDeserializedScripts)
+        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script)) adapter->ResolveSavedComponentReferences();
     for (Script* script : pendingDeserializedScripts) {
+        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script); adapter && !adapter->ValidateReferences())
+            adapter->BlockForMissingRequirements();
         script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
         script->ExecuteProfiledCallback(&Script::OnValidate, ScriptCallbackKind::VALIDATE, "OnValidate");
     }

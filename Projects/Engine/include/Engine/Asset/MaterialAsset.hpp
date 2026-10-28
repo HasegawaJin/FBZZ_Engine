@@ -4,6 +4,8 @@
 /// @date    2026-06-07
 #pragma once
 #include <Engine/Asset/ParticleMaterialSettings.hpp>
+#include <Engine/Asset/MaterialAuthoringState.hpp>
+#include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Renderer/RenderLayer.hpp>
 #include <Engine/Renderer/RenderState.hpp>
 #include <Graphics/RayTracing/SurfaceMaterialData.hpp>
@@ -39,7 +41,7 @@ enum class DepthTest { Always, Never, Less, LessEqual, Equal, Greater, GreaterEq
 /// @brief .mat の内容を保持する共有マテリアルデータ。
 /// @note GameObject ごとの MaterialComponent に見た目の値を複製せず、同一ファイルを参照する
 /// @note 全オブジェクトへ編集結果を即時反映する。
-struct MaterialAsset {
+struct MaterialAssetAuthoring {
     std::string shaderPath;
     renderer::BlendMode blendMode = renderer::BlendMode::OPAQUE_BLEND;
     bool doubleSided  = false;
@@ -71,12 +73,56 @@ struct MaterialAsset {
     ParticleMaterialSettings particle;
     /// @note [dielectric] は alpha 被覆と独立。未記載の旧材質は光透過を持たない。
     renderer::SolidDielectricSettings dielectric;
+    [[nodiscard]] bool operator==(const MaterialAssetAuthoring& other) const;
 };
+
+/// @brief Shared material authoring exposes only controlled immutable publications.
+/// @note Native consumers must rebuild after this private-state layout migration; managed Material service signatures are unchanged.
+struct MaterialAsset {
+public:
+    using AuthoringState = detail::MaterialAuthoringState<MaterialAssetAuthoring>;
+    using AuthoringSnapshot = AuthoringState::Snapshot;
+    using AuthoringSnapshotPtr = AuthoringState::SnapshotPtr;
+    using AuthoringEdit = AuthoringState::Edit;
+    MaterialAsset() = default;
+    explicit MaterialAsset(const MaterialAssetAuthoring& values) : m_authoring(values) {}
+    MaterialAsset(const MaterialAsset&) = default;
+    MaterialAsset& operator=(const MaterialAsset&) = default;
+    MaterialAsset(MaterialAsset&&) noexcept = default;
+    MaterialAsset& operator=(MaterialAsset&&) noexcept = default;
+
+    [[nodiscard]] AuthoringSnapshotPtr ReadAuthoring() const { return m_authoring.Read(); }
+    /// @pre Retain ReadAuthoring() instead when a reference must survive an edit, reload or callback.
+    [[nodiscard]] const MaterialAssetAuthoring& Authoring() const
+    {
+        const auto* snapshot = m_authoring.View();
+        static const MaterialAssetAuthoring empty;
+        return snapshot ? snapshot->Data() : empty;
+    }
+    [[nodiscard]] AuthoringEdit BeginAuthoringEdit() { return m_authoring.BeginEdit(); }
+    /// @note Intentional whole-value load/undo publication; draft aliases are copied and never become mutable stored aliases.
+    void ReplaceAuthoring(const MaterialAssetAuthoring& values) { m_authoring.Replace(values); }
+
+private:
+    detail::MaterialAuthoringCommitResult CommitAuthoringEdit(AuthoringEdit& edit)
+    {
+        return m_authoring.Commit(edit);
+    }
+    AuthoringState m_authoring;
+    friend AuthoringEdit;
+};
+
+/// @note Own authoring values before callbacks/native waits; a missing or retired asset produces an empty snapshot.
+[[nodiscard]] MaterialAsset::AuthoringSnapshotPtr ReadMaterialAuthoring(AssetHandle<MaterialAsset> handle);
 
 /// @note TOML から .mat を読み込む。破損・未存在時は false を返し、例外は使わない。
 [[nodiscard]] bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset);
+/// @note Owned draft loading keeps the target unchanged on failure and preserves the same TOML normalization.
+[[nodiscard]] bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& outAsset);
 
 /// @note .mat を TOML へ保存する。Editor からの Save とテンプレート生成で共有する。
 [[nodiscard]] bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset);
+/// @note Owned generator/editor drafts use the same unchanged TOML representation without publishing a stored asset.
+[[nodiscard]] bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring& asset);
 
 } /// @note namespace fbzz::asset

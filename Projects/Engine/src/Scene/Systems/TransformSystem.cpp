@@ -2,16 +2,17 @@
 /// @brief   親子階層のワールド Transform 更新。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
 /// @note GameObject の親子関係は循環しないことを前提にする。
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Components/RigidBodyComponent.hpp"
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Profiler/ProfileScope.hpp"
 #include "Engine/Scene/Systems/GameplayComponentSystems.hpp"
 #include <cmath>
-#include <queue>
 #include <vector>
+#include "WorldPoseHelpers.hpp"
+#include "TransformWorklist.hpp"
 
 namespace fbzz::scene {
 
@@ -38,37 +39,48 @@ void UpdateWorldTransform(Transform& tf, const Transform* parentTransform) {
 
 static void UpdateWorldTransform(GameObject& go, const Transform* parentTransform)
 {
-    UpdateWorldTransform(go.transform, parentTransform);
+    /// @note Reuse only arithmetic already validated by the AI service, with bitwise local/parent keys; traversal and publication remain immediate.
+    if (!world_pose_detail::TryReuseAiWorldMath(go.GetID().index, go.transform, parentTransform))
+        UpdateWorldTransform(go.transform, parentTransform);
 }
 
-static void UpdateWorldTransformQueue(std::queue<GameObject*>& queue)
+namespace {
+/// @note 同期中に callback は呼ばない。スレッドごとに容量だけを再利用し、呼び出し後に非所有参照を残さない。
+struct TransformTraversalWorkspace {
+    std::vector<GameObject*> pending;
+    std::vector<GameObject*> ancestors;
+    transform_detail::Worklist sceneWorklist;
+};
+
+thread_local TransformTraversalWorkspace s_transformTraversal;
+} /// @note namespace
+
+static void UpdateWorldTransformQueue(std::vector<GameObject*>& queue)
 {
-    while (!queue.empty()) {
-        GameObject* go = queue.front();
-        queue.pop();
+    for (size_t index = 0; index < queue.size(); ++index) {
+        GameObject* go = queue[index];
         const GameObject* parent = go->GetParent();
         UpdateWorldTransform(*go, parent ? &parent->transform : nullptr);
         for (int i = 0; i < go->GetChildCount(); ++i)
-            if (auto* child = go->GetChild(i)) queue.push(child);
+            if (auto* child = go->GetChild(i)) queue.push_back(child);
     }
+    queue.clear();
 }
 
 static void ApplyPhysicsInterpolation(Scene& scene, float alpha)
 {
+    FBZZ_PROFILE_SCOPE("Transform::InterpolateScene");
     /// @note 物理の確定姿勢を変更しないため、描画補間は world だけへ適用する。
-    std::queue<GameObject*> queue;
-    for (GameObject& go : scene.GameObjects())
-        if (!go.GetParent())
-            queue.push(&go);
-
-    while (!queue.empty()) {
-        GameObject* go = queue.front();
-        queue.pop();
-
-        Transform* parentTf = nullptr;
-        if (auto* parent = go->GetParent())
-            parentTf = &parent->transform;
-
+    world_pose_detail::PrepareAiWorldMath();
+    auto& worklist = s_transformTraversal.sceneWorklist;
+    const auto rootsProfile = profiler::Profiler::BeginScope(
+        profiler::ProfilerMarker("Transform::CollectInterpolationRoots"));
+    worklist.Collect(scene);
+    profiler::Profiler::EndScope(rootsProfile);
+    const auto propagationProfile = profiler::Profiler::BeginScope(
+        profiler::ProfilerMarker("Transform::PropagateInterpolation"));
+    worklist.Propagate([alpha](GameObject& object, const Transform* parentTf) {
+        GameObject* go = &object;
         auto* rb = go->GetComponent<RigidBodyComponent>();
         if (rb && rb->enabled && rb->rigidBody && !rb->rigidBody->IsStatic() &&
             rb->hasPhysicsPoseHistory) {
@@ -94,10 +106,8 @@ static void ApplyPhysicsInterpolation(Scene& scene, float alpha)
             UpdateWorldTransform(*go, parentTf);
         }
 
-        for (int i = 0; i < go->GetChildCount(); ++i)
-            if (auto* child = go->GetChild(i))
-                queue.push(child);
-    }
+    });
+    profiler::Profiler::EndScope(propagationProfile);
 }
 
 ComponentAccess TransformSystem::GetAccess() const
@@ -108,49 +118,70 @@ ComponentAccess TransformSystem::GetAccess() const
 void TransformSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
-    FlushWorldTransforms(scene);
-
     if (ctx.simulating && GetPhase() == Phase::LateUpdate)
         ApplyPhysicsInterpolation(scene, ctx.interpolationAlpha);
+    else
+        FlushWorldTransforms(scene);
 
     if (ctx.simulating && GetPhase() == Phase::PrePhysics) {
         /// @note 最初の OnFixedUpdate が書いた姿勢を上書きしないよう、物理履歴は FixedScript より前に初期化する。
-        for (EntityID id : scene.GetEntities<RigidBodyComponent>()) {
-            GameObject* go = scene.GetGameObject(id);
-            auto* rb = scene.GetComponent<RigidBodyComponent>(id);
-            if (!go || !rb || !rb->enabled || !rb->rigidBody || rb->hasPhysicsSyncState)
-                continue;
-            rb->rigidBody->SetPosition(go->transform.worldPosition);
-            rb->rigidBody->SetRotation(go->transform.worldRotation);
-            rb->ResetPhysicsSyncState(
-                go->transform.worldPosition, go->transform.worldRotation);
-        }
+        scene.ForEachComponentChunk<RigidBodyComponent>([&scene](auto ids, auto bodies) {
+            for (std::size_t index = 0; index < ids.size(); ++index) {
+                auto& body = bodies[index];
+                if (!body.enabled || !body.rigidBody || body.hasPhysicsSyncState)
+                    continue;
+                GameObject* go = scene.GetGameObject(ids[index]);
+                if (!go) continue;
+                body.rigidBody->SetPosition(go->transform.worldPosition);
+                body.rigidBody->SetRotation(go->transform.worldRotation);
+                body.ResetPhysicsSyncState(
+                    go->transform.worldPosition, go->transform.worldRotation);
+            }
+        });
     }
 }
 
 void FlushWorldTransforms(Scene& scene)
 {
-    std::queue<GameObject*> queue;
-    for (GameObject& go : scene.GameObjects())
-        if (!go.GetParent()) queue.push(&go);
-    UpdateWorldTransformQueue(queue);
+    FBZZ_PROFILE_SCOPE("Transform::FlushScene");
+    world_pose_detail::PrepareAiWorldMath();
+    auto& worklist = s_transformTraversal.sceneWorklist;
+    const auto rootsProfile = profiler::Profiler::BeginScope(
+        profiler::ProfilerMarker("Transform::CollectRoots"));
+    worklist.Collect(scene);
+    profiler::Profiler::EndScope(rootsProfile);
+    {
+        FBZZ_PROFILE_SCOPE("Transform::PropagateScene");
+        worklist.Propagate([](GameObject& object, const Transform* parent) {
+            UpdateWorldTransform(object, parent);
+        });
+    }
 }
 
 void FlushWorldTransforms(GameObject& root)
 {
-    std::vector<GameObject*> ancestors;
+    FBZZ_PROFILE_SCOPE("Transform::FlushSubtree");
+    world_pose_detail::PrepareAiWorldMath();
+    const auto ancestorsProfile = profiler::Profiler::BeginScope(
+        profiler::ProfilerMarker("Transform::ResolveAncestors"));
+    auto& ancestors = s_transformTraversal.ancestors;
+    ancestors.clear();
     for (GameObject* parent = root.GetParent(); parent; parent = parent->GetParent())
         ancestors.push_back(parent);
     for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
         const GameObject* parent = (*it)->GetParent();
         UpdateWorldTransform(**it, parent ? &parent->transform : nullptr);
     }
+    ancestors.clear();
+    profiler::Profiler::EndScope(ancestorsProfile);
+    FBZZ_PROFILE_SCOPE("Transform::PropagateSubtree");
     const GameObject* parent = root.GetParent();
     UpdateWorldTransform(root, parent ? &parent->transform : nullptr);
     if (root.GetChildCount() == 0) return;
-    std::queue<GameObject*> queue;
+    auto& queue = s_transformTraversal.pending;
+    queue.clear();
     for (int i = 0; i < root.GetChildCount(); ++i)
-        if (auto* child = root.GetChild(i)) queue.push(child);
+        if (auto* child = root.GetChild(i)) queue.push_back(child);
     UpdateWorldTransformQueue(queue);
 }
 

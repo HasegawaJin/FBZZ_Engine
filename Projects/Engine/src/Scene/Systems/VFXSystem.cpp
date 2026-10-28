@@ -193,10 +193,13 @@ void RestoreEnvelopes(GameObject& gameObject)
     ///       自分が書いたキーだけを消す (手で足した override を巻き込まないため)。
     if (auto* env = gameObject.GetComponent<VFXMaterialEnvelope>()) {
         if (auto* material = gameObject.GetComponent<MaterialComponent>()) {
-            if (!env->writtenColorParam.empty())
-                material->paramOverrides.erase(env->writtenColorParam);
-            if (!env->writtenParam.empty())
-                material->paramOverrides.erase(env->writtenParam);
+            auto edit = material->BeginAuthoringEdit(); auto& values = edit.Draft();
+            if (!env->writtenColorParam.empty()) values.paramOverrides.erase(env->writtenColorParam);
+            if (!env->writtenParam.empty()) values.paramOverrides.erase(env->writtenParam);
+            if (edit.Commit(*material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT) {
+                FBZZ_LOG_WARN("VFX material restoration conflicted with a newer edit.");
+                return;
+            }
         }
         env->writtenColorParam.clear();
         env->writtenParam.clear();
@@ -313,15 +316,22 @@ void ApplyEnvelopes(GameObject& gameObject, float progress)
 
     if (auto* env = gameObject.GetComponent<VFXMaterialEnvelope>(); env != nullptr && env->enabled) {
         if (auto* material = gameObject.GetComponent<MaterialComponent>()) {
+            auto edit = material->BeginAuthoringEdit(); auto& values = edit.Draft();
             /// @note 書いたキーを覚えておく。RestoreEnvelopes がこれだけを取り除く。
             if (env->useColorGradient && !env->colorParamName.empty()) {
                 const math::Vector4 color = env->colorGradient.Evaluate(progress);
-                material->paramOverrides[env->colorParamName] = { color.x, color.y, color.z, color.w };
-                env->writtenColorParam = env->colorParamName;
+                values.paramOverrides[env->colorParamName] = { color.x, color.y, color.z, color.w };
+
             }
             if (!env->paramName.empty()) {
-                material->paramOverrides[env->paramName] = { env->paramCurve.Evaluate(progress) };
-                env->writtenParam = env->paramName;
+                values.paramOverrides[env->paramName] = { env->paramCurve.Evaluate(progress) };
+
+            }
+            if (edit.Commit(*material) == asset::detail::MaterialAuthoringCommitResult::CONFLICT) {
+                FBZZ_LOG_WARN("VFX material parameters conflicted with a newer edit.");
+            } else {
+                if (env->useColorGradient && !env->colorParamName.empty()) env->writtenColorParam = env->colorParamName;
+                if (!env->paramName.empty()) env->writtenParam = env->paramName;
             }
         }
     }
@@ -536,7 +546,7 @@ void UpdateRoot(SystemContext& ctx, GameObject& owner, VFXComponent& vfx, bool n
     if (vfx.autoDestroy && !nested && ctx.simulating) FinishRoot(ctx.scene, owner, vfx);
 }
 
-} // namespace
+} /// @note namespace
 
 ComponentAccess VFXSystem::GetAccess() const
 {
@@ -594,4 +604,4 @@ GameObject* SpawnVFX(Scene& scene, const std::string& vfxPath,
     return instance;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

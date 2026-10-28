@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-25
 #include <Engine/Scene/Systems/SpringBoneSystem.hpp>
+#include "BonePoseHelpers.hpp"
 
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/AnimatorSystem.hpp"
@@ -13,7 +14,6 @@
 #include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -36,8 +36,7 @@ struct SkinningCB {
     math::Matrix4 boneMatrices[asset::MAX_SKINNING_BONES];
 };
 
-/// 揺れの積分は dt に敏感で、フレーム落ちの 1 回で髪が伸び切って戻らなくなる。
-/// 見た目が変わらない範囲で刻みを固定し、余ったぶんは次フレームへ持ち越さず捨てる。
+/// @note フレーム落ちで髪が伸び切るのを防ぐため刻みを固定し、余りは次フレームへ持ち越さず捨てる。
 constexpr float kSubStep      = 1.0f / 60.0f;
 constexpr int   kMaxSubSteps  = 4;
 
@@ -73,95 +72,16 @@ math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& 
     return math::Quaternion{ axis.x, axis.y, axis.z, 1.0f + d }.Normalized();
 }
 
-SkinnedMeshRenderer* FindSkinnedMeshRenderer(GameObject& owner)
-{
-    if (auto* renderer = owner.GetComponent<SkinnedMeshRenderer>()) return renderer;
-    for (int i = 0, count = owner.GetChildCount(); i < count; ++i) {
-        if (auto* child = owner.GetChild(i)) {
-            if (auto* renderer = child->GetComponent<SkinnedMeshRenderer>()) return renderer;
-        }
-    }
-    return nullptr;
-}
-
-std::string CanonicalBoneName(std::string name)
-{
-    std::replace(name.begin(), name.end(), '\\', '/');
-    const std::string helper = "_$AssimpFbx$_";
-    if (const std::size_t helperPos = name.find(helper); helperPos != std::string::npos)
-        name = name.substr(0, helperPos);
-    if (const std::size_t pathPos = name.find_last_of('/'); pathPos != std::string::npos)
-        name = name.substr(pathPos + 1);
-    return name;
-}
-
 int FindNode(const asset::Skeleton& skeleton, const std::string& boneName)
 {
     if (boneName.empty()) return -1;
     if (const auto exact = skeleton.nodeMap.find(boneName); exact != skeleton.nodeMap.end())
         return exact->second;
     for (std::size_t i = 0; i < skeleton.nodes.size(); ++i) {
-        if (CanonicalBoneName(skeleton.nodes[i].name) == boneName)
+        if (bone_pose_detail::CanonicalBoneName(skeleton.nodes[i].name) == boneName)
             return static_cast<int>(i);
     }
     return -1;
-}
-
-GameObject* BoneObject(Scene& scene, const SkinnedMeshRenderer& smr, int nodeIndex)
-{
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(smr.nodeEntities.size()))
-        return nullptr;
-    return scene.GetGameObject(smr.nodeEntities[static_cast<std::size_t>(nodeIndex)]);
-}
-
-void RecalcBoneMatrix(const asset::Skeleton& skeleton,
-                      const std::vector<math::Matrix4>& nodeGlobalTransforms,
-                      std::vector<math::Matrix4>& boneMatrices,
-                      int nodeIndex)
-{
-    if (nodeIndex < 0 ||
-        nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
-        nodeIndex >= static_cast<int>(nodeGlobalTransforms.size()))
-        return;
-
-    const int boneIndex = skeleton.nodes[static_cast<std::size_t>(nodeIndex)].boneIndex;
-    if (boneIndex < 0 ||
-        boneIndex >= static_cast<int>(boneMatrices.size()) ||
-        boneIndex >= static_cast<int>(skeleton.bones.size()))
-        return;
-
-    boneMatrices[static_cast<std::size_t>(boneIndex)] =
-        skeleton.rootInverseTransform
-      * nodeGlobalTransforms[static_cast<std::size_t>(nodeIndex)]
-      * skeleton.bones[static_cast<std::size_t>(boneIndex)].offsetMatrix;
-}
-
-/// IKSystem::CommitBoneWorldPose と同じ規約。スキニング行列とボーン Transform を対で更新する。
-/// どちらか片方だけを書くと、メッシュと「骨に付いているもの」が食い違う。
-void CommitBoneWorldPose(Scene& scene,
-                         const asset::Skeleton& skeleton,
-                         const SkinnedMeshRenderer& smr,
-                         AnimatorComponent& animator,
-                         const math::Matrix4& ownerInv,
-                         int nodeIndex,
-                         const math::Vector3& worldPosition,
-                         const math::Quaternion& worldRotation,
-                         const math::Vector3& worldScale)
-{
-    if (nodeIndex < 0 ||
-        nodeIndex >= static_cast<int>(smr.nodeEntities.size()) ||
-        nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
-        return;
-
-    const math::Matrix4 rootTransform =
-        math::Matrix4::Inverse(skeleton.rootInverseTransform);
-    animator.nodeGlobalTransforms[static_cast<std::size_t>(nodeIndex)] =
-        rootTransform * ownerInv *
-        math::Matrix4::TRS(worldPosition, worldRotation, worldScale);
-    RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, nodeIndex);
-
-    if (GameObject* bone = BoneObject(scene, smr, nodeIndex))
-        SetWorldPose(*bone, worldPosition, worldRotation, worldScale);
 }
 
 void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& resources)
@@ -174,17 +94,17 @@ void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& 
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
-/// このフレームの FK/IK ワールド姿勢。積分中に Transform を読み直さないための凍結値。
+/// @note 積分中に Transform を読み直さないため、このフレームの FK/IK ワールド姿勢を凍結する。
 struct FkSnapshot {
     math::Vector3    position = math::Vector3::ZERO;
     math::Quaternion rotation = math::Quaternion::Identity();
     math::Vector3    scale    = math::Vector3::ONE;
-    /// チェーン内の親から見たローカル姿勢。親の揺れ結果へ乗せ直すために使う。
+    /// @note チェーン内の親から見たローカル姿勢。親の揺れ結果へ乗せ直すために使う。
     math::Vector3    localOffset   = math::Vector3::ZERO;
     math::Quaternion localRotation = math::Quaternion::Identity();
 };
 
-/// ワールド空間へ展開した衝突形状。
+/// @note 位置と半径はワールド空間。
 struct ResolvedCollider {
     math::Vector3 start  = math::Vector3::ZERO;
     math::Vector3 end    = math::Vector3::ZERO;
@@ -192,7 +112,7 @@ struct ResolvedCollider {
     bool          isCapsule = false;
 };
 
-/// 根から幅優先で辿り、親が必ず先に来る順で nodes を組む。
+/// @note StepChain が確定した親姿勢を読むため、nodes は親が必ず先に来る順で組む。
 void BuildChain(SpringBoneChain& chain,
                 const asset::Skeleton& skeleton,
                 const SkinnedMeshRenderer& smr)
@@ -229,8 +149,8 @@ void BuildChain(SpringBoneChain& chain,
     }
 }
 
-/// boneAxis / boneLength を FK 姿勢から 1 度だけ確定する。
-/// 子を持つノードは最初の子へ、葉は親からの向きへ仮想先端を伸ばす。
+/// @note boneAxis / boneLength は FK 姿勢で一度だけ確定し、揺れ中の骨長変化を防ぐ。
+/// @note 葉は親からの向きへ仮想先端を伸ばす。
 void InitializeChainRestAxes(SpringBoneChain& chain,
                              const std::vector<FkSnapshot>& fk)
 {
@@ -273,7 +193,7 @@ void InitializeChainRestAxes(SpringBoneChain& chain,
     }
 }
 
-/// 静止姿勢へ強制的に戻す。テレポート後と初回に使う。
+/// @note テレポート後と初回に慣性を消し、静止姿勢へ戻す。
 void ResetChainToRest(SpringBoneChain& chain, const std::vector<FkSnapshot>& fk)
 {
     for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
@@ -286,7 +206,7 @@ void ResetChainToRest(SpringBoneChain& chain, const std::vector<FkSnapshot>& fk)
     }
 }
 
-/// 線分 (a,b) 上で p に最も近い点。Sphere は a == b の退化として扱う。
+/// @note Sphere は a == b の退化として扱う。
 math::Vector3 ClosestPointOnSegment(const math::Vector3& a,
                                     const math::Vector3& b,
                                     const math::Vector3& p)
@@ -298,7 +218,6 @@ math::Vector3 ClosestPointOnSegment(const math::Vector3& a,
     return a + ab * t;
 }
 
-/// 衝突形状の外へ押し出した先端位置を返す。
 math::Vector3 ResolveCollisions(const math::Vector3& tail,
                                 float tailRadius,
                                 const std::vector<ResolvedCollider>& colliders)
@@ -318,7 +237,6 @@ math::Vector3 ResolveCollisions(const math::Vector3& tail,
     return result;
 }
 
-/// 静止方向から maxAngle 以内へ先端方向を制限する。
 math::Vector3 ClampToCone(const math::Vector3& direction,
                           const math::Vector3& restDirection,
                           float maxAngleRadians)
@@ -336,7 +254,7 @@ math::Vector3 ClampToCone(const math::Vector3& direction,
         .NormalizedOr(restDirection);
 }
 
-/// 1 サブステップぶんの積分。親から順に解き、確定姿勢を子の入力にする。
+/// @pre nodes は親から子の順。確定した親姿勢を子の入力として使う。
 void StepChain(SpringBoneChain& chain,
                const std::vector<FkSnapshot>& fk,
                const std::vector<ResolvedCollider>& colliders,
@@ -356,8 +274,7 @@ void StepChain(SpringBoneChain& chain,
             continue;
         }
 
-        /// @note 親がチェーン内なら、その揺れ結果へローカル姿勢を乗せ直す。
-        ///       根 (parentState < 0) は FK のワールド姿勢をそのまま基準にする。
+        /// @note 根は FK のワールド姿勢、子は親の揺れ結果を基準にする。
         math::Vector3    position;
         math::Quaternion restRotation;
         if (node.parentState >= 0) {
@@ -373,8 +290,7 @@ void StepChain(SpringBoneChain& chain,
         const math::Vector3 restDirection =
             (restRotation * node.boneAxis).NormalizedOr(math::Vector3{ 0.0f, -1.0f, 0.0f });
 
-        /// @note dt=0 (ポーズ・ステップ実行) では慣性を進めない。進めると止めた瞬間から
-        ///       髪だけが流れ続け、コマ送りで姿勢を確認できなくなる。
+        /// @note dt=0 で慣性を進めるとポーズ中も髪が流れるため、親姿勢への追従だけを行う。
         const math::Vector3 inertia = dt > 0.0f
             ? (node.currentTail - node.prevTail) * (1.0f - damping)
             : math::Vector3::ZERO;
@@ -384,8 +300,7 @@ void StepChain(SpringBoneChain& chain,
 
         math::Vector3 nextTail = node.currentTail + inertia + external;
 
-        /// @note 復元は「先端を静止位置へ寄せる」形で入れる。VRM 系のように方向ベクトルを
-        ///       足す形だとボーン長で効き方が変わり、長い髪ほど戻りが鈍くなる。
+        /// @note 方向ベクトルの加算では長い骨ほど戻りが鈍くなるため、先端を静止位置へ寄せる。
         const math::Vector3 restTail = position + restDirection * node.boneLength;
         nextTail = math::Vector3::Lerp(nextTail, restTail,
                                        math::Clamp01(stiffness * dt / kSubStep));
@@ -406,10 +321,10 @@ void StepChain(SpringBoneChain& chain,
     }
 }
 
-} // namespace
+}
 
-/// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
-/// System と同じバッチに入って並列に走る (理由は AnimatorSystem::GetAccess を参照)。
+/// @note 骨 Transform の書き込みと smr の読み取りを宣言し、骨姿勢システム間の並列実行を防ぐ。
+/// @see AnimatorSystem::GetAccess
 ComponentAccess SpringBoneSystem::GetAccess() const
 {
     return ComponentAccess{}
@@ -450,7 +365,7 @@ void SpringBoneSystem::Update(SystemContext& ctx)
         if (!ctx.playing && !spring->simulateInEditor) continue;
 
         auto* animator = go->GetComponent<AnimatorComponent>();
-        auto* smr      = FindSkinnedMeshRenderer(*go);
+        auto* smr      = bone_pose_detail::FindSkinnedMeshRenderer(*go);
         if (!animator || !smr || !smr->model || !smr->model->skeleton) continue;
 
         const asset::Skeleton& skeleton = *smr->model->skeleton;
@@ -473,7 +388,7 @@ void SpringBoneSystem::Update(SystemContext& ctx)
             math::Vector3    baseScale    = go->transform.worldScale;
             if (!collider.boneName.empty()) {
                 const int node = FindNode(skeleton, collider.boneName);
-                GameObject* bone = BoneObject(scene, *smr, node);
+                GameObject* bone = bone_pose_detail::BoneObject(scene, *smr, node);
                 if (!bone) continue;
                 basePosition = bone->transform.worldPosition;
                 baseRotation = bone->transform.worldRotation;
@@ -515,7 +430,7 @@ void SpringBoneSystem::Update(SystemContext& ctx)
             fk.assign(chain.nodes.size(), FkSnapshot{});
             bool resolved = true;
             for (std::size_t i = 0; i < chain.nodes.size(); ++i) {
-                GameObject* bone = BoneObject(scene, *smr, chain.nodes[i].nodeIndex);
+                GameObject* bone = bone_pose_detail::BoneObject(scene, *smr, chain.nodes[i].nodeIndex);
                 if (!bone) { resolved = false; break; }
                 fk[i].position = bone->transform.worldPosition;
                 fk[i].rotation = bone->transform.worldRotation;
@@ -552,7 +467,7 @@ void SpringBoneSystem::Update(SystemContext& ctx)
                     math::Vector3::Lerp(fk[i].position, node.simPosition, chainWeight);
                 const math::Quaternion rotation =
                     math::Quaternion::Slerp(fk[i].rotation, node.simRotation, chainWeight);
-                CommitBoneWorldPose(scene, skeleton, *smr, *animator, ownerInv,
+                bone_pose_detail::CommitBoneWorldPose(scene, skeleton, *smr, *animator, ownerInv,
                                     node.nodeIndex, position, rotation, fk[i].scale);
                 ++spring->runtimeSimulatedBoneCount;
             }
@@ -564,4 +479,4 @@ void SpringBoneSystem::Update(SystemContext& ctx)
     }
 }
 
-} // namespace fbzz::scene
+}

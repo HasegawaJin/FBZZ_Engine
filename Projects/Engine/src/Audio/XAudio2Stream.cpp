@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #include "XAudio2Stream.hpp"
+#include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -40,6 +41,7 @@ void XAudio2Stream::OnVoiceError(void*, HRESULT)
 
 void XAudio2Stream::Run(IXAudio2& device, IXAudio2Voice* destination, const std::string& path, bool loop)
 {
+    TaskSystem::ExternalWorkerScope workerScope(TaskSystem::ExternalWorkerCategory::Audio);
     const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(com)) { SetEvent(m_ready); return; }
     {

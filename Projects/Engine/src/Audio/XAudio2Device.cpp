@@ -5,10 +5,10 @@
 #include "Engine/Audio/XAudio2Device.hpp"
 #include "XAudio2Stream.hpp"
 #include "Engine/Core/Logger.hpp"
+#include <Engine/Util/StringUtils.hpp>
 #include <xaudio2fx.h>
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cmath>
 #include <string>
 
@@ -21,16 +21,6 @@ namespace {
 /// @note バスはすべてステレオ。SetPan は左右 2ch にしか書かず、XAudio2 の残響も入力 1-2ch しか
 /// @note 受けないので、マスターに合わせると 5.1 環境でだけ ReverbZone が死ぬ。展開は XAudio2 任せ。
 constexpr uint32_t kBusChannels = 2;
-
-bool EqualsIgnoreCase(const std::string& a, const std::string& b)
-{
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i) {
-        if (std::tolower(static_cast<unsigned char>(a[i])) !=
-            std::tolower(static_cast<unsigned char>(b[i]))) return false;
-    }
-    return true;
-}
 
 } /// @note namespace
 
@@ -148,7 +138,7 @@ bool XAudio2Device::RebuildBuses(const BusDesc* descs, size_t count)
     for (size_t i = 1; i < count; ++i) {
         parentIndex[i] = 0;
         for (size_t p = 0; p < i; ++p) {
-            if (EqualsIgnoreCase(descs[i].parent, descs[p].name)) {
+            if (util::StringUtils::EqualsCIView(descs[i].parent, descs[p].name)) {
                 parentIndex[i] = p;
                 break;
             }

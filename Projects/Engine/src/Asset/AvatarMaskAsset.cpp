@@ -26,14 +26,14 @@ std::string LowerCopy(std::string_view s)
     return out;
 }
 
-/// パスの階層数 ("Hips/Spine" → 1)。エントリの具体度比較と blendDepth 計算に使う。
+/// @note パスの階層数 ("Hips/Spine" → 1)。エントリの具体度比較と blendDepth 計算に使う。
 int PathDepth(std::string_view path)
 {
     return static_cast<int>(std::count(path.begin(), path.end(), '/'));
 }
 
 /// @brief entry.bonePath が bonePath / boneName に一致するか判定し、一致なら
-///        「エントリのボーンから何階層下か」を outDepth に返す。
+/// @note 「エントリのボーンから何階層下か」を outDepth に返す。
 /// @note blendDepth による立ち上げは、この深さ差からしか計算できない。
 bool MatchEntry(const AvatarMaskEntry& entry,
                 std::string_view bonePath,
@@ -58,7 +58,7 @@ bool MatchEntry(const AvatarMaskEntry& entry,
     }
 
     /// @note 名前指定の祖先一致: "Spine" は ".../Spine/Spine1" にヒットする。
-    ///       ボーン名だけで配下を指定できると、スケルトンが違っても同じマスクを使い回せる。
+    /// @note ボーン名だけで配下を指定できると、スケルトンが違っても同じマスクを使い回せる。
     if (entry.bonePath.find('/') == std::string::npos && !bonePath.empty()) {
         const std::string needle = "/" + entry.bonePath + "/";
         const size_t pos = bonePath.find(needle);
@@ -81,13 +81,13 @@ bool MatchEntry(const AvatarMaskEntry& entry,
 
 /// @brief 1 エントリぶんの優先度。深く (具体的に) 指定されたエントリほど強い。
 /// @note EvaluateAvatarMaskWeight と MatchAvatarMaskEntries が同じ順序で勝者を選ぶよう、
-///       順位付けの規則をここ 1 箇所に集約する。
+/// @note 順位付けの規則をここ 1 箇所に集約する。
 int EntrySpecificity(const AvatarMaskEntry& entry, int depth)
 {
     return PathDepth(entry.bonePath) * 1000 - depth;
 }
 
-/// 体パーツごとのボーン名トークン。小文字部分一致で判定する。
+/// @note 体パーツごとのボーン名トークン。小文字部分一致で判定する。
 const std::array<std::vector<std::string>, static_cast<size_t>(HumanoidBodyPart::Count)>&
 HumanoidPatternTable()
 {
@@ -113,7 +113,7 @@ HumanoidPatternTable()
     return table;
 }
 
-} // namespace
+} /// @note namespace
 
 std::string BuildSkeletonNodePath(const Skeleton& skeleton, int nodeIndex)
 {
@@ -147,7 +147,7 @@ bool IsDescendantPath(std::string_view ancestor, std::string_view candidate)
         && candidate[ancestor.size()] == '/';
 }
 
-} // namespace
+} /// @note namespace
 
 void CompressAvatarMaskEntries(AvatarMaskAsset& mask)
 {
@@ -205,8 +205,8 @@ float EvaluateAvatarMaskWeight(
     if (mask.entries.empty()) return fallback;
 
     /// @note より具体的な (bonePath が深い) エントリを優先する。「腕全体を 0 → 手だけ 1」の
-    ///       ような上書きを記述順に依存させないため。毎フレーム×ボーン数で呼ばれるので、
-    ///       MatchAvatarMaskEntries と規則は共有しつつ配列は作らず最良の 1 件だけを選ぶ。
+    /// @note ような上書きを記述順に依存させないため。毎フレーム×ボーン数で呼ばれるので、
+    /// @note MatchAvatarMaskEntries と規則は共有しつつ配列は作らず最良の 1 件だけを選ぶ。
     const AvatarMaskEntry* best = nullptr;
     int bestSpecificity = -1;
     int bestDepth = 0;
@@ -238,7 +238,7 @@ std::vector<AvatarMaskMatch> MatchAvatarMaskEntries(
             EntrySpecificity(entry, depth) });
     }
     /// @note 同点は先に書かれた方を勝ちにする。Evaluate 側が「より大きいときだけ差し替える」
-    ///       走査になっているため、安定ソートでないと勝者の表示がずれる。
+    /// @note 走査になっているため、安定ソートでないと勝者の表示がずれる。
     std::stable_sort(matches.begin(), matches.end(),
         [](const AvatarMaskMatch& a, const AvatarMaskMatch& b) {
             return a.specificity > b.specificity;
@@ -302,7 +302,7 @@ bool BoneNameMatchesBodyPart(std::string_view boneName, HumanoidBodyPart part)
 HumanoidBodyPart GuessBodyPartForBone(std::string_view boneName)
 {
     /// @note 手 / 足先などのより具体的なパーツを先に判定する。`LeftHandIndex1` のような名前は
-    ///       Hand を優先しないと LeftArm のパターン (`leftarm`) には当たらず Arm に吸われる。
+    /// @note Hand を優先しないと LeftArm のパターン (`leftarm`) には当たらず Arm に吸われる。
     static constexpr HumanoidBodyPart kOrder[] = {
         HumanoidBodyPart::LeftHand,  HumanoidBodyPart::RightHand,
         HumanoidBodyPart::LeftArm,   HumanoidBodyPart::RightArm,
@@ -320,7 +320,7 @@ bool SaveAvatarMaskAsset(const std::string& path, const AvatarMaskAsset& asset)
     AvatarMaskAsset normalized = asset;
     for (auto& entry : normalized.entries) {
         /// @note 外部編集や旧形式から NaN / 範囲外が入っても、保存値を必ずランタイムの
-        ///       評価範囲へ戻す。std::clamp は NaN を検出しないため有限値を先に確認する。
+        /// @note 評価範囲へ戻す。std::clamp は NaN を検出しないため有限値を先に確認する。
         entry.weight = std::isfinite(entry.weight)
             ? std::clamp(entry.weight, 0.0f, 1.0f)
             : 0.0f;
@@ -350,7 +350,7 @@ bool SaveAvatarMaskAsset(const std::string& path, const AvatarMaskAsset& asset)
 
     std::ostringstream ss;
     ss << root;
-    if (!util::FileSystem::WriteText(path, ss.str())) {
+    if (!util::FileSystem::WriteTextAtomic(path, ss.str())) {
         FBZZ_LOG_ERROR("AvatarMask: save failed [%s]", path.c_str());
         return false;
     }
@@ -399,4 +399,4 @@ bool LoadAvatarMaskAsset(const std::string& path, AvatarMaskAsset& outAsset)
     return true;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

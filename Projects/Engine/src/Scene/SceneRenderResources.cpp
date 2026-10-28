@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-02
 #include <Engine/Scene/SceneRenderResources.hpp>
+#include <Engine/Scene/Systems/RenderWaterExtractor.hpp>
 
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -59,6 +60,9 @@ void Drop(SkinnedMeshRenderer& smr, renderer::ResourceManager* resources)
     smr.skinnedBufferModel = nullptr;
     smr.appliedMorphWeights.clear();
     smr.gpuSkinnedThisFrame = false;
+    smr.preparedSkinning.reset();
+    smr.preparedSkinningRows.clear();
+    smr.preparedSkinningFrame = (std::numeric_limits<uint64_t>::max)();
 }
 
 void Drop(TrailComponent& trail, renderer::ResourceManager* resources)
@@ -162,6 +166,7 @@ void Drop(LightProbeVolumeComponent& volume, renderer::ResourceManager* resource
 {
     Drop(resources, volume.runtimeVolume);
     Drop(resources, volume.runtimeRawVolume);
+    Drop(resources, volume.runtimeVisibility);
     for (auto& face : volume.runtimeFaces)
         Drop(resources, face);
     for (auto& face : volume.runtimeFacing)
@@ -191,10 +196,11 @@ void DropOne(Scene& scene, EntityID id, renderer::ResourceManager* resources)
         Drop(*component, resources);
 }
 
-} // namespace
+} /// @note namespace
 
 void ReleaseSceneOwnedGpuResources(Scene& scene, renderer::ResourceManager& resources)
 {
+    ReleaseWaterRenderResources(scene, resources);
     DropAll<AnimatorComponent>(scene, &resources);
     DropAll<SkinnedMeshRenderer>(scene, &resources);
     DropAll<TrailComponent>(scene, &resources);
@@ -210,6 +216,7 @@ void ReleaseSceneOwnedGpuResources(Scene& scene, renderer::ResourceManager& reso
 
 void ReleaseEntityOwnedGpuResources(Scene& scene, EntityID id, renderer::ResourceManager& resources)
 {
+    ReleaseWaterRenderResources(scene, id, resources);
     DropOne<AnimatorComponent>(scene, id, &resources);
     DropOne<SkinnedMeshRenderer>(scene, id, &resources);
     DropOne<TrailComponent>(scene, id, &resources);
@@ -246,7 +253,7 @@ void DropToActive(Component& component)
 {
     Drop(component, renderer::ResourceManager::Active());
 }
-} // namespace
+} /// @note namespace
 
 void ClearComponentGpuHandles(AnimatorComponent& component)        { Drop(component, nullptr); }
 void ClearComponentGpuHandles(SkinnedMeshRenderer& component)      { Drop(component, nullptr); }
@@ -272,4 +279,4 @@ void ReleaseComponentGpuResources(LineRendererComponent& component)    { DropToA
 void ReleaseComponentGpuResources(ProceduralMeshComponent& component)  { DropToActive(component); }
 void ReleaseComponentGpuResources(ClothComponent& component)           { DropToActive(component); }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

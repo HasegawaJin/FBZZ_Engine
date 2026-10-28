@@ -17,6 +17,9 @@ struct FiberTerrainCache {
     uint64_t m_signature = 0;
     uint64_t m_frame = (std::numeric_limits<uint64_t>::max)();
     uint64_t m_seen = 0;
+    uint64_t m_surfaceRevision = UINT64_MAX, m_vegetationRevision = UINT64_MAX;
+    int m_patchCells = 0, m_layer = -2;
+    float m_threshold = -1;
     std::vector<renderer::Mesh> m_patches;
 };
 
@@ -37,6 +40,10 @@ void UpdateFiberContacts(FiberContactCache& cache, Scene& scene)
     for (size_t i=0;i<32;++i) {
         cache.m_data.m_centers[i+32]=cache.m_data.m_centers[i];
         cache.m_data.m_times[i+32]=cache.m_data.m_times[i];
+    }
+    if (scene.GetEntities<FiberInteractorComponent>().empty()) {
+        UpdateFiberContactCounts(cache.m_data, Time::time);
+        return;
     }
     for (auto& go : scene.GameObjects()) {
         const auto* actor=go.GetComponent<FiberInteractorComponent>();
@@ -71,7 +78,7 @@ void ReleaseFiberTerrain(FiberTerrainCache& cache, renderer::ResourceManager& re
 /// @brief 地形を patchCells 四方のパッチへ分け、Fiber の根元面として GPU へ置く。
 /// @param terrainLayer 0 以上ならその層の重みで生やす。-1 は全面。
 /// @param layerThreshold 4 隅の層の重みの最大値がこれ未満のセルを省く (terrainLayer >= 0 のときだけ)。
-/// @note dirty フラグは Terrain パスが消費するため共有しない。1 フレーム 1 回の内容署名で編集を検出する。
+/// @note Terrain が公開する高さ・植生世代を比較し、編集時だけ内容署名を検証する。
 /// @note 頂点色 A は層の重み (全面なら 1)。穴セルと三角形 0 枚のパッチは作らない。
 /// @see Docs/design/terrain-layers.md §5 Fiber を層で制御する
 void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrain, int patchCells,
@@ -83,10 +90,16 @@ void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrai
     const int patch=std::clamp(patchCells,1,32);
     const int layer=terrainLayer<0 ? -1 : terrainLayer;
     const float threshold=std::isfinite(layerThreshold) ? std::clamp(layerThreshold,0.0f,1.0f) : 0.0f;
+    /// @note Authored terrain writes set dirty flags/revisions; unchanged data needs no full height/splat hash walk.
+    if (cache.m_surfaceRevision==terrain.surfaceRevision && cache.m_vegetationRevision==terrain.vegetationRevision
+        && cache.m_patchCells==patch && cache.m_layer==layer && cache.m_threshold==threshold
+        && !terrain.heightDirty && !terrain.splatDirty) return;
+    cache.m_surfaceRevision=terrain.surfaceRevision; cache.m_vegetationRevision=terrain.vegetationRevision;
+    cache.m_patchCells=patch; cache.m_layer=layer; cache.m_threshold=threshold;
     uint64_t hash=1469598103934665603ull;
     /// @note 64bit 語単位で混ぜる。回転で上位ビットの変化も下位へ回し、打ち消し合う編集を起こりにくくする。
     const auto add=[&hash](uint64_t value){hash=(std::rotl(hash,29)^value)*1099511628211ull;};
-    /// @note 毎フレーム全標本を読むため、8 バイトずつ 1 語で処理して 1 標本あたりの乗算を減らす。
+    /// @note 編集時の署名検証を 8 バイト単位で行う。
     const auto addBytes=[&add](const void* data,size_t size){
         const auto* bytes=static_cast<const unsigned char*>(data);
         size_t offset=0;
@@ -151,5 +164,5 @@ void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrai
         cache.m_patches.push_back(std::move(mesh));
     }
 }
-} // namespace
-} // namespace fbzz::scene
+} /// @note namespace
+} /// @note namespace fbzz::scene

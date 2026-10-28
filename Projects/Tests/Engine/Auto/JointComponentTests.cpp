@@ -21,6 +21,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/Systems/JointSync.hpp>
+#include "../../../Engine/src/Scene/Managed/ManagedObjectControls.hpp"
 
 #include <Math/Vector3.hpp>
 #include <Physics/World.hpp>
@@ -403,6 +404,45 @@ TEST_F(JointComponentTest, AChainHoldsEverySegmentLength)
     constexpr float kChainTolerance = 0.01f;
     EXPECT_NEAR((midPos - headPos).Length(), 1.0f, kChainTolerance);
     EXPECT_NEAR((tailPos - midPos).Length(), 1.0f, kChainTolerance);
+}
+
+TEST_F(JointComponentTest, ChainRecipeSurvivesSaveAndPendingBodyRemovalReleasesItsConstraint)
+{
+    scene::Scene scene;
+    physics::World world;
+    scene::GameObject& head = MakeBody(scene, "Head", math::Vector3::ZERO, true);
+    scene::GameObject& mid = MakeBody(scene, "Mid", {0.0f, -1.0f, 0.0f}, false);
+    scene::GameObject& tail = MakeBody(scene, "Tail", {0.0f, -2.0f, 0.0f}, false);
+    scene::JointComponent recipe{};
+    recipe.type = scene::JointType::Chain;
+    recipe.chainBodies = {scene::EntityRef{mid.GetID()}, scene::EntityRef{tail.GetID()}};
+    recipe.autoDistance = false; recipe.distance = 1.25f; recipe.solverIterations = 9;
+    head.AddComponent<scene::JointComponent>(recipe);
+    StepPhysics(scene, world);
+    ASSERT_EQ(world.GetConstraints().size(), 1u);
+    ASSERT_TRUE(head.GetComponent<scene::JointComponent>()->connected);
+
+    const std::string saved = scene::SceneSerializer::SaveToText(scene);
+    ASSERT_FALSE(saved.empty());
+    const std::unique_ptr<scene::Scene> loaded = scene::SceneSerializer::LoadDataFromText(saved, "");
+    ASSERT_NE(loaded, nullptr);
+    scene::GameObject* restoredHead = FindObject(*loaded, "Head"); ASSERT_NE(restoredHead, nullptr);
+    const auto* restored = restoredHead->GetComponent<scene::JointComponent>(); ASSERT_NE(restored, nullptr);
+    ASSERT_EQ(restored->chainBodies.size(), 2u); EXPECT_EQ(restored->solverIterations, 9); EXPECT_FLOAT_EQ(restored->distance, 1.25f);
+    ASSERT_NE(restored->chainBodies[0].Resolve(*loaded), nullptr); ASSERT_NE(restored->chainBodies[1].Resolve(*loaded), nullptr);
+    EXPECT_EQ(restored->chainBodies[0].Resolve(*loaded)->name, "Mid");
+    EXPECT_EQ(restored->chainBodies[1].Resolve(*loaded)->name, "Tail");
+
+    bool exists = false;
+    ASSERT_EQ(scene::managed_detail::ManagedObjectControls::Component(tail, 1, scene::ManagedBridgeOp::COMPONENT_REMOVE, exists),
+        scene::ManagedBridgeStatus::OK);
+    EXPECT_TRUE(exists);
+    StepPhysics(scene, world);
+    EXPECT_TRUE(world.GetConstraints().empty());
+    EXPECT_FALSE(head.GetComponent<scene::JointComponent>()->connected);
+    scene::managed_detail::ManagedObjectControls::FlushScriptRemovals(scene);
+    StepPhysics(scene, world);
+    EXPECT_TRUE(world.GetConstraints().empty());
 }
 
 TEST_F(JointComponentTest, FindsThePartnerThroughTheParentWhenNoneIsNamed)

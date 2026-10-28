@@ -23,6 +23,8 @@
 #include "Engine/Profiler/ProfileScope.hpp"
 #include "Engine/Profiler/Profiler.hpp"
 #include <Engine/Profiler/ProfilerFrame.hpp>
+#include <Core/Profiler/FrameTimeline.hpp>
+#include <ApplicationFrameElapsedObserver.hpp>
 #include "Engine/Renderer/ResourceManager.hpp"
 #include "Engine/Renderer/RendererFactory.hpp"
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
@@ -33,6 +35,14 @@
 namespace fbzz::core {
 
 namespace {
+
+/// @note Present の OS 送信メッセージを待ち合わせ中にも処理し、通常の入力キューは次の PollEvents へ残す。
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew PM_QS_SENDMESSAGE.
+void PumpRenderWaitMessages()
+{
+    MSG message{};
+    (void)PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
+}
 
 /// @brief 描画バックエンドを選ぶ。優先順位はコマンドライン (--renderer=) > 呼び出し側指定。
 /// @note  DirectX 11 サポートは v1.0 で終了した (Docs/design/dx11-removal.md)。
@@ -89,6 +99,7 @@ bool Application::Init() {
 
 bool Application::Init(const Window::Config& windowConfig,
                        renderer::RendererBackend preferredBackend) {
+    profiler::frame_timeline::InitializeFromEnvironment();
     FBZZ_LOG_INFO("Application::Init: 開始 (preferred=%s)", renderer::ToString(preferredBackend));
     timeBeginPeriod(1);
     renderer::SetShaderPathResolver(&util::ResolveEngineAssetPath);
@@ -146,8 +157,11 @@ bool Application::Init(const Window::Config& windowConfig,
     }
     FBZZ_LOG_INFO("Application::Init: レンダラー生成 OK");
 
+    rendererBundle = renderer::EnableRenderThread(std::move(rendererBundle));
+
     m_renderer = std::move(rendererBundle.renderer);
     m_imguiRenderer = std::move(rendererBundle.imguiRenderer);
+    m_renderer->SetRenderWaitPump(&PumpRenderWaitMessages);
 
     /// @note WM_SIZE をレンダラーのスワップチェーン再構築へ橋渡しする。繋がないと
     /// @note m_width/m_height だけが更新され、バックバッファは起動時の寸法のまま残る。
@@ -183,6 +197,7 @@ bool Application::Init(const Window::Config& windowConfig,
 }
 
 void Application::Shutdown() {
+    if (m_renderer) m_renderer->WaitForCpuFrame();
     /// @note 描画設定の実体を持っているのは Module 側 (ProjectSettings)。Application より先に
     /// @note 消えることがあるので、参照はここで必ず切っておく。
     m_activeRenderSettings = nullptr;
@@ -199,9 +214,10 @@ void Application::Shutdown() {
     /// @note ResourceManager は呼び出し側のローカル変数として Application より長く生存するため、
     /// @note 先に renderer を破棄すると Shader 等が D3D の Live Object として報告される。
     if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
-        resources->Reset();
+        resources->PrepareRendererShutdown();
     if (m_renderer)
         m_renderer->Shutdown();
+    (void)profiler::frame_timeline::WriteAfterStop();
     m_renderer.reset();
     if (m_window)
         m_window->Shutdown();
@@ -215,17 +231,25 @@ void Application::Run() {
 
     while (m_isRunning) {
         Time::Tick();
-        if (auto* resources = renderer::ResourceManager::Active()) resources->AdvanceFrame();
-        m_memorySystem.BeginFrame();
+        {
+            auto timelineContext = profiler::frame_timeline::CurrentContext();
+            timelineContext.detail = 1;
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::FRAME_TAIL, timelineContext);
+            m_renderer->BeginCpuFrame(Time::frameCount);
+            if (auto* resources = renderer::ResourceManager::Active()) resources->AdvanceFrame();
+            m_memorySystem.BeginFrame();
+        }
         profiler::BeginApplicationProfileFrame();
 
         {
             FBZZ_PROFILE_SCOPE("Input::Update");
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::INPUT);
             input::Input::Update();
         }
 
         {
             FBZZ_PROFILE_SCOPE("Window::PollEvents");
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::WINDOW_EVENTS);
             m_window->PollEvents();
         }
 
@@ -234,11 +258,14 @@ void Application::Run() {
         /// @note 更新されるため。その前で評価すると常に 1 フレーム古い入力を見ることになる。
         {
             FBZZ_PROFILE_SCOPE("InputActionMap::Update");
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::INPUT_ACTIONS);
             /// @note 入力の平滑化はプレイヤーの操作感であり、スローモーション演出 (TimeScale)
             /// @note に引きずられて鈍くなるべきではないため unscaledDeltaTime を使う。
             input::InputActionMap::Update(Time::unscaledDeltaTime);
         }
         if (m_window->ShouldClose()) {
+            m_renderer->CancelCpuFrame();
+            profiler::detail::MarkApplicationFrameElapsedAborted();
             profiler::EndApplicationProfileFrame();
             m_memorySystem.EndFrame();
             Quit();
@@ -247,13 +274,17 @@ void Application::Run() {
 
         {
             FBZZ_PROFILE_SCOPE("Renderer::Frame");
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::MODULE_RENDER);
             m_renderer->BeginFrame();
             m_renderer->Clear({ 0.10f, 0.15f, 0.25f, 1.0f });
             m_renderer->EndFrame();
         }
 
         profiler::EndApplicationProfileFrame();
-        m_memorySystem.EndFrame();
+        {
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::FRAME_TAIL);
+            m_memorySystem.EndFrame();
+        }
     }
 
     Shutdown();
@@ -271,33 +302,47 @@ void Application::Run(IModule& module) {
 
     while (m_isRunning) {
         Time::Tick();
-        if (auto* resources = renderer::ResourceManager::Active()) resources->AdvanceFrame();
-        m_memorySystem.BeginFrame();
+        {
+            auto timelineContext = profiler::frame_timeline::CurrentContext();
+            timelineContext.detail = 1;
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::FRAME_TAIL, timelineContext);
+            m_renderer->BeginCpuFrame(Time::frameCount);
+            if (auto* resources = renderer::ResourceManager::Active()) resources->AdvanceFrame();
+            m_memorySystem.BeginFrame();
+        }
         profiler::BeginApplicationProfileFrame();
 
         {
             FBZZ_PROFILE_SCOPE("Input::Update");
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::INPUT);
             input::Input::Update();
         }
 
         {
             FBZZ_PROFILE_SCOPE("Window::PollEvents");
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::WINDOW_EVENTS);
             m_window->PollEvents();
         }
 
         /// @note 注入はアクション層の評価より前。後に置くと注入した入力がアクションへ届くのが 1 フレーム遅れる。
-        module.OnInputPolled();
+        {
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::INPUT_CALLBACKS);
+            module.OnInputPolled();
+        }
 
         /// @note PollEvents の後に置くのは、Input::Update() がフレーム先頭で前フレーム状態を
         /// @note 退避するだけで、キーボード/マウスの現在状態は PollEvents 内の Win32 メッセージで
         /// @note 更新されるため。その前で評価すると常に 1 フレーム古い入力を見ることになる。
         {
             FBZZ_PROFILE_SCOPE("InputActionMap::Update");
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::INPUT_ACTIONS);
             /// @note 入力の平滑化はプレイヤーの操作感であり、スローモーション演出 (TimeScale)
             /// @note に引きずられて鈍くなるべきではないため unscaledDeltaTime を使う。
             input::InputActionMap::Update(Time::unscaledDeltaTime);
         }
         if (m_window->ShouldClose()) {
+            m_renderer->CancelCpuFrame();
+            profiler::detail::MarkApplicationFrameElapsedAborted();
             /// @note BeginFrame() 済みの Profiler / MemorySystem を必ず対で閉じる。
             /// @note break 前に EndFrame() することで終了フレームでも診断状態を壊さない。
             profiler::EndApplicationProfileFrame();
@@ -311,25 +356,42 @@ void Application::Run(IModule& module) {
         /// @see Docs/design/asset-streaming.md «責務とスレッド境界»
         {
             FBZZ_PROFILE_SCOPE("AssetStreamer::Pump");
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::ASSET_PUMP);
             asset::AssetStreamer::Engine().Pump();
             /// @note 前のフレームで描画が引かなかったテクスチャの利用権を手放す。解放は台帳の猶予と予算が決める。
             asset::StreamedTextureResolver::Engine().EndFrame();
         }
 
         const float dt = Time::deltaTime;
-        module.OnUpdate(dt);
-        module.OnLateUpdate(dt);
+        {
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::MODULE_UPDATE);
+            module.OnUpdate(dt);
+        }
+        {
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::MODULE_LATE_UPDATE);
+            module.OnLateUpdate(dt);
+        }
 
         /// @note AudioSystem ではなくここで回すのは、AudioSystem が SimOnly で Edit モードでは
         /// @note 走らないため。回収を任せると、Editor のプレビュー再生ぶんが Play 開始まで解放されない。
-        if (m_audioManager) m_audioManager->Update(dt);
+        if (m_audioManager) {
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::AUDIO_UPDATE);
+            m_audioManager->Update(dt);
+        }
 
-        module.OnRender();
+        {
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::MODULE_RENDER);
+            module.OnRender();
+        }
 
         profiler::EndApplicationProfileFrame();
-        m_memorySystem.EndFrame();
+        {
+            const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::FRAME_TAIL);
+            m_memorySystem.EndFrame();
+        }
     }
 
+    m_renderer->WaitForCpuFrame();
     module.OnShutdown();
 }
 

@@ -2,6 +2,7 @@
 /// @brief   シーン本文からアセット参照を拾う。
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
+#include <Engine/Asset/ModelSource.hpp>
 #include <Engine/Scene/SceneAssetReferences.hpp>
 #include <Engine/Asset/AssetStreaming.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -34,7 +35,7 @@ std::optional<SceneAssetKind> KindOfPath(std::string_view path)
     };
     for (const std::string_view candidate : kTextures)
         if (ext == candidate) return SceneAssetKind::Texture;
-    if (ext == ".fbx" || ext == ".fzasset") return SceneAssetKind::Model;
+    if (asset::IsModelSourcePath(ext) || ext == ".fzasset") return SceneAssetKind::Model;
     if (ext == ".mat") return SceneAssetKind::Material;
     return std::nullopt;
 }
@@ -52,7 +53,7 @@ std::string_view StripSubmeshSuffix(std::string_view value)
     return value.substr(0, colon);
 }
 
-} // namespace
+} /// @note namespace
 
 std::string_view StreamTypeNameOf(SceneAssetKind kind)
 {
@@ -125,4 +126,4 @@ std::vector<SceneAssetReference> CollectSceneAssetReferences(
     return references;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

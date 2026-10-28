@@ -2,10 +2,10 @@
 /// @brief   GUID ⇄ アセットパスの双方向インデックス。
 /// @author  Hasegawa Jin
 /// @date    2026-07-08
-///
-/// 各アセット (ファイル・フォルダ) は隣接する `<名前>.meta` の [meta] guid で恒久 ID を持つ。
-/// フォルダの .meta は親ディレクトリに置く (例: `Assets/Textures/` → `Assets/Textures.meta`)。
-/// Init はメインスレッドで 1 回。以後の参照系は内部 mutex 保護で任意スレッドから呼べる。
+
+/// @note 各アセット (ファイル・フォルダ) は隣接する `<名前>.meta` の [meta] guid で恒久 ID を持つ。
+/// @note フォルダの .meta は親ディレクトリに置く (例: `Assets/Textures/` → `Assets/Textures.meta`)。
+/// @note Init はメインスレッドで 1 回。以後の参照系は内部 mutex 保護で任意スレッドから呼べる。
 #pragma once
 #include <cstdint>
 #include <string>
@@ -21,11 +21,19 @@ public:
     /// @brief `"guid:"` 参照プレフィックス。この後ろに 32 桁 hex が続く。
     static constexpr std::string_view kGuidPrefix = "guid:";
 
-    /// @brief assetsRoot 配下を走査してインデックスを構築する。AssetManager::Init から呼ぶ。
-    /// @param assetsRoot 例 `"C:/proj/Assets/"`。
-    /// @note .meta が無い / guid が無い対象は自動生成する。ただし FBX は Import 実行時まで生成しない。
+    /// @brief プロジェクトだけの GUID 索引を構築する。
     static void Init(const std::string& assetsRoot);
+
+    /// @brief プロジェクトと共有 Engine asset の GUID 索引を構築する。
+    /// @param assetsRoot GUID を修復できるプロジェクトの Assets ルート。
+    /// @param sharedAssetsRoot 任意の読み取り専用共有 Assets ルート。親の `Assets/` も受け付ける。
+    /// @note project 索引を優先し、共有 root では .meta を生成しない。
+    static void Init(const std::string& assetsRoot,
+                     const std::string& sharedAssetsRoot);
     static void Shutdown();
+
+    /// @note 参照解決の索引・別名・プロジェクトの寿命が変わるたびに進む。読み出しは内部 mutex で保護する。
+    [[nodiscard]] static uint64_t Revision();
 
     /// @brief guid (32hex) → アセット絶対パス。
     /// @return 未登録なら空文字列。
@@ -109,8 +117,8 @@ public:
     /// @note 索引は先勝ちで、後から来た側は自分の guid を名乗り続けるが PathFromGuid は先勝ち側を返す。参照が静かに吸われるだけで壊れた形で現れないため、修復には衝突組の記録が要る。
     struct GuidConflict {
         std::string guid;
-        std::string keptPath;       ///< 索引が採用しているアセット絶対パス。
-        std::string duplicatePath;  ///< 索引から弾かれた側。
+        std::string keptPath;       ///< @note 索引が採用しているアセット絶対パス。
+        std::string duplicatePath;  ///< @note 索引から弾かれた側。
     };
 
     /// @brief 現在の衝突一覧。呼び出しのたびに .meta を読み直し、解消済みの記録は捨てる。
@@ -127,12 +135,12 @@ public:
 
     /// @brief Library/Baked の掃除結果。
     struct BakedSweepResult {
-        size_t   scanned    = 0;  ///< 走査した guid ディレクトリ数。
-        size_t   removed    = 0;  ///< 消した孤児コンテナ数。
+        size_t   scanned    = 0;  ///< @note 走査した guid ディレクトリ数。
+        size_t   removed    = 0;  ///< @note 消した孤児コンテナ数。
         uint64_t bytesFreed = 0;
-        bool     aborted    = false;  ///< 安全弁が働いて 1 件も消していない。
-        std::string abortReason;      ///< aborted のときだけ埋まる。
-        std::vector<std::string> removedGuids;  ///< 後片付け (ImportCache 等) 用。
+        bool     aborted    = false;  ///< @note 安全弁が働いて 1 件も消していない。
+        std::string abortReason;      ///< @note aborted のときだけ埋まる。
+        std::vector<std::string> removedGuids;  ///< @note 後片付け (ImportCache 等) 用。
     };
 
     /// @brief `Library/Baked/<guid>/` のうち、どの .meta もその guid を名乗っていないものを消す。
@@ -149,4 +157,4 @@ public:
     [[nodiscard]] static std::string AssetsRoot();
 };
 
-} // namespace fbzz::asset
+}

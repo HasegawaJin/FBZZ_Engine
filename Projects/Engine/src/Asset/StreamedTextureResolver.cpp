@@ -53,8 +53,8 @@ const TextureAsset* StreamedTextureResolver::Complete(Entry& entry)
     const AssetLoadState state = streamer.GetStatus(entry.lease.Handle()).state;
     if (state == AssetLoadState::Failed || m_missPolicy == MissPolicy::Placeholder || entry.syncFailed)
         return nullptr;
-    /// @note 既定の方針。これまでの LoadTexture と同じく引いたフレームに絵を出す。先読みが済んでいれば
-    /// @note ここへは来ない (公開済みを返す)。
+    /// @note MissPolicy::Synchronous を明示した場合だけ未完成の要求をその場で完了させる。
+    /// @note 先読みが済んでいればここへは来ない (公開済みを返す)。
     if (!streamer.CompleteNow(entry.lease.Handle())) {
         entry.syncFailed = true;
         return nullptr;
@@ -81,6 +81,7 @@ renderer::ResourceHandle<renderer::TextureTag> StreamedTextureResolver::ResolveG
     if (reference.empty()) return {};
     Entry* entry = Acquire(reference);
     if (!entry) {
+        if (m_missPolicy == MissPolicy::Placeholder) return resources.GetWhiteTexture();
         TextureImportSettings settings;
         const bool flipGreen = GetCachedTextureImportSettings(reference, settings)
             && settings.flipGreen;
@@ -90,7 +91,7 @@ renderer::ResourceHandle<renderer::TextureTag> StreamedTextureResolver::ResolveG
     if (screenPixels <= 0.0f) entry->screenSizeKnown = false;
     entry->maxScreenPixels = (std::max)(entry->maxScreenPixels, screenPixels);
     const TextureAsset* asset = Complete(*entry);
-    return asset ? asset->gpuHandle : renderer::ResourceHandle<renderer::TextureTag>{};
+    return asset ? asset->gpuHandle : resources.GetWhiteTexture();
 }
 
 const TextureAsset* StreamedTextureResolver::ResolveAsset(renderer::ResourceManager& /*resources*/,

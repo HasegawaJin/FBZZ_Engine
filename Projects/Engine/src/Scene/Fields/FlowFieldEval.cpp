@@ -149,6 +149,7 @@ ActiveFlowField ResolveFlowField(const FlowFieldSettings& settings,
 void GatherFlowFields(Scene& scene, std::vector<ActiveFlowField>& out)
 {
     out.clear();
+    if (scene.GetEntities<FlowField>().empty()) return;
     for (auto& go : scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
         auto* ff = go.GetComponent<FlowField>();

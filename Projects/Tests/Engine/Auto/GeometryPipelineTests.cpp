@@ -125,18 +125,20 @@ TEST_F(GeometryPipelineTest, UnlitSkipsOnlyTheForwardScreenSpacePrepass)
 
 TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPath)
 {
-    /// @note RenderSystem から抽出する前の登録列。SSR・空・水面の合成順変更を検出する。
+    /// @note 媒体 atlas は照明前、界面は体積光前、SSR の解決は透明描画前に登録する。
+    /// @see Docs/design/water-gameplay-visuals.md
+    /// @see Docs/design/graphics-quality.md
     const std::vector<std::string> forward{
         "ForwardOpaque", "TerrainForward", "Sky", "SunMoon", "VolumetricCloud",
     };
     const std::vector<std::string> forwardPrepass{
         "DepthNormalPrepass", "TerrainGBuffer", "GTAO", "ContactShadows", "SSAO",
-        "ForwardOpaque", "TerrainForward", "Sky", "SunMoon", "VolumetricCloud", "SSR",
+        "ForwardOpaque", "TerrainForward", "Sky", "SunMoon", "VolumetricCloud", "SSR", "SSRResolve",
     };
     const std::vector<std::string> deferred{
         "DeferredGBuffer", "TerrainGBuffer", "DeferredDepthCopy", "GTAO", "ContactShadows",
         "SSAO", "DeferredLighting", "Sky", "SunMoon", "VolumetricCloud",
-        "DeferredSkinnedForward", "FiberForward", "DeferredForwardTransparent", "SSR",
+        "DeferredSkinnedForward", "FiberForward", "SSR", "SSRResolve", "DeferredForwardTransparent",
     };
 
     for (const auto path : { OpaqueRenderPath::FORWARD, OpaqueRenderPath::FORWARD_DEPTH_NORMAL,
@@ -153,10 +155,11 @@ TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPa
                 expected.emplace_back("ClusterLightCull");
             expected.emplace_back("LightCookie");
             expected.emplace_back("Shadow");
+            expected.emplace_back("WaterMediumAtlas");
             const auto& geometry = path == OpaqueRenderPath::DEFERRED ? deferred
                 : path == OpaqueRenderPath::FORWARD_DEPTH_NORMAL ? forwardPrepass : forward;
             expected.insert(expected.end(), geometry.begin(), geometry.end());
-            expected.insert(expected.end(), { "VolumetricLight", "WaterCaustics", "WaterForward" });
+            expected.insert(expected.end(), { "WaterInterface", "VolumetricLight", "WaterCaustics", "WaterForward" });
             EXPECT_EQ(pipeline.RegisteredPassNames(), expected);
         }
     }

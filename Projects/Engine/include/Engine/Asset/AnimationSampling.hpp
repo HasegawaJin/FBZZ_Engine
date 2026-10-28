@@ -10,6 +10,7 @@
 #include <Engine/Asset/AnimationClip.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace fbzz::asset {
@@ -56,6 +57,8 @@ namespace fbzz::asset {
                                            double ticks,
                                            AnimInterp interp)
 {
+    /// @note NaN has no ordered interval; never pass it to upper_bound and dereference end().
+    if (std::isnan(ticks)) return 0.0f;
     if (keys.empty()) return 0.0f;
     if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;
     if (ticks >= keys.back().time) return keys.back().value;

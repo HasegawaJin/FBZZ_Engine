@@ -2,10 +2,10 @@
 /// @brief   パス文字列ユーティリティ (区切りの正規化・同一判定・配下判定・分解) の契約を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
-/// Editor / AssetBrowser / シリアライザは «同じアセットか» をこの文字列比較だけで決める。
-/// 区切りや大文字小文字の扱いがずれると、同じファイルが 2 つの参照として流通し、
-/// 片方だけリロードされる・片方だけ保存される、という形で出る。
+
+/// @note Editor / AssetBrowser / シリアライザは «同じアセットか» をこの文字列比較だけで決める。
+/// @note 区切りや大文字小文字の扱いがずれると、同じファイルが 2 つの参照として流通し、
+/// @note 片方だけリロードされる・片方だけ保存される、という形で出る。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
@@ -103,6 +103,24 @@ TEST_F(FileSystemPathTest, SamePathIgnoresATrailingSlash)
     EXPECT_TRUE(FileSystem::SamePathText("Assets/Scenes/", "Assets/Scenes"));
 }
 
+TEST_F(FileSystemPathTest, UntrimmedComparisonKeepsTheFinalSeparatorSignificant)
+{
+    EXPECT_TRUE(FileSystem::SamePathText("Assets/Scenes/", "assets\\scenes\\", false));
+    EXPECT_FALSE(FileSystem::SamePathText("Assets/Scenes/", "Assets/Scenes", false));
+    EXPECT_TRUE(FileSystem::SamePathText("/", "\\", true));
+    EXPECT_FALSE(FileSystem::SamePathText("/", "", true));
+}
+
+TEST_F(FileSystemPathTest, SamePathUsesOnlyTheBorrowedSlice)
+{
+    const std::string_view left = "Assets/Scenes/Main.scene/unused";
+    const std::string_view right = "assets\\scenes\\MAIN.SCENE-other";
+    const auto length = std::string_view("Assets/Scenes/Main.scene").size();
+    EXPECT_TRUE(FileSystem::SamePathText(left.substr(0, length), right.substr(0, length), false));
+    EXPECT_FALSE(FileSystem::SamePathText(left, right, false));
+    EXPECT_TRUE(FileSystem::SamePathText(std::string_view{}, std::string_view{}, false));
+}
+
 TEST_F(FileSystemPathTest, SamePathRejectsDifferentFiles)
 {
     EXPECT_FALSE(FileSystem::SamePathText("Assets/Scenes/Main.scene",
@@ -139,4 +157,4 @@ TEST_F(FileSystemPathTest, ChildPathRejectsAParentDirectory)
     EXPECT_FALSE(FileSystem::IsChildPathText("Assets", "Assets/Scenes"));
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

@@ -24,9 +24,9 @@ class StreamedTextureResolver {
 public:
     /// @brief 未完成のテクスチャを引かれたときの振る舞い。
     enum class MissPolicy : std::uint8_t {
-        /// @note その場で同期ロードして返す。既存の LoadTexture と同じ絵になる (既定)。
+        /// @note その場で同期ロードして返す。ロード画面など、待機を許可する場面で明示的に選ぶ。
         Synchronous,
-        /// @note 無効ハンドルを返し、完成したフレームから使わせる。
+        /// @note 未完成なら共有の白テクスチャを返し、完成したフレームから実体へ切り替える。
         Placeholder,
     };
 
@@ -34,7 +34,7 @@ public:
 
     /// @brief 参照 (パス・guid 参照・Sprite 参照) の GPU 実体を返す。
     /// @param screenPixels このテクスチャを貼って描く物体の画面上の直径 [px]。0 以下は «不明» (最高品質を保つ)。
-    /// @return 非同期経路が使えない (AssetManager 未初期化・予算超過で拒否) ときは従来の LoadTexture を返す。
+    /// @return 非同期経路が未完成なら代替テクスチャを返す。同期ロードは MissPolicy::Synchronous のみ行う。
     [[nodiscard]] renderer::ResourceHandle<renderer::TextureTag> ResolveGpu(
         renderer::ResourceManager& resources, std::string_view reference, float screenPixels = 0.0f);
 
@@ -89,7 +89,7 @@ private:
     std::unordered_map<std::string, Entry> m_entries;
     std::uint64_t m_frame = 0;
     std::uint32_t m_releaseAfterFrames = 300;
-    MissPolicy    m_missPolicy = MissPolicy::Synchronous;
+    MissPolicy    m_missPolicy = MissPolicy::Placeholder;
     bool          m_autoQuality = false;
 };
 

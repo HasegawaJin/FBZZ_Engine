@@ -3,11 +3,24 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
 #include <Engine/Asset/ChunkFile.hpp>
+#include "AtomicChunkFileWrite.hpp"
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#include <fcntl.h>
+#include <io.h>
+
 #include <array>
+#include <bit>
 #include <atomic>
+#include <cerrno>
 #include <cstdio>
+#include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <system_error>
 #include <thread>
@@ -29,12 +42,148 @@ constexpr std::array<uint32_t, 256> MakeCrcTable()
 
 constexpr std::array<uint32_t, 256> kCrcTable = MakeCrcTable();
 
-bool WriteAll(std::FILE* file, const void* bytes, std::size_t size)
+/// @brief Capture a CRT failure before the next CRT operation can replace either thread-local error.
+detail::AtomicWriteError CrtFailure(int code = errno)
 {
-    return size == 0 || std::fwrite(bytes, 1, size, file) == size;
+    unsigned long nativeCode = 0;
+    (void)_get_doserrno(&nativeCode);
+    return {{code != 0 ? code : EIO, std::generic_category()}, nativeCode};
 }
 
-} // namespace
+void ResetCrtFailure()
+{
+    errno = 0;
+    (void)_set_doserrno(0);
+}
+
+/// @note No user callback runs while the temporary FILE is open or while a publication/cleanup error is mutable.
+class NativeAtomicChunkIo {
+public:
+    explicit NativeAtomicChunkIo(std::filesystem::path target) : m_target(std::move(target)) {}
+
+    detail::AtomicWriteError CreateParent()
+    {
+        std::error_code error;
+        if (!m_target.parent_path().empty()) std::filesystem::create_directories(m_target.parent_path(), error);
+        return {error};
+    }
+
+    detail::AtomicWriteError Open()
+    {
+        static std::atomic<uint64_t> serial{0};
+        detail::AtomicWriteError failure;
+        /// @note Exclusive create never truncates a residue or another writer's temporary; only name collisions get another name.
+        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fopen-s-wfopen-s C11 x exclusive-create mode.
+        for (unsigned attempt = 0; attempt < 8; ++attempt) {
+            m_temporary = m_target;
+            m_temporary += L".tmp" + std::to_wstring(std::hash<std::thread::id>{}(std::this_thread::get_id()))
+                         + L"_" + std::to_wstring(serial.fetch_add(1, std::memory_order_relaxed));
+            ResetCrtFailure();
+            const int code = _wfopen_s(&m_file, m_temporary.c_str(), L"wbx");
+            if (code == 0 && m_file) return {};
+            failure = CrtFailure(code);
+            if (code != EEXIST) break;
+        }
+        return failure;
+    }
+
+    detail::AtomicWriteError Write(const void* bytes, std::size_t size)
+    {
+        if (size == 0) return {};
+        ResetCrtFailure();
+        if (std::fwrite(bytes, 1, size, m_file) == size) return {};
+        return CrtFailure();
+    }
+
+    detail::AtomicWriteError Flush()
+    {
+        ResetCrtFailure();
+        /// @note Flush CRT buffers before close; this does not promise persistence across power loss.
+        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fflush fflush return value.
+        if (std::fflush(m_file) == 0) return {};
+        return CrtFailure();
+    }
+
+    detail::AtomicWriteError Close()
+    {
+        ResetCrtFailure();
+        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fclose-fcloseall fclose closes the underlying handle even on failure.
+        const int result = std::fclose(m_file);
+        m_file = nullptr;
+        return result == 0 ? detail::AtomicWriteError{} : CrtFailure();
+    }
+
+    detail::AtomicWriteError Publish()
+    {
+        std::error_code error;
+        const auto target = std::filesystem::absolute(m_target, error);
+        if (error) return {error};
+        const auto& name = target.native();
+        if (name.size() > (MAXDWORD - sizeof(FILE_RENAME_INFO) - sizeof(wchar_t)) / sizeof(wchar_t))
+            return {{ERROR_FILENAME_EXCED_RANGE, std::system_category()}, ERROR_FILENAME_EXCED_RANGE};
+        FILE_RENAME_INFO rename{};
+        rename.Flags = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
+        rename.FileNameLength = static_cast<DWORD>(name.size() * sizeof(wchar_t));
+        std::vector<uint8_t> bytes(sizeof(rename) + rename.FileNameLength + sizeof(wchar_t), 0);
+        std::memcpy(bytes.data(), &rename, sizeof(rename));
+        std::memcpy(bytes.data() + offsetof(FILE_RENAME_INFO, FileName), name.data(), rename.FileNameLength);
+        const HANDLE source = ::CreateFileW(m_temporary.c_str(), DELETE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (source == INVALID_HANDLE_VALUE) {
+            const DWORD code = ::GetLastError();
+            return {{static_cast<int>(code), std::system_category()}, code};
+        }
+        /// @note POSIX replacement preserves open old snapshots; MoveFileEx cannot replace an open target even with delete sharing.
+        /// @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information FILE_RENAME_POSIX_SEMANTICS.
+        const BOOL replaced = ::SetFileInformationByHandle(source, FileRenameInfoEx, bytes.data(), static_cast<DWORD>(bytes.size()));
+        const DWORD code = replaced ? ERROR_SUCCESS : ::GetLastError();
+        ::CloseHandle(source);
+        if (replaced) return {};
+        /// @note Older filesystems may not support the extended rename class. Retain the previous closed-target behavior only there.
+        if (code == ERROR_INVALID_PARAMETER || code == ERROR_NOT_SUPPORTED || code == ERROR_INVALID_FUNCTION) {
+            std::filesystem::rename(m_temporary, m_target, error);
+            return {error};
+        }
+        return {{static_cast<int>(code), std::system_category()}, code};
+    }
+
+    detail::AtomicWriteError Cleanup()
+    {
+        std::error_code error;
+        /// @note Only the path exclusively created by this call is eligible; do not scan or delete other temporary files.
+        std::filesystem::remove(m_temporary, error);
+        return {error};
+    }
+
+    [[nodiscard]] const std::filesystem::path& TemporaryPath() const { return m_temporary; }
+
+private:
+    std::filesystem::path m_target;
+    std::filesystem::path m_temporary;
+    std::FILE* m_file = nullptr;
+};
+
+void ReportAtomicFailure(const std::string& path, const NativeAtomicChunkIo& io,
+                         const detail::AtomicWriteResult& result)
+{
+    const std::string target = path;
+    const std::string temporary = util::FileSystem::PathToUtf8(io.TemporaryPath());
+    const auto report = [&](const char* stage, const detail::AtomicWriteError& error) {
+        if (!error) return;
+        FBZZ_LOG_WARN("ChunkFileWriter: stage=%s target='%s' temporary='%s' error=%d category=%s native=%lu message='%s'",
+            stage, target.c_str(), temporary.c_str(), error.code.value(), error.code.category().name(),
+            error.nativeCode, error.code.message().c_str());
+    };
+    report("create-parent", result.createParent);
+    report("open-exclusive", result.open);
+    report("write", result.write);
+    report("flush", result.flush);
+    report("close", result.close);
+    report("rename", result.publish);
+    report("cleanup", result.cleanup);
+}
+
+} /// @note namespace
 
 uint32_t Crc32(std::span<const uint8_t> bytes)
 {
@@ -50,17 +199,6 @@ void ChunkFileWriter::AddChunk(uint32_t id, std::vector<uint8_t> bytes)
 
 bool ChunkFileWriter::WriteAtomically(const std::string& path, uint32_t contentKind, uint64_t sourceStamp) const
 {
-    namespace fs = std::filesystem;
-    const fs::path target = util::FileSystem::PathFromUtf8(path);
-    std::error_code error;
-    fs::create_directories(target.parent_path(), error);
-
-    /// @note 一時名は書き手ごとに変える。同じキャッシュを 2 本のジョブが同時に書いても互いを壊さない。
-    static std::atomic<uint64_t> s_serial{ 0 };
-    fs::path temporary = target;
-    temporary += L".tmp" + std::to_wstring(std::hash<std::thread::id>{}(std::this_thread::get_id()))
-               + L"_" + std::to_wstring(s_serial.fetch_add(1));
-
     FzChunkFileHeader header{};
     header.magic[0] = 'F'; header.magic[1] = 'Z'; header.magic[2] = 'C'; header.magic[3] = 'K';
     header.version = FZCHUNK_VERSION;
@@ -80,30 +218,56 @@ bool ChunkFileWriter::WriteAtomically(const std::string& path, uint32_t contentK
         offset += m_chunks[i].bytes.size();
     }
 
-    std::FILE* file = nullptr;
-    if (_wfopen_s(&file, temporary.wstring().c_str(), L"wb") != 0 || !file) return false;
-    bool ok = WriteAll(file, &header, sizeof(header))
-           && WriteAll(file, entries.data(), sizeof(FzChunkEntry) * entries.size());
-    for (const auto& chunk : m_chunks) ok = ok && WriteAll(file, chunk.bytes.data(), chunk.bytes.size());
-    ok = (std::fclose(file) == 0) && ok;
-    if (!ok) {
-        fs::remove(temporary, error);
+    NativeAtomicChunkIo io(util::FileSystem::PathFromUtf8(path));
+    const auto result = detail::WriteAtomicChunkFile(io, [&](NativeAtomicChunkIo& output) {
+        auto error = output.Write(&header, sizeof(header));
+        if (!error) error = output.Write(entries.data(), sizeof(FzChunkEntry) * entries.size());
+        for (const auto& chunk : m_chunks) {
+            if (error) break;
+            error = output.Write(chunk.bytes.data(), chunk.bytes.size());
+        }
+        return error;
+    });
+    if (!result.published) ReportAtomicFailure(path, io, result);
+    return result.published;
+}
+
+bool BinaryReader::OpenReplaceableChunkStream(const std::string& path)
+{
+    Close();
+    data.clear();
+    pos = 0;
+    bytesRead = 0;
+    const auto nativePath = util::FileSystem::PathFromUtf8(path);
+    /// @note Readers permit delete/rename but not in-place writes; an old reader keeps its old file after publication.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew FILE_SHARE_DELETE also permits rename.
+    const HANDLE file = ::CreateFileW(nativePath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    /// @note Ownership transfers once: HANDLE -> CRT descriptor -> FILE; the successful owner alone closes it.
+    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/open-osfhandle _open_osfhandle ownership transfer.
+    const int descriptor = _open_osfhandle(std::bit_cast<std::intptr_t>(file), _O_RDONLY | _O_BINARY);
+    if (descriptor == -1) {
+        ::CloseHandle(file);
         return false;
     }
-    /// @note Windows の rename は既存を置き換える (MoveFileExW + MOVEFILE_REPLACE_EXISTING)。
-    /// @see https://en.cppreference.com/w/cpp/filesystem/rename std::filesystem::rename
-    fs::rename(temporary, target, error);
-    if (error) {
-        fs::remove(temporary, error);
+    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fdopen-wfdopen _fdopen shares descriptor ownership with fclose.
+    m_file = _fdopen(descriptor, "rb");
+    if (!m_file) {
+        _close(descriptor);
         return false;
     }
+    if (_fseeki64(m_file, 0, SEEK_END) != 0) { Close(); return false; }
+    const long long size = _ftelli64(m_file);
+    if (size < 0 || _fseeki64(m_file, 0, SEEK_SET) != 0) { Close(); return false; }
+    m_fileSize = static_cast<uint64_t>(size);
     return true;
 }
 
 bool ChunkFileReader::Open(const std::string& path)
 {
     m_entries.clear();
-    if (!m_reader.OpenStreaming(path)) return false;
+    if (!m_reader.OpenReplaceableChunkStream(path)) return false;
     if (!m_reader.Read(m_header)) return false;
     if (m_header.magic[0] != 'F' || m_header.magic[1] != 'Z' || m_header.magic[2] != 'C' || m_header.magic[3] != 'K'
         || m_header.version != FZCHUNK_VERSION)
@@ -134,4 +298,4 @@ bool ChunkFileReader::ReadChunk(uint32_t id, std::vector<uint8_t>& out)
     return Crc32(out) == entry->checksum;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

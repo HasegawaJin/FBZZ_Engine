@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
 ///
-/// @note ComponentRegistry はコンパイル時の表で型を知っているコードからしか使えないが、スクリプト DLL の FBZZ_REQUIRE_COMPONENT は DLL 境界越しに「型名の文字列」でしか運べない (DLL 側でテンプレート実体を作ると同じ型で別実体が生まれ所有権と ABI の話が増える)。
+/// @note ManagedScriptAdapter の要件は型名文字列で渡るため、ComponentRegistry を使って実コンポーネントの有無を調べる。
 /// @note ForEachRegisteredComponent を一度だけ畳んで名前引きの表を作り、検証側は型を知らないまま「持っているか」を問い合わせる。
 #pragma once
 

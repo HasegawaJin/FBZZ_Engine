@@ -3,8 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
 ///
-/// PhysicsSystem (シミュレーション中) と DebugCollidersPass (可視化) の共通基盤。
+/// @note PhysicsSystem と DebugCollidersPass が同じ衝突形状を使うための共通基盤。
 #include "Engine/Scene/Systems/ColliderSync.hpp"
+#include "TerrainHeightHelpers.hpp"
 
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
@@ -18,12 +19,15 @@
 #include <Physics/ConvexHullCollider.hpp>
 #include <Physics/HeightFieldCollider.hpp>
 #include <Physics/TriangleMeshCollider.hpp>
+#include <Engine/Scene/TerrainSurfaceGeometry.hpp>
 #include <algorithm>
 #include <cmath>
 #include <memory>
 #include <vector>
 
 namespace fbzz::scene {
+
+using terrain_height_detail::TryAddTerrainHeightSample;
 
 namespace {
 
@@ -32,7 +36,7 @@ math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
     return { a.x * b.x, a.y * b.y, a.z * b.z };
 }
 
-/// 隣接する地形タイル。境界の高さを平均するために保持する。
+/// @note 境界の高さを平均するため、隣接する地形タイルを保持する。
 struct TerrainNeighbors {
     const TerrainComponent* north = nullptr;
     const TerrainComponent* south = nullptr;
@@ -44,32 +48,12 @@ struct TerrainNeighbors {
     const TerrainComponent* southEast = nullptr;
 };
 
-bool TryAddTerrainHeightSample(const TerrainComponent* terrain,
-                               int                     x,
-                               int                     z,
-                               float&                  sum,
-                               int&                    count)
-{
-    if (!terrain || terrain->heightData.empty())
-        return false;
-    if (x < 0 || x >= terrain->columns || z < 0 || z >= terrain->rows)
-        return false;
-
-    const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(terrain->columns)
-                     + static_cast<size_t>(x);
-    sum += terrain->heightData[idx] * terrain->maxHeight;
-    ++count;
-    return true;
-}
-
 float SampleStitchedTerrainHeight(const TerrainComponent& terrain,
                                   const TerrainNeighbors& neighbors,
                                   int                     x,
                                   int                     z)
 {
-    /// @note 描画メッシュだけ境界平均すると HeightFieldCollider は元 heightData の段差を
-    ///       保持したままになる。Physics へ渡す一時データも同じ平均を使い、保存データは
-    ///       破壊せずに接触形状を見た目へ合わせる。
+    /// @note 描画と同じ境界平均を一時データへ適用し、保存データを破壊せず衝突形状を見た目へ合わせる。
     float sum = 0.0f;
     int count = 0;
 
@@ -177,8 +161,7 @@ std::vector<float> BuildColliderHeightData(Scene& scene, GameObject& go, const T
     return heights;
 }
 
-/// MeshCollider / ConvexHullCollider が使うソースメッシュを解決する。
-/// 優先順位は MeshRenderer → SkinnedMeshRenderer → 明示指定の meshPath。
+/// @note ソースは MeshRenderer → SkinnedMeshRenderer → 明示 meshPath の優先順で解決する。
 const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
                                                 const std::string& meshPath,
                                                 int                meshIndex)
@@ -190,10 +173,7 @@ const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
         if (auto* skinned = go.GetComponent<SkinnedMeshRenderer>()) {
             if (!skinned->model && !skinned->modelPath.empty())
                 skinned->model = asset::AssetManager::LoadAndGet<asset::Model>(skinned->modelPath);
-            /// @note コライダーのソースは明示指定の meshIndex (col.meshIndex) を優先し、
-            ///       無指定なら先頭 submesh を使う。この Renderer が描いていない submesh を
-            ///       コライダーにすると見た目と当たり判定が別物になるため、この Renderer
-            ///       内でのローカルスロット番号で引く (Inspector の番号もこれに揃える)。
+            /// @note 見た目と衝突形状を合わせるため、Renderer 内のローカルスロットを使い、無指定時は先頭を選ぶ。
             if (skinned->model) {
                 const size_t submesh = meshIndex >= 0 ? static_cast<size_t>(meshIndex) : 0u;
                 mesh = skinned->SubmeshMesh(submesh);
@@ -209,7 +189,7 @@ const renderer::Mesh* ResolveColliderSourceMesh(GameObject& go,
     return mesh;
 }
 
-} // namespace
+}
 
 math::Vector3 ColliderTransformScale(const GameObject& go)
 {
@@ -228,15 +208,13 @@ math::Vector3 ColliderWorldCenter(const GameObject& go, const ColliderComponent&
 
 namespace {
 
-/// 反転スケール (-1 等) でも寸法は正のまま扱う。負の半径は物理側で意味を持たない。
+/// @note 反転スケールでも物理形状の寸法は正のまま扱う。
 [[nodiscard]] math::Vector3 AbsScale(const math::Vector3& scale)
 {
     return { std::abs(scale.x), std::abs(scale.y), std::abs(scale.z) };
 }
 
-/// 球のように 1 つの半径しか持てない形状へ非一様スケールを掛けるときの代表値。
-/// @note 最大値を採る。小さい軸に合わせると、大きい軸の側でメッシュがコライダーから
-///       はみ出して壁をすり抜ける。
+/// @note 球を最大スケールへ合わせ、大きい軸でメッシュがコライダーからはみ出すことを防ぐ。
 [[nodiscard]] float MaxAxis(const math::Vector3& v)
 {
     return std::max({ v.x, v.y, v.z });
@@ -281,7 +259,7 @@ void MergePrimitiveBounds(GameObject& go, physics::AABB& bounds, bool& found)
     found = true;
 }
 
-} // namespace
+}
 
 bool TryGetPrimitiveColliderBounds(GameObject& go, physics::AABB& outBounds)
 {
@@ -407,7 +385,11 @@ void EnsureConvexHullCollider(GameObject& go, ConvexHullColliderComponent& col)
 void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent& col)
 {
     auto* terrain = go.GetComponent<TerrainComponent>();
-    if (!terrain || !terrain->enabled || terrain->heightData.empty()) return;
+    if (!terrain || !terrain->enabled || terrain->heightData.empty()
+        || !IsValidTerrainSurfaceGeometry(terrain->surfacePositions, terrain->surfaceIndices)) {
+        col.collider.reset();
+        return;
+    }
 
     if (terrain->colliderDirty || !col.collider) {
         const std::vector<float> colliderHeights = BuildColliderHeightData(scene, go, *terrain);
@@ -416,7 +398,23 @@ void SyncTerrainCollider(Scene& scene, GameObject& go, TerrainColliderComponent&
         std::vector<std::uint8_t> colliderHoles;
         if (terrain->holeData.size() == terrain->CellCount())
             colliderHoles = terrain->holeData;
-        if (auto* hf = col.collider
+        if (!terrain->surfaceIndices.empty()) {
+            std::vector<math::Vector3> positions;
+            std::vector<uint32_t> indices;
+            positions.reserve(terrain->heightData.size() + terrain->surfacePositions.size());
+            for (int z = 0; z < terrain->rows; ++z) for (int x = 0; x < terrain->columns; ++x)
+                positions.push_back({x * terrain->cellSize,
+                    colliderHeights[static_cast<size_t>(z) * terrain->columns + x] * terrain->maxHeight, z * terrain->cellSize});
+            for (int z = 0; z < terrain->rows - 1; ++z) for (int x = 0; x < terrain->columns - 1; ++x) {
+                if (terrain->IsHoleCell(x, z)) continue;
+                const auto a = static_cast<uint32_t>(z * terrain->columns + x), b = a + terrain->columns;
+                indices.insert(indices.end(), {a, b, a + 1, a + 1, b, b + 1});
+            }
+            const auto offset = static_cast<uint32_t>(positions.size());
+            positions.insert(positions.end(), terrain->surfacePositions.begin(), terrain->surfacePositions.end());
+            for (uint32_t index : terrain->surfaceIndices) indices.push_back(offset + index);
+            col.collider = std::make_unique<physics::TriangleMeshCollider>(positions, indices);
+        } else if (auto* hf = col.collider
                 && col.collider->GetType() == physics::ColliderType::HEIGHT_FIELD
                 ? static_cast<physics::HeightFieldCollider*>(col.collider.get())
                 : nullptr) {
@@ -458,11 +456,10 @@ void UpdateColliderPose(const GameObject& go, ColliderComponent& col, bool useTr
             ->UpdateWithScale(worldCenter, go.transform.worldRotation, go.transform.worldScale);
         break;
     default:
-        /// @note 基本形状は寸法自体に既にスケールが焼かれている (SyncColliderShape)。
-        ///       ここで重ねて掛けると二乗になる。
+        /// @note 基本形状の寸法には SyncColliderShape でスケールを反映済みなので、二重に掛けない。
         col.collider->Update(worldCenter, go.transform.worldRotation);
         break;
     }
 }
 
-} // namespace fbzz::scene
+}

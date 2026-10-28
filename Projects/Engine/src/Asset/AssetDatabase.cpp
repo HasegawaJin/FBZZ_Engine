@@ -2,9 +2,11 @@
 /// @brief   GUID ⇄ アセットパスの双方向インデックス実装。
 /// @author  Hasegawa Jin
 /// @date    2026-07-08
+#include <Engine/Asset/ModelSource.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Util/StringUtils.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <cctype>
@@ -23,19 +25,55 @@ namespace fbzz::asset {
 
 namespace {
 
-/// 双方向インデックス。キーは正規化 (小文字ドライブ + '/' 区切り) した絶対パス。
+/// @note 双方向インデックス。キーは正規化 (小文字ドライブ + '/' 区切り) した絶対パス。
 std::unordered_map<std::string, std::string> s_guidToPath;
 std::unordered_map<std::string, std::string> s_pathToGuid;
-/// リネーム直後に開いている Scene が旧パスを保持していても、保存時に GUID 化できるよう
-/// 旧パスを一時的に GUID へ解決する。新しいアセットが同じ場所へ作られたら消費する。
+/// @brief Immutable Engine assets stay outside the project index and its writeback file.
+std::unordered_map<std::string, std::string> s_sharedGuidToPath;
+std::unordered_map<std::string, std::string> s_sharedPathToGuid;
+std::unordered_set<std::string> s_ambiguousSharedGuids;
+/// @note リネーム直後に開いている Scene が旧パスを保持していても、保存時に GUID 化できるよう
+/// @note 旧パスを一時的に GUID へ解決する。新しいアセットが同じ場所へ作られたら消費する。
 std::unordered_map<std::string, std::string> s_movedPathAliases;
 std::mutex  s_mutex;
+uint64_t    s_revision = 0;
 bool        s_initialized = false;
-std::string s_assetsRoot;  ///< Init に渡された Assets ルート (末尾 '/' 付き正規化)
-/// 索引が最後の書き出し以降に変わったか。FlushIndexFile が見る。
+std::string s_assetsRoot;  ///< @note Init に渡された Assets ルート (末尾 '/' 付き正規化)
+std::string s_sharedAssetsRoot; ///< @brief 読み取り専用 Engine Assets ルート (末尾 '/' 付き正規化)
+/// @note 索引が最後の書き出し以降に変わったか。FlushIndexFile が見る。
 bool        s_indexDirty = false;
-/// 先勝ちで弾いた重複の記録。修復ツールと通知バーが読む。
+/// @note 先勝ちで弾いた重複の記録。修復ツールと通知バーが読む。
 std::vector<AssetDatabase::GuidConflict> s_conflicts;
+
+/// @pre 呼び出し側が s_mutex を保持していること。
+void SetMappingLocked(std::unordered_map<std::string, std::string>& index,
+                       const std::string& key, const std::string& value, bool overwrite = true)
+{
+    const auto [entry, inserted] = index.try_emplace(key, value);
+    if (inserted) {
+        ++s_revision;
+    } else if (overwrite && entry->second != value) {
+        entry->second = value;
+        ++s_revision;
+    }
+}
+
+/// @pre 呼び出し側が s_mutex を保持していること。
+void EraseMappingLocked(std::unordered_map<std::string, std::string>& index,
+                         const std::string& key)
+{
+    if (index.erase(key) != 0) ++s_revision;
+}
+
+/// @pre 呼び出し側が s_mutex を保持していること。
+void ClearSharedMappingsLocked()
+{
+    if (!s_sharedGuidToPath.empty() || !s_sharedPathToGuid.empty() || !s_ambiguousSharedGuids.empty())
+        ++s_revision;
+    s_sharedGuidToPath.clear();
+    s_sharedPathToGuid.clear();
+    s_ambiguousSharedGuids.clear();
+}
 
 std::string NormalizePath(std::string p)
 {
@@ -43,20 +81,13 @@ std::string NormalizePath(std::string p)
     return p;
 }
 
-std::string LowerCopy(std::string s)
-{
-    std::transform(s.begin(), s.end(), s.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return s;
-}
-
-/// パス索引キー。Windows はパス大文字小文字非区別のため小文字化して同一視する。
+/// @note パス索引キー。Windows はパス大文字小文字非区別のため小文字化して同一視する。
 std::string PathKey(const std::string& absPath)
 {
-    return LowerCopy(NormalizePath(absPath));
+    return util::StringUtils::ToLowerCopy(NormalizePath(absPath));
 }
 
-/// `<asset>.meta` から guid を読む。無ければ空文字列。
+/// @note `<asset>.meta` から guid を読む。無ければ空文字列。
 std::string ReadGuidFromMeta(const std::string& metaPath)
 {
     std::string text;
@@ -65,11 +96,11 @@ std::string ReadGuidFromMeta(const std::string& metaPath)
     const auto parsed = toml::parse(iss);
     if (!parsed) return {};
     if (auto v = parsed.table()["meta"]["guid"].value<std::string>())
-        return LowerCopy(*v);
+        return util::StringUtils::ToLowerCopy(*v);
     return {};
 }
 
-/// .meta に [meta] guid を書き込む。既存の他セクション ([texture] 等) は保持する。
+/// @note .meta に [meta] guid を書き込む。既存の他セクション ([texture] 等) は保持する。
 bool WriteGuidToMeta(const std::string& metaPath, const std::string& guid)
 {
     toml::table root;
@@ -96,7 +127,7 @@ bool WriteGuidToMeta(const std::string& metaPath, const std::string& guid)
 
 /// @brief `Foo.fbx` のインポートで生成される従属フォルダ `Foo/` か判定する。
 /// @note 従属フォルダは原本モデルから再生成されるため独立した guid を持たせない。持たせると
-///       再インポートのたびに孤児 .meta が残り索引が汚れる。
+/// @note 再インポートのたびに孤児 .meta が残り索引が汚れる。
 bool IsGeneratedModelPackageDir(const std::filesystem::path& dir)
 {
     namespace fs = std::filesystem;
@@ -115,11 +146,11 @@ bool IsGeneratedModelPackageDir(const std::filesystem::path& dir)
 
 /// @brief 本体が存在しない孤児 .meta か。索引には載せず、削除もしない。
 /// @note 大容量バイナリ (png/fbx/wav) を .gitignore しつつ .meta だけ追跡するリポジトリでは
-///       clone 直後に本体不在の .meta が孤児として見える。ここで消すと guid 参照が一斉に切れ、
-///       入れ直しても新しい乱数 guid になり二度と戻らない。残せば本体が戻った時点で同じ
-///       guid のまま復帰する (エディター内の削除は本体と対で移すため、ここへ来るのは
-///       git / エクスプローラーで消された場合だけ)。代償として、同じパスへ別のアセットを
-///       作り直すと残った guid を引き継ぐ (ファイル入れ替えなら望ましい挙動として受け入れる)。
+/// @note clone 直後に本体不在の .meta が孤児として見える。ここで消すと guid 参照が一斉に切れ、
+/// @note 入れ直しても新しい乱数 guid になり二度と戻らない。残せば本体が戻った時点で同じ
+/// @note guid のまま復帰する (エディター内の削除は本体と対で移すため、ここへ来るのは
+/// @note git / エクスプローラーで消された場合だけ)。代償として、同じパスへ別のアセットを
+/// @note 作り直すと残った guid を引き継ぐ (ファイル入れ替えなら望ましい挙動として受け入れる)。
 bool IsOrphanMeta(const std::filesystem::path& metaPath)
 {
     const std::string metaUtf8 = util::FileSystem::PathToUtf8(metaPath);
@@ -129,7 +160,7 @@ bool IsOrphanMeta(const std::filesystem::path& metaPath)
 
 /// @brief ロック取得済み前提。同じ (guid, 弾かれたパス) を二重に積まない。
 /// @note 索引の再構築や watcher の再通知で同じ衝突が何度も通る。件数がそのたびに
-///       増えると、通知バーの「N 件」が実際の重複数と合わなくなる。
+/// @note 増えると、通知バーの「N 件」が実際の重複数と合わなくなる。
 void RecordConflictLocked(const std::string& guid, const std::string& keptPath,
                           const std::string& duplicatePath)
 {
@@ -142,14 +173,14 @@ void RecordConflictLocked(const std::string& guid, const std::string& keptPath,
 
 /// @brief `…/Assets/` 以降を返す。含まなければ空。
 /// @note 索引には絶対パスが載るが、参照解決は `Assets/Models/Foo.fbx` のような論理パスの
-///       まま入ってくることがあるため、先頭の `Assets/` も見る。区切りだけを探すと、
-///       先頭に来た `Assets/` を取りこぼして «別物» と判定する。
+/// @note まま入ってくることがあるため、先頭の `Assets/` も見る。区切りだけを探すと、
+/// @note 先頭に来た `Assets/` を取りこぼして «別物» と判定する。
 std::string RelativeToAnyAssetsRoot(const std::string& absPath)
 {
     static constexpr std::string_view kLeading = "assets/";
     static constexpr std::string_view kEmbedded = "/assets/";
 
-    const std::string lower = LowerCopy(NormalizePath(absPath));
+    const std::string lower = util::StringUtils::ToLowerCopy(NormalizePath(absPath));
     if (lower.rfind(kLeading, 0) == 0) return lower.substr(kLeading.size());
     const size_t pos = lower.rfind(kEmbedded);
     if (pos == std::string::npos) return {};
@@ -158,67 +189,125 @@ std::string RelativeToAnyAssetsRoot(const std::string& absPath)
 
 /// @brief 同じ guid を名乗る 2 つのパスが、同じアセットの «コピー» か。
 /// @note エンジンは共通シェーダーをプロジェクトの Assets へ配る。コピーは .meta ごと複製
-///       されるので guid も同一になるが、これは «同じアセットが 2 箇所にある» のであって
-///       参照が別物へ吸われる本物の衝突ではない。区別せずに重複として鳴らすと、起動の
-///       たびにエラーが出るうえ «直す» と guid が振り直されてどちらかの参照が本当に壊れる。
+/// @note されるので guid も同一になるが、これは «同じアセットが 2 箇所にある» のであって
+/// @note 参照が別物へ吸われる本物の衝突ではない。区別せずに重複として鳴らすと、起動の
+/// @note たびにエラーが出るうえ «直す» と guid が振り直されてどちらかの参照が本当に壊れる。
 bool IsSameAssetCopyLocked(const std::string& a, const std::string& b)
 {
     const std::string relA = RelativeToAnyAssetsRoot(a);
     return !relA.empty() && relA == RelativeToAnyAssetsRoot(b);
 }
 
-/// absPath が «開いているプロジェクトの» Assets 配下か。
+/// @note absPath が «開いているプロジェクトの» Assets 配下か。
 bool IsUnderProjectAssetsLocked(const std::string& absPath)
 {
     if (s_assetsRoot.empty()) return false;
     const std::string key = PathKey(absPath);
-    return key.rfind(LowerCopy(s_assetsRoot), 0) == 0;
+    return key.rfind(util::StringUtils::ToLowerCopy(s_assetsRoot), 0) == 0;
+}
+
+/// @brief 共有 Engine Assets 配下か。
+/// @pre 呼び出し側がロックを保持していること。
+bool IsUnderSharedAssetsLocked(const std::string& absPath)
+{
+    if (s_sharedAssetsRoot.empty()) return false;
+    std::error_code error;
+    const auto path = util::FileSystem::PathFromUtf8(absPath);
+    const auto canonical = std::filesystem::weakly_canonical(path, error);
+    const std::string key = PathKey(util::FileSystem::PathToUtf8(
+        error ? path.lexically_normal() : canonical));
+    const std::string root = util::StringUtils::ToLowerCopy(s_sharedAssetsRoot);
+    return key == root.substr(0, root.size() - 1) || key.rfind(root, 0) == 0;
+}
+
+/// @brief 読み取り専用の共有索引へ登録する。
+/// @note 異なる実体が同じ GUID を名乗る場合は解決を拒否する。
+void RegisterSharedLocked(const std::string& guid, const std::string& absPath)
+{
+    const std::string key = PathKey(absPath);
+    if (s_ambiguousSharedGuids.contains(guid)) return;
+
+    if (const auto project = s_guidToPath.find(guid); project != s_guidToPath.end()) {
+        const std::string projectKey = PathKey(project->second);
+        std::error_code equivalentError;
+        const bool sameFile = std::filesystem::equivalent(
+            util::FileSystem::PathFromUtf8(project->second),
+            util::FileSystem::PathFromUtf8(absPath), equivalentError) && !equivalentError;
+        if (projectKey == key || sameFile
+            || IsSameAssetCopyLocked(project->second, absPath)) {
+            SetMappingLocked(s_sharedPathToGuid, key, guid, false);
+            return;
+        }
+
+        FBZZ_LOG_ERROR("AssetDatabase: duplicate guid [%s]\n  kept: %s\n  dup : %s",
+                       guid.c_str(), project->second.c_str(), absPath.c_str());
+        RecordConflictLocked(guid, project->second, absPath);
+        SetMappingLocked(s_sharedPathToGuid, key, guid, false);
+        return;
+    }
+
+    const auto it = s_sharedGuidToPath.find(guid);
+    if (it != s_sharedGuidToPath.end() && PathKey(it->second) != key) {
+        if (std::error_code error; std::filesystem::equivalent(
+                util::FileSystem::PathFromUtf8(it->second),
+                util::FileSystem::PathFromUtf8(absPath), error) && !error) {
+            SetMappingLocked(s_sharedPathToGuid, key, guid, false);
+            return;
+        }
+
+        s_sharedGuidToPath.erase(it);
+        ++s_revision;
+        if (s_ambiguousSharedGuids.insert(guid).second) ++s_revision;
+        EraseMappingLocked(s_sharedPathToGuid, PathKey(absPath));
+        FBZZ_LOG_ERROR("AssetDatabase: ambiguous shared Engine guid [%s]", guid.c_str());
+        return;
+    }
+
+    SetMappingLocked(s_sharedGuidToPath, guid, NormalizePath(absPath), false);
+    SetMappingLocked(s_sharedPathToGuid, key, guid, false);
 }
 
 /// @brief ロック取得済み前提でインデックスに登録する。guid 重複はエラーログを出し先勝ち。
 /// @note primary=false のときは「別名」として扱い、path → guid の逆引きは上書きしない。
-///       移行期には 1 つの実体を 2 つの GUID が指しうる (旧: .meta に書かれた乱数 / 新: 原本
-///       から導出)。参照側は旧 GUID で書かれているのでどちらからも引けなければならないが、
-///       保存する値は新 GUID に一本化したい。guid→path は多対一を許し、path→guid は
-///       primary だけが書く。
+/// @note 移行期には 1 つの実体を 2 つの GUID が指しうる (旧: .meta に書かれた乱数 / 新: 原本
+/// @note から導出)。参照側は旧 GUID で書かれているのでどちらからも引けなければならないが、
+/// @note 保存する値は新 GUID に一本化したい。guid→path は多対一を許し、path→guid は
+/// @note primary だけが書く。
 void RegisterLocked(const std::string& guid, const std::string& absPath, bool primary = true)
 {
     const std::string key = PathKey(absPath);
-    s_movedPathAliases.erase(key);
+    EraseMappingLocked(s_movedPathAliases, key);
     s_indexDirty = true;
     const auto it = s_guidToPath.find(guid);
     if (it != s_guidToPath.end() && PathKey(it->second) != key) {
         /// @note 外部ツールの移動で Renamed 通知が欠落した場合、古い実体が消えていれば
-        ///       新しいパスを同じアセットとして受け入れる。両方が存在する場合は本当の
-        ///       GUID 重複なので、先勝ちを維持して誤った参照の乗っ取りを防ぐ。
+        /// @note 新しいパスを同じアセットとして受け入れる。両方が存在する場合は本当の
+        /// @note GUID 重複なので、先勝ちを維持して誤った参照の乗っ取りを防ぐ。
         if (!util::FileSystem::Exists(it->second)) {
-            s_pathToGuid.erase(PathKey(it->second));
-            s_guidToPath[guid] = NormalizePath(absPath);
-            if (primary) s_pathToGuid[key] = guid;
-            else         s_pathToGuid.try_emplace(key, guid);
+            EraseMappingLocked(s_pathToGuid, PathKey(it->second));
+            SetMappingLocked(s_guidToPath, guid, NormalizePath(absPath));
+            SetMappingLocked(s_pathToGuid, key, guid, primary);
             return;
         }
         /// @note 同じ実体を 2 通りのパス表記で登録しただけなら、そもそも衝突ではない。相対と
-        ///       絶対、ドライブ文字や中間ディレクトリの大文字小文字、ジャンクション経由 —
-        ///       どれも «違う文字列で同じファイル» を作り、PathKey の正規化 (小文字化と区切りの
-        ///       統一) では吸収できないため、ファイルシステムに «同じものか» を直接聞く。
+        /// @note 絶対、ドライブ文字や中間ディレクトリの大文字小文字、ジャンクション経由 —
+        /// @note どれも «違う文字列で同じファイル» を作り、PathKey の正規化 (小文字化と区切りの
+        /// @note 統一) では吸収できないため、ファイルシステムに «同じものか» を直接聞く。
         if (std::error_code ec; std::filesystem::equivalent(
                 util::FileSystem::PathFromUtf8(it->second),
                 util::FileSystem::PathFromUtf8(absPath), ec) && !ec) {
             /// @note 実体は 1 つ。guid→path は先に入った表記を保ち、逆引きだけ増やす。
-            if (primary) s_pathToGuid[key] = guid;
-            else         s_pathToGuid.try_emplace(key, guid);
+            SetMappingLocked(s_pathToGuid, key, guid, primary);
             return;
         }
         /// @note エンジン内蔵 Assets とプロジェクト Assets に配られた同じアセット。
-        ///       衝突ではないので記録も警告もせず、プロジェクト側を «実体» として採用する。
+        /// @note 衝突ではないので記録も警告もせず、プロジェクト側を «実体» として採用する。
         if (IsSameAssetCopyLocked(it->second, absPath)) {
             if (IsUnderProjectAssetsLocked(absPath)
                 && !IsUnderProjectAssetsLocked(it->second))
-                s_guidToPath[guid] = NormalizePath(absPath);
+                SetMappingLocked(s_guidToPath, guid, NormalizePath(absPath));
             /// @note 逆引きはどちらのパスからも引けてよい。参照はパスで来ることがある。
-            if (primary) s_pathToGuid[key] = guid;
-            else         s_pathToGuid.try_emplace(key, guid);
+            SetMappingLocked(s_pathToGuid, key, guid, primary);
             return;
         }
         FBZZ_LOG_ERROR("AssetDatabase: duplicate guid [%s]\n  kept: %s\n  dup : %s",
@@ -226,25 +315,24 @@ void RegisterLocked(const std::string& guid, const std::string& absPath, bool pr
         RecordConflictLocked(guid, it->second, NormalizePath(absPath));
         return;
     }
-    s_guidToPath[guid] = NormalizePath(absPath);
-    if (primary) s_pathToGuid[key] = guid;
-    else         s_pathToGuid.try_emplace(key, guid);
+    SetMappingLocked(s_guidToPath, guid, NormalizePath(absPath));
+    SetMappingLocked(s_pathToGuid, key, guid, primary);
 }
 
-} // namespace
+}
 
 bool AssetDatabase::ShouldHaveMeta(std::string_view lowerFileName)
 {
     /// @note 拡張子を持たないものは対象外。`.gitignore` のような管理ファイルと `LICENSE` の
-    ///       ような無拡張ファイルがここに落ちる。`.playmode_snapshot.scene` のようにドット
-    ///       始まりでも拡張子を持つ実アセットがあるため「ドット始まりは全部除外」にはできない。
+    /// @note ような無拡張ファイルがここに落ちる。`.playmode_snapshot.scene` のようにドット
+    /// @note 始まりでも拡張子を持つ実アセットがあるため「ドット始まりは全部除外」にはできない。
     const size_t dot = lowerFileName.rfind('.');
     if (dot == std::string_view::npos || dot == 0) return false;
     const std::string_view ext = lowerFileName.substr(dot);
 
     /// @note 拡張子として妥当な形だけを通す。EncodeGuidRefs はドキュメント中の全文字列に
-    ///       この判定を掛けるため、`Player.001` や `Score: 0.5` のような値までアセット候補
-    ///       としてディスクを叩きに行かないよう、英字を含む短い英数字列に限る。
+    /// @note この判定を掛けるため、`Player.001` や `Score: 0.5` のような値までアセット候補
+    /// @note としてディスクを叩きに行かないよう、英字を含む短い英数字列に限る。
     if (ext.size() < 2 || ext.size() > 17) return false;
     bool hasAlpha = false;
     for (const char c : ext.substr(1)) {
@@ -255,16 +343,16 @@ bool AssetDatabase::ShouldHaveMeta(std::string_view lowerFileName)
     if (!hasAlpha) return false;
 
     /// @note 許可リストではなく除外リストにする。「Asset Browser には出るし Inspector でも
-    ///       選べるのに ShouldHaveMeta に無く、guid が振られないので参照が壊れる」不具合を
-    ///       拡張子を足すたびに繰り返してきた (Docs/design/audio-system.md の .flac)。
-    ///       .md / .txt / .pdf のような資料も含め、原本は等しく GUID を持たせ、
-    ///       再生成できる派生物だけを名指しで除外する。
+    /// @note 選べるのに ShouldHaveMeta に無く、guid が振られないので参照が壊れる」不具合を
+    /// @note 拡張子を足すたびに繰り返してきた (Docs/design/audio-system.md の .flac)。
+    /// @note .md / .txt / .pdf のような資料も含め、原本は等しく GUID を持たせ、
+    /// @note 再生成できる派生物だけを名指しで除外する。
     static constexpr std::string_view kExcludedExts[] = {
         ".meta",
         /// @note import / shader compile の生成物。GUID は原本の GUID から導出される (DeriveGuid)。
         ".fzasset", ".mesh", ".skel", ".cso",
         /// @note ビルド生成物と作業用の一時ファイル。
-        ".dll", ".lib", ".pdb", ".exp", ".ilk", ".obj", ".exe", ".tmp", ".bak",
+        ".dll", ".lib", ".pdb", ".exp", ".ilk", ".exe", ".tmp", ".bak",
     };
     for (const auto e : kExcludedExts)
         if (ext == e) return false;
@@ -276,9 +364,9 @@ bool AssetDatabase::ShouldHaveMeta(std::string_view lowerFileName)
             && lowerFileName.substr(lowerFileName.size() - s.size()) == s) return false;
 
     /// @note 原子的な保存の途中経過 (`Stage_01.scene.tmp.<pid>.<hash>`)。一時名は .tmp の
-    ///       «後ろ» に pid とハッシュを足すため、末尾の `.tmp` 判定では足りず拡張子として
-    ///       見えるのは `.<hash>` になる。英字を含む短い英数字列なので上の書式検査を通って
-    ///       しまい、rename で消える相手に .meta を発行して孤児が残る。
+    /// @note «後ろ» に pid とハッシュを足すため、末尾の `.tmp` 判定では足りず拡張子として
+    /// @note 見えるのは `.<hash>` になる。英字を含む短い英数字列なので上の書式検査を通って
+    /// @note しまい、rename で消える相手に .meta を発行して孤児が残る。
     if (lowerFileName.find(".tmp.") != std::string_view::npos) return false;
 
     return true;
@@ -325,8 +413,8 @@ std::string AssetDatabase::DeriveGuid(std::string_view sourceGuid, std::string_v
     if (sourceGuid.empty() || subKey.empty()) return {};
 
     /// @note FNV-1a を 2 系統 (offset basis 違い) で回して 128bit を作る。GuidRefCodec /
-    ///       FbxMetaSerializer が既に FNV-1a を使っており、新しいハッシュを持ち込まずに済み
-    ///       実装の妥当性を読み手が確かめやすい。
+    /// @note FbxMetaSerializer が既に FNV-1a を使っており、新しいハッシュを持ち込まずに済み
+    /// @note 実装の妥当性を読み手が確かめやすい。
     constexpr uint64_t kPrime = 1099511628211ull;
     auto fold = [&](uint64_t hash) {
         for (const char c : sourceGuid) { hash ^= static_cast<unsigned char>(c); hash *= kPrime; }
@@ -346,7 +434,7 @@ std::string AssetDatabase::DeriveGuid(std::string_view sourceGuid, std::string_v
 
 /// @brief s_mutex を呼び出し側が保持している前提の実体。
 /// @note Init は本体の全体でロックを持つため、そこから公開 API を呼ぶと std::mutex は
-///       再帰不可なのでデッドロックする。分けて内部専用にすることでそれを避ける。
+/// @note 再帰不可なのでデッドロックする。分けて内部専用にすることでそれを避ける。
 static void IndexBakedLibraryLocked(const std::string& libraryBakedRoot)
 {
     namespace fs = std::filesystem;
@@ -357,23 +445,23 @@ static void IndexBakedLibraryLocked(const std::string& libraryBakedRoot)
     size_t indexed = 0;
 
     /// @note `Library/Baked/<sourceGuid>/<subKey...>`
-    ///       ディレクトリ名がそのまま原本の GUID。.meta は読まない (存在しない)。
+    /// @note ディレクトリ名がそのまま原本の GUID。.meta は読まない (存在しない)。
     std::error_code ec;
     for (fs::directory_iterator it(root, ec), last; !ec && it != last; it.increment(ec)) {
         std::error_code dirEc;
         if (!it->is_directory(dirEc) || dirEc) continue;
 
         const std::string sourceGuid =
-            LowerCopy(util::FileSystem::PathToUtf8(it->path().filename()));
+            util::StringUtils::ToLowerCopy(util::FileSystem::PathToUtf8(it->path().filename()));
         /// @note guid ディレクトリ以外は無視
         if (sourceGuid.size() != 32) continue;
 
         for (const fs::path& file : util::FileSystem::ListFilesRecursive(it->path())) {
             const std::string absPath = NormalizePath(util::FileSystem::PathToUtf8(file));
-            const std::string ext = LowerCopy(util::FileSystem::GetExtension(absPath));
+            const std::string ext = util::StringUtils::ToLowerCopy(util::FileSystem::GetExtension(absPath));
             /// @note 参照されうるものだけ索引する。.fzasset/.mesh/.skel は原本の GUID から
-            ///       引かれるので個別の GUID を持たない。
-            ///       画像は .mat が guid: で参照するため索引が要る。
+            /// @note 引かれるので個別の GUID を持たない。
+            /// @note 画像は .mat が guid: で参照するため索引が要る。
             static constexpr std::string_view kIndexed[] = {
                 ".anim", ".mat",
                 ".png", ".jpg", ".jpeg", ".tga", ".dds", ".bmp", ".hdr", ".exr",
@@ -384,7 +472,7 @@ static void IndexBakedLibraryLocked(const std::string& libraryBakedRoot)
             if (!indexable) continue;
 
             /// @note 専用の error_code を使う。外側のイテレータ用 ec を使い回すと、relative の
-            ///       失敗でループ条件 (!ec) が偽になり走査が途中で止まる。
+            /// @note 失敗でループ条件 (!ec) が偽になり走査が途中で止まる。
             std::error_code relEc;
             const std::string subKey = util::FileSystem::NormalizePathSeparators(
                 util::FileSystem::PathToUtf8(fs::relative(file, it->path(), relEc)));
@@ -406,20 +494,127 @@ void AssetDatabase::IndexBakedLibrary(const std::string& libraryBakedRoot)
     IndexBakedLibraryLocked(libraryBakedRoot);
 }
 
+namespace {
+
+/// @brief Shared roots may be the Assets directory itself or a staged EngineAssets parent.
+std::string NormalizeSharedAssetsRoot(const std::string& sharedAssetsRoot)
+{
+    if (sharedAssetsRoot.empty()) return {};
+
+    std::filesystem::path root = util::FileSystem::PathFromUtf8(sharedAssetsRoot);
+    std::error_code error;
+    const std::filesystem::path nestedAssets = root / L"Assets";
+    if (std::filesystem::is_directory(nestedAssets, error) && !error)
+        root = nestedAssets;
+
+    error.clear();
+    const auto canonical = std::filesystem::weakly_canonical(root, error);
+    root = error ? root.lexically_normal() : canonical;
+
+    std::string normalized = NormalizePath(util::FileSystem::PathToUtf8(root));
+    if (!normalized.empty() && normalized.back() != '/') normalized.push_back('/');
+    return normalized;
+}
+
+/// @brief Shared assets are indexed from existing metadata only.
+/// @note This pass never repairs or writes files.
+void IndexSharedAssetsLocked()
+{
+    namespace fs = std::filesystem;
+    if (s_sharedAssetsRoot.empty()) return;
+
+    const fs::path root = util::FileSystem::PathFromUtf8(s_sharedAssetsRoot);
+    std::error_code error;
+    if (!fs::is_directory(root, error) || error) {
+        FBZZ_LOG_WARN("AssetDatabase: shared Engine assets unavailable [%s]",
+                      s_sharedAssetsRoot.c_str());
+        return;
+    }
+
+    const auto indexFile = [](const std::string& absPath) {
+        const std::string filename = util::StringUtils::ToLowerCopy(util::FileSystem::GetFilename(absPath));
+        if (!AssetDatabase::ShouldHaveMeta(filename)) return;
+        const std::string guid = ReadGuidFromMeta(absPath + ".meta");
+        if (!guid.empty()) RegisterSharedLocked(guid, absPath);
+    };
+
+    fs::recursive_directory_iterator it(
+        root, fs::directory_options::skip_permission_denied, error);
+    const fs::recursive_directory_iterator last;
+    while (!error && it != last) {
+        const fs::directory_entry& entry = *it;
+        if (entry.is_regular_file(error) && !error) {
+            const std::string absPath =
+                NormalizePath(util::FileSystem::PathToUtf8(entry.path()));
+            if (util::StringUtils::ToLowerCopy(util::FileSystem::GetExtension(absPath)) != ".meta")
+                indexFile(absPath);
+        } else if (error) {
+            break;
+        }
+        it.increment(error);
+    }
+    if (error) {
+        ClearSharedMappingsLocked();
+        FBZZ_LOG_ERROR("AssetDatabase: shared Engine asset scan failed [%s]",
+                       error.message().c_str());
+        return;
+    }
+
+    error.clear();
+    fs::recursive_directory_iterator dirIt(
+        root, fs::directory_options::skip_permission_denied, error);
+    while (!error && dirIt != last) {
+        const fs::directory_entry& entry = *dirIt;
+        std::error_code directoryError;
+        if (entry.is_directory(directoryError) && !directoryError) {
+            const std::string name = util::FileSystem::PathToUtf8(entry.path().filename());
+            if (!AssetDatabase::ShouldHaveFolderMeta(name)
+                || IsGeneratedModelPackageDir(entry.path())) {
+                dirIt.disable_recursion_pending();
+            } else {
+                const std::string absPath =
+                    NormalizePath(util::FileSystem::PathToUtf8(entry.path()));
+                const std::string guid = ReadGuidFromMeta(absPath + ".meta");
+                if (!guid.empty()) RegisterSharedLocked(guid, absPath);
+            }
+        }
+        dirIt.increment(error);
+    }
+    if (error) {
+        ClearSharedMappingsLocked();
+        FBZZ_LOG_ERROR("AssetDatabase: shared Engine folder scan failed [%s]",
+                       error.message().c_str());
+    }
+}
+
+}
+
 void AssetDatabase::Init(const std::string& assetsRoot)
+{
+    Init(assetsRoot, {});
+}
+
+void AssetDatabase::Init(const std::string& assetsRoot,
+                         const std::string& sharedAssetsRoot)
 {
     namespace fs = std::filesystem;
     std::lock_guard lock(s_mutex);
+    ++s_revision;
     s_guidToPath.clear();
     s_pathToGuid.clear();
+    s_sharedGuidToPath.clear();
+    s_sharedPathToGuid.clear();
+    s_ambiguousSharedGuids.clear();
     s_movedPathAliases.clear();
     s_conflicts.clear();
     s_assetsRoot = NormalizePath(assetsRoot);
     if (!s_assetsRoot.empty() && s_assetsRoot.back() != '/') s_assetsRoot.push_back('/');
+    s_sharedAssetsRoot = NormalizeSharedAssetsRoot(sharedAssetsRoot);
 
     const fs::path root = util::FileSystem::PathFromUtf8(assetsRoot);
     if (!util::FileSystem::Exists(root)) {
         FBZZ_LOG_WARN("AssetDatabase: assets root not found [%s]", assetsRoot.c_str());
+        IndexSharedAssetsLocked();
         s_initialized = true;
         return;
     }
@@ -432,9 +627,9 @@ void AssetDatabase::Init(const std::string& assetsRoot)
         const std::string metaPath = absPath + ".meta";
         std::string guid = ReadGuidFromMeta(metaPath);
         if (guid.empty()) {
-            /// @note FBX は Import 実行時に GUID を確定する。AssetBrowser を開いただけで
-            ///       原本の隣に .meta を生成すると、未 Import と Import 済みの境界が崩れる。
-            if (LowerCopy(util::FileSystem::GetExtension(absPath)) == ".fbx") return;
+            /// @note モデル原本は Import 実行時に GUID を確定する。AssetBrowser を開いただけで
+            /// @note 原本の隣に .meta を生成すると、未 Import と Import 済みの境界が崩れる。
+            if (asset::IsModelSourcePath(absPath)) return;
             /// @note 自己修復: .meta が無い / guid が無い対象に新規発行する。
             guid = GenerateGuid();
             if (!WriteGuidToMeta(metaPath, guid)) {
@@ -448,7 +643,7 @@ void AssetDatabase::Init(const std::string& assetsRoot)
 
     for (const fs::path& p : util::FileSystem::ListFilesRecursive(root)) {
         const std::string absPath = NormalizePath(util::FileSystem::PathToUtf8(p));
-        const std::string ext = LowerCopy(util::FileSystem::GetExtension(absPath));
+        const std::string ext = util::StringUtils::ToLowerCopy(util::FileSystem::GetExtension(absPath));
 
         /// @note 孤児 .meta の検出は索引構築と同じ 1 パスで行う (件数はログにだけ出す)。
         if (ext == ".meta") {
@@ -456,17 +651,17 @@ void AssetDatabase::Init(const std::string& assetsRoot)
             continue;
         }
 
-        if (!ShouldHaveMeta(LowerCopy(util::FileSystem::GetFilename(absPath)))) continue;
+        if (!ShouldHaveMeta(util::StringUtils::ToLowerCopy(util::FileSystem::GetFilename(absPath)))) continue;
         indexTarget(absPath);
     }
 
     /// @name フォルダの .meta
     /// @note フォルダも参照される (デフォルト保存先・検索スコープ)。パスで覚えるとリネームや
-    ///       移動で参照が切れるため、ファイルと同じ guid 方式に揃える。走査はファイルと分けて
-    ///       いる (ListFilesRecursive がファイルのみを返すため)。
+    /// @note 移動で参照が切れるため、ファイルと同じ guid 方式に揃える。走査はファイルと分けて
+    /// @note いる (ListFilesRecursive がファイルのみを返すため)。
     {
         /// @note range-for は begin() が反復子のコピーを返すため disable_recursion_pending が
-        ///       効かない。除外フォルダの配下を辿らないよう、明示的な while ループで回す。
+        /// @note 効かない。除外フォルダの配下を辿らないよう、明示的な while ループで回す。
         std::error_code ec;
         fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
         const fs::recursive_directory_iterator last;
@@ -495,13 +690,13 @@ void AssetDatabase::Init(const std::string& assetsRoot)
     FBZZ_LOG_INFO("AssetDatabase: indexed %zu assets (%zu meta healed, %zu orphan meta kept) under [%s]",
                   s_guidToPath.size(), healed, orphans, assetsRoot.c_str());
     /// @note 孤児が多い＝本体がローカルに揃っていない (LFS 未取得 / 素材が git 管理外) 状態。
-    ///       参照切れの原因がここにあると分かるよう、黙って進めずに一度だけ警告する。
+    /// @note 参照切れの原因がここにあると分かるよう、黙って進めずに一度だけ警告する。
     if (orphans > 0)
         FBZZ_LOG_WARN("AssetDatabase: %zu meta have no owner asset. "
                       "References to them stay unresolved until the assets are restored.",
                       orphans);
     /// @note 重複は 1 件ごとにエラーを出しているが、スキャン中の行は起動ログに流れて気づかれない。
-    ///       総数だけをもう一度、通知バーと同じ文言で残す。
+    /// @note 総数だけをもう一度、通知バーと同じ文言で残す。
     if (!s_conflicts.empty())
         FBZZ_LOG_ERROR("AssetDatabase: %zu duplicate guid(s). "
                        "References resolve to one side only \xe2\x80\x94 "
@@ -510,30 +705,50 @@ void AssetDatabase::Init(const std::string& assetsRoot)
 
     /// @name Library/Baked の生成物を導出 GUID で索引する
     /// @note Assets の後に索引する。同じ実体が両方に居る移行期に、Assets 側 (人が編集しうる方)
-    ///       の path→guid を優先させるため。RegisterLocked は先勝ちではないが、guid が違えば
-    ///       衝突しないので順序で意味を持つのは path→guid だけ。
+    /// @note の path→guid を優先させるため。RegisterLocked は先勝ちではないが、guid が違えば
+    /// @note 衝突しないので順序で意味を持つのは path→guid だけ。
     if (s_assetsRoot.size() > 7) {
         const std::string projectRoot = s_assetsRoot.substr(0, s_assetsRoot.size() - 7);
         IndexBakedLibraryLocked(projectRoot + "Library/Baked");
     }
+    IndexSharedAssetsLocked();
     s_indexDirty = true;
 }
 
 void AssetDatabase::Shutdown()
 {
     std::lock_guard lock(s_mutex);
+    if (s_initialized || !s_guidToPath.empty() || !s_pathToGuid.empty()
+        || !s_sharedGuidToPath.empty() || !s_sharedPathToGuid.empty()
+        || !s_ambiguousSharedGuids.empty() || !s_movedPathAliases.empty()
+        || !s_sharedAssetsRoot.empty())
+        ++s_revision;
     s_guidToPath.clear();
     s_pathToGuid.clear();
+    s_sharedGuidToPath.clear();
+    s_sharedPathToGuid.clear();
+    s_ambiguousSharedGuids.clear();
     s_movedPathAliases.clear();
     s_conflicts.clear();
+    s_sharedAssetsRoot.clear();
     s_initialized = false;
+}
+
+uint64_t AssetDatabase::Revision()
+{
+    std::lock_guard lock(s_mutex);
+    return s_revision;
 }
 
 std::string AssetDatabase::PathFromGuid(const std::string& guid)
 {
     std::lock_guard lock(s_mutex);
-    const auto it = s_guidToPath.find(LowerCopy(guid));
-    return it != s_guidToPath.end() ? it->second : std::string{};
+    const std::string key = util::StringUtils::ToLowerCopy(guid);
+    if (const auto it = s_guidToPath.find(key); it != s_guidToPath.end())
+        return it->second;
+    if (s_ambiguousSharedGuids.contains(key)) return {};
+    const auto shared = s_sharedGuidToPath.find(key);
+    return shared != s_sharedGuidToPath.end() ? shared->second : std::string{};
 }
 
 std::string AssetDatabase::GuidFromPath(const std::string& absPath)
@@ -541,8 +756,13 @@ std::string AssetDatabase::GuidFromPath(const std::string& absPath)
     const std::string existingGuid = TryGetGuidFromPath(absPath);
     if (!existingGuid.empty()) return existingGuid;
 
+    {
+        std::lock_guard lock(s_mutex);
+        if (IsUnderSharedAssetsLocked(absPath)) return {};
+    }
+
     /// @note 未登録: インデックス構築後に追加されたアセット。自己修復して登録する。
-    ///       実在しないパスに .meta を作らないよう必ず存在確認する。
+    /// @note 実在しないパスに .meta を作らないよう必ず存在確認する。
     if (!util::FileSystem::Exists(absPath)) return {};
 
     if (util::FileSystem::IsDirectory(absPath)) {
@@ -550,7 +770,7 @@ std::string AssetDatabase::GuidFromPath(const std::string& absPath)
         if (!ShouldHaveFolderMeta(util::FileSystem::PathToUtf8(dir.filename()))) return {};
         if (IsGeneratedModelPackageDir(dir)) return {};
     } else {
-        if (!ShouldHaveMeta(LowerCopy(util::FileSystem::GetFilename(absPath)))) return {};
+        if (!ShouldHaveMeta(util::StringUtils::ToLowerCopy(util::FileSystem::GetFilename(absPath)))) return {};
     }
 
     const std::string metaPath = absPath + ".meta";
@@ -569,6 +789,11 @@ std::string AssetDatabase::GuidFromPath(const std::string& absPath)
 
 std::string AssetDatabase::EnsureGuidMetaUnindexed(const std::string& absPath)
 {
+    {
+        std::lock_guard lock(s_mutex);
+        if (IsUnderSharedAssetsLocked(absPath))
+            return ReadGuidFromMeta(absPath + ".meta");
+    }
     if (!util::FileSystem::Exists(absPath)) return {};
     const std::string metaPath = absPath + ".meta";
     std::string guid = ReadGuidFromMeta(metaPath);
@@ -581,9 +806,14 @@ std::string AssetDatabase::TryGetGuidFromPath(const std::string& absPath)
 {
     {
         std::lock_guard lock(s_mutex);
-        const auto it = s_pathToGuid.find(PathKey(absPath));
+        const std::string key = PathKey(absPath);
+        const auto it = s_pathToGuid.find(key);
         if (it != s_pathToGuid.end()) return it->second;
-        const auto alias = s_movedPathAliases.find(PathKey(absPath));
+        const auto shared = s_sharedPathToGuid.find(key);
+        if (shared != s_sharedPathToGuid.end()
+            && !s_ambiguousSharedGuids.contains(shared->second))
+            return shared->second;
+        const auto alias = s_movedPathAliases.find(key);
         if (alias != s_movedPathAliases.end()) return alias->second;
     }
 
@@ -593,6 +823,10 @@ std::string AssetDatabase::TryGetGuidFromPath(const std::string& absPath)
     if (guid.empty()) return {};
 
     std::lock_guard lock(s_mutex);
+    if (IsUnderSharedAssetsLocked(absPath)) {
+        RegisterSharedLocked(guid, absPath);
+        return s_ambiguousSharedGuids.contains(guid) ? std::string{} : guid;
+    }
     RegisterLocked(guid, absPath);
     return guid;
 }
@@ -602,21 +836,22 @@ void AssetDatabase::OnAssetMoved(const std::string& oldAbsPath, const std::strin
     std::lock_guard lock(s_mutex);
 
     /// @note 単一ファイル、または移動元フォルダ自身の GUID を先に付け替える。フォルダにも
-    ///       .meta を発行しているため、フォルダ参照は配下のファイルとは別の GUID を持つ
-    ///       (従来は配下だけを更新し、フォルダ自身の参照が切れていた)。
+    /// @note .meta を発行しているため、フォルダ参照は配下のファイルとは別の GUID を持つ
+    /// @note (従来は配下だけを更新し、フォルダ自身の参照が切れていた)。
     const auto it = s_pathToGuid.find(PathKey(oldAbsPath));
     if (it != s_pathToGuid.end()) {
         const std::string guid = it->second;
-        s_movedPathAliases[PathKey(oldAbsPath)] = guid;
+        SetMappingLocked(s_movedPathAliases, PathKey(oldAbsPath), guid);
         s_pathToGuid.erase(it);
+        ++s_revision;
         RegisterLocked(guid, NormalizePath(newAbsPath));
         /// @note ファイルの移動ならここで完了。ディレクトリなら配下も続けて更新する。
         if (!util::FileSystem::IsDirectory(newAbsPath)) return;
     }
 
     /// @note ディレクトリ移動: 配下に登録された全アセットのパスを一括で付け替える。フォルダ
-    ///       ごと移動しても .meta は中身と一緒に動くため guid は不変で、索引だけ旧プレフィックス
-    ///       から新プレフィックスへ張り替えれば参照は生き続ける。
+    /// @note ごと移動しても .meta は中身と一緒に動くため guid は不変で、索引だけ旧プレフィックス
+    /// @note から新プレフィックスへ張り替えれば参照は生き続ける。
     const std::string oldPrefixKey = PathKey(oldAbsPath) + "/";
     const std::string newBase      = NormalizePath(newAbsPath) + "/";
     /// @note guid, 新絶対パス
@@ -624,10 +859,13 @@ void AssetDatabase::OnAssetMoved(const std::string& oldAbsPath, const std::strin
     for (auto iter = s_pathToGuid.begin(); iter != s_pathToGuid.end(); ) {
         if (iter->first.rfind(oldPrefixKey, 0) == 0) {
             /// @note 元の大文字小文字を保った登録パスから相対部分を取り出す (キーと同じ長さ)。
-            const std::string& stored = s_guidToPath[iter->second];
-            s_movedPathAliases[iter->first] = iter->second;
+            const auto [guidEntry, inserted] = s_guidToPath.try_emplace(iter->second);
+            if (inserted) ++s_revision;
+            const std::string& stored = guidEntry->second;
+            SetMappingLocked(s_movedPathAliases, iter->first, iter->second);
             moved.emplace_back(iter->second, newBase + stored.substr(oldPrefixKey.size()));
             iter = s_pathToGuid.erase(iter);
+            ++s_revision;
         } else {
             ++iter;
         }
@@ -649,6 +887,7 @@ void AssetDatabase::OnAssetRemoved(const std::string& absPath)
         if (iter->first == key || iter->first.rfind(prefix, 0) == 0) {
             removedGuids.push_back(iter->second);
             iter = s_pathToGuid.erase(iter);
+            ++s_revision;
         } else {
             ++iter;
         }
@@ -659,16 +898,19 @@ void AssetDatabase::OnAssetRemoved(const std::string& absPath)
         const auto guidIt = s_guidToPath.find(guid);
         if (guidIt != s_guidToPath.end()
             && (PathKey(guidIt->second) == key
-                || PathKey(guidIt->second).rfind(prefix, 0) == 0))
+                || PathKey(guidIt->second).rfind(prefix, 0) == 0)) {
             s_guidToPath.erase(guidIt);
+            ++s_revision;
+        }
     }
     for (auto iter = s_movedPathAliases.begin(); iter != s_movedPathAliases.end(); ) {
         const bool sameTree = iter->first == key || iter->first.rfind(prefix, 0) == 0;
         const bool sameGuid = std::find(removedGuids.begin(), removedGuids.end(), iter->second)
                               != removedGuids.end();
-        if (sameTree || sameGuid)
+        if (sameTree || sameGuid) {
             iter = s_movedPathAliases.erase(iter);
-        else
+            ++s_revision;
+        } else
             ++iter;
     }
 
@@ -685,9 +927,9 @@ std::vector<AssetDatabase::GuidConflict> AssetDatabase::GuidConflicts()
 {
     std::lock_guard lock(s_mutex);
     /// @note 記録した後にどちらかが消えた / 振り直された場合を、読み出しのたびに落とす。
-    ///       衝突が解けるきっかけ (外部ツールでの削除、手での .meta 編集) は索引を通らずに
-    ///       起きるため、「まだ残っているか」の判定は結局ディスクを読むしかなく、読む場所を
-    ///       ここ 1 つに寄せる。
+    /// @note 衝突が解けるきっかけ (外部ツールでの削除、手での .meta 編集) は索引を通らずに
+    /// @note 起きるため、「まだ残っているか」の判定は結局ディスクを読むしかなく、読む場所を
+    /// @note ここ 1 つに寄せる。
     std::erase_if(s_conflicts, [](const GuidConflict& c) {
         return ReadGuidFromMeta(c.keptPath + ".meta") != c.guid
             || ReadGuidFromMeta(c.duplicatePath + ".meta") != c.guid;
@@ -703,9 +945,9 @@ size_t AssetDatabase::GuidConflictCount()
 
 namespace {
 
-/// import 生成物のコンテナ `Library/Baked/<guid>/` を新しい guid の名前へ移す。
-/// 生成物が無い (未 import / 生成物を持たない種類) 場合も成功として扱う。
-/// s_mutex を «取っていない» 状態で呼ぶこと。AssetsRoot() が内部でロックを取る。
+/// @note import 生成物のコンテナ `Library/Baked/<guid>/` を新しい guid の名前へ移す。
+/// @note 生成物が無い (未 import / 生成物を持たない種類) 場合も成功として扱う。
+/// @note s_mutex を «取っていない» 状態で呼ぶこと。AssetsRoot() が内部でロックを取る。
 bool MoveBakedContainer(const std::string& oldGuid, const std::string& newGuid)
 {
     if (oldGuid.empty() || newGuid.empty() || oldGuid == newGuid) return true;
@@ -722,17 +964,25 @@ bool MoveBakedContainer(const std::string& oldGuid, const std::string& newGuid)
     if (!util::FileSystem::Exists(src)) return true;
 
     /// @note 新 guid は 128bit 乱数。既に居るのは «移送済み» か本物の衝突かの区別が付かない。
-    ///       どちらにせよ上書きは生成物を壊すので、振り直しごと失敗させる。
+    /// @note どちらにせよ上書きは生成物を壊すので、振り直しごと失敗させる。
     if (util::FileSystem::Exists(dst)) return false;
 
     return util::FileSystem::Rename(util::FileSystem::PathFromUtf8(src),
                                     util::FileSystem::PathFromUtf8(dst));
 }
 
-} // namespace
+}
 
 bool AssetDatabase::ReassignGuid(const std::string& absPath, std::string& outNewGuid)
 {
+    {
+        std::lock_guard lock(s_mutex);
+        if (IsUnderSharedAssetsLocked(absPath)) {
+            FBZZ_LOG_WARN("AssetDatabase: cannot reassign read-only Engine guid [%s]",
+                          absPath.c_str());
+            return false;
+        }
+    }
     if (!util::FileSystem::Exists(absPath)) return false;
 
     const std::string metaPath = absPath + ".meta";
@@ -740,9 +990,9 @@ bool AssetDatabase::ReassignGuid(const std::string& absPath, std::string& outNew
     const std::string newGuid  = GenerateGuid();
 
     /// @note guid は参照キーであると同時に import 生成物の «置き場所» でもある
-    ///       (`Library/Baked/<guid>/`)。.meta だけ書き換えると生成物が迷子になり、起動の
-    ///       たびに «未 import» と判定されて焼き直しが走り続けるため、先に move し、
-    ///       失敗したら guid も振り直さない。
+    /// @note (`Library/Baked/<guid>/`)。.meta だけ書き換えると生成物が迷子になり、起動の
+    /// @note たびに «未 import» と判定されて焼き直しが走り続けるため、先に move し、
+    /// @note 失敗したら guid も振り直さない。
     if (!MoveBakedContainer(oldGuid, newGuid)) {
         FBZZ_LOG_ERROR("AssetDatabase: cannot move baked container [%s -> %s]",
                        oldGuid.c_str(), newGuid.c_str());
@@ -761,12 +1011,15 @@ bool AssetDatabase::ReassignGuid(const std::string& absPath, std::string& outNew
     const std::string key = PathKey(absPath);
 
     /// @note 旧 guid の guid→path は «先勝ちした別の実体» を指していることがある。
-    ///       自分が指されている場合だけ外す。
+    /// @note 自分が指されている場合だけ外す。
     if (const auto it = s_pathToGuid.find(key); it != s_pathToGuid.end()) {
         if (const auto g = s_guidToPath.find(it->second);
-            g != s_guidToPath.end() && PathKey(g->second) == key)
+            g != s_guidToPath.end() && PathKey(g->second) == key) {
             s_guidToPath.erase(g);
+            ++s_revision;
+        }
         s_pathToGuid.erase(it);
+        ++s_revision;
     }
     RegisterLocked(newGuid, absPath);
 
@@ -775,7 +1028,7 @@ bool AssetDatabase::ReassignGuid(const std::string& absPath, std::string& outNew
     });
 
     /// @note 自分が先勝ち側だった場合、旧 guid の席が空く。同じ guid で弾かれていた実体を
-    ///       入れ直さないと、衝突を解いたのに誰も索引に載っていない状態になる。
+    /// @note 入れ直さないと、衝突を解いたのに誰も索引に載っていない状態になる。
     if (!oldGuid.empty()) {
         std::vector<std::string> pending;
         for (const GuidConflict& c : s_conflicts) {
@@ -797,7 +1050,7 @@ AssetDatabase::BakedSweepResult AssetDatabase::SweepOrphanedBaked(bool dryRun)
 
     /// @name 安全弁
     /// @note 索引が «全部読めている» ことだけを条件にする。ここを通れば、載っていない
-    ///       guid は本当に誰も名乗っていない。
+    /// @note guid は本当に誰も名乗っていない。
     std::unordered_set<std::string> live;
     std::string bakedRoot;
     {
@@ -840,7 +1093,7 @@ AssetDatabase::BakedSweepResult AssetDatabase::SweepOrphanedBaked(bool dryRun)
 
         /// @note ディレクトリ名が原本の guid。それ以外の名前には触らない。
         const std::string name =
-            LowerCopy(util::FileSystem::PathToUtf8(it->path().filename()));
+            util::StringUtils::ToLowerCopy(util::FileSystem::PathToUtf8(it->path().filename()));
         if (name.size() != 32) continue;
         if (!std::all_of(name.begin(), name.end(),
                          [](unsigned char c) { return std::isxdigit(c) != 0; })) continue;
@@ -870,7 +1123,7 @@ AssetDatabase::BakedSweepResult AssetDatabase::SweepOrphanedBaked(bool dryRun)
         ++result.removed;
         result.bytesFreed += bytes;
         result.removedGuids.push_back(
-            LowerCopy(util::FileSystem::PathToUtf8(dir.filename())));
+            util::StringUtils::ToLowerCopy(util::FileSystem::PathToUtf8(dir.filename())));
     }
 
     if (result.removed > 0)
@@ -895,19 +1148,19 @@ std::string AssetDatabase::AssetsRoot()
 
 namespace {
 
-/// s_assetsRoot (`<proj>/Assets/`) から `<proj>/` を作る。呼び出し側がロック済みである前提。
+/// @note s_assetsRoot (`<proj>/Assets/`) から `<proj>/` を作る。呼び出し側がロック済みである前提。
 std::string ProjectRootLocked()
 {
     /// @note "Assets/"
     constexpr size_t kAssetsLen = 7;
     if (s_assetsRoot.size() > kAssetsLen
-        && LowerCopy(s_assetsRoot.substr(s_assetsRoot.size() - kAssetsLen)) == "assets/")
+        && util::StringUtils::ToLowerCopy(s_assetsRoot.substr(s_assetsRoot.size() - kAssetsLen)) == "assets/")
         return s_assetsRoot.substr(0, s_assetsRoot.size() - kAssetsLen);
     return s_assetsRoot;
 }
 
-/// TOML の basic string へ落とす。パスは正規化済みで '/' 区切りなので、
-/// 実質エスケープが要るのは引用符だけだが、規格どおり両方処理する。
+/// @note TOML の basic string へ落とす。パスは正規化済みで '/' 区切りなので、
+/// @note 実質エスケープが要るのは引用符だけだが、規格どおり両方処理する。
 std::string TomlQuote(const std::string& value)
 {
     std::string out;
@@ -921,7 +1174,7 @@ std::string TomlQuote(const std::string& value)
     return out;
 }
 
-} // namespace
+}
 
 std::string AssetDatabase::ProjectRoot()
 {
@@ -935,11 +1188,11 @@ std::string AssetDatabase::GuidFromRef(std::string_view ref)
     ref.remove_prefix(kGuidPrefix.size());
 
     /// @note パスヒントとサブアセット接尾辞を落とす。guid は 32 桁 hex 固定なので、
-    ///       「hex が続く限り」で切れば区切り文字の種類に依存せず取り出せる。
+    /// @note 「hex が続く限り」で切れば区切り文字の種類に依存せず取り出せる。
     size_t length = 0;
     while (length < ref.size() && length < 32
            && std::isxdigit(static_cast<unsigned char>(ref[length]))) ++length;
-    return LowerCopy(std::string(ref.substr(0, length)));
+    return util::StringUtils::ToLowerCopy(std::string(ref.substr(0, length)));
 }
 
 std::string AssetDatabase::HintFromRef(std::string_view ref)
@@ -961,12 +1214,12 @@ void AssetDatabase::SaveIndexFile()
         projectRoot = ProjectRootLocked();
         if (projectRoot.empty()) return;
 
-        const std::string rootKey = LowerCopy(projectRoot);
+        const std::string rootKey = util::StringUtils::ToLowerCopy(projectRoot);
         entries.reserve(s_guidToPath.size());
         for (const auto& [guid, absPath] : s_guidToPath) {
             std::string relative = absPath;
             if (relative.size() > rootKey.size()
-                && LowerCopy(relative.substr(0, rootKey.size())) == rootKey)
+                && util::StringUtils::ToLowerCopy(relative.substr(0, rootKey.size())) == rootKey)
                 relative = relative.substr(rootKey.size());
             entries.emplace_back(guid, std::move(relative));
         }
@@ -974,7 +1227,7 @@ void AssetDatabase::SaveIndexFile()
     }
 
     /// @note パス順に並べる。関連するアセットが固まって読めるうえ、書き出すたびに
-    ///       行が入れ替わらないので差分としても意味を持つ。
+    /// @note 行が入れ替わらないので差分としても意味を持つ。
     std::sort(entries.begin(), entries.end(),
               [](const auto& a, const auto& b) { return a.second < b.second; });
 
@@ -1002,4 +1255,4 @@ void AssetDatabase::FlushIndexFile()
     SaveIndexFile();
 }
 
-} // namespace fbzz::asset
+}

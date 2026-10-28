@@ -1,16 +1,17 @@
 /// @file    LifetimeSystem.cpp
-/// @brief   LifetimeComponent を持つ GO の残り寿命を毎フレーム減算し、。
+/// @brief   寿命を減算し、Script と GameObject の遅延破棄を Cleanup で確定する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-10
 ///
-/// 0 以下になったら GameObject::Destroy でキューに積む。
-/// FlushDestroyQueue が実際の削除を行う。
+/// @note 0 以下になったら GameObject::Destroy でキューに積む。
+/// @note FlushDestroyQueue が実際の削除を行う。
 #include <Engine/Scene/Systems/LifetimeSystem.hpp>
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/LifetimeSystem.hpp"
 #include <Engine/Scene/Components/LifetimeComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include "../Managed/ManagedObjectControls.hpp"
 
 namespace fbzz::scene {
 
@@ -44,7 +45,8 @@ OrderingHints FlushDestroyQueueSystem::GetOrder() const
 
 void FlushDestroyQueueSystem::Update(SystemContext& ctx)
 {
+    managed_detail::ManagedObjectControls::FlushScriptRemovals(ctx.scene);
     ctx.scene.FlushDestroyQueue(ctx.dt);
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

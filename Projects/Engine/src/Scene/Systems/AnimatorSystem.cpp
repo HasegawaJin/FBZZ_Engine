@@ -3,6 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include "AnimationClipHelpers.hpp"
+#include "AnimationWorkTrace.hpp"
+#include "BoneCbBatch.hpp"
+#include "BoneBakePrepared.hpp"
+#include <Engine/Scene/BoneBakeRuntime.hpp>
 #include <Engine/Scene/SkinnedPoseBounds.hpp>
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
@@ -11,9 +16,14 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/MotionWarpComponent.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
+#include <Engine/Scene/PresentationControlPoints.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/AnimationPropertyBinding.hpp>
 #include <Engine/Asset/AnimationSampling.hpp>
@@ -25,11 +35,16 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <numeric>
+#include <span>
+#include <Engine/Core/Time.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <string>
 #include <string_view>
@@ -37,6 +52,8 @@
 #include <vector>
 
 namespace fbzz::scene {
+
+using animation_clip_detail::FindClipBySource;
 
 namespace {
 
@@ -511,9 +528,9 @@ math::Matrix4 SampleNodeLocal(const asset::SkeletonNode& node,
 NodeLocalPose SampleNodeLocalPose(const asset::SkeletonNode& node,
                                   const asset::AnimationClip& clip,
                                   double ticks,
-                                  const ResolvedRootMotion& rootMotion)
+                                  const ResolvedRootMotion& rootMotion,
+                                  const asset::NodeAnimationTrack* track)
 {
-    const auto* track = FindTrack(clip, node.name);
     if (!track) {
         return {
             node.bindTranslation,
@@ -530,6 +547,14 @@ NodeLocalPose SampleNodeLocalPose(const asset::SkeletonNode& node,
         StripRootMotionFromPose(node, rootMotion, translation, rotation);
     return { translation, rotation,
              SampleVectorKeys(track->scales, ticks, node.bindScale, track->interp) };
+}
+
+NodeLocalPose SampleNodeLocalPose(const asset::SkeletonNode& node,
+                                  const asset::AnimationClip& clip,
+                                  double ticks,
+                                  const ResolvedRootMotion& rootMotion)
+{
+    return SampleNodeLocalPose(node, clip, ticks, rootMotion, FindTrack(clip, node.name));
 }
 
 void UpdateWorldTransform(GameObject& go, const Transform& parentTransform)
@@ -747,6 +772,7 @@ bool EnsureBoneHierarchy(Scene& scene,
                          SkinnedMeshRenderer& smr,
                          const asset::Skeleton& skeleton)
 {
+    AnimationWorkScope hierarchyWork(AnimationWorkPart::BONE_HIERARCHY);
     if (smr.nodeEntities.size() == skeleton.nodes.size() &&
         std::all_of(smr.nodeEntities.begin(), smr.nodeEntities.end(),
                     [&scene](EntityID id) { return scene.GetGameObject(id) != nullptr; })) {
@@ -888,6 +914,11 @@ void ApplyBindPoseToBones(Scene& scene,
 /// @note 肉の厚みは Renderer ごとに違うので足さない。読む側 (ComputeSkinnedWorldBounds) が足す。
 void UpdateSkinnedBounds(AnimatorComponent& animator, const asset::Skeleton& skeleton)
 {
+    if (animator.boneBake.active) {
+        animator.skinnedBoundsCenter = math::Vector3::ZERO;
+        animator.skinnedBoundsRadius = animator.boneBake.radius;
+        return;
+    }
     UpdateSkinnedPoseBounds(animator, skeleton);
 }
 
@@ -968,6 +999,8 @@ void UploadBindPose(AnimatorComponent& animator,
                     renderer::ResourceManager& resources,
                     const asset::Skeleton* skeleton = nullptr)
 {
+    animator.skinnedBoundsRadius = 0.0f;
+    animator.boneMatrices.clear();
     SkinningCB cb{};
     for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
         cb.boneMatrices[i] = math::Matrix4::Identity();
@@ -982,6 +1015,9 @@ void UploadBindPose(AnimatorComponent& animator,
             cb.boneMatrices[i] = skeleton->referencePose[i];
     }
 
+    /// @note Count the existing API call and argument bytes only; no GPU transfer is inferred.
+    if (auto* row = CurrentAnimationWorkRow()) { ++row->bindPaletteUpdateCalls; row->bindPaletteApiBytes += sizeof(SkinningCB); }
+    BoneCbBatch::BeforeBoneHierarchy(resources);
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
@@ -990,22 +1026,47 @@ void UploadBindPose(AnimatorComponent& animator,
 void SnapshotPreviousBonePalette(AnimatorComponent& animator,
                                  renderer::ResourceManager& resources)
 {
+    if(auto* observation=CurrentAnimationActorRow()) {
+        observation->snapshotObserved=true; observation->previousValidBeforeSnapshot=animator.prevBoneMatricesValid;
+        observation->currentCountBeforeSnapshot=animator.boneMatrices.size(); observation->previousCountBeforeSnapshot=animator.prevBoneMatrices.size();
+        observation->key.previousHandleId=animator.prevSkinningBuffer.id; observation->key.previousHandleGeneration=animator.prevSkinningBuffer.gen;
+    }
+    auto& bake = animator.boneBake;
+    bake.previousPoseValid = bake.active && bake.source && !bake.invalidateHistory;
+    bake.previous = bake.previousPoseValid
+        ? BoneBakePoseState{bake.source, bake.target, bake.frame, bake.targetFrame, bake.blendWeight} : BoneBakePoseState{};
+    bake.gpuPalette = {}; bake.gpuPreviousPalette = {}; bake.gpuFrame = UINT64_MAX;
+    bake.gpuReady &= bake.gpuOwner == resources.GetInstanceId() && bake.gpuEpoch == resources.GetResetVersion();
+    bake.previousCpuDeferred = bake.cpuDeferred;
+    if (bake.cpuDeferred) { animator.prevBoneMatricesValid = bake.previousPoseValid; return; }
     if (animator.boneMatrices.empty() || !animator.prevSkinningBuffer.IsValid()) {
         animator.prevBoneMatricesValid = false;
         return;
     }
 
+    if(auto* observation=CurrentAnimationActorRow()) {
+        static_assert(asset::MAX_SKINNING_BONES==128);
+        observation->snapshotObserved=true; observation->snapshotGuardPassed=true;
+        observation->previousValidBeforeSnapshot=animator.prevBoneMatricesValid;
+        observation->currentCountBeforeSnapshot=animator.boneMatrices.size();
+        observation->previousCountBeforeSnapshot=animator.prevBoneMatrices.size();
+        observation->key.previousHandleId=animator.prevSkinningBuffer.id;
+        observation->key.previousHandleGeneration=animator.prevSkinningBuffer.gen;
+        observation->currentClampedCount=static_cast<uint32_t>((std::min)(animator.boneMatrices.size(),size_t{128}));
+        observation->previousClampedCount=static_cast<uint32_t>((std::min)(animator.prevBoneMatrices.size(),size_t{128}));
+        if(animator.prevBoneMatricesValid) {
+            const auto equality=animation_actor_detail::CompareEffectivePalettes(animator.boneMatrices,animator.prevBoneMatrices);
+            observation->desiredEqualityAvailable=true; observation->desiredEqual=equality.equal;
+            observation->compareArgumentBytes=equality.compareArgumentBytes;
+        }
+    }
+    AnimationWorkScope previousCbWork(AnimationWorkPart::PREVIOUS_CB);
     animator.prevBoneMatrices = animator.boneMatrices;
 
-    SkinningCB cb{};
-    for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
-        cb.boneMatrices[i] = math::Matrix4::Identity();
-    const size_t boneCount = (std::min)(animator.prevBoneMatrices.size(),
-                                        static_cast<size_t>(asset::MAX_SKINNING_BONES));
-    for (size_t i = 0; i < boneCount; ++i)
-        cb.boneMatrices[i] = animator.prevBoneMatrices[i];
-
-    resources.Update(animator.prevSkinningBuffer, &cb, sizeof(SkinningCB));
+    if (auto* row = CurrentAnimationWorkRow()) {
+        ++row->previousPaletteUpdateCalls; row->previousPaletteApiBytes += asset::MAX_SKINNING_BONES * sizeof(math::Matrix4);
+    }
+    BoneCbBatch::UpdatePalette(resources,animator.prevSkinningBuffer,animator.prevBoneMatrices);
     animator.prevBoneMatricesValid = true;
 }
 
@@ -1013,7 +1074,9 @@ void SnapshotPreviousBonePalette(AnimatorComponent& animator,
 /// @note clips を作り直すと clip ポインタが無効になるので、それをキーにする rootMotionSamples も捨てる。
 void LoadClips(AnimatorComponent& animator)
 {
+    animator.boneBake = {};
     animator.clips.clear();
+    animator.sharedClips.clear();
     animator.clipSourcePaths.clear();
     animator.rootMotionSamples.clear();
 
@@ -1069,19 +1132,20 @@ void LoadClips(AnimatorComponent& animator)
             }
             const auto* clip = asset::AssetManager::Get<asset::AnimationClip>(h);
             if (clip) {
-                animator.clips.push_back(*clip);
+                animator.sharedClips.push_back({h, {}, 0});
                 animator.clipSourcePaths.push_back(src);
             }
             continue;
         }
 
-        auto model = asset::AssetManager::LoadAndGet<asset::Model>(src);
+        const auto modelHandle = asset::AssetManager::Load<asset::Model>(src);
+        const auto* model = asset::AssetManager::Get(modelHandle);
         if (!model) {
             FBZZ_LOG_WARN("AnimatorSystem: clip source '%s' failed to load", src.c_str());
             continue;
         }
-        for (const auto& clip : model->clips) {
-            animator.clips.push_back(clip);
+        for (std::uint32_t ci = 0; ci < model->clips.size(); ++ci) {
+            animator.sharedClips.push_back({{}, modelHandle, ci});
             animator.clipSourcePaths.push_back(src);
         }
     }
@@ -1094,9 +1158,9 @@ void LoadClips(AnimatorComponent& animator)
 const asset::AnimationClip* FindClipByName(const AnimatorComponent& animator,
                                            const std::string& clipName)
 {
-    if (clipName.empty() || animator.clips.empty()) return nullptr;
+    if (clipName.empty() || animator.ClipCount() == 0) return nullptr;
 
-    for (const auto& c : animator.clips)
+    for (const auto& c : animator.Clips())
         if (c.name == clipName) return &c;
 
     auto toLower = [](std::string s) {
@@ -1104,16 +1168,14 @@ const asset::AnimationClip* FindClipByName(const AnimatorComponent& animator,
         return s;
     };
     const std::string lowerTarget = toLower(clipName);
-    for (const auto& c : animator.clips) {
+    for (const auto& c : animator.Clips()) {
         if (toLower(c.name).find(lowerTarget) != std::string::npos) return &c;
     }
 
     return nullptr;
 }
 
-const asset::AnimationClip* FindClipBySource(const AnimatorComponent& animator,
-                                             const std::string& sourcePath,
-                                             const std::string& clipName);
+
 
 /// @brief ステートのクリップを Source → 名前 → clipIndex の順で解決する。
 /// @note Mixamo はクリップ名が "mixamo.com" になり名前検索が効かないので clipIndex へ落とす。
@@ -1127,8 +1189,8 @@ const asset::AnimationClip* FindClipForState(const AnimatorComponent& animator,
         if (const auto* c = FindClipByName(animator, state.clipName)) return c;
     }
     const int idx = state.clipIndex;
-    if (idx >= 0 && idx < static_cast<int>(animator.clips.size()))
-        return &animator.clips[idx];
+    if (idx >= 0 && idx < static_cast<int>(animator.ClipCount()))
+        return &animator.ClipAt(idx);
     return nullptr;
 }
 
@@ -1155,24 +1217,8 @@ AnimatorParameter* FindParam(AnimatorComponent& animator, const std::string& par
     return nullptr;
 }
 
-/// @brief Source Path と Clip Name の組でクリップを解決する。
-/// @note 別 FBX が同名クリップを持っていても参照先を一意に保つため。
-/// @return 名前が合わなければ同 Source の先頭クリップ。Source 不一致なら nullptr。
-const asset::AnimationClip* FindClipBySource(const AnimatorComponent& animator,
-                                             const std::string& sourcePath,
-                                             const std::string& clipName)
-{
-    if (sourcePath.empty()) return nullptr;
-    const asset::AnimationClip* firstFromSource = nullptr;
-    for (size_t i = 0; i < animator.clips.size(); ++i) {
-        if (i >= animator.clipSourcePaths.size() ||
-            animator.clipSourcePaths[i] != sourcePath) continue;
-        if (!firstFromSource) firstFromSource = &animator.clips[i];
-        if (!clipName.empty() && animator.clips[i].name == clipName)
-            return &animator.clips[i];
-    }
-    return firstFromSource;
-}
+
+
 
 const asset::AnimationClip* FindClipForMotion(const AnimatorComponent& animator,
                                               const BlendTreeMotion& motion)
@@ -1184,8 +1230,8 @@ const asset::AnimationClip* FindClipForMotion(const AnimatorComponent& animator,
         if (const auto* clip = FindClipByName(animator, motion.clipName)) return clip;
     }
     if (motion.clipIndex >= 0 &&
-        motion.clipIndex < static_cast<int>(animator.clips.size()))
-        return &animator.clips[static_cast<size_t>(motion.clipIndex)];
+        motion.clipIndex < static_cast<int>(animator.ClipCount()))
+        return &animator.ClipAt(static_cast<size_t>(motion.clipIndex));
     return nullptr;
 }
 
@@ -1462,10 +1508,77 @@ float GetStateDuration(const AnimatorComponent& animator, const AnimationState& 
     return duration;
 }
 
+/// @brief 名前の値だけを保持し、借用ごとに可変クリップと骨格の対応を検証する。
+/// @note 完全一致と正規化一致は元の先頭 track を優先し、アセットや前 actor への参照を残さない。
+class NodeTrackBinding {
+public:
+    void Bind(const asset::AnimationClip* clip, const std::vector<std::string>& nodeNames,
+              const std::vector<std::string>& canonicalNodeNames, uint64_t nodeNameVersion)
+    {
+        const size_t trackCount = clip ? clip->tracks.size() : 0;
+        bool tracksChanged = m_trackNames.size() != trackCount;
+        for (size_t index = 0; !tracksChanged && index < trackCount; ++index)
+            tracksChanged = m_trackNames[index] != clip->tracks[index].nodeName;
+        if (!tracksChanged && m_nodeNameVersion == nodeNameVersion) return;
+
+        if (tracksChanged) {
+            m_trackNames.resize(trackCount);
+            m_canonicalTrackNames.resize(trackCount);
+            m_exactOrder.resize(trackCount);
+            m_canonicalOrder.resize(trackCount);
+            for (size_t index = 0; index < trackCount; ++index) {
+                m_trackNames[index] = clip->tracks[index].nodeName;
+                m_canonicalTrackNames[index] = asset::CanonicalNodeName(m_trackNames[index]);
+                m_exactOrder[index] = index;
+                m_canonicalOrder[index] = index;
+            }
+            const auto sortByName = [](auto& order, const auto& names) {
+                std::sort(order.begin(), order.end(), [&names](size_t left, size_t right) {
+                    return names[left] == names[right] ? left < right : names[left] < names[right];
+                });
+            };
+            sortByName(m_exactOrder, m_trackNames);
+            sortByName(m_canonicalOrder, m_canonicalTrackNames);
+        }
+
+        m_nodeTrackIndices.resize(nodeNames.size());
+        for (size_t index = 0; index < nodeNames.size(); ++index) {
+            size_t track = FindIndex(m_exactOrder, m_trackNames, nodeNames[index]);
+            if (track == NO_TRACK)
+                track = FindIndex(m_canonicalOrder, m_canonicalTrackNames, canonicalNodeNames[index]);
+            m_nodeTrackIndices[index] = track;
+        }
+        m_nodeNameVersion = nodeNameVersion;
+    }
+
+    const asset::NodeAnimationTrack* Resolve(const asset::AnimationClip& clip, size_t nodeIndex) const
+    {
+        const size_t index = m_nodeTrackIndices[nodeIndex];
+        return index < clip.tracks.size() ? &clip.tracks[index] : nullptr;
+    }
+
+private:
+    static constexpr size_t NO_TRACK = (std::numeric_limits<size_t>::max)();
+    static size_t FindIndex(const std::vector<size_t>& order, const std::vector<std::string>& names,
+                            const std::string& name)
+    {
+        const auto found = std::lower_bound(order.begin(), order.end(), name,
+            [&names](size_t index, const std::string& target) { return names[index] < target; });
+        return found != order.end() && names[*found] == name ? *found : NO_TRACK;
+    }
+    std::vector<std::string> m_trackNames;
+    std::vector<std::string> m_canonicalTrackNames;
+    std::vector<size_t> m_exactOrder;
+    std::vector<size_t> m_canonicalOrder;
+    std::vector<size_t> m_nodeTrackIndices;
+    uint64_t m_nodeNameVersion = (std::numeric_limits<uint64_t>::max)();
+};
+
 /// @brief 加重クリップ集合からノード 1 つのローカル姿勢を合成する。位置・スケールは線形、回転は逐次 Slerp。
 /// @return 有効なクリップが無ければバインド姿勢。
 NodeLocalPose BlendNodePose(const asset::SkeletonNode& node,
-                            const std::vector<WeightedClip>& clips)
+                            const std::vector<WeightedClip>& clips,
+                            const std::vector<NodeTrackBinding>* bindings = nullptr, size_t nodeIndex = 0)
 {
     NodeLocalPose blended{};
     blended.translation = math::Vector3::ZERO;
@@ -1473,10 +1586,13 @@ NodeLocalPose BlendNodePose(const asset::SkeletonNode& node,
     bool hasRotation = false;
     float accumulatedRotationWeight = 0.0f;
 
-    for (const auto& weighted : clips) {
+    for (size_t clipIndex = 0; clipIndex < clips.size(); ++clipIndex) {
+        const auto& weighted = clips[clipIndex];
         if (!weighted.clip || weighted.weight <= math::EPSILON) continue;
+        const auto* track = bindings ? (*bindings)[clipIndex].Resolve(*weighted.clip, nodeIndex)
+                                     : FindTrack(*weighted.clip, node.name);
         const NodeLocalPose pose = SampleNodeLocalPose(
-            node, *weighted.clip, weighted.ticks, weighted.rootMotion);
+            node, *weighted.clip, weighted.ticks, weighted.rootMotion, track);
         blended.translation += pose.translation * weighted.weight;
         blended.scale += pose.scale * weighted.weight;
         if (!hasRotation) {
@@ -1499,13 +1615,101 @@ NodeLocalPose BlendNodePose(const asset::SkeletonNode& node,
     return blended;
 }
 
+/// @brief 1 actor の連続した FK と Bone 適用だけで合成済みローカル姿勢を共有する。
+/// @note 入力参照は保存せず、次 actor には名前・対応添字・作業配列の容量だけを再利用する。
+/// @note マスク IO のログ sink が再入しても、外側の保存域を移動・上書きしない。
+class BlendedLocalPoseWorkspace {
+public:
+    BlendedLocalPoseWorkspace(const asset::Skeleton& skeleton, const std::vector<WeightedClip>& clips)
+    {
+        auto& pool = GetPool();
+        if (pool.depth == pool.entries.size())
+            pool.entries.push_back(std::make_unique<Storage>());
+        m_storage = pool.entries[pool.depth].get();
+        const size_t nodeCount = skeleton.nodes.size();
+        bool nodesChanged = m_storage->nodeNames.size() != nodeCount;
+        for (size_t index = 0; !nodesChanged && index < nodeCount; ++index)
+            nodesChanged = m_storage->nodeNames[index] != skeleton.nodes[index].name;
+        if (nodesChanged) {
+            ++m_storage->nodeNameVersion;
+            m_storage->nodeNames.resize(nodeCount);
+            m_storage->canonicalNodeNames.resize(nodeCount);
+            for (size_t index = 0; index < nodeCount; ++index) {
+                m_storage->nodeNames[index] = skeleton.nodes[index].name;
+                m_storage->canonicalNodeNames[index] = asset::CanonicalNodeName(skeleton.nodes[index].name);
+            }
+        }
+        if (m_storage->trackBindings.size() < clips.size())
+            m_storage->trackBindings.resize(clips.size());
+        for (size_t index = 0; index < clips.size(); ++index)
+            m_storage->trackBindings[index].Bind(clips[index].clip, m_storage->nodeNames,
+                                                 m_storage->canonicalNodeNames, m_storage->nodeNameVersion);
+        m_storage->poses.resize(nodeCount);
+        m_storage->resolved.assign(nodeCount, 0);
+        m_storage->evaluationVisited.assign(nodeCount, 0);
+        m_storage->propagationVisited.assign(nodeCount, 0);
+        ++pool.depth;
+    }
+    ~BlendedLocalPoseWorkspace()
+    {
+        m_storage->poses.clear();
+        m_storage->resolved.clear();
+        --GetPool().depth;
+    }
+    BlendedLocalPoseWorkspace(const BlendedLocalPoseWorkspace&) = delete;
+    BlendedLocalPoseWorkspace& operator=(const BlendedLocalPoseWorkspace&) = delete;
+
+    /// @pre 共有が有効な間、nodeIndex は借用開始時の skeleton.nodes の有効添字。
+    /// @note FK 未到達ノードは Bone の実体確認後に初めて評価し、従来の欠損ノード fallback を保つ。
+    NodeLocalPose Sample(size_t nodeIndex, const asset::SkeletonNode& node,
+                         const std::vector<WeightedClip>& clips)
+    {
+        if (!m_reuse) return BlendNodePose(node, clips);
+        if (m_storage->resolved[nodeIndex] == 0) {
+            m_storage->poses[nodeIndex] = BlendNodePose(node, clips, &m_storage->trackBindings, nodeIndex);
+            m_storage->resolved[nodeIndex] = 1;
+        }
+        return m_storage->poses[nodeIndex];
+    }
+    void Invalidate()
+    {
+        m_reuse = false;
+    }
+    std::vector<uint8_t>& EvaluationVisited() { return m_storage->evaluationVisited; }
+    std::vector<uint8_t>& PropagationVisited() { return m_storage->propagationVisited; }
+
+private:
+    struct Storage {
+        std::vector<NodeLocalPose> poses;
+        std::vector<uint8_t> resolved;
+        std::vector<uint8_t> evaluationVisited;
+        std::vector<uint8_t> propagationVisited;
+        std::vector<std::string> nodeNames;
+        std::vector<std::string> canonicalNodeNames;
+        std::vector<NodeTrackBinding> trackBindings;
+        uint64_t nodeNameVersion = 0;
+    };
+    struct Pool {
+        std::vector<std::unique_ptr<Storage>> entries;
+        size_t depth = 0;
+    };
+    static Pool& GetPool()
+    {
+        static thread_local Pool pool;
+        return pool;
+    }
+    Storage* m_storage = nullptr;
+    bool m_reuse = true;
+};
+
 void EvaluateNBlendedNodeRecursive(const asset::Skeleton& skeleton,
                                    const std::vector<WeightedClip>& clips,
                                    int nodeIndex,
                                    const math::Matrix4& parentGlobal,
                                    std::vector<math::Matrix4>& palette,
                                    std::vector<math::Matrix4>& nodeGlobals,
-                                   std::vector<uint8_t>& visited)
+                                   std::vector<uint8_t>& visited,
+                                   BlendedLocalPoseWorkspace& localPoses, AnimationWorkRow* observation)
 {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(skeleton.nodes.size())) return;
     /// @note 壊れたキャッシュの循環参照でフレームが返らなくならないよう、各ノードは一度だけ処理する。
@@ -1513,7 +1717,8 @@ void EvaluateNBlendedNodeRecursive(const asset::Skeleton& skeleton,
         return;
     visited[static_cast<size_t>(nodeIndex)] = 1;
     const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
-    const NodeLocalPose blended = BlendNodePose(node, clips);
+    const NodeLocalPose blended =
+        localPoses.Sample(static_cast<size_t>(nodeIndex), node, clips);
     const math::Matrix4 global =
         parentGlobal * math::Matrix4::TRS(
             blended.translation, blended.rotation, blended.scale);
@@ -1526,24 +1731,27 @@ void EvaluateNBlendedNodeRecursive(const asset::Skeleton& skeleton,
         const auto& bone = skeleton.bones[static_cast<size_t>(node.boneIndex)];
         palette[static_cast<size_t>(node.boneIndex)] =
             skeleton.rootInverseTransform * global * bone.offsetMatrix;
+        /// @note Valid computed FK writes only; no skeleton-size/capacity proxy and no extra bone traversal.
+        if (observation) ++observation->legacyEvaluatedBoneWrites;
     }
     for (int child : node.children)
         EvaluateNBlendedNodeRecursive(
-            skeleton, clips, child, global, palette, nodeGlobals, visited);
+            skeleton, clips, child, global, palette, nodeGlobals, visited, localPoses, observation);
 }
 
 void ApplyNBlendedPoseToBones(Scene& scene,
                               const asset::Skeleton& skeleton,
                               const std::vector<WeightedClip>& clips,
                               SkinnedMeshRenderer& smr,
-                              const asset::AvatarMaskAsset* baseMask)
+                              const asset::AvatarMaskAsset* baseMask,
+                              BlendedLocalPoseWorkspace& localPoses)
 {
     for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
         if (i >= smr.nodeEntities.size()) continue;
         GameObject* boneObject = scene.GetGameObject(smr.nodeEntities[i]);
         if (!boneObject) continue;
         const asset::SkeletonNode& node = skeleton.nodes[i];
-        const NodeLocalPose pose = BlendNodePose(node, clips);
+        const NodeLocalPose pose = localPoses.Sample(i, node, clips);
 
         /// @note マスク重み 1 未満はバインド姿勢へ寄せる。前フレーム姿勢を残すと上位レイヤーが weight 0 になった瞬間に固まる。
         float weight = 1.0f;
@@ -2052,7 +2260,8 @@ math::Vector3 ApplyMotionWarp(MotionWarpComponent& warp,
 
 /// @brief 合成済み delta を Animator の出力へ書き、mode に応じて Transform / RigidBody へ適用する。
 /// @pre ポーズ評価より前に呼ぶ (適用後の world でボーンを伝播させるため)。
-void ApplyRootMotionResult(AnimatorComponent& animator,
+void ApplyRootMotionResult(Scene& scene,
+                           AnimatorComponent& animator,
                            GameObject& owner,
                            const RootMotionDelta& rawDelta,
                            float dt)
@@ -2078,6 +2287,10 @@ void ApplyRootMotionResult(AnimatorComponent& animator,
     math::Vector3 worldDelta = target.transform.worldRotation * localDelta;
 
     if (auto* warp = owner.GetComponent<MotionWarpComponent>()) {
+        if (warp->runtimeTargetSource == MotionWarpTargetSource::POINT_OBJECT
+            && warp->targetPointMode == MotionWarpPointMode::LIVE) {
+            static_cast<void>(RefreshLiveMotionWarpTarget(scene, owner.GetID(), *warp));
+        }
         const math::Vector3 correction = ApplyMotionWarp(
             *warp, target, target.transform.worldPosition + worldDelta,
             localRotation, dt);
@@ -2159,7 +2372,8 @@ void DispatchAnimatorMove(GameObject& owner, const AnimatorComponent& animator)
 
 /// @brief ルートモーションの抽出・適用・Script 通知をまとめて行う。
 /// @pre ポーズ評価より前に呼ぶ。
-void ProcessRootMotion(AnimatorComponent& animator,
+void ProcessRootMotion(Scene& scene,
+                       AnimatorComponent& animator,
                        GameObject& owner,
                        const std::vector<WeightedClip>& clips,
                        float dt)
@@ -2167,7 +2381,7 @@ void ProcessRootMotion(AnimatorComponent& animator,
     const std::uint64_t frame = Time::frameCount;
     const RootMotionDelta delta = AccumulateRootMotion(animator, clips, frame);
     PruneRootMotionSamples(animator, frame);
-    ApplyRootMotionResult(animator, owner, delta, dt);
+    ApplyRootMotionResult(scene, animator, owner, delta, dt);
     DispatchAnimatorMove(owner, animator);
 }
 
@@ -2623,14 +2837,99 @@ static void ApplyAnimationLayers(AnimatorComponent& animator,
 }
 
 /// @brief Base Layer を評価し、ルートモーション適用 → ボーン姿勢 → パレット構築まで行う。
+
+/// @note Conservative lane for the one-shot experiment; callback-bearing clips and rig/effect paths use the original cadence.
+static bool PhaseEligible(const AnimatorComponent& animator,GameObject& owner,const SkinnedMeshRenderer& smr,
+                          bool safeLod,float interval)
+{
+    if(!safeLod || !animator.poseLodEnabled || !std::isfinite(interval) || interval<=math::EPSILON || interval>1.0f
+        || animator.boneBakeMode!=static_cast<int>(BoneBakeMode::LEGACY) || animator.boneBake.active
+        || !animator.baseLayerMask.path.empty() || !animator.layers.empty() || animator.externalPose
+        || animator.rootMotion.Extracts() || !animator.clipsLoaded || animator.ClipCount()==0
+        || animator.appliedAssetGeneration!=asset::AssetManager::GetAssetGeneration()
+        || animator.loadedControllerPath!=animator.controllerPath || !animator.blendToState.empty()
+        || !owner.activeInHierarchy() || !animator.enabled || !smr.morphWeights.empty()
+        || owner.GetComponent<IKSolverComponent>() || owner.GetComponent<SpringBoneComponent>()
+        || owner.GetComponent<MotionWarpComponent>() || !FindState(animator,animator.currentStateName))return false;
+    for(const auto& clip:animator.Clips())
+        if(clip.hasRootMotion || !clip.events.empty() || !clip.propertyTracks.empty())return false;
+    return true;
+}
+static bool PhaseHierarchyEligible(Scene& scene,const asset::Skeleton& skeleton,const SkinnedMeshRenderer& smr)
+{
+    if(skeleton.rootNodeIndex<0 || static_cast<size_t>(skeleton.rootNodeIndex)>=skeleton.nodes.size()
+        || smr.nodeEntities.size()!=skeleton.nodes.size() || skeleton.bones.empty())return false;
+    for(EntityID id:smr.nodeEntities) {
+        auto* object=scene.GetGameObject(id);
+        if(!object || object->GetComponent<IKSolverComponent>() || object->GetComponent<SpringBoneComponent>()
+            || object->GetComponent<MotionWarpComponent>())return false;
+    }
+    for(size_t bone=0;bone<(std::min)(skeleton.bones.size(),size_t{asset::MAX_SKINNING_BONES});++bone)
+        if(skeleton.bones[bone].nodeIndex<0 || static_cast<size_t>(skeleton.bones[bone].nodeIndex)>=skeleton.nodes.size())return false;
+    return true;
+}
+/// @note Explicit completion witness: no bind/bake/rest early return reaches this check; complete live hierarchy and effective bones are required.
+static bool SuccessfulPhaseLegacyPose(Scene& scene,const asset::Skeleton& skeleton,const SkinnedMeshRenderer& smr,
+                                     const AnimatorComponent& animator,const std::vector<uint8_t>& evaluated,
+                                     const std::vector<uint8_t>& propagated)
+{
+    const size_t bones=(std::min)(skeleton.bones.size(),size_t{asset::MAX_SKINNING_BONES});
+    if(!bones || animator.boneMatrices.size()!=bones || animator.nodeGlobalTransforms.size()!=skeleton.nodes.size()
+        || smr.nodeEntities.size()<skeleton.nodes.size() || evaluated.size()!=skeleton.nodes.size()
+        || propagated.size()!=skeleton.nodes.size())return false;
+    for(size_t node=0;node<skeleton.nodes.size();++node) {
+        auto* object=scene.GetGameObject(smr.nodeEntities[node]);
+        if(!object || !evaluated[node] || !propagated[node] || object->GetComponent<IKSolverComponent>()
+            || object->GetComponent<SpringBoneComponent>() || object->GetComponent<MotionWarpComponent>())return false;
+    }
+    for(size_t bone=0;bone<bones;++bone)
+        if(skeleton.bones[bone].nodeIndex<0 || static_cast<size_t>(skeleton.bones[bone].nodeIndex)>=skeleton.nodes.size())return false;
+    return true;
+}
+struct PhaseRun {
+    animation_phase_detail::Ticket ticket;
+    animation_phase_detail::RefreshOutcome outcome;
+    bool creditDue=false;
+};
+static animation_phase_detail::Key PhaseKey(Scene& scene,EntityID id)
+{
+    return {scene.GetComponentLifetime<AnimatorComponent>(id),id.index,id.generation};
+}
+static animation_phase_detail::Source PhaseSource(Scene& scene,renderer::ResourceManager& resources,
+                                                const AnimatorComponent& animator,const SkinnedMeshRenderer& renderer,EntityID rendererID)
+{
+    animation_phase_detail::Source source{resources.FrameStamp(),Time::frameCount,scene.GetRenderSceneGeneration(),resources.GetInstanceId(),resources.GetResetVersion()};
+    source.assetGeneration=static_cast<uint64_t>(asset::AssetManager::GetAssetGeneration());
+    source.rendererLifetime=scene.GetComponentLifetime<SkinnedMeshRenderer>(rendererID);
+    source.rendererIndex=rendererID.index;source.rendererGeneration=rendererID.generation;
+    /// @note Numeric identity witnesses are never dereferenced or used as lifetime keys; the renderer is live at this read.
+    source.modelIdentity=static_cast<uint64_t>(reinterpret_cast<uintptr_t>(renderer.model));
+    source.skeletonIdentity=renderer.model?static_cast<uint64_t>(reinterpret_cast<uintptr_t>(renderer.model->skeleton.get())):0;
+    const float config[]={animator.poseLodNearDistance,animator.poseLodFarDistance,animator.poseLodMidInterval,
+        animator.poseLodFarInterval,animator.localTimeScale,animator.speed};
+    for(size_t index=0;index<source.lodSettings.size();++index)std::memcpy(&source.lodSettings[index],&config[index],sizeof(float));
+    return source;
+}
+static SkinnedMeshRenderer* LivePhaseRenderer(GameObject& owner,EntityID& rendererID)
+{
+    if(auto* renderer=owner.GetComponent<SkinnedMeshRenderer>()){rendererID=owner.GetID();return renderer;}
+    for(int child=0;child<owner.GetChildCount();++child)
+        if(auto* object=owner.GetChild(child))if(auto* renderer=object->GetComponent<SkinnedMeshRenderer>()){rendererID=object->GetID();return renderer;}
+    return nullptr;
+}
+
 static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
                                         const asset::Skeleton& skeleton,
                                         Scene& scene,
                                         GameObject& go,
                                         SkinnedMeshRenderer& smr,
                                         renderer::ResourceManager& resources,
-                                        float dt)
+                                        float dt, bool evaluatePose, bool allowBoneBake,
+                                        BoneBakeFallback bakeFallback, bool lodGatePassed, bool reducedInterval,
+                                        animation_phase_detail::RefreshOutcome* phaseOutcome=nullptr)
 {
+    {
+    AnimationWorkScope stateWork(AnimationWorkPart::STATE_MACHINE);
     InitStateMachine(animator);
     UpdateBlendTreeDamping(animator, dt);
     UpdateStateMachine(animator, dt);
@@ -2641,6 +2940,53 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
             AdvanceBlendTreePhase(animator, *nextState, animator.blendToTime, dt);
     }
 
+    }
+
+    /// @note Baked LOD retains one publication for CPU palettes, GPU replay and bounds; validation never advances its sampled frame.
+    bool holdBakedPose = false;
+    if (!evaluatePose && lodGatePassed && reducedInterval && allowBoneBake && animator.boneBake.active
+        && animator.poseStateName == animator.currentStateName && animator.blendToState.empty()) {
+        AnimationWorkScope clipWork(AnimationWorkPart::CLIP_SELECTION);
+        if (const auto* state = FindState(animator, animator.currentStateName)) {
+            const auto clips = BuildStateClips(animator, *state, animator.stateTime);
+            std::array<BoneBakeClipInput, 2> inputs{};
+            size_t count = 0;
+            bool supported = true;
+            for (const auto& weighted : clips) {
+                if (weighted.rootMotion.HasTrack()) { supported = false; break; }
+                if (!weighted.clip || weighted.weight <= math::EPSILON) continue;
+                if (count == inputs.size()) { supported = false; break; }
+                inputs[count++] = {weighted.clip, weighted.ticks, weighted.weight};
+            }
+            holdBakedPose = supported && CanHoldBoneBake(animator, *smr.model,
+                std::span<const BoneBakeClipInput>(inputs.data(), count));
+        }
+    }
+    /// @note Transitions and lost bake eligibility refresh immediately; held poses retain their existing bounds and GPU outputs.
+    /// @note A stable CPU fallback in mode 3 keeps the ordinary distance LOD; leaving a live bake or losing history refreshes immediately.
+    const bool forceBakeRefresh = animator.boneBake.active
+        || (animator.boneBakeMode != static_cast<int>(BoneBakeMode::LEGACY)
+            && animator.boneBakeMode != static_cast<int>(BoneBakeMode::GPU_POSE_SHARED))
+        || (animator.boneBakeMode == static_cast<int>(BoneBakeMode::GPU_POSE_SHARED) && !animator.prevBoneMatricesValid);
+    animator.poseEvaluatedThisFrame = evaluatePose || animator.poseStateName != animator.currentStateName
+        || !animator.blendToState.empty() || (!holdBakedPose && forceBakeRefresh);
+    if(auto* observation=CurrentAnimationActorRow()) {
+        observation->actualDecisionAvailable=true; observation->actualRefresh=animator.poseEvaluatedThisFrame;
+        observation->forceReasonsAvailable=true;
+        observation->forceReasons=(animator.poseStateName!=animator.currentStateName?animation_actor_detail::STATE_CHANGED:0u)
+            |(!animator.blendToState.empty()?animation_actor_detail::BLENDING:0u)
+            |(!holdBakedPose && animator.boneBakeMode!=static_cast<int>(BoneBakeMode::LEGACY)?animation_actor_detail::NON_LEGACY_MODE:0u)
+            |(!holdBakedPose && animator.boneBake.active?animation_actor_detail::BAKED_ACTIVE:0u);
+    }
+    if (auto* row = CurrentAnimationWorkRow()) row->CountPoseDecision(lodGatePassed, reducedInterval, animator.poseEvaluatedThisFrame);
+    if(phaseOutcome)phaseOutcome->refreshEntered=animator.poseEvaluatedThisFrame;
+    if (!animator.poseEvaluatedThisFrame) return;
+    animator.boneBake.active = false;
+    animator.boneBake.fallback = bakeFallback;
+    animator.poseStateName = animator.currentStateName;
+    animator.poseUpdateElapsed = 0.0f;
+    ++animator.poseEvaluationCount;
+
     const AnimationState* curSt = FindState(animator, animator.currentStateName);
     animator.currentBlendWeights.clear();
     animator.currentBlendDuration = 0.0f;
@@ -2648,23 +2994,35 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     /// @note 後段の Layer / IK が読むので、配列とボーン階層は早期 return より前に必ず用意する。
     const size_t boneCount = (std::min)(skeleton.bones.size(),
                                         static_cast<size_t>(asset::MAX_SKINNING_BONES));
-    animator.boneMatrices.assign(boneCount, math::Matrix4::Identity());
-    animator.nodeGlobalTransforms.assign(skeleton.nodes.size(), math::Matrix4::Identity());
+    const bool retainGpuSeed = allowBoneBake && animator.boneBakeMode == static_cast<int>(BoneBakeMode::GPU_POSE_SHARED)
+        && animator.boneBake.gpuReady && animator.boneMatrices.size() == boneCount
+        && animator.nodeGlobalTransforms.size() == skeleton.nodes.size();
+    if (!retainGpuSeed) {
+        animator.boneMatrices.assign(boneCount, math::Matrix4::Identity());
+        animator.nodeGlobalTransforms.assign(skeleton.nodes.size(), math::Matrix4::Identity());
+    }
     if (skeleton.rootNodeIndex < 0 ||
         skeleton.rootNodeIndex >= static_cast<int>(skeleton.nodes.size())) {
         UploadBindPose(animator, resources, &skeleton);
-        ProcessRootMotion(animator, go, {}, dt);
+        ProcessRootMotion(scene, animator, go, {}, dt);
         return;
     }
-    if (!EnsureBoneHierarchy(scene, go, smr, skeleton)) {
-        UploadBindPose(animator, resources, &skeleton);
-        ProcessRootMotion(animator, go, {}, dt);
-        return;
+    bool hierarchyReady = false;
+    const auto ensureHierarchy = [&]() {
+        /// @note Existing bindings only update numeric/name fields; any missing node reopens the callback-capable creation path.
+        if (smr.nodeEntities.size() != skeleton.nodes.size() || !std::all_of(smr.nodeEntities.begin(), smr.nodeEntities.end(),
+            [&scene](EntityID entity) { return scene.GetGameObject(entity) != nullptr; })) BoneCbBatch::BeforeBoneHierarchy(resources);
+        if (!hierarchyReady) hierarchyReady = EnsureBoneHierarchy(scene,go,smr,skeleton);
+        return hierarchyReady;
+    };
+    if ((!allowBoneBake || animator.rootMotion.Extracts()) && !ensureHierarchy()) {
+        UploadBindPose(animator,resources,&skeleton); ProcessRootMotion(scene,animator,go,{},dt); return;
     }
 
     /// @note externalPose は Script が骨のローカルを直接書く構成。バインド姿勢へ戻さず、今の骨からパレットを組む。
     /// @note パレットを埋めるのは Animator だけなので、Animator を外す運用ではメッシュが動かない。
     const auto applyRestPose = [&]() {
+        if (!ensureHierarchy()) { UploadBindPose(animator,resources,&skeleton); return; }
         if (animator.externalPose) {
             std::vector<uint8_t> visited(skeleton.nodes.size(), 0);
             PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
@@ -2680,14 +3038,18 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     /// @note 評価できるクリップが無くても移動量ゼロを公開する。前フレームの delta が残ると ExtractOnly の Script が動き続ける。
     if (!curSt) {
         applyRestPose();
-        ProcessRootMotion(animator, go, {}, dt);
+        ProcessRootMotion(scene, animator, go, {}, dt);
         return;
     }
 
-    auto currentClips = BuildStateClips(animator, *curSt, animator.stateTime);
+    std::vector<WeightedClip> currentClips;
+    {
+        AnimationWorkScope clipWork(AnimationWorkPart::CLIP_SELECTION);
+        currentClips = BuildStateClips(animator, *curSt, animator.stateTime);
+    }
     if (currentClips.empty()) {
         applyRestPose();
-        ProcessRootMotion(animator, go, {}, dt);
+        ProcessRootMotion(scene, animator, go, {}, dt);
         return;
     }
 
@@ -2738,29 +3100,67 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     animator.currentIKWeight = std::clamp(animator.currentIKWeight, 0.0f, 1.0f);
 
     /// @note 遷移中は currentClips に遷移元・遷移先が weight 付きで入るので、移動量も姿勢と同じ比率で混ざる。
-    ProcessRootMotion(animator, go, currentClips, dt);
+    const bool rootControl = std::any_of(currentClips.begin(),currentClips.end(),[](const auto& weighted) { return weighted.rootMotion.HasTrack(); });
+    if (rootControl && !ensureHierarchy()) {
+        UploadBindPose(animator,resources,&skeleton); ProcessRootMotion(scene,animator,go,{},dt); return;
+    }
+    ProcessRootMotion(scene, animator, go, currentClips, dt);
 
-    std::vector<uint8_t> evaluationVisited(skeleton.nodes.size(), 0);
+    if (allowBoneBake) {
+        std::vector<BoneBakeClipInput> bakeClips;
+        bakeClips.reserve(currentClips.size());
+        for (const auto& weighted : currentClips) {
+            if (weighted.clip && weighted.weight > math::EPSILON)
+                bakeClips.push_back({weighted.clip, weighted.ticks, weighted.weight});
+        }
+        if (rootControl) animator.boneBake.fallback = BoneBakeFallback::ROOT_MOTION;
+        else if (TryEvaluateBoneBake(animator, *smr.model, bakeClips)) {
+            if (auto* row = CurrentAnimationWorkRow()) ++row->poseBakedSuccesses;
+            return;
+        }
+    }
+
+    if (!ensureHierarchy()) {
+        UploadBindPose(animator,resources,&skeleton); ProcessRootMotion(scene,animator,go,{},dt); return;
+    }
+    BlendedLocalPoseWorkspace localPoses(skeleton, currentClips);
+    auto& evaluationVisited = localPoses.EvaluationVisited();
+    {
+    AnimationWorkScope fkWork(AnimationWorkPart::LEGACY_FK);
     EvaluateNBlendedNodeRecursive(
         skeleton, currentClips, skeleton.rootNodeIndex,
         math::Matrix4::Identity(),
-        animator.boneMatrices, animator.nodeGlobalTransforms, evaluationVisited);
+        animator.boneMatrices, animator.nodeGlobalTransforms, evaluationVisited, localPoses, CurrentAnimationWorkRow());
+    if (auto* row = CurrentAnimationWorkRow()) ++row->poseLegacyFkCalls;
+    }
+    const auto& mask = animator.baseLayerMask;
+    const bool maskNeedsLoad = !mask.path.empty() &&
+        !((mask.loaded || mask.failed) && mask.loadedPath == mask.path);
     EnsureMaskLoaded(animator.baseLayerMask);
+    /// @note 初回・差替 IO のログ sink などが mutable clip を変えた場合も、従来どおり Bone 適用で再サンプルする。
+    if (maskNeedsLoad) localPoses.Invalidate();
+    {
+    AnimationWorkScope applyWork(AnimationWorkPart::BONE_APPLICATION);
     ApplyNBlendedPoseToBones(scene, skeleton, currentClips, smr,
-                             animator.baseLayerMask.loaded ? &animator.baseLayerMask.asset : nullptr);
+                             animator.baseLayerMask.loaded ? &animator.baseLayerMask.asset : nullptr,
+                             localPoses);
+    }
 
-    std::vector<uint8_t> propagationVisited(skeleton.nodes.size(), 0);
+    AnimationWorkScope propagationWork(AnimationWorkPart::PROPAGATION_REBUILD);
+    auto& propagationVisited = localPoses.PropagationVisited();
     PropagateBoneTransforms(scene, skeleton, smr, skeleton.rootInverseTransform,
                             skeleton.rootNodeIndex,
                             SkeletonParentTransform(scene, smr, skeleton, go), propagationVisited);
     RebuildSkinningFromBoneTransforms(scene, go, skeleton, smr, animator);
+    if(phaseOutcome && phaseOutcome->verifySuccess)
+        phaseOutcome->successfulLegacy=SuccessfulPhaseLegacyPose(scene,skeleton,smr,animator,evaluationVisited,propagationVisited);
 }
 
 /// @note Transform と SkinnedMeshRenderer も書くと宣言する。漏らすと LODSystem 等と同じ並列バッチに入り競合する。
 ComponentAccess AnimatorSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<AnimatorComponent>()
+        .Reads<AnimatorComponent, TargetPointComponent, CameraComponent, IKSolverComponent, SpringBoneComponent, MotionWarpComponent>()
         .Writes<AnimatorComponent, BoneComponent, SkinnedMeshRenderer, Transform>();
 }
 
@@ -2775,22 +3175,87 @@ void AnimatorSystem::Update(SystemContext& ctx)
     if (!ctx.resources) return;
     Scene& scene = ctx.scene;
     renderer::ResourceManager& resources = *ctx.resources;
+    const bool phaseEnabled=ctx.simulating && BeginAnimationPhaseDistribution(resources.FrameStamp(),Time::frameCount,scene.GetRenderSceneGeneration());
+    AnimationActorFrame actorFrame(ctx.simulating,resources.FrameStamp(),scene.GetRenderSceneGeneration(),resources.GetResetVersion(),resources.GetInstanceId());
+    AnimationWorkFrame workFrame(ctx.simulating,resources.FrameStamp(),scene.GetRenderSceneGeneration(),resources.GetResetVersion());
+    /// @note Final provenance is read after compatibilityBatch flush; no new clock or ownership is added.
+    struct ObservationSourceEnd {
+        AnimationWorkFrame& frame;
+        AnimationActorFrame& actors;
+        renderer::ResourceManager& resources;
+        Scene& scene;
+        bool active;
+        ~ObservationSourceEnd()
+        {
+            if (active) frame.FinalizeSource(resources.FrameStamp(), scene.GetRenderSceneGeneration(), resources.GetResetVersion());
+            if (actors.Active()) actors.FinalizeSource(scene,resources.FrameStamp(),scene.GetRenderSceneGeneration(),resources.GetResetVersion(),resources.GetInstanceId());
+        }
+    } observationSourceEnd{workFrame, actorFrame, resources, scene, CurrentAnimationWorkRow() != nullptr};
+    AnimationWorkScope independentTotal(AnimationWorkPart::TOTAL);
+    std::vector<math::Vector3> cameraPositions;
+    for (EntityID cameraId : scene.GetEntities<CameraComponent>()) {
+        const auto* camera = scene.GetComponent<CameraComponent>(cameraId);
+        const auto* owner = scene.GetGameObject(cameraId);
+        if (camera && camera->enabled && owner && owner->activeInHierarchy())
+            cameraPositions.push_back(owner->transform.worldPosition);
+    }
     const auto animatorSpan = scene.GetEntities<AnimatorComponent>();
     const auto animatorEntities = std::vector<EntityID>(
         animatorSpan.begin(),
         animatorSpan.end());
 
+    if(actorFrame.Active())actorFrame.SetPopulation(animatorEntities.size());
+    const bool requestedBatch = AnimationCompatibilityBatchRequested();
+    const bool automaticBatch = ctx.simulating && !phaseEnabled && !actorFrame.Active() && resources.DefersResourceUpdates();
+    BoneCbBatch compatibilityBatch(resources,ctx.simulating && (requestedBatch || automaticBatch),animatorEntities.size());
     for (EntityID id : animatorEntities) {
         GameObject* gameObject = scene.GetGameObject(id);
-        if (!gameObject || !gameObject->activeInHierarchy()) continue;
+        if (!gameObject || !gameObject->activeInHierarchy()) {
+            if(actorFrame.Active())actorFrame.CountExcluded(gameObject?1u:0u);
+            if(phaseEnabled)CancelAnimationPhaseDistribution(PhaseKey(scene,id));
+            continue;
+        }
         GameObject& go = *gameObject;
 
         auto* animator = go.GetComponent<AnimatorComponent>();
-        if (!animator || !animator->enabled) continue;
+        if (!animator || !animator->enabled) {
+            if(actorFrame.Active())actorFrame.CountExcluded(animator?3u:2u);
+            if(phaseEnabled)CancelAnimationPhaseDistribution(PhaseKey(scene,id));
+            continue;
+        }
+        auto* actorObservation=actorFrame.Active()?actorFrame.BeginActor(id.index,id.generation,
+            scene.GetComponentLifetime<AnimatorComponent>(id),ctx.dt,animator->localTimeScale):nullptr;
+        AnimationActorScope actorScope(actorObservation);
+        if (animator->boneBake.fallback != animator->boneBake.reportedFallback) {
+            BoneCbBatch::BeforeBoneHierarchy(resources);
+            FBZZ_LOG_DEBUG("BoneBake '%s': %s (source status=%d)", go.name.c_str(),
+                BoneBakeFallbackName(animator->boneBake.fallback), static_cast<int>(animator->boneBake.bakeStatus));
+            animator->boneBake.reportedFallback = animator->boneBake.fallback;
+        }
+        bool canBatch = animator->boneBakeMode != static_cast<int>(BoneBakeMode::LEGACY)
+            && !animator->boneBakeRequireCpuBones && !animator->externalPose && animator->layers.empty()
+            && animator->baseLayerMask.path.empty() && animator->clipsLoaded
+            && animator->appliedAssetGeneration == asset::AssetManager::GetAssetGeneration()
+            && animator->loadedControllerPath == animator->controllerPath
+            && !animator->rootMotion.Extracts() && animator->rootMotion.source == RootMotionSource::ClipDefined;
+        for (const auto& clip : animator->Clips()) canBatch &= !clip.hasRootMotion && clip.events.empty() && clip.propertyTracks.empty();
+        for (const auto& state : animator->states) canBatch &= state.mode == AnimationStateMode::Clip;
+        EntityID batchRendererId = EntityID::INVALID;
+        const auto* batchRenderer = automaticBatch ? LivePhaseRenderer(go, batchRendererId) : nullptr;
+        const bool preparedActor = automaticBatch && animator->skinningBuffer.IsValid() && animator->prevSkinningBuffer.IsValid()
+            && animator->boneBake.gpuReady && animator->boneBake.gpuOwner == resources.GetInstanceId()
+            && animator->boneBake.gpuEpoch == resources.GetResetVersion()
+            && scene.GetEntities<IKSolverComponent>().empty() && scene.GetEntities<SpringBoneComponent>().empty()
+            && scene.GetEntities<MotionWarpComponent>().empty() && batchRenderer && batchRenderer->model
+            && batchRenderer->skinnedBufferModel == batchRenderer->model
+            && batchRenderer->morphWeights == batchRenderer->appliedMorphWeights
+            && batchRenderer->morphVertexBuffers.size() == batchRenderer->model->meshes.size()
+            && AreBoneBakeAssetsPrepared(*animator, *batchRenderer->model);
+        compatibilityBatch.SetActorEligible(canBatch && ((requestedBatch && animator->boneBake.active) || preparedActor));
         const float dt = ctx.dt * std::clamp(animator->localTimeScale, 0.0f, 8.0f);
         animator->firedEvents.clear();
-        /// @note 骨由来のカリング球はポーズを組み終えた経路だけが入れ直す。0 のままならバインドポーズ球へ落ちる。
-        animator->skinnedBoundsRadius = 0.0f;
+        /// @note Held poses retain matching culling bounds until a new pose or bind pose replaces them.
+        animator->poseEvaluatedThisFrame = false;
 
         if (!animator->controllerPath.empty() &&
             animator->loadedControllerPath != animator->controllerPath) {
@@ -2812,7 +3277,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
                 if (asset::LoadAnimatorControllerAsset(animator->controllerPath, controller))
                     asset::ApplyAnimatorControllerAsset(controller, *animator);
             }
-            /// @note クリップは animator へ複製され、.mask は AssetManager を通さず直読みなので、どちらも明示的に落とす。
+            /// @note クリップ参照と直接読込の mask は、資産更新後に明示的に再解決する。
             animator->clipsLoaded = false;
             animator->baseLayerMask.Invalidate();
             for (auto& layer : animator->layers)
@@ -2821,11 +3286,12 @@ void AnimatorSystem::Update(SystemContext& ctx)
 
         /// @note 空クリップの再試行は FlushFailed() で世代が進んだときだけ。毎フレーム試すと WARN が溢れる。
         const bool needsRetry = !animator->clipsLoaded ||
-            (animator->clips.empty() &&
+            (animator->ClipCount() == 0 &&
              !animator->states.empty() &&
              asset::AssetManager::GetFlushGeneration() > animator->clipsAttemptGeneration);
         if (needsRetry)
             LoadClips(*animator);
+        if (needsRetry) animator->poseStateName.clear();
 
         if (!animator->skinningBuffer.IsValid())
             animator->skinningBuffer = resources.CreateConstantBuffer(sizeof(SkinningCB));
@@ -2834,6 +3300,11 @@ void AnimatorSystem::Update(SystemContext& ctx)
 
         /// @note 上書き直前の boneMatrices が、IKSystem / SpringBoneSystem の補正込みの前フレーム確定ポーズ。
         SnapshotPreviousBonePalette(*animator, resources);
+        if (animator->boneBake.invalidateHistory) {
+            if(actorObservation)actorObservation->previousHistoryInvalidatedAfterSnapshot=true;
+            animator->prevBoneMatricesValid = false;
+            animator->boneBake.invalidateHistory = false;
+        }
 
         /// @note SkinnedMeshRenderer が自身に無ければ直下の子から探す (submesh 分割階層)。
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
@@ -2850,6 +3321,11 @@ void AnimatorSystem::Update(SystemContext& ctx)
         const asset::Skeleton* skeleton = nullptr;
         if (smr && smr->model && smr->model->skeleton)
             skeleton = smr->model->skeleton.get();
+        if (skeleton && smr->model) {
+            AnimationWorkScope preparationWork(AnimationWorkPart::BAKE_PREPARATION);
+            PrepareBoneBakeAssets(*animator, *smr->model);
+        }
+        if (auto* row = CurrentAnimationWorkRow()) { ++row->animators; if (skeleton) row->boneMatrices += skeleton->bones.size(); }
 
         /// @note AutoDetect のトラック解決は Skeleton を持たない BuildStateClips からも呼ばれるので、ルート名を焼いておく。
         animator->skeletonRootNodeName.clear();
@@ -2861,6 +3337,8 @@ void AnimatorSystem::Update(SystemContext& ctx)
 
         /// @note 再生は Play Mode のみ。停止中はバインドポーズで静止させる (モーション確認は Animation Preview の役目)。
         if (!ctx.simulating) {
+            if(AnimationPhaseDistributionEnabled())CancelAnimationPhaseDistribution(PhaseKey(scene,id));
+            animator->boneBake = {};
             /// @note ソケットの親付けやボーン選択のため、ボーン階層は停止中も用意する。
             if (smr && skeleton && skeleton->rootNodeIndex >= 0 &&
                 skeleton->rootNodeIndex < static_cast<int>(skeleton->nodes.size()))
@@ -2881,12 +3359,15 @@ void AnimatorSystem::Update(SystemContext& ctx)
         }
 
         const float previousTime = animator->stateTime;
+        if(actorObservation && !skeleton)actorObservation->posePathStatus=2;
         if (!skeleton) {
+            if(phaseEnabled)CancelAnimationPhaseDistribution(PhaseKey(scene,id));
+            animator->boneBake = {};
             const asset::AnimationClip* clip = AdvanceStateMachineAnimator(*animator, dt);
             if (clip) {
                 const float currentTime = animator->stateTime;
                 const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-                ProcessRootMotion(*animator, go,
+                ProcessRootMotion(scene, *animator, go,
                     { WeightedClip{ clip, nullptr,
                                     static_cast<double>(currentTime) * tps, 1.0f, 1.0f,
                                     ResolveRootMotion(*animator, *clip),
@@ -2897,11 +3378,125 @@ void AnimatorSystem::Update(SystemContext& ctx)
                 if (smr) UpdateMorphVertexBuffers(*smr, resources);
             }
             UploadBindPose(*animator, resources);
+            if(actorObservation)actorFrame.FinishActor(actorObservation,scene,resources.FrameStamp(),scene.GetRenderSceneGeneration(),resources.GetResetVersion(),resources.GetInstanceId());
             continue;
         }
 
-        RunStateMachineAnimatorPath(*animator, *skeleton, scene, go, *smr, resources, dt);
+        float interval = 0.0f;
+        const AnimationState* lodState = FindState(*animator, animator->currentStateName);
+        bool poseOnlyClips = animator->ClipCount() != 0;
+        if (animator->poseLodEnabled)
+            for (const auto& clip : animator->Clips()) poseOnlyClips &= clip.propertyTracks.empty();
+        const bool safeLod = animator->poseLodEnabled && lodState && poseOnlyClips
+            && animator->blendToState.empty() && !animator->externalPose
+            && !animator->rootMotion.Extracts() && animator->layers.empty()
+            && !go.GetComponent<IKSolverComponent>() && !go.GetComponent<SpringBoneComponent>()
+            && !go.GetComponent<MotionWarpComponent>() && !cameraPositions.empty();
+        if (safeLod) {
+            float nearestSq = (std::numeric_limits<float>::max)();
+            for (const auto& position : cameraPositions)
+                nearestSq = (std::min)(nearestSq, (position - go.transform.worldPosition).LengthSq());
+            const float nearDistance = (std::max)(0.0f, animator->poseLodNearDistance);
+            const float farDistance = (std::max)(nearDistance, animator->poseLodFarDistance);
+            if(actorObservation) {
+                actorObservation->lodBandAvailable=true; actorObservation->nearestCameraDistanceSquared=nearestSq;
+                actorObservation->selectedLodBand=nearestSq>farDistance*farDistance?2u:(nearestSq>nearDistance*nearDistance?1u:0u);
+            }
+            if (nearestSq > farDistance * farDistance) interval = animator->poseLodFarInterval;
+            else if (nearestSq > nearDistance * nearDistance) interval = animator->poseLodMidInterval;
+            if (!std::isfinite(interval)) interval = 0.0f;
+            interval = std::clamp(interval, 0.0f, 1.0f);
+        }
+        if(actorObservation) {
+            actorObservation->posePathStatus=1; actorObservation->lodDecisionAvailable=true; actorObservation->safeLod=safeLod;
+            actorObservation->effectiveInterval=interval; actorObservation->elapsedBeforeAdd=animator->poseUpdateElapsed;
+        }
+        animator->poseUpdateElapsed += (std::max)(0.0f, ctx.dt);
+        const bool evaluatePose = interval == 0.0f || animator->poseSkeleton != skeleton || animator->boneMatrices.empty()
+            || animator->poseUpdateElapsed + math::EPSILON >= interval;
+        if(actorObservation) {
+            actorObservation->elapsedAtDecision=animator->poseUpdateElapsed; actorObservation->dueArgument=evaluatePose;
+            actorObservation->dueReasons=(interval==0.0f?animation_actor_detail::ZERO_INTERVAL:0u)
+                |(animator->poseSkeleton!=skeleton?animation_actor_detail::SKELETON_CHANGED:0u)
+                |(animator->boneMatrices.empty()?animation_actor_detail::EMPTY_PALETTE:0u)
+                |(animator->poseUpdateElapsed+math::EPSILON>=interval?animation_actor_detail::ELAPSED_THRESHOLD:0u);
+        }
 
+        std::optional<PhaseRun> phaseRun;
+        if(phaseEnabled) {
+            phaseRun.emplace();
+            EntityID rendererID=EntityID::INVALID;auto* liveRenderer=LivePhaseRenderer(go,rendererID);
+            if(liveRenderer)phaseRun->ticket=PrepareAnimationPhaseDistribution(PhaseKey(scene,id),
+                PhaseSource(scene,resources,*animator,*liveRenderer,rendererID),interval,
+                PhaseEligible(*animator,go,*liveRenderer,safeLod,interval));
+            else CancelAnimationPhaseDistribution(PhaseKey(scene,id));
+            if(phaseRun->ticket.credit>0 && (!liveRenderer || !liveRenderer->model || !liveRenderer->model->skeleton
+                || !PhaseHierarchyEligible(scene,*liveRenderer->model->skeleton,*liveRenderer))) {
+                CancelAnimationPhaseDistribution(phaseRun->ticket.key);phaseRun->ticket.credit=0;
+            }
+            phaseRun->outcome.verifySuccess=phaseRun->ticket.canSeed;
+            phaseRun->creditDue=animation_phase_detail::CreditDue(evaluatePose,animator->poseUpdateElapsed,interval,phaseRun->ticket.credit);
+            if(phaseRun->creditDue)CountAnimationPhaseCreditDue();
+        }
+
+        BoneBakeFallback bakeFallback = BoneBakeFallback::DISABLED;
+        const bool bakeRequested = animator->boneBakeMode == static_cast<int>(BoneBakeMode::CPU_BAKED)
+            || animator->boneBakeMode == static_cast<int>(BoneBakeMode::GPU_SHARED)
+            || animator->boneBakeMode == static_cast<int>(BoneBakeMode::GPU_POSE_SHARED);
+        bool allowBoneBake = bakeRequested;
+        if (allowBoneBake && animator->boneBakeRequireCpuBones) bakeFallback = BoneBakeFallback::CPU_BONES_REQUIRED;
+        else if (allowBoneBake && (animator->externalPose || go.GetComponent<IKSolverComponent>()
+            || go.GetComponent<SpringBoneComponent>() || go.GetComponent<MotionWarpComponent>())) bakeFallback = BoneBakeFallback::RIG_CONTROL;
+        else if (allowBoneBake && (!animator->layers.empty() || !animator->baseLayerMask.path.empty())) bakeFallback = BoneBakeFallback::LAYERS_OR_MASK;
+        else if (allowBoneBake && !smr->morphWeights.empty()) bakeFallback = BoneBakeFallback::MORPH;
+        else if (allowBoneBake && (!std::isfinite(animator->boneBakeMinDistance) || animator->boneBakeMinDistance < 0.0f)) bakeFallback = BoneBakeFallback::INVALID_SOURCE;
+        else if (allowBoneBake) {
+            float nearestSq = (std::numeric_limits<float>::max)();
+            for (const auto& position : cameraPositions)
+                nearestSq = (std::min)(nearestSq, (position - go.transform.worldPosition).LengthSq());
+            bakeFallback = cameraPositions.empty() || nearestSq < animator->boneBakeMinDistance * animator->boneBakeMinDistance
+                ? BoneBakeFallback::NEAR_CAMERA : BoneBakeFallback::NONE;
+            /// @note Query live membership per actor so controls added by an earlier callback still disable sharing in this frame.
+            if (!scene.GetEntities<IKSolverComponent>().empty() || !scene.GetEntities<SpringBoneComponent>().empty()
+                || !scene.GetEntities<MotionWarpComponent>().empty()) for (EntityID node : smr->nodeEntities) {
+                auto* boneObject = scene.GetGameObject(node);
+                if (boneObject && (boneObject->GetComponent<IKSolverComponent>() || boneObject->GetComponent<SpringBoneComponent>()
+                    || boneObject->GetComponent<MotionWarpComponent>())) bakeFallback = BoneBakeFallback::RIG_CONTROL;
+            }
+        }
+        allowBoneBake &= bakeFallback == BoneBakeFallback::NONE;
+        /// @note Diagnostic baselines are scalar only; the existing scheduler and pose path receive unchanged decisions.
+        auto* observation = CurrentAnimationWorkRow();
+        const uint64_t bindCallsBefore = observation ? observation->bindPaletteUpdateCalls : 0;
+        const uint64_t fkCallsBefore = observation ? observation->poseLegacyFkCalls : 0;
+        const uint64_t bakedSuccessesBefore = observation ? observation->poseBakedSuccesses : 0;
+        RunStateMachineAnimatorPath(*animator, *skeleton, scene, go, *smr, resources, dt,
+            evaluatePose || (phaseRun && phaseRun->creditDue), allowBoneBake,
+            bakeFallback, safeLod, interval > 0.0f, phaseRun?&phaseRun->outcome:nullptr);
+        if (observation && animator->poseEvaluatedThisFrame) {
+            const bool bindFallback = observation->bindPaletteUpdateCalls != bindCallsBefore;
+            if (bindFallback) ++observation->poseBindFallbackActors;
+            if (!bindFallback && observation->poseLegacyFkCalls == fkCallsBefore && observation->poseBakedSuccesses == bakedSuccessesBefore)
+                ++observation->poseOtherRefreshActors;
+        }
+        if (!animator->boneBake.active) animator->boneBake.cpuDeferred = false;
+        if (animator->boneBake.previousCpuDeferred && !animator->boneBake.cpuDeferred) {
+            const auto lifetime = scene.GetComponentLifetime<AnimatorComponent>(id);
+            const auto generation = scene.GetRenderSceneGeneration();
+            const auto assetGeneration = asset::AssetManager::GetAssetGeneration();
+            const auto owner = resources.GetInstanceId(), epoch = resources.GetResetVersion();
+            BoneCbBatch::BeforeBoneHierarchy(resources);
+            MaterializeBoneBakeCpu(*animator, resources, false);
+            /// @note Native updates may pump edits; do not continue pose side effects through an old component or skeleton.
+            if (scene.GetRenderSceneGeneration() != generation || scene.GetGameObject(id) != &go
+                || scene.GetComponent<AnimatorComponent>(id) != animator || scene.GetComponentLifetime<AnimatorComponent>(id) != lifetime
+                || asset::AssetManager::GetAssetGeneration() != assetGeneration || resources.GetInstanceId() != owner
+                || resources.GetResetVersion() != epoch) continue;
+        }
+        animator->poseSkeleton = skeleton;
+
+        {
+        AnimationWorkScope effectWork(AnimationWorkPart::SIDE_EFFECTS_BOUNDS);
         ApplyAnimationLayers(*animator, *skeleton, scene, go, *smr, dt);
 
         const asset::AnimationClip* effectClip = ResolveStateMachineEffectClip(*animator);
@@ -2911,14 +3506,37 @@ void AnimatorSystem::Update(SystemContext& ctx)
                                  previousTime, currentTime, false);
         }
         UpdateMorphVertexBuffers(*smr, resources);
-        UpdateSkinnedBounds(*animator, *skeleton);
+        if (animator->poseEvaluatedThisFrame) UpdateSkinnedBounds(*animator, *skeleton);
+        }
+        if (auto* row = CurrentAnimationWorkRow()) {
+            if (!animator->boneBake.active) ++row->legacyPoses;
+            else if (animator->boneBakeMode >= static_cast<int>(BoneBakeMode::GPU_SHARED)) ++row->bakedGpuPoses;
+            else ++row->bakedCpuPoses;
+        }
+        if(actorObservation)actorFrame.FinishActor(actorObservation,scene,resources.FrameStamp(),scene.GetRenderSceneGeneration(),resources.GetResetVersion(),resources.GetInstanceId());
 
-        SkinningCB cb{};
-        for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
-            cb.boneMatrices[i] = math::Matrix4::Identity();
-        for (size_t i = 0; i < animator->boneMatrices.size(); ++i)
-            cb.boneMatrices[i] = animator->boneMatrices[i];
-        resources.Update(animator->skinningBuffer, &cb, sizeof(SkinningCB));
+        if(phaseRun) {
+            /// @note Reacquire after pose/effect callbacks; the ledger retains only scalar tickets across the call.
+            const auto key=PhaseKey(scene,id);
+            const auto* live=scene.GetComponent<AnimatorComponent>(id);auto* owner=scene.GetGameObject(id);
+            EntityID rendererID=EntityID::INVALID;auto* liveRenderer=owner?LivePhaseRenderer(*owner,rendererID):nullptr;
+            const bool coherent=key==phaseRun->ticket.key && live && owner && liveRenderer
+                && PhaseSource(scene,resources,*live,*liveRenderer,rendererID)==phaseRun->ticket.source
+                && PhaseEligible(*live,*owner,*liveRenderer,safeLod,interval)
+                && (!phaseRun->outcome.successfulLegacy || (liveRenderer->model && liveRenderer->model->skeleton
+                    && PhaseHierarchyEligible(scene,*liveRenderer->model->skeleton,*liveRenderer)));
+            CompleteAnimationPhaseDistribution(phaseRun->ticket,phaseRun->outcome,coherent);
+        }
+
+        if (!animator->poseEvaluatedThisFrame || animator->boneBake.cpuDeferred) continue;
+
+        {
+        AnimationWorkScope currentCbWork(AnimationWorkPart::CURRENT_CB);
+        if (auto* row = CurrentAnimationWorkRow()) {
+            ++row->currentPaletteUpdateCalls; row->currentPaletteApiBytes += asset::MAX_SKINNING_BONES * sizeof(math::Matrix4);
+        }
+        BoneCbBatch::UpdatePalette(resources,animator->skinningBuffer,animator->boneMatrices);
+        }
     }
 }
 

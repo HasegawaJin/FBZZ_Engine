@@ -29,11 +29,21 @@ public:
                             std::filesystem::path startSceneFile,
                             ProjectSettings& settings);
 
+    /// @note Editor Play can select an exact scene file without changing ProjectSettings or resolving a duplicate stem.
+    StandaloneProjectModule(renderer::IRenderer& renderer,
+                            renderer::ResourceManager& resources,
+                            std::filesystem::path projectRoot,
+                            std::filesystem::path startSceneFile,
+                            ProjectSettings& settings,
+                            bool exactStartScene);
+
     [[nodiscard]] bool OnInit() override;
     void OnUpdate(float dt) override;
     void OnLateUpdate(float dt) override;
     void OnRender() override;
     void OnShutdown() override;
+    /// @note Hosts use this after Application::Run to distinguish startup failure from a normal game exit.
+    [[nodiscard]] bool StartedSuccessfully() const { return m_startedSuccessfully; }
 
 private:
     renderer::IRenderer&       m_renderer;
@@ -42,6 +52,10 @@ private:
     std::filesystem::path      m_startSceneFile;
     ProjectSettings&           m_settings;
     ProjectRuntime             m_runtime;
+    bool                       m_managedLoaded = false;
+    bool                       m_exactStartScene = false;
+    bool                       m_startedSuccessfully = false;
+    bool                       m_waitingForStartScene = false;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

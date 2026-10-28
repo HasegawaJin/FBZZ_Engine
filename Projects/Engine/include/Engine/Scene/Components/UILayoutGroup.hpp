@@ -49,10 +49,16 @@ struct UILayoutGroup {
 
     bool  enabled        = true;
 
+    bool overrideThemeSpacing = false;
+    bool overrideThemePadding = false;
+
     const char* GetTypeName() const { return "UILayoutGroup"; }
     void Reflect(IReflector& r)
     {
         r.Field("enabled",      enabled);
+        r.Field("overrideThemeSpacing", overrideThemeSpacing);
+        r.Field("overrideThemePadding", overrideThemePadding);
+        r.Tooltip("Keep local spacing/padding instead of the Canvas theme.");
         static constexpr const char* kAxisLabels[] = { "Horizontal", "Vertical", "Grid" };
         int axisInt = static_cast<int>(axis);
         r.Enum("axis", axisInt, kAxisLabels);

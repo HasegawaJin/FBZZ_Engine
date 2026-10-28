@@ -138,6 +138,8 @@ struct UISystemContext {
     /// @note 呼ばれる自由関数で設定の所有者を知らない。知っている側が渡せば Viewport ごとの
     /// @note 出し分けもできる。
     bool showRects = false;
+    bool reversedDepth = false;
+    bool sceneDepthAvailable = true;
     std::string defaultFontPath =
         "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght";
 
@@ -152,6 +154,9 @@ struct UISystemContext {
     renderer::ResourceHandle<renderer::ConstantBufferTag> constants;
     renderer::ResourceHandle<renderer::PipelineStateTag>  pso;
     renderer::ResourceHandle<renderer::PipelineStateTag>  worldPso;
+    renderer::ResourceHandle<renderer::ShaderTag>         depthCopyShader;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> depthCopyConstants;
+    renderer::ResourceHandle<renderer::PipelineStateTag>  depthCopyPso;
     /// @note 選択マスク用: 不透明・深度書き込みあり・カリング無し。
     /// @note 通常の UI PSO を使い回さない理由: UI は DEPTH_OFF のため選択マスク RT の深度が
     /// @note 初期値のままになり、SelectionOutline.hlsl の遮蔽判定が 3D の手前でだけ落ちて輪郭が消える。
@@ -210,6 +215,9 @@ struct UISystemContext {
     /// @note 下限を 1 にする理由: 矩形 1 枚ごとに 1 本借りるため、既定 1024 頂点を下限にすると
     /// @note 本数×1024 頂点が常駐する。要求そのもの (2 の冪へ切り上げ) で足りる。
     renderer::DynamicVertexBufferPool vertexPool{ 1 };
+    /// @note Input domain is supplied per render invocation; interaction history is local to this UI context.
+    bool gameplayInput = false;
+    std::uint64_t inputInteractionRevision = ~std::uint64_t{0};
 };
 
 /// @note UIText.fontPath が空のときに使用するデフォルトフォントアトラスのベースパス (拡張子なし) を設定する。
@@ -222,6 +230,12 @@ void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePat
 /// @note ProjectRuntime::m_gameUICtx がこれを呼ばないと、往復のたびに DrawCall 数ぶんの
 /// @note 頂点バッファが取り残される。
 void UISystemReleaseGpuResources(UISystemContext& ctx, renderer::ResourceManager& resources);
+
+/// @note 呼び手が束縛した最終出力の深度へ、Reversed-Z のシーン深度を正規化 UV で転写する。
+/// @note カラーは保持する。描画スケールと出力の深度規約が違っても WorldSpace UI の遮蔽を保つ。
+bool UICopySceneDepth(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
+                      UISystemContext& ctx, renderer::ResourceHandle<renderer::TextureTag> sceneDepth,
+                      bool reversedOutput);
 
 /// @note 直近の UI 入力処理で、ポインターがいずれかの UI 要素に吸われたか。
 /// @note 無いとメニュー上のクリックがそのままゲーム側 (射撃・カメラ操作) にも届く。判定自体は

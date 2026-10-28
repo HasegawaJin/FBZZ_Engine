@@ -19,7 +19,23 @@ using scene::SceneAssetReference;
 
 class SceneAssetReferencesTest : public testkit::EngineFixture {};
 
-} // namespace
+} /// @note namespace
+
+TEST_F(SceneAssetReferencesTest, CollectsAllModelSourceFormatsIncludingGuidHints)
+{
+    for (const std::string extension : { ".fbx", ".gltf", ".glb", ".obj", ".GLTF", ".GLB", ".OBJ" }) {
+        const std::string path = "Assets/Models/Model" + extension;
+        const auto direct = CollectSceneAssetReferences("meshPath = \"" + path + ":2\"");
+        ASSERT_EQ(direct.size(), 1u) << extension;
+        EXPECT_EQ(direct[0].kind, SceneAssetKind::Model);
+        EXPECT_EQ(direct[0].reference, path);
+        const std::string guid = "guid:0123456789abcdef0123456789abcdef|" + path;
+        const auto hinted = CollectSceneAssetReferences("modelPath = \"" + guid + "\"");
+        ASSERT_EQ(hinted.size(), 1u) << extension;
+        EXPECT_EQ(hinted[0].kind, SceneAssetKind::Model);
+        EXPECT_EQ(hinted[0].reference, guid);
+    }
+}
 
 TEST_F(SceneAssetReferencesTest, ClassifiesByExtension)
 {
@@ -84,4 +100,4 @@ tex = "C:/Project/Assets/Tex/A.dds"
     EXPECT_EQ(references[0].reference, "C:/Project/Assets/Tex/A.dds") << "ドライブ区切りを submesh 添字と取り違えない";
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

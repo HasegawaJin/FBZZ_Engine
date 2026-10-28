@@ -3,8 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
 ///
-/// 束ね条件が緩むと、別のテクスチャ・別の定数バッファで描かれた絵が出る。絵を見ても
-/// «なぜこの物体だけ色が違うのか» に辿りつけない壊れ方なので、条件そのものを表明しておく。
+/// @note 束ね条件が緩むと別の材質が使われるため、全束縛の一致を検証する。
 ///
 /// @see Docs/design/gpu-instancing.md
 #include <TestKit/TestKit.hpp>
@@ -43,8 +42,16 @@ TEST_F(InstanceBatchTest, IdenticalCallsShareABatch)
     EXPECT_TRUE(scene::IsSameInstanceBatch(MakeCall(), MakeCall()));
 }
 
-/// b1 は物体ごとに中身が違って当然なので、束ね条件から外れていること。
-/// これが効かないと «同じメッシュを並べただけ» の物体が 1 つも束ねられない。
+TEST_F(InstanceBatchTest, DifferentCapturedPoseRowsDoNotShareABatch)
+{
+    auto first = MakeCall();
+    first.deformationSource = {77, 2};
+    auto second = first;
+    second.preparedSkinningRow = 1;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(first, second));
+}
+
+/// @note b1 は per-object なので束ね条件に含めない。
 TEST_F(InstanceBatchTest, ObjectConstantBufferIsIgnored)
 {
     renderer::DrawCall other = MakeCall();
@@ -52,7 +59,7 @@ TEST_F(InstanceBatchTest, ObjectConstantBufferIsIgnored)
     EXPECT_TRUE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
-/// 束ね側が決める枠なので、積む時点の値は条件に入らない。
+/// @note インスタンス数とバッファは束ね側が決める。
 TEST_F(InstanceBatchTest, InstanceFieldsAreIgnored)
 {
     renderer::DrawCall other = MakeCall();
@@ -72,7 +79,27 @@ TEST_F(InstanceBatchTest, DifferentMeshBreaksTheBatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
-/// 同じメッシュでも submesh の範囲が違えば別の描画。
+TEST_F(InstanceBatchTest, IndependentDeformedBuffersRequireTheSameSourceAndAllMaterialBindings)
+{
+    auto first = MakeCall();
+    first.deformationSource = {77, 2};
+    auto second = first;
+    second.vertexBuffer = {91, 4};
+    EXPECT_TRUE(scene::IsSameInstanceBatch(first, second));
+    second.textures[0].id = 55;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(first, second));
+    second = first;
+    second.deformationSource.gen = 3;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(first, second));
+    second = first;
+    second.deformationSource = {};
+    EXPECT_FALSE(scene::IsSameInstanceBatch(first, second));
+    second = first;
+    second.indirectReadBuffers.push_back({93, 1});
+    EXPECT_FALSE(scene::IsSameInstanceBatch(first, second));
+}
+
+/// @note 同じメッシュでも submesh の範囲が違えば別の描画。
 TEST_F(InstanceBatchTest, DifferentSubmeshRangeBreaksTheBatch)
 {
     renderer::DrawCall other = MakeCall();
@@ -99,7 +126,7 @@ TEST_F(InstanceBatchTest, DifferentShaderOrPipelineStateBreaksTheBatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
-/// b1 以外の定数バッファが違えば材質が違う。全枠を見ていることを端と中で確かめる。
+/// @note b1 以外の定数バッファは全枠で一致する必要がある。
 TEST_F(InstanceBatchTest, AnyOtherConstantBufferBreaksTheBatch)
 {
     for (std::size_t slot = 0; slot < renderer::DrawCall{}.constantBuffers.size(); ++slot) {
@@ -111,7 +138,7 @@ TEST_F(InstanceBatchTest, AnyOtherConstantBufferBreaksTheBatch)
     }
 }
 
-/// テクスチャ 32 枠はすべて見ること。1 枠でも抜けると、その枠だけ前の物体の絵が残る。
+/// @note テクスチャの全枠の一致を要求する。
 TEST_F(InstanceBatchTest, AnyTextureSlotBreaksTheBatch)
 {
     for (std::size_t slot = 0; slot < renderer::DrawCall{}.textures.size(); ++slot) {
@@ -133,9 +160,7 @@ TEST_F(InstanceBatchTest, StructuredBufferSlotsBreakTheBatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
-/// Velocity と ObjectMask は b1 の 2 枠目を別の意味で使う (prevWorld / 未使用) が、束ね条件は
-/// b1 を見ない 1 本のままであること。パスごとに «どこを見るか» が分かれると、片方だけ条件が
-/// 古くなったときに気づけない。
+/// @note Velocity と ObjectMask の b1 の意味が異なっても束ね条件は共通にする。
 TEST_F(InstanceBatchTest, PassSpecificObjectConstantMeaningDoesNotAffectTheCondition)
 {
     renderer::DrawCall a = MakeCall();
@@ -161,5 +186,31 @@ TEST_F(InstanceBatchTest, LayerAndTopologyBreakTheBatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
-} // namespace
-} // namespace fbzz::tests
+TEST_F(InstanceBatchTest, GpuResourceBindingsAndCommandsBreakTheBatch)
+{
+    const auto original = MakeCall();
+    auto other = original;
+    other.indirectReadTextures[0].id = 90;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+    other = original; other.vsRawBuffers[1].id = 91;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+    other = original; other.auxiliaryPsBuffers[1].id = 92;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+    other = original; other.indirectArguments.id = 93;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+    other = original; other.indirectArgumentOffset = 24;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+    other = original; other.indirectCommandCount = 2;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+    other = original; other.indirectInstanceOffset = true;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+    other = original; other.meshGroupCountX = 1;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+    other = original; other.meshGroupCountY = 1;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+    other = original; other.meshGroupCountZ = 1;
+    EXPECT_FALSE(scene::IsSameInstanceBatch(original, other));
+}
+
+} /// @note namespace
+} /// @note namespace fbzz::tests

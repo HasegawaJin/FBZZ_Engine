@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 ///
-/// ScreenSpace と WorldSpace の変換基準を Scene に持たせる。
-/// UISystem は sortOrder と renderMode を見て描画順を決める。
+/// @note ScreenSpace と WorldSpace の変換基準を Scene に持たせる。
+/// @note UISystem は sortOrder と renderMode を見て描画順を決める。
 #pragma once
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Script.hpp>
@@ -14,15 +14,20 @@
 namespace fbzz::scene {
 
 enum class UIRenderMode {
-    ScreenSpaceOverlay = 0, ///< カメラに依存せず、最終画面へ直接重ねる
-    WorldSpace         = 1, ///< 3D 空間に配置し、深度の影響を受ける
-    ScreenSpaceCamera  = 2, ///< カメラ前方 planeDistance に配置し深度テストに参加する画面 UI
+    ScreenSpaceOverlay = 0, ///< @note カメラに依存せず、最終画面へ直接重ねる
+    WorldSpace         = 1, ///< @note 3D 空間に配置し、深度の影響を受ける
+    ScreenSpaceCamera  = 2, ///< @note カメラ前方 planeDistance に配置し深度テストに参加する画面 UI
 
 };
 
 enum class UICanvasScaleMode {
-    ConstantPixelSize,  ///< canvasWidth / canvasHeight をそのままピクセル座標として扱う
-    ScaleWithScreenSize ///< viewport と reference 解像度の差を Canvas Scaler として吸収する
+    ConstantPixelSize,  ///< @note canvasWidth / canvasHeight をそのままピクセル座標として扱う
+    ScaleWithScreenSize ///< @note viewport と reference 解像度の差を Canvas Scaler として吸収する
+};
+
+enum class UICanvasDepthMode {
+    SCENE_DEPTH = 0,   ///< @note 不透明なシーンメッシュに遮蔽される。UI 自身は深度を書かない。
+    ALWAYS_ON_TOP = 1 ///< @note 3D 空間の位置・大きさを保ったままメッシュの手前へ描く。
 };
 
 struct UICanvas {
@@ -33,45 +38,53 @@ struct UICanvas {
     UICanvasScaleMode scaleMode = UICanvasScaleMode::ConstantPixelSize;
     float        referenceWidth = 1920.0f;
     float        referenceHeight = 1080.0f;
-    /// ScaleWithScreenSize 時の幅/高さの重み。0=幅基準、1=高さ基準、0.5=両方の幾何平均
+    /// @note ScaleWithScreenSize 時の幅/高さの重み。0=幅基準、1=高さ基準、0.5=両方の幾何平均
     float        matchWidthOrHeight = 0.0f;
-    /// WorldSpace / ScreenSpaceCamera 時の 1 キャンバスピクセルあたりのワールド単位
+    /// @note WorldSpace / ScreenSpaceCamera 時の 1 キャンバスピクセルあたりのワールド単位
     float        worldScale    = 0.01f;
-    /// ScreenSpaceCamera 専用: カメラ前方に Canvas を配置する距離 (ワールド単位)
+    /// @note ScreenSpaceCamera 専用: カメラ前方に Canvas を配置する距離 (ワールド単位)
     float        planeDistance = 2.0f;
-    /// WorldSpace 専用: true のとき Canvas を常にカメラへ正対させる (ビルボード)。
-    /// 敵の頭上に出す体力ゲージなど、3D 空間に置きつつ常に読めるようにする UI に使う。
+    /// @note WorldSpace 専用: true のとき Canvas を常にカメラへ正対させる (ビルボード)。
+    /// @note 敵の頭上に出す体力ゲージなど、3D 空間に置きつつ常に読めるようにする UI に使う。
     bool         faceCamera   = false;
+    UICanvasDepthMode depthMode = UICanvasDepthMode::SCENE_DEPTH;
+    /// @note WorldSpace / ScreenSpaceCamera の平面をローカル -Z (表示面の手前) へずらす距離 [m]。
+    float        surfaceOffset = 0.0f;
     bool         enabled      = true;
 
-    /// 表示を保証したい領域から外す余白 (左, 上, 右, 下 / Canvas ピクセル)。
+    /// @note 表示を保証したい領域から外す余白 (左, 上, 右, 下 / Canvas ピクセル)。
     /// @note canvasWidth 自体を縮めないのは、アンカー 0..1 の意味が動き「別のレイアウト」に
-    ///       なるため。Canvas の広さはそのままに、子から見た親の矩形だけを内側へ寄せる。
+    /// @note なるため。Canvas の広さはそのままに、子から見た親の矩形だけを内側へ寄せる。
     /// @note OS から自動取得しないのは、実測できるのはウィンドウ寸法までで、オーバースキャンや
-    ///       ウルトラワイドで避けたい量は確認できない環境の値を信じることになるため。
+    /// @note ウルトラワイドで避けたい量は確認できない環境の値を信じることになるため。
     math::Vector4 safeArea = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-    /// キーボード / ゲームパッドの方向入力でフォーカスを移動させる。
-    /// 立てた Canvas でだけ働く (UIControls.hpp の UINavigation を参照)。
+    /// @note キーボード / ゲームパッドの方向入力でフォーカスを移動させる。
+    /// @note 立てた Canvas でだけ働く (UIControls.hpp の UINavigation を参照)。
     bool         navigationEnabled = false;
-    /// 倒しっぱなしのときの初回待ちと以降の間隔 (秒)。滑って飛ばないようにする。
+    /// @note 倒しっぱなしのときの初回待ちと以降の間隔 (秒)。滑って飛ばないようにする。
     float        navigationRepeatDelay    = 0.4f;
     float        navigationRepeatInterval = 0.12f;
 
-    /// ランタイム専用: いまフォーカスが乗っている要素。シーンへは保存しない。
+    /// @note ランタイム専用: いまフォーカスが乗っている要素。シーンへは保存しない。
     EntityRef    focusedObject{};
 
-    /// 直近のフレームで UISystem が解決したマウス位置 (Canvas 空間、左上原点)。
+    /// @note 直近のフレームで UISystem が解決したマウス位置 (Canvas 空間、左上原点)。
     /// @note コンポーネントに置くのは、スクリーン → Canvas の変換が renderMode / Canvas Scaler /
-    ///       viewport 寸法で決まり、UISystem だけが全部を知るため (スクリプトが式を書き直すと
-    ///       viewport ≠ ウィンドウの場面で静かにずれる)。
+    /// @note viewport 寸法で決まり、UISystem だけが全部を知るため (スクリプトが式を書き直すと
+    /// @note viewport ≠ ウィンドウの場面で静かにずれる)。
     /// @note 実行時の値でシーンへは保存しない (Reflect に出さない)。UISystem が回る前は 0。
     math::Vector2 resolvedMousePosition = {};
+
+    /// @note Empty or unresolved assignment preserves legacy component appearance. Shared across screens by GUID/path.
+    DataAssetRef theme = { {}, "UIThemeAsset" };
 
     const char* GetTypeName() const { return "UICanvas"; }
     void Reflect(IReflector& r)
     {
         r.Field("enabled",      enabled);
+        r.Field("theme", theme);
+        r.Tooltip("Shared game UI theme (.fzdata). Empty or missing uses each component's authored values.");
         r.FloatRange("canvasWidth",  canvasWidth,  1.0f, 16384.0f);
         r.FloatRange("canvasHeight", canvasHeight, 1.0f, 16384.0f);
         r.Field("sortOrder",    sortOrder);
@@ -103,6 +116,13 @@ struct UICanvas {
         r.FloatRange("worldScale", worldScale, 0.00001f, 1.0f);
         r.FloatRange("planeDistance", planeDistance, 0.01f, 10000.0f);
         r.Field("faceCamera",    faceCamera);
+        static constexpr const char* kDepthModeLabels[] = { "Scene Depth", "Always On Top" };
+        int depth = static_cast<int>(depthMode);
+        r.Enum("depthMode", depth, kDepthModeLabels);
+        depthMode = static_cast<UICanvasDepthMode>((depth < 0 || depth > 1) ? 0 : depth);
+        r.Tooltip("World/Camera Space only. Scene Depth hides UI behind opaque meshes; UI never writes scene depth.");
+        r.FloatRange("surfaceOffset", surfaceOffset, -1.0f, 1.0f);
+        r.Tooltip("Metres toward the canvas front (-local Z). Use a small value for a display mounted on a mesh.");
 
         r.Group("Navigation");
         r.Field("navigationEnabled", navigationEnabled);
@@ -115,4 +135,4 @@ struct UICanvas {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

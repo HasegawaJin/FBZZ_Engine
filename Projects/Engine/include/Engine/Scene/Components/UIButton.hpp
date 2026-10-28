@@ -67,11 +67,15 @@ struct UIButton {
     bool wasPressedOnThis = false;
     bool lastMouseState   = false;
 
+    bool overrideThemeColors = false;
+
     const char* GetTypeName() const { return "UIButton"; }
     void Reflect(IReflector& r)
     {
         r.Field("enabled",        enabled);
         r.Field("isInteractable", isInteractable);
+        r.Field("overrideThemeColors", overrideThemeColors);
+        r.Tooltip("Use this button's local state colors instead of the Canvas theme.");
         r.ColorField("normalColor",    normalColor);
         r.ColorField("hoverColor",     hoverColor);
         r.ColorField("pressedColor",   pressedColor);

@@ -2,9 +2,11 @@
 /// @brief   アセットロード・キャッシュ管理。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
+
 /// @brief Load<T>() はヘッダーでインライン化し、ここでは型ごとの特殊化と Init を実装する。
+#include <Engine/Asset/ModelSource.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Core/ExternalCallbackBoundary.hpp>
 #include "BundledModel.hpp"
 #include "ModelStreamChannel.hpp"
 #include <Engine/Asset/AnimationClip.hpp>
@@ -30,6 +32,7 @@
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 #include <Engine/Asset/PhysicsMaterialImporter.hpp>
 #include <Engine/Asset/ClothImporter.hpp>
+#include <Engine/Asset/FiberPaintAsset.hpp>
 #include <Engine/Asset/ParticleCurveImporter.hpp>
 #include <Engine/Asset/VectorFieldImporter.hpp>
 #include <Engine/Asset/VelocityFieldAtlas.hpp>
@@ -47,6 +50,9 @@
 #include <Engine/Util/EngineAssetPath.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Core/Logger.hpp>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 #include <algorithm>
 #include <cassert>
@@ -287,14 +293,29 @@ static bool IsAbsPath(const std::string& p)
 std::string AssetManager::CacheKey(const std::string& path)
 {
     const std::string key = Normalize(path);
-    if (!AssetDatabase::IsGuidRef(key)) return key;
-
-    std::string abs = AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(key));
-    if (abs.empty() || !util::FileSystem::Exists(abs)) return key;
-    std::replace(abs.begin(), abs.end(), '\\', '/');
-    const std::string root = AssetDatabase::AssetsRoot();
-    if (root.empty() || !StartsWithCI(abs, root.c_str())) return key;
-    return "Assets/" + abs.substr(root.size());
+    if (key.empty()) return key;
+    const std::string logical = AssetDatabase::IsGuidRef(key)
+        ? AssetDatabase::PathFromGuid(AssetDatabase::GuidFromRef(key)) : key;
+    if (logical.empty()) return key;
+    /// @note GUID の論理パスも同じ解決経路へ通し、Library の派生物と Engine assets の fallback を共有する。
+    const std::string resolved = ResolvePath(Normalize(logical), S_base());
+    if (resolved.empty()) return key;
+    std::error_code error;
+    const auto absolute = std::filesystem::absolute(util::FileSystem::PathFromUtf8(resolved), error);
+    if (error) return key;
+    const auto fold = [](std::string value) {
+        for (char& character : value) {
+            if (character == '\\') character = '/';
+            character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+        }
+        return value;
+    };
+    const std::string canonical = fold(util::FileSystem::PathToUtf8(absolute.lexically_normal()));
+    const auto rootPath = std::filesystem::absolute(util::FileSystem::PathFromUtf8(S_base()), error);
+    if (error) return canonical;
+    std::string root = fold(util::FileSystem::PathToUtf8(rootPath.lexically_normal()));
+    if (!root.empty() && root.back() != '/') root += '/';
+    return canonical.starts_with(root) ? "Assets/" + canonical.substr(root.size()) : canonical;
 }
 
 static bool EndsWithCI(const std::string& s, const char* suffix)
@@ -350,7 +371,7 @@ static std::string LibraryBakedPath(const std::string& absPath, const std::strin
     fs::path pkgDir  = p.parent_path();
 
     /// @note anims/ と materials/ は 1 階層深い。Library 側でも同じサブディレクトリを維持することで、
-    /// @note 同名クリップ・同名マテリアルを持つ別 FBX どうしがぶつからない。
+    /// @note 同名クリップ・同名マテリアルを持つ別モデルどうしがぶつからない。
     std::string subDir;
     {
         std::string leaf = util::FileSystem::PathToUtf8(pkgDir.filename());
@@ -363,11 +384,12 @@ static std::string LibraryBakedPath(const std::string& absPath, const std::strin
     }
 
     const std::string pkg  = util::FileSystem::PathToUtf8(pkgDir.filename());
-    const fs::path fbxPath = pkgDir.parent_path() / (pkg + ".fbx");
-
-    /// @note GuidFromPath は実在チェック込み。fbx が無ければ空 = Library 対象外。
-    const std::string guid = AssetDatabase::TryGetGuidFromPath(
-        util::FileSystem::PathToUtf8(fbxPath));
+    std::string guid;
+    for (const auto extension : asset::MODEL_SOURCE_EXTENSIONS) {
+        const fs::path source = pkgDir.parent_path() / (pkg + std::string(extension));
+        guid = AssetDatabase::TryGetGuidFromPath(util::FileSystem::PathToUtf8(source));
+        if (!guid.empty()) break;
+    }
     if (guid.empty()) return {};
 
     /// @note "assets/" を除去
@@ -376,7 +398,7 @@ static std::string LibraryBakedPath(const std::string& absPath, const std::strin
            util::FileSystem::PathToUtf8(p.filename());
 }
 
-/// @brief 原本 FBX の恒久 GUID から Library/Baked 内のモデルコンテナを引く。
+/// @brief モデル原本 の恒久 GUID から Library/Baked 内のモデルコンテナを引く。
 /// @note Scene / Component には Unity と同じく原本 .fbx を保存し、再生成可能な .fzasset は
 /// @note AssetBrowser や Inspector に露出しない内部キャッシュとして扱う。
 static std::string LibraryBakedModelPathFromFbx(const std::string& fbxAbsPath, const std::string& basePath)
@@ -397,7 +419,7 @@ static std::string LibraryBakedModelPathFromFbx(const std::string& fbxAbsPath, c
 static std::string ResolveModelAssetPath(const std::string& key, const std::string& basePath)
 {
     namespace fs = std::filesystem;
-    if (!EndsWithCI(key, ".fbx")) return AssetManager::ResolveAssetPath(key);
+    if (!asset::IsModelSourcePath(key)) return AssetManager::ResolveAssetPath(key);
 
     std::string fbxFull;
     if (IsAbsPath(key)) {
@@ -522,7 +544,7 @@ public:
 
         if (EndsWithCI(absPath, ".mesh")) return LoadFzMeshModel(absPath, *resources);
 
-        if (EndsWithCI(absPath, ".fzasset") || EndsWithCI(absPath, ".fbx")) {
+        if (EndsWithCI(absPath, ".fzasset") || asset::IsModelSourcePath(absPath)) {
             ModelAssetImporter importer;
             return BuildBundledModelImpl(importer.Import(absPath, resources));
         }
@@ -531,7 +553,7 @@ public:
 
     std::span<const std::string_view> SupportedExtensions() const override
     {
-        static constexpr std::string_view kExts[] = { ".mesh", ".fzasset", ".fbx" };
+        static constexpr std::string_view kExts[] = { ".mesh", ".fzasset", ".fbx", ".obj", ".gltf", ".glb" };
         return kExts;
     }
 };
@@ -550,6 +572,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     assert(!s_initialized && "AssetManager::Init() must be called once");
     s_resources   = &resources;
     s_basePath    = Normalize(basePath);
+    if (!s_basePath.empty() && s_basePath.back() != '/') s_basePath.push_back('/');
     s_engineBasePath = Normalize(DiscoverEngineAssetRoot());
     s_initialized = true;
     /// @note プロジェクトを切り替えたら、前プロジェクトで報告済みの参照は関係なくなる。
@@ -557,7 +580,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
 
     /// @note GUID ⇄ パス索引を構築する (.meta の自己修復もここで走る)。
     /// @note ResolvePath の "guid:" 分岐が使う前提なので、importer 登録より先に済ませる。
-    AssetDatabase::Init(s_basePath);
+    AssetDatabase::Init(s_basePath, s_engineBasePath);
 
     /// @name インポーター登録
     RegisterImporter<Model>                   (std::make_unique<BundledModelImporter>());
@@ -571,6 +594,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     RegisterImporter<IblAsset>               (std::make_unique<IblImporter>());
     RegisterImporter<PhysicsMaterialAsset>    (std::make_unique<PhysicsMaterialImporter>());
     RegisterImporter<ClothAsset>    (std::make_unique<ClothImporter>());
+    RegisterImporter<FiberPaintAsset>(std::make_unique<FiberPaintImporter>());
     RegisterImporter<SequenceAsset>           (std::make_unique<SequenceImporter>());
     RegisterImporter<fluid::VectorFieldAsset>        (std::make_unique<VectorFieldImporter>());
     RegisterImporter<ParticleCurveAsset>      (std::make_unique<ParticleCurveImporter>());
@@ -605,6 +629,7 @@ void AssetManager::UnloadAll()
     AssetStore<IblAsset>::Get().Clear();
     AssetStore<PhysicsMaterialAsset>::Get().Clear();
     AssetStore<ClothAsset>::Get().Clear();
+    AssetStore<FiberPaintAsset>::Get().Clear();
     AssetStore<SequenceAsset>::Get().Clear();
     AssetStore<fluid::VectorFieldAsset>::Get().Clear();
     /// @note 速度場アトラスはストアの中身から作られる。捨て忘れると、前プロジェクトの場が
@@ -647,6 +672,7 @@ AssetHandle<T> AssetManager::LoadFromStore(const std::string& relativePath)
         /// @note 非同期ロードが予約中のスロット。同期 API の契約 (戻った時点で読めている) を守るため、
         /// @note ここで読んで埋め、実行中の非同期結果は棄却させる。計測と警告は AssetStreamer 側。
         if (store.IsPending(it->second) && store.importer) {
+            (void)core::NotifyBeforeExternalCallback();
             if (std::unique_ptr<T> filled = store.importer->Import(importPathOf(), S_res())) {
                 store.Replace(it->second, std::move(filled));
                 NotifyStreamerSyncFilled(AssetStreamTypeName<T>(), key);
@@ -658,9 +684,10 @@ AssetHandle<T> AssetManager::LoadFromStore(const std::string& relativePath)
     }
 
     std::unique_ptr<T> asset;
-    if (store.importer)
+    if (store.importer) {
+        (void)core::NotifyBeforeExternalCallback();
         asset = store.importer->Import(importPathOf(), S_res());
-    else
+    } else
         FBZZ_LOG_ERROR("AssetManager: importer is not registered [%s]", key.c_str());
 
     if (!asset) {
@@ -711,6 +738,12 @@ void AssetManager::NotifyStreamerSyncFilled(std::string_view typeName, const std
 void AssetManager::NotifyStreamerUnloaded(std::string_view typeName, const std::string& key)
 {
     AssetStreamer::Engine().NotifyUnloaded(typeName, key);
+}
+
+template<>
+void AssetManager::RegisterImporter<MaterialAsset>(std::unique_ptr<IAssetImporter<MaterialAsset>> imp)
+{
+    AssetStore<MaterialAsset>::Get().importer = std::move(imp);
 }
 
 template<>
@@ -765,6 +798,12 @@ template<>
 AssetHandle<ClothAsset> AssetManager::Load<ClothAsset>(const std::string& relativePath)
 {
     return LoadFromStore<ClothAsset>(relativePath);
+}
+
+template<>
+AssetHandle<FiberPaintAsset> AssetManager::Load<FiberPaintAsset>(const std::string& relativePath)
+{
+    return LoadFromStore<FiberPaintAsset>(relativePath);
 }
 
 template<>
@@ -828,6 +867,12 @@ ClothAsset* AssetManager::Get<ClothAsset>(AssetHandle<ClothAsset> h)
 }
 
 template<>
+FiberPaintAsset* AssetManager::Get<FiberPaintAsset>(AssetHandle<FiberPaintAsset> h)
+{
+    return GetFromStore<FiberPaintAsset>(h);
+}
+
+template<>
 SequenceAsset* AssetManager::Get<SequenceAsset>(AssetHandle<SequenceAsset> h)
 {
     return GetFromStore<SequenceAsset>(h);
@@ -888,6 +933,12 @@ void AssetManager::Unload<ClothAsset>(const std::string& relativePath)
 }
 
 template<>
+void AssetManager::Unload<FiberPaintAsset>(const std::string& relativePath)
+{
+    UnloadFromStore<FiberPaintAsset>(relativePath);
+}
+
+template<>
 void AssetManager::Unload<SequenceAsset>(const std::string& relativePath)
 {
     UnloadFromStore<SequenceAsset>(relativePath);
@@ -910,6 +961,7 @@ void AssetManager::FlushFailed()
     FlushStore<IblAsset>();
     FlushStore<PhysicsMaterialAsset>();
     FlushStore<ClothAsset>();
+    FlushStore<FiberPaintAsset>();
     FlushStore<SequenceAsset>();
     FlushStore<fluid::VectorFieldAsset>();
     FlushStore<ParticleCurveAsset>();
@@ -928,14 +980,7 @@ void AssetManager::BumpAssetGeneration() { ++s_assetGeneration; }
 /// @note 取りこぼしが経路ごとに出る。
 static bool SameFilePathCI(const std::string& a, const std::string& b)
 {
-    if (a.size() != b.size()) return false;
-    const auto fold = [](char c) {
-        if (c == '\\') return '/';
-        return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    };
-    for (size_t i = 0; i < a.size(); ++i)
-        if (fold(a[i]) != fold(b[i])) return false;
-    return true;
+    return util::FileSystem::SamePathText(a, b, false);
 }
 
 template<typename T>
@@ -962,6 +1007,7 @@ int AssetManager::ReloadFromStore(const std::string& absPath)
             continue;
         }
 
+        (void)core::NotifyBeforeExternalCallback();
         std::unique_ptr<T> fresh = store.importer->Import(resolved, s_resources);
         if (!fresh) {
             /// @note 書き込み途中のファイルを掴んだ可能性がある。動いている中身を捨てない。
@@ -984,7 +1030,7 @@ std::span<const std::string_view> AssetManager::HotReloadableExtensions()
     /// @note キャッシュが作り直される。載せ忘れると «直したのに反映されない» になる。
     static constexpr std::string_view kExtensions[] = {
         ".mat", ".anim", ".animcontroller", ".mask", ".fzdata", ".physmat",
-        ".cloth", ".synth", ".terrain", ".sequence", ".curve", ".gradient",
+        ".cloth", ".fiberpaint", ".synth", ".terrain", ".sequence", ".curve", ".gradient",
         /// @note 速度場。GPU 常駐はアトラスが持つのでアセット自体は CPU データだけ。
         ".fga",
     };
@@ -1016,6 +1062,7 @@ int AssetManager::ReloadPath(const std::string& absPath)
     reloaded += ReloadFromStore<MaterialAsset>(target);
     reloaded += ReloadFromStore<PhysicsMaterialAsset>(target);
     reloaded += ReloadFromStore<ClothAsset>(target);
+    reloaded += ReloadFromStore<FiberPaintAsset>(target);
     reloaded += ReloadFromStore<TerrainAsset>(target);
     reloaded += ReloadFromStore<SequenceAsset>(target);
     reloaded += ReloadFromStore<ParticleCurveAsset>(target);

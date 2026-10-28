@@ -66,7 +66,7 @@ template<typename T> using Asset = asset::Asset<T>;
 /// @{
 
 /// @brief クラス先頭に置く。Reflect() 連鎖の土台・型名・仮想 override を生成する。
-/// @note DataAsset は Script を継承しないため、Script を名指しする FBZZ_SCRIPT でなく Script 非依存の FBZZ_REFLECT_CORE_ を使う。
+/// @note DataAsset は Script を継承せず、共通の FBZZ_REFLECT_CORE_ でフィールド反射を宣言する。
 #define FBZZ_DATA_ASSET(T)                                                      \
     FBZZ_REFLECT_CORE_(T)                                                       \
     void _fbzz_reflect(::fbzz::scene::detail::ReflectTag<0>,                    \

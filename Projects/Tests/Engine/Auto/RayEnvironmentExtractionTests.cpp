@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <system_error>
 
 namespace fbzz::tests {
 namespace {
@@ -202,7 +203,9 @@ TEST_F(RayEnvironmentExtractionTest, StreamedNativeCubePreservesLinearHdrAndSele
     const auto* asset = resolver.ResolveAsset(*m_resources, m_firstPath.generic_string());
     ASSERT_NE(asset, nullptr);
     EXPECT_EQ(asset->gpuHandle, selected.rawTexture);
-    EXPECT_EQ(std::filesystem::path(asset->sourcePath).lexically_normal(), m_firstPath.lexically_normal());
+    std::error_code pathError;
+    EXPECT_TRUE(std::filesystem::equivalent(std::filesystem::path(asset->sourcePath), m_firstPath, pathError));
+    EXPECT_FALSE(pathError) << pathError.message();
     EXPECT_NE(resolver.ResolveContentRevision(*m_resources, m_firstPath.generic_string()), 0u);
     const auto repeated = Extract();
     EXPECT_EQ(repeated.rawTexture, selected.rawTexture);
@@ -265,6 +268,60 @@ TEST_F(RayEnvironmentExtractionTest, SameHandleNativeReloadUpdatesExtractionWith
     EXPECT_NE(current.pixels, previous.pixels);
     EXPECT_GT(current.pixels->contentVersion, previous.pixels->contentVersion);
     EXPECT_FLOAT_EQ(previous.pixels->radiance[0][0], 2);
+}
+
+
+/// @note A streamed publication and a mixed-case direct lookup must share ownership; green-flipped variants remain separate.
+TEST_F(RayEnvironmentExtractionTest, CaseAliasesShareTexturePublicationPinsAndFlipVariants)
+{
+    const std::array<uint8_t, 4> pixel{255, 128, 64, 255};
+    const std::string originalPath = m_firstPath.generic_string();
+    const std::string aliasPath = m_temp.File("firstraw.dds").generic_string();
+    const auto original = m_resources->CreateTexture(pixel.data(), 1, 1);
+    const auto duplicate = m_resources->CreateTexture(pixel.data(), 1, 1);
+    const auto flipped = m_resources->CreateTexture(pixel.data(), 1, 1);
+    ASSERT_NE(m_resources->Get(original), nullptr);
+    ASSERT_NE(m_resources->Get(duplicate), nullptr);
+    ASSERT_NE(m_resources->Get(flipped), nullptr);
+    EXPECT_EQ(m_resources->PublishTexture(originalPath, original), original);
+    EXPECT_EQ(m_resources->FindCachedTexture(aliasPath), original);
+    EXPECT_EQ(m_resources->PublishTexture(aliasPath, duplicate), original);
+    EXPECT_EQ(m_resources->Get(duplicate), nullptr);
+    EXPECT_EQ(m_resources->PublishTexture(aliasPath, flipped, true), flipped);
+    EXPECT_EQ(m_resources->FindCachedTexture(originalPath, true), flipped);
+    EXPECT_EQ(m_resources->FindCachedTexture(originalPath), original);
+    EXPECT_EQ(m_resources->LoadTexture(originalPath), original);
+    EXPECT_FALSE(m_resources->EvictStreamedTexture(aliasPath));
+    EXPECT_NE(m_resources->Get(original), nullptr);
+    EXPECT_TRUE(m_resources->EvictStreamedTexture(originalPath, true));
+    EXPECT_EQ(m_resources->Get(flipped), nullptr);
+    EXPECT_EQ(m_resources->EvictTexture(aliasPath), 1u);
+    EXPECT_EQ(m_resources->Get(original), nullptr);
+    EXPECT_FALSE(m_resources->FindCachedTexture(originalPath).IsValid());
+    EXPECT_FALSE(m_resources->FindCachedTexture(aliasPath, true).IsValid());
+}
+
+/// @note Case folding applies to folder eviction too, without allowing a similarly prefixed sibling folder to match.
+TEST_F(RayEnvironmentExtractionTest, CaseAliasFolderEvictionPreservesSiblingAndRemovesBothVariants)
+{
+    const std::array<uint8_t, 4> pixel{255, 128, 64, 255};
+    const std::string folder = m_temp.File("CaseFolder").generic_string();
+    const std::string alias = m_temp.File("casefolder").generic_string();
+    const std::string sibling = m_temp.File("CaseFolderOld/Leaf.dds").generic_string();
+    const auto original = m_resources->CreateTexture(pixel.data(), 1, 1);
+    const auto flipped = m_resources->CreateTexture(pixel.data(), 1, 1);
+    const auto other = m_resources->CreateTexture(pixel.data(), 1, 1);
+    ASSERT_NE(m_resources->Get(original), nullptr);
+    ASSERT_NE(m_resources->Get(flipped), nullptr);
+    ASSERT_NE(m_resources->Get(other), nullptr);
+    ASSERT_EQ(m_resources->PublishTexture(folder + "/Leaf.dds", original), original);
+    ASSERT_EQ(m_resources->PublishTexture(folder + "/Leaf.dds", flipped, true), flipped);
+    ASSERT_EQ(m_resources->PublishTexture(sibling, other), other);
+    EXPECT_EQ(m_resources->EvictTexture(alias), 2u);
+    EXPECT_EQ(m_resources->Get(original), nullptr);
+    EXPECT_EQ(m_resources->Get(flipped), nullptr);
+    EXPECT_EQ(m_resources->FindCachedTexture(sibling), other);
+    EXPECT_NE(m_resources->Get(other), nullptr);
 }
 
 } /// @note anonymous namespace

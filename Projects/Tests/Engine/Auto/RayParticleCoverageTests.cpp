@@ -7,6 +7,11 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Systems/RenderParticleExtractor.hpp>
+#include <Engine/Scene/Systems/RenderEnvironmentExtractor.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
+#include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/SunMoonRenderer.hpp>
+#include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Components/FiberComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
@@ -21,6 +26,8 @@
 #include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/RayTracing/RayScene.hpp>
+#include "../../../Engine/src/Scene/Systems/RenderEntitySlotMask.hpp"
+#include <array>
 
 namespace fbzz::tests {
 namespace {
@@ -161,6 +168,302 @@ public:
     std::unique_ptr<renderer::IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t, uint32_t) override { ++bufferCreations; return {}; }
 };
 
+/// @note Exercises actual environment/particle output using the existing CPU resource adapter.
+class SparseRenderCollectionTest : public testkit::EngineFixture {
+protected:
+    testkit::TempDir m_temp{"SparseRenderCollection"};
+    CoverageCpuRenderer m_renderer;
+    renderer::ResourceManager m_resources{m_renderer};
+    scene::Scene m_scene;
+    renderer::Camera m_camera;
+    renderer::RenderSettings m_settings;
+    renderer::RenderPassHandles m_handles;
+    std::string m_materialPath;
+    bool m_assetInitialized = false;
+
+    void SetUp() override
+    {
+        testkit::EngineFixture::SetUp();
+        ASSERT_TRUE(m_temp.IsValid());
+        asset::MaterialAssetAuthoring material;
+        material.renderPath = asset::RenderPath::Particle;
+        m_materialPath = m_temp.File("Collection.mat").generic_string();
+        ASSERT_TRUE(asset::SaveMaterialAssetToFile(m_materialPath, material));
+        asset::AssetManager::Init(m_resources, m_temp.Path().generic_string() + "/");
+        m_assetInitialized = true;
+        m_camera.m_position = {0, 0, 0};
+        m_handles.particleShader = {11, 1};
+        m_handles.particleIB = {12, 1};
+    }
+
+    void TearDown() override
+    {
+        m_scene.Clear();
+        if (m_assetInitialized) asset::AssetManager::UnloadAll();
+        testkit::EngineFixture::TearDown();
+    }
+
+    void AddDecoys()
+    {
+        for (int i = 0; i < 2048; ++i) m_scene.CreateGameObject("Unrelated render owner");
+    }
+
+    scene::EntityID AddEnvironment(float skyValue, float sunValue, int layer = 3)
+    {
+        auto& go = m_scene.CreateGameObject("Environment owner");
+        go.layer = layer;
+        if (skyValue > 0.0f) go.AddComponent<scene::SkyRenderer>().skyScatterIntensity = skyValue;
+        if (sunValue > 0.0f) go.AddComponent<scene::SunMoonRenderer>().sunDiskIntensity = sunValue;
+        return go.GetID();
+    }
+
+    void ConfigureEmitter(scene::EntityID id, int priority)
+    {
+        auto& emitter = m_scene.GetGameObject(id)->AddComponent<scene::ParticleEmitter>();
+        emitter.settings.materialPath = m_materialPath;
+        emitter.settings.renderPriority = priority;
+        emitter.settings.playing = false;
+        emitter.settings.simulationMode = scene::ParticleSimulationMode::Cpu;
+        emitter.settings.simulationSpace = scene::ParticleSimulationSpace::World;
+        emitter.settings.culling.cullingEnabled = false;
+        emitter.settings.culling.lodEnabled = false;
+        emitter.runtime.particles.resize(1);
+        /// @note Keep this collection test independent of playback's frame-token contract.
+        emitter.runtime.lastPlaybackFrame = Time::frameCount;
+    }
+
+    scene::EntityID AddEmitter(math::Vector3 position, int priority = 1, int layer = 3)
+    {
+        auto& go = m_scene.CreateGameObject("Ordered emitter");
+        go.layer = layer;
+        go.transform.position = go.transform.worldPosition = position;
+        const auto id = go.GetID();
+        ConfigureEmitter(id, priority);
+        return id;
+    }
+
+    renderer::RenderEnvironmentInput Environment(fbzz::LayerMask mask = fbzz::Layer::Mask(3))
+    {
+        scene::RenderPassContext ctx(m_scene, m_renderer, m_resources, m_camera, m_settings, {}, mask, m_handles);
+        return scene::ExtractRenderEnvironment(ctx);
+    }
+
+    renderer::RenderScene Particles(fbzz::LayerMask mask = fbzz::Layer::Mask(3))
+    {
+        scene::RenderPassContext ctx(m_scene, m_renderer, m_resources, m_camera, m_settings, {}, mask, m_handles);
+        renderer::RenderScene output;
+        scene::ExtractRenderParticles(ctx, output);
+        return output;
+    }
+};
+
+TEST_F(SparseRenderCollectionTest, EnvironmentKeepsFirstEligibleSkyAndSunAcrossLayerAndParentChanges)
+{
+    AddDecoys();
+    const auto parent = m_scene.CreateGameObject("Inactive parent").GetID();
+    m_scene.GetGameObject(parent)->SetActive(false);
+    const auto disabled = AddEnvironment(11, 11);
+    m_scene.GetComponent<scene::SkyRenderer>(disabled)->enabled = false;
+    m_scene.GetComponent<scene::SunMoonRenderer>(disabled)->enabled = false;
+    AddEnvironment(22, 22, 7);
+    const auto hidden = AddEnvironment(33, 33);
+    m_scene.GetGameObject(hidden)->SetParent(*m_scene.GetGameObject(parent));
+    AddEnvironment(44, 0);
+    AddEnvironment(55, 66);
+    AddEnvironment(77, 77);
+    auto output = Environment();
+    ASSERT_TRUE(output.sky);
+    ASSERT_TRUE(output.sunMoon);
+    EXPECT_FLOAT_EQ(output.sky->skyScatterIntensity, 44);
+    EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 66);
+    m_scene.GetGameObject(parent)->SetActive(true);
+    output = Environment();
+    ASSERT_TRUE(output.sky);
+    ASSERT_TRUE(output.sunMoon);
+    EXPECT_FLOAT_EQ(output.sky->skyScatterIntensity, 33);
+    EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 33);
+    m_scene.GetComponent<scene::SkyRenderer>(disabled)->enabled = true;
+    m_scene.GetComponent<scene::SunMoonRenderer>(disabled)->enabled = true;
+    output = Environment();
+    ASSERT_TRUE(output.sky);
+    ASSERT_TRUE(output.sunMoon);
+    EXPECT_FLOAT_EQ(output.sky->skyScatterIntensity, 11);
+    EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 11);
+    output = Environment(fbzz::Layer::Mask(7));
+    ASSERT_TRUE(output.sky);
+    ASSERT_TRUE(output.sunMoon);
+    EXPECT_FLOAT_EQ(output.sky->skyScatterIntensity, 22);
+    EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 22);
+}
+
+TEST_F(SparseRenderCollectionTest, EnvironmentRebuildsAfterSceneReorderDenseRemovalAndSlotReuse)
+{
+    const auto first = AddEnvironment(10, 10);
+    AddEnvironment(20, 20);
+    const auto third = AddEnvironment(30, 30);
+    ASSERT_TRUE(m_scene.MoveGameObjectToIndex(third, 0));
+    m_scene.RemoveComponent<scene::SkyRenderer>(first);
+    m_scene.RemoveComponent<scene::SunMoonRenderer>(first);
+    auto output = Environment();
+    ASSERT_TRUE(output.sky);
+    ASSERT_TRUE(output.sunMoon);
+    EXPECT_FLOAT_EQ(output.sky->skyScatterIntensity, 30);
+    EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 30);
+    m_scene.GetGameObject(first)->AddComponent<scene::SkyRenderer>().skyScatterIntensity = 10;
+    m_scene.GetGameObject(first)->AddComponent<scene::SunMoonRenderer>().sunDiskIntensity = 10;
+    output = Environment();
+    ASSERT_TRUE(output.sky);
+    ASSERT_TRUE(output.sunMoon);
+    EXPECT_FLOAT_EQ(output.sky->skyScatterIntensity, 30);
+    EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 30);
+    ASSERT_TRUE(m_scene.DestroyGameObject(third));
+    const auto replacement = AddEnvironment(40, 40);
+    EXPECT_EQ(replacement.index, third.index);
+    EXPECT_NE(replacement.generation, third.generation);
+    output = Environment();
+    ASSERT_TRUE(output.sky);
+    ASSERT_TRUE(output.sunMoon);
+    EXPECT_FLOAT_EQ(output.sky->skyScatterIntensity, 10);
+    EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 10);
+    ASSERT_TRUE(m_scene.MoveGameObjectToIndex(replacement, 0));
+    output = Environment();
+    ASSERT_TRUE(output.sky);
+    ASSERT_TRUE(output.sunMoon);
+    EXPECT_FLOAT_EQ(output.sky->skyScatterIntensity, 40);
+    EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 40);
+}
+
+TEST_F(SparseRenderCollectionTest, ParticlePriorityDistanceAndEqualDistanceSceneOrderSurviveComponentChanges)
+{
+    AddDecoys();
+    const auto nearA = AddEmitter({3, 0, 0});
+    const auto nearB = AddEmitter({-3, 0, 0});
+    AddEmitter({0, 0, 5});
+    AddEmitter({1, 0, 0}, 0);
+    auto output = Particles();
+    ASSERT_EQ(output.particles.size(), 4u);
+    EXPECT_EQ(output.particles[0].priority, 0);
+    EXPECT_EQ(output.particles[0].position, (math::Vector3{1, 0, 0}));
+    EXPECT_EQ(output.particles[1].position, (math::Vector3{0, 0, 5}));
+    EXPECT_EQ(output.particles[2].position, (math::Vector3{3, 0, 0}));
+    EXPECT_EQ(output.particles[3].position, (math::Vector3{-3, 0, 0}));
+    ASSERT_TRUE(m_scene.MoveGameObjectToIndex(nearB, 0));
+    m_scene.RemoveComponent<scene::ParticleEmitter>(nearA);
+    ConfigureEmitter(nearA, 1);
+    output = Particles();
+    ASSERT_EQ(output.particles.size(), 4u);
+    EXPECT_EQ(output.particles[0].position, (math::Vector3{1, 0, 0}));
+    EXPECT_EQ(output.particles[1].position, (math::Vector3{0, 0, 5}));
+    EXPECT_EQ(output.particles[2].position, (math::Vector3{-3, 0, 0}));
+    EXPECT_EQ(output.particles[3].position, (math::Vector3{3, 0, 0}));
+    ASSERT_TRUE(m_scene.DestroyGameObject(nearA));
+    const auto replacement = AddEmitter({0, 3, 0});
+    EXPECT_EQ(replacement.index, nearA.index);
+    EXPECT_NE(replacement.generation, nearA.generation);
+    output = Particles();
+    ASSERT_EQ(output.particles.size(), 4u);
+    EXPECT_EQ(output.particles[0].position, (math::Vector3{1, 0, 0}));
+    EXPECT_EQ(output.particles[1].position, (math::Vector3{0, 0, 5}));
+    EXPECT_EQ(output.particles[2].position, (math::Vector3{-3, 0, 0}));
+    EXPECT_EQ(output.particles[3].position, (math::Vector3{0, 3, 0}));
+    EXPECT_EQ(output.particles[3].drawCount, 1);
+    EXPECT_FALSE(output.particles[3].gpu);
+}
+
+TEST_F(SparseRenderCollectionTest, ParticleEligibilityAndEmptyCollectionsRemainFreshBetweenCalls)
+{
+    AddDecoys();
+    EXPECT_TRUE(Environment().sky == std::nullopt);
+    EXPECT_TRUE(Environment().sunMoon == std::nullopt);
+    EXPECT_TRUE(Particles().particles.empty());
+    const auto parent = m_scene.CreateGameObject("Inactive particle parent").GetID();
+    m_scene.GetGameObject(parent)->SetActive(false);
+    const auto hidden = AddEmitter({1, 0, 0});
+    m_scene.GetGameObject(hidden)->SetParent(*m_scene.GetGameObject(parent));
+    const auto disabled = AddEmitter({2, 0, 0});
+    m_scene.GetComponent<scene::ParticleEmitter>(disabled)->settings.enabled = false;
+    const auto masked = AddEmitter({3, 0, 0}, 1, 7);
+    const auto visible = AddEmitter({4, 0, 0});
+    auto output = Particles();
+    ASSERT_EQ(output.particles.size(), 1u);
+    EXPECT_EQ(output.particles[0].position, (math::Vector3{4, 0, 0}));
+    m_scene.GetGameObject(parent)->SetActive(true);
+    m_scene.GetComponent<scene::ParticleEmitter>(disabled)->settings.enabled = true;
+    m_scene.GetGameObject(masked)->layer = 3;
+    m_scene.GetGameObject(visible)->SetActive(false);
+    output = Particles();
+    ASSERT_EQ(output.particles.size(), 3u);
+    EXPECT_EQ(output.particles[0].position, (math::Vector3{3, 0, 0}));
+    EXPECT_EQ(output.particles[1].position, (math::Vector3{2, 0, 0}));
+    EXPECT_EQ(output.particles[2].position, (math::Vector3{1, 0, 0}));
+    m_scene.Clear();
+    EXPECT_FALSE(Environment().sky);
+    EXPECT_FALSE(Environment().sunMoon);
+    EXPECT_TRUE(Particles().particles.empty());
+    AddEmitter({9, 0, 0});
+    output = Particles();
+    ASSERT_EQ(output.particles.size(), 1u);
+    EXPECT_EQ(output.particles[0].position, (math::Vector3{9, 0, 0}));
+}
+
+TEST_F(SparseRenderCollectionTest, BoundedCandidateMembershipUsesConservativeFallbackForUnknownAndNestedSlots)
+{
+    const std::array<scene::EntityID, 2> sky{{{1, 1}, {65, 1}}};
+    const std::array<scene::EntityID, 2> sun{{{65, 8}, {130, 1}}};
+    {
+        const scene::detail::RenderEntitySlotMask outer(sky, sun);
+        EXPECT_TRUE(outer.MayContain({1, 99}));
+        EXPECT_TRUE(outer.MayContain({65, 1}));
+        EXPECT_TRUE(outer.MayContain({130, 1}));
+        EXPECT_FALSE(outer.MayContain({64, 1}));
+        const std::array<scene::EntityID, 1> innerIds{{{64, 1}}};
+        {
+            const scene::detail::RenderEntitySlotMask nested(innerIds);
+            EXPECT_TRUE(nested.MayContain({64, 1}));
+            EXPECT_TRUE(nested.MayContain({999, 1}));
+        }
+        EXPECT_FALSE(outer.MayContain({64, 1}));
+        EXPECT_TRUE(outer.MayContain({130, 1}));
+        EXPECT_TRUE(outer.MayContain(scene::EntityID::INVALID));
+        EXPECT_TRUE(outer.MayContain({scene::detail::RenderEntitySlotMask::kSlotCapacity, 1}));
+    }
+    const std::array<scene::EntityID, 1> freshIds{{{64, 2}}};
+    {
+        const scene::detail::RenderEntitySlotMask fresh(freshIds);
+        EXPECT_TRUE(fresh.MayContain({64, 2}));
+        EXPECT_FALSE(fresh.MayContain({1, 1}));
+        EXPECT_FALSE(fresh.MayContain({130, 1}));
+    }
+    const scene::detail::RenderEntitySlotMask empty(std::span<const scene::EntityID>{});
+    EXPECT_FALSE(empty.MayContain({0, 1}));
+    EXPECT_FALSE(empty.MayContain({130, 1}));
+}
+
+TEST_F(SparseRenderCollectionTest, CandidateCapacityBoundaryAndMalformedTypedIdsKeepOriginalScanAvailable)
+{
+    constexpr auto capacity = scene::detail::RenderEntitySlotMask::kSlotCapacity;
+    const std::array<scene::EntityID, 1> highest{{{capacity - 1, 1}}};
+    {
+        const scene::detail::RenderEntitySlotMask mask(highest);
+        EXPECT_TRUE(mask.MayContain({capacity - 1, 2}));
+        EXPECT_FALSE(mask.MayContain({capacity - 2, 1}));
+    }
+    const std::array<scene::EntityID, 1> oversized{{{capacity, 1}}};
+    {
+        const scene::detail::RenderEntitySlotMask mask(oversized);
+        EXPECT_TRUE(mask.MayContain({0, 1}));
+        EXPECT_TRUE(mask.MayContain({capacity - 1, 1}));
+    }
+    const std::array<scene::EntityID, 1> malformed{{scene::EntityID::INVALID}};
+    {
+        const scene::detail::RenderEntitySlotMask mask(malformed);
+        EXPECT_TRUE(mask.MayContain({0, 1}));
+        EXPECT_TRUE(mask.MayContain({capacity - 1, 1}));
+    }
+    const scene::detail::RenderEntitySlotMask empty(std::span<const scene::EntityID>{});
+    EXPECT_FALSE(empty.MayContain({capacity - 1, 1}));
+}
+
 class RayFiberCoverageTest : public testkit::EngineFixture {
 protected:
     testkit::TempDir m_temp{"RayFiberCoverage"};
@@ -175,7 +478,7 @@ protected:
     {
         testkit::EngineFixture::SetUp();
         ASSERT_TRUE(m_temp.IsValid());
-        asset::MaterialAsset material;
+        asset::MaterialAssetAuthoring material;
         material.params["fiberLength"] = {0.2f};
         material.params["fiberDensity"] = {1.0f};
         m_materialPath = m_temp.File("Fiber.mat").generic_string();
@@ -276,7 +579,7 @@ TEST_F(RayFiberCoverageTest, DisabledInactiveZeroDensityLengthAndRootCountAreExc
     fiber->m_shellCount = 0;
     /// @note Raster clamps Shell layers to at least one; raw zero is not proof of no surface.
     EXPECT_EQ(Snapshot().rayUnsupportedEffects.size(), 1u);
-    asset::MaterialAsset zeroDensity;
+    asset::MaterialAssetAuthoring zeroDensity;
     zeroDensity.params["fiberDensity"] = {0};
     const auto emptyMaterial = m_temp.File("ZeroDensity.mat").generic_string();
     ASSERT_TRUE(asset::SaveMaterialAssetToFile(emptyMaterial, zeroDensity));

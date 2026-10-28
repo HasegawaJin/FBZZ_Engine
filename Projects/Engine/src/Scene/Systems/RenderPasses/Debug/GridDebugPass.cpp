@@ -29,16 +29,17 @@ void GridDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     constexpr math::Vector4 kAxisColorX = { 0.60f, 0.18f, 0.18f, 1.0f };
     constexpr math::Vector4 kAxisColorZ = { 0.18f, 0.18f, 0.60f, 1.0f };
 
-    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, ctx.camera.GetGpuViewProjection());
+    /// @note TAA 前の HDR 深度と同じ射影で比較し、モデルとの重なりを位相ごとにずらさない。
+    /// @see Graphics/Pipeline/RenderConstants.hpp MakeJitteredViewProjection.
+    const auto viewProjection = MakeJitteredViewProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, viewProjection);
     const float extent = static_cast<float>(kHalfCount) * kCellSize;
     for (int i = -kHalfCount; i <= kHalfCount; ++i) {
         const float offset = static_cast<float>(i) * kCellSize;
         /// @note グリッドは世界の床に置かれた線のため、深度テストなしで描くとメッシュの手前へ浮いて見え前後関係が壊れる。LineDepthTested でシーンジオメトリに遮蔽させる (ギズモ類は深度なしの Line のまま)。
-        /// @note Z 方向の線 (X 軸に平行)
         renderer::DebugDraw::LineDepthTested(ctx.renderer,
             { offset, 0.0f, -extent }, { offset, 0.0f, extent },
             (i == 0) ? kAxisColorX : kGridColor);
-        /// @note X 方向の線 (Z 軸に平行)
         renderer::DebugDraw::LineDepthTested(ctx.renderer,
             { -extent, 0.0f, offset }, { extent, 0.0f, offset },
             (i == 0) ? kAxisColorZ : kGridColor);
@@ -46,4 +47,4 @@ void GridDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     renderer::DebugDraw::Flush();
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

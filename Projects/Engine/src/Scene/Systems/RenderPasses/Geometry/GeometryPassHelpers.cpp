@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "GeometryPasses.hpp"
+#include <Graphics/Renderer/BuiltinShader.hpp>
 #include <Engine/Renderer/IPipelineState.hpp>
 #include <Engine/Renderer/RenderVisibility.hpp>
 #include "Engine/Asset/AssetManager.hpp"
@@ -49,6 +50,44 @@ using asset::ApplyMaterialParamOverrides;
 using asset::FindMaterialParam;
 using asset::InitDefaultMaterialParams;
 constexpr auto& kTextureSlotNames = asset::kMaterialTextureSlotNames;
+
+/// @note Reuse bounded per-thread byte capacity; nested calls own a local vector and never alias the outer Sprite/texture snapshot.
+constexpr size_t MATERIAL_PARAMETER_SCRATCH_MAX_CAPACITY = 4096;
+struct MaterialParameterScratchStorage {
+    std::vector<uint8_t> bytes;
+    bool borrowed = false;
+};
+MaterialParameterScratchStorage& MaterialParameterScratch()
+{
+    thread_local MaterialParameterScratchStorage storage;
+    return storage;
+}
+
+class OwnedMaterialParameterSnapshot {
+public:
+    explicit OwnedMaterialParameterSnapshot(const std::vector<uint8_t>& values)
+    {
+        auto& storage = MaterialParameterScratch();
+        if (!storage.borrowed && values.size() <= MATERIAL_PARAMETER_SCRATCH_MAX_CAPACITY) {
+            storage.borrowed = true; m_storage = &storage; m_bytes = &storage.bytes;
+        }
+        m_bytes->assign(values.begin(), values.end());
+        if (m_storage && m_bytes->capacity() > MATERIAL_PARAMETER_SCRATCH_MAX_CAPACITY) {
+            m_local.swap(*m_bytes); m_bytes = &m_local;
+        }
+    }
+    ~OwnedMaterialParameterSnapshot()
+    {
+        if (m_storage) { m_storage->bytes.clear(); m_storage->borrowed = false; }
+    }
+    OwnedMaterialParameterSnapshot(const OwnedMaterialParameterSnapshot&) = delete;
+    OwnedMaterialParameterSnapshot& operator=(const OwnedMaterialParameterSnapshot&) = delete;
+    std::vector<uint8_t>& Bytes() { return *m_bytes; }
+private:
+    std::vector<uint8_t> m_local;
+    std::vector<uint8_t>* m_bytes = &m_local;
+    MaterialParameterScratchStorage* m_storage = nullptr;
+};
 
 /// @brief albedo に Sprite サブアセットが指定された場合、Sprite 矩形を標準 UV 変換へ合成する。
 /// @note GPU Texture は atlas 全体を共有するため、3D Material で個別 Sprite を使うには頂点 UV を矩形の scale/offset へ写像する必要がある。
@@ -135,8 +174,7 @@ AnimatorComponent* FindAnimator(GameObject& go)
 
 const char* GetFallbackMaterialPath(bool skinned)
 {
-    return skinned ? "Assets/Materials/Fallback/FallbackSkinned.mat"
-                   : "Assets/Materials/Fallback/Fallback.mat";
+    return skinned ? renderer::ERROR_SKINNED_SHADER : renderer::ERROR_SURFACE_SHADER;
 }
 
 void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath)
@@ -152,132 +190,257 @@ void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath)
 
 renderer::Material* GetFallbackMaterial(renderer::ResourceManager& resources, bool skinned)
 {
-    static MaterialComponent s_surfaceFallback;
-    static MaterialComponent s_skinnedFallback;
-    MaterialComponent& fallback = skinned ? s_skinnedFallback : s_surfaceFallback;
-    fallback.materialPath = GetFallbackMaterialPath(skinned);
-    if (!fallback.EnsureMaterialAsset()) return nullptr;
-    return SyncMaterial(fallback, resources, skinned);
+    return resources.GetErrorMaterial(skinned);
 }
 
-/// @note 実体。MaterialComponent とスロットを分けて受け取り、
-/// @note 「コンポーネント全体の有効/無効」と「スロット単体の有効/無効」を両方尊重する。
-static renderer::Material* SyncMaterialSlotImpl(MaterialSlot& mc,
-                                                bool componentEnabled,
-                                                renderer::ResourceManager& resources,
-                                                bool preferSkinnedFallback,
-                                                float screenPixels)
-{
-    if (!componentEnabled || !mc.visible) return nullptr;
+namespace material_detail {
 
-    if (!mc.materialPath.empty() && !mc.materialAsset.IsValid())
-        mc.materialAsset = asset::AssetManager::Load<asset::MaterialAsset>(mc.materialPath);
+/// @note Immutable pre-streaming derivation; these bytes never include Sprite UV, texture residency/masks/bindless indices or a GPU buffer.
+struct EffectiveMaterialTemplate {
+    MaterialSlot::AuthoringSnapshotPtr slot;
+    asset::MaterialAsset::AuthoringSnapshotPtr asset;
+    asset::AssetHandle<asset::MaterialAsset> assetHandle;
+    uint64_t resourceOwner = 0, resetVersion = 0, shaderVersion = 0;
+    renderer::ResourceHandle<renderer::ShaderTag> shader;
+    std::shared_ptr<const renderer::ShaderDescriptor> descriptor;
+    std::vector<uint8_t> bytes;
+    std::array<std::string, asset::kMaterialTextureSlotNames.size()> texturePaths;
+    bool skinned = false;
+    renderer::ShaderVertexContract vertex;
+};
 
-    auto activeAsset = mc.materialAsset;
-    if (!activeAsset.IsValid()) {
-        /// @note .mat が読めない / 未割当でも、メッシュを画面から絶対に消さない。原色紫のフォールバック材質で描画を続け、問題を可視化する (Unity のマゼンタ相当)。
-        /// @note mc.materialAsset には書き戻さず毎フレーム再解決させる。壊れた .mat を修復・再インポートした瞬間 (FlushFailed 後) に正規材質へ自動復帰できる。
-        const char* fallbackPath = GetFallbackMaterialPath(preferSkinnedFallback);
-        static std::unordered_set<std::string> s_warnedMissingMaterials;
-        const std::string warnKey =
-            mc.materialPath.empty() ? std::string("<unassigned>") : mc.materialPath;
-        if (s_warnedMissingMaterials.insert(warnKey).second) {
-            FBZZ_LOG_WARN("Material load failed '%s' -> using fallback %s.",
-                          warnKey.c_str(), fallbackPath);
-        }
-        activeAsset = asset::AssetManager::Load<asset::MaterialAsset>(fallbackPath);
-        /// @note フォールバック .mat 自体が存在しない場合だけは描画を諦める。
-        if (!activeAsset.IsValid()) return nullptr;
-    }
-
-    if (!mc.material)
-        mc.material = std::make_unique<renderer::Material>();
-
-    auto& material = *mc.material;
-    const std::string& shaderPath = mc.GetShaderPath();
-    const auto* matAsset = asset::AssetManager::Get<asset::MaterialAsset>(activeAsset);
-    if (matAsset && shaderPath.empty()) {
-        const char* fallbackPath = GetFallbackMaterialPath(preferSkinnedFallback);
-        /// @note shader 未設定の .mat を PBR 推定で描くと、未設定と意図した PBR の区別が付かない。原色紫の Unlit フォールバック材質へ明示的に差し替え、問題箇所を見つけやすくする。
-        static std::unordered_set<std::string> s_warnedEmptyShaderMaterials;
-        const std::string warnKey = mc.materialPath.empty() ? std::string("<unnamed>") : mc.materialPath;
-        if (s_warnedEmptyShaderMaterials.insert(warnKey + "|" + fallbackPath).second) {
-            FBZZ_LOG_WARN("Material '%s' has an empty shader path -> using %s.",
-                          warnKey.c_str(), fallbackPath);
-        }
-        activeAsset = asset::AssetManager::Load<asset::MaterialAsset>(fallbackPath);
-        matAsset = asset::AssetManager::Get<asset::MaterialAsset>(activeAsset);
-        if (!matAsset) return nullptr;
-    }
-    const std::string effectiveShaderPath = matAsset ? matAsset->shaderPath : std::string{};
-    material.shaderPath = effectiveShaderPath;
-    material.dielectric = matAsset ? matAsset->dielectric : renderer::SolidDielectricSettings{};
-    material.shader = effectiveShaderPath.empty()
-        ? renderer::ResourceHandle<renderer::ShaderTag>{}
-        : resources.LoadShader(effectiveShaderPath);
-
-    const renderer::ShaderDescriptor* desc = nullptr;
-    if (auto* shader = resources.Get(material.shader))
-        desc = &shader->GetDescriptor();
-
-    material.paramData.assign(desc ? desc->cbufferSize : 0u, 0u);
-    if (desc)
-        InitDefaultMaterialParams(*desc, material.paramData);
-    if (desc && matAsset)
-        ApplyMaterialAssetParams(*matAsset, *desc, material.paramData);
-    /// @note 共有アセット適用後にこの GO 専用の上書きを重ねる (per-instance パラメータ)。
-    if (desc && !mc.paramOverrides.empty())
-        ApplyMaterialParamOverrides(mc.paramOverrides, *desc, material.paramData);
-    if (desc && !mc.integerParamOverrides.empty())
-        asset::ApplyMaterialIntegerOverrides(mc.integerParamOverrides, *desc, material.paramData);
-
-    std::array<std::string, kTextureSlotNames.size()> texturePaths{};
-    if (matAsset) {
-        for (size_t i = 0; i < kTextureSlotNames.size(); ++i) {
-            const auto it = matAsset->textures.find(kTextureSlotNames[i]);
-            texturePaths[i] = it != matAsset->textures.end() ? it->second : std::string{};
-        }
-    }
-    for (size_t i = 0; i < kTextureSlotNames.size(); ++i) {
-        const auto overrideIt = mc.textureOverrides.find(kTextureSlotNames[i]);
-        if (overrideIt != mc.textureOverrides.end())
-            texturePaths[i] = overrideIt->second;
-    }
-
-    /// @note Sprite 矩形は「最終的に t0 へ束縛される参照」から決める。共有 .mat の値ではなく
-    /// @note 上書き適用後の texturePaths[0] を渡すため、テクスチャ解決より後に置く。
-    if (desc)
-        ApplyAlbedoSpriteUv(texturePaths[0], *desc, resources, material.paramData);
-
-    /// @note テクスチャは非同期台帳の利用権越しに引く。毎フレーム引かれている間は利用権が続き、引かれなく
-    /// @note なると手放されて台帳の猶予と予算で解放される。先読み済みなら同期ロードは起きない。
-    const size_t slotCount = texturePaths.size();
-    material.textures.resize(slotCount);
-    asset::StreamedTextureResolver& resolver = asset::StreamedTextureResolver::Engine();
-    for (size_t i = 0; i < slotCount; ++i)
+/// @note Only this helper reads/writes the two private retained entries; publication compares the entry observed before deriving.
+class EffectiveMaterialCache {
+public:
+    static std::shared_ptr<const EffectiveMaterialTemplate> Read(const MaterialSlot& slot, bool skinned)
     {
-        material.textures[i] = texturePaths[i].empty()
-            ? renderer::ResourceHandle<renderer::TextureTag>{}
-            : resolver.ResolveGpu(resources, texturePaths[i], screenPixels);
+        return slot.m_effectiveTemplates[skinned ? 1u : 0u];
     }
+    static void Publish(MaterialSlot& slot, bool skinned,
+        const std::shared_ptr<const EffectiveMaterialTemplate>& expected,
+        std::shared_ptr<const EffectiveMaterialTemplate> value)
+    {
+        auto& current = slot.m_effectiveTemplates[skinned ? 1u : 0u];
+        if (current == expected && slot.ReadAuthoring() == value->slot && slot.GetMaterialAsset() == value->assetHandle)
+            current = std::move(value);
+    }
+};
 
-    static renderer::ShaderDescriptor s_fallback;
-    material.Upload(resources, desc ? *desc : s_fallback);
-    return &material;
+} /// @note namespace material_detail
+
+namespace {
+
+bool MaterialShaderLayoutEqual(const renderer::ShaderDescriptor& lhs, const renderer::ShaderDescriptor& rhs)
+{
+    if (&lhs == &rhs) return true;
+    if (lhs.cbufferSize != rhs.cbufferSize || lhs.textureMaskOffset != rhs.textureMaskOffset
+        || lhs.vars.size() != rhs.vars.size() || lhs.postProcessVars.size() != rhs.postProcessVars.size()
+        || lhs.textures.size() != rhs.textures.size()) return false;
+    const auto varsEqual = [](const auto& a, const auto& b) {
+        for (size_t i = 0; i < a.size(); ++i) {
+            const auto& x = a[i]; const auto& y = b[i];
+            if (x.name != y.name || x.offset != y.offset || x.size != y.size || x.rows != y.rows
+                || x.columns != y.columns || x.varClass != y.varClass || x.varType != y.varType
+                || x.elements != y.elements || x.arrayStride != y.arrayStride || x.matrixStride != y.matrixStride
+                || x.rowMajor != y.rowMajor || x.unsupportedReason != y.unsupportedReason) return false;
+        }
+        return true;
+    };
+    if (!varsEqual(lhs.vars, rhs.vars) || !varsEqual(lhs.postProcessVars, rhs.postProcessVars)) return false;
+    for (size_t i = 0; i < lhs.textures.size(); ++i) {
+        const auto& a = lhs.textures[i]; const auto& b = rhs.textures[i];
+        if (a.name != b.name || a.slot != b.slot || a.constantOffset != b.constantOffset) return false;
+    }
+    return true;
+}
+
+bool EffectiveMaterialWitnessMatches(const material_detail::EffectiveMaterialTemplate& value,
+    const MaterialSlot::AuthoringSnapshotPtr& slot, const asset::MaterialAsset::AuthoringSnapshotPtr& material,
+    asset::AssetHandle<asset::MaterialAsset> handle, renderer::ResourceManager& resources,
+    renderer::ResourceHandle<renderer::ShaderTag> shader, const renderer::ShaderDescriptor& descriptor, bool skinned)
+{
+    return value.slot == slot && value.asset == material && value.assetHandle == handle
+        && value.resourceOwner == resources.GetInstanceId() && value.resetVersion == resources.GetResetVersion()
+        && value.shaderVersion == resources.GetShaderVersion() && value.shader == shader && value.skinned == skinned
+        && value.descriptor && MaterialShaderLayoutEqual(*value.descriptor, descriptor);
+}
+
+bool EffectiveMaterialInputsCurrent(const MaterialComponent& component, size_t slotIndex,
+    const material_detail::EffectiveMaterialTemplate& value, const renderer::ResourceManager& resources)
+{
+    const auto& currentSlot = component.SlotAt(slotIndex);
+    const auto current = currentSlot.ReadAuthoring();
+    /// @note A same-owner edit does not mutate the captured call snapshot; only publication must require its exact current revision.
+    return current && current->OwnerToken() == value.slot->OwnerToken()
+        && resources.GetInstanceId() == value.resourceOwner && resources.GetResetVersion() == value.resetVersion
+        && resources.GetShaderVersion() == value.shaderVersion && resources.GetShaderCapabilities(value.shader).vertex == value.vertex;
+}
+
+bool EffectiveMaterialLayoutCurrent(const material_detail::EffectiveMaterialTemplate& value,
+    renderer::ResourceManager& resources)
+{
+    const auto* shader = resources.Get(value.shader);
+    const bool matches = shader && value.descriptor && MaterialShaderLayoutEqual(*value.descriptor, shader->GetDescriptor());
+    return matches && resources.GetInstanceId() == value.resourceOwner && resources.GetResetVersion() == value.resetVersion
+        && resources.GetShaderVersion() == value.shaderVersion;
+}
+
+} /// @note namespace
+
+/// @pre The component remains alive for this call. Slot-vector edits are re-resolved after resource callbacks; no slot reference crosses them.
+static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, size_t slotIndex,
+    renderer::ResourceManager& resources, bool preferSkinnedFallback, float screenPixels,
+    const PreparedMaterialParams* prepared = nullptr)
+{
+    const auto useErrorMaterial = [&](const char* reason) {
+        static std::unordered_set<std::string> warned;
+        const std::string reference = component.SlotAt(slotIndex).GetMaterialPath().empty()
+            ? "<unassigned>" : component.SlotAt(slotIndex).GetMaterialPath();
+        if (warned.insert(reference + "|" + reason).second)
+            FBZZ_LOG_WARN("Material '%s': %s -> using %s.", reference.c_str(), reason,
+                GetFallbackMaterialPath(preferSkinnedFallback));
+        return resources.GetErrorMaterial(preferSkinnedFallback);
+    };
+    /// @note Reentrant edits get a fresh derivation. Continually mutating custom callbacks fail closed after this bounded retry.
+    for (size_t attempt = 0; attempt < 2; ++attempt) {
+        if (!component.enabled || !component.SlotAt(slotIndex).visible) return nullptr;
+        if (!component.EnsureMaterialAsset(slotIndex)) {
+            if (attempt + 1u < 2u) continue;
+            return useErrorMaterial("material load failed or selected slot changed");
+        }
+        if (!component.enabled || !component.SlotAt(slotIndex).visible) return nullptr;
+        const auto slotSnapshot = component.SlotAt(slotIndex).ReadAuthoring();
+        const auto handle = component.SlotAt(slotIndex).GetMaterialAsset();
+        const auto assetSnapshot = asset::ReadMaterialAuthoring(handle);
+        if (!slotSnapshot || !assetSnapshot) return useErrorMaterial("material load failed");
+        const auto& slotData = slotSnapshot->Data(); const auto& assetData = assetSnapshot->Data();
+        if (assetData.shaderPath.empty()) return useErrorMaterial("empty shader path");
+        if (assetData.renderPath != asset::RenderPath::Auto) return useErrorMaterial("material is not declared for mesh rendering");
+        if (!preferSkinnedFallback && assetData.meshType == asset::MeshType::Skinned)
+            return useErrorMaterial("skinned material assigned to a static mesh");
+        if (preferSkinnedFallback && assetData.meshType == asset::MeshType::Surface) {
+            LogSkinnedSurfaceFallbackWarningOnce(assetData.shaderPath); return resources.GetErrorMaterial(true);
+        }
+
+        const uint64_t owner = resources.GetInstanceId(), reset = resources.GetResetVersion(), shaderVersion = resources.GetShaderVersion();
+        const bool preparationCandidate = prepared && prepared->source == assetSnapshot
+            && prepared->resourceOwner == owner && prepared->resetVersion == reset && prepared->shaderVersion == shaderVersion
+            && prepared->shaderPath == assetData.shaderPath && prepared->shader.IsValid() && prepared->descriptor;
+        const auto preparedVertex = preparationCandidate ? resources.GetShaderCapabilities(prepared->shader).vertex
+            : renderer::ShaderVertexContract{};
+        const auto* preparedNative = preparationCandidate ? resources.Get(prepared->shader) : nullptr;
+        const bool preparationLayoutMatches = preparedNative && MaterialShaderLayoutEqual(*prepared->descriptor, preparedNative->GetDescriptor());
+        const bool preparedReady = preparationCandidate && preparationLayoutMatches && prepared->standardDescriptorVerified
+            && (preparedVertex == renderer::ShaderVertexContract::STANDARD_SURFACE || preparedVertex == renderer::ShaderVertexContract::STANDARD_SKINNED)
+            && prepared->bytes.size() == prepared->descriptor->cbufferSize;
+        const bool preparationMatches = preparationCandidate && preparationLayoutMatches && (preparedReady || preparedNative);
+        const auto shaderHandle = preparationMatches ? prepared->shader : resources.LoadShader(assetData.shaderPath);
+        const auto* shader = preparedReady ? nullptr : resources.Get(shaderHandle);
+        if (!preparedReady && !shader) return useErrorMaterial("shader load failed");
+        const auto vertex = preparedReady ? preparedVertex : resources.GetShaderCapabilities(shaderHandle).vertex;
+        if ((preferSkinnedFallback && vertex == renderer::ShaderVertexContract::STANDARD_SURFACE)
+            || (!preferSkinnedFallback && vertex == renderer::ShaderVertexContract::STANDARD_SKINNED))
+            return useErrorMaterial("shader vertex contract does not match mesh");
+        /// @note Unknown/native custom descriptor access is copied before callbacks and bypasses persistent reuse.
+        auto descriptor = preparedReady ? prepared->descriptor
+            : std::make_shared<const renderer::ShaderDescriptor>(shader->GetDescriptor());
+        if (resources.GetInstanceId() != owner || resources.GetResetVersion() != reset || resources.GetShaderVersion() != shaderVersion
+            || component.SlotAt(slotIndex).ReadAuthoring() != slotSnapshot || component.SlotAt(slotIndex).GetMaterialAsset() != handle
+            || asset::ReadMaterialAuthoring(handle) != assetSnapshot) continue;
+
+        const bool cacheable = vertex == renderer::ShaderVertexContract::STANDARD_SURFACE
+            || vertex == renderer::ShaderVertexContract::STANDARD_SKINNED;
+        const auto previous = material_detail::EffectiveMaterialCache::Read(component.SlotAt(slotIndex), preferSkinnedFallback);
+        std::shared_ptr<const material_detail::EffectiveMaterialTemplate> effective;
+        if (cacheable && previous && EffectiveMaterialWitnessMatches(*previous, slotSnapshot, assetSnapshot, handle,
+            resources, shaderHandle, *descriptor, preferSkinnedFallback)) effective = previous;
+        else {
+            material_detail::EffectiveMaterialTemplate derived;
+            derived.slot = slotSnapshot; derived.asset = assetSnapshot; derived.assetHandle = handle;
+            derived.resourceOwner = owner; derived.resetVersion = reset; derived.shaderVersion = shaderVersion;
+            derived.shader = shaderHandle; derived.descriptor = std::move(descriptor); derived.skinned = preferSkinnedFallback; derived.vertex = vertex;
+            if (preparationMatches && MaterialShaderLayoutEqual(*prepared->descriptor, *derived.descriptor)
+                && prepared->bytes.size() == derived.descriptor->cbufferSize) derived.bytes = prepared->bytes;
+            else {
+                derived.bytes.assign(derived.descriptor->cbufferSize, 0u);
+                InitDefaultMaterialParams(*derived.descriptor, derived.bytes);
+                ApplyMaterialAssetParams(assetData, *derived.descriptor, derived.bytes);
+            }
+            ApplyMaterialParamOverrides(slotData.presentationParamDefaults, *derived.descriptor, derived.bytes);
+            ApplyMaterialParamOverrides(slotData.paramOverrides, *derived.descriptor, derived.bytes);
+            asset::ApplyMaterialIntegerOverrides(slotData.integerParamOverrides, *derived.descriptor, derived.bytes);
+            for (size_t i = 0; i < derived.texturePaths.size(); ++i) {
+                const auto* key = kTextureSlotNames[i];
+                if (const auto found = assetData.textures.find(key); found != assetData.textures.end()) derived.texturePaths[i] = found->second;
+                if (const auto found = slotData.presentationTextureDefaults.find(key); found != slotData.presentationTextureDefaults.end()) derived.texturePaths[i] = found->second;
+                if (const auto found = slotData.textureOverrides.find(key); found != slotData.textureOverrides.end()) derived.texturePaths[i] = found->second;
+            }
+            effective = std::make_shared<const material_detail::EffectiveMaterialTemplate>(std::move(derived));
+        }
+        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)
+            || !EffectiveMaterialLayoutCurrent(*effective, resources)) continue;
+
+        /// @note Own per-call CPU results rather than a runtime Material reference across Sprite/texture callbacks.
+        OwnedMaterialParameterSnapshot viewParameterSnapshot(effective->bytes);
+        auto& viewBytes = viewParameterSnapshot.Bytes();
+        std::array<renderer::ResourceHandle<renderer::TextureTag>, asset::kMaterialTextureSlotNames.size()> viewTextures{};
+        ApplyAlbedoSpriteUv(effective->texturePaths[0], *effective->descriptor, resources, viewBytes);
+        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
+        auto& resolver = asset::StreamedTextureResolver::Engine();
+        for (size_t i = 0; i < effective->texturePaths.size(); ++i) {
+            /// @note Empty paths call no resolver or callback; the final check still covers the complete texture pass.
+            if (effective->texturePaths[i].empty()) continue;
+            viewTextures[i] = resolver.ResolveGpu(resources, effective->texturePaths[i], screenPixels);
+            if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) break;
+        }
+        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
+        /// @note Re-resolve after callbacks, preserving a nested Sync's unique GPU owner and the existing native Upload lifetime contract.
+        const auto& runtimeTextures = component.SlotAt(slotIndex).runtimeTextureOverrides;
+        for (size_t i = 0; i < viewTextures.size(); ++i) {
+            const auto found = runtimeTextures.find(kTextureSlotNames[i]);
+            if (found == runtimeTextures.end()) continue;
+            const auto& binding = found->second;
+            if (binding.resourceOwner == resources.GetInstanceId() && binding.resetVersion == resources.GetResetVersion()
+                && resources.Get(binding.texture)) viewTextures[i] = binding.texture;
+        }
+        auto& target = component.SlotAt(slotIndex).material;
+        if (!target) target = std::make_unique<renderer::Material>();
+        auto* material = target.get();
+        material->shaderPath = assetData.shaderPath; material->dielectric = assetData.dielectric;
+        material->shader = shaderHandle; material->paramData.assign(viewBytes.begin(), viewBytes.end());
+        material->textures.assign(viewTextures.begin(), viewTextures.end());
+        if (!EffectiveMaterialLayoutCurrent(*effective, resources)) continue;
+        material->Upload(resources, *effective->descriptor);
+        if (!EffectiveMaterialLayoutCurrent(*effective, resources)) continue;
+        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
+        if (effective->descriptor->cbufferSize > 0 && !resources.Get(material->paramsBuffer))
+            return useErrorMaterial("material constant buffer unavailable");
+        if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
+        if (cacheable && component.SlotAt(slotIndex).ReadAuthoring() == slotSnapshot
+            && component.SlotAt(slotIndex).GetMaterialAsset() == handle && asset::ReadMaterialAuthoring(handle) == assetSnapshot)
+            material_detail::EffectiveMaterialCache::Publish(component.SlotAt(slotIndex), preferSkinnedFallback, previous, effective);
+        return component.SlotAt(slotIndex).material.get();
+    }
+    return useErrorMaterial("authoring or resource changed during synchronization");
 }
 
 renderer::Material* SyncMaterial(MaterialComponent& mc, renderer::ResourceManager& resources,
-                                 bool preferSkinnedFallback, float screenPixels)
+    bool preferSkinnedFallback, float screenPixels)
 {
-    return SyncMaterialSlotImpl(mc, mc.enabled, resources, preferSkinnedFallback, screenPixels);
+    return SyncMaterialSlotImpl(mc, 0, resources, preferSkinnedFallback, screenPixels);
 }
 
 renderer::Material* SyncMaterialSlot(MaterialComponent& mc, size_t slotIndex,
-                                     renderer::ResourceManager& resources, bool preferSkinnedFallback,
-                                     float screenPixels)
+    renderer::ResourceManager& resources, bool preferSkinnedFallback, float screenPixels)
 {
-    /// @note mc.enabled は基底 (スロット 0) の enabled であり、コンポーネント全体の有効判定を兼ねる。
-    return SyncMaterialSlotImpl(mc.SlotAt(slotIndex), mc.enabled, resources, preferSkinnedFallback, screenPixels);
+    return SyncMaterialSlotImpl(mc, slotIndex, resources, preferSkinnedFallback, screenPixels);
+}
+
+renderer::Material* SyncMaterialSlotPrepared(MaterialComponent& mc, size_t slotIndex,
+    renderer::ResourceManager& resources, bool preferSkinnedFallback, float screenPixels,
+    const PreparedMaterialParams* prepared)
+{
+    return SyncMaterialSlotImpl(mc, slotIndex, resources, preferSkinnedFallback, screenPixels, prepared);
 }
 
 float EstimateScreenPixels(const RenderPassContext& ctx, const GameObject& go, const renderer::Mesh& mesh)
@@ -315,7 +478,8 @@ bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask)
 
 bool IsSurfaceMaterial(const MaterialSlot& mc)
 {
-    const auto* a = asset::AssetManager::Get<asset::MaterialAsset>(mc.materialAsset);
+    const auto snapshot = asset::ReadMaterialAuthoring(mc.GetMaterialAsset());
+    const auto* a = snapshot ? &snapshot->Data() : nullptr;
     if (a) {
         if (a->meshType == asset::MeshType::Surface) return true;
         if (a->meshType == asset::MeshType::Skinned) return false;
@@ -342,6 +506,21 @@ bool IsReliableOccluder(const renderer::Mesh& mesh)
 WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, float padding)
 {
     const math::Matrix4 world = tf.GetWorldMatrix();
+    return ComputeWorldBounds(world, ComputeWorldBoundsScale(world), mesh, padding);
+}
+
+float ComputeWorldBoundsScale(const math::Matrix4& world)
+{
+    /// @note Maximum axis norm keeps spheres conservative under nonuniform and negative world scale.
+    const float sx = std::sqrt(world.m[0][0]*world.m[0][0] + world.m[1][0]*world.m[1][0] + world.m[2][0]*world.m[2][0]);
+    const float sy = std::sqrt(world.m[0][1]*world.m[0][1] + world.m[1][1]*world.m[1][1] + world.m[2][1]*world.m[2][1]);
+    const float sz = std::sqrt(world.m[0][2]*world.m[0][2] + world.m[1][2]*world.m[1][2] + world.m[2][2]*world.m[2][2]);
+    return std::max({ sx, sy, sz });
+}
+
+WorldBounds ComputeWorldBounds(const math::Matrix4& world, float maximumScale,
+                               const renderer::Mesh& mesh, float padding)
+{
 
     /// @note ローカル空間バウンディング球中心をワールド空間に変換する。
     /// @note 行列は列ベクトル規則 (M * v) なので:
@@ -355,13 +534,7 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, 
         world.m[2][0]*bx + world.m[2][1]*by + world.m[2][2]*bz + world.m[2][3],
     };
 
-    /// @note ワールド行列の各軸ベクトルのノルムからスケールを取得し、最大値を掛ける。非一様スケールでは最大成分で保守的な球にする。球半径を過大評価しても偽カリング (見えているのに消える) は発生しない。
-    const float sx = std::sqrt(world.m[0][0]*world.m[0][0] + world.m[1][0]*world.m[1][0] + world.m[2][0]*world.m[2][0]);
-    const float sy = std::sqrt(world.m[0][1]*world.m[0][1] + world.m[1][1]*world.m[1][1] + world.m[2][1]*world.m[2][1]);
-    const float sz = std::sqrt(world.m[0][2]*world.m[0][2] + world.m[1][2]*world.m[1][2] + world.m[2][2]*world.m[2][2]);
-    const float maxScale = std::max({ sx, sy, sz });
-
-    return { worldCenter, mesh.boundsRadius * maxScale + (padding > 0.0f ? padding : 0.0f) };
+    return { worldCenter, mesh.boundsRadius * maximumScale + (padding > 0.0f ? padding : 0.0f) };
 }
 
 bool ComputeSkinnedWorldBounds(const GameObject& go,
@@ -395,10 +568,7 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
             world.m[1][0]*c.x + world.m[1][1]*c.y + world.m[1][2]*c.z + world.m[1][3],
             world.m[2][0]*c.x + world.m[2][1]*c.y + world.m[2][2]*c.z + world.m[2][3],
         };
-        const float sx = std::sqrt(world.m[0][0]*world.m[0][0] + world.m[1][0]*world.m[1][0] + world.m[2][0]*world.m[2][0]);
-        const float sy = std::sqrt(world.m[0][1]*world.m[0][1] + world.m[1][1]*world.m[1][1] + world.m[2][1]*world.m[2][1]);
-        const float sz = std::sqrt(world.m[0][2]*world.m[0][2] + world.m[1][2]*world.m[1][2] + world.m[2][2]*world.m[2][2]);
-        const float maxScale = (std::max)({ sx, sy, sz });
+        const float maxScale = ComputeWorldBoundsScale(world);
 
         outBounds.radius = (animator->skinnedBoundsRadius + flesh) * maxScale;
         if (padding > 0.0f) outBounds.radius += padding;
@@ -408,13 +578,16 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
     bool hasBounds = false;
     math::Vector3 weightedCenter = math::Vector3::ZERO;
     float totalWeight = 0.0f;
+    math::Matrix4 world;
+    float maximumScale = 0.0f;
 
     /// @note 各 submesh のワールド球を半径重みで平均し、最後に全 submesh を包む半径へ拡張する。毎フレーム CPU スキニングして厳密 bounds を取ると頂点数に比例して重いため、視錐台外の遠いキャラクターを安く除外できる保守的なバインドポーズ球を使う。
     /// @note この Renderer が描く submesh だけを包む。ノードごとに子 GameObject へ分けた構成ではモデル全体の球はどの子にとっても過大になり画面外の部位のぶんまで視錐台に残るため、カリングの単位は「実際に描くもの」に揃える。
     for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot) {
         const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot);
         if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
-        const WorldBounds bounds = ComputeWorldBounds(tf, *meshPtr);
+        if (!hasBounds) { world = tf.GetWorldMatrix(); maximumScale = ComputeWorldBoundsScale(world); }
+        const WorldBounds bounds = ComputeWorldBounds(world, maximumScale, *meshPtr);
         const float weight = (std::max)(bounds.radius, 0.001f);
         weightedCenter = weightedCenter + bounds.center * weight;
         totalWeight += weight;
@@ -429,7 +602,7 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
     for (size_t slot = 0; slot < smr.SubmeshCount(); ++slot) {
         const renderer::Mesh* meshPtr = smr.SubmeshMesh(slot);
         if (!meshPtr || meshPtr->boundsRadius <= 0.0f) continue;
-        const WorldBounds bounds = ComputeWorldBounds(tf, *meshPtr);
+        const WorldBounds bounds = ComputeWorldBounds(world, maximumScale, *meshPtr);
         const math::Vector3 delta = bounds.center - outBounds.center;
         outBounds.radius = (std::max)(outBounds.radius, delta.Length() + bounds.radius);
     }
@@ -521,9 +694,16 @@ bool IsWithinCullDistance(const RenderPassContext& ctx,
 ActiveWeather FindActiveWeather(Scene& scene)
 {
     ActiveWeather result;
-    for (auto& go : scene.GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
-        const auto* weather = go.GetComponent<WeatherComponent>();
+    const auto entities = scene.GetEntities<WeatherComponent>();
+    if (entities.empty()) return result;
+    /// @note This callback-free query retains capacity only; component packing order must not change the first Scene-owned weather.
+    thread_local std::vector<EntityID> candidates;
+    candidates.assign(entities.begin(), entities.end());
+    scene.SortEntitiesBySceneOrder(candidates);
+    for (const auto entity : candidates) {
+        auto* go = scene.GetGameObject(entity);
+        if (!go || !go->activeInHierarchy()) continue;
+        const auto* weather = go->GetComponent<WeatherComponent>();
         if (!weather || !weather->enabled) continue;
         result.wetness      = std::clamp(weather->wetness, 0.0f, 1.0f);
         result.darkening    = std::clamp(weather->darkening, 0.0f, 1.0f);
@@ -531,6 +711,7 @@ ActiveWeather FindActiveWeather(Scene& scene)
         /// @note シーンに 1 つ想定。環境風と同じ扱い
         break;
     }
+    candidates.clear();
     return result;
 }
 

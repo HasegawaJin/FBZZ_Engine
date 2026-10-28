@@ -132,6 +132,8 @@ protected:
         value.asyncCompute = true;
         value.clustered.enabled = false;
         value.clustered.maxDistance = 512;
+        value.clustered.manyLights = true;
+        value.clustered.manyLightSamples = 16;
         value.particleBudgetEnabled = false;
         value.particleBudget = -1;
         value.froxelFog.gridX = 32; value.froxelFog.gridY = 24; value.froxelFog.gridZ = 16;
@@ -165,6 +167,8 @@ protected:
         EXPECT_EQ(actual.asyncCompute, expected.asyncCompute);
         EXPECT_EQ(actual.clustered.enabled, expected.clustered.enabled);
         EXPECT_FLOAT_EQ(actual.clustered.maxDistance, expected.clustered.maxDistance);
+        EXPECT_EQ(actual.clustered.manyLights, expected.clustered.manyLights);
+        EXPECT_EQ(actual.clustered.manyLightSamples, expected.clustered.manyLightSamples);
         EXPECT_EQ(actual.particleBudget, expected.particleBudget);
         EXPECT_EQ(actual.particleBudgetEnabled, expected.particleBudgetEnabled);
         EXPECT_EQ(actual.froxelFog.gridX, expected.froxelFog.gridX);
@@ -196,6 +200,24 @@ protected:
     }
     testkit::TempDir m_temp{"RenderPipelineAsset"};
 };
+
+TEST_F(RenderPipelineAssetTest, GeometryModePersistsThroughProjectAndAssetResolution)
+{
+    ProjectSettings source;
+    source.render.geometryDrawMode = renderer::GeometryDrawMode::GPU_INDIRECT;
+    const auto path = m_temp.File("IndirectProject.toml").generic_string();
+    ASSERT_TRUE(source.Save(path));
+    ProjectSettings restored;
+    ASSERT_TRUE(restored.Load(path));
+    EXPECT_EQ(restored.render.geometryDrawMode, renderer::GeometryDrawMode::GPU_INDIRECT);
+    renderer::RenderSettings resolved;
+    EXPECT_FALSE(asset::ResolveRenderPipelineSettings(restored.render, {}, resolved));
+    EXPECT_EQ(resolved.geometryDrawMode, renderer::GeometryDrawMode::GPU_INDIRECT);
+    restored.render.geometryDrawMode = renderer::GeometryDrawMode::GPU_INSTANCE_INDIRECT;
+    ASSERT_TRUE(restored.Save(path));
+    ASSERT_TRUE(source.Load(path));
+    EXPECT_EQ(source.render.geometryDrawMode, renderer::GeometryDrawMode::GPU_INSTANCE_INDIRECT);
+}
 
 TEST_F(RenderPipelineAssetTest, CapturesPersistentFieldsWithoutOverwritingTransientOrVolumeSettings)
 {

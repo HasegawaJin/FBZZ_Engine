@@ -46,7 +46,7 @@ public:
         if(prefix) std::memcpy(data.data(),matrices.data(),prefix);
         resources.Update(handle,data.data(),size);
     }
-    /// @note Flush before creating/applying CPU bone objects or entering any legacy fallback callback path.
+    /// @note Flush before bone creation, bind fallback, CPU materialization or other callback-capable legacy work.
     static void BeforeBoneHierarchy(renderer::ResourceManager& resources)
     {
         if (s_current && &s_current->m_resources == &resources) s_current->SetActorEligible(false);

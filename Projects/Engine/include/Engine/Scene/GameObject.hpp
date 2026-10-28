@@ -2,12 +2,14 @@
 /// @brief   Unity ライクな OOP ラッパー。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
 /// @note  Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
 /// @note  親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
 #pragma once
 #include "Entity.hpp"
 #include "Transform.hpp"
+#include "ManagedBridgeAbi.hpp"
+#include <bitset>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,6 +17,7 @@
 namespace fbzz::scene {
 
 class Scene;
+namespace managed_detail { class ManagedObjectControls; }
 
 class GameObject {
 public:
@@ -55,7 +58,6 @@ public:
     template<typename T> T& AddComponent(T component = {});
     template<typename T> T* GetComponent();
     template<typename T> void RemoveComponent();
-    template<typename T, typename... Args> T& AddScript(Args&&... args);
     template<typename T> T* GetScript();
 
     /// @note  Unity: transform.SetParent / childCount / GetChild
@@ -98,8 +100,14 @@ private:
     EntityID              m_parent   = EntityID::INVALID;
     std::vector<EntityID> m_children;
     Scene*                m_scene    = nullptr; ///< @note 非所有参照
+    /// @note Scene の所有位置。破棄時の全検索を避け、並べ替えと一括整理で更新する。
+    std::size_t m_sceneStorageIndex = 0;
+    bool m_destroying = false;
+    /// @note managed の Component 削除要求は借用中の物理形状を壊さず Cleanup で確定する。
+    std::bitset<static_cast<std::size_t>(ManagedNativeComponentKind::COUNT)> m_pendingManagedComponentRemovals;
 
     friend class Scene;
+    friend class managed_detail::ManagedObjectControls;
 };
 
 } /// @note namespace fbzz::scene

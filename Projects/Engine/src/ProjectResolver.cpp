@@ -83,7 +83,6 @@ bool ProjectResolver::Resolve(const std::filesystem::path& projectPath)
     const toml::table& projectTable = projectResult.table();
     std::filesystem::path settingsPath = ReadTomlRelativePath(projectTable, "project", "settings_path");
     const std::filesystem::path defaultScene = ReadTomlRelativePath(projectTable, "project", "default_scene");
-    const std::filesystem::path scriptsDllRel = ReadTomlRelativePath(projectTable, "project", "scripts_dll");
     if (IsTemplatePlaceholder(settingsPath)) {
         settingsPath = L"ProjectSettings/ProjectSettings.toml";
     }
@@ -125,11 +124,6 @@ bool ProjectResolver::Resolve(const std::filesystem::path& projectPath)
         m_errorMessage = L"Start scene file was not found.\n\n" + m_project.sceneFile.wstring();
         return false;
     }
-
-    /// @note scripts_dll は省略可。開発環境では .fbzz_proj に書かず exe 隣の DLL を使うケースがあり、
-    ///       配布ビルドでは BuildPipeline が必ず書き出すため、ここでは存在チェックをしない。
-    if (!scriptsDllRel.empty())
-        m_project.scriptsDll = ResolvePathUnderRoot(scriptsDllRel, m_project.root);
 
     return true;
 }

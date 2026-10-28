@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
 #include <Engine/Asset/TextureStreamChannel.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Asset/AssetStreamChannel.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
@@ -167,8 +168,12 @@ public:
             return true;
         renderer::DecodedTextureRGBA8 full;
         if (!renderer::DecodeTextureFileRGBA8(input.resolvedPath, full, &outError)) return false;
-        if (!context.cachePath.empty())
-            (void)texturecache::Write(context.cachePath, context.sourceStamp, full, kLowestTextureQuality);
+        if (!context.cachePath.empty()
+            && !texturecache::Write(context.cachePath, context.sourceStamp, full, kLowestTextureQuality)) {
+            /// @note The optional cache failure must not turn successfully decoded source pixels into a missing texture.
+            FBZZ_LOG_WARN("TextureStreamChannel: cache write failed source='%s' cache='%s'; using decoded pixels",
+                input.resolvedPath.c_str(), context.cachePath.c_str());
+        }
         out = texturecache::SelectQuality(full, input.quality);
         return true;
     }

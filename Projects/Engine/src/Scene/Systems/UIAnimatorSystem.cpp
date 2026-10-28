@@ -2,10 +2,11 @@
 /// @brief   UIAnimator の Tween 評価。
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
-///
-/// 時間経過に応じて UIImage の色と Transform の位置を更新する。
-/// UISystem より前に呼ぶことで描画へ反映される。
+
+/// @note 時間経過に応じて UIImage の色と Transform の位置を更新する。
+/// @note UISystem より前に呼ぶことで描画へ反映される。
 #include "Engine/Scene/Systems/UIAnimatorSystem.hpp"
+#include <Math/Vector4.hpp>
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Scene.hpp"
@@ -34,14 +35,6 @@ float ApplyEasing(float t, UIEasingType easing)
     }
 }
 
-math::Vector4 LerpV4(const math::Vector4& a, const math::Vector4& b, float t)
-{
-    return { a.x + (b.x - a.x) * t,
-             a.y + (b.y - a.y) * t,
-             a.z + (b.z - a.z) * t,
-             a.w + (b.w - a.w) * t };
-}
-
 math::Vector2 LerpV2(const math::Vector2& a, const math::Vector2& b, float t)
 {
     return { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
@@ -49,7 +42,7 @@ math::Vector2 LerpV2(const math::Vector2& a, const math::Vector2& b, float t)
 
 /// @brief active のまま elapsed をラップしたとき didWrap = true を返す。
 /// @note fmod の結果が厳密に 0.0f にならない浮動小数点誤差があるため、pingPong の折り返し
-///       検出を elapsed の値比較ではなくフラグで行う。
+/// @note 検出を elapsed の値比較ではなくフラグで行う。
 void AdvanceTween(float& elapsed, float duration, bool loop, float dt, bool& active, bool& didWrap)
 {
     didWrap = false;
@@ -66,7 +59,7 @@ void AdvanceTween(float& elapsed, float duration, bool loop, float dt, bool& act
     }
 }
 
-/// 数値トゥイーンを 1 段進め、この瞬間の値を返す。active でなければ書かない。
+/// @note 数値トゥイーンを 1 段進め、この瞬間の値を返す。active でなければ書かない。
 bool EvaluateFloatTween(UIFloatTween& tween, float dt, float& out)
 {
     if (!tween.active) return false;
@@ -91,7 +84,7 @@ void ProcessGO(GameObject& go, float dt)
 
     if (anim && anim->enabled) {
         /// @note 待ちは全トゥイーン共通の前段。待っている間は 1 つも進めない。「0.1 秒後に
-        ///       色と位置を同時に動かす」が普通の使い方で、個別に持たせると必ずどれかがずれる。
+        /// @note 色と位置を同時に動かす」が普通の使い方で、個別に持たせると必ずどれかがずれる。
         if (anim->delayElapsed < anim->delay) {
             anim->delayElapsed += dt;
             if (anim->delayElapsed < anim->delay) {
@@ -115,7 +108,7 @@ void ProcessGO(GameObject& go, float dt)
                 AdvanceTween(ct.elapsed, ct.duration, ct.loop, dt, ct.active, didWrap);
                 float t = (ct.duration > 0.0f) ? std::clamp(ct.elapsed / ct.duration, 0.0f, 1.0f) : 1.0f;
                 t = ApplyEasing(t, ct.easing);
-                const math::Vector4 col = LerpV4(ct.from, ct.to, t);
+                const math::Vector4 col = math::Vector4::Lerp(ct.from, ct.to, t);
                 if (image && image->enabled) image->color = col;
                 if (text  && text->enabled)  text->color  = col;
                 if (ct.loop && ct.pingPong && didWrap)
@@ -152,7 +145,7 @@ void ProcessGO(GameObject& go, float dt)
         }
 
         /// @note 回転 Tween: 度で持ち、Z 軸だけを回す。UI の回転は必ず画面に平行な 1 軸で
-        ///       オイラー角の曖昧さが起きないため、クォータニオンにせず度のまま補間する方が往復も素直。
+        /// @note オイラー角の曖昧さが起きないため、クォータニオンにせず度のまま補間する方が往復も素直。
         if (float degrees = 0.0f; EvaluateFloatTween(anim->rotationTween, dt, degrees)) {
             constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
             go.transform.rotation =
@@ -166,7 +159,7 @@ void ProcessGO(GameObject& go, float dt)
         }
 
         /// @note マテリアルの 1 パラメータ。要素ごとの上書きへ書くので、同じ .mat を
-        ///       使う他の要素へは波及しない (UIImage.hpp の materialParamOverrides を参照)。
+        /// @note 使う他の要素へは波及しない (UIImage.hpp の materialParamOverrides を参照)。
         if (float param = 0.0f; EvaluateFloatTween(anim->materialTween, dt, param)) {
             if (image && !anim->materialParam.empty()) {
                 auto& values = image->materialParamOverrides[anim->materialParam];
@@ -181,7 +174,7 @@ void ProcessGO(GameObject& go, float dt)
     }
 }
 
-} // namespace
+} ///< @note namespace
 
 ComponentAccess UIAnimatorSystem::GetAccess() const
 {
@@ -197,9 +190,10 @@ OrderingHints UIAnimatorSystem::GetOrder() const
 
 void UIAnimatorSystem::Update(SystemContext& ctx)
 {
+    if (ctx.scene.GetEntities<UIAnimator>().empty()) return;
     for (GameObject* root : ctx.scene.GetRootGameObjects()) {
         if (root) ProcessGO(*root, ctx.dt);
     }
 }
 
-} // namespace fbzz::scene
+} ///< @note namespace fbzz::scene

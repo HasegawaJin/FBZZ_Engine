@@ -81,8 +81,9 @@ DecalMaterialBinding* ResolveDecalMaterial(renderer::ResourceManager& resources,
     if (decal.materialPath.empty()) return nullptr;
 
     const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(decal.materialPath);
-    const auto* matAsset = assetHandle.IsValid()
-        ? asset::AssetManager::Get<asset::MaterialAsset>(assetHandle) : nullptr;
+    const auto matAssetAuthoringSnapshot = assetHandle.IsValid()
+        ? asset::ReadMaterialAuthoring(assetHandle) : asset::MaterialAsset::AuthoringSnapshotPtr{};
+    const auto* matAsset = matAssetAuthoringSnapshot ? &matAssetAuthoringSnapshot->Data() : nullptr;
     if (!matAsset) {
         if (WarnDecalMaterialOnce(decal.materialPath))
             FBZZ_LOG_WARN("Decal material load failed '%s' -> falling back to the built-in decal shader.",
@@ -251,6 +252,7 @@ void ExtractRenderDecals(RenderPassContext& ctx, renderer::RenderScene& output) 
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
     ++g_decalPassSerial;
+    if (ctx.scene.GetEntities<DecalComponent>().empty()) return;
     const float dt = Time::deltaTime;
     std::vector<EntityID> expiredDecals;
     for (auto& go : ctx.scene.GameObjects()) {

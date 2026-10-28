@@ -24,7 +24,7 @@ namespace {
 /// @brief 拡張ローブ (GBuffer 2 枚に入らない反射モデル) を持つか。
 /// @note 判定の中身は従来の IsForwardOnly から «ローブの有無» の部分だけを切り出したもの。
 /// @note シェーダーで決まる部分は IsGBufferEquivalentShader が持つ。
-bool HasAdvancedLobe(const MaterialSlot& slot, const asset::MaterialAsset& material)
+bool HasAdvancedLobe(const MaterialSlotAuthoring& slot, const asset::MaterialAssetAuthoring& material)
 {
     const auto hasFeature = [&](std::string_view name) {
         const auto overrideIt = slot.paramOverrides.find(std::string(name));
@@ -48,11 +48,31 @@ bool IsGBufferEquivalentShader(std::string_view shaderPath)
 
 renderer::GeometryMaterialInput ExtractGeometryMaterial(const MaterialSlot& slot)
 {
-    return ExtractGeometryMaterial(slot, asset::AssetManager::Get<asset::MaterialAsset>(slot.materialAsset));
+    const auto snapshot = asset::ReadMaterialAuthoring(slot.GetMaterialAsset());
+    const auto slotSnapshot = slot.ReadAuthoring();
+    return ExtractGeometryMaterial(slotSnapshot->Data(), snapshot ? &snapshot->Data() : nullptr,
+        snapshot && IsGBufferEquivalentShader(snapshot->Data().shaderPath));
 }
 
 renderer::GeometryMaterialInput ExtractGeometryMaterial(
     const MaterialSlot& slot, const asset::MaterialAsset* material)
+{
+    const auto snapshot = material ? material->ReadAuthoring() : asset::MaterialAsset::AuthoringSnapshotPtr{};
+    const auto slotSnapshot = slot.ReadAuthoring();
+    return ExtractGeometryMaterial(slotSnapshot->Data(), snapshot ? &snapshot->Data() : nullptr,
+        snapshot && IsGBufferEquivalentShader(snapshot->Data().shaderPath));
+}
+
+renderer::GeometryMaterialInput ExtractGeometryMaterial(
+    const MaterialSlot& slot, const asset::MaterialAsset* material, bool shaderSupportsGBuffer)
+{
+    const auto snapshot = material ? material->ReadAuthoring() : asset::MaterialAsset::AuthoringSnapshotPtr{};
+    const auto slotSnapshot = slot.ReadAuthoring();
+    return ExtractGeometryMaterial(slotSnapshot->Data(), snapshot ? &snapshot->Data() : nullptr, shaderSupportsGBuffer);
+}
+
+renderer::GeometryMaterialInput ExtractGeometryMaterial(
+    const MaterialSlotAuthoring& slot, const asset::MaterialAssetAuthoring* material, bool shaderSupportsGBuffer)
 {
     renderer::GeometryMaterialInput input;
     input.blend = slot.hasBlendModeOverride ? slot.blendModeOverride
@@ -64,7 +84,7 @@ renderer::GeometryMaterialInput ExtractGeometryMaterial(
         return input;
     }
 
-    input.gbufferEquivalentShader = IsGBufferEquivalentShader(material->shaderPath);
+    input.gbufferEquivalentShader = shaderSupportsGBuffer;
     input.advancedLobe            = HasAdvancedLobe(slot, *material);
     return input;
 }

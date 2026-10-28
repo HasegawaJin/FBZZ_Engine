@@ -2,14 +2,15 @@
 /// @brief   Scene と physics::World の同期。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
 /// @brief RigidBodyComponent と ColliderComponent を physics に反映し、Step 後に Transform へ戻す。
 /// @brief Scene から physics への依存方向を保つ。
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
+#include "WorldPoseHelpers.hpp"
 #include "Engine/Scene/Systems/ColliderSync.hpp"
 #include "Engine/Scene/Systems/JointSync.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
+#include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/CharacterControllerComponent.hpp"
 #include "Engine/Scene/Components/ColliderComponent.hpp"
 #include "Engine/Scene/Components/JointComponent.hpp"
@@ -20,10 +21,17 @@
 #include "Engine/Scene/Components/VolumeComponent.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include "Engine/Scene/Components/WaterComponent.hpp"
+#include "Engine/Scene/Components/WaterZoneComponent.hpp"
+#include "Engine/Scene/Components/TargetPointComponent.hpp"
 #include "Engine/Scene/Fields/FlowFieldEval.hpp"
 #include "Engine/Scene/Fields/FlowFieldFrame.hpp"
 #include "Engine/Scene/ScriptComponent.hpp"
 #include "Engine/Scene/Systems/WaterSystem.hpp"
+#include <Engine/Scene/WaterSurfaceQuery.hpp>
+#include <Engine/Scene/WaterExclusion.hpp>
+#include <Engine/Scene/WaterInteraction.hpp>
+#include <Engine/Scene/WaterSpline.hpp>
+#include <Engine/Scene/WaterDepthField.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
@@ -38,15 +46,72 @@
 #include <Physics/World.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <limits>
 #include <memory>
+#include <mutex>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
 
 namespace fbzz::scene {
 
+using world_pose_detail::WriteWorldPoseToTransform;
+
 namespace {
+
+struct SpatialDebugRequestState {
+    PhysicsSpatialDebugRequest request;
+    uint64_t revision = 0;
+};
+
+struct SpatialDebugBridge {
+    std::atomic<bool> enabled{false};
+    std::mutex mutex;
+    uint64_t revision = 0;
+    std::shared_ptr<const SpatialDebugRequestState> request;
+    std::shared_ptr<const PhysicsSpatialDebugSnapshot> snapshot;
+};
+
+SpatialDebugBridge& GetSpatialDebugBridge()
+{
+    static SpatialDebugBridge bridge;
+    return bridge;
+}
+
+bool SameSpatialDebugRequest(const PhysicsSpatialDebugRequest& a,
+                             const PhysicsSpatialDebugRequest& b)
+{
+    const auto& x = a.physics;
+    const auto& y = b.physics;
+    return a.sceneGeneration == b.sceneGeneration && a.selectedEntity == b.selectedEntity
+        && x.enabled == y.enabled && x.hierarchy == y.hierarchy && x.bounds == y.bounds
+        && x.candidatePairs == y.candidatePairs && x.selectedOnly == y.selectedOnly
+        && x.minDepth == y.minDepth && x.maxDepth == y.maxDepth
+        && x.maxNodes == y.maxNodes && x.maxProxies == y.maxProxies && x.maxPairs == y.maxPairs;
+}
+
+std::shared_ptr<const SpatialDebugRequestState> ReadSpatialDebugRequest(uint64_t sceneGeneration)
+{
+    auto& bridge = GetSpatialDebugBridge();
+    if (!bridge.enabled.load(std::memory_order_acquire)) return {};
+    std::scoped_lock lock(bridge.mutex);
+    return bridge.request && bridge.request->request.sceneGeneration == sceneGeneration
+        ? bridge.request : nullptr;
+}
+
+void PublishSpatialDebugSnapshot(const std::shared_ptr<const SpatialDebugRequestState>& request,
+                                 std::shared_ptr<const physics::BroadPhaseDebugSnapshot> snapshot,
+                                 uint64_t worldEpoch)
+{
+    if (!request || !snapshot || snapshot->worldEpoch != worldEpoch || !snapshot->request.enabled) return;
+    auto& bridge = GetSpatialDebugBridge();
+    std::scoped_lock lock(bridge.mutex);
+    if (bridge.request != request || bridge.revision != request->revision) return;
+    bridge.snapshot = std::make_shared<const PhysicsSpatialDebugSnapshot>(
+        PhysicsSpatialDebugSnapshot{request->request.sceneGeneration, request->revision, std::move(snapshot)});
+}
 
 struct ColliderOwner {
     GameObject* gameObject = nullptr;
@@ -57,6 +122,32 @@ struct ColliderOwner {
 /// @brief このマップで Collider* → (GameObject*, ColliderComponent*) を O(1) で逆引きし、
 /// @brief Script へのコールバック発火で使う。
 using ColliderOwnerMap = std::unordered_map<const physics::Collider*, ColliderOwner>;
+
+template<typename T>
+physics::ColliderHandle SelectedColliderHandle(Scene& scene, EntityID selected, const ColliderOwnerMap& owners)
+{
+    const T* collider = scene.GetComponent<T>(selected);
+    return collider && collider->enabled && collider->collider && owners.contains(collider->collider.get())
+        ? collider->colliderHandle : physics::ColliderHandle{};
+}
+
+/// @note The owner resolves only synced, active components; no component pointer survives this call.
+/// @note Multiple collider types use the first valid handle in the same order as PhysicsSystem sync.
+physics::ColliderHandle ResolveSelectedCollider(Scene& scene, EntityID selected, const ColliderOwnerMap& owners)
+{
+    GameObject* owner = scene.GetGameObject(selected);
+    if (!owner || !owner->activeInHierarchy()) return {};
+    physics::ColliderHandle handle;
+    if ((handle = SelectedColliderHandle<AabbColliderComponent>(scene, selected, owners)).IsValid()) return handle;
+    if ((handle = SelectedColliderHandle<BoxColliderComponent>(scene, selected, owners)).IsValid()) return handle;
+    if ((handle = SelectedColliderHandle<SphereColliderComponent>(scene, selected, owners)).IsValid()) return handle;
+    if ((handle = SelectedColliderHandle<CapsuleColliderComponent>(scene, selected, owners)).IsValid()) return handle;
+    if ((handle = SelectedColliderHandle<CylinderColliderComponent>(scene, selected, owners)).IsValid()) return handle;
+    if ((handle = SelectedColliderHandle<MeshColliderComponent>(scene, selected, owners)).IsValid()) return handle;
+    if ((handle = SelectedColliderHandle<ConvexHullColliderComponent>(scene, selected, owners)).IsValid()) return handle;
+    return SelectedColliderHandle<TerrainColliderComponent>(scene, selected, owners);
+}
+
 using ScriptCollisionCallback = void (Script::*)(const CollisionInfo&);
 /// @brief 剛体ごとのコライダー体積の合計。水の浮力が «体がどれだけ沈んだか» を測るのに使う。
 using BodyVolumeMap = physics::BodyVolumeMap;
@@ -79,35 +170,77 @@ bool PoseChanged(const RigidBodyComponent& component, const Transform& transform
 
 /// @brief 水面 1 面ぶんを physics::FluidVolume の入力へ写す。
 /// @note 法則そのものは Physics が持つ (physics::FluidVolume)。ここに残すのは配線だけ。
-/// @note 表面の callback が WaterComponent を値で捕まえる理由: Volume は毎フレーム作り直す
-/// @note ので値が古くなることはなく、物理ステップ中に Scene を触らずに済む。
+/// @note 波・境界・流速 callback は同じ水面 snapshot を共有し、物理 substep 中に Scene と編集値を触らない。
 /// @note 流速の callback は不変の場を shared_ptr で共有し、全 substep と全水面で同じ配列を読む。
 /// @see Docs/design/buoyancy.md
 /// @see Docs/design/water-waves.md 「流れの場が水面に出る 3 つの道」
 physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
                                             const Transform& transform,
                                             std::shared_ptr<const std::vector<ActiveFlowField>> fields,
-                                            std::shared_ptr<const physics::BodyRadiusMap> radii)
+                                            std::shared_ptr<const physics::BodyRadiusMap> radii,
+                                            float fixedDt)
 {
     physics::FluidVolumeDesc desc;
-    desc.surfaceHeight = [snapshot = water](float worldX, float worldZ, float time) {
-        return snapshot.GetSurfaceHeightAt(worldX, worldZ, time);
+    const auto snapshot = std::make_shared<const WaterComponent>(water);
+    desc.surfaceHeight = [snapshot, pose = transform](float worldX, float worldZ, float time) {
+        WaterSurfaceHeightSample sample;
+        if (!TrySampleWaterSurfaceHeightWorld(*snapshot, pose, {worldX, pose.worldPosition.y, worldZ}, time, sample,
+                WaterSurfaceReadView::SIMULATION)) return 0.0f;
+        return sample.displacement;
     };
-    /// @note 流速は場所の関数。.mat の一様な current に、その点を覆う流れの場を足す。
+    if (UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)) {
+        desc.depthLimitAt = [snapshot, pose = transform](float worldX, float worldZ, float time) {
+            WaterSurfaceHeightSample sample;
+            if (!TrySampleWaterSurfaceHeightWorld(*snapshot, pose,
+                    {worldX, pose.worldPosition.y, worldZ}, time, sample,
+                    WaterSurfaceReadView::SIMULATION)) return 0.0f;
+            return sample.waterDepthLimit;
+        };
+    }
+    desc.containsXZ = [snapshot, pose = transform](float worldX, float worldZ, float time) {
+        return WaterSurfaceContainsXZ(*snapshot, pose, worldX, worldZ, time,
+            WaterSurfaceReadView::SIMULATION);
+    };
+    desc.pointAllowed = [snapshot](const math::Vector3& worldPosition) {
+        return !IsWaterPointExcluded(WaterSurfaceExclusions(
+            *snapshot, WaterSurfaceReadView::SIMULATION), worldPosition);
+    };
+    desc.allowProbeIntersection = true;
+    /// @note Rectangle は .mat の一様な current、Spline は制御点から焼いた速度を基流にし、明示 FlowField を足す。
     /// @note これで浮いた物は flowCoupling を立てなくても Vortex の周りを回る。
-    desc.flowVelocity = [snapshot = water, snapshotFields = fields,
-                         baseY = transform.worldPosition.y,
-                         time = Time::time](const math::Vector3& p) {
-        return WaterFlowVelocityAt(snapshot, *snapshotFields, baseY, p, time);
+    desc.flowVelocity = [snapshot, snapshotFields = fields,
+         baseY = transform.worldPosition.y,
+         time = Time::time](const math::Vector3& p) {
+        return WaterFlowVelocityAt(*snapshot, *snapshotFields, baseY, p, time,
+            WaterSurfaceReadView::SIMULATION);
     };
     desc.center     = transform.worldPosition;
-    desc.halfX      = water.extentX * 0.5f * std::abs(transform.worldScale.x);
-    desc.halfZ      = water.extentZ * 0.5f * std::abs(transform.worldScale.z);
+    const float displacementBound = water.SurfaceHeightBound(WaterSurfaceReadView::SIMULATION);
+    if (WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION)) {
+        /// @note Horizon の水平所属を有限 AABB で落とさない。深さと各 probe の除外判定は維持する。
+        desc.halfX = std::numeric_limits<float>::infinity();
+        desc.halfZ = std::numeric_limits<float>::infinity();
+    } else if (!UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)
+        && WaterSurfaceEffectiveShape(water, WaterSurfaceReadView::SIMULATION) == WaterSurfaceShape::RECTANGLE) {
+        const auto extentX = transform.worldRotation
+            * math::Vector3{water.extentX * 0.5f * transform.worldScale.x, 0.0f, 0.0f};
+        const auto extentZ = transform.worldRotation
+            * math::Vector3{0.0f, 0.0f, water.extentZ * 0.5f * transform.worldScale.z};
+        desc.halfX = std::abs(extentX.x) + std::abs(extentZ.x) + displacementBound;
+        desc.halfZ = std::abs(extentX.z) + std::abs(extentZ.z) + displacementBound;
+    } else if (const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)) {
+        desc.halfX = (std::max)(std::abs(geometry->worldBoundsMin.x - transform.worldPosition.x),
+            std::abs(geometry->worldBoundsMax.x - transform.worldPosition.x)) + displacementBound;
+        desc.halfZ = (std::max)(std::abs(geometry->worldBoundsMin.z - transform.worldPosition.z),
+            std::abs(geometry->worldBoundsMax.z - transform.worldPosition.z)) + displacementBound;
+    }
     desc.buoyancy   = water.buoyancy;
     desc.drag       = water.waterDrag;
     desc.depthLimit = water.buoyancyDepth;
-    desc.startTime  = Time::time;
-    desc.surfaceHeightBound = water.SurfaceHeightBound();
+    /// @note Time::Tick has already published the frame endpoint. World ticks volumes before each substep,
+    /// @note so start at the interval's beginning and let the last buoyancy sample reach the rendered wave time.
+    desc.startTime  = Time::time - fixedDt;
+    desc.surfaceHeightBound = water.SurfaceHeightBound(WaterSurfaceReadView::SIMULATION);
     desc.radii      = std::move(radii);
     return desc;
 }
@@ -132,33 +265,6 @@ physics::VolumeHandle SyncFlowVolume(Scene& scene, physics::World& world,
     /// @note 同じフレームの中で場が動いてしまうため。
     desc.flowVelocity = MakeFlowSampler(frame, {}, Time::time);
     return world.SyncVolume(handle, std::make_unique<physics::FlowVolume>(std::move(desc)));
-}
-
-void WriteWorldPoseToTransform(GameObject& go,
-                               const math::Vector3& worldPosition,
-                               const math::Quaternion& worldRotation)
-{
-    auto& tf = go.transform;
-    if (auto* parent = go.GetParent()) {
-        const auto& parentTf = parent->transform;
-        const math::Quaternion invParentRot = parentTf.worldRotation.Inverse();
-        const math::Vector3 parentSpace = invParentRot * (worldPosition - parentTf.worldPosition);
-
-        /// @note TransformSystem は localPosition に親 worldScale を掛けてから親回転を適用する。
-        /// @note Physics は world pose を返すため、ここで同じ式を逆変換して local pose に戻す。
-        tf.position = {
-            parentTf.worldScale.x == 0.0f ? 0.0f : parentSpace.x / parentTf.worldScale.x,
-            parentTf.worldScale.y == 0.0f ? 0.0f : parentSpace.y / parentTf.worldScale.y,
-            parentTf.worldScale.z == 0.0f ? 0.0f : parentSpace.z / parentTf.worldScale.z
-        };
-        tf.rotation = (invParentRot * worldRotation).Normalized();
-    } else {
-        tf.position = worldPosition;
-        tf.rotation = worldRotation;
-    }
-
-    tf.worldPosition = worldPosition;
-    tf.worldRotation = worldRotation;
 }
 
 /// @brief AddColliderInstance — 構築・姿勢反映済みの Collider を World へ登録する。
@@ -207,7 +313,6 @@ void AddColliderInstance(Scene& scene,
     /// @note 乗っているときは body の姿勢 = 自分の姿勢なので、centerOffset はローカルの
     /// @note center そのままでよい。祖先の剛体へ属させたときは両者がずれるので、
     /// @note «body から見た自分» へ直さないと、当たりが親の位置に生えてしまう。
-    ///
     /// @note ⚠ 回転は body のものが使われる。祖先へ属させてよいのは、向きが剛体と揃っている
     /// @note 当たりだけ (骨と一緒に回る当たりは、この経路では正しく回らない)。
     math::Vector3 centerOffset = ColliderCenterOffset(go, col);
@@ -308,6 +413,33 @@ void RegisterCharacterGroundContact(const ColliderOwner& self,
     controller->RegisterGroundContact(BuildCollisionInfo(self, other, event, flipped));
 }
 
+GameObject* CollisionRigidBodyOwner(const ColliderOwner& owner)
+{
+    if (!owner.gameObject) return nullptr;
+    auto* body = owner.gameObject->GetComponent<RigidBodyComponent>();
+    if (body && body->enabled && body->rigidBody) return owner.gameObject;
+    if (!owner.collider || !owner.collider->attachToParentBody) return nullptr;
+    for (GameObject* parent = owner.gameObject->GetParent(); parent; parent = parent->GetParent()) {
+        body = parent->GetComponent<RigidBodyComponent>();
+        if (body && body->enabled && body->rigidBody) return parent;
+    }
+    return nullptr;
+}
+
+/// @note 上向きの検証した固定接触だけを供給し、動体同士の衝突を砂床として扱わない。
+void RegisterWaterGroundContact(Scene& scene, const ColliderOwner& self, const ColliderOwner& other,
+    const physics::CollisionEvent& event, bool flipped)
+{
+    GameObject* bodyOwner = CollisionRigidBodyOwner(self);
+    if (!bodyOwner) return;
+    if (GameObject* otherBodyOwner = CollisionRigidBodyOwner(other)) {
+        const auto* body = otherBodyOwner->GetComponent<RigidBodyComponent>();
+        if (body && body->rigidBody && !body->rigidBody->IsStatic()) return;
+    }
+    SupplyWaterGroundContact(scene, bodyOwner->GetID(), event.point,
+        event.normal * (flipped ? 1.0f : -1.0f), event.approachSpeed);
+}
+
 void DispatchToScript(Scene& scene,
                       const ColliderOwner& self,
                       const ColliderOwner& other,
@@ -344,6 +476,8 @@ void DispatchCollisionEvent(Scene& scene,
     if (registerGroundContact && !event.isTrigger) {
         RegisterCharacterGroundContact(ownerA->second, ownerB->second, event, false);
         RegisterCharacterGroundContact(ownerB->second, ownerA->second, event, true);
+        RegisterWaterGroundContact(scene, ownerA->second, ownerB->second, event, false);
+        RegisterWaterGroundContact(scene, ownerB->second, ownerA->second, event, true);
     }
 
     DispatchToScript(scene, ownerA->second, ownerB->second, event, false, callback, kind);
@@ -384,12 +518,50 @@ void DispatchCollisionEvents(Scene& scene,
 
 }
 
+uint64_t PhysicsSystem::SetSpatialDebugRequest(const PhysicsSpatialDebugRequest& request)
+{
+    auto& bridge = GetSpatialDebugBridge();
+    std::scoped_lock lock(bridge.mutex);
+    if (!request.physics.enabled || request.sceneGeneration == 0) {
+        if (bridge.request || bridge.snapshot) ++bridge.revision;
+        bridge.request.reset();
+        bridge.snapshot.reset();
+        bridge.enabled.store(false, std::memory_order_release);
+        return bridge.revision;
+    }
+    if (bridge.request && SameSpatialDebugRequest(bridge.request->request, request)) return bridge.revision;
+    PhysicsSpatialDebugRequest value = request;
+    value.physics.selected = {};
+    value.physics.selectedWorldEpoch = 0;
+    ++bridge.revision;
+    bridge.request = std::make_shared<const SpatialDebugRequestState>(
+        SpatialDebugRequestState{std::move(value), bridge.revision});
+    bridge.snapshot.reset();
+    bridge.enabled.store(true, std::memory_order_release);
+    return bridge.revision;
+}
+
+void PhysicsSystem::InvalidateSpatialDebugSnapshot()
+{
+    SetSpatialDebugRequest({});
+}
+
+std::shared_ptr<const PhysicsSpatialDebugSnapshot>
+PhysicsSystem::GetSpatialDebugSnapshot(uint64_t sceneGeneration)
+{
+    auto& bridge = GetSpatialDebugBridge();
+    if (!bridge.enabled.load(std::memory_order_acquire)) return {};
+    std::scoped_lock lock(bridge.mutex);
+    return bridge.snapshot && bridge.snapshot->sceneGeneration == sceneGeneration
+        && bridge.snapshot->revision == bridge.revision ? bridge.snapshot : nullptr;
+}
+
 ComponentAccess PhysicsSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<ColliderComponent, RigidBodyComponent>()
+        .Reads<ColliderComponent, RigidBodyComponent, TargetPointComponent, Transform>()
         .Writes<RigidBodyComponent, CharacterControllerComponent, VolumeComponent, WaterComponent,
-                JointComponent>();
+                WaterZoneComponent, WaterExclusionComponent, JointComponent>();
 }
 
 void PhysicsSystem::Update(SystemContext& ctx) {
@@ -463,18 +635,27 @@ void PhysicsSystem::Update(SystemContext& ctx) {
 
     {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::SyncWaterVolumes");
+        PrepareWaterSimulationSurfaces(scene);
+        PrepareWaterDepthFields(scene, WaterSurfaceReadView::SIMULATION);
         std::shared_ptr<const physics::BodyRadiusMap> radii;
         for (EntityID id : scene.GetEntities<WaterComponent>()) {
             auto* water = scene.GetComponent<WaterComponent>(id);
             GameObject* go = scene.GetGameObject(id);
+            if (water && WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION).IsValid()) {
+                water->volumeHandle = {};
+                continue;
+            }
             if (!water || !go || !go->activeInHierarchy() || !water->enabled || !water->buoyancyEnabled)
                 continue;
+            const Transform& pose = WaterSurfaceTransform(*water, go->transform,
+                WaterSurfaceReadView::SIMULATION);
+            if (!IsWaterSurfaceSupported(*water, pose, WaterSurfaceReadView::SIMULATION)) continue;
             /// @note 半径表は水面が 1 枚でもあるときだけ作り、全水面で共有する。
             if (!radii) radii = physics::MakeBodyRadii(bodyVolumes);
             water->volumeHandle = world.SyncVolume(
                 water->volumeHandle,
                 std::make_unique<physics::FluidVolume>(
-                    MakeWaterFluidDesc(*water, go->transform, scene.FlowFrame().fields, radii)));
+                    MakeWaterFluidDesc(*water, pose, scene.FlowFrame().fields, radii, dt)));
         }
     }
 
@@ -505,9 +686,23 @@ void PhysicsSystem::Update(SystemContext& ctx) {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::SubmitSceneState");
         world.EndSceneSync();
     }
+    const auto spatialDebugRequest = ReadSpatialDebugRequest(scene.GetRenderSceneGeneration());
+    if (spatialDebugRequest) {
+        auto request = spatialDebugRequest->request.physics;
+        request.selected = ResolveSelectedCollider(scene, spatialDebugRequest->request.selectedEntity, colliderOwners);
+        request.selectedWorldEpoch = world.GetBroadPhaseDebugWorldEpoch();
+        world.SetBroadPhaseDebugRequest(request);
+    } else {
+        world.SetBroadPhaseDebugRequest({});
+    }
     {
         FBZZ_PROFILE_SCOPE("physics::World::Step");
+        BeginWaterInteractionPhysicsStep(scene, dt);
         world.Step(dt);
+    }
+    if (spatialDebugRequest) {
+        PublishSpatialDebugSnapshot(spatialDebugRequest, world.GetBroadPhaseDebugSnapshot(),
+            world.GetBroadPhaseDebugWorldEpoch());
     }
     {
         FBZZ_PROFILE_SCOPE("PhysicsSystem::DispatchCollisionEvents");

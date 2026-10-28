@@ -4,12 +4,15 @@
 /// @date    2026-09-20
 #pragma once
 #include "GeometryPasses.hpp"
+#include <Graphics/Passes/Geometry/RenderSceneDraw.hpp>
 #include <Engine/Renderer/RenderScene.hpp>
 #include <Engine/Renderer/RenderVisibility.hpp>
 #include <cassert>
 #include <algorithm>
 
 namespace fbzz::scene {
+
+using renderer::ForwardDraw;
 
 inline const renderer::RenderScene& SceneInput(const RenderPassContext& ctx)
 {
@@ -60,6 +63,8 @@ inline PerObjectCB ObjectConstants(const renderer::RenderObject& object)
     data.world = object.world;
     data.worldInvTranspose = object.worldInvTranspose;
     data.objectParams.x = object.lodDither;
+    data.objectParams.z = object.gpuBones.current.IsValid() ? 1.0f : 0.0f;
+    data.objectParams.w = static_cast<float>(object.gpuBones.currentOffset);
     return data;
 }
 
@@ -69,41 +74,9 @@ inline auto MaterialPipeline(RenderPassContext& ctx, const renderer::RenderMater
         material.doubleSided, material.depthBias, material.depthBiasSlope, ctx.settings.IsWireframe());
 }
 
-inline renderer::DrawCall ForwardDraw(RenderPassContext& ctx, const renderer::RenderObject& object,
-                                      const renderer::RenderMeshItem& item, bool bindIbl = true)
-{
-    const auto& material = item.forwardMaterial;
-    const auto& h = ctx.handles;
-    renderer::DrawCall dc;
-    dc.vertexBuffer = object.skinned ? item.skinningVertexBuffer : item.vertexBuffer;
-    dc.indexBuffer = item.indexBuffer;
-    dc.indexCount = item.indexCount;
-    dc.vertexCount = item.vertexCount;
-    dc.shader = material.shader;
-    dc.pipelineState = MaterialPipeline(ctx, item.material);
-    dc.layer = material.capabilities.blend == renderer::BlendMode::OPAQUE_BLEND
-        ? renderer::RenderLayer::OPAQUE_LAYER : renderer::RenderLayer::TRANSPARENT_LAYER;
-    dc.constantBuffers[0] = h.frameCB;
-    dc.constantBuffers[1] = h.objectCB;
-    dc.constantBuffers[2] = material.paramsBuffer;
-    dc.constantBuffers[3] = h.lightCB;
-    dc.constantBuffers[4] = h.shadowCB;
-    dc.constantBuffers[8] = h.advancedGraphicsCB;
-    if (object.skinned) dc.constantBuffers[7] = object.skinningPalette;
-    BindForwardShadingResources(dc, ctx);
-    for (size_t i = 0; i < material.textures.size(); ++i) dc.textures[i] = material.textures[i];
-    dc.textures[8] = ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
-    if (bindIbl) {
-        dc.textures[16] = h.iblIrradiance;
-        dc.textures[17] = h.iblPrefilter;
-        dc.textures[18] = h.iblBrdfLut;
-    }
-    return dc;
-}
-
 inline bool HasColorGeometry(const renderer::RenderMeshItem& item)
 {
     return item.visible && item.vertexBuffer.IsValid() && item.indexBuffer.IsValid();
 }
 
-} /// @note namespace fbzz::scene
+}

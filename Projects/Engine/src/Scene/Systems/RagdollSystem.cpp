@@ -2,11 +2,9 @@
 /// @brief   スケルトンと XPBD 関節体の橋渡し。捕獲・駆動・ブレンド・書き戻し
 /// @author  Hasegawa Jin
 /// @date    2026-09-01
-///
-/// 物理そのものは RagdollRig / XPBDSolver が持つ。ここがやるのは «骨の世界» と
-/// «剛体の世界» の変換だけ ── どの骨を剛体にするか、今の姿勢をどう渡すか、
-/// 返ってきた姿勢をどうスキニングへ書くか。
+/// @note 物理は RagdollRig / XPBDSolver に任せ、骨格と剛体の姿勢変換だけを担う。
 #include <Engine/Scene/Systems/RagdollSystem.hpp>
+#include "BonePoseHelpers.hpp"
 
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/SpringBoneSystem.hpp"
@@ -25,7 +23,6 @@
 #include <Engine/Scene/Ragdoll/RagdollPose.hpp>
 #include <Engine/Scene/SkinnedPoseBounds.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Quaternion.hpp>
@@ -46,99 +43,16 @@ struct SkinningCB {
     math::Matrix4 boneMatrices[asset::MAX_SKINNING_BONES];
 };
 
-/// @note SpringBoneSystem の同名ヘルパーは共有しない。あちらも無名名前空間のファイル
-///       ローカルで、IKSystem との間でも CommitBoneWorldPose を «同じ規約» と書いて複製して
-///       いる。3 つ目の書き手が出た今でも共有ヘッダーへ出すのは早く、規約が変わったとき
-///       3 箇所が同時に壊れる方が発見が早い。
-SkinnedMeshRenderer* FindSkinnedMeshRenderer(GameObject& owner)
-{
-    if (auto* renderer = owner.GetComponent<SkinnedMeshRenderer>()) return renderer;
-    for (int i = 0, count = owner.GetChildCount(); i < count; ++i) {
-        if (auto* child = owner.GetChild(i)) {
-            if (auto* renderer = child->GetComponent<SkinnedMeshRenderer>()) return renderer;
-        }
-    }
-    return nullptr;
-}
-
-std::string CanonicalBoneName(std::string name)
-{
-    std::replace(name.begin(), name.end(), '\\', '/');
-    const std::string helper = "_$AssimpFbx$_";
-    if (const std::size_t helperPos = name.find(helper); helperPos != std::string::npos)
-        name = name.substr(0, helperPos);
-    if (const std::size_t pathPos = name.find_last_of('/'); pathPos != std::string::npos)
-        name = name.substr(pathPos + 1);
-    return name;
-}
-
 int FindNode(const asset::Skeleton& skeleton, const std::string& boneName)
 {
     if (boneName.empty()) return skeleton.rootNodeIndex;
     if (const auto exact = skeleton.nodeMap.find(boneName); exact != skeleton.nodeMap.end())
         return exact->second;
     for (std::size_t i = 0; i < skeleton.nodes.size(); ++i) {
-        if (CanonicalBoneName(skeleton.nodes[i].name) == boneName)
+        if (bone_pose_detail::CanonicalBoneName(skeleton.nodes[i].name) == boneName)
             return static_cast<int>(i);
     }
     return -1;
-}
-
-GameObject* BoneObject(Scene& scene, const SkinnedMeshRenderer& smr, int nodeIndex)
-{
-    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(smr.nodeEntities.size()))
-        return nullptr;
-    return scene.GetGameObject(smr.nodeEntities[static_cast<std::size_t>(nodeIndex)]);
-}
-
-void RecalcBoneMatrix(const asset::Skeleton& skeleton,
-                      const std::vector<math::Matrix4>& nodeGlobalTransforms,
-                      std::vector<math::Matrix4>& boneMatrices,
-                      int nodeIndex)
-{
-    if (nodeIndex < 0 ||
-        nodeIndex >= static_cast<int>(skeleton.nodes.size()) ||
-        nodeIndex >= static_cast<int>(nodeGlobalTransforms.size()))
-        return;
-
-    const int boneIndex = skeleton.nodes[static_cast<std::size_t>(nodeIndex)].boneIndex;
-    if (boneIndex < 0 ||
-        boneIndex >= static_cast<int>(boneMatrices.size()) ||
-        boneIndex >= static_cast<int>(skeleton.bones.size()))
-        return;
-
-    boneMatrices[static_cast<std::size_t>(boneIndex)] =
-        skeleton.rootInverseTransform
-      * nodeGlobalTransforms[static_cast<std::size_t>(nodeIndex)]
-      * skeleton.bones[static_cast<std::size_t>(boneIndex)].offsetMatrix;
-}
-
-/// SpringBoneSystem::CommitBoneWorldPose と同じ規約。スキニング行列とボーン Transform を
-/// 対で更新する。どちらか片方だけを書くと、メッシュと「骨に付いているもの」が食い違う。
-void CommitBoneWorldPose(Scene& scene,
-                         const asset::Skeleton& skeleton,
-                         const SkinnedMeshRenderer& smr,
-                         AnimatorComponent& animator,
-                         const math::Matrix4& ownerInv,
-                         int nodeIndex,
-                         const math::Vector3& worldPosition,
-                         const math::Quaternion& worldRotation,
-                         const math::Vector3& worldScale)
-{
-    if (nodeIndex < 0 ||
-        nodeIndex >= static_cast<int>(smr.nodeEntities.size()) ||
-        nodeIndex >= static_cast<int>(animator.nodeGlobalTransforms.size()))
-        return;
-
-    const math::Matrix4 rootTransform =
-        math::Matrix4::Inverse(skeleton.rootInverseTransform);
-    animator.nodeGlobalTransforms[static_cast<std::size_t>(nodeIndex)] =
-        rootTransform * ownerInv *
-        math::Matrix4::TRS(worldPosition, worldRotation, worldScale);
-    RecalcBoneMatrix(skeleton, animator.nodeGlobalTransforms, animator.boneMatrices, nodeIndex);
-
-    if (GameObject* bone = BoneObject(scene, smr, nodeIndex))
-        SetWorldPose(*bone, worldPosition, worldRotation, worldScale);
 }
 
 void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& resources)
@@ -152,7 +66,7 @@ void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& 
     resources.Update(animator.skinningBuffer, &cb, sizeof(SkinningCB));
 }
 
-/// AnimatorSystem::DecomposeAffineMatrix と同じ規約 (行優先、平行移動は 4 列目)。
+/// @note 行優先、平行移動は 4 列目。
 void DecomposeAffine(const math::Matrix4& matrix,
                      math::Vector3& outPosition, math::Quaternion& outRotation)
 {
@@ -171,13 +85,8 @@ void DecomposeAffine(const math::Matrix4& matrix,
     outRotation = math::Quaternion::FromMatrix4(rotation).Normalized();
 }
 
-/// 根 1 本ぶんを幅優先で辿り、既にある並びの後ろへ足す。
-/// 親が必ず子より前に来る順を保つこと ─ RagdollRig はこの順序を前提に
-/// «剛体を持たない骨を親から埋める» ので、崩すと葉が飛ぶ。
-///
-/// @param claimed ノードを既に拾ったか。根が複数あるとき、後の根が先の根の部分木へ
-///                潜り込むのを防ぐ。同じ骨に剛体を 2 つ作ると、両方が同じ骨へ
-///                書き戻して震える。
+/// @note RagdollRig が剛体を持たない骨を親から埋めるため、親が必ず子より先に来る順を保つ。
+/// @param claimed 複数の根で同じ骨へ二重に剛体を作り、競合する姿勢を書き戻すことを防ぐ。
 void AppendBoneTree(RagdollRuntime& runtime,
                     const asset::Skeleton& skeleton,
                     const RagdollProfile& profile,
@@ -202,7 +111,7 @@ void AppendBoneTree(RagdollRuntime& runtime,
 
         RagdollBonePose bone;
         bone.parent = current.parent;
-        bone.name   = CanonicalBoneName(skeleton.nodes[static_cast<std::size_t>(current.node)].name);
+        bone.name   = bone_pose_detail::CanonicalBoneName(skeleton.nodes[static_cast<std::size_t>(current.node)].name);
         const int index = static_cast<int>(runtime.bones.size());
         runtime.bones.push_back(std::move(bone));
         runtime.boneNodes.push_back(current.node);
@@ -212,20 +121,16 @@ void AppendBoneTree(RagdollRuntime& runtime,
 
         for (int child : skeleton.nodes[static_cast<std::size_t>(current.node)].children) {
             if (child < 0 || child >= static_cast<int>(skeleton.nodes.size())) continue;
-            /// @note プロファイルが落とす枝はここで切る。剛体を作らないのではなく骨ごと拾わない
-            ///       ので、親のカプセルが «指へ向かう短い節» になるのも同時に防げる。
+            /// @note 除外する枝は骨ごと切り、親のカプセルが指へ向かう短い節になることも防ぐ。
             if (profile.IsExcluded(
-                    CanonicalBoneName(skeleton.nodes[static_cast<std::size_t>(child)].name)))
+                    bone_pose_detail::CanonicalBoneName(skeleton.nodes[static_cast<std::size_t>(child)].name)))
                 continue;
             queue.push_back({ child, index, current.depth + 1 });
         }
     }
 }
 
-/// @brief すべての根を 1 本の並びへ畳む。根が 1 本なら従来と同じ結果になる。
-/// @note 繋がっていない部分木でも自己衝突・接触・書き戻しは «全部まとめて 1 回» でよい。
-///       リグを根の数だけ持つとソルバも接触の探索も根の数だけ走るが、RagdollRig は親を
-///       持たない剛体を根として個別に繋ぎ止めるので、森のまま載せられる。
+/// @note RagdollRig は複数の根を個別に繋ぎ止めるため、全体を一つのリグで解き、接触探索も一度で済ませる。
 void BuildBoneList(RagdollComponent& ragdoll,
                    const asset::Skeleton& skeleton,
                    const RagdollProfile& profile)
@@ -266,7 +171,7 @@ void BuildBoneList(RagdollComponent& ragdoll,
     runtime.boneScales.assign(runtime.bones.size(), math::Vector3::ONE);
 }
 
-/// 全ノードのバインドポーズをスケルトン空間で組む。深さ優先なので親が先に確定する。
+/// @note スケルトン空間のバインド姿勢を親から子の順で確定する。
 std::vector<math::Matrix4> BuildBindGlobals(const asset::Skeleton& skeleton)
 {
     std::vector<math::Matrix4> globals(skeleton.nodes.size(), math::Matrix4::Identity());
@@ -289,10 +194,7 @@ std::vector<math::Matrix4> BuildBindGlobals(const asset::Skeleton& skeleton)
     return globals;
 }
 
-/// @brief 剛体と関節を組む «たわみ 0» の基準姿勢。
-/// @note 起動時のアニメーション姿勢ではなくバインドポーズを使う。可動域は関節フレームからの
-///       角度で測るため、基準が «たまたま再生していたクリップ» だと毎回違う所から数え始め、
-///       «起動したフレーム次第» で膝が伸び切ったまま固まるといった破綻が出る。
+/// @note 関節可動域の基準が起動フレームに依存しないよう、バインドポーズで剛体と関節を組む。
 std::vector<RagdollBonePose> BuildBindPose(const RagdollRuntime&  runtime,
                                            const asset::Skeleton& skeleton,
                                            const math::Matrix4&   ownerWorld)
@@ -310,11 +212,11 @@ std::vector<RagdollBonePose> BuildBindPose(const RagdollRuntime&  runtime,
     return pose;
 }
 
-/// このフレームの FK/IK/揺れ込みの姿勢を読む。捕獲元・サーボの目標・ブレンド先を兼ねる。
+/// @note このフレームの FK/IK/揺れ込みの姿勢が、捕獲元・サーボ目標・ブレンド先を兼ねる。
 bool SampleFkPose(RagdollRuntime& runtime, Scene& scene, const SkinnedMeshRenderer& smr)
 {
     for (std::size_t i = 0; i < runtime.bones.size(); ++i) {
-        GameObject* bone = BoneObject(scene, smr, runtime.boneNodes[i]);
+        GameObject* bone = bone_pose_detail::BoneObject(scene, smr, runtime.boneNodes[i]);
         if (!bone) return false;
         runtime.bones[i].position = bone->transform.worldPosition;
         runtime.bones[i].rotation = bone->transform.worldRotation;
@@ -323,10 +225,8 @@ bool SampleFkPose(RagdollRuntime& runtime, Scene& scene, const SkinnedMeshRender
     return true;
 }
 
-/// @brief 剛体を組み直す条件。骨の並びが変わればカプセルも関節も別物になる。
-/// @note «組めなかった» は再試行の理由に入れない。根ボーン名が骨格に無いときは何度やっても
-///       組めず、毎フレーム全ノードのバインドポーズを組み直すだけになる。条件が変わるまで
-///       結果を据え置き、理由は RagdollStatus で名指しする。
+/// @note 骨の並びが変わるとカプセルも関節も変わるため再構築する。
+/// @note 構築失敗だけでは再試行せず、設定が変わるまで結果と RagdollStatus を保持する。
 bool NeedsRebuild(const RagdollComponent& ragdoll, const asset::Skeleton& skeleton,
                   const math::Vector3& scale)
 {
@@ -342,7 +242,6 @@ bool NeedsRebuild(const RagdollComponent& ragdoll, const asset::Skeleton& skelet
         || runtime.builtExcludedRoots != ragdoll.excludedRootBones;
 }
 
-/// 衝撃で抜けた力みを戻す。
 void AdvanceRecovery(RagdollComponent& ragdoll, float dt)
 {
     if (ragdoll.mode != RagdollMode::Active || ragdoll.recoveryRemaining <= 0.0f) {
@@ -363,8 +262,7 @@ void AdvanceRecovery(RagdollComponent& ragdoll, float dt)
                                      math::Clamp01(ragdoll.recoveryRemaining / total));
 }
 
-/// 自分の当たり判定を集める。ラグドール中も «立っている側» のコライダーは World に
-/// 残っているので、除外しないと倒れた体が自分自身と押し合う。
+/// @note 通常コライダーはラグドール中も World に残るため、自分自身との押し合いを除外する。
 void CollectOwnColliders(GameObject& object, std::vector<const physics::Collider*>& out)
 {
     const auto push = [&out](const ColliderComponent* component) {
@@ -383,9 +281,7 @@ void CollectOwnColliders(GameObject& object, std::vector<const physics::Collider
         if (GameObject* child = object.GetChild(i)) CollectOwnColliders(*child, out);
 }
 
-/// 接地面。アニメーション姿勢は常に «床を破っていない» 側に居なければならない ─
-/// 床が目標より上にあると、その下の剛体が毎ステップ押し上げられてサーボと押し合い、
-/// 足だけが震える。だからオーナーの足元と、今の姿勢の最下点の低い方を採る。
+/// @note 床とサーボが押し合う振動を防ぐため、オーナーの足元と目標姿勢の最下点の低い方を採る。
 float GroundHeightFor(const RagdollComponent& ragdoll, const GameObject& owner)
 {
     const float ownerFloor = owner.transform.worldPosition.y + ragdoll.groundOffset;
@@ -393,10 +289,10 @@ float GroundHeightFor(const RagdollComponent& ragdoll, const GameObject& owner)
                     ragdoll.runtime.rig->LowestContactHeight(ragdoll.runtime.bones));
 }
 
-} // namespace
+}
 
-/// 骨 GameObject の Transform を書き、smr を読む。宣言から漏らすと、それらを触る他の
-/// System と同じバッチに入って並列に走る (理由は AnimatorSystem::GetAccess を参照)。
+/// @note 骨 Transform の書き込みと smr の読み取りを宣言し、骨姿勢システム間の並列実行を防ぐ。
+/// @see AnimatorSystem::GetAccess
 ComponentAccess RagdollSystem::GetAccess() const
 {
     return ComponentAccess{}
@@ -476,7 +372,7 @@ void RagdollSystem::Update(SystemContext& ctx)
             ragdoll->runtimeStatus  = RagdollStatus::NoAnimator;
             continue;
         }
-        auto* smr = FindSkinnedMeshRenderer(*go);
+        auto* smr = bone_pose_detail::FindSkinnedMeshRenderer(*go);
         if (!smr || !smr->model || !smr->model->skeleton) {
             ragdoll->runtimeStatus  = RagdollStatus::NoSkinnedMesh;
             continue;
@@ -489,10 +385,7 @@ void RagdollSystem::Update(SystemContext& ctx)
             continue;
         }
 
-        /// @note 落とす部分木が増減すると組み直しになる (壊れた脚が 1 本増えた等)。
-        ///       既に走っている最中なら、組み直した剛体をこのフレームの姿勢で捕獲し直す
-        ///       必要がある ── 組み上がりはバインドポーズなので、捕獲しないと
-        ///       既に垂れていた部分木がバインドポーズへ 1 フレームで跳ね上がる。
+        /// @note 実行中の再構築後は現在姿勢を捕獲し、垂れた部分木がバインドポーズへ跳ね戻ることを防ぐ。
         const bool rebuilding = NeedsRebuild(*ragdoll, skeleton, go->transform.worldScale);
         if (rebuilding) {
             const RagdollProfile profile = ragdoll->ResolveProfile();
@@ -511,8 +404,7 @@ void RagdollSystem::Update(SystemContext& ctx)
             runtime.builtProfile    = ragdoll->profile;
             runtime.builtExcludedRoots = ragdoll->excludedRootBones;
 
-            /// @note «剛体は組めたが可動域が全部 fallback» は画面では «なんとなく柔らかい»
-            ///       としか見えない。組み直したときだけ出るので、ログが溢れることもない。
+            /// @note 可動域の fallback は見た目で判別しにくいため、再構築時だけ診断を出す。
             ragdoll->runtimeUnmatched =
                 static_cast<int>(runtime.rig->UnmatchedBones().size());
             if (ragdoll->runtimeUnmatched > 0) {
@@ -541,9 +433,7 @@ void RagdollSystem::Update(SystemContext& ctx)
 
         RagdollRig& rig = *runtime.rig;
 
-        /// @note 走っている最中に組み直した。今の姿勢を «たわみ 0» として拾い直す。
-        ///       beginRequested の経路と同じことをするが、段階 (phase) と重みは触らない ─
-        ///       触ると部分木が 1 つ増えるたびに全体がブレンドし直しになる。
+        /// @note 再構築で全体が再ブレンドしないよう、現在姿勢を捕獲して phase と重みは保つ。
         if (rebuilding && ragdoll->phase != RagdollPhase::Idle && !ragdoll->beginRequested) {
             rig.Capture(runtime.bones);
             rig.UpdateDriveTargets(runtime.bones);
@@ -574,8 +464,7 @@ void RagdollSystem::Update(SystemContext& ctx)
             rig.UpdateDriveTargets(runtime.bones);
             ragdoll->runtimeGround = GroundHeightFor(*ragdoll, *go);
 
-            /// @note 起動のたびに拾い直す。ラグドール中にコライダーが増減することは無いので、
-            ///       毎フレーム階層を辿る理由が無い (ボスは骨だけで 100 個の子を持つ)。
+            /// @note 実行中はコライダーが増減しないため、起動時だけ階層を辿って拾い直す。
             std::vector<const physics::Collider*> ignored;
             CollectOwnColliders(*go, ignored);
             rig.SetIgnoredColliders(std::move(ignored));
@@ -583,8 +472,7 @@ void RagdollSystem::Update(SystemContext& ctx)
                 rig.SetIgnoredBody(rigidBody->rigidBody.get());
         }
 
-        /// @note Active は目標ごと今のクリップへ乗せ替える。歩いて足元が上下しても床は付いて回る。
-        ///       Passive は起動時の床のまま ─ 崩れ落ちている途中で床を動かすと体が跳ねる。
+        /// @note Active の床は現在の目標に追従し、Passive では崩れる途中の跳ねを防ぐため起動時の床を保つ。
         rig.SetStandingGuard(ragdoll->standingGuard, ragdoll->standingMaxDistance,
                              ragdoll->standingMaxDegrees * math::PI / 180.0f);
         if (ragdoll->mode == RagdollMode::Active || ragdoll->standingGuard) {
@@ -600,8 +488,7 @@ void RagdollSystem::Update(SystemContext& ctx)
             ? ctx.dt : 0.0f;
         const int steps = elapsed > 0.0f ? AccumulateRagdollSteps(runtime.remainingTime, elapsed) : 0;
 
-        /// @note 押された瞬間だけ力みを抜く。抜かないと «硬い体が少しめり込んで即座に戻る» に
-        ///       なり、当たった側から見て手応えが無い。抜けたぶんは recoverySeconds で戻る。
+        /// @note 即座に戻る硬い反応を避けるため、衝撃時だけ力みを抜き recoverySeconds で戻す。
         if (!ragdoll->pendingImpulses.empty() && ragdoll->mode == RagdollMode::Active) {
             ragdoll->muscleScale = std::min(ragdoll->muscleScale,
                                             1.0f - math::Clamp01(ragdoll->impactSlack));
@@ -628,9 +515,8 @@ void RagdollSystem::Update(SystemContext& ctx)
                      math::Clamp01(ragdoll->driveFalloff),
                      std::max(ragdoll->driveDamping, 0.0f));
 
-        /// @note Active 中に世界と当てると、足がカプセルの半径ぶん浮いた所でサーボと釣り合う
-        ///       (理由は RagdollComponent::contactWhileActive を参照)。自己衝突は姿勢がクリップの
-        ///       近くに居る限り新しく重ならないので、こちらは Active でも残す。
+        /// @note Active の環境接触は足の浮きを招くため設定に従い、クリップ近傍で新しい重なりがない自己衝突は保つ。
+        /// @see RagdollComponent::contactWhileActive
         const bool worldContacts =
             ragdoll->mode != RagdollMode::Active || ragdoll->contactWhileActive;
 
@@ -672,8 +558,7 @@ void RagdollSystem::Update(SystemContext& ctx)
 
         ragdoll->runtimeDeviation = rig.MeasureDeviation(runtime.bones);
 
-        /// @note 支え切れなくなったらサーボを捨てる。目標はこのフレームの姿勢のままなので、
-        ///       崩れ始めは «こらえていた形» から続く ─ Begin し直すと押された勢いが消える。
+        /// @note 支え切れないときは現在姿勢から崩し、再 Begin で衝撃を失わないようサーボだけを捨てる。
         if (ragdoll->mode == RagdollMode::Active && ragdoll->collapseDistance > 0.0f &&
             ragdoll->runtimeDeviation > ragdoll->collapseDistance) {
             ragdoll->mode              = RagdollMode::Passive;
@@ -698,7 +583,7 @@ void RagdollSystem::Update(SystemContext& ctx)
         std::vector<bool> selected(skeleton.nodes.size(), false);
         std::vector<math::Vector3> scales(skeleton.nodes.size(), math::Vector3::ONE);
         for (std::size_t i = 0; i < scales.size(); ++i)
-            if (const auto* bone = BoneObject(scene, *smr, static_cast<int>(i)))
+            if (const auto* bone = bone_pose_detail::BoneObject(scene, *smr, static_cast<int>(i)))
                 scales[i] = bone->transform.worldScale;
         BlendRagdollPose(runtime.bones, weight, ragdoll->standingGuard, solvedPositions, solvedRotations);
         const auto rootTransform = math::Matrix4::Inverse(skeleton.rootInverseTransform);
@@ -724,7 +609,7 @@ void RagdollSystem::Update(SystemContext& ctx)
             math::Vector3 position;
             math::Quaternion rotation;
             DecomposeAffine(toWorld * animator->nodeGlobalTransforms[n], position, rotation);
-            CommitBoneWorldPose(scene, skeleton, *smr, *animator, ownerInv,
+            bone_pose_detail::CommitBoneWorldPose(scene, skeleton, *smr, *animator, ownerInv,
                                 node, position, rotation, scales[n]);
             for (const int child : skeleton.nodes[n].children) pending.push_back(child);
         }
@@ -735,4 +620,4 @@ void RagdollSystem::Update(SystemContext& ctx)
     }
 }
 
-} // namespace fbzz::scene
+}

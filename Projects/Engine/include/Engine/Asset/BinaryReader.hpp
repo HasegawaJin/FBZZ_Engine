@@ -2,10 +2,8 @@
 /// @brief   バイナリファイルをカーソルで読み進めるヘルパー (一括読み込み / 範囲読み込み)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-///
-/// ModelAssetImporter / AnimationImporter が重複して持っていた構造を共通化したもの。
-/// Open は util::FileSystem::ReadBinary 経由 (Win32 Unicode API) で開く。
-/// std::ifstream(std::string) は MSVC では ANSI コードページで解釈し UTF-8 パスを壊すため使わない。
+/// @note ModelAssetImporter / AnimationImporter が共有する一括読み込みと範囲読み込み。
+/// @note Open は FileSystem::ReadBinary の Unicode path を使い、MSVC の ANSI narrow path を避ける。
 #pragma once
 #include <Engine/Util/FileSystem.hpp>
 #include <cstddef>
@@ -20,7 +18,7 @@ namespace fbzz::asset {
 struct BinaryReader {
     std::vector<uint8_t> data;
     size_t pos = 0;
-    /// 実際にディスクから読んだバイト数。範囲読み込みで読み飛ばした分は数えない。
+    /// @note 実際にディスクから読んだバイト数。範囲読み込みで読み飛ばした分は数えない。
     uint64_t bytesRead = 0;
 
     BinaryReader() = default;
@@ -98,8 +96,13 @@ struct BinaryReader {
     }
 
 private:
+    friend class ChunkFileReader;
+    /// @brief ChunkFileReader alone permits atomic replacement while retaining the opened file's immutable snapshot.
+    /// @note Generic OpenStreaming retains its existing sharing policy; no Windows type escapes this header.
+    bool OpenReplaceableChunkStream(const std::string& path);
+
     std::FILE* m_file = nullptr;
     uint64_t   m_fileSize = 0;
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

@@ -27,6 +27,9 @@ struct RigidBodyComponent {
     std::unique_ptr<physics::RigidBody> rigidBody;
     physics::BodyHandle bodyHandle;
     bool enabled = true;
+    /// @note Opt-in AI Transform authority for static bodies; queries use the next fixed-step confirmed pose.
+    /// @note This does not provide kinematic velocity, swept collision or automatic wall stopping.
+    bool poseDriven = false;
 
     MassMode massMode = MassMode::Manual;
     /// FromDensity で算出された質量の記録 (読み取り専用の表示用)。
@@ -59,6 +62,7 @@ struct RigidBodyComponent {
         : rigidBody(o.rigidBody ? std::make_unique<physics::RigidBody>(*o.rigidBody) : nullptr)
         , bodyHandle{}
         , enabled(o.enabled)
+        , poseDriven(o.poseDriven)
         , massMode(o.massMode)
         , computedMass(o.computedMass)
         , flowCoupling(o.flowCoupling)
@@ -72,6 +76,7 @@ struct RigidBodyComponent {
             rigidBody    = o.rigidBody ? std::make_unique<physics::RigidBody>(*o.rigidBody) : nullptr;
             bodyHandle   = {};
             enabled      = o.enabled;
+            poseDriven   = o.poseDriven;
             massMode     = o.massMode;
             computedMass = o.computedMass;
             flowCoupling = o.flowCoupling;
@@ -116,6 +121,7 @@ struct RigidBodyComponent {
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
+        r.Field("poseDriven", poseDriven);
         {
             static constexpr const char* kMassModeLabels[] = { "Manual", "From Density" };
             int massModeIndex = static_cast<int>(massMode);

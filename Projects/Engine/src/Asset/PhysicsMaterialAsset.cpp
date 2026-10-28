@@ -16,9 +16,9 @@ namespace {
 
 using physics::PhysicsMaterialCombine;
 
-/// 合成規則は数値ではなく名前で保存する。
+/// @note 合成規則は数値ではなく名前で保存する。
 /// @note 列挙に値を追加・並べ替えしたときに、既存 .physmat の意味が黙って変わるのを防ぐ。
-///       物理挙動は「後で見返して原因を追う」対象なので、ファイルが読んで分かる形であることを優先する。
+/// @note 物理挙動は「後で見返して原因を追う」対象なので、ファイルが読んで分かる形であることを優先する。
 constexpr const char* kCombineNames[] = {
     "average", "geometric_mean", "minimum", "multiply", "maximum"
 };
@@ -37,7 +37,7 @@ PhysicsMaterialCombine CombineFromString(const std::string& name,
     return fallback;
 }
 
-} // namespace
+} /// @note namespace
 
 bool LoadPhysicsMaterialAssetFromFile(std::string_view path, PhysicsMaterialAsset& outAsset)
 {
@@ -57,8 +57,8 @@ bool LoadPhysicsMaterialAssetFromFile(std::string_view path, PhysicsMaterialAsse
     const toml::table& table = parsed.table();
 
     /// @note 既定値は PhysicsMaterial::Default。欠損キーはそのまま既定が残る。
-    ///       物理マテリアルは今後フィールドが増える可能性が高く、古い .physmat を読めなく
-    ///       するより「書いていない項目は既定」の方が壊れにくい。
+    /// @note 物理マテリアルは今後フィールドが増える可能性が高く、古い .physmat を読めなく
+    /// @note するより「書いていない項目は既定」の方が壊れにくい。
     PhysicsMaterialAsset asset;
     auto& material = asset.material;
     material.restitution     = static_cast<float>(table["restitution"].value_or(static_cast<double>(material.restitution)));
@@ -99,11 +99,11 @@ bool SavePhysicsMaterialAssetToFile(std::string_view path, const PhysicsMaterial
 
     std::ostringstream oss;
     oss << table;
-    if (!util::FileSystem::WriteText(pathString, oss.str())) {
+    if (!util::FileSystem::WriteTextAtomic(pathString, oss.str())) {
         FBZZ_LOG_ERROR("PhysicsMaterialAsset: write failed [%s]", pathString.c_str());
         return false;
     }
     return true;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

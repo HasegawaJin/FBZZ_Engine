@@ -615,4 +615,49 @@ TEST_F(RenderGraphTest, ClearsProfilesWhenAPlanIsInjected)
     EXPECT_TRUE(graph.GetLastReport().profiles.empty());
 }
 
-} // namespace fbzz::tests
+TEST_F(RenderGraphTest, TransfersPlanOwnershipAndExecutesOnlyCurrentCallbacksAndProfiles)
+{
+    RG source;
+    source.DeclareResource("HDR", TransientRT());
+    source.DeclareResource("Output", ImportedRT());
+    size_t previousCalls = 0;
+    source.AddPass("Geometry", {}, { "HDR" }, [&] { ++previousCalls; });
+    source.AddPass("Orphan", {}, { "Unused" }, [] { ADD_FAILURE(); });
+    source.AddPass("Present", { "HDR" }, { "Output" }, [&] { ++previousCalls; });
+    source.SetOutputs({ "Output" });
+    ASSERT_TRUE(source.Execute());
+    auto plan = source.TakeLastReport();
+    ASSERT_EQ(plan.profiles.size(), 2u);
+    EXPECT_TRUE(source.GetLastReport().executionOrder.empty());
+    EXPECT_TRUE(source.GetLastReport().profiles.empty());
+
+    RG current;
+    int value = 0;
+    std::vector<std::string> events;
+    current.AddPass("Geometry", {}, { "HDR" }, [&] { value = 7; events.push_back("Geometry"); });
+    current.AddPass("Orphan", {}, { "Unused" }, [] { ADD_FAILURE(); });
+    current.AddPass("Present", { "HDR" }, { "Output" }, [&] { value *= 2; events.push_back("Present"); });
+    current.SetProfilerHooks(
+        [&](std::string_view name) { events.push_back("begin:" + std::string(name)); },
+        [&](std::string_view name) { events.push_back("end:" + std::string(name)); });
+    current.SetPassCompletedHook([&](size_t pass) { events.push_back("complete:" + std::to_string(pass)); });
+    current.InjectPlan(std::move(plan));
+    EXPECT_TRUE(current.GetLastReport().profiles.empty());
+    ASSERT_TRUE(current.Execute());
+    EXPECT_EQ(value, 14);
+    EXPECT_EQ(previousCalls, 2u);
+    EXPECT_EQ(events, (std::vector<std::string>{
+        "begin:Geometry", "Geometry", "end:Geometry", "complete:0",
+        "begin:Present", "Present", "end:Present", "complete:2" }));
+    auto completed = current.TakeLastReport();
+    EXPECT_EQ(completed.executionOrder, (std::vector<size_t>{ 0, 2 }));
+    EXPECT_EQ(completed.culledPasses, (std::vector<size_t>{ 1 }));
+    ASSERT_EQ(completed.profiles.size(), 2u);
+    EXPECT_EQ(completed.profiles[0].name, "Geometry");
+    EXPECT_EQ(completed.profiles[1].name, "Present");
+    EXPECT_FALSE(completed.lifetimes.empty());
+    EXPECT_TRUE(current.GetLastReport().lifetimes.empty());
+    EXPECT_TRUE(current.GetLastReport().profiles.empty());
+}
+
+} /// @note namespace fbzz::tests

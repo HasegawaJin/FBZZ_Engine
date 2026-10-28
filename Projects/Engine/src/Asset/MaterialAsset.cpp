@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -17,6 +18,22 @@
 namespace fbzz::asset {
 
 namespace {
+
+/// @note 旧 Fiber キーは読込と保存の両方で正規化する。両方あれば新キーの値を保持する。
+void NormalizeFiberShading(MaterialAssetAuthoring& asset)
+{
+    const bool hasCanonical = asset.params.contains("planarShading") || asset.integerParams.contains("planarShading");
+    auto legacyFloat = asset.params.extract("grassShading");
+    auto legacyInteger = asset.integerParams.extract("grassShading");
+    if (hasCanonical) return;
+    if (!legacyFloat.empty()) {
+        legacyFloat.key() = "planarShading";
+        asset.params.insert(std::move(legacyFloat));
+    } else if (!legacyInteger.empty()) {
+        legacyInteger.key() = "planarShading";
+        asset.integerParams.insert(std::move(legacyInteger));
+    }
+}
 
 /// @note GeometryPassHelpers の kTextureSlotNames (t0-t7) と一致させる。
 /// @note t5-t7 は "tex5"/"tex6"/"tex7" という汎用キーでカスタムシェーダーが自由に利用できる。
@@ -139,7 +156,7 @@ const char* MeshTypeToString(MeshType mt)
     }
 }
 
-void ReadFloatParam(const toml::table& table, const char* key, MaterialAsset& asset)
+void ReadFloatParam(const toml::table& table, const char* key, MaterialAssetAuthoring& asset)
 {
     if (const auto value = table[key].value<double>())
         asset.params[key] = { static_cast<float>(*value) };
@@ -147,7 +164,7 @@ void ReadFloatParam(const toml::table& table, const char* key, MaterialAsset& as
         asset.params[key] = { static_cast<float>(*value) };
 }
 
-void ReadFloatArrayParam(const toml::table& table, const char* key, MaterialAsset& asset)
+void ReadFloatArrayParam(const toml::table& table, const char* key, MaterialAssetAuthoring& asset)
 {
     auto* arr = table[key].as_array();
     if (!arr) return;
@@ -164,7 +181,7 @@ void ReadFloatArrayParam(const toml::table& table, const char* key, MaterialAsse
         asset.params[key] = std::move(values);
 }
 
-void ReadParamsTable(const toml::table& table, MaterialAsset& asset)
+void ReadParamsTable(const toml::table& table, MaterialAssetAuthoring& asset)
 {
     for (const auto& [key, node] : table) {
         const std::string name(key);
@@ -441,7 +458,80 @@ toml::array FloatArrayToToml(const std::vector<float>& values)
 
 } /// @note namespace
 
+MaterialAsset::AuthoringSnapshotPtr ReadMaterialAuthoring(AssetHandle<MaterialAsset> handle)
+{
+    const auto* owner = AssetManager::Get<MaterialAsset>(handle);
+    return owner ? owner->ReadAuthoring() : MaterialAsset::AuthoringSnapshotPtr{};
+}
+
+/// @note All authoring fields participate; bit-exact float comparison preserves signed-zero, NaN payload and micro-edits.
+bool MaterialAssetAuthoring::operator==(const MaterialAssetAuthoring& other) const
+{
+    return shaderPath == other.shaderPath
+        && blendMode == other.blendMode
+        && doubleSided == other.doubleSided
+        && depthWrite == other.depthWrite
+        && depthTest == other.depthTest
+        && depthBias == other.depthBias
+        && detail::MaterialAuthoringFloatEqual(depthBiasSlope, other.depthBiasSlope)
+        && renderQueue == other.renderQueue
+        && renderPath == other.renderPath
+        && meshType == other.meshType
+        && textures == other.textures
+        && detail::MaterialAuthoringFloatMapsEqual(params, other.params)
+        && integerParams == other.integerParams
+        && keywords == other.keywords
+        && dielectric == other.dielectric
+        && particle.alphaSource == other.particle.alphaSource
+        && particle.flipbook.spriteColumns == other.particle.flipbook.spriteColumns
+        && particle.flipbook.spriteRows == other.particle.flipbook.spriteRows
+        && particle.flipbook.spriteStartFrame == other.particle.flipbook.spriteStartFrame
+        && particle.flipbook.spriteEndFrame == other.particle.flipbook.spriteEndFrame
+        && particle.flipbook.flipbookMode == other.particle.flipbook.flipbookMode
+        && detail::MaterialAuthoringFloatEqual(particle.flipbook.flipbookFramesPerSecond, other.particle.flipbook.flipbookFramesPerSecond)
+        && particle.flipbook.flipbookFrameBlending == other.particle.flipbook.flipbookFrameBlending
+        && particle.flipbook.spriteRandomStartFrame == other.particle.flipbook.spriteRandomStartFrame
+        && particle.flipbook.spriteRandomRow == other.particle.flipbook.spriteRandomRow
+        && particle.flipbook.motionVectorFlipbook == other.particle.flipbook.motionVectorFlipbook
+        && detail::MaterialAuthoringFloatEqual(particle.flipbook.motionVectorStrength, other.particle.flipbook.motionVectorStrength)
+        && particle.softParticles == other.particle.softParticles
+        && detail::MaterialAuthoringFloatEqual(particle.softParticleFadeDistance, other.particle.softParticleFadeDistance)
+        && detail::MaterialAuthoringFloatEqual(particle.cameraFadeNear, other.particle.cameraFadeNear)
+        && detail::MaterialAuthoringFloatEqual(particle.cameraFadeFar, other.particle.cameraFadeFar)
+        && particle.distortion == other.particle.distortion
+        && detail::MaterialAuthoringFloatEqual(particle.distortionStrength, other.particle.distortionStrength)
+        && detail::MaterialAuthoringFloatEqual(particle.distortionChromatic, other.particle.distortionChromatic)
+        && particle.sixWayLighting == other.particle.sixWayLighting
+        && detail::MaterialAuthoringFloatEqual(particle.lightingStrength, other.particle.lightingStrength)
+        && detail::MaterialAuthoringFloatEqual(particle.smokeWrap, other.particle.smokeWrap)
+        && detail::MaterialAuthoringFloatEqual(particle.smokeTransmission, other.particle.smokeTransmission)
+        && detail::MaterialAuthoringFloatEqual(particle.smokeBackScatterPower, other.particle.smokeBackScatterPower)
+        && particle.sixWayMaps == other.particle.sixWayMaps
+        && detail::MaterialAuthoringFloatEqual(particle.sixWayEmissionColor.x, other.particle.sixWayEmissionColor.x)
+        && detail::MaterialAuthoringFloatEqual(particle.sixWayEmissionColor.y, other.particle.sixWayEmissionColor.y)
+        && detail::MaterialAuthoringFloatEqual(particle.sixWayEmissionColor.z, other.particle.sixWayEmissionColor.z)
+        && detail::MaterialAuthoringFloatEqual(particle.sixWayEmissionScale, other.particle.sixWayEmissionScale)
+        && particle.volumetric == other.particle.volumetric
+        && particle.volumetricSteps == other.particle.volumetricSteps
+        && detail::MaterialAuthoringFloatEqual(particle.volumetricDensity, other.particle.volumetricDensity)
+        && detail::MaterialAuthoringFloatEqual(particle.volumetricAnisotropy, other.particle.volumetricAnisotropy)
+        && detail::MaterialAuthoringFloatEqual(particle.volumetricNoiseScale, other.particle.volumetricNoiseScale)
+        && particle.receiveShadows == other.particle.receiveShadows
+        && detail::MaterialAuthoringFloatEqual(particle.shadowStrength, other.particle.shadowStrength)
+        && detail::MaterialAuthoringFloatEqual(particle.selfShadowStrength, other.particle.selfShadowStrength)
+        && particle.punctualLighting == other.particle.punctualLighting
+        && detail::MaterialAuthoringFloatEqual(particle.emissiveScale, other.particle.emissiveScale);
+}
+
 bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
+{
+    MaterialAssetAuthoring values;
+    if (!LoadMaterialAssetFromFile(path, values)) return false;
+    outAsset.ReplaceAuthoring(values);
+    return true;
+}
+
+bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& outAsset)
 {
     const std::string pathString(path);
     std::string text;
@@ -459,7 +549,7 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
         return false;
     }
 
-    MaterialAsset asset;
+    MaterialAssetAuthoring asset;
     /// @note guid: 参照を "Assets/..." パスへ戻してから読む (ランタイムは常にパスを持つ)。
     DecodeGuidRefs(parsed.table());
     const toml::table& table = parsed.table();
@@ -498,6 +588,7 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
 
     if (auto* params = table["params"].as_table())
         ReadParamsTable(*params, asset);
+    NormalizeFiberShading(asset);
 
     /// @note 未記載のキーは既定値のまま (テーブルごと無くても壊れない)。
     if (auto* particle = table["particle"].as_table())
@@ -516,6 +607,12 @@ bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
 }
 
 bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
+{
+    const auto snapshot = asset.ReadAuthoring();
+    return snapshot && SaveMaterialAssetToFile(path, snapshot->Data());
+}
+
+bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring& asset)
 {
     const std::string pathString(path);
     toml::table table;
@@ -550,14 +647,16 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
     }
     table.insert("textures", std::move(textures));
 
+    MaterialAssetAuthoring canonical = asset;
+    NormalizeFiberShading(canonical);
     toml::table params;
-    for (const auto& [name, values] : asset.params) {
+    for (const auto& [name, values] : canonical.params) {
         if (values.size() == 1)
             params.insert(name, static_cast<double>(values[0]));
         else
             params.insert(name, FloatArrayToToml(values));
     }
-    for (const auto& [name, values] : asset.integerParams) {
+    for (const auto& [name, values] : canonical.integerParams) {
         if (values.size() == 1) params.insert_or_assign(name, values[0]);
         else {
             toml::array array;
@@ -584,7 +683,7 @@ bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
 
     std::ostringstream out;
     out << table << '\n';
-    if (!util::FileSystem::WriteText(pathString, out.str())) {
+    if (!util::FileSystem::WriteTextAtomic(pathString, out.str())) {
         FBZZ_LOG_ERROR("MaterialAsset: cannot open [%s]", pathString.c_str());
         return false;
     }

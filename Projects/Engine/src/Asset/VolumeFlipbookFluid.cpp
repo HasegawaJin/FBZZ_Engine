@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #include <Engine/Asset/VolumeFlipbookFluid.hpp>
+#include <Engine/Core/Concurrency/TaskSystem.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -169,6 +170,7 @@ bool FluidVolumeStream::Request(int frame)
     auto cancel = std::make_shared<std::atomic<bool>>(false);
     m_cancel = cancel;
     m_job = std::async(std::launch::async, [this, frame, restart, cancel]() {
+        TaskSystem::ExternalWorkerScope workerScope(TaskSystem::ExternalWorkerCategory::VolumeFluid);
         const auto cancelled = [&cancel]() { return cancel->load(std::memory_order_relaxed); };
         const auto advance = [this](float dt) {
             if (m_liquid) m_liquid->Advance(dt);
@@ -217,4 +219,4 @@ bool FluidVolumeStream::Poll(PackedFluidVolume& out)
     return true;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

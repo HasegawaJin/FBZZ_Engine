@@ -2,9 +2,6 @@
 /// @brief   擬似乱数ユーティリティ実装。
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
-///
-/// mt19937 を使い、数値範囲と単位円・単位球のサンプリングを提供する。
-/// SetSeed で再現可能な乱数列にできる。
 #include <Engine/Util/Random.hpp>
 #include <random>
 #include <cmath>
@@ -15,9 +12,52 @@ namespace {
 
 std::mt19937 s_rng{ std::random_device{}() };
 
-} // namespace
+constexpr float TWO_PI = 3.14159265358979323846f * 2.0f;
 
-static constexpr float TWO_PI = 3.14159265358979323846f * 2.0f;
+template<typename SampleRange>
+math::Vector2 SampleInsideUnitCircle(const SampleRange& sampleRange)
+{
+    while (true) {
+        float x = sampleRange(-1.0f, 1.0f);
+        float y = sampleRange(-1.0f, 1.0f);
+        if (x * x + y * y <= 1.0f)
+            return { x, y };
+    }
+}
+
+template<typename SampleValue>
+math::Vector2 SampleOnUnitCircle(const SampleValue& sampleValue)
+{
+    float angle = sampleValue() * TWO_PI;
+    return { std::cos(angle), std::sin(angle) };
+}
+
+template<typename SampleRange>
+math::Vector3 SampleInsideUnitSphere(const SampleRange& sampleRange)
+{
+    while (true) {
+        float x = sampleRange(-1.0f, 1.0f);
+        float y = sampleRange(-1.0f, 1.0f);
+        float z = sampleRange(-1.0f, 1.0f);
+        if (x * x + y * y + z * z <= 1.0f)
+            return { x, y, z };
+    }
+}
+
+template<typename SampleValue>
+math::Vector3 SampleOnUnitSphere(const SampleValue& sampleValue)
+{
+    float theta = sampleValue() * TWO_PI;
+    float phi   = std::acos(1.0f - 2.0f * sampleValue());
+    float sinPhi = std::sin(phi);
+    return {
+        sinPhi * std::cos(theta),
+        sinPhi * std::sin(theta),
+        std::cos(phi)
+    };
+}
+
+} /// @note namespace
 
 float Random::Value()
 {
@@ -36,44 +76,22 @@ int Random::Range(int min, int max)
 
 math::Vector2 Random::InsideUnitCircle()
 {
-    /// @note rejection sampling — 平均 π/4 ≈ 1.27 試行で収束
-    while (true) {
-        float x = Range(-1.0f, 1.0f);
-        float y = Range(-1.0f, 1.0f);
-        if (x * x + y * y <= 1.0f)
-            return { x, y };
-    }
+    return SampleInsideUnitCircle([](float min, float max) { return Range(min, max); });
 }
 
 math::Vector2 Random::OnUnitCircle()
 {
-    float angle = Value() * TWO_PI;
-    return { std::cos(angle), std::sin(angle) };
+    return SampleOnUnitCircle([] { return Value(); });
 }
 
 math::Vector3 Random::InsideUnitSphere()
 {
-    /// @note rejection sampling — 平均 π/6 の逆数 ≈ 1.91 試行で収束
-    while (true) {
-        float x = Range(-1.0f, 1.0f);
-        float y = Range(-1.0f, 1.0f);
-        float z = Range(-1.0f, 1.0f);
-        if (x * x + y * y + z * z <= 1.0f)
-            return { x, y, z };
-    }
+    return SampleInsideUnitSphere([](float min, float max) { return Range(min, max); });
 }
 
 math::Vector3 Random::OnUnitSphere()
 {
-    /// @note Marsaglia (1972) — 一様分布が保証される
-    float theta = Value() * TWO_PI;
-    float phi   = std::acos(1.0f - 2.0f * Value());
-    float sinPhi = std::sin(phi);
-    return {
-        sinPhi * std::cos(theta),
-        sinPhi * std::sin(theta),
-        std::cos(phi)
-    };
+    return SampleOnUnitSphere([] { return Value(); });
 }
 
 void Random::SetSeed(unsigned int seed)
@@ -81,47 +99,24 @@ void Random::SetSeed(unsigned int seed)
     s_rng.seed(seed);
 }
 
-/// @name RandomStream
-/// サンプリング手法は Random と同じものを、自前の状態に対して行う。
-
 math::Vector2 RandomStream::InsideUnitCircle()
 {
-    while (true) {
-        float x = Range(-1.0f, 1.0f);
-        float y = Range(-1.0f, 1.0f);
-        if (x * x + y * y <= 1.0f)
-            return { x, y };
-    }
+    return SampleInsideUnitCircle([this](float min, float max) { return Range(min, max); });
 }
 
 math::Vector2 RandomStream::OnUnitCircle()
 {
-    float angle = Value() * TWO_PI;
-    return { std::cos(angle), std::sin(angle) };
+    return SampleOnUnitCircle([this] { return Value(); });
 }
 
 math::Vector3 RandomStream::InsideUnitSphere()
 {
-    while (true) {
-        float x = Range(-1.0f, 1.0f);
-        float y = Range(-1.0f, 1.0f);
-        float z = Range(-1.0f, 1.0f);
-        if (x * x + y * y + z * z <= 1.0f)
-            return { x, y, z };
-    }
+    return SampleInsideUnitSphere([this](float min, float max) { return Range(min, max); });
 }
 
 math::Vector3 RandomStream::OnUnitSphere()
 {
-    /// @note Marsaglia (1972) — 一様分布が保証される
-    float theta = Value() * TWO_PI;
-    float phi   = std::acos(1.0f - 2.0f * Value());
-    float sinPhi = std::sin(phi);
-    return {
-        sinPhi * std::cos(theta),
-        sinPhi * std::sin(theta),
-        std::cos(phi)
-    };
+    return SampleOnUnitSphere([this] { return Value(); });
 }
 
-} // namespace fbzz::util
+} /// @note namespace fbzz::util

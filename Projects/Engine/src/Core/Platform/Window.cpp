@@ -2,9 +2,8 @@
 /// @brief   Win32 ウィンドウの生成とメッセージ処理。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// Input へのメッセージ転送、リサイズ通知、WndProc フックをまとめる。
-/// Renderer / ImGui とはコールバックで疎結合に接続する。
+/// @note /// Input へのメッセージ転送、リサイズ通知、WndProc フックをまとめる。
+/// @note Renderer / ImGui とはコールバックで疎結合に接続する。
 
 #include "Engine/Core/Window.hpp"
 #include "Engine/Core/Cursor.hpp"
@@ -35,7 +34,7 @@
 #endif
 
 /// @note WM_DPICHANGED は Windows 8.1 SDK (WINVER >= 0x0603) 以降でのみ定義される。古い SDK で
-///       ビルドされても WndProc の case が消えないよう、値を明示して補う。
+/// @note ビルドされても WndProc の case が消えないよう、値を明示して補う。
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0
 #endif
@@ -50,13 +49,13 @@ namespace
     void EnableDpiAwareness()
     {
         /// @note 正規の宣言は CMake/FBZZApp.manifest 側で、ローダーが起動時に適用するため、ここに
-        ///       来た時点で既に PerMonitorV2 が確定し FALSE を返すのが正常系 (ERROR_ACCESS_DENIED)。
-        ///       マニフェストが剥がれたビルド (手製 exe・旧 SDK 経由の外部ゲーム) への保険として残す。
+        /// @note 来た時点で既に PerMonitorV2 が確定し FALSE を返すのが正常系 (ERROR_ACCESS_DENIED)。
+        /// @note マニフェストが剥がれたビルド (手製 exe・旧 SDK 経由の外部ゲーム) への保険として残す。
         if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
             SetProcessDPIAware();
 
         /// @note DPI 非対応のまま起動すると Windows がウィンドウ全体をビットマップ拡大し、100%
-        ///       以外の環境で UI と文字が滲む。宣言の成否ではなく確定後の実値をログへ残す。
+        /// @note 以外の環境で UI と文字が滲む。宣言の成否ではなく確定後の実値をログへ残す。
         const DPI_AWARENESS awareness =
             GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext());
         switch (awareness) {
@@ -87,7 +86,7 @@ namespace
         return AdjustWindowRectEx(&rect, style, menu, exStyle) != FALSE;
     }
 
-    /// ウィンドウが載っているモニターの矩形。取得できなければプライマリの画面サイズ。
+    /// @note ウィンドウが載っているモニターの矩形。取得できなければプライマリの画面サイズ。
     RECT GetMonitorRectFor(HWND hwnd)
     {
         HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
@@ -152,9 +151,9 @@ namespace
 
     /// @name OLE ドロップターゲット
     /// @note WM_DROPFILES はドロップ確定時しか発火せずドラッグ中の位置が取れないため、DragEnter/
-    ///       DragOver でドロップ前の位置を通知できる OLE の IDropTarget を使う。
+    /// @note DragOver でドロップ前の位置を通知できる OLE の IDropTarget を使う。
 
-    /// IDataObject から CF_HDROP のファイルパス群を UTF-8 で取り出す。
+    /// @note IDataObject から CF_HDROP のファイルパス群を UTF-8 で取り出す。
     std::vector<std::string> ExtractHdropPaths(IDataObject* data)
     {
         std::vector<std::string> paths;
@@ -190,7 +189,7 @@ namespace
     public:
         FileDropTarget(Window* window, HWND hwnd) : m_window(window), m_hwnd(hwnd) {}
 
-        /// IUnknown
+        /// @note IUnknown
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override
         {
             if (riid == IID_IUnknown || riid == IID_IDropTarget) {
@@ -209,7 +208,7 @@ namespace
             return r;
         }
 
-        /// IDropTarget
+        /// @note IDropTarget
         HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL pt, DWORD* effect) override
         {
             m_hasFiles = DataHasFiles(data);
@@ -260,7 +259,7 @@ namespace
     HICON LoadApplicationIcon(HINSTANCE instance, int size)
     {
         /// @note Window クラスにアイコンを設定しないと exe 埋め込みアイコンがタイトルバーや Alt+Tab に
-        ///       反映されない環境がある。LR_SHARED で HICON の寿命を OS 管理にし、Window 側は解放しない。
+        /// @note 反映されない環境がある。LR_SHARED で HICON の寿命を OS 管理にし、Window 側は解放しない。
         return static_cast<HICON>(LoadImageW(
             instance,
             MAKEINTRESOURCEW(kDefaultApplicationIconId),
@@ -336,15 +335,15 @@ bool Window::Initialize(const Config& config)
     DwmSetWindowAttribute(m_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
 
     /// @note エクスプローラーからのファイル D&D を OLE ドロップターゲットとして受け付ける。OLE なら
-    ///       ドロップ確定前のドラッグオーバー位置を取得でき、取り込み先フォルダをリアルタイムで
-    ///       ハイライトできる (WM_DROPFILES では不可能)。
+    /// @note ドロップ確定前のドラッグオーバー位置を取得でき、取り込み先フォルダをリアルタイムで
+    /// @note ハイライトできる (WM_DROPFILES では不可能)。
     if (SUCCEEDED(OleInitialize(nullptr))) {
         m_oleInitialized = true;
         /// @note ref=1 (自分の参照)
         auto* target = new FileDropTarget(this, m_hwnd);
         if (RegisterDragDrop(m_hwnd, target) == S_OK) {
             /// @note RegisterDragDrop が AddRef 済み。自分の初期参照は手放し、OLE 側の 1 参照だけ残す。
-            ///       Shutdown の RevokeDragDrop がその最後の参照を解放して delete させる。
+            /// @note Shutdown の RevokeDragDrop がその最後の参照を解放して delete させる。
             m_dropTarget = target;
             target->Release();
         } else {
@@ -361,7 +360,7 @@ bool Window::Initialize(const Config& config)
     m_height = static_cast<uint32_t>(clientRect.bottom - clientRect.top);
 
     /// @note ウィンドウへ戻したときの寸法の初期値。CalculateInitialWindowRect が
-    ///       作業領域に収まるようクランプしているため、config の値ではなく実寸を覚える。
+    /// @note 作業領域に収まるようクランプしているため、config の値ではなく実寸を覚える。
     m_windowedWidth  = m_width;
     m_windowedHeight = m_height;
 
@@ -377,7 +376,7 @@ void Window::SetWindowMode(WindowMode mode)
 
     if (mode == WindowMode::BorderlessFullscreen) {
         /// @note 復帰用にウィンドウ配置を控える。WS_OVERLAPPEDWINDOW を戻すだけでは
-        ///       位置とサイズがフルスクリーンのまま残る。
+        /// @note 位置とサイズがフルスクリーンのまま残る。
         m_windowedPlacement.length = sizeof(WINDOWPLACEMENT);
         m_hasWindowedPlacement = GetWindowPlacement(m_hwnd, &m_windowedPlacement) != FALSE;
 
@@ -404,8 +403,8 @@ void Window::SetWindowMode(WindowMode mode)
         ApplyWindowedClientSize(m_windowedWidth, m_windowedHeight);
 
     /// @note 実寸は WM_SIZE で更新されるが、ここでも取り直しておく。SetWindowPos は WM_SIZE を
-    ///       同期的に届けるとは限らず、直後に GetWidth() を読む呼び出し側 (Option 画面) が
-    ///       1 フレーム古い値を見ることがある。
+    /// @note 同期的に届けるとは限らず、直後に GetWidth() を読む呼び出し側 (Option 画面) が
+    /// @note 1 フレーム古い値を見ることがある。
     RECT clientRect{};
     if (GetClientRect(m_hwnd, &clientRect)) {
         m_width  = static_cast<uint32_t>(clientRect.right - clientRect.left);
@@ -479,7 +478,7 @@ std::vector<std::pair<uint32_t, uint32_t>> Window::EnumerateResolutions() const
     });
 
     /// @note 列挙に失敗するのはリモートデスクトップ等の特殊な表示ドライバー。
-    ///       空を返すと Option の解像度欄が消えるので、現在の寸法だけは必ず 1 つ入れる。
+    /// @note 空を返すと Option の解像度欄が消えるので、現在の寸法だけは必ず 1 つ入れる。
     if (modes.empty()) {
         uint32_t width = 0, height = 0;
         GetMonitorSize(width, height);
@@ -491,6 +490,7 @@ std::vector<std::pair<uint32_t, uint32_t>> Window::EnumerateResolutions() const
 
 void Window::Shutdown()
 {
+    Cursor::ResetForEditor();
     if (!m_hwnd)
         return;
 
@@ -566,6 +566,18 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
     auto* window = reinterpret_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 
+    /// @note Safety lifecycle must run even when the ImGui hook consumes a window message.
+    if (msg == WM_ACTIVATEAPP) {
+        Cursor::SetWindowActive(wParam != FALSE);
+        if (wParam == FALSE && GetCapture() == hwnd) ReleaseCapture();
+    } else if (msg == WM_ENTERSIZEMOVE) {
+        Cursor::ReleaseGameInput(CursorSuspendReason::WINDOW_MOVING);
+    } else if (msg == WM_SIZE && wParam == SIZE_MINIMIZED) {
+        Cursor::ReleaseGameInput(CursorSuspendReason::TARGET_UNAVAILABLE);
+    } else if (msg == WM_CLOSE || msg == WM_DESTROY) {
+        Cursor::ResetForEditor();
+    }
+
     /// @note 登録済みフック (ImGui 等) に先にメッセージを渡す
     if (window && window->m_wndProcHook)
         if (window->m_wndProcHook(hwnd, msg, wParam, lParam))
@@ -608,18 +620,17 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         return 0;
 
     /// @note ClipCursor はフォアグラウンドが変わると OS 側で外れ、ShowCursor(FALSE) は復帰時に
-    ///       戻す責任がこちらに残る。要求状態は Cursor が持ち «いま OS へ効かせてよいか» だけを
-    ///       ここから渡す。無いと Alt+Tab の出入りで拘束/表示状態が復活しない。
+    /// @note 戻す責任がこちらに残る。要求状態は Cursor が持ち «いま OS へ効かせてよいか» だけを
+    /// @note ここから渡す。無いと Alt+Tab の出入りで拘束/表示状態が復活しない。
     case WM_ACTIVATEAPP:
-        fbzz::core::Cursor::SetWindowActive(wParam != FALSE);
         return 0;
 
     /// @note DPI の異なるモニターへ移動した / 表示スケールが変更された。
     case WM_DPICHANGED:
     {
         /// @note PER_MONITOR_AWARE_V2 は非クライアント領域の再スケールのみ OS が自動処理するため、
-        ///       ウィンドウ本体の寸法を新 DPI へ合わせるのはアプリの責務 (放置すると移動先モニターで
-        ///       全体が相対的に小さく/大きくなる)。lParam は OS 算出の推奨矩形 (新 DPI・フレーム込み)。
+        /// @note ウィンドウ本体の寸法を新 DPI へ合わせるのはアプリの責務 (放置すると移動先モニターで
+        /// @note 全体が相対的に小さく/大きくなる)。lParam は OS 算出の推奨矩形 (新 DPI・フレーム込み)。
         const auto* suggested = reinterpret_cast<const RECT*>(lParam);
         if (!suggested) return 0;
 
@@ -629,14 +640,19 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
                      suggested->bottom - suggested->top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
         /// @note クライアント寸法が変われば SetWindowPos から WM_SIZE が届き Application 側でスワップ
-        ///       チェーンを再構築するため、直接 Resize は呼ばず WM_SIZE に任せる。ImGui のフォント/
-        ///       スタイル倍率 (EditorTheme::SetUiScale) はユーザー明示設定なので DPI 変更で上書きしない。
+        /// @note チェーンを再構築するため、直接 Resize は呼ばず WM_SIZE に任せる。ImGui のフォント/
+        /// @note スタイル倍率 (EditorTheme::SetUiScale) はユーザー明示設定なので DPI 変更で上書きしない。
         return 0;
     }
 
-    case WM_CHAR:
-        fbzz::input::Input::HandleTextInput(static_cast<wchar_t>(wParam));
+    case WM_CHAR: {
+        const auto keyFlags = static_cast<std::uintptr_t>(lParam);
+        const auto scanCode = static_cast<UINT>((keyFlags >> 16) & 0xFFu)
+            | ((keyFlags & (std::uintptr_t{1} << 24)) ? 0xE000u : 0u);
+        fbzz::input::Input::HandleTextInput(static_cast<wchar_t>(wParam),
+            MapVirtualKeyW(scanCode, MAPVK_VSC_TO_VK_EX));
         return 0;
+    }
 
     case WM_KEYDOWN:
     case WM_KEYUP:
@@ -672,7 +688,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     }
     }
     /// @note エクスプローラーからのファイルドロップは OLE の IDropTarget (FileDropTarget) で扱う。
-    ///       WM_DROPFILES は使わない (ドラッグ中の位置が取れずハイライトできないため)。
+    /// @note WM_DROPFILES は使わない (ドラッグ中の位置が取れずハイライトできないため)。
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }

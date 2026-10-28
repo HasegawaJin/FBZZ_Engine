@@ -8,8 +8,10 @@
 #include "Engine/Scene/Components/RigidBodyComponent.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Scene.hpp"
+#include "../Managed/ManagedObjectControls.hpp"
 
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <Engine/Scene/ManagedBridgeAbi.hpp>
 #include <Math/MathUtils.hpp>
 #include <Physics/World.hpp>
 
@@ -28,7 +30,8 @@ physics::RigidBody* SimulatedJointBody(GameObject* go)
 {
     if (!go || !go->activeInHierarchy()) return nullptr;
     auto* rb = go->GetComponent<RigidBodyComponent>();
-    if (!rb || !rb->enabled) return nullptr;
+    if (!rb || !rb->enabled || managed_detail::ManagedObjectControls::IsPendingComponentRemoval(
+            *go, static_cast<uint32_t>(ManagedNativeComponentKind::RIGID_BODY))) return nullptr;
     return rb->rigidBody.get();
 }
 
@@ -284,7 +287,9 @@ void SyncJointComponents(Scene& scene, physics::World& world)
         if (!joint) continue;
 
         GameObject* go = scene.GetGameObject(id);
-        if (!go || !go->activeInHierarchy() || !joint->enabled) {
+        if (!go || !go->activeInHierarchy() || !joint->enabled
+            || managed_detail::ManagedObjectControls::IsPendingComponentRemoval(
+                *go, static_cast<uint32_t>(ManagedNativeComponentKind::JOINT))) {
             ReleaseJoint(world, *joint);
             continue;
         }

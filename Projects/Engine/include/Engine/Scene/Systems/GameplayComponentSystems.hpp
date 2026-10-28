@@ -8,7 +8,9 @@
 
 namespace fbzz::scene {
 
-/// Bone Socketと汎用Transform制約をAnimator/IK確定後にワールド空間で解決する。
+/// @note Bone Socket と汎用 Transform 制約は Animator/IK の確定後にワールド空間で解決する。
+/// @note 有効な Animator/IK/SpringBone/Ragdoll があるときは、非骨子孫も含む従来の同期境界を保つ。
+/// @see Docs/design/script-transform-contract.md
 class ConstraintSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "ConstraintSystem"; }
@@ -17,7 +19,7 @@ public:
     void Update(SystemContext& ctx) override;
 };
 
-/// Catmull-Rom曲線上の距離基準移動と進行方向への姿勢合わせを行う。
+/// @note Catmull-Rom 曲線上の移動はワールド姿勢へ適用する。
 class SplineSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "SplineSystem"; }
@@ -26,7 +28,7 @@ public:
     void Update(SystemContext& ctx) override;
 };
 
-/// Virtual Camera選択、追従、明示Blend、決定的Shakeを一つの順序で評価する。
+/// @note Virtual Camera 選択、追従、Blend、Shake の順に評価する。
 class CameraRigSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "CameraRigSystem"; }
@@ -35,7 +37,7 @@ public:
     void Update(SystemContext& ctx) override;
 };
 
-/// Main Cameraに対する全軸／Y軸／回転一致のBillboard姿勢を生成する。
+/// @note Billboard は Main Camera のワールド姿勢を基準とする。
 class BillboardSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "BillboardSystem"; }
@@ -44,13 +46,14 @@ public:
     void Update(SystemContext& ctx) override;
 };
 
-/// SpriteとLineのGPU Mesh生成、Sorting、ProjectorのDecal変換を担当する。
+/// @note Sprite と Line の GPU Mesh、Sorting、Projector の Decal を確定する。
 class PresentationSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "PresentationSystem"; }
     Phase GetPhase() const override { return Phase::LateUpdate; }
     ComponentAccess GetAccess() const override;
+    OrderingHints GetOrder() const override;
     void Update(SystemContext& ctx) override;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

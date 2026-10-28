@@ -6,6 +6,7 @@
 /// @brief 往復で 1 項目でも落ちると、開き直したときにその項目だけ既定値へ戻る ──
 /// @brief 「昨日いじった炎が今日は違う」という、履歴からも追えない壊れ方をする。
 #include <TestKit/TestKit.hpp>
+#include <Engine/Asset/ParticleEmitterPresets.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Asset/ParticleEmitterAssetCodec.hpp>
@@ -63,7 +64,7 @@ scene::ParticleGradient RoundTrip(const scene::ParticleGradient& gradient)
     return restored;
 }
 
-} // namespace
+} /// @note namespace
 
 class ParticleCodecTest : public testkit::EngineFixture {};
 
@@ -335,4 +336,55 @@ TEST_F(ParticleCodecTest, ABakedFlowSurvivesTheRoundTrip)
     EXPECT_VEC3_NEAR(r.vectorFieldExtents, math::Vector3(2.0f, 8.0f, 2.0f), testkit::kTolerance);
 }
 
-} // namespace fbzz::tests
+
+TEST_F(ParticleCodecTest, StartersReplaceConflictingModulesAndKeepIdentityControls)
+{
+    for (const auto& preset : asset::ParticleEmitterPresets()) {
+        scene::ParticleEmitterSettings settings;
+        settings.enabled = false;
+        settings.randomSeed = 17;
+        settings.subEmitterScopeRoot = {7, 3};
+        settings.useSpeedSizeCurve = true;
+        settings.light.lightEnabled = true;
+        settings.collisionMode = scene::ParticleCollisionMode::Physics;
+        settings.deathSubEmitter = "OldEmitter";
+        settings.rateOverDistance = 900.0f;
+        asset::ApplyParticleEmitterPreset(settings, preset.id);
+        EXPECT_FALSE(settings.enabled);
+        EXPECT_EQ(settings.randomSeed, 17u);
+        EXPECT_EQ(settings.subEmitterScopeRoot, (scene::EntityID{7, 3}));
+        EXPECT_FALSE(settings.light.lightEnabled);
+        EXPECT_FALSE(settings.useSpeedSizeCurve);
+        EXPECT_EQ(settings.collisionMode, scene::ParticleCollisionMode::None);
+        EXPECT_TRUE(settings.deathSubEmitter.empty());
+        EXPECT_LT(settings.rateOverDistance, 900.0f);
+        EXPECT_FALSE(settings.receiveFlowFields);
+    }
+}
+
+TEST_F(ParticleCodecTest, StarterModulesAndMaterialReferencesSurviveSerialization)
+{
+    for (const auto& preset : asset::ParticleEmitterPresets()) {
+        SCOPED_TRACE(preset.name);
+        scene::ParticleEmitterSettings original;
+        asset::ApplyParticleEmitterPreset(original, preset.id);
+        scene::ParticleEmitterSettings restored;
+        asset::DeserializeParticleEmitterSettings(asset::SerializeParticleEmitterSettings(original), restored);
+        EXPECT_EQ(restored.materialPath, original.materialPath);
+        EXPECT_EQ(restored.maxParticles, original.maxParticles);
+        EXPECT_EQ(restored.simulationMode, original.simulationMode);
+        EXPECT_EQ(restored.trail.trailEnabled, original.trail.trailEnabled);
+        EXPECT_EQ(restored.trail.trailRibbon, original.trail.trailRibbon);
+        EXPECT_EQ(restored.bursts.size(), original.bursts.size());
+        EXPECT_EQ(restored.useSizeCurve, original.useSizeCurve);
+        EXPECT_EQ(restored.useColorGradient, original.useColorGradient);
+        EXPECT_EQ(restored.colorGradient.colorSpace, original.colorGradient.colorSpace);
+        for (int step = 0; step <= 10; ++step) {
+            const float t = step * 0.1f;
+            EXPECT_NEAR(restored.sizeCurve.Evaluate(t), original.sizeCurve.Evaluate(t), testkit::kTolerance);
+            EXPECT_VEC4_NEAR(restored.colorGradient.EvaluateLinear(t), original.colorGradient.EvaluateLinear(t), testkit::kLooseTolerance);
+        }
+    }
+}
+
+} /// @note namespace fbzz::tests

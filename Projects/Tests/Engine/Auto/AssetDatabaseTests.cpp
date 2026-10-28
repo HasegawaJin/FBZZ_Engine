@@ -2,10 +2,10 @@
 /// @brief   GUID 参照の解析・導出 GUID の決定性・.meta 索引の移動と削除の追従を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
-/// 参照は «パスではなく guid» で持つ、というのがこのエンジンのアセット参照の芯。
-/// 導出 GUID が環境で変わったり、移動で索引が付け替わらなかったりすると、
-/// «手元では開けるのに clone した先では参照が全部切れている» という形で出る。
+
+/// @note 参照は «パスではなく guid» で持つ、というのがこのエンジンのアセット参照の芯。
+/// @note 導出 GUID が環境で変わったり、移動で索引が付け替わらなかったりすると、
+/// @note «手元では開けるのに clone した先では参照が全部切れている» という形で出る。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
@@ -40,7 +40,7 @@ void WriteFile(const std::filesystem::path& path, const std::string& text)
     out << text;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name 参照文字列の解析 (索引に依存しない純ロジック)
 
@@ -150,6 +150,9 @@ TEST_F(AssetRefTest, SourceAssetsAndDocumentsGetMeta)
 {
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("player.png"));
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("player.fbx"));
+    EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("player.obj"));
+    EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("player.gltf"));
+    EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("player.glb"));
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("readme.md"));
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("stage_01.scene"));
 }
@@ -215,9 +218,9 @@ TEST_F(AssetRefTest, FolderExclusionIgnoresCase)
 
 /// @name 索引 (実ファイルを伴う)
 
-/// Assets ルートを一時ディレクトリに作り、テストごとに索引を作り直す。
-/// AssetDatabase はプロセス全体で 1 つの静的な索引を持つため、
-/// TearDown で必ず Shutdown して次のテストへ持ち越さない。
+/// @note Assets ルートを一時ディレクトリに作り、テストごとに索引を作り直す。
+/// @note AssetDatabase はプロセス全体で 1 つの静的な索引を持つため、
+/// @note TearDown で必ず Shutdown して次のテストへ持ち越さない。
 class AssetDatabaseTest : public testkit::EngineFixture {
 protected:
     void SetUp() override
@@ -522,4 +525,4 @@ TEST_F(AssetDatabaseTest, TheSameFileUnderTwoSpellingsIsNotADuplicate)
     EXPECT_EQ(AssetDatabase::PathFromGuid(guid), Utf8(texture));
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

@@ -3,10 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
 ///
-/// このカーブは CPU と GPU (ParticleGpuSim.cs.hlsl) の両方に同じ式で実装されている。
-/// 片方だけ直すと «CPU 経路のエフェクトだけ色や大きさが違う» という、
-/// 見比べないと気づけない壊れ方をする。CPU 側の答えを数値で固定しておく。
+/// @note このカーブは CPU と GPU (ParticleGpuSim.cs.hlsl) の両方に同じ式で実装されている。
+/// @note 片方だけ直すと «CPU 経路のエフェクトだけ色や大きさが違う» という、
+/// @note 見比べないと気づけない壊れ方をする。CPU 側の答えを数値で固定しておく。
 #include <TestKit/TestKit.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Scene/ParticleCurve.hpp>
@@ -16,7 +17,7 @@
 namespace fbzz::tests {
 namespace {
 
-/// 0 → 1 へ立ち上がるだけの 2 キーのカーブ。
+/// @note 0 → 1 へ立ち上がるだけの 2 キーのカーブ。
 scene::ParticleCurve Ramp(scene::ParticleCurveInterpolation mode
                           = scene::ParticleCurveInterpolation::Linear)
 {
@@ -28,7 +29,7 @@ scene::ParticleCurve Ramp(scene::ParticleCurveInterpolation mode
     return curve;
 }
 
-} // namespace
+} /// @note namespace
 
 class ParticleCurveTest : public testkit::EngineFixture {};
 
@@ -101,9 +102,9 @@ TEST_F(ParticleCurveTest, StepHoldsThePreviousValue)
 TEST_F(ParticleCurveTest, StepSwitchesExactlyOnTheNextKey)
 {
     /// @note 区間は [前のキー, 次のキー)。次のキーへ到達した時点で切り替わる。
-    ///       越えたときにしか切り替わらないと、寿命 0..1 のカーブでは t=1.0 が
-    ///       最後のフレームなので、最終キー (フリップブックの最終コマ・消え際の点滅) が
-    ///       一度も表示されないまま粒子が死ぬ。
+    /// @note 越えたときにしか切り替わらないと、寿命 0..1 のカーブでは t=1.0 が
+    /// @note 最後のフレームなので、最終キー (フリップブックの最終コマ・消え際の点滅) が
+    /// @note 一度も表示されないまま粒子が死ぬ。
     const scene::ParticleCurve curve = Ramp(scene::ParticleCurveInterpolation::Step);
 
     EXPECT_NEAR(curve.Evaluate(0.999f), 0.0f, testkit::kTolerance);
@@ -156,7 +157,7 @@ TEST_F(ParticleCurveTest, SmoothStaysInsideTheKeyValues)
 TEST_F(ParticleCurveTest, InterpolationHelperMatchesEachMode)
 {
     /// @note GPU 側 (ParticleGpuSim.cs.hlsl の ApplyCurveInterpolation) と同じ式であることを、
-    ///       係数そのもので固定する。片方だけ直すと «CPU では正しいが GPU では違う» になる。
+    /// @note 係数そのもので固定する。片方だけ直すと «CPU では正しいが GPU では違う» になる。
     EXPECT_NEAR(scene::ApplyCurveInterpolation(0.3f, scene::ParticleCurveInterpolation::Linear),
                 0.3f, testkit::kTolerance);
     EXPECT_NEAR(scene::ApplyCurveInterpolation(0.5f, scene::ParticleCurveInterpolation::Smooth),
@@ -235,7 +236,7 @@ TEST_F(ParticleCurveTest, GradientClampsOutsideTheKeyRange)
 TEST_F(ParticleCurveTest, GradientStepSwitchesExactlyOnTheNextKey)
 {
     /// @note 色も同じ規則。「炎から煙へ切り替わる瞬間」を作るのが Step の用途なので、
-    ///       切り替え先の色がその時刻に出ないと意味が無い。
+    /// @note 切り替え先の色がその時刻に出ないと意味が無い。
     scene::ParticleGradient gradient;
     gradient.keys[0]       = { 0.0f, { 1.0f, 0.0f, 0.0f, 1.0f } };
     gradient.keys[1]       = { 0.5f, { 0.0f, 1.0f, 0.0f, 1.0f } };
@@ -251,7 +252,7 @@ TEST_F(ParticleCurveTest, GradientStepSwitchesExactlyOnTheNextKey)
 TEST_F(ParticleCurveTest, LinearisedGradientIsDarkerThanTheAuthoredColour)
 {
     /// @note キーは «カラーピッカーに見える値» (sRGB)。シェーダーへ渡る直前に一度だけ
-    ///       リニアへ落とす。二重に掛けても掛け忘れても、絵の明るさが変わる。
+    /// @note リニアへ落とす。二重に掛けても掛け忘れても、絵の明るさが変わる。
     scene::ParticleGradient gradient;
     gradient.keys[0]  = { 0.0f, { 0.5f, 0.5f, 0.5f, 1.0f } };
     gradient.keys[1]  = { 1.0f, { 0.5f, 0.5f, 0.5f, 1.0f } };
@@ -265,4 +266,64 @@ TEST_F(ParticleCurveTest, LinearisedGradientIsDarkerThanTheAuthoredColour)
     EXPECT_NEAR(linear.w, gamma.w, testkit::kTolerance);
 }
 
-} // namespace fbzz::tests
+
+TEST_F(ParticleCurveTest, RuntimeGradientReflectsInterpolationOnlyEdits)
+{
+    scene::ParticleEmitter emitter;
+    emitter.settings.colorGradient.keys[0] = {0.0f, {1.0f, 0.0f, 0.0f, 1.0f}};
+    emitter.settings.colorGradient.keys[1] = {1.0f, {0.0f, 0.0f, 1.0f, 0.0f}};
+    emitter.RefreshRuntimeGradient();
+    const float before = emitter.runtime.runtimeGradient.Evaluate(0.5f).w;
+    emitter.settings.colorGradient.interpolation = scene::ParticleCurveInterpolation::Step;
+    emitter.RefreshRuntimeGradient();
+    EXPECT_NEAR(before, 0.5f, testkit::kTolerance);
+    EXPECT_NEAR(emitter.runtime.runtimeGradient.Evaluate(0.5f).w, 1.0f, testkit::kTolerance);
+}
+
+TEST_F(ParticleCurveTest, RuntimeGradientReflectsColorSpaceOnlyEdits)
+{
+    scene::ParticleEmitter emitter;
+    emitter.settings.colorGradient.keys[0] = {0.0f, {0.0f, 0.0f, 0.0f, 1.0f}};
+    emitter.settings.colorGradient.keys[1] = {1.0f, {1.0f, 1.0f, 1.0f, 0.0f}};
+    emitter.RefreshRuntimeGradient();
+    const float gamma = emitter.runtime.runtimeGradient.EvaluateLinear(0.5f).x;
+    emitter.settings.colorGradient.colorSpace = scene::ParticleColorSpace::Linear;
+    emitter.RefreshRuntimeGradient();
+    EXPECT_LT(gamma, 0.3f);
+    EXPECT_NEAR(emitter.runtime.runtimeGradient.EvaluateLinear(0.5f).x, 0.5f, testkit::kTolerance);
+}
+
+TEST_F(ParticleCurveTest, BlackbodyReflectsTemperatureInterpolationOnlyEdits)
+{
+    scene::ParticleEmitter emitter;
+    emitter.settings.blackbodyEnabled = true;
+    emitter.settings.colorGradient.keyCount = 3;
+    emitter.settings.colorGradient.keys[1] = {0.25f, {1.0f, 1.0f, 1.0f, 0.6f}};
+    emitter.settings.colorGradient.keys[2] = {1.0f, {1.0f, 1.0f, 1.0f, 0.0f}};
+    emitter.RefreshRuntimeGradient();
+    const float before = emitter.runtime.runtimeGradient.keys[1].color.x;
+    emitter.settings.temperatureCurve.interpolation = scene::ParticleCurveInterpolation::Step;
+    emitter.RefreshRuntimeGradient();
+    scene::ParticleRuntime fresh;
+    scene::RefreshParticleRuntimeGradient(emitter.settings, fresh);
+    EXPECT_GT(emitter.runtime.runtimeGradient.keys[1].color.x, before);
+    EXPECT_VEC4_NEAR(emitter.runtime.runtimeGradient.keys[1].color, fresh.runtimeGradient.keys[1].color, testkit::kTolerance);
+}
+
+
+TEST_F(ParticleCurveTest, BlackbodyConstantTemperatureKeepsBrightnessAcrossColorSpaces)
+{
+    scene::ParticleEmitter emitter;
+    emitter.settings.blackbodyEnabled = true;
+    emitter.settings.blackbodyIntensity = 0.25f;
+    emitter.settings.temperatureCurve.keys[0] = {0.0f, 1800.0f};
+    emitter.settings.temperatureCurve.keys[1] = {1.0f, 1800.0f};
+    emitter.RefreshRuntimeGradient();
+    const math::Vector4 gamma = emitter.runtime.runtimeGradient.EvaluateLinear(0.5f);
+    emitter.settings.colorGradient.colorSpace = scene::ParticleColorSpace::Linear;
+    emitter.RefreshRuntimeGradient();
+    /// @note Constant physical temperature must retain luminance when only the interpolation color space changes.
+    EXPECT_VEC4_NEAR(emitter.runtime.runtimeGradient.EvaluateLinear(0.5f), gamma, testkit::kLooseTolerance);
+}
+
+} /// @note namespace fbzz::tests

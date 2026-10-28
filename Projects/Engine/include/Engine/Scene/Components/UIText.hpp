@@ -100,10 +100,18 @@ struct UIText {
     ///       計測の 1 回だけで解き描画はこの値を読む。
     float         resolvedFontSize = 0.0f;
 
+    bool overrideThemeColor = false;
+    bool overrideThemeFont = false;
+    bool overrideThemeTypography = false;
+
     const char* GetTypeName() const { return "UIText"; }
     void Reflect(IReflector& r)
     {
         r.Field("enabled",       enabled);
+        r.Field("overrideThemeColor", overrideThemeColor);
+        r.Field("overrideThemeFont", overrideThemeFont);
+        r.Field("overrideThemeTypography", overrideThemeTypography);
+        r.Tooltip("Keep local font size, letter spacing and line spacing instead of the Canvas theme.");
         anchoring.Reflect(r);
         r.Field("text",          text);
         r.FloatRange("fontSize", fontSize, 1.0f, 512.0f);

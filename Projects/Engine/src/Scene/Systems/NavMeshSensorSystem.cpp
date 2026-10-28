@@ -17,6 +17,7 @@
 #include <Physics/World.hpp>
 #include <Math/Vector3.hpp>
 #include <cmath>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -49,7 +50,10 @@ void NavMeshSensorSystem::Update(SystemContext& ctx)
     Scene& scene = ctx.scene;
     const physics::World* world = &ctx.world;
     const float dt = ctx.dt;
-    for (EntityID eid : scene.GetEntities<NavMeshSensorComponent>()) {
+    /// @note 検知 callback の Prefab 生成で同型 Component が増えても、開始時の対象を一度ずつ処理する。
+    const auto sensorSpan = scene.GetEntities<NavMeshSensorComponent>();
+    const std::vector<EntityID> sensorEntities(sensorSpan.begin(), sensorSpan.end());
+    for (EntityID eid : sensorEntities) {
         auto* sensor = scene.GetComponent<NavMeshSensorComponent>(eid);
         auto* go     = scene.GetGameObject(eid);
         if (!sensor || !go || !go->activeInHierarchy() || !sensor->enabled) continue;

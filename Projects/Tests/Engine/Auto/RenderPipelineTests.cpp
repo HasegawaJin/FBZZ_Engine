@@ -222,6 +222,33 @@ TEST_F(RenderPassResourcesTest, SetupKeepsDependencyUsageSeparateFromGpuPurpose)
     EXPECT_EQ(accesses[4].purpose, RG::ResourceAccessPurpose::UAV);
 }
 
+TEST_F(RenderPassResourcesTest, ReusedBuilderKeepsStorageButDropsOldDeclarationsAndAutoTarget)
+{
+    std::vector<RG::ResourceAccess> accesses;
+    accesses.reserve(4);
+    accesses.push_back({ "OldVertices", RG::ResourceUsage::Read });
+    std::string autoTarget = "OldTarget";
+    const auto* storage = accesses.data();
+    const auto capacity = accesses.capacity();
+    renderer::PassBuilder builder(std::move(accesses), std::move(autoTarget));
+    EXPECT_TRUE(builder.Accesses().empty());
+    EXPECT_TRUE(builder.AutoTarget().empty());
+    builder.Read("NewVertices", RG::ResourceAccessPurpose::BUILD_INPUT)
+           .Write("NewOutput", RG::ResourceAccessPurpose::UAV);
+    builder.MoveOut(accesses, autoTarget);
+
+    EXPECT_EQ(accesses.data(), storage);
+    EXPECT_EQ(accesses.capacity(), capacity);
+    ASSERT_EQ(accesses.size(), 2u);
+    EXPECT_EQ(accesses[0].name, "NewVertices");
+    EXPECT_EQ(accesses[0].usage, RG::ResourceUsage::Read);
+    EXPECT_EQ(accesses[0].purpose, RG::ResourceAccessPurpose::BUILD_INPUT);
+    EXPECT_EQ(accesses[1].name, "NewOutput");
+    EXPECT_EQ(accesses[1].usage, RG::ResourceUsage::Write);
+    EXPECT_EQ(accesses[1].purpose, RG::ResourceAccessPurpose::UAV);
+    EXPECT_TRUE(autoTarget.empty());
+}
+
 TEST_F(RenderPassResourcesTest, ExecuteResolvesDeclaredBuffersAndAccelerationStructures)
 {
     renderer::RenderResourceRegistry registry;

@@ -371,10 +371,12 @@ TEST_F(ClothSystemTest, PositiveDistanceBoundsParticleAroundMovingTarget)
     auto& target = m_scene.GetGameObject(targetId)->transform;
     target.position = target.worldPosition = {1, 1, 0};
     Cloth().attachments.push_back({80, targetId, {}, 0.05f});
+    EXPECT_TRUE(Cloth().attachments[0].targetReference.guid.empty());
     for (int i = 0; i < 20; ++i) {
         target.position = target.worldPosition = {1, 1, i * 0.002f};
         Tick();
         ASSERT_FALSE(Cloth().runtime.failed);
+        EXPECT_TRUE(Cloth().attachments[0].targetReference.guid.empty());
         EXPECT_LE((Cloth().runtime.solver.Positions()[80] - target.worldPosition).Length(), 0.05001f);
     }
 }
@@ -442,5 +444,33 @@ TEST_F(ClothSystemTest, MissingSkinBoneStopsAndValidMappingRecovers)
     Cloth().useSkinning = false;
     Tick();
     EXPECT_TRUE(Cloth().runtime.skinCenters.empty());
+}
+
+TEST_F(ClothSystemTest, ClothTargetTopologySignatureTracksIndicesAndRejectsStaleParticleRanges)
+{
+    asset::ClothAsset source;
+    source.particles = {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
+    source.indices = {0, 1, 2};
+
+    std::uint64_t topology = 0;
+    std::uint32_t particleCount = 0;
+    ASSERT_TRUE(scene::ResolveClothTopologyForParticle(&source, 8, 2, topology, particleCount));
+    EXPECT_EQ(topology, scene::ClothTopologySignature(&source, 8));
+    EXPECT_EQ(particleCount, 3u);
+
+    source.particles[1].x = 5.0f;
+    EXPECT_EQ(scene::ClothTopologySignature(&source, 8), topology);
+    source.indices = {0, 2, 1};
+    EXPECT_NE(scene::ClothTopologySignature(&source, 8), topology);
+
+    topology = 17;
+    particleCount = 19;
+    EXPECT_FALSE(scene::ResolveClothTopologyForParticle(&source, 8, 3, topology, particleCount));
+    EXPECT_EQ(topology, 17u);
+    EXPECT_EQ(particleCount, 19u);
+
+    ASSERT_TRUE(scene::ResolveClothTopologyForParticle(nullptr, 2, 8, topology, particleCount));
+    EXPECT_EQ(particleCount, 9u);
+    EXPECT_FALSE(scene::ResolveClothTopologyForParticle(nullptr, 2, 9, topology, particleCount));
 }
 }

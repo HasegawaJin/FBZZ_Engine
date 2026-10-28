@@ -2,28 +2,45 @@
 /// @brief   UI 要素の矩形・アンカー・ピボットの定義と、その解決規則
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
-///
+
 /// @note 1 ファイルに集約: position の意味が UIImage (左上基準) と UIText (align 依存) で
-///       食い違い、合成式も UISystem.cpp と Editor 側で二重化していた。
+/// @note 食い違い、合成式も UISystem.cpp と Editor 側で二重化していた。
 /// @note アンカー (親のどこを基準にするか) とピボット (自分のどこを合わせるか) は別の問いで、
-///       分けないと「右下基準で右下合わせ」以外の配置 (右下から 20px 内側等) ができない。
+/// @note 分けないと「右下基準で右下合わせ」以外の配置 (右下から 20px 内側等) ができない。
 #pragma once
 
 #include <Engine/Scene/Script.hpp>
+#include <cmath>
+#include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
 
 namespace fbzz::scene {
 
-/// UI 要素の矩形 (Canvas 空間、原点は左上・y は下向き)。
+/// @param angle Canvas の回転角 [rad]。
+[[nodiscard]] inline math::Vector2 RotateUIVector(const math::Vector2& v, float angle)
+{
+    const float c = std::cosf(angle);
+    const float s = std::sinf(angle);
+    return { v.x * c - v.y * s, v.x * s + v.y * c };
+}
+
+/// @note Quaternion の入力値を直接使い、既存 UI の Z 回転抽出式を保つ。
+[[nodiscard]] inline float ExtractUIZRotation(const math::Quaternion& q)
+{
+    return std::atan2f(2.0f * (q.w * q.z + q.x * q.y),
+                       1.0f - 2.0f * (q.y * q.y + q.z * q.z));
+}
+
+/// @note UI 要素の矩形 (Canvas 空間、原点は左上・y は下向き)。
 struct UIRect {
-    math::Vector2 position = math::Vector2::ZERO;  ///< 左上
+    math::Vector2 position = math::Vector2::ZERO;  ///< @note 左上
     math::Vector2 size     = math::Vector2::ZERO;
 
     [[nodiscard]] math::Vector2 Center() const
     {
         return { position.x + size.x * 0.5f, position.y + size.y * 0.5f };
     }
-    /// 正規化座標 (0,0)=左上 〜 (1,1)=右下 の点を返す。
+    /// @note 正規化座標 (0,0)=左上 〜 (1,1)=右下 の点を返す。
     [[nodiscard]] math::Vector2 PointAt(const math::Vector2& normalized) const
     {
         return { position.x + size.x * normalized.x, position.y + size.y * normalized.y };
@@ -35,20 +52,20 @@ struct UIRect {
     }
 };
 
-/// 親の矩形内の基準点と、自分の矩形内の合わせ点。どちらも 0..1 の正規化座標。
+/// @note 親の矩形内の基準点と、自分の矩形内の合わせ点。どちらも 0..1 の正規化座標。
 /// @note 既定 (0,0)/(0,0) は旧 UIImage の挙動と一致し既存シーンは動かない。ストレッチは
-///       axis ごとの bool で持つ (anchorMax==anchor 判定だと anchorMax 未保存の旧シーンが壊れる)。
+/// @note axis ごとの bool で持つ (anchorMax==anchor 判定だと anchorMax 未保存の旧シーンが壊れる)。
 struct UIAnchor {
-    math::Vector2 anchor = math::Vector2::ZERO;  ///< 親のどこを基準にするか (ストレッチ時は下限)
-    math::Vector2 pivot  = math::Vector2::ZERO;  ///< 自分のどこをその点へ合わせるか
+    math::Vector2 anchor = math::Vector2::ZERO;  ///< @note 親のどこを基準にするか (ストレッチ時は下限)
+    math::Vector2 pivot  = math::Vector2::ZERO;  ///< @note 自分のどこをその点へ合わせるか
 
-    /// ストレッチする軸。true にすると、その軸のサイズは自分の scale ではなく
-    /// 「anchor 〜 anchorMax が親の上で占める幅」から決まる。
+    /// @note ストレッチする軸。true にすると、その軸のサイズは自分の scale ではなく
+    /// @note 「anchor 〜 anchorMax が親の上で占める幅」から決まる。
     bool stretchX = false;
     bool stretchY = false;
-    /// ストレッチ時の上限アンカー。stretch していない軸では読まない。
+    /// @note ストレッチ時の上限アンカー。stretch していない軸では読まない。
     math::Vector2 anchorMax = math::Vector2::ONE;
-    /// ストレッチ時の上限側の余白 (Canvas ピクセル)。下限側は transform.position が担う。
+    /// @note ストレッチ時の上限側の余白 (Canvas ピクセル)。下限側は transform.position が担う。
     /// @note 無いと画面幅いっぱいの帯しか作れず、「左右 40px を空けた帯」等が表現できない。
     math::Vector2 offsetMax = math::Vector2::ZERO;
 
@@ -73,10 +90,10 @@ struct UIAnchor {
     }
 };
 
-/// 最終的な矩形を求める。UISystem と Editor はどちらもこれだけを使うこと。
-///   点アンカー   … 左上 = 親サイズ × anchor + ローカル位置 - 自分のサイズ × pivot
-///   ストレッチ軸 … 下限 = 親サイズ × anchor    + ローカル位置
-///                  上限 = 親サイズ × anchorMax - offsetMax
+/// @note 最終的な矩形を求める。UISystem と Editor はどちらもこれだけを使うこと。
+/// @note 点アンカー   … 左上 = 親サイズ × anchor + ローカル位置 - 自分のサイズ × pivot
+/// @note ストレッチ軸 … 下限 = 親サイズ × anchor    + ローカル位置
+/// @note 上限 = 親サイズ × anchorMax - offsetMax
 /// @param parentSize 親要素の矩形サイズ。直下が Canvas なら Canvas の寸法。
 /// @param localPosition transform.position.xy (基準点からのずれ / 下限側の余白)
 /// @param size この要素の矩形サイズ。ストレッチする軸では使わない。
@@ -86,7 +103,7 @@ struct UIAnchor {
                                           const UIAnchor& anchoring)
 {
     /// @note 軸ごとに独立して解く。片方だけストレッチする構成 (画面幅の帯・縦の仕切り) が
-    ///       実用上いちばん多く、両軸を 1 つの式へ押し込めない。
+    /// @note 実用上いちばん多く、両軸を 1 つの式へ押し込めない。
     const auto axis = [](float parent, float local, float extent, float anchorLow,
                          float anchorHigh, float offsetHigh, float pivot,
                          bool stretch, float& outPosition, float& outSize) {
@@ -99,7 +116,7 @@ struct UIAnchor {
         const float high = parent * anchorHigh - offsetHigh;
         outPosition = low;
         /// @note 余白どうしが行き違っても矩形を裏返さない。裏返ると当たり判定が
-        ///       「どこにも当たらない」ではなく「常に当たる」側へ倒れることがある。
+        /// @note 「どこにも当たらない」ではなく「常に当たる」側へ倒れることがある。
         outSize = high > low ? high - low : 0.0f;
     };
 
@@ -113,11 +130,11 @@ struct UIAnchor {
     return rect;
 }
 
-/// 基準点そのもの (親の中の位置)。ギズモがアンカーを描くのに使う。
+/// @note 基準点そのもの (親の中の位置)。ギズモがアンカーを描くのに使う。
 [[nodiscard]] inline math::Vector2 ResolveUIAnchorPoint(const math::Vector2& parentSize,
                                                         const UIAnchor& anchoring)
 {
     return { parentSize.x * anchoring.anchor.x, parentSize.y * anchoring.anchor.y };
 }
 
-} // namespace fbzz::scene
+} ///< @note namespace fbzz::scene

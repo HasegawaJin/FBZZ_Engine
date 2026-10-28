@@ -7,6 +7,8 @@
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <bit>
 #include <Graphics/Renderer/Material.hpp>
 #include <Engine/Scene/TomlReflector.hpp>
 #include <array>
@@ -144,12 +146,12 @@ TEST_F(MaterialReflectionTest, MaterialFilePreservesUnsignedLimitsAndLegacyFloat
 {
     testkit::TempDir directory("material-reflection");
     const auto path = (directory.Path() / "typed.mat").generic_string();
-    asset::MaterialAsset original;
+    asset::MaterialAssetAuthoring original;
     original.params["uvTiling"] = {2, 3};
     original.integerParams["mask"] = {UINT32_MAX, 16777217};
     original.integerParams["mode"] = {-7};
     ASSERT_TRUE(asset::SaveMaterialAssetToFile(path, original));
-    asset::MaterialAsset restored;
+    asset::MaterialAssetAuthoring restored;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path, restored));
     EXPECT_EQ(restored.integerParams.at("mask"), original.integerParams.at("mask"));
     EXPECT_EQ(restored.params.at("uvTiling"), original.params.at("uvTiling"));
@@ -184,14 +186,14 @@ TEST_F(MaterialReflectionTest, SolidDielectricTypedSettingsRoundTripAndRuntimeCo
 {
     testkit::TempDir directory("material-dielectric");
     const auto path = (directory.Path() / "glass.mat").generic_string();
-    asset::MaterialAsset original;
+    asset::MaterialAssetAuthoring original;
     original.dielectric.transmission = 1;
     original.dielectric.ior = 1.6f;
     original.dielectric.attenuationColor = {0, 0.5f, 0.75f};
     original.dielectric.attenuationDistance = 2.5f;
     original.dielectric.thinWalled = true;
     ASSERT_TRUE(asset::SaveMaterialAssetToFile(path, original));
-    asset::MaterialAsset restored;
+    asset::MaterialAssetAuthoring restored;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path, restored));
     EXPECT_EQ(restored.dielectric, original.dielectric);
     renderer::Material runtime;
@@ -213,7 +215,7 @@ TEST_F(MaterialReflectionTest, LegacyAlphaDoesNotImplicitlyEnableOpticalTransmis
         std::ofstream file(path);
         file << "blend_mode = 'AlphaBlend'\n[params]\nbaseColor = [1, 1, 1, 0.2]\n";
     }
-    asset::MaterialAsset restored;
+    asset::MaterialAssetAuthoring restored;
     restored.dielectric.transmission = 1;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(path.generic_string(), restored));
     EXPECT_EQ(restored.blendMode, renderer::BlendMode::ALPHA_BLEND);
@@ -225,7 +227,7 @@ TEST_F(MaterialReflectionTest, RejectsWrongDielectricTypesWithoutModifyingOutput
 {
     testkit::TempDir directory("material-dielectric-invalid");
     const auto path = directory.Path() / "invalid.mat";
-    asset::MaterialAsset preserved;
+    asset::MaterialAssetAuthoring preserved;
     preserved.shaderPath = "preserved";
     preserved.dielectric.transmission = 0.75f;
     const auto originalSettings = preserved.dielectric;
@@ -312,5 +314,124 @@ TEST_F(MaterialReflectionTest, MissingPolymorphicTypePreservesFieldsAcrossSave)
     ASSERT_TRUE(parsed);
     EXPECT_EQ(parsed["count"].value_or(0), 42);
 }
+
+TEST_F(MaterialReflectionTest, RetainedDraftAliasesAndConflictingEditsCannotMutatePublishedAuthoring)
+{
+    asset::MaterialAsset material;
+    const auto initial = material.ReadAuthoring();
+    auto first = material.BeginAuthoringEdit();
+    auto stale = material.BeginAuthoringEdit();
+    auto& retained = first.Draft().params["roughness"];
+    retained = {0.4f};
+    ASSERT_EQ(first.Commit(material), asset::detail::MaterialAuthoringCommitResult::COMMITTED);
+    const auto published = material.ReadAuthoring();
+    retained[0] = 0.9f;
+    EXPECT_TRUE(initial->Data().params.empty());
+    EXPECT_FLOAT_EQ(published->Data().params.at("roughness")[0], 0.4f);
+    stale.Draft().shaderPath = "stale.hlsl";
+    EXPECT_EQ(stale.Commit(material), asset::detail::MaterialAuthoringCommitResult::CONFLICT);
+    EXPECT_EQ(material.ReadAuthoring(), published);
+    auto cancelled = material.BeginAuthoringEdit();
+    cancelled.Draft().textures["albedo"] = "discarded.png";
+    cancelled.Cancel();
+    EXPECT_EQ(cancelled.Commit(material), asset::detail::MaterialAuthoringCommitResult::CONFLICT);
+    EXPECT_EQ(material.ReadAuthoring(), published);
+}
+
+TEST_F(MaterialReflectionTest, ExactAuthoringEqualityPreservesUnchangedIdentityAndDistinguishesFloatBits)
+{
+    asset::MaterialAsset material;
+    auto edit = material.BeginAuthoringEdit();
+    edit.Draft().params["bits"] = {0.0f, std::bit_cast<float>(uint32_t{0x7FC00001})};
+    ASSERT_EQ(edit.Commit(material), asset::detail::MaterialAuthoringCommitResult::COMMITTED);
+    const auto first = material.ReadAuthoring();
+    auto equal = material.BeginAuthoringEdit();
+    EXPECT_EQ(equal.Commit(material), asset::detail::MaterialAuthoringCommitResult::UNCHANGED);
+    EXPECT_EQ(material.ReadAuthoring(), first);
+    auto negativeZero = material.BeginAuthoringEdit();
+    negativeZero.Draft().params["bits"][0] = -0.0f;
+    ASSERT_EQ(negativeZero.Commit(material), asset::detail::MaterialAuthoringCommitResult::COMMITTED);
+    const auto second = material.ReadAuthoring();
+    EXPECT_NE(second, first);
+    EXPECT_EQ(std::bit_cast<uint32_t>(first->Data().params.at("bits")[0]), 0u);
+    EXPECT_EQ(std::bit_cast<uint32_t>(second->Data().params.at("bits")[0]), 0x80000000u);
+    auto otherNaN = material.BeginAuthoringEdit();
+    otherNaN.Draft().params["bits"][1] = std::bit_cast<float>(uint32_t{0x7FC00002});
+    EXPECT_EQ(otherNaN.Commit(material), asset::detail::MaterialAuthoringCommitResult::COMMITTED);
+    EXPECT_EQ(std::bit_cast<uint32_t>(second->Data().params.at("bits")[1]), 0x7FC00001u);
+}
+
+TEST_F(MaterialReflectionTest, LiveVisibilityFallbackAndSlotVectorReplacementResolveCurrentAuthoringOwners)
+{
+    scene::MaterialComponent material;
+    material.SetMaterialPath("base.mat");
+    material.extraSlots.resize(1);
+    const auto base = material.ReadAuthoring();
+    const auto extra = material.RawSlotAt(1).ReadAuthoring();
+    EXPECT_EQ(material.SlotAt(1).ReadAuthoring(), base);
+    material.extraSlots[0].visible = false;
+    EXPECT_EQ(material.SlotAt(1).ReadAuthoring(), extra);
+    material.extraSlots[0].visible = true;
+    EXPECT_EQ(material.SlotAt(1).ReadAuthoring(), base);
+    material.extraSlots[0].SetMaterialPath("extra.mat");
+    const auto selected = material.SlotAt(1).ReadAuthoring();
+    scene::MaterialSlot replacement;
+    replacement.SetMaterialPath("replacement.mat");
+    material.extraSlots[0] = replacement;
+    EXPECT_NE(material.SlotAt(1).ReadAuthoring()->OwnerToken(), selected->OwnerToken());
+    EXPECT_NE(material.SlotAt(1).ReadAuthoring()->OwnerToken(), replacement.ReadAuthoring()->OwnerToken());
+    EXPECT_EQ(selected->Data().materialPath, "extra.mat");
+    const auto replaced = material.SlotAt(1).ReadAuthoring();
+    material.extraSlots.reserve(material.extraSlots.capacity() + 8);
+    EXPECT_EQ(material.SlotAt(1).ReadAuthoring(), replaced);
+    material.enabled = false;
+    EXPECT_EQ(material.SlotAt(1).ReadAuthoring(), replaced);
+    material.extraSlots.clear();
+    EXPECT_EQ(material.SlotAt(1).ReadAuthoring(), base);
+}
+
+TEST_F(MaterialReflectionTest, SameHandleAssetReplacementAndCopyMoveHaveDistinctOwnedPublications)
+{
+    asset::MaterialAssetAuthoring values;
+    values.params["roughness"] = {0.2f};
+    auto& store = asset::AssetStore<asset::MaterialAsset>::Get();
+    const auto handle = store.Alloc(std::make_unique<asset::MaterialAsset>(values));
+    const auto first = store.GetPtr(handle)->ReadAuthoring();
+    values.params["roughness"] = {0.8f};
+    ASSERT_TRUE(store.Replace(handle, std::make_unique<asset::MaterialAsset>(values)));
+    const auto second = store.GetPtr(handle)->ReadAuthoring();
+    EXPECT_NE(first->OwnerToken(), second->OwnerToken());
+    EXPECT_FLOAT_EQ(first->Data().params.at("roughness")[0], 0.2f);
+    EXPECT_FLOAT_EQ(second->Data().params.at("roughness")[0], 0.8f);
+    asset::MaterialAsset copy(*store.GetPtr(handle));
+    EXPECT_NE(copy.ReadAuthoring()->OwnerToken(), second->OwnerToken());
+    const auto copied = copy.ReadAuthoring();
+    asset::MaterialAsset moved(std::move(copy));
+    EXPECT_EQ(moved.ReadAuthoring(), copied);
+    EXPECT_EQ(copy.ReadAuthoring(), nullptr);
+    store.Free(handle);
+}
+
+TEST_F(MaterialReflectionTest, WholeValueUndoPublicationCopiesValuesAndFailedLoadPreservesOwnerSnapshot)
+{
+    asset::MaterialAssetAuthoring values;
+    values.params["roughness"] = {0.5f};
+    asset::MaterialAsset material(values);
+    const auto saved = material.ReadAuthoring();
+    material.ReplaceAuthoring(values);
+    const auto replaced = material.ReadAuthoring();
+    values.params["roughness"][0] = 0.9f;
+    EXPECT_FLOAT_EQ(replaced->Data().params.at("roughness")[0], 0.5f);
+    EXPECT_EQ(saved->OwnerToken(), replaced->OwnerToken());
+    EXPECT_NE(saved, replaced);
+    testkit::TempDir directory("material-owned-load");
+    const auto path = directory.File("invalid.mat").generic_string();
+    { std::ofstream file(path); file << "[dielectric]\nior = true\n"; }
+    EXPECT_FALSE(asset::LoadMaterialAssetFromFile(path, material));
+    EXPECT_EQ(material.ReadAuthoring(), replaced);
+    EXPECT_FALSE(asset::LoadMaterialAssetFromFile(path, values));
+    EXPECT_FLOAT_EQ(values.params.at("roughness")[0], 0.9f);
+}
+
 
 }

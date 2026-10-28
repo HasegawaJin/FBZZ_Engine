@@ -44,6 +44,9 @@
 #include "Components/TerrainComponent.hpp"
 #include "Components/TerrainGridComponent.hpp"
 #include "Components/WaterComponent.hpp"
+#include "Components/WaterZoneComponent.hpp"
+#include "Components/WaterExclusionComponent.hpp"
+#include "Components/TargetPointComponent.hpp"
 #include "Components/VolumetricCloudComponent.hpp"
 #include "Components/TrailComponent.hpp"
 #include "Components/MeshTrailComponent.hpp"
@@ -70,6 +73,7 @@
 #include "Components/ProceduralMeshComponent.hpp"
 #include "Components/SequencePlayerComponent.hpp"
 #include "Components/FiberComponent.hpp"
+#include "Components/InstancedMeshComponent.hpp"
 #include "Components/FiberInteractorComponent.hpp"
 #include "Components/LightProbeVolumeComponent.hpp"
 #include "ScriptComponent.hpp"
@@ -156,7 +160,7 @@ struct ComponentRegistration {
     ComponentRegistration<Type, ComponentCategory::Internal, #Type, DisplayName, \
         ComponentInspectorMode::Hidden, ComponentSerializationMode::Custom, false>
 
-/// @brief 登録順は Scene の SoA tuple 順と Script DLL ABI へ影響するため、既存順を維持する。
+/// @brief 登録順は Scene の SoA tuple の並びに影響するため、既存順を維持する。
 /// @note 新しい単純型は FBZZ_COMPONENT を 1 行追加すれば、標準の追加・Inspector・保存経路へ入る。
 using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(MeshRenderer, Rendering, "Mesh Renderer"),
@@ -174,7 +178,8 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(VolumeComponent, Physics, "Volume"),
     FBZZ_CUSTOM_COMPONENT(LightComponent, Lighting, "Light"),
     FBZZ_CUSTOM_COMPONENT(CameraComponent, Lighting, "Camera"),
-    FBZZ_COMPONENT(AudioSourceComponent, Audio, "Audio Source"),
+    ComponentRegistration<AudioSourceComponent, ComponentCategory::Audio, "AudioSourceComponent", "Audio Source",
+                          ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>,
     FBZZ_COMPONENT(AudioListenerComponent, Audio, "Audio Listener"),
     FBZZ_CUSTOM_COMPONENT(LODGroupComponent, Rendering, "LOD Group"),
     FBZZ_CUSTOM_COMPONENT(SkyRenderer, Environment, "Sky Renderer"),
@@ -209,7 +214,7 @@ using ComponentRegistry = std::tuple<
     FBZZ_CUSTOM_COMPONENT(ReflectionProbeComponent, Environment, "Reflection Probe"),
     FBZZ_CUSTOM_COMPONENT(AtmosphericScatteringComponent, Environment, "Atmospheric Scattering"),
     FBZZ_CUSTOM_COMPONENT(PostProcessVolumeComponent, Environment, "Post Process Volume"),
-    /// @note ComponentRegistry は Script DLL ABI へ影響するため、新規型は既存順を崩さず末尾へ追加する。
+    /// @note 新規型は Scene の SoA tuple 順を保つため既存順を崩さず末尾へ追加する。
     /// @note VFXScreenEffect はかつて VFXGraphSystem が生成するだけの内部型だったが、.vfx がプレハブになった以上「シーンに置いて保存できる」必要がある (置けなければ変換で消える)。weight は VFXElement が毎フレーム書くランタイム値なので Reflect には含めない。
     FBZZ_COMPONENT(VFXScreenEffect, Effects, "VFX Screen Effect"),
     FBZZ_COMPONENT(VFXCameraShake, Effects, "VFX Camera Shake"),
@@ -236,7 +241,7 @@ using ComponentRegistry = std::tuple<
     FBZZ_COMPONENT(AudioReverbZoneComponent, Audio, "Audio Reverb Zone"),
     FBZZ_COMPONENT(AudioOcclusionComponent, Audio, "Audio Occlusion"),
     FBZZ_COMPONENT(AudioMixerSendComponent, Audio, "Audio Mixer Send"),
-    /// @note ComponentRegistry の順序は Scene の SoA tuple 順と Script DLL ABI に影響するため、既存順を崩さず末尾へ追加する。
+    /// @note ComponentRegistry の順序は Scene の SoA tuple 順に影響するため、既存順を崩さず末尾へ追加する。
     FBZZ_COMPONENT(BehaviorTreeComponent, Navigation, "Behavior Tree"),
     FBZZ_CUSTOM_COMPONENT(CylinderColliderComponent, Physics, "Cylinder Collider"),
     FBZZ_CUSTOM_COMPONENT(SpringBoneComponent, Animation, "Spring Bone"),
@@ -271,12 +276,16 @@ using ComponentRegistry = std::tuple<
     /// @note 剛体の関節 (ロープ・鎖・ヒンジ)。保存は Reflect のまま、Inspector は種別で出し分ける専用 UI (張れているか / 実効距離は Reflect では表せない)。
     ComponentRegistration<JointComponent, ComponentCategory::Physics, "JointComponent", "Joint",
                           ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>,
-    FBZZ_COMPONENT(FiberComponent, Rendering, "Fiber (Fur / Grass)"),
+    FBZZ_COMPONENT(FiberComponent, Rendering, "Fiber"),
+    FBZZ_COMPONENT(InstancedMeshComponent, Rendering, "Instanced Mesh"),
     FBZZ_COMPONENT(ClothComponent, Physics, "Cloth"),
     FBZZ_COMPONENT(FiberInteractorComponent, Rendering, "Fiber Interactor"),
     /// @note 保存は Reflect のまま、Inspector は焼きの進捗と Bake ボタンを持つ専用 UI。
     ComponentRegistration<LightProbeVolumeComponent, ComponentCategory::Environment, "LightProbeVolumeComponent",
-                          "Light Probe Volume", ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>
+                          "Light Probe Volume", ComponentInspectorMode::Custom, ComponentSerializationMode::Automatic>,
+    FBZZ_COMPONENT(WaterZoneComponent, Terrain, "Water Zone"),
+    FBZZ_COMPONENT(TargetPointComponent, Misc, "Target Point"),
+    FBZZ_COMPONENT(WaterExclusionComponent, Terrain, "Water Exclusion")
 >;
 
 template<typename Registry>
@@ -308,4 +317,4 @@ constexpr void ForEachRegisteredComponent(Fn&& fn)
 #undef FBZZ_CUSTOM_COMPONENT
 #undef FBZZ_COMPONENT
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

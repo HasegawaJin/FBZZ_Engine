@@ -6,17 +6,27 @@
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Input/Input.hpp>
+#include <Engine/Input/InputActionMap.hpp>
+#include <Engine/Input/Gamepad.hpp>
+#include "CursorControlPolicy.hpp"
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 
 #include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <limits>
+#include <cstdlib>
 #include <cstdio>
 #include <string>
 #include <vector>
 
 /// @note Engine に画像デコーダーが無く、カーソル画像のためだけに Renderer 経由の texture ロードへ
-///       依存すると «core が上位を見る» ことになるため、ここで展開する。STB_IMAGE_STATIC で内部
-///       リンケージに閉じ Editor 側の stb 実装と衝突させない (このファイルは CMake の unity build から除外)。
+/// @note 依存すると «core が上位を見る» ことになるため、ここで展開する。STB_IMAGE_STATIC で内部
+/// @note リンケージに閉じ Editor 側の stb 実装と衝突させない (このファイルは CMake の unity build から除外)。
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_STATIC
 #define STBI_ONLY_PNG
@@ -42,10 +52,16 @@ CursorShape Cursor::s_shape = CursorShape::Default;
 
 namespace {
 
+cursor_detail::CursorControlPolicy g_control;
+CursorLockMode g_appliedLock = CursorLockMode::None;
+bool g_targetAvailable = true;
+bool g_recenterPending = true;
+RECT g_appliedClip{};
+
 /// @brief 積まれている要求。
 /// @note Cursor は dllexport されたクラスで、std::vector/std::string を静的メンバーに置くと
-///       «DLL と利用者で同じアロケーターを共有していること» が前提になるため、要求の実体は
-///       この翻訳単位に閉じ、境界を越えるのは値のコピー (CursorRequestInfo) だけにする。
+/// @note «DLL と利用者で同じアロケーターを共有していること» が前提になるため、要求の実体は
+/// @note この翻訳単位に閉じ、境界を越えるのは値のコピー (CursorRequestInfo) だけにする。
 struct Request {
     CursorRequestId id = kInvalidCursorRequest;
     int             priority = 0;
@@ -57,9 +73,9 @@ struct Request {
 std::vector<Request> g_requests;
 CursorRequestId      g_nextId = 1;
 
-/// 種類ごとのカーソル画像。未設定 (nullptr) なら OS の既定矢印を使う。
+/// @note 種類ごとのカーソル画像。未設定 (nullptr) なら OS の既定矢印を使う。
 HCURSOR g_shapeCursors[kCursorShapeCount]{};
-bool    g_shapeApplied = false;   ///< ウィンドウクラスの矢印を自前の絵で置き換えているか
+bool    g_shapeApplied = false;   ///< @note ウィンドウクラスの矢印を自前の絵で置き換えているか
 
 std::size_t ShapeIndex(CursorShape shape)
 {
@@ -69,7 +85,7 @@ std::size_t ShapeIndex(CursorShape shape)
 
 /// @brief 実効値を決めている要求。優先度が最大で、同値なら «後から積んだ方»。
 /// @note 同じ強さの主張が 2 つ並ぶのは «今開いたダイアログ» と «その裏に残っている画面» の
-///       関係で、手前に出したものを見せるのが自然なため後勝ちにする。
+/// @note 関係で、手前に出したものを見せるのが自然なため後勝ちにする。
 const Request* WinningRequest()
 {
     const Request* best = nullptr;
@@ -81,10 +97,16 @@ const Request* WinningRequest()
 /// @brief 拘束矩形をスクリーン座標で解く。
 /// @return false ならウィンドウが無く、拘束できない。
 /// @note Editor の Game View は Dock から引き剥がすと独立した OS ウィンドウになりメインウィンドウの
-///       クライアント領域外へ出るため、指定矩形をウィンドウで挟まない。矩形は既に «見えている絵» そのもの。
+/// @note クライアント領域外へ出るため、指定矩形をウィンドウで挟まない。矩形は既に «見えている絵» そのもの。
 bool ResolveClipRect(bool hasRegion, float rx, float ry, float rw, float rh, RECT& outRect)
 {
-    if (hasRegion && rw >= 1.0f && rh >= 1.0f) {
+    if (hasRegion) {
+        if (!(rw >= 1.0f && rh >= 1.0f) || !std::isfinite(rx) || !std::isfinite(ry)
+            || !std::isfinite(rw) || !std::isfinite(rh)) return false;
+        const double left = rx, top = ry;
+        const double right = left + rw, bottom = top + rh;
+        if (left < std::numeric_limits<LONG>::min() || top < std::numeric_limits<LONG>::min()
+            || right > std::numeric_limits<LONG>::max() || bottom > std::numeric_limits<LONG>::max()) return false;
         outRect = { static_cast<LONG>(rx),
                     static_cast<LONG>(ry),
                     static_cast<LONG>(rx + rw),
@@ -110,13 +132,17 @@ bool ResolveClipRect(bool hasRegion, float rx, float ry, float rw, float rh, REC
 void ReleaseClip(bool& clipActive)
 {
     /// @note 既に外していれば触らない。ClipCursor(nullptr) は «誰の拘束でも» 外す API なので、
-    ///       自分が張っていないときに毎フレーム呼ぶと他アプリの拘束まで剥がしてしまう。
+    /// @note 自分が張っていないときに毎フレーム呼ぶと他アプリの拘束まで剥がしてしまう。
     if (!clipActive) return;
-    ClipCursor(nullptr);
+    RECT current{};
+    /// @note ClipCursor is shared with other applications; never remove a later owner's different rectangle.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-clipcursor Cursor ownership responsibility.
+    if (GetClipCursor(&current) && EqualRect(&current, &g_appliedClip)) ClipCursor(nullptr);
     clipActive = false;
+    g_appliedLock = CursorLockMode::None;
 }
 
-/// PNG / TGA / BMP から HCURSOR を作る。失敗したら nullptr。
+/// @note PNG / TGA / BMP から HCURSOR を作る。失敗したら nullptr。
 HCURSOR CreateCursorFromImage(const char* path, int hotspotX, int hotspotY)
 {
     int width = 0, height = 0, channels = 0;
@@ -162,7 +188,7 @@ HCURSOR CreateCursorFromImage(const char* path, int hotspotX, int hotspotY)
     stbi_image_free(pixels);
 
     /// @note ICONINFO はカラーとマスクの両方を要求する。アルファ付き 32bit では
-    ///       マスクは使われないが、渡さないと作成そのものが失敗する。
+    /// @note マスクは使われないが、渡さないと作成そのものが失敗する。
     HBITMAP mask = CreateBitmap(width, height, 1, 1, nullptr);
     if (!mask) {
         DeleteObject(color);
@@ -183,7 +209,7 @@ HCURSOR CreateCursorFromImage(const char* path, int hotspotX, int hotspotY)
     return cursor;
 }
 
-} // namespace
+} /// @note namespace
 
 const char* ToString(CursorLockMode mode)
 {
@@ -230,13 +256,73 @@ void Cursor::SetVisible(bool visible)
 
 bool Cursor::Effective()
 {
-    return s_windowActive && !s_suppressed;
+    return g_control.OwnsGameInput() && s_windowActive && !s_suppressed;
+}
+
+CursorPolicy Cursor::GetRequestedPolicy()
+{
+    if (const Request* winner = WinningRequest()) return winner->policy;
+    return s_base;
 }
 
 CursorPolicy Cursor::GetEffectivePolicy()
 {
-    if (const Request* winner = WinningRequest()) return winner->policy;
-    return s_base;
+    return GetRequestedPolicy();
+}
+
+CursorState Cursor::GetState()
+{
+    auto state = g_control.Resolve(GetRequestedPolicy(), s_suppressed, g_targetAvailable);
+    state.effective = {g_appliedLock, s_osVisible};
+    return state;
+}
+
+bool Cursor::IsGameInputOwned() { return g_control.OwnsGameInput(); }
+bool Cursor::CanReadGameInput() { return g_control.OwnsGameInput(); }
+
+bool Cursor::AcquireGameInput()
+{
+    if (g_control.OwnsGameInput()) return true;
+    if (!g_control.Acquire()) return false;
+    input::Input::ConsumeGameInput();
+    input::InputActionMap::ResetRuntime();
+    g_recenterPending = true;
+    Refresh();
+    return true;
+}
+
+void Cursor::ReleaseGameInput(CursorSuspendReason reason)
+{
+    const bool wasOwned = g_control.OwnsGameInput();
+    g_control.Release(reason);
+    if (wasOwned) {
+        input::Input::CancelGameInput();
+        input::InputActionMap::ResetRuntime();
+        input::Gamepad::StopAllVibration();
+    }
+    g_recenterPending = true;
+    Refresh();
+}
+
+const char* ToString(CursorInputOwner owner)
+{
+    return owner == CursorInputOwner::GAME ? "Game" : "Host";
+}
+
+const char* ToString(CursorSuspendReason reason)
+{
+    switch (reason) {
+    case CursorSuspendReason::NONE: return "None";
+    case CursorSuspendReason::NOT_PLAYING: return "Not playing";
+    case CursorSuspendReason::RELEASED: return "Released";
+    case CursorSuspendReason::WINDOW_INACTIVE: return "Window focus lost; click to reacquire";
+    case CursorSuspendReason::GAME_VIEW_UNFOCUSED: return "Game View unfocused";
+    case CursorSuspendReason::PAUSED: return "Paused";
+    case CursorSuspendReason::HOST_OVERRIDE: return "Cursor override: Free";
+    case CursorSuspendReason::TARGET_UNAVAILABLE: return "Game target unavailable";
+    case CursorSuspendReason::WINDOW_MOVING: return "Window moving";
+    default: return "Unknown";
+    }
 }
 
 CursorPolicy Cursor::GetBasePolicy()
@@ -246,21 +332,21 @@ CursorPolicy Cursor::GetBasePolicy()
 
 void Cursor::Refresh()
 {
-    ApplyVisibility();
     ApplyLock();
+    ApplyVisibility();
     ApplyShape();
 }
 
 void Cursor::ApplyVisibility(bool force)
 {
     /// @note 効かせない状況では隠したままにしない。ShowCursor はスレッド単位なので実害は薄いが、
-    ///       復帰失敗でカーソルが消えたまま残る事故を構造的に潰しておく。
-    const bool wanted = GetEffectivePolicy().visible || !Effective();
+    /// @note 復帰失敗でカーソルが消えたまま残る事故を構造的に潰しておく。
+    const bool wanted = g_control.Resolve(GetRequestedPolicy(), s_suppressed, g_targetAvailable).effective.visible;
     if (!force && wanted == s_osVisible) return;
     s_osVisible = wanted;
 
     /// @note ShowCursor は内部カウンタ式の API なので目的の表示状態になるまで補正する。Editor と
-    ///       GameView の両方がカーソルを触るため、1 回呼ぶだけでは実表示状態とずれることがある。
+    /// @note GameView の両方がカーソルを触るため、1 回呼ぶだけでは実表示状態とずれることがある。
     int count = ShowCursor(wanted ? TRUE : FALSE);
     if (wanted) {
         while (count < 0)
@@ -278,6 +364,7 @@ bool Cursor::IsVisible()
 
 void Cursor::SetLockMode(CursorLockMode mode)
 {
+    if (s_base.lockMode != mode) g_recenterPending = true;
     s_base.lockMode = mode;
     Refresh();
 }
@@ -289,6 +376,7 @@ CursorLockMode Cursor::GetLockMode()
 
 void Cursor::Apply(const CursorPolicy& policy)
 {
+    if (s_base.lockMode != policy.lockMode) g_recenterPending = true;
     s_base = policy;
     Refresh();
 }
@@ -296,6 +384,8 @@ void Cursor::Apply(const CursorPolicy& policy)
 CursorRequestId Cursor::Push(const CursorPolicy& policy, int priority,
                              std::uint32_t owner, const char* label)
 {
+    assert(g_nextId != kInvalidCursorRequest && "Cursor request identity exhausted");
+    if (g_nextId == kInvalidCursorRequest) std::abort();
     Request request{};
     request.id       = g_nextId++;
     request.priority = priority;
@@ -337,6 +427,12 @@ void Cursor::ReleaseByOwner(std::uint32_t owner)
     if (removed == g_requests.end()) return;
     g_requests.erase(removed, g_requests.end());
     Refresh();
+}
+
+bool Cursor::IsRequestActive(CursorRequestId id)
+{
+    return id != kInvalidCursorRequest && std::any_of(g_requests.begin(), g_requests.end(),
+        [id](const Request& request) { return request.id == id; });
 }
 
 void Cursor::ClearRequests()
@@ -427,12 +523,12 @@ CursorShape Cursor::GetShape()
 void Cursor::ApplyShape()
 {
     /// @note 差し替え先はウィンドウクラスのカーソルで、Editor では «エディタの窓全体» が対象になる。
-    ///       Play を抜けた後もゲームの絵が残ると、パネル上でもゲームのカーソルが出続けるため、
-    ///       効かせない間は矢印へ戻す。
+    /// @note Play を抜けた後もゲームの絵が残ると、パネル上でもゲームのカーソルが出続けるため、
+    /// @note 効かせない間は矢印へ戻す。
     HCURSOR wanted = Effective() ? g_shapeCursors[ShapeIndex(s_shape)] : nullptr;
 
     /// @note 絵を一度も差し込んでいないなら触るものが無い。ここで抜けることで、
-    ///       カーソル画像を使わないゲームとテストは Window にも触らずに済む。
+    /// @note カーソル画像を使わないゲームとテストは Window にも触らずに済む。
     if (!wanted && !g_shapeApplied) return;
 
     HWND hwnd = Application::Get().GetWindow().GetHandle();
@@ -448,7 +544,7 @@ void Cursor::ApplyShape()
     SetClassLongPtrW(hwnd, GCLP_HCURSOR, reinterpret_cast<LONG_PTR>(wanted));
 
     /// @note クラスのカーソルは «次に WM_SETCURSOR が来たとき» に効く。マウスが止まっている間も
-    ///       切り替わって見えるよう、カーソルがこのウィンドウの上に居るなら即座に差し替える。
+    /// @note 切り替わって見えるよう、カーソルがこのウィンドウの上に居るなら即座に差し替える。
     POINT screen{};
     if (GetCursorPos(&screen)) {
         HWND under = WindowFromPoint(screen);
@@ -458,6 +554,8 @@ void Cursor::ApplyShape()
 
 void Cursor::SetClipRegion(float x, float y, float width, float height)
 {
+    if (!s_hasClipRegion || s_clipX != x || s_clipY != y || s_clipWidth != width || s_clipHeight != height)
+        g_recenterPending = true;
     s_hasClipRegion = true;
     s_clipX      = x;
     s_clipY      = y;
@@ -467,6 +565,7 @@ void Cursor::SetClipRegion(float x, float y, float width, float height)
 
 void Cursor::ClearClipRegion()
 {
+    if (s_hasClipRegion) g_recenterPending = true;
     s_hasClipRegion = false;
 }
 
@@ -474,6 +573,13 @@ void Cursor::SetWindowActive(bool active)
 {
     if (s_windowActive == active) return;
     s_windowActive = active;
+    g_control.SetWindowActive(active);
+    if (!active) {
+        input::Input::ResetNativeState();
+        input::InputActionMap::ResetRuntime();
+        input::Gamepad::StopAllVibration();
+    }
+    g_recenterPending = true;
     Refresh();
 }
 
@@ -481,6 +587,7 @@ void Cursor::SetSuppressed(bool suppressed)
 {
     if (s_suppressed == suppressed) return;
     s_suppressed = suppressed;
+    g_recenterPending = true;
     Refresh();
 }
 
@@ -491,40 +598,70 @@ bool Cursor::IsSuppressed()
 
 void Cursor::ApplyLock()
 {
-    const CursorLockMode lockMode = GetEffectivePolicy().lockMode;
+    const CursorLockMode lockMode = GetRequestedPolicy().lockMode;
+    g_targetAvailable = true;
     if (!Effective() || lockMode == CursorLockMode::None) {
         ReleaseClip(s_clipActive);
+        g_appliedLock = CursorLockMode::None;
+        g_recenterPending = true;
+        ApplyVisibility();
         return;
     }
 
     RECT clipRect{};
     if (!ResolveClipRect(s_hasClipRegion, s_clipX, s_clipY, s_clipWidth, s_clipHeight, clipRect)) {
         ReleaseClip(s_clipActive);
+        g_targetAvailable = false;
+        g_recenterPending = true;
+        ApplyVisibility();
         return;
     }
 
-    ClipCursor(&clipRect);
+    const bool modeChanged = g_appliedLock != lockMode || !EqualRect(&clipRect, &g_appliedClip);
+    if (!ClipCursor(&clipRect)) {
+        ReleaseClip(s_clipActive);
+        g_targetAvailable = false;
+        g_recenterPending = true;
+        ApplyVisibility();
+        return;
+    }
+    g_appliedClip = clipRect;
     s_clipActive = true;
+    g_appliedLock = lockMode;
 
     if (lockMode == CursorLockMode::Locked) {
         const int centerX = (clipRect.left + clipRect.right) / 2;
         const int centerY = (clipRect.top + clipRect.bottom) / 2;
         POINT cursorPos{};
-        if (GetCursorPos(&cursorPos)) {
+        if (!g_recenterPending && !modeChanged && GetCursorPos(&cursorPos)) {
             input::Input::OverrideMouseDelta({
                 static_cast<float>(cursorPos.x - centerX),
                 static_cast<float>(cursorPos.y - centerY)
             });
         }
-        SetCursorPos(centerX, centerY);
+        else input::Input::OverrideMouseDelta({});
+        if (!SetCursorPos(centerX, centerY)) {
+            ReleaseClip(s_clipActive);
+            g_targetAvailable = false;
+            g_recenterPending = true;
+            ApplyVisibility();
+            return;
+        }
+        g_recenterPending = false;
     }
+    ApplyVisibility();
 }
 
 void Cursor::ResetForEditor()
 {
     /// @note 安全復元なので、追跡している状態が実際とずれていても必ず表示へ戻す。
-    ///       ここが «カーソルが消えたまま帰ってこない» の最後の砦。要求そのものを畳むので、
-    ///       一時的な取り上げ (SetSuppressed) とは別物。Play の終了時にだけ呼ぶこと。
+    /// @note ここが «カーソルが消えたまま帰ってこない» の最後の砦。要求そのものを畳むので、
+    /// @note 一時的な取り上げ (SetSuppressed) とは別物。Play の終了時にだけ呼ぶこと。
+    g_control.Release(CursorSuspendReason::NOT_PLAYING);
+    input::Input::CancelGameInput();
+    input::InputActionMap::ResetRuntime();
+    input::Gamepad::StopAllVibration();
+    g_recenterPending = true;
     s_suppressed = false;
     g_requests.clear();
     s_base = CursorPolicy{};
@@ -535,4 +672,4 @@ void Cursor::ResetForEditor()
     ApplyVisibility(true);
 }
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

@@ -17,6 +17,17 @@
 namespace fbzz::tests {
 namespace {
 
+/// @note Tests author through the same owned draft/publication path as production; no mutable stored alias is exposed.
+template<typename Owner, typename Change>
+void EditMaterialAuthoring(Owner& owner, Change&& change)
+{
+    auto edit = owner.BeginAuthoringEdit();
+    change(edit.Draft());
+    EXPECT_NE(edit.Commit(owner), asset::detail::MaterialAuthoringCommitResult::CONFLICT);
+}
+
+
+
 using renderer::GeometryRoute;
 using renderer::ResolveGeometryRoute;
 using scene::ExtractGeometryMaterial;
@@ -49,57 +60,57 @@ TEST_F(GeometryMaterialExtractionTest, MissingAssetKeepsBlendOverrideAndStaysFor
 {
     scene::MaterialSlot slot;
     EXPECT_EQ(ResolveGeometryRoute(ExtractGeometryMaterial(slot), true), GeometryRoute::ForwardOpaque);
-    slot.hasBlendModeOverride = true;
-    slot.blendModeOverride = renderer::BlendMode::ADDITIVE;
+    EditMaterialAuthoring(slot, [&](auto& values) { values.hasBlendModeOverride = true; });
+    EditMaterialAuthoring(slot, [&](auto& values) { values.blendModeOverride = renderer::BlendMode::ADDITIVE; });
     const auto input = ExtractGeometryMaterial(slot);
     EXPECT_FALSE(input.gbufferEquivalentShader);
     EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardTransparent);
     EXPECT_EQ(ResolveGeometryRoute(input, false), GeometryRoute::ForwardTransparent);
-    EXPECT_FALSE(slot.materialAsset.IsValid());
+    EXPECT_FALSE(slot.GetMaterialAsset().IsValid());
     EXPECT_EQ(slot.material, nullptr);
 }
 
 TEST_F(GeometryMaterialExtractionTest, BlendOverrideTakesPrecedenceOverSharedAsset)
 {
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     material.shaderPath = ShaderPath("PBR.hlsl");
     material.blendMode = renderer::BlendMode::ALPHA_BLEND;
     scene::MaterialSlot slot;
-    EXPECT_EQ(ResolveGeometryRoute(ExtractGeometryMaterial(slot, &material), true),
+    EXPECT_EQ(ResolveGeometryRoute(ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)), true),
               GeometryRoute::ForwardTransparent);
-    slot.hasBlendModeOverride = true;
-    slot.blendModeOverride = renderer::BlendMode::OPAQUE_BLEND;
-    EXPECT_EQ(ResolveGeometryRoute(ExtractGeometryMaterial(slot, &material), true), GeometryRoute::GBuffer);
+    EditMaterialAuthoring(slot, [&](auto& values) { values.hasBlendModeOverride = true; });
+    EditMaterialAuthoring(slot, [&](auto& values) { values.blendModeOverride = renderer::BlendMode::OPAQUE_BLEND; });
+    EXPECT_EQ(ResolveGeometryRoute(ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)), true), GeometryRoute::GBuffer);
     EXPECT_EQ(material.blendMode, renderer::BlendMode::ALPHA_BLEND);
 }
 
 TEST_F(GeometryMaterialExtractionTest, LobeOverridesCanEnableAndDisableSharedFeatures)
 {
     for (const char* name : { "clearcoat", "sheen", "anisotropy" }) {
-        asset::MaterialAsset material;
+        asset::MaterialAssetAuthoring material;
         material.params[name] = { 0.5f };
         scene::MaterialSlot slot;
-        EXPECT_TRUE(ExtractGeometryMaterial(slot, &material).advancedLobe) << name;
-        slot.paramOverrides[name] = { 0.0f };
-        EXPECT_FALSE(ExtractGeometryMaterial(slot, &material).advancedLobe) << name;
-        slot.paramOverrides[name] = { -0.5f };
-        EXPECT_TRUE(ExtractGeometryMaterial(slot, &material).advancedLobe) << name;
-        slot.paramOverrides[name] = {};
-        EXPECT_FALSE(ExtractGeometryMaterial(slot, &material).advancedLobe) << name;
-        slot.paramOverrides[name] = { 1.0e-4f };
-        EXPECT_FALSE(ExtractGeometryMaterial(slot, &material).advancedLobe) << name;
-        slot.paramOverrides[name] = { 2.0e-4f };
-        EXPECT_TRUE(ExtractGeometryMaterial(slot, &material).advancedLobe) << name;
+        EXPECT_TRUE(ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)).advancedLobe) << name;
+        EditMaterialAuthoring(slot, [&](auto& values) { values.paramOverrides[name] = { 0.0f }; });
+        EXPECT_FALSE(ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)).advancedLobe) << name;
+        EditMaterialAuthoring(slot, [&](auto& values) { values.paramOverrides[name] = { -0.5f }; });
+        EXPECT_TRUE(ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)).advancedLobe) << name;
+        EditMaterialAuthoring(slot, [&](auto& values) { values.paramOverrides[name] = {}; });
+        EXPECT_FALSE(ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)).advancedLobe) << name;
+        EditMaterialAuthoring(slot, [&](auto& values) { values.paramOverrides[name] = { 1.0e-4f }; });
+        EXPECT_FALSE(ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)).advancedLobe) << name;
+        EditMaterialAuthoring(slot, [&](auto& values) { values.paramOverrides[name] = { 2.0e-4f }; });
+        EXPECT_TRUE(ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)).advancedLobe) << name;
     }
 }
 
 TEST_F(GeometryMaterialExtractionTest, ClothRemainsForwardWhenSheenIsZero)
 {
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     material.params["clothSheenColor"] = { 0.0f, 0.0f, 0.0f };
     scene::MaterialSlot slot;
-    slot.paramOverrides["sheen"] = { 0.0f };
-    const auto input = ExtractGeometryMaterial(slot, &material);
+    EditMaterialAuthoring(slot, [&](auto& values) { values.paramOverrides["sheen"] = { 0.0f }; });
+    const auto input = ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath));
     EXPECT_TRUE(input.advancedLobe);
     EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardOpaque);
 }
@@ -108,14 +119,14 @@ TEST_F(GeometryMaterialExtractionTest, SnapshotSurvivesMaterialEditingAndDestruc
 {
     renderer::GeometryMaterialInput saved;
     {
-        asset::MaterialAsset material;
+        asset::MaterialAssetAuthoring material;
         material.shaderPath = ShaderPath("PBR.hlsl");
         scene::MaterialSlot slot;
-        saved = ExtractGeometryMaterial(slot, &material);
+        saved = ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath));
         material.shaderPath = "Custom.hlsl";
-        slot.hasBlendModeOverride = true;
-        slot.blendModeOverride = renderer::BlendMode::ALPHA_BLEND;
-        EXPECT_EQ(ResolveGeometryRoute(ExtractGeometryMaterial(slot, &material), true),
+        EditMaterialAuthoring(slot, [&](auto& values) { values.hasBlendModeOverride = true; });
+        EditMaterialAuthoring(slot, [&](auto& values) { values.blendModeOverride = renderer::BlendMode::ALPHA_BLEND; });
+        EXPECT_EQ(ResolveGeometryRoute(ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)), true),
                   GeometryRoute::ForwardTransparent);
     }
     EXPECT_EQ(ResolveGeometryRoute(saved, true), GeometryRoute::GBuffer);
@@ -124,16 +135,16 @@ TEST_F(GeometryMaterialExtractionTest, SnapshotSurvivesMaterialEditingAndDestruc
 
 TEST_F(GeometryMaterialExtractionTest, SubmeshSlotsKeepIndependentRoutesAcrossViews)
 {
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     material.shaderPath = ShaderPath("SkinnedPBR.hlsl");
     std::array<scene::MaterialSlot, 3> slots;
-    slots[1].hasBlendModeOverride = true;
-    slots[1].blendModeOverride = renderer::BlendMode::PREMULTIPLIED;
-    slots[2].paramOverrides["clearcoat"] = { 1.0f };
+    EditMaterialAuthoring(slots[1], [&](auto& values) { values.hasBlendModeOverride = true; });
+    EditMaterialAuthoring(slots[1], [&](auto& values) { values.blendModeOverride = renderer::BlendMode::PREMULTIPLIED; });
+    EditMaterialAuthoring(slots[2], [&](auto& values) { values.paramOverrides["clearcoat"] = { 1.0f }; });
     const std::array inputs{
-        ExtractGeometryMaterial(slots[0], &material),
-        ExtractGeometryMaterial(slots[1], &material),
-        ExtractGeometryMaterial(slots[2], &material),
+        ExtractGeometryMaterial(slots[0].Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)),
+        ExtractGeometryMaterial(slots[1].Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)),
+        ExtractGeometryMaterial(slots[2].Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath)),
     };
     const std::array deferred{
         GeometryRoute::GBuffer, GeometryRoute::ForwardTransparent, GeometryRoute::ForwardOpaque,
@@ -150,10 +161,10 @@ TEST_F(GeometryMaterialExtractionTest, SubmeshSlotsKeepIndependentRoutesAcrossVi
 
 TEST_F(GeometryMaterialExtractionTest, UnknownShaderDoesNotBecomeStandardPbr)
 {
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     material.shaderPath = "GreenWare/Assets/Shaders/Custom.hlsl";
     scene::MaterialSlot slot;
-    const auto input = ExtractGeometryMaterial(slot, &material);
+    const auto input = ExtractGeometryMaterial(slot.Authoring(), &material, scene::IsGBufferEquivalentShader(material.shaderPath));
     EXPECT_FALSE(input.gbufferEquivalentShader);
     EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardOpaque);
 }

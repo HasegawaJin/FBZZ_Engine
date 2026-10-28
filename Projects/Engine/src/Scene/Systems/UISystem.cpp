@@ -6,7 +6,13 @@
 /// @note UICanvas / UIImage / UIText / UIButton を走査し、DrawCall と hit 状態を作る。
 /// @note ScreenSpace / ScreenSpaceCamera / WorldSpace の 3 モードを扱う。
 #include <Engine/Asset/StreamedTextureResolver.hpp>
+#include <Engine/Asset/UIThemeAsset.hpp>
+#include <Engine/Scene/UITheme.hpp>
+#include <Engine/Scene/Components/UIRect.hpp>
 #include "Engine/Scene/Systems/UISystem.hpp"
+#include "CanvasWorklist.hpp"
+#include "UIInputPolicy.hpp"
+#include "../../Input/GameInputConsumption.hpp"
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Components/UICanvas.hpp"
@@ -44,6 +50,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <optional>
+#include <utility>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -63,6 +71,7 @@ using UIConstants = UIConstantsCB;
 struct CanvasEntry {
     GameObject* go = nullptr;
     UICanvas* canvas = nullptr;
+    std::optional<asset::UIThemeStyle> theme;
 };
 
 struct CanvasRuntimeState {
@@ -244,19 +253,6 @@ struct UITransform2D {
     math::Vector2 parentSize = math::Vector2::ZERO;
 };
 
-float ExtractZRotation(const math::Quaternion& q)
-{
-    return std::atan2f(2.0f * (q.w * q.z + q.x * q.y),
-                       1.0f - 2.0f * (q.y * q.y + q.z * q.z));
-}
-
-math::Vector2 Rotate2D(const math::Vector2& v, float angle)
-{
-    const float c = std::cosf(angle);
-    const float s = std::sinf(angle);
-    return { v.x * c - v.y * s, v.x * s + v.y * c };
-}
-
 /// @param parentSize 子から見た親の矩形サイズ。アンカーの基準になる。
 UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Transform& local,
                                  const math::Vector2& parentSize)
@@ -266,8 +262,8 @@ UITransform2D ComposeUITransform(const UITransform2D& parent, const scene::Trans
     /// @note 親 scale を子 position へ掛けると親のサイズ変更だけで子が飛ぶ。
     const math::Vector2 localPos = { local.position.x, local.position.y };
     UITransform2D result{};
-    result.position = parent.position + Rotate2D(localPos, parent.rotationZ);
-    result.rotationZ = parent.rotationZ + ExtractZRotation(local.rotation);
+    result.position = parent.position + RotateUIVector(localPos, parent.rotationZ);
+    result.rotationZ = parent.rotationZ + ExtractUIZRotation(local.rotation);
     /// @note アンカー / ピボットの解釈は ResolveUIRect に閉じる。
     /// @note ここが運ぶのは「子から見た親のサイズ」だけ。
     result.parentSize = parentSize;
@@ -351,8 +347,9 @@ UIMaterialBinding* ResolveUIMaterial(UISystemContext& ctx,
     UIMaterialBinding& binding = ctx.materialCache[materialPath];
 
     const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
-    const auto* matAsset = assetHandle.IsValid()
-        ? asset::AssetManager::Get<asset::MaterialAsset>(assetHandle) : nullptr;
+    const auto matAssetAuthoringSnapshot = assetHandle.IsValid()
+        ? asset::ReadMaterialAuthoring(assetHandle) : asset::MaterialAsset::AuthoringSnapshotPtr{};
+    const auto* matAsset = matAssetAuthoringSnapshot ? &matAssetAuthoringSnapshot->Data() : nullptr;
     if (!matAsset) {
         FBZZ_LOG_WARN("UI material load failed '%s' -> falling back to the built-in sprite shader.",
                       materialPath.c_str());
@@ -489,6 +486,9 @@ void SyncCacheGenerations(UISystemContext& ctx, renderer::ResourceManager& resou
         ctx.cachedResetVersion    = resetVersion;
         ctx.cachedShaderVersion   = shaderVersion;
         ctx.cachedAssetGeneration = assetGeneration;
+        ctx.depthCopyShader = {};
+        ctx.depthCopyConstants = {};
+        ctx.depthCopyPso = {};
         /// @note リセット後のハンドルは実体を失っている。返しにいかず控えだけ捨てる。
         UISystemFlushCache(ctx, nullptr);
         /// @note EnsureInit が作ったシェーダー・PSO・白テクスチャも同じ世代のもの。
@@ -559,20 +559,13 @@ void BeginUIFrame(UISystemContext& ctx)
 }
 
 /// @name Canvas 収集
-void CollectCanvasesRecursive(GameObject* go, std::vector<CanvasEntry>& canvases)
-{
-    if (!go || !go->activeInHierarchy()) return;
-    if (auto* canvas = go->GetComponent<UICanvas>(); canvas && canvas->enabled)
-        canvases.push_back({ go, canvas });
-    for (int i = 0; i < go->GetChildCount(); ++i)
-        CollectCanvasesRecursive(go->GetChild(i), canvases);
-}
-
 void CollectCanvases(Scene& scene, std::vector<CanvasEntry>& canvases)
 {
-    for (GameObject* root : scene.GetRootGameObjects()) {
-        if (!root) continue;
-        CollectCanvasesRecursive(root, canvases);
+    for (const auto id : ui_detail::CollectCanvasEntities(scene)) {
+        CanvasEntry entry{ scene.GetGameObject(id), scene.GetComponent<UICanvas>(id), {} };
+        asset::UIThemeStyle style;
+        if (asset::ResolveUIThemeStyle(entry.canvas->theme.path, style)) entry.theme = std::move(style);
+        canvases.push_back(std::move(entry));
     }
     std::sort(canvases.begin(), canvases.end(),
         [](const CanvasEntry& a, const CanvasEntry& b) {
@@ -582,8 +575,11 @@ void CollectCanvases(Scene& scene, std::vector<CanvasEntry>& canvases)
 
 bool IsScreenSpaceRenderMode(UIRenderMode mode);
 
-bool ShouldRenderCanvas(const UICanvas& canvas, UIRenderTargetView targetView)
+bool ShouldRenderCanvas(const UICanvas& canvas, UIRenderTargetView targetView, bool sceneDepthAvailable = true)
 {
+    if (!sceneDepthAvailable && canvas.renderMode != UIRenderMode::ScreenSpaceOverlay
+        && canvas.depthMode == UICanvasDepthMode::SCENE_DEPTH)
+        return false;
     /// @note GameViewport は最終出力として全 Canvas、SceneViewport は WorldSpace、
     /// @note CanvasEditor は ScreenSpace だけ描く。
     if (targetView == UIRenderTargetView::SceneViewport)
@@ -708,7 +704,7 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
         const math::Quaternion canvasRotation =
             canvas.faceCamera ? cameraWorldRot : canvasGO.transform.worldRotation;
         const math::Matrix4 worldMatrix = math::Matrix4::TRS(
-            canvasGO.transform.worldPosition,
+            canvasGO.transform.worldPosition - canvasRotation * math::Vector3::FORWARD * canvas.surfaceOffset,
             canvasRotation,
             math::Vector3::ONE
         );
@@ -716,7 +712,7 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
         state.canvasToClip = viewProjection * worldMatrix * pixelToLocal;
         /// @note WorldSpace はレイキャストで処理
         state.mouseInCanvasSpace = rawMouseInViewport;
-        state.pso   = ctx.worldPso;
+        state.pso   = canvas.depthMode == UICanvasDepthMode::ALWAYS_ON_TOP ? ctx.pso : ctx.worldPso;
         state.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
         return state;
     }
@@ -735,7 +731,7 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
 
         /// @note カメラ前方ベクトル: worldRot * (0, 0, 1)
         const math::Vector3 camFwd = cameraWorldRot * math::Vector3{ 0.0f, 0.0f, 1.0f };
-        const math::Vector3 canvasPos = cameraWorldPos + camFwd * canvas.planeDistance;
+        const math::Vector3 canvasPos = cameraWorldPos + camFwd * (canvas.planeDistance - canvas.surfaceOffset);
         const math::Matrix4 worldMatrix = math::Matrix4::TRS(
             canvasPos, cameraWorldRot, math::Vector3::ONE);
 
@@ -747,7 +743,7 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
         const float scaleY = (std::max)(1.0f, viewportHeight) / visibleH;
         state.mouseInCanvasSpace = { rawMouseInViewport.x / scaleX, rawMouseInViewport.y / scaleY };
         /// @note 深度テストあり (3D オブジェクトに遮蔽可)
-        state.pso   = ctx.worldPso;
+        state.pso   = canvas.depthMode == UICanvasDepthMode::ALWAYS_ON_TOP ? ctx.pso : ctx.worldPso;
         state.layer = renderer::RenderLayer::TRANSPARENT_LAYER;
         return state;
     }
@@ -774,72 +770,9 @@ CanvasRuntimeState BuildCanvasRuntimeState(const UICanvas& canvas,
 /// @name UIButton 更新
 bool UpdateButton(UIButton& button, const Rect& rect, math::Vector2 mouse, bool mousePressed)
 {
-    const UIButtonState previousState = button.state;
-    button.onClick = false;
-    button.onEnter = false;
-    button.onExit  = false;
-
-    if (!button.enabled || !button.isInteractable) {
-        button.state            = UIButtonState::NORMAL;
-        button.wasPressedOnThis = false;
-        button.lastMouseState   = mousePressed;
-        return false;
-    }
-
-    const bool hit               = mouse.x >= rect.pos.x && mouse.x <= rect.pos.x + rect.size.x
-                                && mouse.y >= rect.pos.y && mouse.y <= rect.pos.y + rect.size.y;
-    const bool mouseJustPressed  = mousePressed  && !button.lastMouseState;
-    const bool mouseJustReleased = !mousePressed && button.lastMouseState;
-
-    /// @note ドラッグで流入した押下をクリックとして誤検出しないため wasPressedOnThis を立てる。
-    if (mouseJustPressed && hit)
-        button.wasPressedOnThis = true;
-
-    if (mouseJustReleased) {
-        button.onClick          = button.wasPressedOnThis && hit;
-        button.wasPressedOnThis = false;
-    }
-
-    button.lastMouseState = mousePressed;
-
-    if (hit && mousePressed && button.wasPressedOnThis) {
-        button.state = UIButtonState::PRESSED;
-    } else if (hit) {
-        button.state = UIButtonState::HOVERED;
-    } else {
-        button.state = UIButtonState::NORMAL;
-    }
-
-    button.onEnter = previousState == UIButtonState::NORMAL && button.state != UIButtonState::NORMAL;
-    button.onExit  = previousState != UIButtonState::NORMAL && button.state == UIButtonState::NORMAL;
-    return hit;
+    return ui_detail::UpdateButton(button, rect.pos, rect.size, mouse, mousePressed);
 }
 
-math::Vector4 ButtonTint(const UIButton& button)
-{
-    if (!button.enabled || !button.isInteractable) return button.disabledColor;
-    if (button.state == UIButtonState::PRESSED) return button.pressedColor;
-    if (button.state == UIButtonState::HOVERED) return button.hoverColor;
-    return button.normalColor;
-}
-
-math::Vector4 ResolveButtonImageColor(const math::Vector4& imageColor, const UIButton& button)
-{
-    const math::Vector4 targetColor = ButtonTint(button);
-    constexpr float MIN_COLOR_CHANNEL = 1.0e-5f;
-    const auto relativeChannel = [=](float image, float normal, float target) {
-        return normal > MIN_COLOR_CHANNEL ? image * (target / normal) : target;
-    };
-
-    /// @note 単純な乗算だと UIImage と UIButton の両方が暗色のとき Pressed Color が黒へ潰れる。
-    /// @note normalColor を基準に相対変換すれば、指定した色がそのまま画面へ出る。
-    return {
-        relativeChannel(imageColor.x, button.normalColor.x, targetColor.x),
-        relativeChannel(imageColor.y, button.normalColor.y, targetColor.y),
-        relativeChannel(imageColor.z, button.normalColor.z, targetColor.z),
-        relativeChannel(imageColor.w, button.normalColor.w, targetColor.w)
-    };
-}
 
 /// @name 描画サブミット
 /// @note 組み上がった三角形リストを 1 ドローとして積む。頂点を呼び出し側から受け取るのは、
@@ -1392,22 +1325,7 @@ void SubmitRect(renderer::IRenderer& renderer,
 /// @note フォントの実体パスを解決する。FontAtlas は Renderer 層にあり「プロジェクトの Assets →
 /// @note エンジン共有 Assets」の二段構えを知らないので、既定フォントを自前で持たない
 /// @note プロジェクトでは共有側の Roboto へ辿り着けず文字が 1 つも出ない。
-/// @note .fnt を付けてから解決するのは、拡張子なしだと AssetManager の実在チェックが
-/// @note 必ず外れてフォールバックが働かないため。
-std::string ResolveFontBasePath(const std::string& basePath)
-{
-    if (basePath.empty()) return basePath;
 
-    /// @note .ttf / .otf / .ttc は動的モードで、パスがそのまま実体を指す。
-    if (renderer::FontAtlas::IsDynamicFontPath(basePath))
-        return asset::AssetManager::ResolveAssetPath(basePath);
-
-    const std::string fntExt = ".fnt";
-    const std::string resolved = asset::AssetManager::ResolveAssetPath(basePath + fntExt);
-    if (resolved.size() > fntExt.size() && resolved.ends_with(fntExt))
-        return resolved.substr(0, resolved.size() - fntExt.size());
-    return basePath;
-}
 
 /// @note このテキストを実画面で何 px の em として焼けばよいか。
 /// @note fontSize は Canvas 空間の行高さなので、Canvas → 実画面の倍率を掛けて実寸へ直す。
@@ -1586,7 +1504,10 @@ renderer::FontAtlas& GetOrLoadFontAtlas(const std::string& basePath,
 {
     /// @note 静的アトラスは焼く解像度を持たない (PNG が決め打ち) ので、解像度をキーへ混ぜると
     /// @note 同じ PNG を段の数だけ読み込むだけになる。動的モードのときだけ分ける。
-    const std::string key = renderer::FontAtlas::IsDynamicFontPath(basePath)
+    const bool dynamicFont = renderer::FontAtlas::IsDynamicFontPath(basePath)
+        || (basePath.starts_with("guid:")
+            && renderer::FontAtlas::IsDynamicFontPath(ResolveUIFontBasePath(basePath)));
+    const std::string key = dynamicFont
         ? basePath + '@' + std::to_string(static_cast<int>(rasterPixelHeight))
         : basePath;
 
@@ -1597,7 +1518,7 @@ renderer::FontAtlas& GetOrLoadFontAtlas(const std::string& basePath,
         return it->second;
 
     renderer::FontAtlas& atlas = ctx.fontAtlasCache[key];
-    const std::string resolved = ResolveFontBasePath(basePath);
+    const std::string resolved = ResolveUIFontBasePath(basePath);
     if (!atlas.Load(resolved, resources, rasterPixelHeight)) {
         FBZZ_LOG_ERROR("UISystem: failed to load FontAtlas [%s]\n  resolved: %s",
                        basePath.c_str(), resolved.c_str());
@@ -1828,11 +1749,20 @@ math::Vector2 ComputeTextLogicalSize(UIText& text,
 
 void UpdateTextSizesRecursive(GameObject& go,
                               UISystemContext& ctx,
-                              renderer::ResourceManager& resources)
+                               renderer::ResourceManager& resources,
+                               const asset::UIThemeStyle* theme)
 {
     if (!go.activeInHierarchy()) return;
     if (auto* text = go.GetComponent<UIText>(); text && text->enabled && !text->text.empty()) {
-        const math::Vector2 size = ComputeTextLogicalSize(*text, ctx, resources);
+        math::Vector2 size;
+        if (theme) {
+            UIText working = *text;
+            ApplyUIThemeToText(*theme, working);
+            size = ComputeTextLogicalSize(working, ctx, resources);
+            text->resolvedFontSize = working.resolvedFontSize;
+        } else {
+            size = ComputeTextLogicalSize(*text, ctx, resources);
+        }
         /// @note 実測サイズの置き場はここ。アンカー・ピボット・当たり判定・ギズモが読む。
         text->resolvedSize = size;
         /// @note transform.scale へも書き戻す (後方互換の写し)。この行がある限り文字の
@@ -1844,7 +1774,7 @@ void UpdateTextSizesRecursive(GameObject& go,
     }
     for (int i = 0; i < go.GetChildCount(); ++i)
         if (GameObject* child = go.GetChild(i))
-            UpdateTextSizesRecursive(*child, ctx, resources);
+            UpdateTextSizesRecursive(*child, ctx, resources, theme);
 }
 
 void UITextSizeSystem(const std::vector<CanvasEntry>& canvases,
@@ -1858,7 +1788,7 @@ void UITextSizeSystem(const std::vector<CanvasEntry>& canvases,
         /// @note 計測側が別のアトラスを触ると同じ字を 2 つの実体へ焼くことになる。
         ctx.textPixelScale =
             ResolveCanvasPixelScale(*entry.canvas, viewportWidth, viewportHeight);
-        UpdateTextSizesRecursive(*entry.go, ctx, resources);
+        UpdateTextSizesRecursive(*entry.go, ctx, resources, entry.theme ? &*entry.theme : nullptr);
     }
 }
 
@@ -2153,7 +2083,7 @@ bool LayoutCanResizeChild(GameObject& child)
 
 void ApplyLayout(GameObject& go, const UILayoutGroup& layout,
                  const math::Vector2& containerSize, float canvasScale,
-                 UISystemContext& ctx)
+                 UISystemContext& ctx, const UILayoutGroup* authoredLayout)
 {
     static std::unordered_set<const UILayoutGroup*> s_warnedLayouts;
 
@@ -2302,8 +2232,8 @@ void ApplyLayout(GameObject& go, const UILayoutGroup& layout,
             ? (endPos > containerSize.x - layout.paddingRight)
             : (endPos > containerSize.y - layout.paddingBottom);
 
-        if (overflow && s_warnedLayouts.find(&layout) == s_warnedLayouts.end()) {
-            s_warnedLayouts.insert(&layout);
+        if (overflow && s_warnedLayouts.find(authoredLayout) == s_warnedLayouts.end()) {
+            s_warnedLayouts.insert(authoredLayout);
             const float excess = horizontal
                 ? (endPos - (containerSize.x - layout.paddingRight))
                 : (endPos - (containerSize.y - layout.paddingBottom));
@@ -2350,18 +2280,26 @@ void ApplyContentSizeFitter(GameObject& go, const UIContentSizeFitter& fitter)
 }
 
 void ApplyUILayoutRecursive(GameObject& go, const math::Vector2& containerSize,
-                            float canvasScale, UISystemContext& ctx)
+                            float canvasScale, UISystemContext& ctx,
+                            const asset::UIThemeStyle* theme)
 {
     if (!go.activeInHierarchy()) return;
 
     /// @note 並べるのは降りる前。子のローカル位置が決まっていないと、
     /// @note その子がさらに持つレイアウトの容器サイズも決まらない。
-    if (auto* layout = go.GetComponent<UILayoutGroup>(); layout && layout->enabled)
-        ApplyLayout(go, *layout, containerSize, canvasScale, ctx);
+    if (auto* layout = go.GetComponent<UILayoutGroup>(); layout && layout->enabled) {
+        if (theme) {
+            UILayoutGroup working = *layout;
+            ApplyUIThemeToLayout(*theme, working);
+            ApplyLayout(go, working, containerSize, canvasScale, ctx, layout);
+        } else {
+            ApplyLayout(go, *layout, containerSize, canvasScale, ctx, layout);
+        }
+    }
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (GameObject* child = go.GetChild(i))
-            ApplyUILayoutRecursive(*child, UIElementSize(*child), canvasScale, ctx);
+            ApplyUILayoutRecursive(*child, UIElementSize(*child), canvasScale, ctx, theme);
     }
 
     /// @note 縮むのは帰りがけ。中身が全部片付いてからでないと外接矩形が出ない。
@@ -2435,7 +2373,7 @@ bool ProcessUIEventsRecursive(GameObject& go,
     if (applySelfTransform)
         childTransform.parentSize = selfRect.size;
     if (const auto* scroll = go.GetComponent<UIScrollView>(); scroll && scroll->enabled)
-        childTransform.position -= Rotate2D(scroll->scrollPosition, resolved.rotationZ);
+        childTransform.position -= RotateUIVector(scroll->scrollPosition, resolved.rotationZ);
 
     /// @note 描画順の逆から入力を解決し、重なった UI では最前面の要素だけがポインターを受け取る。
     bool consumed = false;
@@ -2531,7 +2469,8 @@ bool ProcessUIEventsRecursive(GameObject& go,
 
     if (auto* scroll = go.GetComponent<UIScrollView>()) {
         scroll->onValueChanged = false;
-        const float wheel = input::Input::MouseScrollDelta();
+        const float wheel = ctx.gameplayInput ? input::input_detail::GameInputAccess::MouseScrollDelta()
+            : input::Input::MouseScrollDelta();
         if (scroll->enabled && canReceive && hit && wheel != 0.0f) {
             if (scroll->vertical)
                 scroll->scrollPosition.y -= wheel * scroll->sensitivity;
@@ -2552,7 +2491,8 @@ bool ProcessUIEventsRecursive(GameObject& go,
         if (mousePressed && canReceive)
             field->focused = hit;
         if (field->enabled && field->interactable && field->focused) {
-            for (const char character : input::Input::TextInput()) {
+            const auto text = ctx.gameplayInput ? input::input_detail::GameInputAccess::TextInput() : input::Input::TextInput();
+            for (const char character : text) {
                 if (character == '\b') {
                     if (!field->text.empty()) {
                         size_t characterStart = field->text.size() - 1;
@@ -2856,7 +2796,7 @@ void SubmitSelectionMaskRecursive(GameObject& go,
     if (applySelfTransform)
         childTransform.parentSize = rect.size;
     if (const auto* scroll = go.GetComponent<UIScrollView>(); scroll && scroll->enabled)
-        childTransform.position -= Rotate2D(scroll->scrollPosition, resolved.rotationZ);
+        childTransform.position -= RotateUIVector(scroll->scrollPosition, resolved.rotationZ);
 
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (GameObject* child = go.GetChild(i))
@@ -2876,7 +2816,8 @@ void RenderCanvasRecursive(GameObject& go,
                            renderer::RenderLayer layer,
                            bool applySelfTransform = true,
                            std::size_t depth = 0,
-                           float groupAlpha = 1.0f)
+                           float groupAlpha = 1.0f,
+                           const asset::UIThemeStyle* theme = nullptr)
 {
     if (!go.activeInHierarchy()) return;
 
@@ -2901,7 +2842,7 @@ void RenderCanvasRecursive(GameObject& go,
     if (button && button->enabled && button->isInteractable
         && button->state == UIButtonState::PRESSED) {
         constexpr math::Vector2 PRESSED_VISUAL_OFFSET = { 2.0f, 2.0f };
-        resolved.position += Rotate2D(PRESSED_VISUAL_OFFSET, resolved.rotationZ);
+        resolved.position += RotateUIVector(PRESSED_VISUAL_OFFSET, resolved.rotationZ);
     }
 
     if (image && image->enabled) {
@@ -2909,9 +2850,12 @@ void RenderCanvasRecursive(GameObject& go,
         ResolveImageTexture(*image, resources);
 
         const Rect    r     = RectFromTransform(go, resolved);
-        math::Vector4 color = image->color;
-        if (button)
-            color = ResolveButtonImageColor(color, *button);
+        math::Vector4 color = ResolveUIImageColor(*image, theme);
+        if (button) {
+            const auto* navigation = go.GetComponent<UINavigation>();
+            color = ResolveUIButtonImageColor(color, *button, theme,
+                navigation && navigation->enabled && navigation->focused);
+        }
         /// @note 群の透明度はここで乗せる。コンポーネントの値は書き換えない ─
         /// @note 書き換えるとフェードの途中で保存したときに薄い色が焼き付く。
         color.w *= groupAlpha;
@@ -2964,7 +2908,13 @@ void RenderCanvasRecursive(GameObject& go,
     }
 
     if (text && text->enabled) {
-        if (groupAlpha >= 1.0f) {
+        if (theme) {
+            UIText working = *text;
+            ApplyUIThemeToText(*theme, working);
+            working.color.w *= groupAlpha;
+            SubmitText(renderer, resources, ctx, canvasToClip, pso, layer, working,
+                       resolved.position, resolved.parentSize);
+        } else if (groupAlpha >= 1.0f) {
             SubmitText(renderer, resources, ctx, canvasToClip, pso, layer, *text,
                        resolved.position, resolved.parentSize);
         } else {
@@ -3001,7 +2951,7 @@ void RenderCanvasRecursive(GameObject& go,
     if (applySelfTransform)
         childTransform.parentSize = RectFromTransform(go, resolved).size;
     if (const auto* scroll = go.GetComponent<UIScrollView>(); scroll && scroll->enabled)
-        childTransform.position -= Rotate2D(scroll->scrollPosition, resolved.rotationZ);
+        childTransform.position -= RotateUIVector(scroll->scrollPosition, resolved.rotationZ);
 
     /// @note Mask / Scroll View はここから下の描画を自分の矩形で切る。
     /// @note 自分自身は切らない (枠の絵を切ると縁が半分消える)。切るのは子孫だけ。
@@ -3018,7 +2968,7 @@ void RenderCanvasRecursive(GameObject& go,
     SortUIChildren(go, children);
     for (std::size_t i = 0; i < children.size(); ++i)
         RenderCanvasRecursive(*children[i], childTransform, renderer, resources, ctx,
-                              canvasToClip, pso, layer, true, depth + 1, groupAlpha);
+                              canvasToClip, pso, layer, true, depth + 1, groupAlpha, theme);
 
     ctx.clipPlanes.resize(ctx.clipPlanes.size() - pushedPlanes);
 }
@@ -3034,7 +2984,7 @@ void UILayoutSystem(const std::vector<CanvasEntry>& canvases, UISystemContext& c
         ApplyUILayoutRecursive(
             *entry.go,
             BuildCanvasRootTransform(*entry.canvas, viewportWidth, viewportHeight).parentSize,
-            scale, ctx);
+            scale, ctx, entry.theme ? &*entry.theme : nullptr);
     }
 }
 
@@ -3076,7 +3026,7 @@ void CollectNavCandidates(GameObject& go, const UITransform2D& parentTransform,
     UITransform2D childTransform = resolved;
     if (applySelfTransform) childTransform.parentSize = selfRect.size;
     if (const auto* scroll = go.GetComponent<UIScrollView>(); scroll && scroll->enabled)
-        childTransform.position -= Rotate2D(scroll->scrollPosition, resolved.rotationZ);
+        childTransform.position -= RotateUIVector(scroll->scrollPosition, resolved.rotationZ);
 
     for (int i = 0; i < go.GetChildCount(); ++i)
         if (GameObject* child = go.GetChild(i))
@@ -3123,25 +3073,34 @@ math::Vector2 g_navHeldDirection{};
 float         g_navRepeatTimer = 0.0f;
 
 /// @note いま倒されている方向。倒していなければゼロ。
-math::Vector2 ReadNavigationDirection()
+math::Vector2 ReadNavigationDirection(bool gameplayInput)
 {
+    const auto keyHeld = [gameplayInput](input::KeyCode key) {
+        return gameplayInput ? input::input_detail::GameInputAccess::KeyHeld(key) : input::Input::KeyHeld(key);
+    };
+    const auto padButton = [gameplayInput](input::GamepadButton button, int pad) {
+        return gameplayInput ? input::input_detail::GameInputAccess::PadButtonHeld(button, pad) : input::Gamepad::ButtonHeld(button, pad);
+    };
+    const auto padAxis = [gameplayInput](input::GamepadAxis axis, int pad) {
+        return gameplayInput ? input::input_detail::GameInputAccess::PadAxis(axis, pad) : input::Gamepad::Axis(axis, pad);
+    };
     math::Vector2 dir{};
-    if (input::Input::KeyHeld(input::KeyCode::LEFT))  dir.x -= 1.0f;
-    if (input::Input::KeyHeld(input::KeyCode::RIGHT)) dir.x += 1.0f;
-    if (input::Input::KeyHeld(input::KeyCode::UP))    dir.y -= 1.0f;
-    if (input::Input::KeyHeld(input::KeyCode::DOWN))  dir.y += 1.0f;
+    if (keyHeld(input::KeyCode::LEFT))  dir.x -= 1.0f;
+    if (keyHeld(input::KeyCode::RIGHT)) dir.x += 1.0f;
+    if (keyHeld(input::KeyCode::UP))    dir.y -= 1.0f;
+    if (keyHeld(input::KeyCode::DOWN))  dir.y += 1.0f;
 
     const int pad = input::Gamepad::GetFirstConnectedPad();
     if (pad >= 0) {
-        if (input::Gamepad::ButtonHeld(input::GamepadButton::DPAD_LEFT,  pad)) dir.x -= 1.0f;
-        if (input::Gamepad::ButtonHeld(input::GamepadButton::DPAD_RIGHT, pad)) dir.x += 1.0f;
-        if (input::Gamepad::ButtonHeld(input::GamepadButton::DPAD_UP,    pad)) dir.y -= 1.0f;
-        if (input::Gamepad::ButtonHeld(input::GamepadButton::DPAD_DOWN,  pad)) dir.y += 1.0f;
+        if (padButton(input::GamepadButton::DPAD_LEFT,  pad)) dir.x -= 1.0f;
+        if (padButton(input::GamepadButton::DPAD_RIGHT, pad)) dir.x += 1.0f;
+        if (padButton(input::GamepadButton::DPAD_UP,    pad)) dir.y -= 1.0f;
+        if (padButton(input::GamepadButton::DPAD_DOWN,  pad)) dir.y += 1.0f;
         /// @note スティックは倒し込みで初めて 1 方向として扱う。
         /// @note 生値は静止時も 0 にならないので、デッドゾーンが無いとフォーカスが流れ続ける。
         constexpr float kStickThreshold = 0.6f;
-        const float sx = input::Gamepad::Axis(input::GamepadAxis::LEFT_STICK_X, pad);
-        const float sy = input::Gamepad::Axis(input::GamepadAxis::LEFT_STICK_Y, pad);
+        const float sx = padAxis(input::GamepadAxis::LEFT_STICK_X, pad);
+        const float sy = padAxis(input::GamepadAxis::LEFT_STICK_Y, pad);
         if (sx < -kStickThreshold) dir.x -= 1.0f;
         if (sx >  kStickThreshold) dir.x += 1.0f;
         /// @note スティックの +Y は上、Canvas の +Y は下
@@ -3156,8 +3115,14 @@ math::Vector2 ReadNavigationDirection()
     return {};
 }
 
-bool ReadNavigationSubmit()
+bool ReadNavigationSubmit(bool gameplayInput)
 {
+    if (gameplayInput) {
+        if (input::input_detail::GameInputAccess::KeyHeld(input::KeyCode::ENTER)
+            || input::input_detail::GameInputAccess::KeyHeld(input::KeyCode::SPACE)) return true;
+        const int gamePad = input::Gamepad::GetFirstConnectedPad();
+        return gamePad >= 0 && input::input_detail::GameInputAccess::PadButtonHeld(input::GamepadButton::A, gamePad);
+    }
     if (input::Input::KeyHeld(input::KeyCode::ENTER)) return true;
     if (input::Input::KeyHeld(input::KeyCode::SPACE)) return true;
     const int pad = input::Gamepad::GetFirstConnectedPad();
@@ -3168,8 +3133,16 @@ bool ReadNavigationSubmit()
 /// @note 動かしたら true (呼び出し側はこのフレームのポインターをフォーカスへ寄せる)。
 bool UINavigationSystem(Scene& scene, UICanvas& canvas, GameObject& canvasGO,
                         const UITransform2D& canvasRoot,
-                        std::vector<UINavCandidate>& scratch)
+                        std::vector<UINavCandidate>& scratch, bool gameplayInput,
+                        math::Vector2& pointerPosition, bool& pointerPressed)
 {
+    if (gameplayInput && !core::Cursor::CanReadGameInput()) {
+        bool injectedNavigation = false;
+        for (const auto key : {input::KeyCode::LEFT, input::KeyCode::RIGHT, input::KeyCode::UP,
+                              input::KeyCode::DOWN, input::KeyCode::ENTER, input::KeyCode::SPACE})
+            injectedNavigation |= input::input_detail::GameInputAccess::InjectedKeyPending(key);
+        if (!injectedNavigation) return false;
+    }
     scratch.clear();
     CollectNavCandidates(canvasGO, canvasRoot, false, true, scratch);
     for (UINavCandidate& candidate : scratch) candidate.nav->focused = false;
@@ -3188,7 +3161,7 @@ bool UINavigationSystem(Scene& scene, UICanvas& canvas, GameObject& canvasGO,
     }
 
     /// @note 方向入力の繰り返し。倒し始めは即座に、以降は間隔をあけて 1 段ずつ。
-    const math::Vector2 dir = ReadNavigationDirection();
+    const math::Vector2 dir = ReadNavigationDirection(gameplayInput);
     bool step = false;
     if (dir.x == 0.0f && dir.y == 0.0f) {
         g_navHeldDirection = {};
@@ -3237,10 +3210,26 @@ bool UINavigationSystem(Scene& scene, UICanvas& canvas, GameObject& canvasGO,
 
     /// @note ポインターをフォーカスの中心へ置く。ここから先は既存のウィジェットが
     /// @note マウスと同じように反応する (理由は UIPointer.hpp を参照)。
-    UIPointer::Set({ current->rect.pos.x + current->rect.size.x * 0.5f,
-                     current->rect.pos.y + current->rect.size.y * 0.5f },
-                   ReadNavigationSubmit());
+    /// @note Built-in navigation is local to this pass; only script-authored UIPointer retains virtual ownership.
+    pointerPosition = { current->rect.pos.x + current->rect.size.x * 0.5f,
+                        current->rect.pos.y + current->rect.size.y * 0.5f };
+    pointerPressed = ReadNavigationSubmit(gameplayInput);
     return true;
+}
+
+void CancelUIInteractionsRecursive(GameObject& go)
+{
+    if (auto* control = go.GetComponent<UIButton>()) ui_detail::CancelInteraction(*control);
+    if (auto* control = go.GetComponent<UISlider>()) ui_detail::CancelInteraction(*control);
+    if (auto* control = go.GetComponent<UIToggle>()) ui_detail::CancelInteraction(*control);
+    if (auto* control = go.GetComponent<UIScrollView>()) ui_detail::CancelInteraction(*control);
+    if (auto* control = go.GetComponent<UIInputField>()) ui_detail::CancelInteraction(*control);
+    if (auto* control = go.GetComponent<UINavigation>()) ui_detail::CancelInteraction(*control);
+    if (auto* control = go.GetComponent<UIEventTrigger>()) ui_detail::CancelInteraction(*control);
+    if (auto* control = go.GetComponent<UIDragSource>()) ui_detail::CancelInteraction(*control);
+    if (auto* control = go.GetComponent<UIDropTarget>()) ui_detail::CancelInteraction(*control);
+    for (int child = 0; child < go.GetChildCount(); ++child)
+        if (auto* next = go.GetChild(child)) CancelUIInteractionsRecursive(*next);
 }
 
 void UIEventSystem(Scene& scene,
@@ -3252,11 +3241,27 @@ void UIEventSystem(Scene& scene,
                    bool mousePressed,
                    const math::Matrix4& viewProjection,
                    math::Vector3 cameraWorldPos,
+                   math::Quaternion cameraWorldRot,
                    UIRenderTargetView targetView)
 {
     /// @note ドラッグの持ち越しはフレームごとに作り直す。
     /// @note 前フレームの受け皿が残っていると、離した瞬間に古い相手へ落ちる。
     g_dragFrame = {};
+    if (ctx.gameplayInput) {
+        const auto revision = input::input_detail::GameInputAccess::InteractionRevision();
+        if (ctx.inputInteractionRevision != revision) {
+            for (const auto& entry : canvases) CancelUIInteractionsRecursive(*entry.go);
+            ctx.inputInteractionRevision = revision;
+            g_navHeldDirection = {};
+            g_navRepeatTimer = 0.0f;
+        }
+        rawMouseInViewport = ui_detail::ResolvePointerPosition(rawMouseInViewport,
+            input::input_detail::GameInputAccess::PointerAvailable());
+        mousePressed = input::input_detail::GameInputAccess::PointerPressed(mousePressed);
+    }
+    bool navigationPointerActive = false;
+    math::Vector2 navigationPointerPosition{};
+    bool navigationPointerPressed = false;
 
     /// @note ナビゲーションはポインターを差し替えるので、当たり判定より先に解く。
     /// @note 既に差し替えが宣言されていれば手を出さない (ゲーム内カーソルを持つ画面が優先)。
@@ -3264,24 +3269,44 @@ void UIEventSystem(Scene& scene,
         static std::vector<UINavCandidate> navScratch;
         for (const CanvasEntry& entry : canvases) {
             if (!entry.canvas->navigationEnabled) continue;
-            if (!ShouldRenderCanvas(*entry.canvas, targetView)) continue;
+            if (!ShouldRenderCanvas(*entry.canvas, targetView, ctx.sceneDepthAvailable)) continue;
             const UITransform2D canvasRoot =
                 BuildCanvasRootTransform(*entry.canvas, viewportWidth, viewportHeight);
-            if (UINavigationSystem(scene, *entry.canvas, *entry.go, canvasRoot, navScratch))
+            if (UINavigationSystem(scene, *entry.canvas, *entry.go, canvasRoot, navScratch,
+                                   ctx.gameplayInput, navigationPointerPosition, navigationPointerPressed))
                 /// @note フォーカスは画面に 1 つ。最初に受け持った Canvas が持つ。
-                break;
+                { navigationPointerActive = true; break; }
         }
     }
 
     /// @note Canvas 間でも描画順の逆から入力を解決し、最前面で消費された入力を背面へ渡さない。
+    if (ctx.gameplayInput && !input::input_detail::GameInputAccess::PointerAvailable()
+        && !UIPointer::IsActive() && !navigationPointerActive) {
+        for (const auto& entry : canvases) CancelUIInteractionsRecursive(*entry.go);
+        g_pointerOverUI = false;
+        g_pointerOverUIFrame = fbzz::Time::frameCount;
+        return;
+    }
     bool inputConsumed = false;
     for (auto canvasIt = canvases.rbegin(); canvasIt != canvases.rend(); ++canvasIt) {
         const CanvasEntry& entry = *canvasIt;
-        if (!ShouldRenderCanvas(*entry.canvas, targetView))
+        if (!ShouldRenderCanvas(*entry.canvas, targetView, ctx.sceneDepthAvailable)) {
+            CancelUIInteractionsRecursive(*entry.go);
             continue;
+        }
 
         /// @name WorldSpace ヒット判定: スクリーン座標→ワールドレイ→キャンバスピクセル
         if (!IsScreenSpaceRenderMode(entry.canvas->renderMode)) {
+            if (ctx.gameplayInput && !input::input_detail::GameInputAccess::PointerAvailable()
+                && (UIPointer::IsActive() || navigationPointerActive)) {
+                const UITransform2D canvasRoot = BuildCanvasRootTransform(*entry.canvas, viewportWidth, viewportHeight);
+                const auto pointer = UIPointer::IsActive() ? UIPointer::Position() : navigationPointerPosition;
+                const bool pressed = UIPointer::IsActive() ? UIPointer::Pressed() : navigationPointerPressed;
+                entry.canvas->resolvedMousePosition = {-1.0e30f, -1.0e30f};
+                inputConsumed |= ProcessUIEventsRecursive(*entry.go, ctx, canvasRoot, pointer,
+                    pressed, !inputConsumed, false);
+                continue;
+            }
             /// @note 1. NDC マウス座標を計算してワールドレイを構築する
             const float ndcX =  (rawMouseInViewport.x / (std::max)(1.0f, viewportWidth))  * 2.0f - 1.0f;
             const float ndcY = -(rawMouseInViewport.y / (std::max)(1.0f, viewportHeight)) * 2.0f + 1.0f;
@@ -3289,16 +3314,20 @@ void UIEventSystem(Scene& scene,
             const math::Ray worldRay = math::Ray::FromNDC(ndcX, ndcY, cameraWorldPos, invVP);
 
             /// @note 2. キャンバスのワールド行列と法線平面を構築する
+            const math::Quaternion canvasRotation = entry.canvas->faceCamera
+                ? cameraWorldRot : entry.go->transform.worldRotation;
+            const math::Vector3 canvasPosition = entry.go->transform.worldPosition
+                - canvasRotation * math::Vector3::FORWARD * entry.canvas->surfaceOffset;
             const math::Matrix4 worldMat = math::Matrix4::TRS(
-                entry.go->transform.worldPosition,
-                entry.go->transform.worldRotation,
+                canvasPosition,
+                canvasRotation,
                 math::Vector3::ONE);
             /// @note Z 列 = キャンバス平面の法線 (ローカル前方がワールド空間でどの方向か)
             const math::Vector3 normal = {
                 worldMat.m[0][2], worldMat.m[1][2], worldMat.m[2][2]
             };
             const math::Plane plane = math::Plane::FromNormalAndPoint(
-                normal, entry.go->transform.worldPosition);
+                normal, canvasPosition);
 
             /// @note 3. レイと平面の交差判定
             float t;
@@ -3322,9 +3351,9 @@ void UIEventSystem(Scene& scene,
             const UITransform2D canvasRoot =
                 BuildCanvasRootTransform(*entry.canvas, viewportWidth, viewportHeight);
             const math::Vector2 pointerPx =
-                UIPointer::IsActive() ? UIPointer::Position() : canvasPx;
+                UIPointer::IsActive() ? UIPointer::Position() : navigationPointerActive ? navigationPointerPosition : canvasPx;
             const bool pointerPressed =
-                UIPointer::IsActive() ? UIPointer::Pressed() : mousePressed;
+                UIPointer::IsActive() ? UIPointer::Pressed() : navigationPointerActive ? navigationPointerPressed : mousePressed;
             entry.canvas->resolvedMousePosition = canvasPx;
             inputConsumed |= ProcessUIEventsRecursive(*entry.go, ctx, canvasRoot, pointerPx,
                                                       pointerPressed, !inputConsumed, false);
@@ -3347,9 +3376,9 @@ void UIEventSystem(Scene& scene,
         /// @note 判定は「Canvas 空間の座標 1 つと押下状態」だけで決まるので、入口を 1 つに絞れば
         /// @note マウスとパッドの両対応をウィジェット側に書かずに済む (UIPointer.hpp)。
         const math::Vector2 pointer =
-            UIPointer::IsActive() ? UIPointer::Position() : mouseInCanvas;
+            UIPointer::IsActive() ? UIPointer::Position() : navigationPointerActive ? navigationPointerPosition : mouseInCanvas;
         const bool pointerPressed =
-            UIPointer::IsActive() ? UIPointer::Pressed() : mousePressed;
+            UIPointer::IsActive() ? UIPointer::Pressed() : navigationPointerActive ? navigationPointerPressed : mousePressed;
 
         /// @note ここへ残すのは常に「OS のマウスを Canvas 空間へ直した値」。差し替え後の値を
         /// @note 返すと、カーソルを動かす側が自分の出力を読み直してマウスで動かせなくなる。
@@ -3382,7 +3411,7 @@ void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
 {
 
     for (const CanvasEntry& entry : canvases) {
-        if (!ShouldRenderCanvas(*entry.canvas, targetView))
+        if (!ShouldRenderCanvas(*entry.canvas, targetView, ctx.sceneDepthAvailable))
             continue;
 
         const CanvasRuntimeState state = BuildCanvasRuntimeState(
@@ -3394,12 +3423,15 @@ void UIRenderSystem(const std::vector<CanvasEntry>& canvases,
             ResolveCanvasPixelScale(*entry.canvas, viewportWidth, viewportHeight);
         const UITransform2D canvasRoot =
             BuildCanvasRootTransform(*entry.canvas, viewportWidth, viewportHeight);
+        const math::Matrix4 renderCanvasToClip = ctx.reversedDepth
+            ? renderer::ReverseClipDepth(state.canvasToClip) : state.canvasToClip;
         RenderCanvasRecursive(*entry.go, canvasRoot, renderer, resources, ctx,
-                              state.canvasToClip, state.pso, state.layer, false);
+                              renderCanvasToClip, state.pso, state.layer, false, 0, 1.0f,
+                              entry.theme ? &*entry.theme : nullptr);
     }
 }
 
-} /// @note namespace (anonymous)
+} ///< @note namespace (anonymous)
 
 math::Vector2 GetCanvasRectSize(const UICanvas& canvas, float viewportWidth, float viewportHeight)
 {
@@ -3415,6 +3447,35 @@ void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePat
 void UISystemReleaseGpuResources(UISystemContext& ctx, renderer::ResourceManager& resources)
 {
     ctx.vertexPool.ReleaseAll(resources);
+    if (ctx.depthCopyConstants.IsValid()) resources.Release(ctx.depthCopyConstants);
+    if (ctx.depthCopyPso.IsValid()) resources.Release(ctx.depthCopyPso);
+    ctx.depthCopyConstants = {};
+    ctx.depthCopyPso = {};
+}
+
+bool UICopySceneDepth(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
+                      UISystemContext& ctx, renderer::ResourceHandle<renderer::TextureTag> sceneDepth,
+                      bool reversedOutput)
+{
+    ctx.reversedDepth = reversedOutput;
+    if (!sceneDepth.IsValid()) return false;
+    SyncCacheGenerations(ctx, resources);
+    if (!ctx.depthCopyShader.IsValid()) ctx.depthCopyShader = resources.LoadShader("Assets/Shaders/UI/UIDepthCopy.hlsl");
+    if (!ctx.depthCopyConstants.IsValid()) ctx.depthCopyConstants = resources.CreateConstantBuffer(sizeof(math::Vector4));
+    if (!ctx.depthCopyPso.IsValid()) ctx.depthCopyPso = resources.CreatePipelineState({
+        renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON});
+    if (!ctx.depthCopyShader.IsValid() || !ctx.depthCopyConstants.IsValid() || !ctx.depthCopyPso.IsValid()) return false;
+    const math::Vector4 options{reversedOutput ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
+    resources.Update(ctx.depthCopyConstants, &options, sizeof(options));
+    renderer.ClearDepth();
+    renderer::DrawCall call;
+    call.shader = ctx.depthCopyShader;
+    call.pipelineState = ctx.depthCopyPso;
+    call.vertexCount = 3;
+    call.constantBuffers[0] = ctx.depthCopyConstants;
+    call.textures[7] = sceneDepth;
+    renderer.Submit(call, resources);
+    return true;
 }
 
 bool UIPointerOverUI()
@@ -3477,7 +3538,7 @@ void UISystem(Scene& scene,
     /// @note 更新すると、後続のパスが GameViewport の生成したクリックを消してしまう。
     if (targetView == UIRenderTargetView::GameViewport) {
         UIEventSystem(scene, canvases, ctx, viewportWidth, viewportHeight, mouseInViewport,
-                      mousePressed, viewProjection, cameraWorldPos, targetView);
+                      mousePressed, viewProjection, cameraWorldPos, cameraWorldRot, targetView);
     }
     UIRenderSystem(canvases, renderer, resources, ctx,
                    viewportWidth, viewportHeight, mouseInViewport,
@@ -3531,4 +3592,4 @@ void UISelectionMaskSystem(Scene& scene,
     }
 }
 
-} /// @note namespace fbzz::scene
+} ///< @note namespace fbzz::scene

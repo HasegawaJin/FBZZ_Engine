@@ -8,6 +8,7 @@
 #include "Engine/Core/Cursor.hpp"
 #include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
+#include <Engine/Scene/ControlPointAdapters.hpp>
 #include "Engine/Scene/Fields/FlowFieldSystem.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
@@ -30,6 +31,7 @@
 #include "Engine/Scene/Systems/ParticleSimulationSystem.hpp"
 #include "Engine/Scene/Systems/WeatherSystem.hpp"
 #include "Engine/Scene/Systems/WaterSystem.hpp"
+#include <Engine/Scene/Systems/WaterInteractionSystem.hpp>
 #include "Engine/Scene/Systems/SequenceSystem.hpp"
 #include "Engine/Scene/Systems/VFXSystem.hpp"
 #include "Engine/Scene/Systems/VFXBeamSystem.hpp"
@@ -86,7 +88,7 @@ void SceneManager::BuildScheduler()
     /// @note 実行順は各 System の OrderingHints が決める:
     /// @note Sensor → BehaviorTree → Patrol → Navigation
     /// @note BehaviorTree を Patrol より前に置くのは、BT が SetTarget を呼んだ同じフレームで
-    /// @note NavMeshPatrolSystem の `agent->target.IsValid()` による巡回抑止を効かせるため。
+/// @note 設定済み追跡参照は欠損時も巡回を抑止する。
     m_scheduler.AddSystem<NavMeshSensorSystem>();
     m_scheduler.AddSystem<BehaviorTreeSystem>();
     m_scheduler.AddSystem<NavMeshPatrolSystem>();
@@ -109,6 +111,7 @@ void SceneManager::BuildScheduler()
 
     /// @note Cleanup
     m_scheduler.AddSystem<LifetimeSystem>();
+    m_scheduler.AddSystem<WaterInteractionSystem>();
     m_scheduler.AddSystem<FlushDestroyQueueSystem>();
 
     /// @note LateUpdate
@@ -213,6 +216,7 @@ bool SceneManager::LoadScene(const std::string& name)
 
 void SceneManager::SetScene(Scene* scene)
 {
+    if (m_externalScene && m_externalScene != scene) ClearWaterInteractions(*m_externalScene);
     m_externalScene = scene;
     /// @note 外部 Scene を差し直した時点で、遷移で切り替えた名前は実行対象ではなくなる。
     if (scene) m_activeName.clear();
@@ -222,6 +226,7 @@ void SceneManager::ReleaseOwnedScene()
 {
     /// @note 外部 Scene と同一実体になることはないが、なった場合に所有していない側を消さない。
     if (m_active && m_active.get() != m_externalScene) {
+        ClearWaterInteractions(*m_active);
         /// @note プールの待機列は EntityID を保持するため、Scene を空にする前に捨てる。
         PrefabPool::Clear(*m_active);
         m_active->Clear();
@@ -238,11 +243,13 @@ void SceneManager::ClearScenes()
     /// @note 外部Sceneとowned Sceneは通常別実体だが、同じ実体を二重にClearしないよう比較する。
     Scene* const external = m_externalScene;
     if (external) {
+        ClearWaterInteractions(*external);
         /// @note プールの待機列は EntityID を保持するため、Scene を空にする前に捨てる。
         PrefabPool::Clear(*external);
         external->Clear();
     }
     if (m_active && m_active.get() != external) {
+        ClearWaterInteractions(*m_active);
         PrefabPool::Clear(*m_active);
         m_active->Clear();
     }
@@ -313,17 +320,26 @@ void SceneManager::Update(float dt, physics::World& world)
             return;
         }
 
+        FlushWorldTransforms(*nextScene);
+        if ((m_simulating || m_playing) && !ValidateStaticControlPointBakes(*nextScene)) {
+            FBZZ_LOG_ERROR("SceneManager: stale control-point bake in '%s'. Staying in the current scene.", m_pendingLoad.c_str());
+            m_pendingLoad.clear();
+            return;
+        }
+
         /// @note カーソルの要求はスクリプトの寿命に紐づくので、古い Scene を捨てた時点でほとんどは
         /// @note 自動的に外れる。残るのは cursor.SetLockMode で基底を直接書いた分で、«誰も外さない»
         /// @note まま次の画面へ持ち越されるため、画面をまたいで引き継いでよいカーソル状態は無いと
         /// @note 決めてここで畳む。Scene のデストラクタはコールバックを呼ばないため、次の OnStart が
         /// @note 破棄済みのシングルトンを読む前に、旧シーンの登録と設定をここで片付ける。
-        if (m_active) m_active->Clear();
+        if (m_active) {
+            ClearWaterInteractions(*m_active);
+            m_active->Clear();
+        }
         core::Cursor::ClearRequests();
 
         /// @note Play中のPreScriptではTransformEditorPreviewが動かない。
         /// @note 初回スクリプトが未計算の原点を接触・出現位置として使う前に階層を確定する。
-        FlushWorldTransforms(*nextScene);
         m_active = std::move(nextScene);
         /// @note 前シーンの固定ステップの残時間を新しい盤面へ持ち込まない。
         m_scheduler.ResetAccumulator();
@@ -334,14 +350,26 @@ void SceneManager::Update(float dt, physics::World& world)
         m_pendingLoad.clear();
 
         /// @note 新しいシーンの束を持ってから旧シーンの束を手放す。順序を逆にすると、両方が使う共有物の
-        ///       利用権が一瞬ゼロになり解放の対象に入る。先読みしていなかったシーンもロード後に束を作る
-        ///       (中身は読み込み済みなのでジョブは出ない)。失敗した遷移では上で return するので旧シーンの束は残る。
+        /// @note 利用権が一瞬ゼロになり解放の対象に入る。先読みしていなかったシーンもロード後に束を作る
+        /// @note (中身は読み込み済みなのでジョブは出ない)。失敗した遷移では上で return するので旧シーンの束は残る。
         (void)AcquireSceneLeases(m_activeName, asset::AssetPriority::Visible);
         if (!previousName.empty() && previousName != m_activeName) m_sceneLeases.erase(previousName);
     }
 
     Scene* scene = CurrentScene();
     if (!scene) return;
+
+    if (!m_simulating && !m_playing) {
+        m_staticBakeValidationScene = 0; m_staticBakeValidationSucceeded = true;
+    } else {
+        const auto generation = scene->GetRenderSceneGeneration();
+        if (m_staticBakeValidationScene != generation) {
+            FlushWorldTransforms(*scene);
+            m_staticBakeValidationSucceeded = ValidateStaticControlPointBakes(*scene);
+            m_staticBakeValidationScene = generation;
+        }
+        if (!m_staticBakeValidationSucceeded) return;
+    }
 
     m_scheduler.Update({ *scene, world, nullptr, m_audioManager, dt, 0.0f, m_simulating, m_playing });
 }
@@ -353,6 +381,9 @@ void SceneManager::LateUpdate(float dt, physics::World& world)
     Scene* scene = CurrentScene();
     if (!scene) return;
 
+    if ((m_simulating || m_playing) && m_staticBakeValidationScene == scene->GetRenderSceneGeneration()
+        && !m_staticBakeValidationSucceeded) return;
+
     m_scheduler.LateUpdate({ *scene, world, renderer::ResourceManager::Active(), m_audioManager, dt, 0.0f, m_simulating, m_playing });
 }
 
@@ -362,4 +393,4 @@ Scene* SceneManager::GetActive()
     return CurrentScene();
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

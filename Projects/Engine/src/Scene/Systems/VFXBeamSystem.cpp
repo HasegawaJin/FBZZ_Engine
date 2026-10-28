@@ -11,6 +11,8 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/VFXSystem.hpp>
+#include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
 #include <cmath>
@@ -18,24 +20,26 @@
 namespace fbzz::scene {
 namespace {
 
-/// 端点 1 つを解決する。実体があればそのワールド位置、無ければ与えられた座標。
-/// outMissing は「実体を指しているのに見つからない」ときだけ立つ
-/// (最初から座標指定の端点は «消えた» ではない)。
+/// @note 端点 1 つを解決する。実体があればそのワールド位置、無ければ与えられた座標。
+/// @note outMissing は「実体を指しているのに見つからない」ときだけ立つ
+/// @note (最初から座標指定の端点は «消えた» ではない)。
 [[nodiscard]] math::Vector3 ResolveEndpoint(Scene& scene, const EntityRef& ref,
                                             const math::Vector3& fallback,
                                             const math::Vector3& offset,
                                             bool& outMissing)
 {
-    if (!ref.IsValid()) return fallback + offset;
-    if (GameObject* target = scene.GetGameObject(ref.id))
-        return target->transform.worldPosition + offset;
+    if (!ref.IsAssigned()) return fallback + offset;
+    if (GameObject* target = ref.Resolve(scene); target && target->activeInHierarchy()) {
+        const auto position = target->transform.worldPosition + offset;
+        if (std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z)) return position;
+    }
     outMissing = true;
     return fallback + offset;
 }
 
 /// @brief 線に直交する 2 軸。横ゆれをどちら向きへ出すかを決める。
 /// @note 上方向を固定で使うと、真上・真下へ伸びるビーム (落雷・吸い上げ) で外積が退化し、
-///       揺れが消えるか軸が飛ぶ。
+/// @note 揺れが消えるか軸が飛ぶ。
 void BuildBasis(const math::Vector3& direction, math::Vector3& outRight, math::Vector3& outUp)
 {
     const math::Vector3 reference = std::abs(math::Vector3::Dot(direction, math::Vector3::UP)) > 0.99f
@@ -44,7 +48,7 @@ void BuildBasis(const math::Vector3& direction, math::Vector3& outRight, math::V
     outUp = math::Vector3::Cross(outRight, direction).NormalizedOr(math::Vector3::UP);
 }
 
-} // namespace
+} /// @note namespace
 
 ComponentAccess VFXBeamSystem::GetAccess() const
 {
@@ -54,12 +58,14 @@ ComponentAccess VFXBeamSystem::GetAccess() const
 OrderingHints VFXBeamSystem::GetOrder() const
 {
     /// @note 端点は «今フレームのワールド位置»。VFXSystem が生存窓で Trail を
-    ///       起こした後に経路を書かないと、開いた最初のフレームだけ前回の形が出る。
-    return OrderingHints{}.After<VFXSystem>();
+    /// @note 起こした後に経路を書かないと、開いた最初のフレームだけ前回の形が出る。
+    return OrderingHints{}.After<VFXSystem>().After<AnimatorSystem>().After<TransformLateUpdate>();
 }
 
 void VFXBeamSystem::Update(SystemContext& ctx)
 {
+    if (ctx.scene.GetEntities<VFXBeamComponent>().empty()) return;
+    FlushWorldTransforms(ctx.scene);
     for (const EntityID id : ctx.scene.GetEntities<VFXBeamComponent>()) {
         GameObject* owner = ctx.scene.GetGameObject(id);
         VFXBeamComponent* beamPtr = ctx.scene.GetComponent<VFXBeamComponent>(id);
@@ -68,7 +74,7 @@ void VFXBeamSystem::Update(SystemContext& ctx)
         VFXBeamComponent& beam = *beamPtr;
 
         /// @note 見た目は同じ GameObject の Trail が持つ。片方だけ置いても «何も出ない» で済み、
-        ///       描画側を書き換える必要がない。
+        /// @note 描画側を書き換える必要がない。
         auto* trail = owner->GetComponent<TrailComponent>();
         if (trail == nullptr) continue;
 
@@ -114,7 +120,7 @@ void VFXBeamSystem::Update(SystemContext& ctx)
             math::Vector3 point = from + delta * t;
 
             /// @note たるみは両端で 0、中央で最大。sin では «張った紐» に見えないので
-            ///       放物線 (4t(1-t)) を使う。
+            /// @note 放物線 (4t(1-t)) を使う。
             if (beam.sag != 0.0f)
                 point.y -= beam.sag * 4.0f * t * (1.0f - t);
 
@@ -130,4 +136,4 @@ void VFXBeamSystem::Update(SystemContext& ctx)
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

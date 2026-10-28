@@ -26,6 +26,10 @@ namespace fbzz::asset {
 /// @note 値列は行優先でパディングなし。型・範囲・要素数・転送先を検証し、失敗時は未変更。
 [[nodiscard]] bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable,
                                            std::span<const double> values);
+[[nodiscard]] bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable,
+                                           std::span<const float> values);
+[[nodiscard]] bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable,
+                                           std::span<const int64_t> values);
 [[nodiscard]] bool WriteMaterialValues(const renderer::ShaderVarDesc& variable,
                                         std::span<const double> values,
                                         std::span<uint8_t> destination);
@@ -71,4 +75,11 @@ void ApplyMaterialIntegerOverrides(
 [[nodiscard]] std::array<std::string, kMaterialTextureSlotNames.size()>
 ResolveMaterialTexturePaths(const MaterialAsset& asset);
 
-} // namespace fbzz::asset
+/// @note Immutable authoring values use the same binding rules without a borrowed mutable asset owner.
+[[nodiscard]] const std::vector<float>* FindMaterialParam(const MaterialAssetAuthoring& asset, std::string_view shaderVarName);
+void ApplyMaterialAssetParams(const MaterialAssetAuthoring& asset, const renderer::ShaderDescriptor& desc,
+    std::vector<uint8_t>& paramData);
+[[nodiscard]] std::array<std::string, kMaterialTextureSlotNames.size()>
+ResolveMaterialTexturePaths(const MaterialAssetAuthoring& asset);
+
+} /// @note namespace fbzz::asset

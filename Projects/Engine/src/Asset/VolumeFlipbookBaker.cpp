@@ -1488,15 +1488,28 @@ bool VolumeFlipbookBaker::TakeBakedFlipbook(BakedVolumeFlipbook& out)
 
 void VolumeFlipbookBaker::Tick(renderer::IRenderer& renderer, renderer::ResourceManager& resources)
 {
-    if (m_state == VolumeFlipbookBakeState::Encoding || m_state == VolumeFlipbookBakeState::Cancelling) {
+    if (m_state == VolumeFlipbookBakeState::Cancelling) {
+        if (m_encodeJob.valid() && m_encodeJob.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            (void)m_encodeJob.get();
+        } else if (m_encodeJob.valid()) {
+            return;
+        }
+        if (m_fluidBake.Busy()) {
+            PackedFluidVolume discarded;
+            (void)m_fluidBake.Poll(discarded);
+            if (m_fluidBake.Busy()) return;
+        }
+        m_fluidBake.Close();
+        m_state = VolumeFlipbookBakeState::Idle;
+        m_result = {};
+        m_result.message = "キャンセルしました";
+        ReleaseCpuBuffers();
+        return;
+    }
+    if (m_state == VolumeFlipbookBakeState::Encoding) {
         if (m_encodeJob.valid() && m_encodeJob.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
             const std::string error = m_encodeJob.get();
-            if (m_state == VolumeFlipbookBakeState::Cancelling) {
-                m_state = VolumeFlipbookBakeState::Idle;
-                m_result = {};
-                m_result.message = "キャンセルしました";
-                ReleaseCpuBuffers();
-            } else if (error.empty()) FinishOutputs();
+            if (error.empty()) FinishOutputs();
             else               Fail(error);
         }
         return;
@@ -1586,9 +1599,21 @@ void VolumeFlipbookBaker::Cancel()
 {
     if (!IsBusy()) return;
     /// @note 書き出し中は worker が Atlas を読んでいる。Tick で完了を確認してから解放する。
-    if (m_state == VolumeFlipbookBakeState::Encoding || m_state == VolumeFlipbookBakeState::Cancelling) {
+    if (m_state == VolumeFlipbookBakeState::Encoding
+        || (m_state == VolumeFlipbookBakeState::Cancelling && m_encodeJob.valid())) {
         m_encodeCancel.store(true, std::memory_order_relaxed);
         m_state = VolumeFlipbookBakeState::Cancelling;
+        return;
+    }
+    if (m_state == VolumeFlipbookBakeState::Cancelling) {
+        m_fluidBake.Cancel();
+        return;
+    }
+    if (m_settings.sourceKind == VolumeSourceKind::Fluid && !m_bakeUsesGpu && m_fluidBake.Busy()) {
+        m_fluidBake.Cancel();
+        m_state = VolumeFlipbookBakeState::Cancelling;
+        m_result = {};
+        m_result.message = "キャンセル中";
         return;
     }
     m_encodeJob = {};
@@ -1604,6 +1629,7 @@ void VolumeFlipbookBaker::Release(renderer::ResourceManager& resources)
     Cancel();
     if (m_encodeJob.valid()) m_encodeJob.wait();
     m_encodeJob = {};
+    m_fluidBake.Close();
     m_state = VolumeFlipbookBakeState::Idle;
     ReleaseCpuBuffers();
     m_fluidPreview.Close();
@@ -1658,6 +1684,7 @@ VolumeFlipbookBaker::~VolumeFlipbookBaker()
 {
     Cancel();
     if (m_encodeJob.valid()) m_encodeJob.wait();
+    m_fluidBake.Close();
 }
 
 }

@@ -6,6 +6,8 @@
 #include "Engine/Input/Input.hpp"
 #include "Engine/Input/Gamepad.hpp"
 #include "Engine/Input/KeyCode.hpp"
+#include <Engine/Core/Cursor.hpp>
+#include "GameInputConsumption.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -17,7 +19,7 @@ namespace fbzz::input {
 
 namespace {
 
-/// バインドは仮想キーコードの生値で持つ。KeyCode の値は VK_* と一致する。
+/// @note バインドは仮想キーコードの生値で持つ。KeyCode の値は VK_* と一致する。
 constexpr uint32_t Vk(KeyCode key) noexcept
 {
     return static_cast<uint32_t>(key);
@@ -25,7 +27,7 @@ constexpr uint32_t Vk(KeyCode key) noexcept
 
 /// @brief std::string_view で unordered_map を引くための透過ハッシュ。
 /// @note GetAction は 1 フレームに数十回呼ばれ、毎回 std::string を構築するとヒープ確保が
-///       ホットパスに乗るため、C++20 の異種検索でこれを回避する。
+/// @note ホットパスに乗るため、C++20 の異種検索でこれを回避する。
 struct TransparentStringHash {
     using is_transparent = void;
     [[nodiscard]] size_t operator()(std::string_view value) const noexcept
@@ -47,21 +49,21 @@ struct ActionRuntime {
 };
 
 struct AxisRuntime {
-    float rawAnalog = 0.0f; ///< デッドゾーン適用前のアナログ生値
-    float keyValue  = 0.0f; ///< デジタル入力を平滑化した値
-    float value     = 0.0f; ///< 最終値
+    float rawAnalog = 0.0f; ///< @note デッドゾーン適用前のアナログ生値
+    float keyValue  = 0.0f; ///< @note デジタル入力を平滑化した値
+    float value     = 0.0f; ///< @note 最終値
 };
 
-/// リバインドの進行状態。
+/// @note リバインドの進行状態。
 struct RebindState {
     bool        active       = false;
     bool        isAxis       = false;
     std::string targetName;
-    int         slot         = 0;  ///< 軸のみ: 0=positive / 1=negative / 2=analog
+    int         slot         = 0;  ///< @note 軸のみ: 0=positive / 1=negative / 2=analog
     int         bindingIndex = 0;
 
-    /// BeginRebind を呼ばせた「クリックそのもの」を捕捉しないために 1 フレーム待つ。UI ボタンを
-    /// 押して開始すると、同フレームの WM_LBUTTONDOWN がそのまま新しいバインドとして登録される。
+    /// @note BeginRebind を呼ばせた「クリックそのもの」を捕捉しないために 1 フレーム待つ。UI ボタンを
+    /// @note 押して開始すると、同フレームの WM_LBUTTONDOWN がそのまま新しいバインドとして登録される。
     int skipFrames = 1;
 };
 
@@ -84,16 +86,16 @@ struct MapContext {
 
 /// @brief fbzz_engine の状態を保持する関数内 static。
 /// @note SHARED ライブラリの WINDOWS_EXPORT_ALL_SYMBOLS はデータシンボルを自動エクスポートしない
-///       ため、状態への参照は必ずエクスポート済み関数を経由させる (AssetManager と同方針)。
+/// @note ため、状態への参照は必ずエクスポート済み関数を経由させる (AssetManager と同方針)。
 MapContext& Ctx()
 {
     static MapContext context;
     return context;
 }
 
-/// バインドが指すゲームパッドのスロットを解決する。
-/// -1 (既定) は「接続中の最初のパッド」。1 台も無い場合は 0 を返す
-/// (未接続スロットへの問い合わせは false / 0 を返すため無害)。
+/// @note バインドが指すゲームパッドのスロットを解決する。
+/// @note -1 (既定) は「接続中の最初のパッド」。1 台も無い場合は 0 を返す
+/// @note (未接続スロットへの問い合わせは false / 0 を返すため無害)。
 int ResolvePad(int padIndex)
 {
     if (padIndex >= 0) return padIndex;
@@ -104,28 +106,30 @@ int ResolvePad(int padIndex)
 float MouseAxisValue(uint32_t code)
 {
     switch (static_cast<MouseAxis>(code)) {
-    case MouseAxis::DELTA_X: return Input::MouseDelta().x;
-    case MouseAxis::DELTA_Y: return Input::MouseDelta().y;
-    case MouseAxis::SCROLL:  return Input::MouseScrollDelta();
+    case MouseAxis::DELTA_X: return input_detail::GameInputAccess::MouseDelta().x;
+    case MouseAxis::DELTA_Y: return input_detail::GameInputAccess::MouseDelta().y;
+    case MouseAxis::SCROLL:  return input_detail::GameInputAccess::MouseScrollDelta();
     default:                 return 0.0f;
     }
 }
 
-/// バインドをアナログ値として評価する。デジタルソースは押下時に scale を返す。
+/// @note バインドをアナログ値として評価する。デジタルソースは押下時に scale を返す。
 float EvaluateAnalog(const InputBinding& binding)
 {
+    const auto& consumed = input_detail::GameInputConsumptionState();
     switch (binding.source) {
     case BindingSource::KEY:
-        return Input::KeyHeld(static_cast<KeyCode>(binding.code)) ? binding.scale : 0.0f;
+        return input_detail::GameInputAccess::KeyHeld(static_cast<KeyCode>(binding.code)) ? binding.scale : 0.0f;
     case BindingSource::MOUSE_BUTTON:
-        return Input::MouseButton(static_cast<int>(binding.code)) ? binding.scale : 0.0f;
+        return input_detail::GameInputAccess::MouseButton(static_cast<int>(binding.code)) ? binding.scale : 0.0f;
     case BindingSource::GAMEPAD_BUTTON:
-        return Gamepad::ButtonHeld(static_cast<GamepadButton>(binding.code),
+        return core::Cursor::CanReadGameInput() && !consumed.PadButtonBlocked(ResolvePad(binding.padIndex), binding.code)
+            && Gamepad::ButtonHeld(static_cast<GamepadButton>(binding.code),
                                    ResolvePad(binding.padIndex))
                    ? binding.scale : 0.0f;
     case BindingSource::GAMEPAD_AXIS:
-        return Gamepad::Axis(static_cast<GamepadAxis>(binding.code),
-                             ResolvePad(binding.padIndex)) * binding.scale;
+        return !core::Cursor::CanReadGameInput() || consumed.PadAxisBlocked(ResolvePad(binding.padIndex), binding.code) ? 0.0f
+            : Gamepad::Axis(static_cast<GamepadAxis>(binding.code), ResolvePad(binding.padIndex)) * binding.scale;
     case BindingSource::MOUSE_AXIS:
         return MouseAxisValue(binding.code) * binding.scale;
     default:
@@ -133,28 +137,29 @@ float EvaluateAnalog(const InputBinding& binding)
     }
 }
 
-/// バインドをボタンとして評価する (押されているか)。
+/// @note バインドをボタンとして評価する (押されているか)。
 bool EvaluateHeld(const InputBinding& binding)
 {
+    const auto& consumed = input_detail::GameInputConsumptionState();
     switch (binding.source) {
     case BindingSource::KEY:
-        return Input::KeyHeld(static_cast<KeyCode>(binding.code));
+        return input_detail::GameInputAccess::KeyHeld(static_cast<KeyCode>(binding.code));
     case BindingSource::MOUSE_BUTTON:
-        return Input::MouseButton(static_cast<int>(binding.code));
+        return input_detail::GameInputAccess::MouseButton(static_cast<int>(binding.code));
     case BindingSource::GAMEPAD_BUTTON:
-        return Gamepad::ButtonHeld(static_cast<GamepadButton>(binding.code),
-                                   ResolvePad(binding.padIndex));
+        return core::Cursor::CanReadGameInput() && !consumed.PadButtonBlocked(ResolvePad(binding.padIndex), binding.code)
+            && Gamepad::ButtonHeld(static_cast<GamepadButton>(binding.code), ResolvePad(binding.padIndex));
     case BindingSource::GAMEPAD_AXIS:
     case BindingSource::MOUSE_AXIS:
         /// @note 軸をボタンとして使う場合、scale を掛けた値が閾値を超えたら押下とみなす。
-        ///       scale が -1 なら負方向に倒したときに発火する。
+        /// @note scale が -1 なら負方向に倒したときに発火する。
         return EvaluateAnalog(binding) >= binding.buttonThreshold;
     default:
         return false;
     }
 }
 
-/// current を target へ maxDelta だけ近づける。
+/// @note current を target へ maxDelta だけ近づける。
 float MoveTowards(float current, float target, float maxDelta)
 {
     const float diff = target - current;
@@ -164,7 +169,7 @@ float MoveTowards(float current, float target, float maxDelta)
 
 /// @brief デッドゾーンを適用し、残りの範囲を 0..1 へ線形に引き伸ばす。
 /// @note 単に切り捨てるだけだと、デッドゾーンを抜けた瞬間に値が 0 から deadZone へ不連続に飛び、
-///       動き出しがカクつくため引き伸ばす。
+/// @note 動き出しがカクつくため引き伸ばす。
 float ApplyDeadZone(float value, float deadZone)
 {
     const float magnitude = std::fabs(value);
@@ -177,7 +182,7 @@ float ApplyDeadZone(float value, float deadZone)
 
 /// @brief 複数のアナログバインドのうち、絶対値が最大のものを採用する。
 /// @note 左スティックとマウスを同時に定義した軸で両方が半分ずつ入力されると、加算では合計が
-///       1 を超えて暴れる。「実際に動かしている側が勝つ」が自然なため最大値を採る。
+/// @note 1 を超えて暴れる。「実際に動かしている側が勝つ」が自然なため最大値を採る。
 float SelectStrongestAnalog(const std::vector<InputBinding>& bindings)
 {
     float best = 0.0f;
@@ -235,7 +240,7 @@ const AxisRuntime* FindAxisRuntime(std::string_view name)
 bool CaptureFirstPressedInput(InputBinding& out)
 {
     /// @note キーボード / マウスボタン。
-    ///       ESC はリバインドの取消に予約するため捕捉しない。
+    /// @note ESC はリバインドの取消に予約するため捕捉しない。
     for (uint32_t code = 1; code < 256; ++code) {
         if (code == Vk(KeyCode::ESCAPE)) continue;
         if (!Input::KeyDown(static_cast<KeyCode>(code))) continue;
@@ -270,7 +275,7 @@ bool CaptureFirstPressedInput(InputBinding& out)
     }
 
     /// @note ゲームパッドのスティック。大きく倒した場合のみ軸として捕捉する。通常操作で通過しうる
-    ///       値 (0.3〜0.5) を拾うと、リバインド待機中にスティックへ軽く触れただけで確定してしまう。
+    /// @note 値 (0.3〜0.5) を拾うと、リバインド待機中にスティックへ軽く触れただけで確定してしまう。
     constexpr float AXIS_CAPTURE_THRESHOLD = 0.7f;
     for (int pad = 0; pad < Gamepad::MAX_PADS; ++pad) {
         if (!Gamepad::IsConnected(pad)) continue;
@@ -315,7 +320,7 @@ void ApplyCapturedBinding(const InputBinding& binding)
 
     if (target) {
         /// @note 軸の positive / negative へ割り当てる場合、捕捉時の scale (倒した向き) は
-        ///       デジタル扱いでは意味を持たないため 1.0 に戻す。
+        /// @note デジタル扱いでは意味を持たないため 1.0 に戻す。
         InputBinding stored = binding;
         if (rebind.isAxis && rebind.slot != 2) stored.scale = 1.0f;
 
@@ -332,7 +337,7 @@ void ApplyCapturedBinding(const InputBinding& binding)
     context.rebindCompleted = true;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name ライフサイクル
 
@@ -416,7 +421,7 @@ void InputActionMap::LoadDefaults()
 
     /// @name 視点
     /// @note マウス Delta は既にフレーム間の移動量であり、-1..1 への正規化やデッドゾーン、
-    ///       平滑化を掛けると視点操作が破綻するため raw = true にする。
+    /// @note 平滑化を掛けると視点操作が破綻するため raw = true にする。
     {
         InputAxis axis{};
         axis.name     = "LookX";
@@ -462,9 +467,16 @@ void InputActionMap::SetEnabled(bool enabled)
     context.enabled = enabled;
 
     /// @note 無効化時に押下状態を残すと、再有効化した最初のフレームで
-    ///       押しっぱなしの Down/Up が誤って発火する。
+    /// @note 押しっぱなしの Down/Up が誤って発火する。
     for (ActionRuntime& runtime : context.actionRuntime) runtime = ActionRuntime{};
     for (AxisRuntime& runtime : context.axisRuntime)     runtime = AxisRuntime{};
+}
+
+void InputActionMap::ResetRuntime()
+{
+    MapContext& context = Ctx();
+    for (ActionRuntime& runtime : context.actionRuntime) runtime = {};
+    for (AxisRuntime& runtime : context.axisRuntime) runtime = {};
 }
 
 bool InputActionMap::IsEnabled()
@@ -478,10 +490,9 @@ void InputActionMap::Update(float dt)
 {
     MapContext& context = Ctx();
     context.rebindCompleted = false;
-
     /// @name リバインド待機中は通常評価を止める
     /// @note 割り当て中に押したキーがそのままゲーム操作としても発火すると、「決定キーを割り当てた
-    ///       瞬間にメニューが閉じる」といった事故になる。
+    /// @note 瞬間にメニューが閉じる」といった事故になる。
     if (context.rebind.active) {
         if (context.rebind.skipFrames > 0) {
             --context.rebind.skipFrames;
@@ -519,11 +530,11 @@ void InputActionMap::Update(float dt)
         runtime.previous = runtime.current;
 
         /// @note 全バインドの OR を取ってからアクション単位で差分を取る。バインドごとに Down を
-        ///       判定すると、キーとパッドを同時に押した際に Down が 2 回発火し二段ジャンプになる。
+        /// @note 判定すると、キーとパッドを同時に押した際に Down が 2 回発火し二段ジャンプになる。
         bool held = AnyHeld(action.bindings);
 
         /// @note AI 自動プレイテストの注入をアクション層にも合流させる。EditorMCP がアクション名で
-        ///       操作できないと、入力抽象の導入で自動テストがゲームを操作できなくなる。
+        /// @note 操作できないと、入力抽象の導入で自動テストがゲームを操作できなくなる。
         if (Input::GetVirtualButton(action.name)) held = true;
 
         runtime.current = held;
@@ -556,7 +567,7 @@ void InputActionMap::Update(float dt)
 
         if (axis.raw) {
             /// @note 生値モードはデッドゾーンも平滑化も掛けない。
-            ///       アナログが無入力ならデジタル値をそのまま使う。
+            /// @note アナログが無入力ならデジタル値をそのまま使う。
             runtime.value = runtime.rawAnalog != 0.0f ? runtime.rawAnalog : runtime.keyValue;
         } else {
             const float analog = ApplyDeadZone(runtime.rawAnalog, axis.deadZone);
@@ -564,8 +575,8 @@ void InputActionMap::Update(float dt)
         }
 
         /// @note AI 注入の軸値があれば優先する。
-        ///       制約: GetVirtualAxis は「未設定」と「0 に設定」を区別できないため、
-        ///       0 以外が設定されている場合のみ上書きする。
+        /// @note 制約: GetVirtualAxis は「未設定」と「0 に設定」を区別できないため、
+        /// @note 0 以外が設定されている場合のみ上書きする。
         const float injected = Input::GetVirtualAxis(axis.name);
         if (injected != 0.0f) runtime.value = injected;
     }
@@ -615,7 +626,7 @@ math::Vector2 InputActionMap::GetAxis2D(std::string_view xName, std::string_view
     if (axisX.raw || axisY.raw) return { runX.value, runY.value };
 
     /// @note 半径方向のデッドゾーン。軸ごとに独立して切ると正方形のデッドゾーンになり、
-    ///       スティックを斜めに倒したときの実効感度が方向によって変わる。
+    /// @note スティックを斜めに倒したときの実効感度が方向によって変わる。
     const float deadZone = std::max(axisX.deadZone, axisY.deadZone);
     const float length   = std::sqrt(runX.rawAnalog * runX.rawAnalog
                                      + runY.rawAnalog * runY.rawAnalog);
@@ -769,8 +780,8 @@ bool InputActionMap::ConsumeRebindCompleted()
 
 namespace {
 
-/// 主要な仮想キーの表示名。網羅は目指さず、既定バインドと
-/// 一般的なキーコンフィグ対象を優先する。未知のキーは 16 進表記へフォールバックする。
+/// @note 主要な仮想キーの表示名。網羅は目指さず、既定バインドと
+/// @note 一般的なキーコンフィグ対象を優先する。未知のキーは 16 進表記へフォールバックする。
 const char* DescribeKeyCode(uint32_t code)
 {
     switch (code) {
@@ -790,7 +801,7 @@ const char* DescribeKeyCode(uint32_t code)
     }
 }
 
-} // namespace
+} /// @note namespace
 
 std::string InputActionMap::DescribeBinding(const InputBinding& binding)
 {
@@ -842,4 +853,4 @@ std::string InputActionMap::DescribeBinding(const InputBinding& binding)
     }
 }
 
-} // namespace fbzz::input
+} /// @note namespace fbzz::input

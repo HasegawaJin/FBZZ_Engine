@@ -6,6 +6,7 @@
 #pragma once
 #include <string>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace fbzz::renderer { class ResourceManager; }
@@ -25,6 +26,16 @@ ScriptComponent CloneScriptComponent(const ScriptComponent& src,
                                      Scene* dstScene,
                                      GameObject* dstOwner);
 
+/// @brief Script の設定を保存値へ採取し、実体生成・参照解決・callback を遅延した複製を作る。
+/// @note owner forest 全体の GUID 再対応後に PreparePassiveCopiedScripts / FinalizePassiveCopiedScripts を呼ぶ。
+ScriptComponent CloneScriptComponentPassive(const ScriptComponent& src, const Scene* srcScene);
+
+/// @brief forest の全 GameObject が作られた後、コピー済み Script 実体へ保存値を復元する。
+void PreparePassiveCopiedScripts(Scene& scene, std::span<const EntityID> owners);
+
+/// @brief 全コピー先の参照解決後に Script の内部参照と OnAfterDeserialize を確定する。
+void FinalizePassiveCopiedScripts(Scene& scene, std::span<const EntityID> owners);
+
 class SceneSerializer {
 public:
     /// @brief Scene を `.fbzz` ファイルに保存する。
@@ -33,8 +44,12 @@ public:
 
     /// @brief Scene を TOML テキストへ直列化する。失敗時は空文字。
     /// @param scenePath シーンの置き場所。Terrain はこの隣へ `.terrain`/`.mat` の実体を書き出す副作用を持つ (参照だけ保存すると実体が古いまま残り再起動後に白地形になる)。省略すると副作用を起こさず純粋にテキストだけを返す。
-    /// @note 失敗時も戻り値は空文字になるため「中身が空」と区別できない。読み込み側の LoadDataFromText と対。
+    /// @note Script 設定の保存失敗時は空文字を返し、全 Script の以前の保存データを保持する。読み込み側の LoadDataFromText と対。
     static std::string SaveToText(Scene& scene, const std::string& scenePath = {});
+    /// @note 保存失敗の型・フィールド等を diagnostic に返す。成功時は空にする。
+    static std::string SaveToText(Scene& scene, const std::string& scenePath, std::string& diagnostic);
+    /// @note Play baseline acquisition skips callbacks and cached serialized-data publication on the parked Edit objects.
+    static std::string CapturePassiveClone(Scene& scene, std::string& diagnostic);
 
     /// @brief `.fbzz` ファイルから Scene を復元する。
     /// @param resources nullptr ならデータだけ復元する。詳細は LoadData を参照。
@@ -98,6 +113,8 @@ public:
     {
         return AppendObjects(scene, tomlText, &resources, outRoots);
     }
+private:
+    static std::string SaveToTextCore(Scene& scene, const std::string& scenePath, std::string& diagnostic, bool passiveClone);
 };
 
 } /// @note namespace fbzz::scene

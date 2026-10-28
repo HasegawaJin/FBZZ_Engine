@@ -6,6 +6,8 @@
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Audio/VoiceLifetime.hpp>
 #include <memory>
+#include <algorithm>
+#include <cmath>
 #include <Math/Vector3.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -38,6 +40,36 @@ struct AudioSourceComponent {
     float       airAbsorption = 0.0f;
     /// @note 相対速度によるピッチ変化の強さ。0 で無効、1 で物理どおり。既定は 0。
     float       dopplerLevel = 0.0f;
+    /// @brief 音源単位の正規化 low-pass。1 は無加工。共有バスを変えず水中などの音色を制御する。
+    float       lowPassCutoff = 1.0f;
+    /// @note 補間状態は保存しない。音量フェードとは独立して Sim 時間で進める。
+    float       m_lowPassFrom = 1.0f;
+    float       m_lowPassTarget = 1.0f;
+    float       m_lowPassElapsed = 0.0f;
+    float       m_lowPassDuration = 0.0f;
+    bool        m_lowPassFading = false;
+
+    /// @return 不正・非有限入力では現在値と補間状態を変更しない。
+    bool SetLowPassCutoff(float cutoff)
+    {
+        if (!std::isfinite(cutoff) || cutoff < 0.0f || cutoff > 1.0f) return false;
+        lowPassCutoff = cutoff;
+        m_lowPassFading = false;
+        return true;
+    }
+    /// @brief 現在の cutoff から補間する。0 秒は即時適用、再要求は現在値から開始する。
+    bool FadeLowPassTo(float cutoff, float seconds)
+    {
+        if (!std::isfinite(cutoff) || cutoff < 0.0f || cutoff > 1.0f
+            || !std::isfinite(seconds) || seconds < 0.0f) return false;
+        if (seconds == 0.0f) return SetLowPassCutoff(cutoff);
+        m_lowPassFrom = std::isfinite(lowPassCutoff) ? std::clamp(lowPassCutoff, 0.0f, 1.0f) : 1.0f;
+        m_lowPassTarget = cutoff;
+        m_lowPassElapsed = 0.0f;
+        m_lowPassDuration = seconds;
+        m_lowPassFading = true;
+        return true;
+    }
     /// @note 同時発音数が上限に達したとき、これが低い音から畳まれる。
     int         priority = 0;
     bool        enabled     = true;
@@ -74,12 +106,21 @@ struct AudioSourceComponent {
     /// @note 1 フレームに積める上限。AudioSystem は SimOnly なので、Edit モードで
     /// @note 誰も引き取らないまま積み続けても膨らまないように蓋をする。
     static constexpr size_t MAX_PENDING_ONE_SHOTS = 16;
+    /// @note 再生中の OneShot も所有音源を追従する。ハンドルと倍率のみを保持し PCM は保持しない。
+    struct ActiveOneShot { uint32_t voiceId = 0; float volumeScale = 1.0f; };
+    std::vector<ActiveOneShot> m_activeOneShots;
+    /// @note 上限に達した音源の追加要求は捨てる。既存 voice を再起動しない。
+    static constexpr size_t MAX_ACTIVE_ONE_SHOTS = 16;
 
     const char* GetTypeName() const { return "Audio Source"; }
     void Reflect(IReflector& r)
     {
         r.Field("enabled", enabled);
+        r.BeginField("clipPath", "clipPath");
+        r.SetFieldHint(IReflector::FieldHint::File);
+        r.SetFileExtensions(kAudioClipExtensions);
         r.Field("clipPath", clipPath);
+        r.EndField();
         r.Field("playOnAwake", playOnAwake);
         r.Field("loop", loop);
         r.Field("streaming", streaming);
@@ -102,6 +143,7 @@ struct AudioSourceComponent {
         r.FloatRange("dopplerLevel", dopplerLevel, 0.0f, 1.0f);
         r.Tooltip("相対速度によるピッチ変化 (0 で無効、1 で物理どおり)");
         r.EndField();
+        r.FloatRange("lowPassCutoff", lowPassCutoff, 0.0f, 1.0f);
         r.BeginField("priority", "priority");
         r.Field("priority", priority);
         r.Tooltip("同時発音数が上限に達したとき、低い音から畳まれる");

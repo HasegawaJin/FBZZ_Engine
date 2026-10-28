@@ -10,7 +10,6 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -59,10 +58,7 @@ std::string LowerExtension(const std::string& path)
 {
     const auto dot = path.rfind('.');
     if (dot == std::string::npos) return {};
-    std::string ext = path.substr(dot);
-    std::transform(ext.begin(), ext.end(), ext.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return ext;
+    return util::StringUtils::ToLowerCopy(path.substr(dot));
 }
 
 /// @note 論理パス ("Assets/...") とリネーム後の実体を AssetManager の規則で解決する。
@@ -72,16 +68,6 @@ std::string ResolveClipPath(const std::string& path)
     const std::string resolved = asset::AssetManager::ResolveAssetPath(path);
     if (!resolved.empty() && util::FileSystem::Exists(resolved)) return resolved;
     return path;
-}
-
-bool EqualsIgnoreCase(std::string_view a, std::string_view b)
-{
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i) {
-        if (std::tolower(static_cast<unsigned char>(a[i])) !=
-            std::tolower(static_cast<unsigned char>(b[i]))) return false;
-    }
-    return true;
 }
 
 } /// @note namespace
@@ -232,7 +218,7 @@ BusIndex AudioManager::FindBus(std::string_view name) const
 {
     if (name.empty()) return kMasterBus;
     for (size_t i = 0; i < m_busLayout.size(); ++i)
-        if (EqualsIgnoreCase(m_busLayout[i].name, name)) return static_cast<BusIndex>(i);
+        if (util::StringUtils::EqualsCIView(m_busLayout[i].name, name)) return static_cast<BusIndex>(i);
     return kMasterBus;
 }
 
@@ -467,12 +453,12 @@ void AudioManager::FadeOutAndStop(uint32_t voiceId, float seconds)
 
 void AudioManager::PauseVoice(uint32_t voiceId)
 {
-    if (voiceId != 0) m_device.PauseBuffer(voiceId);
+    if (m_voices.contains(voiceId)) m_device.PauseBuffer(voiceId);
 }
 
 void AudioManager::ResumeVoice(uint32_t voiceId)
 {
-    if (voiceId != 0) m_device.ResumeBuffer(voiceId);
+    if (m_voices.contains(voiceId)) m_device.ResumeBuffer(voiceId);
 }
 
 void AudioManager::QueuePositional(PositionalRequest request)
@@ -531,36 +517,36 @@ void AudioManager::StopAllVoices()
 
 void AudioManager::SetVoiceVolume(uint32_t voiceId, float volume)
 {
-    if (voiceId == 0) return;
+    if (voiceId == 0 || !std::isfinite(volume)) return;
     volume = (std::max)(volume, 0.0f);
 
     const auto it = m_voices.find(voiceId);
-    if (it == m_voices.end()) { m_device.SetVolume(voiceId, volume); return; }
+    if (it == m_voices.end()) return;
     it->second.volume = volume;
     ApplyVoiceGain(voiceId, it->second);
 }
 
 void AudioManager::SetVoicePitch(uint32_t voiceId, float pitch)
 {
-    if (voiceId != 0) m_device.SetPitch(voiceId, pitch);
+    if (m_voices.contains(voiceId) && std::isfinite(pitch)) m_device.SetPitch(voiceId, pitch);
 }
 
 void AudioManager::SetVoicePan(uint32_t voiceId, float pan)
 {
-    if (voiceId != 0) m_device.SetPan(voiceId, pan);
+    if (m_voices.contains(voiceId) && std::isfinite(pan)) m_device.SetPan(voiceId, std::clamp(pan, -1.0f, 1.0f));
 }
 
 void AudioManager::SetVoiceLowPass(uint32_t voiceId, float normalizedCutoff)
 {
-    if (voiceId != 0) m_device.SetLowPass(voiceId, normalizedCutoff);
+    if (m_voices.contains(voiceId) && std::isfinite(normalizedCutoff)) m_device.SetLowPass(voiceId, std::clamp(normalizedCutoff, 0.0f, 1.0f));
 }
 
 void AudioManager::SetVoiceSend(uint32_t voiceId, std::string_view busName, float level)
 {
-    if (voiceId == 0) return;
+    if (!m_voices.contains(voiceId)) return;
     BusIndex bus = kInvalidBus;
     for (size_t i = 0; i < m_busLayout.size(); ++i) {
-        if (EqualsIgnoreCase(m_busLayout[i].name, busName)) {
+        if (util::StringUtils::EqualsCIView(m_busLayout[i].name, busName)) {
             bus = static_cast<BusIndex>(i);
             break;
         }

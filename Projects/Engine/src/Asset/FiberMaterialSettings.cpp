@@ -9,7 +9,7 @@
 
 namespace fbzz::asset {
 namespace {
-float ReadFiberFloat(const MaterialAsset* asset, const char* name, float fallback, float minimum, float maximum)
+float ReadFiberFloat(const MaterialAssetAuthoring* asset, const char* name, float fallback, float minimum, float maximum)
 {
     if (!asset) return fallback;
     const auto it = asset->params.find(name);
@@ -18,7 +18,7 @@ float ReadFiberFloat(const MaterialAsset* asset, const char* name, float fallbac
     return std::clamp(it->second[0], minimum, maximum);
 }
 
-math::Vector4 ReadFiberColor(const MaterialAsset* asset, const char* name, math::Vector4 fallback)
+math::Vector4 ReadFiberColor(const MaterialAssetAuthoring* asset, const char* name, math::Vector4 fallback)
 {
     if (!asset) return fallback;
     const auto it = asset->params.find(name);
@@ -27,10 +27,11 @@ math::Vector4 ReadFiberColor(const MaterialAsset* asset, const char* name, math:
     return { std::clamp(it->second[0], 0.0f, 1.0f), std::clamp(it->second[1], 0.0f, 1.0f),
              std::clamp(it->second[2], 0.0f, 1.0f), 1.0f };
 }
-} // namespace
+} /// @note namespace
 
-FiberMaterialSettings ResolveFiberMaterial(const MaterialAsset* asset)
+FiberMaterialSettings ResolveFiberMaterial(const MaterialAssetAuthoring& values)
 {
+    const auto* asset = &values;
     FiberMaterialSettings result;
     result.m_rootColor = ReadFiberColor(asset, "rootColor", result.m_rootColor);
     result.m_tipColor = ReadFiberColor(asset, "tipColor", result.m_tipColor);
@@ -46,7 +47,10 @@ FiberMaterialSettings ResolveFiberMaterial(const MaterialAsset* asset)
     result.m_specular = ReadFiberFloat(asset, "specularStrength", result.m_specular, 0.0f, 1.0f);
     result.m_transmission = ReadFiberFloat(asset, "transmission", result.m_transmission, 0.0f, 1.0f);
     result.m_rootOcclusion = ReadFiberFloat(asset, "rootOcclusion", result.m_rootOcclusion, 0.0f, 1.0f);
-    result.m_grass = ReadFiberFloat(asset, "grassShading", result.m_grass, 0.0f, 1.0f);
+    /// @note 新キーを優先し、保存前の旧材質も同じ照明モデルへ解決する。
+    const char* shadingKey = asset && (asset->params.contains("planarShading") || asset->integerParams.contains("planarShading"))
+        ? "planarShading" : "grassShading";
+    result.m_planarShading = ReadFiberFloat(asset, shadingKey, result.m_planarShading, 0.0f, 1.0f);
     result.m_worldMapping = ReadFiberFloat(asset, "worldMapping", result.m_worldMapping, 0.0f, 1.0f);
     result.m_finWidth = ReadFiberFloat(asset, "finSilhouetteWidth", result.m_finWidth, 0.01f, 1.0f);
     result.m_specularShift = ReadFiberFloat(asset, "specularShift", result.m_specularShift, 0.0f, 0.5f);
@@ -56,4 +60,9 @@ FiberMaterialSettings ResolveFiberMaterial(const MaterialAsset* asset)
     result.m_clumpTwist = ReadFiberFloat(asset, "clumpTwist", result.m_clumpTwist, -2.0f, 2.0f);
     return result;
 }
-} // namespace fbzz::asset
+FiberMaterialSettings ResolveFiberMaterial(const MaterialAsset* asset)
+{
+    const auto snapshot = asset ? asset->ReadAuthoring() : MaterialAsset::AuthoringSnapshotPtr{};
+    return snapshot ? ResolveFiberMaterial(snapshot->Data()) : FiberMaterialSettings{};
+}
+} /// @note namespace fbzz::asset
