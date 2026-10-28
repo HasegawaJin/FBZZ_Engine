@@ -7,6 +7,7 @@
 #include <Engine/Asset/FzTerrainFormat.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
+#include <Engine/Scene/TerrainSurfaceGeometry.hpp>
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -77,10 +78,11 @@ void FoldDenseWeights(const uint8_t* dense, uint32_t layerCount, size_t vertexCo
     }
 }
 
-} // namespace
+} /// @note namespace
 
 bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& absPath) const
 {
+    if (!scene::IsValidTerrainSurfaceGeometry(asset.surfacePositions, asset.surfaceIndices)) return false;
     std::ofstream f(absPath, std::ios::binary);
     if (!f) {
         FBZZ_LOG_ERROR("FzTerrainSerializer: cannot open for write [%s]", absPath.c_str());
@@ -103,6 +105,8 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
     hdr.layerCount       = layerCount;
     hdr.holeCount        = static_cast<uint32_t>(holes.size());
     hdr.heightBlendDepth = asset.heightBlendDepth;
+    hdr.surfaceVertexCount = static_cast<uint32_t>(asset.surfacePositions.size());
+    hdr.surfaceIndexCount = static_cast<uint32_t>(asset.surfaceIndices.size());
     WriteArray(f, &hdr, 1);
 
     for (uint32_t li = 0; li < layerCount; ++li) {
@@ -137,12 +141,20 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
     }
 
     WriteArray(f, holes.data(), holes.size());
+    char surfacePath[FZTERRAIN_PATH_LEN]{};
+    std::memcpy(surfacePath, asset.surfaceMaterial.data(),
+        (std::min)(asset.surfaceMaterial.size(), static_cast<size_t>(FZTERRAIN_PATH_LEN - 1)));
+    WriteArray(f, surfacePath, FZTERRAIN_PATH_LEN);
+    static_assert(sizeof(math::Vector3) == 3 * sizeof(float));
+    WriteArray(f, asset.surfacePositions.data(), asset.surfacePositions.size());
+    WriteArray(f, asset.surfaceIndices.data(), asset.surfaceIndices.size());
 
     return f.good();
 }
 
 bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsset) const
 {
+    TerrainAsset candidate;
     std::ifstream f(absPath, std::ios::binary | std::ios::ate);
     if (!f) {
         FBZZ_LOG_ERROR("FzTerrainSerializer: cannot open [%s]", absPath.c_str());
@@ -165,7 +177,7 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
     };
     const auto readBytes = [&](void* dst, size_t bytes) -> bool {
         if (bytes > data.size() - pos) return false;
-        std::memcpy(dst, data.data() + pos, bytes);
+        if (bytes != 0) std::memcpy(dst, data.data() + pos, bytes);
         pos += bytes;
         return true;
     };
@@ -182,23 +194,23 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
         return false;
     }
 
-    outAsset.columns          = hdr.columns;
-    outAsset.rows             = hdr.rows;
-    outAsset.cellSize         = hdr.cellSize;
-    outAsset.maxHeight        = hdr.maxHeight;
-    outAsset.chunkSize        = hdr.chunkSize;
-    outAsset.heightBlendDepth = hdr.version >= 2 ? hdr.heightBlendDepth : 0.2f;
+    candidate.columns          = hdr.columns;
+    candidate.rows             = hdr.rows;
+    candidate.cellSize         = hdr.cellSize;
+    candidate.maxHeight        = hdr.maxHeight;
+    candidate.chunkSize        = hdr.chunkSize;
+    candidate.heightBlendDepth = hdr.version >= 2 ? hdr.heightBlendDepth : 0.2f;
 
     if (!fits(hdr.layerCount, FZTERRAIN_PATH_LEN)) {
         FBZZ_LOG_ERROR("FzTerrainSerializer: truncated layer paths [%s]", absPath.c_str());
         return false;
     }
     const uint32_t keptLayers = (std::min)(hdr.layerCount, static_cast<uint32_t>(scene::TERRAIN_MAX_LAYERS));
-    outAsset.layerMaterialPaths.assign(keptLayers, std::string{});
+    candidate.layerMaterialPaths.assign(keptLayers, std::string{});
     for (uint32_t li = 0; li < hdr.layerCount; ++li) {
         char pathBuf[FZTERRAIN_PATH_LEN + 1]{};
         if (!readBytes(pathBuf, FZTERRAIN_PATH_LEN)) return false;
-        if (li < keptLayers) outAsset.layerMaterialPaths[li] = pathBuf;
+        if (li < keptLayers) candidate.layerMaterialPaths[li] = pathBuf;
     }
 
     const size_t heightCount = static_cast<size_t>(hdr.columns) * hdr.rows;
@@ -206,10 +218,13 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
         FBZZ_LOG_ERROR("FzTerrainSerializer: truncated height data [%s]", absPath.c_str());
         return false;
     }
-    outAsset.heightData.resize(heightCount);
-    if (!readBytes(outAsset.heightData.data(), heightCount * sizeof(float))) return false;
+    candidate.heightData.resize(heightCount);
+    if (!readBytes(candidate.heightData.data(), heightCount * sizeof(float))) return false;
 
-    outAsset.holeCells.clear();
+    candidate.holeCells.clear();
+    candidate.surfacePositions.clear();
+    candidate.surfaceIndices.clear();
+    candidate.surfaceMaterial.clear();
     if (hdr.version == 1) {
         if (hdr.layerCount != 0 && !fits(heightCount, hdr.layerCount)) {
             FBZZ_LOG_ERROR("FzTerrainSerializer: truncated splat data [%s]", absPath.c_str());
@@ -217,7 +232,8 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
         }
         std::vector<uint8_t> dense(heightCount * hdr.layerCount);
         if (!readBytes(dense.data(), dense.size())) return false;
-        FoldDenseWeights(dense.data(), hdr.layerCount, heightCount, outAsset.splatIndices, outAsset.splatWeights);
+        FoldDenseWeights(dense.data(), hdr.layerCount, heightCount, candidate.splatIndices, candidate.splatWeights);
+        outAsset = std::move(candidate);
         return true;
     }
 
@@ -226,14 +242,14 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
         FBZZ_LOG_ERROR("FzTerrainSerializer: truncated splat data [%s]", absPath.c_str());
         return false;
     }
-    outAsset.splatIndices.resize(slotCount);
-    outAsset.splatWeights.resize(slotCount);
-    if (!readBytes(outAsset.splatIndices.data(), slotCount) ||
-        !readBytes(outAsset.splatWeights.data(), slotCount))
+    candidate.splatIndices.resize(slotCount);
+    candidate.splatWeights.resize(slotCount);
+    if (!readBytes(candidate.splatIndices.data(), slotCount) ||
+        !readBytes(candidate.splatWeights.data(), slotCount))
         return false;
     /// @note 読んだ値を信用せず正準形へ直す。番号が層数以上でも残す (描画が既定層で補う)。
     for (size_t base = 0; base < slotCount; base += SLOTS)
-        scene::terrain_splat::Canonicalize(&outAsset.splatIndices[base], &outAsset.splatWeights[base]);
+        scene::terrain_splat::Canonicalize(&candidate.splatIndices[base], &candidate.splatWeights[base]);
 
     if (!fits(hdr.holeCount, sizeof(uint32_t))) {
         FBZZ_LOG_ERROR("FzTerrainSerializer: truncated hole data [%s]", absPath.c_str());
@@ -241,8 +257,20 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
     }
     std::vector<uint32_t> holes(hdr.holeCount);
     if (!holes.empty() && !readBytes(holes.data(), holes.size() * sizeof(uint32_t))) return false;
-    outAsset.holeCells = SanitizeHoles(holes, CellCountOf(hdr.columns, hdr.rows));
+    candidate.holeCells = SanitizeHoles(holes, CellCountOf(hdr.columns, hdr.rows));
+    if (hdr.version >= 3) {
+        char surfacePath[FZTERRAIN_PATH_LEN + 1]{};
+        if (!readBytes(surfacePath, FZTERRAIN_PATH_LEN) || !fits(hdr.surfaceVertexCount, sizeof(math::Vector3))) return false;
+        candidate.surfaceMaterial = surfacePath;
+        candidate.surfacePositions.resize(hdr.surfaceVertexCount);
+        if (!readBytes(candidate.surfacePositions.data(), candidate.surfacePositions.size() * sizeof(math::Vector3))
+            || !fits(hdr.surfaceIndexCount, sizeof(uint32_t))) return false;
+        candidate.surfaceIndices.resize(hdr.surfaceIndexCount);
+        if (!readBytes(candidate.surfaceIndices.data(), candidate.surfaceIndices.size() * sizeof(uint32_t))
+            || !scene::IsValidTerrainSurfaceGeometry(candidate.surfacePositions, candidate.surfaceIndices)) return false;
+    }
+    outAsset = std::move(candidate);
     return true;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

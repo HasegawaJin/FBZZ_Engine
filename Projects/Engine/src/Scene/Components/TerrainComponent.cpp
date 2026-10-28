@@ -2,10 +2,10 @@
 /// @brief   ハイトマップ地形コンポーネントのデータ操作 (高さクエリ・法線・層・穴)。
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
-///
 /// @note GPU メッシュ生成・描画は TerrainRenderPass.cpp が持つ。ここは純粋なデータ操作だけ。
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include <Math/Vector3.hpp>
+#include <Engine/Scene/TerrainSurfaceGeometry.hpp>
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -34,10 +34,14 @@ void TerrainComponent::EnsureSplat()
 
 void TerrainComponent::InitFlat(float height)
 {
+    ++surfaceRevision;
     const float safeMaxHeight = (std::max)(maxHeight, 0.0001f);
     heightData.assign(VertexCount(), height / safeMaxHeight);
     InitDefaultSplat();
     holeData.clear();
+    surfacePositions.clear();
+    surfaceIndices.clear();
+    surfaceMaterial.clear();
 }
 
 void TerrainComponent::Resize(int newColumns, int newRows)
@@ -81,10 +85,11 @@ void TerrainComponent::Resize(int newColumns, int newRows)
     splatIndices = std::move(newIndices);
     splatWeights = std::move(newWeights);
     holeData     = std::move(newHoles);
+    ++surfaceRevision;
 }
 
 /// @note 中心差分: dh/dx = (h(x+1) - h(x-1)) / 2Δ、normal = normalize(-dh/dx, 1, -dh/dz) [Y 上]。
-///       片側差分より精度が高く、境界でも clamp サンプリングで安定する。
+/// @note 片側差分より精度が高く、境界でも clamp サンプリングで安定する。
 math::Vector3 TerrainComponent::ComputeNormal(int x, int z) const
 {
     float dhdx = (SampleHeight(x + 1, z) - SampleHeight(x - 1, z)) / (2.0f * cellSize);
@@ -93,7 +98,7 @@ math::Vector3 TerrainComponent::ComputeNormal(int x, int z) const
 }
 
 /// @note バイリニア補間は非平面セル内で三角形面と一致せず、足 IK が地面から浮くため
-///       描画・コライダーと同じ分割 (lower: 00,01,10 / upper: 10,01,11) で補間する。
+/// @note 描画・コライダーと同じ分割 (lower: 00,01,10 / upper: 10,01,11) で補間する。
 float TerrainComponent::GetHeightAt(float localX, float localZ) const
 {
     if (heightData.empty()) return 0.0f;
@@ -259,6 +264,17 @@ size_t TerrainComponent::CountHoles() const
                                              [](std::uint8_t v) { return v != 0; }));
 }
 
+bool TerrainComponent::SetSurfaceGeometry(std::vector<math::Vector3> positions,
+    std::vector<uint32_t> indices, std::string material)
+{
+    if (!IsValidTerrainSurfaceGeometry(positions, indices)) return false;
+    surfacePositions = std::move(positions);
+    surfaceIndices = std::move(indices);
+    surfaceMaterial = std::move(material);
+    RequestSurfaceRebuild();
+    return true;
+}
+
 bool TerrainComponent::SetHeightAtGrid(int x, int z, float worldHeight)
 {
     if (columns <= 0 || rows <= 0) return false;
@@ -288,4 +304,4 @@ bool TerrainComponent::PaintLayerAtGrid(int x, int z, int layer, float weight)
     return true;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

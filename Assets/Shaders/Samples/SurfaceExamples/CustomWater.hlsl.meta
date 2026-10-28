@@ -1,0 +1,14 @@
+# @file    CustomWater.hlsl.meta
+# @brief   Sample asset identity and explicit shared geometry contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = 'bc66025ea0d14f44ba28ebdf975bdde2'
+
+[shader]
+version = 1
+vertex = 'water_surface_v1'
+surface = 'water_v1'
+opacity = 'custom'
+variants = 'none'
+preview = 'water'

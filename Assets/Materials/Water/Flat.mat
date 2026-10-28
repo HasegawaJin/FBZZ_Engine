@@ -7,12 +7,22 @@ shader = 'guid:c496f8e37c024b17aac1fce28730e300|Assets/Shaders/Water/Water.hlsl'
 version = 1
 
 [params]
+crestFoamThreshold = 0.25
+crestFoamFade = 0.15
+crestFoamStrength = 0.0
+crestFoamLifetime = 1.2
+foamColor = [ 0.95, 0.98, 1.0 ]
+foamRoughness = 0.7
 causticsIntensity = 0.3
 causticsSpeed = 0.08
 causticsTiling = 0.6
 currentSpeed = 0.0
 deepColor = [ 0.02, 0.12, 0.16 ]
 deepDepth = 4.0
+opticalMode = 0.0
+absorptionCoefficients = [ 0.5, 0.14, 0.08 ]
+scatteringCoefficients = [ 0.2, 0.28, 0.24 ]
+phaseG = 0.7
 detailScale = 0.25
 detailSpeed = 0.12
 detailStrength = 0.3

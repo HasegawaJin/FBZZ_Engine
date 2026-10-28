@@ -1,0 +1,6 @@
+# @file    WaterMediumProbe.hlsl.meta
+# @brief   水域GPU照会と受光の検証シェーダー。
+# @author  Hasegawa Jin
+# @date    2026-10-09
+[meta]
+guid = 'f6dca029db744a17b6aa1f4b9f125d82'

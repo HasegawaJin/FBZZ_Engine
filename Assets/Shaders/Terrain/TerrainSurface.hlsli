@@ -15,14 +15,15 @@
 
 cbuffer TerrainCB : register(CB_OBJECT)
 {
-    float4x4 worldMatrix;      ///< テレインローカル → ワールド
-    float4x4 wvpMatrix;        ///< テレインローカル → クリップ
-    float4   weather;          ///< x=wetness y=darkening z=puddleAmount
-    float4   terrainParams;    ///< x=ローカル幅 X [m] y=ローカル奥行 Z [m] z=heightBlendDepth w=自動ブレンドを持つ層があるか
-    uint     layerBufferIndex; ///< TerrainLayer 配列の bindless 添字
+    float4x4 worldMatrix;      ///< @note テレインローカル → ワールド
+    float4x4 wvpMatrix;        ///< @note テレインローカル → クリップ
+    float4   weather;          ///< @note x=wetness y=darkening z=puddleAmount
+    float4   terrainParams;    ///< @note x=ローカル幅 X [m] y=ローカル奥行 Z [m] z=heightBlendDepth w=自動ブレンドを持つ層があるか
+    uint     layerBufferIndex; ///< @note TerrainLayer 配列の bindless 添字
     uint     layerCount;
     uint     splatColumns;
     uint     splatRows;
+    float4x4 worldInvTranspose;
 };
 
 /// @brief 1 層ぶんのパラメーター。テクスチャ添字は常に有効 (パスが 1x1 の代替を詰める)。
@@ -81,8 +82,20 @@ struct TerrainPSInput
     float2 uv           : TEXCOORD4;
 };
 
+#ifdef FBZZ_TERRAIN_GPU
+#include "Terrain/TerrainGeometry.hlsli"
+TerrainPSInput VSMain(uint vertexId : SV_VertexID)
+{
+    const TerrainGeometryVertex generated = EvaluateTerrainGeometry(vertexId);
+    TerrainVSInput v;
+    v.position = generated.position;
+    v.normal = generated.normal;
+    v.tangent = generated.tangent;
+    v.uv = generated.uv;
+#else
 TerrainPSInput VSMain(TerrainVSInput v)
 {
+#endif
     TerrainPSInput o;
     o.svPosition   = mul(float4(v.position, 1.0f), wvpMatrix);
     o.worldPos     = mul(float4(v.position, 1.0f), worldMatrix).xyz;
@@ -260,7 +273,7 @@ struct TerrainProjection
     float2 uvTop;  float2 dxTop;  float2 dyTop;
     float2 uvX;    float2 dxX;    float2 dyX;
     float2 uvZ;    float2 dxZ;    float2 dyZ;
-    float3 weights;   ///< x=側面 X, y=上面, z=側面 Z (合計 1)
+    float3 weights;   ///< @note x=側面 X, y=上面, z=側面 Z (合計 1)
     float3 axisSign;
 };
 
@@ -351,24 +364,25 @@ float3 SampleProjectedNormal(Texture2D tex, TerrainProjection pr, float strength
 /// @brief 合成済みの地表。法線はワールド空間。
 struct TerrainSurface
 {
-    float3 albedo;     ///< 線形色
+    float3 albedo;     ///< @note 線形色
     float  roughness;
     float  ao;
-    float3 normal;     ///< 法線マップ適用後のワールド法線
+    float3 normal;     ///< @note 法線マップ適用後のワールド法線
     float3 geometricNormal;
 };
 
 /// @brief 地形 1 画素ぶんの材質を合成する。
-/// @param normalBoost タンジェント法線 XY の増幅率。Deferred は鏡面に頼れないので 3、Forward は 1。
+/// @param normalBoost タンジェント法線 XY の増幅率。描画方式に依存せず材質の強度と乗算する。
 TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
 {
     const float3 Nl = normalize(p.localNormal);
     const float3 Tl = normalize(p.localTangent - Nl * dot(Nl, p.localTangent));
     const float3 Bl = normalize(cross(Nl, Tl));
-    const float3 NgWorld = normalize(mul(Nl, (float3x3)worldMatrix));
+    /// @see https://learn.microsoft.com/windows/win32/direct3d9/camera-space-transformations Normal inverse transpose
+    const float3 NgWorld = normalize(mul(Nl, (float3x3)worldInvTranspose));
 
     /// @note 勾配はすべて分岐の外で一度だけ取る。候補ループは層ごとにフェッチを省くため、
-    ///       分岐内の Sample はクアッド内で制御フローが割れた画素で勾配が未定義になる。
+    /// @note 分岐内の Sample はクアッド内で制御フローが割れた画素で勾配が未定義になる。
     const float2 duvdx = ddx(p.uv);
     const float2 duvdy = ddy(p.uv);
     const float3 dPdx  = ddx(p.localPos);
@@ -393,7 +407,7 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
         float3 albedo = SRGBToLinear(SampleProjected(diffuse, projections[k]).rgb);
 
         /// @note マクロ変化: 引き伸ばした同じテクスチャの輝度を «テクスチャ全体の平均» で割って掛ける。
-        ///       平均で割らないと暗い素材ほど全体が暗くなるだけの乗算になる。
+        /// @note 平均で割らないと暗い素材ほど全体が暗くなるだけの乗算になる。
         if (layer.macroStrength > 0.0f)
         {
             const float scale = max(layer.macroScale, 1e-3f);
@@ -478,7 +492,7 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
     }
 
     const float3 Nlocal = dot(blendedN, blendedN) > 1e-10f ? normalize(blendedN) : Nl;
-    s.normal          = normalize(mul(Nlocal, (float3x3)worldMatrix));
+    s.normal          = normalize(mul(Nlocal, (float3x3)worldInvTranspose));
     s.geometricNormal = NgWorld;
     return s;
 }

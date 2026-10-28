@@ -29,17 +29,10 @@ using renderer::WaterRenderPass;
 /// @note 輪を積む入口は WaterSystem の EmitWaterRipple。正本は WaterComponent::ripples で、
 /// @note このパスはそれを読んで波紋テクスチャを焼くだけになった (旧 AddWaterRipple は廃止)。
 
-/// @note QueueWaterSplash — ワールド座標に水しぶきパーティクルバーストをキューに積む。
-/// @note PhysicsSystem / IKSystem は Scene を直接操作しないため、キュー経由で委譲する。
-void QueueWaterSplash(const math::Vector3& worldPos, float intensity);
-
 class Scene;
-/// @brief 積まれた水しぶきを GameObject として生成し、鳴り終わったものを破棄する。
-/// @pre 描画中に呼ばないこと。生成・破棄はコンポーネント配列を詰め替えるので、
-/// @note 同じフレームの後続パスが握っているエミッターを別物にすり替える。
-/// @note WaterSystem::Update が毎フレーム呼ぶ。しぶきはシーン内の名前と
-/// @note runtimeGenerated で見分けるので、Play 停止やシーン遷移をまたいで別シーンを消さない。
-void UpdateWaterSplashes(Scene& scene);
+struct EntityID;
+/// @note Sceneと実効ownerの値だけを記録し、粒子生成はCleanupの構造変更境界へ委譲する。
+void QueueWaterSplash(Scene& scene, EntityID owner, const math::Vector3& worldPos, float intensity);
 
 /// @note WorldToWaterUV — ワールド座標を水面 UV [0,1] に変換する。
 inline math::Vector2 WorldToWaterUV(

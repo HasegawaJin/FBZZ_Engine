@@ -7,46 +7,20 @@
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
+#include <Engine/Scene/TerrainSurfaceGeometry.hpp>
+#include <cmath>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include "../Util/TomlFloatNormalization.hpp"
 #include <toml++/toml.hpp>
 #include <algorithm>
-#include <cmath>
 #include <sstream>
 
 namespace fbzz::scene {
 namespace {
 
 /// @brief 現在書き出す .terrain の版。1 = RGBA 4 層 (splatData)、2 = 可変層 (splatIndices/splatWeights/holes)。
-constexpr int64_t TERRAIN_FORMAT_VERSION = 2;
-
-double RoundTomlFloat(double value)
-{
-    constexpr double SCALE = 1000000.0;
-    const double rounded = std::round(value * SCALE) / SCALE;
-    return rounded == 0.0 ? 0.0 : rounded;
-}
-
-void NormalizeTomlFloats(toml::node& node)
-{
-    if (auto* value = node.as_floating_point()) {
-        value->get() = RoundTomlFloat(value->get());
-        return;
-    }
-
-    if (auto* table = node.as_table()) {
-        for (auto&& [key, child] : *table) {
-            (void)key;
-            NormalizeTomlFloats(child);
-        }
-        return;
-    }
-
-    if (auto* array = node.as_array()) {
-        for (auto& child : *array)
-            NormalizeTomlFloats(child);
-    }
-}
+constexpr int64_t TERRAIN_FORMAT_VERSION = 3;
 
 std::uint8_t ReadByte(const toml::node& node)
 {
@@ -80,14 +54,14 @@ toml::table WriteTerrainData(const TerrainComponent& tc)
     terrainTbl.insert("layerMaterials", std::move(layerMatArr));
 
     /// @note heightData は正負の正規化高さ [-1, 1] をそのまま保存する。maxHeight を変更しても
-    ///       元データの相対形状を保てるため、編集途中の Terrain を再利用しやすい。
+    /// @note 元データの相対形状を保てるため、編集途中の Terrain を再利用しやすい。
     toml::array heightArr;
     for (float h : tc.heightData)
         heightArr.push_back(static_cast<double>(h));
     terrainTbl.insert("heightData", std::move(heightArr));
 
     /// @note スプラットが頂点数と合わない Terrain は «全頂点が層 0 = 100%» として書く。
-    ///       読み手が毎回同じ既定値を作り直すより、保存データ上も正準形にしておく。
+    /// @note 読み手が毎回同じ既定値を作り直すより、保存データ上も正準形にしておく。
     const size_t slotCount = tc.VertexCount() * static_cast<size_t>(TERRAIN_SPLAT_SLOTS);
     const bool validSplat = tc.HasValidSplat();
     toml::array indexArr;
@@ -109,6 +83,16 @@ toml::table WriteTerrainData(const TerrainComponent& tc)
             if (tc.holeData[i] != 0) holeArr.push_back(static_cast<int64_t>(i));
     }
     terrainTbl.insert("holes", std::move(holeArr));
+    toml::array positions, indices;
+    for (const auto& v : tc.surfacePositions) {
+        positions.push_back(static_cast<double>(v.x));
+        positions.push_back(static_cast<double>(v.y));
+        positions.push_back(static_cast<double>(v.z));
+    }
+    for (uint32_t index : tc.surfaceIndices) indices.push_back(static_cast<int64_t>(index));
+    terrainTbl.insert("surfacePositions", std::move(positions));
+    terrainTbl.insert("surfaceIndices", std::move(indices));
+    terrainTbl.insert("surfaceMaterial", tc.surfaceMaterial);
 
     return terrainTbl;
 }
@@ -129,7 +113,7 @@ bool ReadLegacySplat(const toml::table& terrainTbl, TerrainComponent& tc)
 
 /// @brief v2 の splatIndices / splatWeights を読み、全頂点を正準形へ直す。
 /// @note 手編集や旧ツールの出力でも不変条件を崩さないため、読んだ値を信用せず畳み直す。
-///       層数以上の番号は残す (描画が既定層で補う)。
+/// @note 層数以上の番号は残す (描画が既定層で補う)。
 bool ReadSplat(const toml::table& terrainTbl, TerrainComponent& tc)
 {
     const size_t slotCount = tc.VertexCount() * static_cast<size_t>(TERRAIN_SPLAT_SLOTS);
@@ -189,7 +173,7 @@ bool ReadTerrainData(const toml::table& terrainTbl, int64_t formatVersion, Terra
     }
 
     /// @note v1、または splatIndices を持たないファイルは RGBA 4 層 (splatData) として読む。
-    ///       版番号だけで決めないのは、版を書き忘れた手編集ファイルでも中身で判断するため。
+    /// @note 版番号だけで決めないのは、版を書き忘れた手編集ファイルでも中身で判断するため。
     const bool legacy = formatVersion < 2 ? !terrainTbl.contains("splatIndices")
                                           : !terrainTbl.contains("splatIndices") && terrainTbl.contains("splatData");
     const bool splatOk = legacy ? ReadLegacySplat(terrainTbl, tc) : ReadSplat(terrainTbl, tc);
@@ -197,6 +181,25 @@ bool ReadTerrainData(const toml::table& terrainTbl, int64_t formatVersion, Terra
         tc.InitDefaultSplat();
 
     ReadHoles(terrainTbl, tc);
+    tc.surfacePositions.clear(); tc.surfaceIndices.clear();
+    tc.surfaceMaterial = terrainTbl["surfaceMaterial"].value_or(std::string{});
+    const auto* positions = terrainTbl["surfacePositions"].as_array();
+    const auto* indices = terrainTbl["surfaceIndices"].as_array();
+    if (positions || indices) {
+        if (!positions || !indices || positions->size() % 3 != 0) return false;
+        for (size_t i = 0; i < positions->size(); i += 3) {
+            const auto x = (*positions)[i].value<double>(), y = (*positions)[i + 1].value<double>();
+            const auto z = (*positions)[i + 2].value<double>();
+            if (!x || !y || !z) return false;
+            tc.surfacePositions.push_back({static_cast<float>(*x), static_cast<float>(*y), static_cast<float>(*z)});
+        }
+        for (const auto& node : *indices) {
+            const auto index = node.value<int64_t>();
+            if (!index || *index < 0 || static_cast<uint64_t>(*index) > UINT32_MAX) return false;
+            tc.surfaceIndices.push_back(static_cast<uint32_t>(*index));
+        }
+        if (!IsValidTerrainSurfaceGeometry(tc.surfacePositions, tc.surfaceIndices)) return false;
+    }
 
     tc.heightDirty = true;
     tc.splatDirty = true;
@@ -205,11 +208,11 @@ bool ReadTerrainData(const toml::table& terrainTbl, int64_t formatVersion, Terra
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
-bool TerrainAssetSerializer::Save(const TerrainComponent& component, const std::string& path)
+bool TerrainAssetSerializer::Serialize(const TerrainComponent& component, std::string& out)
 {
-    if (path.empty()) return false;
+    if (!IsValidTerrainSurfaceGeometry(component.surfacePositions, component.surfaceIndices)) return false;
 
     toml::table doc;
     toml::table metaTbl;
@@ -217,7 +220,7 @@ bool TerrainAssetSerializer::Save(const TerrainComponent& component, const std::
     doc.insert("terrain_asset", std::move(metaTbl));
     doc.insert("terrain", WriteTerrainData(component));
 
-    NormalizeTomlFloats(doc);
+    util::NormalizeTomlFloats(doc);
 
     /// @note レイヤー .mat / ハイトマップ等の参照を guid: 形式で保存する (リネーム・移動耐性)。
     asset::EncodeGuidRefs(doc);
@@ -225,11 +228,19 @@ bool TerrainAssetSerializer::Save(const TerrainComponent& component, const std::
     std::ostringstream ss;
     ss << doc;
 
+    out = ss.str();
+    return true;
+}
+
+bool TerrainAssetSerializer::Save(const TerrainComponent& component, const std::string& path)
+{
+    std::string text;
+    if (path.empty() || !Serialize(component, text)) return false;
     const std::string dir = util::FileSystem::GetDirectory(path);
     if (!dir.empty())
         util::FileSystem::EnsureDirectory(dir);
 
-    if (!util::FileSystem::WriteText(path, ss.str())) {
+    if (!util::FileSystem::WriteTextAtomic(path, text)) {
         FBZZ_LOG_ERROR("TerrainAssetSerializer: save failed: %s", path.c_str());
         return false;
     }
@@ -247,9 +258,14 @@ bool TerrainAssetSerializer::Load(const std::string& path, TerrainComponent& com
         return false;
     }
 
+    return Deserialize(text, component);
+}
+
+bool TerrainAssetSerializer::Deserialize(std::string_view text, TerrainComponent& component)
+{
     toml::parse_result result = toml::parse(text);
     if (!result) {
-        FBZZ_LOG_ERROR("TerrainAssetSerializer: parse failed: %s", path.c_str());
+        FBZZ_LOG_ERROR("TerrainAssetSerializer: parse failed");
         return false;
     }
 
@@ -261,7 +277,11 @@ bool TerrainAssetSerializer::Load(const std::string& path, TerrainComponent& com
         terrainTbl = &doc;
     const int64_t formatVersion = doc["terrain_asset"]["format_version"].value_or(int64_t{1});
 
-    return ReadTerrainData(*terrainTbl, formatVersion, component);
+    TerrainComponent next = component;
+    if (!ReadTerrainData(*terrainTbl, formatVersion, next)) return false;
+    next.RequestSurfaceRebuild();
+    component = std::move(next);
+    return true;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

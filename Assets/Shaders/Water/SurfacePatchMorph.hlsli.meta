@@ -1,0 +1,6 @@
+# @file    SurfacePatchMorph.hlsli.meta
+# @brief   水面LODモーフのシェーダー共通ファイル識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-07
+[meta]
+guid = 'd0c0830525ab429d85ddd932a0146d9c'

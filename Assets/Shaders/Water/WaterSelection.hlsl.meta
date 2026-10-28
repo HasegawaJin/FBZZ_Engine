@@ -1,0 +1,13 @@
+# @file    WaterSelection.hlsl.meta
+# @brief   水面の共有頂点変位を使う選択シェーダーの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-10-07
+[meta]
+guid = '77d904e983014527a793f09537c661b2'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'

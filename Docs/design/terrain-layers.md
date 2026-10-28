@@ -77,7 +77,7 @@ holeData       : vector<uint8>  セル × 1    1 = 穴。空 = 穴なし
 
 ### 定数とバッファ
 
-`TerrainObjectCB` (b1, 176 バイト)。正本は `RenderPassContext.hpp`、HLSL は `TerrainSurface.hlsli`。
+`TerrainObjectCB` (b1, 240 バイト)。正本は `Graphics/Pipeline/RenderConstants.hpp`、HLSL は `TerrainSurface.hlsli`。
 
 ```
 float4x4 worldMatrix
@@ -88,6 +88,7 @@ uint     layerBufferIndex  層配列 StructuredBuffer の bindless 添字
 uint     layerCount
 uint     splatColumns
 uint     splatRows
+float4x4 worldInvTranspose  法線用の逆転置 (非一様・負の scale と shear に対応)
 ```
 
 層配列 `TerrainLayerGpu` (StructuredBuffer, 1 要素 96 バイト):
@@ -172,7 +173,7 @@ albedo *= lerp(1, ratio, macroStrength)
 
 Forward は Blinn-Phong、GBuffer は DeferredLighting の Cook-Torrance で、
 同じ地形が経路によって別の艶に見えていた。Forward も `Lighting_PBR_Direct` (metallic = 0) を使う。
-GBuffer 側の法線増幅 (×3) と粗さの下限 (0.6) は Deferred 固有の見え方の補正なので GBuffer だけに残す。
+2026-10-09 に GBuffer 固有の法線増幅 (×3) と粗さ下限 (0.6) を除去した。両経路で材質の Normal Strength・roughness を正本にし、天候適用後に同じ Specular AA を掛ける。Forward の地形も IBL 有効時は同じ Light Probe / split-sum の環境光を使う。画面空間 AO と影の既存の経路差は別の契約として維持する。詳細は [画質の共通契約](graphics-quality.md)。
 
 ### 新しい .mat キー
 

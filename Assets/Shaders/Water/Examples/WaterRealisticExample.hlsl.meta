@@ -1,0 +1,13 @@
+# @file    WaterRealisticExample.hlsl.meta
+# @brief   Project-owned water appearance using the explicit shared water vertex contract.
+# @author  Hasegawa Jin
+# @date    2026-10-21
+[meta]
+guid = '3f1dc704bc7a445d91b17a50d844872a'
+[shader]
+version = 1
+vertex = 'water_surface_v1'
+surface = 'water_v1'
+opacity = 'custom'
+variants = 'none'
+preview = 'water'

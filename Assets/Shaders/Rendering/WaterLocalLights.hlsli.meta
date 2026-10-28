@@ -1,0 +1,6 @@
+# @file    WaterLocalLights.hlsli.meta
+# @brief   水中の局所ライト散乱と生の影。
+# @author  Hasegawa Jin
+# @date    2026-10-09
+[meta]
+guid = 'ceddd6bc1e2e4fb7b1dc1d8a153c65e1'

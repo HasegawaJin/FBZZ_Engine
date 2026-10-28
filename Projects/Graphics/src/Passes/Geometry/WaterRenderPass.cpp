@@ -5,14 +5,87 @@
 #include <Graphics/Passes/Geometry/WaterRenderPass.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
+#include <Graphics/Renderer/SurfacePatchMorph.hpp>
 #include <Graphics/Effects/WaterGrid.hpp>
+#include <Graphics/Renderer/SurfaceFarMesh.hpp>
+#include <Graphics/Renderer/DynamicBufferPool.hpp>
+#include <Graphics/Renderer/GpuGeometrySelection.hpp>
+#include <Graphics/Renderer/IShader.hpp>
+#include <Graphics/Renderer/ShaderPathResolver.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
+#include <Core/Logger.hpp>
 #include "WaterNoiseBake.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_set>
+#include <vector>
 namespace fbzz::renderer {
+bool ResolveWaterHorizonRectangle(const RenderWaterInput& input, const Camera& camera,
+    math::Vector2& outMin, math::Vector2& outMax)
+{
+    if (!input.farOceanEnabled || !input.adaptivePatchLod || !std::isfinite(input.farOceanCoverageScale)) return false;
+    const auto& world = input.constants.worldMatrix;
+    const math::Vector3 origin{world.m[0][3], world.m[1][3], world.m[2][3]};
+    const math::Vector3 axisX{world.m[0][0], world.m[1][0], world.m[2][0]};
+    const math::Vector3 axisZ{world.m[0][2], world.m[1][2], world.m[2][2]};
+    const float axisXSquare = axisX.LengthSq(), axisZSquare = axisZ.LengthSq();
+    if (!std::isfinite(axisXSquare) || !std::isfinite(axisZSquare) || axisXSquare <= 0.0f || axisZSquare <= 0.0f)
+        return false;
+    /// @note Water は水平 TRS。軸への投影で local XZ を求め、小さい scale の行列式に依存しない。
+    auto localAt = [&](const math::Vector3& point) {
+        const auto relative = point - origin;
+        return math::Vector2{math::Vector3::Dot(relative, axisX) / axisXSquare,
+            math::Vector3::Dot(relative, axisZ) / axisZSquare};
+    };
+    const auto localCamera = localAt(camera.m_position);
+    const auto projection = camera.GetProjectionMatrix();
+    const float projectionX = std::abs(projection.m[0][0]), projectionY = std::abs(projection.m[1][1]);
+    if (!std::isfinite(localCamera.x) || !std::isfinite(localCamera.y)
+        || !std::isfinite(projectionX) || !std::isfinite(projectionY) || projectionX <= 0.0f || projectionY <= 0.0f)
+        return false;
+    const auto forward = camera.GetForward(), right = camera.GetRight(), up = camera.GetUp();
+    const float cameraMargin = (std::max)(input.medium.maxDistance, camera.m_near);
+    if (!std::isfinite(cameraMargin) || cameraMargin <= 0.0f) return false;
+    const math::Vector2 localMargin{cameraMargin / std::sqrt(axisXSquare), cameraMargin / std::sqrt(axisZSquare)};
+    math::Vector2 minimum{(std::min)(input.aabbMin.x, localCamera.x - localMargin.x),
+        (std::min)(input.aabbMin.z, localCamera.y - localMargin.y)};
+    math::Vector2 maximum{(std::max)(input.aabbMax.x, localCamera.x + localMargin.x),
+        (std::max)(input.aabbMax.z, localCamera.y + localMargin.y)};
+    const float coverage = (std::clamp)(input.farOceanCoverageScale, 1.0f, 2.0f);
+    /// @note near/far の全 corner を包む。大きな平行投影でも逆行列の行列式下限を踏まない。
+    for (float depth : {camera.m_near, camera.m_far}) {
+        for (float y : {-1.0f, 1.0f}) {
+            for (float x : {-1.0f, 1.0f}) {
+                const float perspectiveDepth = camera.m_projection == ProjectionMode::Orthographic ? 1.0f : depth;
+                const auto corner = camera.m_position + forward * depth
+                    + right * (x * perspectiveDepth / projectionX) + up * (y * perspectiveDepth / projectionY);
+                const auto local = localAt(corner);
+                const math::Vector2 covered{localCamera.x + (local.x - localCamera.x) * coverage,
+                    localCamera.y + (local.y - localCamera.y) * coverage};
+                if (!std::isfinite(covered.x) || !std::isfinite(covered.y)) return false;
+                minimum.x = (std::min)(minimum.x, covered.x);
+                minimum.y = (std::min)(minimum.y, covered.y);
+                maximum.x = (std::max)(maximum.x, covered.x);
+                maximum.y = (std::max)(maximum.y, covered.y);
+            }
+        }
+    }
+    outMin = minimum;
+    outMax = maximum;
+    return true;
+}
+
 namespace {
 bool AabbVisible(const math::Frustum& frustum, const math::Matrix4& world,
-                 const math::Vector3& localMin, const math::Vector3& localMax)
+                 const math::Vector3& localMin, const math::Vector3& localMax,
+                 const WaterWaveMargin& margin = {})
 {
     const math::Vector3 localCenter = {
         (localMin.x + localMax.x) * 0.5f,
@@ -33,19 +106,10 @@ bool AabbVisible(const math::Frustum& frustum, const math::Matrix4& world,
              + std::abs(world.m[row][1]) * localExtents.y
              + std::abs(world.m[row][2]) * localExtents.z;
     };
-    const math::Vector3 extents = { projectRow(0), projectRow(1), projectRow(2) };
+    /// @note 波は world m の変位なので、Transform 後の箱に安全域を加える。
+    const math::Vector3 extents = { projectRow(0) + margin.horizontal,
+        projectRow(1) + margin.vertical, projectRow(2) + margin.horizontal };
     return frustum.IntersectsAABB({ center.x, center.y, center.z }, extents);
-}
-
-/// @note 波のマージンを乗せたローカル AABB。チャンクにも水面全体にも同じ広げ方をする。
-void ExpandByWaterWaveMargin(const WaterWaveMargin& margin, math::Vector3& outMin, math::Vector3& outMax)
-{
-    outMin.x -= margin.horizontal;
-    outMin.z -= margin.horizontal;
-    outMax.x += margin.horizontal;
-    outMax.z += margin.horizontal;
-    outMin.y -= margin.vertical;
-    outMax.y += margin.vertical;
 }
 
 /// @brief 頂点シェーダーと同じ有限格子の写像をチャンクの境界へ適用する。
@@ -76,18 +140,465 @@ void FocusWaterChunkBounds(const RenderWaterInput& input, const math::Vector2& f
     outMin.z = z.x; outMax.z = z.y;
 }
 
+struct WaterCameraCB {
+    math::Matrix4 view, projection, viewProjection, invViewProjection;
+    math::Vector3 cameraPos;
+    float nearZ, farZ, waterSsrEnabled, isOrthographic, wireframeMode;
+};
+static_assert(sizeof(WaterCameraCB) == 288);
+
+struct WaterDrawResources {
+    ResourceHandle<ShaderTag> waterShader, selectionShader, copyColorShader, depthCopyShader;
+    ResourceHandle<ShaderTag> mediumAtlasShader, interfaceShader;
+    ResourceHandle<PipelineStateTag> waterPSO, wireframePSO, selectionPSO;
+    ResourceHandle<PipelineStateTag> mediumAtlasPSO, interfacePSO;
+    ResourceHandle<ConstantBufferTag> cameraCB, waterCB, effectCB, mediumCaptureCB;
+    ResourceHandle<TextureTag> black, neutralRipple;
+    DynamicStructuredBufferPool patchInstances{16};
+    std::unique_ptr<GpuGeometrySelection> geometrySelection;
+    bool indirectPathReported = false;
+    std::unordered_set<uint64_t> rejectedGeometryWarnings;
+};
+
+WaterDrawResources& GetWaterDrawResources(ResourceManager& resources)
+{
+    static uint64_t owner = 0;
+    static uint64_t version = UINT64_MAX;
+    static WaterDrawResources handles;
+    if (owner == resources.GetInstanceId() && version == resources.GetResetVersion()) return handles;
+    owner = resources.GetInstanceId();
+    version = resources.GetResetVersion();
+    handles = {};
+    handles.waterShader = resources.LoadShader("Assets/Shaders/Water/Water.hlsl");
+    handles.selectionShader = resources.LoadShader("Assets/Shaders/Water/WaterSelection.hlsl");
+    handles.copyColorShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+    handles.depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
+    handles.mediumAtlasShader = resources.LoadShader("Assets/Shaders/Water/WaterMediumAtlas.hlsl");
+    handles.interfaceShader = resources.LoadShader("Assets/Shaders/Water/WaterInterface.hlsl");
+    /// @note 波の裏側とチャンク順で水面を上塗りしないよう、本描画は深度を書く。
+    handles.waterPSO = resources.CreatePipelineState({RasterizerMode::SOLID_NOCULL, BlendMode::ALPHA_BLEND, DepthMode::DEPTH_ON});
+    handles.wireframePSO = resources.CreatePipelineState({RasterizerMode::WIREFRAME_NOCULL, BlendMode::OPAQUE_BLEND, DepthMode::DEPTH_ON});
+    handles.selectionPSO = resources.CreatePipelineState({RasterizerMode::SOLID_NOCULL, BlendMode::OPAQUE_BLEND, DepthMode::DEPTH_ON});
+    handles.mediumAtlasPSO = resources.CreatePipelineState({RasterizerMode::SOLID_NOCULL, BlendMode::OPAQUE_BLEND, DepthMode::DEPTH_ON});
+    handles.interfacePSO = resources.CreatePipelineState({RasterizerMode::SOLID_NOCULL, BlendMode::OPAQUE_BLEND, DepthMode::DEPTH_ON});
+    handles.cameraCB = resources.CreateConstantBuffer(sizeof(WaterCameraCB));
+    handles.waterCB = resources.CreateConstantBuffer(sizeof(WaterCB));
+    handles.effectCB = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
+    handles.mediumCaptureCB = resources.CreateConstantBuffer(sizeof(math::Vector4));
+    handles.geometrySelection = std::make_unique<GpuGeometrySelection>();
+    const uint8_t black[4] = {0, 0, 0, 255};
+    const uint8_t ripple[4] = {128, 128, 128, 255};
+    handles.black = resources.CreateTexture(black, 1, 1);
+    handles.neutralRipple = resources.CreateTexture(ripple, 1, 1);
+    return handles;
+}
+
+void UpdateWaterCamera(RenderPassContext& ctx, const WaterDrawResources& handles,
+                       const Camera* cameraOverride = nullptr)
+{
+    const Camera& camera = cameraOverride ? *cameraOverride : ctx.camera;
+    WaterCameraCB data{};
+    data.view = camera.GetViewMatrix();
+    data.projection = MakeJitteredProjection(camera, cameraOverride ? 0.0f : ctx.taaJitterNdcX,
+        cameraOverride ? 0.0f : ctx.taaJitterNdcY);
+    data.viewProjection = data.projection * data.view;
+    if (cameraOverride && camera.m_projection == ProjectionMode::Orthographic) {
+        /// @note 広域 atlas の正常な平行投影も determinant は小さい。対角投影を解析的に反転し、一般逆行列の特異判定を避ける。
+        auto inverseProjection = data.projection;
+        for (int axis = 0; axis < 3; ++axis) {
+            inverseProjection.m[axis][axis] = 1.0f / data.projection.m[axis][axis];
+            inverseProjection.m[axis][3] = -data.projection.m[axis][3] * inverseProjection.m[axis][axis];
+        }
+        data.invViewProjection = math::Matrix4::Inverse(data.view) * inverseProjection;
+    } else {
+        data.invViewProjection = math::Matrix4::Inverse(data.viewProjection);
+    }
+    data.cameraPos = camera.m_position;
+    data.nearZ = camera.m_near;
+    data.farZ = camera.m_far;
+    data.waterSsrEnabled = cameraOverride ? 0.0f : (ctx.isDeferred && ctx.settings.ssr.enabled ? 1.0f : 0.0f);
+    data.isOrthographic = camera.m_projection == ProjectionMode::Orthographic ? 1.0f : 0.0f;
+    data.wireframeMode = cameraOverride ? 0.0f : (ctx.settings.IsWireframe() ? (ctx.settings.IsUnlit() ? 2.0f : 1.0f) : 0.0f);
+    ctx.resources.Update(handles.cameraCB, &data, sizeof(data));
+}
+
+void SetWaterPatchConstants(WaterCB& cb, const SurfacePatch& patch, uint32_t cellsPerPatch)
+{
+    cb.patchRect = {patch.uvMin.x, patch.uvMin.y, patch.uvMax.x, patch.uvMax.y};
+    cb.patchCellSize = {patch.cellSize.x, patch.cellSize.y, 1.0f, static_cast<float>(cellsPerPatch)};
+    for (size_t edge = 0; edge < 4; ++edge) {
+        cb.patchEdgeCellSize[edge] = {patch.edgeCellSize[edge].x, patch.edgeCellSize[edge].y, 0.0f, 0.0f};
+        cb.patchCornerCellSize[edge] = {patch.cornerCellSize[edge].x, patch.cornerCellSize[edge].y, 0.0f, 0.0f};
+    }
+}
+
+void SetWaterPatchMorphConstants(WaterCB& cb, const SurfacePatch& patch,
+    const SurfacePatchLodSettings& settings, const SurfacePatchView& view,
+    bool enabled, uint8_t axisMask)
+{
+    cb.patchMorphView = {view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z,
+        view.projectionScalePixels};
+    cb.patchMorphForward = {view.cameraForward.x, view.cameraForward.y, view.cameraForward.z,
+        view.orthographic ? 1.0f : 0.0f};
+    cb.patchMorphMetric = {view.minProjectionDistance, settings.targetCellPixels,
+        settings.nearDistance, settings.nearCellSize};
+    cb.patchMorphParams = {enabled ? 1.0f : 0.0f, settings.morphTransitionWidth,
+        static_cast<float>(patch.depth), static_cast<float>(axisMask)};
+    cb.patchMorphCellSize = {patch.morphCellSize.x, patch.morphCellSize.y, 0.0f, 0.0f};
+}
+
+uint8_t FarPatchMorphAxisMask(SurfaceFarRegion region)
+{
+    switch (region) {
+    case SurfaceFarRegion::MIN_X:
+    case SurfaceFarRegion::MAX_X:
+        return SURFACE_MORPH_AXIS_Z;
+    case SurfaceFarRegion::MIN_Z:
+    case SurfaceFarRegion::MAX_Z:
+        return SURFACE_MORPH_AXIS_X;
+    default:
+        return 0;
+    }
+}
+
+template<class Submit>
+void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bool countStatistics,
+                       Submit&& submit, const Camera* cameraOverride = nullptr,
+                       uint32_t viewportHeight = 0, bool allowFarOcean = true,
+                       const Camera* lodCameraOverride = nullptr, bool gpuCulling = false)
+{
+    const Camera& camera = cameraOverride ? *cameraOverride : ctx.camera;
+    const Camera& lodCamera = lodCameraOverride ? *lodCameraOverride : camera;
+    const bool frustumEnabled = cameraOverride != nullptr || ctx.frustumCullingEnabled;
+    const uint32_t lodViewportHeight = viewportHeight == 0 ? ctx.height : viewportHeight;
+    std::optional<math::Frustum> computedFrustum;
+    const math::Frustum* frustum = !cameraOverride ? ctx.cameraFrustum : nullptr;
+    if (!frustum) {
+        computedFrustum.emplace(math::Frustum::FromViewProjection(camera.GetViewProjection()));
+        frustum = &*computedFrustum;
+    }
+    const auto projection = lodCamera.GetProjectionMatrix();
+    auto cb = input.constants;
+    cb.wvpMatrix = MakeJitteredProjection(camera, cameraOverride ? 0.0f : ctx.taaJitterNdcX,
+        cameraOverride ? 0.0f : ctx.taaJitterNdcY) * camera.GetViewMatrix() * cb.worldMatrix;
+    if (input.adaptivePatchLod) {
+        if (!input.patchVertexBuffer.IsValid()) return;
+        SurfacePatchSurface surface;
+        surface.localMin = {input.aabbMin.x, input.aabbMin.z};
+        surface.localMax = {input.aabbMax.x, input.aabbMax.z};
+        surface.worldMatrix = cb.worldMatrix;
+        const math::Vector3 axisY{cb.worldMatrix.m[0][1], cb.worldMatrix.m[1][1], cb.worldMatrix.m[2][1]};
+        const float inverseHeightScale = 1.0f / (std::max)(axisY.Length(), 1.0e-6f);
+        surface.minHeight = -input.margin.vertical * inverseHeightScale;
+        surface.maxHeight = input.margin.vertical * inverseHeightScale;
+        const math::Vector3 axisX{cb.worldMatrix.m[0][0], cb.worldMatrix.m[1][0], cb.worldMatrix.m[2][0]};
+        const math::Vector3 axisZ{cb.worldMatrix.m[0][2], cb.worldMatrix.m[1][2], cb.worldMatrix.m[2][2]};
+        surface.horizontalDisplacement = input.margin.horizontal
+            / (std::max)((std::min)(axisX.Length(), axisZ.Length()), 1.0e-6f);
+        SurfacePatchView view;
+        view.cameraPosition = lodCamera.m_position;
+        view.cameraForward = lodCamera.GetForward().Normalized();
+        view.projectionScalePixels = std::abs(projection.m[1][1]) * static_cast<float>((std::max)(lodViewportHeight, 1u)) * 0.5f;
+        view.viewportHeight = lodViewportHeight;
+        view.minProjectionDistance = (std::max)(lodCamera.m_near, 0.001f);
+        view.orthographic = lodCamera.m_projection == ProjectionMode::Orthographic;
+        view.frustum = frustumEnabled ? frustum : nullptr;
+        view.includeCulledPatches = allowFarOcean && input.farOceanEnabled;
+        SurfacePatchView selectionView = view;
+        selectionView.includeCulledPatches = true;
+        SurfacePatchLodSettings patchLod = input.patchLod;
+        patchLod.morphEnabled = input.patchMorphEnabled;
+        auto selection = ctx.surfacePatchSelectionCache.FindOwned(surface, patchLod, selectionView);
+        SurfacePatchSelection computedSelection;
+        if (!selection) {
+            if (!SelectSurfacePatches(surface, patchLod, selectionView, computedSelection)) return;
+            selection = ctx.surfacePatchSelectionCache.Store(surface, patchLod, selectionView, std::move(computedSelection));
+        }
+        std::vector<SurfaceFarPatch> farPatches;
+        math::Vector2 outerMin, outerMax;
+        const bool farEnabled = allowFarOcean
+            && ResolveWaterHorizonRectangle(input, lodCamera, outerMin, outerMax)
+            && BuildSurfaceFarMesh(surface, selection->patches, outerMin, outerMax,
+                patchLod.cellsPerPatch, farPatches, input.patchMorphEnabled);
+        cb.gridParams.x = 0.0f;
+        cb.farOceanParams = {farEnabled ? 1.0f : 0.0f, 0.0f,
+            input.farOceanRippleFadeDistance, 0.0f};
+        for (const auto& patch : selection->patches) {
+            const bool selected = view.includeCulledPatches || IsSurfacePatchVisible(surface, patch, view);
+            if (!gpuCulling && !selected) continue;
+            if (countStatistics && selected) ++ctx.statsTotalObjects;
+            if (frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix, patch.aabbMin, patch.aabbMax)) {
+                if (countStatistics && selected) ++ctx.statsFrustumCulled;
+                if (!gpuCulling) continue;
+            }
+            const auto mask = patch.coarseEdgeMask;
+            if (mask >= input.patchIndexBuffers.size() || !input.patchIndexBuffers[mask].IsValid()) continue;
+            SetWaterPatchConstants(cb, patch, patchLod.cellsPerPatch);
+            SetWaterPatchMorphConstants(cb, patch, patchLod, view,
+                input.patchMorphEnabled, SURFACE_MORPH_AXIS_BOTH);
+            submit(input.patchVertexBuffer, input.patchIndexBuffers[mask], input.patchIndexCounts[mask], cb, patch.aabbMin, patch.aabbMax);
+        }
+        if (farEnabled && input.patchIndexBuffers[0].IsValid()) {
+            cb.farOceanParams.y = 1.0f;
+            for (const auto& far : farPatches) {
+                const auto& patch = far.geometry;
+                if (countStatistics) ++ctx.statsTotalObjects;
+                if (frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix, patch.aabbMin, patch.aabbMax)) {
+                    if (countStatistics) ++ctx.statsFrustumCulled;
+                    if (!gpuCulling) continue;
+                }
+                SetWaterPatchConstants(cb, patch, patchLod.cellsPerPatch);
+                SetWaterPatchMorphConstants(cb, patch, patchLod, view,
+                    input.patchMorphEnabled, FarPatchMorphAxisMask(far.region));
+                submit(input.patchVertexBuffer, input.patchIndexBuffers[0], input.patchIndexCounts[0], cb, patch.aabbMin, patch.aabbMax);
+            }
+        }
+        return;
+    }
+    math::Vector2 focus{};
+    if (cb.gridParams.x > 0.5f) {
+        focus = ResolveWaterGridFocus(cb.worldMatrix, lodCamera.m_position, lodCamera.GetForward(),
+            {cb.gridParams.z, cb.gridParams.w}, cb.gridParams.y);
+        cb.waveShapeParams.z = focus.x;
+        cb.waveShapeParams.w = focus.y;
+    }
+    cb.patchCellSize = {};
+    for (const auto& patch : input.patches) {
+        if (countStatistics) ++ctx.statsTotalObjects;
+        auto low = patch.aabbMin, high = patch.aabbMax;
+        FocusWaterChunkBounds(input, focus, low, high);
+        if (frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix, low, high, input.margin)) {
+            if (countStatistics) ++ctx.statsFrustumCulled;
+            continue;
+        }
+        submit(patch.vertexBuffer, patch.indexBuffer, patch.indexCount, cb, low, high);
+    }
+}
+
+/// @note Water.hlsl の WaterPatchInstance と192 byte単位で同期する。body/viewの定数は共有WaterCBに残す。
+struct WaterPatchInstance {
+    math::Vector4 rect, cellSize;
+    std::array<math::Vector4, 4> edgeCellSize, cornerCellSize;
+    math::Vector4 morphParams, morphCellSize;
+};
+static_assert(sizeof(WaterPatchInstance) == 192);
+
+struct WaterGpuDraw {
+    GpuGeometryDispatch indirect;
+    uint32_t visibleInstancesForStatistics = 0;
+};
+
+/// @note A single LOD retains the balanced/stitch topology. The generic service can choose multiple LOD ranges for independent meshes.
+/// @see Docs/design/gpu-driven-geometry.md
+WaterGpuDraw PrepareWaterGpuDraw(const RenderWaterInput& input, RenderPassContext& ctx,
+    const WaterCB& cb, std::span<const WaterPatchInstance> instances,
+    std::span<const std::array<math::Vector3, 2>> bounds, uint32_t indexCount)
+{
+    WaterGpuDraw result;
+    if (instances.empty() || !input.adaptivePatchLod
+        || indexCount == 0 || indexCount % 3u != 0)
+        return result;
+    auto& handles = GetWaterDrawResources(ctx.resources);
+    if (ctx.settings.geometryDrawMode != GeometryDrawMode::GPU_INDIRECT
+        || bounds.size() != instances.size() || !ctx.renderer.SupportsIndirectDraw()
+        || !ctx.frustumCullingEnabled || !handles.geometrySelection)
+        return result;
+    const auto frustum = ctx.cameraFrustum ? *ctx.cameraFrustum
+        : math::Frustum::FromViewProjection(ctx.camera.GetViewProjection());
+    GpuGeometrySelectionView view;
+    for (int planeIndex = 0; planeIndex < math::Frustum::PLANE_COUNT; ++planeIndex) {
+        const auto plane = frustum.GetPlane(planeIndex);
+        view.frustumPlanes[planeIndex] = {plane.normal.x, plane.normal.y, plane.normal.z, plane.distance};
+    }
+    const float projectionScale = std::abs(ctx.camera.GetProjectionMatrix().m[1][1])
+        * static_cast<float>((std::max)(ctx.height, 1u)) * 0.5f;
+    view.cameraAndProjectionScale = {ctx.camera.m_position.x, ctx.camera.m_position.y,
+        ctx.camera.m_position.z, projectionScale};
+    view.projectionMetrics = {projectionScale, input.patchLod.targetCellPixels,
+        (std::max)(ctx.camera.m_near, 0.001f), ctx.camera.m_projection == ProjectionMode::Orthographic ? 1.0f : 0.0f};
+    const auto& world = cb.worldMatrix;
+    const uint32_t cells = input.patchLod.cellsPerPatch;
+    if (cells < 2u || cells > 256u) return result;
+    const uint32_t vertexCount = (cells + 1u) * (cells + 1u);
+    std::vector<GpuGeometryCandidate> candidates;
+    candidates.reserve(instances.size());
+    for (size_t patchIndex = 0; patchIndex < instances.size(); ++patchIndex) {
+        const auto& patch = instances[patchIndex];
+        /// @note Reuse the selector's displacement and morph bounds, including far-strip expansion; reconstructing from UV loses the morph safety margin.
+        const auto& low = bounds[patchIndex][0];
+        const auto& high = bounds[patchIndex][1];
+        const auto localCenter = (low + high) * 0.5f;
+        const auto localExtents = (high - low) * 0.5f;
+        const auto center = world * math::Vector4{localCenter, 1.0f};
+        const auto projectRow = [&](uint32_t row) {
+            return std::abs(world.m[row][0]) * localExtents.x
+                + std::abs(world.m[row][1]) * localExtents.y + std::abs(world.m[row][2]) * localExtents.z;
+        };
+        const math::Vector3 safeExtents{projectRow(0), projectRow(1), projectRow(2)};
+        /// @note Keep the old CPU visibility counters as a diagnostic estimate; GPU argument generation still owns the actual draw decision.
+        if (frustum.IntersectsAABB({center.x, center.y, center.z}, safeExtents))
+            ++result.visibleInstancesForStatistics;
+        GpuGeometryCandidate candidate;
+        candidate.boundsMin = {center.x - safeExtents.x, center.y - safeExtents.y, center.z - safeExtents.z, 0.0f};
+        candidate.boundsMax = {center.x + safeExtents.x, center.y + safeExtents.y, center.z + safeExtents.z, 0.0f};
+        candidate.lodCount = 1;
+        candidate.lods[0] = {indexCount, 0u, 0, vertexCount,
+            (std::max)(patch.cellSize.x, patch.cellSize.y), {}};
+        candidates.push_back(candidate);
+    }
+    (void)handles.geometrySelection->Prepare(ctx.renderer, ctx.resources, view, candidates,
+        indexCount, vertexCount, result.indirect);
+    if (result.indirect.indirectArguments.IsValid() && !handles.indirectPathReported) {
+        handles.indirectPathReported = true;
+        FBZZ_LOG_INFO("Water geometry path: GPU indexed indirect prepared (%u candidates)", result.indirect.candidateCount);
+    }
+    return result;
+}
+
+WaterPatchInstance MakeWaterPatchInstance(const WaterCB& cb)
+{
+    WaterPatchInstance instance{cb.patchRect, cb.patchCellSize, {}, {}, cb.patchMorphParams, cb.patchMorphCellSize};
+    for (size_t edge = 0; edge < 4; ++edge) {
+        instance.edgeCellSize[edge] = cb.patchEdgeCellSize[edge];
+        instance.cornerCellSize[edge] = cb.patchCornerCellSize[edge];
+    }
+    return instance;
+}
+
+void ApplyWaterPatchInstance(WaterCB& cb, const WaterPatchInstance& instance)
+{
+    cb.patchRect = instance.rect;
+    cb.patchCellSize = instance.cellSize;
+    cb.patchMorphParams = instance.morphParams;
+    cb.patchMorphCellSize = instance.morphCellSize;
+    for (size_t edge = 0; edge < 4; ++edge) {
+        cb.patchEdgeCellSize[edge] = instance.edgeCellSize[edge];
+        cb.patchCornerCellSize[edge] = instance.cornerCellSize[edge];
+    }
+}
+
+/// @brief 同じ索引を使う連続パッチだけを束ね、半透明の元のprimitive順を保つ。
+/// @note バッファは束・パス・ビューごとに借り直し、GPUが読む前の上書きを防ぐ。custom shaderは従来のCBを使う。
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-drawindexedinstanced DrawIndexedInstanced
+template<class Submit>
+void VisitWaterPatchDraws(const RenderWaterInput& input, RenderPassContext& ctx, bool countStatistics,
+    bool enableInstances, Submit&& submit, const Camera* cameraOverride = nullptr,
+    uint32_t viewportHeight = 0, bool allowFarOcean = true, const Camera* lodCameraOverride = nullptr,
+    bool enableGpuGeometry = false)
+{
+    ResourceHandle<BufferTag> vertices, indices;
+    uint32_t indexCount = 0;
+    WaterCB base{};
+    std::vector<WaterPatchInstance> instances;
+    std::vector<std::array<math::Vector3, 2>> bounds;
+    /// @note Keep balanced invisible leaves as candidates only for the GPU-frustum path; other passes and custom shaders retain CPU visibility.
+    const bool gpuCulling = enableGpuGeometry && enableInstances && input.adaptivePatchLod
+        && ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT
+        && ctx.frustumCullingEnabled && ctx.renderer.SupportsIndirectDraw();
+    auto flush = [&] {
+        if (instances.empty()) return;
+        auto buffer = (instances.size() > 1 || (enableGpuGeometry
+            && ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT))
+            ? GetWaterDrawResources(ctx.resources).patchInstances.Acquire(ctx.resources, instances.size(), sizeof(WaterPatchInstance))
+            : ResourceHandle<StructuredBufferTag>{};
+        if (buffer.IsValid()) {
+            ctx.resources.Update(buffer, instances.data(), instances.size() * sizeof(WaterPatchInstance));
+            auto cb = base;
+            cb.patchCellSize.z = 2.0f;
+            const auto gpu = enableGpuGeometry ? PrepareWaterGpuDraw(input, ctx, cb, instances, bounds, indexCount) : WaterGpuDraw{};
+            submit(vertices, indices, indexCount, cb, buffer, static_cast<uint32_t>(instances.size()), gpu);
+        } else {
+            for (const auto& instance : instances) {
+                auto cb = base;
+                ApplyWaterPatchInstance(cb, instance);
+                submit(vertices, indices, indexCount, cb, ResourceHandle<StructuredBufferTag>{}, 1u, WaterGpuDraw{});
+            }
+        }
+        instances.clear();
+        bounds.clear();
+    };
+    VisitWaterPatches(input, ctx, countStatistics,
+        [&](auto vertexBuffer, auto indexBuffer, uint32_t count, const WaterCB& cb,
+            const math::Vector3& low, const math::Vector3& high) {
+            if (!enableInstances || cb.patchCellSize.z <= 0.5f) {
+                flush();
+                submit(vertexBuffer, indexBuffer, count, cb, ResourceHandle<StructuredBufferTag>{}, 1u, WaterGpuDraw{});
+                return;
+            }
+            /// @note 有限面と遠景はPSのdiscard契約が異なるため、同じ索引でも束を分ける。
+            if (!instances.empty() && (vertices != vertexBuffer || indices != indexBuffer
+                || indexCount != count || base.farOceanParams.y != cb.farOceanParams.y)) flush();
+            if (instances.empty()) {
+                vertices = vertexBuffer;
+                indices = indexBuffer;
+                indexCount = count;
+                base = cb;
+            }
+            instances.push_back(MakeWaterPatchInstance(cb));
+            if (gpuCulling) bounds.push_back({low, high});
+        }, cameraOverride, viewportHeight, allowFarOcean, lodCameraOverride, gpuCulling);
+    flush();
+}
+
+/// @brief Tests whether this view has disabled a water owner after resource preparation.
+bool IsWaterMediumOwnerDisabled(const RenderPassContext& ctx, uint64_t ownerKey)
+{
+    const auto& disabled = ctx.handles.waterMediumDisabledOwnerKeys;
+    return std::find(disabled.begin(), disabled.end(), ownerKey) != disabled.end();
+}
+
+/// @brief Adds one owner to the view's fail-closed water list without duplicating its key.
+void DisableWaterMediumOwner(RenderPassContext& ctx, uint64_t ownerKey)
+{
+    auto& disabled = ctx.handles.waterMediumDisabledOwnerKeys;
+    if (!IsWaterMediumOwnerDisabled(ctx, ownerKey)) disabled.push_back(ownerKey);
+}
+
+/// @brief Disables every owner whose dry-volume clipping cannot be evaluated this frame.
+void DisableWaterMediumExclusionOwners(RenderPassContext& ctx)
+{
+    if (!ctx.renderScene) return;
+    for (const auto& input : ctx.renderScene->water)
+        if (!input.medium.exclusions.empty()) DisableWaterMediumOwner(ctx, input.medium.stableOwnerKey);
+}
+
+/// @brief Disables one captured input when its view-local atlas tile cannot be produced.
+void DisableWaterMediumExclusionOwner(RenderPassContext& ctx, uint32_t waterInputIndex)
+{
+    if (!ctx.renderScene || waterInputIndex >= ctx.renderScene->water.size())
+    {
+        DisableWaterMediumExclusionOwners(ctx);
+        return;
+    }
+    const auto& input = ctx.renderScene->water[waterInputIndex];
+    if (!input.medium.exclusions.empty()) DisableWaterMediumOwner(ctx, input.medium.stableOwnerKey);
+}
+
+/// @brief Clears stale atlas receipts and hides exclusion owners if atlas capture failed.
+void InvalidateWaterMediumAtlas(RenderPassContext& ctx)
+{
+    DisableWaterMediumExclusionOwners(ctx);
+    ctx.waterMediumPassActive = false;
+    ctx.waterInterfacePassActive = false;
+    ctx.handles.waterMediumTable = {};
+    ctx.handles.waterMediumBodyCount = 0;
+    ctx.handles.waterMediumTileResolution = 0;
+    ctx.handles.waterMediumBodies.clear();
+}
 }
 const WaterDetailNoise& GetWaterDetailNoise(renderer::ResourceManager& resources)
 {
     static WaterDetailNoise s_noise;
+    static uint64_t s_owner = 0;
     static uint64_t s_bakedAt = 0xFFFFFFFFFFFFFFFFull;
 
     /// @note 焼き直しを Reset に紐づける。デバイスロストで実体が消えてもハンドルは残るため、
     /// @note 世代が変わったときだけ焼き直せば失敗時に毎フレーム焼き続けずに済む。
     const uint64_t resetVersion = resources.GetResetVersion();
-    if (s_bakedAt == resetVersion)
+    if (s_owner == resources.GetInstanceId() && s_bakedAt == resetVersion)
         return s_noise;
     s_bakedAt = resetVersion;
+    s_owner = resources.GetInstanceId();
 
     const waternoise::Tile tile = waternoise::BakeDetailTile();
     std::vector<renderer::TextureMipData> mips;
@@ -100,31 +611,241 @@ const WaterDetailNoise& GetWaterDetailNoise(renderer::ResourceManager& resources
     s_noise.invTileCells = 1.0f / static_cast<float>(waternoise::kTileCells);
     return s_noise;
 }
+
+bool WaterMediumPipelineResourcesReady(renderer::ResourceManager& resources)
+{
+    const auto& handles = GetWaterDrawResources(resources);
+    return handles.mediumAtlasShader.IsValid() && handles.mediumAtlasPSO.IsValid()
+        && handles.interfaceShader.IsValid() && handles.interfacePSO.IsValid();
+}
+
+void WaterMediumAtlasPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
+{
+    if (ctx.waterMediumPassActive)
+        builder.Write("WaterMediumAtlas");
+}
+
+void WaterMediumAtlasPass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    /// @note Resource and Submit callbacks may replace the context publication; keep this invocation's immutable inputs alive.
+    const auto sceneOwner = ctx.renderScene;
+    if (!ctx.waterMediumPassActive || !sceneOwner) return;
+    if (ctx.handles.waterMediumBodies.empty() || !ctx.handles.waterMediumAtlasRT
+        || !ctx.handles.waterMediumAtlasRT->IsValid() || !ctx.handles.waterMediumTable.IsValid()
+        || !ctx.resources.Get(ctx.handles.waterMediumTable))
+    {
+        InvalidateWaterMediumAtlas(ctx);
+        return;
+    }
+
+    const auto& handles = GetWaterDrawResources(ctx.resources);
+    if (!handles.mediumAtlasShader.IsValid() || !handles.mediumAtlasPSO.IsValid()) {
+        InvalidateWaterMediumAtlas(ctx);
+        return;
+    }
+
+    ctx.renderer.SetRenderTarget(*ctx.handles.waterMediumAtlasRT, ctx.resources);
+    ctx.renderer.Clear({0.0f, 0.0f, 0.0f, 0.0f});
+    ctx.renderer.ClearDepth();
+    const uint32_t tileResolution = ctx.handles.waterMediumTileResolution;
+    if (tileResolution == 0u) {
+        InvalidateWaterMediumAtlas(ctx);
+        return;
+    }
+
+    for (uint32_t bodyIndex = 0; bodyIndex < ctx.handles.waterMediumBodies.size(); ++bodyIndex) {
+        const auto& body = ctx.handles.waterMediumBodies[bodyIndex];
+        if (body.waterInputIndex >= sceneOwner->water.size()) {
+            InvalidateWaterMediumAtlas(ctx);
+            return;
+        }
+        const auto& input = sceneOwner->water[body.waterInputIndex];
+        const float spanX = body.worldBoundsXZ.z - body.worldBoundsXZ.x;
+        const float spanZ = body.worldBoundsXZ.w - body.worldBoundsXZ.y;
+        if (!(spanX > 1.0e-4f) || !(spanZ > 1.0e-4f)) {
+            DisableWaterMediumExclusionOwner(ctx, body.waterInputIndex);
+            continue;
+        }
+
+        float worldMinY = std::numeric_limits<float>::max();
+        float worldMaxY = std::numeric_limits<float>::lowest();
+        for (uint32_t corner = 0u; corner < 8u; ++corner) {
+            const math::Vector3 local{
+                (corner & 1u) != 0u ? input.aabbMax.x : input.aabbMin.x,
+                (corner & 2u) != 0u ? input.aabbMax.y : input.aabbMin.y,
+                (corner & 4u) != 0u ? input.aabbMax.z : input.aabbMin.z
+            };
+            const math::Vector4 world = input.constants.worldMatrix * math::Vector4{local.x, local.y, local.z, 1.0f};
+            worldMinY = (std::min)(worldMinY, world.y);
+            worldMaxY = (std::max)(worldMaxY, world.y);
+        }
+        if (!std::isfinite(worldMinY) || !std::isfinite(worldMaxY) || worldMaxY < worldMinY) {
+            DisableWaterMediumExclusionOwner(ctx, body.waterInputIndex);
+            continue;
+        }
+        const float verticalPadding = (std::max)(input.margin.vertical, 0.0f) + 1.0f;
+        Camera atlasCamera;
+        atlasCamera.m_position = {
+            0.5f * (body.worldBoundsXZ.x + body.worldBoundsXZ.z),
+            worldMinY - verticalPadding,
+            0.5f * (body.worldBoundsXZ.y + body.worldBoundsXZ.w)
+        };
+        atlasCamera.m_rotation = math::Quaternion::LookRotation(
+            {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, -1.0f});
+        atlasCamera.m_projection = ProjectionMode::Orthographic;
+        atlasCamera.m_orthoHeight = spanZ;
+        atlasCamera.m_aspect = spanX / spanZ;
+        atlasCamera.m_near = 0.01f;
+        atlasCamera.m_far = (worldMaxY - worldMinY) + verticalPadding * 2.0f + 0.1f;
+        UpdateWaterCamera(ctx, handles, &atlasCamera);
+        const math::Vector4 capture{static_cast<float>(bodyIndex + 1u),
+            (std::max)(input.medium.depthLimit, 0.0f), 0.0f, 0.0f};
+        ctx.resources.Update(handles.mediumCaptureCB, &capture, sizeof(capture));
+        ctx.renderer.SetViewport(body.tileX * tileResolution, body.tileY * tileResolution,
+            tileResolution, tileResolution);
+
+        VisitWaterPatchDraws(input, ctx, false, true,
+            [&](auto vertexBuffer, auto indexBuffer, uint32_t count, const WaterCB& cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
+                ctx.resources.Update(handles.waterCB, &cb, sizeof(cb));
+                renderer::DrawCall call;
+                call.vertexBuffer = vertexBuffer;
+                call.indexBuffer = indexBuffer;
+                call.indexCount = count;
+                call.instanceBuffer = instanceBuffer;
+                call.instanceCount = instanceCount;
+                call.shader = handles.mediumAtlasShader;
+                call.pipelineState = handles.mediumAtlasPSO;
+                call.constantBuffers[0] = handles.cameraCB;
+                call.constantBuffers[1] = handles.waterCB;
+                call.constantBuffers[10] = handles.mediumCaptureCB;
+                call.textures[3] = input.foam;
+                call.textures[4] = input.detailNoise;
+                call.textures[8] = input.ripple.IsValid() ? input.ripple : handles.neutralRipple;
+                call.textures[26] = input.velocityField;
+                ctx.renderer.Submit(call, ctx.resources);
+            }, &atlasCamera, ctx.height, true, &ctx.camera);
+    }
+    ctx.renderer.SetViewport(0, 0, ctx.width, ctx.height);
+}
+
+void WaterInterfacePass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
+{
+    if (!ctx.waterMediumPassActive || !ctx.waterInterfacePassActive) return;
+    builder.Read("HDR").Read("WaterMediumAtlas").Write("WaterInterface");
+}
+
+void WaterInterfacePass::Execute(PassResources&, RenderPassContext& ctx)
+{
+    /// @note A nested publication must not retire inputs still consumed by this invocation.
+    const auto sceneOwner = ctx.renderScene;
+    if (!ctx.waterMediumPassActive || !ctx.waterInterfacePassActive || !sceneOwner
+        || ctx.handles.waterMediumBodies.empty() || !ctx.handles.waterInterfaceRT
+        || !ctx.handles.waterInterfaceRT->IsValid()) return;
+
+    const auto& handles = GetWaterDrawResources(ctx.resources);
+    if (!handles.interfaceShader.IsValid() || !handles.interfacePSO.IsValid()) {
+        ctx.waterInterfacePassActive = false;
+        return;
+    }
+    const auto& atlasTarget = ctx.Res().Target("WaterMediumAtlas");
+    const auto atlasTexture = ctx.resources.GetColorTexture(atlasTarget, 0);
+    const auto sceneDepth = ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
+    if (!ctx.handles.waterMediumTable.IsValid() || !atlasTexture.IsValid() || !sceneDepth.IsValid()) {
+        ctx.waterInterfacePassActive = false;
+        return;
+    }
+
+    ctx.renderer.SetRenderTarget(*ctx.handles.waterInterfaceRT, ctx.resources);
+    ctx.renderer.SetViewport(0, 0, ctx.width, ctx.height);
+    ctx.renderer.Clear({0.0f, 0.0f, 0.0f, 0.0f});
+    ctx.renderer.ClearDepth();
+    UpdateWaterCamera(ctx, handles);
+    for (uint32_t bodyIndex = 0; bodyIndex < ctx.handles.waterMediumBodies.size(); ++bodyIndex) {
+        const auto& body = ctx.handles.waterMediumBodies[bodyIndex];
+        if (body.waterInputIndex >= sceneOwner->water.size()) continue;
+        const auto& input = sceneOwner->water[body.waterInputIndex];
+        if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
+
+        VisitWaterPatchDraws(input, ctx, false, true,
+            [&](auto vertexBuffer, auto indexBuffer, uint32_t count, WaterCB cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
+                cb.farOceanParams.w = static_cast<float>(bodyIndex + 1u);
+                ctx.resources.Update(handles.waterCB, &cb, sizeof(cb));
+                renderer::DrawCall call;
+                call.vertexBuffer = vertexBuffer;
+                call.indexBuffer = indexBuffer;
+                call.indexCount = count;
+                call.instanceBuffer = instanceBuffer;
+                call.instanceCount = instanceCount;
+                call.shader = handles.interfaceShader;
+                call.pipelineState = handles.interfacePSO;
+                call.constantBuffers[0] = handles.cameraCB;
+                call.constantBuffers[1] = handles.waterCB;
+                call.auxiliaryPsBuffers[0] = ctx.handles.waterMediumTable;
+                call.textures[3] = input.foam;
+                call.textures[4] = input.detailNoise;
+                call.textures[5] = sceneDepth;
+                call.textures[8] = input.ripple.IsValid() ? input.ripple : handles.neutralRipple;
+                call.textures[15] = atlasTexture;
+                call.textures[26] = input.velocityField;
+                ctx.renderer.Submit(call, ctx.resources);
+            }, nullptr, ctx.height, true);
+    }
+}
+
 void WaterSelectionMaskSystem(RenderPassContext& ctx)
 {
+    /// @note Selection consumes the same immutable publication for all water inputs, including across Submit callbacks.
+    const auto sceneOwner = ctx.renderScene;
     if (!ctx.selectionOutlineEnabled) return;
     auto& h = ctx.handles;
-    if (!h.selectionMaskShader.IsValid() || !h.selectionMaskPSO.IsValid()) return;
+    if (!h.selectionMaskPSO.IsValid()) return;
 
-    if (!ctx.renderScene) return;
-    for (const auto& input : ctx.renderScene->water) {
+    if (!sceneOwner) return;
+    const auto& handles = GetWaterDrawResources(ctx.resources);
+    if (!handles.selectionShader.IsValid() || !handles.selectionPSO.IsValid()) return;
+    renderer::ResourceHandle<renderer::TextureTag> mediumAtlasTexture;
+    bool mediumBindingsReady = ctx.waterMediumPassActive && h.waterMediumTable.IsValid()
+        && ctx.resourceRegistry.Target("WaterMediumAtlas").IsValid()
+        && ctx.resources.Get(h.waterMediumTable);
+    if (mediumBindingsReady) {
+        mediumAtlasTexture = ctx.resources.GetColorTexture(ctx.Res().Target("WaterMediumAtlas"), 0);
+        mediumBindingsReady = mediumAtlasTexture.IsValid();
+    }
+    UpdateWaterCamera(ctx, handles);
+    for (uint32_t inputIndex = 0u; inputIndex < sceneOwner->water.size(); ++inputIndex) {
+        const auto& input = sceneOwner->water[inputIndex];
+        if (IsWaterMediumOwnerDisabled(ctx, input.medium.stableOwnerKey)) continue;
         if (!input.selected || input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
-        const auto& world = input.constants.worldMatrix;
-        PerObjectCB objData{};
-        objData.world             = world;
-        objData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
-        ctx.resources.Update(h.objectCB, &objData, sizeof(PerObjectCB));
-        for (const auto& chunk : input.patches) {
+        const auto body = std::find_if(h.waterMediumBodies.begin(), h.waterMediumBodies.end(),
+            [inputIndex](const auto& candidate) { return candidate.waterInputIndex == inputIndex; });
+        const bool clipExclusions = mediumBindingsReady && !input.medium.exclusions.empty()
+            && body != h.waterMediumBodies.end();
+        if (!input.medium.exclusions.empty() && !clipExclusions) continue;
+        const uint32_t bodyIndex = clipExclusions
+            ? static_cast<uint32_t>(body - h.waterMediumBodies.begin()) : 0u;
+        VisitWaterPatchDraws(input, ctx, false, true, [&](auto vertexBuffer, auto indexBuffer, uint32_t count, const WaterCB& cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
+            auto selectionCB = cb;
+            selectionCB.crestFoamParams.z = 0.0f;
+            selectionCB.farOceanParams.w = clipExclusions ? static_cast<float>(bodyIndex + 1u) : 0.0f;
+            ctx.resources.Update(handles.waterCB, &selectionCB, sizeof(selectionCB));
             renderer::DrawCall dc;
-            dc.vertexBuffer       = chunk.vertexBuffer;
-            dc.indexBuffer        = chunk.indexBuffer;
-            dc.indexCount         = chunk.indexCount;
-            dc.shader             = h.selectionMaskShader;
-            dc.pipelineState      = h.selectionMaskPSO;
-            dc.constantBuffers[0] = h.frameCB;
-            dc.constantBuffers[1] = h.objectCB;
+            dc.vertexBuffer       = vertexBuffer;
+            dc.indexBuffer        = indexBuffer;
+            dc.indexCount         = count;
+            dc.instanceBuffer     = instanceBuffer;
+            dc.instanceCount      = instanceCount;
+            dc.shader             = handles.selectionShader;
+            dc.pipelineState      = handles.selectionPSO;
+            dc.constantBuffers[0] = handles.cameraCB;
+            dc.constantBuffers[1] = handles.waterCB;
+            if (clipExclusions) {
+                dc.auxiliaryPsBuffers[0] = h.waterMediumTable;
+                dc.textures[15] = mediumAtlasTexture;
+            }
+            dc.textures[8] = input.ripple.IsValid() ? input.ripple : handles.neutralRipple;
+            dc.textures[26] = input.velocityField;
             ctx.renderer.Submit(dc, ctx.resources);
-        }
+        });
     }
 }
 
@@ -132,7 +853,7 @@ void WaterSelectionMaskSystem(RenderPassContext& ctx)
 
 std::string_view WaterRenderPass::Name() const { return "WaterForward"; }
 
-void WaterRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+void WaterRenderPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     /// @note 平行光の影 (t9) に加え、BindForwardShadingResources が Spot/Point の影 (t28) と
     /// @note Cookie (t31) を束縛する。申告しないと Shadow / LightCookie より先に走ってよいことになる。
@@ -142,9 +863,13 @@ void WaterRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) cons
     /// @note SetAutoTarget は呼ばない。屈折用のコピーを作る間に束縛を 3 回切り替えるので、
     /// @note 描き先は Execute の中で自分で張る。
     builder.ReadWrite("HDR").Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
+    if (ctx.waterMediumPassActive)
+        builder.Read("WaterMediumAtlas");
 }
 void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
 {
+    /// @note Pin before any resource callback so replacement of ctx.renderScene cannot invalidate this pass's water references.
+    const auto sceneOwner = ctx.renderScene;
     renderer::IRenderer& renderer = ctx.renderer;
     renderer::ResourceManager& resources = ctx.resources;
     const renderer::Camera& camera = ctx.camera;
@@ -152,84 +877,30 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     const auto lightCB = ctx.handles.lightCB;
     const auto shadowDepthTexture = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
     const auto shadowCB = ctx.handles.shadowCB;
-    const float elapsedTime = ctx.time;
-
-    /// @note static ローカルは初回のみ初期化される。`ResourceManager::Reset()` で世代が
-    /// @note 変わった場合だけ再生成し、旧ハンドル (失効済み) へのアクセスを防ぐ。
-    static uint64_t s_resetVersion = resources.GetResetVersion();
-    static auto waterShader = resources.LoadShader("Assets/Shaders/Water/Water.hlsl");
-    /// @note 半透明だが深度書き込みありで描く。水面は 1 枚の面で重なるのは自分自身だけなので、
-    /// @note 書き込みを切るとチャンクの submit 順 (-Z→+Z の行優先) がそのままブレンド順に
-    /// @note なり、+Z 向きカメラでは奥のチャンクが後から手前へ上塗りされ、向こう側の縁や
-    /// @note うねりの裏面 (SOLID_NOCULL で描かれる) が手前の水面に線となって浮く。深度を
-    /// @note 書けば提出順に関係なく一番手前の水面だけが残る。水中の向こうの不透明物は屈折用
-    /// @note シーンカラーコピーから引いており、深度を書いても水底は見えたままになる。
-    static auto waterPSO = resources.CreatePipelineState({
-        renderer::RasterizerMode::SOLID_NOCULL,
-        renderer::BlendMode::ALPHA_BLEND,
-        renderer::DepthMode::DEPTH_ON
-    });
-    static auto waterWireframePSO = resources.CreatePipelineState({
-        renderer::RasterizerMode::WIREFRAME_NOCULL,
-        renderer::BlendMode::OPAQUE_BLEND,
-        renderer::DepthMode::DEPTH_ON
-    });
-    static auto cameraCBH = resources.CreateConstantBuffer(288);
-    static auto waterCBH  = resources.CreateConstantBuffer(sizeof(WaterCB));
-    static auto defaultEffectCBH = [&] {
-        WaterEffectParams defaults{};
-        auto h = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
-        resources.Update(h, &defaults, sizeof(WaterEffectParams));
-        return h;
-    }();
-    static auto waterEffectCBH = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
-    static auto blackTex = [&] {
-        const uint8_t b[4] = { 0, 0, 0, 255 };
-        return resources.CreateTexture(b, 1, 1);
-    }();
-    /// @note B は «高さ 0» の 128。255 のままだと波紋が 1 枚も無い水面の頂点が
-    /// @note kWaterRippleHeightScale ぶん持ち上がる。
-    static auto neutralRippleTex = [&] {
-        const uint8_t r[4] = { 128, 128, 128, 255 };
-        return resources.CreateTexture(r, 1, 1);
-    }();
-
-    /// @note 水面の屈折用にシーンカラーをコピーする。Water シェーダーが屈折で HDR をシーン
-    /// @note カラーとして読むため、hdrRT を出力 RT として束ねる前にコピーする必要がある
-    /// @note (DX11 は同時読み書きを禁止する)。
-    static auto copyColorShader = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
-    static auto depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-
-    if (s_resetVersion != resources.GetResetVersion()) {
-        s_resetVersion    = resources.GetResetVersion();
-        waterShader       = resources.LoadShader("Assets/Shaders/Water/Water.hlsl");
-        waterPSO          = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID_NOCULL, renderer::BlendMode::ALPHA_BLEND, renderer::DepthMode::DEPTH_ON });
-        waterWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME_NOCULL, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
-        cameraCBH         = resources.CreateConstantBuffer(288);
-        waterCBH          = resources.CreateConstantBuffer(sizeof(WaterCB));
-        defaultEffectCBH  = [&] { WaterEffectParams d{}; auto h = resources.CreateConstantBuffer(sizeof(WaterEffectParams)); resources.Update(h, &d, sizeof(WaterEffectParams)); return h; }();
-        waterEffectCBH    = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
-        blackTex          = [&] { const uint8_t b[4] = {   0,   0,   0, 255 }; return resources.CreateTexture(b, 1, 1); }();
-        neutralRippleTex  = [&] { const uint8_t r[4] = { 128, 128, 128, 255 }; return resources.CreateTexture(r, 1, 1); }();
-        copyColorShader   = resources.LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
-        depthCopyShader   = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
-    }
+    auto& handles = GetWaterDrawResources(resources);
+    const auto copyColorShader = handles.copyColorShader;
+    const auto depthCopyShader = handles.depthCopyShader;
     /// @note カリング錐台はジッター無しのまま。半ピクセルのために可視判定を揺らす意味がない。
     const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
 
     /// @note 描画用の行列だけ TAA ジッターを乗せる。乗せないと水面だけ AA が効かず、
     /// @note b0 経由で描く不透明物とサブピクセルずれた深度になって TAA の再投影が濁る。
-    const math::Matrix4 jitteredProj =
-        MakeJitteredProjection(camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
-    const math::Matrix4 jitteredVP = jitteredProj * camera.GetViewMatrix();
+    UpdateWaterCamera(ctx, handles);
 
-    if (!ctx.renderScene) return;
+    if (!sceneOwner) return;
     bool hasVisibleWater = false;
-    for (const auto& input : ctx.renderScene->water) {
+    for (const auto& input : sceneOwner->water) {
+        if (IsWaterMediumOwnerDisabled(ctx, input.medium.stableOwnerKey)) continue;
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
         auto low = input.aabbMin, high = input.aabbMax;
-        ExpandByWaterWaveMargin(input.margin, low, high);
-        if (AabbVisible(frustum, input.constants.worldMatrix, low, high)) { hasVisibleWater = true; break; }
+        math::Vector2 outerMin, outerMax;
+        if (ResolveWaterHorizonRectangle(input, ctx.camera, outerMin, outerMax)) {
+            low.x = outerMin.x; low.z = outerMin.y;
+            high.x = outerMax.x; high.z = outerMax.y;
+        }
+        if (!ctx.frustumCullingEnabled || AabbVisible(frustum, input.constants.worldMatrix, low, high, input.margin)) {
+            hasVisibleWater = true; break;
+        }
     }
     if (!hasVisibleWater) return;
     /// @note 作業 RT はビューが持つ (理由は RenderPassHandles::waterSceneColorRT を参照)。
@@ -264,99 +935,86 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         renderer.Submit(depthDC, resources);
     }
     const auto sceneDepth = resources.GetDepthTexture(sceneDepthRT);
+    renderer::ResourceHandle<renderer::TextureTag> mediumAtlasTexture;
+    bool mediumBindingsReady = ctx.waterMediumPassActive && ctx.handles.waterMediumTable.IsValid()
+        && ctx.resourceRegistry.Target("WaterMediumAtlas").IsValid()
+        && resources.Get(ctx.handles.waterMediumTable);
+    if (mediumBindingsReady) {
+        mediumAtlasTexture = resources.GetColorTexture(ctx.Res().Target("WaterMediumAtlas"), 0);
+        mediumBindingsReady = mediumAtlasTexture.IsValid();
+    }
+    std::vector<uint32_t> mediumBodyByWater(sceneOwner->water.size(), 0xFFFFFFFFu);
+    if (mediumBindingsReady) {
+        for (uint32_t bodyIndex = 0u; bodyIndex < ctx.handles.waterMediumBodies.size(); ++bodyIndex) {
+            const uint32_t inputIndex = ctx.handles.waterMediumBodies[bodyIndex].waterInputIndex;
+            if (inputIndex < mediumBodyByWater.size()) mediumBodyByWater[inputIndex] = bodyIndex;
+        }
+    }
 
     renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
 
     /// @note しぶきの GameObject は UpdateWaterSplashes (WaterSystem) が作って消す。
     /// @note 描画中にシーンを書き換えると、後続パスが握るエミッターがすり替わる。
 
-    {
-        struct CameraCB {
-            math::Matrix4 view;
-            math::Matrix4 projection;
-            math::Matrix4 viewProjection;
-            math::Matrix4 invViewProjection;
-            math::Vector3 cameraPos;
-            float nearZ;
-            float farZ;
-            /// @note LAYOUT: PerFrameCB / Constants.hlsli の CameraConstants と一致させること
-            /// @note (waterSsrEnabled は共通側で _reserved になっている枠)。
-            float waterSsrEnabled;
-            float isOrthographic;
-            /// @note Water 専用 b0 の末尾。0=通常、1=Wireframe Lit、2=Wireframe Unlit。
-            float wireframeMode;
-        };
-        static_assert(sizeof(CameraCB) == 288, "CameraCB size mismatch");
-
-        CameraCB camData{};
-        camData.view = camera.GetViewMatrix();
-        camData.projection = jitteredProj;
-        camData.viewProjection = jitteredVP;
-        camData.invViewProjection = math::Matrix4::Inverse(jitteredVP);
-        camData.cameraPos = camera.m_position;
-        camData.nearZ = camera.m_near;
-        camData.farZ = camera.m_far;
-        camData.waterSsrEnabled = (ctx.isDeferred && ctx.settings.ssr.enabled) ? 1.0f : 0.0f;
-        camData.isOrthographic  =
-            camera.m_projection == renderer::ProjectionMode::Orthographic ? 1.0f : 0.0f;
-        camData.wireframeMode = ctx.settings.IsWireframe() ? (ctx.settings.IsUnlit() ? 2.0f : 1.0f) : 0.0f;
-        resources.Update(cameraCBH, &camData, sizeof(camData));
-    }
-
     /// @note 輪の寿命は WaterSystem が進める。ここで進めると SceneView と GameView で
     /// @note 2 回進み、ビューを 2 つ開いた瞬間に波紋が倍速で消える。
 
-    for (const auto& input : ctx.renderScene->water) {
+    for (uint32_t inputIndex = 0u; inputIndex < sceneOwner->water.size(); ++inputIndex) {
+        const auto& input = sceneOwner->water[inputIndex];
+        if (IsWaterMediumOwnerDisabled(ctx, input.medium.stableOwnerKey)) continue;
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
-        const auto& waterWorld = input.constants.worldMatrix;
-        const auto& margin = input.margin;
-        auto cb = input.constants;
-        math::Vector2 focus{};
-        if (cb.gridParams.x > 0.5f) {
-            /// @note 上空では視線が当たる水面へ集中する。足元だけを細かくすると俯瞰の画面中央が粗いままになる。
-            focus = ResolveWaterGridFocus(waterWorld, camera.m_position, camera.GetForward(),
-                { cb.gridParams.z, cb.gridParams.w }, cb.gridParams.y);
-            cb.waveShapeParams.z = focus.x;
-            cb.waveShapeParams.w = focus.y;
-        }
-        cb.wvpMatrix = jitteredVP * waterWorld;
-        if (!ctx.handles.iblPrefilter.IsValid()) cb.reflectParams.x = 0;
-        resources.Update(waterCBH, &cb, sizeof(cb));
-        auto effectCBH = defaultEffectCBH;
-        if (waterEffectCBH.IsValid()) { resources.Update(waterEffectCBH, &input.effects, sizeof(input.effects)); effectCBH = waterEffectCBH; }
+        resources.Update(handles.effectCB, &input.effects, sizeof(input.effects));
         const auto depthTex = sceneDepth;
-        const auto colorTex = sceneColor.IsValid() ? sceneColor : blackTex;
-        const auto rippleTex = input.ripple.IsValid() ? input.ripple : neutralRippleTex;
-        const auto activeShader = input.shader.IsValid() ? input.shader : waterShader;
-        for (const auto& chunk : input.patches) {
-            /// @note 水面チャンクも地形と同様、独立にカリングされる描画候補として数える。
-            ++ctx.statsTotalObjects;
-            /// @note 地形チャンクと同様、カメラの Frustum Culling を切っている間は落とさない。
-            math::Vector3 chunkMin = chunk.aabbMin;
-            math::Vector3 chunkMax = chunk.aabbMax;
-            FocusWaterChunkBounds(input, focus, chunkMin, chunkMax);
-            ExpandByWaterWaveMargin(margin, chunkMin, chunkMax);
-            if (ctx.frustumCullingEnabled &&
-                !AabbVisible(frustum, waterWorld, chunkMin, chunkMax)) {
-                ++ctx.statsFrustumCulled;
-                continue;
+        const auto colorTex = sceneColor.IsValid() ? sceneColor : handles.black;
+        const auto rippleTex = input.ripple.IsValid() ? input.ripple : handles.neutralRipple;
+        const auto requestedShader = input.shader.IsValid() ? input.shader : handles.waterShader;
+        const bool acceptsAppearance = resources.GetShaderCapabilities(requestedShader).SupportsWaterGeometry();
+        /// @note CPU surface queries, selection and medium geometry cannot follow arbitrary project vertex code.
+        const auto activeShader = acceptsAppearance ? requestedShader : handles.waterShader;
+        if (!acceptsAppearance && input.shader.IsValid()) {
+            const uint64_t key = (static_cast<uint64_t>(requestedShader.gen) << 32) | requestedShader.id;
+            if (handles.rejectedGeometryWarnings.insert(key).second) {
+                const auto* shader = resources.Get(requestedShader);
+                FBZZ_LOG_WARN("Water shader '%s' requires water_surface_v1 + water_v1; using shared Water geometry and legacy appearance. Custom vertex displacement is not synchronized with CPU surface queries.",
+                    shader ? shader->GetPath().c_str() : "<unavailable>");
             }
-
+        }
+        const bool standardWaterShader = acceptsAppearance
+            || resources.GetShaderCapabilities(handles.waterShader).SupportsWaterGeometry();
+        const uint32_t bodyIndex = mediumBodyByWater[inputIndex];
+        const bool clipExclusions = mediumBindingsReady && !input.medium.exclusions.empty()
+            && bodyIndex != 0xFFFFFFFFu;
+        if (!input.medium.exclusions.empty() && !clipExclusions) continue;
+        VisitWaterPatchDraws(input, ctx, true, standardWaterShader,
+            [&](auto vertexBuffer, auto indexBuffer, uint32_t count, WaterCB cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw& gpu) {
+            if (!ctx.handles.iblPrefilter.IsValid()) cb.reflectParams.x = 0.0f;
+            cb.farOceanParams.w = clipExclusions ? static_cast<float>(bodyIndex + 1u) : 0.0f;
+            resources.Update(handles.waterCB, &cb, sizeof(cb));
             renderer::DrawCall call;
-            call.vertexBuffer = chunk.vertexBuffer;
-            call.indexBuffer  = chunk.indexBuffer;
+            call.vertexBuffer = vertexBuffer;
+            call.indexBuffer  = indexBuffer;
             call.shader       = activeShader;
-            call.pipelineState = (settings && settings->IsWireframe()) ? waterWireframePSO : waterPSO;
-            call.indexCount   = chunk.indexCount;
+            call.pipelineState = settings->IsWireframe() ? handles.wireframePSO : handles.waterPSO;
+            call.indexCount   = count;
+            call.instanceBuffer = instanceBuffer;
+            call.instanceCount = instanceCount;
             call.layer        = renderer::RenderLayer::TRANSPARENT_LAYER;
             call.topology     = renderer::PrimitiveTopology::TRIANGLE_LIST;
-            call.constantBuffers[0] = cameraCBH;
-            call.constantBuffers[1] = waterCBH;
-            call.constantBuffers[2] = effectCBH;
+            call.constantBuffers[0] = handles.cameraCB;
+            call.constantBuffers[1] = handles.waterCB;
+            call.constantBuffers[2] = acceptsAppearance && input.appearanceParameters.IsValid()
+                ? input.appearanceParameters : handles.effectCB;
             call.constantBuffers[3] = lightCB;
             call.constantBuffers[4] = shadowCB;
             call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
             BindForwardShadingResources(call, ctx);
+            if (clipExclusions) {
+                call.auxiliaryPsBuffers[0] = ctx.handles.waterMediumTable;
+                call.textures[15] = mediumAtlasTexture;
+            }
+            /// @note Legacy register samplers may use t0/t1/t2/t7. All eight project slots remain available through bindless indices.
+            if (acceptsAppearance)
+                for (const uint32_t slot : {0u, 1u, 2u, 7u}) call.textures[slot] = input.appearanceTextures[slot];
             call.textures[3]  = input.foam;
             /// @note さざ波タイル (全水面で共有)
             call.textures[4]  = input.detailNoise;
@@ -370,9 +1028,23 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             /// @note — DX12 の null ディスクリプタは Texture2D 固定で、Texture3D を宣言した
             /// @note スロットを空にすると次元が食い違う。
             call.textures[26] = input.velocityField;
+            if (gpu.indirect.indirectArguments.IsValid()) {
+                call.indirectArguments = gpu.indirect.indirectArguments;
+                call.indirectArgumentOffset = gpu.indirect.indirectArgumentOffset;
+                call.indirectCommandCount = gpu.indirect.candidateCount;
+                call.indirectInstanceOffset = true;
+            }
+            const int previousTriangleCount = ctx.statsTriangleCount;
             SubmitCounted(ctx, call);
-        }
+            if (gpu.indirect.indirectArguments.IsValid())
+                ctx.statsTriangleCount = previousTriangleCount
+                    + static_cast<int>(static_cast<uint64_t>(count / 3u) * gpu.visibleInstancesForStatistics);
+            if (instanceCount > 1u && !gpu.indirect.indirectArguments.IsValid()) {
+                ++ctx.statsInstancedBatches;
+                ctx.statsInstancedDrawsSaved += static_cast<int>(instanceCount) - 1;
+            }
+        }, nullptr, 0, true, nullptr, standardWaterShader);
     }
 }
 
-}
+} /// @note namespace fbzz::renderer

@@ -5,9 +5,117 @@
 #include <Graphics/Passes/Geometry/TerrainRenderPass.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
+#include <Graphics/Renderer/GpuGeometrySelection.hpp>
 #include <algorithm>
+#include <cmath>
 #include <optional>
 namespace fbzz::renderer {
+namespace {
+struct TerrainGpuResources {
+    uint64_t owner = 0, version = UINT64_MAX;
+    GpuGeometrySelection selection;
+    std::array<ResourceHandle<ShaderTag>, 3> shaders{};
+};
+TerrainGpuResources& GetTerrainGpuResources(ResourceManager& resources)
+{
+    static TerrainGpuResources state;
+    if (state.owner != resources.GetInstanceId() || state.version != resources.GetResetVersion()) {
+        state.owner = resources.GetInstanceId();
+        state.version = resources.GetResetVersion();
+        state.shaders = {};
+    }
+    return state;
+}
+ResourceHandle<ShaderTag> TerrainGpuShader(ResourceManager& resources, size_t mode)
+{
+    constexpr std::array<const char*, 3> paths{
+        "Assets/Shaders/Terrain/TerrainGpu.hlsl", "Assets/Shaders/Terrain/TerrainGpuGBuffer.hlsl",
+        "Assets/Shaders/Terrain/TerrainGpuShadow.hlsl"};
+    auto& handle = GetTerrainGpuResources(resources).shaders[mode];
+    if (!resources.Get(handle)) handle = resources.LoadShader(paths[mode]);
+    return handle;
+}
+std::array<math::Vector3, 2> TerrainWorldBounds(const math::Matrix4& world,
+    const math::Vector3& low, const math::Vector3& high)
+{
+    const auto localCenter = (low + high) * 0.5f;
+    const auto localExtents = (high - low) * 0.5f;
+    const auto center = world * math::Vector4{localCenter, 1.0f};
+    const auto extent = [&](uint32_t row) {
+        return std::abs(world.m[row][0]) * localExtents.x + std::abs(world.m[row][1]) * localExtents.y
+            + std::abs(world.m[row][2]) * localExtents.z;
+    };
+    const math::Vector3 worldCenter{center.x, center.y, center.z};
+    const math::Vector3 worldExtents{extent(0), extent(1), extent(2)};
+    return {worldCenter - worldExtents, worldCenter + worldExtents};
+}
+bool PreserveFiberTerrainDetail(const RenderTerrainInput& input, const RenderTerrainPatch& patch,
+    const math::Vector3& cameraPosition)
+{
+    if (!input.fiberSurface) return false;
+    if (!input.fiberDistanceLod) return true;
+    const auto bounds = TerrainWorldBounds(input.constants.worldMatrix,patch.aabbMin,patch.aabbMax);
+    const math::Vector3 nearest{std::clamp(cameraPosition.x,bounds[0].x,bounds[1].x),
+        std::clamp(cameraPosition.y,bounds[0].y,bounds[1].y),std::clamp(cameraPosition.z,bounds[0].z,bounds[1].z)};
+    return (nearest-cameraPosition).LengthSq() <= input.fiberLodFar*input.fiberLodFar;
+}
+/// @note The viewing camera controls LOD in color and shadow passes; only visibility uses the light frustum.
+static bool PrepareTerrainGpu(RenderPassContext& ctx, const RenderTerrainInput& input,
+    const math::Frustum& frustum, GpuGeometryDispatch& output, bool selection = false)
+{
+    if ((ctx.settings.geometryDrawMode != GeometryDrawMode::GPU_INDIRECT
+        && ctx.settings.geometryDrawMode != GeometryDrawMode::MESH_SHADER) || !ctx.renderer.SupportsIndirectDraw()
+        || input.patches.empty() || !ctx.resources.Get(input.gpuHeights)
+        || !ctx.resources.Get(input.gpuPatches) || !ctx.resources.Get(input.gpuIndices)) return false;
+    /// @note All visible and shadow variants must be ready before selecting a GPU LOD for either pass.
+    for (size_t mode = 0; mode < 3; ++mode)
+        if (!ctx.resources.Get(TerrainGpuShader(ctx.resources, mode))) return false;
+    GpuGeometrySelectionView view;
+    for (int i = 0; i < math::Frustum::PLANE_COUNT; ++i) {
+        const auto& plane = frustum.GetPlane(i);
+        view.frustumPlanes[i] = {plane.normal.x, plane.normal.y, plane.normal.z, plane.distance};
+    }
+    const float projectionScale = std::abs(ctx.camera.GetProjectionMatrix().m[1][1])
+        * static_cast<float>(std::max(ctx.height, 1u)) * 0.5f;
+    view.cameraAndProjectionScale = {ctx.camera.m_position.x, ctx.camera.m_position.y,
+        ctx.camera.m_position.z, projectionScale};
+    view.projectionMetrics = {projectionScale, 16.0f, std::max(ctx.camera.m_near, 0.001f),
+        ctx.camera.m_projection == ProjectionMode::Orthographic ? 1.0f : 0.0f};
+    const auto& world = input.constants.worldMatrix;
+    /// @note The Frobenius norm bounds stretch under nonuniform scale, negative scale and shear.
+    const float stretch = std::sqrt(world.m[0][0]*world.m[0][0] + world.m[0][2]*world.m[0][2]
+        + world.m[1][0]*world.m[1][0] + world.m[1][2]*world.m[1][2]
+        + world.m[2][0]*world.m[2][0] + world.m[2][2]*world.m[2][2]);
+    std::vector<GpuGeometryCandidate> candidates;
+    candidates.reserve(input.patches.size());
+    for (const auto& patch : input.patches) {
+        const auto bounds = TerrainWorldBounds(world, patch.aabbMin, patch.aabbMax);
+        GpuGeometryCandidate candidate;
+        candidate.boundsMin = {bounds[0].x, bounds[0].y, bounds[0].z, 0};
+        candidate.boundsMax = {bounds[1].x, bounds[1].y, bounds[1].z, 0};
+        candidate.lodCount = selection || PreserveFiberTerrainDetail(input,patch,ctx.camera.m_position) ? 1u : 3u;
+        for (uint32_t lod = 0; lod < candidate.lodCount; ++lod)
+            candidate.lods[lod] = {patch.indexCountLOD[lod], patch.gpuStartIndexLOD[lod], 0,
+                patch.gpuPatch.columns * patch.gpuPatch.rows,
+                std::max(patch.gpuPatch.cellSize * stretch * static_cast<float>(1u << lod), 0.0001f), {}};
+        candidates.push_back(candidate);
+    }
+    return GetTerrainGpuResources(ctx.resources).selection.Prepare(ctx.renderer, ctx.resources,
+        view, candidates, input.gpuIndexCount, input.gpuVertexCapacity, output);
+}
+void BindTerrainGpu(DrawCall& call, const RenderTerrainInput& input,
+    const GpuGeometryDispatch& dispatch, size_t patchIndex, ResourceHandle<ShaderTag> shader)
+{
+    call.vertexBuffer = {};
+    call.indexBuffer = input.gpuIndices;
+    call.shader = shader;
+    call.vsBuffers = {input.gpuHeights, input.gpuPatches};
+    call.indirectArguments = dispatch.indirectArguments;
+    call.indirectArgumentOffset = dispatch.indirectArgumentOffset + patchIndex * kGpuGeometryIndexedArgumentStride;
+    call.indirectInstanceOffset = true;
+}
+} /// @note namespace
 struct TerrainCameraFrameCB {
     math::Matrix4 view;
     math::Matrix4 projection;
@@ -52,7 +160,7 @@ static bool IsChunkVisible(
 static int SelectTerrainLOD(const RenderTerrainInput& input, const RenderTerrainPatch& chunk,
                             const math::Vector3& cameraPosition)
 {
-    if (input.fiberSurface) return 0;
+    if (PreserveFiberTerrainDetail(input,chunk,cameraPosition)) return 0;
     const math::Vector3 localCenter = (chunk.aabbMin + chunk.aabbMax) * 0.5f;
     const math::Vector4 worldCenter = input.constants.worldMatrix
         * math::Vector4{ localCenter.x, localCenter.y, localCenter.z, 1.0f };
@@ -70,7 +178,7 @@ std::string_view TerrainRenderPass::Name() const
     return m_mode == TerrainDrawMode::GBuffer ? "TerrainGBuffer" : "TerrainForward";
 }
 
-void TerrainRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+void TerrainRenderPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     /// @note 影と Cookie の束縛は GBuffer / Forward で分岐していない (Execute の t13 / t28 / t31)。
     /// @note 以前は Deferred のときだけ申告から抜けていて、依存辺が張られないまま
@@ -81,6 +189,8 @@ void TerrainRenderPass::Setup(PassBuilder& builder, const RenderPassContext&) co
     /// @note Forward では HDR へ直接ライティング結果を描く。
     const char* const target = m_mode == TerrainDrawMode::GBuffer ? "GBuffer" : "HDR";
     builder.ReadWrite(target).SetAutoTarget(target);
+    if (m_mode == TerrainDrawMode::Forward && ctx.waterMediumPassActive)
+        builder.Read("WaterMediumAtlas");
 }
 
 void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
@@ -100,34 +210,27 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     auto shadowCB           = ctx.handles.shadowCB;
     auto lightCB            = ctx.handles.lightCB;
 
-    /// @note static ローカルは初回のみ初期化される。ResourceManager::Reset() で世代が変わった
-    /// @note 場合だけ再生成し、旧ハンドル（失効済み）へのアクセスを防ぐ。
-    static uint64_t s_resetVersion = resources.GetResetVersion();
-    static auto terrainShader = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
-    /// @note Deferred 用: GBuffer(MRT) へ albedo/roughness/normal/metallic を書き出す地形シェーダ。
-    static auto terrainGBufferShader = resources.LoadShader("Assets/Shaders/Terrain/TerrainGBuffer.hlsl");
-    static auto terrainPSO    = resources.CreatePipelineState({
-        renderer::RasterizerMode::SOLID,
-        renderer::BlendMode::OPAQUE_BLEND,
-        renderer::DepthMode::DEPTH_ON
-    });
-    static auto terrainWireframePSO = resources.CreatePipelineState({
-        renderer::RasterizerMode::WIREFRAME,
-        renderer::BlendMode::OPAQUE_BLEND,
-        renderer::DepthMode::DEPTH_ON
-    });
-    static auto cameraCBH  = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
-    static auto terrainCBH = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
-
-    if (s_resetVersion != resources.GetResetVersion()) {
-        s_resetVersion      = resources.GetResetVersion();
-        terrainShader       = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
-        terrainGBufferShader = resources.LoadShader("Assets/Shaders/Terrain/TerrainGBuffer.hlsl");
-        terrainPSO          = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,     renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
-        terrainWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME, renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
-        cameraCBH           = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
-        terrainCBH          = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
-    }
+    auto& shared = resources.Rendering().Shared();
+    if (!resources.Get(shared.terrainShader))
+        shared.terrainShader = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
+    if (!resources.Get(shared.terrainGBufferShader))
+        shared.terrainGBufferShader = resources.LoadShader("Assets/Shaders/Terrain/TerrainGBuffer.hlsl");
+    if (!resources.Get(shared.terrainPSO))
+        shared.terrainPSO = resources.CreatePipelineState({ renderer::RasterizerMode::SOLID,
+            renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+    if (!resources.Get(shared.terrainWireframePSO))
+        shared.terrainWireframePSO = resources.CreatePipelineState({ renderer::RasterizerMode::WIREFRAME,
+            renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON });
+    if (!resources.Get(shared.terrainCameraCB))
+        shared.terrainCameraCB = resources.CreateConstantBuffer(sizeof(TerrainCameraFrameCB));
+    if (!resources.Get(shared.terrainObjectCB))
+        shared.terrainObjectCB = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
+    const auto terrainShader = shared.terrainShader;
+    const auto terrainGBufferShader = shared.terrainGBufferShader;
+    const auto terrainPSO = shared.terrainPSO;
+    const auto terrainWireframePSO = shared.terrainWireframePSO;
+    const auto cameraCBH = shared.terrainCameraCB;
+    const auto terrainCBH = shared.terrainObjectCB;
     /// @note TAA ジッターを地形にも乗せる。乗せないと地形だけ AA されないうえ、b0 経由で描く
     /// @note 他の不透明物とサブピクセル単位でずれた深度になり、TAA の再投影が濁る。
     const math::Matrix4 jitteredProj =
@@ -148,14 +251,24 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         resources.Update(cameraCBH, &camData, sizeof(camData));
     }
 
-    const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
+    const math::Frustum frustum = math::Frustum::FromViewProjection(jitteredVP);
     if (!ctx.renderScene) return;
     for (const auto& input : ctx.renderScene->terrains) {
+        if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
         const auto& world = input.constants.worldMatrix;
         auto terrainCBData = input.constants;
+        terrainCBData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         terrainCBData.wvpMatrix = jitteredVP * world;
         resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
+        const auto gpuShader = ctx.frustumCullingEnabled
+            && (ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT || ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER)
+            ? TerrainGpuShader(resources, m_mode == TerrainDrawMode::GBuffer ? 1u : 0u) : ResourceHandle<ShaderTag>{};
+        GpuGeometryDispatch gpuDispatch;
+        const bool gpu = resources.Get(gpuShader)
+            && PrepareTerrainGpu(ctx, input, frustum, gpuDispatch);
+        size_t patchIndex = 0;
         for (const auto& chunk : input.patches) {
+                const size_t currentPatch = patchIndex++;
                 /// @note 地形チャンクはそれぞれ独立にカリングされる描画候補なので、
                 /// @note メッシュと同じ粒度で統計に数える。
                 ++ctx.statsTotalObjects;
@@ -164,7 +277,7 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 if (ctx.frustumCullingEnabled &&
                     !IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax)) {
                     ++ctx.statsFrustumCulled;
-                    continue;
+                    if (!gpu) continue;
                 }
 
                 const int lod = SelectTerrainLOD(input, chunk, camera.m_position);
@@ -189,10 +302,17 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 /// @note b8: 画面空間 AO / 接触影の強度。Forward の地形がこれを読む。
                 call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
                 BindForwardShadingResources(call, ctx);
+                if (m_mode == TerrainDrawMode::Forward) {
+                    call.textures[16] = ctx.handles.iblIrradiance;
+                    call.textures[17] = ctx.handles.iblPrefilter;
+                    call.textures[18] = ctx.handles.iblBrdfLut;
+                }
 
                 call.textures[0]  = input.splatIndices;
                 call.textures[1]  = input.splatWeights;
                 call.textures[13] = shadowDepthTexture;
+
+                if (gpu) BindTerrainGpu(call, input, gpuDispatch, currentPatch, gpuShader);
 
                 SubmitCounted(ctx, call);
         }
@@ -214,13 +334,21 @@ void SubmitTerrainShadowCasters(
     if (!ctx.renderScene) return;
     auto& resources = ctx.resources;
     for (const auto& input : ctx.renderScene->terrains) {
+        if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
         const auto& world = input.constants.worldMatrix;
         PerObjectCB object{};
         object.world = world;
         object.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         resources.Update(objectCB, &object, sizeof(object));
+        const auto gpuShader = ctx.frustumCullingEnabled && (ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT || ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER)
+            ? TerrainGpuShader(resources, 2u) : ResourceHandle<ShaderTag>{};
+        GpuGeometryDispatch gpuDispatch;
+        const bool gpu = resources.Get(gpuShader)
+            && PrepareTerrainGpu(ctx, input, lightFrustum, gpuDispatch);
+        size_t patchIndex = 0;
         for (const auto& chunk : input.patches) {
-                if (!IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
+                const size_t currentPatch = patchIndex++;
+                if (!gpu && !IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
                     continue;
 
                 const int lod = SelectTerrainLOD(input, chunk, ctx.camera.m_position);
@@ -236,6 +364,7 @@ void SubmitTerrainShadowCasters(
                 dc.topology           = renderer::PrimitiveTopology::TRIANGLE_LIST;
                 dc.constantBuffers[0] = frameCB;
                 dc.constantBuffers[1] = objectCB;
+                if (gpu) BindTerrainGpu(dc, input, gpuDispatch, currentPatch, gpuShader);
                 SubmitCountedShadow(ctx, dc);
         }
     }

@@ -18,6 +18,17 @@
 namespace fbzz::tests {
 namespace {
 
+/// @note Tests author through the same owned draft/publication path as production; no mutable stored alias is exposed.
+template<typename Owner, typename Change>
+void EditMaterialAuthoring(Owner& owner, Change&& change)
+{
+    auto edit = owner.BeginAuthoringEdit();
+    change(edit.Draft());
+    EXPECT_NE(edit.Commit(owner), asset::detail::MaterialAuthoringCommitResult::CONFLICT);
+}
+
+
+
 using namespace scene::water_keys;
 
 /// 波 0 だけを持つ .mat。残りの波は振幅 0 で明示的に消す。
@@ -26,18 +37,18 @@ asset::MaterialAsset SingleWaveMaterial(math::Vector2 direction, float amplitude
 {
     asset::MaterialAsset mat;
     for (int i = 0; i < 4; ++i)
-        mat.params[kWaveAmplitude[i]] = { 0.0f };
-    mat.params[kWaveDirection[0]]  = { direction.x, direction.y };
-    mat.params[kWaveAmplitude[0]]  = { amplitude };
-    mat.params[kWaveWavelength[0]] = { wavelength };
-    mat.params[kWaveSteepness[0]]  = { steepness };
+        EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveAmplitude[i]] = { 0.0f }; });
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveDirection[0]] = { direction.x, direction.y }; });
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveAmplitude[0]] = { amplitude }; });
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveWavelength[0]] = { wavelength }; });
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveSteepness[0]] = { steepness }; });
     /// @note 位相と逆写像だけを見たいので «群» と «方向広がり» は切る。既定では 0.45 / 0.35 が入る。
-    mat.params[kWaveGrouping]      = { 0.0f };
-    mat.params[kWaveSpread]        = { 0.0f };
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveGrouping]      = { 0.0f }; });
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveSpread]        = { 0.0f }; });
     return mat;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name .mat と個体の補正
 
@@ -71,7 +82,7 @@ TEST(WaterWaves, AmplitudeScaleAndDisableApplyOnTopOfTheMaterial)
 TEST(WaterWaves, TailwindGrowsWavesAndHeadwindShrinksThem)
 {
     asset::MaterialAsset mat = SingleWaveMaterial({ 1.0f, 0.0f }, 0.4f, 10.0f);
-    mat.params[kWindResponse] = { 1.0f };
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWindResponse] = { 1.0f }; });
     scene::WaterComponent water;
 
     scene::ResolveWaterWaves(water, &mat, { true, { 1.0f, 0.0f, 0.0f }, 10.0f });
@@ -95,7 +106,7 @@ TEST(WaterWaves, WindDoesNotRotateWaveDirections)
 {
     /// @note 向きを回すと、原点から遠い点ほど位相が跳んで遠景の波が走る (理由は WaterSystem.hpp を参照)。
     asset::MaterialAsset mat = SingleWaveMaterial({ 1.0f, 0.0f }, 0.4f, 10.0f);
-    mat.params[kWindResponse] = { 1.0f };
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWindResponse] = { 1.0f }; });
     scene::WaterComponent water;
     scene::ResolveWaterWaves(water, &mat, { true, { 0.0f, 0.0f, 1.0f }, 10.0f });
     EXPECT_FLOAT_EQ(water.waves[0].direction.x, 1.0f);
@@ -107,8 +118,8 @@ TEST(WaterWaves, WindDoesNotRotateWaveDirections)
 TEST(WaterWaves, CurrentFollowsFlowDirectionAtCurrentSpeed)
 {
     asset::MaterialAsset mat;
-    mat.params[kFlowDirection] = { 0.0f, 2.0f };
-    mat.params[kCurrentSpeed]  = { 1.5f };
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kFlowDirection] = { 0.0f, 2.0f }; });
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kCurrentSpeed]  = { 1.5f }; });
     scene::WaterComponent water;
     scene::ResolveWaterWaves(water, &mat, {});
     EXPECT_NEAR(water.current.x, 0.0f, 1.0e-6f);
@@ -119,7 +130,7 @@ TEST(WaterWaves, NoCurrentWithoutCurrentSpeed)
 {
     /// @note flowDirection は見た目 (さざ波の流れ) にも使う。速さを入れない限り物体は押さない。
     asset::MaterialAsset mat;
-    mat.params[kFlowDirection] = { 1.0f, 0.0f };
+    EditMaterialAuthoring(mat, [&](auto& values) { values.params[kFlowDirection] = { 1.0f, 0.0f }; });
     scene::WaterComponent water;
     scene::ResolveWaterWaves(water, &mat, {});
     EXPECT_FLOAT_EQ(water.current.Length(), 0.0f);
@@ -176,10 +187,10 @@ TEST(WaterWaves, SteepWavesStayBoundedWhenTheInverseIsNotUnique)
         { 0.27f, 0.10f }, { -0.13f, 0.45f }, { 0.29f, -0.70f }, { -0.66f, 0.27f }
     };
     for (int i = 0; i < 4; ++i) {
-        mat.params[kWaveDirection[i]]  = { dirs[i].x, dirs[i].y };
-        mat.params[kWaveAmplitude[i]]  = { amplitudes[i] };
-        mat.params[kWaveWavelength[i]] = { wavelengths[i] };
-        mat.params[kWaveSteepness[i]]  = { steepness[i] };
+        EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveDirection[i]] = { dirs[i].x, dirs[i].y }; });
+        EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveAmplitude[i]] = { amplitudes[i] }; });
+        EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveWavelength[i]] = { wavelengths[i] }; });
+        EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWaveSteepness[i]] = { steepness[i] }; });
     }
     scene::WaterComponent water;
     scene::ResolveWaterWaves(water, &mat, {});
@@ -305,4 +316,4 @@ TEST(WaterWaves, WaveSpreadRotatesTheCompanionAndAlternatesItsSide)
     EXPECT_NEAR(std::atan2(odd.direction.y, odd.direction.x), -spread * 0.9f, 1.0e-5f);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

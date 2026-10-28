@@ -1,0 +1,15 @@
+# @file    TerrainGpuGBuffer.hlsl.meta
+# @brief   GPU geometry shader identity.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = '79c8c031a042f7e2ff8263795355cad9'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'terrain_v1'
+opacity = 'custom'
+variants = 'none'
+preview = 'terrain'
+

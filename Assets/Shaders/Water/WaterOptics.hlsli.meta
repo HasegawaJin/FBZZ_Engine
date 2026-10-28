@@ -1,0 +1,6 @@
+# @file    WaterOptics.hlsli.meta
+# @brief   水の吸収・散乱のシェーダー共通ファイル識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-07
+[meta]
+guid = 'e137224273f64a629d9e607c89400a5c'

@@ -1,0 +1,14 @@
+# @file    CompositeWaterRectangle.hlsl.meta
+# @brief   孤立矩形画素のComposite variantの識別子と能力契約。
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = 'a06d587da06b4c05a3a0b3ed73e139f4'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'post_process'

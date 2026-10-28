@@ -1,0 +1,13 @@
+# @file    WaterSurfaceSyncRaster.hlsl.meta
+# @brief   Declare the diagnostic pixel shader's unchanged production water vertex contract.
+# @author  Hasegawa Jin
+# @date    2026-10-24
+[meta]
+guid = '381a583cda2146b3a8241c8d93724a10'
+[shader]
+version = 1
+vertex = 'water_surface_v1'
+surface = 'water_v1'
+opacity = 'custom'
+variants = 'none'
+preview = 'water'

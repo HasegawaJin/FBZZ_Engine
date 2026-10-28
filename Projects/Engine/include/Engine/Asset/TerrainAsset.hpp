@@ -7,6 +7,7 @@
 /// @see Docs/design/terrain-layers.md
 #pragma once
 #include <cstdint>
+#include <Math/Vector3.hpp>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,11 @@ struct TerrainAsset {
 
     /// @brief 穴セルの添字 (cz * (columns - 1) + cx) の昇順列。
     std::vector<uint32_t>      holeCells;
+
+    /// @note Terrain-local surface geometry; same winding and validation as TerrainComponent.
+    std::vector<math::Vector3> surfacePositions;
+    std::vector<uint32_t> surfaceIndices;
+    std::string surfaceMaterial;
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

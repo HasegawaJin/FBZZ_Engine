@@ -5,6 +5,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 namespace fbzz::scene {
 
@@ -14,6 +15,10 @@ struct TerrainComponent;
 /// @note Scene/Prefab に巨大な配列を直接持たせると差分確認と読み込みが重くなるため、地形データだけを `Assets/Terrain/*.terrain` へ分離して参照保存する。
 class TerrainAssetSerializer {
 public:
+    /// @note Same data contract for external assets and inline Scene/Prefab persistence.
+    static bool Serialize(const TerrainComponent& component, std::string& out);
+    /// @return Invalid geometry leaves component unchanged.
+    static bool Deserialize(std::string_view text, TerrainComponent& component);
     /// @brief component の現在の地形編集データを path に保存する。
     /// @return 失敗時は false。
     static bool Save(const TerrainComponent& component, const std::string& path);
@@ -23,4 +28,4 @@ public:
     static bool Load(const std::string& path, TerrainComponent& component);
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

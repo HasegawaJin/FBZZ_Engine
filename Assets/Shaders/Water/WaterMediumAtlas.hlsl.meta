@@ -1,0 +1,14 @@
+# @file    WaterMediumAtlas.hlsl.meta
+# @brief   Shader identity and capture-stage contract.
+# @author  Hasegawa Jin
+# @date    2026-10-09
+[meta]
+guid = '71520c5d21354c44b5149f4213120068'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'water_medium_atlas_v1'
+opacity = 'opaque'
+variants = 'none'
+preview = 'none'

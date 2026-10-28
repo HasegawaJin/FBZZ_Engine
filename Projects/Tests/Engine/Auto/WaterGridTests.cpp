@@ -337,6 +337,119 @@ TEST_F(WaterGridPersistenceTest, LoadsLegacyScenesWithUniformGridDefaults)
     ASSERT_NE(water, nullptr);
     EXPECT_FALSE(water->cameraFocusedGrid);
     EXPECT_FLOAT_EQ(water->nearCellSize, kNearCellSize);
+    EXPECT_FALSE(water->adaptivePatchLod);
+    EXPECT_EQ(water->surfaceShape, scene::WaterSurfaceShape::RECTANGLE);
+    EXPECT_TRUE(water->splinePoints.empty());
 }
 
+TEST_F(WaterGridTest, PhysicalWaveHeightDoesNotDependOnMeshQuality)
+{
+    scene::WaterComponent water;
+    for (auto& wave : water.waves) wave.amplitude = 0.0f;
+    water.waves[0] = {{1.0f, 0.0f}, 0.5f, 4.0f, 0.0f};
+    constexpr std::array<uint32_t, 3> resolutions{1u, 64u, 512u};
+    for (const auto resolution : resolutions) {
+        water.resolutionX = water.resolutionZ = resolution;
+        water.cameraFocusedGrid = resolution != 1u;
+        water.adaptivePatchLod = resolution == 512u;
+        water.nearCellSize = 8.0f;
+        water.cellSize = scene::ResolveWaterCellSize(water, scene::Transform{});
+        EXPECT_NEAR(water.GetSurfaceHeightAt(1.0f, 0.0f, 0.0f), 0.5f, testkit::kTolerance);
+    }
+}
+
+TEST_F(WaterGridTest, PhysicalRippleRemainsWhenTheMeshCannotResolveIt)
+{
+    scene::WaterComponent water;
+    water.enableGerstnerWaves = false;
+    scene::WaterRipple ripple;
+    ripple.radius = 2.0f;
+    ripple.width = 1.0f;
+    ripple.amplitude = 0.8f;
+    ripple.meshFade = 1.0f;
+    water.ripples.push_back(ripple);
+    const float height = water.GetSurfaceHeightAt(2.5f, 0.0f, 0.0f);
+    ASSERT_GT(std::abs(height), 0.001f);
+    water.ripples[0].meshFade = 0.0f;
+    EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(2.5f, 0.0f, 0.0f), height);
+    EXPECT_LE(std::abs(height), water.SurfaceHeightBound());
+}
+
+TEST_F(WaterGridPersistenceTest, KeepsAdaptivePatchLodSettingsAcrossSaveAndReload)
+{
+    scene::Scene source;
+    auto& water = source.CreateGameObject("AdaptiveWater").AddComponent<scene::WaterComponent>();
+    water.adaptivePatchLod = true;
+    water.lodPatchResolution = 32;
+    water.lodMaxDepth = 7;
+    water.lodMaxPatches = 127;
+    water.lodTargetPixels = 6.25f;
+    water.lodNearDistance = 300.0f;
+    water.lodNearCellSize = 1.5f;
+    water.lodMorphEnabled = true;
+    water.lodMorphTransitionWidth = 0.4f;
+    water.waveAttenuationDepth = 3.5f;
+    water.wavesAssetRef.path = "Assets/Data/OceanWaves.fzdata";
+    water.farOceanEnabled = true;
+    water.farOceanCoverageScale = 1.25f;
+    water.farOceanRippleFadeDistance = 7.0f;
+    const auto path = m_temp.File("adaptive.scene").generic_string();
+    ASSERT_TRUE(scene::SceneSerializer::Save(source, path));
+    const auto restored = scene::SceneSerializer::LoadData(path);
+    ASSERT_NE(restored, nullptr);
+    auto* object = restored->Find("AdaptiveWater");
+    ASSERT_NE(object, nullptr);
+    const auto* reloaded = object->GetComponent<scene::WaterComponent>();
+    ASSERT_NE(reloaded, nullptr);
+    EXPECT_TRUE(reloaded->adaptivePatchLod);
+    EXPECT_EQ(reloaded->lodPatchResolution, 32u);
+    EXPECT_EQ(reloaded->lodMaxDepth, 7u);
+    EXPECT_EQ(reloaded->lodMaxPatches, 127u);
+    EXPECT_FLOAT_EQ(reloaded->lodTargetPixels, 6.25f);
+    EXPECT_FLOAT_EQ(reloaded->lodNearDistance, 300.0f);
+    EXPECT_FLOAT_EQ(reloaded->lodNearCellSize, 1.5f);
+    EXPECT_TRUE(reloaded->lodMorphEnabled);
+    EXPECT_FLOAT_EQ(reloaded->lodMorphTransitionWidth, 0.4f);
+    EXPECT_FLOAT_EQ(reloaded->waveAttenuationDepth, 3.5f);
+    EXPECT_EQ(reloaded->wavesAssetRef.path, "Assets/Data/OceanWaves.fzdata");
+    EXPECT_EQ(reloaded->wavesAssetRef.type, "WaterWavesAsset");
+    EXPECT_TRUE(reloaded->farOceanEnabled);
+    EXPECT_FLOAT_EQ(reloaded->farOceanCoverageScale, 1.25f);
+    EXPECT_FLOAT_EQ(reloaded->farOceanRippleFadeDistance, 7.0f);
+}
+
+TEST_F(WaterGridPersistenceTest, KeepsSplineRiverPointIdsDimensionsDepthAndFlowAcrossSaveAndReload)
+{
+    scene::Scene source;
+    auto& water = source.CreateGameObject("SplineRiver").AddComponent<scene::WaterComponent>();
+    water.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+    water.splineSamplesPerSegment = 12;
+    water.splineMeshCellSize = 1.25f;
+    water.splinePoints = {
+        {4, {-10.0f, 3.0f, 0.0f}, 6.0f, 1.5f, 2.0f},
+        {7, {0.0f, 2.0f, 3.0f}, 8.0f, 2.5f, -1.0f},
+        {scene::WATER_SPLINE_MAX_POINT_ID, {10.0f, 1.0f, 0.0f}, 4.0f, 3.0f, 0.0f}};
+    const auto path = m_temp.File("spline-river.scene").generic_string();
+    ASSERT_TRUE(scene::SceneSerializer::Save(source, path));
+    const auto restored = scene::SceneSerializer::LoadData(path);
+    ASSERT_NE(restored, nullptr);
+    auto* object = restored->Find("SplineRiver");
+    ASSERT_NE(object, nullptr);
+    const auto* loaded = object->GetComponent<scene::WaterComponent>();
+    ASSERT_NE(loaded, nullptr);
+    EXPECT_EQ(loaded->surfaceShape, scene::WaterSurfaceShape::SPLINE_RIVER);
+    EXPECT_EQ(loaded->splineSamplesPerSegment, 12u);
+    EXPECT_FLOAT_EQ(loaded->splineMeshCellSize, 1.25f);
+    ASSERT_EQ(loaded->splinePoints.size(), water.splinePoints.size());
+    for (size_t i = 0; i < water.splinePoints.size(); ++i) {
+        const auto& expected = water.splinePoints[i];
+        const auto& actual = loaded->splinePoints[i];
+        EXPECT_EQ(actual.id, expected.id);
+        EXPECT_VEC3_NEAR(actual.localPosition, expected.localPosition, testkit::kTolerance);
+        EXPECT_FLOAT_EQ(actual.width, expected.width);
+        EXPECT_FLOAT_EQ(actual.depth, expected.depth);
+        EXPECT_FLOAT_EQ(actual.flowSpeed, expected.flowSpeed);
+    }
+    EXPECT_EQ(loaded->splineSnapshot, nullptr);
+}
 } /// @note namespace fbzz::tests

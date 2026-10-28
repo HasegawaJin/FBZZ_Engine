@@ -15,7 +15,7 @@
 #include <string_view>
 
 namespace fbzz::scene { class Scene; }
-namespace fbzz::asset { struct MaterialAsset; }
+namespace fbzz::asset { struct MaterialAsset; struct MaterialAssetAuthoring; }
 
 namespace fbzz::renderer {
     struct TerrainLayerGpu;
@@ -49,10 +49,19 @@ void ReleaseTerrainFallbackTextures(renderer::ResourceManager& resources, Terrai
 /// @param keyPrefix キーの接頭辞 (マテリアルプレビューの "layer0_" 等)。本編は空。
 /// @note 既定値の正本。Inspector の既定値もこれに揃える (Docs/design/terrain-layers.md §3)。
 TerrainLayerGpu ReadTerrainLayerParams(const asset::MaterialAsset* material, std::string_view keyPrefix = {});
+/// @note Owned authoring values share the same parameter/default rules without fabricating an asset owner.
+TerrainLayerGpu ReadTerrainLayerParams(const asset::MaterialAssetAuthoring& material, std::string_view keyPrefix = {});
 
 /// @brief 層テクスチャをロードし、bindless 添字を layer へ書く。無いテクスチャは fallback の添字。
 void FillTerrainLayerTextureIndices(renderer::ResourceManager& resources,
                                     const asset::MaterialAsset* material,
+                                    std::string_view keyPrefix,
+                                    const TerrainFallbackTextures& fallback,
+                                    TerrainLayerGpu& layer);
+
+/// @pre Retain the owning values/snapshot across texture resolver callbacks.
+void FillTerrainLayerTextureIndices(renderer::ResourceManager& resources,
+                                    const asset::MaterialAssetAuthoring& material,
                                     std::string_view keyPrefix,
                                     const TerrainFallbackTextures& fallback,
                                     TerrainLayerGpu& layer);

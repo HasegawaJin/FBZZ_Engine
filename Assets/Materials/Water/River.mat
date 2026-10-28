@@ -7,6 +7,12 @@ shader = 'guid:c496f8e37c024b17aac1fce28730e300'
 version = 1
 
 [params]
+crestFoamThreshold = 0.25
+crestFoamFade = 0.15
+crestFoamStrength = 0.2
+crestFoamLifetime = 1.2
+foamColor = [ 0.95, 0.98, 1.0 ]
+foamRoughness = 0.7
 causticsIntensity = 0.32
 causticsSpeed = 0.28
 causticsTiling = 0.75
@@ -15,6 +21,10 @@ causticsWaveFreq = 0.18
 causticsWaveSpeed = 1.25
 deepColor = [ 0.015, 0.045, 0.055 ]
 deepDepth = 5.0
+opticalMode = 0.0
+absorptionCoefficients = [ 1.1, 0.4, 0.22 ]
+scatteringCoefficients = [ 0.9, 1.2, 0.45 ]
+phaseG = 0.65
 detailScale = 0.55
 detailSpeed = 1.4
 detailStrength = 1.2

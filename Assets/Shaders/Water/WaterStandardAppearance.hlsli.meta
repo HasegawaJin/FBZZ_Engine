@@ -1,0 +1,6 @@
+# @file    WaterStandardAppearance.hlsli.meta
+# @brief   Shared water shader include identity.
+# @author  Hasegawa Jin
+# @date    2026-10-21
+[meta]
+guid = 'bc28d52618fa41eaa232b07b55b649b8'

@@ -3,14 +3,21 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
 ///
-/// @brief 水の «種類» ── 色・さざ波・Gerstner 波・風への反応・水流 ── は materialPath が指す
-/// @brief .mat が丸ごと持つ。コンポーネントに残すのは «この 1 枚» ごとに違う量だけ。
-/// @note 波までコンポーネント側に残すと、色だけ .mat にあり波が別にある食い違いが起きる
-///       (Ocean.mat を差しても湖の波のまま等)。水の種類は 1 ファイルで決まるべき。
+/// @brief 水の色・質感・風と Rectangle の基流は materialPath が指す .mat が持つ。
+/// @note wavesAssetRef が設定されている場合は、波の基波・群・方向分布だけを共有 .fzdata で上書きする。
 #pragma once
 
 #include <Engine/Scene/Fields/FlowField.hpp>
+#include <Engine/Scene/DataAssetRef.hpp>
+#include <Engine/Scene/WaterDepthField.hpp>
+#include <Engine/Scene/WaterSpline.hpp>
+#include <Engine/Scene/WaterZoneSnapshot.hpp>
+#include <Engine/Scene/WaterInteraction.hpp>
+#include <Engine/Scene/ControlPointAdapters.hpp>
+#include <Engine/Scene/Transform.hpp>
+#include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Script.hpp>
+#include <Fluid/GerstnerWaves.hpp>
 #include <Fluid/VectorFieldAsset.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Quaternion.hpp>
@@ -21,19 +28,33 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace fbzz::scene {
 
+struct WaterExclusionSnapshot;
+
+inline void WaterSplinePoint::Reflect(IReflector& reflector)
+{
+    const std::uint32_t originalID = id;
+    const int initialProxy = static_cast<int>((std::min)(id,
+        WATER_SPLINE_MAX_POINT_ID));
+    int pointID = initialProxy;
+    reflector.Field("id", pointID);
+    id = pointID == initialProxy ? originalID
+        : static_cast<std::uint32_t>((std::max)(pointID, 0));
+    reflector.Field("localPosition", localPosition);
+    reflector.Field("width", width);
+    reflector.Field("depth", depth);
+    reflector.Field("flowSpeed", flowSpeed);
+}
+
 /// @brief GerstnerWave — 水面を構成する 1 本の波のパラメータ。
 /// @note 水面全体をシミュレーションせず、少数の解析波を合成して低コストに大きなうねりを表現する。
-struct GerstnerWave {
-    math::Vector2 direction  = { 1.0f, 0.0f }; ///< @brief 進行方向。正規化は評価側で行う。
-    float         amplitude  = 0.30f;          ///< @brief 波高 A [m]
-    float         wavelength = 10.0f;          ///< @brief 波長 lambda [m]
-    float         steepness  = 0.50f;          ///< @brief 急峻度 Q [0,1]。1 を超えると波面が交差する。
-};
+using GerstnerWave = fluid::GerstnerWave;
 
 /// @brief 水面 1 枚が «形と質感» として受け取る流れの本数。WaterCB の枠数と揃えること。
 inline constexpr int kWaterSurfaceFlowCount = 8;
@@ -124,6 +145,36 @@ struct WaterComponent {
     uint32_t resolutionZ = 64;
     float    extentX     = 100.0f;
     float    extentZ     = 100.0f;
+    /// @brief Footprint geometry shared by rendering, physical queries, and water membership.
+    WaterSurfaceShape surfaceShape = WaterSurfaceShape::RECTANGLE;
+    /// @brief Stable-ID local control points for lake outlines and river centerlines.
+    std::vector<WaterSplinePoint> splinePoints;
+    /// @brief Select inline numeric points or ordered TargetPoint bindings as the position source.
+    ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE;
+    /// @brief Select live TargetPoint resolution or the last explicit owner-local numeric bake.
+    ControlPointRuntimeMode pointRuntimeMode = ControlPointRuntimeMode::LIVE;
+    /// @brief Ordered TargetPoint rows; IDs and Water attributes remain owner-authored.
+    std::vector<WaterControlPointBinding> pointBindings;
+    /// @brief Owner-local Y required by POINT_OBJECTS lake outlines.
+    float lakePlaneHeight = 0.0f;
+    /// @brief Last explicitly baked owner-local water control points.
+    std::vector<WaterSplinePoint> bakedSplinePoints;
+    /// @brief Source signature captured by the last explicit static bake.
+    std::uint64_t bakedInputSignature = 0;
+    /// @brief Source mode used to create the last explicit static bake.
+    ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE;
+    /// @brief Water interpretation captured with the last explicit static bake.
+    WaterSurfaceShape bakedSurfaceShape = WaterSurfaceShape::RECTANGLE;
+    /// @brief Lake plane captured with the last explicit static bake.
+    float bakedLakePlaneHeight = 0.0f;
+    /// @brief Adapter version used to interpret the last explicit static bake.
+    std::uint32_t bakedAdapterVersion = 0;
+    /// @brief Whether bakedSplinePoints contains an explicit numeric snapshot.
+    bool bakeValid = false;
+    /// @brief Catmull-Rom samples per segment, bounded by the numeric snapshot builder.
+    std::uint32_t splineSamplesPerSegment = 8;
+    /// @brief Target maximum world edge length for the shared refined spline mesh [m].
+    float splineMeshCellSize = 2.0f;
     /// @brief チャンク分割数。水面を chunkCount×chunkCount のサブメッシュに分割し、
     /// @brief チャンク単位でフラスタムカリングする。
     uint32_t chunkCount = 4;
@@ -131,13 +182,32 @@ struct WaterComponent {
     bool cameraFocusedGrid = false;
     /// @brief カメラ付近の目標頂点間隔 [m]。ワールド単位で、均一格子より粗くはしない。
     float nearCellSize = 2.0f;
+    /// @note 旧格子の設定を保持したまま、共有パッチのビュー別 LOD を選ぶ。
+    bool adaptivePatchLod = false;
+    uint32_t lodPatchResolution = 16;
+    uint32_t lodMaxDepth = 9;
+    uint32_t lodMaxPatches = 1024;
+    /// @note 投影された格子セル幅の目標 [pixel]。幾何学的な高さ誤差の保証ではない。
+    float lodTargetPixels = 8.0f;
+    float lodNearDistance = 256.0f;
+    float lodNearCellSize = 2.0f;
+    bool lodMorphEnabled = false;
+    float lodMorphTransitionWidth = 0.25f;
+    /// @note Rectangle の水平水域を延長し、描画・浮力・水中判定を共有する。深さと除外は維持する。
+    bool farOceanEnabled = false;
+    /// @note active view の far clip を包む外周に掛ける余裕率。
+    float farOceanCoverageScale = 1.05f;
+    /// @note 有限水域の外で着水波紋の頂点変位を落とす距離 [world m]。
+    float farOceanRippleFadeDistance = 4.0f;
     /// @}
 
-    /// @name 波 (個体ごとの補正。波そのものは .mat が持つ)
+    /// @name 波 (個体ごとの補正と、任意の共有波アセット)
     /// @{
     bool  enableGerstnerWaves = true;
     /// @brief .mat の振幅に掛ける倍率。同じ Ocean.mat を «凪の入り江» と «外洋» に使い分けるため。
     float waveAmplitudeScale  = 1.0f;
+    /// @brief 設定時は .mat の波定義・群・広がりを上書きする。未設定なら従来の .mat 波を使う。
+    DataAssetRef wavesAssetRef = { {}, "WaterWavesAsset" };
     /// @}
 
     /// @name 物理
@@ -147,11 +217,15 @@ struct WaterComponent {
     float buoyancy        = 15.0f;
     /// @brief 水中での速度減衰 [1/s]。水流があるときは «水に対する» 速度に掛かる。
     float waterDrag       = 2.0f;
-    /// @brief 浮力が届く水面からの深さ [m]。
+    /// @brief 水中判定と浮力領域が共有する水面からの深さ [m]。
     /// @note 水面は厚みを持たない板なので、上限が無いと «水面の真下にある洞窟» の中まで浮力が届く。
     float buoyancyDepth   = 10.0f;
+    /// @brief 水深がこの値 [world m] に達するまで基波の振幅を浅瀬で滑らかに減衰する。0 で無効。
+    float waveAttenuationDepth = 0.0f;
     /// @brief 剛体が水面を通過したときに波紋としぶきを出す。
     bool  splashEnabled   = true;
+    /// @brief 水面接触・水中移動・地面接触から作る泡と局所濁りの設定。
+    WaterInteractionSettings interactionSettings;
     /// @}
 
     /// @name 水の種類
@@ -169,13 +243,15 @@ struct WaterComponent {
 
     /// @name ランタイム (保存しない)
     /// @{
-    /// @brief WaterSystem が毎フレーム «.mat の波 × 倍率 × 環境風» から組み立てた実効波。
+    /// @brief WaterSystem が毎フレーム、波アセットまたは .mat と倍率・環境風から組み立てた基波。
     /// @brief 描画・浮力・水中判定・スクリプトはすべてこれを読む。
-    std::array<GerstnerWave, 4> waves = {};
-    /// @brief 水流の速度 [m/s] (ワールド XZ)。.mat の flowDirection × currentSpeed。
+    std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> waves = {};
+    /// @brief 有効な基波の数。0〜16。本体の反復と GPU の波数はこの範囲だけを使う。
+    std::uint32_t waveCount = 4;
+    /// @brief Rectangle の基流速度 [m/s] (ワールド XZ)。Spline は制御点の flowSpeed を使う。
     math::Vector2 current = math::Vector2::ZERO;
     /// @brief WaterSystem が毎フレーム書く最密区間の頂点間隔 [m]。
-    /// @note 浮力・水中判定はカメラに依存しない。この間隔を正本とし、遠景描画だけ実際の格子間隔で波を法線へ移す。
+    /// @note 描画の帯域制限だけに使う。浮力・水中判定の波高はこの間隔に依存しない。
     math::Vector2 cellSize = math::Vector2::ZERO;
     /// @brief 波の «群» の深さ [0,1]。.mat の waveGrouping をそのまま持つ。
     float waveGrouping = 0.0f;
@@ -186,7 +262,93 @@ struct WaterComponent {
     int surfaceFlowCount = 0;
     /// @brief 生きている着水の輪。WaterSystem が寿命を進め、描画と GetSurfaceHeightAt が読む。
     std::vector<WaterRipple> ripples;
+    /// @brief LiveQuery surface 用に Terrain から作る不変の数値 snapshot。
+    /// @note Simulation は別 pointer と減衰閾値を捕捉し、LiveQuery の再構築で固定stepの評価を変えない。
+    std::shared_ptr<const WaterDepthField> depthField;
+    /// @brief Last fixed-step terrain depth mapping used by Simulation and rendering.
+    std::shared_ptr<const WaterDepthField> simulationDepthField;
+    /// @brief Wave attenuation threshold captured with the Simulation depth mapping.
+    float simulationWaveAttenuationDepth = 0.0f;
+    /// @brief Scene 変換と制御点から作る不変の数値水面。保存対象ではない。
+    std::shared_ptr<const WaterSplineSnapshot> splineSnapshot;
+    /// @brief Zone ownerが共有する不変の和集合水面。保存対象ではない。
+    std::shared_ptr<const WaterZoneSnapshot> zoneSnapshot;
+    /// @brief Last fixed-step water-zone publication used by simulation readers.
+    std::shared_ptr<const WaterZoneSnapshot> simulationZoneSnapshot;
+    /// @brief Exclusion boxes shared by LiveQuery consumers and the renderer.
+    std::shared_ptr<const WaterExclusionSnapshot> exclusionSnapshot;
+    /// @brief Fixed-step exclusion boxes captured with the simulation surface.
+    std::shared_ptr<const WaterExclusionSnapshot> simulationExclusionSnapshot;
+    /// @brief Pending water contact events, active plumes and their reusable emitters.
+    WaterInteractionRuntime interactionRuntime;
+    /// @brief Input key for reusing the immutable live exclusion snapshot.
+    std::uint64_t exclusionSnapshotAttemptSignature = 0;
+    bool exclusionSnapshotAttempted = false;
+    /// @brief Last fixed-step standalone spline publication used by simulation readers.
+    std::shared_ptr<const WaterSplineSnapshot> simulationSplineSnapshot;
+    /// @brief Owner pose captured with the last fixed-step surface publication.
+    Transform simulationTransform{};
+    /// @brief Surface shape and Zone selection captured with the simulation geometry.
+    WaterSurfaceShape simulationSurfaceShape = WaterSurfaceShape::RECTANGLE;
+    bool simulationZoneSurfaceSelected = false;
+    /// @brief True while an enabled Zone owns this Water surface, including an invalid Zone result.
+    bool zoneSurfaceSelected = false;
+    /// @brief True after the first simulation publication, including an invalid/empty result.
+    bool simulationSurfacePublished = false;
+    /// @brief Whether simulation readers should consume the captured surface instead of LiveQuery values.
+    bool simulationReadEnabled = false;
+    /// @brief Zone owner captured with the last fixed-step surface publication.
+    EntityID simulationZoneOwner{};
+    /// @brief Zone memberが参照するownerのEntityID。owner自身と単独水域は無効値。
+    EntityID zoneOwner{};
+    /// @brief 同じ入力の有効・無効な生成結果を毎フレーム再評価しないための runtime key。
+    std::uint64_t splineSnapshotAttemptSignature = 0;
+    bool splineSnapshotAttempted = false;
     physics::VolumeHandle volumeHandle;
+
+    /// @brief Select the immutable depth field for the requested water read boundary.
+    [[nodiscard]] const WaterDepthField* EffectiveDepthField(WaterSurfaceReadView view) const
+    {
+        if (view == WaterSurfaceReadView::SIMULATION && simulationReadEnabled
+            && simulationSurfacePublished) return simulationDepthField.get();
+        return depthField.get();
+    }
+
+    /// @brief Select the attenuation threshold paired with the requested depth field.
+    [[nodiscard]] float EffectiveWaveAttenuationDepth(WaterSurfaceReadView view) const
+    {
+        if (view == WaterSurfaceReadView::SIMULATION && simulationReadEnabled
+            && simulationSurfacePublished) return simulationWaveAttenuationDepth;
+        return waveAttenuationDepth;
+    }
+
+    /// @brief Clear non-authoring geometry and handles after copying this component into another Scene.
+    void ResetSurfaceRuntimeState()
+    {
+        depthField.reset();
+        simulationDepthField.reset();
+        simulationWaveAttenuationDepth = 0.0f;
+        splineSnapshot.reset();
+        zoneSnapshot.reset();
+        simulationZoneSnapshot.reset();
+        exclusionSnapshot.reset();
+        simulationExclusionSnapshot.reset();
+        exclusionSnapshotAttemptSignature = 0;
+        exclusionSnapshotAttempted = false;
+        simulationSplineSnapshot.reset();
+        simulationTransform = Transform{};
+        simulationSurfaceShape = WaterSurfaceShape::RECTANGLE;
+        simulationZoneSurfaceSelected = false;
+        zoneSurfaceSelected = false;
+        simulationSurfacePublished = false;
+        simulationReadEnabled = false;
+        simulationZoneOwner = {};
+        zoneOwner = {};
+        splineSnapshotAttemptSignature = 0;
+        splineSnapshotAttempted = false;
+        m_waveCacheValid = false;
+        volumeHandle = {};
+    }
 
     const char* GetTypeName() const { return "Water"; }
 
@@ -212,16 +374,18 @@ struct WaterComponent {
     /// @brief 波の «群» の包絡 [1-depth, 1+depth]。振幅にそのまま掛ける。
     /// @note 正弦を 4 本足しただけでは全波頭が同じ高さ・形になる。実海面は近い周波数の «うなり»
     ///       で波が群れ、大きい塊と凪の区間が交互に来る。
-    /// @param index 波の番号 [0,3]。群の波長と傾ける向きをここから決める (CB を増やさないため)。
+    /// @param index 波の番号 [0,15]。群の波長帯と傾ける向きをここから決める。
     /// @note 群の角周波数を r*omega/2 にするのは、深水波の群速度が位相速度の 1/2 だから。
     ///       これで «群はゆっくり進み、個々の波頭がその中を追い越していく» 見え方になる。
     /// @warning Water.hlsl の WaveGroupEnvelope と同じ式であること。片方だけ変えると、
     ///          見えている波と浮力が別の水面になる。
     static float WaveGroupEnvelope(int index, math::Vector2 direction, float k, float omega,
-                                   float worldX, float worldZ, float time, float depth)
+                                   float worldX, float worldZ, float time, float depth,
+                                   float phaseOffsetRadians = 0.0f)
     {
         if (depth <= 0.0001f) return 1.0f;
-        const float ratio = 0.09f + 0.035f * static_cast<float>(index);
+        const int band = (std::max)(index, 0) % 4;
+        const float ratio = 0.09f + 0.035f * static_cast<float>(band);
         const float sign  = (index & 1) ? -1.0f : 1.0f;
         const math::Vector2 groupDir = {
             direction.x * WAVE_GROUP_COS - direction.y * sign * WAVE_GROUP_SIN,
@@ -229,7 +393,7 @@ struct WaterComponent {
         };
         const float groupK = ratio * k;
         const float phase = groupK * (groupDir.x * worldX + groupDir.y * worldZ)
-                          - ratio * omega * 0.5f * time;
+                          - ratio * omega * 0.5f * time + phaseOffsetRadians;
         return 1.0f + depth * std::sin(phase);
     }
 
@@ -358,14 +522,14 @@ struct WaterComponent {
              + WaterRippleProfile(distance, ripple.radius - w * 6.0f, w) * 0.16f;
     }
 
-    /// @brief 輪 1 つが頂点へ乗せる高さ [m]。刻めない輪は meshFade が 0 にする。
+    /// @brief 描画解像度から独立した波紋の水面高さ [m]。
     static float WaterRippleHeight(const WaterRipple& ripple, float worldX, float worldZ)
     {
-        if (ripple.meshFade <= 0.0f || ripple.amplitude <= 0.0f) return 0.0f;
+        if (ripple.amplitude <= 0.0f) return 0.0f;
         const float dx = worldX - ripple.center.x;
         const float dz = worldZ - ripple.center.y;
         return WaterRippleWave(ripple, std::sqrt(dx * dx + dz * dz))
-             * ripple.amplitude * ripple.meshFade * kWaterRippleHeightAmplitude;
+             * ripple.amplitude * kWaterRippleHeightAmplitude;
     }
 
     /// @brief 逆写像の反復回数。
@@ -379,85 +543,140 @@ struct WaterComponent {
         float omega = 0.0f;
         float amplitude = 0.0f;
         float horizontalAmplitude = 0.0f;
+        float phaseOffsetRadians = 0.0f;
         int index = 0;
     };
 
     /// @note 保存しない。公開入力の直接編集も検出し、同一設定では超越関数を再評価しない。
-    void PrepareWaveCache() const
+    void PrepareWaveCache(WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
     {
-        bool same = m_waveCacheValid && m_cachedCell.x == cellSize.x && m_cachedCell.y == cellSize.y
-                 && m_cachedSpread == waveSpread && m_cachedGrouping == waveGrouping;
-        for (size_t i = 0; same && i < waves.size(); ++i) {
+        const WaterDepthField* depth = EffectiveDepthField(view);
+        const float attenuationDepth = EffectiveWaveAttenuationDepth(view);
+        const uint64_t depthSignature = depth ? depth->signature : 0;
+        bool same = m_waveCacheValid && m_cachedWaveCount == waveCount
+                 && m_cachedSpread == waveSpread && m_cachedGrouping == waveGrouping
+                 && m_cachedDepthSignature == depthSignature
+                 && m_cachedAttenuationDepth == attenuationDepth;
+        const size_t activeCount = (std::min)(static_cast<size_t>(waveCount), waves.size());
+        for (size_t i = 0; same && i < activeCount; ++i) {
             const auto& a = waves[i];
             const auto& b = m_cachedWaves[i];
             same = a.direction.x == b.direction.x && a.direction.y == b.direction.y
-                && a.amplitude == b.amplitude && a.wavelength == b.wavelength && a.steepness == b.steepness;
+                && a.amplitude == b.amplitude && a.wavelength == b.wavelength && a.steepness == b.steepness
+                && a.phaseOffsetRadians == b.phaseOffsetRadians;
         }
         if (same) return;
         m_cachedWaves = waves;
-        m_cachedCell = cellSize;
+        m_cachedWaveCount = waveCount;
         m_cachedSpread = waveSpread;
         m_cachedGrouping = waveGrouping;
+        m_cachedDepthSignature = depthSignature;
+        m_cachedAttenuationDepth = attenuationDepth;
         m_resolvedCount = 0;
         m_contraction = 0.0f;
+        m_horizontalDisplacementBound = 0.0f;
+        m_horizontalWaveScale = 1.0f;
+        m_horizontalContraction = 0.0f;
         m_waveHeightBound = 0.0f;
-        const float peak = (1.0f + math::Clamp01(waveGrouping)) * WaveSpreadAmplitudeSum(waveSpread);
-        for (int i = 0; i < 4; ++i) {
-            const auto& wave = waves[static_cast<size_t>(i)];
-            if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f) continue;
-            const float fade = WaveMeshFade(wave.wavelength, cellSize);
+        const float grouping = math::Clamp01(waveGrouping);
+        /// @note Float-rounded direction normalization and rotations get a small upper-bound margin.
+        const float peak = (1.0f + grouping + grouping * 0.195f) * WaveSpreadAmplitudeSum(waveSpread)
+            * (1.0f + 32.0f * std::numeric_limits<float>::epsilon());
+        for (size_t i = 0; i < activeCount; ++i) {
+            const auto& wave = waves[i];
+            if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f
+                || !std::isfinite(wave.phaseOffsetRadians)) continue;
+            const float directionLengthSq = wave.direction.LengthSq();
+            if (!std::isfinite(directionLengthSq) || directionLengthSq <= 1.0e-8f) continue;
+            /// @note 物理と水域照会の波は描画の分割数・カメラ・LOD に依存させない。
             const float k = math::TWO_PI / wave.wavelength;
-            m_contraction += math::Clamp01(wave.steepness) * wave.amplitude * fade * peak * k;
-            if (fade <= 0.0f) continue;
+            m_contraction += math::Clamp01(wave.steepness) * wave.amplitude * peak * k;
             const float omega = std::sqrt(9.8f * k);
             const math::Vector2 direction = wave.direction.Normalized();
             for (int component = 0; component < 2; ++component) {
-                const auto part = WaveSpreadComponent(i, component, direction, waveSpread);
+                const auto part = WaveSpreadComponent(static_cast<int>(i), component, direction, waveSpread);
                 if (part.amplitudeScale <= 0.001f) continue;
                 auto& resolved = m_resolvedWaves[m_resolvedCount++];
-                resolved = { part.direction, k, omega, wave.amplitude * fade * part.amplitudeScale,
-                    math::Clamp01(wave.steepness) * wave.amplitude * fade * part.amplitudeScale, i };
+                resolved = { part.direction, k, omega, wave.amplitude * part.amplitudeScale,
+                    math::Clamp01(wave.steepness) * wave.amplitude * part.amplitudeScale,
+                    wave.phaseOffsetRadians, static_cast<int>(i) };
+                m_horizontalDisplacementBound += std::abs(resolved.horizontalAmplitude) * (1.0f + grouping);
                 m_waveHeightBound += std::abs(resolved.amplitude) * (1.0f + std::abs(waveGrouping));
             }
         }
+        float attenuationGradient = 0.0f;
+        if (attenuationDepth > 0.0f && depth
+            && depth->attenuationDepth == attenuationDepth
+            && std::isfinite(depth->maximumAttenuationGradient)
+            && depth->maximumAttenuationGradient >= 0.0f) {
+            attenuationGradient = depth->maximumAttenuationGradient;
+            const float contractionBound = m_contraction + m_horizontalDisplacementBound * attenuationGradient;
+            if (attenuationGradient > 0.0f && std::isfinite(contractionBound) && contractionBound > 0.849f)
+                m_horizontalWaveScale = 0.849f / contractionBound;
+        }
+        m_horizontalContraction = m_horizontalWaveScale
+            * (m_contraction + m_horizontalDisplacementBound * attenuationGradient);
         m_waveCacheValid = true;
     }
 
     /// @return 基準面からの絶対変位の保守的上限 [m]。時刻に依存しない。
-    float SurfaceHeightBound() const
+    float SurfaceHeightBound(WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
     {
-        PrepareWaveCache();
+        PrepareWaveCache(view);
         float bound = enableGerstnerWaves ? m_waveHeightBound : 0.0f;
+        if (const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(*this, view)) {
+            bound += (std::max)(std::abs(geometry->minimumBaseHeightOffset),
+                std::abs(geometry->maximumBaseHeightOffset));
+        }
         for (int i = 0; i < (std::min)(surfaceFlowCount, kWaterSurfaceFlowCount); ++i)
             bound += std::abs(surfaceFlows[static_cast<size_t>(i)].height);
         for (const auto& ripple : ripples)
-            if (ripple.meshFade > 0.0f && ripple.amplitude > 0.0f)
-                bound += ripple.amplitude * ripple.meshFade * kWaterRippleHeightAmplitude * 1.58f;
+            if (ripple.amplitude > 0.0f)
+                bound += ripple.amplitude * kWaterRippleHeightAmplitude * 1.58f;
         /// @note 加算と三角関数の丸めが境界で早期判定を反転させないよう外側へ広げる。
         return bound + (std::max)(1.0e-5f, bound * 1.0e-5f);
     }
 
 private:
     mutable bool m_waveCacheValid = false;
-    mutable std::array<GerstnerWave, 4> m_cachedWaves{};
-    mutable math::Vector2 m_cachedCell{};
+    mutable std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> m_cachedWaves{};
+    mutable std::uint32_t m_cachedWaveCount = 0;
     mutable float m_cachedSpread = 0.0f;
     mutable float m_cachedGrouping = 0.0f;
-    mutable std::array<ResolvedWave, 8> m_resolvedWaves{};
+    mutable uint64_t m_cachedDepthSignature = 0;
+    mutable float m_cachedAttenuationDepth = 0.0f;
+    mutable std::array<ResolvedWave, fluid::MAX_BASE_GERSTNER_WAVES * 2> m_resolvedWaves{};
     mutable size_t m_resolvedCount = 0;
     mutable float m_contraction = 0.0f;
+    mutable float m_horizontalDisplacementBound = 0.0f;
+    mutable float m_horizontalWaveScale = 1.0f;
+    mutable float m_horizontalContraction = 0.0f;
     mutable float m_waveHeightBound = 0.0f;
 
-    math::Vector2 ResolvedHorizontalDisplacementAt(math::Vector2 point, float time) const
+    float AttenuationFactorAt(math::Vector2 point, WaterSurfaceReadView view) const
+    {
+        const WaterDepthField* depth = EffectiveDepthField(view);
+        const float attenuationDepth = EffectiveWaveAttenuationDepth(view);
+        if (!depth || attenuationDepth <= 0.0f
+            || depth->attenuationDepth != attenuationDepth) return 1.0f;
+        WaterDepthSample sample;
+        return TrySampleWaterDepthField(*depth, point, sample) ? sample.factor : 1.0f;
+    }
+
+    math::Vector2 ResolvedHorizontalDisplacementAt(math::Vector2 point, float time,
+        WaterSurfaceReadView view) const
     {
         math::Vector2 offset = math::Vector2::ZERO;
+        const float attenuation = AttenuationFactorAt(point, view) * m_horizontalWaveScale;
         for (size_t i = 0; i < m_resolvedCount; ++i) {
             const auto& wave = m_resolvedWaves[i];
             const auto dir = wave.direction;
             const float envelope = WaveGroupEnvelope(wave.index, dir, wave.k, wave.omega,
-                                                      point.x, point.y, time, waveGrouping);
-            const float phase = wave.k * (dir.x * point.x + dir.y * point.y) - wave.omega * time;
-            const float push = wave.horizontalAmplitude * envelope * std::cos(phase);
+                                                      point.x, point.y, time, waveGrouping,
+                                                      wave.phaseOffsetRadians);
+            const float phase = wave.k * (dir.x * point.x + dir.y * point.y) - wave.omega * time
+                              + wave.phaseOffsetRadians;
+            const float push = wave.horizontalAmplitude * envelope * std::cos(phase) * attenuation;
             offset.x += dir.x * push;
             offset.y += dir.y * push;
         }
@@ -468,11 +687,20 @@ public:
 
     /// @brief Gerstner 波の水平変位 [m] (ワールド XZ)。
     /// @param undisplaced 変位«前»の水平位置。波の位相はここで取る。
-    math::Vector2 HorizontalDisplacementAt(math::Vector2 undisplaced, float time) const
+    math::Vector2 HorizontalDisplacementAt(math::Vector2 undisplaced, float time,
+        WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
     {
         if (!enableGerstnerWaves) return math::Vector2::ZERO;
-        PrepareWaveCache();
-        return ResolvedHorizontalDisplacementAt(undisplaced, time);
+        PrepareWaveCache(view);
+        return ResolvedHorizontalDisplacementAt(undisplaced, time, view);
+    }
+
+    /// @return CPU/GPU で共有する水平 Gerstner push の安全倍率 [0,1]。
+    [[nodiscard]] float GetHorizontalWaveScale(
+        WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
+    {
+        PrepareWaveCache(view);
+        return m_horizontalWaveScale;
     }
 
     /// @brief ワールド XZ に «水面が来ている» とき、その点の変位前の水平位置を解く。
@@ -480,15 +708,16 @@ public:
     ///       だけ別の場所の高さを読み、急な斜面では Q·A の合計 (Ocean.mat で 1〜2m) ずれる。
     /// @warning 折り畳んだ波では逆写像が一意でない (同じ XZ に複数の水面)。反復はその枝の 1 つへ
     ///          落ちる。初期値依存で連続性は保証しない。
-    math::Vector2 SolveUndisplacedXZ(float worldX, float worldZ, float time) const
+    math::Vector2 SolveUndisplacedXZ(float worldX, float worldZ, float time,
+        WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
     {
         const math::Vector2 target = { worldX, worldZ };
         if (!enableGerstnerWaves) return target;
 
         /// @note 不動点反復の縮小率の上界 Σ Q·k·A。三角関数を 1 度も回さずに出せる。
         ///       群の包絡は最大 (1 + waveGrouping) 倍、方向広がりは主 + 伴走の和まで振幅を持ち上げる。
-        PrepareWaveCache();
-        const float contraction = m_contraction;
+        PrepareWaveCache(view);
+        const float contraction = m_horizontalContraction;
         /// @note 水平変位を持たない水面 (湖・プール・急峻度 0) は解く必要がない。
         if (contraction <= 0.0001f) return target;
 
@@ -498,35 +727,45 @@ public:
 
         math::Vector2 guess = target;
         for (int iteration = 0; iteration < SURFACE_SOLVE_ITERATIONS; ++iteration) {
-            const math::Vector2 offset = ResolvedHorizontalDisplacementAt(guess, time);
+            const math::Vector2 offset = ResolvedHorizontalDisplacementAt(guess, time, view);
             guess.x += (target.x - (guess.x + offset.x)) * relax;
             guess.y += (target.y - (guess.y + offset.y)) * relax;
         }
         return guess;
     }
 
-    /// @brief 水面の基準面からの高さ [m] を CPU で評価する。
+    /// @brief 水面の基準面からの変位 [m] を CPU で評価する。
     /// @param worldX, worldZ ワールド座標 (変位«後»、つまり画面に出ている位置)。
     /// @note シェーダーは波の位相をワールド XZ で取るため、原点からの相対座標で評価すると
     ///       水面を原点以外へ置いた瞬間に浮力・水中判定と描画の波がずれる。
-    /// @note 流れの場が作る形と着水の輪も足す。中心型はワールド XZ、Baked と輪は変位前の XZ で
+    /// @note Spline の基準高さ、流れの場が作る形、着水の輪も足す。中心型はワールド XZ、Baked と輪は変位前の XZ で
     ///       引く (VS が波紋テクスチャを «波を乗せる前の» 頂点 UV で引いているため)。
     /// @see SolveUndisplacedXZ
-    float GetSurfaceHeightAt(float worldX, float worldZ, float time) const
+    float GetSurfaceHeightAt(float worldX, float worldZ, float time,
+        WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
     {
         float height = 0.0f;
         math::Vector2 origin = { worldX, worldZ };
 
         if (enableGerstnerWaves) {
-            origin = SolveUndisplacedXZ(worldX, worldZ, time);
+            origin = SolveUndisplacedXZ(worldX, worldZ, time, view);
+            const float attenuation = AttenuationFactorAt(origin, view);
             for (size_t i = 0; i < m_resolvedCount; ++i) {
                 const auto& wave = m_resolvedWaves[i];
                 const auto dir = wave.direction;
                 const float envelope = WaveGroupEnvelope(wave.index, dir, wave.k, wave.omega,
-                                                         origin.x, origin.y, time, waveGrouping);
-                const float phase = wave.k * (dir.x * origin.x + dir.y * origin.y) - wave.omega * time;
-                height += wave.amplitude * envelope * std::sin(phase);
+                                                          origin.x, origin.y, time, waveGrouping,
+                                                          wave.phaseOffsetRadians);
+                const float phase = wave.k * (dir.x * origin.x + dir.y * origin.y) - wave.omega * time
+                                  + wave.phaseOffsetRadians;
+                height += wave.amplitude * envelope * std::sin(phase) * attenuation;
             }
+        }
+
+        if (const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(*this, view)) {
+            WaterSplineSample base;
+            if (TrySampleWaterSpline(*geometry, origin.x, origin.y, base))
+                height += base.baseHeightOffset;
         }
 
         const int liveFlows = (std::min)(surfaceFlowCount, kWaterSurfaceFlowCount);
@@ -547,41 +786,154 @@ public:
         const uint32_t oldResolutionX = resolutionX;
         const uint32_t oldResolutionZ = resolutionZ;
         const uint32_t oldChunkCount  = chunkCount;
+        const bool oldAdaptivePatchLod = adaptivePatchLod;
+        const bool oldFarOceanEnabled = farOceanEnabled;
+        const uint32_t oldPatchResolution = lodPatchResolution;
         const float oldExtentX = extentX;
         const float oldExtentZ = extentZ;
+        const WaterSurfaceShape oldSurfaceShape = surfaceShape;
+        const std::uint32_t oldSplineSamplesPerSegment = splineSamplesPerSegment;
+        const float oldSplineMeshCellSize = splineMeshCellSize;
+        const std::vector<WaterSplinePoint> oldSplinePoints = splinePoints;
+        const ControlPointSourceMode oldPointSourceMode = pointSourceMode;
+        const ControlPointRuntimeMode oldPointRuntimeMode = pointRuntimeMode;
+        const std::vector<WaterControlPointBinding> oldPointBindings = pointBindings;
+        const float oldLakePlaneHeight = lakePlaneHeight;
+        const std::vector<WaterSplinePoint> oldBakedSplinePoints = bakedSplinePoints;
+        const std::uint64_t oldBakedInputSignature = bakedInputSignature;
+        const ControlPointSourceMode oldBakedSourceMode = bakedSourceMode;
+        const WaterSurfaceShape oldBakedSurfaceShape = bakedSurfaceShape;
+        const float oldBakedLakePlaneHeight = bakedLakePlaneHeight;
+        const std::uint32_t oldBakedAdapterVersion = bakedAdapterVersion;
+        const bool oldBakeValid = bakeValid;
         const std::string oldMaterialPath = materialPath;
 
         /// @note IReflector は uint32_t 非対応のため int 経由で編集・保存する。
         int resX = static_cast<int>((std::clamp)(resolutionX, 1u, 512u));
         int resZ = static_cast<int>((std::clamp)(resolutionZ, 1u, 512u));
         int chunks = static_cast<int>((std::clamp)(chunkCount, 1u, 64u));
+        int patchResolution = static_cast<int>((std::clamp)(lodPatchResolution, 2u, 64u));
+        int maxDepth = static_cast<int>((std::clamp)(lodMaxDepth, 0u, 10u));
+        int maxPatches = static_cast<int>((std::clamp)(lodMaxPatches, 1u, 4096u));
         r.Field("resolutionX", resX);
         r.Field("resolutionZ", resZ);
         r.Field("chunkCount", chunks);
         r.Field("cameraFocusedGrid", cameraFocusedGrid);
         r.Field("nearCellSize", nearCellSize);
+        r.Field("adaptivePatchLod", adaptivePatchLod);
+        r.Field("lodPatchResolution", patchResolution);
+        r.Field("lodMaxDepth", maxDepth);
+        r.Field("lodMaxPatches", maxPatches);
+        r.Field("lodTargetPixels", lodTargetPixels);
+        r.Field("lodNearDistance", lodNearDistance);
+        r.Field("lodNearCellSize", lodNearCellSize);
+        r.Field("lodMorphEnabled", lodMorphEnabled);
+        r.Field("lodMorphTransitionWidth", lodMorphTransitionWidth);
+        r.Field("farOceanEnabled", farOceanEnabled);
+        r.Field("farOceanCoverageScale", farOceanCoverageScale);
+        r.Field("farOceanRippleFadeDistance", farOceanRippleFadeDistance);
         r.Field("extentX", extentX);
         r.Field("extentZ", extentZ);
+        int shapeValue = static_cast<int>(surfaceShape);
+        static constexpr const char* SHAPES[] = { "Rectangle", "Spline Lake", "Spline River" };
+        r.Enum("surfaceShape", shapeValue, SHAPES);
+        surfaceShape = shapeValue < 0 || shapeValue > 2
+            ? static_cast<WaterSurfaceShape>(0xffu) : static_cast<WaterSurfaceShape>(shapeValue);
+        ReflectControlPointSourceMode(r, "pointSourceMode", pointSourceMode);
+        ReflectControlPointRuntimeMode(r, "pointRuntimeMode", pointRuntimeMode);
+        r.FloatRange("lakePlaneHeight", lakePlaneHeight, -1000000.0f, 1000000.0f);
+        ReflectWaterControlPointBindings(r, pointBindings);
+        ReflectWaterControlPointValues(r, "bakedSplinePoints", bakedSplinePoints);
+        ReflectControlPointSignature(r, "bakedInputSignature", bakedInputSignature);
+        ReflectControlPointSourceMode(r, "bakedSourceMode", bakedSourceMode);
+        int bakedShapeValue = static_cast<int>(bakedSurfaceShape);
+        static constexpr const char* BAKED_SHAPES[] = { "Rectangle", "Spline Lake", "Spline River" };
+        r.Enum("bakedSurfaceShape", bakedShapeValue, BAKED_SHAPES);
+        bakedSurfaceShape = bakedShapeValue < 0 || bakedShapeValue > 2
+            ? static_cast<WaterSurfaceShape>(0xffu) : static_cast<WaterSurfaceShape>(bakedShapeValue);
+        r.Field("bakedLakePlaneHeight", bakedLakePlaneHeight);
+        ReflectControlPointVersion(r, "bakedAdapterVersion", bakedAdapterVersion);
+        r.Field("bakeValid", bakeValid);
+        if (pointSourceMode == ControlPointSourceMode::INLINE) {
+            const std::size_t requestedSplinePointCount = r.BeginObjectList("splinePoints", splinePoints.size());
+            if (requestedSplinePointCount <= WATER_SPLINE_MAX_CONTROL_POINTS
+                || requestedSplinePointCount == splinePoints.size())
+                splinePoints.resize(requestedSplinePointCount);
+            std::uint32_t nextPointID = 1;
+            for (std::size_t i = 0; i < splinePoints.size(); ++i) {
+                auto& point = splinePoints[i];
+                if (point.id == 0) {
+                    while (nextPointID != 0 && std::any_of(splinePoints.begin(), splinePoints.end(),
+                        [nextPointID](const WaterSplinePoint& candidate) { return candidate.id == nextPointID; }))
+                        ++nextPointID;
+                    if (nextPointID != 0) point.id = nextPointID++;
+                }
+                r.BeginObjectElement(i);
+                point.Reflect(r);
+                r.EndObjectElement();
+            }
+            const std::size_t removedSplinePoint = r.EndObjectList();
+            if (removedSplinePoint < splinePoints.size())
+                splinePoints.erase(splinePoints.begin() + static_cast<std::ptrdiff_t>(removedSplinePoint));
+            std::size_t movedFrom = 0;
+            std::size_t movedTo = 0;
+            if (r.ObjectListMove(movedFrom, movedTo) && movedFrom < splinePoints.size()
+                && movedTo < splinePoints.size() && movedFrom != movedTo) {
+                WaterSplinePoint movedPoint = std::move(splinePoints[movedFrom]);
+                splinePoints.erase(splinePoints.begin() + static_cast<std::ptrdiff_t>(movedFrom));
+                splinePoints.insert(splinePoints.begin() + static_cast<std::ptrdiff_t>(movedTo), std::move(movedPoint));
+            }
+        }
+        int samplesPerSegment = static_cast<int>((std::clamp)(splineSamplesPerSegment, 1u,
+            WATER_SPLINE_MAX_SAMPLES_PER_SEGMENT));
+        r.Field("splineSamplesPerSegment", samplesPerSegment);
+        splineSamplesPerSegment = static_cast<std::uint32_t>((std::clamp)(samplesPerSegment, 1,
+            static_cast<int>(WATER_SPLINE_MAX_SAMPLES_PER_SEGMENT)));
+        r.FloatRange("splineMeshCellSize", splineMeshCellSize, 0.05f, 100.0f);
         r.Field("materialPath", materialPath);
+        r.Field("wavesAssetRef", wavesAssetRef);
         r.Field("enableGerstnerWaves", enableGerstnerWaves);
         r.Field("waveAmplitudeScale", waveAmplitudeScale);
         r.Field("buoyancyEnabled", buoyancyEnabled);
         r.Field("buoyancy", buoyancy);
         r.Field("waterDrag", waterDrag);
         r.Field("buoyancyDepth", buoyancyDepth);
+        r.Field("waveAttenuationDepth", waveAttenuationDepth);
         r.Field("splashEnabled", splashEnabled);
+        r.BeginObject("interactionSettings");
+        interactionSettings.Reflect(r);
+        r.EndObject();
 
         resolutionX = static_cast<uint32_t>((std::clamp)(resX, 1, 512));
         resolutionZ = static_cast<uint32_t>((std::clamp)(resZ, 1, 512));
         chunkCount  = static_cast<uint32_t>((std::clamp)(chunks, 1, 64));
+        lodPatchResolution = 2;
+        while (lodPatchResolution < static_cast<uint32_t>((std::clamp)(patchResolution, 2, 64)))
+            lodPatchResolution *= 2;
+        lodMaxDepth = static_cast<uint32_t>((std::clamp)(maxDepth, 0, 10));
+        lodMaxPatches = static_cast<uint32_t>((std::clamp)(maxPatches, 1, 4096));
+        lodTargetPixels = (std::clamp)(lodTargetPixels, 1.0f, 64.0f);
+        lodNearDistance = (std::clamp)(lodNearDistance, 0.0f, 10000.0f);
+        lodNearCellSize = (std::clamp)(lodNearCellSize, 0.25f, 100.0f);
+        lodMorphTransitionWidth = std::isfinite(lodMorphTransitionWidth)
+            ? (std::clamp)(lodMorphTransitionWidth, 0.05f, 1.0f) : 0.25f;
+        farOceanCoverageScale = std::isfinite(farOceanCoverageScale)
+            ? (std::clamp)(farOceanCoverageScale, 1.0f, 2.0f) : 1.05f;
+        farOceanRippleFadeDistance = std::isfinite(farOceanRippleFadeDistance)
+            ? (std::clamp)(farOceanRippleFadeDistance, 0.1f, 1000.0f) : 4.0f;
         extentX = (std::clamp)(extentX, 0.1f, 10000.0f);
         extentZ = (std::clamp)(extentZ, 0.1f, 10000.0f);
+        splineMeshCellSize = std::isfinite(splineMeshCellSize)
+            ? (std::clamp)(splineMeshCellSize, 0.05f, 100.0f) : 2.0f;
         nearCellSize = (std::clamp)(nearCellSize, 0.25f, 10.0f);
         waveAmplitudeScale = (std::max)(waveAmplitudeScale, 0.0f);
-        buoyancyDepth      = (std::max)(buoyancyDepth, 0.1f);
+        buoyancyDepth      = std::isfinite(buoyancyDepth) ? (std::max)(buoyancyDepth, 0.0f) : 0.0f;
+        waveAttenuationDepth = std::isfinite(waveAttenuationDepth)
+            ? (std::max)(waveAttenuationDepth, 0.0f) : 0.0f;
         if (resolutionX != oldResolutionX || resolutionZ != oldResolutionZ ||
             chunkCount  != oldChunkCount  || extentX      != oldExtentX      ||
-            extentZ     != oldExtentZ) {
+            extentZ     != oldExtentZ || adaptivePatchLod != oldAdaptivePatchLod || farOceanEnabled != oldFarOceanEnabled ||
+            lodPatchResolution != oldPatchResolution) {
             meshDirty = true;
             foamDirty = true;
         }
@@ -589,8 +941,19 @@ public:
             texDirty = true;
             foamDirty = true;
         }
+        if (surfaceShape != oldSurfaceShape || splineSamplesPerSegment != oldSplineSamplesPerSegment
+            || splineMeshCellSize != oldSplineMeshCellSize
+            || splinePoints != oldSplinePoints || pointSourceMode != oldPointSourceMode
+            || pointRuntimeMode != oldPointRuntimeMode || pointBindings != oldPointBindings
+            || lakePlaneHeight != oldLakePlaneHeight || bakedSplinePoints != oldBakedSplinePoints
+            || bakedInputSignature != oldBakedInputSignature || bakedSourceMode != oldBakedSourceMode
+            || bakedSurfaceShape != oldBakedSurfaceShape || bakedLakePlaneHeight != oldBakedLakePlaneHeight
+            || bakedAdapterVersion != oldBakedAdapterVersion || bakeValid != oldBakeValid) {
+            meshDirty = true;
+            foamDirty = true;
+        }
     }
     /// @}
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

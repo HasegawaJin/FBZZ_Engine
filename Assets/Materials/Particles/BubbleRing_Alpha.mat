@@ -1,0 +1,24 @@
+# @file    BubbleRing_Alpha.mat
+# @brief   Native particle ring material; straight alpha with depth fade.
+# @author  Hasegawa Jin
+# @date    2026-10-11
+
+version = 1
+shader = ""
+blend_mode = "Alpha"
+double_sided = true
+depth_write = false
+render_queue = 3000
+render_path = "particle"
+mesh_type = "surface"
+
+[textures]
+albedo = "guid:7f74ee184c8943329754cd5bd68aec63"
+
+[params]
+albedo = [1.0, 1.0, 1.0, 1.0]
+
+[particle]
+soft_particles = true
+soft_particle_fade_distance = 0.1
+emissive_scale = 1.0

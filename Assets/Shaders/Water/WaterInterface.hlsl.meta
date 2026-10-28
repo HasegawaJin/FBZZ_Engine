@@ -1,0 +1,14 @@
+# @file    WaterInterface.hlsl.meta
+# @brief   Shader identity and screen-space water interface contract.
+# @author  Hasegawa Jin
+# @date    2026-10-09
+[meta]
+guid = 'c8e715bd64f04f76844626a793994051'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'water_interface_v1'
+opacity = 'opaque'
+variants = 'none'
+preview = 'none'

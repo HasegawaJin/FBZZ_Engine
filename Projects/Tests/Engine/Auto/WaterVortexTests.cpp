@@ -403,9 +403,9 @@ TEST_F(WaterVortexTest, TheRippleProfileIsOddAroundItsRing)
     }
 }
 
-TEST_F(WaterVortexTest, ARingTheGridCannotCarveAddsNoHeight)
+TEST_F(WaterVortexTest, PhysicalRingHeightIsIndependentOfTheDisplayMeshFade)
 {
-    /// @note 帯の原則: 頂点に乗らない輪は «法線だけ» の帯へ落ちる。高さに残ると、平らに見える 水面の上で浮いている物だけが跳ねる。
+    /// @note 表示の帯域制限を変えても、浮力・水域照会の波紋は同じ設定を評価する。
     scene::WaterComponent water = FlatWater();
     scene::WaterRipple ripple;
     ripple.center    = { 1.0f, 2.0f };
@@ -415,20 +415,20 @@ TEST_F(WaterVortexTest, ARingTheGridCannotCarveAddsNoHeight)
     ripple.meshFade  = 0.0f;
     water.ripples.push_back(ripple);
 
-    /// @note 山のあたりを一通り見て、どこにも高さが出ないこと。
+    std::array<float, 20> heights{};
+    float peak = 0.0f;
     for (int i = 0; i < 20; ++i) {
         const float x = 1.0f + static_cast<float>(i) * 0.25f;
-        EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(x, 2.0f, 0.0f), 0.0f);
+        heights[static_cast<size_t>(i)] = water.GetSurfaceHeightAt(x, 2.0f, 0.0f);
+        peak = (std::max)(peak, std::abs(heights[static_cast<size_t>(i)]));
     }
+    ASSERT_GT(peak, 0.01f);
 
-    /// @note 刻めるようになれば同じ輪が高さを持つ。
     water.ripples[0].meshFade = 1.0f;
-    float peak = 0.0f;
-    for (int i = 0; i < 40; ++i) {
-        const float x = 1.0f + static_cast<float>(i) * 0.125f;
-        peak = (std::max)(peak, std::abs(water.GetSurfaceHeightAt(x, 2.0f, 0.0f)));
+    for (int i = 0; i < 20; ++i) {
+        const float x = 1.0f + static_cast<float>(i) * 0.25f;
+        EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(x, 2.0f, 0.0f), heights[static_cast<size_t>(i)]);
     }
-    EXPECT_GT(peak, 0.01f);
 }
 
 TEST_F(WaterVortexTest, TheEmittedRingIsMeasuredInMetresAndStartsAtZeroRadius)

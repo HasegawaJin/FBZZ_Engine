@@ -17,19 +17,13 @@ struct GBufferOut
     float4 emission        : SV_Target2;
 };
 
-/// @note Deferred の地形はマット面で鏡面反射が弱く、法線マップの陰影が Forward より地味になる。
-/// @note XY を増幅して拡散陰影 (N·L) だけでも凹凸を出す。層ごとの強弱は .mat の Normal Strength が持つ。
-static const float kTerrainNormalBoost = 3.0f;
-/// @note 層の roughness を尊重しつつ、青空 IBL が鏡のように映るのを防ぐ控えめな下限。
-static const float kTerrainMinRoughness = 0.6f;
-
 GBufferOut PSMain(TerrainPSInput p)
 {
-    TerrainSurface surface = EvaluateTerrainSurface(p, kTerrainNormalBoost);
+    TerrainSurface surface = EvaluateTerrainSurface(p, 1.0f);
     const float3 N = surface.normal;
 
     /// @note AO は GBuffer にチャンネルが無く、画面空間 GTAO/SSAO が担う (メッシュと同じ扱い)。
-    float roughness = max(saturate(surface.roughness), kTerrainMinRoughness);
+    float roughness = saturate(surface.roughness);
 
     /// @note 天候。地形は b1 を TerrainCB に使うので b8 を宣言できず、値は TerrainCB から手渡す。
     const WetSurface wet = ApplyWetness(surface.albedo, roughness, N,

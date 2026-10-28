@@ -1,0 +1,6 @@
+# @file    WaterMedium.hlsli.meta
+# @brief   波と水域の共通GPU数値表照会。
+# @author  Hasegawa Jin
+# @date    2026-10-09
+[meta]
+guid = 'd924adefd77945e6bc8e41c780ea5739'

@@ -7,37 +7,40 @@
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Fields/FlowFieldEval.hpp>
 #include <Engine/Scene/Transform.hpp>
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
 
 namespace fbzz::tests {
 namespace {
 
-/// @note キャッシュ導入前の評価順序を固定する独立参照。最適化側の評価関数を呼ばない。
+/// @note 描画の帯域制限を含まない実効波の独立参照。最適化側の評価関数を呼ばない。
 float OriginalHeight(const scene::WaterComponent& water, float x, float z, float time)
 {
     using Water = scene::WaterComponent;
+    const size_t activeCount = (std::min)(static_cast<size_t>(water.waveCount), water.waves.size());
     auto evaluate = [&](math::Vector2 point, bool horizontal) {
         math::Vector3 result{};
-        for (int i = 0; i < 4; ++i) {
+        for (size_t i = 0; i < activeCount; ++i) {
             const auto& wave = water.waves[static_cast<size_t>(i)];
             if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f) continue;
-            const float fade = Water::WaveMeshFade(wave.wavelength, water.cellSize);
-            if (fade <= 0.0f) continue;
+            const int waveIndex = static_cast<int>(i);
             const float k = math::TWO_PI / wave.wavelength;
             const float omega = std::sqrt(9.8f * k);
             for (int component = 0; component < 2; ++component) {
-                const auto part = Water::WaveSpreadComponent(i, component, wave.direction.Normalized(), water.waveSpread);
+                const auto part = Water::WaveSpreadComponent(waveIndex, component, wave.direction.Normalized(), water.waveSpread);
                 if (part.amplitudeScale <= 0.001f) continue;
                 const auto dir = part.direction;
-                const float envelope = Water::WaveGroupEnvelope(i, dir, k, omega, point.x, point.y, time, water.waveGrouping);
+                const float envelope = Water::WaveGroupEnvelope(waveIndex, dir, k, omega, point.x, point.y, time, water.waveGrouping);
                 const float phase = k * (dir.x * point.x + dir.y * point.y) - omega * time;
                 if (horizontal) {
-                    const float push = math::Clamp01(wave.steepness) * wave.amplitude * fade
+                    const float push = math::Clamp01(wave.steepness) * wave.amplitude
                         * part.amplitudeScale * envelope * std::cos(phase);
                     result.x += dir.x * push;
                     result.z += dir.y * push;
                 } else {
-                    result.y += wave.amplitude * fade * part.amplitudeScale * envelope * std::sin(phase);
+                    result.y += wave.amplitude * part.amplitudeScale * envelope * std::sin(phase);
                 }
             }
         }
@@ -45,12 +48,15 @@ float OriginalHeight(const scene::WaterComponent& water, float x, float z, float
     };
     const math::Vector2 target{ x, z };
     auto point = target;
-    const float peak = (1.0f + math::Clamp01(water.waveGrouping)) * Water::WaveSpreadAmplitudeSum(water.waveSpread);
+    const float grouping = math::Clamp01(water.waveGrouping);
+    const float peak = (1.0f + grouping + grouping * 0.195f) * Water::WaveSpreadAmplitudeSum(water.waveSpread)
+        * (1.0f + 32.0f * std::numeric_limits<float>::epsilon());
     float contraction = 0.0f;
-    for (const auto& wave : water.waves) {
+    for (size_t i = 0; i < activeCount; ++i) {
+        const auto& wave = water.waves[i];
         if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f) continue;
         contraction += math::Clamp01(wave.steepness) * wave.amplitude
-            * Water::WaveMeshFade(wave.wavelength, water.cellSize) * peak * (math::TWO_PI / wave.wavelength);
+            * peak * (math::TWO_PI / wave.wavelength);
     }
     if (contraction > 0.0001f) {
         const float relax = 1.0f / (std::max)(contraction, 1.0f);
@@ -90,6 +96,38 @@ TEST_F(WaterOptimizationTest, CachedWavesMatchOriginalAndDetectDirectEdits)
     }
     water.enableGerstnerWaves = false;
     EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(1.0f, 2.0f, 3.0f), 0.0f);
+}
+
+TEST_F(WaterOptimizationTest, ActiveWaveCountLimitsEvaluationAndIgnoresInactiveEdits)
+{
+    scene::WaterComponent water;
+    water.waveGrouping = 0.4f;
+    water.waveSpread = 0.65f;
+    for (size_t i = 0; i < water.waves.size(); ++i) {
+        auto& wave = water.waves[i];
+        wave.direction = { 1.0f - 0.07f * static_cast<float>(i), 0.25f + 0.03f * static_cast<float>(i) };
+        wave.amplitude = i < 4 ? 0.35f * static_cast<float>(i + 1) : 0.08f;
+        wave.wavelength = 2.5f + 0.6f * static_cast<float>(i);
+        wave.steepness = i < 4 ? 0.2f + 0.15f * static_cast<float>(i) : 0.5f;
+    }
+
+    constexpr std::array<std::uint32_t, 4> activeCounts{ 0, 1, 4, 16 };
+    for (const std::uint32_t activeCount : activeCounts) {
+        water.waveCount = activeCount;
+        const float before = water.GetSurfaceHeightAt(7.25f, -3.5f, 1.75f);
+        EXPECT_NEAR(before, OriginalHeight(water, 7.25f, -3.5f, 1.75f), 1.0e-5f);
+        if (activeCount >= water.waves.size()) continue;
+
+        const size_t inactiveIndex = static_cast<size_t>(activeCount);
+        const scene::GerstnerWave savedWave = water.waves[inactiveIndex];
+        water.waves[inactiveIndex].amplitude = 100.0f;
+        water.waves[inactiveIndex].wavelength = 0.25f;
+        water.waves[inactiveIndex].steepness = 1.0f;
+        const float after = water.GetSurfaceHeightAt(7.25f, -3.5f, 1.75f);
+        EXPECT_FLOAT_EQ(after, before);
+        EXPECT_NEAR(after, OriginalHeight(water, 7.25f, -3.5f, 1.75f), 1.0e-5f);
+        water.waves[inactiveIndex] = savedWave;
+    }
 }
 
 TEST_F(WaterOptimizationTest, BoundsContainFlowAndRippleDisplacement)
@@ -166,4 +204,4 @@ TEST_F(WaterOptimizationTest, GpuBoundsAndRotatedBakedBoxCullConservatively)
     EXPECT_FALSE(scene::FlowIntersectsSphere(baked, { 0.0f, 0.0f, 5.0f }, 0.1f));
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

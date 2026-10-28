@@ -8,17 +8,43 @@
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/Fields/FlowFieldEval.hpp>
+#include <Fluid/GerstnerWaves.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
+#include <array>
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
-namespace fbzz::asset { struct MaterialAsset; }
+namespace fbzz::asset { class DataAsset; class WaterWavesAsset; struct MaterialAsset; struct MaterialAssetAuthoring; }
 
 namespace fbzz::scene {
 
 struct Transform;
+class Scene;
+
+/// @brief Build or reuse each Scene water's immutable spline geometry from control points and world pose.
+/// @param scene Scene whose WaterComponent spline snapshots are prepared.
+void PrepareWaterSplineSnapshots(Scene& scene);
+/// @brief Prepare shared Zone geometry and member ownership after source splines are current.
+void PrepareWaterZoneSnapshots(Scene& scene);
+/// @brief Prepare spline sources, shared Zone surfaces, and matching exclusion boxes.
+void PrepareWaterSceneSurfaces(Scene& scene);
+/// @brief Publish the current scene surface inputs as one immutable simulation read boundary.
+void PrepareWaterSimulationSurfaces(Scene& scene);
+/// @brief Initialize the simulation read boundary before its first fixed-step publication.
+void EnsureWaterSimulationSurfaces(Scene& scene);
+/// @brief Resolve a Zone member to its active shared owner, or return its own Water.
+[[nodiscard]] WaterComponent* ResolveWaterZoneOwner(Scene& scene, EntityID entity);
+/// @brief Build or reuse one water's immutable spline geometry before a live world-space query.
+/// @param water Mutable water component receiving the shared runtime snapshot.
+/// @param transform Current world pose used to validate or rebuild the snapshot.
+/// @return True for a supported rectangle or a valid current spline snapshot.
+[[nodiscard]] bool PrepareWaterSplineSnapshot(WaterComponent& water, const Transform& transform);
+/// @brief Resolve one Water's authored or bound control points before preparing its live geometry.
+[[nodiscard]] bool PrepareWaterSplineSnapshot(Scene& scene, EntityID ownerId,
+    WaterComponent& water, const Transform& transform);
 
 /// @note 水の .mat が持つ «種類» のキー。Engine の解決処理と Editor の Inspector が同じ名前を引く。
 namespace water_keys {
@@ -28,7 +54,7 @@ inline constexpr const char* kWaveWavelength[4] = { "wave0Wavelength", "wave1Wav
 inline constexpr const char* kWaveSteepness[4]  = { "wave0Steepness",  "wave1Steepness",  "wave2Steepness",  "wave3Steepness"  };
 /// @note 環境風で波がどれだけ育つか [0,1]。外洋は 1、池は 0。
 inline constexpr const char* kWindResponse  = "windResponse";
-/// @note 浮いている物体を押し流す水流の速さ [m/s]。向きは kFlowDirection。
+/// @note Rectangle の基流速度 [m/s]。Spline は制御点の流速を使う。
 inline constexpr const char* kCurrentSpeed  = "currentSpeed";
 /// @note 波の «群» の深さ [0,1]。0 でどの波頭も同じ高さ、上げるほど大きい波の塊と凪が交互に来る。
 inline constexpr const char* kWaveGrouping  = "waveGrouping";
@@ -54,11 +80,18 @@ struct WaterWind {
 /// @note       «.mat の 2 倍まで» という見た目の歯止めで、物理的な意味は無い。
 inline constexpr float kWaveGrowthReferenceWindSpeed = 10.0f;
 
-/// @note .mat の波に個体の倍率と環境風を掛けて water.waves / water.current を組み立てる。
+/// @note .mat の波に個体の倍率と環境風を掛け、water.waves / water.current を組み立てる。
 /// @note 風は «追い風の波を育て、向かい風の波を潰す» だけで、波の向きは回さない。
 /// @note 向きを回さない理由: 位相は k·(D·p) のため D を回すと原点から遠い点ほど位相が跳ね、
 /// @note       風が変わるたびに遠景の波が早送りのように走って見える。
 void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind);
+/// @note Pure wave derivation from caller-owned immutable values preserves preview snapshot lifetime.
+void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAssetAuthoring& material, const WaterWind& wind);
+/// @brief Resolve asset base waves while retaining material optics, current, and wind response.
+/// @return False leaves the active wave source unchanged when generated values are invalid.
+[[nodiscard]] bool ResolveWaterWavesFromAsset(
+    WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind,
+    const asset::WaterWavesAsset& wavesAsset);
 
 /// @note water.materialPath の .mat を引く。未設定・読込失敗なら nullptr。
 [[nodiscard]] const asset::MaterialAsset* LoadWaterMaterial(const WaterComponent& water);
@@ -93,13 +126,13 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
 /// @note 水面の «その点の» 流速 [m/s] (ワールド、y は常に 0)。
 ///
 /// @param surfaceBaseY 水面 GameObject のワールド Y。流れは水面の高さでサンプルする。
-/// @note .mat の一様な current に、その点を覆う流れの場を足したもの。浮いた物が渦の周りを
-/// @note       回るのはこれが場所の関数になっているため。
+/// @note Rectangle は .mat current、Spline は点ごとの authored flow を基流にし、明示 FlowField を足す。
 [[nodiscard]] math::Vector3 WaterFlowVelocityAt(const WaterComponent& water,
                                                 const std::vector<ActiveFlowField>& fields,
                                                 float surfaceBaseY,
                                                 const math::Vector3& worldPos,
-                                                float time);
+                                                float time,
+                                                WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 class WaterSystem final : public ISystem {
 public:
@@ -112,6 +145,25 @@ public:
     void Update(SystemContext& ctx) override;
 
 private:
+    struct WaveAssetCache {
+        std::string referencePath;
+        const asset::DataAsset* attemptedAsset = nullptr;
+        std::uint64_t attemptedSignature = 0;
+        std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> generatedWaves{};
+        std::uint32_t generatedWaveCount = 0;
+        float generatedGrouping = 0.0f;
+        float generatedSpread = 0.0f;
+        bool hasLastGood = false;
+        bool hasAttempt = false;
+        bool lastAttemptValid = false;
+        bool seen = false;
+        bool diagnosticActive = false;
+        std::string diagnosticPath;
+        std::string diagnosticReason;
+        const asset::DataAsset* diagnosticAsset = nullptr;
+        std::uint64_t diagnosticSignature = 0;
+    };
+
     struct BodyState {
         bool  submerged = false;
         float wakeTimer = 0.0f;
@@ -119,6 +171,9 @@ private:
     };
     /// @note 剛体ごとの «前のフレームで水中に居たか»。キーは EntityID (generation << 32 | index)。
     std::unordered_map<uint64_t, BodyState> m_bodies;
+    std::unordered_map<uint64_t, WaveAssetCache> m_waveAssets;
+    /// @note WaterSystem は Scene 切替後も生存するため、last-good の寿命を Scene に揃える。
+    std::uint64_t m_waveAssetSceneGeneration = 0;
 };
 
 }

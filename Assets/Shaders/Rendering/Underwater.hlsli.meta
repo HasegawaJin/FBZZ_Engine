@@ -1,0 +1,6 @@
+# @file    Underwater.hlsli.meta
+# @brief   水中レイ区間と矩形水域のシェーダー共通ファイル識別子。
+# @author  Hasegawa Jin
+# @date    2026-10-09
+[meta]
+guid = 'a75438b8e88446b287cf1563a993ea72'

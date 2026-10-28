@@ -8,10 +8,20 @@
 #include "Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp"
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderWaterExtractor.hpp>
+#include <Engine/Scene/WaterSurfaceQuery.hpp>
+#include <Engine/Scene/WaterSpline.hpp>
+#include <Engine/Scene/WaterTerrainInfo.hpp>
+#include <Engine/Scene/WaterDepthField.hpp>
+#include <Engine/Scene/WaterExclusion.hpp>
+#include <Engine/Scene/WaterInteraction.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
+#include <Core/Profiler/ProfileScope.hpp>
 
 #include "Engine/Asset/AssetManager.hpp"
 #include "Engine/Asset/MaterialAsset.hpp"
+#include <Engine/Asset/WaterOpticalSettings.hpp>
+#include <Engine/Asset/MaterialParamBinding.hpp>
+#include <Engine/Asset/StreamedTextureResolver.hpp>
 #include "Engine/Asset/VelocityFieldAtlas.hpp"
 #include "Fluid/VectorFieldAsset.hpp"
 #include "Engine/Scene/Scene.hpp"
@@ -30,16 +40,23 @@
 #include "Engine/Renderer/RenderState.hpp"
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/WaterSystem.hpp>
 #include <Math/Frustum.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Vector4.hpp>
 #include <Physics/Layer.hpp>
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <random>
+#include <cstdlib>
+#include <limits>
+#include <memory>
+#include <span>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -47,6 +64,43 @@
 namespace fbzz::scene {
 
 namespace {
+
+/// @note Captured once when the native module loads; only exact "tiled" opts in. Missing, "full" and unknown values retain the full scan.
+const bool USE_TILED_RIPPLE_BAKE = [] {
+    const char* mode = std::getenv("FBZZ_WATER_RIPPLE_BAKE_MODE");
+    return mode && std::string_view(mode) == "tiled";
+}();
+
+struct WaterCandidatePool {
+    std::vector<std::unique_ptr<std::vector<EntityID>>> entries;
+    size_t depth = 0;
+};
+
+WaterCandidatePool& WaterCandidates()
+{
+    thread_local WaterCandidatePool pool;
+    return pool;
+}
+
+/// @note Snapshot the current Component order; nested extraction cannot replace the outer candidate storage.
+class WaterCandidateLease {
+public:
+    explicit WaterCandidateLease(Scene& scene)
+    {
+        auto& pool = WaterCandidates();
+        if (pool.depth == pool.entries.size())
+            pool.entries.push_back(std::make_unique<std::vector<EntityID>>());
+        m_entities = pool.entries[pool.depth++].get();
+        const auto source = scene.GetEntities<WaterComponent>();
+        m_entities->assign(source.begin(), source.end());
+    }
+    ~WaterCandidateLease() { m_entities->clear(); --WaterCandidates().depth; }
+    WaterCandidateLease(const WaterCandidateLease&) = delete;
+    WaterCandidateLease& operator=(const WaterCandidateLease&) = delete;
+    std::span<const EntityID> Entities() const { return *m_entities; }
+private:
+    std::vector<EntityID>* m_entities = nullptr;
+};
 
 /// @note WaterVertex / WaterCB / WaterEffectParams は `RenderPassContext.hpp` にある。
 /// @note エディタのマテリアルプレビューが本編と同じレイアウトを焼く必要があり、ここに複製すると黙ってずれる。
@@ -56,10 +110,47 @@ namespace {
 /// @note 上げた瞬間から AABB だけ古くなり、見えている端のチャンクが消える。
 using WaterChunk = renderer::RenderWaterPatch;
 
+/// @note dirty フラグを経由しない設定変更でも、描画入力と異なるメッシュを再利用しない。
+struct WaterMeshGeometry {
+    WaterSurfaceShape surfaceShape = WaterSurfaceShape::RECTANGLE;
+    uint64_t splineSignature = 0;
+    float splineDepthCap = 0;
+    float extentX = 0, extentZ = 0;
+    uint32_t resolutionX = 0, resolutionZ = 0, chunkCount = 0, patchResolution = 0;
+    bool sharedPatchGrid = false;
+    bool operator==(const WaterMeshGeometry&) const = default;
+};
+
+WaterMeshGeometry ResolveWaterMeshGeometry(const WaterComponent& water)
+{
+    WaterMeshGeometry result;
+    result.surfaceShape = WaterSurfaceEffectiveShape(water, WaterSurfaceReadView::SIMULATION);
+    if (UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)) {
+        const auto* geometry = WaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
+        result.splineSignature = geometry ? geometry->signature : 0;
+        result.splineDepthCap = (std::max)(water.buoyancyDepth, 0.0f);
+        return result;
+    }
+    result.extentX = water.extentX;
+    result.extentZ = water.extentZ;
+    result.sharedPatchGrid = water.adaptivePatchLod || water.farOceanEnabled;
+    if (result.sharedPatchGrid) result.patchResolution = water.lodPatchResolution;
+    else {
+        result.resolutionX = water.resolutionX;
+        result.resolutionZ = water.resolutionZ;
+        result.chunkCount = water.chunkCount;
+    }
+    return result;
+}
+
 struct WaterMesh {
     std::vector<WaterChunk> chunks;
+    renderer::ResourceHandle<renderer::BufferTag> patchVertexBuffer;
+    std::array<renderer::ResourceHandle<renderer::BufferTag>, 16> patchIndexBuffers{};
+    std::array<uint32_t, 16> patchIndexCounts{};
     math::Vector3 aabbMin;
     math::Vector3 aabbMax;
+    WaterMeshGeometry geometry;
 };
 
 /// @note 頂点が Gerstner 変位で平面から出る量。水平は Q*A、垂直は A の総和が上限。
@@ -73,7 +164,8 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water)
         /// @note ここに入れ忘れると、山に当たったチャンクだけが «AABB からはみ出した» 扱いで消える。
         const float peak = (1.0f + math::Clamp01(water.waveGrouping))
                          * WaterComponent::WaveSpreadAmplitudeSum(water.waveSpread);
-        for (const GerstnerWave& wave : water.waves) {
+        for (size_t i = 0; i < (std::min)(static_cast<size_t>(water.waveCount), water.waves.size()); ++i) {
+            const GerstnerWave& wave = water.waves[i];
             const float amplitude = (std::max)(wave.amplitude, 0.0f) * peak;
             margin.vertical   += amplitude;
             margin.horizontal += amplitude * math::Clamp01(wave.steepness);
@@ -100,6 +192,9 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water)
 /// @note 法線・泡・環境反射は手続き / 空連動 IBL から取るため、オーサリング済みテクスチャ資産は不要。
 struct WaterTextures {
     renderer::ResourceHandle<renderer::TextureTag> foamMask;
+    math::Vector4 terrainInfoParams{};
+    uint64_t signature = 0;
+    bool depthIsUniform = false;
 };
 
 /// @note 焼いた 1 枚と «前のフレームに輪があったか»。
@@ -113,57 +208,149 @@ struct WaterRippleState {
     bool dirty = true;
     /// @note 最後に焼いたとき輪があったか。落としきった次のフレームに 1 回だけ焼き直すため。
     bool hadRipples = false;
+    uint64_t inputSignature = 0;
+    bool signatureValid = false;
 };
 
-static std::unordered_map<uint32_t, WaterMesh> s_meshCache;
-static std::unordered_map<uint32_t, WaterTextures> s_texCache;
-static std::unordered_map<uint32_t, WaterRippleState> s_rippleStates;
-
-struct SplashEvent {
-    math::Vector3 worldPos;
-    float         intensity;
+struct WaterCacheKey {
+    uint64_t sceneGeneration = 0;
+    uint32_t index = 0;
+    uint32_t generation = 0;
+    bool operator==(const WaterCacheKey&) const = default;
 };
-
-static std::vector<SplashEvent> s_pendingSplashes;
-
-/// @note しぶき GameObject の名前。UpdateWaterSplashes が破棄対象を見分ける印を兼ねる。
-constexpr const char* kSplashObjectName = "__WaterSplash";
-/// @note 1 フレームに積める上限。WaterSystem が回らない構成でキューが伸び続けないようにする。
-constexpr size_t kMaxPendingSplashes = 64;
-
-float SmoothStep(float edge0, float edge1, float x)
-{
-    const float denom = edge1 - edge0;
-    if (std::abs(denom) <= math::EPSILON)
-        return x < edge0 ? 0.0f : 1.0f;
-    const float t = math::Clamp01((x - edge0) / denom);
-    return t * t * (3.0f - 2.0f * t);
-}
-
-float ComputeFoamWeight(float heightDiff, float threshold, float fade)
-{
-    return SmoothStep(threshold + fade, threshold - fade, heightDiff);
-}
-
-EntityID FindEntityForWater(Scene& scene, WaterComponent& water)
-{
-    for (EntityID candidate : scene.GetEntities<WaterComponent>()) {
-        if (scene.GetComponent<WaterComponent>(candidate) == &water)
-            return candidate;
+struct WaterCacheKeyHash {
+    size_t operator()(const WaterCacheKey& key) const {
+        return std::hash<uint64_t>{}(key.sceneGeneration)
+            ^ std::hash<uint64_t>{}((static_cast<uint64_t>(key.generation) << 32u) | key.index);
     }
-    return {};
+};
+static std::unordered_map<WaterCacheKey, WaterMesh, WaterCacheKeyHash> s_meshCache;
+static std::unordered_map<WaterCacheKey, WaterTextures, WaterCacheKeyHash> s_texCache;
+/// @note Appearance owns b2 independently of generated foam/depth textures and follows the same scene/resource lifetime.
+static std::unordered_map<WaterCacheKey, renderer::Material, WaterCacheKeyHash> s_appearanceCache;
+static std::unordered_map<WaterCacheKey, WaterRippleState, WaterCacheKeyHash> s_rippleStates;
+static uint64_t s_waterResourceOwner = 0;
+static uint64_t s_waterResourceVersion = UINT64_MAX;
+
+struct TerrainInfoState {
+    WaterTerrainInfoCache cache;
+};
+static std::unordered_map<uint64_t, TerrainInfoState> s_terrainInfoStates;
+
+void ReleaseWaterMesh(WaterMesh& mesh, renderer::ResourceManager& resources)
+{
+    for (auto& chunk : mesh.chunks) {
+        if (chunk.vertexBuffer.IsValid()) resources.Release(chunk.vertexBuffer);
+        if (chunk.indexBuffer.IsValid()) resources.Release(chunk.indexBuffer);
+    }
+    if (mesh.patchVertexBuffer.IsValid()) resources.Release(mesh.patchVertexBuffer);
+    for (auto& indexBuffer : mesh.patchIndexBuffers)
+        if (indexBuffer.IsValid()) resources.Release(indexBuffer);
+    mesh = {};
 }
+
+void ReleaseWaterCacheEntries(uint64_t sceneGeneration, const EntityID* entity, renderer::ResourceManager& resources)
+{
+    if (s_waterResourceOwner != resources.GetInstanceId() || s_waterResourceVersion != resources.GetResetVersion()) return;
+    const auto matches = [sceneGeneration, entity](const WaterCacheKey& key) {
+        return key.sceneGeneration == sceneGeneration
+            && (!entity || (key.index == entity->index && key.generation == entity->generation));
+    };
+    std::erase_if(s_meshCache, [&](auto& entry) {
+        if (!matches(entry.first)) return false;
+        ReleaseWaterMesh(entry.second, resources);
+        return true;
+    });
+    std::erase_if(s_appearanceCache, [&](auto& entry) {
+        if (!matches(entry.first)) return false;
+        if (entry.second.paramsBuffer.IsValid()) resources.Release(entry.second.paramsBuffer);
+        entry.second.paramsBuffer = {};
+        return true;
+    });
+    std::erase_if(s_texCache, [&](auto& entry) {
+        if (!matches(entry.first)) return false;
+        if (entry.second.foamMask.IsValid()) resources.Release(entry.second.foamMask);
+        return true;
+    });
+    std::erase_if(s_rippleStates, [&](auto& entry) {
+        if (!matches(entry.first)) return false;
+        if (entry.second.gpuTex.IsValid()) resources.Release(entry.second.gpuTex);
+        return true;
+    });
+}
+
 
 void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::ResourceManager& resources)
 {
     assert(water.resolutionX > 0);
     assert(water.resolutionZ > 0);
 
-    for (auto& chunk : mesh.chunks) {
-        if (chunk.vertexBuffer.IsValid()) resources.Release(chunk.vertexBuffer);
-        if (chunk.indexBuffer.IsValid()) resources.Release(chunk.indexBuffer);
+    ReleaseWaterMesh(mesh, resources);
+    mesh.geometry = ResolveWaterMeshGeometry(water);
+
+    if (UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)) {
+        const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
+        if (!geometry) return;
+        const auto& snapshot = *geometry;
+        mesh.aabbMin = snapshot.localBoundsMin;
+        mesh.aabbMax = snapshot.localBoundsMax;
+        const math::Vector2 extent = WaterSurfaceLocalExtent(water, WaterSurfaceReadView::SIMULATION);
+        if (snapshot.vertices.empty() || snapshot.triangles.empty()
+            || !std::isfinite(extent.x) || !std::isfinite(extent.y)
+            || extent.x <= 0.0f || extent.y <= 0.0f) return;
+
+        std::vector<WaterVertex> vertices;
+        vertices.reserve(snapshot.vertices.size());
+        const float depthCap = (std::max)(water.buoyancyDepth, 0.0f);
+        for (const WaterSplineVertex& source : snapshot.vertices) {
+            WaterVertex vertex{};
+            vertex.position = source.localPosition;
+            vertex.uv = {source.localPosition.x / extent.x + 0.5f,
+                source.localPosition.z / extent.y + 0.5f};
+            vertex.splineData = {(std::min)(source.depth, depthCap),
+                source.worldVelocity.x, source.worldVelocity.z, 1.0f};
+            vertices.push_back(vertex);
+        }
+        std::vector<uint32_t> indices;
+        indices.reserve(snapshot.triangles.size() * 3u);
+        for (const WaterSplineTriangle& triangle : snapshot.triangles)
+            indices.insert(indices.end(), triangle.indices.begin(), triangle.indices.end());
+
+        WaterChunk chunk;
+        chunk.vertexBuffer = resources.CreateVertexBuffer(vertices.data(),
+            vertices.size() * sizeof(WaterVertex), static_cast<uint32_t>(sizeof(WaterVertex)));
+        chunk.indexBuffer = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+        chunk.indexCount = static_cast<uint32_t>(indices.size());
+        chunk.aabbMin = snapshot.localBoundsMin;
+        chunk.aabbMax = snapshot.localBoundsMax;
+        mesh.chunks.push_back(std::move(chunk));
+        return;
     }
-    mesh.chunks.clear();
+
+    const float halfX = water.extentX * 0.5f;
+    const float halfZ = water.extentZ * 0.5f;
+    mesh.aabbMin = { -halfX, 0.0f, -halfZ };
+    mesh.aabbMax = { halfX, 0.0f, halfZ };
+    if (water.adaptivePatchLod || water.farOceanEnabled) {
+        const uint32_t cells = water.lodPatchResolution;
+        std::vector<WaterVertex> vertices;
+        vertices.reserve(static_cast<size_t>(cells + 1u) * (cells + 1u));
+        for (uint32_t z = 0; z <= cells; ++z) {
+            for (uint32_t x = 0; x <= cells; ++x) {
+                const math::Vector2 uv{static_cast<float>(x) / cells, static_cast<float>(z) / cells};
+                vertices.push_back({{uv.x, 0.0f, uv.y}, uv});
+            }
+        }
+        mesh.patchVertexBuffer = resources.CreateVertexBuffer(vertices.data(),
+            vertices.size() * sizeof(WaterVertex), static_cast<uint32_t>(sizeof(WaterVertex)));
+        for (uint32_t mask = 0; mask < mesh.patchIndexBuffers.size(); ++mask) {
+            std::vector<uint32_t> indices;
+            if (!renderer::BuildSurfacePatchIndices(cells, mask, indices)) continue;
+            mesh.patchIndexBuffers[mask] = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+            mesh.patchIndexCounts[mask] = static_cast<uint32_t>(indices.size());
+        }
+        return;
+    }
 
     const float dx = water.extentX / static_cast<float>(water.resolutionX);
     const float dz = water.extentZ / static_cast<float>(water.resolutionZ);
@@ -232,103 +419,84 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
     mesh.aabbMax = { -ox, 0.0f, -oz };
 }
 
-renderer::ResourceHandle<renderer::TextureTag> BuildFoamMask(
-    Scene& scene,
-    const WaterComponent& water,
-    const Transform& waterTransform,
-    float foamThreshold,
-    float foamFade,
-    renderer::ResourceManager& resources)
-{
-    /// @note 岸沿いのマスクは帯が出れば十分でメッシュ解像度に追随させる理由がなく、上限を置く。
-    /// @note 無ければ解像度に比例した VRAM を毎回焼き直し、スライダー操作中だけで数百 MB を使う。
-    constexpr uint32_t kMaxFoamMaskSide = 257u;
-    const uint32_t width  = (std::min)(water.resolutionX + 1u, kMaxFoamMaskSide);
-    const uint32_t height = (std::min)(water.resolutionZ + 1u, kMaxFoamMaskSide);
-    std::vector<uint8_t> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u, 0u);
 
-    TerrainComponent* terrain = nullptr;
-    Transform* terrainTransform = nullptr;
-    /// @note 岸の泡は «いま描かれている地形» から作る。親ごと無効化された地形は拾わない。
-    for (const EntityID terrainId : scene.GetEntities<TerrainComponent>()) {
-        GameObject* terrainObject = scene.GetGameObject(terrainId);
-        auto* tc = scene.GetComponent<TerrainComponent>(terrainId);
-        if (!terrainObject || !tc || !tc->enabled || tc->heightData.empty() || !terrainObject->activeInHierarchy()) continue;
-        terrain = tc;
-        terrainTransform = &terrainObject->transform;
-        break;
-    }
-
-    if (!terrain || !terrainTransform)
-        return resources.CreateTexture(pixels.data(), width, height);
-
-    /// @note ワールド行列を通すのは、水面が子オブジェクトだったり拡大されていると
-    /// @note ローカル position 基準では泡の帯だけが実際の水際からずれるため。
-    const math::Matrix4 waterWorld = waterTransform.GetWorldMatrix();
-    const float ox = -water.extentX * 0.5f;
-    const float oz = -water.extentZ * 0.5f;
-    /// @note テクセル «中心» を標本点にする。シェーダー側は uv → (u*width - 0.5) で引くため、
-    /// @note 角合わせで焼くと泡の帯が半テクセルぶん岸からずれる。
-    const float du = water.extentX / static_cast<float>(width);
-    const float dv = water.extentZ / static_cast<float>(height);
-
-    for (uint32_t iz = 0; iz < height; ++iz) {
-        for (uint32_t ix = 0; ix < width; ++ix) {
-            const math::Vector4 surface = waterWorld * math::Vector4{
-                ox + (static_cast<float>(ix) + 0.5f) * du, 0.0f,
-                oz + (static_cast<float>(iz) + 0.5f) * dv, 1.0f
-            };
-            const float localX = surface.x - terrainTransform->worldPosition.x;
-            const float localZ = surface.z - terrainTransform->worldPosition.z;
-            const float terrainY = terrain->GetHeightAt(localX, localZ) + terrainTransform->worldPosition.y;
-            const float heightDiff = surface.y - terrainY;
-            const float foam = ComputeFoamWeight(heightDiff, foamThreshold, foamFade);
-
-            const size_t p = (static_cast<size_t>(iz) * width + ix) * 4u;
-            pixels[p + 0] = static_cast<uint8_t>(math::Clamp01(foam) * 255.0f);
-            pixels[p + 1] = pixels[p + 0];
-            pixels[p + 2] = pixels[p + 0];
-            pixels[p + 3] = 255u;
-        }
-    }
-
-    return resources.CreateTexture(pixels.data(), width, height);
-}
-
-inline float WGetF(const asset::MaterialAsset* m, const char* name, float def)
+inline float WGetF(const asset::MaterialAssetAuthoring* m, const char* name, float def)
 {
     if (!m) return def;
     auto it = m->params.find(name);
-    if (it != m->params.end() && !it->second.empty()) return it->second[0];
+    if (it != m->params.end() && !it->second.empty() && std::isfinite(it->second[0])) return it->second[0];
     return def;
 }
-inline math::Vector2 WGetF2(const asset::MaterialAsset* m, const char* name, math::Vector2 def)
+inline math::Vector2 WGetF2(const asset::MaterialAssetAuthoring* m, const char* name, math::Vector2 def)
 {
     if (!m) return def;
     auto it = m->params.find(name);
-    if (it != m->params.end() && it->second.size() >= 2)
+    if (it != m->params.end() && it->second.size() >= 2
+        && std::isfinite(it->second[0]) && std::isfinite(it->second[1]))
         return { it->second[0], it->second[1] };
     return def;
 }
-inline math::Vector3 WGetF3(const asset::MaterialAsset* m, const char* name, math::Vector3 def)
+inline math::Vector3 WGetF3(const asset::MaterialAssetAuthoring* m, const char* name, math::Vector3 def)
 {
     if (!m) return def;
     auto it = m->params.find(name);
-    if (it != m->params.end() && it->second.size() >= 3)
+    if (it != m->params.end() && it->second.size() >= 3
+        && std::isfinite(it->second[0]) && std::isfinite(it->second[1]) && std::isfinite(it->second[2]))
         return { it->second[0], it->second[1], it->second[2] };
     return def;
+}
+
+/// @note Uniform encoded channels remain uniform under bilinear filtering; a no-bottom atlas preserves the authored constant depth.
+bool HasUniformPhysicalDepth(const std::vector<uint8_t>& rgba, float depthRange, float depthLimit)
+{
+    if (rgba.empty() || rgba.size() % 4u != 0u) return false;
+    const uint8_t flags = rgba[3u];
+    if ((flags & 2u) != 0u) return false;
+    const bool hasBottom = (flags & 1u) != 0u;
+    for (size_t pixel = 0; pixel < rgba.size(); pixel += 4u) {
+        if (rgba[pixel + 3u] != flags) return false;
+        if (hasBottom && (rgba[pixel + 1u] != rgba[1u] || rgba[pixel + 2u] != rgba[2u])) return false;
+    }
+    if (!hasBottom) return true;
+    float depth = 0.0f;
+    return TryDecodeWaterTerrainDepth(rgba[1u], rgba[2u], depthRange, depth) && depth >= depthLimit;
 }
 
 WaterTextures BuildTextureSet(
     const WaterComponent& water,
     const Transform& waterTransform,
-    Scene& scene,
+    const WaterTerrainInfoInputs& inputs,
+    bool validInputs,
     renderer::ResourceManager& resources,
-    float foamThreshold,
-    float foamFade)
+    const WaterTerrainBakeSettings& settings,
+    uint64_t signature)
 {
     WaterTextures textures;
-    textures.foamMask = BuildFoamMask(scene, water, waterTransform, foamThreshold, foamFade, resources);
+    textures.signature = signature;
+    const WaterDepthField* depthField = water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION);
+    const float attenuationDepth = water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION);
+    if (depthField && attenuationDepth > 0.0f
+        && depthField->attenuationDepth == attenuationDepth) {
+        const auto& field = *depthField;
+        textures.depthIsUniform = HasUniformPhysicalDepth(field.rgba, field.depthRange, water.buoyancyDepth);
+        textures.foamMask = resources.CreateTexture(field.rgba.data(), field.width, field.height);
+        if (textures.foamMask.IsValid())
+            textures.terrainInfoParams = {1.0f, field.depthRange,
+                static_cast<float>(field.width), static_cast<float>(field.height)};
+        return textures;
+    }
+    WaterTerrainInfoAtlas atlas;
+    if (validInputs && TryBakeWaterTerrainInfo(inputs, water, waterTransform, settings, atlas,
+            WaterSurfaceReadView::SIMULATION)) {
+        textures.depthIsUniform = HasUniformPhysicalDepth(atlas.rgba, atlas.depthRange, water.buoyancyDepth);
+        textures.foamMask = resources.CreateTexture(atlas.rgba.data(), atlas.width, atlas.height);
+        if (textures.foamMask.IsValid())
+            textures.terrainInfoParams = {1.0f, atlas.depthRange,
+                static_cast<float>(atlas.width), static_cast<float>(atlas.height)};
+    } else {
+        const std::array<uint8_t, 4> empty{};
+        textures.foamMask = resources.CreateTexture(empty.data(), 1, 1);
+    }
     return textures;
 }
 
@@ -341,54 +509,177 @@ WaterTextures BuildTextureSet(
 void UpdateRippleState(WaterRippleState& state, const WaterComponent& water,
                        const Transform& transform, renderer::ResourceManager& resources)
 {
-    const float sizeX = (std::max)(water.extentX * std::abs(transform.worldScale.x), 0.1f);
-    const float sizeZ = (std::max)(water.extentZ * std::abs(transform.worldScale.z), 0.1f);
+    const auto waterWorld = transform.GetWorldMatrix();
+    const auto extent = WaterSurfaceLocalExtent(water, WaterSurfaceReadView::SIMULATION);
     const float invHeightScale = 1.0f / kWaterRippleHeightScale;
+    uint64_t signature = 1469598103934665603ull;
+    const auto mix = [&signature](float value) {
+        signature ^= std::bit_cast<uint32_t>(value);
+        signature *= 1099511628211ull;
+    };
+    for (const auto& row : waterWorld.m) for (float value : row) mix(value);
+    mix(extent.x); mix(extent.y);
+    signature ^= water.ripples.size(); signature *= 1099511628211ull;
+    for (const auto& ripple : water.ripples) {
+        mix(ripple.center.x); mix(ripple.center.y); mix(ripple.radius);
+        mix(ripple.width); mix(ripple.amplitude); mix(ripple.meshFade);
+    }
+    /// @note All views share world-space ripple data; identical inputs reuse the same baked texture.
+    if (state.signatureValid && state.inputSignature == signature && resources.Get(state.gpuTex)) {
+        state.dirty = false;
+        return;
+    }
 
-    state.pixels.assign(static_cast<size_t>(state.width) * static_cast<size_t>(state.height) * 4u, 128u);
-    for (uint32_t y = 0; y < state.height; ++y) {
-        for (uint32_t x = 0; x < state.width; ++x) {
+    {
+        FBZZ_PROFILE_SCOPE("WaterRipple::Bake");
+        struct RippleBounds {
+            const WaterRipple* ripple = nullptr;
+            float innerSquared = 0.0f;
+            float outerSquared = 0.0f;
+            bool bounded = false;
+        };
+        std::vector<RippleBounds> activeRipples;
+        activeRipples.reserve(water.ripples.size());
+        for (const auto& ripple : water.ripples) {
+            if (ripple.amplitude <= 0.0f) continue;
+            const float width = (std::max)(ripple.width, 1.0e-4f);
+            const float inner = (std::max)(0.0f, ripple.radius - width * 6.0f - width * 16.0f);
+            const float outer = (std::max)(0.0f, ripple.radius + width * 16.0f);
+            const float innerSquared = inner * inner;
+            const float outerSquared = outer * outer;
+            const bool bounded = std::numeric_limits<float>::is_iec559
+                && std::numeric_limits<float>::digits == 24 && std::isfinite(innerSquared)
+                && std::isfinite(outerSquared) && std::isfinite(ripple.radius) && std::isfinite(ripple.width);
+            activeRipples.push_back({&ripple, innerSquared, outerSquared, bounded});
+        }
+        const auto worldAt = [&](uint32_t x, uint32_t y) {
             const math::Vector2 uv = {
                 (static_cast<float>(x) + 0.5f) / static_cast<float>(state.width),
                 (static_cast<float>(y) + 0.5f) / static_cast<float>(state.height)
             };
-            /// @note EmitWaterRipple のワールド → UV と逆の写像。ずれると輪が半テクセル泳ぐ。
-            const math::Vector2 world = {
-                transform.worldPosition.x + (uv.x - 0.5f) * sizeX,
-                transform.worldPosition.z + (uv.y - 0.5f) * sizeZ
-            };
+            /// @note Keep the canonical texel-center mapping and operation order used by EmitWaterRipple.
+            const auto point = waterWorld * math::Vector4{(uv.x - 0.5f) * extent.x,
+                0.0f, (uv.y - 0.5f) * extent.y, 1.0f};
+            return math::Vector2{point.x, point.z};
+        };
+        const auto bakeRegion = [&](uint32_t firstX, uint32_t firstY, uint32_t endX, uint32_t endY,
+            std::span<const RippleBounds> candidates) {
+            for (uint32_t y = firstY; y < endY; ++y) {
+                for (uint32_t x = firstX; x < endX; ++x) {
+                    const auto world = worldAt(x, y);
+                    math::Vector2 offset = math::Vector2::ZERO;
+                    float height = 0.0f;
+                    /// @note Both traversal modes preserve the ripple order and the existing binary32 zero-tail test.
+                    for (const auto& bounds : candidates) {
+                        const auto& ripple = *bounds.ripple;
+                        const math::Vector2 d = world - ripple.center;
+                        const float distanceSquared = d.LengthSq();
+                        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/data-type-constants IEEE float range; WaterComponent::WaterRippleWave remains authoritative.
+                        if (bounds.bounded && std::isfinite(distanceSquared)
+                            && (distanceSquared < bounds.innerSquared || distanceSquared > bounds.outerSquared)) continue;
+                        const float dist = std::sqrt(distanceSquared);
+                        if (dist <= math::EPSILON) continue;
 
-            math::Vector2 offset = math::Vector2::ZERO;
-            float height = 0.0f;
-            for (const WaterRipple& ripple : water.ripples) {
-                const math::Vector2 d = world - ripple.center;
-                const float dist = d.Length();
-                if (dist <= math::EPSILON) continue;
+                        const float wave = WaterComponent::WaterRippleWave(ripple, dist) * ripple.amplitude;
+                        offset += (d / dist) * wave;
+                        height += wave * ripple.meshFade * kWaterRippleHeightAmplitude;
+                    }
 
-                const float wave = WaterComponent::WaterRippleWave(ripple, dist) * ripple.amplitude;
-                offset += d.Normalized() * wave;
-                height += wave * ripple.meshFade * kWaterRippleHeightAmplitude;
+                    const size_t p = (static_cast<size_t>(y) * state.width + x) * 4u;
+                    state.pixels[p + 0] = static_cast<uint8_t>(math::Clamp01(0.5f + offset.x * 0.5f) * 255.0f);
+                    state.pixels[p + 1] = static_cast<uint8_t>(math::Clamp01(0.5f + offset.y * 0.5f) * 255.0f);
+                    state.pixels[p + 2] =
+                        static_cast<uint8_t>(math::Clamp01(0.5f + height * invHeightScale * 0.5f) * 255.0f);
+                    state.pixels[p + 3] = 255u;
+                }
             }
-
-            const size_t p = (static_cast<size_t>(y) * state.width + x) * 4u;
-            state.pixels[p + 0] = static_cast<uint8_t>(math::Clamp01(0.5f + offset.x * 0.5f) * 255.0f);
-            state.pixels[p + 1] = static_cast<uint8_t>(math::Clamp01(0.5f + offset.y * 0.5f) * 255.0f);
-            state.pixels[p + 2] =
-                static_cast<uint8_t>(math::Clamp01(0.5f + height * invHeightScale * 0.5f) * 255.0f);
-            state.pixels[p + 3] = 255u;
+        };
+        if (!USE_TILED_RIPPLE_BAKE) {
+            state.pixels.assign(static_cast<size_t>(state.width) * static_cast<size_t>(state.height) * 4u, 128u);
+            bakeRegion(0u, 0u, state.width, state.height, activeRipples);
+        } else {
+            const auto overlapsTile = [](const RippleBounds& bounds,
+                const math::Vector2& low, const math::Vector2& high) {
+                if (!bounds.bounded || !std::isfinite(low.x) || !std::isfinite(low.y)
+                    || !std::isfinite(high.x) || !std::isfinite(high.y)) return true;
+                const math::Vector2 a = low - bounds.ripple->center;
+                const math::Vector2 b = high - bounds.ripple->center;
+                const math::Vector2 nearest{
+                    a.x > 0.0f ? a.x : (b.x < 0.0f ? b.x : 0.0f),
+                    a.y > 0.0f ? a.y : (b.y < 0.0f ? b.y : 0.0f)};
+                const math::Vector2 farthest{
+                    (std::max)(std::abs(a.x), std::abs(b.x)),
+                    (std::max)(std::abs(a.y), std::abs(b.y))};
+                const float nearSquared = std::nextafter(nearest.LengthSq(), 0.0f);
+                const float farSquared = std::nextafter(farthest.LengthSq(), std::numeric_limits<float>::infinity());
+                /// @note Unknown or overflowing distances keep the original per-texel path.
+                return !std::isfinite(nearSquared) || !std::isfinite(farSquared)
+                    || (farSquared >= bounds.innerSquared && nearSquared <= bounds.outerSquared);
+            };
+            /// @note Zero contributions encode as 127 after truncation, including the empty frame after the last ripple.
+            state.pixels.assign(static_cast<size_t>(state.width) * static_cast<size_t>(state.height) * 4u, 127u);
+            for (size_t alpha = 3; alpha < state.pixels.size(); alpha += 4u) state.pixels[alpha] = 255u;
+            constexpr uint32_t RIPPLE_TILE_SIZE = 16u;
+            const auto roundingMargin = [&](size_t axis) {
+                const double magnitude = std::abs(static_cast<double>(waterWorld.m[axis][0])) * std::abs(extent.x) * 0.5
+                    + std::abs(static_cast<double>(waterWorld.m[axis][2])) * std::abs(extent.y) * 0.5
+                    + std::abs(static_cast<double>(waterWorld.m[axis][3]));
+                const double error = (magnitude + 1.0) * 32.0 * std::numeric_limits<float>::epsilon();
+                if (!std::isfinite(error) || error > std::numeric_limits<float>::max())
+                    return std::numeric_limits<float>::infinity();
+                return std::nextafter(static_cast<float>(error), std::numeric_limits<float>::infinity());
+            };
+            /// @note Account for texel mapping and affine-operation rounding using absolute terms, including large translation/cancellation; invalid bounds retain every ripple.
+            const math::Vector2 roundingError{roundingMargin(0u), roundingMargin(2u)};
+            std::vector<RippleBounds> tileRipples;
+            tileRipples.reserve(activeRipples.size());
+            for (uint32_t tileY = 0; tileY < state.height; tileY += RIPPLE_TILE_SIZE) {
+                const uint32_t endY = (std::min)(tileY + RIPPLE_TILE_SIZE, state.height);
+                for (uint32_t tileX = 0; tileX < state.width; tileX += RIPPLE_TILE_SIZE) {
+                    const uint32_t endX = (std::min)(tileX + RIPPLE_TILE_SIZE, state.width);
+                    const std::array corners{worldAt(tileX, tileY), worldAt(endX - 1u, tileY),
+                        worldAt(tileX, endY - 1u), worldAt(endX - 1u, endY - 1u)};
+                    math::Vector2 low = corners.front(), high = corners.front();
+                    bool finiteCorners = true;
+                    for (const auto& corner : corners) {
+                        finiteCorners = finiteCorners && std::isfinite(corner.x) && std::isfinite(corner.y);
+                        low.x = (std::min)(low.x, corner.x); low.y = (std::min)(low.y, corner.y);
+                        high.x = (std::max)(high.x, corner.x); high.y = (std::max)(high.y, corner.y);
+                    }
+                    low.x = std::nextafter(low.x - roundingError.x, -std::numeric_limits<float>::infinity());
+                    low.y = std::nextafter(low.y - roundingError.y, -std::numeric_limits<float>::infinity());
+                    high.x = std::nextafter(high.x + roundingError.x, std::numeric_limits<float>::infinity());
+                    high.y = std::nextafter(high.y + roundingError.y, std::numeric_limits<float>::infinity());
+                    tileRipples.clear();
+                    for (const auto& bounds : activeRipples)
+                        if (!finiteCorners || overlapsTile(bounds, low, high)) tileRipples.push_back(bounds);
+                    if (tileRipples.empty()) continue;
+                    bakeRegion(tileX, tileY, endX, endY, tileRipples);
+                }
+            }
         }
     }
-
-    if (state.gpuTex.IsValid())
-        resources.Release(state.gpuTex);
-    state.gpuTex = resources.CreateTexture(state.pixels.data(), state.width, state.height);
-    state.dirty = false;
+    {
+        FBZZ_PROFILE_SCOPE("WaterRipple::Upload");
+        if (!resources.Get(state.gpuTex))
+            state.gpuTex = resources.CreateDynamicTexture(state.width, state.height, renderer::DynamicTextureFormat::RGBA8);
+        auto* texture = resources.Get(state.gpuTex);
+        const bool updated = texture && texture->UpdateRegion(0, 0, state.width, state.height,
+            state.pixels.data(), state.width * 4u);
+        if (!updated) {
+            if (state.gpuTex.IsValid()) resources.Release(state.gpuTex);
+            state.gpuTex = resources.CreateTexture(state.pixels.data(), state.width, state.height);
+        }
+        state.signatureValid = resources.Get(state.gpuTex) != nullptr;
+    }
+    state.inputSignature = signature;
+    state.dirty = !state.signatureValid;
     state.hadRipples = !water.ripples.empty();
 }
 
 /// @note viewProjection は TAA ジッター込みで渡す。カメラから組み直すとジッターが落ちる。
 /// @param resources 焼いた速度場を常駐させる (VelocityFieldAtlas) のに要る。
-WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* mat,
+WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAssetAuthoring* mat,
                      const Transform& transform, const math::Matrix4& viewProjection, float time,
                      float skyReflection, const WaterDetailNoise& detailNoise,
                      renderer::ResourceManager& resources)
@@ -410,15 +701,20 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         WGetF(mat, "fresnelBias",   0.02f),
         WGetF(mat, "fresnelPower",  5.0f)
     };
+    const auto optics = (mat ? asset::ResolveWaterOpticalSettings(*mat) : asset::WaterOpticalSettings{});
+    cb.absorptionCoefficients = {optics.absorption.x, optics.absorption.y, optics.absorption.z, 0.0f};
+    cb.scatteringCoefficients = {optics.scattering.x, optics.scattering.y, optics.scattering.z, 0.0f};
+    cb.opticalParams = {optics.enabled ? 1.0f : 0.0f, optics.phaseG, 0.0f, 0.0f};
     /// @note 水面の «実寸» はローカル extent ではなくワールド実寸。拡大された水面でも、縁のフェードと
     /// @note 波のエイリアシング判定が、画面に出ているとおりの大きさで効くようにする。
-    const float worldExtentX = (std::max)(water.extentX * std::abs(transform.worldScale.x), 0.0001f);
-    const float worldExtentZ = (std::max)(water.extentZ * std::abs(transform.worldScale.z), 0.0001f);
+    const auto extent = WaterSurfaceLocalExtent(water, WaterSurfaceReadView::SIMULATION);
+    const float worldExtentX = extent.x * std::abs(transform.worldScale.x);
+    const float worldExtentZ = extent.y * std::abs(transform.worldScale.z);
     /// @note z はさざ波タイルの勾配復号係数。ベイクした値をそのまま渡し、シェーダー側に定数を
     /// @note 写さない (写すとタイルを焼き直してもシェーダーが古い係数で復号し続ける)。
     cb.normalParams = { worldExtentX, worldExtentZ, detailNoise.derivativeScale,
                         WGetF(mat, "normalStrength", 1.0f) };
-    /// @note xy は最密区間の間隔で物理の波と揃える。集中格子の遠景描画は局所のセル幅を別に求める。
+    /// @note xy は描画の基準セル幅。物理の波高はセル幅に依存しない。
     /// @note z はタイルのセル数の逆数。
     cb.timeParams   = { water.cellSize.x, water.cellSize.y, detailNoise.invTileCells, time };
     cb.gridParams = { water.cameraFocusedGrid ? 1.0f : 0.0f,
@@ -431,6 +727,15 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         /// @note 泡のムラはワールド座標で評価するため、旧 foamTiling(UV 倍率) とは単位が違う。
         WGetF(mat, "foamNoiseScale",    0.5f)
     };
+    cb.crestFoamParams = {
+        math::Clamp01(WGetF(mat, "crestFoamThreshold", 0.25f)),
+        (std::clamp)(WGetF(mat, "crestFoamFade", 0.15f), 0.001f, 1.0f),
+        (std::clamp)(WGetF(mat, "crestFoamStrength", 0.9f), 0.0f, 4.0f),
+        (std::clamp)(WGetF(mat, "crestFoamLifetime", 1.2f), 0.0f, 10.0f)
+    };
+    const auto foamColor = WGetF3(mat, "foamColor", { 0.95f, 0.98f, 1.0f });
+    cb.foamColorRoughness = { math::Clamp01(foamColor.x), math::Clamp01(foamColor.y),
+        math::Clamp01(foamColor.z), (std::clamp)(WGetF(mat, "foamRoughness", 0.7f), 0.05f, 1.0f) };
     /// @note 外周フェードの幅はメートルで持ち、軸ごとに extent で割って UV へ直す。UV 比で
     /// @note 持つと大きい水面ほど帯が広くなり、縁から何 m で消えるかが大きさに依存してしまう。
     const float edgeFadeMeters = (std::max)(WGetF(mat, "edgeFade", 1.5f), 0.0f);
@@ -456,7 +761,8 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
                      * WaterComponent::WaveSpreadAmplitudeSum(water.waveSpread);
     float waveHeightSum = 0.0f;
     if (water.enableGerstnerWaves)
-        for (const GerstnerWave& w : water.waves) waveHeightSum += (std::max)(w.amplitude, 0.0f);
+        for (size_t i = 0; i < (std::min)(static_cast<size_t>(water.waveCount), water.waves.size()); ++i)
+            waveHeightSum += (std::max)(water.waves[i].amplitude, 0.0f);
     cb.reflectParams = {
         skyReflection * math::Clamp01(WGetF(mat, "skyReflection", 1.0f)),
         math::Clamp01(water.waveGrouping),
@@ -500,24 +806,37 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAsset* ma
         cb.surfaceFlowE[i] = { f.extents.x, f.extents.y, f.extents.z, f.planeOffsetY };
     }
 
-    for (int i = 0; i < 4; ++i) {
+    const size_t waveCount = (std::min)(static_cast<size_t>(water.waveCount), water.waves.size());
+    cb.waveControls = {static_cast<float>(waveCount), 0.0f, 0.0f, 1.0f};
+    const WaterDepthField* depthField = water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION);
+    const float attenuationDepth = water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION);
+    cb.waveDepthParams = {attenuationDepth,
+        depthField && attenuationDepth > 0.0f ? 1.0f : 0.0f,
+        depthField ? depthField->outsideFadeWidth : 1.0f, 0.0f};
+    const float horizontalScale = water.GetHorizontalWaveScale(WaterSurfaceReadView::SIMULATION);
+    std::array<float, 16> phases{};
+    for (size_t i = 0; i < waveCount; ++i) {
         const GerstnerWave& wave = water.waves[static_cast<size_t>(i)];
         assert(wave.steepness <= 1.0f);
 
-        const bool validWave =
-            water.enableGerstnerWaves && wave.amplitude > 0.0001f && wave.wavelength > 0.0001f;
-        const math::Vector2 dir = wave.direction.Normalized();
+        const float directionLengthSq = wave.direction.LengthSq();
+        const bool validWave = water.enableGerstnerWaves && wave.amplitude > 0.0001f
+            && wave.wavelength > 0.0001f && std::isfinite(directionLengthSq) && directionLengthSq > 1.0e-8f;
+        const math::Vector2 dir = validWave ? wave.direction.Normalized() : math::Vector2{1.0f, 0.0f};
         const float k = validWave ? math::TWO_PI / wave.wavelength : 0.0f;
         const float omega = validWave ? std::sqrt(9.8f * k) : 0.0f;
-        const float steepness = (std::min)(wave.steepness, 1.0f);
+        const float steepness = math::Clamp01(wave.steepness) * horizontalScale;
         cb.waveDir[i] = { dir.x, dir.y, steepness, validWave ? 1.0f : 0.0f };
         cb.waveParams[i] = { validWave ? wave.amplitude : 0.0f, wave.wavelength, omega, k };
+        phases[i] = validWave ? wave.phaseOffsetRadians : 0.0f;
     }
+    for (size_t i = 0; i < 4; ++i)
+        cb.wavePhasePacked[i] = {phases[i * 4], phases[i * 4 + 1], phases[i * 4 + 2], phases[i * 4 + 3]};
 
     return cb;
 }
 
-WaterEffectParams BuildWaterEffectParams(const asset::MaterialAsset* mat)
+WaterEffectParams BuildWaterEffectParams(const asset::MaterialAssetAuthoring* mat)
 {
     WaterEffectParams params{};
     params.rimGlowStrength    = WGetF(mat, "rimGlowStrength",    params.rimGlowStrength);
@@ -553,167 +872,352 @@ void ExpandByWaveMargin(const WaveMargin& margin, math::Vector3& outMin, math::V
 }
 
 }
-void QueueWaterSplash(const math::Vector3& worldPos, float intensity)
+void QueueWaterSplash(Scene& scene, EntityID owner, const math::Vector3& worldPos, float intensity)
 {
-    if (s_pendingSplashes.size() >= kMaxPendingSplashes) return;
-    s_pendingSplashes.push_back({ worldPos, math::Clamp01(intensity) });
+    if (!std::isfinite(intensity)) return;
+    const float strength = math::Clamp01(intensity);
+    WaterInteractionImpulse impulse{WaterInteractionKind::SURFACE_FOAM, worldPos,
+        {0.0f, 1.5f + strength * 3.0f, 0.0f}, 0.2f + strength * 0.3f, strength, 1.2f};
+    impulse.emitSurfaceRipple = false;
+    static_cast<void>(QueueWaterInteraction(scene, owner, impulse));
 }
 
-void UpdateWaterSplashes(Scene& scene)
+namespace {
+std::array<math::Vector4, 3> WorldToLocalRows(const math::Vector3& position,
+    const math::Quaternion& inverseRotation, const math::Vector3& inverseScale)
 {
-    /// @note 先に «鳴り終わった» を集めてから消す。消しながら GetEntities を回すと配列が詰め替わる。
-    std::vector<EntityID> finished;
-    for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
-        const GameObject* go = scene.GetGameObject(id);
-        if (!go || !go->runtimeGenerated || go->name != kSplashObjectName) continue;
-        const auto* emitter = scene.GetComponent<ParticleEmitter>(id);
-        if (!emitter || emitter->runtime.particles.empty()) finished.push_back(id);
+    const auto x = inverseRotation * math::Vector3::RIGHT;
+    const auto y = inverseRotation * math::Vector3::UP;
+    const auto z = inverseRotation * math::Vector3::FORWARD;
+    const math::Vector3 rows[3] = {
+        {x.x * inverseScale.x, y.x * inverseScale.x, z.x * inverseScale.x},
+        {x.y * inverseScale.y, y.y * inverseScale.y, z.y * inverseScale.y},
+        {x.z * inverseScale.z, y.z * inverseScale.z, z.z * inverseScale.z}
+    };
+    return {{{rows[0].x, rows[0].y, rows[0].z, -math::Vector3::Dot(rows[0], position)},
+             {rows[1].x, rows[1].y, rows[1].z, -math::Vector3::Dot(rows[1], position)},
+             {rows[2].x, rows[2].y, rows[2].z, -math::Vector3::Dot(rows[2], position)}}};
+}
+
+float MediumSetting(const asset::MaterialAssetAuthoring* material, const char* name,
+    float fallback, float minimum, float maximum)
+{
+    const float value = WGetF(material, name, fallback);
+    return std::isfinite(value) ? std::clamp(value, minimum, maximum) : fallback;
+}
+
+renderer::WaterMediumInput BuildMediumInput(const WaterComponent& water, const Transform& transform,
+    EntityID owner, const asset::MaterialAssetAuthoring* material, const WaterMesh& mesh, const WaveMargin& margin)
+{
+    renderer::WaterMediumInput medium;
+    medium.stableOwnerKey = (static_cast<uint64_t>(owner.generation) << 32u) | owner.index;
+    const auto inverseRotation = transform.worldRotation.Inverse();
+    medium.worldToLocalRows = WorldToLocalRows(transform.worldPosition, inverseRotation,
+        {1.0f / transform.worldScale.x, 1.0f / transform.worldScale.y, 1.0f / transform.worldScale.z});
+    float minimumX = std::numeric_limits<float>::max(), minimumZ = minimumX;
+    float maximumX = -minimumX, maximumZ = -minimumX;
+    for (uint32_t corner = 0; corner < 8u; ++corner) {
+        const math::Vector3 local = {
+            (corner & 1u) ? mesh.aabbMax.x : mesh.aabbMin.x,
+            (corner & 2u) ? mesh.aabbMax.y : mesh.aabbMin.y,
+            (corner & 4u) ? mesh.aabbMax.z : mesh.aabbMin.z
+        };
+        const auto world = transform.worldPosition + transform.worldRotation * math::Vector3{
+            local.x * transform.worldScale.x, local.y * transform.worldScale.y, local.z * transform.worldScale.z};
+        minimumX = (std::min)(minimumX, world.x); minimumZ = (std::min)(minimumZ, world.z);
+        maximumX = (std::max)(maximumX, world.x); maximumZ = (std::max)(maximumZ, world.z);
     }
-    for (EntityID id : finished)
-        scene.DestroyGameObject(id);
-
-    for (const SplashEvent& ev : s_pendingSplashes) {
-        auto* created = scene.TryCreateGameObject(kSplashObjectName);
-        if (!created) break;
-        auto& go = *created;
-        /// @note 数秒で消える演出用。保存に混ざると開くたびに消えない GO が増える。
-        go.runtimeGenerated = true;
-        go.transform.position = ev.worldPos;
-
-        ParticleEmitter emitter;
-        emitter.settings.enabled      = true;
-        emitter.settings.emitRate     = 0.0f;
-        emitter.settings.lifetime     = 1.2f;
-        emitter.settings.sizeStart    = 0.10f + ev.intensity * 0.20f;
-        emitter.settings.sizeEnd      = 0.0f;
-        emitter.settings.colorStart   = { 0.75f, 0.93f, 1.0f, 0.9f };
-        emitter.settings.colorEnd     = { 0.55f, 0.80f, 1.0f, 0.0f };
-        emitter.settings.maxParticles = 24;
-
-        const int count = static_cast<int>(6.0f + ev.intensity * 14.0f);
-        emitter.runtime.particles.reserve(static_cast<size_t>(count));
-        std::mt19937 rng{ std::random_device{}() };
-        std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
-        for (int i = 0; i < count; ++i) {
-            Particle p;
-            p.position = ev.worldPos;
-            const float angle =
-                (static_cast<float>(i) / static_cast<float>(count)) * math::TWO_PI
-                + (dist01(rng) - 0.5f) * 0.8f;
-            const float hSpeed = dist01(rng) * ev.intensity * 2.0f + 0.2f;
-            const float vSpeed = dist01(rng) * ev.intensity * 5.0f + 1.5f;
-            p.velocity = { std::cos(angle) * hSpeed, vSpeed, std::sin(angle) * hSpeed };
-            p.color    = emitter.settings.colorStart;
-            p.size     = emitter.settings.sizeStart;
-            p.age      = 0.0f;
-            emitter.runtime.particles.push_back(std::move(p));
+    medium.worldBoundsXZ = {minimumX - margin.horizontal, minimumZ - margin.horizontal,
+                           maximumX + margin.horizontal, maximumZ + margin.horizontal};
+    const auto optics = (material ? asset::ResolveWaterOpticalSettings(*material) : asset::WaterOpticalSettings{});
+    medium.opticalEnabled = optics.enabled;
+    medium.absorptionPhaseG = {optics.absorption.x, optics.absorption.y, optics.absorption.z, optics.phaseG};
+    medium.scatteringLight = {optics.scattering.x, optics.scattering.y, optics.scattering.z,
+        MediumSetting(material, "underwaterLightStrength", 1.0f, 0.0f, 8.0f)};
+    medium.surfaceY = transform.worldPosition.y;
+    medium.depthLimit = water.buoyancyDepth;
+    medium.analyticRectangle = !UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
+    const auto localExtent = WaterSurfaceLocalExtent(water, WaterSurfaceReadView::SIMULATION);
+    medium.localHalfExtent = localExtent * 0.5f;
+    medium.bottomY = medium.surfaceY - medium.depthLimit;
+    medium.maxDistance = MediumSetting(material, "underwaterMaxDistance", 120.0f, 1.0f, 10000.0f);
+    medium.transitionDepth = MediumSetting(material, "underwaterTransitionDepth", 0.15f, 0.001f, 2.0f);
+    medium.distortion = MediumSetting(material, "underwaterDistortion", 0.001f, 0.0f, 0.01f);
+    medium.lightSteps = static_cast<int>(MediumSetting(material, "underwaterLightSteps", 48.0f, 16.0f, 64.0f));
+    medium.causticsEnabled = MediumSetting(material, "enableCaustics", 0.0f, 0.0f, 1.0f) >= 0.5f;
+    medium.causticsIntensity = MediumSetting(material, "causticsIntensity", 1.0f, 0.0f, 100.0f);
+    if (const auto* exclusions = WaterSurfaceExclusions(water, WaterSurfaceReadView::SIMULATION)) {
+        medium.exclusions.reserve(exclusions->boxes.size());
+        for (const auto& box : exclusions->boxes) {
+            medium.exclusions.push_back({WorldToLocalRows(box.worldPosition, box.inverseWorldRotation,
+                box.inverseWorldScale), box.halfExtent});
         }
-        go.AddComponent<ParticleEmitter>(std::move(emitter));
     }
-    s_pendingSplashes.clear();
+    if (const auto frame = WaterInteractionSnapshot(water)) {
+        medium.plumes.reserve(frame->plumes.size());
+        for (const auto& plume : frame->plumes) {
+            if (plume.density <= 0.0f || plume.radius <= 0.0f
+                || (plume.scattering.x <= 0.0f && plume.scattering.y <= 0.0f
+                    && plume.scattering.z <= 0.0f)) continue;
+            medium.plumes.push_back({{plume.worldPosition.x, plume.worldPosition.y, plume.worldPosition.z, plume.radius},
+                                    {plume.scattering.x, plume.scattering.y, plume.scattering.z, plume.density}});
+        }
+    }
+    return medium;
 }
+} /// @note namespace
 
 void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
     auto& scene = ctx.scene;
     auto& resources = ctx.resources;
-    static renderer::ResourceManager* owner = nullptr;
-    static uint64_t version = UINT64_MAX;
-    if (owner != &resources || version != resources.GetResetVersion()) {
-        owner = &resources; version = resources.GetResetVersion();
-        s_meshCache.clear(); s_texCache.clear(); s_rippleStates.clear();
+    for (auto [water, transform] : scene.View<WaterComponent, Transform>()) {
+        if (!water.enabled || WaterSurfaceEffectiveShape(water, WaterSurfaceReadView::SIMULATION)
+                != WaterSurfaceShape::RECTANGLE
+            || !IsWaterSurfaceSupported(water, transform, WaterSurfaceReadView::SIMULATION)) continue;
+        water.extentX = (std::clamp)(water.extentX, 0.1f, 10000.0f);
+        water.extentZ = (std::clamp)(water.extentZ, 0.1f, 10000.0f);
     }
     {
-        std::unordered_set<uint32_t> validIndices;
+        FBZZ_PROFILE_SCOPE("WaterPrepare::Surfaces");
+        PrepareWaterSceneSurfaces(scene);
+    }
+    if (s_waterResourceOwner != resources.GetInstanceId() || s_waterResourceVersion != resources.GetResetVersion()) {
+        s_waterResourceOwner = resources.GetInstanceId(); s_waterResourceVersion = resources.GetResetVersion();
+        /// @note An epoch switch invalidates the old owner/handles. Abandon them like the geometry caches; Material's Active() destructor must not release into the new manager.
+        for (auto& [key, appearance] : s_appearanceCache) appearance.paramsBuffer = {};
+        s_meshCache.clear(); s_texCache.clear(); s_appearanceCache.clear(); s_rippleStates.clear(); s_terrainInfoStates.clear();
+    }
+    const uint64_t sceneGeneration = scene.GetRenderSceneGeneration();
+    for (EntityID eid : scene.GetEntities<WaterComponent>()) {
+        const auto* water = scene.GetComponent<WaterComponent>(eid);
+        if (water && WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION).IsValid())
+            ReleaseWaterCacheEntries(sceneGeneration, &eid, resources);
+    }
+    {
+        std::unordered_set<WaterCacheKey, WaterCacheKeyHash> validKeys;
         for (EntityID eid : scene.GetEntities<WaterComponent>())
-            validIndices.insert(eid.index);
+            validKeys.insert({sceneGeneration, eid.index, eid.generation});
 
-        std::erase_if(s_meshCache, [&validIndices, &resources](auto& kv) {
-            if (validIndices.count(kv.first)) return false;
-            for (auto& chunk : kv.second.chunks) {
-                resources.Release(chunk.vertexBuffer);
-                resources.Release(chunk.indexBuffer);
-            }
+        std::erase_if(s_meshCache, [&validKeys, sceneGeneration, &resources](auto& kv) {
+            if (kv.first.sceneGeneration != sceneGeneration || validKeys.contains(kv.first)) return false;
+            ReleaseWaterMesh(kv.second, resources);
             return true;
         });
-        std::erase_if(s_texCache, [&validIndices, &resources](auto& kv) {
-            if (validIndices.count(kv.first)) return false;
+        std::erase_if(s_appearanceCache, [&validKeys, sceneGeneration, &resources](auto& entry) {
+            if (entry.first.sceneGeneration != sceneGeneration || validKeys.contains(entry.first)) return false;
+            if (entry.second.paramsBuffer.IsValid()) resources.Release(entry.second.paramsBuffer);
+            entry.second.paramsBuffer = {};
+            return true;
+        });
+        std::erase_if(s_texCache, [&validKeys, sceneGeneration, &resources](auto& kv) {
+            if (kv.first.sceneGeneration != sceneGeneration || validKeys.contains(kv.first)) return false;
             if (kv.second.foamMask.IsValid()) resources.Release(kv.second.foamMask);
             return true;
         });
-        std::erase_if(s_rippleStates, [&validIndices, &resources](auto& kv) {
-            if (validIndices.count(kv.first)) return false;
+        std::erase_if(s_rippleStates, [&validKeys, sceneGeneration, &resources](auto& kv) {
+            if (kv.first.sceneGeneration != sceneGeneration || validKeys.contains(kv.first)) return false;
             if (kv.second.gpuTex.IsValid()) resources.Release(kv.second.gpuTex);
             return true;
         });
     }
-    for (auto [water, transform] : scene.View<WaterComponent, Transform>()) {
-        if (!water.enabled) continue;
+    {
+        FBZZ_PROFILE_SCOPE("WaterPrepare::DepthFields");
+        PrepareWaterDepthFields(scene, WaterSurfaceReadView::SIMULATION);
+    }
+    TerrainInfoState& terrainInfo = s_terrainInfoStates[scene.GetRenderSceneGeneration()];
+    /// @note 借用 Terrain pointer は抽出中だけ保持する。同一 frame の追加・削除・配列移動でも再取得する。
+    WaterTerrainInfoInputs terrainInputs;
+    const bool validTerrainInputs = [&]() {
+        FBZZ_PROFILE_SCOPE("WaterPrepare::TerrainSources");
+        return terrainInfo.cache.TryCollect(scene, terrainInputs);
+    }();
+    if (!validTerrainInputs) terrainInputs = {};
+    std::unordered_set<uint64_t> selectedZoneOwners;
+    for (const auto& selected : ctx.settings.selectedObjects) {
+        const EntityID selectedId{selected.index, selected.generation};
+        const WaterComponent* selectedWater = scene.GetComponent<WaterComponent>(selectedId);
+        if (selectedWater) {
+            const EntityID owner = WaterSurfaceZoneOwner(*selectedWater, WaterSurfaceReadView::SIMULATION);
+            if (owner.IsValid())
+                selectedZoneOwners.insert((static_cast<uint64_t>(owner.generation) << 32u) | owner.index);
+        }
+    }
+    const WaterCandidateLease candidates(scene);
+    for (const EntityID eid : candidates.Entities()) {
+        auto* ownerObject = scene.GetGameObject(eid);
+        auto* waterComponent = scene.GetComponent<WaterComponent>(eid);
+        if (!ownerObject || !waterComponent) continue;
+        auto& water = *waterComponent;
+        const auto& transform = ownerObject->transform;
+        if (!water.enabled || WaterSurfaceZoneOwner(water, WaterSurfaceReadView::SIMULATION).IsValid()) continue;
+        const Transform& surfaceTransform = WaterSurfaceTransform(water, transform,
+            WaterSurfaceReadView::SIMULATION);
+        if (!IsWaterSurfaceSupported(water, surfaceTransform, WaterSurfaceReadView::SIMULATION)) continue;
+        /// @note 無効な除外設定を空のmaskへ置き換えると乾燥領域が水没するため、描画はfail-closed。
+        if (const auto* exclusions = WaterSurfaceExclusions(water, WaterSurfaceReadView::SIMULATION);
+            exclusions && !exclusions->valid) continue;
+        const bool splineSurface = UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
+        const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
+        if (splineSurface && !geometry) continue;
         water.resolutionX = std::clamp(water.resolutionX, 1u, 512u);
         water.resolutionZ = std::clamp(water.resolutionZ, 1u, 512u);
         water.chunkCount  = std::clamp(water.chunkCount,  1u, 64u);
-        water.extentX     = std::clamp(water.extentX, 0.1f, 10000.0f);
-        water.extentZ     = std::clamp(water.extentZ, 0.1f, 10000.0f);
-
-        EntityID eid = FindEntityForWater(scene, water);
-        if (!scene.IsValid(eid)) continue;
-        {
-            const auto* go = scene.GetGameObject(eid);
-            if (!go || !go->activeInHierarchy()) continue;
-
+        if (!splineSurface) {
+            water.extentX = std::clamp(water.extentX, 0.1f, 10000.0f);
+            water.extentZ = std::clamp(water.extentZ, 0.1f, 10000.0f);
         }
+        water.lodPatchResolution = (std::clamp)(water.lodPatchResolution, 2u, 64u);
+        uint32_t patchCells = 2;
+        while (patchCells < water.lodPatchResolution) patchCells *= 2;
+        water.lodPatchResolution = patchCells;
 
-        const math::Matrix4 waterWorld = transform.GetWorldMatrix();
+        const WaterCacheKey cacheKey{scene.GetRenderSceneGeneration(), eid.index, eid.generation};
+        if (!ownerObject->activeInHierarchy()) continue;
+
         const WaveMargin margin = ComputeWaveMargin(water);
-        const asset::MaterialAsset* mat = nullptr;
+        asset::MaterialAsset::AuthoringSnapshotPtr matAuthoringSnapshot;
+        const asset::MaterialAssetAuthoring* mat = nullptr;
         if (!water.materialPath.empty()) {
             const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(water.materialPath);
-            mat = asset::AssetManager::Get<asset::MaterialAsset>(handle);
+            {
+                matAuthoringSnapshot = asset::ReadMaterialAuthoring(handle);
+                mat = matAuthoringSnapshot ? &matAuthoringSnapshot->Data() : nullptr;
+            }
         }
 
         const float foamThreshold = WGetF(mat, "foamThreshold", 0.3f);
         const float foamFade      = WGetF(mat, "foamFade",      0.5f);
+        WaterTerrainBakeSettings terrainSettings;
+        const auto terrainExtent = WaterSurfaceLocalExtent(water, WaterSurfaceReadView::SIMULATION);
+        /// @note 地形情報の密度は描画 LOD と独立。最大 257 平方の範囲で約 1 m/texel を目標とする。
+        terrainSettings.width = static_cast<uint32_t>((std::clamp)(
+            std::ceil(terrainExtent.x * std::abs(surfaceTransform.worldScale.x)), 64.0f, 257.0f));
+        terrainSettings.height = static_cast<uint32_t>((std::clamp)(
+            std::ceil(terrainExtent.y * std::abs(surfaceTransform.worldScale.z)), 64.0f, 257.0f));
+        terrainSettings.foamThreshold = (std::max)(foamThreshold, 0.0f);
+        terrainSettings.foamFade = (std::max)(foamFade, 0.0f);
+        uint64_t terrainSignature = 0;
+        const bool validTerrainSettings = TryComputeWaterTerrainInfoSignature(
+            terrainInputs, water, surfaceTransform, terrainSettings, terrainSignature,
+            WaterSurfaceReadView::SIMULATION);
+        if (const WaterDepthField* depthField = water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION);
+            depthField && water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION) > 0.0f)
+            terrainSignature = depthField->signature;
 
-        if (water.meshDirty || !s_meshCache.contains(eid.index)) {
-            BuildWaterMesh(water, s_meshCache[eid.index], resources);
+        const auto cachedMesh = s_meshCache.find(cacheKey);
+        const bool geometryChanged = cachedMesh != s_meshCache.end()
+            && cachedMesh->second.geometry != ResolveWaterMeshGeometry(water);
+        if (water.meshDirty || cachedMesh == s_meshCache.end() || geometryChanged) {
+            FBZZ_PROFILE_SCOPE("WaterPrepare::Mesh");
+            BuildWaterMesh(water, s_meshCache[cacheKey], resources);
             water.meshDirty = false;
             water.foamDirty = true;
         }
 
-        if (water.texDirty || water.foamDirty || !s_texCache.contains(eid.index)) {
-            WaterTextures& cached = s_texCache[eid.index];
+        if (water.texDirty || water.foamDirty || !s_texCache.contains(cacheKey)
+            || s_texCache.at(cacheKey).signature != terrainSignature) {
+            FBZZ_PROFILE_SCOPE("WaterPrepare::Textures");
+            WaterTextures& cached = s_texCache[cacheKey];
             /// @note 焼き直しは解像度スライダー操作中フレーム毎に走るため、上書き前に解放する。
             /// @note 返さず差し替えると 1 フレームぶんの泡マスクがそのまま漏れ続ける。
             if (cached.foamMask.IsValid()) resources.Release(cached.foamMask);
             cached = BuildTextureSet(
-                water, transform, scene, resources, foamThreshold, foamFade);
+                water, surfaceTransform, terrainInputs, validTerrainInputs && validTerrainSettings,
+                resources, terrainSettings, terrainSignature);
             water.texDirty = false;
             water.foamDirty = false;
         }
 
         /// @note 波紋がなく既存テクスチャも有効なら CPU 更新・GPU アップロードを省く。
         /// @note hadRipples を見るのは最後の 1 つが消えたフレームに 1 回だけ焼き直すため。
-        WaterRippleState& rippleState = s_rippleStates[eid.index];
+        WaterRippleState& rippleState = s_rippleStates[cacheKey];
         if (rippleState.dirty || !rippleState.gpuTex.IsValid()
-            || !water.ripples.empty() || rippleState.hadRipples)
-            UpdateRippleState(rippleState, water, transform, resources);
+            || !water.ripples.empty() || rippleState.hadRipples) {
+            FBZZ_PROFILE_SCOPE("WaterPrepare::Ripples");
+            UpdateRippleState(rippleState, water, surfaceTransform, resources);
+        }
 
-        const WaterMesh& mesh = s_meshCache.at(eid.index);
+        const WaterMesh& mesh = s_meshCache.at(cacheKey);
         renderer::RenderWaterInput input;
         input.layer = static_cast<uint32_t>(scene.GetGameObject(eid)->layer);
-        for (const auto& selected : ctx.settings.selectedObjects)
-            if (selected.index == eid.index && selected.generation == eid.generation) { input.selected = true; break; }
+        const uint64_t entityKey = (static_cast<uint64_t>(eid.generation) << 32u) | eid.index;
+        input.selected = ctx.settings.IsSelected(eid.index, eid.generation)
+            || selectedZoneOwners.contains(entityKey);
         input.margin = margin;
         input.aabbMin = mesh.aabbMin; input.aabbMax = mesh.aabbMax;
         input.patches = mesh.chunks;
+        input.adaptivePatchLod = !splineSurface && (water.adaptivePatchLod || water.farOceanEnabled);
+        input.patchMorphEnabled = !splineSurface && water.lodMorphEnabled;
+        input.farOceanEnabled = WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION);
+        input.farOceanCoverageScale = water.farOceanCoverageScale;
+        input.farOceanRippleFadeDistance = water.farOceanRippleFadeDistance;
+        input.patchLod.cellsPerPatch = water.lodPatchResolution;
+        input.patchLod.maxDepth = (std::min)(water.lodMaxDepth, 10u);
+        input.patchLod.maxPatches = (std::clamp)(water.lodMaxPatches, 1u, 4096u);
+        input.patchLod.targetCellPixels = water.lodTargetPixels;
+        input.patchLod.nearDistance = water.lodNearDistance;
+        input.patchLod.nearCellSize = water.lodNearCellSize;
+        input.patchLod.morphEnabled = !splineSurface && water.lodMorphEnabled;
+        input.patchLod.morphTransitionWidth = water.lodMorphTransitionWidth;
+        input.patchVertexBuffer = mesh.patchVertexBuffer;
+        input.patchIndexBuffers = mesh.patchIndexBuffers;
+        input.patchIndexCounts = mesh.patchIndexCounts;
         const auto& noise = GetWaterDetailNoise(resources);
-        input.constants = BuildWaterCB(water, mat, transform, math::Matrix4::Identity(), Time::time, 1.0f, noise, resources);
+        {
+            FBZZ_PROFILE_SCOPE("WaterPrepare::Constants");
+            input.constants = BuildWaterCB(water, mat, surfaceTransform, math::Matrix4::Identity(), Time::time, 1.0f, noise, resources);
+        }
+        if (splineSurface) {
+            input.constants.gridParams.x = 0.0f;
+            input.constants.farOceanParams = {};
+            const float maximumWorldEdge = geometry->maximumWorldEdgeLength;
+            if (std::isfinite(maximumWorldEdge) && maximumWorldEdge > 0.0f)
+                input.constants.timeParams.x = input.constants.timeParams.y = maximumWorldEdge;
+        }
+        input.constants.terrainInfoParams = s_texCache.at(cacheKey).terrainInfoParams;
+        {
+            FBZZ_PROFILE_SCOPE("WaterPrepare::Medium");
+            input.medium = BuildMediumInput(water, surfaceTransform, eid, mat, mesh, margin);
+        }
+        input.medium.depthIsUniform = s_texCache.at(cacheKey).depthIsUniform;
         input.effects = BuildWaterEffectParams(mat);
         input.detailNoise = noise.texture;
-        input.foam = s_texCache.at(eid.index).foamMask;
+        input.foam = s_texCache.at(cacheKey).foamMask;
         input.ripple = rippleState.gpuTex;
         input.velocityField = asset::VelocityFieldAtlas::Texture(resources);
-        if (mat && !mat->shaderPath.empty()) input.shader = resources.LoadShader(mat->shaderPath);
+        if (mat && !mat->shaderPath.empty()) {
+            FBZZ_PROFILE_SCOPE("WaterPrepare::Shader");
+            renderer::Material& appearance = s_appearanceCache[cacheKey];
+            appearance.shaderPath = mat->shaderPath;
+            appearance.shader = resources.LoadShader(mat->shaderPath);
+            input.shader = appearance.shader;
+            if (const auto* shader = resources.Get(appearance.shader)) {
+                /// @note Copy reflection for this publication; a successful hot reload may replace its owner later.
+                const renderer::ShaderDescriptor descriptor = shader->GetDescriptor();
+                asset::InitializeWaterAppearanceParameters(*mat, descriptor, appearance.paramData);
+                const auto texturePaths = asset::ResolveMaterialTexturePaths(*mat);
+                appearance.textures.resize(texturePaths.size());
+                for (size_t slot = 0; slot < texturePaths.size(); ++slot)
+                    appearance.textures[slot] = texturePaths[slot].empty()
+                        ? renderer::ResourceHandle<renderer::TextureTag>{}
+                        : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, texturePaths[slot]);
+                appearance.Upload(resources, descriptor);
+                input.appearanceParameters = appearance.paramsBuffer;
+                std::copy(appearance.textures.begin(), appearance.textures.end(), input.appearanceTextures.begin());
+            }
+        }
         output.water.push_back(std::move(input));
     }
 }
+
+void ReleaseWaterRenderResources(Scene& scene, renderer::ResourceManager& resources)
+{
+    ReleaseWaterCacheEntries(scene.GetRenderSceneGeneration(), nullptr, resources);
+    s_terrainInfoStates.erase(scene.GetRenderSceneGeneration());
 }
+
+void ReleaseWaterRenderResources(Scene& scene, EntityID entity, renderer::ResourceManager& resources)
+{
+    ReleaseWaterCacheEntries(scene.GetRenderSceneGeneration(), &entity, resources);
+}
+} /// @note namespace fbzz::scene

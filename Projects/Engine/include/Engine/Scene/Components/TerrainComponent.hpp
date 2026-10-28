@@ -4,7 +4,7 @@
 /// @date    2026-05-31
 ///
 /// @note TerrainComponent が高さ・スプラット・穴を一元管理し、TerrainRenderPass がチャンク分割と
-///       GPU 転送を行う。層ごとのテクスチャ・タイリング・質感は layerMaterials が指す .mat が持つ。
+/// @note GPU 転送を行う。層ごとのテクスチャ・タイリング・質感は layerMaterials が指す .mat が持つ。
 /// @see Docs/design/terrain-layers.md
 #pragma once
 
@@ -29,10 +29,10 @@ struct TerrainComponent {
     /// @note 0 を «フラットな基準面» とし、Lower ブラシで基準面より下へ掘れるようにする。
     std::vector<float> heightData;
 
-    int   columns   = 65;    ///< X 方向の頂点数 (2^n + 1 推奨: チャンク境界整合・LOD 二分割容易)
-    int   rows      = 65;    ///< Z 方向の頂点数
-    float cellSize  = 2.0f;  ///< 1 マスのワールド単位幅 [m]
-    float maxHeight = 20.0f; ///< heightData=1 のときのワールド高さ [m]
+    int   columns   = 65;    ///< @note X 方向の頂点数 (2^n + 1 推奨)。
+    int   rows      = 65;    ///< @note Z 方向の頂点数。
+    float cellSize  = 2.0f;  ///< @note ローカル 1 マスの幅 [m]。
+    float maxHeight = 20.0f; ///< @note heightData=1 のときのローカル高さ [m]。
     /// @}
 
     /// @name スプラット (頂点ごとに上位 4 層の番号と重み)
@@ -48,14 +48,21 @@ struct TerrainComponent {
     /// @note 穴は三角形を作らないことで表す。描画・物理・NavMesh・Fiber が同じ配列を見る。
     std::vector<std::uint8_t> holeData;
 
+    /// @note Additional terrain-local triangles share the terrain transform, collider and persistence.
+    /// @note Winding faces the empty side: cave floors up, ceilings down. Holes remove the entrance heightfield.
+    std::vector<math::Vector3> surfacePositions;
+    std::vector<uint32_t> surfaceIndices;
+    /// @note Empty uses terrain layers; a .mat overrides the added surface with one triplanar layer.
+    std::string surfaceMaterial;
+
     /// @brief Assets/Terrain/*.terrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
     std::string terrainAssetPath;
 
     /// @brief 層ごとの .mat。添字がスプラットの番号になる。
     /// @note fzmat keys: diffuse/normal/ao_roughness/height/tilingX/tilingZ/normalStrength/roughness/
-    ///       ambientOcclusion/heightBlend/triplanar/triplanarSharpness/macroScale/macroStrength/
-    ///       autoBlendEnabled/autoBlendStrength/autoMinHeight/autoMaxHeight/autoHeightFade/
-    ///       autoMinSlope/autoMaxSlope/autoSlopeFade
+    /// @note ambientOcclusion/heightBlend/triplanar/triplanarSharpness/macroScale/macroStrength/
+    /// @note autoBlendEnabled/autoBlendStrength/autoMinHeight/autoMaxHeight/autoHeightFade/
+    /// @note autoMinSlope/autoMaxSlope/autoSlopeFade
     std::vector<std::string> layerMaterials = std::vector<std::string>(4);
 
     /// @brief 高さブレンドで «高い層が境界を押し広げる» 幅。重み [0, 1] と同じ単位。
@@ -66,10 +73,14 @@ struct TerrainComponent {
     int chunkSize = 32;
 
     bool enabled            = true;
-    bool heightDirty        = false; ///< true → TerrainRenderPass がメッシュを再構築する (穴の変更も含む)
-    bool splatDirty         = false; ///< true → スプラットと層テクスチャを再アップロードする
-    bool materialParamDirty = false; ///< true → 層パラメーターだけ再構築する
-    bool colliderDirty      = true;  ///< true → PhysicsSystem がコライダーを再構築する (初期値 true で初回自動構築)
+    bool heightDirty        = false; ///< @note true → TerrainRenderPass がメッシュを再構築する (穴の変更も含む)。
+    bool splatDirty         = false; ///< @note true → スプラットと層テクスチャを再アップロードする。
+    bool materialParamDirty = false; ///< @note true → 層パラメーターだけ再構築する。
+    bool colliderDirty      = true;  ///< @note true → PhysicsSystem がコライダーを再構築する。
+    /// @note 高さ・穴の派生データを失効させる実行時世代。保存せず、編集口か dirty 消費で進める。
+    uint64_t surfaceRevision = 1;
+    /// @note Layer/hole authoring invalidates grass independently of water depth and collider revisions.
+    uint64_t vegetationRevision = 1;
 
     /// @name Reflection (Inspector / Serializer 対応)
     /// @{
@@ -85,7 +96,7 @@ struct TerrainComponent {
         r.Field("terrainAssetPath", terrainAssetPath);
         r.FloatRange("heightBlendDepth", heightBlendDepth, 0.01f, 1.0f);
         /// @note layerMaterials / heightData / splat / holeData は IReflector の対応型に収まらず、
-        ///       TerrainAssetSerializer と SceneSerializer が専用コードで読み書きする。
+        /// @note TerrainAssetSerializer と SceneSerializer が専用コードで読み書きする。
     }
     /// @}
 
@@ -114,7 +125,7 @@ struct TerrainComponent {
     void InitFlat(float height = 0.0f);
     /// @brief グリッドサイズを変更し、高さ・スプラット・穴を 2D コピー (切り捨て/パディング) で引き継ぐ。
     /// @note columns/rows を直接書き換えると配列サイズが合わず TerrainRenderPass の assert が落ちる。
-    ///       呼び出し後に heightDirty / splatDirty / colliderDirty を立てること。
+    /// @note 呼び出し後に heightDirty / splatDirty / colliderDirty を立てること。
     void Resize(int newColumns, int newRows);
     /// @}
 
@@ -122,6 +133,7 @@ struct TerrainComponent {
     /// @param localX テレインローカル座標 X (Transform 適用前)。
     /// @param localZ テレインローカル座標 Z (Transform 適用前)。
     /// @note 範囲外はクランプして継続する (Physics・足 IK から呼ばれるため assert しない)。穴でも高さを返す。
+    /// @note Legacy heightfield authoring sample; ignores holes and added surfaces. Use TerrainSurfaceQuery for occupancy.
     float GetHeightAt(float localX, float localZ) const;
 
     /// @brief 有限差分で計算した法線をバイリニア補間して返す。
@@ -160,6 +172,7 @@ struct TerrainComponent {
     /// @{
     void RequestHeightRebuild()
     {
+        ++surfaceRevision;
         heightDirty = true;
         colliderDirty = true;
     }
@@ -167,6 +180,12 @@ struct TerrainComponent {
     void RequestMaterialRebuild() { materialParamDirty = true; }
     /// @note 穴は三角形の有無なので、描画メッシュとコライダーを作り直す。
     void RequestHoleRebuild() { RequestHeightRebuild(); }
+
+    /// @return Invalid geometry leaves the current surface and revisions unchanged. Empty arrays remove it.
+    bool SetSurfaceGeometry(std::vector<math::Vector3> positions, std::vector<uint32_t> indices,
+        std::string material = {});
+    /// @note Direct surface array edits must call this; renderer, collider and water bounds share the revision.
+    void RequestSurfaceRebuild() { RequestHeightRebuild(); }
 
     bool SetHeightAtGrid(int x, int z, float worldHeight);
     /// @brief 頂点 (x, z) の layer の重みを weight [0, 1] に置く。他の層は比率を保って残りを分け合う。
@@ -184,4 +203,4 @@ private:
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

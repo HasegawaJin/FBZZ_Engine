@@ -1,0 +1,7 @@
+# @file    TerrainGpuShadow.hlsl.meta
+# @brief   GPU geometry shader identity.
+# @author  Hasegawa Jin
+# @date    2026-10-10
+[meta]
+guid = '6b4e34af7981ae551a3dcedae4ecad72'
+

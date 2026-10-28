@@ -55,12 +55,16 @@ cbuffer LightConstants : register(CB_LIGHT)
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/Wetness.hlsli"
+#include "Rendering/SpecularAA.hlsli"
 #include "Terrain/TerrainSurface.hlsli"
 
 FBZZ_TEX2D_T(float, g_shadowMap, 13);
 SamplerComparisonState g_shadowSampler : register(SAMPLER_SHADOW);
 /// @note Light Probe Volume の Texture3D を引く Linear clamp。
 SamplerState g_linearClampSampler : register(SAMPLER_LINEAR_CLAMP);
+FBZZ_TEXCUBE(gIrradiance, TEX_IBL_IRRADIANCE_SLOT);
+FBZZ_TEXCUBE(gPrefilter, TEX_IBL_PREFILTER_SLOT);
+FBZZ_TEX2D_T(float4, gBrdf, TEX_IBL_BRDF_LUT_SLOT);
 
 float4 PSMain(TerrainPSInput p) : SV_Target0
 {
@@ -71,12 +75,19 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
     float3 N = surface.normal;
     const float3 V = normalize(cameraPos - p.worldPos);
     const float3 L = normalize(-lightDir);
+    FBZZWaterMediumSample receiverMedium;
+    const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(p.worldPos, receiverMedium);
+    const float3 sunTransmittance = Lighting_WaterSourceTransmittance(
+        p.worldPos, L, receiverInWater ? receiverMedium.maxDistance : 0.0f,
+        receiverInWater, receiverMedium);
+    const float3 environmentTransmittance = Lighting_WaterEnvironmentTransmittance(
+        p.worldPos, receiverInWater, receiverMedium);
 
     /// @note 天候は Deferred の TerrainGBuffer.hlsl と同じ値・同じ順序で掛ける。
     const WetSurface wet = ApplyWetness(surface.albedo, surface.roughness, N,
                                         weather.x, weather.y, weather.z);
     const float3 albedo    = wet.albedo;
-    const float  roughness = wet.roughness;
+    const float  roughness = FilterSpecularRoughness(N, wet.roughness);
 
     float shadow = ComputeShadowSurface(g_shadowMap, g_shadowSampler, p.worldPos,
         lightViewProjection, shadowMapTexelSize, shadowBias, surface.geometricNormal, L,
@@ -87,16 +98,27 @@ float4 PSMain(TerrainPSInput p) : SV_Target0
 
     /// @note Light Probe Volume の中だけ定数の環境光をプローブへ置き換える。外では覆い率 0 で従来の ambientColor のまま (既存の地形の絵を変えない)。
     float probeCoverage;
-    const float3 ambient = FBZZ_ApplyLightProbes(p.worldPos, N, g_linearClampSampler, ambientColor, probeCoverage);
+    const float3 ambient = FBZZ_ApplyLightProbes(p.worldPos, N, g_linearClampSampler, ambientColor, probeCoverage)
+                         * environmentTransmittance;
 
     /// @note AO は環境光だけに掛ける。直射光まで遮ると谷の地形が不自然に暗くなる。
     /// @note 直接光は GBuffer 経路の DeferredLighting と同じ Cook-Torrance (metallic = 0) に揃える。
-    float3 result = albedo * ambient * ao
-                  + Lighting_PBR_Direct(N, V, L, albedo, 0.0f, roughness, lightColor, lightIntensity) * shadow;
+    float3 result;
+    if (iblIntensity > 0.0f)
+        result = Lighting_PBR_IBL(p.worldPos, N, V, L, albedo, 0.0f, roughness,
+            lightColor, lightIntensity, shadow, ao, gIrradiance, gPrefilter, gBrdf,
+            iblMaxMipLevel, iblIntensity, iblDiffuseScale, iblSpecularScale,
+            g_linearClampSampler, g_linearClampSampler);
+    else
+        result = albedo * ambient * ao
+            + Lighting_PBR_Direct(N, V, L, albedo, 0.0f, roughness,
+                lightColor * sunTransmittance, lightIntensity) * shadow;
 
     FBZZ_PUNCTUAL_BEGIN(p.worldPos, p.svPosition.xy, N)
+        const float3 sourceTransmittance = Lighting_WaterPunctualTransmittance(
+            p.worldPos, _fbzzLight, ps, receiverInWater, receiverMedium);
         result += Lighting_PBR_Direct(N, V, ps.L, albedo, 0.0f, saturate(roughness + ps.roughnessBias),
-                                      ps.color, ps.intensity);
+                                      ps.color * sourceTransmittance, ps.intensity);
     FBZZ_PUNCTUAL_END
 
     return float4(result, 1.0f);

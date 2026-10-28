@@ -14,8 +14,8 @@
 
 namespace fbzz::asset {
 
-/// @brief 書き出す版。読み込みは 1 と 2 を受け付ける。
-constexpr uint32_t FZTERRAIN_VERSION  = 2;
+/// @brief 書き出す版。読み込みは 1〜3 を受け付ける。
+constexpr uint32_t FZTERRAIN_VERSION  = 3;
 constexpr uint32_t FZTERRAIN_PATH_LEN = 256;
 
 struct FzTerrainHeader {
@@ -29,9 +29,11 @@ struct FzTerrainHeader {
     uint32_t layerCount;
     uint32_t holeCount;         ///< v2 から。v1 では予約領域 (0)
     float    heightBlendDepth;  ///< v2 から。v1 では予約領域 (0)
-    uint32_t _pad[2];
+    /// @note v3 appends surface material path, local float3 vertices, then triangle-list indices after holes.
+    uint32_t surfaceVertexCount;
+    uint32_t surfaceIndexCount;
 };
 /// @note v1 の _pad[4] を holeCount / heightBlendDepth に割り当てたので大きさは変わらない。
 static_assert(sizeof(FzTerrainHeader) == 48, "FzTerrainHeader size mismatch");
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset
