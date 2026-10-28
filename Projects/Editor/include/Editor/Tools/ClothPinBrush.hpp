@@ -20,6 +20,7 @@ struct ClothPinBrush {
     bool remove = false;
     bool beforeOverride = false;
     bool distanceMode = false;
+    bool anchorMode = false;
     bool strokeDistanceMode = false;
     bool beforeUseSkinning = false;
     float distance = 0.1f;
@@ -38,5 +39,6 @@ struct ClothPinBrush {
 };
 /// @note 画面座標の円で奥の質点も選ぶ。候補は物理質点 ID なので UV seam も一度だけ編集する。
 /// @see Docs/design/cloth.md 固定点ブラシ。
-void DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& min, const ImVec2& size, bool hovered, bool editable);
+/// @return 同frameに固定点HUDがmouseを取得した場合true。
+bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& min, const ImVec2& size, bool hovered, bool editable);
 }

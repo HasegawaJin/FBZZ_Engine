@@ -2,6 +2,7 @@
 /// @brief   AssetBrowser のルート、マウント、ディレクトリ走査。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Asset/ModelSource.hpp>
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -10,20 +11,12 @@
 
 namespace fbzz::editor {
 
-std::string SanitizeEntityName(const std::string& name)
-{
-    std::string result = name.empty() ? "Prefab" : name;
-    for (char& c : result) {
-        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
-        if (!ok) c = '_';
-    }
-    return result;
-}
+
 
 std::string UniquePrefabPathInDir(const std::string& dir, const std::string& objectName)
 {
     util::FileSystem::EnsureDirectory(dir);
-    const std::string base = dir + "/" + SanitizeEntityName(objectName);
+    const std::string base = dir + "/" + SanitizePrefabFileName(objectName);
     std::string path = base + ".prefab";
     for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
         path = base + " " + std::to_string(i) + ".prefab";
@@ -125,8 +118,12 @@ std::filesystem::path GetPackageModelPath(const std::filesystem::path& dirPath)
 bool IsModelPackageDirectory(const std::filesystem::path& dirPath)
 {
     /// @note Foo.fbx の従属生成物フォルダ Foo/ は Browser では隠し、FBX ノードの展開で見せる。ユーザーの正規アセットは原本 .fbx であり、内部コンテナ .fzasset や従属フォルダを第一級アセットとして操作させない。
-    const std::filesystem::path fbxPath = dirPath.parent_path() / (util::FileSystem::PathToUtf8(dirPath.filename()) + ".fbx");
-    if (!util::FileSystem::Exists(fbxPath)) return false;
+    bool haveSource = false;
+    for (const auto extension : asset::MODEL_SOURCE_EXTENSIONS) {
+        const auto source = dirPath.parent_path() / (util::FileSystem::PathToUtf8(dirPath.filename()) + std::string(extension));
+        if (util::FileSystem::Exists(source)) { haveSource = true; break; }
+    }
+    if (!haveSource) return false;
     const std::string logical = util::FileSystem::PathToUtf8(GetPackageModelPath(dirPath));
     return util::FileSystem::Exists(asset::AssetManager::ResolveAssetPath(logical));
 }
@@ -214,19 +211,7 @@ void AssetBrowserPanel::SetRootPath(const std::string& rootPath)
     if (IsAssetPipelineOwner()) ScanAndQueueUnimported(m_rootPath);
 }
 
-namespace {
 
-/// @note FileSystem::GetDirectory は末尾に '/' を付けて返す ("Assets/Scenes/")。
-/// @note ナビゲート先やパス比較に使う前に落とす。
-std::string DirectoryOfPath(const std::string& path)
-{
-    std::string directory = util::FileSystem::GetDirectory(path);
-    while (directory.size() > 1 && (directory.back() == '/' || directory.back() == '\\'))
-        directory.pop_back();
-    return directory;
-}
-
-} /// @note namespace
 
 void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
 {
@@ -251,7 +236,7 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
         return;
     }
     /// @note エンジン内蔵アセットへフォールバック解決された場合、実体はプロジェクトの Assets の外にある。ブラウザの表示範囲 (ルート + マウント) の外へは移動しない (出たところで戻る導線がない)。
-    if (!IsRootOrMountedPath(DirectoryOfPath(absolute))) {
+    if (!IsRootOrMountedPath(AssetDirectory(absolute))) {
         FBZZ_LOG_WARN("AssetBrowser: reveal target is outside the browsable roots [%s]",
                       absolute.c_str());
         return;
@@ -269,16 +254,20 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
 
     /// @note FBX の従属アセット (Foo/materials/*.mat 等) は Foo/ フォルダ自体が非表示で、
     /// @note 原本 .fbx を展開したときだけサブアセットとして並ぶ。親を特定して展開しておく。
-    std::string navigateDir = DirectoryOfPath(absolute);
+    std::string navigateDir = AssetDirectory(absolute);
     for (std::filesystem::path dir = util::FileSystem::PathFromUtf8(navigateDir);
          !dir.empty() && dir.has_parent_path() && dir != dir.parent_path();
          dir = dir.parent_path()) {
         if (!IsModelPackageDirectory(dir)) continue;
-        const std::string fbxPath = util::FileSystem::NormalizePathSeparators(
-            util::FileSystem::PathToUtf8(
-                dir.parent_path() / (util::FileSystem::PathToUtf8(dir.filename()) + ".fbx")));
+        std::string fbxPath;
+        for (const auto extension : asset::MODEL_SOURCE_EXTENSIONS) {
+            const auto source = dir.parent_path() / (util::FileSystem::PathToUtf8(dir.filename()) + std::string(extension));
+            if (!util::FileSystem::Exists(source)) continue;
+            fbxPath = util::FileSystem::NormalizePathSeparators(util::FileSystem::PathToUtf8(source));
+            break;
+        }
         m_expandedAssets.insert(fbxPath);
-        navigateDir = DirectoryOfPath(fbxPath);
+        navigateDir = AssetDirectory(fbxPath);
         break;
     }
 
@@ -356,6 +345,7 @@ void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
 
 void AssetBrowserPanel::RefreshDirectory()
 {
+    InvalidateListCache();
     m_resetScroll = true;
     m_entries.clear();
     m_treeCache.erase(util::FileSystem::NormalizePathSeparators(m_currentPath));
@@ -440,7 +430,7 @@ void AssetBrowserPanel::RefreshDirectory()
         e.isDir = util::FileSystem::IsDirectory(p);
         if (!ShouldDisplayEntry(e.path, e.name, e.isDir)) continue;
         if (!e.isDir) {
-            e.hasSubAssets = e.ext == ".fbx";
+            e.hasSubAssets = IsImportableRaw(e.ext);
             if (e.ext == ".png" || e.ext == ".jpg" || e.ext == ".jpeg" ||
                 e.ext == ".tga" || e.ext == ".dds" || e.ext == ".hdr" ||
                 e.ext == ".exr" || e.ext == ".bmp") {
@@ -538,6 +528,7 @@ bool AssetBrowserPanel::ShouldDisplayEntry(
 
 void AssetBrowserPanel::InvalidateTreeCache(const std::string& dirPath)
 {
+    InvalidateListCache();
     const std::string norm = util::FileSystem::NormalizePathSeparators(dirPath);
     m_treeCache.erase(norm);
     /// @note also invalidate ancestors so the tree reflects the change
@@ -673,16 +664,16 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         return cached.items;
     }
 
-    if (modelExt != ".fbx" && modelExt != ".fzasset")
+    if (!IsImportableRaw(modelExt) && modelExt != ".fzasset")
         return cached.items;
 
     /// @note .fbx は Unity のように展開可能なモデルノードとして扱う。内部 .fzasset コンテナは Library の再生成物であり、UI と保存パスは原本 .fbx に一本化する。
     const std::filesystem::path sourcePath = util::FileSystem::PathFromUtf8(sourceAssetPath);
-    const std::filesystem::path packageDir = (modelExt == ".fbx")
+    const std::filesystem::path packageDir = (IsImportableRaw(modelExt))
         ? sourcePath.parent_path() / sourcePath.stem()
         : sourcePath.parent_path();
     std::string modelWritePath = asset::AssetManager::ResolveAssetPath(sourceAssetPath);
-    if (modelExt == ".fbx") {
+    if (IsImportableRaw(modelExt)) {
         const std::string containerLogical = util::FileSystem::NormalizePathSeparators(
             util::FileSystem::PathToUtf8(packageDir / (util::FileSystem::PathToUtf8(sourcePath.stem()) + ".fzasset")));
         const std::string containerResolved = asset::AssetManager::ResolveAssetPath(containerLogical);
@@ -696,10 +687,10 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
     const std::filesystem::path mergedMeshPath = util::FileSystem::PathFromUtf8(
         asset::AssetManager::ResolveAssetPath(util::FileSystem::PathToUtf8(
             packageDir / (util::FileSystem::PathToUtf8(sourcePath.stem()) + ".mesh"))));
-    /// @note anims/ と materials/ は `Library/Baked/<fbx-guid>/` へ隔離済み。隔離を入れる前にインポートしたモデルは Assets 側にこれらを持ったままなので、再インポートするまでは旧配置もフォールバックで見ないとクリップとマテリアルが一覧から消える。Extract で Assets へ取り出した実体は原本 FBX の隣に置かれるため、通常のエントリとして並びこの経路では出てこない。
+    /// @note anims/ と materials/ は `Library/Baked/<fbx-guid>/` へ隔離済み。隔離を入れる前にインポートしたモデルは Assets 側にこれらを持ったままなので、再インポートするまでは旧配置もフォールバックで見ないとクリップとマテリアルが一覧から消える。Extract で Assets へ取り出した実体はモデル原本 の隣に置かれるため、通常のエントリとして並びこの経路では出てこない。
     const auto resolveGeneratedDir = [&](const char* name) {
         std::filesystem::path dir = packageDir / name;
-        if (modelExt != ".fbx") return dir;
+        if (!IsImportableRaw(modelExt)) return dir;
         const std::string bakedDir =
             asset::AssetManager::BakedDirForSource(sourceAssetPath);
         if (!bakedDir.empty() &&
@@ -791,7 +782,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         e.ext        = ".mat";
         e.isDir      = false;
         e.isSubAsset = true;
-        /// @note 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+        /// @note 出所を持たせる。Extract の取り出し先 (モデル原本 の隣) を決めるのに使う。
         e.sourceAssetPath = sourceAssetPath;
         cached.items.push_back(std::move(e));
     }
@@ -804,7 +795,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
         e.ext       = ".anim";
         e.isDir     = false;
         e.isSubAsset = true;
-        /// @note 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+        /// @note 出所を持たせる。Extract の取り出し先 (モデル原本 の隣) を決めるのに使う。
         e.sourceAssetPath = sourceAssetPath;
         cached.items.push_back(std::move(e));
     }
@@ -821,7 +812,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
             e.ext        = imageExt;
             e.isDir      = false;
             e.isSubAsset = true;
-            /// @note 出所を持たせる。Extract の取り出し先 (原本 FBX の隣) を決めるのに使う。
+            /// @note 出所を持たせる。Extract の取り出し先 (モデル原本 の隣) を決めるのに使う。
             e.sourceAssetPath = sourceAssetPath;
             cached.items.push_back(std::move(e));
         }

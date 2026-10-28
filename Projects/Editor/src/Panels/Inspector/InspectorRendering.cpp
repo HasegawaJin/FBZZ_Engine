@@ -33,7 +33,7 @@ void DrawRendererMaterialStatus(EditorContext& ctx, size_t submeshCount, bool sk
                         mc->SlotCount());
 }
 
-} // namespace
+} /// @note namespace
 
 void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
@@ -75,7 +75,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
 
             if (sel == 0) {
-                widgets::AssetPathFieldWithLoad("Mesh Path", mr.meshPath, ".fbx", ctx.projectRoot,
+                widgets::AssetPathFieldWithLoad("Mesh Path", mr.meshPath, ".fbx,.obj,.gltf,.glb", ctx.projectRoot,
                     [&mr]() {
                         if (!mr.meshPath.empty())
                             if (auto* model = asset::AssetManager::LoadAndGet<asset::Model>(mr.meshPath))
@@ -96,7 +96,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
     DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Skinned Mesh Renderer",
         [](scene::SkinnedMeshRenderer& smr, EditorContext& ctx) {
-            widgets::AssetPathFieldWithLoad("Model", smr.modelPath, ".fbx", ctx.projectRoot,
+            widgets::AssetPathFieldWithLoad("Model", smr.modelPath, ".fbx,.obj,.gltf,.glb", ctx.projectRoot,
                 [&smr]() {
                     smr.model = nullptr;
                     if (!smr.modelPath.empty())
@@ -195,4 +195,4 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 }
 
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

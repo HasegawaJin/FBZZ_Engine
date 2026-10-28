@@ -136,7 +136,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
             reloadText  = summary;
             reloadColor = EditorTheme::Color(ThemeColor::Danger);
         } else if (latest && latest->result == BuildRecord::Result::Success) {
-            const char* kind = latest->kind == BuildRecord::Kind::Script ? "Scripts" : "HLSL";
+            const char* kind = "HLSL";
             if (latest->warnCount > 0)
                 std::snprintf(summary, sizeof(summary), "%s OK  %dW  %s (%.1fs)",
                               kind, latest->warnCount, latest->startClock.c_str(), latest->durationSec);
@@ -326,10 +326,9 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
         ImGui::SameLine(0.0f, 0.0f);
 
         if (compiling || reloading || completed) {
-            const bool  shaders = ctx.hotReloadTarget == EditorContext::HotReloadTarget::Shaders;
-            const char* label = completed ? (shaders ? "Shaders reloaded" : "Scripts reloaded")
-                              : reloading ? "Reloading scripts..."
-                              : (shaders ? "Compiling shaders..." : "Compiling scripts...");
+            const char* label = completed ? "Shaders reloaded"
+                              : reloading ? "Reloading shaders..."
+                              : "Compiling shaders...";
             const ImVec4 barCol = completed
                 ? EditorTheme::Color(ThemeColor::Success)
                 : (compiling ? EditorTheme::Color(ThemeColor::Warning)
@@ -343,7 +342,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
             const bool  hasProgress = ctx.hotReloadProgress >= 0.0f;
             const float sweep       = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
             const float progress    = hasProgress ? ctx.hotReloadProgress : sweep;
-            /// @note 擬似進捗の % は出さない (MSBuild は総数を返さず 89% で止まって見える)。代わりに経過秒と現在ファイルを出す。
+            /// @note 進捗が無い場合は % を表示せず、経過秒と現在ファイルを出す。
             const char* curFile = (compiling && ctx.buildConsole && !ctx.buildConsole->CurrentFile().empty())
                                       ? ctx.buildConsole->CurrentFile().c_str() : nullptr;
             char progressLabel[256];
@@ -359,7 +358,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
                 if (!ctx.hotReloadMessage.empty()) ImGui::TextUnformatted(ctx.hotReloadMessage.c_str());
                 if (curFile) ImGui::Text("Current: %s", curFile);
                 if (compiling || reloading)
-                    ImGui::TextDisabled("Play is disabled until the reload finishes");
+                    ImGui::TextDisabled("Play is disabled until shader compilation finishes");
                 ImGui::TextDisabled("Click to open Build Output");
                 ImGui::EndTooltip();
             }

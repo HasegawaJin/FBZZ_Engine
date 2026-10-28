@@ -64,7 +64,7 @@ std::string ResolveTextureDiskPath(const std::string& projectRoot, const std::st
     return ToProjectAssetDiskPath(projectRoot, reference);
 }
 
-const std::string& TextureSlot(const asset::MaterialAsset& material, const char* slot)
+const std::string& TextureSlot(const asset::MaterialAssetAuthoring& material, const char* slot)
 {
     static const std::string kEmpty;
     const auto it = material.textures.find(slot);
@@ -497,7 +497,7 @@ void DrawPreviewControls(const asset::FlipbookFrameSample& live)
 /// @name 検査
 
 /// エラーにならないまま «なんとなく変な絵» になる設定を並べる。直せるものはボタンを出す。
-bool DrawFlipbookIssues(ParticleFlipbookSettings& flipbook, const asset::MaterialAsset& material,
+bool DrawFlipbookIssues(ParticleFlipbookSettings& flipbook, const asset::MaterialAssetAuthoring& material,
                         const AtlasPreview& atlas)
 {
     bool changed = false;
@@ -637,7 +637,7 @@ std::string SequenceAtlasOutputPath(const std::string& firstFrameDiskPath)
     return util::FileSystem::PathToUtf8(first.parent_path() / util::FileSystem::PathFromUtf8(prefix + "_Atlas.png"));
 }
 
-bool DrawSequenceBaker(asset::MaterialAsset& material, const std::string& projectRoot)
+bool DrawSequenceBaker(asset::MaterialAssetAuthoring& material, const std::string& projectRoot)
 {
     bool changed = false;
     SequenceBakeState& state = s_sequenceBake;
@@ -698,7 +698,7 @@ bool DrawSequenceBaker(asset::MaterialAsset& material, const std::string& projec
 
 /// @name 手続き生成
 
-bool DrawProceduralGenerator(asset::MaterialAsset& material, const std::string& projectRoot)
+bool DrawProceduralGenerator(asset::MaterialAssetAuthoring& material, const std::string& projectRoot)
 {
     bool changed = false;
     ProceduralState& procedural = s_procedural;
@@ -791,7 +791,7 @@ bool DrawProceduralGenerator(asset::MaterialAsset& material, const std::string& 
 
 /// @name Motion Vector
 
-bool DrawMotionVectorSection(asset::MaterialAsset& material, const std::string& projectRoot)
+bool DrawMotionVectorSection(asset::MaterialAssetAuthoring& material, const std::string& projectRoot)
 {
     bool changed = false;
     ParticleFlipbookSettings& flipbook = material.particle.flipbook;
@@ -845,7 +845,7 @@ void InvalidateFlipbookAtlasPreview()
     InvalidateAtlasPreview();
 }
 
-bool DrawFlipbookInspector(asset::MaterialAsset& material, const std::string& projectRoot,
+bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::string& projectRoot,
                            renderer::ResourceManager* resources,
                            renderer::IImGuiRenderer* imguiRenderer)
 {

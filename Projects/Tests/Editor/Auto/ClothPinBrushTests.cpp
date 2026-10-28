@@ -8,12 +8,14 @@
 #include <Editor/Tools/ClothPinBrush.hpp>
 #include <Engine/Scene/Components/ClothComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
 #include <Engine/Asset/ClothAsset.hpp>
 #include <Engine/Scene/Systems/ClothSystem.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Physics/World.hpp>
 #include <imgui.h>
+#include <limits>
 
 namespace fbzz::tests {
 class ClothPinBrushTest : public testkit::EditorFixture {
@@ -43,6 +45,7 @@ protected:
         Context().undoStack = &m_undo;
         Context().editorCamera = &m_camera;
         editor::RegisterClothOperators(m_registry);
+        editor::RegisterControlPointOperators(m_registry);
         m_previous = ImGui::GetCurrentContext();
         m_imgui = ImGui::CreateContext();
         auto& io = ImGui::GetIO();
@@ -256,5 +259,100 @@ TEST_F(ClothPinBrushTest, DistanceOperatorRestoresInheritanceAndRejectsPartialIn
     EXPECT_EQ(Cloth().maxDistances[0].particle,8);
     m_undo.Undo(); EXPECT_EQ(Cloth().maxDistances,before);
     m_undo.Redo(); EXPECT_EQ(Cloth().maxDistances.size(),1u);
+}
+
+TEST_F(ClothPinBrushTest, ClickingAnAnchorCreatesAtTheParticleAndReusesItsExistingTarget)
+{
+    Context().clothPinPainting = true;
+    m_brush.anchorMode = true;
+    const auto expectedPosition = Cloth().runtime.restLocal[4];
+    Frame(false); Frame(true);
+    ASSERT_EQ(Cloth().attachments.size(), 1u);
+    const auto attachment = Cloth().attachments.front();
+    EXPECT_EQ(attachment.particle, 4);
+    EXPECT_FLOAT_EQ(attachment.maxDistance, 0.0f);
+    auto* target = AttachedScene()->FindByGuid(attachment.targetReference.guid);
+    ASSERT_NE(target, nullptr);
+    EXPECT_NE(target->GetComponent<scene::TargetPointComponent>(), nullptr);
+    EXPECT_VEC3_NEAR(target->transform.position, expectedPosition, testkit::kTolerance);
+    EXPECT_EQ(Context().selectedEntities, (std::vector<scene::EntityID>{target->GetID()}));
+    EXPECT_EQ(m_undo.GetHistorySize(), 1u);
+
+    Context().selectedEntities = {m_id};
+    Context().clothPinPainting = true;
+    Frame(false); Frame(true);
+    EXPECT_EQ(AttachedScene()->GameObjectCount(), 2u);
+    EXPECT_EQ(m_undo.GetHistorySize(), 1u);
+    ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic();
+    EXPECT_TRUE(Cloth().attachments.empty());
+    EXPECT_EQ(AttachedScene()->GameObjectCount(), 1u);
+    ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic();
+    EXPECT_EQ(Cloth().attachments.size(), 1u);
+}
+
+TEST_F(ClothPinBrushTest, AnchorClickRejectsChangedTopologyAndPlayTransition)
+{
+    Context().clothPinPainting = true;
+    m_brush.anchorMode = true;
+    Cloth().width = 3.0f;
+    Frame(false); Frame(true);
+    EXPECT_TRUE(Cloth().attachments.empty());
+    Cloth().width = 2.0f;
+    Frame(false, false); Frame(true, false);
+    EXPECT_TRUE(Cloth().attachments.empty());
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+}
+
+TEST_F(ClothPinBrushTest, MotionChangesUseOneUndoAndPreservePinsContactsAndUneditedMotion)
+{
+    const float originalBend = Cloth().settings.bendCompliance;
+    editor::OpArgs args;
+    args.Set("bendCompliance", 0.02f);
+    args.Set("windVelocity", math::Vector3{0.0f, 0.0f, 3.0f});
+    ASSERT_TRUE(editor::InvokeOperator(Context(), "cloth.set_motion", args).ok);
+    EXPECT_FLOAT_EQ(Cloth().settings.bendCompliance, 0.02f);
+    EXPECT_VEC3_NEAR(Cloth().settings.windVelocity, math::Vector3(0.0f, 0.0f, 3.0f), testkit::kTolerance);
+    EXPECT_EQ(m_undo.GetHistorySize(), 1u);
+    Cloth().settings.damping = 6.0f;
+    Cloth().settings.thickness = 0.03f;
+    Cloth().pinLeft = true;
+    ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic();
+    EXPECT_FLOAT_EQ(Cloth().settings.bendCompliance, originalBend);
+    EXPECT_FLOAT_EQ(Cloth().settings.damping, 6.0f);
+    EXPECT_FLOAT_EQ(Cloth().settings.thickness, 0.03f);
+    EXPECT_TRUE(Cloth().pinLeft);
+    ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic();
+    EXPECT_FLOAT_EQ(Cloth().settings.bendCompliance, 0.02f);
+    EXPECT_FLOAT_EQ(Cloth().settings.damping, 6.0f);
+}
+
+TEST_F(ClothPinBrushTest, MotionRejectsInvalidValuesWithoutPartialChangesAndNoOpAddsNoHistory)
+{
+    editor::OpArgs args;
+    args.Set("bendCompliance", 0.02f);
+    args.Set("damping", -1.0f);
+    EXPECT_FALSE(editor::InvokeOperator(Context(), "cloth.set_motion", args).ok);
+    EXPECT_FLOAT_EQ(Cloth().settings.bendCompliance, physics::ClothSettings{}.bendCompliance);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    args.Set("damping", std::numeric_limits<float>::quiet_NaN());
+    EXPECT_FALSE(editor::InvokeOperator(Context(), "cloth.set_motion", args).ok);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    editor::OpArgs unchanged;
+    unchanged.Set("damping", Cloth().settings.damping);
+    EXPECT_TRUE(editor::InvokeOperator(Context(), "cloth.set_motion", unchanged).noChange);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+}
+
+TEST_F(ClothPinBrushTest, MotionUndoRejectsAReplacementComponent)
+{
+    editor::OpArgs args;
+    args.Set("damping", 7.0f);
+    ASSERT_TRUE(editor::InvokeOperator(Context(), "cloth.set_motion", args).ok);
+    auto* object = AttachedScene()->GetGameObject(m_id);
+    object->RemoveComponent<scene::ClothComponent>();
+    auto& replacement = object->AddComponent<scene::ClothComponent>();
+    replacement.settings.damping = 9.0f;
+    EXPECT_FALSE(m_undo.Undo());
+    EXPECT_FLOAT_EQ(replacement.settings.damping, 9.0f);
 }
 }

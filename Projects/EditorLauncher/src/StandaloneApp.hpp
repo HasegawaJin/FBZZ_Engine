@@ -6,7 +6,6 @@
 /// @note IModule を実装して Application::Run() に乗せることで、Profiler / MemorySystem / Input::Update / PollEvents
 ///       などのフレーム境界処理をエンジン側に委譲する。
 #pragma once
-#include <Editor/ScriptDllLoader.hpp>
 #include <Engine/Core/ILogSink.hpp>
 #include <Engine/Core/IModule.hpp>
 #include <Engine/ProjectResolver.hpp>
@@ -54,7 +53,6 @@ private:
     const LaunchProject&             m_project;
     ProjectSettings&                 m_settings;
     scene::ProjectRuntime            m_runtime;
-    editor::ScriptDllLoader          m_scriptDll;
     FileLogSink                      m_logSink;
     ImGuiContext*                    m_imguiCtx     = nullptr;
     bool                             m_showProfiler = false;

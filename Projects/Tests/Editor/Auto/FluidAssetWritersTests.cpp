@@ -51,7 +51,7 @@ std::string SavedTextureReference(const std::string& materialPath, const char* s
 }
 
 /// @note MaterialAsset は標準スロットを保存・読み込み時に必ず空で埋めるため、«外した» 結果はキー消滅でなく空文字列になる。キーの有無でなく値が空であることだけを縛る。
-::testing::AssertionResult TextureCleared(const asset::MaterialAsset& material, const char* slot)
+::testing::AssertionResult TextureCleared(const asset::MaterialAssetAuthoring& material, const char* slot)
 {
     const auto it = material.textures.find(slot);
     if (it == material.textures.end() || it->second.empty())
@@ -115,7 +115,7 @@ TEST_F(FluidAssetWritersTest, FlatBakeWritesBlendTexturesAndGrid)
         << error;
     EXPECT_TRUE(created);
 
-    asset::MaterialAsset loaded;
+    asset::MaterialAssetAuthoring loaded;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(material, loaded));
     EXPECT_EQ(loaded.renderPath, asset::RenderPath::Particle);
     EXPECT_EQ(loaded.blendMode, renderer::BlendMode::PREMULTIPLIED);
@@ -141,7 +141,7 @@ TEST_F(FluidAssetWritersTest, FlatBakeWritesBlendTexturesAndGrid)
 TEST_F(FluidAssetWritersTest, FlatBakeKeepsHandTunedValuesAndDropsStaleMotion)
 {
     const std::string material = AssetFile("Steam.mat");
-    asset::MaterialAsset existing = editor::NewFluidParticleMaterial();
+    asset::MaterialAssetAuthoring existing = editor::NewFluidParticleMaterial();
     existing.renderQueue = 3100;
     existing.textures["tex5"] = "Assets/FX/Old_MV.png";
     existing.textures["emissive"] = TextureFile("Old_6wayN.png");
@@ -164,7 +164,7 @@ TEST_F(FluidAssetWritersTest, FlatBakeKeepsHandTunedValuesAndDropsStaleMotion)
         << error;
     EXPECT_FALSE(created);
 
-    asset::MaterialAsset loaded;
+    asset::MaterialAssetAuthoring loaded;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(material, loaded));
     EXPECT_EQ(loaded.renderQueue, 3100);
     EXPECT_EQ(loaded.blendMode, renderer::BlendMode::ALPHA_BLEND);
@@ -199,7 +199,7 @@ TEST_F(FluidAssetWritersTest, VolumeBakeWithSixWayUsesMapsAndStraightAlpha)
     std::string error;
     ASSERT_TRUE(editor::WriteFluidParticleMaterial(material, source, created, error)) << error;
 
-    asset::MaterialAsset loaded;
+    asset::MaterialAssetAuthoring loaded;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(material, loaded));
     EXPECT_EQ(loaded.blendMode, renderer::BlendMode::ALPHA_BLEND);
     EXPECT_EQ(SavedTextureReference(material, "albedo"), GuidAssetReference(positivePng));
@@ -242,7 +242,7 @@ TEST_F(FluidAssetWritersTest, FireSixWayBakeUsesPremultipliedMaterial)
     std::string error;
     ASSERT_TRUE(editor::WriteFluidParticleMaterial(material, source, created, error)) << error;
 
-    asset::MaterialAsset loaded;
+    asset::MaterialAssetAuthoring loaded;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(material, loaded));
     EXPECT_EQ(loaded.blendMode, renderer::BlendMode::PREMULTIPLIED);
     EXPECT_EQ(SavedTextureReference(material, "albedo"), GuidAssetReference(result.sixWayPositivePath));
@@ -278,7 +278,7 @@ TEST_F(FluidAssetWritersTest, VolumeGlowUsesAdditiveBlendWithExposureScale)
     std::string error;
     ASSERT_TRUE(editor::WriteFluidParticleMaterial(material, source, created, error)) << error;
 
-    asset::MaterialAsset loaded;
+    asset::MaterialAssetAuthoring loaded;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(material, loaded));
     EXPECT_EQ(loaded.blendMode, renderer::BlendMode::ADDITIVE);
     EXPECT_EQ(SavedTextureReference(material, "albedo"), GuidAssetReference(result.sixWayPositivePath));
@@ -290,7 +290,7 @@ TEST_F(FluidAssetWritersTest, VolumeGlowUsesAdditiveBlendWithExposureScale)
 TEST_F(FluidAssetWritersTest, VolumeBakeSetsParticlePathAndGuidTextureReferences)
 {
     const std::string material = AssetFile("Smoke3D.mat");
-    asset::MaterialAsset existing = editor::NewFluidParticleMaterial();
+    asset::MaterialAssetAuthoring existing = editor::NewFluidParticleMaterial();
     existing.renderPath = asset::RenderPath::Auto;
     existing.renderQueue = 3100;
     ASSERT_TRUE(asset::SaveMaterialAssetToFile(material, existing));
@@ -310,7 +310,7 @@ TEST_F(FluidAssetWritersTest, VolumeBakeSetsParticlePathAndGuidTextureReferences
                                                    created, error)) << error;
     EXPECT_FALSE(created);
 
-    asset::MaterialAsset loaded;
+    asset::MaterialAssetAuthoring loaded;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(material, loaded));
     EXPECT_EQ(loaded.renderPath, asset::RenderPath::Particle);
     EXPECT_EQ(loaded.renderQueue, 3100);
@@ -324,7 +324,7 @@ TEST_F(FluidAssetWritersTest, VolumeBakeSetsParticlePathAndGuidTextureReferences
 TEST_F(FluidAssetWritersTest, VolumeBakeWithoutSixWayIsPremultipliedAndClearsStaleMaps)
 {
     const std::string material = AssetFile("Smoke3D.mat");
-    asset::MaterialAsset existing = editor::NewFluidParticleMaterial();
+    asset::MaterialAssetAuthoring existing = editor::NewFluidParticleMaterial();
     const std::string staleNegative = TextureFile("Smoke3D_6wayN.dds");
     existing.textures["emissive"] = std::string(asset::AssetDatabase::kGuidPrefix)
         + asset::AssetDatabase::GuidFromPath(staleNegative);
@@ -346,7 +346,7 @@ TEST_F(FluidAssetWritersTest, VolumeBakeWithoutSixWayIsPremultipliedAndClearsSta
     ASSERT_TRUE(editor::WriteFluidParticleMaterial(material, source, created, error)) << error;
     EXPECT_FALSE(created);
 
-    asset::MaterialAsset loaded;
+    asset::MaterialAssetAuthoring loaded;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(material, loaded));
     EXPECT_EQ(loaded.blendMode, renderer::BlendMode::PREMULTIPLIED);
     EXPECT_EQ(SavedTextureReference(material, "albedo"), GuidAssetReference(source.volume.colorPath));
@@ -369,7 +369,7 @@ TEST_F(FluidAssetWritersTest, VolumeBakeWithoutSixWayIsPremultipliedAndClearsSta
 TEST_F(FluidAssetWritersTest, VolumeDistortionLoopIsAlphaBlendedFpsWithoutMotion)
 {
     const std::string material = AssetFile("Heat3D.mat");
-    asset::MaterialAsset existing = editor::NewFluidParticleMaterial();
+    asset::MaterialAssetAuthoring existing = editor::NewFluidParticleMaterial();
     existing.textures["tex5"] = "Assets/FX/Heat3D_mv.dds";
     existing.textures["emissive"] = "Assets/FX/Heat3D_6wayN.dds";
     ASSERT_TRUE(asset::SaveMaterialAssetToFile(material, existing));
@@ -393,7 +393,7 @@ TEST_F(FluidAssetWritersTest, VolumeDistortionLoopIsAlphaBlendedFpsWithoutMotion
     ASSERT_TRUE(editor::WriteFluidParticleMaterial(material, source, created, error)) << error;
     EXPECT_FALSE(created);
 
-    asset::MaterialAsset loaded;
+    asset::MaterialAssetAuthoring loaded;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(material, loaded));
     EXPECT_EQ(loaded.blendMode, renderer::BlendMode::ALPHA_BLEND);
     EXPECT_TRUE(loaded.particle.distortion);
@@ -412,7 +412,7 @@ TEST_F(FluidAssetWritersTest, VolumeDistortionLoopIsAlphaBlendedFpsWithoutMotion
 TEST_F(FluidAssetWritersTest, MissingTextureFailsWithoutOverwritingExistingMaterial)
 {
     const std::string material = AssetFile("Protected.mat");
-    asset::MaterialAsset existing = editor::NewFluidParticleMaterial();
+    asset::MaterialAssetAuthoring existing = editor::NewFluidParticleMaterial();
     existing.renderQueue = 3200;
     ASSERT_TRUE(asset::SaveMaterialAssetToFile(material, existing));
 
@@ -425,7 +425,7 @@ TEST_F(FluidAssetWritersTest, MissingTextureFailsWithoutOverwritingExistingMater
     EXPECT_FALSE(created);
     EXPECT_NE(error.find("焼いたテクスチャがありません"), std::string::npos);
 
-    asset::MaterialAsset loaded;
+    asset::MaterialAssetAuthoring loaded;
     ASSERT_TRUE(asset::LoadMaterialAssetFromFile(material, loaded));
     EXPECT_EQ(loaded.renderQueue, 3200);
     EXPECT_TRUE(TextureCleared(loaded, "albedo"));

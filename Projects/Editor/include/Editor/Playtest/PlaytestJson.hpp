@@ -11,9 +11,10 @@
 
 namespace fbzz::editor::playtest {
 
-/// @brief ドット区切りのパス ("nodes.0.name") で値を引く。配列は 10 進の添字。
-/// @param path 空文字なら root そのもの。
-/// @return 途中で見つからなければ nullptr。
+/// @brief ドット区切り、または '/' 開始の JSON Pointer で値を引く。
+/// @param path 空文字なら root。JSON Pointer は ~0/~1 を復号し、配列添字の先頭ゼロを許さない。
+/// @return 未解決または不正な JSON Pointer なら nullptr。
+/// @see https://www.rfc-editor.org/rfc/rfc6901#section-4 RFC 6901 Section 4: Evaluation.
 [[nodiscard]] const ai::JsonValue* ResolveJsonPath(const ai::JsonValue& root, std::string_view path);
 
 /// @brief 実値と期待値を演算子で比べる。
@@ -25,4 +26,4 @@ namespace fbzz::editor::playtest {
 [[nodiscard]] bool EvaluateJsonCondition(const ai::JsonValue* actual, std::string_view op,
                                          const ai::JsonValue* expected, std::string& detail);
 
-} // namespace fbzz::editor::playtest
+} /// @note namespace fbzz::editor::playtest

@@ -15,8 +15,14 @@ test('Script queries require a lifetime handle and reject unknown fields', () =>
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.inspect', id }).success, false);
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.inspect', id, scriptId: '' }).success, false);
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.inspect', id, scriptId: 'entry/instance', index: 0 }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'script.inspect', id, scriptId: 'entry/instance', path: '/values', start: 50000, count: 128 }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'script.inspect', id, scriptId: 'entry/instance', observationId: '2', close: true }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'script.inspect', id, scriptId: 'entry/instance', start: -1 }).success, false);
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.catalog' }).success, true);
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.catalog', type: '' }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'script.api.catalog', type: 'Fbzz.Transform', member: 'TranslateWorld' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'script.api.catalog', type: '' }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'script.api.catalog', invoke: true }).success, false);
 });
 
 test('Read connections can inspect and catalog scripts without commands', async () => {
@@ -33,18 +39,26 @@ test('Read connections can inspect and catalog scripts without commands', async 
     await client.connect(clientTransport);
     try {
         const { tools } = await client.listTools();
-        for (const name of ['script_catalog', 'script_inspect']) {
+        for (const name of ['script_catalog', 'script_inspect', 'script_api_catalog']) {
             assert.equal(tools.find(tool => tool.name === name)?.annotations?.readOnlyHint, true);
         }
         const id = '11111111-1111-4111-8111-111111111111';
         const response = await client.callTool({ name: 'script_inspect', arguments: { id, scriptId: 'entry/instance' } });
         assert.notEqual(response.isError, true);
+        await client.callTool({ name: 'script_inspect', arguments: { id, scriptId: 'entry/instance', path: '/settings/list', start: 50000, count: 32, wireBytes: 4096 } });
+        await client.callTool({ name: 'script_inspect', arguments: { id, scriptId: 'entry/instance', observationId: '2', path: '/settings/list', start: 50032, count: 32 } });
+        await client.callTool({ name: 'script_inspect', arguments: { id, scriptId: 'entry/instance', observationId: '2', close: true } });
         await client.callTool({ name: 'script_catalog', arguments: { type: 'PlayerComponent' } });
         await client.callTool({ name: 'script_catalog', arguments: {} });
+        await client.callTool({ name: 'script_api_catalog', arguments: { type: 'Fbzz.Transform', member: 'TranslateWorld' } });
         assert.deepEqual(queries, [
             { t: 'script.inspect', id, scriptId: 'entry/instance' },
+            { t: 'script.inspect', id, scriptId: 'entry/instance', path: '/settings/list', start: 50000, count: 32, wireBytes: 4096 },
+            { t: 'script.inspect', id, scriptId: 'entry/instance', path: '/settings/list', start: 50032, count: 32, observationId: '2' },
+            { t: 'script.inspect', id, scriptId: 'entry/instance', observationId: '2', close: true },
             { t: 'script.catalog', type: 'PlayerComponent' },
             { t: 'script.catalog' },
+            { t: 'script.api.catalog', type: 'Fbzz.Transform', member: 'TranslateWorld' },
         ]);
     } finally {
         await client.close();

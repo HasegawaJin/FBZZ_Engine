@@ -5,6 +5,7 @@
 #pragma once
 
 #include <Editor/Panels/ViewportPanel.hpp>
+#include <Editor/Util/AssetDragPayload.hpp>
 #include "../../Tools/TerrainTool.hpp"
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -52,7 +53,10 @@ math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin
 /// @return カメラ背面なら false。out は未変更。
 bool WorldToScreen(const math::Vector3& world, const EditorContext& ctx,
                    const ImVec2& vpMin, const ImVec2& vpSize, ImVec2& out);
-bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath);
+/// @note 行列は呼び出し元の一括処理の開始時に取得し、カメラ変更後や別 viewport では再取得する。
+/// @return カメラ背面なら false。out は未変更。
+bool WorldToScreen(const math::Vector3& world, const math::Matrix4& viewProjection,
+                   const ImVec2& vpMin, const ImVec2& vpSize, ImVec2& out);
 bool InstantiateAssetAtViewport(EditorContext& ctx, const std::string& assetPath, const ImVec2& viewportMin);
 bool PickEntity(EditorContext& ctx, const ImVec2& viewportMin);
 /// @brief 選択を変えずにカーソル下の GameObject を返す。
@@ -93,8 +97,8 @@ struct SceneIconInstance {
     scene::EntityID id;
     int    type      = 0;
     ImVec2 screenPos{};
-    float  scale     = 1.0f;  ///< 距離で縮めた倍率。当たり半径にも掛ける。
-    float  alpha     = 1.0f;  ///< 距離フェードと非アクティブ減衰を掛けた不透明度 [0,1]。
+    float  scale     = 1.0f;  /// @note 距離で縮めた倍率。当たり半径にも掛ける。
+    float  alpha     = 1.0f;  /// @note 距離フェードと非アクティブ減衰を掛けた不透明度 [0,1]。
     bool   active    = true;
 };
 
@@ -116,9 +120,15 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
 /// @note DrawOrientationGizmo より前に問い合わせるため、返る値は前フレームの状態。
 bool IsOrientationGizmoHovered();
 bool IsOrientationGizmoActive();
+/// @brief Scene Viewへ制御点の変換、編集開始、TargetPoint操作手順を重ねて描く。
+/// @param editable Scene Viewがauthoring操作を受け付ける状態か。
+/// @param blocked 別のOverlayまたはツールが同frameのmouse入力を所有しているか。
+/// @return Overlay上または操作中にmouseを取得しているときtrue。
+bool DrawControlPointOverlay(EditorContext& ctx, const ImVec2& viewportMin,
+                             const ImVec2& viewportSize, bool editable, bool blocked);
 void DrawGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize, int& lastOp, int& lastMode, bool& prevOver, bool& prevUsing);
 /// @brief 頂点スナップ (V ドラッグ) / 面スナップ (Ctrl+Shift ドラッグ)。
 /// @return スナップドラッグ中は true。呼び出し側はギズモ・ピッキング・矩形選択をスキップすること。
 bool HandleViewportSnapping(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize);
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

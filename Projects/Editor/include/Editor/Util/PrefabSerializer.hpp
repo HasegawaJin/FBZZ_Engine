@@ -22,6 +22,7 @@ namespace fbzz::editor {
 class PrefabSerializer {
 public:
     /// @note 出所リンクを含めず、内部参照をアセットのソース ID へ戻して保存する。
+    /// @return Water/SplineのPOINT_OBJECTSまたは明示Cloth接続が保存範囲外/欠損なら、ファイルを変更せずfalse。
     static bool SaveSelection(const scene::Scene& scene,
                               const std::vector<scene::EntityID>& selectedEntities,
                               const std::string& path);
@@ -44,25 +45,28 @@ public:
 
     /// @return 更新した他インスタンス数。差分採取または保存の失敗は -1。
     /// @note 保存前に差分を採り、未変更の古い値を個別変更として保護しない。
+    /// @note In preserve mode, instances with local topology changes are skipped until explicit structure review and Apply.
     static int ApplyAndPropagate(scene::Scene& scene, scene::EntityID rootEntity,
                                  const std::string& projectRoot = "",
                                  bool preserveOverrides = true);
 
     /// @return 失敗時は旧階層を維持し false。成功時は新ルートを outNewRoots へ返す。
-    /// @note 単一ルートの配置と親を保つ。keepOverrides が null なら個別変更を破棄する。構造差分の保持は未対応のため拒否する。
+    /// @note Null keepOverrides explicitly discards local changes; local topology changes in keepOverrides are refused without replacing objects.
     static bool Revert(scene::Scene& scene,
                        scene::EntityID rootEntity,
                        std::vector<scene::EntityID>& outNewRoots,
                        const std::string& projectRoot = "",
                        const PrefabOverrideSet* keepOverrides = nullptr);
 
-    /// @note 基準定義との差分が採れなければ、個別変更を捨てずに更新を拒否する。
+    /// @note Preserves property overrides; local additions, deletions or parent changes retain the old objects and baseline until explicit structure review and Apply.
+    /// @note Incoming template topology updates retain the existing safe replacement behavior when local topology matches the baseline.
     static bool RefreshInstanceKeepingOverrides(scene::Scene& scene,
                                                 scene::EntityID rootEntity,
                                                 std::vector<scene::EntityID>& outNewRoots,
                                                 const std::string& projectRoot);
 
     /// @return 更新に成功したインスタンス数。
+    /// @note Preserve mode skips locally changed topology; structural three-way merge is available through explicit Preview/Apply only.
     static int PropagateToInstances(scene::Scene& scene,
                                     const std::string& prefabAssetPath,
                                     scene::EntityID exceptRoot,

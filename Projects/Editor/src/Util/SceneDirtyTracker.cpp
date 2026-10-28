@@ -19,12 +19,17 @@ std::size_t HashScene(const scene::Scene& scene)
     return std::hash<std::string>{}(text);
 }
 
-} // namespace
+} /// @note namespace
 
 void SceneDirtyTracker::CaptureClean(const scene::Scene& scene)
 {
-    m_cleanHash = HashScene(scene);
-    m_hasCleanSnapshot = m_cleanHash != 0;
+    const std::size_t cleanHash = HashScene(scene);
+    if (cleanHash == 0) {
+        m_dirty = true;
+        return;
+    }
+    m_cleanHash = cleanHash;
+    m_hasCleanSnapshot = true;
     m_dirty = false;
 }
 
@@ -36,8 +41,7 @@ bool SceneDirtyTracker::Evaluate(const scene::Scene& scene)
     }
 
     const std::size_t currentHash = HashScene(scene);
-    if (currentHash != 0)
-        m_dirty = currentHash != m_cleanHash;
+    m_dirty = currentHash == 0 || currentHash != m_cleanHash;
     return m_dirty;
 }
 
@@ -53,4 +57,4 @@ void SceneDirtyTracker::Reset()
     m_dirty = false;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

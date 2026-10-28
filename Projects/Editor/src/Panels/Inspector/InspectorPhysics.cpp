@@ -11,11 +11,11 @@ namespace {
 
 /// @brief プリセット適用ボタン。共有アセットを使っていないコライダーの初期値決めに使う。
 /// @note physics::PhysicsMaterial のプリセット (Rubber / Ice / ...) は以前から定義されていたが
-///       Editor から選ぶ手段が無く、実質使われていなかった。
+/// @note Editor から選ぶ手段が無く、実質使われていなかった。
 void DrawPhysicsMaterialPresetMenu(physics::PhysicsMaterial& material)
 {
     /// @note 選択結果を保持しない「適用するだけ」のコンボ。適用後に値を手で触れるため、プリセット名を
-    ///       出すと実際の値と食い違ったまま表示が残る。適用の入口としてだけ機能させる。
+    /// @note 出すと実際の値と食い違ったまま表示が残る。適用の入口としてだけ機能させる。
     if (!ImGui::BeginCombo("Preset", "Apply preset..."))
         return;
     for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
@@ -27,7 +27,7 @@ void DrawPhysicsMaterialPresetMenu(physics::PhysicsMaterial& material)
     ImGui::EndCombo();
 }
 
-/// go は同じ GameObject の RigidBody を見て density の効き方を注記するために取る。
+/// @note go は同じ GameObject の RigidBody を見て density の効き方を注記するために取る。
 void DrawColliderCommon(scene::ColliderComponent& col, scene::GameObject& go,
                         const std::string& projectRoot)
 {
@@ -35,17 +35,17 @@ void DrawColliderCommon(scene::ColliderComponent& col, scene::GameObject& go,
     ImGui::Checkbox("Is Trigger", &col.isTrigger);
 
     /// @note 共有 .physmat スロット。割り当てるとインライン編集を閉じる。変更検知の戻り値は使わない。
-    ///       参照がある間はどのみち毎フレーム解決するため、解決口を 1 つに絞る。
+    /// @note 参照がある間はどのみち毎フレーム解決するため、解決口を 1 つに絞る。
     widgets::AssetPathField("Physics Material", col.physicsMaterialPath, ".physmat", projectRoot);
 
     const bool usesSharedAsset = !col.physicsMaterialPath.empty();
     if (usesSharedAsset) {
         /// @note 解決済みの実効値を読み取り専用で見せる。.physmat を開き直さずに実効物性を
-        ///       確認できるようにする。編集は共有アセット側で行う。
+        /// @note 確認できるようにする。編集は共有アセット側で行う。
         const bool resolved = col.ResolvePhysicsMaterial();
 
         /// @note 解決できなくても col.material には最後に解決できた値 (無ければ既定値) が残り続け、
-        ///       数値だけでは正常時と区別が付かないため、失敗を明示する。
+        /// @note 数値だけでは正常時と区別が付かないため、失敗を明示する。
         if (!resolved) {
             ImGui::TextColored({ 1.0f, 0.4f, 0.3f, 1.0f },
                                "参照を解決できません。下の値は最後に解決できた値です");
@@ -61,7 +61,7 @@ void DrawColliderCommon(scene::ColliderComponent& col, scene::GameObject& go,
             ImGui::TextDisabled("値の編集は .physmat 側で行う (参照している全コライダーへ反映)");
 
         /// @note Density は RigidBody の Mass Mode が From Density のときだけ質量へ効く。既定の
-        ///       Manual では density をいくら変えても何も起きないため、ここで断る。
+        /// @note Manual では density をいくら変えても何も起きないため、ここで断る。
         if (auto* rb = go.GetComponent<scene::RigidBodyComponent>();
             rb && rb->massMode != scene::MassMode::FromDensity) {
             ImGui::TextDisabled("Density は RigidBody の Mass Mode = From Density でのみ質量に反映されます");
@@ -98,7 +98,8 @@ void DrawSphereCollider(scene::SphereColliderComponent& col, scene::GameObject& 
     SyncColliderPreview(go, col);
 }
 
-void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
+template<typename ColliderT>
+void DrawAxialCollider(ColliderT& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col, go, projectRoot);
     ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
@@ -106,18 +107,20 @@ void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject
     SyncColliderPreview(go, col);
 }
 
+void DrawCapsuleCollider(scene::CapsuleColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
+{
+    DrawAxialCollider(col, go, projectRoot);
+}
+
 void DrawCylinderCollider(scene::CylinderColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
-    DrawColliderCommon(col, go, projectRoot);
-    ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
-    ImGui::DragFloat("Half Height", &col.halfHeight, 0.01f, 0.001f, 1000.0f);
-    SyncColliderPreview(go, col);
+    DrawAxialCollider(col, go, projectRoot);
 }
 
 void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col, go, projectRoot);
-    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
+    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
     if (ImGui::Button("Rebuild From Renderer")) {
@@ -146,7 +149,7 @@ void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject
 void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col, go, projectRoot);
-    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel", projectRoot);
+    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
     if (ImGui::Button("Rebuild From Renderer")) {
@@ -166,12 +169,12 @@ void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::Game
 
 /// @brief メッシュ系 Collider の Undo スナップショット型。
 /// @note runtime 所有物の unique_ptr<Collider> と ColliderHandle はコピー対象から外し、Undo 時に
-///       physics body を不必要に無効化しない。collider は geometry (meshPath/meshIndex/
-///       useTransformScale) が変わった場合のみリセットする。
+/// @note physics body を不必要に無効化しない。collider は geometry (meshPath/meshIndex/
+/// @note useTransformScale) が変わった場合のみリセットする。
 struct MeshColliderValue {
     physics::PhysicsMaterial material;
     /// @note 共有 .physmat の参照も Undo 対象に含める。参照だけ戻らないと
-    ///       「Undo したのに物性が元に戻らない」という原因が最も分かりにくい壊れ方をする。
+    /// @note 「Undo したのに物性が元に戻らない」という原因が最も分かりにくい壊れ方をする。
     std::string physicsMaterialPath;
     math::Vector3 center;
     std::string meshPath;
@@ -181,8 +184,8 @@ struct MeshColliderValue {
     bool enabled = true;
 
     /// @note Undo を積むべきかの判定に使う (ComponentSnapshotCompare が検出する)。参照欄をクリックして
-    ///       .physmat を見るだけでも ImGui の ActiveID が動き、それを編集とみなすと中身の変わらない
-    ///       履歴が残る。PhysicsMaterial は物理側の値型で operator== を持たないため、ここでメンバーごとに比較する。
+    /// @note .physmat を見るだけでも ImGui の ActiveID が動き、それを編集とみなすと中身の変わらない
+    /// @note 履歴が残る。PhysicsMaterial は物理側の値型で operator== を持たないため、ここでメンバーごとに比較する。
     bool operator==(const MeshColliderValue& o) const
     {
         return material.restitution     == o.material.restitution
@@ -190,7 +193,7 @@ struct MeshColliderValue {
             && material.dynamicFriction == o.material.dynamicFriction
             && material.density         == o.material.density
             /// @note 合成規則は現在 Inspector から編集できないが、.physmat の割り当てで
-            ///       差し替わる値なので比較に含めておく (将来 UI を出したときの取りこぼし防止)。
+            /// @note 差し替わる値なので比較に含めておく (将来 UI を出したときの取りこぼし防止)。
             && material.restitutionCombine == o.material.restitutionCombine
             && material.frictionCombine    == o.material.frictionCombine
             && physicsMaterialPath == o.physicsMaterialPath
@@ -209,7 +212,9 @@ MeshColliderValue CaptureMeshColliderValue(const scene::MeshColliderComponent& c
              c.isTrigger, c.useTransformScale, c.enabled };
 }
 
-void ApplyMeshColliderValue(scene::MeshColliderComponent& c, const MeshColliderValue& v)
+/// @note 物性・位置・有効状態だけの復元では runtime Collider の所有権を維持する。
+template<typename ColliderT>
+void ApplyMeshBasedColliderValue(ColliderT& c, const MeshColliderValue& v)
 {
     const bool geomChanged = c.meshPath != v.meshPath
         || c.meshIndex != v.meshIndex
@@ -225,6 +230,11 @@ void ApplyMeshColliderValue(scene::MeshColliderComponent& c, const MeshColliderV
     if (geomChanged) c.collider.reset();
 }
 
+void ApplyMeshColliderValue(scene::MeshColliderComponent& c, const MeshColliderValue& v)
+{
+    ApplyMeshBasedColliderValue(c, v);
+}
+
 MeshColliderValue CaptureConvexHullValue(const scene::ConvexHullColliderComponent& c)
 {
     return { c.material, c.physicsMaterialPath, c.center, c.meshPath, c.meshIndex,
@@ -233,11 +243,11 @@ MeshColliderValue CaptureConvexHullValue(const scene::ConvexHullColliderComponen
 
 /// @name Joint
 /// @note 種別で使うフィールドが入れ替わるので、欄そのものは Reflect() の FieldIf に任せ、ここは
-///       «Reflect() では表せないもの» だけを足す。相手を指し忘れた・相手に剛体が無い・距離を
-///       自動で採ったといった «張れているか» の状態はフィールド一覧には出ないが «垂れない» の原因になる。
+/// @note «Reflect() では表せないもの» だけを足す。相手を指し忘れた・相手に剛体が無い・距離を
+/// @note 自動で採ったといった «張れているか» の状態はフィールド一覧には出ないが «垂れない» の原因になる。
 
-/// Reflect() から欄を起こすリフレクタの下ごしらえ。参照スロットが GameObject 名を
-/// 出せるよう、Script の Inspector (InspectorCore) と同じ解決器を繋ぐ。
+/// @note Reflect() から欄を起こすリフレクタの下ごしらえ。参照スロットが GameObject 名を
+/// @note 出せるよう、Script の Inspector (InspectorCore) と同じ解決器を繋ぐ。
 void ConfigureJointRefReflector(ComponentImGuiReflector& reflector, EditorContext& ctx)
 {
     reflector.m_projectRoot = ctx.projectRoot;
@@ -277,7 +287,7 @@ void DrawJointStatus(const scene::JointComponent& joint, scene::GameObject& go, 
     }
 
     /// @note 張れていない理由を名指しする。Play 前は «まだ物理が回っていない» が普通なので、
-    ///       «設定が足りない» と区別できるようにしておく。
+    /// @note «設定が足りない» と区別できるようにしておく。
     const bool hasSelfBody = go.GetComponent<scene::RigidBodyComponent>() != nullptr;
     ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
     ImGui::TextUnformatted("Not connected");
@@ -318,21 +328,10 @@ void DrawJoint(scene::JointComponent& joint, scene::GameObject& go, EditorContex
 
 void ApplyConvexHullValue(scene::ConvexHullColliderComponent& c, const MeshColliderValue& v)
 {
-    const bool geomChanged = c.meshPath != v.meshPath
-        || c.meshIndex != v.meshIndex
-        || c.useTransformScale != v.useTransformScale;
-    c.material = v.material;
-    c.physicsMaterialPath = v.physicsMaterialPath;
-    c.center = v.center;
-    c.isTrigger = v.isTrigger;
-    c.enabled = v.enabled;
-    c.meshPath = v.meshPath;
-    c.meshIndex = v.meshIndex;
-    c.useTransformScale = v.useTransformScale;
-    if (geomChanged) c.collider.reset();
+    ApplyMeshBasedColliderValue(c, v);
 }
 
-} // namespace
+} /// @note namespace
 
 void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
@@ -397,7 +396,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             }
 
             /// @note 質量の決め方。From Density は「コライダー体積 × PhysicsMaterial.density」を
-            ///       PhysicsSystem が毎フレーム算出して上書きするため、ここでは手入力させない。
+            /// @note PhysicsSystem が毎フレーム算出して上書きするため、ここでは手入力させない。
             static constexpr const char* kMassModeLabels[] = { "Manual", "From Density" };
             int massModeIndex = static_cast<int>(rb.massMode);
             if (ImGui::Combo("Mass Mode", &massModeIndex, kMassModeLabels, 2))
@@ -446,7 +445,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             ImGui::DragFloat("Linear Drag", &body.m_linearDrag, 0.01f, 0.0f, 1000.0f);
             ImGui::DragFloat("Angular Drag", &body.m_angularDrag, 0.01f, 0.0f, 1000.0f);
             /// @note 流れ (Flow Field / 環境流) との結合係数。0 = 受けない (オプトイン)。
-            ///       正本はコンポーネント側で、PhysicsSystem が毎フレーム剛体へ押し込む。
+            /// @note 正本はコンポーネント側で、PhysicsSystem が毎フレーム剛体へ押し込む。
             widgets::RangeField("Flow Coupling", rb.flowCoupling, 0.0f, 20.0f, "%.2f",
                                 "流れに引きずられる強さ [1/s]。0 で風も水流も受けない");
             ImGui::Checkbox("Allow Sleeping", &body.m_allowSleeping);
@@ -465,7 +464,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
     DrawComponentSection<scene::VolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Volume",
         [](scene::VolumeComponent& volume, EditorContext&) {
             /// @note 列挙は廃止した Buoyancy (= 2) の枠を空けたままなので、整数をそのまま
-            ///       Combo の添字に使えない。並びと型を 1 対 1 の表で持つ。
+            /// @note Combo の添字に使えない。並びと型を 1 対 1 の表で持つ。
             static constexpr const char* kVolumeNames[] = {
                 "Gravity", "Vortex", "Explosion", "Time Dilation", "Magnetic"
             };
@@ -490,7 +489,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             ImGui::DragFloat("Inward", &volume.inwardStrength, 0.05f, 0.0f, 1000.0f);
             ImGui::DragFloat("Lift", &volume.liftStrength, 0.05f, 0.0f, 1000.0f);
             /// @note Drag は撤去した。どの VolumeType も読んでいなかった死んだノブで、
-            ///       流れの抵抗は Rigid Body の Flow Coupling が持つ。
+            /// @note 流れの抵抗は Rigid Body の Flow Coupling が持つ。
             ImGui::DragFloat("Explosion Impulse", &volume.explosionImpulse, 0.05f, 0.0f, 1000.0f);
             ImGui::DragFloat("Time Scale", &volume.timeScale, 0.01f, 0.0f, 10.0f);
             ImGui::DragFloat("Duration", &volume.duration, 0.05f, -1.0f, 1000.0f);
@@ -525,4 +524,4 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 }
 
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

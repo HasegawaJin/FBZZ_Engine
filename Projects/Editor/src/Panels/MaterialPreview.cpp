@@ -4,6 +4,7 @@
 /// @date    2026-08-19
 #include <Editor/Panels/MaterialPreview.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -22,6 +23,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <system_error>
+#include <tuple>
 
 namespace fbzz::editor {
 
@@ -50,6 +52,45 @@ TextureFileRevision ReadTextureFileRevision(const std::string& path)
         util::FileSystem::PathFromUtf8(sourcePath), error);
     if (error) return {};
     return { true, static_cast<std::int64_t>(writeTime.time_since_epoch().count()) };
+}
+
+mp::PreviewResourceKey ReadPreviewResourceKey(const EditorContext& ctx)
+{
+    mp::PreviewResourceKey key;
+    if (ctx.resources) {
+        const auto lifetime = mp::PreviewResourceLifetime::Read(*ctx.resources);
+        key.instanceId = lifetime.instanceId;
+        key.resetVersion = lifetime.resetVersion;
+        key.shaderVersion = ctx.resources->GetShaderVersion();
+    }
+    key.assetGeneration = asset::AssetManager::GetAssetGeneration();
+    key.projectRoot = ctx.projectRoot;
+    return key;
+}
+
+mp::PreviewGpuKey ReadPreviewGpuKey(const asset::MaterialAssetAuthoring& material,
+                                   renderer::ResourceManager& resources,
+                                   const mp::PreviewResourceKey& resourceKey)
+{
+    mp::PreviewGpuKey key;
+    key.resources = resourceKey;
+    key.textures.reserve(material.textures.size() * 2);
+    for (const auto& textureBinding : material.textures) {
+        const auto& path = textureBinding.second;
+        if (path.empty()) continue;
+        const std::string loadPath = mp::TextureLoadPath(path, resourceKey.projectRoot);
+        /// @note 法線の raw RGB と G 反転版は独立した GPU キャッシュを持つ。
+        for (bool flipGreen : { false, true }) {
+            const auto handle = resources.FindCachedTexture(loadPath, flipGreen);
+            const auto* texture = resources.Get(handle);
+            key.textures.push_back({ handle, texture, texture ? texture->GetContentVersion() : 0 });
+        }
+    }
+    /// @note unordered_map の再配置だけでは未変更の材質を再描画しない。
+    std::sort(key.textures.begin(), key.textures.end(), [](const auto& a, const auto& b) {
+        return std::tie(a.handle.id, a.handle.gen) < std::tie(b.handle.id, b.handle.gen);
+    });
+    return key;
 }
 
 ImTextureID ToImTextureID(void* ptr)
@@ -90,6 +131,18 @@ const char* BackgroundLabel(MaterialPreviewBackground background)
         case MaterialPreviewBackground::Grid:    return "Grid";
         case MaterialPreviewBackground::Gradient:
         default:                                 return "Gradient";
+    }
+}
+
+const char* LockedShapeLabel(mp::Flavor flavor)
+{
+    switch (flavor) {
+        case mp::Flavor::Ui:          return "Rect";
+        case mp::Flavor::Particle:    return "Billboard";
+        case mp::Flavor::Trail:       return "Ribbon";
+        case mp::Flavor::Decal:       return "Projected";
+        case mp::Flavor::PostProcess: return "Fullscreen";
+        default:                      return "Plane";
     }
 }
 
@@ -170,6 +223,36 @@ void MaterialPreviewView::ResetView()
     m_channel = mp::Channel::Shaded;
 }
 
+void MaterialPreviewView::SynchronizeResources(EditorContext& ctx)
+{
+    const auto key = ReadPreviewResourceKey(ctx);
+    const bool managerChanged = key.Lifetime() != m_resourceKey.Lifetime();
+    const bool projectChanged = key.projectRoot != m_resourceKey.projectRoot;
+    const bool shaderChanged = key.shaderVersion != m_resourceKey.shaderVersion;
+    if (managerChanged || projectChanged || shaderChanged) {
+        /// @note 旧 Manager / Reset 前のハンドルを新しい資源プールへ返さない。
+        InvalidateGpu(managerChanged ? nullptr : ctx.resources);
+        if (managerChanged) m_renderTarget = {};
+    }
+    if (managerChanged || projectChanged || key.assetGeneration != m_resourceKey.assetGeneration) {
+        m_fallbackTexture = {};
+        m_fallbackTexturePath.clear();
+        m_fallbackTextureResolved = false;
+        m_normalMapTexture = {};
+        m_normalMapTexturePath.clear();
+        m_normalMapTextureResolved = false;
+        m_normalMapNextFileCheck = 0.0;
+    }
+    m_resourceKey = key;
+}
+
+void MaterialPreviewView::InvalidateGpu(renderer::ResourceManager* resources)
+{
+    mp::ResetGpuData(m_gpu, resources);
+    m_gpuCache.Invalidate();
+    m_frameCache.Invalidate();
+}
+
 void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
 {
     (void)ctx;
@@ -180,12 +263,7 @@ void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
     const bool shapeLocked = flavor == mp::Flavor::Terrain ||
                              flavor == mp::Flavor::Water ||
                              mp::UsesOwnGeometry(flavor);
-    const char* lockedLabel =
-        flavor == mp::Flavor::Ui          ? "Rect"     :
-        flavor == mp::Flavor::Particle    ? "Billboard":
-        flavor == mp::Flavor::Trail       ? "Ribbon"   :
-        flavor == mp::Flavor::Decal       ? "Projected":
-        flavor == mp::Flavor::PostProcess ? "Fullscreen" : "Plane";
+    const char* lockedLabel = LockedShapeLabel(flavor);
 
     ImGui::BeginDisabled(shapeLocked);
     ImGui::SetNextItemWidth(half);
@@ -284,7 +362,7 @@ void MaterialPreviewView::DrawBackground(ImVec2 origin, float size, bool hovered
 }
 
 void MaterialPreviewView::DrawNormalMap(EditorContext& ctx,
-                                        const asset::MaterialAsset& material)
+                                        const asset::MaterialAssetAuthoring& material)
 {
     const auto texturePaths = asset::ResolveMaterialTexturePaths(material);
     const std::string& texturePath = texturePaths[1];
@@ -319,12 +397,6 @@ void MaterialPreviewView::DrawNormalMap(EditorContext& ctx,
             m_normalMapTextureResolved = false;
         }
         m_normalMapNextFileCheck = now + kNormalMapRetryInterval;
-    }
-
-    if (ctx.resources && m_normalMapResourceResetVersion != ctx.resources->GetResetVersion()) {
-        m_normalMapTexture = {};
-        m_normalMapTextureResolved = false;
-        m_normalMapResourceResetVersion = ctx.resources->GetResetVersion();
     }
 
     ImGui::Spacing();
@@ -369,7 +441,7 @@ void MaterialPreviewView::DrawNormalMap(EditorContext& ctx,
 }
 
 void MaterialPreviewView::DrawUnsupported(EditorContext& ctx,
-                                          const asset::MaterialAsset& material,
+                                          const asset::MaterialAssetAuthoring& material,
                                           ImVec2 origin,
                                           float size)
 {
@@ -417,44 +489,78 @@ void MaterialPreviewView::DrawUnsupported(EditorContext& ctx,
     DrawBadge(drawList, origin, size, badge);
 }
 
-bool MaterialPreviewView::RenderFrame(EditorContext& ctx,
-                                      const asset::MaterialAsset& material,
-                                      mp::Flavor flavor)
+bool MaterialPreviewView::EnsurePreviewFrame(EditorContext& ctx,
+                                             const asset::MaterialAssetAuthoring& material,
+                                             mp::Flavor flavor)
 {
     if (!ctx.renderer || !ctx.resources) return false;
     auto& resources = *ctx.resources;
 
+    if (m_renderTarget.IsValid() && !resources.Get(m_renderTarget)) {
+        m_renderTarget = {};
+        m_frameCache.Invalidate();
+    }
     if (!m_renderTarget.IsValid())
         m_renderTarget = resources.CreateRenderTarget(kPreviewRtSize, kPreviewRtSize,
                                                       renderer::CameraDepthTargetDesc(1));
     if (!m_renderTarget.IsValid()) return false;
 
-    /// @note 未保存値を即時反映し、Shader と Texture は ResourceManager のキャッシュを使う。
-    if (!mp::BuildGpuData(m_gpu, material, resources, ctx.projectRoot)) return false;
+    if ((m_gpu.shader.IsValid() && !resources.Get(m_gpu.shader))
+        || (m_gpu.materialCB.IsValid() && !resources.Get(m_gpu.materialCB))) {
+        InvalidateGpu(&resources);
+    }
+    const auto gpuKey = ReadPreviewGpuKey(material, resources, m_resourceKey);
+    if (!m_gpuCache.IsCurrent(gpuKey) || !mp::MaterialPreviewValuesEqual(m_sourceMaterial, material)) {
+        m_frameCache.Invalidate();
+        if (!mp::BuildGpuData(m_gpu, material, resources, ctx.projectRoot)) {
+            m_gpuCache.Invalidate();
+            return false;
+        }
+        m_sourceMaterial = material;
+        /// @note BuildGpuData が初めてロードしたテクスチャも成功済み入力へ含める。
+        m_gpuCache.Commit(ReadPreviewGpuKey(material, resources, m_resourceKey));
+        ++m_sourceRevision;
+    }
 
     mp::RenderDesc desc;
     desc.target   = m_renderTarget;
     desc.flavor   = flavor;
-    desc.material = &material;
+    desc.material = std::make_shared<const asset::MaterialAssetAuthoring>(material);
     desc.gpu      = &m_gpu;
     desc.channel  = m_channel;
     desc.rig      = m_rig;
     desc.orbit    = m_orbit;
-    desc.time     = m_animateWater ? static_cast<float>(ImGui::GetTime()) : 0.0f;
     desc.fiberMode       = m_fiberMode;
     desc.fiberShellCount = m_fiberShellCount;
     desc.fiberWind       = m_fiberWind;
-    desc.mesh     = mp::ShapeMesh(resources, m_shape, flavor);
-    if (!desc.mesh && !mp::UsesOwnGeometry(flavor)) return false;
+    const auto frameKey = mp::MakePreviewFrameKey(m_sourceRevision, desc, m_shape, m_animateWater);
+    if (!mp::UsesPreviewTime(flavor, m_animateWater) && m_frameCache.IsCurrent(frameKey))
+        return true;
+
+    m_frameCache.Invalidate();
+    if (!RenderFrame(ctx, desc)) return false;
+    /// @note Terrain の層画像など Render が初めてロードする依存も記録する。
+    m_gpuCache.Commit(ReadPreviewGpuKey(material, resources, m_resourceKey));
+    m_frameCache.Commit(frameKey);
+    return true;
+}
+
+bool MaterialPreviewView::RenderFrame(EditorContext& ctx, mp::RenderDesc desc)
+{
+    auto& resources = *ctx.resources;
+    desc.time = m_animateWater ? static_cast<float>(ImGui::GetTime()) : 0.0f;
+    desc.mesh = mp::ShapeMesh(resources, m_shape, desc.flavor);
+    if (!desc.mesh && !mp::UsesOwnGeometry(desc.flavor)) return false;
 
     return mp::Render(*ctx.renderer, resources, desc);
 }
 
 bool MaterialPreviewView::Draw(EditorContext& ctx,
-                               const asset::MaterialAsset& material,
+                               asset::MaterialAssetAuthoring material,
                                float previewHeight)
 {
     ImGui::PushID(this);
+    SynchronizeResources(ctx);
 
     const mp::Flavor flavor = mp::DetectFlavor(material);
     DrawToolbar(ctx, flavor);
@@ -496,7 +602,7 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
         return true;
     }
 
-    const bool rendered = RenderFrame(ctx, material, flavor);
+    const bool rendered = EnsurePreviewFrame(ctx, material, flavor);
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     void* rawId = (rendered && ctx.imguiRenderer && ctx.resources)
         ? ctx.imguiRenderer->GetImTextureID(m_renderTarget, *ctx.resources, 0)
@@ -504,6 +610,7 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     if (rawId) {
         drawList->AddImage(ToImTextureID(rawId), origin, { origin.x + size, origin.y + size });
     } else {
+        m_frameCache.Invalidate();
         /// @note 描画失敗時も代表表示で素材種別を示す。
         DrawUnsupported(ctx, material, origin, size);
     }

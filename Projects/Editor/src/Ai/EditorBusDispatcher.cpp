@@ -5,11 +5,13 @@
 #include <Editor/Ai/EditorBusDispatcher.hpp>
 
 #include "Bus/BusInternal.hpp"
+#include "Bus/Reliability.hpp"
 
 #include <Editor/Ai/EditorBusProtocol.hpp>
 #include <Editor/Ai/Json.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/PlayModeController.hpp>
 
 #include <memory>
 #include <optional>
@@ -29,6 +31,7 @@ using bus::Outcome;
 Outcome DoTransaction(BusCall& call)
 {
     editor::EditorContext& ctx = call.ctx;
+    if (ctx.playMode && !ctx.playMode->IsInEditor()) return Outcome::Err("PLAY_MUTATION_UNSUPPORTED", "Play temporary managed settings use one checked Configure batch, not a legacy editor transaction.");
     if (ctx.undoStack == nullptr) return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
     const std::string label = bus::StringField(call.payload, "label");
     const JsonValue* cmds = call.payload.Find("cmds");
@@ -50,18 +53,21 @@ Outcome DoTransaction(BusCall& call)
         Outcome subErr;
         std::unique_ptr<ICommand> subCommand = entry->builder(ctx, subType, sub, subErr, nullptr, nullptr);
         if (subCommand == nullptr) return subErr;
+        if (!subCommand->SupportsLegacyComposition()) return Outcome::Err("UNSUPPORTED", "Checked settings transactions require one shared batch and cannot be grouped here: " + subType);
         composite->Add(std::move(subCommand));
     }
     if (call.dryRun) {
         JsonValue result = JsonValue::MakeObject();
         result.Set("dryRun", JsonValue(true));
         result.Set("would", JsonValue("editor.transaction"));
+        result.Set("atomic", JsonValue(false));
         result.Set("count", JsonValue(static_cast<int>(cmds->AsArray().size())));
         return Outcome::Ok(std::move(result));
     }
-    ctx.undoStack->Execute(std::move(composite));
+    if (!ctx.undoStack->Execute(std::move(composite))) return Outcome::Err("TRANSACTION_FAILED", ctx.undoStack->LastDiagnostic());
     JsonValue result = JsonValue::MakeObject();
     result.Set("committed", JsonValue(label));
+    result.Set("atomic", JsonValue(false));
     result.Set("count", JsonValue(static_cast<int>(cmds->AsArray().size())));
     return Outcome::Ok(std::move(result));
 }
@@ -85,6 +91,7 @@ Outcome DoBusList(BusCall& call)
 /// @brief BUILDER の型を組み立て、dryRun なら予告だけ返し、そうでなければ UndoStack へ積む。
 Outcome RunBuilder(BusCall& call, const BusHandlerEntry& entry)
 {
+    if (call.ctx.playMode && !call.ctx.playMode->IsInEditor()) return Outcome::Err("PLAY_MUTATION_UNSUPPORTED", "Stop Play before applying native editor mutations; temporary managed settings use Configure.");
     auto createdSink = entry.returnsCreatedId ? std::make_shared<std::string>() : nullptr;
     JsonValue detail = JsonValue::MakeObject();
     Outcome err;
@@ -97,7 +104,7 @@ Outcome RunBuilder(BusCall& call, const BusHandlerEntry& entry)
         return preview;
     }
     if (call.ctx.undoStack == nullptr) return Outcome::Err("NO_UNDOSTACK", "UndoStack が未設定です");
-    call.ctx.undoStack->Execute(std::move(command));
+    if (!call.ctx.undoStack->Execute(std::move(command))) return Outcome::Err("COMMAND_FAILED", call.ctx.undoStack->LastDiagnostic());
     JsonValue result = JsonValue::MakeObject();
     result.Set("applied", JsonValue(true));
     result.Set("t", JsonValue(call.type));
@@ -106,7 +113,7 @@ Outcome RunBuilder(BusCall& call, const BusHandlerEntry& entry)
     return Outcome::Ok(std::move(result));
 }
 
-} /// namespace
+} /// @note namespace
 
 EditorBusDispatcher::EditorBusDispatcher(editor::EditorContext& context)
     : m_context(context)
@@ -125,6 +132,10 @@ EditorBusDispatcher::EditorBusDispatcher(editor::EditorContext& context)
     bus::RegisterPlaytestHandlers(*m_table);
     m_table->AddCommand("editor.transaction", DoTransaction);
     m_table->AddQuery("editor.bus.list", DoBusList);
+    m_table->AddQuery("editor.observation", bus::reliability::Observe);
+    m_table->AddCommand("editor.checked", bus::reliability::Checked);
+    m_table->AddCommand("editor.rollback", bus::reliability::Rollback);
+    m_table->AddCommand("editor.finalize", bus::reliability::Finalize);
 }
 
 EditorBusDispatcher::~EditorBusDispatcher() = default;
@@ -137,14 +148,6 @@ void EditorBusDispatcher::SetSceneViewportRT(renderer::ResourceHandle<renderer::
 void EditorBusDispatcher::SetGameViewportRT(renderer::ResourceHandle<renderer::RenderTargetTag> rt)
 {
     m_state->gameViewportRT = rt;
-}
-
-std::vector<std::string> EditorBusDispatcher::RegisteredTypes() const
-{
-    std::vector<std::string> types;
-    types.reserve(m_table->Entries().size());
-    for (const BusHandlerEntry& entry : m_table->Entries()) types.push_back(entry.type);
-    return types;
 }
 
 std::string EditorBusDispatcher::Handle(const std::string& requestLine)
@@ -188,4 +191,4 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
     return SerializeJson(MakeErrorResponse(request->id, outcome.code, outcome.message));
 }
 
-} /// namespace fbzz::editor::ai
+} /// @note namespace fbzz::editor::ai

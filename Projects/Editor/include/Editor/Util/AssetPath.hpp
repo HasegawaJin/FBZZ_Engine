@@ -4,10 +4,20 @@
 /// @date    2026-06-07
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
 namespace fbzz::editor {
+
+/// @note 空名と . / .. は Material_ に fallbackIndex を付けた名前へ置換し、ドットは保持する。
+[[nodiscard]] std::string SanitizeMaterialFileName(std::string name, uint32_t fallbackIndex);
+
+/// @note 空名は Prefab にし、空白は保持する。Prefab と VFX の保存名に使う。
+[[nodiscard]] std::string SanitizePrefabFileName(const std::string& name);
+
+/// @note GetDirectory の末尾区切りを除き、長さ 1 のルートは保持する。
+[[nodiscard]] std::string AssetDirectory(const std::string& path);
 
 /// @brief OS 絶対パス / バックスラッシュ混在パスを Assets 起点の保存用パスへ寄せる。
 /// @note AssetBrowser は絶対パスを持ち、Scene / Component / .mat は Assets 起点パスを保存する。

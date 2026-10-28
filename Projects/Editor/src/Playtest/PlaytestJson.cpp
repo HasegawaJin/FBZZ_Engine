@@ -4,6 +4,7 @@
 /// @date    2026-09-17
 #include <Editor/Playtest/PlaytestJson.hpp>
 
+#include <charconv>
 #include <cmath>
 #include <cstddef>
 
@@ -23,6 +24,51 @@ bool ParseIndex(std::string_view text, std::size_t& out)
     }
     out = value;
     return true;
+}
+
+/// @note 復号は単回走査とし、~01 を / へ二重復号しない。
+/// @see https://www.rfc-editor.org/rfc/rfc6901#section-4 RFC 6901 Section 4: Evaluation.
+bool DecodePointerToken(std::string_view token, std::string& decoded)
+{
+    decoded.clear();
+    decoded.reserve(token.size());
+    for (std::size_t index = 0; index < token.size(); ++index) {
+        const char character = token[index];
+        if (character != '~') {
+            decoded.push_back(character);
+            continue;
+        }
+        if (++index == token.size() || (token[index] != '0' && token[index] != '1')) return false;
+        decoded.push_back(token[index] == '0' ? '~' : '/');
+    }
+    return true;
+}
+
+/// @note '/' 開始だけを JSON Pointer とし、ドット付きの literal key と空 key を保持する。
+/// @see https://www.rfc-editor.org/rfc/rfc6901#section-4 RFC 6901 Section 4: Evaluation.
+const JsonValue* ResolveJsonPointer(const JsonValue& root, std::string_view path)
+{
+    const JsonValue* current = &root;
+    std::string token;
+    std::size_t start = 1;
+    while (current != nullptr) {
+        const std::size_t slash = path.find('/', start);
+        if (!DecodePointerToken(path.substr(start, slash == std::string_view::npos ? slash : slash - start), token)) return nullptr;
+        if (current->IsArray()) {
+            if (token.empty() || (token.size() > 1 && token.front() == '0')) return nullptr;
+            std::size_t index = 0;
+            const auto [end, error] = std::from_chars(token.data(), token.data() + token.size(), index);
+            if (error != std::errc{} || end != token.data() + token.size() || index >= current->AsArray().size()) return nullptr;
+            current = &current->AsArray()[index];
+        } else if (current->IsObject()) {
+            current = current->Find(token);
+        } else {
+            return nullptr;
+        }
+        if (slash == std::string_view::npos) return current;
+        start = slash + 1;
+    }
+    return nullptr;
 }
 
 /// @note 数値は 1e-6 の相対誤差まで等しいとみなす。バスの応答は double を文字列経由で往復するため厳密一致では揺れる。
@@ -59,10 +105,11 @@ bool LengthOf(const JsonValue& value, double& out)
     return false;
 }
 
-} // namespace
+} /// @note namespace
 
 const JsonValue* ResolveJsonPath(const JsonValue& root, std::string_view path)
 {
+    if (!path.empty() && path.front() == '/') return ResolveJsonPointer(root, path);
     const JsonValue* current = &root;
     std::size_t start = 0;
     while (current != nullptr && start <= path.size()) {
@@ -130,4 +177,4 @@ bool EvaluateJsonCondition(const JsonValue* actual, std::string_view op, const J
     return fail("未知の演算子: " + std::string(op));
 }
 
-} // namespace fbzz::editor::playtest
+} /// @note namespace fbzz::editor::playtest

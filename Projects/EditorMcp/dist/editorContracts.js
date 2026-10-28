@@ -9,6 +9,17 @@ export const EDITOR_PROTOCOL = 'fbzz.editor.v1';
 /// @note NodeId は Scene の UUID v4 を使い、配列移動や世代更新を越えて安定させる。
 export const NodeIdSchema = z.string().uuid();
 export const Vec3Schema = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
+/// @note 配布開始・事前確認は共通Build Opへ投影し、出力先のディスク検証はEditorで行う。
+export const PackageBuildOptionsSchema = z.object({
+    outputDirectory: z.string().optional(),
+    productName: z.string().optional(),
+    version: z.string().optional(),
+    iconPath: z.string().optional(),
+    developmentBuild: z.boolean().optional(),
+    stripEditorAssets: z.boolean().optional(),
+    scenes: z.array(z.object({ path: z.string().min(1), enabled: z.boolean().optional() }).strict()).optional(),
+    runAfterBuild: z.boolean().optional(),
+}).strict();
 /// @note 地形ブラシの op。並びは C++ の TerrainSculptOp と同じ (追加は末尾)。
 export const TerrainSculptOpSchema = z.enum([
     'raise', 'lower', 'smooth', 'flatten', 'stamp', 'noise', 'thermalErosion', 'hydraulicErosion', 'terrace',
@@ -90,6 +101,7 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
         components: z.array(z.string().min(1).max(128)).min(1).max(32).optional(),
         properties: z.array(ScenePropertyFilterSchema).min(1).max(32).optional(),
         limit: z.number().int().min(1).max(500).optional(),
+        offset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
     })
         .strict()
         .refine((value) => value.name !== undefined || value.tag !== undefined || value.active !== undefined
@@ -98,8 +110,13 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
     }),
     z.object({ t: z.literal('scene.selection') }).strict(),
     z.object({ t: z.literal('node.components'), id: NodeIdSchema }).strict(),
-    z.object({ t: z.literal('script.inspect'), id: NodeIdSchema, scriptId: z.string().min(1).max(128) }).strict(),
+    z.object({ t: z.literal('script.inspect'), id: NodeIdSchema, scriptId: z.string().min(1).max(128),
+        path: z.string().optional(), start: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+        count: z.number().int().min(1).max(2147483647).optional(), wireBytes: z.number().int().min(2048).max(2147483647).optional(),
+        observationId: z.string().regex(/^[1-9][0-9]*$/).optional(), close: z.boolean().optional(),
+    }).strict(),
     z.object({ t: z.literal('script.catalog'), type: z.string().min(1).max(128).optional() }).strict(),
+    z.object({ t: z.literal('script.api.catalog'), type: z.string().min(1).max(256).optional(), member: z.string().min(1).max(128).optional() }).strict(),
     z.object({ t: z.literal('asset.list'), dir: z.string().min(1).optional() }).strict(),
     z.object({ t: z.literal('asset.inspect'), path: z.string().min(1) }).strict(),
     z.object({ t: z.literal('asset.findUnused'), limit: z.number().int().min(1).max(500).optional() }).strict(),
@@ -186,7 +203,7 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
     z.object({ t: z.literal('environment.inspect') }).strict(),
     z.object({ t: z.literal('audio.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({ t: z.literal('ui.inspect'), id: NodeIdSchema.optional() }).strict(),
-    z.object({ t: z.literal('build.status'), limit: z.number().int().min(1).max(20).optional() }).strict(),
+    z.object({ t: z.literal('build.status'), limit: z.number().int().min(1).max(20).optional(), managedRequestId: z.string().regex(/^managed:[1-9][0-9]{0,19}$/).optional(), packageRequestId: z.string().regex(/^package:[1-9][0-9]{0,19}$/).optional() }).strict(),
     z.object({ t: z.literal('fluid.schema') }).strict(),
     z.object({ t: z.literal('fluid.get'), path: FluidPathSchema }).strict(),
     z.object({ t: z.literal('fluid.jobStatus'), job: FluidJobIdSchema, includeImage: z.boolean().optional() }).strict(),
@@ -634,7 +651,8 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         id: NodeIdSchema,
         action: z.enum(['play', 'stop', 'pause', 'resume']),
     }).strict(),
-    z.object({ t: z.literal('build.run'), target: z.literal('script').optional() }).strict(),
+    z.object({ t: z.literal('build.run'), target: z.enum(['managed', 'package']).optional(), package: PackageBuildOptionsSchema.optional() }).strict()
+        .refine(value => value.package === undefined || value.target === 'package', { message: 'package settings require target=package' }),
     z.object({
         t: z.literal('fluid.create'),
         path: FluidPathSchema,

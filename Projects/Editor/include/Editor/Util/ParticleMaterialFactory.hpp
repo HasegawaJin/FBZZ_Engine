@@ -9,6 +9,7 @@
 #pragma once
 
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <memory>
 #include <string>
 
 namespace fbzz::editor {
@@ -33,9 +34,8 @@ namespace fbzz::editor {
 /// materialPath が指す .mat の [particle]。未設定・ロード失敗なら nullptr。
 /// @note 見た目が .mat へ移ったため、GPU 可否や有効な機能を答えるには素材まで読む必要が
 ///       ある。Inspector / VFX グラフ / AI バスがそれぞれ解決を書くと答えが食い違う。
-/// @note 戻り値は AssetManager のキャッシュを指す。次のロードまでの寿命しか無いので、
-///       その場で読むだけにして保持しないこと。
-[[nodiscard]] const asset::ParticleMaterialSettings* ResolveParticleMaterialSettings(
+/// @note Immutable asset snapshot を所有する aliasing shared_ptr により、reload/native callbacks を越えて値を維持する。
+[[nodiscard]] std::shared_ptr<const asset::ParticleMaterialSettings> ResolveParticleMaterialSettings(
     const std::string& materialPath);
 
 /// Particle / Trail の Material 欄。 `.mat` に加えてテクスチャの D&D・ピッカー選択も受け付け、

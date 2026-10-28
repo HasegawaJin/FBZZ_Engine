@@ -8,21 +8,24 @@
 namespace fbzz::editor {
 
 std::vector<DirtyAsset> AssetDirtyRegistry::s_dirty;
+std::uint64_t AssetDirtyRegistry::s_discardEpoch = 0;
 
 void AssetDirtyRegistry::Register(const std::string& absPath,
                                    const std::string& displayPath,
                                    const std::string& typeLabel,
-                                   std::function<bool()> saveFunc)
+                                   std::function<bool()> saveFunc, std::any draft)
 {
     for (auto& entry : s_dirty) {
         if (entry.path == absPath) {
             /// @note saveFunc だけ更新 (最新の in-memory 状態をキャプチャしたクロージャで上書き)
             entry.saveFunc    = std::move(saveFunc);
             entry.displayPath = displayPath;
+            entry.typeLabel = typeLabel;
+            entry.draft = std::move(draft);
             return;
         }
     }
-    s_dirty.push_back({ absPath, displayPath, typeLabel, std::move(saveFunc) });
+    s_dirty.push_back({ absPath, displayPath, typeLabel, std::move(saveFunc), std::move(draft) });
 }
 
 void AssetDirtyRegistry::MarkClean(const std::string& absPath)
@@ -83,6 +86,12 @@ int AssetDirtyRegistry::SaveAll()
 void AssetDirtyRegistry::DiscardAll()
 {
     s_dirty.clear();
+    ++s_discardEpoch;
 }
 
-} // namespace fbzz::editor
+std::uint64_t AssetDirtyRegistry::DiscardEpoch()
+{
+    return s_discardEpoch;
+}
+
+} /// @note namespace fbzz::editor

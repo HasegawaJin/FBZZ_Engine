@@ -34,6 +34,7 @@ struct ImGuiReflector : scene::IReflector {
     bool BeginObservation(const char*, const char*) override { return FieldVisible(); }
     /// @note  GO 名解決コールバック。InspectorCore から activeScene を渡して設定する。
     std::function<std::string(scene::EntityID)> m_goNameResolver;
+    std::function<std::string(scene::EntityID)> m_goGuidResolver;
 
     /// @note  オブジェクトピッカー◎用の候補 (EntityID, 表示名) 一覧プロバイダ。InspectorCore から activeScene の全 GameObject を列挙して設定する。
     /// @note D&D だけだと Hierarchy が深い/多いシーンで参照アサインが辛いため、一覧から検索して選べる代替手段を提供する。
@@ -105,7 +106,7 @@ struct ImGuiReflector : scene::IReflector {
         if (std::strcmp(name, "fontPath") == 0)    return ".png,.fnt,.ttf,.ttc,.otf";
         if (std::strcmp(name, "materialPath") == 0) return ".mat";
         if (std::strcmp(name, "meshPath") == 0 || std::strcmp(name, "modelPath") == 0)
-            return ".fbx,.fzmodel";
+            return ".fbx,.fzmodel,.obj,.gltf,.glb";
         if (std::strcmp(name, "controllerPath") == 0) return ".animcontroller";
         if (std::strcmp(name, "clipPath") == 0) return widgets::kAudioClipAssetFilter;
         return nullptr;
@@ -384,14 +385,56 @@ struct ImGuiReflector : scene::IReflector {
         EndRow();
     }
 
+    void Field(const char* name, scene::EntityRef& value) override
+    {
+        RefField(name, value, "");
+    }
+
     /// @note  型付きオブジェクト参照 (FBZZ_REF)。typeName の Script かコンポーネントを持つ GO のみ受理する。
     void RefField(const char* name, scene::EntityRef& v, const char* typeName) override
     {
         if (!BeginRow(name)) return;
-        const scene::EntityID before = v.id;
-        DrawObjectRefSlot(v.id, typeName);
-        m_changed |= v.id != before;
+        scene::ObjectReference reference{v.guid, v.id, v.sceneGeneration};
+        if (reference.guid.empty() && reference.id.IsValid() && m_goGuidResolver)
+            reference.guid = m_goGuidResolver(reference.id);
+        m_changed |= DrawManagedObjectRefSlot(reference, typeName);
+        v.guid = std::move(reference.guid); v.id = reference.id; v.sceneGeneration = reference.sceneGeneration;
         EndRow();
+    }
+    void ObjectReferenceField(const char* name, scene::ScriptObjectReference& value) override
+    {
+        if (!BeginRow(name)) return;
+        m_changed |= DrawManagedObjectRefSlot(value, "");
+        EndRow();
+    }
+    void TypedObjectReferenceField(const char* name, scene::ObjectReference& value, const char* typeName) override
+    {
+        if (!BeginRow(name)) return;
+        m_changed |= DrawManagedObjectRefSlot(value, typeName);
+        EndRow();
+    }
+
+    bool DrawManagedObjectRefSlot(scene::ObjectReference& value, const char* typeName)
+    {
+        if (value.guid.empty()) {
+            value.id = scene::EntityID::INVALID;
+            value.sceneGeneration = 0;
+        }
+        const scene::EntityID before = value.id;
+        const std::string oldGuid = value.guid;
+        const uint64_t oldSceneGeneration = value.sceneGeneration;
+        if (!DrawObjectRefSlot(value.id, typeName, &value.guid)) return false;
+        if (value.id.IsValid()) {
+            if (!m_goGuidResolver) { value.id = before; value.guid = oldGuid; return false; }
+            const std::string guid = m_goGuidResolver(value.id);
+            if (guid.empty()) { value.id = before; value.guid = oldGuid; return false; }
+            value.guid = guid;
+            value.sceneGeneration = 0;
+        } else {
+            value.guid.clear();
+            value.sceneGeneration = 0;
+        }
+        return value.id != before || value.guid != oldGuid || value.sceneGeneration != oldSceneGeneration;
     }
 
     /// @note  オブジェクト参照スロット本体 (BeginRow 済みの値カラムに描く)。
@@ -399,9 +442,11 @@ struct ImGuiReflector : scene::IReflector {
     /// @note    typeName == ""  : 任意 GameObject 可
     /// @note    typeName != ""  : その Script 型 / コンポーネント型を持つ GO のみ受理
     /// @note                      (ドロップ検証 + ピッカー絞り込み + 不一致を赤表示)
-    void DrawObjectRefSlot(scene::EntityID& v, const char* typeName)
+    bool DrawObjectRefSlot(scene::EntityID& v, const char* typeName, const std::string* persistentGuid = nullptr)
     {
+        bool changed = false;
         const bool typed = typeName && typeName[0] != '\0';
+        const bool missing = persistentGuid && !persistentGuid->empty() && !v.IsValid();
 
         /// @note GO 名を解決して表示ラベルを作る
         std::string goName = "(None)";
@@ -409,6 +454,8 @@ struct ImGuiReflector : scene::IReflector {
             goName = m_goNameResolver(v);
         else if (v.IsValid())
             goName = "(ID:" + std::to_string(v.index) + ")";
+        else if (missing)
+            goName = "(Missing GameObject)";
 
         /// @note 現在の参照が型要件を満たすか (validator 未設定時はチェック不能なので OK 扱い)。
         const bool typeOk = !typed || !v.IsValid() || !m_refTypeValidator ||
@@ -417,7 +464,8 @@ struct ImGuiReflector : scene::IReflector {
         const ImGuiPayload* drag = ImGui::GetDragDropPayload();
         const bool droppable = drag && drag->IsDataType("FBZZ_HIERARCHY_ENTITY");
 
-        const auto state = !v.IsValid() ? widgets::ReferenceSlotState::Empty
+        const auto state = missing ? widgets::ReferenceSlotState::Invalid
+                         : !v.IsValid() ? widgets::ReferenceSlotState::Empty
                          : typeOk       ? widgets::ReferenceSlotState::Assigned
                                         : widgets::ReferenceSlotState::Invalid;
 
@@ -429,13 +477,17 @@ struct ImGuiReflector : scene::IReflector {
             if (auto* payload = ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY")) {
                 scene::EntityID dropped;
                 std::memcpy(&dropped, payload->Data, sizeof(dropped));
-                if (!typed || !m_refTypeValidator || m_refTypeValidator(dropped, typeName))
+                if (!typed || !m_refTypeValidator || m_refTypeValidator(dropped, typeName)) {
                     v = dropped;
+                    changed = true;
+                }
             }
             ImGui::EndDragDropTarget();
         }
         if (ImGui::IsItemHovered()) {
-            if (!typeOk)
+            if (missing)
+                ImGui::SetTooltip("Saved reference is missing. Choose a GameObject or clear this slot.");
+            else if (!typeOk)
                 ImGui::SetTooltip("Type mismatch\nThis slot needs a GameObject with \"%s\"", typeName);
             else if (typed)
                 ImGui::SetTooltip("Requires: %s\nDrag a GameObject from the Hierarchy", typeName);
@@ -444,7 +496,7 @@ struct ImGuiReflector : scene::IReflector {
         }
 
         const widgets::ReferenceSlotButtons buttons = widgets::EndReferenceSlot();
-        if (buttons.clear) v = scene::EntityID::INVALID;
+        if (buttons.clear) { v = scene::EntityID::INVALID; changed = true; }
         /// @note ◎ピッカー: ドロップせずとも一覧から検索して選べる D&D 代替。型付きなら候補も絞る。
         if (buttons.pick)  ImGui::OpenPopup("##gopick");
 
@@ -457,8 +509,10 @@ struct ImGuiReflector : scene::IReflector {
             ImGui::SetNextItemWidth(240.0f);
             ImGui::InputTextWithHint("##gofilter", "Search...", filter, sizeof(filter));
             ImGui::Separator();
-            if (ImGui::Selectable("(None)", !v.IsValid()))
+            if (ImGui::Selectable("(None)", !v.IsValid() && !missing)) {
                 v = scene::EntityID::INVALID;
+                changed = true;
+            }
 
             int shown = 0;
             if (m_goListProvider) {
@@ -469,8 +523,10 @@ struct ImGuiReflector : scene::IReflector {
                     if (typed && m_refTypeValidator && !m_refTypeValidator(id, typeName))
                         continue;
                     ImGui::PushID(static_cast<int>(id.index));
-                    if (ImGui::Selectable(nm.c_str(), id == v))
+                    if (ImGui::Selectable(nm.c_str(), id == v)) {
                         v = id;
+                        changed = true;
+                    }
                     ImGui::PopID();
                     ++shown;
                 }
@@ -480,6 +536,7 @@ struct ImGuiReflector : scene::IReflector {
                                                 : "No GameObject matches.");
             ImGui::EndPopup();
         }
+        return changed;
     }
 
     void Field(const char* name, scene::PrefabRef& v) override
@@ -802,9 +859,11 @@ struct ImGuiReflector : scene::IReflector {
     void ListField(const char* name, std::vector<scene::EntityRef>& values) override
     {
         DrawReorderableList(name, values, [this](scene::EntityRef& value) {
-            const scene::EntityID before = value.id;
-            DrawObjectRefSlot(value.id, "");
-            return value.id != before;
+            scene::ObjectReference reference{value.guid, value.id, value.sceneGeneration};
+            if (reference.guid.empty() && reference.id.IsValid() && m_goGuidResolver) reference.guid = m_goGuidResolver(reference.id);
+            const bool changed = DrawManagedObjectRefSlot(reference, "");
+            value.guid = std::move(reference.guid); value.id = reference.id; value.sceneGeneration = reference.sceneGeneration;
+            return changed;
         });
     }
     /// @note  型付き参照リスト。各スロットへ typeName を渡し、型不一致のドロップを拒否する。
@@ -813,9 +872,17 @@ struct ImGuiReflector : scene::IReflector {
                       const char* typeName) override
     {
         DrawReorderableList(name, values, [this, typeName](scene::EntityRef& value) {
-            const scene::EntityID before = value.id;
-            DrawObjectRefSlot(value.id, typeName ? typeName : "");
-            return value.id != before;
+            scene::ObjectReference reference{value.guid, value.id, value.sceneGeneration};
+            if (reference.guid.empty() && reference.id.IsValid() && m_goGuidResolver) reference.guid = m_goGuidResolver(reference.id);
+            const bool changed = DrawManagedObjectRefSlot(reference, typeName ? typeName : "");
+            value.guid = std::move(reference.guid); value.id = reference.id; value.sceneGeneration = reference.sceneGeneration;
+            return changed;
+        });
+    }
+    void ObjectReferenceListField(const char* name, std::vector<scene::ScriptObjectReference>& values) override
+    {
+        DrawReorderableList(name, values, [this](scene::ScriptObjectReference& value) {
+            return DrawManagedObjectRefSlot(value, "");
         });
     }
     void AssetListField(const char* name,

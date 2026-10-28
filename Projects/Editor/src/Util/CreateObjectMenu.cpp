@@ -8,6 +8,7 @@
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/ObjectCreation.hpp>
 #include <Editor/Util/ObjectPresets.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Util/ScriptObjectFactory.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -39,7 +40,7 @@ void DrawCreateMenuEntry(EditorContext& ctx, const char* label, const char* tool
                          const char* operatorId, OpArgs args, PendingObjectCreate& out)
 {
     const bool enabled = CanInvokeOperator(ctx, operatorId, args);
-    if (ImGui::MenuItem(label, nullptr, false, enabled)) {
+    if (ImGui::MenuItem(LOC(label), nullptr, false, enabled)) {
         out.operatorId  = operatorId;
         out.args        = std::move(args);
         out.beginRename = true;
@@ -71,7 +72,7 @@ void DrawCreateMenuPresets(EditorContext& ctx, const std::string& parentGuid, Pe
             closeCategory();
             openCategory = preset.category;
             categoryOpen = !preset.category.empty()
-                && ImGui::BeginMenu(std::string(preset.category).c_str());
+                && ImGui::BeginMenu(LOC(std::string(preset.category).c_str()));
         }
         if (!preset.category.empty() && !categoryOpen) continue;
 
@@ -85,7 +86,7 @@ void DrawCreateMenuPresets(EditorContext& ctx, const std::string& parentGuid, Pe
 
 void DrawCreateMenuPrefabs(EditorContext& ctx, const std::string& parentGuid, PendingObjectCreate& out)
 {
-    if (!ImGui::BeginMenu("Prefab")) return;
+    if (!ImGui::BeginMenu(LOC("Prefab"))) return;
 
     const std::string assetRoot = ctx.projectRoot.empty() ? "Assets" : ctx.projectRoot + "/Assets";
     bool anyFound = false;
@@ -104,25 +105,25 @@ void DrawCreateMenuPrefabs(EditorContext& ctx, const std::string& parentGuid, Pe
 
 void DrawCreateMenuScripts(EditorContext& ctx, const std::string& parentGuid, PendingObjectCreate& out)
 {
-    const bool open = ImGui::BeginMenu("Script Object");
+    const bool open = ImGui::BeginMenu(LOC("Script Object"));
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Create a GameObject with the script and every component\n"
-                          "it declares via FBZZ_REQUIRE_COMPONENT.");
+        ImGui::SetTooltip("%s", LOCT("Create a GameObject with a C# script and its required components."));
     }
     if (!open) return;
 
     const std::vector<std::string> types = ScriptObjectTypeNames();
-    /// @note DLL 未ロード・ビルド失敗中は空になる。理由を書かないとメニューが壊れて見える。
-    if (types.empty()) ImGui::TextDisabled("(No scripts registered - is the script DLL built?)");
+    /// @note C# 未ビルド・ビルド失敗中は空になるため理由を表示する。
+    if (types.empty()) ImGui::TextDisabled("%s", LOCT("No C# scripts are available in the current project."));
     for (const std::string& typeName : types) {
+        const std::string displayName = scene::ScriptFactory::DisplayName(typeName);
         OpArgs args = MakeCreateMenuArgs(parentGuid);
         args.Set("script", typeName);
-        DrawCreateMenuEntry(ctx, typeName.c_str(), nullptr, "node.create_script_object", std::move(args), out);
+        DrawCreateMenuEntry(ctx, displayName.c_str(), nullptr, "node.create_script_object", std::move(args), out);
     }
     ImGui::EndMenu();
 }
 
-} // namespace
+} /// @note namespace
 
 void DrawCreateObjectMenuItems(EditorContext& ctx, const std::string& parentGuid, PendingObjectCreate& out)
 {
@@ -155,7 +156,7 @@ void DrawCreateObjectMenu(EditorContext& ctx, PendingObjectCreate& out)
 
     if (parent != nullptr) {
         ImGui::Separator();
-        if (ImGui::BeginMenu("Create at Root")) {
+        if (ImGui::BeginMenu(LOC("Create at Root"))) {
             DrawCreateObjectMenuItems(ctx, {}, out);
             ImGui::EndMenu();
         }
@@ -200,4 +201,4 @@ OpResult InvokePendingObjectCreate(EditorContext& ctx, PendingObjectCreate& pend
     return result;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

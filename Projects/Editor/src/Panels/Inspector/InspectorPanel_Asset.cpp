@@ -5,6 +5,8 @@
 /// @brief Undo 記録可否の判定 (CanRecordEditorUndo) など、Inspector 共通ヘルパーを使う。
 #include <Engine/Asset/ShaderCapabilities.hpp>
 #include "InspectorCommon.hpp"
+#include "../../Util/MaterialAuthoringEditing.hpp"
+#include <optional>
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationMaskPreview.hpp>
@@ -33,6 +35,7 @@
 #include <Engine/Core/Application.hpp>
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Editor/Util/ManagedDataAssetEditor.hpp>
 #include <Engine/Asset/FzTerrainSerializer.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -96,6 +99,8 @@ struct FzDataUndoTracker {
 struct DataAssetInspectorState {
     std::unordered_map<std::string, PendingDataAssetSave> pending;
     std::unordered_set<std::string> saveFailures;
+    std::unordered_map<std::string, PendingDataAssetSave> pendingPhysics;
+    std::unordered_set<std::string> physicsFailures;
     FzDataUndoTracker undo;
     std::string projectRoot;
     bool projectInitialized = false;
@@ -143,6 +148,29 @@ bool SaveDataAsset(const std::string& path)
 {
     InspectorPanel::QueueDataAssetSave(path);
     return AssetDirtyRegistry::Save(asset::AssetManager::ResolveAssetPath(path));
+}
+
+void QueuePhysicsMaterialSave(const std::string& path,
+                              asset::AssetHandle<asset::PhysicsMaterialAsset> handle)
+{
+    const std::string absolute = asset::AssetManager::ResolveAssetPath(path);
+    auto& pending = DataAssetState().pendingPhysics[absolute];
+    pending.lastDrawFrame = DataAssetFrame();
+    pending.attempted = false;
+    AssetDirtyRegistry::Register(absolute, path, "PHYSMAT", [absolute, handle] {
+        auto& state = DataAssetState();
+        if (auto found = state.pendingPhysics.find(absolute); found != state.pendingPhysics.end())
+            found->second.attempted = true;
+        const auto* material = asset::AssetManager::Get<asset::PhysicsMaterialAsset>(handle);
+        if (!material || !asset::SavePhysicsMaterialAssetToFile(absolute, *material)) {
+            state.physicsFailures.insert(absolute);
+            return false;
+        }
+        state.pendingPhysics.erase(absolute);
+        state.physicsFailures.erase(absolute);
+        state.refreshRequested = true;
+        return true;
+    });
 }
 
 void PushDataAssetCommand(EditorContext& ctx, const std::string& path,
@@ -216,6 +244,18 @@ void InspectorPanel::FlushPendingDataAssetSaves(EditorContext& ctx)
             ready.push_back(it->first);
         ++it;
     }
+    for (auto it = state.pendingPhysics.begin(); it != state.pendingPhysics.end();) {
+        if (!AssetDirtyRegistry::IsDirty(it->first)) {
+            state.physicsFailures.erase(it->first);
+            (void)asset::AssetManager::ReloadPath(it->first);
+            it = state.pendingPhysics.erase(it);
+            continue;
+        }
+        if (!it->second.attempted
+            && (it->second.lastDrawFrame != frame || !GImGui || !ImGui::IsAnyItemActive()))
+            ready.push_back(it->first);
+        ++it;
+    }
     for (const auto& path : ready) (void)AssetDirtyRegistry::Save(path);
     if (state.refreshRequested) {
         ctx.requestAssetBrowserRefresh = true;
@@ -225,11 +265,13 @@ void InspectorPanel::FlushPendingDataAssetSaves(EditorContext& ctx)
 
 void InspectorPanel::ResetPendingDataAssetSaves()
 {
+    CloseManagedDataAssetEditorDocuments();
     DataAssetState() = {};
 }
 
 void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& assetPath)
 {
+    SynchronizeDataAssetProject(ctx);
     const std::string sourceExt =
         util::StringUtils::ToLower(util::FileSystem::GetExtension(assetPath));
     const bool isModelSource =
@@ -256,8 +298,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         util::StringUtils::ToLower(util::FileSystem::GetExtension(m_inspectedAssetPath)) == ".mat" &&
         AssetDirtyRegistry::IsDirty(m_inspectedAssetPath))
     {
-        auto* prevMat = asset::AssetManager::Get<asset::MaterialAsset>(m_inspectedMat);
-        if (prevMat && asset::SaveMaterialAssetToFile(m_inspectedAssetPath, *prevMat)) {
+        if (material_edit_detail::SaveAssetSnapshot(m_inspectedAssetPath, m_inspectedMat)) {
             AssetDirtyRegistry::MarkClean(m_inspectedAssetPath);
             ctx.requestAssetBrowserRefresh = true;
         }
@@ -279,23 +320,32 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             return;
         }
 
-        auto* matPtr = asset::AssetManager::Get<asset::MaterialAsset>(m_inspectedMat);
-        if (!matPtr) {
+        const auto materialHandle = m_inspectedMat;
+        auto materialEdit = material_edit_detail::BeginAssetEdit(materialHandle);
+        if (!materialEdit) {
             ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Failed to load .mat");
             return;
         }
-
-        asset::MaterialAsset& mat = *matPtr;
+        auto& mat = materialEdit->Draft();
         struct MaterialUndoTracker {
             ImGuiID activeId = 0;
-            asset::MaterialAsset before;
+            asset::AssetHandle<asset::MaterialAsset> target;
+            asset::MaterialAsset::AuthoringSnapshotPtr expected;
+            asset::MaterialAssetAuthoring before;
             bool active = false;
             bool changed = false;
         };
         static MaterialUndoTracker undo;
+        const auto initialPublication = asset::ReadMaterialAuthoring(materialHandle);
+        if (undo.target != materialHandle || (undo.expected && undo.expected != initialPublication)) {
+            undo.active = false;
+            undo.changed = false;
+            undo.target = materialHandle;
+        }
+        undo.expected = initialPublication;
         const bool canRecordUndo =
             ctx.undoStack != nullptr && ctx.undoStack->IsRecordingEnabled();
-        asset::MaterialAsset materialBeforeDraw;
+        asset::MaterialAssetAuthoring materialBeforeDraw;
         if (canRecordUndo)
             materialBeforeDraw = mat;
         else
@@ -303,6 +353,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         const ImGuiID activeBefore = ImGui::GetActiveID();
         bool materialDirty = false;
 
+        std::optional<renderer::ShaderDescriptor> ownedDescriptor;
         const renderer::ShaderDescriptor* desc = nullptr;
         if (auto* resources = renderer::ResourceManager::Active()) {
                 const std::string shaderPath = mat.shaderPath.empty()
@@ -310,10 +361,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     : mat.shaderPath;
             if (auto shader = resources->LoadShader(shaderPath); shader.IsValid()) {
                 if (auto* loadedShader = resources->Get(shader))
-                    desc = &loadedShader->GetDescriptor();
+                    ownedDescriptor = loadedShader->GetDescriptor();
             }
         }
 
+        if (ownedDescriptor) desc = &*ownedDescriptor;
         ImGui::SeparatorText("State");
         {
             if (widgets::AssetPathField("Shader", mat.shaderPath, ".hlsl", ctx.projectRoot))
@@ -364,13 +416,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         const auto shaderCapabilities = asset::ResolveShaderCapabilities(mat.shaderPath);
         const bool isTerrainMaterial = shaderCapabilities.surface == renderer::ShaderSurfaceContract::TERRAIN;
-        const bool isWaterMaterial = shaderCapabilities.surface == renderer::ShaderSurfaceContract::WATER;
+        const bool isWaterMaterial = shaderCapabilities.surface == renderer::ShaderSurfaceContract::WATER
+            || shaderCapabilities.preview == renderer::ShaderPreviewKind::WATER;
 
         if (isTerrainMaterial) {
             const auto tf = DrawTerrainLayerMaterialInspector(mat);
             materialDirty |= (tf.textureDirty || tf.paramDirty);
         } else if (isWaterMaterial) {
-            materialDirty |= DrawWaterMaterialInspector(mat);
+            materialDirty |= DrawWaterMaterialAuthoring(mat, desc, ctx.projectRoot);
         } else {
             materialDirty |= DrawSolidDielectricMaterialInspector(mat);
             ImGui::SeparatorText("Textures");
@@ -470,13 +523,21 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         if (mat.renderPath == asset::RenderPath::Particle)
             materialDirty |= DrawParticleMaterialInspector(mat, ctx.projectRoot, ctx.resources, ctx.imguiRenderer);
 
+        const auto commit = material_edit_detail::FinishAssetEdit(materialHandle, *materialEdit);
+        materialDirty = commit == material_edit_detail::CommitResult::COMMITTED;
+        const auto committedPublication = asset::ReadMaterialAuthoring(materialHandle);
+        bool materialConflict = commit == material_edit_detail::CommitResult::CONFLICT;
+        if (materialConflict) {
+            undo.active = false;
+            undo.changed = false;
+        }
         /// @note AssetBrowser のサムネイルを値変更のたびに追従させる (保存待ちにしない)。
         if (materialDirty)
             ctx.BumpMaterialPreviewRevision(relPath);
 
         if (materialDirty && ctx.activeScene) {
             for (auto [mc] : ctx.activeScene->View<scene::MaterialComponent>()) {
-                if (NormalizeAssetPath(mc.materialPath) == relPath)
+                if (NormalizeAssetPath(mc.GetMaterialPath()) == relPath)
                     mc.material.reset();
             }
             for (auto [terrain] : ctx.activeScene->View<scene::TerrainComponent>()) {
@@ -499,25 +560,30 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         if (materialDirty) {
             const std::string capturedPath   = absPath;
             const std::string capturedDisplay = NormalizeAssetPath(absPath);
-            auto capturedHandle = m_inspectedMat;
+            auto capturedHandle = materialHandle;
             AssetDirtyRegistry::Register(
                 capturedPath, capturedDisplay, "MAT",
                 [capturedPath, capturedHandle]() {
-                    auto* m = asset::AssetManager::Get<asset::MaterialAsset>(capturedHandle);
-                    return m && asset::SaveMaterialAssetToFile(capturedPath, *m);
+                    return material_edit_detail::SaveAssetSnapshot(capturedPath, capturedHandle);
                 });
         }
 
+        if (asset::ReadMaterialAuthoring(materialHandle) != committedPublication) {
+            materialConflict = true;
+            undo.active = false;
+            undo.changed = false;
+        }
+        undo.expected = asset::ReadMaterialAuthoring(materialHandle);
         const ImGuiID activeAfter = ImGui::GetActiveID();
-        auto pushMaterialCommand = [&](const asset::MaterialAsset& before,
-                                       const asset::MaterialAsset& after) {
+        auto pushMaterialCommand = [&](const asset::MaterialAssetAuthoring& before,
+                                       const asset::MaterialAssetAuthoring& after) {
             if (!ctx.undoStack) return;
             EditorContext* context = &ctx;
-            const auto handle = m_inspectedMat;
+            const auto handle = materialHandle;
             const std::string capturedPath = absPath;
             const std::string capturedDisplay = relPath;
             auto persistMaterial = [handle, capturedPath, capturedDisplay](
-                                       const asset::MaterialAsset& value) {
+                                       const asset::MaterialAssetAuthoring& value) {
                 if (asset::SaveMaterialAssetToFile(capturedPath, value)) {
                     AssetDirtyRegistry::MarkClean(capturedPath);
                     return;
@@ -525,22 +591,19 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 AssetDirtyRegistry::Register(
                     capturedPath, capturedDisplay, "MAT",
                     [handle, capturedPath]() {
-                        const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(handle);
-                        return material && asset::SaveMaterialAssetToFile(capturedPath, *material);
+                        return material_edit_detail::SaveAssetSnapshot(capturedPath, handle);
                     });
             };
             auto apply = [context, handle, capturedDisplay, persistMaterial](
-                             const asset::MaterialAsset& value) {
-                auto* target = asset::AssetManager::Get<asset::MaterialAsset>(handle);
-                if (!target) return;
-                *target = value;
+                             const asset::MaterialAssetAuthoring& value) {
+                if (!material_edit_detail::ReplaceAssetAuthoring(handle, value)) return;
                 /// @note Save ボタンを廃止した代わりに、Undo/Redo が確定した瞬間に即ディスクへ書く。
                 /// @note メモリ上の値と .mat が食い違うと、Undo で戻したつもりが再読み込みで元に戻る
                 /// @note (見た目だけの Undo) 事故が起きる。書き込みはウィジェット確定時の 1 回だけ。
-                persistMaterial(*target);
+                persistMaterial(value);
                 if (context->activeScene) {
                     for (auto [component] : context->activeScene->View<scene::MaterialComponent>()) {
-                        if (NormalizeAssetPath(component.materialPath) == capturedDisplay)
+                        if (NormalizeAssetPath(component.GetMaterialPath()) == capturedDisplay)
                             component.material.reset();
                     }
                     for (auto [terrain] : context->activeScene->View<scene::TerrainComponent>()) {
@@ -571,7 +634,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             persistMaterial(after);
             context->requestAssetBrowserRefresh = true;
         };
-        if (!canRecordUndo) {
+        if (!canRecordUndo || materialConflict) {
             undo.active = false;
             undo.changed = false;
         } else if (!undo.active && activeAfter != 0 && activeAfter != activeBefore) {
@@ -604,7 +667,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         /// @note 先頭固定だと Shader / Params / Textures が長い材質ほどプレビューが画面を占有し、
         /// @note 編集対象へ到達しにくくなる。
         ImGui::SeparatorText("Preview");
-        m_materialPreview.Draw(ctx, mat, 240.0f);
+        if (const auto published = asset::ReadMaterialAuthoring(materialHandle))
+            m_materialPreview.Draw(ctx, published->Data(), 240.0f);
     } else if (ext == ".vfx") {
         /// @note .vfx の再生面は Prefab 編集モード (Docs/design/vfx-prefab.md §8.2)。
         /// @note ここが受け持つのは «開く前に中身の見当を付ける» ところまで。
@@ -616,9 +680,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             if (entry.materialPath.empty()) continue;
             const auto materialHandle = asset::AssetManager::Load<asset::MaterialAsset>(
                 NormalizeAssetPath(entry.materialPath));
-            const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(materialHandle);
+            const auto material = asset::ReadMaterialAuthoring(materialHandle);
             if (!material) continue;
-            const std::string texturePath = matpreview::RepresentativeTexturePath(*material);
+            const std::string texturePath = matpreview::RepresentativeTexturePath(material->Data());
             if (texturePath.empty()) continue;
             previewTexturePath = asset::AssetManager::ResolveAssetPath(texturePath);
             break;
@@ -900,7 +964,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextDisabled("Type: Model Import Settings");
             ImGui::Spacing();
 
-            static FbxImportOptions s_modelOptions;
+            static std::shared_ptr<FbxImportOptions> modelDraft;
+            static std::uint64_t modelDiscardEpoch = 0;
             static std::string      s_modelMetaPath;
             static std::filesystem::file_time_type s_modelMetaWriteTime{};
             static bool s_modelOptionsLoaded = false;
@@ -911,12 +976,19 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 !modelMetaTimeError &&
                 currentModelMetaWriteTime != s_modelMetaWriteTime &&
                 !AssetDirtyRegistry::IsDirty(absPath);
-            if (s_modelMetaPath != absPath || modelMetaExternallyUpdated) {
+            if (!modelDraft || s_modelMetaPath != absPath || modelMetaExternallyUpdated
+                || modelDiscardEpoch != AssetDirtyRegistry::DiscardEpoch()) {
                 s_modelMetaPath = absPath;
-                s_modelOptions = {};
-                s_modelOptionsLoaded = FbxMetaSerializer::LoadOptions(sourcePath, s_modelOptions);
+                modelDraft = AssetDirtyRegistry::FindDraft<FbxImportOptions>(absPath);
+                s_modelOptionsLoaded = modelDraft != nullptr;
+                if (!modelDraft) {
+                    modelDraft = std::make_shared<FbxImportOptions>();
+                    s_modelOptionsLoaded = FbxMetaSerializer::LoadOptions(sourcePath, *modelDraft);
+                }
                 s_modelMetaWriteTime = currentModelMetaWriteTime;
+                modelDiscardEpoch = AssetDirtyRegistry::DiscardEpoch();
             }
+            auto& s_modelOptions = *modelDraft;
 
             bool dirty = false;
             ImGui::SeparatorText("Source");
@@ -1126,11 +1198,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
 
             if (dirty) {
-                AssetDirtyRegistry::Register(
+                AssetDirtyRegistry::RegisterDraft(
                     absPath,
                     util::FileSystem::GetFilename(absPath),
-                    "MODEL META",
-                    [sourcePath, options = s_modelOptions]() {
+                    "MODEL META", modelDraft,
+                    [sourcePath](const FbxImportOptions& options) {
                         return FbxMetaSerializer::SaveOptions(sourcePath, options);
                     });
             }
@@ -1165,7 +1237,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::Spacing();
 
         /// @note TexDescSerializer で読み込んで設定を表示・編集できるようにする
-        static asset::TextureAsset s_texAsset;
+        static std::shared_ptr<asset::TextureAsset> textureDraft;
+        static std::uint64_t textureDiscardEpoch = 0;
         static std::string         s_texPath;
         static std::filesystem::file_time_type s_texWriteTime{};
         std::error_code texTimeError;
@@ -1176,18 +1249,24 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         /// @note 「今フレームでディスクから読み直したか」。Sanitize はこのタイミングだけ走らせる
         /// @note (毎フレーム正すと、値を触っている最中に書き戻してしまう)。
         bool texJustLoaded = false;
-        if (s_texPath != absPath || externallyUpdated) {
+        if (!textureDraft || s_texPath != absPath || externallyUpdated
+            || textureDiscardEpoch != AssetDirtyRegistry::DiscardEpoch()) {
             s_texPath = absPath;
-            s_texAsset = {};
-            asset::TexDescSerializer ser;
-            if (!ser.Load(absPath, s_texAsset)) {
-                s_texAsset.settings = asset::DefaultSettingsForType(
-                    asset::GuessTextureType(util::FileSystem::GetFilename(sourcePath)));
+            textureDraft = AssetDirtyRegistry::FindDraft<asset::TextureAsset>(absPath);
+            if (!textureDraft) {
+                textureDraft = std::make_shared<asset::TextureAsset>();
+                asset::TexDescSerializer ser;
+                if (!ser.Load(absPath, *textureDraft)) {
+                    textureDraft->settings = asset::DefaultSettingsForType(
+                        asset::GuessTextureType(util::FileSystem::GetFilename(sourcePath)));
+                }
+                textureDraft->sourcePath = sourcePath;
+                texJustLoaded = true;
             }
-            s_texAsset.sourcePath = sourcePath;
             s_texWriteTime = currentTexWriteTime;
-            texJustLoaded = true;
+            textureDiscardEpoch = AssetDirtyRegistry::DiscardEpoch();
         }
+        auto& s_texAsset = *textureDraft;
         bool dirty = false;
 
         ImGui::SeparatorText("Source");
@@ -1488,11 +1567,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::Spacing();
         const bool isTxDirty = AssetDirtyRegistry::IsDirty(absPath) || dirty;
         if (dirty) {
-            AssetDirtyRegistry::Register(
+            AssetDirtyRegistry::RegisterDraft(
                 absPath,
                 util::FileSystem::GetFilename(absPath),
-                "TEX",
-                [path = absPath, textureAsset = s_texAsset]() {
+                "TEX", textureDraft,
+                [path = absPath](const asset::TextureAsset& textureAsset) {
                     asset::TexDescSerializer ser;
                     return ser.Save(textureAsset, path);
                 });
@@ -1590,7 +1669,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::TextDisabled("Type: Avatar Mask");
         ImGui::Spacing();
 
-        static asset::AvatarMaskAsset s_mask;
+        static std::shared_ptr<asset::AvatarMaskAsset> maskDraft;
+        static std::uint64_t maskDiscardEpoch = 0;
         static std::string            s_maskPath;
         static int                    s_maskAnchorNode = -1;
         static std::string            s_maskSelectedPath;
@@ -1603,16 +1683,24 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         const bool maskExternallyUpdated = !maskTimeError
             && currentMaskWriteTime != s_maskWriteTime
             && !AssetDirtyRegistry::IsDirty(absPath);
-        if (s_maskPath != absPath || maskExternallyUpdated) {
+        bool maskReloaded = false;
+        if (!maskDraft || s_maskPath != absPath || maskExternallyUpdated
+            || maskDiscardEpoch != AssetDirtyRegistry::DiscardEpoch()) {
             s_maskPath = absPath;
             s_maskAnchorNode = -1;
             s_maskSelectedPath.clear();
             ClearAnimationMaskPreviewSelection();
-            s_mask = asset::AvatarMaskAsset{};
-            if (!asset::LoadAvatarMaskAsset(absPath, s_mask))
-                s_mask.name = util::FileSystem::GetFilename(absPath);
+            maskDraft = AssetDirtyRegistry::FindDraft<asset::AvatarMaskAsset>(absPath);
+            if (!maskDraft) {
+                maskDraft = std::make_shared<asset::AvatarMaskAsset>();
+                if (!asset::LoadAvatarMaskAsset(absPath, *maskDraft))
+                    maskDraft->name = util::FileSystem::GetFilename(absPath);
+            }
             s_maskWriteTime = currentMaskWriteTime;
+            maskDiscardEpoch = AssetDirtyRegistry::DiscardEpoch();
+            maskReloaded = true;
         }
+        auto& s_mask = *maskDraft;
         std::string previewSelectionPath;
         if (ConsumeAnimationMaskPreviewSelection(previewSelectionPath))
             s_maskSelectedPath = std::move(previewSelectionPath);
@@ -1629,6 +1717,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             bool                   changed = false;
         };
         static MaskUndoTracker s_maskUndo;
+        if (maskReloaded) s_maskUndo = {};
         const bool canRecordMaskUndo = CanRecordEditorUndo(ctx);
         const asset::AvatarMaskAsset maskBeforeDraw = s_mask;
         const ImGuiID maskActiveBefore = ImGui::GetActiveID();
@@ -1864,7 +1953,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         /// @note ピッカー・拡張子検証・Asset Browser からの D&D を共通で提供する。
         ImGui::SeparatorText("Skeleton Source");
         if (widgets::AssetPathField("Skeleton Source", s_mask.skeletonSourcePath,
-                                     ".fbx", ctx.projectRoot)) {
+                                     ".fbx,.obj,.gltf,.glb", ctx.projectRoot)) {
             s_mask.skeletonSourceSignature.clear();
             maskDirty = true;
         }
@@ -2431,15 +2520,22 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
             EditorContext* context = &ctx;
             const std::string capturedPath = absPath;
-            asset::AvatarMaskAsset* liveMask = &s_mask;
+            auto* liveMask = &maskDraft;
             std::string* livePath = &s_maskPath;
             auto* liveWriteTime = &s_maskWriteTime;
             auto apply = [context, capturedPath, liveMask, livePath, liveWriteTime](
                              const asset::AvatarMaskAsset& value) {
                 /// @note 別の .mask を選択中に古い履歴を実行しても、現在表示中の値を壊さない。
-                if (*livePath == capturedPath)
-                    *liveMask = value;
-                if (!asset::SaveAvatarMaskAsset(capturedPath, value)) return;
+                auto draft = *livePath == capturedPath ? *liveMask
+                    : AssetDirtyRegistry::FindDraft<asset::AvatarMaskAsset>(capturedPath);
+                if (!draft) draft = std::make_shared<asset::AvatarMaskAsset>();
+                *draft = value;
+                AssetDirtyRegistry::RegisterDraft(capturedPath,
+                    util::FileSystem::GetFilename(capturedPath), "MASK", draft,
+                    [capturedPath](const asset::AvatarMaskAsset& mask) {
+                        return asset::SaveAvatarMaskAsset(capturedPath, mask);
+                    });
+                if (!AssetDirtyRegistry::Save(capturedPath)) return;
 
                 if (*livePath == capturedPath) {
                     std::error_code error;
@@ -2497,10 +2593,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         const bool isMaskDirty = AssetDirtyRegistry::IsDirty(absPath) || maskDirty;
         if (maskDirty) {
             prepareMaskForSave();
-            AssetDirtyRegistry::Register(
+            AssetDirtyRegistry::RegisterDraft(
                 absPath, util::FileSystem::GetFilename(absPath), "MASK",
-                [path = absPath, maskCopy = s_mask, livePath = &s_maskPath,
-                 liveWriteTime = &s_maskWriteTime]() {
+                maskDraft, [path = absPath, livePath = &s_maskPath,
+                 liveWriteTime = &s_maskWriteTime](const asset::AvatarMaskAsset& maskCopy) {
                     const bool saved = asset::SaveAvatarMaskAsset(path, maskCopy);
                     if (saved && *livePath == path) {
                         std::error_code error;
@@ -2558,21 +2654,28 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::TextDisabled("Type: Terrain Asset");
         ImGui::Spacing();
 
-        static scene::TerrainComponent s_terrain;
+        static std::shared_ptr<scene::TerrainComponent> terrainDraft;
+        static std::uint64_t terrainDiscardEpoch = 0;
         static std::string             s_terrainPath;
         static bool                    s_terrainLoaded = false;
         bool terrainDirty = false;
 
-        if (s_terrainPath != absPath) {
+        if (!terrainDraft || s_terrainPath != absPath
+            || terrainDiscardEpoch != AssetDirtyRegistry::DiscardEpoch()) {
             s_terrainPath   = absPath;
-            s_terrain       = scene::TerrainComponent{};
-            s_terrainLoaded = scene::TerrainAssetSerializer::Load(absPath, s_terrain);
+            terrainDraft = AssetDirtyRegistry::FindDraft<scene::TerrainComponent>(absPath);
+            s_terrainLoaded = terrainDraft != nullptr;
+            if (!terrainDraft) {
+                terrainDraft = std::make_shared<scene::TerrainComponent>();
+                s_terrainLoaded = scene::TerrainAssetSerializer::Load(absPath, *terrainDraft);
+            }
+            terrainDiscardEpoch = AssetDirtyRegistry::DiscardEpoch();
         }
 
         if (!s_terrainLoaded) {
             ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Load failed");
         } else {
-            auto& ta = s_terrain;
+            auto& ta = *terrainDraft;
 
             ImGui::SeparatorText("Geometry");
             ImGui::LabelText("Columns",    "%d", ta.columns);
@@ -2624,12 +2727,12 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::EndDisabled();
 
             if (terrainDirty) {
-                AssetDirtyRegistry::Register(
+                AssetDirtyRegistry::RegisterDraft(
                     absPath,
                     util::FileSystem::GetFilename(absPath),
-                    "TERRAIN",
-                    [path = absPath]() {
-                        return scene::TerrainAssetSerializer::Save(s_terrain, path);
+                    "TERRAIN", terrainDraft,
+                    [path = absPath](const scene::TerrainComponent& terrain) {
+                        return scene::TerrainAssetSerializer::Save(terrain, path);
                     });
             }
 
@@ -2646,6 +2749,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             }
         }
     } else if (ext == ".fzdata") {
+        if (DrawManagedDataAssetInspector(ctx, absPath)) return;
         /// @name DataAsset (純共有 ScriptableObject)
         SynchronizeDataAssetProject(ctx);
         const std::string relPath = NormalizeAssetPath(absPath);
@@ -2685,7 +2789,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         reflector.m_projectRoot = ctx.projectRoot;
 
         bool editedByCustomUi = false;
-        if (auto* profile = dynamic_cast<asset::PostProcessProfile*>(data)) {
+        if (std::string_view(data->GetTypeName()) == asset::PostProcessProfile::TYPE_NAME) {
+            auto* profile = static_cast<asset::PostProcessProfile*>(data);
             /// @note PostProcessProfile だけは専用 UI を使う。中身は「効果のリスト」で、追加・削除・
             /// @note 並べ替え・一時無効化という配列固有の操作は汎用のフィールド列挙では表現できない。
             /// @note 編集対象は Registry の共有実体そのものなので、変更は全参照へ即反映される。
@@ -3017,19 +3122,15 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         /// @note 自動保存 (.fzdata と同じ規則: 操作が終わったフレームで書き戻す)。
         const bool editedThisFrame =
-            (GImGui && GImGui->ActiveIdHasBeenEditedThisFrame) || editedByPreset;
-        static bool        s_physmatDirty = false;
-        static std::string s_physmatDirtyPath;
+            (GImGui && GImGui->ActiveIdHasBeenEditedThisFrame) || editedByPreset || reflector.m_changed;
+        const std::string savePath = asset::AssetManager::ResolveAssetPath(relPath);
+        auto& physicsState = DataAssetState();
+        if (auto pending = physicsState.pendingPhysics.find(savePath); pending != physicsState.pendingPhysics.end())
+            pending->second.lastDrawFrame = DataAssetFrame();
         if (editedThisFrame) {
-            s_physmatDirty     = true;
-            s_physmatDirtyPath = relPath;
             /// @note プリセット以外の手編集はプリセット由来の表示を外す。
             if (!editedByPreset) physicsMaterial->presetName.clear();
-        }
-        if (s_physmatDirty && s_physmatDirtyPath == relPath && !ImGui::IsAnyItemActive()) {
-            if (asset::SavePhysicsMaterialAssetToFile(absPath, *physicsMaterial))
-                ctx.requestAssetBrowserRefresh = true;
-            s_physmatDirty = false;
+            QueuePhysicsMaterialSave(savePath, handle);
         }
 
         /// @note Undo: 掴んでから離すまでを 1 操作として積む (.mat / .fzdata と同じ粒度)。
@@ -3055,8 +3156,8 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 if (!target) return;
                 *target = value;
                 /// @note メモリだけ戻すと次のロードで巻き戻るため、ディスクへも書き戻す。
-                (void)asset::SavePhysicsMaterialAssetToFile(capturedAbs, value);
-                context->requestAssetBrowserRefresh = true;
+                QueuePhysicsMaterialSave(capturedAbs, h);
+                if (AssetDirtyRegistry::Save(capturedAbs)) context->requestAssetBrowserRefresh = true;
             };
             ctx.undoStack->Push(std::make_unique<LambdaCommand>(
                 "Edit Physics Material",
@@ -3089,11 +3190,16 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         ImGui::Spacing();
         ImGui::Separator();
-        if (ImGui::Button("Save .physmat"))
-            (void)asset::SavePhysicsMaterialAssetToFile(absPath, *physicsMaterial);
+        if (ImGui::Button("Save .physmat")) {
+            QueuePhysicsMaterialSave(savePath, handle);
+            (void)AssetDirtyRegistry::Save(savePath);
+        }
         ImGui::SameLine();
-        ImGui::TextDisabled(s_physmatDirty && s_physmatDirtyPath == relPath
-                            ? "Saving on release..." : "Auto-saved");
+        if (physicsState.physicsFailures.contains(savePath))
+            ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Could not save .physmat");
+        else
+            ImGui::TextDisabled(AssetDirtyRegistry::IsDirty(savePath)
+                                ? "Saving on release..." : "Auto-saved");
     } else if (ext == ".fluid") {
         DrawFluidAssetInspector(absPath, ctx.resources, ctx.imguiRenderer, &ctx.requestVolumeFlipbookFluid);
     } else if (ext == ".fga" || asset::IsVectorFieldPng(absPath)) {

@@ -2,7 +2,7 @@
 /// @brief   AI 連携ディスパッチャが «壊れた文脈» で落ちないことを網羅で確かめる。
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
-///
+/// @note
 /// @note Play 中はアクティブシーンが差し替わり、SceneManager::CurrentScene() は m_externalScene/m_active のどちらも無い瞬間に nullptr を返し EditorContext::activeScene へそのまま入る (Play 中の LoadScene)。
 /// @note DrainRequests は毎フレーム走るため、その瞬間に届いた AI コマンドは nullptr のシーンを掴みうる。ここで落ちずにエラーを返すことを 1 コマンドずつ固定する。
 /// @note ハンドラは 137 個あり、シーン操作の有無が混在する。1 つでもガードを忘れると Play 中の AI 操作で落ちるが、どれが穴かは事前に分からないため 1 つずつ投げて確かめる。
@@ -13,13 +13,17 @@
 #include <Editor/Ai/EditorBusProtocol.hpp>
 #include <Editor/Ai/Json.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/PlayModeController.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Profiler/Profiler.hpp>
+#include <Engine/Scene/Components/LightComponent.hpp>
 
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -31,7 +35,7 @@ using editor::ai::JsonValue;
 using editor::ai::ParseJson;
 using editor::ai::SerializeJson;
 
-/// 実運用と同じ NDJSON エンベロープを 1 行組み立てる。
+/// @note 実運用と同じ NDJSON エンベロープを 1 行組み立てる。
 std::string MakeRequest(const std::string& type, const std::string& kind = "query",
                         bool dryRun = true)
 {
@@ -47,8 +51,8 @@ std::string MakeRequest(const std::string& type, const std::string& kind = "quer
     return SerializeJson(root);
 }
 
-/// 応答が «プロトコルとして読める» ことまで見る。落ちないだけでは足りない
-/// (空文字や壊れた JSON を返すと、MCP 側が固まる)。
+/// @note 応答が «プロトコルとして読める» ことまで見る。落ちないだけでは足りない
+/// @note (空文字や壊れた JSON を返すと、MCP 側が固まる)。
 void ExpectWellFormedResponse(const std::string& line, const std::string& what)
 {
     ASSERT_FALSE(line.empty()) << what << ": 応答が空";
@@ -89,6 +93,7 @@ const std::vector<std::string>& AllCommandTypes()
         "build.status", "component.add", "component.remove", "component.set", "console.logs",
         "edit.redo", "edit.undo", "editor.catalog", "editor.catalog.search",
         "editor.op.invoke", "editor.op.list", "editor.op.query", "editor.redo", "editor.state",
+        "editor.checked", "editor.finalize", "editor.observation", "editor.rollback",
         "editor.transaction", "editor.undo", "editor.undoHistory", "environment.inspect",
         "fluid.addOperator", "fluid.bake", "fluid.cancel", "fluid.create", "fluid.createEffect",
         "fluid.get", "fluid.jobStatus", "fluid.moveOperator", "fluid.preview",
@@ -101,7 +106,7 @@ const std::vector<std::string>& AllCommandTypes()
         "prefab.create", "prefab.instantiate", "prefab.revert", "preset.catalog",
         "preset.create", "profiler.snapshot", "scene.find", "scene.list", "scene.open",
         "scene.save", "scene.selection", "scene.snapshot", "scene.tree", "scene.validate",
-        "script.inspect", "script.catalog", "script.reload", "selection.set", "shader.diagnostics", "shader.inspect",
+        "script.inspect", "script.catalog", "selection.set", "shader.diagnostics", "shader.inspect",
         "sprite.list", "sprite.rename", "sprite.slice", "sprite.thumbnail", "terrain.hole",
         "terrain.inspect", "terrain.paint", "terrain.ramp", "terrain.sample", "terrain.sculpt",
         "terrain.setLayerMaterial",
@@ -114,9 +119,9 @@ const std::vector<std::string>& AllCommandTypes()
     return types;
 }
 
-} /// namespace
+} /// @note namespace
 
-/// 既定は «何も繋がっていない» 文脈。Play 中にシーンが差し替わる谷間そのもの。
+/// @note 既定は «何も繋がっていない» 文脈。Play 中にシーンが差し替わる谷間そのもの。
 class EditorBusDispatcherTest : public testkit::EditorFixture {};
 
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithoutAScene)
@@ -139,7 +144,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandAsADryRunCommand)
 
     for (const std::string& type : AllCommandTypes()) {
         const std::string response =
-            dispatcher.Handle(MakeRequest(type, "command", /*dryRun=*/true));
+            dispatcher.Handle(MakeRequest(type, "command", true));
         ExpectWellFormedResponse(response, type + " (command)");
         if (::testing::Test::HasFatalFailure()) return;
     }
@@ -148,7 +153,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandAsADryRunCommand)
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithASceneAttached)
 {
     /// @note シーンが «有る» 側も通す。無い側だけ守っても、シーンはあるが中身が空という
-    ///       状態 (開いた直後・遷移直後) で落ちれば同じこと。
+    /// @note       状態 (開いた直後・遷移直後) で落ちれば同じこと。
     scene::Scene& scene = AttachScene();
     scene.CreateGameObject("Player");
 
@@ -206,7 +211,7 @@ TEST_F(EditorBusDispatcherTest, ReportsAnErrorForAnUnknownCommand)
 TEST_F(EditorBusDispatcherTest, AnswersEvenWhenTheLineIsNotJson)
 {
     /// @note 相関 id を取り出せなくても «壊れている» ことは返す。黙ると送信側は
-    ///       timeout まで固まり、しかも «届いていない» のか «壊れていた» のか分からない。
+    /// @note       timeout まで固まり、しかも «届いていない» のか «壊れていた» のか分からない。
     EditorBusDispatcher dispatcher(Context());
 
     const std::string response = dispatcher.Handle("this is not json {{{");
@@ -232,8 +237,8 @@ TEST_F(EditorBusDispatcherTest, StaysSilentOnABlankLine)
 TEST_F(EditorBusDispatcherTest, AnswersWithAnErrorWhenTheIdIsReadable)
 {
     /// @note エンベロープが壊れていても、id が読めればそれを載せて «誰への失敗か» を言う。
-    ///       読めない場合 (上のテスト) は id 空で返す。相関できるかの差だけで、
-    ///       どちらも «応答は返す» 側に倒す。
+    /// @note       読めない場合 (上のテスト) は id 空で返す。相関できるかの差だけで、
+    /// @note       どちらも «応答は返す» 側に倒す。
     EditorBusDispatcher dispatcher(Context());
 
     JsonValue root = JsonValue::MakeObject();
@@ -293,8 +298,8 @@ TEST_F(EditorBusDispatcherTest, SurvivesACommandCarryingUnexpectedFields)
 }
 
 /// @name 流体 (.fluid)
-/// AI はファイルだけで流体を作って焼く。«作る → 読む → 部分更新 → Undo» の往復と、
-/// 焼きの窓口が無い文脈 (テスト・単体ツール) で黙って成功しないことを縛る。
+/// @note AI はファイルだけで流体を作って焼く。«作る → 読む → 部分更新 → Undo» の往復と、
+/// @note 焼きの窓口が無い文脈 (テスト・単体ツール) で黙って成功しないことを縛る。
 namespace {
 
 std::string MakePayloadRequest(const JsonValue& payload, const std::string& kind)
@@ -338,9 +343,9 @@ std::string ErrorMessage(const JsonValue& response)
 
 constexpr const char* kSmokePath = "Assets/VFX/Smoke.fluid";
 
-} /// namespace
+} /// @note namespace
 
-/// projectRoot と UndoStack だけを繋ぐ。FluidBakeService は繋がない (焼きは GPU とフレームが要る)。
+/// @note projectRoot と UndoStack だけを繋ぐ。FluidBakeService は繋がない (焼きは GPU とフレームが要る)。
 class EditorBusFluidTest : public testkit::EditorFixture {
 protected:
     void SetUp() override
@@ -575,7 +580,7 @@ bool ArrayHasString(const JsonValue* array, const std::string& wanted)
     return false;
 }
 
-} /// namespace
+} /// @note namespace
 
 TEST_F(EditorBusFluidTest, AddOperatorInsertsATypedPartAndUndoRemovesIt)
 {
@@ -976,14 +981,828 @@ TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
 }
 
 namespace {
+
+constexpr const char* FIRST_RECEIPT = "11111111-1111-4111-8111-111111111111";
+constexpr const char* SECOND_RECEIPT = "22222222-2222-4222-8222-222222222222";
+
 JsonValue ReliablePayload(const std::string& type)
 {
     JsonValue payload = JsonValue::MakeObject();
     payload.Set("t", JsonValue(type));
     return payload;
 }
+
+JsonValue RenamePayload(const std::string& id, const std::string& name)
+{
+    JsonValue payload = ReliablePayload("node.rename");
+    payload.Set("id", JsonValue(id));
+    payload.Set("name", JsonValue(name));
+    return payload;
+}
+
+void ExpectReliableStatus(const JsonValue& response, const std::string& expected)
+{
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr) << SerializeJson(response);
+    const JsonValue* status = result->Find("status");
+    ASSERT_NE(status, nullptr) << SerializeJson(response);
+    EXPECT_EQ(status->AsString(), expected) << SerializeJson(response);
+    const JsonValue* atomic = result->Find("atomic");
+    ASSERT_NE(atomic, nullptr) << SerializeJson(response);
+    EXPECT_FALSE(atomic->AsBool()) << SerializeJson(response);
+}
+
+void ExpectReliableCheck(const JsonValue& result, const std::string& key, const std::string& expected)
+{
+    const JsonValue* check = result.Find(key);
+    ASSERT_NE(check, nullptr) << key << ": " << SerializeJson(result);
+    const JsonValue* status = check->Find("status");
+    ASSERT_NE(status, nullptr) << key << ": " << SerializeJson(result);
+    EXPECT_EQ(status->AsString(), expected) << key << ": " << SerializeJson(result);
+}
+
 } /// @note namespace
 
+/// @note Every scene and persistence callback is confined to TestKit's temporary project; no Editor or renderer is started.
+class EditorBusReliabilityTest : public testkit::EditorFixture {
+protected:
+    void SetUp() override
+    {
+        EditorFixture::SetUp();
+        Context().projectRoot = ProjectRoot().generic_string();
+        Context().undoStack = &m_undo;
+        Context().markSceneDirty = [this]() { Context().sceneDirty = true; };
+        m_dispatcher = std::make_unique<EditorBusDispatcher>(Context());
+    }
+
+    void TearDown() override
+    {
+        m_dispatcher.reset();
+        Context().playMode = nullptr;
+        if (m_playMode) m_playMode->Cancel();
+        m_playMode.reset();
+        Context().undoStack = nullptr;
+        Context().markSceneDirty = {};
+        Context().saveScenePathImmediate = {};
+        Context().openScenePathImmediate = {};
+        EditorFixture::TearDown();
+    }
+
+    JsonValue Send(const JsonValue& payload, const std::string& kind = "command", bool dryRun = false)
+    {
+        JsonValue root = JsonValue::MakeObject();
+        root.Set("protocol", JsonValue(editor::ai::kEditorProtocol));
+        root.Set("id", JsonValue("test-1"));
+        root.Set("kind", JsonValue(kind));
+        root.Set("dryRun", JsonValue(dryRun));
+        root.Set("payload", payload);
+        const std::string line = m_dispatcher->Handle(SerializeJson(root));
+        const std::optional<JsonValue> parsed = ParseJson(line, nullptr);
+        EXPECT_TRUE(parsed.has_value()) << line;
+        return parsed.has_value() ? *parsed : JsonValue::MakeObject();
+    }
+
+    JsonValue CurrentGuard()
+    {
+        const JsonValue response = Send(ReliablePayload("editor.observation"), "query");
+        EXPECT_TRUE(IsOk(response)) << SerializeJson(response);
+        const JsonValue* result = response.Find("result");
+        const JsonValue* guard = result != nullptr ? result->Find("guard") : nullptr;
+        EXPECT_NE(guard, nullptr) << SerializeJson(response);
+        return guard != nullptr ? *guard : JsonValue::MakeObject();
+    }
+
+    JsonValue Checked(const JsonValue& guard, const std::vector<JsonValue>& commands,
+                      const std::string& owner = "author-a", const std::string& receipt = FIRST_RECEIPT)
+    {
+        JsonValue payload = ReliablePayload("editor.checked");
+        payload.Set("owner", JsonValue(owner));
+        payload.Set("receipt", JsonValue(receipt));
+        payload.Set("label", JsonValue("Reliability fixture"));
+        payload.Set("guard", guard);
+        JsonValue cmds = JsonValue::MakeArray();
+        for (const JsonValue& command : commands) cmds.Push(command);
+        payload.Set("cmds", std::move(cmds));
+        return payload;
+    }
+
+    JsonValue Rollback(const std::string& owner = "author-a", const std::string& receipt = FIRST_RECEIPT)
+    {
+        JsonValue payload = ReliablePayload("editor.rollback");
+        payload.Set("owner", JsonValue(owner));
+        payload.Set("receipt", JsonValue(receipt));
+        return payload;
+    }
+
+    JsonValue Finalize(const JsonValue& guard, bool save, bool reload)
+    {
+        JsonValue payload = ReliablePayload("editor.finalize");
+        payload.Set("guard", guard);
+        payload.Set("save", JsonValue(save));
+        payload.Set("reload", JsonValue(reload));
+        return payload;
+    }
+
+    void ConnectPersistence()
+    {
+        std::filesystem::create_directories(File("Assets/Scenes"));
+        Context().currentScenePath = File("Assets/Scenes/Reliability.scene").generic_string();
+        Context().saveScenePathImmediate = [this](const std::string& requested) {
+            m_hostCalls.push_back("save");
+            if (m_failSave) return false;
+            const std::string path = requested.empty() ? Context().currentScenePath : requested;
+            if (!Context().editScene || !editor::SceneIO::Save(*Context().editScene, path)) return false;
+            Context().currentScenePath = path;
+            if (m_clearDirtyAfterSave) Context().sceneDirty = false;
+            return true;
+        };
+        Context().openScenePathImmediate = [this](const std::string& path) {
+            m_hostCalls.push_back("reload");
+            if (!Context().editScene || !editor::SceneIO::Load(*Context().editScene, path)) return false;
+            if (m_changeReloadedName) {
+                if (auto* node = Context().editScene->FindByGuid(m_reloadNode)) node->name = "Changed by host";
+            }
+            Context().currentScenePath = path;
+            Context().sceneDirty = false;
+            m_undo.Clear();
+            return true;
+        };
+    }
+
+    editor::UndoStack                    m_undo;
+    std::unique_ptr<EditorBusDispatcher> m_dispatcher;
+    std::unique_ptr<editor::PlayModeController> m_playMode;
+    std::vector<std::string>             m_hostCalls;
+    bool                                m_failSave = false;
+    bool                                m_clearDirtyAfterSave = true;
+    bool                                m_changeReloadedName = false;
+    std::string                         m_reloadNode;
+};
+
+TEST_F(EditorBusReliabilityTest, ReportsUnavailableObservationSectionsWithoutAScene)
+{
+    const JsonValue response = Send(ReliablePayload("editor.observation"), "query");
+
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    ASSERT_NE(result->Find("schemaVersion"), nullptr);
+    EXPECT_EQ(result->Find("schemaVersion")->AsInt(), 1);
+    ASSERT_NE(result->Find("consistency"), nullptr);
+    EXPECT_EQ(result->Find("consistency")->AsString(), "main-thread");
+    const JsonValue* checks = result->Find("checks");
+    ASSERT_NE(checks, nullptr);
+    for (const char* key : { "state", "selection", "snapshot", "validation", "build", "logs", "undoHistory" })
+        EXPECT_NE(checks->Find(key), nullptr) << key;
+    ExpectReliableCheck(*checks, "snapshot", "unverified");
+    ExpectReliableCheck(*checks, "validation", "unverified");
+    ExpectReliableCheck(*checks, "guard", "unverified");
+    EXPECT_EQ(result->Find("guard"), nullptr);
+}
+
+TEST_F(EditorBusReliabilityTest, ObservesTheSceneSelectionAndExactGuardTogether)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    JsonValue selected = JsonValue::MakeArray();
+    selected.Push(JsonValue(node.instanceId));
+    JsonValue selection = ReliablePayload("selection.set");
+    selection.Set("ids", std::move(selected));
+    ASSERT_TRUE(IsOk(Send(selection)));
+
+    const JsonValue response = Send(ReliablePayload("editor.observation"), "query");
+
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    const JsonValue* snapshot = result->Find("snapshot");
+    const JsonValue* selectionResult = result->Find("selection");
+    const JsonValue* guard = result->Find("guard");
+    ASSERT_NE(snapshot, nullptr);
+    ASSERT_NE(selectionResult, nullptr);
+    ASSERT_NE(guard, nullptr);
+    const JsonValue* ids = selectionResult->Find("ids");
+    ASSERT_NE(ids, nullptr);
+    ASSERT_EQ(ids->AsArray().size(), 1u);
+    EXPECT_EQ(ids->AsArray()[0].AsString(), node.instanceId);
+    for (const char* key : { "scene", "revision", "cursor", "snapshot" })
+        EXPECT_NE(guard->Find(key), nullptr) << key;
+    ASSERT_NE(guard->Find("snapshot"), nullptr);
+    EXPECT_EQ(SerializeJson(*guard->Find("snapshot")), SerializeJson(*snapshot));
+    ASSERT_NE(guard->Find("revision"), nullptr);
+    ASSERT_NE(guard->Find("cursor"), nullptr);
+    EXPECT_EQ(guard->Find("revision")->AsString(), std::to_string(m_undo.GetRevision()));
+    EXPECT_EQ(guard->Find("cursor")->AsString(), std::to_string(m_undo.GetCursor()));
+    const JsonValue* components = result->Find("components");
+    ASSERT_NE(components, nullptr);
+    ASSERT_EQ(components->AsArray().size(), 1u);
+    const JsonValue& inspected = components->AsArray()[0];
+    ASSERT_NE(inspected.Find("id"), nullptr);
+    EXPECT_EQ(inspected.Find("id")->AsString(), node.instanceId);
+    ExpectReliableCheck(inspected, "check", "success");
+    const JsonValue* data = inspected.Find("data");
+    ASSERT_NE(data, nullptr);
+    ASSERT_NE(data->Find("id"), nullptr);
+    ASSERT_NE(data->Find("name"), nullptr);
+    EXPECT_EQ(data->Find("id")->AsString(), node.instanceId);
+    EXPECT_EQ(data->Find("name")->AsString(), "Original");
+    const JsonValue* checks = result->Find("checks");
+    ASSERT_NE(checks, nullptr);
+    ExpectReliableCheck(*checks, "components", "success");
+    ASSERT_NE(result->Find("componentIdsRequested"), nullptr);
+    EXPECT_EQ(result->Find("componentIdsRequested")->AsInt(), 1);
+}
+
+TEST_F(EditorBusReliabilityTest, PreservesAllSelectedIdsWhenComponentInspectionExceedsItsBound)
+{
+    auto& scene = AttachScene();
+    JsonValue selectedIds = JsonValue::MakeArray();
+    for (int index = 0; index < 129; ++index)
+        selectedIds.Push(JsonValue(scene.CreateGameObject("Selected " + std::to_string(index)).instanceId));
+    JsonValue selection = ReliablePayload("selection.set");
+    selection.Set("ids", selectedIds);
+    ASSERT_TRUE(IsOk(Send(selection)));
+
+    const JsonValue response = Send(ReliablePayload("editor.observation"), "query");
+
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    const JsonValue* selectionResult = result->Find("selection");
+    const JsonValue* snapshot = result->Find("snapshot");
+    const JsonValue* components = result->Find("components");
+    const JsonValue* checks = result->Find("checks");
+    ASSERT_NE(selectionResult, nullptr);
+    ASSERT_NE(snapshot, nullptr);
+    ASSERT_NE(components, nullptr);
+    ASSERT_NE(checks, nullptr);
+    const JsonValue* observedIds = selectionResult->Find("ids");
+    ASSERT_NE(observedIds, nullptr);
+    ASSERT_EQ(observedIds->AsArray().size(), 129u);
+    EXPECT_EQ(SerializeJson(*observedIds), SerializeJson(selectedIds));
+    ASSERT_NE(snapshot->Find("count"), nullptr);
+    EXPECT_EQ(snapshot->Find("count")->AsInt(), 129);
+    ASSERT_NE(result->Find("componentIdsRequested"), nullptr);
+    EXPECT_EQ(result->Find("componentIdsRequested")->AsInt(), 129);
+    ASSERT_EQ(components->AsArray().size(), 128u);
+    for (std::size_t index = 0; index < components->AsArray().size(); ++index) {
+        const JsonValue& component = components->AsArray()[index];
+        ASSERT_NE(component.Find("id"), nullptr);
+        EXPECT_EQ(component.Find("id")->AsString(), selectedIds.AsArray()[index].AsString());
+        ExpectReliableCheck(component, "check", "success");
+    }
+    ExpectReliableCheck(*checks, "selection", "success");
+    ExpectReliableCheck(*checks, "snapshot", "success");
+    ExpectReliableCheck(*checks, "components", "unverified");
+    EXPECT_NE(result->Find("guard"), nullptr);
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsMoreThan128ExplicitObservationIds)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    JsonValue ids = JsonValue::MakeArray();
+    for (int index = 0; index < 129; ++index) ids.Push(JsonValue(node.instanceId));
+    JsonValue payload = ReliablePayload("editor.observation");
+    payload.Set("ids", std::move(ids));
+
+    const JsonValue response = Send(payload, "query");
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "BAD_ARG");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_TRUE(Context().selectedEntities.empty());
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+}
+
+TEST_F(EditorBusReliabilityTest, ReportsUnavailableNodeInspectionInTheAggregateComponentCheck)
+{
+    AttachScene().CreateGameObject("Original").instanceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    constexpr const char* MISSING_ID = "01234567-89ab-4cde-8f01-23456789abcd";
+    JsonValue ids = JsonValue::MakeArray();
+    ids.Push(JsonValue(MISSING_ID));
+    JsonValue payload = ReliablePayload("editor.observation");
+    payload.Set("ids", std::move(ids));
+
+    const JsonValue response = Send(payload, "query");
+
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    const JsonValue* components = result->Find("components");
+    const JsonValue* checks = result->Find("checks");
+    ASSERT_NE(components, nullptr);
+    ASSERT_NE(checks, nullptr);
+    ASSERT_EQ(components->AsArray().size(), 1u);
+    const JsonValue& component = components->AsArray()[0];
+    ASSERT_NE(component.Find("id"), nullptr);
+    EXPECT_EQ(component.Find("id")->AsString(), MISSING_ID);
+    ExpectReliableCheck(component, "check", "unverified");
+    EXPECT_EQ(component.Find("data"), nullptr);
+    ExpectReliableCheck(*checks, "components", "unverified");
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsCheckedMutationWithoutAScene)
+{
+    const JsonValue response = Send(Checked(JsonValue::MakeObject(), { RenamePayload("missing", "Changed") }));
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "NO_SCENE");
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    EXPECT_FALSE(Context().sceneDirty);
+}
+
+TEST_F(EditorBusReliabilityTest, PreflightsChangesWithoutMutatingSceneHistoryOrReceipt)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    const JsonValue before = CurrentGuard();
+    const JsonValue payload = Checked(before, { RenamePayload(node.instanceId, "Changed") });
+
+    const JsonValue response = Send(payload, "command", true);
+
+    ExpectReliableStatus(response, "unverified");
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    ExpectReliableCheck(*result, "preflight", "success");
+    const JsonValue* changes = result->Find("changes");
+    ASSERT_NE(changes, nullptr);
+    ASSERT_EQ(changes->AsArray().size(), 1u);
+    const JsonValue& change = changes->AsArray()[0];
+    ASSERT_NE(change.Find("before"), nullptr);
+    ASSERT_NE(change.Find("proposed"), nullptr);
+    EXPECT_EQ(change.Find("before")->AsString(), "Original");
+    EXPECT_EQ(change.Find("proposed")->AsString(), "Changed");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    EXPECT_FALSE(Context().sceneDirty);
+    EXPECT_EQ(SerializeJson(CurrentGuard()), SerializeJson(before));
+    EXPECT_EQ(ErrorCode(Send(Rollback())), "RECEIPT_NOT_FOUND");
+    ExpectReliableStatus(Send(payload), "success");
+    EXPECT_EQ(node.name, "Changed");
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsAStaleGuardAfterAHistoryMutation)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    const JsonValue stale = CurrentGuard();
+    ASSERT_TRUE(IsOk(Send(RenamePayload(node.instanceId, "Other author"))));
+    const std::size_t revision = m_undo.GetRevision();
+
+    const JsonValue response = Send(Checked(stale, { RenamePayload(node.instanceId, "Wrong overwrite") }));
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "STATE_CONFLICT");
+    EXPECT_EQ(node.name, "Other author");
+    EXPECT_EQ(m_undo.GetRevision(), revision);
+    EXPECT_EQ(m_undo.GetHistorySize(), 1u);
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsAStaleGuardAfterADirectSceneMutationWithoutHistory)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    const JsonValue stale = CurrentGuard();
+    node.name = "Direct edit";
+    const std::size_t revision = m_undo.GetRevision();
+
+    const JsonValue response = Send(Checked(stale, { RenamePayload(node.instanceId, "Wrong overwrite") }));
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "STATE_CONFLICT");
+    EXPECT_EQ(node.name, "Direct edit");
+    EXPECT_EQ(m_undo.GetRevision(), revision);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsReliableEditorExecutionWhileAManagedBuildIsBusy)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    const JsonValue before = CurrentGuard();
+    Context().managedBuildBusy = true;
+
+    const JsonValue response = Send(Checked(before, { RenamePayload(node.instanceId, "Must not apply") }));
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "BUILD_BUSY");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    EXPECT_FALSE(Context().sceneDirty);
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsReliableEditorExecutionWhilePlayRestorationIsPending)
+{
+    auto& scene = AttachScene();
+    auto& node = scene.CreateGameObject("Original");
+    m_playMode = std::make_unique<editor::PlayModeController>();
+    Context().playMode = m_playMode.get();
+    const JsonValue before = CurrentGuard();
+    m_playMode->Play(scene);
+    ASSERT_TRUE(m_playMode->IsPlaying()) << m_playMode->Diagnostic();
+    m_playMode->Stop(scene);
+    ASSERT_TRUE(m_playMode->HasPendingRestore());
+
+    const JsonValue response = Send(Checked(before, { RenamePayload(node.instanceId, "Must not apply") }));
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "RESTORE_PENDING");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    EXPECT_FALSE(Context().sceneDirty);
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsRollbackByAnotherOwnerAndAllowsTheOriginalOwner)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    ExpectReliableStatus(Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Changed") })), "success");
+    ASSERT_EQ(node.name, "Changed");
+    const std::size_t revision = m_undo.GetRevision();
+
+    const JsonValue denied = Send(Rollback("author-b"));
+
+    EXPECT_FALSE(IsOk(denied));
+    EXPECT_EQ(ErrorCode(denied), "OWNER_MISMATCH");
+    EXPECT_EQ(node.name, "Changed");
+    EXPECT_EQ(m_undo.GetRevision(), revision);
+    ExpectReliableStatus(Send(Rollback()), "success");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_EQ(m_undo.GetCursor(), 0u);
+    EXPECT_EQ(ErrorCode(Send(Rollback())), "RECEIPT_CONSUMED");
+}
+
+TEST_F(EditorBusReliabilityTest, PreservesDirectEditsWhenRollbackSnapshotNoLongerMatches)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    ExpectReliableStatus(Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Changed") })), "success");
+    ASSERT_EQ(node.name, "Changed");
+    node.tag = "Direct author tag";
+    const std::size_t revision = m_undo.GetRevision();
+
+    const JsonValue denied = Send(Rollback());
+
+    EXPECT_FALSE(IsOk(denied));
+    EXPECT_EQ(ErrorCode(denied), "ROLLBACK_CONFLICT");
+    EXPECT_EQ(node.name, "Changed");
+    EXPECT_EQ(node.tag, "Direct author tag");
+    EXPECT_EQ(m_undo.GetRevision(), revision);
+    EXPECT_EQ(m_undo.GetCursor(), 1u);
+}
+
+TEST_F(EditorBusReliabilityTest, PreservesLaterAuthorsChangesWhenRollbackIsNoLongerTheLastEdit)
+{
+    auto& scene = AttachScene();
+    auto& first = scene.CreateGameObject("First");
+    auto& second = scene.CreateGameObject("Second");
+    ExpectReliableStatus(Send(Checked(CurrentGuard(), { RenamePayload(first.instanceId, "First changed") })), "success");
+    ExpectReliableStatus(Send(Checked(CurrentGuard(), { RenamePayload(second.instanceId, "Second changed") }, "author-b", SECOND_RECEIPT)), "success");
+    ASSERT_EQ(m_undo.GetCursor(), 2u);
+    const std::size_t revision = m_undo.GetRevision();
+
+    const JsonValue denied = Send(Rollback());
+
+    EXPECT_FALSE(IsOk(denied));
+    EXPECT_EQ(ErrorCode(denied), "ROLLBACK_CONFLICT");
+    EXPECT_EQ(first.name, "First changed");
+    EXPECT_EQ(second.name, "Second changed");
+    EXPECT_EQ(m_undo.GetRevision(), revision);
+    ExpectReliableStatus(Send(Rollback("author-b", SECOND_RECEIPT)), "success");
+    EXPECT_EQ(first.name, "First changed");
+    EXPECT_EQ(second.name, "Second");
+    EXPECT_EQ(ErrorCode(Send(Rollback())), "ROLLBACK_CONFLICT");
+}
+
+TEST_F(EditorBusReliabilityTest, VerifiesTheFinalBatchValueAndRestoresTheInitialValue)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    const JsonValue payload = Checked(CurrentGuard(), {
+        RenamePayload(node.instanceId, "Intermediate"), RenamePayload(node.instanceId, "Final")
+    });
+
+    const JsonValue response = Send(payload);
+
+    ExpectReliableStatus(response, "success");
+    EXPECT_EQ(node.name, "Final");
+    EXPECT_EQ(m_undo.GetCursor(), 1u);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    ExpectReliableCheck(*result, "verification", "success");
+    const JsonValue* changes = result->Find("changes");
+    ASSERT_NE(changes, nullptr);
+    ASSERT_EQ(changes->AsArray().size(), 1u);
+    ASSERT_NE(changes->AsArray()[0].Find("before"), nullptr);
+    ASSERT_NE(changes->AsArray()[0].Find("proposed"), nullptr);
+    EXPECT_EQ(changes->AsArray()[0].Find("before")->AsString(), "Original");
+    EXPECT_EQ(changes->AsArray()[0].Find("proposed")->AsString(), "Final");
+    ExpectReliableStatus(Send(Rollback()), "success");
+    EXPECT_EQ(node.name, "Original");
+}
+
+TEST_F(EditorBusReliabilityTest, NormalizesUuidCaseForCheckedBatchDeduplicationAndRollback)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    /// @note A fixed persisted UUID makes letter-case coverage independent of randomly generated identifiers.
+    constexpr const char* CANONICAL_ID = "01234567-89ab-4cde-8f01-23456789abcd";
+    constexpr const char* UPPERCASE_ID = "01234567-89AB-4CDE-8F01-23456789ABCD";
+    node.instanceId = CANONICAL_ID;
+    const JsonValue before = CurrentGuard();
+
+    const JsonValue response = Send(Checked(before, {
+        RenamePayload(UPPERCASE_ID, "Intermediate"), RenamePayload(CANONICAL_ID, "Final")
+    }));
+
+    ExpectReliableStatus(response, "success");
+    EXPECT_EQ(node.name, "Final");
+    EXPECT_EQ(m_undo.GetCursor(), 1u);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    const JsonValue* changes = result->Find("changes");
+    ASSERT_NE(changes, nullptr);
+    ASSERT_EQ(changes->AsArray().size(), 1u);
+    const JsonValue& change = changes->AsArray()[0];
+    for (const char* key : { "id", "before", "proposed" }) ASSERT_NE(change.Find(key), nullptr) << key;
+    EXPECT_EQ(change.Find("id")->AsString(), CANONICAL_ID);
+    EXPECT_EQ(change.Find("before")->AsString(), "Original");
+    EXPECT_EQ(change.Find("proposed")->AsString(), "Final");
+    ExpectReliableStatus(Send(Rollback()), "success");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_EQ(node.instanceId, CANONICAL_ID);
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsReceiptReplayWithoutRepeatingMutation)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    ExpectReliableStatus(Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Changed") })), "success");
+    ASSERT_EQ(node.name, "Changed");
+    const std::size_t revision = m_undo.GetRevision();
+
+    const JsonValue response = Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Repeated") }));
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "RECEIPT_REUSED");
+    EXPECT_EQ(node.name, "Changed");
+    EXPECT_EQ(m_undo.GetRevision(), revision);
+    EXPECT_EQ(m_undo.GetCursor(), 1u);
+}
+
+TEST_F(EditorBusReliabilityTest, VerifiesSupportedNodeTransformAndNativeComponentFieldsInOneBatch)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    node.AddComponent<scene::LightComponent>().intensity = 2.0f;
+    const auto fieldCommand = [&node](const std::string& type, const std::string& field, JsonValue value) {
+        JsonValue command = ReliablePayload(type);
+        command.Set("id", JsonValue(node.instanceId));
+        command.Set(field, std::move(value));
+        return command;
+    };
+    JsonValue position = JsonValue::MakeArray();
+    for (double value : { 1.25, -2.5, 3.75 }) position.Push(JsonValue(value));
+    JsonValue scale = JsonValue::MakeArray();
+    for (double value : { 2.0, 3.0, 4.0 }) scale.Push(JsonValue(value));
+    JsonValue transform = fieldCommand("transform.set", "pos", std::move(position));
+    transform.Set("scale", std::move(scale));
+    JsonValue component = fieldCommand("component.set", "value", JsonValue(4.5));
+    component.Set("comp", JsonValue("LightComponent"));
+    component.Set("field", JsonValue("intensity"));
+    const JsonValue before = CurrentGuard();
+
+    const JsonValue response = Send(Checked(before, {
+        RenamePayload(node.instanceId, "Changed"),
+        fieldCommand("node.setActive", "active", JsonValue(false)),
+        fieldCommand("node.setTag", "tag", JsonValue("Checked tag")),
+        fieldCommand("node.setLayer", "layer", JsonValue(7)), transform, component
+    }));
+
+    ExpectReliableStatus(response, "success");
+    EXPECT_EQ(node.name, "Changed");
+    EXPECT_FALSE(node.activeSelf());
+    EXPECT_EQ(node.tag, "Checked tag");
+    EXPECT_EQ(node.layer, 7);
+    EXPECT_VEC3_NEAR(node.transform.position, math::Vector3(1.25f, -2.5f, 3.75f), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(node.transform.scale, math::Vector3(2.0f, 3.0f, 4.0f), testkit::kTolerance);
+    const auto* light = node.GetComponent<scene::LightComponent>();
+    ASSERT_NE(light, nullptr);
+    EXPECT_FLOAT_EQ(light->intensity, 4.5f);
+    ExpectReliableStatus(Send(Rollback()), "success");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_TRUE(node.activeSelf());
+    EXPECT_EQ(node.tag, "Untagged");
+    EXPECT_EQ(node.layer, 0);
+    EXPECT_VEC3_NEAR(node.transform.position, math::Vector3(0.0f, 0.0f, 0.0f), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(node.transform.scale, math::Vector3(1.0f, 1.0f, 1.0f), testkit::kTolerance);
+    EXPECT_FLOAT_EQ(light->intensity, 2.0f);
+}
+
+TEST_F(EditorBusReliabilityTest, RollsBackItsOwnBatchWhenNativeReadbackDiffersFromTheRequest)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    JsonValue layer = ReliablePayload("node.setLayer");
+    layer.Set("id", JsonValue(node.instanceId));
+    /// @note The legacy builder converts a JSON number to an integer; checked readback must never claim that 1.75 was applied.
+    layer.Set("layer", JsonValue(1.75));
+
+    const JsonValue response = Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Partial"), layer }));
+
+    ExpectReliableStatus(response, "failure");
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    ExpectReliableCheck(*result, "verification", "failure");
+    ExpectReliableCheck(*result, "rollback", "success");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_EQ(node.layer, 0);
+    EXPECT_EQ(m_undo.GetCursor(), 0u);
+    EXPECT_EQ(ErrorCode(Send(Rollback())), "RECEIPT_NOT_FOUND");
+}
+
+TEST_F(EditorBusReliabilityTest, PreflightsRollbackWithoutMovingHistoryOrConsumingTheReceipt)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    ExpectReliableStatus(Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Changed") })), "success");
+    ASSERT_EQ(node.name, "Changed");
+    const std::size_t revision = m_undo.GetRevision();
+
+    const JsonValue response = Send(Rollback(), "command", true);
+
+    ExpectReliableStatus(response, "unverified");
+    EXPECT_EQ(node.name, "Changed");
+    EXPECT_EQ(m_undo.GetRevision(), revision);
+    EXPECT_EQ(m_undo.GetCursor(), 1u);
+    ExpectReliableStatus(Send(Rollback()), "success");
+    EXPECT_EQ(node.name, "Original");
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsUnsupportedFileBuildAndCreationCommandsWithoutSideEffects)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    const JsonValue before = CurrentGuard();
+    for (const char* type : { "fluid.create", "prefab.create", "scene.save", "build.run", "node.create", "component.add", "component.remove" }) {
+        SCOPED_TRACE(type);
+        JsonValue command = ReliablePayload(type);
+        command.Set("id", JsonValue(node.instanceId));
+        command.Set("name", JsonValue("Forbidden"));
+        command.Set("path", JsonValue("Assets/Forbidden.fluid"));
+        command.Set("target", JsonValue("managed"));
+
+        const JsonValue response = Send(Checked(before, { command }));
+
+        EXPECT_FALSE(IsOk(response));
+        EXPECT_EQ(ErrorCode(response), "UNSUPPORTED_RELIABLE_COMMAND");
+        EXPECT_EQ(node.name, "Original");
+        EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+        EXPECT_FALSE(Context().sceneDirty);
+        EXPECT_FALSE(std::filesystem::exists(File("Assets/Forbidden.fluid")));
+        EXPECT_EQ(SerializeJson(CurrentGuard()), SerializeJson(before));
+    }
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsAnInvalidLaterBatchCommandBeforeAnyWrite)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    JsonValue invalid = ReliablePayload("node.setLayer");
+    invalid.Set("id", JsonValue(node.instanceId));
+    invalid.Set("layer", JsonValue(32));
+
+    const JsonValue response = Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Must not apply"), invalid }));
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "BAD_ARG");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_EQ(node.layer, 0);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    EXPECT_FALSE(Context().sceneDirty);
+}
+
+TEST_F(EditorBusReliabilityTest, RequiresSaveBeforeReloadWithoutCallingTheHost)
+{
+    AttachScene().CreateGameObject("Original");
+    ConnectPersistence();
+
+    const JsonValue response = Send(Finalize(CurrentGuard(), false, true));
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "BAD_ARG");
+    EXPECT_TRUE(m_hostCalls.empty());
+    EXPECT_FALSE(std::filesystem::exists(File("Assets/Scenes/Reliability.scene")));
+}
+
+TEST_F(EditorBusReliabilityTest, RejectsFinalizeWithAStaleGuardBeforeAnyDiskOperation)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    ConnectPersistence();
+    const JsonValue stale = CurrentGuard();
+    node.tag = "Another author's work";
+
+    const JsonValue response = Send(Finalize(stale, true, true));
+
+    EXPECT_FALSE(IsOk(response));
+    EXPECT_EQ(ErrorCode(response), "STATE_CONFLICT");
+    EXPECT_TRUE(m_hostCalls.empty());
+    EXPECT_EQ(node.tag, "Another author's work");
+    EXPECT_FALSE(std::filesystem::exists(File("Assets/Scenes/Reliability.scene")));
+}
+
+TEST_F(EditorBusReliabilityTest, SavesThenReloadsTheFixtureSceneAndReportsTheObservedRoundtrip)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    const std::string id = node.instanceId;
+    ConnectPersistence();
+    ExpectReliableStatus(Send(Checked(CurrentGuard(), { RenamePayload(id, "Persisted") })), "success");
+    ASSERT_TRUE(Context().sceneDirty);
+
+    const JsonValue response = Send(Finalize(CurrentGuard(), true, true));
+
+    ExpectReliableStatus(response, "success");
+    EXPECT_EQ(m_hostCalls, (std::vector<std::string>{ "save", "reload" }));
+    EXPECT_TRUE(std::filesystem::is_regular_file(File("Assets/Scenes/Reliability.scene")));
+    EXPECT_FALSE(Context().sceneDirty);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    ExpectReliableCheck(*result, "save", "success");
+    ExpectReliableCheck(*result, "reload", "success");
+    EXPECT_NE(result->Find("observation"), nullptr);
+    const auto* loaded = Context().activeScene->FindByGuid(id);
+    ASSERT_NE(loaded, nullptr);
+    EXPECT_EQ(loaded->name, "Persisted");
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    EXPECT_EQ(ErrorCode(Send(Rollback())), "RECEIPT_NOT_FOUND");
+}
+
+TEST_F(EditorBusReliabilityTest, DoesNotReloadWhenSaveFails)
+{
+    auto& node = AttachScene().CreateGameObject("Unsaved");
+    ConnectPersistence();
+    Context().sceneDirty = true;
+    m_failSave = true;
+
+    const JsonValue response = Send(Finalize(CurrentGuard(), true, true));
+
+    ExpectReliableStatus(response, "failure");
+    EXPECT_EQ(m_hostCalls, (std::vector<std::string>{ "save" }));
+    EXPECT_EQ(node.name, "Unsaved");
+    EXPECT_TRUE(Context().sceneDirty);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    ExpectReliableCheck(*result, "save", "failure");
+    ExpectReliableCheck(*result, "reload", "unverified");
+}
+
+TEST_F(EditorBusReliabilityTest, DoesNotTreatAStillDirtySceneAsASuccessfulSave)
+{
+    AttachScene().CreateGameObject("Unsaved");
+    ConnectPersistence();
+    Context().sceneDirty = true;
+    m_clearDirtyAfterSave = false;
+
+    const JsonValue response = Send(Finalize(CurrentGuard(), true, true));
+
+    ExpectReliableStatus(response, "failure");
+    EXPECT_EQ(m_hostCalls, (std::vector<std::string>{ "save" }));
+    EXPECT_TRUE(Context().sceneDirty);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    ExpectReliableCheck(*result, "save", "failure");
+    ExpectReliableCheck(*result, "reload", "unverified");
+}
+
+TEST_F(EditorBusReliabilityTest, ReportsFailureWhenReloadChangesTheObservedSnapshot)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    m_reloadNode = node.instanceId;
+    ConnectPersistence();
+    Context().sceneDirty = true;
+    m_changeReloadedName = true;
+
+    const JsonValue response = Send(Finalize(CurrentGuard(), true, true));
+
+    ExpectReliableStatus(response, "failure");
+    EXPECT_EQ(m_hostCalls, (std::vector<std::string>{ "save", "reload" }));
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    ExpectReliableCheck(*result, "save", "success");
+    ExpectReliableCheck(*result, "reload", "failure");
+    EXPECT_NE(result->Find("observation"), nullptr);
+    const auto* loaded = Context().activeScene->FindByGuid(m_reloadNode);
+    ASSERT_NE(loaded, nullptr);
+    EXPECT_EQ(loaded->name, "Changed by host");
+}
+
+TEST_F(EditorBusReliabilityTest, DoesNotWriteOrReloadDuringFinalizeDryRun)
+{
+    AttachScene().CreateGameObject("Original");
+    ConnectPersistence();
+    Context().sceneDirty = true;
+    const JsonValue before = CurrentGuard();
+
+    const JsonValue response = Send(Finalize(before, true, true), "command", true);
+
+    ExpectReliableStatus(response, "unverified");
+    EXPECT_TRUE(m_hostCalls.empty());
+    EXPECT_FALSE(std::filesystem::exists(File("Assets/Scenes/Reliability.scene")));
+    EXPECT_TRUE(Context().sceneDirty);
+    EXPECT_EQ(SerializeJson(CurrentGuard()), SerializeJson(before));
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    ExpectReliableCheck(*result, "save", "unverified");
+    ExpectReliableCheck(*result, "reload", "unverified");
+}
+
+/// @note The public Profiler facade creates every capture condition and its shared filter/recording settings are restored after each query test.
 class EditorBusProfilerSnapshotTest : public testkit::EditorFixture {
 protected:
     void SetUp() override
@@ -1021,6 +1840,81 @@ private:
     profiler::PerformanceCaptureFilter m_previousFilter;
     std::unique_ptr<EditorBusDispatcher> m_dispatcher;
 };
+
+TEST_F(EditorBusProfilerSnapshotTest, PreservesLegacyFieldsAndSamplesAlongsideCompleteCaptureDiagnostics)
+{
+    ASSERT_TRUE(profiler::Profiler::RequestCaptureFilter({ "McpContract", "" }));
+    profiler::Profiler::BeginFrame();
+    profiler::Profiler::PushSample(profiler::ProfilerMarker("large", "McpContract"), 2.5);
+    profiler::Profiler::PushSample(profiler::ProfilerMarker("small", "McpContract"), 1.25);
+    profiler::Profiler::PushMarker(profiler::ProfilerMarker("excluded", "OtherCategory"));
+    profiler::Profiler::EndFrame();
+
+    const JsonValue response = Snapshot(1);
+
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const JsonValue* result = response.Find("result");
+    ASSERT_NE(result, nullptr);
+    for (const char* key : {
+            "frameIndex", "frameMs", "fps", "cpuProfiledMs", "drawCalls", "triangles", "vertices",
+            "skinningVertices", "skinningDispatches", "skinningPaletteUploadBytes", "skinningPaletteUploads",
+            "totalObjects", "frustumCulled", "occlusionCulled", "shadowDrawCalls", "shadowTriangles",
+            "instancedBatches", "instancedDrawsSaved", "visibleObjects" }) {
+        const JsonValue* value = result->Find(key);
+        ASSERT_NE(value, nullptr) << key;
+        EXPECT_TRUE(value->IsNumber()) << key;
+    }
+    for (const char* key : { "profilerEnabled", "lockstep", "cpuCaptureAvailable", "cpuCaptureComplete", "cpuTopSamplesTruncated" }) {
+        const JsonValue* value = result->Find(key);
+        ASSERT_NE(value, nullptr) << key;
+        EXPECT_TRUE(value->IsBool()) << key;
+    }
+    for (const char* key : { "topSamples", "cpuRenderPasses", "gpuRenderPasses" }) {
+        const JsonValue* value = result->Find(key);
+        ASSERT_NE(value, nullptr) << key;
+        EXPECT_TRUE(value->IsArray()) << key;
+    }
+    ASSERT_NE(result->Find("gpuProfiler"), nullptr);
+    EXPECT_TRUE(result->Find("gpuProfiler")->IsObject());
+    ASSERT_NE(result->Find("frameMsSource"), nullptr);
+    EXPECT_TRUE(result->Find("frameMsSource")->IsString());
+    EXPECT_TRUE(result->Find("profilerEnabled")->AsBool());
+    EXPECT_TRUE(result->Find("cpuCaptureAvailable")->AsBool());
+    EXPECT_TRUE(result->Find("cpuCaptureComplete")->AsBool());
+    EXPECT_TRUE(result->Find("cpuTopSamplesTruncated")->AsBool());
+    EXPECT_DOUBLE_EQ(result->Find("cpuProfiledMs")->AsNumber(), 3.75);
+    EXPECT_DOUBLE_EQ(result->Find("frameIndex")->AsNumber(),
+                     static_cast<double>(profiler::Profiler::GetLastFrameIndex()));
+    const JsonValue* samples = result->Find("topSamples");
+    ASSERT_EQ(samples->AsArray().size(), 1u);
+    const JsonValue& sample = samples->AsArray()[0];
+    for (const char* key : { "name", "category", "elapsedMs", "depth" })
+        ASSERT_NE(sample.Find(key), nullptr) << key;
+    EXPECT_EQ(sample.Find("name")->AsString(), "large");
+    EXPECT_EQ(sample.Find("category")->AsString(), "McpContract");
+    EXPECT_DOUBLE_EQ(sample.Find("elapsedMs")->AsNumber(), 2.5);
+    EXPECT_EQ(sample.Find("depth")->AsInt(), 0);
+    ASSERT_NE(result->Find("cpuRecordedSampleCount"), nullptr);
+    ASSERT_NE(result->Find("cpuFilteredSampleCount"), nullptr);
+    EXPECT_EQ(result->Find("cpuRecordedSampleCount")->AsInt(), 2);
+    EXPECT_EQ(result->Find("cpuFilteredSampleCount")->AsInt(), 1);
+    for (const char* key : {
+            "cpuDroppedSampleCount", "cpuCapacityDroppedSampleCount", "cpuDepthDroppedSampleCount",
+            "cpuDescriptorDroppedSampleCount", "cpuFaultedSampleCount", "cpuAbortedSampleCount" }) {
+        const JsonValue* value = result->Find(key);
+        ASSERT_NE(value, nullptr) << key;
+        EXPECT_EQ(value->AsInt(), 0) << key;
+    }
+    const JsonValue* filter = result->Find("cpuCaptureFilter");
+    ASSERT_NE(filter, nullptr);
+    ASSERT_NE(filter->Find("category"), nullptr);
+    ASSERT_NE(filter->Find("scope"), nullptr);
+    EXPECT_EQ(filter->Find("category")->AsString(), "McpContract");
+    EXPECT_TRUE(filter->Find("scope")->AsString().empty());
+    const JsonValue* warning = result->Find("cpuCaptureWarning");
+    ASSERT_NE(warning, nullptr);
+    EXPECT_TRUE(warning->AsString().empty());
+}
 
 TEST_F(EditorBusProfilerSnapshotTest, WarnsWhenNoCpuCaptureIsAvailable)
 {
@@ -1102,4 +1996,4 @@ TEST_F(EditorBusProfilerSnapshotTest, ExposesCapacityLossSeparatelyFromTheTopSam
     EXPECT_EQ(samples->AsArray().size(), 1u);
 }
 
-} /// namespace fbzz::tests
+} /// @note namespace fbzz::tests

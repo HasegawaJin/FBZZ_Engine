@@ -6,8 +6,7 @@
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
-#include <Editor/ToolchainLocator.hpp>
-#include <Editor/Util/AppIconWriter.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/IcoImage.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -25,6 +24,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
+#include <Shellapi.h>
 #include <shlobj.h>
 
 #include <algorithm>
@@ -79,6 +79,7 @@ bool BrowseForFolder(HWND hwnd, std::string& outPath)
     return !outPath.empty();
 }
 
+/// @see ShellExecuteW https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew
 void RevealInExplorer(const std::string& path)
 {
     if (path.empty()) return;
@@ -488,172 +489,8 @@ void BuildSettingsPanel::DrawIconSetting(EditorContext& ctx)
 
 void BuildSettingsPanel::RefreshChecks(EditorContext& ctx)
 {
-    m_checks.clear();
-    m_standaloneExeDir.clear();
+    m_build.RefreshChecks(ctx, m_settings);
     m_checksValid = true;
-
-    if (ctx.projectRoot.empty()) {
-        m_checks.push_back({ Check::Level::Error, "Project", "No project is open." });
-        return;
-    }
-
-    const std::filesystem::path root = util::FileSystem::PathFromUtf8(ctx.projectRoot);
-
-    /// @note 出力先
-    /// @note Error にする: コミットは出力先を remove_all するため、空欄やデスクトップを指したまま
-    /// @note ビルドを押すとそのフォルダが中身ごと消える。
-    {
-        std::string reason;
-        if (m_settings.ValidateOutputPath(ctx.projectRoot, reason)) {
-            m_checks.push_back({ Check::Level::Ok, "Output",
-                util::FileSystem::PathToUtf8(m_settings.ResolveOutputPath(ctx.projectRoot)) });
-        } else {
-            m_checks.push_back({ Check::Level::Error, "Output", reason });
-        }
-    }
-
-    /// @note アイコン
-    /// @note 事前に読む: 差し替えはコンパイル後にしか走らないため、読めない画像を指したままだと
-    /// @note 数分かけたビルドがアイコンのためだけに失敗する。
-    if (!m_settings.iconPath.empty()) {
-        const std::filesystem::path icon = m_settings.ResolveIconPath(ctx.projectRoot);
-        AppIconWriter::SourceInfo info;
-        std::string reason;
-        if (!AppIconWriter::Inspect(icon, info, reason)) {
-            m_checks.push_back({ Check::Level::Error, "Icon", m_settings.iconPath + " — " + reason });
-        } else if (info.isIco) {
-            m_checks.push_back({ Check::Level::Ok, "Icon",
-                                 m_settings.iconPath + " (embedded as-is)" });
-        } else {
-            const std::string size = std::to_string(info.width) + "x" + std::to_string(info.height);
-            if (info.width != info.height) {
-                m_checks.push_back({ Check::Level::Warn, "Icon",
-                                     size + " is not square — it will be centered on a "
-                                     "transparent square" });
-            } else if (info.width < 256) {
-                m_checks.push_back({ Check::Level::Warn, "Icon",
-                                     size + " is smaller than 256x256 — large icon views "
-                                     "will look soft" });
-            } else {
-                m_checks.push_back({ Check::Level::Ok, "Icon", m_settings.iconPath + " (" + size + ")" });
-            }
-        }
-    }
-
-    /// @note ツールチェーン (cmake / build.config)
-    std::string runtimeConfiguration = m_settings.developmentBuild ? "Development" : "Release";
-    bool dx12Enabled = false;
-    const ToolchainLocator::Result toolchain =
-        ToolchainLocator::Locate(util::FileSystem::PathFromUtf8(ctx.projectBuildRoot));
-    if (!toolchain.found) {
-        m_checks.push_back({ Check::Level::Error, "Toolchain", toolchain.error });
-    } else {
-        m_checks.push_back({ Check::Level::Ok, "Toolchain",
-                             util::FileSystem::PathToUtf8(toolchain.buildDir) });
-
-        const std::filesystem::path exe = m_settings.developmentBuild
-            ? (!toolchain.exeDevelopment.empty() ? toolchain.exeDevelopment : toolchain.exeDebug)
-            : toolchain.exeRelease;
-        m_standaloneExeDir = util::FileSystem::PathToUtf8(exe.parent_path());
-        std::string runtimeReason;
-        runtimeConfiguration = m_settings.developmentBuild
-            ? (!toolchain.exeDevelopment.empty() ? "Development" : "Debug") : "Release";
-        if (util::FileSystem::Exists(exe)) {
-            if (BuildPipeline::ValidateRuntimePackage(exe, util::FileSystem::PathFromUtf8(ctx.engineRoot),
-                                                      runtimeConfiguration, false, runtimeReason, &dx12Enabled)) {
-                m_checks.push_back({ Check::Level::Ok, "Graphics runtime",
-                    dx12Enabled ? "Agility SDK, DXC and runtime notices" : "Graphics backend disabled" });
-            } else {
-                m_checks.push_back({ Check::Level::Warn, "Graphics runtime", runtimeReason + " (the build re-stages the runtime)" });
-            }
-        }
-    }
-
-    /// @note 初回ゲームビルド前も SDK 版 Editor で選択構成の公開契約と必須配置を確認する。
-    if (!ctx.engineRoot.empty()) {
-        const auto sdkRoot = util::FileSystem::PathFromUtf8(ctx.engineRoot);
-        const auto sdkEditor = sdkRoot / "tools" / runtimeConfiguration / "Editor/FBZZEditor.exe";
-        std::string sdkReason;
-        if (util::FileSystem::Exists(sdkRoot / "bin" / runtimeConfiguration)
-            && util::FileSystem::Exists(sdkRoot / "lib" / runtimeConfiguration)
-            && BuildPipeline::ValidateRuntimePackage(sdkEditor, sdkRoot, runtimeConfiguration, false, sdkReason, &dx12Enabled)) {
-            m_checks.push_back({ Check::Level::Ok, "SDK", runtimeConfiguration + " runtime contract validated" });
-        } else {
-            if (sdkReason.empty()) sdkReason = "SDK bin/lib configuration is missing: " + runtimeConfiguration;
-            m_checks.push_back({ Check::Level::Error, "SDK", sdkReason + " — republish this SDK configuration" });
-        }
-    }
-
-    /// @note ランタイム DLL / EngineAssets
-    /// @note 未ビルドは警告止まりにする: DLL も EngineAssets も standalone ターゲットの POST_BUILD が
-    /// @note 置くため、1 度もビルドしていない状態でエラーにすると「DLL が無いからビルドできない /
-    /// @note ビルドしないと DLL が来ない」で詰む。
-    if (!m_standaloneExeDir.empty()) {
-        const std::filesystem::path exeDir = util::FileSystem::PathFromUtf8(m_standaloneExeDir);
-        const bool builtOnce = util::FileSystem::Exists(exeDir);
-
-        if (!builtOnce) {
-            m_checks.push_back({ Check::Level::Warn, "Runtime DLLs",
-                                 "not staged yet — the build produces them next to the exe" });
-        } else {
-            /// @note DXC と PIX の必須判定は ProjectSettings でなく runtime の DX12 有効状態に従う。
-            std::vector<std::wstring> required = {
-                L"imgui.dll", L"FBZZMath.dll", L"FBZZPhysics.dll", L"FBZZFluid.dll", L"FBZZCore.dll", L"FBZZGraphics.dll", L"FBZZEngine.dll",
-                runtimeConfiguration == "Debug" ? L"assimp-vc145-mtd.dll" : L"assimp-vc145-mt.dll",
-            };
-            if (dx12Enabled) {
-                required.push_back(L"dxcompiler.dll");
-                required.push_back(L"dxil.dll");
-                required.push_back(L"WinPixEventRuntime.dll");
-            }
-
-            std::string missing;
-            for (const std::wstring& dll : required) {
-                if (util::FileSystem::Exists(exeDir / dll)) continue;
-                if (!missing.empty()) missing += ", ";
-                missing += util::FileSystem::PathToUtf8(std::filesystem::path(dll));
-            }
-
-            if (missing.empty()) {
-                m_checks.push_back({ Check::Level::Ok, "Runtime DLLs",
-                                     dx12Enabled ? "including DXC (dx12)" : "Graphics backend disabled" });
-            } else {
-                m_checks.push_back({ Check::Level::Warn, "Runtime DLLs",
-                                     "missing next to the exe: " + missing +
-                                     " (the build re-stages them; still missing afterwards means "
-                                     "the SDK was not published for this configuration)" });
-            }
-
-            if (util::FileSystem::Exists(exeDir / L"EngineAssets")) {
-                m_checks.push_back({ Check::Level::Ok, "EngineAssets", "will be packaged" });
-            } else {
-                m_checks.push_back({ Check::Level::Warn, "EngineAssets",
-                                     "not staged next to the exe — assets that only exist in the SDK "
-                                     "(default font, etc.) will be missing" });
-            }
-        }
-    }
-
-    /// @note Library/Baked (FBX 由来の実体)
-    if (util::FileSystem::Exists(root / L"Library" / L"Baked")) {
-        m_checks.push_back({ Check::Level::Ok, "Library/Baked", "will be packaged" });
-    } else {
-        m_checks.push_back({ Check::Level::Warn, "Library/Baked",
-                             "not found — imported clips and model materials will be "
-                             "re-imported from the source FBX at runtime" });
-    }
-
-    /// @note 開始シーン
-    const std::string startScene = ResolveStartScene(ctx);
-    if (startScene.empty()) {
-        m_checks.push_back({ Check::Level::Error, "Start scene",
-                             "Project Settings names neither runtime.start_scene "
-                             "nor project.default_scene" });
-    } else if (!SceneExists(ctx.projectRoot, startScene)) {
-        m_checks.push_back({ Check::Level::Error, "Start scene", startScene + " does not exist" });
-    } else {
-        m_checks.push_back({ Check::Level::Ok, "Start scene", startScene });
-    }
 }
 
 std::string BuildSettingsPanel::ResolveStartScene(const EditorContext& ctx) const
@@ -675,11 +512,11 @@ void BuildSettingsPanel::DrawPackageChecks(EditorContext& ctx)
     ImGui::TextDisabled("Assets / Library/Baked / EngineAssets / runtime DLLs");
 
     for (const Check& check : m_checks) {
-        const ImVec4 color = check.level == Check::Level::Error ? kErrorColor
-                           : check.level == Check::Level::Warn  ? kWarnColor
+        const ImVec4 color = check.level == Check::Level::FAILED ? kErrorColor
+                           : check.level == Check::Level::WARNING  ? kWarnColor
                                                                 : kOkColor;
-        const char* glyph = check.level == Check::Level::Error ? "x"
-                          : check.level == Check::Level::Warn  ? "!"
+        const char* glyph = check.level == Check::Level::FAILED ? "x"
+                          : check.level == Check::Level::WARNING  ? "!"
                                                                : "o";
         ImGui::TextColored(color, "[%s] %s", glyph, check.label.c_str());
         if (check.detail.empty()) continue;
@@ -694,14 +531,10 @@ void BuildSettingsPanel::DrawPackageChecks(EditorContext& ctx)
 
 void BuildSettingsPanel::StartBuild(EditorContext& ctx, bool runAfterBuild)
 {
-    /// @note ここで永続化する: ビルドは分単位で走るため、途中でエディターが落ちたとき
-    /// @note 「何をビルドしようとしたか」が残っていないと設定からやり直しになる。
-    ctx.requestEditorSettingsSave = true;
-
-    m_lastOutputDir = util::FileSystem::PathToUtf8(m_settings.ResolveOutputPath(ctx.projectRoot));
-    m_pipeline.Start(m_settings, ctx.projectRoot, ctx.projectBuildRoot,
-                     ctx.standaloneTargetName, ctx.scriptsDllPath, ctx.engineRoot,
-                     runAfterBuild);
+    OpArgs args;
+    args.Set("runAfterBuild", runAfterBuild);
+    static_cast<void>(InvokeOperator(ctx, "build.package", args));
+    m_checksValid = false;
 }
 
 void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
@@ -711,7 +544,7 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
     const bool isPlaying  = ctx.playMode && ctx.playMode->IsPlaying();
     const bool isBuilding = m_pipeline.GetState() == BuildPipeline::State::Running;
     const bool hasError   = std::any_of(m_checks.begin(), m_checks.end(),
-        [](const Check& c) { return c.level == Check::Level::Error; });
+        [](const Check& c) { return c.level == Check::Level::FAILED; });
 
     if (isPlaying)
         ImGui::TextColored(kWarnColor, "Cannot build while playing");
@@ -723,7 +556,7 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
         "[DEV/DEBUG EDITOR] For distribution, switch to the Release preset.");
 #endif
 
-    ImGui::BeginDisabled(isPlaying || isBuilding || hasError);
+    ImGui::BeginDisabled(isPlaying || isBuilding || hasError || !CanInvokeOperator(ctx, "build.package"));
     if (ImGui::Button("Build", { 120.0f, 0.0f }))
         StartBuild(ctx, false);
     ImGui::SameLine();
@@ -744,19 +577,20 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
         ImGui::EndDisabled();
     }
 
-    if (m_pipeline.GetState() == BuildPipeline::State::Running)
-        m_pipeline.Tick();
 
     const bool isStillBuilding = m_pipeline.GetState() == BuildPipeline::State::Running;
 
     if (isStillBuilding) {
         ImGui::ProgressBar(m_pipeline.GetProgress(), { -1.0f, 0.0f }, m_pipeline.GetStatus());
         if (ImGui::Button("Cancel"))
-            m_pipeline.Cancel();
+            static_cast<void>(InvokeOperator(ctx, "build.package_cancel"));
     }
 
-    if (isStillBuilding && !m_buildLogWasRunning) ++m_buildLogGeneration;
-    m_buildLogWasRunning = isStillBuilding;
+    if (m_buildLogRequestId != m_build.RequestId()) {
+        m_buildLogRequestId = m_build.RequestId();
+        ++m_buildLogGeneration;
+        m_checksValid = false;
+    }
 
     const std::string& buildLog = m_pipeline.GetBuildLog();
     if (!buildLog.empty() &&
@@ -767,25 +601,17 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
         m_buildLogView.DrawList({ 0.0f, ImGui::GetTextLineHeightWithSpacing() * 14.0f });
     }
 
-    /// @note Build and Run: ビルド完了後に exe を起動する
-    if (m_pipeline.GetState() == BuildPipeline::State::Done && m_pipeline.WantsRunAfter()) {
-        StandaloneLauncher::LaunchExe(m_pipeline.GetOutputExePath(), "");
-        /// @note 重複起動を防ぐためリセットする
-        m_pipeline.Reset();
-        m_checksValid = false;
-    }
-
     if (m_pipeline.GetState() == BuildPipeline::State::Failed) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(kErrorColor, "Error: %s", m_pipeline.GetError());
         ImGui::PopTextWrapPos();
         if (ImGui::Button("Reset")) {
-            m_pipeline.Reset();
+            m_build.Reset();
             m_checksValid = false;
         }
     }
 
-    if (m_pipeline.GetState() == BuildPipeline::State::Done && !m_pipeline.WantsRunAfter()) {
+    if (m_pipeline.GetState() == BuildPipeline::State::Done) {
         ImGui::TextColored(kOkColor, "Build complete (%s)",
                            m_pipeline.GetRuntimeConfiguration().c_str());
         ImGui::SameLine();
@@ -793,7 +619,7 @@ void BuildSettingsPanel::DrawProgressAndActions(EditorContext& ctx)
             StandaloneLauncher::LaunchExe(m_pipeline.GetOutputExePath(), "");
         ImGui::SameLine();
         if (ImGui::Button("Reset##done")) {
-            m_pipeline.Reset();
+            m_build.Reset();
             m_checksValid = false;
         }
     }

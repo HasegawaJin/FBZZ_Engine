@@ -2,7 +2,10 @@
 /// @brief   Scene GameObject hierarchy and selection editing.
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
+#include <Engine/Asset/ModelSource.hpp>
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
+#include "../Util/MaterialAuthoringEditing.hpp"
+#include <Editor/Util/AssetDragPayload.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ColliderFit.hpp>
@@ -49,7 +52,6 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <algorithm>
-#include <cctype>
 #include <cstring>
 #include <functional>
 #include <iterator>
@@ -150,17 +152,7 @@ void SelectMoved(EditorContext& ctx, std::vector<scene::EntityID> moved, scene::
     SelectEntities(ctx, std::move(moved), SelectionReveal::Skip);
 }
 
-/// @note 子孫を再帰的に visited に追加するだけ（ImGui 呼び出しなし）。
-/// @note 親が閉じているとき子が第2ループで誤って root 描画されるのを防ぐ。
-std::string SanitizeAssetName(const std::string& name)
-{
-    std::string result = name.empty() ? "Prefab" : name;
-    for (char& c : result) {
-        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
-        if (!ok) c = '_';
-    }
-    return result;
-}
+
 
 /// @note .vfx はプレハブと同じ中身だが、AssetBrowser の色分け・サムネイル・VFXRef のドロップ受理・
 /// @note 開いたときの振る舞いがすべて拡張子で分岐する。同じ保存経路を通しつつ «これは演出だ»
@@ -172,7 +164,7 @@ std::string UniqueAssetPath(const EditorContext& ctx, const std::string& objectN
     const std::string directory = assetRoot + "/" + subDirectory;
     util::FileSystem::EnsureDirectory(directory);
 
-    const std::string base = directory + "/" + SanitizeAssetName(objectName);
+    const std::string base = directory + "/" + SanitizePrefabFileName(objectName);
     std::string path = base + extension;
     for (int i = 1; util::FileSystem::Exists(path) && i < 10000; ++i)
         path = base + " " + std::to_string(i) + extension;
@@ -215,13 +207,7 @@ void SaveSelectedAsAsset(EditorContext& ctx, const std::string& objectName,
     ctx.requestAssetBrowserRefresh = true;
 }
 
-bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath)
-{
-    if (!payload || payload->DataSize <= 0) return false;
-    outPath.assign(static_cast<const char*>(payload->Data),
-                   static_cast<size_t>(payload->DataSize - 1));
-    return !outPath.empty();
-}
+
 
 /// @brief アセットのドロップを、遅延編集と生成予約へ振り分ける。複数アセットはまとめて置く。
 /// @param parentId 無効ならルートへ置く。.mat はドロップ先の GameObject が要るので有効なときだけ受ける。
@@ -236,7 +222,7 @@ void QueueAssetDrop(EditorContext& ctx, const std::string& payloadPath,
     std::string              materialPath;
     for (const std::string& path : dragdrop::DraggedAssetPaths(payloadPath)) {
         const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
-        if (ext == ".fbx") {
+        if (asset::IsModelSourcePath(ext)) {
             fbxPaths.push_back(path);
         } else if (IsInstantiableAssetExtension(ext)) {
             /// @note ノードへのドロップはその子、背景へのドロップはルート。メニューの Create Child / Create at Root と同じ規則。
@@ -262,7 +248,7 @@ void QueueAssetDrop(EditorContext& ctx, const std::string& payloadPath,
 
     deferred = [&ctx, fbxPaths, materialPath, parentId, pendingExpand]() {
         std::vector<scene::EntityID> placed;
-        /// @note .fbx は未インポートでもその場で自動インポートして配置する。
+        /// @note モデル原本は未インポートでもその場で自動インポートして配置する。
         for (const std::string& fbxPath : fbxPaths) {
             const std::string modelPath = ResolveOrImportFbxModel(fbxPath);
             if (modelPath.empty()) continue;
@@ -274,9 +260,9 @@ void QueueAssetDrop(EditorContext& ctx, const std::string& payloadPath,
                 /// @note Viewport へのドロップと同じく、ドロップ先の GameObject へ直接割り当てる。
                 auto* mc = target->GetComponent<scene::MaterialComponent>();
                 if (!mc) mc = &target->AddComponent<scene::MaterialComponent>();
-                mc->materialPath = materialPath;
+                (void)material_edit_detail::AssignSlotReference(material_edit_detail::SlotTarget(ctx, *target, 0), materialPath);
                 /// @note 空にすると次フレームの SyncMaterial が新パスを解決し直す。
-                mc->materialAsset = {};
+
                 if (placed.empty()) placed.push_back(parentId);
             }
         }
@@ -287,14 +273,12 @@ void QueueAssetDrop(EditorContext& ctx, const std::string& payloadPath,
     };
 }
 
-void MarkDescendantsVisited(scene::GameObject& go,
-                            std::vector<scene::EntityID>& visited)
+void MarkDescendantsVisited(scene::GameObject& go, HierarchyTraversal& traversal)
 {
     for (int i = 0; i < go.GetChildCount(); ++i) {
         auto* child = go.GetChild(i);
-        if (!child || ContainsEntity(visited, child->GetID())) continue;
-        visited.push_back(child->GetID());
-        MarkDescendantsVisited(*child, visited);
+        if (!child || !traversal.Visit(child->GetID())) continue;
+        MarkDescendantsVisited(*child, traversal);
     }
 }
 
@@ -320,8 +304,11 @@ int VisibleChildCount(const EditorContext& ctx, const scene::GameObject& go)
 
 /// @note 隠している生成物の総数 (子孫すべて)。行末のバッジに出し、
 /// @note 「Hierarchy に出ていない = 存在しない」と誤解させないための表示。
-int HiddenGeneratedCount(const EditorContext& ctx, const scene::GameObject& go)
+int HiddenGeneratedCount(const EditorContext& ctx, const scene::GameObject& go, HierarchyTraversal& traversal)
 {
+    if (ctx.showGeneratedObjects || go.GetChildCount() == 0) return 0;
+    if (const auto found = traversal.hiddenCounts.find(&go); found != traversal.hiddenCounts.end())
+        return found->second;
     int count = 0;
     for (int i = 0; i < go.GetChildCount(); ++i) {
         auto* child = go.GetChild(i);
@@ -331,9 +318,10 @@ int HiddenGeneratedCount(const EditorContext& ctx, const scene::GameObject& go)
             /// @note 生成物の下はまとめて 1 段だけ数える
             count += child->GetChildCount();
         } else {
-            count += HiddenGeneratedCount(ctx, *child);
+            count += HiddenGeneratedCount(ctx, *child, traversal);
         }
     }
+    traversal.hiddenCounts.emplace(&go, count);
     return count;
 }
 
@@ -359,7 +347,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                        scene::GameObject& go,
                        size_t rootIndex,
                        size_t rootCount,
-                       std::vector<scene::EntityID>& visited,
+                       HierarchyTraversal& visited,
                        std::function<void()>& deferred,
                        PendingObjectCreate& pendingCreate,
                        HierarchyRevealState reveal,
@@ -373,15 +361,13 @@ void DrawHierarchyNode(EditorContext& ctx,
 {
     scene::EntityID* const pendingExpand = &reveal.pendingExpand;
     const scene::EntityID id = go.GetID();
-    if (ContainsEntity(visited, id)) return;
+    if (!visited.Visit(id)) return;
     /// @note ランタイム生成物は既定で描かない。visited へは入れて、第2ループが
     /// @note これを「孤立オブジェクト」と誤認して root レベルへ描くのを防ぐ。
     if (IsHiddenGenerated(ctx, go)) {
-        visited.push_back(id);
         MarkDescendantsVisited(go, visited);
         return;
     }
-    visited.push_back(id);
     outVisible.push_back(id);
 
     /// @name F2 インラインリネーム: 行をそのまま入力欄に置き換える (Unity 互換)
@@ -481,7 +467,7 @@ void DrawHierarchyNode(EditorContext& ctx,
 
     /// @note 隠している生成物の件数バッジ。「Hierarchy に出ていない = 存在しない」ではないことを示す。
     /// @note VFX 再生中は裏で十数個の GameObject が動くが、何も出さないと「生成されていない」と誤診断させる。
-    if (const int hiddenCount = HiddenGeneratedCount(ctx, go); hiddenCount > 0) {
+    if (const int hiddenCount = HiddenGeneratedCount(ctx, go, visited); hiddenCount > 0) {
         ImGui::SameLine();
         ImGui::TextDisabled("(+%d)", hiddenCount);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
@@ -1152,7 +1138,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     /// @note 検索中はフラットリスト。キーボード移動の並びもこのリストが正本になる。
     if (m_searchFilter[0] != '\0') {
         std::function<void()> deferred;
-        std::vector<scene::EntityID> visibleRows;
+        auto& visibleRows = m_nextVisibleOrder;
+        visibleRows.clear();
 
         for (auto& go : ctx.activeScene->GameObjects()) {
             if (!util::StringUtils::ContainsCI(go.name, m_searchFilter)) continue;
@@ -1246,7 +1233,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
         m_revealOpenChain.clear();
         m_revealScrollTo = {};
-        m_visibleOrder   = std::move(visibleRows);
+        m_visibleOrder.swap(visibleRows);
 
         HandleKeyboardNavigation(ctx);
         HandlePanelRequests(ctx);
@@ -1260,12 +1247,13 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     /// @note Map Mode は Terrain Grid / Terrain / Water のルートだけをツリーで出す (子を親から切り離して見せない)。
     if (ctx.mapEditingMode && ctx.mapHierarchyFilter) {
         std::function<void()> deferred;
-        std::vector<scene::EntityID> visited;
-        visited.reserve(ctx.activeScene->GameObjectCount());
+        auto& visited = m_traversal;
+        visited.BeginFrame(ctx.activeScene->GameObjectCount());
 
         const auto roots = ctx.activeScene->GetRootGameObjects();
         const size_t rootCount = roots.size();
-        std::vector<scene::EntityID> mapVisible;
+        auto& mapVisible = m_nextVisibleOrder;
+        mapVisible.clear();
         for (auto* go : roots) {
             if (!go) continue;
             if (!go->GetComponent<scene::TerrainGridComponent>()
@@ -1280,7 +1268,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         }
         m_revealOpenChain.clear();
         m_revealScrollTo = {};
-        m_visibleOrder   = std::move(mapVisible);
+        m_visibleOrder.swap(mapVisible);
 
         HandleKeyboardNavigation(ctx);
         HandlePanelRequests(ctx);
@@ -1293,9 +1281,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
     /// @note 描画ループ中にシーンを変えると後続の反復でポインタが無効になるので、変更はループ後にまとめて実行する。
     std::function<void()> deferred;
-    std::vector<scene::EntityID> visited;
-    visited.reserve(ctx.activeScene->GameObjectCount());
-    std::vector<scene::EntityID> outVisible;
+    auto& visited = m_traversal;
+    visited.BeginFrame(ctx.activeScene->GameObjectCount());
+    auto& outVisible = m_nextVisibleOrder;
+    outVisible.clear();
     outVisible.reserve(ctx.activeScene->GameObjectCount());
     const ImVec2 hierarchyMin = ImGui::GetWindowPos();
     const ImVec2 hierarchyMax = {
@@ -1316,7 +1305,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
     /// @note 親が無いのに GetRootGameObjects に入らなかった孤立オブジェクトの救済。正常なシーンでは実行されない。
     for (auto& go : ctx.activeScene->GameObjects()) {
-        if (!ContainsEntity(visited, go.GetID()) && go.GetParent() == nullptr)
+        if (go.GetParent() == nullptr && !visited.Contains(go.GetID()))
             DrawHierarchyNode(ctx, go, 0, 0, visited, deferred, pendingCreate,
                 HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo },
                 m_lastClickedEntity, m_pendingClickEntity,
@@ -1328,7 +1317,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     m_revealOpenChain.clear();
     m_revealScrollTo = {};
 
-    m_visibleOrder = std::move(outVisible);
+    m_visibleOrder.swap(outVisible);
 
     /// @note 行の上では各ノードのドロップ先に任せる。背景まで受け取ると «自分の行で離した» をルート化と誤認する。
     if (!hierarchyNodeHovered

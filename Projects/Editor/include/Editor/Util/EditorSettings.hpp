@@ -94,6 +94,7 @@ struct EditorSettings {
 
     /// @note EditorContext::GameViewportAspect の整数値として保存する (上記と同理由)。
     int   gameViewportAspect  = 0;
+    int   playExecutionMode   = 0; ///< @note 0=In Editor, 1=Standalone process
     int   playFocusMode       = 1; ///< @note 0=Focused, 1=Maximized, 2=Unfocused
 
 

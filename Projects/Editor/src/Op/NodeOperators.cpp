@@ -2,10 +2,7 @@
 /// @brief   GameObject そのものを対象にする Operator (リネーム・生成)。
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
-///
-/// 生成の実体は ObjectCreation.hpp。Hierarchy・メインメニュー・ホットキー・パレット・
-/// AI (editor.op.invoke) はここに登録した Operator を呼ぶ。AI バスの preset.create /
-/// node.create は dryRun と transaction のため同じコマンド生成関数を直接使う。
+/// @note Hierarchy・メニュー・AI は同じ Operator を呼び、生成と Undo は ObjectCreation.hpp に集約する。
 /// @see Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
 
@@ -15,6 +12,7 @@
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 
 #include <memory>
 #include <string>
@@ -69,7 +67,7 @@ void RegisterRenameOperator(OperatorRegistry& registry)
 
         OpResult result;
         result.command = MakeRenameNodeCommand(c.ctx, go->GetID(), newName,
-                                               "Rename GameObject", /*applyNow=*/true);
+                                               "Rename GameObject", true);
         if (!result.command) {
             result.noChange = true;
             result.message  = "名前は変わりませんでした";
@@ -79,8 +77,6 @@ void RegisterRenameOperator(OperatorRegistry& registry)
 
     registry.Register(std::move(op));
 }
-
-/// @name 生成
 
 /// @brief 生成系 Operator に共通の引数 (parent / name / position / placeInView)。
 std::vector<OpParam> CreateCommonParams()
@@ -126,8 +122,7 @@ CreateObjectRequest ReadCreateRequest(const OpArgs& args, CreateObjectSource sou
     return request;
 }
 
-/// @note 生成物の種類 (preset / path / script) の誤りは exec で理由付きのエラーにする。
-///       poll で弾くと NOT_AVAILABLE にしかならず、AI から直し方が読めない。
+/// @note 生成物の種類の誤りは exec で診断し、poll の NOT_AVAILABLE による原因の隠蔽を避ける。
 bool PollCreate(const OpContext& c, const OpArgs& args)
 {
     if (c.ctx.activeScene == nullptr) return false;
@@ -145,7 +140,7 @@ OpResult ExecCreate(OpContext& c, const CreateObjectRequest& request)
     auto createdIds = std::make_shared<std::vector<std::string>>();
     OpResult result;
     result.command = MakeCreateObjectCommand(
-        c.ctx, request, CreateObjectLabel(request), /*applyNow=*/true,
+        c.ctx, request, CreateObjectLabel(request), true,
         [createdIds](const std::vector<std::string>& ids) { *createdIds = ids; });
     if (!result.command)
         return OpResult::Err("CREATE_FAILED", "生成に失敗しました: " + request.key);
@@ -226,17 +221,21 @@ void RegisterCreateOperators(OperatorRegistry& registry)
         OpParam script;
         script.name = "script";
         script.type = OpParamType::String;
-        script.desc = "スクリプト型名 (\"EnemyComponent\" 等)";
+        script.desc = "完全クラス名または一意な短いクラス名 (\"EnemyComponent\" 等)";
         op.params = { script };
         for (OpParam& common : CreateCommonParams()) op.params.push_back(std::move(common));
         op.exec = [](OpContext& c, const OpArgs& args) {
-            return ExecCreate(c, ReadCreateRequest(args, CreateObjectSource::Script, args.GetString("script")));
+            const std::string requestedType = args.GetString("script");
+            std::string typeKey;
+            if (!scene::ScriptFactory::ResolveTypeName(requestedType, typeKey))
+                return OpResult::Err("TYPE_NOT_FOUND_OR_AMBIGUOUS", "スクリプト型が未登録または曖昧です。完全クラス名を指定してください: " + requestedType);
+            return ExecCreate(c, ReadCreateRequest(args, CreateObjectSource::Script, typeKey));
         };
         registry.Register(std::move(op));
     }
 }
 
-} // namespace
+} /// @note namespace
 
 void RegisterNodeOperators(OperatorRegistry& registry)
 {
@@ -244,4 +243,4 @@ void RegisterNodeOperators(OperatorRegistry& registry)
     RegisterCreateOperators(registry);
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

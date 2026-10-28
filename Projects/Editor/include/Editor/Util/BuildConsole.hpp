@@ -32,10 +32,10 @@ struct BuildDiagnostic {
 
 /// ビルド 1 回分の記録。履歴 (deque) に積んで一覧・再表示する。
 struct BuildRecord {
-    enum class Kind   { Script, Hlsl };
+    enum class Kind   { Hlsl };
     enum class Result { Building, Success, Failed, Cancelled };
 
-    Kind        kind     = Kind::Script;
+    Kind        kind     = Kind::Hlsl;
     Result      result   = Result::Building;
     int         exitCode = 0;
     std::string startClock;               ///< "14:32:05" (ローカル時刻)
@@ -52,8 +52,8 @@ public:
     /// ライブログのバイト上限。巨大な MSBuild 出力でメモリを圧迫しないよう先頭を切り捨てる。
     static constexpr size_t MAX_LOG_BYTES = 256 * 1024;
 
-    /// 新しいビルドを開始する。ライブ状態 (現在ファイル・ログ・診断) をリセットし、
-    /// Result::Building の新規レコードを履歴末尾へ積む。
+    /// HLSL ビルドを開始する。ライブ状態 (現在ファイル・ログ・診断) をリセットし、
+    /// Result::Building の新規 HLSL レコードを履歴末尾へ積む。
     void BeginBuild(BuildRecord::Kind kind);
 
     /// Compiler::GetLog() の「全文」を渡すと、前回消費位置からの差分だけをパースして取り込む。
@@ -85,16 +85,11 @@ public:
 
     /// @name 失敗通知 (ツールバー下の通知バー)
     /// @{
-    /// 状態は Kind ごとに持つ。
-    /// @note 履歴は Script と HLSL が混在するため、出す条件は履歴末尾ではなく
-    ///       種類ごとの «最後に確定した結果» で判定する (LatestFailure が種類ごとに返す)。
-    ///
-    /// いずれかの Kind に未 Dismiss の失敗があれば true。
+    /// 最新の HLSL ビルドに未 Dismiss の失敗があれば true。
     bool HasActiveFailure() const;
-    /// 通知に出すべき失敗レコード。無ければ nullptr。
-    /// 両方失敗しているときは «新しい方» を返す。
+    /// 通知に出すべき HLSL 失敗レコード。無ければ nullptr.
     const BuildRecord* LatestFailure() const;
-    /// 現在通知に出ている失敗を黙らせる (その Kind だけ)。次の失敗でまた出る。
+    /// 現在通知に出ている HLSL 失敗を黙らせる。次の失敗でまた出る.
     void DismissNotification();
     /// @}
 
@@ -113,18 +108,15 @@ private:
     uint64_t    m_liveLogGeneration = 0;
     std::string m_currentFile;         ///< cl.exe がエコーした現在コンパイル中ファイル名
 
-    /// Kind ごとの通知状態。添字は BuildRecord::Kind の値 (Script=0 / Hlsl=1)。
+    /// HLSL 通知の状態。
     struct FailureState {
         bool     failed    = false;  ///< 最後に «確定した» ビルドが失敗だったか
         bool     dismissed = false;  ///< ユーザーが閉じたか
-        uint64_t sequence  = 0;      ///< 新しさの比較用 (両方失敗しているときの優先順)
+        uint64_t sequence  = 0;      ///< 新しさの比較用
     };
-    static constexpr size_t kKindCount = 2;
+    static constexpr size_t kKindCount = 1;
     std::array<FailureState, kKindCount> m_failures{};
     uint64_t m_failureSequence = 0;
-
-    /// 現在ビルド中のレコードの種類 (EndBuild が状態を書く先を決める)。
-    BuildRecord::Kind m_buildingKind = BuildRecord::Kind::Script;
 
     unsigned long long m_startTickMs = 0;  ///< duration 計測用 (GetTickCount64)
 };

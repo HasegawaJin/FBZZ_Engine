@@ -2,9 +2,9 @@
 /// @brief   IReflector を実装し、コンポーネントの反射フィールドと JSON を相互変換する。
 /// @author  Hasegawa Jin
 /// @date    2026-07-20
-///
+
 /// @note Inspector の ImGuiReflector・SceneSerializer の TOML リフレクタと同じ IReflector ビジターを AI 境界にも
-///       通し、component.set / node.components を既存の FBZZ_FIELD 宣言に自動追従させる。
+/// @note 通し、component.set / node.components を既存の FBZZ_FIELD 宣言に自動追従させる。
 /// @note Script 観測は getter を明示的に有効化し、参照解決を呼び出し元から注入する。保存用収集では getter を呼ばない。
 #pragma once
 #include <Editor/Ai/Json.hpp>
@@ -24,13 +24,14 @@
 
 namespace fbzz::editor::ai {
 
-/// コンポーネントの Reflect() を1回通し、フィールドを JSON オブジェクトへ吸い出す (読み取り専用)。
+/// @note コンポーネントの Reflect() を1回通し、フィールドを JSON オブジェクトへ吸い出す (読み取り専用)。
 class JsonReadReflector final : public scene::IReflector {
 public:
     using EntityResolver = std::function<JsonValue(scene::EntityID, const char*)>;
+    using ObjectResolver = std::function<JsonValue(const scene::ScriptObjectReference&)>;
     /// @note 既定は保存用。実行状態の観測を要求する呼び出し元だけ true を渡す。
-    explicit JsonReadReflector(bool observations = false, EntityResolver resolver = {})
-        : m_observations(observations), m_entityResolver(std::move(resolver)) {}
+    explicit JsonReadReflector(bool observations = false, EntityResolver resolver = {}, ObjectResolver objectResolver = {})
+        : m_observations(observations), m_entityResolver(std::move(resolver)), m_objectResolver(std::move(objectResolver)) {}
     bool BeginObservation(const char*, const char*) override { return m_observations; }
     [[nodiscard]] const std::string& Error() const { return m_error; }
     void Field(const char* name, scene::EntityID& value) override
@@ -39,12 +40,29 @@ public:
     }
     void RefField(const char* name, scene::EntityRef& value, const char* typeName) override
     {
-        if (m_entityResolver) Store(PersistentKey(name), ResolveEntity(value.id, typeName));
+        if (!value.guid.empty()) Store(PersistentKey(name), ResolveObject({value.guid, value.id, value.sceneGeneration}));
+        else if (m_entityResolver) Store(PersistentKey(name), ResolveEntity(value.id, typeName));
+    }
+    void Field(const char* name, scene::EntityRef& value) override
+    {
+        RefField(name, value, "");
     }
     void RefListField(const char* name, std::vector<scene::EntityRef>& values, const char* typeName) override
     {
         JsonValue array = JsonValue::MakeArray();
-        for (const auto& value : values) array.Push(ResolveEntity(value.id, typeName));
+        for (const auto& value : values)
+            array.Push(value.guid.empty() ? ResolveEntity(value.id, typeName)
+                : ResolveObject({value.guid, value.id, value.sceneGeneration}));
+        Store(PersistentKey(name), std::move(array));
+    }
+    void ObjectReferenceField(const char* name, scene::ScriptObjectReference& value) override
+    {
+        Store(PersistentKey(name), ResolveObject(value));
+    }
+    void ObjectReferenceListField(const char* name, std::vector<scene::ScriptObjectReference>& values) override
+    {
+        JsonValue array = JsonValue::MakeArray();
+        for (const auto& value : values) array.Push(ResolveObject(value));
         Store(PersistentKey(name), std::move(array));
     }
 
@@ -55,7 +73,7 @@ public:
     void Field(const char* name, scene::ParticleCurve&) override { Unsupported(name, "particleCurve"); }
     void Field(const char* name, scene::ParticleGradient&) override { Unsupported(name, "particleGradient"); }
 
-    /// 収集済みの {フィールド名: 値} オブジェクトを返す。
+    /// @note 収集済みの {フィールド名: 値} オブジェクトを返す。
     const JsonValue& Result() const { return m_result; }
 
     void Field(const char* name, float& v) override        { Store(PersistentKey(name), JsonValue(static_cast<double>(v))); }
@@ -122,7 +140,7 @@ public:
     {
         JsonValue array = JsonValue::MakeArray();
         for (const auto& value : values) {
-            array.Push(ResolveEntity(value.id));
+            array.Push(value.guid.empty() ? ResolveEntity(value.id) : ResolveObject({value.guid, value.id, value.sceneGeneration}));
         }
         Store(PersistentKey(name), std::move(array));
     }
@@ -132,14 +150,14 @@ public:
     {
         JsonValue array = JsonValue::MakeArray();
         for (auto& value : values) {
-            JsonReadReflector child(m_observations, m_entityResolver);
+            JsonReadReflector child(m_observations, m_entityResolver, m_objectResolver);
             child.AssetField("value", value, type);
             if (const JsonValue* asset = child.Result().Find("value"))
                 array.Push(*asset);
         }
         Store(PersistentKey(name), std::move(array));
     }
-    /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    /// @note ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
 
     /// @name 入れ子オブジェクト / 構造体配列
     /// @{
@@ -194,7 +212,7 @@ public:
         JsonValue reference = JsonValue::MakeObject();
         reference.Set("type", JsonValue(value.type));
         if (value.value) {
-            JsonReadReflector child(m_observations, m_entityResolver);
+            JsonReadReflector child(m_observations, m_entityResolver, m_objectResolver);
             value.value->Reflect(child);
             if (!child.Error().empty()) m_error = child.Error();
             reference.Set("fields", child.Result());
@@ -202,13 +220,23 @@ public:
         Store(PersistentKey(name), std::move(reference));
     }
 
-    /// Readonly (計算値) も AI の観測材料として含める。
+    /// @note Readonly (計算値) も AI の観測材料として含める。
     void Readonly(const char* name, const std::string& v) override { if (m_observations) Store(PersistentKey(name), JsonValue(v)); }
     void Readonly(const char* name, float v) override { if (m_observations) Store(PersistentKey(name), JsonValue(static_cast<double>(v))); }
     void Readonly(const char* name, int v) override { if (m_observations) Store(PersistentKey(name), JsonValue(v)); }
     /// @}
 
 private:
+    JsonValue ResolveObject(const scene::ScriptObjectReference& reference) const
+    {
+        if (reference.guid.empty()) return JsonValue{};
+        if (m_objectResolver) return m_objectResolver(reference);
+        JsonValue value = JsonValue::MakeObject();
+        value.Set("guid", JsonValue(reference.guid));
+        value.Set("expectedType", JsonValue("GameObject"));
+        value.Set("status", JsonValue(reference.id.IsValid() ? "unverified" : "missing"));
+        return value;
+    }
     void Unsupported(const char* name, const char* type)
     {
         if (!m_observations) return;
@@ -233,6 +261,7 @@ private:
     }
     bool m_observations = false;
     EntityResolver m_entityResolver;
+    ObjectResolver m_objectResolver;
     std::string m_error;
 
     static JsonValue MakeVec(std::initializer_list<float> components)
@@ -242,7 +271,7 @@ private:
         return array;
     }
 
-    /// 現在の書き込み先。入れ子スコープの内側なら構築中の子オブジェクト。
+    /// @note 現在の書き込み先。入れ子スコープの内側なら構築中の子オブジェクト。
     JsonValue& Current()
     {
         return m_pending.empty() ? m_result : m_pending.back().second;
@@ -250,12 +279,12 @@ private:
 
     JsonValue m_result = JsonValue::MakeObject();
 
-    /// 構築中の入れ子オブジェクト (キー, 値)。配列要素はキーが空。
+    /// @note 構築中の入れ子オブジェクト (キー, 値)。配列要素はキーが空。
     std::vector<std::pair<std::string, JsonValue>> m_pending;
     std::vector<std::pair<std::string, JsonValue>> m_pendingLists;
 };
 
-/// Reflect() が公開する編集契約を値ではなくスキーマとして収集する。
+/// @note Reflect() が公開する編集契約を値ではなくスキーマとして収集する。
 /// @note Inspector と同じ IReflector を正本にすることで、AI 向けカタログがフィールド追加や enum/range 変更へ自動追従し、名前や許容値を推測する必要をなくす。
 class JsonCatalogReflector final : public scene::IReflector {
 public:
@@ -266,6 +295,7 @@ public:
         return false;
     }
     void Field(const char* name, scene::EntityID&) override { Add(name, "entityRef", JsonValue{}); }
+    void Field(const char* name, scene::EntityRef& value) override { RefField(name, value, ""); }
     void Field(const char* name, input::KeyCode& value) override { Add(name, "keyCode", JsonValue(static_cast<int>(value))); }
     void RefField(const char* name, scene::EntityRef&, const char* typeName) override
     {
@@ -278,6 +308,34 @@ public:
         JsonValue field = MakeField(name, "list", JsonValue::MakeArray());
         field.Set("elementType", JsonValue("entityRef"));
         field.Set("targetType", JsonValue(typeName ? typeName : ""));
+        field.Set("count", JsonValue(static_cast<int>(values.size())));
+        CurrentFields().Push(std::move(field));
+    }
+    void ObjectReferenceField(const char* name, scene::ScriptObjectReference& value) override
+    {
+        JsonValue defaultValue;
+        if (!value.guid.empty()) {
+            defaultValue = JsonValue::MakeObject();
+            defaultValue.Set("guid", JsonValue(value.guid));
+        }
+        JsonValue field = MakeField(name, "gameObject", std::move(defaultValue));
+        field.Set("targetType", JsonValue("GameObject"));
+        CurrentFields().Push(std::move(field));
+    }
+    void ObjectReferenceListField(const char* name, std::vector<scene::ScriptObjectReference>& values) override
+    {
+        JsonValue defaults = JsonValue::MakeArray();
+        for (const auto& value : values) {
+            JsonValue item;
+            if (!value.guid.empty()) {
+                item = JsonValue::MakeObject();
+                item.Set("guid", JsonValue(value.guid));
+            }
+            defaults.Push(std::move(item));
+        }
+        JsonValue field = MakeField(name, "list", std::move(defaults));
+        field.Set("elementType", JsonValue("gameObject"));
+        field.Set("targetType", JsonValue("GameObject"));
         field.Set("count", JsonValue(static_cast<int>(values.size())));
         CurrentFields().Push(std::move(field));
     }
@@ -309,31 +367,31 @@ public:
     }
     void ListField(const char* name, std::vector<float>& values) override
     {
-        AddList(name, "float", values.size());
+        AddValueList(name, "float", values);
     }
     void ListField(const char* name, std::vector<int>& values) override
     {
-        AddList(name, "int", values.size());
+        AddValueList(name, "int", values);
     }
     void ListField(const char* name, std::vector<bool>& values) override
     {
-        AddList(name, "bool", values.size());
+        AddValueList(name, "bool", values);
     }
     void ListField(const char* name, std::vector<std::string>& values) override
     {
-        AddList(name, "string", values.size());
+        AddValueList(name, "string", values);
     }
     void ListField(const char* name, std::vector<math::Vector2>& values) override
     {
-        AddList(name, "vector2", values.size());
+        AddValueList(name, "vector2", values);
     }
     void ListField(const char* name, std::vector<math::Vector3>& values) override
     {
-        AddList(name, "vector3", values.size());
+        AddValueList(name, "vector3", values);
     }
     void ListField(const char* name, std::vector<math::Vector4>& values) override
     {
-        AddList(name, "vector4", values.size());
+        AddValueList(name, "vector4", values);
     }
     void ListField(const char* name, std::vector<scene::EntityRef>& values) override
     {
@@ -349,11 +407,11 @@ public:
         field.Set("count", JsonValue(static_cast<int>(values.size())));
         CurrentFields().Push(std::move(field));
     }
-    /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    /// @note ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
 
     /// @name 入れ子オブジェクト / 構造体配列
     /// @{
-    /// スキーマ収集も値収集と同じく「子を完成させてから親へ積む」方式にする。
+    /// @note スキーマ収集も値収集と同じく「子を完成させてから親へ積む」方式にする。
     void BeginObject(const char* name) override
     {
         m_scopeFields.push_back(MakeField(name, "object", JsonValue::MakeObject()));
@@ -544,9 +602,21 @@ private:
         CurrentFields().Push(MakeField(name, type, std::move(defaultValue)));
     }
 
-    void AddList(const char* name, const char* elementType, std::size_t count)
+    template<typename Value>
+    void AddValueList(const char* name, const char* elementType, std::vector<Value>& values)
     {
-        JsonValue field = MakeField(name, "list", JsonValue::MakeArray());
+        JsonValue defaults = JsonValue::MakeArray();
+        if (m_includeDefaults) {
+            JsonReadReflector reader;
+            reader.ListField("value", values);
+            if (const JsonValue* value = reader.Result().Find("value")) defaults = *value;
+        }
+        AddList(name, elementType, values.size(), std::move(defaults));
+    }
+
+    void AddList(const char* name, const char* elementType, std::size_t count, JsonValue defaults = JsonValue::MakeArray())
+    {
+        JsonValue field = MakeField(name, "list", std::move(defaults));
         field.Set("elementType", JsonValue(elementType));
         field.Set("count", JsonValue(static_cast<int>(count)));
         CurrentFields().Push(std::move(field));
@@ -563,8 +633,8 @@ private:
         CurrentFields().Push(std::move(field));
     }
 
-    /// 現在スキーマを積む先。入れ子スコープの内側なら構築中の子配列。
-    /// 抑制中 (配列の 2 要素目以降) は捨てるためのスクラッチを返す。
+    /// @note 現在スキーマを積む先。入れ子スコープの内側なら構築中の子配列。
+    /// @note 抑制中 (配列の 2 要素目以降) は捨てるためのスクラッチを返す。
     JsonValue& CurrentFields()
     {
         if (m_suppress > 0) return m_discard;
@@ -574,10 +644,10 @@ private:
     JsonValue   m_fields = JsonValue::MakeArray();
     std::string m_group;
 
-    /// 構築中の入れ子スキーマ (フィールド名, フィールド配列)
+    /// @note 構築中の入れ子スキーマ (フィールド名, フィールド配列)
     std::vector<std::pair<std::string, JsonValue>> m_pending;
 
-    /// 配列は先頭要素のスキーマだけを採る。2 要素目以降はここへ捨てる。
+    /// @note 配列は先頭要素のスキーマだけを採る。2 要素目以降はここへ捨てる。
     JsonValue m_discard = JsonValue::MakeArray();
     int       m_suppress = 0;
 
@@ -586,16 +656,39 @@ private:
     std::vector<bool>        m_captureDepth;
 };
 
-/// 目標フィールド名に一致した1フィールドだけを JSON から書き込む。他フィールドは素通しする。
+/// @note 目標フィールド名に一致した1フィールドだけを JSON から書き込む。他フィールドは素通しする。
 class JsonWriteReflector final : public scene::IReflector {
 public:
     JsonWriteReflector(std::string targetField, const JsonValue& value)
         : m_target(std::move(targetField)), m_value(value) {}
 
-    /// 目標フィールドを発見し値を代入できたか。
+    /// @note 目標フィールドを発見し値を代入できたか。
     bool Applied() const { return m_applied; }
-    /// 発見したが型不一致で代入しなかった場合の理由 (空 = なし)。
+    /// @note 発見したが型不一致で代入しなかった場合の理由 (空 = なし)。
     const std::string& Error() const { return m_error; }
+
+    void ObjectReferenceField(const char* name, scene::ScriptObjectReference& value) override
+    {
+        if (!Match(name)) return;
+        scene::ScriptObjectReference candidate;
+        if (!ReadObjectReference(m_value, candidate)) { TypeError("null or object {guid: nonempty GameObject identifier}"); return; }
+        value = std::move(candidate);
+        m_applied = true;
+    }
+    void ObjectReferenceListField(const char* name, std::vector<scene::ScriptObjectReference>& values) override
+    {
+        if (!Match(name)) return;
+        if (!m_value.IsArray()) { TypeError("array of null or {guid}"); return; }
+        std::vector<scene::ScriptObjectReference> candidate;
+        candidate.reserve(m_value.AsArray().size());
+        for (const JsonValue& item : m_value.AsArray()) {
+            scene::ScriptObjectReference reference;
+            if (!ReadObjectReference(item, reference)) { TypeError("array of null or {guid}"); return; }
+            candidate.push_back(std::move(reference));
+        }
+        values = std::move(candidate);
+        m_applied = true;
+    }
 
     void Field(const char* name, float& v) override
     {
@@ -769,11 +862,11 @@ public:
         values = std::move(result);
         m_applied = true;
     }
-    /// ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
+    /// @note ObjectField は基底の既定実装 (BeginObject → Reflect → EndObject) に委ねる。
 
     /// @name 入れ子オブジェクト / 構造体配列
     /// @{
-    /// このリフレクタは「ドット区切りのパスで指定された 1 フィールドだけを書く」設計。スコープに入るたびに m_target の先頭セグメントを削り、抜けるときに戻す。配列要素は `"customEffects.0.intensity"` のように索引をセグメントとして扱う。
+    /// @note このリフレクタは「ドット区切りのパスで指定された 1 フィールドだけを書く」設計。スコープに入るたびに m_target の先頭セグメントを削り、抜けるときに戻す。配列要素は `"customEffects.0.intensity"` のように索引をセグメントとして扱う。
     /// @note スコープ対は「同じリフレクタが状態を変えながら潜る」形のため子リフレクタ (ApplyNested) を作れず、代わりに m_target を退避・復元する。
     void BeginObject(const char* name) override
     {
@@ -847,6 +940,17 @@ public:
     /// @}
 
 private:
+    /// @note Scene の instanceId は Asset / 型 GUID と別形式であり、欠損した既存識別子も文字列のまま保持する。
+    static bool ReadObjectReference(const JsonValue& source, scene::ScriptObjectReference& result)
+    {
+        if (source.IsNull()) return true;
+        const JsonValue* guid = source.Find("guid");
+        if (!guid || !guid->IsString() || guid->AsString().empty() || guid->AsString().find('\0') != std::string::npos ||
+            std::all_of(guid->AsString().begin(), guid->AsString().end(), [](unsigned char value) { return value <= ' '; })) return false;
+        result.guid = guid->AsString();
+        result.id = scene::EntityID::INVALID;
+        return true;
+    }
     template<typename Callback>
     void ApplyNested(const char* name, Callback callback)
     {
@@ -858,7 +962,7 @@ private:
         m_error = child.m_error;
     }
 
-    /// スコープに入る。target が `"<segment>."` で始まっていればその分だけ削り、そうでなければ target を空にしてスコープ内の全フィールドをマッチさせない。
+    /// @note スコープに入る。target が `"<segment>."` で始まっていればその分だけ削り、そうでなければ target を空にしてスコープ内の全フィールドをマッチさせない。
     /// @note マッチしない場合も必ずスタックへ積む。BeginObject / EndObject は必ず対で呼ばれるため、積まずに抜けると EndObject でスタックが破綻し、以降のスコープ復元がすべてずれる。
     void EnterSegment(const std::string& segment)
     {
@@ -971,7 +1075,7 @@ private:
         return false;
     }
 
-    /// JsonValue 配列の先頭 count 要素を数値として out[0..count) へ読む。要素不足・非数値なら false。
+    /// @note JsonValue 配列の先頭 count 要素を数値として out[0..count) へ読む。要素不足・非数値なら false。
     bool ReadNumbers(int count, float out[4]) const
     {
         if (!m_value.IsArray()) return false;
@@ -996,4 +1100,4 @@ private:
     std::string      m_error;
 };
 
-} /// namespace fbzz::editor::ai
+} /// @note namespace fbzz::editor::ai

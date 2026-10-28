@@ -73,10 +73,11 @@ private:
     /// @return 応答の ok。result / error はそれぞれへ書く。
     bool CallBus(const PlaytestHooks& hooks, const char* kind, const ai::JsonValue& payload,
                  ai::JsonValue& result, std::string& errorCode, std::string& errorMessage);
+    bool CaptureResult(const ai::JsonValue& step, const ai::JsonValue& result, std::string& error);
     void Finish(PlaytestState state, const PlaytestHooks* hooks);
     /// @param result 非 null なら報告の手順に "result" として残す (bus の query の応答)。
     void RecordStep(bool ok, const std::string& message, const ai::JsonValue* result = nullptr);
-    StepResult Fail(const std::string& message);
+    StepResult Fail(const std::string& message, const ai::JsonValue* result = nullptr);
 
     PlaytestState         m_state = PlaytestState::IDLE;
     PlaytestOptions       m_options;
@@ -100,7 +101,9 @@ private:
 
     ai::JsonValue m_stepLog = ai::JsonValue::MakeArray();
     ai::JsonValue m_images = ai::JsonValue::MakeArray();
+    /// @note 成功応答から明示保存した値だけを保持し、Start ごとに破棄する。
+    ai::JsonValue m_captures = ai::JsonValue::MakeObject();
     std::string   m_failure;
 };
 
-} // namespace fbzz::editor::playtest
+} /// @note namespace fbzz::editor::playtest

@@ -3,9 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-14
 ///
-/// BuildPipeline のコミットは出力先を remove_all してから _tmp を rename する。
-/// つまり «出力先に選べるもの» はそのまま «消してよいもの» の定義になる。
-/// 空欄がプロジェクトルートへ解決されると、ビルドを押した瞬間にプロジェクトが消える。
+/// @note 置換先の検査は大小文字・実体・未作成の末尾を含め、利用者データの削除を許可しない。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
@@ -14,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 
 namespace fbzz::tests {
 namespace {
@@ -27,7 +26,7 @@ void Touch(const std::filesystem::path& path)
     out << "x";
 }
 
-} // namespace
+} /// @note namespace
 
 class BuildOutputPathTest : public testkit::EngineFixture {
 protected:
@@ -39,7 +38,7 @@ protected:
 
     std::string ProjectRoot() const { return m_temp.Path().generic_string(); }
 
-    /// outputDirectory を差し替えて検証結果だけを返す。
+    /// @note ディスクを書き換えず、出力先検査の結果だけを返す。
     bool Accepts(const std::string& outputDirectory, std::string* reason = nullptr) const
     {
         BuildSettings settings;
@@ -80,7 +79,7 @@ TEST_F(BuildOutputPathTest, RejectsAnAncestorOfTheProject)
 TEST_F(BuildOutputPathTest, RejectsProjectDataDirectories)
 {
     EXPECT_FALSE(Accepts("Assets"));
-    /// @note Assets の中も同じく消える
+    /// @note 保護フォルダーの子も置換先にしない。
     EXPECT_FALSE(Accepts("Assets/Dist"));
     EXPECT_FALSE(Accepts("Library"));
     EXPECT_FALSE(Accepts("ProjectSettings"));
@@ -99,7 +98,7 @@ TEST_F(BuildOutputPathTest, RejectsAnExistingFolderThatIsNotAPreviousBuild)
     Touch(m_temp.Path() / "Elsewhere" / "notes.txt");
     std::string reason;
     EXPECT_FALSE(Accepts("Elsewhere", &reason));
-    EXPECT_NE(reason.find("game.manifest.toml"), std::string::npos);
+    EXPECT_NE(reason.find("game.manifest.toml"), std::string::npos) << reason;
 }
 
 TEST_F(BuildOutputPathTest, AcceptsAnExistingPreviousBuild)
@@ -116,4 +115,82 @@ TEST_F(BuildOutputPathTest, AcceptsAnExistingEmptyFolder)
     EXPECT_TRUE(Accepts("Empty"));
 }
 
-} // namespace fbzz::tests
+TEST_F(BuildOutputPathTest, RejectsProtectedRootsWithDifferentWindowsCasing)
+{
+    for (const char* path : { "assets", "aSSeTs/Dist", "library/ManagedScripts/New", "PROJECTSETTINGS/Dist",
+        "src/New", "include/New", "binaries/New", "build/New" }) {
+        std::string reason;
+        EXPECT_FALSE(Accepts(path, &reason));
+        EXPECT_FALSE(reason.empty());
+    }
+    EXPECT_TRUE(Accepts("builds/ManagedSmoke/New"));
+}
+
+TEST_F(BuildOutputPathTest, RejectsCanonicalProjectAndAncestorAliases)
+{
+    std::string lower = ProjectRoot();
+    for (char& value : lower) if (value >= 'A' && value <= 'Z') value = static_cast<char>(value - 'A' + 'a');
+    EXPECT_FALSE(Accepts(lower + "/"));
+    EXPECT_FALSE(Accepts(lower + "/../"));
+    EXPECT_FALSE(Accepts("Builds/../../"));
+    EXPECT_TRUE(Accepts((m_temp.Path() / "Builds/ManagedSmoke/New").generic_string()));
+}
+
+TEST_F(BuildOutputPathTest, RejectsNulAndExistingFileParentsWithoutChangingThem)
+{
+    EXPECT_FALSE(Accepts(std::string("Builds/Game\0Ignored", 19)));
+    const std::filesystem::path file = m_temp.File("Occupied");
+    Touch(file);
+    EXPECT_FALSE(Accepts("Occupied"));
+    EXPECT_FALSE(Accepts("Occupied/Game"));
+    std::ifstream input(file, std::ios::binary);
+    std::string text;
+    input >> text;
+    EXPECT_EQ(text, "x");
+}
+
+TEST_F(BuildOutputPathTest, DoesNotTreatAManifestDirectoryAsAPreviousPackage)
+{
+    std::filesystem::create_directories(m_temp.File("Dist/game.manifest.toml"));
+    EXPECT_FALSE(Accepts("Dist"));
+    EXPECT_TRUE(std::filesystem::is_directory(m_temp.File("Dist/game.manifest.toml")));
+}
+
+TEST_F(BuildOutputPathTest, PreservesAnExternalManagedFolderAndAllowsAnExternalPreviousPackage)
+{
+    testkit::TempDir external{ "external-managed-output" };
+    ASSERT_TRUE(external.IsValid());
+    const std::filesystem::path host = external.File("Runtime/Managed/Fbzz.ManagedHost.dll");
+    Touch(host);
+    std::string reason;
+    EXPECT_FALSE(Accepts(external.File("Runtime").generic_string(), &reason));
+    EXPECT_NE(reason.find("game.manifest.toml"), std::string::npos) << reason;
+    std::ifstream input(host, std::ios::binary);
+    std::string text;
+    input >> text;
+    EXPECT_EQ(text, "x");
+    Touch(external.File("Package/game.manifest.toml"));
+    Touch(external.File("Package/Managed/Project.Scripts.dll"));
+    EXPECT_TRUE(Accepts(external.File("Package").generic_string(), &reason)) << reason;
+    EXPECT_TRUE(std::filesystem::is_regular_file(external.File("Package/Managed/Project.Scripts.dll")));
+}
+
+/// @note Windows の symlink 作成権限が無い環境では明示的に skip し、字面の検査成功を実体検査と取り違えない。
+/// @see https://learn.microsoft.com/cpp/standard-library/filesystem-functions#create_directory_symlink ディレクトリ参照の作成。
+TEST_F(BuildOutputPathTest, RejectsLinksIntoProtectedFoldersAndTheProjectRoot)
+{
+    std::filesystem::create_directories(m_temp.File("Library"));
+    std::error_code error;
+    std::filesystem::create_directory_symlink(m_temp.File("Library"), m_temp.File("LibraryAlias"), error);
+    if (error == std::errc::operation_not_permitted || error == std::errc::permission_denied)
+        GTEST_SKIP() << "Directory symlink creation requires a Windows capability: " << error.message();
+    ASSERT_FALSE(static_cast<bool>(error));
+    EXPECT_FALSE(Accepts("LibraryAlias/NewPackage"));
+    error.clear();
+    std::filesystem::create_directory_symlink(m_temp.Path(), m_temp.File("ProjectAlias"), error);
+    ASSERT_FALSE(static_cast<bool>(error));
+    EXPECT_FALSE(Accepts("ProjectAlias"));
+    EXPECT_FALSE(Accepts("ProjectAlias/Assets/NewPackage"));
+}
+
+} /// @note namespace fbzz::tests

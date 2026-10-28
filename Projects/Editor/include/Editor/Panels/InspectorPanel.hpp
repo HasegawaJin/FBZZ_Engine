@@ -29,6 +29,8 @@ public:
     /// @brief 全パネル描画後、選択外・非表示になった DataAsset の編集を確定する。
     /// @note 現フレームに表示されたアセットの active 操作と、明示 Discard は保持する。
     static void FlushPendingDataAssetSaves(EditorContext& ctx);
+    /// @note プロジェクト終了時は managed generation より先に document と保存 callback を解放する。
+    static void ResetPendingDataAssetSaves();
 
 protected:
     void OnBeforeBegin(EditorContext& ctx) override;
@@ -59,7 +61,6 @@ private:
     FontPreviewView     m_fontPreview;
 
     void DrawAssetInspector(EditorContext& ctx, const std::string& assetPath);
-    static void ResetPendingDataAssetSaves();
 };
 
 } /// @note namespace fbzz::editor

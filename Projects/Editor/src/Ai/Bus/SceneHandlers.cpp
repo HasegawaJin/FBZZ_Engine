@@ -17,6 +17,7 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include "../../Util/MaterialAuthoringEditing.hpp"
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/IShader.hpp>
@@ -37,6 +38,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -105,10 +107,10 @@ Outcome FindSceneNodes(scene::Scene& activeScene, const JsonValue& payload)
     }
 
     const JsonValue* limitValue = payload.Find("limit");
-    const int limit = std::clamp(
-        limitValue != nullptr && limitValue->IsNumber() ? limitValue->AsInt() : 100,
-        1,
-        500);
+    int limit = 100;
+    if (limitValue && (!limitValue->TryGetInt32(limit) || limit < 1 || limit > 500)) return Outcome::Err("BAD_ARG", "limit は 1..500 の page 件数です");
+    int64_t offset = 0;
+    if (const JsonValue* start = payload.Find("offset"); start && (!start->TryGetInt64(offset) || offset < 0)) return Outcome::Err("BAD_ARG", "offset は 0 以上の整数です");
     const std::string nameNeedle = LowerAscii(name);
     JsonValue matches = JsonValue::MakeArray();
     int total = 0;
@@ -146,8 +148,8 @@ Outcome FindSceneNodes(scene::Scene& activeScene, const JsonValue& payload)
             }
         }
         if (nameMatches && tagMatches && activeMatches && componentsMatch && propertiesMatch) {
-            ++total;
-            if (static_cast<int>(matches.AsArray().size()) < limit) {
+            const int position = total++;
+            if (position >= offset && static_cast<int>(matches.AsArray().size()) < limit) {
                 JsonValue match = JsonValue::MakeObject();
                 match.Set("id", JsonValue(go->instanceId));
                 match.Set("name", JsonValue(go->name));
@@ -168,9 +170,13 @@ Outcome FindSceneNodes(scene::Scene& activeScene, const JsonValue& payload)
     for (GameObject* root : activeScene.GetRootGameObjects()) visit(root, "");
 
     JsonValue result = JsonValue::MakeObject();
+    const auto returned = static_cast<int64_t>(matches.AsArray().size());
     result.Set("matches", std::move(matches));
     result.Set("count", JsonValue(total));
-    result.Set("truncated", JsonValue(total > limit));
+    const bool more = offset < total && returned < total - offset;
+    result.Set("offset", JsonValue(offset)); result.Set("limit", JsonValue(limit)); result.Set("returned", JsonValue(returned));
+    result.Set("nextOffset", more ? JsonValue(offset + returned) : JsonValue{});
+    result.Set("truncated", JsonValue(more)); result.Set("sample", JsonValue("request"));
     return Outcome::Ok(std::move(result));
 }
 
@@ -350,29 +356,48 @@ Outcome DoPhysicsEvents(editor::EditorContext& ctx)
 
 Outcome DoMaterialInspect(editor::EditorContext& ctx, const JsonValue& payload)
 {
-    if (ctx.activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    scene::Scene* sourceScene = ctx.activeScene;
+    if (!sourceScene) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
+    const uint64_t sourceGeneration = sourceScene->GetRenderSceneGeneration();
     const std::string id = StringField(payload, "id");
-    GameObject* go = ctx.activeScene->FindByGuid(id);
-    if (go == nullptr) return Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
-    scene::MaterialComponent* material = go->GetComponent<scene::MaterialComponent>();
-    if (material == nullptr) return Outcome::Err("NOT_PRESENT", "MaterialComponent が装着されていません");
-    material->EnsureMaterialAsset();
+    GameObject* go = sourceScene->FindByGuid(id);
+    if (!go) return Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id);
+    auto* material = go->GetComponent<scene::MaterialComponent>();
+    if (!material) return Outcome::Err("NOT_PRESENT", "MaterialComponent が装着されていません");
+    const auto sourceAuthoring = material->ReadAuthoring();
+    (void)material->EnsureMaterialAsset();
+    if (ctx.activeScene != sourceScene || sourceScene->GetRenderSceneGeneration() != sourceGeneration)
+        return Outcome::Err("CONFLICT", "Material source scene changed while resolving its asset");
+    go = sourceScene->FindByGuid(id);
+    material = go ? go->GetComponent<scene::MaterialComponent>() : nullptr;
+    if (!material || material->ReadAuthoring() != sourceAuthoring)
+        return Outcome::Err("CONFLICT", "Material authoring owner changed while resolving its asset");
+    const auto materialHandle = material->GetMaterialAsset();
+    const bool enabled = material->enabled;
+    const auto assetSnapshot = asset::ReadMaterialAuthoring(materialHandle);
+    const std::string shaderPath = assetSnapshot ? assetSnapshot->Data().shaderPath : std::string{};
+    if (ctx.activeScene != sourceScene || sourceScene->GetRenderSceneGeneration() != sourceGeneration)
+        return Outcome::Err("CONFLICT", "Material source scene changed while reading its asset");
+    go = sourceScene->FindByGuid(id);
+    material = go ? go->GetComponent<scene::MaterialComponent>() : nullptr;
+    if (!material || material->ReadAuthoring() != sourceAuthoring || material->GetMaterialAsset() != materialHandle)
+        return Outcome::Err("CONFLICT", "Material authoring owner changed while reading its asset");
     JsonValue overrides = JsonValue::MakeObject();
-    for (const auto& [name, values] : material->paramOverrides) {
+    for (const auto& [name, values] : sourceAuthoring->Data().paramOverrides) {
         JsonValue value = JsonValue::MakeArray();
         for (float element : values) value.Push(JsonValue(element));
         overrides.Set(name, std::move(value));
     }
-    for (const auto& [name, values] : material->integerParamOverrides) {
+    for (const auto& [name, values] : sourceAuthoring->Data().integerParamOverrides) {
         JsonValue value = JsonValue::MakeArray();
         for (const int64_t element : values) value.Push(JsonValue(static_cast<double>(element)));
         overrides.Set(name, std::move(value));
     }
     JsonValue result = JsonValue::MakeObject();
     result.Set("id", JsonValue(id));
-    result.Set("materialPath", JsonValue(material->materialPath));
-    result.Set("shaderPath", JsonValue(material->GetShaderPath()));
-    result.Set("enabled", JsonValue(material->enabled));
+    result.Set("materialPath", JsonValue(sourceAuthoring->Data().materialPath));
+    result.Set("shaderPath", JsonValue(shaderPath));
+    result.Set("enabled", JsonValue(enabled));
     result.Set("overrides", std::move(overrides));
     return Outcome::Ok(std::move(result));
 }
@@ -434,11 +459,11 @@ Outcome DoSceneValidate(editor::EditorContext& ctx)
                 ++errors;
             }
         }
-        if (auto* material = go.GetComponent<scene::MaterialComponent>(); material != nullptr && !material->materialPath.empty()) {
+        if (auto* material = go.GetComponent<scene::MaterialComponent>(); material != nullptr && !material->GetMaterialPath().empty()) {
             fs::path materialPath;
             std::string relative;
-            if (!ResolveProjectFile(ctx, material->materialPath, materialPath, relative) || !fs::is_regular_file(materialPath)) {
-                AddValidationIssue(issues, "error", "BROKEN_MATERIAL", go, "Material 参照が見つかりません: " + material->materialPath);
+            if (!ResolveProjectFile(ctx, material->GetMaterialPath(), materialPath, relative) || !fs::is_regular_file(materialPath)) {
+                AddValidationIssue(issues, "error", "BROKEN_MATERIAL", go, "Material 参照が見つかりません: " + material->GetMaterialPath());
                 ++errors;
             }
         }
@@ -1080,26 +1105,24 @@ std::unique_ptr<ICommand> BuildMaterialAssignCommand([[maybe_unused]] editor::Ed
         }
         scene::MaterialComponent* existing = go->GetComponent<scene::MaterialComponent>();
         const bool wasPresent = existing != nullptr;
-        const std::string oldPath = existing != nullptr ? existing->materialPath : std::string{};
+        const std::string oldPath = existing != nullptr ? existing->GetMaterialPath() : std::string{};
         return std::make_unique<LambdaCommand>("AI: Assign Material",
-            [scene, id, materialPath, markDirty]() {
+            [context = &ctx, scene, id, materialPath, markDirty]() {
                 GameObject* target = scene->FindByGuid(id);
                 if (target == nullptr) return;
                 scene::MaterialComponent* material = target->GetComponent<scene::MaterialComponent>();
                 if (material == nullptr) material = &target->AddComponent<scene::MaterialComponent>(scene::MaterialComponent{});
-                material->materialPath = materialPath;
-                material->materialAsset = {};
-                material->material.reset();
-                markDirty();
+                const auto result = editor::material_edit_detail::AssignSlotReference(
+                    editor::material_edit_detail::SlotTarget(*context, *target, 0), materialPath);
+                if (result == asset::detail::MaterialAuthoringCommitResult::COMMITTED) markDirty();
             },
-            [scene, id, wasPresent, oldPath, markDirty]() {
+            [context = &ctx, scene, id, wasPresent, oldPath, markDirty]() {
                 GameObject* target = scene->FindByGuid(id);
                 if (target == nullptr) return;
                 if (!wasPresent) target->RemoveComponent<scene::MaterialComponent>();
                 else if (auto* material = target->GetComponent<scene::MaterialComponent>()) {
-                    material->materialPath = oldPath;
-                    material->materialAsset = {};
-                    material->material.reset();
+                    (void)editor::material_edit_detail::AssignSlotReference(
+                        editor::material_edit_detail::SlotTarget(*context, *target, 0), oldPath);
                 }
                 markDirty();
             });
@@ -1134,50 +1157,108 @@ std::unique_ptr<ICommand> BuildMaterialOverrideCommand([[maybe_unused]] editor::
             if (!element.IsNumber()) { err = Outcome::Err("BAD_ARG", "value は数値配列です"); return nullptr; }
             newValue.push_back(element.AsNumber());
         }
-        if (!ctx.resources || !material->EnsureMaterialAsset()) {
+        const uint64_t sourceGeneration = scene->GetRenderSceneGeneration();
+        const auto sourceAuthoring = material->ReadAuthoring();
+        auto* resources = ctx.resources;
+        if (!resources) {
             err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material と Shader の読み込みが必要です"); return nullptr;
         }
-        const auto handle = ctx.resources->LoadShader(material->GetShaderPath());
-        const auto* shader = ctx.resources->Get(handle);
-        const auto* variable = shader ? shader->GetDescriptor().FindVar(parameter) : nullptr;
+        const uint64_t resourceInstance = resources->GetInstanceId();
+        const uint64_t resourceReset = resources->GetResetVersion();
+        const auto resolveSource = [&]() -> scene::MaterialComponent* {
+            if (ctx.activeScene != scene || scene->GetRenderSceneGeneration() != sourceGeneration
+                || ctx.resources != resources || resources->GetInstanceId() != resourceInstance
+                || resources->GetResetVersion() != resourceReset) return nullptr;
+            auto* owner = scene->FindByGuid(id);
+            auto* current = owner ? owner->GetComponent<scene::MaterialComponent>() : nullptr;
+            return current && current->ReadAuthoring() == sourceAuthoring ? current : nullptr;
+        };
+        const bool resolved = material->EnsureMaterialAsset();
+        material = resolveSource();
+        if (!material) {
+            err = Outcome::Err("CONFLICT", "Material authoring owner changed while resolving its asset"); return nullptr;
+        }
+        if (!resolved) {
+            err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material と Shader の読み込みが必要です"); return nullptr;
+        }
+        const auto assetHandle = material->GetMaterialAsset();
+        const auto assetSnapshot = asset::ReadMaterialAuthoring(assetHandle);
+        const std::string shaderPath = assetSnapshot ? assetSnapshot->Data().shaderPath : std::string{};
+        if (!assetSnapshot) {
+            err = Outcome::Err("REFLECTION_UNAVAILABLE", "Material authoring snapshot is unavailable"); return nullptr;
+        }
+        material = resolveSource();
+        if (!material || material->GetMaterialAsset() != assetHandle) {
+            err = Outcome::Err("CONFLICT", "Material asset binding changed before shader resolution"); return nullptr;
+        }
+        const auto handle = resources->LoadShader(shaderPath);
+        material = resolveSource();
+        if (!material || material->GetMaterialAsset() != assetHandle) {
+            err = Outcome::Err("CONFLICT", "Material source changed during shader creation"); return nullptr;
+        }
+        const uint64_t shaderVersion = resources->GetShaderVersion();
+        const auto descriptor = [&]() -> std::optional<renderer::ShaderDescriptor> {
+            if (const auto* shader = resources->Get(handle)) return shader->GetDescriptor();
+            return std::nullopt;
+        }();
+        const auto hasCurrentShaderSource = [&]() {
+            const auto currentAsset = asset::ReadMaterialAuthoring(assetHandle);
+            auto* current = resolveSource();
+            return current && current->GetMaterialAsset() == assetHandle && currentAsset == assetSnapshot
+                && resources->GetShaderVersion() == shaderVersion;
+        };
+        if (!hasCurrentShaderSource()) {
+            err = Outcome::Err("CONFLICT", "Material or shader changed while resolving parameter reflection"); return nullptr;
+        }
+        const auto* variable = descriptor ? descriptor->FindVar(parameter) : nullptr;
         if (!variable || !asset::ValidateMaterialValues(*variable, newValue)) {
             err = Outcome::Err("MATERIAL_TYPE_MISMATCH", "shader.inspect の writable/type/components と値の範囲を確認してください");
             return nullptr;
         }
         const bool integer = variable->varType != renderer::ShaderVarType::Float;
-        const auto oldFloat = material->paramOverrides.find(parameter);
-        const auto oldInteger = material->integerParamOverrides.find(parameter);
-        const bool hadFloat = oldFloat != material->paramOverrides.end();
-        const bool hadInteger = oldInteger != material->integerParamOverrides.end();
+        if (!hasCurrentShaderSource()) {
+            err = Outcome::Err("CONFLICT", "Material authoring changed while validating parameter values"); return nullptr;
+        }
+        const auto authoring = sourceAuthoring;
+        const auto oldFloat = authoring->Data().paramOverrides.find(parameter);
+        const auto oldInteger = authoring->Data().integerParamOverrides.find(parameter);
+        const bool hadFloat = oldFloat != authoring->Data().paramOverrides.end();
+        const bool hadInteger = oldInteger != authoring->Data().integerParamOverrides.end();
         const auto floatValue = hadFloat ? oldFloat->second : std::vector<float>{};
         const auto integerValue = hadInteger ? oldInteger->second : std::vector<int64_t>{};
+        auto apply = [scene, id, parameter, markDirty](auto&& update) {
+            if (GameObject* target = scene->FindByGuid(id)) {
+                if (auto* component = target->GetComponent<scene::MaterialComponent>()) {
+                    auto edit = component->BeginAuthoringEdit();
+                    update(edit.Draft());
+                    const auto result = edit.Commit(*component);
+                    if (result == asset::detail::MaterialAuthoringCommitResult::COMMITTED) markDirty();
+                    else if (result == asset::detail::MaterialAuthoringCommitResult::CONFLICT)
+                        FBZZ_LOG_WARN("AI material override edit conflicted with another authoring edit");
+                }
+            }
+        };
         return std::make_unique<LambdaCommand>("AI: Override Material Parameter",
-            [scene, id, parameter, newValue, integer, markDirty]() {
-                if (GameObject* target = scene->FindByGuid(id)) {
-                    if (auto* component = target->GetComponent<scene::MaterialComponent>()) {
-                        component->paramOverrides.erase(parameter);
-                        component->integerParamOverrides.erase(parameter);
-                        if (integer) {
-                            auto& values = component->integerParamOverrides[parameter];
-                            for (const double value : newValue) values.push_back(static_cast<int64_t>(value));
-                        } else {
-                            auto& values = component->paramOverrides[parameter];
-                            for (const double value : newValue) values.push_back(static_cast<float>(value));
-                        }
+            [apply, parameter, newValue, integer]() {
+                apply([&](scene::MaterialSlotAuthoring& draft) {
+                    draft.paramOverrides.erase(parameter);
+                    draft.integerParamOverrides.erase(parameter);
+                    if (integer) {
+                        auto& values = draft.integerParamOverrides[parameter];
+                        for (const double value : newValue) values.push_back(static_cast<int64_t>(value));
+                    } else {
+                        auto& values = draft.paramOverrides[parameter];
+                        for (const double value : newValue) values.push_back(static_cast<float>(value));
                     }
-                }
-                markDirty();
+                });
             },
-            [scene, id, parameter, hadFloat, hadInteger, floatValue, integerValue, markDirty]() {
-                if (GameObject* target = scene->FindByGuid(id)) {
-                    if (auto* component = target->GetComponent<scene::MaterialComponent>()) {
-                        if (hadFloat) component->paramOverrides[parameter] = floatValue;
-                        else component->paramOverrides.erase(parameter);
-                        if (hadInteger) component->integerParamOverrides[parameter] = integerValue;
-                        else component->integerParamOverrides.erase(parameter);
-                    }
-                }
-                markDirty();
+            [apply, parameter, hadFloat, hadInteger, floatValue, integerValue]() {
+                apply([&](scene::MaterialSlotAuthoring& draft) {
+                    if (hadFloat) draft.paramOverrides[parameter] = floatValue;
+                    else draft.paramOverrides.erase(parameter);
+                    if (hadInteger) draft.integerParamOverrides[parameter] = integerValue;
+                    else draft.integerParamOverrides.erase(parameter);
+                });
             });
     }
 
@@ -1209,17 +1290,17 @@ std::unique_ptr<ICommand> BuildMaterialSetShaderCommand([[maybe_unused]] editor:
             err = Outcome::Err("SHADER_NOT_FOUND", "projectRoot 配下の .hlsl を指定してください");
             return nullptr;
         }
-        asset::MaterialAsset oldAsset;
+        asset::MaterialAssetAuthoring oldAsset;
         if (!asset::LoadMaterialAssetFromFile(materialFile.generic_string(), oldAsset)) {
             err = Outcome::Err("MATERIAL_READ_FAILED", "MaterialAsset を読み取れません: " + materialPath);
             return nullptr;
         }
-        asset::MaterialAsset newAsset = oldAsset;
+        asset::MaterialAssetAuthoring newAsset = oldAsset;
         newAsset.shaderPath = shaderPath;
         editor::EditorContext* context = &ctx;
         /// @note Unload はスロットを解放して世代を進めるため、配ってある AssetHandle が一斉に死ぬ。ReloadPath はハンドルを保ったまま実体を差し替える。
         const auto applyToDisk = [context](const fs::path& file,
-                                           const asset::MaterialAsset& value) {
+                                           const asset::MaterialAssetAuthoring& value) {
             if (!asset::SaveMaterialAssetToFile(file.generic_string(), value)) return;
             asset::AssetManager::ReloadPath(file.generic_string());
             context->requestAssetBrowserRefresh = true;

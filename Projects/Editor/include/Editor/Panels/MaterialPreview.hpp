@@ -4,6 +4,8 @@
 /// @date    2026-08-19
 #pragma once
 #include <Editor/Panels/MaterialPreviewCore.hpp>
+#include <Editor/Util/MaterialPreviewCache.hpp>
+#include <Editor/Util/RevisionCache.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 
 #include <imgui.h>
@@ -11,7 +13,7 @@
 #include <cstdint>
 #include <string>
 
-namespace fbzz::asset { struct MaterialAsset; }
+namespace fbzz::asset { struct MaterialAssetAuthoring; }
 
 namespace fbzz::editor {
 
@@ -19,10 +21,10 @@ struct EditorContext;
 
 /// @brief マテリアルプレビューの背景表示。
 enum class MaterialPreviewBackground {
-    Gradient, ///< AssetBrowser のサムネイル枠と同じ縦グラデーション (既定)
-    Checker,  ///< 市松。アルファを持つ材質の «抜け» を見る
-    Solid,    ///< 単色
-    Grid,     ///< 方眼。輪郭の歪みとタイリングを見る
+    Gradient, ///< @note AssetBrowser のサムネイル枠と同じ縦グラデーション (既定)
+    Checker,  ///< @note 市松。アルファを持つ材質の «抜け» を見る
+    Solid,
+    Grid,     ///< @note 方眼。輪郭の歪みとタイリングを見る
 };
 
 /// @brief パネル単位で状態を持つマテリアルプレビュー。
@@ -30,7 +32,7 @@ enum class MaterialPreviewBackground {
 class MaterialPreviewView {
 public:
     /// @brief .mat を選択中の形状へ適用して描画する。
-    bool Draw(EditorContext& ctx, const asset::MaterialAsset& material, float previewHeight);
+    bool Draw(EditorContext& ctx, asset::MaterialAssetAuthoring material, float previewHeight);
 
     /// @brief 視点・照明・表示チャンネルを既定へ戻す。
     void ResetView();
@@ -39,11 +41,15 @@ private:
     void DrawToolbar(EditorContext& ctx, matpreview::Flavor flavor);
     void DrawBackground(ImVec2 origin, float size, bool hovered) const;
     /// @brief .mat の標準 normal スロットを raw RGB で表示する。
-    void DrawNormalMap(EditorContext& ctx, const asset::MaterialAsset& material);
-    void DrawUnsupported(EditorContext& ctx, const asset::MaterialAsset& material,
+    void DrawNormalMap(EditorContext& ctx, const asset::MaterialAssetAuthoring& material);
+    void DrawUnsupported(EditorContext& ctx, const asset::MaterialAssetAuthoring& material,
                          ImVec2 origin, float size);
-    bool RenderFrame(EditorContext& ctx, const asset::MaterialAsset& material,
-                     matpreview::Flavor flavor);
+    void SynchronizeResources(EditorContext& ctx);
+    /// @note resources が null なら旧所有者のハンドルを忘れ、現在の資源プールへ返さない。
+    void InvalidateGpu(renderer::ResourceManager* resources);
+    bool EnsurePreviewFrame(EditorContext& ctx, const asset::MaterialAssetAuthoring& material,
+                             matpreview::Flavor flavor);
+    bool RenderFrame(EditorContext& ctx, matpreview::RenderDesc desc);
 
     matpreview::GpuData  m_gpu;
     matpreview::Orbit    m_orbit;
@@ -53,10 +59,16 @@ private:
 
     renderer::ResourceHandle<renderer::RenderTargetTag> m_renderTarget;
 
+    matpreview::PreviewResourceKey m_resourceKey;
+    asset::MaterialAssetAuthoring m_sourceMaterial;
+    RevisionCache<matpreview::PreviewGpuKey> m_gpuCache;
+    RevisionCache<matpreview::PreviewFrameKey> m_frameCache;
+    std::uint64_t m_sourceRevision = 0;
+
     MaterialPreviewBackground m_background = MaterialPreviewBackground::Gradient;
     float m_solidColor[3] = { 0.13f, 0.14f, 0.17f };
 
-    /// @brief Water と Fiber のプレビューを時間で進める。
+    /// @note Water / Fiber の停止操作は Trail / PostProcess の時刻にも適用する。
     bool m_animateWater = true;
 
     /// @name Fiber
@@ -78,7 +90,6 @@ private:
     bool        m_normalMapTextureResolved = false;
     bool        m_normalMapFileExists = false;
     std::int64_t m_normalMapFileRevision = 0;
-    std::uint64_t m_normalMapResourceResetVersion = 0;
     double      m_normalMapNextFileCheck = 0.0;
 };
 

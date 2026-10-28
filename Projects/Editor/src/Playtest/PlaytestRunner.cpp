@@ -10,6 +10,7 @@
 #include <Engine/Core/Time.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <iterator>
@@ -59,7 +60,61 @@ std::optional<JsonValue> ReadJsonFile(const std::filesystem::path& path, std::st
     return value;
 }
 
-} // namespace
+/// @note 文字列展開をせず JSON の型を保つ。保存値を再帰展開しないため循環参照を作らない。
+bool ResolveCaptured(const JsonValue& source, const JsonValue& captures, JsonValue& result, std::string& error, size_t depth = 0)
+{
+    if (depth > 64) { error = "応答参照の深さが上限を超えています"; return false; }
+    if (source.IsObject()) {
+        if (const JsonValue* reference = source.Find("$ref")) {
+            if (source.AsObject().size() != 1 || !reference->IsString() || reference->AsString().empty()) {
+                error = "$ref は空でない参照パス一個だけのオブジェクトです";
+                return false;
+            }
+            const JsonValue* captured = ResolveJsonPath(captures, reference->AsString());
+            if (!captured) { error = "未取得の応答参照: " + reference->AsString(); return false; }
+            result = *captured;
+            return true;
+        }
+        result = JsonValue::MakeObject();
+        for (const auto& [key, value] : source.AsObject()) {
+            JsonValue resolved;
+            if (!ResolveCaptured(value, captures, resolved, error, depth + 1)) return false;
+            result.Set(key, std::move(resolved));
+        }
+    } else if (source.IsArray()) {
+        result = JsonValue::MakeArray();
+        for (const JsonValue& value : source.AsArray()) {
+            JsonValue resolved;
+            if (!ResolveCaptured(value, captures, resolved, error, depth + 1)) return false;
+            result.AsArray().push_back(std::move(resolved));
+        }
+    } else result = source;
+    return true;
+}
+
+bool CaptureKey(std::string_view key)
+{
+    return !key.empty() && key.size() <= 64 && std::all_of(key.begin(), key.end(), [](char value) {
+        return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z')
+            || (value >= '0' && value <= '9') || value == '_';
+    });
+}
+
+bool ValidateCapture(const JsonValue& step, std::string& error)
+{
+    const JsonValue* capture = step.Find("capture");
+    if (!capture) return true;
+    if (!capture->IsObject() || capture->AsObject().size() > 64) {
+        error = "capture は最大 64 個の保存名と応答パスのオブジェクトです";
+        return false;
+    }
+    for (const auto& [key, path] : capture->AsObject())
+        if (!CaptureKey(key) || !path.IsString()) { error = "capture の保存名または応答パスが不正です"; return false; }
+    if (!StringOf(step, "expectError").empty()) { error = "失敗応答は capture できません"; return false; }
+    return true;
+}
+
+} /// @note namespace
 
 bool PlaytestRunner::Start(const JsonValue& scenario, const std::filesystem::path& scenarioPath,
                            const std::filesystem::path& projectRoot, const std::filesystem::path& outputDirectory,
@@ -96,6 +151,7 @@ bool PlaytestRunner::Start(const JsonValue& scenario, const std::filesystem::pat
     m_replayCursor = 0;
     m_stepLog = JsonValue::MakeArray();
     m_images = JsonValue::MakeArray();
+    m_captures = JsonValue::MakeObject();
     m_failure.clear();
     return true;
 }
@@ -121,11 +177,16 @@ bool PlaytestRunner::IsFluidPlaybackCaptureStep() const
 bool PlaytestRunner::CallBus(const PlaytestHooks& hooks, const char* kind, const JsonValue& payload,
                              JsonValue& result, std::string& errorCode, std::string& errorMessage)
 {
+    JsonValue resolved;
+    if (!ResolveCaptured(payload, m_captures, resolved, errorMessage)) {
+        errorCode = "PLAYTEST_REFERENCE";
+        return false;
+    }
     JsonValue request = JsonValue::MakeObject();
     request.Set("protocol", JsonValue(ai::kEditorProtocol));
     request.Set("id", JsonValue("playtest-" + std::to_string(++m_requestSerial)));
     request.Set("kind", JsonValue(kind));
-    request.Set("payload", payload);
+    request.Set("payload", std::move(resolved));
     request.Set("dryRun", JsonValue(false));
 
     const std::string responseLine = hooks.bus ? hooks.bus(ai::SerializeJson(request)) : std::string{};
@@ -151,6 +212,26 @@ bool PlaytestRunner::CallBus(const PlaytestHooks& hooks, const char* kind, const
     return false;
 }
 
+bool PlaytestRunner::CaptureResult(const JsonValue& step, const JsonValue& result, std::string& error)
+{
+    const JsonValue* capture = step.Find("capture");
+    if (!capture) return true;
+    if (!capture->IsObject()) { error = "capture は保存名と応答パスのオブジェクトです"; return false; }
+    JsonValue next = m_captures;
+    for (const auto& [key, path] : capture->AsObject()) {
+        if (!CaptureKey(key) || !path.IsString()) { error = "capture の保存名または応答パスが不正です"; return false; }
+        const JsonValue* value = ResolveJsonPath(result, path.AsString());
+        if (!value) { error = "capture の応答パスがありません: " + path.AsString(); return false; }
+        next.Set(key, *value);
+    }
+    if (next.AsObject().size() > 64 || ai::SerializeJson(next).size() > 1024U * 1024U) {
+        error = "capture の件数または保持量が上限を超えています";
+        return false;
+    }
+    m_captures = std::move(next);
+    return true;
+}
+
 void PlaytestRunner::RecordStep(bool ok, const std::string& message, const JsonValue* result)
 {
     const JsonValue* steps = m_scenario.Find("steps");
@@ -165,10 +246,10 @@ void PlaytestRunner::RecordStep(bool ok, const std::string& message, const JsonV
     m_stepLog.Push(std::move(entry));
 }
 
-PlaytestRunner::StepResult PlaytestRunner::Fail(const std::string& message)
+PlaytestRunner::StepResult PlaytestRunner::Fail(const std::string& message, const JsonValue* result)
 {
     m_failure = message;
-    RecordStep(false, message);
+    RecordStep(false, message, result);
     return StepResult::FAIL;
 }
 
@@ -253,6 +334,28 @@ PlaytestRunner::StepResult PlaytestRunner::RunStep(const JsonValue& step, const 
         return StepResult::DONE;
     }
 
+    if (action == "waitSeconds") {
+        const double seconds = NumberOf(step, "seconds", -1.0);
+        if (!std::isfinite(seconds) || seconds < 0.0 || seconds > 3600.0)
+            return Fail("waitSeconds.seconds が範囲外です");
+        const auto now = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+        if (m_stepPhase == 0) {
+            m_stepFrame = now;
+            m_stepPhase = 1;
+        }
+        /// @note 描画を継続し、FPS や Time の固定刻み・timeScale に依存せず待つ。
+        const double elapsed = static_cast<double>(now - m_stepFrame) / 1000000.0;
+        if (elapsed < seconds)
+            return StepResult::WAIT;
+        result = JsonValue::MakeObject();
+        result.Set("requestedSeconds", JsonValue(seconds));
+        result.Set("elapsedSeconds", JsonValue(elapsed));
+        result.Set("clock", JsonValue("steady_clock"));
+        RecordStep(true, {}, &result);
+        return StepResult::DONE;
+    }
+
     if (action == "log") {
         RecordStep(true, StringOf(step, "message"));
         return StepResult::DONE;
@@ -273,6 +376,7 @@ PlaytestRunner::StepResult PlaytestRunner::RunStep(const JsonValue& step, const 
         }
         const std::string kind = StringOf(step, "kind", "command");
         if (kind != "command" && kind != "query") return Fail("kind は command か query です");
+        if (!ValidateCapture(step, message)) return Fail(message);
         const bool ok = CallBus(hooks, kind.c_str(), payload, result, code, message);
         const std::string expectError = StringOf(step, "expectError");
         if (!expectError.empty()) {
@@ -282,8 +386,9 @@ PlaytestRunner::StepResult PlaytestRunner::RunStep(const JsonValue& step, const 
             return StepResult::DONE;
         }
         if (!ok) return Fail(StringOf(payload, "t") + " 失敗 (" + code + "): " + message);
-        /// @note query の応答は報告に残す。計測値 (profiler.snapshot 等) をシナリオから取り出す唯一の口。
-        RecordStep(true, {}, kind == "query" ? &result : nullptr);
+        if (!CaptureResult(step, result, message)) return Fail("操作は成功しましたが応答保存に失敗しました: " + message, &result);
+        /// @note query と保存対象 command の応答を報告へ残し、次手順に渡した値を追跡できるようにする。
+        RecordStep(true, {}, kind == "query" || step.Find("capture") ? &result : nullptr);
         return StepResult::DONE;
     }
 
@@ -310,13 +415,22 @@ PlaytestRunner::StepResult PlaytestRunner::RunQueryCondition(const JsonValue& st
     std::string message;
     std::string detail;
     bool satisfied = false;
+    if (!ValidateCapture(step, message)) return Fail(message);
+    JsonValue expected;
+    const JsonValue* value = step.Find("value");
+    if (value) {
+        if (!ResolveCaptured(*value, m_captures, expected, message)) return Fail(message);
+        value = &expected;
+    }
     if (CallBus(hooks, kind.c_str(), *query, result, code, message)) {
-        satisfied = EvaluateJsonCondition(ResolveJsonPath(result, path), op, step.Find("value"), detail);
+        satisfied = EvaluateJsonCondition(ResolveJsonPath(result, path), op, value, detail);
     } else {
+        if (code == "PLAYTEST_REFERENCE") return Fail(message);
         detail = StringOf(*query, "t") + " 失敗 (" + code + "): " + message;
     }
 
     if (satisfied) {
+        if (!CaptureResult(step, result, message)) return Fail("条件は成立しましたが応答保存に失敗しました: " + message, &result);
         RecordStep(true, waiting ? "satisfied after " + std::to_string(m_stepFrame) + " frames" : std::string{});
         return StepResult::DONE;
     }
@@ -550,4 +664,4 @@ JsonValue PlaytestRunner::Report() const
     return report;
 }
 
-} // namespace fbzz::editor::playtest
+} /// @note namespace fbzz::editor::playtest

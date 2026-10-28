@@ -718,7 +718,7 @@ void VolumeFlipbookBakePanel::DrawApply(EditorContext& ctx)
 void VolumeFlipbookBakePanel::ApplyToMaterial(EditorContext& ctx)
 {
     const std::string file = asset::AssetManager::ResolveAssetPath(m_materialPath);
-    asset::MaterialAsset oldAsset;
+    asset::MaterialAssetAuthoring oldAsset;
     if (file.empty() || !asset::LoadMaterialAssetFromFile(file, oldAsset)) {
         m_status = "マテリアルを読み込めません: " + m_materialPath;
         m_statusIsError = true;
@@ -726,7 +726,7 @@ void VolumeFlipbookBakePanel::ApplyToMaterial(EditorContext& ctx)
     }
 
     /// @note ループ判定と FPS は «今の» 設定ではなく焼いたときの設定で決める。
-    asset::MaterialAsset newAsset = oldAsset;
+    asset::MaterialAssetAuthoring newAsset = oldAsset;
     std::string error;
     if (!ApplyFluidBakeToMaterial(FluidMaterialSource::FromVolume(m_lastResult, m_lastBakeSettings), newAsset, error)) {
         m_status = error;
@@ -735,7 +735,7 @@ void VolumeFlipbookBakePanel::ApplyToMaterial(EditorContext& ctx)
     }
 
     EditorContext* context = &ctx;
-    const auto applyToDisk = [context, file](const asset::MaterialAsset& value) {
+    const auto applyToDisk = [context, file](const asset::MaterialAssetAuthoring& value) {
         if (!asset::SaveMaterialAssetToFile(file, value)) return;
         asset::AssetManager::ReloadPath(file);
         context->requestAssetBrowserRefresh = true;

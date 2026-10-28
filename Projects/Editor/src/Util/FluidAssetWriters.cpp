@@ -86,7 +86,7 @@ std::string TomlEscape(const std::string& text)
     return out;
 }
 
-bool ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAsset& material,
+bool ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAssetAuthoring& material,
                std::string& outError, bool registerGuid)
 {
     std::string albedoReference;
@@ -132,7 +132,7 @@ bool ApplyFlat(const asset::FluidBakeResult& bake, asset::MaterialAsset& materia
     return true;
 }
 
-bool ApplyVolume(const FluidMaterialSource& source, asset::MaterialAsset& material,
+bool ApplyVolume(const FluidMaterialSource& source, asset::MaterialAssetAuthoring& material,
                  std::string& outError, bool registerGuid)
 {
     const asset::VolumeFlipbookBakeResult& result = source.volume;
@@ -260,9 +260,9 @@ std::string SiblingMaterialPath(const std::string& fluidPath)
     return util::FileSystem::PathToUtf8(path);
 }
 
-asset::MaterialAsset NewFluidParticleMaterial()
+asset::MaterialAssetAuthoring NewFluidParticleMaterial()
 {
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     material.doubleSided = true;
     material.depthWrite  = false;
     material.renderQueue = 3000;
@@ -271,7 +271,7 @@ asset::MaterialAsset NewFluidParticleMaterial()
     return material;
 }
 
-bool ApplyFluidBakeToMaterial(const FluidMaterialSource& source, asset::MaterialAsset& material,
+bool ApplyFluidBakeToMaterial(const FluidMaterialSource& source, asset::MaterialAssetAuthoring& material,
                               std::string& outError, bool registerGuid)
 {
     if (source.kind == FluidMaterialSource::Kind::Flat2D)
@@ -284,7 +284,7 @@ bool WriteFluidParticleMaterial(const std::string& materialPath, const FluidMate
 {
     outCreated = false;
     bool created = false;
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     if (util::FileSystem::Exists(materialPath)) {
         /// @note 読めない .mat を既定で上書きすると、人が手で直している途中のファイルを消す。
         if (!asset::LoadMaterialAssetFromFile(materialPath, material)) {

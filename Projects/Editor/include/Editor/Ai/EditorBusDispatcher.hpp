@@ -8,7 +8,6 @@
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <memory>
 #include <string>
-#include <vector>
 
 namespace fbzz::editor { struct EditorContext; }
 namespace fbzz::editor::ai::bus { class BusHandlerTable; struct BusState; }
@@ -31,13 +30,10 @@ public:
     /// @return 空行には空文字。壊れた要求にも id 空のエラー応答を返す。
     std::string Handle(const std::string& requestLine);
 
-    /// @brief 登録済みの型名。MCP 契約との突き合わせテストが読む。
-    [[nodiscard]] std::vector<std::string> RegisteredTypes() const;
-
 private:
     editor::EditorContext& m_context;
     std::unique_ptr<bus::BusHandlerTable> m_table;
     std::unique_ptr<bus::BusState> m_state;
 };
 
-} // namespace fbzz::editor::ai
+} /// @note namespace fbzz::editor::ai

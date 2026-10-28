@@ -13,7 +13,7 @@
 
 namespace fbzz::editor {
 
-bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::string& projectRoot,
+bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, const std::string& projectRoot,
                                    renderer::ResourceManager* resources,
                                    renderer::IImGuiRenderer* imguiRenderer)
 {

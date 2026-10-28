@@ -2,10 +2,11 @@
 /// @brief   Avatar Mask のウェイトをメッシュ色で見せる専用プレビュー。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
-///
-/// 通常の Animation Preview と GPU・カメラは共有するが、「対象は .mask とその骨格 FBX」
-/// 「再生しない」「色は Weight」と入口も出口も別物。同じファイルに置くと、
-/// どちらの都合で書かれた分岐かが読めなくなるため分ける。
+
+/// @note 通常の Animation Preview と GPU・カメラは共有するが、「対象は .mask とその骨格 FBX」
+/// @note 「再生しない」「色は Weight」と入口も出口も別物。同じファイルに置くと、
+/// @note どちらの都合で書かれた分岐かが読めなくなるため分ける。
+#include <Engine/Asset/ModelSource.hpp>
 #include "AnimationPreviewInternal.hpp"
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -125,7 +126,7 @@ void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx)
         util::FileSystem::GetExtension(selected));
     if (selected != lastSelectedAsset) {
         lastSelectedAsset = selected;
-        if (selectedExt == ".fbx" || selectedExt == ".fzasset" || selectedExt == ".asset")
+        if (asset::IsModelSourcePath(selectedExt) || selectedExt == ".fzasset" || selectedExt == ".asset")
             modelPath = selected;
         else if (selectedExt == ".mask" || selectedExt == ".maskpreset") {
             maskPath = selected;
@@ -143,7 +144,7 @@ void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx)
     /// @note スキンメッシュは「そのメッシュのノード」ではなく「頂点を動かすボーン」で色が決まる。
     ///       メッシュノードで引くと、マスク対象がアーマチュアの外にあるため常に 0 になっていた。
     ImGui::TextDisabled("Skinned mesh is colored by the mask weight of the bones that skin it.");
-    widgets::AssetPathField("FBX", modelPath, ".fbx,.fzasset,.asset", ctx.projectRoot);
+    widgets::AssetPathField("Model", modelPath, ".fbx,.fzasset,.asset,.obj,.gltf,.glb", ctx.projectRoot);
     widgets::AssetPathField("Mask", maskPath, ".mask,.maskpreset", ctx.projectRoot);
 
     /// @note ウェイトの読み方を色見本で示す。数値を出すより «赤 = 効かない» が一目で通る。
@@ -159,8 +160,8 @@ void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx)
         (std::max)(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 3.0f,
                    160.0f);
     if (!DrawAnimationMaskPreviewWidget(ctx, modelPath, maskPath, previewHeight)) {
-        ImGui::TextDisabled("FBX と .mask を指定してください。");
+        ImGui::TextDisabled("モデルと .mask を指定してください。");
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

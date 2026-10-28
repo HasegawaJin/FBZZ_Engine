@@ -3,9 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-20
 ///
-/// パネル・メニュー階層が多く、目的の操作へ到達する導線が深い。VSCode / Unity のコマンド
-/// パレット同様、キーボードだけで検索→実行できる横断的な入口を用意して発見性を上げる。
+/// @note パネル・メニュー階層が多く、目的の操作へ到達する導線が深い。VSCode / Unity のコマンド
+/// @note パレット同様、キーボードだけで検索→実行できる横断的な入口を用意して発見性を上げる。
 #include <Editor/EditorApp.hpp>
+#include <Editor/Util/EditorMenuCatalog.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -119,6 +120,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         for (const EditorOperator& op : m_operators.All()) {
             /// @note Query は状態を読むだけで、パレットから実行する意味がない (AI 用)。
             if (op.kind == OpKind::Query) continue;
+            if (op.id == "panel.focus" || op.id == "panel.set_visible") continue;
 
             /// @note 必須引数を持つ操作は、値を決めずに並べても押した瞬間 BAD_ARG になる。
             ///       ただし必須引数が 1 つで値が enumValues に宣言されている排他選択は、
@@ -158,19 +160,27 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         }
     }
 
-    /// @note Windows: 各パネルの表示トグル。対象がパネルごとに変わる引数付き操作なので
-    ///       レジストリの 1 行では指定できず、一覧は m_panels から作る。実行だけは
-    ///       panel.set_visible へ通し、人と AI で同じ実体を使わせる。
-    for (auto& panel : m_panels) {
-        if (!panel->ShowInViewMenu()) continue;
-        const bool        visible   = panel->visible;
-        const std::string panelName = panel->GetWindowName();
-        std::string label = std::string(visible ? "Hide: " : "Show: ") + panel->GetViewMenuName();
-        add("Window", std::move(label), [this, panelName] {
-            OpArgs args;
-            args.Set("panel", panelName);
-            InvokeOperator("panel.set_visible", args);
-        });
+    /// @note パネル操作は登録済み ID の投影。前面化と非表示を分け、表示済みの背面タブへも一度で到達する。
+    for (const auto& group : BuildPanelMenu(m_panels)) {
+        for (const auto& entry : group.entries) {
+            const IPanel* panel = entry.panel;
+            const std::string panelName = panel->GetWindowName();
+            const std::string category = group.category.empty() ? "View" : group.category;
+            add(category.c_str(), std::string(panel->visible ? "Focus: " : "Show: ") + panel->GetViewMenuName(),
+                [this, panelName] {
+                    OpArgs args;
+                    args.Set("panel", panelName);
+                    InvokeOperator("panel.focus", args);
+                });
+            if (panel->visible) {
+                add(category.c_str(), std::string("Hide: ") + panel->GetViewMenuName(), [this, panelName] {
+                    OpArgs args;
+                    args.Set("panel", panelName);
+                    args.Set("visible", false);
+                    InvokeOperator("panel.set_visible", args);
+                });
+            }
+        }
     }
 
     /// @name 検索欄
@@ -316,4 +326,4 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     ImGui::EndPopup();
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

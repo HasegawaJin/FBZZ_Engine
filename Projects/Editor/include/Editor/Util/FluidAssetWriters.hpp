@@ -18,7 +18,7 @@
 #include <span>
 #include <vector>
 
-namespace fbzz::asset { struct MaterialAsset; }
+namespace fbzz::asset { struct MaterialAssetAuthoring; }
 
 namespace fbzz::editor {
 
@@ -64,12 +64,12 @@ struct FluidMaterialSource {
 [[nodiscard]] std::string SiblingMaterialPath(const std::string& fluidPath);
 
 /// @brief 新しく作るときの Particle 用 .mat の既定 (両面・深度書き込みなし・透過キュー)。
-[[nodiscard]] asset::MaterialAsset NewFluidParticleMaterial();
+[[nodiscard]] asset::MaterialAssetAuthoring NewFluidParticleMaterial();
 
 /// @brief 焼いた結果を Particle マテリアルへ写し、テクスチャ参照は GUID で保存する。
 /// @note シェーダーや他の [particle] の値は残す (人が調整した値を焼き直しで消さない)。
 /// @return 既存テクスチャの GUID を解決できない場合は false を返し、material は保存しないこと。
-[[nodiscard]] bool ApplyFluidBakeToMaterial(const FluidMaterialSource& source, asset::MaterialAsset& material,
+[[nodiscard]] bool ApplyFluidBakeToMaterial(const FluidMaterialSource& source, asset::MaterialAssetAuthoring& material,
                                             std::string& outError, bool registerGuid = true);
 
 /// @brief materialPath の .mat を読み (無ければ NewFluidParticleMaterial から作り)、焼いた結果を写して保存する。

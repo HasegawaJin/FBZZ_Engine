@@ -7,6 +7,10 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <toml++/toml.hpp>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 
 #include <filesystem>
 #include <string>
@@ -15,24 +19,42 @@
 namespace fbzz::editor {
 
 namespace {
-/// 旧形式でプロジェクトルートに置かれていた設定ファイル。
+/// @note 旧形式でプロジェクトルートに置かれていた設定ファイル。
 constexpr const char* LEGACY_BUILD_SETTINGS_FILE = "BuildSettings.toml";
 
-/// a が b と同じか、b の祖先か。実体の有無は問わず字面だけで判定する。
+/// @note Windows の ordinal ignore-case でパス構成要素を比較し、名前の前方一致を包含扱いしない。
+/// @see https://learn.microsoft.com/windows/win32/api/stringapiset/nf-stringapiset-comparestringordinal CompareStringOrdinal の非言語的比較。
 bool ContainsOrEquals(const std::filesystem::path& a, const std::filesystem::path& b)
 {
-    const std::filesystem::path rel =
-        b.lexically_normal().lexically_relative(a.lexically_normal());
-    /// @note 別ドライブ等、そもそも関係が無い
-    if (rel.empty()) return false;
-    return *rel.begin() != "..";
+    auto left = a.begin();
+    auto right = b.begin();
+    for (; left != a.end(); ++left, ++right) {
+        if (right == b.end() || CompareStringOrdinal(left->c_str(), -1, right->c_str(), -1, TRUE) != CSTR_EQUAL)
+            return false;
+    }
+    return true;
 }
 
-/// 出力先と重なってはいけないプロジェクトのデータディレクトリ。
+/// @note 既存のリンク先と未作成の末尾を正規化し、検査不能を許可へ変換しない。
+/// @see https://learn.microsoft.com/cpp/standard-library/filesystem-functions#weakly_canonical 未作成パスの既存部分を正規化する契約。
+bool CanonicalPath(const std::filesystem::path& input, std::filesystem::path& result, std::string& reason)
+{
+    std::error_code error;
+    const std::filesystem::path absolute = std::filesystem::absolute(input, error);
+    if (!error) result = std::filesystem::weakly_canonical(absolute, error).lexically_normal();
+    if (error || result.empty()) {
+        reason = "Output path could not be resolved: " + error.message();
+        return false;
+    }
+    while (result.has_relative_path() && result.filename().empty()) result = result.parent_path();
+    return true;
+}
+
+/// @note 出力先と重なってはいけないプロジェクトのデータディレクトリ。
 constexpr const char* kProtectedDirs[] = {
     "Assets", "Library", "ProjectSettings", "Src", "Include", "Binaries", "Build",
 };
-} // namespace
+} /// @note namespace
 
 std::vector<std::string> BuildSettings::EnabledScenes() const
 {
@@ -71,10 +93,21 @@ bool BuildSettings::ValidateOutputPath(const std::string& projectRoot, std::stri
         outReason = "No project is open.";
         return false;
     }
+    if (outputDirectory.find('\0') != std::string::npos || projectRoot.find('\0') != std::string::npos) {
+        outReason = "Output Directory and project root must not contain NUL.";
+        return false;
+    }
 
-    const std::filesystem::path root =
-        util::FileSystem::PathFromUtf8(projectRoot).lexically_normal();
-    const std::filesystem::path out = ResolveOutputPath(projectRoot).lexically_normal();
+    std::filesystem::path root;
+    std::filesystem::path out;
+    if (!CanonicalPath(util::FileSystem::PathFromUtf8(projectRoot), root, outReason)
+        || !CanonicalPath(ResolveOutputPath(projectRoot), out, outReason)) return false;
+    std::error_code error;
+    const bool rootExists = std::filesystem::is_directory(root, error);
+    if (error || !rootExists) {
+        outReason = "Project root is not a readable directory.";
+        return false;
+    }
 
     if (!out.has_relative_path()) {
         outReason = "Output Directory is a drive root: "
@@ -87,19 +120,58 @@ bool BuildSettings::ValidateOutputPath(const std::string& projectRoot, std::stri
         return false;
     }
     for (const char* name : kProtectedDirs) {
-        const std::filesystem::path dir = (root / name).lexically_normal();
+        std::filesystem::path dir;
+        if (!CanonicalPath(root / name, dir, outReason)) return false;
         if (!ContainsOrEquals(dir, out) && !ContainsOrEquals(out, dir)) continue;
         outReason = std::string("Output Directory overlaps the project's ") + name + "/ folder.";
         return false;
     }
 
     /// @note 既に中身があるフォルダは、前回の配布物 (game.manifest.toml を持つ) でない限り拒否する。
-    ///       Browse... でデスクトップ等を選ぶと、コミット時の remove_all が中身ごと消すため。
-    std::error_code ec;
-    if (std::filesystem::is_directory(out, ec)) {
-        const bool isEmpty =
-            std::filesystem::directory_iterator(out, ec) == std::filesystem::directory_iterator{};
-        if (!ec && !isEmpty && !util::FileSystem::Exists(out / "game.manifest.toml")) {
+    /// @note 検査できない既存フォルダーや通常ファイルは、削除対象として許可しない。
+    const std::filesystem::file_status status = std::filesystem::status(out, error);
+    if (error && error != std::errc::no_such_file_or_directory) {
+        outReason = "Output Directory could not be inspected: " + error.message();
+        return false;
+    }
+    if (status.type() == std::filesystem::file_type::not_found || error == std::errc::no_such_file_or_directory) {
+        std::filesystem::path parent = out.parent_path();
+        while (!parent.empty()) {
+            error.clear();
+            const std::filesystem::file_status parentStatus = std::filesystem::status(parent, error);
+            if (error && error != std::errc::no_such_file_or_directory) {
+                outReason = "Output parent could not be inspected: " + error.message();
+                return false;
+            }
+            if (std::filesystem::exists(parentStatus)) {
+                if (std::filesystem::is_directory(parentStatus)) return true;
+                outReason = "Output parent exists and is not a directory.";
+                return false;
+            }
+            const std::filesystem::path next = parent.parent_path();
+            if (next == parent) break;
+            parent = next;
+        }
+        outReason = "Output Directory has no existing directory ancestor.";
+        return false;
+    }
+    if (!std::filesystem::is_directory(status)) {
+        outReason = "Output Directory exists and is not a directory.";
+        return false;
+    }
+    error.clear();
+    const bool isEmpty = std::filesystem::is_empty(out, error);
+    if (error) {
+        outReason = "Output Directory could not be enumerated: " + error.message();
+        return false;
+    }
+    if (!isEmpty) {
+        const bool previousBuild = std::filesystem::is_regular_file(out / "game.manifest.toml", error);
+        if (error && error != std::errc::no_such_file_or_directory) {
+            outReason = "Previous package manifest could not be inspected: " + error.message();
+            return false;
+        }
+        if (!previousBuild) {
             outReason = "Output Directory is not empty and is not a previous build "
                         "(no game.manifest.toml): "
                       + util::FileSystem::PathToUtf8(out)
@@ -151,4 +223,4 @@ bool BuildSettings::LoadLegacyFile(const std::string& projectRoot, BuildSettings
     return true;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

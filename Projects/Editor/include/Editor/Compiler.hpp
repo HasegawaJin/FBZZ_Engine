@@ -4,13 +4,12 @@
 /// @date    2026-06-02
 #pragma once
 
-#include <Windows.h>
 #include <filesystem>
 #include <string>
 
 namespace fbzz::editor {
 
-/// CMakeビルドまたは明示コマンドを非同期子プロセスとして起動し、stdout / stderrをUIログへ蓄積する。
+/// @brief CMake または明示コマンドを、所有する子プロセス群として管理する。
 /// @note メインスレッドをブロックしないため、Tick() ごとにパイプを短時間だけ読む。
 class Compiler {
 public:
@@ -22,8 +21,9 @@ public:
         std::filesystem::path exePath;
         std::string           target;
         std::string           configuration;
-        std::string           sdkRoot; ///< CMake 自動再生成時にも FBZZ_SDK_ROOT を継承させる
-        /// 空でなければcmake --buildの代わりにこの完全なコマンドラインを実行する。
+        /// @note CMake 自動再生成時にも FBZZ_SDK_ROOT を継承する。
+        std::string           sdkRoot;
+        /// @note 空でなければ cmake --build の代わりに完全なコマンドラインを実行する。
         /// @note HLSL ホットリロードは CMake 生成状態に依存せず、統合 bat を直接起動する必要がある。
         std::wstring          commandLine;
         std::filesystem::path workingDirectory;
@@ -38,27 +38,30 @@ public:
     Compiler(const Compiler&)            = delete;
     Compiler& operator=(const Compiler&) = delete;
 
-    /// CMakeビルドまたはcommandLineを開始する。既にビルド中ならfalseを返す。
+    /// @return 実行中または子プロセス群を安全に所有できない場合は false。
+    /// @note 子を停止状態で作り、Job 登録後にだけ実行を開始する。
     [[nodiscard]] bool Start(const Config& config);
 
-    /// stdout を回収し、子プロセス終了時に Done / Failed へ遷移する。
+    /// @note 親コマンド終了後は所有する残存 worker も回収して Done / Failed へ遷移する。
     void Tick();
 
-    /// 実行中ビルドを強制終了し、Cancelled へ遷移する。
+    /// @note 自分が開始した子と子孫だけを終了し、回収完了後に Cancelled へ遷移する。
+    /// @see https://learn.microsoft.com/windows/win32/procthread/job-objects Job の所有範囲。
     void Cancel();
 
-    /// Done / Failed / Cancelled の後、次のビルドに備えて Idle へ戻す。
+    /// @note 実行中は状態を変えない。
     void Reset() { if (m_state != State::Building) m_state = State::Idle; }
 
     State              GetState()    const { return m_state; }
     const std::string& GetLog()      const { return m_log; }
     int                GetExitCode() const { return m_exitCode; }
 
-    /// build.config 由来の standalone exe パスを返す。
     std::filesystem::path GetOutputExePath() const { return m_config.exePath; }
 
 private:
     void PollOutput();
+    /// @note Job 自体の signaled 状態は全子終了を表さないため accounting を確認する。
+    bool WaitForJobExit();
     void CloseHandles();
 
     Config      m_config;
@@ -66,8 +69,11 @@ private:
     std::string m_log;
     int         m_exitCode = 0;
 
-    HANDLE m_hProcess    = INVALID_HANDLE_VALUE;
-    HANDLE m_hStdoutRead = INVALID_HANDLE_VALUE;
+    /// @note 所有する Windows handle。Win32 の宣言は実装だけへ閉じる。
+    void* m_hProcess    = nullptr;
+    void* m_hStdoutRead = nullptr;
+    void* m_hJob        = nullptr;
+    void* m_hJobEvents  = nullptr;
 };
 
-} // namespace fbzz::editor
+}

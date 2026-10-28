@@ -2,10 +2,12 @@
 /// @brief   Animation プレビューの対象解決・ポーズ評価・オフスクリーン描画。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
-///
+
 /// @note 選択中の State / Transition / .anim / モデルからクリップを解決し、
 /// @note スキンメッシュを SkinnedLit でレンダーターゲットへ毎フレーム描画する。
 /// @note UI (ツールバー・トランスポート・オーバーレイ) は AnimationPreviewUI.cpp が持つ。
+#include <Engine/Asset/ModelSource.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include "AnimationPreviewInternal.hpp"
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/EditorSettings.hpp>
@@ -91,13 +93,25 @@ math::Quaternion SampleQuaternionKeys(const std::vector<asset::QuaternionKey>& k
     return keys.back().value;
 }
 
+LocalPose SamplePoseFromTrack(const asset::SkeletonNode& node,
+                              const asset::NodeAnimationTrack* track,
+                              double ticks)
+{
+    if (!track) return { node.bindTranslation, node.bindRotation, node.bindScale };
+    return {
+        SampleVectorKeys(track->positions, ticks, node.bindTranslation),
+        SampleQuaternionKeys(track->rotations, ticks, node.bindRotation),
+        SampleVectorKeys(track->scales, ticks, node.bindScale)
+    };
+}
+
 /// @note クリップ A (+任意でクリップ B とのブレンド) を評価し、スキニングパレットを構築する。
 /// @note blendWeight: 0 = A のみ / 1 = B のみ。Transition プレビューのクロスフェードに使う。
 /// @note nodeGlobals (任意): ボーン可視化などデバッグ表示のため、全ノードのグローバル行列も併記する。
 void EvaluatePreviewNode(const asset::Skeleton& skeleton,
-                         const asset::AnimationClip* clipA,
+                         const AnimationTrackTable& tracksA,
                          double ticksA,
-                         const asset::AnimationClip* clipB,
+                         const AnimationTrackTable* tracksB,
                          double ticksB,
                          float blendWeight,
                          int nodeIndex,
@@ -106,9 +120,10 @@ void EvaluatePreviewNode(const asset::Skeleton& skeleton,
                          std::vector<math::Matrix4>* nodeGlobals = nullptr)
 {
     const auto& node = skeleton.nodes[static_cast<size_t>(nodeIndex)];
-    LocalPose pose = SamplePose(node, clipA, ticksA);
-    if (clipB && blendWeight > 0.0001f) {
-        const LocalPose poseB = SamplePose(node, clipB, ticksB);
+    LocalPose pose = SamplePoseFromTrack(node, tracksA[static_cast<size_t>(nodeIndex)], ticksA);
+    if (tracksB && blendWeight > 0.0001f) {
+        const LocalPose poseB =
+            SamplePoseFromTrack(node, (*tracksB)[static_cast<size_t>(nodeIndex)], ticksB);
         pose.translation = math::Vector3::Lerp(pose.translation, poseB.translation, blendWeight);
         pose.rotation = math::Quaternion::Slerp(pose.rotation, poseB.rotation, blendWeight);
         pose.scale = math::Vector3::Lerp(pose.scale, poseB.scale, blendWeight);
@@ -125,11 +140,11 @@ void EvaluatePreviewNode(const asset::Skeleton& skeleton,
             skeleton.rootInverseTransform * global * bone.offsetMatrix;
     }
     for (int child : node.children)
-        EvaluatePreviewNode(skeleton, clipA, ticksA, clipB, ticksB, blendWeight,
+        EvaluatePreviewNode(skeleton, tracksA, ticksA, tracksB, ticksB, blendWeight,
                             child, global, palette, nodeGlobals);
 }
 
-/// @note 根元から幅優先で最初に見つかる «変形ボーン» のノード index。通常 Hips に当たる。
+/// @note 根元から最初に見つかる «変形ボーン» のノード index。通常 Hips に当たる。
 /// @note 軌跡・接地リング・ルートモーション解析が «どの骨をルートとみなすか» の唯一の定義。
 int FindRootMotionNode(const asset::Skeleton& skeleton)
 {
@@ -146,31 +161,8 @@ int FindRootMotionNode(const asset::Skeleton& skeleton)
     return -1;
 }
 
-/// @note ノードごとのトラックを 1 回だけ引いて表にする。
-/// @note FindTrack はノード名の正規化で文字列を組み直すため、全ノード×全サンプルで毎回引くと文字列生成が数十万回走る。
-std::vector<const asset::NodeAnimationTrack*> BuildTrackTable(const asset::Skeleton& skeleton,
-                                                              const asset::AnimationClip& clip)
-{
-    std::vector<const asset::NodeAnimationTrack*> tracks(skeleton.nodes.size(), nullptr);
-    for (size_t i = 0; i < skeleton.nodes.size(); ++i)
-        tracks[i] = FindTrack(clip, skeleton.nodes[i].name);
-    return tracks;
-}
-
-LocalPose SamplePoseFromTrack(const asset::SkeletonNode& node,
-                              const asset::NodeAnimationTrack* track,
-                              double ticks)
-{
-    if (!track) return { node.bindTranslation, node.bindRotation, node.bindScale };
-    return {
-        SampleVectorKeys(track->positions, ticks, node.bindTranslation),
-        SampleQuaternionKeys(track->rotations, ticks, node.bindRotation),
-        SampleVectorKeys(track->scales, ticks, node.bindScale)
-    };
-}
-
 void EvaluateGlobalsFromTable(const asset::Skeleton& skeleton,
-                              const std::vector<const asset::NodeAnimationTrack*>& tracks,
+                              const AnimationTrackTable& tracks,
                               double ticks,
                               int nodeIndex,
                               const math::Matrix4& parentGlobal,
@@ -555,7 +547,8 @@ renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
     slot.revision = revision;
     slot.built = true;
     slot.material.reset();
-    const asset::MaterialAsset* materialAsset = asset::AssetManager::Get<asset::MaterialAsset>(assetHandle);
+    const auto materialSnapshot = asset::ReadMaterialAuthoring(assetHandle);
+    const auto* materialAsset = materialSnapshot ? &materialSnapshot->Data() : nullptr;
     if (!materialAsset || materialAsset->shaderPath.empty()) return nullptr;
 
     auto material = std::make_unique<renderer::Material>();
@@ -563,7 +556,7 @@ renderer::Material* ResolveImportedPreviewMaterial(EditorContext& ctx,
     material->shader = resources.LoadShader(material->shaderPath);
     auto* shader = resources.Get(material->shader);
     if (!shader) return nullptr;
-    const auto& desc = shader->GetDescriptor();
+    const auto desc = shader->GetDescriptor();
     material->paramData.assign(desc.cbufferSize, 0u);
     asset::InitDefaultMaterialParams(desc, material->paramData);
     asset::ApplyMaterialAssetParams(*materialAsset, desc, material->paramData);
@@ -849,47 +842,6 @@ void SubmitPreviewLines(renderer::IRenderer& renderer,
 
 /// @note クリップ / ポーズ
 
-const asset::NodeAnimationTrack* FindTrack(const asset::AnimationClip& clip,
-                                           const std::string& nodeName)
-{
-    for (const auto& track : clip.tracks)
-        if (track.nodeName == nodeName)
-            return &track;
-
-    /// @note FBX の補助ノード suffix / namespace 差を吸収する (AnimatorSystem::FindTrack と同一)。
-    auto canonical = [](std::string name) {
-        std::replace(name.begin(), name.end(), '\\', '/');
-        const std::string helper = "_$AssimpFbx$_";
-        if (const size_t helperPos = name.find(helper); helperPos != std::string::npos)
-            name = name.substr(0, helperPos);
-        if (const size_t pathPos = name.find_last_of("/|"); pathPos != std::string::npos)
-            name = name.substr(pathPos + 1);
-        if (const size_t nsPos = name.find_last_of(':'); nsPos != std::string::npos)
-            name = name.substr(nsPos + 1);
-        return name;
-    };
-
-    const std::string canonicalNodeName = canonical(nodeName);
-    for (const auto& track : clip.tracks)
-        if (canonical(track.nodeName) == canonicalNodeName)
-            return &track;
-    return nullptr;
-}
-
-LocalPose SamplePose(const asset::SkeletonNode& node,
-                     const asset::AnimationClip* clip,
-                     double ticks)
-{
-    if (!clip) return { node.bindTranslation, node.bindRotation, node.bindScale };
-    const auto* track = FindTrack(*clip, node.name);
-    if (!track) return { node.bindTranslation, node.bindRotation, node.bindScale };
-    return {
-        SampleVectorKeys(track->positions, ticks, node.bindTranslation),
-        SampleQuaternionKeys(track->rotations, ticks, node.bindRotation),
-        SampleVectorKeys(track->scales, ticks, node.bindScale)
-    };
-}
-
 double ClipTicksPerSecond(const asset::AnimationClip& clip)
 {
     return clip.ticksPerSecond > 0.0 ? clip.ticksPerSecond : 30.0;
@@ -946,6 +898,7 @@ std::string ShortBoneName(const std::string& name)
 /// @note サンプルする。親チェーンだけ評価するので全階層評価より大幅に軽い。
 void BuildTrailPoints(const asset::Skeleton& skeleton,
                       const asset::AnimationClip& clip,
+                      const AnimationTrackTable& tracks,
                       std::vector<math::Vector3>& outPoints,
                       int& outTrailNode)
 {
@@ -973,7 +926,8 @@ void BuildTrailPoints(const asset::Skeleton& skeleton,
         math::Matrix4 global = math::Matrix4::Identity();
         for (int nodeIndex : chain) {
             const LocalPose pose =
-                SamplePose(skeleton.nodes[static_cast<size_t>(nodeIndex)], &clip, ticks);
+                SamplePoseFromTrack(skeleton.nodes[static_cast<size_t>(nodeIndex)],
+                                    tracks[static_cast<size_t>(nodeIndex)], ticks);
             global = global * math::Matrix4::TRS(pose.translation, pose.rotation, pose.scale);
         }
         outPoints.push_back(MatrixTranslation(skeleton.rootInverseTransform * global));
@@ -982,6 +936,7 @@ void BuildTrailPoints(const asset::Skeleton& skeleton,
 
 void AnalyzeRootMotion(const asset::Skeleton& skeleton,
                        const asset::AnimationClip& clip,
+                       const AnimationTrackTable& tracks,
                        RootMotionAnalysis& out)
 {
     out = RootMotionAnalysis{};
@@ -993,7 +948,6 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
     const double ticksPerSecond = ClipTicksPerSecond(clip);
     const float duration = (std::max)(static_cast<float>(clip.GetDurationSeconds()), 0.001f);
     const float dt = duration / SAMPLES;
-    const auto tracks = BuildTrackTable(skeleton, clip);
 
     /// @note 全ノードの «ワールド» 位置をクリップ全長ぶん持つ。足の接地判定が、ルートの移動を
     /// @note 含んだ位置でないと成立しないため、チェーンだけでなく階層全体を評価する。
@@ -1168,6 +1122,7 @@ void AnalyzeRootMotion(const asset::Skeleton& skeleton,
 /// @note カーブミニグラフ用の配列と min/max を構築する。位置と回転は別スケールで正規化する。
 void BuildBoneCurves(const asset::Skeleton& skeleton,
                      const asset::AnimationClip& clip,
+                     const AnimationTrackTable& tracks,
                      int nodeIndex,
                      std::vector<float>& posX, std::vector<float>& posY, std::vector<float>& posZ,
                      std::vector<float>& rotX, std::vector<float>& rotY, std::vector<float>& rotZ,
@@ -1189,7 +1144,7 @@ void BuildBoneCurves(const asset::Skeleton& skeleton,
     for (int sample = 0; sample <= CURVE_SAMPLES; ++sample) {
         const double ticks = static_cast<double>(duration) * sample / CURVE_SAMPLES *
                              ticksPerSecond;
-        const LocalPose pose = SamplePose(node, &clip, ticks);
+        const LocalPose pose = SamplePoseFromTrack(node, tracks[static_cast<size_t>(nodeIndex)], ticks);
         const math::Vector3 euler = QuaternionToEulerDegrees(pose.rotation);
         posX.push_back(pose.translation.x);
         posY.push_back(pose.translation.y);
@@ -1261,13 +1216,17 @@ std::string FindGeometryForAnim(const std::string& animPath)
 {
     namespace fs = std::filesystem;
     static constexpr const char* kExts[] = { ".fbx", ".FBX", ".fzasset", ".asset",
-                                             ".gltf", ".glb", ".obj" };
+                                             ".gltf", ".GLTF", ".glb", ".GLB", ".obj", ".OBJ" };
     fs::path dir = util::FileSystem::PathFromUtf8(animPath).parent_path();
 
     /// @note anims/ → クリップパッケージ → モデルパッケージ … と最大 5 階層遡る
     for (int depth = 0; depth < 5 && !dir.empty(); ++depth) {
         const std::string dirName = util::FileSystem::PathToUtf8(dir.filename());
         if (!dirName.empty()) {
+            /// @note `Library/Baked/<guid>/anims` のクリップは、コンテナ名の GUID から原本へ戻す。
+            const std::string source = asset::AssetDatabase::PathFromGuid(dirName);
+            if (asset::IsModelSourcePath(source) && LoadsAsPreviewableGeometry(source))
+                return NormalizeAssetPath(source);
             for (const char* ext : kExts) {
                 const std::string candidate =
                     util::FileSystem::PathToUtf8(dir.parent_path() / (dirName + ext));
@@ -1303,7 +1262,6 @@ const std::vector<std::string>& CollectPackageAnims(const std::string& modelPath
     const fs::path packageDir = model.parent_path() /
                                 util::FileSystem::PathToUtf8(model.stem());
     std::error_code ec;
-    if (!fs::exists(packageDir, ec)) return cached;
 
     /// @note パッケージ直下の anims/ と、その 1 階層下 (クリップパッケージ) の anims/ を見る。
     auto scanAnimsDir = [&](const fs::path& dir) {
@@ -1316,12 +1274,23 @@ const std::vector<std::string>& CollectPackageAnims(const std::string& modelPath
             cached.push_back(NormalizeAssetPath(util::FileSystem::PathToUtf8(e.path())));
         }
     };
-    scanAnimsDir(packageDir / "anims");
-    for (const auto& e : fs::directory_iterator(packageDir, ec)) {
-        if (ec) break;
-        if (e.is_directory(ec)) scanAnimsDir(e.path() / "anims");
+    const std::string bakedDir = asset::AssetManager::BakedDirForSource(
+        asset::AssetManager::ResolveAssetPath(modelPath));
+    if (!bakedDir.empty()) scanAnimsDir(util::FileSystem::PathFromUtf8(bakedDir) / "anims");
+    if (fs::exists(packageDir, ec)) {
+        scanAnimsDir(packageDir / "anims");
+        for (const auto& e : fs::directory_iterator(packageDir, ec)) {
+            if (ec) break;
+            if (e.is_directory(ec)) scanAnimsDir(e.path() / "anims");
+            else if (asset::IsModelSourcePath(util::FileSystem::PathToUtf8(e.path()))) {
+                const std::string clipBakedDir = asset::AssetManager::BakedDirForSource(
+                    util::FileSystem::PathToUtf8(e.path()));
+                if (!clipBakedDir.empty()) scanAnimsDir(util::FileSystem::PathFromUtf8(clipBakedDir) / "anims");
+            }
+        }
     }
     std::sort(cached.begin(), cached.end());
+    cached.erase(std::unique(cached.begin(), cached.end()), cached.end());
     return cached;
 }
 
@@ -1342,7 +1311,7 @@ bool ResolvePathTarget(const std::string& path, PreviewTarget& out)
         return true;
     }
 
-    if (util::StringUtils::EndsWith(lower, ".fbx") ||
+    if (asset::IsModelSourcePath(lower) ||
         util::StringUtils::EndsWith(lower, ".fzasset") ||
         util::StringUtils::EndsWith(lower, ".asset")) {
         const asset::Model* model = asset::AssetManager::LoadAndGet<asset::Model>(path);
@@ -1404,7 +1373,7 @@ bool AcceptPreviewAssetDrop()
 
             /// @note モデルのドロップで、既にクリップが載っている場合は器だけ差し替える。
             const bool isModelDrop =
-                util::StringUtils::EndsWith(lower, ".fbx") ||
+                asset::IsModelSourcePath(lower) ||
                 util::StringUtils::EndsWith(lower, ".fzasset") ||
                 util::StringUtils::EndsWith(lower, ".asset");
             const bool hasClip = !g_state.target.animAssetPath.empty() ||
@@ -1452,7 +1421,7 @@ void UpdatePreviewTarget(EditorContext& ctx)
     TargetOrigin origin = g_state.origin;
     const auto isModelAssetPath = [](const std::string& path) {
         const std::string lower = util::StringUtils::ToLower(path);
-        return util::StringUtils::EndsWith(lower, ".fbx") ||
+        return asset::IsModelSourcePath(lower) ||
                util::StringUtils::EndsWith(lower, ".fzasset") ||
                util::StringUtils::EndsWith(lower, ".asset");
     };
@@ -1664,6 +1633,16 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
     }
     if (model->skeleton && model->skeleton->rootNodeIndex >= 0 && clipA) {
         const asset::Skeleton& skeleton = *model->skeleton;
+        const int assetGeneration = asset::AssetManager::GetAssetGeneration();
+        const bool tracksAChanged = g_state.tracksA.Update(skeleton, clipA, assetGeneration);
+        const bool tracksBChanged = g_state.tracksB.Update(skeleton, clipB, assetGeneration);
+        /// @note パスが同じホットリロードでも軌跡・解析・カーブを旧クリップから再利用しない。
+        if (tracksAChanged || tracksBChanged) {
+            g_state.debugCacheIdentity.clear();
+            g_state.rootMotionCacheKey.clear();
+            g_state.curveCacheKey.clear();
+        }
+        const AnimationTrackTable* blendTracks = clipB ? &g_state.tracksB : nullptr;
         std::vector<math::Matrix4> palette(skeleton.bones.size(),
                                            math::Matrix4::Identity());
         std::vector<math::Matrix4>* nodeGlobalsPtr = nullptr;
@@ -1676,7 +1655,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         const double ticksB = clipB
             ? static_cast<double>(secondsB) * ClipTicksPerSecond(*clipB)
             : 0.0;
-        EvaluatePreviewNode(skeleton, clipA, ticksA, clipB, ticksB, blendWeight,
+        EvaluatePreviewNode(skeleton, g_state.tracksA, ticksA, blendTracks, ticksB, blendWeight,
                             skeleton.rootNodeIndex, math::Matrix4::Identity(), palette,
                             nodeGlobalsPtr);
         const size_t count =
@@ -1684,7 +1663,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
         for (size_t i = 0; i < count; ++i) skinning.boneMatrices[i] = palette[i];
 
         if (wantsDebugPose) {
-            /// @note クリップが変わったときだけトラック有無・軌跡を再計算する (FindTrack が高コストのため)。
+            /// @note 対応表が失効した場合も軌跡とトラック有無を再計算する。
             const std::string cacheIdentity = g_state.target.modelPath + "|" +
                 g_state.target.clipName + "|" + g_state.target.animAssetPath + "|" +
                 g_state.target.toClipName;
@@ -1697,12 +1676,13 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                 for (size_t i = 0; i < skeleton.nodes.size(); ++i) {
                     if (skeleton.nodes[i].boneIndex < 0) continue;
                     ++g_state.boneNodeCount;
-                    if (FindTrack(*clipA, skeleton.nodes[i].name)) {
+                    if (g_state.tracksA[i]) {
                         g_state.nodeHasTrack[i] = 1;
                         ++g_state.animatedNodeCount;
                     }
                 }
-                BuildTrailPoints(skeleton, *clipA, g_state.trailPoints, g_state.trailNodeIndex);
+                BuildTrailPoints(skeleton, *clipA, g_state.tracksA,
+                                 g_state.trailPoints, g_state.trailNodeIndex);
             }
 
             /// @note ルートモーション解析はクリップ単位で 1 回。トグルを後から点けた場合も
@@ -1710,7 +1690,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
             if (g_state.showRootMotion &&
                 g_state.rootMotionCacheKey != g_state.debugCacheIdentity) {
                 g_state.rootMotionCacheKey = g_state.debugCacheIdentity;
-                AnalyzeRootMotion(skeleton, *clipA, g_state.rootMotion);
+                AnalyzeRootMotion(skeleton, *clipA, g_state.tracksA, g_state.rootMotion);
             }
 
             /// @note ノードグローバル → ワールド位置 (メッシュと同じく rootInverse 空間へ揃える)
@@ -1738,9 +1718,9 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                     std::vector<math::Matrix4> ghostGlobals(skeleton.nodes.size(),
                                                             math::Matrix4::Identity());
                     EvaluatePreviewNode(
-                        skeleton, clipA,
+                        skeleton, g_state.tracksA,
                         static_cast<double>(ghostA) * ClipTicksPerSecond(*clipA),
-                        clipB,
+                        blendTracks,
                         clipB ? static_cast<double>(ghostB) * ClipTicksPerSecond(*clipB) : 0.0,
                         ghostBlend, skeleton.rootNodeIndex, math::Matrix4::Identity(),
                         ghostPalette, &ghostGlobals);
@@ -1755,8 +1735,9 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                 g_state.selectedBoneNode < static_cast<int>(skeleton.nodes.size())) {
                 const auto& node =
                     skeleton.nodes[static_cast<size_t>(g_state.selectedBoneNode)];
-                g_state.selectedBonePose = SamplePose(node, clipA, ticksA);
-                if (const auto* track = FindTrack(*clipA, node.name)) {
+                const auto* track = g_state.tracksA[static_cast<size_t>(g_state.selectedBoneNode)];
+                g_state.selectedBonePose = SamplePoseFromTrack(node, track, ticksA);
+                if (track) {
                     g_state.selectedBoneKeyCounts[0] = static_cast<int>(track->positions.size());
                     g_state.selectedBoneKeyCounts[1] = static_cast<int>(track->rotations.size());
                     g_state.selectedBoneKeyCounts[2] = static_cast<int>(track->scales.size());
@@ -1774,7 +1755,7 @@ bool RenderPreviewFrame(EditorContext& ctx, float displayAspect)
                     if (curveKey != g_state.curveCacheKey) {
                         g_state.curveCacheKey = curveKey;
                         BuildBoneCurves(
-                            skeleton, *clipA, g_state.selectedBoneNode,
+                            skeleton, *clipA, g_state.tracksA, g_state.selectedBoneNode,
                             g_state.curvePosX, g_state.curvePosY, g_state.curvePosZ,
                             g_state.curveRotX, g_state.curveRotY, g_state.curveRotZ,
                             g_state.curvePosMin, g_state.curvePosMax,

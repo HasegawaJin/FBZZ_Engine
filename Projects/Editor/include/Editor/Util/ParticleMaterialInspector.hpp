@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace fbzz::asset { struct MaterialAsset; }
+namespace fbzz::asset { struct MaterialAssetAuthoring; }
 namespace fbzz::renderer { class ResourceManager; class IImGuiRenderer; }
 
 namespace fbzz::editor {
@@ -19,7 +19,7 @@ namespace fbzz::editor {
 /// @note ParticleEmitter でなくここに置く: ブレンド・フリップブック・歪み・煙・自己影は
 ///       素材ごとに共有される見た目で、コンポーネント側にあった頃は差し替えるたびに 34 項目を
 ///       貼り直し、.mat が毎フレーム上書きして «Inspector で変えても戻る» が起きていた。
-bool DrawParticleMaterialInspector(asset::MaterialAsset& material, const std::string& projectRoot,
+bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, const std::string& projectRoot,
                                    renderer::ResourceManager* resources = nullptr,
                                    renderer::IImGuiRenderer* imguiRenderer = nullptr);
 

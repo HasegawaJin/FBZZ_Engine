@@ -7,8 +7,24 @@
 #include <Editor/Util/SceneIO.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/EntityRef.hpp>
+#include <Engine/Scene/ObjectReference.hpp>
 #include <Engine/Scene/PrefabInstantiate.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Components/CameraRigComponents.hpp>
+#include <Engine/Scene/Components/ClothComponent.hpp>
+#include <Engine/Scene/Components/ConstraintComponents.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/MotionWarpComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/SplineComponents.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
+#include <Engine/Scene/Components/VFXBeamComponent.hpp>
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/Uuid.hpp>
@@ -49,14 +65,125 @@ bool HasSelectedAncestor(const scene::GameObject& go, const std::vector<scene::E
     return false;
 }
 
-void CollectHierarchyIds(scene::GameObject& go, std::unordered_set<std::string>& ids)
+void CollectHierarchyIds(scene::GameObject& go, std::unordered_set<std::string>& ids,
+                         std::unordered_map<std::string, scene::GameObject*>* objects = nullptr)
 {
-    if (!go.instanceId.empty())
+    if (!go.instanceId.empty()) {
         ids.insert(go.instanceId);
+        if (objects) objects->emplace(go.instanceId, &go);
+    }
     for (int i = 0; i < go.GetChildCount(); ++i) {
         if (auto* child = go.GetChild(i))
-            CollectHierarchyIds(*child, ids);
+            CollectHierarchyIds(*child, ids, objects);
     }
+}
+
+/// @note Typed point references require their TargetPoint and owner closure to be saved together.
+/// @note Legacy references keep their external-target behavior unless the current target is a TargetPoint.
+/// @see Docs/design/control-point-authoring.md 複製とPrefab。
+bool ValidatePointReferenceClosure(const std::unordered_map<std::string, scene::GameObject*>& objects)
+{
+    const auto validateTypedTarget = [&objects](const scene::GameObject& owner, const std::string& guid,
+                                                const char* component, const char* field,
+                                                std::uint32_t bindingId, bool requireMarker, bool requireAssigned) {
+        const auto found = guid.empty() ? objects.end() : objects.find(guid);
+        if (guid.empty() || found == objects.end() || !found->second || found->second->runtimeGenerated
+            || (requireMarker && !found->second->GetComponent<scene::TargetPointComponent>())) {
+            if (!requireAssigned && guid.empty()) return true;
+            const char* expectedTarget = requireMarker ? "a saved TargetPoint" : "an object";
+            FBZZ_LOG_ERROR("Prefab save: %s (%s), %s.%s binding %u target '%s' must reference %s in the saved hierarchy",
+                owner.name.c_str(), owner.instanceId.c_str(), component, field, bindingId, guid.c_str(), expectedTarget);
+            return false;
+        }
+        return true;
+    };
+    const auto validateLegacyEntityRef = [&objects](const scene::GameObject& owner, const scene::EntityRef& reference,
+                                                      const char* component, const char* field) {
+        scene::Scene* ownerScene = owner.GetScene();
+        if (!ownerScene) return true;
+        scene::GameObject* target = nullptr;
+        if (!reference.guid.empty()) {
+            target = ownerScene->FindByGuid(reference.guid);
+        } else if (reference.id.IsValid()
+                   && (reference.sceneGeneration == 0
+                       || reference.sceneGeneration == ownerScene->GetRenderSceneGeneration())) {
+            target = ownerScene->GetGameObject(reference.id);
+        }
+        if (!target || !target->GetComponent<scene::TargetPointComponent>()) return true;
+        const auto found = objects.find(target->instanceId);
+        if (found != objects.end() && found->second == target && !target->runtimeGenerated) return true;
+        FBZZ_LOG_ERROR("Prefab save: %s (%s), %s.%s references external TargetPoint '%s'; include it in the saved hierarchy",
+            owner.name.c_str(), owner.instanceId.c_str(), component, field, target->instanceId.c_str());
+        return false;
+    };
+    const auto validateOptionalMarkerReference = [&objects](const scene::GameObject& owner,
+                                                            const scene::ObjectReference& reference,
+                                                            const char* component, const char* field) {
+        if (reference.guid.empty()) return true;
+        scene::Scene* ownerScene = owner.GetScene();
+        scene::GameObject* target = ownerScene ? ownerScene->FindByGuid(reference.guid) : nullptr;
+        if (!target || !target->GetComponent<scene::TargetPointComponent>()) return true;
+        const auto found = objects.find(reference.guid);
+        if (found != objects.end() && found->second == target && !target->runtimeGenerated) return true;
+        FBZZ_LOG_ERROR("Prefab save: %s (%s), %s.%s references external TargetPoint '%s'; include it in the saved hierarchy",
+            owner.name.c_str(), owner.instanceId.c_str(), component, field, reference.guid.c_str());
+        return false;
+    };
+    for (const auto& [guid, object] : objects) {
+        static_cast<void>(guid);
+        if (!object || object->runtimeGenerated) continue;
+        if (const auto* water = object->GetComponent<scene::WaterComponent>(); water && water->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS)
+            for (const auto& row : water->pointBindings)
+                if (!validateTypedTarget(*object, row.target.guid, "Water", "pointBindings", row.id, true, true)) return false;
+        if (const auto* spline = object->GetComponent<scene::SplineComponent>(); spline && spline->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS)
+            for (const auto& row : spline->pointBindings)
+                if (!validateTypedTarget(*object, row.target.guid, "Spline", "pointBindings", row.id, true, true)) return false;
+        if (const auto* cloth = object->GetComponent<scene::ClothComponent>())
+            for (const auto& row : cloth->attachments)
+                if ((row.bindingId != 0 || !row.targetReference.guid.empty())
+                    && !validateTypedTarget(*object, row.targetReference.guid, "Cloth", "attachments", row.bindingId, false, true)) return false;
+        if (const auto* patrol = object->GetComponent<scene::NavMeshPatrolComponent>();
+            patrol && patrol->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS) {
+            for (const auto& row : patrol->waypointBindings)
+                if (!validateTypedTarget(*object, row.target.guid, "NavMeshPatrol", "waypointBindings", row.id, true, true)) return false;
+        }
+        if (const auto* link = object->GetComponent<scene::NavMeshOffMeshLinkComponent>();
+            link && link->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS) {
+            if (!validateTypedTarget(*object, link->startTarget.guid, "NavMeshOffMeshLink", "startTarget", 0, true, true)
+                || !validateTypedTarget(*object, link->endTarget.guid, "NavMeshOffMeshLink", "endTarget", 0, true, true)) return false;
+        }
+        if (const auto* lod = object->GetComponent<scene::LODGroupComponent>();
+            lod && lod->centerSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS) {
+            if (!validateTypedTarget(*object, lod->centerTarget.guid, "LODGroup", "centerTarget", 0, true, true)) return false;
+        }
+        if (const auto* motionWarp = object->GetComponent<scene::MotionWarpComponent>();
+            motionWarp && !motionWarp->targetReference.guid.empty()) {
+            if (!validateTypedTarget(*object, motionWarp->targetReference.guid, "MotionWarp", "targetReference", 0, true, true)) return false;
+        }
+        if (const auto* ik = object->GetComponent<scene::IKSolverComponent>()) {
+            for (const auto& chain : ik->chains) {
+                if (!validateOptionalMarkerReference(*object, chain.targetReference, "IKSolver", "targetReference")
+                    || !validateOptionalMarkerReference(*object, chain.poleReference, "IKSolver", "poleReference")) return false;
+            }
+        }
+        if (const auto* cameraFollow = object->GetComponent<scene::CameraFollowComponent>())
+            if (!validateLegacyEntityRef(*object, cameraFollow->target, "CameraFollow", "target")) return false;
+        if (const auto* socket = object->GetComponent<scene::SocketAttachmentComponent>())
+            if (!validateLegacyEntityRef(*object, socket->target, "SocketAttachment", "target")) return false;
+        if (const auto* constraint = object->GetComponent<scene::TransformConstraintComponent>())
+            if (!validateLegacyEntityRef(*object, constraint->target, "TransformConstraint", "target")) return false;
+        if (const auto* beam = object->GetComponent<scene::VFXBeamComponent>()) {
+            if (!validateLegacyEntityRef(*object, beam->fromEntity, "VFXBeam", "fromEntity")
+                || !validateLegacyEntityRef(*object, beam->toEntity, "VFXBeam", "toEntity")) return false;
+        }
+        if (const auto* line = object->GetComponent<scene::VFXLineComponent>()) {
+            if (!validateLegacyEntityRef(*object, line->fromEntity, "VFXLine", "fromEntity")
+                || !validateLegacyEntityRef(*object, line->toEntity, "VFXLine", "toEntity")) return false;
+        }
+        if (const auto* agent = object->GetComponent<scene::NavMeshAgentComponent>())
+            if (!validateLegacyEntityRef(*object, agent->target, "NavMeshAgent", "target")) return false;
+    }
+    return true;
 }
 
 bool SamePrefabPath(const std::string& lhs, const std::string& rhs)
@@ -155,10 +282,12 @@ bool PrefabSerializer::SaveSelection(const scene::Scene& scene,
     if (rootSelection.empty()) return false;
 
     std::unordered_set<std::string> includedIds;
+    std::unordered_map<std::string, scene::GameObject*> includedObjects;
     for (scene::EntityID id : rootSelection) {
         if (auto* go = scene.GetGameObject(id))
-            CollectHierarchyIds(*go, includedIds);
+            CollectHierarchyIds(*go, includedIds, &includedObjects);
     }
+    if (!ValidatePointReferenceClosure(includedObjects)) return false;
 
     const std::string sceneText = SceneIO::Serialize(scene);
     if (sceneText.empty()) return false;
@@ -343,7 +472,7 @@ bool PrefabSerializer::Revert(scene::Scene& scene,
 {
     outNewRoots.clear();
     if (keepOverrides && keepOverrides->hasStructuralOverrides) {
-        FBZZ_LOG_WARN("Prefab refresh skipped: preserve mode cannot merge local child additions, deletions, or parent changes");
+        FBZZ_LOG_WARN("Prefab refresh skipped: local child additions, deletions, or parent changes require Preview Structure Update and explicit Apply");
         return false;
     }
     /// @note Revert: インスタンスをプレファブアセットの定義に戻す。「コンポーネント・子構成」は

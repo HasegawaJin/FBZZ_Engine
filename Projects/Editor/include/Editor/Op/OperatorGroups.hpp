@@ -2,7 +2,7 @@
 /// @brief   標準 Operator の登録関数群。EditorApp::RegisterBuiltinOperators がまとめて呼ぶ。
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
-///
+
 /// @note EditorApp のメンバーを叩く必要がある操作 (New Scene / Play 等) と、EditorContext + UndoStack だけで完結する操作を分ける。後者は EditorApp を一切知らない自由関数として書けるため、操作の追加が EditorApp の肥大化に直結しない。
 /// @see Docs/design/editor-operator-model.md
 #pragma once
@@ -12,6 +12,9 @@ namespace fbzz::editor {
 
 /// @brief Inspector の Transform 操作とコンポーネントの並べ替え。
 void RegisterInspectorOperators(OperatorRegistry& registry);
+
+/// @brief C# Script の実行状態、停止理由と検証済みの明示再開。
+void RegisterScriptResumeOperators(OperatorRegistry& registry);
 
 /// @brief Animation Graph の保存、自動整列とステート座標操作。
 void RegisterAnimationOperators(OperatorRegistry& registry);
@@ -32,6 +35,8 @@ void RegisterRenderOperators(OperatorRegistry& registry);
 /// @brief GameObject の操作と Undo 記録。
 void RegisterNodeOperators(OperatorRegistry& registry);
 
+void RegisterControlPointOperators(OperatorRegistry& registry);
+
 /// @brief Terrain のデータ編集操作。
 /// @note リサイズは heightData / splat / holeData を同時に整合させ、スナップショット Undo を記録する。
 void RegisterTerrainOperators(OperatorRegistry& registry);
@@ -49,6 +54,7 @@ void RegisterEffectOperators(OperatorRegistry& registry);
 
 /// @brief 静的メッシュの ClothAsset 書き出し。
 void RegisterClothOperators(OperatorRegistry& registry);
+void RegisterFiberOperators(OperatorRegistry& registry);
 
 /// @brief 開発者モードの切り替えと、開発者モードでだけ出す操作 (わざと落とす など)。
 /// @see Docs/design/developer-mode.md

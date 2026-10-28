@@ -3,9 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-03
 #include <Editor/Profiler/ProfilerHistory.hpp>
+#include "PassiveFrameElapsedCapture.hpp"
+#include <Editor/PlayModeController.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Engine/Core/Memory/MemorySystem.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Core/Profiler/FrameTimeline.hpp>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -21,6 +24,8 @@ PerformanceHistory s_performance;
 ScriptHistory s_script;
 MemoryHistory s_memory;
 PerformanceBenchmarkCapture s_benchmark;
+PassiveFrameElapsedCapture s_passiveFrameElapsed;
+std::optional<PassiveFrameElapsedReport> s_passiveFrameElapsedReference;
 std::optional<PerformanceBenchmarkReport> s_benchmarkReference;
 bool s_benchmarkEnabledRecording = false;
 bool s_memoryRecording = true;
@@ -392,6 +397,7 @@ bool PerformanceBenchmarkCapture::Cancel()
 PerformanceBenchmarkCapture& GetPerformanceBenchmarkCapture() { return s_benchmark; }
 bool StartPerformanceBenchmark(std::string label, size_t warmupFrames, size_t sampleFrames, PerformanceBenchmarkConditions conditions)
 {
+    if (s_passiveFrameElapsed.IsActive()) return false;
     const bool priorRecordingRequested = profiler::Profiler::IsRecordingRequested();
     if (!s_benchmark.Start(std::move(label), warmupFrames, sampleFrames, profiler::Profiler::GetSnapshot(), std::move(conditions))) return false;
     s_benchmarkEnabledRecording = !priorRecordingRequested;
@@ -416,6 +422,16 @@ void SetMemoryHistoryRecording(bool recording)
 void ClearMemoryHistory() { Clear(s_memory); ++s_memorySession; }
 void TickProfilerHistory(EditorContext& ctx)
 {
+    if (s_passiveFrameElapsed.IsActive()) {
+        const auto elapsed = profiler::detail::ReadApplicationFrameElapsedObserver();
+        s_passiveFrameElapsed.Feed(elapsed, renderer::RenderDebugOverlay::GetLastSnapshot(),
+            ctx.playMode != nullptr && ctx.playMode->IsPlaying());
+        if (!s_passiveFrameElapsed.IsActive()) {
+            profiler::detail::RequestStopApplicationFrameElapsedObserver();
+            if (s_passiveFrameElapsed.Status().state != PerformanceBenchmarkState::COMPLETE)
+                profiler::frame_timeline::CancelCapture(elapsed.observerSessionId);
+        }
+    }
     const auto& performance = profiler::Profiler::GetSnapshot();
     const bool benchmarking = s_benchmark.IsActive();
     if (benchmarking) {
@@ -456,7 +472,7 @@ void TickProfilerHistory(EditorContext& ctx)
         Capture(s_memory, std::move(memory));
     }
 }
-void ResetProfilerHistory() { CancelPerformanceBenchmark(); s_benchmark = {}; s_benchmarkReference.reset(); Clear(s_performance); Clear(s_script); Clear(s_memory); ++s_memorySession; }
+void ResetProfilerHistory() { CancelPassiveFrameElapsedCapture(); s_passiveFrameElapsed = {}; s_passiveFrameElapsedReference.reset(); CancelPerformanceBenchmark(); s_benchmark = {}; s_benchmarkReference.reset(); Clear(s_performance); Clear(s_script); Clear(s_memory); ++s_memorySession; }
 void ClearPerformanceHistory() { Clear(s_performance); profiler::Profiler::RequestClear(); }
 void ClearScriptHistory() { Clear(s_script); scene::ScriptProfiler::RequestClear(); }
 const scene::ScriptProfileDescriptor* FindScriptDescriptor(const scene::ScriptProfileSnapshot& snapshot, uint64_t key)
@@ -538,4 +554,161 @@ std::vector<ScriptProfileRow> AggregateScriptProfiles(const std::vector<const sc
     std::stable_sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) { return a.selfMs > b.selfMs; });
     return rows;
 }
+
+bool PassiveFrameElapsedCapture::IsActive() const
+{
+    return m_report.status.state == PerformanceBenchmarkState::WARMUP
+        || m_report.status.state == PerformanceBenchmarkState::SAMPLING;
+}
+bool PassiveFrameElapsedCapture::CanStart(const std::string& label, size_t warmup, size_t samples,
+    const PassiveFrameElapsedConditions& conditions) const
+{
+    const auto validHash = [](const std::string& value) {
+        return value.empty() || (value.size() == 64 && std::all_of(value.begin(), value.end(), [](char ch) {
+            return (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'F') || (ch >= 'a' && ch <= 'f');
+        }));
+    };
+    return !IsActive() && !label.empty() && label.size() <= 256 && warmup <= 60000 && samples > 0 && samples <= 60000
+        && samples <= m_rows.max_size() && samples <= m_cpuTimings.max_size() && samples <= m_wallTimings.max_size()
+        && conditions.scenario.size() <= 256 && conditions.camera.size() <= 256 && conditions.configuration.size() <= 1024
+        && validHash(conditions.runtimeHash) && validHash(conditions.scenarioHash);
+}
+bool PassiveFrameElapsedCapture::Start(std::string label, size_t warmup, size_t samples, uint64_t observerSession,
+    profiler::detail::ApplicationFrameElapsedModeWitness baseline, PassiveFrameElapsedConditions conditions)
+{
+    if (!CanStart(label, warmup, samples, conditions) || observerSession == 0 || !baseline.IsOff()) return false;
+    m_rows.clear(); m_rows.reserve(samples); m_cpuTimings.clear(); m_cpuTimings.reserve(samples);
+    m_wallTimings.clear(); m_wallTimings.reserve(samples);
+    m_report = {}; m_report.label = std::move(label); m_report.conditions = std::move(conditions);
+    m_report.status.state = warmup ? PerformanceBenchmarkState::WARMUP : PerformanceBenchmarkState::SAMPLING;
+    m_report.status.warmupFrames = warmup; m_report.status.sampleFrames = samples;
+    m_report.status.observerSessionId = observerSession;
+    m_baseline = baseline; m_report.baselineMode = baseline; m_lastSerial = 0; m_lastOrdinal = 0; m_hasFrame = false;
+    return true;
+}
+void PassiveFrameElapsedCapture::Fail(PassiveFrameElapsedFailure failure,
+    const profiler::detail::ApplicationFrameElapsedSnapshot& frame)
+{
+    m_report.status.state = PerformanceBenchmarkState::FAILED; m_report.status.failure = failure;
+    m_report.failureFrameAvailable = frame.available; m_report.failureFrame = frame;
+    m_report.failureFrame.complete = false;
+    m_report.failureFrame.cpuFrameElapsedAvailable = frame.cpuFrameElapsedAvailable && std::isfinite(frame.cpuFrameElapsedMs) && frame.cpuFrameElapsedMs >= 0.0;
+    m_report.failureFrame.wallFrameIntervalAvailable = frame.wallFrameIntervalAvailable && std::isfinite(frame.wallFrameIntervalMs) && frame.wallFrameIntervalMs >= 0.0;
+}
+void PassiveFrameElapsedCapture::Feed(const profiler::detail::ApplicationFrameElapsedSnapshot& elapsed,
+    const renderer::RenderDebugOverlay::Snapshot& rendering, bool playing)
+{
+    if (!IsActive()) return;
+    if (!playing) { Fail(PassiveFrameElapsedFailure::PLAY_CHANGED, elapsed); return; }
+    if (!elapsed.available) return;
+    auto& status = m_report.status;
+    if (!m_hasFrame && elapsed.observerSessionId < status.observerSessionId) return;
+    if (elapsed.observerSessionId != status.observerSessionId) { Fail(PassiveFrameElapsedFailure::SESSION_CHANGED, elapsed); return; }
+    if (!elapsed.beginMode.IsOff() || (elapsed.endModeAvailable && !elapsed.endMode.IsOff())) {
+        Fail(PassiveFrameElapsedFailure::MODE_CHANGED, elapsed); return;
+    }
+    if (elapsed.beginMode != m_baseline || (elapsed.endModeAvailable && elapsed.endMode != m_baseline)) {
+        Fail(PassiveFrameElapsedFailure::SESSION_CHANGED, elapsed); return;
+    }
+    if (m_hasFrame && elapsed.applicationFrameSerial == m_lastSerial && elapsed.publicationOrdinal == m_lastOrdinal) return;
+    if (elapsed.publicationOrdinal == 0 || (m_hasFrame && (elapsed.applicationFrameSerial <= m_lastSerial
+        || elapsed.publicationOrdinal <= m_lastOrdinal))) { Fail(PassiveFrameElapsedFailure::FRAME_ORDER_CHANGED, elapsed); return; }
+    status.missingPublicationCount += elapsed.publicationOrdinal - m_lastOrdinal - 1;
+    if (m_hasFrame) status.missingFrameCount += elapsed.applicationFrameSerial - m_lastSerial - 1;
+    m_lastSerial = elapsed.applicationFrameSerial; m_lastOrdinal = elapsed.publicationOrdinal; m_hasFrame = true;
+    if (!elapsed.complete) ++status.incompleteFrames;
+    const auto& view = rendering.gpuCurrentView;
+    const bool renderingAvailable = view.applicationFrameSerial == elapsed.applicationFrameSerial && view.viewId != 0
+        && view.sceneGeneration != 0 && view.planGeneration != 0 && view.resourceEpoch != 0
+        && view.outputId != 0 && view.outputGeneration != 0 && view.width > 0 && view.height > 0;
+    if (renderingAvailable) {
+        auto expected = m_report.rendering; expected.applicationFrameSerial = view.applicationFrameSerial;
+        if (m_report.renderingMetadataAvailable && expected != view) m_report.renderingConditionsChanged = true;
+        if (!m_report.renderingMetadataAvailable) { m_report.rendering = view; m_report.renderingMetadataAvailable = true; }
+    }
+    if (status.warmedFrames < status.warmupFrames) {
+        if (!renderingAvailable) ++status.missingWarmupRenderingMetadataFrames;
+        ++status.warmedFrames;
+        if (status.warmedFrames == status.warmupFrames) status.state = PerformanceBenchmarkState::SAMPLING;
+        return;
+    }
+    PassiveFrameElapsedRow row; row.elapsed = elapsed;
+    row.elapsed.cpuFrameElapsedAvailable = elapsed.cpuFrameElapsedAvailable && std::isfinite(elapsed.cpuFrameElapsedMs) && elapsed.cpuFrameElapsedMs >= 0.0;
+    row.elapsed.wallFrameIntervalAvailable = elapsed.wallFrameIntervalAvailable && std::isfinite(elapsed.wallFrameIntervalMs) && elapsed.wallFrameIntervalMs >= 0.0;
+    if (!row.elapsed.cpuFrameElapsedAvailable || !row.elapsed.wallFrameIntervalAvailable) {
+        row.elapsed.complete = false;
+        if (elapsed.complete) ++status.incompleteFrames;
+    }
+    row.renderingAvailable = renderingAvailable;
+    if (row.renderingAvailable) {
+        row.rendering = view; row.drawCalls = rendering.renderStats.drawCalls; row.triangleCount = rendering.renderStats.triangleCount;
+    } else ++status.missingRenderingMetadataFrames;
+    if (row.elapsed.cpuFrameElapsedAvailable) m_cpuTimings.push_back(row.elapsed.cpuFrameElapsedMs);
+    if (row.elapsed.wallFrameIntervalAvailable) m_wallTimings.push_back(row.elapsed.wallFrameIntervalMs);
+    m_rows.push_back(row); ++status.capturedFrames;
+    if (status.capturedFrames == status.sampleFrames) {
+        m_report.cpu = {Distribution(m_cpuTimings), !m_cpuTimings.empty()};
+        m_report.wall = {Distribution(m_wallTimings), !m_wallTimings.empty()};
+        status.state = PerformanceBenchmarkState::COMPLETE;
+    }
+}
+bool PassiveFrameElapsedCapture::Cancel()
+{
+    if (!IsActive()) return false;
+    m_report.status.state = PerformanceBenchmarkState::CANCELLED; return true;
+}
+PassiveFrameElapsedCapture& GetPassiveFrameElapsedCapture() { return s_passiveFrameElapsed; }
+bool StartPassiveFrameElapsedCapture(EditorContext& ctx, std::string label, size_t warmup, size_t samples,
+    PassiveFrameElapsedConditions conditions)
+{
+    if (s_benchmark.IsActive() || ctx.playMode == nullptr || !ctx.playMode->IsPlaying()
+        || !s_passiveFrameElapsed.CanStart(label, warmup, samples, conditions)) return false;
+    const profiler::detail::ApplicationFrameElapsedModeWitness mode{profiler::Profiler::IsEnabled(),
+        profiler::Profiler::IsRecordingRequested(), scene::ScriptProfiler::IsRecording(),
+        profiler::Profiler::GetSnapshot().captureSessionId, scene::ScriptProfiler::GetSnapshot().captureSessionId,
+        scene::ScriptProfiler::GetRuntimeEpoch(), scene::ScriptProfiler::GetDllGeneration()};
+    if (!mode.IsOff()) return false;
+    const uint64_t session = profiler::detail::ArmApplicationFrameElapsedObserver();
+    const bool started = s_passiveFrameElapsed.Start(std::move(label), warmup, samples, session, mode, std::move(conditions));
+    if (started) (void)profiler::frame_timeline::ArmFromEnvironment(session, warmup, samples);
+    return started;
+}
+bool CancelPassiveFrameElapsedCapture()
+{
+    const bool cancelled = s_passiveFrameElapsed.Cancel();
+    if (cancelled) profiler::frame_timeline::CancelCapture(s_passiveFrameElapsed.Status().observerSessionId);
+    profiler::detail::RequestStopApplicationFrameElapsedObserver(); return cancelled;
+}
+bool SetPassiveFrameElapsedReference()
+{
+    if (s_passiveFrameElapsed.Status().state != PerformanceBenchmarkState::COMPLETE) return false;
+    s_passiveFrameElapsedReference = s_passiveFrameElapsed.Report(); return true;
+}
+const PassiveFrameElapsedReport* GetPassiveFrameElapsedReference()
+{
+    return s_passiveFrameElapsedReference ? &*s_passiveFrameElapsedReference : nullptr;
+}
+bool IsPassiveFrameElapsedEligible(const PassiveFrameElapsedReport& report)
+{
+    const auto& status = report.status; const auto& conditions = report.conditions;
+    return report.baselineMode.IsOff() && report.cpu.available && report.wall.available
+        && status.state == PerformanceBenchmarkState::COMPLETE && status.failure == PassiveFrameElapsedFailure::NONE
+        && status.capturedFrames == status.sampleFrames && status.sampleFrames != 0 && status.incompleteFrames == 0
+        && status.missingFrameCount == 0 && status.missingPublicationCount == 0 && status.missingRenderingMetadataFrames == 0
+        && status.missingWarmupRenderingMetadataFrames == 0
+        && report.cpu.count == status.sampleFrames && report.wall.count == status.sampleFrames
+        && report.renderingMetadataAvailable && !report.renderingConditionsChanged
+        && !conditions.scenario.empty() && !conditions.camera.empty() && !conditions.configuration.empty()
+        && !conditions.runtimeHash.empty() && !conditions.scenarioHash.empty();
+}
+bool ArePassiveFrameElapsedComparable(const PassiveFrameElapsedReport& reference, const PassiveFrameElapsedReport& candidate)
+{
+    auto expected = reference.rendering; expected.applicationFrameSerial = candidate.rendering.applicationFrameSerial;
+    return IsPassiveFrameElapsedEligible(reference) && IsPassiveFrameElapsedEligible(candidate)
+        && reference.conditions.scenario == candidate.conditions.scenario && reference.conditions.camera == candidate.conditions.camera
+        && reference.conditions.configuration == candidate.conditions.configuration
+        && reference.conditions.scenarioHash == candidate.conditions.scenarioHash && expected == candidate.rendering
+        && reference.status.warmupFrames == candidate.status.warmupFrames && reference.status.sampleFrames == candidate.status.sampleFrames;
+}
+
 }

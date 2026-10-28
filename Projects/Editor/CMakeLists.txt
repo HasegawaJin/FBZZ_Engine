@@ -54,6 +54,7 @@ target_compile_definitions(FBZZEditor
 target_include_directories(FBZZEditor
     PUBLIC  include
     PRIVATE src
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../Engine/src/Profiler"
     PRIVATE ${EDITOR_DIRECTXTEX_INCLUDE}
     PRIVATE ${EDITOR_ASSIMP_INCLUDE}
     PRIVATE ${EDITOR_STB_INCLUDE}

@@ -8,14 +8,18 @@
 /// @see Docs/design/editor-operator-model.md
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/ManagedScriptEditor.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Op/OperatorGroups.hpp>
+#include <Editor/Util/PrefabStructureMerge.hpp>
 #include <Editor/Profiler/ProfilerOperators.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Editor/Util/ViewportCamera.hpp>
+#include <Editor/Tools/ControlPointEditing.hpp>
+#include <Editor/Tools/TargetPointReferenceEditing.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Vector3.hpp>
@@ -137,13 +141,13 @@ void EditorApp::RegisterBuiltinOperators()
     add("edit.undo", "Undo", "Edit",
         "直前の編集を取り消す。",
         OpKind::Action,
-        [](OpContext& c, const OpArgs&) { c.undo.Undo(); return OpResult::Ok(); },
+        [](OpContext& c, const OpArgs&) { return c.undo.Undo() ? OpResult::Ok() : OpResult::Err("UNDO_CONFLICT", c.undo.LastDiagnostic()); },
         [](const OpContext& c, const OpArgs&) { return c.undo.CanUndo(); });
 
     add("edit.redo", "Redo", "Edit",
         "取り消した編集をやり直す。",
         OpKind::Action,
-        [](OpContext& c, const OpArgs&) { c.undo.Redo(); return OpResult::Ok(); },
+        [](OpContext& c, const OpArgs&) { return c.undo.Redo() ? OpResult::Ok() : OpResult::Err("REDO_CONFLICT", c.undo.LastDiagnostic()); },
         [](const OpContext& c, const OpArgs&) { return c.undo.CanRedo(); });
 
     /// @note Mutation は Undo コマンドを返し、レジストリだけが UndoStack へ積む。
@@ -377,9 +381,10 @@ void EditorApp::RegisterBuiltinOperators()
         [](const OpContext& c, const OpArgs&) { return c.ctx.snapEnabled; });
 
     /// @name Play
-    /// @note スクリプトのコンパイル/リロード中は全操作入口で Play 開始を拒否する。
-    const auto scriptBusy = [](const OpContext& c, const OpArgs&) {
-        return c.ctx.scriptReloadBusy
+    RegisterStandalonePlayOperators(m_operators);
+    /// @note C# ビルド適用中とシェーダー再コンパイル中は Play 開始を拒否する。
+    const auto buildBusy = [](const OpContext& c, const OpArgs&) {
+        return (c.ctx.packageBuild && c.ctx.packageBuild->IsRunning()) || c.ctx.managedBuildBusy
             || c.ctx.hotReloadState == EditorContext::HotReloadState::Compiling
             || c.ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
     };
@@ -388,24 +393,25 @@ void EditorApp::RegisterBuiltinOperators()
         "Play モードを開始する。",
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { StartPlayMode(); return OpResult::Ok(); },
-        [hasScene, inEditor, scriptBusy](const OpContext& c, const OpArgs& a) {
-            return hasScene(c, a) && inEditor(c, a) && !scriptBusy(c, a);
+        [this, hasScene, inEditor, buildBusy](const OpContext& c, const OpArgs& a) {
+            return hasScene(c, a) && inEditor(c, a) && !m_standalonePlay.IsActive() && !buildBusy(c, a);
         });
 
     add("play.stop", "Stop", "Play",
         "Play モードを停止して編集状態へ戻す。",
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { StopPlayMode(); return OpResult::Ok(); },
-        [hasScene, inEditor](const OpContext& c, const OpArgs& a) { return hasScene(c, a) && !inEditor(c, a); });
+        [this, hasScene, inEditor](const OpContext& c, const OpArgs& a) { return m_standalonePlay.IsActive() || (hasScene(c, a) && !inEditor(c, a)); });
 
-    /// @note 開始と停止を 1 キーへまとめたもの。停止は常に許し、開始だけ scriptBusy を見る。
+    /// @note 開始と停止を 1 キーへまとめたもの。停止は常に許し、開始だけ buildBusy を見る。
     add("play.toggle", "Play / Stop", "Play",
         "Play モードを開始/停止する。",
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { TogglePlayMode(); return OpResult::Ok(); },
-        [hasScene, inEditor, scriptBusy](const OpContext& c, const OpArgs& a) {
+        [this, hasScene, inEditor, buildBusy](const OpContext& c, const OpArgs& a) {
+            if (m_standalonePlay.IsActive()) return true;
             if (!hasScene(c, a)) return false;
-            return inEditor(c, a) ? !scriptBusy(c, a) : true;
+            return inEditor(c, a) ? !buildBusy(c, a) : true;
         });
 
     add("play.pause", "Pause", "Play",
@@ -420,16 +426,8 @@ void EditorApp::RegisterBuiltinOperators()
         [this](OpContext&, const OpArgs&) { m_playMode.RequestStep(); return OpResult::Ok(); },
         [this](const OpContext&, const OpArgs&) { return m_playMode.IsPaused(); });
 
-    add("script.reload", "Reload Scripts", "Play",
-        "スクリプト DLL を再ビルドしてホットリロードする。",
-        OpKind::Action,
-        [](OpContext& c, const OpArgs&) {
-            c.ctx.requestScriptReload = true;
-            return OpResult::Ok();
-        },
-        [scriptBusy, inEditor](const OpContext& c, const OpArgs& a) {
-            return inEditor(c, a) && !scriptBusy(c, a);
-        });
+    ManagedScriptEditor::RegisterOperator(m_operators);
+    RegisterPackageBuildOperators(m_operators);
 
     /// @name Tools
     add("tools.map_editing_mode", "Map Editing Mode", "Tools",
@@ -488,6 +486,9 @@ void EditorApp::RegisterBuiltinOperators()
 
     /// @note EditorContext と UndoStack だけで完結する登録関数はパネル実装へ依存しない。
     RegisterNodeOperators(m_operators);
+    RegisterTargetPointMoveOperator(m_operators);
+    RegisterControlPointOperators(m_operators);
+    RegisterTargetPointReferenceOperators(m_operators);
     RegisterRenderOperators(m_operators);
     RegisterInspectorOperators(m_operators);
     RegisterAnimationOperators(m_operators);
@@ -495,9 +496,11 @@ void EditorApp::RegisterBuiltinOperators()
     RegisterAssetOperators(m_operators);
     RegisterAssetBrowserOperators(m_operators);
     RegisterDocumentOperators(m_operators);
+    RegisterPrefabStructureMergeOperators(m_operators);
     RegisterTerrainOperators(m_operators);
     RegisterEffectOperators(m_operators);
     RegisterClothOperators(m_operators);
+    RegisterFiberOperators(m_operators);
     RegisterSfxOperators(m_operators);
     RegisterDeveloperOperators(m_operators);
     RegisterPixOperators(m_operators);

@@ -2,9 +2,12 @@
 /// @brief   RuntimeBuild 用の CMake 子プロセス管理。
 /// @author  Hasegawa Jin
 /// @date    2026-06-02
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 #include <Editor/Compiler.hpp>
 #include <Engine/Util/StringUtils.hpp>
-#include <Windows.h>
 #include <string>
 
 namespace fbzz::editor {
@@ -25,12 +28,39 @@ bool Compiler::Start(const Config& config)
     m_log.clear();
     m_exitCode = 0;
 
+    const auto fail = [this](const char* operation, DWORD error) {
+        m_log += "ERROR Compiler " + std::string(operation) + " failed (Windows error " + std::to_string(error) + ")\n";
+        m_exitCode = static_cast<int>(error);
+        m_state = State::Failed;
+        CloseHandles();
+        return false;
+    };
+
+    /// @note 無名・非継承の Job を使い、Editor が起動していない外部のビルドへ触れない。
+    /// @see https://learn.microsoft.com/windows/win32/api/winnt/ns-winnt-jobobject_basic_limit_information JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE。
+    m_hJob = CreateJobObjectW(nullptr, nullptr);
+    if (!m_hJob) return fail("CreateJobObject", GetLastError());
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(m_hJob, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+        return fail("SetInformationJobObject", GetLastError());
+    m_hJobEvents = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
+    if (!m_hJobEvents) return fail("CreateIoCompletionPort", GetLastError());
+    JOBOBJECT_ASSOCIATE_COMPLETION_PORT events{};
+    events.CompletionPort = m_hJobEvents;
+    if (!SetInformationJobObject(m_hJob, JobObjectAssociateCompletionPortInformation, &events, sizeof(events)))
+        return fail("SetJobCompletionPort", GetLastError());
+
     /// @note stderr も stdout と同じパイプへ流し、ビルドログを UI で一括表示する。
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
-    HANDLE stdoutWrite = INVALID_HANDLE_VALUE;
+    HANDLE stdoutWrite = nullptr;
     if (!CreatePipe(&m_hStdoutRead, &stdoutWrite, &sa, 0))
-        return false;
-    SetHandleInformation(m_hStdoutRead, HANDLE_FLAG_INHERIT, 0);
+        return fail("CreatePipe", GetLastError());
+    if (!SetHandleInformation(m_hStdoutRead, HANDLE_FLAG_INHERIT, 0)) {
+        const DWORD error = GetLastError();
+        CloseHandle(stdoutWrite);
+        return fail("SetHandleInformation", error);
+    }
 
     const bool usesExplicitCommand = !config.commandLine.empty();
     std::wstring command = config.commandLine;
@@ -40,9 +70,7 @@ bool Compiler::Start(const Config& config)
             L" --build \"" + config.buildDir.wstring() + L"\""
             L" --target " + util::StringUtils::ToWide(config.target) +
             L" --config " + util::StringUtils::ToWide(config.configuration) +
-            /// @note --parallel 1: cl.exe の並列度は CMakeLists.txt の /MP${FBZZ_BUILD_JOBS} で
-            ///       既に確保済み。MSBuild のノード並列まで開くと「プロジェクト数×/MP」の
-            ///       cl.exe が同時に走りメモリが掛け算で膨らむため単一に絞る。
+            /// @note cl.exe の並列度は /MP が持つため MSBuild のノード並列を一つへ制限する。
             L" --parallel 1";
     }
 
@@ -64,9 +92,7 @@ bool Compiler::Start(const Config& config)
     si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
 
     PROCESS_INFORMATION pi{};
-    /// @note 既存の GameHub プロジェクトは CMake 再構成前だと /FS が vcxproj に入っていないことがある。
-    ///       MSBuild /m と cl.exe の並列実行が同じ PDB へ書くと C1041 になるため、
-    ///       子プロセスの CL 環境変数へ /FS を一時的に足して古い生成物でも安定させる。
+    /// @note 古い GameHub 生成物にも /FS を補い、並列 cl.exe の PDB 書き込み競合を防ぐ。
     std::wstring oldCl;
     const DWORD oldClSize = GetEnvironmentVariableW(L"CL", nullptr, 0);
     if (oldClSize > 0) {
@@ -96,12 +122,13 @@ bool Compiler::Start(const Config& config)
     }
 
     const std::wstring workingDirectory = config.workingDirectory.wstring();
-    /// @note BELOW_NORMAL_PRIORITY_CLASS: 優先度クラスは cmake→MSBuild→cl.exe と子プロセスへ
-    ///       継承される。エディタのビルドは裏方なので、手動ビルドや描画スレッドから CPU を奪わない。
+    /// @note 子孫の起動前に Job 登録を済ませ、低い優先度をビルドの子孫へ継承する。
+    /// @see https://learn.microsoft.com/windows/win32/api/jobapi2/nf-jobapi2-assignprocesstojobobject suspended process の登録。
     const BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE,
-                                   CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
+                                   CREATE_NO_WINDOW | CREATE_SUSPENDED | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
                                    workingDirectory.empty() ? nullptr : workingDirectory.c_str(),
                                    &si, &pi);
+    const DWORD createError = ok ? ERROR_SUCCESS : GetLastError();
     if (oldClSize > 0)
         SetEnvironmentVariableW(L"CL", oldCl.c_str());
     else
@@ -113,12 +140,25 @@ bool Compiler::Start(const Config& config)
 
     CloseHandle(stdoutWrite);
 
-    if (!ok) {
-        CloseHandles();
-        return false;
-    }
+    if (!ok) return fail("CreateProcess", createError);
 
     m_hProcess = pi.hProcess;
+    if (!AssignProcessToJobObject(m_hJob, pi.hProcess)) {
+        const DWORD error = GetLastError();
+        /// @note 未開始の自分の子だけを終了する。Job 登録失敗を外部 process の終了で解決しない。
+        TerminateProcess(pi.hProcess, 1);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        CloseHandle(pi.hThread);
+        return fail("AssignProcessToJobObject", error);
+    }
+    if (ResumeThread(pi.hThread) == static_cast<DWORD>(-1)) {
+        const DWORD error = GetLastError();
+        TerminateJobObject(m_hJob, 1);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        WaitForJobExit();
+        CloseHandle(pi.hThread);
+        return fail("ResumeThread", error);
+    }
     CloseHandle(pi.hThread);
     m_state = State::Building;
     return true;
@@ -136,9 +176,15 @@ void Compiler::Tick()
         DWORD exitCode = 0;
         GetExitCodeProcess(m_hProcess, &exitCode);
         m_exitCode = static_cast<int>(exitCode);
-        m_state = (exitCode == 0) ? State::Done : State::Failed;
-
+        /// @note 正常に戻ったツールが残す自己起動 worker も、次の build の前に回収する。
+        const bool requestedCleanup = TerminateJobObject(m_hJob, exitCode) != FALSE;
+        if (!requestedCleanup)
+            m_log += "ERROR Compiler TerminateJobObject failed (Windows error " + std::to_string(GetLastError()) + ")\n";
+        const bool collected = requestedCleanup && WaitForJobExit();
+        PollOutput();
         CloseHandles();
+        m_state = (exitCode == 0 && collected) ? State::Done : State::Failed;
+        if (!collected && m_exitCode == 0) m_exitCode = 1;
     }
 }
 
@@ -146,16 +192,19 @@ void Compiler::Cancel()
 {
     if (m_state != State::Building) return;
 
-    TerminateProcess(m_hProcess, 1);
+    /// @see https://learn.microsoft.com/windows/win32/api/jobapi2/nf-jobapi2-terminatejobobject Job の全子孫だけを終了する。
+    TerminateJobObject(m_hJob, 1);
     WaitForSingleObject(m_hProcess, INFINITE);
+    WaitForJobExit();
     PollOutput();
     CloseHandles();
     m_state = State::Cancelled;
+    m_exitCode = 1;
 }
 
 void Compiler::PollOutput()
 {
-    if (m_hStdoutRead == INVALID_HANDLE_VALUE) return;
+    if (!m_hStdoutRead) return;
 
     DWORD available = 0;
     while (PeekNamedPipe(m_hStdoutRead, nullptr, 0, nullptr, &available, nullptr) && available > 0) {
@@ -167,16 +216,43 @@ void Compiler::PollOutput()
     }
 }
 
-void Compiler::CloseHandles()
+bool Compiler::WaitForJobExit()
 {
-    if (m_hProcess != INVALID_HANDLE_VALUE) {
-        CloseHandle(m_hProcess);
-        m_hProcess = INVALID_HANDLE_VALUE;
-    }
-    if (m_hStdoutRead != INVALID_HANDLE_VALUE) {
-        CloseHandle(m_hStdoutRead);
-        m_hStdoutRead = INVALID_HANDLE_VALUE;
+    if (!m_hJob) return true;
+    for (;;) {
+        JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
+        if (!QueryInformationJobObject(m_hJob, JobObjectBasicAccountingInformation, &accounting, sizeof(accounting), nullptr)) {
+            m_log += "ERROR Compiler QueryJobAccounting failed (Windows error " + std::to_string(GetLastError()) + ")\n";
+            return false;
+        }
+        if (accounting.ActiveProcesses == 0) return true;
+        DWORD message = 0;
+        ULONG_PTR key = 0;
+        OVERLAPPED* process = nullptr;
+        /// @note 通知の欠落でも accounting を再確認する。Job handle の signaled 状態へ依存しない。
+        /// @see https://learn.microsoft.com/windows/win32/procthread/job-objects Job Limits and Notifications。
+        GetQueuedCompletionStatus(m_hJobEvents, &message, &key, &process, 50);
     }
 }
 
-} // namespace fbzz::editor
+void Compiler::CloseHandles()
+{
+    if (m_hJob) {
+        CloseHandle(m_hJob);
+        m_hJob = nullptr;
+    }
+    if (m_hJobEvents) {
+        CloseHandle(m_hJobEvents);
+        m_hJobEvents = nullptr;
+    }
+    if (m_hProcess) {
+        CloseHandle(m_hProcess);
+        m_hProcess = nullptr;
+    }
+    if (m_hStdoutRead) {
+        CloseHandle(m_hStdoutRead);
+        m_hStdoutRead = nullptr;
+    }
+}
+
+}

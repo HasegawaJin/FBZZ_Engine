@@ -2,8 +2,9 @@
 /// @brief   AnimatorComponent のステートマシンをノードグラフとして編集するパネル。
 /// @author  Hasegawa Jin
 /// @date    2026-06-08
-///
-/// imnodes で State ノードと Transition リンクを描画し、AnimatorComponent を直接更新する。
+
+/// @note imnodes で State ノードと Transition リンクを描画し、AnimatorComponent を直接更新する。
+#include <Engine/Asset/ModelSource.hpp>
 #include <Editor/Panels/AnimationGraphPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>
@@ -54,15 +55,15 @@ std::uint64_t& AnimationGraphEditGeneration()
     return generation;
 }
 
-/// Play Mode 中はグラフをランタイム監視専用にし、Scene/Undo データを書き換えない。
+/// @note Play Mode 中はグラフをランタイム監視専用にし、Scene/Undo データを書き換えない。
 bool CanEditAnimationGraph(const EditorContext& ctx)
 {
     return ctx.playMode == nullptr || ctx.playMode->IsInEditor();
 }
 
-/// このパネルが Inspector の表示対象を主張してよいか (パネルのウィンドウ内で呼ぶこと)。
-/// 描くたびに公開すると、Viewport や Hierarchy で選び直しても次のフレームで
-/// グラフの選択に上書きされる。「最後に触った面が勝つ」に揃える。
+/// @note このパネルが Inspector の表示対象を主張してよいか (パネルのウィンドウ内で呼ぶこと)。
+/// @note 描くたびに公開すると、Viewport や Hierarchy で選び直しても次のフレームで
+/// @note グラフの選択に上書きされる。「最後に触った面が勝つ」に揃える。
 bool CanPublishSelection()
 {
     return ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
@@ -75,7 +76,7 @@ constexpr float MAX_CANVAS_ZOOM = 2.00f;
 constexpr float ZOOM_STEP = 0.10f;
 constexpr float BASE_NODE_CARD_WIDTH = 188.0f;
 /// @note ホイールズーム / パンの定数 (WHEEL_PAN_STEP / CANVAS_HOVER_FLAGS) は
-///       旧 ImNodes 経路と一緒に削除した。ズームとパンは GraphCanvas が持つ。
+/// @note       旧 ImNodes 経路と一緒に削除した。ズームとパンは GraphCanvas が持つ。
 
 const char* ParamTypeName(scene::ParamType type)
 {
@@ -106,10 +107,10 @@ GraphLayout ToEditorGraphLayout(const asset::AnimatorGraphLayout& source)
     return layout;
 }
 
-/// ToAssetGraphLayout / SaveAnimatorControllerWithLayout / dirty 登録の本体は
-/// Editor/GraphEditor/AnimatorGraphOps.hpp。パネルの static に閉じていると、
-/// 描画していないと呼べず AI からは編集できるのに保存できない。
-/// Docs/design/editor-operator-model.md
+/// @note ToAssetGraphLayout / SaveAnimatorControllerWithLayout / dirty 登録の本体は
+/// @note Editor/GraphEditor/AnimatorGraphOps.hpp。パネルの static に閉じていると、
+/// @note 描画していないと呼べず AI からは編集できるのに保存できない。
+/// @note Docs/design/editor-operator-model.md
 
 void MarkDirty(EditorContext& ctx)
 {
@@ -118,8 +119,8 @@ void MarkDirty(EditorContext& ctx)
 
     ++AnimationGraphEditGeneration();
     /// @note 編集対象は「パネルが開いているドキュメント」であってブラウザーの選択ではない。
-    ///       selectedAssetPath を見ると、Source 欄へクリップをドラッグした瞬間に .anim へ移り、
-    ///       dirty 登録も保存先も Modified 表示も同時に失われる。
+    /// @note       selectedAssetPath を見ると、Source 欄へクリップをドラッグした瞬間に .anim へ移り、
+    /// @note       dirty 登録も保存先も Modified 表示も同時に失われる。
     if (MarkAnimatorControllerDirty(ctx))
         return;
     if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -135,7 +136,7 @@ struct AnimationGraphUndoTracker {
     bool active = false;
 };
 
-/// Animation Graph が編集する定義だけを複製し、巨大な Clip トラックや骨行列を Undo へ含めない。
+/// @note Animation Graph が編集する定義だけを複製し、巨大な Clip トラックや骨行列を Undo へ含めない。
 /// @note AnimatorComponent 全体の毎フレーム深いコピーは、Clip 読込後に Editor 描画を大幅に重くする。
 scene::AnimatorComponent MakeAnimationGraphSnapshot(
     const scene::AnimatorComponent& source)
@@ -155,10 +156,10 @@ scene::AnimatorComponent MakeAnimationGraphSnapshot(
 }
 
 /// @name レイヤーグラフの一時差し替え
-/// このパネルは 130 箇所以上で animator.states を直接触っている。全箇所を
-/// 「今どのレイヤーか」で分岐させると条件が散る。
-/// AnimationLayer は同じ型のステート配列を持つので、描画の前後で中身を入れ替えれば
-/// パネル側は常に自分のグラフを見ているままでよい。デストラクタで必ず戻す。
+/// @note このパネルは 130 箇所以上で animator.states を直接触っている。全箇所を
+/// @note 「今どのレイヤーか」で分岐させると条件が散る。
+/// @note AnimationLayer は同じ型のステート配列を持つので、描画の前後で中身を入れ替えれば
+/// @note パネル側は常に自分のグラフを見ているままでよい。デストラクタで必ず戻す。
 struct LayerGraphScope {
     scene::AnimatorComponent* animator = nullptr;
     scene::AnimationLayer*    layer    = nullptr;
@@ -184,9 +185,9 @@ struct LayerGraphScope {
 
     [[nodiscard]] bool Active() const { return animator != nullptr; }
 
-    /// 差し替えを元へ戻す。二重呼び出ししても安全 (デストラクタと明示呼び出しの両立)。
+    /// @note 差し替えを元へ戻す。二重呼び出ししても安全 (デストラクタと明示呼び出しの両立)。
     /// @note Undo のスナップショット比較は「元に戻した状態」で行う必要があるため、
-    ///       スコープ終端を待たずに明示的に戻せる入口を用意する。
+    /// @note       スコープ終端を待たずに明示的に戻せる入口を用意する。
     void Restore()
     {
         if (animator == nullptr) return;
@@ -195,9 +196,9 @@ struct LayerGraphScope {
         layer = nullptr;
     }
 
-    /// 保存など、AnimatorComponent 全体の定義を読む処理の前に一時的に元へ戻す。
+    /// @note 保存など、AnimatorComponent 全体の定義を読む処理の前に一時的に元へ戻す。
     /// @note 差し替え中の animator.states は選択 Layer の内容なので、そのまま保存すると
-    ///       選択 Layer が Base Layer として書き出される。保存後は表示を継続するため再適用する。
+    /// @note       選択 Layer が Base Layer として書き出される。保存後は表示を継続するため再適用する。
     void Reapply()
     {
         if (animator != nullptr || ownerAnimator == nullptr || ownerLayer == nullptr) return;
@@ -220,7 +221,7 @@ private:
     }
 };
 
-/// Undo適用時はランタイム資源を保持し、Graph定義だけを書き戻す。
+/// @note Undo適用時はランタイム資源を保持し、Graph定義だけを書き戻す。
 void ApplyAnimationGraphSnapshot(
     scene::AnimatorComponent& target,
     const scene::AnimatorComponent& snapshot)
@@ -342,21 +343,21 @@ std::string MakeUniqueStateName(const scene::AnimatorComponent& animator, const 
     return base + "_";
 }
 
-/// State / Motion の Source として受け付けられるアセットか。
-/// .anim = クリップ単体、.fbx / .fzasset / .asset = クリップを内包するモデルコンテナ。
-/// AnimatorSystem::LoadClips が実際に読める形だけを許可し、UI 側で無効な参照を作らせない。
+/// @note State / Motion の Source として受け付けられるアセットか。
+/// @note .anim = クリップ単体、.fbx / .fzasset / .asset = クリップを内包するモデルコンテナ。
+/// @note AnimatorSystem::LoadClips が実際に読める形だけを許可し、UI 側で無効な参照を作らせない。
 bool IsAnimationSourceAsset(const std::string& path)
 {
     const std::string lower = util::StringUtils::ToLower(path);
     return util::StringUtils::EndsWith(lower, ".anim")
-        || util::StringUtils::EndsWith(lower, ".fbx")
+        || asset::IsModelSourcePath(lower)
         || util::StringUtils::EndsWith(lower, ".fzasset")
         || util::StringUtils::EndsWith(lower, ".asset");
 }
 
-/// ドロップされたアセットパスから State の初期名を作る。
+/// @note ドロップされたアセットパスから State の初期名を作る。
 /// @note "@" 以降を採る: FBX から焼かれたクリップは `<Model>@<Clip>.anim` 命名なので、
-///       ファイル名そのままだとどの State も "Player@..." で始まり、グラフ上で見分けられない。
+/// @note       ファイル名そのままだとどの State も "Player@..." で始まり、グラフ上で見分けられない。
 std::string StateNameFromAssetPath(const std::string& path)
 {
     std::string stem = util::FileSystem::PathToUtf8(
@@ -404,22 +405,22 @@ ImVec4 StateModeTextColor(scene::AnimationStateMode mode)
     return ImVec4(0.75f, 0.75f, 0.75f, 1.0f);
 }
 
-/// ステートノードの論理幅。ImNodes はノードの幅を「本体で一番広い項目」で決めるため、
-/// クリップの絶対パスをそのまま流すとノード 1 個が画面幅を超える。ここを唯一の基準にし、
-/// 収まらない文字列は省略してツールチップへ逃がす。
+/// @note ステートノードの論理幅。ImNodes はノードの幅を「本体で一番広い項目」で決めるため、
+/// @note クリップの絶対パスをそのまま流すとノード 1 個が画面幅を超える。ここを唯一の基準にし、
+/// @note 収まらない文字列は省略してツールチップへ逃がす。
 constexpr float STATE_NODE_WIDTH = 178.0f;
 
-/// ノード本体の実効テキスト幅 (スクリーンピクセル)。CalcTextSize はズーム後の
-/// ピクセルを返すので、論理幅にも同じズームを掛けて同じ空間で比較する。
+/// @note ノード本体の実効テキスト幅 (スクリーンピクセル)。CalcTextSize はズーム後の
+/// @note ピクセルを返すので、論理幅にも同じズームを掛けて同じ空間で比較する。
 float NodeTextBudget(float zoom)
 {
     constexpr float PADDING = 18.0f;
     return (std::max)((STATE_NODE_WIDTH - PADDING) * (std::max)(zoom, 0.05f), 24.0f);
 }
 
-/// 収まらない分だけ末尾を省略する。ImGui::TextUnformatted と違い改行も折り返しもしない。
+/// @note 収まらない分だけ末尾を省略する。ImGui::TextUnformatted と違い改行も折り返しもしない。
 /// @note 折り返しにしない: ImNodes は折り返し幅を知らないため、TextWrapped でもノードは長い方の
-///       行幅まで広がる。省略しないと幅は縮まらない。
+/// @note       行幅まで広がる。省略しないと幅は縮まらない。
 std::string ElideToWidth(const std::string& text, float budget)
 {
     return widgets::ElideToWidth(text.c_str(), budget);
@@ -435,8 +436,8 @@ void TextElidedDisabled(const std::string& text, float budget)
     ImGui::TextDisabled("%s", ElideToWidth(text, budget).c_str());
 }
 
-/// 合成ビューが使うスケルトン。.animcontroller 単体を開いているときは GameObject が無いので、
-/// マスクが覚えている作成元 FBX を最後の頼りにする。
+/// @note 合成ビューが使うスケルトン。.animcontroller 単体を開いているときは GameObject が無いので、
+/// @note マスクが覚えている作成元 FBX を最後の頼りにする。
 const asset::Skeleton* ResolveCompositionSkeleton(EditorContext& ctx,
                                                   const scene::AnimatorComponent& animator)
 {
@@ -475,7 +476,7 @@ const asset::Skeleton* ResolveCompositionSkeleton(EditorContext& ctx,
     return nullptr;
 }
 
-/// バーの内訳を数字で読む用。Additive は取り分を持たないので倍率として別に並べる。
+/// @note バーの内訳を数字で読む用。Additive は取り分を持たないので倍率として別に並べる。
 std::string BuildCompositionTooltip(const std::vector<maskaudit::LayerInfo>& layers,
                                     const maskaudit::BoneContribution& contribution)
 {
@@ -497,9 +498,9 @@ std::string BuildCompositionTooltip(const std::vector<maskaudit::LayerInfo>& lay
     return tooltip;
 }
 
-/// 絶対パスからファイル名だけを残す。
+/// @note 絶対パスからファイル名だけを残す。
 /// @note `Library/Baked` 配下の `.anim` はハッシュディレクトリを挟むため (`.../<hash>/anims/Walk.anim`)、
-///       途中のハッシュは読み手に何も伝えない。全文はツールチップに残す。
+/// @note       途中のハッシュは読み手に何も伝えない。全文はツールチップに残す。
 std::string SourceFileName(const std::string& sourcePath)
 {
     if (sourcePath.empty()) return {};
@@ -507,7 +508,7 @@ std::string SourceFileName(const std::string& sourcePath)
     return slash == std::string::npos ? sourcePath : sourcePath.substr(slash + 1);
 }
 
-/// ノード本体から外した情報の置き場。ホバーしたときだけ全部出す。
+/// @note ノード本体から外した情報の置き場。ホバーしたときだけ全部出す。
 std::string BuildStateTooltip(const scene::AnimationState& state)
 {
     std::string tooltip = state.name.empty() ? "(Unnamed)" : state.name;
@@ -650,21 +651,23 @@ bool DrawFloatParameterCombo(EditorContext& ctx,
     return changed;
 }
 
-/// クリップの取得元アセットを選ぶ欄。
-/// 手書きの InputText + AcceptDragDropPayload だと検索ピッカーが無く、拡張子も検証しない。
-/// widgets::AssetPathField が検索・型フィルター・Ping・D&D を 1 箇所で持っている。
+/// @note クリップの取得元アセットを選ぶ欄。
+/// @note 手書きの InputText + AcceptDragDropPayload だと検索ピッカーが無く、拡張子も検証しない。
+/// @note widgets::AssetPathField が検索・型フィルター・Ping・D&D を 1 箇所で持っている。
 bool DrawAnimationSource(EditorContext& ctx,
                          const char* label,
                          scene::AnimatorComponent& animator,
                          std::string& sourcePath)
 {
     /// @note .anim = クリップ単体、.fbx = インポート元、.asset/.fzasset = インポート済みモデル。
-    ///       ランタイム (AnimatorSystem::LoadClips) は .anim を直接ロードする経路を持ち、
-    ///       「1 クリップ = 1 .anim」が標準の指定方法なので、フィルターから外さないこと。
+    /// @note       ランタイム (AnimatorSystem::LoadClips) は .anim を直接ロードする経路を持ち、
+    /// @note       「1 クリップ = 1 .anim」が標準の指定方法なので、フィルターから外さないこと。
     const bool changed = widgets::AssetPathField(
-        label, sourcePath, ".anim,.asset,.fzasset,.fbx", ctx.projectRoot);
+        label, sourcePath, ".anim,.asset,.fzasset,.fbx,.obj,.gltf,.glb", ctx.projectRoot);
     if (changed) {
         animator.clips.clear();
+        animator.sharedClips.clear();
+        animator.rootMotionSamples.clear();
         animator.clipSourcePaths.clear();
         animator.clipsLoaded = false;
         MarkDirty(ctx);
@@ -672,29 +675,29 @@ bool DrawAnimationSource(EditorContext& ctx,
     return changed;
 }
 
-/// 指定された Source / Clip の実再生秒数を返し、Graph UI の Length 表示に使用する。
-/// Source / Clip 名 / index から実体のクリップを引く。Length 表示と Loop Time の引き継ぎが
-/// 同じ探索を要るので、片方だけ規則を変えると表示と参照が別のクリップになる。
+/// @note 指定された Source / Clip の実再生秒数を返し、Graph UI の Length 表示に使用する。
+/// @note Source / Clip 名 / index から実体のクリップを引く。Length 表示と Loop Time の引き継ぎが
+/// @note 同じ探索を要るので、片方だけ規則を変えると表示と参照が別のクリップになる。
 const asset::AnimationClip* FindClip(const scene::AnimatorComponent& animator,
                                      const std::string& sourcePath,
                                      const std::string& clipName,
                                      int clipIndex)
 {
     const asset::AnimationClip* found = nullptr;
-    for (size_t i = 0; i < animator.clips.size(); ++i) {
+    for (size_t i = 0; i < animator.ClipCount(); ++i) {
         if (!sourcePath.empty() &&
             (i >= animator.clipSourcePaths.size() ||
              animator.clipSourcePaths[i] != sourcePath))
             continue;
-        if (!found) found = &animator.clips[i];
-        if (!clipName.empty() && animator.clips[i].name == clipName) {
-            found = &animator.clips[i];
+        if (!found) found = &animator.ClipAt(i);
+        if (!clipName.empty() && animator.ClipAt(i).name == clipName) {
+            found = &animator.ClipAt(i);
             break;
         }
     }
     if (!found && clipIndex >= 0 &&
-        clipIndex < static_cast<int>(animator.clips.size()))
-        found = &animator.clips[static_cast<size_t>(clipIndex)];
+        clipIndex < static_cast<int>(animator.ClipCount()))
+        found = &animator.ClipAt(static_cast<size_t>(clipIndex));
     return found;
 }
 
@@ -707,7 +710,7 @@ float GetClipLength(const scene::AnimatorComponent& animator,
     return clip ? static_cast<float>(clip->GetDurationSeconds()) : 0.0f;
 }
 
-/// 単一 Clip ステートの Length を返す。BlendTree は実行時 Weight 依存のため 0 を返す。
+/// @note 単一 Clip ステートの Length を返す。BlendTree は実行時 Weight 依存のため 0 を返す。
 float GetStateClipLength(const scene::AnimatorComponent& animator,
                          const scene::AnimationState* state)
 {
@@ -716,7 +719,7 @@ float GetStateClipLength(const scene::AnimatorComponent& animator,
         animator, state->sourcePath, state->clipName, state->clipIndex);
 }
 
-/// Unity の Transition Preview と同様に、遷移元・遷移先・ブレンド区間を時間軸で表示する。
+/// @note Unity の Transition Preview と同様に、遷移元・遷移先・ブレンド区間を時間軸で表示する。
 /// @note 数値だけでは Clip Length に対する Duration の大きさを判断しづらいため、時間軸で見せる。
 void DrawTransitionTimeline(const scene::AnimatorComponent& animator,
                             const scene::AnimationState* sourceState,
@@ -826,10 +829,10 @@ void DrawTransitionTimeline(const scene::AnimatorComponent& animator,
     }
 }
 
-/// sourcePath が指すクリップを animator.clips へ読み込む (未読込のときだけ)。
-/// Clip コンボとキャンバスへのアセットドロップが同じ読み込みを要るので切り出す。
-/// `.anim` は「1 ファイル = 1 クリップ」でモデルコンテナではないため、`Load<Model>` に渡すと
-/// 必ず失敗する。AnimatorSystem::LoadClips と同じ分岐をここにも置く。
+/// @note sourcePath が指す共有クリップを読み込む (未読込のときだけ)。
+/// @note Clip コンボとキャンバスへのアセットドロップが同じ読み込みを要るので切り出す。
+/// @note `.anim` は「1 ファイル = 1 クリップ」でモデルコンテナではないため、`Load<Model>` に渡すと
+/// @note 必ず失敗する。AnimatorSystem::LoadClips と同じ分岐をここにも置く。
 void EnsureSourceClipsLoaded(scene::AnimatorComponent& animator, const std::string& sourcePath)
 {
     if (sourcePath.empty()) return;
@@ -844,15 +847,16 @@ void EnsureSourceClipsLoaded(scene::AnimatorComponent& animator, const std::stri
     if (util::StringUtils::EndsWith(util::StringUtils::ToLower(sourcePath), ".anim")) {
         const auto handle = asset::AssetManager::Load<asset::AnimationClip>(sourcePath);
         if (const asset::AnimationClip* clip = asset::AssetManager::Get(handle)) {
-            animator.clips.push_back(*clip);
+            animator.sharedClips.push_back({handle, {}, 0});
             animator.clipSourcePaths.push_back(sourcePath);
         }
         return;
     }
 
-    if (auto model = asset::AssetManager::LoadAndGet<asset::Model>(sourcePath)) {
-        for (const auto& clip : model->clips) {
-            animator.clips.push_back(clip);
+    const auto modelHandle = asset::AssetManager::Load<asset::Model>(sourcePath);
+    if (const auto* model = asset::AssetManager::Get(modelHandle)) {
+        for (uint32_t index = 0; index < model->clips.size(); ++index) {
+            animator.sharedClips.push_back({{}, modelHandle, index});
             animator.clipSourcePaths.push_back(sourcePath);
         }
     }
@@ -875,12 +879,12 @@ bool DrawClipCombo(EditorContext& ctx,
             clipIndex = -1;
             changed = true;
         }
-        for (int i = 0; i < static_cast<int>(animator.clips.size()); ++i) {
+        for (int i = 0; i < static_cast<int>(animator.ClipCount()); ++i) {
             if (!sourcePath.empty() &&
                 (i >= static_cast<int>(animator.clipSourcePaths.size()) ||
                  animator.clipSourcePaths[static_cast<size_t>(i)] != sourcePath))
                 continue;
-            const auto& clip = animator.clips[static_cast<size_t>(i)];
+            const auto& clip = animator.ClipAt(static_cast<size_t>(i));
             const bool selected = clipName == clip.name;
             /// @note 別の FBX から来たクリップは同名 ("mixamo.com" など) になりうる。
             ImGui::PushID(i);
@@ -922,13 +926,13 @@ bool HasParameter(const scene::AnimatorComponent& animator, const std::string& n
         [&name](const scene::AnimatorParameter& parameter) { return parameter.name == name; });
 }
 
-/// パラメーター名を参照している場所すべてに fn(std::string&) を適用する。
-///
+/// @note パラメーター名を参照している場所すべてに fn(std::string&) を適用する。
+
 /// @note 全レイヤーを一度に舐める: パラメーターは Animator 全体で 1 つだが、参照側は Base Layer と
-///       各 AnimationLayer に散っている。片方だけ直すと、見えていないレイヤーの条件が古い名前のまま残る。
+/// @note       各 AnimationLayer に散っている。片方だけ直すと、見えていないレイヤーの条件が古い名前のまま残る。
 /// @note LayerGraphScope が有効な間は animator.states と layer->states の中身が入れ替わっているが、
-///       「animator 直下 + 全レイヤー」の和集合は入れ替えの有無によらず常に全体と一致するため、
-///       スコープの内外どちらから呼んでもよい。
+/// @note       「animator 直下 + 全レイヤー」の和集合は入れ替えの有無によらず常に全体と一致するため、
+/// @note       スコープの内外どちらから呼んでもよい。
 template <typename Fn>
 void ForEachParameterReference(scene::AnimatorComponent& animator, Fn&& fn)
 {
@@ -975,11 +979,11 @@ void RenameParameterEverywhere(scene::AnimatorComponent& animator,
     });
 }
 
-/// 実行するまで分からない壊れ方を 1 件ずつ表す。stateName が空でない項目はクリックで飛べる。
-///
+/// @note 実行するまで分からない壊れ方を 1 件ずつ表す。stateName が空でない項目はクリックで飛べる。
+
 /// @note 3 段階にする: 「遷移が絶対に通らない」と「script からしか入らない」を同じ赤にすると、
-///       GreenWare の Player.animcontroller だけで後者が 6 件出て赤が常時点いてしまう。常時点灯は
-///       読まれなくなるため、バッジは Error/Warning だけに絞り、静的解析で判断できない事実は Info に置く。
+/// @note       GreenWare の Player.animcontroller だけで後者が 6 件出て赤が常時点いてしまう。常時点灯は
+/// @note       読まれなくなるため、バッジは Error/Warning だけに絞り、静的解析で判断できない事実は Info に置く。
 enum class IssueLevel { Error, Warning, Info };
 
 struct GraphIssue {
@@ -988,10 +992,10 @@ struct GraphIssue {
     std::string text;
 };
 
-/// 今表示しているグラフ (Base Layer / 選択中レイヤー) を検査する。
-///
+/// @note 今表示しているグラフ (Base Layer / 選択中レイヤー) を検査する。
+
 /// @note 表示中のグラフだけを検査する: 直せるのは今開いている面だけで、他レイヤーの件数を混ぜると
-///       「どこを直せばこれが消えるのか」が分からないリストになる。レイヤーを切り替えればそのレイヤーの結果が出る。
+/// @note       「どこを直せばこれが消えるのか」が分からないリストになる。レイヤーを切り替えればそのレイヤーの結果が出る。
 std::vector<GraphIssue> CollectGraphIssues(const scene::AnimatorComponent& animator)
 {
     std::vector<GraphIssue> issues;
@@ -1027,7 +1031,7 @@ std::vector<GraphIssue> CollectGraphIssues(const scene::AnimatorComponent& anima
                 label + ": target state '" + transition.toStateName + "' does not exist" });
         }
         /// @note AnimatorSystem::EvaluateTransition は「条件が空かつ Exit Time 無し」を
-        ///       無効定義として扱い、常に false を返す。線は引かれているのに絶対に通らない。
+        /// @note       無効定義として扱い、常に false を返す。線は引かれているのに絶対に通らない。
         if (transition.conditions.empty() && !transition.hasExitTime) {
             issues.push_back({ IssueLevel::Error, owner,
                 label + ": no conditions and no exit time - this transition never fires" });
@@ -1035,8 +1039,8 @@ std::vector<GraphIssue> CollectGraphIssues(const scene::AnimatorComponent& anima
     };
 
     /// @note このステートがどこかでクリップを参照しているか: LoadClips は state.sourcePath だけでなく
-    ///       blendTree1D/2D の motions からも集める (mode に関係なく)。この性質で «再生せずクリップだけ
-    ///       常駐させる» Preload ステート (例: PreloadKatanaSlash) が作られており、sourcePath だけでは空に見える。
+    /// @note       blendTree1D/2D の motions からも集める (mode に関係なく)。この性質で «再生せずクリップだけ
+    /// @note       常駐させる» Preload ステート (例: PreloadKatanaSlash) が作られており、sourcePath だけでは空に見える。
     const auto referencesAnyClip = [](const scene::AnimationState& state) {
         if (!state.sourcePath.empty() || !state.clipName.empty()) return true;
         for (const auto& motion : state.blendTree1D.motions)
@@ -1050,9 +1054,9 @@ std::vector<GraphIssue> CollectGraphIssues(const scene::AnimatorComponent& anima
         switch (state.mode) {
         case scene::AnimationStateMode::Clip:
             /// @note クリップを持たない既定ステートは «何も出さない休止状態» という定石で、
-            ///       Slot 専用レイヤーの土台になっている (Add_Hit の HitSlot, Hatch の Sealed)。
-            ///       既定ステート «以外» で、どこからもクリップを参照していないものだけが
-            ///       置き忘れとして意味を持つ。
+            /// @note       Slot 専用レイヤーの土台になっている (Add_Hit の HitSlot, Hatch の Sealed)。
+            /// @note       既定ステート «以外» で、どこからもクリップを参照していないものだけが
+            /// @note       置き忘れとして意味を持つ。
             if (!referencesAnyClip(state) && state.name != animator.defaultStateName)
                 issues.push_back({ IssueLevel::Warning, state.name,
                     "no clip assigned - this state outputs nothing" });
@@ -1077,8 +1081,8 @@ std::vector<GraphIssue> CollectGraphIssues(const scene::AnimatorComponent& anima
         }
 
         /// @note 遷移で入って来られないステートは «壊れている» とは限らない。Script が
-        ///       Play / PlayLayerState で直接叩く入り方があり、GreenWare の必殺技・勝利・敗北は
-        ///       全部それ。静的には区別できないので、事実だけを Info として置く。
+        /// @note       Play / PlayLayerState で直接叩く入り方があり、GreenWare の必殺技・勝利・敗北は
+        /// @note       全部それ。静的には区別できないので、事実だけを Info として置く。
         if (!reachable.contains(state.name))
             issues.push_back({ IssueLevel::Info, state.name,
                 "no transition leads here - entered only by script, if at all" });
@@ -1166,8 +1170,8 @@ void DrawBlendTreeEditor(EditorContext& ctx,
                 state.clipName,
                 state.clipIndex)) {
             /// @note クリップを選び直したら、そのクリップの Loop Time を State の既定値にする。
-            ///       実行時の権威は state.loop のまま (設計判断 A)。クリップ側を権威にすると、
-            ///       今動いているコントローラーの再生が黙って変わる。
+            /// @note       実行時の権威は state.loop のまま (設計判断 A)。クリップ側を権威にすると、
+            /// @note       今動いているコントローラーの再生が黙って変わる。
             if (const asset::AnimationClip* clip =
                     FindClip(animator, state.sourcePath, state.clipName, state.clipIndex)) {
                 state.loop = clip->loop;
@@ -1250,8 +1254,8 @@ void DrawBlendTreeEditor(EditorContext& ctx,
         }
         if (ImGui::Button("+ Motion")) {
             scene::BlendTreeMotion motion;
-            if (!animator.clips.empty()) {
-                motion.clipName = animator.clips.front().name;
+            if (animator.ClipCount() != 0) {
+                motion.clipName = animator.ClipAt(0).name;
                 motion.clipIndex = 0;
             }
             if (!state.blendTree1D.motions.empty())
@@ -1388,8 +1392,8 @@ void DrawBlendTreeEditor(EditorContext& ctx,
         }
         if (ImGui::Button("+ Motion")) {
             scene::BlendTreeMotion motion;
-            if (!animator.clips.empty()) {
-                motion.clipName = animator.clips.front().name;
+            if (animator.ClipCount() != 0) {
+                motion.clipName = animator.ClipAt(0).name;
                 motion.clipIndex = 0;
             }
             motion.posX = static_cast<float>(state.blendTree2D.motions.size());
@@ -1410,11 +1414,11 @@ void DrawBlendTreeEditor(EditorContext& ctx,
     }
 }
 
-/// ステート名の変更をグラフデータ全体へ波及させる。名前は states[].name だけでなく
-/// 遷移 (toStateName)・defaultStateName・ノード配置マップのキーでもあり、リネームの入口も
-/// 2 つあるので、張り替えの責務を 1 箇所へ集める。
-/// パネル固有の選択追従は呼び出し側の仕事として分ける。
-/// 戻り値: 実際に改名したら true。空名・重複名・添字範囲外は何もせず false。
+/// @note ステート名の変更をグラフデータ全体へ波及させる。名前は states[].name だけでなく
+/// @note 遷移 (toStateName)・defaultStateName・ノード配置マップのキーでもあり、リネームの入口も
+/// @note 2 つあるので、張り替えの責務を 1 箇所へ集める。
+/// @note パネル固有の選択追従は呼び出し側の仕事として分ける。
+/// @note 戻り値: 実際に改名したら true。空名・重複名・添字範囲外は何もせず false。
 bool RenameStateInGraph(EditorContext& ctx,
                         scene::AnimatorComponent& animator,
                         int stateIndex,
@@ -1457,8 +1461,8 @@ bool RenameStateInGraph(EditorContext& ctx,
     }
 
     /// @note グラフパネルは「名前で覚えている選択」を持つので、Inspector から改名したときは
-    ///       その追従を依頼する。放置すると次フレームの ResolveSelectionIndices が
-    ///       旧名を「消えたステート」と判定し、改名した瞬間に選択が外れる。
+    /// @note       その追従を依頼する。放置すると次フレームの ResolveSelectionIndices が
+    /// @note       旧名を「消えたステート」と判定し、改名した瞬間に選択が外れる。
     ctx.animationGraphRenamedFrom = oldName;
     ctx.animationGraphRenamedTo   = newName;
 
@@ -1466,15 +1470,15 @@ bool RenameStateInGraph(EditorContext& ctx,
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 static void DrawTransitionEditor(EditorContext& ctx,
                                  scene::AnimatorComponent& animator,
                                  const scene::AnimationState* sourceState,
                                  scene::AnimationTransition& transition);
 
-/// ImNodes のコンテキストは GraphCanvas が所有する。以前は旧描画経路のために
-/// パネル側でも 1 つ作っており、パン・ズーム・選択が二重に存在していた。
+/// @note ImNodes のコンテキストは GraphCanvas が所有する。以前は旧描画経路のために
+/// @note パネル側でも 1 つ作っており、パン・ズーム・選択が二重に存在していた。
 void AnimationGraphPanel::OnInit(EditorContext&) { m_graphCanvas.CreateContexts(); }
 
 void AnimationGraphPanel::OnShutdown() { m_graphCanvas.DestroyContexts(); }
@@ -1501,8 +1505,8 @@ void AnimationGraphPanel::ClearSelectionState()
     m_selectedLinkFromName.clear();
 }
 
-/// 名前から添字を作り直す。states[] を触った直後と、描画の先頭で必ず通る。
-/// 個別に添字を直して回ると、漏れた 1 箇所が「選択が別のステートを指す」不具合になる。
+/// @note 名前から添字を作り直す。states[] を触った直後と、描画の先頭で必ず通る。
+/// @note 個別に添字を直して回ると、漏れた 1 箇所が「選択が別のステートを指す」不具合になる。
 void AnimationGraphPanel::ResolveSelectionIndices(const scene::AnimatorComponent& animator)
 {
     /// @note 存在しなくなった名前を落とす (削除されたステートの選択はここで消える)。
@@ -1574,7 +1578,7 @@ void AnimationGraphPanel::CaptureCanvasSelection(const scene::AnimatorComponent&
     }
 
     /// @note front() だけでなく全部を取る: 矩形選択で複数掴んでも 1 個しか覚えていなかったため、
-    ///       「見えている選択」と Delete が消す対象が食い違っていた。
+    /// @note       「見えている選択」と Delete が消す対象が食い違っていた。
     for (const int nodeId : selectedNodes) {
         if (nodeId == AnyStateNodeId()) {
             if (m_selectedKind == NodeKind::None) m_selectedKind = NodeKind::AnyState;
@@ -1585,7 +1589,7 @@ void AnimationGraphPanel::CaptureCanvasSelection(const scene::AnimatorComponent&
             continue;
         }
         /// @note Slot はステートではないので、選択しても Inspector の編集対象にはならない。
-        ///       種別だけ覚えて、Delete や Make Transition の対象から外す。
+        /// @note       種別だけ覚えて、Delete や Make Transition の対象から外す。
         if (nodeId == SlotNodeId()) {
             if (m_selectedKind == NodeKind::None) m_selectedKind = NodeKind::Slot;
             continue;
@@ -1611,7 +1615,7 @@ void AnimationGraphPanel::SelectStateByName(const scene::AnimatorComponent& anim
     m_selectedStateNames.push_back(name);
     m_selectedNode = index;
     /// @note キャンバスへも伝える。パネル側だけだと、追加直後に Inspector には出るのに
-    ///       グラフ上はどこも光っていない状態になる (VFX エディタと同じ規約)。
+    /// @note       グラフ上はどこも光っていない状態になる (VFX エディタと同じ規約)。
     m_graphCanvas.RequestSelection({ NodeId(index) });
 }
 
@@ -1655,12 +1659,12 @@ void AnimationGraphPanel::DrawNodeCanvas(
                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
     /// @note 名前 (権威) から添字 (派生値) を作り直す。以降のコードは添字で書けるが、
-    ///       その添字は常に「今の states[]」と一致していることがここで保証される。
+    /// @note       その添字は常に「今の states[]」と一致していることがここで保証される。
     ResolveSelectionIndices(animator);
 
     /// @note リネームのポップアップは、どのポップアップの内側でもないここで開く: MenuItem のハンドラから
-    ///       OpenPopup すると親メニューの子として開かれ、親が閉じると同時に消える
-    ///       (コンテキストメニューの Rename が動かなかった原因)。
+    /// @note       OpenPopup すると親メニューの子として開かれ、親が閉じると同時に消える
+    /// @note       (コンテキストメニューの Rename が動かなかった原因)。
     if (m_renameRequested) {
         m_renameRequested = false;
         m_renameError.clear();
@@ -1711,9 +1715,9 @@ void AnimationGraphPanel::DrawNodeCanvas(
     view.nodes.push_back(std::move(anyState));
 
     /// @note Slot 疑似ノード。Base Layer には Slot が無いので、レイヤーを見ているときだけ出す。
-    ///       Slot はレイヤーへ «外から» 差し込まれる再生で遷移グラフには一切現れない。GreenWare の
-    ///       抜刀・斬撃・被弾リアクションは全部これで、置かないと空のキャンバスしか出ず「何がこの
-    ///       レイヤーを鳴らしているのか」がエディターから見えなかった。
+    /// @note       Slot はレイヤーへ «外から» 差し込まれる再生で遷移グラフには一切現れない。GreenWare の
+    /// @note       抜刀・斬撃・被弾リアクションは全部これで、置かないと空のキャンバスしか出ず「何がこの
+    /// @note       レイヤーを鳴らしているのか」がエディターから見えなかった。
     if (scene::AnimationLayer* slotLayer = animator.FindLayer(m_editingLayer)) {
         GraphNodeView slot;
         slot.id = SlotNodeId();
@@ -1767,8 +1771,8 @@ void AnimationGraphPanel::DrawNodeCanvas(
         node.position = layout.nodePositions[state->name];
         node.title = state->name;
         /// @note タイトル帯は静的な状態を表す面 (GraphView.hpp の色使い分け規約)。
-        ///       検索ヒットは「今これを探している」という一時的だが静的な状態なので、
-        ///       実行中 (緑) / 既定 (橙) より優先して染める。
+        /// @note       検索ヒットは「今これを探している」という一時的だが静的な状態なので、
+        /// @note       実行中 (緑) / 既定 (橙) より優先して染める。
         const bool searchHit =
             std::find(m_searchHits.begin(), m_searchHits.end(), state->name) != m_searchHits.end();
         node.titleColor = searchHit
@@ -1811,7 +1815,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
             switch (state->mode) {
             case scene::AnimationStateMode::Clip:
                 /// @note Clip Name 未設定でも Source だけは入っていることが多い (FBX に 1 テイク)。
-                ///       "(no clip)" と出すと本当に未接続なのか区別できないので、実体名へ落とす。
+                /// @note       "(no clip)" と出すと本当に未接続なのか区別できないので、実体名へ落とす。
                 TextElided(!state->clipName.empty()
                     ? state->clipName
                     : (state->sourcePath.empty()
@@ -1831,7 +1835,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
             }
 
             /// @note 1 行に畳む。ノードで知りたいのは「ループするか」「等速か」「遷移が有るか」
-            ///       の 3 つで、正確な数値は Inspector 側が持つ。
+            /// @note       の 3 つで、正確な数値は Inspector 側が持つ。
             std::string meta = state->loop ? "loop" : "once";
             if (std::abs(state->speed - 1.0f) > 0.001f) {
                 char speedText[32];
@@ -1884,9 +1888,9 @@ void AnimationGraphPanel::DrawNodeCanvas(
         view.links.push_back(link);
     }
     /// @note 再生中の遷移を線の上で進める。数字だけではツールバーの "-> KatanaDraw 43%" とどの線が
-    ///       対応するか分からず、Any State は線が何本も出るので特に読めなかった。
+    /// @note       対応するか分からず、Any State は線が何本も出るので特に読めなかった。
     /// @note 同じ遷移先へ «そのステートからの遷移» と «Any State からの遷移» が両方ある場合、どちらが
-    ///       発火したかはランタイムが残していないため、ステート自身の遷移を優先する。
+    /// @note       発火したかはランタイムが残していないため、ステート自身の遷移を優先する。
     if (!animator.blendToState.empty() && animator.blendWeight > 0.0f) {
         const float progress = std::clamp(animator.blendWeight, 0.0f, 1.0f);
         const int from = FindStateIndexByName(animator, animator.currentStateName);
@@ -1956,7 +1960,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
     };
 
     /// @note ダブルクリック =「中へ入る」に統一し、リネームは F2 と右クリックに寄せる。
-    ///       Blend Tree を持たないステートでは何も起きないのが正しい。
+    /// @note       Blend Tree を持たないステートでは何も起きないのが正しい。
     if (interaction.nodeDoubleClicked) {
         for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
             if (NodeId(i) != interaction.doubleClickedNode) continue;
@@ -2045,7 +2049,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
         }
     }
     /// @note 選択中のステートを「すべて」消す。DeleteState は erase で添字を詰めるので、
-    ///       添字のリストを順に渡すと 2 件目以降が別のステートを指す。名前で引き直す。
+    /// @note       添字のリストを順に渡すと 2 件目以降が別のステートを指す。名前で引き直す。
     const auto deleteSelectedStates = [&]() {
         if (m_selectedStateNames.empty()) return;
         const std::vector<std::string> targets = m_selectedStateNames;
@@ -2087,11 +2091,11 @@ void AnimationGraphPanel::DrawNodeCanvas(
             created.mode       = scene::AnimationStateMode::Clip;
             created.sourcePath = dropped;
             /// @note AddStateAt は「既存クリップの先頭」を初期値に入れる。落としたアセットとは
-            ///       無関係な名前なので必ず捨て、Source 側の解決 (<Auto / First Clip>) に任せる。
+            /// @note       無関係な名前なので必ず捨て、Source 側の解決 (<Auto / First Clip>) に任せる。
             created.clipName.clear();
             created.clipIndex = -1;
             /// @note Loop Time はクリップに焼かれた値を State の初期値として引き継ぐ
-            ///       (Clip コンボで選び直したときと同じ規則)。
+            /// @note       (Clip コンボで選び直したときと同じ規則)。
             EnsureSourceClipsLoaded(animator, dropped);
             if (const asset::AnimationClip* clip =
                     FindClip(animator, dropped, created.clipName, created.clipIndex))
@@ -2107,7 +2111,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
     }
     if (interaction.nodeContextMenuRequested) {
         /// @note ノードは種別で判定し、ステートは NodeId() の逆引きで特定する。
-        ///       ID 体系へ直接依存すると Entry のような特殊 ID がどの分岐にも入らない。
+        /// @note       ID 体系へ直接依存すると Entry のような特殊 ID がどの分岐にも入らない。
         const int contextNode = interaction.contextMenuNode;
         if (contextNode == AnyStateNodeId()) {
             ClearSelectionState();
@@ -2123,7 +2127,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
             for (int i = 0; i < static_cast<int>(animator.states.size()); ++i) {
                 if (NodeId(i) != contextNode) continue;
                 /// @note 右クリックしたノードが選択外なら、そのノードだけを選び直す。
-                ///       選択済みなら複数選択を保つ (まとめて Delete したい流れを壊さない)。
+                /// @note       選択済みなら複数選択を保つ (まとめて Delete したい流れを壊さない)。
                 const std::string& name = animator.states[static_cast<std::size_t>(i)].name;
                 const bool alreadySelected =
                     std::find(m_selectedStateNames.begin(), m_selectedStateNames.end(), name)
@@ -2159,13 +2163,13 @@ void AnimationGraphPanel::DrawNodeCanvas(
             if (ImGui::MenuItem("Duplicate")) DuplicateState(ctx, animator, m_selectedNode, instanceId);
             if (ImGui::MenuItem("Delete")) deleteSelectedStates();
             /// @note OpenPopup はここで呼ばない (親メニューの子として開かれ、すぐ閉じてしまう)。
-            ///       次フレームの先頭で開く。
+            /// @note       次フレームの先頭で開く。
             if (ImGui::MenuItem("Rename", "F2")) beginRename(m_selectedNode);
         } else if (m_selectedAnyState) {
             ImGui::TextDisabled("Any State");
         } else if (m_selectedKind == NodeKind::Slot) {
             /// @note Slot は定義がスクリプト側にあるので、ここから作れるものが無い。
-            ///       何も出さないと «メニューが壊れている» ように見えるため、理由を書く。
+            /// @note       何も出さないと «メニューが壊れている» ように見えるため、理由を書く。
             ImGui::TextDisabled("Slot");
             ImGui::Separator();
             ImGui::TextDisabled("Driven by script (PlaySlot / StopSlot)");
@@ -2175,7 +2179,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
 
     if (ImGui::BeginPopup("##AnimationGenericRename")) {
         /// @note 開いた最初のフレームだけ入力欄へフォーカスを移す: 無いと F2 や右クリックで開いても
-        ///       欄をクリックするまで打てず、「リネームできない」という体験になっていた。
+        /// @note       欄をクリックするまで打てず、「リネームできない」という体験になっていた。
         if (m_renameFocusPending) {
             ImGui::SetKeyboardFocusHere();
             m_renameFocusPending = false;
@@ -2188,7 +2192,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
             ImGui::TextColored(EditorTheme::Color(ThemeColor::Danger), "%s", m_renameError.c_str());
 
         /// @note Enter で確定。閉じるのは成功したときだけで、弾かれたら理由を出したまま残す: 以前は
-        ///       無言で失敗して閉じていたため、「打って Enter したのに名前が変わらない」理由が出なかった。
+        /// @note       無言で失敗して閉じていたため、「打って Enter したのに名前が変わらない」理由が出なかった。
         if (committed && m_renamingNode >= 0) {
             const std::string oldName =
                 animator.states[static_cast<std::size_t>(m_renamingNode)].name;
@@ -2208,7 +2212,7 @@ void AnimationGraphPanel::DrawNodeCanvas(
         ImGui::EndPopup();
     } else if (!m_renamingStateName.empty() && !m_renameRequested) {
         /// @note ポップアップ外クリックや Esc で閉じられた。状態を残すと次回の F2 が
-        ///       「開いているつもり」で始まってしまうため、必ず片付ける。
+        /// @note       「開いているつもり」で始まってしまうため、必ず片付ける。
         m_renamingStateName.clear();
         m_renameError.clear();
     }
@@ -2221,7 +2225,7 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
     const std::string& instanceId)
 {
     /// @note Blend Tree を開いている間は DrawNodeCanvas が呼ばれないため、
-    ///       添字の解決はここでも行う (開いているステートが削除・リネームされた場合に追従する)。
+    /// @note       添字の解決はここでも行う (開いているステートが削除・リネームされた場合に追従する)。
     ResolveSelectionIndices(animator);
 
     if (m_openBlendTreeState < 0 || m_openBlendTreeState >= static_cast<int>(animator.states.size())) {
@@ -2266,7 +2270,7 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
     ImGui::SameLine();
     if (ImGui::SmallButton("+ Motion")) {
         scene::BlendTreeMotion motion;
-        if (!animator.clips.empty()) { motion.clipName = animator.clips.front().name; motion.clipIndex = 0; }
+        if (animator.ClipCount() != 0) { motion.clipName = animator.ClipAt(0).name; motion.clipIndex = 0; }
         motions.push_back(std::move(motion));
         positions.push_back({ 160.0f, 50.0f });
         m_selectedMotion = static_cast<int>(motions.size()) - 1;
@@ -2398,8 +2402,8 @@ void AnimationGraphPanel::DrawBlendTreeCanvas(
     if (interaction.assetDropped) {
         const std::string path = NormalizeAssetPath(interaction.droppedAssetPath);
         /// @note .anim もここで受ける。ブレンドツリーの各モーションは 1 クリップなので、
-        ///       むしろ .anim が本来の指定形。以前は弾いていたため、クリップを落としても
-        ///       Motion が生えなかった。
+        /// @note       むしろ .anim が本来の指定形。以前は弾いていたため、クリップを落としても
+        /// @note       Motion が生えなかった。
         if (IsAnimationSourceAsset(path)) {
             scene::BlendTreeMotion motion;
             motion.sourcePath = path;
@@ -2429,7 +2433,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     FBZZ_PROFILE_SCOPE("AnimationGraphPanel::Render");
 
     /// @note Inspector の Name 欄で起きた改名を、パネルが名前で覚えている選択へ取り込む。
-    ///       グラフデータ側 (遷移・レイアウト) の張り替えは RenameStateInGraph が済ませている。
+    /// @note       グラフデータ側 (遷移・レイアウト) の張り替えは RenameStateInGraph が済ませている。
     if (!ctx.animationGraphRenamedFrom.empty()) {
         AdoptStateRename(ctx.animationGraphRenamedFrom, ctx.animationGraphRenamedTo);
         ctx.animationGraphRenamedFrom.clear();
@@ -2446,16 +2450,16 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note Play Mode 中は Animator の実行時状態が毎フレーム変化するため、編集用 snapshot と
-    ///       Undo 追跡を続けると監視表示だけで大きな CPU 負荷になる。
+    /// @note       Undo 追跡を続けると監視表示だけで大きな CPU 負荷になる。
     const bool allowEditing = CanEditAnimationGraph(ctx);
 
     /// @name 編集ドキュメントの決定
     /// @note 「明示的に開いたパス」を保持し、選択が動いても手放さない。選択追従だと Source 欄へ
-    ///       ドラッグするたびに編集対象ごと切り替わり、未保存の変更が確認なしで消える。
-    ///       まだ何も開いていないときだけ、選択中の .animcontroller を初回の入口として拾う。
+    /// @note       ドラッグするたびに編集対象ごと切り替わり、未保存の変更が確認なしで消える。
+    /// @note       まだ何も開いていないときだけ、選択中の .animcontroller を初回の入口として拾う。
     if (!m_requestedPath.empty()) {
         /// @note 呼び出し元によって相対パスと絶対パスが混ざる。AssetDirtyRegistry のキーは
-        ///       絶対パス前提なので、ここで 1 度だけ揃える。
+        /// @note       絶対パス前提なので、ここで 1 度だけ揃える。
         const std::string requested =
             asset::AssetManager::ResolveAssetPath(m_requestedPath);
         m_requestedPath.clear();
@@ -2493,7 +2497,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
                 ToEditorGraphLayout(controller.editorLayout);
             m_selectionOwnerInstanceId.clear();
             /// @note 名前側 (権威) を必ず落とす。派生値だけ消しても、次の
-            ///       ResolveSelectionIndices が名前から復元してしまう。
+            /// @note       ResolveSelectionIndices が名前から復元してしまう。
             ClearSelectionState();
             m_openBlendTreeStateName.clear();
             m_openBlendTreeStateName.clear();
@@ -2516,7 +2520,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         GraphLayout undoBeforeLayout;
         if (allowEditing) {
             /// @note スナップショットは差し替え前 (= Base Layer が入っている状態) で取る。
-            ///       layers も含むため、レイヤー側の編集も Undo で戻せる。
+            /// @note       layers も含むため、レイヤー側の編集も Undo で戻せる。
             undoBeforeAnimator = MakeAnimationGraphSnapshot(animator);
             undoBeforeLayout = ctx.graphLayouts[docPath];
         }
@@ -2558,8 +2562,8 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S);
         if (savePressed || saveShortcut) {
             /// @note LayerGraphScope は描画中の states を選択 Layerへ差し替えているため、
-            ///       保存時だけ必ず Base + layers の正規形へ戻す。これをしないと空の新規 Layerを
-            ///       選択して保存した瞬間、Base Layer が空の Controller として書き出される。
+            /// @note       保存時だけ必ず Base + layers の正規形へ戻す。これをしないと空の新規 Layerを
+            /// @note       選択して保存した瞬間、Base Layer が空の Controller として書き出される。
             layerScope.Restore();
             const bool saved = SaveAnimatorControllerWithLayout(ctx, docPath, animator);
             layerScope.Reapply();
@@ -2585,7 +2589,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
                 }
             } else {
                 /// @note 失敗を必ず言う: 以前は else が無く、書き込みに失敗してもログもトーストも出なかった。
-                ///       ユーザーからは「押しても保存できない」としか見えず、原因を絞る手がかりが残らない。
+                /// @note       ユーザーからは「押しても保存できない」としか見えず、原因を絞る手がかりが残らない。
                 FBZZ_LOG_ERROR("Animator Controller save failed: %s", docPath.c_str());
                 Toast::Error("Failed to save " +
                              util::FileSystem::GetFilename(docPath));
@@ -2605,7 +2609,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         }
 
         /// @note ドキュメントを閉じてシーン内 Animator の編集モードへ戻る。
-        ///       「開く」を明示にした以上、「閉じる」も明示の操作として要る。
+        /// @note       「開く」を明示にした以上、「閉じる」も明示の操作として要る。
         ImGui::SameLine();
         if (ImGui::SmallButton("Close")) {
             if (controllerDirty) {
@@ -2640,8 +2644,8 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             selection.Clear();
             selection.assetPath = docPath;
             /// @note BlendTree を開いている間は、Motion ノードの選択を State 選択より優先して公開する:
-            ///       m_selectedMotion はキャンバス内では更新されていたが、従来はここで捨てられ
-            ///       Inspector が親 State のままになっていた。
+            /// @note       m_selectedMotion はキャンバス内では更新されていたが、従来はここで捨てられ
+            /// @note       Inspector が親 State のままになっていた。
             if (m_openBlendTreeState >= 0 && m_selectedMotion >= 0) {
                 selection.type = EditorContext::AnimationGraphSelection::Type::BlendTreeMotion;
                 selection.stateIndex = m_openBlendTreeState;
@@ -2666,7 +2670,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         }
 
         /// @note Undo 比較の前にレイヤーグラフを元へ戻す: 差し替えたままスナップショットを比較すると、
-        ///       Base Layer とレイヤーのステートが入れ替わった状態が「変更」として記録されてしまう。
+        /// @note       Base Layer とレイヤーのステートが入れ替わった状態が「変更」として記録されてしまう。
         layerScope.Restore();
 
         if (allowEditing) {
@@ -2684,7 +2688,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note ここから下は「アセットを開いていないとき」の経路で、シーン内 GameObject の
-    ///       AnimatorComponent を直接編集する従来モード。
+    /// @note       AnimatorComponent を直接編集する従来モード。
     scene::GameObject* go = ctx.GetSelectedGO();
     if (!go) {
         widgets::EmptyState(icons::Or(icons::kTimeline, nullptr),
@@ -2785,9 +2789,9 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-/// 編集対象レイヤーを選ぶツールバー。Base Layer と各 AnimationLayer を切り替える。
-/// 切り替え時は選択と BlendTree の掘り下げをリセットする (別グラフの添字を持ち越すと
-/// 存在しないステートを指したまま描画する)。
+/// @note 編集対象レイヤーを選ぶツールバー。Base Layer と各 AnimationLayer を切り替える。
+/// @note 切り替え時は選択と BlendTree の掘り下げをリセットする (別グラフの添字を持ち越すと
+/// @note 存在しないステートを指したまま描画する)。
 void AnimationGraphPanel::DrawLayerSelector(
     EditorContext& ctx, scene::AnimatorComponent& animator, bool allowEditing)
 {
@@ -2825,8 +2829,8 @@ void AnimationGraphPanel::DrawLayerSelector(
         }
     }
     /// @note 指しているレイヤーが消えていたら Base Layer へ戻し、古いレイヤーのステート選択も捨てる:
-    ///       名前だけ空にすると、残った stateIndex が Base Layer の同じ添字へ誤って適用され、
-    ///       Mask 欄も別レイヤーの内容に見えてしまう。
+    /// @note       名前だけ空にすると、残った stateIndex が Base Layer の同じ添字へ誤って適用され、
+    /// @note       Mask 欄も別レイヤーの内容に見えてしまう。
     if (!m_editingLayer.empty() && animator.FindLayer(m_editingLayer) == nullptr) {
         m_editingLayer.clear();
         resetSelection();
@@ -2843,8 +2847,8 @@ void AnimationGraphPanel::DrawLayerSelector(
         for (const auto& layer : animator.layers) {
             const bool selected = (layer.name == m_editingLayer);
             /// @note "(no graph)" と書かない: ステートを持たず Slot だけで鳴らすレイヤーは «欠落» ではなく
-            ///       正しい使い方 (抜刀・被弾リアクションがこれ)。欠落に見えるラベルは要らないステートを
-            ///       足す方向へ誘導してしまう。マスク未指定は «全身に効く» という意味なので黙らせずに書く。
+            /// @note       正しい使い方 (抜刀・被弾リアクションがこれ)。欠落に見えるラベルは要らないステートを
+            /// @note       足す方向へ誘導してしまう。マスク未指定は «全身に効く» という意味なので黙らせずに書く。
             char label[224];
             std::snprintf(label, sizeof(label), "%s  [%s %.0f%%]%s%s",
                           layer.name.c_str(),
@@ -2875,7 +2879,7 @@ void AnimationGraphPanel::DrawLayerSelector(
         MarkDirty(ctx);
     }
     /// @note レイヤーの並び順は Override の勝ち負けそのもの (後ろのレイヤーが前を上書きする)
-    ///       なのに、今まで並べ替える手段が .animcontroller の直編集しか無かった。
+    /// @note       なのに、今まで並べ替える手段が .animcontroller の直編集しか無かった。
     if (!m_editingLayer.empty()) {
         const auto moveLayer = [&](int delta) {
             const auto found = std::find_if(
@@ -2914,8 +2918,8 @@ void AnimationGraphPanel::DrawLayerSelector(
     ImGui::EndDisabled();
 
     /// @note Layer 名は Graph の表示対象そのものなので、入力途中に即時変更すると
-    ///       m_editingLayer が古い名前を指し続けて Base Layer へ誤フォールバックする。
-    ///       そのため入力は専用バッファへ保持し、Apply の瞬間だけ定義へ反映する。
+    /// @note       m_editingLayer が古い名前を指し続けて Base Layer へ誤フォールバックする。
+    /// @note       そのため入力は専用バッファへ保持し、Apply の瞬間だけ定義へ反映する。
     if (!m_editingLayer.empty()) {
         ImGui::SameLine();
         ImGui::BeginDisabled(!allowEditing);
@@ -2971,7 +2975,7 @@ void AnimationGraphPanel::DrawLayerSelector(
         ImGui::SameLine();
         ImGui::SetNextItemWidth(120.0f);
         /// @note Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
-        ///       足りないときの誇張がここで完結する。
+        /// @note       足りないときの誇張がここで完結する。
         const float weightMax = layer->mode == scene::AnimationLayerMode::Additive
             ? scene::MAX_LAYER_WEIGHT : 1.0f;
         if (ImGui::SliderFloat("##layer_weight", &layer->weight, 0.0f, weightMax, "w %.2f"))
@@ -3006,9 +3010,9 @@ void AnimationGraphPanel::DrawLayerSelector(
     ImGui::Separator();
 }
 
-/// レイヤーの色。積み上げバーとオーナー表示で同じ色を使う。
+/// @note レイヤーの色。積み上げバーとオーナー表示で同じ色を使う。
 /// @note 固定パレットにする: レイヤーは 2〜5 本しかなく、色が毎フレーム変わると
-///       「どの帯がどのレイヤーか」を目で追えない。並び順で決め打つ。
+/// @note       「どの帯がどのレイヤーか」を目で追えない。並び順で決め打つ。
 static ImU32 CompositionLayerColor(std::size_t index, bool additive)
 {
     static constexpr ImU32 OVERRIDE_COLORS[] = {
@@ -3216,8 +3220,8 @@ void AnimationGraphPanel::DrawToolbar(EditorContext& ctx, scene::AnimatorCompone
     DrawZoomControls();
 
     /// @note 検索と Issues はグラフを書き換えないため、Play Mode 中の BeginDisabled から
-    ///       この 2 つだけ有効へ戻す (最後に同じ条件で囲み直して釣り合わせる)。Play Mode 中はグラフが
-    ///       «実行中の監視画面» になり、どのステートが今動いているかを探す必要が最も高い。
+    /// @note       この 2 つだけ有効へ戻す (最後に同じ条件で囲み直して釣り合わせる)。Play Mode 中はグラフが
+    /// @note       «実行中の監視画面» になり、どのステートが今動いているかを探す必要が最も高い。
     ImGui::EndDisabled();
     DrawSearchBox(ctx, animator);
     DrawGraphIssues(ctx, animator);
@@ -3242,7 +3246,7 @@ void AnimationGraphPanel::DrawSearchBox(EditorContext& ctx, const scene::Animato
         ImGuiInputTextFlags_EnterReturnsTrue);
 
     /// @note ヒットは毎フレーム作り直す。ノードのタイトル帯を染めるのに使うため、
-    ///       キャンバスを組み立てる前 (= ツールバーの時点) で確定している必要がある。
+    /// @note       キャンバスを組み立てる前 (= ツールバーの時点) で確定している必要がある。
     m_searchHits.clear();
     const std::string needle = util::StringUtils::ToLower(m_searchBuffer);
     if (!needle.empty()) {
@@ -3252,7 +3256,7 @@ void AnimationGraphPanel::DrawSearchBox(EditorContext& ctx, const scene::Animato
     }
 
     /// @note 打つたびにビューが飛ぶと、候補を絞り込んでいる最中に画面が落ち着かない。
-    ///       染めるのは打つたび、寄せるのは Enter のときだけ。
+    /// @note       染めるのは打つたび、寄せるのは Enter のときだけ。
     if (submitted && !m_searchHits.empty()) {
         std::vector<int> nodeIds;
         nodeIds.reserve(m_searchHits.size());
@@ -3287,7 +3291,7 @@ void AnimationGraphPanel::DrawGraphIssues(EditorContext& ctx, scene::AnimatorCom
 
     ImGui::SameLine();
     /// @note バッジは Error / Warning にだけ反応させる。Info まで光らせると、script から
-    ///       叩くだけのステートを持つグラフでは常時点灯して意味を失う。
+    /// @note       叩くだけのステートを持つグラフでは常時点灯して意味を失う。
     char label[64];
     std::snprintf(label, sizeof(label), "%s Issues%s", m_showIssues ? "v" : ">",
                   errorCount > 0 ? " !" : (warningCount > 0 ? " ?" : ""));
@@ -3382,8 +3386,8 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
         ImGui::SameLine();
 
         /// @note 入力の 1 文字ごとに反映しない: 以前はキーを叩くたびに param.name を書き換えていたため、
-        ///       "Speed" を "Speeed" へ直そうとした時点で全条件が «存在しない名前» を指す孤児になり、
-        ///       参照側の追従も無かった。確定 (Enter / フォーカスを外す) の瞬間に参照ごと一括で改名する。
+        /// @note       "Speed" を "Speeed" へ直そうとした時点で全条件が «存在しない名前» を指す孤児になり、
+        /// @note       参照側の追従も無かった。確定 (Enter / フォーカスを外す) の瞬間に参照ごと一括で改名する。
         char nameBuffer[96]{};
         std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", param.name.c_str());
         ImGui::SetNextItemWidth(112.0f);
@@ -3421,7 +3425,7 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
             break;
         case scene::ParamType::Trigger:
             /// @note Trigger は実行時入力からのみ発火させる。ここで true にすると Controller へ
-            ///       保存され、起動直後から遷移する非決定的な状態になる。
+            /// @note       保存され、起動直後から遷移する非決定的な状態になる。
             ImGui::TextDisabled("Runtime Trigger");
             break;
         }
@@ -3433,8 +3437,8 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
     }
 
     /// @note 参照が 1 つも無ければそのまま消す。あるなら «何本の条件が壊れるか» を見せてから聞く:
-    ///       削除は参照側を無言で孤児にする唯一の操作で、取り消すには同じ名前・同じ型で作り直す
-    ///       しかないため、件数を出さずに消させない。
+    /// @note       削除は参照側を無言で孤児にする唯一の操作で、取り消すには同じ名前・同じ型で作り直す
+    /// @note       しかないため、件数を出さずに消させない。
     if (removeIndex >= 0) {
         const std::string name = animator.parameters[static_cast<size_t>(removeIndex)].name;
         const int references = CountParameterReferences(animator, name);
@@ -3487,11 +3491,11 @@ void AnimationGraphPanel::DrawParameterSidebar(EditorContext& ctx, scene::Animat
 }
 
 
-/// 選択中ステートの名前を編集する欄。
-/// 名前は遷移 (toStateName)・defaultStateName・ノード配置マップのキーそのものなので、
-/// 打鍵のたびに改名すると中間状態で参照を張り替え続ける。
-/// Enter かフォーカスを外したときだけ確定する。
-/// ownerKey: ctx.graphLayouts のキー (GameObject なら instanceId、アセットなら .animcontroller パス)。
+/// @note 選択中ステートの名前を編集する欄。
+/// @note 名前は遷移 (toStateName)・defaultStateName・ノード配置マップのキーそのものなので、
+/// @note 打鍵のたびに改名すると中間状態で参照を張り替え続ける。
+/// @note Enter かフォーカスを外したときだけ確定する。
+/// @note ownerKey: ctx.graphLayouts のキー (GameObject なら instanceId、アセットなら .animcontroller パス)。
 static void DrawStateNameField(EditorContext& ctx,
                                scene::AnimatorComponent& animator,
                                scene::AnimationState& state,
@@ -3500,7 +3504,7 @@ static void DrawStateNameField(EditorContext& ctx,
                                const std::string& layerName)
 {
     /// @note 編集中テキストは「確定するまで state.name と食い違う」ため、フレームを跨いで持つ。
-    ///       対象が変わったら (別ステート選択・別グラフ・改名確定後) 必ず貼り直す。
+    /// @note       対象が変わったら (別ステート選択・別グラフ・改名確定後) 必ず貼り直す。
     static std::string editingKey;
     static std::string editError;
     static char        nameBuffer[128]{};
@@ -3516,8 +3520,8 @@ static void DrawStateNameField(EditorContext& ctx,
     ImGui::BeginDisabled(!allowEditing);
     ImGui::SetNextItemWidth(-1.0f);
     /// @note EnterReturnsTrue と IsItemDeactivatedAfterEdit の両方を確定条件にする
-    ///       (Enter だけだと、他の欄へ移ったとき「打ったのに変わらない」)。
-    ///       AutoSelectAll は付けない — 語尾だけ直す操作ができなくなる。
+    /// @note       (Enter だけだと、他の欄へ移ったとき「打ったのに変わらない」)。
+    /// @note       AutoSelectAll は付けない — 語尾だけ直す操作ができなくなる。
     const bool submitted = ImGui::InputText(
         "Name##state_name", nameBuffer, sizeof(nameBuffer),
         ImGuiInputTextFlags_EnterReturnsTrue);
@@ -3564,7 +3568,7 @@ static bool DrawAnimationGraphDetails(EditorContext& ctx,
     ImGui::TextUnformatted(
         isTransitionSelection ? "Transition Inspector" : "Animation Details");
     /// @note 複数選択中であることを必ず出す: 編集できるのはプライマリ 1 件だけだが Delete は選択全部に
-    ///       効くため、件数を隠すと「1 個選んだつもりで複数消えた」ように見える。
+    /// @note       効くため、件数を隠すと「1 個選んだつもりで複数消えた」ように見える。
     if (selection.type == EditorContext::AnimationGraphSelection::Type::State &&
         selection.selectedCount > 1) {
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning),
@@ -3654,7 +3658,7 @@ static bool DrawAnimationGraphDetails(EditorContext& ctx,
         if (ImGui::Checkbox("Loop##det", &state.loop))
             MarkDirty(ctx);
         /// @note クリップ側の Loop Time と食い違っているときだけ、その旨を出す。
-        ///       実行時の権威は State なので、FBX 側を変えても既存ステートは自動では変わらない。
+        /// @note       実行時の権威は State なので、FBX 側を変えても既存ステートは自動では変わらない。
         if (state.mode == scene::AnimationStateMode::Clip) {
             if (const asset::AnimationClip* clip =
                     FindClip(animator, state.sourcePath, state.clipName, state.clipIndex)) {
@@ -3721,8 +3725,8 @@ bool DrawAnimationGraphInspector(EditorContext& ctx, scene::GameObject& gameObje
     auto* animator = gameObject.GetComponent<scene::AnimatorComponent>();
     if (animator == nullptr) return false;
     /// @note selection.stateIndex はグラフごとの添字。パネルと同じレイヤーへ差し替えて解決する:
-    ///       差し替えずに描くと、上半身レイヤーのステートを選んだのに Base Layer の同じ添字の
-    ///       ステートを編集してしまう。
+    /// @note       差し替えずに描くと、上半身レイヤーのステートを選んだのに Base Layer の同じ添字の
+    /// @note       ステートを編集してしまう。
     LayerGraphScope layerScope(*animator, selection.layerName);
     /// @note ownerKey は ctx.graphLayouts のキー。パネルが DrawNodeCanvas へ渡すものと同じにする。
     return DrawAnimationGraphDetails(ctx, *animator, gameObject.instanceId);
@@ -3841,8 +3845,8 @@ static void DrawTransitionEditor(EditorContext& ctx,
         ImGui::PushID(i);
 
         /// @note 見つからないときに 0 番へ丸めない: 以前は paramIndex の初期値が 0 だったため、消した/改名した
-        ///       条件が «parameters[0] にバインドされている» 顔で表示され、実行時は遷移が永久に発火せず
-        ///       グラフ上は正しく見えるのに動かない壊れ方になっていた。解決できない参照はそのまま見せる。
+        /// @note       条件が «parameters[0] にバインドされている» 顔で表示され、実行時は遷移が永久に発火せず
+        /// @note       グラフ上は正しく見えるのに動かない壊れ方になっていた。解決できない参照はそのまま見せる。
         const bool paramMissing = !HasParameter(animator, condition.paramName);
         std::string paramPreview = condition.paramName.empty()
             ? std::string("<none>")
@@ -3946,7 +3950,7 @@ void AnimationGraphPanel::AddState(EditorContext& ctx, scene::AnimatorComponent&
     state.name = MakeUniqueStateName(animator, baseName);
     if (animator.defaultStateName.empty()) animator.defaultStateName = state.name;
     /// @note 空 Node はアニメーションを自動割り当てしない。勝手に選ぶと、Inspector で設定する前に
-    ///       意図しない .anim を再生してしまう。
+    /// @note       意図しない .anim を再生してしまう。
     state.sourcePath.clear();
     state.clipName.clear();
     state.clipIndex = -1;
@@ -3989,7 +3993,7 @@ void AnimationGraphPanel::DuplicateState(EditorContext& ctx,
     copied.name = MakeUniqueStateName(animator, (source.name + "_Copy").c_str());
 
     /// @note AutoLayout で全ノードを並べ直すと手作業のレイアウトが失われるため、Unity と同じく
-    ///       複製元の右下へずらして置くだけに留める。
+    /// @note       複製元の右下へずらして置くだけに留める。
     auto& positions = ctx.graphLayouts[instanceId].nodePositions;
     ImVec2 spawn(80.0f, 80.0f);
     if (const auto it = positions.find(source.name); it != positions.end())
@@ -4034,7 +4038,7 @@ void AnimationGraphPanel::AutoLayoutStates(EditorContext& ctx,
                                            const std::string& instanceId)
 {
     /// @note 整列そのものは共有実装 (AnimatorGraphOps) が持つ。別実装にすると、間隔がわずかに
-    ///       違うだけで整列し直すたび意味のない座標差分が混ざる。
+    /// @note       違うだけで整列し直すたび意味のない座標差分が混ざる。
     AutoLayoutAnimatorStates(ctx.graphLayouts[instanceId], animator);
     MarkDirty(ctx);
 }
@@ -4088,8 +4092,8 @@ void AnimationGraphPanel::RenameState(EditorContext& ctx,
         return;
 
     /// @note 自分で起こした改名なので、パネル側の追従はここで済ませる。
-    ///       通知を残したままにすると次フレームに二重適用され (旧名はもう無いので実害は無いが)、
-    ///       「誰が改名したのか」が曖昧になるため、その場で消費しておく。
+    /// @note       通知を残したままにすると次フレームに二重適用され (旧名はもう無いので実害は無いが)、
+    /// @note       「誰が改名したのか」が曖昧になるため、その場で消費しておく。
     AdoptStateRename(oldName, newName);
     ctx.animationGraphRenamedFrom.clear();
     ctx.animationGraphRenamedTo.clear();
@@ -4132,9 +4136,9 @@ void AnimationGraphPanel::RenameLayer(EditorContext& ctx,
     MarkDirty(ctx);
 }
 
-/// 名前が選択の権威なので、リネームしたら選択側も追従させる。忘れると次の
-/// ResolveSelectionIndices で「消えたステート」と判定され、選択が外れる。
-/// Inspector の Name 欄からの改名を取り込む入口も兼ねる。
+/// @note 名前が選択の権威なので、リネームしたら選択側も追従させる。忘れると次の
+/// @note ResolveSelectionIndices で「消えたステート」と判定され、選択が外れる。
+/// @note Inspector の Name 欄からの改名を取り込む入口も兼ねる。
 void AnimationGraphPanel::AdoptStateRename(const std::string& oldName,
                                             const std::string& newName)
 {
@@ -4206,4 +4210,4 @@ AnimationGraphPanel::LinkRef AnimationGraphPanel::ResolveLink(int linkId,
     return { from, transitionIndex };
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

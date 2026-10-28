@@ -6,6 +6,9 @@
 /// @note 各ステップの詳細は BuildPipeline.hpp のコメントを参照。
 #include <Editor/BuildPipeline.hpp>
 #include <Editor/ToolchainLocator.hpp>
+#include "ManagedScriptMetadata.hpp"
+#include <Engine/Scene/Managed/ManagedGamePackage.hpp>
+#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
 #include <Editor/Util/AppIconWriter.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Asset/TextureStreamCache.hpp>
@@ -21,8 +24,10 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdint>
 #include <ctime>
 #include <filesystem>
 #include <sstream>
@@ -32,6 +37,19 @@
 namespace fbzz::editor {
 
 namespace {
+
+std::filesystem::path FindManagedBuildEntry(std::filesystem::path root)
+{
+    for (int depth = 0; depth < 8 && !root.empty(); ++depth) {
+        std::error_code error;
+        const auto entry = root / L"Tools" / L"AgentBuild.ps1";
+        if (std::filesystem::is_regular_file(entry, error) && !error) return entry;
+        const auto parent = root.parent_path();
+        if (parent == root) break;
+        root = parent;
+    }
+    return {};
+}
 
 /// @note 今日の日付を YYYY-MM-DD 形式で返す
 std::string TodayString()
@@ -257,17 +275,17 @@ void BuildPipeline::Start(const BuildSettings& settings,
                           const std::string& projectRoot,
                           const std::string& buildRoot,
                           const std::string& targetName,
-                          const std::string& scriptsDllPath,
                           const std::string& engineRoot,
                           bool runAfterBuild)
 {
+    if (m_state == State::Running) return;
+    CleanupOwnedTemp();
     m_settings          = settings;
     m_projectRoot       = projectRoot;
     m_buildRoot         = buildRoot;
     m_engineRoot        = engineRoot;
     m_targetName        = targetName.empty() ? "SandboxStandalone" : targetName;
     m_runtimeConfiguration = "Development";
-    m_scriptsDllSrcPath = scriptsDllPath;
     m_runAfterBuild     = runAfterBuild;
 
     m_state         = State::Running;
@@ -278,11 +296,15 @@ void BuildPipeline::Start(const BuildSettings& settings,
     m_copyJobs.clear();
     m_copyIdx     = 0;
     m_compileStarted = false;
+    m_managedCompileStarted = false;
+    m_managedProject.clear();
+    m_managedHostDirectory.clear();
+    m_managedOutput.clear();
     m_exeSrcPath.clear();
 
     m_outputDir  = settings.ResolveOutputPath(projectRoot);
-    m_tmpDir     = m_outputDir;
-    m_tmpDir    += L"_tmp";
+    m_tmpDir.clear();
+    m_tmpOwned = false;
 
     /// @note CommitOutput は出力先を remove_all するため、数分かけたコンパイル後ではなく
     /// @note ここで止めないと削除まで走ってしまう。
@@ -302,6 +324,7 @@ void BuildPipeline::Start(const BuildSettings& settings,
 void BuildPipeline::Tick()
 {
     if (m_state != State::Running) return;
+    if (m_step == Step::CompileManaged) { TickManagedBuild(); return; }
 
     /// @note Compile は CMake 子プロセスが複数フレーム継続するため、専用処理で状態を監視する。
     if (m_step == Step::Compile) {
@@ -328,14 +351,6 @@ void BuildPipeline::Tick()
                 ? (!toolchain.exeDevelopment.empty() ? "Development" : "Debug")
                 : "Release";
             m_runtimeConfiguration = config.configuration;
-
-            if (m_runtimeConfiguration == "Development" && !toolchain.scriptsDllDevelopment.empty()) {
-                m_scriptsDllSrcPath = util::FileSystem::PathToUtf8(toolchain.scriptsDllDevelopment);
-            } else if (m_runtimeConfiguration == "Release" && !toolchain.scriptsDllRelease.empty()) {
-                m_scriptsDllSrcPath = util::FileSystem::PathToUtf8(toolchain.scriptsDllRelease);
-            } else if (m_runtimeConfiguration == "Debug" && !toolchain.scriptsDllDebug.empty()) {
-                m_scriptsDllSrcPath = util::FileSystem::PathToUtf8(toolchain.scriptsDllDebug);
-            }
 
             FBZZ_LOG_DEBUG("BuildPipeline: cmake=%s build=%s target=%s config=%s",
                 util::FileSystem::PathToUtf8(config.cmakeExe).c_str(),
@@ -388,7 +403,7 @@ void BuildPipeline::Tick()
     m_step = static_cast<Step>(static_cast<int>(m_step) + 1);
 
     static constexpr const char* kStepNames[] = {
-        "Compile", "PrepareTempDir", "CopyExecutable", "ApplyIcon", "CopyDlls",
+        "Compile", "PrepareTempDir", "CompileManaged", "CopyExecutable", "ApplyIcon", "CopyDlls",
         "EnumerateFiles", "CopyFiles", "CopyProjectFiles", "WriteManifest", "CommitOutput", "Done"
     };
     const int stepIdx = static_cast<int>(m_step);
@@ -407,8 +422,114 @@ void BuildPipeline::Tick()
     }
 }
 
+void BuildPipeline::TickManagedBuild()
+{
+    if (!m_managedCompileStarted) {
+        std::string diagnostic;
+        const auto root = util::FileSystem::PathFromUtf8(m_projectRoot);
+        if (!scene::FindManagedGameProject(root, m_managedProject, diagnostic)) { SetFailed(diagnostic); return; }
+        if (m_managedProject.empty()) { m_step = Step::CopyExecutable; return; }
+        const std::array<std::filesystem::path, 3> hosts{
+            m_exeSrcPath.parent_path() / L"Managed",
+            util::FileSystem::PathFromUtf8(m_engineRoot) / L"bin" / m_runtimeConfiguration / L"Managed",
+            util::FileSystem::GetExecutableDirectory() / L"Managed"
+        };
+        for (const auto& host : hosts) {
+            std::error_code error;
+            if (std::filesystem::is_regular_file(host / L"Fbzz.ManagedHost.dll", error) && !error) {
+                m_managedHostDirectory = host;
+                break;
+            }
+        }
+        if (m_managedHostDirectory.empty()) { SetFailed("Managed Host package was not found for " + m_runtimeConfiguration); return; }
+        std::filesystem::path entry = FindManagedBuildEntry(util::FileSystem::PathFromUtf8(m_engineRoot));
+        if (entry.empty()) entry = FindManagedBuildEntry(root);
+        if (entry.empty()) { SetFailed("C# packaging requires Tools/AgentBuild.ps1"); return; }
+        const auto stamp = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        m_managedOutput = root / L"Library" / L"ManagedPackage" / m_runtimeConfiguration / ("generation-" + std::to_string(stamp));
+        Compiler::Config config;
+        config.commandLine = L"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"" + entry.wstring()
+            + L"\" managed-build \"" + m_managedProject.wstring() + L"\" -ManagedOutputDirectory \"" + m_managedOutput.wstring()
+            + L"\" -Preset " + (m_runtimeConfiguration == "Release" ? L"release" : m_runtimeConfiguration == "Debug" ? L"debug" : L"development")
+            + L" -ManagedApiPath \"" + (m_managedHostDirectory / L"Fbzz.ScriptApi.dll").wstring() + L"\"";
+        config.workingDirectory = entry.parent_path().parent_path();
+        m_compiler.Reset();
+        if (!m_compiler.Start(config)) { SetFailed("C# package build could not start"); return; }
+        m_managedCompileStarted = true;
+        m_status = "Compiling C# game...";
+        return;
+    }
+    m_compiler.Tick();
+    const Compiler::State state = m_compiler.GetState();
+    if (state == Compiler::State::Building) return;
+    if (state != Compiler::State::Done) {
+        SetFailed("C# package build failed (" + std::to_string(m_compiler.GetExitCode()) + "): " + m_compiler.GetLog());
+        return;
+    }
+    const auto assembly = m_managedOutput / (m_managedProject.stem().wstring() + L".dll");
+    scene::ManagedScriptRuntime& runtime = scene::ManagedScriptRuntime::Instance();
+    std::string discovery;
+    std::string diagnostic;
+    if (!runtime.Initialize(m_managedHostDirectory) || !runtime.DiscoverSourceCatalog(assembly, discovery)) {
+        SetFailed("C# package metadata discovery failed: " + runtime.LastDiagnostic());
+        return;
+    }
+    if (!PrepareManagedScriptManifest(util::FileSystem::PathFromUtf8(m_projectRoot), assembly, discovery, diagnostic)
+        || !scene::ValidateManagedGameFiles(assembly, diagnostic)) {
+        SetFailed("C# package metadata rejected: " + diagnostic);
+        return;
+    }
+    m_step = Step::CopyExecutable;
+    m_progress = 0.08f;
+}
+
+bool BuildPipeline::CopyManagedPackage(std::string& diagnostic)
+{
+    if (m_managedProject.empty()) return true;
+    const std::filesystem::path destination = m_tmpDir / L"Managed";
+    if (!util::FileSystem::CopyDirectoryRecursive(m_managedHostDirectory, destination)) {
+        diagnostic = "Managed Host package could not be copied";
+        return false;
+    }
+    /// @note framework-dependent 配布に compiler/analyzer は不要。常駐 API はゲーム出力のコピーで置き換えない。
+    std::error_code error;
+    std::filesystem::recursive_directory_iterator iterator(m_managedOutput, error);
+    if (error) { diagnostic = "Managed game output could not be enumerated"; return false; }
+    for (; iterator != std::filesystem::recursive_directory_iterator(); iterator.increment(error)) {
+        if (error) break;
+        if (iterator->is_symlink(error)) { diagnostic = "Managed output must not contain symbolic links"; return false; }
+        if (error) break;
+        if (!iterator->is_regular_file(error)) continue;
+        if (error) break;
+        const std::filesystem::path relative = iterator->path().lexically_relative(m_managedOutput);
+        const std::string name = relative.filename().string();
+        if (name.starts_with("Fbzz.ScriptApi.") || name.starts_with("Fbzz.ManagedHost.") || name.starts_with("Fbzz.ScriptGenerator.")) continue;
+        if (!util::FileSystem::EnsureParentDirectory(destination / relative)
+            || !util::FileSystem::CopyFile(iterator->path(), destination / relative)) {
+            diagnostic = "Managed game dependency could not be copied: " + relative.generic_string();
+            return false;
+        }
+    }
+    if (error) { diagnostic = "Managed dependency enumeration failed: " + error.message(); return false; }
+    const auto assembly = destination / (m_managedProject.stem().wstring() + L".dll");
+    if (!scene::ValidateManagedGameFiles(assembly, diagnostic)) return false;
+    toml::table manifest;
+    manifest.insert("schema_version", 1);
+    manifest.insert("assembly", assembly.filename().string());
+    manifest.insert("configuration", m_runtimeConfiguration);
+    std::ostringstream text;
+    text << manifest;
+    if (!util::FileSystem::WriteText(destination / L"game.managed.toml", text.str())) {
+        diagnostic = "Managed game manifest could not be written";
+        return false;
+    }
+    return true;
+}
+
 void BuildPipeline::Reset()
 {
+    if (m_state == State::Running) return;
+    CleanupOwnedTemp();
     m_state    = State::Idle;
     m_progress = 0.0f;
     m_status.clear();
@@ -418,7 +539,7 @@ void BuildPipeline::Reset()
 void BuildPipeline::Cancel()
 {
     if (m_state != State::Running) return;
-    if (m_step == Step::Compile)
+    if (m_step == Step::Compile || m_step == Step::CompileManaged)
         m_compiler.Cancel();
     SetFailed("Build cancelled.");
 }
@@ -510,10 +631,20 @@ bool BuildPipeline::ExecuteStep()
 
     case Step::PrepareTempDir:
         m_status = "Preparing temp directory...";
-        /// @note 前回の _tmp が残っていれば削除する
-        if (!util::FileSystem::RemoveAll(m_tmpDir) ||
-            !util::FileSystem::EnsureDirectory(m_tmpDir)) {
-            SetFailed("Failed to create temp directory: " + util::FileSystem::PathToUtf8(m_tmpDir));
+        {
+            std::string reason;
+            if (!m_settings.ValidateOutputPath(m_projectRoot, reason)) {
+                SetFailed("Invalid output directory before temp creation: " + reason);
+                return false;
+            }
+            if (!CreateOwnedTempDirectory(m_outputDir, m_tmpDir, reason)) {
+                SetFailed(reason);
+                return false;
+            }
+            m_tmpOwned = true;
+        }
+        if (!m_tmpOwned) {
+            SetFailed("Temp directory ownership was not established.");
             return false;
         }
         m_progress = 0.05f;
@@ -636,18 +767,9 @@ bool BuildPipeline::ExecuteStep()
         }
         FBZZ_LOG_DEBUG("BuildPipeline: copied %zu runtime DLLs", runtimeDlls.size());
 
-        /// @note スクリプト DLL をコピーする。DLL 名はプロジェクトごとに異なり、
-        /// @note `Binaries/<Config>` ではなく別ディレクトリに出るプロジェクトは exe 隣に無い。
-        if (!m_scriptsDllSrcPath.empty()) {
-            const std::filesystem::path scriptsSrc = util::FileSystem::PathFromUtf8(m_scriptsDllSrcPath);
-            if (util::FileSystem::Exists(scriptsSrc)) {
-                if (!util::FileSystem::CopyFile(scriptsSrc, m_tmpDir / scriptsSrc.filename())) {
-                    SetFailed("Failed to copy scripts DLL: " + m_scriptsDllSrcPath);
-                    return false;
-                }
-            } else {
-                FBZZ_LOG_WARN("BuildPipeline: scripts DLL not found, skipping: %s", m_scriptsDllSrcPath.c_str());
-            }
+        if (!CopyManagedPackage(runtimeReason)) {
+            SetFailed(runtimeReason);
+            return false;
         }
 
         m_progress = 0.15f;
@@ -683,13 +805,6 @@ bool BuildPipeline::ExecuteStep()
             proj << "name          = \"" << m_settings.productName << "\"\n";
             proj << "settings_path = \"" << m_settingsRelPath << "\"\n";
             proj << "default_scene = \"" << m_defaultSceneRel << "\"\n";
-            /// @note スクリプトを DLL で持つランタイムはこのフィールドを読んでロードする。
-            /// @note DLL 名はプロジェクトごとに異なるためハードコードせず、ここに記録する。
-            if (!m_scriptsDllSrcPath.empty()) {
-                const std::filesystem::path scriptsDll = util::FileSystem::PathFromUtf8(m_scriptsDllSrcPath);
-                proj << "scripts_dll   = \"" << util::FileSystem::PathToUtf8(scriptsDll.filename()) << "\"\n";
-            }
-
             const std::filesystem::path dst = m_tmpDir / L".fbzz_proj";
             if (!util::FileSystem::WriteText(dst, proj.str())) {
                 SetFailed("Failed to write .fbzz_proj");
@@ -831,6 +946,7 @@ bool BuildPipeline::ExecuteStep()
 
     case Step::CommitOutput: {
         m_status = "Committing output...";
+        if (!m_tmpOwned || m_tmpDir.empty()) { SetFailed("Temp directory is not owned by this build."); return false; }
         /// @note Start から数分経っており、その間に出力先が別物に差し替わっていても
         /// @note remove_all の直前ならここで気付ける。
         std::string outputReason;
@@ -844,6 +960,8 @@ bool BuildPipeline::ExecuteStep()
             SetFailed("Failed to rename output: " + util::FileSystem::PathToUtf8(m_outputDir));
             return false;
         }
+        m_tmpOwned = false;
+        m_tmpDir.clear();
         m_progress = 0.98f;
         return true;
     }
@@ -963,9 +1081,42 @@ void BuildPipeline::SetFailed(const std::string& reason)
     m_state  = State::Failed;
     m_error  = reason;
     m_status = "Error";
-    /// @note 失敗した _tmp は後始末する
-    util::FileSystem::RemoveAll(m_tmpDir);
+    CleanupOwnedTemp();
     FBZZ_LOG_ERROR("BuildPipeline: %s", reason.c_str());
+}
+
+bool BuildPipeline::CreateOwnedTempDirectory(const std::filesystem::path& output,
+    std::filesystem::path& out, std::string& reason)
+{
+    reason.clear();
+    std::error_code error;
+    const auto parent = output.parent_path();
+    std::filesystem::create_directories(parent, error);
+    if (error) { reason = "Failed to create output parent directory: " + error.message(); return false; }
+    static std::atomic<std::uint64_t> nextDirectory{ 0 };
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        const std::wstring suffix = L"_tmp." + std::to_wstring(GetCurrentProcessId())
+            + L"." + std::to_wstring(++nextDirectory);
+        auto candidate = output;
+        candidate += suffix;
+        error.clear();
+        /// @note 存在確認と作成を分離せず、既存フォルダ・link・別要求に一切触れない。
+        if (std::filesystem::create_directory(candidate, error)) { out = std::move(candidate); return true; }
+        if (error && error != std::errc::file_exists) {
+            reason = "Failed to create owned temp directory: " + error.message();
+            return false;
+        }
+    }
+    reason = "No unused package temp directory could be created.";
+    return false;
+}
+
+void BuildPipeline::CleanupOwnedTemp()
+{
+    if (!m_tmpOwned || m_tmpDir.empty()) return;
+    static_cast<void>(util::FileSystem::RemoveAll(m_tmpDir));
+    m_tmpOwned = false;
+    m_tmpDir.clear();
 }
 
 } /// @note namespace fbzz::editor

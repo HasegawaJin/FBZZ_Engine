@@ -59,8 +59,8 @@ bool PreviewPanel::DrawPreview(EditorContext& ctx,
     const std::string extension = LowerPreviewExtension(assetPath);
     if (extension == ".mat") {
         const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(NormalizeAssetPath(std::string(assetPath)));
-        const auto* material = asset::AssetManager::Get<asset::MaterialAsset>(handle);
-        return material != nullptr && m_materialPreview.Draw(ctx, *material, previewHeight);
+        const auto material = asset::ReadMaterialAuthoring(handle);
+        return material != nullptr && m_materialPreview.Draw(ctx, material->Data(), previewHeight);
     }
     if (extension == ".ico")
         return DrawIconPreview(ctx, assetPath, previewHeight);

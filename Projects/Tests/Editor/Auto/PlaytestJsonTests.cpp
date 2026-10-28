@@ -17,6 +17,8 @@ using editor::ai::ParseJson;
 using editor::playtest::EvaluateJsonCondition;
 using editor::playtest::ResolveJsonPath;
 
+class PlaytestJsonPointerTest : public testkit::Fixture {};
+
 JsonValue Parse(const std::string& text)
 {
     auto parsed = ParseJson(text, nullptr);
@@ -31,7 +33,67 @@ bool Holds(const JsonValue& root, const std::string& path, const std::string& op
     return EvaluateJsonCondition(ResolveJsonPath(root, path), op, &expected, detail);
 }
 
-} // namespace
+} /// @note namespace
+
+TEST_F(PlaytestJsonPointerTest, ResolvesQualifiedObservationKeysForNumericConditions)
+{
+    const JsonValue root = Parse(R"({"fields":{"ImportedSamples.OceanEcosystem.MarineEcosystemComponent.observedSeconds":30.5}})");
+    const std::string path = "/fields/ImportedSamples.OceanEcosystem.MarineEcosystemComponent.observedSeconds";
+
+    ASSERT_NE(ResolveJsonPath(root, path), nullptr);
+    EXPECT_TRUE(Holds(root, path, ">=", "30"));
+    EXPECT_FALSE(Holds(root, path, ">=", "60"));
+    EXPECT_EQ(ResolveJsonPath(root, "fields.observedSeconds"), nullptr);
+}
+
+TEST_F(PlaytestJsonPointerTest, DecodesEscapedTokensOnceAndResolvesArrayElements)
+{
+    const JsonValue root = Parse(R"({"a/b":{"m~n":["first",{"~1":42}]}})");
+
+    const JsonValue* first = ResolveJsonPath(root, "/a~1b/m~0n/0");
+    const JsonValue* escaped = ResolveJsonPath(root, "/a~1b/m~0n/1/~01");
+
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->AsString(), "first");
+    ASSERT_NE(escaped, nullptr);
+    EXPECT_EQ(escaped->AsInt(), 42);
+}
+
+TEST_F(PlaytestJsonPointerTest, ResolvesEmptyTokensAndPreservesEmptyRootPath)
+{
+    const JsonValue root = Parse(R"({"":{"":7},"nodes":[{"":9}]})");
+
+    EXPECT_EQ(ResolveJsonPath(root, ""), &root);
+    ASSERT_NE(ResolveJsonPath(root, "/"), nullptr);
+    EXPECT_TRUE(ResolveJsonPath(root, "/")->IsObject());
+    ASSERT_NE(ResolveJsonPath(root, "//"), nullptr);
+    EXPECT_EQ(ResolveJsonPath(root, "//")->AsInt(), 7);
+    ASSERT_NE(ResolveJsonPath(root, "/nodes/0/"), nullptr);
+    EXPECT_EQ(ResolveJsonPath(root, "/nodes/0/")->AsInt(), 9);
+}
+
+TEST_F(PlaytestJsonPointerTest, RejectsMalformedEscapesAndInvalidArrayIndices)
+{
+    const JsonValue root = Parse(R"({"nodes":[{"name":"Player"}],"a~":1,"a~2":2})");
+
+    for (const char* path : {"/a~", "/a~2", "/nodes/0/name~", "/nodes/0/name~x", "/nodes/01", "/nodes/-1", "/nodes/+0",
+                             "/nodes/-", "/nodes/", "/nodes/x", "/nodes/1", "/nodes/184467440737095516160", "/nodes/0/name/deeper", "/missing"}) {
+        EXPECT_EQ(ResolveJsonPath(root, path), nullptr) << path;
+    }
+}
+
+TEST_F(PlaytestJsonPointerTest, PreservesDottedPathsWithoutPointerDecoding)
+{
+    const JsonValue root = Parse(R"({"nodes":[{"name":"Player"},{"name":"Boss"}],"a~1b":{"count":3},"a/b":{"count":4}})");
+
+    const JsonValue* dotted = ResolveJsonPath(root, "nodes.1.name");
+    ASSERT_NE(dotted, nullptr);
+    EXPECT_EQ(dotted, ResolveJsonPath(root, "/nodes/1/name"));
+    ASSERT_NE(ResolveJsonPath(root, "a~1b.count"), nullptr);
+    EXPECT_EQ(ResolveJsonPath(root, "a~1b.count")->AsInt(), 3);
+    ASSERT_NE(ResolveJsonPath(root, "a/b.count"), nullptr);
+    EXPECT_EQ(ResolveJsonPath(root, "a/b.count")->AsInt(), 4);
+}
 
 TEST(PlaytestJsonPath, ResolvesObjectKeysAndArrayIndices)
 {
@@ -108,4 +170,4 @@ TEST(PlaytestJsonCondition, RejectsUnknownOperators)
     EXPECT_FALSE(Holds(root, "a", "~=", "1"));
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

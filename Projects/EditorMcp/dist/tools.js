@@ -3,10 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-20
 import * as z from 'zod/v4';
-import { EditorCommandSchema, AssetThumbnailResultSchema, FluidEffectNameSchema, FluidFieldsSchema, FluidOperatorIndexSchema, FluidOperatorListSchema, FluidOperatorTypeSchema, FluidJobIdSchema, FluidJobStatusResultSchema, FluidPathSchema, FluidPresetSchema, SpriteThumbnailResultSchema, JsonValueSchema, NodeIdSchema, SemanticViewportResultSchema, TerrainSculptOpSchema, Vec3Schema, ViewportCaptureResultSchema, } from './editorContracts.js';
+import { EditorCommandSchema, AssetThumbnailResultSchema, FluidEffectNameSchema, FluidFieldsSchema, FluidOperatorIndexSchema, FluidOperatorListSchema, FluidOperatorTypeSchema, FluidJobIdSchema, FluidJobStatusResultSchema, FluidPathSchema, FluidPresetSchema, SpriteThumbnailResultSchema, JsonValueSchema, NodeIdSchema, PackageBuildOptionsSchema, SemanticViewportResultSchema, TerrainSculptOpSchema, Vec3Schema, ViewportCaptureResultSchema, } from './editorContracts.js';
 const NameSchema = z.string().min(1).max(128);
 /// @note ステート/遷移/Motion 編集の対象グラフを選ぶ。省略で Base Layer。
-/// @note WHY: 上半身レイヤーに独自の遷移グラフを組むには、既存の編集ツールが
+/// @note 上半身レイヤーに独自の遷移グラフを組むには、既存の編集ツールが
 /// @note      「どのレイヤーのグラフか」を受け取れる必要がある。
 const LayerOptionSchema = z.string().min(1).max(128).optional()
     .describe('対象レイヤー名。省略でBase Layer。animation_add_layerで作ったレイヤーの独自ステートマシンを編集する場合に指定');
@@ -112,7 +112,7 @@ function RegisterQueryTools(server, bus) {
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'editor.catalog' }))));
     /// @note ── Operator ゲートウェイ (Docs/design/editor-operator-model.md) ──
-    /// @note WHY: 従来は Editor 側の機能 1 つにつき、C++ の dispatcher・この tools.ts の
+    /// @note 従来は Editor 側の機能 1 つにつき、C++ の dispatcher・この tools.ts の
     /// @note      zod スキーマ・ドキュメントのツール一覧へ 3 度書いていた。写し損ねると
     /// @note      人が使う経路と AI が使う経路で結果が食い違い、実際にその修正を
     /// @note      ObjectPresets / TerrainBrush / NavMeshQuery など 8 回している。
@@ -242,7 +242,7 @@ function RegisterQueryTools(server, bus) {
         t: 'scene.tree', ...(includeGenerated === undefined ? {} : { includeGenerated }),
     }))));
     server.registerTool('scene_find', {
-        description: '名前・タグ・active状態・複数コンポーネント・反射プロパティ値をAND条件で一括検索します。',
+        description: '名前・タグ・active状態・複数コンポーネント・反射プロパティをAND検索します。最大500件ずつ返し、nextOffsetをoffsetへ渡すと全件へ到達できます。ページ間のScene変更は同時点保証しません。',
         inputSchema: {
             name: z.string().min(1).max(128).optional().describe('大文字小文字を無視する名前部分一致'),
             tag: z.string().min(1).max(128).optional().describe('タグの完全一致'),
@@ -256,9 +256,10 @@ function RegisterQueryTools(server, bus) {
                 value: JsonValueSchema,
             }).strict()).min(1).max(32).optional().describe('反射フィールドに対するANDフィルタ'),
             limit: z.number().int().min(1).max(500).default(100),
+            offset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional().describe('一致結果の先頭からの件数。応答nextOffsetを次の要求へ渡してください'),
         },
         annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ name, tag, active, comp, components, properties, limit }) => Safely(async () => TextResult(await bus.Query({
+    }, ({ name, tag, active, comp, components, properties, limit, offset }) => Safely(async () => TextResult(await bus.Query({
         t: 'scene.find',
         ...(name === undefined ? {} : { name }),
         ...(tag === undefined ? {} : { tag }),
@@ -267,6 +268,7 @@ function RegisterQueryTools(server, bus) {
         ...(components === undefined ? {} : { components }),
         ...(properties === undefined ? {} : { properties }),
         limit,
+        ...(offset === undefined ? {} : { offset }),
     }))));
     server.registerTool('scene_snapshot', {
         description: '現在の Scene を安定NodeId・Transform・Component値で記録し、後の scene_diff 用IDを返します。',
@@ -303,15 +305,34 @@ function RegisterQueryTools(server, bus) {
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, () => Safely(async () => TextResult(await bus.Query({ t: 'scene.selection' }))));
     server.registerTool('node_get_components', {
-        description: '指定ノードのコンポーネント値と Script 一覧を取得します。Script の値は返された scriptId で script_inspect を呼びます。',
+        description: '指定ノードのコンポーネント値と Script 一覧を取得します。scriptId は現在の個体を読む handle、savedScriptId は owner NodeId と組み合わせる保存 ID です。再生成後は保存 ID が一致する一覧行から新しい scriptId を取得します。',
         inputSchema: { id: NodeIdSchema.describe('対象 NodeId') },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ id }) => Safely(async () => TextResult(await bus.Query({ t: 'node.components', id }))));
     server.registerTool('script_inspect', {
-        description: 'node_get_components の scriptId で Script の設定値・観測値・型情報を取得します。再生成や DLL 再読込後は一覧を取り直してください。値は Editor の要求処理時点の状態です。',
-        inputSchema: { id: NodeIdSchema, scriptId: z.string().min(1).max(128) },
+        description: 'node_get_components の scriptId で設定・観測の軽量 summary を取得します。大きな値は deferred path を返します。'
+            + '応答の savedScriptId は保存・再読込でも保持される ID で、入力の scriptId は現在の個体 handle です。'
+            + 'path と start/count を指定すると選択 subtree の不変 snapshot を作成し、observationId でページを再利用します。'
+            + '文字列の start/count は UTF-8 byte 境界、返された nextStart を使用してください。close:true で保持資源を解放します。',
+        inputSchema: { id: NodeIdSchema, scriptId: z.string().min(1).max(128), path: z.string().optional(),
+            start: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(), count: z.number().int().min(1).max(2147483647).optional(),
+            wireBytes: z.number().int().min(2048).max(2147483647).optional(), observationId: z.string().regex(/^[1-9][0-9]*$/).optional(), close: z.boolean().optional() },
         annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ id, scriptId }) => Safely(async () => TextResult(await bus.Query({ t: 'script.inspect', id, scriptId }))));
+    }, ({ id, scriptId, path, start, count, wireBytes, observationId, close }) => Safely(async () => TextResult(await bus.Query({ t: 'script.inspect', id, scriptId,
+        ...(path === undefined ? {} : { path }), ...(start === undefined ? {} : { start }), ...(count === undefined ? {} : { count }),
+        ...(wireBytes === undefined ? {} : { wireBytes }), ...(observationId === undefined ? {} : { observationId }), ...(close === undefined ? {} : { close }),
+    }))));
+    server.registerTool('script_api_catalog', {
+        description: '公開済み C# SDK の型・メソッド・property・引数・既定値・nullability・契約コメントを返します。'
+            + 'Script の保存 field catalog は script_catalog。API の読取はメソッドの実行権限を与えません。',
+        inputSchema: {
+            type: z.string().min(1).max(256).optional().describe('SDK 型名または完全名。省略で全公開型'),
+            member: z.string().min(1).max(128).optional().describe('指定 member の全 overload を返す'),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, ({ type, member }) => Safely(async () => TextResult(await bus.Query({
+        t: 'script.api.catalog', ...(type === undefined ? {} : { type }), ...(member === undefined ? {} : { member }),
+    }))));
     server.registerTool('script_catalog', {
         description: '登録 Script のフィールド型・保存対象・依存 Component を取得します。観測 getter は実行しません。現在値は script_inspect で取得します。',
         inputSchema: { type: z.string().min(1).max(128).optional() },
@@ -579,7 +600,7 @@ function RegisterQueryTools(server, bus) {
                 const state = await bus.Query({ t: 'editor.state' });
                 const matched = event === 'playState'
                     ? state.playState === value
-                    : state.scriptReloadBusy === false && state.restorePending === false;
+                    : state.managedBuildBusy === false && state.restorePending === false;
                 if (matched)
                     return TextResult({ matched: true, event, state });
             }
@@ -785,14 +806,23 @@ function RegisterQueryTools(server, bus) {
         t: 'ui.inspect', ...(id === undefined ? {} : { id }),
     }))));
     server.registerTool('build_get_status', {
-        description: 'スクリプト DLL / HLSL のビルド結果と診断 (file:line:code:message) を新しい順に返します。'
-            + 'shader_get_compile_diagnostics の Script 版です。scriptReloadBusy=true の間は play_control start が拒否されます。'
-            + 'スクリプトが通っていないと component_add も Play も無意味な結果になるため、Play が失敗したらまずここを見ます。',
-        inputSchema: { limit: z.number().int().min(1).max(20).default(5) },
+        description: 'C++ DLL / HLSL の既存ビルド結果と、managed に C# の要求別状態を返します。'
+            + 'C# は build_run(target="managed") の managedRequestId を渡し、managed.request.state と terminal を確認してください。'
+            + 'applied だけが要求版の適用完了です。deferred は Play 中の保留、superseded は新しいソース版への置換、failed は診断付きの終端です。'
+            + '配布は packageRequestId を渡して package.state / terminal / outputReady を確認し、outputExe と managedManifest の有無を読めます。'
+            + 'トップレベル building はゲーム / シェーダーのビルド状態、managedBuildBusy は C# のビルド適用が Play を止めている状態です。C# 要求の完了は managed.request の terminal で判定してください。',
+        inputSchema: {
+            limit: z.number().int().min(1).max(20).default(5),
+            managedRequestId: z.string().regex(/^managed:[1-9][0-9]{0,19}$/).optional().describe('build_run(target="managed") が返した要求 ID'),
+            packageRequestId: z.string().regex(/^package:[1-9][0-9]{0,19}$/).optional().describe('build_run(target="package") が返した要求 ID'),
+        },
         annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ limit }) => Safely(async () => TextResult(await bus.Query({ t: 'build.status', limit }))));
+    }, ({ limit, managedRequestId, packageRequestId }) => Safely(async () => TextResult(await bus.Query({
+        t: 'build.status', limit, ...(managedRequestId === undefined ? {} : { managedRequestId }),
+        ...(packageRequestId === undefined ? {} : { packageRequestId }),
+    }))));
     /// @note ── 検証ループ (Docs/design/ai-verification-loop.md) ──
-    /// @note WHY: 操作の口だけでは «直った» を言えない。シナリオの合否・絵の差分・Editor が実際に
+    /// @note 操作の口だけでは «直った» を言えない。シナリオの合否・絵の差分・Editor が実際に
     /// @note      受け付ける型の一覧を読めて初めて、AI が自分の変更を自分で検証できる。
     server.registerTool('scenario_status', {
         description: 'Playtest シナリオの進捗と結果を返します。state は running / passed / failed / idle。'
@@ -1777,7 +1807,7 @@ function RegisterCommandTools(server, bus, permission) {
             const deadline = Date.now() + 10000;
             do {
                 const current = await bus.Query({ t: 'editor.state' });
-                const ready = !requireReady || (current.restorePending === false && current.scriptReloadBusy === false);
+                const ready = !requireReady || (current.restorePending === false && current.managedBuildBusy === false);
                 if (current.playState === expected && ready)
                     return;
                 await Delay(50);
@@ -2086,12 +2116,15 @@ function RegisterCommandTools(server, bus, permission) {
         annotations: writeAnnotations,
     }, ({ id, action }) => run({ t: 'audio.control', id, action }));
     server.registerTool('build_run', {
-        description: 'スクリプト DLL の再ビルドを要求します。MSBuild は数十秒かかるため同期完了は返しません'
-            + '(ここで待つと Editor のメインスレッドごと止まり、以降の要求も返らなくなります)。'
-            + 'build_get_status で building=false になるまでポーリングし、diagnostics でエラーを確認してください。',
-        inputSchema: { target: z.literal('script').default('script') },
+        description: 'target="managed" (既定) は C# の現在のソース版を非同期でビルドします。'
+            + '返された managedRequestId を build_get_status に渡し、managed.request.state="applied" を待ってから新しい catalog を使います。'
+            + 'C# の適用状態は要求 ID で読み、superseded / failed になった要求を待ち続けないでください。'
+            + 'target="package" は package 設定で配布先・製品名・Release等を指定して完成品を書き出します。'
+            + '先に editor_op_query("build.package_check", args) で事前確認し、Playや別ビルド中は開始できません。'
+            + '完了は build_get_status(packageRequestId) の package.state="done" / outputReady=true、取消は editor_op_invoke("build.package_cancel",{packageRequestId}) です。',
+        inputSchema: { target: z.enum(['managed', 'package']).default('managed'), package: PackageBuildOptionsSchema.optional() },
         annotations: writeAnnotations,
-    }, ({ target }) => run({ t: 'build.run', target }));
+    }, ({ target, package: options }) => run({ t: 'build.run', target, ...(options === undefined ? {} : { package: options }) }));
     /// @note ── 検証ループ ──
     server.registerTool('scenario_run', {
         description: 'Playtest シナリオを Editor 側で開始します (すぐ戻ります)。playtest_run (MCP 側で実時間待機する簡易版) と違い、'

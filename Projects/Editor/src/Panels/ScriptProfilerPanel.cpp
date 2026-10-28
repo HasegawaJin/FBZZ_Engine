@@ -9,6 +9,7 @@
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <imgui.h>
 #include <algorithm>
 #include <charconv>
@@ -63,7 +64,7 @@ void DrawScriptCallTree(EditorContext& ctx, const scene::ScriptProfileSnapshot& 
         ImGui::TableNextColumn();
         const float indent = static_cast<float>(sample.depth) * ImGui::GetTreeNodeToLabelSpacing();
         ImGui::Indent(indent);
-        ImGui::Text("%s :: %s", descriptor->typeName.c_str(), DisplayCallback(*descriptor));
+        ImGui::Text("%s :: %s", scene::ScriptFactory::DisplayName(descriptor->typeName).c_str(), DisplayCallback(*descriptor));
         ImGui::Unindent(indent);
         ImGui::TableNextColumn();
         const bool exists = ctx.activeScene != nullptr && scene::ScriptProfiler::ResolveTarget(*ctx.activeScene, *descriptor, *context) != nullptr;
@@ -126,6 +127,10 @@ void ScriptProfilerPanel::OnRenderContent(EditorContext& ctx)
     ImGui::SameLine(); ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f); ImGui::InputText("Scene generation", m_scene, sizeof(m_scene));
     ScriptProfileFilter filter;
     filter.name = m_name; filter.type = m_type; filter.instance = m_instance; filter.callback = m_callback;
+    if (!filter.type.empty()) {
+        std::string typeKey;
+        if (scene::ScriptFactory::ResolveTypeName(filter.type, typeKey)) filter.type = std::move(typeKey);
+    }
     if (m_mode != 0) filter.mode = modeNames[m_mode];
     if (m_scene[0] != '\0') {
         const auto parsed = std::from_chars(m_scene, m_scene + std::strlen(m_scene), filter.sceneGeneration);
@@ -157,9 +162,10 @@ void ScriptProfilerPanel::OnRenderContent(EditorContext& ctx)
         const auto& descriptor = row.descriptor;
         ImGui::PushID(static_cast<int>(i));
         ImGui::TableNextRow(); ImGui::TableNextColumn();
-        const std::string label = renderedGroup == 0 ? descriptor.typeName : renderedGroup == 1 ? descriptor.typeName + " :: " + DisplayCallback(descriptor) : descriptor.objectName + " :: " + DisplayCallback(descriptor);
+        const std::string displayName = scene::ScriptFactory::DisplayName(descriptor.typeName);
+        const std::string label = renderedGroup == 0 ? displayName : renderedGroup == 1 ? displayName + " :: " + DisplayCallback(descriptor) : descriptor.objectName + " :: " + DisplayCallback(descriptor);
         if (ImGui::Selectable(label.c_str())) {
-            if (renderedGroup != 2) { SetBuffer(m_type, sizeof(m_type), descriptor.typeName); if (renderedGroup == 1) SetBuffer(m_callback, sizeof(m_callback), scene::ScriptProfiler::GetCallbackName(descriptor.callbackKind)); m_group = 2; }
+            if (renderedGroup != 2) { SetBuffer(m_type, sizeof(m_type), displayName); if (renderedGroup == 1) SetBuffer(m_callback, sizeof(m_callback), scene::ScriptProfiler::GetCallbackName(descriptor.callbackKind)); m_group = 2; }
             else if (ctx.activeScene != nullptr && scene::ScriptProfiler::ResolveTarget(*ctx.activeScene, descriptor, row.context)) SelectEntity(ctx, descriptor.objectEntity);
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\nInstance %s\nScript %s\nFault/aborted elapsed %.3f ms", descriptor.objectName.c_str(), descriptor.instanceId.c_str(), descriptor.inspectionId.c_str(), row.faultElapsedMs);

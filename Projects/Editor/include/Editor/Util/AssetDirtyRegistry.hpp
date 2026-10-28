@@ -3,53 +3,77 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-13
 ///
-/// @note シーン (SceneDirtyTracker) と同様に、マテリアル・AnimatorController など
-///       各アセットファイルの編集状態を一元管理し、Save All / 終了時確認を実現する。
+/// @note 未保存の値と保存処理を所有し、選択変更後も Save All / 終了時確認へ接続する。
 #pragma once
+#include <any>
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fbzz::editor {
 
 struct DirtyAsset {
-    std::string path;                 ///< 正規化済み絶対パス
-    std::string displayPath;          ///< UI 表示用の相対パス (Assets/... 形式)
-    std::string typeLabel;            ///< アイコン用ラベル ("MAT", "CTRL" 等)
-    std::function<bool()> saveFunc;   ///< 呼ぶだけで保存 → true=成功
+    std::string path;                 ///< @note 絶対パス。
+    std::string displayPath;
+    std::string typeLabel;
+    std::function<bool()> saveFunc;
+    std::any draft;                   ///< @note 型付き shared_ptr の所有者。保存完了または明示破棄まで保持する。
 };
 
-/// アセットファイルの dirty 状態を管理するスレッドローカルな静的レジストリ。
-/// @note Editor パネルは全て同一スレッド (main render thread) で動作するため、
-///       static メンバーで十分。スレッドセーフ保護は不要。
+/// @note Editor のメインスレッド専用。保存失敗時は値と callback を保持する。
 class AssetDirtyRegistry {
 public:
-    /// パスを登録 (既登録の場合は saveFunc を上書き更新)
+    /// @note 既登録の path は現在の保存処理と所有する値へ更新する。
     static void Register(const std::string& absPath,
                          const std::string& displayPath,
                          const std::string& typeLabel,
-                         std::function<bool()> saveFunc);
+                         std::function<bool()> saveFunc, std::any draft = {});
 
-    /// 保存完了後 / 変更破棄後に呼ぶ
+    /// @note Inspector と保存 callback が同じ値を共有し、選択が移っても別アセットの値で上書きしない。
+    template<typename T, typename SaveFunc>
+    static void RegisterDraft(const std::string& absPath, const std::string& displayPath,
+                              const std::string& typeLabel, std::shared_ptr<T> draft,
+                              SaveFunc saveFunc)
+    {
+        Register(absPath, displayPath, typeLabel, [draft, saveFunc = std::move(saveFunc)] {
+            return draft && saveFunc(*draft);
+        }, draft);
+    }
+
+    /// @return 未保存の同型の値。保存完了・明示破棄・異なる型なら nullptr。
+    template<typename T>
+    static std::shared_ptr<T> FindDraft(const std::string& absPath)
+    {
+        for (const auto& entry : s_dirty) {
+            if (entry.path != absPath) continue;
+            if (const auto* draft = std::any_cast<std::shared_ptr<T>>(&entry.draft)) return *draft;
+        }
+        return {};
+    }
+
+    /// @note 保存完了または対象の明示破棄時に値と callback を解放する。
     static void MarkClean(const std::string& absPath);
 
     static bool IsDirty(const std::string& absPath);
     static bool HasAny();
     static const std::vector<DirtyAsset>& GetAll();
 
-    /// 1 件だけ保存する。未登録 (= dirty でない) なら false。
-    /// @note パネルの Save ボタンと同じ saveFunc を通す。別経路で書き出すと、
-    ///       レイアウト情報の付与や保存後のシーン側 Animator への反映が片方だけ抜ける。
+    /// @return 未登録または保存失敗なら false。失敗時は未保存のまま。
     static bool Save(const std::string& absPath);
 
-    /// 全エントリを保存する。失敗件数を返す。
+    /// @return 保存に失敗した件数。
     static int SaveAll();
 
-    /// 全エントリをクリア (破棄)
+    /// @note 表示中の編集値も DiscardEpoch の変更を見てディスクから読み直す。
     static void DiscardAll();
+    static std::uint64_t DiscardEpoch();
 
 private:
     static std::vector<DirtyAsset> s_dirty;
+    static std::uint64_t s_discardEpoch;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

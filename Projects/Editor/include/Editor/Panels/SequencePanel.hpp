@@ -77,6 +77,7 @@ private:
     void DrawInspector(EditorContext& ctx);
     void DrawTrackHeaderFields(asset::SequenceTrack& track);
     void DrawSelectedItemFields(asset::SequenceTrack& track);
+    void DrawFloatCurve(asset::SequenceTrack& track);
 
     /// 列を時刻順へ並べ直し、選択が同じ項目を指したままになるよう添字を引き直す。
     void SortChannelKeepingSelection(int track, int channel, double keepTime);
@@ -101,6 +102,13 @@ private:
     std::vector<asset::SequenceAsset> m_redoStack;
 
     Selection m_selection;
+    /// @note View bounds stay fixed during dragging; Fit explicitly frames the sampled curve.
+    int m_curveTrack = -1;
+    float m_curveMin = -1.0f;
+    float m_curveMax = 1.0f;
+    double m_curveEnd = 1.0;
+    int m_curveDragKind = -1;
+    bool m_curveUndoPushed = false;
 
     double m_playhead   = 0.0;
     bool   m_previewing = false;   ///< スクラブをシーンへ出しているか

@@ -9,6 +9,9 @@
 #pragma once
 
 #include <Math/Vector3.hpp>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 
 #include <string>
 #include <string_view>
@@ -21,7 +24,7 @@ class OpData {
 public:
     enum class Type { Null, Bool, Int, Float, String, Vec3, Array, Object };
 
-    /// 挿入順を保つため Object は map ではなく pair の vector で持つ。
+    /// @brief Object members retain insertion order.
     /// @note 応答の並びが呼び出しごとに変わると、AI が前回の応答と差分を取れないため。
     using Array  = std::vector<OpData>;
     using Member = std::pair<std::string, OpData>;
@@ -29,9 +32,11 @@ public:
 
     OpData() = default;
     OpData(bool value)          : m_type(Type::Bool),   m_bool(value) {}
-    OpData(int value)           : m_type(Type::Int),    m_int(value) {}
-    OpData(float value)         : m_type(Type::Float),  m_float(value) {}
-    OpData(double value)        : m_type(Type::Float),  m_float(static_cast<float>(value)) {}
+    OpData(int value)           : OpData(static_cast<std::int64_t>(value)) {}
+    OpData(std::uint32_t value): OpData(static_cast<std::int64_t>(value)) {}
+    OpData(std::int64_t value)  : m_type(Type::Int),    m_int(value) {}
+    OpData(float value)         : OpData(static_cast<double>(value)) {}
+    OpData(double value)        : m_type(Type::Float),  m_float(value) {}
     OpData(const char* value)   : m_type(Type::String), m_string(value != nullptr ? value : "") {}
     OpData(std::string value)   : m_type(Type::String), m_string(std::move(value)) {}
     OpData(math::Vector3 value) : m_type(Type::Vec3),   m_vec3(value) {}
@@ -49,24 +54,51 @@ public:
     [[nodiscard]] bool IsArray()  const { return m_type == Type::Array; }
     [[nodiscard]] bool IsObject() const { return m_type == Type::Object; }
 
-    /// 型が一致しない場合は既定値を返す (throw しない — プロジェクト規約)。
+    /// @brief 型や範囲が合わない accessor は既定値を返す。
     [[nodiscard]] bool               AsBool  (bool fallback = false) const { return m_type == Type::Bool  ? m_bool  : fallback; }
-    [[nodiscard]] int                AsInt   (int fallback = 0) const      { return m_type == Type::Int   ? m_int   : fallback; }
-    [[nodiscard]] float              AsFloat (float fallback = 0.0f) const { return m_type == Type::Float ? m_float : fallback; }
+    /// @brief int64 値を int へ狭められない場合も fallback を返す。
+    [[nodiscard]] int AsInt(int fallback = 0) const
+    {
+        int value = 0;
+        return TryGetInt32(value) ? value : fallback;
+    }
+    /// @brief 型を保った signed 64-bit 整数を返す。
+    [[nodiscard]] std::int64_t AsInt64(std::int64_t fallback = 0) const { return m_type == Type::Int ? m_int : fallback; }
+    /// @brief 32-bit int に収まる整数だけを output へ書く。
+    [[nodiscard]] bool TryGetInt32(int& output) const
+    {
+        if (m_type != Type::Int || m_int < std::numeric_limits<int>::min() || m_int > std::numeric_limits<int>::max()) return false;
+        output = static_cast<int>(m_int);
+        return true;
+    }
+    /// @brief Float 値を倍精度のまま返す。
+    [[nodiscard]] double AsDouble(double fallback = 0.0) const { return m_type == Type::Float ? m_float : fallback; }
+    [[nodiscard]] float AsFloat(float fallback = 0.0f) const
+    {
+        float value = 0.0f;
+        return TryGetFloat(value) ? value : fallback;
+    }
+    [[nodiscard]] bool TryGetFloat(float& output) const
+    {
+        if (m_type != Type::Float || !std::isfinite(m_float)
+            || m_float > std::numeric_limits<float>::max() || m_float < -std::numeric_limits<float>::max()) return false;
+        output = static_cast<float>(m_float);
+        return std::isfinite(output);
+    }
     [[nodiscard]] const std::string& AsString() const { return m_string; }
     [[nodiscard]] math::Vector3      AsVec3() const { return m_vec3; }
 
     [[nodiscard]] const Array&  AsArray()  const { return m_array; }
     [[nodiscard]] const Object& AsObject() const { return m_object; }
 
-    /// 配列構築ヘルパ。
+    /// @brief 配列へ値を追加する。
     void Push(OpData value)
     {
         m_type = Type::Array;
         m_array.push_back(std::move(value));
     }
 
-    /// オブジェクト構築ヘルパ (同名キーは追記せず更新する)。
+    /// @brief 同名キーを更新し、それ以外は object の末尾へ追加する。
     void Set(std::string key, OpData value)
     {
         m_type = Type::Object;
@@ -87,12 +119,15 @@ public:
 private:
     Type          m_type = Type::Null;
     bool          m_bool = false;
-    int           m_int = 0;
-    float         m_float = 0.0f;
+    std::int64_t   m_int = 0;
+    double        m_float = 0.0;
     std::string   m_string;
     math::Vector3 m_vec3{};
     Array         m_array;
     Object        m_object;
 };
 
-} // namespace fbzz::editor
+/// @note 有限な数値だけを UTF-8 JSON に変換する。失敗時は output を変更しない。
+[[nodiscard]] bool WriteOpDataJson(const OpData& value, std::string& output);
+
+} /// @note namespace fbzz::editor

@@ -2,7 +2,7 @@
 /// @brief   .fluid レシピの編集欄 (ImGui)。Fluid Editor の Properties と Outliner の追加メニューが使う
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-///
+
 /// @brief どれも «レシピを直接書き換えて、書き換えたら true» を返す即時モードの部品。Undo と保存は
 /// @brief 呼び手 (FluidDocument::Commit / Edit) の仕事なので、ここはファイルにも UndoStack にも触らない。
 /// @brief ID の衝突を避けるため、各関数は自分の中で PushID する (呼び手は部品ごとに PushID(index) しなくてよい)。
@@ -15,6 +15,9 @@
 #include <string>
 
 namespace fbzz::editor::fluidui {
+
+/// @note stop の順序と幅 <= 1e-6 の u=1 を保ち、呼び手の色空間変換には触れない。
+[[nodiscard]] math::Vector3 EvaluateRamp(const fluid::FluidColorRamp& ramp, float t);
 
 struct FluidWidgetContext {
     /// @brief AssetPathField (テクスチャ発生源の画像) が使う。
@@ -51,4 +54,4 @@ bool DuplicatePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int inde
 bool RemovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int index);
 bool MovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int from, int to);
 
-} // namespace fbzz::editor::fluidui
+} ///< @note namespace fbzz::editor::fluidui

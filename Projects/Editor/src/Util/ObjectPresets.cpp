@@ -12,10 +12,9 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Components/VFXLineComponent.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/ScriptComponent.hpp>
-#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/VFXLineGeometry.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
@@ -99,7 +98,7 @@ scene::GameObject* NewPrimitive(EditorContext& ctx, const char* name, PrimitiveK
     go.AddComponent<scene::MeshRenderer>(mr);
 
     scene::MaterialComponent mc;
-    mc.materialPath = "Assets/Materials/Surface/Lit.mat";
+    mc.SetMaterialPath("Assets/Materials/Surface/Lit.mat");
     go.AddComponent<scene::MaterialComponent>(std::move(mc));
 
     if (withCollider) AttachFittedCollider(go, kind);
@@ -114,20 +113,6 @@ scene::RigidBodyComponent MakePresetRigidBody()
     body.rigidBody = std::make_unique<physics::RigidBody>();
     body.rigidBody->SetMass(1.0f);
     return body;
-}
-
-void AttachQuadBillboardScript(EditorContext& ctx, scene::GameObject& go)
-{
-    auto script = scene::ScriptFactory::Create("QuadBillboardComponent");
-    if (!script) return;
-    script->SetContext(ctx.activeScene, &go);
-    script->Reset();
-            script->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
-    scene::ScriptComponent sc;
-    scene::ScriptEntry entry;
-    entry.script = std::move(script);
-    sc.scripts.emplace_back(std::move(entry));
-    go.AddComponent<scene::ScriptComponent>(std::move(sc));
 }
 
 /// @brief 子を作って parentId の下へ入れる。
@@ -148,6 +133,13 @@ scene::GameObject* MakeEmpty(EditorContext& ctx)
     return ctx.activeScene->TryCreateGameObject("GameObject");
 }
 
+scene::GameObject* MakeTargetPoint(EditorContext& ctx)
+{
+    auto* point = ctx.activeScene->TryCreateGameObject("Target Point");
+    if (point) point->AddComponent<scene::TargetPointComponent>();
+    return point;
+}
+
 scene::GameObject* MakeCube(EditorContext& ctx)     { return NewPrimitive(ctx, "Cube", PrimitiveKind::Cube); }
 scene::GameObject* MakeSphere(EditorContext& ctx)   { return NewPrimitive(ctx, "Sphere", PrimitiveKind::Sphere); }
 scene::GameObject* MakePlane(EditorContext& ctx)    { return NewPrimitive(ctx, "Plane", PrimitiveKind::Plane); }
@@ -161,7 +153,6 @@ scene::GameObject* MakeQuad(EditorContext& ctx)
     auto* created = NewPrimitive(ctx, "Quad", PrimitiveKind::Quad, /*withCollider=*/false);
     if (!created) return nullptr;
     auto& go = *created;
-    AttachQuadBillboardScript(ctx, go);
     AttachFittedCollider(go, PrimitiveKind::Quad);
     return &go;
 }
@@ -684,7 +675,7 @@ scene::GameObject* MakeVFXMeshShell(EditorContext& ctx)
     renderer.meshPath = "primitive:sphere";
     go.AddComponent<scene::MeshRenderer>(std::move(renderer));
     scene::MaterialComponent material;
-    material.materialPath = scene::kVFXMeshFallbackMaterial;
+    material.SetMaterialPath(scene::kVFXMeshFallbackMaterial);
     go.AddComponent<scene::MaterialComponent>(std::move(material));
     scene::VFXElement element;
     element.duration = 0.5f;
@@ -952,6 +943,39 @@ scene::GameObject* MakeAudioSource(EditorContext& ctx)
     auto& go = *created;
     go.AddComponent<scene::AudioSourceComponent>();
     return &go;
+}
+
+scene::GameObject* MakeSpatialAudioSource(EditorContext& ctx)
+{
+    auto* go = MakeAudioSource(ctx);
+    if (!go) return nullptr;
+    go->name = "Spatial Audio Source";
+    go->GetComponent<scene::AudioSourceComponent>()->spatialBlend = 1.0f;
+    return go;
+}
+
+scene::GameObject* MakeAmbientAudioSource(EditorContext& ctx)
+{
+    auto* go = MakeSpatialAudioSource(ctx);
+    if (!go) return nullptr;
+    go->name = "Ambient Audio";
+    auto& source = *go->GetComponent<scene::AudioSourceComponent>();
+    source.playOnAwake = true;
+    source.loop = true;
+    return go;
+}
+
+scene::GameObject* MakeMusicAudioSource(EditorContext& ctx)
+{
+    auto* go = MakeAudioSource(ctx);
+    if (!go) return nullptr;
+    go->name = "Background Music";
+    auto& source = *go->GetComponent<scene::AudioSourceComponent>();
+    source.playOnAwake = true;
+    source.loop = true;
+    source.streaming = true;
+    source.busName = "BGM";
+    return go;
 }
 
 scene::GameObject* MakeAudioListener(EditorContext& ctx)
@@ -1240,12 +1264,14 @@ using PresetPlace = PresetPlacement;
 /// @note vfx.* は vfx.root の子として組む部品 (Docs/design/vfx-prefab.md)。
 /// @note Ragdoll と Procedural Mesh は載せない。前者は骨格を持つモデルへ足すもので単体では働かず、 後者は保存されない内部コンポーネント (FBZZ_INTERNAL_COMPONENT) で保存や Play で消える。
 constexpr ObjectPreset kPresets[] = {
-    { "empty", "", "Empty", "コンポーネントを持たない空の GameObject", &MakeEmpty },
+    { "empty", "", "Empty GameObject", "コンポーネントを持たない空の GameObject", &MakeEmpty },
+    { "3d.cube",     "", "Cube",     "MeshRenderer(cube) + Lit マテリアル + Box Collider", &MakeCube },
+    { "3d.sphere",   "", "Sphere",   "MeshRenderer(sphere) + Lit マテリアル + Sphere Collider", &MakeSphere },
+    { "3d.plane",    "", "Plane",    "MeshRenderer(plane) + Lit マテリアル + Box Collider", &MakePlane },
+    { "camera", "", "Camera", "CameraComponent + AudioListener。Game View の描画元になる", &MakeCamera },
+    { "target_point", "", "Target Point", "Spline・Water・Clothなどの共通配置点", &MakeTargetPoint },
 
-    { "3d.cube",     "3D Object", "Cube",     "MeshRenderer(cube) + Lit マテリアル + Box Collider", &MakeCube },
-    { "3d.sphere",   "3D Object", "Sphere",   "MeshRenderer(sphere) + Lit マテリアル + Sphere Collider", &MakeSphere },
-    { "3d.plane",    "3D Object", "Plane",    "MeshRenderer(plane) + Lit マテリアル + Box Collider", &MakePlane },
-    { "3d.quad",     "3D Object", "Quad",     "MeshRenderer(quad) + Lit マテリアル + Box Collider + カメラを向くスクリプト", &MakeQuad },
+    { "3d.quad",     "3D Object", "Quad",     "MeshRenderer(quad) + Lit マテリアル + Box Collider。固定向きの板 (Billboard は Rendering に別項目)", &MakeQuad },
     { "3d.cylinder", "3D Object", "Cylinder", "MeshRenderer(cylinder) + Lit マテリアル + Cylinder Collider", &MakeCylinder },
     { "3d.cone",     "3D Object", "Cone",     "MeshRenderer(cone) + Lit マテリアル + Box Collider", &MakeCone },
     { "3d.torus",    "3D Object", "Torus",    "MeshRenderer(torus) + Lit マテリアル + Box Collider", &MakeTorus },
@@ -1265,7 +1291,6 @@ constexpr ObjectPreset kPresets[] = {
     { "light.sphere",      "Light", "Sphere Light",      "半径 0.25m の球光源 (intensity 4 / range 8)", &MakeSphereLight },
     { "light.tube",        "Light", "Tube Light",        "長さ 1m のカプセル光源 (intensity 4 / range 8)", &MakeTubeLight },
 
-    { "camera", "", "Camera", "CameraComponent + AudioListener。Game View の描画元になる", &MakeCamera },
 
     { "camera.virtual", "Camera Rig", "Virtual Camera", "Camera + VirtualCamera。priority が最大のものが main になる", &MakeVirtualCamera },
     { "camera.follow",  "Camera Rig", "Follow Camera",  "Camera + VirtualCamera + CameraFollow。target を Inspector で指定する", &MakeFollowCamera },
@@ -1286,7 +1311,7 @@ constexpr ObjectPreset kPresets[] = {
     { "terrain.grid",    "Terrain", "Terrain Grid", "Terrain セルを並べて広い地形を作る親", &MakeTerrainGrid },
     { "terrain.water",   "Terrain", "Water",        "水面 (80m x 80m / 96x96 分割)", &MakeWater },
 
-    { "nav.surface",     "Navigation", "NavMesh Surface",  "NavMesh のベイク範囲と設定。ベイクは Tools > Navigation で明示的に実行する", &MakeNavMeshSurface },
+    { "nav.surface",     "Navigation", "NavMesh Surface",  "NavMesh のベイク範囲と設定。ベイクは View > AI & Navigation > Navigation で明示的に実行する", &MakeNavMeshSurface },
     { "nav.agent",       "Navigation", "NavMesh Agent",    "Capsule メッシュ + NavMeshAgent。経路移動する実体", &MakeNavMeshAgent },
     { "nav.modifier",    "Navigation", "NavMesh Modifier", "Cube + Collider + NavMeshModifier。歩行可否とエリアコストを上書きする", &MakeNavMeshModifier },
     { "nav.offMeshLink", "Navigation", "Off-Mesh Link",    "離れた 2 点をつなぐジャンプ経路", &MakeOffMeshLink },
@@ -1330,6 +1355,9 @@ constexpr ObjectPreset kPresets[] = {
     { "physics.forceVolume",         "Physics", "Force Volume",         "重力・磁力などの力場ボリューム", &MakeForceVolume },
 
     { "audio.source",     "Audio", "Audio Source",      "AudioSource。clipPath を設定して鳴らす", &MakeAudioSource },
+    { "audio.spatialSource", "Audio", "Spatial Audio Source", "3D AudioSource (spatialBlend 1)。clipPath を設定して鳴らす", &MakeSpatialAudioSource },
+    { "audio.ambient", "Audio", "Ambient Audio", "3D AudioSource + Loop + Play On Awake。clipPath を設定して環境音を流す", &MakeAmbientAudioSource },
+    { "audio.music", "Audio", "Background Music", "2D AudioSource + Loop + Play On Awake + Streaming + BGM バス。clipPath を設定して音楽を流す", &MakeMusicAudioSource },
     { "audio.listener",   "Audio", "Audio Listener",    "AudioListener。3D 音の距離減衰の基準点", &MakeAudioListener },
     { "audio.reverbZone", "Audio", "Audio Reverb Zone", "残響ゾーン (inner 2m / outer 10m)", &MakeAudioReverbZone },
 

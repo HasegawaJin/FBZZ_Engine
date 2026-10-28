@@ -4,17 +4,18 @@
 /// @date    2026-08-24
 ///
 /// @note 役割は「絵を見ながら横目で確認する層」に限定する。内訳の一覧は Analysis > Rendering が
-///       表と GPU パス履歴で持つため、同じ数字を並べ直さない。ここは「playing 中に視線を
-///       外さず追う値」だけに絞る。
+/// @note       表と GPU パス履歴で持つため、同じ数字を並べ直さない。ここは「playing 中に視線を
+/// @note       外さず追う値」だけに絞る。
 #include "ViewportCommon.hpp"
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/FrameTimeGraph.hpp>
+#include <Profiler/AnalysisProfilerGpu.hpp>
 
 namespace fbzz::editor {
 
 namespace {
 
-/// カリング要因の識別色。内訳の対応は Analysis 側で読む前提で、ここでは割合だけ見せる。
+/// @note カリング要因の識別色。内訳の対応は Analysis 側で読む前提で、ここでは割合だけ見せる。
 ImU32 CullColor(int index)
 {
     switch (index) {
@@ -25,7 +26,7 @@ ImU32 CullColor(int index)
     }
 }
 
-/// 桁が伸びても値の列幅が暴れないよう K / M へ丸める。
+/// @note 桁が伸びても値の列幅が暴れないよう K / M へ丸める。
 void FormatCount(char* buf, size_t size, uint64_t value)
 {
     if (value >= 1000000)
@@ -38,7 +39,7 @@ void FormatCount(char* buf, size_t size, uint64_t value)
 
 /// @brief 1 行 = 左にラベル / 右端へ値 (+ 淡い単位)。
 /// @note 旧実装はラベルを空白で埋めて桁を揃えていたが、UI フォントはプロポーショナルの Roboto
-///       なので値の頭が行ごとにずれる。右端で揃えれば桁数が変わっても数字の列が動かない。
+/// @note       なので値の頭が行ごとにずれる。右端で揃えれば桁数が変わっても数字の列が動かない。
 void StatRow(const char* label, const char* value, const ImVec4& valueColor, const char* unit = nullptr)
 {
     const float fontH  = ImGui::GetFontSize();
@@ -57,7 +58,7 @@ void StatRow(const char* label, const char* value, const ImVec4& valueColor, con
     }
 }
 
-/// カリング内訳の積み上げバー。残りが実際に描いた分。
+/// @note カリング内訳の積み上げバー。残りが実際に描いた分。
 void CullBar(const int* culled, int count, int total, float height)
 {
     const float  width  = ImGui::GetContentRegionAvail().x;
@@ -82,15 +83,7 @@ void CullBar(const int* culled, int count, int total, float height)
                     EditorTheme::ColorU32(ThemeColor::Canvas), 1.0f);
 }
 
-float SumMilliseconds(const std::vector<std::pair<std::string, double>>& timings)
-{
-    double total = 0.0;
-    for (const auto& entry : timings)
-        total += entry.second;
-    return static_cast<float>(total);
-}
-
-} // namespace
+} /// @note namespace
 
 void DrawStatsOverlay(EditorContext& ctx)
 {
@@ -102,7 +95,7 @@ void DrawStatsOverlay(EditorContext& ctx)
     const float targetMs  = 1000.0f / static_cast<float>(targetFps);
 
     /// @note 左下に配置 (タブバー・ツールバーと重ならないよう上マージンを考慮)。右上は ImGuizmo の
-    ///       ビューキューブと重なりやすく、左下はほぼ空きスペースになるため視認性が高い。
+    /// @note       ビューキューブと重なりやすく、左下はほぼ空きスペースになるため視認性が高い。
     const float  fontH   = ImGui::GetFontSize();
     const float  margin  = fontH * 0.7f;
     const ImVec2 winPos  = ImGui::GetWindowPos();
@@ -110,7 +103,7 @@ void DrawStatsOverlay(EditorContext& ctx)
     ImGui::SetNextWindowPos({ winPos.x + margin, winPos.y + winSize.y - margin },
                             /// @note pivot: 左下
                             ImGuiCond_Always, { 0.0f, 1.0f });
-    ImGui::SetNextWindowSize({ fontH * 14.5f, 0.0f }, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({ fontH * 16.5f, 0.0f }, ImGuiCond_Always);
 
     ImVec4 panelBg = EditorTheme::Color(ThemeColor::Surface);
     panelBg.w      = 0.85f;
@@ -137,12 +130,26 @@ void DrawStatsOverlay(EditorContext& ctx)
         /// @note フレーム時間は Analysis > Rendering と同じ部品・同じ履歴で描く。
         widgets::FrameTimeHero(targetMs);
         widgets::FrameTimeGraph(targetMs, fontH * 1.7f);
-
-        /// @note GPU 時間だけは内訳を開かずに見たい。CPU 待ちか GPU 律速かの一次切り分けになる。
-        if (const float gpuMs = SumMilliseconds(snapshot.gpuPassTimings); gpuMs > 0.0f) {
-            std::snprintf(value, sizeof(value), "%.2f", gpuMs);
-            StatRow("GPU", value, EditorTheme::Color(ThemeColor::Text), "ms");
-        }
+        /// @note Pass sums retain their asynchronous source and are never substituted for a GPU frame total.
+        const auto& gpu = snapshot.gpuProfiler;
+        const auto summary = detail::SummarizeGpuDisplay(gpu, snapshot.gpuCurrentView.applicationFrameSerial);
+        if (summary.totalAvailable) {
+            std::snprintf(value, sizeof(value), "%.2f", summary.totalMs);
+            StatRow("GPU frame total", value, EditorTheme::Color(ThemeColor::Text), "ms");
+        } else StatRow("GPU frame total", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
+        if (summary.passSumAvailable) {
+            std::snprintf(value, sizeof(value), "%.2f%s", summary.passSumMs, summary.partial ? " partial" : "");
+            StatRow("GPU pass sum", value, EditorTheme::Color(summary.partial ? ThemeColor::Warning : ThemeColor::Text), "ms");
+        } else StatRow("GPU pass sum", gpu.supported ? "unavailable" : "unsupported", EditorTheme::Color(ThemeColor::TextMuted));
+        if (summary.ageAvailable) {
+            std::snprintf(value, sizeof(value), "%llu-%llu", static_cast<unsigned long long>(summary.youngestAge),
+                static_cast<unsigned long long>(summary.oldestAge));
+            StatRow("GPU sample age", value, EditorTheme::Color(ThemeColor::TextMuted), "frames");
+        } else StatRow("GPU sample age", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
+        if (gpu.supported && gpu.available) {
+            std::snprintf(value, sizeof(value), "%llu", static_cast<unsigned long long>(gpu.physicalFrameSerial));
+            StatRow("GPU physical frame", value, EditorTheme::Color(ThemeColor::TextMuted));
+        } else StatRow("GPU physical frame", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
 
         /// @note 視点を動かすたびに動く 3 つ。ここだけは絵を見ながら追う価値がある。
         std::snprintf(value, sizeof(value), "%d", rs.drawCalls);
@@ -176,4 +183,4 @@ void DrawStatsOverlay(EditorContext& ctx)
     ImGui::PopStyleColor(2);
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

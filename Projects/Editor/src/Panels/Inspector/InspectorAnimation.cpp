@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 #include "InspectorAnimation.hpp"
+#include "InspectorBoneBake.hpp"
 #include <Editor/Util/EditorTheme.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
@@ -13,8 +14,8 @@ namespace fbzz::editor {
 
 namespace {
 
-/// Scene 上の Animator と、開いている Controller 編集モデルが同じ Controller を指す場合は、
-/// Inspector のレイヤー編集も Graph の編集モデルへ反映する。
+/// @note Scene 上の Animator と、開いている Controller 編集モデルが同じ Controller を指す場合は、
+/// @note Inspector のレイヤー編集も Graph の編集モデルへ反映する。
 /// @note Controller を開いた Graph は scene component のコピーを編集しているため、Inspector 側だけを
 ///       書き換えると Add/Rename/Mask の結果が Graph に現れず、次の Apply で失われる。
 void SyncOpenControllerLayers(EditorContext& ctx,
@@ -255,7 +256,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 ///       .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
                 ///       (Pose_XXX.anim 等) をドロップで割り当てられない。
                 if (widgets::AssetPathField("Ref Source", layer.additiveReference.sourcePath,
-                                            ".anim,.asset,.fzasset,.fbx", ctx.projectRoot))
+                                            ".anim,.asset,.fzasset,.fbx,.obj,.gltf,.glb", ctx.projectRoot))
                     markLayerDirty();
                 char clipBuffer[128];
                 std::snprintf(clipBuffer, sizeof(clipBuffer), "%s",
@@ -321,8 +322,8 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
     }
 }
 
-/// 揺れものは「根ボーンを 1 つ指す」だけで枝全体が対象になるため、IK のような
-/// ボーン名リストを持たない。編集項目もチェーンあたり数個で済む。
+/// @note 揺れものは「根ボーンを 1 つ指す」だけで枝全体が対象になるため、IK のような
+/// @note ボーン名リストを持たない。編集項目もチェーンあたり数個で済む。
 void DrawSpringBoneInspector(scene::GameObject* go,
                              EditorContext& ctx,
                              std::any& m_componentClipboard,
@@ -469,7 +470,7 @@ void DrawSpringBoneInspector(scene::GameObject* go,
         });
 }
 
-} // namespace
+} /// @note namespace
 
 void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
@@ -536,6 +537,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     "クリップで表せない動き (経路に沿って形が変わる胴など) 用。");
             }
             DrawRootMotionSettings(anim);
+            DrawBoneBakeControls(anim);
 
             if (!anim.currentStateName.empty()) {
                 ImGui::SeparatorText("Runtime");
@@ -936,4 +938,4 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 }
 
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

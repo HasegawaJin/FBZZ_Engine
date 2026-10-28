@@ -29,7 +29,8 @@ std::string FileNameOnly(const std::string& path)
 
 const char* KindLabel(BuildRecord::Kind kind)
 {
-    return kind == BuildRecord::Kind::Script ? "Script" : "HLSL";
+    (void)kind;
+    return "HLSL";
 }
 
 /// 履歴コンボに出す 1 行ラベル (例: "14:32:05  Script  FAIL  3E 1W  (2.3s)")。
@@ -161,14 +162,6 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
         ImGui::SameLine(0.0f, sp);
     }
 
-    /// @note Rebuild は script.reload operator を通す: 直接 requestScriptReload を立てると
-    ///       operator の「コンパイル中は開始できない」poll 条件を素通りする。
-    ///       console.IsBuilding() だけでは HLSL リロードやホットリロード起因のビルドを見逃す。
-    const bool canRebuild = CanInvokeOperator(ctx, "script.reload") && !console.IsBuilding();
-    ImGui::BeginDisabled(!canRebuild);
-    if (ImGui::Button("Rebuild")) InvokeOperator(ctx, "script.reload");
-    ImGui::EndDisabled();
-    ImGui::SameLine(0.0f, sp);
     if (ImGui::Button("Clear")) {
         console.ClearHistory();
         m_viewHistoryIndex = -1;

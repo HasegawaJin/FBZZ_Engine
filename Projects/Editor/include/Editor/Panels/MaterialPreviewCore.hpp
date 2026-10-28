@@ -13,6 +13,7 @@
 #include <Math/Vector4.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -112,24 +113,24 @@ struct GpuData {
 };
 
 
-[[nodiscard]] Flavor      DetectFlavor(const asset::MaterialAsset& material);
+[[nodiscard]] Flavor      DetectFlavor(const asset::MaterialAssetAuthoring& material);
 /// 3D へ焼けない .mat の種別バッジ ("PARTICLE" / "DECAL" …)。
-[[nodiscard]] const char* UnsupportedBadge(const asset::MaterialAsset& material);
+[[nodiscard]] const char* UnsupportedBadge(const asset::MaterialAssetAuthoring& material);
 /// 色見本に使う 1 色。HDR は明るさだけ畳む。
-[[nodiscard]] math::Vector4 SwatchColor(const asset::MaterialAsset& material);
+[[nodiscard]] math::Vector4 SwatchColor(const asset::MaterialAssetAuthoring& material);
 /// フォールバック描画に使うベースカラー。
-[[nodiscard]] math::Vector4 AlbedoColor(const asset::MaterialAsset& material);
+[[nodiscard]] math::Vector4 AlbedoColor(const asset::MaterialAssetAuthoring& material);
 /// «何の絵か» を代表する 1 枚のテクスチャパス (Assets/ 相対)。無ければ空。
-[[nodiscard]] std::string   RepresentativeTexturePath(const asset::MaterialAsset& material);
+[[nodiscard]] std::string   RepresentativeTexturePath(const asset::MaterialAssetAuthoring& material);
 /// Assets/ 相対パスを ResourceManager が読める実パスへ直す。
 [[nodiscard]] std::string   TextureLoadPath(const std::string& path, std::string_view projectRoot);
 
 [[nodiscard]] const char* ShapeLabel(Shape shape);
 [[nodiscard]] const char* FiberModeLabel(FiberMode mode);
 /// @return シェーダー名 (FiberFin / FiberBlade) から推した方式。それ以外は Shell。
-[[nodiscard]] FiberMode   DefaultFiberMode(const asset::MaterialAsset& material);
-/// @return サムネイルに使う形状。草 (grassShading >= 0.5) の Fiber は平面、それ以外は球。
-[[nodiscard]] Shape       ThumbnailShape(const asset::MaterialAsset& material, Flavor flavor);
+[[nodiscard]] FiberMode   DefaultFiberMode(const asset::MaterialAssetAuthoring& material);
+/// @return サムネイルに使う形状。草 (planarShading >= 0.5) の Fiber は平面、それ以外は球。
+[[nodiscard]] Shape       ThumbnailShape(const asset::MaterialAssetAuthoring& material, Flavor flavor);
 [[nodiscard]] const char* ChannelLabel(Channel channel);
 [[nodiscard]] const char* LightPresetLabel(LightPreset preset);
 /// Terrain / Water / UI はテクスチャスロットの意味が標準と違うため、
@@ -139,7 +140,7 @@ struct GpuData {
 
 /// .mat の shaderPath / ShaderDescriptor に合わせて Material CB とテクスチャを埋める。
 [[nodiscard]] bool BuildGpuData(GpuData& gpu,
-                                const asset::MaterialAsset& material,
+                                asset::MaterialAssetAuthoring material,
                                 renderer::ResourceManager& resources,
                                 std::string_view projectRoot);
 
@@ -163,7 +164,8 @@ struct RenderDesc {
     renderer::ResourceHandle<renderer::RenderTargetTag> target;
     const renderer::Mesh*       mesh     = nullptr;
     Flavor                      flavor   = Flavor::Surface;
-    const asset::MaterialAsset* material = nullptr;
+    /// @note This owned, actually const value copy survives renderer callback edits and nested preview draws.
+    std::shared_ptr<const asset::MaterialAssetAuthoring> material;
     /// null なら fallbackColor / fallbackTexture を Lit.hlsl で焼く (メッシュサムネイル用)。
     const GpuData*              gpu      = nullptr;
 
@@ -195,4 +197,4 @@ struct RenderDesc {
                           renderer::ResourceManager& resources,
                           const RenderDesc& desc);
 
-} // namespace fbzz::editor::matpreview
+} /// @note namespace fbzz::editor::matpreview

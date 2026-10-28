@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 #include <Editor/Panels/SequencePanel.hpp>
+#include "SequenceCurveEditing.hpp"
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -26,7 +27,7 @@
 namespace fbzz::editor {
 namespace {
 
-/// VFX Editor のタイムラインと同じ刻み。エディタ内で「1 コマ」の意味を揃える。
+/// @note VFX Editor のタイムラインと同じ刻み。エディタ内で「1 コマ」の意味を揃える。
 constexpr float  kScrubStep   = 1.0f / 60.0f;
 constexpr float  kRowHeight   = 22.0f;
 constexpr float  kLabelWidth  = 172.0f;
@@ -38,8 +39,8 @@ using asset::SequenceTrack;
 using asset::SequenceTrackType;
 
 /// @name 列 (channel)
-/// 1 行に複数系統を重ねて描くのは TransformTrack と PropertyTrack だけ。
-/// 行を系統ごとに増やすと、位置しか打っていないトラックでも 3 行占有してしまう。
+/// @note 1 行に複数系統を重ねて描くのは TransformTrack と PropertyTrack だけ。
+/// @note 行を系統ごとに増やすと、位置しか打っていないトラックでも 3 行占有してしまう。
 
 int ChannelCount(SequenceTrackType type)
 {
@@ -88,8 +89,8 @@ ImU32 TrackColor(SequenceTrackType type)
     return IM_COL32(120, 120, 120, 255);
 }
 
-/// 同じ行に重なる系統を色で見分ける。Transform の 3 軸系統は Inspector の
-/// Position/Rotation/Scale と同じ並びなので、色の意味を覚え直さずに済む。
+/// @note 同じ行に重なる系統を色で見分ける。Transform の 3 軸系統は Inspector の
+/// @note Position/Rotation/Scale と同じ並びなので、色の意味を覚え直さずに済む。
 ImU32 ChannelColor(SequenceTrackType type, int channel)
 {
     if (type == SequenceTrackType::Transform) {
@@ -102,8 +103,8 @@ ImU32 ChannelColor(SequenceTrackType type, int channel)
     return TrackColor(type);
 }
 
-/// 列の実体へアクセスする唯一の分岐点。「個数」「時刻」「削除」「追加」を種別ごとに書くと
-/// 同じ switch が 5 つ並び、列を 1 つ足すたびに全部を直す羽目になる。
+/// @note 列の実体へアクセスする唯一の分岐点。「個数」「時刻」「削除」「追加」を種別ごとに書くと
+/// @note 同じ switch が 5 つ並び、列を 1 つ足すたびに全部を直す羽目になる。
 template<typename Fn>
 void WithChannel(SequenceTrack& track, int channel, Fn&& fn)
 {
@@ -170,7 +171,7 @@ std::size_t ChannelSize(const SequenceTrack& track, int channel)
     return count;
 }
 
-/// タイムライン上での 1 項目の占有区間。end < 0 なら点 (キー) として描く。
+/// @note タイムライン上での 1 項目の占有区間。end < 0 なら点 (キー) として描く。
 struct ItemSpan {
     double start = 0.0;
     double end   = -1.0;
@@ -286,8 +287,8 @@ void ResizeItem(SequenceTrack& track, std::size_t index, double newEnd)
     }
 }
 
-/// 時刻順に並べ直す。サンプリングは std::upper_bound でキーを引くため、キーを隣より後ろへ
-/// ドラッグしたまま並びが崩れていると二分探索が別のキー区間を返し「打った値と違う姿勢が出る」。
+/// @note 時刻順に並べ直す。サンプリングは std::upper_bound でキーを引くため、キーを隣より後ろへ
+/// @note ドラッグしたまま並びが崩れていると二分探索が別のキー区間を返し「打った値と違う姿勢が出る」。
 void SortChannel(SequenceTrack& track, int channel)
 {
     WithChannel(track, channel, [](auto& values) {
@@ -305,8 +306,8 @@ void EraseItem(SequenceTrack& track, int channel, std::size_t index)
     });
 }
 
-/// 直近の Transform キーを複製せず、既定値で作る。複製すると「動かないキー」が増え打っても
-/// 何も変わらない形で詰まるため、値は Inspector で入れる前提にする。
+/// @note 直近の Transform キーを複製せず、既定値で作る。複製すると「動かないキー」が増え打っても
+/// @note 何も変わらない形で詰まるため、値は Inspector で入れる前提にする。
 void InsertItem(SequenceTrack& track, int channel, double time)
 {
     switch (track.type) {
@@ -366,7 +367,7 @@ std::string TrackRowLabel(const SequenceTrack& track)
     return label;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name ドキュメント
 
@@ -386,6 +387,7 @@ bool SequencePanel::Load(const std::string& path)
     m_undoStack.clear();
     m_redoStack.clear();
     m_selection  = {};
+    m_curveTrack = -1;
     m_playhead   = 0.0;
     m_playing    = false;
     ++m_localRevision;
@@ -398,11 +400,12 @@ bool SequencePanel::Save()
     if (m_path.empty()) return false;
     /// @note ディスクへ出す前に必ず時刻順へ整える。ドラッグ中は並べ替えずに済ませているため、
     ///       保存だけが「並びの崩れたまま書かれる」経路になりうる。
-    for (auto& track : m_asset.tracks)
+    auto saved = m_asset;
+    for (auto& track : saved.tracks)
         for (int channel = 0; channel < ChannelCount(track.type); ++channel)
             SortChannel(track, channel);
 
-    if (!asset::SaveSequenceAsset(m_path, m_asset)) {
+    if (!asset::SaveSequenceAsset(m_path, saved)) {
         m_error = "Sequence を保存できませんでした: " + m_path;
         return false;
     }
@@ -440,6 +443,7 @@ void SequencePanel::Undo()
     m_asset = std::move(m_undoStack.back());
     m_undoStack.pop_back();
     m_selection = {};
+    m_curveTrack = -1;
     MarkEdited();
 }
 
@@ -450,6 +454,7 @@ void SequencePanel::Redo()
     m_asset = std::move(m_redoStack.back());
     m_redoStack.pop_back();
     m_selection = {};
+    m_curveTrack = -1;
     MarkEdited();
 }
 
@@ -512,7 +517,11 @@ void SequencePanel::PushPreview(EditorContext& ctx)
 
     if (m_pushedRevision != m_localRevision || !player->authoringSequence) {
         /// @note 版数を進めると SequenceSystem が「触ったものを戻して撮り直す」。
-        player->authoringSequence = std::make_shared<const asset::SequenceAsset>(m_asset);
+        auto preview = m_asset;
+        for (auto& track : preview.tracks)
+            for (int channel = 0; channel < ChannelCount(track.type); ++channel)
+                SortChannel(track, channel);
+        player->authoringSequence = std::make_shared<const asset::SequenceAsset>(std::move(preview));
         ++player->authoringRevision;
         m_pushedRevision = m_localRevision;
     }
@@ -575,6 +584,14 @@ void SequencePanel::DrawToolbar(EditorContext& ctx)
     if (ImGui::Button("Reload") && !m_path.empty()) Load(m_path);
     ImGui::SameLine();
     if (ImGui::Button("Close")) CloseDocument(ctx);
+    ImGui::SameLine();
+    ImGui::BeginDisabled(m_undoStack.empty());
+    if (ImGui::Button("Undo")) Undo();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(m_redoStack.empty());
+    if (ImGui::Button("Redo")) Redo();
+    ImGui::EndDisabled();
 
     if (m_dirty) {
         ImGui::SameLine();
@@ -987,7 +1004,7 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
         float seconds = static_cast<float>(value);
         const bool changed = ImGui::DragFloat(label, &seconds, 0.01f, 0.0f, 600.0f, "%.3fs");
         SnapshotOnActivate();
-        if (changed) {
+        if (changed && std::isfinite(seconds)) {
             value = (std::max)(static_cast<double>(seconds), 0.0);
             MarkEdited();
         }
@@ -1014,7 +1031,7 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
         editTime("Start", clip.start);
         editTime("Duration", clip.duration);
         ImGui::SetItemTooltip("0 なら次のクリップの頭まで");
-        if (widgets::AssetPathField("Source", clip.sourcePath, ".fbx,.anim", m_projectRoot)) {
+        if (widgets::AssetPathField("Source", clip.sourcePath, ".fbx,.anim,.obj,.gltf,.glb", m_projectRoot)) {
             PushUndo();
             MarkEdited();
         }
@@ -1044,11 +1061,34 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
     }
     case SequenceTrackType::Property: {
         switch (m_selection.channel) {
-        case 0:
+        case 0: {
             if (index >= track.property.floatKeys.size()) break;
             editTime("Time", track.property.floatKeys[index].time);
-            edited(ImGui::DragFloat("Value", &track.property.floatKeys[index].value, 0.01f));
+            auto& key = track.property.floatKeys[index];
+            float value = key.value;
+            if (edited(ImGui::DragFloat("Value", &value, 0.01f)) && std::isfinite(value))
+                key.value = value;
+            if (track.property.interp == asset::AnimInterp::Cubic) {
+                float in = key.inTangent;
+                float out = key.outTangent;
+                if (edited(ImGui::DragFloat("In slope / s", &in, 0.01f)) && std::isfinite(in))
+                    key.inTangent = in;
+                if (edited(ImGui::DragFloat("Out slope / s", &out, 0.01f)) && std::isfinite(out))
+                    key.outTangent = out;
+                if (ImGui::Button("Flat tangents")) {
+                    PushUndo();
+                    key.inTangent = key.outTangent = 0.0f;
+                    MarkEdited();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Linear tangents")) {
+                    PushUndo();
+                    detail::SetFloatCurveLinearTangents(track.property.floatKeys, m_selection.index);
+                    MarkEdited();
+                }
+            }
             break;
+        }
         case 1:
             if (index >= track.property.vector2Keys.size()) break;
             editTime("Time", track.property.vector2Keys[index].time);
@@ -1132,6 +1172,187 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
     }
 }
 
+void SequencePanel::DrawFloatCurve(SequenceTrack& track)
+{
+    auto& keys = track.property.floatKeys;
+    auto sampledKeys = keys;
+    (void)detail::SortFloatCurve(sampledKeys, -1);
+    ImGui::Separator();
+    ImGui::TextUnformatted("Float curve: drag keys or tangent handles; double-click to add");
+    const bool fit = ImGui::Button("Fit curve") || m_curveTrack != m_selection.track;
+    ImGui::SameLine();
+    if (ImGui::Button("Add at playhead")) {
+        PushUndo();
+        const float value = asset::SampleFloatKeys(sampledKeys, m_playhead, track.property.interp);
+        m_selection.channel = 0;
+        m_selection.index = detail::AddFloatCurveKey(keys, ApplySnap(m_playhead), value);
+        MarkEdited();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Delete key") && m_selection.channel == 0 && m_selection.HasItem()) {
+        PushUndo();
+        EraseItem(track, 0, static_cast<std::size_t>(m_selection.index));
+        m_selection.index = -1;
+        MarkEdited();
+    }
+    if (fit) {
+        m_curveTrack = m_selection.track;
+        m_curveEnd = (std::max)(Duration(), 1.0);
+        double low = 0.0;
+        double high = 0.0;
+        for (const auto& key : keys) {
+            low = (std::min)(low, static_cast<double>(key.value));
+            high = (std::max)(high, static_cast<double>(key.value));
+        }
+        for (int i = 0; i <= 256; ++i) {
+            const double value = asset::SampleFloatKeys(sampledKeys, m_curveEnd * i / 256.0,
+                                                        track.property.interp);
+            if (!std::isfinite(value)) continue;
+            low = (std::min)(low, value);
+            high = (std::max)(high, value);
+        }
+        const double padding = (std::max)((high - low) * 0.15, 0.5);
+        m_curveMin = static_cast<float>((std::max)(low - padding, -1.0e30));
+        m_curveMax = static_cast<float>((std::min)(high + padding, 1.0e30));
+    }
+
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const ImVec2 size{ (std::max)(ImGui::GetContentRegionAvail().x, 80.0f), 180.0f };
+    const double valueSpan = static_cast<double>(m_curveMax) - m_curveMin;
+    const auto point = [&](double time, double value) {
+        const double x = std::clamp(time / m_curveEnd, -8.0, 8.0);
+        const double y = std::clamp((value - m_curveMin) / valueSpan, -8.0, 8.0);
+        return ImVec2{ origin.x + static_cast<float>(x) * size.x,
+            origin.y + size.y - static_cast<float>(y) * size.y };
+    };
+    const auto mouseTime = [&]() {
+        return std::clamp(static_cast<double>((ImGui::GetIO().MousePos.x - origin.x) / size.x)
+                          * m_curveEnd, 0.0, m_curveEnd);
+    };
+    const auto mouseValue = [&]() {
+        return static_cast<float>(m_curveMin
+            + (1.0 - (ImGui::GetIO().MousePos.y - origin.y) / size.y) * valueSpan);
+    };
+    const auto distance = [](ImVec2 a, ImVec2 b) {
+        const float x = a.x - b.x;
+        const float y = a.y - b.y;
+        return x * x + y * y;
+    };
+    const auto handleTime = [&](std::size_t i, bool incoming) {
+        const double gap = incoming ? (i > 0 ? keys[i].time - keys[i - 1].time : 0.0)
+                                    : (i + 1 < keys.size() ? keys[i + 1].time - keys[i].time : 0.0);
+        return (std::min)(gap / 3.0, m_curveEnd * 0.12);
+    };
+    const auto handle = [&](std::size_t i, bool incoming) {
+        const auto& key = keys[i];
+        const double dt = handleTime(i, incoming) * (incoming ? -1.0 : 1.0);
+        return point(key.time + dt, key.value + dt * (incoming ? key.inTangent : key.outTangent));
+    };
+
+    ImGui::InvisibleButton("##FloatCurveCanvas", size, ImGuiButtonFlags_MouseButtonLeft);
+    const bool hovered = ImGui::IsItemHovered();
+    const bool active = ImGui::IsItemActive();
+    if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        m_curveDragKind = -1;
+        m_curveUndoPushed = false;
+        float best = 81.0f;
+        if (m_selection.channel == 0 && m_selection.HasItem()
+            && static_cast<std::size_t>(m_selection.index) < keys.size()
+            && track.property.interp == asset::AnimInterp::Cubic) {
+            const auto i = static_cast<std::size_t>(m_selection.index);
+            for (int side = 0; side < 2; ++side) {
+                if (handleTime(i, side == 0) <= 0.0) continue;
+                const float d = distance(ImGui::GetIO().MousePos, handle(i, side == 0));
+                if (d < best) { best = d; m_curveDragKind = side + 1; }
+            }
+        }
+        for (std::size_t i = 0; i < keys.size(); ++i) {
+            const float d = distance(ImGui::GetIO().MousePos, point(keys[i].time, keys[i].value));
+            if (d >= best) continue;
+            best = d;
+            m_selection.channel = 0;
+            m_selection.index = static_cast<int>(i);
+            m_curveDragKind = 0;
+        }
+        if (m_curveDragKind < 0 && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            PushUndo();
+            m_selection.channel = 0;
+            m_selection.index = detail::AddFloatCurveKey(keys, ApplySnap(mouseTime()), mouseValue());
+            MarkEdited();
+        }
+    }
+    if (active && m_curveDragKind >= 0 && m_selection.channel == 0 && m_selection.HasItem()
+        && static_cast<std::size_t>(m_selection.index) < keys.size()
+        && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 1.0f)) {
+        if (!m_curveUndoPushed) { PushUndo(); m_curveUndoPushed = true; }
+        if (m_curveDragKind == 0) {
+            if (detail::MoveFloatCurveKey(keys, m_selection.index,
+                    std::clamp(ApplySnap(mouseTime()), 0.0, m_curveEnd), mouseValue())) MarkEdited();
+        } else {
+            auto& key = keys[static_cast<std::size_t>(m_selection.index)];
+            const bool incoming = m_curveDragKind == 1;
+            const double dt = handleTime(static_cast<std::size_t>(m_selection.index), incoming)
+                            * (incoming ? -1.0 : 1.0);
+            if (dt != 0.0) {
+                const float slope = static_cast<float>((static_cast<double>(mouseValue()) - key.value) / dt);
+                if (std::isfinite(slope)) {
+                    (incoming ? key.inTangent : key.outTangent) = slope;
+                    MarkEdited();
+                }
+            }
+        }
+    }
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) m_curveDragKind = -1;
+
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 end{ origin.x + size.x, origin.y + size.y };
+    draw->AddRectFilled(origin, end, IM_COL32(24, 28, 34, 255));
+    draw->PushClipRect(origin, end, true);
+    for (int i = 1; i < 4; ++i) {
+        const float fraction = i / 4.0f;
+        draw->AddLine({ origin.x + size.x * fraction, origin.y },
+                      { origin.x + size.x * fraction, end.y }, IM_COL32(55, 60, 68, 255));
+        draw->AddLine({ origin.x, origin.y + size.y * fraction },
+                      { end.x, origin.y + size.y * fraction }, IM_COL32(55, 60, 68, 255));
+    }
+    sampledKeys = keys;
+    (void)detail::SortFloatCurve(sampledKeys, -1);
+    if (!sampledKeys.empty()) {
+        float previousValue = asset::SampleFloatKeys(sampledKeys, 0.0, track.property.interp);
+        ImVec2 previous = point(0.0, previousValue);
+        for (int i = 1; i <= 256; ++i) {
+            const double time = m_curveEnd * i / 256.0;
+            const float nextValue = asset::SampleFloatKeys(sampledKeys, time, track.property.interp);
+            const ImVec2 next = point(time, std::isfinite(nextValue) ? nextValue : 0.0);
+            if (std::isfinite(previousValue) && std::isfinite(nextValue))
+                draw->AddLine(previous, next, IM_COL32(100, 190, 240, 255), 2.0f);
+            previous = next;
+            previousValue = nextValue;
+        }
+    }
+    const float playheadX = point(m_playhead, 0.0).x;
+    draw->AddLine({ playheadX, origin.y }, { playheadX, end.y }, IM_COL32(240, 200, 80, 255));
+    for (std::size_t i = 0; i < keys.size(); ++i) {
+        const bool selected = m_selection.channel == 0 && static_cast<int>(i) == m_selection.index;
+        const ImVec2 keyPoint = point(keys[i].time, keys[i].value);
+        if (selected && track.property.interp == asset::AnimInterp::Cubic) {
+            for (int side = 0; side < 2; ++side) {
+                if (handleTime(i, side == 0) <= 0.0) continue;
+                const ImVec2 tip = handle(i, side == 0);
+                draw->AddLine(keyPoint, tip, IM_COL32(240, 190, 100, 255));
+                draw->AddCircleFilled(tip, 4.0f, IM_COL32(240, 190, 100, 255));
+            }
+        }
+        draw->AddCircleFilled(keyPoint, selected ? 6.0f : 4.0f,
+                              selected ? IM_COL32(255, 220, 100, 255) : IM_COL32(140, 205, 240, 255));
+    }
+    draw->PopClipRect();
+    draw->AddRect(origin, end, IM_COL32(90, 100, 115, 255));
+    ImGui::TextDisabled("0 .. %.3fs | %.4g .. %.4g | t=%.3fs value=%.5g",
+        m_curveEnd, m_curveMin, m_curveMax, m_playhead,
+        asset::SampleFloatKeys(sampledKeys, m_playhead, track.property.interp));
+}
+
 void SequencePanel::DrawInspector(EditorContext& ctx)
 {
     if (!m_selection.HasTrack()
@@ -1147,6 +1368,9 @@ void SequencePanel::DrawInspector(EditorContext& ctx)
     ImGui::Separator();
     DrawTrackHeaderFields(track);
 
+    if (track.type == SequenceTrackType::Property
+        && track.property.valueType == asset::AnimValueType::Float)
+        DrawFloatCurve(track);
     if (!m_selection.HasItem()) return;
     ImGui::Separator();
     const int channels = ChannelCount(track.type);
@@ -1173,22 +1397,17 @@ void SequencePanel::DrawInspector(EditorContext& ctx)
 
 void SequencePanel::SortChannelKeepingSelection(int track, int channel, double keepTime)
 {
+    (void)keepTime;
     if (track < 0 || track >= static_cast<int>(m_asset.tracks.size())) return;
     SequenceTrack& target = m_asset.tracks[static_cast<std::size_t>(track)];
-    SortChannel(target, channel);
-
-    if (m_selection.track != track || m_selection.channel != channel) return;
-    /// @note 並べ替えで添字が動くので、掴んでいた時刻に最も近いものを選び直す。
-    const std::size_t count = ChannelSize(target, channel);
-    int best = -1;
-    double bestDelta = 1.0e18;
-    for (std::size_t i = 0; i < count; ++i) {
-        const double delta = std::fabs(SpanOf(target, channel, i, Duration()).start - keepTime);
-        if (delta >= bestDelta) continue;
-        bestDelta = delta;
-        best = static_cast<int>(i);
+    if (m_selection.track == track && m_selection.channel == channel) {
+        WithChannel(target, channel, [&](auto& values) {
+            m_selection.index = detail::SortCurveSelection(values, m_selection.index,
+                [](const auto& value) { return ElementStart(value); });
+        });
+        return;
     }
-    m_selection.index = best;
+    SortChannel(target, channel);
 }
 
 void SequencePanel::AddTrack(SequenceTrackType type)
@@ -1202,6 +1421,7 @@ void SequencePanel::AddTrack(SequenceTrackType type)
     if (type != SequenceTrackType::Event) track.binding = "$self";
     m_asset.tracks.push_back(std::move(track));
     m_selection = { static_cast<int>(m_asset.tracks.size()) - 1, 0, -1 };
+    m_curveTrack = -1;
     MarkEdited();
 }
 
@@ -1211,6 +1431,7 @@ void SequencePanel::DeleteTrack(int index)
     PushUndo();
     m_asset.tracks.erase(m_asset.tracks.begin() + static_cast<std::ptrdiff_t>(index));
     m_selection = {};
+    m_curveTrack = -1;
     MarkEdited();
 }
 
@@ -1256,7 +1477,7 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
     else if (!m_status.empty())
         ImGui::TextDisabled("%s", m_status.c_str());
 
-    const float inspectorHeight = 236.0f;
+    const float inspectorHeight = 460.0f;
     const float timelineHeight =
         (std::max)(ImGui::GetContentRegionAvail().y - inspectorHeight, 120.0f);
 
@@ -1306,4 +1527,4 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
                                      [this]() { return Save(); });
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

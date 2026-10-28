@@ -1,5 +1,5 @@
 /// @file    SceneEditCapacityTests.cpp
-/// @brief   エディターの複製・貼り付け・UI 作成が必要数を先行確認する契約。
+/// @brief   エディターの複製・貼り付け・UI 作成が旧固定容量を超えて動作する契約。
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #include <TestKit/TestKit.hpp>
@@ -15,22 +15,11 @@
 #include <string>
 
 namespace fbzz::tests {
-namespace {
-
-class EditorCapacityProbe final : public scene::Script {
-public:
-    int runtimeCounter = 37;
-    int serializeCalls = 0;
-    void OnBeforeSerialize() override { ++serializeCalls; }
-};
-
-} /// @note namespace
-
 class SceneEditCapacityTest : public testkit::EditorFixture {
 protected:
-    bool FillLeaving(scene::Scene& target, std::size_t available)
+    bool GrowPopulation(scene::Scene& target)
     {
-        while (target.RemainingEntityCapacity() > available)
+        while (target.GameObjectCount() < 4097)
             if (!target.TryCreateGameObject("Existing")) return false;
         return true;
     }
@@ -43,7 +32,7 @@ protected:
     int m_dirtyCalls = 0;
 };
 
-TEST_F(SceneEditCapacityTest, DuplicateAndPasteRejectWholeHierarchyBeforeChangingSelection)
+TEST_F(SceneEditCapacityTest, DuplicateAndPastePreserveHierarchyBeyondOldCapacity)
 {
     auto& target = AttachScene();
     auto& root = target.CreateGameObject("Root");
@@ -52,36 +41,29 @@ TEST_F(SceneEditCapacityTest, DuplicateAndPasteRejectWholeHierarchyBeforeChangin
     ASSERT_EQ(child.GetParent(), &root);
     Context().selectedEntities = {root.GetID(), child.GetID()};
     editor::CopySelectedToClipboard(Context());
-    auto probe = std::make_unique<EditorCapacityProbe>();
-    auto* existingScript = probe.get();
-    probe->SetContext(&target, &root);
-    scene::ScriptEntry entry;
-    entry.script = std::move(probe);
-    root.AddComponent<scene::ScriptComponent>().scripts.push_back(std::move(entry));
     ASSERT_TRUE(editor::HasGameObjectClipboard());
-    ASSERT_TRUE(FillLeaving(target, 1));
+    ASSERT_TRUE(GrowPopulation(target));
     TrackDirty();
-    const auto selection = Context().selectedEntities;
     const auto count = target.GameObjectCount();
 
-    EXPECT_EQ(editor::MakeDuplicateSelectedCommand(Context()), nullptr);
-    EXPECT_EQ(editor::DuplicateHierarchyRecursive(Context(), root.GetID(), {}, true), scene::EntityID::INVALID);
-    EXPECT_EQ(editor::MakePasteClipboardCommand(Context()), nullptr);
+    (void)editor::MakeDuplicateSelectedCommand(Context());
+    ASSERT_EQ(target.GameObjectCount(), count + 2);
+    (void)editor::MakePasteClipboardCommand(Context());
 
-    EXPECT_EQ(target.GameObjectCount(), count);
-    EXPECT_EQ(target.RemainingEntityCapacity(), 1u);
-    EXPECT_EQ(Context().selectedEntities, selection);
+    EXPECT_EQ(target.GameObjectCount(), count + 4);
     EXPECT_EQ(root.GetChildCount(), 1);
     EXPECT_EQ(child.GetParent(), &root);
-    EXPECT_EQ(m_dirtyCalls, 0);
-    EXPECT_EQ(existingScript->runtimeCounter, 37);
-    EXPECT_EQ(existingScript->serializeCalls, 0);
-    EXPECT_EQ(root.GetComponent<scene::ScriptComponent>()->scripts.front().script.get(), existingScript);
-    EXPECT_EQ(target.Find("Root (Clone)"), nullptr);
-    EXPECT_EQ(target.Find("Root (Copy)"), nullptr);
+    EXPECT_EQ(m_dirtyCalls, 2);
+    auto* duplicate = target.Find("Root (Clone)");
+    ASSERT_NE(duplicate, nullptr);
+    EXPECT_EQ(duplicate->GetChildCount(), 1);
+    ASSERT_EQ(Context().selectedEntities.size(), 1u);
+    auto* pasted = target.GetGameObject(Context().selectedEntities.front());
+    ASSERT_NE(pasted, nullptr);
+    EXPECT_EQ(pasted->GetChildCount(), 1);
 }
 
-TEST_F(SceneEditCapacityTest, ParentAndChildSelectionDuplicatesOnlyTheOriginalHierarchyAtBoundary)
+TEST_F(SceneEditCapacityTest, ParentAndChildSelectionDuplicatesOnlyTheOriginalHierarchyAfterGrowth)
 {
     auto& target = AttachScene();
     auto& root = target.CreateGameObject("Root");
@@ -89,12 +71,12 @@ TEST_F(SceneEditCapacityTest, ParentAndChildSelectionDuplicatesOnlyTheOriginalHi
     child.SetParent(root);
     ASSERT_EQ(child.GetParent(), &root);
     Context().selectedEntities = {child.GetID(), root.GetID()};
-    ASSERT_TRUE(FillLeaving(target, 2));
+    ASSERT_TRUE(GrowPopulation(target));
     TrackDirty();
 
     (void)editor::MakeDuplicateSelectedCommand(Context());
 
-    EXPECT_EQ(target.RemainingEntityCapacity(), 0u);
+    EXPECT_EQ(target.GameObjectCount(), 4099u);
     auto* duplicate = target.Find("Root (Clone)");
     ASSERT_NE(duplicate, nullptr);
     ASSERT_EQ(duplicate->GetChildCount(), 1);
@@ -105,63 +87,65 @@ TEST_F(SceneEditCapacityTest, ParentAndChildSelectionDuplicatesOnlyTheOriginalHi
     EXPECT_EQ(m_dirtyCalls, 1);
 }
 
-TEST_F(SceneEditCapacityTest, UIPresetAccountsForAutomaticCanvasBeforeCreation)
+TEST_F(SceneEditCapacityTest, UIPresetCreatesAutomaticCanvasBeyondOldCapacity)
 {
     auto& target = AttachScene();
     auto& existing = target.CreateGameObject("ExistingSelection");
     Context().selectedEntities = {existing.GetID()};
-    ASSERT_TRUE(FillLeaving(target, 2));
+    ASSERT_TRUE(GrowPopulation(target));
     TrackDirty();
     editor::CreateObjectRequest request;
     request.key = "ui.button";
     std::string code;
     std::string message;
 
-    EXPECT_FALSE(editor::ValidateCreateObjectRequest(Context(), request, code, message));
-    EXPECT_EQ(code, "SCENE_CAPACITY");
-    EXPECT_EQ(editor::MakeCreateObjectCommand(Context(), request, "Create Button", true), nullptr);
+    EXPECT_TRUE(editor::ValidateCreateObjectRequest(Context(), request, code, message));
+    ASSERT_NE(editor::MakeCreateObjectCommand(Context(), request, "Create Button", true), nullptr);
 
-    EXPECT_EQ(target.RemainingEntityCapacity(), 2u);
-    EXPECT_EQ(target.Find("Canvas"), nullptr);
-    EXPECT_EQ(target.Find("Button"), nullptr);
-    EXPECT_FALSE(Context().activeUICanvas.IsValid());
-    EXPECT_EQ(Context().selectedEntities.front(), existing.GetID());
-    EXPECT_EQ(m_dirtyCalls, 0);
+    EXPECT_EQ(target.GameObjectCount(), 4100u);
+    auto* canvas = target.Find("Canvas");
+    auto* button = target.Find("Button");
+    ASSERT_NE(canvas, nullptr);
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->GetParent(), canvas);
+    EXPECT_TRUE(Context().activeUICanvas.IsValid());
+    EXPECT_EQ(Context().selectedEntities.front(), button->GetID());
+    EXPECT_EQ(m_dirtyCalls, 1);
 }
 
-TEST_F(SceneEditCapacityTest, CapacityFailureIsNotReportedAsSettingsOnlyPresetSuccess)
+TEST_F(SceneEditCapacityTest, ObjectCreationAndWeatherPresetWorkAfterGrowth)
 {
     auto& target = AttachScene();
-    ASSERT_TRUE(FillLeaving(target, 0));
+    ASSERT_TRUE(GrowPopulation(target));
     TrackDirty();
     editor::CreateObjectRequest request;
     request.key = "empty";
     int notifications = 0;
     auto notify = [&notifications](const std::vector<std::string>&) { ++notifications; };
 
-    EXPECT_EQ(editor::MakeCreateObjectCommand(Context(), request, "Create Empty", true, notify), nullptr);
+    ASSERT_NE(editor::MakeCreateObjectCommand(Context(), request, "Create Empty", true, notify), nullptr);
     const auto* weather = editor::FindObjectPreset("env.weather");
     ASSERT_NE(weather, nullptr);
-    EXPECT_EQ(weather->create(Context()), nullptr);
-    EXPECT_EQ(notifications, 0);
-    EXPECT_EQ(m_dirtyCalls, 0);
-    EXPECT_EQ(target.GameObjectCount(), scene::Scene::MAX_ENTITIES);
+    ASSERT_NE(weather->create(Context()), nullptr);
+    EXPECT_EQ(notifications, 1);
+    EXPECT_EQ(m_dirtyCalls, 1);
+    EXPECT_EQ(target.GameObjectCount(), 4100u);
 }
 
-TEST_F(SceneEditCapacityTest, ExistingCanvasAllowsButtonToUseTwoRemainingSlots)
+TEST_F(SceneEditCapacityTest, ExistingCanvasIsReusedAfterGrowth)
 {
     auto& target = AttachScene();
     auto& canvas = target.CreateGameObject("Canvas");
     canvas.AddComponent<scene::UICanvas>();
     Context().activeUICanvas = canvas.GetID();
-    ASSERT_TRUE(FillLeaving(target, 2));
+    ASSERT_TRUE(GrowPopulation(target));
     TrackDirty();
     editor::CreateObjectRequest request;
     request.key = "ui.button";
 
     ASSERT_NE(editor::MakeCreateObjectCommand(Context(), request, "Create Button", true), nullptr);
 
-    EXPECT_EQ(target.RemainingEntityCapacity(), 0u);
+    EXPECT_EQ(target.GameObjectCount(), 4099u);
     auto* button = target.Find("Button");
     ASSERT_NE(button, nullptr);
     EXPECT_EQ(button->GetParent(), &canvas);

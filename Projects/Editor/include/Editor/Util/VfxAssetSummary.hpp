@@ -59,7 +59,7 @@ struct VfxAssetSummary {
 
 /// パスと最終更新時刻でキャッシュしながら構成を返す。
 ///
-/// @note 失敗はキャッシュしない。Script DLL のホットリロード中は一時的に
+    /// @note 失敗はキャッシュしない。スクリプトのビルド適用中は一時的に
 ///       スクリプト型が引けず展開に失敗しうるので、覚えてしまうと
 ///       リロードが終わっても «壊れた .vfx» のまま表示が戻らない。
 [[nodiscard]] const VfxAssetSummary& GetVfxAssetSummary(const std::string& diskPath);

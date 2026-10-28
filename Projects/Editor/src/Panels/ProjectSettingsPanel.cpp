@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
+#include <Editor/Util/LocalClock.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/FileDialog.hpp>
@@ -40,7 +41,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
-#include <ctime>
 #include <filesystem>
 #include <functional>
 #include <sstream>
@@ -148,16 +148,6 @@ bool EnumCombo(E& value, const char* const (&labels)[N])
     return changed;
 }
 
-std::string LocalClockNow()
-{
-    const std::time_t now = std::time(nullptr);
-    std::tm local{};
-    localtime_s(&local, &now);
-    char buffer[16];
-    std::strftime(buffer, sizeof(buffer), "%H:%M:%S", &local);
-    return buffer;
-}
-
 void StatusDot(ThemeColor color)
 {
     ImGui::TextColored(EditorTheme::Color(color), "\xE2\x97\x8F");
@@ -184,7 +174,6 @@ bool ConfirmPopup(const char* id, const char* message, const char* confirmLabel)
     }
     return confirmed;
 }
-
 
 std::string ImportPresetsDir(const EditorContext& ctx)
 {
@@ -252,7 +241,6 @@ PresetCache& Presets()
     static PresetCache cache;
     return cache;
 }
-
 
 /// @note ランタイム側 (ProjectSettings::Load) が同じ規則で探す。ここが唯一の定義。
 std::string InputActionsPath(const EditorContext& ctx)
@@ -327,8 +315,7 @@ std::string JoinNames(const std::vector<std::string>& names)
     return joined;
 }
 
-} /// @note namespace
-
+} ///< @note namespace
 
 void ProjectSettingsPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -585,7 +572,6 @@ void ProjectSettingsPanel::DrawSection(EditorContext& ctx, Section section)
     ImGui::PopID();
 }
 
-
 bool ProjectSettingsPanel::Matches(const char* label, const char* keywords)
 {
     if (!Searching()) return true;
@@ -727,7 +713,6 @@ void ProjectSettingsPanel::TickInputAutoSave(EditorContext& ctx)
     }
 }
 
-
 void ProjectSettingsPanel::DrawApplication(EditorContext& ctx, ProjectSettings& settings)
 {
     const ProjectSettings& d = ProjectDefaults();
@@ -802,7 +787,6 @@ void ProjectSettingsPanel::DrawCursor(EditorContext& ctx, CursorAppearance& curs
     /// @note 編集中に反映しない。Editor ではウィンドウ全体のカーソルが変わり、パネルの上でもゲームの絵が出る。
     if (!Searching()) ImGui::TextDisabled("%s", LOCT("Images are loaded when Play starts."));
 }
-
 
 void ProjectSettingsPanel::DrawPipelineAsset(EditorContext& ctx)
 {
@@ -979,6 +963,14 @@ void ProjectSettingsPanel::DrawGraphics(EditorContext& ctx, renderer::RenderSett
                   "ライトを視錐台のクラスタへ振り分けて、画素ごとに近いライトだけを評価する",
                   [&] { return ImGui::Checkbox("##v", &render.clustered.enabled); });
             if (render.clustered.enabled) {
+                Field("Many Lights", render.clustered.manyLights, &d.clustered.manyLights,
+                      "重要なライトを確率付きで選び、画素あたりの照明評価数を制限する",
+                      [&] { return ImGui::Checkbox("##v", &render.clustered.manyLights); });
+                if (render.clustered.manyLights) {
+                    Field("Light Samples", render.clustered.manyLightSamples, &d.clustered.manyLightSamples,
+                          "1〜32。増やすほど照明ノイズを減らせる。TAAと併用して調整する",
+                          [&] { return ImGui::SliderInt("##v", &render.clustered.manyLightSamples, 1, 32); });
+                }
                 Field("Cluster Distance", render.clustered.maxDistance, &d.clustered.maxDistance,
                       "クラスタを張る最大距離。これより遠いライトは振り分けない",
                       [&] { return ImGui::DragFloat("##v", &render.clustered.maxDistance, 1.0f, 1.0f, 10000.0f, "%.0f m"); });
@@ -1181,7 +1173,6 @@ void ProjectSettingsPanel::DrawDebugOverlays(renderer::RenderSettings& render)
     }
 }
 
-
 void ProjectSettingsPanel::DrawPhysics(ProjectSettings& settings)
 {
     const PhysicsSettings& d = ProjectDefaults().physics;
@@ -1254,7 +1245,6 @@ std::string ProjectSettingsPanel::LayerLabel(const ProjectSettings& settings, in
     const std::string& name = settings.game.layerNames[static_cast<std::size_t>(layer)];
     return std::to_string(layer) + ": " + (name.empty() ? "Default" : name);
 }
-
 
 void ProjectSettingsPanel::DrawInput(EditorContext& ctx)
 {
@@ -1494,7 +1484,6 @@ void ProjectSettingsPanel::DrawInputActions(bool& dirty)
     EndGroup();
 }
 
-
 void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
 {
     const AudioSettings& d = ProjectDefaults().audio;
@@ -1627,7 +1616,6 @@ void ProjectSettingsPanel::DrawAudio(ProjectSettings& settings)
     }
 }
 
-
 void ProjectSettingsPanel::DrawTagsAndLayers(ProjectSettings& settings)
 {
     /// @note 同居させるのは、どちらも GameObject を分類する ID 表で、新しい敵種別を足すときに両方触るから。
@@ -1752,7 +1740,6 @@ void ProjectSettingsPanel::DrawLayers(ProjectSettings& settings)
     }
 }
 
-
 void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
 {
     static const FbxImportOptions kDefaults{};
@@ -1862,7 +1849,6 @@ void ProjectSettingsPanel::DrawImport(EditorContext& ctx)
     EndGroup();
 }
 
-
 void ProjectSettingsPanel::DrawEditorPreferences(EditorContext& ctx)
 {
     const EditorSettings& d = EditorDefaults();
@@ -1952,4 +1938,4 @@ void ProjectSettingsPanel::DrawEditorPreferences(EditorContext& ctx)
     EndGroup();
 }
 
-} /// @note namespace fbzz::editor
+} ///< @note namespace fbzz::editor

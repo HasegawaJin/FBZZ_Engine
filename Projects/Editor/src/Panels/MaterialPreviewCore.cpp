@@ -3,9 +3,15 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 #include <Engine/Asset/MaterialParamBinding.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Core/Logger.hpp>
+#include <Graphics/Effects/RenderFiberInput.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/WaterOpticalSettings.hpp>
 #include <Engine/Asset/ShaderCapabilities.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Editor/Panels/MaterialPreviewCore.hpp>
+#include <Editor/Util/MaterialPreviewCache.hpp>
 
 #include <Engine/Asset/FiberMaterialSettings.hpp>
 #include <Engine/Asset/VelocityFieldAtlas.hpp>
@@ -25,6 +31,7 @@
 #include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
+#include <Engine/Scene/Systems/WaterSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Core/Memory/MakeUnique.hpp>
 
@@ -32,6 +39,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <map>
 #include <memory>
@@ -45,6 +53,8 @@ namespace {
 constexpr const char* kFallbackShader = "Assets/Shaders/Material/Surface/Fallback.hlsl";
 constexpr const char* kMeshFallbackShader = "Assets/Shaders/Material/Surface/Lit.hlsl";
 constexpr const char* kChannelShader = "Assets/Shaders/Debug/MaterialChannel.hlsl";
+constexpr const char* PARTICLE_PREVIEW_SHADER = "Assets/Shaders/Material/Effects/Particle.hlsl";
+constexpr float WATER_PREVIEW_EXTENT = 32.0f;
 
 /// @note Lighting.hlsli の LIGHT_UNIT_SCALE。距離補正で相殺する。
 constexpr float kLightUnitScale = std::numbers::pi_v<float>;
@@ -88,9 +98,9 @@ struct SkinningCB {
 /// @note LAYOUT: Assets/Shaders/Debug/MaterialChannel.hlsl の MaterialChannelConstants。
 struct ChannelCB {
     math::Vector4 baseColor;
-    math::Vector4 pbr;      ///< x=metallic y=roughness z=occlusionStrength w=normalStrength
-    math::Vector4 uv;       ///< xy=tiling zw=offset
-    math::Vector4 emissive; ///< rgb=emissiveColor a=emissiveScale
+    math::Vector4 pbr;      ///< @note x=metallic y=roughness z=occlusionStrength w=normalStrength
+    math::Vector4 uv;       ///< @note xy=tiling zw=offset
+    math::Vector4 emissive; ///< @note rgb=emissiveColor a=emissiveScale
     std::uint32_t textureMask = 0;
     std::uint32_t mode = 0;
     float         _pad[2] = {};
@@ -117,6 +127,7 @@ struct SharedResources {
     renderer::ResourceHandle<renderer::ConstantBufferTag> fallbackMaterialCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> channelCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> advancedCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
     /// @note Spot / Point シャドウ (b12) の無効化用。中身は 0 のまま使う。
     /// @note 定数バッファの束縛は DrawCall をまたいで残るがテクスチャ SRV はドローごとにクリアされる。
@@ -169,7 +180,7 @@ SharedResources g_shared;
 
 /// @name パラメータ解決
 
-const std::vector<float>* FindParam(const asset::MaterialAsset& material, std::string_view name)
+const std::vector<float>* FindParam(const asset::MaterialAssetAuthoring& material, std::string_view name)
 {
     auto it = material.params.find(std::string(name));
     if (it != material.params.end()) return &it->second;
@@ -186,22 +197,23 @@ const std::vector<float>* FindParam(const asset::MaterialAsset& material, std::s
     return it != material.params.end() ? &it->second : nullptr;
 }
 
-float ParamFloat(const asset::MaterialAsset* material, std::string_view name, float fallback)
+float ParamFloat(const asset::MaterialAssetAuthoring* material, std::string_view name, float fallback)
 {
     if (!material) return fallback;
     const auto* values = FindParam(*material, name);
-    return (values && !values->empty()) ? (*values)[0] : fallback;
+    return (values && !values->empty() && std::isfinite((*values)[0])) ? (*values)[0] : fallback;
 }
 
-math::Vector3 ParamFloat3(const asset::MaterialAsset* material, std::string_view name, math::Vector3 fallback)
+math::Vector3 ParamFloat3(const asset::MaterialAssetAuthoring* material, std::string_view name, math::Vector3 fallback)
 {
     if (!material) return fallback;
     const auto* values = FindParam(*material, name);
-    if (!values || values->size() < 3) return fallback;
+    if (!values || values->size() < 3 || !std::isfinite((*values)[0])
+        || !std::isfinite((*values)[1]) || !std::isfinite((*values)[2])) return fallback;
     return { (*values)[0], (*values)[1], (*values)[2] };
 }
 
-std::string FindTexturePath(const asset::MaterialAsset& material,
+std::string FindTexturePath(const asset::MaterialAssetAuthoring& material,
                             const renderer::ShaderTexBindDesc& binding)
 {
     if (auto it = material.textures.find(binding.name); it != material.textures.end())
@@ -242,11 +254,14 @@ void InitDefaultParams(const renderer::ShaderDescriptor& descriptor, std::vector
     asset::InitDefaultMaterialParams(descriptor, data);
 }
 
-void ApplyAssetParams(const asset::MaterialAsset& material,
+void ApplyAssetParams(const asset::MaterialAssetAuthoring& material,
                       const renderer::ShaderDescriptor& descriptor,
                       std::vector<std::uint8_t>& data)
 {
-    asset::ApplyMaterialAssetParams(material, descriptor, data);
+    if (asset::ResolveShaderCapabilities(material.shaderPath).surface == renderer::ShaderSurfaceContract::WATER)
+        asset::InitializeWaterAppearanceParameters(material, descriptor, data);
+    else
+        asset::ApplyMaterialAssetParams(material, descriptor, data);
     /// @note 古いプレビュー専用の別名も共通の型検証と転送を通す。
     for (const auto& variable : descriptor.vars) {
         if (material.params.contains(variable.name) || material.integerParams.contains(variable.name)) continue;
@@ -259,7 +274,57 @@ void ApplyAssetParams(const asset::MaterialAsset& material,
 
 /// @name メッシュ生成
 
-renderer::Mesh* PrimitiveFor(renderer::ResourceManager& resources, Shape shape)
+class PreviewMeshCache {
+public:
+    renderer::Mesh* Find(renderer::ResourceManager& resources, int key)
+    {
+        /// @note 旧 Manager / Reset 前のハンドルを現在の資源プールへ返さない。
+        const auto lifetime = PreviewResourceLifetime::Read(resources);
+        if (m_lifetime != lifetime) {
+            m_meshes.clear();
+            m_lifetime = lifetime;
+        }
+        const auto found = m_meshes.find(key);
+        return found != m_meshes.end() ? found->second.get() : nullptr;
+    }
+
+    renderer::Mesh* Insert(int key, std::unique_ptr<renderer::Mesh> mesh)
+    {
+        auto* result = mesh.get();
+        m_meshes[key] = std::move(mesh);
+        return result;
+    }
+
+private:
+    PreviewResourceLifetime m_lifetime{0, UINT64_MAX};
+    std::map<int, std::unique_ptr<renderer::Mesh>> m_meshes;
+};
+
+bool UploadPreviewMesh(renderer::ResourceManager& resources, renderer::Mesh& mesh)
+{
+    const void* vertices = mesh.isSkinned
+        ? static_cast<const void*>(mesh.cpuSkinnedVertices.data())
+        : static_cast<const void*>(mesh.cpuVertices.data());
+    const std::size_t vertexCount = mesh.isSkinned ? mesh.cpuSkinnedVertices.size()
+                                                  : mesh.cpuVertices.size();
+    const std::uint32_t stride = mesh.isSkinned
+        ? static_cast<std::uint32_t>(sizeof(renderer::SkinnedVertex))
+        : static_cast<std::uint32_t>(sizeof(renderer::Vertex));
+    mesh.vertexBuffer = resources.CreateVertexBuffer(vertices, vertexCount * stride, stride);
+    mesh.indexBuffer = resources.CreateIndexBuffer(mesh.cpuIndices.data(),
+                                                    static_cast<std::uint32_t>(mesh.cpuIndices.size()));
+    if (!mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid()) {
+        resources.ReleaseMeshBuffers(mesh);
+        return false;
+    }
+    mesh.vertexCount = static_cast<std::uint32_t>(vertexCount);
+    mesh.indexCount = static_cast<std::uint32_t>(mesh.cpuIndices.size());
+    mesh.ComputeBounds();
+    return true;
+}
+
+/// @note PrimitiveMesh の process キャッシュは CPU 正本としてだけ使い、GPU ハンドルを引き継がない。
+renderer::Mesh* PrimitiveSourceFor(renderer::ResourceManager& resources, Shape shape)
 {
     switch (shape) {
         case Shape::Cube:     return renderer::PrimitiveMesh::Cube(resources);
@@ -274,12 +339,28 @@ renderer::Mesh* PrimitiveFor(renderer::ResourceManager& resources, Shape shape)
     }
 }
 
+renderer::Mesh* PrimitiveFor(renderer::ResourceManager& resources, Shape shape)
+{
+    static PreviewMeshCache cache;
+    const int key = static_cast<int>(shape);
+    if (auto* mesh = cache.Find(resources, key)) return mesh;
+    const auto* source = PrimitiveSourceFor(resources, shape);
+    if (!source) return nullptr;
+
+    auto mesh = core::MakeUnique<renderer::Mesh>();
+    if (!mesh) return nullptr;
+    mesh->cpuVertices = source->cpuVertices;
+    mesh->cpuIndices = source->cpuIndices;
+    if (!UploadPreviewMesh(resources, *mesh)) return nullptr;
+    return cache.Insert(key, std::move(mesh));
+}
+
 /// @note Terrain / Water 用の細分割された平面。4 頂点の PrimitiveMesh::Plane では Water の Gerstner 波
 /// @note (頂点変位) が «平らな板» にしかならず、Terrain も陰影の補間に頂点密度が要る。
 renderer::Mesh* GridMesh(renderer::ResourceManager& resources, int segments)
 {
-    static std::map<int, std::unique_ptr<renderer::Mesh>> cache;
-    if (auto it = cache.find(segments); it != cache.end()) return it->second.get();
+    static PreviewMeshCache cache;
+    if (auto* mesh = cache.Find(resources, segments)) return mesh;
 
     std::vector<renderer::Vertex> vertices;
     std::vector<std::uint32_t> indices;
@@ -315,18 +396,16 @@ renderer::Mesh* GridMesh(renderer::ResourceManager& resources, int segments)
     mesh->cpuVertices = std::move(vertices);
     mesh->cpuIndices  = std::move(indices);
     mesh->ComputeBounds();
-    renderer::Mesh* result = mesh.get();
-    cache[segments] = std::move(mesh);
-    return result;
+    return cache.Insert(segments, std::move(mesh));
 }
 
 renderer::Mesh* SkinnedCopy(renderer::ResourceManager& resources, Shape shape)
 {
-    static std::map<int, std::unique_ptr<renderer::Mesh>> cache;
+    static PreviewMeshCache cache;
     const int key = static_cast<int>(shape);
-    if (auto it = cache.find(key); it != cache.end()) return it->second.get();
+    if (auto* mesh = cache.Find(resources, key)) return mesh;
 
-    auto* surface = PrimitiveFor(resources, shape);
+    const auto* surface = PrimitiveSourceFor(resources, shape);
     if (!surface) return nullptr;
 
     std::vector<renderer::SkinnedVertex> vertices;
@@ -344,26 +423,17 @@ renderer::Mesh* SkinnedCopy(renderer::ResourceManager& resources, Shape shape)
 
     auto mesh = core::MakeUnique<renderer::Mesh>();
     if (!mesh) return nullptr;
-    mesh->vertexBuffer = resources.CreateVertexBuffer(
-        vertices.data(), vertices.size() * sizeof(renderer::SkinnedVertex),
-        sizeof(renderer::SkinnedVertex));
-    mesh->indexBuffer = resources.CreateIndexBuffer(
-        surface->cpuIndices.data(), static_cast<std::uint32_t>(surface->cpuIndices.size()));
-    mesh->vertexCount = static_cast<std::uint32_t>(vertices.size());
-    mesh->indexCount  = static_cast<std::uint32_t>(surface->cpuIndices.size());
     mesh->isSkinned   = true;
     mesh->cpuSkinnedVertices = std::move(vertices);
     mesh->cpuIndices  = surface->cpuIndices;
-    mesh->ComputeBounds();
-    renderer::Mesh* result = mesh.get();
-    cache[key] = std::move(mesh);
-    return result;
+    if (!UploadPreviewMesh(resources, *mesh)) return nullptr;
+    return cache.Insert(key, std::move(mesh));
 }
 
 renderer::Mesh* WaterGrid(renderer::ResourceManager& resources, int segments)
 {
-    static std::map<int, std::unique_ptr<renderer::Mesh>> cache;
-    if (auto it = cache.find(segments); it != cache.end()) return it->second.get();
+    static PreviewMeshCache cache;
+    if (auto* mesh = cache.Find(resources, segments)) return mesh;
 
     auto* surface = GridMesh(resources, segments);
     if (!surface) return nullptr;
@@ -371,7 +441,7 @@ renderer::Mesh* WaterGrid(renderer::ResourceManager& resources, int segments)
     std::vector<WaterVertex> vertices;
     vertices.reserve(surface->cpuVertices.size());
     for (const auto& source : surface->cpuVertices)
-        vertices.push_back({ source.position, source.uv });
+        vertices.push_back({ source.position * WATER_PREVIEW_EXTENT, source.uv });
 
     auto mesh = core::MakeUnique<renderer::Mesh>();
     if (!mesh) return nullptr;
@@ -382,11 +452,10 @@ renderer::Mesh* WaterGrid(renderer::ResourceManager& resources, int segments)
     mesh->vertexCount = static_cast<std::uint32_t>(vertices.size());
     mesh->indexCount  = static_cast<std::uint32_t>(surface->cpuIndices.size());
     mesh->cpuVertices = surface->cpuVertices;
+    for (auto& vertex : mesh->cpuVertices) vertex.position = vertex.position * WATER_PREVIEW_EXTENT;
     mesh->cpuIndices  = surface->cpuIndices;
     mesh->ComputeBounds();
-    renderer::Mesh* result = mesh.get();
-    cache[segments] = std::move(mesh);
-    return result;
+    return cache.Insert(segments, std::move(mesh));
 }
 
 /// @name 境界
@@ -506,6 +575,13 @@ renderer::ResourceHandle<renderer::TextureTag> DefaultTextureForSlot(Flavor flav
 
 bool EnsureShared(renderer::ResourceManager& resources, bool needFallbackShader)
 {
+    /// @note Numeric GPU handles cannot be reused after manager replacement or a device-resource reset.
+    static PreviewResourceLifetime lifetime{0, UINT64_MAX};
+    const auto current = PreviewResourceLifetime::Read(resources);
+    if (lifetime != current) {
+        g_shared = {};
+        lifetime = current;
+    }
     if (needFallbackShader && !g_shared.fallbackShader.IsValid())
         g_shared.fallbackShader = resources.LoadShader(kMeshFallbackShader);
     if (needFallbackShader && !g_shared.fallbackShader.IsValid()) return false;
@@ -524,6 +600,11 @@ bool EnsureShared(renderer::ResourceManager& resources, bool needFallbackShader)
         g_shared.objectCB = resources.CreateConstantBuffer(sizeof(scene::PerObjectCB));
     if (!g_shared.lightCB.IsValid())
         g_shared.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
+    if (!g_shared.advancedCB.IsValid()) {
+        g_shared.advancedCB = resources.CreateConstantBuffer(sizeof(scene::AdvancedGraphicsCB));
+        const scene::AdvancedGraphicsCB isolated{};
+        resources.Update(g_shared.advancedCB, &isolated, sizeof(isolated));
+    }
     if (!g_shared.shadowCB.IsValid())
         g_shared.shadowCB = resources.CreateConstantBuffer(sizeof(scene::ShadowConstantsCB));
     if (needFallbackShader && !g_shared.fallbackMaterialCB.IsValid())
@@ -553,7 +634,7 @@ bool EnsureShared(renderer::ResourceManager& resources, bool needFallbackShader)
 /// @note 層 .mat (Layer0_Ground.mat 等) は接頭辞なしのキーを持つので 1 層として焼く。
 /// @note 旧形式の «layer0_diffuse» のような接頭辞付きキーを持つ .mat は、続く番号がある限り層を並べる。
 /// @return 層配列を置けなかったら false。
-bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialAsset* material,
+bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialAssetAuthoring* material,
                     const math::Matrix4& viewProjection, TerrainObjectCB& outCb)
 {
     if (!g_shared.terrainFallback.IsValid())
@@ -578,13 +659,15 @@ bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialA
     std::vector<scene::TerrainLayerGpu> layers;
     for (int i = 0; hasPrefix("layer" + std::to_string(i) + "_"); ++i) {
         const std::string prefix = "layer" + std::to_string(i) + "_";
-        scene::TerrainLayerGpu layer = scene::ReadTerrainLayerParams(material, prefix);
-        scene::FillTerrainLayerTextureIndices(resources, material, prefix, g_shared.terrainFallback, layer);
+        scene::TerrainLayerGpu layer = scene::ReadTerrainLayerParams(*material, prefix);
+        scene::FillTerrainLayerTextureIndices(resources, *material, prefix, g_shared.terrainFallback, layer);
         layers.push_back(layer);
     }
     if (layers.empty()) {
-        scene::TerrainLayerGpu layer = scene::ReadTerrainLayerParams(material);
-        scene::FillTerrainLayerTextureIndices(resources, material, {}, g_shared.terrainFallback, layer);
+        scene::TerrainLayerGpu layer = material ? scene::ReadTerrainLayerParams(*material)
+            : scene::ReadTerrainLayerParams(static_cast<const asset::MaterialAsset*>(nullptr));
+        if (material) scene::FillTerrainLayerTextureIndices(resources, *material, {}, g_shared.terrainFallback, layer);
+        else scene::FillTerrainLayerTextureIndices(resources, static_cast<const asset::MaterialAsset*>(nullptr), {}, g_shared.terrainFallback, layer);
         layers.push_back(layer);
     }
 
@@ -617,7 +700,7 @@ bool BuildTerrainCB(renderer::ResourceManager& resources, const asset::MaterialA
     return true;
 }
 
-WaterCB BuildWaterCB(const asset::MaterialAsset* material,
+WaterCB BuildWaterCB(const asset::MaterialAssetAuthoring* material,
                            const math::Matrix4& viewProjection,
                            float time,
                            const scene::WaterDetailNoise& detailNoise)
@@ -633,13 +716,26 @@ WaterCB BuildWaterCB(const asset::MaterialAsset* material,
                          ParamFloat(material, "reflectivity", 0.35f),
                          ParamFloat(material, "fresnelBias", 0.02f),
                          ParamFloat(material, "fresnelPower", 5.0f) };
-    cb.normalParams = { 0.0f, 0.0f, detailNoise.derivativeScale,
+    const auto optics = material ? asset::ResolveWaterOpticalSettings(*material) : asset::WaterOpticalSettings{};
+    cb.absorptionCoefficients = {optics.absorption.x, optics.absorption.y, optics.absorption.z, 0.0f};
+    cb.scatteringCoefficients = {optics.scattering.x, optics.scattering.y, optics.scattering.z, 0.0f};
+    cb.opticalParams = {optics.enabled ? 1.0f : 0.0f, optics.phaseG, 0.0f, 0.0f};
+    cb.waveControls = {4.0f, 0.0f, 0.0f, 1.0f};
+    cb.normalParams = { WATER_PREVIEW_EXTENT, WATER_PREVIEW_EXTENT, detailNoise.derivativeScale,
                         ParamFloat(material, "normalStrength", 0.75f) };
-    cb.timeParams   = { 0.0f, 0.0f, detailNoise.invTileCells, time };
+    cb.timeParams = { WATER_PREVIEW_EXTENT / 64.0f, WATER_PREVIEW_EXTENT / 64.0f,
+                      detailNoise.invTileCells, time };
     cb.foamParams = { ParamFloat(material, "foamThreshold", 0.3f),
                       ParamFloat(material, "foamFade", 0.5f),
                       ParamFloat(material, "foamStrength", 0.6f),
                       ParamFloat(material, "foamNoiseScale", 0.5f) };
+    cb.crestFoamParams = { math::Clamp01(ParamFloat(material, "crestFoamThreshold", 0.25f)),
+        (std::clamp)(ParamFloat(material, "crestFoamFade", 0.15f), 0.001f, 1.0f),
+        (std::clamp)(ParamFloat(material, "crestFoamStrength", 0.9f), 0.0f, 4.0f),
+        (std::clamp)(ParamFloat(material, "crestFoamLifetime", 1.2f), 0.0f, 10.0f) };
+    const math::Vector3 foamColor = ParamFloat3(material, "foamColor", { 0.95f, 0.98f, 1.0f });
+    cb.foamColorRoughness = { math::Clamp01(foamColor.x), math::Clamp01(foamColor.y),
+        math::Clamp01(foamColor.z), (std::clamp)(ParamFloat(material, "foamRoughness", 0.7f), 0.05f, 1.0f) };
     cb.refractionFlowParams = { ParamFloat(material, "refractionStrength", 0.02f),
                                 ParamFloat(material, "flowSpeed", 0.3f), 0.0f, 0.0f };
     cb.detailParams = { ParamFloat(material, "detailScale", 0.35f),
@@ -648,22 +744,29 @@ WaterCB BuildWaterCB(const asset::MaterialAsset* material,
                         ParamFloat(material, "smoothness", 0.92f) };
     const math::Vector3 sss = ParamFloat3(material, "sssColor", { 0.12f, 0.50f, 0.46f });
     cb.sssParams = { sss.x, sss.y, sss.z, ParamFloat(material, "sssStrength", 0.6f) };
-    /// @note プレビューは IBL キューブを持たないので、空反射はフラット色へフォールバックさせる。
-    /// @note y は波の «群» の深さ。プレビューの波は極小 (振幅 0.012 m) なので、群まで掛けると
-    /// @note 水面が止まって見える瞬間ができる。ここは 0 のまま «常に同じうねり» で見せる。
-    cb.reflectParams = { 0.0f, 0.0f, 0.0f, 0.35f };
+    /// @note The preview has no scene IBL cube; the water shader retains its analytic sky fallback.
+    cb.reflectParams = { ParamFloat(material, "skyReflection", 1.0f), 0.0f, 0.0f, 0.0f };
     cb.flowParams    = { 1.0f, 0.0f,
                          (std::max)(ParamFloat(material, "detailAnisotropy", 2.0f), 1.0f),
                          (std::max)(ParamFloat(material, "detailWarp",       0.5f), 0.0f) };
 
-    /// @note 波が 1 本も指定されていない .mat でも «水面» に見せる。波の指定は Water コンポーネント
-    /// @note 側に持つことが多く、.mat だけ見ると全部ゼロ = 完全な鏡面になり判別できないため。
-    cb.waveDir[0]    = { 1.0f, 0.0f, 0.0f, 0.0f };
-    cb.waveParams[0] = { 0.012f, 0.55f, 1.1f, 0.0f };
-    cb.waveDir[1]    = { 0.35f, 0.94f, 0.0f, 0.0f };
-    cb.waveParams[1] = { 0.008f, 0.31f, 1.7f, 0.0f };
-    /// @note 方向広がりはプレビューの極小波では読み取れないうえ、頂点評価を 2 倍にする。切っておく。
-    cb.waveShapeParams = { 0.0f, 0.0f, 0.0f, 0.0f };
+    /// @note Use the runtime material resolver so Flat and authored waves remain distinguishable in thumbnails.
+    /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/single-layer-water-shading-model-in-unreal-engine Water material parameters.
+    scene::WaterComponent water;
+    if (material) scene::ResolveWaterWaves(water, *material, {});
+    else scene::ResolveWaterWaves(water, static_cast<const asset::MaterialAsset*>(nullptr), {});
+    cb.waveControls.x = static_cast<float>(water.waveCount);
+    cb.reflectParams.y = water.waveGrouping;
+    cb.waveShapeParams.x = water.waveSpread;
+    for (size_t index = 0; index < water.waveCount; ++index) {
+        const auto& wave = water.waves[index];
+        const bool enabled = wave.amplitude > 0.0001f && wave.direction.LengthSq() > 1.0e-8f;
+        const auto direction = enabled ? wave.direction.Normalized() : math::Vector2{1.0f, 0.0f};
+        const float k = enabled ? math::TWO_PI / wave.wavelength : 0.0f;
+        cb.waveDir[index] = {direction.x, direction.y, math::Clamp01(wave.steepness), enabled ? 1.0f : 0.0f};
+        cb.waveParams[index] = {enabled ? wave.amplitude : 0.0f, wave.wavelength, std::sqrt(9.8f * k), k};
+        cb.reflectParams.w += std::abs(wave.amplitude) * (1.0f + water.waveGrouping);
+    }
     return cb;
 }
 
@@ -683,7 +786,7 @@ std::uint32_t ChannelModeValue(Channel channel)
     }
 }
 
-ChannelCB BuildChannelCB(const asset::MaterialAsset* material, const GpuData* gpu, Channel channel)
+ChannelCB BuildChannelCB(const asset::MaterialAssetAuthoring* material, const GpuData* gpu, Channel channel)
 {
     ChannelCB cb{};
     const math::Vector4 albedo = material ? AlbedoColor(*material) : math::Vector4{ 0.8f, 0.8f, 0.8f, 1.0f };
@@ -839,6 +942,7 @@ void DrawNeutralMesh(renderer::IRenderer& renderer,
     drawCall.constantBuffers[2]  = g_shared.fallbackMaterialCB;
     drawCall.constantBuffers[3]  = g_shared.lightCB;
     drawCall.constantBuffers[4]  = g_shared.shadowCB;
+    drawCall.constantBuffers[8]  = g_shared.advancedCB;
     drawCall.constantBuffers[9]  = g_shared.clusterCB;
     drawCall.constantBuffers[12] = g_shared.punctualShadowCB;
     renderer.Submit(drawCall, resources);
@@ -1048,6 +1152,23 @@ bool RenderParticle(renderer::IRenderer& renderer,
     if (blend == renderer::BlendMode::PREMULTIPLIED)
         particleData.effectsFlags |= scene::kParticleFxPremultiplied;
     if (desc.material) {
+        const auto& settings = desc.material->particle;
+        particleData.effectsFlags |= (settings.sixWayLighting ? scene::kParticleFxSixWay : 0u)
+            | (settings.punctualLighting ? scene::kParticleFxPunctual : 0u)
+            | (settings.volumetric ? scene::kParticleFxVolumetric : 0u)
+            | ((static_cast<std::uint32_t>(settings.alphaSource) & scene::kParticleAlphaMask)
+               << scene::kParticleAlphaShift);
+        particleData.emissiveScale = (std::max)(settings.emissiveScale, 0.0f);
+        particleData.lightingStrength = (std::max)(settings.lightingStrength, 0.0f);
+        particleData.smokeWrap = math::Clamp01(settings.smokeWrap);
+        particleData.smokeTransmission = (std::max)(settings.smokeTransmission, 0.0f);
+        particleData.smokeBackScatterPower = (std::max)(settings.smokeBackScatterPower, 0.1f);
+        particleData.volumetricSteps = static_cast<std::uint32_t>(std::clamp(settings.volumetricSteps, 1, 64));
+        particleData.volumetricDensity = (std::max)(settings.volumetricDensity, 0.0f);
+        particleData.volumetricAnisotropy = std::clamp(settings.volumetricAnisotropy, -0.95f, 0.95f);
+        particleData.volumetricNoiseScale = (std::max)(settings.volumetricNoiseScale, 0.0f);
+        particleData.sixWayEmission = {settings.sixWayEmissionColor.x, settings.sixWayEmissionColor.y,
+            settings.sixWayEmissionColor.z, (std::max)(settings.sixWayEmissionScale, 0.0f)};
         if (auto it = desc.material->textures.find("albedo");
             it != desc.material->textures.end() && !it->second.empty() &&
             scene::IsEffectTextureSrgb(it->second)) {
@@ -1125,7 +1246,7 @@ bool EnsureTrailGeometry(renderer::ResourceManager& resources)
     return g_shared.trailVertexBuffer.IsValid() && g_shared.trailIndexBuffer.IsValid();
 }
 
-math::Vector4 TrailParamColor(const asset::MaterialAsset* material,
+math::Vector4 TrailParamColor(const asset::MaterialAssetAuthoring* material,
                               std::string_view name,
                               const math::Vector4& fallback)
 {
@@ -1153,10 +1274,10 @@ bool RenderTrail(renderer::IRenderer& renderer,
     TrailCB trailData{};
     /// @note 帯の色は TrailComponent が持つ値で、.mat には無いことが多い。
     /// @note 同名の [params] があればそれを使い、無ければ «白 → 透明» の既定で形を見せる。
-    trailData.colorStart = TrailParamColor(desc.material, "colorStart", { 1.0f, 1.0f, 1.0f, 1.0f });
-    trailData.colorEnd   = TrailParamColor(desc.material, "colorEnd",   { 1.0f, 1.0f, 1.0f, 0.0f });
-    trailData.uvScrollSpeed = ParamFloat(desc.material, "uvScrollSpeed", 0.0f);
-    trailData.uvTiling      = ParamFloat(desc.material, "uvTiling", 1.0f);
+    trailData.colorStart = TrailParamColor(desc.material.get(), "colorStart", { 1.0f, 1.0f, 1.0f, 1.0f });
+    trailData.colorEnd   = TrailParamColor(desc.material.get(), "colorEnd",   { 1.0f, 1.0f, 1.0f, 0.0f });
+    trailData.uvScrollSpeed = ParamFloat(desc.material.get(), "uvScrollSpeed", 0.0f);
+    trailData.uvTiling      = ParamFloat(desc.material.get(), "uvTiling", 1.0f);
     trailData.time          = desc.time;
     if (desc.material) {
         if (auto it = desc.material->textures.find("albedo");
@@ -1369,10 +1490,17 @@ struct FiberPreviewGeometry {
 };
 
 struct FiberPreviewShared {
-    std::uint64_t resetVersion = 0;
+    PreviewResourceLifetime lifetime;
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> contactCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> appearanceCB;
+    std::vector<uint8_t> appearanceBytes;
+    std::string familyPath, familyWarning;
+    renderer::ResourceHandle<renderer::ShaderTag> familyPrimary;
+    std::array<renderer::ResourceHandle<renderer::ShaderTag>, 10> familyShaders{}, familyFinShaders{};
+    uint64_t familyVersion = UINT64_MAX;
+    bool familyValid = false, familyFinValid = false;
     /// @note 局所 FlowField は 0 本。VS が未束縛の SRV を参照しないよう 1 要素の空バッファを差す。
     renderer::ResourceHandle<renderer::StructuredBufferTag> emptyFlow;
     std::map<std::array<std::uint32_t, 2>, FiberPreviewGeometry> geometry;
@@ -1384,10 +1512,11 @@ FiberPreviewShared g_fiber;
 
 bool EnsureFiberShared(renderer::ResourceManager& resources)
 {
-    /// @note ResourceManager::Reset() 後は旧ハンドルが無効。Release せずに捨てて作り直す。
-    if (g_fiber.resetVersion != resources.GetResetVersion()) {
+    /// @note 別 Manager の同じ Reset 世代も別資源。旧ハンドルは Release せず捨てる。
+    const auto lifetime = PreviewResourceLifetime::Read(resources);
+    if (g_fiber.lifetime != lifetime) {
         g_fiber = FiberPreviewShared{};
-        g_fiber.resetVersion = resources.GetResetVersion();
+        g_fiber.lifetime = lifetime;
     }
     if (!g_fiber.materialCB.IsValid())
         g_fiber.materialCB = resources.CreateConstantBuffer(sizeof(asset::FiberMaterialSettings));
@@ -1445,6 +1574,99 @@ FiberPreviewGeometry& FiberGeometryFor(renderer::ResourceManager& resources, con
     return geometry;
 }
 
+void FiberPreviewWarning(const char* message)
+{
+    if (g_fiber.familyWarning == message) return;
+    g_fiber.familyWarning = message;
+    FBZZ_LOG_WARN("Fiber material preview: %s; using the compatible built-in family", message);
+}
+
+bool ResolveFiberPreviewFamily(renderer::ResourceManager& resources, const GpuData& gpu, FiberMode mode,
+    renderer::ResourceHandle<renderer::ShaderTag>& shader, renderer::ResourceHandle<renderer::ShaderTag>& finShader)
+{
+    const auto* primary = resources.Get(gpu.shader);
+    if (!primary || gpu.paramData.size() < primary->GetDescriptor().cbufferSize) {
+        FiberPreviewWarning("material data has not been rebuilt for the shader layout");
+        return false;
+    }
+    const auto capability = resources.GetShaderCapabilities(gpu.shader);
+    const bool compatible = (capability.vertex == renderer::ShaderVertexContract::FIBER_SHELL
+            && (mode == FiberMode::Shell || mode == FiberMode::Hybrid))
+        || (capability.vertex == renderer::ShaderVertexContract::FIBER_FIN && mode == FiberMode::Fin)
+        || (capability.vertex == renderer::ShaderVertexContract::FIBER_BLADE && mode == FiberMode::Blade);
+    if (!compatible) {
+        const bool legacy = capability.vertex == renderer::ShaderVertexContract::UNKNOWN
+            && (capability.preview == renderer::ShaderPreviewKind::FIBER_SHELL
+                || capability.preview == renderer::ShaderPreviewKind::FIBER_FIN
+                || capability.preview == renderer::ShaderPreviewKind::FIBER_BLADE);
+        if (!legacy) FiberPreviewWarning("component mode does not match the declared project geometry");
+        return false;
+    }
+    const std::string path = asset::AssetDatabase::IsGuidRef(gpu.shaderPath)
+        ? asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(gpu.shaderPath))
+        : asset::AssetManager::ResolveAssetPath(gpu.shaderPath);
+    if (g_fiber.familyPath != path || g_fiber.familyPrimary != gpu.shader
+        || g_fiber.familyVersion != resources.GetShaderVersion()) {
+        g_fiber.familyPath = path;
+        g_fiber.familyPrimary = gpu.shader;
+        g_fiber.familyShaders = {};
+        g_fiber.familyFinShaders = {};
+        g_fiber.familyValid = false;
+        g_fiber.familyFinValid = false;
+        g_fiber.familyWarning.clear();
+        if (!path.ends_with(".hlsl")) {
+            g_fiber.familyVersion = resources.GetShaderVersion();
+            FiberPreviewWarning("project family requires a .hlsl primary shader");
+            return false;
+        }
+        const std::string stem = path.substr(0, path.size() - 5);
+        const auto* reference = resources.Get(gpu.shader);
+        bool valid = reference && renderer::HasFiberMaterialPrefix(reference->GetDescriptor());
+        constexpr const char* suffixes[]{"", "GBuffer", "Velocity", "Shadow", "Selection"};
+        const size_t skinCount = capability.vertex == renderer::ShaderVertexContract::FIBER_BLADE ? 1 : 2;
+        for (size_t pass = 0; pass < 5; ++pass) {
+            for (size_t skin = 0; skin < skinCount; ++skin) {
+                const auto handle = resources.LoadShader(stem + (skin ? "Skinned" : "") + suffixes[pass] + ".hlsl");
+                const auto* native = resources.Get(handle);
+                if (!native || resources.GetShaderCapabilities(handle).vertex != capability.vertex
+                    || !renderer::HasFiberMaterialPrefix(native->GetDescriptor()) || !reference
+                    || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) valid = false;
+                g_fiber.familyShaders[pass * 2 + skin] = handle;
+            }
+        }
+        g_fiber.familyValid = valid;
+        std::error_code error;
+        if (valid && capability.vertex == renderer::ShaderVertexContract::FIBER_SHELL
+            && std::filesystem::is_regular_file(stem + "Fin.hlsl", error)) {
+            bool validFins = true;
+            for (size_t pass = 0; pass < 5; ++pass) {
+                for (size_t skin = 0; skin < 2; ++skin) {
+                    const auto handle = resources.LoadShader(stem + "Fin" + (skin ? "Skinned" : "") + suffixes[pass] + ".hlsl");
+                    const auto* native = resources.Get(handle);
+                    if (!native || resources.GetShaderCapabilities(handle).vertex != renderer::ShaderVertexContract::FIBER_FIN
+                        || !renderer::HasFiberMaterialPrefix(native->GetDescriptor())
+                        || !renderer::HaveMatchingFiberMaterialLayouts(reference->GetDescriptor(), native->GetDescriptor())) validFins = false;
+                    g_fiber.familyFinShaders[pass * 2 + skin] = handle;
+                }
+            }
+            g_fiber.familyFinValid = validFins;
+            if (!validFins) g_fiber.familyFinShaders = {};
+        }
+        g_fiber.familyVersion = resources.GetShaderVersion();
+    }
+    if (!g_fiber.familyValid) {
+        FiberPreviewWarning("incomplete family, mismatched capability or material layout");
+        return false;
+    }
+    if (mode == FiberMode::Hybrid && !g_fiber.familyFinValid) {
+        FiberPreviewWarning("Hybrid requires a Shell primary and a complete matching StemFin static/skinned family");
+        return false;
+    }
+    shader = g_fiber.familyShaders[0];
+    finShader = mode == FiberMode::Hybrid ? g_fiber.familyFinShaders[0] : shader;
+    return shader.IsValid() && finShader.IsValid();
+}
+
 bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resources, const RenderDesc& desc)
 {
     if (!desc.mesh || !desc.material || desc.mesh->isSkinned) return false;
@@ -1453,9 +1675,30 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
     if (!EnsureShared(resources, true) || !EnsureFiberShared(resources)) return false;
 
     /// @note 本編と同じ値の丸め (範囲外・非有限の除去) を通す。生の params を CB へ写さない。
-    asset::FiberMaterialSettings settings = asset::ResolveFiberMaterial(desc.material);
-    scene::ResolveFiberMaskTexture(settings, desc.material, resources, g_fiber.mask);
+    asset::FiberMaterialSettings settings = asset::ResolveFiberMaterial(*desc.material);
+    const auto mask = desc.material->textures.find(asset::FIBER_MASK_TEXTURE_KEY);
+    const std::string maskPath = mask != desc.material->textures.end() ? mask->second : std::string{};
+    scene::ResolveFiberMaskTexture(settings, maskPath, resources, g_fiber.mask);
     resources.Update(g_fiber.materialCB, &settings, sizeof(settings));
+    renderer::ResourceHandle<renderer::ShaderTag> appearanceShader, appearanceFinShader;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> appearanceMaterial;
+    if (desc.gpu && desc.gpu->shader.IsValid() && desc.gpu->paramData.size() >= sizeof(settings)) {
+        if (ResolveFiberPreviewFamily(resources, *desc.gpu, desc.fiberMode, appearanceShader, appearanceFinShader)) {
+            auto bytes = desc.gpu->paramData;
+            std::memcpy(bytes.data(), &settings, sizeof(settings));
+            const auto* buffer = resources.Get(g_fiber.appearanceCB);
+            if (!buffer || buffer->GetSize() < bytes.size()) {
+                if (g_fiber.appearanceCB.IsValid()) resources.Release(g_fiber.appearanceCB);
+                g_fiber.appearanceCB = resources.CreateConstantBuffer(static_cast<uint32_t>(bytes.size()));
+                g_fiber.appearanceBytes.clear();
+            }
+            if (g_fiber.appearanceBytes != bytes) {
+                resources.Update(g_fiber.appearanceCB, bytes.data(), static_cast<uint32_t>(bytes.size()));
+                g_fiber.appearanceBytes = std::move(bytes);
+            }
+            appearanceMaterial = g_fiber.appearanceCB;
+        }
+    }
 
     /// @note 毛先と曲げまで枠へ収める。形状の境界だけで寄ると長い草の先が切れる。
     const math::Vector3 center = BoundsCenter(mesh);
@@ -1496,7 +1739,7 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
     call.pipelineState = g_shared.solidPso;
     call.constantBuffers[0]  = g_shared.frameCB;
     call.constantBuffers[1]  = g_shared.objectCB;
-    call.constantBuffers[2]  = g_fiber.materialCB;
+    call.constantBuffers[2]  = appearanceMaterial.IsValid() ? appearanceMaterial : g_fiber.materialCB;
     call.constantBuffers[3]  = g_shared.lightCB;
     call.constantBuffers[4]  = g_shared.shadowCB;
     call.constantBuffers[5]  = g_fiber.frameCB;
@@ -1509,14 +1752,14 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
 
     bool drew = false;
     if (drawFins && geometry.finIndexCount > 0) {
-        call.shader = resources.LoadShader(kFiberFinShader);
+        call.shader = appearanceFinShader.IsValid() ? appearanceFinShader : resources.LoadShader(kFiberFinShader);
         call.vertexBuffer = geometry.finVertices;
         call.indexBuffer = geometry.finIndices;
         call.indexCount = geometry.finIndexCount;
         if (call.shader.IsValid()) { renderer.Submit(call, resources); drew = true; }
     }
     if (drawShells) {
-        call.shader = resources.LoadShader(kFiberShellShader);
+        call.shader = appearanceShader.IsValid() ? appearanceShader : resources.LoadShader(kFiberShellShader);
         call.vertexBuffer = mesh.vertexBuffer;
         call.indexBuffer = mesh.indexBuffer;
         call.indexCount = mesh.indexCount;
@@ -1524,7 +1767,7 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
         if (call.shader.IsValid()) { renderer.Submit(call, resources); drew = true; }
     }
     if (drawBlades && geometry.bladeCount > 0) {
-        call.shader = resources.LoadShader(kFiberBladeShader);
+        call.shader = appearanceShader.IsValid() ? appearanceShader : resources.LoadShader(kFiberBladeShader);
         call.vertexBuffer = {};
         call.indexBuffer = {};
         call.indexCount = 0;
@@ -1541,7 +1784,7 @@ bool RenderFiber(renderer::IRenderer& renderer, renderer::ResourceManager& resou
 } /// @note namespace
 
 
-Flavor DetectFlavor(const asset::MaterialAsset& material)
+Flavor DetectFlavor(const asset::MaterialAssetAuthoring& material)
 {
     using renderer::ShaderPreviewKind;
     const auto preview = asset::ResolveShaderCapabilities(material.shaderPath).preview;
@@ -1575,7 +1818,7 @@ Flavor DetectFlavor(const asset::MaterialAsset& material)
     }
 }
 
-const char* UnsupportedBadge(const asset::MaterialAsset& material)
+const char* UnsupportedBadge(const asset::MaterialAssetAuthoring& material)
 {
     using renderer::ShaderPreviewKind;
     const auto preview = asset::ResolveShaderCapabilities(material.shaderPath).preview;
@@ -1599,7 +1842,7 @@ const char* UnsupportedBadge(const asset::MaterialAsset& material)
     }
 }
 
-math::Vector4 SwatchColor(const asset::MaterialAsset& material)
+math::Vector4 SwatchColor(const asset::MaterialAssetAuthoring& material)
 {
     static constexpr const char* kPriority[] = {
         "base_color", "baseColor", "albedo", "coreColor", "tint", "color",
@@ -1628,7 +1871,7 @@ math::Vector4 SwatchColor(const asset::MaterialAsset& material)
     return { (*found)[0] / peak, (*found)[1] / peak, (*found)[2] / peak, 1.0f };
 }
 
-math::Vector4 AlbedoColor(const asset::MaterialAsset& material)
+math::Vector4 AlbedoColor(const asset::MaterialAssetAuthoring& material)
 {
     const auto find = [&material]() -> const std::vector<float>* {
         for (const char* name : { "base_color", "baseColor", "albedo" }) {
@@ -1644,7 +1887,7 @@ math::Vector4 AlbedoColor(const asset::MaterialAsset& material)
     return { 0.20f, 0.70f, 0.80f, 1.0f };
 }
 
-std::string RepresentativeTexturePath(const asset::MaterialAsset& material)
+std::string RepresentativeTexturePath(const asset::MaterialAssetAuthoring& material)
 {
     static constexpr const char* kPriority[] = {
         "albedo", "base_color", "diffuse", "layer0_diffuse", "foamTex"
@@ -1662,6 +1905,7 @@ std::string RepresentativeTexturePath(const asset::MaterialAsset& material)
 std::string TextureLoadPath(const std::string& path, std::string_view projectRoot)
 {
     const std::string normalized = util::FileSystem::NormalizePathSeparators(path);
+    if (normalized.starts_with("guid:")) return asset::AssetManager::ResolveAssetPath(normalized);
     const std::string root = util::FileSystem::NormalizePathSeparators(std::string(projectRoot));
     /// @note .mat 内のテクスチャ参照は Assets/ 相対で保存される。
     if (normalized.starts_with("Assets/") && !root.empty()) return root + "/" + normalized;
@@ -1694,7 +1938,7 @@ const char* FiberModeLabel(FiberMode mode)
     }
 }
 
-FiberMode DefaultFiberMode(const asset::MaterialAsset& material)
+FiberMode DefaultFiberMode(const asset::MaterialAssetAuthoring& material)
 {
     switch (asset::ResolveShaderCapabilities(material.shaderPath).preview) {
         case renderer::ShaderPreviewKind::FIBER_FIN:   return FiberMode::Fin;
@@ -1703,10 +1947,11 @@ FiberMode DefaultFiberMode(const asset::MaterialAsset& material)
     }
 }
 
-Shape ThumbnailShape(const asset::MaterialAsset& material, Flavor flavor)
+Shape ThumbnailShape(const asset::MaterialAssetAuthoring& material, Flavor flavor)
 {
+    if (flavor == Flavor::Water || flavor == Flavor::Terrain) return Shape::Plane;
     /// @note 草は地面に生える前提 (worldMapping で根元の分布が XZ)。球では «苔むした玉» になり何の素材か読めない。
-    if (flavor == Flavor::Fiber && ParamFloat(&material, "grassShading", 0.0f) >= 0.5f) return Shape::Plane;
+    if (flavor == Flavor::Fiber && asset::ResolveFiberMaterial(material).m_planarShading >= 0.5f) return Shape::Plane;
     return Shape::Sphere;
 }
 
@@ -1777,15 +2022,28 @@ renderer::Mesh* ShapeMesh(renderer::ResourceManager& resources, Shape shape, Fla
 }
 
 bool BuildGpuData(GpuData& gpu,
-                  const asset::MaterialAsset& material,
+                  asset::MaterialAssetAuthoring material,
                   renderer::ResourceManager& resources,
                   std::string_view projectRoot)
 {
-    asset::MaterialAsset fallbackAsset;
-    const asset::MaterialAsset* renderAsset = &material;
+    asset::MaterialAssetAuthoring fallbackAsset;
+    const asset::MaterialAssetAuthoring* renderAsset = &material;
     if (material.shaderPath.empty()) {
-        fallbackAsset.shaderPath = kFallbackShader;
-        fallbackAsset.params["albedo"] = { 1.0f, 0.0f, 1.0f, 1.0f };
+        fallbackAsset = material;
+        if (material.renderPath == asset::RenderPath::Particle) {
+            fallbackAsset.shaderPath = PARTICLE_PREVIEW_SHADER;
+        } else {
+            fallbackAsset.shaderPath = kFallbackShader;
+            fallbackAsset.params["albedo"] = {1.0f, 0.0f, 1.0f, 1.0f};
+        }
+        renderAsset = &fallbackAsset;
+    }
+
+    if (DetectFlavor(*renderAsset) == Flavor::Water
+        && !asset::ResolveShaderCapabilities(renderAsset->shaderPath).SupportsWaterGeometry()) {
+        /// @note The builtin descriptor rebuilds b2 and texture bindings; an unsupported project's layout must not leak into shared Water.
+        fallbackAsset = *renderAsset;
+        fallbackAsset.shaderPath = "Assets/Shaders/Water/Water.hlsl";
         renderAsset = &fallbackAsset;
     }
 
@@ -1805,14 +2063,15 @@ bool BuildGpuData(GpuData& gpu,
     auto* shader = resources.Get(gpu.shader);
     if (!shader) return false;
 
-    const renderer::ShaderDescriptor& descriptor = shader->GetDescriptor();
+    const renderer::ShaderDescriptor descriptor = shader->GetDescriptor();
     const Flavor flavor = DetectFlavor(*renderAsset);
     if (flavor == Flavor::Unsupported) return false;
 
     /// @note b2 をエンジンが所有するシェーダーは «MaterialConstants» という名前の cbuffer を
     /// @note 持たないため、リフレクションが空で返る。これは «壊れている» ではないので通す。
     /// @note (Terrain は b1 の TerrainObjectCB、Trail は b2 の TrailConstants が正本)
-    const bool engineOwnsMaterialCB = flavor == Flavor::Terrain || flavor == Flavor::Trail;
+    const bool engineOwnsMaterialCB = flavor == Flavor::Terrain || flavor == Flavor::Trail
+        || flavor == Flavor::Water || flavor == Flavor::Particle;
     if (!descriptor.IsValid() && !engineOwnsMaterialCB) return false;
 
     gpu.textures.assign(16, {});
@@ -1900,7 +2159,7 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
     if (!mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid()) return false;
 
     const bool useMaterial = desc.gpu && desc.gpu->shader.IsValid();
-    if (!EnsureShared(resources, !useMaterial)) return false;
+    if (!EnsureShared(resources, !useMaterial || desc.flavor == Flavor::Water)) return false;
 
     const bool useChannel = useMaterial && desc.channel != Channel::Shaded &&
                             desc.channel != Channel::Wireframe &&
@@ -1921,7 +2180,9 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
     const math::Vector3 center = (desc.overrideRadius >= 0.0f) ? desc.overrideCenter : BoundsCenter(mesh);
     const float radius = std::max(0.0001f,
         (desc.overrideRadius >= 0.0f) ? desc.overrideRadius : BoundsRadius(mesh, center));
-    const FrameState frameState = UploadFrame(resources, desc.orbit, center, radius);
+    Orbit orbit = desc.orbit;
+    if (desc.flavor == Flavor::Water) orbit.distance *= 0.72f;
+    const FrameState frameState = UploadFrame(resources, orbit, center, radius);
     const scene::PerFrameCB& frameData = frameState.frame;
 
     /// @name b1: Flavor ごとに別の ObjectCB を差す
@@ -1931,14 +2192,14 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
             g_shared.terrainCB = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
         if (!g_shared.terrainCB.IsValid()) return false;
         TerrainObjectCB terrainData{};
-        if (!BuildTerrainCB(resources, desc.material, frameData.viewProjection, terrainData)) return false;
+        if (!BuildTerrainCB(resources, desc.material.get(), frameData.viewProjection, terrainData)) return false;
         resources.Update(g_shared.terrainCB, &terrainData, sizeof(terrainData));
         objectCBForDraw = g_shared.terrainCB;
     } else if (desc.flavor == Flavor::Water && !channelReady) {
         if (!g_shared.waterCB.IsValid())
             g_shared.waterCB = resources.CreateConstantBuffer(sizeof(WaterCB));
         if (!g_shared.waterCB.IsValid()) return false;
-        const WaterCB waterData = BuildWaterCB(desc.material, frameData.viewProjection, desc.time,
+        const WaterCB waterData = BuildWaterCB(desc.material.get(), frameData.viewProjection, desc.time,
                                                scene::GetWaterDetailNoise(resources));
         resources.Update(g_shared.waterCB, &waterData, sizeof(waterData));
         objectCBForDraw = g_shared.waterCB;
@@ -1961,7 +2222,7 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
         if (!g_shared.channelCB.IsValid())
             g_shared.channelCB = resources.CreateConstantBuffer(sizeof(ChannelCB));
         if (!g_shared.channelCB.IsValid()) return false;
-        const ChannelCB channelData = BuildChannelCB(desc.material, desc.gpu, desc.channel);
+        const ChannelCB channelData = BuildChannelCB(desc.material.get(), desc.gpu, desc.channel);
         resources.Update(g_shared.channelCB, &channelData, sizeof(channelData));
         materialCBForDraw = g_shared.channelCB;
     } else if (useMaterial) {
@@ -1978,6 +2239,19 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
     }
 
     UploadRig(resources, desc.rig, frameState);
+
+    if (desc.flavor == Flavor::Water && !channelReady) {
+        /// @note Water samples a real opaque floor and its reversed depth; a 1x1 white depth describes the near plane.
+        if (!EnsureSceneRT(resources)) return false;
+        renderer.SetRenderTarget(g_shared.sceneRT, resources);
+        renderer.Clear({0.025f, 0.055f, 0.08f, 1.0f});
+        renderer.ClearDepth();
+        auto* floor = GridMesh(resources, 8);
+        if (!floor) return false;
+        UploadObjectCB(resources, math::Matrix4::Translate({0.0f, -3.0f, 0.0f})
+            * math::Matrix4::Scale({WATER_PREVIEW_EXTENT, 1.0f, WATER_PREVIEW_EXTENT}));
+        DrawNeutralMesh(renderer, resources, *floor, {0.42f, 0.37f, 0.25f, 1.0f});
+    }
 
     renderer.SetRenderTarget(desc.target, resources);
     if (desc.clear) {
@@ -2000,6 +2274,7 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
     drawCall.constantBuffers[2]  = materialCBForDraw;
     drawCall.constantBuffers[3]  = g_shared.lightCB;
     drawCall.constantBuffers[4]  = g_shared.shadowCB;
+    drawCall.constantBuffers[8]  = g_shared.advancedCB;
     drawCall.constantBuffers[9]  = g_shared.clusterCB;
     drawCall.constantBuffers[12] = g_shared.punctualShadowCB;
     if (desc.flavor == Flavor::Skinned && !channelReady)
@@ -2018,6 +2293,8 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
         /// @note t4 は Water ではさざ波タイル。白や黒で埋めると勾配が一様な傾きへ復号され、
         /// @note プレビューの水面だけ «斜めに倒れた鏡» になるため上書きする。
         if (desc.flavor == Flavor::Water && !channelReady) {
+            drawCall.textures[5] = resources.GetDepthTexture(g_shared.sceneRT);
+            drawCall.textures[6] = resources.GetColorTexture(g_shared.sceneRT);
             const auto& detailNoise = scene::GetWaterDetailNoise(resources);
             if (detailNoise.texture.IsValid()) drawCall.textures[4] = detailNoise.texture;
             /// @note t26 は Water では速度場アトラス (Texture3D)。上の穴埋めが 2D の既定を

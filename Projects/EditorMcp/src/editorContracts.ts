@@ -11,6 +11,18 @@ export const EDITOR_PROTOCOL = 'fbzz.editor.v1';
 /// @note NodeId は Scene の UUID v4 を使い、配列移動や世代更新を越えて安定させる。
 export const NodeIdSchema = z.string().uuid();
 export const Vec3Schema = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
+/// @note 配布開始・事前確認は共通Build Opへ投影し、出力先のディスク検証はEditorで行う。
+export const PackageBuildOptionsSchema = z.object({
+    outputDirectory: z.string().optional(),
+    productName: z.string().optional(),
+    version: z.string().optional(),
+    iconPath: z.string().optional(),
+    developmentBuild: z.boolean().optional(),
+    stripEditorAssets: z.boolean().optional(),
+    scenes: z.array(z.object({ path: z.string().min(1), enabled: z.boolean().optional() }).strict()).optional(),
+    runAfterBuild: z.boolean().optional(),
+}).strict();
+export type PackageBuildOptions = z.infer<typeof PackageBuildOptionsSchema>;
 /// @note 地形ブラシの op。並びは C++ の TerrainSculptOp と同じ (追加は末尾)。
 export const TerrainSculptOpSchema = z.enum([
     'raise', 'lower', 'smooth', 'flatten', 'stamp', 'noise', 'thermalErosion', 'hydraulicErosion', 'terrace',
@@ -79,17 +91,19 @@ export type EditorQuery =
     /// @note      「目録には出るのに 1 つも呼べない Query」に見える。
     | { t: 'editor.op.query'; id: string; args?: Record<string, unknown> | undefined }
     | { t: 'editor.state' }
+    | { t: 'editor.observation'; ids?: string[] | undefined; afterSequence?: number | undefined; managedRequestId?: string | undefined; packageRequestId?: string | undefined }
     | { t: 'editor.undoHistory'; limit?: number | undefined }
     | { t: 'console.logs'; minLevel?: 'debug' | 'info' | 'warning' | 'error' | undefined; contains?: string | undefined; limit?: number | undefined; afterSequence?: number | undefined }
     /// @note includeGenerated 省略時は実行時生成オブジェクトを除外する (C++ 側の既定と一致)。
     | { t: 'scene.tree'; includeGenerated?: boolean | undefined }
     | { t: 'scene.snapshot' }
     | { t: 'scene.validate' }
-    | { t: 'scene.find'; name?: string | undefined; tag?: string | undefined; active?: boolean | undefined; comp?: string | undefined; components?: string[] | undefined; properties?: ScenePropertyFilter[] | undefined; limit?: number | undefined }
+    | { t: 'scene.find'; name?: string | undefined; tag?: string | undefined; active?: boolean | undefined; comp?: string | undefined; components?: string[] | undefined; properties?: ScenePropertyFilter[] | undefined; limit?: number | undefined; offset?: number | undefined }
     | { t: 'scene.selection' }
     | { t: 'node.components'; id: string }
-    | { t: 'script.inspect'; id: string; scriptId: string }
+    | { t: 'script.inspect'; id: string; scriptId: string; path?: string | undefined; start?: number | undefined; count?: number | undefined; wireBytes?: number | undefined; observationId?: string | undefined; close?: boolean | undefined }
     | { t: 'script.catalog'; type?: string | undefined }
+    | { t: 'script.api.catalog'; type?: string | undefined; member?: string | undefined }
     | { t: 'asset.list'; dir?: string | undefined }
     | { t: 'asset.inspect'; path: string }
     | { t: 'asset.findUnused'; limit?: number | undefined }
@@ -148,7 +162,7 @@ export type EditorQuery =
     | { t: 'audio.inspect'; id?: string | undefined }
     | { t: 'ui.inspect'; id?: string | undefined }
     /// @note スクリプト DLL / HLSL のビルド結果と診断 (shader.diagnostics の Script 版)。
-    | { t: 'build.status'; limit?: number | undefined }
+    | { t: 'build.status'; limit?: number | undefined; managedRequestId?: string | undefined; packageRequestId?: string | undefined }
     /// @note ── 流体 (.fluid) ──
     /// @note 焼きとプレビューは非同期ジョブ。fluid.jobStatus が唯一の完了通知で、
     /// @note プレビュー画像もここに載る (includeImage 省略 = 載せる、は C++ 側の既定)。
@@ -194,6 +208,8 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
     }).strict(),
     z.object({ t: z.literal('scene.tree'), includeGenerated: z.boolean().optional() }).strict(),
     z.object({ t: z.literal('scene.snapshot') }).strict(),
+    z.object({ t: z.literal('editor.observation'), ids: z.array(NodeIdSchema).max(128).optional(), afterSequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+        managedRequestId: z.string().regex(/^managed:[1-9][0-9]{0,19}$/).optional(), packageRequestId: z.string().regex(/^package:[1-9][0-9]{0,19}$/).optional() }).strict(),
     z.object({ t: z.literal('scene.validate') }).strict(),
     z.object({
         t: z.literal('scene.find'),
@@ -204,6 +220,7 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
         components: z.array(z.string().min(1).max(128)).min(1).max(32).optional(),
         properties: z.array(ScenePropertyFilterSchema).min(1).max(32).optional(),
         limit: z.number().int().min(1).max(500).optional(),
+        offset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
     })
         .strict()
         .refine((value) => value.name !== undefined || value.tag !== undefined || value.active !== undefined
@@ -212,8 +229,13 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
         }),
     z.object({ t: z.literal('scene.selection') }).strict(),
     z.object({ t: z.literal('node.components'), id: NodeIdSchema }).strict(),
-    z.object({ t: z.literal('script.inspect'), id: NodeIdSchema, scriptId: z.string().min(1).max(128) }).strict(),
+    z.object({ t: z.literal('script.inspect'), id: NodeIdSchema, scriptId: z.string().min(1).max(128),
+        path: z.string().optional(), start: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+        count: z.number().int().min(1).max(2147483647).optional(), wireBytes: z.number().int().min(2048).max(2147483647).optional(),
+        observationId: z.string().regex(/^[1-9][0-9]*$/).optional(), close: z.boolean().optional(),
+    }).strict(),
     z.object({ t: z.literal('script.catalog'), type: z.string().min(1).max(128).optional() }).strict(),
+    z.object({ t: z.literal('script.api.catalog'), type: z.string().min(1).max(256).optional(), member: z.string().min(1).max(128).optional() }).strict(),
     z.object({ t: z.literal('asset.list'), dir: z.string().min(1).optional() }).strict(),
     z.object({ t: z.literal('asset.inspect'), path: z.string().min(1) }).strict(),
     z.object({ t: z.literal('asset.findUnused'), limit: z.number().int().min(1).max(500).optional() }).strict(),
@@ -300,7 +322,7 @@ export const EditorQuerySchema: z.ZodType<EditorQuery> = z.discriminatedUnion('t
     z.object({ t: z.literal('environment.inspect') }).strict(),
     z.object({ t: z.literal('audio.inspect'), id: NodeIdSchema.optional() }).strict(),
     z.object({ t: z.literal('ui.inspect'), id: NodeIdSchema.optional() }).strict(),
-    z.object({ t: z.literal('build.status'), limit: z.number().int().min(1).max(20).optional() }).strict(),
+    z.object({ t: z.literal('build.status'), limit: z.number().int().min(1).max(20).optional(), managedRequestId: z.string().regex(/^managed:[1-9][0-9]{0,19}$/).optional(), packageRequestId: z.string().regex(/^package:[1-9][0-9]{0,19}$/).optional() }).strict(),
     z.object({ t: z.literal('fluid.schema') }).strict(),
     z.object({ t: z.literal('fluid.get'), path: FluidPathSchema }).strict(),
     z.object({ t: z.literal('fluid.jobStatus'), job: FluidJobIdSchema, includeImage: z.boolean().optional() }).strict(),
@@ -314,6 +336,9 @@ const ComponentNameSchema = z.string().min(1).max(128);
 
 /// @note Scene を変更しうる要求。engine 側で Undo 可能な Command Bus へ転送される。
 export type EditorCommand =
+    | { t: 'editor.checked'; owner: string; receipt: string; guard: JsonValue; label?: string | undefined; cmds: EditorCommand[] }
+    | { t: 'editor.rollback'; owner: string; receipt: string }
+    | { t: 'editor.finalize'; guard: JsonValue; save: boolean; reload: boolean }
     /// @note Operator を 1 つ実行する。実行可否 (poll) の判定は Editor 側の登録簿にあり、
     /// @note メニューやホットキーと同じ述語が効く。args は operator が宣言した params に従う。
     | { t: 'editor.op.invoke'; id: string; args?: Record<string, unknown> | undefined }
@@ -431,8 +456,8 @@ export type EditorCommand =
     /// @note ベイクは非同期。完了は navmesh.state の bakeState で確認する。
     | { t: 'navmesh.bake'; id?: string | undefined }
     | { t: 'audio.control'; id: string; action: 'play' | 'stop' | 'pause' | 'resume' }
-    /// @note スクリプト DLL の再ビルド要求。完了は build.status のポーリングで確認する。
-    | { t: 'build.run'; target?: 'script' | undefined }
+    /// @note C# の再ビルド要求。完了は managed.request.state で確認する。
+    | { t: 'build.run'; target?: 'managed' | 'package' | undefined; package?: PackageBuildOptions | undefined }
     /// @note ── 流体 (.fluid) ──
     /// @note preview / bake / createEffect(bake) はジョブ id を返してすぐ戻る。焼いた出力は Undo で消えない。
     | { t: 'fluid.create'; path: string; preset?: string | undefined; overwrite?: boolean | undefined }
@@ -896,7 +921,8 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             id: NodeIdSchema,
             action: z.enum(['play', 'stop', 'pause', 'resume']),
         }).strict(),
-        z.object({ t: z.literal('build.run'), target: z.literal('script').optional() }).strict(),
+    z.object({ t: z.literal('build.run'), target: z.enum(['managed', 'package']).optional(), package: PackageBuildOptionsSchema.optional() }).strict()
+        .refine(value => value.package === undefined || value.target === 'package', { message: 'package settings require target=package' }),
         z.object({
             t: z.literal('fluid.create'),
             path: FluidPathSchema,
@@ -980,6 +1006,10 @@ export const EditorCommandSchema: z.ZodType<EditorCommand> = z.lazy(() =>
             label: z.string().min(1).max(128),
             cmds: z.array(EditorCommandSchema).min(1).max(128),
         }).strict(),
+        z.object({ t: z.literal('editor.checked'), owner: z.string().min(1).max(128), receipt: z.string().uuid(), guard: JsonValueSchema,
+            label: z.string().min(1).max(128).optional(), cmds: z.array(EditorCommandSchema).min(1).max(128) }).strict(),
+        z.object({ t: z.literal('editor.rollback'), owner: z.string().min(1).max(128), receipt: z.string().uuid() }).strict(),
+        z.object({ t: z.literal('editor.finalize'), guard: JsonValueSchema, save: z.boolean(), reload: z.boolean() }).strict(),
     ]),
 );
 

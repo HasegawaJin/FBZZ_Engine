@@ -53,6 +53,7 @@ constexpr std::size_t MAX_INDEXED_FILES = 20000;
 struct SearchContext {
     std::string projectRoot;
     std::vector<AssetSearchEntry> entries;
+    uint64_t revision = 0;
 };
 
 /// @note 関数内 static にする: Editor は静的ライブラリではなく exe に取り込まれるが、他の Util (AssetDirtyRegistry 等) と様式を揃え初期化順序の問題も避ける。
@@ -129,7 +130,7 @@ int SubsequenceScore(std::string_view text, std::string_view query)
     return std::max(1, 200 - gapPenalty);
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name 索引
 
@@ -150,6 +151,7 @@ void AssetSearch::Rebuild()
 {
     SearchContext& context = Ctx();
     context.entries.clear();
+    ++context.revision;
 
     if (context.projectRoot.empty()) return;
 
@@ -270,6 +272,7 @@ void AssetSearch::ApplyFileEvents(std::span<const AssetFileWatcher::FileEvent> e
     }
 
     if (dirty) {
+        ++context.revision;
         std::sort(context.entries.begin(), context.entries.end(),
             [](const AssetSearchEntry& lhs, const AssetSearchEntry& rhs) {
                 return lhs.relativePath < rhs.relativePath;
@@ -280,6 +283,7 @@ void AssetSearch::ApplyFileEvents(std::span<const AssetFileWatcher::FileEvent> e
 const std::vector<AssetSearchEntry>& AssetSearch::Entries() { return Ctx().entries; }
 std::size_t AssetSearch::Count()                            { return Ctx().entries.size(); }
 const std::string& AssetSearch::ProjectRoot()               { return Ctx().projectRoot; }
+uint64_t AssetSearch::Revision() { return Ctx().revision; }
 
 /// @name マッチング
 
@@ -374,4 +378,4 @@ std::vector<std::string> AssetSearch::ParseExtensionFilter(std::string_view csv)
     return result;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

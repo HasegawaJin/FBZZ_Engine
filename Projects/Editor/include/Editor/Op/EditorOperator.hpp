@@ -33,9 +33,10 @@ enum class OpParamType {
     /// GameObject.instanceId (UUID 文字列)。EntityID ではなく instanceId を使うのは、
     /// リネームや再ロードを跨いでも同じ対象を指せる安定 ID がこちらだから。
     NodeId,
+    Data,
 };
 
-using OpValue = std::variant<std::monostate, bool, int, float, std::string, math::Vector3>;
+using OpValue = std::variant<std::monostate, bool, int, float, std::string, math::Vector3, OpData>;
 
 struct OpParam {
     std::string name;
@@ -68,6 +69,7 @@ public:
     [[nodiscard]] float         GetFloat (std::string_view name, float fallback = 0.0f) const;
     [[nodiscard]] std::string   GetString(std::string_view name, std::string fallback = {}) const;
     [[nodiscard]] math::Vector3 GetVec3  (std::string_view name, math::Vector3 fallback = {}) const;
+    [[nodiscard]] const OpData* GetData(std::string_view name) const;
 
     [[nodiscard]] bool Empty() const { return m_values.empty(); }
 

@@ -9,12 +9,12 @@
 #include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Core/Application.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Profiler/Profiler.hpp>
-#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -71,27 +71,6 @@ bool StandaloneApp::OnInit()
         core::Logger::AddSink(&m_logSink);
     }
 
-    /// @note スクリプト DLL はシーンロードより前にロードする必要がある。SceneSerializer がシーン内の ScriptComponent を
-    /// @note SceneSerializer の型解決には DLL の ScriptFactory 登録が必要。
-    /// @note DLL は .fbzz_proj の scripts_dll、exe 隣の SandboxScripts.dll の順に解決する。
-    std::filesystem::path scriptsDllPath = m_project.scriptsDll;
-    if (scriptsDllPath.empty() || !std::filesystem::exists(scriptsDllPath)) {
-        scriptsDllPath = util::FileSystem::GetExecutableDirectory() / L"SandboxScripts.dll";
-    }
-    if (std::filesystem::exists(scriptsDllPath)) {
-        if (m_scriptDll.Load(scriptsDllPath)) {
-            FBZZ_LOG_INFO("StandaloneApp: scripts DLL loaded: %ls (%d types)",
-                scriptsDllPath.wstring().c_str(),
-                static_cast<int>(scene::ScriptFactory::RegisteredTypeNames().size()));
-        } else {
-            FBZZ_LOG_ERROR("StandaloneApp: scripts DLL load failed: %ls — no scripts will run",
-                scriptsDllPath.wstring().c_str());
-        }
-    } else {
-        FBZZ_LOG_WARN("StandaloneApp: scripts DLL not found: %ls — no scripts will run",
-            scriptsDllPath.wstring().c_str());
-    }
-
     m_runtime.ApplySettings(m_settings);
     m_runtime.RegisterScenes(m_project.root, m_resources);
     m_runtime.LoadScene(m_project.sceneFile);
@@ -110,6 +89,10 @@ bool StandaloneApp::OnInit()
     app.SetActiveRenderSettings(&m_settings.render);
     m_runtime.ActivateScriptRuntime(
         m_renderer, app.GetWindow().GetWidth(), app.GetWindow().GetHeight());
+    m_settings.cursor.Apply(util::FileSystem::PathToUtf8(m_project.root));
+    core::Cursor::SetSuppressed(false);
+    core::Cursor::ClearClipRegion();
+    (void)core::Cursor::AcquireGameInput();
 
     /// @note プロファイラオーバーレイ用 ImGui を初期化する。StandaloneApp は EditorApp を使わないため ImGui コンテキストが
     /// @note Editor のコンテキストは存在しないため、Release でも独立したコンテキストを作成する。
@@ -124,6 +107,12 @@ bool StandaloneApp::OnInit()
 
 void StandaloneApp::OnUpdate(float dt)
 {
+    if (input::Input::PhysicalKeyHeld(input::KeyCode::SHIFT) && input::Input::PhysicalKeyDown(input::KeyCode::F1))
+        core::Cursor::ReleaseGameInput(core::CursorSuspendReason::RELEASED);
+    else if (!core::Cursor::IsGameInputOwned() && core::Cursor::GetState().windowActive
+             && input::Input::PhysicalMouseButtonDown(0))
+        (void)core::Cursor::AcquireGameInput();
+    core::Cursor::ApplyLock();
     /// @note F3 でプロファイラオーバーレイをトグルする
     if (input::Input::KeyDown(input::KeyCode::F3))
         m_showProfiler = !m_showProfiler;
@@ -159,6 +148,7 @@ void StandaloneApp::OnRender()
 
     scene::RenderSystemUIOptions uiOptions{};
     uiOptions.enabled            = true;
+    uiOptions.gameplayInput      = true;
     uiOptions.viewportWidth      = static_cast<float>(w);
     uiOptions.viewportHeight     = static_cast<float>(h);
     uiOptions.mouseInCanvasSpace = input::Input::MousePosition();
@@ -228,11 +218,9 @@ void StandaloneApp::OnRender()
 
 void StandaloneApp::OnShutdown()
 {
-    /// @note FreeLibrary より先に Scene を破棄しないと、DLL 内の仮想デストラクタが解放済みコードを呼んでアクセス違反になる。
     m_runtime.Shutdown();
+    core::Cursor::ResetForEditor();
     core::Application::Get().SetActiveRenderSettings(nullptr);
-    /// @note ProjectRuntimeがScriptインスタンスを破棄済みなので、DLL Loader側では二重破棄しない。
-    m_scriptDll.Unload(nullptr);
 
     if (m_imguiCtx) {
         m_imguiRenderer.ImGuiShutdown();

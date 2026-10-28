@@ -2,6 +2,7 @@
 /// @brief   AssetBrowser の未変換アセット検出とバックグラウンドインポート。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Asset/ModelSource.hpp>
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Import/ImportCacheStore.hpp>
@@ -23,7 +24,7 @@ namespace fbzz::editor {
 bool AssetBrowserPanel::IsImportableRaw(const std::string& ext)
 {
     /// @note この関数は .fzasset 生成が必要な raw モデル形式だけを扱う。テクスチャ形式は .meta sidecar 生成なので IsTextureRaw() と併用する。
-    return ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".glb";
+    return asset::IsModelSourcePath(ext);
 }
 
 bool AssetBrowserPanel::IsTextureRaw(const std::string& ext)
@@ -148,11 +149,12 @@ std::filesystem::path GetExistingImportedModelPath(const std::filesystem::path& 
 {
     const std::string stem = util::FileSystem::PathToUtf8(sourcePath.stem());
 
-    /// @note 正規形式: `Foo.fbx` → `Library/Baked/<fbx-guid>/Foo.fzasset` (内部コンテナ)。Browser / Scene の保存パスは原本 .fbx に統一し、再生成可能なバイナリは Library に隔離する。
-    const std::filesystem::path bundledModel =
-        sourcePath.parent_path() / sourcePath.stem() / (stem + ".fzasset");
-    const std::string resolved = asset::AssetManager::ResolveAssetPath(
-        util::FileSystem::PathToUtf8(bundledModel));
+    /// @note 論理パッケージパスからの逆引きは FBX を仮定するため、原本 GUID からインポータと同じ保存先を引く。
+    const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(
+        util::FileSystem::PathToUtf8(sourcePath));
+    const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
+    if (guid.empty() || projectRoot.empty()) return {};
+    const std::string resolved = projectRoot + "Library/Baked/" + guid + "/" + stem + ".fzasset";
     if (util::FileSystem::Exists(resolved))
         return util::FileSystem::PathFromUtf8(resolved);
 
@@ -586,9 +588,11 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
     /// @note Poll() を OnBeforeBegin に置くことで、パネルが collapsed / 非表示でもイベントを取りこぼさず、追加ファイルのインポートとツリー更新が即座に走る。
     bool needsDirectoryRefresh = false;
     const std::vector<AssetFileWatcher::FileEvent> watcherEvents = m_watcher.Poll();
+    if (!watcherEvents.empty()) ++ctx.assetBrowserMetadataGeneration;
 
     /// @note 素材を一度に大量投入すると OS の通知バッファが溢れ、その回の変更が丸ごと捨てられる。 個別イベントに追従する処理は全て空振りするので、ここだけは総取っ替えで作り直す。
     if (m_watcher.ConsumeOverflow()) {
+        ++ctx.assetBrowserMetadataGeneration;
         ResyncAfterWatcherOverflow();
         Toast::Info("Asset Browser resynced (file notifications overflowed)");
     }
@@ -648,10 +652,10 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
 
         if (ev.type == AssetFileWatcher::EventType::Added) {
             TryQueuePendingImport(ev.path);
-            /// @note 追加された対象に guid (.meta) を発行する。フォルダもここを通る。生成箇所 (Create メニュー / ツリー右クリック / エクスプローラー D&D / OS 側の操作) ごとに .meta 発行を書くと必ずどれかが抜けるため、ウォッチャーの Added という全経路が合流する唯一の地点に集約する。ただし FBX は Import ボタンまで原本の .meta を作らない。
+            /// @note 追加された対象に guid (.meta) を発行する。フォルダもここを通る。生成箇所 (Create メニュー / ツリー右クリック / エクスプローラー D&D / OS 側の操作) ごとに .meta 発行を書くと必ずどれかが抜けるため、ウォッチャーの Added という全経路が合流する唯一の地点に集約する。ただしモデル原本は Import ボタンまで原本の .meta を作らない。
             const std::string addedExt = util::StringUtils::ToLower(
                 util::FileSystem::GetExtension(absPath));
-            if (addedExt != ".fbx")
+            if (!IsImportableRaw(addedExt))
                 (void)asset::AssetDatabase::GuidFromPath(absPath);
         }
 

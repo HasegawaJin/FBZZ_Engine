@@ -184,15 +184,16 @@ Outcome DoPlayControl(editor::EditorContext& ctx, const JsonValue& payload, bool
     if (ctx.playMode == nullptr || ctx.activeScene == nullptr) {
         return Outcome::Err("NO_PLAY_MODE", "PlayModeController または Scene が未設定です");
     }
+    const bool standaloneActive = ctx.standalonePlay && ctx.standalonePlay->IsActive();
     const std::string action = StringField(payload, "action");
     if (dryRun) return DryRunPreview(type + ":" + action);
     const char* operatorId = nullptr;
     if (action == "start") {
-        if (ctx.scriptReloadBusy) return Outcome::Err("SCRIPT_RELOAD_BUSY", "Script のビルドまたは再読み込み中です");
-        if (!ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "Play は Editor 状態からのみ開始できます");
+        if (ctx.managedBuildBusy) return Outcome::Err("MANAGED_BUILD_BUSY", "C# のビルド適用中は Play を開始できません");
+        if (standaloneActive || !ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "Play は Editor 状態からのみ開始できます");
         operatorId = "play.start";
     } else if (action == "stop") {
-        if (ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "Play Mode は開始されていません");
+        if (!standaloneActive && ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "Play Mode は開始されていません");
         operatorId = "play.stop";
     } else if (action == "pause") {
         if (!ctx.playMode->IsPlaying()) return Outcome::Err("INVALID_PLAY_STATE", "一時停止は Playing 状態でのみ実行できます");
@@ -212,7 +213,10 @@ Outcome DoPlayControl(editor::EditorContext& ctx, const JsonValue& payload, bool
     if (!invocation.ok) return invocation;
     JsonValue result = JsonValue::MakeObject();
     result.Set("action", JsonValue(action));
-    result.Set("playState", JsonValue(PlayStateName(*ctx.playMode)));
+    const bool standaloneNow = ctx.standalonePlay && ctx.standalonePlay->IsActive();
+    result.Set("playState", JsonValue(standaloneNow ? "standalone" : PlayStateName(*ctx.playMode)));
+    result.Set("executionMode", JsonValue(ctx.playExecutionMode == PlayExecutionMode::STANDALONE ? "standalone" : "inEditor"));
+    if (ctx.standalonePlay) result.Set("standaloneDiagnostic", JsonValue(ctx.standalonePlay->Diagnostic()));
     result.Set("restorePending", JsonValue(ctx.playMode->HasPendingRestore()));
     return Outcome::Ok(std::move(result));
 }

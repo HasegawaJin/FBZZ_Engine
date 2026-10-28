@@ -2,6 +2,7 @@
 /// @brief   AssetBrowser のフォルダツリーとファイルアイコン描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Asset/ModelSource.hpp>
 #include "AssetBrowserCommon.hpp"
 #include "AssetBrowserExplorer.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
@@ -78,12 +79,12 @@ bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs)
 
 /// @brief 削除したアセットを «もう無いもの» として各所へ知らせる。
 /// @note ResourceManager のテクスチャキャッシュはパス一致で即返すので、消しただけだと
-///       再起動まで古い絵が出続け、消したつもりのアセットを配布物へ持ち込むことになる。
-///       フォルダを渡された場合も配下ごと外れる (どちらの経路も前方一致で処理する)。
+/// @note 再起動まで古い絵が出続け、消したつもりのアセットを配布物へ持ち込むことになる。
+/// @note フォルダを渡された場合も配下ごと外れる (どちらの経路も前方一致で処理する)。
 void ForgetDeletedAsset(const std::string& absPath, EditorContext& ctx)
 {
     /// @note GUID 索引から外す。以後この参照は「解決できない guid」になり、
-    ///       読み込み側が壊れた参照として扱えるようになる。
+    /// @note 読み込み側が壊れた参照として扱えるようになる。
     asset::AssetDatabase::OnAssetRemoved(absPath);
 
     /// @note キャッシュのキーは Assets/ 起点の相対パス。projectRoot 分を落として合わせる。
@@ -111,8 +112,8 @@ void ForgetDeletedAsset(const std::string& absPath, EditorContext& ctx)
 
 /// @brief 削除は Undo 履歴へ載せず、プロジェクト内のごみ箱 (.fbzz/Trash/<日時>/) へ退避する。
 /// @note Undo スタックはシーン編集と共有なので、載せると Scene View の Ctrl+Z でディスク上の
-///       ファイルが復活・再削除され、履歴からあふれた時点で復元手段も消える。ごみ箱の実体は
-///       自動削除しないので、復元はエクスプローラーで戻すだけで済む。
+/// @note ファイルが復活・再削除され、履歴からあふれた時点で復元手段も消える。ごみ箱の実体は
+/// @note 自動削除しないので、復元はエクスプローラーで戻すだけで済む。
 /// @return ごみ箱へ移せた項目数
 std::size_t TrashAssets(const std::vector<std::string>& paths, EditorContext& ctx)
 {
@@ -142,7 +143,7 @@ std::size_t TrashAssets(const std::vector<std::string>& paths, EditorContext& ct
         ++moved;
 
         /// @note .meta サイドカーも一緒に退避する。本体だけ消すと孤児 .meta が残るが、
-        ///       ペアで移せば手で戻したときに guid も戻る。
+        /// @note ペアで移せば手で戻したときに guid も戻る。
         const std::string metaPath = paths[i] + ".meta";
         if (util::FileSystem::Exists(metaPath)) {
             util::FileSystem::Rename(util::FileSystem::PathFromUtf8(metaPath),
@@ -207,8 +208,8 @@ std::string UniqueDestPath(const std::string& srcPath, const std::string& destDi
 
 /// @brief 複製で持ち込まれた .meta の guid を振り直す。
 /// @note .meta は guid だけでなく importer 設定 (sRGB / 圧縮 / 生成フラグ) を持つため捨てない。
-///       捨てれば複製は既定設定で再インポートされて見た目が変わり、そのまま複写すれば複製側の
-///       guid が原本と衝突して «複製への参照が原本へ吸われる»。設定は残し guid だけ新しくする。
+/// @note 捨てれば複製は既定設定で再インポートされて見た目が変わり、そのまま複写すれば複製側の
+/// @note guid が原本と衝突して «複製への参照が原本へ吸われる»。設定は残し guid だけ新しくする。
 void ReassignCopiedGuid(const std::string& assetAbsPath)
 {
     if (!util::FileSystem::Exists(assetAbsPath + ".meta")) return;
@@ -254,9 +255,9 @@ bool CopyAssetPath(const std::string& srcPath, const std::string& dstPath, bool 
                                     util::FileSystem::PathFromUtf8(dstPath)))
         return false;
 
-    /// @note FBX だけはサイドカーを持ち込まない。原本の隣の .meta は «Import 済み» の印で、
-    ///       複製に付けて回ると Baked 生成物を持たないまま Import 済みに見える (AssetDatabase.hpp)。
-    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(srcPath)) != ".fbx"
+    /// @note モデル原本のサイドカーは持ち込まない。原本の隣の .meta は «Import 済み» の印で、
+    /// @note 複製に付けて回ると Baked 生成物を持たないまま Import 済みに見える (AssetDatabase.hpp)。
+    if (!asset::IsModelSourcePath(srcPath)
         && util::FileSystem::Exists(srcPath + ".meta")) {
         util::FileSystem::CopyFile(util::FileSystem::PathFromUtf8(srcPath + ".meta"),
                                    util::FileSystem::PathFromUtf8(dstPath + ".meta"));
@@ -300,7 +301,7 @@ bool MoveProjectAssetToDirectory(const std::string& srcProjectPath,
     }
 
     /// @note 移動も Undo 履歴には積まない。ファイルの場所はディスクの状態で、シーン編集の
-    ///       履歴とは別の軸にある (同じスタックだと Ctrl+Z がアセットを勝手に動かす)。
+    /// @note 履歴とは別の軸にある (同じスタックだと Ctrl+Z がアセットを勝手に動かす)。
     ctx.requestAssetBrowserRefresh = true;
 
     outSrcAbs = srcAbs;
@@ -309,7 +310,7 @@ bool MoveProjectAssetToDirectory(const std::string& srcProjectPath,
 }
 
 /// @brief 未知の拡張子は拡張子文字列のハッシュから色を生成し、
-///      追加のコード変更なしにどんなファイルでも識別色が付く。
+/// @note 追加のコード変更なしにどんなファイルでも識別色が付く。
 struct ExtGroup {
     const char*  exts[6];   ///< @brief 最大 6 拡張子。nullptr 終番。
     ImVec4       color;
@@ -318,11 +319,11 @@ struct ExtGroup {
 
 /// @brief 種別色は 8 つのファミリー + 無彩色に畳んである。
 /// @note 拡張子ごとに色を分けないのは、人が確実に見分けられるカテゴリ色は 6〜8 程度で 26 色は
-///       覚えられないため。近い色どうしは «区別できるはず» と目に思わせて実際には解像できず、
-///       同じ色にするより悪い (旧テーブルは .prefab と .mat が RGB 距離 0.087、.ttf と .fnt が
-///       0.173 で同じフォルダで見分けられなかった)。ファミリー内は同じ色にし、細かい種類は
-///       アイコン内のラベル (ANIM / MASK …) が示す。色相は円周にほぼ等間隔で、どの 2 色も
-///       RGB 距離 0.30 以上を確保する。
+/// @note 覚えられないため。近い色どうしは «区別できるはず» と目に思わせて実際には解像できず、
+/// @note 同じ色にするより悪い (旧テーブルは .prefab と .mat が RGB 距離 0.087、.ttf と .fnt が
+/// @note 0.173 で同じフォルダで見分けられなかった)。ファミリー内は同じ色にし、細かい種類は
+/// @note アイコン内のラベル (ANIM / MASK …) が示す。色相は円周にほぼ等間隔で、どの 2 色も
+/// @note RGB 距離 0.30 以上を確保する。
 static constexpr ImVec4 kFamLook  { 0.23f, 0.62f, 0.82f, 1.0f }; ///< @brief h=200 マテリアル / テクスチャ
 static constexpr ImVec4 kFamModel { 0.82f, 0.41f, 0.12f, 1.0f }; ///< @brief h= 25 形状
 static constexpr ImVec4 kFamAnim  { 0.76f, 0.88f, 0.18f, 1.0f }; ///< @brief h= 70 時間軸を持つもの
@@ -389,7 +390,7 @@ static constexpr ExtGroup kExtGroups[] = {
 
 /// @brief 未知拡張子をハッシュで色付けする。
 /// @note FNV-1a の下位ビットを色相に変換し、彩度・明度は固定で読みやすい明るさに調整する。
-///       同じ拡張子なら常に同じ色になる。
+/// @note 同じ拡張子なら常に同じ色になる。
 static ImVec4 ColorFromExt(const std::string& ext)
 {
     uint32_t h = 2166136261u;
@@ -456,7 +457,7 @@ static std::string ToTextureLoadPath(const std::string& path, const EditorContex
     const std::string projectRoot = util::FileSystem::NormalizePathSeparators(ctx.projectRoot);
 
     /// @note .mat 内のテクスチャ参照は Assets/ 相対で保存されるため、
-    ///       ResourceManager が読める実ファイルパスに変換してからサムネイルを読み込む。
+    /// @note ResourceManager が読める実ファイルパスに変換してからサムネイルを読み込む。
     if (normalized.starts_with("Assets/") && !projectRoot.empty()) {
         return projectRoot + "/" + normalized;
     }
@@ -465,7 +466,7 @@ static std::string ToTextureLoadPath(const std::string& path, const EditorContex
 
 /// @brief FBX の従属アセットを Library/Baked/`<guid>` から解決する。
 /// @note インポーターが生成する .fzasset / .mat の正規配置を一箇所に固定し、
-///       AssetBrowser が原本 FBX 隣の中間生成物へ依存しないようにする。
+/// @note AssetBrowser がモデル原本 隣の中間生成物へ依存しないようにする。
 static std::filesystem::path ResolveModelGeneratedDir(const std::string& sourcePath,
                                                        const char* generatedName)
 {
@@ -477,16 +478,16 @@ static std::filesystem::path ResolveModelGeneratedDir(const std::string& sourceP
 static ImTextureID ToImTextureID(void* ptr)
 {
     /// @note このプロジェクトの ImGui は ImTextureID を ImU64 として扱う。
-    ///       void* のビット列を整数 ID に移すだけなので、所有権や型変換の意味を持たせない。
+    /// @note void* のビット列を整数 ID に移すだけなので、所有権や型変換の意味を持たせない。
     return static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(ptr));
 }
 
-static std::string SelectMaterialPreviewTexture(const asset::MaterialAsset& mat)
+static std::string SelectMaterialPreviewTexture(const asset::MaterialAssetAuthoring& mat)
 {
     return matpreview::RepresentativeTexturePath(mat);
 }
 
-static ImVec4 SelectMaterialColor(const asset::MaterialAsset& mat)
+static ImVec4 SelectMaterialColor(const asset::MaterialAssetAuthoring& mat)
 {
     const math::Vector4 color = matpreview::AlbedoColor(mat);
     return { color.x, color.y, color.z, color.w };
@@ -508,8 +509,8 @@ static void DrawThumbnailFrame(ImVec2 origin, float sz, bool hovered)
     const ImU32 bg = hovered ? IM_COL32(42, 45, 52, 255) : IM_COL32(30, 32, 38, 255);
     dl->AddRectFilled(origin, { origin.x + sz, origin.y + sz }, bg, 4.0f);
     /// @note 上明→下暗の縦グラデーションで背景に奥行きを持たせ、プレビューの立体感を補強する。
-    ///       AddRectFilledMultiColor は角丸非対応のため、角丸 (4px) の欠けが届かない
-    ///       2px 内側へ矩形で重ね、ベースの角丸輪郭を保つ。
+    /// @note AddRectFilledMultiColor は角丸非対応のため、角丸 (4px) の欠けが届かない
+    /// @note 2px 内側へ矩形で重ね、ベースの角丸輪郭を保つ。
     const ImU32 gradTop    = hovered ? IM_COL32(56, 60, 70, 255) : IM_COL32(44, 47, 56, 255);
     const ImU32 gradBottom = hovered ? IM_COL32(30, 32, 38, 255) : IM_COL32(19, 20, 24, 255);
     dl->AddRectFilledMultiColor({ origin.x + 2.0f, origin.y + 2.0f },
@@ -590,8 +591,8 @@ static void DrawSpriteThumbnail(void* rawID, uint32_t width, uint32_t height,
 
 /// @brief メッシュ 1 つを正方形 RT へ焼く。
 /// @note 実際の描画は MaterialPreviewCore が持つ。ここは AssetBrowser の «このメッシュをこの色で»
-///       という呼び出し形をそのまま受けるだけの薄い口で、サムネイルと Inspector / Preview パネルが
-///       同じ照明・同じカメラで焼かれる。
+/// @note という呼び出し形をそのまま受けるだけの薄い口で、サムネイルと Inspector / Preview パネルが
+/// @note 同じ照明・同じカメラで焼かれる。
 static bool RenderMeshThumbnail(
     renderer::IRenderer& renderer,
     renderer::ResourceManager& resources,
@@ -601,7 +602,7 @@ static bool RenderMeshThumbnail(
     ImVec4 albedoColor,
     const matpreview::GpuData* materialGpu = nullptr,
     matpreview::Flavor flavor = matpreview::Flavor::Surface,
-    const asset::MaterialAsset* materialAsset = nullptr,
+    const asset::MaterialAssetAuthoring* materialAsset = nullptr,
     bool clearRT = true,
     math::Vector3 overrideCenter = {},
     float overrideRadius = -1.0f)  ///< @brief <0 = use mesh bounds
@@ -610,7 +611,7 @@ static bool RenderMeshThumbnail(
     desc.target          = rt;
     desc.mesh            = &mesh;
     desc.flavor          = flavor;
-    desc.material        = materialAsset;
+    desc.material = materialAsset ? std::make_shared<const asset::MaterialAssetAuthoring>(*materialAsset) : nullptr;
     desc.gpu             = materialGpu;
     desc.fallbackTexture = albedoTexture;
     desc.fallbackColor   = { albedoColor.x, albedoColor.y, albedoColor.z, albedoColor.w };
@@ -630,19 +631,19 @@ static void DrawThumbnailLabel(ImDrawList* dl, ImVec2 origin, float sz, const ch
 }
 
 /// @brief 球に焼けない .mat の種別バッジと色見本。判定も色選びも MaterialPreviewCore と共有する。
-static const char* MaterialThumbnailBadge(const asset::MaterialAsset& asset)
+static const char* MaterialThumbnailBadge(const asset::MaterialAssetAuthoring& asset)
 {
     return matpreview::UnsupportedBadge(asset);
 }
 
-static ImVec4 SelectSwatchColor(const asset::MaterialAsset& asset)
+static ImVec4 SelectSwatchColor(const asset::MaterialAssetAuthoring& asset)
 {
     const math::Vector4 color = matpreview::SwatchColor(asset);
     return { color.x, color.y, color.z, color.w };
 }
 
 /// @brief 3D に焼けない .mat の最後の受け皿。色と種別だけでも出して、拡張子アイコンに落とさない。
-static void DrawMaterialSwatchThumbnail(const asset::MaterialAsset& asset, const char* badge,
+static void DrawMaterialSwatchThumbnail(const asset::MaterialAssetAuthoring& asset, const char* badge,
                                         ImVec2 origin, float sz, bool hovered)
 {
     DrawThumbnailFrame(origin, sz, hovered);
@@ -922,7 +923,7 @@ void AssetBrowserPanel::PushRecentFolderColor(uint32_t color, EditorContext& ctx
 void AssetBrowserPanel::DrawFolderColorMenu(const std::string& folderPath, EditorContext& ctx)
 {
     /// @note 彩度を抑えた 8 色。フォルダの識別が目的なので、アセット種別の色と
-    ///       competing しない程度の明度に揃える (タイル一面が原色になると帯が読めない)。
+    /// @note competing しない程度の明度に揃える (タイル一面が原色になると帯が読めない)。
     static constexpr ImVec4 kPresets[] = {
         { 0.86f, 0.30f, 0.30f, 1.0f }, { 0.90f, 0.55f, 0.20f, 1.0f },
         { 0.88f, 0.80f, 0.25f, 1.0f }, { 0.40f, 0.78f, 0.38f, 1.0f },
@@ -933,14 +934,14 @@ void AssetBrowserPanel::DrawFolderColorMenu(const std::string& folderPath, Edito
         ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoAlpha;
 
     /// @note 現在色はイテレータではなく値で持つ。このメニューの中で色を確定すると unordered_map
-    ///       へ挿入が起き、保持していたイテレータが無効化される (以降の参照が未定義動作になる)。
+    /// @note へ挿入が起き、保持していたイテレータが無効化される (以降の参照が未定義動作になる)。
     const std::string key = util::FileSystem::NormalizePathSeparators(folderPath);
     const auto found = ctx.assetBrowserFolderColors.find(key);
     const bool     hasColor     = found != ctx.assetBrowserFolderColors.end();
     const uint32_t currentColor = hasColor ? found->second : 0u;
 
     /// @note 設定済みかどうかはラベル自体で示す。色見本をラベルの左に描かないのは、メニュー項目は
-    ///       行幅いっぱいに広がるため、SameLine で図形を差し込むと当たり判定と表示がずれるため。
+    /// @note 行幅いっぱいに広がるため、SameLine で図形を差し込むと当たり判定と表示がずれるため。
     if (!ImGui::BeginMenu(hasColor ? "Set Color \xe2\x97\x8f" : "Set Color")) return;
 
     /// @note 色を確定する共通経路。最近使った色への記録と再描画の後始末をここに集約する。
@@ -999,7 +1000,7 @@ void AssetBrowserPanel::DrawFolderColorMenu(const std::string& folderPath, Edito
                 : ImVec4{ 0.80f, 0.60f, 0.10f, 1.0f };
         }
         /// @note ピッカーの操作中は都度適用する。決定してからでないと結果が見えないと、
-        ///       ツリーやタイルの中でその色がどう見えるか分からないまま選ぶことになる。
+        /// @note ツリーやタイルの中でその色がどう見えるか分からないまま選ぶことになる。
         if (ImGui::ColorPicker3("##custom", &m_folderColorPickerValue.x,
                                 ImGuiColorEditFlags_NoSidePreview |
                                 ImGuiColorEditFlags_NoSmallPreview |
@@ -1041,8 +1042,8 @@ const char* AssetBrowserPanel::EntryLabel(const Entry& e)
     if (e.isDir) return "DIR";
     if (const ExtGroup* g = FindGroup(e.ext)) return g->label;
     /// @note 未知拡張子: 拡張子文字列をそのままラベルに使う (最大 6 文字、先頭の . を除く)。
-    ///       静的バッファに詰めることでどんな拡張子でもラベル表示でき、ImGui はフレーム内で
-    ///       文字列を参照するため static thread_local を使う。
+    /// @note 静的バッファに詰めることでどんな拡張子でもラベル表示でき、ImGui はフレーム内で
+    /// @note 文字列を参照するため static thread_local を使う。
     static thread_local char buf[8];
     /// @note skip '.'
     const char* src = e.ext.size() > 1 ? e.ext.c_str() + 1 : e.ext.c_str();
@@ -1061,8 +1062,8 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
     auto it = m_treeCache.find(normDir);
     if (it == m_treeCache.end()) {
         /// @note フォルダとファイルの両方を積む。ファイルを描くかどうかは m_treeShowFiles が決めるが、
-        ///       キャッシュには常に入れておく。トグルのたびに捨てると開き直すたびに再走査が走るが、
-        ///       走査するのは «展開済みのフォルダ» だけなので持っておく方が安い。
+        /// @note キャッシュには常に入れておく。トグルのたびに捨てると開き直すたびに再走査が走るが、
+        /// @note 走査するのは «展開済みのフォルダ» だけなので持っておく方が安い。
         std::vector<Entry> newEntries;
         for (const auto& p : util::FileSystem::ListAll(normDir)) {
             Entry e;
@@ -1075,8 +1076,8 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
             newEntries.push_back(std::move(e));
         }
         /// @note マウント (外部フォルダ) は Assets ツリーには混ぜず、左ペインの "EXTERNAL"
-        ///       セクション (OnRenderContent) で専用に列挙する。ここでは実フォルダのみ扱う。
-        ///       フォルダを先に、その中で名前順。エクスプローラーと同じ並びにする。
+        /// @note セクション (OnRenderContent) で専用に列挙する。ここでは実フォルダのみ扱う。
+        /// @note フォルダを先に、その中で名前順。エクスプローラーと同じ並びにする。
         std::stable_sort(newEntries.begin(), newEntries.end(),
                          [](const Entry& a, const Entry& b) {
             if (a.isDir != b.isDir) return a.isDir;
@@ -1085,7 +1086,7 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
         it = m_treeCache.emplace(normDir, std::move(newEntries)).first;
     }
     /// @note 参照ではなくコピーを取る。再帰 DrawFolderTree / RefreshDirectory() が m_treeCache に
-    ///       insert/erase すると unordered_map のリハッシュや対象エントリ削除で参照が無効化 (UB) される。
+    /// @note insert/erase すると unordered_map のリハッシュや対象エントリ削除で参照が無効化 (UB) される。
     const std::vector<Entry> dirs = it->second;
 
     for (const Entry& dir : dirs) {
@@ -1100,11 +1101,11 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
         if (isCurrent) flags |= ImGuiTreeNodeFlags_Selected;
 
         /// @note 表示名は Assets 側の仮想名、ID は実パスにすることで同名マウントでも ImGui ID が衝突しない。
-        ///       現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
+        /// @note 現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
         if (isCurrent)
             ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
         /// @note 色を設定したフォルダは行名自体をその色で描き、ツリーを畳んだ状態でも
-        ///       グリッド側のカードと同じ色で対応が取れるようにする。
+        /// @note グリッド側のカードと同じ色で対応が取れるようにする。
         ImVec4 folderColor;
         const bool colored = !isCurrent && TryGetFolderColor(ctx, dir.path, folderColor);
         if (colored) ImGui::PushStyleColor(ImGuiCol_Text, folderColor);
@@ -1136,7 +1137,7 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
                 if (!util::FileSystem::Exists(newDir)) {
                     util::FileSystem::EnsureDirectory(newDir);
                     /// @note Undo 履歴には積まない。旧実装の Undo は RemoveAll(newDir) で、
-                    ///       作成後にユーザーがそこへ入れたアセットまで巻き添えで消していた。
+                    /// @note 作成後にユーザーがそこへ入れたアセットまで巻き添えで消していた。
                     m_currentPath = dir.path;
                     InvalidateTreeCache(dir.path);
                     RefreshDirectory();
@@ -1152,7 +1153,7 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
                 const std::string dstPath = UniqueDuplicatePath(dir.path, true);
                 if (!dstPath.empty() && CopyAssetPath(dir.path, dstPath, true)) {
                     /// @note 複製も Undo 対象外 (削除と同じく、消したいときは Delete から
-                    ///       ごみ箱へ送る)。Ctrl+Z でフォルダごと RemoveAll されない。
+                    /// @note ごみ箱へ送る)。Ctrl+Z でフォルダごと RemoveAll されない。
                     m_currentPath = normDir;
                     InvalidateTreeCache(normDir);
                     RefreshDirectory();
@@ -1218,8 +1219,8 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
 void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
 {
     /// @note 行ごとに ID を分けるのは、DrawEntryContextMenu は固定文字列 "##entry_ctx" でポップアップを
-    ///       引くため、囲まないと同じツリー内の全ファイル行が同一 ID になり、1 行の右クリックで
-    ///       全行が開こうとするため。グリッド側 (DrawEntry) も同じ理由でパスを PushID している。
+    /// @note 引くため、囲まないと同じツリー内の全ファイル行が同一 ID になり、1 行の右クリックで
+    /// @note 全行が開こうとするため。グリッド側 (DrawEntry) も同じ理由でパスを PushID している。
     ImGui::PushID(e.path.c_str());
 
     const bool selected = e.path == ctx.selectedAssetPath || m_selectedPaths.count(e.path) > 0;
@@ -1230,7 +1231,7 @@ void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
     if (selected) flags |= ImGuiTreeNodeFlags_Selected;
 
     /// @note 名前は通常の文字色で描く。種別で色を付けないのは、ツリーで色が意味を持つのは
-    ///       フォルダの色分けだけで、ファイルまで着色すると色が 2 つの意味を持って読めなくなるため。
+    /// @note フォルダの色分けだけで、ファイルまで着色すると色が 2 つの意味を持って読めなくなるため。
     ImGui::TreeNodeEx(e.path.c_str(), flags, "%s", e.name.c_str());
 
     const bool hovered = ImGui::IsItemHovered();
@@ -1248,10 +1249,10 @@ void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
     }
 
     /// @note 選択はここで完結させる。HandleEntryClick を使わないのは、あちらは Shift 範囲選択を
-    ///       グリッドの m_entries に対して解決し、再クリックで遅延リネームに入るため。どちらも
-    ///       «今グリッドに出ているフォルダ» が前提で、ツリーの行には噛み合わない。
+    /// @note グリッドの m_entries に対して解決し、再クリックで遅延リネームに入るため。どちらも
+    /// @note «今グリッドに出ているフォルダ» が前提で、ツリーの行には噛み合わない。
     /// @note ドラッグの判定に IsMouseDragging は使えない (離したフレームでは常に false)。
-    ///       複数選択を運んで別の行の上で離すと、その行の単一選択で選択が潰れていた。
+    /// @note 複数選択を運んで別の行の上で離すと、その行の単一選択で選択が潰れていた。
     if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !m_treeRowDragStarted) {
         const bool ctrl = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
         if (ctrl) {
@@ -1265,7 +1266,7 @@ void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
     }
 
     /// @note ダブルクリックはグリッドと同じ「開く」。加えて、そのファイルのフォルダへ移動して
-    ///       グリッド側の表示も揃える (木とグリッドが別々の場所を指したままにならない)。
+    /// @note グリッド側の表示も揃える (木とグリッドが別々の場所を指したままにならない)。
     if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         const std::string folder = util::FileSystem::GetDirectory(e.path);
         if (!util::FileSystem::SamePathText(folder, m_currentPath)) {
@@ -1362,7 +1363,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                 return !item.mat.thumbnailRendered && (!item.parsed || item.hasMaterial) && CanAttemptPreview(item.mat);
             }
         };
-        const bool work = e.ext == ".fbx" || e.isSubAsset ? needsWork(m_modelAssetPreviews)
+        const bool work = IsImportableRaw(e.ext) || e.isSubAsset ? needsWork(m_modelAssetPreviews)
             : IsMeshExt(e.ext) ? needsWork(m_meshPreviews)
             : e.ext == ".mat" ? needsWork(m_materialPreviews)
             : e.ext == ".prefab" ? needsWork(m_prefabPreviews) : needsWork(m_terrainPreviews);
@@ -1473,7 +1474,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         MaterialPreview& preview = m_materialPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
         /// @note 3 つ目の条件は「取り込み直後にまだ書き終わっていなかった .mat」の救済。
-        ///       更新時刻はコピー完了時点で確定してしまうため、mtime 監視だけでは拾えない。
+        /// @note 更新時刻はコピー完了時点で確定してしまうため、mtime 監視だけでは拾えない。
         if (!preview.loaded || currentWriteTime != preview.lastWriteTime ||
             (preview.failed && CanAttemptPreview(preview))) {
             preview.asset = {};
@@ -1485,20 +1486,19 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
 
         /// @note Inspector で編集中の .mat は、保存を待たずにサムネイルへ反映する。
-        ///       ファイル更新時刻だけだとスライダーを動かしている最中の見た目が古いままになるので、
-        ///       Inspector が値変更のたびに進めるリビジョンを見る。
+        /// @note ファイル更新時刻だけだとスライダーを動かしている最中の見た目が古いままになるので、
+        /// @note Inspector が値変更のたびに進めるリビジョンを見る。
         if (!ctx.materialPreviewRevisions.empty()) {
             const std::string relPath = NormalizeAssetPath(e.path);
             const uint64_t revision = ctx.MaterialPreviewRevision(relPath);
             if (revision != 0 && revision != preview.liveRevision) {
                 preview.liveRevision = revision;
-                if (const auto* live = asset::AssetManager::Get<asset::MaterialAsset>(
-                        asset::AssetManager::Load<asset::MaterialAsset>(relPath))) {
-                    preview.asset  = *live;
+                if (const auto live = asset::ReadMaterialAuthoring(asset::AssetManager::Load<asset::MaterialAsset>(relPath))) {
+                    preview.asset = live->Data();
                     MarkPreviewSucceeded(preview);
                     preview.loaded = true;
                     /// @note ここでは GPU リソースを捨てず、再描画フラグを落とすだけ。ドラッグ中は
-                    ///       毎フレーム通るので、定数バッファを作り直すと生成/破棄が延々と続く。
+                    /// @note 毎フレーム通るので、定数バッファを作り直すと生成/破棄が延々と続く。
                     preview.thumbnailRendered = false;
                 }
             }
@@ -1550,7 +1550,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             }
 
             /// @note 球に焼けない .mat はここで畳む。RT も確保しない (使わないまま 1 枚寝かせる)。
-            ///       素材があればその絵、無ければ色見本。«何も出ない» で終わらせない。
+            /// @note 素材があればその絵、無ければ色見本。«何も出ない» で終わらせない。
             const matpreview::Flavor flavor = matpreview::DetectFlavor(preview.asset);
             if (flavor == matpreview::Flavor::Unsupported) {
                 const char* badge = MaterialThumbnailBadge(preview.asset);
@@ -1572,8 +1572,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             EnsureThumbnailRT(preview, ctx);
             if (!preview.thumbnailRendered && preview.thumbnailRT.IsValid()) {
                 /// @note 形状は MaterialPreviewCore が Flavor に合わせて選ぶ
-                ///       (Surface / Skinned は球、Terrain / Water は細分割した平面、
-                ///       UI は ortho の矩形なのでメッシュを持たない、草の Fiber は平面)。
+                /// @note (Surface / Skinned は球、Terrain / Water は細分割した平面、
+                /// @note UI は ortho の矩形なのでメッシュを持たない、草の Fiber は平面)。
                 renderer::Mesh* previewMesh = matpreview::ShapeMesh(
                     *ctx.resources, matpreview::ThumbnailShape(preview.asset, flavor), flavor);
                 const bool meshReady = previewMesh || matpreview::UsesOwnGeometry(flavor);
@@ -1583,7 +1583,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                     desc.target   = preview.thumbnailRT;
                     desc.mesh     = previewMesh;
                     desc.flavor   = flavor;
-                    desc.material = &preview.asset;
+                    desc.material = std::make_shared<const asset::MaterialAssetAuthoring>(preview.asset);
                     desc.gpu      = &preview.gpu;
                     desc.fiberMode = matpreview::DefaultFiberMode(preview.asset);
                     preview.thumbnailRendered =
@@ -1592,7 +1592,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             }
             if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "MAT")) return;
             /// @note 球へは焼けるはずなのに焼けなかった .mat (シェーダーが壊れている・
-            ///       ShaderDescriptor が引けない等) も、色だけは出して拡張子アイコンに落とさない。
+            /// @note ShaderDescriptor が引けない等) も、色だけは出して拡張子アイコンに落とさない。
             DrawMaterialSwatchThumbnail(preview.asset, "MAT", origin, sz, hovered);
             if (preview.failed) DrawAssetPreviewState(origin, sz, e, assetthumbnail::State::FAILED);
             return;
@@ -1600,15 +1600,15 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
     }
 
     /// @note インポート済み .fbx: LOD0 サブメッシュ + パッケージマテリアルを 3D プレビュー。
-    ///       FBX を第一級アセットとして扱い、内部 .fzasset コンテナを UI へ露出しない。
+    /// @note FBX を第一級アセットとして扱い、内部 .fzasset コンテナを UI へ露出しない。
     std::string previewModelPath;
-    if (e.ext == ".fbx") {
+    if (IsImportableRaw(e.ext)) {
         previewModelPath = e.path;
     }
     if (!previewModelPath.empty() && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
         ModelAssetPreview& preview = m_modelAssetPreviews[previewModelPath];
         std::string previewWritePath = previewModelPath;
-        if (e.ext == ".fbx") {
+        if (IsImportableRaw(e.ext)) {
             const std::filesystem::path p = util::FileSystem::PathFromUtf8(e.path);
             const std::string stem = util::FileSystem::PathToUtf8(p.stem());
             const std::string fbxGuid = asset::AssetDatabase::TryGetGuidFromPath(
@@ -1780,7 +1780,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
 
-    if (IsMeshExt(e.ext) && e.ext != ".fbx" && e.path.find("::mesh::") == std::string::npos && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
+    if (IsMeshExt(e.ext) && !IsImportableRaw(e.ext) && e.path.find("::mesh::") == std::string::npos && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
         MeshPreview& preview = m_meshPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
         if (currentWriteTime != preview.lastWriteTime) {
@@ -1880,8 +1880,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
     }
 
     /// @note .vfx: 主役エミッターの .mat から素材テクスチャ 1 枚を出す。中身を焼かないのは、
-    ///       粒子は時間と GPU パスの産物で 1 枚絵にならないため。«何の絵か» だけ出して、
-    ///       確かめる導線は Inspector の Open in Prefab Mode に預ける。
+    /// @note 粒子は時間と GPU パスの産物で 1 枚絵にならないため。«何の絵か» だけ出して、
+    /// @note 確かめる導線は Inspector の Open in Prefab Mode に預ける。
     if (e.ext == ".vfx" && ctx.resources && ctx.imguiRenderer) {
         VfxPreview& preview = m_vfxPreviews[e.path];
         const auto currentWriteTime = ReadLastWriteTime(e.path);
@@ -1924,7 +1924,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
                         if (!heroMaterial.empty()) {
                             /// @note GUID 参照も Assets/ 相対参照も同じ解決規則へ通す。
                             const std::string absMatPath = asset::AssetManager::ResolveAssetPath(heroMaterial);
-                            asset::MaterialAsset heroAsset;
+                            asset::MaterialAssetAuthoring heroAsset;
                             if (asset::LoadMaterialAssetFromFile(absMatPath, heroAsset)) {
                                 const std::string texPath = SelectMaterialPreviewTexture(heroAsset);
                                 if (!texPath.empty()) {
@@ -2300,14 +2300,14 @@ void AssetBrowserPanel::ResyncAfterWatcherOverflow()
     ClearAllAssetPreviews();
 
     /// @note 取りこぼした Added の分だけ .meta / guid が発行されていない。
-    ///       GuidFromPath は .meta を持つべき拡張子だけを対象に、無ければ発行して索引へ入れる
-    ///       (FBX は Import まで原本の .meta を作らないため除く)。
+    /// @note GuidFromPath は .meta を持つべき拡張子だけを対象に、無ければ発行して索引へ入れる
+    /// @note (FBX は Import まで原本の .meta を作らないため除く)。
     for (const std::filesystem::path& p :
          util::FileSystem::ListFilesRecursive(util::FileSystem::PathFromUtf8(m_rootPath))) {
         const std::string absPath = util::FileSystem::NormalizePathSeparators(
             util::FileSystem::PathToUtf8(p));
         const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(absPath));
-        if (ext == ".meta" || ext == ".fbx") continue;
+        if (ext == ".meta" || IsImportableRaw(ext)) continue;
         (void)asset::AssetDatabase::GuidFromPath(absPath);
     }
 
@@ -2323,9 +2323,8 @@ void AssetBrowserPanel::ResyncAfterWatcherOverflow()
 void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz, const Entry& e)
 {
     /// @note 選択・ホバー表現は DrawEntry 側 (SelectionVisuals) が担当する。ここは状態バッジのみ。
-    ///       ! バッジ: 未変換モデルファイルに赤丸で警告表示。FBX は正規モデルアセットとして
-    ///       扱うため、未変換警告は出さない。
-    if (!e.isDir && IsImportableRaw(e.ext) && e.ext != ".fbx") {
+    /// @note 生成物が存在しないモデル原本だけに未変換警告を表示する。
+    if (!e.isDir && IsImportableRaw(e.ext) && !IsAlreadyImported(e.path)) {
         const float r  = sz * 0.15f;
         const float cx = origin.x + sz - r;
         const float cy = origin.y + r;
@@ -2334,8 +2333,8 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         dl->AddText({ cx - bsz.x * 0.5f, cy - bsz.y * 0.5f }, IM_COL32(255, 255, 255, 255), "!");
     }
     /// @note 橙ドット: 未保存変更があるアセット
-    ///       (「再インポートが必要」の印は廃止。ウォッチャーが自動で焼き直し、進行は
-    ///       EditorTaskOverlay に出る)
+    /// @note (「再インポートが必要」の印は廃止。ウォッチャーが自動で焼き直し、進行は
+    /// @note EditorTaskOverlay に出る)
     if (!e.isDir && AssetDirtyRegistry::IsDirty(e.path)) {
         const float r  = sz * 0.10f;
         const float cx = origin.x + r + 2.0f;
@@ -2343,7 +2342,7 @@ void AssetBrowserPanel::DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz,
         dl->AddCircleFilled({ cx, cy }, r, IM_COL32(255, 160, 30, 230));
     }
     /// @note ▶/▼ 展開トグル: FBX と Sprite Texture はサブアセットを持つ。
-    ///       素の三角形はサムネイルの絵柄に溶けるので、暗いチップに乗せて押せる場所だと分からせる。
+    /// @note 素の三角形はサムネイルの絵柄に溶けるので、暗いチップに乗せて押せる場所だと分からせる。
     if (!e.isDir && !e.isSubAsset && e.hasSubAssets) {
         const bool  expanded = m_expandedAssets.count(e.path) > 0;
         /// @note 三角サイズ (クリック判定と共通)
@@ -2413,7 +2412,7 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
         m_pendingRenamePath.clear();
     } else {
         /// @note 選択済み & 単体選択状態での再クリック → 遅延リネーム (Unity スタイル)
-        ///       合成パス (::mesh:: 仮想サブアセット) はリネーム不可
+        /// @note 合成パス (::mesh:: 仮想サブアセット) はリネーム不可
         const bool canRename = !e.isMount && !e.isPackageAsset && !e.isSubAsset;
         if (canRename && ctx.selectedAssetPath == e.path && m_selectedPaths.empty()) {
             m_pendingRenamePath  = e.path;
@@ -2470,9 +2469,9 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
     } else if (ext == ".prefab" && ctx.activeScene &&
                (ImGui::GetIO().KeyAlt || ctx.InPrefabEditMode())) {
         /// @note Alt+ダブルクリック: シーンへ置くのではなく、プレファブ本体を編集面で開く。既定は
-        ///       «配置» のままで、編集は破壊的になりうるため明示的な修飾キーと右クリックメニューから
-        ///       だけ入れる。ただし編集面に居る間は Alt 無しでも開く — «別のプレハブへ移る» が主な
-        ///       用件でそこへの導線が他に無いため (置く方は引き続き Hierarchy / Scene View へのドロップ)。
+        /// @note «配置» のままで、編集は破壊的になりうるため明示的な修飾キーと右クリックメニューから
+        /// @note だけ入れる。ただし編集面に居る間は Alt 無しでも開く — «別のプレハブへ移る» が主な
+        /// @note 用件でそこへの導線が他に無いため (置く方は引き続き Hierarchy / Scene View へのドロップ)。
         ctx.requestOpenPrefabEdit = NormalizeAssetPath(path);
     } else if (ext == ".prefab" && ctx.activeScene) {
         const bool canRecordUndo =
@@ -2506,7 +2505,7 @@ void AssetBrowserPanel::HandleEntryDoubleClick(const Entry& e, EditorContext& ct
     } else if (ext == ".animcontroller" || ext == ".vfx" || ext == ".behaviortree"
                || ext == ".synth" || ext == ".sequence") {
         /// @note ドキュメント面へ渡す振り分けは asset.open operator が持つ。分岐を写すと、
-        ///       対応拡張子を足したときに一部の経路だけ取りこぼす。
+        /// @note 対応拡張子を足したときに一部の経路だけ取りこぼす。
         OpArgs args;
         args.Set("path", path);
         InvokeOperator(ctx, "asset.open", args);
@@ -2564,7 +2563,7 @@ void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
     }
 
     /// @note 取り出しが起きたことは必ず伝える。黙って独立アセットが増えると、
-    ///       「なぜ再インポートしても更新されないのか」が後から分からなくなる。
+    /// @note 「なぜ再インポートしても更新されないのか」が後から分からなくなる。
     if (extractedCount > 0) {
         Toast::Success(std::to_string(extractedCount) +
                        " generated asset(s) extracted to Assets");
@@ -2587,7 +2586,7 @@ void AssetBrowserPanel::HandleClipboardShortcuts(EditorContext& ctx)
 bool AssetBrowserPanel::IsBakedLibraryPath(const std::string& absPath)
 {
     /// @note 取り出し対象かどうかは拡張子ではなく「どこに居るか」で決まる。
-    ///       Library/Baked = 再インポートで作り直される生成物、Assets = 人の著作物。
+    /// @note Library/Baked = 再インポートで作り直される生成物、Assets = 人の著作物。
     const std::string normalized = util::StringUtils::ToLower(
         util::FileSystem::NormalizePathSeparators(absPath));
     return normalized.find("/library/baked/") != std::string::npos;
@@ -2602,7 +2601,7 @@ bool AssetBrowserPanel::IsExtractableSubAsset(const Entry& e)
     if (!util::FileSystem::Exists(e.path)) return false;
 
     /// @note Assets に居る .mat / textures は既に独立した実体なので、複製したいなら
-    ///       通常の Duplicate を使えばよく、Extract という別概念を増やす必要が無い。
+    /// @note 通常の Duplicate を使えばよく、Extract という別概念を増やす必要が無い。
     return IsBakedLibraryPath(e.path);
 }
 
@@ -2610,8 +2609,8 @@ std::string AssetBrowserPanel::ExtractSubAsset(const Entry& e, EditorContext& ct
 {
     if (!IsExtractableSubAsset(e)) return {};
 
-    /// @note 取り出し先は原本 FBX の隣。取り出したクリップは、どのモデルから来たのかが
-    ///       分からなくなると使い道が消えるため、原本と同じ場所に置いて対応を保つ。
+    /// @note 取り出し先はモデル原本 の隣。取り出したクリップは、どのモデルから来たのかが
+    /// @note 分からなくなると使い道が消えるため、原本と同じ場所に置いて対応を保つ。
     std::string destDir = m_currentPath;
     if (!e.sourceAssetPath.empty())
         destDir = util::FileSystem::GetDirectory(e.sourceAssetPath);
@@ -2637,7 +2636,7 @@ std::string AssetBrowserPanel::ExtractSubAsset(const Entry& e, EditorContext& ct
     if (!CopyAssetPath(e.path, destPath, false)) return {};
 
     /// @note .meta は複製しない。GUID をコピーすると 2 つの実体が同じ GUID を名乗り、
-    ///       参照解決が不定になる。作らずに置けばスキャンが新しい GUID を採番する。
+    /// @note 参照解決が不定になる。作らずに置けばスキャンが新しい GUID を採番する。
     return destPath;
 }
 
@@ -2703,7 +2702,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     }
 
     /// @note Sprite サブアセットは実ファイルではないため、複製・削除・リネームを出さず、
-    ///       元画像を編集する操作と安定参照のコピーだけを提供する。
+    /// @note 元画像を編集する操作と安定参照のコピーだけを提供する。
     if (e.isSpriteSubAsset) {
         if (ctx.openSpriteEditor && ImGui::MenuItem("Open in Sprite Editor"))
             ctx.openSpriteEditor(e.sourceAssetPath + ".meta");
@@ -2719,11 +2718,11 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     }
 
     /// @note Library/Baked に隔離された生成物 (.anim 等) を Assets へ取り出す
-    ///       (Unity の "Extract From Prefab" 相当)。
-    ///       隔離した .anim は再インポートのたびに上書きされるので、手で調整したいときは
-    ///       上書きされない実体が要る。新しい GUID を振れば原本 FBX から切り離される。
-    ///       元の参照は書き換えない。全部を新しい方へ向けると「複製したつもりが元も変わった」
-    ///       ことになるので、差し替えるかどうかは人が決める。
+    /// @note (Unity の "Extract From Prefab" 相当)。
+    /// @note 隔離した .anim は再インポートのたびに上書きされるので、手で調整したいときは
+    /// @note 上書きされない実体が要る。新しい GUID を振ればモデル原本 から切り離される。
+    /// @note 元の参照は書き換えない。全部を新しい方へ向けると「複製したつもりが元も変わった」
+    /// @note ことになるので、差し替えるかどうかは人が決める。
     if (!e.isDir && e.isSubAsset && !e.isSpriteSubAsset && IsExtractableSubAsset(e)) {
         if (ImGui::MenuItem("Extract to Assets")) {
             const std::string extracted = ExtractSubAsset(e, ctx);
@@ -2732,7 +2731,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
             } else {
                 Toast::Success("Extracted " + util::FileSystem::GetFilename(extracted));
                 /// @note 取り出した実体を選択状態にする。Ctrl+V は貼った項目を選択するため、
-                ///       同じ «出して続けて編集する» 結果になる操作で選択の扱いが違うと迷う。
+                /// @note 同じ «出して続けて編集する» 結果になる操作で選択の扱いが違うと迷う。
                 m_pendingNavigate = util::FileSystem::GetDirectory(extracted);
                 m_selectedPaths.clear();
                 m_lastClickedPath     = extracted;
@@ -2754,8 +2753,8 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     }
 
     /// @note プレファブ本体の編集面へ入る動線。既定のダブルクリックは «シーンへ配置» なので、
-    ///       アセットそのものを直したいときの入口が無かった。シーンに 1 個も置いていない
-    ///       プレファブも編集できる。
+    /// @note アセットそのものを直したいときの入口が無かった。シーンに 1 個も置いていない
+    /// @note プレファブも編集できる。
     if (!e.isDir && e.ext == ".prefab") {
         if (ImGui::MenuItem("Open Prefab (edit asset)")) {
             ctx.requestOpenPrefabEdit = NormalizeAssetPath(e.path);
@@ -2769,15 +2768,15 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
 
     if (!e.isDir && IsImportableRaw(e.ext)) {
         /// @note 原本と設定の変更はウォッチャーが自動で焼き直すので、ここは
-        ///       「変更が無いのに作り直したい」ときの手動経路。
-        ///       ラベルは m_outdatedPaths ではなく「既に入っているか」で出し分ける
-        ///       (古い印はキュー投入から完了までの一瞬しか立たない)。
+        /// @note 「変更が無いのに作り直したい」ときの手動経路。
+        /// @note ラベルは m_outdatedPaths ではなく「既に入っているか」で出し分ける
+        /// @note (古い印はキュー投入から完了までの一瞬しか立たない)。
         const bool imported = IsAlreadyImported(e.path);
         if (ImGui::MenuItem(imported ? "\xe2\x86\xbb Re-import" : "Import")) {
             /// @note 自動経路と同じ「処理中」の印で二重投入を防ぐ (完了時に取り除かれる)。
             if (m_outdatedPaths.insert(e.path).second) {
                 /// @note 保存済み設定を読み直してから積む。既定の options で押し流すと、
-                ///       選択メッシュ・クリップ範囲・Loop Time が黙って初期値へ戻る。
+                /// @note 選択メッシュ・クリップ範囲・Loop Time が黙って初期値へ戻る。
                 FbxImportOptions options{};
                 (void)FbxMetaSerializer::LoadOptions(e.path, options);
                 m_pendingImports.push_back({ e.path, std::move(options) });
@@ -2836,13 +2835,13 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     }
     if (!e.isMount && !e.isPackageAsset) {
         /// @note 右クリックした e が事前に左クリック選択されているとは限らないため、
-        ///       m_lastClickedPath 頼みの CopySelectionToClipboard() ではなくこの項目自体を積む。
+        /// @note m_lastClickedPath 頼みの CopySelectionToClipboard() ではなくこの項目自体を積む。
         const bool copiesGenerated = IsBakedLibraryPath(e.path);
         if (ImGui::MenuItem("Copy", "Ctrl+C"))
             m_clipboardPaths = { e.path };
         /// @note 生成物を掴んだときは、貼り付けが «取り出し» になることを先に言う。結果として
-        ///       独立アセットが増えるのに、操作名が Copy のままだと «再インポートしても
-        ///       更新されない実体» を作った自覚が持てない。
+        /// @note 独立アセットが増えるのに、操作名が Copy のままだと «再インポートしても
+        /// @note 更新されない実体» を作った自覚が持てない。
         if (copiesGenerated) {
             ImGui::SameLine();
             ImGui::TextDisabled("(extracts on paste)");
@@ -2864,42 +2863,11 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     }
     ImGui::Separator();
     if (!e.isDir && ImGui::MenuItem("Find References...")) {
-        m_findRefs.targetPath = e.path;
-        m_findRefs.results.clear();
+        StartFindReferences(ctx, e.path);
         m_findRefs.open = true;
-
-        /// @note 探すのは (1) GUID 参照、(2) パス参照 の 2 通り。
-        ///       ディスク上の参照は保存時に "guid:<32hex>" へ変換される (GuidRefCodec) が、
-        ///       baked アセットや guid を持たない参照はパスのまま残るため両方を見る。
-        ///       拡張子を除いた stem 単独の一致は採らない ("Fire" のような短い名前が誤爆する)。
-        const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(e.path);
-        const std::string guidRef = guid.empty()
-            ? std::string{} : std::string(asset::AssetDatabase::kGuidPrefix) + guid;
-        /// @note パス参照は "Assets/..." 起点で書かれる。
-        const std::string relativePath = NormalizeAssetPath(e.path);
-
-        for (const auto& p : util::FileSystem::ListFilesRecursive(
-                util::FileSystem::PathFromUtf8(m_rootPath))) {
-            const std::string scanPath = util::FileSystem::PathToUtf8(p);
-            const std::string scanExt  = util::StringUtils::ToLower(
-                util::FileSystem::GetExtension(scanPath));
-            if (scanExt != ".scene" && scanExt != ".mat" && scanExt != ".prefab"
-                && scanExt != ".animcontroller" && scanExt != ".vfx") continue;
-            /// @note 自分自身は参照元に数えない。
-            if (util::FileSystem::NormalizePathSeparators(scanPath)
-                == util::FileSystem::NormalizePathSeparators(e.path)) continue;
-            std::string content;
-            util::FileSystem::ReadText(scanPath, content);
-            const bool byGuid = !guidRef.empty() && content.find(guidRef) != std::string::npos;
-            const bool byPath = !relativePath.empty() && content.find(relativePath) != std::string::npos;
-            if (byGuid || byPath) {
-                m_findRefs.results.push_back(
-                    util::FileSystem::NormalizePathSeparators(scanPath));
-            }
-        }
     }
     /// @note 横断検索の結果からその場所へ移動する。検索でアセットを見つけた後、周辺のファイルも
-    ///       見たいことが多いため、Explorer を開かずにブラウザ内で辿れるようにする。
+    /// @note 見たいことが多いため、Explorer を開かずにブラウザ内で辿れるようにする。
     if (IsGlobalSearchActive() && !e.isDir && ImGui::MenuItem("Go to Containing Folder")) {
         /// @note GetDirectory は末尾に '/' を付けて返すため落とす (パス比較が壊れる)。
         std::string folder = util::FileSystem::GetDirectory(e.path);
@@ -2958,8 +2926,8 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
 {
     if (m_renamingPath == e.path) {
         /// @note 入力欄は拡張子ぶんの幅を空けて置き、拡張子はその右へ編集不可の文字として描く。
-        ///       単に編集させないだけだと «最終的にどんなファイル名になるのか» が見えないため、
-        ///       並べて出すことで固定されていることと結果の両方が一目で分かる。
+        /// @note 単に編集させないだけだと «最終的にどんなファイル名になるのか» が見えないため、
+        /// @note 並べて出すことで固定されていることと結果の両方が一目で分かる。
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
         const float extWidth = m_renameExtension.empty()
             ? 0.0f
@@ -2969,13 +2937,13 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
 
         ImGui::SetNextItemWidth(inputWidth);
         /// @note バッファが拡張子を含まなくなったので、ImGui 既定の «フォーカス時に全選択» が
-        ///       そのまま望みの挙動 (名前部分だけ選択) になる。手動の範囲指定は不要。
+        /// @note そのまま望みの挙動 (名前部分だけ選択) になる。手動の範囲指定は不要。
         if (m_renameNeedFocus) { ImGui::SetKeyboardFocusHere(); m_renameNeedFocus = false; }
         constexpr ImGuiInputTextFlags renameFlags = ImGuiInputTextFlags_EnterReturnsTrue;
         const bool enterPressed = ImGui::InputText("##rename", m_renameBuffer,
                                                    sizeof(m_renameBuffer), renameFlags);
         /// @note 直後に拡張子ラベルを描くと IsItemDeactivated() の対象がそちらへ移り、
-        ///       «他所をクリックしてリネームを中断する» 経路が死ぬため、ここで確定させる。
+        /// @note «他所をクリックしてリネームを中断する» 経路が死ぬため、ここで確定させる。
         const bool inputDeactivated = ImGui::IsItemDeactivated();
 
         if (!m_renameExtension.empty()) {
@@ -2997,8 +2965,8 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
                             FBZZ_LOG_ERROR("Rename failed: %s -> %s", oldPath.c_str(), newPath.c_str());
                         } else {
                             /// @note リネームも Undo 履歴には積まない (移動・生成・削除と同じ扱い)。
-                            ///       ファイル名はディスクの状態であり、シーン編集の履歴に混ぜると
-                            ///       Scene View の Ctrl+Z がアセットを勝手に改名することになる。
+                            /// @note ファイル名はディスクの状態であり、シーン編集の履歴に混ぜると
+                            /// @note Scene View の Ctrl+Z がアセットを勝手に改名することになる。
                             context->requestAssetBrowserRefresh = true;
                             if (m_selectedFbxPath == oldPath) m_selectedFbxPath = newPath;
                             ResetAssetPreviewCache(oldPath);
@@ -3048,9 +3016,9 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     const bool hov = ImGui::IsItemHovered();
 
     /// @note 遅延リネーム: «選択済みをもう一度クリック» から一定時間で名前欄へ入る (Explorer 方式)。
-    ///       この待ち時間は «開く» (ダブルクリック) と同じ操作の上に乗っており、2 度目の押下が
-    ///       判定枠 (既定 0.30 秒) から遅れると開いたつもりが名前欄に入る (実際に発生した)。
-    ///       カーソルが外れた・場所が動いた・ボタンが押された、のいずれかで名前欄へは入らない。
+    /// @note この待ち時間は «開く» (ダブルクリック) と同じ操作の上に乗っており、2 度目の押下が
+    /// @note 判定枠 (既定 0.30 秒) から遅れると開いたつもりが名前欄に入る (実際に発生した)。
+    /// @note カーソルが外れた・場所が動いた・ボタンが押された、のいずれかで名前欄へは入らない。
     if (!m_pendingRenamePath.empty() && m_pendingRenamePath == e.path) {
         const ImVec2 mouse = ImGui::GetIO().MousePos;
         const float  dx    = mouse.x - m_pendingRenameMouse.x;
@@ -3071,7 +3039,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     const bool primarySelected = !e.isDir && e.path == ctx.selectedAssetPath;
     const bool selected = primarySelected || m_selectedPaths.count(e.path) > 0;
     /// @note 複数選択中は「主選択 = Inspector に出ている 1 件」だけを濃く描き分ける。
-    ///       単一選択のときは主選択かどうかを区別する意味がないので常に濃い表現にする。
+    /// @note 単一選択のときは主選択かどうかを区別する意味がないので常に濃い表現にする。
     const bool multiSelection = m_selectedPaths.size() > 1;
     const bool emphasized     = primarySelected || !multiSelection;
     /// @note フォーカスを失っている間は彩度を落とす (Unity の Project ウィンドウと同じ)。
@@ -3082,7 +3050,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     const ImVec2 tileMax = { origin.x + sz + 4.0f, origin.y + sz + 22.0f };
 
     /// @note サブアセット (FBX 内メッシュ / 画像内スプライト) と展開元の親を 1 本の帯で繋ぐ。
-    ///       帯は隣接タイルとセル間の中点で接合するため、左右へ bleed だけ伸ばす。
+    /// @note 帯は隣接タイルとセル間の中点で接合するため、左右へ bleed だけ伸ばす。
     if (band.active) {
         ui::DrawSubAssetBand(
             dl,
@@ -3093,19 +3061,19 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
 
     /// @name Unreal Content Browser 方式のカード
     /// @note 下地 → (色を付けたフォルダだけ) 色の面 → 選択ハイライト → サムネイル → 色の帯。
-    ///       拡張子ごとの色を敷かないのは、色の意味を 1 系統に保つため — フォルダの色分けは
-    ///       «自分で割り当てた分類» を表すが、種別でも色が付くと読み直しが要る。種別はサムネイルと
-    ///       アイコン内のラベル (MAT / MESH …) が示すので、面の色は使わない。
+    /// @note 拡張子ごとの色を敷かないのは、色の意味を 1 系統に保つため — フォルダの色分けは
+    /// @note «自分で割り当てた分類» を表すが、種別でも色が付くと読み直しが要る。種別はサムネイルと
+    /// @note アイコン内のラベル (MAT / MESH …) が示すので、面の色は使わない。
     ImVec4 folderColor;
     const bool tinted  = e.isDir && TryGetFolderColor(ctx, e.path, folderColor);
     const float footerY = origin.y + sz;
 
     /// @note ホバーは «点く» のではなく «灯る»。タイルは一覧を舐めるように見るものなので、
-    ///       一瞬で切り替わると視線の通り道が全部チカチカする。
+    /// @note 一瞬で切り替わると視線の通り道が全部チカチカする。
     const float hoverT = widgets::Animate(ImGui::GetID("##tileHover"), hov ? 1.0f : 0.0f, 16.0f);
 
     /// @note サブアセットは親の帯に載っているので、カード下地は描かない。描くと帯とカードの
-    ///       二重の面になり、親子のまとまりを示す帯が読めなくなる。
+    /// @note 二重の面になり、親子のまとまりを示す帯が読めなくなる。
     if (!band.active)
         ui::DrawAssetTileCard(dl, tileMin, tileMax, hoverT, 5.0f);
     if (tinted)
@@ -3114,8 +3082,8 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     ui::DrawTileSelection(dl, tileMin, tileMax, selected, hov, emphasized, panelFocused, 5.0f);
 
     /// @note Ping: 参照欄クリックで飛んできた対象を短時間だけ光らせる。選択ハイライトだけだと、
-    ///       大量のタイルが並ぶ一覧の中で «今どれに飛ばされたのか» を目で拾えないため、
-    ///       Unity の Project ウィンドウと同じく数百 ms のフラッシュで視線を誘導する。
+    /// @note 大量のタイルが並ぶ一覧の中で «今どれに飛ばされたのか» を目で拾えないため、
+    /// @note Unity の Project ウィンドウと同じく数百 ms のフラッシュで視線を誘導する。
     if (!m_pingPath.empty() && m_pingPath == e.path) {
         constexpr float PING_DURATION = 1.2f;
         const float elapsed = static_cast<float>(ImGui::GetTime()) - m_pingStartTime;
@@ -3157,7 +3125,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     /// @note ドロップターゲット (ディレクトリのみ)
     if (e.isDir && ImGui::BeginDragDropTarget()) {
         /// @note SaveHierarchyPayloadAsPrefab が requestAssetBrowserRefresh を立てるため、ここで
-        ///       RefreshDirectory() は呼ばない。DrawEntry の参照列を描画中に無効化してしまう。
+        /// @note RefreshDirectory() は呼ばない。DrawEntry の参照列を描画中に無効化してしまう。
         SaveHierarchyPayloadAsPrefab(
             ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, e.path);
         if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
@@ -3185,7 +3153,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     if (hov && !e.isSubAsset && e.hasSubAssets &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         /// @note 当たり判定はチップ (角丸の下地) の大きさに合わせる。見た目より狭いと
-        ///       「押したのに開かない」が起きるため、DrawEntryBadges と同じ pad を使う。
+        /// @note 「押したのに開かない」が起きるため、DrawEntryBadges と同じ pad を使う。
         const float ts  = sz * 0.18f;
         const float pad = ts * 0.35f;
         const float bx  = origin.x + 2.0f - pad;
@@ -3211,55 +3179,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
         if (tintLabel) ImGui::PopStyleColor();
     }
 
-    /// @note FindRefs ポップアップは1つのエントリが最初にレンダリングされた後に開く
-    if (m_findRefs.open) {
-        ImGui::OpenPopup("##find_refs");
-        m_findRefs.open = false;
-    }
-    DrawFindRefsPopup();
-
     ImGui::PopID();
-}
-
-void AssetBrowserPanel::DrawFindRefsPopup()
-{
-    ImGui::SetNextWindowSize({ 480.0f, 300.0f }, ImGuiCond_Appearing);
-    if (!ImGui::BeginPopupModal("##find_refs", nullptr,
-            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize)) return;
-
-    ImGui::TextUnformatted("Find References");
-    ImGui::SameLine();
-    ImGui::TextDisabled("— %s", util::FileSystem::GetFilename(m_findRefs.targetPath).c_str());
-    ImGui::Separator();
-
-    if (m_findRefs.results.empty()) {
-        /// @note 「見つからない」を「使われていない」と読ませない。走査対象を必ず添える。
-        ImGui::TextDisabled("(no references found)");
-        ImGui::TextDisabled("scanned: .scene / .mat / .prefab / .animcontroller / .vfx");
-        ImGui::TextDisabled("GUID 参照とパス参照の両方を検索しています。");
-    } else {
-        ImGui::TextDisabled("%zu file(s) reference this asset:", m_findRefs.results.size());
-        ImGui::Spacing();
-        const float avail = ImGui::GetContentRegionAvail().y - 34.0f;
-        ImGui::BeginChild("##refs_list", { 0.0f, avail }, true);
-        for (const auto& ref : m_findRefs.results) {
-            const std::string label = util::FileSystem::GetFilename(ref);
-            /// @note 別フォルダの同名ファイルがあるので、表示名ではなくフルパスで ID を分ける。
-            ImGui::PushID(ref.c_str());
-            if (ImGui::Selectable(label.c_str())) {
-                /// @note クリックで親フォルダへナビゲート
-                m_pendingNavigate = util::FileSystem::GetDirectory(ref);
-                ImGui::CloseCurrentPopup();
-            }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", ref.c_str());
-            ImGui::PopID();
-        }
-        ImGui::EndChild();
-    }
-
-    ImGui::Separator();
-    if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
-    ImGui::EndPopup();
 }
 
 /// @name FBX 内容プレビュー (サブアセットアイコン)

@@ -2,10 +2,10 @@
 /// @brief   Animation Preview のツールバー・ビューポート・トランスポート UI。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
-///
-/// AnimationPreviewCore.cpp が描いたレンダーターゲットを表示し、その上へ
-/// スケルトン・軌跡・情報をオーバーレイし、再生とカメラの操作口を出す。
-/// Inspector 埋め込みと独立パネルの両方がこのファイルの 1 つのウィジェットを呼ぶ。
+
+/// @note AnimationPreviewCore.cpp が描いたレンダーターゲットを表示し、その上へ
+/// @note スケルトン・軌跡・情報をオーバーレイし、再生とカメラの操作口を出す。
+/// @note Inspector 埋め込みと独立パネルの両方がこのファイルの 1 つのウィジェットを呼ぶ。
 #include "AnimationPreviewInternal.hpp"
 #include <Editor/Panels/PreviewPanelRenderers.hpp>
 #include <Editor/Util/EditorIcons.hpp>
@@ -43,7 +43,7 @@ constexpr ImU32 kStaticBone    = IM_COL32(150, 156, 168, 140);
 constexpr ImU32 kGhostPast     = IM_COL32( 96, 160, 255, 110);
 constexpr ImU32 kGhostFuture   = IM_COL32(255, 168,  92, 110);
 
-/// 現在プレビューしているクリップ。オーバーレイ・タイムライン・情報表示が共通で使う。
+/// @note 現在プレビューしているクリップ。オーバーレイ・タイムライン・情報表示が共通で使う。
 const asset::AnimationClip* CurrentClip(const asset::Model* model)
 {
     if (!model) return nullptr;
@@ -52,7 +52,7 @@ const asset::AnimationClip* CurrentClip(const asset::Model* model)
 
 /// @name 小物ウィジェット
 
-/// 押されている間だけアクセント色になるトグル。幅を揃えて «帯» として並べる。
+/// @note 押されている間だけアクセント色になるトグル。幅を揃えて «帯» として並べる。
 /// @note ラベル長でボタン幅が変わると、トグルを切り替えるたび隣のボタンが左右に動いて狙いが外れるため幅を固定する。
 bool ToolbarToggle(const char* label, bool& value, const char* tooltip, float width)
 {
@@ -73,7 +73,7 @@ bool ToolbarToggle(const char* label, bool& value, const char* tooltip, float wi
     return clicked;
 }
 
-/// アイコン 1 文字ぶんの正方ボタン。トランスポート (先頭 / コマ送り / 再生) 用。
+/// @note アイコン 1 文字ぶんの正方ボタン。トランスポート (先頭 / コマ送り / 再生) 用。
 bool TransportButton(const char* id, const char* glyph, const char* tooltip,
                      bool emphasized = false)
 {
@@ -93,7 +93,7 @@ bool TransportButton(const char* id, const char* glyph, const char* tooltip,
     return clicked;
 }
 
-/// 角丸の «チップ»。対象名やブレンド率のように «読ませたいが押させない» 情報に使う。
+/// @note 角丸の «チップ»。対象名やブレンド率のように «読ませたいが押させない» 情報に使う。
 void InfoChip(const char* text, ImU32 textColor, ImU32 background)
 {
     const ImVec2 size = ImGui::CalcTextSize(text);
@@ -115,7 +115,7 @@ void SeekPreview(float seconds)
     g_state.playing = false;
 }
 
-/// フレーム単位で進める。クリップの frameRate を «見たまま» の刻みとして使う。
+/// @note フレーム単位で進める。クリップの frameRate を «見たまま» の刻みとして使う。
 void StepPreviewFrames(int frames, const asset::AnimationClip* clip)
 {
     const float fps = ClipFrameRate(clip);
@@ -130,7 +130,7 @@ void StepPreviewFrames(int frames, const asset::AnimationClip* clip)
     SeekPreview(next);
 }
 
-/// プレビューにマウス / フォーカスがある間だけ効くキー操作。
+/// @note プレビューにマウス / フォーカスがある間だけ効くキー操作。
 /// @note Space / Home / End / L と «修飾なしの矢印» は EditorApp_MenuBar のどのホットキーにも割り当てが無い (矢印は Alt 付きだけが Selection History に取られている)。F は Scene Viewport スコープなので、ここで拾ってもシーンのフレーミングとは衝突しない。
 void HandlePreviewHotkeys(bool interactive, const asset::AnimationClip* clip)
 {
@@ -161,8 +161,8 @@ void HandlePreviewHotkeys(bool interactive, const asset::AnimationClip* clip)
     }
 }
 
-/// 自作タイムライン。ImGui の SliderFloat では «イベント位置を押す» ことも
-/// «遷移のどこを見ているか» を色で示すこともできないため、描画から起こす。
+/// @note 自作タイムライン。ImGui の SliderFloat では «イベント位置を押す» ことも
+/// @note «遷移のどこを見ているか» を色で示すこともできないため、描画から起こす。
 void DrawPreviewTimeline(const asset::AnimationClip* clip, float width)
 {
     const float height = ImGui::GetFrameHeight();
@@ -264,7 +264,7 @@ void DrawPreviewTimeline(const asset::AnimationClip* clip, float width)
 
 /// @name ポップアップ (表示 / ビュー設定)
 
-/// ラベル間引きとオニオンスキン間隔。使う頻度が低いのでツールバーからは隠す。
+/// @note ラベル間引きとオニオンスキン間隔。使う頻度が低いのでツールバーからは隠す。
 /// @note Names / Ghost を点けた «ときだけ» 行を生やすと、トグルを押すたびビューポートの高さが跳ねるため常時ポップアップへ隔離する。
 void DrawDisplayPopup()
 {
@@ -347,8 +347,8 @@ struct OverlayContext {
     bool hovered = false;
 };
 
-/// ビューポートの右下に置く XYZ トライアド。カメラの yaw / pitch だけから
-/// 向きを起こすので、射影 (FOV・距離) が変わっても «向きだけ» を正確に示す。
+/// @note ビューポートの右下に置く XYZ トライアド。カメラの yaw / pitch だけから
+/// @note 向きを起こすので、射影 (FOV・距離) が変わっても «向きだけ» を正確に示す。
 void DrawAxisGizmo(const OverlayContext& ctx)
 {
     math::Vector3 right, up, forward;
@@ -379,8 +379,8 @@ void DrawAxisGizmo(const OverlayContext& ctx)
     }
 }
 
-/// 左上の情報パネル。生テキストを影付きで置くより、半透明の板に載せたほうが
-/// 背景の明暗に関係なく読める。
+/// @note 左上の情報パネル。生テキストを影付きで置くより、半透明の板に載せたほうが
+/// @note 背景の明暗に関係なく読める。
 void DrawInfoOverlay(const OverlayContext& ctx, const asset::AnimationClip* clip)
 {
     char lines[6][128]{};
@@ -438,7 +438,7 @@ struct JointScreen {
     ImVec2 pos;
 };
 
-/// ビューポート上のスケルトン / 軌跡 / 残像 / 情報を重ねる。
+/// @note ビューポート上のスケルトン / 軌跡 / 残像 / 情報を重ねる。
 /// @return ボーンをクリックで «選択した» か (Mask Preview の部位選択と競合させないため)
 bool DrawSkeletonOverlay(const OverlayContext& ctx,
                          const asset::Model& model,
@@ -642,7 +642,7 @@ bool DrawSkeletonOverlay(const OverlayContext& ctx,
     return boneClicked;
 }
 
-/// Mask Preview のメッシュ部位ヒットテスト。@return ホバー中のモデルノード index
+/// @note Mask Preview のメッシュ部位ヒットテスト。@return ホバー中のモデルノード index
 int HitTestMaskMeshNode(const OverlayContext& ctx, const asset::Model& model)
 {
     /// @note Mesh の CPU バウンドを画面へ投影し、クリック対象を軽量に求める。Preview は RenderTarget の画像なので GPU の深度を直接読めない。部位ノード単位のスクリーン領域で十分な操作感を保ち、GPU readback は避ける。
@@ -701,7 +701,7 @@ int HitTestMaskMeshNode(const OverlayContext& ctx, const asset::Model& model)
 
 /// @name カーブグラフ
 
-/// X=赤 / Y=緑 / Z=青 の 3 系列を 1 枚のグラフへ重ね描きする。
+/// @note X=赤 / Y=緑 / Z=青 の 3 系列を 1 枚のグラフへ重ね描きする。
 void DrawCurveGraph(const char* title,
                     const std::vector<float>& cx,
                     const std::vector<float>& cy,
@@ -796,7 +796,7 @@ void DrawCurveGraph(const char* title,
     dl->AddRect(origin, maxCorner, kPanelBorder, 4.0f);
 }
 
-/// 選択ボーンの «今» の TRS・キー数・カーブ。無選択なら案内だけを出す。
+/// @note 選択ボーンの «今» の TRS・キー数・カーブ。無選択なら案内だけを出す。
 void DrawSelectedBoneCard(const asset::Model* model, const asset::AnimationClip* clip)
 {
     const bool hasSelection = g_state.selectedBoneValid && model && model->skeleton &&
@@ -864,7 +864,7 @@ void DrawSelectedBoneCard(const asset::Model* model, const asset::AnimationClip*
 
 /// @name ルートモーション解析
 
-/// 数値を «読める単位» で出す。1m 未満は cm へ落とさないと 0.01 ばかりが並ぶ。
+/// @note 数値を «読める単位» で出す。1m 未満は cm へ落とさないと 0.01 ばかりが並ぶ。
 void FormatDistance(char* buffer, size_t capacity, float meters)
 {
     if (std::abs(meters) < 1.0f)
@@ -873,7 +873,7 @@ void FormatDistance(char* buffer, size_t capacity, float meters)
         std::snprintf(buffer, capacity, "%.2f m", meters);
 }
 
-/// 「良い / 要確認 / まずい」を色で言い切る。数値だけだと «この 0.8 は大きいのか» が判らない。
+/// @note 「良い / 要確認 / まずい」を色で言い切る。数値だけだと «この 0.8 は大きいのか» が判らない。
 void VerdictChip(const char* text, int level)
 {
     static constexpr ImU32 kFg[3] = {
@@ -886,7 +886,7 @@ void VerdictChip(const char* text, int level)
     InfoChip(text, kFg[index], kBg[index]);
 }
 
-/// 水平速度の面グラフ。平均線を重ねて «巡航しているか、脈打っているか» を形で見せる。
+/// @note 水平速度の面グラフ。平均線を重ねて «巡航しているか、脈打っているか» を形で見せる。
 void DrawSpeedGraph(const RootMotionAnalysis& motion, float playhead, float clipLength)
 {
     const float graphWidth = (std::max)(ImGui::GetContentRegionAvail().x, 120.0f);
@@ -1043,7 +1043,7 @@ void DrawRootMotionCard(const asset::AnimationClip* clip)
 
 /// @name ツールバー
 
-/// 対象名 + Display / View ポップアップの 1 行目。
+/// @note 対象名 + Display / View ポップアップの 1 行目。
 void DrawHeaderRow()
 {
     InfoChip(g_state.target.label.c_str(), IM_COL32(190, 220, 255, 255),
@@ -1075,7 +1075,7 @@ void DrawHeaderRow()
     if (ImGui::BeginPopup("##ViewPopup")) { DrawViewPopup(); ImGui::EndPopup(); }
 }
 
-/// Model (ドロップ差し替え) と Clip (パッケージ内 .anim) を横並びで置く。
+/// @note Model (ドロップ差し替え) と Clip (パッケージ内 .anim) を横並びで置く。
 /// @note 「どのモデルで、どのクリップを見ているか」は 1 つの問い。器を上端・クリップを最下端に離すと視線が往復する。
 void DrawSourceRow(bool hasGeometry)
 {
@@ -1093,7 +1093,7 @@ void DrawSourceRow(bool hasGeometry)
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip(
             "Skinned model used as the preview body.\n"
-            "Drag a .fbx / .fzasset here to swap it (the clip is kept).");
+            "Drag a .fbx / .gltf / .glb / .obj / .fzasset here to swap it (the clip is kept).");
 
     if (!showClip) return;
 
@@ -1154,7 +1154,7 @@ void DrawSourceRow(bool hasGeometry)
                           anims.size());
 }
 
-/// オーバーレイのトグル帯。幅を等分し、切り替えても «列» がずれないようにする。
+/// @note オーバーレイのトグル帯。幅を等分し、切り替えても «列» がずれないようにする。
 void DrawOverlayToggleRow()
 {
     struct Toggle { const char* label; bool* value; const char* tooltip; };
@@ -1180,7 +1180,7 @@ void DrawOverlayToggleRow()
     }
 }
 
-/// 再生ボタン群 + タイムライン + 速度 + ループ。
+/// @note 再生ボタン群 + タイムライン + 速度 + ループ。
 void DrawTransportRow(const asset::AnimationClip* clip)
 {
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -1242,7 +1242,7 @@ void DrawTransportRow(const asset::AnimationClip* clip)
                         wrapped, g_state.timelineLength, fps);
 }
 
-/// ジオメトリが無い間に出す案内。黒い矩形より «何をすればよいか» を見せる。
+/// @note ジオメトリが無い間に出す案内。黒い矩形より «何をすればよいか» を見せる。
 void DrawDropZone(const char* line1, const char* line2, float width, float height)
 {
     const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -1266,7 +1266,7 @@ void DrawDropZone(const char* line1, const char* line2, float width, float heigh
                 kTextMuted, line2);
 }
 
-/// ホバー中だけ出す操作ヒント。角丸の帯に載せて背景の明暗から独立させる。
+/// @note ホバー中だけ出す操作ヒント。角丸の帯に載せて背景の明暗から独立させる。
 void DrawViewportHint(const OverlayContext& ctx)
 {
     /// @note 幅が足りないときは短い方へ落とす。はみ出したヒントは «ノイズ» にしかならない。
@@ -1284,7 +1284,7 @@ void DrawViewportHint(const OverlayContext& ctx)
                           IM_COL32(186, 194, 208, 230), hint);
 }
 
-/// オービット / パン / ズーム。マウス操作の «唯一の» 解釈場所。
+/// @note オービット / パン / ズーム。マウス操作の «唯一の» 解釈場所。
 void HandleViewportCamera(bool hovered, bool active)
 {
     const ImGuiIO& io = ImGui::GetIO();
@@ -1318,9 +1318,9 @@ void HandleViewportCamera(bool hovered, bool active)
         g_state.needsFraming = true;
 }
 
-} // namespace
+} /// @note namespace
 
-} // namespace fbzz::editor::animpreview
+} /// @note namespace fbzz::editor::animpreview
 
 namespace fbzz::editor {
 
@@ -1347,7 +1347,7 @@ bool DrawAnimationPreviewWidget(EditorContext& ctx, float previewHeight)
     /// @note ジオメトリが無い間は黒画面を出さず、何をすればよいか明示する。
     if (!hasGeometry) {
         DrawDropZone("No skinned model for this clip",
-                     "Drag a model (.fbx / .fzasset) here to preview it",
+                     "Drag a model (.fbx / .gltf / .glb / .obj / .fzasset) here to preview it",
                      (std::max)(ImGui::GetContentRegionAvail().x, 64.0f),
                      (std::max)(previewHeight, 96.0f));
         ImGui::PopID();
@@ -1494,4 +1494,4 @@ void DrawAnimationPreviewPanelContent(EditorContext& ctx)
                  (std::max)(ImGui::GetContentRegionAvail().y, 96.0f));
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

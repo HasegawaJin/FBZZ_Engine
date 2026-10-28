@@ -131,7 +131,7 @@ TEST_F(PrefabReferenceOverrideTest, ActualReferenceChangeIsStillAnOverride)
     auto* ik = rig->GetComponent<scene::IKSolverComponent>();
     ASSERT_NE(ik, nullptr);
     ASSERT_EQ(ik->chains.size(), 1u);
-    ik->chains.front().targetEntity = external.GetID();
+    ik->chains.front().targetReference.guid = external.instanceId;
     editor::PrefabOverrideSet overrides;
     ASSERT_TRUE(editor::ComputePrefabOverrides(destination, rig->GetID(),
                                                ProjectRoot().generic_string(), overrides));

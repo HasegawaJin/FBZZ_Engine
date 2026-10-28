@@ -4,6 +4,7 @@
 /// @date    2026-10-03
 #include <Editor/Profiler/ProfilerOperators.hpp>
 #include <Editor/Profiler/ProfilerHistory.hpp>
+#include "Profiler/PassiveFrameElapsedCapture.hpp"
 #include <Editor/Op/EditorOperator.hpp>
 #include <algorithm>
 #include <charconv>
@@ -380,6 +381,129 @@ OpResult BenchmarkResult(const OpArgs& args)
     data.Set("hasMore", OpData(first + pageCount < capture.Rows().size()));
     return OpResult::Data(std::move(data));
 }
+
+OpData PassiveWitness(const profiler::detail::ApplicationFrameElapsedModeWitness& mode)
+{
+    auto data = OpData::MakeObject();
+    data.Set("nativeRecording", OpData(mode.nativeRecording)); data.Set("nativeRecordingRequested", OpData(mode.nativeRecordingRequested));
+    data.Set("scriptRecording", OpData(mode.scriptRecording)); data.Set("nativeSession", Id(mode.nativeSession));
+    data.Set("scriptSession", Id(mode.scriptSession)); data.Set("runtimeEpoch", Id(mode.runtimeEpoch)); data.Set("dllGeneration", Id(mode.dllGeneration));
+    return data;
+}
+OpData PassiveFrame(const profiler::detail::ApplicationFrameElapsedSnapshot& frame)
+{
+    auto data = OpData::MakeObject();
+    data.Set("observerSessionId", Id(frame.observerSessionId)); data.Set("applicationFrameSerial", Id(frame.applicationFrameSerial));
+    data.Set("publicationOrdinal", Id(frame.publicationOrdinal)); data.Set("available", OpData(frame.available));
+    data.Set("complete", OpData(frame.complete)); data.Set("beginWitness", PassiveWitness(frame.beginMode));
+    data.Set("endWitnessAvailable", OpData(frame.endModeAvailable));
+    data.Set("endWitness", frame.endModeAvailable ? PassiveWitness(frame.endMode) : OpData{});
+    const auto boundary = frame.boundary;
+    data.Set("boundary", OpData(boundary == profiler::detail::ApplicationFrameElapsedBoundary::NORMAL ? "normal"
+        : boundary == profiler::detail::ApplicationFrameElapsedBoundary::WINDOW_CLOSE ? "window_close"
+        : boundary == profiler::detail::ApplicationFrameElapsedBoundary::REPLACED_BEGIN ? "replaced_begin" : "invalid_clock"));
+    data.Set("cpuFrameElapsedAvailable", OpData(frame.cpuFrameElapsedAvailable));
+    data.Set("cpuFrameElapsedMs", frame.cpuFrameElapsedAvailable ? OpData(frame.cpuFrameElapsedMs) : OpData{});
+    data.Set("wallFrameIntervalAvailable", OpData(frame.wallFrameIntervalAvailable));
+    data.Set("wallFrameIntervalMs", frame.wallFrameIntervalAvailable ? OpData(frame.wallFrameIntervalMs) : OpData{});
+    return data;
+}
+const char* PassiveFailure(PassiveFrameElapsedFailure failure)
+{
+    switch (failure) {
+    case PassiveFrameElapsedFailure::MODE_CHANGED: return "recording_mode_changed";
+    case PassiveFrameElapsedFailure::SESSION_CHANGED: return "session_or_runtime_epoch_changed";
+    case PassiveFrameElapsedFailure::FRAME_ORDER_CHANGED: return "frame_or_publication_order_changed";
+    case PassiveFrameElapsedFailure::PLAY_CHANGED: return "ordinary_play_stopped_or_paused";
+    default: return "";
+    }
+}
+OpData PassiveStatus()
+{
+    const auto& capture = GetPassiveFrameElapsedCapture(); const auto& report = capture.Report(); const auto& status = report.status;
+    auto data = OpData::MakeObject();
+    data.Set("schemaVersion", OpData(1)); data.Set("instrumentationMode", OpData(PASSIVE_FRAME_ELAPSED_MODE));
+    data.Set("label", OpData(report.label)); data.Set("state", OpData(BenchmarkState(status.state))); data.Set("active", OpData(capture.IsActive()));
+    data.Set("failure", OpData(PassiveFailure(status.failure))); data.Set("observerSessionId", Id(status.observerSessionId));
+    data.Set("warmupFrames", OpData(static_cast<int64_t>(status.warmupFrames))); data.Set("warmedFrames", OpData(static_cast<int64_t>(status.warmedFrames)));
+    data.Set("sampleFrames", OpData(static_cast<int64_t>(status.sampleFrames))); data.Set("capturedFrames", OpData(static_cast<int64_t>(status.capturedFrames)));
+    data.Set("incompleteFrames", OpData(static_cast<int64_t>(status.incompleteFrames)));
+    data.Set("missingFrameCount", Id(status.missingFrameCount)); data.Set("missingPublicationCount", Id(status.missingPublicationCount));
+    data.Set("missingRenderingMetadataFrames", OpData(static_cast<int64_t>(status.missingRenderingMetadataFrames)));
+    data.Set("missingWarmupRenderingMetadataFrames", OpData(static_cast<int64_t>(status.missingWarmupRenderingMetadataFrames)));
+    data.Set("baselineWitnessAvailable", OpData(status.observerSessionId != 0));
+    data.Set("baselineWitness", status.observerSessionId != 0 ? PassiveWitness(report.baselineMode) : OpData{});
+    data.Set("failureFrame", report.failureFrameAvailable ? PassiveFrame(report.failureFrame) : OpData{});
+    auto conditions = OpData::MakeObject();
+    conditions.Set("scenario", OpData(report.conditions.scenario)); conditions.Set("camera", OpData(report.conditions.camera));
+    conditions.Set("configuration", OpData(report.conditions.configuration)); conditions.Set("runtimeHash", OpData(report.conditions.runtimeHash));
+    conditions.Set("scenarioHash", OpData(report.conditions.scenarioHash)); conditions.Set("declaredByCaller", OpData(true));
+    conditions.Set("renderingMetadataAvailable", OpData(report.renderingMetadataAvailable));
+    conditions.Set("renderingMetadata", report.renderingMetadataAvailable ? GpuMetadata(report.rendering) : OpData{});
+    conditions.Set("changedWhileSampling", OpData(report.renderingConditionsChanged)); data.Set("conditions", std::move(conditions));
+    const auto* reference = GetPassiveFrameElapsedReference();
+    const bool eligible = IsPassiveFrameElapsedEligible(report);
+    const bool comparable = reference != nullptr && ArePassiveFrameElapsedComparable(*reference, report);
+    auto comparison = OpData::MakeObject();
+    comparison.Set("eligible", OpData(eligible)); comparison.Set("comparable", OpData(comparable));
+    comparison.Set("referenceAvailable", OpData(reference != nullptr)); comparison.Set("referenceLabel", reference ? OpData(reference->label) : OpData{});
+    comparison.Set("cpuP50DeltaMs", comparable ? OpData(report.cpu.p50Ms - reference->cpu.p50Ms) : OpData{});
+    comparison.Set("wallP50DeltaMs", comparable ? OpData(report.wall.p50Ms - reference->wall.p50Ms) : OpData{});
+    comparison.Set("wallP95DeltaMs", comparable ? OpData(report.wall.p95Ms - reference->wall.p95Ms) : OpData{});
+    comparison.Set("wallP99DeltaMs", comparable ? OpData(report.wall.p99Ms - reference->wall.p99Ms) : OpData{});
+    auto warnings = OpData::MakeArray();
+    if (status.state != PerformanceBenchmarkState::COMPLETE) warnings.Push(OpData("Capture is not complete."));
+    if (status.incompleteFrames) warnings.Push(OpData("Incomplete application boundaries are retained."));
+    if (status.missingFrameCount || status.missingPublicationCount) warnings.Push(OpData("Application frames or observer publications are missing."));
+    if (report.cpu.count != status.sampleFrames || report.wall.count != status.sampleFrames) warnings.Push(OpData("Timing values are unavailable."));
+    if (!report.renderingMetadataAvailable || status.missingRenderingMetadataFrames || status.missingWarmupRenderingMetadataFrames || report.renderingConditionsChanged)
+        warnings.Push(OpData("Same-serial rendering provenance is unavailable or changed; raw wall values do not establish a same-view comparison."));
+    if (report.conditions.scenario.empty() || report.conditions.camera.empty() || report.conditions.configuration.empty()
+        || report.conditions.runtimeHash.empty() || report.conditions.scenarioHash.empty()) warnings.Push(OpData("Declare scenario, camera, configuration and actual runtime/scenario hashes."));
+    if (reference && eligible && !comparable) warnings.Push(OpData("Reference conditions, completeness or observed rendering provenance differ."));
+    comparison.Set("warnings", std::move(warnings)); data.Set("comparison", std::move(comparison));
+    return data;
+}
+OpData PassiveDistribution(const PassiveFrameElapsedDistribution& value)
+{
+    auto data = BenchmarkDistribution(value);
+    const bool available = value.available && value.count != 0;
+    data.Set("available", OpData(available));
+    if (!available) for (const char* field : {"p50Ms", "p95Ms", "p99Ms", "maxMs"}) data.Set(field, OpData{});
+    return data;
+}
+OpResult PassiveResult(const OpArgs& args)
+{
+    const auto& capture = GetPassiveFrameElapsedCapture(); const auto& report = capture.Report();
+    if (report.status.state != PerformanceBenchmarkState::COMPLETE) return OpResult::Err("NOT_COMPLETE", "Complete the passive capture before reading rows.");
+    const int offset = args.GetInt("offset", 0), count = args.GetInt("count", 256);
+    if (offset < 0 || count < 1 || count > 256 || static_cast<size_t>(offset) > capture.Rows().size())
+        return OpResult::Err("BAD_ARG", "offset must address the result; count must be 1..256.");
+    auto data = PassiveStatus();
+    data.Set("timingDefinition", OpData("CPU: existing common Begin through after Script End, before Native End. Wall: consecutive real common Begin timestamps, including waits/pacing outside CPU boundaries."));
+    data.Set("percentileMethod", OpData("nearest_rank")); data.Set("summaryIncludesIncompleteFrames", OpData(true));
+    data.Set("cpu", PassiveDistribution(report.cpu)); data.Set("wall", PassiveDistribution(report.wall));
+    auto scopes = OpData::MakeObject(); scopes.Set("available", OpData(false)); scopes.Set("complete", OpData{});
+    scopes.Set("recordedSampleCount", OpData{}); scopes.Set("droppedSampleCount", OpData{}); scopes.Set("sampleCapacity", OpData{});
+    data.Set("scopeMeasurement", std::move(scopes));
+    auto physics = OpData::MakeObject(); physics.Set("available", OpData(false)); physics.Set("stepCount", OpData{}); physics.Set("scopes", OpData{});
+    data.Set("physics", std::move(physics));
+    auto gpu = OpData::MakeObject(); gpu.Set("totalGpuTimeAvailable", OpData(false)); gpu.Set("totalGpuMs", OpData{}); data.Set("gpu", std::move(gpu));
+    const size_t first = static_cast<size_t>(offset);
+    const size_t pageCount = (std::min)(static_cast<size_t>(count), capture.Rows().size() - first);
+    auto rows = OpData::MakeArray();
+    for (size_t index = first; index < first + pageCount; ++index) {
+        const auto& frame = capture.Rows()[index]; auto row = PassiveFrame(frame.elapsed);
+        row.Set("renderingAvailable", OpData(frame.renderingAvailable));
+        row.Set("renderingMetadata", frame.renderingAvailable ? GpuMetadata(frame.rendering) : OpData{});
+        row.Set("drawCalls", frame.renderingAvailable ? OpData(frame.drawCalls) : OpData{});
+        row.Set("triangleCount", frame.renderingAvailable ? OpData(frame.triangleCount) : OpData{}); rows.Push(std::move(row));
+    }
+    data.Set("offset", OpData(offset)); data.Set("count", OpData(static_cast<int64_t>(pageCount)));
+    data.Set("nextOffset", OpData(static_cast<int64_t>(first + pageCount))); data.Set("hasMore", OpData(first + pageCount < capture.Rows().size()));
+    data.Set("rows", std::move(rows)); return OpResult::Data(std::move(data));
+}
+
 }
 void RegisterProfilerOperators(OperatorRegistry& registry)
 {
@@ -445,7 +569,7 @@ void RegisterProfilerOperators(OperatorRegistry& registry)
             const int warmup = args.GetInt("warmupFrames"), frames = args.GetInt("sampleFrames");
             const std::string label = args.GetString("label");
             if (label.empty() || warmup < 0 || frames <= 0) return OpResult::Err("BAD_ARG", "label must be nonempty, warmupFrames nonnegative, and sampleFrames positive.");
-            if (GetPerformanceBenchmarkCapture().IsActive()) return OpResult::Err("BENCHMARK_ACTIVE", "A benchmark capture is already active.");
+            if (GetPerformanceBenchmarkCapture().IsActive() || GetPassiveFrameElapsedCapture().IsActive()) return OpResult::Err("BENCHMARK_ACTIVE", "A benchmark capture is already active.");
             PerformanceBenchmarkConditions conditions{args.GetString("scenario"), args.GetString("camera"), args.GetString("configuration")};
             if (!StartPerformanceBenchmark(label, static_cast<size_t>(warmup), static_cast<size_t>(frames), std::move(conditions)))
                 return OpResult::Err("BAD_ARG", "Warmup/sample count must be at most 60000; scenario/camera at most 256 bytes and configuration at most 1024 bytes.");
@@ -475,5 +599,43 @@ void RegisterProfilerOperators(OperatorRegistry& registry)
         op.exec = [](OpContext&, const OpArgs&) { CancelPerformanceBenchmark(); return OpResult::Data(BenchmarkStatus()); };
         registry.Register(std::move(op));
     }
+
+    {
+        EditorOperator op; op.id = "profiler.frame_elapsed.start"; op.label = "Start Passive Frame Elapsed Capture";
+        op.category = "Profiler"; op.kind = OpKind::Action;
+        auto label = StringParam("label"); label.required = true; op.params.push_back(std::move(label));
+        for (const char* name : {"scenario", "camera", "configuration", "runtimeHash", "scenarioHash"}) op.params.push_back(StringParam(name));
+        OpParam warmup; warmup.name = "warmupFrames"; warmup.type = OpParamType::Int; warmup.required = false; warmup.defaultValue = 120;
+        op.params.push_back(std::move(warmup));
+        OpParam samples; samples.name = "sampleFrames"; samples.type = OpParamType::Int; op.params.push_back(std::move(samples));
+        op.exec = [](OpContext& context, const OpArgs& args) {
+            const int warmup = args.GetInt("warmupFrames", 120), samples = args.GetInt("sampleFrames");
+            const auto label = args.GetString("label");
+            if (GetPassiveFrameElapsedCapture().IsActive() || GetPerformanceBenchmarkCapture().IsActive())
+                return OpResult::Err("BENCHMARK_ACTIVE", "Cancel the existing capture before starting another mode.");
+            PassiveFrameElapsedConditions conditions{args.GetString("scenario"), args.GetString("camera"), args.GetString("configuration"), args.GetString("runtimeHash"), args.GetString("scenarioHash")};
+            if (warmup < 0 || samples <= 0 || !GetPassiveFrameElapsedCapture().CanStart(label, static_cast<size_t>(warmup), static_cast<size_t>(samples), conditions))
+                return OpResult::Err("BAD_ARG", "Bounded counts/labels/conditions and optional 64-digit hex runtime/scenario hashes are required.");
+            if (!StartPassiveFrameElapsedCapture(context.ctx, label, static_cast<size_t>(warmup), static_cast<size_t>(samples), std::move(conditions)))
+                return OpResult::Err("OFF_PLAY_REQUIRED", "Ordinary unpaused Play with Native effective/requested OFF and Script effective OFF is required; this action changes none of those states.");
+            return OpResult::Data(PassiveStatus());
+        }; registry.Register(std::move(op));
+    }
+    for (const char* operation : {"status", "result", "cancel", "set_reference"}) {
+        const std::string name = operation; EditorOperator op;
+        op.id = "profiler.frame_elapsed." + name; op.label = "Passive Frame Elapsed " + name; op.category = "Profiler";
+        op.kind = name == "status" || name == "result" ? OpKind::Query : OpKind::Action;
+        if (name == "result") for (const char* field : {"offset", "count"}) {
+            OpParam parameter; parameter.name = field; parameter.type = OpParamType::Int; parameter.required = false;
+            parameter.defaultValue = std::string_view(field) == "offset" ? 0 : 256; op.params.push_back(std::move(parameter));
+        }
+        op.exec = [name](OpContext&, const OpArgs& args) {
+            if (name == "result") return PassiveResult(args);
+            if (name == "cancel") CancelPassiveFrameElapsedCapture();
+            if (name == "set_reference" && !SetPassiveFrameElapsedReference()) return OpResult::Err("NOT_COMPLETE", "Complete a passive capture before retaining its reference summary.");
+            return OpResult::Data(PassiveStatus());
+        }; registry.Register(std::move(op));
+    }
+
 }
 }

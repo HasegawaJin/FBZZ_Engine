@@ -1,6 +1,7 @@
-/// @note FBZZ Engine
-/// @note tools.test.ts | EditorMcp
-/// @note MCP 公開面、dryRun 強制、画像応答を in-memory transport で検証する
+/// @file    tools.test.ts
+/// @brief   MCP 公開面、dryRun 強制、画像応答を in-memory transport で検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -11,7 +12,7 @@ import type { EditorCommand, EditorQuery } from '../editorContracts.js';
 import { CreateEditorMcpServer } from '../server.js';
 import type { PermissionMode } from '../config.js';
 
-// engine を模した bus。query/command を記録し、viewport.capture だけ画像応答を返す。
+/// @note 実際の MCP 入力検証と転送を確認するため、境界で Query / Command を記録する。
 class FakeEditorBus implements EditorBus {
     queries: EditorQuery[] = [];
     commands: Array<{ command: EditorCommand; dryRun: boolean }> = [];
@@ -47,7 +48,7 @@ class FakeEditorBus implements EditorBus {
         }
         if (query.t === 'editor.state') {
             return {
-                playState: 'editor', restorePending: false, scriptReloadBusy: false,
+                playState: 'editor', restorePending: false, managedBuildBusy: false,
                 scene: 'Assets/Scenes/Test.scene', frameIndex: 10,
             };
         }
@@ -208,6 +209,7 @@ test('editor_catalog と scene_find は推測なしの発見Queryへ写像する
                 components: ['CameraComponent'],
                 properties: [{ comp: 'CameraComponent', field: 'fov', op: 'greater', value: 45 }],
                 limit: 25,
+                offset: 500,
             },
         });
         assert.deepEqual(harness.bus.queries, [
@@ -218,6 +220,7 @@ test('editor_catalog と scene_find は推測なしの発見Queryへ写像する
                 components: ['CameraComponent'],
                 properties: [{ comp: 'CameraComponent', field: 'fov', op: 'greater', value: 45 }],
                 limit: 25,
+                offset: 500,
             },
         ]);
     } finally {
@@ -300,7 +303,7 @@ test('Operator ゲートウェイは目録 Query と実行 Command へ写像す�
             dryRun: false,
         });
 
-        // Query 側は Command ではなく Query として流れる (read 権限でも通る経路)。
+        /// @note Query 側は Command ではなく Query として流れる (read 権限でも通る経路)。
         await harness.client.callTool({
             name: 'editor_op_query',
             arguments: { id: 'panel.list' },
@@ -421,7 +424,7 @@ test('Behavior Tree の複製・修復・Template適用はUndo可能なCommand�
 
 test('scene_get_tree は既定で生成物を要求しない', async () => {
     /// @note 既定で includeGenerated を送ってしまうと、C++ 側の既定 (除外) を上書きして
-    //      AI の context へ実行時生成物が流れ込む。省略されることを固定する。
+        /// @note AI の context へ実行時生成物が流れ込む。省略されることを固定する。
     const harness = await CreateHarness('read');
     try {
         await harness.client.callTool({ name: 'scene_get_tree', arguments: {} });
@@ -692,6 +695,49 @@ test('入力・マテリアル・アニメーション操作は専用Commandへ�
     }
 });
 
+test('C# ビルド要求と要求別照会を共通バスへ転送する', async () => {
+    const writer = await CreateHarness('write');
+    try {
+        await writer.client.callTool({ name: 'build_run', arguments: { target: 'managed' } });
+        assert.deepEqual(writer.bus.commands, [{ command: { t: 'build.run', target: 'managed' }, dryRun: false }]);
+    } finally {
+        await writer.close();
+    }
+    const reader = await CreateHarness('read');
+    try {
+        await reader.client.callTool({ name: 'build_get_status', arguments: { managedRequestId: 'managed:42', limit: 3 } });
+        assert.deepEqual(reader.bus.queries, [{ t: 'build.status', managedRequestId: 'managed:42', limit: 3 }]);
+    } finally {
+        await reader.close();
+    }
+});
+
+test('配布開始・要求別状態・取消を既存ツールと共通Opへ転送する', async () => {
+    const writer = await CreateHarness('write');
+    const options = { outputDirectory: 'Builds/Game', productName: 'Game', developmentBuild: false, runAfterBuild: false };
+    try {
+        await writer.client.callTool({ name: 'build_run', arguments: { target: 'package', package: options } });
+        await writer.client.callTool({ name: 'editor_op_invoke', arguments: { id: 'build.package_cancel', args: { packageRequestId: 'package:42' } } });
+        assert.deepEqual(writer.bus.commands, [
+            { command: { t: 'build.run', target: 'package', package: options }, dryRun: false },
+            { command: { t: 'editor.op.invoke', id: 'build.package_cancel', args: { packageRequestId: 'package:42' } }, dryRun: false },
+        ]);
+    } finally {
+        await writer.close();
+    }
+    const reader = await CreateHarness('read');
+    try {
+        await reader.client.callTool({ name: 'build_get_status', arguments: { packageRequestId: 'package:42' } });
+        await reader.client.callTool({ name: 'editor_op_query', arguments: { id: 'build.package_check', args: { outputDirectory: 'Builds/Game' } } });
+        assert.deepEqual(reader.bus.queries, [
+            { t: 'build.status', packageRequestId: 'package:42', limit: 5 },
+            { t: 'editor.op.query', id: 'build.package_check', args: { outputDirectory: 'Builds/Game' } },
+        ]);
+    } finally {
+        await reader.close();
+    }
+});
+
 test('ワールドオーサリングの照会は引数の少ない Query 面へ写像する', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -934,7 +980,7 @@ test('地形・NavMesh・シーン入出力は Undo 単位の Command へ写像�
             { command: { t: 'audio.control', id: terrainId, action: 'play' }, dryRun: false },
             { command: { t: 'scene.save' }, dryRun: false },
             { command: { t: 'scene.open', path: 'Assets/Scenes/Game.scene', discardUnsaved: true }, dryRun: false },
-            { command: { t: 'build.run', target: 'script' }, dryRun: false },
+            { command: { t: 'build.run', target: 'managed' }, dryRun: false },
         ]);
     } finally {
         await harness.close();

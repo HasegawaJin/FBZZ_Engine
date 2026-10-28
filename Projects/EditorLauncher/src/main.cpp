@@ -8,6 +8,8 @@
 /// @note 文字列・パス変換は `Engine/Util` に集約し `EditorLauncher` と `Sandbox` の両方から使う。
 #include "JobBreakaway.hpp"
 #include "StandaloneApp.hpp"
+#include "EditorPlayLog.hpp"
+#include <Engine/Scene/StandaloneProjectModule.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/CrashHandler.hpp>
@@ -43,8 +45,10 @@ using fbzz::util::StringUtils;
 /// @brief コマンドライン引数の解析結果。
 struct LaunchArgs {
     std::filesystem::path projectPath;
-    std::filesystem::path scriptsDll;      ///< @note --scripts-dll で上書き指定 (省略可)
     bool                  standalone = false;
+    bool                  editorPlay = false;
+    std::filesystem::path playScene;
+    std::filesystem::path playLog;
     /// @brief --batch のシナリオ。空でなければ Playtest を回して終了する (Docs/design/ai-verification-loop.md)。
     std::filesystem::path batchScenario;
     std::filesystem::path batchReport;     ///< @note --report
@@ -83,8 +87,7 @@ std::filesystem::path FindDefaultEditorProjectPath()
 
 /// @brief コマンドライン引数を解析して `LaunchArgs` を返す。
 /// @note 引数なし起動は exe 隣に `.fbzz_proj` があれば配布版 Standalone、なければ
-/// @note 標準テンプレートを Standalone として開く。`build_root` は未解決だが
-/// @note `StandaloneApp` が exe 隣の `SandboxScripts.dll` へフォールバックする。
+/// @note 標準テンプレートも Standalone として起動する。
 LaunchArgs ParseArgs()
 {
     LaunchArgs args;
@@ -97,10 +100,16 @@ LaunchArgs ParseArgs()
         const std::wstring arg = argv[i];
         if (arg == L"--project" && i + 1 < argc)
             args.projectPath = argv[++i];
-        else if (arg == L"--scripts-dll" && i + 1 < argc)
-            args.scriptsDll = argv[++i];
         else if (arg == L"--standalone")
             args.standalone = true;
+        else if (arg == L"--editor-play")
+            args.editorPlay = true;
+        else if (arg == L"--play-scene" || arg == L"--play-log") {
+            if (i + 1 >= argc) { args.argumentError = "Missing Standalone Play path operand."; continue; }
+            const std::filesystem::path path(argv[++i]);
+            if (arg == L"--play-scene") args.playScene = path;
+            else args.playLog = path;
+        }
         /// @note 相対パスは呼び出し側のカレントで解く。Run() は後でカレントをプロジェクトへ移す。
         else if (arg == L"--batch" && i + 1 < argc)
             args.batchScenario = FileSystem::MakeAbsolute(std::filesystem::path(argv[++i]));
@@ -120,6 +129,7 @@ LaunchArgs ParseArgs()
                  || arg.starts_with(L"--pix-capture="))
             pixArguments.emplace_back(argv[i]);
     }
+    if (!args.argumentError.empty()) { LocalFree(argv); return args; }
     /// @note Consume ordinary launcher operands first so a project path cannot accidentally request DLL loading.
     if (!core::ParsePixCaptureOptions(pixArguments, args.pixCapture, args.argumentError)) {
         LocalFree(argv);
@@ -136,6 +146,14 @@ LaunchArgs ParseArgs()
             args.projectPath = FindDefaultEditorProjectPath();
             args.standalone  = true;
         }
+    }
+
+    if (args.editorPlay) {
+        if (!args.standalone || !args.batchScenario.empty() || args.hidden || args.pixCapture.requested
+            || !args.projectPath.is_absolute() || !args.playScene.is_absolute() || !args.playLog.is_absolute())
+            args.argumentError = "Editor Play requires --standalone and absolute --project, --play-scene and --play-log paths.";
+    } else if (!args.playScene.empty() || !args.playLog.empty()) {
+        args.argumentError = "--play-scene and --play-log require --editor-play.";
     }
 
     /// @note バッチは «エディターと同じ実装» で回すのが目的なので Standalone に倒さない。既定プロジェクトの補完より後に置く。
@@ -159,28 +177,36 @@ int Run()
     }
 
     /// @note PIX startup must retain its PID and early module loading; it never opts into launcher-controlled restarts.
-    if (!batch && !args.pixCapture.requested && RelaunchOutsideKillOnCloseJob())
+    if (!batch && !args.editorPlay && !args.pixCapture.requested && RelaunchOutsideKillOnCloseJob())
         return 0;
 
     /// @note `FBZZEngine.dll` は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
     /// @note 新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
-    if (!batch && !args.pixCapture.requested && fbzz::core::CheckEngineFreshnessAndRelaunch())
+    if (!batch && !args.editorPlay && !args.pixCapture.requested && fbzz::core::CheckEngineFreshnessAndRelaunch())
         return 0;
+
+    /// @note Editor-owned Play must keep its PID/job and never rebuild or relaunch itself.
+    EditorPlayLog playLog(args.editorPlay ? args.playLog : std::filesystem::path{});
+    if (args.editorPlay && !playLog.IsOpen()) return 1;
+    if (args.editorPlay) FBZZ_LOG_INFO("Standalone Play process started: project=%s scene=%s",
+        StringUtils::PathToUtf8(args.projectPath).c_str(), StringUtils::PathToUtf8(args.playScene).c_str());
 
     fbzz::ProjectResolver resolver;
     if (!resolver.Resolve(args.projectPath)) {
         /// @note バッチでモーダルを出すと CI が人のクリックを待って固まる。
         if (batch) return 2;
+        if (args.editorPlay) { FBZZ_LOG_ERROR("Standalone Play project resolution failed."); return 1; }
         MessageBoxW(nullptr, resolver.ErrorMessage().c_str(), L"FBZZ", MB_OK | MB_ICONERROR);
         return 1;
     }
     fbzz::LaunchProject project = resolver.Get();
-    /// @note `.fbzz_proj` に `scripts_dll` が書かれていないプロジェクト (DemoGame 等) では
-    /// @note `ProjectResolver` が `scriptsDll` を空のままにする。エディタから `--scripts-dll`
-    /// @note で解決済みパスが渡された場合はそれを優先して上書きする。
-    if (!args.scriptsDll.empty() && project.scriptsDll.empty())
-        project.scriptsDll = args.scriptsDll;
-
+    if (args.editorPlay) {
+        std::error_code sceneError;
+        if (!std::filesystem::is_regular_file(args.playScene, sceneError) || sceneError) {
+            FBZZ_LOG_ERROR("Standalone Play selected scene is missing."); return 1;
+        }
+        project.sceneFile = args.playScene;
+    }
     const std::filesystem::path executableDirectory = FileSystem::GetExecutableDirectory();
     const std::filesystem::path workingDirectory = FileSystem::Exists(executableDirectory / L".fbzz_proj")
         ? executableDirectory
@@ -194,7 +220,7 @@ int Run()
     /// @see Docs/design/crash-report.md
     const std::string crashAppName = args.standalone ? StringUtils::PathToUtf8(project.root.filename()) : "FBZZ Editor";
     core::CrashHandler::Install(workingDirectory, crashAppName);
-    core::CrashHandler::NotifyUnreported(workingDirectory, crashAppName, !batch);
+    core::CrashHandler::NotifyUnreported(workingDirectory, crashAppName, !batch && !args.editorPlay);
     core::DeveloperMode::InitFromCommandLine();
 
     auto& app = core::Application::Get();
@@ -205,6 +231,7 @@ int Run()
         /// @note Init 後に `Resize()` するとウィンドウが一瞬デフォルトサイズで表示されてしまう。
         ProjectSettings settings;
         if (!settings.Load(StringUtils::PathToUtf8(project.settingsFile))) {
+            if (args.editorPlay) { FBZZ_LOG_ERROR("Standalone Play could not load ProjectSettings."); return 1; }
             MessageBoxW(nullptr, L"ProjectSettings を読み込めませんでした。", L"FBZZ", MB_OK | MB_ICONERROR);
             return 1;
         }
@@ -223,13 +250,26 @@ int Run()
         renderer::ResourceManager resources(renderer);
         asset::AssetManager::Init(resources, StringUtils::PathToUtf8(project.root / L"Assets") + "/");
 
-        StandaloneApp standaloneApp(renderer, imguiRenderer, resources, project, settings);
-        app.Run(standaloneApp);
+        bool started = true;
+        if (args.editorPlay) {
+            scene::StandaloneProjectModule game(renderer, resources, project.root, project.sceneFile, settings, true);
+            app.Run(game);
+            started = game.StartedSuccessfully();
+            FBZZ_LOG_INFO("Standalone Play runtime finished (startup=%s).", started ? "ok" : "failed");
+        } else {
+            StandaloneApp standaloneApp(renderer, imguiRenderer, resources, project, settings);
+            app.Run(standaloneApp);
+        }
         /// @note `ResourceManager` は app よりスコープが長いため `~ResourceManager()` が
         /// @note `app::Shutdown()` より先に走る。事前に `Reset()` しないとデストラクタの
         /// @note `LogLiveDebugResources` が GPU リソースを「外部保持」と誤判定して報告する。
         asset::AssetManager::UnloadAll();
         resources.Reset();
+        if (args.editorPlay && !started) {
+            FBZZ_LOG_ERROR("Standalone Play runtime initialization failed.");
+            app.Shutdown();
+            return 1;
+        }
     } else {
         /// @note Editor も起動時プロジェクトの renderer 設定に従う。レンダラーはプロジェクト
         /// @note 読込前に生成するため設定をここで先読みしてバックエンドを渡す (`--renderer=`

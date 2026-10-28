@@ -7,6 +7,30 @@ import test from 'node:test';
 import { IsEditorPipeEndpoint, LoadConfig } from '../config.js';
 import { EditorCommandSchema, EditorQuerySchema } from '../editorContracts.js';
 
+test('C# ビルドの対象と要求 ID を C++ の既存入力から区別する', () => {
+    assert.equal(EditorCommandSchema.safeParse({ t: 'build.run' }).success, true);
+assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'managed' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'managed' }).success, true);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'hlsl' }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'build.status' }).success, true);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'build.status', managedRequestId: 'managed:42', limit: 7 }).success, true);
+    for (const managedRequestId of ['', '42', 'native:42', 'managed:0', 'managed:-1', 'managed:1.5'])
+        assert.equal(EditorQuerySchema.safeParse({ t: 'build.status', managedRequestId }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'build.status', requestId: 'managed:42' }).success, false);
+});
+
+test('配布ビルド設定と要求 ID を検証し曖昧な追加キーを拒否する', () => {
+    const options = { outputDirectory: 'Builds/Game', productName: 'Game', developmentBuild: false,
+        scenes: [{ path: 'Assets/Scenes/Main.scene', enabled: true }], runAfterBuild: false };
+    assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'package', package: options }).success, true);
+assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'managed', package: options }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'package', package: { ...options, typo: true } }).success, false);
+    assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'package', package: { scenes: [{ path: '' }] } }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'build.status', packageRequestId: 'package:42' }).success, true);
+    for (const packageRequestId of ['', '42', 'managed:42', 'package:0', 'package:-1'])
+        assert.equal(EditorQuerySchema.safeParse({ t: 'build.status', packageRequestId }).success, false);
+});
+
 test('Material の行列・配列と uint32 の最大値を丸めず受け付ける', () => {
     const base = { t: 'material.override', id: '11111111-1111-4111-8111-111111111111', parameter: 'values' };
     for (const value of [Array(16).fill(1), [4294967295], Array(64).fill(0)]) {
@@ -145,8 +169,11 @@ test('catalog・scene.find・node.duplicate の契約を検証する', () => {
         name: 'player',
         comp: 'CameraComponent',
         limit: 100,
+        offset: 500,
     }).success, true);
     assert.equal(EditorQuerySchema.safeParse({ t: 'scene.find' }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'scene.find', name: 'player', offset: -1 }).success, false);
+    assert.equal(EditorQuerySchema.safeParse({ t: 'scene.find', name: 'player', offset: 0.5 }).success, false);
     assert.equal(EditorCommandSchema.safeParse({ t: 'node.duplicate', id: nodeId }).success, true);
     /// @note GameObject プロパティ設定。
     assert.equal(EditorCommandSchema.safeParse({ t: 'node.setActive', id: nodeId, active: false }).success, true);

@@ -7,16 +7,17 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/Panels/StatusBar.hpp>
-#include <Editor/ScriptDllLoader.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/ConsoleSink.hpp>
 #include <Editor/Util/BuildConsole.hpp>
 #include <Editor/Util/EditorSettings.hpp>
+#include <Editor/PackageBuildService.hpp>
 #include <Editor/Util/MemoryLeakDiff.hpp>
 #include <Editor/Util/SceneDirtyTracker.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/StandalonePlaySession.hpp>
 #include <Editor/Playtest/InputRecorder.hpp>
 #include <Editor/Playtest/PlaytestRunner.hpp>
 #include <Engine/Core/IModule.hpp>
@@ -28,8 +29,10 @@
 #include <Math/Vector3.hpp>
 #include <Physics/Layer.hpp>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <future>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -38,7 +41,7 @@
 
 struct HWND__;
 struct ImPlotContext;
-namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; }
+namespace fbzz::renderer { class IImGuiRenderer; class IRenderer; class ResourceManager; class SurfacePatchSelectionCacheOwner; }
 namespace fbzz::scene { struct RenderFrameGeometryCache; }
 namespace fbzz::core     { class Window; }
 namespace fbzz::editor::ai { class EditorBusDispatcher; class NamedPipeServer; }
@@ -60,6 +63,7 @@ class FluidEditorPanel;
 class AssetMaintenancePanel;
 class NavigationPanel;
 class AiSettingsPanel;
+class ManagedScriptEditor;
 /// @note TerrainTool.hpp は imgui に依存するため前方宣言のみに留め、unique_ptr で所有して隠蔽する (EditorApp.hpp を imgui 非依存に保つ)。
 class TerrainTool;
 
@@ -100,8 +104,8 @@ public:
     EditorContext& GetContext() { return m_ctx; }
     /// @brief Editor Playの更新・描画・ScriptRuntimeが参照する唯一のSceneManagerを返す。
     /// @note Application 側の SceneManager と混在すると、LoadScene 要求を受けた Manager が Update されず Game Viewport だけシーン遷移しない。
-    scene::SceneManager& GetSceneManager() { return m_runtime.GetSceneManager(); }
-    scene::ProjectRuntime& GetProjectRuntime() { return m_runtime; }
+    scene::SceneManager& GetSceneManager() { return ActiveRuntime().GetSceneManager(); }
+    scene::ProjectRuntime& GetProjectRuntime() { return ActiveRuntime(); }
 
     /// @brief Viewport に紐づいたオフスクリーン RT (main.cpp はここに描く)
     renderer::ResourceHandle<renderer::RenderTargetTag> GetViewportRT() const { return m_sceneViewportRT; }
@@ -110,6 +114,7 @@ public:
     renderer::ResourceHandle<renderer::RenderTargetTag> GetUIViewportRT() const { return m_gameViewportRT; }
 
 private:
+    scene::ProjectRuntime& ActiveRuntime() { return m_playMode.PlayRuntime() ? *m_playMode.PlayRuntime() : m_runtime; }
     /// @name IModule ループが所有するステート
 
     struct FocusAnim {
@@ -157,6 +162,10 @@ private:
     void UpdatePlayCursorControls();
     /// @brief Play 開始/停止/トグル。ツールバーのボタンと Ctrl+P ホットキーの共通経路。
     void StartPlayMode();
+    void StartStandalonePlayMode();
+    void LaunchStandalonePlay();
+    void TickStandalonePlay(float dt);
+    void OpenStandalonePlayLog();
     void StopPlayMode();
     void TogglePlayMode();
     void RegisterDefaultHotkeys();
@@ -211,11 +220,6 @@ private:
     void ResizeViewportRTsIfNeeded();
     void CheckHotReload();
     void CacheSceneWriteTime();
-
-    /// @brief スクリプト DLL ホットリロード
-    void InitScriptDll();
-    void CheckScriptDirtyAndRebuild();
-    void TickScriptCompile();
 
     /// @brief HLSL ホットリロード
     /// @brief 監視先のシェーダーツリーを決め、プロジェクトの持ち物かどうかを判定する。
@@ -325,6 +329,7 @@ private:
     OperatorRegistry   m_operators;
     ConsoleSink        m_consoleSink;
     EditorSettings     m_settings;
+    PackageBuildService m_packageBuild;
     SceneDirtyTracker  m_dirtyTracker;
     std::string        m_projectRoot;
     std::string        m_projectSettingsPath;
@@ -341,6 +346,7 @@ private:
     bool               m_lastTitleDirty = false;
     std::string        m_lastTitleScenePath;
     PlayModeController              m_playMode;
+    StandalonePlaySession           m_standalonePlay;
     /// @brief Play→Stop 時の再ベイクを避けるため、Play 開始前にベイク済み NavMesh をキャッシュする (key = GameObject::instanceId)。
     /// @note 統計とソースハッシュも戻さないと、Stop した瞬間に Navigation パネルが「ベイク後にソースが変わった」と誤検知する。
     struct NavMeshPlayCacheEntry {
@@ -352,6 +358,8 @@ private:
     std::unordered_map<std::string, NavMeshPlayCacheEntry> m_navMeshPlayCache;
     /// @brief Play 開始時の解決済み設定から作る実行用コピー。編集側の自動保存とは独立する。
     renderer::RenderSettings m_playRenderSettings;
+    /// @note Script.App.Quit intent を次 frame へ渡す。Scene が先に変われば要求を捨てる。
+    uint64_t m_scriptQuitSceneLifetime = 0;
     /// @brief Play 開始時に取った Renderer リソースの基準。Stop 後の復元が落ち着いてから比べる。
     MemoryLeakDiff     m_memoryLeakDiff;
     /// @brief .fluid の焼き・プレビューのジョブ窓口 (m_ctx.fluidBake がこれを指す)。
@@ -368,6 +376,7 @@ private:
     bool                            m_playViewportLayoutActive = false;
     bool                            m_playCursorApplied  = false; ///< @note Play 開始時のカーソル初期化を済ませたか
     bool                            m_playCursorReleased = false; ///< @note Escape で一時解放したか (2 回目で Stop)
+    uint8_t                         m_playCursorAcquireAttempts = 0;
     bool                            m_terrainToolWasActive = false;
     int                             m_terrainToolModeBeforeMap = 0;
 
@@ -389,23 +398,7 @@ private:
     /// @brief シナリオを 1 フレーム進める。OnInputPolled から呼ぶ。
     void TickPlaytest();
 
-    /// @brief スクリプト DLL ホットリロード
-    ScriptDllLoader          m_scriptDll;
-    std::filesystem::path    m_scriptDllPath;      ///< @note SandboxScripts.dll のビルド出力パス
-    std::filesystem::path    m_scriptsSourceDir;   ///< @note Scripts/ ソースディレクトリ (変更検知用)
-    FILETIME                 m_lastScriptWriteTime = {};  ///< @note Scripts/ ツリー内で最も新しい更新時刻
-    Compiler                 m_scriptCompiler;
-    bool                     m_scriptCompilePending  = false; ///< @note 変更検知からビルド開始待ち
-    bool                     m_scriptInitialBuild    = false; ///< @note true のとき初回ビルド (skipDeps=false)
-    float                    m_scriptDebounceTimer   = 0.0f;  ///< @note デバウンス用タイマー (秒)
-    float                    m_scriptDirtyPollTimer  = 0.0f;  ///< @note Scripts/ ツリー監視を毎フレーム走らせないための間隔管理
-    /// @brief ビルド成功後、Reloading 表示を 1 フレーム描いたか。
-    /// @note Reload() は同期で数百 ms 止まるため、先に描かないと直前の «Compiling 89%» のまま固まって見える。
-    bool                     m_scriptReloadShown     = false;
-    /// @brief SDK 解決失敗による CMakeCache 再構成をこのセッションで実施済みか。
-    /// @note SDK が本当に無い場合の configure 失敗 → 再ビルドの無限ループを避けるため 1 回に制限する。
-    bool                     m_scriptSdkRecoveryDone = false;
-
+    std::unique_ptr<ManagedScriptEditor> m_managedScripts;
     /// @brief HLSL ホットリロード
     std::filesystem::path    m_hlslSourceDir;      ///< @note Assets/shaders/ ディレクトリ
     std::filesystem::path    m_compileShadersScript; ///< @note compile_shaders.ps1 のパス。
@@ -413,13 +406,15 @@ private:
     /// @brief 共有 SDK の shader へ解決されたときは false になり、監視も再コンパイルも行わない
     /// @brief (実行中の Editor が SDK を書き換えると、その SDK を使う他プロジェクトまで巻き込む)。
     bool                     m_hlslProjectOwned = false;
-    FILETIME                 m_lastHlslWriteTime = {}; ///< @note HLSL ツリー内で最も新しい更新時刻
+    std::uint64_t            m_lastHlslWriteTime = 0; ///< @note HLSL ツリー内で最も新しい更新時刻
     Compiler                 m_hlslCompiler;
     bool                     m_hlslCompilePending = false;
     float                    m_hlslDebounceTimer  = 0.0f;
     float                    m_hlslDirtyPollTimer = 0.0f; ///< @note HLSL ツリー監視を毎フレーム走らせないための間隔管理
+    /// @note 走査は最大 1 件。worker はパスのコピーだけを読み、Editor の状態には触れない。
+    std::future<std::uint64_t> m_hlslSourceScan;
 
-    FILETIME                                 m_lastSceneWriteTime = {};
+    std::uint64_t                            m_lastSceneWriteTime = 0;
     /// @brief HLSL ソースツリーの内容フィンガープリント。前回値との差分でホットリロードを判定する。
     std::uint64_t                            m_hlslSourceFingerprint = 0;
 
@@ -476,6 +471,8 @@ private:
     renderer::IRenderer*                     m_renderer      = nullptr;
     renderer::IImGuiRenderer*                m_imguiRenderer = nullptr;
     renderer::ResourceManager*               m_resources     = nullptr;
+    /// @note Pure bounded Scene/Game Water plans; RenderSystem pins the owner across recording callbacks.
+    std::shared_ptr<renderer::SurfacePatchSelectionCacheOwner> m_surfacePatchPlans;
     ViewportPanel*                           m_sceneViewportPanel     = nullptr;
     ViewportPanel*                           m_gameViewportPanel      = nullptr;
     ViewportPanel*                           m_uiViewportPanel        = nullptr;

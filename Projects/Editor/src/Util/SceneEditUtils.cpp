@@ -10,12 +10,18 @@
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/PrefabInstantiate.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -25,6 +31,211 @@ namespace {
 
 scene::Scene g_gameObjectClipboard;
 std::vector<scene::EntityID> g_gameObjectClipboardRoots;
+
+struct CloneRootRequest {
+    scene::EntityID sourceId = scene::EntityID::INVALID;
+    scene::EntityID destinationParentId = scene::EntityID::INVALID;
+    std::string rootSuffix;
+};
+
+struct CloneNode {
+    scene::EntityID sourceId = scene::EntityID::INVALID;
+    scene::EntityID destinationId = scene::EntityID::INVALID;
+    std::size_t parentNode = (std::numeric_limits<std::size_t>::max)();
+    scene::EntityID externalParentId = scene::EntityID::INVALID;
+    std::string name;
+    std::string tag;
+    std::string prefabAssetPath;
+    std::string prefabSourceId;
+    std::string prefabSourceSnapshot;
+    scene::Transform transform;
+    int layer = 0;
+    bool active = true;
+};
+
+bool GatherCloneTree(scene::Scene& sourceScene,
+                     scene::EntityID sourceId,
+                     std::size_t parentNode,
+                     scene::EntityID externalParentId,
+                     const std::string& rootSuffix,
+                     std::vector<CloneNode>& outNodes,
+                     std::vector<std::size_t>& outRootNodes)
+{
+    scene::GameObject* source = sourceScene.GetGameObject(sourceId);
+    if (!source) return false;
+
+    CloneNode node;
+    node.sourceId = sourceId;
+    node.parentNode = parentNode;
+    node.externalParentId = externalParentId;
+    node.name = source->name + (parentNode == (std::numeric_limits<std::size_t>::max)()
+        ? rootSuffix : std::string{});
+    node.tag = source->tag;
+    node.prefabAssetPath = source->prefabAssetPath;
+    node.prefabSourceId = source->prefabSourceId;
+    node.prefabSourceSnapshot = source->prefabSourceSnapshot;
+    node.transform = source->transform;
+    node.layer = source->layer;
+    node.active = source->activeSelf();
+
+    const std::size_t nodeIndex = outNodes.size();
+    outNodes.push_back(std::move(node));
+    if (parentNode == (std::numeric_limits<std::size_t>::max)())
+        outRootNodes.push_back(nodeIndex);
+
+    std::vector<scene::EntityID> childIds;
+    childIds.reserve(static_cast<std::size_t>(source->GetChildCount()));
+    for (int index = 0; index < source->GetChildCount(); ++index)
+        if (const scene::GameObject* child = source->GetChild(index))
+            childIds.push_back(child->GetID());
+    for (scene::EntityID childId : childIds)
+        if (!GatherCloneTree(sourceScene, childId, nodeIndex, scene::EntityID::INVALID,
+                             {}, outNodes, outRootNodes))
+            return false;
+    return true;
+}
+
+bool HasSerializedFields(const std::string& fieldsToml)
+{
+    for (unsigned char value : fieldsToml)
+        if (!std::isspace(value)) return true;
+    return false;
+}
+
+bool ValidateCloneScriptSchemas(scene::Scene& sourceScene, const std::vector<CloneNode>& nodes)
+{
+    for (const CloneNode& node : nodes) {
+        scene::GameObject* source = sourceScene.GetGameObject(node.sourceId);
+        const scene::ScriptComponent* scripts = source
+            ? source->GetComponent<scene::ScriptComponent>() : nullptr;
+        if (!scripts) continue;
+        for (const scene::ScriptEntry& entry : scripts->scripts) {
+            if (entry.script || !entry.serialized || !HasSerializedFields(entry.serialized->fieldsToml)
+                || scene::ScriptFactory::CanCreate(entry.serialized->type))
+                continue;
+            FBZZ_LOG_WARN("Clone forest aborted: unavailable Script '%s' has saved fields without a typed reference schema",
+                          entry.serialized->type.c_str());
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ValidatePreparedCloneScripts(scene::Scene& destinationScene,
+                                  const std::vector<scene::EntityID>& copiedOwners)
+{
+    for (scene::EntityID ownerId : copiedOwners) {
+        scene::GameObject* owner = destinationScene.GetGameObject(ownerId);
+        const scene::ScriptComponent* scripts = owner
+            ? owner->GetComponent<scene::ScriptComponent>() : nullptr;
+        if (!scripts) continue;
+        for (const scene::ScriptEntry& entry : scripts->scripts) {
+            if (entry.script || !entry.serialized || !HasSerializedFields(entry.serialized->fieldsToml))
+                continue;
+            FBZZ_LOG_WARN("Clone forest aborted: Script '%s' could not be prepared for typed reference remapping",
+                          entry.serialized->type.c_str());
+            return false;
+        }
+    }
+    return true;
+}
+
+bool CopyHierarchyForest(scene::Scene& sourceScene,
+                         scene::Scene& destinationScene,
+                         const std::vector<CloneRootRequest>& roots,
+                         std::vector<scene::EntityID>& outRoots,
+                         EditorContext* editorContext)
+{
+    outRoots.clear();
+    if (roots.empty()) return false;
+
+    std::vector<CloneNode> nodes;
+    std::vector<std::size_t> rootNodeIndices;
+    for (const CloneRootRequest& root : roots) {
+        if (!GatherCloneTree(sourceScene, root.sourceId,
+                (std::numeric_limits<std::size_t>::max)(), root.destinationParentId,
+                root.rootSuffix, nodes, rootNodeIndices))
+            return false;
+    }
+    if (!ValidateCloneScriptSchemas(sourceScene, nodes)) return false;
+    if (!destinationScene.CanCreateGameObjects(nodes.size())) return false;
+
+    std::vector<scene::EntityID> createdIds;
+    std::vector<std::pair<scene::EntityID, scene::EntityID>> replacements;
+    std::vector<scene::EntityID> copiedOwners;
+    createdIds.reserve(nodes.size());
+    replacements.reserve(nodes.size());
+    copiedOwners.reserve(nodes.size());
+
+    auto rollback = [&]() {
+        if (!createdIds.empty()) destinationScene.DestroyGameObjects(createdIds);
+        outRoots.clear();
+    };
+
+    for (CloneNode& node : nodes) {
+        scene::GameObject* created = destinationScene.TryCreateGameObject(node.name);
+        if (!created) {
+            rollback();
+            return false;
+        }
+        node.destinationId = created->GetID();
+        createdIds.push_back(node.destinationId);
+        replacements.emplace_back(node.sourceId, node.destinationId);
+        copiedOwners.push_back(node.destinationId);
+
+        created->tag = node.tag;
+        created->layer = node.layer;
+        created->prefabAssetPath = node.prefabAssetPath;
+        created->prefabSourceId = node.prefabSourceId;
+        created->prefabSourceSnapshot = node.prefabSourceSnapshot;
+        created->transform = node.transform;
+        created->SetActive(node.active);
+    }
+
+    for (std::size_t index = 0; index < nodes.size(); ++index) {
+        CloneNode& node = nodes[index];
+        scene::EntityID destinationParentId = node.externalParentId;
+        if (node.parentNode != (std::numeric_limits<std::size_t>::max)())
+            destinationParentId = nodes[node.parentNode].destinationId;
+        if (!destinationParentId.IsValid()) continue;
+
+        scene::GameObject* destination = destinationScene.GetGameObject(node.destinationId);
+        scene::GameObject* parent = destinationScene.GetGameObject(destinationParentId);
+        if (!destination || !parent || !destination->SetParent(parent)) {
+            rollback();
+            return false;
+        }
+    }
+
+    scene::FlushWorldTransforms(destinationScene);
+    for (const CloneNode& node : nodes) {
+        if (&sourceScene == &destinationScene)
+            destinationScene.DuplicateComponentsPassive(node.sourceId, node.destinationId);
+        else
+            destinationScene.CopyComponentsFromPassive(sourceScene, node.sourceId, node.destinationId);
+
+        if (editorContext && &destinationScene == editorContext->activeScene) {
+            const scene::GameObject* source = sourceScene.GetGameObject(node.sourceId);
+            const scene::GameObject* destination = destinationScene.GetGameObject(node.destinationId);
+            if (source && destination)
+                editorContext->editorSceneState.CopyComponentOrder(source->instanceId,
+                                                                    destination->instanceId);
+        }
+    }
+
+    destinationScene.PreparePassiveCopiedScripts(copiedOwners);
+    if (!ValidatePreparedCloneScripts(destinationScene, copiedOwners)) {
+        rollback();
+        return false;
+    }
+    scene::RemapCopiedObjectReferences(sourceScene, destinationScene, replacements, copiedOwners);
+    destinationScene.FinalizePassiveCopiedScripts(copiedOwners);
+
+    outRoots.reserve(rootNodeIndices.size());
+    for (std::size_t rootIndex : rootNodeIndices)
+        outRoots.push_back(nodes[rootIndex].destinationId);
+    return !outRoots.empty();
+}
 
 std::size_t CountHierarchyObjects(scene::GameObject& object)
 {
@@ -42,39 +253,6 @@ bool HasSelectedAncestor(EditorContext& ctx, scene::GameObject& go)
             return true;
     }
     return false;
-}
-
-scene::EntityID CopyHierarchyToSceneRecursive(const scene::Scene& srcScene,
-                                              scene::GameObject& src,
-                                              scene::Scene& dstScene,
-                                              scene::EntityID parentId,
-                                              bool addCopySuffix)
-{
-    auto* created = dstScene.TryCreateGameObject(src.name + (addCopySuffix ? " (Copy)" : ""));
-    if (!created) return scene::EntityID::INVALID;
-    auto& dst = *created;
-    dst.tag             = src.tag;
-    dst.layer           = src.layer;
-    dst.prefabAssetPath = src.prefabAssetPath;
-    dst.prefabSourceId = src.prefabSourceId;
-    dst.prefabSourceSnapshot = src.prefabSourceSnapshot;
-    dst.transform       = src.transform;
-    dstScene.CopyComponentsFrom(srcScene, src.GetID(), dst.GetID());
-
-    if (parentId.IsValid()) {
-        if (auto* parent = dstScene.GetGameObject(parentId))
-            dst.SetParent(parent);
-    }
-
-    for (int i = 0; i < src.GetChildCount(); ++i) {
-        if (auto* child = src.GetChild(i)) {
-            if (!CopyHierarchyToSceneRecursive(srcScene, *child, dstScene, dst.GetID(), false).IsValid()) {
-                dstScene.DestroyGameObject(dst.GetID());
-                return scene::EntityID::INVALID;
-            }
-        }
-    }
-    return dst.GetID();
 }
 
 /// @return id が Canvas を指していなければ空。
@@ -172,33 +350,13 @@ scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
         return scene::EntityID::INVALID;
     }
 
-    auto* created = ctx.activeScene->TryCreateGameObject(
-        src->name + (addCloneSuffix ? " (Clone)" : ""));
-    if (!created) return scene::EntityID::INVALID;
-    auto& dst = *created;
-    dst.tag       = src->tag;
-    dst.layer     = src->layer;
-    dst.prefabAssetPath = src->prefabAssetPath;
-    dst.prefabSourceId = src->prefabSourceId;
-    dst.prefabSourceSnapshot = src->prefabSourceSnapshot;
-    dst.transform = src->transform;
-    ctx.activeScene->DuplicateComponents(srcId, dst.GetID());
-    ctx.editorSceneState.CopyComponentOrder(src->instanceId, dst.instanceId);
-
-    if (parentId.IsValid()) {
-        if (auto* parent = ctx.activeScene->GetGameObject(parentId))
-            dst.SetParent(parent);
-    }
-
-    for (int i = 0; i < src->GetChildCount(); ++i) {
-        if (auto* child = src->GetChild(i)) {
-            if (!DuplicateHierarchyRecursive(ctx, child->GetID(), dst.GetID(), false).IsValid()) {
-                ctx.activeScene->DestroyGameObject(dst.GetID());
-                return scene::EntityID::INVALID;
-            }
-        }
-    }
-    return dst.GetID();
+    std::vector<CloneRootRequest> requests{
+        {srcId, parentId, addCloneSuffix ? " (Clone)" : ""}};
+    std::vector<scene::EntityID> copiedRoots;
+    if (!CopyHierarchyForest(*ctx.activeScene, *ctx.activeScene, requests,
+                             copiedRoots, &ctx))
+        return scene::EntityID::INVALID;
+    return copiedRoots.front();
 }
 
 std::unique_ptr<ICommand> MakeDeleteSelectedCommand(EditorContext& ctx)
@@ -227,20 +385,18 @@ std::unique_ptr<ICommand> MakeDuplicateSelectedCommand(EditorContext& ctx)
         return nullptr;
     }
     return MakeSceneEditCommand(ctx, "Duplicate GameObjects", [&ctx, toDup]() {
-        std::vector<scene::EntityID> newIds;
+        std::vector<CloneRootRequest> requests;
+        requests.reserve(toDup.size());
         for (auto eid : toDup) {
             auto* src = ctx.activeScene->GetGameObject(eid);
             const scene::EntityID parentId = src && src->GetParent()
                 ? src->GetParent()->GetID() : scene::EntityID{};
-            const scene::EntityID newId =
-                DuplicateHierarchyRecursive(ctx, eid, parentId, true);
-            if (!newId.IsValid()) {
-                for (scene::EntityID created : newIds) ctx.activeScene->DestroyGameObject(created);
-                return;
-            }
-            newIds.push_back(newId);
+            requests.push_back({eid, parentId, " (Clone)"});
         }
-        if (!newIds.empty()) SelectEntities(ctx, newIds);
+        std::vector<scene::EntityID> newIds;
+        if (CopyHierarchyForest(*ctx.activeScene, *ctx.activeScene, requests,
+                                newIds, &ctx))
+            SelectEntities(ctx, newIds);
     });
 }
 
@@ -302,12 +458,12 @@ void CopySelectedToClipboard(EditorContext& ctx)
         if (!src || HasSelectedAncestor(ctx, *src) ||
             std::find(sourceRoots.begin(), sourceRoots.end(), id) != sourceRoots.end()) continue;
         sourceRoots.push_back(id);
-
-        const scene::EntityID copiedRoot = CopyHierarchyToSceneRecursive(
-            *ctx.activeScene, *src, prepared, scene::EntityID{}, false);
-        if (!copiedRoot.IsValid()) return;
-        preparedRoots.push_back(copiedRoot);
     }
+    std::vector<CloneRootRequest> requests;
+    requests.reserve(sourceRoots.size());
+    for (scene::EntityID sourceRoot : sourceRoots)
+        requests.push_back({sourceRoot, scene::EntityID::INVALID, {}});
+    if (!CopyHierarchyForest(*ctx.activeScene, prepared, requests, preparedRoots, nullptr)) return;
     g_gameObjectClipboard = std::move(prepared);
     g_gameObjectClipboardRoots = std::move(preparedRoots);
 }
@@ -327,21 +483,16 @@ std::unique_ptr<ICommand> MakePasteClipboardCommand(EditorContext& ctx, scene::E
 
     const std::vector<scene::EntityID> roots = g_gameObjectClipboardRoots;
     return MakeSceneEditCommand(ctx, "Paste GameObjects", [&ctx, parentId, roots]() {
-        std::vector<scene::EntityID> pastedIds;
+        std::vector<CloneRootRequest> requests;
+        requests.reserve(roots.size());
         for (scene::EntityID sourceRootId : roots) {
-            auto* sourceRoot = g_gameObjectClipboard.GetGameObject(sourceRootId);
-            if (!sourceRoot) continue;
-
-            const scene::EntityID pastedId = CopyHierarchyToSceneRecursive(
-                g_gameObjectClipboard, *sourceRoot, *ctx.activeScene, parentId, true);
-            if (!pastedId.IsValid()) {
-                for (scene::EntityID created : pastedIds) ctx.activeScene->DestroyGameObject(created);
-                return;
-            }
-            pastedIds.push_back(pastedId);
+            if (!g_gameObjectClipboard.GetGameObject(sourceRootId)) continue;
+            requests.push_back({sourceRootId, parentId, " (Copy)"});
         }
 
-        if (!pastedIds.empty())
+        std::vector<scene::EntityID> pastedIds;
+        if (CopyHierarchyForest(g_gameObjectClipboard, *ctx.activeScene, requests,
+                                pastedIds, &ctx))
             SelectEntities(ctx, pastedIds);
     });
 }

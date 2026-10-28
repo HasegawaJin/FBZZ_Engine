@@ -2,16 +2,20 @@
 /// @brief   複数選択時の Inspector。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-///
 /// @note Transform は Set / Offset の 2 モード、共通コンポーネントは Reflect() 経由で実編集し、
-///       列挙はコンポーネントレジストリ由来にして追加漏れを防ぐ (「選んだ 20 個のライト強度を
-///       まとめて下げる」「全員を +Y に 2m」のようなレベル調整の一括操作に対応する)。
+/// @note 列挙はコンポーネントレジストリ由来にして追加漏れを防ぐ (「選んだ 20 個のライト強度を
+/// @note まとめて下げる」「全員を +Y に 2m」のようなレベル調整の一括操作に対応する)。
 #include "InspectorMultiEdit.hpp"
 #include "InspectorCommon.hpp"
+#include "ManagedSettingsReflector.hpp"
+#include <Editor/PlayModeController.hpp>
+#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
+#include <Engine/Scene/ScriptFactory.hpp>
 
 #include <Editor/ImGuiReflector.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/ManagedScriptSettings.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 
 #include <imgui.h>
@@ -19,15 +23,99 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace fbzz::editor {
 
 namespace {
+void DrawManagedSelectionSettings(EditorContext& ctx, const std::vector<scene::GameObject*>& owners)
+{
+    if (owners.empty() || !ctx.activeScene) return;
+    static uint64_t selectionScene = 0;
+    static std::unordered_map<std::string, std::string> selectedScripts;
+    if (selectionScene != ctx.activeScene->GetRenderSceneGeneration()) {
+        selectedScripts.clear(); selectionScene = ctx.activeScene->GetRenderSceneGeneration();
+    }
+    auto& runtime = scene::ManagedScriptRuntime::Instance();
+    const auto* first = owners.front()->GetComponent<scene::ScriptComponent>();
+    if (!first) return;
+    std::unordered_set<std::string> displayed;
+    for (const auto& primary : first->scripts) {
+        if (!primary.script || !runtime.FindAdapter(primary.script.get())) continue;
+        const std::string type = primary.script->GetTypeName(); if (!displayed.insert(type).second) continue;
+        std::vector<std::vector<const scene::ScriptEntry*>> matches;
+        for (auto* owner : owners) {
+            std::vector<const scene::ScriptEntry*> scripts;
+            if (const auto* component = owner->GetComponent<scene::ScriptComponent>())
+                for (const auto& entry : component->scripts)
+                    if (entry.script && entry.script->GetTypeName() == type && runtime.FindAdapter(entry.script.get())) scripts.push_back(&entry);
+            if (scripts.empty()) break;
+            matches.push_back(std::move(scripts));
+        }
+        if (matches.size() != owners.size()) continue;
+        ImGui::PushID(type.c_str());
+        std::vector<std::pair<scene::GameObject*, const scene::ScriptEntry*>> selected;
+        std::vector<ManagedSettingsTarget> targets;
+        for (size_t index = 0; index < owners.size(); ++index) {
+            const scene::ScriptEntry* entry = matches[index].size() == 1 ? matches[index].front() : nullptr;
+            if (!entry) {
+                const std::string key = owners[index]->instanceId + '/' + type;
+                for (const auto* candidate : matches[index]) if (candidate->savedScriptId == selectedScripts[key]) entry = candidate;
+            }
+            if (entry) { selected.emplace_back(owners[index], entry); targets.push_back(CaptureManagedSettingsTarget(ctx, *owners[index], *entry)); }
+        }
+        ManagedScriptEnabledState enabledState;
+        if (selected.size() == owners.size()) enabledState = ReadManagedInspectorEnabled(ctx, targets);
+        else enabledState.diagnostic = "同じ型の Script が複数あります。本文で操作する個体を選択してください。";
+        bool enabled = enabledState.enabled;
+        const widgets::ComponentToggleOptions toggle{enabledState.editable, enabledState.mixed, enabledState.diagnostic.c_str()};
+        constexpr ImU32 SCRIPT_ACCENT = IM_COL32(120, 190, 255, 255);
+        const auto header = widgets::ComponentHeader(scene::ScriptFactory::DisplayName(type).c_str(), SCRIPT_ACCENT, &enabled, true, {}, toggle);
+        if (header.enabledChanged) {
+            const auto result = ApplyManagedInspectorEnabled(ctx, targets, enabled);
+            if (!result.ok) DrawManagedDiagnostic("切り替えできません", result.message);
+        }
+        if (header.open) {
+            const auto body = widgets::BeginComponentBody(header, SCRIPT_ACCENT);
+            selected.clear();
+            for (size_t index = 0; index < owners.size(); ++index) {
+                const scene::ScriptEntry* entry = matches[index].size() == 1 ? matches[index].front() : nullptr;
+                if (!entry) {
+                    const std::string key = owners[index]->instanceId + '/' + type;
+                    std::string& choice = selectedScripts[key];
+                    for (const auto* candidate : matches[index]) if (candidate->savedScriptId == choice) entry = candidate;
+                    ImGui::PushID(owners[index]->instanceId.c_str());
+                    const std::string label = owners[index]->name + " のスクリプト";
+                    std::string preview = "選択してください";
+                    for (size_t candidateIndex = 0; candidateIndex < matches[index].size(); ++candidateIndex)
+                        if (matches[index][candidateIndex] == entry) preview = "スクリプト " + std::to_string(candidateIndex + 1);
+                    if (ImGui::BeginCombo(label.c_str(), preview.c_str())) {
+                        for (size_t candidateIndex = 0; candidateIndex < matches[index].size(); ++candidateIndex) {
+                            const auto* candidate = matches[index][candidateIndex];
+                            const std::string option = "スクリプト " + std::to_string(candidateIndex + 1) + "##" + candidate->savedScriptId;
+                            if (ImGui::Selectable(option.c_str(), candidate == entry)) { choice = candidate->savedScriptId; entry = candidate; }
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::PopID();
+                }
+                if (entry) selected.emplace_back(owners[index], entry);
+            }
+            if (selected.size() == owners.size()) {
+                ManagedSettingsReflector reflector(ctx, selected); reflector.Draw(); reflector.Finish();
+            } else ImGui::TextWrapped("操作するスクリプトを選択してください。");
+            widgets::EndComponentBody(body);
+        }
+        ImGui::PopID();
+    }
+}
+
 
 /// @name 一括編集用リフレクタ
 /// @brief 基底 (ImGuiReflector) の描画を流用し、呼び出し前後で変わったフィールドを記録する。
 /// @note ImGuiReflector は値を書き換えるだけで変更フィールドを返さない。記録した変更で
-///       同じ Reflect() を他の選択オブジェクトへ回し、同名フィールドだけへ配る。
+/// @note 同じ Reflect() を他の選択オブジェクトへ回し、同名フィールドだけへ配る。
 struct MultiEditReflector final : ImGuiReflector {
     struct Change {
         enum class Kind { Float, Int, Bool, Vec2, Vec3, Vec4, Quat, String };
@@ -145,7 +233,7 @@ private:
 
 /// @brief 記録された変更を「同名フィールドだけ」へ書き込むリフレクタ。
 /// @note 未変更フィールドまでプライマリの値で塗ると、Intensity を触っただけで他オブジェクトの
-///       色や範囲まで揃ってしまう (Unity は触った値だけ揃える)。
+/// @note 色や範囲まで揃ってしまう (Unity は触った値だけ揃える)。
 struct ApplyFieldReflector final : scene::IReflector {
     const MultiEditReflector::Change* change = nullptr;
 
@@ -199,7 +287,7 @@ struct ApplyFieldReflector final : scene::IReflector {
 
 enum class TransformEditMode { Set, Offset };
 
-/// 選択全体の Transform を before/after で 1 コマンドにまとめて Undo へ積む。
+/// @note 選択全体の Transform を before/after で 1 コマンドにまとめて Undo へ積む。
 void PushBulkTransformUndo(EditorContext& ctx,
                            const std::vector<std::string>& guids,
                            const std::vector<scene::Transform>& before,
@@ -239,7 +327,7 @@ std::vector<scene::Transform> TransformsOf(const std::vector<scene::GameObject*>
     return values;
 }
 
-/// 「全員を同じ値にする」モード。従来の挙動をそのまま踏襲する。
+/// @note 「全員を同じ値にする」モード。従来の挙動をそのまま踏襲する。
 void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObject*>& gos)
 {
     const auto& refT = gos.front()->transform;
@@ -273,7 +361,7 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
         }
         if (!changed && !ImGui::IsItemDeactivatedAfterEdit()) return;
         /// @note 反映は各フィールドの changed ハンドラ側で済ませている。ここで transform 全体を
-        ///       コピーすると、Position を触っただけで他の回転・スケールまで潰れる。
+        /// @note コピーすると、Position を触っただけで他の回転・スケールまで潰れる。
         if (!ImGui::IsItemDeactivatedAfterEdit()) return;
         if (edit.active)
             PushBulkTransformUndo(ctx, edit.guids, edit.before, TransformsOf(gos), description);
@@ -319,8 +407,8 @@ void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObjec
 
 /// @brief 「全員に相対的な差分を加える」モード。
 /// @note Set モードでは「全員を +Y に 2m」ができない (全員が同じ Y に揃う)。その場適用でなく
-///       [Apply] ボタン式にしているのは、ドラッグ中の毎フレーム加算による発散を避け、
-///       Undo を 1 操作 = 1 コマンドに保つため。
+/// @note [Apply] ボタン式にしているのは、ドラッグ中の毎フレーム加算による発散を避け、
+/// @note Undo を 1 操作 = 1 コマンドに保つため。
 void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameObject*>& gos)
 {
     static float moveDelta[3]  = { 0.0f, 0.0f, 0.0f };
@@ -350,7 +438,7 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
     ImGui::SameLine();
     if (ImGui::Button("Apply##rot")) {
         /// @note ワールド軸まわりの回転を左から掛けることで、各オブジェクトの現在の向きに
-        ///       関係なく「同じ方向へ同じ角度だけ回す」になる。
+        /// @note 関係なく「同じ方向へ同じ角度だけ回す」になる。
         const math::Quaternion delta =
             widgets::EulerDegToQuat({ rotDelta[0], rotDelta[1], rotDelta[2] });
         applyBulk("Rotate by Offset (Multi)", [delta](scene::Transform& t) {
@@ -372,7 +460,7 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
 
 /// @name 共通コンポーネントの一括編集
 
-/// T を全員が持っているか。
+/// @note T を全員が持っているか。
 template<typename T>
 bool AllHaveComponent(const std::vector<scene::GameObject*>& gos)
 {
@@ -640,7 +728,7 @@ void DrawSharedComponentSection(EditorContext& ctx,
     ImGui::PopID();
 }
 
-} // namespace
+} /// @note namespace
 
 void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::EntityID>& ids)
 {
@@ -658,6 +746,11 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
     ImGui::Spacing();
 
     /// @name Transform
+    if (ctx.playMode && !ctx.playMode->IsInEditor()) {
+        ImGui::TextWrapped("Play の C# 設定は一時編集です。Edit の設定と履歴には影響しません。");
+        DrawManagedSelectionSettings(ctx, gos);
+        return;
+    }
     const widgets::ComponentHeaderResult transformHeader =
         widgets::ComponentHeader("Transform", EditorTheme::ColorU32(ThemeColor::Accent), nullptr);
     if (transformHeader.open) {
@@ -692,7 +785,7 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
 
     /// @name 共通コンポーネント
     /// @note 決め打ちの 8 種類 BulletText は列挙漏れの実害があったため、レジストリ由来の列挙で
-    ///       自動追従させる。
+    /// @note 自動追従させる。
     ImGui::Spacing();
     ImGui::TextDisabled("Shared Components");
     ImGui::Separator();
@@ -711,10 +804,11 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
 
     if (!anyShared)
         ImGui::TextDisabled("The selected objects have no component in common.");
+    DrawManagedSelectionSettings(ctx, gos);
 
     /// @name 選択全体へコンポーネントを追加
     /// @note 既に持っている対象は飛ばし、追加ぶんは 1 回の Undo でまとめて戻る
-    ///       (「選んだ 20 個全部に AudioSource」のようなレベル調整操作に対応)。
+    /// @note (「選んだ 20 個全部に AudioSource」のようなレベル調整操作に対応)。
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
@@ -726,4 +820,4 @@ void DrawMultiSelectInspector(EditorContext& ctx, const std::vector<scene::Entit
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

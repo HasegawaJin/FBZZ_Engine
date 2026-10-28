@@ -2,7 +2,9 @@
 /// @brief   .fbx アセットから Scene 用 GameObject 階層を構築する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
+#include <Engine/Asset/ModelSource.hpp>
 #include <Editor/Util/ModelPlacement.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
@@ -19,31 +21,13 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
-#include <cctype>
 #include <filesystem>
 #include <utility>
 #include <vector>
 
 namespace fbzz::editor {
 
-namespace {
 
-std::string SanitizeMaterialFileName(std::string name, uint32_t fallbackIndex)
-{
-    if (name.empty())
-        name = "Material_" + std::to_string(fallbackIndex);
-
-    for (char& c : name) {
-        const unsigned char uc = static_cast<unsigned char>(c);
-        if (!std::isalnum(uc) && c != '_' && c != '-' && c != '.')
-            c = '_';
-    }
-    if (name == "." || name == "..")
-        name = "Material_" + std::to_string(fallbackIndex);
-    return name;
-}
-
-} /// @note namespace
 
 std::string FindImportedMaterialPath(const std::string& modelPath,
                                      const asset::ModelAsset* modelAsset,
@@ -61,7 +45,7 @@ std::string FindImportedMaterialPath(const std::string& modelPath,
         return {};
 
     const bool isFbx =
-        util::StringUtils::ToLower(util::FileSystem::GetExtension(modelPath)) == ".fbx";
+        asset::IsModelSourcePath(modelPath);
     const std::filesystem::path modelFilePath =
         util::FileSystem::PathFromUtf8(modelPath);
     const std::filesystem::path modelDir = isFbx
@@ -76,7 +60,7 @@ std::string FindImportedMaterialPath(const std::string& modelPath,
     }
     if (duplicateCount > 0)
         fileStem += "_" + std::to_string(duplicateCount);
-    /// @note Scene には原本 FBX から導出した論理パスを保存し、.mat の実体は AssetManager が Assets 側または Library/Baked 側から解決する。
+    /// @note Scene にはモデル原本 から導出した論理パスを保存し、.mat の実体は AssetManager が Assets 側または Library/Baked 側から解決する。
     const std::filesystem::path matFsPath =
         modelDir / "materials" / (fileStem + ".mat");
     const std::string normalized = util::FileSystem::NormalizePathSeparators(
@@ -128,8 +112,8 @@ std::string ResolveImportedMeshName(const std::string& modelPath,
             return submeshes[static_cast<size_t>(meshIndex)].name;
     }
 
-    /// @note v2 以前の .fzasset は名前を持たないため、FBX 原本を読んで互換的に補完する。
-    if (util::StringUtils::ToLower(util::FileSystem::GetExtension(modelPath)) == ".fbx") {
+    /// @note v2 以前の .fzasset は名前を持たないため、モデル原本を読んで互換的に補完する。
+    if (asset::IsModelSourcePath(modelPath)) {
         const FbxScanResult scan =
             FbxImportTool::Scan(asset::AssetManager::ResolveAssetPath(modelPath));
         if (scan.valid && meshIndex >= 0 && meshIndex < static_cast<int>(scan.meshNames.size()) &&
@@ -333,9 +317,8 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
                     : static_cast<int>(submeshIndices[slot]);
                 if (meshIndex < 0 || meshIndex >= meshCount) continue;
                 const renderer::Mesh* mesh = model->meshes[static_cast<size_t>(meshIndex)].get();
-                mc.RawSlotAt(slot).materialPath =
-                    ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex,
-                                                mesh && mesh->isSkinned);
+                mc.RawSlotAt(slot).SetMaterialPath(ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex,
+                                                mesh && mesh->isSkinned));
             }
             target.AddComponent<scene::MaterialComponent>(std::move(mc));
         };
@@ -390,7 +373,7 @@ scene::EntityID SpawnModelAssetHierarchy(EditorContext& ctx,
         target.AddComponent<scene::MeshRenderer>(std::move(mr));
 
         scene::MaterialComponent mc;
-        mc.materialPath = ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex, false);
+        mc.SetMaterialPath(ResolveImportedMaterialPath(modelPath, modelAsset, meshIndex, false));
         target.AddComponent<scene::MaterialComponent>(std::move(mc));
     };
 

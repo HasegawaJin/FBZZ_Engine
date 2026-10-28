@@ -20,6 +20,9 @@
 #include <Editor/Util/Selection.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/InspectorValueSnapshot.hpp>
+#include <Editor/Util/InspectorEditSession.hpp>
+#include <Editor/Util/WaterAuthoringValues.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Physics/Layer.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -132,6 +135,20 @@ inline bool CanRecordEditorUndo(const EditorContext& ctx)
 }
 
 template<typename T>
+T CaptureInspectorComponentValues(const T& value)
+{
+    if constexpr (std::is_same_v<T, scene::WaterComponent>) return CaptureWaterAuthoringValues(value);
+    else return value;
+}
+
+template<typename T>
+void ApplyInspectorComponentValues(T& target, const T& values)
+{
+    if constexpr (std::is_same_v<T, scene::WaterComponent>) ApplyWaterAuthoringValues(target, values);
+    else target = values;
+}
+
+template<typename T>
 void PushComponentValueCommand(scene::GameObject& go,
                                EditorContext& ctx,
                                const std::string& description,
@@ -146,7 +163,7 @@ void PushComponentValueCommand(scene::GameObject& go,
     auto apply = [scene, instanceId, markDirty](const T& value) {
         if (auto* target = scene->FindByGuid(instanceId)) {
             if (auto* component = target->GetComponent<T>()) {
-                *component = value;
+                ApplyInspectorComponentValues(*component, value);
                 if constexpr (std::is_same_v<T, scene::TerrainComponent>) {
                     component->heightDirty = true;
                     component->splatDirty = true;
@@ -164,10 +181,12 @@ void PushComponentValueCommand(scene::GameObject& go,
         }
     };
 
+    T beforeValues = CaptureInspectorComponentValues(before);
+    T afterValues = CaptureInspectorComponentValues(after);
     ctx.undoStack->Push(std::make_unique<LambdaCommand>(
         description,
-        [apply, after]() { apply(after); },
-        [apply, before]() { apply(before); }));
+        [apply, afterValues = std::move(afterValues)]() { apply(afterValues); },
+        [apply, beforeValues = std::move(beforeValues)]() { apply(beforeValues); }));
 }
 
 /// @note 「ユーザーが Inspector で編集しうる値」が変わったかを比較する。
@@ -363,7 +382,7 @@ struct ComponentSnapshotCompare {
 inline bool MaterialSlotUserValuesEqual(const scene::MaterialSlot& a,
                                         const scene::MaterialSlot& b)
 {
-    return a.materialPath == b.materialPath && a.visible == b.visible;
+    return a.GetMaterialPath() == b.GetMaterialPath() && a.visible == b.visible;
 }
 
 /// @note Renderer 系は mesh / model が生ポインタで Reflect に載らない (パスから解決される)。
@@ -510,20 +529,34 @@ struct ComponentUndoCompare<scene::TerrainGridComponent> {
 template<typename T>
 struct ComponentActiveEdit {
     scene::EntityID id;
-    ImGuiID activeId = 0;
-    T before{};
-    bool active = false;
+    InspectorEditSession session;
+    std::unique_ptr<T> before;
+    InspectorValueSnapshot values;
+    scene::Scene* source = nullptr;
+    uint64_t sceneGeneration = 0;
 };
+
+/// @note Reflection だけでは保存されない、既存の Undo 比較に含まれる値を同じ stream に投影する。
+template<typename T>
+void InspectorUndoValues(T& component, InspectorValueSnapshot& values)
+{
+    if constexpr (std::is_same_v<T, scene::WaterComponent>) {
+        values.ProjectedValue("waterAuthoring", component, CopyWaterAuthoringValues);
+    } else if constexpr (requires { ProjectInspectorUndoValues(component, values); }) {
+        ProjectInspectorUndoValues(component, values);
+    } else {
+        /// @note Reflect の完全性は clamp・ID採番を含むため、捕捉の非変異契約には使わない。
+        values.Value("component", component);
+    }
+}
 
 /// @note DrawComponentSectionCustom 用 — Snapshot 型を T と分離した版。
 /// @note unique_ptr を持つコンポーネントでは T をそのままスナップショットに使えないため分離する。
 /// @note (T, Snapshot) ペアごとに static スロットが生成されるため MeshCollider / ConvexHull 分離を保証する。
 template<typename T, typename Snapshot>
 struct ComponentActiveEditCustom {
-    scene::EntityID entityId{};
-    ImGuiID activeId = 0;
+    InspectorEditSession session;
     Snapshot before{};
-    bool active = false;
 };
 
 /// @note 型付き描画関数を、Undo 処理が受け取る型消去済みコールバックへ橋渡しする。
@@ -536,8 +569,7 @@ void InvokeComponentDraw(T& component, EditorContext& ctx, void* drawFn)
 }
 
 /// @note コンポーネント内部の ImGui 編集を ActiveId の開始から解放まで1操作として記録する。
-/// @note 各 Drag/Slider を個別対応すると記録漏れが生じるため、共通セクションで
-/// @note 編集前後のコンポーネント全体をスナップショットする。
+/// @note 編集前の authoring 値だけを再利用し、ActiveId が始まったときだけ Component の Undo 状態を作る。
 template<typename T>
 void DrawGenericUndoableComponentBody(scene::GameObject& go,
                                       EditorContext& ctx,
@@ -549,40 +581,49 @@ void DrawGenericUndoableComponentBody(scene::GameObject& go,
     static ComponentActiveEdit<T> edit;
 
     if (!CanRecordEditorUndo(ctx)) {
-        edit.active = false;
+        edit.session.Cancel();
+        edit.before.reset();
         drawFn(component, ctx, drawFnData);
         return;
     }
 
-    const T beforeDraw = component;
+    const uint64_t generation = ctx.activeScene ? ctx.activeScene->GetRenderSceneGeneration() : 0;
+    if (edit.source != ctx.activeScene || edit.sceneGeneration != generation || edit.id != go.GetID()) {
+        edit.session.Cancel();
+        edit.before.reset();
+        edit.values.Clear();
+        edit.source = ctx.activeScene;
+        edit.sceneGeneration = generation;
+        edit.id = go.GetID();
+    }
+    if (!edit.session.Active()) {
+        edit.values.BeginCapture();
+        InspectorUndoValues(component, edit.values);
+        edit.values.EndCapture();
+    }
     const ImGuiID activeBefore = ImGui::GetActiveID();
     drawFn(component, ctx, drawFnData);
     const ImGuiID activeAfter = ImGui::GetActiveID();
 
-    if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
-        edit.id = go.GetID();
-        edit.activeId = activeAfter;
-        edit.before = beforeDraw;
-        edit.active = true;
+    const auto transition = edit.session.Observe(go.GetID(), activeBefore, activeAfter);
+    if (transition == InspectorEditTransition::BEGIN) {
+        /// @note UI が最初の値を書いた後でも、直前の値 stream を戻して初回の差分を取りこぼさない。
+        edit.before = std::make_unique<T>(CaptureInspectorComponentValues(component));
+        edit.values.BeginApply();
+        InspectorUndoValues(*edit.before, edit.values);
         return;
     }
 
-    if (edit.active && edit.id != go.GetID()) {
-        if (activeAfter != edit.activeId) edit.active = false;
-        return;
-    }
-    if (!edit.active || activeAfter == edit.activeId) return;
+    if (transition != InspectorEditTransition::END) return;
 
     /// @note 値が動いていない操作 (参照欄のクリック・折りたたみの開閉など) では積まない。
-    if (ComponentUndoCompare<T>::UserValuesEqual(edit.before, component)) {
-        edit.active = false;
-        return;
+    if (!ComponentUndoCompare<T>::UserValuesEqual(*edit.before, component)) {
+        PushComponentValueCommand(
+            go, ctx, std::string("Change ") + label, *edit.before, component);
+        if (ctx.markSceneDirty) ctx.markSceneDirty();
     }
-
-    PushComponentValueCommand(
-        go, ctx, std::string("Change ") + label, edit.before, component);
-    if (ctx.markSceneDirty) ctx.markSceneDirty();
-    edit.active = false;
+    edit.session.Cancel();
+    edit.before.reset();
 }
 
 /// @note MaterialComponent は参照先コンポーネントと MaterialAsset 本体を同じ UI で編集する。
@@ -596,15 +637,13 @@ void DrawUndoableComponentBody(scene::GameObject& go,
                                DrawFn drawFn)
 {
     struct ActiveEdit {
-        scene::EntityID id;
-        ImGuiID activeId = 0;
+        InspectorEditSession session;
         scene::MaterialComponent before;
-        bool active = false;
     };
     static ActiveEdit edit;
 
     if (!CanRecordEditorUndo(ctx)) {
-        edit.active = false;
+        edit.session.Cancel();
         drawFn(component, ctx);
         return;
     }
@@ -614,18 +653,12 @@ void DrawUndoableComponentBody(scene::GameObject& go,
     drawFn(component, ctx);
     const ImGuiID activeAfter = ImGui::GetActiveID();
 
-    if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
-        edit.id = go.GetID();
-        edit.activeId = activeAfter;
+    const auto transition = edit.session.Observe(go.GetID(), activeBefore, activeAfter);
+    if (transition == InspectorEditTransition::BEGIN) {
         edit.before = beforeDraw;
-        edit.active = true;
         return;
     }
-    if (edit.active && edit.id != go.GetID()) {
-        if (activeAfter != edit.activeId) edit.active = false;
-        return;
-    }
-    if (!edit.active || activeAfter == edit.activeId) return;
+    if (transition != InspectorEditTransition::END) return;
 
     /// @note 全スロットの割り当てを Undo 対象にする。判定は汎用側と同じ
     /// @note ComponentUndoCompare を使う (以前はここに同じ比較を手書きで重複させていた)。
@@ -635,12 +668,10 @@ void DrawUndoableComponentBody(scene::GameObject& go,
             go, ctx, std::string("Change ") + label, edit.before, component);
         if (ctx.markSceneDirty) ctx.markSceneDirty();
     }
-    edit.active = false;
+    edit.session.Cancel();
 }
 
-/// @note RigidBodyComponent は shared_ptr の先に編集値を持つため、物理ボディ本体も複製する。
-/// @note Component の浅いコピーだけでは before/after が同じ RigidBody を参照し、
-/// @note Mass や Gravity Scale の Undo が実質的に何も戻さないため。
+/// @note 比較用 Component と復元用 body を分け、Reflect による補正を入力前の復元値へ混入させない。
 template<typename DrawFn>
 void DrawUndoableComponentBody(scene::GameObject& go,
                                EditorContext& ctx,
@@ -654,15 +685,13 @@ void DrawUndoableComponentBody(scene::GameObject& go,
         bool hasBody = false;
     };
     struct ActiveEdit {
-        scene::EntityID id;
-        ImGuiID activeId = 0;
+        InspectorEditSession session;
         Snapshot before;
-        bool active = false;
     };
     static ActiveEdit edit;
 
     if (!CanRecordEditorUndo(ctx)) {
-        edit.active = false;
+        edit.session.Cancel();
         drawFn(component, ctx);
         return;
     }
@@ -680,18 +709,12 @@ void DrawUndoableComponentBody(scene::GameObject& go,
     drawFn(component, ctx);
     const ImGuiID activeAfter = ImGui::GetActiveID();
 
-    if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
-        edit.id = go.GetID();
-        edit.activeId = activeAfter;
+    const auto transition = edit.session.Observe(go.GetID(), activeBefore, activeAfter);
+    if (transition == InspectorEditTransition::BEGIN) {
         edit.before = beforeDraw;
-        edit.active = true;
         return;
     }
-    if (edit.active && edit.id != go.GetID()) {
-        if (activeAfter != edit.activeId) edit.active = false;
-        return;
-    }
-    if (!edit.active || activeAfter == edit.activeId) return;
+    if (transition != InspectorEditTransition::END) return;
 
     const Snapshot after = capture(component);
 
@@ -701,7 +724,7 @@ void DrawUndoableComponentBody(scene::GameObject& go,
     if (edit.before.hasBody == after.hasBody &&
         ComponentUndoCompare<scene::RigidBodyComponent>::UserValuesEqual(
             edit.before.component, component)) {
-        edit.active = false;
+        edit.session.Cancel();
         return;
     }
 
@@ -731,7 +754,7 @@ void DrawUndoableComponentBody(scene::GameObject& go,
             [apply, before = edit.before]() { apply(before); }));
     }
     if (ctx.markSceneDirty) ctx.markSceneDirty();
-    edit.active = false;
+    edit.session.Cancel();
 }
 
 
@@ -1019,7 +1042,7 @@ void DrawComponentSection(scene::GameObject* go,
             /// @note Add Component と同じ既定値へ戻す (T{} だと RigidBody の本体や Terrain の格子が消える)。
             T after = MakeDefaultComponent<T>(*go);
             CopyComponentEnabledFlag(before, after);
-            *comp = after;
+            ApplyInspectorComponentValues(*comp, after);
             PushComponentValueCommand(
                 *go, ctx, std::string("Reset ") + label, before, *comp);
             if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -1027,7 +1050,7 @@ void DrawComponentSection(scene::GameObject* go,
         if (!internalType) ImGui::Separator();
         if (ImGui::MenuItem("Copy Component"))
         {
-            compClipboard     = *comp;
+            compClipboard     = CaptureInspectorComponentValues(*comp);
             compClipboardType = &typeid(T);
         }
         const bool canPaste = !internalType && compClipboardType && *compClipboardType == typeid(T);
@@ -1036,10 +1059,10 @@ void DrawComponentSection(scene::GameObject* go,
             const T before = *comp;
             if constexpr (hasEnabled) {
                 const bool wasEnabled = ComponentEnabledFlag(*comp);
-                *comp = std::any_cast<T>(compClipboard);
+                ApplyInspectorComponentValues(*comp, std::any_cast<T>(compClipboard));
                 ComponentEnabledFlag(*comp) = wasEnabled;
             } else {
-                *comp = std::any_cast<T>(compClipboard);
+                ApplyInspectorComponentValues(*comp, std::any_cast<T>(compClipboard));
             }
             PushComponentValueCommand(
                 *go, ctx, std::string("Paste ") + label, before, *comp);
@@ -1057,7 +1080,8 @@ void DrawComponentSection(scene::GameObject* go,
     if (open) {
         const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
         ImGui::Spacing();
-        if constexpr (internalType) {
+        if constexpr (internalType || std::is_same_v<T, scene::TerrainComponent>) {
+            /// @note Terrain は変更直前に配列を保存する専用の編集 transaction を持つ。
             drawFn(*comp, ctx);
         } else if constexpr (std::is_same_v<T, scene::MaterialComponent>
                           || std::is_same_v<T, scene::RigidBodyComponent>) {
@@ -1086,7 +1110,7 @@ void DrawComponentSection(scene::GameObject* go,
             ctx.memoryLeakDiff->ScheduleCompare(3, std::string("Remove ") + label);
         }
         /// @note RemoveComponent は GPU リソースを返すので、やり直し用のコピーはハンドルを消しておく (再利用された枠を掴まない)。
-        T removed = *comp;
+        T removed = CaptureInspectorComponentValues(*comp);
         scene::ClearComponentGpuHandles(removed);
         scene::Scene* scene = ctx.activeScene;
         const std::string instanceId = go->instanceId;
@@ -1118,10 +1142,47 @@ void DrawComponentSection(scene::GameObject* go,
 /// @note enabledはDrawComponentSectionの共通ヘッダーがUndo付きで描画するため、
 /// @note Reflect()内の同名フィールドだけを省き、二重表示を防ぐ。
 struct ComponentImGuiReflector final : ImGuiReflector {
+    bool managedControlPoints = false;
+    bool managedClothAnchors = false;
+    [[nodiscard]] bool ManagedField(const char* name) const
+    {
+        const std::string_view key(name);
+        return managedControlPoints && (key.starts_with("baked") || key == "bakeValid"
+            || key == "pointSourceMode" || key == "pointRuntimeMode" || key == "lakePlaneHeight");
+    }
+    /// @note enabled用のbool処理から基底のアセット・値型Fieldを隠さない。
+    using ImGuiReflector::Field;
     void Field(const char* name, bool& value) override
     {
-        if (std::strcmp(name, "enabled") == 0) return;
+        if (std::strcmp(name, "enabled") == 0 || ManagedField(name)) return;
         ImGuiReflector::Field(name, value);
+    }
+    void Field(const char* name, int& value) override
+    {
+        if (!ManagedField(name)) ImGuiReflector::Field(name, value);
+    }
+    void Field(const char* name, float& value) override
+    {
+        if (!ManagedField(name)) ImGuiReflector::Field(name, value);
+    }
+    void Field(const char* name, std::string& value) override
+    {
+        if (!ManagedField(name)) ImGuiReflector::Field(name, value);
+    }
+    void Enum(const char* name, int& value, std::span<const char* const> labels) override
+    {
+        if (!ManagedField(name)) ImGuiReflector::Enum(name, value, labels);
+    }
+    std::size_t BeginObjectList(const char* name, std::size_t count) override
+    {
+        const bool hidden = (managedControlPoints && (std::string_view(name).starts_with("baked")
+            || std::strcmp(name, "pointBindings") == 0 || std::strcmp(name, "waypointBindings") == 0))
+            || (managedClothAnchors && std::strcmp(name, "attachments") == 0);
+        const bool visible = FieldVisible();
+        if (hidden) SetFieldVisible(false);
+        const auto result = ImGuiReflector::BeginObjectList(name, count);
+        SetFieldVisible(visible);
+        return result;
     }
 };
 
@@ -1137,6 +1198,10 @@ void DrawReflectedComponentSection(scene::GameObject* go,
         go, ctx, compClipboard, compClipboardType, label,
         [](T& component, EditorContext& editorContext) {
             ComponentImGuiReflector reflector;
+            reflector.managedControlPoints = std::is_same_v<T, scene::SplineComponent>
+                || std::is_same_v<T, scene::LineRendererComponent> || std::is_same_v<T, scene::NavMeshPatrolComponent>
+                || std::is_same_v<T, scene::NavMeshOffMeshLinkComponent>;
+            reflector.managedClothAnchors = std::is_same_v<T, scene::ClothComponent>;
             reflector.m_projectRoot = editorContext.projectRoot;
             component.Reflect(reflector);
         });
@@ -1270,7 +1335,7 @@ void DrawComponentSectionCustom(
         const widgets::ComponentBodyScope body = widgets::BeginComponentBody(header, accent);
         ImGui::Spacing();
         if (!canUndo) {
-            edit.active = false;
+            edit.session.Cancel();
             drawFn(*comp, ctx);
         } else {
             const Snapshot beforeDraw = captureFn(*comp);
@@ -1278,21 +1343,17 @@ void DrawComponentSectionCustom(
             drawFn(*comp, ctx);
             const ImGuiID activeAfter = ImGui::GetActiveID();
 
-            if (!edit.active && activeAfter != 0 && activeAfter != activeBefore) {
-                edit.entityId = go->GetID();
-                edit.activeId = activeAfter;
-                edit.before   = beforeDraw;
-                edit.active   = true;
-            } else if (edit.active && edit.entityId != go->GetID()) {
-                if (activeAfter != edit.activeId) edit.active = false;
-            } else if (edit.active && activeAfter != edit.activeId) {
+            const auto transition = edit.session.Observe(go->GetID(), activeBefore, activeAfter);
+            if (transition == InspectorEditTransition::BEGIN) {
+                edit.before = beforeDraw;
+            } else if (transition == InspectorEditTransition::END) {
                 const Snapshot after = captureFn(*comp);
                 /// @note 値が動いていない操作 (参照欄のクリック等) では積まない。
                 if (!ComponentSnapshotCompare<Snapshot>::Equal(edit.before, after)) {
                     pushUndoCmd(std::string("Change ") + label, edit.before, after);
                     if (ctx.markSceneDirty) ctx.markSceneDirty();
                 }
-                edit.active = false;
+                edit.session.Cancel();
             }
         }
         ImGui::Spacing();
@@ -1730,7 +1791,8 @@ inline std::unique_ptr<ICommand> AddScriptWithUndo(scene::GameObject& go,
                                                    EditorContext& ctx,
                                                    const std::string& typeName)
 {
-    auto script = scene::ScriptFactory::Create(typeName);
+    const std::string savedScriptId = util::GenerateUUID();
+    auto script = scene::ScriptFactory::Create(typeName, savedScriptId);
     if (!script) return nullptr;
 
     const bool canRecordUndo = CanRecordEditorUndo(ctx) && ctx.activeScene;
@@ -1752,8 +1814,8 @@ inline std::unique_ptr<ICommand> AddScriptWithUndo(scene::GameObject& go,
     if (!sc) sc = &go.AddComponent<scene::ScriptComponent>();
 
     scene::ScriptEntry& entry = sc->scripts.emplace_back();
+    entry.savedScriptId = savedScriptId;
     entry.script = std::move(script);
-    const std::size_t addedIndex = sc->scripts.size() - 1;
 
     if (!canRecordUndo) return nullptr;
 
@@ -1762,28 +1824,27 @@ inline std::unique_ptr<ICommand> AddScriptWithUndo(scene::GameObject& go,
     const auto markDirty = ctx.markSceneDirty;
 
     return std::make_unique<LambdaCommand>(
-        std::string("Add Script ") + typeName,
-        [scene, instanceId, typeName, required, markDirty]() {
+        std::string("Add Script ") + scene::ScriptFactory::DisplayName(typeName),
+        [scene, instanceId, savedScriptId, typeName, required, markDirty]() {
             if (required) required->Execute();
             auto* target = scene->FindByGuid(instanceId);
             if (!target) return;
-            auto newScript = scene::ScriptFactory::Create(typeName);
+            auto newScript = scene::ScriptFactory::Create(typeName, savedScriptId);
             if (!newScript) return;
             auto* comp = target->GetComponent<scene::ScriptComponent>();
             if (!comp) comp = &target->AddComponent<scene::ScriptComponent>();
             newScript->SetContext(scene, target);
             newScript->Reset();
                     newScript->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
-            comp->scripts.emplace_back().script = std::move(newScript);
+            auto& entry = comp->scripts.emplace_back(); entry.savedScriptId = savedScriptId; entry.script = std::move(newScript);
             if (markDirty) markDirty();
         },
-        [scene, instanceId, addedIndex, hadComponent, required, markDirty]() {
+        [scene, instanceId, savedScriptId, hadComponent, required, markDirty]() {
             auto* target = scene->FindByGuid(instanceId);
             if (!target) return;
             if (auto* comp = target->GetComponent<scene::ScriptComponent>()) {
-                if (addedIndex < comp->scripts.size())
-                    comp->scripts.erase(comp->scripts.begin()
-                                        + static_cast<std::ptrdiff_t>(addedIndex));
+                const auto added = std::find_if(comp->scripts.begin(), comp->scripts.end(), [&savedScriptId](const auto& entry) { return entry.savedScriptId == savedScriptId; });
+                if (added != comp->scripts.end()) comp->scripts.erase(added);
                 if (!hadComponent && comp->scripts.empty())
                     target->RemoveComponent<scene::ScriptComponent>();
             }
@@ -1987,16 +2048,17 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
         anyShown |= AddComponentCategory("Scripts", filter, [&](const char* category, const char*) {
             bool shown = false;
             for (const std::string& typeName : scriptTypeNames) {
+                const std::string displayName = scene::ScriptFactory::DisplayName(typeName);
                 bool anyMissing = false;
                 for (auto* target : targets)
                     if (!HasScriptOfType(*target, typeName)) { anyMissing = true; break; }
 
-                shown |= addItem(category, typeName.c_str(), anyMissing, [&]() {
+                shown |= addItem(category, displayName.c_str(), anyMissing, [&]() {
                     return AddToAllTargets([&](scene::GameObject& target) {
                         return HasScriptOfType(target, typeName)
                             ? nullptr
                             : AddScriptWithUndo(target, ctx, typeName);
-                    }, "Add Script " + typeName);
+                    }, "Add Script " + displayName);
                 });
             }
             return shown;

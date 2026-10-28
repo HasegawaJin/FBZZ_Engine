@@ -6,6 +6,7 @@
 
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstdio>
 #include <limits>
 
@@ -13,7 +14,7 @@ namespace fbzz::editor::ai {
 
 namespace {
 
-/// 再帰下降パーサ。std::string_view 上を index で走査し、throw せず失敗を bool で伝播する。
+/// @brief std::string_view を走査し、失敗を bool で伝える再帰下降パーサ。
 class Parser {
 public:
     Parser(std::string_view text, std::string* error) : m_text(text), m_error(error) {}
@@ -148,7 +149,7 @@ private:
         return Fail("文字列が閉じていません");
     }
 
-    /// \uXXXX (必要ならサロゲートペア) を読み UTF-8 へ変換して out へ追記する。
+    /// @brief \uXXXX と surrogate pair を UTF-8 に変換して追記する。
     bool ParseUnicodeEscape(std::string& out)
     {
         std::uint32_t code = 0;
@@ -220,15 +221,41 @@ private:
     {
         const std::size_t start = m_pos;
         if (!AtEnd() && Peek() == '-') ++m_pos;
-        while (!AtEnd()) {
-            const char c = Peek();
-            if ((c >= '0' && c <= '9') || c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-') ++m_pos;
-            else break;
+        if (AtEnd()) return Fail("数値ではありません");
+        if (Peek() == '0') {
+            ++m_pos;
+        } else if (Peek() >= '1' && Peek() <= '9') {
+            while (!AtEnd() && Peek() >= '0' && Peek() <= '9') ++m_pos;
+        } else {
+            return Fail("数値ではありません");
+        }
+        bool hasFractionOrExponent = false;
+        if (!AtEnd() && Peek() == '.') {
+            hasFractionOrExponent = true;
+            ++m_pos;
+            const std::size_t digits = m_pos;
+            while (!AtEnd() && Peek() >= '0' && Peek() <= '9') ++m_pos;
+            if (m_pos == digits) return Fail("小数点の後に数字が必要です");
+        }
+        if (!AtEnd() && (Peek() == 'e' || Peek() == 'E')) {
+            hasFractionOrExponent = true;
+            ++m_pos;
+            if (!AtEnd() && (Peek() == '+' || Peek() == '-')) ++m_pos;
+            const std::size_t digits = m_pos;
+            while (!AtEnd() && Peek() >= '0' && Peek() <= '9') ++m_pos;
+            if (m_pos == digits) return Fail("指数の後に数字が必要です");
         }
         if (m_pos == start) return Fail("数値ではありません");
-        double value = 0.0;
         const char* first = m_text.data() + start;
         const char* last  = m_text.data() + m_pos;
+        if (!hasFractionOrExponent) {
+            std::int64_t integer = 0;
+            const auto result = std::from_chars(first, last, integer);
+            if (result.ec != std::errc{} || result.ptr != last) return Fail("整数が int64 範囲外です");
+            out = JsonValue(integer);
+            return true;
+        }
+        double value = 0.0;
         const auto result = std::from_chars(first, last, value);
         if (result.ec != std::errc{} || result.ptr != last) return Fail("数値の解析に失敗しました");
         out = JsonValue(value);
@@ -279,7 +306,10 @@ void SerializeValue(const JsonValue& value, std::string& out)
     switch (value.GetType()) {
         case JsonValue::Type::Null:   out += "null"; break;
         case JsonValue::Type::Bool:   out += value.AsBool() ? "true" : "false"; break;
-        case JsonValue::Type::Number: SerializeNumber(value.AsNumber(), out); break;
+        case JsonValue::Type::Number:
+            if (value.IsInteger()) out += std::to_string(value.AsInt64());
+            else SerializeNumber(value.AsNumber(), out);
+            break;
         case JsonValue::Type::String: SerializeString(value.AsString(), out); break;
         case JsonValue::Type::Array: {
             out.push_back('[');
@@ -310,7 +340,30 @@ void SerializeValue(const JsonValue& value, std::string& out)
 
 constexpr char kBase64Alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-} // namespace
+} /// @note anonymous namespace
+
+bool JsonValue::TryGetInt64(std::int64_t& output) const
+{
+    if (m_type != Type::Number) return false;
+    if (m_isInteger) {
+        output = m_integer;
+        return true;
+    }
+    constexpr double INT64_MIN_VALUE = -9223372036854775808.0;
+    constexpr double INT64_MAX_EXCLUSIVE = 9223372036854775808.0;
+    if (!std::isfinite(m_number) || std::trunc(m_number) != m_number
+        || m_number < INT64_MIN_VALUE || m_number >= INT64_MAX_EXCLUSIVE) return false;
+    output = static_cast<std::int64_t>(m_number);
+    return true;
+}
+
+bool JsonValue::TryGetInt32(int& output) const
+{
+    std::int64_t value = 0;
+    if (!TryGetInt64(value) || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max()) return false;
+    output = static_cast<int>(value);
+    return true;
+}
 
 std::optional<JsonValue> ParseJson(std::string_view text, std::string* error)
 {
@@ -363,4 +416,4 @@ std::string Base64Encode(const std::vector<std::uint8_t>& data)
     return Base64Encode(data.data(), data.size());
 }
 
-} // namespace fbzz::editor::ai
+} /// @note namespace fbzz::editor::ai

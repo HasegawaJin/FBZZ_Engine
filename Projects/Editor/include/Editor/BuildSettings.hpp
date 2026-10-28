@@ -11,50 +11,48 @@
 
 namespace fbzz::editor {
 
-/// ビルドに含めるシーンの 1 エントリ。
-/// path はプロジェクトルートからの相対パスを推奨するが、絶対パスも許容する。
+/// @note ビルドに含めるシーン。プロジェクト内の絶対パスは開始前に相対パスへ正規化する。
 struct SceneEntry {
     std::string path;
     bool        enabled = true;
 };
 
-/// Build Settings ウィンドウで編集する設定一式。
+/// @brief 配布ビルドの設定一式。
 struct BuildSettings {
     std::vector<SceneEntry> scenes;
-    /// 出力先: プロジェクトルート相対を推奨。別 PC に持ち込んでも動くように。
+    /// @note 移動可能な設定にするためプロジェクトルート相対を推奨する。
     std::string outputDirectory = "Builds/MyGame";
     std::string productName     = "MyGame";
     std::string version         = "1.0.0";
 
-    /// exe に焼き込むアイコン画像 (PNG / JPEG / TGA / BMP / ICO)。"Assets/..." 相対。
-    /// 空なら差し替えず、Windows の既定アイコンのまま出る。
+    /// @note 空ならアイコンを差し替えない。設定は "Assets/..." 相対を推奨する。
     std::string iconPath;
 
-    /// true のとき game.manifest.toml に development = true を書き、dev 構成をビルドする。
+    /// @note true は Development 構成と manifest の development = true を選ぶ。
     bool        developmentBuild = true;
 
-    /// ソースとエディター専用ファイルを配布物から外す。
+    /// @brief ソースとエディター専用ファイルを配布物から外す。
     /// @note Assets にはスクリプト原本 (.hpp) や EditorConfig が同居し配布物に入れる理由がないため既定で有効。ランタイムが読む .hlsl / .meta は除外しない。
     bool        stripEditorAssets = true;
 
-    /// enabled = true のシーンをインデックス順に返す
+    /// @return 有効なシーンを設定順に返す。
     std::vector<std::string> EnabledScenes() const;
 
-    /// 絶対パス / 相対パス両対応で出力先を解決する
+    /// @note 絶対パスを維持し、相対パスはプロジェクトルートに対して解決する。
     std::filesystem::path ResolveOutputPath(const std::string& projectRoot) const;
 
-    /// アイコン画像のディスク上のパス。未設定なら空を返す。
+    /// @return 未設定なら空のパス。
     std::filesystem::path ResolveIconPath(const std::string& projectRoot) const;
 
-    /// 出力先が配布物の書き出し先として安全か判定する。
-    /// @note コミットは出力先を remove_all してから _tmp を rename する。空欄だと ResolveOutputPath がプロジェクトルートを返し、ビルドでプロジェクトごと消える。
+    /// @brief 配布出力の置換先を読み取りだけで検査する。
+    /// @note 実体を正規化し Windows ordinal ignore-case で project/保護フォルダーの重複を拒否する。
+    /// @note 未作成・空フォルダー・前回の配布物だけを許す。検査エラーは拒否し、削除直前にも再検査する。
     /// @param outReason false のときに UI とビルドログへ出す理由
     /// @return 安全なら true
     bool ValidateOutputPath(const std::string& projectRoot, std::string& outReason) const;
 
-    /// 旧形式 (`<projectRoot>`/BuildSettings.toml) を読み込む。EditorSettings に
-    /// [build] が無い場合の移行専用で、通常の保存経路では使わない。
+    /// @note EditorSettings の [build] が無い場合だけ、旧 BuildSettings.toml から移行する。
     static bool LoadLegacyFile(const std::string& projectRoot, BuildSettings& out);
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

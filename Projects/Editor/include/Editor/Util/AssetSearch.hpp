@@ -9,6 +9,7 @@
 #include <Editor/AssetFileWatcher.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
@@ -17,15 +18,15 @@
 namespace fbzz::editor {
 
 struct AssetSearchEntry {
-    std::string absolutePath;  ///< OS の絶対パス
-    std::string relativePath;  ///< プロジェクトルートからの相対パス ('/' 区切り)
-    std::string filename;      ///< 拡張子込みのファイル名
-    std::string extension;     ///< 小文字の拡張子 (".mat")。拡張子なしは空文字列
+    std::string absolutePath;  /// @note OS の絶対パス
+    std::string relativePath;  /// @note プロジェクトルートからの相対パス ('/' 区切り)
+    std::string filename;      /// @note 拡張子込みのファイル名
+    std::string extension;     /// @note 小文字の拡張子 (".mat")。拡張子なしは空文字列
 };
 
 struct AssetSearchHit {
     const AssetSearchEntry* entry = nullptr;
-    int score = 0;  ///< 大きいほど良い一致
+    int score = 0;  /// @note 大きいほど良い一致
 };
 
 class AssetSearch {
@@ -48,6 +49,8 @@ public:
     [[nodiscard]] static const std::vector<AssetSearchEntry>& Entries();
     [[nodiscard]] static std::size_t Count();
     [[nodiscard]] static const std::string& ProjectRoot();
+    /// @note エントリの保存領域・名前・順序を変更するたびに進む。検索結果の非所有 pointer の寿命境界。
+    [[nodiscard]] static uint64_t Revision();
     /// @}
 
     /// @name 検索
@@ -80,4 +83,4 @@ public:
     /// @}
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

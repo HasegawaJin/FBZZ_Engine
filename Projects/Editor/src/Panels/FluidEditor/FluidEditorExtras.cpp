@@ -949,7 +949,7 @@ void FluidExtrasInspectVfxLoop(FluidBakedState& baked)
         baked.vfxLoopReport = "ParticleEmitter を読み込めません。";
         return;
     }
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     const std::string materialPath = asset::AssetManager::ResolveAssetPath(emitter->settings.materialPath);
     if (!asset::LoadMaterialAssetFromFile(materialPath, material)) {
         baked.vfxLoopReport = ".vfx が参照する .mat を読み込めません: " + emitter->settings.materialPath;
@@ -1007,7 +1007,7 @@ void FluidExtrasResolvePlayback(const FluidBakedState& baked, asset::FlipbookGri
            / (std::max)(baked.recipe.output.duration, 1.0e-3f);
     outStrength = 0.0f;
 
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     if (baked.materialPath.empty() || !asset::LoadMaterialAssetFromFile(baked.materialPath, material)) return;
     const asset::ParticleFlipbookSettings& flipbook = material.particle.flipbook;
     if (flipbook.FrameCount() > 1) {
@@ -1181,7 +1181,7 @@ bool FluidExtrasAnalyzeAppearance(const std::filesystem::path& base, const std::
                                   float motionStrength, const fluid::FluidRecipe& recipe,
                                   float& outSeam, float& outTypical)
 {
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     if (materialPath.empty() || !asset::LoadMaterialAssetFromFile(materialPath, material)
         || !material.particle.sixWayMaps) return false;
     const std::string stem = util::FileSystem::PathToUtf8(base);

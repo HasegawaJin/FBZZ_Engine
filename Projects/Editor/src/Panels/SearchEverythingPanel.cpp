@@ -6,10 +6,10 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Util/SceneQueryIndex.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
 #include <cstddef>
 
@@ -54,15 +54,17 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
 
     /// @name GameObject 検索 (名前一致)
     if (ctx.activeScene) {
-        std::vector<scene::GameObject*> hits;
-        for (auto& go : ctx.activeScene->GameObjects()) {
-            if (util::StringUtils::ContainsCI(go.name, query))
-                hits.push_back(&go);
-            if (hits.size() >= 100) break;
+        auto& index = SceneQueries(*ctx.activeScene, static_cast<uint64_t>(ImGui::GetFrameCount()));
+        const ObjectQueryKey key{query, index.NameRevision(), ctx.activeScene->GetRenderSceneGeneration()};
+        if (!m_objectQuery.IsCurrent(key)) {
+            m_objectHits = index.FindNames(query, 100);
+            m_objectQuery.Commit(key);
         }
-        if (!hits.empty()) {
+        if (!m_objectHits.empty()) {
             ImGui::SeparatorText("Objects");
-            for (scene::GameObject* go : hits) {
+            for (const auto id : m_objectHits) {
+                auto* go = ctx.activeScene->GetGameObject(id);
+                if (!go) continue;
                 ImGui::PushID(go);
                 if (ImGui::Selectable(go->name.c_str())) {
                     SelectEntity(ctx, go->GetID());
@@ -79,12 +81,13 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
     /// @note スコア順に並ぶため、完全一致・前方一致が上に来る。
     {
         constexpr std::size_t MAX_ASSET_RESULTS = 200;
-        const auto hits = AssetSearch::Query(query, {}, MAX_ASSET_RESULTS);
+        m_assetQuery.Update(query, {}, MAX_ASSET_RESULTS);
+        const auto& hits = m_assetQuery.Results();
 
         bool headerDrawn = false;
-        for (const AssetSearchHit& hit : hits) {
-            const std::string& path = hit.entry->absolutePath;
-            const std::string& name = hit.entry->filename;
+        for (const auto& hit : hits) {
+            const std::string& path = hit.entry.absolutePath;
+            const std::string& name = hit.entry.filename;
             if (!headerDrawn) { ImGui::SeparatorText("Assets"); headerDrawn = true; }
 
             ImGui::PushID(path.c_str());
@@ -97,7 +100,7 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
             }
             /// @note 相対パスを添えて、同名ファイルをその場で区別できるようにする。
             ImGui::SameLine();
-            ImGui::TextDisabled("%s", hit.entry->relativePath.c_str());
+            ImGui::TextDisabled("%s", hit.entry.relativePath.c_str());
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", path.c_str());
             ImGui::PopID();
@@ -110,4 +113,4 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
     ImGui::EndChild();
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

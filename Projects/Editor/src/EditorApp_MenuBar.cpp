@@ -5,16 +5,17 @@
 
 /// @note UI 記述に特化した独立ファイル。ライフサイクル管理やシーン I/O と関心を分離する。
 #include <Editor/EditorApp.hpp>
+#include <Editor/Util/SpatialDebugOverlay.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/EditorTheme.hpp>
-#include <Editor/Panels/AiSettingsPanel.hpp>
 #include <Editor/Panels/AssetMaintenancePanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/Panels/VolumeFlipbookBakePanel.hpp>
-#include <Editor/Panels/NavigationPanel.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/ManagedScriptEditor.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/CreateObjectMenu.hpp>
+#include <Editor/Util/EditorMenuCatalog.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/Localization.hpp>
@@ -204,263 +205,118 @@ void EditorApp::InstallNativeMenuBar()
 {
     using NativeMenuItem = core::Window::NativeMenuItem;
     using MenuList = std::vector<NativeMenuItem>;
-
-    constexpr uint16_t NEW_SCENE       = 100;
-    constexpr uint16_t OPEN_SCENE      = 101;
-    constexpr uint16_t SAVE_SCENE      = 102;
-    constexpr uint16_t SAVE_SCENE_AS   = 103;
-    constexpr uint16_t CLOSE_PREFAB    = 104;
-    constexpr uint16_t SAVE_ALL_ASSETS = 105;
-    constexpr uint16_t EXIT_EDITOR     = 106;
-    constexpr uint16_t UNDO            = 200;
-    constexpr uint16_t REDO            = 201;
-    constexpr uint16_t PLAY            = 300;
-    constexpr uint16_t STOP            = 301;
-    constexpr uint16_t PAUSE           = 302;
-    constexpr uint16_t STEP            = 303;
-    constexpr uint16_t RELOAD_SCRIPTS  = 304;
-    constexpr uint16_t OPEN_ANALYSIS   = 400;
-    constexpr uint16_t TOGGLE_PASS_VIEWER = 423;
-    constexpr uint16_t TOGGLE_GRID     = 401;
-    constexpr uint16_t TOGGLE_LIGHTS   = 402;
-    constexpr uint16_t TOGGLE_VFX      = 403;
-    constexpr uint16_t TOGGLE_SKELETON = 404;
-    constexpr uint16_t TOGGLE_STATS    = 405;
-    constexpr uint16_t TOGGLE_HOTRELOAD = 406;
-    constexpr uint16_t TOGGLE_HOTRELOAD_SOUND = 439;
-    constexpr uint16_t TOGGLE_COLLIDERS = 407;
-    constexpr uint16_t TOGGLE_TERRAIN_COLLISION = 408;
-    constexpr uint16_t TOGGLE_NAVMESH = 409;
-    constexpr uint16_t TOGGLE_AI_SENSORS = 414;
-    constexpr uint16_t TOGGLE_DECAL_BOUNDS = 415;
-    constexpr uint16_t TOGGLE_SHADOW = 422;
-    constexpr uint16_t TOGGLE_SCENE_ICONS     = 424;
-    constexpr uint16_t TOGGLE_SCRIPT_GIZMOS   = 425;
-    constexpr uint16_t TOGGLE_SKELETON_SEL    = 426;
-    constexpr uint16_t TOGGLE_CONSTRAINTS     = 427;
-    constexpr uint16_t TOGGLE_RIGID_BODIES    = 428;
-    constexpr uint16_t TOGGLE_IK              = 429;
-    constexpr uint16_t TOGGLE_SPRING_BONES    = 430;
-    constexpr uint16_t TOGGLE_ATTACHMENTS     = 431;
-    constexpr uint16_t TOGGLE_VFX_PATHS       = 432;
-    constexpr uint16_t TOGGLE_TERRAIN_BOUNDS  = 433;
-    constexpr uint16_t TOGGLE_LOD_BOUNDS      = 434;
-    constexpr uint16_t TOGGLE_FLOW_FIELDS     = 435;
-    constexpr uint16_t TOGGLE_FLOW_SAMPLES    = 436;
-    constexpr uint16_t TOGGLE_PHYSICS_VOLUMES = 437;
-    constexpr uint16_t TOGGLE_WATER_FLOW      = 438;
-    constexpr uint16_t VIEW_LIT        = 410;
-    constexpr uint16_t VIEW_UNLIT      = 411;
-    constexpr uint16_t VIEW_WIRE_LIT   = 412;
-    constexpr uint16_t VIEW_WIRE_UNLIT = 413;
-    constexpr uint16_t VIEW_RAY_HIT_DISTANCE = 440;
-    constexpr uint16_t VIEW_RAY_GEOMETRIC_NORMAL = 441;
-    constexpr uint16_t VIEW_RAY_INSTANCE_ID = 442;
-    constexpr uint16_t TOGGLE_MAP       = 501;
-    constexpr uint16_t OPEN_BUILD       = 502;
-    constexpr uint16_t OPEN_IBL         = 503;
-    constexpr uint16_t OPEN_NAVIGATION  = 504;
-    constexpr uint16_t OPEN_ASSET_MAINT = 505;
-    constexpr uint16_t OPEN_VOLUME_FLIPBOOK = 506;
-    constexpr uint16_t OPEN_PIX         = 507;
-    constexpr uint16_t OPEN_AI_SETTINGS = 600;
-    constexpr uint16_t PANEL_BASE       = 1000;
-    constexpr uint16_t CREATE_EMPTY     = 2999;
-    constexpr uint16_t PRESET_BASE      = 3000;
-
-    const auto command = [](const char* label, uint16_t id) {
-        return NativeMenuItem{ util::StringUtils::ToWide(label), id, false, {} };
+    struct NativeCommand { std::string operatorId; OpArgs args; };
+    std::vector<NativeCommand> commands;
+    const auto command = [this, &commands](const char* operatorId, const char* label = nullptr, OpArgs args = {}) {
+        const EditorOperator* op = m_operators.Find(operatorId);
+        std::string title = LOCT(label ? label : (op ? op->label.c_str() : operatorId));
+        if (const Hotkey* hotkey = m_hotkeys.FindByOperator(operatorId))
+            title += "\t" + HotkeyManager::FormatBinding(*hotkey);
+        commands.push_back({operatorId, std::move(args)});
+        return NativeMenuItem{util::StringUtils::ToWide(title), static_cast<uint16_t>(commands.size()), false, {}};
     };
-    const auto separator = []() { return NativeMenuItem{ {}, 0, true, {} }; };
+    const auto separator = []() { return NativeMenuItem{{}, 0, true, {}}; };
     const auto submenu = [](const char* label, MenuList children) {
-        return NativeMenuItem{ util::StringUtils::ToWide(label), 0, false, std::move(children) };
+        return NativeMenuItem{util::StringUtils::ToWide(LOCT(label)), 0, false, std::move(children)};
+    };
+    const auto actions = [&command](std::span<const EditorMenuAction> entries) {
+        MenuList items;
+        for (const auto& entry : entries) {
+            OpArgs args;
+            if (entry.mode) args.Set("mode", std::string(entry.mode));
+            items.push_back(command(entry.operatorId, entry.label, std::move(args)));
+        }
+        return items;
     };
 
     MenuList panels;
-    for (std::size_t i = 0; i < m_panels.size(); ++i) {
-        if (!m_panels[i]->ShowInViewMenu()) continue;
-        panels.push_back(command(m_panels[i]->GetViewMenuName(),
-                                 static_cast<uint16_t>(PANEL_BASE + i)));
-    }
-
-    MenuList debugViewMode;
-    debugViewMode.push_back(command("Lit", VIEW_LIT));
-    debugViewMode.push_back(command("Unlit", VIEW_UNLIT));
-    debugViewMode.push_back(command("Wireframe Lit", VIEW_WIRE_LIT));
-    debugViewMode.push_back(command("Wireframe Unlit", VIEW_WIRE_UNLIT));
-    debugViewMode.push_back(command("Ray Hit Distance", VIEW_RAY_HIT_DISTANCE));
-    debugViewMode.push_back(command("Ray Geometric Normal", VIEW_RAY_GEOMETRIC_NORMAL));
-    debugViewMode.push_back(command("Ray Instance ID", VIEW_RAY_INSTANCE_ID));
-
-    MenuList terrainTools;
-    terrainTools.push_back(command("Terrain Tool", 510));
-
-    /// @note プリセットは Create Empty と同じくルートの注視点へ置く。ネイティブメニューは選択を親にする文脈を持たない。
-    const auto presets = ObjectPresetCatalog();
-    MenuList gameObject;
-    gameObject.push_back(command("Create Empty", CREATE_EMPTY));
-    gameObject.push_back(separator());
-    for (std::size_t i = 0; i < presets.size(); ++i) {
-        const ObjectPreset& preset = presets[i];
-        const std::string label(preset.label);
-        const uint16_t presetId = static_cast<uint16_t>(PRESET_BASE + i);
-        if (preset.category.empty()) {
-            gameObject.push_back(command(label.c_str(), presetId));
-            continue;
+    for (const auto& group : BuildPanelMenu(m_panels)) {
+        MenuList entries;
+        for (const auto& entry : group.entries) {
+            OpArgs args;
+            args.Set("panel", std::string(entry.panel->GetWindowName()));
+            entries.push_back(command("panel.set_visible", entry.panel->GetViewMenuName(), std::move(args)));
         }
-        const std::wstring categoryName = util::StringUtils::ToWide(std::string(preset.category));
-        if (gameObject.back().label != categoryName)
-            gameObject.push_back(submenu(std::string(preset.category).c_str(), {}));
-        gameObject.back().children.push_back(command(label.c_str(), presetId));
+        if (group.category.empty()) panels = std::move(entries);
+        else panels.push_back(submenu(group.category.c_str(), std::move(entries)));
+    }
+    panels.push_back(separator());
+    panels.push_back(command("panel.command_palette"));
+    panels.push_back(submenu("Scene Camera", {
+        command("view.toggle_projection"), separator(),
+        command("view.axis_front"), command("view.axis_back"), command("view.axis_left"),
+        command("view.axis_right"), command("view.axis_top"), command("view.axis_bottom"),
+        separator(), command("view.frame_selected")
+    }));
+    MenuList overlays;
+    for (const auto& group : SCENE_OVERLAY_GROUPS) {
+        MenuList entries = actions(group.actions);
+        if (group.category[0] == '\0') overlays = std::move(entries);
+        else {
+            if (std::string_view(group.category) == "Navigation")
+                entries.push_back(submenu("NavMesh Draw Mode", actions(NAVMESH_DRAW_MODES)));
+            overlays.push_back(submenu(group.category, std::move(entries)));
+        }
+    }
+    panels.push_back(submenu("Scene Overlays", std::move(overlays)));
+    MenuList modes = actions(SCENE_VIEW_MODES);
+    if (core::DeveloperMode::IsEnabled()) {
+        MenuList developerModes = actions(DEVELOPER_VIEW_MODES);
+        modes.insert(modes.end(), developerModes.begin(), developerModes.end());
+    }
+    panels.push_back(submenu("View Mode", std::move(modes)));
+    panels.push_back(submenu("UI Scale", {command("view.reset_ui_scale")}));
+
+    MenuList create;
+    for (const ObjectPreset& preset : ObjectPresetCatalog()) {
+        OpArgs args;
+        args.Set("preset", std::string(preset.id));
+        args.Set("placeInView", true);
+        NativeMenuItem item = command("node.create_preset", std::string(preset.label).c_str(), std::move(args));
+        if (preset.category.empty()) create.push_back(std::move(item));
+        else {
+            const std::wstring category = util::StringUtils::ToWide(LOCT(std::string(preset.category).c_str()));
+            auto group = std::find_if(create.begin(), create.end(), [&category](const NativeMenuItem& entry) {
+                return entry.commandId == 0 && entry.label == category;
+            });
+            if (group == create.end()) {
+                create.push_back(submenu(std::string(preset.category).c_str(), {}));
+                group = create.end() - 1;
+            }
+            group->children.push_back(std::move(item));
+        }
     }
 
+    MenuList tools {command("tools.map_editing_mode"), command("tools.terrain"), separator(),
+                    command("tools.build_settings")};
+    const auto panelTool = [&command](IPanel* panel, const char* label) {
+        OpArgs args;
+        args.Set("panel", std::string(panel->GetWindowName()));
+        return command("panel.focus", label, std::move(args));
+    };
+    if (m_iblBakePanel) tools.push_back(panelTool(m_iblBakePanel, "IBL Baker..."));
+    if (m_volumeFlipbookBakePanel) tools.push_back(panelTool(m_volumeFlipbookBakePanel, "Volume Flipbook Baker..."));
+    if (m_assetMaintenancePanel) tools.push_back(panelTool(m_assetMaintenancePanel, "Asset Maintenance..."));
     MenuList menus;
-    menus.push_back(submenu("File", {
-        command("New Scene", NEW_SCENE),
-        command("Open...", OPEN_SCENE),
-        command("Save", SAVE_SCENE),
-        command("Save As...", SAVE_SCENE_AS),
-        command("Close Prefab", CLOSE_PREFAB),
-        command("Save All Assets", SAVE_ALL_ASSETS),
-        separator(),
-        command("Exit", EXIT_EDITOR)
-    }));
-    menus.push_back(submenu("Edit", {
-        command("Undo", UNDO), command("Redo", REDO)
-    }));
-    menus.push_back(submenu("GameObject", std::move(gameObject)));
-    menus.push_back(submenu("Play", {
-        command("Play", PLAY), command("Stop", STOP), command("Pause", PAUSE),
-        command("Step", STEP), separator(), command("Reload Scripts", RELOAD_SCRIPTS)
-    }));
-    menus.push_back(submenu("View", {
-        submenu("Panels", std::move(panels)),
-        command("Reset UI Scale", 700)
-    }));
-    menus.push_back(submenu("Debug", {
-        command("Analysis", OPEN_ANALYSIS), command("Render Pass Viewer", TOGGLE_PASS_VIEWER), separator(),
-        command("Grid", TOGGLE_GRID), command("Light Range", TOGGLE_LIGHTS),
-        command("VFX Emitters", TOGGLE_VFX),
-        command("Flow Fields", TOGGLE_FLOW_FIELDS), command("Flow Samples", TOGGLE_FLOW_SAMPLES),
-        command("Skeleton", TOGGLE_SKELETON), command("Skeleton: Selected Only", TOGGLE_SKELETON_SEL),
-        command("Stats", TOGGLE_STATS),
-        command("Scene Icons", TOGGLE_SCENE_ICONS), command("Script Gizmos", TOGGLE_SCRIPT_GIZMOS),
-        command("IK Chains", TOGGLE_IK), command("Spring Bones", TOGGLE_SPRING_BONES),
-        command("Attachments", TOGGLE_ATTACHMENTS), command("VFX Paths", TOGGLE_VFX_PATHS),
-        separator(),
-        command("Colliders", TOGGLE_COLLIDERS), command("Constraints", TOGGLE_CONSTRAINTS),
-        command("Rigid Bodies", TOGGLE_RIGID_BODIES), command("Physics Volumes", TOGGLE_PHYSICS_VOLUMES),
-        command("Water Flow", TOGGLE_WATER_FLOW),
-        command("Terrain Collision", TOGGLE_TERRAIN_COLLISION),
-        command("NavMesh", TOGGLE_NAVMESH), command("AI Sensors", TOGGLE_AI_SENSORS),
-        command("Decal Bounds", TOGGLE_DECAL_BOUNDS),
-        command("Terrain Bounds", TOGGLE_TERRAIN_BOUNDS), command("LOD Bounds", TOGGLE_LOD_BOUNDS),
-        command("Hot Reload", TOGGLE_HOTRELOAD), command("Hot Reload Sound", TOGGLE_HOTRELOAD_SOUND),
-        separator(),
-        command("Shadow", TOGGLE_SHADOW),
-        submenu("View Mode", std::move(debugViewMode))
-    }));
-    menus.push_back(submenu("Tools", {
-        command("Map Editing Mode", TOGGLE_MAP),
-        submenu("Terrain & Map", std::move(terrainTools)),
-        command("Build Settings...", OPEN_BUILD), command("IBL Baker...", OPEN_IBL),
-        command("Volume Flipbook Baker...", OPEN_VOLUME_FLIPBOOK),
-        command("Navigation...", OPEN_NAVIGATION),
-        command("Asset Maintenance...", OPEN_ASSET_MAINT),
-        command("Open PIX...", OPEN_PIX)
-    }));
-    menus.push_back(submenu("AI", { command("AI Settings...", OPEN_AI_SETTINGS) }));
-
-    m_window->SetNativeMenu(std::move(menus), [this](uint16_t id) {
-        if (id >= PANEL_BASE && id < PANEL_BASE + m_panels.size()) {
-            OpArgs args;
-            args.Set("panel", std::string(m_panels[id - PANEL_BASE]->GetWindowName()));
-            InvokeOperator("panel.set_visible", args);
-            return true;
-        }
-        if (id >= PRESET_BASE && id < PRESET_BASE + ObjectPresetCatalog().size()) {
-            OpArgs args;
-            args.Set("preset", std::string(ObjectPresetCatalog()[static_cast<std::size_t>(id - PRESET_BASE)].id));
-            InvokeOperator("node.create_preset", args);
-            return true;
-        }
-
-        /// @note ネイティブメニューは項目ごとの有効/無効を持たないが、InvokeOperator は poll を
-        /// @note        満たさない要求を拒否するので、グレーアウトできない面でも同じ条件が効く。
-        switch (id) {
-        case NEW_SCENE:       InvokeOperator("scene.new"); break;
-        case OPEN_SCENE:      InvokeOperator("scene.open"); break;
-        case SAVE_SCENE:      InvokeOperator("scene.save"); break;
-        case SAVE_SCENE_AS:   InvokeOperator("scene.save_as"); break;
-        case CLOSE_PREFAB:    InvokeOperator("prefab.close"); break;
-        case SAVE_ALL_ASSETS: InvokeOperator("asset.save_all"); break;
-        case EXIT_EDITOR:     InvokeOperator("app.exit"); break;
-        case UNDO:            InvokeOperator("edit.undo"); break;
-        case REDO:            InvokeOperator("edit.redo"); break;
-        case CREATE_EMPTY:    InvokeOperator("node.create_empty"); break;
-        case PLAY:            InvokeOperator("play.start"); break;
-        case STOP:            InvokeOperator("play.stop"); break;
-        case PAUSE:           InvokeOperator("play.pause"); break;
-        case STEP:            InvokeOperator("play.step"); break;
-        case RELOAD_SCRIPTS:  InvokeOperator("script.reload"); break;
-        case OPEN_ANALYSIS:   InvokeOperator("tools.analysis"); break;
-        case TOGGLE_PASS_VIEWER: {
-            OpArgs args;
-            args.Set("panel", std::string("Render Pass Viewer"));
-            InvokeOperator("panel.set_visible", args);
-            break;
-        }
-        /// @note 表示トグルとビューモードは Operator を通す。同じ切り替えを 3 面が持つので、
-        /// @note        書き込み先 (EditorContext か ProjectSettings か) を各面が覚えていると必ずずれる。
-        case TOGGLE_GRID:      InvokeOperator("render.show_grid"); break;
-        case TOGGLE_LIGHTS:    InvokeOperator("render.show_light_range"); break;
-        case TOGGLE_VFX:       InvokeOperator("render.show_vfx_gizmos"); break;
-        case TOGGLE_SKELETON:  InvokeOperator("render.show_skeleton"); break;
-        case TOGGLE_STATS:     InvokeOperator("render.show_stats"); break;
-        case TOGGLE_HOTRELOAD: InvokeOperator("debug.hot_reload"); break;
-        case TOGGLE_HOTRELOAD_SOUND: InvokeOperator("debug.hot_reload_sound"); break;
-        case TOGGLE_COLLIDERS: InvokeOperator("render.show_colliders"); break;
-        case TOGGLE_TERRAIN_COLLISION: InvokeOperator("render.show_terrain_collision"); break;
-        case TOGGLE_NAVMESH:    InvokeOperator("render.show_navmesh"); break;
-        case TOGGLE_AI_SENSORS: InvokeOperator("render.show_nav_sensors"); break;
-        case TOGGLE_DECAL_BOUNDS: InvokeOperator("render.show_decal_bounds"); break;
-        case TOGGLE_SCENE_ICONS:    InvokeOperator("render.show_scene_icons"); break;
-        case TOGGLE_SCRIPT_GIZMOS:  InvokeOperator("render.show_script_gizmos"); break;
-        case TOGGLE_SKELETON_SEL:   InvokeOperator("render.skeleton_selected_only"); break;
-        case TOGGLE_CONSTRAINTS:    InvokeOperator("render.show_constraints"); break;
-        case TOGGLE_RIGID_BODIES:   InvokeOperator("render.show_rigid_bodies"); break;
-        case TOGGLE_IK:             InvokeOperator("render.show_ik"); break;
-        case TOGGLE_SPRING_BONES:   InvokeOperator("render.show_spring_bones"); break;
-        case TOGGLE_ATTACHMENTS:    InvokeOperator("render.show_attachments"); break;
-        case TOGGLE_VFX_PATHS:      InvokeOperator("render.show_vfx_paths"); break;
-        case TOGGLE_TERRAIN_BOUNDS: InvokeOperator("render.show_terrain_bounds"); break;
-        case TOGGLE_LOD_BOUNDS:     InvokeOperator("render.show_lod_bounds"); break;
-        case TOGGLE_FLOW_FIELDS:    InvokeOperator("render.show_flow_fields"); break;
-        case TOGGLE_FLOW_SAMPLES:   InvokeOperator("render.show_flow_samples"); break;
-        case TOGGLE_PHYSICS_VOLUMES: InvokeOperator("render.show_physics_volumes"); break;
-        case TOGGLE_WATER_FLOW:     InvokeOperator("render.show_water_flow"); break;
-        case TOGGLE_SHADOW:  InvokeOperator("render.shadow_enabled"); break;
-        case VIEW_LIT:       InvokeViewMode("lit"); break;
-        case VIEW_UNLIT:     InvokeViewMode("unlit"); break;
-        case VIEW_WIRE_LIT:  InvokeViewMode("wireframe_lit"); break;
-        case VIEW_WIRE_UNLIT:InvokeViewMode("wireframe_unlit"); break;
-        case VIEW_RAY_HIT_DISTANCE: InvokeViewMode("ray_hit_distance"); break;
-        case VIEW_RAY_GEOMETRIC_NORMAL: InvokeViewMode("ray_geometric_normal"); break;
-        case VIEW_RAY_INSTANCE_ID: InvokeViewMode("ray_instance_id"); break;
-        case 700:            InvokeOperator("view.reset_ui_scale"); break;
-        case TOGGLE_MAP:     InvokeOperator("tools.map_editing_mode"); break;
-        case OPEN_BUILD:     InvokeOperator("tools.build_settings"); break;
-        case OPEN_PIX:       InvokeOperator("tools.pix_open"); break;
-        /// @note パネルを前面に出すのは panel.focus 1 つで足りる。パネルごとに
-        /// @note        operator を生やすと m_panels という単一の出所が二重管理へ戻る。
-        case OPEN_IBL:         InvokePanelFocus(m_iblBakePanel); break;
-        case OPEN_VOLUME_FLIPBOOK: InvokePanelFocus(m_volumeFlipbookBakePanel); break;
-        case OPEN_NAVIGATION:  InvokePanelFocus(m_navigationPanel); break;
-        case OPEN_ASSET_MAINT: InvokePanelFocus(m_assetMaintenancePanel); break;
-        case OPEN_AI_SETTINGS: InvokePanelFocus(m_aiSettingsPanel); break;
-        case 510: InvokeOperator("tools.terrain"); break;
-        default: return false;
-        }
+    menus.push_back(submenu("File", {command("scene.new"), command("scene.open"), command("scene.save"),
+        command("scene.save_as"), command("prefab.close"), command("asset.save_all"), separator(), command("app.exit")}));
+    menus.push_back(submenu("Edit", {command("edit.undo"), command("edit.redo"), separator(),
+        command("edit.duplicate"), command("edit.delete_selected"), separator(), command("edit.copy"),
+        command("edit.paste"), command("edit.paste_as_child")}));
+    menus.push_back(submenu("GameObject", std::move(create)));
+    menus.push_back(submenu("Play", {command("play.start"), command("play.stop"), command("play.pause"), command("play.step")}));
+    menus.push_back(submenu("View", std::move(panels)));
+    menus.push_back(submenu("Debug", {command("render.scene_view_occlusion_culling", "Scene View Occlusion Culling"),
+        command("render.shadow_enabled", "Shadow"), separator(), command("debug.hot_reload", "Hot Reload"),
+        command("debug.hot_reload_sound", "Hot Reload Sound"), command("ai.command_bus", "Editor Command Bus"),
+        command("tools.pix_open"), separator(),
+        command("developer.toggle_mode", "Developer Mode")}));
+    menus.push_back(submenu("Tools", std::move(tools)));
+    /// @note ネイティブ ID はこのメニューの存続期間だけ有効。操作 ID と保存済みホットキーには影響しない。
+    m_window->SetNativeMenu(std::move(menus), [this, commands = std::move(commands)](uint16_t id) {
+        if (id == 0 || id > commands.size()) return false;
+        const NativeCommand& selected = commands[id - 1];
+        InvokeOperator(selected.operatorId, selected.args);
         return true;
     });
 }
@@ -525,8 +381,6 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     /// @note 中身は Hierarchy の右クリックと同じ投影 (CreateObjectMenu)。選択を既定の親にする。
     if (ImGui::BeginMenu(LOC("GameObject"))) {
         PendingObjectCreate pendingCreate;
-        MenuItemOp("node.create_empty");
-        ImGui::Separator();
         DrawCreateObjectMenu(ctx, pendingCreate);
         ImGui::EndMenu();
         InvokePendingObjectCreate(ctx, pendingCreate);
@@ -534,17 +388,19 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
 
     /// @name View
     if (ImGui::BeginMenu(LOC("View"))) {
-        /// @note panel.set_visible の投影にすることで、人が押すのと同じ実体を AI も呼べる
-        /// @note        (パネルが増えても operator は 1 つのまま)。
-        if (ImGui::BeginMenu(LOC("Panels"))) {
-            for (auto& panel : m_panels) {
-                if (!panel->ShowInViewMenu()) continue;
+        /// @note 分類はネイティブメニューとパレットも共有し、設定に使うウィンドウ ID を保持する。
+        for (const auto& group : BuildPanelMenu(m_panels)) {
+            const bool nested = !group.category.empty();
+            if (nested && !ImGui::BeginMenu(LOC(group.category.c_str()))) continue;
+            for (const auto& entry : group.entries) {
                 OpArgs args;
-                args.Set("panel", std::string(panel->GetWindowName()));
-                MenuItemOpArgs("panel.set_visible", args, panel->GetViewMenuName());
+                args.Set("panel", std::string(entry.panel->GetWindowName()));
+                MenuItemOpArgs("panel.set_visible", args, entry.panel->GetViewMenuName());
             }
-            ImGui::EndMenu();
+            if (nested) ImGui::EndMenu();
         }
+        ImGui::Separator();
+        MenuItemOp("panel.command_palette");
 
         /// @note Scene View の視点。軸ビューはナビゲーションギズモのクリックと同じ操作を指す。
         if (ImGui::BeginMenu(LOC("Scene Camera"))) {
@@ -561,88 +417,62 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             ImGui::EndMenu();
         }
 
+        const auto drawActions = [this](std::span<const EditorMenuAction> entries) {
+            for (const auto& entry : entries) {
+                OpArgs args;
+                if (entry.mode) args.Set("mode", std::string(entry.mode));
+                MenuItemOpArgs(entry.operatorId, args, entry.label);
+            }
+        };
+        if (ImGui::BeginMenu(LOC("Scene Overlays"))) {
+            for (const auto& group : SCENE_OVERLAY_GROUPS) {
+                const bool nested = group.category[0] != '\0';
+                if (nested && !ImGui::BeginMenu(LOC(group.category))) continue;
+                drawActions(group.actions);
+                if (std::string_view(group.category) == "Navigation"
+                    && ImGui::BeginMenu(LOC("NavMesh Draw Mode"))) {
+                    drawActions(NAVMESH_DRAW_MODES);
+                    ImGui::EndMenu();
+                }
+                if (nested) ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu(LOC("View Mode"))) {
+            drawActions(SCENE_VIEW_MODES);
+            if (core::DeveloperMode::IsEnabled()) drawActions(DEVELOPER_VIEW_MODES);
+            ImGui::EndMenu();
+        }
+
         /// @note UI 全体スケール (フォント + 余白)。設定に永続化される。
         /// @note        スライダー自体は連続値のドラッグなので operator には乗らないが、
         /// @note        適用は view.set_ui_scale を通す (範囲の宣言と適用処理を 1 箇所に保つ)。
-        ImGui::Separator();
-        ImGui::TextDisabled("%s", LOCT("UI Scale"));
-        /// @note 範囲は operator の params 宣言から引く。スライダー側に直書きすると、
-        /// @note        人は 0.5x にできるのに AI からは BAD_ARG で弾かれる (同じ操作の限界が
-        /// @note        面ごとに違う) という、この設計が消したいずれが範囲という形で再発する。
-        float scaleMin = 0.7f;
-        float scaleMax = 2.0f;
-        if (const EditorOperator* scaleOp = m_operators.Find("view.set_ui_scale");
-            scaleOp != nullptr && !scaleOp->params.empty() && scaleOp->params[0].hasRange) {
-            scaleMin = scaleOp->params[0].minValue;
-            scaleMax = scaleOp->params[0].maxValue;
+        if (ImGui::BeginMenu(LOC("UI Scale"))) {
+            /// @note 範囲は operator の params 宣言から引く。スライダー側に直書きすると、
+            /// @note        人は 0.5x にできるのに AI からは BAD_ARG で弾かれる (同じ操作の限界が
+            /// @note        面ごとに違う) という、この設計が消したいずれが範囲という形で再発する。
+            float scaleMin = 0.7f;
+            float scaleMax = 2.0f;
+            if (const EditorOperator* scaleOp = m_operators.Find("view.set_ui_scale");
+                scaleOp != nullptr && !scaleOp->params.empty() && scaleOp->params[0].hasRange) {
+                scaleMin = scaleOp->params[0].minValue;
+                scaleMax = scaleOp->params[0].maxValue;
+            }
+            float uiScale = m_ctx.editorUiScale;
+            ImGui::SetNextItemWidth(150.0f);
+            if (ImGui::SliderFloat("##ui_scale", &uiScale, scaleMin, scaleMax, "%.2fx")) {
+                OpArgs args;
+                args.Set("scale", uiScale);
+                InvokeOperator("view.set_ui_scale", args);
+            }
+            MenuItemOp("view.reset_ui_scale");
+            ImGui::EndMenu();
         }
-        float uiScale = m_ctx.editorUiScale;
-        ImGui::SetNextItemWidth(150.0f);
-        if (ImGui::SliderFloat("##ui_scale", &uiScale, scaleMin, scaleMax, "%.2fx")) {
-            OpArgs args;
-            args.Set("scale", uiScale);
-            InvokeOperator("view.set_ui_scale", args);
-        }
-        MenuItemOp("view.reset_ui_scale");
         ImGui::EndMenu();
     }
 
     /// @name Debug
     if (ImGui::BeginMenu(LOC("Debug"))) {
-        /// @note View はレイアウト・パネル、Debug は実行/描画診断に役割を分ける。
-            MenuItemOp("tools.analysis", "Performance Profiler");
-            MenuItemOp("tools.script_profiler", "Script Profiler");
-            MenuItemOp("tools.memory_debug", "Memory Debug");
-        {
-            OpArgs args;
-            args.Set("panel", std::string("Render Pass Viewer"));
-            MenuItemOpArgs("panel.set_visible", args, "Render Pass Viewer");
-        }
-        ImGui::Separator();
-        /// @note 全項目を operator の投影にする。フラグのアドレスを直接渡すと、同じフラグを
-        /// @note        切り替える operator と表示が別経路になり、AI からも見えない。
-        /// @name Scene Overlays
-        MenuItemOp("render.show_grid",        "Grid");
-        MenuItemOp("render.show_light_range", "Light Range");
-        MenuItemOp("render.show_vfx_gizmos",  "VFX Emitters");
-        MenuItemOp("render.show_flow_fields", "Flow Fields");
-        MenuItemOp("render.show_flow_samples", "Flow Samples");
-        MenuItemOp("render.show_skeleton",    "Skeleton");
-        MenuItemOp("render.skeleton_selected_only", "Skeleton: Selected Only");
-        MenuItemOp("render.show_stats",       "Stats");
-        MenuItemOp("render.show_scene_icons", "Scene Icons");
-        MenuItemOp("render.show_script_gizmos", "Script Gizmos");
-        MenuItemOp("render.show_ik",            "IK Chains");
-        MenuItemOp("render.show_spring_bones",  "Spring Bones");
-        MenuItemOp("render.show_attachments",   "Attachments");
-        MenuItemOp("render.show_vfx_paths",     "VFX Paths");
-        ImGui::Separator();
-        /// @name Physics / Rendering
-        MenuItemOp("render.show_colliders",         "Colliders");
-        MenuItemOp("render.show_constraints",       "Constraints");
-        MenuItemOp("render.show_rigid_bodies",      "Rigid Bodies");
-        MenuItemOp("render.show_physics_volumes",   "Physics Volumes");
-        MenuItemOp("render.show_water_flow",        "Water Flow");
-        MenuItemOp("render.show_terrain_collision", "Terrain Collision");
-        MenuItemOp("render.show_navmesh",           "NavMesh");
-        if (ImGui::BeginMenu(LOC("NavMesh Draw Mode"))) {
-            const auto navModeItem = [this](const char* mode, const char* label) {
-                OpArgs args;
-                args.Set("mode", std::string(mode));
-                MenuItemOpArgs("render.set_navmesh_draw_mode", args, label);
-            };
-            navModeItem("solid",       "Solid");
-            navModeItem("transparent", "Transparent");
-            navModeItem("areas",       "Areas");
-            navModeItem("portals",     "Portals");
-            navModeItem("voxels",      "Voxels");
-            ImGui::EndMenu();
-        }
-        MenuItemOp("render.show_nav_sensors",       "AI Sensors");
-        MenuItemOp("render.show_decal_bounds",      "Decal Bounds");
-        MenuItemOp("render.show_terrain_bounds",    "Terrain Bounds");
-        MenuItemOp("render.show_lod_bounds",        "LOD Bounds");
-        ImGui::Separator();
         /// @name Culling
         /// @note Scene View はデバッグカメラで描くため CameraComponent の設定が届かない。
         /// @note        「消えた原因がカリングか」を切り分ける唯一の口なので Debug 側へ出す。
@@ -651,30 +481,18 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         /// @name Tools
         MenuItemOp("debug.hot_reload", "Hot Reload");
         MenuItemOp("debug.hot_reload_sound", "Hot Reload Sound");
-        ImGui::Separator();
-        if (ImGui::BeginMenu(LOC("View Mode"))) {
-            /// @note 排他選択は 1 つの operator に引数で渡す。チェックは checked を
-            /// @note        同じ引数で評価した値なので、「表示は Lit なのに実体は Unlit」が作れない。
-            const auto viewModeItem = [this](const char* mode, const char* label) {
-                OpArgs args;
-                args.Set("mode", std::string(mode));
-                MenuItemOpArgs("render.set_view_mode", args, label);
-            };
-            viewModeItem("lit",             "Lit");
-            viewModeItem("unlit",           "Unlit");
-            viewModeItem("wireframe_lit",   "Wireframe Lit");
-            viewModeItem("wireframe_unlit", "Wireframe Unlit");
-            if (core::DeveloperMode::IsEnabled()) {
-                viewModeItem("ray_hit_distance", "Ray Hit Distance");
-                viewModeItem("ray_geometric_normal", "Ray Geometric Normal");
-                viewModeItem("ray_instance_id", "Ray Instance ID");
-            }
-            ImGui::EndMenu();
-        }
+        MenuItemOp("ai.command_bus", "Editor Command Bus");
         ImGui::Separator();
         /// @note Bloom / FXAA は Post Process Volume + Profile (.fzdata) へ一本化済み。
         /// @note        Shadow はプロジェクト全体の描画構成なのでここに残す。
         MenuItemOp("render.shadow_enabled", "Shadow");
+        ImGui::Separator();
+        MenuItemOp("tools.pix_open");
+        const auto pixStatus = InvokeOperator("tools.pix_status");
+        const auto* pixReady = pixStatus.data.Find("captureReady");
+        ImGui::TextDisabled("%s", LOC(pixReady && pixReady->AsBool()
+            ? "PIX: GPU capture ready" : "PIX: next launch with --pix-capture"));
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", pixStatus.message.c_str());
         ImGui::Separator();
         /// @name Developer
         /// @see Docs/design/developer-mode.md
@@ -703,18 +521,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     if (ImGui::BeginMenu(LOC("Tools"))) {
         MenuItemOp("tools.map_editing_mode");
         ImGui::Separator();
-        if (ImGui::BeginMenu(LOC("Terrain & Map"))) {
-            MenuItemOp("tools.terrain");
-            ImGui::EndMenu();
-        }
+        MenuItemOp("tools.terrain");
         MenuItemOp("tools.build_settings");
-        ImGui::Separator();
-        MenuItemOp("tools.pix_open");
-        const auto pixStatus = InvokeOperator("tools.pix_status");
-        const auto* pixReady = pixStatus.data.Find("captureReady");
-        ImGui::TextDisabled("%s", LOC(pixReady && pixReady->AsBool()
-            ? "PIX: GPU capture ready" : "PIX: next launch with --pix-capture"));
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", pixStatus.message.c_str());
         ImGui::Separator();
         /// @note パネルごとに operator を生やすと m_panels という単一の出所が二重管理へ戻る。
         /// @note        名前を引数で渡す 1 つの操作で足りる。
@@ -722,20 +530,8 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
             InvokePanelFocus(m_iblBakePanel);
         if (m_volumeFlipbookBakePanel && ImGui::MenuItem(LOC("Volume Flipbook Baker...")))
             InvokePanelFocus(m_volumeFlipbookBakePanel);
-        if (m_navigationPanel && ImGui::MenuItem(LOC("Navigation...")))
-            InvokePanelFocus(m_navigationPanel);
         if (m_assetMaintenancePanel && ImGui::MenuItem(LOC("Asset Maintenance...")))
             InvokePanelFocus(m_assetMaintenancePanel);
-        ImGui::EndMenu();
-    }
-
-    if (ImGui::BeginMenu(LOC("AI"))) {
-        if (m_aiSettingsPanel && ImGui::MenuItem(LOC("AI Settings...")))
-            InvokePanelFocus(m_aiSettingsPanel);
-        ImGui::Separator();
-        /// @note チェックマークは operator の checked (= 実際の待受状態) なので、
-        /// @note        状態表示の役割を保ったままその場で切り替えられる。
-        MenuItemOp("ai.command_bus", "Editor Command Bus");
         ImGui::EndMenu();
     }
 
@@ -819,20 +615,18 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     ImGui::PopStyleColor();
 
     PlayModeController* pm = ctx.playMode;
-    const bool isEditor = pm && pm->IsInEditor();
-    const bool isPlaying = pm && pm->IsPlaying();
+    const bool standaloneActive = m_standalonePlay.IsActive();
+    const bool isEditor = pm && pm->IsInEditor() && !standaloneActive;
+    const bool isPlaying = (pm && pm->IsPlaying()) || standaloneActive;
     const bool isPaused = pm && pm->IsPaused();
 
-    const float groupWidth = BUTTON_SIZE.x * 5.0f + BUTTON_SPACING * 4.0f;
+    const float groupWidth = BUTTON_SIZE.x * 4.0f + BUTTON_SPACING * 3.0f;
     const float availableWidth = ImGui::GetWindowWidth();
     const float centerOffset = (std::max)(8.0f, (availableWidth - groupWidth) * 0.5f);
     ImGui::SetCursorPosX(centerOffset);
-    const bool scriptReloadBusy =
-        ctx.scriptReloadBusy ||
-        ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
-        ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
-    const char* playTooltip = scriptReloadBusy
-        ? "Play is available after scripts finish compiling/reloading"
+    const bool managedBuildBusy = ctx.managedBuildBusy;
+    const char* playTooltip = managedBuildBusy
+        ? "Play is available after C# or shader builds finish"
         : (isPaused ? "Resume from Play Mode" : "Play");
 
     const ImVec4 playColor  = EditorTheme::Color(ThemeColor::Success);
@@ -884,71 +678,39 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         BUTTON_SIZE))
         InvokeOperator("play.step");
 
-    ImGui::SameLine();
-    {
-        const ImVec4 reloadColor { 0.25f, 0.55f, 0.90f, 1.0f };
-        /// @note Blueprint の Compile ボタンと同じく、アイコン自体が直近の結果を持ち続ける (時間で消えない)。
-        using Result = EditorContext::ScriptReloadResult;
-        PlayToolbarIcon reloadIcon    = PlayToolbarIcon::Reload;
-        const char*     reloadTooltip = "Reload Scripts";
-        ImVec4          iconColor     = EditorTheme::Color(ThemeColor::Text);
-        const bool      tintIcon      = scriptReloadBusy || ctx.scriptReloadResult != Result::None;
-        if (scriptReloadBusy) {
-            reloadIcon    = PlayToolbarIcon::ReloadBusy;
-            reloadTooltip = "Scripts are compiling / reloading...";
-            iconColor     = EditorTheme::Color(ThemeColor::Warning);
-        } else if (ctx.scriptReloadResult == Result::Failed) {
-            reloadIcon    = PlayToolbarIcon::ReloadFailed;
-            reloadTooltip = "Last script reload failed \xE2\x80\x94 click to rebuild";
-            iconColor     = EditorTheme::Color(ThemeColor::Danger);
-        } else if (ctx.scriptReloadResult == Result::Ok) {
-            reloadIcon    = PlayToolbarIcon::ReloadOk;
-            reloadTooltip = "Scripts are up to date \xE2\x80\x94 click to rebuild";
-            iconColor     = EditorTheme::Color(ThemeColor::Success);
-        }
-        if (PlayToolbarButton(
-            "##ScriptReload",
-            reloadTooltip,
-            reloadIcon,
-            CanInvokeOperator("script.reload"),
-            scriptReloadBusy,
-            reloadColor,
-            BUTTON_SIZE,
-            tintIcon ? &iconColor : nullptr))
-            InvokeOperator("script.reload");
-    }
 
     /// @name 右端: ホットリロードステータス / PLAYING ラベル
     {
         /// @note ホットリロードステータステキストを決定する
-        const bool  shaders     = ctx.hotReloadTarget == EditorContext::HotReloadTarget::Shaders;
         const char* reloadText  = nullptr;
         ImVec4      reloadColor = { 1.0f, 1.0f, 1.0f, 1.0f };
         switch (ctx.hotReloadState) {
         case EditorContext::HotReloadState::Compiling:
-            reloadText  = shaders ? "Compiling shaders..." : "Compiling scripts...";
+            reloadText  = "Compiling shaders...";
             reloadColor = { 1.0f, 0.85f, 0.2f,  1.0f };
             break;
         case EditorContext::HotReloadState::Reloading:
-            reloadText  = "Reloading scripts...";
+            reloadText  = "Reloading shaders...";
             reloadColor = { 0.5f, 0.8f,  1.0f,  1.0f };
             break;
         case EditorContext::HotReloadState::Done:
-            reloadText  = shaders ? "Shaders reloaded" : "Scripts reloaded";
+            reloadText  = "Shaders reloaded";
             reloadColor = { 0.35f, 1.0f, 0.45f, 1.0f };
             break;
         case EditorContext::HotReloadState::Failed:
             /// @note コンパイル失敗とロード失敗を区別する。以前はどちらも «Compile Error» だった。
             reloadText  = ctx.hotReloadMessage.find("error") != std::string::npos
-                ? (shaders ? "Shader errors" : "Script errors")
-                : (shaders ? "Shader reload failed" : "Script reload failed");
+                ? "Shader errors"
+                : "Shader reload failed";
             reloadColor = { 1.0f, 0.35f, 0.35f, 1.0f };
             break;
         default: break;
         }
 
         /// @note PLAYING / PAUSED ラベル
-        const char*  playLabel    = !isEditor ? (isPlaying ? "PLAYING" : "PAUSED") : nullptr;
+        const char*  playLabel    = standaloneActive
+            ? (m_standalonePlay.IsStopping() ? "STOPPING STANDALONE" : "STANDALONE")
+            : (!isEditor ? (isPlaying ? "PLAYING" : "PAUSED") : nullptr);
         const ImVec4 playLabelCol = isPlaying
             ? ImVec4{ 0.28f, 0.88f, 0.53f, 1.0f }
             : ImVec4{ 0.92f, 0.72f, 0.28f, 1.0f };
@@ -978,8 +740,12 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
                     if (ImGui::IsItemClicked()) ctx.requestOpenBuildOutput = true;
                     if (playLabel) ImGui::SameLine(0.0f, kGap);
                 }
-                if (playLabel)
+                if (playLabel) {
                     ImGui::TextColored(playLabelCol, "%s", playLabel);
+                    if (standaloneActive && ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s\nClick to open the session log", m_standalonePlay.Diagnostic().c_str());
+                    if (standaloneActive && ImGui::IsItemClicked()) OpenStandalonePlayLog();
+                }
             }
         }
     }
@@ -1009,7 +775,7 @@ void EditorApp::DrawBuildNotificationBar(EditorContext& ctx)
     ImGui::BeginChild("##BuildFailBar", ImVec2(0.0f, barH), false, ImGuiWindowFlags_NoScrollbar);
 
     ImGui::AlignTextToFramePadding();
-    const char* kind = fail->kind == BuildRecord::Kind::Script ? "Script" : "HLSL";
+    const char* kind = "HLSL";
     ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.50f, 1.0f),
                        "  %s build failed  \xE2\x80\x94  %d error(s), %d warning(s)  [%s]",
                        kind, fail->errorCount, fail->warnCount, fail->startClock.c_str());
@@ -1065,25 +831,22 @@ void EditorApp::DrawGuidConflictBar(EditorContext&)
 
 void EditorApp::StartPlayMode()
 {
+    if (m_packageBuild.IsRunning()) return;
     /// @note Play ツールバーボタンと Ctrl+P ホットキーの共通経路。
     /// @note        ガード条件をここに集約し、どの入力経路でも同じ前提チェックを通す。
-    const bool scriptReloadBusy =
-        m_ctx.scriptReloadBusy ||
-        m_ctx.hotReloadState == EditorContext::HotReloadState::Compiling ||
-        m_ctx.hotReloadState == EditorContext::HotReloadState::Reloading;
-    if (!m_ctx.activeScene || !m_playMode.IsInEditor() || scriptReloadBusy)
+    const bool managedBuildBusy = m_ctx.managedBuildBusy;
+    if (!m_ctx.activeScene || !m_playMode.IsInEditor() || m_standalonePlay.IsActive() || managedBuildBusy)
         return;
-    if (!m_scriptDll.IsLoaded() && !m_scriptDllPath.empty()) {
-        m_ctx.requestScriptReload = true;
-        Toast::Error("Scripts unavailable. Rebuilding; press Play again after success.");
-        FBZZ_LOG_WARN("Play: Scripts DLL is unavailable; rebuild requested");
-        return;
-    }
     /// @note Prefab 編集面には「シーン」が無い (カメラもライトも無い、プレファブ単体)。
     /// @note        そのまま Play すると空舞台で動き出し、Stop 時の復元も Prefab 内容に対して行われるため、
     /// @note        編集面から出るまで開始させない。
     if (m_ctx.InPrefabEditMode()) {
         FBZZ_LOG_WARN("Play: close the prefab edit mode first");
+        return;
+    }
+
+    if (m_ctx.playExecutionMode == PlayExecutionMode::STANDALONE) {
+        StartStandalonePlayMode();
         return;
     }
 
@@ -1100,41 +863,27 @@ void EditorApp::StartPlayMode()
                      " required setting issue(s) — Script Requirements / Console");
     }
 
-    m_undoStack.Clear();
-    /// @note 編集中に何かが基底を書いていても、Play は «誰も要求していない» 状態から始める。
-    /// @note        UpdatePlayCursorControls (フレーム先頭) より前に畳む必要がある — 次フレームには
-    /// @note        既に OnStart が要求を積んでおり、あちらで畳むと名乗ったばかりの要求を消してしまう。
-    core::Cursor::ClearRequests();
-    /// @note カーソルの絵もここで読む。スクリプトの OnStart は «OS カーソルの絵があるか» で
-    /// @note        自前のポインターを出すかどうかを決めるので、走り出す前に揃っている必要がある。
-    m_ctx.projectSettings.cursor.Apply(m_ctx.projectRoot);
-    /// @note Play 前に editor-only 非表示を一時解除（スナップショットに active 状態で含める）
+    std::vector<std::string> selected;
+    for (const auto id : m_ctx.selectedEntities) if (auto* object = m_scene->GetGameObject(id)) selected.push_back(object->instanceId);
+    m_playMode.Play(*m_scene, m_ctx.currentScenePath, m_resources);
+    if (!m_playMode.IsPlaying()) { Toast::Error(m_playMode.Diagnostic()); return; }
+    if (m_managedScripts) m_managedScripts->BeginPlaySession();
+    m_ctx.activeScene = m_playMode.PlayScene(); m_ctx.runtime = m_playMode.PlayRuntime();
+    m_ctx.undoStack = m_playMode.TemporaryUndo();
+    ClearEntitySelection(m_ctx);
+    for (const auto& guid : selected) if (auto* object = m_ctx.activeScene->FindByGuid(guid)) m_ctx.selectedEntities.push_back(object->GetID());
+    /// @note Restore editor-only visibility on the clone, leaving original authoring objects untouched.
     RemoveEditorHiding();
-    /// @note navMesh は TOML に保存されないため、Play 開始前にキャッシュしておく。
-    /// @note        Stop 後の scene 復元で needsBake=true が立っても再ベイクせずに済む。
-    m_navMeshPlayCache.clear();
-    for (scene::EntityID eid : m_ctx.activeScene->GetEntities<scene::NavMeshSurfaceComponent>()) {
-        auto* surf = m_ctx.activeScene->GetComponent<scene::NavMeshSurfaceComponent>(eid);
-        auto* go   = m_ctx.activeScene->GetGameObject(eid);
-        if (!surf || !go || !surf->navMesh.IsValid()) continue;
-        NavMeshPlayCacheEntry entry;
-        entry.navMesh    = surf->navMesh;
-        entry.stats      = surf->bakeStats;
-        entry.sourceHash = surf->bakedSourceHash;
-        /// @note ボクセル格子は Scene View の Voxels 表示専用で、Play 中は表示自体が抑止される。
-        /// @note        数 MB を二重に抱えないよう、預けている間は Surface から外す。
-        entry.debug      = std::move(surf->bakeDebug);
-        surf->bakeDebug  = {};
-        m_navMeshPlayCache[go->instanceId] = std::move(entry);
-    }
-    /// @note ScriptProxy は ScriptRuntime 経由でサブシステムを参照する。エディタは共通
-    /// @note        ProjectRuntime の SceneManager を Update するため、Play 開始時に ScriptRuntime を
-    /// @note        差し替えて正しい参照先を指す。
-    m_runtime.ActivateScriptRuntime(
-        core::Application::Get().GetRenderer(),
-        static_cast<uint32_t>(m_ctx.gameViewportWidth),
-        static_cast<uint32_t>(m_ctx.gameViewportHeight)
-    );
+    auto& runtime = ActiveRuntime(); runtime.ApplySettings(m_ctx.projectSettings);
+    runtime.GetSceneManager().SetAudioManager(core::Application::Get().GetAudioManager());
+    runtime.RegisterScenes(util::FileSystem::PathFromUtf8(m_ctx.projectRoot), *m_resources);
+    core::Cursor::ClearRequests(); m_ctx.projectSettings.cursor.Apply(m_ctx.projectRoot);
+    runtime.ActivateScriptRuntime(core::Application::Get().GetRenderer(),
+        static_cast<uint32_t>(m_ctx.gameViewportWidth), static_cast<uint32_t>(m_ctx.gameViewportHeight));
+    m_scriptQuitSceneLifetime = 0;
+    ActiveRuntime().SetScriptQuitHandler([](void* context, uint64_t lifetime) {
+        static_cast<EditorApp*>(context)->m_scriptQuitSceneLifetime = lifetime;
+    }, this);
     /// @note 実行中の品質変更は専用コピーへ限定し、アセットと編集側の自動保存を汚さない。
     (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
         m_ctx.projectSettings.renderPipelineAssetPath, m_playRenderSettings);
@@ -1146,16 +895,17 @@ void EditorApp::StartPlayMode()
         /// @note        往復のたびに積むリークを、1 往復ぶんの差分だけでは区別できないため。
         m_memoryLeakDiff.CaptureSessionBaselineIfAbsent(*m_ctx.resources);
     }
-    m_playMode.Play(*m_ctx.activeScene);
     if (m_playMode.IsPlaying() && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
         m_ctx.requestGameViewportFocus = true;
 }
 
 void EditorApp::StopPlayMode()
 {
+    ResetSpatialDebugCapture();
+    if (m_standalonePlay.IsActive()) { m_standalonePlay.Stop(); return; }
+    m_scriptQuitSceneLifetime = 0;
     if (!m_ctx.activeScene || m_playMode.IsInEditor())
         return;
-    scene::ScriptRuntime::Override(nullptr);
     /// @note 実行用コピーを切り離す。ProjectSettings は Play 中も編集側の正本を保持する。
     core::Application::Get().SetActiveRenderSettings(nullptr);
     /// @note AudioSystemはSimOnlyのため、EditModeへ戻った後ではループVoiceを停止できない。
@@ -1163,12 +913,11 @@ void EditorApp::StopPlayMode()
     if (auto* audioManager = core::Application::Get().GetAudioManager())
         audioManager->StopAllVoices();
     m_playMode.Stop(*m_ctx.activeScene);
-    m_undoStack.Clear();
 }
 
 void EditorApp::TogglePlayMode()
 {
-    if (m_playMode.IsInEditor())
+    if (m_playMode.IsInEditor() && !m_standalonePlay.IsActive())
         StartPlayMode();
     else
         StopPlayMode();

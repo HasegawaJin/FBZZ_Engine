@@ -61,6 +61,8 @@ private:
         JsonValue result = JsonValue::MakeObject();
         if (type == "fake.counter") {
             result.Set("n", JsonValue(++counter));
+        } else if (type == "fake.echo") {
+            if (const JsonValue* value = payload.Find("value")) result.Set("value", *value);
         } else if (type == "fake.fail") {
             return SerializeJson(editor::ai::MakeErrorResponse(id, "BOOM", "失敗させた"));
         } else if (type == "editor.state") {
@@ -102,7 +104,89 @@ protected:
     testkit::TempDir m_temp{"playtest"};
 };
 
-} // namespace
+} /// @note namespace
+
+TEST_F(PlaytestRunnerTest, CapturesCommandResultsAndPreservesTypesInLaterRequestsAndAssertions)
+{
+    PlaytestRunner runner;
+    FakeBus bus;
+    ASSERT_TRUE(Start(runner, R"({"steps":[
+        {"do":"bus","request":{"t":"fake.counter"},"capture":{"number":"n","whole":""}},
+        {"do":"bus","kind":"query","request":{"t":"fake.echo","value":[{"$ref":"whole.n"},true,null,"token"]},"capture":{"items":"value"}},
+        {"do":"assert","query":{"t":"fake.echo","value":{"$ref":"items"}},"path":"value.0","op":"==","value":{"$ref":"number"}},
+        {"do":"assert","query":{"t":"fake.echo","value":{"$ref":"items"}},"path":"value.1","op":"==","value":true},
+        {"do":"assert","query":{"t":"fake.echo","value":{"$ref":"items"}},"path":"value.2","op":"==","value":null}
+    ]})"));
+    RunToEnd(runner, bus);
+    EXPECT_EQ(runner.State(), PlaytestState::PASSED);
+    EXPECT_EQ(bus.counter, 1);
+    const JsonValue report = runner.Report();
+    const auto& steps = report.Find("steps")->AsArray();
+    ASSERT_GE(steps.size(), 2u);
+    ASSERT_NE(steps[0].Find("result"), nullptr);
+    EXPECT_TRUE(steps[0].Find("result")->Find("n")->IsNumber());
+}
+
+TEST_F(PlaytestRunnerTest, WaitCaptureUsesOnlyTheSatisfiedResponseAndStartClearsOldValues)
+{
+    PlaytestRunner runner;
+    FakeBus bus;
+    ASSERT_TRUE(Start(runner, R"({"steps":[
+        {"do":"waitUntil","query":{"t":"fake.counter"},"path":"n","op":">=","value":3,"capture":{"ready":"n"}},
+        {"do":"assert","query":{"t":"fake.echo","value":{"$ref":"ready"}},"path":"value","op":"==","value":3}
+    ]})"));
+    RunToEnd(runner, bus);
+    EXPECT_EQ(runner.State(), PlaytestState::PASSED);
+    EXPECT_EQ(bus.counter, 3);
+    const auto echoCalls = std::count(bus.calls.begin(), bus.calls.end(), "fake.echo");
+    ASSERT_TRUE(Start(runner, R"({"steps":[
+        {"do":"waitUntil","query":{"t":"fake.echo","value":{"$ref":"ready"}},"path":"value","op":"exists"}
+    ]})"));
+    RunToEnd(runner, bus);
+    EXPECT_EQ(runner.State(), PlaytestState::FAILED);
+    EXPECT_EQ(std::count(bus.calls.begin(), bus.calls.end(), "fake.echo"), echoCalls);
+    EXPECT_NE(runner.Report().Find("failure")->AsString().find("ready"), std::string::npos);
+}
+
+TEST_F(PlaytestRunnerTest, RejectsInvalidCaptureAndUnresolvedReferenceBeforeCallingBus)
+{
+    const char* scenarios[] = {
+        R"({"steps":[{"do":"bus","request":{"t":"fake.counter"},"capture":{"bad.key":"n"}}]})",
+        R"({"steps":[{"do":"bus","request":{"t":"fake.counter"},"capture":{"key":2}}]})",
+        R"({"steps":[{"do":"bus","request":{"t":"fake.counter"},"capture":{"key":"n"},"expectError":"BOOM"}]})",
+        R"({"steps":[{"do":"bus","request":{"t":"fake.echo","value":{"$ref":"missing"}}}]})",
+        R"({"steps":[{"do":"bus","request":{"t":"fake.echo","value":{"$ref":"missing","extra":1}}}]})",
+        R"({"steps":[{"do":"waitUntil","query":{"t":"fake.counter"},"path":"n","op":"<","value":0,"capture":{"bad.key":"n"}}]})"
+    };
+    for (const char* scenario : scenarios) {
+        SCOPED_TRACE(scenario);
+        PlaytestRunner runner;
+        FakeBus bus;
+        ASSERT_TRUE(Start(runner, scenario));
+        RunToEnd(runner, bus);
+        EXPECT_EQ(runner.State(), PlaytestState::FAILED);
+        EXPECT_EQ(std::count(bus.calls.begin(), bus.calls.end(), "fake.counter"), 0);
+        EXPECT_EQ(std::count(bus.calls.begin(), bus.calls.end(), "fake.echo"), 0);
+    }
+}
+
+TEST_F(PlaytestRunnerTest, MissingCapturePathStopsFollowingMutation)
+{
+    PlaytestRunner runner;
+    FakeBus bus;
+    ASSERT_TRUE(Start(runner, R"({"steps":[
+        {"do":"bus","request":{"t":"fake.counter"},"capture":{"key":"doesNotExist"}},
+        {"do":"bus","request":{"t":"fake.counter"}}
+    ]})"));
+    RunToEnd(runner, bus);
+    EXPECT_EQ(runner.State(), PlaytestState::FAILED);
+    EXPECT_EQ(bus.counter, 1);
+    const JsonValue report = runner.Report();
+    ASSERT_FALSE(report.Find("steps")->AsArray().empty());
+    const JsonValue& step = report.Find("steps")->AsArray().front();
+    ASSERT_NE(step.Find("result"), nullptr);
+    EXPECT_EQ(step.Find("result")->Find("n")->AsInt(), 1);
+}
 
 TEST_F(PlaytestRunnerTest, RejectsScenarioWithoutSteps)
 {
@@ -169,6 +253,49 @@ TEST_F(PlaytestRunnerTest, FramesStepWaitsExactlyThatManyTicks)
     EXPECT_EQ(runner.State(), PlaytestState::PASSED);
     /// @note 1 Tick 目で frames を受け、続く 5 Tick を待ち、7 Tick 目で log を実行して終わる。
     EXPECT_EQ(ticks, 7);
+}
+
+TEST_F(PlaytestRunnerTest, ZeroSecondWaitReportsTheMonotonicClockAndCompletes)
+{
+    PlaytestRunner runner;
+    FakeBus bus;
+    ASSERT_TRUE(Start(runner, R"({"steps":[{"do":"waitSeconds","seconds":0},{"do":"waitSeconds","seconds":0}]})"));
+    RunToEnd(runner, bus);
+    ASSERT_EQ(runner.State(), PlaytestState::PASSED);
+    const auto report = runner.Report();
+    ASSERT_EQ(report.Find("steps")->AsArray().size(), 2u);
+    for (const auto& step : report.Find("steps")->AsArray()) {
+        const auto& result = *step.Find("result");
+        EXPECT_EQ(result.Find("requestedSeconds")->AsNumber(), 0.0);
+        EXPECT_GE(result.Find("elapsedSeconds")->AsNumber(), 0.0);
+        EXPECT_EQ(result.Find("clock")->AsString(), "steady_clock");
+    }
+}
+
+TEST_F(PlaytestRunnerTest, SecondWaitStartsWhileRenderingAndKeepsTheFollowingStepPending)
+{
+    PlaytestRunner runner;
+    int renders = 0;
+    PlaytestHooks hooks;
+    hooks.keepViewportsRendering = [&] { ++renders; };
+    ASSERT_TRUE(Start(runner, R"({"lockstep":1000,"steps":[{"do":"waitSeconds","seconds":3600},{"do":"log","message":"done"}]})"));
+    runner.Tick(hooks);
+    EXPECT_EQ(runner.State(), PlaytestState::RUNNING);
+    EXPECT_EQ(renders, 1);
+    EXPECT_TRUE(runner.Report().Find("steps")->AsArray().empty());
+    runner.Cancel("test completed");
+}
+
+TEST_F(PlaytestRunnerTest, RejectsInvalidSecondWaitBeforeFollowingSteps)
+{
+    for (const auto* seconds : {"-1", "3601", "null"}) {
+        PlaytestRunner runner;
+        FakeBus bus;
+        ASSERT_TRUE(Start(runner, std::string(R"({"steps":[{"do":"waitSeconds","seconds":)") + seconds + R"(},{"do":"log","message":"unreachable"}]})"));
+        RunToEnd(runner, bus);
+        EXPECT_EQ(runner.State(), PlaytestState::FAILED);
+        EXPECT_EQ(runner.Report().Find("steps")->AsArray().size(), 1u);
+    }
 }
 
 TEST_F(PlaytestRunnerTest, WaitUntilPollsEveryFrameUntilTheConditionHolds)
@@ -321,4 +448,4 @@ TEST_F(PlaytestRunnerTest, CancelEndsAsFailed)
     EXPECT_FLOAT_EQ(fbzz::Time::GetLockstepDelta(), 0.0f);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

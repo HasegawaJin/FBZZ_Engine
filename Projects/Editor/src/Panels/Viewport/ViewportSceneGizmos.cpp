@@ -3,9 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 #include "ViewportCommon.hpp"
+#include <Engine/Profiler/ProfileScope.hpp>
+#include <Editor/Util/TransformAuthoringValues.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/ViewportCamera.hpp>
+#include <Editor/Tools/ControlPointEditing.hpp>
 #include <Engine/Scene/Components/AudioListenerComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/AudioSpatialComponents.hpp>
@@ -22,9 +25,13 @@
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
 #include <Engine/Scene/Components/SplineComponents.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/WaterZoneSnapshot.hpp>
 #include <Engine/Scene/Components/WeatherComponent.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
+#include <cmath>
 #include <span>
 #include <unordered_map>
 
@@ -32,18 +39,78 @@ namespace fbzz::editor {
 
 namespace {
 
-bool GizmoTransformEquals(const scene::Transform& lhs, const scene::Transform& rhs)
+
+
+/// @brief Check whether a TargetPoint world pose can safely drive ImGuizmo matrix operations.
+bool IsFiniteTargetPointPose(const scene::Transform& transform)
 {
-    return lhs.position.x == rhs.position.x &&
-           lhs.position.y == rhs.position.y &&
-           lhs.position.z == rhs.position.z &&
-           lhs.rotation.x == rhs.rotation.x &&
-           lhs.rotation.y == rhs.rotation.y &&
-           lhs.rotation.z == rhs.rotation.z &&
-           lhs.rotation.w == rhs.rotation.w &&
-           lhs.scale.x == rhs.scale.x &&
-           lhs.scale.y == rhs.scale.y &&
-           lhs.scale.z == rhs.scale.z;
+    const auto& position = transform.worldPosition;
+    const auto& rotation = transform.worldRotation;
+    const auto& scale = transform.worldScale;
+    const float rotationLengthSq = rotation.x * rotation.x + rotation.y * rotation.y
+        + rotation.z * rotation.z + rotation.w * rotation.w;
+    return std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z)
+        && std::isfinite(rotationLengthSq) && rotationLengthSq > 1e-12f
+        && std::isfinite(scale.x) && std::isfinite(scale.y) && std::isfinite(scale.z)
+        && std::abs(scale.x) > 1e-6f && std::abs(scale.y) > 1e-6f && std::abs(scale.z) > 1e-6f;
+}
+
+/// @brief Active transform gesture state and the scene values needed for commit or rollback.
+struct GizmoEdit {
+    scene::Scene* scene = nullptr;
+    uint64_t sceneGeneration = 0;
+    std::vector<scene::EntityID> selection;
+    std::vector<scene::EntityID> entityIds;
+    std::vector<std::string> instanceIds;
+    std::vector<scene::Transform> before;
+    std::vector<scene::Transform> lastApplied;
+    std::vector<math::Vector3> startWorldScale;
+    std::vector<math::Matrix4> startWorld;
+    std::vector<bool> applyDelta;
+    math::Matrix4 gizmoStartWorldInv = math::Matrix4::Identity();
+    EditorContext::GizmoMode mode = EditorContext::GizmoMode::Translate;
+    EditorContext::GizmoSpace space = EditorContext::GizmoSpace::World;
+    EditorContext::GizmoPivot pivot = EditorContext::GizmoPivot::Pivot;
+    bool active = false;
+};
+
+/// @return The shared gesture state used by the viewport's regular transform gizmo.
+GizmoEdit& ActiveGizmoEdit()
+{
+    static GizmoEdit edit;
+    return edit;
+}
+
+/// @brief Roll back unchanged preview values and invalidate the current gizmo gesture.
+/// @note Targets changed independently during a gesture are left untouched.
+void CancelGizmoEdit(EditorContext& ctx, int& lastOp, int& lastMode,
+                     bool& prevOver, bool& prevUsing)
+{
+    auto& edit = ActiveGizmoEdit();
+    bool restored = false;
+    const bool sameScene = ctx.activeScene && edit.scene == ctx.activeScene
+        && edit.sceneGeneration == ctx.activeScene->GetRenderSceneGeneration();
+    if (edit.active && sameScene) {
+        for (std::size_t i = 0; i < edit.entityIds.size()
+             && i < edit.instanceIds.size() && i < edit.before.size()
+             && i < edit.lastApplied.size(); ++i) {
+            scene::GameObject* target = ctx.activeScene->GetGameObject(edit.entityIds[i]);
+            if (!target || target->instanceId != edit.instanceIds[i]
+                || ctx.activeScene->FindByGuid(edit.instanceIds[i]) != target
+                || !TransformAuthoringValuesEqual(target->transform, edit.lastApplied[i]))
+                continue;
+            target->transform = edit.before[i];
+            restored = true;
+        }
+    }
+    if (restored && ctx.markSceneDirty) ctx.markSceneDirty();
+    edit = {};
+    prevOver = false;
+    prevUsing = false;
+    lastOp = -1;
+    lastMode = -1;
+    ImGuizmo::Enable(false);
+    ImGuizmo::Enable(true);
 }
 
 /// @brief 行優先ワールド行列をローカル TRS に分解して transform へ書き戻す。
@@ -70,7 +137,56 @@ void ApplyWorldRowToTransform(scene::GameObject& go, const math::Matrix4& worldR
     go.transform.rotation = math::Quaternion::FromMatrix4(rotMat);
 }
 
-} // namespace
+/// @brief Apply a TargetPoint rotation while preserving its local position and signed scale.
+/// @note World matrix columns are divided by their captured signed scale before quaternion extraction.
+bool ApplySingleTargetPointRotation(scene::GameObject& go, const math::Matrix4& worldRow,
+                                    const math::Vector3& signedWorldScale)
+{
+    if (std::abs(signedWorldScale.x) < 1e-6f || std::abs(signedWorldScale.y) < 1e-6f
+        || std::abs(signedWorldScale.z) < 1e-6f)
+        return false;
+    math::Matrix4 rotation = math::Matrix4::Identity();
+    rotation.m[0][0] = worldRow.m[0][0] / signedWorldScale.x;
+    rotation.m[1][0] = worldRow.m[1][0] / signedWorldScale.x;
+    rotation.m[2][0] = worldRow.m[2][0] / signedWorldScale.x;
+    rotation.m[0][1] = worldRow.m[0][1] / signedWorldScale.y;
+    rotation.m[1][1] = worldRow.m[1][1] / signedWorldScale.y;
+    rotation.m[2][1] = worldRow.m[2][1] / signedWorldScale.y;
+    rotation.m[0][2] = worldRow.m[0][2] / signedWorldScale.z;
+    rotation.m[1][2] = worldRow.m[1][2] / signedWorldScale.z;
+    rotation.m[2][2] = worldRow.m[2][2] / signedWorldScale.z;
+    const math::Quaternion worldRotation = math::Quaternion::FromMatrix4(rotation).Normalized();
+    const scene::GameObject* parent = go.GetParent();
+    go.transform.rotation = parent
+        ? (parent->transform.worldRotation.Inverse() * worldRotation).Normalized()
+        : worldRotation;
+    scene::FlushWorldTransforms(go);
+    return true;
+}
+
+/// @brief Apply a TargetPoint scale while preserving its local position, rotation, and scale signs.
+void ApplySingleTargetPointScale(scene::GameObject& go, const math::Matrix4& worldRow,
+                                 const scene::Transform& before)
+{
+    const scene::GameObject* parent = go.GetParent();
+    const math::Vector3 parentScale = parent ? parent->transform.worldScale : math::Vector3::ONE;
+    const auto scaledAxis = [](float x, float y, float z, float parentAxis, float originalLocal) {
+        const float parentMagnitude = std::abs(parentAxis);
+        if (parentMagnitude < 1e-6f) return 0.0f;
+        const float sign = std::signbit(originalLocal) ? -1.0f : 1.0f;
+        return sign * std::sqrt(x * x + y * y + z * z) / parentMagnitude;
+    };
+    go.transform.position = before.position;
+    go.transform.rotation = before.rotation;
+    go.transform.scale = {
+        scaledAxis(worldRow.m[0][0], worldRow.m[1][0], worldRow.m[2][0], parentScale.x, before.scale.x),
+        scaledAxis(worldRow.m[0][1], worldRow.m[1][1], worldRow.m[2][1], parentScale.y, before.scale.y),
+        scaledAxis(worldRow.m[0][2], worldRow.m[1][2], worldRow.m[2][2], parentScale.z, before.scale.z),
+    };
+    scene::FlushWorldTransforms(go);
+}
+
+} /// @note namespace
 
 bool WorldToScreen(const math::Vector3& world,
                    const EditorContext& ctx,
@@ -80,7 +196,15 @@ bool WorldToScreen(const math::Vector3& world,
     if (!ctx.editorCamera) return false;
     const math::Matrix4 vp = ctx.editorCamera->GetProjectionMatrix()
                            * ctx.editorCamera->GetViewMatrix();
-    const math::Vector4 clip = vp * math::Vector4{ world.x, world.y, world.z, 1.0f };
+    return WorldToScreen(world, vp, vpMin, vpSize, out);
+}
+
+bool WorldToScreen(const math::Vector3& world,
+                   const math::Matrix4& viewProjection,
+                   const ImVec2& vpMin, const ImVec2& vpSize,
+                   ImVec2& out)
+{
+    const math::Vector4 clip = viewProjection * math::Vector4{ world.x, world.y, world.z, 1.0f };
     if (clip.w <= 0.001f) return false;
     const float ndcX =  clip.x / clip.w;
     const float ndcY = -clip.y / clip.w;
@@ -128,14 +252,16 @@ void DrawWorldPolyline(EditorContext& ctx, ImDrawList* dl,
                        std::span<const math::Vector3> points, bool closed,
                        const ImVec2& vpMin, const ImVec2& vpSize, ImU32 color, float thickness)
 {
-    if (points.size() < 2) return;
+    if (points.size() < 2 || !ctx.editorCamera) return;
+    const math::Matrix4 viewProjection = ctx.editorCamera->GetProjectionMatrix()
+                                       * ctx.editorCamera->GetViewMatrix();
     ImVec2 first{};
     ImVec2 prev{};
     bool firstOk = false;
     bool prevOk  = false;
     for (size_t i = 0; i < points.size(); ++i) {
         ImVec2 cur;
-        const bool ok = WorldToScreen(points[i], ctx, vpMin, vpSize, cur);
+        const bool ok = WorldToScreen(points[i], viewProjection, vpMin, vpSize, cur);
         if (ok && prevOk) dl->AddLine(prev, cur, color, thickness);
         if (i == 0) { first = cur; firstOk = ok; }
         prev = cur;
@@ -316,14 +442,11 @@ void DrawCameraFrustum(EditorContext& ctx,
 /// @brief ワールド座標をスクリーンへ投影し、視錐台の外なら false を返す。
 /// @note NDC の z も見て、遠平面より奥のアイコンを描かない (DirectX の NDC は z ∈ [0,1])。
 bool ProjectIcon(const math::Vector3& world,
-                 const EditorContext& ctx,
+                 const math::Matrix4& viewProjection,
                  const ImVec2& vpMin, const ImVec2& vpSize,
                  ImVec2& out)
 {
-    if (!ctx.editorCamera) return false;
-    const math::Matrix4 vp = ctx.editorCamera->GetProjectionMatrix()
-                           * ctx.editorCamera->GetViewMatrix();
-    const math::Vector4 clip = vp * math::Vector4{ world.x, world.y, world.z, 1.0f };
+    const math::Vector4 clip = viewProjection * math::Vector4{ world.x, world.y, world.z, 1.0f };
     if (clip.w <= 0.001f) return false;
 
     const float ndcX =  clip.x / clip.w;
@@ -458,6 +581,38 @@ void DrawWaterGizmo(EditorContext& ctx, ImDrawList* dl, const scene::GameObject&
                     const scene::WaterComponent& water, const ImVec2& vpMin, const ImVec2& vpSize)
 {
     const math::Matrix4 world = go.transform.GetWorldMatrix();
+    if (scene::UsesWaterSurfaceGeometry(water)) {
+        const auto* geometry = scene::WaterSurfaceGeometry(water);
+        if (geometry) {
+            const auto& vertices = geometry->vertices;
+            if (water.zoneSnapshot) {
+                for (const auto& edge : water.zoneSnapshot->boundaryEdges) {
+                    const math::Vector3 line[] = {vertices[edge[0]].worldPosition, vertices[edge[1]].worldPosition};
+                    DrawWorldPolyline(ctx, dl, line, false, vpMin, vpSize, IM_COL32(80, 200, 255, 200), 1.5f);
+                }
+            }
+            std::vector<math::Vector3> outline;
+            outline.reserve(geometry->outlineIndices.size());
+            for (const auto index : geometry->outlineIndices) outline.push_back(vertices[index].worldPosition);
+            if (!outline.empty())
+                DrawWorldPolyline(ctx, dl, outline, true, vpMin, vpSize, IM_COL32(80, 200, 255, 200), 1.5f);
+        }
+        for (const auto& point : water.splinePoints) {
+            const auto position = TransformPoint(world, point.localPosition);
+            ImVec2 screen;
+            if (WorldToScreen(position, ctx, vpMin, vpSize, screen)) dl->AddCircleFilled(screen, 4.0f, IM_COL32(255, 215, 100, 230));
+            if (!geometry) continue;
+            scene::WaterSplineSample sample;
+            if (!scene::TrySampleWaterSpline(*geometry, position.x, position.z, sample)) continue;
+            const float speed = sample.worldVelocity.Length();
+            if (speed > 1.0e-3f)
+                DrawDirectionLine(ctx, dl, position, sample.worldVelocity / speed,
+                    (std::min)(speed * 4.0f, 10.0f), vpMin, vpSize, IM_COL32(90, 255, 230, 230));
+            const math::Vector3 depthLine[] = {position, position - math::Vector3{0.0f, sample.depth, 0.0f}};
+            DrawWorldPolyline(ctx, dl, depthLine, false, vpMin, vpSize, IM_COL32(100, 150, 255, 150), 1.0f);
+        }
+        return;
+    }
     const float hx = water.extentX * 0.5f;
     const float hz = water.extentZ * 0.5f;
     const math::Vector3 corners[4] = {
@@ -476,12 +631,12 @@ void DrawWaterGizmo(EditorContext& ctx, ImDrawList* dl, const scene::GameObject&
         (std::min)(hx * std::abs(go.transform.worldScale.x), hz * std::abs(go.transform.worldScale.z)) * 0.8f,
         0.5f);
     if (water.enableGerstnerWaves) {
-        for (size_t i = 0; i < water.waves.size() && i < 4; ++i) {
+        for (size_t i = 0; i < (std::min)(static_cast<size_t>(water.waveCount), water.waves.size()); ++i) {
             const scene::GerstnerWave& wave = water.waves[i];
             if (wave.amplitude < 1.0e-4f || wave.direction.LengthSq() < 1.0e-8f) continue;
             const math::Vector2 dir = wave.direction.Normalized();
             DrawDirectionLine(ctx, dl, origin, { dir.x, 0.0f, dir.y },
-                              (std::min)(wave.amplitude * 20.0f, maxLength), vpMin, vpSize, kWaveColors[i]);
+                              (std::min)(wave.amplitude * 20.0f, maxLength), vpMin, vpSize, kWaveColors[i % 4]);
         }
     }
     if (const float currentSpeed = water.current.Length(); currentSpeed > 1.0e-3f) {
@@ -583,7 +738,7 @@ void DrawSelectedVolumes(EditorContext& ctx, ImDrawList* dl, scene::GameObject& 
         DrawWaterGizmo(ctx, dl, go, *water, vpMin, vpSize);
 }
 
-} // namespace
+} /// @note namespace
 
 int SceneIconTypeCount() { return kSceneIconCount; }
 
@@ -624,6 +779,9 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
 {
     out.clear();
     if (!ctx.showSceneIcons || !ctx.activeScene || !ctx.editorCamera) return;
+    FBZZ_PROFILE_SCOPE("EditorViewport::CollectSceneIcons");
+    const math::Matrix4 viewProjection = ctx.editorCamera->GetProjectionMatrix()
+                                       * ctx.editorCamera->GetViewMatrix();
 
     const bool ortho = ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic;
     const math::Vector3 cameraPos = ctx.editorCamera->m_position;
@@ -654,7 +812,7 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
             }
 
             ImVec2 sp;
-            if (!ProjectIcon(world, ctx, vpMin, vpSize, sp)) continue;
+            if (!ProjectIcon(world, viewProjection, vpMin, vpSize, sp)) continue;
 
             int& order = stacked[(static_cast<uint64_t>(id.index) << 32) | id.generation];
             sp.x += static_cast<float>(order) * kIconStackOffset * scale;
@@ -738,20 +896,20 @@ namespace {
 /// @note ナビゲーションギズモ (Blender / Godot 風の軸ボール)。ImGuizmo::ViewManipulate の立方体は向きもクリック先も読み取りづらかったので置き換えた。
 /// @note 操作は «ボールをクリック = その軸の視点へ回り込む» と «ギズモ内ドラッグ = オービット» の 2 つだけ。
 
-constexpr float kNavSize      = 104.0f;  ///< ギズモ全体の一辺 [px]
-constexpr float kNavPadding   = 10.0f;   ///< ビューポート右上からの余白 [px]
-constexpr float kNavBallNearR = 11.0f;   ///< 手前側のボール半径 [px]
-constexpr float kNavBallFarR  = 7.5f;    ///< 奥側のボール半径 [px]
-constexpr float kNavSnapTime  = 0.26f;   ///< 軸クリック時の視点移動 [s]
-constexpr float kNavDragSlop  = 4.0f;    ///< クリックとドラッグを分けるしきい値 [px]
-constexpr float kNavOrbitSens = 0.45f;   ///< ドラッグ 1px あたりの回転 [deg]
+constexpr float kNavSize      = 104.0f;  /// @note ギズモ全体の一辺 [px]
+constexpr float kNavPadding   = 10.0f;   /// @note ビューポート右上からの余白 [px]
+constexpr float kNavBallNearR = 11.0f;   /// @note 手前側のボール半径 [px]
+constexpr float kNavBallFarR  = 7.5f;    /// @note 奥側のボール半径 [px]
+constexpr float kNavSnapTime  = 0.26f;   /// @note 軸クリック時の視点移動 [s]
+constexpr float kNavDragSlop  = 4.0f;    /// @note クリックとドラッグを分けるしきい値 [px]
+constexpr float kNavOrbitSens = 0.45f;   /// @note ドラッグ 1px あたりの回転 [deg]
 
 /// @brief 6 方向の定義。描画・当たり判定はこの並びの添字で参照する。
 struct NavAxis {
     math::Vector3 dir;
     int           colorIndex;
     const char*   label;
-    bool          positive;    ///< 正方向だけ中心から線を引き、ラベルを常時出す
+    bool          positive;    /// @note 正方向だけ中心から線を引き、ラベルを常時出す
 };
 
 const NavAxis kNavAxes[6] = {
@@ -775,11 +933,11 @@ struct NavGizmoState {
     bool   hovered     = false;
     int    hoveredAxis = -1;
     bool   pressed     = false;
-    bool   dragging    = false;  ///< しきい値を超えて回した (クリック扱いにしない)
+    bool   dragging    = false;  /// @note しきい値を超えて回した (クリック扱いにしない)
     int    pressedAxis = -1;
     ImVec2 pressPos{};
-    float  orbitYaw    = 0.0f;   ///< ドラッグ中に積む yaw [deg]
-    float  orbitPitch  = 0.0f;   ///< ドラッグ中に積む pitch [deg]
+    float  orbitYaw    = 0.0f;   /// @note ドラッグ中に積む yaw [deg]
+    float  orbitPitch  = 0.0f;   /// @note ドラッグ中に積む pitch [deg]
 
     /// @note 補間は Slerp でなく yaw/pitch で行う。DebugCamera は yaw/pitch から姿勢を組むので、ロールが混ざると着地時に水平がずれる。
     bool  animActive = false;
@@ -824,7 +982,7 @@ float NavShortestAngle(float from, float to)
     return d - 180.0f;
 }
 
-} // namespace
+} /// @note namespace
 
 bool IsOrientationGizmoHovered() { return g_navGizmo.hovered; }
 bool IsOrientationGizmoActive()  { return g_navGizmo.pressed || g_navGizmo.animActive; }
@@ -848,7 +1006,7 @@ void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const I
     struct NavBall {
         int    axis  = 0;
         ImVec2 pos{};
-        float  depth = 0.0f;  ///< ビュー空間 z。大きいほど奥
+        float  depth = 0.0f;  /// @note ビュー空間 z。大きいほど奥
     };
     NavBall balls[6];
     for (int i = 0; i < 6; ++i) {
@@ -986,11 +1144,36 @@ void DrawGizmo(EditorContext& ctx,
                bool& prevOver,
                bool& prevUsing)
 {
+    auto& edit = ActiveGizmoEdit();
     scene::EntityID selected = ctx.PrimarySelected();
-    if (!selected.IsValid() || !ctx.activeScene || !ctx.editorCamera) return;
+    if (!selected.IsValid() || !ctx.activeScene || !ctx.editorCamera) {
+        if (edit.active) CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+        return;
+    }
 
     scene::GameObject* go = ctx.activeScene->GetGameObject(selected);
-    if (!go) return;
+    if (!go) {
+        if (edit.active) CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+        return;
+    }
+    if (HasTargetPointSelection(ctx) && !IsControlPointAuthoringAllowed(ctx)) {
+        if (edit.active) CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+        return;
+    }
+    if (HasTargetPointSelection(ctx)) {
+        const bool validPose = std::all_of(ctx.selectedEntities.begin(), ctx.selectedEntities.end(),
+            [&ctx](scene::EntityID id) {
+                scene::GameObject* selectedObject = ctx.activeScene->GetGameObject(id);
+                const auto* marker = selectedObject
+                    ? selectedObject->GetComponent<scene::TargetPointComponent>() : nullptr;
+                return !marker || (!ctx.IsLocked(id) && IsFiniteTargetPointPose(selectedObject->transform));
+            });
+        if (!validPose) {
+            if (edit.active || prevOver || prevUsing)
+                CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+            return;
+        }
+    }
 
     math::Matrix4 viewCol = ToColumnMajor(ctx.editorCamera->GetViewMatrix());
     math::Matrix4 projCol = ToColumnMajor(ctx.editorCamera->GetProjectionMatrix());
@@ -1049,6 +1232,32 @@ void DrawGizmo(EditorContext& ctx,
 
     /// @note Unity と同じく Ctrl 押下中はモーメンタリスナップ。設定でスナップ ON なら常時。
     const bool snapActive = ctx.snapEnabled || ImGui::GetIO().KeyCtrl;
+
+    if (edit.active) {
+        bool valid = edit.scene == ctx.activeScene
+            && edit.sceneGeneration == ctx.activeScene->GetRenderSceneGeneration()
+            && edit.selection == ctx.selectedEntities
+            && edit.entityIds.size() == edit.instanceIds.size()
+            && edit.entityIds.size() == edit.before.size()
+            && edit.entityIds.size() == edit.lastApplied.size()
+            && edit.entityIds.size() == edit.startWorld.size()
+            && edit.entityIds.size() == edit.startWorldScale.size()
+            && edit.entityIds.size() == edit.applyDelta.size()
+            && edit.mode == ctx.gizmoMode
+            && edit.space == ctx.gizmoSpace
+            && edit.pivot == ctx.gizmoPivot;
+        for (std::size_t i = 0; valid && i < edit.entityIds.size(); ++i) {
+            scene::GameObject* target = ctx.activeScene->GetGameObject(edit.entityIds[i]);
+            valid = target && target->instanceId == edit.instanceIds[i]
+                && ctx.activeScene->FindByGuid(edit.instanceIds[i]) == target
+                && TransformAuthoringValuesEqual(target->transform, edit.lastApplied[i]);
+        }
+        if (!valid) {
+            CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+            return;
+        }
+    }
+
     ImGuizmo::Manipulate(
         &viewCol.m[0][0],
         &projCol.m[0][0],
@@ -1062,22 +1271,15 @@ void DrawGizmo(EditorContext& ctx,
     const bool gizmoUsing = ImGuizmo::IsUsing();
     const bool wasUsing = prevUsing;
 
-    /// @brief マルチ選択ドラッグ 1 回分の編集状態。各配列は instanceIds と同じ並びで、[0] は必ずプライマリ。
-    struct GizmoEdit {
-        std::vector<std::string> instanceIds;
-        std::vector<scene::Transform> before;
-        std::vector<math::Matrix4> startWorld;
-        std::vector<bool> applyDelta;  ///< true: ギズモの移動量を相対適用する対象
-        math::Matrix4 gizmoStartWorldInv = math::Matrix4::Identity();  ///< delta = 現在のギズモ行列 * これ
-        EditorContext::GizmoMode mode = EditorContext::GizmoMode::Translate;
-        bool centerPivot = false;  ///< true ならプライマリにも delta を相対適用する (直接書き戻せない)
-        bool active = false;
-    };
-    static GizmoEdit edit;
-
     if (gizmoUsing && !wasUsing) {
+        edit.scene = ctx.activeScene;
+        edit.sceneGeneration = ctx.activeScene->GetRenderSceneGeneration();
+        edit.selection = ctx.selectedEntities;
+        edit.entityIds.clear();
         edit.instanceIds.clear();
         edit.before.clear();
+        edit.lastApplied.clear();
+        edit.startWorldScale.clear();
         edit.startWorld.clear();
         edit.applyDelta.clear();
 
@@ -1091,8 +1293,11 @@ void DrawGizmo(EditorContext& ctx,
             return false;
         };
 
+        edit.entityIds.push_back(go->GetID());
         edit.instanceIds.push_back(go->instanceId);
         edit.before.push_back(go->transform);
+        edit.lastApplied.push_back(go->transform);
+        edit.startWorldScale.push_back(go->transform.worldScale);
         edit.startWorld.push_back(go->transform.GetWorldMatrix());
         edit.applyDelta.push_back(centerPivot && !hasSelectedAncestor(go));
 
@@ -1100,15 +1305,19 @@ void DrawGizmo(EditorContext& ctx,
             if (id == selected) continue;
             scene::GameObject* sel = ctx.activeScene->GetGameObject(id);
             if (!sel || ctx.IsLocked(id)) continue;
+            edit.entityIds.push_back(sel->GetID());
             edit.instanceIds.push_back(sel->instanceId);
             edit.before.push_back(sel->transform);
+            edit.lastApplied.push_back(sel->transform);
+            edit.startWorldScale.push_back(sel->transform.worldScale);
             edit.startWorld.push_back(sel->transform.GetWorldMatrix());
             edit.applyDelta.push_back(!hasSelectedAncestor(sel));
         }
 
         edit.gizmoStartWorldInv = math::Matrix4::Inverse(gizmoWorldRow);
         edit.mode        = ctx.gizmoMode;
-        edit.centerPivot = centerPivot;
+        edit.space       = ctx.gizmoSpace;
+        edit.pivot       = ctx.gizmoPivot;
         edit.active      = true;
     }
 
@@ -1129,7 +1338,7 @@ void DrawGizmo(EditorContext& ctx,
             for (std::size_t i = 0; i < ids.size(); ++i) {
                 scene::GameObject* obj = scene->FindByGuid(ids[i]);
                 after.push_back(obj ? obj->transform : before[i]);
-                if (obj && !GizmoTransformEquals(before[i], after[i]))
+                if (obj && !TransformAuthoringValuesEqual(before[i], after[i]))
                     anyChanged = true;
             }
             const auto markDirty = ctx.markSceneDirty;
@@ -1160,17 +1369,52 @@ void DrawGizmo(EditorContext& ctx,
 
     /// @note 添字 0 (プライマリ) より先に他へ適用する。選択中の親が動いた後にプライマリのワールド行列を書けば、プライマリはギズモ位置へ一致する。
     if (edit.active) {
+        auto applySelectionTransform = [&ctx, &edit](scene::GameObject& target,
+                                                    const math::Matrix4& transform,
+                                                    std::size_t index) {
+            const bool singleTargetPoint = ctx.selectedEntities.size() == 1
+                && edit.entityIds.size() == 1
+                && target.GetComponent<scene::TargetPointComponent>() != nullptr;
+            if (singleTargetPoint && edit.mode == EditorContext::GizmoMode::Rotate) {
+                static_cast<void>(ApplySingleTargetPointRotation(
+                    target, transform, edit.startWorldScale[index]));
+            } else if (singleTargetPoint && edit.mode == EditorContext::GizmoMode::Scale) {
+                ApplySingleTargetPointScale(target, transform, edit.before[index]);
+            } else {
+                ApplyWorldRowToTransform(target, transform);
+            }
+        };
         const math::Matrix4 delta = worldRow * edit.gizmoStartWorldInv;
         for (std::size_t i = edit.instanceIds.size(); i-- > 0; ) {
             if (!edit.applyDelta[i]) continue;
             if (auto* other = ctx.activeScene->FindByGuid(edit.instanceIds[i]))
-                ApplyWorldRowToTransform(*other, delta * edit.startWorld[i]);
+                applySelectionTransform(*other, delta * edit.startWorld[i], i);
         }
     }
 
     /// @note Pivot のみ、ギズモ行列はプライマリのワールド行列そのものなので丸め誤差を挟まず直接書き戻す。
-    if (!edit.centerPivot)
-        ApplyWorldRowToTransform(*go, worldRow);
+    if (!centerPivot) {
+        const bool singleTargetPoint = ctx.selectedEntities.size() == 1
+            && go->GetComponent<scene::TargetPointComponent>() != nullptr;
+        if (!singleTargetPoint || gizmoUsing || edit.active) {
+            const scene::Transform& before = edit.active ? edit.before[0] : go->transform;
+            const math::Vector3 signedWorldScale = edit.active
+                ? edit.startWorldScale[0] : go->transform.worldScale;
+            const EditorContext::GizmoMode activeMode = edit.active ? edit.mode : ctx.gizmoMode;
+            if (singleTargetPoint && activeMode == EditorContext::GizmoMode::Rotate) {
+                static_cast<void>(ApplySingleTargetPointRotation(*go, worldRow, signedWorldScale));
+            } else if (singleTargetPoint && activeMode == EditorContext::GizmoMode::Scale) {
+                ApplySingleTargetPointScale(*go, worldRow, before);
+            } else {
+                ApplyWorldRowToTransform(*go, worldRow);
+            }
+        }
+    }
+
+    for (std::size_t i = 0; i < edit.entityIds.size(); ++i) {
+        if (auto* target = ctx.activeScene->GetGameObject(edit.entityIds[i]))
+            edit.lastApplied[i] = target->transform;
+    }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

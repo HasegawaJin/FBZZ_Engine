@@ -27,6 +27,23 @@
 #include <vector>
 
 namespace fbzz::editor::fluidui {
+
+math::Vector3 EvaluateRamp(const fluid::FluidColorRamp& ramp, float t)
+{
+    const auto& stops = ramp.stops;
+    if (t <= stops[0].position) return stops[0].color;
+    for (int i = 1; i < fluid::kFluidRampStops; ++i) {
+        const fluid::FluidColorStop& a = stops[static_cast<std::size_t>(i) - 1];
+        const fluid::FluidColorStop& b = stops[static_cast<std::size_t>(i)];
+        if (t <= b.position) {
+            const float span = b.position - a.position;
+            const float u = span > 1.0e-6f ? (t - a.position) / span : 1.0f;
+            return math::Vector3::Lerp(a.color, b.color, u);
+        }
+    }
+    return stops[fluid::kFluidRampStops - 1].color;
+}
+
 namespace {
 
 using fluid::FluidKind;
@@ -61,22 +78,6 @@ std::filesystem::file_time_type FileStamp(const std::string& path)
 }
 
 /// @name 色のグラデーション
-
-math::Vector3 EvaluateRamp(const fluid::FluidColorRamp& ramp, float t)
-{
-    const auto& stops = ramp.stops;
-    if (t <= stops[0].position) return stops[0].color;
-    for (int i = 1; i < fluid::kFluidRampStops; ++i) {
-        const fluid::FluidColorStop& a = stops[static_cast<std::size_t>(i) - 1];
-        const fluid::FluidColorStop& b = stops[static_cast<std::size_t>(i)];
-        if (t <= b.position) {
-            const float span = b.position - a.position;
-            const float u = span > 1.0e-6f ? (t - a.position) / span : 1.0f;
-            return math::Vector3::Lerp(a.color, b.color, u);
-        }
-    }
-    return stops[fluid::kFluidRampStops - 1].color;
-}
 
 float LinearToSrgb(float value)
 {
@@ -933,11 +934,11 @@ bool VisitPartList(fluid::FluidRecipe& recipe, FluidSelectionKind list, Fn&& fn)
     }
 }
 
-} /// @note namespace
+} ///< @note namespace
 
 /// @name 公開部品
 
-bool EditSimulation(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe)
+bool EditSimulation(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
 {
     bool changed = false;
     ImGui::PushID("fluid_simulation");
@@ -970,7 +971,7 @@ bool EditSource(FluidWidgetContext& wc, fluid::FluidRecipe& recipe, int index)
     return changed;
 }
 
-bool EditForce(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe, int index)
+bool EditForce(FluidWidgetContext&  , fluid::FluidRecipe& recipe, int index)
 {
     if (index < 0 || index >= static_cast<int>(recipe.forces.size())) return false;
     ImGui::PushID("fluid_force");
@@ -981,7 +982,7 @@ bool EditForce(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe, int index
     return changed;
 }
 
-bool EditCollider(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe, int index)
+bool EditCollider(FluidWidgetContext&  , fluid::FluidRecipe& recipe, int index)
 {
     if (index < 0 || index >= static_cast<int>(recipe.colliders.size())) return false;
     ImGui::PushID("fluid_collider");
@@ -992,7 +993,7 @@ bool EditCollider(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe, int in
     return changed;
 }
 
-bool EditLook(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe)
+bool EditLook(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
 {
     bool changed = false;
     ImGui::PushID("fluid_look");
@@ -1096,7 +1097,7 @@ bool EditLook(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe)
     return changed;
 }
 
-bool EditOutput(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe)
+bool EditOutput(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
 {
     bool changed = false;
     ImGui::PushID("fluid_output");
@@ -1173,7 +1174,7 @@ bool EditOutput(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe)
 }
 
 /// @brief 3D の主なノブだけ。視点・光・露出の細かい調整は Volume Flipbook Baker が同じ [bake] へ書く。
-bool EditBake(FluidWidgetContext& /*wc*/, fluid::FluidRecipe& recipe)
+bool EditBake(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
 {
     fluid::FluidBakeSettings& bake = recipe.bake;
     bool changed = false;
@@ -1341,12 +1342,7 @@ bool* PartEnabled(fluid::FluidRecipe& recipe, FluidSelectionKind list, int index
 
 int PartCount(const fluid::FluidRecipe& recipe, FluidSelectionKind list)
 {
-    switch (list) {
-    case FluidSelectionKind::Source:   return static_cast<int>(recipe.sources.size());
-    case FluidSelectionKind::Force:    return static_cast<int>(recipe.forces.size());
-    case FluidSelectionKind::Collider: return static_cast<int>(recipe.colliders.size());
-    default:                           return 0;
-    }
+    return CountFluidParts(recipe, list);
 }
 
 bool DuplicatePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int index)
@@ -1361,7 +1357,7 @@ bool DuplicatePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int inde
 
 bool RemovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int index)
 {
-    return VisitPartList(recipe, list, [index](auto& parts, std::size_t /*limit*/) {
+    return VisitPartList(recipe, list, [index](auto& parts, std::size_t  ) {
         if (index < 0 || index >= static_cast<int>(parts.size())) return false;
         parts.erase(parts.begin() + index);
         return true;
@@ -1370,7 +1366,7 @@ bool RemovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int index)
 
 bool MovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int from, int to)
 {
-    return VisitPartList(recipe, list, [from, to](auto& parts, std::size_t /*limit*/) {
+    return VisitPartList(recipe, list, [from, to](auto& parts, std::size_t  ) {
         const int count = static_cast<int>(parts.size());
         if (from < 0 || from >= count || to < 0 || to >= count || from == to) return false;
         const auto first = parts.begin();
@@ -1380,4 +1376,4 @@ bool MovePart(fluid::FluidRecipe& recipe, FluidSelectionKind list, int from, int
     });
 }
 
-} /// @note namespace fbzz::editor::fluidui
+} ///< @note namespace fbzz::editor::fluidui

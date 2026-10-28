@@ -14,11 +14,14 @@
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/DeveloperMode.hpp>
 #include <Graphics/Pipeline/RayTracingPipeline.hpp>
+#include <Graphics/Renderer/IRenderer.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 
 #include <string>
+#include <string_view>
+#include <algorithm>
 #include <utility>
 
 namespace fbzz::editor {
@@ -123,6 +126,230 @@ EditorOperator MakeContextToggle(const char* id, const char* label, const char* 
 
 void RegisterRenderOperators(OperatorRegistry& registry)
 {
+    {
+        EditorOperator op;
+        op.id = "render.get_spatial_debug";
+        op.label = "Spatial Debug Status";
+        op.category = "Render";
+        op.kind = OpKind::Query;
+        op.desc = "Read current spatial controls, validated snapshot status and last emitted Scene View command counts.";
+        op.exec = [](OpContext& context, const OpArgs&) -> OpResult {
+            const auto& state = context.ctx.spatialDebugVisualization;
+            const auto targetData = [](const SpatialDebugTargetSettings& settings, const std::string& status,
+                bool traversal, std::size_t commands) {
+                auto result = OpData::MakeObject();
+                result.Set("enabled", settings.enabled);
+                result.Set("hierarchy", settings.hierarchy);
+                result.Set("proxy_bounds", settings.proxyBounds);
+                result.Set("candidate_pairs", settings.candidatePairs);
+                result.Set("min_depth", settings.minDepth);
+                result.Set("max_depth", settings.maxDepth);
+                result.Set("max_draw_commands", settings.maxDrawCommands);
+                result.Set("selected_only", settings.selectedOnly);
+                result.Set("depth_test", settings.depthTest);
+                result.Set("status", status);
+                result.Set("traversal_status_available", traversal);
+                result.Set("draw_commands", static_cast<int64_t>(commands));
+                return result;
+            };
+            auto result = OpData::MakeObject();
+            result.Set("target", state.target == SpatialDebugTarget::RENDER ? "render" : "physics");
+            result.Set("render", targetData(state.render, state.renderStatus, state.renderTraversalStatusAvailable, state.renderDrawCommands));
+            result.Set("physics", targetData(state.physics, state.physicsStatus, state.physicsTraversalStatusAvailable, state.physicsDrawCommands));
+            result.Set("scene_generation", std::to_string(state.captureSceneGeneration));
+            result.Set("runtime_active", state.captureRuntimeActive);
+            return OpResult::Data(std::move(result));
+        };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op;
+        op.id = "render.set_spatial_debug";
+        op.label = "Spatial Debug Visualization";
+        op.category = "Render";
+        op.desc = "Configure independent Render shadow-query BVH or Physics broadphase overlays in Scene View.";
+        op.kind = OpKind::Action;
+        OpParam target;
+        target.name = "target";
+        target.type = OpParamType::String;
+        target.enumValues = {"render", "physics"};
+        op.params.push_back(target);
+        for (const char* name : {"enabled", "hierarchy", "proxy_bounds", "candidate_pairs", "selected_only", "depth_test"}) {
+            OpParam parameter;
+            parameter.name = name;
+            parameter.type = OpParamType::Bool;
+            parameter.required = false;
+            op.params.push_back(std::move(parameter));
+        }
+        for (const char* name : {"min_depth", "max_depth", "max_draw_commands"}) {
+            OpParam parameter;
+            parameter.name = name;
+            parameter.type = OpParamType::Int;
+            parameter.required = false;
+            parameter.hasRange = true;
+            const bool budget = std::string_view(name) == "max_draw_commands";
+            parameter.minValue = budget ? 1.0f : 0.0f;
+            parameter.maxValue = budget ? 4096.0f : 64.0f;
+            op.params.push_back(std::move(parameter));
+        }
+        op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
+            const auto target = args.GetString("target");
+            if (target != "render" && target != "physics")
+                return OpResult::Err("BAD_SPATIAL_TARGET", "target must be render or physics");
+            auto& state = context.ctx.spatialDebugVisualization;
+            auto& destination = target == "render" ? state.render : state.physics;
+            auto settings = destination;
+            if (args.Has("enabled")) settings.enabled = args.GetBool("enabled");
+            if (args.Has("hierarchy")) settings.hierarchy = args.GetBool("hierarchy");
+            if (args.Has("proxy_bounds")) settings.proxyBounds = args.GetBool("proxy_bounds");
+            if (args.Has("candidate_pairs")) settings.candidatePairs = args.GetBool("candidate_pairs");
+            if (args.Has("selected_only")) settings.selectedOnly = args.GetBool("selected_only");
+            if (args.Has("depth_test")) settings.depthTest = args.GetBool("depth_test");
+            if (args.Has("min_depth")) settings.minDepth = args.GetInt("min_depth");
+            if (args.Has("max_depth")) settings.maxDepth = args.GetInt("max_depth");
+            if (args.Has("max_draw_commands")) settings.maxDrawCommands = args.GetInt("max_draw_commands");
+            if (settings.minDepth < 0 || settings.maxDepth > 64 || settings.minDepth > settings.maxDepth
+                || settings.maxDrawCommands < 1 || settings.maxDrawCommands > 4096)
+                return OpResult::Err("BAD_SPATIAL_RANGE", "Use ordered depth 0..64 and draw budget 1..4096");
+            if (target == "render" && (settings.proxyBounds || settings.candidatePairs))
+                return OpResult::Err("UNSUPPORTED_SPATIAL_CONTENT", "Broadphase proxy bounds and pairs belong to Physics");
+            destination = settings;
+            state.target = target == "render" ? SpatialDebugTarget::RENDER : SpatialDebugTarget::PHYSICS;
+            auto& status = target == "render" ? state.renderStatus : state.physicsStatus;
+            status = settings.AnyCapture() ? "Waiting for current snapshot" : "OFF";
+            if (target == "render") state.renderTraversalStatusAvailable = false;
+            else state.physicsTraversalStatusAvailable = false;
+            if (target == "render") state.renderDrawCommands = 0;
+            else state.physicsDrawCommands = 0;
+            OpResult result;
+            result.message = target + " spatial visualization " + (settings.AnyCapture() ? "ON" : "OFF");
+            return result;
+        };
+        registry.Register(std::move(op));
+    }
+    for (const auto target : {SpatialDebugTarget::RENDER, SpatialDebugTarget::PHYSICS}) {
+        const bool render = target == SpatialDebugTarget::RENDER;
+        auto op = MakeToggleBase(render ? "render.show_render_bvh" : "render.show_physics_broadphase",
+            render ? "Render Shadow-query BVH" : "Physics Broadphase Visualization",
+            "Toggle Scene View spatial diagnostics. Configure contents and filters in Scene View > Overlays > Spatial Visualization.");
+        op.exec = [target](OpContext& context, const OpArgs& args) -> OpResult {
+            auto& state = context.ctx.spatialDebugVisualization;
+            auto& settings = target == SpatialDebugTarget::RENDER ? state.render : state.physics;
+            state.target = target;
+            if (target == SpatialDebugTarget::PHYSICS && !settings.hierarchy && !settings.proxyBounds && !settings.candidatePairs)
+                settings.hierarchy = true;
+            if (target == SpatialDebugTarget::RENDER) settings.hierarchy = true;
+            auto result = ApplyToggle(settings.enabled, args);
+            auto& status = target == SpatialDebugTarget::RENDER ? state.renderStatus : state.physicsStatus;
+            status = settings.AnyCapture() ? "Waiting for current snapshot" : "OFF";
+            if (target == SpatialDebugTarget::RENDER) {
+                state.renderDrawCommands = 0;
+                state.renderTraversalStatusAvailable = false;
+            } else {
+                state.physicsDrawCommands = 0;
+                state.physicsTraversalStatusAvailable = false;
+            }
+            return result;
+        };
+        op.checked = [target](const OpContext& context, const OpArgs&) {
+            const auto& state = context.ctx.spatialDebugVisualization;
+            return (target == SpatialDebugTarget::RENDER ? state.render : state.physics).enabled;
+        };
+        registry.Register(std::move(op));
+    }
+
+    {
+        EditorOperator op; op.id="render.instance_mode"; op.label="Instance Drawing"; op.category="Render"; op.kind=OpKind::Action;
+        op.desc="共有配置を通常描画・CPU選別インスタンス・GPU選別間接描画で比較する。Playでは一時設定。";
+        OpParam mode; mode.name="mode"; mode.type=OpParamType::String;
+        mode.enumValues={"individual","cpu_instanced","gpu"}; mode.defaultValue=std::string("cpu_instanced"); op.params={mode};
+        op.exec=[](OpContext& context,const OpArgs& args)->OpResult {
+            const auto mode=args.GetString("mode","cpu_instanced");
+            if (mode!="individual" && mode!="cpu_instanced" && mode!="gpu") return OpResult::Err("BAD_INSTANCE_MODE","modeはindividual / cpu_instanced / gpuです");
+            if (mode=="gpu" && !core::Application::Get().GetRenderer().SupportsIndirectDraw()) return OpResult::Err("UNSUPPORTED_INSTANCE_MODE","このbackendは間接描画に対応していません");
+            const bool playing=context.ctx.playMode && !context.ctx.playMode->IsInEditor();
+            auto* settings=playing ? core::Application::Get().GetActiveRenderSettings() : &context.ctx.projectSettings.render;
+            if (!settings) return OpResult::Err("NO_RUNTIME_SETTINGS","描画設定がありません");
+            settings->gpuInstancing=mode!="individual"; settings->bulkInstanceGpuCulling=mode=="gpu";
+            settings->geometryDrawMode=mode=="gpu" ? renderer::GeometryDrawMode::GPU_INDIRECT : renderer::GeometryDrawMode::CPU;
+            OpResult result; result.message="Instance drawing: "+mode; return result;
+        };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op;
+        op.id = "render.geometry_mode";
+        op.label = "Geometry Draw Mode";
+        op.category = "Render";
+        op.desc = "CPU:通常描画、Indirect:地形・水面・大量静的インスタンスのGPU描画、Mesh:高密度静的メッシュと影のMeshlet描画を比較する。Play中の変更は一時設定。";
+        op.kind = OpKind::Action;
+        OpParam mode;
+        mode.name = "mode";
+        mode.type = OpParamType::String;
+        mode.enumValues = {"cpu", "indirect", "mesh"};
+        mode.defaultValue = std::string("cpu");
+        op.params = {mode};
+        op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
+            const auto mode = args.GetString("mode", "cpu");
+            if (mode != "cpu" && mode != "indirect" && mode != "mesh")
+                return OpResult::Err("BAD_GEOMETRY_MODE", "modeはcpu / indirect / meshです");
+            auto& device = core::Application::Get().GetRenderer();
+            if (mode == "indirect" && !device.SupportsIndirectDraw())
+                return OpResult::Err("UNSUPPORTED_GEOMETRY_MODE", "このGPU/backendは間接描画に対応していません");
+            if (mode == "mesh" && !device.SupportsMeshShaders())
+                return OpResult::Err("UNSUPPORTED_GEOMETRY_MODE", "このGPU/backendはMesh Shaderに対応していません");
+            const bool playing = context.ctx.playMode && !context.ctx.playMode->IsInEditor();
+            auto* settings = playing ? core::Application::Get().GetActiveRenderSettings()
+                : &context.ctx.projectSettings.render;
+            if (!settings) return OpResult::Err("NO_RUNTIME_SETTINGS", "描画設定がありません");
+            settings->geometryDrawMode = mode == "mesh" ? renderer::GeometryDrawMode::MESH_SHADER
+                : mode == "indirect" ? renderer::GeometryDrawMode::GPU_INDIRECT : renderer::GeometryDrawMode::CPU;
+            OpResult result;
+            result.message = "Geometry drawing: " + mode;
+            return result;
+        };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op;
+        op.id = "render.local_light_mode";
+        op.label = "Local Light Mode";
+        op.category = "Render";
+        op.desc = "通常のクラスタ照明・全ライト評価・重要度サンプリングを同じ視点で比較する。Play中の変更は一時設定。";
+        op.kind = OpKind::Action;
+        OpParam mode;
+        mode.name = "mode"; mode.type = OpParamType::String;
+        mode.enumValues = {"sampled", "clustered", "all"};
+        mode.defaultValue = std::string("sampled");
+        OpParam samples;
+        samples.name = "samples"; samples.type = OpParamType::Int;
+        samples.defaultValue = 8; samples.required = false;
+        op.params = {mode, samples};
+        op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
+            const std::string mode = args.GetString("mode", "sampled");
+            if (mode != "sampled" && mode != "clustered" && mode != "all")
+                return OpResult::Err("BAD_LIGHT_MODE", "modeはsampled / clustered / allです");
+            const bool playing = context.ctx.playMode && !context.ctx.playMode->IsInEditor();
+            auto* settings = playing ? core::Application::Get().GetActiveRenderSettings() : &context.ctx.projectSettings.render;
+            if (!settings) return OpResult::Err("NO_RUNTIME_SETTINGS", "描画設定がありません");
+            if (!playing) {
+                renderer::RenderSettings resolved;
+                if (asset::ResolveRenderPipelineSettings(*settings, context.ctx.projectSettings.renderPipelineAssetPath, resolved))
+                    return OpResult::Err("PIPELINE_ASSET_OWNS_SETTING", "Render Pipeline AssetのMany Lights設定を編集してください");
+            }
+            if (settings->pipeline != renderer::RenderingPipeline::ForwardPlus
+                && settings->pipeline != renderer::RenderingPipeline::DeferredPlus)
+                settings->pipeline = renderer::RenderingPipeline::DeferredPlus;
+            settings->clustered.enabled = true;
+            settings->clustered.forceAllLights = mode == "all";
+            settings->clustered.manyLights = mode == "sampled";
+            settings->clustered.manyLightSamples = std::clamp(args.GetInt("samples", 8), 1, 32);
+            OpResult result;
+            result.message = "Local lighting: " + mode;
+            return result;
+        };
+        registry.Register(std::move(op));
+    }
     /// @name EditorContext が正本のもの
     registry.Register(MakeContextToggle(
         "render.show_grid", "Show Grid",

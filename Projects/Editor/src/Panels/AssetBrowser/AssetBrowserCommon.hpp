@@ -35,7 +35,7 @@
 
 namespace fbzz::editor {
 
-/// ファイルアイコンのポリゴン + ドッグイアを描画する共通ヘルパー。
+/// @note ファイルアイコンのポリゴン + ドッグイアを描画する共通ヘルパー。
 /// @note DrawFileIconAt (AssetBrowserItems) と drawSubIcon (AssetBrowserCreate) の重複コードをここに集約した。ラベルは呼び出し側で描画する。
 inline void DrawFileIconPolygon(ImDrawList* dl, ImVec2 origin, float sz, ImU32 cFill, ImU32 cDark)
 {
@@ -58,15 +58,14 @@ inline void DrawFileIconPolygon(ImDrawList* dl, ImVec2 origin, float sz, ImU32 c
     dl->AddConvexPolyFilled(tri, 3, cDark);
 }
 
-std::string SanitizeEntityName(const std::string& name);
 std::string UniquePrefabPathInDir(const std::string& dir, const std::string& objectName);
 bool SaveHierarchyPayloadAsPrefab(const ImGuiPayload* payload, EditorContext& ctx, const std::string& targetDir);
 ImVec4 Lighten(ImVec4 c);
 std::string ToProjectAssetPath(const std::string& path, const EditorContext& ctx);
-/// ドラッグ中のパスを、プロジェクト内は Assets 起点、外部マウントは絶対パスで保持する。
+/// @note ドラッグ中のパスを、プロジェクト内は Assets 起点、外部マウントは絶対パスで保持する。
 /// @note 単純な文字列変換では外部プロジェクトの ".../Assets/..." まで自プロジェクトの Assets と誤認し、移動元を壊れたパスへ解決してしまう。
 std::string ToAssetDragPayloadPath(const std::string& path, const EditorContext& ctx);
-/// ImGui payload の終端を検証して、安全に ASSET_PATH 文字列を取り出す。
+/// @note ImGui payload の終端を検証して、安全に ASSET_PATH 文字列を取り出す。
 bool ReadAssetDragPayload(const ImGuiPayload* payload, std::string& outPath);
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

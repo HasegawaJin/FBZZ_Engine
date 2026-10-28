@@ -50,6 +50,8 @@ private:
     /// ツールバー (レベルの件数付きトグル / 検索 / Options / 操作)。
     /// 戻り値は "Copy" が押されたか。実行は行の再構築が済んでから呼び出し側が行う。
     [[nodiscard]] bool DrawToolbar();
+    /// 最新の managed build 状態、処理時間、ソース診断を表示する。
+    void DrawManagedBuildStatus(EditorContext& ctx);
     /// レベル 1 つぶんの件数付きトグル。押下状態と件数を 1 つのボタンで見せる。
     void DrawLevelToggle(const char* label, core::LogLevel level, bool& enabled);
     /// 一覧の 1 行。レベルバー・バッジ・位置プレフィックス・本文をまとめて描く。
@@ -110,8 +112,11 @@ private:
     std::unordered_set<std::uint64_t> m_selection;
     std::uint64_t m_anchorSequence = 0;  ///< Shift 範囲の起点。Shift クリックでは動かさない
     std::uint64_t m_detailSequence = 0;  ///< 詳細ペインに出す行 (最後に触った行)
+    std::string m_managedDiagnosticRequestId;
+    std::size_t m_managedDiagnosticPage = 0;
+    std::size_t m_managedDiagnosticSelection = 0;
     bool m_wasInEditor = true;   ///< Clear on Play のエッジ検出用
     /// @}
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

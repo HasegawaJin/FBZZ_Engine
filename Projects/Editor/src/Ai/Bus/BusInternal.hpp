@@ -45,10 +45,22 @@ struct Outcome {
 /// @brief コンポーネント名で引いた型の状態。
 struct TypeInfo { bool known = false; bool present = false; bool addable = false; bool reflectable = false; };
 
+/// @note Receipts belong to one dispatcher and authorize only the unchanged top history entry.
+struct ReliabilityReceipt {
+    std::string owner;
+    std::string id;
+    std::string label;
+    JsonValue afterGuard;
+    JsonValue beforeSnapshot;
+    scene::Scene* scene = nullptr;
+    bool rolledBack = false;
+};
+
 /// @brief Dispatcher がフレームごとに更新し、ハンドラーが読む状態。
 struct BusState {
     renderer::ResourceHandle<renderer::RenderTargetTag> sceneViewportRT{};
     renderer::ResourceHandle<renderer::RenderTargetTag> gameViewportRT{};
+    std::vector<ReliabilityReceipt> reliabilityReceipts;
 };
 
 class BusHandlerTable;
@@ -143,6 +155,8 @@ bool WriteComponentField(GameObject& go, const std::string& comp, const std::str
 /// @brief 2 つの JSON 値が同じ大分類 (数値/真偽/文字列/配列/オブジェクト) か。component.set の型検査用。
 [[nodiscard]] bool CompatibleJsonType(const JsonValue& a, const JsonValue& b);
 /// @brief projectRoot 配下のファイルへ解決する。外へ出るパスは false。
+/// @note 未作成の末尾と親を許可し、既存リンクの解決後に境界を検証する。失敗時の出力は未変更。
+/// @see https://learn.microsoft.com/en-us/cpp/standard-library/path-class?view=msvc-170#lexically_relative lexical 相対化。
 bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& requested,
                         std::filesystem::path& outPath, std::string& outRelative);
 [[nodiscard]] const char* PlayStateName(const editor::PlayModeController& playMode);
@@ -155,4 +169,4 @@ bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& req
 [[nodiscard]] bool IsImplicitSingleSprite(const std::string& texturePath, const std::string& token);
 /// @}
 
-} /// namespace fbzz::editor::ai::bus
+} /// @note namespace fbzz::editor::ai::bus

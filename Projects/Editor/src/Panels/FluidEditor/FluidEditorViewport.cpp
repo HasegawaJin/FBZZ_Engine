@@ -289,7 +289,7 @@ void FluidViewportScanBakedAtlas(State& state, FluidViewportBakedAtlas& baked)
 
     /// @note 隣の .mat は «焼いた結果そのもの» を持っている (Baked タブと同じ読み方)。
     const std::string materialPath = SiblingMaterialPath(fluidPath);
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     if (materialPath.empty() || !util::FileSystem::Exists(materialPath)
         || !asset::LoadMaterialAssetFromFile(materialPath, material))
         return;

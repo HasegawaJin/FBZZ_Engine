@@ -2,7 +2,10 @@
 /// @brief   Scene View のアセットドロップと3Dピッキング。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Asset/ModelSource.hpp>
 #include "ViewportCommon.hpp"
+#include "../../Util/MaterialAuthoringEditing.hpp"
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Editor/Util/ModelPlacement.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
@@ -36,13 +39,7 @@ math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin
     return math::Ray::FromNDC(nx, ny, ctx.editorCamera->m_position, invVP);
 }
 
-bool ReadAssetPayload(const ImGuiPayload* payload, std::string& outPath)
-{
-    if (!payload || payload->DataSize <= 0) return false;
-    outPath.assign(static_cast<const char*>(payload->Data),
-                   static_cast<size_t>(payload->DataSize - 1));
-    return !outPath.empty();
-}
+
 
 math::Vector3 PrefabDropPosition(const EditorContext& ctx, const ImVec2& viewportMin)
 {
@@ -76,9 +73,9 @@ bool InstantiateAssetAtViewport(EditorContext& ctx,
     const math::Vector3 position = PrefabDropPosition(ctx, viewportMin);
     const std::string ext = util::StringUtils::ToLower(util::FileSystem::GetExtension(assetPath));
 
-    /// @note .fbx は直接ドロップ可能。未インポートならその場で自動インポートする。
+    /// @note モデル原本は直接ドロップ可能。未インポートならその場で自動インポートする。
     std::string modelPath;
-    if (ext == ".fbx") {
+    if (asset::IsModelSourcePath(ext)) {
         modelPath = ResolveOrImportFbxModel(assetPath);
         if (modelPath.empty()) return false;
     }
@@ -104,9 +101,13 @@ bool InstantiateAssetAtViewport(EditorContext& ctx,
 scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportMin)
 {
     if (!ctx.activeScene || !ctx.editorCamera) return scene::EntityID::INVALID;
+    FBZZ_PROFILE_SCOPE("EditorViewport::RaycastEntity");
 
     const math::Ray ray = ScreenRayFromMouse(ctx, viewportMin);
     const ImVec2 vpSize = { ctx.viewportWidth, ctx.viewportHeight };
+    const math::Matrix4 viewProjection = ctx.editorCamera->GetProjectionMatrix()
+                                       * ctx.editorCamera->GetViewMatrix();
+    const math::Vector3 cameraRight = ctx.editorCamera->GetRight();
     const ImVec2 mouse  = ImGui::GetMousePos();
 
     scene::EntityID best         = scene::EntityID::INVALID;
@@ -208,10 +209,10 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         const float radiusWorld = radiusLocal * (std::max)(maxScale, 0.0001f);
 
         ImVec2 centerSp;
-        if (!WorldToScreen(centerWorld, ctx, viewportMin, vpSize, centerSp)) return;
-        const math::Vector3 edgeWorld = centerWorld + ctx.editorCamera->GetRight() * radiusWorld;
+        if (!WorldToScreen(centerWorld, viewProjection, viewportMin, vpSize, centerSp)) return;
+        const math::Vector3 edgeWorld = centerWorld + cameraRight * radiusWorld;
         ImVec2 edgeSp;
-        if (!WorldToScreen(edgeWorld, ctx, viewportMin, vpSize, edgeSp)) return;
+        if (!WorldToScreen(edgeWorld, viewProjection, viewportMin, vpSize, edgeSp)) return;
 
         constexpr float kMinClickPx = 6.0f;
         const float dxr = edgeSp.x - centerSp.x;
@@ -292,7 +293,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
             float t = 0.0f;
             if (ray.IntersectSphere(center, radius, t) && t > 0.0f) {
                 ImVec2 sp;
-                if (WorldToScreen(center, ctx, viewportMin, vpSize, sp)) {
+                if (WorldToScreen(center, viewProjection, viewportMin, vpSize, sp)) {
                     const float dx = mouse.x - sp.x;
                     const float dy = mouse.y - sp.y;
                     const float distSq = dx * dx + dy * dy;
@@ -385,13 +386,11 @@ bool AcceptsMaterialDrop(scene::GameObject& go)
 
 /// @brief .mat のパスを適用する (プレビュー / 確定 / Undo で共用)。
 /// @note ハンドルとキャッシュを捨て、次フレームの SyncMaterial に新パスを解決させる。
-void AssignMaterialPath(scene::GameObject& go, const std::string& materialPath)
+void AssignMaterialPath(EditorContext& ctx, scene::GameObject& go, const std::string& materialPath)
 {
     auto* mc = go.GetComponent<scene::MaterialComponent>();
     if (!mc) mc = &go.AddComponent<scene::MaterialComponent>();
-    mc->materialPath = materialPath;
-    mc->materialAsset = {};
-    mc->material.reset();
+    (void)material_edit_detail::AssignSlotReference(material_edit_detail::SlotTarget(ctx, go, 0), materialPath);
 }
 
 /// @brief 仮適用を巻き戻す。元々 MaterialComponent が無ければコンポーネントごと取り除く。
@@ -401,9 +400,7 @@ void RevertMaterialPreview(EditorContext& ctx, MaterialDragPreviewState& state)
         if (auto* go = ctx.activeScene->GetGameObject(state.target)) {
             if (state.hadComponent) {
                 if (auto* mc = go->GetComponent<scene::MaterialComponent>()) {
-                    mc->materialPath  = state.previousPath;
-                    mc->materialAsset = {};
-                    mc->material.reset();
+                    (void)material_edit_detail::AssignSlotReference(material_edit_detail::SlotTarget(ctx, *go, 0), state.previousPath);
                 }
             } else {
                 go->RemoveComponent<scene::MaterialComponent>();
@@ -416,7 +413,7 @@ void RevertMaterialPreview(EditorContext& ctx, MaterialDragPreviewState& state)
     state.previousPath.clear();
 }
 
-} // namespace
+} /// @note namespace
 
 void UpdateMaterialDragPreview(EditorContext& ctx,
                                MaterialDragPreviewState& state,
@@ -450,10 +447,10 @@ void UpdateMaterialDragPreview(EditorContext& ctx,
 
     const auto* mc     = go->GetComponent<scene::MaterialComponent>();
     state.hadComponent = mc != nullptr;
-    state.previousPath = mc ? mc->materialPath : std::string{};
+    state.previousPath = mc ? mc->GetMaterialPath() : std::string{};
     state.target       = hovered;
     state.applied      = true;
-    AssignMaterialPath(*go, materialPath);
+    AssignMaterialPath(ctx, *go, materialPath);
 }
 
 void CancelMaterialDragPreview(EditorContext& ctx, MaterialDragPreviewState& state)
@@ -487,14 +484,14 @@ bool CommitMaterialDragPreview(EditorContext& ctx, MaterialDragPreviewState& sta
             [context, target, newPath]() {
                 if (!context->activeScene) return;
                 if (auto* go = context->activeScene->GetGameObject(target))
-                    AssignMaterialPath(*go, newPath);
+                    AssignMaterialPath(*context, *go, newPath);
             },
             [context, target, oldPath, hadComponent]() {
                 if (!context->activeScene) return;
                 auto* go = context->activeScene->GetGameObject(target);
                 if (!go) return;
                 if (hadComponent) {
-                    AssignMaterialPath(*go, oldPath);
+                    AssignMaterialPath(*context, *go, oldPath);
                 } else {
                     go->RemoveComponent<scene::MaterialComponent>();
                 }
@@ -524,12 +521,24 @@ void RectSelectEntities(EditorContext& ctx,
                         const ImVec2& rectB)
 {
     if (!ctx.activeScene || !ctx.editorCamera) return;
+    FBZZ_PROFILE_SCOPE("EditorViewport::RectSelect");
+    const math::Matrix4 viewProjection = ctx.editorCamera->GetProjectionMatrix()
+                                       * ctx.editorCamera->GetViewMatrix();
 
     const ImVec2 rectMin = { (std::min)(rectA.x, rectB.x), (std::min)(rectA.y, rectB.y) };
     const ImVec2 rectMax = { (std::max)(rectA.x, rectB.x), (std::max)(rectA.y, rectB.y) };
 
     std::vector<scene::EntityID> picked;
-    if (ImGui::GetIO().KeyCtrl) picked = ctx.selectedEntities;
+    std::vector<uint64_t> existingSelection;
+    const auto entityKey = [](scene::EntityID id) {
+        return (static_cast<uint64_t>(id.index) << 32) | id.generation;
+    };
+    if (ImGui::GetIO().KeyCtrl) {
+        picked = ctx.selectedEntities;
+        existingSelection.reserve(picked.size());
+        for (const auto id : picked) existingSelection.push_back(entityKey(id));
+        std::sort(existingSelection.begin(), existingSelection.end());
+    }
 
     for (auto& go : ctx.activeScene->GameObjects()) {
         if (!go.activeInHierarchy()) continue;
@@ -537,10 +546,11 @@ void RectSelectEntities(EditorContext& ctx,
         if (ctx.IsLocked(id)) continue;
 
         ImVec2 sp;
-        if (!WorldToScreen(go.transform.worldPosition, ctx, vpMin, vpSize, sp)) continue;
+        if (!WorldToScreen(go.transform.worldPosition, viewProjection, vpMin, vpSize, sp)) continue;
         if (sp.x < rectMin.x || sp.x > rectMax.x || sp.y < rectMin.y || sp.y > rectMax.y) continue;
 
-        if (std::find(picked.begin(), picked.end(), id) == picked.end())
+        /// @note Scene の巡回は Entity ごとに一度だけなので、重複照会は Ctrl 追加前の選択だけで足りる。
+        if (!std::binary_search(existingSelection.begin(), existingSelection.end(), entityKey(id)))
             picked.push_back(id);
     }
 
@@ -548,4 +558,4 @@ void RectSelectEntities(EditorContext& ctx,
     SelectEntities(ctx, std::move(picked), SelectionReveal::Skip);
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

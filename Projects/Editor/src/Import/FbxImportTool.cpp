@@ -2,9 +2,9 @@
 /// @brief   FBX → fz* 変換パイプラインのオーケストレーター (BuildPipeline パターン)。
 /// @author  Hasegawa Jin
 /// @date    2026-06-06
-///
-/// FbxImportTool → BuildPipeline() → IFbxSubExporter[] の順に変換責務を分割する。
-/// 各 SubExporter は .fzasset / .anim / .mat / .meta を同一パッケージ配下に生成する。
+
+/// @note FbxImportTool → BuildPipeline() → IFbxSubExporter[] の順に変換責務を分割する。
+/// @note 各 SubExporter は .fzasset / .anim / .mat / .meta を同一パッケージ配下に生成する。
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Import/AnimSubExporter.hpp>
 #include <Editor/Import/MatSubExporter.hpp>
@@ -64,8 +64,11 @@ void ConfigureImporter(Assimp::Importer& importer, const FbxImportOptions& optio
                                     static_cast<int>(removeComponents));
 }
 
-float ReadUnitScale(const aiScene* scene)
+/// @note glTF/GLB はメートル、OBJ は原本の数値を保持し、FBX のセンチメートル換算を適用しない。
+/// @see https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#coordinate-system-and-units glTF 2.0 Coordinate System and Units
+float ReadUnitScale(const aiScene* scene, bool isFbx)
 {
+    if (!isFbx) return 1.0f;
     if (!scene->mMetaData) return 0.01f;
     /// @note Assimp の ai_real はビルド設定によって float / double が変わるため、
     ///       FBXImport のメタデータ型を決め打ちすると UnitScaleFactor を取りこぼす。
@@ -111,9 +114,9 @@ bool HasBlenderRootTransformPattern(const aiScene* scene)
     return false;
 }
 
-/// FBX を書き出した DCC ツールの判定。
-/// Creator メタデータの実例: Blender = "Blender (stable FBX IO)",
-/// Maya / Mixamo / 3ds Max = "FBX SDK/FBX Plugins version ..."。
+/// @note FBX を書き出した DCC ツールの判定。
+/// @note Creator メタデータの実例: Blender = "Blender (stable FBX IO)",
+/// @note Maya / Mixamo / 3ds Max = "FBX SDK/FBX Plugins version ..."。
 FbxSourceDcc DetectSourceDcc(const aiScene* scene)
 {
     aiString generator;
@@ -312,7 +315,7 @@ bool NormalizeBlenderRootTransforms(const aiScene* constScene, FbxImportContext&
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 std::vector<std::unique_ptr<IFbxSubExporter>> FbxImportTool::BuildPipeline()
 {
@@ -327,7 +330,7 @@ std::vector<std::unique_ptr<IFbxSubExporter>> FbxImportTool::BuildPipeline()
 
 bool FbxImportTool::Import(const std::string& fbxPath,
                             const std::string& outputDir,
-                            const std::string& /*sourceHint*/,
+                            const std::string&,
                             const FbxImportOptions& options)
 {
     /// @name Assimp 第 1 パス: スキン/アニメーション用
@@ -340,7 +343,9 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     if (!scene || !scene->mRootNode) return false;
 
     const bool hasSkin = HasSkinning(scene);
-    const FbxSourceDcc sourceDcc = ResolveSourceDcc(options.sourceDcc, scene);
+    const bool isFbx = util::StringUtils::ToLower(util::FileSystem::GetExtension(fbxPath)) == ".fbx";
+    /// @note Blender の FBX 書き出し補正は、同じ Blender が生成した glTF/OBJ には適用しない。
+    const FbxSourceDcc sourceDcc = isFbx ? ResolveSourceDcc(options.sourceDcc, scene) : FbxSourceDcc::Maya;
 
     /// @name Assimp 第 2 パス: 静的メッシュ用 (PreTransformVertices)
     Assimp::Importer staticImporter;
@@ -363,12 +368,11 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     fs::path manifestDir;
     {
         /// @note AssetDatabase が保持する Assets ルートを基準にし、outputDir には一切書き込まない。
-        const std::string assetsRoot = util::FileSystem::NormalizePathSeparators(
-            asset::AssetDatabase::AssetsRoot());
+        const std::string projectRoot = asset::AssetDatabase::ProjectRoot();
         const std::string fbxGuid = asset::AssetDatabase::GuidFromPath(
             util::FileSystem::NormalizePathSeparators(fbxPath));
-        if (assetsRoot.empty() || fbxGuid.empty()) return false;
-        manifestDir = util::FileSystem::PathFromUtf8(assetsRoot).parent_path()
+        if (projectRoot.empty() || fbxGuid.empty()) return false;
+        manifestDir = util::FileSystem::PathFromUtf8(projectRoot)
                     / "Library" / "Baked" / fbxGuid;
     }
 
@@ -396,7 +400,7 @@ bool FbxImportTool::Import(const std::string& fbxPath,
     /// @note outputDir は互換のため受け取るが、実体の出力先は常に Library 側へ統一する。
     ctx.outputDir               = util::FileSystem::PathToUtf8(manifestDir);
     ctx.manifestDir             = util::FileSystem::PathToUtf8(manifestDir);
-    ctx.unitScale               = ReadUnitScale(meshScene) * options.unitScaleMultiplier;
+    ctx.unitScale               = ReadUnitScale(meshScene, isFbx) * options.unitScaleMultiplier;
     ctx.hasSkin                 = hasSkin;
     ctx.normalMapConvention     = options.normalMapConvention;
     ctx.generateTexDescriptors  = options.generateTexDescriptors;
@@ -474,7 +478,8 @@ FbxScanResult FbxImportTool::Scan(const std::string& fbxPath)
     const aiScene* scene = importer.ReadFile(fbxPath, aiProcess_Triangulate);
     if (!scene || !scene->mRootNode) return result;
 
-    result.detectedSourceDcc = DetectSourceDcc(scene);
+    result.detectedSourceDcc = util::StringUtils::ToLower(util::FileSystem::GetExtension(fbxPath)) == ".fbx"
+        ? DetectSourceDcc(scene) : FbxSourceDcc::Maya;
     for (uint32_t i = 0; i < scene->mNumMeshes; ++i)
         result.meshNames.emplace_back(scene->mMeshes[i]->mName.C_Str());
     for (uint32_t i = 0; i < scene->mNumAnimations; ++i)
@@ -483,4 +488,4 @@ FbxScanResult FbxImportTool::Scan(const std::string& fbxPath)
     return result;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

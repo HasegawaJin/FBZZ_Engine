@@ -7,10 +7,13 @@
 /// @note  メニューにしか無く、コマンドパレット・ホットキー・AI から到達できなかった。
 /// @see Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
+#include <Editor/Op/ScriptConfigure.hpp>
+#include <Editor/Op/ScriptApiCatalog.hpp>
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/ComponentDefaults.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/WaterAuthoringValues.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -99,7 +102,8 @@ std::unique_ptr<ICommand> MakeComponentResetCommand(EditorContext& ctx,
         scene::GameObject* go = context->activeScene->GetGameObject(entityId);
         if (go == nullptr) return;
         if (T* component = go->GetComponent<T>()) {
-            *component = value;
+            if constexpr (std::is_same_v<T, scene::WaterComponent>) ApplyWaterAuthoringValues(*component, value);
+            else *component = value;
             /// @note 丸ごと差し替えた地形・水・マテリアルは GPU 側を組み直させる (Inspector の Undo と同じ規則)。
             if constexpr (std::is_same_v<T, scene::TerrainComponent>) {
                 component->heightDirty = true;
@@ -115,10 +119,16 @@ std::unique_ptr<ICommand> MakeComponentResetCommand(EditorContext& ctx,
         }
         if (context->markSceneDirty) context->markSceneDirty();
     };
+    T beforeValues = before;
+    T afterValues = after;
+    if constexpr (std::is_same_v<T, scene::WaterComponent>) {
+        beforeValues = CaptureWaterAuthoringValues(before);
+        afterValues = CaptureWaterAuthoringValues(after);
+    }
     return std::make_unique<LambdaCommand>(
         "Reset Component",
-        [apply, after]() { apply(after); },
-        [apply, before]() { apply(before); });
+        [apply, afterValues]() { apply(afterValues); },
+        [apply, beforeValues]() { apply(beforeValues); });
 }
 
 /// @brief 並び順の中で component を 1 つ隣へずらす。
@@ -185,6 +195,8 @@ std::string ResolveComponentSerializedName(std::string_view component)
 void RegisterInspectorOperators(OperatorRegistry& registry)
 {
     RegisterScriptRequirementOperators(registry);
+    RegisterScriptConfigureOperators(registry);
+    RegisterScriptApiCatalogOperator(registry);
     /// @note poll は引数も受け取るので「この呼び出しで対象を解決できるか」を判定できる。node 省略
     /// @note        (メニュー・パレット) は選択が必要、node 明示 (AI) は選択不要という非対称な条件を
     /// @note        表現できないと、選択必須だと AI の正当な要求を弾き、シーン有無だけだとパレットで
@@ -394,12 +406,14 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
                     T* component = go->GetComponent<T>();
                     if (component == nullptr) return;
 
-                    const T before = *component;
+                    T before = *component;
+                    if constexpr (std::is_same_v<T, scene::WaterComponent>) before = CaptureWaterAuthoringValues(*component);
                     /// @note Inspector の Reset と同じ既定値・同じ有効フラグ保持規則 (T{} だと RigidBody の本体が消える)。
                     T after = MakeDefaultComponent<T>(*go);
                     CopyComponentEnabledFlag(before, after);
 
-                    *component = after;
+                    if constexpr (std::is_same_v<T, scene::WaterComponent>) ApplyWaterAuthoringValues(*component, after);
+                    else *component = after;
                     if (c.ctx.markSceneDirty) c.ctx.markSceneDirty();
                     result.command = MakeComponentResetCommand(
                         c.ctx, go->GetID(), before, after);

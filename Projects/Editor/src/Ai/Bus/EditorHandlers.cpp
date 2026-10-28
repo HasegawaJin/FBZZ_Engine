@@ -7,6 +7,8 @@
 #include <Editor/Ai/JsonReflector.hpp>
 #include <Editor/Ai/OperatorBridge.hpp>
 #include <Editor/Op/EditorOperator.hpp>
+#include <Editor/ManagedScriptEditor.hpp>
+#include <Editor/PackageBuildService.hpp>
 #include <Editor/Util/BuildConsole.hpp>
 #include <Editor/Util/SpriteSlicer.hpp>
 #include <Editor/Util/Selection.hpp>
@@ -16,6 +18,7 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Engine/Profiler/Profiler.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -238,10 +241,19 @@ Outcome DoEditorState(const editor::EditorContext& ctx)
     if (ctx.playMode == nullptr) return Outcome::Err("NO_PLAY_MODE", "PlayModeController が未設定です");
     JsonValue result = JsonValue::MakeObject();
     result.Set("playState", JsonValue(PlayStateName(*ctx.playMode)));
+    result.Set("executionMode", JsonValue(ctx.playExecutionMode == PlayExecutionMode::STANDALONE ? "standalone" : "inEditor"));
+    if (ctx.standalonePlay) {
+        result.Set("standaloneActive", JsonValue(ctx.standalonePlay->IsActive()));
+        result.Set("standaloneStopping", JsonValue(ctx.standalonePlay->IsStopping()));
+        result.Set("standaloneFailed", JsonValue(ctx.standalonePlay->Failed()));
+        result.Set("standaloneExitCode", JsonValue(static_cast<int64_t>(ctx.standalonePlay->ExitCode())));
+        result.Set("standaloneLog", JsonValue(util::FileSystem::PathToUtf8(ctx.standalonePlay->LogPath())));
+        result.Set("standaloneDiagnostic", JsonValue(ctx.standalonePlay->Diagnostic()));
+    }
     result.Set("restorePending", JsonValue(ctx.playMode->HasPendingRestore()));
     result.Set("scene", JsonValue(ctx.currentScenePath));
     result.Set("sceneDirty", JsonValue(ctx.sceneDirty));
-    result.Set("scriptReloadBusy", JsonValue(ctx.scriptReloadBusy));
+    result.Set("managedBuildBusy", JsonValue(ctx.managedBuildBusy));
     result.Set("frameIndex", JsonValue(static_cast<std::int64_t>(Time::frameCount)));
     return Outcome::Ok(std::move(result));
 }
@@ -405,6 +417,16 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     /// @note uint32_t は JsonValue の int/int64_t/double と暗黙変換が競合するため、JSON の整数表現へ明示的に昇格させる。
     result.Set("skinningDispatches", JsonValue(
         static_cast<std::int64_t>(rendering.renderStats.skinningDispatchCount)));
+    result.Set("skinningPaletteUploadBytes", JsonValue(
+        static_cast<std::int64_t>(rendering.renderStats.skinningPaletteUploadBytes)));
+    result.Set("skinningPaletteUploads", JsonValue(
+        static_cast<std::int64_t>(rendering.renderStats.skinningPaletteUploads)));
+    result.Set("skinningDemandMode", JsonValue(static_cast<std::int64_t>(rendering.renderStats.skinningDemandMode)));
+    result.Set("skinningDemandCandidates", JsonValue(static_cast<std::int64_t>(rendering.renderStats.skinningDemandCandidates)));
+    result.Set("skinningDemandRequired", JsonValue(static_cast<std::int64_t>(rendering.renderStats.skinningDemandRequired)));
+    result.Set("skinningDemandPrepared", JsonValue(static_cast<std::int64_t>(rendering.renderStats.skinningDemandPrepared)));
+    result.Set("skinningDemandSubmitted", JsonValue(static_cast<std::int64_t>(rendering.renderStats.skinningDemandSubmitted)));
+    result.Set("skinningDemandSkipped", JsonValue(static_cast<std::int64_t>(rendering.renderStats.skinningDemandSkipped)));
     result.Set("totalObjects", JsonValue(rendering.renderStats.totalObjects));
     result.Set("frustumCulled", JsonValue(rendering.renderStats.frustumCulled));
     result.Set("occlusionCulled", JsonValue(rendering.renderStats.occlusionCulled));
@@ -483,7 +505,57 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
 
 /// @name Build (スクリプト DLL / HLSL のコンパイル状態)
 
-/// @brief BuildConsole の履歴と診断を返す。shader_get_compile_diagnostics の Script 版。
+std::string ManagedFingerprintText(std::uint64_t fingerprint)
+{
+    std::string text(16, '0');
+    constexpr char DIGITS[] = "0123456789abcdef";
+    for (std::size_t index = 0; index < text.size(); ++index) {
+        text[text.size() - 1 - index] = DIGITS[fingerprint & 15];
+        fingerprint >>= 4;
+    }
+    return text;
+}
+
+JsonValue ManagedRequestJson(const editor::ManagedBuildRequest& request, bool includeDetails = true)
+{
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("managedRequestId", JsonValue(request.managedRequestId));
+    result.Set("sourceFingerprint", JsonValue(ManagedFingerprintText(request.sourceFingerprint)));
+    result.Set("effectiveSourceFingerprint", JsonValue(ManagedFingerprintText(request.effectiveSourceFingerprint)));
+    result.Set("state", JsonValue(editor::ManagedBuildHistory::StateName(request.state)));
+    result.Set("terminal", JsonValue(editor::ManagedBuildHistory::IsTerminal(request.state)));
+    result.Set("automatic", JsonValue(request.automatic));
+    result.Set("inputDiscoveryRetries", JsonValue(static_cast<int>(request.inputDiscoveryRetries)));
+    result.Set("candidateId", JsonValue(request.candidateId));
+    result.Set("previousGeneration", JsonValue(std::to_string(request.previousGeneration)));
+    result.Set("appliedGeneration", JsonValue(std::to_string(request.appliedGeneration)));
+    result.Set("exitCode", JsonValue(request.exitCode));
+    result.Set("errorCode", JsonValue(request.errorCode));
+    result.Set("message", JsonValue(request.message));
+    const editor::ManagedBuildRequest timed = editor::ManagedBuildHistory::WithCurrentTiming(request);
+    result.Set("elapsedMilliseconds", JsonValue(timed.elapsedMilliseconds));
+    result.Set("queueMilliseconds", JsonValue(timed.queueMilliseconds));
+    result.Set("compileMilliseconds", JsonValue(timed.compileMilliseconds));
+    result.Set("applyMilliseconds", JsonValue(timed.applyMilliseconds));
+    result.Set("sourceMilliseconds", JsonValue(timed.sourceMilliseconds));
+    result.Set("validationMilliseconds", JsonValue(timed.validationMilliseconds));
+    if (includeDetails) result.Set("log", JsonValue(request.log));
+    JsonValue diagnostics = JsonValue::MakeArray();
+    if (includeDetails) for (const editor::ManagedBuildDiagnostic& diagnostic : request.diagnostics) {
+        JsonValue item = JsonValue::MakeObject();
+        item.Set("severity", JsonValue(diagnostic.warning ? "warning" : "error"));
+        item.Set("file", JsonValue(diagnostic.file));
+        item.Set("line", JsonValue(diagnostic.line));
+        item.Set("column", JsonValue(diagnostic.column));
+        item.Set("code", JsonValue(diagnostic.code));
+        item.Set("message", JsonValue(diagnostic.message));
+        diagnostics.Push(std::move(item));
+    }
+    if (includeDetails) result.Set("diagnostics", std::move(diagnostics));
+    return result;
+}
+
+/// @brief C++ / HLSL の既存応答を保ち、C# の要求版と適用状態を別の履歴で返す。
 /// @note コンパイルが通っていないと Play も component_add も無意味な結果になるが、console_get_logs の断片からは何行目で落ちたか組み立て直す必要がある。
 Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
 {
@@ -496,7 +568,7 @@ Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
 
     auto recordJson = [](const editor::BuildRecord& record) {
         JsonValue entry = JsonValue::MakeObject();
-        entry.Set("kind", JsonValue(record.kind == editor::BuildRecord::Kind::Hlsl ? "hlsl" : "script"));
+        entry.Set("kind", JsonValue("hlsl"));
         const char* resultName = "building";
         switch (record.result) {
         case editor::BuildRecord::Result::Success:   resultName = "success"; break;
@@ -531,7 +603,7 @@ Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("currentFile", JsonValue(console.CurrentFile()));
     result.Set("hasActiveFailure", JsonValue(console.HasActiveFailure()));
     /// @note Play 開始が弾かれる理由そのもの。build_run の直後に見るのはここ。
-    result.Set("scriptReloadBusy", JsonValue(ctx.scriptReloadBusy));
+    result.Set("managedBuildBusy", JsonValue(ctx.managedBuildBusy));
     if (const editor::BuildRecord* latest = console.Latest())
         result.Set("latest", recordJson(*latest));
     JsonValue history = JsonValue::MakeArray();
@@ -539,6 +611,49 @@ Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
     for (auto it = records.rbegin(); it != records.rend() && static_cast<int>(history.AsArray().size()) < limit; ++it)
         history.Push(recordJson(*it));
     result.Set("history", std::move(history));
+    JsonValue managed = JsonValue::MakeObject();
+    managed.Set("available", JsonValue(ctx.managedScripts && ctx.managedScripts->IsAvailable()));
+    managed.Set("busy", JsonValue(ctx.managedScripts && ctx.managedScripts->IsBusy()));
+    managed.Set("appliedGeneration", JsonValue(std::to_string(ctx.managedScripts ? ctx.managedScripts->AppliedGeneration() : 0)));
+    managed.Set("requiresExplicitEditApply", JsonValue(ctx.managedScripts && ctx.managedScripts->RequiresExplicitEditApply()));
+    managed.Set("availabilityDiagnostic", JsonValue(ctx.managedScripts ?
+        ctx.managedScripts->AvailabilityDiagnostic() : "C# build service is unavailable"));
+    JsonValue managedHistory = JsonValue::MakeArray();
+    if (ctx.managedScripts) {
+        const editor::ManagedBuildHistory& builds = ctx.managedScripts->Builds();
+        if (const editor::ManagedBuildRequest* latest = builds.Latest())
+            managed.Set("latest", ManagedRequestJson(*latest));
+        for (auto iterator = builds.History().rbegin(); iterator != builds.History().rend() &&
+            static_cast<int>(managedHistory.AsArray().size()) < limit; ++iterator)
+            managedHistory.Push(ManagedRequestJson(*iterator, false));
+    }
+    const JsonValue* requested = payload.Find("managedRequestId");
+    if (requested) {
+        if (!requested->IsString() || requested->AsString().empty())
+            return Outcome::Err("BAD_ARG", "managedRequestId は空でない要求 ID を指定してください");
+        const editor::ManagedBuildRequest* request = ctx.managedScripts ?
+            ctx.managedScripts->Builds().Find(requested->AsString()) : nullptr;
+        if (!request) return Outcome::Err("MANAGED_REQUEST_NOT_FOUND", "要求 ID は現在のプロジェクトの履歴にありません");
+        managed.Set("request", ManagedRequestJson(*request));
+    }
+    managed.Set("history", std::move(managedHistory));
+    result.Set("managed", std::move(managed));
+    if (ctx.packageBuild) {
+        JsonValue query = JsonValue::MakeObject();
+        query.Set("id", JsonValue("build.package_status"));
+        if (const JsonValue* requestedPackage = payload.Find("packageRequestId")) {
+            if (!requestedPackage->IsString() || requestedPackage->AsString().empty())
+                return Outcome::Err("BAD_ARG", "packageRequestId must be a nonempty request ID.");
+            JsonValue args = JsonValue::MakeObject();
+            args.Set("packageRequestId", *requestedPackage);
+            query.Set("args", std::move(args));
+        }
+        const auto package = editor::ai::QueryOperator(ctx, query);
+        if (!package.ok) return Outcome::Err(package.code, package.message);
+        if (const JsonValue* data = package.result.Find("data")) result.Set("package", *data);
+    } else if (payload.Find("packageRequestId")) {
+        return Outcome::Err("NO_PACKAGE_SERVICE", "Package build service is unavailable.");
+    }
     return Outcome::Ok(std::move(result));
 }
 
@@ -546,26 +661,43 @@ Outcome DoBuildStatus(editor::EditorContext& ctx, const JsonValue& payload)
 /// @note MSBuild は数十秒かかるため同期にすると、バスの drain (メインスレッド) が止まり Editor が固まって応答も返らない。
 Outcome DoBuildRun(editor::EditorContext& ctx, const JsonValue& payload, bool dryRun)
 {
-    const std::string target = LowerAscii(StringField(payload, "target"));
-    if (!target.empty() && target != "script")
-        return Outcome::Err("BAD_ARG", "target は script のみ対応しています (HLSL はファイル保存で自動コンパイルされます)");
-    if (ctx.buildConsole != nullptr && ctx.buildConsole->IsBuilding())
-        return Outcome::Err("BUILD_BUSY", "既にビルド中です");
-    if (ctx.scriptReloadBusy)
-        return Outcome::Err("BUILD_BUSY", "Script DLL の再読み込み中です");
-    if (dryRun) return DryRunPreview("build.run");
-
-    /// @note 実体は script.reload operator。Play ツールバーの Reload Scripts と同じ経路を通る (フラグを直に立てるとホットリロード中のコンパイルへもう 1 本重なる)。
-    if (const editor::OpResult result = editor::InvokeOperator(ctx, "script.reload"); !result.ok)
-        return Outcome::Err(result.errorCode.empty() ? "BUILD_BUSY" : result.errorCode,
-                            result.message);
-
-    JsonValue result = JsonValue::MakeObject();
-    result.Set("requested", JsonValue("script"));
-    /// @note 同期完了を返せないことを明示する。待ち方を書かないと AI は即座に結果を読みに行く。
-    result.Set("async", JsonValue(true));
-    result.Set("poll", JsonValue("build_get_status で building=false になるまで確認してください"));
-    return Outcome::Ok(std::move(result));
+    std::string target = LowerAscii(StringField(payload, "target"));
+    if (target.empty()) target = "managed";
+    if (target != "package" && payload.Find("package"))
+        return Outcome::Err("BAD_ARG", "package settings require target=package.");
+    if (target != "managed" && target != "package")
+        return Outcome::Err("BAD_ARG", "target must be managed or package.");
+    if (target == "package") {
+        JsonValue invoke = JsonValue::MakeObject();
+        invoke.Set("id", JsonValue("build.package"));
+        if (const JsonValue* settings = payload.Find("package")) {
+            if (!settings->IsObject()) return Outcome::Err("BAD_ARG", "package must be an object of build settings.");
+            invoke.Set("args", *settings);
+        }
+        const auto invoked = editor::ai::InvokeOperator(ctx, invoke, dryRun);
+        if (!invoked.ok) return Outcome::Err(invoked.code, invoked.message);
+        if (const JsonValue* data = invoked.result.Find("data")) return Outcome::Ok(*data);
+        return Outcome::Ok(invoked.result);
+    }
+    if (target == "managed") {
+        if (!ctx.managedScripts || !ctx.managedScripts->IsAvailable())
+            return Outcome::Err("MANAGED_BUILD_UNAVAILABLE", ctx.managedScripts ?
+                ctx.managedScripts->AvailabilityDiagnostic() : "C# build service is unavailable");
+        if (dryRun) return DryRunPreview("build.run");
+        const editor::OpResult invoked = editor::InvokeOperator(ctx, "script.managed_build");
+        if (!invoked.ok) return Outcome::Err(invoked.errorCode.empty() ? "MANAGED_BUILD_UNAVAILABLE" : invoked.errorCode, invoked.message);
+        const editor::ManagedBuildRequest* request = ctx.managedScripts->Builds().Latest();
+        if (!request) return Outcome::Err("MANAGED_BUILD_UNAVAILABLE", "C# build request was not recorded");
+        JsonValue result = JsonValue::MakeObject();
+        result.Set("requested", JsonValue("managed"));
+        result.Set("async", JsonValue(true));
+        result.Set("managedRequestId", JsonValue(request->managedRequestId));
+        result.Set("sourceFingerprint", JsonValue(ManagedFingerprintText(request->sourceFingerprint)));
+        result.Set("state", JsonValue(editor::ManagedBuildHistory::StateName(request->state)));
+        result.Set("poll", JsonValue("build_get_status(managedRequestId) の managed.request が terminal=true になるまで確認してください"));
+        return Outcome::Ok(std::move(result));
+    }
+    return Outcome::Err("BAD_ARG", "target must be managed or package.");
 }
 
 Outcome DoUndoRedo(editor::EditorContext& ctx, const std::string& type, bool dryRun)
@@ -647,7 +779,7 @@ Outcome DoSceneSelectionQuery(editor::EditorContext& ctx)
     result.Set("ids", std::move(ids));
     return Outcome::Ok(std::move(result));
 }
-} // namespace
+} /// @note namespace
 
 void RegisterEditorHandlers(BusHandlerTable& table)
 {
@@ -674,4 +806,4 @@ void RegisterEditorHandlers(BusHandlerTable& table)
     table.AddCommand("build.run", [](BusCall& call) { return DoBuildRun(call.ctx, call.payload, call.dryRun); });
 }
 
-} // namespace fbzz::editor::ai::bus
+} /// @note namespace fbzz::editor::ai::bus

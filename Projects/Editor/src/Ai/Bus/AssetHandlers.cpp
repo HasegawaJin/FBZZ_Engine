@@ -75,7 +75,7 @@ bool IsTextAssetExtension(const std::string& extension)
 {
     static const std::unordered_set<std::string> extensions = {
         ".scene", ".prefab", ".mat", ".tex", ".terrain", ".animcontroller", ".vfx", ".fluid",
-        ".toml", ".json", ".meta", ".hpp", ".cpp", ".hlsl", ".hlsli"
+        ".toml", ".json", ".meta", ".hpp", ".cpp", ".cs", ".csproj", ".hlsl", ".hlsli"
     };
     return extensions.contains(LowerAscii(extension));
 }
@@ -176,7 +176,7 @@ Outcome DoAssetFindUnused(editor::EditorContext& ctx, const JsonValue& payload)
     std::unordered_set<std::string> referenced;
     std::vector<fs::path> candidates;
     static const std::unordered_set<std::string> candidateExtensions = {
-        ".mat", ".mesh", ".tex", ".prefab", ".animcontroller", ".vfx", ".wav", ".ogg", ".fbx", ".png", ".jpg", ".dds"
+        ".mat", ".mesh", ".tex", ".prefab", ".animcontroller", ".vfx", ".wav", ".ogg", ".fbx", ".obj", ".gltf", ".glb", ".png", ".jpg", ".dds"
     };
     for (fs::recursive_directory_iterator iterator(assetsRoot, fs::directory_options::skip_permission_denied, ec), end;
          iterator != end; iterator.increment(ec)) {
@@ -232,7 +232,7 @@ Outcome DoAssetThumbnail(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("path", JsonValue(relative));
     return Outcome::Ok(std::move(result));
 }
-} // namespace
+}
 
 /// @name Sprite (Texture のサブアセット)
 /// @note Sprite は独立ファイルではないため `asset.list` / `asset.thumbnail` から見えない。
@@ -610,7 +610,7 @@ std::unique_ptr<ICommand> BuildGenerateMotionVectorsCommand([[maybe_unused]] edi
         /// @note 生成は dryRun でもファイルを書かないよう Lambda 内で行うため、適用も同じ場所で行う。
         fs::path materialFile;
         std::string materialPath;
-        asset::MaterialAsset oldMaterial;
+        asset::MaterialAssetAuthoring oldMaterial;
         const bool applyToMaterial = !StringField(payload, "materialPath").empty();
         if (applyToMaterial) {
             if (!ResolveProjectFile(ctx, StringField(payload, "materialPath"), materialFile, materialPath)
@@ -640,7 +640,7 @@ std::unique_ptr<ICommand> BuildGenerateMotionVectorsCommand([[maybe_unused]] edi
                 if (!result.success) return;
                 context->requestAssetBrowserRefresh = true;
                 if (!applyToMaterial) return;
-                asset::MaterialAsset updated = oldMaterial;
+                asset::MaterialAssetAuthoring updated = oldMaterial;
                 updated.textures["tex5"] = motionPath;
                 updated.particle.flipbook.motionVectorFlipbook = true;
                 updated.particle.flipbook.motionVectorStrength = result.recommendedStrength;
@@ -695,7 +695,7 @@ Outcome DoAssetImport(editor::EditorContext& ctx, const JsonValue& payload, bool
     result.Set("imported", JsonValue(dst));
     return Outcome::Ok(std::move(result));
 }
-} // namespace
+}
 
 void RegisterAssetHandlers(BusHandlerTable& table)
 {
@@ -718,4 +718,4 @@ void RegisterAssetHandlers(BusHandlerTable& table)
     table.AddBuilder("vfx.generateMotionVectors", BuildGenerateMotionVectorsCommand);
 }
 
-} // namespace fbzz::editor::ai::bus
+}

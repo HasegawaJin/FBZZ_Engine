@@ -10,6 +10,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <limits>
+#include <set>
 #include <string_view>
 
 namespace fbzz::editor::ai {
@@ -48,6 +51,7 @@ const char* ParamTypeName(OpParamType type)
     case OpParamType::String: return "string";
     case OpParamType::Vec3:   return "vec3";
     case OpParamType::NodeId: return "nodeId";
+    case OpParamType::Data:   return "data";
     }
     return "string";
 }
@@ -87,8 +91,8 @@ JsonValue OpDataToJson(const OpData& data)
     switch (data.GetType()) {
     case OpData::Type::Null:   return JsonValue(nullptr);
     case OpData::Type::Bool:   return JsonValue(data.AsBool());
-    case OpData::Type::Int:    return JsonValue(data.AsInt());
-    case OpData::Type::Float:  return JsonValue(static_cast<double>(data.AsFloat()));
+    case OpData::Type::Int:    return JsonValue(data.AsInt64());
+    case OpData::Type::Float:  return JsonValue(data.AsDouble());
     case OpData::Type::String: return JsonValue(data.AsString());
     case OpData::Type::Vec3: {
         /// @note 読んだ形をそのまま書き戻せるよう、引数側が受ける {x,y,z} で返す。
@@ -123,11 +127,13 @@ bool ReadVec3(const JsonValue& value, math::Vector3& out)
     if (value.IsArray()) {
         const JsonValue::Array& array = value.AsArray();
         if (array.size() != 3) return false;
-        for (const JsonValue& component : array)
-            if (!component.IsNumber()) return false;
-        out = math::Vector3{ static_cast<float>(array[0].AsNumber()),
-                             static_cast<float>(array[1].AsNumber()),
-                             static_cast<float>(array[2].AsNumber()) };
+        float components[3]{};
+        for (std::size_t index = 0; index < array.size(); ++index) {
+            const double number = array[index].AsNumber();
+            if (!array[index].IsNumber() || !std::isfinite(number) || std::abs(number) > std::numeric_limits<float>::max()) return false;
+            components[index] = static_cast<float>(number);
+        }
+        out = math::Vector3{ components[0], components[1], components[2] };
         return true;
     }
     if (value.IsObject()) {
@@ -136,12 +142,57 @@ bool ReadVec3(const JsonValue& value, math::Vector3& out)
         const JsonValue* z = value.Find("z");
         if (x == nullptr || y == nullptr || z == nullptr) return false;
         if (!x->IsNumber() || !y->IsNumber() || !z->IsNumber()) return false;
-        out = math::Vector3{ static_cast<float>(x->AsNumber()),
-                             static_cast<float>(y->AsNumber()),
-                             static_cast<float>(z->AsNumber()) };
+        const JsonValue* values[] = {x, y, z};
+        float components[3]{};
+        for (std::size_t index = 0; index < 3; ++index) {
+            const double number = values[index]->AsNumber();
+            if (!std::isfinite(number) || std::abs(number) > std::numeric_limits<float>::max()) return false;
+            components[index] = static_cast<float>(number);
+        }
+        out = math::Vector3{ components[0], components[1], components[2] };
         return true;
     }
     return false;
+}
+
+/// @note 入れ子設定の null・順序を保持し、非有限数・重複キー・過度な入れ子を拒否する。
+bool ReadData(const JsonValue& value, OpData& output, std::string& error, std::size_t depth = 0)
+{
+    if (depth > 32) { error = "設定データの入れ子が深すぎます"; return false; }
+    if (value.IsNull()) { output = {}; return true; }
+    if (value.IsBool()) { output = OpData(value.AsBool()); return true; }
+    if (value.IsString()) { output = OpData(value.AsString()); return true; }
+    if (value.IsNumber()) {
+        const double number = value.AsNumber();
+        if (!std::isfinite(number)) {
+            error = "設定データの数値は有限である必要があります";
+            return false;
+        }
+        if (value.IsInteger()) output = OpData(value.AsInt64());
+        else output = OpData(number);
+        return true;
+    }
+    OpData result = value.IsArray() ? OpData::MakeArray() : OpData::MakeObject();
+    if (value.IsArray()) {
+        for (const JsonValue& item : value.AsArray()) {
+            OpData child;
+            if (!ReadData(item, child, error, depth + 1)) return false;
+            result.Push(std::move(child));
+        }
+    } else if (value.IsObject()) {
+        std::set<std::string> keys;
+        for (const JsonValue::Member& item : value.AsObject()) {
+            if (!keys.insert(item.first).second) { error = "設定キーが重複しています: " + item.first; return false; }
+            OpData child;
+            if (!ReadData(item.second, child, error, depth + 1)) return false;
+            result.Set(item.first, std::move(child));
+        }
+    } else {
+        error = "対応していない設定データです";
+        return false;
+    }
+    output = std::move(result);
+    return true;
 }
 
 /// @brief 宣言された params に従って JSON を OpArgs へ変換する。未知のキーと型違いは
@@ -179,18 +230,36 @@ bool ConvertArgs(const EditorOperator& op, const JsonValue* argsValue,
         }
 
         switch (param.type) {
+        case OpParamType::Data: {
+            OpData data;
+            if (!ReadData(*value, data, error)) return false;
+            out.Set(param.name, std::move(data));
+            break;
+        }
         case OpParamType::Bool:
             if (!value->IsBool()) { error = param.name + " は bool です"; return false; }
             out.Set(param.name, value->AsBool());
             break;
         case OpParamType::Int:
-            if (!value->IsNumber()) { error = param.name + " は数値です"; return false; }
-            out.Set(param.name, value->AsInt());
+        {
+            int number = 0;
+            if (!value->IsNumber() || !value->TryGetInt32(number)) {
+                error = param.name + " は int 範囲の整数です";
+                return false;
+            }
+            out.Set(param.name, number);
             break;
+        }
         case OpParamType::Float:
-            if (!value->IsNumber()) { error = param.name + " は数値です"; return false; }
-            out.Set(param.name, static_cast<float>(value->AsNumber()));
+        {
+            const double number = value->AsNumber();
+            if (!value->IsNumber() || !std::isfinite(number) || std::abs(number) > std::numeric_limits<float>::max()) {
+                error = param.name + " は float 範囲の有限数です";
+                return false;
+            }
+            out.Set(param.name, static_cast<float>(number));
             break;
+        }
         case OpParamType::String:
         case OpParamType::NodeId:
             if (!value->IsString()) { error = param.name + " は文字列です"; return false; }
@@ -247,7 +316,7 @@ bool ResolveRegistry(editor::EditorContext& context,
     return registry != nullptr && undo != nullptr;
 }
 
-} // namespace
+} /// @note namespace
 
 OperatorBridgeResult ListOperators(editor::EditorContext& context, const JsonValue& payload)
 {

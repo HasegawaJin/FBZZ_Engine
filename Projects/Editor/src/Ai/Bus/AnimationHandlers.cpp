@@ -50,8 +50,8 @@ Outcome DoAnimationState(editor::EditorContext& ctx, const JsonValue& payload)
     scene::AnimatorComponent* animator = FindAnimator(ctx, payload, error);
     if (animator == nullptr) return error;
     JsonValue clips = JsonValue::MakeArray();
-    for (size_t index = 0; index < animator->clips.size(); ++index) {
-        const auto& clip = animator->clips[index];
+    for (size_t index = 0; index < animator->ClipCount(); ++index) {
+        const auto& clip = animator->ClipAt(index);
         JsonValue entry = JsonValue::MakeObject();
         entry.Set("index", JsonValue(static_cast<int>(index)));
         entry.Set("name", JsonValue(clip.name));
@@ -67,6 +67,13 @@ Outcome DoAnimationState(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("normalizedTime", JsonValue(animator->GetNormalizedTime()));
     result.Set("blendToState", JsonValue(animator->GetBlendToState()));
     result.Set("blendWeight", JsonValue(animator->blendWeight));
+    result.Set("poseLodEnabled", JsonValue(animator->poseLodEnabled));
+    result.Set("poseEvaluatedThisFrame", JsonValue(animator->poseEvaluatedThisFrame));
+    result.Set("poseEvaluationCount", JsonValue(static_cast<double>(animator->poseEvaluationCount)));
+    result.Set("boneBakeMode", JsonValue(animator->boneBakeMode));
+    result.Set("boneBakeActive", JsonValue(animator->boneBake.active));
+    result.Set("boneBakeFallback", JsonValue(scene::BoneBakeFallbackName(animator->boneBake.fallback)));
+    result.Set("boneBakeStatus", JsonValue(static_cast<int>(animator->boneBake.bakeStatus)));
     result.Set("clips", std::move(clips));
     return Outcome::Ok(std::move(result));
 }
@@ -162,23 +169,23 @@ Outcome DoAnimationControl(editor::EditorContext& ctx, const JsonValue& payload,
             if (stateIterator != animator->states.end()) {
                 const scene::AnimationState& state = *stateIterator;
                 if (!state.sourcePath.empty()) {
-                    for (size_t index = 0; index < animator->clips.size(); ++index) {
+                    for (size_t index = 0; index < animator->ClipCount(); ++index) {
                         if (index < animator->clipSourcePaths.size()
                             && animator->clipSourcePaths[index] == state.sourcePath
-                            && (state.clipName.empty() || animator->clips[index].name == state.clipName)) {
-                            clip = &animator->clips[index];
+                            && (state.clipName.empty() || animator->ClipAt(index).name == state.clipName)) {
+                            clip = &animator->ClipAt(index);
                             break;
                         }
                     }
                 }
                 if (clip == nullptr && !state.clipName.empty()) {
-                    for (const auto& candidate : animator->clips) {
+                    for (const auto& candidate : animator->Clips()) {
                         if (candidate.name == state.clipName) { clip = &candidate; break; }
                     }
                 }
                 if (clip == nullptr && state.clipIndex >= 0
-                    && state.clipIndex < static_cast<int>(animator->clips.size())) {
-                    clip = &animator->clips[static_cast<size_t>(state.clipIndex)];
+                    && state.clipIndex < static_cast<int>(animator->ClipCount())) {
+                    clip = &animator->ClipAt(static_cast<size_t>(state.clipIndex));
                 }
             }
             if (clip == nullptr || clip->frameRate <= 0.0f) return Outcome::Err("CLIP_NOT_READY", "frame seek にはロード済み clip が必要です");
@@ -1388,7 +1395,7 @@ std::unique_ptr<ICommand> BuildAnimatorLayerCommand([[maybe_unused]] editor::Edi
     err = Outcome::Err("UNSUPPORTED", "この Command は transaction 内で使用できません: " + type);
     return nullptr;
 }
-} // namespace
+} /// @note namespace
 
 void RegisterAnimationHandlers(BusHandlerTable& table)
 {
@@ -1415,4 +1422,4 @@ void RegisterAnimationHandlers(BusHandlerTable& table)
     }
 }
 
-} // namespace fbzz::editor::ai::bus
+} /// @note namespace fbzz::editor::ai::bus

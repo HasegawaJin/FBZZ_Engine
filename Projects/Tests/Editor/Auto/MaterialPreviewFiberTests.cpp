@@ -45,11 +45,11 @@ protected:
                 "[shader]\nversion=1\nvertex='custom'\nsurface='custom'\nopacity='custom'\nvariants='none'\npreview='" + preview + "'\n");
     }
 
-    [[nodiscard]] static asset::MaterialAsset FiberMaterial(const std::string& shader, float grassShading)
+    [[nodiscard]] static asset::MaterialAssetAuthoring FiberMaterial(const std::string& shader, float planarShading)
     {
-        asset::MaterialAsset material;
+        asset::MaterialAssetAuthoring material;
         material.shaderPath = shader;
-        material.params["grassShading"] = { grassShading };
+        material.params["planarShading"] = { planarShading };
         return material;
     }
 
@@ -63,7 +63,7 @@ TEST_F(MaterialPreviewFiberTest, FiberShadersUseTheFiberFlavorInsteadOfTheSurfac
     EXPECT_EQ(mp::DetectFlavor(FiberMaterial("guid:ffffffffffffffffffffffffffffffff|Assets/Shaders/Fiber/FiberShell.hlsl", 0.0f)),
               mp::Flavor::Unsupported);
     EXPECT_EQ(mp::DetectFlavor(FiberMaterial(ShaderPath("Blade.hlsl"), 1.0f)), mp::Flavor::Fiber);
-    asset::MaterialAsset base;
+    asset::MaterialAssetAuthoring base;
     base.shaderPath = ShaderPath("Lit.hlsl");
     EXPECT_EQ(mp::DetectFlavor(base), mp::Flavor::Surface);
     EXPECT_FALSE(mp::UsesOwnGeometry(mp::Flavor::Fiber));
@@ -89,7 +89,7 @@ TEST_F(MaterialPreviewFiberTest, ModeShapeAndChannelsFollowTheMaterial)
 
 TEST_F(MaterialPreviewFiberTest, UnsupportedVertexInputsTakePrecedenceOverTheRenderPath)
 {
-    asset::MaterialAsset material;
+    asset::MaterialAssetAuthoring material;
     material.shaderPath = ShaderPath("Mesh.hlsl");
     material.renderPath = asset::RenderPath::Trail;
     EXPECT_EQ(mp::DetectFlavor(material), mp::Flavor::Unsupported);
@@ -98,6 +98,16 @@ TEST_F(MaterialPreviewFiberTest, UnsupportedVertexInputsTakePrecedenceOverTheRen
     material.renderPath = asset::RenderPath::Particle;
     EXPECT_EQ(mp::DetectFlavor(material), mp::Flavor::Unsupported);
     EXPECT_STREQ(mp::UnsupportedBadge(material), "PARTICLE");
+}
+
+TEST_F(MaterialPreviewFiberTest, LegacyShadingKeyKeepsItsPreviewShapeAndCanonicalKeyWins)
+{
+    asset::MaterialAssetAuthoring material;
+    material.shaderPath = ShaderPath("Shell.hlsl");
+    material.params["grassShading"] = {1.0f};
+    EXPECT_EQ(mp::ThumbnailShape(material, mp::Flavor::Fiber), mp::Shape::Plane);
+    material.params["planarShading"] = {0.0f};
+    EXPECT_EQ(mp::ThumbnailShape(material, mp::Flavor::Fiber), mp::Shape::Sphere);
 }
 
 } /// @note namespace fbzz::tests

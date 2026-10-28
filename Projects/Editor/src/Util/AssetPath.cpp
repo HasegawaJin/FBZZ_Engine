@@ -8,9 +8,42 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
+#include <cctype>
 #include <utility>
 
 namespace fbzz::editor {
+
+std::string SanitizeMaterialFileName(std::string name, uint32_t fallbackIndex)
+{
+    if (name.empty())
+        name = "Material_" + std::to_string(fallbackIndex);
+    for (char& c : name) {
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (!std::isalnum(uc) && c != '_' && c != '-' && c != '.')
+            c = '_';
+    }
+    if (name == "." || name == "..")
+        name = "Material_" + std::to_string(fallbackIndex);
+    return name;
+}
+
+std::string SanitizePrefabFileName(const std::string& name)
+{
+    std::string result = name.empty() ? "Prefab" : name;
+    for (char& c : result) {
+        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == ' ';
+        if (!ok) c = '_';
+    }
+    return result;
+}
+
+std::string AssetDirectory(const std::string& path)
+{
+    std::string directory = util::FileSystem::GetDirectory(path);
+    while (directory.size() > 1 && (directory.back() == '/' || directory.back() == '\\'))
+        directory.pop_back();
+    return directory;
+}
 
 std::string NormalizeAssetPath(std::string path)
 {

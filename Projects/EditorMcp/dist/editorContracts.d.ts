@@ -2,6 +2,20 @@ import * as z from 'zod/v4';
 export declare const EDITOR_PROTOCOL = "fbzz.editor.v1";
 export declare const NodeIdSchema: z.ZodString;
 export declare const Vec3Schema: z.ZodTuple<[z.ZodNumber, z.ZodNumber, z.ZodNumber], null>;
+export declare const PackageBuildOptionsSchema: z.ZodObject<{
+    outputDirectory: z.ZodOptional<z.ZodString>;
+    productName: z.ZodOptional<z.ZodString>;
+    version: z.ZodOptional<z.ZodString>;
+    iconPath: z.ZodOptional<z.ZodString>;
+    developmentBuild: z.ZodOptional<z.ZodBoolean>;
+    stripEditorAssets: z.ZodOptional<z.ZodBoolean>;
+    scenes: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        path: z.ZodString;
+        enabled: z.ZodOptional<z.ZodBoolean>;
+    }, z.core.$strict>>>;
+    runAfterBuild: z.ZodOptional<z.ZodBoolean>;
+}, z.core.$strict>;
+export type PackageBuildOptions = z.infer<typeof PackageBuildOptionsSchema>;
 export declare const TerrainSculptOpSchema: z.ZodEnum<{
     flatten: "flatten";
     hydraulicErosion: "hydraulicErosion";
@@ -86,6 +100,7 @@ export type EditorQuery = {
     components?: string[] | undefined;
     properties?: ScenePropertyFilter[] | undefined;
     limit?: number | undefined;
+    offset?: number | undefined;
 } | {
     t: 'scene.selection';
 } | {
@@ -95,9 +110,19 @@ export type EditorQuery = {
     t: 'script.inspect';
     id: string;
     scriptId: string;
+    path?: string | undefined;
+    start?: number | undefined;
+    count?: number | undefined;
+    wireBytes?: number | undefined;
+    observationId?: string | undefined;
+    close?: boolean | undefined;
 } | {
     t: 'script.catalog';
     type?: string | undefined;
+} | {
+    t: 'script.api.catalog';
+    type?: string | undefined;
+    member?: string | undefined;
 } | {
     t: 'asset.list';
     dir?: string | undefined;
@@ -235,6 +260,8 @@ export type EditorQuery = {
 } | {
     t: 'build.status';
     limit?: number | undefined;
+    managedRequestId?: string | undefined;
+    packageRequestId?: string | undefined;
 } | {
     t: 'fluid.schema';
 } | {
@@ -698,7 +725,8 @@ export type EditorCommand = {
     action: 'play' | 'stop' | 'pause' | 'resume';
 } | {
     t: 'build.run';
-    target?: 'script' | undefined;
+    target?: 'managed' | 'package' | undefined;
+    package?: PackageBuildOptions | undefined;
 } | {
     t: 'fluid.create';
     path: string;

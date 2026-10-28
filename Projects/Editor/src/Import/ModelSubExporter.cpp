@@ -10,6 +10,7 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <assimp/mesh.h>
 #include <assimp/scene.h>
+#include "AssimpNodeExport.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -22,6 +23,8 @@
 namespace fbzz::editor {
 
 namespace {
+using fbxexport::CopyMatrix;
+using fbxexport::TraverseNodes;
 
 /// @name 頂点レイアウト (renderer と同じビット列)
 struct Vertex {
@@ -317,38 +320,9 @@ std::unordered_map<std::string, uint32_t> CollectGlobalBoneIndices(const aiScene
     return boneMap;
 }
 
-void CopyMatrix(const aiMatrix4x4& src, float dst[16], float us = 1.0f)
-{
-    dst[ 0]=src.a1; dst[ 1]=src.a2; dst[ 2]=src.a3; dst[ 3]=src.a4*us;
-    dst[ 4]=src.b1; dst[ 5]=src.b2; dst[ 6]=src.b3; dst[ 7]=src.b4*us;
-    dst[ 8]=src.c1; dst[ 9]=src.c2; dst[10]=src.c3; dst[11]=src.c4*us;
-    dst[12]=src.d1; dst[13]=src.d2; dst[14]=src.d3; dst[15]=src.d4;
-}
 
-void TraverseNodes(const aiNode* node, int parentIdx, float us,
-                   std::unordered_map<std::string,int>& indexMap,
-                   std::vector<NodeEntry>& nodes)
-{
-    const int myIdx = static_cast<int>(nodes.size());
-    nodes.emplace_back();
-    NodeEntry& e = nodes.back();
-    e.name        = node->mName.C_Str();
-    e.parentIndex = parentIdx;
 
-    aiVector3D pos, scale; aiQuaternion rot;
-    node->mTransformation.Decompose(scale, rot, pos);
-    e.bindT[0]=pos.x*us; e.bindT[1]=pos.y*us; e.bindT[2]=pos.z*us;
-    e.bindR[0]=rot.x; e.bindR[1]=rot.y; e.bindR[2]=rot.z; e.bindR[3]=rot.w;
-    e.bindS[0]=scale.x; e.bindS[1]=scale.y; e.bindS[2]=scale.z;
-    CopyMatrix(node->mTransformation, e.localTransform, us);
 
-    indexMap[e.name] = myIdx;
-    if (parentIdx >= 0)
-        nodes[static_cast<size_t>(parentIdx)].children.push_back(myIdx);
-
-    for (uint32_t c=0; c<node->mNumChildren; ++c)
-        TraverseNodes(node->mChildren[c], myIdx, us, indexMap, nodes);
-}
 
 /// 頂点/法線/接線へバインド回転を焼き込む (float[3] インプレース)。
 void RotateInPlace(float v[3], const aiQuaternion& q)
@@ -646,7 +620,7 @@ bool WriteMergedMesh(
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 bool ModelSubExporter::Export(FbxImportContext& ctx)
 {
@@ -927,4 +901,4 @@ bool ModelSubExporter::Export(FbxImportContext& ctx)
         &ctx);
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

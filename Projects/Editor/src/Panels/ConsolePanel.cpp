@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 #include <Editor/Panels/ConsolePanel.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/ManagedScriptEditor.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/EditorSettings.hpp>
@@ -16,6 +17,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cfloat>
 #include <cstdio>
 #include <unordered_map>
@@ -102,6 +104,23 @@ const char* LogLevelName(core::LogLevel level)
     }
 }
 
+const char* ManagedBuildStateLabel(ManagedBuildState state)
+{
+    switch (state) {
+    case ManagedBuildState::SCANNING:   return "ソース確認中";
+    case ManagedBuildState::QUEUED:     return "待機中";
+    case ManagedBuildState::COMPILING:  return "コンパイル中";
+    case ManagedBuildState::VALIDATING: return "検証中";
+    case ManagedBuildState::COMPILED:   return "コンパイル完了";
+    case ManagedBuildState::APPLYING:   return "適用中";
+    case ManagedBuildState::APPLIED:    return "適用済み";
+    case ManagedBuildState::FAILED:     return "失敗";
+    case ManagedBuildState::DEFERRED:   return "保留";
+    case ManagedBuildState::SUPERSEDED: return "新しい要求に置換";
+    default:                            return "状態不明";
+    }
+}
+
 /// 幅 width に収まるよう改行を挿し込んだ文字列を返す。
 /// @note InputTextMultiline は折り返しを持たないため、表示直前に自前で折る。
 std::string WrapText(const std::string& text, float width)
@@ -146,7 +165,7 @@ std::string FirstLineOf(const std::string& message)
     return message.substr(0, nl) + "  ...";
 }
 
-} // namespace
+} /// @note namespace
 
 ConsolePanel::ConsolePanel(ConsoleSink& sink) : m_sink(sink) {}
 
@@ -324,23 +343,155 @@ void ConsolePanel::CopySelection() const
 
 void ConsolePanel::JumpToSource(EditorContext& ctx, const std::string& message)
 {
+    const std::vector<std::string> roots = {
+        ctx.scriptsSourceDir,
+        ctx.projectRoot,
+        ctx.engineRoot
+    };
+    const ManagedSourceLocation managed = ResolveManagedSourceLocation(
+        message, roots, ctx.projectRoot + "/Assets");
+    if (!managed.file.empty()) {
+        OpenSourceInExternalEditor(managed.file, managed.line);
+        return;
+    }
     std::string file;
     int         line = 0;
     std::size_t bodyOffset = 0;
     if (!ParseLogLocationPrefix(message, file, line, bodyOffset)) return;
 
     /// @note Logger はベース名しか残さないため、プロジェクトとエンジンのソースツリーから引き直す。
-    const std::vector<std::string> roots = {
-        ctx.scriptsSourceDir,
-        ctx.projectRoot,
-        ctx.engineRoot
-    };
     const std::string resolved = ResolveSourceFileByName(file, roots);
     if (resolved.empty()) {
         FBZZ_LOG_WARN("Console: source file not found for '%s'", file.c_str());
         return;
     }
     OpenSourceInExternalEditor(resolved, line);
+}
+
+void ConsolePanel::DrawManagedBuildStatus(EditorContext& ctx)
+{
+    if (!ctx.managedScripts) return;
+    const ManagedBuildRequest* latest = ctx.managedScripts->Builds().Latest();
+    if (!latest) return;
+    const ManagedBuildRequest& request = *latest;
+    double elapsedMilliseconds = request.elapsedMilliseconds;
+    double queueMilliseconds = request.queueMilliseconds;
+    double compileMilliseconds = request.compileMilliseconds;
+    double sourceMilliseconds = request.sourceMilliseconds;
+    double validationMilliseconds = request.validationMilliseconds;
+    double applyMilliseconds = request.applyMilliseconds;
+    if (!ManagedBuildHistory::IsTerminal(request.state)) {
+        const auto now = std::chrono::steady_clock::now();
+        const double stage = std::chrono::duration<double, std::milli>(now - request.stageStartedAt).count();
+        elapsedMilliseconds = std::chrono::duration<double, std::milli>(now - request.queuedAt).count();
+        if (request.state == ManagedBuildState::QUEUED) queueMilliseconds += stage;
+        if (request.state == ManagedBuildState::COMPILING) compileMilliseconds += stage;
+        if (request.state == ManagedBuildState::APPLYING) applyMilliseconds += stage;
+        if (request.state == ManagedBuildState::SCANNING) sourceMilliseconds += stage;
+        if (request.state == ManagedBuildState::VALIDATING) validationMilliseconds += stage;
+    }
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (request.state == ManagedBuildState::FAILED) flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    const bool open = ImGui::TreeNodeEx("C# ビルド", flags);
+    ImGui::SameLine();
+    const ImVec4 color = request.state == ManagedBuildState::FAILED
+                       ? EditorTheme::Color(ThemeColor::Danger)
+                       : EditorTheme::Color(ThemeColor::TextMuted);
+    ImGui::TextColored(color, "%s  %.0f ms", ManagedBuildStateLabel(request.state),
+                       elapsedMilliseconds);
+    if (!open) return;
+
+    ImGui::TextDisabled("待機 %.0f ms  ソース %.0f ms  コンパイル %.0f ms  検証 %.0f ms  適用 %.0f ms",
+                        queueMilliseconds, sourceMilliseconds,
+                        compileMilliseconds, validationMilliseconds,
+                        applyMilliseconds);
+    if (!request.message.empty()) ImGui::TextWrapped("%s", request.message.c_str());
+    if (m_managedDiagnosticRequestId != request.managedRequestId) {
+        m_managedDiagnosticRequestId = request.managedRequestId;
+        m_managedDiagnosticPage = 0;
+        m_managedDiagnosticSelection = 0;
+    }
+    if (m_managedDiagnosticSelection >= request.diagnostics.size())
+        m_managedDiagnosticSelection = request.diagnostics.empty() ? 0 : request.diagnostics.size() - 1;
+    ImGui::TextDisabled("診断 %zu 件  Editor保持出力 %llu / %llu bytes%s",
+        request.diagnostics.size(), static_cast<unsigned long long>(request.logRetainedBytes),
+        static_cast<unsigned long long>(request.logOriginalBytes),
+        request.logRetainedBytes < request.logOriginalBytes ? " (末尾を保持)" : "");
+    if (ImGui::SmallButton("保持したEditor出力をコピー")) ImGui::SetClipboardText(request.log.c_str());
+    if (!request.logFilePath.empty()) {
+        ImGui::TextWrapped("完全な AgentBuild ログ: %s", request.logFilePath.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("ログパスをコピー")) ImGui::SetClipboardText(request.logFilePath.c_str());
+    }
+    constexpr std::size_t diagnosticPageSize = 128;
+    const std::size_t pageCount = std::max<std::size_t>(1,
+        (request.diagnostics.size() + diagnosticPageSize - 1) / diagnosticPageSize);
+    m_managedDiagnosticPage = std::min(m_managedDiagnosticPage, pageCount - 1);
+    ImGui::BeginDisabled(m_managedDiagnosticPage == 0);
+    if (ImGui::SmallButton("前の診断")) --m_managedDiagnosticPage;
+    ImGui::EndDisabled(); ImGui::SameLine();
+    ImGui::BeginDisabled(m_managedDiagnosticPage + 1 >= pageCount);
+    if (ImGui::SmallButton("次の診断")) ++m_managedDiagnosticPage;
+    ImGui::EndDisabled(); ImGui::SameLine();
+    const std::size_t firstDiagnostic = m_managedDiagnosticPage * diagnosticPageSize;
+    const std::size_t lastDiagnostic = std::min(request.diagnostics.size(), firstDiagnostic + diagnosticPageSize);
+    ImGui::Text("%zu / %zu", m_managedDiagnosticPage + 1, pageCount);
+    const std::vector<std::string> roots = {
+        ctx.scriptsSourceDir,
+        ctx.projectRoot,
+        ctx.engineRoot
+    };
+    ImGui::BeginChild("##managed_diagnostics", ImVec2(0.0f, 220.0f), true);
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(lastDiagnostic - firstDiagnostic));
+    while (clipper.Step()) for (int local = clipper.DisplayStart; local < clipper.DisplayEnd; ++local) {
+        const std::size_t i = firstDiagnostic + static_cast<std::size_t>(local);
+        const ManagedBuildDiagnostic& diagnostic = request.diagnostics[i];
+        std::string resolved = ResolveSourceFilePath(diagnostic.file, roots);
+        if (resolved.empty()) resolved = ResolveSourceFileByName(diagnostic.file, roots);
+        const std::size_t separator = diagnostic.file.find_last_of("/\\");
+        const std::string fileLabel = diagnostic.file.empty()
+                                    ? "(source unavailable)"
+                                    : diagnostic.file.substr(separator == std::string::npos ? 0 : separator + 1);
+        char location[512];
+        if (diagnostic.line > 0 && diagnostic.column > 0)
+            std::snprintf(location, sizeof(location), "%s:%d:%d", fileLabel.c_str(),
+                          diagnostic.line, diagnostic.column);
+        else if (diagnostic.line > 0)
+            std::snprintf(location, sizeof(location), "%s:%d", fileLabel.c_str(), diagnostic.line);
+        else
+            std::snprintf(location, sizeof(location), "%s", fileLabel.c_str());
+        ImGui::PushID(&diagnostic);
+        char rowLabel[640];
+        std::snprintf(rowLabel, sizeof(rowLabel), "%zu  %s  %s: %s", i + 1,
+            diagnostic.warning ? "WARN" : "ERROR", diagnostic.code.c_str(), diagnostic.message.c_str());
+        if (ImGui::Selectable(rowLabel, m_managedDiagnosticSelection == i,
+                0, ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing())))
+            m_managedDiagnosticSelection = i;
+        ImGui::SameLine();
+        ImGui::BeginDisabled(resolved.empty() || diagnostic.line <= 0);
+        if (ImGui::SmallButton(location)) OpenSourceInExternalEditor(resolved, diagnostic.line);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s\n%s", diagnostic.file.c_str(), diagnostic.message.c_str());
+        ImGui::PopID();
+    }
+    clipper.End();
+    ImGui::EndChild();
+    if (!request.diagnostics.empty()) {
+        const ManagedBuildDiagnostic& diagnostic = request.diagnostics[m_managedDiagnosticSelection];
+        ImGui::TextColored(EditorTheme::Color(diagnostic.warning ? ThemeColor::Warning : ThemeColor::Danger),
+            "%s %s", diagnostic.warning ? "警告" : "エラー", diagnostic.code.c_str());
+        ImGui::TextWrapped("%s", diagnostic.file.c_str());
+        ImGui::Text("%d:%d", diagnostic.line, diagnostic.column);
+        ImGui::TextWrapped("%s", diagnostic.message.c_str());
+        if (ImGui::SmallButton("選択した診断をコピー")) {
+            const std::string copied = diagnostic.file + ":" + std::to_string(diagnostic.line) + ":" +
+                std::to_string(diagnostic.column) + " " + diagnostic.code + " " + diagnostic.message;
+            ImGui::SetClipboardText(copied.c_str());
+        }
+    }
+    ImGui::TreePop();
 }
 
 void ConsolePanel::DrawDetailPane(EditorContext& ctx)
@@ -365,6 +516,9 @@ void ConsolePanel::DrawDetailPane(EditorContext& ctx)
     int         line = 0;
     std::size_t bodyOffset = 0;
     const bool hasLocation = ParseLogLocationPrefix(entry.message, file, line, bodyOffset);
+    std::string managedFile;
+    int managedLine = 0;
+    const bool hasManagedLocation = ParseManagedSourceLocation(entry.message, managedFile, managedLine);
 
     /// @name 見出し: レベル / 件数 / 発生位置 / 操作
     /// @note 読む前に要る情報 (レベル・件数・発生位置) は本文の外へ出す。
@@ -378,7 +532,21 @@ void ConsolePanel::DrawDetailPane(EditorContext& ctx)
         ImGui::SameLine();
     }
 
-    if (hasLocation) {
+    if (hasManagedLocation) {
+        const std::vector<std::string> roots = {
+            ctx.scriptsSourceDir,
+            ctx.projectRoot,
+            ctx.engineRoot
+        };
+        const bool sourceExists = !ResolveSourceFilePath(managedFile, roots).empty();
+        const std::size_t separator = managedFile.find_last_of("/\\");
+        const std::string fileLabel = managedFile.substr(separator == std::string::npos ? 0 : separator + 1);
+        char label[320];
+        std::snprintf(label, sizeof(label), "%s:%d###detail_open", fileLabel.c_str(), managedLine);
+        ImGui::BeginDisabled(!sourceExists);
+        if (ImGui::SmallButton(label)) JumpToSource(ctx, entry.message);
+        ImGui::EndDisabled();
+    } else if (hasLocation) {
         char label[320];
         std::snprintf(label, sizeof(label), "%s:%d###detail_open", file.c_str(), line);
         if (ImGui::SmallButton(label)) JumpToSource(ctx, entry.message);
@@ -516,7 +684,15 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
     int         line = 0;
     std::size_t bodyOffset = 0;
     const bool hasLocation = ParseLogLocationPrefix(entry.message, file, line, bodyOffset);
-    if (hasLocation) {
+    std::string managedFile;
+    int managedLine = 0;
+    const bool hasManagedLocation = ParseManagedSourceLocation(entry.message, managedFile, managedLine);
+    if (hasManagedLocation || hasLocation) {
+        if (hasManagedLocation) {
+            const std::size_t separator = managedFile.find_last_of("/\\");
+            file = managedFile.substr(separator == std::string::npos ? 0 : separator + 1);
+            line = managedLine;
+        }
         char location[288];
         std::snprintf(location, sizeof(location), "%s:%d", file.c_str(), line);
         dl->AddText({ x, textY }, EditorTheme::ColorU32(ThemeColor::TextFaint), location);
@@ -674,6 +850,7 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     m_wasInEditor = inEditor;
 
     const bool copySelectedRequested = DrawToolbar();
+    DrawManagedBuildStatus(ctx);
     ImGui::Separator();
 
     /// @note フィルタ条件かログ内容が変わったときだけ、表示行を作り直す。
@@ -761,4 +938,4 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

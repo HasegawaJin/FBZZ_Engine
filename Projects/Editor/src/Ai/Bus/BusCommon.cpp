@@ -9,6 +9,7 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/BuildConsole.hpp>
 #include <Editor/Util/SpriteSlicer.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Math/Quaternion.hpp>
@@ -213,9 +214,22 @@ bool ResolveProjectFile(const editor::EditorContext& ctx, const std::string& req
     if (ctx.projectRoot.empty() || requested.empty()) return false;
     std::error_code ec;
     const fs::path root = fs::weakly_canonical(fs::path(ctx.projectRoot), ec);
-    outPath = fs::weakly_canonical(root / fs::path(requested), ec);
-    const fs::path relative = fs::relative(outPath, root, ec);
-    if (ec || relative.empty() || relative.begin()->generic_string() == "..") return false;
+    if (ec || root.empty()) {
+        FBZZ_LOG_WARN("Project path resolution failed: root=%s error=%s", ctx.projectRoot.c_str(), ec.message().c_str());
+        return false;
+    }
+    const fs::path candidate = fs::weakly_canonical(root / fs::path(requested), ec);
+    if (ec || candidate.empty()) {
+        FBZZ_LOG_WARN("Project path resolution failed: requested=%s error=%s", requested.c_str(), ec.message().c_str());
+        return false;
+    }
+    /// @note 既存リンクは解決済み。未作成の出力先を再び filesystem へ問い合わせない。
+    const fs::path relative = candidate.lexically_relative(root);
+    if (relative.empty() || relative.is_absolute() || relative.begin()->generic_string() == "..") {
+        FBZZ_LOG_WARN("Project path is outside root: root=%s candidate=%s relative=%s", root.generic_string().c_str(), candidate.generic_string().c_str(), relative.generic_string().c_str());
+        return false;
+    }
+    outPath = candidate;
     outRelative = relative.generic_string();
     return true;
 }
@@ -284,4 +298,4 @@ int VirtualKeyFromName(std::string name)
     return iterator != keys.end() ? iterator->second : -1;
 }
 
-} /// namespace fbzz::editor::ai::bus
+} /// @note namespace fbzz::editor::ai::bus

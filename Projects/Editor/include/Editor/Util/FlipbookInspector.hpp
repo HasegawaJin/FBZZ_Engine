@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace fbzz::asset { struct MaterialAsset; }
+namespace fbzz::asset { struct MaterialAssetAuthoring; }
 namespace fbzz::renderer { class ResourceManager; class IImGuiRenderer; }
 
 namespace fbzz::editor {
@@ -17,7 +17,7 @@ namespace fbzz::editor {
 ///       ParticlePass と同じ EvaluateFlipbookFrame() を使うため、ここで見えたコマがそのままゲームに出る。
 /// @param resources / imguiRenderer アトラスの表示に使う。null なら数値の編集だけ出す
 /// @return 値を変更したら true (呼び出し側が dirty 登録と保存を行う)
-bool DrawFlipbookInspector(asset::MaterialAsset& material, const std::string& projectRoot,
+bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::string& projectRoot,
                            renderer::ResourceManager* resources,
                            renderer::IImGuiRenderer* imguiRenderer);
 

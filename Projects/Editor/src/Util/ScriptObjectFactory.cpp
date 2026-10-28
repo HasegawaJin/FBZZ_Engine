@@ -20,16 +20,23 @@ namespace fbzz::editor {
 
 std::string ScriptObjectName(const std::string& scriptTypeName)
 {
+    std::string displayName = scene::ScriptFactory::DisplayName(scriptTypeName);
+    if (const std::size_t separator = displayName.find_last_of('.'); separator != std::string::npos)
+        displayName.erase(0, separator + 1);
     constexpr std::string_view kSuffix = "Component";
-    if (scriptTypeName.size() > kSuffix.size() && scriptTypeName.ends_with(kSuffix))
-        return scriptTypeName.substr(0, scriptTypeName.size() - kSuffix.size());
-    return scriptTypeName;
+    if (displayName.size() > kSuffix.size() && displayName.ends_with(kSuffix))
+        return displayName.substr(0, displayName.size() - kSuffix.size());
+    return displayName;
 }
 
 std::vector<std::string> ScriptObjectTypeNames()
 {
     std::vector<std::string> names = scene::ScriptFactory::RegisteredTypeNames();
-    std::sort(names.begin(), names.end());
+    std::sort(names.begin(), names.end(), [](const std::string& left, const std::string& right) {
+        const std::string leftName = scene::ScriptFactory::DisplayName(left);
+        const std::string rightName = scene::ScriptFactory::DisplayName(right);
+        return leftName == rightName ? left < right : leftName < rightName;
+    });
     return names;
 }
 
@@ -37,10 +44,16 @@ scene::GameObject* CreateScriptObject(EditorContext& ctx, const std::string& scr
 {
     if (!ctx.activeScene || scriptTypeName.empty()) return nullptr;
 
-    auto script = scene::ScriptFactory::Create(scriptTypeName);
+    std::string typeKey;
+    const std::vector<std::string> registered = scene::ScriptFactory::RegisteredTypeNames();
+    if (std::find(registered.begin(), registered.end(), scriptTypeName) != registered.end())
+        typeKey = scriptTypeName;
+    else if (!scene::ScriptFactory::ResolveTypeName(scriptTypeName, typeKey)) return nullptr;
+    scene::ScriptEntry entry;
+    auto script = scene::ScriptFactory::Create(typeKey, entry.savedScriptId);
     if (!script) return nullptr;
 
-    auto* created = ctx.activeScene->TryCreateGameObject(ScriptObjectName(scriptTypeName));
+    auto* created = ctx.activeScene->TryCreateGameObject(ScriptObjectName(typeKey));
     if (!created) return nullptr;
     scene::GameObject& go = *created;
 
@@ -54,7 +67,8 @@ scene::GameObject* CreateScriptObject(EditorContext& ctx, const std::string& scr
     script->SetContext(ctx.activeScene, &go);
     script->Reset();
     script->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
-    sc->scripts.emplace_back().script = std::move(script);
+    entry.script = std::move(script);
+    sc->scripts.push_back(std::move(entry));
     return &go;
 }
 

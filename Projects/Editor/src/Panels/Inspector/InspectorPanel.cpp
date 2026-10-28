@@ -6,7 +6,10 @@
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/SceneQueryIndex.hpp>
+#include <Editor/Tools/ControlPointEditing.hpp>
 #include "InspectorAnimation.hpp"
+#include "InspectorAudio.hpp"
 #include "InspectorCommon.hpp"
 #include "InspectorCore.hpp"
 #include "InspectorEffects.hpp"
@@ -20,6 +23,8 @@
 #include "InspectorTerrainWater.hpp"
 #include "InspectorUI.hpp"
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/PlaySettingsAdoption.hpp>
+#include <Editor/Util/PrefabStructureMerge.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/Localization.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
@@ -306,6 +311,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note 複数選択中 (ロックなし) は Multi-select Inspector を表示
+    DrawPlaySettingsAdoptionReview(ctx);
     if (!m_locked &&
         resolvedSelection.type == EditorContext::InspectorSelection::Type::MultiEntity &&
         ctx.activeScene) {
@@ -326,6 +332,12 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         /// @note シーン設定はどの GameObject にも属さない。«何も選んでいない» ときの Inspector が
         /// @note        唯一の置き場になる (Lighting ウィンドウに相当する面がまだ無い)。
         DrawSceneEnvironment(ctx);
+        return;
+    }
+    if (ctx.playMode && !ctx.playMode->IsInEditor()) {
+        ImGui::TextUnformatted(go->name.c_str());
+        ImGui::TextWrapped("Play の C# 設定は一時編集です。Edit の設定と履歴には影響しません。");
+        DrawScriptInspectors(go, ctx);
         return;
     }
 
@@ -407,10 +419,11 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Accent));
         ImGui::TextUnformatted(("Prefab: " + displayName).c_str());
         ImGui::PopStyleColor();
+        if (DrawPrefabStructureMergeReview(ctx, go->GetID())) return;
 
         /// @note シーン内の同一プレファブのインスタンス数。Apply の波及範囲を事前に見せる。
-        const int instanceCount =
-            PrefabSerializer::CountInstances(*ctx.activeScene, go->prefabAssetPath);
+        const int instanceCount = SceneQueries(*ctx.activeScene,
+            static_cast<uint64_t>(ImGui::GetFrameCount())).CountPrefabInstances(go->prefabAssetPath);
 
         ImGui::SameLine();
         if (ImGui::SmallButton("Apply")) {
@@ -746,6 +759,8 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     { FBZZ_PROFILE_SCOPE("Inspector::Transform");
       DrawTransformInspectors(go, ctx); }
 
+    if (DrawControlPointInspector(ctx, *go)) return;
+
     InspectorComponentDrawCollector componentCollector;
     componentCollector.gameObject = go;
     componentCollector.editorState = &ctx.editorSceneState;
@@ -787,6 +802,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     { FBZZ_PROFILE_SCOPE("Inspector::Animation");
       DrawAnimationInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }
     drawAutomatic(scene::ComponentCategory::Animation);
+    DrawAudioInspectors(go, ctx, m_componentClipboard, m_componentClipboardType);
     drawAutomatic(scene::ComponentCategory::Audio);
     { FBZZ_PROFILE_SCOPE("Inspector::Effects");
       DrawEffectsInspectors(go, ctx, m_componentClipboard, m_componentClipboardType); }

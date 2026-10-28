@@ -3,14 +3,22 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 #include "InspectorCore.hpp"
+#include <Editor/Util/TransformAuthoringValues.hpp>
+#include "ManagedSettingsReflector.hpp"
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/ManagedScriptSettings.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/ScriptSnapshot.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/TextureAsset.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
+#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
+#include <Engine/Scene/Managed/ManagedScriptAdapter.hpp>
+#include <Editor/ManagedScriptEditor.hpp>
+#include <Editor/PlayModeController.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <algorithm>
@@ -56,10 +64,10 @@ struct ScriptInspectorFrame {
     /// @note  編集開始時の値 (Undo の before)。index → スナップショット。
     std::vector<std::string> beforeSnapshots;
     ImGuiID activeBefore     = 0;
-    int     editingIndex     = -1;   ///< @note この frame に編集が始まったカード
-    int     removeIndex      = -1;   ///< @note ⋯ → Remove Component
+    int     editingIndex     = -1;   /// @note この frame に編集が始まったカード
+    int     removeIndex      = -1;   /// @note ⋯ → Remove Component
     bool    canTrackUndo     = false;
-    bool    active           = false; ///< @note Begin〜End の内側か
+    bool    active           = false; /// @note Begin〜End の内側か
 };
 ScriptInspectorFrame s_scriptFrame;
 
@@ -68,9 +76,9 @@ ScriptInspectorFrame s_scriptFrame;
 /// @note  「そのスクリプトだけ」を読み書きできる。全シーン再構築にせずに済み、選択も維持される。
 struct ScriptUndoTracker {
     ImGuiID     activeId = 0;
-    std::string before;        ///< @note 編集開始時のスナップショット
-    std::string instanceId;    ///< @note 対象 GameObject
-    std::string typeName;      ///< @note 対象スクリプトの型 (index だけだと取り違える)
+    std::string before;        /// @note 編集開始時のスナップショット
+    std::string instanceId;    /// @note 対象 GameObject
+    std::string typeName;      /// @note 対象スクリプトの型 (index だけだと取り違える)
     int         scriptIndex = -1;
     bool        active = false;
 };
@@ -143,7 +151,7 @@ bool DrawScriptRequirementBanner(scene::GameObject& go,
 {
     std::vector<scene::ScriptRequirementIssue> issues;
     /// @note 任意コンポーネント (FBZZ_OPTIONAL_COMPONENT) も拾って情報として並べる。
-    scene::CollectScriptRequirementIssues(go, script, issues, /*includeOptional=*/true);
+    scene::CollectScriptRequirementIssues(go, script, issues, true);
     if (issues.empty()) return false;
 
     /// @note 「足せば直る」必須のものだけを Fix の対象にする。
@@ -231,19 +239,7 @@ bool ResolveUIImageNativeSize(const scene::UIImage& image, EditorContext& ctx,
     return true;
 }
 
-bool TransformEquals(const scene::Transform& lhs, const scene::Transform& rhs)
-{
-    return lhs.position.x == rhs.position.x &&
-           lhs.position.y == rhs.position.y &&
-           lhs.position.z == rhs.position.z &&
-           lhs.rotation.x == rhs.rotation.x &&
-           lhs.rotation.y == rhs.rotation.y &&
-           lhs.rotation.z == rhs.rotation.z &&
-           lhs.rotation.w == rhs.rotation.w &&
-           lhs.scale.x == rhs.scale.x &&
-           lhs.scale.y == rhs.scale.y &&
-           lhs.scale.z == rhs.scale.z;
-}
+
 
 /// @note  ImGui の連続ドラッグを1つの Transform コマンドへまとめる。
 /// @note 値が変化する各フレームを履歴へ積むと、1回のドラッグを戻すために Ctrl+Z が何十回も
@@ -272,7 +268,7 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
     const std::string instanceId = go.instanceId;
     const auto markDirty = ctx.markSceneDirty;
 
-    if (ctx.undoStack && scene && !TransformEquals(before, after)) {
+    if (ctx.undoStack && scene && !TransformAuthoringValuesEqual(before, after)) {
         auto apply = [scene, instanceId, markDirty](const scene::Transform& value) {
             if (auto* target = scene->FindByGuid(instanceId)) {
                 target->transform = value;
@@ -286,7 +282,7 @@ void TrackTransformEdit(scene::GameObject& go, EditorContext& ctx, const char* d
     }
 
     edit.active = false;
-    if (!TransformEquals(before, after) && ctx.markSceneDirty) ctx.markSceneDirty();
+    if (!TransformAuthoringValuesEqual(before, after) && ctx.markSceneDirty) ctx.markSceneDirty();
 }
 
 /// @note  Transform の値クリップボードは EditorContext::transformClipboard にある
@@ -305,7 +301,7 @@ void PushTransformSnapshotUndo(scene::GameObject& go,
     if (!ctx.activeScene || !ctx.undoStack || !ctx.undoStack->IsRecordingEnabled()) return;
 
     const scene::Transform after = go.transform;
-    if (TransformEquals(before, after)) return;
+    if (TransformAuthoringValuesEqual(before, after)) return;
 
     scene::Scene*     scene      = ctx.activeScene;
     const std::string instanceId = go.instanceId;
@@ -612,7 +608,7 @@ void BeginScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
     s_scriptFrame.canTrackUndo =
         ctx.activeScene != nullptr &&
         ctx.undoStack != nullptr &&
-        ctx.undoStack->IsRecordingEnabled();
+        ctx.undoStack->IsRecordingEnabled() && (!ctx.playMode || ctx.playMode->IsInEditor());
     s_scriptFrame.activeBefore = ImGui::GetActiveID();
 
     /// @note 眺めているだけのフレームでスナップショットを取らない。操作の開始候補
@@ -629,7 +625,8 @@ void BeginScriptInspectorFrame(scene::GameObject* go, EditorContext& ctx)
         s_scriptFrame.beforeSnapshots.reserve(sc->scripts.size());
         for (const auto& e : sc->scripts)
             s_scriptFrame.beforeSnapshots.push_back(
-                e.script ? CaptureScriptSnapshot(*e.script) : std::string{});
+                e.script && !scene::ManagedScriptRuntime::Instance().FindAdapter(e.script.get())
+                    ? CaptureScriptSnapshot(*e.script) : std::string{});
     }
 }
 
@@ -676,10 +673,27 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
             const bool navigateRequirement = requirementTarget && requirementFocus.scrollPending;
             const float requirementCardY = ImGui::GetCursorPosY();
             if (navigateRequirement) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-            const char* header = entry.script->GetTypeName();
+            const std::string displayName = scene::ScriptFactory::DisplayName(entry.script->GetTypeName());
+            const bool temporary = ctx.playMode && !ctx.playMode->IsInEditor();
+            scene::ManagedScriptAdapter* managed = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
+            bool enabled = entry.script->enabled;
+            const std::vector<ManagedSettingsTarget> enabledTargets = managed
+                ? std::vector<ManagedSettingsTarget>{CaptureManagedSettingsTarget(ctx, *go, entry)} : std::vector<ManagedSettingsTarget>{};
+            widgets::ComponentToggleOptions toggle;
+            ManagedScriptEnabledState enabledState;
+            if (managed) {
+                enabledState = ReadManagedInspectorEnabled(ctx, enabledTargets);
+                enabled = enabledState.enabled;
+                toggle = {enabledState.editable, enabledState.mixed, enabledState.diagnostic.c_str()};
+            }
             const widgets::ComponentHeaderResult hdr =
-                widgets::ComponentHeader(header, kScriptAccent, &entry.script->enabled,
-                                         true, reorder);
+                widgets::ComponentHeader(displayName.c_str(), kScriptAccent,
+                                         managed ? &enabled : temporary ? nullptr : &entry.script->enabled,
+                                         !temporary, temporary ? widgets::ComponentReorderTarget{} : reorder, toggle);
+            if (managed && hdr.enabledChanged) {
+                const auto result = ApplyManagedInspectorEnabled(ctx, enabledTargets, enabled);
+                if (!result.ok) DrawManagedDiagnostic("切り替えできません", result.message);
+            }
             if (hdr.menuClicked)
                 ImGui::OpenPopup("##script_opts");
 
@@ -721,7 +735,28 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                         InvokeOperator(ctx, "script.requirements.validate", args);
                     }
                 }
-                ImGuiReflector reflector;
+                if (managed && ctx.managedScripts && ctx.managedScripts->RequiresExplicitEditApply()) {
+                    ImGui::TextDisabled("最新の C# コードが未適用です");
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("編集時の値を保持しています。最新コードを検証してから適用します。");
+                    if (ImGui::SmallButton("最新コードを適用")) InvokeOperator(ctx, "script.managed_build");
+                }
+                if (managed && (managed->IsRuntimeFaulted() || managed->RequirementsBlocked())) {
+                    DrawManagedDiagnostic("C# Script は停止中です", managed->FaultDiagnostic().empty()
+                        ? std::string_view("必須設定が不足しています。修復後に再検証して再開してください。")
+                        : std::string_view(managed->FaultDiagnostic()), managed->ResumeDiagnostic());
+                    OpArgs resume;
+                    resume.Set("node", go->instanceId);
+                    resume.Set("scriptId", CaptureManagedSettingsTarget(ctx, *go, entry).scriptId);
+                    resume.Set("enabled", true);
+                    ImGui::BeginDisabled(!CanInvokeOperator(ctx, "script.resume", resume));
+                    if (ImGui::Button("修復後に再検証して再開")) InvokeOperator(ctx, "script.resume", resume);
+                    ImGui::EndDisabled();
+                    ImGui::Spacing();
+                }
+                ImGuiReflector nativeReflector;
+                std::unique_ptr<ManagedSettingsReflector> managedReflector;
+                if (managed) managedReflector = std::make_unique<ManagedSettingsReflector>(ctx, *go, entry);
+                ImGuiReflector& reflector = managed ? static_cast<ImGuiReflector&>(*managedReflector) : nativeReflector;
                 if (requirementTarget) {
                     reflector.m_focusField = requirementFocus.field;
                     reflector.m_focusScrollRequested = navigateRequirement;
@@ -732,6 +767,10 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                     reflector.m_goNameResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
                         auto* target = scene->GetGameObject(id);
                         return target ? target->name : "(Missing)";
+                    };
+                    reflector.m_goGuidResolver = [scene = ctx.activeScene](scene::EntityID id) -> std::string {
+                        const auto* target = scene->GetGameObject(id);
+                        return target ? target->instanceId : std::string{};
                     };
                     /// @note ◎ピッカー用の候補一覧。シーンの全 GameObject を (ID, 名前) で列挙する。
                     reflector.m_goListProvider =
@@ -778,16 +817,20 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                 /// @note        ActiveID が確定したかどうかで判別する。index だけを後から推測すると
                 /// @note        複数スクリプトを付けた GameObject で取り違える。
                 const ImGuiID activeBeforeScript = ImGui::GetActiveID();
-                entry.script->Reflect(reflector);
+                if (managed) {
+                    managedReflector->Draw();
+                    managedReflector->Finish();
+                    managedReflector->DrawActions();
+                } else entry.script->Reflect(reflector);
                 if (navigateRequirement) {
                     if (!reflector.m_focusFound)
                         ImGui::SetScrollFromPosY(requirementCardY, 0.2f);
                     requirementFocus.scrollPending = false;
                 }
-                if (reflector.m_changed)
+                if (!managed && reflector.m_changed)
                     entry.script->ExecuteProfiledCallback(&scene::Script::OnValidate, scene::ScriptCallbackKind::VALIDATE, "OnValidate");
                 const ImGuiID activeAfterScript = ImGui::GetActiveID();
-                if (activeAfterScript != 0 && activeAfterScript != activeBeforeScript)
+                if (!managed && activeAfterScript != 0 && activeAfterScript != activeBeforeScript)
                     s_scriptFrame.editingIndex = i;
 
                 ImGui::Spacing();
@@ -795,11 +838,10 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
             }
             ImGui::Spacing();
         } else if (entry.serialized && !entry.serialized->type.empty()) {
-            /// @note DLL ビルド中は "Building..." と表示し、完了後に自動復元されることを示す。
-            /// @note        それ以外 (DLL 未ロード・ビルド失敗) は "Missing Script" のままにして問題を明示する。
-            const bool isBuilding = ctx.scriptReloadBusy;
+            /// @note C# のビルド適用中はシリアライズ済みフィールドを保持していることを示す。
+            const bool isBuilding = ctx.managedBuildBusy;
             const std::string header = (isBuilding ? "Building... " : "Missing Script: ")
-                                       + entry.serialized->type;
+                                       + scene::ScriptFactory::DisplayName(entry.serialized->type);
             /// @note 帯を警告色にして、正常なスクリプトカードと一目で区別できるようにする。
             const ImU32 accent = EditorTheme::ColorU32(
                 isBuilding ? ThemeColor::Warning : ThemeColor::Danger);
@@ -824,9 +866,9 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                 const widgets::ComponentBodyScope body = widgets::BeginComponentBody(hdr, accent);
                 ImGui::Spacing();
                 if (isBuilding)
-                    ImGui::TextDisabled("Script DLL is building. Fields will be restored on completion.");
+                ImGui::TextDisabled("C# scripts are being applied. Serialized fields are preserved.");
                 else
-                    ImGui::TextDisabled("Script DLL is not loaded. Serialized fields are preserved.");
+                ImGui::TextDisabled("Script type is unavailable. Serialized fields are preserved.");
                 ImGui::Spacing();
                 widgets::EndComponentBody(body);
             }
@@ -940,6 +982,11 @@ void DrawScriptInspectors(scene::GameObject* go, EditorContext& ctx)
     auto* sc = go ? go->GetComponent<scene::ScriptComponent>() : nullptr;
     if (!sc) return;
 
+    if (ctx.playMode && !ctx.playMode->IsInEditor()) {
+        for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i)
+            if (scene::ManagedScriptRuntime::Instance().FindAdapter(sc->scripts[static_cast<size_t>(i)].script.get())) DrawScriptCard(go, ctx, i);
+        return;
+    }
     BeginScriptInspectorFrame(go, ctx);
     for (int i = 0; i < static_cast<int>(sc->scripts.size()); ++i)
         DrawScriptCard(go, ctx, i);

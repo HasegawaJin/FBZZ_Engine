@@ -4,6 +4,8 @@
 /// @date    2026-06-02
 #include <Editor/Profiler/ProfilerWidgets.hpp>
 #include <Profiler/AnalysisProfilerCpu.hpp>
+#include <Profiler/AnalysisProfilerGpu.hpp>
+#include <Profiler/ProfilerDisplayRows.hpp>
 #include <Editor/Profiler/ProfilerHistory.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/EditorContext.hpp>
@@ -15,6 +17,7 @@
 #include <Editor/Util/Toast.hpp>
 
 #include <Engine/Core/Memory/MemorySystem.hpp>
+#include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <Engine/Profiler/Profiler.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
@@ -175,19 +178,38 @@ AnalysisProfTree BuildRecordedProfTree(const profiler::PerformanceSnapshot& snap
     std::unordered_map<NodeKey, RowSlot, NodeHash> nodes;
     std::unordered_map<ProfilePathId, NodeKey, PathHash> paths;
     std::unordered_map<ProfilePathId, RowSlot, PathHash> flat;
-    sampleNodes.reserve(snapshot.samples.size());
+    const size_t missingParent = snapshot.samples.size();
+    const uint64_t firstSampleId = snapshot.samples.empty() ? 0 : snapshot.samples.front().sampleId;
+    bool contiguousSampleIds = firstSampleId != 0;
+    for (size_t index = 0; contiguousSampleIds && index < snapshot.samples.size(); ++index) {
+        const uint64_t id = snapshot.samples[index].sampleId;
+        contiguousSampleIds = id >= firstSampleId && id - firstSampleId == index;
+    }
+    /// @note Validate IDs before indexing; malformed or sparse captures retain the legacy overwrite and missing-parent rules.
+    /// @note The existing per-sample budget also bounds this smaller array; skipped samples never publish a parent mapping.
+    std::vector<size_t> contiguousSampleNodes;
+    if (contiguousSampleIds) contiguousSampleNodes.assign(snapshot.samples.size(), missingParent);
+    else sampleNodes.reserve(snapshot.samples.size());
     for (const auto& sample : snapshot.samples) {
         const auto found = descriptors.find(sample.sampleKey);
         if (found == descriptors.end()) {
             MarkTreeIncomplete(tree, "Derived scope tree partial: a scope descriptor is missing."); continue;
         }
         const auto& descriptor = *found->second.descriptor;
-        const auto parent = sampleNodes.find(sample.parentSampleId);
-        const bool hasParent = sample.parentSampleId != 0 && parent != sampleNodes.end();
+        size_t parentIndex = missingParent;
+        if (sample.parentSampleId != 0) {
+            if (contiguousSampleIds) {
+                if (sample.parentSampleId >= firstSampleId
+                    && sample.parentSampleId - firstSampleId < contiguousSampleNodes.size())
+                    parentIndex = contiguousSampleNodes[static_cast<size_t>(sample.parentSampleId - firstSampleId)];
+            } else if (const auto parent = sampleNodes.find(sample.parentSampleId); parent != sampleNodes.end()) {
+                parentIndex = parent->second;
+            }
+        }
+        const bool hasParent = parentIndex != missingParent;
         if (sample.parentSampleId != 0 && !hasParent) {
             MarkTreeIncomplete(tree, "Derived scope tree partial: a scope parent is missing."); continue;
         }
-        const size_t parentIndex = hasParent ? parent->second : snapshot.samples.size();
         const NodeKey nodeKey{parentIndex, found->second.path};
         auto node = nodes.find(nodeKey);
         auto row = flat.find(found->second.path);
@@ -229,7 +251,9 @@ AnalysisProfTree BuildRecordedProfTree(const profiler::PerformanceSnapshot& snap
             row = flat.emplace(nodeKey.descriptor, RowSlot{index, &descriptor}).first;
         }
         bytes += incoming;
-        sampleNodes[sample.sampleId] = node->second.index;
+        if (contiguousSampleIds)
+            contiguousSampleNodes[static_cast<size_t>(sample.sampleId - firstSampleId)] = node->second.index;
+        else sampleNodes[sample.sampleId] = node->second.index;
         const bool totalAvailable = sample.status == profiler::ProfileSampleStatus::COMPLETE &&
             std::isfinite(sample.inclusiveMs) && sample.inclusiveMs >= 0.0;
         const bool selfAvailable = totalAvailable && sample.selfAvailable &&
@@ -376,12 +400,7 @@ struct MemoryHistoryState {
 };
 MemoryHistoryState s_memHistory;
 
-struct RenderingSample {
-    uint64_t observedSerial = 0;
-    uint64_t applicationSerial = 0;
-    uint64_t physicalSerial = 0;
-    float ms = 0.0f;
-};
+using RenderingSample = detail::GpuHistoryDisplaySample;
 
 struct RenderingHistoryState {
     static constexpr std::size_t kMaxFrames = 128;
@@ -397,6 +416,129 @@ struct RenderingHistoryState {
     bool autoFit = true;
 };
 RenderingHistoryState s_renderHistory;
+
+struct CpuDisplayRow {
+    std::string key, name, category, parentKey;
+    uint32_t color = 0;
+    double totalMs = 0.0, selfMs = 0.0;
+    int calls = 0, depth = 0;
+    bool totalAvailable = false, selfAvailable = false, flat = false;
+    [[nodiscard]] size_t DynamicBytes() const { return key.capacity() + name.capacity() + category.capacity() + parentKey.capacity() + 4; }
+};
+detail::ProfilerDisplayRows<CpuDisplayRow> s_cpuRows;
+detail::ProfilerDisplayRows<CpuDisplayRow> s_cpuPassRows{128, 256 * 1024};
+detail::ProfilerDisplayRows<detail::GpuDisplayRow> s_gpuRows{512, 1024 * 1024};
+AnalysisProfTree s_profTree;
+AnalysisProfTree s_visibleProfTree;
+detail::ProfilerDisplayOrder s_cpuTreeOrder, s_cpuFlatOrder, s_gpuOrder;
+std::unordered_map<std::string, size_t> s_cpuTreeRanks;
+std::unordered_map<std::string, bool> s_cpuExpanded;
+ImGuiStorage s_cpuTreeStorage;
+std::weak_ptr<const PerformanceCapture> s_displaySource;
+std::string s_displayGpuContext;
+bool s_displayFrozen = false;
+uint64_t s_displayGpuPhysical = 0, s_displayGpuEpoch = 0;
+bool s_displayHasGpuSource = false;
+
+std::string DisplayContext(const renderer::GpuProfilerViewMetadata& view, bool gpu)
+{
+    std::string result = std::to_string(view.sceneGeneration);
+    if (gpu) result += "/" + std::to_string(view.viewId) + "/" + std::to_string(view.outputId)
+        + "/" + std::to_string(view.outputGeneration);
+    return result;
+}
+
+void ClearDisplayRows()
+{
+    s_cpuRows.Clear(); s_cpuPassRows.Clear(); s_gpuRows.Clear(); s_visibleProfTree = {};
+    s_cpuTreeOrder.Clear(); s_cpuFlatOrder.Clear(); s_gpuOrder.Clear();
+    s_displayHasGpuSource = false;
+    s_displaySource.reset(); s_displayGpuContext.clear(); s_cpuTreeRanks.clear();
+    s_cpuExpanded.clear();
+    s_cpuTreeStorage.Clear();
+    s_profilerFilter.selectedKey.clear(); s_profilerFilter.selectedLabel.clear();
+    s_renderHistory.selectedPass.clear(); s_renderHistory.selectedPassLabel.clear();
+}
+
+void SyncDisplayRows()
+{
+    const auto& history = GetPerformanceHistory();
+    if (!history.selected) { if (!s_cpuRows.Rows().empty() || !s_gpuRows.Rows().empty()) ClearDisplayRows(); return; }
+    const bool modeChanged = s_displayFrozen != history.frozen;
+    if (s_displaySource.lock() == history.selected && !modeChanged) return;
+    s_displaySource = history.selected; s_displayFrozen = history.frozen;
+    const auto& frame = *history.selected;
+    std::vector<std::string> parents(s_profTree.nodes.size());
+    for (const auto& node : s_profTree.nodes)
+        for (const int child : node.children) parents[static_cast<size_t>(child)] = node.key;
+    std::vector<CpuDisplayRow> rows;
+    rows.reserve(s_profTree.nodes.size() + s_profTree.flat.size());
+    for (size_t i = 0; i < s_profTree.nodes.size(); ++i) {
+        const auto& node = s_profTree.nodes[i];
+        rows.push_back({node.key, node.name, node.category.name, parents[i], node.category.color,
+            node.totalMs, node.selfMs, node.calls, node.depth, node.totalAvailable, node.selfAvailable, false});
+    }
+    for (const auto& row : s_profTree.flat)
+        rows.push_back({row.key, row.name, row.category.name, {}, row.category.color, row.totalMs, row.selfMs,
+            row.calls, 0, row.totalAvailable, row.selfAvailable, true});
+    const uint64_t generation = s_cpuRows.Generation();
+    const auto& filter = frame.captureFilter;
+    const std::string cpuContext = DisplayContext(frame.rendering.gpuCurrentView, false)
+        + "/" + std::to_string(filter.category.size()) + ":" + filter.category
+        + "/" + std::to_string(filter.scope.size()) + ":" + filter.scope;
+    s_cpuRows.Update(frame.captureSessionId, frame.applicationFrameSerial, cpuContext, history.frozen, rows);
+    if (generation != s_cpuRows.Generation()) {
+        s_profilerFilter.selectedKey.clear(); s_cpuTreeOrder.Clear(); s_cpuFlatOrder.Clear(); s_cpuExpanded.clear();
+    }
+    s_visibleProfTree = {};
+    s_visibleProfTree.frameMs = s_profTree.frameMs;
+    std::unordered_map<std::string_view, int> indices;
+    for (const auto& entry : s_cpuRows.Rows()) {
+        const auto& row = entry.value;
+        if (row.flat) {
+            AnalysisProfFlatRow item;
+            item.name = row.name.c_str(); item.category = {row.category.c_str(), row.color}; item.key = row.key;
+            item.totalMs = row.totalMs; item.selfMs = row.selfMs; item.calls = row.calls;
+            item.totalAvailable = entry.present && row.totalAvailable; item.selfAvailable = entry.present && row.selfAvailable;
+            s_visibleProfTree.flat.push_back(std::move(item));
+        } else {
+            AnalysisProfNode item;
+            item.name = row.name.c_str(); item.category = {row.category.c_str(), row.color}; item.key = row.key;
+            item.totalMs = row.totalMs; item.selfMs = row.selfMs; item.calls = row.calls; item.depth = row.depth;
+            item.totalAvailable = entry.present && row.totalAvailable; item.selfAvailable = entry.present && row.selfAvailable;
+            indices.emplace(row.key, static_cast<int>(s_visibleProfTree.nodes.size()));
+            s_visibleProfTree.nodes.push_back(std::move(item));
+        }
+    }
+    for (const auto& entry : s_cpuRows.Rows()) {
+        if (entry.value.flat) continue;
+        const int index = indices.at(entry.value.key);
+        const auto parent = indices.find(entry.value.parentKey);
+        if (parent == indices.end()) s_visibleProfTree.roots.push_back(index);
+        else s_visibleProfTree.nodes[static_cast<size_t>(parent->second)].children.push_back(index);
+    }
+    for (auto item = s_cpuExpanded.begin(); item != s_cpuExpanded.end();) {
+        if (!indices.contains(item->first)) item = s_cpuExpanded.erase(item);
+        else ++item;
+    }
+    const auto& gpu = frame.rendering.gpuProfiler;
+    const bool sourceChanged = !s_displayHasGpuSource || s_displayGpuEpoch != gpu.deviceEpoch || s_displayGpuPhysical != gpu.physicalFrameSerial;
+    const bool newSource = gpu.supported && gpu.available && sourceChanged;
+    const uint64_t gpuGeneration = s_gpuRows.Generation();
+    const std::string gpuContext = DisplayContext(frame.rendering.gpuCurrentView, true) + "/device/"
+        + std::to_string(gpu.available ? gpu.deviceEpoch : s_displayGpuEpoch);
+    const bool contextChanged = s_displayGpuContext != gpuContext || s_gpuRows.Serial() > frame.applicationFrameSerial || modeChanged;
+    s_gpuRows.Update(frame.captureSessionId, frame.applicationFrameSerial, gpuContext, history.frozen,
+        newSource || contextChanged || history.frozen ? detail::BuildGpuDisplayRows(gpu) : std::vector<detail::GpuDisplayRow>{});
+    if (gpuGeneration != s_gpuRows.Generation()) { s_renderHistory.selectedPass.clear(); s_gpuOrder.Clear(); }
+    s_displayGpuContext = gpuContext;
+    if (newSource) { s_displayHasGpuSource = true; s_displayGpuPhysical = gpu.physicalFrameSerial; s_displayGpuEpoch = gpu.deviceEpoch; }
+    std::vector<CpuDisplayRow> cpuPasses;
+    for (const auto& [name, ms] : frame.rendering.passTimings)
+        cpuPasses.push_back({name, name, {}, {}, 0, ms, 0.0, 0, 0, std::isfinite(ms) && ms >= 0.0, false, true});
+    s_cpuPassRows.Update(frame.captureSessionId, frame.applicationFrameSerial,
+        DisplayContext(frame.rendering.gpuCurrentView, true), history.frozen, cpuPasses);
+}
 
 /// @brief 採取済みの履歴を、軸の拡大・移動とサンプル値の確認に対応したグラフで表示する。
 /// @note X は保持済みの採取順であり、実フレーム番号や経過秒を表さない。
@@ -445,14 +587,17 @@ void DrawAnalysisHistoryPlot(const char* plotId, const char* seriesLabel, const 
             ImPlot::PlotInfLines("##hoverSample", &sampleX, 1, hoverSpec);
             ImPlot::PlotScatter("##hoverValue", &sampleX, &sampleY, 1, hoverSpec);
             ImGui::BeginTooltip();
-            ImGui::Text("%s\nSample %zu / %zu (oldest = 0)\n%.3f %s", seriesLabel,
-                        index, values.size() - 1u, sampleY, unit);
-            if (gpuSamples != nullptr && index < gpuSamples->size()) {
+            ImGui::Text("%s\nSample %zu / %zu (oldest = 0)", seriesLabel, index, values.size() - 1u);
+            if (std::isfinite(sampleY)) ImGui::Text("%.3f %s", sampleY, unit);
+            else ImGui::TextDisabled("Unavailable / no new measurement");
+            if (gpuSamples != nullptr && index < gpuSamples->size() && std::isfinite(sampleY)) {
                 const auto& source = (*gpuSamples)[index];
                 ImGui::Text("GPU application %llu / physical %llu\nObserved at CPU application %llu",
                             static_cast<unsigned long long>(source.applicationSerial),
                             static_cast<unsigned long long>(source.physicalSerial),
                             static_cast<unsigned long long>(source.observedSerial));
+                ImGui::Text("Sum of %zu / %zu intervals%s", source.measuredIntervals, source.intervalCount,
+                    source.partial ? " (partial capture)" : "");
             }
             ImGui::EndTooltip();
         }
@@ -579,14 +724,13 @@ ProfilerCategory ClassifyProfileRecord(const profiler::ProfileRecord& record)
     return { "Others", IM_COL32(140, 140, 140, 225) };
 }
 
-AnalysisProfTree    s_profTree;
 AnalysisProfHistory s_profHistory;
 std::weak_ptr<const PerformanceCapture> s_treeSource;
 
-enum class AnalysisProfCol : int { Name, Category, Total, Self, Share, Calls, Avg, Peak, Count };
+enum class AnalysisProfCol : int { Name = 0, Category = 1, Total = 2, Self = 3, Share = 4, Calls = 5, Avg = 6, Peak = 7, State = 8, Count = 9 };
 
 struct AnalysisProfSort {
-    AnalysisProfCol column     = AnalysisProfCol::Count;  ///< @note Count = 並べ替えなし (呼び出し順)
+    AnalysisProfCol column     = AnalysisProfCol::Count;  ///< @note Count = 並べ替えなし (初回観測順)
     bool            descending = true;
 };
 
@@ -607,9 +751,9 @@ void SyncPerformanceView()
             s_profHistory.frames.clear(); s_profHistory.frameMs.clear(); s_profHistory.elapsedMs.clear();
             s_profHistory.unavailableKeys.clear(); s_profHistory.completeFrames.clear(); s_profHistory.stats.clear();
             s_profHistory.completeFrameCount = 0; s_profHistory.retainedBytes = 0; s_profHistory.budgetLimited = false;
-            s_profHistory.autoFit = true; s_profHistory.elapsedAutoFit = true;
         });
     if (changed) detail::UpdateAnalysisProfStats(s_profHistory);
+    SyncDisplayRows();
 }
 
 void SyncMemoryView()
@@ -625,20 +769,6 @@ void SyncMemoryView()
 }
 
 /// @note GPU 履歴は同名パスでもビューと全世代で分け、同じ遅延結果を複数の CPU フレームで数えない。
-std::string GpuPassSeriesKey(const renderer::GpuPassProfile& pass)
-{
-    const auto& view = pass.metadata;
-    char context[192];
-    std::snprintf(context, sizeof(context), "/%llu/%llu/%llu/%llu/%llu/%u/%u/%ux%u",
-        static_cast<unsigned long long>(pass.deviceEpoch), static_cast<unsigned long long>(view.viewId),
-        static_cast<unsigned long long>(view.sceneGeneration), static_cast<unsigned long long>(view.planGeneration),
-        static_cast<unsigned long long>(view.resourceEpoch), view.outputId, view.outputGeneration, view.width, view.height);
-    std::string key;
-    key.reserve(pass.name.size() + std::strlen(context));
-    key.append(pass.name); key.append(context);
-    return key;
-}
-
 constexpr size_t GPU_HISTORY_BUDGET = 2 * 1024 * 1024;
 constexpr size_t MAX_GPU_SERIES = 512;
 constexpr size_t GPU_SERIES_OVERHEAD = sizeof(decltype(RenderingHistoryState::passGpuMs)::value_type) + 128;
@@ -702,13 +832,14 @@ void SyncRenderingView()
             s_renderHistory.hasGpuSource = true;
             s_renderHistory.lastGpuPhysicalSerial = gpu.physicalFrameSerial;
             s_renderHistory.lastGpuDeviceEpoch = gpu.deviceEpoch;
-            for (const auto& pass : gpu.passes) {
-                if (!pass.available) continue;
+            for (const auto& group : detail::BuildGpuPassGroups(gpu)) {
+                if (!group.available || group.gpuMs > (std::numeric_limits<float>::max)()) continue;
+                const auto& pass = *group.source;
                 /// @note key 構築の capacity 丸めを 2 倍で先に確保し、構築後は実 capacity で系列を見積もる。
                 if (pass.name.size() > GPU_HISTORY_BUDGET / 4) { s_renderHistory.budgetLimited = true; continue; }
-                const size_t temporaryKeyBytes = (pass.name.size() + 192 + 1) * 2 + 64;
+                const size_t temporaryKeyBytes = (pass.name.size() + 288 + 1) * 2 + 64;
                 if (!MakeRoomForGpuHistory(temporaryKeyBytes, bytes)) continue;
-                std::string key = GpuPassSeriesKey(pass);
+                std::string key = detail::GpuPassSeriesKey(pass);
                 const auto found = s_renderHistory.passGpuMs.find(key);
                 if (found != s_renderHistory.passGpuMs.end()) {
                     auto& values = found->second;
@@ -717,7 +848,8 @@ void SyncRenderingView()
                     });
                     if (seen) continue;
                     if (values.size() == values.capacity()) values.erase(values.begin());
-                    values.push_back({frame.applicationFrameSerial, pass.metadata.applicationFrameSerial, pass.physicalFrameSerial, static_cast<float>(pass.gpuMs)});
+                    values.push_back({frame.applicationFrameSerial, pass.metadata.applicationFrameSerial, pass.physicalFrameSerial, static_cast<float>(group.gpuMs), group.intervalCount, group.measuredIntervals,
+                        group.partial || !gpu.complete || gpu.droppedPassCount != 0});
                     continue;
                 }
                 while (s_renderHistory.passGpuMs.size() >= MAX_GPU_SERIES) RetireOldestGpuSeries(bytes);
@@ -728,14 +860,14 @@ void SyncRenderingView()
                 values.reserve(RenderingHistoryState::kMaxFrames);
                 const size_t incomingBytes = GpuSeriesBytes(key, values);
                 if (!MakeRoomForGpuHistory(incomingBytes, bytes)) continue;
-                values.push_back({frame.applicationFrameSerial, pass.metadata.applicationFrameSerial, pass.physicalFrameSerial, static_cast<float>(pass.gpuMs)});
+                values.push_back({frame.applicationFrameSerial, pass.metadata.applicationFrameSerial, pass.physicalFrameSerial, static_cast<float>(group.gpuMs), group.intervalCount, group.measuredIntervals,
+                        group.partial || !gpu.complete || gpu.droppedPassCount != 0});
                 bytes += incomingBytes;
                 s_renderHistory.passGpuMs.emplace(std::move(key), std::move(values));
             }
         }, [] {
             s_renderHistory.passGpuMs.clear(); s_renderHistory.observedFrames.clear();
             s_renderHistory.hasGpuSource = false; s_renderHistory.budgetLimited = false;
-            s_renderHistory.autoFit = true;
         });
 }
 
@@ -841,7 +973,7 @@ void DrawAnalysisProfCategoryBar(const AnalysisProfTree& tree)
         sum    += node.selfMs;
     }
     if (sum <= 0.0) return;
-    std::sort(totals.begin(), totals.end(), [](const Total& a, const Total& b) { return a.ms > b.ms; });
+    std::sort(totals.begin(), totals.end(), [](const Total& a, const Total& b) { return AnalysisProfCategoryIndex(a.name) < AnalysisProfCategoryIndex(b.name); });
 
     const float  width  = (std::max)(ImGui::GetContentRegionAvail().x, 1.0f);
     const float  height = ImGui::GetTextLineHeight() * 0.7f;
@@ -874,7 +1006,7 @@ void DrawAnalysisProfCategoryBar(const AnalysisProfTree& tree)
         const int    categoryIndex = AnalysisProfCategoryIndex(t.name);
         const bool   active        = categoryIndex != 0 && s_profilerFilter.categoryFilterIndex == categoryIndex;
         const ImVec2 cp            = ImGui::GetCursorScreenPos();
-        ImGui::PushID(static_cast<int>(i));
+        ImGui::PushID(t.name);
         if (ImGui::InvisibleButton("##chip", { chipW, lineH }))
             s_profilerFilter.categoryFilterIndex = active ? 0 : categoryIndex;
         ImGui::PopID();
@@ -944,6 +1076,13 @@ bool AnalysisProfLess(const Row& a, const Row& b, const AnalysisProfSort& sort, 
 template <class Row>
 void DrawAnalysisProfValueCells(const Row& row, bool flat, double frameMs)
 {
+    const auto entry = std::find_if(s_cpuRows.Rows().begin(), s_cpuRows.Rows().end(), [&](const auto& value) { return value.value.key == row.key; });
+    const bool retained = entry != s_cpuRows.Rows().end() && !entry->present;
+    const auto timeCell = [&](double ms, bool available, bool lastAvailable) {
+        if (retained && lastAvailable) { char value[48]; std::snprintf(value, sizeof(value), "%.3f last", ms); ImGui::TextDisabled("%s", value); }
+        else if (available) AnalysisCellMs(ms);
+        else ImGui::TextDisabled("unavailable");
+    };
     ImGui::TableNextColumn();
     {
         const ImVec2 p  = ImGui::GetCursorScreenPos();
@@ -955,15 +1094,19 @@ void DrawAnalysisProfValueCells(const Row& row, bool flat, double frameMs)
         ImGui::SetCursorScreenPos({ p.x + sq + 4.0f, p.y });
         ImGui::TextDisabled("%s", row.category.name);
     }
-    ImGui::TableNextColumn(); if (row.totalAvailable) AnalysisCellMs(row.totalMs); else ImGui::TextDisabled("unavailable");
-    ImGui::TableNextColumn(); if (row.selfAvailable) AnalysisCellMs(row.selfMs); else ImGui::TextDisabled("unavailable");
+    ImGui::TableNextColumn(); timeCell(row.totalMs, row.totalAvailable, entry != s_cpuRows.Rows().end() && entry->value.totalAvailable);
+    ImGui::TableNextColumn(); timeCell(row.selfMs, row.selfAvailable, entry != s_cpuRows.Rows().end() && entry->value.selfAvailable);
     ImGui::TableNextColumn(); if (flat ? row.selfAvailable : row.totalAvailable) AnalysisShareBar(flat ? row.selfMs : row.totalMs, frameMs, row.category.color); else ImGui::TextDisabled("unavailable");
     ImGui::TableNextColumn();
     {
         char calls[16];
         std::snprintf(calls, sizeof(calls), "%d", row.calls);
-        AnalysisTextRight(calls, row.calls <= 1 ? EditorTheme::ColorU32(ThemeColor::TextFaint) : 0);
+        if (retained) ImGui::TextDisabled("--");
+        else AnalysisTextRight(calls, row.calls <= 1 ? EditorTheme::ColorU32(ThemeColor::TextFaint) : 0);
     }
+    ImGui::TableNextColumn();
+    if (retained) ImGui::TextDisabled("missing / %llu frames", static_cast<unsigned long long>(s_cpuRows.Serial() - entry->lastSeenFrame));
+    else ImGui::TextDisabled("%s", row.totalAvailable ? "measured" : "unavailable");
     const AnalysisProfHistory::Stat* stat = FindAnalysisProfStat(row.key);
     ImGui::TableNextColumn(); if (stat && stat->available) AnalysisCellMs(stat->avg); else ImGui::TextDisabled("unavailable");
     ImGui::TableNextColumn(); if (stat && stat->available) AnalysisCellMs(stat->peak); else ImGui::TextDisabled("unavailable");
@@ -989,6 +1132,8 @@ void SetupAnalysisProfColumns(bool flat)
                             static_cast<ImGuiID>(AnalysisProfCol::Self));
     ImGui::TableSetupColumn("% Roots", num, fontH * 6.0f, static_cast<ImGuiID>(AnalysisProfCol::Share));
     ImGui::TableSetupColumn("Calls", num, fontH * 3.2f, static_cast<ImGuiID>(AnalysisProfCol::Calls));
+    ImGui::TableSetupColumn("Observation", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort,
+        fontH * 9.0f, static_cast<ImGuiID>(AnalysisProfCol::State));
     ImGui::TableSetupColumn(flat ? "Avg self ms" : "Avg incl ms", num, numW, static_cast<ImGuiID>(AnalysisProfCol::Avg));
     ImGui::TableSetupColumn(flat ? "Peak self ms" : "Peak incl ms", num, numW, static_cast<ImGuiID>(AnalysisProfCol::Peak));
     ImGui::TableSetupScrollFreeze(0, 1);
@@ -1006,8 +1151,8 @@ void SortAnalysisProfNodes(std::vector<int>& ids, const AnalysisProfSort& sort)
 {
     if (sort.column == AnalysisProfCol::Count) return;
     std::stable_sort(ids.begin(), ids.end(), [&](int a, int b) {
-        return AnalysisProfLess(s_profTree.nodes[static_cast<std::size_t>(a)],
-                                s_profTree.nodes[static_cast<std::size_t>(b)], sort, false);
+        return s_cpuTreeRanks.at(s_visibleProfTree.nodes[static_cast<size_t>(a)].key)
+            < s_cpuTreeRanks.at(s_visibleProfTree.nodes[static_cast<size_t>(b)].key);
     });
 }
 
@@ -1024,7 +1169,7 @@ void ToggleAnalysisProfSelection(const std::string& key, const char* label)
 
 void DrawAnalysisProfTreeRow(int index, const AnalysisProfTreeDraw& dc)
 {
-    const AnalysisProfNode& node = s_profTree.nodes[static_cast<std::size_t>(index)];
+    const AnalysisProfNode& node = s_visibleProfTree.nodes[static_cast<std::size_t>(index)];
     std::vector<int> children;
     for (const int child : node.children) {
         if ((*dc.visible)[static_cast<std::size_t>(child)]) children.push_back(child);
@@ -1038,10 +1183,12 @@ void DrawAnalysisProfTreeRow(int index, const AnalysisProfTreeDraw& dc)
     if (children.empty()) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
     if (s_profilerFilter.selectedKey == node.key) flags |= ImGuiTreeNodeFlags_Selected;
     /// @note 絞り込み中は一致した行の祖先をすべて開く。閉じたままだと «一致したのに見えない» になる。
-    if (dc.filterActive)     ImGui::SetNextItemOpen(true);
+    if (dc.filterActive) ImGui::SetNextItemOpen(true);
+    else if (const auto saved = s_cpuExpanded.find(node.key); saved != s_cpuExpanded.end()) ImGui::SetNextItemOpen(saved->second);
     else if (node.depth < 2) flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
     const bool open = ImGui::TreeNodeEx(node.key.c_str(), flags, "%s", node.name);
+    if (!dc.filterActive && !children.empty()) s_cpuExpanded[node.key] = open;
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen())
         ToggleAnalysisProfSelection(node.key, node.name);
     ImGui::SetItemTooltip("%s", node.key.c_str());
@@ -1061,9 +1208,9 @@ void DrawAnalysisProfTreeTable(float height)
                               s_profilerFilter.minMsFilter > 0.0f;
 
     /// @note nodes は親が子より前に並ぶので、後ろから回せば子の判定が先に済む。
-    std::vector<char> visible(s_profTree.nodes.size(), 0);
-    for (std::size_t i = s_profTree.nodes.size(); i-- > 0;) {
-        const AnalysisProfNode& node = s_profTree.nodes[i];
+    std::vector<char> visible(s_visibleProfTree.nodes.size(), 0);
+    for (std::size_t i = s_visibleProfTree.nodes.size(); i-- > 0;) {
+        const AnalysisProfNode& node = s_visibleProfTree.nodes[i];
         bool show = !filterActive || AnalysisProfMatches(node.name, node.category, node.totalMs, nameFilter);
         for (std::size_t c = 0; !show && c < node.children.size(); ++c)
             show = visible[static_cast<std::size_t>(node.children[c])] != 0;
@@ -1081,12 +1228,28 @@ void DrawAnalysisProfTreeTable(float height)
     dc.filterActive = filterActive;
     dc.frameMs      = s_profTree.frameMs;
 
+    std::vector<int> ordered;
+    for (size_t i = 0; i < s_visibleProfTree.nodes.size(); ++i) ordered.push_back(static_cast<int>(i));
+    auto* specs = ImGui::TableGetSortSpecs();
+    s_cpuTreeOrder.Apply(ordered, [](int i) -> const std::string& { return s_visibleProfTree.nodes[static_cast<size_t>(i)].key; },
+        [&](int a, int b) { return dc.sort.column != AnalysisProfCol::Count && AnalysisProfLess(s_visibleProfTree.nodes[static_cast<size_t>(a)], s_visibleProfTree.nodes[static_cast<size_t>(b)], dc.sort, false); },
+        static_cast<int>(dc.sort.column) * 2 + static_cast<int>(dc.sort.descending), ImGui::GetTime() * 1000.0, specs && specs->SpecsDirty);
+    if (specs) specs->SpecsDirty = false;
+    s_cpuTreeRanks.clear();
+    for (size_t i = 0; i < ordered.size(); ++i) s_cpuTreeRanks.emplace(s_visibleProfTree.nodes[static_cast<size_t>(ordered[i])].key, i);
+
     std::vector<int> roots;
-    for (const int root : s_profTree.roots) {
+    for (const int root : s_visibleProfTree.roots) {
         if (visible[static_cast<std::size_t>(root)]) roots.push_back(root);
     }
     SortAnalysisProfNodes(roots, dc.sort);
+    /// @note Retired scope IDs must not accumulate in ImGui's window storage; bounded saved expansion is authoritative.
+    ImGuiStorage* previousStorage = ImGui::GetStateStorage();
+    s_cpuTreeStorage.Clear(); ImGui::SetStateStorage(&s_cpuTreeStorage);
+    ImGui::PushID(static_cast<int>(s_cpuRows.Generation()));
     for (const int root : roots) DrawAnalysisProfTreeRow(root, dc);
+    ImGui::PopID();
+    ImGui::SetStateStorage(previousStorage);
 
     if (roots.empty()) {
         ImGui::TableNextRow();
@@ -1100,9 +1263,9 @@ void DrawAnalysisProfFlatTable(float height)
 {
     const std::string nameFilter(s_profilerFilter.nameFilter);
     std::vector<int> rows;
-    rows.reserve(s_profTree.flat.size());
-    for (std::size_t i = 0; i < s_profTree.flat.size(); ++i) {
-        const AnalysisProfFlatRow& row = s_profTree.flat[i];
+    rows.reserve(s_visibleProfTree.flat.size());
+    for (std::size_t i = 0; i < s_visibleProfTree.flat.size(); ++i) {
+        const AnalysisProfFlatRow& row = s_visibleProfTree.flat[i];
         if (!AnalysisProfMatches(row.name, row.category, row.selfMs, nameFilter)) continue;
         rows.push_back(static_cast<int>(i));
     }
@@ -1113,18 +1276,17 @@ void DrawAnalysisProfFlatTable(float height)
     SetupAnalysisProfColumns(true);
 
     const AnalysisProfSort sort = ReadAnalysisProfSort();
-    if (sort.column != AnalysisProfCol::Count) {
-        std::stable_sort(rows.begin(), rows.end(), [&](int a, int b) {
-            return AnalysisProfLess(s_profTree.flat[static_cast<std::size_t>(a)],
-                                    s_profTree.flat[static_cast<std::size_t>(b)], sort, true);
-        });
-    }
+    auto* specs = ImGui::TableGetSortSpecs();
+    s_cpuFlatOrder.Apply(rows, [](int i) -> const std::string& { return s_visibleProfTree.flat[static_cast<size_t>(i)].key; },
+        [&](int a, int b) { return sort.column != AnalysisProfCol::Count && AnalysisProfLess(s_visibleProfTree.flat[static_cast<size_t>(a)], s_visibleProfTree.flat[static_cast<size_t>(b)], sort, true); },
+        static_cast<int>(sort.column) * 2 + static_cast<int>(sort.descending), ImGui::GetTime() * 1000.0, specs && specs->SpecsDirty);
+    if (specs) specs->SpecsDirty = false;
 
     ImGuiListClipper clipper;
     clipper.Begin(static_cast<int>(rows.size()));
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
-            const AnalysisProfFlatRow& row = s_profTree.flat[static_cast<std::size_t>(rows[static_cast<std::size_t>(i)])];
+            const AnalysisProfFlatRow& row = s_visibleProfTree.flat[static_cast<std::size_t>(rows[static_cast<std::size_t>(i)])];
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::PushID(row.key.c_str());
@@ -1147,6 +1309,10 @@ void DrawAnalysisProfFlatTable(float height)
 void DrawAnalysisProfGraph()
 {
     const bool hasSelection = !s_profilerFilter.selectedKey.empty();
+    if (hasSelection) {
+        const auto entry = std::find_if(s_cpuRows.Rows().begin(), s_cpuRows.Rows().end(), [](const auto& row) { return row.value.key == s_profilerFilter.selectedKey; });
+        ImGui::TextDisabled("Selected row: %s", entry == s_cpuRows.Rows().end() ? "expired or outside this captured frame" : entry->present ? "present" : "missing; last observation retained");
+    }
     const auto values = detail::AnalysisProfSeriesValues(s_profHistory, hasSelection ? s_profilerFilter.selectedKey : std::string{});
     float peak = 0.0f;
     double sum = 0.0;
@@ -1524,7 +1690,7 @@ void DrawPerformanceCpu(EditorContext& ctx)
         ImGui::DragFloat("##spikeThreshold", &s_profilerDisplay.spikeThresholdMs, 0.5f, 1.0f, 1000.0f, "%.1f ms");
         s_profilerDisplay.spikeThresholdMs = (std::max)(1.0f, s_profilerDisplay.spikeThresholdMs);
         if (ImGui::Button("Clear history")) {
-            ClearPerformanceHistory(); s_profTree = {}; s_profHistory = {}; s_renderHistory = {}; s_treeSource.reset();
+            ClearPerformanceHistory(); s_profTree = {}; s_profHistory = {}; s_renderHistory = {}; s_treeSource.reset(); ClearDisplayRows();
         }
         ImGui::TextDisabled("Right-click the table header to show or hide columns.");
         ImGui::EndPopup();
@@ -1539,9 +1705,37 @@ void DrawPerformanceCpu(EditorContext& ctx)
         }
     }
     SyncPerformanceView(); SyncRenderingView();
+    ImGui::BeginChild("##cpuCaptureSummary", {0.0f, fontH * 15.0f});
+    ImGui::TextDisabled("Live values; sort refresh 100 ms. Missing rows retained for 120 application frames.");
+    if (!enabled) ImGui::TextDisabled("Recording stopped; displaying retained captures.");
+    if (s_cpuRows.Limited()) ImGui::TextDisabled("Display row limit reached (2048 rows / 2 MiB); some rows omitted.");
     if (performanceHistory.budgetBlocked) ImGui::TextDisabled("History paused: retained snapshot budget reached.");
     if (s_profHistory.budgetLimited) ImGui::TextDisabled("Scope history range reduced to its 4 MiB derived budget.");
     if (s_profTree.unavailableReason != nullptr) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.2f, 1.0f), "%s", s_profTree.unavailableReason);
+    const auto taskStats = TaskSystem::GetStats();
+    const double averageQueueWaitMs = taskStats.completedCount == 0 ? 0.0
+        : taskStats.totalQueueWaitMs / static_cast<double>(taskStats.completedCount);
+    const double averageExecutionMs = taskStats.completedCount == 0 ? 0.0
+        : taskStats.totalExecutionMs / static_cast<double>(taskStats.completedCount);
+    ImGui::Text("Live workers: pool %d (%d active, %d queued) + external %d",
+        taskStats.workerCount, taskStats.activeCount, taskStats.queuedCount, taskStats.externalWorkerCount);
+    ImGui::Text("Task wait avg %.3f / max %.3f ms; execution avg %.3f / max %.3f ms",
+        averageQueueWaitMs, taskStats.maxQueueWaitMs, averageExecutionMs, taskStats.maxExecutionMs);
+    if (taskStats.externalAudioWorkerCount > 0)
+        ImGui::TextDisabled("Audio stream workers: %d", taskStats.externalAudioWorkerCount);
+    if (taskStats.externalFluidWorkerCount > 0)
+        ImGui::TextDisabled("Volume fluid workers: %d", taskStats.externalFluidWorkerCount);
+    if (taskStats.externalOtherWorkerCount > 0)
+        ImGui::TextDisabled("Other external workers: %d", taskStats.externalOtherWorkerCount);
+    if (ctx.resources) {
+        const auto& textureLoads = ctx.resources->GetSynchronousTextureLoadStats();
+        ImGui::Text("Sync texture loads: %llu (%llu failed), total %.3f ms, last %.3f ms, max %.3f ms",
+            static_cast<unsigned long long>(textureLoads.attempts),
+            static_cast<unsigned long long>(textureLoads.failures), textureLoads.totalMilliseconds,
+            textureLoads.lastMilliseconds, textureLoads.maxMilliseconds);
+        if (!textureLoads.lastPath.empty())
+            ImGui::TextDisabled("Last synchronous texture: %s", textureLoads.lastPath.c_str());
+    }
     if (const auto& snapshot = performanceHistory.selected) {
         ImGui::Text("Session %llu / application frame %llu / internal frame %llu%s",
             static_cast<unsigned long long>(snapshot->captureSessionId), static_cast<unsigned long long>(snapshot->applicationFrameSerial),
@@ -1564,6 +1758,7 @@ void DrawPerformanceCpu(EditorContext& ctx)
     }
 
     DrawAnalysisProfCategoryBar(s_profTree);
+    ImGui::EndChild();
 
     if (ImGui::RadioButton("Hierarchy", !s_profilerFilter.flatView)) {
         s_profilerFilter.flatView = false; s_profHistory.autoFit = true;
@@ -1602,7 +1797,7 @@ void DrawPerformanceCpu(EditorContext& ctx)
         }
     }
 
-    if (s_profTree.nodes.empty()) {
+    if (s_visibleProfTree.nodes.empty()) {
         ImGui::Spacing();
         if (performanceHistory.selected) {
             ImGui::TextDisabled("Recorded frame contains no scopes."); DrawAnalysisProfGraph();
@@ -1840,6 +2035,8 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
         { "Vertices",            count(stats.vertexCount),                                false },
         { "Skinning vertices",   static_cast<std::uint64_t>(stats.skinningVertexCount),   false },
         { "Skinning dispatches", static_cast<std::uint64_t>(stats.skinningDispatchCount), false },
+        { "Skinning palette bytes", stats.skinningPaletteUploadBytes, false },
+        { "Skinning palette uploads", static_cast<std::uint64_t>(stats.skinningPaletteUploads), false },
         /// @note シャドウマップは同じジオメトリを光源視点で描き直す別コスト。カメラ統計に混ぜない。
         { "Shadow draw calls",   count(stats.shadowDrawCalls),                            false },
         { "Shadow triangles",    count(stats.shadowTriangleCount),                        false },
@@ -1932,146 +2129,201 @@ void DrawGpuMetadata(const renderer::GpuProfilerViewMetadata& view, uint64_t phy
 void DrawAnalysisGpuPasses(const renderer::RenderDebugOverlay::Snapshot& snap, uint64_t cpuSerial)
 {
     const auto& gpu = snap.gpuProfiler;
+    const auto summary = detail::SummarizeGpuDisplay(gpu, cpuSerial);
     const float fontH = ImGui::GetFontSize();
+    ImGui::BeginChild("##gpuCaptureSummary", {0.0f, fontH * 15.0f});
+    ImGui::TextDisabled("Live values; sort refresh 100 ms. Retained rows expire after 120 application frames.");
+    if (!profiler::Profiler::IsEnabled()) ImGui::TextDisabled("Recording stopped; displaying retained captures.");
+    if (s_gpuRows.Limited()) ImGui::TextDisabled("Display row limit reached (512 rows / 1 MiB); some rows omitted.");
     if (s_renderHistory.budgetLimited) ImGui::TextDisabled("GPU history reduced or skipped to its 2 MiB derived budget.");
     ImGui::TextDisabled("CPU application frame %llu; CPU/GPU observations are not joined.", static_cast<unsigned long long>(cpuSerial));
     if (!gpu.supported) ImGui::TextDisabled("GPU timestamps unsupported.");
     else if (!gpu.available) ImGui::TextDisabled("GPU sample unavailable; waiting for completion.");
-    else ImGui::Text("GPU capture %s / %u recorded / %u dropped", gpu.complete ? "complete" : "partial", gpu.recordedPassCount, gpu.droppedPassCount);
+    else ImGui::Text("GPU pass capture %s / %u recorded / %u dropped", summary.partial ? "partial" : "complete", gpu.recordedPassCount, gpu.droppedPassCount);
     ImGui::TextDisabled("Current view context");
     DrawGpuMetadata(snap.gpuCurrentView, 0, 0, false);
     if (gpu.available) ImGui::Text("Completed GPU physical frame %llu / device epoch %llu",
         static_cast<unsigned long long>(gpu.physicalFrameSerial), static_cast<unsigned long long>(gpu.deviceEpoch));
-    if (gpu.totalGpuTimeAvailable && gpu.available) ImGui::Text("GPU frame time %.3f ms", gpu.totalGpuMs);
-    else ImGui::TextDisabled("GPU frame total unavailable; AS preparation and per-queue totals are not measured here.");
+    if (summary.totalAvailable) ImGui::Text("GPU frame total %.3f ms", summary.totalMs);
+    else ImGui::TextDisabled("GPU frame total unavailable.");
+    ImGui::TextDisabled("Measured pass sums may omit work or overlap; they do not measure the GPU frame total.");
+    ImGui::TextDisabled("Same-name intervals with identical source metadata are summed; Avg/Peak use those per-source sums.");
+    if (!gpu.preparationGpuTimeAvailable) ImGui::TextDisabled("AS preparation GPU time unavailable.");
+    if (!gpu.perQueueGpuTimeAvailable) ImGui::TextDisabled("Per-queue GPU totals unavailable.");
+    ImGui::EndChild();
 
     ImGui::SetNextItemWidth(-FLT_MIN);
     ImGui::InputTextWithHint("##renderPassFilter", "Filter passes...", s_renderingFilter.passFilter, sizeof(s_renderingFilter.passFilter));
     struct PassRow {
-        const renderer::GpuPassProfile* pass = nullptr;
+        detail::GpuPassGroup group;
         std::string key;
+        std::string rowKey;
         double avgMs = 0.0;
         double peakMs = 0.0;
         bool hasHistory = false;
+        size_t partialHistoryCount = 0;
+        bool retained = false;
+        uint64_t lastSeenFrame = 0;
     };
     std::vector<PassRow> rows;
     const std::string filter(s_renderingFilter.passFilter);
-    double passSumMs = 0.0;
+    const double passSumMs = summary.passSumMs;
     double shownMs = 0.0;
-    size_t availableCount = 0;
-    for (const auto& pass : gpu.passes) {
-        if (gpu.available && pass.available) { passSumMs += pass.gpuMs; ++availableCount; }
+    for (const auto& entry : s_gpuRows.Rows()) {
+        const auto& value = entry.value;
+        const auto& pass = value.source;
         if (!filter.empty() && !util::StringUtils::ContainsCI(pass.name, filter)) continue;
-        PassRow row; row.pass = &pass; row.key = GpuPassSeriesKey(pass);
-        if (gpu.available && pass.available) shownMs += pass.gpuMs;
+        PassRow row;
+        row.group = {&pass, value.intervalCount, value.measuredIntervals, value.gpuMs, value.available, value.partial};
+        row.key = value.seriesKey; row.rowKey = value.key; row.retained = !entry.present; row.lastSeenFrame = entry.lastSeenFrame;
+        if (!row.retained && value.available) shownMs += value.gpuMs;
         if (const auto history = s_renderHistory.passGpuMs.find(row.key); history != s_renderHistory.passGpuMs.end() && !history->second.empty()) {
             row.hasHistory = true;
-            for (const auto& sample : history->second) { row.avgMs += sample.ms; row.peakMs = (std::max)(row.peakMs, static_cast<double>(sample.ms)); }
+            for (const auto& sample : history->second) {
+                row.avgMs += sample.ms; row.peakMs = (std::max)(row.peakMs, static_cast<double>(sample.ms));
+                if (sample.partial) ++row.partialHistoryCount;
+            }
             row.avgMs /= static_cast<double>(history->second.size());
         }
         rows.push_back(std::move(row));
     }
-    const float rowH = ImGui::GetTextLineHeight() + ImGui::GetStyle().CellPadding.y * 2.0f;
-    const float tableH = (std::min)(static_cast<float>(rows.size() + 1) * rowH + 4.0f,
-        (std::max)(fontH * 8.0f, ImGui::GetContentRegionAvail().y - fontH * 12.0f));
+    const float tableH = (std::max)(fontH * 8.0f, ImGui::GetContentRegionAvail().y - fontH * 12.0f);
     constexpr ImGuiTableFlags FLAGS = ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX | ImGuiTableFlags_RowBg |
         ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable;
     if (ImGui::BeginTable("GpuPasses##Analysis", static_cast<int>(AnalysisPassCol::Count), FLAGS, {0.0f, tableH})) {
         const ImGuiTableColumnFlags numeric = ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_PreferSortDescending;
         ImGui::TableSetupColumn("Pass", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHide, fontH * 12.0f, static_cast<ImGuiID>(AnalysisPassCol::Name));
-        ImGui::TableSetupColumn("GPU ms", numeric | ImGuiTableColumnFlags_DefaultSort, fontH * 4.6f, static_cast<ImGuiID>(AnalysisPassCol::Gpu));
+        ImGui::TableSetupColumn("GPU sum ms", numeric | ImGuiTableColumnFlags_DefaultSort, fontH * 5.6f, static_cast<ImGuiID>(AnalysisPassCol::Gpu));
         ImGui::TableSetupColumn("% Pass Sum", numeric, fontH * 6.0f, static_cast<ImGuiID>(AnalysisPassCol::Share));
         ImGui::TableSetupColumn("Source frame", numeric, fontH * 7.0f, static_cast<ImGuiID>(AnalysisPassCol::Source));
         ImGui::TableSetupColumn("Age", numeric, fontH * 3.0f, static_cast<ImGuiID>(AnalysisPassCol::Age));
         ImGui::TableSetupColumn("View", numeric, fontH * 4.0f, static_cast<ImGuiID>(AnalysisPassCol::View));
         ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, fontH * 8.0f, static_cast<ImGuiID>(AnalysisPassCol::Status));
-        ImGui::TableSetupColumn("Avg ms", numeric, fontH * 4.6f, static_cast<ImGuiID>(AnalysisPassCol::Avg));
-        ImGui::TableSetupColumn("Peak ms", numeric, fontH * 4.6f, static_cast<ImGuiID>(AnalysisPassCol::Peak));
+        ImGui::TableSetupColumn("Avg sum ms", numeric, fontH * 5.6f, static_cast<ImGuiID>(AnalysisPassCol::Avg));
+        ImGui::TableSetupColumn("Peak sum ms", numeric, fontH * 5.6f, static_cast<ImGuiID>(AnalysisPassCol::Peak));
         ImGui::TableSetupScrollFreeze(0, 1); ImGui::TableHeadersRow();
-        if (const auto* specs = ImGui::TableGetSortSpecs(); specs != nullptr && specs->SpecsCount > 0) {
+        if (auto* specs = ImGui::TableGetSortSpecs(); specs != nullptr && specs->SpecsCount > 0) {
             const auto column = static_cast<AnalysisPassCol>(specs->Specs[0].ColumnUserID);
             const bool descending = specs->Specs[0].SortDirection == ImGuiSortDirection_Descending;
             const auto value = [&](const PassRow& row) -> double {
-                const auto& pass = *row.pass;
+                const auto& pass = *row.group.source;
                 switch (column) {
-                case AnalysisPassCol::Gpu: case AnalysisPassCol::Share: return gpu.available && pass.available ? pass.gpuMs : -1.0;
+                case AnalysisPassCol::Gpu: case AnalysisPassCol::Share: return row.group.available ? row.group.gpuMs : -1.0;
                 case AnalysisPassCol::Source: return static_cast<double>(pass.metadata.applicationFrameSerial);
-                case AnalysisPassCol::Age: return cpuSerial >= pass.metadata.applicationFrameSerial ? static_cast<double>(cpuSerial - pass.metadata.applicationFrameSerial) : -1.0;
+                case AnalysisPassCol::Age: return row.group.available && pass.metadata.applicationFrameSerial != 0 && cpuSerial >= pass.metadata.applicationFrameSerial ? static_cast<double>(cpuSerial - pass.metadata.applicationFrameSerial) : -1.0;
                 case AnalysisPassCol::View: return static_cast<double>(pass.metadata.viewId);
-                case AnalysisPassCol::Status: return gpu.available && pass.available ? 1.0 : 0.0;
+                case AnalysisPassCol::Status: return row.retained ? -1.0 : row.group.available ? row.group.partial ? 0.5 : 1.0 : 0.0;
                 case AnalysisPassCol::Avg: return row.hasHistory ? row.avgMs : -1.0;
                 case AnalysisPassCol::Peak: return row.hasHistory ? row.peakMs : -1.0;
                 default: return 0.0;
                 }
             };
-            std::stable_sort(rows.begin(), rows.end(), [&](const PassRow& a, const PassRow& b) {
-                const int comparison = column == AnalysisPassCol::Name ? a.pass->name.compare(b.pass->name) :
+            s_gpuOrder.Apply(rows, [](const PassRow& row) -> const std::string& { return row.rowKey; }, [&](const PassRow& a, const PassRow& b) {
+                const int comparison = column == AnalysisPassCol::Name ? a.group.source->name.compare(b.group.source->name) :
                     value(a) < value(b) ? -1 : value(a) > value(b) ? 1 : 0;
                 return descending ? comparison > 0 : comparison < 0;
-            });
+            }, static_cast<int>(column) * 2 + static_cast<int>(descending), ImGui::GetTime() * 1000.0, specs->SpecsDirty);
+            specs->SpecsDirty = false;
         }
         for (const auto& row : rows) {
-            const auto& pass = *row.pass;
-            const bool available = gpu.available && pass.available;
-            ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::PushID(row.key.c_str());
-            if (ImGui::Selectable(pass.name.c_str(), s_renderHistory.selectedPass == row.key, ImGuiSelectableFlags_SpanAllColumns)) {
+            const auto& pass = *row.group.source;
+            const bool available = row.group.available;
+            const std::string label = pass.name + " (" + std::to_string(row.group.measuredIntervals) + "/"
+                + std::to_string(row.group.intervalCount) + " intervals)###pass";
+            ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::PushID(row.rowKey.c_str());
+            if (ImGui::Selectable(label.c_str(), s_renderHistory.selectedPass == row.key, ImGuiSelectableFlags_SpanAllColumns)) {
                 s_renderHistory.selectedPass = s_renderHistory.selectedPass == row.key ? std::string{} : row.key;
-                s_renderHistory.selectedPassLabel = pass.name;
+                s_renderHistory.selectedPassLabel = pass.name + " / same-name interval sum";
                 s_renderHistory.autoFit = true;
             }
             ImGui::PopID();
             if (ImGui::IsItemHovered()) {
                 ImGui::BeginTooltip(); DrawGpuMetadata(pass.metadata, pass.physicalFrameSerial, pass.deviceEpoch);
+                ImGui::Text("Sum of %zu / %zu measured intervals; history contains %zu partial capture sums.",
+                    row.group.measuredIntervals, row.group.intervalCount, row.partialHistoryCount);
+                ImGui::Text("Last new observation at CPU frame %llu / age %llu frames%s",
+                    static_cast<unsigned long long>(row.lastSeenFrame), static_cast<unsigned long long>(cpuSerial - row.lastSeenFrame),
+                    row.retained ? " / retained; no new observation" : "");
                 ImGui::TextUnformatted("Separate GPU observation; no strict CPU/GPU join."); ImGui::EndTooltip();
             }
-            ImGui::TableNextColumn(); if (available) AnalysisCellMs(pass.gpuMs); else ImGui::TextDisabled("unavailable");
-            ImGui::TableNextColumn(); if (available && passSumMs > 0.0) AnalysisShareBar(pass.gpuMs, passSumMs, IM_COL32(255, 170, 50, 255)); else ImGui::TextDisabled("unavailable");
+            ImGui::TableNextColumn();
+            if (available && row.retained) ImGui::TextDisabled("%.3f last", row.group.gpuMs);
+            else if (available) AnalysisCellMs(row.group.gpuMs); else ImGui::TextDisabled("unavailable");
+            ImGui::TableNextColumn(); if (!row.retained && available && summary.passSumAvailable && passSumMs > 0.0) AnalysisShareBar(row.group.gpuMs, passSumMs, IM_COL32(255, 170, 50, 255)); else ImGui::TextDisabled("n/a");
             ImGui::TableNextColumn(); ImGui::Text("%llu", static_cast<unsigned long long>(pass.metadata.applicationFrameSerial));
-            ImGui::TableNextColumn(); if (cpuSerial >= pass.metadata.applicationFrameSerial) ImGui::Text("%llu", static_cast<unsigned long long>(cpuSerial - pass.metadata.applicationFrameSerial)); else ImGui::TextDisabled("unavailable");
+            ImGui::TableNextColumn(); if (available && pass.metadata.applicationFrameSerial != 0 && cpuSerial >= pass.metadata.applicationFrameSerial) ImGui::Text("%llu", static_cast<unsigned long long>(cpuSerial - pass.metadata.applicationFrameSerial)); else ImGui::TextDisabled("unavailable");
             ImGui::TableNextColumn(); ImGui::Text("%llu", static_cast<unsigned long long>(pass.metadata.viewId));
             ImGui::TableNextColumn();
-            if (!available) ImGui::TextDisabled("unavailable");
+            if (row.retained) ImGui::TextDisabled("retained / %llu frames", static_cast<unsigned long long>(cpuSerial - row.lastSeenFrame));
+            else if (!available) ImGui::TextDisabled("unavailable");
             else {
                 const auto& current = snap.gpuCurrentView;
                 auto expected = current; expected.applicationFrameSerial = pass.metadata.applicationFrameSerial;
                 const bool compatible = pass.metadata.planGeneration != 0 && pass.metadata.applicationFrameSerial <= current.applicationFrameSerial && pass.metadata == expected;
-                ImGui::TextUnformatted(compatible ? "view compatible" : "other context");
+                ImGui::Text("%s%s", compatible ? "view compatible" : "other context", row.group.partial ? " / partial sum" : "");
             }
-            ImGui::TableNextColumn(); if (row.hasHistory) AnalysisCellMs(row.avgMs); else ImGui::TextDisabled("unavailable");
-            ImGui::TableNextColumn(); if (row.hasHistory) AnalysisCellMs(row.peakMs); else ImGui::TextDisabled("unavailable");
+            ImGui::TableNextColumn();
+            if (row.hasHistory) ImGui::Text("%.3f%s", row.avgMs, row.partialHistoryCount != 0 ? " *" : "");
+            else ImGui::TextDisabled("unavailable");
+            ImGui::TableNextColumn();
+            if (row.hasHistory) ImGui::Text("%.3f%s", row.peakMs, row.partialHistoryCount != 0 ? " *" : "");
+            else ImGui::TextDisabled("unavailable");
         }
         ImGui::EndTable();
     }
-    if (availableCount != 0) ImGui::TextDisabled("Pass Sum %.3f ms%s / shown %.3f ms / %zu available intervals",
-        passSumMs, gpu.complete ? "" : " (partial)", shownMs, availableCount);
+    if (summary.passSumAvailable) ImGui::TextDisabled("Measured Pass Sum %.3f ms%s / shown %.3f ms / %zu measured / %zu unavailable intervals",
+        passSumMs, summary.partial ? " (partial)" : "", shownMs, summary.measuredIntervals, summary.unavailableIntervals);
     else ImGui::TextDisabled("Pass Sum unavailable.");
+    ImGui::TextDisabled("* Avg/Peak includes partial capture sums; hover the pass for its partial sample count.");
+    ImGui::BeginChild("##gpuHistoryRegion", {0.0f, fontH * 8.0f});
     if (const auto history = s_renderHistory.passGpuMs.find(s_renderHistory.selectedPass);
         history != s_renderHistory.passGpuMs.end() && !history->second.empty()) {
         std::vector<float> values;
         values.reserve(history->second.size());
         double sum = 0.0;
         float peak = 0.0f;
+        size_t partialSamples = 0;
+        const auto plotSamples = detail::BuildGpuObservationPlot(history->second, s_renderHistory.observedFrames);
+        for (const auto& sample : plotSamples) values.push_back(sample.ms);
         for (const auto& sample : history->second) {
-            values.push_back(sample.ms); sum += sample.ms; peak = (std::max)(peak, sample.ms);
+            sum += sample.ms; peak = (std::max)(peak, sample.ms);
+            if (sample.partial) ++partialSamples;
         }
-        ImGui::Text("%s / %zu distinct GPU samples", s_renderHistory.selectedPassLabel.c_str(), values.size());
+        ImGui::Text("%s / %zu distinct GPU samples", s_renderHistory.selectedPassLabel.c_str(), history->second.size());
+        ImGui::TextDisabled("Gaps mark captures without a new GPU measurement; retained values are not plotted as new samples.");
+        if (partialSamples != 0) ImGui::TextDisabled("History includes %zu partial capture sums; missing intervals are not filled with zero.", partialSamples);
         ImGui::SameLine();
-        ImGui::TextDisabled("last %.3f  avg %.3f  peak %.3f ms", static_cast<double>(values.back()),
-                            sum / static_cast<double>(values.size()), static_cast<double>(peak));
+        ImGui::TextDisabled("last measured %.3f  avg %.3f  peak %.3f ms", static_cast<double>(history->second.back().ms),
+                             sum / static_cast<double>(history->second.size()), static_cast<double>(peak));
         ImGui::SameLine();
         if (ImGui::SmallButton("x##renderGraphClose")) {
             s_renderHistory.selectedPass.clear(); s_renderHistory.autoFit = true;
         }
         DrawAnalysisHistoryPlot("##renderHistory", s_renderHistory.selectedPassLabel.c_str(), "ms", values,
-                                {-FLT_MIN, fontH * 4.0f}, s_renderHistory.autoFit, &history->second);
-    } else ImGui::TextDisabled("Select a GPU pass with retained measurements to plot its history.");
+                                {-FLT_MIN, fontH * 4.0f}, s_renderHistory.autoFit, &plotSamples);
+    } else {
+        if (!s_renderHistory.selectedPass.empty()) {
+            ImGui::TextDisabled("Selected GPU series expired or has no measured history: %s", s_renderHistory.selectedPassLabel.c_str());
+            if (ImGui::SmallButton("Clear selection##expiredGpu")) s_renderHistory.selectedPass.clear();
+        } else ImGui::TextDisabled("Select a GPU pass with retained measurements to plot its history.");
+    }
+    ImGui::EndChild();
     if (ImGui::CollapsingHeader("CPU passes / separate observation")) {
         ImGui::TextDisabled("CPU view metadata unavailable; same-named GPU rows do not identify this CPU observation.");
-        if (ImGui::BeginTable("CpuPasses##Analysis", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders)) {
-            ImGui::TableSetupColumn("Pass"); ImGui::TableSetupColumn("CPU ms"); ImGui::TableHeadersRow();
-            for (const auto& [name, ms] : snap.passTimings) {
-                ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextUnformatted(name.c_str());
-                ImGui::TableNextColumn(); AnalysisCellMs(ms);
+        if (s_cpuPassRows.Limited()) ImGui::TextDisabled("CPU pass display limited to 128 rows / 256 KiB.");
+        if (ImGui::BeginTable("CpuPasses##Analysis", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollY,
+            {0.0f, fontH * 8.0f})) {
+            ImGui::TableSetupColumn("Pass"); ImGui::TableSetupColumn("CPU ms"); ImGui::TableSetupColumn("Observation"); ImGui::TableSetupScrollFreeze(0, 1); ImGui::TableHeadersRow();
+            for (const auto& entry : s_cpuPassRows.Rows()) {
+                const auto& row = entry.value;
+                ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextUnformatted(row.name.c_str());
+                ImGui::TableNextColumn();
+                if (!row.totalAvailable) ImGui::TextDisabled("unavailable");
+                else if (!entry.present) ImGui::TextDisabled("%.3f last", row.totalMs);
+                else AnalysisCellMs(row.totalMs);
+                ImGui::TableNextColumn();
+                if (entry.present) ImGui::TextDisabled("%s", row.totalAvailable ? "measured" : "unavailable");
+                else ImGui::TextDisabled("missing / %llu frames", static_cast<unsigned long long>(cpuSerial - entry.lastSeenFrame));
             }
             ImGui::EndTable();
         }
@@ -2096,7 +2348,7 @@ void DrawPerformanceRendering(EditorContext& ctx)
     if (ImGui::Button("Capture") && !history.frames.empty()) { history.selected = history.frames.back(); history.frozen = true; }
     ImGui::SameLine();
     if (ImGui::Button("Clear")) {
-        ClearPerformanceHistory(); s_profTree = {}; s_profHistory = {}; s_renderHistory = {}; s_treeSource.reset(); return;
+        ClearPerformanceHistory(); s_profTree = {}; s_profHistory = {}; s_renderHistory = {}; s_treeSource.reset(); ClearDisplayRows(); return;
     }
     if (!history.frames.empty()) {
         int index = static_cast<int>(history.frames.size() - 1);
@@ -2186,6 +2438,7 @@ void ResetProfilerWidgets()
 {
     s_profilerDisplay = {}; s_profilerFilter = {}; s_profTree = {}; s_profHistory = {};
     s_memHistory = {}; s_renderHistory = {}; s_treeSource.reset(); s_renderPlanText.clear();
+    ClearDisplayRows();
 }
 
 }

@@ -144,7 +144,7 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
             ImGui::DragInt("Area Mask",            &agent.areaMask, 1, -1, 0x7fffffff);
 
             ImGui::Spacing();
-            if (agent.target.IsValid())
+            if (agent.target.IsAssigned())
                 widgets::ReadOnlyText("Target Follow", "active");
             if (agent.isStuck)
                 widgets::ColoredText("Stuck! (path recalculated)", { 1.0f, 0.35f, 0.25f, 1.0f });
@@ -269,4 +269,4 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
         });
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

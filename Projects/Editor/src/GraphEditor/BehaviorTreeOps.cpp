@@ -14,15 +14,15 @@ namespace fbzz::editor::btops {
 
 namespace {
 
-/// 深さ 1 段ぶんの横間隔。ノード幅より僅かに広いだけだとリンクが隣のノードへ
-/// 潜り込み、どの枝がどこへ伸びているのか読めなくなるため 100px 強の余白を持たせる。
-/// 移行前は BehaviorTreePanel 側の定数と AI 側の直書き 300.0f に分かれていた。
+/// @note 深さ 1 段ぶんの横間隔。ノード幅より僅かに広いだけだとリンクが隣のノードへ
+/// @note 潜り込み、どの枝がどこへ伸びているのか読めなくなるため 100px 強の余白を持たせる。
+/// @note 移行前は BehaviorTreePanel 側の定数と AI 側の直書き 300.0f に分かれていた。
 constexpr float kNodeMinWidth  = 196.0f;
-constexpr float kNodeColumnStep = kNodeMinWidth + 104.0f;   ///< 300: テンプレートの手置き座標と一致
-/// ノード高さ (タイトル + 本文 4 行 + ピン 2 行) が収まる縦間隔。
+constexpr float kNodeColumnStep = kNodeMinWidth + 104.0f;   ///< @note 300: テンプレートの手置き座標と一致
+/// @note ノード高さ (タイトル + 本文 4 行 + ピン 2 行) が収まる縦間隔。
 constexpr float kNodeRowStep = 170.0f;
 
-/// 親子関係を辺として取り出す。ExtractSubgraph / CollectReachable へ渡す形。
+/// @note 親子関係を辺として取り出す。ExtractSubgraph / CollectReachable へ渡す形。
 std::vector<GraphEdge> ParentEdges(const fbzz::ai::BehaviorTreeAsset& asset)
 {
     std::vector<GraphEdge> edges;
@@ -38,7 +38,7 @@ int ChildCount(const fbzz::ai::BehaviorTreeAsset& asset, int parentId)
         [parentId](const fbzz::ai::BTNodeDef& node) { return node.parentId == parentId; }));
 }
 
-} // namespace
+}
 
 std::vector<const fbzz::ai::BTNodeDef*> ChildrenOf(const fbzz::ai::BehaviorTreeAsset& asset,
                                                    int parentId)
@@ -49,6 +49,15 @@ std::vector<const fbzz::ai::BTNodeDef*> ChildrenOf(const fbzz::ai::BehaviorTreeA
     std::sort(children.begin(), children.end(),
         [](const fbzz::ai::BTNodeDef* a, const fbzz::ai::BTNodeDef* b) { return a->order < b->order; });
     return children;
+}
+
+std::unordered_map<int, int> BuildChildCounts(const fbzz::ai::BehaviorTreeAsset& asset)
+{
+    std::unordered_map<int, int> counts;
+    counts.reserve(asset.nodes.size());
+    for (const auto& node : asset.nodes)
+        ++counts[node.parentId];
+    return counts;
 }
 
 bool IsDescendant(const fbzz::ai::BehaviorTreeAsset& asset, int ancestorId, int childId)
@@ -151,8 +160,8 @@ AddNodeResult AddNode(fbzz::ai::BehaviorTreeAsset& asset,
 
     if (orphanOnReject) {
         /// @note 孤立ノードとして残す。作った直後に消えると「追加できなかった」のか
-        ///       「見えていない」のか区別できない。ルートが 2 つになるのは Validate が拒否し、
-        ///       理由は警告バナーに出る。
+        /// @note 「見えていない」のか区別できない。ルートが 2 つになるのは Validate が拒否し、
+        /// @note 理由は警告バナーに出る。
         result.leftOrphan = true;
         return result;
     }
@@ -204,7 +213,7 @@ DuplicateResult DuplicateSubtree(fbzz::ai::BehaviorTreeAsset& asset,
     const std::vector<int> subtree = CollectReachable(std::vector<int>{ nodeId }, edges);
 
     /// @note id の再割当と内部リンクの保持は framework の共通実装に任せる。
-    ///       クリップボード・Template 取り込み・レイヤー複製と同じ規則で動く。
+    /// @note クリップボード・Template 取り込み・レイヤー複製と同じ規則で動く。
     int nextId = asset.nextNodeId - 1;
     const GraphExtractResult extracted = ExtractSubgraph(subtree, edges, nextId);
     asset.nextNodeId = nextId + 1;
@@ -263,4 +272,4 @@ void AutoLayout(fbzz::ai::BehaviorTreeAsset& asset)
     }
 }
 
-} // namespace fbzz::editor::btops
+}

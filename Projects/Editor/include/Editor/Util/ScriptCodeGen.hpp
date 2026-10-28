@@ -3,9 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-03
 ///
-/// @note C++ スクリプトヘッダと HLSL テンプレートを生成し、Scripts/ScriptList.inl (X-macro、
-///       DLL/EXE 共通 `#include`) への登録を Assets/ の実ファイル一覧から自動同期する。生成後の
-///       変更は ScriptDllLoader の監視でリビルド→ホットリロードまで自動で走る。
+/// @note C# ソースと HLSL テンプレートを生成する。
 #pragma once
 #include <string>
 
@@ -24,35 +22,26 @@ public:
         ParticlePS,
     };
 
-    /// 生成するヘッダの種類。
-    /// @note Assets/ 配下の .hpp はアタッチするスクリプトだけではない。ユーティリティ関数や
-    ///       調整値にまで FBZZ_SCRIPT を付けると Add Script メニューに並び誤ってアタッチできてしまうため、
-    ///       テンプレートを分けて明示する。
-    enum class ScriptKind {
-        Behaviour,  ///< FBZZ_SCRIPT — GameObject にアタッチする。ScriptList.inl へ登録される
-        Utility,    ///< 登録マクロなし — アタッチしない純粋なクラス (関数群・ヘルパー)
-        DataAsset,  ///< FBZZ_DATA_ASSET — .fzdata として共有する調整値 (ScriptableObject 相当)
+    /// @brief C# の Script / helper / DataAsset 型の種類。
+    enum class CSharpKind {
+        Script,
+        Helper,
+        DataAsset,
     };
 
-    /// C++ ヘッダを scriptsDir に生成し、登録リストを実ファイル一覧から同期する。
-    /// @param name          クラス名に使う識別子 ("EnemyAI" など)
-    ///                      Behaviour のときだけ末尾へ "Component" が自動付与される。
-    /// @param dllCppPath    SandboxScriptsDll.cpp のパス (DLL 側登録。空なら省略)
-    /// @param staticCppPath SandboxScripts.cpp のパス (EXE 静的登録。空なら省略)
-    /// @param kind          生成するヘッダの種類
-    /// @return 生成した .hpp ファイルのフルパス (失敗時は空)
-    static std::string CreateScript(const std::string& name,
-                                    const std::string& scriptsDir,
-                                    const std::string& dllCppPath,
-                                    const std::string& staticCppPath = {},
-                                    ScriptKind kind = ScriptKind::Behaviour);
-    /// Assets/Scripts の実ファイルを正として、DLL/EXE の include と ScriptList.inl を同期する。
-    /// @note Unity と同じように、スクリプトファイルの追加・削除を登録ファイルの手動編集なしで反映する。
-    static bool SyncScriptRegistry(const std::string& scriptsDir,
-                                   const std::string& dllCppPath,
-                                   const std::string& staticCppPath = {});
+    /// @brief C# 型を Assets/Scripts へ生成する。
+    /// @param name ASCII 識別子。Script は `Component` が無い場合だけ末尾へ付ける。
+    /// @param scriptsDir プロジェクトの Assets/Scripts ディレクトリ。
+    /// @return 生成した .cs のパス。不正名・重複・書込失敗時は空。
+    static std::string CreateCSharpClass(const std::string& name,
+                                         const std::string& scriptsDir,
+                                         CSharpKind kind);
 
-    /// HLSL シェーダーファイルを生成する。
+    /// @brief ASCII の C# 識別子として使える名前か確認する。
+    /// @return C# の予約語でなく、ASCII 識別子の形式なら true。
+    [[nodiscard]] static bool IsValidCSharpName(const std::string& name);
+
+    /// @brief HLSL シェーダーファイルを生成する。
     /// @param name     シェーダー名 ("MyEffect" など)
     /// @param hlslDir  Assets/shaders/ のルートパス
     /// @param kind     生成するシェーダーの種類
@@ -63,4 +52,4 @@ public:
 
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

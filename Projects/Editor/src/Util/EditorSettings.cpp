@@ -154,6 +154,7 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     /// @note ゲームビュー
     if (auto v = tbl["game_view"]["aspect"].value<int64_t>()) gameViewportAspect = static_cast<int>(*v);
     if (auto v = tbl["game_view"]["play_focus_mode"].value<int64_t>()) playFocusMode = static_cast<int>(*v);
+    if (auto v = tbl["game_view"]["play_execution_mode"].value<int64_t>()) playExecutionMode = static_cast<int>(*v);
 
     /// @note その他
     if (auto v = tbl["misc"]["hot_reload"].value<bool>()) hotReloadEnabled = *v;
@@ -527,6 +528,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
     toml::table gameViewTbl;
     gameViewTbl.insert("aspect", static_cast<int64_t>(gameViewportAspect));
     gameViewTbl.insert("play_focus_mode", static_cast<int64_t>(playFocusMode));
+    gameViewTbl.insert("play_execution_mode", static_cast<int64_t>(playExecutionMode));
 
     /// @note その他
     toml::table miscTbl;

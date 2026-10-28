@@ -172,7 +172,6 @@ void BuildConsole::BeginBuild(BuildRecord::Kind kind)
         m_history.pop_front();
 
     m_building     = true;
-    m_buildingKind = kind;
     m_consumedLen  = 0;
     m_lineBuffer.clear();
     m_liveLog.clear();
@@ -282,7 +281,7 @@ void BuildConsole::EndBuild(bool success, int exitCode)
     m_currentFile.clear();
 
     /// @note 確定した結果を «その種類の» 通知状態へ書く: 1 つのフラグに畳むと HLSL の成功でスクリプトの失敗通知まで消えてしまい、直っていないものを黙らせることになる。
-    FailureState& state = m_failures[static_cast<size_t>(m_buildingKind)];
+    FailureState& state = m_failures[0];
     state.failed    = !success;
     state.dismissed = false;
     state.sequence  = ++m_failureSequence;
@@ -296,7 +295,7 @@ void BuildConsole::EndBuildCancelled()
     }
     m_building = false;
     m_currentFile.clear();
-    /// @note 中断は «結果» ではないので、その種類の通知状態は前のまま据え置く。
+    /// @note 中断は結果に含めず、直前の HLSL 通知状態を維持する。
 }
 
 void BuildConsole::ClearHistory()
@@ -320,7 +319,7 @@ bool BuildConsole::HasActiveFailure() const
 
 const BuildRecord* BuildConsole::LatestFailure() const
 {
-    /// @note 未 Dismiss の失敗を抱えている Kind のうち、いちばん新しいものを選ぶ。履歴には直った後の古い失敗も残るため、通知に出してよいのは «その種類の最後の結果が失敗» のものだけ。
+    /// @note 履歴には直った後の失敗も残るため、最新の HLSL 結果だけを通知対象にする。
     const BuildRecord* best     = nullptr;
     uint64_t           bestSeq  = 0;
     for (size_t kind = 0; kind < kKindCount; ++kind) {
@@ -342,7 +341,7 @@ const BuildRecord* BuildConsole::LatestFailure() const
 
 void BuildConsole::DismissNotification()
 {
-    /// @note 今バーに出ているものだけを黙らせる。もう片方の失敗は残す。
+    /// @note 表示中の HLSL 失敗だけを黙らせる。
     if (const BuildRecord* shown = LatestFailure())
         m_failures[static_cast<size_t>(shown->kind)].dismissed = true;
 }

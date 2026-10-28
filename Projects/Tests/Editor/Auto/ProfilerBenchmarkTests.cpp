@@ -3,6 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #include <TestKit/TestKit.hpp>
+#include <Engine/Profiler/ProfilerFrame.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
+#include <Profiler/PassiveFrameElapsedCapture.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <Editor/Profiler/ProfilerHistory.hpp>
 #include <Editor/Profiler/ProfilerOperators.hpp>
@@ -757,6 +760,258 @@ TEST_F(ProfilerBenchmarkTest, DistinguishesSameNameNestedInclusiveFromElapsedAnd
     EXPECT_EQ(separated.flat[0].key, merged.flat[0].key);
     EXPECT_DOUBLE_EQ(separated.frameMs, merged.frameMs);
     EXPECT_DOUBLE_EQ(renamed.cpuFrameElapsedMs, legacy.cpuFrameElapsedMs);
+}
+
+
+namespace {
+profiler::detail::ApplicationFrameElapsedModeWitness PassiveMode() { return {false, false, false, 11, 22, 33, 44}; }
+editor::PassiveFrameElapsedConditions PassiveConditions()
+{
+    return {"TerrainLarge", "saved-camera", "Release DX12 lockstep=0 quality=fixed pacing=fixed memory/gpu/private=fixed", std::string(64, 'A'), std::string(64, '1')};
+}
+profiler::detail::ApplicationFrameElapsedSnapshot PassiveFrame(uint64_t serial, uint64_t ordinal, uint64_t session = 17, double cpu = 2.0, double wall = 16.0)
+{
+    profiler::detail::ApplicationFrameElapsedSnapshot frame;
+    frame.available = true; frame.complete = true; frame.observerSessionId = session;
+    frame.applicationFrameSerial = serial; frame.publicationOrdinal = ordinal;
+    frame.beginMode = PassiveMode(); frame.endMode = PassiveMode(); frame.endModeAvailable = true;
+    frame.cpuFrameElapsedAvailable = true; frame.wallFrameIntervalAvailable = true;
+    frame.cpuFrameElapsedMs = cpu; frame.wallFrameIntervalMs = wall; return frame;
+}
+renderer::RenderDebugOverlay::Snapshot PassiveRendering(uint64_t serial)
+{
+    renderer::RenderDebugOverlay::Snapshot rendering;
+    rendering.gpuCurrentView = {serial, 2, 4, 3, 6, 1904, 871, 10, 1};
+    rendering.renderStats.drawCalls = 23; rendering.renderStats.triangleCount = 450; return rendering;
+}
+} /// @note namespace
+
+TEST_F(ProfilerBenchmarkTest, PassiveCaptureRetainsExactWarmup120And300DistinctFramesWithNearestRank)
+{
+    profiler::detail::ApplicationFrameElapsedObserver observer; const auto session = observer.Arm();
+    editor::PassiveFrameElapsedCapture capture; ASSERT_TRUE(capture.Start("passive", 120, 300, session, PassiveMode(), PassiveConditions()));
+    for (uint64_t serial = 1; serial <= 420; ++serial) {
+        const double start = static_cast<double>(serial * 16);
+        const double cpu = serial <= 120 ? 1.0 : static_cast<double>(serial - 120) / 128.0;
+        observer.Begin(serial, start, PassiveMode()); observer.End(start + cpu, PassiveMode());
+        const auto frame = observer.Read(); capture.Feed(frame, PassiveRendering(serial)); capture.Feed(frame, PassiveRendering(serial));
+    }
+    EXPECT_EQ(capture.Status().warmedFrames, 120u); ASSERT_EQ(capture.Rows().size(), 300u);
+    EXPECT_EQ(capture.Rows().front().elapsed.applicationFrameSerial, 121u); EXPECT_EQ(capture.Rows().back().elapsed.applicationFrameSerial, 420u);
+    EXPECT_EQ(capture.Report().cpu.count, 300u); EXPECT_EQ(capture.Report().wall.count, 300u);
+    EXPECT_DOUBLE_EQ(capture.Report().cpu.p50Ms, 150.0 / 128.0); EXPECT_DOUBLE_EQ(capture.Report().cpu.p95Ms, 285.0 / 128.0);
+    EXPECT_DOUBLE_EQ(capture.Report().cpu.p99Ms, 297.0 / 128.0); EXPECT_DOUBLE_EQ(capture.Report().wall.p50Ms, 16.0);
+    EXPECT_TRUE(editor::IsPassiveFrameElapsedEligible(capture.Report()));
+}
+TEST_F(ProfilerBenchmarkTest, PassiveCaptureRejectsRecordingSessionRuntimeAndDllChangesAtEitherBoundary)
+{
+    for (int change = 0; change < 8; ++change) {
+        editor::PassiveFrameElapsedCapture capture; ASSERT_TRUE(capture.Start("change", 0, 2, 17, PassiveMode(), PassiveConditions()));
+        auto frame = PassiveFrame(1, 1);
+        if (change == 0) frame.beginMode.nativeRecording = true;
+        if (change == 1) frame.beginMode.nativeRecordingRequested = true;
+        if (change == 2) frame.endMode.scriptRecording = true;
+        if (change == 3) ++frame.beginMode.nativeSession;
+        if (change == 4) ++frame.endMode.scriptSession;
+        if (change == 5) ++frame.beginMode.runtimeEpoch;
+        if (change == 6) ++frame.endMode.dllGeneration;
+        if (change == 7) ++frame.observerSessionId;
+        capture.Feed(frame, PassiveRendering(1));
+        EXPECT_EQ(capture.Status().state, editor::PerformanceBenchmarkState::FAILED);
+        EXPECT_EQ(capture.Status().failure, change < 3 ? editor::PassiveFrameElapsedFailure::MODE_CHANGED : editor::PassiveFrameElapsedFailure::SESSION_CHANGED);
+        EXPECT_TRUE(capture.Report().failureFrameAvailable); EXPECT_TRUE(capture.Rows().empty());
+    }
+}
+TEST_F(ProfilerBenchmarkTest, PassiveCaptureCountsPublicationAndSerialGapsAndRejectsRewind)
+{
+    editor::PassiveFrameElapsedCapture capture; ASSERT_TRUE(capture.Start("gaps", 0, 2, 17, PassiveMode(), PassiveConditions()));
+    capture.Feed(PassiveFrame(30, 1, 16), PassiveRendering(30)); EXPECT_TRUE(capture.Rows().empty());
+    capture.Feed(PassiveFrame(50, 3), PassiveRendering(50)); capture.Feed(PassiveFrame(50, 3), PassiveRendering(50));
+    capture.Feed(PassiveFrame(53, 5), PassiveRendering(53));
+    EXPECT_EQ(capture.Status().missingPublicationCount, 3u); EXPECT_EQ(capture.Status().missingFrameCount, 2u);
+    EXPECT_EQ(capture.Rows().size(), 2u); EXPECT_FALSE(editor::IsPassiveFrameElapsedEligible(capture.Report()));
+    ASSERT_TRUE(capture.Start("rewind", 0, 3, 18, PassiveMode(), PassiveConditions()));
+    capture.Feed(PassiveFrame(5, 1, 18), PassiveRendering(5)); capture.Feed(PassiveFrame(4, 2, 18), PassiveRendering(4));
+    EXPECT_EQ(capture.Status().failure, editor::PassiveFrameElapsedFailure::FRAME_ORDER_CHANGED);
+}
+TEST_F(ProfilerBenchmarkTest, PassiveCaptureRetainsAbortedTimingAndLeavesStaleOrChangedRenderingUnavailable)
+{
+    editor::PassiveFrameElapsedCapture capture; ASSERT_TRUE(capture.Start("aborted", 0, 1, 17, PassiveMode(), PassiveConditions()));
+    auto aborted = PassiveFrame(1, 1); aborted.complete = false; aborted.boundary = profiler::detail::ApplicationFrameElapsedBoundary::WINDOW_CLOSE;
+    capture.Feed(aborted, PassiveRendering(0));
+    EXPECT_EQ(capture.Report().cpu.count, 1u); EXPECT_EQ(capture.Status().incompleteFrames, 1u);
+    EXPECT_EQ(capture.Status().missingRenderingMetadataFrames, 1u); EXPECT_FALSE(capture.Rows().front().renderingAvailable);
+    EXPECT_FALSE(editor::IsPassiveFrameElapsedEligible(capture.Report()));
+    ASSERT_TRUE(capture.Start("changed", 0, 2, 18, PassiveMode(), PassiveConditions()));
+    capture.Feed(PassiveFrame(1, 1, 18), PassiveRendering(1));
+    auto changed = PassiveRendering(2); ++changed.gpuCurrentView.width;
+    capture.Feed(PassiveFrame(2, 2, 18), changed);
+    EXPECT_TRUE(capture.Report().renderingConditionsChanged); EXPECT_FALSE(editor::IsPassiveFrameElapsedEligible(capture.Report()));
+    ASSERT_TRUE(capture.Start("warmup-change", 2, 1, 19, PassiveMode(), PassiveConditions()));
+    capture.Feed(PassiveFrame(1, 1, 19), PassiveRendering(1));
+    capture.Feed(PassiveFrame(2, 2, 19), changed); capture.Feed(PassiveFrame(3, 3, 19), PassiveRendering(3));
+    EXPECT_TRUE(capture.Report().renderingConditionsChanged); EXPECT_FALSE(editor::IsPassiveFrameElapsedEligible(capture.Report()));
+    ASSERT_TRUE(capture.Start("warmup-missing", 1, 1, 20, PassiveMode(), PassiveConditions()));
+    capture.Feed(PassiveFrame(1, 1, 20), PassiveRendering(0)); capture.Feed(PassiveFrame(2, 2, 20), PassiveRendering(2));
+    EXPECT_EQ(capture.Status().missingWarmupRenderingMetadataFrames, 1u); EXPECT_FALSE(editor::IsPassiveFrameElapsedEligible(capture.Report()));
+}
+TEST_F(ProfilerBenchmarkTest, PassiveOperatorsPaginateActualZeroAndNullMissingValuesWithoutScopeOrPhysicsZeros)
+{
+    auto& capture = editor::GetPassiveFrameElapsedCapture(); ASSERT_TRUE(capture.Start("ops", 0, 2, 17, PassiveMode(), PassiveConditions()));
+    EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.frame_elapsed.result").errorCode, "NOT_COMPLETE");
+    const auto status = editor::InvokeOperator(Context(), "profiler.frame_elapsed.status"); ASSERT_TRUE(status.ok);
+    EXPECT_EQ(status.data.Find("rows"), nullptr); EXPECT_EQ(status.data.Find("instrumentationMode")->AsString(), editor::PASSIVE_FRAME_ELAPSED_MODE);
+    capture.Feed(PassiveFrame(1, 1, 17, 0.0, 0.0), PassiveRendering(1));
+    auto missing = PassiveFrame(2, 2); missing.cpuFrameElapsedMs = std::numeric_limits<double>::quiet_NaN(); missing.wallFrameIntervalMs = -1.0;
+    capture.Feed(missing, PassiveRendering(1));
+    editor::OpArgs page; page.Set("count", 1);
+    auto first = editor::InvokeOperator(Context(), "profiler.frame_elapsed.result", page); ASSERT_TRUE(first.ok);
+    EXPECT_DOUBLE_EQ(first.data.Find("rows")->AsArray().front().Find("cpuFrameElapsedMs")->AsDouble(), 0.0);
+    EXPECT_TRUE(first.data.Find("hasMore")->AsBool()); EXPECT_EQ(first.data.Find("physics")->Find("stepCount")->IsNull(), true);
+    EXPECT_TRUE(first.data.Find("scopeMeasurement")->Find("recordedSampleCount")->IsNull()); EXPECT_TRUE(first.data.Find("gpu")->Find("totalGpuMs")->IsNull());
+    page.Set("offset", 1); auto second = editor::InvokeOperator(Context(), "profiler.frame_elapsed.result", page); ASSERT_TRUE(second.ok);
+    const auto& row = second.data.Find("rows")->AsArray().front();
+    EXPECT_TRUE(row.Find("cpuFrameElapsedMs")->IsNull()); EXPECT_TRUE(row.Find("wallFrameIntervalMs")->IsNull());
+    EXPECT_TRUE(row.Find("drawCalls")->IsNull()); EXPECT_TRUE(row.Find("renderingMetadata")->IsNull());
+    EXPECT_FALSE(second.data.Find("comparison")->Find("eligible")->AsBool());
+    page.Set("offset", 3); EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.frame_elapsed.result", page).errorCode, "BAD_ARG");
+    page.Set("offset", 0); page.Set("count", 257); EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.frame_elapsed.result", page).errorCode, "BAD_ARG");
+}
+TEST_F(ProfilerBenchmarkTest, PassiveCaptureBoundsRequestsAndRejectsIncompleteReferencesAndStoppedPlay)
+{
+    editor::PassiveFrameElapsedCapture capture;
+    EXPECT_TRUE(capture.CanStart("limits", 60000, 60000, PassiveConditions()));
+    EXPECT_FALSE(capture.CanStart("limits", 60001, 1, PassiveConditions())); EXPECT_FALSE(capture.CanStart("limits", 0, 60001, PassiveConditions()));
+    auto invalid = PassiveConditions(); invalid.runtimeHash = "not-a-hash";
+    EXPECT_FALSE(capture.CanStart("limits", 0, 1, invalid)); EXPECT_FALSE(capture.Start("zero-session", 0, 1, 0, PassiveMode()));
+    ASSERT_TRUE(capture.Start("play", 0, 1, 17, PassiveMode(), PassiveConditions())); capture.Feed(PassiveFrame(1, 1), PassiveRendering(1), false);
+    EXPECT_EQ(capture.Status().failure, editor::PassiveFrameElapsedFailure::PLAY_CHANGED);
+    EXPECT_FALSE(editor::SetPassiveFrameElapsedReference());
+    editor::OpArgs start; start.Set("label", std::string("ordinary")); start.Set("warmupFrames", 0); start.Set("sampleFrames", 1);
+    EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.frame_elapsed.start", start).errorCode, "OFF_PLAY_REQUIRED");
+}
+TEST_F(ProfilerBenchmarkTest, PassiveComparisonRequiresObservedConditionsAndAllowsRecordedBuildHashToDiffer)
+{
+    static_assert(!std::is_convertible_v<editor::PerformanceBenchmarkReport, editor::PassiveFrameElapsedReport>);
+    editor::PassiveFrameElapsedCapture before, after;
+    auto candidateConditions = PassiveConditions(); candidateConditions.runtimeHash = std::string(64, 'B');
+    ASSERT_TRUE(before.Start("before", 0, 1, 17, PassiveMode(), PassiveConditions()));
+    ASSERT_TRUE(after.Start("after", 0, 1, 18, PassiveMode(), candidateConditions));
+    before.Feed(PassiveFrame(1, 1), PassiveRendering(1)); after.Feed(PassiveFrame(2, 1, 18), PassiveRendering(2));
+    EXPECT_TRUE(editor::ArePassiveFrameElapsedComparable(before.Report(), after.Report()));
+    auto changed = after.Report(); changed.conditions.configuration += " quality=changed";
+    EXPECT_FALSE(editor::ArePassiveFrameElapsedComparable(before.Report(), changed));
+    changed = after.Report(); changed.conditions.scenarioHash = std::string(64, '2');
+    EXPECT_FALSE(editor::ArePassiveFrameElapsedComparable(before.Report(), changed));
+    changed = after.Report(); ++changed.rendering.resourceEpoch;
+    EXPECT_FALSE(editor::ArePassiveFrameElapsedComparable(before.Report(), changed));
+}
+TEST_F(ProfilerBenchmarkTest, PassiveCancelAndOverlapNeverForceOrRestoreCollectorRecording)
+{
+    const bool native = profiler::Profiler::IsEnabled(), requested = profiler::Profiler::IsRecordingRequested();
+    const bool script = scene::ScriptProfiler::IsRecording(); const auto filter = profiler::Profiler::GetRequestedCaptureFilter();
+    auto& capture = editor::GetPassiveFrameElapsedCapture(); ASSERT_TRUE(capture.Start("overlap", 0, 1, 17, PassiveMode(), PassiveConditions()));
+    EXPECT_FALSE(editor::StartPerformanceBenchmark("legacy", 0, 1));
+    editor::OpArgs start; start.Set("label", std::string("next")); start.Set("warmupFrames", 0); start.Set("sampleFrames", 1);
+    EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.benchmark.start", start).errorCode, "BENCHMARK_ACTIVE");
+    EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.frame_elapsed.start", start).errorCode, "BENCHMARK_ACTIVE");
+    EXPECT_TRUE(editor::CancelPassiveFrameElapsedCapture()); EXPECT_FALSE(capture.IsActive());
+    EXPECT_EQ(profiler::Profiler::IsEnabled(), native); EXPECT_EQ(profiler::Profiler::IsRecordingRequested(), requested);
+    EXPECT_EQ(scene::ScriptProfiler::IsRecording(), script); EXPECT_EQ(profiler::Profiler::GetRequestedCaptureFilter(), filter);
+    ASSERT_TRUE(editor::GetPerformanceBenchmarkCapture().Start("legacy-pure", 0, 1, {}));
+    EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.frame_elapsed.start", start).errorCode, "BENCHMARK_ACTIVE");
+    EXPECT_EQ(profiler::Profiler::IsRecordingRequested(), requested); EXPECT_TRUE(editor::CancelPerformanceBenchmark());
+}
+
+
+namespace {
+void PassiveReviewEditorBeginCommonFrame()
+{
+    if (auto* resources = renderer::ResourceManager::Active()) resources->AdvanceFrame();
+    profiler::BeginApplicationProfileFrame();
+}
+struct PassiveReviewBoundaryGuard {
+    bool script = scene::ScriptProfiler::IsRecording();
+    PassiveReviewBoundaryGuard() {
+        profiler::Profiler::SetEnabled(false); scene::ScriptProfiler::RequestRecording(false);
+        PassiveReviewEditorBeginCommonFrame(); profiler::EndApplicationProfileFrame();
+    }
+    ~PassiveReviewBoundaryGuard() {
+        profiler::detail::RequestStopApplicationFrameElapsedObserver();
+        scene::ScriptProfiler::RequestRecording(script);
+        PassiveReviewEditorBeginCommonFrame(); profiler::EndApplicationProfileFrame();
+    }
+};
+} /// @note namespace
+
+TEST_F(ProfilerBenchmarkTest, PassiveEligibilityRejectsInvalidOutputAndModifiedModeOrAvailabilityReports)
+{
+    editor::PassiveFrameElapsedCapture valid;
+    ASSERT_TRUE(valid.Start("valid-report", 0, 1, 17, PassiveMode(), PassiveConditions()));
+    valid.Feed(PassiveFrame(1, 1), PassiveRendering(1));
+    ASSERT_TRUE(valid.Report().cpu.available); ASSERT_TRUE(valid.Report().wall.available);
+    ASSERT_TRUE(editor::IsPassiveFrameElapsedEligible(valid.Report()));
+    for (int alteration = 0; alteration < 5; ++alteration) {
+        auto changed = valid.Report();
+        if (alteration == 0) changed.baselineMode.nativeRecording = true;
+        if (alteration == 1) changed.baselineMode.nativeRecordingRequested = true;
+        if (alteration == 2) changed.baselineMode.scriptRecording = true;
+        if (alteration == 3) changed.cpu.available = false;
+        if (alteration == 4) changed.wall.available = false;
+        EXPECT_EQ(changed.cpu.count, 1u); EXPECT_EQ(changed.wall.count, 1u);
+        EXPECT_FALSE(editor::IsPassiveFrameElapsedEligible(changed));
+        EXPECT_FALSE(editor::ArePassiveFrameElapsedComparable(valid.Report(), changed));
+    }
+    editor::PassiveFrameElapsedCapture invalidOutput;
+    ASSERT_TRUE(invalidOutput.Start("invalid-output", 0, 1, 18, PassiveMode(), PassiveConditions()));
+    auto rendering = PassiveRendering(2); rendering.gpuCurrentView.outputId = 0; rendering.gpuCurrentView.outputGeneration = 1;
+    invalidOutput.Feed(PassiveFrame(2, 1, 18), rendering);
+    EXPECT_EQ(invalidOutput.Status().missingRenderingMetadataFrames, 1u);
+    ASSERT_EQ(invalidOutput.Rows().size(), 1u); EXPECT_FALSE(invalidOutput.Rows().front().renderingAvailable);
+    EXPECT_FALSE(invalidOutput.Report().renderingMetadataAvailable);
+    EXPECT_TRUE(invalidOutput.Report().cpu.available); EXPECT_TRUE(invalidOutput.Report().wall.available);
+    EXPECT_FALSE(editor::IsPassiveFrameElapsedEligible(invalidOutput.Report()));
+}
+TEST_F(ProfilerBenchmarkTest, PassiveCaptureIgnoresOldLatestAndOpenFrameCompletionAcrossStopAndRearm)
+{
+    PassiveReviewBoundaryGuard restore;
+    const auto oldSession = profiler::detail::ArmApplicationFrameElapsedObserver(); ASSERT_NE(oldSession, 0u);
+    PassiveReviewEditorBeginCommonFrame(); profiler::EndApplicationProfileFrame();
+    const auto oldLatest = profiler::detail::ReadApplicationFrameElapsedObserver(); ASSERT_TRUE(oldLatest.available);
+    const auto newSession = profiler::detail::ArmApplicationFrameElapsedObserver(); ASSERT_GT(newSession, oldSession);
+    editor::PassiveFrameElapsedCapture first;
+    ASSERT_TRUE(first.Start("first-rearm", 1, 1, newSession, oldLatest.beginMode, PassiveConditions()));
+    first.Feed(oldLatest, PassiveRendering(oldLatest.applicationFrameSerial));
+    EXPECT_EQ(first.Status().warmedFrames, 0u); EXPECT_EQ(first.Status().capturedFrames, 0u);
+    PassiveReviewEditorBeginCommonFrame(); EXPECT_FALSE(profiler::detail::ReadApplicationFrameElapsedObserver().available);
+    profiler::EndApplicationProfileFrame();
+    const auto newLatest = profiler::detail::ReadApplicationFrameElapsedObserver();
+    first.Feed(newLatest, PassiveRendering(newLatest.applicationFrameSerial)); EXPECT_EQ(first.Status().warmedFrames, 1u);
+    PassiveReviewEditorBeginCommonFrame(); profiler::detail::RequestStopApplicationFrameElapsedObserver();
+    const auto finalSession = profiler::detail::ArmApplicationFrameElapsedObserver(); ASSERT_GT(finalSession, newSession);
+    editor::PassiveFrameElapsedCapture final;
+    ASSERT_TRUE(final.Start("stop-rearm", 1, 1, finalSession, newLatest.beginMode, PassiveConditions()));
+    final.Feed(profiler::detail::ReadApplicationFrameElapsedObserver(), PassiveRendering(newLatest.applicationFrameSerial));
+    profiler::EndApplicationProfileFrame();
+    const auto completedOld = profiler::detail::ReadApplicationFrameElapsedObserver();
+    EXPECT_EQ(completedOld.observerSessionId, newSession); EXPECT_EQ(completedOld.publicationOrdinal, 2u);
+    final.Feed(completedOld, PassiveRendering(completedOld.applicationFrameSerial));
+    EXPECT_EQ(final.Status().warmedFrames, 0u); EXPECT_TRUE(final.Rows().empty());
+    PassiveReviewEditorBeginCommonFrame(); final.Feed(profiler::detail::ReadApplicationFrameElapsedObserver(), {});
+    EXPECT_EQ(final.Status().warmedFrames, 0u); profiler::EndApplicationProfileFrame();
+    const auto firstFinal = profiler::detail::ReadApplicationFrameElapsedObserver();
+    ASSERT_EQ(firstFinal.observerSessionId, finalSession); ASSERT_EQ(firstFinal.publicationOrdinal, 1u);
+    EXPECT_FALSE(firstFinal.wallFrameIntervalAvailable);
+    first.Feed(firstFinal, PassiveRendering(firstFinal.applicationFrameSerial));
+    EXPECT_EQ(first.Status().failure, editor::PassiveFrameElapsedFailure::SESSION_CHANGED);
+    final.Feed(firstFinal, PassiveRendering(firstFinal.applicationFrameSerial)); EXPECT_EQ(final.Status().warmedFrames, 1u);
+    PassiveReviewEditorBeginCommonFrame(); profiler::EndApplicationProfileFrame();
+    const auto secondFinal = profiler::detail::ReadApplicationFrameElapsedObserver();
+    final.Feed(secondFinal, PassiveRendering(secondFinal.applicationFrameSerial));
+    EXPECT_EQ(final.Status().state, editor::PerformanceBenchmarkState::COMPLETE);
+    ASSERT_EQ(final.Rows().size(), 1u); EXPECT_EQ(final.Rows().front().elapsed.observerSessionId, finalSession);
+    EXPECT_EQ(final.Rows().front().elapsed.publicationOrdinal, 2u); EXPECT_TRUE(final.Report().wall.available);
+    EXPECT_FALSE(profiler::Profiler::GetSnapshot().available);
 }
 
 } /// @note namespace fbzz::tests

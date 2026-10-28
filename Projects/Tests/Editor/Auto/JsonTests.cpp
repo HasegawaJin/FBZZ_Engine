@@ -3,14 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
 ///
-/// このパーサは Editor と MCP の間の唯一の通信形式。壊れても «AI から操作できない» という
-/// 形でしか出ず、原因がプロトコルなのか操作側なのか切り分けられない。
-/// 往復して同じ値に戻ること、壊れた入力を «成功» と言わないことをここで固定する。
+/// @note Parser round-trips values and rejects malformed input so protocol failures remain diagnosable.
 #include <TestKit/TestKit.hpp>
 
 #include <Editor/Ai/Json.hpp>
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -29,7 +28,7 @@ JsonValue MustParse(const std::string& text)
     return parsed.value_or(JsonValue{});
 }
 
-} // namespace
+} /// @note anonymous namespace
 
 /// @name 解析
 
@@ -48,6 +47,40 @@ TEST(JsonParse, ReadsNegativeAndFractionalNumbers)
     EXPECT_DOUBLE_EQ(MustParse("0.5").AsNumber(), 0.5);
     EXPECT_DOUBLE_EQ(MustParse("-0.25").AsNumber(), -0.25);
     EXPECT_DOUBLE_EQ(MustParse("1e3").AsNumber(), 1000.0);
+}
+
+TEST(JsonParse, PreservesInt64TokensAcrossSerialization)
+{
+    const JsonValue low = MustParse("-9223372036854775808");
+    const JsonValue high = MustParse("9223372036854775807");
+    ASSERT_TRUE(low.IsInteger());
+    ASSERT_TRUE(high.IsInteger());
+    EXPECT_EQ(low.AsInt64(), std::numeric_limits<std::int64_t>::min());
+    EXPECT_EQ(high.AsInt64(), std::numeric_limits<std::int64_t>::max());
+    EXPECT_EQ(SerializeJson(low), "-9223372036854775808");
+    EXPECT_EQ(SerializeJson(high), "9223372036854775807");
+    EXPECT_FALSE(ParseJson("9223372036854775808").has_value());
+    EXPECT_FALSE(ParseJson("-9223372036854775809").has_value());
+}
+
+TEST(JsonValueBuild, ChecksNarrowIntegerAccess)
+{
+    int value = 71;
+    const JsonValue wide(std::int64_t{4294967295});
+    EXPECT_FALSE(wide.TryGetInt32(value));
+    EXPECT_EQ(value, 71);
+    EXPECT_EQ(wide.AsInt(-3), -3);
+    EXPECT_TRUE(JsonValue(4.0).TryGetInt32(value));
+    EXPECT_EQ(value, 4);
+    EXPECT_FALSE(JsonValue(4.5).TryGetInt32(value));
+}
+
+TEST(JsonSerialize, PreservesDoubleRoundTripPrecision)
+{
+    constexpr double value = 1.2345678901234567;
+    const JsonValue roundTrip = MustParse(SerializeJson(JsonValue(value)));
+    EXPECT_DOUBLE_EQ(roundTrip.AsNumber(), value);
+    EXPECT_FALSE(roundTrip.IsInteger());
 }
 
 TEST(JsonParse, ReadsAnObjectAndFindsMembersByKey)
@@ -261,4 +294,4 @@ TEST(JsonBase64, EncodesBytesAboveAscii)
     EXPECT_EQ(editor::ai::Base64Encode(bytes), "AP+Afw==");
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

@@ -9,20 +9,56 @@
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/TerrainWaterDefaults.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/ResourceManager.hpp>
 
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 
 namespace fbzz::tests {
 namespace {
 
 using editor::AssetDirtyRegistry;
+
+/// @note Project path initialization uses the production AssetManager lifecycle without creating GPU resources.
+class DataAssetSaveCpuRenderer final : public renderer::IRenderer {
+public:
+    void Shutdown() override {}
+    void BeginFrame() override {}
+    void EndFrame() override {}
+    void Clear(const math::Vector4&) override {}
+    void Submit(const renderer::DrawCall&, renderer::ResourceManager&) override {}
+    void Dispatch(const renderer::ComputeCall&, renderer::ResourceManager&) override {}
+    void Resize(uint32_t, uint32_t) override {}
+    uint32_t GetWidth() const override { return 1; }
+    uint32_t GetHeight() const override { return 1; }
+    void SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>, renderer::ResourceManager&) override {}
+    void ClearDepth() override {}
+    void SetViewport(uint32_t, uint32_t, uint32_t, uint32_t) override {}
+    std::unique_ptr<renderer::IShader> CreateNativeShader(const std::string&) override { return {}; }
+    std::unique_ptr<renderer::IConstantBuffer> CreateNativeConstantBuffer(size_t) override { return {}; }
+    std::unique_ptr<renderer::IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTexture(const std::string&) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTextureFromData(const uint8_t*, uint32_t, uint32_t) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTextureFromRenderTarget(renderer::IRenderTarget&, uint32_t, renderer::RenderTargetTextureKind) override { return {}; }
+    std::unique_ptr<renderer::IPipelineState> CreateNativePipelineState(const renderer::PipelineStateDesc&) override { return {}; }
+    std::unique_ptr<renderer::IRenderTarget> CreateNativeRenderTarget(uint32_t, uint32_t, const renderer::RenderTargetDesc&) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeComputeTexture(uint32_t, uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IStructuredBuffer> CreateNativeStructuredBuffer(const void*, uint32_t, uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t, uint32_t) override { return {}; }
+};
 
 /// @note Only ImGui's active-item/frame bookkeeping is needed; no window, renderer or GPU is created.
 class ScopedDataAssetImGuiContext {
@@ -212,6 +248,7 @@ protected:
         asset::DataAssetRegistry::ClearCache();
         m_panel.OnShutdown();
         Context().projectRoot = ProjectRoot().generic_string();
+        asset::AssetManager::Init(m_resources, util::FileSystem::PathToUtf8(ProjectRoot() / "Assets"));
         m_imgui.Frame(1, false);
         editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
     }
@@ -220,6 +257,7 @@ protected:
         AssetDirtyRegistry::DiscardAll();
         m_panel.OnShutdown();
         asset::DataAssetRegistry::ClearCache();
+        asset::AssetManager::UnloadAll();
         EditorFixture::TearDown();
     }
     std::string Path(const char* name) const
@@ -263,9 +301,44 @@ protected:
         stream << text;
     }
 
+    DataAssetSaveCpuRenderer m_renderer;
+    renderer::ResourceManager m_resources{m_renderer};
     ScopedDataAssetImGuiContext m_imgui;
     editor::InspectorPanel m_panel;
 };
+
+TEST_F(InspectorDataAssetSaveTest, RelativeAbsoluteAndGuidPathsShareEditsSavesAndUndoSnapshots)
+{
+    const auto absolute = Path("Aliases.fzdata");
+    Create(absolute);
+    const auto original = Text(absolute);
+    asset::DataAssetRegistry::ClearCache();
+    const std::string relative = "Assets/Aliases.fzdata";
+    std::error_code error;
+    ASSERT_TRUE(std::filesystem::equivalent(util::FileSystem::PathFromUtf8(absolute),
+        util::FileSystem::PathFromUtf8(asset::AssetManager::ResolveAssetPath(relative)), error));
+    ASSERT_FALSE(error);
+    const auto assetGuid = asset::AssetDatabase::GuidFromPath(absolute);
+    ASSERT_FALSE(assetGuid.empty());
+    const auto guid = "guid:" + assetGuid;
+    auto* shared = Resolve(relative);
+    ASSERT_NE(shared, nullptr);
+    EXPECT_EQ(Resolve(absolute), shared);
+    EXPECT_EQ(Resolve(guid), shared);
+    const auto before = asset::DataAssetRegistry::Snapshot(relative);
+    ASSERT_FALSE(before.empty());
+    EXPECT_EQ(asset::DataAssetRegistry::Snapshot(absolute), before);
+    EXPECT_EQ(asset::DataAssetRegistry::TypeOf(guid), asset::RenderPipelineAsset::TYPE_NAME);
+    Edit(relative);
+    editor::InspectorPanel::FlushPendingDataAssetSaves(Context());
+    EXPECT_NE(Text(absolute), original);
+    EXPECT_FALSE(AssetDirtyRegistry::HasAny());
+    ASSERT_TRUE(asset::DataAssetRegistry::RestoreSnapshot(absolute, before));
+    EXPECT_TRUE(shared->Settings().shadowEnabled);
+    ASSERT_TRUE(asset::DataAssetRegistry::Save(guid));
+    EXPECT_EQ(Text(absolute), original);
+    EXPECT_EQ(Resolve(relative), shared);
+}
 
 TEST_F(InspectorDataAssetSaveTest, FlushesOldSelectionAndHiddenInspectorWithoutLosingEitherPath)
 {

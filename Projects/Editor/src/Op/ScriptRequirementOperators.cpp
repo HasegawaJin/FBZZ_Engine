@@ -13,7 +13,7 @@
 namespace fbzz::editor {
 bool CanReviewScriptRequirements(const EditorContext& ctx)
 {
-    return ctx.activeScene && !ctx.scriptReloadBusy &&
+    return ctx.activeScene && !ctx.managedBuildBusy &&
         (!ctx.playMode || ctx.playMode->IsInEditor());
 }
 

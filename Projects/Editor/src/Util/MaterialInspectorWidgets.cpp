@@ -14,6 +14,7 @@
 #include <Math/Vector3.hpp>
 #include <imgui.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <initializer_list>
 #include <string>
@@ -21,7 +22,76 @@
 
 namespace fbzz::editor {
 
-bool DrawReflectedMaterialParam(asset::MaterialAsset& material, const renderer::ShaderVarDesc& variable)
+bool DrawReflectedMaterialInspector(asset::MaterialAssetAuthoring& material,
+    const renderer::ShaderDescriptor* descriptor, const std::string& projectRoot)
+{
+    ImGui::SeparatorText("Project Appearance");
+    if (!descriptor) {
+        ImGui::TextDisabled("Shader reflection unavailable; reload a valid shader to edit typed appearance values.");
+        return false;
+    }
+    bool changed = false;
+    for (const auto& texture : descriptor->textures) {
+        if (texture.slot >= renderer::kMaterialTextureSlotCount) continue;
+        const char* key = renderer::kMaterialTextureSlots[texture.slot].key;
+        changed |= widgets::TextureSlotField(key, material.textures[key], widgets::kTextureAssetFilter, projectRoot);
+    }
+    for (const auto& variable : descriptor->vars) {
+        const bool color = variable.name.find("Color") != std::string::npos
+            || variable.name.find("color") != std::string::npos || variable.name.find("Tint") != std::string::npos;
+        if (color && variable.IsWritable() && variable.varType == renderer::ShaderVarType::Float
+            && variable.varClass == renderer::ShaderVarClass::Vector && variable.rows == 1
+            && variable.elements == 0 && (variable.columns == 3 || variable.columns == 4)
+            && !material.integerParams.contains(variable.name)) {
+            float values[4]{1, 1, 1, 1};
+            const auto found = material.params.find(variable.name);
+            if (found != material.params.end() && found->second.size() == variable.columns)
+                std::copy(found->second.begin(), found->second.end(), values);
+            const bool edited = variable.columns == 3 ? ImGui::ColorEdit3(variable.name.c_str(), values)
+                : ImGui::ColorEdit4(variable.name.c_str(), values);
+            if (edited) {
+                material.params[variable.name] = std::vector<float>(values, values + variable.columns);
+                changed = true;
+            }
+        } else {
+            changed |= DrawReflectedMaterialParam(material, variable);
+        }
+    }
+    return changed;
+}
+
+bool DrawWaterMaterialAuthoring(asset::MaterialAssetAuthoring& material,
+    const renderer::ShaderDescriptor* descriptor, const std::string& projectRoot)
+{
+    const bool sharedGeometry = asset::ResolveShaderCapabilities(material.shaderPath).SupportsWaterGeometry();
+    if (sharedGeometry) {
+        ImGui::TextDisabled("Water: shared geometry / CPU sampling contract active.");
+    } else {
+        ImGui::TextWrapped("Water fallback: this shader requires water_surface_v1 + water_v1. Runtime and Water preview use shared geometry and legacy appearance; project vertex code, b2 and appearance textures are ignored.");
+    }
+    const auto legacyField = [descriptor](const char* name, uint32_t offset, uint8_t columns) {
+        const auto* variable = descriptor ? descriptor->FindVar(name) : nullptr;
+        return variable && variable->IsWritable() && variable->varType == renderer::ShaderVarType::Float
+            && variable->varClass == (columns == 1 ? renderer::ShaderVarClass::Scalar : renderer::ShaderVarClass::Vector)
+            && variable->rows == 1 && variable->columns == columns && variable->elements == 0
+            && variable->offset == offset && variable->size == static_cast<uint32_t>(columns) * sizeof(float);
+    };
+    /// @note This recognizes the reusable legacy appearance ABI, not a filename or a closed list of visual styles.
+    const bool legacyAppearance = descriptor && descriptor->cbufferSize == 48
+        && legacyField("rimGlowStrength", 0, 1) && legacyField("minShallowAlpha", 4, 1)
+        && legacyField("specularStrength", 8, 1) && legacyField("skyReflectTint", 16, 3)
+        && legacyField("rippleRingColor", 32, 3) && legacyField("rippleRingStrength", 44, 1);
+    if (legacyAppearance) {
+        bool changed = DrawWaterMaterialInspector(material);
+        changed |= DrawReflectedMaterialInspector(material, descriptor, projectRoot);
+        return changed;
+    }
+    bool changed = DrawReflectedMaterialInspector(material, descriptor, projectRoot);
+    if (ImGui::CollapsingHeader("Water Services / Legacy Appearance"))
+        changed |= DrawWaterMaterialInspector(material);
+    return changed;
+}
+bool DrawReflectedMaterialParam(asset::MaterialAssetAuthoring& material, const renderer::ShaderVarDesc& variable)
 {
     if (!variable.IsWritable()) {
         ImGui::TextDisabled("%s: %s", variable.name.c_str(), variable.unsupportedReason.c_str());
@@ -110,7 +180,7 @@ bool DrawReflectedMaterialParam(asset::MaterialAsset& material, const renderer::
 
 namespace {
 
-std::vector<float>& EnsureFloatParam(asset::MaterialAsset& mat, const char* key, size_t count, std::initializer_list<float> defaults)
+std::vector<float>& EnsureFloatParam(asset::MaterialAssetAuthoring& mat, const char* key, size_t count, std::initializer_list<float> defaults)
 {
     auto& values = mat.params[key];
     if (values.size() != count) {
@@ -124,27 +194,27 @@ std::vector<float>& EnsureFloatParam(asset::MaterialAsset& mat, const char* key,
     return values;
 }
 
-bool DrawMaterialFloat(asset::MaterialAsset& mat, const char* label, const char* key, float def,
+bool DrawMaterialFloat(asset::MaterialAssetAuthoring& mat, const char* label, const char* key, float def,
                        float speed = 0.01f, float min = 0.0f, float max = 0.0f)
 {
     auto& values = EnsureFloatParam(mat, key, 1, { def });
     return ImGui::DragFloat(label, values.data(), speed, min, max, "%.3f");
 }
 
-bool DrawMaterialFloat2(asset::MaterialAsset& mat, const char* label, const char* key,
+bool DrawMaterialFloat2(asset::MaterialAssetAuthoring& mat, const char* label, const char* key,
                         math::Vector2 def, float speed = 0.01f)
 {
     auto& values = EnsureFloatParam(mat, key, 2, { def.x, def.y });
     return ImGui::DragFloat2(label, values.data(), speed, 0.0f, 0.0f);
 }
 
-bool DrawMaterialColor3(asset::MaterialAsset& mat, const char* label, const char* key, math::Vector3 def)
+bool DrawMaterialColor3(asset::MaterialAssetAuthoring& mat, const char* label, const char* key, math::Vector3 def)
 {
     auto& values = EnsureFloatParam(mat, key, 3, { def.x, def.y, def.z });
     return ImGui::ColorEdit3(label, values.data());
 }
 
-bool DrawMaterialBoolFloat(asset::MaterialAsset& mat, const char* label, const char* key, bool def)
+bool DrawMaterialBoolFloat(asset::MaterialAssetAuthoring& mat, const char* label, const char* key, bool def)
 {
     auto& values = EnsureFloatParam(mat, key, 1, { def ? 1.0f : 0.0f });
     bool enabled = values[0] > 0.5f;
@@ -162,7 +232,7 @@ void Tooltip(const char* text)
 
 } /// @note namespace
 
-bool DrawSolidDielectricMaterialInspector(asset::MaterialAsset& material)
+bool DrawSolidDielectricMaterialInspector(asset::MaterialAssetAuthoring& material)
 {
     if (!asset::ResolveShaderCapabilities(material.shaderPath).IsStandardPbr()
         && material.dielectric.transmission == 0) return false;
@@ -203,7 +273,7 @@ bool DrawSolidDielectricMaterialInspector(asset::MaterialAsset& material)
     return changed;
 }
 
-bool DrawMaterialTextureField(asset::MaterialAsset& mat, const char* label, const char* key)
+bool DrawMaterialTextureField(asset::MaterialAssetAuthoring& mat, const char* label, const char* key)
 {
     std::string& path = mat.textures[key];
     bool changed = false;
@@ -257,7 +327,7 @@ bool DrawMaterialTextureField(asset::MaterialAsset& mat, const char* label, cons
     return changed;
 }
 
-TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAsset& mat)
+TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAssetAuthoring& mat)
 {
     TerrainLayerDirtyFlags flags;
     if (ImGui::CollapsingHeader("Textures", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -307,7 +377,7 @@ TerrainLayerDirtyFlags DrawTerrainLayerMaterialInspector(asset::MaterialAsset& m
     return flags;
 }
 
-bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
+bool DrawWaterMaterialInspector(asset::MaterialAssetAuthoring& mat)
 {
     using namespace scene::water_keys;
     /// @note 既定値は WaterRenderPass / CausticsPass / WaterSystem がキー欠落時に使う値と
@@ -329,6 +399,71 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
             "0 にすると矩形の縁がそのまま «板の切り口» として出ます。\n"
             "岸が地形に隠れている水面では見た目に影響しません。");
     ImGui::PopID();
+
+    if (ImGui::CollapsingHeader("Optical Volume")) {
+        ImGui::PushID("WaterOpticalVolume");
+        auto& modeValues = EnsureFloatParam(mat, "opticalMode", 1, { 0.0f });
+        bool coefficientOptics = modeValues[0] > 0.5f;
+        if (ImGui::Checkbox("Use absorption / scattering", &coefficientOptics)) {
+            modeValues[0] = coefficientOptics ? 1.0f : 0.0f;
+            dirty = true;
+        }
+        Tooltip("水が吸収する光と、水中で散る光を別々に調整します。\n無効なら従来の深さによる色付けを使います。");
+        if (coefficientOptics) {
+            auto& absorption = EnsureFloatParam(mat, "absorptionCoefficients", 3, { 0.35f, 0.06f, 0.02f });
+            dirty |= ImGui::DragFloat3("Absorption [1/m]", absorption.data(), 0.01f, 0.0f, 1000.0f, "%.3f");
+            Tooltip("赤・緑・青の光を水が吸収する強さ。大きいほど水底が暗く見えます。");
+            auto& scattering = EnsureFloatParam(mat, "scatteringCoefficients", 3, { 0.02f, 0.035f, 0.045f });
+            dirty |= ImGui::DragFloat3("Scattering [1/m]", scattering.data(), 0.01f, 0.0f, 1000.0f, "%.3f");
+            Tooltip("水中の粒子で光が散る強さ。大きいほど濁って見えます。");
+            dirty |= DrawMaterialFloat(mat, "Scattering Direction", "phaseG", 0.0f, 0.01f, -0.95f, 0.95f);
+            Tooltip("正で向こう側から届く光を強め、0で全方向に均等に散らします。");
+            ImGui::TextDisabled("水面の色・不透明度・Subsurface・Rimは光学係数から決まります。");
+
+            /// @note Water Depth の所属判定を通ったカメラだけに水中設定を渡す。
+            ImGui::SeparatorText("Underwater Light");
+            ImGui::TextDisabled("水中判定には Water Component の有限な Water Depth が必要です。Spline / Zone は局所水深を使います。");
+            const auto normalizeUnderwaterParam = [&mat, &dirty](const char* key, float fallback,
+                float minimum, float maximum) -> float& {
+                auto& values = EnsureFloatParam(mat, key, 1, { fallback });
+                if (!std::isfinite(values[0])) {
+                    values[0] = fallback;
+                    dirty = true;
+                }
+                const float bounded = std::clamp(values[0], minimum, maximum);
+                if (bounded != values[0]) {
+                    values[0] = bounded;
+                    dirty = true;
+                }
+                return values[0];
+            };
+            float& lightStrength = normalizeUnderwaterParam("underwaterLightStrength", 1.0f, 0.0f, 8.0f);
+            dirty |= ImGui::DragFloat("Light Strength", &lightStrength, 0.05f, 0.0f, 8.0f, "%.2f");
+            Tooltip("水中の方向光散乱の強さ。0で水中の光芒を止めます。");
+            float& maxDistance = normalizeUnderwaterParam("underwaterMaxDistance", 120.0f, 1.0f, 10000.0f);
+            dirty |= ImGui::DragFloat("Max Distance [m]", &maxDistance, 1.0f, 1.0f, 10000.0f, "%.1f");
+            Tooltip("水中で光を積分する最大視線距離。");
+            float& transitionDepth = normalizeUnderwaterParam("underwaterTransitionDepth", 0.15f, 0.001f, 2.0f);
+            dirty |= ImGui::DragFloat("Transition Depth [m]", &transitionDepth, 0.01f, 0.001f, 2.0f, "%.3f");
+            Tooltip("水面下で水中効果が立ち上がる距離。水面の所属判定は変えません。");
+            float& distortion = normalizeUnderwaterParam("underwaterDistortion", 0.001f, 0.0f, 0.01f);
+            dirty |= ImGui::DragFloat("Distortion", &distortion, 0.0001f, 0.0f, 0.01f, "%.4f");
+            Tooltip("水の大きな波に連動する水中光のゆらぎ。");
+            float& stepValue = normalizeUnderwaterParam("underwaterLightSteps", 48.0f, 16.0f, 64.0f);
+            const float roundedSteps = std::round(stepValue);
+            if (roundedSteps != stepValue) {
+                stepValue = roundedSteps;
+                dirty = true;
+            }
+            int lightSteps = static_cast<int>(stepValue);
+            if (ImGui::SliderInt("Light Steps", &lightSteps, 16, 64)) {
+                stepValue = static_cast<float>(lightSteps);
+                dirty = true;
+            }
+            Tooltip("水中の方向光散乱の積分精度。増やすと滑らかになりますが重くなります。");
+        }
+        ImGui::PopID();
+    }
 
     ImGui::SeparatorText("Reflection");
     ImGui::PushID("WaterReflection");
@@ -378,6 +513,14 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
     dirty |= DrawMaterialFloat(mat, "Shore Fade",      "foamFade",       0.5f, 0.01f,  0.001f, 10.0f);
     dirty |= DrawMaterialFloat(mat, "Strength",        "foamStrength",   1.0f, 0.01f,  0.0f,   10.0f);
     dirty |= DrawMaterialFloat(mat, "Noise Scale",     "foamNoiseScale", 0.5f, 0.005f, 0.01f,  8.0f);
+    dirty |= DrawMaterialFloat(mat, "Crest Threshold", "crestFoamThreshold", 0.25f, 0.005f, 0.0f, 1.0f);
+    Tooltip("波の振幅上限に対する高さの比。低くすると白波が出る範囲が広がります。");
+    dirty |= DrawMaterialFloat(mat, "Crest Fade", "crestFoamFade", 0.15f, 0.005f, 0.001f, 1.0f);
+    dirty |= DrawMaterialFloat(mat, "Crest Strength", "crestFoamStrength", 0.9f, 0.01f, 0.0f, 4.0f);
+    dirty |= DrawMaterialFloat(mat, "Crest Lifetime", "crestFoamLifetime", 1.2f, 0.01f, 0.0f, 10.0f);
+    Tooltip("波が通り過ぎた後に泡が残る減衰時間 [s]。0 で現在の波頭だけに出します。");
+    dirty |= DrawMaterialColor3(mat, "Foam Color", "foamColor", { 0.95f, 0.98f, 1.0f });
+    dirty |= DrawMaterialFloat(mat, "Foam Roughness", "foamRoughness", 0.7f, 0.01f, 0.05f, 1.0f);
     ImGui::PopID();
 
     ImGui::SeparatorText("Waves (Gerstner)");
@@ -420,7 +563,8 @@ bool DrawWaterMaterialInspector(asset::MaterialAsset& mat)
             "風速 10 m/s でこの倍率ぶん上乗せされ、向かい風の波は小さくなります。\n"
             "目安: 外洋 1 / 湖 0.4 / 川 0.2 / 池 0");
     dirty |= DrawMaterialFloat(mat, "Current Speed", kCurrentSpeed, 0.0f, 0.01f, 0.0f, 20.0f);
-    Tooltip("浮いている物体を Flow Direction の向きへ押し流す水流の速さ [m/s]。");
+    Tooltip("矩形水域で、浮いている物体を Flow Direction の向きへ流す速さ [m/s]。\n"
+        "スプライン水域は、各点の Flow Speed を使います。");
     ImGui::PopID();
 
     ImGui::SeparatorText("Impact Ripples");

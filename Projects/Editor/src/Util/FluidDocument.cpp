@@ -29,9 +29,20 @@
 #include <vector>
 
 namespace fbzz::editor {
+
+int CountFluidParts(const fluid::FluidRecipe& recipe, FluidSelectionKind list)
+{
+    switch (list) {
+    case FluidSelectionKind::Source: return static_cast<int>(recipe.sources.size());
+    case FluidSelectionKind::Force: return static_cast<int>(recipe.forces.size());
+    case FluidSelectionKind::Collider: return static_cast<int>(recipe.colliders.size());
+    default: return 0;
+    }
+}
+
 namespace {
 
-/// ディスクの stat は 1 秒に 2 回で足りる (AI・Baker の書き込みは人の操作の速さでしか来ない)。
+/// @note ディスクの stat は 1 秒に 2 回で足りる (AI・Baker の書き込みは人の操作の速さでしか来ない)。
 constexpr std::chrono::milliseconds kPollInterval{ 500 };
 
 std::int64_t DiskStamp(const std::string& path)
@@ -41,7 +52,7 @@ std::int64_t DiskStamp(const std::string& path)
     return error ? 0 : static_cast<std::int64_t>(stamp.time_since_epoch().count());
 }
 
-/// 同じファイルを «C:\a\b.fluid» と «c:/a/b.fluid» で持ち合っても 1 つに寄せる (Windows は大文字小文字を区別しない)。
+/// @note 同じファイルを «C:\a\b.fluid» と «c:/a/b.fluid» で持ち合っても 1 つに寄せる (Windows は大文字小文字を区別しない)。
 std::string RegistryKey(const std::string& path)
 {
     std::string key = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(path).lexically_normal());
@@ -52,7 +63,7 @@ std::string RegistryKey(const std::string& path)
     return key;
 }
 
-/// Undo / Redo が «今それを開いている文書» を探すための登録簿。
+/// @note Undo / Redo が «今それを開いている文書» を探すための登録簿。
 /// @note ポインタを Undo コマンドに持たせない: 文書は閉じられ・開き直されるので履歴に残ったポインタはすぐ宙に浮く。パスで引き直せば閉じていてもファイルへ書く経路に自然に落ちる。
 std::unordered_map<std::string, FluidDocument*>& Registry()
 {
@@ -83,7 +94,7 @@ FluidDocument* FindOpenDocument(const std::string& path)
     return it != registry.end() ? it->second : nullptr;
 }
 
-/// Reflect() を通した値をすべて 1 本のバイト列へ落とす。
+/// @note Reflect() を通した値をすべて 1 本のバイト列へ落とす。
 /// @note 手書きの項目比較にしない: 増えたとき比較へ足し忘れると «変えたのに Undo が積まれない» になる。ReflectFluidRecipe は TOML キーと一致することを FluidRecipeBakeTests が縛るため、これに乗ればずれない。kind で隠れる項目も訪問はされる (表示だけ切る)。
 /// @note float はビットで持つ: to_string の 6 桁だと細かいドラッグの差が «変わっていない» に丸まる。
 class RecipeDigest final : public scene::IReflector {
@@ -146,21 +157,11 @@ bool RecipesEqual(const fluid::FluidRecipe& a, const fluid::FluidRecipe& b)
     return Digest(a) == Digest(b);
 }
 
-int ListCount(const fluid::FluidRecipe& recipe, FluidSelectionKind list)
-{
-    switch (list) {
-    case FluidSelectionKind::Source: return static_cast<int>(recipe.sources.size());
-    case FluidSelectionKind::Force: return static_cast<int>(recipe.forces.size());
-    case FluidSelectionKind::Collider: return static_cast<int>(recipe.colliders.size());
-    default: return 0;
-    }
-}
-
-/// Undo で部品が減ると選択の添字が範囲外になる。Outliner / Properties が範囲外を引かないよう寄せる。
+/// @note Undo で部品が減ると選択の添字が範囲外になる。Outliner / Properties が範囲外を引かないよう寄せる。
 void ClampSelection(FluidSelection& selection, const fluid::FluidRecipe& recipe)
 {
     if (!selection.IsPart()) return;
-    const int count = ListCount(recipe, selection.kind);
+    const int count = CountFluidParts(recipe, selection.kind);
     if (count <= 0 || selection.index < 0) {
         selection = FluidSelection{};
         return;
@@ -178,7 +179,7 @@ const char* LabelOr(const char* label)
     return (label != nullptr && label[0] != '\0') ? label : "Edit Fluid";
 }
 
-} // namespace
+} ///< @note namespace
 
 FluidDocument::~FluidDocument()
 {
@@ -236,7 +237,7 @@ bool FluidDocument::Edit(EditorContext& ctx, const char* label, const std::funct
     if (!m_open || !fn) return false;
 
     /// @note 操作中のまとまりが残っていたら先に閉じる。閉じないと、まとまりの «前» がこの編集より前になり、
-    ///       まとまりを Undo するとこの編集まで一緒に戻る。
+    /// @note まとまりを Undo するとこの編集まで一緒に戻る。
     if (m_commitActive) {
         m_commitActive = false;
         if (!RecipesEqual(m_commitBefore, m_recipe))
@@ -337,8 +338,8 @@ bool FluidDocument::Save(EditorContext& ctx, std::string& outError)
         return false;
     }
     /// @note 書く直前にもう一度ディスクを見る。PollExternalChange は間を置いてしか見ないので、その隙に
-    ///       外 (AI の fluid.set・Baker パネル) が書いていると、気づかないまま上書きしてしまう。
-    ///       自動保存もここを通るので、«3 秒の無操作» が他人の書き込みを飲み込むことはない。
+    /// @note 外 (AI の fluid.set・Baker パネル) が書いていると、気づかないまま上書きしてしまう。
+    /// @note 自動保存もここを通るので、«3 秒の無操作» が他人の書き込みを飲み込むことはない。
     if (const std::int64_t stamp = DiskStamp(m_path); stamp != 0 && m_diskStamp != 0 && stamp != m_diskStamp) {
         m_conflict = true;
         outError = "外で書き換えられています。読み直すか手元を残すかを選んでください: " + m_path;
@@ -531,4 +532,4 @@ void FluidDocument::PushUndo(EditorContext& ctx, const char* label, const fluid:
         [applySnapshot, before]() { applySnapshot(before); }));
 }
 
-} // namespace fbzz::editor
+} ///< @note namespace fbzz::editor

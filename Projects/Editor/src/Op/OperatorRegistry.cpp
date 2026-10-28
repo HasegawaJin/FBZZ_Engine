@@ -5,6 +5,7 @@
 #include <Editor/Op/EditorOperator.hpp>
 
 #include <Editor/EditorContext.hpp>
+#include <Editor/PlayModeController.hpp>
 #include <Engine/Core/Logger.hpp>
 
 #include <algorithm>
@@ -16,8 +17,7 @@ namespace fbzz::editor {
 
 const OpValue* OpArgs::Find(std::string_view name) const
 {
-    /// @note `unordered_map<std::string>` は string_view で直接引けない (heterogeneous lookup は
-    ///       unordered 系だと Hash/KeyEqual の指定が要る)。引数は数個なので線形探索で十分。
+    /// @note The small argument map uses linear lookup to avoid allocating a temporary string or requiring heterogeneous hash policies.
     for (const auto& [key, value] : m_values)
         if (key == name) return &value;
     return nullptr;
@@ -72,9 +72,14 @@ math::Vector3 OpArgs::GetVec3(std::string_view name, math::Vector3 fallback) con
     return fallback;
 }
 
+const OpData* OpArgs::GetData(std::string_view name) const
+{
+    const OpValue* value = Find(name);
+    return value ? std::get_if<OpData>(value) : nullptr;
+}
+
 /// @name 引数の検問
-/// @note 面ごと (メニュー / パレット / AI バス) に検証を書くと経路によって厳しさが変わる。宣言 (OpParam)
-///       を読んで判定する場所を 1 つに固定し、どの面から来ても同じ結論にする。
+/// @note Menu, palette and AI callers share the declared OpParam constraints rather than defining separate validation rules.
 
 OpResult ValidateArgs(const EditorOperator& op, const OpArgs& args)
 {
@@ -86,6 +91,9 @@ OpResult ValidateArgs(const EditorOperator& op, const OpArgs& args)
             }
             continue;
         }
+
+        if (param.type == OpParamType::Data && !args.GetData(param.name))
+            return OpResult::Err("BAD_ARG", param.name + " は構造化データです");
 
         if (!param.enumValues.empty()) {
             const std::string value = args.GetString(param.name);
@@ -131,8 +139,7 @@ void OperatorRegistry::Register(EditorOperator op)
         return;
     }
 
-    /// @note 二重登録を静かに許すとホットキー 1 回で 2 回実行される状態を作れる。後勝ちで置き換え、
-    ///       上書きが起きたことはログへ残す。
+    /// @note Duplicate IDs replace the previous registration with a diagnostic rather than executing both handlers for one action.
     auto it = std::find_if(m_operators.begin(), m_operators.end(),
                            [&op](const EditorOperator& e) { return e.id == op.id; });
     if (it != m_operators.end()) {
@@ -157,6 +164,8 @@ bool OperatorRegistry::CanInvoke(std::string_view id, const OpContext& context,
 {
     const EditorOperator* op = Find(id);
     if (op == nullptr) return false;
+    if (context.ctx.playMode && !context.ctx.playMode->IsInEditor() && op->kind == OpKind::Mutation &&
+        id != "script.configure.apply" && id != "script.set_enabled") return false;
     if (!op->poll) return true;
     return op->poll(context, args);
 }
@@ -168,15 +177,15 @@ OpResult OperatorRegistry::Invoke(std::string_view id, OpContext& context, const
         return OpResult::Err("UNKNOWN_OPERATOR",
                              "未登録の操作です: " + std::string(id));
     }
+    if (context.ctx.playMode && !context.ctx.playMode->IsInEditor() && op->kind == OpKind::Mutation &&
+        id != "script.configure.apply" && id != "script.set_enabled")
+        return OpResult::Err("PLAY_MUTATION_UNSUPPORTED", "Play supports temporary managed settings transactions only; stop Play to author this operation.");
 
-    /// @note 宣言された制約 (enum / range) の検問。poll より前に置くのは、
-    ///       「実行可能な状態ではあるが引数が不正」を NOT_AVAILABLE ではなく
-    ///       BAD_ARG として返すため — AI から見て直し方が変わる。
+    /// @note Invalid arguments return BAD_ARG before availability polling, allowing callers to distinguish repairable input from current UI state.
     if (OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok)
         return argCheck;
 
-    /// @note 条件判定は入口で 1 度だけ行い、exec の先頭には書かせない。exec 内で早期 return すると
-    ///       「押せるのに何も起きない」UI を作れてしまうため、グレーアウトと実行拒否を同じ述語で保証する。
+    /// @note Availability uses the same poll for UI and execution before mutation begins.
     if (op->poll && !op->poll(context, args)) {
         return OpResult::Err("NOT_AVAILABLE",
                              "現在この操作は実行できません: " + op->id);
@@ -184,21 +193,13 @@ OpResult OperatorRegistry::Invoke(std::string_view id, OpContext& context, const
 
     OpResult result = op->exec(context, args);
 
-    /// @note 返ってきたコマンドは「実行済みの編集」なので Execute せず Push だけする
-    ///       (UndoStack::Push はその契約。Execute を呼ぶと同じ編集が二重に適用される)。
-    ///       履歴に出る文言はコマンド自身が持つ — undoLabel はその宣言であり、
-    ///       AI とドキュメントが実行前に「何が履歴へ残るか」を知るために使う。
+    /// @note Returned commands already applied their edit; Push records them in the active Edit or checked Play history without executing them again.
     if (result.ok && result.command) {
         context.undo.Push(std::move(result.command));
         return result;
     }
 
-    /// @note ここが Undo の検問。Mutation がコマンドを返さなかった = Undo できない編集が
-    ///       シーンへ入った可能性がある。例外を作らないので、抜け道が残らない。
-    ///
-    ///       記録が無効なとき (Play 中) は履歴を持たないのが正しいので対象外。
-    ///       「何も変わらなかった」ケースも nullptr になるが、poll が実行可能と答えた
-    ///       直後に何も変わらないなら、それ自体が実装の問題なので黙らせない。
+    /// @note Both Edit and temporary Play mutations require history while recording is enabled; explicit noChange results carry no command.
     if (result.ok && !result.noChange
         && op->kind == OpKind::Mutation && context.undo.IsRecordingEnabled()) {
         FBZZ_LOG_WARN("OperatorRegistry: Mutation が Undo コマンドを返しませんでした (id=%s)。"
@@ -226,4 +227,4 @@ OpResult InvokeOperator(EditorContext& ctx, std::string_view id, const OpArgs& a
     return ctx.operators->Invoke(id, context, args);
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

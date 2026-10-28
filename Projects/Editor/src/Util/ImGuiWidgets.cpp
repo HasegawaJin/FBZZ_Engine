@@ -52,7 +52,7 @@ struct AssetPickerState {
     std::vector<std::string> filterExts;
     char                     search[256]      = {};
     std::vector<std::string> files;
-    ImVec2                   anchorPos        = {};  ///< "..." ボタンの直下位置
+    ImVec2                   anchorPos        = {};  ///< @note "..." ボタンの直下位置
 };
 AssetPickerState s_picker;
 
@@ -72,16 +72,16 @@ const std::string* AssetPickerValue()
     return s_picker.fieldId != 0 ? &s_picker.fieldValue : s_picker.target;
 }
 
-/// ピッカー行のサムネイル。texId があれば画像を、無ければ color スウォッチを描く。
+/// @note ピッカー行のサムネイル。texId があれば画像を、無ければ color スウォッチを描く。
 struct PickerThumb {
-    void*  texId = nullptr;              ///< 画像 / マテリアルのアルベドテクスチャ
-    ImVec4 color = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< マテリアルのアルベド色 (テクスチャ無し時, a>0 で有効)
+    void*  texId = nullptr;              ///< @note 画像 / マテリアルのアルベドテクスチャ
+    ImVec4 color = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< @note マテリアルのアルベド色 (テクスチャ無し時, a>0 で有効)
     uint32_t width = 0;
     uint32_t height = 0;
 };
-/// パス → サムネイル。ピッカーを開くたびにクリアして最新の見た目を反映する。
+/// @note パス → サムネイル。ピッカーを開くたびにクリアして最新の見た目を反映する。
 std::unordered_map<std::string, PickerThumb> s_thumbCache;
-/// ピッカーが並べる Sprite 一覧。.meta の書き込み時刻で必ず作り直す。
+/// @note ピッカーが並べる Sprite 一覧。.meta の書き込み時刻で必ず作り直す。
 /// @note 無効化を持たないと、Sprite Editor で切り直した直後に «既に消えた ID» を配り続け割り当てた瞬間に参照が切れる。
 struct CachedSpriteList {
     std::filesystem::file_time_type writeTime{};
@@ -96,7 +96,7 @@ struct AssignedSpriteThumb {
     ImVec2 uvMin = { 0.0f, 0.0f };
     ImVec2 uvMax = { 1.0f, 1.0f };
     std::string displayName;
-    std::string brokenReason;   ///< 非空なら参照が切れている (フィールドを赤で描く)
+    std::string brokenReason;   ///< @note 非空なら参照が切れている (フィールドを赤で描く)
     std::filesystem::file_time_type metaWriteTime{};
     std::uint64_t resetVersion = 0;
     bool resolved = false;
@@ -109,7 +109,7 @@ bool IsImageExt(const std::string& ext)
            ext == ".dds" || ext == ".bmp" || ext == ".hdr"  || ext == ".exr";
 }
 
-/// 画像 / マテリアルのサムネイルを解決してキャッシュする (GPU ロードは ResourceManager がキャッシュ)。
+/// @note 画像 / マテリアルのサムネイルを解決してキャッシュする (GPU ロードは ResourceManager がキャッシュ)。
 const PickerThumb& ResolveThumb(const std::string& absPath, const std::string& rel,
                                 const std::string& ext,
                                 renderer::ResourceManager* res,
@@ -131,7 +131,8 @@ const PickerThumb& ResolveThumb(const std::string& absPath, const std::string& r
             }
         } else if (ext == ".mat") {
             const auto mh = asset::AssetManager::Load<asset::MaterialAsset>(rel);
-            if (const asset::MaterialAsset* m = asset::AssetManager::Get<asset::MaterialAsset>(mh)) {
+            if (const auto snapshot = asset::ReadMaterialAuthoring(mh)) {
+                const auto* m = &snapshot->Data();
                 /// @note アルベドテクスチャがあればそれを、無ければアルベド色をスウォッチにする。
                 if (auto tx = m->textures.find("albedo");
                     tx != m->textures.end() && !tx->second.empty()) {
@@ -150,8 +151,8 @@ const PickerThumb& ResolveThumb(const std::string& absPath, const std::string& r
     return s_thumbCache.emplace(absPath, t).first->second;
 }
 
-/// Sprite型Textureのサブアセット矩形を.metaから取得する。
-/// ピッカーを開いている間はキャッシュし、候補行ごとのTOML再解析を避ける。
+/// @note Sprite型Textureのサブアセット矩形を.metaから取得する。
+/// @note ピッカーを開いている間はキャッシュし、候補行ごとのTOML再解析を避ける。
 const std::vector<asset::SpriteRect>& ResolveSprites(const std::string& absPath)
 {
     std::error_code ec;
@@ -170,7 +171,7 @@ const std::vector<asset::SpriteRect>& ResolveSprites(const std::string& absPath)
         entry.sprites = settings.sprites;
         if (entry.sprites.empty()) {
             /// @note sprites を持たない Single Texture の «全面 1 枚»。ID は無く、
-            ///       参照は画像名で書く (ResolveSpriteReference の暗黙 Single と対)。
+            /// @note 参照は画像名で書く (ResolveSpriteReference の暗黙 Single と対)。
             asset::SpriteRect sprite;
             sprite.name = util::FileSystem::PathToUtf8(
                 util::FileSystem::PathFromUtf8(absPath).stem());
@@ -180,7 +181,7 @@ const std::vector<asset::SpriteRect>& ResolveSprites(const std::string& absPath)
     return (s_spriteCache[absPath] = std::move(entry)).sprites;
 }
 
-/// Inspector に割り当て済みの Sprite 参照を、元 Texture と UV 矩形へ解決する。
+/// @note Inspector に割り当て済みの Sprite 参照を、元 Texture と UV 矩形へ解決する。
 /// @note 名前だけでは atlas 内のどの絵か確認できないため、閉じたフィールドにも切り抜き画像を表示する。
 const AssignedSpriteThumb& ResolveAssignedSpriteThumb(const std::string& reference)
 {
@@ -217,7 +218,7 @@ const AssignedSpriteThumb& ResolveAssignedSpriteThumb(const std::string& referen
     }
 
     /// @note 矩形の取り出しは Viewport と同じ ResolveSpriteReference に任せる: 独自のフォールバックを持つと描画側と食い違い、
-    ///       Inspector には切り抜きが出ているのに画面はアトラス全面、という一番読み解けない食い違いが起きる。
+    /// @note Inspector には切り抜きが出ているのに画面はアトラス全面、という一番読み解けない食い違いが起きる。
     const float width = static_cast<float>(std::max<uint32_t>(1, texture->GetWidth()));
     const float height = static_cast<float>(std::max<uint32_t>(1, texture->GetHeight()));
     const asset::ResolvedSprite resolved =
@@ -248,7 +249,7 @@ struct TexturePreview {
     void*         texId  = nullptr;
     ImVec2        uvMin  = { 0.0f, 0.0f };
     ImVec2        uvMax  = { 1.0f, 1.0f };
-    std::uint32_t width  = 0;   ///< 0 なら解像度不明 (Sprite のコマ等)
+    std::uint32_t width  = 0;   ///< @note 0 なら解像度不明 (Sprite のコマ等)
     std::uint32_t height = 0;
     bool          broken = false;
 };
@@ -263,7 +264,7 @@ std::unordered_map<std::string, TexturePreviewCacheEntry> s_texturePreviewCache;
 /// @brief 画像パス / Sprite 参照をサムネイル描画に必要な情報へ解決する。
 /// @return 空欄・非画像・描画器未設定なら既定値 (texId は null)。
 /// @note パス解決と GPU ハンドル取得は毎フレームやるには重いので覚える。
-///       デバイスリセットで過去のテクスチャ ID は無効になるため世代で捨てる。
+/// @note デバイスリセットで過去のテクスチャ ID は無効になるため世代で捨てる。
 TexturePreview ResolveTexturePreview(const std::string& reference)
 {
     if (reference.empty() || s_thumbnailResources == nullptr || s_thumbnailImGui == nullptr)
@@ -273,7 +274,7 @@ TexturePreview ResolveTexturePreview(const std::string& reference)
     std::string spriteName;
     if (asset::ParseSpriteReference(reference, texturePath, spriteName)) {
         /// @note コマの矩形と «切れている理由» は AssetPathField と同じ解決に任せる。
-        ///       別々に持つと、欄の表示とサムネイルが違うコマを指しうる。
+        /// @note 別々に持つと、欄の表示とサムネイルが違うコマを指しうる。
         const AssignedSpriteThumb& thumb = ResolveAssignedSpriteThumb(reference);
         TexturePreview preview;
         preview.texId  = thumb.texId;
@@ -329,7 +330,7 @@ void DrawCheckerboard(ImDrawList* dl, ImVec2 min, ImVec2 max, int cells)
     }
 }
 
-/// 拡張子 → バッジ色
+/// @note 拡張子 → バッジ色
 ImVec4 ExtBadgeColor(const std::string& ext)
 {
     /// @note purple
@@ -352,7 +353,7 @@ ImVec4 ExtBadgeColor(const std::string& ext)
     return { 0.6f, 0.6f, 0.6f, 1.0f };
 }
 
-/// 拡張子フィルタの分解は AssetSearch と共通にする。
+/// @note 拡張子フィルタの分解は AssetSearch と共通にする。
 /// @note 薄いラッパーを残す: 呼び出し側が 3 箇所あり、シグネチャ (const char*) も既存のまま維持したいため、実体を共通化しつつ呼び出しは変えない。
 std::vector<std::string> SplitFilterExts(const char* exts)
 {
@@ -360,8 +361,8 @@ std::vector<std::string> SplitFilterExts(const char* exts)
     return AssetSearch::ParseExtensionFilter(exts);
 }
 
-/// この欄は Sprite サブアセット参照を受けるか (kSpriteAssetFilter の規約)。
-/// フィルター無し (= 何でも受ける欄) も受け皿に含める。
+/// @note この欄は Sprite サブアセット参照を受けるか (kSpriteAssetFilter の規約)。
+/// @note フィルター無し (= 何でも受ける欄) も受け皿に含める。
 bool AllowsSprites(const std::vector<std::string>& allowed)
 {
     return allowed.empty()
@@ -379,12 +380,12 @@ bool IsSpritePayload(const ImGuiPayload& payload)
         texturePath, spriteName);
 }
 
-/// カード / 区切り表現の寸法。すべて現在のフォントサイズから作る。
-/// px 直値だと、UI スケールが文字だけを拡大するので倍率ごとに比率が崩れる。
-/// ヘッダーと本文で別々に計算しないこと。継ぎ目で帯の太さが変わると段差になる。
+/// @note カード / 区切り表現の寸法。すべて現在のフォントサイズから作る。
+/// @note px 直値だと、UI スケールが文字だけを拡大するので倍率ごとに比率が崩れる。
+/// @note ヘッダーと本文で別々に計算しないこと。継ぎ目で帯の太さが変わると段差になる。
 struct CardMetrics {
-    float accent; ///< 左帯の太さ
-    float indent; ///< 本文の字下げ
+    float accent; ///< @note 左帯の太さ
+    float indent; ///< @note 本文の字下げ
 };
 
 CardMetrics Metrics()
@@ -396,9 +397,9 @@ CardMetrics Metrics()
     return metrics;
 }
 
-/// 見出しの帯に使う上下余白。文字の高さから作る薄い余白。
-/// 既定の FramePadding は入力欄向けの高さで、読ませるだけの見出しには厚すぎる。
-/// 1 枚あたり数 px がそのまま縦スクロール量になる。
+/// @note 見出しの帯に使う上下余白。文字の高さから作る薄い余白。
+/// @note 既定の FramePadding は入力欄向けの高さで、読ませるだけの見出しには厚すぎる。
+/// @note 1 枚あたり数 px がそのまま縦スクロール量になる。
 float HeaderPadY()
 {
     return std::max(2.0f, std::floor(ImGui::GetFontSize() * 0.14f));
@@ -409,7 +410,7 @@ float HeaderPadY()
 bool InputString(const char* label, std::string& value, std::size_t capacity)
 {
     /// @note ImGui::InputText は生バッファしか受け取らないため、毎回作り直して書き戻す。
-    ///       capacity より現在値が長い場合は現在値に合わせる (切り詰めて黙って壊さない)。
+    /// @note capacity より現在値が長い場合は現在値に合わせる (切り詰めて黙って壊さない)。
     std::vector<char> buffer((std::max)(capacity, value.size() + 2), '\0');
     std::memcpy(buffer.data(), value.data(), value.size());
     if (!ImGui::InputText(label, buffer.data(), buffer.size())) return false;
@@ -448,9 +449,10 @@ void* ResolveAssetThumbnail(const std::string& relativePath,
         if (handle.IsValid()) textureId = imguiRenderer->GetImTextureID(handle, *resources);
     } else if (extension == ".mat") {
         /// @note .mat は albedo を代表画にする。マテリアルを割り当てた Particle でも
-        ///       「どんな絵が出るのか」がノードから読めるようにするため。
+        /// @note 「どんな絵が出るのか」がノードから読めるようにするため。
         const auto materialHandle = asset::AssetManager::Load<asset::MaterialAsset>(relativePath);
-        if (const asset::MaterialAsset* material = asset::AssetManager::Get<asset::MaterialAsset>(materialHandle)) {
+        if (const auto snapshot = asset::ReadMaterialAuthoring(materialHandle)) {
+            const auto* material = &snapshot->Data();
             if (auto albedo = material->textures.find("albedo");
                 albedo != material->textures.end() && !albedo->second.empty()) {
                 const auto handle = resources->LoadTexture(
@@ -508,7 +510,7 @@ bool UpdateDragAutoScroll(const DragAutoScrollOptions& options)
     const ImGuiWindow* window = ImGui::GetCurrentWindowRead();
     if (!window) return false;
     /// @note InnerClipRect はスクロール量を含まない、現在画面に見えているコンテンツ領域。
-    ///       GetWindowContentRegionMin/Max はスクロール量を含むため、画面端判定には使わない。
+    /// @note GetWindowContentRegionMin/Max はスクロール量を含むため、画面端判定には使わない。
     return UpdateDragAutoScroll(window->InnerClipRect.Min, window->InnerClipRect.Max, options);
 }
 
@@ -535,7 +537,7 @@ bool UpdateDragAutoScroll(const ImVec2& regionMin, const ImVec2& regionMax,
     if (intensity <= 0.0f) return false;
 
     /// @note 端に近いほど加速させる。線形速度だと帯の入口で急に速く感じるため、
-    ///       二乗カーブで微調整しやすく、端では十分な速度になるようにする。
+    /// @note 二乗カーブで微調整しやすく、端では十分な速度になるようにする。
     const float deltaTime = ImGui::GetIO().DeltaTime > 0.0f
         ? ImGui::GetIO().DeltaTime : (1.0f / 60.0f);
     const float speed = options.maxSpeed * intensity * intensity;
@@ -550,7 +552,7 @@ bool UpdateDragAutoScroll(const ImVec2& regionMin, const ImVec2& regionMax,
 
 namespace {
 
-/// AssetBrowser へ渡す Ping / 選択要求の唯一の置き場。
+/// @note AssetBrowser へ渡す Ping / 選択要求の唯一の置き場。
 /// @note 1 フレームに何度クリックが起きても最後の 1 件だけが意味を持つため、キューではなく上書きの単一スロットにする。EditorApp が取り出した時点で空へ戻す。
 AssetRevealRequest s_revealRequest;
 bool               s_revealRequestPending = false;
@@ -561,7 +563,7 @@ void RequestAssetReveal(std::string assetPath, bool selectInInspector)
 {
     if (assetPath.empty()) return;
     /// @note ダブルクリックは「1 回目のクリック (Ping) → 2 回目 (選択)」の順で届く。
-    ///       同じアセットへの要求なら選択指定を落とさないよう OR で畳む。
+    /// @note 同じアセットへの要求なら選択指定を落とさないよう OR で畳む。
     if (s_revealRequestPending && s_revealRequest.path == assetPath)
         selectInInspector = selectInInspector || s_revealRequest.selectInInspector;
     s_revealRequest.path              = std::move(assetPath);
@@ -609,16 +611,16 @@ bool AssetPathField(const char* label, std::string& path,
     const ImGuiStyle& style = ImGui::GetStyle();
 
     /// @note InputText 幅を CalcItemWidth() ベースにすることで、
-    ///       ラベルが ImGui 標準のラベル列（右側 ~35% 幅）に収まるようにする。
-    ///       GetContentRegionAvail() を使うとラベルがウィンドウ外に押し出される。
+    /// @note ラベルが ImGui 標準のラベル列（右側 ~35% 幅）に収まるようにする。
+    /// @note GetContentRegionAvail() を使うとラベルがウィンドウ外に押し出される。
     const float inputW = std::max(40.0f,
         ImGui::CalcItemWidth() - kBtnW - style.ItemSpacing.x);
     /// @note ピッカー位置決め用
     const float fieldLeft = ImGui::GetCursorScreenPos().x;
 
     /// @note Unity 風: 非フォーカス時は [拡張子バッジ] + ファイル名だけを表示する。
-    ///       長い相対パスをそのまま InputText に出すと欄の幅で切れて読めない。
-    ///       クリックした瞬間だけフルパス編集用の InputText に切り替える。
+    /// @note 長い相対パスをそのまま InputText に出すと欄の幅で切れて読めない。
+    /// @note クリックした瞬間だけフルパス編集用の InputText に切り替える。
     ImGuiStorage* storage = ImGui::GetStateStorage();
     const ImGuiID editingId    = ImGui::GetID("##editing");
     const ImGuiID focusReqId   = ImGui::GetID("##focusReq");
@@ -733,9 +735,9 @@ bool AssetPathField(const char* label, std::string& path,
         }
 
         /// @note Unity の Object Field と同じ動線。シングルクリックは Ping、ダブルクリックは
-        ///       Inspector の表示対象そのものを参照先アセットへ移す。
-        ///       ダブルクリック時は clicked / doubleClicked が同時に立つが、
-        ///       RequestAssetReveal が同一パスの要求を畳むので選択指定は落ちない。
+        /// @note Inspector の表示対象そのものを参照先アセットへ移す。
+        /// @note ダブルクリック時は clicked / doubleClicked が同時に立つが、
+        /// @note RequestAssetReveal が同一パスの要求を畳むので選択指定は落ちない。
         if (clicked)       RequestAssetReveal(path, false);
         if (doubleClicked) RequestAssetReveal(path, true);
 
@@ -744,7 +746,7 @@ bool AssetPathField(const char* label, std::string& path,
             changed = true;
 
         /// @note パスを文字列として直接いじりたいケース (手打ち・貼り付け・参照外し) は
-        ///       クリックから右クリックメニューへ移す。頻度の低い操作に主クリックを使わせない。
+        /// @note クリックから右クリックメニューへ移す。頻度の低い操作に主クリックを使わせない。
         if (rightClicked) ImGui::OpenPopup("##assetFieldMenu");
         if (ImGui::BeginPopup("##assetFieldMenu")) {
             if (ImGui::MenuItem("Show in Asset Browser"))
@@ -789,7 +791,7 @@ bool AssetPathField(const char* label, std::string& path,
     }
 
     /// @note ラベルを ImGui 標準ラベル列 (右側) に配置。ウィンドウ幅でクリップされる。
-    ///       "##" 始まりは共通 Reflector が左カラムへラベルを描画済みであることを示す。
+    /// @note "##" 始まりは共通 Reflector が左カラムへラベルを描画済みであることを示す。
     if (!(label[0] == '#' && label[1] == '#')) {
         ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
         ImGui::TextUnformatted(label);
@@ -802,7 +804,7 @@ bool AssetPathField(const char* label, std::string& path,
 float TextureThumbnailSize()
 {
     /// @note 行の高さから作る。px 直値だと UI スケールが文字だけを拡大したときに
-    ///       サムネイルだけ取り残されて、欄との高さが合わなくなる。
+    /// @note サムネイルだけ取り残されて、欄との高さが合わなくなる。
     return std::floor(ImGui::GetFrameHeight() * 2.0f);
 }
 
@@ -962,7 +964,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
 
     /// @name パネル位置: フィールド左端の直下。画面端でクランプ
     /// @note Texture の絵と名前を同時に判別できるよう、Inspector 幅より少し広い
-    ///       Unity 風オブジェクトピッカーとして表示する。
+    /// @note Unity 風オブジェクトピッカーとして表示する。
     constexpr float kW = 460.0f;
     constexpr float kH = 480.0f;
     const ImVec2 vpPos  = ImGui::GetWindowViewport()->Pos;
@@ -991,7 +993,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
     if (ImGui::IsWindowAppearing())
         ImGui::SetKeyboardFocusHere();
     /// @note EnterReturnsTrue: 入力自体は毎フレーム反映されたまま、戻り値だけが
-    ///       「Enter が押された」を表すようになる。1 件に絞れたらそのまま確定できる。
+    /// @note 「Enter が押された」を表すようになる。1 件に絞れたらそのまま確定できる。
     const bool enterPressed = ImGui::InputTextWithHint(
         "##search", "Search by name...", s_picker.search, sizeof(s_picker.search),
         ImGuiInputTextFlags_EnterReturnsTrue);
@@ -1005,8 +1007,8 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
     const std::string searchStr = s_picker.search;
 
     /// @note 索引をスコア順 (完全一致 > 前方一致 > 部分一致 > 部分列一致) で引く。
-    ///       全件取り出して描画時に Match で捨てるとパス順のまま並び、部分列一致まで拾う都合で
-    ///       無関係なファイルが大量に混ざる。
+    /// @note 全件取り出して描画時に Match で捨てるとパス順のまま並び、部分列一致まで拾う都合で
+    /// @note 無関係なファイルが大量に混ざる。
     constexpr std::size_t kMaxPickerRows = 300;
     const auto candidates =
         AssetSearch::Query(searchStr, s_picker.filterExts, kMaxPickerRows);
@@ -1071,7 +1073,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
         const float rowW = ImGui::GetContentRegionAvail().x;
 
         /// @note 行の地色。選択はアクセント、ホバーは Surface。
-        ///       当たり判定用の Selectable は最後に置くため、ホバーは前フレームの矩形で自前に見る。
+        /// @note 当たり判定用の Selectable は最後に置くため、ホバーは前フレームの矩形で自前に見る。
         const ImVec2 mouse = ImGui::GetMousePos();
         const bool rowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)
                              && mouse.x >= rowMin.x && mouse.x < rowMin.x + rowW
@@ -1163,7 +1165,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
         const float nameY  = rowMin.y + std::floor((rowH - blockH) * 0.5f);
 
         /// @note 拡張子は角丸のピルにする。"[MAT]" の文字より小さく収まり、色の面積が増えて
-        ///       種別をスクロール中の視野で拾いやすい。
+        /// @note 種別をスクロール中の視野で拾いやすい。
         float nameRight = rowMin.x + rowW - rowPad * 2.0f;
         if (!badge.empty()) {
             const ImVec2 badgeSize = ImGui::CalcTextSize(badge.c_str());
@@ -1236,8 +1238,8 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
         if (!IsImageExt(ext) || !AllowsSprites(s_picker.filterExts)) continue;
 
         /// @note スプライトのサブ項目。親テクスチャ名が語に当たっているなら全部出し、
-        ///       パス経由でしか当たっていないならスプライト名でも絞る。
-        ///       アトラス 1 枚に 40 個入っていることがあり、一覧が親 1 枚で埋まる。
+        /// @note パス経由でしか当たっていないならスプライト名でも絞る。
+        /// @note アトラス 1 枚に 40 個入っていることがあり、一覧が親 1 枚で埋まる。
         const bool parentMatched =
             searchStr.empty() || AssetSearch::Match(filename, searchStr) != 0;
         for (const asset::SpriteRect& sprite : ResolveSprites(absPath)) {
@@ -1264,7 +1266,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
     }
 
     /// @note 検索欄で Enter → 先頭の候補を決定する。1 件に絞れたときに
-    ///       マウスへ手を戻さず確定できるようにする。
+    /// @note マウスへ手を戻さず確定できるようにする。
     if (firstReference != nullptr && enterPressed) {
         CompleteAssetPick(*firstReference);
         ImGui::CloseCurrentPopup();
@@ -1279,7 +1281,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
 bool DragVec3(const char* label, math::Vector3& v, float speed, float min, float max)
 {
     /// @note ラベル列は Inspector 共通の幅を使い、成分は軸色付きにする
-    ///       (固定 px 幅だと UI スケールでラベルが切れ、Reflector 生成の行とも左端が揃わない)。
+    /// @note (固定 px 幅だと UI スケールでラベルが切れ、Reflector 生成の行とも左端が揃わない)。
     const PropertyRowScope row = BeginPropertyField(label);
     float arr[3] = { v.x, v.y, v.z };
     const bool changed = DragAxes("##v", arr, 3, speed, min, max);
@@ -1298,7 +1300,7 @@ bool ColorEdit3(const char* label, math::Vector3& color)
 
 namespace {
 
-/// 四則と括弧だけの再帰下降パーサー。関数も変数も持たない。
+/// @note 四則と括弧だけの再帰下降パーサー。関数も変数も持たない。
 /// @note それ以上を入れない: ここは «暗算の代わり» で式言語が欲しい場所ではなく、sin や変数を足すと打ち間違いの結果が «それらしい値» になって気付けなくなる。
 struct ExpressionParser {
     const char* cursor = nullptr;
@@ -1342,7 +1344,7 @@ struct ExpressionParser {
                 ++cursor;
                 const float right = ParsePrimary();
                 /// @note 0 除算は inf を返さず «読めなかった» 扱いにする。inf が値へ入ると
-                ///       そのオブジェクトは以降どの操作でも戻せなくなる。
+                /// @note そのオブジェクトは以降どの操作でも戻せなくなる。
                 if (right == 0.0f) { ok = false; return 0.0f; }
                 left /= right;
             } else {
@@ -1363,7 +1365,7 @@ struct ExpressionParser {
     }
 };
 
-/// 式を打っている最中の 1 つ。同時に 2 か所は編集できないので単一で足りる。
+/// @note 式を打っている最中の 1 つ。同時に 2 か所は編集できないので単一で足りる。
 ImGuiID s_expressionEditId = 0;
 char    s_expressionBuffer[64] = {};
 bool    s_expressionJustOpened = false;
@@ -1378,7 +1380,7 @@ bool EvaluateExpression(const char* text, float& out)
     const float value = parser.ParseSum();
     parser.SkipBlanks();
     /// @note 末尾に読み残しがあるのは «式として読めなかった» ということ。
-    ///       ここを通すと "12abc" が 12 になり、打ち間違いが黙って通る。
+    /// @note ここを通すと "12abc" が 12 になり、打ち間違いが黙って通る。
     if (!parser.ok || *parser.cursor != '\0') return false;
     if (!std::isfinite(value)) return false;
 
@@ -1401,7 +1403,7 @@ bool DragFloatExpr(const char* id, float& value, float speed, float min, float m
             "##expr", s_expressionBuffer, sizeof(s_expressionBuffer),
             ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
         /// @note Enter だけでなくフォーカスが外れたときも確定する。打ちっぱなしで
-        ///       別の欄へ移ったときに «入力欄が残り続ける» のを避ける。
+        /// @note 別の欄へ移ったときに «入力欄が残り続ける» のを避ける。
         const bool finished = submitted || ImGui::IsItemDeactivated();
         ImGui::PopID();
         if (!finished) return false;
@@ -1453,7 +1455,7 @@ bool DragIntExpr(const char* id, int& value, float speed, int min, int max,
         float parsed = static_cast<float>(value);
         if (!EvaluateExpression(s_expressionBuffer, parsed)) return false;
         /// @note 1920/7 のような割り切れない式でも «一番近い整数» を返す。切り捨てだと
-        ///       打った式と 1 ずれた値が入り、原因が式なのか丸めなのか読めなくなる。
+        /// @note 打った式と 1 ずれた値が入り、原因が式なのか丸めなのか読めなくなる。
         int rounded = static_cast<int>(std::lround(parsed));
         if (max > min) rounded = std::clamp(rounded, min, max);
         if (rounded == value) return false;
@@ -1495,7 +1497,7 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     hovered |= ImGui::IsItemHovered();
 
     /// @note 現在値までを淡いアクセントで塗り、「どれくらいか」を面で見せる (標準は掴み手だけ)。
-    ///       Ctrl+Click で数値入力に切り替わっている間は塗らない (入力中の文字が隠れる)。
+    /// @note Ctrl+Click で数値入力に切り替わっている間は塗らない (入力中の文字が隠れる)。
     if (max > min && !ImGui::TempInputIsActive(ImGui::GetItemID())) {
         const ImVec2 lo = ImGui::GetItemRectMin();
         const ImVec2 hi = ImGui::GetItemRectMax();
@@ -1510,8 +1512,8 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     }
 
     /// @note 数値入力ボックス: DragFloat を流用し、ダブルクリックで直接タイプ・ドラッグで微調整。
-    ///       AlwaysClamp を付けるのは、Ctrl+Click のタイプ入力だけは既定で範囲外を通してしまい、
-    ///       スライダーが端に張り付いたまま実値がずれる状態になるため。
+    /// @note AlwaysClamp を付けるのは、Ctrl+Click のタイプ入力だけは既定で範囲外を通してしまい、
+    /// @note スライダーが端に張り付いたまま実値がずれる状態になるため。
     ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::SetNextItemWidth(inputW);
     const float dragSpeed = (max > min) ? (max - min) * 0.005f : 0.01f;
@@ -1520,7 +1522,7 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     hovered |= ImGui::IsItemHovered();
 
     /// @note ラベルを右に配置する。ただし "##" 始まりは「ラベル非表示」指定として描画を省く
-    ///       (呼び出し側が左カラムへ別途ラベルを描くレイアウトで使う)。
+    /// @note (呼び出し側が左カラムへ別途ラベルを描くレイアウトで使う)。
     if (!(label[0] == '#' && label[1] == '#')) {
         ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
         ImGui::TextUnformatted(label);
@@ -1528,7 +1530,7 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     }
 
     /// @note 説明はウィジェット側で出す。この 1 行はスライダー / 入力ボックス / ラベルの
-    ///       3 アイテムなので、呼び出し側の IsItemHovered() では最後のものしか拾えない。
+    /// @note 3 アイテムなので、呼び出し側の IsItemHovered() では最後のものしか拾えない。
     if (tooltip && tooltip[0] && hovered)
         ImGui::SetTooltip("%s", tooltip);
 
@@ -1540,8 +1542,8 @@ bool RangeField(const char* label, int& value, int min, int max, const char* fmt
                 const char* tooltip)
 {
     /// @note 構成は float 版と同じ「塗り付きゲージ + 数値ボックス」。
-    ///       書式指定子は型と対なので、整数を float スライダーへ通すと "%d" が使えない。
-    ///       見た目の規則だけを共有し、型は分けて扱う。
+    /// @note 書式指定子は型と対なので、整数を float スライダーへ通すと "%d" が使えない。
+    /// @note 見た目の規則だけを共有し、型は分けて扱う。
     ImGui::PushID(label);
     bool changed = false;
     bool hovered = false;
@@ -1592,7 +1594,7 @@ bool RangeField(const char* label, int& value, int min, int max, const char* fmt
 
 namespace {
 
-/// 軸色 (X=赤 / Y=緑 / Z=青 / W=灰)。彩度は抑えめにして暗色テーマで浮かないようにする。
+/// @note 軸色 (X=赤 / Y=緑 / Z=青 / W=灰)。彩度は抑えめにして暗色テーマで浮かないようにする。
 ImU32 AxisMarkerColor(int axis)
 {
     switch (axis) {
@@ -1609,7 +1611,7 @@ const char* AxisLetter(int axis)
     return kLetters[axis < 0 ? 0 : (axis > 3 ? 3 : axis)];
 }
 
-/// 施錠アイコン。フォントの絵文字に依存しないよう自前で描く。
+/// @note 施錠アイコン。フォントの絵文字に依存しないよう自前で描く。
 /// @note このエディターの ImGui フォントは ASCII 中心で鍵やチェーンのグリフを持たないため、文字を諦めて図形で描けばフォント差し替えの影響も受けない。
 void DrawLockGlyph(ImDrawList* drawList, ImVec2 center, float size, bool locked, ImU32 color)
 {
@@ -1648,20 +1650,20 @@ bool DragAxes(const char* id, float* values, int count,
         : 0.0f;
 
     /// @note 呼び出し側の SetNextItemWidth (-FLT_MIN など) を解決してから成分数で等分する。
-    ///       成分間は ItemInnerSpacing (ImGui の DragFloat3 と同じ) にして、3 つで 1 つの値だと分かる詰め方にする。
+    /// @note 成分間は ItemInnerSpacing (ImGui の DragFloat3 と同じ) にして、3 つで 1 つの値だと分かる詰め方にする。
     const float gap   = style.ItemInnerSpacing.x;
     const float total = std::max(ImGui::GetFontSize() * 6.0f, ImGui::CalcItemWidth() - labelW);
 
     /// @note 頭文字は枠の「外」に置く。1 成分あたりこのスロット幅を先に取り、残りを数値欄に回す。
-    ///       書式へ埋め込むと枠内で中央寄せされ、桁数で数値の左端がばらつく。
-    ///       X/Y/Z/W で字幅が違うと数値欄の幅までずれるため、最も広い字で固定幅を取る。
+    /// @note 書式へ埋め込むと枠内で中央寄せされ、桁数で数値の左端がばらつく。
+    /// @note X/Y/Z/W で字幅が違うと数値欄の幅までずれるため、最も広い字で固定幅を取る。
     float letterGlyphW = 0.0f;
     for (int i = 0; i < count; ++i)
         letterGlyphW = std::max(letterGlyphW, ImGui::CalcTextSize(AxisLetter(i)).x);
     const float letterSlotW = letterGlyphW + style.ItemInnerSpacing.x;
 
     /// @note 数値が読める幅を確保できないときは頭文字を落として数字を優先する。
-    ///       そのときは枠の左端に軸色のマーカーを出すので、色だけでも X / Y / Z は判別できる。
+    /// @note そのときは枠の左端に軸色のマーカーを出すので、色だけでも X / Y / Z は判別できる。
     const float sampleW = ImGui::CalcTextSize("-8888.888").x + style.FramePadding.x * 2.0f;
     const float span    = total - gap * static_cast<float>(count - 1);
     const float withLetter =
@@ -1671,7 +1673,7 @@ bool DragAxes(const char* id, float* values, int count,
                                 showAxisLetter ? withLetter : span / static_cast<float>(count));
 
     /// @note BeginGroup で囲むのが必須。個別の DragFloat のままだと IsItemDeactivatedAfterEdit()
-    ///       が最後の成分だけを見るため、X や Y の操作が Undo に積まれない。
+    /// @note が最後の成分だけを見るため、X や Y の操作が Undo に積まれない。
     ImGui::BeginGroup();
     ImGui::PushID(id);
     bool changed = false;
@@ -1679,7 +1681,7 @@ bool DragAxes(const char* id, float* values, int count,
         if (i > 0) ImGui::SameLine(0.0f, gap);
 
         /// @note 頭文字を枠の左隣へ描く。字幅が違っても数値欄の左端がそろうよう、
-        ///       描いた後はスロット幅ぶん進めた位置へカーソルを置き直す。
+        /// @note 描いた後はスロット幅ぶん進めた位置へカーソルを置き直す。
         if (showAxisLetter) {
             const float slotX = ImGui::GetCursorPosX();
             ImGui::AlignTextToFramePadding();
@@ -1696,7 +1698,7 @@ bool DragAxes(const char* id, float* values, int count,
         const float axisSpeed = speed > 0.0f ? speed : AdaptiveDragSpeed(values[i]);
         ImGui::SetNextItemWidth(each);
         /// @note 頭文字を出せない狭さのときだけ、枠内の軸色マーカーで成分を示す。
-        ///       自前で後描きすると枠線の上に乗り、UI スケールにも追従しない。
+        /// @note 自前で後描きすると枠線の上に乗り、UI スケールにも追従しない。
         if (!showAxisLetter) ImGui::SetNextItemColorMarker(AxisMarkerColor(i));
         if (DragFloatExpr(label, values[i], axisSpeed, min, max, fmt ? fmt : "%.3f"))
             changed = true;
@@ -1786,7 +1788,7 @@ std::string ElideToWidth(const char* text, float maxWidth, const char* ellipsis)
     std::size_t fit = 0;
     for (std::size_t i = 1; i <= length; ++i) {
         /// @note 継続バイト (0b10xxxxxx) は文字の途中。幅の判定も打ち切りもせず、
-        ///       次の文字境界まで進める。
+        /// @note 次の文字境界まで進める。
         if (i < length && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80) continue;
         if (ImGui::CalcTextSize(text, text + i).x + ellipsisW > maxWidth) break;
         fit = i;
@@ -1816,8 +1818,8 @@ PropertyRowScope BeginPropertyRow()
     const float height = ImGui::GetStateStorage()->GetFloat(row.key, ImGui::GetFrameHeight());
 
     /// @note 行の横幅は「現在のインデント位置から利用可能幅いっぱい」。ウィンドウ基準ではなく
-    ///       カーソル基準にしておくと、入れ子グループの行がインデントに合わせて内側に寄る。
-    ///       左右に少しだけはみ出させて余白ごと塗る。
+    /// @note カーソル基準にしておくと、入れ子グループの行がインデントに合わせて内側に寄る。
+    /// @note 左右に少しだけはみ出させて余白ごと塗る。
     const float x0 = ImGui::GetCursorScreenPos().x - style.ItemInnerSpacing.x;
     const float x1 = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x
                    + style.ItemInnerSpacing.x;
@@ -1825,7 +1827,7 @@ PropertyRowScope BeginPropertyRow()
     const ImVec2 hi{ x1, row.top + height + style.ItemSpacing.y * 0.5f };
 
     /// @note ホバー判定は矩形の内外だけで行う。中身のウィジェットが ImGui のホバーを
-    ///       奪ってしまうため、行全体を対象にするには自前で当たり判定する必要がある。
+    /// @note 奪ってしまうため、行全体を対象にするには自前で当たり判定する必要がある。
     const ImVec2 mouse = ImGui::GetMousePos();
     const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
                          mouse.x >= lo.x && mouse.x < hi.x &&
@@ -1843,7 +1845,7 @@ void EndPropertyRow(const PropertyRowScope& row)
 {
     if (row.key == 0) return;
     /// @note 中身を描き終えた時点のカーソルから実測高さを求め、次フレームの背景に使う。
-    ///       ImGui は行末で改行済みなので ItemSpacing.y を引いて中身ぶんだけを取り出す。
+    /// @note ImGui は行末で改行済みなので ItemSpacing.y を引いて中身ぶんだけを取り出す。
     const float bottom = ImGui::GetCursorScreenPos().y;
     const float height = std::max(ImGui::GetFrameHeight(),
                                  bottom - row.top - ImGui::GetStyle().ItemSpacing.y);
@@ -1872,8 +1874,8 @@ void EndPropertyField(const PropertyRowScope& row)
 
 namespace {
 
-/// ◎ (一覧から選ぶ) と × (クリア) のグリフ。フォントが ASCII 中心なので、
-/// 文字を代用すると行ごとに太さと中心がばらついてアイコンとして読めない。
+/// @note ◎ (一覧から選ぶ) と × (クリア) のグリフ。フォントが ASCII 中心なので、
+/// @note 文字を代用すると行ごとに太さと中心がばらついてアイコンとして読めない。
 void DrawPickGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color)
 {
     drawList->AddCircle(center, size * 0.30f, color, 16,
@@ -1891,7 +1893,7 @@ void DrawClearGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color
                       ImVec2{ center.x + reach, center.y - reach }, color, thickness);
 }
 
-/// ▲ / ▼ (1 つ上へ / 1 つ下へ)。三角の塗りではなく山形の 2 本線にする。
+/// @note ▲ / ▼ (1 つ上へ / 1 つ下へ)。三角の塗りではなく山形の 2 本線にする。
 /// @note 塗り三角は小さい寸法だとアンチエイリアスで潰れて「点」に見えるが、線なら太さを font size に比例させられ UI スケールを変えても形が残る。
 void DrawChevronGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color, bool up)
 {
@@ -1904,7 +1906,7 @@ void DrawChevronGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 col
     drawList->AddLine(ImVec2{ center.x + halfW, center.y - halfH * dir }, apex, color, thickness);
 }
 
-/// + (要素を足す)。
+/// @note + (要素を足す)。
 void DrawPlusGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color)
 {
     const float reach     = size * 0.24f;
@@ -1915,7 +1917,7 @@ void DrawPlusGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color)
                       ImVec2{ center.x, center.y + reach }, color, thickness);
 }
 
-/// ⠿ (ドラッグつまみ)。2 列 3 段の点で「掴んで動かせる」ことを示す慣用表現。
+/// @note ⠿ (ドラッグつまみ)。2 列 3 段の点で「掴んで動かせる」ことを示す慣用表現。
 void DrawGripGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color)
 {
     const float stepY  = (std::max)(2.0f, size * 0.17f);
@@ -1929,8 +1931,8 @@ void DrawGripGlyph(ImDrawList* drawList, ImVec2 center, float size, ImU32 color)
                 radius, color, 6);
 }
 
-/// リスト行の小さなグリフボタン共通処理。
-/// 参照スロットの ◎ / × と同じく「透明ボタン + 自前グリフ + ホバーで明色化」で組む。
+/// @note リスト行の小さなグリフボタン共通処理。
+/// @note 参照スロットの ◎ / × と同じく「透明ボタン + 自前グリフ + ホバーで明色化」で組む。
 enum class ListGlyph { Up, Down, Remove, Add, Grip };
 
 bool ListGlyphButton(const char* id, ListGlyph glyph, bool enabled, const char* tooltip)
@@ -1962,7 +1964,7 @@ bool ListGlyphButton(const char* id, ListGlyph glyph, bool enabled, const char* 
     return pressed && enabled;
 }
 
-/// 並び替えペイロード。listId を載せることで、同時に開いている別のリストへは落とせない。
+/// @note 並び替えペイロード。listId を載せることで、同時に開いている別のリストへは落とせない。
 /// @note 文字列 scope ではなく ID にする: 配列フィールドは名前が同じでも別 Script / 別要素にいくらでも生え一意な名前を人が付けられないため、ImGui の ID 木をそのまま使う。
 struct ListReorderPayload {
     ImGuiID listId = 0;
@@ -2020,8 +2022,8 @@ int ListRowDragHandle(ImGuiID listId, int index, bool& outInsertAfter)
     int draggedIndex = -1;
     if (ImGui::BeginDragDropTarget()) {
         /// @note Component カードの並び替えと同じ規則:
-        ///       Preview 中はガイド線だけを描き、実際の並び替えは Delivery の 1 回だけ返す。
-        ///       前後どちらへ挿すかはマウス位置で決め、線もその辺へ描いて結果と一致させる。
+        /// @note Preview 中はガイド線だけを描き、実際の並び替えは Delivery の 1 回だけ返す。
+        /// @note 前後どちらへ挿すかはマウス位置で決め、線もその辺へ描いて結果と一致させる。
         constexpr ImGuiDragDropFlags kAcceptFlags =
             ImGuiDragDropFlags_AcceptBeforeDelivery
             | ImGuiDragDropFlags_AcceptNoDrawDefaultRect;
@@ -2113,7 +2115,7 @@ bool BeginReferenceSlot(const char* id, const char* text, ReferenceSlotState sta
         style.FrameRounding);
 
     /// @note 枠の色で状態を出す。ドラッグ中は「ここへ落とせる」を最優先で見せたいので
-    ///       型不一致より前に判定する (落とす前の話なので、今の中身の是非は二の次)。
+    /// @note 型不一致より前に判定する (落とす前の話なので、今の中身の是非は二の次)。
     ImU32 border    = EditorTheme::ColorU32(ThemeColor::Border);
     float thickness = 1.0f;
     if (state == ReferenceSlotState::Invalid) {
@@ -2187,8 +2189,8 @@ ReferenceSlotButtons EndReferenceSlot(bool showPick, bool showClear)
 
 namespace {
 
-/// ComponentHeader が折り畳み状態を書き込む ImGuiID の集合。
-/// 1 セッション内で描かれたカードのぶんだけ溜まる (ラベルごとに 1 つなので数百程度)。
+/// @note ComponentHeader が折り畳み状態を書き込む ImGuiID の集合。
+/// @note 1 セッション内で描かれたカードのぶんだけ溜まる (ラベルごとに 1 つなので数百程度)。
 std::unordered_set<ImGuiID>& HeaderStateIdRegistry()
 {
     static std::unordered_set<ImGuiID> ids;
@@ -2204,7 +2206,8 @@ const std::unordered_set<ImGuiID>& ComponentHeaderStateIds()
 
 ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
                                        bool* enabled, bool defaultOpen,
-                                       const ComponentReorderTarget& reorder)
+                                       const ComponentReorderTarget& reorder,
+                                       const ComponentToggleOptions& toggle)
 {
     ComponentHeaderResult result;
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -2213,43 +2216,43 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
     ImGui::PushID(label);
 
     /// @note ヘッダーを描く前の行頭と右端を控える。枠付き CollapsingHeader の矩形は
-    ///       WindowPadding.x * 0.5 だけ左右へはみ出すが、ラベルははみ出す前の位置を基準に置かれる。
-    ///       GetItemRect から重ね描きの座標を作るとその差分だけ左へずれる。
+    /// @note WindowPadding.x * 0.5 だけ左右へはみ出すが、ラベルははみ出す前の位置を基準に置かれる。
+    /// @note GetItemRect から重ね描きの座標を作るとその差分だけ左へずれる。
     const ImVec2 startPos     = ImGui::GetCursorScreenPos();
     const float  contentRight = startPos.x + ImGui::GetContentRegionAvail().x;
 
     /// @note 見出しだけ本文より 1 段大きい文字で組み、「名前 > 値の名前」の主従を大きさでも伝える。
-    ///       PushFont には倍率を掛ける前の値 (style.FontSizeBase) を渡すこと。GetFontSize() は
-    ///       倍率適用後なので、渡すと UI スケールが二重に掛かる (ImGui 1.92 の仕様)。
-    ///       ここで押した文字サイズは矢印・チェック・⋯ にも効き、帯の高さも追従する。
-    ///       整数へ丸めるのは、半端な値だとラスタライズがにじんで細くぼやけて見えるため。
+    /// @note PushFont には倍率を掛ける前の値 (style.FontSizeBase) を渡すこと。GetFontSize() は
+    /// @note 倍率適用後なので、渡すと UI スケールが二重に掛かる (ImGui 1.92 の仕様)。
+    /// @note ここで押した文字サイズは矢印・チェック・⋯ にも効き、帯の高さも追従する。
+    /// @note 整数へ丸めるのは、半端な値だとラスタライズがにじんで細くぼやけて見えるため。
     constexpr float kTitleScale = 1.15f;
     ImGui::PushFont(nullptr, std::floor(style.FontSizeBase * kTitleScale));
 
     /// @note 帯の高さは見出しの文字に寄り添うぶんだけ (HeaderPadY)。PushFont 後に呼ぶこと。
-    ///       色は CollapsingHeader の 3 状態を Surface 系へ寄せ、選択色 (青) を出さない
-    ///       (既定の Header 色だと「開いているだけ」のカードが全部強調される)。
+    /// @note 色は CollapsingHeader の 3 状態を Surface 系へ寄せ、選択色 (青) を出さない
+    /// @note (既定の Header 色だと「開いているだけ」のカードが全部強調される)。
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, { style.FramePadding.x, HeaderPadY() });
     ImGui::PushStyleColor(ImGuiCol_Header,        EditorTheme::ColorU32(ThemeColor::SurfaceRaised));
     ImGui::PushStyleColor(ImGuiCol_HeaderHovered, EditorTheme::ColorU32(ThemeColor::SurfaceHover));
     ImGui::PushStyleColor(ImGuiCol_HeaderActive,  EditorTheme::ColorU32(ThemeColor::SurfaceHover));
 
     /// @note ラベルは "##" で伏せ、矢印だけを ImGui に描かせる。標準の並び
-    ///       (Checkbox → SameLine → CollapsingHeader) だとカードの左端がギザギザになる。
+    /// @note (Checkbox → SameLine → CollapsingHeader) だとカードの左端がギザギザになる。
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_AllowOverlap;
     if (defaultOpen) flags |= ImGuiTreeNodeFlags_DefaultOpen;
     /// @note 折り畳み状態の保存先 ID を名乗っておく (EditorApp が永続化対象を絞るのに使う)。
-    ///       CollapsingHeader は GetID("##hdr") をキーにウィンドウの StateStorage へ開閉を書く。
+    /// @note CollapsingHeader は GetID("##hdr") をキーにウィンドウの StateStorage へ開閉を書く。
     HeaderStateIdRegistry().insert(ImGui::GetID("##hdr"));
     result.open = ImGui::CollapsingHeader("##hdr", flags);
 
     /// @note ヘッダー自体をドラッグ元 / ドロップ先にする。メニューや有効チェックを対象にすると
-    ///       既存のクリック操作と競合するので、境界を表すヘッダーだけに限定する。
-    ///       掴めるのは並び替え可能なカードだけ。全カードがペイロードを撒くと、落としても何も
-    ///       起きないカードができ、保存データにも余計なキーが混ざる。
+    /// @note 既存のクリック操作と競合するので、境界を表すヘッダーだけに限定する。
+    /// @note 掴めるのは並び替え可能なカードだけ。全カードがペイロードを撒くと、落としても何も
+    /// @note 起きないカードができ、保存データにも余計なキーが混ざる。
     if (reorder) {
         /// @note ペイロード名はリスト (scope) ごとに分ける。ImGui のペイロード名は
-        ///       32 バイト上限なので、prefix 13 文字 + scope は 18 文字以内に収めること。
+        /// @note 32 バイト上限なので、prefix 13 文字 + scope は 18 文字以内に収めること。
         char payloadType[32];
         std::snprintf(payloadType, sizeof(payloadType), "FBZZ_REORDER_%s", reorder.scope);
         const char* dragKey = reorder.dragKey ? reorder.dragKey : label;
@@ -2264,7 +2267,7 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
         }
         if (ImGui::BeginDragDropTarget()) {
             /// @note Preview 中に順序を書き換えると、同じフレームの描画順と保存順がずれる。
-            ///       ドロップラインだけを Preview で描き、順序変更は Delivery の 1 回だけ実行する。
+            /// @note ドロップラインだけを Preview で描き、順序変更は Delivery の 1 回だけ実行する。
             constexpr ImGuiDragDropFlags kAcceptFlags =
                 ImGuiDragDropFlags_AcceptBeforeDelivery
                 | ImGuiDragDropFlags_AcceptNoDrawDefaultRect;
@@ -2281,8 +2284,8 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
                     const ImVec2 dropMax = ImGui::GetItemRectMax();
 
                     /// @note カードの上半分なら手前へ、下半分なら後ろへ挿入する。
-                    ///       ガイド線も同じ辺へ描いて見た目と結果を一致させる。挿入位置を固定にすると
-                    ///       線の指す位置と着地が 1 枚ずれ、最後尾へは移動できなくなる。
+                    /// @note ガイド線も同じ辺へ描いて見た目と結果を一致させる。挿入位置を固定にすると
+                    /// @note 線の指す位置と着地が 1 枚ずれ、最後尾へは移動できなくなる。
                     const float mid = (dropMin.y + dropMax.y) * 0.5f;
                     const bool  insertAfter = ImGui::GetMousePos().y >= mid;
                     const float lineY = insertAfter ? dropMax.y : dropMin.y;
@@ -2314,46 +2317,54 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
                             accent, style.FrameRounding, ImDrawFlags_RoundCornersLeft);
 
     /// @note 矢印のぶんだけ空けた位置から、チェックボックスと名前をヘッダーへ重ねる。枠付きツリーノードのラベル開始 X は ImGui 内部で
-    ///       CursorPos.x + FontSize + FramePadding.x * 3 (矢印幅 + 余白) なので、ここを合わせないと矢印と文字が重なる / 不自然に離れる。
+    /// @note CursorPos.x + FontSize + FramePadding.x * 3 (矢印幅 + 余白) なので、ここを合わせないと矢印と文字が重なる / 不自然に離れる。
     float x = startPos.x + ImGui::GetFontSize() + style.FramePadding.x * 3.0f;
 
     /// @note チェックの枠は「持たないコンポーネントでも」必ず確保する: 無いと Transform (チェック無し) だけ名前が左へ寄り、Inspector を縦に見たとき見出しの左端がぎざぎざになる。
-    ///       チェックの大きさは FramePadding 依存なので帯と同じ薄い余白で描く (既定値のままだと帯より背が高くなり上下がはみ出す)。
+    /// @note チェックの大きさは FramePadding 依存なので帯と同じ薄い余白で描く (既定値のままだと帯より背が高くなり上下がはみ出す)。
     const float boxH = ImGui::GetFontSize() + HeaderPadY() * 2.0f;
     if (enabled) {
         ImGui::SameLine();
         ImGui::SetCursorScreenPos({ x, centerY - boxH * 0.5f });
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, { style.FramePadding.x, HeaderPadY() });
+        ImGui::BeginDisabled(!toggle.editable);
+        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, toggle.mixed);
         result.enabledChanged = ImGui::Checkbox("##en", enabled);
+        if (result.enabledChanged && toggle.mixed) *enabled = true;
+        ImGui::PopItemFlag();
+        ImGui::EndDisabled();
         ImGui::PopStyleVar();
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", LOCT(*enabled
-                ? "Enabled - uncheck to disable this component"
-                : "Disabled - check to enable this component"));
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            const char* tooltip = !toggle.editable && toggle.unavailableReason ? toggle.unavailableReason
+                : toggle.mixed ? "有効状態が混在しています。チェックすると全対象を有効にします。"
+                : LOCT(*enabled ? "Enabled - uncheck to disable this component"
+                                : "Disabled - check to enable this component");
+            ImGui::SetTooltip("%s", tooltip);
+        }
     }
     x += boxH + style.ItemInnerSpacing.x;
 
     /// @note ⋯ ボタンのぶんを先に確保してから名前を描く。長い名前がボタンへ食い込むと
-    ///       「押せるはずのものが文字で潰れている」状態になるため、名前側を省略する。
+    /// @note 「押せるはずのものが文字で潰れている」状態になるため、名前側を省略する。
     const float btn        = std::max(ImGui::GetFontSize(), boxH * 0.85f);
     const float labelAvail = std::max(ImGui::GetFontSize(),
                                       contentRight - btn - style.ItemInnerSpacing.x - x);
 
     /// @note 表示だけを訳す。ID は上の PushID(label) が原文から作っているので、
-    ///       カードの開閉状態 (EditorSettings::inspectorSectionState) は言語を跨いで保たれる。
+    /// @note カードの開閉状態 (EditorSettings::inspectorSectionState) は言語を跨いで保たれる。
     const char* localized = LOCT(label);
 
     const std::string shown      = ElideToWidth(localized, labelAvail);
     const char*       shownLabel = shown.c_str();
 
     /// @note 無効なコンポーネントは名前を沈める。値まで読む前に「効いていない」と分かる。
-    const bool dimmed = enabled && !*enabled;
+    const bool dimmed = enabled && !toggle.mixed && !*enabled;
     ImGui::SameLine();
     ImGui::SetCursorScreenPos({ x, centerY - ImGui::GetTextLineHeight() * 0.5f });
     ImGui::PushStyleColor(ImGuiCol_Text,
         EditorTheme::Color(dimmed ? ThemeColor::TextFaint : ThemeColor::Text));
     /// @note 大きさは変えず太さだけ差し替える。渡すのは上の PushFont と同じ «倍率前» の値。
-    ///       GetFontSize() は倍率適用後なので、渡すと UI スケールが二重に掛かる。
+    /// @note GetFontSize() は倍率適用後なので、渡すと UI スケールが二重に掛かる。
     ImGui::PushFont(EditorTheme::HeadingFont(), std::floor(style.FontSizeBase * kTitleScale));
     ImGui::TextUnformatted(shownLabel);
     ImGui::PopFont();
@@ -2392,9 +2403,9 @@ ComponentHeaderResult ComponentHeader(const char* label, ImU32 accent,
 
 namespace {
 
-/// カード地色の共通処理。前フレームの実測高さで矩形を先に敷き、字下げして返す。
-/// left / right はスクリーン座標。呼び出し側がヘッダーの実測矩形をそのまま渡すことで、
-/// ヘッダーと本文の左右端が必ず一致する。
+/// @note カード地色の共通処理。前フレームの実測高さで矩形を先に敷き、字下げして返す。
+/// @note left / right はスクリーン座標。呼び出し側がヘッダーの実測矩形をそのまま渡すことで、
+/// @note ヘッダーと本文の左右端が必ず一致する。
 ComponentBodyScope BeginCardCommon(const char* storageId, ImU32 accent,
                                    float left, float right, bool roundTopCorners)
 {
@@ -2412,7 +2423,7 @@ ComponentBodyScope BeginCardCommon(const char* storageId, ImU32 accent,
     const float height = ImGui::GetStateStorage()->GetFloat(scope.key, ImGui::GetFrameHeight());
 
     /// @note コンポーネント本文 (roundTopCorners == false) はヘッダーの直下へ密着させる。
-    ///       ImGui はヘッダー描画後に ItemSpacing.y だけカーソルを送るので、その分だけ上へ戻す。
+    /// @note ImGui はヘッダー描画後に ItemSpacing.y だけカーソルを送るので、その分だけ上へ戻す。
     const float topPad = roundTopCorners ? style.ItemSpacing.y * 0.5f : style.ItemSpacing.y;
     const ImVec2 lo{ left,  scope.top - topPad };
     const ImVec2 hi{ right, scope.top + height + style.ItemSpacing.y * 0.5f };
@@ -2424,7 +2435,7 @@ ComponentBodyScope BeginCardCommon(const char* storageId, ImU32 accent,
                                             : ImDrawFlags_RoundCornersBottom);
     if (accent != 0) {
         /// @note ヘッダーの帯をそのまま本文へ延長し、1 コンポーネントの縦の範囲を示す。
-        ///       太さは Metrics() 由来でヘッダーと同一。別々に決めると継ぎ目で段差になる。
+        /// @note 太さは Metrics() 由来でヘッダーと同一。別々に決めると継ぎ目で段差になる。
         const ImU32 soft = (accent & 0x00FFFFFFu) | (70u << IM_COL32_A_SHIFT);
         drawList->AddRectFilled(lo, { lo.x + metrics.accent, hi.y }, soft,
                                 style.FrameRounding, ImDrawFlags_RoundCornersBottomLeft);
@@ -2464,8 +2475,8 @@ void EndComponentBody(const ComponentBodyScope& body)
 ComponentBodyScope BeginCard()
 {
     /// @note 単独カードはヘッダーを持たないので自前で矩形を作る。
-    ///       枠付き CollapsingHeader と同じだけ左右へはみ出させ、
-    ///       下に続くコンポーネントカードと左右端をそろえる (揃っていないと段差に見える)。
+    /// @note 枠付き CollapsingHeader と同じだけ左右へはみ出させ、
+    /// @note 下に続くコンポーネントカードと左右端をそろえる (揃っていないと段差に見える)。
     const float extend = std::floor(ImGui::GetStyle().WindowPadding.x * 0.5f);
     const float left   = ImGui::GetCursorScreenPos().x - extend;
     const float right  = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x + extend;
@@ -2480,8 +2491,8 @@ void EndCard(const ComponentBodyScope& card)
 void BeginHeadingFont(float scale)
 {
     /// @note PushFont には倍率を掛ける前の値 (style.FontSizeBase) を渡す。GetFontSize() は
-    ///       倍率適用後なので、渡すと UI スケールが二重に掛かる (ImGui 1.92 の仕様)。
-    ///       半端な値はラスタライズがにじむので整数へ丸める。
+    /// @note 倍率適用後なので、渡すと UI スケールが二重に掛かる (ImGui 1.92 の仕様)。
+    /// @note 半端な値はラスタライズがにじむので整数へ丸める。
     const float size = std::floor(ImGui::GetStyle().FontSizeBase * scale);
     ImGui::PushFont(EditorTheme::HeadingFont(), size);
 }
@@ -2495,11 +2506,11 @@ bool EmptyState(const char* icon, const char* title, const char* hint, const cha
 {
     const ImVec2 available = ImGui::GetContentRegionAvail();
     /// @note 高さが取れないほど狭い枠に中央寄せすると、上へ飛び出して読めなくなる。
-    ///       そのときは «ただの 1 行» に落とす (今までの見た目と同じ)。
+    /// @note そのときは «ただの 1 行» に落とす (今までの見た目と同じ)。
     const bool roomy = available.y > ImGui::GetTextLineHeightWithSpacing() * 6.0f;
 
     /// @note 次に描くものを枠の中央へ寄せる。ImGui は «自分の幅» を描く前に知らないので、
-    ///       幅は呼び出し側が測って渡す。
+    /// @note 幅は呼び出し側が測って渡す。
     const auto centerFor = [&available](float width) {
         const float indent = (available.x - width) * 0.5f;
         if (indent > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
@@ -2558,7 +2569,7 @@ float Animate(ImGuiID id, float target, float speed)
     const float deltaTime = ImGui::GetIO().DeltaTime > 0.0f ? ImGui::GetIO().DeltaTime
                                                             : (1.0f / 60.0f);
     /// @note 指数で寄せる。線形だと «止まる瞬間» が見えて機械的になる。
-    ///       1 フレームが長いときに行き過ぎないよう、寄せる割合は 1 で止める。
+    /// @note 1 フレームが長いときに行き過ぎないよう、寄せる割合は 1 で止める。
     const float t = (std::min)(deltaTime * speed, 1.0f);
     float next = current + (target - current) * t;
     /// @note 端に十分近づいたら吸い付ける。残り続けると毎フレーム再描画の理由になる。
@@ -2571,7 +2582,7 @@ float Animate(ImGuiID id, float target, float speed)
 void SectionHeader(const char* label)
 {
     /// @note 左のブランドライン、見出し、残り幅の細い罫線を一行で描く: SeparatorText の標準表現だけでは情報階層が弱く、長い Inspector で区切りを見失う。
-    ///       直前の行と密着すると見出しが本文の続きに見えるので、上に一拍入れてから描く。
+    /// @note 直前の行と密着すると見出しが本文の続きに見えるので、上に一拍入れてから描く。
     ImGui::Spacing();
 
     /// @note 帯の太さと余白はコンポーネントカードと同じ Metrics() から取る: px 直値だと UI スケールを変えたときカードの帯と太さが食い違い、同じ役割の線に見えなくなる。
@@ -2590,7 +2601,7 @@ void SectionHeader(const char* label)
     ImGui::SetCursorScreenPos({ cursor.x + metrics.accent + gap, cursor.y });
     ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Text));
     /// @note 大きさは変えず太さだけ変える。ここで大きくすると行の高さが動いて、
-    ///       上で測った lineHeight とブランドラインの長さが合わなくなる。
+    /// @note 上で測った lineHeight とブランドラインの長さが合わなくなる。
     BeginHeadingFont(1.0f);
     /// @note 見出しは ID を作らない純粋な描画なので、素の訳で足りる。
     ImGui::TextUnformatted(LOCT(label));

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
@@ -13,6 +14,7 @@
 #include <Engine/Asset/PostProcessProfile.hpp>
 #include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Editor/Util/ManagedDataAssetEditor.hpp>
 #include <Engine/Asset/SequenceAsset.hpp>
 #include <Engine/Asset/SynthAsset.hpp>
 #include <Engine/Asset/VectorFieldFile.hpp>
@@ -425,6 +427,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
 
     /// @note 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。ファイル内容は `type = ...` の 1 行だけにしておき、フィールドの既定値は Inspector の初回 Resolve 時に型のフィールド初期化子から補完する。Create 側でデフォルト値を二重管理せずに済む。
     if (ImGui::BeginMenu("Data Asset")) {
+        DrawManagedDataAssetCreateMenu(ctx, m_currentPath);
         const auto types = asset::DataAssetFactory::RegisteredTypeNames();
         if (types.empty())
             ImGui::TextDisabled("(no DataAsset types registered)");
@@ -452,76 +455,45 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    /// @name C++ スクリプト
-    ImGui::Separator();
-    /// @note 3 種類を同じ入口に並べる。`C++ Script...` しか無いと、ユーティリティ関数も共有の調整値も「アタッチするスクリプト」として作るしかないように見える。実際には FBZZ_SCRIPT を持たないヘッダは ScriptList.inl に登録されず、Add Script にも出ない普通のクラスとして使える (CMake の GLOB が拾うのでビルドはされる)。その選択肢を入口に置かないと、実装があっても誰も辿り着けない。
-    if (ImGui::BeginMenu("C++...")) {
-        const std::string engineScriptsDir = ctx.scriptsSourceDir;
-        const std::string projScriptsDir   = ctx.projectRoot + "/Assets/Scripts";
-        const std::string dllPath          = ctx.scriptsDllCppPath;
-        const std::string staticPath       = ctx.scriptsStaticCppPath;
-        /// @note パス未解決のときはフォールバックでプロジェクト側の Scripts/ に直接作成する。ToolchainLocator が失敗した環境 (build.config なし) でも DLL 登録なしでヘッダだけを生成できるようにする。
-        const std::string resolvedScriptsDir =
-            engineScriptsDir.empty() ? projScriptsDir : engineScriptsDir;
-        const std::string destination =
-            "Destination: " + (resolvedScriptsDir.empty() ? projScriptsDir : resolvedScriptsDir);
-
-        /// @note 生成先が 2 箇所ある (SDK 側ソースとプロジェクト側 Assets) のは既存仕様。
-        /// @note 種類が増えても分岐が散らないよう、コールバックの組み立てを 1 本化する。
-        auto makeCallback = [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath]
-            (ScriptCodeGen::ScriptKind kind, const char* label) {
-            return [this, resolvedScriptsDir, projScriptsDir, dllPath, staticPath, kind, label]
-                (const std::string& name) {
-                const std::string path = ScriptCodeGen::CreateScript(
-                    name, resolvedScriptsDir, dllPath, staticPath, kind);
-                if (path.empty()) {
-                    FBZZ_LOG_WARN("%s creation failed: %s", label, name.c_str());
+    if (ImGui::BeginMenu("C#...")) {
+        const std::string scriptsDir = ctx.projectRoot + "/Assets/Scripts";
+        const std::string setupNote = "Destination: " + scriptsDir +
+            "\nRequires exactly one <Project>.Scripts.csproj from the SDK ManagedStarter. Names use ASCII C# identifiers.";
+        EditorContext* context = &ctx;
+        auto makeCSharpCallback = [this, context, scriptsDir](const char* operatorId, const char* label) {
+            return [this, context, scriptsDir, operatorId, label](const std::string& name) {
+                OpArgs args;
+                args.Set("name", name);
+                const OpResult result = InvokeOperator(*context, operatorId, args);
+                if (!result.ok) {
+                    FBZZ_LOG_WARN("%s creation failed: %s", label, result.message.c_str());
                     return;
                 }
-                /// @note プロジェクト Assets/Scripts/ にも即コピー (AssetBrowser に即反映)
-                if (!projScriptsDir.empty() && projScriptsDir != resolvedScriptsDir)
-                    ScriptCodeGen::CreateScript(name, projScriptsDir, "", "", kind);
-                NotifyAssetCreated(path);
-                m_pendingNavigate = projScriptsDir;
+                const OpData* pathValue = result.data.Find("path");
+                if (!pathValue || !pathValue->IsString()) {
+                    FBZZ_LOG_ERROR("%s creation returned no source path", label);
+                    return;
+                }
+                NotifyAssetCreated(pathValue->AsString());
+                m_pendingNavigate = scriptsDir;
                 RefreshDirectory();
-                FBZZ_LOG_INFO("%s generated: %s", label, path.c_str());
             };
         };
 
         if (ImGui::MenuItem("Script (attach to GameObject)...")) {
-            ModalDialog::OpenInput(
-                "New C++ Script", "NewScript",
-                makeCallback(ScriptCodeGen::ScriptKind::Behaviour, "C++ Script"),
-                destination + "\nA \"Component\" suffix is appended to the class name.");
+            ModalDialog::OpenInput("New C# Script", "Enemy",
+                makeCSharpCallback("asset.create_csharp_script", "C# Script"),
+                setupNote + "\nComponent is appended only when the name does not already end with it.");
         }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("FBZZ_SCRIPT を持つ通常のスクリプト。Add Script に並ぶ。\n"
-                              "必要なコンポーネントは FBZZ_REQUIRE_COMPONENT で宣言する。");
+        if (ImGui::MenuItem("Helper Class (not attached)...")) {
+            ModalDialog::OpenInput("New C# Helper", "DamageCalculator",
+                makeCSharpCallback("asset.create_csharp_helper", "C# Helper"), setupNote);
         }
-
-        if (ImGui::MenuItem("Utility Header (not attached)...")) {
-            ModalDialog::OpenInput(
-                "New C++ Utility Header", "NewHelpers",
-                makeCallback(ScriptCodeGen::ScriptKind::Utility, "C++ Utility Header"),
-                destination + "\nPlain class — never appears in Add Script.");
+        if (ImGui::MenuItem("DataAsset Type...")) {
+            ModalDialog::OpenInput("New C# DataAsset Type", "WeaponData",
+                makeCSharpCallback("asset.create_csharp_data_asset_type", "C# DataAsset Type"),
+                setupNote + "\nThis creates the managed type; .fzdata instance authoring is separate.");
         }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("登録マクロを持たない普通のクラス。\n"
-                              "Unity で MonoBehaviour を継承しないクラスに相当する。\n"
-                              "ファイル分割・ヘルパー関数はこちらで書く。");
-        }
-
-        if (ImGui::MenuItem("Data Asset (shared values)...")) {
-            ModalDialog::OpenInput(
-                "New C++ Data Asset", "NewStats",
-                makeCallback(ScriptCodeGen::ScriptKind::DataAsset, "C++ Data Asset"),
-                destination + "\nDefines a type; create .fzdata files from Create > Data Asset.");
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("FBZZ_DATA_ASSET を持つ共有調整値の型 (ScriptableObject 相当)。\n"
-                              "スクリプト DLL のビルド後、Create > Data Asset に型名が並ぶ。");
-        }
-
         ImGui::EndMenu();
     }
 

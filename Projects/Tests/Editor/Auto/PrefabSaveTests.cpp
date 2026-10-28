@@ -15,7 +15,22 @@
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/CameraRigComponents.hpp>
 #include <Engine/Scene/Components/ConstraintComponents.hpp>
+#include <Engine/Scene/Components/ClothComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/MotionWarpComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/SplineComponents.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
+#include <Engine/Scene/Components/VFXBeamComponent.hpp>
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/WaterExclusionComponent.hpp>
+#include <Engine/Scene/WaterInteraction.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
@@ -23,6 +38,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -104,6 +120,361 @@ TEST_F(PrefabSaveTest, RefusesASelectionOfUnknownEntities)
     const std::vector<scene::EntityID> bogus{ scene::EntityID::INVALID };
 
     EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, bogus, PrefabPathUtf8()));
+}
+
+TEST_F(PrefabSaveTest, RejectsExternalPointBindingsBeforeReplacingAnExistingPrefab)
+{
+    scene::Scene scene;
+    auto& owner = scene.CreateGameObject("Owner");
+    auto& target = scene.CreateGameObject("External");
+    target.AddComponent<scene::TargetPointComponent>();
+    ASSERT_TRUE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    const std::string original = SavedText();
+    scene::ObjectReference reference;
+    reference.guid = target.instanceId;
+
+    auto& water = owner.AddComponent<scene::WaterComponent>();
+    water.pointSourceMode = scene::ControlPointSourceMode::POINT_OBJECTS;
+    water.pointBindings.push_back({31, reference, 6.0f, 1.0f, 0.0f});
+    EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    EXPECT_EQ(SavedText(), original);
+    owner.RemoveComponent<scene::WaterComponent>();
+
+    auto& spline = owner.AddComponent<scene::SplineComponent>();
+    spline.pointSourceMode = scene::ControlPointSourceMode::POINT_OBJECTS;
+    spline.pointBindings.push_back({79, reference});
+    EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    EXPECT_EQ(SavedText(), original);
+    owner.RemoveComponent<scene::SplineComponent>();
+
+    auto& cloth = owner.AddComponent<scene::ClothComponent>();
+    scene::ClothAttachment attachment;
+    attachment.bindingId = 43; attachment.targetReference = reference;
+    cloth.attachments.push_back(attachment);
+    EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    EXPECT_EQ(SavedText(), original);
+}
+
+TEST_F(PrefabSaveTest, RejectsMissingNullAndUnsavedPointTargetsWithoutChangingTheirGuid)
+{
+    scene::Scene scene;
+    auto& owner = scene.CreateGameObject("Owner");
+    auto& target = scene.CreateGameObject("Point");
+    target.SetParent(owner);
+    target.AddComponent<scene::TargetPointComponent>();
+    auto& spline = owner.AddComponent<scene::SplineComponent>();
+    spline.pointSourceMode = scene::ControlPointSourceMode::POINT_OBJECTS;
+    scene::SplineControlPointBinding row;
+    row.id = 5; row.target.guid = "missing-point-guid";
+    row.target.id = target.GetID(); row.target.sceneGeneration = scene.GetRenderSceneGeneration();
+    spline.pointBindings.push_back(row);
+
+    EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    EXPECT_FALSE(std::filesystem::exists(PrefabPath()));
+    EXPECT_EQ(spline.pointBindings.front().target.guid, "missing-point-guid");
+    spline.pointBindings.front().target.guid.clear();
+    EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    EXPECT_FALSE(std::filesystem::exists(PrefabPath()));
+    spline.pointBindings.front().target.guid = target.instanceId;
+    target.runtimeGenerated = true;
+    EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    EXPECT_FALSE(std::filesystem::exists(PrefabPath()));
+    EXPECT_EQ(spline.pointBindings.front().target.guid, target.instanceId);
+}
+
+TEST_F(PrefabSaveTest, SavesSharedPointClosureAndRemapsEachPrefabInstanceInternally)
+{
+    scene::Scene source;
+    auto& waterOwner = source.CreateGameObject("Water");
+    auto& splineOwner = source.CreateGameObject("Spline");
+    auto& point = source.CreateGameObject("Point");
+    point.AddComponent<scene::TargetPointComponent>();
+    scene::ObjectReference reference; reference.guid = point.instanceId;
+    auto& water = waterOwner.AddComponent<scene::WaterComponent>();
+    water.pointSourceMode = scene::ControlPointSourceMode::POINT_OBJECTS;
+    water.pointBindings.push_back({17, reference, 5.0f, 2.0f, 3.0f});
+    auto& spline = splineOwner.AddComponent<scene::SplineComponent>();
+    spline.pointSourceMode = scene::ControlPointSourceMode::POINT_OBJECTS;
+    spline.pointBindings.push_back({61, reference});
+    ASSERT_TRUE(PrefabSerializer::SaveSelection(source,
+        {waterOwner.GetID(), splineOwner.GetID(), point.GetID()}, PrefabPathUtf8()));
+
+    scene::Scene destination;
+    std::vector<scene::EntityID> firstRoots, secondRoots;
+    ASSERT_TRUE(PrefabSerializer::Instantiate(destination, PrefabPathUtf8(), firstRoots));
+    ASSERT_TRUE(PrefabSerializer::Instantiate(destination, PrefabPathUtf8(), secondRoots));
+    ASSERT_EQ(firstRoots.size(), 3u); ASSERT_EQ(secondRoots.size(), 3u);
+    const auto findRoot = [&destination](const auto& roots, const std::string& sourceGuid) -> scene::GameObject* {
+        for (const auto id : roots) if (auto* object = destination.GetGameObject(id); object && object->prefabSourceId == sourceGuid) return object;
+        return nullptr;
+    };
+    auto* firstPoint = findRoot(firstRoots, point.instanceId);
+    auto* secondPoint = findRoot(secondRoots, point.instanceId);
+    ASSERT_NE(firstPoint, nullptr); ASSERT_NE(secondPoint, nullptr);
+    EXPECT_NE(firstPoint->instanceId, secondPoint->instanceId);
+    EXPECT_NE(firstPoint->name, secondPoint->name);
+    for (const auto* roots : {&firstRoots, &secondRoots}) {
+        auto* instancePoint = findRoot(*roots, point.instanceId);
+        auto* instanceWater = findRoot(*roots, waterOwner.instanceId);
+        auto* instanceSpline = findRoot(*roots, splineOwner.instanceId);
+        ASSERT_NE(instancePoint, nullptr);
+        ASSERT_NE(instanceWater, nullptr); ASSERT_NE(instanceSpline, nullptr);
+        auto* waterComponent = instanceWater->GetComponent<scene::WaterComponent>();
+        auto* splineComponent = instanceSpline->GetComponent<scene::SplineComponent>();
+        ASSERT_NE(waterComponent, nullptr); ASSERT_NE(splineComponent, nullptr);
+        ASSERT_EQ(waterComponent->pointBindings.size(), 1u); ASSERT_EQ(splineComponent->pointBindings.size(), 1u);
+        EXPECT_EQ(waterComponent->pointBindings.front().target.guid, instancePoint->instanceId);
+        EXPECT_EQ(splineComponent->pointBindings.front().target.guid, instancePoint->instanceId);
+        EXPECT_EQ(waterComponent->pointBindings.front().id, 17u);
+        EXPECT_FLOAT_EQ(waterComponent->pointBindings.front().flowSpeed, 3.0f);
+        EXPECT_EQ(splineComponent->pointBindings.front().id, 61u);
+    }
+}
+
+TEST_F(PrefabSaveTest, WaterInteractionSettingsSurvivePrefabInstantiationWithoutRuntimeState)
+{
+    scene::Scene source;
+    auto& sourceObject = source.CreateGameObject("Water");
+    auto& sourceWater = sourceObject.AddComponent<scene::WaterComponent>();
+    sourceWater.interactionSettings.enabled = false;
+    sourceWater.interactionSettings.motionInterval = 0.75f;
+    sourceWater.interactionSettings.sedimentScattering = {0.2f, 0.12f, 0.06f};
+    sourceWater.interactionRuntime.sceneGeneration = 19;
+    sourceWater.interactionRuntime.owner = sourceObject.GetID();
+    sourceWater.interactionRuntime.pending.emplace_back();
+    sourceWater.interactionRuntime.active.emplace_back();
+    sourceWater.interactionRuntime.snapshot = std::make_shared<scene::WaterInteractionFrame>();
+    auto& sourceExclusionObject = source.CreateGameObject("Water Exclusion");
+    auto& sourceExclusion = sourceExclusionObject.AddComponent<scene::WaterExclusionComponent>();
+    sourceExclusion.excludeAll = false;
+    sourceExclusion.waters.emplace_back(sourceObject.GetID());
+
+    ASSERT_TRUE(PrefabSerializer::SaveSelection(source, {sourceObject.GetID(), sourceExclusionObject.GetID()},
+        PrefabPathUtf8("WaterInteraction.prefab")));
+
+    scene::Scene destination;
+    std::vector<scene::EntityID> roots;
+    ASSERT_TRUE(PrefabSerializer::Instantiate(destination,
+        PrefabPathUtf8("WaterInteraction.prefab"), roots));
+    ASSERT_EQ(roots.size(), 2u);
+    const auto findRoot = [&destination, &source](scene::EntityID sourceId) -> scene::GameObject* {
+        const scene::GameObject* sourceObject = source.GetGameObject(sourceId);
+        if (!sourceObject) return nullptr;
+        for (scene::EntityID id : destination.GetEntities<scene::WaterComponent>()) {
+            auto* object = destination.GetGameObject(id);
+            if (object && object->prefabSourceId == sourceObject->instanceId) return object;
+        }
+        for (scene::EntityID id : destination.GetEntities<scene::WaterExclusionComponent>()) {
+            auto* object = destination.GetGameObject(id);
+            if (object && object->prefabSourceId == sourceObject->instanceId) return object;
+        }
+        return nullptr;
+    };
+    auto* instance = findRoot(sourceObject.GetID());
+    auto* instanceExclusionObject = findRoot(sourceExclusionObject.GetID());
+    ASSERT_NE(instance, nullptr);
+    ASSERT_NE(instanceExclusionObject, nullptr);
+    const auto* water = instance->GetComponent<scene::WaterComponent>();
+    ASSERT_NE(water, nullptr);
+    EXPECT_FALSE(water->interactionSettings.enabled);
+    EXPECT_FLOAT_EQ(water->interactionSettings.motionInterval, 0.75f);
+    EXPECT_FLOAT_EQ(water->interactionSettings.sedimentScattering.x, 0.2f);
+    EXPECT_TRUE(water->interactionRuntime.pending.empty());
+    EXPECT_TRUE(water->interactionRuntime.active.empty());
+    EXPECT_EQ(water->interactionRuntime.snapshot, nullptr);
+    EXPECT_EQ(water->interactionRuntime.sceneGeneration, 0u);
+    const auto* exclusion = instanceExclusionObject->GetComponent<scene::WaterExclusionComponent>();
+    ASSERT_NE(exclusion, nullptr);
+    ASSERT_EQ(exclusion->waters.size(), 1u);
+    EXPECT_EQ(exclusion->waters.front().guid, instance->instanceId);
+    EXPECT_NE(exclusion->waters.front().guid, sourceObject.instanceId);
+}
+
+TEST_F(PrefabSaveTest, SavesLineAndPatrolPointReferencesInEachPrefabInstance)
+{
+    scene::Scene source;
+    auto& lineOwner = source.CreateGameObject("Line");
+    auto& patrolOwner = source.CreateGameObject("Patrol");
+    auto& point = source.CreateGameObject("SharedMarker");
+    point.AddComponent<scene::TargetPointComponent>();
+
+    scene::ObjectReference pointReference;
+    pointReference.guid = point.instanceId;
+    auto& line = lineOwner.AddComponent<scene::VFXLineComponent>();
+    line.toEntity.guid = point.instanceId;
+    auto& patrol = patrolOwner.AddComponent<scene::NavMeshPatrolComponent>();
+    patrol.pointSourceMode = scene::ControlPointSourceMode::POINT_OBJECTS;
+    patrol.waypointBindings.push_back({83, pointReference, 1.25f, 4.5f});
+
+    ASSERT_TRUE(PrefabSerializer::SaveSelection(source,
+        {lineOwner.GetID(), patrolOwner.GetID(), point.GetID()}, PrefabPathUtf8()));
+
+    scene::Scene destination;
+    std::vector<scene::EntityID> firstRoots, secondRoots;
+    ASSERT_TRUE(PrefabSerializer::Instantiate(destination, PrefabPathUtf8(), firstRoots));
+    ASSERT_TRUE(PrefabSerializer::Instantiate(destination, PrefabPathUtf8(), secondRoots));
+
+    const auto findSource = [&destination](const std::vector<scene::EntityID>& roots,
+                                           const std::string& sourceGuid) -> scene::GameObject* {
+        for (const scene::EntityID id : roots) {
+            scene::GameObject* object = destination.GetGameObject(id);
+            if (object && object->prefabSourceId == sourceGuid) return object;
+        }
+        return nullptr;
+    };
+    for (const auto* roots : {&firstRoots, &secondRoots}) {
+        auto* instanceLineOwner = findSource(*roots, lineOwner.instanceId);
+        auto* instancePatrolOwner = findSource(*roots, patrolOwner.instanceId);
+        auto* instancePoint = findSource(*roots, point.instanceId);
+        ASSERT_NE(instanceLineOwner, nullptr);
+        ASSERT_NE(instancePatrolOwner, nullptr);
+        ASSERT_NE(instancePoint, nullptr);
+        const auto* instanceLine = instanceLineOwner->GetComponent<scene::VFXLineComponent>();
+        const auto* instancePatrol = instancePatrolOwner->GetComponent<scene::NavMeshPatrolComponent>();
+        ASSERT_NE(instanceLine, nullptr);
+        ASSERT_NE(instancePatrol, nullptr);
+        ASSERT_EQ(instancePatrol->waypointBindings.size(), 1u);
+        EXPECT_EQ(instanceLine->toEntity.guid, instancePoint->instanceId);
+        EXPECT_EQ(instancePatrol->waypointBindings.front().target.guid, instancePoint->instanceId);
+        EXPECT_EQ(instancePatrol->waypointBindings.front().id, 83u);
+        EXPECT_FLOAT_EQ(instancePatrol->waypointBindings.front().waitTime, 1.25f);
+        EXPECT_FLOAT_EQ(instancePatrol->waypointBindings.front().speed, 4.5f);
+    }
+    EXPECT_NE(findSource(firstRoots, point.instanceId)->instanceId,
+              findSource(secondRoots, point.instanceId)->instanceId);
+}
+
+TEST_F(PrefabSaveTest, RejectsExternalTypedNavigationAndMotionWarpMarkersBeforeReplacingPrefab)
+{
+    scene::Scene scene;
+    auto& owner = scene.CreateGameObject("Owner");
+    auto& external = scene.CreateGameObject("ExternalMarker");
+    external.AddComponent<scene::TargetPointComponent>();
+    scene::ObjectReference reference;
+    reference.guid = external.instanceId;
+    ASSERT_TRUE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    const std::string original = SavedText();
+    const auto expectRejected = [this, &scene, &owner, &original]() {
+        EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+        EXPECT_EQ(SavedText(), original);
+    };
+
+    auto& patrol = owner.AddComponent<scene::NavMeshPatrolComponent>();
+    patrol.pointSourceMode = scene::ControlPointSourceMode::POINT_OBJECTS;
+    patrol.waypointBindings.push_back({12, reference, 0.0f, 0.0f});
+    expectRejected();
+    owner.RemoveComponent<scene::NavMeshPatrolComponent>();
+
+    auto& link = owner.AddComponent<scene::NavMeshOffMeshLinkComponent>();
+    link.pointSourceMode = scene::ControlPointSourceMode::POINT_OBJECTS;
+    link.startTarget = reference;
+    link.endTarget = reference;
+    expectRejected();
+    owner.RemoveComponent<scene::NavMeshOffMeshLinkComponent>();
+
+    auto& lod = owner.AddComponent<scene::LODGroupComponent>();
+    lod.centerSourceMode = scene::ControlPointSourceMode::POINT_OBJECTS;
+    lod.centerTarget = reference;
+    expectRejected();
+    owner.RemoveComponent<scene::LODGroupComponent>();
+
+    auto& motionWarp = owner.AddComponent<scene::MotionWarpComponent>();
+    motionWarp.targetReference = reference;
+    expectRejected();
+}
+
+TEST_F(PrefabSaveTest, MarkerBackedLegacyAndIKReferencesRequireTheirTargetInTheSavedClosure)
+{
+    scene::Scene scene;
+    auto& owner = scene.CreateGameObject("Owner");
+    auto& externalMarker = scene.CreateGameObject("ExternalMarker");
+    externalMarker.AddComponent<scene::TargetPointComponent>();
+    auto& externalObject = scene.CreateGameObject("ExternalObject");
+    ASSERT_TRUE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    const std::string original = SavedText();
+    const auto expectRejected = [this, &scene, &owner, &original]() {
+        EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+        EXPECT_EQ(SavedText(), original);
+    };
+
+    auto& cameraFollow = owner.AddComponent<scene::CameraFollowComponent>();
+    cameraFollow.target.guid = externalMarker.instanceId;
+    expectRejected();
+    owner.RemoveComponent<scene::CameraFollowComponent>();
+
+    auto& socket = owner.AddComponent<scene::SocketAttachmentComponent>();
+    socket.target.guid = externalMarker.instanceId;
+    expectRejected();
+    owner.RemoveComponent<scene::SocketAttachmentComponent>();
+
+    auto& constraint = owner.AddComponent<scene::TransformConstraintComponent>();
+    constraint.target.guid = externalMarker.instanceId;
+    expectRejected();
+    owner.RemoveComponent<scene::TransformConstraintComponent>();
+
+    auto& beam = owner.AddComponent<scene::VFXBeamComponent>();
+    beam.fromEntity.guid = externalMarker.instanceId;
+    expectRejected();
+    owner.RemoveComponent<scene::VFXBeamComponent>();
+
+    auto& line = owner.AddComponent<scene::VFXLineComponent>();
+    line.toEntity.guid = externalMarker.instanceId;
+    expectRejected();
+    owner.RemoveComponent<scene::VFXLineComponent>();
+
+    auto& agent = owner.AddComponent<scene::NavMeshAgentComponent>();
+    agent.target.guid = externalMarker.instanceId;
+    expectRejected();
+    owner.RemoveComponent<scene::NavMeshAgentComponent>();
+
+    auto& ik = owner.AddComponent<scene::IKSolverComponent>();
+    scene::IKChain markerChain;
+    markerChain.targetReference.guid = externalMarker.instanceId;
+    ik.chains.push_back(markerChain);
+    expectRejected();
+    ik.chains.clear();
+
+    owner.AddComponent<scene::CameraFollowComponent>().target.guid = externalObject.instanceId;
+    owner.AddComponent<scene::SocketAttachmentComponent>().target.guid = externalObject.instanceId;
+    owner.AddComponent<scene::TransformConstraintComponent>().target.guid = externalObject.instanceId;
+    owner.AddComponent<scene::VFXBeamComponent>().fromEntity.guid = externalObject.instanceId;
+    owner.AddComponent<scene::VFXLineComponent>().toEntity.guid = externalObject.instanceId;
+    owner.AddComponent<scene::NavMeshAgentComponent>().target.guid = externalObject.instanceId;
+    scene::IKChain ordinaryChain;
+    ordinaryChain.targetReference.guid = externalObject.instanceId;
+    ik.chains.push_back(ordinaryChain);
+    EXPECT_TRUE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+}
+
+TEST_F(PrefabSaveTest, KeepsLegacyClothEntityReferencesAndInactiveInlineRowsSaveable)
+{
+    scene::Scene scene;
+    auto& owner = scene.CreateGameObject("Owner");
+    auto& external = scene.CreateGameObject("External");
+    auto& cloth = owner.AddComponent<scene::ClothComponent>();
+    scene::ClothAttachment attachment; attachment.target = external.GetID();
+    cloth.attachments.push_back(attachment);
+    auto& spline = owner.AddComponent<scene::SplineComponent>();
+    scene::SplineControlPointBinding row; row.id = 1; row.target.guid = "inactive-missing-point";
+    spline.pointBindings.push_back(row);
+
+    EXPECT_TRUE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    EXPECT_TRUE(std::filesystem::exists(PrefabPath()));
+}
+
+TEST_F(PrefabSaveTest, SavesAnExplicitClothTargetWithoutRequiringAMarker)
+{
+    scene::Scene scene;
+    auto& owner = scene.CreateGameObject("Cloth");
+    auto& bone = scene.CreateGameObject("Bone");
+    bone.SetParent(owner);
+    auto& cloth = owner.AddComponent<scene::ClothComponent>();
+    scene::ClothAttachment row;
+    row.bindingId = 4; row.targetReference.guid = bone.instanceId;
+    cloth.attachments.push_back(row);
+
+    EXPECT_TRUE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
+    EXPECT_TRUE(std::filesystem::exists(PrefabPath()));
 }
 
 TEST_F(PrefabSaveTest, WritesAFileForASingleObject)

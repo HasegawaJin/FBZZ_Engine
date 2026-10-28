@@ -5,6 +5,7 @@
 #include <Editor/Op/OperatorGroups.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Tools/ControlPointEditing.hpp>
 #include <Engine/Asset/ClothAsset.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Scene/Components/ClothComponent.hpp>
@@ -253,5 +254,74 @@ void RegisterClothOperators(OperatorRegistry& registry)
         return result;
     };
     registry.Register(std::move(distancePaint));
+
+    EditorOperator motion;
+    motion.id = "cloth.set_motion";
+    motion.label = "Adjust Cloth Motion";
+    motion.category = "Cloth";
+    motion.desc = "曲がりやすさ・伸びやすさ・揺れの収まり・ワールド風速を一件のUndoで適用する。";
+    motion.kind = OpKind::Mutation;
+    motion.undoLabel = "Adjust Cloth Motion";
+    motion.params = {node};
+    for (const char* name : {"bendCompliance", "stretchCompliance", "damping"}) {
+        OpParam parameter;
+        parameter.name = name; parameter.type = OpParamType::Float; parameter.required = false;
+        motion.params.push_back(std::move(parameter));
+    }
+    OpParam windParameter;
+    windParameter.name = "windVelocity"; windParameter.type = OpParamType::Vec3; windParameter.required = false;
+    motion.params.push_back(std::move(windParameter));
+    motion.poll = [](const OpContext& c, const OpArgs&) { return IsControlPointAuthoringAllowed(c.ctx); };
+    motion.exec = [](OpContext& c, const OpArgs& args) {
+        auto* object = args.GetString("node").empty() ? c.ctx.GetSelectedGO() : c.ctx.activeScene->FindByGuid(args.GetString("node"));
+        auto* cloth = object ? object->GetComponent<scene::ClothComponent>() : nullptr;
+        if (!cloth || object->runtimeGenerated || c.ctx.IsLocked(object->GetID()))
+            return OpResult::Err("NO_CLOTH", "編集できる布を選択してください。");
+        const auto before = cloth->settings;
+        auto after = before;
+        const bool bend = args.Has("bendCompliance"), stretch = args.Has("stretchCompliance");
+        const bool damping = args.Has("damping"), wind = args.Has("windVelocity");
+        if (bend) after.bendCompliance = args.GetFloat("bendCompliance");
+        if (stretch) after.stretchCompliance = args.GetFloat("stretchCompliance");
+        if (damping) after.damping = args.GetFloat("damping");
+        if (wind) after.windVelocity = args.GetVec3("windVelocity");
+        const auto nonnegative = [](float value) { return std::isfinite(value) && value >= 0.0f; };
+        if ((bend && !nonnegative(after.bendCompliance)) || (stretch && !nonnegative(after.stretchCompliance))
+            || (damping && !nonnegative(after.damping)) || (wind && (!std::isfinite(after.windVelocity.x)
+                || !std::isfinite(after.windVelocity.y) || !std::isfinite(after.windVelocity.z))))
+            return OpResult::Err("BAD_MOTION", "曲げ・伸び・減衰は0以上、風は有限の値で指定してください。");
+        if ((!bend || before.bendCompliance == after.bendCompliance) && (!stretch || before.stretchCompliance == after.stretchCompliance)
+            && (!damping || before.damping == after.damping) && (!wind || before.windVelocity == after.windVelocity)) {
+            OpResult result; result.noChange = true; return result;
+        }
+        auto* context = &c.ctx;
+        auto* owner = c.ctx.activeScene;
+        const auto entity = object->GetID();
+        const auto generation = owner->GetRenderSceneGeneration();
+        const auto lifetime = owner->GetComponentLifetime<scene::ClothComponent>(entity);
+        /// @note Undo/Redoは要求された4項目だけを戻し、別の接触設定や再作成されたComponentを上書きしない。
+        const auto apply = [context, owner, entity, generation, lifetime, bend, stretch, damping, wind](
+                               const physics::ClothSettings& values, std::string& reason) {
+            if (context->activeScene != owner || owner->GetRenderSceneGeneration() != generation
+                || owner->GetComponentLifetime<scene::ClothComponent>(entity) != lifetime) {
+                reason = "編集対象の布またはSceneが変わっています。"; return false;
+            }
+            auto* target = owner->GetComponent<scene::ClothComponent>(entity);
+            if (!target) { reason = "編集対象の布が見つかりません。"; return false; }
+            if (bend) target->settings.bendCompliance = values.bendCompliance;
+            if (stretch) target->settings.stretchCompliance = values.stretchCompliance;
+            if (damping) target->settings.damping = values.damping;
+            if (wind) target->settings.windVelocity = values.windVelocity;
+            if (context->markSceneDirty) context->markSceneDirty();
+            return true;
+        };
+        auto command = std::make_unique<CheckedLambdaCommand>("Adjust Cloth Motion",
+            [apply, after](std::string& reason) { return apply(after, reason); },
+            [apply, before](std::string& reason) { return apply(before, reason); });
+        std::string reason;
+        if (!command->TryExecute(reason)) return OpResult::Err("CONFLICT", std::move(reason));
+        OpResult result; result.command = std::move(command); return result;
+    };
+    registry.Register(std::move(motion));
 }
 }
