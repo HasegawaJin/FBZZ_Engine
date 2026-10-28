@@ -17,6 +17,7 @@ import {
   type SdkBuildConfiguration,
 } from '../shared/contracts';
 import { EMPTY_UPDATE_STATE, type UpdateState } from './updateChecker';
+import { AssertManagedAuthoringContract } from '../shared/sdkManagedContract.mjs';
 
 export interface ConfigProject {
   path: string;
@@ -83,12 +84,16 @@ async function isSdkRoot(candidate: string, configuration: SdkBuildConfiguration
     const requiredPaths = [
       'cmake/FBZZ/FBZZConfig.cmake', 'cmake/FBZZ/FBZZConfigVersion.cmake', 'cmake/FBZZ/FBZZTargets.cmake',
       'cmake/FBZZ/build.config.in', 'cmake/FBZZ/FBZZAgilitySDK.cmake', 'cmake/FBZZ/AgilitySDKExports.cpp.in',
-      'cmake/FBZZ/StageAgilitySDK.cmake', 'include/Engine/Scene/ScriptDllAbi.hpp',
+      'cmake/FBZZ/StageAgilitySDK.cmake',
       'include/Graphics/Renderer/RenderScene.hpp', 'include/Physics/World.hpp', 'include/Fluid/FluidSolver.hpp',
       'include/Math/Vector3.hpp', 'include/Core/Logger.hpp', 'share/fbzz/Assets/Shaders',
       `bin/${configuration}/published.stamp`, `lib/${configuration}/imgui.lib`, `bin/${configuration}/imgui.dll`,
       `tools/${configuration}/Editor/FBZZEditor.exe`, `tools/${configuration}/Editor/imgui.dll`,
+      'Tools/AgentBuild.ps1', 'Projects/Managed/global.json',
+      'share/fbzz/managed/ManagedStarter/Starter.Scripts.csproj',
+      'share/fbzz/managed/ManagedStarter/global.json',
     ];
+    await AssertManagedAuthoringContract(candidate, configuration, files);
     for (const library of SDK_EDITOR_LIBRARIES) {
       requiredPaths.push(`lib/${configuration}/FBZZ${library}.lib`, `bin/${configuration}/FBZZ${library}.dll`,
         `tools/${configuration}/Editor/FBZZ${library}.dll`);
@@ -157,7 +162,7 @@ async function isSdkRoot(candidate: string, configuration: SdkBuildConfiguration
 }
 
 /// @brief 起動直前に Editor の DLL 一式を公開 SDK と SHA256 で照合する。
-/// @note SDK 探索では metadata だけを確認し、実ファイル走査は起動境界で行う。
+/// @note SDK 探索でも managed 部品の実 SHA256 を確認し、native DLL の実照合は起動境界で行う。
 /// @see Docs/design/shared-engine-sdk.md
 export async function AssertSdkEditorRuntime(sdkRoot: string, configuration: SdkBuildConfiguration): Promise<void> {
   if (!await isSdkRoot(sdkRoot, configuration)) {

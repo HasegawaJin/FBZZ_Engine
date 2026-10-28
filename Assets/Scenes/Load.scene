@@ -91,13 +91,3 @@ tag = 'Untagged'
     position = [ 0.0, 0.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 1.0, 1.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'SceneManagerScript'
-
-        [gameobjects.ScriptComponents.fields]
-        'Auto Delay' = 1.5
-        'Auto Transition' = true
-        'Target Scene' = ''
-        'Via Scene' = ''

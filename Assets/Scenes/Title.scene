@@ -137,13 +137,3 @@ tag = 'Untagged'
     position = [ 895.578674, 423.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 113.473686, 36.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'SceneManagerScript'
-
-        [gameobjects.ScriptComponents.fields]
-        'Auto Delay' = 1.5
-        'Auto Transition' = false
-        'Target Scene' = 'Main'
-        'Via Scene' = 'Load'

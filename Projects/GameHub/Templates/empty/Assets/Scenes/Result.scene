@@ -114,16 +114,6 @@ tag = 'Untagged'
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 111.578941, 36.0, 1.0 ]
 
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'SceneManagerScript'
-
-        [gameobjects.ScriptComponents.fields]
-        'Auto Delay' = 1.5
-        'Auto Transition' = false
-        'Target Scene' = 'Main'
-        'Via Scene' = 'Load'
-
 [[gameobjects]]
 active = true
 instanceId = 'a3000001-0000-0000-0000-000000000006'
@@ -161,13 +151,3 @@ tag = 'Untagged'
     position = [ 700.0, 400.0, 0.0 ]
     rotation = [ 0.0, 0.0, 0.0, 1.0 ]
     scale = [ 98.315781, 36.0, 1.0 ]
-
-    [[gameobjects.ScriptComponents]]
-    enabled = true
-    type = 'SceneManagerScript'
-
-        [gameobjects.ScriptComponents.fields]
-        'Auto Delay' = 1.5
-        'Auto Transition' = false
-        'Target Scene' = 'Title'
-        'Via Scene' = 'Load'

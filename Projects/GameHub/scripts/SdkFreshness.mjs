@@ -10,6 +10,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { parse } from 'smol-toml';
 import { ReadEngineVersion } from './EngineVersion.mjs';
+import { AssertManagedAuthoringContract } from '../src/shared/sdkManagedContract.mjs';
 
 const ExecuteFile = promisify(execFile);
 const GIT_OUTPUT_LIMIT = 64 * 1024 * 1024;
@@ -101,9 +102,19 @@ export async function AssertSdkContract(sdkRoot, configuration, { verifyHashes =
     'cmake/FBZZ/FBZZConfig.cmake', 'cmake/FBZZ/FBZZConfigVersion.cmake',
     'cmake/FBZZ/FBZZTargets.cmake', 'cmake/FBZZ/build.config.in',
     'cmake/FBZZ/FBZZAgilitySDK.cmake', 'cmake/FBZZ/AgilitySDKExports.cpp.in', 'cmake/FBZZ/StageAgilitySDK.cmake',
-    'include/Engine/Scene/ScriptDllAbi.hpp', 'include/Graphics/Renderer/RenderScene.hpp',
+    'include/Graphics/Renderer/RenderScene.hpp',
     'include/Physics/World.hpp', 'include/Fluid/FluidSolver.hpp', 'include/Math/Vector3.hpp', 'include/Core/Logger.hpp',
     'share/fbzz/Assets/Shaders', `bin/${configuration}/published.stamp`,
+    'Tools/AgentBuild.ps1', 'Projects/Managed/global.json',
+    'share/fbzz/Docs/csharp-start.md', 'share/fbzz/Docs/design/csharp-authoring.md',
+    'share/fbzz/Docs/design/ai-script-workflow.md', 'share/fbzz/Docs/design/csharp-scripting.md',
+    'share/fbzz/managed/ManagedStarter/Starter.Scripts.csproj',
+    'share/fbzz/managed/ManagedStarter/Assets/Scripts/Managed/MoveForwardComponent.cs',
+    'share/fbzz/managed/ManagedStarter/global.json',
+    'share/fbzz/managed/ManagedStarter/AGENTS.md',
+    'share/fbzz/managed/ManagedStarter/.vscode/launch.json',
+    `bin/${configuration}/Managed/Fbzz.ScriptApi.dll`, `bin/${configuration}/Managed/Fbzz.ScriptApi.xml`,
+    `bin/${configuration}/Managed/Fbzz.ScriptGenerator.dll`,
     `lib/${configuration}/imgui.lib`, `bin/${configuration}/imgui.dll`,
     `tools/${configuration}/Editor/FBZZEditor.exe`, `tools/${configuration}/Editor/imgui.dll`,
   ];
@@ -156,6 +167,7 @@ export async function AssertSdkContract(sdkRoot, configuration, { verifyHashes =
     }
   }
   if (missing.length) throw new Error(`SDK ${configuration}が不完全です。不足: ${missing.join(', ')}`);
+  await AssertManagedAuthoringContract(sdkRoot, configuration, files);
   for (const name of editorDlls) {
     if (files[`bin/${configuration}/${name}`] !== files[`tools/${configuration}/Editor/${name}`]) {
       throw new Error(`SDK Editorと公開SDKのDLLが一致しません: ${name}`);

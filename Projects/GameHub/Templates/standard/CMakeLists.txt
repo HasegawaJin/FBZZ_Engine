@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# @note 共有 SDK と同じ CRT を使用し、Script DLL が STL/C++ オブジェクトを渡す境界の ABI を固定する。
+# @note 共有 SDK と同じ CRT を使用し、利用側のランタイム設定を一致させる。
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Development" CACHE STRING "Build configurations" FORCE)
 set(CMAKE_CXX_FLAGS_DEVELOPMENT           "/Zi /O2 /Ob2 /FS"            CACHE STRING "Development CXX flags"        FORCE)
@@ -53,31 +53,10 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_SOURCE_DIR}/Binaries/Dev
 set(FBZZ_RUNTIME_BUILD_EXE_DEBUG               "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/{{TARGET_NAME}}Standalone.exe")
 set(FBZZ_RUNTIME_BUILD_EXE_RELEASE             "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/{{TARGET_NAME}}Standalone.exe")
 set(FBZZ_RUNTIME_BUILD_EXE_DEVELOPMENT         "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/{{TARGET_NAME}}Standalone.exe")
-set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEBUG       "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG}/Scripts.dll")
-set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_RELEASE     "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/Scripts.dll")
-set(FBZZ_RUNTIME_BUILD_SCRIPTS_DLL_DEVELOPMENT "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT}/Scripts.dll")
-
-# @note 共有 Editor がホットリロードするゲーム固有 Script DLL。
-file(GLOB_RECURSE SCRIPTS_DLL_SOURCES CONFIGURE_DEPENDS
-    Assets/*.cpp
-    Assets/*.hpp
-    Src/Scripts/*.cpp
-    Src/Scripts/*.hpp
-    Src/{{TARGET_NAME}}ScriptsDll.cpp
-)
-add_library(Scripts SHARED ${SCRIPTS_DLL_SOURCES})
-set_target_properties(Scripts PROPERTIES OUTPUT_NAME "Scripts")
-target_compile_definitions(Scripts PRIVATE GAMESCRIPTS_EXPORTS)
-target_include_directories(Scripts PRIVATE Assets Src)
-target_link_libraries(Scripts PRIVATE FBZZ::Engine)
-
 # @note ゲーム側は共有 Editor を生成せず、配布・Play 用 Standalone だけを所有する。
 add_executable({{TARGET_NAME}}Standalone
     Src/AppMain.cpp
-    Src/GameMain.cpp
-    Include/{{TARGET_NAME}}/ProjectAPI.hpp
 )
-add_dependencies({{TARGET_NAME}}Standalone Scripts)
 target_compile_definitions({{TARGET_NAME}}Standalone PRIVATE FBZZ_STANDALONE_TARGET)
 target_include_directories({{TARGET_NAME}}Standalone PRIVATE Assets Include Src)
 target_link_libraries({{TARGET_NAME}}Standalone PRIVATE FBZZ::Engine shell32 user32)

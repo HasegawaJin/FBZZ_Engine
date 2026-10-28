@@ -116,7 +116,7 @@ export function registerIpcHandlers(): void {
       await configStore.ensureSdkResolved();
       const settings = configStore.snapshot().settings;
       if (!settings.sdkId) throw new Error('新規プロジェクトを作成する前にFBZZ SDKを選択してください。');
-      const projectPath = await templateService.create(request, settings.sdkId);
+      const projectPath = await templateService.create(request, settings.sdkId, settings.sdkRoot, settings.sdkConfiguration);
       const lastOpened = await configStore.touchProject(projectPath);
       return success(await projectService.inspectProject({ path: projectPath, lastOpened }));
     } catch (error) { return failure(error); }

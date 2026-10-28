@@ -6,64 +6,8 @@ file(GLOB_RECURSE SANDBOX_SOURCES
     src/*.cpp
     src/*.hpp
 )
-# @note SandboxScriptsDll.cpp は DLL 専用エントリポイント。EXE に含めると dllimport/dllexport が衝突する。
-list(REMOVE_ITEM SANDBOX_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/SandboxScriptsDll.cpp"
-)
-
-# @note スクリプト DLL (ホットリロード用)
-# @note SandboxScripts.dll だけを再ビルドすることで、エディタを再起動せずに
-# @note スクリプトの変更を反映できる。DLL は EXE のコールバック経由で
-# @note ScriptFactory に登録する (dual registry 問題を回避するため)。
-# @note AssetBrowser からスクリプトを Unity 同様に Assets/ 配下で確認・作成できるよう、
-# @note ソース置き場を Projects/Sandbox/src/Scripts/ から Assets/ 配下に移動した。
-# @note CMake の include_directories に Assets/ を追加することで
-# @note #include "Scripts/Foo.hpp" → Assets/Scripts/Foo.hpp のように Assets 相対で解決する。
-file(GLOB_RECURSE SANDBOX_SCRIPT_DLL_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_SOURCE_DIR}/Assets/*.cpp
-    ${CMAKE_SOURCE_DIR}/Assets/*.hpp
-    src/SandboxScriptsDll.cpp
-)
-add_library(SandboxScripts SHARED ${SANDBOX_SCRIPT_DLL_SOURCES})
-target_compile_definitions(SandboxScripts PRIVATE SANDBOXSCRIPTS_EXPORTS)
-target_include_directories(SandboxScripts PRIVATE
-    src
-    ${CMAKE_SOURCE_DIR}/Assets
-)
-target_link_libraries(SandboxScripts PRIVATE FBZZEngine FBZZPhysics FBZZFluid)
-# @note Script.hpp は全スクリプトが #include する重いヘッダ群を束ねる。
-# @note ホットリロードのたびに再パースしないよう PCH に焼き込む。
-target_precompile_headers(SandboxScripts PRIVATE
-    <Engine/Scene/Script.hpp>
-    <Engine/Scene/Scene.hpp>
-    <functional>
-    <memory>
-    <string>
-    <vector>
-)
-# @note Sandbox.exe と同じ Sandbox/ に出力 (ホットリロードで exe 隣接の DLL を読む)
-set_target_properties(SandboxScripts PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG       "${CMAKE_BINARY_DIR}/Binaries/Debug/Sandbox"
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE     "${CMAKE_BINARY_DIR}/Binaries/Release/Sandbox"
-    RUNTIME_OUTPUT_DIRECTORY_DEVELOPMENT "${CMAKE_BINARY_DIR}/Binaries/Development/Sandbox"
-)
-if(MSVC)
-    # @note ホットリロード時はエディタを起動したまま SandboxScripts だけを短い間隔で再リンクする。
-    # @note Visual Studio / mspdbsrv / デバッガが直前の SandboxScripts.pdb を参照していると、
-    # @note LINK が同じ PDB を上書きできず LNK1201 で失敗する。
-    # @note スクリプト DLL は _hot コピーをロードして差し替える運用が主目的なので、
-    # @note Debug 構成ではリンク PDB を生成せず、DLL 本体の再リンク成功を優先する。
-    target_link_options(SandboxScripts PRIVATE
-        "$<$<CONFIG:Debug>:/DEBUG:NONE>"
-    )
-    # @note 数値なしの /MP はコア数ぶんの cl.exe を起こすうえ、
-    # @note target_compile_options はディレクトリ既定より後ろに並ぶためルートの
-    # @note /MP${FBZZ_BUILD_JOBS} を上書きしてしまう。並列度はルート CMakeLists.txt の
-    # @note FBZZ_BUILD_JOBS に一元化し、このターゲットもそこから継承する。
-endif()
-
 add_executable(Sandbox ${SANDBOX_SOURCES})
-add_dependencies(Sandbox SandboxScripts)
+
 
 # @note DPI 認識をプロセス起動時に確定させる (未適用だと高 DPI 環境で UI 全体が滲む)。
 fbzz_apply_app_manifest(Sandbox)
@@ -81,11 +25,12 @@ set_target_properties(Sandbox PROPERTIES
 # @note add_executable(Sandbox) の直後に定義する。
 set(SANDBOX_DEFAULT_PROJECT_DIR "$<TARGET_FILE_DIR:Sandbox>/SandboxProject")
 set(SANDBOX_PROJECT_TEMPLATE_DIR "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard")
+set(SANDBOX_MANAGED_STARTER_DIR "${CMAKE_SOURCE_DIR}/Projects/Managed/Authoring/ManagedStarter")
 set(SANDBOX_ENSURE_PROJECT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/EnsureSandboxProject.cmake")
 
 # @note エンジン全アセットを Sandbox 実行ディレクトリと SandboxProject に常時同期するターゲット。
 # @note post-build は Sandbox.exe が再ビルドされたときのみ実行される。
-# @note Scripts/ などのアセットを追加・変更したときも確実に反映されるよう、
+# @note Synchronize changed assets into the runtime project.
 # @note ALL キーワードで毎 cmake --build 実行時に走るターゲットを分離する。
 # @note rm -rf を行わず copy_directory だけで上書き同期するため、既存ファイルは保持される。
 add_custom_target(SyncSandboxAssets ALL
@@ -202,6 +147,7 @@ add_custom_command(TARGET Sandbox POST_BUILD
         -D "SOURCE_DIR=${SANDBOX_PROJECT_TEMPLATE_DIR}"
         -D "DEST_DIR=${SANDBOX_DEFAULT_PROJECT_DIR}"
         -D "BUILD_DIR=${CMAKE_BINARY_DIR}"
+        -D "MANAGED_STARTER_DIR=${SANDBOX_MANAGED_STARTER_DIR}"
         -P "${SANDBOX_ENSURE_PROJECT_SCRIPT}"
     COMMAND ${CMAKE_COMMAND} -E rm -rf
         "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"

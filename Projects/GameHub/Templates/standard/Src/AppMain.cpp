@@ -5,9 +5,7 @@
 /// @note 起動モード: `{{TARGET_NAME}}.exe --project <path>` は指定プロジェクトを起動、exe 隣に `.fbzz_proj` が
 ///       あれば配布物として自分のプロジェクトを起動、引数なしなら親を遡って `.fbzz_proj` を探す開発モード。
 /// @note このターゲットは常に FBZZ_STANDALONE_TARGET 付きでビルドされ、Editor をリンクしない (エディタは別バイナリ
-///       FBZZEditorLauncher)。起動分岐・ログ・CWD 決定だけを持ち、ゲームループ本体は StandaloneProjectModule に委ね、
-///       ゲーム固有のスクリプト登録は GameMain.cpp が担当する。
-#include "{{TARGET_NAME}}/ProjectAPI.hpp"
+///       FBZZEditorLauncher)。起動分岐・ログ・CWD 決定だけを持ち、ゲームループ本体は StandaloneProjectModule に委ねる。
 
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
@@ -19,7 +17,6 @@
 #include <Engine/ProjectSettings.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
-#include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/StandaloneProjectModule.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
@@ -165,10 +162,6 @@ int Run()
     fbzz::core::CrashHandler::NotifyUnreported(workingDirectory, "{{PROJECT_NAME}}", true);
     fbzz::core::DeveloperMode::InitFromCommandLine();
 
-    /// @note SceneSerializer がシーンを復元するときに ScriptFactory を参照するため、シーンロードより前に呼ぶ必要がある。
-    RegisterScripts();
-    FBZZ_LOG_INFO("{{PROJECT_NAME}}: RegisterScripts complete (%d types registered)",
-        static_cast<int>(fbzz::scene::ScriptFactory::RegisteredTypeNames().size()));
 
     auto& app = fbzz::core::Application::Get();
     const int result = RunStandalone(app, project);

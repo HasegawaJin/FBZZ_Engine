@@ -11,6 +11,8 @@ import path from 'node:path';
 import { parse } from 'smol-toml';
 import type { CreateProjectRequest, ProjectIdentifiers, TemplateInfo } from '../shared/contracts';
 import { ENGINE_VERSION, deriveProjectIdentifiers, isValidProjectIdentifiers, isVersionAtLeast } from '../shared/contracts';
+import type { SdkBuildConfiguration } from '../shared/contracts';
+import { PrepareManagedStarter, WriteManagedStarter } from './managedStarter';
 
 const TEXT_EXTENSIONS = new Set([
   '.cpp', '.hpp', '.h', '.inl', '.txt', '.toml', '.json', '.cmake', '.md', '.hlsl', '.hlsli', '.glsl', '.gitignore',
@@ -20,10 +22,6 @@ const TEXT_EXTENSIONS = new Set([
 // WHY: CMakeCache.txt には生成元の絶対パスが焼き込まれ、コピー先の configure を必ず失敗させる。
 const GENERATED_ROOT_DIRECTORIES = new Set(['Binaries', 'Build', 'Lib', 'Library']);
 
-// 行頭の `namespace X` だけを名前空間宣言とみなす (Editor 側 ScriptCodeGen と同じ規則)。
-// WHY: スクリプトは冒頭に `using namespace fbzz::scene;` を書くので、行頭を見ないと
-//      それに先に当たり `FBZZ_SCRIPT_ENTRY(fbzz::scene, X)` という存在しない型を登録してしまう。
-const NAMESPACE_DECLARATION = /^\s*namespace\s+([A-Za-z_][A-Za-z0-9_:]*)/m;
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -51,8 +49,6 @@ function applyPlaceholders(text: string, info: ProjectIdentifiers, createdAt: st
     CREATED_AT: createdAt,
     SETTINGS_PATH: 'ProjectSettings/ProjectSettings.toml',
     API_ROOT: 'Include/',
-    PUBLIC_API_HEADER: `Include/${info.targetName}/ProjectAPI.hpp`,
-    SCRIPT_ROOT: 'Src/Scripts/',
     LIBRARY_ROOT: 'Lib/',
     BINARY_ROOT: 'Binaries/',
     BUILD_ROOT: 'Build/',
@@ -119,9 +115,10 @@ export class TemplateService {
     return templates.filter((template): template is TemplateInfo => template !== null);
   }
 
-  async create(request: CreateProjectRequest, sdkId: string): Promise<string> {
+  async create(request: CreateProjectRequest, sdkId: string, sdkRoot = '', sdkConfiguration: SdkBuildConfiguration = 'Development'): Promise<string> {
     const info = deriveProjectIdentifiers(request.displayName);
     assertValidName(info);
+    const managedStarter = await PrepareManagedStarter(sdkRoot, sdkConfiguration);
 
     const template = (await this.listTemplates()).find((candidate) => candidate.id === request.templateId);
     const templatesRoot = await this.resolveTemplatesRoot();
@@ -139,7 +136,7 @@ export class TemplateService {
     const createdAt = new Date().toISOString();
     await mkdir(projectRoot, { recursive: false });
     await this.copyTemplateDirectory(templateRoot, projectRoot, info, createdAt, sdkId);
-    await this.syncScriptRegistrations(projectRoot, info);
+    await WriteManagedStarter(projectRoot, info.targetName, sdkRoot, sdkConfiguration, managedStarter);
     return projectRoot;
   }
 
@@ -169,45 +166,4 @@ export class TemplateService {
     await walk(sourceRoot, '');
   }
 
-  private async syncScriptRegistrations(projectRoot: string, info: ProjectIdentifiers): Promise<void> {
-    const assetsRoot = path.join(projectRoot, 'Assets');
-    const scriptsRoot = path.join(assetsRoot, 'Scripts');
-    if (!await exists(scriptsRoot)) return;
-
-    const scripts: Array<{ header: string; entry: string }> = [];
-    const visit = async (directory: string): Promise<void> => {
-      for (const item of await readdir(directory, { withFileTypes: true })) {
-        const itemPath = path.join(directory, item.name);
-        if (item.isDirectory()) await visit(itemPath);
-        if (!item.isFile() || !item.name.endsWith('.hpp') || item.name.endsWith('.generated.hpp')) continue;
-        const source = await readFile(itemPath, 'utf8');
-        const namespaceName = source.match(NAMESPACE_DECLARATION)?.[1] ?? info.cppNamespace;
-        const header = path.relative(assetsRoot, itemPath).replaceAll('\\', '/');
-        for (const match of source.matchAll(/FBZZ_SCRIPT\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g)) {
-          scripts.push({ header, entry: `FBZZ_SCRIPT_ENTRY(${namespaceName}, ${match[1]})` });
-        }
-      }
-    };
-    await visit(assetsRoot);
-    scripts.sort((left, right) => left.header.localeCompare(right.header) || left.entry.localeCompare(right.entry));
-
-    const includeLines = [...new Set(scripts.map((script) => `#include "${script.header}"`))];
-    const entryLines = scripts.map((script) => script.entry);
-    await this.replaceMarkerBlock(path.join(projectRoot, 'Src', `${info.targetName}ScriptsDll.cpp`), '@@FBZZ_SCRIPT_INCLUDES_BEGIN', '@@FBZZ_SCRIPT_INCLUDES_END', includeLines);
-    await this.replaceMarkerBlock(path.join(projectRoot, 'Src', 'GameMain.cpp'), '@@FBZZ_SCRIPT_INCLUDES_BEGIN', '@@FBZZ_SCRIPT_INCLUDES_END', includeLines);
-    await this.replaceMarkerBlock(path.join(scriptsRoot, 'ScriptList.inl'), '@@FBZZ_SCRIPT_ENTRIES_BEGIN', '@@FBZZ_SCRIPT_ENTRIES_END', entryLines);
-  }
-
-  private async replaceMarkerBlock(filePath: string, beginMarker: string, endMarker: string, lines: string[]): Promise<void> {
-    if (!await exists(filePath)) return;
-    const source = await readFile(filePath, 'utf8');
-    const begin = `// ${beginMarker}`;
-    const end = `// ${endMarker}`;
-    const beginIndex = source.indexOf(begin);
-    const endIndex = source.indexOf(end, beginIndex + begin.length);
-    if (beginIndex < 0 || endIndex < 0) return;
-    const lineEnd = source.indexOf('\n', beginIndex) + 1;
-    const replacement = `${lines.join('\n')}${lines.length ? '\n' : ''}`;
-    await writeFile(filePath, `${source.slice(0, lineEnd)}${replacement}${source.slice(endIndex)}`, 'utf8');
-  }
 }

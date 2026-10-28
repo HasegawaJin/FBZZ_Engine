@@ -1,37 +1,25 @@
-# FBZZ Engine
-# EnsureSandboxProject.cmake | Sandbox
-# Sandbox 実行先のユーザープロジェクトを初回だけ作成し、.fbzz_proj を常に更新する
-#
-# WHY (.fbzz_proj を毎回上書き):
-#   テンプレートをそのまま copy_directory すると {{...}} プレースホルダが残り、
-#   LoadRuntimeBuildMetadata が build_root を解決できず RuntimeBuild が失敗する。
-#   BUILD_DIR (= CMAKE_BINARY_DIR) はビルド構成が変わるたびに変わるため、
-#   毎 cmake --build 実行時に正確な値で上書きすることで常に最新を維持する。
-
-if(NOT DEFINED SOURCE_DIR OR NOT DEFINED DEST_DIR OR NOT DEFINED BUILD_DIR)
-    message(FATAL_ERROR "SOURCE_DIR, DEST_DIR, and BUILD_DIR are required")
-endif()
-
-# 初回のみ: テンプレートからプロジェクト全体をコピー
-if(NOT EXISTS "${DEST_DIR}/ProjectSettings/ProjectSettings.toml")
-    execute_process(
-        COMMAND "${CMAKE_COMMAND}" -E copy_directory "${SOURCE_DIR}" "${DEST_DIR}"
-        RESULT_VARIABLE COPY_RESULT
-    )
-    if(NOT COPY_RESULT EQUAL 0)
-        message(FATAL_ERROR "Failed to create SandboxProject from ${SOURCE_DIR}")
+# @file    EnsureSandboxProject.cmake
+# @brief   SandboxのC#プロジェクトと実行用メタデータを配置する。
+# @author  Hasegawa Jin
+# @date    2026-09-21
+foreach(REQUIRED SOURCE_DIR DEST_DIR BUILD_DIR MANAGED_STARTER_DIR)
+    if(NOT DEFINED ${REQUIRED} OR "${${REQUIRED}}" STREQUAL "")
+        message(FATAL_ERROR "EnsureSandboxProject: ${REQUIRED} is required")
     endif()
+endforeach()
+
+# @note 既存のプロジェクト設定は初回配置だけで生成する。
+if(NOT EXISTS "${DEST_DIR}/ProjectSettings/ProjectSettings.toml")
+    file(COPY "${SOURCE_DIR}/" DESTINATION "${DEST_DIR}")
 endif()
 
-# 常に: build_root を含む正確な .fbzz_proj を書き込む
-# WHY: copy_directory で入るテンプレートの .fbzz_proj は {{...}} プレースホルダのままなので
-#      ToolchainLocator が build.config を見つけられない。
-#      BUILD_DIR (CMAKE_BINARY_DIR) を直接書き込むことでフォールバック不要になる。
+if(NOT EXISTS "${DEST_DIR}/Sandbox.Scripts.csproj")
+    configure_file("${MANAGED_STARTER_DIR}/Starter.Scripts.csproj" "${DEST_DIR}/Sandbox.Scripts.csproj" COPYONLY)
+    file(COPY "${MANAGED_STARTER_DIR}/Assets/" DESTINATION "${DEST_DIR}/Assets")
+    configure_file("${MANAGED_STARTER_DIR}/AGENTS.md" "${DEST_DIR}/AGENTS.md" COPYONLY)
+endif()
+
+# @note 正確なbuild_rootを記録し、配置先の起動はrootの実行ファイルを使う。
 file(TO_CMAKE_PATH "${BUILD_DIR}" BUILD_DIR_SLASH)
 file(WRITE "${DEST_DIR}/.fbzz_proj"
-"[project]
-settings_path          = \"ProjectSettings/ProjectSettings.toml\"
-default_scene          = \"Assets/Scenes/Main.fbzz\"
-standalone_target_name = \"SandboxStandalone\"
-build_root             = \"${BUILD_DIR_SLASH}\"
-")
+"[project]\nsettings_path = \"ProjectSettings/ProjectSettings.toml\"\ndefault_scene = \"Assets/Scenes/Main.scene\"\nstandalone_target_name = \"SandboxStandalone\"\nbuild_root = \"${BUILD_DIR_SLASH}\"\n")
