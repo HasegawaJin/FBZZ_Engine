@@ -2,10 +2,7 @@
 /// @brief   テクスチャ発生源 (FluidSourceShape::Texture) の濃さマスク。画像を 256×256 の 1 チャンネルへ落として持つ
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-///
-/// @note 固定の 256×256 に落とすのは、GPU が全部のマスクを 1 枚のアトラス (4×4 タイル) にまとめて
-///       1 つの SRV で引くため。大きさが揃っていればタイル番号だけで場所が決まり、CPU と GPU で
-///       同じ標本を引ける。縦横比は発生源の size.x / size.y が持つ。
+/// @note 256×256 に揃え、GPU の 4×4 タイルアトラスと CPU で同じ標本を引く。縦横比は発生源の size.x / size.y が持つ。
 /// @note 画像から中身を埋めるのは Engine の FluidSourceMaskLoader。Fluid は素のデータと引き方だけを持つ。
 #pragma once
 
@@ -15,12 +12,14 @@
 
 namespace fbzz::fluid {
 
+struct FluidSource;
+
 inline constexpr int kFluidSourceMaskSize = 256;
-/// GPU のアトラスは kFluidSourceMaskAtlasColumns × kFluidSourceMaskAtlasColumns タイル (= 16 = 発生源の上限)。
+/// @note GPU のアトラスは kFluidSourceMaskAtlasColumns × kFluidSourceMaskAtlasColumns タイル (= 16 = 発生源の上限)。
 inline constexpr int kFluidSourceMaskAtlasColumns = 4;
 
 struct FluidSourceMask {
-    /// kFluidSourceMaskSize² 個。行は上から下、値は [0,1] = 輝度 × α。空なら読めていない。
+    /// @note kFluidSourceMaskSize² 個。行は上から下、値は [0,1] = 輝度 × α。空なら読めていない。
     std::vector<float> values;
 
     [[nodiscard]] bool IsValid() const
@@ -30,14 +29,12 @@ struct FluidSourceMask {
 };
 
 /// @brief u, v ∈ [0,1] (v は上が 0) を双線形で引く。範囲外は縁の値。
-/// @note 標本位置は GPU (線形・クランプのサンプラー) と同じテクセル中心規約:
-///       x = u × size − 0.5 (y も同じ)、添字は [0, size − 1] に丸める。
+/// @note GPU と同じテクセル中心規約 x = u × size − 0.5 (y も同じ) を使い、添字は [0, size − 1] に丸める。
 /// @return 無効なマスクは 1 (画像が無くても板の形には湧く — «何も起きない» より原因に気付きやすい)。
 [[nodiscard]] float SampleFluidSourceMask(const FluidSourceMask& mask, float u, float v);
 
 /// @brief 発生源の texture 参照からマスクの中身を埋める差し込み口。
-/// @note Fluid は画像もアセットデータベースも知らない。Engine
-///       (Engine/Asset/FluidSourceMaskLoader.cpp) が起動時に本物を挿す。
+/// @note Fluid は画像とアセットデータベースを持たず、Engine/Asset/FluidSourceMaskLoader.cpp が起動時に読み手を挿す。
 using FluidSourceMaskResolver = bool (*)(const std::string& texture, FluidSourceMask& out);
 
 /// @brief 差し込み口を差し替える。nullptr で «誰も埋めない» へ戻す。
@@ -49,4 +46,8 @@ void SetFluidSourceMaskResolver(FluidSourceMaskResolver resolver);
 /// @note 空のマスクは SampleFluidSourceMask が 1 を返すので、板の形にそのまま湧く。
 [[nodiscard]] bool ResolveFluidSourceMask(const std::string& texture, FluidSourceMask& out);
 
-} // namespace fbzz::fluid
+/// @brief 発生源と同じ添字でマスクを解決する。
+/// @note テクスチャ以外・参照なし・解決失敗は空のマスクとし、発生源の形へのフォールバックを保つ。
+void ResolveFluidSourceMasks(const std::vector<FluidSource>& sources, std::vector<FluidSourceMask>& outMasks);
+
+} /// @note namespace fbzz::fluid

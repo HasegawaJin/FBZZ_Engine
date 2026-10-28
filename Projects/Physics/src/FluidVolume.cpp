@@ -34,30 +34,39 @@ namespace fbzz::physics
 
     bool FluidVolume::Contains(const math::Vector3& position) const
     {
+        if (!m_desc.allowProbeIntersection) {
+            if (m_desc.pointAllowed && !m_desc.pointAllowed(position)) return false;
+            if (m_desc.containsXZ && !m_desc.containsXZ(position.x, position.z, m_time)) return false;
+        }
         if (std::abs(position.x - m_desc.center.x) > m_desc.halfX ||
             std::abs(position.z - m_desc.center.z) > m_desc.halfZ)
             return false;
+
+        const float depthLimit = DepthLimitAt(position.x, position.z);
+        if (!std::isfinite(depthLimit) || depthLimit <= 0.0f) return false;
 
         /// @note 重心が表面より上でも、体の下側が浸かっていれば浮力は掛かる。
         ///       一番大きい体の半径ぶん上へ広げる。
         const float minY = m_desc.center.y - m_desc.surfaceHeightBound;
         const float maxY = m_desc.center.y + m_desc.surfaceHeightBound;
-        if (position.y > maxY + m_maxRadius || position.y < minY - m_desc.depthLimit)
+        if (position.y > maxY + m_maxRadius || position.y < minY - depthLimit)
             return false;
-        if (position.y <= minY + m_maxRadius && position.y >= maxY - m_desc.depthLimit)
-            return true;
+        if (!m_desc.depthLimitAt && position.y <= minY + m_maxRadius
+            && position.y >= maxY - m_desc.depthLimit) return true;
         const float surfaceY = SurfaceY(position.x, position.z);
         return position.y <= surfaceY + m_maxRadius
-            && position.y >= surfaceY - m_desc.depthLimit;
+            && position.y >= surfaceY - depthLimit;
     }
 
-    void FluidVolume::Apply(RigidBody& body, float /*dt*/)
+    void FluidVolume::Apply(RigidBody& body, float)
     {
         if (body.IsStatic()) return;
 
         const float radius = RadiusOf(body);
         const float mass = body.GetMass();
         const math::Vector3 center = body.GetPosition();
+        const bool centerAllowed = (!m_desc.pointAllowed || m_desc.pointAllowed(center))
+            && (!m_desc.containsXZ || m_desc.containsXZ(center.x, center.z, m_time));
         const math::Quaternion rotation = body.GetRotation();
 
         /// @note 重心まわりの 4 点で表面と比べる。点ごとに沈み具合が違えば、その差が
@@ -74,11 +83,24 @@ namespace fbzz::physics
         math::Vector3 torque = math::Vector3::ZERO;
         for (const math::Vector3& offset : arms) {
             const math::Vector3 probe = center + offset;
+            if (m_desc.pointAllowed && !m_desc.pointAllowed(probe)) continue;
+            if (m_desc.containsXZ && !m_desc.containsXZ(probe.x, probe.z, m_time)) continue;
+            const float depthLimit = DepthLimitAt(probe.x, probe.z);
+            if (!std::isfinite(depthLimit) || depthLimit <= 0.0f) continue;
             const float minY = m_desc.center.y - m_desc.surfaceHeightBound;
             const float maxY = m_desc.center.y + m_desc.surfaceHeightBound;
-            const float sub = probe.y + radius <= minY ? 1.0f
-                : probe.y - radius >= maxY ? 0.0f
-                : math::Clamp01((SurfaceY(probe.x, probe.z) - (probe.y - radius)) / (2.0f * radius));
+            float sub = 0.0f;
+            if (!m_desc.depthLimitAt && probe.y + radius <= minY
+                && probe.y - radius >= maxY - m_desc.depthLimit) {
+                sub = 1.0f;
+            } else if (probe.y - radius < maxY && probe.y + radius > minY - depthLimit) {
+                const float surfaceY = SurfaceY(probe.x, probe.z);
+                if (!std::isfinite(surfaceY)) continue;
+                const float submergedTop = (std::min)(probe.y + radius, surfaceY);
+                const float submergedBottom = (std::max)(probe.y - radius, surfaceY - depthLimit);
+                sub = math::Clamp01((std::max)(submergedTop - submergedBottom, 0.0f)
+                    / (2.0f * radius));
+            }
             if (sub <= 0.0f) continue;
             submersion += sub * 0.25f;
             const math::Vector3 lift = math::Vector3::UP * (m_desc.buoyancy * mass * sub * 0.25f);
@@ -95,10 +117,12 @@ namespace fbzz::physics
         ///       結合係数» を渡す点だけ。
         /// @note 係数をまだ水の側 (m_desc.drag) が持っているのは移行途中だから。体側へ寄せるのは
         ///       buoyancy.md 順序 3 以降 (密度ベースの法則へ置き換えるとき)。
-        const math::Vector3 flow = m_desc.flowVelocity ? m_desc.flowVelocity(center)
-                                                       : math::Vector3::ZERO;
-        body.ApplyForceNoWake(FlowDragForce(m_desc.drag * submersion, mass,
-                                            flow, body.GetVelocity()));
+        if (centerAllowed) {
+            const math::Vector3 flow = m_desc.flowVelocity ? m_desc.flowVelocity(center)
+                                                           : math::Vector3::ZERO;
+            body.ApplyForceNoWake(FlowDragForce(m_desc.drag * submersion, mass,
+                                                flow, body.GetVelocity()));
+        }
         /// @note 回転も流体が止める。止めないと、波で傾いた物体がいつまでも揺れ続ける。
         const float inertia = 0.4f * mass * radius * radius;
         body.ApplyTorqueNoWake(body.GetAngularVelocity() * (-m_desc.drag * inertia * submersion));
@@ -115,10 +139,15 @@ namespace fbzz::physics
         return m_desc.center.y + m_desc.surfaceHeight(worldX, worldZ, m_time);
     }
 
+    float FluidVolume::DepthLimitAt(float worldX, float worldZ) const
+    {
+        return m_desc.depthLimitAt ? m_desc.depthLimitAt(worldX, worldZ, m_time) : m_desc.depthLimit;
+    }
+
     float FluidVolume::RadiusOf(const RigidBody& body) const
     {
         if (!m_desc.radii) return DEFAULT_BODY_RADIUS;
         const auto it = m_desc.radii->find(&body);
         return it != m_desc.radii->end() ? it->second : DEFAULT_BODY_RADIUS;
     }
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

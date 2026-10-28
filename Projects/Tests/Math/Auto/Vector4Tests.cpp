@@ -2,9 +2,9 @@
 /// @brief   Vector4 の同次座標としての振る舞いと、色定数のアルファ規約を固定する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
-/// この型はシェーダー定数へそのまま流れる。BLACK の alpha が 0 になった、のような
-/// 定数側の事故は絵にしか出ず、原因の特定に一番時間を食う。
+
+/// @note この型はシェーダー定数へそのまま流れる。BLACK の alpha が 0 になった、のような
+/// @note 定数側の事故は絵にしか出ず、原因の特定に一番時間を食う。
 #include <TestKit/TestKit.hpp>
 
 #include <Math/MathUtils.hpp>
@@ -83,6 +83,16 @@ TEST_F(Vector4Test, ScalingByZeroYieldsZero)
     EXPECT_VEC4_NEAR(v * 0.0f, math::Vector4::ZERO, testkit::kTolerance);
 }
 
+TEST_F(Vector4Test, LerpPreservesEndpointsAndExtrapolatesEveryComponent)
+{
+    const math::Vector4 a(1.0f, 2.0f, 3.0f, 4.0f);
+    const math::Vector4 b(5.0f, -6.0f, 7.0f, -8.0f);
+    EXPECT_VEC4_NEAR(math::Vector4::Lerp(a, b, 0.0f), a, testkit::kTolerance);
+    EXPECT_VEC4_NEAR(math::Vector4::Lerp(a, b, 1.0f), b, testkit::kTolerance);
+    EXPECT_VEC4_NEAR(math::Vector4::Lerp(a, b, 1.5f), math::Vector4(7.0f, -10.0f, 9.0f, -14.0f), testkit::kTolerance);
+    EXPECT_VEC4_NEAR(math::Vector4::Lerp(a, b, -0.5f), math::Vector4(-1.0f, 6.0f, 1.0f, 10.0f), testkit::kTolerance);
+}
+
 TEST_F(Vector4Test, EqualityToleratesDifferencesBelowEpsilon)
 {
     const math::Vector4 a = math::Vector4::ZERO;
@@ -121,4 +131,4 @@ TEST_F(Vector4Test, PrimaryColorConstantsIsolateASingleChannel)
                      testkit::kTolerance);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

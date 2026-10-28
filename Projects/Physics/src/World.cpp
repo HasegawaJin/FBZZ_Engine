@@ -23,7 +23,16 @@ namespace {
 using namespace fbzz::math;
 using namespace fbzz::physics;
 
-/// 符号を返す (+1 or -1、0 のときは +1)
+/// @note 有限入力でも零半径や大座標の打ち消しで法線が退化するため、MathContract の前に候補を棄却する。
+static bool NormalizeQueryNormal(const Vector3& value, Vector3& normal)
+{
+    const float length = value.Length();
+    if (!std::isfinite(length) || length < EPSILON) return false;
+    normal = value / length;
+    return true;
+}
+
+/// @note 符号を返す (+1 or -1、0 のときは +1)
 static inline float Sign(float v) { return v >= 0.0f ? 1.0f : -1.0f; }
 
 /// @brief Ray vs Sphere。
@@ -41,14 +50,14 @@ static bool RaySphere(const Vector3& o, const Vector3& d, float maxDist,
     float t = -b - sqrtDisc;
     if (t < 0.0f) t = -b + sqrtDisc;
     if (t < 0.0f || t > maxDist) return false;
-    tOut      = t;
-    normalOut = (o + d * t - center).Normalized();
+    if (!std::isfinite(t) || !NormalizeQueryNormal(o + d * t - center, normalOut)) return false;
+    tOut = t;
     return true;
 }
 
 /// @brief Ray vs AABB (スラブ法)。
 /// @note 各軸のスラブ [min, max] にレイが入る/出る時刻 tMin/tMax を計算し、全軸の tMin の
-///       最大と tMax の最小が [0, maxDist] に収まるか確認する。
+/// @note 最大と tMax の最小が [0, maxDist] に収まるか確認する。
 static bool RayAABB(const Vector3& o, const Vector3& d, float maxDist,
                     const Vector3& aabbMin, const Vector3& aabbMax,
                     float& tOut, Vector3& normalOut)
@@ -106,14 +115,14 @@ static bool RayOBB(const Vector3& o, const Vector3& d, float maxDist,
     Vector3   ln;
     if (!RayAABB(lo, ld, maxDist, -he, he, t, ln)) return false;
 
-    tOut      = t;
-    normalOut = (rot * ln).Normalized();
+    if (!NormalizeQueryNormal(rot * ln, normalOut)) return false;
+    tOut = t;
     return true;
 }
 
 /// @brief Ray vs Capsule (無限円柱 + 端球)。
 /// @note カプセルの中心軸を線分 [start, end] とし、まず無限円柱との交差を求め、
-///       次に両端の半球を確認して最近点を返す。
+/// @note 次に両端の半球を確認して最近点を返す。
 static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
                        const CapsuleCollider& cap,
                        float& tOut, Vector3& normalOut)
@@ -136,7 +145,7 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
     const float b2 = 2.0f * Vector3::Dot(q, s);
     const float c2 = Vector3::Dot(s, s) - r * r;
 
-    float bestT = maxDist + 1.0f;
+    float bestT = std::numeric_limits<float>::infinity();
     Vector3 bestN;
 
     if (std::abs(a2) > 1e-8f) {
@@ -150,8 +159,8 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
                 if (tAxis >= 0.0f && tAxis <= 1.0f) {
                     const Vector3 hitPt = o + d * t;
                     const Vector3 axisPt = pa + ab * tAxis;
-                    bestT = t;
-                    bestN = (hitPt - axisPt).Normalized();
+                    Vector3 normal;
+                    if (NormalizeQueryNormal(hitPt - axisPt, normal)) { bestT = t; bestN = normal; }
                 }
             }
         }
@@ -163,7 +172,7 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
     if (RaySphere(o, d, maxDist, pa, r, ts, ns) && ts < bestT) { bestT = ts; bestN = ns; }
     if (RaySphere(o, d, maxDist, pb, r, ts2, ns2) && ts2 < bestT) { bestT = ts2; bestN = ns2; }
 
-    if (bestT > maxDist) return false;
+    if (!std::isfinite(bestT) || bestT > maxDist) return false;
     tOut = bestT;
     normalOut = bestN;
     return true;
@@ -171,7 +180,7 @@ static bool RayCapsule(const Vector3& o, const Vector3& d, float maxDist,
 
 /// @brief Ray vs Cylinder (側面 + 上下の円板)。
 /// @note 軸方向成分を抜いて 2D のレイ vs 円に帰着させ側面の交点を求め、軸に垂直な 2 枚の円板は
-///       平面交点が半径内かで判定して最も手前を返す。
+/// @note 平面交点が半径内かで判定して最も手前を返す。
 static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
                         const CylinderCollider& cyl,
                         float& tOut, Vector3& normalOut)
@@ -187,7 +196,7 @@ static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
     const Vector3 dPerp   = d  - axis * dAxial;
     const Vector3 ocPerp  = oc - axis * ocAxial;
 
-    float   bestT = maxDist + 1.0f;
+    float   bestT = std::numeric_limits<float>::infinity();
     Vector3 bestN;
 
     /// @note 側面: 無限円柱との交点のうち、円板の間に収まるものだけ採用する
@@ -205,9 +214,10 @@ static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
                 if (t < 0.0f || t >= bestT) continue;
                 const float axial = ocAxial + dAxial * t;
                 if (std::abs(axial) > h) continue;
-                bestT = t;
-                bestN = (o + d * t - (center + axis * axial)).Normalized();
-                break;
+                Vector3 normal;
+                if (NormalizeQueryNormal(o + d * t - (center + axis * axial), normal)) {
+                    bestT = t; bestN = normal; break;
+                }
             }
         }
     }
@@ -224,14 +234,14 @@ static bool RayCylinder(const Vector3& o, const Vector3& d, float maxDist,
         }
     }
 
-    if (bestT > maxDist) return false;
+    if (!std::isfinite(bestT) || bestT > maxDist) return false;
     tOut = bestT;
     normalOut = bestN;
     return true;
 }
 
-/// Ray vs Triangle (Möller–Trumbore)
-/// 戻り値: ヒットした t (負なら miss)
+/// @note Ray vs Triangle (Möller–Trumbore)
+/// @note 戻り値: ヒットした t (負なら miss)
 static float RayTriangle(const Vector3& o, const Vector3& d,
                          const Vector3& v0, const Vector3& v1, const Vector3& v2)
 {
@@ -251,7 +261,7 @@ static float RayTriangle(const Vector3& o, const Vector3& d,
     return f * Vector3::Dot(e2, q);
 }
 
-/// Ray vs TriangleMesh (BVH トラバーサル)
+/// @note Ray vs TriangleMesh (BVH トラバーサル)
 static bool RayTriangleMesh(const Vector3& o, const Vector3& d, float maxDist,
                              const TriangleMeshCollider& mesh,
                              float& tOut, Vector3& normalOut)
@@ -262,7 +272,7 @@ static bool RayTriangleMesh(const Vector3& o, const Vector3& d, float maxDist,
     queryBox.min = Vector3(std::min(o.x, end.x), std::min(o.y, end.y), std::min(o.z, end.z));
     queryBox.max = Vector3(std::max(o.x, end.x), std::max(o.y, end.y), std::max(o.z, end.z));
 
-    float   bestT = maxDist + 1.0f;
+    float   bestT = std::numeric_limits<float>::infinity();
     Vector3 bestN;
 
     mesh.GetBVH().Query(queryBox, [&](const Triangle& tri) {
@@ -274,20 +284,20 @@ static bool RayTriangleMesh(const Vector3& o, const Vector3& d, float maxDist,
         }
     });
 
-    if (bestT > maxDist) return false;
+    if (!std::isfinite(bestT) || bestT > maxDist) return false;
     tOut = bestT;
     normalOut = bestN;
     return true;
 }
 
-/// Ray vs ConvexHull (面ごとに三角形テスト)
+/// @note Ray vs ConvexHull (面ごとに三角形テスト)
 static bool RayConvexHull(const Vector3& o, const Vector3& d, float maxDist,
                            const ConvexHullCollider& hull,
                            float& tOut, Vector3& normalOut)
 {
     const auto& verts = hull.GetWorldVertices();
     const auto& faces = hull.GetFaces();
-    float   bestT = maxDist + 1.0f;
+    float   bestT = std::numeric_limits<float>::infinity();
     Vector3 bestN;
 
     for (const auto& face : faces) {
@@ -307,13 +317,13 @@ static bool RayConvexHull(const Vector3& o, const Vector3& d, float maxDist,
         }
     }
 
-    if (bestT > maxDist) return false;
+    if (!std::isfinite(bestT) || bestT > maxDist) return false;
     tOut = bestT;
     normalOut = bestN;
     return true;
 }
 
-/// ColliderInstance に対してレイキャストを行い、ヒット結果を出力する
+/// @note ColliderInstance に対してレイキャストを行い、ヒット結果を出力する
 static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
                              const ColliderInstance& inst,
                              float& tOut, Vector3& normalOut)
@@ -351,14 +361,14 @@ static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
     }
     case ColliderType::HEIGHT_FIELD: {
         /// @note HeightFieldCollider の BVH は TriangleMeshCollider と同一の `BVHTree<Triangle>` 構造を
-        ///       持つ。RayTriangleMesh は TriangleMeshCollider を受け取るため直接呼べないが、
-        ///       GetBVH() で同じクエリを実行できる。
+        /// @note 持つ。RayTriangleMesh は TriangleMeshCollider を受け取るため直接呼べないが、
+        /// @note GetBVH() で同じクエリを実行できる。
         const auto* hf = static_cast<const HeightFieldCollider*>(inst.collider);
         const Vector3 hfEnd = o + d * maxDist;
         AABB hfQueryBox;
         hfQueryBox.min = Vector3(std::min(o.x, hfEnd.x), std::min(o.y, hfEnd.y), std::min(o.z, hfEnd.z));
         hfQueryBox.max = Vector3(std::max(o.x, hfEnd.x), std::max(o.y, hfEnd.y), std::max(o.z, hfEnd.z));
-        float   hfBestT = maxDist + 1.0f;
+        float   hfBestT = std::numeric_limits<float>::infinity();
         Vector3 hfBestN;
         hf->GetBVH().Query(hfQueryBox, [&](const Triangle& tri) {
             const float t = RayTriangle(o, d, tri.v[0], tri.v[1], tri.v[2]);
@@ -367,7 +377,7 @@ static bool RaycastInstance(const Vector3& o, const Vector3& d, float maxDist,
                 hfBestN = Vector3::Dot(tri.normal, d) < 0.0f ? tri.normal : -tri.normal;
             }
         });
-        if (hfBestT > maxDist) return false;
+        if (!std::isfinite(hfBestT) || hfBestT > maxDist) return false;
         tOut = hfBestT;
         normalOut = hfBestN;
         return true;
@@ -431,7 +441,7 @@ static bool SphereOverlapsInstance(const Vector3& center, float radius,
     }
 }
 
-} // namespace
+} /// @note namespace
 
 namespace fbzz::physics
 {
@@ -443,8 +453,126 @@ namespace fbzz::physics
         }
     }
 
+    namespace {
+        bool FiniteBounds(const AABB& bounds)
+        {
+            return std::isfinite(bounds.min.x) && std::isfinite(bounds.min.y) && std::isfinite(bounds.min.z)
+                && std::isfinite(bounds.max.x) && std::isfinite(bounds.max.y) && std::isfinite(bounds.max.z)
+                && bounds.min.x <= bounds.max.x && bounds.min.y <= bounds.max.y && bounds.min.z <= bounds.max.z;
+        }
+
+        bool SameBounds(const AABB& a, const AABB& b)
+        {
+            return a.min.x == b.min.x && a.min.y == b.min.y && a.min.z == b.min.z
+                && a.max.x == b.max.x && a.max.y == b.max.y && a.max.z == b.max.z;
+        }
+
+        AABB SweptQueryBounds(const Vector3& origin, const Vector3& direction, float distance, float radius)
+        {
+            const Vector3 end = origin + direction * distance;
+            const Vector3 expand(std::abs(radius), std::abs(radius), std::abs(radius));
+            const AABB bounds{
+                Vector3(std::min(origin.x, end.x), std::min(origin.y, end.y), std::min(origin.z, end.z)) - expand,
+                Vector3(std::max(origin.x, end.x), std::max(origin.y, end.y), std::max(origin.z, end.z)) + expand};
+            if (FiniteBounds(bounds) && std::isfinite(distance) && distance >= 0) return bounds;
+            const float infinity = std::numeric_limits<float>::infinity();
+            return {Vector3(-infinity, -infinity, -infinity), Vector3(infinity, infinity, infinity)};
+        }
+    } /// @note namespace
+
+    void World::RefreshQueryIndex()
+    {
+        if (m_colliders.empty()) {
+            m_queryNodes.clear();
+            m_queryBounds.clear();
+            m_queryOrder.clear();
+            m_queryColliders.clear();
+            return;
+        }
+        /// @note query を使わない World と substep に索引維持の走査を追加しない。
+        if (!std::atomic_ref<bool>(m_queryUsed).exchange(false, std::memory_order_relaxed)) return;
+        bool refit = !m_queryNodes.empty() && m_queryColliders.size() == m_colliders.size();
+        bool finite = true;
+        m_queryBounds.resize(m_colliders.size());
+        for (size_t index = 0; index < m_colliders.size(); ++index) {
+            const auto* collider = m_colliders[index].collider;
+            refit &= index < m_queryColliders.size() && m_queryColliders[index] == collider;
+            if (!collider) { finite = false; continue; }
+            m_queryBounds[index] = collider->GetAABB();
+            finite &= FiniteBounds(m_queryBounds[index]);
+        }
+        m_queryColliders.resize(m_colliders.size());
+        for (size_t index = 0; index < m_colliders.size(); ++index)
+            m_queryColliders[index] = m_colliders[index].collider;
+        /// @note 少数の形状や不正な境界では、索引構築の負担と保守的判定の欠落を避ける。
+        if (!finite || m_colliders.size() < 16) {
+            m_queryNodes.clear();
+            return;
+        }
+        if (refit) {
+            for (size_t index = m_queryNodes.size(); index > 0; --index) {
+                auto& node = m_queryNodes[index - 1];
+                if (node.colliderIndex != SIZE_MAX) node.bounds = m_queryBounds[node.colliderIndex];
+                else {
+                    const auto& left = m_queryNodes[index];
+                    node.bounds = left.bounds.Merge(m_queryNodes[left.escape].bounds);
+                }
+            }
+            return;
+        }
+        m_queryOrder.resize(m_colliders.size());
+        for (size_t index = 0; index < m_queryOrder.size(); ++index) m_queryOrder[index] = index;
+        m_queryNodes.clear();
+        m_queryNodes.reserve(m_colliders.size() * 2 - 1);
+        BuildQueryNode(0, m_queryOrder.size());
+    }
+
+    /// @see https://pbr-book.org/4ed/Primitives_and_Intersection_Acceleration/Bounding_Volume_Hierarchies PBRT 7.3.1: EqualCounts の分割と flat BVH。
+    size_t World::BuildQueryNode(size_t begin, size_t end)
+    {
+        const size_t index = m_queryNodes.size();
+        m_queryNodes.emplace_back();
+        AABB bounds = m_queryBounds[m_queryOrder[begin]];
+        for (size_t i = begin + 1; i < end; ++i) bounds = bounds.Merge(m_queryBounds[m_queryOrder[i]]);
+        m_queryNodes[index].bounds = bounds;
+        if (end - begin == 1) {
+            m_queryNodes[index].colliderIndex = m_queryOrder[begin];
+        } else {
+            const Vector3 extent = bounds.max - bounds.min;
+            const int axis = extent.x >= extent.y && extent.x >= extent.z ? 0 : (extent.y >= extent.z ? 1 : 2);
+            const auto coordinate = [this, axis](size_t collider) {
+                const auto& b = m_queryBounds[collider];
+                if (axis == 0) return b.min.x * 0.5f + b.max.x * 0.5f;
+                if (axis == 1) return b.min.y * 0.5f + b.max.y * 0.5f;
+                return b.min.z * 0.5f + b.max.z * 0.5f;
+            };
+            const size_t middle = begin + (end - begin) / 2;
+            std::nth_element(m_queryOrder.begin() + begin, m_queryOrder.begin() + middle, m_queryOrder.begin() + end,
+                [&coordinate](size_t a, size_t b) {
+                    const float ca = coordinate(a), cb = coordinate(b);
+                    return ca < cb || (ca == cb && a < b);
+                });
+            BuildQueryNode(begin, middle);
+            BuildQueryNode(middle, end);
+        }
+        m_queryNodes[index].escape = m_queryNodes.size();
+        return index;
+    }
+
+    bool World::QueryIndexMatchesColliders() const
+    {
+        std::atomic_ref<bool>(m_queryUsed).store(true, std::memory_order_relaxed);
+        if (m_queryNodes.empty() || m_queryBounds.size() != m_colliders.size()) return false;
+        for (size_t index = 0; index < m_colliders.size(); ++index)
+            if (!m_colliders[index].collider
+                || !SameBounds(m_queryBounds[index], m_colliders[index].collider->GetAABB())) return false;
+        return true;
+    }
+
     void World::BeginSceneSync()
     {
+        m_broadPhaseDebugSnapshot.reset();
+        m_pendingBroadPhaseDebugSnapshot.reset();
         m_sceneSyncChanged = false;
         for (auto& slot : m_bodyPool)
             slot.touched = false;
@@ -476,8 +604,8 @@ namespace fbzz::physics
         for (size_t i = 0; i < m_bodyPool.size(); ++i) {
             if (m_bodyPool[i].body == body && !m_bodyPool[i].touched) {
                 /// @note Handle は Scene 側 Component に保持されるが、コピー・再生成・初期化順で
-                ///       stale/invalid になりうる。同じ RigidBody* が既に World にあるなら新規
-                ///       slot を作らず既存 slot を再接続し、pool の肥大化を防ぐ。
+                /// @note stale/invalid になりうる。同じ RigidBody* が既に World にあるなら新規
+                /// @note slot を作らず既存 slot を再接続し、pool の肥大化を防ぐ。
                 m_bodyPool[i].touched = true;
                 return { static_cast<uint32_t>(i + 1u), m_bodyPool[i].generation };
             }
@@ -504,11 +632,14 @@ namespace fbzz::physics
     {
         if (!collider.collider) return {};
 
+        /// @note 形状は非所有参照で同期前に直接更新されるため、既存 slot でも以前の姿勢・形状との比較はできない。
+        /// @note 同期更新は保守的に接触 cache を無効化する。静止形状を毎フレーム同期する場合も再検出が必要になる。
+
         if (collider.body)
         {
             /// @note ColliderInstance は Physics 単体利用時にも Body と形状の対応を持つ入口になる。
-            ///       Engine 側の PhysicsSystem だけに慣性設定を任せると、Tests のように World を直接使う経路で
-            ///       AABB の「軸整合なので回転させない」という制約が抜けるため、同期時に必ず形状から慣性を更新する。
+            /// @note Engine 側の PhysicsSystem だけに慣性設定を任せると、Tests のように World を直接使う経路で
+            /// @note AABB の「軸整合なので回転させない」という制約が抜けるため、同期時に必ず形状から慣性を更新する。
             collider.body->SetInertiaFromCollider(collider.collider);
         }
 
@@ -521,6 +652,7 @@ namespace fbzz::physics
             {
                 m_colliderPool[index].collider = std::move(collider);
                 m_colliderPool[index].touched = true;
+                m_sceneSyncChanged = true;
                 return handle;
             }
         }
@@ -531,10 +663,11 @@ namespace fbzz::physics
                 !m_colliderPool[i].touched)
             {
                 /// @note ColliderHandle が stale になっても Collider* が同じなら Scene 上は
-                ///       同じ ColliderComponent。既存 slot を再接続し、handle 不整合が毎フレーム
-                ///       の重複登録へ発展するのを防ぐ。
+                /// @note 同じ ColliderComponent。既存 slot を再接続し、handle 不整合が毎フレーム
+                /// @note の重複登録へ発展するのを防ぐ。
                 m_colliderPool[i].collider = std::move(collider);
                 m_colliderPool[i].touched = true;
+                m_sceneSyncChanged = true;
                 return { static_cast<uint32_t>(i + 1u), m_colliderPool[i].generation };
             }
         }
@@ -600,7 +733,7 @@ namespace fbzz::physics
                 m_bodies.push_back(slot.body);
             } else if (slot.body) {
                 /// @note 所有権は Component 側にあるため World はポインタを null するだけ。
-                ///       Component が破棄されれば unique_ptr により自動解放される。
+                /// @note Component が破棄されれば unique_ptr により自動解放される。
                 slot.body = nullptr;
                 slot.generation = NextGeneration(slot.generation);
                 m_sceneSyncChanged = true;
@@ -639,6 +772,7 @@ namespace fbzz::physics
             m_sceneSyncChanged = true;
         }
         RebuildConstraintViews();
+        RefreshQueryIndex();
     }
 
     void World::AddConstraint(std::unique_ptr<Constraint> constraint)
@@ -745,20 +879,116 @@ namespace fbzz::physics
         m_substeps = std::clamp(substeps, 1, 32);
     }
 
+    uint64_t World::NextDebugWorldEpoch()
+    {
+        static std::atomic<uint64_t> next{1};
+        return next.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void World::SetBroadPhaseDebugRequest(const BroadPhaseDebugRequest& request)
+    {
+        m_broadPhaseDebugRequest = request;
+        auto& bounded = m_broadPhaseDebugRequest;
+        bounded.enabled &= bounded.hierarchy || bounded.bounds || bounded.candidatePairs;
+        bounded.maxDepth = std::min(bounded.maxDepth, BROAD_PHASE_DEBUG_MAX_DEPTH);
+        bounded.minDepth = std::min(bounded.minDepth, bounded.maxDepth);
+        bounded.maxNodes = std::min(bounded.maxNodes, BROAD_PHASE_DEBUG_MAX_ITEMS);
+        bounded.maxProxies = std::min(bounded.maxProxies, BROAD_PHASE_DEBUG_MAX_ITEMS);
+        bounded.maxPairs = std::min(bounded.maxPairs, BROAD_PHASE_DEBUG_MAX_ITEMS);
+        m_broadPhaseDebugSnapshot.reset();
+        m_pendingBroadPhaseDebugSnapshot.reset();
+    }
+
+    void World::CaptureBroadPhaseDebugSnapshot()
+    {
+        if (!m_broadPhaseDebugRequest.enabled) return;
+        auto snapshot = std::make_shared<BroadPhaseDebugSnapshot>();
+        snapshot->worldEpoch = m_debugEpoch.value;
+        snapshot->sequence = ++m_broadPhaseDebugSequence;
+        snapshot->request = m_broadPhaseDebugRequest;
+        snapshot->selectionValid = !snapshot->request.selectedOnly;
+        std::size_t selectedIndex = SIZE_MAX;
+        if (snapshot->request.selectedOnly) {
+            const ColliderHandle selected = snapshot->request.selected;
+            if (snapshot->request.selectedWorldEpoch == m_debugEpoch.value && selected.IsValid()
+                && selected.slot <= m_colliderPool.size()) {
+                const auto& slot = m_colliderPool[static_cast<std::size_t>(selected.slot - 1)];
+                if (slot.occupied && slot.generation == selected.generation) {
+                    const std::size_t limit = std::min(m_colliders.size(), BROAD_PHASE_DEBUG_MAX_WORK);
+                    for (std::size_t index = 0; index < limit; ++index) {
+                        if (m_colliders[index].collider == slot.collider.collider) {
+                            selectedIndex = index;
+                            snapshot->selectionValid = true;
+                            break;
+                        }
+                    }
+                    snapshot->workLimitReached = selectedIndex == SIZE_MAX && limit != m_colliders.size();
+                }
+            }
+        }
+        m_solver.CaptureBroadPhaseDebugSnapshot(snapshot->request, m_colliders, m_collisionPairs,
+            selectedIndex, *snapshot);
+
+        /// @note Resolve only sampled identities, with a bounded pool walk; the disabled path never scans or copies.
+        std::map<std::size_t, ColliderHandle> handles;
+        for (const auto& proxy : snapshot->proxies) handles.emplace(proxy.sourceIndex, ColliderHandle{});
+        for (const auto& pair : snapshot->pairs) {
+            handles.emplace(pair.sourceIndexA, ColliderHandle{});
+            handles.emplace(pair.sourceIndexB, ColliderHandle{});
+        }
+        auto next = handles.begin();
+        std::size_t sourceIndex = 0;
+        std::size_t poolIndex = 0;
+        for (; next != handles.end() && poolIndex < m_colliderPool.size()
+            && poolIndex < BROAD_PHASE_DEBUG_MAX_WORK; ++poolIndex) {
+            const auto& slot = m_colliderPool[poolIndex];
+            if (!slot.occupied || !slot.collider.collider) continue;
+            if (next->first == sourceIndex) {
+                next->second = {static_cast<uint32_t>(poolIndex + 1), slot.generation};
+                ++next;
+            }
+            ++sourceIndex;
+        }
+        if (next != handles.end()) snapshot->workLimitReached = true;
+        for (auto& proxy : snapshot->proxies) proxy.handle = handles[proxy.sourceIndex];
+        for (auto& pair : snapshot->pairs) {
+            pair.handleA = handles[pair.sourceIndexA];
+            pair.handleB = handles[pair.sourceIndexB];
+        }
+        const auto proxyEnd = std::remove_if(snapshot->proxies.begin(), snapshot->proxies.end(),
+            [](const BroadPhaseDebugProxy& proxy) { return !proxy.handle.IsValid(); });
+        snapshot->proxiesTruncated |= proxyEnd != snapshot->proxies.end();
+        snapshot->proxies.erase(proxyEnd, snapshot->proxies.end());
+        const auto pairEnd = std::remove_if(snapshot->pairs.begin(), snapshot->pairs.end(),
+            [](const BroadPhaseDebugPair& pair) { return !pair.handleA.IsValid() || !pair.handleB.IsValid(); });
+        snapshot->pairsTruncated |= pairEnd != snapshot->pairs.end();
+        snapshot->pairs.erase(pairEnd, snapshot->pairs.end());
+        m_pendingBroadPhaseDebugSnapshot = std::move(snapshot);
+    }
+
     void World::Step(float dt, std::function<bool(int, int)> layerFilter)
     {
+        m_pendingBroadPhaseDebugSnapshot.reset();
         m_layerFilter = layerFilter ? std::move(layerFilter) : m_defaultLayerFilter;
         /// @note Sleep 済みのシーンでは接触集合が変わらず、毎 substep の
-        ///       UpdateColliders/BroadPhase/NarrowPhase/Resolve を再実行しても結果は変わらない
-        ///       (Terrain/TriangleMesh がある resting scene での主な CPU 負荷)。Scene 同期で
-        ///       追加・削除がなく動いている非 Static body も無ければ、前回 contacts から
-        ///       Stay/Exit 分類だけ更新して collision pipeline を省略する。
+        /// @note UpdateColliders/BroadPhase/NarrowPhase/Resolve を再実行しても結果は変わらない
+        /// @note (Terrain/TriangleMesh がある resting scene での主な CPU 負荷)。Scene 同期で
+        /// @note 登録・削除・既存 Collider の同期更新がなく動いている非 Static body も無ければ、前回 contacts から
+        /// @note Stay/Exit 分類だけ更新して collision pipeline を省略する。
         /// @note m_frameImpacts のクリアは分岐より前に置く。早期 return でも前フレームの値が
-        ///       残らないようにするため。
+        /// @note 残らないようにするため。
         m_frameImpacts.clear();
 
         if (!m_sceneSyncChanged && !HasActiveSimulationBodies()) {
+            RefreshQueryIndex();
             ClassifyCollisions();
+            if (m_broadPhaseDebugRequest.enabled) {
+                auto snapshot = std::make_shared<BroadPhaseDebugSnapshot>();
+                snapshot->worldEpoch = m_debugEpoch.value;
+                snapshot->sequence = ++m_broadPhaseDebugSequence;
+                snapshot->request = m_broadPhaseDebugRequest;
+                m_broadPhaseDebugSnapshot = std::move(snapshot);
+            }
             return;
         }
 
@@ -778,6 +1008,7 @@ namespace fbzz::physics
             SolveConstraintPositions(subDt);
             UpdateColliders();
             BroadPhase();
+            if (s + 1 == substeps && m_broadPhaseDebugRequest.enabled) CaptureBroadPhaseDebugSnapshot();
             /// @note WarmStart は最初のサブステップのみ
             NarrowPhase(s == 0);
             /// @note Resolve は速度を書き換えるため、「ぶつかった勢い」はこの時点でしか取れない。
@@ -790,10 +1021,12 @@ namespace fbzz::physics
         }
 
         /// @note フレーム末尾に蓄積インパルスを保存し古いキャッシュを削除する
+        RefreshQueryIndex();
         m_contactCache.UpdateCache(m_contacts);
         m_contactCache.PurgeStale();
 
         ClassifyCollisions();
+        m_broadPhaseDebugSnapshot = std::move(m_pendingBroadPhaseDebugSnapshot);
     }
 
     bool World::HasActiveSimulationBodies() const
@@ -918,7 +1151,7 @@ namespace fbzz::physics
         {
             if (cp.isTrigger) continue;
             /// @note 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
-            ///       法線インパルス側の処理は続けられるよう、既定軸を入れておく。
+            /// @note 法線インパルス側の処理は続けられるよう、既定軸を入れておく。
             math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
             if (t0.LengthSq() < 1e-6f)
                 t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
@@ -969,8 +1202,8 @@ namespace fbzz::physics
     {
         if (dt <= 0.0f) return;
         /// @note m_useCCD が true かつ速度が十分に速い物体について、
-        ///       他の球コライダー持ち物体との TOI を計算し速度をクランプする。
-        ///       この処理は IntegrateBodies の前に呼ぶことで貫通を防ぐ。
+        /// @note 他の球コライダー持ち物体との TOI を計算し速度をクランプする。
+        /// @note この処理は IntegrateBodies の前に呼ぶことで貫通を防ぐ。
         for (size_t i = 0; i < m_bodies.size(); ++i)
         {
             auto& bodyA = m_bodies[i];
@@ -1032,7 +1265,7 @@ namespace fbzz::physics
             }
 
             /// @note 速度を TOI でスケールし、衝突時点までしか進まないようにする
-            ///       残りの速度解決は通常の NarrowPhase/Resolve が担う
+            /// @note 残りの速度解決は通常の NarrowPhase/Resolve が担う
             if (minToi < 1.0f)
                 bodyA->SetVelocity(bodyA->GetVelocity() * minToi);
         }
@@ -1046,7 +1279,7 @@ namespace fbzz::physics
 
             const math::Vector3 vRel = PhysicsSolver::RelativeVelocityAt(cp);
             /// @note normal は b → a 向きなので、近づいているとき Dot は負になる。
-            ///       ゲーム側が扱いやすいよう「正 = 接近」へ符号を反転する。
+            /// @note ゲーム側が扱いやすいよう「正 = 接近」へ符号を反転する。
             const float approach = -math::Vector3::Dot(vRel, cp.normal);
             /// @note 離れていく接触は衝突ではない
             if (approach <= 0.0f) continue;
@@ -1074,8 +1307,8 @@ namespace fbzz::physics
             if (a > b) std::swap(a, b);
 
             /// @note 接近していない接触 (床に載っているだけ等) は RecordApproachVelocities が
-            ///       積んでいない。そこへインパルスだけを入れると «速度 0 なのに強い衝突» に
-            ///       見えるエントリができるため find で確認してから加える。
+            /// @note 積んでいない。そこへインパルスだけを入れると «速度 0 なのに強い衝突» に
+            /// @note 見えるエントリができるため find で確認してから加える。
             const auto it = m_frameImpacts.find(ColliderPair{ a, b });
             if (it == m_frameImpacts.end()) continue;
 
@@ -1102,7 +1335,7 @@ namespace fbzz::physics
                 cp.point, cp.normal, cp.depth, cp.isTrigger
             };
             /// @note このフレーム中に観測した衝突の強さを載せる。
-            ///       接触が継続しているだけ (Stay) なら 0 のままになる。
+            /// @note 接触が継続しているだけ (Stay) なら 0 のままになる。
             if (const auto impact = m_frameImpacts.find(pair); impact != m_frameImpacts.end()) {
                 event.relativeVelocity = impact->second.relativeVelocity;
                 event.approachSpeed    = impact->second.approachSpeed;
@@ -1124,7 +1357,7 @@ namespace fbzz::physics
             if (currentEvents.count(pair) != 0) continue;
 
             /// @note 離れた瞬間のイベントに「ぶつかった強さ」は無い。前フレームの値を
-            ///       そのまま残すと、Exit を見ているスクリプトが古い衝突速度を読んでしまう。
+            /// @note そのまま残すと、Exit を見ているスクリプトが古い衝突速度を読んでしまう。
             CollisionEvent exitEvent = event;
             exitEvent.relativeVelocity = math::Vector3::ZERO;
             exitEvent.approachSpeed    = 0.0f;
@@ -1148,17 +1381,19 @@ namespace fbzz::physics
                         ColliderFilter        filter) const
     {
         /// @note 向きの無いレイは何にも当たらない。スクリプトから 0 ベクトルが来るのは
-        ///       「対象と重なっている」等で普通に起きるため、当たり無しとして返す。
+        /// @note 「対象と重なっている」等で普通に起きるため、当たり無しとして返す。
         if (direction.LengthSq() < 1e-12f) return false;
         const math::Vector3 d = direction.Normalized();
-        float   bestT = maxDistance + 1.0f;
+        float   bestT = std::numeric_limits<float>::infinity();
         RaycastHit bestHit;
 
-        for (const auto& inst : m_colliders) {
-            if (filter && !filter(inst)) continue;
+        size_t bestIndex = SIZE_MAX;
+        ForEachQueryCandidate(SweptQueryBounds(origin, d, maxDistance, 0), [&](size_t index, const ColliderInstance& inst) {
+            if (filter && !filter(inst)) return;
             float   t;
             math::Vector3 n;
-            if (RaycastInstance(origin, d, maxDistance, inst, t, n) && t < bestT) {
+            if (RaycastInstance(origin, d, maxDistance, inst, t, n) && (t < bestT || (t == bestT && index < bestIndex))) {
+                bestIndex = index;
                 bestT          = t;
                 bestHit.point    = origin + d * t;
                 bestHit.normal   = n;
@@ -1166,9 +1401,9 @@ namespace fbzz::physics
                 bestHit.collider = inst.collider;
                 bestHit.body     = inst.body;
             }
-        }
+        });
 
-        if (bestT > maxDistance) return false;
+        if (!std::isfinite(bestT) || bestT > maxDistance) return false;
         hit = bestHit;
         return true;
     }
@@ -1182,8 +1417,8 @@ namespace fbzz::physics
         const math::Vector3 d = direction.Normalized();
         std::vector<RaycastHit> results;
 
-        for (const auto& inst : m_colliders) {
-            if (filter && !filter(inst)) continue;
+        ForEachQueryCandidate(SweptQueryBounds(origin, d, maxDistance, 0), [&](size_t, const ColliderInstance& inst) {
+            if (filter && !filter(inst)) return;
             float   t;
             math::Vector3 n;
             if (RaycastInstance(origin, d, maxDistance, inst, t, n)) {
@@ -1195,7 +1430,7 @@ namespace fbzz::physics
                 h.body     = inst.body;
                 results.push_back(h);
             }
-        }
+        });
 
         std::sort(results.begin(), results.end(),
                   [](const RaycastHit& a, const RaycastHit& b){ return a.distance < b.distance; });
@@ -1210,17 +1445,18 @@ namespace fbzz::physics
                            ColliderFilter        filter) const
     {
         /// @note Minkowski 和による膨張: 各コライダーを球半径分だけ広げてから通常のレイキャストを行う。
-        ///       膨張した形状はコライダー種ごとに近似する — Sphere: 半径を加算 / AABB,OBB: 各辺
-        ///       方向へ radius だけ広げる / Capsule: カプセル半径を加算 / Cylinder,Mesh,Convex: AABB 近似。
+        /// @note 膨張した形状はコライダー種ごとに近似する — Sphere: 半径を加算 / AABB,OBB: 各辺
+        /// @note 方向へ radius だけ広げる / Capsule: カプセル半径を加算 / Cylinder,Mesh,Convex: AABB 近似。
 
         if (direction.LengthSq() < 1e-12f) return false;
         const math::Vector3 d = direction.Normalized();
-        float     bestT = maxDistance + 1.0f;
+        float     bestT = std::numeric_limits<float>::infinity();
         RaycastHit bestHit;
 
-        for (const auto& inst : m_colliders) {
-            if (!inst.collider) continue;
-            if (filter && !filter(inst)) continue;
+        size_t bestIndex = SIZE_MAX;
+        ForEachQueryCandidate(SweptQueryBounds(origin, d, maxDistance, radius), [&](size_t index, const ColliderInstance& inst) {
+            if (!inst.collider) return;
+            if (filter && !filter(inst)) return;
 
             float t = -1.0f;
             math::Vector3 n;
@@ -1234,7 +1470,7 @@ namespace fbzz::physics
             }
             case ColliderType::CAPSULE: {
                 /// @note CapsuleCollider の半径を膨張させて再判定する。一時オブジェクトを作らず
-                ///       既存関数の radius 引数を拡張して再利用する。
+                /// @note 既存関数の radius 引数を拡張して再利用する。
                 const auto* cap = static_cast<const CapsuleCollider*>(inst.collider);
                 /// @note 軸両端の球を膨張
                 float tA; math::Vector3 nA;
@@ -1266,7 +1502,8 @@ namespace fbzz::physics
             }
             }
 
-            if (t >= 0.0f && t < bestT) {
+            if (t >= 0.0f && (t < bestT || (t == bestT && index < bestIndex))) {
+                bestIndex = index;
                 bestT            = t;
                 bestHit.point    = origin + d * t;
                 bestHit.normal   = n;
@@ -1274,9 +1511,9 @@ namespace fbzz::physics
                 bestHit.collider = inst.collider;
                 bestHit.body     = inst.body;
             }
-        }
+        });
 
-        if (bestT > maxDistance) return false;
+        if (!std::isfinite(bestT) || bestT > maxDistance) return false;
         hit = bestHit;
         return true;
     }
@@ -1287,12 +1524,12 @@ namespace fbzz::physics
                         ColliderFilter        filter) const
     {
         std::vector<const ColliderInstance*> results;
-        for (const auto& inst : m_colliders) {
-            if (filter && !filter(inst)) continue;
+        ForEachQueryCandidate(SweptQueryBounds(center, Vector3::ZERO, 0, radius), [&](size_t, const ColliderInstance& inst) {
+            if (filter && !filter(inst)) return;
             if (SphereOverlapsInstance(center, radius, inst))
                 results.push_back(&inst);
-        }
+        });
         return results;
     }
 
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

@@ -25,6 +25,9 @@ struct Vector4 {
 
     Vector3 XYZ() const;
 
+    /// @note t を制限せず外挿を許す。各成分の減算・乗算・加算順序を維持する。
+    static Vector4 Lerp(const Vector4& a, const Vector4& b, float t);
+
     static const Vector4 ZERO;
     static const Vector4 ONE;
     static const Vector4 WHITE;
@@ -58,4 +61,12 @@ inline float Vector4::Length() const {
 
 inline Vector3 Vector4::XYZ() const { return {x, y, z}; }
 
-} // namespace fbzz::math
+inline Vector4 Vector4::Lerp(const Vector4& a, const Vector4& b, float t)
+{
+    return { a.x + (b.x - a.x) * t,
+             a.y + (b.y - a.y) * t,
+             a.z + (b.z - a.z) * t,
+             a.w + (b.w - a.w) * t };
+}
+
+} ///< @note namespace fbzz::math

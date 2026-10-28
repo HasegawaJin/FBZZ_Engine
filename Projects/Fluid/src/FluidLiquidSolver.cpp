@@ -2,8 +2,7 @@
 /// @brief   粒子液体ソルバー (Position Based Fluids + XSPH 粘性)。2D と 3D を同じコードで解く
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
-/// 2D のときは z と vz が常に 0 のまま進む (3D の項は 0 を足すだけ)。
+/// @note 2D のときは z と vz が常に 0 のまま進む (3D の項は 0 を足すだけ)。
 #include <Fluid/FluidSolver.hpp>
 
 #include <Fluid/FluidOperatorEval.hpp>
@@ -16,7 +15,7 @@ namespace fbzz::fluid {
 namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
-/// 近傍格子が覆う範囲。これより外へ出た粒子は画面外なので捨てる。
+/// @note 近傍格子が覆う範囲。これより外へ出た粒子は画面外なので捨てる。
 constexpr float kBoundsMinX = -1.6f;
 constexpr float kBoundsMaxX =  1.6f;
 constexpr float kBoundsMinY = -1.6f;
@@ -24,48 +23,37 @@ constexpr float kBoundsMaxY =  3.0f;
 constexpr float kBoundsMinZ = -1.6f;
 constexpr float kBoundsMaxZ =  1.6f;
 constexpr int   kParticleHardLimit = 20000;
-/// 引張不安定の補正 (Macklin & Müller の s_corr)。粒子が 2 つずつ団子になるのを防ぐ。
-/// @note 論文の k = 0.1 をそのまま使わない理由: 論文の値は λ が O(1) になる単位系の話で、ここでは
-///       λ が 1e-4 程度になる。静止時の勾配和で割って «λ と同じ単位» に揃える。
+/// @note 引張不安定の補正 (Macklin & Müller の s_corr)。粒子が 2 つずつ団子になるのを防ぐ。
+/// @note この単位系の λ は約 1e-4 のため、論文の k = 0.1 を直接使わず静止時の勾配和で補正単位を揃える。
 constexpr float kTensileStrength = 0.05f;
-/// 密度拘束の押し出しが 1 刻みで速度へ持ち越せる上限 [領域単位/秒]。
+/// @note 密度拘束の押し出しが 1 刻みで速度へ持ち越せる上限 [領域単位/秒]。
 constexpr float kMaxPushSpeed = 2.0f;
 
 [[nodiscard]] float Saturate(float value) { return std::clamp(value, 0.0f, 1.0f); }
 
-/// 刻みの始めの時刻で効いている力と、その時刻の中心・量の倍率。
+/// @note 刻みの始めの時刻で効いている力と、その時刻の中心・量の倍率。
 struct ActiveForce {
     std::size_t   index = 0;
     math::Vector3 center = { 0.0f, 0.0f, 0.0f };
     float         amount = 1.0f;
 };
 
-/// Texture の点をマスクで選り分けるときの引き直しの上限。これで外れ続けるのは «ほぼ真っ黒な画像» だけ。
+/// @note Texture の点をマスクで選り分けるときの引き直しの上限。これで外れ続けるのは «ほぼ真っ黒な画像» だけ。
 constexpr int kTextureEmitAttempts = 16;
-/// 障害物に «触れている» とみなす距離 (粒子半径の倍率)。床の接触と同じ幅。
+/// @note 障害物に «触れている» とみなす距離 (粒子半径の倍率)。床の接触と同じ幅。
 constexpr float kColliderContactScale = 1.05f;
 
-void LoadSourceMasks(const std::vector<FluidSource>& sources, std::vector<FluidSourceMask>& outMasks)
-{
-    outMasks.assign(sources.size(), FluidSourceMask{});
-    for (std::size_t i = 0; i < sources.size(); ++i) {
-        if (sources[i].shape != FluidSourceShape::Texture || sources[i].texture.empty()) continue;
-        if (!ResolveFluidSourceMask(sources[i].texture, outMasks[i])) outMasks[i].values.clear();
-    }
-}
+} /// @note namespace
 
-} // namespace
-
-/// 部品 (発生源・力・障害物) とその画像だけを取り込む。Reset と ReplaceOperators で共通。
-/// m_volumetric と m_radius が決まっていること (箱の奥行きと寸法の広げ方がそれで決まる)。
+/// @brief 発生源・力・障害物とマスクを Reset / ReplaceOperators 共通で取り込む。
+/// @pre m_volumetric と m_radius が確定していること。
 void FluidLiquidSolver::AdoptOperators(const FluidRecipe& recipe)
 {
     m_sources.clear();
     for (const FluidSource& source : recipe.sources)
         if (source.enabled && m_sources.size() < static_cast<std::size_t>(kMaxFluidSources))
             m_sources.push_back(source);
-    /// @note 粒子半径まで広げる理由: それより細い寸法は 1 粒の幅にもならない。0 の軸が残ると形の体積が
-    ///       0 になり、FluidLiquidEmitScale が «詰まりすぎ» を広げられずに全粒を 1 点へ出してしまう。
+    /// @note 粒子半径まで寸法を広げ、体積 0 によって FluidLiquidEmitScale が全粒を 1 点へ出すことを防ぐ。
     for (FluidSource& source : m_sources) {
         source.size.x = (std::max)(source.size.x, m_radius);
         source.size.y = (std::max)(source.size.y, m_radius);
@@ -79,12 +67,11 @@ void FluidLiquidSolver::AdoptOperators(const FluidRecipe& recipe)
     for (const FluidCollider& collider : recipe.colliders) {
         if (!collider.enabled || m_colliders.size() >= static_cast<std::size_t>(kMaxFluidColliders)) continue;
         m_colliders.push_back(collider);
-        /// @note 2D の箱の奥行きを無限にする理由: 2D は d.z = 0 で測るので、箱の z の半分が x/y の深さより
-        ///       小さいと «中» の距離と法線が z 軸で決まり、粒子を画面の外 (z) へ押し出そうとしてしまう。
+        /// @note 2D では箱の奥行きを広げ、d.z = 0 の距離と法線が z 軸で決まって粒子を平面外へ押し出すことを防ぐ。
         if (!m_volumetric && collider.shape == FluidColliderShape::Box) m_colliders.back().size.z = 1.0e6f;
     }
     m_activeColliders.clear();
-    LoadSourceMasks(m_sources, m_sourceMasks);
+    ResolveFluidSourceMasks(m_sources, m_sourceMasks);
     /// @note 撃ち出し済みの数は «有効な発生源の中での添字» で引き継ぐ。増えた分は 0 から、減った分は捨てる。
     m_emitted.resize(m_sources.size(), 0);
 }
@@ -111,8 +98,7 @@ void FluidLiquidSolver::Reset(const FluidRecipe& recipe, bool volumetric)
         m_spikyGradient = -30.0f / (kPi * std::pow(m_h, 5.0f));
     }
 
-    /// @note 静止密度は «粒子が直径の間隔で並んだ状態» で測る。解析的な値を置くと、
-    ///       格子の丸めの分だけ最初から圧縮 (または膨張) した状態で始まる。
+    /// @note 粒子を直径間隔で並べて静止密度を測り、解析値と格子の丸めとの差による初期圧縮・膨張を防ぐ。
     const float spacing = 2.0f * m_radius;
     const int reach = static_cast<int>(std::ceil(m_h / spacing));
     const int reachZ = m_volumetric ? reach : 0;
@@ -145,9 +131,9 @@ void FluidLiquidSolver::Reset(const FluidRecipe& recipe, bool volumetric)
     m_cellsZ = m_volumetric ? (std::max)(1, static_cast<int>(std::ceil((kBoundsMaxZ - kBoundsMinZ) / m_h))) : 1;
 }
 
-/// 粒子を残せる条件は «今居る粒子が、このレシピの粒子として通るか»。液体でなければ粒子ではなく、
-/// 粒子半径が変われば近傍格子・カーネル係数・静止密度が総取り替えになり、今の並びは «別の液体の途中» になる。
-/// 重力・粘性・まとまり・反復数・寿命は刻みごとに効くだけなので、途中から差し替えてよい。
+/// @note 液体種別と粒子半径が同じ場合だけ粒子を保持する。
+/// @note 半径が変わると近傍格子・カーネル係数・静止密度も変わり、既存の粒子配置を引き継げない。
+/// @note 重力・粘性・まとまり・反復数・寿命は刻みごとに効くだけなので、途中から差し替えてよい。
 bool FluidLiquidSolver::ReplaceOperators(const FluidRecipe& recipe)
 {
     if (recipe.kind != FluidKind::Liquid) return false;
@@ -164,7 +150,7 @@ float FluidLiquidSolver::Poly6(float distanceSquared) const
     return m_poly6 * d * d * d;
 }
 
-/// ∇W = scale × (p_i − p_j)。scale は負 (離れるほど W が減る)。
+/// @note ∇W = scale × (p_i − p_j)。scale は負 (離れるほど W が減る)。
 float FluidLiquidSolver::SpikyGradientScale(float distance) const
 {
     if (distance <= 1.0e-7f || distance >= m_h) return 0.0f;
@@ -213,7 +199,7 @@ void FluidLiquidSolver::Emit()
         if (!m_volumetric) launch.z = 0.0f;
         const float speed = launch.Length();
         /// @note 詰まりすぎを避けて広げる倍率は FluidLiquidEmitScale が正本 (Inspector も同じ値を出す)。
-        ///       撃ち出す速度に動きの速さを含めて測るため、その速度を持った写しを渡す。
+        /// @note 撃ち出す速度に動きの速さを含めて測るため、その速度を持った写しを渡す。
         FluidSource fitted = source;
         fitted.velocity = launch;
         const float scale = FluidLiquidEmitScale(fitted, m_settings, m_volumetric);
@@ -277,7 +263,7 @@ void FluidLiquidSolver::Advance(float dt)
     }
     maxSpeed += (std::max)(m_settings.gravity, 0.0f) * dt;
     /// @note 力で速くなる分も 1 刻みの移動に入れる。Drag は遅くするだけなので数えない。
-    ///       倍率を掛けた実際の強さで見積もる (倍率が 1 を超える間だけ刻みが足りなくなるのを防ぐ)。
+    /// @note 倍率を掛けた実際の強さで見積もる (倍率が 1 を超える間だけ刻みが足りなくなるのを防ぐ)。
     for (const FluidForce& force : m_forces)
         if (force.type != FluidForceType::Drag && FluidForceActive(force, m_time))
             maxSpeed += std::fabs(force.strength * FluidForceAmount(force, m_time)) * dt;
@@ -357,9 +343,8 @@ void FluidLiquidSolver::Step(float dt)
     const float frictionKeep = std::exp(-(std::max)(m_settings.floorFriction, 0.0f) * 10.0f * dt);
     for (std::size_t i = 0; i < count; ++i) {
         Particle& particle = m_particles[i];
-        /// @note 押し出しの速さに上限を置く理由: PBF は位置補正をそのまま速度にするため、詰まった粒子を
-        ///       押し広げた補正まで速度になると重なりや激突のたびに粒子が爆ぜる。位置は補正どおり動かし、
-        ///       速度へ持ち越す分だけを抑える (流れの速さは発生源と重力が決める)。
+        /// @note PBF の押し広げ補正をすべて速度へ持ち越すと、重なりや激突のたびに粒子が爆ぜる。
+        /// @note 位置補正を保ち、速度へ持ち越す分だけを抑える。流れの速さは発生源と重力が決める。
         float pushX = (m_predictedX[i] - particle.x) / dt - particle.vx;
         float pushY = (m_predictedY[i] - particle.y) / dt - particle.vy;
         float pushZ = (m_predictedZ[i] - particle.z) / dt - particle.vz;
@@ -553,7 +538,7 @@ void FluidLiquidSolver::SolveDensity()
     }
 }
 
-/// XSPH: 近傍の速度へ寄せる。Σ W / ρ0 ≈ 1 なので viscosity はそのまま «寄せる割合» になる。
+/// @note XSPH: 近傍の速度へ寄せる。Σ W / ρ0 ≈ 1 なので viscosity はそのまま «寄せる割合» になる。
 void FluidLiquidSolver::ApplyViscosity()
 {
     const float viscosity = Saturate(m_settings.viscosity);
@@ -585,4 +570,4 @@ void FluidLiquidSolver::ApplyViscosity()
     }
 }
 
-} // namespace fbzz::fluid
+} /// @note namespace fbzz::fluid

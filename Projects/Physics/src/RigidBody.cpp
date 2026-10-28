@@ -26,7 +26,7 @@ math::Vector3 ApplyAxisLock(const math::Vector3& value,
     };
 }
 
-} // namespace
+} /// @note namespace
 
 void RigidBody::ApplyForce(const math::Vector3& force)
 {
@@ -89,6 +89,21 @@ void RigidBody::SetMass(float mass)
     RecomputeInertia();
 }
 
+bool RigidBody::IsFiniteState() const
+{
+    const auto finiteVector = [](const math::Vector3& value) {
+        return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+    };
+    return finiteVector(m_position) && finiteVector(m_velocity) && finiteVector(m_force)
+        && finiteVector(m_angularVelocity) && finiteVector(m_torque) && finiteVector(m_invInertiaDiag)
+        && std::isfinite(m_rotation.x) && std::isfinite(m_rotation.y)
+        && std::isfinite(m_rotation.z) && std::isfinite(m_rotation.w)
+        && std::isfinite(m_mass) && std::isfinite(m_invMass) && std::isfinite(m_flowCoupling)
+        && std::isfinite(m_charge) && std::isfinite(m_gravitationalMass) && std::isfinite(m_ccdRadius)
+        && std::isfinite(m_gravityScale) && std::isfinite(m_timeScale)
+        && std::isfinite(m_linearDrag) && std::isfinite(m_angularDrag) && std::isfinite(m_sleepTimer);
+}
+
 void RigidBody::SetPosition(const math::Vector3& pos)
 {
     m_position = ApplyPositionFreeze(pos, m_position);
@@ -143,7 +158,7 @@ void RigidBody::Integrate(float dt)
     if (!m_isStatic)
     {
         /// @note 線形運動は半陰的オイラーで積分する。速度を先に更新するため単純な陽的オイラーより安定する。
-        ///       m_force には World が事前に重力・Volume・制約力を ApplyForce 済み。
+        /// @note m_force には World が事前に重力・Volume・制約力を ApplyForce 済み。
         m_velocity += m_force * m_invMass * dt;
         m_velocity = m_velocity * (1.0f / (1.0f + std::max(m_linearDrag, 0.0f) * dt));
         m_velocity = ApplyPositionFreeze(m_velocity, math::Vector3::ZERO);
@@ -175,21 +190,6 @@ void RigidBody::Integrate(float dt)
     /// @note static ボディ含め毎フレームリセットする。力は「そのフレームだけ有効」な入力として扱う。
     m_force  = math::Vector3::ZERO;
     m_torque = math::Vector3::ZERO;
-}
-
-bool RigidBody::IsFiniteState() const
-{
-    const auto finiteVector = [](const math::Vector3& value) {
-        return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-    };
-    return finiteVector(m_position) && finiteVector(m_velocity) && finiteVector(m_force)
-        && finiteVector(m_angularVelocity) && finiteVector(m_torque) && finiteVector(m_invInertiaDiag)
-        && std::isfinite(m_rotation.x) && std::isfinite(m_rotation.y)
-        && std::isfinite(m_rotation.z) && std::isfinite(m_rotation.w)
-        && std::isfinite(m_mass) && std::isfinite(m_invMass) && std::isfinite(m_flowCoupling)
-        && std::isfinite(m_charge) && std::isfinite(m_gravitationalMass) && std::isfinite(m_ccdRadius)
-        && std::isfinite(m_gravityScale) && std::isfinite(m_timeScale)
-        && std::isfinite(m_linearDrag) && std::isfinite(m_angularDrag) && std::isfinite(m_sleepTimer);
 }
 
 void RigidBody::WakeUp()
@@ -261,8 +261,8 @@ void RigidBody::RecomputeInertia()
     if (!m_inertiaCollider)
     {
         /// @note Collider 未設定の RigidBody はテストやスクリプト API から単体で使われる。
-        ///       形状由来の慣性は推定できないため、質量だけを反映した等方的な単位慣性として扱い、
-        ///       FreezeRotation がロック軸だけを止め、未ロック軸の角インパルスは反応できるようにする。
+        /// @note 形状由来の慣性は推定できないため、質量だけを反映した等方的な単位慣性として扱い、
+        /// @note FreezeRotation がロック軸だけを止め、未ロック軸の角インパルスは反応できるようにする。
         const float inv = 1.0f / m_mass;
         m_invInertiaDiag = { inv, inv, inv };
         return;
@@ -338,4 +338,4 @@ math::Vector3 RigidBody::ApplyRotationFreeze(const math::Vector3& value) const
     return ApplyAxisLock(value, m_freezeRotation, math::Vector3::ZERO);
 }
 
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

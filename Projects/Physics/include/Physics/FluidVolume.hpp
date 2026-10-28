@@ -34,10 +34,20 @@ namespace fbzz::physics
         /// @param worldX, worldZ ワールド座標 (変位«後»、つまり画面に出ている位置)。
         /// @param time startTime から Tick で進んだ秒数。
         std::function<float(float worldX, float worldZ, float time)> surfaceHeight;
+        /// @brief 変位後 worldXZ の水域所属。空なら halfX/halfZ の矩形を使う。
+        /// @note shape は不変 snapshot から評価し、時刻は surfaceHeight と同じ Tick 時計を受ける。
+        std::function<bool(float worldX, float worldZ, float time)> containsXZ;
+        /// @brief ワールド XZ の浮力限界深さ [m]。空なら depthLimit を使う。
+        std::function<float(float worldX, float worldZ, float time)> depthLimitAt;
         /// @brief ワールド空間の流速 [m/s]。空なら流れなし。
         std::function<math::Vector3(const math::Vector3& worldPosition)> flowVelocity;
+        /// @brief Exclude a 3D world-space point from per-probe forces.
+        /// @note With allowProbeIntersection, Contains does not reject a candidate from its center; Apply checks the center and every probe independently.
+        std::function<bool(const math::Vector3& worldPosition)> pointAllowed;
+        /// @brief Allow a body whose center is outside the point membership to be tested at its probes.
+        bool allowProbeIntersection = false;
 
-        /// @brief 範囲となる矩形の中心。y が表面の基準面。
+        /// @brief 所属判定の軸平行包絡矩形の中心。y が表面の基準面。
         math::Vector3 center = math::Vector3::ZERO;
         float halfX = 0.0f;
         float halfZ = 0.0f;
@@ -60,7 +70,7 @@ namespace fbzz::physics
         std::shared_ptr<const BodyRadiusMap> radii;
     };
 
-    /// @brief 矩形 x 深さで切った流体。等価球の水平 4 点で表面と比べ、沈み率ぶんの揚力・
+    /// @brief 包絡矩形・所属 callback・深さで切った流体。等価球の水平 4 点で表面と比べ、沈み率ぶんの揚力・
     /// @brief トルク・流れの抵抗を掛ける。
     /// @note 順序 3 で密度ベースの法則 (rho * g * V_sub) とコライダーごとの標本点へ置き換える予定。
     /// @see Docs/design/buoyancy.md
@@ -69,17 +79,19 @@ namespace fbzz::physics
     public:
         explicit FluidVolume(FluidVolumeDesc desc);
 
-        bool Contains(const math::Vector3& position) const override;
+        /// @brief Test the broadphase vertical and rectangular bounds before per-probe membership.
+        [[nodiscard]] bool Contains(const math::Vector3& position) const override;
         void Apply(RigidBody& body, float dt) override;
         void Tick(float dt) override;
 
     private:
         /// @brief 表面のワールド Y。
         float SurfaceY(float worldX, float worldZ) const;
+        float DepthLimitAt(float worldX, float worldZ) const;
         float RadiusOf(const RigidBody& body) const;
 
         FluidVolumeDesc m_desc;
         float m_maxRadius = DEFAULT_BODY_RADIUS;
         float m_time = 0.0f;
     };
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

@@ -84,3 +84,44 @@ Math の演算を SSE4.1 の intrinsics で書き直す。前段の «小関数�
 - DirectXMath «Code Optimization with the DirectXMath Library»: https://learn.microsoft.com/windows/win32/dxmath/pg-xnamath-optimizing
 - Fabian Giesen «View frustum culling»: https://fgiesen.wordpress.com/2010/10/17/view-frustum-culling/
 - 計測と比較の手順: [benchmark-report.md](benchmark-report.md)
+
+## C# SDK の SIMD 化と接続側の改善（2026-10-20）
+
+C# の SIMD 化は必須とし、`Fbzz.Vector3` と `Fbzz.Quaternion` の成分演算を `Vector128<float>` で行う。前節の C++ 単体演算を見送る方針とは実装・処理系が異なる。公開型は変更せず、Vector3 の 12B と Quaternion の 16B、フィールド順、保存・native ABI を維持する。Vector3 は各成分から安全に構築し、12B の領域を 16B 読み込まない。
+
+`Dot` と長さの二乗は成分の積を並列に計算し、加算は従来の順序を保つ。近似逆数・近似平方根、FMA による融合、演算の再結合を導入しない。ゼロ長の fallback、EPSILON、非有限値、符号付きゼロ、補間の外挿・短弧選択、Euler の YXZ 順序を検証する。sqrt と三角関数は MathF のままとする。
+
+実装根拠は Microsoft の [SIMD と hardware intrinsics](https://learn.microsoft.com/en-us/dotnet/standard/simd) と [.NET 10 Vector128](https://learn.microsoft.com/en-us/dotnet/api/system.runtime.intrinsics.vector128?view=net-10.0)。SIMD 命令の生成は JIT disassembly で確認し、通常環境と hardware intrinsics 無効時の両方で同じ数値・ABI テストを実行する。命令が生成されることと FPS 改善は別であり、速度向上率は同条件の実測なしに記載しない。
+
+### 公式資料からの改善候補
+
+以下は公式資料の知見を FBZZEngine のコードへ対応付けた提案であり、SIMD 化以外は本変更で実装しない。Unity の Mono / IL2CPP、REVM の独自 AOT・GC と FBZZ の CoreCLR を同じ処理系として扱わず、各資料の測定値を FBZZ の改善率へ転用しない。
+
+| 優先 | 対策 | FBZZEngine への適用 | 公式資料 |
+|---|---|---|---|
+| 1 | 実装されていない callback を呼ばない | 世代別の callback 存在情報で native 側からの Update / FixedUpdate / LateUpdate の不要往復を省く。再読み込み・実行順・無効化・例外隔離の契約を維持する | Unity 6 [Use a custom update manager](https://docs.unity3d.com/6000.0/Documentation/Manual/events-per-frame-optimization.html), When to use |
+| 2 | callback ごとの確保・boxing を減らす | `ScriptExecutionScope` と enum 検証を見直す。scope の再入・所有者・CallID・世代・終了後の失効を保ち、単なる共有オブジェクトの使い回しにはしない | Unity 6 [Reference type management](https://docs.unity3d.com/6000.0/Documentation/Manual/performance-reference-types.html), Avoid converting value types to reference types |
+| 3 | 返却配列の生成より、呼出元の領域を埋める | QueryBuffer の ToArray、入力名 UTF-8 化、数値設定 packet の確保を頻度別に測り、既存 Span / stackalloc / 再利用領域を使う。全数値 property が確保するとはみなさない | Unity 6 [Optimizing arrays](https://docs.unity3d.com/6000.0/Documentation/Manual/performance-optimizing-arrays.html); RE:2023 [C#8.0／.NET対応](https://www.docswell.com/s/CAPCOM_RandD/5DEVXD-RE2023), p20–24 |
+| 4 | 小さい関数より計算単位をまとめる | Transform の個別 read-modify-write を既存一括 API へ寄せる。Ocean AI の Step と姿勢転送は既に一括化済みなので新規実装扱いにしない | Unity Burst 1.8 [Function pointers](https://docs.unity3d.com/Packages/com.unity.burst@1.8/manual/csharp-function-pointers.html), Performance considerations |
+| 5 | 連続データを収集し、個体をまたぐ SIMD を検討する | snapshot 後に残る LookRotation / Slerp などの演算回数と更新個体数を測定し、必要なら連続配列・chunk 処理へまとめる。Scene の個別変更は現在の安全な反映境界へ集約する | CAPCOM [CEDEC2018 グラフィックス最適化](https://www.docswell.com/s/CAPCOM_RandD/ZXYVJG-cedec2018), p5・7–13; Unity 6 [Job system overview](https://docs.unity3d.com/6000.0/Documentation/Manual/job-system-overview.html), Safety system |
+
+RE:2023 の C# 資料（2023-11-27公開）は、当時の RE ENGINE のゲームロジックが C# で、REVM が開発時に MicroCode、製品時に C++ を出力する独自 AOT であることを説明する（p5–6）。その実装を CoreCLR へそのまま移植する方針にはせず、要素アクセスの inline 化、一時確保の削減、互換性を保った検証という観点を採る（p12・14・20–24）。
+
+次の比較では Math 単体の処理量、callback の呼出し数、native 境界の往復数、確保 byte / 回数を分離し、その後に Release 実シーンの FPS・CPU 経過時間・p99 を確認する。既存の描画完了・30秒経過条件を守り、JIT 診断や hardware intrinsics 無効の検証結果は正式な実シーン性能値に混ぜない。
+
+### 追加実装の契約と検証条件（2026-10-20）
+
+上の候補表のうち、未実装 callback の省略、scope / packet の一時確保削減、個体をまたぐ回転 SIMD を追加実装した。以下は実装と検証の契約であり、性能測定結果ではない。
+
+- **未実装 callback の省略**: 世代と型に対応する Host metadata が有効な場合だけ、override のない `Update` / `FixedUpdate` / `LateUpdate` の native→managed 往復を省く。継承された override は実装ありとして扱う。旧 Host、metadata 不明、所有者・世代の照合不成立、Host エラーでは保守的な従来経路へ戻す。他の lifecycle、実行順、障害隔離は変更しない。
+- **scope**: `ScriptExecutionScope` は不変の値型とし、TLS ごとの単調増加 identity を追加する。identity は世代更新でも再使用せず、枯渇時は例外とする。bridge / component lookup / gizmo の参照、thread、世代、instance、owner、CallID、Scene lifetime、callback を含めて現在 scope と照合する。保持した古い値や同じ native ID で再構築した値は、新しい callback の権限にならない。入れ子・例外・native 呼出し中の一時解除は `finally` で元の nullable scope を復元する。
+- **packet と query**: 小さい同期 UTF8 packet は 256B の stack 領域、大きい packet は呼出しごとの `ArrayPool<byte>` lease、数値だけの書込みは stack 上の wire bytes を使う。strict UTF8、型・範囲・status・owner / lifetime の検証は残す。読み取り query だけが従来の上限付き容量再試行を行い、借用 span の有効期間内に decode する。pool は必ず返却・clear し、入れ子呼出しで共有しない。返却文字列・GameObject・返却配列は所有結果として必要な確保を残し、初回 pool 拡張や利用者 callback まで無確保とはしない。enum 検証は generic `Enum.IsDefined` を使い boxing を避ける。
+- **個体横断 SIMD**: `QuaternionBatch.LookRotation` / `Slerp` は呼出元の連続 span を 4 個体ずつ SoA に集める。末尾は従来の単体演算を使う。成分から明示的に gather し、Vector3 の 12B を越えて読まない。従来の演算順、EPSILON、平行 up の復帰、短弧・非 clamp 補間、呼出元が行っていた追加正規化を維持する。sqrt / 三角関数は lane ごとの `MathF` のまま。長さと重なりは書込み前に検証し、Slerp の完全同位置 in-place だけを許す。計算量は引き続き O(N) で、gather / scatter と三角関数の費用は残る。
+
+有効な consumer は測定用 `ConsumerAfter` の `MarineNaturalEcosystemComponent`、`OceanAdditionalFaunaComponent`、`OceanBenthicFaunaComponent` の 3 種である。元の有効 slot の順で方向・開始姿勢を集め、従来の姿勢 commit 前に結果を戻す。AI の時刻、物理 query、速度による更新判定、Animator 更新、batch の失敗・rollback 境界は維持する。既存の AI Step / 姿勢転送 batch を今回の新規実装として数えない。元プロジェクトへの配布・適用は、測定用 clone の変更とは分けて扱う。
+
+検証では単体・一括 SIMD を保存した scalar 式と比較し、有限値・無限大・符号付きゼロ、NaN の分類、Hamilton 積の符号、退化入力、補間の外挿、4 lane と端数、出力外の領域、overlap の失敗前無変更を確認する。符号反転・共役など bit 操作の契約は NaN payload も確認する。scope については保持値・入れ子・別 thread・世代更新、packet については大きい UTF8・再入・不正文字列・不正応答・失敗後の lease 回収を確認する。warmup 後の `GC.GetAllocatedBytesForCurrentThread` は隔離した fixture の一時確保の回帰であり、FPS や GC pause の測定には使わない。
+
+正式比較は、保存した **Before（C# SIMD 前）／SimdOnly（単体 C# SIMD のみ）／After（上記追加実装と 3 consumer）** の 3 条件を分けて保持する。Release の `OceanEcosystem1km.scene` で、同じ入力・camera・描画設定・描画完了確認・30秒待機条件を使い、実 wall interval の passive 計測と native scope 計測を分ける。短い区間と長い区間を保持し、全 run を報告する。JIT 出力確認、intrinsics 無効テスト、追加診断は正式値へ混ぜない。
+
+native scope は inclusive 時間として扱い、親 scope とその子、または重なった scope を加算して総 CPU 時間を作らない。callback 数・境界往復・確保量・実 wall FPS / p99 を別の指標として比較し、追加実装全体の差を単体 SIMD や一つの対策だけの因果効果と断定しない。性能数値は正式結果の検証後に別途記録する。

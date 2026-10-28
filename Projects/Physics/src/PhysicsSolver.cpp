@@ -3,6 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include <Physics/PhysicsSolver.hpp>
+#include <Physics/BroadPhaseDebugSnapshot.hpp>
+#include <array>
 #include <Physics/PhysicsMaterial.hpp>
 #include <Physics/GJK.hpp>
 #include <Physics/EPA.hpp>
@@ -161,6 +163,7 @@ namespace fbzz::physics
             size_t index = 0;
             AABB bounds;
             math::Vector3 center = math::Vector3::ZERO;
+            int leaf = -1;
         };
 
         struct BroadPhaseNode
@@ -170,6 +173,8 @@ namespace fbzz::physics
             int right = -1;
             int start = 0;
             int count = 0;
+            int parent = -1;
+            bool dirty = false;
 
             bool IsLeaf() const { return left < 0 && right < 0; }
         };
@@ -238,7 +243,7 @@ namespace fbzz::physics
                                std::vector<int>& order,
                                std::vector<BroadPhaseNode>& nodes,
                                int start,
-                               int count)
+                               int count, int parent = -1)
         {
             constexpr int LEAF_SIZE = 4;
 
@@ -249,6 +254,7 @@ namespace fbzz::physics
             node.bounds = ComputeBounds(proxies, order, start, count);
             node.start = start;
             node.count = count;
+            node.parent = parent;
 
             if (count <= LEAF_SIZE)
                 return nodeIndex;
@@ -258,8 +264,8 @@ namespace fbzz::physics
             const int splitAxis = LongestAxis(centerSize);
             const int split = start + count / 2;
 
-            /// @note 毎フレーム再構築する一時 BVH のため SAH ではなく中央値分割を使う。
-            ///       構築を O(n log n) に抑えつつ、総当たりより候補ペア数を安定して削減する。
+            /// @note Rebuild on membership changes or quality degradation uses median splitting instead of SAH.
+            /// @note 構築を O(n log n) に抑えつつ、総当たりより候補ペア数を安定して削減する。
             std::nth_element(order.begin() + start,
                              order.begin() + split,
                              order.begin() + start + count,
@@ -269,8 +275,8 @@ namespace fbzz::physics
                              });
 
             /// @note 全中心が同一点に潰れても split は count/2 で進むため、再帰は必ず収束する。
-            node.left = BuildBroadPhaseBVH(proxies, order, nodes, start, split - start);
-            node.right = BuildBroadPhaseBVH(proxies, order, nodes, split, start + count - split);
+            node.left = BuildBroadPhaseBVH(proxies, order, nodes, start, split - start, nodeIndex);
+            node.right = BuildBroadPhaseBVH(proxies, order, nodes, split, start + count - split, nodeIndex);
             return nodeIndex;
         }
 
@@ -281,15 +287,15 @@ namespace fbzz::physics
             if (layerFilter && !layerFilter(a.layer, b.layer)) return true;
 
             /// @note 同じ剛体に属するコライダー同士は当たらない。«胴+脚4本» のように 1 体を
-            ///       複数形状で表すと重なりは当然で、解こうとすると自分自身を押してしまう。
-            ///       トリガー判定より先に見るのも、自分の一部への侵入通知に意味が無いため。
+            /// @note 複数形状で表すと重なりは当然で、解こうとすると自分自身を押してしまう。
+            /// @note トリガー判定より先に見るのも、自分の一部への侵入通知に意味が無いため。
             if (a.body && a.body == b.body) return true;
 
             if (a.isTrigger || b.isTrigger) return false;
 
             /// @note 非 Trigger の Static / Sleeping 同士は解決しても状態が変わらない。特に
-            ///       Sleeping dynamic vs static TriangleMesh は、接触維持のためだけに Terrain BVH
-            ///       クエリを毎 substep 実行し 1 フレーム数十 ms を消費しうる。
+            /// @note Sleeping dynamic vs static TriangleMesh は、接触維持のためだけに Terrain BVH
+            /// @note クエリを毎 substep 実行し 1 フレーム数十 ms を消費しうる。
             const bool inactiveA = !a.body || a.body->IsStatic() || a.body->IsSleeping();
             const bool inactiveB = !b.body || b.body->IsStatic() || b.body->IsSleeping();
             return inactiveA && inactiveB;
@@ -460,49 +466,279 @@ namespace fbzz::physics
             outC1 = p1 + d1 * s;
             outC2 = p2 + d2 * t;
         }
-    } // namespace
+    } /// @note namespace
 
-    /// @name BroadPhase
+    struct PhysicsSolver::BroadPhaseState
+    {
+        std::vector<BroadPhaseProxy> proxies;
+        std::vector<int> order;
+        std::vector<BroadPhaseNode> nodes;
+        std::vector<int> dirtyNodes;
+        std::vector<int> changedProxies;
+        double areaSum = 0.0;
+        double buildCost = 0.0;
+        bool finite = true;
+    };
+
+    PhysicsSolver::PhysicsSolver() = default;
+    PhysicsSolver::~PhysicsSolver() = default;
+    PhysicsSolver::PhysicsSolver(PhysicsSolver&& other) noexcept = default;
+    PhysicsSolver& PhysicsSolver::operator=(PhysicsSolver&& other) noexcept = default;
+    PhysicsSolver::PhysicsSolver(const PhysicsSolver& other)
+        : m_broadPhase(other.m_broadPhase ? std::make_unique<BroadPhaseState>(*other.m_broadPhase) : nullptr) {}
+    PhysicsSolver& PhysicsSolver::operator=(const PhysicsSolver& other)
+    {
+        if (this != &other) m_broadPhase = other.m_broadPhase
+            ? std::make_unique<BroadPhaseState>(*other.m_broadPhase) : nullptr;
+        return *this;
+    }
+
+    namespace {
+    bool SameBroadPhaseBounds(const AABB& a, const AABB& b)
+    {
+        return a.min.x == b.min.x && a.min.y == b.min.y && a.min.z == b.min.z
+            && a.max.x == b.max.x && a.max.y == b.max.y && a.max.z == b.max.z;
+    }
+
+    bool FiniteBroadPhaseBounds(const AABB& bounds)
+    {
+        return std::isfinite(bounds.min.x) && std::isfinite(bounds.min.y) && std::isfinite(bounds.min.z)
+            && std::isfinite(bounds.max.x) && std::isfinite(bounds.max.y) && std::isfinite(bounds.max.z)
+            && bounds.min.x <= bounds.max.x && bounds.min.y <= bounds.max.y && bounds.min.z <= bounds.max.z;
+    }
+
+    double BroadPhaseArea(const AABB& bounds)
+    {
+        const double x = static_cast<double>(bounds.max.x) - bounds.min.x;
+        const double y = static_cast<double>(bounds.max.y) - bounds.min.y;
+        const double z = static_cast<double>(bounds.max.z) - bounds.min.z;
+        return 2.0 * (x * y + y * z + z * x);
+    }
+    } /// @note namespace
+
     void PhysicsSolver::BroadPhase(const std::vector<ColliderInstance>& colliders,
                                     std::vector<CollisionPair>& outPairs,
                                     const std::function<bool(int, int)>& layerFilter)
     {
-        /// @note World::Step は substep ごとに BroadPhase を呼ぶ。毎回 vector を新規確保すると
-        ///       コライダー数が多いシーンほど allocator コストが目立つため、一時 BVH 用バッファを
-        ///       スレッドローカルに保持し容量をフレーム間で再利用する。
-        static thread_local std::vector<BroadPhaseProxy> proxies;
-        static thread_local std::vector<int> order;
-        static thread_local std::vector<BroadPhaseNode> nodes;
+        if (!m_broadPhase) m_broadPhase = std::make_unique<BroadPhaseState>();
+        auto& state = *m_broadPhase;
+        auto& proxies = state.proxies;
+        auto& order = state.order;
+        auto& nodes = state.nodes;
+        auto& dirty = state.dirtyNodes;
+        auto& changed = state.changedProxies;
+        dirty.clear();
+        changed.clear();
+        bool rebuild = nodes.empty() || !state.finite;
+        bool finite = true;
+        std::size_t escapes = 0;
+        const std::size_t escapeLimit = std::max(std::size_t{8}, proxies.size() / 8);
+        std::size_t validCount = 0;
+        for (std::size_t index = 0; index < colliders.size(); ++index) {
+            if (!colliders[index].collider) continue;
+            const AABB bounds = colliders[index].collider->GetAABB();
+            finite &= FiniteBroadPhaseBounds(bounds);
+            if (validCount == proxies.size()) {
+                proxies.push_back({index, bounds, bounds.Center()});
+                rebuild = true;
+            } else {
+                auto& proxy = proxies[validCount];
+                if (proxy.index != index) rebuild = true;
+                if (!SameBroadPhaseBounds(proxy.bounds, bounds)) {
+                    proxy.bounds = bounds;
+                    proxy.center = bounds.Center();
+                    if (!rebuild) {
+                        changed.push_back(static_cast<int>(validCount));
+                        if (!nodes[static_cast<std::size_t>(proxy.leaf)].bounds.Overlaps(bounds)) ++escapes;
+                        rebuild = escapes > escapeLimit;
+                    }
+                }
+                proxy.index = index;
+            }
+            ++validCount;
+        }
+        if (validCount != proxies.size()) {
+            proxies.resize(validCount);
+            rebuild = true;
+        }
+        state.finite = finite;
+        if (proxies.size() < 2) { nodes.clear(); return; }
 
-        proxies.clear();
-        proxies.reserve(colliders.size());
-
-        for (size_t i = 0; i < colliders.size(); ++i)
-        {
-            if (!colliders[i].collider) continue;
-
-            const AABB bounds = colliders[i].collider->GetAABB();
-            BroadPhaseProxy proxy;
-            proxy.index = i;
-            proxy.bounds = bounds;
-            proxy.center = bounds.Center();
-            proxies.push_back(proxy);
+        /// @note 不正境界は分割比較へ入れず、現在のAABB同士の判定へ戻して正常な個体の候補を保つ。
+        if (!finite) {
+            nodes.clear();
+            for (std::size_t first = 0; first < proxies.size(); ++first)
+                for (std::size_t second = first + 1; second < proxies.size(); ++second)
+                    AddBroadPhasePair(colliders, proxies[first], proxies[second], outPairs, layerFilter);
+            return;
         }
 
-        if (proxies.size() < 2) return;
+        /// @note 多数が旧葉の外へ移動した場合はrefit後の即再構築を避け、中央値分割を先に選ぶ。
+        if (!rebuild) {
+            for (int index : changed) {
+                int current = proxies[static_cast<std::size_t>(index)].leaf;
+                while (current >= 0 && !nodes[static_cast<std::size_t>(current)].dirty) {
+                    auto& node = nodes[static_cast<std::size_t>(current)];
+                    node.dirty = true;
+                    dirty.push_back(current);
+                    current = node.parent;
+                }
+            }
+        }
+        if (!rebuild && !dirty.empty()) {
+            const auto refit = [&](int index) {
+                auto& node = nodes[static_cast<std::size_t>(index)];
+                if (!node.dirty) return;
+                if (!node.IsLeaf()) state.areaSum -= BroadPhaseArea(node.bounds);
+                node.bounds = node.IsLeaf() ? ComputeBounds(proxies, order, node.start, node.count)
+                    : MergeBounds(nodes[static_cast<std::size_t>(node.left)].bounds,
+                        nodes[static_cast<std::size_t>(node.right)].bounds);
+                if (!node.IsLeaf()) state.areaSum += BroadPhaseArea(node.bounds);
+                node.dirty = false;
+            };
+            /// @note preorderの添字を逆順に処理すれば、共有祖先も子の更新後に一度だけ反映できる。
+            if (dirty.size() > nodes.size() / 4) {
+                for (std::size_t index = nodes.size(); index > 0; --index) refit(static_cast<int>(index - 1));
+            } else {
+                std::sort(dirty.begin(), dirty.end(), std::greater<int>{});
+                for (int index : dirty) refit(index);
+            }
+            const double rootArea = BroadPhaseArea(nodes.front().bounds);
+            const double cost = rootArea > 0.0 ? state.areaSum / rootArea : 0.0;
+            rebuild = cost > state.buildCost * 1.5;
+        }
 
-        order.resize(proxies.size());
-        for (size_t i = 0; i < order.size(); ++i)
-            order[i] = static_cast<int>(i);
+        if (rebuild) {
+            order.resize(proxies.size());
+            for (std::size_t index = 0; index < order.size(); ++index) order[index] = static_cast<int>(index);
+            nodes.clear();
+            nodes.reserve(proxies.size() * 2);
+            BuildBroadPhaseBVH(proxies, order, nodes, 0, static_cast<int>(proxies.size()));
+            state.areaSum = 0.0;
+            for (std::size_t index = 0; index < nodes.size(); ++index) {
+                const auto& node = nodes[index];
+                if (!node.IsLeaf()) { state.areaSum += BroadPhaseArea(node.bounds); continue; }
+                for (int offset = 0; offset < node.count; ++offset)
+                    proxies[static_cast<std::size_t>(order[static_cast<std::size_t>(node.start + offset)])].leaf = static_cast<int>(index);
+            }
+            const double rootArea = BroadPhaseArea(nodes.front().bounds);
+            state.buildCost = rootArea > 0.0 ? state.areaSum / rootArea : 0.0;
+        }
+        /// @see https://github.com/godotengine/godot/blob/master/modules/godot_physics_3d/godot_broad_phase_3d_bvh.cpp Godotの保持BVHとmove更新の境界。
+        CollectSelfPairs(colliders, proxies, order, nodes, 0, outPairs, layerFilter);
+    }
 
-        nodes.clear();
-        nodes.reserve(proxies.size() * 2);
-        /// @note コライダー AABB から毎ステップ一時 BVH を構築し、重なり得るノード同士だけを走査する。
-        ///       全ペア比較 O(n^2) は非接触の遠いオブジェクトが増えるほど NarrowPhase 前に詰まる。
-        const int root = BuildBroadPhaseBVH(proxies, order, nodes, 0, static_cast<int>(proxies.size()));
-        CollectSelfPairs(colliders, proxies, order, nodes, root, outPairs, layerFilter);
-        return;
+    void PhysicsSolver::CaptureBroadPhaseDebugSnapshot(const BroadPhaseDebugRequest& request,
+        const std::vector<ColliderInstance>& colliders, const std::vector<CollisionPair>& pairs,
+        std::size_t selectedIndex, BroadPhaseDebugSnapshot& snapshot) const
+    {
+        if (!request.enabled || !m_broadPhase) return;
+        const auto& state = *m_broadPhase;
+        snapshot.structure = state.proxies.size() < 2 ? BroadPhaseDebugStructure::EMPTY
+            : (state.finite ? BroadPhaseDebugStructure::BVH : BroadPhaseDebugStructure::BRUTE_FORCE);
+        snapshot.totalNodes = state.nodes.size();
+        snapshot.totalProxies = state.proxies.size();
+        snapshot.totalPairs = pairs.size();
+        snapshot.broadPhaseRan = true;
+        snapshot.candidatePairsAvailable = request.candidatePairs;
+        const auto findProxy = [&](std::size_t sourceIndex) -> const BroadPhaseProxy* {
+            const auto found = std::lower_bound(state.proxies.begin(), state.proxies.end(), sourceIndex,
+                [](const BroadPhaseProxy& proxy, std::size_t index) { return proxy.index < index; });
+            return found != state.proxies.end() && found->index == sourceIndex ? &*found : nullptr;
+        };
+        const BroadPhaseProxy* selected = request.selectedOnly ? findProxy(selectedIndex) : nullptr;
+        if (request.selectedOnly && (!snapshot.selectionValid || !selected)) return;
 
+        const auto addNode = [&](int index, uint32_t depth) {
+            const auto& node = state.nodes[static_cast<std::size_t>(index)];
+            if (depth < request.minDepth || depth > request.maxDepth) return;
+            if (snapshot.nodes.size() >= request.maxNodes) { snapshot.nodesTruncated = true; return; }
+            snapshot.nodes.push_back({node.bounds, index, node.parent, node.left, node.right,
+                depth, static_cast<std::size_t>(node.count), node.IsLeaf()});
+        };
+        if (request.hierarchy && !state.nodes.empty()) {
+            if (selected) {
+                std::array<int, BROAD_PHASE_DEBUG_MAX_DEPTH + 1> ancestors{};
+                std::size_t count = 0;
+                int current = selected->leaf;
+                while (current >= 0 && count < ancestors.size()) {
+                    ancestors[count++] = current;
+                    current = state.nodes[static_cast<std::size_t>(current)].parent;
+                }
+                if (current >= 0) { snapshot.nodesTruncated = true; snapshot.workLimitReached = true; }
+                for (std::size_t index = count; index > 0; --index) {
+                    ++snapshot.examinedNodes;
+                    addNode(ancestors[index - 1], static_cast<uint32_t>(count - index));
+                }
+            } else if (request.maxNodes != 0) {
+                struct Visit { int index; uint32_t depth; };
+                std::array<Visit, BROAD_PHASE_DEBUG_MAX_DEPTH + 1> stack{};
+                std::size_t top = 0;
+                stack[top++] = {0, 0};
+                while (top != 0 && snapshot.examinedNodes < BROAD_PHASE_DEBUG_MAX_WORK) {
+                    const Visit visit = stack[--top];
+                    ++snapshot.examinedNodes;
+                    const auto& node = state.nodes[static_cast<std::size_t>(visit.index)];
+                    addNode(visit.index, visit.depth);
+                    if (snapshot.nodes.size() >= request.maxNodes) {
+                        snapshot.nodesTruncated |= top != 0 || (!node.IsLeaf() && visit.depth < request.maxDepth);
+                        break;
+                    }
+                    if (node.IsLeaf() || visit.depth >= request.maxDepth) continue;
+                    if (top + 2 > stack.size()) {
+                        snapshot.nodesTruncated = true;
+                        snapshot.workLimitReached = true;
+                        continue;
+                    }
+                    stack[top++] = {node.right, visit.depth + 1};
+                    stack[top++] = {node.left, visit.depth + 1};
+                }
+                if (top != 0 && snapshot.examinedNodes >= BROAD_PHASE_DEBUG_MAX_WORK) {
+                    snapshot.nodesTruncated = true;
+                    snapshot.workLimitReached = true;
+                }
+            } else snapshot.nodesTruncated = true;
+        }
+
+        if (request.bounds) {
+            const std::size_t count = selected ? std::size_t{1} : state.proxies.size();
+            for (std::size_t index = 0; index < count; ++index) {
+                if (snapshot.proxies.size() >= request.maxProxies) { snapshot.proxiesTruncated = true; break; }
+                if (snapshot.examinedProxies >= BROAD_PHASE_DEBUG_MAX_WORK) {
+                    snapshot.proxiesTruncated = true;
+                    snapshot.workLimitReached = true;
+                    break;
+                }
+                ++snapshot.examinedProxies;
+                const auto& proxy = selected ? *selected : state.proxies[index];
+                if (!FiniteBroadPhaseBounds(proxy.bounds)) { snapshot.proxiesTruncated = true; continue; }
+                const auto& collider = colliders[proxy.index];
+                snapshot.proxies.push_back({{}, proxy.bounds, proxy.index,
+                    !collider.body || collider.body->IsStatic(), collider.body && collider.body->IsSleeping(),
+                    collider.isTrigger, collider.layer});
+            }
+        }
+        if (request.candidatePairs) {
+            for (const auto& pair : pairs) {
+                if (snapshot.pairs.size() >= request.maxPairs) { snapshot.pairsTruncated = true; break; }
+                if (snapshot.examinedPairs >= BROAD_PHASE_DEBUG_MAX_WORK) {
+                    snapshot.pairsTruncated = true;
+                    snapshot.workLimitReached = true;
+                    break;
+                }
+                ++snapshot.examinedPairs;
+                const auto first = static_cast<std::size_t>(pair.colliderA - colliders.data());
+                const auto second = static_cast<std::size_t>(pair.colliderB - colliders.data());
+                if (selected && first != selectedIndex && second != selectedIndex) continue;
+                const auto* a = findProxy(first);
+                const auto* b = findProxy(second);
+                if (!a || !b || !FiniteBroadPhaseBounds(a->bounds) || !FiniteBroadPhaseBounds(b->bounds)) {
+                    snapshot.pairsTruncated = true;
+                    continue;
+                }
+                snapshot.pairs.push_back({{}, {}, a->bounds, b->bounds, first, second});
+            }
+        }
     }
 
     /// @name NarrowPhase
@@ -683,7 +919,7 @@ namespace fbzz::physics
             else if (tA == ColliderType::CONVEX_HULL || tB == ColliderType::CONVEX_HULL)
             {
                 /// @note CONVEX_HULL を含むペアは GJK + EPA で処理する
-                ///       CONVEX_HULL vs CONVEX_HULL
+                /// @note CONVEX_HULL vs CONVEX_HULL
                 if (tA == ColliderType::CONVEX_HULL && tB == ColliderType::CONVEX_HULL)
                 {
                     hit = TestConvexConvex(
@@ -706,8 +942,8 @@ namespace fbzz::physics
                          (tA == ColliderType::HEIGHT_FIELD && tB == ColliderType::CONVEX_HULL))
                 {
                     /// @note この分岐は CONVEX_HULL を含む組を «先に» 全部拾い、下の HEIGHT_FIELD
-                    ///       分岐には制御が届かない。地形との組もここで捌かないと «凸包だけ
-                    ///       地形をすり抜ける» ことになる。
+                    /// @note 分岐には制御が届かない。地形との組もここで捌かないと «凸包だけ
+                    /// @note 地形をすり抜ける» ことになる。
                     const bool swapped = (tA == ColliderType::HEIGHT_FIELD);
                     const auto& hull = *static_cast<ConvexHullCollider*>(
                         (swapped ? pair.colliderB : pair.colliderA)->collider);
@@ -827,7 +1063,7 @@ namespace fbzz::physics
             else if (tA == ColliderType::CYLINDER || tB == ColliderType::CYLINDER)
             {
                 /// @note ConvexHull / TriangleMesh / HeightField との組は上の分岐が先に拾う。
-                ///       ここへ来るのは基本形状同士の組だけ。
+                /// @note ここへ来るのは基本形状同士の組だけ。
                 if (tA == ColliderType::CYLINDER && tB == ColliderType::CYLINDER)
                 {
                     hit = TestCylinderCylinder(
@@ -895,8 +1131,8 @@ namespace fbzz::physics
             if (cp.isTrigger) continue;
 
             /// @note normal に対して垂直な 2 軸を Gram-Schmidt で構築
-            ///       法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
-            ///       法線インパルス側の処理は続けられるよう、既定軸を入れておく。
+            /// @note 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
+            /// @note 法線インパルス側の処理は続けられるよう、既定軸を入れておく。
             math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
             if (t0.LengthSq() < 1e-6f)
                 t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
@@ -915,7 +1151,7 @@ namespace fbzz::physics
             if (!activeA && !activeB) return;
 
             /// @note Player Capsule と Terrain Mesh のような単一接触では island graph を作る意味がない。
-            ///       unordered_map / vector island 構築を避け、Solver 本体だけを実行する。
+            /// @note unordered_map / vector island 構築を避け、Solver 本体だけを実行する。
             for (int i = 0; i < VELOCITY_ITER; ++i)
             {
                 ResolveVelocity(cp);
@@ -926,8 +1162,8 @@ namespace fbzz::physics
         }
 
         /// @note Resolve は World::Step の substep ごとに呼ばれる。contacts が多いフレームで
-        ///       毎回 unordered_map のバケット確保を行うと solver 本体以外の CPU 時間が増える
-        ///       ため容量を再利用する。
+        /// @note 毎回 unordered_map のバケット確保を行うと solver 本体以外の CPU 時間が増える
+        /// @note ため容量を再利用する。
         static thread_local std::vector<std::vector<size_t>> islands;
         static thread_local std::unordered_map<RigidBody*, size_t> bodyToIsland;
         islands.clear();
@@ -1003,7 +1239,7 @@ namespace fbzz::physics
         const math::Vector3 rB = bodyB ? cp.point - bodyB->GetPosition() : math::Vector3::ZERO;
 
         /// @note 角速度による接触点の速度も含める。回転しながらぶつかる物体では
-        ///       重心速度だけを見ると実際の当たりの強さと合わない。
+        /// @note 重心速度だけを見ると実際の当たりの強さと合わない。
         const math::Vector3 vAContact = vA + math::Vector3::Cross(wA, rA);
         const math::Vector3 vBContact = vB + math::Vector3::Cross(wB, rB);
         return vAContact - vBContact;
@@ -1026,8 +1262,8 @@ namespace fbzz::physics
         const float         vRelN = math::Vector3::Dot(vRel, cp.normal);
 
         /// @note Warm Start の過去インパルスが強すぎると小さい Collider が大きい床上で微小な
-        ///       上向き速度を持つ。cachedNormalImpulse が残る接触は即 return せず、下の PGS
-        ///       累積クランプで過剰分を戻す。
+        /// @note 上向き速度を持つ。cachedNormalImpulse が残る接触は即 return せず、下の PGS
+        /// @note 累積クランプで過剰分を戻す。
         if (vRelN > 0.0f && (!cp.cacheImpulse || cp.cachedNormalImpulse <= 0.0f)) return;
 
         float e = 0.3f;
@@ -1344,8 +1580,8 @@ namespace fbzz::physics
         if (dist < 1e-6f)
         {
             /// @note 球中心が AABB の内部にある。最近点が中心そのものになるため法線を作れず、
-            ///       6 面のうち «一番近い面» を選び押し出す。上向き固定にすると壁の中に生成
-            ///       された・高速貫通した球が形状に関係なく真上へ飛ぶため、最短の面を使う。
+            /// @note 6 面のうち «一番近い面» を選び押し出す。上向き固定にすると壁の中に生成
+            /// @note された・高速貫通した球が形状に関係なく真上へ飛ぶため、最短の面を使う。
             const float toFace[6] = {
                 center.x - aabb.min.x, aabb.max.x - center.x,
                 center.y - aabb.min.y, aabb.max.y - center.y,
@@ -1452,18 +1688,18 @@ namespace fbzz::physics
 
     namespace
     {
-        /// 箱の内部に埋まった線分を外へ出すときの «出口»。
+        /// @note 箱の内部に埋まった線分を外へ出すときの «出口»。
         struct BoxExit
         {
-            math::Vector3 outward;     ///< 押し出す向き (ワールド空間)
-            float         distance;    ///< 線分の最深点を面まで戻すのに要る距離
-            bool          bindsStart;  ///< その距離を決めているのが線分の始点側か
+            math::Vector3 outward;     ///< @note 押し出す向き (ワールド空間)
+            float         distance;    ///< @note 線分の最深点を面まで戻すのに要る距離
+            bool          bindsStart;  ///< @note その距離を決めているのが線分の始点側か
         };
 
         /// @brief 箱の 6 面のうち «線分全体を出すのに一番浅くて済む面» を選ぶ。
         /// @note 線分が箱に埋まると最近点は距離 0 の点が無数にあり、1 点だけで決めると
-        ///       たまたま拾った端点次第で押し出し方向が変わる。面は平面なので最深点は
-        ///       必ず端点のどちらかになり、線分全体 (両端点) で判定すれば足りる。
+        /// @note たまたま拾った端点次第で押し出し方向が変わる。面は平面なので最深点は
+        /// @note 必ず端点のどちらかになり、線分全体 (両端点) で判定すれば足りる。
         /// @note localStart / localEnd は箱の中心を原点、axes を基底とした座標。
         BoxExit ShallowestBoxExit(const math::Vector3& localStart,
                                   const math::Vector3& localEnd,
@@ -1488,7 +1724,7 @@ namespace fbzz::physics
             }
             return best;
         }
-    } // namespace
+    } /// @note namespace
 
     bool PhysicsSolver::TestAABBCapsule(const AABBCollider& b,
                                         const CapsuleCollider& c,
@@ -1523,7 +1759,7 @@ namespace fbzz::physics
         if (dist < 1e-6f)
         {
             /// @note カプセル軸がボックスの内部に埋まっている。最近点が軸上の点そのものになるため
-            ///       法線を作れない。線分全体を «一番浅い面» から押し出す。
+            /// @note 法線を作れない。線分全体を «一番浅い面» から押し出す。
             const math::Vector3 center = aabb.Center();
             const math::Vector3 worldAxes[3] = {
                 math::Vector3::RIGHT, math::Vector3::UP, math::Vector3::FORWARD
@@ -1575,7 +1811,7 @@ namespace fbzz::physics
 
     namespace
     {
-        /// 三角形上の最近傍点を Voronoi 領域分類で求める
+        /// @note 三角形上の最近傍点を Voronoi 領域分類で求める
         math::Vector3 ClosestPointOnTriangle(const math::Vector3& p, const Triangle& tri)
         {
             const math::Vector3& a = tri.v[0];
@@ -1645,8 +1881,8 @@ namespace fbzz::physics
 
         /// @brief 線分と三角形の最近接点を、端点サンプリングなしで求める。
         /// @note 端点と三角形、各辺、面内部交差を全候補として比較する。端点・中点だけの近似は
-        ///       傾斜面や三角形境界で最近接点と法線が移動方向に応じて跳び、カプセルの
-        ///       前後振動を誘発する。
+        /// @note 傾斜面や三角形境界で最近接点と法線が移動方向に応じて跳び、カプセルの
+        /// @note 前後振動を誘発する。
         float ClosestPointsOnSegmentTriangle(const math::Vector3& segS,
                                               const math::Vector3& segE,
                                               const Triangle&       tri,
@@ -1708,7 +1944,7 @@ namespace fbzz::physics
 
             return bestDistSq;
         }
-    } // namespace
+    } /// @note namespace
 
     bool PhysicsSolver::TestSphereTriangle(const SphereCollider& s,
                                             const Triangle& tri,
@@ -1726,7 +1962,7 @@ namespace fbzz::physics
         if (dist < 1e-6f)
         {
             /// @note 球中心が三角形面上またはほぼ一致: 面法線を使用
-            ///       双面: 球中心が裏側なら法線を反転
+            /// @note 双面: 球中心が裏側なら法線を反転
             math::Vector3 n = tri.normal;
             if (math::Vector3::Dot(n, center - tri.v[0]) < 0.0f) n = -n;
             out.normal = n;
@@ -1747,7 +1983,7 @@ namespace fbzz::physics
                                           ContactPoint& out)
     {
         /// @note SAT (Separating Axis Theorem): 13 軸をテストする
-        ///       軸: 3 面法線 (AABB 軸) + 3 辺 × 3 AABB 軸 = 9 + 1 三角形法線 = 13
+        /// @note 軸: 3 面法線 (AABB 軸) + 3 辺 × 3 AABB 軸 = 9 + 1 三角形法線 = 13
         const AABB&         aabb = b.GetAABB();
         const math::Vector3 center = aabb.Center();
         const math::Vector3 half   = aabb.Extents();
@@ -1817,7 +2053,7 @@ namespace fbzz::physics
                 if (!TestAxis(math::Vector3::Cross(e[i], aabbAxes[j]))) return false;
 
         /// @note 全軸で重なり → 衝突
-        ///       法線方向: AABB 中心 → 三角形 重心 に対して bestAxis を合わせる
+        /// @note 法線方向: AABB 中心 → 三角形 重心 に対して bestAxis を合わせる
         const math::Vector3 triCentroid = (v[0] + v[1] + v[2]) / 3.0f;
         if (math::Vector3::Dot(bestAxis, triCentroid) < 0.0f)
             bestAxis = -bestAxis;
@@ -1838,8 +2074,8 @@ namespace fbzz::physics
         const math::Vector3 segE = c.GetSegmentEnd();
 
         /// @note Terrain MeshCollider では BroadPhase/BVH の AABB が重なっても、カプセルが
-        ///       三角形面から半径以上離れているケースが多い。符号付き距離だけで届かないと
-        ///       分かれば、線分-線分最近傍や ClosestPointOnTriangle の重い計算へ進まない。
+        /// @note 三角形面から半径以上離れているケースが多い。符号付き距離だけで届かないと
+        /// @note 分かれば、線分-線分最近傍や ClosestPointOnTriangle の重い計算へ進まない。
         const float signedDistS = math::Vector3::Dot(segS - tri.v[0], tri.normal);
         const float signedDistE = math::Vector3::Dot(segE - tri.v[0], tri.normal);
         if ((signedDistS > c.m_radius && signedDistE > c.m_radius) ||
@@ -1879,15 +2115,15 @@ namespace fbzz::physics
     {
         /// @brief GJK が渡す探索方向は «長さ 0 になりうる» (同心球・入れ子カプセル・退化した単体)。
         /// @note サポート関数は全域で定義される必要があり (部分関数だと単体が組めない)、
-        ///       方向が無いときに返す点は結果に影響しないため固定方向で振動を防ぐ。
+        /// @note 方向が無いときに返す点は結果に影響しないため固定方向で振動を防ぐ。
         /// @note Normalized() は長さ 0 で assert する契約だが、ここは退化が正常系のため
-        ///       NormalizedOr を使う。
+        /// @note NormalizedOr を使う。
         math::Vector3 SupportDirection(const math::Vector3& dir)
         {
             return dir.NormalizedOr(math::Vector3::UP);
         }
 
-        /// 各形状の GJK サポート関数
+        /// @note 各形状の GJK サポート関数
         math::Vector3 SupportSphere(const void* shape, const math::Vector3& dir)
         {
             const auto* s = static_cast<const SphereCollider*>(shape);
@@ -1931,7 +2167,7 @@ namespace fbzz::physics
             return d1 >= d2 ? tri->v[1] : tri->v[2];
         }
 
-        /// GJK (Simplex 付き) + EPA から ContactPoint を構築するヘルパー
+        /// @note GJK (Simplex 付き) + EPA から ContactPoint を構築するヘルパー
         bool GJKEPAToContact(const void* shapeA, SupportFn fnA,
                              const void* shapeB, SupportFn fnB,
                              ContactPoint& out)
@@ -1947,7 +2183,7 @@ namespace fbzz::physics
             out.point  = (epa.contactA + epa.contactB) * 0.5f;
             return true;
         }
-    } // namespace
+    } /// @note namespace
 
     bool PhysicsSolver::TestAABBOBB(const AABBCollider& a,
                                     const OBBCollider& b,
@@ -2002,7 +2238,7 @@ namespace fbzz::physics
         if (dist < 1e-6f)
         {
             /// @note カプセル軸が OBB の内部に埋まっている。AABB 版と同じく、拾った 1 点ではなく
-            ///       線分全体を出せる面を選ぶ。
+            /// @note 線分全体を出せる面を選ぶ。
             const math::Vector3 toStart = c.GetSegmentStart() - b.GetCenter();
             const math::Vector3 toEnd   = c.GetSegmentEnd()   - b.GetCenter();
             const math::Vector3 localStart = {
@@ -2233,8 +2469,8 @@ namespace fbzz::physics
         if (candidates.empty()) return false;
 
         /// @note 最深接触を基準に、同じ接触パッチに属する三角形だけをマージする。三角形ごとに
-        ///       法線を持つため、境界を跨ぐたびに最深の1枚を選ぶと法線・摩擦方向がフレーム
-        ///       単位で切り替わる。近い接触点かつ近い法線の候補に限定し、鋭い角は丸めない。
+        /// @note 法線を持つため、境界を跨ぐたびに最深の1枚を選ぶと法線・摩擦方向がフレーム
+        /// @note 単位で切り替わる。近い接触点かつ近い法線の候補に限定し、鋭い角は丸めない。
         auto deepest = std::max_element(candidates.begin(), candidates.end(),
             [](const ContactPoint& lhs, const ContactPoint& rhs) {
                 return lhs.depth < rhs.depth;
@@ -2361,7 +2597,7 @@ namespace fbzz::physics
 
     /// @name HeightFieldCollider 用テスト関数
     /// @note 内部 BVH を持ち TriangleMeshCollider と同一アルゴリズムで衝突判定できる。
-    ///       型が異なるだけで実装は BVH Query に委譲する点で同一。
+    /// @note 型が異なるだけで実装は BVH Query に委譲する点で同一。
 
     bool PhysicsSolver::TestSphereHeightField(const SphereCollider& s,
                                                const HeightFieldCollider& hf,
@@ -2484,4 +2720,4 @@ namespace fbzz::physics
         return found;
     }
 
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

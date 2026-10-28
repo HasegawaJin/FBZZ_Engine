@@ -15,6 +15,7 @@
 #include <Physics/FluidVolume.hpp>
 #include <Physics/RigidBody.hpp>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace fbzz::tests {
@@ -56,7 +57,7 @@ physics::FluidVolumeDesc FlatFluid(const physics::RigidBody& body)
     return desc;
 }
 
-} // namespace
+} /// @note namespace
 
 class FluidVolumeTest : public testkit::Fixture {};
 
@@ -178,4 +179,86 @@ TEST_F(FluidVolumeTest, ContainsIsFalseOutsideTheRectangle)
     EXPECT_FALSE(volume.Contains(math::Vector3(0.0f, 0.0f, kHalfExtent + 1.0f)));
 }
 
-} // namespace fbzz::tests
+TEST_F(FluidVolumeTest, ShapeCallbackUsesTheSameSubstepClockAsTheSurface)
+{
+    auto body = MakeBody({0.0f, -5.0f, 0.0f});
+    auto desc = FlatFluid(body);
+    desc.containsXZ = [](float x, float z, float time) {
+        const float dx = x - time;
+        return dx * dx + z * z <= 4.0f;
+    };
+    physics::FluidVolume volume(desc);
+    EXPECT_TRUE(volume.Contains({1.0f, -5.0f, 0.0f}));
+    EXPECT_FALSE(volume.Contains({3.0f, -5.0f, 0.0f}));
+    volume.Tick(2.0f);
+    EXPECT_TRUE(volume.Contains({3.0f, -5.0f, 0.0f}));
+    EXPECT_FALSE(volume.Contains({-1.0f, -5.0f, 0.0f}));
+}
+
+TEST_F(FluidVolumeTest, ClipsIndividualBuoyancyProbesToTheAuthoredShape)
+{
+    auto body = MakeBody({0.0f, -5.0f, 0.0f});
+    auto desc = FlatFluid(body);
+    desc.containsXZ = [](float x, float, float) { return x >= 0.0f; };
+    physics::FluidVolume volume(desc);
+    ASSERT_TRUE(volume.Contains(body.GetPosition()));
+    volume.Apply(body, kUnitDt);
+    body.Integrate(kUnitDt);
+    EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, kBuoyancy * 0.75f, 0.0f), testkit::kTolerance);
+    EXPECT_GT(body.GetAngularVelocity().z, 0.0f);
+}
+
+TEST_F(FluidVolumeTest, DoesNotLiftProbesOutsideTheAuthoredShape)
+{
+    auto body = MakeBody({0.0f, -5.0f, 0.0f});
+    auto desc = FlatFluid(body);
+    desc.containsXZ = [](float, float, float) { return false; };
+    physics::FluidVolume volume(desc);
+    EXPECT_FALSE(volume.Contains(body.GetPosition()));
+    volume.Apply(body, kUnitDt);
+    body.Integrate(kUnitDt);
+    EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(body.GetAngularVelocity(), math::Vector3::ZERO, testkit::kTolerance);
+}
+
+TEST_F(FluidVolumeTest, ExcludedCenterStillLiftsAtAllowedProbesWhenIntersectionIsEnabled)
+{
+    auto body = MakeBody({0.0f, -5.0f, 0.0f});
+    auto desc = FlatFluid(body);
+    desc.allowProbeIntersection = true;
+    desc.pointAllowed = [](const math::Vector3& point) { return std::abs(point.x) > 0.25f; };
+    physics::FluidVolume volume(desc);
+
+    EXPECT_TRUE(volume.Contains(body.GetPosition()));
+    volume.Apply(body, kUnitDt);
+    body.Integrate(kUnitDt);
+
+    const math::Vector3 expected{0.0f, kBuoyancy * 0.5f, 0.0f};
+    EXPECT_VEC3_NEAR(body.GetVelocity(), expected, testkit::kTolerance);
+}
+
+TEST_F(FluidVolumeTest, UsesSpatialDepthLimitsForMembershipAndEachBuoyancyProbe)
+{
+    auto body = MakeBody({0.0f, -1.5f, 0.0f});
+    auto desc = FlatFluid(body);
+    desc.depthLimitAt = [](float x, float, float) { return x < 0.0f ? 1.0f : 10.0f; };
+    physics::FluidVolume volume(std::move(desc));
+    EXPECT_TRUE(volume.Contains({0.0f, -2.0f, 0.0f}));
+    EXPECT_FALSE(volume.Contains({-1.0f, -2.0f, 0.0f}));
+    volume.Apply(body, kUnitDt);
+    body.Integrate(kUnitDt);
+    EXPECT_NEAR(body.GetVelocity().y, kBuoyancy * 0.8125f, testkit::kTolerance);
+}
+
+TEST_F(FluidVolumeTest, DoesNotLiftWhenTheSurfaceCallbackReturnsNonfiniteHeight)
+{
+    auto body = MakeBody({0.0f, -0.5f, 0.0f});
+    auto desc = FlatFluid(body);
+    desc.surfaceHeight = [](float, float, float) { return std::numeric_limits<float>::quiet_NaN(); };
+    physics::FluidVolume volume(std::move(desc));
+    volume.Apply(body, kUnitDt);
+    body.Integrate(kUnitDt);
+    EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(body.GetAngularVelocity(), math::Vector3::ZERO, testkit::kTolerance);
+}
+} /// @note namespace fbzz::tests

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 #include <Fluid/FluidSourceMask.hpp>
+#include <Fluid/FluidRecipe.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -11,11 +12,10 @@
 namespace fbzz::fluid {
 namespace {
 
-/// @note 既定は «誰も居ない»。Fluid だけをリンクした経路 (テスト・数式の検証) は
-///       テクスチャ発生源を板の形として解く。
+/// @note 読み手が無い経路ではテクスチャ発生源を板の形として解く。
 FluidSourceMaskResolver g_resolver = nullptr;
 
-} // namespace
+} /// @note namespace
 
 void SetFluidSourceMaskResolver(FluidSourceMaskResolver resolver)
 {
@@ -29,6 +29,15 @@ bool ResolveFluidSourceMask(const std::string& texture, FluidSourceMask& out)
     if (g_resolver(texture, out)) return true;
     out.values.clear();
     return false;
+}
+
+void ResolveFluidSourceMasks(const std::vector<FluidSource>& sources, std::vector<FluidSourceMask>& outMasks)
+{
+    outMasks.assign(sources.size(), FluidSourceMask{});
+    for (std::size_t i = 0; i < sources.size(); ++i) {
+        if (sources[i].shape != FluidSourceShape::Texture || sources[i].texture.empty()) continue;
+        if (!ResolveFluidSourceMask(sources[i].texture, outMasks[i])) outMasks[i].values.clear();
+    }
 }
 
 float SampleFluidSourceMask(const FluidSourceMask& mask, float u, float v)
@@ -57,4 +66,4 @@ float SampleFluidSourceMask(const FluidSourceMask& mask, float u, float v)
     return top + (bottom - top) * ty;
 }
 
-} // namespace fbzz::fluid
+} /// @note namespace fbzz::fluid

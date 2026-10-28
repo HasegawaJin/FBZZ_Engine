@@ -18,8 +18,8 @@ namespace fbzz::physics
         struct EPAFace
         {
             Simplex::Vertex verts[3];
-            math::Vector3   normal;  ///< ポリトープ外向き法線 (正規化済み)
-            float           dist;    ///< 原点からの距離
+            math::Vector3   normal;  ///< @brief ポリトープ外向きの単位法線。
+            float           dist;    ///< @brief 原点からの距離。
         };
 
         EPAFace MakeFace(const Simplex::Vertex& a,
@@ -34,9 +34,7 @@ namespace fbzz::physics
             const float lenSq = n.LengthSq();
             if (lenSq < 1e-12f)
             {
-                /// @note 面積が潰れた面は法線を定義できない。距離を 0 にすると «原点に最も近い
-                ///       面» として毎回選ばれ、同じ方向のサポート点を足し続けて無限膨張する
-                ///       (球を真横に重ねる等の対称配置で発生)。選ばれない最遠距離に置く。
+                /// @note 潰れた面を距離 0 にすると同じサポート点を足し続けるため、選ばれない最遠距離に置く。
                 f.normal = math::Vector3::UP;
                 f.dist   = std::numeric_limits<float>::max();
             }
@@ -54,7 +52,7 @@ namespace fbzz::physics
             return f;
         }
 
-        /// ポリトープのエッジ: EPA 拡張時に削除する面のエッジを保持
+        /// @brief EPA 拡張時に削除する面のエッジを保持する。
         struct Edge
         {
             Simplex::Vertex a, b;
@@ -76,7 +74,7 @@ namespace fbzz::physics
             edges.push_back({a, b});
         }
 
-        /// バリセントリック座標で接触点を補間する
+        /// @brief バリセントリック座標で接触点を補間する。
         void BarycentricContact(const EPAFace& face,
                                 math::Vector3& outA,
                                 math::Vector3& outB)
@@ -111,13 +109,12 @@ namespace fbzz::physics
             outB = face.verts[0].suppB * u + face.verts[1].suppB * v + face.verts[2].suppB * w;
         }
 
-        /// ポリトープが縮退して貫通量を出せなかったとみなす閾値。
-        /// 原点がポリトープの «面の上» に乗っている状態で、深さ 0 の接触は解決に使えない。
+        /// @brief ポリトープが縮退して貫通量を出せなかったとみなす閾値。
+        /// @note 原点が面上に乗る深さ 0 の接触は解決に使えない。
         constexpr float kDegenerateDepth = 1.0e-5f;
 
         /// @brief ポリトープの面数の上限。
-        /// @note 原点が稜線上に乗る退化配置では向き違いの同一平面対が相殺されず面が増え続け、
-        ///       O(E²) のエッジ探索が終わらない。反復数とは別に面数でも必ず止める。
+        /// @note 退化配置の面数増加による O(E²) のエッジ探索を、反復数とは別に制限する。
         constexpr std::size_t kMaxFaces = 256;
 
         void RefineCardinalAxis(const void* shapeA, SupportFn supportA,
@@ -144,10 +141,7 @@ namespace fbzz::physics
 
             for (const math::Vector3& axis : axes)
             {
-                /// @note ContactPoint::normal は「B から A」へ押し戻す向きで統一している。
-                ///       そのため候補軸 axis の貫通量は、A の axis 反対側の面と B の axis 側の面の
-                ///       重なりとして測る。ここを逆にすると、床(OBB=A)の上にある Capsule(B)で
-                ///       浅い上向き法線を選び、ResolvePosition が Capsule を床へ押し込んでしまう。
+                /// @note B→A 法線の貫通量は A の反対側の面と B の軸側の面で測り、床上の体を床へ押し込まない。
                 const math::Vector3 suppA = supportA(shapeA, -axis);
                 const math::Vector3 suppB = supportB(shapeB, axis);
                 const float depth = math::Vector3::Dot(suppB - suppA, axis);
@@ -168,7 +162,7 @@ namespace fbzz::physics
                 result.contactB = bestB;
             }
         }
-    } // namespace
+    } /// @note anonymous namespace
 
     EPAResult EPA_GetContactInfo(
         const void* shapeA, SupportFn supportA,
@@ -178,12 +172,9 @@ namespace fbzz::physics
     {
         EPAResult result;
 
-        /// @note GJK の Simplex を四面体に拡張してポリトープの初期面を作る
-        ///       GJK 終了時の Simplex は 4 頂点でなければならない
+        /// @note 初期ポリトープには 4 頂点が必要。不足する単体は接触を返さない。
         if (gjkSimplex.size < 4)
         {
-            /// @note 頂点が不足している場合は任意方向にサポート点を追加して補完する
-            ///       簡易: 代表法線方向でサポートを追加して fallback
             result.valid  = false;
             return result;
         }
@@ -202,8 +193,7 @@ namespace fbzz::physics
 
         for (int iter = 0; iter < maxIter; ++iter)
         {
-            /// @note 面が増え続けている = 縮退した配置で拡張が収束していない。
-            ///       ここで抜けて、その時点で最も近い面から近似値を作る。
+            /// @note 縮退して面数が増え続ける場合は、その時点で最も近い面から近似値を作る。
             if (faces.size() > kMaxFaces)
             {
                 abandoned = true;
@@ -222,8 +212,7 @@ namespace fbzz::physics
                 }
             }
 
-            /// @note 実体のある面が 1 つも残っていない (すべて潰れている)。
-            ///       ここで進むと最遠に置いた番兵の距離を貫通量として返すことになる。
+            /// @note 潰れた面しか残っていない場合は、最遠距離の番兵を貫通量として返さない。
             if (minDist == std::numeric_limits<float>::max())
                 return result;
 
@@ -242,7 +231,9 @@ namespace fbzz::physics
             if (newDist - minDist < tolerance)
             {
                 BarycentricContact(closestFace, result.contactA, result.contactB);
-                result.normal = n;
+                /// @note Minkowski 差 A-B の外向き法線を反転し、A を B から押し戻す B→A 契約へ揃える。
+                /// @see EPAResult::normal
+                result.normal = -n;
                 result.depth  = minDist;
                 result.valid  = true;
                 RefineCardinalAxis(shapeA, supportA, shapeB, supportB, result,
@@ -288,11 +279,11 @@ namespace fbzz::physics
                 return result;
 
             BarycentricContact(faces[minIdx], result.contactA, result.contactB);
-            result.normal = faces[minIdx].normal;
+            /// @note 打ち切り時の近似法線も、Minkowski 差の外向きから B→A へ反転する。
+            result.normal = -faces[minIdx].normal;
             result.depth  = minDist;
             result.valid  = true;
-            /// @note 打ち切りで抜けた場合、原点が面の上に乗ったまま (深さ 0) のことがある。
-            ///       その値では «接触しているのに押し戻せない» ので、軸ごとの重なりで測り直す。
+            /// @note 打ち切りで原点が面上に乗る深さ 0 が残る場合は、軸ごとの重なりで測り直す。
             RefineCardinalAxis(shapeA, supportA, shapeB, supportB, result,
                                abandoned || minDist <= kDegenerateDepth);
         }
@@ -300,4 +291,4 @@ namespace fbzz::physics
         return result;
     }
 
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

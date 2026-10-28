@@ -2,9 +2,7 @@
 /// @brief   格子の気体ソルバー (Stable Fluids + MacCormack 移流 + 渦度保存 + 燃焼)
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
-/// @brief 速度は全成分をセル中心に置く (collocated)。スタッガード格子より投影が緩くなるが、
-/// @brief フリップブック用の絵としては差が見えず、2D と 3D を同じコードで扱える方を取った。
+/// @note 速度は全成分をセル中心に置き、フリップブックで差が見えない投影精度より 2D / 3D の共通処理を優先する。
 #include <Fluid/FluidSolver.hpp>
 
 #include <Fluid/FluidOperatorEval.hpp>
@@ -82,22 +80,13 @@ void SourceBounds(const FluidSource& source, const math::Vector3& center, float 
     outHi = center + extent;
 }
 
-void LoadSourceMasks(const std::vector<FluidSource>& sources, std::vector<FluidSourceMask>& outMasks)
-{
-    outMasks.assign(sources.size(), FluidSourceMask{});
-    for (std::size_t i = 0; i < sources.size(); ++i) {
-        if (sources[i].shape != FluidSourceShape::Texture || sources[i].texture.empty()) continue;
-        if (!ResolveFluidSourceMask(sources[i].texture, outMasks[i])) outMasks[i].values.clear();
-    }
-}
-
 /// @brief このレシピが要求する格子の 1 辺。呼び手が Reset に渡す nx を導いた値で、これが変われば別の格子になる。
 [[nodiscard]] int GasGridRequest(const FluidRecipe& recipe, bool volumetric)
 {
     return volumetric ? recipe.output.vectorFieldResolution : ResolveGasResolution(recipe);
 }
 
-} // namespace
+} /// @note namespace
 
 /// @brief 部品 (発生源・力・障害物) とその画像だけを取り込む。Reset と ReplaceOperators で共通。
 void FluidGasSolver::AdoptOperators(const FluidRecipe& recipe)
@@ -119,7 +108,7 @@ void FluidGasSolver::AdoptOperators(const FluidRecipe& recipe)
     for (const FluidCollider& collider : recipe.colliders)
         if (collider.enabled && m_colliders.size() < static_cast<std::size_t>(kMaxFluidColliders))
             m_colliders.push_back(collider);
-    LoadSourceMasks(m_sources, m_sourceMasks);
+    ResolveFluidSourceMasks(m_sources, m_sourceMasks);
 }
 
 void FluidGasSolver::Reset(const FluidRecipe& recipe, int nx, int ny, int nz)
@@ -167,10 +156,8 @@ void FluidGasSolver::Reset(const FluidRecipe& recipe, int nx, int ny, int nz)
 }
 
 /// @brief 場を残せる条件は «今持っている場が、このレシピを頭から解いた途中経過だと言い張れるか»。
-///   kind        : 気体でなければ格子そのものが別物
-///   seed        : ノイズの切り出し位置 (m_noiseOffset) が変わる = 乱流も注入の揺らぎも別の流れ
-///   要求解像度  : 呼び手が Reset に渡した nx を導いた値。変われば格子の細かさが変わる
-/// @brief 逆に、刻みごとに効くだけの設定 (浮力・散逸・床・圧力反復・燃焼) は途中から差し替えてよい。
+/// @note 気体種別・ノイズの seed・要求解像度が同じ場合だけ格子を保持する。
+/// @note 刻みごとに効くだけの浮力・散逸・床・圧力反復・燃焼は途中から差し替えてよい。
 bool FluidGasSolver::ReplaceOperators(const FluidRecipe& recipe)
 {
     if (recipe.kind != FluidKind::Gas) return false;
@@ -404,8 +391,7 @@ void FluidGasSolver::Advance(float dt)
     float maxSpeed = 0.0f;
     for (std::size_t i = 0; i < m_vx.size(); ++i)
         maxSpeed = (std::max)(maxSpeed, std::fabs(m_vx[i]) + std::fabs(m_vy[i]) + std::fabs(m_vz[i]));
-    /// @note 1 刻みで 2 セルまで。半ラグランジュ移流は安定だが、これを超えると細い煙が
-    ///       隙間を飛び越えて «ちぎれる»。
+    /// @note 1 刻みで 2 セルまでとし、半ラグランジュ移流で細い煙が隙間を飛び越えてちぎれることを防ぐ。
     const float cellsTravelled = maxSpeed * dt / m_h;
     const int steps = std::clamp(static_cast<int>(std::ceil(cellsTravelled / 2.0f)), 1, 16);
     const float stepDt = dt / static_cast<float>(steps);
@@ -514,7 +500,7 @@ void FluidGasSolver::Inject(float dt)
         if (volumetric) range(lo.z, hi.z, m_nz, z0, z1);
 
         /// @note 注ぐ «量» だけをエンベロープで揺らす (流速には掛けない — 勢いの変化は velocity と motion の担当)。
-        ///       GPU (PackFluidGpuStep) も同じく «基準の量 × 倍率» を定数へ詰めてから weight・dt を掛ける。
+        /// @note GPU (PackFluidGpuStep) も同じく «基準の量 × 倍率» を定数へ詰めてから weight・dt を掛ける。
         const float amount = FluidSourceAmount(source, m_time);
         const float density = source.density * amount;
         const float temperature = source.temperature * amount;
@@ -542,8 +528,7 @@ void FluidGasSolver::Inject(float dt)
                         weight *= (std::max)(0.0f, 1.0f + source.noise * n);
                     }
                     const std::size_t i = Index(x, y, z);
-                    /// @note 色は «注いだ量 × 鍵» を煙と燃料の両方へ入れる。燃料の色は、後で燃えて生まれる
-                    ///       煤がどの発生源から来たかを覚えておくためのもの (煙を注がない炎でも色が付く)。
+                    /// @note «注いだ量 × 鍵» を煙と燃料へ入れ、煙を注がない炎でも燃えて生まれる煤に発生源の色を保持する。
                     m_density[i]     = (std::min)(m_density[i] + density * weight * dt, kMaxDensity);
                     if (m_hasColor)
                         m_colorMass[i] = (std::min)(m_colorMass[i] + density * weight * dt * source.colorKey,
@@ -573,9 +558,8 @@ void FluidGasSolver::Burn(float dt)
     for (std::size_t i = 0; i < m_fuel.size(); ++i) {
         if (m_fuel[i] <= 1.0e-5f || m_temperature[i] < m_settings.ignitionTemperature) continue;
         const float burned = m_fuel[i] * fraction;
-        /// @note 煤は «燃えた燃料の鍵» だけで生まれる (既にある煙の鍵は見ない)。鍵は燃料を減らす前に測り、
-        ///       燃えた分だけ燃料の色も連れて行く。色の付いた燃料が薄く広がった所で鍵が跳ぶのを避けるため
-        ///       その場の煙へは寄せず、セルの鍵は «量で重み付けした平均» として自然に混ざる (GPU も同じ)。
+        /// @note 燃料を減らす前の鍵で煤を作り、燃えた分だけ燃料の色も連れて行く。
+        /// @note 薄い燃料で鍵が跳ぶことを避け、既存の煙へ寄せず量で重み付けして混ぜる。GPU も同じ。
         const float fuelKey = m_hasColor ? ColorKeyOf(m_fuelColorMass[i], m_fuel[i]) : 0.0f;
         m_fuel[i] -= burned;
         if (m_hasColor) m_fuelColorMass[i] = (std::max)(m_fuelColorMass[i] - burned * fuelKey, 0.0f);
@@ -702,8 +686,8 @@ void FluidGasSolver::Project(const std::vector<float>* expansion)
             }
 
     /// @note 境界: 開いた縁は p = 0 (流れが自由に出ていく)、床だけは ∂p/∂n = 0 (通り抜けない)。
-    ///       障害物 (固体セル) も床と同じ ∂p/∂n = 0。固体セル自身は解かない (速度は障害物が決める)。
-    ///       前の刻みの圧力を初期値に残す (warm start) と、同じ反復回数でも収束がずっと進む。
+    /// @note 障害物 (固体セル) も床と同じ ∂p/∂n = 0。固体セル自身は解かない (速度は障害物が決める)。
+    /// @note 前の刻みの圧力を初期値に残す (warm start) と、同じ反復回数でも収束がずっと進む。
     const bool solids = m_hasSolid;
     const float h2 = m_h * m_h;
     constexpr float kOverRelaxation = 1.7f;
@@ -788,8 +772,7 @@ void FluidGasSolver::Advect(float dt)
         AdvectScalar(m_fuelColorMass, dt);
     }
 
-    /// @note 速度の自己移流は半ラグランジュのまま。MacCormack を掛けると渦の芯で振動しやすく、
-    ///       形の鋭さはスカラー側で十分に出る。
+    /// @note 速度の自己移流は渦の芯での振動を避けて半ラグランジュとし、形の鋭さはスカラー側の MacCormack で出す。
     const float cellsPerUnit = dt / m_h;
     for (int z = 0; z < m_nz; ++z) {
         for (int y = 0; y < m_ny; ++y) {
@@ -875,4 +858,4 @@ void FluidGasSolver::UpdateColorKey()
         m_colorKey[i] = ColorKeyOf(m_colorMass[i], m_density[i]);
 }
 
-} // namespace fbzz::fluid
+} /// @note namespace fbzz::fluid
