@@ -6,6 +6,7 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Core/Profiler/ProfileRecorder.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
+#include "../../../../Core/src/Profiler/FrameTimelineStorage.hpp"
 #include <vector>
 
 namespace fbzz::tests {
@@ -107,6 +108,50 @@ TEST_F(ProfileRecorderTest, KeepsParallelDurationsSeparateFromSelfAndInstantEven
     EXPECT_TRUE(snapshot.samples[2].startAvailable);
     EXPECT_DOUBLE_EQ(snapshot.samples[0].inclusiveMs, 5.0);
     EXPECT_DOUBLE_EQ(snapshot.scopeRootSumMs, 5.0);
+}
+
+TEST_F(ProfileRecorderTest, CompletesEveryRetainedSampleOnceAcrossFaultsFilteringRecoveryAndFrameAbort)
+{
+    profiler::ProfileRecorder recorder(true, ReadProfileTime);
+    recorder.BeginFrame(1, 0.0);
+    recorder.Begin(1);
+    const auto faulted = recorder.Begin(2);
+    recorder.End(faulted, profiler::ProfileSampleStatus::FAULTED);
+    recorder.End(faulted);
+    const auto filtered = recorder.Begin(0, false);
+    recorder.Push(0, 0.0, profiler::ProfileSampleKind::INSTANT, false);
+    recorder.End(filtered, profiler::ProfileSampleStatus::FAULTED);
+    const auto checkpoint = recorder.Checkpoint();
+    const auto interrupted = recorder.Begin(1);
+    recorder.Push(3, 0.0, profiler::ProfileSampleKind::INSTANT);
+    EXPECT_TRUE(recorder.Recover(checkpoint));
+    recorder.End(interrupted);
+    recorder.Push(4, 2.0, profiler::ProfileSampleKind::EXTERNAL_DURATION);
+    recorder.EndFrame();
+
+    const auto& snapshot = recorder.GetSnapshot();
+    ASSERT_EQ(snapshot.samples.size(), 5u);
+    EXPECT_EQ(snapshot.samples[0].completionOrder, 5u);
+    EXPECT_EQ(snapshot.samples[1].completionOrder, 1u);
+    EXPECT_EQ(snapshot.samples[2].completionOrder, 3u);
+    EXPECT_EQ(snapshot.samples[3].completionOrder, 2u);
+    EXPECT_EQ(snapshot.samples[4].completionOrder, 4u);
+    EXPECT_EQ(snapshot.samples[0].status, profiler::ProfileSampleStatus::ABORTED);
+    EXPECT_EQ(snapshot.samples[1].status, profiler::ProfileSampleStatus::FAULTED);
+    EXPECT_EQ(snapshot.samples[2].status, profiler::ProfileSampleStatus::ABORTED);
+    EXPECT_EQ(snapshot.faultedSampleCount, 2u);
+    EXPECT_EQ(snapshot.abortedSampleCount, 2u);
+    EXPECT_EQ(snapshot.filteredSampleCount, 2u);
+    EXPECT_EQ(snapshot.droppedSampleCount, 0u);
+    EXPECT_FALSE(snapshot.complete);
+    recorder.BeginFrame(2, 0.0);
+    recorder.Push(1, 0.0, profiler::ProfileSampleKind::INSTANT);
+    recorder.EndFrame();
+    ASSERT_EQ(recorder.GetSnapshot().samples.size(), 1u);
+    EXPECT_EQ(recorder.GetSnapshot().samples[0].completionOrder, 1u);
+    EXPECT_EQ(recorder.GetSnapshot().faultedSampleCount, 0u);
+    EXPECT_EQ(recorder.GetSnapshot().abortedSampleCount, 0u);
+    EXPECT_TRUE(recorder.GetSnapshot().complete);
 }
 
 TEST_F(ProfileRecorderTest, BoundsOutputWhileKeepingSavedParentAndEndCorrespondence)
@@ -597,6 +642,100 @@ TEST_F(ProfileRecorderTest, ParallelExecutionAndQueueWaitSumsCanExceedFrameElaps
         EXPECT_FALSE(sample.startAvailable);
         EXPECT_FALSE(sample.selfAvailable);
     }
+}
+
+class FrameTimelineTest : public testkit::EngineFixture {};
+
+TEST_F(FrameTimelineTest, KeepsThePrecedingWarmupFrameAndTheClosingNextBegin)
+{
+    using profiler::frame_timeline::detail::FrameRole;
+    profiler::frame_timeline::detail::FrameWindow window(2, 2);
+    EXPECT_EQ(window.Next(), FrameRole::UNSELECTED);
+    EXPECT_EQ(window.Next(), FrameRole::LEADING);
+    EXPECT_EQ(window.Next(), FrameRole::SAMPLE);
+    EXPECT_EQ(window.Next(), FrameRole::SAMPLE);
+    EXPECT_EQ(window.Next(), FrameRole::CLOSING_ANCHOR);
+    EXPECT_EQ(window.Next(), FrameRole::FINISHED);
+    EXPECT_EQ(window.Seen(), 6u);
+}
+
+TEST_F(FrameTimelineTest, ZeroWarmupBeginsWithASampleAndStillClosesItsForwardInterval)
+{
+    using profiler::frame_timeline::detail::FrameRole;
+    profiler::frame_timeline::detail::FrameWindow window(0, 1);
+    EXPECT_EQ(window.Next(), FrameRole::SAMPLE);
+    EXPECT_EQ(window.Next(), FrameRole::CLOSING_ANCHOR);
+    EXPECT_EQ(window.Next(), FrameRole::FINISHED);
+}
+
+TEST_F(FrameTimelineTest, FullPassiveWindowHasExactlySixThousandSamplesWithoutSelectingByTiming)
+{
+    using profiler::frame_timeline::detail::FrameRole;
+    profiler::frame_timeline::detail::FrameWindow window(120, 6000);
+    size_t leading = 0, samples = 0, anchors = 0;
+    for (size_t index = 0; index < 6122; ++index) {
+        const auto role = window.Next();
+        leading += role == FrameRole::LEADING;
+        samples += role == FrameRole::SAMPLE;
+        anchors += role == FrameRole::CLOSING_ANCHOR;
+    }
+    EXPECT_EQ(leading, 1u);
+    EXPECT_EQ(samples, 6000u);
+    EXPECT_EQ(anchors, 1u);
+}
+
+TEST_F(FrameTimelineTest, JoinsCpuAndTailToTheFollowingPassiveWallRow)
+{
+    const profiler::frame_timeline::detail::FrameTimes frame{100, 107, 112, true, true};
+    EXPECT_TRUE(frame.CpuAvailable());
+    EXPECT_TRUE(frame.IntervalAvailable());
+    EXPECT_TRUE(frame.TailAvailable());
+    EXPECT_EQ(frame.CpuTicks(), 7u);
+    EXPECT_EQ(frame.TailTicks(), 5u);
+    EXPECT_EQ(frame.IntervalTicks(), 12u);
+    EXPECT_EQ(frame.CpuTicks() + frame.TailTicks(), frame.IntervalTicks());
+}
+
+TEST_F(FrameTimelineTest, MissingEndOrNextBeginRemainsUnavailableInsteadOfBecomingAZeroCost)
+{
+    const profiler::frame_timeline::detail::FrameTimes noEnd{100, 0, 112, false, true};
+    EXPECT_FALSE(noEnd.CpuAvailable());
+    EXPECT_TRUE(noEnd.IntervalAvailable());
+    EXPECT_FALSE(noEnd.TailAvailable());
+    const profiler::frame_timeline::detail::FrameTimes noNextBegin{100, 107, 0, true, false};
+    EXPECT_TRUE(noNextBegin.CpuAvailable());
+    EXPECT_FALSE(noNextBegin.IntervalAvailable());
+    EXPECT_FALSE(noNextBegin.TailAvailable());
+}
+
+TEST_F(FrameTimelineTest, RegressingClockOrAnEndAfterTheNextBeginRejectsTheTail)
+{
+    const profiler::frame_timeline::detail::FrameTimes regressing{100, 99, 112, true, true};
+    EXPECT_FALSE(regressing.CpuAvailable());
+    EXPECT_FALSE(regressing.TailAvailable());
+    const profiler::frame_timeline::detail::FrameTimes overlapping{100, 114, 112, true, true};
+    EXPECT_TRUE(overlapping.CpuAvailable());
+    EXPECT_TRUE(overlapping.IntervalAvailable());
+    EXPECT_FALSE(overlapping.TailAvailable());
+}
+
+TEST_F(FrameTimelineTest, EventCapacityCountsDropsWithoutReturningAnOutOfRangePublicationSlot)
+{
+    std::atomic<uint64_t> attempted{0}, dropped{0};
+    EXPECT_EQ(profiler::frame_timeline::detail::ReserveBounded(attempted, 2, dropped), 0u);
+    EXPECT_EQ(profiler::frame_timeline::detail::ReserveBounded(attempted, 2, dropped), 1u);
+    EXPECT_EQ(profiler::frame_timeline::detail::ReserveBounded(attempted, 2, dropped), UINT64_MAX);
+    EXPECT_EQ(profiler::frame_timeline::detail::ReserveBounded(attempted, 2, dropped), UINT64_MAX);
+    EXPECT_EQ(attempted.load(), 4u);
+    EXPECT_EQ(dropped.load(), 2u);
+}
+
+TEST_F(FrameTimelineTest, ZeroCapacityCannotPublishOrSilentlyLoseTheDrop)
+{
+    std::atomic<uint64_t> attempted{0}, dropped{0};
+    EXPECT_EQ(profiler::frame_timeline::detail::ReserveBounded(attempted, 0, dropped), UINT64_MAX);
+    EXPECT_EQ(attempted.load(), 1u);
+    EXPECT_EQ(dropped.load(), 1u);
 }
 
 } /// @note namespace fbzz::tests

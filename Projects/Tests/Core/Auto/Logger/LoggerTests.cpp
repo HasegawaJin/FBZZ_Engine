@@ -2,17 +2,17 @@
 /// @brief   Logger のレベルフィルタと非所有 Sink 契約を自動検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-///
-/// 出力«内容»の検証は記録用 fake、呼ばれ«方»の検証 (回数・順序・呼ばれないこと) は
-/// gmock、と使い分けている。判断基準は Docs/conventions/test.md を参照。
+/// @see Docs/conventions/test.md 記録用 fake と配送回数を検証する mock の使い分け。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <TestKit/Engine/LogSinks.hpp>
 
 #include <Engine/Core/ILogSink.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Core/ExternalCallbackBoundary.hpp>
 
 #include <string>
+#include <thread>
 
 namespace fbzz::tests {
 
@@ -101,8 +101,7 @@ protected:
 
 TEST_F(LoggerCallTest, DoesNotCallTheSinkForEntriesBelowTheMinimumLevel)
 {
-    /// @note «呼ばれないこと» が契約そのもの。記録用 fake で «0 件だった» を見るより、
-    ///       呼ばれた瞬間に落ちるほうが原因の行に近いところで止まる。
+    /// @note 配送しない契約は呼ばれた時点で検出する。
     testkit::ScopedLogSink scoped(&mock);
     SetLogLevel(core::LogLevel::LOG_ERROR);
 
@@ -138,8 +137,7 @@ TEST_F(LoggerCallTest, DeliversEntriesInTheOrderTheyWereLogged)
 
 TEST_F(LoggerCallTest, DeliversTheSameEntryToEveryRegisteredSink)
 {
-    /// @note 2 つ目の sink は «来ても来なくてもよい» わけではないが、
-    ///       ここで見たいのは «両方に届く» ことだけなので NiceMock で余計な呼び出しを許す。
+    /// @note 配送以外の mock 呼び出しはこの契約の対象外。
     NiceMock<testkit::MockLogSink> second;
 
     testkit::ScopedLogSink scopedFirst(&mock);
@@ -151,4 +149,69 @@ TEST_F(LoggerCallTest, DeliversTheSameEntryToEveryRegisteredSink)
     core::Logger::Error("broadcast");
 }
 
-} // namespace fbzz::tests
+TEST_F(LoggerCallTest, CompletesOwnerThreadObserversBeforeSinkDelivery)
+{
+    testkit::ScopedLogSink registered(&mock);
+    std::vector<int> order;
+    auto append = [](void* context) {
+        static_cast<std::vector<int>*>(context)->push_back(1);
+        return true;
+    };
+    core::ExternalCallbackScope outer(append, &order);
+    auto complete = [](void* context) {
+        static_cast<std::vector<int>*>(context)->push_back(2);
+        return false;
+    };
+    {
+        core::ExternalCallbackScope inner(complete, &order);
+        EXPECT_CALL(mock, OnLog(_)).WillOnce([&](const core::LogEntry&) {
+            EXPECT_EQ(order, (std::vector<int>{1, 2}));
+        });
+        core::Logger::Info("completed or invalidated before callback");
+    }
+    order.clear();
+    EXPECT_CALL(mock, OnLog(_)).WillOnce([&](const core::LogEntry&) {
+        EXPECT_EQ(order, (std::vector<int>{1}));
+    });
+    core::Logger::Info("outer scope remains active");
+}
+
+TEST_F(LoggerCallTest, FilteredEntriesDoNotCompletePendingWork)
+{
+    testkit::ScopedLogSink registered(&mock);
+    int observations = 0;
+    core::ExternalCallbackScope scope([](void* context) {
+        ++*static_cast<int*>(context);
+        return true;
+    }, &observations);
+    SetLogLevel(core::LogLevel::LOG_ERROR);
+    EXPECT_CALL(mock, OnLog(_)).Times(0);
+    core::Logger::Info("filtered");
+    EXPECT_EQ(observations, 0);
+}
+
+TEST_F(LoggerCallTest, ObserverScopesStayOnTheirOwnerThread)
+{
+    int ownerObservations = 0;
+    core::ExternalCallbackScope owner([](void* context) {
+        ++*static_cast<int*>(context);
+        return true;
+    }, &ownerObservations);
+    bool workerSucceeded = false;
+    int workerObservations = 0;
+    std::thread worker([&] {
+        core::ExternalCallbackScope scope([](void* context) {
+            ++*static_cast<int*>(context);
+            return false;
+        }, &workerObservations);
+        workerSucceeded = core::NotifyBeforeExternalCallback();
+    });
+    worker.join();
+    EXPECT_FALSE(workerSucceeded);
+    EXPECT_EQ(workerObservations, 1);
+    EXPECT_EQ(ownerObservations, 0);
+    EXPECT_TRUE(core::NotifyBeforeExternalCallback());
+    EXPECT_EQ(ownerObservations, 1);
+}
+
+} /// @note namespace fbzz::tests

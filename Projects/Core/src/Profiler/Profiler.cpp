@@ -8,11 +8,11 @@
 #include <memory>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 
 namespace fbzz::profiler {
 namespace {
 constexpr size_t MAX_DESCRIPTORS = 8192;
+constexpr uint32_t INVALID_DESCRIPTOR_INDEX = static_cast<uint32_t>(MAX_DESCRIPTORS);
 /// @note 表を 1 MiB に制限し、最新 snapshot と初回登録の一時文字列を含めて 4 MiB 以内に保つ。
 constexpr size_t MAX_STRING_BYTES = 1024 * 1024;
 /// @note MSVC の新規 char 文字列の丸めと終端へ 32 byte の余裕を取り、確保前に過大な入力を拒否する。
@@ -45,6 +45,11 @@ thread_local std::vector<PerformanceDescriptor> s_descriptors;
 thread_local std::unordered_map<DescriptorKey, uint64_t, DescriptorHash> s_descriptorKeys;
 thread_local std::vector<ProfileToken> s_compatStack;
 thread_local std::vector<ProfileRecord> s_records;
+thread_local std::vector<PerformanceDescriptor> s_previousDescriptors;
+thread_local std::vector<uint32_t> s_sampleDescriptorIndices;
+thread_local std::vector<uint32_t> s_descriptorSnapshotIndices;
+thread_local std::vector<uint32_t> s_completionIndices;
+thread_local bool s_recordsDirty = false;
 thread_local size_t s_stringBytes = 0;
 thread_local uint64_t s_nextDescriptorId = 0;
 thread_local uint64_t s_hostSerial = 0;
@@ -85,20 +90,85 @@ uint64_t Resolve(const ProfilerMarker& marker)
 
 void RetireDescriptors()
 {
-    /// @note 最新 snapshot は文字列を所有するため、フレーム間で未使用 descriptor を退役できる。
-    std::unordered_set<uint64_t> used;
-    for (const auto& descriptor : s_snapshot.descriptors) used.insert(descriptor.sampleKey);
-    std::vector<PerformanceDescriptor> retained;
-    retained.reserve(MAX_DESCRIPTORS);
+    if (s_descriptors.size() == s_snapshot.descriptors.size()) return;
+    /// @note 両表は登録 ID 順。所有文字列を動かす前に非所有検索キーを破棄する。
     s_descriptorKeys.clear();
-    for (auto& descriptor : s_descriptors)
-        if (used.contains(descriptor.sampleKey)) retained.push_back(std::move(descriptor));
-    s_descriptors.swap(retained);
+    size_t retainedCount = 0;
+    size_t snapshotIndex = 0;
+    for (size_t index = 0; index < s_descriptors.size(); ++index) {
+        const auto key = s_descriptors[index].sampleKey;
+        while (snapshotIndex < s_snapshot.descriptors.size() && s_snapshot.descriptors[snapshotIndex].sampleKey < key)
+            ++snapshotIndex;
+        if (snapshotIndex == s_snapshot.descriptors.size() || s_snapshot.descriptors[snapshotIndex].sampleKey != key) continue;
+        if (retainedCount != index) s_descriptors[retainedCount] = std::move(s_descriptors[index]);
+        ++retainedCount;
+    }
+    s_descriptors.resize(retainedCount);
     s_stringBytes = 0;
     for (const auto& descriptor : s_descriptors) {
         s_stringBytes += StringBytes(descriptor);
         s_descriptorKeys.emplace(DescriptorKey{descriptor.name, descriptor.category, descriptor.color}, descriptor.sampleKey);
     }
+}
+
+uint32_t DescriptorIndex(uint64_t key)
+{
+    if (s_descriptors.empty() || key < s_descriptors.front().sampleKey) return INVALID_DESCRIPTOR_INDEX;
+    /// @note 退役で ID に穴がない通常の表は定数時間で引き、疎な表でも探索を対数時間に制限する。
+    const uint64_t offset = key - s_descriptors.front().sampleKey;
+    if (offset < s_descriptors.size() && s_descriptors[static_cast<size_t>(offset)].sampleKey == key)
+        return static_cast<uint32_t>(offset);
+    const auto found = std::lower_bound(s_descriptors.begin(), s_descriptors.end(), key,
+        [](const auto& descriptor, uint64_t sampleKey) { return descriptor.sampleKey < sampleKey; });
+    return found != s_descriptors.end() && found->sampleKey == key
+        ? static_cast<uint32_t>(found - s_descriptors.begin()) : INVALID_DESCRIPTOR_INDEX;
+}
+
+void PublishDescriptors()
+{
+    if (s_snapshot.samples.empty()) {
+        s_sampleDescriptorIndices.clear();
+        s_snapshot.descriptors.clear();
+        return;
+    }
+    if (s_sampleDescriptorIndices.capacity() < ProfileRecorder::MAX_SAMPLES)
+        s_sampleDescriptorIndices.reserve(ProfileRecorder::MAX_SAMPLES);
+    if (s_descriptorSnapshotIndices.capacity() < MAX_DESCRIPTORS)
+        s_descriptorSnapshotIndices.reserve(MAX_DESCRIPTORS);
+    s_sampleDescriptorIndices.resize(s_snapshot.samples.size());
+    s_descriptorSnapshotIndices.assign(s_descriptors.size(), INVALID_DESCRIPTOR_INDEX);
+    for (size_t index = 0; index < s_snapshot.samples.size(); ++index) {
+        const uint32_t descriptorIndex = DescriptorIndex(s_snapshot.samples[index].sampleKey);
+        s_sampleDescriptorIndices[index] = descriptorIndex;
+        if (descriptorIndex < s_descriptors.size()) s_descriptorSnapshotIndices[descriptorIndex] = 0;
+    }
+    size_t publishedCount = 0;
+    bool unchanged = true;
+    for (size_t index = 0; index < s_descriptors.size(); ++index) {
+        if (s_descriptorSnapshotIndices[index] == INVALID_DESCRIPTOR_INDEX) continue;
+        if (publishedCount >= s_snapshot.descriptors.size()
+            || s_snapshot.descriptors[publishedCount].sampleKey != s_descriptors[index].sampleKey) unchanged = false;
+        s_descriptorSnapshotIndices[index] = static_cast<uint32_t>(publishedCount++);
+    }
+    if (!unchanged || publishedCount != s_snapshot.descriptors.size()) {
+        /// @note 同じ ID の所有文字列を移し、変更された descriptor だけを新しく複写する。
+        s_snapshot.descriptors.swap(s_previousDescriptors);
+        if (s_snapshot.descriptors.capacity() < MAX_DESCRIPTORS) s_snapshot.descriptors.reserve(MAX_DESCRIPTORS);
+        size_t previousIndex = 0;
+        for (size_t index = 0; index < s_descriptors.size(); ++index) {
+            if (s_descriptorSnapshotIndices[index] == INVALID_DESCRIPTOR_INDEX) continue;
+            const auto& descriptor = s_descriptors[index];
+            while (previousIndex < s_previousDescriptors.size() && s_previousDescriptors[previousIndex].sampleKey < descriptor.sampleKey)
+                ++previousIndex;
+            if (previousIndex < s_previousDescriptors.size() && s_previousDescriptors[previousIndex].sampleKey == descriptor.sampleKey)
+                s_snapshot.descriptors.push_back(std::move(s_previousDescriptors[previousIndex++]));
+            else s_snapshot.descriptors.push_back(descriptor);
+        }
+        s_previousDescriptors.clear();
+    }
+    /// @note 公開 snapshot の索引へ変換し、次の BeginFrame で実行表が退役しても旧記録を参照できる。
+    for (auto& index : s_sampleDescriptorIndices)
+        if (index < s_descriptors.size()) index = s_descriptorSnapshotIndices[index];
 }
 } /// @note namespace
 
@@ -111,6 +181,7 @@ void Profiler::SetEnabled(bool enabled)
     s_compatOverflowCheckpoint = {};
     s_compatOverflowScopeId = 0;
     s_records.clear();
+    s_recordsDirty = false;
     s_snapshot = {};
     s_snapshot.recording = enabled;
     s_snapshot.captureSessionId = s_recorder.GetSnapshot().captureSessionId;
@@ -142,6 +213,7 @@ void Profiler::BeginFrame(uint64_t applicationFrameSerial, double frameStartMs)
     s_recorder.BeginFrame(applicationFrameSerial, frameStartMs);
     if (s_snapshot.captureSessionId != s_recorder.GetSnapshot().captureSessionId) {
         s_records.clear();
+        s_recordsDirty = false;
         s_snapshot = {};
     }
     s_snapshot.recording = IsEnabled();
@@ -150,29 +222,12 @@ void Profiler::BeginFrame(uint64_t applicationFrameSerial, double frameStartMs)
 void Profiler::EndFrame()
 {
     if (!s_recorder.IsFrameOpen()) return;
-    s_recorder.EndFrame();
-    static_cast<ProfileSnapshot&>(s_snapshot) = s_recorder.GetSnapshot();
+    s_recorder.EndFrameTo(static_cast<ProfileSnapshot&>(s_snapshot));
     s_snapshot.captureFilter = *s_captureFilter;
     s_lastFrameIndex = s_snapshot.frameIndex;
-    s_snapshot.descriptors.clear();
-    std::unordered_set<uint64_t> used;
-    for (const auto& sample : s_snapshot.samples) used.insert(sample.sampleKey);
-    for (const auto& descriptor : s_descriptors)
-        if (used.contains(descriptor.sampleKey)) s_snapshot.descriptors.push_back(descriptor);
+    PublishDescriptors();
     s_records.clear();
-    std::unordered_map<uint64_t, const PerformanceDescriptor*> lookup;
-    for (const auto& descriptor : s_snapshot.descriptors) lookup.emplace(descriptor.sampleKey, &descriptor);
-    auto completion = s_snapshot.samples;
-    std::sort(completion.begin(), completion.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs.completionOrder < rhs.completionOrder;
-    });
-    for (const auto& sample : completion) {
-        if (sample.status != ProfileSampleStatus::COMPLETE) continue;
-        const auto descriptor = lookup.find(sample.sampleKey);
-        if (descriptor != lookup.end())
-            s_records.push_back({descriptor->second->name.c_str(), descriptor->second->category.c_str(), sample.inclusiveMs,
-                                 s_lastFrameIndex, sample.depth, descriptor->second->color});
-    }
+    s_recordsDirty = true;
     s_compatStack.clear();
     s_compatSuppressedDepth = 0;
     s_compatOverflowCheckpoint = {};
@@ -238,7 +293,26 @@ void Profiler::Recover(ProfilerCheckpoint checkpoint)
     s_compatOverflowCheckpoint = checkpoint.compatOverflow;
     s_compatOverflowScopeId = checkpoint.compatOverflowScopeId;
 }
-const std::vector<ProfileRecord>& Profiler::GetLastFrameRecords() { return s_records; }
+const std::vector<ProfileRecord>& Profiler::GetLastFrameRecords()
+{
+    if (!s_recordsDirty || s_snapshot.samples.empty()) { s_recordsDirty = false; return s_records; }
+    if (s_records.capacity() < ProfileRecorder::MAX_SAMPLES) s_records.reserve(ProfileRecorder::MAX_SAMPLES);
+    if (s_completionIndices.capacity() < ProfileRecorder::MAX_SAMPLES) s_completionIndices.reserve(ProfileRecorder::MAX_SAMPLES);
+    s_completionIndices.resize(s_snapshot.samples.size());
+    /// @note 全保存 sample は終了時に 1..N の一意な順番を持ち、異常終了もその順番を消費する。
+    for (size_t index = 0; index < s_snapshot.samples.size(); ++index)
+        s_completionIndices[s_snapshot.samples[index].completionOrder - 1] = static_cast<uint32_t>(index);
+    for (const auto index : s_completionIndices) {
+        const auto& sample = s_snapshot.samples[index];
+        const uint32_t descriptorIndex = s_sampleDescriptorIndices[index];
+        if (sample.status != ProfileSampleStatus::COMPLETE || descriptorIndex >= s_snapshot.descriptors.size()) continue;
+        const auto& descriptor = s_snapshot.descriptors[descriptorIndex];
+        s_records.push_back({descriptor.name.c_str(), descriptor.category.c_str(), sample.inclusiveMs,
+                             s_lastFrameIndex, sample.depth, descriptor.color});
+    }
+    s_recordsDirty = false;
+    return s_records;
+}
 uint64_t Profiler::GetLastFrameIndex() { return s_lastFrameIndex; }
 const PerformanceSnapshot& Profiler::GetSnapshot() { return s_snapshot; }
 

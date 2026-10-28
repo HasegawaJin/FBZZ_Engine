@@ -75,6 +75,8 @@ void ProfileRecorder::BeginFrame(uint64_t applicationFrameSerial, double frameSt
     ++m_frameIndex;
     m_frameStartMs = frameStartMs;
     m_current.samples.clear();
+    /// @note facade の直接確定後に未終了 frame を置換した場合も、次の収集領域を先に予約する。
+    if (m_current.samples.capacity() < MAX_SAMPLES) m_current.samples.reserve(MAX_SAMPLES);
     m_current.recording = true;
     m_current.available = true;
     m_current.complete = true;
@@ -277,7 +279,15 @@ bool ProfileRecorder::Recover(ProfileCheckpoint checkpoint)
 
 void ProfileRecorder::EndFrame()
 {
+    EndFrameTo(m_snapshot);
+}
+
+void ProfileRecorder::EndFrameTo(ProfileSnapshot& destination)
+{
     if (!m_frameOpen) return;
+    /// @note facade の初回公開と session reset では、recorder の未使用予約領域を再利用する。
+    if (&destination != &m_snapshot && destination.samples.capacity() < MAX_SAMPLES)
+        destination.samples.swap(m_snapshot.samples);
     if (m_suppressionDepth) MarkIncomplete();
     m_suppressionDepth = 0;
     m_suppressionTopScopeId = 0;
@@ -285,7 +295,7 @@ void ProfileRecorder::EndFrame()
     while (!m_stack.empty()) End(m_stack.back().token, ProfileSampleStatus::ABORTED);
     m_current.cpuFrameElapsedMs = std::max(0.0, ReadClock() - m_frameStartMs);
     m_current.recordedSampleCount = static_cast<uint32_t>(m_current.samples.size());
-    std::swap(m_current, m_snapshot);
+    std::swap(m_current, destination);
     m_frameOpen = false;
 }
 

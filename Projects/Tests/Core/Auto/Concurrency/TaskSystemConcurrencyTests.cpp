@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <future>
+#include <latch>
 #include <vector>
 
 namespace fbzz::tests {
@@ -61,4 +62,39 @@ TEST_F(TaskSystemConcurrencyTest, HasNoPendingTasksRightAfterInit)
     fbzz::TaskSystem::Shutdown();
 }
 
-} // namespace fbzz::tests
+TEST_F(TaskSystemConcurrencyTest, ReportsQueuedPoolWorkAndNamedExternalWorkers)
+{
+    fbzz::TaskSystem::Init(1);
+    std::latch started(1);
+    std::latch release(1);
+    auto active = fbzz::TaskSystem::Submit([&started, &release] {
+        started.count_down();
+        release.wait();
+    });
+    started.wait();
+    auto queued = fbzz::TaskSystem::Submit([] {});
+
+    const auto poolStats = fbzz::TaskSystem::GetStats();
+    EXPECT_EQ(poolStats.workerCount, 1);
+    EXPECT_EQ(poolStats.activeCount, 1);
+    EXPECT_EQ(poolStats.queuedCount, 1);
+    EXPECT_EQ(poolStats.externalWorkerCount, 0);
+    {
+        fbzz::TaskSystem::ExternalWorkerScope worker(fbzz::TaskSystem::ExternalWorkerCategory::VolumeFluid);
+        const auto externalStats = fbzz::TaskSystem::GetStats();
+        EXPECT_EQ(externalStats.externalWorkerCount, 1);
+        EXPECT_EQ(externalStats.externalFluidWorkerCount, 1);
+    }
+    release.count_down();
+    auto accountingBarrier = fbzz::TaskSystem::Submit([] {});
+    active.get();
+    queued.get();
+    accountingBarrier.get();
+    const auto measuredStats = fbzz::TaskSystem::GetStats();
+    EXPECT_GE(measuredStats.completedCount, 2u);
+    EXPECT_GT(measuredStats.totalQueueWaitMs, 0.0);
+    EXPECT_GT(measuredStats.totalExecutionMs, 0.0);
+    fbzz::TaskSystem::Shutdown();
+}
+
+} /// @note namespace fbzz::tests

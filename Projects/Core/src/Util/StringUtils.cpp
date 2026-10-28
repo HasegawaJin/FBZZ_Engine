@@ -26,6 +26,11 @@ bool StringUtils::ContainsCI(const std::string& s, const std::string& sub)
 
 bool StringUtils::EqualsCI(const std::string& a, const std::string& b)
 {
+    return EqualsCIView(a, b);
+}
+
+bool StringUtils::EqualsCIView(std::string_view a, std::string_view b)
+{
     if (a.size() != b.size()) return false;
     for (std::size_t i = 0; i < a.size(); ++i) {
         if (std::tolower(static_cast<unsigned char>(a[i]))
@@ -36,10 +41,14 @@ bool StringUtils::EqualsCI(const std::string& a, const std::string& b)
 
 std::string StringUtils::ToLower(const std::string& s)
 {
-    std::string out = s;
-    std::transform(out.begin(), out.end(), out.begin(),
+    return ToLowerCopy(s);
+}
+
+std::string StringUtils::ToLowerCopy(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return out;
+    return s;
 }
 
 std::string StringUtils::ToUpper(const std::string& s)

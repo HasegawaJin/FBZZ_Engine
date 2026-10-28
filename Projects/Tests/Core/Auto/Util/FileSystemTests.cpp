@@ -7,6 +7,12 @@
 #include <TestKit/TempDir.hpp>
 #include <Core/Util/FileSystem.hpp>
 #include <algorithm>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#undef CopyFile
+#undef GetCurrentDirectory
 
 namespace fbzz::tests {
 
@@ -149,4 +155,21 @@ TEST_F(FileSystemTest, ResolvesExistingAndMissingPathsConsistently)
     EXPECT_EQ(FileSystem::LastWriteTime(file), expectedTime);
 }
 
+TEST_F(FileSystemTest, AtomicUnicodeReplacementPreservesUnownedTemporaryAndLeavesNoOwnedOrphans)
+{
+    const auto directory = m_temp.Path() / L"日本語の保存先"; const auto target = directory / L"設定データ.toml";
+    const auto unrelated = directory / L".設定データ.toml.tmp";
+    ASSERT_TRUE(FileSystem::WriteText(target, "old")); ASSERT_TRUE(FileSystem::WriteText(unrelated, "unowned"));
+    ASSERT_TRUE(FileSystem::WriteTextAtomic(FileSystem::PathToUtf8(target), "\xE3\x81\x82-new"));
+    std::string text; ASSERT_TRUE(FileSystem::ReadText(target, text)); EXPECT_EQ(text, "\xE3\x81\x82-new");
+    ASSERT_TRUE(FileSystem::ReadText(unrelated, text)); EXPECT_EQ(text, "unowned");
+    const HANDLE locked = ::CreateFileW(target.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(locked, INVALID_HANDLE_VALUE);
+    struct Close { HANDLE handle; ~Close() { ::CloseHandle(handle); } } close{locked};
+    EXPECT_FALSE(FileSystem::WriteTextAtomic(FileSystem::PathToUtf8(target), "must-not-replace"));
+    ASSERT_TRUE(FileSystem::ReadText(target, text)); EXPECT_EQ(text, "\xE3\x81\x82-new");
+    std::error_code error; size_t files = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(directory, error)) { (void)entry; ++files; }
+    EXPECT_FALSE(error); EXPECT_EQ(files, 2u);
+}
 } /// @note namespace fbzz::tests

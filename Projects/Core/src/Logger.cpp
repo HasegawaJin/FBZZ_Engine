@@ -6,6 +6,7 @@
 /// @note 出力先は非所有ポインタとして扱い、寿命管理は登録側が行う。
 #include "Core/Logger.hpp"
 #include "Core/ILogSink.hpp"
+#include <Core/ExternalCallbackBoundary.hpp>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -70,6 +71,9 @@ void Logger::SetMinLevel(LogLevel level) { s_minLevel = level; }
 void Logger::Log(LogLevel level, const char* fmt, va_list args)
 {
     if (level < s_minLevel) return;
+
+    /// @note 通知前の確定が renderer worker を待っても、その worker のログ用 mutex を保持しない。
+    (void)NotifyBeforeExternalCallback();
 
     static bool s_cpSet = (SetConsoleOutputCP(CP_UTF8), true);
     (void)s_cpSet;

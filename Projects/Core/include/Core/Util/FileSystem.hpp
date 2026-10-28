@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef CopyFile
@@ -30,15 +31,18 @@ public:
     /// @note const char* は std::string と std::filesystem::path の両方に暗黙変換できて曖昧になるため、string 版へ明示転送する。
     static bool        Exists(const char* path) { return Exists(std::string(path)); }
     static bool        IsDirectory(const std::string& path);
-    static std::string GetExtension(const std::string& path);  ///< @note 例: ".scene"
-    static std::string GetFilename(const std::string& path);   ///< @note 例: "main.scene"
-    static std::string GetDirectory(const std::string& path);  ///< @note 例: "Assets/Scenes/"
+    static std::string GetExtension(const std::string& path);  /// @note 例: ".scene"
+    static std::string GetFilename(const std::string& path);   /// @note 例: "main.scene"
+    static std::string GetDirectory(const std::string& path);  /// @note 例: "Assets/Scenes/"
     /// @note NormalizePathSeparators — Windows / POSIX の区切り文字を '/' に統一する。
     /// @note Editor / AssetBrowser / Serializer が同じ文字列表現で比較できるよう Engine 側に集約する。
     static std::string NormalizePathSeparators(std::string path, bool trimTrailingSlash = true);
     /// @note SamePathText — OS API に問い合わせず、正規化した文字列として同一パスかを比較する。
     /// @note 存在しない出力先や仮想 Assets パスも比較対象になるため filesystem::equivalent は使えない。
     static bool        SamePathText(const std::string& a, const std::string& b);
+    /// @note true は末尾区切りを長さ1まで除去する従来契約。false は末尾区切りと長さを保持する。
+    /// @note 比較は byte の大小・区切りだけを折り畳み、一時文字列を確保しない。
+    static bool SamePathText(std::string_view a, std::string_view b, bool trimTrailingSlash);
     /// @note IsChildPathText — path が root 自身、または root 配下の文字列パスかを判定する。
     /// @note AssetBrowser のマウント判定は未作成パスも扱うため、文字列だけで完結させる。
     static bool        IsChildPathText(const std::string& path, const std::string& root);

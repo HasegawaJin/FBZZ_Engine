@@ -104,6 +104,9 @@ public:
     bool Recover(ProfileCheckpoint checkpoint);
     const ProfileSnapshot& GetSnapshot() const { return m_snapshot; }
 private:
+    friend class Profiler;
+    /// @note Performance facade は所有 snapshot へ直接確定し、samples の二重コピーを避ける。
+    void EndFrameTo(ProfileSnapshot& destination);
     struct ActiveScope {
         ProfileToken token;
         double startMs = 0.0;

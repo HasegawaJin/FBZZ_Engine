@@ -7,6 +7,7 @@
 #pragma once
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::util {
@@ -20,7 +21,12 @@ public:
     /// @note       部分一致だと "Console" が "Build Output Console" にも当たり、指したつもりの
     /// @note       無い対象を操作してしまう。
     static bool        EqualsCI(const std::string& a, const std::string& b);
+    /// @brief 所有しない文字列を大文字小文字を無視して比較する。
+    /// @note std::tolower に unsigned char を渡し、既存 EqualsCI と同じ現在の C locale で比較する。
+    static bool        EqualsCIView(std::string_view a, std::string_view b);
     static std::string ToLower(const std::string& s);
+    /// @note 値で受けたバッファを再利用し、既存 ToLower のコピー契約を保ったまま一時文字列の追加コピーを避ける。
+    static std::string ToLowerCopy(std::string s);
     static std::string ToUpper(const std::string& s);
     static bool        StartsWith(const std::string& s, const std::string& prefix);
     static bool        EndsWith(const std::string& s, const std::string& suffix);

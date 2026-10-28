@@ -23,10 +23,13 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <limits>
 
 namespace {
 /// @brief UTF-8 文字列をワイド文字列に変換する。
@@ -109,13 +112,24 @@ std::string FileSystem::NormalizePathSeparators(std::string path, bool trimTrail
 
 bool FileSystem::SamePathText(const std::string& a, const std::string& b)
 {
-    std::string lhs = NormalizePathSeparators(a);
-    std::string rhs = NormalizePathSeparators(b);
-    std::transform(lhs.begin(), lhs.end(), lhs.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    std::transform(rhs.begin(), rhs.end(), rhs.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return lhs == rhs;
+    return SamePathText(a, b, true);
+}
+
+bool FileSystem::SamePathText(std::string_view a, std::string_view b, bool trimTrailingSlash)
+{
+    const auto isSeparator = [](char value) { return value == '/' || value == '\\'; };
+    if (trimTrailingSlash) {
+        while (a.size() > 1 && isSeparator(a.back())) a.remove_suffix(1);
+        while (b.size() > 1 && isSeparator(b.back())) b.remove_suffix(1);
+    }
+    if (a.size() != b.size()) return false;
+    const auto fold = [](char value) {
+        if (value == '\\') return '/';
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(value)));
+    };
+    for (size_t index = 0; index < a.size(); ++index)
+        if (fold(a[index]) != fold(b[index])) return false;
+    return true;
 }
 
 bool FileSystem::IsChildPathText(const std::string& path, const std::string& root)
@@ -313,26 +327,47 @@ bool FileSystem::WriteText(const std::string& path, const std::string& text)
 
 bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& text)
 {
-    const std::filesystem::path target = PathFromUtf8(path);
-    if (target.empty()) return false;
-
-    /// @note 同一フォルダに置く。別ボリュームだと rename がコピーになり、置き換えの原子性が崩れる。
-    const std::filesystem::path temp =
-        target.parent_path() / ("." + PathToUtf8(target.filename()) + ".tmp");
-
-    if (!WriteText(temp, text)) {
-        std::error_code ec;
-        std::filesystem::remove(temp, ec);
-        return false;
+    std::error_code error;
+    const auto input = PathFromUtf8(path);
+    if (input.empty()) return false;
+    const auto target = std::filesystem::absolute(input, error).lexically_normal();
+    if (error || !EnsureParentDirectory(target)) return false;
+    const DWORD attributes = ::GetFileAttributesW(target.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) return false;
+    static std::atomic<uint64_t> nextTemporary{1};
+    std::filesystem::path temp;
+    HANDLE file = INVALID_HANDLE_VALUE;
+    for (unsigned attempt = 0; attempt < 64; ++attempt) {
+        uint64_t nonce = nextTemporary.load(std::memory_order_relaxed);
+        while (nonce != std::numeric_limits<uint64_t>::max()
+            && !nextTemporary.compare_exchange_weak(nonce, nonce + 1, std::memory_order_relaxed)) {}
+        if (nonce == std::numeric_limits<uint64_t>::max()) return false;
+        temp = target.parent_path() / (L"." + target.filename().wstring() + L"."
+            + std::to_wstring(::GetCurrentProcessId()) + L"." + std::to_wstring(nonce) + L".tmp");
+        /// @note 同一 parent と CREATE_NEW により、既存の他所有 temp を上書き・回収しない。
+        /// @see https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilew CREATE_NEW の排他的作成。
+        file = ::CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file != INVALID_HANDLE_VALUE) break;
+        const DWORD failure = ::GetLastError();
+        if (failure != ERROR_FILE_EXISTS && failure != ERROR_ALREADY_EXISTS) return false;
     }
-
-    if (!Rename(temp, target)) {
-        /// @note 置き換えに失敗しても原本は無傷。書きかけを残さないよう掃除して失敗を返す。
-        std::error_code ec;
-        std::filesystem::remove(temp, ec);
-        return false;
+    if (file == INVALID_HANDLE_VALUE) return false;
+    bool success = true;
+    size_t offset = 0;
+    while (offset < text.size()) {
+        const DWORD count = static_cast<DWORD>(std::min<size_t>(text.size() - offset, 1024U * 1024U));
+        DWORD written = 0;
+        if (!::WriteFile(file, text.data() + offset, count, &written, nullptr) || !written) { success = false; break; }
+        offset += written;
     }
-    return true;
+    if (success) success = ::FlushFileBuffers(file) != FALSE;
+    if (!::CloseHandle(file)) success = false;
+    /// @note MSVC rename は REPLACE_EXISTING。temp は同一 parent なので cross-volume copy を使わず原本を先に削除しない。
+    /// @see https://github.com/microsoft/STL/blob/main/stl/src/filesystem.cpp __std_fs_rename。
+    if (success && Rename(temp, target)) return true;
+    /// @note temp はこの呼出しで排他的に作成した exact path。再帰走査・prefix 一括削除はしない。
+    std::filesystem::remove(temp, error);
+    return false;
 }
 
 std::ofstream FileSystem::OpenBinaryWriter(const std::filesystem::path& path)
