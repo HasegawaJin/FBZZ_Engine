@@ -61,7 +61,9 @@ static class Program
             .. SdkDocumentationTests.Cases,
             .. ScriptCallbackContractsTests.Cases,
             .. AudioSourceApiTests.Cases,
-            .. ParticleServicesApiTests.Cases
+            .. ParticleServicesApiTests.Cases,
+            .. RagdollControlsApiTests.Cases,
+            .. FootIKApiTests.Cases
         ];
         int failures = 0;
         foreach ((string name, Action test) in tests)

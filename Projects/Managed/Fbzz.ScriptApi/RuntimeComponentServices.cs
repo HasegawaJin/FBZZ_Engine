@@ -63,7 +63,7 @@ public sealed class MotionWarp : NativeComponent
     public MotionWarpPointMode TargetPointMode => RuntimeComponentValue.ReadEnum<MotionWarpPointMode>(Invoke(Service, 13, true));
 }
 
-public sealed class IKSolver : NativeComponent
+public sealed partial class IKSolver : NativeComponent
 {
     internal IKSolver(GameObject owner, ulong lifetimeToken = 0) : base(owner, (uint)NativeComponentKind.IK_SOLVER, lifetimeToken) { }
     const uint Service = (uint)ScriptServiceKind.SERVICE_IK;
@@ -87,7 +87,30 @@ public sealed class IKSolver : NativeComponent
     public void SetChainPole(string targetName, GameObject? target) => Invoke(Service, 9, false, text: [targetName], related: target);
 }
 
-public sealed class Ragdoll : NativeComponent
+public enum RagdollDriveSpace { Parent = 0, World = 1 }
+
+/// @brief Hz・減衰比・N・N·m。周波数または出力0は該当する駆動を停止する。
+public struct RagdollDriveSettings
+{
+    public bool Enabled;
+    public RagdollDriveSpace Space;
+    public float LinearFrequency;
+    public float AngularFrequency;
+    public float LinearDampingRatio;
+    public float AngularDampingRatio;
+    public float MaxForce;
+    public float MaxTorque;
+    public float TargetVelocityMultiplier;
+    public RagdollDriveSettings()
+    {
+        Enabled = true; Space = RagdollDriveSpace.Parent;
+        LinearFrequency = 0; AngularFrequency = 4;
+        LinearDampingRatio = 1; AngularDampingRatio = 1;
+        MaxForce = 0; MaxTorque = 100; TargetVelocityMultiplier = 1;
+    }
+}
+
+public sealed partial class Ragdoll : NativeComponent
 {
     internal Ragdoll(GameObject owner, ulong lifetimeToken = 0) : base(owner, (uint)NativeComponentKind.RAGDOLL, lifetimeToken) { }
     const uint Service = (uint)ScriptServiceKind.SERVICE_RAGDOLL;
@@ -155,6 +178,17 @@ public sealed class Ragdoll : NativeComponent
     public void SetContacts(bool world, bool dynamic, bool self, bool whileActive) => Invoke(Service, 31, false, (world ? 1 : 0) | (dynamic ? 2 : 0) | (self ? 4 : 0) | (whileActive ? 8 : 0));
     [ApiContract(RunModes = new[] { "Play" }, Call = "fixed", ParameterUnits = new[] { "offset=m" })]
     public void SetGroundPlane(bool enabled, float offset = 0) => Invoke(Service, 32, false, enabled ? 1 : 0, [offset]);
+    [ApiContract(RunModes = new[] { "Play" }, Call = "fixed", Summary = "Selects a GUID or .ragdoll asset; empty restores the preset. Invalid reloads retain the previous valid definition.")]
+    public void SetPhysicsAsset(string reference) => Invoke(Service, 33, false, text: [reference]);
+    [ApiContract(RunModes = new[] { "Play" }, Call = "fixed", Summary = "Overrides a built body's animation drive. Frequencies are Hz, force N, torque N*m; zero disables that axis.", Failure = "missing_body_returns_false_and_preserves_settings")]
+    public bool SetBodyDrive(string bone, RagdollDriveSettings settings) => Invoke(Service, 34, false,
+        (settings.Enabled ? 1 : 0) | (RuntimeComponentValue.EnumValue(settings.Space) << 1),
+        [settings.LinearFrequency, settings.AngularFrequency, settings.LinearDampingRatio,
+         settings.AngularDampingRatio, settings.MaxForce, settings.MaxTorque, settings.TargetVelocityMultiplier], [bone]).Flag;
+    [ApiContract(RunModes = new[] { "Play" }, Call = "fixed", Summary = "Restores the body's authored drive; returns false if the body is unavailable.")]
+    public bool ClearBodyDrive(string bone) => Invoke(Service, 35, false, text: [bone]).Flag;
+    [ApiContract(RunModes = new[] { "Play" }, Call = "fixed", ParameterUnits = new[] { "staticFriction=dimensionless", "dynamicFriction=dimensionless", "restitution=0_to_1" })]
+    public void SetSurface(float staticFriction, float dynamicFriction, float restitution = 0) => Invoke(Service, 36, false, values: [staticFriction, dynamicFriction, restitution]);
     void WriteNames(ReadOnlySpan<string> names, int depth, bool exclusions)
     {
         if (depth < 0) throw new ArgumentOutOfRangeException(nameof(depth));

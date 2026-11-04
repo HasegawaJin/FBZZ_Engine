@@ -30,7 +30,7 @@ query は Edit/Play の同期 callback、Connect、readonly DrawGizmos/Selected�
 
 MotionWarp の位置と姿勢は world、位置は m、duration は正の s。姿勢は有限かつ非退化な Quaternion を native で正規化する。軸補正は world 各軸の0..1、maxSpeed は非負 m/s、0は上限なし。target は runtime 値なので設定を保存して起動の代用にしない。既存 AnimatorSystem が root motion 適用前に消費する。
 
-IK は Inspector で組んだ targetName の先頭一致チェーンを操作する。未検出は Has/Enabled=false、Weight=0、変更は no-op。SetChainTarget は runtime EntityID を差し替え、null は runtime ID を解除する。保存済み GUID/name の解決規則は既存 IKSystem が保持するため、null を authoring reference の削除とは説明しない。weight は native の0..1 clamp。
+IK は Inspector で組んだ targetName の先頭一致チェーンを操作する。未検出は Has/Enabled=false、Weight=0、変更は no-op。SetChainTarget は runtime EntityID を差し替え、null は runtime ID を解除する。保存済み GUID/name の解決規則は既存 IKSystem が保持するため、null を authoring reference の削除とは説明しない。weight は native の0..1 clamp。FootPlace の調整と診断は [足 IK の調整契約](foot-ik-tuning.md) に従う。
 
 Ragdoll の Begin/BeginActive/End、速度・角速度の衝撃、root recipe、profile、接触・地面、blend、muscle、recovery、collapse、standing guard、root anchor は既存 proxy に転送する。world 並進速度は m/s、角速度は rad/s、半径と変位は m、角度は degree、blend/hold は s。開始は pending request、衝撃は pending queue を使い、更新途中の physical rig を facade から直接動かさない。設定倍率の clamp と phase の遷移は native を正本にする。
 

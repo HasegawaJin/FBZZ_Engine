@@ -10,6 +10,7 @@
 #include <Engine/Scene/Components/MotionWarpComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/RagdollComponent.hpp>
+#include "ManagedRagdollControls.hpp"
 #include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
@@ -49,8 +50,9 @@ bool IsComponentServiceRead(ManagedBridgeOp operation, uint32_t selector)
 {
     switch (operation) {
     case ManagedBridgeOp::SERVICE_MOTION_WARP: return selector == 0 || (selector >= 2 && selector <= 4) || selector == 12 || selector == 13;
-    case ManagedBridgeOp::SERVICE_IK: return selector == 0 || selector == 2 || selector == 3 || selector == 5;
-    case ManagedBridgeOp::SERVICE_RAGDOLL: return selector == 0 || (selector >= 2 && selector <= 12);
+    case ManagedBridgeOp::SERVICE_IK: return selector == 0 || selector == 2 || selector == 3 || selector == 5 || selector == 10 || selector == 12;
+    case ManagedBridgeOp::SERVICE_RAGDOLL: return selector == 0 || (selector >= 2 && selector <= 12)
+        || selector==50 || selector==56 || selector==61 || selector==62 || selector==65 || selector==66;
     case ManagedBridgeOp::SERVICE_SPRING_BONE: return selector == 0 || selector == 3 || selector == 4 || selector == 6;
     case ManagedBridgeOp::SERVICE_UI_ANIMATOR: return selector == 0 || selector == 2;
     case ManagedBridgeOp::SERVICE_PATROL: return selector == 0 || selector == 2 || selector == 3 || selector == 4 || selector == 6 || selector == 12;
@@ -153,12 +155,60 @@ ManagedBridgeStatus RunComponentServices(Scene& scene, Script& view, GameObject&
             if (!args(0, 1, IntegerMode::ZERO, true) || t[0].empty()) return ManagedBridgeStatus::INVALID_ARGUMENT;
             if (request.index == 8) view.ik.SetChainTarget(t[0], related ? related->GetID() : EntityID::INVALID);
             else view.ik.SetChainPole(t[0], related ? related->GetID() : EntityID::INVALID);
+        } else if (request.index >= 10 && request.index <= 12) {
+            const bool writeSettings = request.index == 11;
+            if (!args(writeSettings ? 11 : 0, 1, writeSettings ? IntegerMode::MASK : IntegerMode::ZERO)
+                || t[0].empty() || (writeSettings && integer > 7)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            const float maxima[]{2, 4, 0.5f, 0.25f, 1, 1, 1, 1, 1, 1, 0.25f};
+            if (writeSettings) {
+                for (size_t i = 0; i < p.size(); ++i)
+                    if (p[i] < 0.0f || p[i] > maxima[i]) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            }
+            auto found = std::find_if(row->chains.begin(), row->chains.end(),
+                [&](const IKChain& chain) { return chain.targetName == t[0]; });
+            IKChain* chain = found != row->chains.end() && found->type == IKSolverType::FootPlace ? &*found : nullptr;
+            if (request.index == 10) {
+                output.integer = chain ? 1 | (chain->adjustHip ? 2 : 0) | (chain->useAnimatorIKWeight ? 4 : 0) | (chain->useRagdollFootShape ? 8 : 0) : 0;
+                output.values = chain ? std::vector<float>{chain->rayUpRatio, chain->rayDownRatio,
+                    chain->footSurfaceOffset, chain->correctionDeadZone, chain->maxCorrection,
+                    chain->footPlantDistance, chain->smoothTime, chain->hipWeight,
+                    chain->maxHipLowering, chain->maxHipRaising, chain->hipBendReserve} : std::vector<float>(11, 0.0f);
+            } else if (request.index == 12) {
+                output.integer = chain ? 1 | (chain->runtimeLeftGrounded ? 2 : 0) |
+                    (chain->runtimeRightGrounded ? 4 : 0) | (chain->runtimeHipLimited ? 8 : 0) | (chain->runtimePhysicsFootShape ? 16 : 0) : 0;
+                output.values = chain ? std::vector<float>{chain->smoothedLeft, chain->smoothedRight,
+                    chain->runtimeHipTarget, chain->runtimeAppliedHip, chain->leftPlantWeight, chain->rightPlantWeight}
+                    : std::vector<float>(6, 0.0f);
+            } else {
+                output.integer = chain != nullptr;
+                if (chain) {
+                    chain->rayUpRatio = p[0]; chain->rayDownRatio = p[1]; chain->footSurfaceOffset = p[2];
+                    chain->correctionDeadZone = p[3]; chain->maxCorrection = p[4];
+                    chain->footPlantDistance = p[5]; chain->smoothTime = p[6]; chain->hipWeight = p[7];
+                    chain->maxHipLowering = p[8]; chain->maxHipRaising = p[9]; chain->hipBendReserve = p[10];
+                    chain->adjustHip = (integer & 1) != 0; chain->useAnimatorIKWeight = (integer & 2) != 0;
+                    chain->useRagdollFootShape = (integer & 4) != 0;
+                }
+            }
         } else return ManagedBridgeStatus::UNSUPPORTED;
         break;
     }
     case ManagedBridgeOp::SERVICE_RAGDOLL: {
         auto* row = Row<RagdollComponent>(target, ManagedNativeComponentKind::RAGDOLL);
         if (!row) return ManagedBridgeStatus::NOT_FOUND;
+        if (request.index==67) {
+            const int steps=static_cast<int>(integer&127);
+            if (!args(2,0,IntegerMode::MASK) || integer>255 || steps<1 || steps>64
+                || p[0]<0.0f || p[1]<0.0f) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            row->substeps=steps; row->linearDrag=p[0]; row->angularDrag=p[1];
+            row->allowRest=(integer&128)!=0;
+            break;
+        }
+        if(request.index>=50&&request.index<=66) {
+            const auto status=RunRagdollControls(*row,target,related,request.index,integer,p,t,output);
+            if(status!=ManagedBridgeStatus::OK)return status;
+            break;
+        }
         if (read) {
             if (!args(0)) return ManagedBridgeStatus::INVALID_ARGUMENT;
             switch (request.index) {
@@ -168,7 +218,7 @@ ManagedBridgeStatus RunComponentServices(Scene& scene, Script& view, GameObject&
             case 4: output.values = {view.ragdoll.GetWeight()}; break;
             case 5: output.values = {view.ragdoll.GetDeviation()}; break;
             case 6:
-                if (static_cast<int>(row->runtimeStatus) < 0 || static_cast<int>(row->runtimeStatus) > 7) return ManagedBridgeStatus::INVALID_ARGUMENT;
+                if (static_cast<int>(row->runtimeStatus) < 0 || static_cast<int>(row->runtimeStatus) > 8) return ManagedBridgeStatus::INVALID_ARGUMENT;
                 output.text = {view.ragdoll.GetStatus()}; break;
             case 7: output.integer = view.ragdoll.GetParticleCount(); break;
             case 8: output.integer = view.ragdoll.GetSaturatedJointCount(); break;
@@ -236,6 +286,35 @@ ManagedBridgeStatus RunComponentServices(Scene& scene, Script& view, GameObject&
         case 32:
             if (!args(1, 0, IntegerMode::FLAG)) return ManagedBridgeStatus::INVALID_ARGUMENT;
             view.ragdoll.SetGroundPlane(integer != 0, p[0]); break;
+        case 33:
+            if (!args(0,1) || t[0].find('\0')!=std::string::npos) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            row->physicsAssetPath=t[0]; break;
+        case 34: {
+            if (!args(7,1,IntegerMode::MASK) || integer>3 || t[0].empty()) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            for (float value:p) if (value<0.0f) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            RagdollBodyDrive settings;
+            settings.enabled=(integer&1)!=0;
+            settings.space=(integer&2)!=0 ? RagdollDriveSpace::WORLD : RagdollDriveSpace::PARENT;
+            settings.linearFrequency=p[0]; settings.angularFrequency=p[1];
+            settings.linearDampingRatio=p[2]; settings.angularDampingRatio=p[3];
+            settings.maxForce=p[4]; settings.maxTorque=p[5]; settings.targetVelocityMultiplier=p[6];
+            output.integer=row->runtime.rig && row->runtime.rig->SetBodyDrive(t[0],settings);
+            if (output.integer) {
+                auto& overrides=row->runtime.driveOverrides;
+                auto it=std::find_if(overrides.begin(),overrides.end(),[&](const auto& d){return d.bone==t[0];});
+                if (it==overrides.end()) overrides.push_back({t[0],settings}); else it->settings=settings;
+            }
+            break;
+        }
+        case 35: {
+            if (!args(0,1) || t[0].empty()) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            output.integer=row->runtime.rig && row->runtime.rig->ClearBodyDrive(t[0]);
+            if (output.integer) std::erase_if(row->runtime.driveOverrides,[&](const auto& d){return d.bone==t[0];});
+            break;
+        }
+        case 36:
+            if (!args(3) || p[0]<0 || p[1]<0 || p[2]<0 || p[2]>1) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            row->staticFriction=p[0]; row->friction=p[1]; row->restitution=p[2]; break;
         default: return ManagedBridgeStatus::UNSUPPORTED;
         }
         break;

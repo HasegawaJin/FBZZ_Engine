@@ -9,6 +9,8 @@
 #include <Engine/Scene/Components/MotionWarpComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/RagdollComponent.hpp>
+#include <Engine/Scene/Ragdoll/RagdollControls.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include <Engine/Scene/Components/UIAnimator.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
@@ -81,6 +83,45 @@ TEST_F(ManagedComponentServicesTest, IkRetargetChecksSceneAndRetainsNamedChainAn
     EXPECT_NEAR(ik.chains[0].weight, 1, testkit::kTolerance);
     ASSERT_EQ(Run(ComponentOp::SERVICE_IK, 8, false, 0, {}, name), ComponentStatus::OK); EXPECT_EQ(ik.chains[0].targetEntity, scene::EntityID::INVALID);
 }
+TEST_F(ManagedComponentServicesTest, FootTuningRoundTripsAndRejectsInvalidPacketsAtomically)
+{
+    auto& ik=m_object->AddComponent<scene::IKSolverComponent>();
+    auto& chain=ik.chains.emplace_back(); chain.type=scene::IKSolverType::FootPlace; chain.targetName="Feet";
+    const std::array<std::string,1> name{"Feet"},missing{"Missing"};
+    std::array<float,11> settings{0.5f,1.2f,0.1f,0.01f,0.2f,0.06f,0.1f,0.5f,0.03f,0.02f,0};
+    ASSERT_EQ(Run(ComponentOp::SERVICE_IK,11,false,3,settings,name),ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer,1);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_IK,10,true,0,{},name),ComponentStatus::OK);
+    ASSERT_EQ(m_result.values.size(),11U);
+    for(size_t i=0;i<settings.size();++i) EXPECT_NEAR(m_result.values[i],settings[i],1.0e-6f);
+    settings[8]=-1; m_result.integer=99;
+    EXPECT_EQ(Run(ComponentOp::SERVICE_IK,11,false,3,settings,name),ComponentStatus::INVALID_ARGUMENT);
+    EXPECT_NEAR(chain.maxHipLowering,0.03f,1.0e-6f); EXPECT_EQ(m_result.integer,99);
+    settings[8]=std::numeric_limits<float>::quiet_NaN();
+    EXPECT_EQ(Run(ComponentOp::SERVICE_IK,11,false,3,settings,name),ComponentStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(Run(ComponentOp::SERVICE_IK,11,true,3,settings,name),ComponentStatus::INVALID_ARGUMENT);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_IK,12,true,0,{},missing),ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer,0); EXPECT_EQ(m_result.values.size(),6U);
+    chain.type=scene::IKSolverType::TwoBone;
+    ASSERT_EQ(Run(ComponentOp::SERVICE_IK,10,true,0,{},name),ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer,0);
+}
+
+TEST_F(ManagedComponentServicesTest, RagdollSimulationSettingsAreFixedOnlyAndAtomic)
+{
+    auto& ragdoll=m_object->AddComponent<scene::RagdollComponent>();
+    const std::array<float,2> drag{0.5f,3};
+    const int original=ragdoll.substeps;
+    EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,67,false,24,drag),ComponentStatus::INVALID_SCOPE);
+    EXPECT_EQ(ragdoll.substeps,original);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,67,false,24,drag,{},true),ComponentStatus::OK);
+    EXPECT_EQ(ragdoll.substeps,24); EXPECT_FALSE(ragdoll.allowRest);
+    EXPECT_NEAR(ragdoll.angularDrag,3,1.0e-6f);
+    EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,67,false,0,drag,{},true),ComponentStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(ragdoll.substeps,24);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,67,false,140,drag,{},true),ComponentStatus::OK);
+    EXPECT_EQ(ragdoll.substeps,12); EXPECT_TRUE(ragdoll.allowRest);
+}
 TEST_F(ManagedComponentServicesTest, RagdollCommandsAreFixedOnlyAndPreserveNativePendingRequests)
 {
     auto& ragdoll = m_object->AddComponent<scene::RagdollComponent>(); const std::array<float, 3> begin{2, 0.4f, 0};
@@ -94,6 +135,70 @@ TEST_F(ManagedComponentServicesTest, RagdollCommandsAreFixedOnlyAndPreserveNativ
     EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 15, false, 0, {}, {}, true), ComponentStatus::INVALID_SCOPE);
     EXPECT_FALSE(ragdoll.endRequested);
 }
+TEST_F(ManagedComponentServicesTest, BodyDriveOverridesAreFixedOnlyValidatedAndRestorable)
+{
+    auto& ragdoll=m_object->AddComponent<scene::RagdollComponent>();
+    ragdoll.runtime.rig=std::make_unique<scene::RagdollRig>();
+    scene::RagdollProfile profile; profile.definitionsOnly=true;
+    scene::RagdollBodyDefinition body; body.bone="Hips"; body.shape=scene::RagdollBodyShape::SPHERE;
+    profile.bodies.push_back(body);
+    std::vector<scene::RagdollBonePose> bones(1); bones[0].name="Hips";
+    ragdoll.runtime.rig->Build(bones,profile);
+    const std::array<std::string,1> name{"Hips"},missing{"Absent"},asset{"guid:abc"};
+    const std::array<float,7> settings{5,6,1,1,500,100,1},invalid{5,6,1,1,-1,100,1};
+    EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,34,false,3,settings,name),ComponentStatus::INVALID_SCOPE);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,34,false,3,settings,name,true),ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer,1);
+    ASSERT_EQ(ragdoll.runtime.driveOverrides.size(),1U);
+    EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,34,false,3,invalid,name,true),ComponentStatus::INVALID_ARGUMENT);
+    EXPECT_NEAR(ragdoll.runtime.driveOverrides[0].settings.maxForce,500,1.0e-6f);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,34,false,3,settings,missing,true),ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer,0);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,35,false,0,{},name,true),ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer,1); EXPECT_TRUE(ragdoll.runtime.driveOverrides.empty());
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,33,false,0,{},asset,true),ComponentStatus::OK);
+    EXPECT_EQ(ragdoll.physicsAssetPath,"guid:abc");
+    const std::array<float,3> surface{0.8f,0.4f,0.1f};
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,36,false,0,surface,{},true),ComponentStatus::OK);
+    EXPECT_NEAR(ragdoll.staticFriction,0.8f,1.0e-6f);
+    EXPECT_NEAR(ragdoll.friction,0.4f,1.0e-6f);
+}
+
+TEST_F(ManagedComponentServicesTest, BodyControlsValidateScopeAndCurrentTargetLifetime)
+{
+    auto& ragdoll=m_object->AddComponent<scene::RagdollComponent>();
+    ragdoll.runtime.rig=std::make_unique<scene::RagdollRig>();ragdoll.phase=scene::RagdollPhase::Hold;
+    scene::RagdollProfile profile;profile.definitionsOnly=true;
+    scene::RagdollBodyDefinition body;body.bone="Hand";body.mass=2;profile.bodies.push_back(body);
+    std::vector<scene::RagdollBonePose> bones(1);bones[0].name="Hand";
+    ragdoll.runtime.rig->Build(bones,profile);ragdoll.runtime.rig->Capture(bones);
+    const std::array<std::string,1> name{"Hand"};
+    const std::array<float,3> impulse{2,0,0};
+    EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,53,false,0,impulse,name),ComponentStatus::INVALID_SCOPE);
+    EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,53,true,0,impulse,name,true),ComponentStatus::INVALID_ARGUMENT);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,53,false,0,impulse,name,true),ComponentStatus::OK);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,50,true,0,{},name),ComponentStatus::OK);
+    ASSERT_EQ(m_result.values.size(),15U);EXPECT_EQ(m_result.integer&1,1);EXPECT_NEAR(m_result.values[9],1,1.0e-6f);
+    auto& object=m_scene.CreateGameObject("Grabbable");auto& rb=object.AddComponent<scene::RigidBodyComponent>();
+    rb.rigidBody=std::make_unique<physics::RigidBody>();
+    const auto lifetime=m_scene.GetComponentLifetime<scene::RigidBodyComponent>(object.GetID());
+    std::array<std::string,2> names{"Hand",std::to_string(lifetime)};
+    const std::array<float,10> grip{0,0,0,8,1,1000,100,0,0.5f,0.35f};
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,58,false,0,grip,names,true,&object),ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer,1);
+    names[1]="0";m_result.integer=99;
+    EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,58,false,0,grip,names,true,&object),ComponentStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(m_result.integer,99);
+    EXPECT_EQ(ragdoll.runtime.rig->Controls().GrabState("Hand").status,physics::XPBDGripStatus::HOLDING);
+    object.RemoveComponent<scene::RigidBodyComponent>();
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,61,true,0,{},name),ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer,static_cast<int64_t>(physics::XPBDGripStatus::TARGET_LOST));
+    EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,62,true,-1,{},name),ComponentStatus::INVALID_ARGUMENT);
+    const std::array<float,2> balance{0.02f,0.5f};
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,56,true,0,balance),ComponentStatus::OK);
+    EXPECT_EQ(m_result.values.size(),24U);EXPECT_EQ(m_result.integer&1,1);
+}
+
 TEST_F(ManagedComponentServicesTest, SpringChainsReuseNativeCreationForceAndResetSemantics)
 {
     auto& spring = m_object->AddComponent<scene::SpringBoneComponent>(); const std::array<std::string, 1> root{"Tail"};
