@@ -307,7 +307,8 @@ void EditorApp::RegisterBuiltinOperators()
     /// @name Gizmo
     /// @note 右ドラッグ中の W/A/S/D はカメラ移動と衝突するため、poll でギズモ切替を無効にする。
     const auto gizmoEnabled = [inEditor](const OpContext& c, const OpArgs& a) {
-        return !ImGui::IsMouseDown(ImGuiMouseButton_Right) && inEditor(c, a);
+        return !ImGui::IsMouseDown(ImGuiMouseButton_Right)
+            && (inEditor(c, a) || (c.ctx.playMode && c.ctx.playMode->CanEditTemporaryScene(c.ctx.activeScene)));
     };
 
     /// @note 排他的なギズモモードは checked を通じて現在値を公開する。

@@ -19,6 +19,8 @@ Game View 上部の Play 設定から、Editor 内で動かす方法と、独立
 
 Editor 内 Play は既存の実行用 Scene コピーを使い、編集 Scene と Undo を保持する。Standalone Play 中も親 Editor は編集状態を保つ。
 
+Editor 内の Play / Pause 中は Scene View でオブジェクトを選択し、Gizmo で移動・回転・拡縮できる。ドラッグは実行中の Scene にだけ反映し、剛体の位置・回転は次の物理ステップで取り込む。Stop で実行用 Scene を破棄し、操作前の編集 Scene に戻る。Play / Pause 中の Gizmo 操作は保存・Undo の対象外とする。
+
 ## Standalone を開始する
 
 1. Game View のセレクターで **Standalone Game** を選び、Play を押す。

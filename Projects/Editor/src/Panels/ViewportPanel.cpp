@@ -440,7 +440,7 @@ void DrawSpatialDebugControls(EditorContext& ctx)
 }
 
 
-bool DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
+void DrawViewModeControls(EditorContext& ctx, const ImVec4& overlaySurface)
 {
     struct ModeEntry {
         const char*        label;
@@ -458,13 +458,6 @@ bool DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
     };
 
     const auto* modeOperator = ctx.operators ? ctx.operators->Find("render.set_view_mode") : nullptr;
-
-    ImGui::SetCursorScreenPos({ viewportMin.x + 6.0f, viewportMin.y + 6.0f });
-    ImGui::BeginGroup();
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, { 3.0f, 0.0f });
-    ImVec4 overlaySurface = EditorTheme::Color(ThemeColor::SurfaceRaised);
-    overlaySurface.w = 0.90f;
 
     for (const auto& entry : kModes) {
         if (std::string_view(entry.mode).starts_with("ray_") && !core::DeveloperMode::IsEnabled()) continue;
@@ -622,6 +615,23 @@ bool DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin)
             ImGui::SetTooltip("Ctrl+Shift drag: also rotate the object so its up axis "
                               "matches the surface normal");
         ImGui::EndPopup();
+    }
+}
+
+bool DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin, bool temporary)
+{
+    ImGui::SetCursorScreenPos({ viewportMin.x + 6.0f, viewportMin.y + 6.0f });
+    ImGui::BeginGroup();
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, { 3.0f, 0.0f });
+    ImVec4 overlaySurface = EditorTheme::Color(ThemeColor::SurfaceRaised);
+    overlaySurface.w = 0.90f;
+
+    if (temporary) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Play only");
+    } else {
+        DrawViewModeControls(ctx, overlaySurface);
     }
 
     /// @name Gizmo / Snap クイックトグル
@@ -788,6 +798,8 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     }
 
     const bool inPlayOrPause = ctx.playMode && !ctx.playMode->IsInEditor();
+    const bool playSceneGizmo = isSceneView && inPlayOrPause
+        && ctx.playMode->CanEditTemporaryScene(ctx.activeScene);
 
     if (isUIView && !inPlayOrPause)
         DrawCanvasEditorGuides(ctx, viewportMin, size);
@@ -845,8 +857,9 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     m_controlPointLayers.Split(viewportDrawList, 2);
     m_controlPointLayers.SetCurrentChannel(viewportDrawList, 1);
     bool overlayHovered = false;
+    if (isSceneView && (!inPlayOrPause || playSceneGizmo))
+        overlayHovered = DrawViewModeToolbar(ctx, viewportMin, playSceneGizmo);
     if (isSceneView && !inPlayOrPause) {
-        overlayHovered = DrawViewModeToolbar(ctx, viewportMin);
         overlayHovered = DrawMapToolOverlay(ctx, viewportMin) || overlayHovered;
         DrawOrientationGizmo(ctx, viewportMin, size);
         const ImVec2 bookmarksMin{viewportMin.x + size.x - 186.0f, viewportMin.y + 134.0f};
@@ -882,8 +895,18 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         isSceneView && !inPlayOrPause,
         anyToolActive || overlayHovered || IsOrientationGizmoHovered() || IsOrientationGizmoActive() || ImGui::IsDragDropActive(),
         viewportHovered);
-    const bool gizmoWantsMouse = pointWantsMouse || ImGuizmo::IsUsing() || ImGuizmo::IsOver()
-                              || IsOrientationGizmoHovered() || IsOrientationGizmoActive();
+    const bool altHeld = ImGui::GetIO().KeyAlt;
+    bool playGizmoWantsMouse = false;
+    if (playSceneGizmo) {
+        DrawSceneIcons(ctx, viewportMin, size);
+        if (m_prevGizmoUsing || (!altHeld && !overlayHovered && !ImGui::IsDragDropActive())) {
+            DrawGizmo(ctx, viewportMin, size, m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
+            playGizmoWantsMouse = m_prevGizmoUsing || m_prevGizmoOver;
+        }
+    }
+    const bool gizmoWantsMouse = inPlayOrPause ? playGizmoWantsMouse
+        : pointWantsMouse || ImGuizmo::IsUsing() || ImGuizmo::IsOver()
+            || IsOrientationGizmoHovered() || IsOrientationGizmoActive();
     /// @note 頂点スナップ (V ドラッグ) / 面スナップ (Ctrl+Shift ドラッグ)。同じ左ドラッグを使うため、
         /// @note 選択・矩形選択・ギズモより先に処理して「掴んでいる」間は他の解釈をさせない。
     const bool snapping = (isSceneView && !inPlayOrPause && !ctx.clothPinPainting && !ctx.fiberPainting && !pointWantsMouse && !HasTargetPointSelection(ctx))
@@ -891,21 +914,22 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
                         : false;
 
     /// @note Alt+左ドラッグはカメラオービットに割り当てられているため、選択操作から除外する
-    const bool altHeld = ImGui::GetIO().KeyAlt;
-    if (isSceneView && !inPlayOrPause && viewportHovered && !altHeld && !snapping && !ctx.clothPinPainting && !ctx.fiberPainting &&
-        ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !gizmoWantsMouse &&
-        !overlayHovered)
+    const bool canSelect = isSceneView && (!inPlayOrPause || playSceneGizmo)
+        && !snapping && !ctx.clothPinPainting && !ctx.fiberPainting;
+    const bool canClickScene = viewportHovered && (!inPlayOrPause || ctx.sceneViewportHovered)
+        && !altHeld && !gizmoWantsMouse && !overlayHovered;
+    if (canSelect && canClickScene &&
+        ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         PickEntity(ctx, viewportMin);
 
     /// @name 矩形 (ドラッグ) 選択
     /// @note 複数オブジェクトをまとめて動かす作業は Unity の箱選択が前提。クリック位置から
         /// @note しきい値以上ドラッグしたら矩形選択モードへ移行し、離した時点で矩形内の GO を選択する。
-    if (isSceneView && !inPlayOrPause && !snapping && !ctx.clothPinPainting && !ctx.fiberPainting) {
+    if (canSelect) {
         /// @note px: クリックと区別するしきい値
         constexpr float kDragThreshold = 5.0f;
 
-        if (viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
-            && !gizmoWantsMouse && !anyToolActive && !altHeld && !overlayHovered) {
+        if (canClickScene && !anyToolActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             m_rectSelecting = true;
             m_rectStart = ImGui::GetMousePos();
         }
@@ -934,6 +958,8 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsMouseReleased(ImGuiMouseButton_Left))
             m_rectSelecting = false;
+    } else {
+        m_rectSelecting = false;
     }
 
     if (isGameView && inPlayOrPause) {

@@ -1259,6 +1259,8 @@ void EditorApp::BeginFrame()
         m_playMode.IsPaused()  ? WorkspaceTint::Paused  :
                                  WorkspaceTint::Editor);
 
+    /// @note BeginFrame が作る透明な gizmo ウィンドウをメイン viewport に固定し、独立した OS ウィンドウの生成を防ぐ。
+    ImGui::SetNextWindowViewport(ImGui::GetMainViewport()->ID);
     ImGuizmo::BeginFrame();
     {
         FBZZ_PROFILE_SCOPE("EditorBegin::Hotkeys");

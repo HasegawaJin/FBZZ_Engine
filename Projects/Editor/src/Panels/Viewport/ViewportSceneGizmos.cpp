@@ -2,6 +2,8 @@
 /// @brief   Scene View のコンポーネントアイコン・選択物の範囲ワイヤー・3D Gizmo。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
 #include "ViewportCommon.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Editor/Util/TransformAuthoringValues.hpp>
@@ -24,6 +26,7 @@
 #include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/SplineComponents.hpp>
 #include <Engine/Scene/Components/TargetPointComponent.hpp>
 #include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
@@ -71,6 +74,9 @@ struct GizmoEdit {
     EditorContext::GizmoMode mode = EditorContext::GizmoMode::Translate;
     EditorContext::GizmoSpace space = EditorContext::GizmoSpace::World;
     EditorContext::GizmoPivot pivot = EditorContext::GizmoPivot::Pivot;
+    math::Matrix4 playGizmoWorld = math::Matrix4::Identity();
+    bool playPoseChanged = false;
+    bool temporary = false;
     bool active = false;
 };
 
@@ -90,7 +96,7 @@ void CancelGizmoEdit(EditorContext& ctx, int& lastOp, int& lastMode,
     bool restored = false;
     const bool sameScene = ctx.activeScene && edit.scene == ctx.activeScene
         && edit.sceneGeneration == ctx.activeScene->GetRenderSceneGeneration();
-    if (edit.active && sameScene) {
+    if (edit.active && !edit.temporary && sameScene) {
         for (std::size_t i = 0; i < edit.entityIds.size()
              && i < edit.instanceIds.size() && i < edit.before.size()
              && i < edit.lastApplied.size(); ++i) {
@@ -1145,22 +1151,27 @@ void DrawGizmo(EditorContext& ctx,
                bool& prevUsing)
 {
     auto& edit = ActiveGizmoEdit();
+    const bool temporary = ctx.playMode && !ctx.playMode->IsInEditor();
     scene::EntityID selected = ctx.PrimarySelected();
-    if (!selected.IsValid() || !ctx.activeScene || !ctx.editorCamera) {
-        if (edit.active) CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+    if (!selected.IsValid() || !ctx.activeScene || !ctx.editorCamera
+        || (temporary && !ctx.playMode->CanEditTemporaryScene(ctx.activeScene))) {
+        if (edit.active || prevOver || prevUsing)
+            CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
         return;
     }
 
     scene::GameObject* go = ctx.activeScene->GetGameObject(selected);
-    if (!go) {
+    if (!go || (temporary && ctx.IsLocked(selected))) {
+        if (edit.active || prevOver || prevUsing)
+            CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+        return;
+    }
+    const bool targetPointSelection = HasTargetPointSelection(ctx);
+    if (targetPointSelection && !temporary && !IsControlPointAuthoringAllowed(ctx)) {
         if (edit.active) CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
         return;
     }
-    if (HasTargetPointSelection(ctx) && !IsControlPointAuthoringAllowed(ctx)) {
-        if (edit.active) CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
-        return;
-    }
-    if (HasTargetPointSelection(ctx)) {
+    if (targetPointSelection) {
         const bool validPose = std::all_of(ctx.selectedEntities.begin(), ctx.selectedEntities.end(),
             [&ctx](scene::EntityID id) {
                 scene::GameObject* selectedObject = ctx.activeScene->GetGameObject(id);
@@ -1175,8 +1186,8 @@ void DrawGizmo(EditorContext& ctx,
         }
     }
 
-    math::Matrix4 viewCol = ToColumnMajor(ctx.editorCamera->GetViewMatrix());
-    math::Matrix4 projCol = ToColumnMajor(ctx.editorCamera->GetProjectionMatrix());
+    const math::Matrix4 view = ctx.editorCamera->GetViewMatrix();
+    const math::Matrix4 projection = ctx.editorCamera->GetProjectionMatrix();
 
     /// @note Pivot はプライマリのワールド行列をそのまま使う。Center は選択バウンズ中心に置き、回転は Local のときだけプライマリのワールド回転を借りる。
     /// @note Center ではギズモ行列がどの Transform とも一致しないので、«ギズモの移動量» を全対象へ相対適用する経路に一本化する。
@@ -1195,7 +1206,17 @@ void DrawGizmo(EditorContext& ctx,
             gizmoWorldRow = basis;
         }
     }
-    math::Matrix4 worldCol = ToColumnMajor(gizmoWorldRow);
+    /// @note Simulated objects can move between frames. Keep ImGuizmo's drag basis under the cursor.
+    math::Matrix4 worldCol = ToColumnMajor(temporary && edit.active ? edit.playGizmoWorld : gizmoWorldRow);
+    const bool orthographic = ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic;
+    if (temporary && !edit.active && !orthographic) {
+        /// @note ImGuizmo exits without popping its clip rect when a moving target passes behind the camera.
+        const math::Vector4 origin{worldCol.m[3][0], worldCol.m[3][1], worldCol.m[3][2], 1.0f};
+        if ((projection * (view * origin)).z < 0.001f) {
+            prevOver = false;
+            return;
+        }
+    }
 
     auto& style = ImGuizmo::GetStyle();
     style.Colors[ImGuizmo::SELECTION] = ImVec4(1.0f, 0.95f, 0.05f, 1.0f);
@@ -1207,8 +1228,7 @@ void DrawGizmo(EditorContext& ctx,
     ImGuizmo::SetDrawlist();
     ImGuizmo::Enable(true);
     /// @note ImGuizmo はハンドルの大きさを射影から逆算するので、ここを間違えると正投影でハンドルが伸び縮みして掴めない。
-    ImGuizmo::SetOrthographic(
-        ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic);
+    ImGuizmo::SetOrthographic(orthographic);
     ImGuizmo::SetRect(viewportMin.x, viewportMin.y, viewportSize.x, viewportSize.y);
 
     ImGuizmo::OPERATION op = ImGuizmo::TRANSLATE;
@@ -1236,6 +1256,7 @@ void DrawGizmo(EditorContext& ctx,
     if (edit.active) {
         bool valid = edit.scene == ctx.activeScene
             && edit.sceneGeneration == ctx.activeScene->GetRenderSceneGeneration()
+            && edit.temporary == temporary
             && edit.selection == ctx.selectedEntities
             && edit.entityIds.size() == edit.instanceIds.size()
             && edit.entityIds.size() == edit.before.size()
@@ -1250,7 +1271,7 @@ void DrawGizmo(EditorContext& ctx,
             scene::GameObject* target = ctx.activeScene->GetGameObject(edit.entityIds[i]);
             valid = target && target->instanceId == edit.instanceIds[i]
                 && ctx.activeScene->FindByGuid(edit.instanceIds[i]) == target
-                && TransformAuthoringValuesEqual(target->transform, edit.lastApplied[i]);
+                && (temporary || TransformAuthoringValuesEqual(target->transform, edit.lastApplied[i]));
         }
         if (!valid) {
             CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
@@ -1258,7 +1279,9 @@ void DrawGizmo(EditorContext& ctx,
         }
     }
 
-    ImGuizmo::Manipulate(
+    const math::Matrix4 viewCol = ToColumnMajor(view);
+    const math::Matrix4 projCol = ToColumnMajor(projection);
+    const bool manipulated = ImGuizmo::Manipulate(
         &viewCol.m[0][0],
         &projCol.m[0][0],
         op,
@@ -1270,6 +1293,11 @@ void DrawGizmo(EditorContext& ctx,
     const bool gizmoOver = ImGuizmo::IsOver();
     const bool gizmoUsing = ImGuizmo::IsUsing();
     const bool wasUsing = prevUsing;
+    if (temporary && wasUsing && gizmoUsing && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        /// @note Scale and Rotate can retain ImGuizmo's drag state when released outside the window.
+        CancelGizmoEdit(ctx, lastOp, lastMode, prevOver, prevUsing);
+        return;
+    }
 
     if (gizmoUsing && !wasUsing) {
         edit.scene = ctx.activeScene;
@@ -1318,6 +1346,8 @@ void DrawGizmo(EditorContext& ctx,
         edit.mode        = ctx.gizmoMode;
         edit.space       = ctx.gizmoSpace;
         edit.pivot       = ctx.gizmoPivot;
+        edit.temporary   = temporary;
+        edit.playPoseChanged = false;
         edit.active      = true;
     }
 
@@ -1326,7 +1356,14 @@ void DrawGizmo(EditorContext& ctx,
         prevUsing = gizmoUsing;
     }
 
-    if (!gizmoUsing) {
+    const math::Matrix4 worldRow = math::Matrix4::Transpose(worldCol);
+    if (temporary) {
+        if (!edit.active) return;
+        edit.playGizmoWorld = worldRow;
+        edit.playPoseChanged |= manipulated;
+        edit.active = gizmoUsing;
+        if (!edit.playPoseChanged) return;
+    } else if (!gizmoUsing) {
         if (wasUsing && edit.active) {
             /// @note 全対象の before/after を 1 コマンドにまとめる。分けるとマルチ選択の移動を選択数だけ Ctrl+Z する羽目になる。
             scene::Scene* scene = ctx.activeScene;
@@ -1365,51 +1402,37 @@ void DrawGizmo(EditorContext& ctx,
         return;
     }
 
-    const math::Matrix4 worldRow = math::Matrix4::Transpose(worldCol);
-
     /// @note 添字 0 (プライマリ) より先に他へ適用する。選択中の親が動いた後にプライマリのワールド行列を書けば、プライマリはギズモ位置へ一致する。
-    if (edit.active) {
-        auto applySelectionTransform = [&ctx, &edit](scene::GameObject& target,
-                                                    const math::Matrix4& transform,
-                                                    std::size_t index) {
-            const bool singleTargetPoint = ctx.selectedEntities.size() == 1
-                && edit.entityIds.size() == 1
-                && target.GetComponent<scene::TargetPointComponent>() != nullptr;
-            if (singleTargetPoint && edit.mode == EditorContext::GizmoMode::Rotate) {
-                static_cast<void>(ApplySingleTargetPointRotation(
-                    target, transform, edit.startWorldScale[index]));
-            } else if (singleTargetPoint && edit.mode == EditorContext::GizmoMode::Scale) {
-                ApplySingleTargetPointScale(target, transform, edit.before[index]);
-            } else {
-                ApplyWorldRowToTransform(target, transform);
-            }
-        };
-        const math::Matrix4 delta = worldRow * edit.gizmoStartWorldInv;
-        for (std::size_t i = edit.instanceIds.size(); i-- > 0; ) {
-            if (!edit.applyDelta[i]) continue;
-            if (auto* other = ctx.activeScene->FindByGuid(edit.instanceIds[i]))
-                applySelectionTransform(*other, delta * edit.startWorld[i], i);
+    auto applySelectionTransform = [&ctx, &edit, temporary](scene::GameObject& target,
+                                                          const math::Matrix4& transform,
+                                                          std::size_t index) {
+        const bool singleTargetPoint = ctx.selectedEntities.size() == 1
+            && target.GetComponent<scene::TargetPointComponent>() != nullptr;
+        if (singleTargetPoint && edit.mode == EditorContext::GizmoMode::Rotate) {
+            static_cast<void>(ApplySingleTargetPointRotation(target, transform, edit.startWorldScale[index]));
+        } else if (singleTargetPoint && edit.mode == EditorContext::GizmoMode::Scale) {
+            ApplySingleTargetPointScale(target, transform, edit.before[index]);
+        } else {
+            ApplyWorldRowToTransform(target, transform);
         }
+        if (temporary) {
+            /// @note PhysicsSystem consumes explicit Transform poses on the next fixed step.
+            scene::FlushWorldTransforms(target);
+            auto* body = target.GetComponent<scene::RigidBodyComponent>();
+            if (body && body->enabled && body->rigidBody && !body->rigidBody->IsStatic())
+                body->rigidBody->WakeUp();
+        }
+    };
+    const math::Matrix4 delta = worldRow * edit.gizmoStartWorldInv;
+    for (std::size_t i = edit.instanceIds.size(); i-- > 0; ) {
+        if (!edit.applyDelta[i]) continue;
+        if (auto* other = ctx.activeScene->FindByGuid(edit.instanceIds[i]))
+            applySelectionTransform(*other, delta * edit.startWorld[i], i);
     }
 
-    /// @note Pivot のみ、ギズモ行列はプライマリのワールド行列そのものなので丸め誤差を挟まず直接書き戻す。
-    if (!centerPivot) {
-        const bool singleTargetPoint = ctx.selectedEntities.size() == 1
-            && go->GetComponent<scene::TargetPointComponent>() != nullptr;
-        if (!singleTargetPoint || gizmoUsing || edit.active) {
-            const scene::Transform& before = edit.active ? edit.before[0] : go->transform;
-            const math::Vector3 signedWorldScale = edit.active
-                ? edit.startWorldScale[0] : go->transform.worldScale;
-            const EditorContext::GizmoMode activeMode = edit.active ? edit.mode : ctx.gizmoMode;
-            if (singleTargetPoint && activeMode == EditorContext::GizmoMode::Rotate) {
-                static_cast<void>(ApplySingleTargetPointRotation(*go, worldRow, signedWorldScale));
-            } else if (singleTargetPoint && activeMode == EditorContext::GizmoMode::Scale) {
-                ApplySingleTargetPointScale(*go, worldRow, before);
-            } else {
-                ApplyWorldRowToTransform(*go, worldRow);
-            }
-        }
-    }
+    /// @note Pivot のギズモ行列はプライマリ自身のワールド行列なので直接書き戻す。
+    if (!centerPivot)
+        applySelectionTransform(*go, worldRow, 0);
 
     for (std::size_t i = 0; i < edit.entityIds.size(); ++i) {
         if (auto* target = ctx.activeScene->GetGameObject(edit.entityIds[i]))
