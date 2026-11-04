@@ -237,8 +237,8 @@ float3 ApplySharedWaterOpticsHDR(float3 hdr, float2 uv, float ndcDepth)
     if (!FBZZ_WaterClipSlab(rayOrigin.x, rayDirection.x, globalBounds.x, globalBounds.z, boundsStart, boundsEnd)
         || !FBZZ_WaterClipSlab(rayOrigin.z, rayDirection.z, globalBounds.y, globalBounds.w, boundsStart, boundsEnd))
         return hdr;
-    if (FBZZ_WaterMediumRow(2u).w > 0.5f) {
-        const float2 vertical = FBZZ_WaterMediumRow(4u).zw;
+    float2 vertical;
+    if (FBZZ_WaterMediumVerticalBounds(false, vertical)) {
         if (!FBZZ_WaterClipSlab(rayOrigin.y, rayDirection.y, vertical.x, vertical.y, boundsStart, boundsEnd)) return hdr;
     }
 

@@ -442,18 +442,26 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
     const uint32_t candidateStartRow = static_cast<uint32_t>(candidateStart);
     float physicalMinimumY = std::numeric_limits<float>::infinity();
     float physicalMaximumY = -std::numeric_limits<float>::infinity();
+    float opticalMaximumY = -std::numeric_limits<float>::infinity();
     for (const auto& body : bodies) {
         physicalMinimumY = (std::min)(physicalMinimumY, body.physicalMinimumY);
         physicalMaximumY = (std::max)(physicalMaximumY, body.physicalMaximumY);
+        if (body.medium->opticalEnabled)
+            opticalMaximumY = (std::max)(opticalMaximumY, body.physicalMaximumY);
     }
     const bool hasPhysicalBounds = IsFinite(physicalMinimumY) && IsFinite(physicalMaximumY)
         && physicalMinimumY < physicalMaximumY;
+    /// @note A caustics-only owner remains visible to interface and caustic passes, but cannot extend the optical march.
+    const bool hasTighterOpticalMaximum = hasPhysicalBounds && IsFinite(opticalMaximumY)
+        && opticalMaximumY >= physicalMinimumY && opticalMaximumY < physicalMaximumY;
+    const float verticalBoundsMode = hasTighterOpticalMaximum ? 2.0f : (hasPhysicalBounds ? 1.0f : 0.0f);
     outRows.emplace_back(static_cast<float>(0x574Du), 1.0f,
                          static_cast<float>(bodies.size()), static_cast<float>(rowCount));
     outRows.emplace_back(globalBounds);
     outRows.emplace_back(static_cast<float>(GRID_RESOLUTION), static_cast<float>(GRID_RESOLUTION),
-                         static_cast<float>(gridHeaderStart), hasPhysicalBounds ? 1.0f : 0.0f);
-    outRows.emplace_back(0.0f, static_cast<float>(exclusionStart), static_cast<float>(plumeStart),
+                          static_cast<float>(gridHeaderStart), verticalBoundsMode);
+    outRows.emplace_back(hasTighterOpticalMaximum ? opticalMaximumY : 0.0f,
+                         static_cast<float>(exclusionStart), static_cast<float>(plumeStart),
                          static_cast<float>(candidateStartRow));
     outRows.emplace_back(static_cast<float>(ATLAS_RESOLUTION), static_cast<float>(ATLAS_RESOLUTION),
                          hasPhysicalBounds ? physicalMinimumY : 0.0f, hasPhysicalBounds ? physicalMaximumY : 0.0f);

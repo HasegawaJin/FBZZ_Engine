@@ -88,6 +88,19 @@ bool FBZZ_WaterMediumHeader(out FBZZWaterMediumQueryContext context)
     return true;
 }
 
+/// @brief Read conservative Y bounds for optical queries or for queries that also accept caustics-only owners.
+bool FBZZ_WaterMediumVerticalBounds(bool allowCausticsOnly, out float2 bounds)
+{
+    bounds = 0.0f;
+    const float mode = FBZZ_WaterMediumRow(2u).w;
+    if (!(mode > 0.5f)) return false;
+    bounds = FBZZ_WaterMediumRow(4u).zw;
+    /// @note Mode 1 tables carry the all-body bounds only; mode 2 also carries a certified optical upper bound.
+    if (!allowCausticsOnly && mode > 1.5f)
+        bounds.y = FBZZ_WaterMediumRow(3u).x;
+    return true;
+}
+
 /// @brief Resolve one owner's atlas sample, requiring nearest-pixel ownership before blending valid neighbors.
 bool FBZZ_WaterAtlasSampleWithFootprint(uint bodyIndex, float2 worldXZ,
                            FBZZWaterMediumQueryContext context, out float4 sample, out float bottomRange)
@@ -265,9 +278,8 @@ bool FBZZ_QueryWaterMediumWithContext(float3 worldPos, FBZZWaterMediumQueryConte
     result = (FBZZWaterMediumSample)0;
     if (context.bodyCount == 0u || context.tableRows < FBZZ_WATER_MEDIUM_HEADER_ROWS) return false;
     const float4 bounds = FBZZ_WaterMediumRow(1u);
-    /// @note The producer's conservative vertical union rejects air without fetching owner atlas samples; older tables leave the marker zero.
-    if (FBZZ_WaterMediumRow(2u).w > 0.5f) {
-        const float2 vertical = FBZZ_WaterMediumRow(4u).zw;
+    float2 vertical;
+    if (FBZZ_WaterMediumVerticalBounds(allowCausticsOnly, vertical)) {
         if (worldPos.y < vertical.x || worldPos.y > vertical.y) return false;
     }
     const float2 span = bounds.zw - bounds.xy;
