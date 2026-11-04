@@ -30,6 +30,12 @@ public sealed class ScriptApplication
 {
     internal ScriptApplication(ScriptBinding owner) { m_owner = owner; }
     readonly ScriptBinding m_owner;
+    /// @note Play 状態と独立。Editor 内の Play でも true。
+    [ApiContract(RunModes = new[] { "Edit", "Play" }, Read = "read", Summary = "Reads whether the current native host is the Editor, including Editor Play sessions.")]
+    public bool IsEditor => RuntimeServiceCall.Invoke(m_owner, (uint)ScriptServiceKind.SERVICE_APPLICATION, 5, true).Flag;
+    /// @note native host の構成。ゲーム DLL の条件付きコンパイルとは独立。
+    [ApiContract(RunModes = new[] { "Edit", "Play" }, Read = "read", Summary = "True for native hosts built with assertions enabled (Debug or Development); independent of game assembly symbols.")]
+    public bool IsDevelopmentBuild => RuntimeServiceCall.Invoke(m_owner, (uint)ScriptServiceKind.SERVICE_APPLICATION, 6, true).Flag;
     [ApiContract(Read = "read", Summary = "Reads the current Play session state; Pause remains in Play.")]
     public bool IsPlaying => RuntimeServiceCall.Invoke(m_owner, (uint)ScriptServiceKind.SERVICE_APPLICATION, 0, true).Flag;
     [ApiContract(Read = "read")]

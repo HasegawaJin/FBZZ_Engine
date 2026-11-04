@@ -7,10 +7,11 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 
 const MANAGED_FILES = ['Fbzz.ScriptApi.dll', 'Fbzz.ScriptApi.xml', 'Fbzz.ScriptGenerator.dll',
-  'Fbzz.ManagedBuildTasks.dll', 'ManagedIncremental.targets', 'Fbzz.ManagedHost.dll',
+  'Fbzz.ManagedBuildTasks.dll', 'ManagedIncremental.targets', 'Fbzz.ScriptBuild.props', 'Fbzz.ManagedHost.dll',
   'Fbzz.ManagedHost.runtimeconfig.json', 'Fbzz.ManagedHost.deps.json'];
 const SHARED_FILES = ['Tools/AgentBuild.ps1', 'Projects/Managed/global.json',
   'share/fbzz/managed/ManagedStarter/Starter.Scripts.csproj',
+  'share/fbzz/managed/ManagedStarter/Fbzz.ScriptBuild.props',
   'share/fbzz/managed/ManagedStarter/Assets/Scripts/Managed/MoveForwardComponent.cs',
   'share/fbzz/managed/ManagedStarter/AGENTS.md', 'share/fbzz/managed/ManagedStarter/.vscode/launch.json',
   'share/fbzz/managed/ManagedStarter/global.json'];

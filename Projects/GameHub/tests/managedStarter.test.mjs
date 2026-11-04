@@ -1,9 +1,7 @@
-/**
- * @file managedStarter.test.mjs
- * @brief Verify source-free SDK starter creation and native request compatibility.
- * @author Hasegawa Jin
- * @date 2026-10-05
- */
+/// @file    managedStarter.test.mjs
+/// @brief   Verify source-free SDK starter creation and native request compatibility.
+/// @author  Hasegawa Jin
+/// @date    2026-10-05
 import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -43,11 +41,12 @@ async function PublishedManagedFixture(configuration, run) {
   const files = {};
   const shared = ['Tools/AgentBuild.ps1', 'Projects/Managed/global.json',
     'share/fbzz/managed/ManagedStarter/Starter.Scripts.csproj',
+    'share/fbzz/managed/ManagedStarter/Fbzz.ScriptBuild.props',
     'share/fbzz/managed/ManagedStarter/Assets/Scripts/Managed/MoveForwardComponent.cs',
     'share/fbzz/managed/ManagedStarter/AGENTS.md', 'share/fbzz/managed/ManagedStarter/.vscode/launch.json',
     'share/fbzz/managed/ManagedStarter/global.json'];
   const managed = ['Fbzz.ScriptApi.dll', 'Fbzz.ScriptApi.xml', 'Fbzz.ScriptGenerator.dll',
-    'Fbzz.ManagedBuildTasks.dll', 'ManagedIncremental.targets', 'Fbzz.ManagedHost.dll',
+    'Fbzz.ManagedBuildTasks.dll', 'ManagedIncremental.targets', 'Fbzz.ScriptBuild.props', 'Fbzz.ManagedHost.dll',
     'Fbzz.ManagedHost.runtimeconfig.json', 'Fbzz.ManagedHost.deps.json'];
   try {
     for (const relative of [...shared, ...['nethost.dll', ...managed.map((name) => `Managed/${name}`)].flatMap((name) => [
@@ -103,6 +102,7 @@ test('selected SDK creates a project from canonical sources and escapes local SD
     const project = path.join(root, 'MyGame');
     await WriteManagedStarter(project, 'MyGame', sdk, 'Development', starter);
     assert.equal(await readFile(path.join(project, 'MyGame.Scripts.csproj'), 'utf8'), starter.get('Starter.Scripts.csproj'));
+    assert.equal(await readFile(path.join(project, 'Fbzz.ScriptBuild.props'), 'utf8'), starter.get('Fbzz.ScriptBuild.props'));
     assert.equal(await readFile(path.join(project, 'Assets/Scripts/Managed/MoveForwardComponent.cs'), 'utf8'), starter.get('Assets/Scripts/Managed/MoveForwardComponent.cs'));
     assert.equal(await readFile(path.join(project, 'global.json'), 'utf8'), starter.get('global.json'));
     assert.equal(await readFile(path.join(project, '.vscode/launch.json'), 'utf8'), starter.get('.vscode/launch.json'));

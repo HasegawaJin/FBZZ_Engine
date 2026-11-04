@@ -585,6 +585,7 @@ function Invoke-ManagedBuild([string] $project, [string] $outputDirectory = '') 
     $arguments.AddRange([string[]]@('build', $project, '--configuration', $managedConfiguration,
         '--nologo', '--verbosity', 'minimal', '-m:1', '-nodeReuse:false',
         '-p:MSBuildEnableWorkloadResolver=false', '-p:UseSharedCompilation=false', '-p:Platform=AnyCPU'))
+    $arguments.Add("-p:FbzzBuildConfiguration=$Configuration")
     if ($ManagedProfile) { $arguments.Add('-clp:PerformanceSummary') }
     if (-not [string]::IsNullOrWhiteSpace($ManagedApiPath)) {
         $apiPath = [System.IO.Path]::GetFullPath($ManagedApiPath)
@@ -614,6 +615,7 @@ function Invoke-ManagedBuild([string] $project, [string] $outputDirectory = '') 
             $taskStamp = Join-Path $taskOutput 'inputs.txt'
             $taskInputs = @(Get-ChildItem -LiteralPath (Split-Path -Parent $taskProject) -File | Where-Object { $_.Extension -in @('.cs', '.csproj', '.targets') } | Sort-Object FullName)
             $taskInputs += Get-Item -LiteralPath (Join-Path $sdkSelectionDirectory 'Directory.Build.props'), (Join-Path $sdkSelectionDirectory 'global.json')
+            $taskInputs += Get-Item -LiteralPath (Join-Path $sdkSelectionDirectory 'Authoring/ManagedStarter/Fbzz.ScriptBuild.props')
             $taskVersions = New-Object 'System.Collections.Generic.List[string]'
             foreach ($taskInput in $taskInputs) {
                 $hash = Get-ManagedContentHash $taskInput.FullName

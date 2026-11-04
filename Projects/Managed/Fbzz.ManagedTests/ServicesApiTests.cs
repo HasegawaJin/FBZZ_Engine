@@ -507,6 +507,8 @@ internal static unsafe class ServicesApiTests
         calls = s_calls; Program.Throws<ArgumentOutOfRangeException>(() => particle.Burst(-1)); Program.Check(s_calls == calls, "Negative bursts must not cross the bridge.");
         Reset(); Reply(integer: 800); Program.Check(fixture.Script.App.WindowWidth == 800 && s_request.Op == BridgeOp.SERVICE_APPLICATION, "App dimensions must use the actual window service.");
         Reset(); Reply(); fixture.Script.App.Quit(); Program.Check(s_request.Index == 4 && s_request.Flags == 0, "Quit must be a single non-replayed intent.");
+        Reset(); Reply(integer: 1); Program.Check(fixture.Script.App.IsEditor && s_request.Index == 5 && s_request.Flags == 1, "Editor hosting must be independent of Play state.");
+        Reset(); Reply(integer: 0); Program.Check(!fixture.Script.App.IsDevelopmentBuild && s_request.Index == 6 && s_request.Flags == 1, "Development state must come from the native host.");
         Reset(); Reply(text: ["Registered"]); Program.Check(fixture.Script.Scene.RegisteredName == "Registered", "Scene names must come from registered-manager service.");
         Reset(); Reply(integer: 1); Program.Check(fixture.Script.Scene.TryLoadRegistered("Next") && s_request.Op == BridgeOp.SERVICE_SCENE && s_request.Index == 1,
             "Scene transition must report queue acceptance.");

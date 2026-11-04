@@ -3,6 +3,7 @@
 <!-- @author  Hasegawa Jin -->
 <!-- @date    2026-10-05 -->
 <Project>
+  <Import Project="Fbzz.ScriptBuild.props" Condition="'$(FbzzScriptBuildImported)' != 'true'" />
   <!-- @see https://learn.microsoft.com/dotnet/api/microsoft.build.evaluation.project.imports Project.Imports -->
   <!-- @see https://learn.microsoft.com/dotnet/api/microsoft.build.framework.ibuildengine6.getglobalproperties IBuildEngine6.GetGlobalProperties -->
   <UsingTask TaskName="Fbzz.ManagedBuildTasks.ManagedReadImports" AssemblyFile="$(FbzzManagedBuildTasksPath)" />

@@ -65,12 +65,21 @@ ManagedBridgeStatus ManagedRuntimeServices::Run(Scene& scene, Script& caller, Ga
     ManagedServiceResult output;
     switch (request.op) {
     case ManagedBridgeOp::SERVICE_APPLICATION:
-        if (!p.empty() || !t.empty() || integer || request.index > 4 || read != (request.index != 4)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (!p.empty() || !t.empty() || integer || request.index > 6 || read != (request.index != 4)) return ManagedBridgeStatus::INVALID_ARGUMENT;
         switch (request.index) {
         case 0: output.integer = Script::IsInPlayMode(); break;
         case 1: output.integer = core::Application::Get().IsRunning(); break;
         case 2: output.integer = core::Application::Get().GetWindowWidth(); break;
         case 3: output.integer = core::Application::Get().GetWindowHeight(); break;
+        case 5: output.integer = core::Application::Get().IsEditorHosted(); break;
+        case 6:
+            /// @note Development も assert 有効。managed DLL のビルド構成から host の構成を推測しない。
+#ifdef NDEBUG
+            output.integer = 0;
+#else
+            output.integer = 1;
+#endif
+            break;
         case 4:
             if (!ScriptRuntime::RequestQuit(scene.GetRenderSceneGeneration())) return ManagedBridgeStatus::INVALID_SCOPE;
             break;

@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <None Update="ManagedIncremental.targets" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../Authoring/ManagedStarter/Fbzz.ScriptBuild.props" Link="Fbzz.ScriptBuild.props" CopyToOutputDirectory="PreserveNewest" />
     <Reference Include="Microsoft.Build"><HintPath>$(MSBuildSDKsPath)/../Microsoft.Build.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Microsoft.Build.Framework"><HintPath>$(MSBuildSDKsPath)/../Microsoft.Build.Framework.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Microsoft.Build.Utilities.Core"><HintPath>$(MSBuildSDKsPath)/../Microsoft.Build.Utilities.Core.dll</HintPath><Private>false</Private></Reference>

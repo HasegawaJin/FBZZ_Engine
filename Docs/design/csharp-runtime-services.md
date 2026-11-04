@@ -8,6 +8,14 @@
 
 ## Application と Scene
 
+`Script.App.IsEditor` は native Application の Editor host 状態を読む。Edit / Play と独立し、Editor の Play 中も true、Standalone は false。`IsDevelopmentBuild` は native host の assert 有効構成（Debug / Development）で true、Release で false。どちらも通常の同期 read callback から取得し、constructor / OnValidate には権限を与えない。ゲーム DLL 自体のコンパイル条件とは区別する。
+
+ゲームの条件付きコンパイルは共通 starter の `Fbzz.ScriptBuild.props` と AgentBuild の同じ props を使う。`FbzzBuildConfiguration` は Debug / Development / Release のいずれかで、直接ビルドと IDE では `Configuration` が既定、AgentBuild は native 側の選択構成を明示する。SDK の参照先を選ぶ `FbzzSdkConfiguration` とは独立。Debug は `FBZZ_DEBUG;FBZZ_DEVELOPMENT`、Development は `FBZZ_DEVELOPMENT`、Release は `FBZZ_RELEASE`、現行 Windows ターゲットは `FBZZ_WINDOWS` を定義する。SDK 標準の DEBUG / TRACE は .NET の Configuration に従い、エンジンの条件判定には FBZZ 接頭のシンボルを使う。
+
+独自シンボルは csproj の共通 props import より前、または import 済みの `Fbzz.Sdk.props` で `FbzzDefineConstants` にセミコロン区切りで指定する。設定はディスク上の project / props を正本にして IDE・Editor・配布ビルドへ共有する。FBZZ 接頭はエンジン予約。Editor で生成した同じ DLL を Standalone でも使うため `FBZZ_EDITOR` は定義せず、host 分岐は `App.IsEditor` を使う。
+
+既存ゲームは SDK の共通 starter から `Fbzz.ScriptBuild.props` を csproj の隣へ追加し、`Fbzz.Sdk.props` の後で import すると IDE も同じ定義になる。AgentBuild は既存 csproj にも共通 props を適用する。project / props の内容変更は既存の入力 hash・Editor 監視に含まれ、DefineConstants の変更は Roslyn の増分コンパイル入力になる。コンパイル失敗時は候補世代を公開せず、旧世代を保持する。
+
 Scene の Entity と Component は必要な分だけ動的に拡張し、制作上の固定個体数上限を設けない。caller buffer の余りは保持し、検索は実結果を全件返す。生成・query の件数と転送 byte 数は CLR/ABI の数値表現内で検証する。pool は負の確保数を拒否し、全個体の生成失敗では既存 Scene と出力を変更しない。保存方式と参照安定性は [Scene の動的保存](scene-capacity.md) に従う。
 
 world position batch は件数で打ち切らない。全入力を内部 packet で段階転送し、全 target・lifetime・変換結果を事前検証してから一度だけ commit する。転送・検証が失敗した場合は Scene と caller 出力を未変更にする。physics hit は caller buffer の Required / Written 契約で全件を返し、内部 packet size は結果件数の上限ではない。packet の容量制限を API の総件数制限として扱わない。

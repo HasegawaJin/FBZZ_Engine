@@ -1,14 +1,12 @@
-/**
- * @file managedStarter.ts
- * @brief Add the selected SDK's canonical C# starter without requiring Engine sources.
- * @author Hasegawa Jin
- * @date 2026-10-05
- */
+/// @file    managedStarter.ts
+/// @brief   Add the selected SDK's canonical C# starter without requiring Engine sources.
+/// @author  Hasegawa Jin
+/// @date    2026-10-05
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { SdkBuildConfiguration } from '../shared/contracts';
 
-const STARTER_FILES = ['Starter.Scripts.csproj', 'Assets/Scripts/Managed/MoveForwardComponent.cs', 'AGENTS.md', 'global.json', '.vscode/launch.json'] as const;
+const STARTER_FILES = ['Starter.Scripts.csproj', 'Fbzz.ScriptBuild.props', 'Assets/Scripts/Managed/MoveForwardComponent.cs', 'AGENTS.md', 'global.json', '.vscode/launch.json'] as const;
 export type ManagedStarter = ReadonlyMap<string, string>;
 
 export async function PrepareManagedStarter(sdkRoot: string,
@@ -16,7 +14,7 @@ export async function PrepareManagedStarter(sdkRoot: string,
   return LoadManagedStarter(sdkRoot, configuration);
 }
 
-/** @brief Read and validate everything before GameHub creates a project directory. */
+/// @brief Read and validate everything before GameHub creates a project directory.
 export async function LoadManagedStarter(sdkRoot: string, configuration: SdkBuildConfiguration): Promise<ManagedStarter> {
   if (!sdkRoot || !['Debug', 'Development', 'Release'].includes(configuration)) {
     throw new Error('C# starter requires a selected SDK and build configuration.');

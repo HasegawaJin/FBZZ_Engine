@@ -1,0 +1,20 @@
+<!-- @file    Fbzz.ScriptBuild.props -->
+<!-- @brief   IDE とゲームビルドが共有する条件付きコンパイルの契約。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-10-28 -->
+<Project>
+  <!-- @note SDK の選択構成とゲームコードのコンパイル構成は独立。Editor 判定は Script.App.IsEditor を使う。 -->
+  <!-- @see https://learn.microsoft.com/dotnet/csharp/language-reference/preprocessor-directives Conditional compilation -->
+  <PropertyGroup Condition="'$(FbzzScriptBuildImported)' != 'true'">
+    <FbzzBuildConfiguration Condition="'$(FbzzBuildConfiguration)' == ''">$(Configuration)</FbzzBuildConfiguration>
+    <DefineConstants>$(DefineConstants);FBZZ_WINDOWS;$(FbzzDefineConstants)</DefineConstants>
+    <DefineConstants Condition="'$(FbzzBuildConfiguration)' == 'Debug'">$(DefineConstants);FBZZ_DEBUG;FBZZ_DEVELOPMENT</DefineConstants>
+    <DefineConstants Condition="'$(FbzzBuildConfiguration)' == 'Development'">$(DefineConstants);FBZZ_DEVELOPMENT</DefineConstants>
+    <DefineConstants Condition="'$(FbzzBuildConfiguration)' == 'Release'">$(DefineConstants);FBZZ_RELEASE</DefineConstants>
+    <FbzzScriptBuildImported>true</FbzzScriptBuildImported>
+  </PropertyGroup>
+  <Target Name="FbzzValidateBuildConfiguration" BeforeTargets="CoreCompile">
+    <Error Condition="'$(FbzzBuildConfiguration)' != 'Debug' and '$(FbzzBuildConfiguration)' != 'Development' and '$(FbzzBuildConfiguration)' != 'Release'"
+      Code="FBZZ0103" Text="FbzzBuildConfiguration must be Debug, Development, or Release." />
+  </Target>
+</Project>
