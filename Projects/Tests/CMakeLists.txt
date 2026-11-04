@@ -464,6 +464,10 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/SpriteFieldFilterTests.cpp
     Editor/Auto/SpriteSlicerTests.cpp
     Editor/Auto/TerrainBrushTests.cpp
+        Editor/Auto/TerrainAuthoringTests.cpp
+        Editor/Auto/TerrainGrassOperatorTests.cpp
+        Editor/Auto/TerrainScatterTests.cpp
+        Editor/Auto/TerrainToolAuthoringTests.cpp
     Editor/Auto/UndoStackTests.cpp
     Editor/Auto/WaterInspectorRuntimeTests.cpp
   LINKS

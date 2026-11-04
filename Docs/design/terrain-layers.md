@@ -245,6 +245,11 @@ Blade は頂点カラーの A に層の重みを入れ、`BuildFiberBlades(..., 
 
 ## 7. 保存形式
 
+FZTN の保存は完成したバイト列を Core の `FileSystem::WriteBinaryAtomic` へ渡す。
+テキスト保存も同じ置換処理を使い、一時ファイルの排他的作成・flush・close が成功した後だけ原本を置き換える。
+書込み・置換の失敗では旧版を保持し、自分が作った一時ファイルだけを回収する。パスは UTF-8 から OS の Unicode パスへ変換する。
+保存中は FZTN 一件分のバイト列をメモリーに保持する。
+
 ### .terrain (TOML) — `format_version = 2`
 
 ```toml

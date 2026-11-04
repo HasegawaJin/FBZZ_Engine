@@ -18,6 +18,10 @@
 cbuffer FiberPreviousSkinning : register(b9) { float4x4 fiberPrevBones[MAX_SKINNING_BONES]; };
 #endif
 
+#ifdef FBZZ_FIBER_GRASS_CARD
+FBZZ_MATERIAL_TEX(grassCardTexture, texAlbedoIndex);
+#endif
+
 #if FIBER_PASS == 3
 /// @note FiberMotionCB と一致。b1 は現在の法線変換にも必要なので前フレームは b6 に分ける。
 cbuffer FiberMotionConstants : register(b6)
@@ -138,6 +142,10 @@ struct FiberPixel {
     float3 localFlow : TEXCOORD9;
     /// @note 頂点で引いた fiberMask の G。層間隔 (視差の上乗せ) を実際の毛丈で求めるため PS へ渡す。
     float lengthScale : TEXCOORD10;
+#ifdef FBZZ_FIBER_GRASS_CARD
+    float2 cardUv : TEXCOORD11;
+    nointerpolation uint cardSpecies : TEXCOORD12;
+#endif
 #if FIBER_PASS == 3
     float4 currentClip : TEXCOORD7;
     float4 previousClip : TEXCOORD8;
@@ -171,10 +179,28 @@ FiberPixel FiberVertex(FiberInput v, uint instance)
 #endif
     o.localFlow = FiberLocalFlow(o.root, fiberTime, false);
     o.lengthScale = FiberMaskLevel0(v.uv).g;
-    o.worldPosition = FiberPosition(o.root, o.normal, o.height, o.localFlow, o.lengthScale);
+    float2 cardMotion = float2(1.0f, 1.0f);
 #if FIBER_FIN == 2
-    float3 bladeSide = mul(v.edgeVector, (float3x3)world)*v.edgeCoordinate*(1.0f-v.height);
-    o.worldPosition += bladeSide;
+#ifdef FBZZ_FIBER_GRASS_CARD
+    /// @note The texture supplies the silhouette; both ribbons retain their full width at the tip.
+    float side = v.edgeCoordinate;
+    o.cardUv = float2(side * 0.5f + 0.5f, 1.0f - v.height);
+    o.cardSpecies = FiberCardSpecies(v.position.xz);
+    cardMotion = FiberCardMotion(o.cardSpecies);
+    if (o.cardSpecies < 4u) {
+        /// @note Keep the animated extent within the existing FiberComponent bounds.
+        o.lengthScale *= clamp(cardSpeciesHeight[o.cardSpecies], 0.05f, 1.0f);
+        side *= clamp(cardSpeciesWidth[o.cardSpecies], 0.05f, 1.0f);
+        const float2 tile = float2(o.cardSpecies & 1u, o.cardSpecies >> 1u);
+        o.cardUv = (tile + lerp(0.015f, 0.975f, o.cardUv)) * 0.5f;
+    }
+#else
+    const float side = v.edgeCoordinate * (1.0f - v.height);
+#endif
+#endif
+    o.worldPosition = FiberPosition(o.root, o.normal, o.height, o.localFlow, o.lengthScale, cardMotion);
+#if FIBER_FIN == 2
+    o.worldPosition += mul(v.edgeVector, (float3x3)world) * side;
     o.coordinate = v.faceNormal0.y;
 #endif
     o.position = mul(float4(o.worldPosition, 1.0f), viewProjection);
@@ -213,14 +239,14 @@ FiberPixel FiberVertex(FiberInput v, uint instance)
     float3 previousBend = FiberBendAt(previousRoot, previousNormal, fiberPrevWindTime.xyz,
         fiberPrevWindTime.w, fiberPrevGust.x, fiberPrevGust.y,
         fiberPrevShape.y, fiberPrevShape.z, fiberPrevShape.w,
-        FiberLocalFlow(previousRoot, fiberPrevWindTime.w, true));
+        FiberLocalFlow(previousRoot, fiberPrevWindTime.w, true), cardMotion);
     /// @note マスクはフレーム間で変わらない前提で、今フレームの lengthScale を前フレームにも掛ける。
     float3 previousPosition = previousRoot + previousNormal * (fiberPrevShape.x * o.lengthScale * o.height)
         + previousBend * (o.lengthScale * o.height * o.height)
         + FiberContactOffset(previousRoot, previousNormal, o.height, fiberPrevWindTime.w,
             fiberPrevShape.x * o.lengthScale, true);
 #if FIBER_FIN == 2
-    previousPosition += mul(v.edgeVector,(float3x3)fiberPrevWorld)*v.edgeCoordinate*(1.0f-v.height);
+    previousPosition += mul(v.edgeVector,(float3x3)fiberPrevWorld) * side;
 #endif
     o.previousClip = fiberMotion.z > 0.5f
         ? mul(float4(previousPosition, 1.0f), prevViewProjection) : o.currentClip;
@@ -276,6 +302,11 @@ FiberStrand FiberCoverage(FiberPixel p)
 {
     /// @note 画面微分 (マスクのミップ・視差・フレーム) は clip より前に取る。
     float4 mask = FiberMaskFiltered(p.uv);
+#ifdef FBZZ_FIBER_GRASS_CARD
+    float4 card = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (texAlbedoIndex != 0xFFFFFFFFu)
+        card = grassCardTexture.Sample(fiberFlowSampler, p.cardUv);
+#endif
 #if FIBER_PASS == 1 && !FIBER_FIN
     ApplyLodDither(p.position.xy, objectParams.x);
     clip(fiberLod.y-FiberHash(floor(p.root.xz*31.0f))-1.0e-6f);
@@ -294,6 +325,10 @@ FiberStrand FiberCoverage(FiberPixel p)
     clip(fiberDensity*mask.r-p.coordinate-1.0e-6f);
     FiberStrand blade = FiberDefaultStrand(p.height, frac(p.coordinate * 61.7f));
     blade.colorMix = mask.a;
+#ifdef FBZZ_FIBER_GRASS_CARD
+    clip(card.a - max(saturate(cardAlphaCutoff), 1.0e-3f));
+    blade.cardColor = card.rgb;
+#endif
     return blade;
 #elif FIBER_FIN == 1
     FiberStrand strand = FiberClipFin(p.coordinate, p.height, mask);
@@ -360,11 +395,15 @@ float4 PSMain(FiberPixel p) : SV_Target0
 float4 PSMain(FiberPixel p) : SV_Target0
 {
     FiberStrand strand = FiberCoverage(p);
-#ifdef FBZZ_FIBER_APPEARANCE
-    float4 lighting = FiberLighting(p.worldPosition, p.normal, p.root, p.height, p.position.xy, p.localFlow, strand);
-    return float4(FiberAppearanceLighting(p, strand, lighting.rgb), lighting.a);
-#else
-    return FiberLighting(p.worldPosition, p.normal, p.root, p.height, p.position.xy, p.localFlow, strand);
+    float2 cardMotion = float2(1.0f, 1.0f);
+#ifdef FBZZ_FIBER_GRASS_CARD
+    cardMotion = FiberCardMotion(p.cardSpecies);
 #endif
+    float4 lighting = FiberLighting(p.worldPosition, p.normal, p.root, p.height, p.position.xy,
+        p.localFlow, strand, cardMotion);
+#ifdef FBZZ_FIBER_APPEARANCE
+    lighting.rgb = FiberAppearanceLighting(p, strand, lighting.rgb);
+#endif
+    return lighting;
 }
 #endif

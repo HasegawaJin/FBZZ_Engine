@@ -53,6 +53,7 @@ void RegisterControlPointOperators(OperatorRegistry& registry);
 /// @brief Terrain のデータ編集操作。
 /// @note リサイズは heightData / splat / holeData を同時に整合させ、スナップショット Undo を記録する。
 void RegisterTerrainOperators(OperatorRegistry& registry);
+void RegisterTerrainGrassOperators(OperatorRegistry& registry);
 
 /// @brief アセットを開く操作、Prefab 編集モードと AI Command Bus の待受制御。
 void RegisterDocumentOperators(OperatorRegistry& registry);

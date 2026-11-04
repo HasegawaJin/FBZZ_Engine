@@ -1,0 +1,14 @@
+# @file    GrassCardShadow.hlsl.meta
+# @brief   Asset identity and shared grass-card vertex contract.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = 'f193f97ac89d54f696e34893f03af060'
+
+[shader]
+version = 1
+vertex = 'fiber_blade_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_blade'

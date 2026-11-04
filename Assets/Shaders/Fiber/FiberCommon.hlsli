@@ -125,27 +125,33 @@ float3 FiberNormalize(float3 value, float3 fallback)
 /// @param localFlow 局所 FlowField の媒質速度 [m/s]。環境風と同じ応答係数で曲げへ足す。
 /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-7-rendering-countless-blades-waving-grass
 float3 FiberBendAt(float3 root, float3 normal, float3 wind, float time,
-    float turbulence, float pulseFrequency, float response, float bendLimit, float gravity, float3 localFlow)
+    float turbulence, float pulseFrequency, float response, float bendLimit, float gravity, float3 localFlow,
+    float2 cardMotion)
 {
     float phase = dot(root, float3(0.73f, 0.31f, 0.57f)) + time * pulseFrequency * 6.2831853f;
     float3 gust = float3(sin(phase), 0.0f, cos(phase * 0.79f)) * turbulence;
     float3 force = (wind + gust + localFlow) * response + float3(0.0f, -gravity, 0.0f);
+#ifdef FBZZ_FIBER_GRASS_CARD
+    /// @note World-space phase keeps the breeze coherent across patches and identical in the velocity pass.
+    float swayPhase = dot(root.xz, float2(0.81f, 0.47f)) + time * clamp(cardSwayHz * cardMotion.y, 0.0f, 4.0f) * 6.2831853f;
+    force += float3(0.89f, 0.0f, 0.46f) * (sin(swayPhase) * clamp(cardSway * cardMotion.x, 0.0f, 0.25f));
+#endif
     float3 bend = force - normal * dot(force, normal);
     float len = length(bend);
     return bend * min(1.0f, bendLimit / max(len, 1.0e-6f));
 }
 
-float3 FiberBend(float3 root, float3 normal, float3 localFlow)
+float3 FiberBend(float3 root, float3 normal, float3 localFlow, float2 cardMotion)
 {
     return FiberBendAt(root, normal, fiberWind, fiberTime, fiberTurbulence,
-        fiberPulseFrequency, windResponse, maxBend, gravityBend, localFlow);
+        fiberPulseFrequency, windResponse, maxBend, gravityBend, localFlow, cardMotion);
 }
 
 /// @param lengthScale fiberMask の G。毛丈と曲げ量の両方に掛け、短い毛ほど曲がらない。
-float3 FiberPosition(float3 root, float3 normal, float height, float3 localFlow, float lengthScale)
+float3 FiberPosition(float3 root, float3 normal, float height, float3 localFlow, float lengthScale, float2 cardMotion)
 {
     return root + normal * (fiberLength * lengthScale * height)
-        + FiberBend(root, normal, localFlow) * (lengthScale * height * height)
+        + FiberBend(root, normal, localFlow, cardMotion) * (lengthScale * height * height)
         + FiberContactOffset(root, normal, height, fiberTime, fiberLength * lengthScale);
 }
 
@@ -160,6 +166,32 @@ float FiberHash(float2 cell)
     p += dot(p, p.yzx + 33.33f);
     return frac((p.x + p.y) * p.z);
 }
+
+#ifdef FBZZ_FIBER_GRASS_CARD
+/// @return Atlas cell in row-major order, or 4 for a single-card material.
+/// @note Local roots retain their species across streaming, object movement, and all render passes.
+uint FiberCardSpecies(float2 localRoot)
+{
+    if (cardSpeciesAtlas == 0u) return 4u;
+
+    const float4 weights = max(cardSpeciesWeights, 0.0f);
+    const float3 limits = float3(weights.x, weights.x + weights.y, weights.x + weights.y + weights.z);
+    const float total = limits.z + weights.w;
+    if (total <= 0.0f) return 4u;
+
+    const float individual = FiberHash(localRoot + float2(17.83f, 29.41f));
+    const float patchShare = 0.42f;
+    const float patch = FiberHash(floor(localRoot * 0.36f) + float2(31.2f, 15.8f));
+    const float roll = (individual < patchShare ? patch : (individual - patchShare) / (1.0f - patchShare)) * total;
+    return uint(roll >= limits.x) + uint(roll >= limits.y) + uint(roll >= limits.z);
+}
+
+float2 FiberCardMotion(uint species)
+{
+    if (species >= 4u) return float2(1.0f, 1.0f);
+    return float2(cardSpeciesSway[species], cardSpeciesSwayHz[species]);
+}
+#endif
 
 /// @brief 点 position から視点へ向かう単位ベクトル。平行投影ではビューの前方の逆。
 /// @note 影のパスでは frameCB が光源のビューを持つので、光源から見た向きになる。
@@ -182,6 +214,9 @@ struct FiberStrand {
     float3 across;
     /// @note fiberMask の A。根元色から毛先色へ進む割合に掛ける (0 で毛全体が根元色)。
     float colorMix;
+#ifdef FBZZ_FIBER_GRASS_CARD
+    float3 cardColor;
+#endif
 };
 
 FiberStrand FiberDefaultStrand(float height, float hash)
@@ -192,6 +227,9 @@ FiberStrand FiberDefaultStrand(float height, float hash)
     strand.tip = height;
     strand.across = float3(0.0f, 0.0f, 0.0f);
     strand.colorMix = 1.0f;
+#ifdef FBZZ_FIBER_GRASS_CARD
+    strand.cardColor = float3(1.0f, 1.0f, 1.0f);
+#endif
     return strand;
 }
 
@@ -314,6 +352,9 @@ float3 FiberStrandColor(FiberStrand strand, float height)
 {
     float t = lerp(saturate(strand.tip), height, planarShading) * saturate(strand.colorMix);
     float3 color = lerp(rootColor.rgb, tipColor.rgb, t);
+#ifdef FBZZ_FIBER_GRASS_CARD
+    color *= strand.cardColor;
+#endif
     return color * max(1.0f + colorVariation * (strand.hash * 2.0f - 1.0f), 0.0f);
 }
 
@@ -374,10 +415,11 @@ float3 FiberDirect(float3 N, float3 strandNormal, float3 T, float3 V, float3 L, 
 
 /// @param localFlow 頂点で評価した局所 FlowField。ピクセルごとに場を引き直さない。
 /// @param strand coverage が選んだ毛。
-float4 FiberLighting(float3 position, float3 normal, float3 root, float height, float2 pixel, float3 localFlow, FiberStrand strand)
+float4 FiberLighting(float3 position, float3 normal, float3 root, float height, float2 pixel,
+    float3 localFlow, FiberStrand strand, float2 cardMotion)
 {
     float3 N = FiberNormalize(normal, float3(0.0f, 1.0f, 0.0f));
-    float3 T = FiberNormalize(N * fiberLength + 2.0f * height * FiberBend(root, N, localFlow), N);
+    float3 T = FiberNormalize(N * fiberLength + 2.0f * height * FiberBend(root, N, localFlow, cardMotion), N);
     float3 V = FiberViewDirection(position, N);
     float3 L = FiberNormalize(-lightDir, N);
     float3 strandNormal = FiberStrandNormal(T, V, N, strand);

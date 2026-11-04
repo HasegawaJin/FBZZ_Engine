@@ -2,7 +2,6 @@
 /// @brief   エディタ上でマウス操作により地形の高さ彫刻・層の塗布・坂・穴を編集するツール。
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
-///
 /// @note レイキャスト・ストローク・Undo を TerrainTool に集約し、ブラシの式は TerrainBrush.hpp のカーネルへ委ねる (AI バスと同じ実体)。
 /// @note 呼び出し順: ViewportPanel::OnRenderContent 末尾で Update()、パネル側で Draw*Content()。dirty フラグは Update() が立てる。
 /// @see Docs/design/terrain-layers.md
@@ -26,15 +25,16 @@ namespace fbzz::renderer { class IRenderer; }
 namespace fbzz::editor {
 
 class UndoStack;
+struct EditorContext;
 
 /// @brief Scene View 上の地形編集ツール。
 class TerrainTool {
 public:
     /// @brief ブラシモード。保存済み int 値を変えないため追加は末尾へ置く。
     enum class Mode {
-        Sculpt, ///< 高さ彫刻 (Ramp もここに含む)
-        Paint,  ///< スプラット塗布
-        Hole,   ///< 穴を開ける / 埋める
+        Sculpt, ///< @note 高さ彫刻 (Ramp もここに含む)。
+        Paint,
+        Hole,
     };
 
     /// @name カーネル型の別名
@@ -51,28 +51,25 @@ public:
     /// @brief 毎フレームシーンビューで呼ぶ。マウス入力を処理して地形を編集する。
     /// @param dt フレーム時間 [s]。ブラシ強度に乗算する (Ramp と Hole には掛けない)。
     /// @param viewportMin ビューポートの左上スクリーン座標。
-    /// @param markDirty シーンの dirty フラグを立てるコールバック。
-    /// @param undoStack null ならストロークを Undo へ積まない。
-    void Update(scene::Scene&             scene,
+    /// @note Undo は context の現在シーンと部品の寿命を検証してから適用する。
+    void Update(EditorContext&            context,
                 const renderer::Camera&   camera,
                 float                     dt,
                 bool                      viewportHovered,
                 const ImVec2&             viewportMin,
-                const ImVec2&             viewportSize,
-                const std::function<void()>& markDirty,
-                UndoStack*                 undoStack);
+                const ImVec2&             viewportSize);
 
     /// @brief スタンドアローンのツールウィンドウを描く。
     /// @pre ViewportPanel の ImGui::Begin スコープ内から呼ぶこと。
-    void OnEditorGUI(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
+    void OnEditorGUI(EditorContext& context);
 
     /// @name ウィンドウを持たないタブ内容 (MapEditorPanel から呼ぶ)
     /// @{
     void DrawSculptContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
     void DrawPaintContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
     void DrawHoleContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
-    /// @note 取り込みと書き出しの対象はシーン内の最初の有効な地形。
-    void DrawImportSection(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
+    /// @note 取り込み・層生成・散布は共通の明示選択先へ適用する。初回に有効な地形が一個だけなら自動選択する。
+    void DrawAuthoringSection(EditorContext& context);
     void DrawBrushSettings();
     /// @}
 
@@ -112,44 +109,97 @@ public:
 private:
     /// @name 状態
     /// @{
-    bool        m_active  = false;  ///< false のとき入力処理・ブラシ描画をスキップする
+    bool        m_active  = false;
     Mode        m_mode    = Mode::Sculpt;
     SculptMode  m_sculpt  = SculptMode::Raise;
     /// @note 修飾キーで一時的に切り替わる実効サブモード。Shift+drag=Smooth / Ctrl+drag=Lower をパネルへ視線を戻さず使える。
     SculptMode  m_activeSculpt = SculptMode::Raise;
     BrushSettings m_brush;
 
-    bool     m_rampMode      = false;  ///< Sculpt の中で Ramp を選んでいるか (SculptOp ではないので別に持つ)
-    bool     m_holeErase     = false;  ///< Hole: true なら穴を埋める
-    uint32_t m_paintLayer    = 0;      ///< Paint: 塗る層番号。参照地形の層数 - 1 へ丸める
-    float    m_flattenTarget = 0.0f;   ///< Flatten: 基準高さ (ローカル Y [m])
-    bool     m_flattenLocked = false;  ///< Flatten: 最初のクリックで固定したか
+    bool     m_rampMode      = false;  ///< @note SculptOp と別に保持する Sculpt のサブモード。
+    bool     m_holeErase     = false;  ///< @note true なら穴を埋める。
+    uint32_t m_paintLayer    = 0;      ///< @note 参照地形の層数 - 1 へ丸める。
+    float    m_flattenTarget = 0.0f;   ///< @note 基準高さ (ローカル Y [m])。
+    bool     m_flattenLocked = false;
 
     struct TerrainStrokeSnapshot {
         std::string instanceId;
         scene::TerrainComponent before;
+        uint64_t lifetime = 0;
     };
     std::vector<TerrainStrokeSnapshot> m_strokeBeforeTerrains;
+    uint64_t m_strokeSceneGeneration = 0;
     bool          m_strokeActive = false;
-    std::uint32_t m_strokeStep   = 0;   ///< ストローク内の適用回数。侵食の乱数を回ごとに変える
+    std::uint32_t m_strokeStep   = 0;   ///< @note 侵食の乱数をストローク内の適用回ごとに変える。
 
     bool          m_rampDragging = false;
     math::Vector3 m_rampStartWorld;
     math::Vector3 m_rampEndWorld;
 
-    bool              m_isHovering = false;    ///< 地形にマウスが乗っているか
-    math::Vector3     m_hitPoint;              ///< レイキャスト結果 (ワールド座標)
-    scene::GameObject* m_hitTerrain = nullptr; ///< ヒットした地形 GO (非所有)
+    bool              m_isHovering = false;
+    math::Vector3     m_hitPoint;              ///< @note ワールド座標。
+    scene::GameObject* m_hitTerrain = nullptr; ///< @note ヒットした地形 GO の非所有参照。
     /// @}
 
     /// @name HeightMap 入出力
     /// @{
-    char        m_heightMapPath[512]   = {};    ///< インポートするファイルパス (InputText 用)
-    char        m_heightMapExport[512] = {};    ///< 書き出し先 (InputText 用)
-    int         m_heightMapUnipolar    = 1;     ///< 1: [0,maxH]  0: [-maxH,+maxH] (RadioButton が int を要求する)
-    std::string m_heightMapStatus;              ///< "OK" / "Error: ..." / "" (未実行)
-    std::string m_heightMapExportStatus;        ///< 書き出し結果
+    char        m_heightMapPath[512]   = {};
+    char        m_heightMapExport[512] = {};
+    int         m_heightMapUnipolar    = 1;     ///< @note 1: [0,maxH]、0: [-maxH,+maxH]。
+    std::string m_heightMapStatus;
+    std::string m_heightMapExportStatus;
+    std::string m_heightMapTargetId;
+    std::uint64_t m_heightMapSceneGeneration = 0;
+    bool m_heightMapResize = false;
+    int m_heightMapColumns = 513;
+    int m_heightMapRows = 513;
+    float m_heightMapCellSize = 4.0f;
+    float m_heightMapMaxHeight = 640.0f;
+    int m_biomeGrassLayer = 0;
+    int m_biomeRockLayer = 1;
+    int m_biomeSnowLayer = 2;
+    float m_biomeSnowHeight = 420.0f;
+    float m_biomeSnowFade = 60.0f;
+    float m_biomeRockSlope = 38.0f;
+    float m_biomeSlopeFade = 10.0f;
+    std::string m_biomeStatus;
+    char m_grassMaterial[512] = "Assets/Terrain/Alpine/GrassCards.mat";
+    float m_grassDensity = 4.0f;
+    float m_grassBladeWidth = 0.5f;
+    float m_grassDistance = 80.0f;
+    std::string m_grassStatus;
+    char m_layerMaskPath[512] = {};
+    int m_layerMaskLayer = 0;
+    float m_layerMaskStrength = 1.0f;
+    bool m_layerMaskInvert = false;
+    std::string m_layerMaskStatus;
+    std::string m_scatterTargetId;
+    char m_scatterSource[512] = {};
+    std::string m_scatterStatus;
+    float m_scatterSpacing = 6.0f;
+    float m_scatterDensity = 1.0f;
+    int m_scatterSeed = 1;
+    float m_scatterMinHeight = -100000.0f;
+    float m_scatterMaxHeight = 100000.0f;
+    float m_scatterMinSlope = 0.0f;
+    float m_scatterMaxSlope = 40.0f;
+    int m_scatterLayer = -1;
+    float m_scatterLayerThreshold = 0.25f;
+    float m_scatterMinScale = 0.8f;
+    float m_scatterMaxScale = 1.2f;
+    float m_scatterMinYaw = 0.0f;
+    float m_scatterMaxYaw = 360.0f;
+    int m_scatterOrientation = 0;
+    float m_scatterDownslopeJitter = 0.0f;
+    float m_scatterEmbedDepth = 0.0f;
+    int m_scatterMaxInstances = 100000;
     /// @}
+
+    /// @return GUID から解決した選択先。削除・無効化した対象を別の地形へ自動で置き換えない。
+    scene::GameObject* DrawHeightMapTarget(scene::Scene& scene);
+    void DrawImportSection(EditorContext& context, scene::GameObject* target);
+    void DrawBiomeSection(EditorContext& context, scene::GameObject* target);
+    void DrawScatterSection(EditorContext& context, scene::GameObject* terrain);
 
     /// @brief DDA + 二分探索でレイと地形の交差を求める。穴のセルの交差は飛ばして次を探す。
     /// @param outLocalHit テレインローカル座標。
@@ -162,11 +212,9 @@ private:
     void CaptureStrokeBefore(scene::GameObject& go, const scene::TerrainComponent& terrain);
     /// @brief ストロークを確定し、触れた地形を 1 つの Undo にまとめる。
     /// @param rebuildCollider 形が変わる操作 (Sculpt / Ramp / Hole) なら true。
-    void CommitStroke(scene::Scene& scene, const char* undoLabel, bool rebuildCollider,
-                      const std::function<void()>& markDirty, UndoStack* undoStack);
+    void CommitStroke(EditorContext& context, const char* undoLabel, bool rebuildCollider);
     /// @brief Ramp の押下・ドラッグ・確定。
-    void UpdateRamp(scene::Scene& scene, bool mousePressed, bool mouseReleased,
-                    const std::function<void()>& markDirty, UndoStack* undoStack);
+    void UpdateRamp(EditorContext& context, bool mousePressed, bool mouseReleased);
 
     /// @brief ブラシ円をビューポートに ImGui DrawList で描く (スクリーン空間投影)。
     void DrawBrushPreview(const ImVec2&           viewportMin,
@@ -178,4 +226,4 @@ private:
                          const renderer::Camera& camera) const;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

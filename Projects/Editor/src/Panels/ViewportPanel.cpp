@@ -1263,16 +1263,14 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     {
         const bool vpHovered = ImGui::IsWindowHovered();
         ctx.terrainTool->Update(
-            *ctx.activeScene,
+            ctx,
             *ctx.editorCamera,
             ImGui::GetIO().DeltaTime,
             vpHovered,
             viewportMin,
-            size,
-            ctx.markSceneDirty,
-            ctx.undoStack);
+            size);
         if (ctx.showTerrainTool && !ctx.mapEditingMode)
-            ctx.terrainTool->OnEditorGUI(*ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
+            ctx.terrainTool->OnEditorGUI(ctx);
     }
 
     /// @note Show play/pause state with a viewport border.

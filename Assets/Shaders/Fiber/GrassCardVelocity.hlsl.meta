@@ -1,0 +1,14 @@
+# @file    GrassCardVelocity.hlsl.meta
+# @brief   Asset identity and shared grass-card vertex contract.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '278520ed14f75d419b71acdb424a9d08'
+
+[shader]
+version = 1
+vertex = 'fiber_blade_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'fiber_blade'

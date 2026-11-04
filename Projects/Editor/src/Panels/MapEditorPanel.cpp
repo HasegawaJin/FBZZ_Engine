@@ -329,8 +329,6 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
             ctx.terrainTool->DrawSculptContent(
                 *ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
             ctx.terrainTool->DrawBrushSettings();
-            ctx.terrainTool->DrawImportSection(
-                *ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
         }
         break;
     case EditorContext::MapTool::TerrainPaint:
@@ -352,6 +350,7 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
         break;
     }
 
+    if (ctx.terrainTool) ctx.terrainTool->DrawAuthoringSection(ctx);
     ImGui::EndChild();
 }
 
