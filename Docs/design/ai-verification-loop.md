@@ -117,3 +117,11 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 - Playtest: `ScenarioPath` / `JsonPath` / 比較演算 / 画像比較 / 入力記録の差分抽出を EditorAuto で確認する。ロックステップは CoreAuto。
 - バス分割: 既存の `EditorBusDispatcherTests` がそのまま通ること + 契約の突き合わせテスト。
 - 実機: GreenWare で `--batch` を回し、終了コードとレポート・差分画像を確認する。
+
+## Named Pipe の終了境界
+
+NamedPipeServer の Start／Stop／DrainRequests は所有スレッドで呼ぶ。Start 成功は最初のパイプを作成済みであることを意味する。listener が接続 worker を単独所有し、完了済み worker を join して回収する。Stop は停止イベントを通知し、listener を join して新規 worker が増えないことを確定してから全 worker を join する。実行数ゼロや detach を終了保証に使わない。
+
+要求・応答は従来の1接続1 NDJSON のまま。共有 Pending は要求を受ける worker と処理する所有スレッドの間だけで共有し、停止イベントでも応答待ちを解除する。handler 内の Stop、未完の要求、未処理キュー、読まれない応答からも停止できる。取消しを要求した I/O は完了まで OVERLAPPED・イベント・バッファを保持する（[CancelIoEx](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex)）。通常応答はクライアントの切断まで cancellable な read で接続を保ち、相手の読取りを同期的に待つ FlushFileBuffers は使わない（[Named Pipe Operations](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-operations)）。
+
+NamedPipeServerTest は実パイプで大きな応答の完全受信、部分要求の停止と再起動、未読の大きな応答、handler 内の停止、並行接続、デストラクタによる終了を確認する。タイミング調整の sleep は使わない。

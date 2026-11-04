@@ -362,6 +362,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/BusContractParityTests.cpp
     Editor/Auto/EditorBusDispatcherTests.cpp
     Editor/Auto/EditorBusProtocolTests.cpp
+    Editor/Auto/NamedPipeServerTests.cpp
     Editor/Auto/EditorProjectFileTests.cpp
     Editor/Auto/EditorSettingsTests.cpp
     Editor/Auto/EditorMenuCatalogTests.cpp

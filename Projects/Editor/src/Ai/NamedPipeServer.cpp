@@ -1,11 +1,11 @@
 /// @file    NamedPipeServer.cpp
-/// @brief   Win32 Named Pipe の待受・接続処理。オーバーラップド IO + stopEvent でクリーンに停止する。
+/// @brief   Win32 Named Pipe の待受・接続処理と、I/O 完了を含むワーカーの停止。
 /// @author  Hasegawa Jin
 /// @date    2026-07-20
 #include <Editor/Ai/NamedPipeServer.hpp>
 
+#include <algorithm>
 #include <atomic>
-#include <condition_variable>
 #include <deque>
 #include <future>
 #include <mutex>
@@ -16,233 +16,218 @@
 #include <windows.h>
 
 namespace fbzz::editor::ai {
-
 namespace {
-/// 1接続あたりの要求サイズ上限。base64 PNG は応答側なので要求は小さいが、暴走防止に上限を設ける。
-constexpr std::size_t kMaxRequestBytes = 8 * 1024 * 1024;
-constexpr DWORD       kPipeBufferBytes = 64 * 1024;
-} // namespace
+constexpr std::size_t MAX_REQUEST_BYTES = 8 * 1024 * 1024;
+constexpr DWORD PIPE_BUFFER_BYTES = 64 * 1024;
+
+/// @note 完了前に OVERLAPPED・イベント・転送バッファを破棄しない。
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex CancelIoEx remarks
+int WaitOverlapped(HANDLE pipe, OVERLAPPED& overlapped, HANDLE stopEvent, DWORD& bytesTransferred)
+{
+    const HANDLE waits[] = {stopEvent, overlapped.hEvent};
+    const DWORD result = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
+    if (result == WAIT_OBJECT_0 + 1)
+        return GetOverlappedResult(pipe, &overlapped, &bytesTransferred, FALSE) ? 0 : -1;
+    CancelIoEx(pipe, &overlapped);
+    GetOverlappedResult(pipe, &overlapped, &bytesTransferred, TRUE);
+    return result == WAIT_OBJECT_0 ? 1 : -1;
+}
+} /// @note namespace
 
 struct NamedPipeServer::Impl {
-    /// メインスレッドの応答を待つ1要求分の受け渡し箱。
     struct Pending {
-        std::string               request;
-        std::promise<std::string> response;
+        HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        std::string request;
+        std::string response;
+        ~Pending() { if (ready) CloseHandle(ready); }
+    };
+
+    struct Worker {
+        std::thread thread;
+        std::atomic<bool> finished{false};
     };
 
     std::wstring pipeName;
+    std::thread listener;
+    std::atomic<bool> running{false};
+    HANDLE stopEvent = nullptr;
+    std::mutex queueMutex;
+    std::deque<std::shared_ptr<Pending>> queue;
+    /// @note listener だけが変更し、Stop は listener の join 後に全 worker を join する。
+    std::vector<std::unique_ptr<Worker>> workers;
 
-    std::thread              listener;
-    std::atomic<bool>        running{ false };
-    HANDLE                   stopEvent = nullptr; ///< listener / ワーカーの待機を一斉解除する
-
-    std::mutex                             queueMutex;
-    std::deque<std::shared_ptr<Pending>>   queue;   ///< 未処理要求 (メインスレッドが drain)
-
-    std::atomic<int>         activeWorkers{ 0 };
-    std::mutex               workerMutex;
-    std::condition_variable  workerDone;
-
-    /// オーバーラップド操作を stopEvent と同時に待つ。戻り: 0=完了, 1=停止要求, -1=失敗。
-    int WaitOverlapped(HANDLE pipe, OVERLAPPED& overlapped, DWORD& bytesTransferred)
-    {
-        const HANDLE waits[2] = { overlapped.hEvent, stopEvent };
-        const DWORD  result = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
-        if (result == WAIT_OBJECT_0) {
-            if (!GetOverlappedResult(pipe, &overlapped, &bytesTransferred, FALSE)) return -1;
-            return 0;
-        }
-        if (result == WAIT_OBJECT_0 + 1) {
-            CancelIoEx(pipe, &overlapped);
-            return 1;
-        }
-        return -1;
-    }
-
-    /// 接続済みパイプから NDJSON 1行を読み、メインスレッドで処理させ、応答を書き戻して閉じる。
-    void HandleConnection(HANDLE pipe)
-    {
-        struct WorkerGuard {
-            Impl* self;
-            ~WorkerGuard()
-            {
-                if (self->activeWorkers.fetch_sub(1) == 1) {
-                    std::lock_guard<std::mutex> lock(self->workerMutex);
-                    self->workerDone.notify_all();
-                }
-            }
-        } guard{ this };
-
-        std::string request;
-        if (ReadRequestLine(pipe, request)) {
-            const std::string response = DispatchOnMainThread(request);
-            if (!response.empty()) WriteResponseLine(pipe, response);
-        }
-        FlushFileBuffers(pipe);
-        DisconnectNamedPipe(pipe);
-        CloseHandle(pipe);
-    }
-
-    /// '\n' までを読む。改行は含めない。停止要求・エラー・上限超過で false。
     bool ReadRequestLine(HANDLE pipe, std::string& out)
     {
-        std::vector<char> chunk(kPipeBufferBytes);
-        for (;;) {
+        std::vector<char> chunk(PIPE_BUFFER_BYTES);
+        while (running.load()) {
             OVERLAPPED overlapped{};
             overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-            if (overlapped.hEvent == nullptr) return false;
-
+            if (!overlapped.hEvent) return false;
             DWORD bytesRead = 0;
             const BOOL ok = ReadFile(pipe, chunk.data(), static_cast<DWORD>(chunk.size()), &bytesRead, &overlapped);
             int status = 0;
-            if (!ok) {
-                const DWORD error = GetLastError();
-                if (error == ERROR_IO_PENDING) status = WaitOverlapped(pipe, overlapped, bytesRead);
-                else status = -1;
-            }
+            if (!ok)
+                status = GetLastError() == ERROR_IO_PENDING ? WaitOverlapped(pipe, overlapped, stopEvent, bytesRead) : -1;
             CloseHandle(overlapped.hEvent);
-            /// @note 停止 or 失敗
-            if (status != 0) return false;
-            /// @note 相手が切断
-            if (bytesRead == 0) return false;
-
-            for (DWORD i = 0; i < bytesRead; ++i) {
-                const char c = chunk[i];
-                /// @note 1行完成 (以降は 1req/1conn 前提で捨てる)
-                if (c == '\n') return true;
-                out.push_back(c);
-                if (out.size() > kMaxRequestBytes) return false;
+            if (status != 0 || bytesRead == 0) return false;
+            for (DWORD index = 0; index < bytesRead; ++index) {
+                if (chunk[index] == '\n') return true;
+                out.push_back(chunk[index]);
+                if (out.size() > MAX_REQUEST_BYTES) return false;
             }
         }
+        return false;
     }
 
-    void WriteResponseLine(HANDLE pipe, const std::string& response)
+    bool WriteResponseLine(HANDLE pipe, const std::string& response)
     {
         std::string line = response;
         line.push_back('\n');
         std::size_t written = 0;
-        while (written < line.size()) {
+        while (running.load() && written < line.size()) {
             OVERLAPPED overlapped{};
             overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-            if (overlapped.hEvent == nullptr) return;
-
-            DWORD chunkWritten = 0;
-            const BOOL ok = WriteFile(pipe, line.data() + written,
-                                      static_cast<DWORD>(line.size() - written), &chunkWritten, &overlapped);
+            if (!overlapped.hEvent) return false;
+            DWORD bytesWritten = 0;
+            const DWORD count = static_cast<DWORD>(std::min<std::size_t>(line.size() - written, PIPE_BUFFER_BYTES));
+            const BOOL ok = WriteFile(pipe, line.data() + written, count, &bytesWritten, &overlapped);
             int status = 0;
-            if (!ok) {
-                const DWORD error = GetLastError();
-                if (error == ERROR_IO_PENDING) status = WaitOverlapped(pipe, overlapped, chunkWritten);
-                else status = -1;
-            }
+            if (!ok)
+                status = GetLastError() == ERROR_IO_PENDING ? WaitOverlapped(pipe, overlapped, stopEvent, bytesWritten) : -1;
             CloseHandle(overlapped.hEvent);
-            if (status != 0 || chunkWritten == 0) return;
-            written += chunkWritten;
+            if (status != 0 || bytesWritten == 0) return false;
+            written += bytesWritten;
+        }
+        return written == line.size();
+    }
+
+    /// @note NDJSON クライアントは応答を読んで切断する。停止不能な FlushFileBuffers を使わず切断を待つ。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-operations Named Pipe Operations
+    void WaitForDisconnect(HANDLE pipe)
+    {
+        char ignored[256];
+        while (running.load()) {
+            OVERLAPPED overlapped{};
+            overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            if (!overlapped.hEvent) return;
+            DWORD bytesRead = 0;
+            const BOOL ok = ReadFile(pipe, ignored, sizeof(ignored), &bytesRead, &overlapped);
+            int status = 0;
+            if (!ok)
+                status = GetLastError() == ERROR_IO_PENDING ? WaitOverlapped(pipe, overlapped, stopEvent, bytesRead) : -1;
+            CloseHandle(overlapped.hEvent);
+            if (status != 0 || bytesRead == 0) return;
         }
     }
 
-    /// 要求をキューへ積み、メインスレッド (DrainRequests) が set_value するまで待つ。停止時は空応答。
     std::string DispatchOnMainThread(const std::string& request)
     {
         auto pending = std::make_shared<Pending>();
+        if (!pending->ready) return {};
         pending->request = request;
-        std::future<std::string> future = pending->response.get_future();
         {
             std::lock_guard<std::mutex> lock(queueMutex);
             if (!running.load()) return {};
             queue.push_back(pending);
         }
-        /// @note メインスレッドが毎フレーム drain する。停止時は Stop() が空文字で解除する。
-        future.wait();
-        return future.get();
+        /// @note handler 内の Stop も待ちを解除する。Pending は handler と worker の両方が使い終わるまで生存する。
+        const HANDLE waits[] = {stopEvent, pending->ready};
+        if (WaitForMultipleObjects(2, waits, FALSE, INFINITE) != WAIT_OBJECT_0 + 1) return {};
+        return pending->response;
     }
 
-    void ListenerLoop()
+    void HandleConnection(HANDLE pipe)
     {
-        while (running.load()) {
-            HANDLE pipe = CreateNamedPipeW(
-                pipeName.c_str(),
-                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-                PIPE_UNLIMITED_INSTANCES,
-                kPipeBufferBytes, kPipeBufferBytes, 0, nullptr);
-            if (pipe == INVALID_HANDLE_VALUE) break;
+        std::string request;
+        if (ReadRequestLine(pipe, request)) {
+            const std::string response = DispatchOnMainThread(request);
+            if (!response.empty() && WriteResponseLine(pipe, response)) WaitForDisconnect(pipe);
+        }
+        DisconnectNamedPipe(pipe);
+        CloseHandle(pipe);
+    }
 
+    void ReapWorkers()
+    {
+        std::erase_if(workers, [](const auto& worker) {
+            if (!worker->finished.load(std::memory_order_acquire)) return false;
+            worker->thread.join();
+            return true;
+        });
+    }
+
+    void ListenerLoop(std::promise<bool> started)
+    {
+        bool published = false;
+        while (running.load()) {
+            ReapWorkers();
+            HANDLE pipe = CreateNamedPipeW(pipeName.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES,
+                PIPE_BUFFER_BYTES, PIPE_BUFFER_BYTES, 0, nullptr);
+            if (pipe == INVALID_HANDLE_VALUE) break;
             OVERLAPPED overlapped{};
             overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-            if (overlapped.hEvent == nullptr) { CloseHandle(pipe); break; }
+            if (!overlapped.hEvent) { CloseHandle(pipe); break; }
+            if (!published) { started.set_value(true); published = true; }
 
-            bool connected = false;
-            const BOOL ok = ConnectNamedPipe(pipe, &overlapped);
-            if (ok) {
-                /// @note 稀: 同期完了
-                connected = true;
-            } else {
+            bool connected = ConnectNamedPipe(pipe, &overlapped) != FALSE;
+            if (!connected) {
                 const DWORD error = GetLastError();
-                if (error == ERROR_PIPE_CONNECTED) {
-                    /// @note Connect 前に相手が既に接続していた
-                    connected = true;
-                } else if (error == ERROR_IO_PENDING) {
+                if (error == ERROR_PIPE_CONNECTED) connected = true;
+                else if (error == ERROR_IO_PENDING) {
                     DWORD ignored = 0;
-                    connected = (WaitOverlapped(pipe, overlapped, ignored) == 0);
+                    connected = WaitOverlapped(pipe, overlapped, stopEvent, ignored) == 0;
                 }
             }
             CloseHandle(overlapped.hEvent);
-
             if (!running.load()) { CloseHandle(pipe); break; }
-            if (!connected)      { CloseHandle(pipe); continue; }
+            if (!connected) { CloseHandle(pipe); continue; }
 
-            /// @note 接続毎に短命ワーカーを起こす。detach し、停止時は activeWorkers==0 まで待って安全に解放する。
-            activeWorkers.fetch_add(1);
-            std::thread([this, pipe] { HandleConnection(pipe); }).detach();
+            auto worker = std::make_unique<Worker>();
+            Worker* state = worker.get();
+            state->thread = std::thread([this, pipe, state] {
+                HandleConnection(pipe);
+                state->finished.store(true, std::memory_order_release);
+            });
+            workers.push_back(std::move(worker));
         }
+        if (!published) started.set_value(false);
     }
 };
 
 NamedPipeServer::NamedPipeServer() : m_impl(std::make_unique<Impl>()) {}
-
 NamedPipeServer::~NamedPipeServer() { Stop(); }
 
 bool NamedPipeServer::Start(const std::wstring& pipeName)
 {
     if (m_impl->running.load()) return true;
-
-    /// @note manual-reset
     m_impl->stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    if (m_impl->stopEvent == nullptr) return false;
-
+    if (!m_impl->stopEvent) return false;
     m_impl->pipeName = pipeName;
     m_impl->running.store(true);
-    m_impl->listener = std::thread([this] { m_impl->ListenerLoop(); });
-    return true;
+    std::promise<bool> started;
+    auto ready = started.get_future();
+    m_impl->listener = std::thread([this, started = std::move(started)]() mutable {
+        m_impl->ListenerLoop(std::move(started));
+    });
+    if (ready.get()) return true;
+    Stop();
+    return false;
 }
 
 void NamedPipeServer::Stop()
 {
-    if (!m_impl || !m_impl->running.exchange(false)) {
-        /// @note 既に停止済みでも stopEvent の後始末だけは行う。
-        if (m_impl && m_impl->stopEvent) { CloseHandle(m_impl->stopEvent); m_impl->stopEvent = nullptr; }
-        return;
-    }
-
-    if (m_impl->stopEvent) SetEvent(m_impl->stopEvent);
-
-    /// @note 待機中ワーカーを空応答で解除し、キューを空にする。
+    if (!m_impl || !m_impl->running.exchange(false)) return;
+    SetEvent(m_impl->stopEvent);
     {
         std::lock_guard<std::mutex> lock(m_impl->queueMutex);
-        for (auto& pending : m_impl->queue) pending->response.set_value(std::string{});
         m_impl->queue.clear();
     }
-
     if (m_impl->listener.joinable()) m_impl->listener.join();
-
-    /// @note detach 済みワーカーが Impl を触り終える (activeWorkers==0) まで待つ。
-    {
-        std::unique_lock<std::mutex> lock(m_impl->workerMutex);
-        m_impl->workerDone.wait(lock, [this] { return m_impl->activeWorkers.load() == 0; });
-    }
-
-    if (m_impl->stopEvent) { CloseHandle(m_impl->stopEvent); m_impl->stopEvent = nullptr; }
+    for (const auto& worker : m_impl->workers) worker->thread.join();
+    m_impl->workers.clear();
+    CloseHandle(m_impl->stopEvent);
+    m_impl->stopEvent = nullptr;
 }
 
 bool NamedPipeServer::IsRunning() const
@@ -252,16 +237,16 @@ bool NamedPipeServer::IsRunning() const
 
 void NamedPipeServer::DrainRequests(const RequestHandler& handler)
 {
-    /// @note キューをローカルへ取り出してからロック外で処理する (handler 実行中に IO スレッドを止めない)。
     std::deque<std::shared_ptr<Impl::Pending>> pendingList;
     {
         std::lock_guard<std::mutex> lock(m_impl->queueMutex);
         pendingList.swap(m_impl->queue);
     }
     for (auto& pending : pendingList) {
-        std::string response = handler ? handler(pending->request) : std::string{};
-        pending->response.set_value(std::move(response));
+        if (!m_impl->running.load()) break;
+        pending->response = handler ? handler(pending->request) : std::string{};
+        SetEvent(pending->ready);
     }
 }
 
-} // namespace fbzz::editor::ai
+} /// @note namespace fbzz::editor::ai
