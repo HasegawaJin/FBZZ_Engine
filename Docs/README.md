@@ -4,13 +4,14 @@
 <!-- @date    2026-09-14 -->
 # Docs — 索引
 
-更新日: 2026-10-06。現行 Engine / SDK は C# ゲームスクリプトを対象とする。GreenWare は SDK 0.9.1 時点の旧作を置く別リポジトリであり、現行 SDK の動作保証に含めない。
+更新日 **2026-11-04**。作業ツリーの CMake プロジェクト版は **0.10.0**。描画は DX12、ゲームスクリプトは C# SDK を使う。GreenWare は SDK 0.9.1 時点の旧作を置く別リポジトリ。
 
 FBZZ Engine のドキュメントの入口を以下にまとめる。
 
 | 置き場所 | 何が書いてあるか | 読むとき |
 |---|---|---|
 | [`../README.md`](../README.md) | エンジンの全体像・機能一覧・ビルドとテストの手順 | リポジトリに初めて触るとき |
+| [ベンチマーク](benchmarks/README.md) | 条件別の性能比較と計測の境界 | 性能値や採用理由を確認するとき |
 | [`../AGENTS.md`](../AGENTS.md) | コーディング規約・アーキテクチャ方針・禁止パターン | コードを書く前 |
 | [`../CLAUDE.md`](../CLAUDE.md) | ディレクトリ地図とタスク別の入口 | 「この作業はどのファイルか」を引くとき |
 | [`conventions/`](conventions/) | 守るべき運用ルール | ビルド・コミット・テストを触るとき |
@@ -27,9 +28,22 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | 描画入力 | メッシュ・スキニングに加え、ライト・環境・各エフェクト固有入力を Engine で抽出し、`RenderScene` の値と非所有 GPU ハンドルで Graphics へ渡す |
 | Forward / Deferred | Graphics 内のパイプライン構成として分離。材質ごとの経路と共通処理は [graphics-library.md](design/graphics-library.md)、導入背景は [pipeline-boundary.md](design/pipeline-boundary.md) |
 | SDK | `SDK/0.10.0/` に Core / Graphics と managed starter のヘッダー・ライブラリ・DLL を配布。`lib/Development/FBZZGraphics.lib` はインポートライブラリで、実行時には `bin/Development/FBZZGraphics.dll` も必要。SDK 0.9.1 は GreenWare 用の旧版 |
-| 描画検証 | 関連 369 テストと Graphics 単独の DX12 描画を検証。FiberLifecycle は基準画像更新後、93 手順合格・10 枚すべて画素差 0 ([記録](design/fiber-rendering.md)) |
+| 物理 | BroadPhase の BVH を保持し、変更した葉と祖先を refit。総当たりの候補集合と比較し、静止・移動・再構築の費用を別々に計測した。 [差分更新](design/broadphase-incremental.md) · [計測](benchmarks/2026-10-22-broadphase-incremental/report.md) |
+| 描画の選択経路 | 多数灯の重要度サンプリング、GPU 間接描画／Mesh Shader、影候補の BVH を条件付きで選択・比較できる。DXR／Path Tracing は DeveloperMode の実験。 [多数灯](design/many-light-sampling.md) · [GPU 駆動](design/gpu-driven-geometry.md) · [空間索引](design/spatial-water-optimization.md) · [RT 実験](design/rt-experiment.md) |
+| C# とシーン | Play 用 Scene・managed 世代を分離し、型付き SDK と共通 schema を使用。コンポーネントの一括処理・寿命管理は既存の階層と組み合わせる。 [Play と設定](design/csharp-settings-transactions.md) · [一括処理](design/ecs-bulk-processing.md) |
+| 描画検証の記録 | 2026-09-21 の Graphics 分割で関連 369 テストと DX12 単独描画を検証。FiberLifecycle は当時の基準画像更新後、93 手順合格・10 枚の画素差が 0。 [分割の検証](design/graphics-library.md) · [Fiber](design/fiber-rendering.md) |
 
 ---
+
+## 性能の比較記録
+
+| 計測 | 比較した範囲 |
+|---|---|
+| [BroadPhase の差分更新](benchmarks/2026-10-22-broadphase-incremental/report.md) | 旧方式と保持 BVH。静止、少数移動、再構築、World 同期込みの費用 |
+| [描画同期](benchmarks/2026-10-22-render-synchronization/report.md) | CPU 記録・描画完了時間を分け、実 DX12 と fake backend、ビュー数別に比較 |
+| [静的メッシュの再利用](benchmarks/2026-10-23-static-mesh-reuse/Report.md) | CPU 抽出と DX12 実描画。変更率ごとの利得と悪化 |
+| [可視メッシュの尾部遅延](benchmarks/2026-10-23-visible-mesh-tail/Report.md) | GPU パス時間とフレーム時間、長いフレームの内訳 |
+| [Math のベンチマーク](benchmarks/README.md) | インライン化・SIMD の自動生成索引と生データへの入口 |
 
 ## conventions — 運用規約
 
@@ -64,6 +78,8 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [csharp-authoring.md](design/csharp-authoring.md) | protected override lifecycle、属性ゼロの基本設定、公開API・単位・座標・階層・配列の契約 |
 | [ai-script-workflow.md](design/ai-script-workflow.md) | Script の宣言から共通 schema、AI の追加・設定・参照接続、保存・Playtest へ進む制作経路 (Draft) |
 | [scene-capacity.md](design/scene-capacity.md) | Entity 上限での安全な作成失敗と複数生成の容量確認 |
+| [ecs-bulk-processing.md](design/ecs-bulk-processing.md) | コンポーネント格納、生成・同期・破棄の一括処理 |
+| [csharp-settings-transactions.md](design/csharp-settings-transactions.md) | Edit／Play の分離と世代付き設定の適用 |
 | [benchmark-report.md](design/benchmark-report.md) | ベンチマークの計測と比較レポート |
 | [game-settings.md](design/game-settings.md) | ユーザー定義シリアライズと Option 画面。宣言 1 行で設定を増やす |
 | [sequence-system.md](design/sequence-system.md) | 演出タイムライン (`.sequence`) |
@@ -84,6 +100,10 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | [pix-profiling.md](design/pix-profiling.md) | PIX の起動接続、イベント、Release キャプチャと性能検証の契約 |
 | [rt-experiment.md](design/rt-experiment.md) | DeveloperMode に保持する RT 実験、公開用 Reference 画像、撮影条件・保留理由・再開条件 |
 | [async-compute.md](design/async-compute.md) | 非同期コンピュートキュー |
+| [render-thread.md](design/render-thread.md) | フレーム入力の確定、描画スレッドの所有、同期と読み戻し |
+| [gpu-driven-geometry.md](design/gpu-driven-geometry.md) | CPU、間接描画、Mesh Shader の適用範囲と比較 |
+| [many-light-sampling.md](design/many-light-sampling.md) | Froxel の候補と画素側のサンプリング、画質・性能の比較 |
+| [spatial-water-optimization.md](design/spatial-water-optimization.md) | 影候補 BVH、差分更新の比較、波紋と Upload Arena |
 | [gpu-instancing.md](design/gpu-instancing.md) | 同じメッシュの自動インスタンシング |
 | [view-culling.md](design/view-culling.md) | ビューごとのカリング結果の共有 |
 | [shader-reload-lifetime.md](design/shader-reload-lifetime.md) | シェーダー再読み込みと描画キャッシュの寿命 |
@@ -107,6 +127,8 @@ FBZZ Engine のドキュメントの入口を以下にまとめる。
 | ファイル | 内容 |
 |---|---|
 | [active-ragdoll.md](design/active-ragdoll.md) | XPBD 関節体への移行設計 (Draft) |
+| [broadphase-incremental.md](design/broadphase-incremental.md) | 保持 BVH の refit・再構築条件・総当たり比較 |
+| [ragdoll-controls.md](design/ragdoll-controls.md) | XPBD 関節体の部位制御と接触・支持の契約 |
 | [cloth.md](design/cloth.md) | 布の CPU XPBD・ClothShader・シーン接続と段階的な導入 |
 | [buoyancy.md](design/buoyancy.md) | 浮力の法則と、水面・コライダーとの責務境界 |
 | [math-simd.md](design/math-simd.md) | 自作 Math の SIMD 化と検証 |

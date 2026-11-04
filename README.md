@@ -1,15 +1,20 @@
+<!-- @file    README.md -->
+<!-- @brief   FBZZ Engine の機能、構成、導入と検証の入口。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-05-15 -->
+
 # FBZZ Engine
 
 **C++20 の Engine と C# ゲームスクリプトを備える自作 3D ゲームエンジン (Windows)。**
 数学と物理をゼロから実装し、描画を独立した **Graphics ライブラリ**へ分離している。DirectX 12 の実装は `IRenderer` の背後に閉じ、Engine が抽出した `RenderScene` を使って Forward / Deferred を構成する。RenderGraph、クラスタードライティング、C# スクリプトのホットリロード、アニメーショングラフ、NavMesh、地形・水面・天候、毛・草、VFX / 流体オーサリング、ImGui エディター、MCP 経由の AI 連携を備える。
 
-更新日: **2026-10-06**。現行作業ツリーのプロジェクト版は **0.10.0** (`CMakeLists.txt`)。以下はリリース済み機能の一覧ではなく、現在の実装を説明する。設計と検証状況は [Docs の索引](Docs/README.md) を参照。
+更新日 **2026-11-04**。作業ツリーの CMake プロジェクト版は **0.10.0**。以下はソースツリーの構成を説明する。個別設計と検証記録は [Docs の索引](Docs/README.md) を参照。
 
-エンジンだけでは「動くもの」にならないので、エディター既定プロジェクトに TPS サンプルを含めている。SDK 0.9.1 で制作した旧作 **[GreenWare](https://github.com/HasegawaJin/GreenWare)** は別の非公開リポジトリへ分離した。現行 SDK のゲームスクリプトは C# を対象とする。
+`Assets/` に初期シーンと表面材質・粒子制作のサンプルを収録する。ゲームスクリプトは現行 SDK の C# API で制作する。SDK 0.9.1 で制作した旧作 **GreenWare** は別リポジトリで管理する。 [GreenWare](https://github.com/HasegawaJin/GreenWare)
 
 | | |
 |---|---|
-| 言語 / 規格 | Engine: C++20、ゲーム Script: C#、一部 TypeScript / HLSL / PowerShell |
+| 言語 / 規格 | Engine は C++20、ゲーム Script は C#（`net10.0`）、描画は HLSL、周辺ツールは TypeScript / PowerShell |
 | プラットフォーム | Windows 10 / 11・DirectX 12 (SM 6.x) |
 | 名前空間 | `fbzz::` (`math` / `physics` / `fluid` / `renderer` / `scene` / `editor`) |
 | 依存方向 | アプリ → Engine → Graphics / Physics / Fluid。Graphics → Core / Math、Physics / Fluid → Math |
@@ -48,20 +53,20 @@
 
 ## 規模
 
-2026-09-21 の作業ツリーで、各ディレクトリの `.cpp` / `.hpp` / `.inl` を集計。
+2026-11-04 の作業ツリーで、各ディレクトリの Git 無視対象を除く `.cpp` / `.hpp` / `.inl` を集計。空行・コメント・テスト用の fixture を含む。
 
 | 領域 | ファイル数 | 行数 |
 |---|---:|---:|
-| `Projects/Core` | 31 | 3,056 |
-| `Projects/Graphics` | 194 | 29,311 |
-| `Projects/Engine` | 679 | 120,922 |
-| `Projects/Editor` | 373 | 126,949 |
-| `Projects/Physics` | 83 | 12,769 |
-| `Projects/Fluid` | 16 | 4,092 |
-| `Projects/Math` | 25 | 1,745 |
-| `Projects/Tests` | 243 | 51,642 |
+| `Projects/Core` | 41 | 4,643 |
+| `Projects/Graphics` | 320 | 56,177 |
+| `Projects/Engine` | 928 | 168,993 |
+| `Projects/Editor` | 534 | 162,537 |
+| `Projects/Physics` | 90 | 14,242 |
+| `Projects/Fluid` | 19 | 4,342 |
+| `Projects/Math` | 26 | 1,776 |
+| `Projects/Tests` | 471 | 162,827 |
 
-EditorMcp は `src/tools.ts` に **148 個**のツール登録を持つ。
+EditorMcp のツール登録は [`src/tools.ts`](Projects/EditorMcp/src/tools.ts) を参照。
 
 ---
 
@@ -210,7 +215,7 @@ Core: Logger / Memory / Profiler の共通基盤
 
 ### RenderGraph
 
-描画パスを DAG として登録し、**未使用パスを自動でカリング**、一時リソースの寿命を解析して使い回す。実行計画は外部から差し替え (`InjectPlan`) でき、CPU / GPU 双方のプロファイラーフックを持つ。
+描画パスの読み書き宣言から DAG と実行順を導き、**外部出力・副作用に寄与しないパスをカリング**する。構成が同じフレームは実行計画を再利用し、一時リソースの寿命とエイリアス候補は診断に使う。GPU 資源の所有と状態遷移はパイプライン／DX12 が担当する。 [RenderGraph の設計](Docs/design/render-graph.md)
 
 ### ジオメトリパス
 
@@ -312,7 +317,7 @@ graph LR
 
 ### ライティング
 
-- **クラスタードライティング** — Froxel クラスタへ点光源・スポットを分配し、大量のライトを扱う
+- **クラスタードライティング** — Froxel ごとにローカルライトを絞る。多数灯モードでは重要度に基づいて評価数を制限し、選択確率で寄与を補正する。 [多数灯の設計と計測](Docs/design/many-light-sampling.md)
 - **ライトの種類** — Directional / Point / Spot / Area / Sphere / Tube。強度は「intensity = 1 で albedo と同じ明るさ」を基準に逆二乗で減衰させる
 - **IBL** — HDRI の Irradiance Convolution と Prefiltered EnvMap を CS でベイク。加えて**実行時の空をキャプチャして環境光へ反映**する
 - **影** — 2048² のアトラスにカスケードと Spot / Point を手前順で詰める。PCSS・Contact Shadows・ライトクッキー
@@ -326,7 +331,9 @@ graph LR
 | `DebugDraw` / `Gizmo` | 線・矩形・球・カプセルの即時描画とエディターギズモ |
 | `FontAtlas` / `DynamicFontSource` | `stb_truetype` による実行時ラスタライズとアトラス配置 |
 | `DynamicBufferPool` | フレームを跨いで安全に使い回す動的頂点 / 定数バッファ (3 列輪番) |
-| `RenderState` | ブレンド・深度・ラスタライザー状態の正本。バックエンド間の差を埋める |
+| `RenderState` | ブレンド・深度・ラスタライザー状態の正本。DX12 の PSO へ変換する |
+| GPU 駆動描画 | 条件に応じて GPU カリング／`ExecuteIndirect`／Mesh Shader を選べる。既定は CPU 側の描画指示。 [適用条件と計測](Docs/design/gpu-driven-geometry.md) |
+| 描画の比較経路 | 影候補の保持 BVH と更新経路を起動設定で比較できる。DXR／Path Tracing は DeveloperMode の実験機能。 [空間索引](Docs/design/spatial-water-optimization.md) · [RT 実験](Docs/design/rt-experiment.md) |
 | PostProcess 効果 | Fog / Color Grading / Vignette / Film Grain / Lens Distortion / Chromatic Aberration / Sharpen / Depth of Field / LUT (32³) |
 
 ### シェーダー (HLSL)
@@ -369,11 +376,12 @@ graph LR
 | 機能 | 概要 |
 |---|---|
 | 衝突形状 | AABB / OBB / Sphere / Capsule / Cylinder / ConvexHull / TriangleMesh / HeightField |
-| ブロードフェーズ | BVH (Bounding Volume Hierarchy) |
-| ナローフェーズ | GJK + EPA。接触は `ContactCache` で安定化 |
-| CCD | 連続衝突検出 (`CCDSolver`) |
+| ブロードフェーズ | 二分 AABB BVH を保持し、変更した葉と祖先を refit。所属変更や品質劣化で再構築 |
+| ワールド照会 | 専用 BVH で Raycast、球スイープ、オーバーラップの候補を絞る。三角形メッシュと HeightField は形状内部にも BVH を持つ |
+| ナローフェーズ | GJK + EPA と形状別の判定。接触応答を `ContactCache` で warm start |
+| CCD | `CCDSolver` の swept sphere と衝突時刻。`World` の剛体 CCD では球同士の進行を制限する |
 | コンストレイント | Distance / Hinge / Spring / Rope / Chain / Fixed / Slider |
-| ソルバー | インパルスベース (半陰的オイラー) と **XPBD** (Joint / Contact / PlaneContact / PoseAnchor) の 2 系統 |
+| ソルバー | 逐次インパルスによる剛体接触と、**XPBD** による関節・接触・姿勢追従・把持。布にも専用 XPBD ソルバーを持つ |
 | `BodyHandle` / `ColliderHandle` | world の再構築を跨いで有効な独自ハンドル |
 | `Layer` | レイヤー衝突行列。**「当たらない組」だけ**を宣言する |
 | `PhysicsMaterial` (`.physmat`) | 摩擦・反発の合成規則と density からの質量算出 |
@@ -383,7 +391,7 @@ graph LR
 
 ## シーンとコンポーネント
 
-Unity 同様の GameObject / Component パターン。型 ID と密な配列 (`ComponentArray`) で格納する。
+GameObject の階層と型別の `ComponentArray` を使う。世代付き EntityID から sparse set で参照を引き、密側のチャンクを走査する。削除は末尾要素で穴を埋める。 [コンポーネント格納](Projects/Engine/include/Engine/Scene/ComponentArray.hpp) · [一括処理](Docs/design/ecs-bulk-processing.md)
 
 | クラス | 概要 |
 |---|---|
@@ -391,7 +399,7 @@ Unity 同様の GameObject / Component パターン。型 ID と密な配列 (`C
 | `GameObject` | `AddComponent<T>` / `GetComponent<T>` |
 | `Transform` | 位置・回転・スケール。親子階層とワールド行列キャッシュ |
 | `SceneSerializer` | TOML (`.scene` / `.prefab`) の往復。各コンポーネントの `Reflect()` が唯一の真実 |
-| `Script` / `ScriptComponent` | MonoBehaviour 相当。`OnStart` / `OnUpdate` / `OnFixedUpdate` / `OnLateUpdate` / `OnDestroy` |
+| `Script` / `ScriptComponent` | 内部の実行基盤。C# の公開コールバックは `Start` / `Update` / `FixedUpdate` / `LateUpdate` / `OnDestroy` など |
 | `Coroutine` / `Invoke` | 遅延実行とコルーチン (自作。C++20 コルーチン不使用) |
 | `EntityRef` / `PrefabRef` / `Ref<T>` / `DataAssetRef` | エンティティ・プレハブ・コンポーネント・データアセットへの安全な参照 |
 | `PrefabInstantiate` / `PrefabPool` | プレハブ生成と、解析済み TOML を取り置くプール |
@@ -423,12 +431,12 @@ Unity 同様の GameObject / Component パターン。型 ID と密な配列 (`C
 | Phase | システム |
 |---|---|
 | `PreScript` | `TransformEditorPreview` / `NavMeshBakeSystem` |
-| `Script` | `ScriptSystem` (`OnUpdate`) |
+| `Script` | `ScriptSystem`（C# の `Update`） |
 | `PrePhysics` | `TransformPrePhysics` |
-| `Physics` ※固定ステップ | `PhysicsSystem` / `FixedScriptSystem` (`OnFixedUpdate`) |
+| `Physics` ※固定ステップ | `PhysicsSystem` / `FixedScriptSystem`（C# の `FixedUpdate`） |
 | `PostPhysics` | `TransformPostPhysics` / `WaterSystem` |
 | `Navigation` | `NavMeshSensorSystem` → `NavMeshPatrolSystem` → `NavigationSystem` / `BehaviorTreeSystem` |
-| `LateScript` | `LateScriptSystem` (`OnLateUpdate`) / `VFXSystem` / `VFXBeamSystem` / `VFXLineSystem` / `SequenceSystem` / `AudioSystem` / `UIAudioSystem` / `LightFlickerSystem` |
+| `LateScript` | `LateScriptSystem`（C# の `LateUpdate`） / `VFXSystem` / `VFXBeamSystem` / `VFXLineSystem` / `SequenceSystem` / `AudioSystem` / `UIAudioSystem` / `LightFlickerSystem` |
 | `Cleanup` | `LifetimeSystem` / `FlushDestroyQueueSystem` |
 | `LateUpdate` | `TransformLateUpdate` / `AnimatorSystem` / `IKSystem` / `SpringBoneSystem` / `RagdollSystem` / `ParticleSimulationSystem` / `RuntimeMeshSystem` / `LODSystem` / `WeatherSystem` / `UIAnimatorSystem` / `GameplayComponentSystems` (5 種) |
 
@@ -436,12 +444,12 @@ Unity 同様の GameObject / Component パターン。型 ID と密な配列 (`C
 graph LR
     IN["Input 更新"]
     PRS["PreScript\nTransform (編集プレビュー)\nNavMeshBake"]
-    SC["Script\nOnUpdate"]
+    SC["Script\nUpdate"]
     PRE["PrePhysics\nTransform (物理前同期)"]
-    PH["Physics ※固定ステップ\nPhysicsSystem / OnFixedUpdate"]
+    PH["Physics ※固定ステップ\nPhysicsSystem / FixedUpdate"]
     POST["PostPhysics\nTransform (書き戻し) / Water"]
     NV["Navigation\nSensor → Patrol → Agent\nBehaviorTree"]
-    LS["LateScript\nOnLateUpdate / VFX\nSequence / Audio / LightFlicker"]
+    LS["LateScript\nLateUpdate / VFX\nSequence / Audio / LightFlicker"]
     CL["Cleanup\nLifetime / 破棄キュー"]
     LU["LateUpdate\nTransform / Animator / IK\nSpringBone / Ragdoll / Particle\nLOD / Weather / UIAnimator"]
     RE["Render\nRenderSystem → RenderGraph\nUISystem"]
@@ -462,7 +470,7 @@ graph LR
 | 機能 | 概要 |
 |---|---|
 | Script API | C# の `Script` / `Component` 基底と SDK 公開の Engine facade |
-| ビルド・差し替え | managed assembly をビルドし、検証済み世代を Editor / 製品へ適用 |
+| ビルド・差し替え | Roslyn の生成・診断、`hostfxr` による .NET の起動、collectible `AssemblyLoadContext` による世代管理。検証を通った候補を適用 |
 | データ | public field と `Setting` 等の schema を Inspector・保存・AI が共有 |
 | DataAsset (`.fzdata`) | 複数 C# スクリプトで共有する調整値をアセット化 |
 
@@ -498,7 +506,7 @@ FBX をドラッグ & ドロップすると自動インポートし、`.mat` を
 | GPU スキニング | Compute シェーダーでボーン行列を適用 |
 | IK | `IKSolverComponent` + `IKSystem`。Look-At / Foot IK / 任意チェーン |
 | Motion Warping | `MotionWarpComponent` によるルートモーション補正 |
-| 二次モーション | `SpringBoneComponent` (揺れもの) / `RagdollComponent` (Verlet 質点系。部位単位で落とせる) |
+| 二次モーション | `SpringBoneComponent` の揺れもの、`RagdollComponent` の XPBD 関節体・部位制御 |
 | `SequencePlayerComponent` (`.sequence`) | カットシーン / タイムライン再生 |
 | 外部ポーズ | スクリプトから骨を直接並べる `externalPose` 経路 |
 
@@ -506,12 +514,13 @@ FBX をドラッグ & ドロップすると自動インポートし、`.mat` を
 
 | 機能 | 概要 |
 |---|---|
-| NavMesh ベイク | `NavMeshSurfaceComponent` の定義から実行時ベイク (最大登坂角・侵食幅を指定) |
-| 経路探索 | `NavMeshAgentComponent` に目標を設定し自動追跡 |
+| NavMesh ベイク | 歩行面の格子サンプル、登坂角・障害物の判定、エージェント半径による侵食、三角形化と凸結合、portal 接続 |
+| 経路探索 | A* でポリゴン列、Funnel で通路の折れ点を求め、局所回避と高さ照会で追従 |
 | オフメッシュリンク | ジャンプ・梯子などの特殊接続 |
 | 通行コスト調整 | `NavMeshModifierComponent` で領域ごとに変更 |
 | パトロール / センサー | ウェイポイント巡回と視野・感知判定 |
 | ビヘイビアツリー | `BehaviorTreeAsset` + `Blackboard`。エディターにノードエディターを持つ |
+| 群集 | 近傍索引を使う steering、意思決定頻度の LOD、一括転送と共有姿勢 |
 
 ## 地形・水面・天候
 
@@ -566,7 +575,7 @@ ImGui 製。主なパネルは以下のとおり。
 |---|---|
 | Hierarchy | GameObject ツリーの表示・選択・作成・削除。`Add Object > Script Object` は必須コンポーネント宣言から一式を組み立てる |
 | Inspector | 全コンポーネントの編集。カテゴリ別実装 (Animation / Core / Effects / Environment / Lighting / Material / Navigation / Physics / Rendering / TerrainWater / UI) + 複数選択の同時編集 |
-| AssetBrowser | インポート・プレビュー・ドラッグ & ドロップ・`Create > C++...` テンプレート。UE 風の拡張子別カラー |
+| AssetBrowser | インポート・プレビュー・ドラッグ & ドロップ、C# スクリプトの制作、依存参照の確認 |
 | Viewport | シーン / ゲームビュー・Gizmo 操作・ピッキング |
 | AnimationGraph (+ Inspector) | ノードベースのアニメーションステートマシンエディター |
 | AnimationMaskPreview | アバターマスクの骨単位プレビュー |
@@ -600,16 +609,12 @@ ImGui 製。主なパネルは以下のとおり。
 
 エディターに **Named Pipe のコマンドバス**を立て、JSON プロトコルで状態取得と操作を外へ公開している。`Projects/EditorMcp` はそこへ繋ぐ TypeScript 製 **MCP サーバー** (`fbzz-editor-mcp`) で、Claude などの AI エージェントからエディターを直接操作できる。
 
-**148 個のツール**を登録している (2026-09-21)。主な領域:
-
-| 領域 | ツール数 | 例 |
-|---|---:|---|
-| `animation_*` | 22 | ステート / 遷移 / パラメーター / レイヤーの CRUD |
-| `bt_*` | 19 | ビヘイビアツリーのノード編集・自動レイアウト |
-| `fluid_*` | 12 | 流体レシピの生成・プリセット適用・ベイク |
-| `editor_*` | 12 | カタログ取得・Operator 実行・スクリーンショット |
-| `scene_*` / `node_*` | 18 | 階層取得・検索・生成・複製・リネーム |
-| その他 | 65 | 地形・アセット・材質・シナリオ・入力注入・画像比較・プロファイルなど |
+| 領域 | 例 |
+|---|---|
+| アニメーションと AI | ステート・遷移・パラメーターの編集、ビヘイビアツリーと自動レイアウト |
+| シーンと制作 | 階層の照会・編集、Operator 実行、材質・地形・流体の編集とベイク |
+| C# スクリプト | 公開 API と型カタログ、managed ビルド要求、設定・参照の接続 |
+| 検証 | Playtest、入力注入、スクリーンショット、画像比較、プロファイル |
 
 読み取り専用ツールには `readOnlyHint` を付け、書き込みは権限モードで dry-run に落とせる。共通の編集操作は `EditorOperator` を通し、検証用には状態照会・入力注入・Playtest 実行などの API も提供する。
 
@@ -643,16 +648,13 @@ Editor の通常起動も SDK を正本にする。VS Code の Build Editor は�
 
 ## サンプルゲーム
 
-### TPS サンプル (エディター既定プロジェクト・`Assets/`)
+### 初期シーンと制作サンプル
 
 | シーン | 内容 |
 |---|---|
-| `Title.scene` | タイトル画面。ボタン入力でゲームシーンへ遷移 |
-| `Load.scene` | ロード画面 |
-| `Main.scene` | ゲームプレイ。TPS カメラ + キャラクター操作 + テレイン |
-| `Result.scene` | リザルト画面 |
-
-シーン遷移はフェード付き (`SceneManagerScript`)。操作は `PlayerControllerComponent`、カメラは `TpsCameraComponent`。エンジンの導線を一通り踏む最小構成になっている。
+| [`Assets/Scenes/`](Assets/Scenes/) | `Main.scene` はカメラと方向光の最小構成。`Title.scene` / `Load.scene` / `Result.scene` に画面アセットを収録 |
+| [`SurfaceExamples`](Assets/Samples/SurfaceExamples/) | 表面の作例シーンと画像確認用の Playtest |
+| [`ParticleAuthoring`](Assets/Samples/ParticleAuthoring/) | パーティクル制作の作例シーン |
 
 ### GreenWare — SDK 0.9.1 の旧作
 
