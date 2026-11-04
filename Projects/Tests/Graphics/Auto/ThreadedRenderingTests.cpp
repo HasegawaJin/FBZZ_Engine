@@ -3,6 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #include <TestKit/TestKit.hpp>
+#include <TestKit/TempDir.hpp>
+#include "../../../Graphics/src/Renderer/QueuedComputeComposite.hpp"
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Graphics/Renderer/Material.hpp>
@@ -14,6 +16,8 @@
 #include <objbase.h>
 #pragma comment(lib, "ole32.lib")
 #include <array>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <vector>
 
@@ -133,6 +137,57 @@ TEST_F(ThreadedRenderingTest, RecordsRealDrawAndKeepsSubmittedConstantBytes)
     EXPECT_NEAR(second.x, 0.0f, 0.02f);
     EXPECT_NEAR(second.y, 0.0f, 0.02f);
     EXPECT_NEAR(second.z, 0.0f, 0.02f);
+}
+
+TEST_F(ThreadedRenderingTest, QueuedComputeCompositeUsesCurrentPixelsAndSkipsRejectedDispatch)
+{
+    testkit::TempDir temporary;
+    ASSERT_TRUE(temporary.IsValid());
+    const auto path = temporary.File("QueuedComposite.cs.hlsl");
+    {
+        std::ofstream shader(path, std::ios::binary);
+        shader << R"hlsl(/// @file    QueuedComposite.cs.hlsl
+/// @brief   Produce a frame-specific color for conditional composite readback.
+/// @author  Hasegawa Jin
+/// @date    2026-10-30
+cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2]; };
+cbuffer Input : register(b5) { float4 tint; };
+[numthreads(8,8,1)] void CSMain(uint3 id : SV_DispatchThreadID) {
+    RWTexture2D<float4> output = ResourceDescriptorHeap[uav[0].x];
+    output[id.xy] = tint;
+}
+)hlsl";
+        ASSERT_TRUE(shader.good());
+    }
+    const auto computeShader = m_resources->LoadShader(path.generic_string());
+    const auto copyShader = m_resources->LoadShader((std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT)
+        / "PostProcess/Color/CopyColor.hlsl").generic_string());
+    const auto texture = m_resources->CreateComputeTexture(16, 16);
+    const auto constants = m_resources->CreateConstantBuffer(sizeof(math::Vector4));
+    const auto state = m_resources->CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_OFF});
+    ASSERT_TRUE(computeShader && copyShader && texture && constants && state);
+    renderer::ComputeCall compute;
+    compute.shader = computeShader;
+    compute.constantBuffers[5] = constants;
+    compute.uavOutputs[0] = texture;
+    compute.dispatchX = compute.dispatchY = 2;
+    renderer::DrawCall draw;
+    draw.shader = copyShader; draw.pipelineState = state; draw.vertexCount = 3;
+    draw.textures[5] = texture;
+    for (uint64_t frame = 1; frame <= 3; ++frame) {
+        SCOPED_TRACE(frame);
+        Begin(frame);
+        const math::Vector4 tint = frame == 1 ? math::Vector4{1, 0, 0, 1} : math::Vector4{0, 0, 1, 1};
+        m_resources->Update(constants, &tint, sizeof(tint));
+        compute.shader = frame == 2 ? renderer::ResourceHandle<renderer::ShaderTag>{} : computeShader;
+        renderer::compute_composite_detail::Submit(*m_bundle.renderer, *m_resources, compute, m_output, draw);
+        End();
+        const auto pixel = Read();
+        EXPECT_NEAR(pixel.x, frame == 1 ? 1.0f : 0.0f, 0.02f);
+        EXPECT_NEAR(pixel.y, 0.0f, 0.02f);
+        EXPECT_NEAR(pixel.z, frame == 3 ? 1.0f : 0.0f, 0.02f);
+    }
 }
 
 TEST_F(ThreadedRenderingTest, ColorAttachmentsPreserveSelectionAfterRejectionAndRestoreOrdinaryTargets)

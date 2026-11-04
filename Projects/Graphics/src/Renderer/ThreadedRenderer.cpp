@@ -7,6 +7,7 @@
 #include "BufferStateReadScope.hpp"
 #include "PreparedSkinningBackend.hpp"
 #include "GpuCullDrawQueue.hpp"
+#include "QueuedComputeComposite.hpp"
 #include <Graphics/Renderer/RenderThread.hpp>
 #include <Graphics/Renderer/RenderCpuTrace.hpp>
 #include <Core/Profiler/Profiler.hpp>
@@ -446,6 +447,21 @@ public:
     void Dispatch(const ComputeCall& call, ResourceManager& resources) override
     {
         Record([this, call, &resources] { m_native->Dispatch(call, resources); });
+    }
+    void ComputeComposite(const ComputeCall& compute, ResourceHandle<RenderTargetTag> target,
+        const DrawCall& composite, ResourceManager& resources)
+    {
+        Record([this, compute, target, composite, &resources] {
+            FBZZ_PROFILE_SCOPE("Render::ComputeComposite");
+            if (!m_native->TryDispatch(compute, resources)) return;
+            m_native->SetRenderTarget(target, resources);
+            m_native->Submit(composite, resources);
+        });
+        if (IsRenderThread()) return;
+        bool frameOpen = false;
+        { std::lock_guard lock(m_commandsMutex); frameOpen = m_cpuFrameOpen; }
+        /// @note Publish at the original dispatch boundary so removing the receipt does not postpone the frame's native work until EndFrame.
+        if (frameOpen) SubmitCommands();
     }
     bool TryDispatch(const ComputeCall& call, ResourceManager& resources) override
     {
@@ -1010,6 +1026,22 @@ void gpu_cull_detail::SubmitCullDraw(IRenderer& renderer, ResourceManager& resou
     } else {
         const cpu_trace::SourceScope gpuFallbackTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeFallback");
                 FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeFallback"); renderer.Submit(fallback, resources);
+    }
+}
+
+void compute_composite_detail::Submit(IRenderer& renderer, ResourceManager& resources,
+    const ComputeCall& compute, ResourceHandle<RenderTargetTag> target, const DrawCall& composite)
+{
+    ThreadedRenderer* owner = nullptr;
+    {
+        auto& registry = Registry();
+        std::lock_guard lock(registry.mutex);
+        for (const auto& entry : registry.entries) if (entry.facade == &renderer) { owner = entry.owner; break; }
+    }
+    if (owner) owner->ComputeComposite(compute, target, composite, resources);
+    else if (renderer.TryDispatch(compute, resources)) {
+        renderer.SetRenderTarget(target, resources);
+        renderer.Submit(composite, resources);
     }
 }
 

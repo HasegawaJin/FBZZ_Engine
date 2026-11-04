@@ -9,9 +9,35 @@
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Renderer/ComputeCall.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
+#include "../../Renderer/QueuedComputeComposite.hpp"
 #include <algorithm>
+#include <cstdlib>
 
 namespace fbzz::renderer {
+namespace {
+/// @note Hybrid providers and TAA history still require the synchronous current-frame receipt.
+bool QueueRasterComposite(const RenderPassContext& ctx)
+{
+    /// @note Process-start control isolates the queue change in same-binary performance comparisons.
+    static const bool forceSynchronous = [] {
+        const char* value = std::getenv("FBZZ_RASTER_SSR_FORCE_SYNC");
+        return value && value[0] == '1' && value[1] == '\0';
+    }();
+    return !forceSynchronous && ctx.renderer.GetCapabilities().bindless && !ctx.hybridReflectionResolveActive
+        && !ctx.settings.taa.enabled && ctx.settings.passOverrides.empty();
+}
+
+DrawCall CompositeDraw(const RenderPassContext& ctx)
+{
+    DrawCall draw;
+    draw.shader = ctx.handles.ssrResolveShader;
+    draw.pipelineState = ctx.handles.causticsPSO;
+    draw.vertexCount = 3;
+    draw.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
+    draw.textures[19] = ctx.handles.ssrResult;
+    return draw;
+}
+}
 
 void ExecuteSSRPass(RenderPassContext& ctx)
 {
@@ -78,6 +104,12 @@ void ExecuteSSRPass(RenderPassContext& ctx)
     ssrDC.dispatchX          = (ctx.width  + 7) / 8;
     ssrDC.dispatchY          = (ctx.height + 7) / 8;
     ssrDC.dispatchZ          = 1;
+    if (QueueRasterComposite(ctx)) {
+        if (!resources.Get(h.ssrResolveShader) || !resources.Get(h.causticsPSO)) return;
+        /// @note Native dispatch acceptance gates its own composite, so failure cannot sample the previous SSR texture.
+        compute_composite_detail::Submit(r, resources, ssrDC, ctx.Res().Target("HDR"), CompositeDraw(ctx));
+        return;
+    }
     if (r.GetCapabilities().bindless) {
         /// @note DX12 は当該フレームの記録 receipt だけを採用し、Raster 縮退でも旧 SSR を読まない。
         ctx.ssrPassActive = r.TryDispatch(ssrDC, resources);
@@ -93,8 +125,9 @@ std::string_view SSRPass::Name() const { return "SSR"; }
 
 void SSRPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
-    builder.Read("GBuffer").Write("SSRResult");
-    builder.Read("HDR");
+    builder.Read("GBuffer");
+    if (QueueRasterComposite(ctx)) builder.ReadWrite("SSRResult").ReadWrite("HDR");
+    else builder.Write("SSRResult").Read("HDR");
     if (!ctx.hybridReflectionResolveActive && ctx.waterMediumPassActive)
         builder.Read("WaterMediumAtlas");
 }
@@ -117,7 +150,7 @@ void SSRResolvePass::Setup(PassBuilder& builder, const RenderPassContext&) const
 }
 bool SSRResolvePass::IsEnabled(const RenderPassContext& ctx) const
 {
-    return ctx.settings.ssr.enabled && !ctx.hybridReflectionResolveActive
+    return ctx.settings.ssr.enabled && !ctx.hybridReflectionResolveActive && !QueueRasterComposite(ctx)
         && !std::any_of(ctx.settings.passOverrides.begin(), ctx.settings.passOverrides.end(),
             [](const RenderPassOverride& override) { return override.name == "SSR" && !override.enabled; });
 }
@@ -126,13 +159,7 @@ void SSRResolvePass::Execute(PassResources&, RenderPassContext& ctx)
     auto& h = ctx.handles;
     if (!ctx.ssrPassActive || !ctx.resources.Get(h.ssrResolveShader) || !ctx.resources.Get(h.causticsPSO)) return;
     ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
-    DrawCall draw;
-    draw.shader = h.ssrResolveShader;
-    draw.pipelineState = h.causticsPSO;
-    draw.vertexCount = 3;
-    draw.constantBuffers[8] = h.advancedGraphicsCB;
-    draw.textures[19] = h.ssrResult;
-    ctx.renderer.Submit(draw, ctx.resources);
+    ctx.renderer.Submit(CompositeDraw(ctx), ctx.resources);
 }
 
 } /// @note namespace fbzz::renderer

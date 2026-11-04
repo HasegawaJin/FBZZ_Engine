@@ -21,6 +21,7 @@
 #include <Graphics/Renderer/Material.hpp>
 #include "../../../Graphics/src/Renderer/MaterialTransferPayload.hpp"
 #include "../../../Graphics/src/Renderer/BufferStateReadScope.hpp"
+#include "../../../Graphics/src/Renderer/QueuedComputeComposite.hpp"
 #include <Core/Profiler/Profiler.hpp>
 #include <Core/ExternalCallbackBoundary.hpp>
 #include <Core/Util/FileSystem.hpp>
@@ -228,6 +229,10 @@ struct RhiResult {
     std::function<void()> structuredSizeProbe;
     bool bufferTracksWrites = false;
     bool tryDispatchResult = false;
+    bool blockFirstCompute = false;
+    std::vector<uint32_t> computeGroups;
+    std::vector<uint32_t> submittedVertices;
+    uint32_t compositeTargets = 0;
     std::vector<GuiCapture> gui;
     std::vector<std::thread::id> viewportChanges;
 };
@@ -360,11 +365,12 @@ public:
     void BeginFrame() override {}
     void EndFrame() override {}
     void Clear(const math::Vector4&) override {}
-    void Submit(const renderer::DrawCall&, renderer::ResourceManager&) override
+    void Submit(const renderer::DrawCall& call, renderer::ResourceManager&) override
     {
         profiler::Profiler::PushMarker(profiler::ProfilerMarker("NativeSubmit", "Render Thread Test"));
         m_result.threads.push_back(std::this_thread::get_id());
         m_result.draws.push_back(m_result.currentValue);
+        m_result.submittedVertices.push_back(call.vertexCount);
         m_result.operations.push_back("draw:" + std::to_string(m_result.currentValue));
         if (m_result.blockFirst && m_result.draws.size() == 1) {
             m_result.entered.release();
@@ -372,15 +378,20 @@ public:
         }
     }
     void Dispatch(const renderer::ComputeCall&, renderer::ResourceManager&) override {}
-    bool TryDispatch(const renderer::ComputeCall&, renderer::ResourceManager&) override
+    bool TryDispatch(const renderer::ComputeCall& call, renderer::ResourceManager&) override
     {
+        m_result.computeGroups.push_back(call.dispatchX);
         m_result.operations.push_back("sync:" + std::to_string(m_result.currentValue));
+        if (m_result.blockFirstCompute && m_result.computeGroups.size() == 1) {
+            m_result.entered.release();
+            m_result.resume.acquire();
+        }
         return m_result.tryDispatchResult;
     }
     void Resize(uint32_t, uint32_t) override {}
     uint32_t GetWidth() const override { return 1; }
     uint32_t GetHeight() const override { return 1; }
-    void SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>, renderer::ResourceManager&) override {}
+    void SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>, renderer::ResourceManager&) override { ++m_result.compositeTargets; }
     void ClearDepth() override {}
     void SetViewport(uint32_t, uint32_t, uint32_t, uint32_t) override {}
 private:
@@ -592,7 +603,7 @@ protected:
     }
     void TearDown() override
     {
-        if ((m_result.blockFirst || m_result.blockTransferNumber != 0) && !m_resumed) m_result.resume.release();
+        if ((m_result.blockFirst || m_result.blockFirstCompute || m_result.blockTransferNumber != 0) && !m_resumed) m_result.resume.release();
         m_bundle.renderer->WaitForCpuFrame();
         m_bundle.imguiRenderer->ImGuiShutdown();
         if (m_guiContext) { ImGui::DestroyContext(m_guiContext); ImGui::SetCurrentContext(nullptr); }
@@ -636,6 +647,77 @@ protected:
     bool m_resumed = false;
     ImGuiContext* m_guiContext = nullptr;
 };
+
+TEST_F(ThreadedRhiTest, QueuedComputeCompositeOwnsInputsAndPreservesTransferOrderWithoutProducerWait)
+{
+    auto& r = *m_bundle.renderer;
+    m_result.tryDispatchResult = true;
+    m_result.blockFirstCompute = true;
+    r.BeginCpuFrame(1);
+    r.BeginFrame();
+    renderer::ComputeCall compute;
+    renderer::DrawCall draw;
+    draw.vertexCount = 3;
+    int value = 17;
+    m_resources->Update(m_constants, &value, sizeof(value));
+    compute.dispatchX = 17;
+    renderer::compute_composite_detail::Submit(r, *m_resources, compute, {}, draw);
+    m_result.entered.acquire();
+    compute.dispatchX = 999;
+    draw.vertexCount = 999;
+    EXPECT_EQ(m_result.operations, (std::vector<std::string>{"sync:17"}));
+    EXPECT_TRUE(m_result.draws.empty());
+    m_resumed = true;
+    m_result.resume.release();
+    value = 29;
+    m_resources->Update(m_constants, &value, sizeof(value));
+    compute.dispatchX = 29;
+    draw.vertexCount = 3;
+    renderer::compute_composite_detail::Submit(r, *m_resources, compute, {}, draw);
+    compute.dispatchX = 999;
+    draw.vertexCount = 999;
+    r.EndFrame();
+    r.WaitForCpuFrame();
+    EXPECT_EQ(m_result.operations, (std::vector<std::string>{"sync:17", "draw:17", "sync:29", "draw:29"}));
+    EXPECT_EQ(m_result.computeGroups, (std::vector<uint32_t>{17, 29}));
+    EXPECT_EQ(m_result.submittedVertices, (std::vector<uint32_t>{3, 3}));
+    EXPECT_EQ(m_result.compositeTargets, 2u);
+}
+
+TEST_F(ThreadedRhiTest, RejectedQueuedComputeDoesNotCompositeStaleOutputOrChangeTarget)
+{
+    auto& r = *m_bundle.renderer;
+    r.BeginCpuFrame(1);
+    r.BeginFrame();
+    const int value = 47;
+    m_resources->Update(m_constants, &value, sizeof(value));
+    renderer::compute_composite_detail::Submit(r, *m_resources, {}, {}, {});
+    r.EndFrame();
+    r.WaitForCpuFrame();
+    EXPECT_EQ(m_result.operations, (std::vector<std::string>{"sync:47"}));
+    EXPECT_TRUE(m_result.draws.empty());
+    EXPECT_EQ(m_result.compositeTargets, 0u);
+}
+
+TEST_F(ThreadedRhiTest, NativeComputeCompositeAlsoGatesDrawOnCurrentDispatch)
+{
+    RhiResult result;
+    TestRhi native(result);
+    renderer::ResourceManager resources(native);
+    renderer::ComputeCall compute;
+    renderer::DrawCall draw;
+    compute.dispatchX = 7;
+    draw.vertexCount = 3;
+    result.tryDispatchResult = true;
+    renderer::compute_composite_detail::Submit(native, resources, compute, {}, draw);
+    result.tryDispatchResult = false;
+    compute.dispatchX = 8;
+    renderer::compute_composite_detail::Submit(native, resources, compute, {}, draw);
+    EXPECT_EQ(result.operations, (std::vector<std::string>{"sync:0", "draw:0", "sync:0"}));
+    EXPECT_EQ(result.computeGroups, (std::vector<uint32_t>{7, 8}));
+    EXPECT_EQ(result.submittedVertices, (std::vector<uint32_t>{3}));
+    EXPECT_EQ(result.compositeTargets, 1u);
+}
 
 /// @note Probe resources validate the public synchronous operation boundary without exposing a production test getter.
 struct OwnedSkinningProbe {
