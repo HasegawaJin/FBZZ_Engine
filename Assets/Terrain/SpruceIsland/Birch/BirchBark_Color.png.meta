@@ -1,0 +1,17 @@
+# @file    BirchBark_Color.png.meta
+# @brief   Asset identity and import settings for the silver birch.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '03a67137b2285df3bf195fe36348bf60'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'BC7'
+max_size = 1024
+mipmaps = true
+filter = 'Anisotropic'
+aniso = 8
+wrap_u = 'Repeat'
+wrap_v = 'Repeat'

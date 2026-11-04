@@ -1,0 +1,13 @@
+# @file    Alpine_PropsPreview.jpg.meta
+# @brief   Alpine モデルの説明画像。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '6ed6fde85d445b688de710d21f47c4e9'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'None'
+max_size = 2048
+mipmaps = false

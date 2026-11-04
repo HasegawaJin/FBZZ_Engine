@@ -1,0 +1,25 @@
+# @file    BirchLeaves.mat
+# @brief   Silver birch material for terrain instance placement.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = 'guid:73d100e5a351425aaf52953c23425438|Assets/Shaders/Material/Surface/PBR.hlsl'
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2450
+
+[params]
+base_color = [0.73, 0.87, 0.68, 1.0]
+albedo = [0.73, 0.87, 0.68, 1.0]
+roughness = 0.9
+roughness_factor = 0.9
+metallic = 0.0
+metallic_factor = 0.0
+alphaCutoff = 0.36
+
+[textures]
+albedo = 'guid:a3e128cd43175579b71db1c614a1b15e|Assets/Terrain/SpruceIsland/Birch/BirchLeafSpray_Color.png'

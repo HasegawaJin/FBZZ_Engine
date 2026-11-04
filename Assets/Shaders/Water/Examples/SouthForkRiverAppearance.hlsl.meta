@@ -1,0 +1,13 @@
+# @file    SouthForkRiverAppearance.hlsl.meta
+# @brief   South Fork shader identity and shared water surface contract.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '47ce65a47b7e56d3a8c87a84ea4d8a86'
+[shader]
+version = 1
+vertex = 'water_surface_v1'
+surface = 'water_v1'
+opacity = 'custom'
+variants = 'none'
+preview = 'water'

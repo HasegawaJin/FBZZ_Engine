@@ -1,0 +1,13 @@
+# @file    ForestHills_TrailMask.png.meta
+# @brief   Linear mask for the forest footpath.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '10c942376b0c50b58758dd38f648b049'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 1024
+mipmaps = false

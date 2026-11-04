@@ -1,0 +1,16 @@
+# @file    HighlandPass_ForestMask.png.meta
+# @brief   Alpine 素材のインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = 'dfebb4d06d3c53628fb39f2b0c692d5e'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 4096
+mipmaps = false
+filter = 'Bilinear'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

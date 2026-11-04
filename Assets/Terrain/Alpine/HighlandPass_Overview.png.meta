@@ -1,0 +1,16 @@
+# @file    HighlandPass_Overview.png.meta
+# @brief   Alpine 素材のインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '2babe87fd83e5594b699f0eb4a118adc'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'None'
+max_size = 4096
+mipmaps = false
+filter = 'Bilinear'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

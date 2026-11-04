@@ -1,0 +1,28 @@
+# @file    WeatheredStone.mat
+# @brief   Reusable surface for the Spruce Island outdoor look.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = 'guid:73d100e5a351425aaf52953c23425438|Assets/Shaders/Material/Surface/PBR.hlsl'
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+
+[params]
+base_color = [1.0, 0.98, 0.94, 1.0]
+albedo = [1.0, 0.98, 0.94, 1.0]
+roughness = 0.91
+roughness_factor = 0.91
+metallic = 0.0
+metallic_factor = 0.0
+uvTiling = [1.0, 2.5]
+normalStrength = 0.33
+alphaCutoff = 0.0
+
+[textures]
+albedo = 'guid:0de999ee6d435b3e95c9d1b469a4d62b|Assets/Terrain/SpruceIsland/Look/WeatheredCliff_Color.png'
+normal = 'guid:c5f8178e5a595d8c9570972240baf037|Assets/Terrain/Alpine/Rock_Normal.png'

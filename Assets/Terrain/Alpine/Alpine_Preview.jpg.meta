@@ -1,0 +1,16 @@
+# @file    Alpine_Preview.jpg.meta
+# @brief   Alpine 素材のインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '0617e105d44f53df80f384eed3f654c2'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'None'
+max_size = 4096
+mipmaps = false
+filter = 'Bilinear'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

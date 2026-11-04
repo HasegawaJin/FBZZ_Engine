@@ -1,0 +1,21 @@
+# @file    Bark.mat
+# @brief   Alpine の静的メッシュ散布用の単色 PBR 材質。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+shader = 'guid:73d100e5a351425aaf52953c23425438|Assets/Shaders/Material/Surface/PBR.hlsl'
+
+[params]
+base_color = [0.24, 0.15, 0.08, 1.0]
+albedo = [0.24, 0.15, 0.08, 1.0]
+roughness = 0.9
+roughness_factor = 0.9
+metallic = 0.0
+metallic_factor = 0.0

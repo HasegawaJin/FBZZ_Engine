@@ -1,0 +1,13 @@
+# @file    SpruceIsland_Height16.png.meta
+# @brief   Linear heightfield, 4 m samples, 1200 m range above the -100 m origin.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '3a2b02e8030e585e93a3e09da81637b4'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 2048
+mipmaps = false

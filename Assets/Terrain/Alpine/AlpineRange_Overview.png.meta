@@ -1,0 +1,16 @@
+# @file    AlpineRange_Overview.png.meta
+# @brief   Alpine 素材のインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '227a91b43c905fd1ad453f29f1dc5952'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'None'
+max_size = 4096
+mipmaps = false
+filter = 'Bilinear'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

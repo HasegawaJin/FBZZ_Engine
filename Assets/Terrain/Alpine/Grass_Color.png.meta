@@ -1,0 +1,17 @@
+# @file    Grass_Color.png.meta
+# @brief   Alpine オリジナル素材の識別子とインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '0a0df76e2b345f81946161509166e41c'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'None'
+max_size = 256
+mipmaps = true
+filter = 'Anisotropic'
+aniso = 8
+wrap_u = 'Repeat'
+wrap_v = 'Repeat'

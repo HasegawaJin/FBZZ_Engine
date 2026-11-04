@@ -1,0 +1,40 @@
+# @file    ForestWildGrowth.mat
+# @brief   Woodland grass, seedheads, daisies, and broadleaf weeds with independent wind response.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = 'guid:bf64aece9138536eaf4947733701a084|Assets/Shaders/Fiber/GrassCard.hlsl'
+blend_mode = 'Opaque'
+double_sided = true
+depth_write = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2450
+
+[params]
+rootColor = [0.64, 0.67, 0.55, 1.0]
+tipColor = [0.91, 0.94, 0.85, 1.0]
+fiberLength = 0.76
+fiberDensity = 1.0
+windResponse = 0.042
+maxBend = 0.23
+gravityBend = 0.003
+roughness = 0.85
+specularStrength = 0.035
+transmission = 0.5
+rootOcclusion = 0.31
+planarShading = 1.0
+colorVariation = 0.24
+cardAlphaCutoff = 0.45
+cardSway = 0.115
+cardSwayHz = 0.82
+# @note Atlas order is fine grass, seedheads, daisies, and broadleaf weeds.
+cardSpeciesAtlas = 1
+cardSpeciesWeights = [0.54, 0.20, 0.08, 0.18]
+cardSpeciesHeight = [0.65, 1.0, 0.74, 0.49]
+cardSpeciesWidth = [0.95, 0.77, 0.80, 0.96]
+cardSpeciesSway = [0.93, 1.45, 1.08, 0.45]
+cardSpeciesSwayHz = [1.0, 0.59, 0.82, 1.5]
+
+[textures]
+albedo = 'guid:e21f9b3040f25cef8fb92261488a4786|Assets/Terrain/SpruceIsland/Look/ForestWildGrowth_Atlas.png'

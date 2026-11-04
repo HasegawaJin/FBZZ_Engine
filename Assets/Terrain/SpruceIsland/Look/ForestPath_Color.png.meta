@@ -1,0 +1,17 @@
+# @file    ForestPath_Color.png.meta
+# @brief   Outdoor look asset identity and import settings.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '1cc69015658f580d982a0ce2c0b8d0b6'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'BC7'
+max_size = 1024
+mipmaps = true
+filter = 'Anisotropic'
+aniso = 8
+wrap_u = 'Repeat'
+wrap_v = 'Repeat'

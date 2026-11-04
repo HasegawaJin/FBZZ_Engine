@@ -1,0 +1,6 @@
+# @file    .gitignore
+# @brief   Track the authored silver birch model and texture files.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+!/*.obj
+!/*.png

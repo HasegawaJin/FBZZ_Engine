@@ -1,0 +1,16 @@
+# @file    AlpineRange_LayersRGBA.png.meta
+# @brief   Alpine 素材のインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = 'd9d51b55b32c5b1ea957b3f86ac9cbcf'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 4096
+mipmaps = false
+filter = 'Bilinear'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

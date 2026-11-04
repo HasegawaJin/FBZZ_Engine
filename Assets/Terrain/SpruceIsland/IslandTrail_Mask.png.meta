@@ -1,0 +1,13 @@
+# @file    IslandTrail_Mask.png.meta
+# @brief   Woodland trail and beach approach splat coverage.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '767ec0d4e3845922ac1b1683553ba435'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 2048
+mipmaps = false

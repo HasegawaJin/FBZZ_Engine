@@ -1,0 +1,60 @@
+{
+  "format": "FBZZ original alpine heightmap pack",
+  "created": "2026-11-04",
+  "heightmap": {
+    "width": 513,
+    "height": 513,
+    "bitDepth": 16,
+    "channels": 1,
+    "unipolar": true,
+    "cellSizeMeters": 4.0,
+    "maxHeightMeters": 640.0,
+    "spanMeters": 2048.0,
+    "rowDirection": "+local Z",
+    "columnDirection": "+local X"
+  },
+  "variants": [
+    {
+      "name": "AlpineRange",
+      "seed": 20261104,
+      "minMeters": 28.988,
+      "maxMeters": 590.0,
+      "uniqueHeightLevels": 52474,
+      "heightSha256": "dc516131bd7697c9791eadfb40fc66c63ab26bc997c3bc6462ab470095848b26",
+      "maskMeanCoverage": {
+        "Grass": 0.2762,
+        "Forest": 0.1456,
+        "Rock": 0.575,
+        "Snow": 0.0666
+      }
+    },
+    {
+      "name": "GlacialValley",
+      "seed": 20261105,
+      "minMeters": 29.771,
+      "maxMeters": 605.0,
+      "uniqueHeightLevels": 54332,
+      "heightSha256": "ce8a1f32b8cbf15fe9aaee49cfe63411928ed4128e011b0f176fef840187ef52",
+      "maskMeanCoverage": {
+        "Grass": 0.3054,
+        "Forest": 0.1744,
+        "Rock": 0.5455,
+        "Snow": 0.0904
+      }
+    },
+    {
+      "name": "HighlandPass",
+      "seed": 20261106,
+      "minMeters": 24.261,
+      "maxMeters": 565.0,
+      "uniqueHeightLevels": 49390,
+      "heightSha256": "78af2a7fbf4ea294f51b333c71d7a09d12db0465bcc473d0988a818a91a56ce0",
+      "maskMeanCoverage": {
+        "Grass": 0.3451,
+        "Forest": 0.1715,
+        "Rock": 0.5109,
+        "Snow": 0.0431
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# @file    ForestPineSpecimen.fzdata
+# @brief   A single pine at the origin, suitable for a transform animation.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+type = 'InstanceSetAsset'
+meshPaths = ['Assets/Terrain/Alpine/AlpinePineTrunk.mesh:0', 'Assets/Terrain/Alpine/AlpinePineNeedles.mesh:0']
+materialPaths = ['guid:90d85e213f7f58a180517828ccdc2fdc|Assets/Terrain/Alpine/Bark.mat', 'guid:72a95da1664f5075a94f691b9aa96e63|Assets/Terrain/Alpine/Needles.mat']
+partLods = [0, 0]
+lodHeights = [0.0]
+ids = [1]
+positions = [[0.0, 0.0, 0.0]]
+rotations = [[0.0, 0.0, 0.0]]
+scales = [[1.0, 1.0, 1.0]]

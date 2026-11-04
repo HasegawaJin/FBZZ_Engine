@@ -1,0 +1,16 @@
+# @file    HighlandPass_SnowMask.png.meta
+# @brief   Alpine 素材のインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '8964e79d2b645c0d826b9116b436d8f0'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 4096
+mipmaps = false
+filter = 'Bilinear'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

@@ -1,0 +1,17 @@
+# @file    Snow_Height.png.meta
+# @brief   Alpine オリジナル素材の識別子とインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = 'eec1731eccd1549188f4b7bc469343e0'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 256
+mipmaps = true
+filter = 'Anisotropic'
+aniso = 8
+wrap_u = 'Repeat'
+wrap_v = 'Repeat'

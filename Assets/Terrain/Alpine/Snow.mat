@@ -1,0 +1,31 @@
+# @file    Snow.mat
+# @brief   Alpine の手塗り・ベイク済み層に用いる反復可能な簡易地形材質。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+shader = ''
+
+[params]
+roughness = 0.91
+ambientOcclusion = 1.0
+normalStrength = 0.65
+tilingX = 256.0
+tilingZ = 256.0
+heightBlend = 0.25
+triplanar = 1.0
+triplanarSharpness = 4.0
+macroScale = 0.03125
+macroStrength = 0.2
+autoBlendEnabled = 0.0
+
+[textures]
+diffuse = 'guid:b0a3b9f42426555e85c1446522d97ee5|Assets/Terrain/Alpine/Snow_Color.png'
+normal = 'guid:6bac76c389e95d3994574377c816e268|Assets/Terrain/Alpine/Snow_Normal.png'
+height = 'guid:eec1731eccd1549188f4b7bc469343e0|Assets/Terrain/Alpine/Snow_Height.png'

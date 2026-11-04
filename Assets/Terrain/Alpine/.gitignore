@@ -1,0 +1,8 @@
+# @file    .gitignore
+# @brief   小容量のオリジナル Alpine 制作素材を自己完結したスターターとして配布する。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+!*.png
+!*.jpg
+!*.obj
+!*.mesh

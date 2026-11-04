@@ -1,0 +1,18 @@
+# @file    SpruceNeedleSpray_Color.png.meta
+# @brief   Forest spruce asset identity and import settings.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '57b7201b41cf5782bbc00203216d5207'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'BC7'
+max_size = 1024
+mipmaps = true
+filter = 'Anisotropic'
+aniso = 4
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'
+alpha_mode = 'Straight'

@@ -1,0 +1,13 @@
+# @file    IslandBeach_Mask.png.meta
+# @brief   Beach and shallow bank splat coverage.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '3ffca3911dcc5b46b61b52e793cef29c'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 2048
+mipmaps = false

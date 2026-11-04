@@ -1,0 +1,5 @@
+# @file    .gitignore
+# @brief   Spruce Island の高さと塗り分け用の原本 PNG を追跡できるようにする。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+!/*.png

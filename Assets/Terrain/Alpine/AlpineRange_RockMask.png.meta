@@ -1,0 +1,16 @@
+# @file    AlpineRange_RockMask.png.meta
+# @brief   Alpine 素材のインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '1fce4b647f5e50f191a75e29b27a5a72'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 4096
+mipmaps = false
+filter = 'Bilinear'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

@@ -1,0 +1,6 @@
+# @file    AlpineRock.obj.meta
+# @brief   Alpine オリジナル素材の識別子とインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = 'ce6eaa61f60656d0847ed2d8dc5003a4'

@@ -1,0 +1,5 @@
+# @file    .gitignore
+# @brief   Track the original outdoor surface textures.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+!/*.png

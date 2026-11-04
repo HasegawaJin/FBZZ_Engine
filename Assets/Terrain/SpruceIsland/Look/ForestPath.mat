@@ -1,0 +1,29 @@
+# @file    ForestPath.mat
+# @brief   Reusable surface for the Spruce Island outdoor look.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = ''
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+
+[params]
+roughness = 0.9
+ambientOcclusion = 1.0
+tilingX = 1365.0
+tilingZ = 1365.0
+triplanar = 0.0
+triplanarSharpness = 4.0
+heightBlend = 0.0
+normalStrength = 0.33
+macroScale = 0.087
+macroStrength = 0.15
+autoBlendEnabled = 0.0
+
+[textures]
+diffuse = 'guid:1cc69015658f580d982a0ce2c0b8d0b6|Assets/Terrain/SpruceIsland/Look/ForestPath_Color.png'

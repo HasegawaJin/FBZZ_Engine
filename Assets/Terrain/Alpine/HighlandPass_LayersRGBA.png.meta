@@ -1,0 +1,16 @@
+# @file    HighlandPass_LayersRGBA.png.meta
+# @brief   Alpine 素材のインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '90c0d04452035ecd902759fbd44c08fd'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 4096
+mipmaps = false
+filter = 'Bilinear'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

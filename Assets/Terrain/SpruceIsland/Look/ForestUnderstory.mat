@@ -1,0 +1,33 @@
+# @file    ForestUnderstory.mat
+# @brief   Muted shade-tolerant grass for the forest understory.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = 'guid:bf64aece9138536eaf4947733701a084|Assets/Shaders/Fiber/GrassCard.hlsl'
+blend_mode = 'Opaque'
+double_sided = true
+depth_write = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2450
+
+[params]
+rootColor = [0.41, 0.49, 0.33, 1.0]
+tipColor = [0.84, 0.89, 0.65, 1.0]
+fiberLength = 0.46
+fiberDensity = 1.0
+windResponse = 0.045
+maxBend = 0.16
+gravityBend = 0.003
+roughness = 0.85
+specularStrength = 0.035
+transmission = 0.5
+rootOcclusion = 0.35
+planarShading = 1.0
+colorVariation = 0.19
+cardAlphaCutoff = 0.37
+cardSway = 0.073
+cardSwayHz = 0.65
+
+[textures]
+albedo = 'guid:529008c812b851bfa77987859563559a|Assets/Terrain/Alpine/GrassCards_Color.png'

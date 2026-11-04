@@ -1,0 +1,6 @@
+# @file    AlpineRock.fzdata.meta
+# @brief   Alpine オリジナル素材の識別子とインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = 'a7ce322e7ec7543d87f34a83caa20de0'

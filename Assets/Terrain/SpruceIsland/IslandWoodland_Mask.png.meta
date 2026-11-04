@@ -1,0 +1,13 @@
+# @file    IslandWoodland_Mask.png.meta
+# @brief   Woodland scatter outside the retained forest core.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = 'efc17e1282a45c05af60e0311362b127'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 2048
+mipmaps = false

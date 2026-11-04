@@ -1,0 +1,13 @@
+# @file    ForestHills_Height16.png.meta
+# @brief   Linear elevation data for the forest sample.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '9d3eb663326453b0affea172ff1a7c6e'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 1024
+mipmaps = false

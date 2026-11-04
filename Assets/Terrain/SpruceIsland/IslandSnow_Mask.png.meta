@@ -1,0 +1,13 @@
+# @file    IslandSnow_Mask.png.meta
+# @brief   Patchy high-elevation snow coverage on the mountain ridge.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = 'a2a6ce14e7075ba6a9b0f22610fe5e89'
+
+[texture]
+type = 'data'
+srgb = false
+compression = 'None'
+max_size = 2048
+mipmaps = false

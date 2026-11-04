@@ -1,0 +1,27 @@
+# @file    ForestDeferred.fzdata
+# @brief   Deferred outdoor rendering with a balanced froxel grid.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+type = 'RenderPipelineAsset'
+schemaVersion = 1
+
+[render]
+pipeline = 'Deferred'
+mode = 'Raster'
+geometryMode = 'cpu'
+gpuInstancing = true
+
+[shadow]
+enabled = true
+mapResolution = 2048
+cascadeCount = 4
+cascadeSplitLambda = 0.75
+cascadeBlend = 0.1
+autoFitDistance = 210.0
+pcfRadius = 2
+pcssEnabled = false
+
+[froxel]
+gridX = 128
+gridY = 72
+gridZ = 56

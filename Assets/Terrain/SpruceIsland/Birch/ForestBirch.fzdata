@@ -1,0 +1,13 @@
+# @file    ForestBirch.fzdata
+# @brief   Silver birch placement template with three geometry LODs.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+type = 'InstanceSetAsset'
+meshPaths = ['guid:5f7829c8ab4e5c99b9347cb8e65a4470|Assets/Terrain/SpruceIsland/Birch/BirchBarkLod0.obj:0', 'guid:112874b833d25956aae958208cc904de|Assets/Terrain/SpruceIsland/Birch/BirchLeavesLod0.obj:0', 'guid:f522912c36be5977aed76935946e6107|Assets/Terrain/SpruceIsland/Birch/BirchBarkLod1.obj:0', 'guid:77078f0985d6506e83e08bc154bdaf41|Assets/Terrain/SpruceIsland/Birch/BirchLeavesLod1.obj:0', 'guid:fdec25d1cbbc55b5a75c9debcd102a97|Assets/Terrain/SpruceIsland/Birch/BirchBarkLod2.obj:0', 'guid:1ce70400d94858589b1245bfe87a8921|Assets/Terrain/SpruceIsland/Birch/BirchLeavesLod2.obj:0']
+materialPaths = ['guid:6349b8dcf1e0592a866e986f7f4aa227|Assets/Terrain/SpruceIsland/Birch/BirchBark.mat', 'guid:1e29f604ac115d6da2c7d1180a940f2c|Assets/Terrain/SpruceIsland/Birch/BirchLeaves.mat', 'guid:6349b8dcf1e0592a866e986f7f4aa227|Assets/Terrain/SpruceIsland/Birch/BirchBark.mat', 'guid:1e29f604ac115d6da2c7d1180a940f2c|Assets/Terrain/SpruceIsland/Birch/BirchLeaves.mat', 'guid:6349b8dcf1e0592a866e986f7f4aa227|Assets/Terrain/SpruceIsland/Birch/BirchBark.mat', 'guid:f968dfb1317d535b8c7e6b771a368266|Assets/Terrain/SpruceIsland/Birch/BirchLeavesFar.mat']
+partLods = [0, 0, 1, 1, 2, 2]
+lodHeights = [0.26, 0.085, 0.0]
+ids = []
+positions = []
+rotations = []
+scales = []

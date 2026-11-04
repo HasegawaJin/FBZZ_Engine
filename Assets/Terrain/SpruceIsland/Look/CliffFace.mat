@@ -1,0 +1,30 @@
+# @file    CliffFace.mat
+# @brief   Reusable surface for the Spruce Island outdoor look.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = ''
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+
+[params]
+roughness = 0.9
+ambientOcclusion = 1.0
+tilingX = 512.0
+tilingZ = 512.0
+triplanar = 1.0
+triplanarSharpness = 4.0
+heightBlend = 0.0
+normalStrength = 0.33
+macroScale = 0.026
+macroStrength = 0.42
+autoBlendEnabled = 0.0
+
+[textures]
+diffuse = 'guid:0de999ee6d435b3e95c9d1b469a4d62b|Assets/Terrain/SpruceIsland/Look/WeatheredCliff_Color.png'
+normal = 'guid:c5f8178e5a595d8c9570972240baf037|Assets/Terrain/Alpine/Rock_Normal.png'

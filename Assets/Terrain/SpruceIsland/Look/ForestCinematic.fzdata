@@ -1,0 +1,79 @@
+# @file    ForestCinematic.fzdata
+# @brief   Reusable forest grading, two-scale fog, ambient contact and temporal anti-aliasing.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+type = 'PostProcessProfile'
+
+[[overrides]]
+type = 'Exposure'
+active = true
+exposure = 0.99
+
+[[overrides]]
+type = 'FroxelFog'
+active = true
+density = 0.0024
+albedo = [0.86, 0.93, 1.0]
+emissive = [0.007, 0.01, 0.014]
+anisotropy = 0.54
+heightFalloff = 0.022
+heightStart = 27.0
+nearDistance = 0.12
+farDistance = 370.0
+ambient = 0.5
+
+[[overrides]]
+type = 'Fog'
+active = true
+density = 0.00021
+farDistance = 165.0
+color = [0.46, 0.57, 0.66]
+source = 0
+
+[[overrides]]
+type = 'GTAO'
+active = true
+intensity = 0.68
+radius = 1.25
+slices = 3
+stepsPerSlice = 4
+
+[[overrides]]
+type = 'ContactShadow'
+active = true
+strength = 0.36
+rayLength = 1.25
+thickness = 0.13
+steps = 8
+
+[[overrides]]
+type = 'TAA'
+active = true
+feedback = 0.86
+
+[[overrides]]
+type = 'Bloom'
+active = true
+intensity = 0.12
+threshold = 1.42
+softKnee = 0.52
+
+[[overrides]]
+type = 'ColorGrading'
+active = true
+contrast = 0.042
+saturation = 0.88
+temperature = 0.032
+tint = 0.005
+
+[[overrides]]
+type = 'ShadowHighlight'
+active = true
+shadowLift = 0.085
+highlightCompression = 0.18
+
+[[overrides]]
+type = 'Clarity'
+active = true
+strength = 0.075
+radius = 1.7

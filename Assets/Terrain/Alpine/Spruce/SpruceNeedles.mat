@@ -1,0 +1,25 @@
+# @file    SpruceNeedles.mat
+# @brief   Spruce PBR material for the existing instanced surface passes.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = 'guid:73d100e5a351425aaf52953c23425438|Assets/Shaders/Material/Surface/PBR.hlsl'
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2450
+
+[params]
+base_color = [0.76, 0.94, 0.76, 1.0]
+albedo = [0.76, 0.94, 0.76, 1.0]
+roughness = 0.9
+roughness_factor = 0.9
+metallic = 0.0
+metallic_factor = 0.0
+alphaCutoff = 0.32
+
+[textures]
+albedo = 'guid:57b7201b41cf5782bbc00203216d5207|Assets/Terrain/Alpine/Spruce/SpruceNeedleSpray_Color.png'

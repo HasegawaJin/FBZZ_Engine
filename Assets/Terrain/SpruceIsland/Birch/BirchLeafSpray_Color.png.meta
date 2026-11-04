@@ -1,0 +1,17 @@
+# @file    BirchLeafSpray_Color.png.meta
+# @brief   Asset identity and import settings for the silver birch.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = 'a3e128cd43175579b71db1c614a1b15e'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'BC7'
+max_size = 1024
+mipmaps = true
+filter = 'Anisotropic'
+aniso = 8
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

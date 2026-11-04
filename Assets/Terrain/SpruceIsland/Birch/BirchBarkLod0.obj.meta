@@ -1,0 +1,22 @@
+# @file    BirchBarkLod0.obj.meta
+# @brief   Asset identity and import settings for the silver birch.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '5f7829c8ab4e5c99b9347cb8e65a4470'
+
+[model]
+clips = []
+default_compression = 'Auto'
+generate_normals = true
+generate_tangents = true
+generate_tex_descriptors = true
+importer = 'ModelImporter'
+importer_version = 5
+normal_map_convention = 'DirectX'
+root_motion_node = ''
+selected_animations = []
+selected_meshes = []
+source_dcc = 'Auto'
+unit_scale_multiplier = 1.0
+up_axis = 1

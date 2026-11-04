@@ -1,0 +1,30 @@
+# @file    ForestFloor.mat
+# @brief   Reusable surface for the Spruce Island outdoor look.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = ''
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+
+[params]
+roughness = 0.9
+ambientOcclusion = 1.0
+tilingX = 1365.0
+tilingZ = 1365.0
+triplanar = 1.0
+triplanarSharpness = 4.0
+heightBlend = 0.0
+normalStrength = 0.33
+macroScale = 0.037
+macroStrength = 0.29
+autoBlendEnabled = 0.0
+
+[textures]
+diffuse = 'guid:83468188a23755519ce2e54a682e777c|Assets/Terrain/SpruceIsland/Look/ForestFloor_Color.png'
+normal = 'guid:2546d42c527c5f0b8bc8e8ef9845bb8b|Assets/Terrain/Alpine/Grass_Normal.png'

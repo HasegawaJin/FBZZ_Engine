@@ -1,0 +1,17 @@
+# @file    ForestFloor_Color.png.meta
+# @brief   Outdoor look asset identity and import settings.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+[meta]
+guid = '83468188a23755519ce2e54a682e777c'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'BC7'
+max_size = 1024
+mipmaps = true
+filter = 'Anisotropic'
+aniso = 8
+wrap_u = 'Repeat'
+wrap_v = 'Repeat'

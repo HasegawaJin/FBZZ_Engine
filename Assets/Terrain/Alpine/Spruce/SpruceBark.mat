@@ -1,0 +1,25 @@
+# @file    SpruceBark.mat
+# @brief   Spruce PBR material for the existing instanced surface passes.
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = 'guid:73d100e5a351425aaf52953c23425438|Assets/Shaders/Material/Surface/PBR.hlsl'
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+
+[params]
+base_color = [0.83, 0.81, 0.78, 1.0]
+albedo = [0.83, 0.81, 0.78, 1.0]
+roughness = 0.92
+roughness_factor = 0.92
+metallic = 0.0
+metallic_factor = 0.0
+alphaCutoff = 0.0
+
+[textures]
+albedo = 'guid:c50a4eadb4f353ccb0a833935d95689f|Assets/Terrain/Alpine/Spruce/SpruceBark_Color.png'

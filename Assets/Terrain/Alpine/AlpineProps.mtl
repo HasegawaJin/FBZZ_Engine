@@ -1,0 +1,34 @@
+# @file    AlpineProps.mtl
+# @brief   Alpine の幹・針葉・岩の簡易色材質。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+
+newmtl Bark
+Ka 0 0 0
+Kd 0.24 0.15 0.08
+Ks 0.03 0.03 0.03
+Ns 8
+d 1
+illum 2
+Pr 0.9
+Pm 0
+
+newmtl Needles
+Ka 0 0 0
+Kd 0.12 0.27 0.13
+Ks 0.03 0.03 0.03
+Ns 8
+d 1
+illum 2
+Pr 0.95
+Pm 0
+
+newmtl Stone
+Ka 0 0 0
+Kd 0.42 0.44 0.43
+Ks 0.03 0.03 0.03
+Ns 8
+d 1
+illum 2
+Pr 0.86
+Pm 0

@@ -1,0 +1,31 @@
+# @file    Rock.mat
+# @brief   Alpine の手塗り・ベイク済み層に用いる反復可能な簡易地形材質。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+blend_mode = 'Opaque'
+depth_test = 'LessEqual'
+depth_write = true
+double_sided = false
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2000
+shader = ''
+
+[params]
+roughness = 0.83
+ambientOcclusion = 1.0
+normalStrength = 0.65
+tilingX = 256.0
+tilingZ = 256.0
+heightBlend = 0.25
+triplanar = 1.0
+triplanarSharpness = 4.0
+macroScale = 0.03125
+macroStrength = 0.2
+autoBlendEnabled = 0.0
+
+[textures]
+diffuse = 'guid:b0949f996d8b56a7a91aa0f276a9248b|Assets/Terrain/Alpine/Rock_Color.png'
+normal = 'guid:c5f8178e5a595d8c9570972240baf037|Assets/Terrain/Alpine/Rock_Normal.png'
+height = 'guid:67e3ce6c637a578f8fc1cde14e6b653b|Assets/Terrain/Alpine/Rock_Height.png'

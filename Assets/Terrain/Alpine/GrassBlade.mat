@@ -1,0 +1,31 @@
+# @file    GrassBlade.mat
+# @brief   Alpine の草レイヤーに植える短草の Blade 材質。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+version = 1
+shader = 'guid:2a3ca60bdd03436ba8a83983377cb7eb|Assets/Shaders/Fiber/FiberBlade.hlsl'
+blend_mode = 'Opaque'
+double_sided = true
+depth_write = true
+mesh_type = 'surface'
+render_path = 'auto'
+render_queue = 2450
+
+[params]
+rootColor = [0.035, 0.075, 0.012, 1.0]
+tipColor = [0.22, 0.38, 0.065, 1.0]
+fiberLength = 0.28
+fiberDensity = 0.8
+fiberThickness = 0.34
+fiberTaper = 0.95
+fiberFrequency = 60.0
+windResponse = 0.05
+maxBend = 0.12
+gravityBend = 0.005
+roughness = 0.85
+specularStrength = 0.05
+transmission = 0.55
+rootOcclusion = 0.75
+planarShading = 1.0
+worldMapping = 1.0
+finSilhouetteWidth = 0.4
