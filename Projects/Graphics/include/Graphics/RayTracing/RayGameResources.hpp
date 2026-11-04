@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/Camera.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <Math/Vector4.hpp>
@@ -76,9 +77,9 @@ struct alignas(16) RayReconstructionConstants {
 static_assert(sizeof(RayReconstructionConstants) == 96);
 
 /// @note initial cut: translation >1m、forward rotation >45deg、射影入力の変更。通常の動きは画素照合へ渡す。
-[[nodiscard]] bool IsRayGameCameraCut(const Camera& previous, const Camera& current);
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsRayGameCameraCut(const Camera& previous, const Camera& current);
 /// @note ID/material/position/normal の検証を共有する CPU 契約。履歴に未計算の黒を観測値として入れない。
-[[nodiscard]] bool IsRayReconstructionHistoryCompatible(
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsRayReconstructionHistoryCompatible(
     const RayReconstructionSurface& current, const RayReconstructionSurface& previous, const Camera& previousCamera);
 
 /// @note Reference RAW と独立して view が所有する。frameSampleIndex は成功 dispatch 後だけ進める。

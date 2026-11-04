@@ -3,6 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 /// @note 各描画パスの実装は RenderPasses/ 以下の Execute*Pass 関数に委譲する。
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Asset/StreamedTextureResolver.hpp>
 #include "Engine/Scene/Systems/RenderSystem.hpp"
 #include "Engine/Scene/SceneUtils.hpp"
@@ -53,6 +55,7 @@
 #include "Engine/Scene/Components/VFXScreenEffect.hpp"
 #include "Engine/Scene/Components/ReflectionProbeComponent.hpp"
 #include "Engine/Scene/Components/MeshRenderer.hpp"
+#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
 #include "Engine/Scene/Components/SkinnedMeshRenderer.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include "Engine/Asset/AssetManager.hpp"
@@ -512,6 +515,20 @@ void RenderSystem(Scene& scene,
 
     const renderer::RenderSettings& rs = effectiveSettings;
     const bool experimentalRayTracingEnabled = core::DeveloperMode::IsEnabled();
+
+    /// @note UI の通知は Script 後に確定する。描画資源の初期化失敗でも CPU 入力を止めない。
+    if (uiOptions && uiOptions->enabled && uiOptions->context
+        && uiOptions->targetView == UIRenderTargetView::GameViewport) {
+        const auto* target = resources.Get(outputRT);
+        const float width = uiOptions->viewportWidth > 0.0f ? uiOptions->viewportWidth
+            : static_cast<float>(target ? target->GetWidth() : renderer.GetWidth());
+        const float height = uiOptions->viewportHeight > 0.0f ? uiOptions->viewportHeight
+            : static_cast<float>(target ? target->GetHeight() : renderer.GetHeight());
+        UpdateUIInteraction(scene, *uiOptions->context,
+            {width, height, uiOptions->mouseInCanvasSpace, camera.GetViewProjection(),
+             camera.m_position, camera.m_rotation, uiOptions->gameplayInput,
+             !outputRT.IsValid() || resources.GetDepthTexture(outputRT).IsValid()}, uiOptions->mousePressed);
+    }
 
     const auto sharedResourcesProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("RenderSystem::SharedResourceSetup", "Rendering"));

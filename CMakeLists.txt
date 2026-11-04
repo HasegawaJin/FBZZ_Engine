@@ -35,7 +35,7 @@ set(CMAKE_EXE_LINKER_FLAGS_DEBUG          "/DEBUG:FULL /INCREMENTAL"
 set(CMAKE_SHARED_LINKER_FLAGS_DEBUG       "/DEBUG:FULL /INCREMENTAL"
     CACHE STRING "Debug DLL linker flags" FORCE)
 
-# @note WINDOWS_EXPORT_ALL_SYMBOLS が毎ビルド .def を作り直し増分リンクが破棄されるので、Development は /INCREMENTAL:NO。
+# @note Development の最適化 DLL は非増分リンクに統一する。
 set(CMAKE_EXE_LINKER_FLAGS_DEVELOPMENT    "/DEBUG:FULL /INCREMENTAL:NO"
     CACHE STRING "Development EXE linker flags" FORCE)
 set(CMAKE_SHARED_LINKER_FLAGS_DEVELOPMENT "/DEBUG:FULL /INCREMENTAL:NO"
@@ -294,64 +294,6 @@ if(FBZZ_RELEASE_LTO)
     if(NOT FBZZ_IPO_SUPPORTED)
         message(FATAL_ERROR "Release LTO is unsupported: ${FBZZ_IPO_REASON}")
     endif()
-    # @note CMake's automatic COFF export scan cannot read MSVC /GL objects. Use a source- and compiler-checked normal-build export map.
-    # @see https://learn.microsoft.com/en-us/cpp/build/reference/gl-whole-program-optimization
-    set(FBZZ_LTO_EXPORTS_DIRECTORY "${CMAKE_BINARY_DIR}/lto-exports" CACHE PATH "Verified normal-build DLL export maps for Release LTO")
-    if(NOT EXISTS "${FBZZ_LTO_EXPORTS_DIRECTORY}/inputs.cmake")
-        message(FATAL_ERROR "Release LTO requires normal-build export maps in FBZZ_LTO_EXPORTS_DIRECTORY; build Release without LTO and prepare the maps first.")
-    endif()
-    include("${FBZZ_LTO_EXPORTS_DIRECTORY}/inputs.cmake")
-    if(NOT FBZZ_LTO_EXPORT_COMPILER STREQUAL CMAKE_CXX_COMPILER_VERSION)
-        message(FATAL_ERROR "Release LTO export maps were built by a different compiler.")
-    endif()
-    file(GLOB_RECURSE FBZZ_LTO_CURRENT_PATHS RELATIVE "${CMAKE_SOURCE_DIR}" CONFIGURE_DEPENDS
-        "${CMAKE_SOURCE_DIR}/CMake/*.cmake" "${CMAKE_SOURCE_DIR}/CMake/*.in")
-    list(APPEND FBZZ_LTO_CURRENT_PATHS "CMakeLists.txt")
-    foreach(FBZZ_LTO_MODULE IN ITEMS Engine Graphics Core Math Physics Fluid)
-        file(GLOB_RECURSE FBZZ_LTO_MODULE_PATHS RELATIVE "${CMAKE_SOURCE_DIR}" LIST_DIRECTORIES FALSE CONFIGURE_DEPENDS
-            "${CMAKE_SOURCE_DIR}/Projects/${FBZZ_LTO_MODULE}/src/*"
-            "${CMAKE_SOURCE_DIR}/Projects/${FBZZ_LTO_MODULE}/include/*")
-        list(APPEND FBZZ_LTO_CURRENT_PATHS ${FBZZ_LTO_MODULE_PATHS} "Projects/${FBZZ_LTO_MODULE}/CMakeLists.txt")
-    endforeach()
-    list(SORT FBZZ_LTO_CURRENT_PATHS)
-    if(NOT FBZZ_LTO_CURRENT_PATHS STREQUAL FBZZ_LTO_EXPORT_PATHS)
-        message(FATAL_ERROR "Release LTO native source membership changed; rebuild without LTO and regenerate export maps.")
-    endif()
-    foreach(FBZZ_LTO_INPUT IN LISTS FBZZ_LTO_EXPORT_INPUTS)
-        string(REPLACE "|" ";" FBZZ_LTO_INPUT_PARTS "${FBZZ_LTO_INPUT}")
-        list(GET FBZZ_LTO_INPUT_PARTS 0 FBZZ_LTO_INPUT_PATH)
-        list(GET FBZZ_LTO_INPUT_PARTS 1 FBZZ_LTO_INPUT_HASH)
-        file(SHA256 "${CMAKE_SOURCE_DIR}/${FBZZ_LTO_INPUT_PATH}" FBZZ_LTO_CURRENT_HASH)
-        if(NOT FBZZ_LTO_CURRENT_HASH STREQUAL FBZZ_LTO_INPUT_HASH)
-            message(FATAL_ERROR "Release LTO export map is stale: ${FBZZ_LTO_INPUT_PATH}; rebuild without LTO and regenerate it.")
-        endif()
-    endforeach()
-    # @note A Release export map cannot describe Debug STL symbols; this opt-in tree exposes Release only. Other presets remain unchanged.
-    if(CMAKE_GENERATOR MATCHES "Visual Studio")
-        set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "LTO build configurations" FORCE)
-    endif()
-    # @note MSVC emits the legacy helper COMDATs in the PCH creation object; an ordinary empty TU does not retain them.
-    if(NOT MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        message(FATAL_ERROR "Verified export-map LTO currently requires the MSVC toolchain.")
-    endif()
-    set(FBZZ_LTO_COMPAT_SOURCE "${FBZZ_LTO_EXPORTS_DIRECTORY}/LtoExportCompatibility.cpp")
-    file(GENERATE OUTPUT "${FBZZ_LTO_COMPAT_SOURCE}" CONTENT
-        "/// @file    LtoExportCompatibility.cpp\n/// @brief   Preserve vendor-header COMDATs through a normal PCH creation object.\n/// @author  Hasegawa Jin\n/// @date    2026-10-19\n#include <cwchar>\nnamespace fbzz::build_detail {\n/// @note Taking the vendor implementation address keeps its real COMDAT available to legacy DLL exports.\nauto* volatile vendorMemoryOrder = &::_Check_memory_order;\n/// @note Cold operations retain compiler-injected vendor helper definitions; this function is never called by runtime systems.\nvoid RetainVendorOperations(std::atomic<void*>& atomicValue, void* value, void* destination, const void* source, size_t bytes,\n    wchar_t* wideDestination, const wchar_t* wideSource, size_t characters) {\n    atomicValue.store(value, std::memory_order_release);\n    (void)atomicValue.load(std::memory_order_acquire);\n    std::memcpy(destination, source, bytes);\n    std::wmemcpy(wideDestination, wideSource, characters);\n}\n}\n")
-    set_source_files_properties("${FBZZ_LTO_COMPAT_SOURCE}" PROPERTIES GENERATED TRUE)
-    add_library(FBZZLtoExportCompatibility OBJECT "${FBZZ_LTO_COMPAT_SOURCE}")
-    target_precompile_headers(FBZZLtoExportCompatibility PRIVATE ${FBZZ_STD_PCH_HEADERS} <atomic>)
-    target_compile_options(FBZZLtoExportCompatibility PRIVATE /Zc:inline-)
-    set_target_properties(FBZZLtoExportCompatibility PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE FALSE FOLDER "Engine/Build")
-    foreach(FBZZ_LTO_DLL IN ITEMS FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZGraphics FBZZEngine)
-        if(NOT EXISTS "${FBZZ_LTO_EXPORTS_DIRECTORY}/${FBZZ_LTO_DLL}.def")
-            message(FATAL_ERROR "Missing Release LTO export map for ${FBZZ_LTO_DLL}")
-        endif()
-        set_property(TARGET ${FBZZ_LTO_DLL} PROPERTY WINDOWS_EXPORT_ALL_SYMBOLS FALSE)
-        target_sources(${FBZZ_LTO_DLL} PRIVATE "${FBZZ_LTO_EXPORTS_DIRECTORY}/${FBZZ_LTO_DLL}.def")
-        target_sources(${FBZZ_LTO_DLL} PRIVATE "$<TARGET_OBJECTS:FBZZLtoExportCompatibility>")
-        target_link_options(${FBZZ_LTO_DLL} PRIVATE /INCLUDE:_Avx2WmemEnabledWeakValue)
-    endforeach()
-
     get_property(FBZZ_LTO_ENGINE_MODULES GLOBAL PROPERTY FBZZ_ENGINE_MODULES)
     foreach(FBZZ_LTO_TARGET IN ITEMS FBZZMath FBZZPhysics FBZZFluid FBZZCore FBZZGraphics FBZZEngine ${FBZZ_LTO_ENGINE_MODULES})
         set_property(TARGET ${FBZZ_LTO_TARGET} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)

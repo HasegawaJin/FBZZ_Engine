@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
@@ -24,7 +25,7 @@ enum class MeshletDrawPass : uint8_t {
 /// @param skinned True when the owning render object uses skinning.
 /// @param pass GBuffer keeps the standard 60-byte vertex ABI; shadows read only positions.
 /// @return False for unsupported, small, deformed, custom, or shadow alpha-cutout inputs.
-[[nodiscard]] bool IsMeshletDrawCandidate(const RenderMeshItem& item, bool skinned,
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsMeshletDrawCandidate(const RenderMeshItem& item, bool skinned,
                                           MeshletDrawPass pass);
 
 /// @brief Prepares a mesh-shader DrawCall while leaving the input unchanged on failure.
@@ -35,7 +36,7 @@ enum class MeshletDrawPass : uint8_t {
 /// @note Without forceMesh, only objects with at least 25 percent estimated clipping on a frustum plane use meshlets.
 /// @note Callers update b1 and submit immediately after success so the shared b13 upload and draw stay ordered.
 /// @see https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html DispatchMesh groups and mesh output limits.
-[[nodiscard]] bool TryPrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
+[[nodiscard]] FBZZ_GRAPHICS_API bool TryPrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
                                          const math::Matrix4& viewProjection,
                                          const math::Matrix4& world,
                                          MeshletDrawPass pass, const RenderMeshItem& item,

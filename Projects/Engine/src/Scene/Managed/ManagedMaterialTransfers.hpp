@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-06
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/ManagedBridgeAbi.hpp>
 #include <memory>
 #include <span>
@@ -13,12 +14,12 @@ namespace managed_detail {
 struct ManagedServiceResult;
 class ManagedMaterialTransfers final {
 public:
-    ManagedMaterialTransfers(); ~ManagedMaterialTransfers();
-    ManagedBridgeStatus Open(Scene& scene, GameObject& target, Script& proxy, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedMaterialTransfers(); FBZZ_ENGINE_API ~ManagedMaterialTransfers();
+    FBZZ_ENGINE_API ManagedBridgeStatus Open(Scene& scene, GameObject& target, Script& proxy, const ManagedBridgeRequest& request,
         int64_t slot, std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result);
-    ManagedBridgeStatus Run(Scene& scene, GameObject& target, Script& proxy, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus Run(Scene& scene, GameObject& target, Script& proxy, const ManagedBridgeRequest& request,
         ManagedServiceResult& result, ManagedBridgeReply* rawReply = nullptr);
-    void CancelOwner(uint64_t owner); void RetireGeneration(uint64_t generation); void EndCall(uint64_t call);
+    FBZZ_ENGINE_API void CancelOwner(uint64_t owner); FBZZ_ENGINE_API void RetireGeneration(uint64_t generation); FBZZ_ENGINE_API void EndCall(uint64_t call);
 private:
     struct Impl; std::unique_ptr<Impl> m_impl;
 };

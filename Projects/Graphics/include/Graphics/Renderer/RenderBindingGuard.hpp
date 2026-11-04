@@ -7,6 +7,7 @@
 /// @note       RenderGraph は依存で並べ替えるため束縛を前パス任せにすると構成変更で壊れる順序依存を
 /// @note       能動的に炙り出す。既定は無効 (束縛漏れが残る間は絵が出ない) で、追う日に環境変数で立てる。
 #pragma once
+#include <Graphics/Api.hpp>
 
 namespace fbzz::renderer::bindingguard {
 
@@ -22,6 +23,6 @@ inline constexpr bool kBuiltIn =
 
 /// @note 実際に毒を撒くか。環境変数 `FBZZ_RENDER_BINDING_GUARD` (0 / 1) で切り替える。
 /// @note 既定は「立てない」。Debug でも明示的に 1 を渡したときだけ動く。
-[[nodiscard]] bool IsEnabled();
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsEnabled();
 
 } /// @note namespace fbzz::renderer::bindingguard

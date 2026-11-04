@@ -170,6 +170,40 @@ bool ProjectSettings::Load(const std::string& path)
         return false;
     }
 
+    if (!LoadFromToml(text)) return false;
+
+    /// @name 入力バインド
+    /// @note ProjectSettings.toml と同じディレクトリの Input.inputactions を読む。別ファイルなのは、
+    /// @note バインド定義の配列が深く混ぜると読みにくいのと、プレイヤーが実行時に書き換える対象で
+    /// @note 開発者向け設定とは更新頻度も責務も違うため。
+    /// @note 読めなくても Load 全体は失敗させない。入力ファイルは無くて当然 (既定バインドで動く) で、
+    /// @note ここで false を返すとプロジェクト設定自体が読めなかった扱いになる。
+    {
+        const std::filesystem::path settingsPath = util::FileSystem::PathFromUtf8(path);
+        const std::filesystem::path inputPath =
+            settingsPath.has_parent_path()
+                ? settingsPath.parent_path() / "Input.inputactions"
+                : std::filesystem::path("Input.inputactions");
+        /// @note 既定バインドは Move/Look/Jump/Attack/Dodge/Interact/Pause のみで、メニューが使う
+        /// @note Submit/Cancel が無い。このファイルが配布物から抜けると «UI だけ反応しない» のに
+        /// @note 記録が残らないため、無いことを名指しで警告する。
+        std::error_code ec;
+        if (!std::filesystem::exists(inputPath, ec)) {
+            FBZZ_LOG_WARN("ProjectSettings: %s が見つかりません。"
+                          "入力は既定バインドへ落ちます (Submit / Cancel は既定に無いため、"
+                          "メニューの決定・戻るが効かなくなります)",
+                          util::FileSystem::PathToUtf8(inputPath).c_str());
+        } else {
+            (void)input::InputActionMap::LoadFromFile(util::FileSystem::PathToUtf8(inputPath));
+        }
+    }
+
+    return true;
+}
+
+bool ProjectSettings::LoadFromToml(std::string_view text)
+{
+    const std::string path = "<memory>";
     auto result = toml::parse(text);
     if (!result) {
         FBZZ_LOG_WARN("ProjectSettings: parse failed: %s", path.c_str());
@@ -443,31 +477,6 @@ bool ProjectSettings::Load(const std::string& path)
     if (auto* uiTbl = tbl["ui"].as_table())
         ui.defaultFontPath = (*uiTbl)["default_font"].value_or(ui.defaultFontPath);
 
-    /// @name 入力バインド
-    /// @note ProjectSettings.toml と同じディレクトリの Input.inputactions を読む。別ファイルなのは、
-    /// @note バインド定義の配列が深く混ぜると読みにくいのと、プレイヤーが実行時に書き換える対象で
-    /// @note 開発者向け設定とは更新頻度も責務も違うため。
-    /// @note 読めなくても Load 全体は失敗させない。入力ファイルは無くて当然 (既定バインドで動く) で、
-    /// @note ここで false を返すとプロジェクト設定自体が読めなかった扱いになる。
-    {
-        const std::filesystem::path settingsPath = util::FileSystem::PathFromUtf8(path);
-        const std::filesystem::path inputPath =
-            settingsPath.has_parent_path()
-                ? settingsPath.parent_path() / "Input.inputactions"
-                : std::filesystem::path("Input.inputactions");
-        /// @note 既定バインドは Move/Look/Jump/Attack/Dodge/Interact/Pause のみで、メニューが使う
-        /// @note Submit/Cancel が無い。このファイルが配布物から抜けると «UI だけ反応しない» のに
-        /// @note 記録が残らないため、無いことを名指しで警告する。
-        std::error_code ec;
-        if (!std::filesystem::exists(inputPath, ec)) {
-            FBZZ_LOG_WARN("ProjectSettings: %s が見つかりません。"
-                          "入力は既定バインドへ落ちます (Submit / Cancel は既定に無いため、"
-                          "メニューの決定・戻るが効かなくなります)",
-                          util::FileSystem::PathToUtf8(inputPath).c_str());
-        } else {
-            (void)input::InputActionMap::LoadFromFile(util::FileSystem::PathToUtf8(inputPath));
-        }
-    }
 
     return true;
 }
@@ -482,6 +491,11 @@ bool ProjectSettings::Save(const std::string& path) const
 }
 
 std::string ProjectSettings::ToToml() const
+{
+    return ToToml(false);
+}
+
+std::string ProjectSettings::ToToml(bool explicitDefaults) const
 {
     toml::array tagArr;
     for (const auto& t : game.tags)
@@ -513,7 +527,7 @@ std::string ProjectSettings::ToToml() const
             pair.push_back((int64_t)b);
             ignoreArr.push_back(std::move(pair));
         }
-    if (!ignoreArr.empty()) physicsTbl.insert("ignoreCollisions", std::move(ignoreArr));
+    if (explicitDefaults || !ignoreArr.empty()) physicsTbl.insert("ignoreCollisions", std::move(ignoreArr));
 
     toml::array outlineColorArr;
     outlineColorArr.push_back((double)render.outlineColor[0]);
@@ -534,7 +548,7 @@ std::string ProjectSettings::ToToml() const
     toml::table hybridQuality;
     asset::RenderPipelineAssetCodec::SaveHybridQuality(render.hybridQuality, hybridQuality);
     renderTbl.insert("hybrid", std::move(hybridQuality));
-    if (!renderPipelineAssetPath.empty())
+    if (explicitDefaults || !renderPipelineAssetPath.empty())
         renderTbl.insert("pipelineAsset", asset::EncodeGuidRef(renderPipelineAssetPath));
     renderTbl.insert("viewMode", static_cast<int>(render.viewMode));
 
@@ -565,17 +579,18 @@ std::string ProjectSettings::ToToml() const
     renderTbl.insert("showDecalBounds",      render.showDecalBounds);
     renderTbl.insert("showSelectionOutline", render.showSelectionOutline);
     renderTbl.insert("passViewerEnabled",    render.passViewerEnabled);
-    if (render.schedulePolicy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes)
-        renderTbl.insert("schedulePolicy", "MinimizeLifetimes");
+    if (explicitDefaults || render.schedulePolicy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes)
+        renderTbl.insert("schedulePolicy", render.schedulePolicy == renderer::RenderGraphSchedulePolicy::MinimizeLifetimes
+            ? "MinimizeLifetimes" : "RegistrationOrder");
     {
         toml::array overrideArray;
         for (const renderer::RenderPassOverride& entry : render.passOverrides) {
             if (entry.IsDefault()) continue;
             toml::table overrideTbl;
             overrideTbl.insert("name", entry.name);
-            if (!entry.enabled)      overrideTbl.insert("enabled", false);
-            if (!entry.allowCulling) overrideTbl.insert("allowCulling", false);
-            if (!entry.extraReads.empty()) {
+            if (explicitDefaults || !entry.enabled) overrideTbl.insert("enabled", entry.enabled);
+            if (explicitDefaults || !entry.allowCulling) overrideTbl.insert("allowCulling", entry.allowCulling);
+            if (explicitDefaults || !entry.extraReads.empty()) {
                 toml::array readArray;
                 for (const std::string& read : entry.extraReads)
                     readArray.push_back(read);
@@ -583,7 +598,7 @@ std::string ProjectSettings::ToToml() const
             }
             overrideArray.push_back(std::move(overrideTbl));
         }
-        if (!overrideArray.empty()) renderTbl.insert("passOverride", std::move(overrideArray));
+        if (explicitDefaults || !overrideArray.empty()) renderTbl.insert("passOverride", std::move(overrideArray));
     }
 
     /// @name パーティクル予算
@@ -602,11 +617,11 @@ std::string ProjectSettings::ToToml() const
         for (const audio::BusDesc& desc : audio.buses) {
             toml::table busTbl;
             busTbl.insert("name", desc.name);
-            if (!desc.parent.empty()) busTbl.insert("parent", desc.parent);
+            if (explicitDefaults || !desc.parent.empty()) busTbl.insert("parent", desc.parent);
             busTbl.insert("volume", (double)desc.volume);
-            if (desc.lowPassCutoff < 1.0f)
+            if (explicitDefaults || desc.lowPassCutoff < 1.0f)
                 busTbl.insert("lowPassCutoff", (double)desc.lowPassCutoff);
-            if (desc.reverb) busTbl.insert("reverb", true);
+            if (explicitDefaults || desc.reverb) busTbl.insert("reverb", desc.reverb);
             busArray.push_back(std::move(busTbl));
         }
         audioTbl.insert("bus", std::move(busArray));
@@ -641,14 +656,14 @@ std::string ProjectSettings::ToToml() const
         toml::table shapesTbl;
         for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
             const auto& entry = cursor.shapes[i];
-            if (entry.path.empty()) continue;
+            if (!explicitDefaults && entry.path.empty()) continue;
             toml::table shapeTbl;
             shapeTbl.insert("image", entry.path);
             shapeTbl.insert("hotspot", toml::array{ entry.hotspotX, entry.hotspotY });
             shapesTbl.insert(core::ToString(static_cast<core::CursorShape>(i)),
                              std::move(shapeTbl));
         }
-        if (!shapesTbl.empty()) cursorTbl.insert("shapes", std::move(shapesTbl));
+        if (explicitDefaults || !shapesTbl.empty()) cursorTbl.insert("shapes", std::move(shapesTbl));
     }
 
     toml::table uiTbl;

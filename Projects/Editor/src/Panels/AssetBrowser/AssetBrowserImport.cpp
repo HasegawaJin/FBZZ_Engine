@@ -5,6 +5,7 @@
 #include <Engine/Asset/ModelSource.hpp>
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
+#include <Editor/Import/ModelImport.hpp>
 #include <Editor/Import/ImportCacheStore.hpp>
 #include <Editor/Import/ImportSettingsSchema.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -794,16 +795,9 @@ void AssetBrowserPanel::OnBeforeBegin(EditorContext& ctx)
                 m_importStatusStr = util::FileSystem::GetFilename(imp.path);
             }
 
-            namespace fs = std::filesystem;
-            const fs::path srcPath = util::FileSystem::PathFromUtf8(imp.path);
-            const std::string outDir =
-                util::FileSystem::PathToUtf8(srcPath.parent_path() / srcPath.stem());
-            if (FbxImportTool::Import(imp.path, outDir, imp.path, imp.options)) {
-                /// @note 設定は実際に Import が成功した後で初めて原本の .meta に確定する。
-                /// @note 生成済みモデルの成功と設定保存の失敗を分け、片方が失敗しても他方の保存を試す。
-                const bool optionsSaved = FbxMetaSerializer::SaveOptions(imp.path, imp.options);
-                const bool cacheSaved = FbxMetaSerializer::SaveCacheInfo(imp.path, imp.options);
-                if (!optionsSaved || !cacheSaved)
+            const ModelImportResult result = ImportModelSource(imp.path, imp.options);
+            if (result.imported) {
+                if (!result.optionsSaved || !result.cacheSaved)
                     FBZZ_LOG_WARN("AssetBrowser: imported model metadata could not be saved [%s]", imp.path.c_str());
                 std::lock_guard<std::mutex> lock(m_importStatusMtx);
                 m_completedImportPaths.push_back(imp.path);

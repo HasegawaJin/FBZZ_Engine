@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Core/Scheduler/ISystem.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
@@ -26,24 +27,24 @@ class Scene;
 
 /// @brief Build or reuse each Scene water's immutable spline geometry from control points and world pose.
 /// @param scene Scene whose WaterComponent spline snapshots are prepared.
-void PrepareWaterSplineSnapshots(Scene& scene);
+FBZZ_ENGINE_API void PrepareWaterSplineSnapshots(Scene& scene);
 /// @brief Prepare shared Zone geometry and member ownership after source splines are current.
-void PrepareWaterZoneSnapshots(Scene& scene);
+FBZZ_ENGINE_API void PrepareWaterZoneSnapshots(Scene& scene);
 /// @brief Prepare spline sources, shared Zone surfaces, and matching exclusion boxes.
-void PrepareWaterSceneSurfaces(Scene& scene);
+FBZZ_ENGINE_API void PrepareWaterSceneSurfaces(Scene& scene);
 /// @brief Publish the current scene surface inputs as one immutable simulation read boundary.
-void PrepareWaterSimulationSurfaces(Scene& scene);
+FBZZ_ENGINE_API void PrepareWaterSimulationSurfaces(Scene& scene);
 /// @brief Initialize the simulation read boundary before its first fixed-step publication.
-void EnsureWaterSimulationSurfaces(Scene& scene);
+FBZZ_ENGINE_API void EnsureWaterSimulationSurfaces(Scene& scene);
 /// @brief Resolve a Zone member to its active shared owner, or return its own Water.
-[[nodiscard]] WaterComponent* ResolveWaterZoneOwner(Scene& scene, EntityID entity);
+[[nodiscard]] FBZZ_ENGINE_API WaterComponent* ResolveWaterZoneOwner(Scene& scene, EntityID entity);
 /// @brief Build or reuse one water's immutable spline geometry before a live world-space query.
 /// @param water Mutable water component receiving the shared runtime snapshot.
 /// @param transform Current world pose used to validate or rebuild the snapshot.
 /// @return True for a supported rectangle or a valid current spline snapshot.
-[[nodiscard]] bool PrepareWaterSplineSnapshot(WaterComponent& water, const Transform& transform);
+[[nodiscard]] FBZZ_ENGINE_API bool PrepareWaterSplineSnapshot(WaterComponent& water, const Transform& transform);
 /// @brief Resolve one Water's authored or bound control points before preparing its live geometry.
-[[nodiscard]] bool PrepareWaterSplineSnapshot(Scene& scene, EntityID ownerId,
+[[nodiscard]] FBZZ_ENGINE_API bool PrepareWaterSplineSnapshot(Scene& scene, EntityID ownerId,
     WaterComponent& water, const Transform& transform);
 
 /// @note 水の .mat が持つ «種類» のキー。Engine の解決処理と Editor の Inspector が同じ名前を引く。
@@ -66,7 +67,7 @@ inline constexpr const char* kFlowDirection = "flowDirection";
 /// @note .mat に波のキーが無いときに使う波 (Ocean.mat と同じ値)。範囲外は振幅 0。
 /// @note 平らにしない理由: 波を .mat へ移す前のプロジェクトには波のキーが無いため、平らにすると
 /// @note       更新前のプロジェクトを開いた瞬間に海が止まる。
-[[nodiscard]] GerstnerWave DefaultWaterWave(int index);
+[[nodiscard]] FBZZ_ENGINE_API GerstnerWave DefaultWaterWave(int index);
 
 /// @note 水面が受け取る環境流。SceneEnvironment の環境流を要約したもの。
 struct WaterWind {
@@ -84,50 +85,50 @@ inline constexpr float kWaveGrowthReferenceWindSpeed = 10.0f;
 /// @note 風は «追い風の波を育て、向かい風の波を潰す» だけで、波の向きは回さない。
 /// @note 向きを回さない理由: 位相は k·(D·p) のため D を回すと原点から遠い点ほど位相が跳ね、
 /// @note       風が変わるたびに遠景の波が早送りのように走って見える。
-void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind);
+FBZZ_ENGINE_API void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind);
 /// @note Pure wave derivation from caller-owned immutable values preserves preview snapshot lifetime.
-void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAssetAuthoring& material, const WaterWind& wind);
+FBZZ_ENGINE_API void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAssetAuthoring& material, const WaterWind& wind);
 /// @brief Resolve asset base waves while retaining material optics, current, and wind response.
 /// @return False leaves the active wave source unchanged when generated values are invalid.
-[[nodiscard]] bool ResolveWaterWavesFromAsset(
+[[nodiscard]] FBZZ_ENGINE_API bool ResolveWaterWavesFromAsset(
     WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind,
     const asset::WaterWavesAsset& wavesAsset);
 
 /// @note water.materialPath の .mat を引く。未設定・読込失敗なら nullptr。
-[[nodiscard]] const asset::MaterialAsset* LoadWaterMaterial(const WaterComponent& water);
+[[nodiscard]] FBZZ_ENGINE_API const asset::MaterialAsset* LoadWaterMaterial(const WaterComponent& water);
 
 /// @brief 物理の波と近景描画が使う最密区間の頂点間隔 [ワールド m]。
 /// @note 集中格子では nearCellSize と均一格子の間隔の小さい方を使い、カメラへ依存させない。
 /// @see Docs/design/water-waves.md 有限の矩形を保つカメラ集中グリッド。
-[[nodiscard]] math::Vector2 ResolveWaterCellSize(const WaterComponent& water, const Transform& transform);
+[[nodiscard]] FBZZ_ENGINE_API math::Vector2 ResolveWaterCellSize(const WaterComponent& water, const Transform& transform);
 
 /// @note ワールド座標に着水の波紋を 1 つ置く。大きさはメートルで決め、水面の広さに依らず揃える。
 /// @param strength [0,1]
 /// @note 輪の正本は water.ripples (ワールド座標)。描画パスはそれを読んで焼くだけなので、
 /// @note       ここで両方へ積む必要はない。
-void EmitWaterRipple(WaterComponent& water, const Transform& transform,
+FBZZ_ENGINE_API void EmitWaterRipple(WaterComponent& water, const Transform& transform,
                      const math::Vector3& worldPos, float strength);
 
 /// @note 生きている輪の寿命を進め、頂点で刻めるかを測り直す。
 /// @note System 側で進める理由: 描画パスでやると SceneView と GameView で 2 回進む。
-void UpdateWaterRipples(WaterComponent& water, const Transform& transform, float dt);
+FBZZ_ENGINE_API void UpdateWaterRipples(WaterComponent& water, const Transform& transform, float dt);
 
 /// @note シーンの流れから «この水面の形と質感に出るもの» を選び、water.surfaceFlows へ書く。
-///
+
 /// @note 拾うのは半径 (Baked は extents) を持ち、XZ がその半径ぶん広げた矩形と交わるもので、
 /// @note (|形の高さ|, 流速) の強い順に kWaterSurfaceFlowCount 本まで。
 /// @note 半径の無い要素と横倒しの渦を外すのは «どこまで効くか» が決まらないため。流速としては
 /// @note       SampleFlow が出し続けるので、浮力と水中判定からは消えない。
 /// @warning Baked の vectorField ポインタは今フレームだけ有効。毎フレーム呼び直すこと。
 /// @see Docs/design/water-waves.md 「流れの場が水面に出る 3 つの道」
-void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
+FBZZ_ENGINE_API void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
                               const std::vector<ActiveFlowField>& fields);
 
 /// @note 水面の «その点の» 流速 [m/s] (ワールド、y は常に 0)。
-///
+
 /// @param surfaceBaseY 水面 GameObject のワールド Y。流れは水面の高さでサンプルする。
 /// @note Rectangle は .mat current、Spline は点ごとの authored flow を基流にし、明示 FlowField を足す。
-[[nodiscard]] math::Vector3 WaterFlowVelocityAt(const WaterComponent& water,
+[[nodiscard]] FBZZ_ENGINE_API math::Vector3 WaterFlowVelocityAt(const WaterComponent& water,
                                                 const std::vector<ActiveFlowField>& fields,
                                                 float surfaceBaseY,
                                                 const math::Vector3& worldPos,
@@ -141,8 +142,8 @@ public:
     Phase            GetPhase()   const override { return Phase::PostPhysics; }
     /// @note 編集中も走らせる。止めると .mat の波を編集している間、ビューポートの水面が動かない。
     RunMode          GetRunMode() const override { return RunMode::Always; }
-    ComponentAccess  GetAccess()  const override;
-    void Update(SystemContext& ctx) override;
+    FBZZ_ENGINE_API ComponentAccess  GetAccess()  const override;
+    FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 
 private:
     struct WaveAssetCache {

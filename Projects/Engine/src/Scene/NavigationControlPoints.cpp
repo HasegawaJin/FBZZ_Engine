@@ -2,6 +2,8 @@
 /// @brief   Resolve navigation control-point authoring and static bake inputs.
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
 #include <Engine/Scene/NavigationControlPoints.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/Scene.hpp>

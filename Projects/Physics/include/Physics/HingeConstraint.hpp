@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-22
 #pragma once
+#include <Physics/Api.hpp>
 #include <Physics/Constraint.hpp>
 
 namespace fbzz::physics
@@ -12,20 +13,20 @@ namespace fbzz::physics
     class HingeConstraint : public Constraint
     {
     public:
-        HingeConstraint(RigidBody* bodyA,
+        FBZZ_PHYSICS_API HingeConstraint(RigidBody* bodyA,
                         RigidBody* bodyB,
                         const math::Vector3& localAnchorA,
                         const math::Vector3& localAnchorB,
                         const math::Vector3& axis);
 
-        void SolvePosition(float dt) override;
-        void ApplyForce(float dt) override;
+        FBZZ_PHYSICS_API void SolvePosition(float dt) override;
+        FBZZ_PHYSICS_API void ApplyForce(float dt) override;
         ConstraintType GetType() const override { return ConstraintType::HINGE; }
 
-        void SetLimits(float minAngleRad, float maxAngleRad);
-        void ClearLimits();
-        void SetMotor(float targetAngularSpeed, float maxTorque);
-        void ClearMotor();
+        FBZZ_PHYSICS_API void SetLimits(float minAngleRad, float maxAngleRad);
+        FBZZ_PHYSICS_API void ClearLimits();
+        FBZZ_PHYSICS_API void SetMotor(float targetAngularSpeed, float maxTorque);
+        FBZZ_PHYSICS_API void ClearMotor();
 
         math::Vector3 m_localAnchorA;
         math::Vector3 m_localAnchorB;
@@ -40,6 +41,6 @@ namespace fbzz::physics
     private:
         math::Vector3 m_referenceA;
         math::Vector3 m_referenceB;
-        float CurrentAngle() const;
+        FBZZ_PHYSICS_API float CurrentAngle() const;
     };
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

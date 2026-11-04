@@ -20,6 +20,8 @@ template<typename Tag>
 struct ResourceHandle {
     uint32_t id = 0;
     uint32_t gen = 0;
+    /// @note 作成元 Manager の寿命 ID。別 Manager の同じ slot / generation と区別する。
+    uint64_t owner = 0;
 
     [[nodiscard]] bool IsValid() const { return id != 0; }
     explicit operator bool() const { return IsValid(); }

@@ -13,13 +13,11 @@ namespace fbzz::renderer {
 
 namespace {
 
-/// @note Active() を使う理由: Material は Model/MaterialComponent/各パスのキャッシュへ埋め込まれて
-/// @note       畳まれるため、破棄地点へ ResourceManager& を渡す経路が無い。ResourceManager より後に
-/// @note       消える Material では Active() が空になり、そのときは解放先が無いので何もしない。
+/// @note 作成元が終了済みなら返却せず、別の Manager を経由しない。
 void ReleaseParamsBuffer(ResourceHandle<ConstantBufferTag>& buffer)
 {
     if (!buffer.IsValid()) return;
-    if (ResourceManager* resources = ResourceManager::Active())
+    if (ResourceManager* resources = ResourceManager::FindOwner(buffer.owner))
         resources->Release(buffer);
     buffer = {};
 }

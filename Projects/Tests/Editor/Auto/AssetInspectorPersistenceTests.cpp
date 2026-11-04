@@ -2,6 +2,7 @@
 /// @brief   アセット選択変更・保存再試行と、各形式の原本保護を実ファイルで検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-06
+#include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <Editor/Panels/InspectorPanel.hpp>
@@ -96,6 +97,7 @@ protected:
         editor::AssetDirtyRegistry::DiscardAll();
         editor::InspectorPanel::ResetPendingDataAssetSaves();
         asset::AssetManager::Init(m_resources, util::FileSystem::PathToUtf8(ProjectRoot() / "Assets"));
+        Context().resources = &m_resources;
         m_previous = ImGui::GetCurrentContext();
         m_imgui = ImGui::CreateContext();
         ImGui::SetCurrentContext(m_imgui);

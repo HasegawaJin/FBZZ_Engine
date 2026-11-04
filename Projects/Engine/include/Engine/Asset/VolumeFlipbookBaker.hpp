@@ -2,14 +2,15 @@
 /// @brief   ボリュームを 1 コマずつ GPU でレイマーチし、Flipbook と MV アトラスを焼く。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
+
 /// @note 1 editor フレームにつき 1 コマ進む状態機械。Tick は **レンダラーのフレーム内** で呼ぶこと
 /// @note (DX12 はフレーム外の Dispatch / Submit を捨てる)。
-///
+
 /// @note 各 Tick は «前のフレームで描いたコマを読み戻してから、次のコマを記録する» 順で動く。DX12 の
 /// @note       読み戻しはコマンドキュー上で行われ、同じフレームで描いた直後に読むと未提出のコマンドリストを
 /// @note       飛ばして 1 フレーム前の中身を読んでしまうため、前のフレーム分だけを読む。
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Asset/FlipbookMotionVectorEncoding.hpp>
 #include <Engine/Asset/FluidFireRendering.hpp>
@@ -19,6 +20,7 @@
 #include <Engine/Asset/VolumeFlipbookFluid.hpp>
 #include <Engine/Asset/VolumeFlipbookSources.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
+#include <Graphics/Renderer/OwnedResource.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
@@ -51,14 +53,14 @@ struct VolumeColorRamp {
 };
 
 /// @note VolumeRaymarch.hlsl の EvaluateRamp の写し。
-[[nodiscard]] math::Vector3 EvaluateVolumeRamp(const VolumeColorRamp& ramp, float t);
+[[nodiscard]] FBZZ_ENGINE_API math::Vector3 EvaluateVolumeRamp(const VolumeColorRamp& ramp, float t);
 /// @note 全点が同じ色。
-[[nodiscard]] VolumeColorRamp UniformVolumeRamp(const math::Vector3& color);
+[[nodiscard]] FBZZ_ENGINE_API VolumeColorRamp UniformVolumeRamp(const math::Vector3& color);
 /// @note 左端から右端へ等間隔に 4 色を置く。
-[[nodiscard]] VolumeColorRamp EvenVolumeRamp(const math::Vector3& c0, const math::Vector3& c1,
+[[nodiscard]] FBZZ_ENGINE_API VolumeColorRamp EvenVolumeRamp(const math::Vector3& c0, const math::Vector3& c1,
                                              const math::Vector3& c2, const math::Vector3& c3);
 /// @note 温度 → 黒 → 暗い赤 → 橙 → ほぼ白。
-[[nodiscard]] VolumeColorRamp DefaultFireRamp();
+[[nodiscard]] FBZZ_ENGINE_API VolumeColorRamp DefaultFireRamp();
 
 /// @note liquid が 1 の puff の描き方。密度が threshold を跨ぐところを表面として陰影を付ける。
 struct VolumeLiquidSettings {
@@ -176,28 +178,28 @@ struct VolumeFlipbookCamera {
     math::Vector3 toLight;
 };
 
-[[nodiscard]] VolumeFlipbookCamera ComputeVolumeFlipbookCamera(const VolumeFlipbookBakeSettings& settings);
+[[nodiscard]] FBZZ_ENGINE_API VolumeFlipbookCamera ComputeVolumeFlipbookCamera(const VolumeFlipbookBakeSettings& settings);
 
 /// @note 焼いた Atlas を FPS モードでループ再生してよいか
 /// @note (解析ソースで canLoop かつ loop のとき、または流体ソースで fluidLoop のとき)。
-[[nodiscard]] bool VolumeBakeLoops(const VolumeFlipbookBakeSettings& settings);
+[[nodiscard]] FBZZ_ENGINE_API bool VolumeBakeLoops(const VolumeFlipbookBakeSettings& settings);
 
 /// @note 流体ソースのループで、最終コマの後ろへ余分に解いて先頭へ重ねるコマ数。ループしなければ 0。
     /// @note 2D の FluidBaker と同じ FluidLoopOverlapFrames を使う。
-[[nodiscard]] int VolumeLoopOverlapFrames(const VolumeFlipbookBakeSettings& settings);
+[[nodiscard]] FBZZ_ENGINE_API int VolumeLoopOverlapFrames(const VolumeFlipbookBakeSettings& settings);
 /// @note 先頭から index コマ目に残す «元のコマ» の割合 ((index + 1) / (overlap + 1))。
 /// @note 残りは余分に解いた index コマ目 (最終コマの続き) から混ぜる。0 コマ目ほど続きの割合が大きい。
-[[nodiscard]] float VolumeLoopKeepWeight(int index, int overlap);
+[[nodiscard]] FBZZ_ENGINE_API float VolumeLoopKeepWeight(int index, int overlap);
 /// @note 歪みマップの 1 画素 (0..1)。screenVelocity は画面の右・上向きの速度 [bake 単位/秒]。
 /// @note 符号化の規則はここが唯一の記述で、2D の FluidBaker (FluidShading::Distortion) と同一:
 /// @note   RG = 0.5 + (右, 下) の向き × min(速さ, 1) × scale («+U 右 / +V 下»)。速さ 1 より上は頭打ちで、
 /// @note   向きは常に保つ。長さ 0.5 の切り詰めは scale > 0.5 のときだけ働く安全網。
 /// @note B = 0.5 (2D と同じ)、A = coverage。
-[[nodiscard]] math::Vector4 EncodeVolumeDistortion(math::Vector2 screenVelocity, float coverage, float scale);
+[[nodiscard]] FBZZ_ENGINE_API math::Vector4 EncodeVolumeDistortion(math::Vector2 screenVelocity, float coverage, float scale);
 
-inline constexpr std::uint8_t kFramingCutByVolumeBox = 1u << 0; ///< 箱 [-1,1] の面で煙が切れる
-inline constexpr std::uint8_t kFramingCutByTileEdge = 1u << 1;  ///< タイルの縁で煙が切れる
-inline constexpr std::uint8_t kFramingTooManyPuffs = 1u << 2;   ///< kVolumeFillMaxPuffs を超えて捨てる puff がある
+inline constexpr std::uint8_t kFramingCutByVolumeBox = 1u << 0; ///< @note 箱 [-1,1] の面で煙が切れる
+inline constexpr std::uint8_t kFramingCutByTileEdge = 1u << 1;  ///< @note タイルの縁で煙が切れる
+inline constexpr std::uint8_t kFramingTooManyPuffs = 1u << 2;   ///< @note kVolumeFillMaxPuffs を超えて捨てる puff がある
 
 struct VolumeFramingReport {
     /// @note コマごとの kFraming* のビット和。
@@ -212,7 +214,7 @@ struct VolumeFramingReport {
 /// @note 焼く前に、各コマで煙が箱やタイルの縁にかかりそうかを解析的に見積もる。
 /// @note 縁で切れた煙はパーティクルにすると «四角い板» として見える。焼いてからでは何十コマも
 /// @note       作り直しになるため、設定を触っている間に知らせる。
-[[nodiscard]] VolumeFramingReport AnalyzeVolumeFraming(const VolumeFlipbookBakeSettings& settings);
+[[nodiscard]] FBZZ_ENGINE_API VolumeFramingReport AnalyzeVolumeFraming(const VolumeFlipbookBakeSettings& settings);
 
 enum class VolumePreviewView : std::uint8_t { Color, Alpha };
 enum class VolumePreviewBackground : std::uint8_t { Dark, Light, Checker };
@@ -286,52 +288,52 @@ enum class VolumeFlipbookBakeState : std::uint8_t {
 
 class VolumeFlipbookBaker {
 public:
-    ~VolumeFlipbookBaker();
+    FBZZ_ENGINE_API ~VolumeFlipbookBaker();
     /// @note 検証と CPU / GPU バッファの確保。失敗したら outError に理由を入れて false。
-    [[nodiscard]] bool Begin(const VolumeFlipbookBakeSettings& settings,
+    [[nodiscard]] FBZZ_ENGINE_API bool Begin(const VolumeFlipbookBakeSettings& settings,
                              renderer::ResourceManager& resources, std::string& outError);
     /// @note 1 コマ進める。フレーム内で毎フレーム呼ぶ。
-    void Tick(renderer::IRenderer& renderer, renderer::ResourceManager& resources);
+    FBZZ_ENGINE_API void Tick(renderer::IRenderer& renderer, renderer::ResourceManager& resources);
     /// @note source.startTime から time 秒後を、表示用の色でプレビュー RT へ描く (読み戻しなし)。
     /// @note ベイク中は何もしない。
-    void RecordPreview(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
+    FBZZ_ENGINE_API void RecordPreview(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                        const VolumeFlipbookBakeSettings& settings, float time,
                        const VolumePreviewOptions& options = {});
     /// @note レシピをディスクから読まずに «今編集している中身» で解くプレビュー (Fluid Editor のライブ 3D)。
     /// @note recipe が非 null ならそれを解き、recipeRevision が前と変わっていればストリームを開き直す。
     /// @note 開き直しの鍵は従来パスと解像度だけで、浮力を変えても解き直さず «3D プレビューだけ古い絵の
     /// @note       まま» になっていた。中身の版数も鍵に入れて必ず追従させる。
-    void RecordPreview(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
+    FBZZ_ENGINE_API void RecordPreview(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                        const VolumeFlipbookBakeSettings& settings, float time,
                        const VolumePreviewOptions& options, const fluid::FluidRecipe* recipe,
                        std::uint64_t recipeRevision);
-    void Cancel();
-    void Release(renderer::ResourceManager& resources);
+    FBZZ_ENGINE_API void Cancel();
+    FBZZ_ENGINE_API void Release(renderer::ResourceManager& resources);
 
     /// @note 保留中のソルバー切り替えを適用してよいか。false のあいだは前のソルバーのコマを出し続ける。
     /// @note 切り替えは «今開いているものを閉じて解き直す» ため、再生中に当てると絵が途中で飛ぶ。再生の
     /// @note       輪の切れ目 (playhead が 0 へ戻る瞬間) まで待たせるために呼び手が閉じる。
-    void AllowPreviewSwitch(bool allow) noexcept;
+    FBZZ_ENGINE_API void AllowPreviewSwitch(bool allow) noexcept;
     /// @note 適用待ちのソルバー切り替えがあるか (開き直しに失敗した要求は待ちに数えない)。
-    [[nodiscard]] bool HasPendingPreviewSwitch() const noexcept;
+    [[nodiscard]] FBZZ_ENGINE_API bool HasPendingPreviewSwitch() const noexcept;
     /// @note 前のソルバーで描いた絵をまだ出しているか。
-    [[nodiscard]] bool IsPreviewStale() const noexcept;
+    [[nodiscard]] FBZZ_ENGINE_API bool IsPreviewStale() const noexcept;
     /// @note プレビューの開き直しで起きたこと (GPU が使えず CPU へ落ちた/開けなかった)。無ければ空。
     /// @note 焼きの Result().message と分けるのは、焼きが成功した後にプレビューだけこけると成功の要約に
     /// @note       紛れて «ただのヒント» に見えてしまうため。目立たせたい報せを別の口で出す。
-    [[nodiscard]] const std::string& PreviewNote() const noexcept;
+    [[nodiscard]] FBZZ_ENGINE_API const std::string& PreviewNote() const noexcept;
     /// @note 上の報せが «開けなかった» ものか (フォールバックで絵が出ているなら false)。
-    [[nodiscard]] bool PreviewNoteIsFailure() const noexcept;
+    [[nodiscard]] FBZZ_ENGINE_API bool PreviewNoteIsFailure() const noexcept;
     /// @note 今のプレビューを GPU で解いているか (焼きと同じソルバーを見ているかの確認用)。
     [[nodiscard]] bool PreviewUsesGpu() const noexcept { return m_previewUsesGpu; }
 
     /// @note 直近のベイク結果の Atlas を 1 度だけ引き渡す (以後は空)。無ければ false。
-    [[nodiscard]] bool TakeBakedFlipbook(BakedVolumeFlipbook& out);
+    [[nodiscard]] FBZZ_ENGINE_API bool TakeBakedFlipbook(BakedVolumeFlipbook& out);
 
     /// @note プレビュー RT の色タイル (supersampling を縮めた tile × tile、RGBA8 sRGB) を読み戻す。
     /// @note RecordPreview で描いたフレームより «後の» フレームで呼ぶこと (読み戻しの理由はファイル先頭)。
     /// @note PreviewPending() の間・ベイク中・RT が無いときは false。
-    [[nodiscard]] bool ReadbackPreview(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
+    [[nodiscard]] FBZZ_ENGINE_API bool ReadbackPreview(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                                        std::vector<std::uint8_t>& outRgba8, std::uint32_t& outWidth,
                                        std::uint32_t& outHeight);
 
@@ -382,54 +384,55 @@ private:
     };
 
     /// @note head = tail + (head − tail) × keep。ストレートの値は覆いで重み付けする。
-    static void BlendLoopTile(CapturedTile& head, const CapturedTile& tail, float keep, bool distortion);
+    FBZZ_ENGINE_API static void BlendLoopTile(CapturedTile& head, const CapturedTile& tail, float keep, bool distortion);
     /// @note 縮めたコマを frame 番目のタイルとして Atlas へ書く。
-    void CommitTile(int frame, const CapturedTile& tile);
-    [[nodiscard]] bool EnsureGpu(renderer::ResourceManager& resources, std::uint32_t volumeResolution,
+    FBZZ_ENGINE_API void CommitTile(int frame, const CapturedTile& tile);
+    [[nodiscard]] FBZZ_ENGINE_API bool EnsureGpu(renderer::ResourceManager& resources, std::uint32_t volumeResolution,
                                  std::uint32_t tileSize, std::string& outError);
-    void RecordFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
+    FBZZ_ENGINE_API void RecordFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                      const VolumeFlipbookBakeSettings& settings, const std::vector<VolumePuff>& puffs,
                      float time, std::uint32_t displayMode, std::uint32_t background,
                      const VolumeFlipbookCamera* cameraOverride = nullptr);
-    void RecordFluidFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
+    FBZZ_ENGINE_API void RecordFluidFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                           const VolumeFlipbookBakeSettings& settings, const PackedFluidVolume& volume,
                           std::uint32_t displayMode, std::uint32_t background, float time,
                           const VolumeFlipbookCamera* cameraOverride = nullptr);
-    void RecordRaymarch(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
+    FBZZ_ENGINE_API void RecordRaymarch(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                         const VolumeFlipbookBakeSettings& settings, std::uint32_t displayMode,
                         std::uint32_t background, float time,
                         const VolumeFlipbookCamera* cameraOverride = nullptr);
     /// @note 書き出し (別スレッド)。失敗したら理由を返す。
-    [[nodiscard]] std::string WriteOutputs(const std::filesystem::path& base) const;
-    void FinishOutputs();
-    [[nodiscard]] bool EnsureFluidGpu(renderer::ResourceManager& resources, std::uint32_t resolution,
+    [[nodiscard]] FBZZ_ENGINE_API std::string WriteOutputs(const std::filesystem::path& base) const;
+    FBZZ_ENGINE_API void FinishOutputs();
+    [[nodiscard]] FBZZ_ENGINE_API bool EnsureFluidGpu(renderer::ResourceManager& resources, std::uint32_t resolution,
                                       std::string& outError);
     /// @note m_previewRequested を実際に開き直す。成功したときだけ m_previewOpen を書き換える。
     /// @note recipe が非 null ならディスクを読まずにそれを解く。
-    [[nodiscard]] bool ApplyPendingPreviewSwitch(renderer::ResourceManager& resources, const fluid::FluidRecipe* recipe,
+    [[nodiscard]] FBZZ_ENGINE_API bool ApplyPendingPreviewSwitch(renderer::ResourceManager& resources, const fluid::FluidRecipe* recipe,
                                                  std::string& outError);
-    void ReleaseFluidGpu(renderer::ResourceManager& resources);
-    [[nodiscard]] bool CaptureFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources);
-    void Finish();
-    void Fail(std::string message);
-    void ReleaseCpuBuffers();
+    FBZZ_ENGINE_API void BindGpuOwner(renderer::ResourceManager& resources);
+    FBZZ_ENGINE_API void ReleaseFluidGpu(renderer::ResourceManager& resources);
+    [[nodiscard]] FBZZ_ENGINE_API bool CaptureFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources);
+    FBZZ_ENGINE_API void Finish();
+    FBZZ_ENGINE_API void Fail(std::string message);
+    FBZZ_ENGINE_API void ReleaseCpuBuffers();
 
     renderer::ResourceHandle<renderer::ShaderTag> m_fillShader;
     renderer::ResourceHandle<renderer::ShaderTag> m_raymarchShader;
-    renderer::ResourceHandle<renderer::PipelineStateTag> m_pipeline;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> m_fillConstants;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> m_raymarchConstants;
+    renderer::OwnedResource<renderer::PipelineStateTag> m_pipeline;
+    renderer::OwnedResource<renderer::ConstantBufferTag> m_fillConstants;
+    renderer::OwnedResource<renderer::ConstantBufferTag> m_raymarchConstants;
     /// @note DX12 の DYNAMIC な StructuredBuffer は 1 枚の Upload Heap へ直接 memcpy する。1 枚を毎
     /// @note       フレーム書き換えると GPU がまだ読んでいない前のフレームの puff を上書きしてしまうため
     /// @note       (フレームは最大 2 枚まで同時に走る)、3 枚を輪番で使い書く 1 枚は必ず読み終わっている。
     static constexpr std::size_t kPuffBufferRing = 3;
-    std::array<renderer::ResourceHandle<renderer::StructuredBufferTag>, kPuffBufferRing> m_puffBuffers{};
+    std::array<renderer::OwnedResource<renderer::StructuredBufferTag>, kPuffBufferRing> m_puffBuffers{};
     std::size_t m_puffRing = 0;
     renderer::ResourceHandle<renderer::ShaderTag> m_uploadShader;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> m_uploadConstants;
+    renderer::OwnedResource<renderer::ConstantBufferTag> m_uploadConstants;
     /// @note 流体の媒質・速度。puff と同じ理由で 3 枚を輪番で使う。
-    std::array<renderer::ResourceHandle<renderer::StructuredBufferTag>, kPuffBufferRing> m_fluidMediumBuffers{};
-    std::array<renderer::ResourceHandle<renderer::StructuredBufferTag>, kPuffBufferRing> m_fluidVelocityBuffers{};
+    std::array<renderer::OwnedResource<renderer::StructuredBufferTag>, kPuffBufferRing> m_fluidMediumBuffers{};
+    std::array<renderer::OwnedResource<renderer::StructuredBufferTag>, kPuffBufferRing> m_fluidVelocityBuffers{};
     std::size_t m_fluidRing = 0;
     std::uint32_t m_fluidResolution = 0;
     FluidVolumeStream m_fluidBake;
@@ -484,12 +487,13 @@ private:
     /// @note ベイクの後の RT には表示用でない生の値 (supersampling 倍) が残っていて、読んでも絵にならない。
     std::uint32_t m_previewTile = 0;
     VolumeFillFrame m_fill;
-    renderer::ResourceHandle<renderer::TextureTag> m_medium;
-    renderer::ResourceHandle<renderer::TextureTag> m_velocity;
-    renderer::ResourceHandle<renderer::RenderTargetTag> m_target;
+    renderer::OwnedResource<renderer::TextureTag> m_medium;
+    renderer::OwnedResource<renderer::TextureTag> m_velocity;
+    renderer::OwnedResource<renderer::RenderTargetTag> m_target;
     std::uint32_t m_volumeResolution = 0;
     std::uint32_t m_tileSize = 0;
     std::uint64_t m_resetVersion = 0;
+    std::uint64_t m_resourceOwner = 0;
 
     VolumeFlipbookBakeState m_state = VolumeFlipbookBakeState::Idle;
     VolumeFlipbookBakeSettings m_settings;

@@ -3,30 +3,32 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-22
 #pragma once
+#include <Physics/Api.hpp>
 #include <Physics/Constraint.hpp>
 #include <vector>
 
 namespace fbzz::physics
 {
-    /// 隣接ボディ同士の距離を反復補正する。布やロープの簡易表現用。
+    /// @note 隣接ボディ同士の距離を反復補正する。布やロープの簡易表現用。
     class ChainConstraint : public Constraint
     {
     public:
-        ChainConstraint(std::vector<RigidBody*> bodies, float segmentLength, int solverIterations = 4);
+        FBZZ_PHYSICS_API ChainConstraint(std::vector<RigidBody*> bodies, float segmentLength, int solverIterations = 4);
 
-        /// 位置制約として解くため、力の段階では何もしない。
-        void ApplyForce(float /*dt*/) override {}
-        void SolvePosition(float dt) override;
+        /// @note 位置制約として解くため、力の段階では何もしない。
+        /// @note dt
+        void ApplyForce(float ) override {}
+        FBZZ_PHYSICS_API void SolvePosition(float dt) override;
         ConstraintType GetType() const override { return ConstraintType::CHAIN; }
 
         const std::vector<RigidBody*>& GetBodies() const { return m_bodies; }
 
         /// @note 公開する理由: 他の制約 (m_distance / m_maxLength / m_stiffness) と同じく張ったあとに
-        ///       調整する値。連なりだけは並びの整合が要るので private に残す。
+        /// @note 調整する値。連なりだけは並びの整合が要るので private に残す。
         float m_segmentLength = 1.0f;
         int m_solverIterations = 4;
 
     private:
         std::vector<RigidBody*> m_bodies;
     };
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

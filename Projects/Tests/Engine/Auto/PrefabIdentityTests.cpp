@@ -14,6 +14,7 @@
 #include <Engine/Util/FileSystem.hpp>
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -166,6 +167,50 @@ TEST_F(PrefabIdentityTest, PoolReusesSameBucketAndLimitAcrossGuidHintChanges)
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{ 6.0f, 0.0f, 0.0f }), 1e-5f);
     EXPECT_EQ(scene::PrefabPool::LiveCount(source, m_reference), 1u);
     EXPECT_EQ(scene::PrefabPool::AvailableCount(source, m_reference), 0u);
+}
+
+
+TEST_F(PrefabIdentityTest, DestroyedSceneAddressAndEntityIdCannotReviveAnOldPoolEntry)
+{
+    std::optional<scene::Scene> storage(std::in_place);
+    const auto* address = &*storage;
+    auto& old = storage->CreateGameObject("Pooled");
+    const auto oldId = old.GetID(); old.prefabAssetPath = m_reference;
+    ASSERT_TRUE(scene::PrefabPool::Despawn(*storage, old));
+    ASSERT_EQ(scene::PrefabPool::AvailableCount(*storage, m_reference), 1u);
+    storage.reset();
+    storage.emplace();
+    ASSERT_EQ(&*storage, address);
+    auto& unrelated = storage->CreateGameObject("Unrelated");
+    ASSERT_EQ(unrelated.GetID(), oldId); unrelated.SetActive(false);
+    EXPECT_EQ(scene::PrefabPool::AvailableCount(*storage, m_reference), 0u);
+    EXPECT_EQ(scene::PrefabPool::Spawn(*storage, m_reference, {}, math::Quaternion::Identity()), nullptr);
+    EXPECT_FALSE(unrelated.activeSelf()); EXPECT_EQ(unrelated.name, "Unrelated");
+}
+
+TEST_F(PrefabIdentityTest, ClearAndMoveDoNotCarryPoolEntriesIntoAnotherSceneLifetime)
+{
+    scene::Scene source, destination;
+    auto& pooled = source.CreateGameObject("Pooled"); pooled.prefabAssetPath = m_reference;
+    ASSERT_TRUE(scene::PrefabPool::Despawn(source, pooled));
+    destination = std::move(source);
+    EXPECT_EQ(scene::PrefabPool::AvailableCount(destination, m_reference), 0u);
+    EXPECT_EQ(scene::PrefabPool::AvailableCount(source, m_reference), 0u);
+    auto* moved = destination.Find("Pooled"); ASSERT_NE(moved, nullptr);
+    ASSERT_TRUE(scene::PrefabPool::Despawn(destination, *moved));
+    destination.Clear();
+    EXPECT_EQ(scene::PrefabPool::AvailableCount(destination, m_reference), 0u);
+    EXPECT_EQ(scene::PrefabPool::LiveCount(destination, m_reference), 0u);
+}
+
+TEST_F(PrefabIdentityTest, RejectsReturningAnObjectOwnedByAnotherScene)
+{
+    scene::Scene source, other;
+    auto& pooled = source.CreateGameObject("Pooled"); pooled.prefabAssetPath = m_reference;
+    EXPECT_FALSE(scene::PrefabPool::Despawn(other, pooled));
+    EXPECT_TRUE(pooled.activeSelf());
+    EXPECT_EQ(scene::PrefabPool::AvailableCount(source, m_reference), 0u);
+    EXPECT_EQ(scene::PrefabPool::AvailableCount(other, m_reference), 0u);
 }
 
 } /// @note namespace fbzz::tests

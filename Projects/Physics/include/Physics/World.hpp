@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Physics/Api.hpp>
 #include <Physics/RigidBody.hpp>
 #include <Physics/BodyHandle.hpp>
 #include <Physics/BroadPhaseDebugSnapshot.hpp>
@@ -67,18 +68,20 @@ namespace fbzz::physics
     class World
     {
     public:
-        void BeginSceneSync();
+        /// @note 外部所有の形状・剛体は寿命証明付きで借用する。破棄後は次の同期前も query 候補にしない。
+        /// @pre 同期・個体の変更・破棄は所有スレッドのみ。並行 read query と重ねない。
+        FBZZ_PHYSICS_API void BeginSceneSync();
         /// @note RigidBody の所有権は RigidBodyComponent (unique_ptr) が持つ。
         /// @note World はフレーム中の参照を非所有ポインタとして受け取るだけ。
-        BodyHandle SyncBody(BodyHandle handle, RigidBody* body);
-        ColliderHandle SyncCollider(ColliderHandle handle, ColliderInstance collider);
+        FBZZ_PHYSICS_API BodyHandle SyncBody(BodyHandle handle, RigidBody* body);
+        FBZZ_PHYSICS_API ColliderHandle SyncCollider(ColliderHandle handle, ColliderInstance collider);
         /// @note Volume は PhysicsSystem が毎フレーム生成する使い捨てオブジェクト。
         /// @note World が unique_ptr で所有し、EndSceneSync で未参照のものを自動破棄する。
-        VolumeHandle SyncVolume(VolumeHandle handle, std::unique_ptr<Volume> volume);
-        void EndSceneSync();
+        FBZZ_PHYSICS_API VolumeHandle SyncVolume(VolumeHandle handle, std::unique_ptr<Volume> volume);
+        FBZZ_PHYSICS_API void EndSceneSync();
         /// @note Constraint は AddConstraint 呼び出し側が生成して World へ移譲する。
         /// @note World が唯一の所有者となり、World 破棄時に一括解放される。
-        void AddConstraint(std::unique_ptr<Constraint> constraint);
+        FBZZ_PHYSICS_API void AddConstraint(std::unique_ptr<Constraint> constraint);
 
         /// @name シーン同期で張る制約
         /// @note BeginSceneSync / EndSceneSync の窓の中で申告する。申告が途切れた制約は
@@ -88,24 +91,24 @@ namespace fbzz::physics
         /// @note FixedConstraint は構築時の相対姿勢を基準に抱えるため、Volume と違い
         /// @note 毎フレーム作り直させると基準が «今の姿勢» へ書き換わり続けてしまう。
         /// @{
-        ConstraintHandle SyncConstraint(ConstraintHandle handle, std::unique_ptr<Constraint> constraint);
+        FBZZ_PHYSICS_API ConstraintHandle SyncConstraint(ConstraintHandle handle, std::unique_ptr<Constraint> constraint);
         /// @brief 既存の制約をそのまま今フレームも生かす申告。作り直しが要らないときに使う。
         /// @return false ならそのハンドルは既に無効 (作り直しが必要)。
-        bool KeepConstraint(ConstraintHandle handle);
+        FBZZ_PHYSICS_API bool KeepConstraint(ConstraintHandle handle);
         /// @brief 同期で張った制約への非所有参照。パラメーターだけを書き換えるために使う。
-        [[nodiscard]] Constraint* FindConstraint(ConstraintHandle handle) const;
-        void RemoveConstraint(ConstraintHandle handle);
+        [[nodiscard]] FBZZ_PHYSICS_API Constraint* FindConstraint(ConstraintHandle handle) const;
+        FBZZ_PHYSICS_API void RemoveConstraint(ConstraintHandle handle);
         /// @}
 
         /// @brief 今フレーム有効な制約すべて (AddConstraint 分 + 同期分)。
-        const std::vector<Constraint*>& GetConstraints() const;
+        FBZZ_PHYSICS_API const std::vector<Constraint*>& GetConstraints() const;
 
         /// @brief サブステップ、Volume、制約、衝突検出、衝突解決、イベント分類をこの順で実行する。
         /// @param layerFilter 渡すとその 1 回だけ使い、渡さなければ SetCollisionMatrix の値が効く。
-        void Step(float dt, std::function<bool(int, int)> layerFilter = nullptr);
+        FBZZ_PHYSICS_API void Step(float dt, std::function<bool(int, int)> layerFilter = nullptr);
 
         /// @pre Owner thread only, outside Step. UI publishes requests through its owning system.
-        void SetBroadPhaseDebugRequest(const BroadPhaseDebugRequest& request);
+        FBZZ_PHYSICS_API void SetBroadPhaseDebugRequest(const BroadPhaseDebugRequest& request);
         [[nodiscard]] uint64_t GetBroadPhaseDebugWorldEpoch() const { return m_debugEpoch.value; }
         /// @note Owner-thread read; the immutable result can be retained across removal, reset and World destruction.
         [[nodiscard]] std::shared_ptr<const BroadPhaseDebugSnapshot> GetBroadPhaseDebugSnapshot() const
@@ -138,16 +141,16 @@ namespace fbzz::physics
             return !m_hasCollisionMatrix || m_collisionMatrix.CanCollide(a, b);
         }
 
-        void          SetGravity(const math::Vector3& gravity);
+        FBZZ_PHYSICS_API void          SetGravity(const math::Vector3& gravity);
         math::Vector3 GetGravity() const { return m_gravity; }
-        void SetSubsteps(int substeps);
+        FBZZ_PHYSICS_API void SetSubsteps(int substeps);
         int  GetSubsteps() const { return m_substeps; }
 
         /// @name Step() 後に参照する衝突イベント
         /// @{
-        const std::vector<CollisionEvent>& GetEnterEvents() const;
-        const std::vector<CollisionEvent>& GetStayEvents()  const;
-        const std::vector<CollisionEvent>& GetExitEvents()  const;
+        FBZZ_PHYSICS_API const std::vector<CollisionEvent>& GetEnterEvents() const;
+        FBZZ_PHYSICS_API const std::vector<CollisionEvent>& GetStayEvents()  const;
+        FBZZ_PHYSICS_API const std::vector<CollisionEvent>& GetExitEvents()  const;
         /// @}
 
         /// @name レイキャスト / 形状クエリ
@@ -172,20 +175,20 @@ namespace fbzz::physics
 
         /// @brief 最も近い 1 件のみ返す。
         /// @return hit の有無。
-        bool Raycast(const math::Vector3& origin,
+        FBZZ_PHYSICS_API bool Raycast(const math::Vector3& origin,
                      const math::Vector3& direction,
                      float                maxDistance,
                      RaycastHit&          hit,
                      ColliderFilter        filter = nullptr) const;
 
         /// @brief 全ヒットを距離昇順で返す。
-        std::vector<RaycastHit> RaycastAll(const math::Vector3& origin,
+        FBZZ_PHYSICS_API std::vector<RaycastHit> RaycastAll(const math::Vector3& origin,
                                            const math::Vector3& direction,
                                            float                maxDistance,
                                            ColliderFilter        filter = nullptr) const;
 
         /// @brief 球形スイープ (Sphere Cast)。最も近い 1 件のみ返す。
-        bool SphereCast(const math::Vector3& origin,
+        FBZZ_PHYSICS_API bool SphereCast(const math::Vector3& origin,
                         float                radius,
                         const math::Vector3& direction,
                         float                maxDistance,
@@ -193,14 +196,24 @@ namespace fbzz::physics
                         ColliderFilter        filter = nullptr) const;
 
         /// @brief 球と重なるコライダーを全て返す (順序未定義)。
-        std::vector<const ColliderInstance*> OverlapSphere(
+        FBZZ_PHYSICS_API std::vector<const ColliderInstance*> OverlapSphere(
                         const math::Vector3& center,
                         float                radius,
                         ColliderFilter        filter = nullptr) const;
         /// @}
 
     private:
-        static uint64_t NextDebugWorldEpoch();
+        struct ColliderLifetime {
+            std::weak_ptr<const void> shape;
+            std::weak_ptr<const void> body;
+            [[nodiscard]] bool IsAlive(const ColliderInstance& instance) const
+            { return !shape.expired() && (!instance.body || !body.expired()); }
+        };
+        [[nodiscard]] bool IsLiveCollider(size_t index) const
+        { return m_colliderLifetimes[index].IsAlive(m_colliders[index]); }
+        FBZZ_PHYSICS_API void RetireExpiredRegistrations();
+        FBZZ_PHYSICS_API void RebuildSceneViews();
+        FBZZ_PHYSICS_API static uint64_t NextDebugWorldEpoch();
         struct DebugEpoch
         {
             uint64_t value = NextDebugWorldEpoch();
@@ -212,7 +225,7 @@ namespace fbzz::physics
                 return *this;
             }
         };
-        void CaptureBroadPhaseDebugSnapshot();
+        FBZZ_PHYSICS_API void CaptureBroadPhaseDebugSnapshot();
         DebugEpoch m_debugEpoch;
         uint64_t m_broadPhaseDebugSequence = 0;
         BroadPhaseDebugRequest m_broadPhaseDebugRequest;
@@ -223,9 +236,9 @@ namespace fbzz::physics
             size_t colliderIndex = SIZE_MAX;
             size_t escape = 0;
         };
-        void RefreshQueryIndex();
-        size_t BuildQueryNode(size_t begin, size_t end);
-        [[nodiscard]] bool QueryIndexMatchesColliders() const;
+        FBZZ_PHYSICS_API void RefreshQueryIndex();
+        FBZZ_PHYSICS_API size_t BuildQueryNode(size_t begin, size_t end);
+        [[nodiscard]] FBZZ_PHYSICS_API bool QueryIndexMatchesColliders() const;
         /// @note Collider は外部所有で直接変更可能。境界が同期時点と一致しない問い合わせは全候補へ戻す。
         /// @note 作業状態を書き換えず、filter 内の再入問い合わせと複数スレッドの読み取りを許す。
         template<typename Callback>
@@ -233,7 +246,7 @@ namespace fbzz::physics
         {
             if (!QueryIndexMatchesColliders()) {
                 for (size_t index = 0; index < m_colliders.size(); ++index)
-                    callback(index, m_colliders[index]);
+                    if (IsLiveCollider(index)) callback(index, m_colliders[index]);
                 return;
             }
             for (size_t index = 0; index < m_queryNodes.size();) {
@@ -254,27 +267,27 @@ namespace fbzz::physics
         /// @note World の move を保ちつつ、並行 read query から次の安全点での refit 要求だけを記録する。
         alignas(std::atomic_ref<bool>::required_alignment) mutable bool m_queryUsed = false;
 
-        void RemoveExpiredVolumes();
-        void ApplyForcesAndVolumes(float dt, std::vector<float>& effectiveDts);
-        void ApplyConstraintForces(float dt);
-        void ApplyGravitationalAttraction();
-        void IntegrateBodies(const std::vector<float>& effectiveDts);
-        void SolveConstraintPositions(float dt);
+        FBZZ_PHYSICS_API void RemoveExpiredVolumes();
+        FBZZ_PHYSICS_API void ApplyForcesAndVolumes(float dt, std::vector<float>& effectiveDts);
+        FBZZ_PHYSICS_API void ApplyConstraintForces(float dt);
+        FBZZ_PHYSICS_API void ApplyGravitationalAttraction();
+        FBZZ_PHYSICS_API void IntegrateBodies(const std::vector<float>& effectiveDts);
+        FBZZ_PHYSICS_API void SolveConstraintPositions(float dt);
         /// @brief m_ownedConstraints と制約プールから m_activeConstraints を組み直す。
-        void RebuildConstraintViews();
-        void UpdateColliders();
-        void BroadPhase();
-        void NarrowPhase(bool doWarmStart = false);
-        void Resolve();
-        void WakeSleepingContacts();
-        void UpdateSleepStates(float dt);
-        void ClassifyCollisions();
-        void CCDPhase(float dt);    ///< @note 高速物体のトンネリング防止 (IntegrateBodies の前)
-        bool HasActiveSimulationBodies() const;
+        FBZZ_PHYSICS_API void RebuildConstraintViews();
+        FBZZ_PHYSICS_API void UpdateColliders();
+        FBZZ_PHYSICS_API void BroadPhase();
+        FBZZ_PHYSICS_API void NarrowPhase(bool doWarmStart = false);
+        FBZZ_PHYSICS_API void Resolve();
+        FBZZ_PHYSICS_API void WakeSleepingContacts();
+        FBZZ_PHYSICS_API void UpdateSleepStates(float dt);
+        FBZZ_PHYSICS_API void ClassifyCollisions();
+        FBZZ_PHYSICS_API void CCDPhase(float dt);    ///< @note 高速物体のトンネリング防止 (IntegrateBodies の前)
+        FBZZ_PHYSICS_API bool HasActiveSimulationBodies() const;
         /// @brief Resolve の直前に呼ぶ。接触点の相対速度 (= 衝突直前の勢い) を記録する。
-        void RecordApproachVelocities();
+        FBZZ_PHYSICS_API void RecordApproachVelocities();
         /// @brief Resolve の直後に呼ぶ。実際に加わった法線インパルスを記録する。
-        void RecordContactImpulses();
+        FBZZ_PHYSICS_API void RecordContactImpulses();
 
         math::Vector3 m_gravity = { 0.0f, -9.81f, 0.0f };
         int m_substeps = 1;
@@ -287,17 +300,20 @@ namespace fbzz::physics
         /// @{
         std::vector<RigidBody*>                 m_bodies;
         std::vector<ColliderInstance>           m_colliders;
+        std::vector<ColliderLifetime>           m_colliderLifetimes;
         std::vector<Volume*>                    m_volumes;
         std::vector<std::unique_ptr<Constraint>> m_ownedConstraints;  ///< @note World が唯一の所有者。AddConstraint で置かれた «消えない» ぶん。
         std::vector<Constraint*>                 m_activeConstraints; ///< @note Step() が走らせる非所有ビュー (所有分 + 同期分。RebuildConstraintViews で再構築)
         /// @}
         struct BodySlot {
             RigidBody* body = nullptr;  ///< @note 所有権は RigidBodyComponent が持つ。World は非所有参照のみ保持する。
+            std::weak_ptr<const void> lifetime;
             uint32_t generation = 1;
             bool touched = false;
         };
         struct ColliderSlot {
             ColliderInstance collider;
+            ColliderLifetime lifetime;
             uint32_t generation = 1;
             bool touched = false;
             bool occupied = false;

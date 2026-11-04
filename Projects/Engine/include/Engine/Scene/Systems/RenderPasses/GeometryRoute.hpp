@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Renderer/GeometryRoute.hpp>
 #include <string_view>
 
@@ -18,27 +19,27 @@ using renderer::GeometryRoute;
 
 /// @param shaderPath アセット参照またはパス。未宣言・未知・空欄は非対応。
 /// @note .meta の能力契約と変種セットを要求する。GUID の解決は Engine 側で完結させる。
-[[nodiscard]] bool IsGBufferEquivalentShader(std::string_view shaderPath);
+[[nodiscard]] FBZZ_ENGINE_API bool IsGBufferEquivalentShader(std::string_view shaderPath);
 
 /// @note EnsureMaterialAsset 後に呼ぶ。ロードや GPU 材質の更新は行わない。
 /// @note 未解決・失効済みのアセットは GBuffer 非対応。インスタンスの上書きを優先する。
 /// @note 戻り値は独立した値であり、後続の材質編集・破棄では変化しない。再抽出で反映する。
-[[nodiscard]] renderer::GeometryMaterialInput ExtractGeometryMaterial(const MaterialSlot& slot);
+[[nodiscard]] FBZZ_ENGINE_API renderer::GeometryMaterialInput ExtractGeometryMaterial(const MaterialSlot& slot);
 
 /// @note 呼び出し側で共有アセットを解決済みの場合の入口。nullptr は未解決として扱う。
-[[nodiscard]] renderer::GeometryMaterialInput ExtractGeometryMaterial(
+[[nodiscard]] FBZZ_ENGINE_API renderer::GeometryMaterialInput ExtractGeometryMaterial(
     const MaterialSlot& slot, const asset::MaterialAsset* material);
 
 /// @note 解決済みのシェーダー能力を使う。アセットの探索や .meta の照会は行わない。
 /// @note nullptr はシェーダー能力にかかわらず未解決として扱う。
-[[nodiscard]] renderer::GeometryMaterialInput ExtractGeometryMaterial(
+[[nodiscard]] FBZZ_ENGINE_API renderer::GeometryMaterialInput ExtractGeometryMaterial(
     const MaterialSlot& slot, const asset::MaterialAsset* material, bool shaderSupportsGBuffer);
 
 /// @note Pure route derivation over owned immutable values; no asset/resource access occurs here.
-[[nodiscard]] renderer::GeometryMaterialInput ExtractGeometryMaterial(
+[[nodiscard]] FBZZ_ENGINE_API renderer::GeometryMaterialInput ExtractGeometryMaterial(
     const MaterialSlotAuthoring& slot, const asset::MaterialAssetAuthoring* material, bool shaderSupportsGBuffer);
 
 /// @note フレーム入力へ移行中の描画パス用。抽出後は Renderer の規則に委ねる。
-[[nodiscard]] GeometryRoute ResolveGeometryRoute(const MaterialSlot& slot, bool gbufferPipeline);
+[[nodiscard]] FBZZ_ENGINE_API GeometryRoute ResolveGeometryRoute(const MaterialSlot& slot, bool gbufferPipeline);
 
 } /// @note namespace fbzz::scene

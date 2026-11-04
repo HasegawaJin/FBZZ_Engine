@@ -2,6 +2,7 @@
 /// @brief   シーン編集の共有ヘルパー実装。
 /// @author  Hasegawa Jin
 /// @date    2026-07-08
+#include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/SceneIO.hpp>

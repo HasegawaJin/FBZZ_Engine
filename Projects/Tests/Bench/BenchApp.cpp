@@ -2,6 +2,10 @@
 /// @brief   ビジュアル検証ベンチのホスト実装。
 /// @author  Hasegawa Jin
 /// @date    2026-09-02
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 #include "BenchApp.hpp"
 
 #include "Scenes/Scenes.hpp"
@@ -18,7 +22,7 @@
 #include <chrono>
 #include <filesystem>
 
-/// imgui_impl_win32.h では #if 0 で隠されているため手動で前方宣言する
+/// @note imgui_impl_win32.h では #if 0 で隠されているため手動で前方宣言する
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg,
                                                              WPARAM wParam, LPARAM lParam);
 
@@ -27,17 +31,17 @@ namespace fbzz::bench {
 namespace {
 /// @note 場面側 (XPBD) が自前で substep を刻むので外側まで倍の頻度で回す必要が無い。倍の刻みは倍の負荷になり、重い場面 (ラグドール) では «1 フレームぶんの実時間を進めきれない» 側へ倒れる。
 constexpr float kFixedStep = kBenchFixedStep;
-/// 1 フレームで進める上限。
-///
+/// @note 1 フレームで進める上限。
+
 /// @note 大きいと «遅い→溜まる→もっと刻む→もっと遅い» の循環に入り画面が固まる。上限 2 なら負荷が追い越しても絵はスロー再生になるだけで操作は効く。遅れは m_droppedFrames が申告する。
 constexpr int kMaxStepsPerFrame = 2;
-/// 1 フレームに取り込む実時間の上限 [s]。ブレークポイントで止めた後に一気に飛ぶのを防ぐ。
+/// @note 1 フレームに取り込む実時間の上限 [s]。ブレークポイントで止めた後に一気に飛ぶのを防ぐ。
 constexpr float kMaxFrameDelta = 0.1f;
-/// 刻みに «あと少し» 足りないときも進めてしまう猶予 [s]。
-///
+/// @note 刻みに «あと少し» 足りないときも進めてしまう猶予 [s]。
+
 /// @note 表示 60Hz・刻み 1/60 だと実測 dt のわずかな揺れで «0 回→2 回» が交互に来て、物理は正しいのに絵だけガタつき «物理が不安定» と読み違える。
 constexpr float kStepSnap = 0.0004f;
-/// 表示用のならし係数 (1 フレームぶんの重み)。
+/// @note 表示用のならし係数 (1 フレームぶんの重み)。
 constexpr float kSmoothing = 0.1f;
 constexpr float kFontSize = 17.0f;
 
@@ -91,7 +95,7 @@ ImFont* LoadJapaneseFont(ImGuiIO& io)
     }
     return nullptr;
 }
-} // namespace
+} /// @note namespace
 
 bool BenchApp::OnInit()
 {
@@ -143,7 +147,7 @@ void BenchApp::OnUpdate(float dt)
             ++m_stepsThisFrame;
         }
         /// @note 消化しきれなかったぶんは捨てる。持ち越すと次のフレームも上限に張り付き、
-        ///       一度遅れたら二度と追いつけない。
+        /// @note 一度遅れたら二度と追いつけない。
         if (m_accumulator >= kFixedStep - kStepSnap) {
             m_accumulator = 0.0f;
             ++m_droppedFrames;
@@ -175,7 +179,7 @@ void BenchApp::OnRender()
     auto& renderer = app.GetRenderer();
 
     renderer.BeginFrame();
-    if (auto* resources = renderer::ResourceManager::Active())
+    if (auto* resources = app.GetResourceManager())
         renderer.SetRenderTarget({}, *resources);
     renderer.Clear({0.055f, 0.062f, 0.078f, 1.0f});
 
@@ -194,7 +198,7 @@ void BenchApp::OnShutdown()
     m_scenes.clear();
 
     /// @note ImGui を畳む前にフックを外す。残したまま context を壊すと、終了処理中に来た
-    ///       1 通のメッセージが破棄済みの context を触りに行く。
+    /// @note 1 通のメッセージが破棄済みの context を触りに行く。
     core::Application::Get().GetWindow().SetWndProcHook(nullptr);
 
     core::Application::Get().GetImGuiRenderer().ImGuiShutdown();
@@ -301,7 +305,7 @@ void BenchApp::DrawPerformance()
     }
 }
 
-/// 場面が自分で申告した異常を出す。«目で見て気づけないもの» はここにしか出ない。
+/// @note 場面が自分で申告した異常を出す。«目で見て気づけないもの» はここにしか出ない。
 void BenchApp::DrawAnomalies()
 {
     ImGui::SeparatorText("異常検知");
@@ -337,4 +341,4 @@ void BenchApp::DrawViewportPanel()
     m_view.End();
 }
 
-} // namespace fbzz::bench
+} /// @note namespace fbzz::bench

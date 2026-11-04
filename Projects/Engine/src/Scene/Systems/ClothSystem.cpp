@@ -2,7 +2,9 @@
 /// @brief   格子布の初期化、固定点と接触の同期、描画補間。
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/Systems/ClothSystem.hpp>
+#include "RuntimeMeshUpload.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Asset/ClothAsset.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -369,38 +371,7 @@ ClothContacts Contacts(Scene& scene, const ClothComponent& cloth, EntityID owner
     return result;
 }
 
-bool Upload(ClothComponent& cloth, renderer::ResourceManager& resources)
-{
-    auto& target = cloth.runtimeMesh;
-    target.current ^= 1u;
-    auto& slot = target.slots[target.current];
-    if (!slot) slot = std::make_unique<renderer::Mesh>();
-    auto& mesh = *slot;
-    const auto& builder = cloth.runtime.mesh;
-    const bool topologyChanged = mesh.cpuIndices != builder.Indices();
-    mesh.cpuVertices = builder.Vertices();
-    mesh.cpuIndices = builder.Indices();
-    mesh.vertexCount = builder.VertexCount();
-    mesh.indexCount = builder.IndexCount();
-    mesh.ComputeBounds();
-    if (!mesh.vertexBuffer.IsValid() || mesh.vertexCapacity < mesh.vertexCount) {
-        if (mesh.vertexBuffer.IsValid()) resources.Release(mesh.vertexBuffer);
-        mesh.vertexCapacity = mesh.vertexCount;
-        mesh.vertexBuffer = resources.CreateVertexBuffer(nullptr, mesh.vertexCapacity * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
-    }
-    bool uploadIndices = topologyChanged;
-    if (!mesh.indexBuffer.IsValid() || mesh.indexCapacity < mesh.indexCount) {
-        if (mesh.indexBuffer.IsValid()) resources.Release(mesh.indexBuffer);
-        mesh.indexCapacity = mesh.indexCount;
-        mesh.indexBuffer = resources.CreateIndexBuffer(nullptr, mesh.indexCapacity);
-        uploadIndices = true;
-    }
-    if (!mesh.vertexBuffer.IsValid() || !mesh.indexBuffer.IsValid()) return false;
-    resources.Update(mesh.vertexBuffer, mesh.cpuVertices.data(), mesh.cpuVertices.size() * sizeof(renderer::Vertex));
-    if (uploadIndices) resources.Update(mesh.indexBuffer, mesh.cpuIndices.data(), mesh.cpuIndices.size() * sizeof(uint32_t));
-    return true;
-}
-}
+} /// @note namespace
 
 ComponentAccess ClothSystem::GetAccess() const
 {
@@ -488,6 +459,7 @@ void ClothRenderSystem::Update(SystemContext& ctx)
             cloth->runtime.initialized = false;
             continue;
         }
+        (void)PrepareRuntimeMesh(ctx.scene, id, cloth->runtimeMesh, *ctx.resources);
         if (!EnsureCloth(*cloth, go->transform, !ctx.playing && !ctx.simulating)) {
             if (meshRenderer && meshRenderer->mesh == cloth->runtimeMesh.Current()) meshRenderer->enabled = false;
             continue;
@@ -509,7 +481,7 @@ void ClothRenderSystem::Update(SystemContext& ctx)
         }
         state.mesh.RecalculateNormals();
         state.mesh.RecalculateTangents();
-        if (!Upload(*cloth, *ctx.resources)) { Fail(*cloth); continue; }
+        if (!UploadRuntimeMesh(cloth->runtimeMesh, *ctx.resources, state.mesh.Vertices(), state.mesh.Indices())) continue;
         if (!meshRenderer) meshRenderer = &go->AddComponent<MeshRenderer>();
         meshRenderer->mesh = cloth->runtimeMesh.Current();
         meshRenderer->enabled = true;

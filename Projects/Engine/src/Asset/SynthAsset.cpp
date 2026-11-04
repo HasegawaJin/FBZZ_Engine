@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
 #include <Engine/Asset/SynthAsset.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Engine/Audio/Synth.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -72,7 +73,7 @@ bool LoadSynthAssetFromFile(std::string_view path, SynthAsset& outAsset)
     }
 
     /// @note パラメーターは今後増えるため、欠損キーは既定のままにする。書いていない項目を
-    ///       エラーにすると、既存の .synth が engine 更新のたびに読めなくなる。
+    /// @note エラーにすると、既存の .synth が engine 更新のたびに読めなくなる。
     const toml::table& root = parsed.table();
     const toml::table* table = root["synth"].as_table();
     if (!table) table = &root;
@@ -120,7 +121,7 @@ bool SaveSynthAssetToFile(std::string_view path, const SynthAsset& asset)
     const audio::SynthSpec& spec = asset.spec;
 
     /// @note 全項目を書くと「何も触っていないのに 20 行」になり、git の差分から
-    ///       「どこを調整したか」が読めなくなるため、既定値と同じ項目は書かない (FbxMetaSerializer と同方針)。
+    /// @note 「どこを調整したか」が読めなくなるため、既定値と同じ項目は書かない (FbxMetaSerializer と同方針)。
     const audio::SynthSpec defaults;
     toml::table table;
     const auto writeFloat = [&table](const char* key, float value, float defaultValue) {
@@ -170,4 +171,4 @@ bool SaveSynthAssetToFile(std::string_view path, const SynthAsset& asset)
     return true;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

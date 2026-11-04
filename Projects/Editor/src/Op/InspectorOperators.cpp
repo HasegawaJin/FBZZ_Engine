@@ -2,10 +2,13 @@
 /// @brief   Inspector が持っていた操作を Operator として公開する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
-///
+
 /// @note  Transform の Copy / Paste / Reset とコンポーネントの並べ替えは Inspector のヘッダー右クリック
 /// @note  メニューにしか無く、コマンドパレット・ホットキー・AI から到達できなかった。
 /// @see Docs/design/editor-operator-model.md
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Editor/Op/OperatorGroups.hpp>
 #include <Editor/Op/ScriptConfigure.hpp>
 #include <Editor/Op/ScriptApiCatalog.hpp>
@@ -14,6 +17,8 @@
 #include <Editor/Util/ComponentDefaults.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/WaterAuthoringValues.hpp>
+#include "../Panels/Inspector/InspectorCore.hpp"
+#include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -354,6 +359,27 @@ void RegisterInspectorOperators(OperatorRegistry& registry)
 
     registerMove("component.move_up", "Move Component Up", false);
     registerMove("component.move_down", "Move Component Down", true);
+
+    {
+        EditorOperator op;
+        op.id = "component.ui_image.set_native_size";
+        op.label = "Set Native Size";
+        op.category = "Inspector";
+        op.kind = OpKind::Action;
+        op.desc = "UIImageの原寸をストレッチしていない軸に適用する。Undo対応。";
+        op.params = {NodeParam()};
+        op.poll = [](const OpContext& context, const OpArgs& args) {
+            auto* object = ResolveNode(context, args.GetString("node"));
+            return object && object->GetComponent<scene::UIImage>();
+        };
+        op.exec = [](OpContext& context, const OpArgs& args) {
+            auto* object = ResolveNode(context, args.GetString("node"));
+            if (!object || !SetUIImageNativeSize(*object, context.ctx))
+                return OpResult::Err("NATIVE_SIZE_UNAVAILABLE", "画像の原寸を取得できないか、両軸がストレッチされています。");
+            return OpResult::Ok();
+        };
+        registry.Register(std::move(op));
+    }
 
     {
         EditorOperator op;

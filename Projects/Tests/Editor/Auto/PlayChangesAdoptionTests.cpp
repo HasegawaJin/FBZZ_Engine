@@ -2,6 +2,13 @@
 /// @brief   Native and generated Play adoption preserves Edit identities and checked all-or-nothing history.
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
+#include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/ConstraintComponents.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <Editor/PlayModeController.hpp>

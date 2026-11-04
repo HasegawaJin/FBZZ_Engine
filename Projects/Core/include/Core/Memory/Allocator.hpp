@@ -4,6 +4,7 @@
 /// @date    2026-06-01
 /// @note 各アロケータを同じ呼び出し形で扱い、所有権と統計取得の入口を揃える。
 #pragma once
+#include <Core/Api.hpp>
 
 #include "Core/Memory/AllocationInfo.hpp"
 
@@ -50,14 +51,14 @@ protected:
 
 /// @brief 2 の累乗アラインメントかを調べる共通ヘルパー。
 /// @note std::align とビット丸めは 2 の累乗を前提とするため、assert と戻り値の両方で防御する。
-[[nodiscard]] bool IsPowerOfTwo(std::size_t value);
+[[nodiscard]] FBZZ_CORE_API bool IsPowerOfTwo(std::size_t value);
 
 /// @brief size を alignment 境界へ切り上げる。固定長プールの stride 計算など、次要素の先頭も正しく整列させたい場面で使う。
-[[nodiscard]] std::size_t AlignSize(std::size_t size, std::size_t alignment);
+[[nodiscard]] FBZZ_CORE_API std::size_t AlignSize(std::size_t size, std::size_t alignment);
 
 /// @brief 統計のピーク使用量を更新する。
 /// @note 各アロケータで同じピーク計算を重複させず、意味を統一する。
-void UpdatePeak(MemoryStats& stats);
+FBZZ_CORE_API void UpdatePeak(MemoryStats& stats);
 
 /// @brief allocator からメモリを確保して T を構築する。
 /// @note 直接 new を使わず、アロケータ所有の領域へオブジェクトを配置できるようにする。

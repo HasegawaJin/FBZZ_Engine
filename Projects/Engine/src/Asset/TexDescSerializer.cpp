@@ -202,7 +202,9 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
     tex.insert("aniso",               static_cast<int64_t>(s.anisoLevel));
     tex.insert("alpha_mode",          std::string(AlphaModeToStr(s.alphaMode)));
     tex.insert("alpha_dither",        s.alphaDither);
-    if (s.type == TextureType::Sprite) {
+    /// @note 型を一時的に変えても、切り抜いた矩形と永続IDは著作データとして保持する。
+    /// @note 型を一時的に変えても、切り抜いた矩形と永続IDは著作データとして保持する。
+    if (s.type == TextureType::Sprite || !s.sprites.empty()) {
         tex.insert("sprite_mode",
                    s.spriteMode == SpriteMode::Multiple ? "Multiple" : "Single");
         tex.insert("pixels_per_unit", static_cast<double>(s.pixelsPerUnit));

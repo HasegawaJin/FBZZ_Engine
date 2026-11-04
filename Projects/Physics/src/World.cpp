@@ -404,6 +404,7 @@ static bool SphereOverlapsInstance(const Vector3& center, float radius,
     case ColliderType::AABB:
     case ColliderType::OBB:
     case ColliderType::TRIANGLE_MESH:
+    case ColliderType::HEIGHT_FIELD:
     case ColliderType::CONVEX_HULL: {
         /// @note AABB での保守的判定: 球の中心から AABB 上の最近点への距離
         const AABB aabb = inst.collider->GetAABB();
@@ -497,7 +498,7 @@ namespace fbzz::physics
         for (size_t index = 0; index < m_colliders.size(); ++index) {
             const auto* collider = m_colliders[index].collider;
             refit &= index < m_queryColliders.size() && m_queryColliders[index] == collider;
-            if (!collider) { finite = false; continue; }
+            if (!IsLiveCollider(index)) { finite = false; continue; }
             m_queryBounds[index] = collider->GetAABB();
             finite &= FiniteBounds(m_queryBounds[index]);
         }
@@ -564,13 +565,14 @@ namespace fbzz::physics
         std::atomic_ref<bool>(m_queryUsed).store(true, std::memory_order_relaxed);
         if (m_queryNodes.empty() || m_queryBounds.size() != m_colliders.size()) return false;
         for (size_t index = 0; index < m_colliders.size(); ++index)
-            if (!m_colliders[index].collider
+            if (!IsLiveCollider(index)
                 || !SameBounds(m_queryBounds[index], m_colliders[index].collider->GetAABB())) return false;
         return true;
     }
 
     void World::BeginSceneSync()
     {
+        RetireExpiredRegistrations();
         m_broadPhaseDebugSnapshot.reset();
         m_pendingBroadPhaseDebugSnapshot.reset();
         m_sceneSyncChanged = false;
@@ -587,6 +589,10 @@ namespace fbzz::physics
     BodyHandle World::SyncBody(BodyHandle handle, RigidBody* body)
     {
         if (!body) return {};
+        if (handle.IsValid() && handle.slot <= m_bodyPool.size()) {
+            const auto& slot = m_bodyPool[handle.slot - 1u];
+            if (slot.body && slot.lifetime.expired()) RetireExpiredRegistrations();
+        }
 
         if (handle.IsValid()) {
             const size_t index = static_cast<size_t>(handle.slot - 1u);
@@ -596,16 +602,22 @@ namespace fbzz::physics
                 !m_bodyPool[index].touched)
             {
                 m_bodyPool[index].body = body;
+                m_bodyPool[index].lifetime = body->m_registrationLifetime.Observe();
                 m_bodyPool[index].touched = true;
                 return handle;
             }
         }
 
         for (size_t i = 0; i < m_bodyPool.size(); ++i) {
+            if (m_bodyPool[i].body == body && m_bodyPool[i].lifetime.expired()) {
+                RetireExpiredRegistrations();
+                return SyncBody({}, body);
+            }
             if (m_bodyPool[i].body == body && !m_bodyPool[i].touched) {
                 /// @note Handle は Scene 側 Component に保持されるが、コピー・再生成・初期化順で
                 /// @note stale/invalid になりうる。同じ RigidBody* が既に World にあるなら新規
                 /// @note slot を作らず既存 slot を再接続し、pool の肥大化を防ぐ。
+                m_bodyPool[i].lifetime = body->m_registrationLifetime.Observe();
                 m_bodyPool[i].touched = true;
                 return { static_cast<uint32_t>(i + 1u), m_bodyPool[i].generation };
             }
@@ -614,6 +626,7 @@ namespace fbzz::physics
         for (size_t i = 0; i < m_bodyPool.size(); ++i) {
             if (!m_bodyPool[i].body) {
                 m_bodyPool[i].body = body;
+                m_bodyPool[i].lifetime = body->m_registrationLifetime.Observe();
                 m_bodyPool[i].touched = true;
                 m_sceneSyncChanged = true;
                 return { static_cast<uint32_t>(i + 1u), m_bodyPool[i].generation };
@@ -622,6 +635,7 @@ namespace fbzz::physics
 
         BodySlot slot;
         slot.body = body;
+        slot.lifetime = body->m_registrationLifetime.Observe();
         slot.touched = true;
         m_bodyPool.push_back(std::move(slot));
         m_sceneSyncChanged = true;
@@ -631,6 +645,12 @@ namespace fbzz::physics
     ColliderHandle World::SyncCollider(ColliderHandle handle, ColliderInstance collider)
     {
         if (!collider.collider) return {};
+        if (handle.IsValid() && handle.slot <= m_colliderPool.size()) {
+            const auto& slot = m_colliderPool[handle.slot - 1u];
+            if (slot.occupied && !slot.lifetime.IsAlive(slot.collider)) RetireExpiredRegistrations();
+        }
+        const ColliderLifetime lifetime{collider.collider->m_registrationLifetime.Observe(),
+            collider.body ? collider.body->m_registrationLifetime.Observe() : std::weak_ptr<const void>{}};
 
         /// @note 形状は非所有参照で同期前に直接更新されるため、既存 slot でも以前の姿勢・形状との比較はできない。
         /// @note 同期更新は保守的に接触 cache を無効化する。静止形状を毎フレーム同期する場合も再検出が必要になる。
@@ -651,6 +671,7 @@ namespace fbzz::physics
                 !m_colliderPool[index].touched)
             {
                 m_colliderPool[index].collider = std::move(collider);
+                m_colliderPool[index].lifetime = lifetime;
                 m_colliderPool[index].touched = true;
                 m_sceneSyncChanged = true;
                 return handle;
@@ -658,6 +679,11 @@ namespace fbzz::physics
         }
 
         for (size_t i = 0; i < m_colliderPool.size(); ++i) {
+            if (m_colliderPool[i].occupied && m_colliderPool[i].collider.collider == collider.collider
+                && !m_colliderPool[i].lifetime.IsAlive(m_colliderPool[i].collider)) {
+                RetireExpiredRegistrations();
+                return SyncCollider({}, std::move(collider));
+            }
             if (m_colliderPool[i].occupied &&
                 m_colliderPool[i].collider.collider == collider.collider &&
                 !m_colliderPool[i].touched)
@@ -666,6 +692,7 @@ namespace fbzz::physics
                 /// @note 同じ ColliderComponent。既存 slot を再接続し、handle 不整合が毎フレーム
                 /// @note の重複登録へ発展するのを防ぐ。
                 m_colliderPool[i].collider = std::move(collider);
+                m_colliderPool[i].lifetime = lifetime;
                 m_colliderPool[i].touched = true;
                 m_sceneSyncChanged = true;
                 return { static_cast<uint32_t>(i + 1u), m_colliderPool[i].generation };
@@ -675,6 +702,7 @@ namespace fbzz::physics
         for (size_t i = 0; i < m_colliderPool.size(); ++i) {
             if (!m_colliderPool[i].occupied) {
                 m_colliderPool[i].collider = std::move(collider);
+                m_colliderPool[i].lifetime = lifetime;
                 m_colliderPool[i].occupied = true;
                 m_colliderPool[i].touched = true;
                 m_sceneSyncChanged = true;
@@ -684,6 +712,7 @@ namespace fbzz::physics
 
         ColliderSlot slot;
         slot.collider = std::move(collider);
+        slot.lifetime = lifetime;
         slot.occupied = true;
         slot.touched = true;
         m_colliderPool.push_back(std::move(slot));
@@ -727,11 +756,9 @@ namespace fbzz::physics
 
     void World::EndSceneSync()
     {
-        m_bodies.clear();
+        RetireExpiredRegistrations();
         for (auto& slot : m_bodyPool) {
-            if (slot.touched && slot.body) {
-                m_bodies.push_back(slot.body);
-            } else if (slot.body) {
+            if (!slot.touched && slot.body) {
                 /// @note 所有権は Component 側にあるため World はポインタを null するだけ。
                 /// @note Component が破棄されれば unique_ptr により自動解放される。
                 slot.body = nullptr;
@@ -740,11 +767,8 @@ namespace fbzz::physics
             }
         }
 
-        m_colliders.clear();
         for (auto& slot : m_colliderPool) {
-            if (slot.touched && slot.occupied && slot.collider.collider) {
-                m_colliders.push_back(slot.collider);
-            } else if (slot.occupied) {
+            if (!slot.touched && slot.occupied) {
                 slot.collider = {};
                 slot.occupied = false;
                 slot.generation = NextGeneration(slot.generation);
@@ -771,8 +795,68 @@ namespace fbzz::physics
             slot.generation = NextGeneration(slot.generation);
             m_sceneSyncChanged = true;
         }
+        RebuildSceneViews();
         RebuildConstraintViews();
         RefreshQueryIndex();
+    }
+
+    void World::RebuildSceneViews()
+    {
+        m_bodies.clear();
+        for (const auto& slot : m_bodyPool)
+            if (slot.body) m_bodies.push_back(slot.body);
+        m_colliders.clear();
+        m_colliderLifetimes.clear();
+        for (const auto& slot : m_colliderPool) {
+            if (!slot.occupied) continue;
+            m_colliders.push_back(slot.collider);
+            m_colliderLifetimes.push_back(slot.lifetime);
+        }
+    }
+
+    void World::RetireExpiredRegistrations()
+    {
+        bool changed = false;
+        for (auto& slot : m_bodyPool) {
+            if (!slot.body || !slot.lifetime.expired()) continue;
+            slot.body = nullptr;
+            slot.lifetime.reset();
+            slot.generation = NextGeneration(slot.generation);
+            changed = true;
+        }
+        for (auto& slot : m_colliderPool) {
+            if (!slot.occupied || slot.lifetime.IsAlive(slot.collider)) continue;
+            slot.collider = {};
+            slot.lifetime = {};
+            slot.occupied = false;
+            slot.generation = NextGeneration(slot.generation);
+            changed = true;
+        }
+        bool constraintsChanged = std::erase_if(m_ownedConstraints, [](const auto& constraint) {
+            return constraint && !constraint->HasLiveBodies();
+        }) != 0;
+        for (auto& slot : m_constraintPool) {
+            if (!slot.constraint || slot.constraint->HasLiveBodies()) continue;
+            slot.constraint.reset();
+            slot.generation = NextGeneration(slot.generation);
+            constraintsChanged = true;
+        }
+        if (constraintsChanged) { m_sceneSyncChanged = true; RebuildConstraintViews(); }
+        if (!changed) return;
+        /// @note アドレスを再利用した別個体へ接触・warm start・イベントを持ち越さない。
+        m_sceneSyncChanged = true;
+        m_collisionPairs.clear();
+        m_contacts.clear();
+        m_contactCache = {};
+        m_prevEvents.clear();
+        m_enterEvents.clear();
+        m_stayEvents.clear();
+        m_exitEvents.clear();
+        m_frameImpacts.clear();
+        m_queryNodes.clear();
+        m_broadPhaseDebugSnapshot.reset();
+        m_pendingBroadPhaseDebugSnapshot.reset();
+        RebuildSceneViews();
     }
 
     void World::AddConstraint(std::unique_ptr<Constraint> constraint)
@@ -968,6 +1052,7 @@ namespace fbzz::physics
 
     void World::Step(float dt, std::function<bool(int, int)> layerFilter)
     {
+        RetireExpiredRegistrations();
         m_pendingBroadPhaseDebugSnapshot.reset();
         m_layerFilter = layerFilter ? std::move(layerFilter) : m_defaultLayerFilter;
         /// @note Sleep 済みのシーンでは接触集合が変わらず、毎 substep の

@@ -9,7 +9,7 @@
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/RenderLayer.hpp>
 #include <Engine/Renderer/RenderState.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <algorithm>
 #include <array>
 #include <cassert>

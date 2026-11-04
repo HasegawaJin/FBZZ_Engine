@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-22
 #pragma once
+#include <Physics/Api.hpp>
 #include <Physics/Constraint.hpp>
 
 namespace fbzz::physics
@@ -11,17 +12,17 @@ namespace fbzz::physics
     class SpringConstraint : public Constraint
     {
     public:
-        SpringConstraint(RigidBody* bodyA,
+        FBZZ_PHYSICS_API SpringConstraint(RigidBody* bodyA,
                          RigidBody* bodyB,
                          float restLength,
                          float stiffness,
                          float damping);
 
-        void ApplyForce(float dt) override;
+        FBZZ_PHYSICS_API void ApplyForce(float dt) override;
         ConstraintType GetType() const override { return ConstraintType::SPRING; }
 
         float m_restLength = 1.0f;
         float m_stiffness = 10.0f;
         float m_damping = 0.5f;
     };
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

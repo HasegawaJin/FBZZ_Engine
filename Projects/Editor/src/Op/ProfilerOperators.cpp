@@ -4,6 +4,7 @@
 /// @date    2026-10-03
 #include <Editor/Profiler/ProfilerOperators.hpp>
 #include <Editor/Profiler/ProfilerHistory.hpp>
+#include <Editor/Profiler/ProfilerWidgets.hpp>
 #include "Profiler/PassiveFrameElapsedCapture.hpp"
 #include <Editor/Op/EditorOperator.hpp>
 #include <algorithm>
@@ -507,6 +508,52 @@ OpResult PassiveResult(const OpArgs& args)
 }
 void RegisterProfilerOperators(OperatorRegistry& registry)
 {
+    RegisterProfilerViewOperators(registry);
+    for (const char* kind : {"performance", "script", "memory"}) {
+        for (const bool control : {false, true}) {
+            const std::string domain = kind;
+            EditorOperator op; op.id = "profiler." + domain + (control ? ".history_control" : ".history");
+            op.label = op.id; op.category = "Profiler"; op.kind = control ? OpKind::Action : OpKind::Query;
+            op.desc = "保持フレームと画面の選択状態。history_controlはfreeze/resume/capture/select/clear。selectにはcaptureSessionId/applicationFrameSerialの組を指定する。";
+            if (control) { OpParam action; action.name = "action"; action.enumValues = {"freeze", "resume", "capture", "select", "clear"}; op.params.push_back(action); }
+            op.params.push_back(StringParam("captureSessionId")); op.params.push_back(StringParam("applicationFrameSerial"));
+            op.exec = [domain, control](OpContext&, const OpArgs& args) {
+                const auto run = [&](auto& history) -> OpResult {
+                    const auto action = args.GetString("action");
+                    if (control) {
+                        if (domain == "performance" && GetPerformanceBenchmarkCapture().IsActive() && action == "clear")
+                            return OpResult::Err("BENCHMARK_ACTIVE", "Cancel the benchmark before clearing its history.");
+                        if (action == "select") {
+                            bool valid = true; const auto* selected = RequestedFrame(history, args, valid);
+                            if (!valid || !selected) return OpResult::Err("FRAME_NOT_FOUND", "保持されたフレームのsession/serialを指定してください。");
+                            for (const auto& frame : history.frames) if (frame.get() == selected) history.selected = frame;
+                            history.frozen = true;
+                        } else if (action == "capture") {
+                            if (history.frames.empty()) return OpResult::Err("NO_FRAMES", "確定フレームがありません。");
+                            history.selected = history.frames.back(); history.frozen = true;
+                        } else if (action == "freeze") history.frozen = true;
+                        else if (action == "resume") history.frozen = false;
+                        else if (action == "clear") {
+                            if (domain == "performance") ClearPerformanceHistory();
+                            else if (domain == "script") ClearScriptHistory(); else ClearMemoryHistory();
+                        }
+                    }
+                    OpData data = OpData::MakeObject(), frames = OpData::MakeArray();
+                    for (const auto& frame : history.frames) {
+                        OpData row = OpData::MakeObject(); row.Set("captureSessionId", Id(frame->captureSessionId));
+                        row.Set("applicationFrameSerial", Id(frame->applicationFrameSerial)); row.Set("complete", OpData(frame->complete));
+                        frames.Push(std::move(row));
+                    }
+                    data.Set("frames", std::move(frames)); data.Set("frozen", OpData(history.frozen));
+                    data.Set("selectedSessionId", history.selected ? Id(history.selected->captureSessionId) : OpData{});
+                    data.Set("selectedFrameSerial", history.selected ? Id(history.selected->applicationFrameSerial) : OpData{});
+                    return OpResult::Data(std::move(data));
+                };
+                if (domain == "performance") return run(GetPerformanceHistory());
+                if (domain == "script") return run(GetScriptHistory()); return run(GetMemoryHistory());
+            }; registry.Register(std::move(op));
+        }
+    }
     for (const bool script : {false, true}) {
         EditorOperator op; op.id = script ? "profiler.script.set_recording" : "profiler.performance.set_recording";
         op.label = script ? "Record Script Profiler" : "Record Performance Profiler"; op.category = "Profiler"; op.kind = OpKind::Action;

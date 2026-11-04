@@ -4,6 +4,7 @@
 /// @date    2026-06-07
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Op/EditorOperator.hpp>
+#include <Editor/Util/AssetCreation.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
@@ -188,7 +189,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         int suffix = 1;
         while (util::FileSystem::Exists(newDir))
             newDir = m_currentPath + "/New Folder " + std::to_string(suffix++);
-        util::FileSystem::EnsureDirectory(newDir);
+        if (!CreateEditorAsset("folder", newDir)) return;
         NotifyAssetCreated(newDir);
         RefreshDirectory();
         BeginRenameForPath(newDir, &ctx);
@@ -199,7 +200,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Scene " + std::to_string(suffix++) + ".scene";
-        util::FileSystem::WriteText(newPath, "# FBZZ Scene\n");
+        if (!CreateEditorAsset("scene", newPath)) return;
         NotifyAssetCreated(newPath);
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
@@ -209,29 +210,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Material " + std::to_string(suffix++) + ".mat";
-        const char* materialTemplate =
-            "version = 1\n"
-            "shader = \"\"\n"
-            "blend_mode = \"Opaque\"\n"
-            "double_sided = false\n"
-            "render_queue = 2000\n"
-            "\n"
-            "[textures]\n"
-            "albedo = \"\"\n"
-            "normal = \"\"\n"
-            "metallic = \"\"\n"
-            "roughness = \"\"\n"
-            "ao = \"\"\n"
-            "emissive = \"\"\n"
-            "\n"
-            "[params]\n"
-            "base_color = [1.0, 1.0, 1.0, 1.0]\n"
-            "metallic_factor = 0.0\n"
-            "roughness_factor = 0.65\n"
-            "normal_strength = 1.0\n"
-            "emissive_color = [1.0, 1.0, 1.0]\n"
-            "emissive_scale = 0.0\n";
-        util::FileSystem::WriteText(newPath, materialTemplate);
+        if (!CreateEditorAsset("material", newPath)) return;
         NotifyAssetCreated(newPath);
         RefreshDirectory();
         BeginRenameForPath(newPath, &ctx);
@@ -243,10 +222,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             newPath = m_currentPath + "/New Vector Field " + std::to_string(suffix++) + ".png";
         /// @note 既定は 32³ のカールノイズ。空のグリッドを置くと «貼っても何も起きない» という
         /// @note 最も分かりにくい状態から始まるので、開いた時点で流れが見えるものを焼く。
-        fluid::VectorFieldAsset field;
-        fluid::BakeVectorField(fluid::VectorFieldRecipe::Curl, 32, { 5.0f, 5.0f, 5.0f },
-                               /*seed=*/1, /*strength=*/1.0f, field);
-        if (asset::SaveVectorField(newPath, field)) {
+        if (CreateEditorAsset("vector_field", newPath)) {
             NotifyAssetCreated(newPath);
             RefreshDirectory();
             BeginRenameForPath(newPath, &ctx);
@@ -259,7 +235,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
             newPath = m_currentPath + "/New Fluid " + std::to_string(suffix++) + ".fluid";
         /// @note 既定は煙のプリセット。空のレシピだと焼いても何も写らず、«壊れている» のか
         /// @note «設定が無い» のか区別できない。
-        if (asset::SaveFluidRecipe(newPath, asset::MakeFluidPreset(asset::FluidPreset::Smoke))) {
+        if (CreateEditorAsset("fluid", newPath)) {
             NotifyAssetCreated(newPath);
             RefreshDirectory();
             BeginRenameForPath(newPath, &ctx);
@@ -273,8 +249,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 std::to_string(suffix++) + ".fzdata";
 
         /// @note DataAssetRegistry::Create は型名から実体を生成し既定値のまま保存するため、Inspector が期待する全セクションが Reflect() 経由で自動的に揃う。専用のテンプレート文字列を持たなくて済む。
-        if (!asset::DataAssetRegistry::Create(
-                newPath, asset::PostProcessProfile::TYPE_NAME)) {
+        if (!CreateEditorAsset("post_process_profile", newPath)) {
             FBZZ_LOG_ERROR("Post Process Profile creation failed: %s", newPath.c_str());
             return;
         }
@@ -288,8 +263,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Animator Controller " +
                 std::to_string(suffix++) + ".animcontroller";
-        asset::AnimatorControllerAsset controller;
-        if (!asset::SaveAnimatorControllerAsset(newPath, controller)) {
+        if (!CreateEditorAsset("animator_controller", newPath)) {
             FBZZ_LOG_ERROR("Animator Controller creation failed: %s", newPath.c_str());
             return;
         }
@@ -303,14 +277,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Sequence " + std::to_string(suffix++) + ".sequence";
-        asset::SequenceAsset sequence;
-        sequence.name     = std::filesystem::path(newPath).stem().generic_string();
-        sequence.duration = 3.0;
-        asset::SequenceTrack cues;
-        cues.type = asset::SequenceTrackType::Event;
-        cues.name = "Cues";
-        sequence.tracks.push_back(std::move(cues));
-        if (!asset::SaveSequenceAsset(newPath, sequence)) {
+        if (!CreateEditorAsset("sequence", newPath)) {
             FBZZ_LOG_ERROR("Sequence creation failed: %s", newPath.c_str());
             return;
         }
@@ -324,11 +291,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         int suffix = 1;
         while (util::FileSystem::Exists(newPath))
             newPath = m_currentPath + "/New Avatar Mask " + std::to_string(suffix++) + ".mask";
-        asset::AvatarMaskAsset mask;
-        mask.name = "New Avatar Mask";
-        /// @note 既定は「何も含まない」。Inspector の Humanoid プリセットで足していく想定。
-        mask.defaultInclude = false;
-        if (!asset::SaveAvatarMaskAsset(newPath, mask)) {
+        if (!CreateEditorAsset("avatar_mask", newPath)) {
             FBZZ_LOG_ERROR("Avatar Mask creation failed: %s", newPath.c_str());
             return;
         }
@@ -344,22 +307,8 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                     + ".behaviortree";
 
         /// @note ルート 1 個の最小構成で作る。ValidateBehaviorTreeAsset が「ルート 0 個」を拒否するため空のまま保存できず、すぐ編集を始められる形で生成する。
-        ai::BehaviorTreeAsset tree;
-        ai::EnsureReservedBlackboardKeys(tree);
-
-        ai::BTNodeDef root;
-        root.id      = 1;
-        root.type    = ai::BTNodeType::Selector;
-        root.name    = "Root";
-        root.editorX = 80.0f;
-        root.editorY = 80.0f;
-        tree.nodes.push_back(root);
-        tree.nextNodeId = 2;
-
-        std::string error;
-        if (!ai::SaveBehaviorTreeAsset(newPath, tree, &error)) {
-            FBZZ_LOG_ERROR("Behavior Tree creation failed: %s (%s)",
-                           newPath.c_str(), error.c_str());
+        if (!CreateEditorAsset("behavior_tree", newPath)) {
+            FBZZ_LOG_ERROR("Behavior Tree creation failed: %s", newPath.c_str());
             return;
         }
         NotifyAssetCreated(newPath);
@@ -380,12 +329,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 newPath = m_currentPath + "/" + presetName + " " +
                     std::to_string(suffix++) + ".physmat";
 
-            asset::PhysicsMaterialAsset physicsMaterial;
-            if (const auto* preset = physics::PhysicsMaterial::PresetAt(i))
-                physicsMaterial.material = *preset;
-            physicsMaterial.presetName = presetName;
-
-            if (!asset::SavePhysicsMaterialAssetToFile(newPath, physicsMaterial)) {
+            if (!CreateEditorAsset("physics_material", newPath, presetName)) {
                 FBZZ_LOG_ERROR("Physics Material creation failed: %s", newPath.c_str());
                 continue;
             }
@@ -410,11 +354,7 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
                 newPath = m_currentPath + "/" + presetName + " " +
                     std::to_string(suffix++) + ".synth";
 
-            asset::SynthAsset synth;
-            synth.spec       = audio::MakePreset(preset);
-            synth.presetName = presetName;
-
-            if (!asset::SaveSynthAssetToFile(newPath, synth)) {
+            if (!CreateEditorAsset("synth", newPath, presetName)) {
                 FBZZ_LOG_ERROR("Synth Clip creation failed: %s", newPath.c_str());
                 continue;
             }
@@ -499,34 +439,19 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
 
     /// @name HLSL シェーダー
     if (ImGui::BeginMenu("HLSL Shader...")) {
-        const std::string engineHlslDir = ctx.hlslSourceDir;
-        const std::string projHlslDir   = ctx.projectRoot + "/Assets/shaders";
-        /// @note パス未解決のときはプロジェクト側の shaders/ を直接使う
-        const std::string resolvedHlslDir =
-            engineHlslDir.empty() ? projHlslDir : engineHlslDir;
-
-        auto makeHlslCallback = [this, resolvedHlslDir, projHlslDir]
-            (ScriptCodeGen::HlslKind kind) {
-            return [this, resolvedHlslDir, projHlslDir, kind]
-                (const std::string& name) {
-                const std::string path =
-                    ScriptCodeGen::CreateHlsl(name, resolvedHlslDir, kind);
-                if (path.empty()) {
-                    FBZZ_LOG_WARN("HLSL creation failed: %s", name.c_str());
-                    return;
-                }
-                /// @note プロジェクト側にも即コピー
-                if (!projHlslDir.empty() && projHlslDir != resolvedHlslDir)
-                    ScriptCodeGen::CreateHlsl(name, projHlslDir, kind);
-                NotifyAssetCreated(path);
-                const bool underMaterial = (kind == ScriptCodeGen::HlslKind::SurfaceVSPS
-                                         || kind == ScriptCodeGen::HlslKind::ParticlePS);
-                const std::string destDir = underMaterial
-                        ? (projHlslDir + "/Material/Custom")
-                        : (projHlslDir + "/PostProcess/Custom");
-                m_pendingNavigate = destDir;
+        auto makeHlslCallback = [this, &ctx](ScriptCodeGen::HlslKind kind) {
+            return [this, &ctx, kind](const std::string& name) {
+                const char* value = kind == ScriptCodeGen::HlslKind::SurfaceVSPS ? "surface"
+                    : kind == ScriptCodeGen::HlslKind::ParticlePS ? "particle"
+                    : kind == ScriptCodeGen::HlslKind::ComputeCS ? "compute" : "post_process";
+                OpArgs args; args.Set("name", name); args.Set("kind", std::string(value));
+                const OpResult result = InvokeOperator(ctx, "asset.hlsl.create", args);
+                if (!result.ok) { FBZZ_LOG_WARN("HLSL creation failed: %s", result.message.c_str()); return; }
+                const auto* path = result.data.Find("path");
+                if (!path) return;
+                NotifyAssetCreated(path->AsString());
+                m_pendingNavigate = util::FileSystem::GetDirectory(path->AsString());
                 RefreshDirectory();
-                FBZZ_LOG_INFO("HLSL generated: %s", path.c_str());
             };
         };
 

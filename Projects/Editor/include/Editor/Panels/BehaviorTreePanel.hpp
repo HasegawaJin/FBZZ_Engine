@@ -26,6 +26,7 @@ public:
     const char* GetWindowName()        const override { return "Behavior Tree"; }
     bool        GetDefaultVisibility() const override { return false; }
     void OnInit(EditorContext& ctx) override;
+    void OnRegisterOperators(OperatorRegistry& registry) override;
     void OnShutdown() override;
 
     /// AssetBrowser のダブルクリックから開く。

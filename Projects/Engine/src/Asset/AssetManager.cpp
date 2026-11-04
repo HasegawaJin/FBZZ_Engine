@@ -583,21 +583,9 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     AssetDatabase::Init(s_basePath, s_engineBasePath);
 
     /// @name インポーター登録
-    RegisterImporter<Model>                   (std::make_unique<BundledModelImporter>());
-    RegisterImporter<ModelAsset>              (std::make_unique<ModelAssetImporter>());
-    RegisterImporter<AnimationClip>           (std::make_unique<AnimationImporter>());
-    RegisterImporter<Skeleton>                (std::make_unique<SkeletonImporter>());
-    RegisterImporter<MaterialAsset>           (std::make_unique<MatAssetImporter>());
-    RegisterImporter<AnimatorControllerAsset> (std::make_unique<AnimCtrlImporter>());
-    RegisterImporter<TerrainAsset>            (std::make_unique<TerrainImporter>());
-    RegisterImporter<TextureAsset>            (std::make_unique<ImageImporter>());
-    RegisterImporter<IblAsset>               (std::make_unique<IblImporter>());
-    RegisterImporter<PhysicsMaterialAsset>    (std::make_unique<PhysicsMaterialImporter>());
-    RegisterImporter<ClothAsset>    (std::make_unique<ClothImporter>());
-    RegisterImporter<FiberPaintAsset>(std::make_unique<FiberPaintImporter>());
-    RegisterImporter<SequenceAsset>           (std::make_unique<SequenceImporter>());
-    RegisterImporter<fluid::VectorFieldAsset>        (std::make_unique<VectorFieldImporter>());
-    RegisterImporter<ParticleCurveAsset>      (std::make_unique<ParticleCurveImporter>());
+#define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) RegisterImporter<Type>(std::make_unique<Importer>());
+#include <Engine/Asset/AssetTypes.inl>
+#undef FBZZ_ASSET_TYPE
 
     /// @name 非同期経路の登録
     /// @note チャンネルは DLL 内で作る。AssetStore<T> は DLL / EXE ごとに別実体なので、ここで作らないと
@@ -618,24 +606,10 @@ void AssetManager::UnloadAll()
     /// @note 全型を漏れなく並べる。消し忘れた型はプロジェクトを切り替えても前のプロジェクトの
     /// @note アセットが cache に残り続け、パスが同名なら別プロジェクトの中身が黙って引き
     /// @note 当たるという、最も気付きにくい壊れ方をする。
-    AssetStore<Model>::Get().Clear();
-    AssetStore<ModelAsset>::Get().Clear();
-    AssetStore<AnimationClip>::Get().Clear();
-    AssetStore<Skeleton>::Get().Clear();
-    AssetStore<MaterialAsset>::Get().Clear();
-    AssetStore<AnimatorControllerAsset>::Get().Clear();
-    AssetStore<TerrainAsset>::Get().Clear();
-    AssetStore<TextureAsset>::Get().Clear();
-    AssetStore<IblAsset>::Get().Clear();
-    AssetStore<PhysicsMaterialAsset>::Get().Clear();
-    AssetStore<ClothAsset>::Get().Clear();
-    AssetStore<FiberPaintAsset>::Get().Clear();
-    AssetStore<SequenceAsset>::Get().Clear();
-    AssetStore<fluid::VectorFieldAsset>::Get().Clear();
-    /// @note 速度場アトラスはストアの中身から作られる。捨て忘れると、前プロジェクトの場が
-    /// @note 新しいプロジェクトのタイル番号に化けて «知らない流れ» として効く。
+#define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) AssetStore<Type>::Get().Clear();
+#include <Engine/Asset/AssetTypes.inl>
+#undef FBZZ_ASSET_TYPE
     VelocityFieldAtlas::Reset();
-    AssetStore<ParticleCurveAsset>::Get().Clear();
 
     s_resources   = nullptr;
     s_engineBasePath.clear();
@@ -740,231 +714,22 @@ void AssetManager::NotifyStreamerUnloaded(std::string_view typeName, const std::
     AssetStreamer::Engine().NotifyUnloaded(typeName, key);
 }
 
-template<>
-void AssetManager::RegisterImporter<MaterialAsset>(std::unique_ptr<IAssetImporter<MaterialAsset>> imp)
-{
-    AssetStore<MaterialAsset>::Get().importer = std::move(imp);
-}
-
-template<>
-AssetHandle<Model> AssetManager::Load<Model>(const std::string& relativePath)
-{
-    return LoadFromStore<Model>(relativePath);
-}
-
-template<>
-AssetHandle<ModelAsset> AssetManager::Load<ModelAsset>(const std::string& relativePath)
-{
-    return LoadFromStore<ModelAsset>(relativePath);
-}
-
-template<>
-AssetHandle<AnimationClip> AssetManager::Load<AnimationClip>(const std::string& relativePath)
-{
-    return LoadFromStore<AnimationClip>(relativePath);
-}
-
-template<>
-AssetHandle<MaterialAsset> AssetManager::Load<MaterialAsset>(const std::string& relativePath)
-{
-    return LoadFromStore<MaterialAsset>(relativePath);
-}
-
-template<>
-AssetHandle<AnimatorControllerAsset> AssetManager::Load<AnimatorControllerAsset>(const std::string& relativePath)
-{
-    return LoadFromStore<AnimatorControllerAsset>(relativePath);
-}
-
-template<>
-AssetHandle<TerrainAsset> AssetManager::Load<TerrainAsset>(const std::string& relativePath)
-{
-    return LoadFromStore<TerrainAsset>(relativePath);
-}
-
-template<>
-AssetHandle<TextureAsset> AssetManager::Load<TextureAsset>(const std::string& relativePath)
-{
-    return LoadFromStore<TextureAsset>(relativePath);
-}
-
-template<>
-AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const std::string& relativePath)
-{
-    return LoadFromStore<PhysicsMaterialAsset>(relativePath);
-}
-
-template<>
-AssetHandle<ClothAsset> AssetManager::Load<ClothAsset>(const std::string& relativePath)
-{
-    return LoadFromStore<ClothAsset>(relativePath);
-}
-
-template<>
-AssetHandle<FiberPaintAsset> AssetManager::Load<FiberPaintAsset>(const std::string& relativePath)
-{
-    return LoadFromStore<FiberPaintAsset>(relativePath);
-}
-
-template<>
-AssetHandle<SequenceAsset> AssetManager::Load<SequenceAsset>(const std::string& relativePath)
-{
-    return LoadFromStore<SequenceAsset>(relativePath);
-}
-
-template<>
-Model* AssetManager::Get<Model>(AssetHandle<Model> h)
-{
-    return GetFromStore<Model>(h);
-}
-
-template<>
-ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h)
-{
-    return GetFromStore<ModelAsset>(h);
-}
-
-template<>
-AnimationClip* AssetManager::Get<AnimationClip>(AssetHandle<AnimationClip> h)
-{
-    return GetFromStore<AnimationClip>(h);
-}
-
-template<>
-MaterialAsset* AssetManager::Get<MaterialAsset>(AssetHandle<MaterialAsset> h)
-{
-    return GetFromStore<MaterialAsset>(h);
-}
-
-template<>
-AnimatorControllerAsset* AssetManager::Get<AnimatorControllerAsset>(AssetHandle<AnimatorControllerAsset> h)
-{
-    return GetFromStore<AnimatorControllerAsset>(h);
-}
-
-template<>
-TerrainAsset* AssetManager::Get<TerrainAsset>(AssetHandle<TerrainAsset> h)
-{
-    return GetFromStore<TerrainAsset>(h);
-}
-
-template<>
-TextureAsset* AssetManager::Get<TextureAsset>(AssetHandle<TextureAsset> h)
-{
-    return GetFromStore<TextureAsset>(h);
-}
-
-template<>
-PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<PhysicsMaterialAsset> h)
-{
-    return GetFromStore<PhysicsMaterialAsset>(h);
-}
-
-template<>
-ClothAsset* AssetManager::Get<ClothAsset>(AssetHandle<ClothAsset> h)
-{
-    return GetFromStore<ClothAsset>(h);
-}
-
-template<>
-FiberPaintAsset* AssetManager::Get<FiberPaintAsset>(AssetHandle<FiberPaintAsset> h)
-{
-    return GetFromStore<FiberPaintAsset>(h);
-}
-
-template<>
-SequenceAsset* AssetManager::Get<SequenceAsset>(AssetHandle<SequenceAsset> h)
-{
-    return GetFromStore<SequenceAsset>(h);
-}
-
-template<>
-void AssetManager::Unload<Model>(const std::string& relativePath)
-{
-    UnloadFromStore<Model>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<ModelAsset>(const std::string& relativePath)
-{
-    UnloadFromStore<ModelAsset>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<AnimationClip>(const std::string& relativePath)
-{
-    UnloadFromStore<AnimationClip>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<MaterialAsset>(const std::string& relativePath)
-{
-    UnloadFromStore<MaterialAsset>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<AnimatorControllerAsset>(const std::string& relativePath)
-{
-    UnloadFromStore<AnimatorControllerAsset>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<TerrainAsset>(const std::string& relativePath)
-{
-    UnloadFromStore<TerrainAsset>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<TextureAsset>(const std::string& relativePath)
-{
-    UnloadFromStore<TextureAsset>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath)
-{
-    UnloadFromStore<PhysicsMaterialAsset>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<ClothAsset>(const std::string& relativePath)
-{
-    UnloadFromStore<ClothAsset>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<FiberPaintAsset>(const std::string& relativePath)
-{
-    UnloadFromStore<FiberPaintAsset>(relativePath);
-}
-
-template<>
-void AssetManager::Unload<SequenceAsset>(const std::string& relativePath)
-{
-    UnloadFromStore<SequenceAsset>(relativePath);
-}
+#define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) \
+    template<> AssetStore<Type>& AssetStore<Type>::Get() { static AssetStore<Type> store; return store; } \
+    template<> void AssetManager::RegisterImporter<Type>(std::unique_ptr<IAssetImporter<Type>> importer) \
+    { AssetStore<Type>::Get().importer = std::move(importer); } \
+    template<> AssetHandle<Type> AssetManager::Load<Type>(const std::string& path) { return LoadFromStore<Type>(path); } \
+    template<> Type* AssetManager::Get<Type>(AssetHandle<Type> handle) { return GetFromStore<Type>(handle); } \
+    template<> void AssetManager::Unload<Type>(const std::string& path) { UnloadFromStore<Type>(path); }
+#include <Engine/Asset/AssetTypes.inl>
+#undef FBZZ_ASSET_TYPE
 
 void AssetManager::FlushFailed()
 {
-    /// @note Init() のインポーター登録と同じ並び・同じ顔ぶれで書く。ここに 1 つ書き忘れると、
-    /// @note その型は「一度ロードに失敗したらプロセスが終わるまで二度と復帰しない」という
-    /// @note 無音の不具合になる。LoadFromStore() は失敗も cache へ焼き付けるため、掃除口は
-    /// @note ここしかない (実際 .physmat は登録漏れで、アセットを直しても参照が復活しなかった)。
-    FlushStore<Model>();
-    FlushStore<ModelAsset>();
-    FlushStore<AnimationClip>();
-    FlushStore<Skeleton>();
-    FlushStore<MaterialAsset>();
-    FlushStore<AnimatorControllerAsset>();
-    FlushStore<TerrainAsset>();
-    FlushStore<TextureAsset>();
-    FlushStore<IblAsset>();
-    FlushStore<PhysicsMaterialAsset>();
-    FlushStore<ClothAsset>();
-    FlushStore<FiberPaintAsset>();
-    FlushStore<SequenceAsset>();
-    FlushStore<fluid::VectorFieldAsset>();
-    FlushStore<ParticleCurveAsset>();
+    /// @note 失敗もキャッシュするため、Init と同じ型一覧から掃除口を作り、型の追加漏れによる永続失敗を防ぐ。
+#define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) FlushStore<Type>();
+#include <Engine/Asset/AssetTypes.inl>
+#undef FBZZ_ASSET_TYPE
 
     ++s_flushGeneration;
     ++s_assetGeneration;
@@ -1029,7 +794,7 @@ std::span<const std::string_view> AssetManager::HotReloadableExtensions()
     /// @note .mask / .fzdata / .synth はストアを通らないが、BumpAssetGeneration 経由で派生
     /// @note キャッシュが作り直される。載せ忘れると «直したのに反映されない» になる。
     static constexpr std::string_view kExtensions[] = {
-        ".mat", ".anim", ".animcontroller", ".mask", ".fzdata", ".physmat",
+        ".mat", ".anim", ".animcontroller", ".mask", ".fzdata", ".physmat", ".ragdoll",
         ".cloth", ".fiberpaint", ".synth", ".terrain", ".sequence", ".curve", ".gradient",
         /// @note 速度場。GPU 常駐はアトラスが持つのでアセット自体は CPU データだけ。
         ".fga",
@@ -1057,21 +822,16 @@ int AssetManager::ReloadPath(const std::string& absPath)
     /// @note 解放されないまま residual になる。画像・モデルは原本の自動再インポート経路が
     /// @note 別にあるので、ここでは「編集されたら中身がそのまま変わる」型だけを扱う。
     int reloaded = 0;
-    reloaded += ReloadFromStore<AnimationClip>(target);
-    reloaded += ReloadFromStore<AnimatorControllerAsset>(target);
-    reloaded += ReloadFromStore<MaterialAsset>(target);
-    reloaded += ReloadFromStore<PhysicsMaterialAsset>(target);
-    reloaded += ReloadFromStore<ClothAsset>(target);
-    reloaded += ReloadFromStore<FiberPaintAsset>(target);
-    reloaded += ReloadFromStore<TerrainAsset>(target);
-    reloaded += ReloadFromStore<SequenceAsset>(target);
-    reloaded += ReloadFromStore<ParticleCurveAsset>(target);
-    /// @note 速度場 PNG は GPU 資源を持たない (常駐は VelocityFieldAtlas 側)。差し替えは安全だが、
-    /// @note アトラスはアセットの実体をポインタで指しているので焼き直させる。
-    if (const int fields = ReloadFromStore<fluid::VectorFieldAsset>(target); fields > 0) {
-        reloaded += fields;
-        if (s_resources != nullptr) VelocityFieldAtlas::Invalidate(*s_resources);
+    int fields = 0;
+#define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) \
+    if constexpr (Reloadable) { \
+        const int count = ReloadFromStore<Type>(target); \
+        reloaded += count; \
+        if constexpr (std::is_same_v<Type, fluid::VectorFieldAsset>) fields += count; \
     }
+#include <Engine/Asset/AssetTypes.inl>
+#undef FBZZ_ASSET_TYPE
+    if (fields > 0 && s_resources != nullptr) VelocityFieldAtlas::Invalidate(*s_resources);
 
     if (reloaded > 0) {
         ++s_assetGeneration;

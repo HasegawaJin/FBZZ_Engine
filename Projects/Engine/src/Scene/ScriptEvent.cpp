@@ -7,6 +7,7 @@
 #include <Engine/Profiler/ScriptProfiler.hpp>
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -17,7 +18,8 @@ namespace {
 struct Subscription {
     uint64_t                    id      = 0;
     Script*                     owner   = nullptr;
-    ScriptEventBus::RawHandler  handler;
+    /// @note 購読と進行中の配信が同じ callback を所有し、再確保や解除で状態を複製・破棄しない。
+    std::shared_ptr<ScriptEventBus::RawHandler> handler;
     bool                        canceled = false;
 };
 
@@ -31,7 +33,7 @@ std::unordered_map<std::string, std::vector<Subscription>>& Channels()
 }
 
 uint64_t g_nextId = 1;
-/// @note 配信中は vector を再確保させない。ネストした Publish もあり得るので深さで数える。
+/// @note 配信中は購読の物理削除を遅延し、ネストした Publish の深さを保持する。
 int g_publishDepth = 0;
 
 /// @note canceled になった購読を実際に取り除く。配信の入れ子が完全に抜けたときだけ行う。
@@ -53,19 +55,17 @@ ScriptEventToken ScriptEventBus::SubscribeRaw(Script* owner,
                                               std::string_view channel,
                                               RawHandler handler)
 {
-    if (channel.empty() || !handler) return {};
+    if (channel.empty() || !handler || g_nextId == 0) return {};
 
     Subscription subscription{};
     subscription.id      = g_nextId++;
     subscription.owner   = owner;
-    subscription.handler = std::move(handler);
+    subscription.handler = std::make_shared<RawHandler>(std::move(handler));
 
     const ScriptEventToken token{ subscription.id };
     Channels()[std::string(channel)].push_back(std::move(subscription));
 
-    /// @note 自動解除は Script::CancelEventSubscriptions() が UnsubscribeOwner(this) を呼ぶことで
-    /// @note 行われる (~Script から必ず通る)。Subscribe ごとに解除関数を積むと購読数ぶんの重複
-    /// @note エントリになるため、オーナー単位の一括解除にまとめる。
+    /// @note Script の破棄は UnsubscribeOwner(this) で一括解除し、購読ごとの解除関数を重複登録しない。
     return token;
 }
 
@@ -101,24 +101,21 @@ void ScriptEventBus::PublishRaw(std::string_view channel, const void* payload)
     const std::string& channelName = it->first;
 
     ++g_publishDepth;
-    /// @note ハンドラ内から Subscribe されると vector が再確保され得るため、開始時点の件数までを
-    /// @note 走査する。配信中に増えた購読は次回の Publish から届かせ、同一イベント配信中に自分自身を
-    /// @note 購読して即受け取る混乱を避ける。
+    /// @note 開始時点の件数までを走査し、配信中に増えた購読は次回の Publish から届ける。
     const size_t initialCount = it->second.size();
     for (size_t i = 0; i < initialCount; ++i) {
-        /// @note 参照は保持しない。ハンドラ内の Subscribe による再確保後も安全に読めるよう、
-        /// @note 毎回コンテナ経由で取り直してからコピーして呼ぶ。
-        auto& subs = Channels()[std::string(channel)];
+        /// @note 呼出し側の文字列は callback が変更し得るため、登録表が所有する鍵で取り直す。
+        auto& subs = Channels()[channelName];
         if (i >= subs.size()) break;
         if (subs[i].canceled) continue;
         /// @note 持ち主のスクリプトが無効 (自身が無効・親ごと無効化) なら配らない。購読は残すので、有効に戻せば何もせずまた届く。
         /// @note Update と同じ規則にしないと、止めたはずのオブジェクトがイベントにだけ反応し続ける。
         if (const Script* owner = subs[i].owner; owner && !owner->scene.IsActiveAndEnabled()) continue;
-        RawHandler handler = subs[i].handler;
-        if (handler) {
+        const auto handler = subs[i].handler;
+        if (handler && *handler) {
             if (auto* owner = subs[i].owner) {
-                owner->ExecuteProfiledCallback([&] { handler(payload); }, ScriptCallbackKind::EVENT_HANDLER, channelName.c_str());
-            } else handler(payload);
+                owner->ExecuteProfiledCallback([&] { (*handler)(payload); }, ScriptCallbackKind::EVENT_HANDLER, channelName.c_str());
+            } else (*handler)(payload);
         }
     }
     --g_publishDepth;
@@ -128,9 +125,11 @@ void ScriptEventBus::PublishRaw(std::string_view channel, const void* payload)
 
 void ScriptEventBus::Clear()
 {
-    Channels().clear();
-    g_nextId = 1;
-    g_publishDepth = 0;
+    /// @note Clear も個別解除と同じ安全点で破棄し、進行中の鍵参照・件数・再入深さを保持する。
+    for (auto& [channel, subs] : Channels())
+        for (auto& subscription : subs)
+            subscription.canceled = true;
+    CompactIfIdle();
 }
 
 size_t ScriptEventBus::SubscriptionCount()

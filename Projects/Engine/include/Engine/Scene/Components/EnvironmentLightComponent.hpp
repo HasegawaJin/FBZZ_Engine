@@ -5,7 +5,7 @@
 /// @note ProjectSettings の ibl はグローバル設定。RenderSystem は最初のアクティブな本コンポーネントを
 /// @note 採用して上書きし、シーンごとに異なる環境光を使い分けられるようにする。
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <cstdint>
 #include <string>
 

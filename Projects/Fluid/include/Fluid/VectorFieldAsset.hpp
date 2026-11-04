@@ -2,14 +2,15 @@
 /// @brief   空間へ焼いた速度場。解析的な力場を増やす代わりに 1 枚で任意の流れを表す。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
+
 /// @note 場をアセットにするのは、ForceField が Wind / Vortex / Turbulence … と «式» を 1 つずつ
-///       enum へ足してきたため。竜巻・磁気パルス・魔法陣のように «その形にしか無い流れ» は式では
-///       書けず、足すたびにフィールドと HLSL の分岐が増える。焼いたグリッドを 1 枚標本化する形に
-///       すれば、どんな流れでも型の変更なしに表現でき、粒子以外 (草・煙・布) も同じ場を共有できる。
+/// @note enum へ足してきたため。竜巻・磁気パルス・魔法陣のように «その形にしか無い流れ» は式では
+/// @note 書けず、足すたびにフィールドと HLSL の分岐が増える。焼いたグリッドを 1 枚標本化する形に
+/// @note すれば、どんな流れでも型の変更なしに表現でき、粒子以外 (草・煙・布) も同じ場を共有できる。
 /// @note ファイル (速度場 PNG / .fga) の読み書きは Engine の VectorFieldFile。ここは «格子と式» だけ。
 /// @see Docs/design/fluid-library.md
 #pragma once
+#include <Fluid/Api.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -21,14 +22,14 @@ namespace fbzz::fluid {
 
 /// @brief 格子 1 辺の上限。
 /// @note 32³ で 32768 ベクトル、64³ で 262144。これ以上は 3D テクスチャの転送量が効いてくるうえ、
-///       粒子の乱流としては格子が細かすぎて絵に出ない。
+/// @note 粒子の乱流としては格子が細かすぎて絵に出ない。
 inline constexpr uint32_t kMaxVectorFieldResolution = 128;
 
 /// @brief 取り込み後の格子の 1 辺。全ての速度場はこの解像度へ揃えられる。
 /// @note GPU では常駐中の場を 1 枚の Texture3D へタイルとして積む (cs_5_0 にテクスチャ配列が
-///       無いため)。タイルは同じ寸法でなければ添字が計算できない。取り込みの時点で揃えて
-///       しまえば、CPU が引く格子と GPU が引く格子が同じものになる。後段でリサンプルすると
-///       «CPU では回るのに GPU では違う軌跡» が生まれる。
+/// @note 無いため)。タイルは同じ寸法でなければ添字が計算できない。取り込みの時点で揃えて
+/// @note しまえば、CPU が引く格子と GPU が引く格子が同じものになる。後段でリサンプルすると
+/// @note «CPU では回るのに GPU では違う軌跡» が生まれる。
 inline constexpr uint32_t kVelocityFieldTileResolution = 32;
 
 /// @brief 場の 1 成分を RGBA8 の 1 バイトへ詰める。GPU が読むバイトそのもの。
@@ -43,8 +44,8 @@ inline constexpr uint32_t kVelocityFieldTileResolution = 32;
 
 /// @brief EncodeVectorFieldByte の丸めを通した後に復元される値。CPU 側の data はこれを保持する。
 /// @note 力場の式は CPU と GPU で一致させる規約になっている。片方だけ float 精度で読むと、
-///       同じ場なのに «CPU では回るのに GPU では違う軌跡» になり、しかも見比べないと気付けない。
-///       丸めごと合わせてしまうのが唯一確実。
+/// @note 同じ場なのに «CPU では回るのに GPU では違う軌跡» になり、しかも見比べないと気付けない。
+/// @note 丸めごと合わせてしまうのが唯一確実。
 [[nodiscard]] inline math::Vector3 QuantizeVectorFieldValue(const math::Vector3& value,
                                                             float maxMagnitude)
 {
@@ -65,11 +66,11 @@ enum class VectorFieldRecipe : uint8_t {
     Turbulence, ///< @brief 多オクターブのカールノイズ
 };
 
-[[nodiscard]] const char* VectorFieldRecipeName(VectorFieldRecipe recipe);
+[[nodiscard]] FBZZ_FLUID_API const char* VectorFieldRecipeName(VectorFieldRecipe recipe);
 
 /// @brief 焼かれた速度場 1 枚。
 /// @note 取り込みを終えた時点で data は **kVelocityFieldTileResolution³ かつ量子化済み**。
-///       GPU が RGBA8 から復元するのと同じ値が入っているので、CPU と GPU は必ず同じ場を見る。
+/// @note GPU が RGBA8 から復元するのと同じ値が入っているので、CPU と GPU は必ず同じ場を見る。
 struct VectorFieldAsset {
     uint32_t sizeX = 0;
     uint32_t sizeY = 0;
@@ -90,20 +91,20 @@ struct VectorFieldAsset {
 
     /// @brief ローカル座標をトリリニア補間で標本化する。
     /// @return AABB の外はゼロ。場の外へ出た粒子が縁の値を引きずり続けないため。
-    [[nodiscard]] math::Vector3 SampleLocal(const math::Vector3& localPosition) const;
+    [[nodiscard]] FBZZ_FLUID_API math::Vector3 SampleLocal(const math::Vector3& localPosition) const;
 };
 
 /// @brief レシピからグリッドを焼く。
 /// @note 解像度も量子化もここでは揃えない (呼び出し側が保存し、取り込みで NormalizeVectorField が通る)。
-void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
+FBZZ_FLUID_API void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
                      const math::Vector3& extents, uint32_t seed, float strength,
                      VectorFieldAsset& outField);
 
 /// @brief 取り込み直後の場を «エンジンが扱う形» へ揃える。
 /// @note 1. kVelocityFieldTileResolution³ へトリリニアでリサンプルし、
-///       2. 最大長で正規化して RGBA8 相当へ量子化し、復元される値を data へ書き戻す。
+/// @note 2. 最大長で正規化して RGBA8 相当へ量子化し、復元される値を data へ書き戻す。
 /// @note GPU に載せる瞬間ではなく取り込みで揃えることで «GPU で使い始めた途端に CPU の軌跡も
-///       変わった» が起きなくなる。GPU を持たない経路 (テスト・静的検査) も同じ値を見る。
-void NormalizeVectorField(VectorFieldAsset& field);
+/// @note 変わった» が起きなくなる。GPU を持たない経路 (テスト・静的検査) も同じ値を見る。
+FBZZ_FLUID_API void NormalizeVectorField(VectorFieldAsset& field);
 
-} // namespace fbzz::fluid
+} /// @note namespace fbzz::fluid

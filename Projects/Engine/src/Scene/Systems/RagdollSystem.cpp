@@ -9,6 +9,7 @@
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Systems/SpringBoneSystem.hpp"
 #include <Engine/Asset/Skeleton.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -16,6 +17,7 @@
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RagdollComponent.hpp>
+#include <Engine/Scene/Ragdoll/RagdollControls.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -206,8 +208,12 @@ std::vector<RagdollBonePose> BuildBindPose(const RagdollRuntime&  runtime,
     for (std::size_t i = 0; i < pose.size(); ++i) {
         const int node = runtime.boneNodes[i];
         if (node < 0 || node >= static_cast<int>(globals.size())) continue;
-        DecomposeAffine(toWorld * globals[static_cast<std::size_t>(node)],
-                        pose[i].position, pose[i].rotation);
+        const auto matrix = toWorld * globals[static_cast<std::size_t>(node)];
+        DecomposeAffine(matrix, pose[i].position, pose[i].rotation);
+        pose[i].scale = {
+            math::Vector3{matrix.m[0][0],matrix.m[1][0],matrix.m[2][0]}.Length(),
+            math::Vector3{matrix.m[0][1],matrix.m[1][1],matrix.m[2][1]}.Length(),
+            math::Vector3{matrix.m[0][2],matrix.m[1][2],matrix.m[2][2]}.Length()};
     }
     return pose;
 }
@@ -220,6 +226,7 @@ bool SampleFkPose(RagdollRuntime& runtime, Scene& scene, const SkinnedMeshRender
         if (!bone) return false;
         runtime.bones[i].position = bone->transform.worldPosition;
         runtime.bones[i].rotation = bone->transform.worldRotation;
+        runtime.bones[i].scale = bone->transform.worldScale;
         runtime.boneScales[i]     = bone->transform.worldScale;
     }
     return true;
@@ -232,6 +239,7 @@ bool NeedsRebuild(const RagdollComponent& ragdoll, const asset::Skeleton& skelet
 {
     const RagdollRuntime& runtime = ragdoll.runtime;
     return !runtime.rig
+        || runtime.builtDefinitionRevision != runtime.definitionRevision
         || runtime.builtSkeleton   != &skeleton
         || runtime.builtNodeCount != skeleton.nodes.size()
         || (runtime.builtScale - scale).LengthSq() > 1.0e-8f
@@ -320,12 +328,17 @@ void RagdollSystem::Update(SystemContext& ctx)
 
     for (EntityID id : entities) {
         GameObject* go = scene.GetGameObject(id);
-        if (!go || !go->activeInHierarchy()) continue;
+        if (!go) continue;
 
         auto* ragdoll = go->GetComponent<RagdollComponent>();
         if (!ragdoll) continue;
+        if (!go->activeInHierarchy()) {
+            if (ragdoll->runtime.rig) ragdoll->runtime.rig->Controls().ReleaseAll();
+            continue;
+        }
 
         if (!ragdoll->enabled || (!ctx.playing && !ragdoll->simulateInEditor)) {
+            if (ragdoll->runtime.rig) ragdoll->runtime.rig->Controls().ReleaseAll();
             ragdoll->runtimeStatus = ragdoll->enabled
                 ? RagdollStatus::NotPlaying
                 : RagdollStatus::Disabled;
@@ -346,6 +359,9 @@ void RagdollSystem::Update(SystemContext& ctx)
             continue;
         }
 
+        /// @note Pause は最終姿勢・駆動履歴・未処理命令を保持し、再開後の固定更新で消費する。
+        if (ctx.playing && !ctx.simulating) continue;
+
         if (ragdoll->phase == RagdollPhase::Idle && ragdoll->activateOnStart &&
             !ragdoll->startTriggered && !ragdoll->beginRequested) {
             ragdoll->beginRequested    = true;
@@ -357,6 +373,7 @@ void RagdollSystem::Update(SystemContext& ctx)
 
         /// @note 止まっているあいだは骨を 1 本も触らない。Animator が書いた姿勢がそのまま残る。
         if (ragdoll->phase == RagdollPhase::Idle && !ragdoll->beginRequested) {
+            if (ragdoll->runtime.rig) ragdoll->runtime.rig->Controls().ReleaseAll();
             ragdoll->runtimeStatus    = RagdollStatus::Idle;
             ragdoll->runtimeDeviation = 0.0f;
             ragdoll->runtimeSaturated = 0;
@@ -385,16 +402,43 @@ void RagdollSystem::Update(SystemContext& ctx)
             continue;
         }
 
+        const int assetGeneration = asset::AssetManager::GetAssetGeneration();
+        if (runtime.loadedReference != ragdoll->physicsAssetPath || runtime.loadedAssetGeneration != assetGeneration) {
+            runtime.loadedReference = ragdoll->physicsAssetPath;
+            runtime.loadedAssetGeneration = assetGeneration;
+            if (ragdoll->physicsAssetPath.empty()) {
+                if (runtime.definitionValid) ++runtime.definitionRevision;
+                runtime.definitionValid = false;
+            } else {
+                RagdollDefinition candidate;
+                std::string error;
+                if (LoadRagdollDefinition(ragdoll->physicsAssetPath,candidate,&error)) {
+                    if (!runtime.definitionValid || candidate.signature != runtime.definition.signature) {
+                        runtime.definition = std::move(candidate);
+                        runtime.definitionValid = true;
+                        ++runtime.definitionRevision;
+                    }
+                } else FBZZ_LOG_WARN("Ragdoll physics asset: %s",error.c_str());
+            }
+        }
+        if (!ragdoll->physicsAssetPath.empty() && !runtime.definitionValid) {
+            ragdoll->runtimeStatus = RagdollStatus::InvalidPhysicsAsset;
+            continue;
+        }
         /// @note 実行中の再構築後は現在姿勢を捕獲し、垂れた部分木がバインドポーズへ跳ね戻ることを防ぐ。
         const bool rebuilding = NeedsRebuild(*ragdoll, skeleton, go->transform.worldScale);
         if (rebuilding) {
-            const RagdollProfile profile = ragdoll->ResolveProfile();
+            RagdollProfile profile = ragdoll->ResolveProfile();
+            if (runtime.definitionValid) ApplyRagdollDefinition(runtime.definition,profile);
             BuildBoneList(*ragdoll, skeleton, profile);
             runtime.rig = std::make_unique<RagdollRig>();
             if (!runtime.bones.empty()) {
                 runtime.rig->Build(
                     BuildBindPose(runtime, skeleton, go->transform.GetWorldMatrix()), profile);
             }
+            for (const auto& overrideDrive:runtime.driveOverrides)
+                (void)runtime.rig->SetBodyDrive(overrideDrive.bone,overrideDrive.settings);
+            runtime.builtDefinitionRevision = runtime.definitionRevision;
             runtime.builtSkeleton   = &skeleton;
             runtime.builtNodeCount = skeleton.nodes.size();
             runtime.builtScale = go->transform.worldScale;
@@ -476,7 +520,7 @@ void RagdollSystem::Update(SystemContext& ctx)
         rig.SetStandingGuard(ragdoll->standingGuard, ragdoll->standingMaxDistance,
                              ragdoll->standingMaxDegrees * math::PI / 180.0f);
         if (ragdoll->mode == RagdollMode::Active || ragdoll->standingGuard) {
-            rig.UpdateDriveTargets(runtime.bones);
+            rig.UpdateDriveTargets(runtime.bones,ctx.dt);
             ragdoll->runtimeGround = GroundHeightFor(*ragdoll, *go);
         }
 
@@ -525,7 +569,8 @@ void RagdollSystem::Update(SystemContext& ctx)
         contacts.dynamic  = ragdoll->contactDynamic && worldContacts;
         contacts.self     = ragdoll->contactSelf;
         contacts.selfSkip = ragdoll->selfSkip;
-        contacts.surface.staticFriction  = ragdoll->friction;
+        contacts.allowRest = ragdoll->allowRest;
+        contacts.surface.staticFriction  = ragdoll->staticFriction < 0.0f ? ragdoll->friction : ragdoll->staticFriction;
         contacts.surface.dynamicFriction = ragdoll->friction;
         contacts.surface.restitution     = ragdoll->restitution;
         rig.SetContactSettings(contacts);
@@ -536,7 +581,7 @@ void RagdollSystem::Update(SystemContext& ctx)
         }
         ragdoll->pendingImpulses.clear();
 
-        /// @note 接触は固定刻みごとに更新し、ソルバ内の substep では使い回す。
+        /// @note 世界への参照を固定刻みごとに渡し、接触は Rig が各 substep の積分後に更新する。
         for (int step = 0; step < steps; ++step) {
             if (ragdoll->endRequested && ragdoll->phase != RagdollPhase::BlendOut)
                 BeginRagdollBlendOut(*ragdoll);
@@ -551,6 +596,7 @@ void RagdollSystem::Update(SystemContext& ctx)
             rig.ApplyContactReactions();
             AdvanceRagdollPhase(*ragdoll, RAGDOLL_FIXED_STEP);
             if (ragdoll->phase == RagdollPhase::Idle) {
+                rig.Controls().ReleaseAll();
                 runtime.remainingTime = 0.0;
                 break;
             }

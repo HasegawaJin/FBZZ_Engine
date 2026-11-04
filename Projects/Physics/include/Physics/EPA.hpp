@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #pragma once
+#include <Physics/Api.hpp>
 #include <Physics/GJK.hpp>
 
 namespace fbzz::physics
@@ -25,7 +26,7 @@ namespace fbzz::physics
     /// @param maxIter 反復上限。
     /// @param tolerance 新しいサポート点とポリトープ面の距離差が、この値未満なら収束する。
     /// @return 単体の頂点不足や実体のある面の消失は valid=false。接触法線は B→A の向き。
-    EPAResult EPA_GetContactInfo(
+    FBZZ_PHYSICS_API EPAResult EPA_GetContactInfo(
         const void* shapeA, SupportFn supportA,
         const void* shapeB, SupportFn supportB,
         const Simplex& gjkSimplex,

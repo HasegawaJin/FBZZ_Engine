@@ -3,5 +3,6 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Engine/Api.hpp>
 namespace fbzz::renderer { struct RenderScene; }
-namespace fbzz::scene { struct RenderPassContext; void ExtractRenderTrails(RenderPassContext& ctx, renderer::RenderScene& output); }
+namespace fbzz::scene { struct RenderPassContext; FBZZ_ENGINE_API void ExtractRenderTrails(RenderPassContext& ctx, renderer::RenderScene& output); }

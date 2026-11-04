@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Engine/Api.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <array>
@@ -121,41 +122,41 @@ struct WaterSplineSample {
 /// @brief Return the component-centered local XZ extent used by water geometry and UV mapping.
 /// @param water Water surface whose selected shape determines the footprint extent.
 /// @return Authored rectangle extent or the spline's symmetric local bounds extent.
-[[nodiscard]] math::Vector2 WaterSurfaceLocalExtent(const WaterComponent& water,
+[[nodiscard]] FBZZ_ENGINE_API math::Vector2 WaterSurfaceLocalExtent(const WaterComponent& water,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 /// @brief Return the shape interpretation captured by the selected read view.
-[[nodiscard]] WaterSurfaceShape WaterSurfaceEffectiveShape(const WaterComponent& water,
+[[nodiscard]] FBZZ_ENGINE_API WaterSurfaceShape WaterSurfaceEffectiveShape(const WaterComponent& water,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 /// @brief Whether water geometry replaces the authored Rectangle grid.
 /// @note Invalid authored splines remain geometry-selected so callers never fall back to a rectangle.
-[[nodiscard]] bool UsesWaterSurfaceGeometry(const WaterComponent& water,
+[[nodiscard]] FBZZ_ENGINE_API bool UsesWaterSurfaceGeometry(const WaterComponent& water,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 /// @brief Return the immutable effective geometry, or null when selected geometry is invalid.
 /// @note A Zone owner exposes its shared snapshot without changing the authored surface shape.
-[[nodiscard]] const WaterSplineSnapshot* WaterSurfaceGeometry(const WaterComponent& water,
+[[nodiscard]] FBZZ_ENGINE_API const WaterSplineSnapshot* WaterSurfaceGeometry(const WaterComponent& water,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 /// @brief Return the owner pose captured with the selected water geometry.
 /// @param water Water component holding the simulation pose.
 /// @param currentTransform Current pose used by LiveQuery or before the first simulation publication.
 /// @param view Geometry boundary whose pose is requested.
-[[nodiscard]] const Transform& WaterSurfaceTransform(const WaterComponent& water,
+[[nodiscard]] FBZZ_ENGINE_API const Transform& WaterSurfaceTransform(const WaterComponent& water,
     const Transform& currentTransform, WaterSurfaceReadView view);
 
 /// @brief Return the Zone membership captured with the selected water geometry.
 /// @param water Water component holding current and simulation membership.
 /// @param view Geometry boundary whose Zone owner is requested.
-[[nodiscard]] EntityID WaterSurfaceZoneOwner(const WaterComponent& water,
+[[nodiscard]] FBZZ_ENGINE_API EntityID WaterSurfaceZoneOwner(const WaterComponent& water,
     WaterSurfaceReadView view);
 
 /// @brief Validate local, scaled, and rotated shared extents used by spline UV and atlas mapping.
 /// @param snapshot Baked spline bounds.
 /// @param transform World pose used to map the centered bounds.
 /// @return True only when every extent remains finite and representable as a float.
-[[nodiscard]] bool HasValidWaterSplineExtents(const WaterSplineSnapshot& snapshot, const Transform& transform);
+[[nodiscard]] FBZZ_ENGINE_API bool HasValidWaterSplineExtents(const WaterSplineSnapshot& snapshot, const Transform& transform);
 
 /// @brief Hash all spline authoring and world-transform values used to build a snapshot.
 /// @param shape Selected lake or river spline shape.
@@ -165,7 +166,7 @@ struct WaterSplineSample {
 /// @param maximumWaterDepth Global depth cap shared by physics and rendering.
 /// @param maximumWorldCellSize Requested maximum world edge length after shared midpoint refinement.
 /// @return Stable signature for cache invalidation.
-[[nodiscard]] std::uint64_t WaterSplineSnapshotSignature(WaterSurfaceShape shape,
+[[nodiscard]] FBZZ_ENGINE_API std::uint64_t WaterSplineSnapshotSignature(WaterSurfaceShape shape,
     std::span<const WaterSplinePoint> points, std::uint32_t samplesPerSegment,
     const Transform& transform, float maximumWaterDepth = 10.0f,
     float maximumWorldCellSize = 2.0f);
@@ -178,24 +179,24 @@ struct WaterSplineSample {
 /// @param maximumWorldCellSize Refined world edge target shared by the mesh and wave sampling.
 /// @return False for invalid or over-budget input with out unchanged; success replaces out atomically.
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-body-actors-in-unreal-engine Epic Games, Water Body Actors.
-[[nodiscard]] bool BuildWaterSplineSnapshot(WaterSurfaceShape shape,
+[[nodiscard]] FBZZ_ENGINE_API bool BuildWaterSplineSnapshot(WaterSurfaceShape shape,
     std::span<const WaterSplinePoint> points, std::uint32_t samplesPerSegment,
     const Transform& transform, WaterSplineSnapshot& out, float maximumWaterDepth = 10.0f,
     float maximumWorldCellSize = 2.0f);
 
 /// @brief Recompute bounds, refine shared edges, gradients, and the BVH for an authored numeric mesh.
 /// @return False for invalid or over-budget geometry; out may be partially updated.
-[[nodiscard]] bool FinalizeWaterSplineSnapshot(WaterSplineSnapshot& snapshot,
+[[nodiscard]] FBZZ_ENGINE_API bool FinalizeWaterSplineSnapshot(WaterSplineSnapshot& snapshot,
     float maximumWorldCellSize);
 
 /// @brief Recompute snapshot bounds, triangle gradients, and lookup hierarchy without refining its vertices.
-[[nodiscard]] bool RebuildWaterSplineSnapshotDerivedData(WaterSplineSnapshot& snapshot);
+[[nodiscard]] FBZZ_ENGINE_API bool RebuildWaterSplineSnapshotDerivedData(WaterSplineSnapshot& snapshot);
 
 /// @brief Sample the same triangle surface consumed by the renderer.
 /// @param snapshot Immutable world-space spline geometry.
 /// @param worldX,worldZ Query location in world space.
 /// @param out Receives interpolated height, depth, and velocity on success.
 /// @return False outside the spline footprint or when the snapshot/query is invalid; out remains unchanged.
-[[nodiscard]] bool TrySampleWaterSpline(const WaterSplineSnapshot& snapshot,
+[[nodiscard]] FBZZ_ENGINE_API bool TrySampleWaterSpline(const WaterSplineSnapshot& snapshot,
     float worldX, float worldZ, WaterSplineSample& out);
 } /// @note namespace fbzz::scene

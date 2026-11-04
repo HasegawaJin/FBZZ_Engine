@@ -8,7 +8,7 @@
 #include <imgui.h>
 #include <string>
 
-namespace fbzz::editor { struct EditorContext; struct EditorSettings; }
+namespace fbzz::editor { struct EditorContext; struct EditorSettings; class OperatorRegistry; }
 
 namespace fbzz::editor {
 
@@ -40,6 +40,12 @@ public:
 
     virtual void OnInit(EditorContext& ctx) { (void)ctx; }
     virtual void OnShutdown() {}
+    /// @note パネルの生成後に一度呼ぶ。登録した操作は描画や表示状態に依存しない。
+    virtual void OnRegisterOperators(OperatorRegistry& registry) { (void)registry; }
+    /// @note 非表示・hidden batchでも編集用プレビューなどの状態を進める。
+    virtual void OnUpdate(EditorContext& ctx, float dt) { (void)ctx; (void)dt; }
+    /// @note GPUを使うプレビューをフレーム内で進める。表示状態によらず描画パスの後で呼ぶ。
+    virtual void OnRenderFrame(EditorContext& ctx) { (void)ctx; }
 
     /// @note パネル固有の設定を editor_settings.toml と往復させるフック。
     /// @note OnLoadSettings はプロジェクトを開いた直後 (設定ロード後)、OnSaveSettings は終了時 (設定保存前) に

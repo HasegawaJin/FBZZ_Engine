@@ -5,12 +5,12 @@
 ///
 ///
 /// @note VFXBeam+Trail は 2 点を結ぶ 1 本の折れ線しか張れず、帯もカメラへ CPU で向けるため Scene
-///       ビューで紙に見える。ここは複数本の折れ線を 1 メッシュにまとめ、帯を向けるのは VS に
-///       任せる (VFXLine.hlsl) —— どのビューでも正対する。見た目の既定は VFXLine.mat、色・明るさ・
-///       時刻は VFXLineSystem が paramOverrides へ毎フレーム書く。
+/// @note ビューで紙に見える。ここは複数本の折れ線を 1 メッシュにまとめ、帯を向けるのは VS に
+/// @note 任せる (VFXLine.hlsl) —— どのビューでも正対する。見た目の既定は VFXLine.mat、色・明るさ・
+/// @note 時刻は VFXLineSystem が paramOverrides へ毎フレーム書く。
 #pragma once
 #include <Engine/Scene/EntityRef.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 
@@ -21,7 +21,7 @@ namespace fbzz::scene {
 
 enum class VFXLineMode : int { Lightning = 0, Beam = 1 };
 
-/// Inspector と生成メニューが使う出発点。値は ApplyVFXLinePreset (VFXLineGeometry.hpp) が入れる。
+/// @note Inspector と生成メニューが使う出発点。値は ApplyVFXLinePreset (VFXLineGeometry.hpp) が入れる。
 enum class VFXLinePreset : int { Lightning = 0, ElectricArc, Laser, EnergyBeam, Tether, Count };
 
 struct VFXLineComponent {
@@ -30,62 +30,62 @@ struct VFXLineComponent {
 
     /// @name 端点
     /// @{
-    /// 始点の実体。無効なら自分の位置。
+    /// @note 始点の実体。無効なら自分の位置。
     EntityRef fromEntity;
-    /// 終点の実体。無効なら toPoint (自分から見たローカル座標 = 置いただけで線が見える)。
+    /// @note 終点の実体。無効なら toPoint (自分から見たローカル座標 = 置いただけで線が見える)。
     EntityRef toEntity;
-    /// 始点へのワールド オフセット (足元ではなく手や胸から出すとき)。
+    /// @note 始点へのワールド オフセット (足元ではなく手や胸から出すとき)。
     math::Vector3 fromOffset = math::Vector3::ZERO;
     math::Vector3 toPoint = { 0.0f, 0.0f, 5.0f };
-    /// 終点の実体が消えたら線を畳む (誰も居ない場所へ伸び続けないように)。
+    /// @note 終点の実体が消えたら線を畳む (誰も居ない場所へ伸び続けないように)。
     bool disableWhenEndpointMissing = true;
     /// @}
 
     /// @name 見た目
     /// @{
     std::string materialPath = "Assets/Materials/Effects/VFXLine.mat";
-    /// グローの色 (リニア)。A は全体の不透明度。
+    /// @note グローの色 (リニア)。A は全体の不透明度。
     math::Vector4 color = { 0.35f, 0.6f, 1.0f, 1.0f };
-    /// 芯の色 (リニア HDR)。白熱させるなら 1 より大きく。
+    /// @note 芯の色 (リニア HDR)。白熱させるなら 1 より大きく。
     math::Vector4 coreColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    /// 全体の明るさ (HDR)。ブルームが拾う。
+    /// @note 全体の明るさ (HDR)。ブルームが拾う。
     float intensity = 4.0f;
-    /// 帯の幅 [m]。
+    /// @note 帯の幅 [m]。
     float width = 0.12f;
-    /// 芯の太さ (帯の半幅に対する割合)。
+    /// @note 芯の太さ (帯の半幅に対する割合)。
     float coreWidth = 0.25f;
-    /// 終点側の幅 (始点を 1 とした割合)。
+    /// @note 終点側の幅 (始点を 1 とした割合)。
     float endTaper = 0.3f;
     /// @}
 
     /// @name 雷
     /// @{
-    /// 折れの細かさ。中点変位の段数で、本流は 2^detail 区間になる。
+    /// @note 折れの細かさ。中点変位の段数で、本流は 2^detail 区間になる。
     int   detail = 6;
-    /// 折れの大きさ (線の長さに対する割合)。
+    /// @note 折れの大きさ (線の長さに対する割合)。
     float chaos = 0.18f;
     int   branchCount = 3;
-    /// 枝の長さ (本流の長さに対する割合)。
+    /// @note 枝の長さ (本流の長さに対する割合)。
     float branchLength = 0.35f;
-    /// 本流からの開き [度]。
+    /// @note 本流からの開き [度]。
     float branchAngle = 35.0f;
-    /// 枝の幅と明るさ (本流を 1 とした割合)。
+    /// @note 枝の幅と明るさ (本流を 1 とした割合)。
     float branchWidth = 0.55f;
     float branchBrightness = 0.6f;
-    /// 形を作り直す回数 [回/秒]。0 で形を固定する。
+    /// @note 形を作り直す回数 [回/秒]。0 で形を固定する。
     float strikeRate = 14.0f;
-    /// 明滅の強さ [0,1]。打ち直すたびに明るさが揺れ、打った直後が一番明るい。
+    /// @note 明滅の強さ [0,1]。打ち直すたびに明るさが揺れ、打った直後が一番明るい。
     float flicker = 0.5f;
-    /// 打ち直しの間の震え (線の長さに対する割合)。
+    /// @note 打ち直しの間の震え (線の長さに対する割合)。
     float jitter = 0.01f;
     /// @}
 
     /// @name ビーム
     /// @{
     int   beamSegments = 32;
-    /// たるみ [m]。中点をこの距離だけ下げる (張った光線と «引っ張られる紐» の違い)。
+    /// @note たるみ [m]。中点をこの距離だけ下げる (張った光線と «引っ張られる紐» の違い)。
     float sag = 0.0f;
-    /// 横ゆれの振幅 [m]・時間周波数 [Hz]・線に沿った山の数。
+    /// @note 横ゆれの振幅 [m]・時間周波数 [Hz]・線に沿った山の数。
     float wobble = 0.0f;
     float wobbleFrequency = 3.0f;
     float wobbleWaves = 2.0f;
@@ -93,9 +93,9 @@ struct VFXLineComponent {
 
     /// @name 帯の模様 (シェーダー)
     /// @{
-    /// 芯の太さのムラ [0,1]。
+    /// @note 芯の太さのムラ [0,1]。
     float breakup = 0.4f;
-    /// 帯を流れる輝点の速さと数。0 で流さない。
+    /// @note 帯を流れる輝点の速さと数。0 で流さない。
     float pulseSpeed = 0.0f;
     float pulseDensity = 0.0f;
     /// @}
@@ -103,7 +103,7 @@ struct VFXLineComponent {
     /// @name 時間
     /// @{
     float fadeIn = 0.0f;
-    /// 0 以下はずっと出し続ける。
+    /// @note 0 以下はずっと出し続ける。
     float duration = 0.0f;
     float fadeOut = 0.2f;
     bool  loop = true;
@@ -113,7 +113,7 @@ struct VFXLineComponent {
     /// @name ランタイム (保存しない)
     /// @{
     float time = 0.0f;
-    /// 今の形を打ってからの経過 [秒]。
+    /// @note 今の形を打ってからの経過 [秒]。
     float strikeClock = 0.0f;
     std::uint32_t strikeIndex = 0;
 
@@ -186,4 +186,4 @@ struct VFXLineComponent {
     /// @}
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

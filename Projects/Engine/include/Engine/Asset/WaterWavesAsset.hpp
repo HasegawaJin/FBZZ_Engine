@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Asset/DataAsset.hpp>
 #include <Fluid/GerstnerWaves.hpp>
@@ -18,7 +19,7 @@ public:
     static constexpr const char* TYPE_NAME = "WaterWavesAsset";
 
     const char* GetTypeName() const override { return TYPE_NAME; }
-    void Reflect(scene::IReflector& reflector) override;
+    FBZZ_ENGINE_API void Reflect(scene::IReflector& reflector) override;
 
     int algorithmVersion = static_cast<int>(fluid::GERSTNER_WAVE_GENERATION_ALGORITHM_VERSION);
     int seed = 0x6D2B79F5;
@@ -39,11 +40,11 @@ public:
     /// @brief Generate the asset's authored base waves without changing output on invalid settings.
     /// @param out Destination for up to 16 generated base waves.
     /// @return False when the algorithm version, numeric ranges, or count is invalid.
-    [[nodiscard]] bool GenerateWaves(
+    [[nodiscard]] FBZZ_ENGINE_API bool GenerateWaves(
         std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES>& out) const;
 
     /// @brief Convert reflected authoring values to the math-only generator settings.
-    [[nodiscard]] fluid::GerstnerWaveGenerationSettings GenerationSettings() const;
+    [[nodiscard]] FBZZ_ENGINE_API fluid::GerstnerWaveGenerationSettings GenerationSettings() const;
 };
 
 } /// @note namespace fbzz::asset

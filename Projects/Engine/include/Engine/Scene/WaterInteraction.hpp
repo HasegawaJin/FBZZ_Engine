@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Scene/Entity.hpp>
 #include <Math/Vector3.hpp>
@@ -15,6 +16,10 @@
 
 namespace fbzz::scene {
 class Scene;
+/// @note 波紋の CPU 近傍と GPU テクスチャで共有する解像度。
+inline constexpr uint32_t kWaterRippleTextureSize = 128;
+/// @note Scene の構造変更境界で処理する水しぶきを予約する。
+FBZZ_ENGINE_API void QueueWaterSplash(Scene& scene, EntityID owner, const math::Vector3& worldPos, float intensity);
 struct IReflector;
 struct WaterComponent;
 struct WaterInteractionSceneStore;
@@ -57,7 +62,7 @@ struct WaterInteractionSettings {
     math::Vector3 sedimentScattering = {0.16f, 0.10f, 0.045f};
     std::string bubbleMaterialPath = WATER_BUBBLE_MATERIAL;
     std::string sedimentMaterialPath = WATER_SEDIMENT_MATERIAL;
-    void Reflect(IReflector& reflector);
+    FBZZ_ENGINE_API void Reflect(IReflector& reflector);
 };
 
 /// @brief Immutable numeric plume; density multiplies scattering coefficients in inverse meters.
@@ -101,29 +106,29 @@ struct WaterInteractionRuntime {
 
 /// @return False leaves the pending queue unchanged for invalid input, disabled/excluded water or exhausted capacity.
 /// @note This entry only records values; Cleanup performs structural changes.
-bool QueueWaterInteraction(Scene& scene, EntityID owner, const WaterInteractionImpulse& impulse);
+FBZZ_ENGINE_API bool QueueWaterInteraction(Scene& scene, EntityID owner, const WaterInteractionImpulse& impulse);
 
 /// @brief Projects a validated surface ripple/splash position onto its existing water interface and records foam.
-bool QueueWaterSurfaceInteraction(Scene& scene, EntityID owner, math::Vector3 worldPosition, float strength);
+FBZZ_ENGINE_API bool QueueWaterSurfaceInteraction(Scene& scene, EntityID owner, math::Vector3 worldPosition, float strength);
 
 /// @brief Establishes tracked owner/body lifetime and rate-limited foam or bubbles using the existing WaterSystem body traversal.
-void SupplyWaterMotionImpulse(Scene& scene, EntityID owner, EntityID body,
+FBZZ_ENGINE_API void SupplyWaterMotionImpulse(Scene& scene, EntityID owner, EntityID body,
     math::Vector3 worldPosition, math::Vector3 worldVelocity, float dt, bool nearSurface,
     bool emitSurfaceRipple = true);
 
 /// @brief Records the current fixed-step contact of a previously tracked body; no owner/Scene scan is performed.
-void SupplyWaterGroundContact(Scene& scene, EntityID body,
+FBZZ_ENGINE_API void SupplyWaterGroundContact(Scene& scene, EntityID body,
     math::Vector3 worldPoint, math::Vector3 worldNormal, float approachSpeed = 0.0f);
 
 /// @brief Accumulates fixed-step simulation time; contact expiry follows the serial Cleanup frame so catchup steps remain valid.
-void BeginWaterInteractionPhysicsStep(Scene& scene, float fixedDt);
+FBZZ_ENGINE_API void BeginWaterInteractionPhysicsStep(Scene& scene, float fixedDt);
 
 /// @brief Copies runtime values at the production renderer boundary.
-std::shared_ptr<const WaterInteractionFrame> WaterInteractionSnapshot(const WaterComponent& water);
+FBZZ_ENGINE_API std::shared_ptr<const WaterInteractionFrame> WaterInteractionSnapshot(const WaterComponent& water);
 
 /// @brief Clears transient authoring-copy state without deleting another owner's generated objects.
-void ResetWaterInteractionRuntime(WaterComponent& water);
+FBZZ_ENGINE_API void ResetWaterInteractionRuntime(WaterComponent& water);
 
 /// @brief Retires this Scene's generated emitters and transient data at a serial Scene deactivation boundary.
-void ClearWaterInteractions(Scene& scene);
+FBZZ_ENGINE_API void ClearWaterInteractions(Scene& scene);
 } /// @note namespace fbzz::scene

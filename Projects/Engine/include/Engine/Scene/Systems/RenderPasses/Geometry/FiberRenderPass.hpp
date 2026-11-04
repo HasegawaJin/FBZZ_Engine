@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 #pragma once
+#include <Engine/Api.hpp>
 #include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
 #include <Engine/Asset/FiberMaterialSettings.hpp>
 #include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>
@@ -29,10 +30,10 @@ struct FiberMaskSlot {
 /// @brief .mat の fiberMask (textures の tex5) を読み、settings.m_maskIndex へ bindless 添字を書く。
 /// @note 未設定・読込失敗・解放済みは白 1×1 の添字にする (マスク無しと同じ見た目)。シェーダーは添字を常に有効として引く。
 /// @note 添字はテクスチャの生存に紐づくので、CB へ上げる前に毎フレーム呼ぶ。
-void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const asset::MaterialAsset* material,
+FBZZ_ENGINE_API void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const asset::MaterialAsset* material,
     renderer::ResourceManager& resources, FiberMaskSlot& slot);
 /// @brief パスを直接渡す版。FiberComponent::m_maskPath の個体ごとの差し替えに使う。空パスは白 1×1。
-void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const std::string& path,
+FBZZ_ENGINE_API void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const std::string& path,
     renderer::ResourceManager& resources, FiberMaskSlot& slot);
 
 using renderer::PerFrameCB;

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-03
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/ShaderCapabilities.hpp>
 #include <string>
 #include <string_view>
@@ -30,11 +31,11 @@ struct AssetPathService {
 
 /// @brief 解決規則を差し込む。
 /// @note Asset 層が起動時に一度だけ呼ぶ。
-void SetAssetPathService(const AssetPathService& service);
-[[nodiscard]] ShaderCapabilities ResolveShaderCapabilities(std::string_view reference);
+FBZZ_GRAPHICS_API void SetAssetPathService(const AssetPathService& service);
+[[nodiscard]] FBZZ_GRAPHICS_API ShaderCapabilities ResolveShaderCapabilities(std::string_view reference);
 
-std::string ResolveAssetPath(const std::string& path);
-[[nodiscard]] bool ResolveTextureSource(std::string_view texturePath, std::string& outSourcePath);
-[[nodiscard]] std::string NormalizeTextureKey(std::string_view reference);
+FBZZ_GRAPHICS_API std::string ResolveAssetPath(const std::string& path);
+[[nodiscard]] FBZZ_GRAPHICS_API bool ResolveTextureSource(std::string_view texturePath, std::string& outSourcePath);
+[[nodiscard]] FBZZ_GRAPHICS_API std::string NormalizeTextureKey(std::string_view reference);
 
 } /// @note namespace fbzz::renderer

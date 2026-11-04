@@ -82,6 +82,12 @@ ManagedBridgeStatus ManagedMaterialTransfers::Open(Scene& scene, GameObject& tar
     } else {
         const auto parsed = std::from_chars(text[1].data(), text[1].data() + text[1].size(), record.expected);
         if (parsed.ec != std::errc{} || parsed.ptr != text[1].data() + text[1].size() || record.expected > record.values.max_size()) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        /// @note 初回の遅延ロードを commit の変更検査と混同しない。ロード callback 後は旧 Component / slot を再利用しない。
+        (void)material->EnsureRawMaterialAsset(record.slot);
+        const auto status = Impl::ValidateOwner(scene, record, material, true);
+        if (status != ManagedBridgeStatus::OK) return status;
+        const auto& row = material->RawSlotAt(record.slot);
+        record.shader = row.GetMaterialAsset().IsValid() ? row.GetShaderPath() : std::string{};
         record.values.reserve(static_cast<size_t>(record.expected));
     }
     if (m_impl->records.size() >= 32 || m_impl->next > static_cast<uint64_t>(INT64_MAX)) return ManagedBridgeStatus::PENDING_LIMIT;

@@ -25,6 +25,19 @@ void RegisterAssetOperators(OperatorRegistry& registry);
 /// @note AssetBrowser は一覧取得だけではなく、人が参照欄から辿る操作も AI の検証ループに必要になる。
 void RegisterAssetBrowserOperators(OperatorRegistry& registry);
 
+/// @brief モデル原本の変換設定・走査・インポート。
+void RegisterModelImportOperators(OperatorRegistry& registry);
+void RegisterTextureImportOperators(OperatorRegistry& registry);
+void RegisterAnimationPreviewOperators(OperatorRegistry& registry);
+void RegisterAssetFileOperators(OperatorRegistry& registry);
+void RegisterAssetReferenceOperators(OperatorRegistry& registry);
+
+/// @brief プロジェクト設定全体の照会と履歴付き編集。
+void RegisterProjectSettingsOperators(OperatorRegistry& registry);
+
+/// @brief 入力バインドの照会・編集・再読込・保存・リバインド。
+void RegisterInputBindingOperators(OperatorRegistry& registry);
+
 /// @brief Behavior Tree の操作。
 /// @note bt_* の AI ツール 29 個をすべて Operator にはしない。大半は「パスと id と名前を指定して値を書く」API でコマンドパレットから呼びたい場面が無く、層が 1 つ深くなるだけになる。実装の共有は Editor/GraphEditor/BehaviorTreeOps.hpp が担う。
 void RegisterBehaviorTreeOperators(OperatorRegistry& registry);
@@ -51,6 +64,7 @@ void RegisterSfxOperators(OperatorRegistry& registry);
 /// @brief ParticleEmitter / VFXComponent の再生制御。
 /// @note Inspector と AI は同じコンポーネント API と操作入口を共有する。
 void RegisterEffectOperators(OperatorRegistry& registry);
+void RegisterComponentActionOperators(OperatorRegistry& registry);
 
 /// @brief 静的メッシュの ClothAsset 書き出し。
 void RegisterClothOperators(OperatorRegistry& registry);

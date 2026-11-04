@@ -340,6 +340,8 @@ OrderingHints SpringBoneSystem::GetOrder() const
 
 void SpringBoneSystem::Update(SystemContext& ctx)
 {
+    /// @note Pause は確定済みの骨姿勢と Verlet 履歴を保持し、再開時だけ更新する。
+    if (ctx.playing && !ctx.simulating) return;
     if (!ctx.resources) return;
     FBZZ_PROFILE_SCOPE("SpringBoneSystem");
 
@@ -453,7 +455,7 @@ void SpringBoneSystem::Update(SystemContext& ctx)
             for (int step = 0; step < subSteps; ++step)
                 StepChain(chain, fk, colliders, stepDt);
             if (subSteps == 0) {
-                /// @note dt が 0 (ポーズ中など) でも、親の姿勢変化へは追従させる。
+                /// @note 編集時の dt=0 評価でも親の姿勢変化へは追従させる。
                 StepChain(chain, fk, colliders, 0.0f);
             }
 

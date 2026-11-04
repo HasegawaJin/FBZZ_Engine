@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-10
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <cstdint>
 #include <string>
@@ -42,9 +43,9 @@ struct EntityRef {
     }
 
     /// @return 設定済みGUIDが欠損した場合はnullptr。GUIDは消去しない。
-    GameObject* Resolve(const ScriptSceneProxy& scene) const;
+    FBZZ_ENGINE_API GameObject* Resolve(const ScriptSceneProxy& scene) const;
     /// @note GUIDを持たない旧EntityID指定は同じSceneの実体から一度移行する。
-    GameObject* Resolve(Scene& scene) const;
+    FBZZ_ENGINE_API GameObject* Resolve(Scene& scene) const;
 };
 
 } /// @note namespace fbzz::scene

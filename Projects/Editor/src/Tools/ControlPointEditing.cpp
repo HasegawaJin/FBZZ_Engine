@@ -507,6 +507,11 @@ void ReflectIKChain(ReferenceSignatureReflector& reflector, const scene::IKChain
     auto footNormal = chain.footNormalAxis; reflector.Field("footNormalAxis", footNormal);
     bool adjustHip = chain.adjustHip; reflector.Field("adjustHip", adjustHip);
     auto hipName = chain.hipBoneName; reflector.Field("hipBoneName", hipName);
+    float hipWeight = chain.hipWeight; reflector.Field("hipWeight", hipWeight);
+    float maxLower = chain.maxHipLowering; reflector.Field("maxHipLowering", maxLower);
+    float maxRaise = chain.maxHipRaising; reflector.Field("maxHipRaising", maxRaise);
+    float bendReserve = chain.hipBendReserve; reflector.Field("hipBendReserve", bendReserve);
+    bool physicsFeet = chain.useRagdollFootShape; reflector.Field("useRagdollFootShape", physicsFeet);
     bool spineAuto = chain.spineAutoWeight; reflector.Field("spineAutoWeight", spineAuto);
     float flatWeight = chain.spineFlatWeight; reflector.Field("spineFlatWeight", flatWeight);
     float slopeRamp = chain.spineSlopeRampMeters; reflector.Field("spineSlopeRampMeters", slopeRamp);

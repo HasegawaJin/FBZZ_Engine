@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/ITexture.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -11,7 +12,7 @@
 
 namespace fbzz::renderer {
 /// @brief RGBA8 の 2D 経路で表現できない DDS (キューブ・配列・浮動小数点) かをヘッダーから判定する。
-[[nodiscard]] bool RequiresNativeTextureUpload(const std::string& path);
+[[nodiscard]] FBZZ_GRAPHICS_API bool RequiresNativeTextureUpload(const std::string& path);
 
 /// @brief 展開済みテクスチャ。各段は行ピッチ width*4 の詰めた RGBA8。
 /// @note ワーカースレッドの成果物として渡すため、GPU ハンドルも DX 型も持たない。
@@ -27,16 +28,16 @@ struct DecodedTextureRGBA8 {
     std::uint32_t    sourceWidth  = 0;
     std::uint32_t    sourceHeight = 0;
 
-    [[nodiscard]] std::size_t ByteSize() const;
+    [[nodiscard]] FBZZ_GRAPHICS_API std::size_t ByteSize() const;
 
     /// @brief 転送 API へ渡すビューを作る。
     /// @return 段が無い、または寸法 0 の段があれば false。
     /// @warning out の各要素は this の画素を指す。this より長く保持しない。
-    [[nodiscard]] bool ToMipData(std::vector<TextureMipData>& out) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool ToMipData(std::vector<TextureMipData>& out) const;
 };
 
 /// @brief 2x2 の平均で半分に縮める (RGBA8、各段 1 以上)。品質段の縮小はすべてこれを通す。
-[[nodiscard]] DecodedTextureRGBA8::Mip DownsampleRGBA8Box2x(const DecodedTextureRGBA8::Mip& source);
+[[nodiscard]] FBZZ_GRAPHICS_API DecodedTextureRGBA8::Mip DownsampleRGBA8Box2x(const DecodedTextureRGBA8::Mip& source);
 
 /// @brief DDS / TGA / WIC 形式の画像を RGBA8 へ展開する。DDS のミップは全段、他は 0 段目のみ。
 /// @param dropTopLevels 上位から落とす段数。ミップ付きは段を捨て、1 段の画像は DownsampleRGBA8Box2x を n 回かける。
@@ -44,11 +45,11 @@ struct DecodedTextureRGBA8 {
 /// @note スレッドセーフ。COM 未初期化のスレッドでは呼び出しの間だけ MTA で初期化する (WIC のため)。
 /// @note 元画像は索引を持たないので全体を読む。部分 I/O は TextureStreamCache (.fztc) が受け持つ。
 /// @see https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex CoInitializeEx
-[[nodiscard]] bool DecodeTextureFileRGBA8(const std::string& path, DecodedTextureRGBA8& out,
+[[nodiscard]] FBZZ_GRAPHICS_API bool DecodeTextureFileRGBA8(const std::string& path, DecodedTextureRGBA8& out,
                                           std::string* outError = nullptr,
                                           std::uint32_t dropTopLevels = 0);
 
 /// @brief 全ミップの緑成分を反転する。元画像とキャッシュは変更しない。
-void FlipTextureGreen(DecodedTextureRGBA8& texture);
+FBZZ_GRAPHICS_API void FlipTextureGreen(DecodedTextureRGBA8& texture);
 
 } /// @note namespace fbzz::renderer

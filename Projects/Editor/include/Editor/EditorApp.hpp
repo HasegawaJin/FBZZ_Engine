@@ -25,6 +25,7 @@
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/ProjectRuntime.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Math/Vector3.hpp>
 #include <Physics/Layer.hpp>
@@ -177,6 +178,9 @@ private:
     /// @brief 投影として描かれる。実行可能条件 (poll) を 1 箇所に持つことで、
     /// @brief 「メニューではグレーアウトなのにホットキーからは通る」を構造的に防ぐ。
     void RegisterBuiltinOperators();
+    void RegisterWorkspaceOperators();
+    /// @brief 設定ロードと直接APIのライブ反映を共有する。
+    void ApplyEditorSettingsToContext(bool loadPanels);
     /// @brief パネル表示 / UI スケール / Prefab 編集モードの操作 (src/Op/PanelOperators.cpp)。
     /// @brief m_panels を参照するため EditorApp のメンバー関数として登録する。
     void RegisterPanelOperators();

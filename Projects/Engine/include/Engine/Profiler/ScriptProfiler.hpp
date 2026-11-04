@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-03
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Core/Profiler/Profiler.hpp>
 #include <Engine/Scene/Entity.hpp>
@@ -54,29 +55,29 @@ struct ScriptProfileInvocation {
 /// @pre 全操作は main thread。Script と Scene のレイアウトには profiler 状態を追加しない。
 class ScriptProfiler {
 public:
-    static bool IsRecording();
-    static void RequestRecording(bool recording);
-    static void RequestClear();
-    static void BeginFrame(uint64_t applicationFrameSerial, double frameStartMs);
-    static void EndFrame();
-    static const ScriptProfileSnapshot& GetSnapshot();
-    static ScriptProfileInvocation BeginInvocation(const Script& script, ScriptCallbackKind kind, const char* label);
+    FBZZ_ENGINE_API static bool IsRecording();
+    FBZZ_ENGINE_API static void RequestRecording(bool recording);
+    FBZZ_ENGINE_API static void RequestClear();
+    FBZZ_ENGINE_API static void BeginFrame(uint64_t applicationFrameSerial, double frameStartMs);
+    FBZZ_ENGINE_API static void EndFrame();
+    FBZZ_ENGINE_API static const ScriptProfileSnapshot& GetSnapshot();
+    FBZZ_ENGINE_API static ScriptProfileInvocation BeginInvocation(const Script& script, ScriptCallbackKind kind, const char* label);
     /// @note callback 後に対象を参照せず、token だけで区間と障害を確定する。
-    static void EndInvocation(ScriptProfileInvocation invocation, bool succeeded);
-    static const char* GetCallbackName(ScriptCallbackKind kind);
-    static const char* GetModeName(ScriptProfileMode mode);
+    FBZZ_ENGINE_API static void EndInvocation(ScriptProfileInvocation invocation, bool succeeded);
+    FBZZ_ENGINE_API static const char* GetCallbackName(ScriptCallbackKind kind);
+    FBZZ_ENGINE_API static const char* GetModeName(ScriptProfileMode mode);
     /// @note プロジェクト切替と実体再生成を伴う DLL 更新試行で呼ぶ。rollback も旧 epoch へ戻さない。
-    static void AdvanceRuntimeEpoch(bool advanceDllGeneration = false);
-    static uint64_t GetRuntimeEpoch();
-    static uint64_t GetDllGeneration();
-    static void SetExecutionMode(bool inPlayMode);
-    static void ObserveScene(const Scene& scene);
+    FBZZ_ENGINE_API static void AdvanceRuntimeEpoch(bool advanceDllGeneration = false);
+    FBZZ_ENGINE_API static uint64_t GetRuntimeEpoch();
+    FBZZ_ENGINE_API static uint64_t GetDllGeneration();
+    FBZZ_ENGINE_API static void SetExecutionMode(bool inPlayMode);
+    FBZZ_ENGINE_API static void ObserveScene(const Scene& scene);
     /// @note 実体の寿命表だけを更新する。無効時に descriptor と名前は解決しない。
-    static void RegisterInstance(const Script& script);
-    static void RebindInstance(const Script& script);
-    static void ForgetInstance(const Script& script);
+    FBZZ_ENGINE_API static void RegisterInstance(const Script& script);
+    FBZZ_ENGINE_API static void RebindInstance(const Script& script);
+    FBZZ_ENGINE_API static void ForgetInstance(const Script& script);
     /// @return 全世代と UUID/Entity/InspectionId が一致する現在の対象。無ければ nullptr。
-    static Script* ResolveTarget(Scene& scene, const ScriptProfileDescriptor& descriptor, const ScriptProfileContext& context);
+    FBZZ_ENGINE_API static Script* ResolveTarget(Scene& scene, const ScriptProfileDescriptor& descriptor, const ScriptProfileContext& context);
 };
 
 } /// @note namespace fbzz::scene

@@ -5,6 +5,7 @@
 #include <Editor/PackageBuildService.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
+#include <Editor/Util/UndoStack.hpp>
 
 #include <string>
 
@@ -50,10 +51,78 @@ std::vector<OpParam> SettingsParams()
     };
 }
 
+OpData DescribeSettings(const BuildSettings& settings)
+{
+    auto data = OpData::MakeObject();
+    data.Set("outputDirectory", settings.outputDirectory);
+    data.Set("productName", settings.productName);
+    data.Set("version", settings.version);
+    data.Set("iconPath", settings.iconPath);
+    data.Set("developmentBuild", settings.developmentBuild);
+    data.Set("stripEditorAssets", settings.stripEditorAssets);
+    auto scenes = OpData::MakeArray();
+    for (const auto& scene : settings.scenes) {
+        auto entry = OpData::MakeObject();
+        entry.Set("path", scene.path);
+        entry.Set("enabled", scene.enabled);
+        scenes.Push(std::move(entry));
+    }
+    data.Set("scenes", std::move(scenes));
+    return data;
+}
+
 } /// @note namespace
 
 void RegisterPackageBuildOperators(OperatorRegistry& registry)
 {
+    EditorOperator inspect;
+    inspect.id = "build.settings.inspect";
+    inspect.label = "Inspect Build Settings";
+    inspect.category = "Build";
+    inspect.kind = OpKind::Query;
+    inspect.desc = "配布パネルの現在の設定とシーン一覧を返す。";
+    inspect.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.packageBuild != nullptr; };
+    inspect.exec = [](OpContext& context, const OpArgs&) {
+        return OpResult::Data(DescribeSettings(context.ctx.packageBuild->Settings()));
+    };
+    registry.Register(std::move(inspect));
+
+    EditorOperator configure;
+    configure.id = "build.settings.configure";
+    configure.label = "Configure Build Settings";
+    configure.category = "Build";
+    configure.kind = OpKind::Mutation;
+    configure.undoLabel = "Edit Build Settings";
+    configure.desc = "配布設定を部分更新する。scenesは順序を含めた全置換。設定を保存し、ビルドは開始しない。";
+    configure.params = SettingsParams();
+    configure.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.packageBuild != nullptr; };
+    configure.exec = [](OpContext& context, const OpArgs& args) {
+        auto& ctx = context.ctx;
+        auto& service = *ctx.packageBuild;
+        BuildSettings after;
+        std::string reason;
+        if (!CandidateSettings(service, args, after, reason)) return OpResult::Err("BAD_ARG", reason);
+        const auto before = service.Settings();
+        const auto project = ctx.projectRoot;
+        const auto apply = [&ctx, project](const BuildSettings& value, std::string& error) {
+            if (ctx.projectRoot != project || !ctx.packageBuild) {
+                error = "Project changed.";
+                return false;
+            }
+            ctx.packageBuild->Settings() = value;
+            ctx.packageBuild->RefreshChecks(ctx, value);
+            ctx.requestEditorSettingsSave = true;
+            return true;
+        };
+        if (!apply(after, reason)) return OpResult::Err("BUILD_SETTINGS_FAILED", reason);
+        auto result = OpResult::Data(DescribeSettings(after));
+        result.command = std::make_unique<CheckedLambdaCommand>("Edit Build Settings",
+            [apply, after](std::string& error) { return apply(after, error); },
+            [apply, before](std::string& error) { return apply(before, error); });
+        return result;
+    };
+    registry.Register(std::move(configure));
+
     EditorOperator check;
     check.id = "build.package_check";
     check.label = "Check Game Package";

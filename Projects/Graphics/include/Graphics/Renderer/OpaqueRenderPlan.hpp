@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <cstdint>
 
@@ -41,7 +42,7 @@ struct OpaqueRenderPlan {
 /// @return Deferred の必須資源が欠けた場合は Forward。本描画前に必要なプリパスも同時に決める。
 /// @note ライト供給の LINEAR / CLUSTERED は直交するため、この解決に含めない。
 /// @see Docs/design/graphics-library.md
-[[nodiscard]] OpaqueRenderPlan ResolveOpaqueRenderPlan(
+[[nodiscard]] FBZZ_GRAPHICS_API OpaqueRenderPlan ResolveOpaqueRenderPlan(
     const RenderSettings& settings, const OpaqueRenderAvailability& availability);
 
 } /// @note namespace fbzz::renderer

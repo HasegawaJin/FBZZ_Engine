@@ -3,8 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Engine/Api.hpp>
 #include <Graphics/Renderer/RenderEnvironment.hpp>
 namespace fbzz::scene {
 struct RenderPassContext;
-renderer::RenderEnvironmentInput ExtractRenderEnvironment(RenderPassContext& ctx);
+FBZZ_ENGINE_API renderer::RenderEnvironmentInput ExtractRenderEnvironment(RenderPassContext& ctx);
 }

@@ -2,6 +2,7 @@
 /// @brief   内部参照の名前とアセット参照の表示形式を個別変更と誤認せず、参照先変更は保持する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <Editor/Util/PrefabOverrides.hpp>

@@ -17,7 +17,8 @@
 #pragma once
 
 #include <Engine/Scene/GameObject.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
+#include <Engine/Scene/CollisionInfo.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Math/MathUtils.hpp>
 #include <Physics/RigidBody.hpp>

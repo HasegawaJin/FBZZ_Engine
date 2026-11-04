@@ -5,6 +5,7 @@
 /// @note DirectXTex の WIC コーデックに必要。
 #pragma comment(lib, "ole32.lib")
 
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Asset/FlipbookMotionVectors.hpp>
 
 #include "FlipbookImageIO.hpp"
@@ -24,8 +25,8 @@
 namespace fbzz::asset {
 namespace {
 
-/// 1 コマ分のグレースケール輝度。マッチングは輝度だけで足りる
-/// (色差までは見なくても炎・煙の動きは追える)。
+/// @note 1 コマ分のグレースケール輝度。マッチングは輝度だけで足りる
+/// @note (色差までは見なくても炎・煙の動きは追える)。
 struct FramePixels {
     int width = 0;
     int height = 0;
@@ -73,8 +74,8 @@ FramePixels ExtractFrame(std::span<const float> rgba, std::uint32_t atlasWidth,
     return frame;
 }
 
-/// ブロックマッチング: current の各画素まわりの窓が next のどこへ移ったかを探す。
-/// 返すのは「current → next」の移動量 [px]。
+/// @note ブロックマッチング: current の各画素まわりの窓が next のどこへ移ったかを探す。
+/// @note 返すのは「current → next」の移動量 [px]。
 FlowField ComputeBlockMatchFlow(const FramePixels& current, const FramePixels& next,
                                 int blockRadius, int searchRadius)
 {
@@ -85,7 +86,7 @@ FlowField ComputeBlockMatchFlow(const FramePixels& current, const FramePixels& n
     flow.dy.assign(static_cast<std::size_t>(flow.width) * flow.height, 0.0f);
 
     /// @note 全画素で全探索すると O(W*H*S^2*B^2) になる。ブロック単位で 1 回だけ探索し、
-    ///       結果をブロック内へ配る (フリップブックの解像度なら十分な粒度)。
+    /// @note 結果をブロック内へ配る (フリップブックの解像度なら十分な粒度)。
     const int step = (std::max)(blockRadius, 1);
     for (int blockY = 0; blockY < current.height; blockY += step) {
         for (int blockX = 0; blockX < current.width; blockX += step) {
@@ -126,8 +127,8 @@ FlowField ComputeBlockMatchFlow(const FramePixels& current, const FramePixels& n
     return flow;
 }
 
-/// 3x3 平均でフロー場を均す。ブロック単位の探索結果はそのままだと
-/// ブロック境界で段差になり、warp したときにタイル状の継ぎ目が見える。
+/// @note 3x3 平均でフロー場を均す。ブロック単位の探索結果はそのままだと
+/// @note ブロック境界で段差になり、warp したときにタイル状の継ぎ目が見える。
 void SmoothFlow(FlowField& flow, int iterations)
 {
     if (iterations <= 0) return;
@@ -174,7 +175,7 @@ FlipbookMotionVectorResult Fail(std::string message)
     return result;
 }
 
-} // namespace
+} /// @note namespace
 
 FlipbookMotionAnalysis AnalyzeFlipbookMotion(std::span<const float> rgba, std::uint32_t width,
                                              std::uint32_t height,
@@ -296,7 +297,7 @@ FlipbookMotionVectorResult GenerateFlipbookMotionVectors(
     if (!detail::SavePngRgba8(destination, width, height, encoded, saveError))
         return Fail(saveError);
     /// @note RG は色ではなく速度なので sRGB 変換を禁止し、2 チャンネルを保持できる BC5 で扱う。
-    ///       Mip 生成はフレーム境界の速度を混ぜるため無効にする。
+    /// @note Mip 生成はフレーム境界の速度を混ぜるため無効にする。
     if (!detail::SaveTextureMeta(destination, TextureType::Data, TextureCompression::BC5,
                                  AlphaMode::None, false, saveError))
         return Fail(saveError);
@@ -310,7 +311,7 @@ FlipbookMotionVectorResult GenerateFlipbookMotionVectors(
     char strengthText[32]{};
     std::snprintf(strengthText, sizeof(strengthText), "%.4f", analysis.recommendedStrength);
     /// @note 探索半径に張り付いている = 実際の動きが探索範囲を超えている可能性が高い。
-    ///       使う側が半径を上げる判断をできるよう、要約に必ず出す。
+    /// @note 使う側が半径を上げる判断をできるよう、要約に必ず出す。
     result.message = "生成しました: " + std::to_string(analysis.frameCount) + " コマ / 最大移動量 "
         + std::to_string(static_cast<int>(analysis.maxObservedFlow)) + "px (探索半径 "
         + std::to_string(analysis.searchRadius) + "px) / Motion Strength " + strengthText;
@@ -319,4 +320,4 @@ FlipbookMotionVectorResult GenerateFlipbookMotionVectors(
     return result;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

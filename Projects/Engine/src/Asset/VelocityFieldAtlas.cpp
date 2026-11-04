@@ -10,6 +10,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -20,6 +21,16 @@ constexpr uint32_t kTile      = VelocityFieldAtlas::kTileResolution;
 constexpr size_t   kTileTexels = static_cast<size_t>(kTile) * kTile * kTile;
 
 struct AtlasState {
+    AtlasState() = default;
+    AtlasState(const AtlasState&) = delete;
+    AtlasState& operator=(const AtlasState&) = delete;
+    ~AtlasState()
+    {
+        auto* owner = renderer::ResourceManager::FindOwner(ownerInstanceId);
+        if (!owner || owner->GetResetVersion() != resetVersion) return;
+        owner->Release(texture);
+        for (const auto& entry : retired) owner->Release(entry.texture);
+    }
     uint64_t ownerInstanceId = 0;
     uint64_t resetVersion = 0;
     /// @brief 常駐表。キーは «その場の実体»。AssetStore のスロットは読み込み中は動かないので、
@@ -34,8 +45,8 @@ struct AtlasState {
 
     /// @brief 作り直しで古くなったハンドル。**すぐには解放しない**。
     /// @note ResourceManager::Release は即座に D3D オブジェクトを壊す。DX12 では前フレームの
-    ///       コマンドリストがまだそのテクスチャを読んでいる可能性があり、即時解放は
-    ///       use-after-free になるため、数フレーム持ち越してから捨てる。
+    /// @note コマンドリストがまだそのテクスチャを読んでいる可能性があり、即時解放は
+    /// @note use-after-free になるため、数フレーム持ち越してから捨てる。
     struct Retired {
         renderer::ResourceHandle<renderer::TextureTag> texture;
         uint64_t frame;
@@ -43,28 +54,33 @@ struct AtlasState {
     std::vector<Retired> retired;
 };
 
-AtlasState& State()
+auto& States()
 {
-    static AtlasState state;
-    return state;
+    static std::vector<std::unique_ptr<AtlasState>> states;
+    return states;
 }
 
 /// @note 他の Manager や Reset 前のハンドルを返さず、退役資源も新しい所有者へ解放しない。
 AtlasState& State(renderer::ResourceManager& resources)
 {
-    auto& state = State();
-    if (state.ownerInstanceId != resources.GetInstanceId() || state.resetVersion != resources.GetResetVersion()) {
-        state = {};
-        state.ownerInstanceId = resources.GetInstanceId();
-        state.resetVersion = resources.GetResetVersion();
-    }
-    return state;
+    auto& states = States();
+    std::erase_if(states, [](const auto& state) {
+        auto* owner = renderer::ResourceManager::FindOwner(state->ownerInstanceId);
+        return !owner || owner->GetResetVersion() != state->resetVersion;
+    });
+    for (auto& state : states)
+        if (state->ownerInstanceId == resources.GetInstanceId()) return *state;
+    auto state = std::make_unique<AtlasState>();
+    state->ownerInstanceId = resources.GetInstanceId();
+    state->resetVersion = resources.GetResetVersion();
+    states.push_back(std::move(state));
+    return *states.back();
 }
 
 /// @brief 場を 1 タイルぶんのバイト列へ詰める。
 /// @brief NormalizeVectorField が取り込み時に解像度も量子化も済ませているので、ここは詰め替えだけ。
 /// @note «GPU に載せた瞬間に CPU の軌跡も変わる» を避けるため、形を変える操作は
-///       取り込みの 1 か所に閉じてある。
+/// @note 取り込みの 1 か所に閉じてある。
 void EncodeTile(const fluid::VectorFieldAsset& field, std::vector<uint8_t>& outTexels)
 {
     outTexels.assign(kTileTexels * 4, 0);
@@ -121,8 +137,8 @@ int VelocityFieldAtlas::Acquire(const fluid::VectorFieldAsset& field, renderer::
 
     if (state.tileCount >= kMaxTiles) {
         /// @note 追い出しは実装しない。使われなくなった場を判定するには «誰が参照しているか» が
-        ///       要り、力場は毎フレーム組み直されるので «今フレーム使われた» しか分からない。
-        ///       64 枚を超える構成は演出の作り方のほうを見直すべき数字なので、はっきり落とす。
+        /// @note 要り、力場は毎フレーム組み直されるので «今フレーム使われた» しか分からない。
+        /// @note 64 枚を超える構成は演出の作り方のほうを見直すべき数字なので、はっきり落とす。
         FBZZ_LOG_WARN("VelocityFieldAtlas: 常駐できる速度場は %u 枚までです。"
                       "これ以上の場は効きません", kMaxTiles);
         return -1;
@@ -152,8 +168,8 @@ VelocityFieldAtlas::Texture(renderer::ResourceManager& resources)
     if (state.texture.IsValid()) return state.texture;
 
     /// @note 場が 1 枚も無いときの 1x1x1。CS は tile < 0 で読まないので中身は何でもよいが、
-    ///       **束縛されていること** が要る (DX12 の null ディスクリプタは Texture2D 固定で、
-    ///       Texture3D を宣言したスロットを空にすると次元が食い違う)。
+    /// @note **束縛されていること** が要る (DX12 の null ディスクリプタは Texture2D 固定で、
+    /// @note Texture3D を宣言したスロットを空にすると次元が食い違う)。
     if (!state.unsupported && state.tileCount == 0) {
         /// @note 復元すると 0 になる値
         const uint8_t empty[4] = { 128, 128, 128, 255 };
@@ -165,34 +181,31 @@ VelocityFieldAtlas::Texture(renderer::ResourceManager& resources)
 
 void VelocityFieldAtlas::Invalidate(renderer::ResourceManager& resources)
 {
-    AtlasState& state = State(resources);
-    if (state.tiles.empty() && !state.texture.IsValid()) return;
+    State(resources);
+    /// @note アセットの置換は全ビューに共通なので、生存中の全所有者へ無効化を伝える。
+    for (auto& owned : States()) {
+        AtlasState& state = *owned;
+        auto& owner = *renderer::ResourceManager::FindOwner(state.ownerInstanceId);
+        if (state.tiles.empty() && !state.texture.IsValid()) continue;
 
-    /// @note テクスチャは «すぐには» 捨てない。前フレームのコマンドリストがまだ読んでいる
-    ///       可能性があり、即時解放は use-after-free になる (RebuildTexture と同じ理由)。
-    if (state.texture.IsValid())
-        state.retired.push_back({ state.texture, Time::frameCount });
-    FlushRetired(state, resources);
+        /// @note テクスチャは «すぐには» 捨てない。前フレームのコマンドリストがまだ読んでいる
+        /// @note 可能性があり、即時解放は use-after-free になる (RebuildTexture と同じ理由)。
+        if (state.texture.IsValid())
+            state.retired.push_back({ state.texture, Time::frameCount });
+        FlushRetired(state, owner);
 
-    state.tiles.clear();
-    state.staging.clear();
-    state.texture = {};
-    state.tileCount = 0;
-    /// @note unsupported は «このバックエンドで 3D テクスチャを作れない» という事実で、
-    ///       アセットの差し替えでは変わらない。落とすと毎回作り直しを試みることになる。
+        state.tiles.clear();
+        state.staging.clear();
+        state.texture = {};
+        state.tileCount = 0;
+        /// @note unsupported は «このバックエンドで 3D テクスチャを作れない» という事実で、
+        /// @note アセットの差し替えでは変わらない。落とすと毎回作り直しを試みることになる。
+    }
 }
 
 void VelocityFieldAtlas::Reset()
 {
-    AtlasState& state = State();
-    /// @note ここでは Release しない。プロジェクト切り替えは ResourceManager 側の
-    ///       破棄と同時に起きるので、ハンドルを手放すだけでよい。
-    state.tiles.clear();
-    state.staging.clear();
-    state.retired.clear();
-    state.texture = {};
-    state.tileCount = 0;
-    state.unsupported = false;
+    States().clear();
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

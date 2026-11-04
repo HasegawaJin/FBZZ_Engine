@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 /// @brief Undo 記録可否の判定 (CanRecordEditorUndo) など、Inspector 共通ヘルパーを使う。
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Asset/ShaderCapabilities.hpp>
 #include "InspectorCommon.hpp"
 #include "../../Util/MaterialAuthoringEditing.hpp"
@@ -355,7 +356,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
 
         std::optional<renderer::ShaderDescriptor> ownedDescriptor;
         const renderer::ShaderDescriptor* desc = nullptr;
-        if (auto* resources = renderer::ResourceManager::Active()) {
+        if (auto* resources = ctx.resources) {
                 const std::string shaderPath = mat.shaderPath.empty()
                     ? "Assets/Shaders/Material/Surface/Fallback.hlsl"
                     : mat.shaderPath;

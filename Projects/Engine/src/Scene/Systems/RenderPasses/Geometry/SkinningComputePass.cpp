@@ -2,7 +2,7 @@
 /// @brief   コンピュートスキニング — ボーン変形を 1 フレームに 1 回だけ計算して共有する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
-///
+
 /// @note スキニングは各マテリアルの VS 内で毎回計算されていた。ここで 1 回だけ変形し、静的メッシュと
 /// @note 同じ頂点レイアウト (`renderer::Vertex`) へ書き出すことで後続パスは「ただの静的メッシュ」として
 /// @note 扱える。次の場合は従来の VS スキニングへフォールバックする: ポーズまたは入力未解決、
@@ -11,9 +11,10 @@
 #include "BoneBakeSkinning.hpp"
 #include "SkinningSignatureScratch.hpp"
 #include "SkinningOutputDemand.hpp"
-#include "../../../../../../Graphics/src/Passes/Geometry/OwnedSkinningBatch.hpp"
-#include "../../../../../../Graphics/src/Renderer/BufferStateReadScope.hpp"
+#include <Graphics/Renderer/SkinningPolicy.hpp>
+#include <Graphics/Renderer/BufferReadScope.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
+#include <Engine/Scene/BoneBakeRuntime.hpp>
 #include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
 #include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
@@ -124,7 +125,7 @@ uint32_t ObserveMorphContainersAndSelection(const SkinnedMeshRenderer& skin)
         }
     }
     if(bitwiseDiffer)flags|=InputBit(InputFlag::REQUESTED_APPLIED_BITWISE_DIFFER);
-    for(const auto handle:skin.morphVertexBuffers)
+    for(const auto& handle:skin.morphVertexBuffers)
         if(handle.IsValid()) {flags|=InputBit(InputFlag::LOGICAL_BUFFER_HANDLE_PRESENT);break;}
     for(size_t slot=0;slot<skin.SubmeshCount();++slot) {
         const auto* mesh=skin.SubmeshMesh(slot);
@@ -385,10 +386,28 @@ std::unordered_map<EntityID,
 /// @note 再アップロードすることになる。
 std::unordered_set<SourceVertexCacheKey, SourceVertexCacheKeyHash> g_usedSourceKeys;
 uint64_t g_cacheUsageFrame = (std::numeric_limits<uint64_t>::max)();
-renderer::ResourceManager* g_cacheResources = nullptr;
+uint64_t g_cacheOwner = 0;
 uint64_t g_cacheResetVersion = 0;
 struct FrameSkinningStats { uint32_t dispatches = 0, uploads = 0; uint64_t vertices = 0, bytes = 0; };
 FrameSkinningStats g_frameStats;
+
+void ReleaseSourceSkinningCache()
+{
+    if (auto* resources = renderer::ResourceManager::FindOwner(g_cacheOwner);
+        resources && resources->GetResetVersion() == g_cacheResetVersion) {
+        for (const auto& [key, entry] : g_srcVertexCache)
+            resources->Release(entry.handle);
+        renderer::ReleaseSkinningRequestCaches(*resources);
+    }
+    g_bonePalettePool.ReleaseAll();
+    g_srcVertexCache.clear();
+    g_framePalettes.clear();
+    g_usedSourceKeys.clear();
+    g_cacheUsageFrame = (std::numeric_limits<uint64_t>::max)();
+    g_cacheOwner = 0;
+    g_cacheResetVersion = 0;
+    g_frameStats = {};
+}
 
 struct RendererWorklistStorage {
     std::vector<EntityID> entities;
@@ -576,14 +595,9 @@ DirectSignatureResult CompareCurrentSignature(const SkinnedMeshRenderer& skin,
 /// @note BeginSkinningCacheFrame — 前フレームの全ビューで未使用だったキャッシュだけを回収する。
 void BeginSkinningCacheFrame(renderer::ResourceManager& resources, uint64_t frameStamp, AnimationSkinningCpuRow* trace)
 {
-    if (g_cacheResources != &resources || g_cacheResetVersion != resources.GetResetVersion()) {
-        g_srcVertexCache.clear();
-        g_framePalettes.clear();
-        g_usedSourceKeys.clear();
-        g_bonePalettePool = renderer::DynamicStructuredBufferPool{};
-        g_cacheUsageFrame = (std::numeric_limits<uint64_t>::max)();
-        g_frameStats = {};
-        g_cacheResources = &resources;
+    if (g_cacheOwner != resources.GetInstanceId() || g_cacheResetVersion != resources.GetResetVersion()) {
+        ReleaseSourceSkinningCache();
+        g_cacheOwner = resources.GetInstanceId();
         g_cacheResetVersion = resources.GetResetVersion();
     }
     if (g_cacheUsageFrame == frameStamp) return;
@@ -775,7 +789,7 @@ bool NeedsCurrentOutput(RenderPassContext& context, GameObject& object,
         || (object.GetComponent<FiberComponent>() && object.GetComponent<FiberComponent>()->m_enabled)
         || !FiniteCullingView(context) || context.selectionOutlineEnabled
         || !context.settings.objectMaskRequests.empty()) return true;
-    for (const auto handle : skin.morphVertexBuffers) if (handle.IsValid()) return true;
+    for (const auto& handle : skin.morphVertexBuffers) if (handle.IsValid()) return true;
     WorldBounds bounds;
     if (!StoredPoseBounds(object, skin, bounds)) return true;
     renderer::RenderObject captured;
@@ -884,7 +898,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     if (gpuDemand && (&gpuDemand->context != &ctx || gpuDemand->cancelled || gpuDemand->committed)) gpuDemand = nullptr;
     bool directReuseMarker = false, fullPreparationMarker = false;
 
-    const bool ownedBatchRequested = renderer::skinning_batch_detail::Enabled();
+    const bool ownedBatchRequested = renderer::UseOwnedSkinningBatch();
     ctx.statsSkinningDemandMode = renderer::GpuSkinningDemandEnabled() ? 1 : 0;
     ctx.skinningRequests.clear();
     ctx.skinningMatrices.clear();
@@ -1661,21 +1675,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
 void ReleaseSkinningComputeCaches()
 {
     ReleaseBoneBakeSkinningCaches();
-    auto* resources = renderer::ResourceManager::Active();
-    if (resources && resources == g_cacheResources && resources->GetResetVersion() == g_cacheResetVersion) {
-        for (const auto& [key, entry] : g_srcVertexCache)
-            if (resources->Get(entry.handle)) resources->Release(entry.handle);
-        g_bonePalettePool.ReleaseAll(*resources);
-        renderer::ReleaseSkinningRequestCaches(*resources);
-    }
-    g_bonePalettePool = renderer::DynamicStructuredBufferPool{};
-    g_srcVertexCache.clear();
-    g_framePalettes.clear();
-    g_usedSourceKeys.clear();
-    g_cacheUsageFrame = (std::numeric_limits<uint64_t>::max)();
-    g_cacheResources = nullptr;
-    g_cacheResetVersion = 0;
-    g_frameStats = {};
+    ReleaseSourceSkinningCache();
 }
 
 

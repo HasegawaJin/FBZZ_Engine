@@ -6,6 +6,11 @@
 /// @note 移行前は Debug メニューにしか無く、AI は viewport を撮れても NavMesh/Collider/overdraw 等の診断表示を選べなかった。
 /// @note 表示の切り替えはシーンの内容を変えないので Undo には載せない (Action)。
 /// @see Docs/design/editor-operator-model.md
+#include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/JointComponent.hpp>
+#include <Engine/Scene/Components/VolumeComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -25,6 +30,7 @@
 #include <utility>
 
 namespace fbzz::editor {
+void RegisterViewportViewOperators(OperatorRegistry& registry);
 
 namespace {
 
@@ -126,6 +132,7 @@ EditorOperator MakeContextToggle(const char* id, const char* label, const char* 
 
 void RegisterRenderOperators(OperatorRegistry& registry)
 {
+    RegisterViewportViewOperators(registry);
     {
         EditorOperator op;
         op.id = "render.get_spatial_debug";

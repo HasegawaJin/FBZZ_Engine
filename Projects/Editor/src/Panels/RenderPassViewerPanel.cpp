@@ -217,16 +217,17 @@ void RenderPassViewerPanel::OnShutdown()
 
 void RenderPassViewerPanel::PrepareFrame()
 {
-    if (!visible && m_captureActive && m_resources)
+    if (!visible && !m_apiCapture && m_captureActive && m_resources)
         m_capture.Release(*m_resources);
-    m_captureActive = visible;
+    m_captureActive = visible || m_apiCapture;
+    if (m_apiCapture) m_capture.galleryEnabled = m_apiGallery;
     m_capturedGameView = m_gameView;
     m_capture.Invalidate();
 }
 
 scene::RenderPassCapture* RenderPassViewerPanel::CaptureForView(bool gameView)
 {
-    return visible && gameView == m_gameView ? &m_capture : nullptr;
+    return (visible || m_apiCapture) && gameView == m_gameView ? &m_capture : nullptr;
 }
 
 void RenderPassViewerPanel::OnBeforeBegin(EditorContext&)
@@ -273,7 +274,7 @@ void RenderPassViewerPanel::OnRenderContent(EditorContext& ctx)
         m_tabRequest = Tab::NONE;
         ImGui::EndTable();
     }
-    m_capture.galleryEnabled = galleryOpen;
+    m_capture.galleryEnabled = galleryOpen || (m_apiCapture && m_apiGallery);
 }
 
 void RenderPassViewerPanel::SyncSnapshot()

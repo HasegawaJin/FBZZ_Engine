@@ -2,6 +2,7 @@
 /// @brief   実 CoreCLR と一括 Transform kernel の順序・寿命・原子性を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>

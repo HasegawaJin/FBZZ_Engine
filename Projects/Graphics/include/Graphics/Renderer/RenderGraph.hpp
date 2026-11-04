@@ -10,6 +10,7 @@
 #pragma once
 
 #include <Graphics/Renderer/Format.hpp>
+#include <Graphics/Renderer/RenderGraphAccess.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -38,21 +39,10 @@ public:
         AccelerationStructure
     };
 
-    enum class ResourceUsage {
-        Read,
-        Write,
-        ReadWrite
-    };
+    using ResourceUsage = RenderResourceUsage;
 
     /// @note GPU の用途は依存の読み書きとは独立して宣言する。ここでは backend のバリアを発行しない。
-    enum class ResourceAccessPurpose {
-        UNSPECIFIED,
-        BUILD_INPUT,
-        AS_WRITE,
-        TRACE_READ,
-        SHADER_READ,
-        UAV
-    };
+    using ResourceAccessPurpose = RenderResourceAccessPurpose;
 
     /// @note 依存を満たす実行順が複数あるとき、どれを選ぶかの方針。
     /// @note どちらを選んでも «依存として申告された制約» は必ず守られる。違うのは、制約が
@@ -90,11 +80,7 @@ public:
         bool allowAliasing = true;
     };
 
-    struct ResourceAccess {
-        std::string name;
-        ResourceUsage usage = ResourceUsage::Read;
-        ResourceAccessPurpose purpose = ResourceAccessPurpose::UNSPECIFIED;
-    };
+    using ResourceAccess = RenderResourceAccess;
 
     struct RenderPass {
         std::string name;

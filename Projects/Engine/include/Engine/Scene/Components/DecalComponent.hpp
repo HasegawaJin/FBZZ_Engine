@@ -7,7 +7,7 @@
 /// @note テクスチャを投影する。lifetime < 0 で永続、>= 0 で時間経過によりフェードアウト→削除。
 #pragma once
 #include <Physics/Layer.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #pragma once
+#include <Physics/Api.hpp>
 #include <array>
 #include <Math/Vector3.hpp>
 
@@ -19,9 +20,9 @@ namespace fbzz::physics
     {
         struct Vertex
         {
-            math::Vector3 point;  ///< Minkowski 差空間の点 (suppA - suppB)
-            math::Vector3 suppA;  ///< shape A 上のサポート点
-            math::Vector3 suppB;  ///< shape B 上のサポート点
+            math::Vector3 point;  ///< @note Minkowski 差空間の点 (suppA - suppB)
+            math::Vector3 suppA;  ///< @note shape A 上のサポート点
+            math::Vector3 suppB;  ///< @note shape B 上のサポート点
         };
 
         std::array<Vertex, 4> verts;
@@ -53,20 +54,20 @@ namespace fbzz::physics
         bool intersects = false;
 
         /// @note closestA / closestB / distance は GJK_Distance だけが埋める。
-        ///       GJK_Intersect は «当たったか» しか答えないので 0 のまま残る。
-        math::Vector3 closestA;            ///< shape A 上で shape B に最も近い点
-        math::Vector3 closestB;            ///< shape B 上で shape A に最も近い点
-        float         distance   = 0.0f;   ///< 2 形状の隙間 [m] (= |closestA - closestB|)
+        /// @note GJK_Intersect は «当たったか» しか答えないので 0 のまま残る。
+        math::Vector3 closestA;            ///< @note shape A 上で shape B に最も近い点
+        math::Vector3 closestB;            ///< @note shape B 上で shape A に最も近い点
+        float         distance   = 0.0f;   ///< @note 2 形状の隙間 [m] (= |closestA - closestB|)
 
-        Simplex simplex;   ///< 交差時の最終単体 (EPA に渡す用)。非交差時は使わない。
+        Simplex simplex;   ///< @note 交差時の最終単体 (EPA に渡す用)。非交差時は使わない。
     };
 
     /// @brief GJK 交差判定。当たったかどうかだけを答える。交差時は EPA に渡せる Simplex を result.simplex に残す。
     /// @param maxIter 最大反復数 (通常 32 で収束)。
     /// @note 距離を出さない理由: NarrowPhase が毎フレーム呼ぶ経路で、必要なのは真偽と貫通量 (EPA の仕事) だけ。
-    ///       «当たっていない» と分かった時点で打ち切れるので、隙間の距離まで詰める反復を全ペアに払わせない。
-    ///       距離が要る場合は GJK_Distance を使う。
-    GJKResult GJK_Intersect(
+    /// @note «当たっていない» と分かった時点で打ち切れるので、隙間の距離まで詰める反復を全ペアに払わせない。
+    /// @note 距離が要る場合は GJK_Distance を使う。
+    FBZZ_PHYSICS_API GJKResult GJK_Intersect(
         const void* shapeA, SupportFn supportA,
         const void* shapeB, SupportFn supportB,
         int maxIter = 32);
@@ -75,9 +76,9 @@ namespace fbzz::physics
     /// @param tolerance 距離の上界と下界の差がこれを切ったら収束とみなす [m]。
     /// @note 重なっていた場合は intersects = true を返すだけで、貫通量は測らない (EPA の仕事)。
     /// @note 最近傍点は «終了時の単体の上で原点に最も近い点» の重心座標から、元形状上のサポート点を
-    ///       同じ重みで混ぜて復元する。平らな面どうしが向かい合う配置のように一意に決まらない場合は、
-    ///       その集合の中の 1 点が返る (距離は一意なので常に正しい)。
-    GJKResult GJK_Distance(
+    /// @note 同じ重みで混ぜて復元する。平らな面どうしが向かい合う配置のように一意に決まらない場合は、
+    /// @note その集合の中の 1 点が返る (距離は一意なので常に正しい)。
+    FBZZ_PHYSICS_API GJKResult GJK_Distance(
         const void* shapeA, SupportFn supportA,
         const void* shapeB, SupportFn supportB,
         int   maxIter   = 32,
@@ -85,6 +86,6 @@ namespace fbzz::physics
 
     /// @brief 単体から原点に向かう最短方向を更新する。
     /// @return 原点を含む場合 true。
-    bool DoSimplex(Simplex& simplex, math::Vector3& direction);
+    FBZZ_PHYSICS_API bool DoSimplex(Simplex& simplex, math::Vector3& direction);
 
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

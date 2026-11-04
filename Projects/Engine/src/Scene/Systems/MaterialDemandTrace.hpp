@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-13
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/RenderVisibility.hpp>
@@ -42,10 +43,10 @@ private:
     const RenderPassContext* m_previous;
     BindingDemandScope* m_previousScope = nullptr;
     std::unique_ptr<PendingBindings> m_pending;
-    friend bool BindingScopeCertified(const RenderPassContext&, bool);
-    friend void RetainPendingBindings(const RenderPassContext&, std::shared_ptr<const renderer::RenderScene>, std::vector<uint32_t>);
+    friend FBZZ_ENGINE_API bool BindingScopeCertified(const RenderPassContext&, bool);
+    friend FBZZ_ENGINE_API void RetainPendingBindings(const RenderPassContext&, std::shared_ptr<const renderer::RenderScene>, std::vector<uint32_t>);
     friend FBZZ_MATERIAL_DEMAND_API void CompleteBindings(RenderPassContext&);
-    friend void RetargetBindings(const std::shared_ptr<const renderer::RenderScene>&,
+    friend FBZZ_ENGINE_API void RetargetBindings(const std::shared_ptr<const renderer::RenderScene>&,
         const std::shared_ptr<const renderer::RenderScene>&);
 };
 

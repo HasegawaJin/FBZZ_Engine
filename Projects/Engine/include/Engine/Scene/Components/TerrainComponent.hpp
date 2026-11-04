@@ -2,13 +2,14 @@
 /// @brief   ハイトマップベースの地形コンポーネント。
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
-///
+
 /// @note TerrainComponent が高さ・スプラット・穴を一元管理し、TerrainRenderPass がチャンク分割と
 /// @note GPU 転送を行う。層ごとのテクスチャ・タイリング・質感は layerMaterials が指す .mat が持つ。
 /// @see Docs/design/terrain-layers.md
 #pragma once
+#include <Engine/Api.hpp>
 
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
 #include <Math/MathUtils.hpp>
 #include <Math/Vector3.hpp>
@@ -116,17 +117,17 @@ struct TerrainComponent {
     /// @name 初期化
     /// @{
     /// @brief スプラットを «全頂点が層 0 = 100%» に戻す。
-    void InitDefaultSplat();
+    FBZZ_ENGINE_API void InitDefaultSplat();
     /// @return splatIndices / splatWeights が頂点数と一致するか。
-    [[nodiscard]] bool HasValidSplat() const;
+    [[nodiscard]] FBZZ_ENGINE_API bool HasValidSplat() const;
     /// @brief サイズが合わないスプラットだけ既定値で作り直す。
-    void EnsureSplat();
+    FBZZ_ENGINE_API void EnsureSplat();
     /// @note 呼び出し後に heightDirty = true を立てること。
-    void InitFlat(float height = 0.0f);
+    FBZZ_ENGINE_API void InitFlat(float height = 0.0f);
     /// @brief グリッドサイズを変更し、高さ・スプラット・穴を 2D コピー (切り捨て/パディング) で引き継ぐ。
     /// @note columns/rows を直接書き換えると配列サイズが合わず TerrainRenderPass の assert が落ちる。
     /// @note 呼び出し後に heightDirty / splatDirty / colliderDirty を立てること。
-    void Resize(int newColumns, int newRows);
+    FBZZ_ENGINE_API void Resize(int newColumns, int newRows);
     /// @}
 
     /// @brief 描画メッシュ・MeshCollider と同じ 2 三角形分割で高さを補間する。
@@ -134,37 +135,37 @@ struct TerrainComponent {
     /// @param localZ テレインローカル座標 Z (Transform 適用前)。
     /// @note 範囲外はクランプして継続する (Physics・足 IK から呼ばれるため assert しない)。穴でも高さを返す。
     /// @note Legacy heightfield authoring sample; ignores holes and added surfaces. Use TerrainSurfaceQuery for occupancy.
-    float GetHeightAt(float localX, float localZ) const;
+    FBZZ_ENGINE_API float GetHeightAt(float localX, float localZ) const;
 
     /// @brief 有限差分で計算した法線をバイリニア補間して返す。
-    math::Vector3 GetNormalAt(float localX, float localZ) const;
+    FBZZ_ENGINE_API math::Vector3 GetNormalAt(float localX, float localZ) const;
 
     /// @brief 整数グリッド座標 (x, z) に対して中心差分で法線を計算する。
-    math::Vector3 ComputeNormal(int x, int z) const;
+    FBZZ_ENGINE_API math::Vector3 ComputeNormal(int x, int z) const;
 
     /// @name 層
     /// @{
     /// @return 頂点 (x, z) における layer の重み [0, 1]。範囲外やスプラット未初期化は 0。
-    [[nodiscard]] float GetLayerWeightAtGrid(int x, int z, int layer) const;
+    [[nodiscard]] FBZZ_ENGINE_API float GetLayerWeightAtGrid(int x, int z, int layer) const;
     /// @brief 層の .mat を差し替える。layer == LayerCount() なら末尾に追加する。
     /// @return 範囲外、または TERRAIN_MAX_LAYERS を超える追加なら false。
-    bool SetLayerMaterial(int layer, std::string materialPath);
+    FBZZ_ENGINE_API bool SetLayerMaterial(int layer, std::string materialPath);
     /// @return 追加した層の番号。上限なら -1。
-    int AddLayer(std::string materialPath);
+    FBZZ_ENGINE_API int AddLayer(std::string materialPath);
     /// @brief 層を削除し、スプラットの番号を詰める。その層の重みは他の層で分け直す。
-    bool RemoveLayer(int layer);
+    FBZZ_ENGINE_API bool RemoveLayer(int layer);
     /// @brief 層の並びを変える。スプラットの番号も付け替えるので見た目は変わらない。
-    bool MoveLayer(int from, int to);
+    FBZZ_ENGINE_API bool MoveLayer(int from, int to);
     /// @}
 
     /// @name 穴
     /// @{
-    [[nodiscard]] bool IsHoleCell(int cx, int cz) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool IsHoleCell(int cx, int cz) const;
     /// @return セルが範囲外なら false。変化が無くても範囲内なら true。
-    bool SetHoleCell(int cx, int cz, bool hole);
+    FBZZ_ENGINE_API bool SetHoleCell(int cx, int cz, bool hole);
     /// @brief ローカル座標が穴のセルに入っているか。地形の外は false。
-    [[nodiscard]] bool IsHoleAtLocal(float localX, float localZ) const;
-    [[nodiscard]] size_t CountHoles() const;
+    [[nodiscard]] FBZZ_ENGINE_API bool IsHoleAtLocal(float localX, float localZ) const;
+    [[nodiscard]] FBZZ_ENGINE_API size_t CountHoles() const;
     /// @}
 
     /// @name Script / Tool 向けの編集口
@@ -182,14 +183,14 @@ struct TerrainComponent {
     void RequestHoleRebuild() { RequestHeightRebuild(); }
 
     /// @return Invalid geometry leaves the current surface and revisions unchanged. Empty arrays remove it.
-    bool SetSurfaceGeometry(std::vector<math::Vector3> positions, std::vector<uint32_t> indices,
+    FBZZ_ENGINE_API bool SetSurfaceGeometry(std::vector<math::Vector3> positions, std::vector<uint32_t> indices,
         std::string material = {});
     /// @note Direct surface array edits must call this; renderer, collider and water bounds share the revision.
     void RequestSurfaceRebuild() { RequestHeightRebuild(); }
 
-    bool SetHeightAtGrid(int x, int z, float worldHeight);
+    FBZZ_ENGINE_API bool SetHeightAtGrid(int x, int z, float worldHeight);
     /// @brief 頂点 (x, z) の layer の重みを weight [0, 1] に置く。他の層は比率を保って残りを分け合う。
-    bool PaintLayerAtGrid(int x, int z, int layer, float weight);
+    FBZZ_ENGINE_API bool PaintLayerAtGrid(int x, int z, int layer, float weight);
     /// @}
 
 private:

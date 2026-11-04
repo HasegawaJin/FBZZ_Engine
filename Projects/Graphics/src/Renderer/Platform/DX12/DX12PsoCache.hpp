@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/RenderState.hpp>
 #include <d3d12.h>
@@ -21,23 +22,23 @@ public:
     /// @note        (DX12Context::SupportsBindless)。true のときだけルートシグネチャへ
     /// @note        CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED を立てる。非対応機で立てると生成が失敗する。
     /// @see  Docs/design/bindless.md
-    bool Initialize(ID3D12Device* device, bool bindlessEnabled);
-    void Shutdown();
+    FBZZ_GRAPHICS_API bool Initialize(ID3D12Device* device, bool bindlessEnabled);
+    FBZZ_GRAPHICS_API void Shutdown();
     /// @note このキャッシュを参照する GPU コマンドがすべて完了していること。
-    void ClearPipelines();
+    FBZZ_GRAPHICS_API void ClearPipelines();
     ID3D12RootSignature* GetRootSignature() const { return m_rootSignature.Get(); }
     ID3D12RootSignature* GetComputeRootSignature() const { return m_computeRootSignature.Get(); }
     ID3D12CommandSignature* GetIndexedInstanceOffsetCommandSignature() const {
         return m_indexedInstanceOffsetCommandSignature.Get();
     }
     /// @param reversedZ 束縛中の RT の深度が Reversed-Z か。深度比較の向き (GREATER / LESS) を決める。
-    ID3D12PipelineState* GetOrCreate(const DX12Shader& shader, const PipelineStateDesc& state,
+    FBZZ_GRAPHICS_API ID3D12PipelineState* GetOrCreate(const DX12Shader& shader, const PipelineStateDesc& state,
                                     PrimitiveTopology topology, DXGI_FORMAT renderTargetFormat,
                                     uint32_t renderTargetCount, bool reversedZ);
-    ID3D12PipelineState* GetOrCreateMesh(const DX12Shader& shader, const PipelineStateDesc& state,
+    FBZZ_GRAPHICS_API ID3D12PipelineState* GetOrCreateMesh(const DX12Shader& shader, const PipelineStateDesc& state,
                                         PrimitiveTopology topology, DXGI_FORMAT renderTargetFormat,
                                         uint32_t renderTargetCount, bool reversedZ);
-    ID3D12PipelineState* GetOrCreateCompute(const DX12Shader& shader);
+    FBZZ_GRAPHICS_API ID3D12PipelineState* GetOrCreateCompute(const DX12Shader& shader);
 
 private:
     struct Key {
@@ -55,16 +56,16 @@ private:
         bool operator==(const Key&) const = default;
     };
     struct KeyHash {
-        size_t operator()(const Key& key) const;
+        FBZZ_GRAPHICS_API size_t operator()(const Key& key) const;
     };
 
-    bool CreateRootSignature();
-    bool CreateComputeRootSignature();
-    void CreateIndexedInstanceOffsetCommandSignature();
+    FBZZ_GRAPHICS_API bool CreateRootSignature();
+    FBZZ_GRAPHICS_API bool CreateComputeRootSignature();
+    FBZZ_GRAPHICS_API void CreateIndexedInstanceOffsetCommandSignature();
     /// @brief 両ルートシグネチャに共通で載せるフラグ。
     /// @note bindless 非対応機では CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED を落とす。
     /// @note       非対応機で立てるとシリアライズが E_INVALIDARG で失敗し、起動できなくなる。
-    D3D12_ROOT_SIGNATURE_FLAGS BaseRootSignatureFlags() const;
+    FBZZ_GRAPHICS_API D3D12_ROOT_SIGNATURE_FLAGS BaseRootSignatureFlags() const;
     Microsoft::WRL::ComPtr<ID3D12Device> m_device;
     bool m_bindlessEnabled = false;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;

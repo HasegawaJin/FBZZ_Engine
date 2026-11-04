@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/ManagedBridgeAbi.hpp>
 #include <cstdint>
 #include <memory>
@@ -34,27 +35,27 @@ struct ManagedServiceResult {
 /// @note native サービスの実装を再利用する。main thread・live Play scope・Scene/target の検証は Runtime が担当する。
 class ManagedServicesBridge {
 public:
-    ManagedServicesBridge();
-    ~ManagedServicesBridge();
+    FBZZ_ENGINE_API ManagedServicesBridge();
+    FBZZ_ENGINE_API ~ManagedServicesBridge();
     ManagedServicesBridge(const ManagedServicesBridge&) = delete;
     ManagedServicesBridge& operator=(const ManagedServicesBridge&) = delete;
     /// @note input は relatedID:u64, integer:i64, floatCount:u32, stringCount:u32, float32[], length+UTF8[]。
     /// @note flags bit0 は読み取り。selector の分類と一致しない要求を拒否し、変更要求を再送しない。
     /// @return 検証失敗は result と対象を未変更。Component 不在は NOT_FOUND。
-    ManagedBridgeStatus Run(Scene& scene, Script& caller, GameObject& target, GameObject* related,
+    FBZZ_ENGINE_API ManagedBridgeStatus Run(Scene& scene, Script& caller, GameObject& target, GameObject* related,
         const ManagedBridgeRequest& request, ManagedServiceResult& result, bool fixedUpdate, bool collisionCallback = false);
     /// @note AudioManager 生存中の明示的な owner 解放で呼ぶ。caller は実 owner Script の非所有参照。
-    void CancelOwner(uint64_t ownerId, Script* caller = nullptr);
-    void CancelCursorOwner(uint64_t ownerId);
+    FBZZ_ENGINE_API void CancelOwner(uint64_t ownerId, Script* caller = nullptr);
+    FBZZ_ENGINE_API void CancelCursorOwner(uint64_t ownerId);
     /// @return Cursor 要求の実所有 Script ID。malformed packet は false。
-    static bool CursorOwner(const ManagedBridgeRequest& request, uint64_t& ownerId);
+    FBZZ_ENGINE_API static bool CursorOwner(const ManagedBridgeRequest& request, uint64_t& ownerId);
     /// @pre その世代の live adapter がすべて退役済みで、AudioManager が生存していること。
-    void RetireGeneration(uint64_t generation);
+    FBZZ_ENGINE_API void RetireGeneration(uint64_t generation);
     /// @note 同期 callback 終了時に未 commit の受信値だけを廃棄する。
-    void EndCall(uint64_t call);
-    ManagedBridgeStatus ReadMaterialPacket(Scene& scene, Script& caller, GameObject& target,
+    FBZZ_ENGINE_API void EndCall(uint64_t call);
+    FBZZ_ENGINE_API ManagedBridgeStatus ReadMaterialPacket(Scene& scene, Script& caller, GameObject& target,
         const ManagedBridgeRequest& request, ManagedBridgeReply& reply);
-    ManagedBridgeStatus RunJointPacket(Scene& scene, GameObject& target, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus RunJointPacket(Scene& scene, GameObject& target, const ManagedBridgeRequest& request,
         ManagedServiceResult& result, ManagedBridgeStatus (*resolver)(void*, uint64_t, GameObject*&), void* context, bool fixed);
 private:
     struct Impl;

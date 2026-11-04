@@ -42,7 +42,7 @@ bool BoneReplayValidOffset(uint32_t offset, uint32_t nodes, uint32_t samples)
 
 BoneReplayGpuAsset::~BoneReplayGpuAsset()
 {
-    auto* resources = ResourceManager::Active();
+    auto* resources = ResourceManager::FindOwner(owner);
     if (!resources || resources->GetInstanceId() != owner || resources->GetResetVersion() != epoch) return;
     if (samples.IsValid()) resources->Release(samples);
     if (nodes.IsValid()) resources->Release(nodes);

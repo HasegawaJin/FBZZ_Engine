@@ -8,6 +8,7 @@
 /// @note Gallery … フレーム末尾の全リソース。いま何が差さっているかを «一望» する
 /// @note どちらも同じ診断シェーダーで焼くので、表示モードの意味も同じになる。
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/RenderGraph.hpp>
 #include <Graphics/Renderer/GpuProfiler.hpp>
@@ -105,16 +106,16 @@ public:
     ViewSettings galleryView;
 
     /// @note 描画を飛ばすフレームでも呼び、古い画像を有効なキャプチャとして扱わない。
-    void Invalidate();
-    void Begin(const std::vector<renderer::RenderGraph::RenderPass>& passes,
+    FBZZ_GRAPHICS_API void Invalidate();
+    FBZZ_GRAPHICS_API void Begin(const std::vector<renderer::RenderGraph::RenderPass>& passes,
                const renderer::RenderGraph::ExecutionReport& report);
-    void Capture(size_t graphIndex, RenderPassContext& ctx);
+    FBZZ_GRAPHICS_API void Capture(size_t graphIndex, RenderPassContext& ctx);
     /// @note 非同期 GPU 値を別フレームの画像へ結合しない。未完了・欠損・出自不一致は gpuMs=-1。
-    void Finish(const renderer::RenderGraph::ExecutionReport& report,
+    FBZZ_GRAPHICS_API void Finish(const renderer::RenderGraph::ExecutionReport& report,
                 const GpuProfilerSnapshot& gpuSnapshot,
                 const GpuProfilerViewMetadata& capturedView);
     /// @note ResourceManager が生存している間に所有者が呼ぶ。
-    void Release(renderer::ResourceManager& resources);
+    FBZZ_GRAPHICS_API void Release(renderer::ResourceManager& resources);
 
     const std::vector<PassInfo>& Passes() const { return m_passes; }
     const std::vector<OutputInfo>& Outputs() const { return m_outputs; }
@@ -136,21 +137,21 @@ public:
 private:
     /// @note 論理リソース名 1 つを «表示できる 2D 画像» へ展開する。
     /// @note RenderTarget なら MRT スライスと (深度を持つなら) 深度、Texture ならそれ 1 枚。
-    void CollectImages(RenderPassContext& ctx, const std::string& name,
+    FBZZ_GRAPHICS_API void CollectImages(RenderPassContext& ctx, const std::string& name,
                        std::vector<OutputInfo>& out) const;
 
     /// @note 診断シェーダーと PSO を用意する。ResourceManager のリセットを跨いでも作り直す。
-    bool EnsurePreviewPipeline(RenderPassContext& ctx);
+    FBZZ_GRAPHICS_API bool EnsurePreviewPipeline(RenderPassContext& ctx);
 
-    void CapturePreview(size_t graphIndex, RenderPassContext& ctx);
+    FBZZ_GRAPHICS_API void CapturePreview(size_t graphIndex, RenderPassContext& ctx);
 
     /// @note 画像 1 枚を dst へ焼く。AUTO の解決もここで行う。
-    bool BlitPreview(RenderPassContext& ctx, const OutputInfo& output, const ViewSettings& view,
+    FBZZ_GRAPHICS_API bool BlitPreview(RenderPassContext& ctx, const OutputInfo& output, const ViewSettings& view,
                      renderer::ResourceHandle<renderer::ConstantBufferTag>& constants,
                      renderer::SizedRenderTarget& dst);
 
-    void CaptureGallery(RenderPassContext& ctx);
-    void ReleaseGallery(renderer::ResourceManager& resources);
+    FBZZ_GRAPHICS_API void CaptureGallery(RenderPassContext& ctx);
+    FBZZ_GRAPHICS_API void ReleaseGallery(renderer::ResourceManager& resources);
 
     std::vector<PassInfo> m_passes;
     std::vector<OutputInfo> m_outputs;

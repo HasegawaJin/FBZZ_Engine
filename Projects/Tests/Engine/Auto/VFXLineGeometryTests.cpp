@@ -2,10 +2,11 @@
 /// @brief   VFX Line の形 (雷の本流と枝・ビーム) と明るさの規則を固定する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-///
-/// Inspector のプレビューとシーンの線は同じ関数で形を作る。端が端点から離れる・同じ seed で
-/// 形が変わる、のどちらも «見れば分かるが、見るまで分からない» 壊れ方になる。
 
+/// @note Inspector のプレビューとシーンの線は同じ関数で形を作る。端が端点から離れる・同じ seed で
+/// @note 形が変わる、のどちらも «見れば分かるが、見るまで分からない» 壊れ方になる。
+
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
 #include <TestKit/TestKit.hpp>
 
 #include <Engine/Scene/VFXLineGeometry.hpp>
@@ -28,7 +29,7 @@ bool SamePoint(const math::Vector3& a, const math::Vector3& b)
     return (a - b).Length() < 1.0e-5f;
 }
 
-} // namespace
+} /// @note namespace
 
 TEST(VFXLineGeometryTest, LightningStartsAndEndsOnTheEndpoints)
 {
@@ -139,4 +140,4 @@ TEST(VFXLineGeometryTest, PresetsKeepWhereTheLineIsPlaced)
     EXPECT_EQ(line.toPoint.y, 2.0f);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

@@ -2,6 +2,7 @@
 /// @brief   実 CoreCLR へ物理通知の値・向き・順序・寿命・障害を転送する回帰。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Core/Profiler/Profiler.hpp>
@@ -64,7 +65,7 @@ protected:
         ASSERT_NE(m_adapter, nullptr);
         m_scheduler.AddSystem<scene::ScriptSystem>();
         m_scheduler.AddSystem<scene::PhysicsSystem>();
-        m_scheduler.Build();
+        ASSERT_TRUE(m_scheduler.Build());
     }
 
     void TearDown() override

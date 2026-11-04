@@ -5,6 +5,7 @@
 #include <Editor/Panels/UndoHistoryPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <imgui.h>
 
 namespace fbzz::editor {
@@ -22,7 +23,7 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
     const bool canClear = stack.GetHistorySize() > 0;
     if (!canClear) ImGui::BeginDisabled();
     if (ImGui::Button("Clear History"))
-        stack.Clear();
+        { OpArgs args; args.Set("action", std::string("clear")); InvokeOperator(ctx, "edit.history.control", args); }
     if (!canClear) ImGui::EndDisabled();
 
     ImGui::SameLine();
@@ -39,7 +40,7 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
         ImGui::PushStyleColor(ImGuiCol_Text,
             isCurrent ? ImVec4(0.4f, 0.9f, 0.4f, 1.0f) : ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
         if (ImGui::Selectable("<Initial State>", isCurrent))
-            stack.JumpTo(0);
+            { OpArgs args; args.Set("action", std::string("jump")); args.Set("index", 0); InvokeOperator(ctx, "edit.history.control", args); }
         ImGui::PopStyleColor();
     }
 
@@ -60,7 +61,7 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
         char label[256];
         std::snprintf(label, sizeof(label), "%s##hist%zu", e.description.c_str(), i);
         if (ImGui::Selectable(label, isCurrent))
-            stack.JumpTo(i + 1);
+            { OpArgs args; args.Set("action", std::string("jump")); args.Set("index", static_cast<int>(i + 1)); InvokeOperator(ctx, "edit.history.control", args); }
         ImGui::PopStyleColor();
 
         if (ImGui::IsItemHovered())
@@ -74,4 +75,4 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -2,6 +2,9 @@
 /// @brief   Scene-level BT clock wake and patrol ownership across throttling, pause and disable.
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
+#include <Engine/Scene/Components/BehaviorTreeComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/AI/BehaviorTreeEvaluator.hpp>

@@ -20,6 +20,107 @@
 
 namespace fbzz::editor {
 
+void RegisterViewportViewOperators(OperatorRegistry& registry)
+{
+    for (const bool configure : {false, true}) {
+        EditorOperator op;
+        op.id = configure ? "viewport.overlays.configure" : "viewport.overlays.inspect";
+        op.label = op.id;
+        op.category = "Viewport";
+        op.kind = configure ? OpKind::Action : OpKind::Query;
+        op.desc = "SceneとUIのオーバーレイ、シーンアイコンの型別表示を照会・変更する。";
+        if (configure) {
+            op.params = {
+                {"sceneIcons", OpParamType::Bool, "Scene icon visibility", false, {}},
+                {"uiRects", OpParamType::Bool, "UI element rectangles", false, {}},
+                {"shadowCascades", OpParamType::Bool, "Shadow cascade visualization", false, {}},
+                {"lightClusters", OpParamType::Bool, "Clustered lighting heatmap", false, {}},
+                {"iconType", OpParamType::String, "Icon key from inspect", false, {}},
+                {"iconVisible", OpParamType::Bool, "Visibility for iconType", false, {}}
+            };
+        }
+        op.exec = [configure](OpContext& context, const OpArgs& args) {
+            auto& ctx = context.ctx;
+            auto& render = ctx.projectSettings.render;
+            if (configure) {
+                if (args.Has("iconType") != args.Has("iconVisible")) return OpResult::Err("BAD_ARG", "iconType/iconVisible");
+                if (args.Has("iconType")) {
+                    const auto key = args.GetString("iconType");
+                    int type = 0;
+                    for (; type < SceneIconTypeCount(); ++type)
+                        if (key == SceneIconTypeKey(type)) break;
+                    if (type == SceneIconTypeCount()) return OpResult::Err("BAD_ARG", "iconType");
+                    SetSceneIconTypeVisible(ctx, type, args.GetBool("iconVisible"));
+                }
+                ctx.showSceneIcons = args.GetBool("sceneIcons", ctx.showSceneIcons);
+                render.showUIRects = args.GetBool("uiRects", render.showUIRects);
+                render.shadow.debugVisualizeCascades = args.GetBool("shadowCascades", render.shadow.debugVisualizeCascades);
+                render.clustered.debugHeatmap = args.GetBool("lightClusters", render.clustered.debugHeatmap);
+            }
+            auto data = OpData::MakeObject();
+            data.Set("sceneIcons", ctx.showSceneIcons);
+            data.Set("uiRects", render.showUIRects);
+            data.Set("shadowCascades", render.shadow.debugVisualizeCascades);
+            data.Set("lightClusters", render.clustered.debugHeatmap);
+            auto icons = OpData::MakeObject();
+            for (int type = 0; type < SceneIconTypeCount(); ++type)
+                icons.Set(SceneIconTypeKey(type), IsSceneIconTypeVisible(ctx, type));
+            data.Set("icons", std::move(icons));
+            return OpResult::Data(std::move(data));
+        };
+        registry.Register(std::move(op));
+    }
+
+    EditorOperator input;
+    input.id = "viewport.game.input";
+    input.label = "Inspect Game View Input";
+    input.category = "Viewport";
+    input.kind = OpKind::Query;
+    input.desc = "ゲーム入力の所有状態、カーソル設定、OSフォーカスを返す。";
+    input.exec = [](OpContext&, const OpArgs&) {
+        const auto state = core::Cursor::GetState();
+        auto data = OpData::MakeObject();
+        data.Set("owner", core::ToString(state.inputOwner));
+        data.Set("requestedLock", core::ToString(state.requested.lockMode));
+        data.Set("requestedVisible", state.requested.visible);
+        data.Set("effectiveLock", core::ToString(state.effective.lockMode));
+        data.Set("effectiveVisible", state.effective.visible);
+        data.Set("windowActive", state.windowActive);
+        data.Set("reason", core::ToString(state.suspendedReason));
+        return OpResult::Data(std::move(data));
+    };
+    registry.Register(std::move(input));
+
+    EditorOperator control;
+    control.id = "viewport.game.input_control";
+    control.label = "Control Game View Input";
+    control.category = "Viewport";
+    control.kind = OpKind::Action;
+    control.desc = "Game Viewをフォーカスするか、Play中のゲーム入力を取得・解放する。";
+    OpParam action;
+    action.name = "action";
+    action.enumValues = {"focus", "acquire", "release"};
+    control.params.push_back(std::move(action));
+    control.exec = [](OpContext& context, const OpArgs& args) {
+        auto& ctx = context.ctx;
+        const auto action = args.GetString("action");
+        if (action == "focus") {
+            ctx.requestGameViewportFocus = true;
+        } else if (!ctx.playMode || ctx.playMode->IsInEditor()) {
+            return OpResult::Err("PLAY_REQUIRED", "ゲーム入力はPlay中に操作できます。");
+        } else if (action == "acquire") {
+            ctx.requestGameCursorCapture = true;
+        } else if (action == "release") {
+            ctx.requestGameCursorCapture = false;
+            core::Cursor::ReleaseGameInput(core::CursorSuspendReason::RELEASED);
+        } else {
+            return OpResult::Err("BAD_ARG", "action");
+        }
+        return OpResult::Ok();
+    };
+    registry.Register(std::move(control));
+}
+
 /// @brief Map Editing Mode 中に Scene ビューポート上端へ重ねる半透明ツールバー。
 /// @note ツール切替のたびに MapEditorPanel まで視線とマウスを往復しないよう、編集対象の上で
 /// @note 持ち替えられるようにする (Unreal Landscape / Unity Terrain 同様)。状態確認もここで完結させる。

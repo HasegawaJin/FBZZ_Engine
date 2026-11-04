@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
 #pragma once
+#include <Engine/Api.hpp>
 
 #include "Engine/Scene/ManagedBridgeAbi.hpp"
 #include "Engine/Scene/Transform.hpp"
@@ -32,34 +33,34 @@ struct ManagedPhysicsHit {
 class ManagedPhysicsBridge {
 public:
     /// @return body 不在・無効化は NOT_FOUND。変更は fixedUpdate のみ、失敗時の剛体と Transform は未変更。
-    ManagedBridgeStatus RunBody(GameObject& target, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus RunBody(GameObject& target, const ManagedBridgeRequest& request,
         ManagedBridgeReply& reply, bool fixedUpdate);
 
     /// @note 重力とレイヤー行列は読み取りだけ公開する。レイヤーは 0..31 の整数。
-    ManagedBridgeStatus RunWorld(const physics::World& world, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus RunWorld(const physics::World& world, const ManagedBridgeRequest& request,
         ManagedBridgeReply& reply);
 
     /// @return 成功時だけ hits を置き換える。RaycastAll は shape ごと、OverlapSphere は GameObject ごとに返す。
     /// @note 現在の Scene に属する active / enabled Collider だけを World の確定姿勢で検索する。
-    ManagedBridgeStatus Query(Scene& scene, const physics::World& world, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus Query(Scene& scene, const physics::World& world, const ManagedBridgeRequest& request,
         std::vector<ManagedPhysicsHit>& hits, GameObject* ignored = nullptr);
 
     /// @note 共通サービス packet から検証済みの値引数を受け取る。変更は FixedUpdate のみ。
-    ManagedBridgeStatus RunCollider(GameObject& target, uint32_t kind, uint32_t property, bool writing,
+    FBZZ_ENGINE_API ManagedBridgeStatus RunCollider(GameObject& target, uint32_t kind, uint32_t property, bool writing,
         std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result, bool fixedUpdate);
-    ManagedBridgeStatus RunRotation(GameObject& target, bool writing, std::span<const float> values,
+    FBZZ_ENGINE_API ManagedBridgeStatus RunRotation(GameObject& target, bool writing, std::span<const float> values,
         ManagedServiceResult& result, bool fixedUpdate);
-    ManagedBridgeStatus RunColliderCommand(GameObject& target, uint32_t kind, uint32_t command,
+    FBZZ_ENGINE_API ManagedBridgeStatus RunColliderCommand(GameObject& target, uint32_t kind, uint32_t command,
         std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result, bool fixedUpdate);
     /// @note body を持たない navigation 用 world 移動。body があるときは FixedUpdate の既存 teleport を使う。
-    ManagedBridgeStatus MoveWorld(GameObject& target, const math::Vector3& position, bool fixedUpdate);
+    FBZZ_ENGINE_API ManagedBridgeStatus MoveWorld(GameObject& target, const math::Vector3& position, bool fixedUpdate);
 
 private:
-    bool PrepareTeleport(GameObject& target, const math::Vector3& position, const math::Quaternion* rotation = nullptr);
-    Transform* Shadow(GameObject& target);
-    bool Update(GameObject& target);
-    bool Synchronize(GameObject& target);
-    void CommitTransforms();
+    FBZZ_ENGINE_API bool PrepareTeleport(GameObject& target, const math::Vector3& position, const math::Quaternion* rotation = nullptr);
+    FBZZ_ENGINE_API Transform* Shadow(GameObject& target);
+    FBZZ_ENGINE_API bool Update(GameObject& target);
+    FBZZ_ENGINE_API bool Synchronize(GameObject& target);
+    FBZZ_ENGINE_API void CommitTransforms();
 
     std::vector<Transform> m_shadow;
     std::vector<uint32_t> m_epochs;

@@ -9,7 +9,7 @@
 /// @note 分けないと「右下基準で右下合わせ」以外の配置 (右下から 20px 内側等) ができない。
 #pragma once
 
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <cmath>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>

@@ -2,12 +2,13 @@
 /// @brief   流れの場の解決・サンプル・粒子への適用。式は ParticleGpuSim.cs.hlsl と対。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
+
 /// @note 描画パスの private ヘッダー (RenderPasses/Geometry/ParticleForces.hpp) から
-///       Scene/Fields/ へ移した。WaterSystem / VolumetricCloudPass が «描画パスの内部» を
-///       include していた依存の逆立ちを断つため。
+/// @note Scene/Fields/ へ移した。WaterSystem / VolumetricCloudPass が «描画パスの内部» を
+/// @note include していた依存の逆立ちを断つため。
 /// @see Docs/design/flow-field.md
 #pragma once
+#include <Engine/Api.hpp>
 #include "Engine/Scene/Fields/FlowField.hpp"
 #include <cstdint>
 #include <functional>
@@ -48,60 +49,60 @@ struct ActiveFlowField {
 };
 
 /// @brief 流れがこのエミッターに作用するか。
-[[nodiscard]] bool AffectsEmitter(const ActiveFlowField& field, uint32_t emitterChannels);
+[[nodiscard]] FBZZ_ENGINE_API bool AffectsEmitter(const ActiveFlowField& field, uint32_t emitterChannels);
 
 /// @brief ワールド球と流れの有効範囲の交差。無限の場と不明な Bounds は残す。
-[[nodiscard]] bool FlowIntersectsSphere(const ActiveFlowField& field, const math::Vector3& center, float radius);
+[[nodiscard]] FBZZ_ENGINE_API bool FlowIntersectsSphere(const ActiveFlowField& field, const math::Vector3& center, float radius);
 
 /// @note CPU 評価と GPU 転送の受信条件。力・変形への変換は各消費者が行う。
 /// @see Docs/design/flow-field.md
 struct FlowReceiver {
     bool enabled = true;
     uint32_t channels = 0xffffffffu;
-    [[nodiscard]] bool Accepts(const ActiveFlowField& field) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool Accepts(const ActiveFlowField& field) const;
     /// @note radius < 0 は境界不明として空間カリングを省略する。
-    [[nodiscard]] bool Intersects(const ActiveFlowField& field, const math::Vector3& center, float radius) const;
-    [[nodiscard]] math::Vector3 Sample(const math::Vector3& position, std::span<const ActiveFlowField> fields,
+    [[nodiscard]] FBZZ_ENGINE_API bool Intersects(const ActiveFlowField& field, const math::Vector3& center, float radius) const;
+    [[nodiscard]] FBZZ_ENGINE_API math::Vector3 Sample(const math::Vector3& position, std::span<const ActiveFlowField> fields,
                                      float time, bool* covered = nullptr) const;
 };
 
 /// @note 戻り値は frame.fields を借用する。環境風を別経路で適用する描画は includeAmbient=false を指定する。
-[[nodiscard]] std::span<const ActiveFlowField> SelectFlowFields(const FlowFieldFrame& frame, bool includeAmbient = true);
+[[nodiscard]] FBZZ_ENGINE_API std::span<const ActiveFlowField> SelectFlowFields(const FlowFieldFrame& frame, bool includeAmbient = true);
 /// @note 配列の寿命と時刻を固定する。受信無効・マスク 0 では空の関数を返す。
-[[nodiscard]] std::function<math::Vector3(const math::Vector3&)> MakeFlowSampler(
+[[nodiscard]] FBZZ_ENGINE_API std::function<math::Vector3(const math::Vector3&)> MakeFlowSampler(
     const FlowFieldFrame& frame, FlowReceiver receiver, float time, bool includeAmbient = true);
 
 /// @return 場の流速の保守的上限 [m/s]。GPU 粒子の次フレームの Bounds に使う。
-[[nodiscard]] float FlowSpeedBound(const ActiveFlowField& field);
+[[nodiscard]] FBZZ_ENGINE_API float FlowSpeedBound(const ActiveFlowField& field);
 
 /// @brief 設定 1 本をワールド空間の ActiveFlowField へ解決する。
 /// @param origin,rotation «この流れをどの座標系で置くか» を呼び出し側が決めて渡す。
-[[nodiscard]] ActiveFlowField ResolveFlowField(const FlowFieldSettings& settings,
+[[nodiscard]] FBZZ_ENGINE_API ActiveFlowField ResolveFlowField(const FlowFieldSettings& settings,
                                                const math::Vector3&    origin,
                                                const math::Quaternion& rotation);
 
 /// @brief シーン上の有効な FlowField をワールド空間へ解決して out へ集める。
 /// @note カメラを引数に取らない。場はカメラに属さないので、カリングマスクで絞ると
-///       «Scene View でレイヤーを隠すと粒子の動きが変わる» が起きる (flow-field.md §5)。
-void GatherFlowFields(Scene& scene, std::vector<ActiveFlowField>& out);
+/// @note «Scene View でレイヤーを隠すと粒子の動きが変わる» が起きる (flow-field.md §5)。
+FBZZ_ENGINE_API void GatherFlowFields(Scene& scene, std::vector<ActiveFlowField>& out);
 
 /// @brief 1 点の媒質速度 [m/s] を返す純関数。**この式が場の定義そのもの**。
-///
+
 /// @param covered 非 null なら «この点を覆う場が 1 本でもあったか» を返す。
 /// @note 各原始要素の «速度» を足し合わせるだけ。力にするのは消費者の仕事。
 /// @note LegacyDrag は流れではないので何も足さない (読み込み時に flowCoupling へ写る)。
 /// @note 式は ParticleGpuSim.cs.hlsl の SampleFlow と一致させること。
-[[nodiscard]] math::Vector3 SampleFlow(const math::Vector3& position,
+[[nodiscard]] FBZZ_ENGINE_API math::Vector3 SampleFlow(const math::Vector3& position,
                                        std::span<const ActiveFlowField> fields,
                                        uint32_t channels, float time,
                                        bool* covered = nullptr);
 
 /// @brief このエミッターに効く流れを 1 本のリストへまとめる。すべて **ワールド空間** で解決する。
-///
+
 /// @note ワールドに揃えるのは、混在していると simulationSpace = Local のエミッターを
-///       傾けたときに内蔵の流れだけが一緒に傾くため。
+/// @note 傾けたときに内蔵の流れだけが一緒に傾くため。
 /// @note receiveFlowFields が効くのはシーン側だけ。内蔵の流れは «このエミッターの運動»。
-void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
+FBZZ_ENGINE_API void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
                           const std::vector<ActiveFlowField>& sceneFields,
                           std::vector<ActiveFlowField>& outFields, bool useGpuBounds = false);
 
@@ -110,7 +111,7 @@ void ResolveEmitterForces(const ParticleEmitter& emitter, const Transform& tf,
 /// @note 式は ParticleGpuSim.cs.hlsl の ApplyFlowFields と一致させること (Baked を除く。あちらはアトラス常駐分だけが GPU で効く)。
 /// @note 重力はここに含めない。媒質の運動ではなく加速度なので ParticleEmitter::gravity が別に積分する (flow-field.md §3)。
 /// @warning **場に覆われていない点では何もしない。** «場が無い» は «流速 0 の静止した空気» ではなく «媒質について何も言っていない» と読む。0 へ緩和させると場を 1 つ置いただけで半径の外の粒子も一斉に減速する。空気抵抗が欲しければ «半径 0・strength 0 の Uniform» を置く (flow-field.md §3)。
-void ApplyFlowFields(const std::vector<ActiveFlowField>& fields,
+FBZZ_ENGINE_API void ApplyFlowFields(const std::vector<ActiveFlowField>& fields,
                      uint32_t             emitterChannels,
                      const math::Vector3& position,
                      math::Vector3&       velocity,

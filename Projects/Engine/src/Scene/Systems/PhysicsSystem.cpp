@@ -4,6 +4,8 @@
 /// @date    2026-05-21
 /// @brief RigidBodyComponent と ColliderComponent を physics に反映し、Step 後に Transform へ戻す。
 /// @brief Scene から physics への依存方向を保つ。
+#include <Engine/Scene/Components/WaterExclusionComponent.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include "Engine/Scene/Systems/PhysicsSystem.hpp"
 #include "WorldPoseHelpers.hpp"
 #include "Engine/Scene/Systems/ColliderSync.hpp"

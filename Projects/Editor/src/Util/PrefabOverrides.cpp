@@ -2,6 +2,9 @@
 /// @brief   プレファブインスタンスとアセット定義の TOML 差分。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
+#include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Editor/Util/PrefabOverrides.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/SceneIO.hpp>

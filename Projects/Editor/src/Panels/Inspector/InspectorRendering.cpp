@@ -2,6 +2,10 @@
 /// @brief   Rendering 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include "InspectorRendering.hpp"
 
 #include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
@@ -12,8 +16,8 @@ namespace {
 
 /// @brief マテリアルの状況を 1 行で示す。割り当てと編集は Material コンポーネント側。
 /// @note 閲覧専用の一覧をここにも出すと、編集可能な Material 側の一覧と重複し、どちらを
-///       触ればよいか読めなくなる。スロット配列の実体は MaterialComponent が持つため、
-///       Unity の Renderer.materials は真似ない。ここは Material コンポーネントが無い場合の導線だけ。
+/// @note 触ればよいか読めなくなる。スロット配列の実体は MaterialComponent が持つため、
+/// @note Unity の Renderer.materials は真似ない。ここは Material コンポーネントが無い場合の導線だけ。
 void DrawRendererMaterialStatus(EditorContext& ctx, size_t submeshCount, bool skinned)
 {
     scene::GameObject* go = ctx.GetSelectedGO();
@@ -55,7 +59,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             if (ImGui::Combo("Mesh", &sel, kPrimitiveNames, kPrimitiveCount)) {
                 if (sel > 0) {
                     mr.meshPath = kPrimitivePaths[sel];
-                    if (auto* res = renderer::ResourceManager::Active()) {
+                    if (auto* res = ctx.resources) {
                         switch (sel) {
                         case 1: mr.mesh = renderer::PrimitiveMesh::Cube(*res);         break;
                         case 2: mr.mesh = renderer::PrimitiveMesh::Sphere(*res);       break;

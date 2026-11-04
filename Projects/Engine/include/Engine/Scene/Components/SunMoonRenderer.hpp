@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-01
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector3.hpp>
 
 namespace fbzz::scene {
@@ -32,4 +32,4 @@ struct SunMoonRenderer {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

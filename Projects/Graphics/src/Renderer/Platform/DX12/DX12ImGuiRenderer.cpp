@@ -180,12 +180,13 @@ void DX12ImGuiRenderer::ImGuiRenderPreparedPlatformWindows()
 /// @note       返し、作り直した側のビューポートだけ絵が出なくなる。
 void DX12ImGuiRenderer::SweepReleasedDescriptors()
 {
-    if (ResourceManager* resources = ResourceManager::Active()) {
+    {
         for (auto it = m_textureCache.begin(); it != m_textureCache.end();) {
             const CacheKey& key = it->first;
-            const bool alive = key.kind == CACHE_KIND_RENDER_TARGET
-                ? resources->Get(ResourceHandle<RenderTargetTag>{ key.id, key.generation }) != nullptr
-                : resources->Get(ResourceHandle<TextureTag>{ key.id, key.generation }) != nullptr;
+            ResourceManager* resources = ResourceManager::FindOwner(key.owner);
+            const bool alive = resources && (key.kind == CACHE_KIND_RENDER_TARGET
+                ? resources->Get(ResourceHandle<RenderTargetTag>{ key.id, key.generation, key.owner }) != nullptr
+                : resources->Get(ResourceHandle<TextureTag>{ key.id, key.generation, key.owner }) != nullptr);
             if (alive) {
                 ++it;
                 continue;
@@ -277,7 +278,7 @@ void* DX12ImGuiRenderer::GetImTextureID(
     if (m_context->IsFrameOpen())
         target->TransitionColorForRead(m_context->GetCommandList(), static_cast<uint32_t>(slot));
     return CacheDescriptor({handle.id, handle.gen, static_cast<uint16_t>(slot),
-                            CACHE_KIND_RENDER_TARGET},
+                            CACHE_KIND_RENDER_TARGET, handle.owner},
                            target->GetColorSrv(static_cast<uint32_t>(slot)));
 }
 
@@ -288,7 +289,7 @@ void* DX12ImGuiRenderer::GetImTextureID(
     if (!textureBase) return nullptr;
     auto* texture = static_cast<DX12Texture*>(textureBase);
     if (m_context->IsFrameOpen()) texture->TransitionForPixelRead(m_context->GetCommandList());
-    return CacheDescriptor({handle.id, handle.gen, 0, CACHE_KIND_TEXTURE}, texture->GetSrvCpu());
+    return CacheDescriptor({handle.id, handle.gen, 0, CACHE_KIND_TEXTURE, handle.owner}, texture->GetSrvCpu());
 }
 
 } /// @note namespace fbzz::renderer

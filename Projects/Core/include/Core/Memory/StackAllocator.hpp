@@ -4,6 +4,7 @@
 /// @date    2026-06-01
 /// @note 入れ子の一時処理やスコープ単位の作業領域を、確保と逆順に解放する。
 #pragma once
+#include <Core/Api.hpp>
 
 #include "Core/Memory/Allocator.hpp"
 
@@ -16,23 +17,23 @@ namespace fbzz::core {
 class StackAllocator final : public Allocator {
 public:
     StackAllocator() = default;
-    ~StackAllocator() override;
+    FBZZ_CORE_API ~StackAllocator() override;
 
     StackAllocator(const StackAllocator&)            = delete;
     StackAllocator& operator=(const StackAllocator&) = delete;
 
-    StackAllocator(StackAllocator&& other) noexcept;
-    StackAllocator& operator=(StackAllocator&& other) noexcept;
+    FBZZ_CORE_API StackAllocator(StackAllocator&& other) noexcept;
+    FBZZ_CORE_API StackAllocator& operator=(StackAllocator&& other) noexcept;
 
-    [[nodiscard]] bool Initialize(std::size_t capacity);
-    void Shutdown();
+    [[nodiscard]] FBZZ_CORE_API bool Initialize(std::size_t capacity);
+    FBZZ_CORE_API void Shutdown();
 
-    [[nodiscard]] void* Allocate(std::size_t size,
+    [[nodiscard]] FBZZ_CORE_API void* Allocate(std::size_t size,
                                  std::size_t alignment = alignof(std::max_align_t)) override;
-    void Free(void* ptr) override;
-    void Reset() override;
+    FBZZ_CORE_API void Free(void* ptr) override;
+    FBZZ_CORE_API void Reset() override;
 
-    [[nodiscard]] bool Owns(const void* ptr) const override;
+    [[nodiscard]] FBZZ_CORE_API bool Owns(const void* ptr) const override;
     [[nodiscard]] MemoryStats GetStats() const override { return m_stats; }
     [[nodiscard]] bool IsInitialized() const { return m_memory != nullptr; }
 

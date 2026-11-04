@@ -3,101 +3,101 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 ///
-/// 文字列・サイズ・色と、フォントの指定を持つ。フォントの読み込み規則は
-/// FontAtlas.hpp を参照 (fontPath が空なら ProjectSettings の既定フォント)。
+/// @note 文字列・サイズ・色と、フォントの指定を持つ。フォントの読み込み規則は
+/// @note FontAtlas.hpp を参照 (fontPath が空なら ProjectSettings の既定フォント)。
 #pragma once
 #include <Engine/Scene/Components/UIRect.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector4.hpp>
 #include <string>
 
 namespace fbzz::scene {
 
-/// 複数行の行揃え。
+/// @note 複数行の行揃え。
 /// @note 以前は position がテキストのどこを指すかも兼ね、Center で文字が左へ半分ずれた。
-///       位置の基準は UIAnchor が持ち、align は矩形内で行をどちらへ寄せるかだけを決める。
+/// @note 位置の基準は UIAnchor が持ち、align は矩形内で行をどちらへ寄せるかだけを決める。
 enum class TextAlign { Left, Center, Right };
 
-/// 箱の中で行の束をどこへ寄せるか。
+/// @note 箱の中で行の束をどこへ寄せるか。
 /// @note 行の束の高さがそのまま矩形の高さなら寄せる余地が無い。maxHeight 指定で余りが生まれる。
 enum class TextVerticalAlign { Top, Middle, Bottom };
 
-/// 箱に収まりきらない行をどう扱うか。
-///   Overflow … そのまま溢れさせる (矩形の高さは maxHeight のまま)
-///   Truncate … 入らない行を捨てる
-///   Ellipsis … 入らない行を捨て、最後の行の末尾を "…" に置き換える
+/// @note 箱に収まりきらない行をどう扱うか。
+/// @note Overflow … そのまま溢れさせる (矩形の高さは maxHeight のまま)
+/// @note Truncate … 入らない行を捨てる
+/// @note Ellipsis … 入らない行を捨て、最後の行の末尾を "…" に置き換える
 enum class TextOverflow { Overflow, Truncate, Ellipsis };
 
-/// 位置は GameObject::transform.localPosition.xy と anchoring で決まる。
+/// @note 位置は GameObject::transform.localPosition.xy と anchoring で決まる。
 struct UIText {
-    /// 親のどこを基準に、自分のどこを合わせるか (UIRect.hpp 参照)。
-    /// UIImage と完全に同じ規則で、同じ値を入れれば同じ場所に出る。
+    /// @note 親のどこを基準に、自分のどこを合わせるか (UIRect.hpp 参照)。
+    /// @note UIImage と完全に同じ規則で、同じ値を入れれば同じ場所に出る。
     UIAnchor      anchoring{};
     std::string   text          = "Text";
     float         fontSize      = 42.0f;
     float         letterSpacing = 4.0f;
     math::Vector4 color         = { 1.0f, 1.0f, 1.0f, 1.0f };
-    /// 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
+    /// @note 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
     int           sortOrder     = 0;
     TextAlign     align         = TextAlign::Left;
-    /// フォントの指定。2 通りの書き方を受け付ける。
-    ///   ".ttf" / ".ttc" / ".otf" … そのファイルを直接指定。使った字だけ実行時に焼く
-    ///   拡張子なしのベースパス     … 静的アトラス。`<base>.fnt` (+ PNG) を読む
-    /// 例: "Assets/Fonts/MPLUS1p/MPLUS1p-Regular.ttf"
-    ///     "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght"
-    /// 空文字列なら ProjectSettings の既定フォントを使う。
+    /// @note フォントの指定。2 通りの書き方を受け付ける。
+    /// @note ".ttf" / ".ttc" / ".otf" … そのファイルを直接指定。使った字だけ実行時に焼く
+    /// @note 拡張子なしのベースパス     … 静的アトラス。`<base>.fnt` (+ PNG) を読む
+    /// @note 例: "Assets/Fonts/MPLUS1p/MPLUS1p-Regular.ttf"
+    /// @note "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght"
+    /// @note 空文字列なら ProjectSettings の既定フォントを使う。
     std::string   fontPath      = "";
-    /// UI マテリアル (.mat)。空なら組み込みの UIText で描く。グラデーション・縁取り・発光を
-    /// 文字ごと画像化せず表現する (多言語化を壊さないため)。
+    /// @note UI マテリアル (.mat)。空なら組み込みの UIText で描く。グラデーション・縁取り・発光を
+    /// @note 文字ごと画像化せず表現する (多言語化を壊さないため)。
     /// @note 契約: t0 はフォントアトラス、 `.r` は 0.5 を輪郭とする値 (静的はカバレッジ、動的は SDF)。
-    ///       g_Rect はグリフ単位でなく 0 (1 ドローに複数文字を詰めるため) — 矩形基準の図形は不可。
-    ///       詳細は `UI/Material/UITextGradient.hlsl` を参照。
+    /// @note g_Rect はグリフ単位でなく 0 (1 ドローに複数文字を詰めるため) — 矩形基準の図形は不可。
+    /// @note 詳細は `UI/Material/UITextGradient.hlsl` を参照。
     std::string   materialPath  = "";
-    /// 折り返し幅 (Canvas ピクセル)。0 で折り返さない。
+    /// @note 折り返し幅 (Canvas ピクセル)。0 で折り返さない。
     /// @note 無いと文言の長さがそのままレイアウトを支配する。幅を決めると align も
-    ///       「その幅の中での行揃え」として意味を持つ。
+    /// @note 「その幅の中での行揃え」として意味を持つ。
     float         maxWidth      = 0.0f;
-    /// 箱の高さ (Canvas ピクセル)。0 で「行の束の高さがそのまま矩形の高さ」。
+    /// @note 箱の高さ (Canvas ピクセル)。0 で「行の束の高さがそのまま矩形の高さ」。
     /// @note 縦揃え・省略・自動縮小はこの高さが無いと解けない。無いと文言が伸びた分だけ
-    ///       下へ流れ続け隣の要素を踏む。
+    /// @note 下へ流れ続け隣の要素を踏む。
     float         maxHeight     = 0.0f;
     bool          enabled       = true;
 
-    /// 行送りの倍率。1 で fontSize ぶん、1.5 で 1.5 倍の間隔になる。
+    /// @note 行送りの倍率。1 で fontSize ぶん、1.5 で 1.5 倍の間隔になる。
     /// @note px でなく倍率にする理由: 行間は字の大きさに比例すべき値で、px だと
-    ///       fontSize を変えるたびに入れ直しになる。
+    /// @note fontSize を変えるたびに入れ直しになる。
     float             lineSpacing   = 1.0f;
     TextVerticalAlign verticalAlign = TextVerticalAlign::Top;
     TextOverflow      overflow      = TextOverflow::Overflow;
 
-    /// 先頭から何文字まで描くか。-1 で全部。単位は UTF-8 のバイトではなく文字。
+    /// @note 先頭から何文字まで描くか。-1 で全部。単位は UTF-8 のバイトではなく文字。
     /// @note 文字列を毎フレーム切って SetText する実装は UTF-8 境界判定がスクリプトの数だけ
-    ///       増えるため、描く量の指定に一本化する。リッチテキストのタグは数えない。
+    /// @note 増えるため、描く量の指定に一本化する。リッチテキストのタグは数えない。
     int           visibleCharacters = -1;
 
-    /// 箱に収まるよう fontSize を自動で縮める。maxWidth / maxHeight が基準になる。
+    /// @note 箱に収まるよう fontSize を自動で縮める。maxWidth / maxHeight が基準になる。
     /// @note 文言は必ず伸び縮みする。全体を縮めると短い文言が貧相になり、放置すると溢れるので、
-    ///       「入る範囲でいちばん大きく」に一本化する。
+    /// @note 「入る範囲でいちばん大きく」に一本化する。
     bool          autoSize      = false;
     float         autoSizeMin   = 8.0f;
-    /// 0 で fontSize を上限に使う (縮むだけで、指定より大きくはならない)。
+    /// @note 0 で fontSize を上限に使う (縮むだけで、指定より大きくはならない)。
     float         autoSizeMax   = 0.0f;
 
-    /// タグ付きの文字列として解釈する。
-    ///   `<color=#RRGGBB> <color=#RRGGBBAA> </color> <alpha=#AA>`
-    ///   `<size=32> <size=+8> <size=-4> </size>` (行高はその行の最大サイズで決まる)
-    ///   `<b> </b>` 疑似ボールド (字を僅かにずらし 2 度描く)  `<i> </i>` 疑似イタリック  `<br>` 改行
+    /// @note タグ付きの文字列として解釈する。
+    /// @note `<color=#RRGGBB> <color=#RRGGBBAA> </color> <alpha=#AA>`
+    /// @note `<size=32> <size=+8> <size=-4> </size>` (行高はその行の最大サイズで決まる)
+    /// @note `<b> </b>` 疑似ボールド (字を僅かにずらし 2 度描く)  `<i> </i>` 疑似イタリック  `<br>` 改行
     /// @note 疑似ボールドは Bold フォント追加による「太字だけ出ない」欠けを避けるための近似。
     bool          richText      = false;
 
-    /// ランタイム専用: UISystem が実測した文字の外接矩形サイズ。
+    /// @note ランタイム専用: UISystem が実測した文字の外接矩形サイズ。
     /// @note アンカー/ピボットの解決に自分のサイズが要るが、文字は字面とフォントでサイズが
-    ///       決まるため描画時の実測を書き戻す。Editor のギズモもこれを読んで矩形を描く。
+    /// @note 決まるため描画時の実測を書き戻す。Editor のギズモもこれを読んで矩形を描く。
     math::Vector2 resolvedSize  = math::Vector2::ZERO;
-    /// ランタイム専用: autoSize が実際に採用した文字サイズ。autoSize が false なら fontSize。
+    /// @note ランタイム専用: autoSize が実際に採用した文字サイズ。autoSize が false なら fontSize。
     /// @note 計測と描画で別々に解き直すと縮んだ結果が 1 フレームずれて字が震えるため、
-    ///       計測の 1 回だけで解き描画はこの値を読む。
+    /// @note 計測の 1 回だけで解き描画はこの値を読む。
     float         resolvedFontSize = 0.0f;
 
     bool overrideThemeColor = false;
@@ -169,4 +169,4 @@ struct UIText {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Math/Api.hpp>
 
 #include "Vector3.hpp"
 
@@ -18,9 +19,9 @@ struct Quaternion {
     constexpr Quaternion(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
 
     static Quaternion Identity();
-    static Quaternion FromAxisAngle(const Vector3& axis, float angleRad);
-    static Quaternion FromEuler(const Vector3& eulerRad);
-    static Quaternion LookRotation(const Vector3& forward,
+    FBZZ_MATH_API static Quaternion FromAxisAngle(const Vector3& axis, float angleRad);
+    FBZZ_MATH_API static Quaternion FromEuler(const Vector3& eulerRad);
+    FBZZ_MATH_API static Quaternion LookRotation(const Vector3& forward,
                                    const Vector3& up = Vector3::UP);
 
     Quaternion  operator*(const Quaternion& rhs) const;
@@ -29,16 +30,16 @@ struct Quaternion {
     bool        operator==(const Quaternion& rhs) const;
 
     float      Length()     const;
-    Quaternion Normalized() const;
+    FBZZ_MATH_API Quaternion Normalized() const;
     Quaternion Conjugate()  const;
-    Quaternion Inverse()    const;
+    FBZZ_MATH_API Quaternion Inverse()    const;
 
-    static Quaternion FromMatrix4(const Matrix4& m);
+    FBZZ_MATH_API static Quaternion FromMatrix4(const Matrix4& m);
 
     /// @brief NLerp (正規化線形補間)。
     /// @note 等角速度ではないが Slerp より軽量。短弧補間には Slerp を使う。
-    static Quaternion Lerp(const Quaternion& a, const Quaternion& b, float t);
-    static Quaternion Slerp(const Quaternion& a, const Quaternion& b, float t);
+    FBZZ_MATH_API static Quaternion Lerp(const Quaternion& a, const Quaternion& b, float t);
+    FBZZ_MATH_API static Quaternion Slerp(const Quaternion& a, const Quaternion& b, float t);
     static float      Dot(const Quaternion& a, const Quaternion& b);
 };
 
@@ -82,4 +83,4 @@ inline float Quaternion::Dot(const Quaternion& a, const Quaternion& b) {
     return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

@@ -91,6 +91,17 @@ Application::Application()
 
 Application::~Application() = default;
 
+void Application::SetResourceManager(renderer::ResourceManager* resources)
+{
+    m_resourceOwner = resources ? resources->GetInstanceId() : 0;
+    if (m_sceneManager) m_sceneManager->SetResourceManager(resources);
+}
+
+renderer::ResourceManager* Application::GetResourceManager() const
+{
+    return renderer::ResourceManager::FindOwner(m_resourceOwner);
+}
+
 bool Application::Init() {
     /// @note エディタは常にデフォルト設定 (1920x1080 ウィンドウ) で起動する。
     /// @note Standalone モードのみ ProjectSettings から取得した Config を渡す。
@@ -190,6 +201,7 @@ bool Application::Init(const Window::Config& windowConfig,
     }
 
     m_sceneManager = std::make_unique<scene::SceneManager>();
+    m_sceneManager->SetResourceManager(GetResourceManager());
     m_sceneManager->SetAudioManager(m_audioManager.get());
 
     FBZZ_LOG_INFO("Application started: %ux%u", m_window->GetWidth(), m_window->GetHeight());
@@ -213,8 +225,9 @@ void Application::Shutdown() {
     /// @note デバイスを破棄する前に ResourceManager 所有の全 GPU リソースを解放する。
     /// @note ResourceManager は呼び出し側のローカル変数として Application より長く生存するため、
     /// @note 先に renderer を破棄すると Shader 等が D3D の Live Object として報告される。
-    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
+    if (renderer::ResourceManager* resources = GetResourceManager())
         resources->PrepareRendererShutdown();
+    m_resourceOwner = 0;
     if (m_renderer)
         m_renderer->Shutdown();
     (void)profiler::frame_timeline::WriteAfterStop();
@@ -236,10 +249,10 @@ void Application::Run() {
             timelineContext.detail = 1;
             const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::FRAME_TAIL, timelineContext);
             m_renderer->BeginCpuFrame(Time::frameCount);
-            if (auto* resources = renderer::ResourceManager::Active()) resources->AdvanceFrame();
+            if (auto* resources = GetResourceManager()) resources->AdvanceFrame();
             m_memorySystem.BeginFrame();
         }
-        profiler::BeginApplicationProfileFrame();
+        profiler::BeginApplicationProfileFrame(GetResourceManager());
 
         {
             FBZZ_PROFILE_SCOPE("Input::Update");
@@ -307,10 +320,10 @@ void Application::Run(IModule& module) {
             timelineContext.detail = 1;
             const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::FRAME_TAIL, timelineContext);
             m_renderer->BeginCpuFrame(Time::frameCount);
-            if (auto* resources = renderer::ResourceManager::Active()) resources->AdvanceFrame();
+            if (auto* resources = GetResourceManager()) resources->AdvanceFrame();
             m_memorySystem.BeginFrame();
         }
-        profiler::BeginApplicationProfileFrame();
+        profiler::BeginApplicationProfileFrame(GetResourceManager());
 
         {
             FBZZ_PROFILE_SCOPE("Input::Update");

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-16
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <Math/Matrix4.hpp>
 #include <cstdint>
@@ -44,18 +45,18 @@ struct PreparedSkinningWrite {
 class PreparedSkinningTicket final {
     struct ConstructionKey {};
 public:
-    explicit PreparedSkinningTicket(ConstructionKey, std::unique_ptr<prepared_skinning_detail::NativeWork> native);
-    FBZZ_PREPARED_SKINNING_API ~PreparedSkinningTicket();
+    FBZZ_GRAPHICS_API explicit PreparedSkinningTicket(ConstructionKey, std::unique_ptr<prepared_skinning_detail::NativeWork> native);
+    FBZZ_GRAPHICS_API ~PreparedSkinningTicket();
     PreparedSkinningTicket(const PreparedSkinningTicket&) = delete;
     PreparedSkinningTicket& operator=(const PreparedSkinningTicket&) = delete;
     /// @note 外部 callback、Logger、ResourceManager、資源確保、CPU/GPU 待機を呼ばない。
-    [[nodiscard]] FBZZ_PREPARED_SKINNING_API bool Submit() noexcept;
-    [[nodiscard]] FBZZ_PREPARED_SKINNING_API std::span<const PreparedSkinningWrite> Writes() const noexcept;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool Submit() noexcept;
+    [[nodiscard]] FBZZ_GRAPHICS_API std::span<const PreparedSkinningWrite> Writes() const noexcept;
     /// @note 成功した row の現在内容版と native lease だけを照合する。未投入・外部版変更・旧 device は false。
-    [[nodiscard]] FBZZ_PREPARED_SKINNING_API bool IsWriteCurrent(uint32_t row) const noexcept;
-    [[nodiscard]] FBZZ_PREPARED_SKINNING_API uint64_t ResourceInstance() const noexcept;
-    [[nodiscard]] FBZZ_PREPARED_SKINNING_API uint64_t ResourceEpoch() const noexcept;
-    [[nodiscard]] FBZZ_PREPARED_SKINNING_API uint64_t ResourceFrame() const noexcept;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool IsWriteCurrent(uint32_t row) const noexcept;
+    [[nodiscard]] FBZZ_GRAPHICS_API uint64_t ResourceInstance() const noexcept;
+    [[nodiscard]] FBZZ_GRAPHICS_API uint64_t ResourceEpoch() const noexcept;
+    [[nodiscard]] FBZZ_GRAPHICS_API uint64_t ResourceFrame() const noexcept;
 private:
     friend struct prepared_skinning_detail::TicketFactory;
     std::unique_ptr<prepared_skinning_detail::NativeWork> m_native;

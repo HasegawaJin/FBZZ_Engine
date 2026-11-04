@@ -5,8 +5,9 @@
 /// @note IReflector→toml::table の変換を SceneSerializer/DataAssetRegistry/SaveStore の 3 箇所で共有する。別々に書くと型追加のたびに 3 箇所を直すことになり、対応漏れが無警告のまま保存されなくなる。
 /// @note 実体は scene::IReflector の実装だが、呼び出し側を巻き込まないよう名前空間は fbzz::util のまま据え置く。参照型 (EntityID/アセット GUID) のように文脈が要るものは派生で足す。
 #pragma once
+#include <Engine/Api.hpp>
 
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
@@ -21,18 +22,18 @@ namespace fbzz::util {
 
 /// @name 値型 ⇔ TOML 配列
 /// @note 欠損・要素数不足は既定値をそのまま返す。読み込み側が「無ければ既定値」を毎回書かずに済むようにするため。
-///@{
-[[nodiscard]] toml::array Vec2ToArr(const math::Vector2& v);
-[[nodiscard]] toml::array Vec3ToArr(const math::Vector3& v);
-[[nodiscard]] toml::array Vec4ToArr(const math::Vector4& v);
-[[nodiscard]] toml::array QuatToArr(const math::Quaternion& q);
+/// @{
+[[nodiscard]] FBZZ_ENGINE_API toml::array Vec2ToArr(const math::Vector2& v);
+[[nodiscard]] FBZZ_ENGINE_API toml::array Vec3ToArr(const math::Vector3& v);
+[[nodiscard]] FBZZ_ENGINE_API toml::array Vec4ToArr(const math::Vector4& v);
+[[nodiscard]] FBZZ_ENGINE_API toml::array QuatToArr(const math::Quaternion& q);
 
-[[nodiscard]] math::Vector2 ArrToVec2(const toml::array* a, math::Vector2 def = {});
-[[nodiscard]] math::Vector3 ArrToVec3(const toml::array* a, math::Vector3 def = {});
-[[nodiscard]] math::Vector4 ArrToVec4(const toml::array* a, math::Vector4 def = {});
-[[nodiscard]] math::Quaternion ArrToQuat(const toml::array* a,
+[[nodiscard]] FBZZ_ENGINE_API math::Vector2 ArrToVec2(const toml::array* a, math::Vector2 def = {});
+[[nodiscard]] FBZZ_ENGINE_API math::Vector3 ArrToVec3(const toml::array* a, math::Vector3 def = {});
+[[nodiscard]] FBZZ_ENGINE_API math::Vector4 ArrToVec4(const toml::array* a, math::Vector4 def = {});
+[[nodiscard]] FBZZ_ENGINE_API math::Quaternion ArrToQuat(const toml::array* a,
                                          math::Quaternion def = { 0.0f, 0.0f, 0.0f, 1.0f });
-///@}
+/// @}
 
 /// @brief 値型フィールドと入れ子スコープを toml::table へ書き出す。
 /// @note 書き込み先はスタックで持つ。BeginObject/BeginObjectElement が「現在の書き込み先」を子テーブルへ差し替えるため、任意の深さの復帰先を LIFO で覚える必要がある。
@@ -54,28 +55,28 @@ public:
     void Field(const char* name, math::Vector3& v) override { Put(name, Vec3ToArr(v)); }
     void Field(const char* name, math::Vector4& v) override { Put(name, Vec4ToArr(v)); }
     void Field(const char* name, math::Quaternion& v) override { Put(name, QuatToArr(v)); }
-    void Field(const char* name, scene::ParticleCurve& v) override;
-    void Field(const char* name, scene::ParticleGradient& v) override;
-    void Field(const char* name, input::KeyCode& v) override;
-    void AssetField(const char* name, scene::ScriptAssetReference& value, scene::ScriptAssetType type) override;
-    void AssetListField(const char* name, std::vector<scene::ScriptAssetReference>& values, scene::ScriptAssetType type) override;
-    void ReferenceField(const char* name, scene::ScriptSerializedReference& value) override;
+    FBZZ_ENGINE_API void Field(const char* name, scene::ParticleCurve& v) override;
+    FBZZ_ENGINE_API void Field(const char* name, scene::ParticleGradient& v) override;
+    FBZZ_ENGINE_API void Field(const char* name, input::KeyCode& v) override;
+    FBZZ_ENGINE_API void AssetField(const char* name, scene::ScriptAssetReference& value, scene::ScriptAssetType type) override;
+    FBZZ_ENGINE_API void AssetListField(const char* name, std::vector<scene::ScriptAssetReference>& values, scene::ScriptAssetType type) override;
+    FBZZ_ENGINE_API void ReferenceField(const char* name, scene::ScriptSerializedReference& value) override;
 
-    void ListField(const char* name, std::vector<float>& values) override;
-    void ListField(const char* name, std::vector<int>& values) override;
-    void ListField(const char* name, std::vector<bool>& values) override;
-    void ListField(const char* name, std::vector<std::string>& values) override;
-    void ListField(const char* name, std::vector<math::Vector2>& values) override;
-    void ListField(const char* name, std::vector<math::Vector3>& values) override;
-    void ListField(const char* name, std::vector<math::Vector4>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<float>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<int>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<bool>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<std::string>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<math::Vector2>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<math::Vector3>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<math::Vector4>& values) override;
 
-    void BeginObject(const char* name) override;
-    void EndObject() override;
+    FBZZ_ENGINE_API void BeginObject(const char* name) override;
+    FBZZ_ENGINE_API void EndObject() override;
 
-    [[nodiscard]] std::size_t BeginObjectList(const char* name, std::size_t count) override;
-    void BeginObjectElement(std::size_t index) override;
+    [[nodiscard]] FBZZ_ENGINE_API std::size_t BeginObjectList(const char* name, std::size_t count) override;
+    FBZZ_ENGINE_API void BeginObjectElement(std::size_t index) override;
     void EndObjectElement() override { EndObject(); }
-    [[nodiscard]] std::size_t EndObjectList() override;
+    [[nodiscard]] FBZZ_ENGINE_API std::size_t EndObjectList() override;
 
 protected:
     [[nodiscard]] toml::table& Current() { return *m_stack.back(); }
@@ -102,45 +103,45 @@ class TomlReadReflector : public scene::IReflector {
 public:
     explicit TomlReadReflector(const toml::table& table) { m_stack.push_back(&table); }
 
-    void Field(const char* name, float& v) override;
-    void Field(const char* name, int& v) override;
-    void Field(const char* name, bool& v) override;
-    void Field(const char* name, std::string& v) override;
+    FBZZ_ENGINE_API void Field(const char* name, float& v) override;
+    FBZZ_ENGINE_API void Field(const char* name, int& v) override;
+    FBZZ_ENGINE_API void Field(const char* name, bool& v) override;
+    FBZZ_ENGINE_API void Field(const char* name, std::string& v) override;
     void Field(const char* name, math::Vector2& v) override { v = ArrToVec2(FindArray(name), v); }
     void Field(const char* name, math::Vector3& v) override { v = ArrToVec3(FindArray(name), v); }
     void Field(const char* name, math::Vector4& v) override { v = ArrToVec4(FindArray(name), v); }
     void Field(const char* name, math::Quaternion& v) override { v = ArrToQuat(FindArray(name), v); }
-    void Field(const char* name, scene::ParticleCurve& v) override;
-    void Field(const char* name, scene::ParticleGradient& v) override;
-    void Field(const char* name, input::KeyCode& v) override;
-    void AssetField(const char* name, scene::ScriptAssetReference& value, scene::ScriptAssetType type) override;
-    void AssetListField(const char* name, std::vector<scene::ScriptAssetReference>& values, scene::ScriptAssetType type) override;
-    void ReferenceField(const char* name, scene::ScriptSerializedReference& value) override;
+    FBZZ_ENGINE_API void Field(const char* name, scene::ParticleCurve& v) override;
+    FBZZ_ENGINE_API void Field(const char* name, scene::ParticleGradient& v) override;
+    FBZZ_ENGINE_API void Field(const char* name, input::KeyCode& v) override;
+    FBZZ_ENGINE_API void AssetField(const char* name, scene::ScriptAssetReference& value, scene::ScriptAssetType type) override;
+    FBZZ_ENGINE_API void AssetListField(const char* name, std::vector<scene::ScriptAssetReference>& values, scene::ScriptAssetType type) override;
+    FBZZ_ENGINE_API void ReferenceField(const char* name, scene::ScriptSerializedReference& value) override;
 
-    void ListField(const char* name, std::vector<float>& values) override;
-    void ListField(const char* name, std::vector<int>& values) override;
-    void ListField(const char* name, std::vector<bool>& values) override;
-    void ListField(const char* name, std::vector<std::string>& values) override;
-    void ListField(const char* name, std::vector<math::Vector2>& values) override;
-    void ListField(const char* name, std::vector<math::Vector3>& values) override;
-    void ListField(const char* name, std::vector<math::Vector4>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<float>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<int>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<bool>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<std::string>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<math::Vector2>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<math::Vector3>& values) override;
+    FBZZ_ENGINE_API void ListField(const char* name, std::vector<math::Vector4>& values) override;
 
-    void BeginObject(const char* name) override;
-    void EndObject() override;
+    FBZZ_ENGINE_API void BeginObject(const char* name) override;
+    FBZZ_ENGINE_API void EndObject() override;
 
-    [[nodiscard]] std::size_t BeginObjectList(const char* name, std::size_t count) override;
-    void BeginObjectElement(std::size_t index) override;
+    [[nodiscard]] FBZZ_ENGINE_API std::size_t BeginObjectList(const char* name, std::size_t count) override;
+    FBZZ_ENGINE_API void BeginObjectElement(std::size_t index) override;
     void EndObjectElement() override { EndObject(); }
-    [[nodiscard]] std::size_t EndObjectList() override;
+    [[nodiscard]] FBZZ_ENGINE_API std::size_t EndObjectList() override;
 
 protected:
     [[nodiscard]] const toml::table* Current() const { return m_stack.back(); }
-    [[nodiscard]] const toml::node*  FindNode(const char* fallback) const;
-    [[nodiscard]] const toml::array* FindArray(const char* fallback) const;
+    [[nodiscard]] FBZZ_ENGINE_API const toml::node*  FindNode(const char* fallback) const;
+    [[nodiscard]] FBZZ_ENGINE_API const toml::array* FindArray(const char* fallback) const;
 
 private:
     std::vector<const toml::table*> m_stack;
     std::vector<const toml::array*> m_listStack;
 };
 
-} // namespace fbzz::util
+} /// @note namespace fbzz::util

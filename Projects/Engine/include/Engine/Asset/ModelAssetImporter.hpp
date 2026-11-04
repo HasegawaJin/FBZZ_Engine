@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
 
@@ -12,7 +13,7 @@ struct BinaryReader;
 
 class ModelAssetImporter final : public IAssetImporter<ModelAsset> {
 public:
-    [[nodiscard]] std::unique_ptr<ModelAsset> Import(
+    [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<ModelAsset> Import(
         const std::string&         absPath,
         renderer::ResourceManager* resources) override;
 
@@ -20,8 +21,8 @@ public:
     /// @param firstResidentLod 最低品質の LOD で頭打ちにする。読まなかった LOD は submesh の枠と名前だけ持つ。
     /// @param outBytesRead 実際にディスクから読んだバイト数 (null 可)。
     /// @note .fzasset は submesh ヘッダーが頂点数・インデックス数・モーフ数を持つので、索引が無くても
-    ///       本体の大きさが決まり、読まない LOD はシークで飛ばせる。
-    [[nodiscard]] std::unique_ptr<ModelAsset> ImportPartial(
+    /// @note 本体の大きさが決まり、読まない LOD はシークで飛ばせる。
+    [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<ModelAsset> ImportPartial(
         const std::string&         absPath,
         renderer::ResourceManager* resources,
         uint32_t                   firstResidentLod,
@@ -33,9 +34,9 @@ public:
     }
 
 private:
-    [[nodiscard]] static std::unique_ptr<ModelAsset> ImportFromReader(
+    [[nodiscard]] FBZZ_ENGINE_API static std::unique_ptr<ModelAsset> ImportFromReader(
         BinaryReader& reader, const std::string& absPath,
         renderer::ResourceManager* resources, uint32_t firstResidentLod);
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

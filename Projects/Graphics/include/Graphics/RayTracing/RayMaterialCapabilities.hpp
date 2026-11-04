@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/RenderState.hpp>
 #include <cstdint>
 
@@ -23,7 +24,7 @@ struct RayMaterialCapabilities {
 
 /// @note ALPHA_TEST requires nonopaque BLAS geometry and the same UV/LOD/cutoff at every RayQuery candidate, including shadows.
 /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#rayquery Committing nonopaque triangle candidates.
-[[nodiscard]] RayMaterialCapabilities ResolveStaticRayMaterialCapabilities(
+[[nodiscard]] FBZZ_GRAPHICS_API RayMaterialCapabilities ResolveStaticRayMaterialCapabilities(
     bool standardGeometry, BlendMode blend, float alpha, float cutoff, bool alphaTexture);
 
 } /// @note namespace fbzz::renderer

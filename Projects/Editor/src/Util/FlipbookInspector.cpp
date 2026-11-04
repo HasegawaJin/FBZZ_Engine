@@ -47,14 +47,14 @@ constexpr ImU32  kCurrentColor    = IM_COL32(255, 230, 80, 255);
 
 /// @name テクスチャ参照
 
-/// Project ごとの Generated 配下へ出し、Engine 同梱 Assets を誤って変更しない。
+/// @note Project ごとの Generated 配下へ出し、Engine 同梱 Assets を誤って変更しない。
 std::string ProceduralVFXOutputDirectory(const std::string& projectRoot)
 {
     if (projectRoot.empty()) return "Assets/Textures/Generated/VFX";
     return projectRoot + "/Assets/Textures/Generated/VFX";
 }
 
-/// テクスチャ参照を画像ローダーが開ける実パスへ変換する。
+/// @note テクスチャ参照を画像ローダーが開ける実パスへ変換する。
 /// @note [textures] は guid: 参照でも保存されるため、projectRoot を継ぎ足すだけでは開けない。
 std::string ResolveTextureDiskPath(const std::string& projectRoot, const std::string& reference)
 {
@@ -84,11 +84,11 @@ struct AtlasPreview {
     int           height       = 0;
 };
 
-/// Inspector が同時に開く .mat は 1 つなので、直近の 1 枚だけ覚えれば足りる。
+/// @note Inspector が同時に開く .mat は 1 つなので、直近の 1 枚だけ覚えれば足りる。
 /// @note パス解決とハンドル引きを毎フレームやり直すと Inspector を開いているだけでファイル探索が走り続けるため、読めなかったことも覚え失敗の再試行を繰り返さない。
 AtlasPreview s_atlasPreview;
 
-/// 生成ツールは同じパスへ上書きすることがある。寸法が変わるので覚えた値を捨てる。
+/// @note 生成ツールは同じパスへ上書きすることがある。寸法が変わるので覚えた値を捨てる。
 void InvalidateAtlasPreview()
 {
     s_atlasPreview = {};
@@ -125,7 +125,7 @@ struct FrameUv {
     ImVec2 max;
 };
 
-/// 左上から行優先。ParticlePass の SpriteRectForFrame と同じ並び。
+/// @note 左上から行優先。ParticlePass の SpriteRectForFrame と同じ並び。
 FrameUv FrameUvRect(int frame, int columns, int rows)
 {
     const int x = frame % columns;
@@ -165,7 +165,7 @@ void DisabledWrapped(const char* text)
     ImGui::PopStyleColor();
 }
 
-/// 警告 1 行と、あれば直すボタン。
+/// @note 警告 1 行と、あれば直すボタン。
 /// @return 直すボタンが押されたら true
 bool WarningRow(const char* text, const char* fixLabel = nullptr)
 {
@@ -179,7 +179,7 @@ bool WarningRow(const char* text, const char* fixLabel = nullptr)
     return fixed;
 }
 
-/// Random Row では行の全列が再生対象になり、Start / End は使われない。
+/// @note Random Row では行の全列が再生対象になり、Start / End は使われない。
 int PlayedSpan(const ParticleFlipbookSettings& flipbook, const asset::FlipbookFrameRange& range)
 {
     if (flipbook.spriteRandomRow && range.rows > 1) return range.columns - 1;
@@ -289,7 +289,7 @@ ImVec2 FitAtlasSize(const AtlasPreview& atlas, int columns, int rows)
     return { (std::max)(width, 16.0f), (std::max)(height, 16.0f) };
 }
 
-/// クリックで Start、右クリック / Shift+クリックで End を指定する。
+/// @note クリックで Start、右クリック / Shift+クリックで End を指定する。
 /// @return 範囲を変えたら true
 bool DrawAtlasGrid(ParticleFlipbookSettings& flipbook, const AtlasPreview& atlas,
                    const asset::FlipbookFrameSample& live)
@@ -404,7 +404,7 @@ bool DrawAtlasGrid(ParticleFlipbookSettings& flipbook, const AtlasPreview& atlas
 
 /// @name ライブプレビュー
 
-/// 1 粒子が寿命ごとに生まれ直すとみなして、いまのコマを引く。
+/// @note 1 粒子が寿命ごとに生まれ直すとみなして、いまのコマを引く。
 asset::FlipbookFrameSample SamplePreview(const ParticleFlipbookSettings& flipbook, const PreviewState& state)
 {
     const float lifetime   = (std::max)(state.lifetime, 0.05f);
@@ -413,7 +413,7 @@ asset::FlipbookFrameSample SamplePreview(const ParticleFlipbookSettings& flipboo
     float seed = state.seed;
     if (!state.lockSeed) {
         /// @note Random Row / Random Start の «ばらけ方» は 1 粒子を見続けても分からない。
-        ///       周回ごとに別の粒子として乱数を引き直す (黄金比で散らすと偏りが出にくい)。
+        /// @note       周回ごとに別の粒子として乱数を引き直す (黄金比で散らすと偏りが出にくい)。
         const float shifted = state.seed + cycleIndex * 0.6180339f;
         seed = shifted - std::floor(shifted);
     }
@@ -496,7 +496,7 @@ void DrawPreviewControls(const asset::FlipbookFrameSample& live)
 
 /// @name 検査
 
-/// エラーにならないまま «なんとなく変な絵» になる設定を並べる。直せるものはボタンを出す。
+/// @note エラーにならないまま «なんとなく変な絵» になる設定を並べる。直せるものはボタンを出す。
 bool DrawFlipbookIssues(ParticleFlipbookSettings& flipbook, const asset::MaterialAssetAuthoring& material,
                         const AtlasPreview& atlas)
 {
@@ -564,7 +564,7 @@ bool DrawFlipbookIssues(ParticleFlipbookSettings& flipbook, const asset::Materia
 
 /// @name 連番画像からアトラスを焼く
 
-/// "Explosion_012" -> prefix "Explosion_"。末尾に数字が無ければ連番ではない。
+/// @note "Explosion_012" -> prefix "Explosion_"。末尾に数字が無ければ連番ではない。
 bool SplitSequenceStem(const std::string& stem, std::string& prefix, std::string& digits)
 {
     std::size_t cut = stem.size();
@@ -581,7 +581,7 @@ std::string ToLowerAscii(std::string value)
     return value;
 }
 
-/// 1 枚目と同じフォルダー・同じ接頭辞・同じ拡張子の画像を番号順に集める。
+/// @note 1 枚目と同じフォルダー・同じ接頭辞・同じ拡張子の画像を番号順に集める。
 /// @note 番号で並べる: 名前順だと 0 詰めしていない連番 ("fx_9" と "fx_10") が逆転する。
 std::vector<std::string> CollectSequenceFrames(const std::string& firstFrameDiskPath, std::string& error)
 {
@@ -811,7 +811,7 @@ bool DrawMotionVectorSection(asset::MaterialAssetAuthoring& material, const std:
                           "生成した値以外にすると、コマの補間が行き過ぎたり足りなくなったりします。");
 
     /// @note MV アトラスは外部ツールでしか作れず «機能はあるのに使えない» 状態だったため、
-    ///       現在の albedo から生成してそのまま割り当てられるようにする。
+    /// @note       現在の albedo から生成してそのまま割り当てられるようにする。
     const std::string atlasPath = ResolveTextureDiskPath(projectRoot, TextureSlot(material, "albedo"));
     ImGui::BeginDisabled(atlasPath.empty());
     if (ImGui::Button("Generate From Texture", { -1.0f, 0.0f })) {
@@ -838,7 +838,12 @@ bool DrawMotionVectorSection(asset::MaterialAssetAuthoring& material, const std:
     return changed;
 }
 
-} // namespace
+} /// @note namespace
+
+std::vector<std::string> CollectFlipbookSequenceFrames(const std::string& firstFramePath, std::string& error)
+{
+    return CollectSequenceFrames(firstFramePath, error);
+}
 
 void InvalidateFlipbookAtlasPreview()
 {
@@ -1001,4 +1006,4 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
     return changed;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

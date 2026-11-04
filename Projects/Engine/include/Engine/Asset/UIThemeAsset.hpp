@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/DataAsset.hpp>
 #include <Math/Vector4.hpp>
 #include <string>
@@ -32,15 +33,15 @@ class UIThemeAsset final : public DataAsset {
 public:
     static constexpr const char* TYPE_NAME = "UIThemeAsset";
     const char* GetTypeName() const override { return TYPE_NAME; }
-    void Reflect(scene::IReflector& reflector) override;
+    FBZZ_ENGINE_API void Reflect(scene::IReflector& reflector) override;
     UIThemeStyle style;
 };
 
-[[nodiscard]] bool IsUIThemeStyleValid(const UIThemeStyle& style);
+[[nodiscard]] FBZZ_ENGINE_API bool IsUIThemeStyleValid(const UIThemeStyle& style);
 
 /// @pre Call on the AssetManager/DataAssetRegistry owner thread, like the existing UISystem entry point.
 /// @return False leaves out unchanged for an empty, removed, wrong-type or invalid asset.
 /// @note Copies values per Canvas pass; no pointer is retained across edits, reloads, cache clears or device resets.
-[[nodiscard]] bool ResolveUIThemeStyle(const std::string& reference, UIThemeStyle& out);
+[[nodiscard]] FBZZ_ENGINE_API bool ResolveUIThemeStyle(const std::string& reference, UIThemeStyle& out);
 
 } /// @note namespace fbzz::asset

@@ -2,10 +2,11 @@
 /// @brief   剛体上の 1 点を無限平面より上に保つ片側拘束
 /// @author  Hasegawa Jin
 /// @date    2026-09-02
-///
-/// M1 の足場。M3 で narrowphase が作る接触へ差し替える (Docs/design/active-ragdoll.md)。
-/// 解く数式は同じで、«どこがどれだけ潜っているか» を誰が決めるかだけが変わる。
+
+/// @note M1 の足場。M3 で narrowphase が作る接触へ差し替える (Docs/design/active-ragdoll.md)。
+/// @note 解く数式は同じで、«どこがどれだけ潜っているか» を誰が決めるかだけが変わる。
 #pragma once
+#include <Physics/Api.hpp>
 
 #include <Physics/XPBDConstraint.hpp>
 
@@ -18,29 +19,31 @@ namespace fbzz::physics
         /// @param radius       接触点の太さ [m]。平面から radius だけ浮いた所で止まる。
         /// @param planeNormal  平面の法線 (上向き)。正規化して渡すこと。
         /// @param planeOffset  平面の位置。dot(planeNormal, x) = planeOffset を満たす面。
-        XPBDPlaneContact(RigidBody*           body,
+        FBZZ_PHYSICS_API XPBDPlaneContact(RigidBody*           body,
                          const math::Vector3& localPoint,
                          float                radius,
                          const math::Vector3& planeNormal,
                          float                planeOffset);
 
-        /// 面を動かす。歩いているキャラクターの足元へ床を付いて回らせるために使う。
-        void SetPlane(const math::Vector3& planeNormal, float planeOffset);
-        /// クーロン摩擦係数。0 で «氷の上»。
+        /// @note 面を動かす。歩いているキャラクターの足元へ床を付いて回らせるために使う。
+        FBZZ_PHYSICS_API void SetPlane(const math::Vector3& planeNormal, float planeOffset);
+        /// @note クーロン摩擦係数。0 で «氷の上»。
         void SetFriction(float friction) { m_friction = friction; }
-        /// 剛体を «瞬間移動» させた後に呼ぶ。前フレームからの移動を «滑った量» と
-        /// 見なすので、忘れると捕獲した瞬間に摩擦が跳ねる。
+        /// @note 剛体を «瞬間移動» させた後に呼ぶ。前フレームからの移動を «滑った量» と
+        /// @note 見なすので、忘れると捕獲した瞬間に摩擦が跳ねる。
         void ResetHistory() { m_hasPreviousPoint = false; }
 
-        void ResetLambda() override;
-        void SolvePosition(float h) override;
-        void SolveVelocity(float h) override;
+        FBZZ_PHYSICS_API void ResetLambda() override;
+        FBZZ_PHYSICS_API void SolvePosition(float h) override;
+        void SolvePhysicalPosition(float) override {}
+        void SolveCorrectionPosition(float h) override { SolvePosition(h); }
+        FBZZ_PHYSICS_API void SolveVelocity(float h) override;
 
-        /// 直前の substep で押し返した深さ [m]。0 なら接触していない。
+        /// @note 直前の substep で押し返した深さ [m]。0 なら接触していない。
         [[nodiscard]] float GetPenetration() const { return m_penetration; }
 
     private:
-        void SolveFriction(float h);
+        FBZZ_PHYSICS_API void SolveFriction(float h);
 
         RigidBody*    m_body = nullptr;
         math::Vector3 m_localPoint;
@@ -53,8 +56,8 @@ namespace fbzz::physics
         float m_lambdaFriction = 0.0f;
         float m_penetration    = 0.0f;
 
-        /// 前の substep の位置パスを終えた時点の接触点。ここからの移動が «滑った量»。
+        /// @note 前の substep の位置パスを終えた時点の接触点。ここからの移動が «滑った量»。
         math::Vector3 m_previousPoint;
         bool          m_hasPreviousPoint = false;
     };
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

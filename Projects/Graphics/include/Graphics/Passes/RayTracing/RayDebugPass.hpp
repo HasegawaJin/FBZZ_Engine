@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/IRenderPass.hpp>
 #include <Graphics/RayTracing/RayGeometryCache.hpp>
 
@@ -26,7 +27,7 @@ struct RayDebugConstants {
 static_assert(sizeof(RayDebugConstants) == 96);
 /// @note 一般 VP 逆行列の特異判定と遠方面の斉次除算を避け、Camera と同じ投影パラメーターを使う。
 /// @see https://pbr-book.org/4ed/Cameras_and_Film/Projective_Camera_Models §5.2 Orthographic / Perspective cameras
-[[nodiscard]] bool MakeRayDebugCameraConstants(const Camera& camera, RayDebugConstants& output);
+[[nodiscard]] FBZZ_GRAPHICS_API bool MakeRayDebugCameraConstants(const Camera& camera, RayDebugConstants& output);
 
 class RayDebugPass final : public IRenderPass {
 public:
@@ -34,8 +35,8 @@ public:
         ResourceHandle<ShaderTag> shader, bool incomplete)
         : m_scene(scene), m_constants(constants), m_shader(shader), m_incomplete(incomplete) {}
     std::string_view Name() const override { return "RayDebug"; }
-    void Setup(PassBuilder& builder, const RenderPassContext&) const override;
-    void Execute(PassResources& resources, RenderPassContext& context) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext&) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& context) override;
 private:
     RaySceneGpu m_scene;
     ResourceHandle<ConstantBufferTag> m_constants;
@@ -48,8 +49,8 @@ public:
     RayDebugCopyPass(std::string outputName, ResourceHandle<ShaderTag> shader,
         ResourceHandle<PipelineStateTag> state) : m_outputName(std::move(outputName)), m_shader(shader), m_state(state) {}
     std::string_view Name() const override { return "RayDebugCopy"; }
-    void Setup(PassBuilder& builder, const RenderPassContext&) const override;
-    void Execute(PassResources& resources, RenderPassContext& context) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext&) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& context) override;
 private:
     std::string m_outputName;
     ResourceHandle<ShaderTag> m_shader;

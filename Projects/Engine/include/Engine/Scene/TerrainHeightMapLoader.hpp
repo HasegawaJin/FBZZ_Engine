@@ -2,11 +2,12 @@
 /// @brief   画像 (PNG / TGA / DDS) と TerrainComponent::heightData を相互に変換する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-14
-///
-/// @note 取り込み後は terrain.heightDirty と colliderDirty を立てること。
+
+/// @note 取り込み成功時は高さ・衝突の再構築を要求する。画像はガンマ変換せず線形の数値として読む。
 /// @note 画像サイズが terrain.columns × terrain.rows と違えば三次補間でリサイズする。
 /// @see Docs/design/terrain-layers.md
 #pragma once
+#include <Engine/Api.hpp>
 #include <string>
 
 namespace fbzz::scene {
@@ -15,8 +16,8 @@ struct TerrainComponent;
 
 /// @brief 画像の R チャンネルを heightData へ読み込む。
 /// @param unipolar true なら画素値 [0,1] を heightData [0,1] へ (黒=基準面)。false なら [-1,1] へ (灰=基準面)。
-/// @return 読み込みに失敗したら false。
-bool LoadHeightMapFromFile(
+/// @return 読み込み失敗、2〜4097外の地形寸法、非有限画素なら false、地形は未変更。
+FBZZ_ENGINE_API bool LoadHeightMapFromFile(
     const std::string&  path,
     TerrainComponent&   terrain,
     bool                unipolar = true);
@@ -24,9 +25,9 @@ bool LoadHeightMapFromFile(
 /// @brief heightData を columns × rows の 16 bit グレースケール PNG へ書き出す。
 /// @param unipolar LoadHeightMapFromFile と対称。true なら [0,1] をそのまま (負の高さは 0 に切り詰める)、false なら [-1,1] を [0,1] へ写す。
 /// @return 書き込みに失敗したら false。
-bool SaveHeightMapToFile(
+FBZZ_ENGINE_API bool SaveHeightMapToFile(
     const std::string&       path,
     const TerrainComponent&  terrain,
     bool                     unipolar = true);
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

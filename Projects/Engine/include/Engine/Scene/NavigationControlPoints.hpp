@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
@@ -59,27 +60,22 @@ struct NavMeshOffMeshLinkSnapshot {
 };
 
 /// @brief Resolve source authoring values independently of the selected runtime policy.
-/// @param scene Scene that owns the route and any TargetPoint references.
-/// @param ownerId GameObject carrying the patrol component.
 /// @param patrol Authored patrol input.
 /// @param signatureRuntimeMode Runtime mode to include in the resulting bake signature.
 /// @pre Scene owner and target world transforms are synchronized.
 /// @return Numeric route values, or an invalid snapshot with a nonzero raw-input signature.
 /// @see Docs/design/control-point-usage-audit.md
-[[nodiscard]] NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPointAuthoring(
+[[nodiscard]] FBZZ_ENGINE_API NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPointAuthoring(
     Scene& scene, EntityID ownerId, const NavMeshPatrolComponent& patrol,
     ControlPointRuntimeMode signatureRuntimeMode);
 
 /// @brief Resolve the selected patrol source at an authoring or runtime boundary.
 /// @note Runtime BAKED_STATIC reads only its already-validated numeric bake.
-/// @param scene Scene that owns the route and any TargetPoint references.
-/// @param ownerId GameObject carrying the patrol component.
-/// @param patrol Authored route and static bake.
 /// @param context AUTHORING resolves refs and checks bake freshness; RUNTIME uses the selected live or baked values.
 /// @pre Scene owner and target world transforms are synchronized when LIVE or AUTHORING point-object inputs are resolved.
 /// @return All ordered waypoints or an invalid snapshot; partial routes are never returned.
 /// @see Docs/design/control-point-authoring.md
-[[nodiscard]] NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPoints(
+[[nodiscard]] FBZZ_ENGINE_API NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPoints(
     Scene& scene, EntityID ownerId, const NavMeshPatrolComponent& patrol,
     ControlPointReadContext context = ControlPointReadContext::AUTHORING);
 
@@ -90,12 +86,12 @@ struct NavMeshOffMeshLinkSnapshot {
 /// @pre Scene owner and target world transforms are synchronized for POINT_OBJECTS.
 /// @return Numeric endpoints or an invalid snapshot with a nonzero raw-input signature.
 /// @see Docs/design/control-point-usage-audit.md
-[[nodiscard]] NavMeshOffMeshLinkSnapshot ResolveNavMeshOffMeshLinkEndpoints(
+[[nodiscard]] FBZZ_ENGINE_API NavMeshOffMeshLinkSnapshot ResolveNavMeshOffMeshLinkEndpoints(
     Scene& scene, EntityID ownerId, const NavMeshOffMeshLinkComponent& link);
 
 /// @brief Reject stale or malformed static Patrol bakes before the runtime starts.
 /// @param scene Scene whose current authored patrol points are validated.
 /// @return False when a static Patrol cannot run from its saved numeric values.
-[[nodiscard]] bool ValidateStaticNavMeshPatrolBakes(Scene& scene);
+[[nodiscard]] FBZZ_ENGINE_API bool ValidateStaticNavMeshPatrolBakes(Scene& scene);
 
 } /// @note namespace fbzz::scene

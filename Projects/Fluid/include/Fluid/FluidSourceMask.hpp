@@ -5,6 +5,7 @@
 /// @note 256×256 に揃え、GPU の 4×4 タイルアトラスと CPU で同じ標本を引く。縦横比は発生源の size.x / size.y が持つ。
 /// @note 画像から中身を埋めるのは Engine の FluidSourceMaskLoader。Fluid は素のデータと引き方だけを持つ。
 #pragma once
+#include <Fluid/Api.hpp>
 
 #include <cstddef>
 #include <string>
@@ -31,7 +32,7 @@ struct FluidSourceMask {
 /// @brief u, v ∈ [0,1] (v は上が 0) を双線形で引く。範囲外は縁の値。
 /// @note GPU と同じテクセル中心規約 x = u × size − 0.5 (y も同じ) を使い、添字は [0, size − 1] に丸める。
 /// @return 無効なマスクは 1 (画像が無くても板の形には湧く — «何も起きない» より原因に気付きやすい)。
-[[nodiscard]] float SampleFluidSourceMask(const FluidSourceMask& mask, float u, float v);
+[[nodiscard]] FBZZ_FLUID_API float SampleFluidSourceMask(const FluidSourceMask& mask, float u, float v);
 
 /// @brief 発生源の texture 参照からマスクの中身を埋める差し込み口。
 /// @note Fluid は画像とアセットデータベースを持たず、Engine/Asset/FluidSourceMaskLoader.cpp が起動時に読み手を挿す。
@@ -39,15 +40,15 @@ using FluidSourceMaskResolver = bool (*)(const std::string& texture, FluidSource
 
 /// @brief 差し込み口を差し替える。nullptr で «誰も埋めない» へ戻す。
 /// @warning スレッドセーフではない。挿すのは起動時の 1 回だけ。
-void SetFluidSourceMaskResolver(FluidSourceMaskResolver resolver);
+FBZZ_FLUID_API void SetFluidSourceMaskResolver(FluidSourceMaskResolver resolver);
 
 /// @brief 差し込まれた読み手でマスクを埋める。
 /// @return 読み手が居ない・読めなかったときは false (out は空)。
 /// @note 空のマスクは SampleFluidSourceMask が 1 を返すので、板の形にそのまま湧く。
-[[nodiscard]] bool ResolveFluidSourceMask(const std::string& texture, FluidSourceMask& out);
+[[nodiscard]] FBZZ_FLUID_API bool ResolveFluidSourceMask(const std::string& texture, FluidSourceMask& out);
 
 /// @brief 発生源と同じ添字でマスクを解決する。
 /// @note テクスチャ以外・参照なし・解決失敗は空のマスクとし、発生源の形へのフォールバックを保つ。
-void ResolveFluidSourceMasks(const std::vector<FluidSource>& sources, std::vector<FluidSourceMask>& outMasks);
+FBZZ_FLUID_API void ResolveFluidSourceMasks(const std::vector<FluidSource>& sources, std::vector<FluidSourceMask>& outMasks);
 
 } /// @note namespace fbzz::fluid

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-06
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/ManagedBridgeAbi.hpp>
 #include <memory>
 #include <span>
@@ -12,12 +13,12 @@ namespace fbzz::scene::managed_detail {
 struct ManagedServiceResult;
 class ManagedAssetServices final {
 public:
-    ManagedAssetServices(); ~ManagedAssetServices();
-    ManagedBridgeStatus Run(Scene&, Script& caller, GameObject& target, const ManagedBridgeRequest&, int64_t,
+    FBZZ_ENGINE_API ManagedAssetServices(); FBZZ_ENGINE_API ~ManagedAssetServices();
+    FBZZ_ENGINE_API ManagedBridgeStatus Run(Scene&, Script& caller, GameObject& target, const ManagedBridgeRequest&, int64_t,
         std::span<const float>, std::span<const std::string>, ManagedServiceResult&);
-    void CancelOwner(uint64_t owner, Script* caller);
-    void RetireGeneration(uint64_t generation);
-    void EndCall(uint64_t call);
+    FBZZ_ENGINE_API void CancelOwner(uint64_t owner, Script* caller);
+    FBZZ_ENGINE_API void RetireGeneration(uint64_t generation);
+    FBZZ_ENGINE_API void EndCall(uint64_t call);
 private:
     struct Impl; std::unique_ptr<Impl> m_impl;
 };

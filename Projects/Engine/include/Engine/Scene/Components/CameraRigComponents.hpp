@@ -5,7 +5,7 @@
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 
@@ -89,7 +89,7 @@ struct CameraShakeComponent {
     int seed = 1;
     bool playOnAwake = false;
     bool playing = false;
-    /// ランタイムで前フレームの揺れを除去してから次の揺れを加えるための非永続状態。
+    /// @note ランタイムで前フレームの揺れを除去してから次の揺れを加えるための非永続状態。
     math::Vector3 appliedPositionOffset = math::Vector3::ZERO;
     math::Quaternion appliedRotationOffset = math::Quaternion::Identity();
     bool runtimeInitialized = false;
@@ -110,4 +110,4 @@ struct CameraShakeComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

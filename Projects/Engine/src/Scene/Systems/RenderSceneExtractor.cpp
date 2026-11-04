@@ -4,7 +4,7 @@
 /// @date    2026-09-20
 #include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
 #include "MaterialDemandTrace.hpp"
-#include "../../../../Graphics/src/Renderer/MaterialTransferPayload.hpp"
+#include <Graphics/Renderer/MaterialTransferScope.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
 #include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
 #include <cstdlib>
@@ -1373,15 +1373,17 @@ __forceinline renderer::RenderObject ExtractUncachedStaticObject(GameObject& go,
 
 /// @note Exact current-input witnesses rebuild only changed math; notifications invalidate shared snapshots, including presentation-only writes.
 /// @see https://github.com/godotengine/godot/blob/master/servers/rendering/renderer_scene_cull.h Instance dependency notifications.
-renderer::RenderObject ExtractStaticObject(Scene& scene, StaticSceneGeometry& cache, size_t slot,
+renderer::RenderObject ExtractStaticObject(const ComponentArray<MeshRenderer>& staticMeshes, StaticSceneGeometry& cache,
     GameObject& go, MeshRenderer& component, uint64_t frame, renderer::RenderScene& output, DenseGeometryBatch& denseGeometry,
     bool& boundsChanged)
 {
     boundsChanged = false;
-    if (slot == cache.entries.size()) cache.entries.emplace_back();
-    auto& entry = cache.entries[slot];
     const auto entity = go.GetID();
-    const auto lifetime = scene.GetComponentLifetime<MeshRenderer>(entity);
+    /// @note Component の格納位置は有効状態や Scene の表示順で変わらない。
+    const size_t slot = staticMeshes.GetDenseIndex(entity);
+    if (slot >= cache.entries.size()) cache.entries.resize(slot + 1);
+    auto& entry = cache.entries[slot];
+    const auto lifetime = staticMeshes.GetLifetime(entity);
     const auto pose = StaticPoseInputs(go.transform);
     const bool sameOwner = entry.entity == entity && entry.lifetime == lifetime && entry.mesh == component.mesh;
     const bool poseChanged = entry.pose != pose;
@@ -1489,8 +1491,12 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
         FBZZ_PROFILE_MARKER("RenderSceneExtractor::ColdGeometry");
     }
     const bool reuseStaticGeometry = staticGeometry.primed && !denseOnly;
-    const size_t staticHint = reuseStaticGeometry ? scene.GetEntities<MeshRenderer>().size() : 0;
-    if (staticGeometry.entries.capacity() < staticHint) staticGeometry.entries.reserve(staticHint);
+    const auto& staticMeshes = detail::ComponentStorageAccess<MeshRenderer>::Get(scene);
+    if (reuseStaticGeometry) {
+        const size_t meshCount = staticMeshes.Count();
+        if (staticGeometry.entries.size() > meshCount) staticGeometry.entries.resize(meshCount);
+        if (staticGeometry.entries.capacity() < meshCount) staticGeometry.entries.reserve(meshCount);
+    }
     size_t staticCount = 0;
     for (EntityID id : candidates) {
         auto* source = scene.GetGameObject(id);
@@ -1509,7 +1515,7 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
         if (auto* mr = go.GetComponent<MeshRenderer>(); mr && mr->enabled && mr->mesh && !mr->mesh->isSkinned) {
             bool boundsChanged = true;
             auto object = reuseStaticGeometry
-                ? ExtractStaticObject(scene, staticGeometry, staticCount, go, *mr, frameStamp, output, denseGeometry, boundsChanged)
+                ? ExtractStaticObject(staticMeshes, staticGeometry, go, *mr, frameStamp, output, denseGeometry, boundsChanged)
                 : ExtractUncachedStaticObject(go, *mr, frameStamp, output, denseGeometry);
             ++staticCount;
             if (const auto lod = lodRenderers.find(EntityKey(go.GetID())); lod != lodRenderers.end()) {
@@ -1517,9 +1523,13 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
                 object.rayLodSelectionRequired = lod->second.ambiguous;
             }
             if (spatialUpdates.Enabled())
-                spatialUpdates.Append(id, scene.GetComponentLifetime<MeshRenderer>(id), false, boundsChanged);
+                spatialUpdates.Append(id, staticMeshes.GetLifetime(id), false, boundsChanged);
             applyColorEligibility(object);
             output.objects.push_back(object);
+        } else if (reuseStaticGeometry && mr && mr->enabled) {
+            /// @note メッシュの解除やスキン付きへの切り替えを観測したら、静的形状の再利用を打ち切る。
+            const size_t slot = staticMeshes.GetDenseIndex(id);
+            if (slot < staticGeometry.entries.size()) staticGeometry.entries[slot].entity = EntityID::INVALID;
         }
         auto* smr = go.GetComponent<SkinnedMeshRenderer>();
         if (!smr || !smr->enabled || !smr->model) continue;
@@ -1538,12 +1548,12 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
             object.boundsRadius = bounds.radius;
         }
         const auto* animator = FindAnimator(go);
-        object.skinningPalette = ResolveSkinningCB(animator ? animator->skinningBuffer
+        object.skinningPalette = ResolveSkinningCB(animator ? animator->skinningBuffer.Get()
             : renderer::ResourceHandle<renderer::ConstantBufferTag>{}, smr->model, identityPalette);
         object.previousSkinningValid = animator && animator->prevBoneMatricesValid &&
             animator->skinningBuffer.IsValid() && animator->prevSkinningBuffer.IsValid();
         object.previousSkinningPalette = object.previousSkinningValid
-            ? animator->prevSkinningBuffer : object.skinningPalette;
+            ? animator->prevSkinningBuffer.Get() : object.skinningPalette;
         if (animator) {
             const auto& bake = animator->boneBake;
             if (resources && bake.active && bake.gpuFrame == resources->FrameStamp()
@@ -1571,9 +1581,6 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
         applyColorEligibility(object);
         if (skinnedObjects) skinnedObjects->Append(output.objects.size());
         output.objects.push_back(object);
-    }
-    if (reuseStaticGeometry && staticCount < staticGeometry.entries.size()) {
-        staticGeometry.entries.resize(staticCount);
     }
     if (reuseStaticGeometry) {
         /// @note Two high-change observations avoid penalizing one teleport; bounded dense builds amortize tracking in continuously volatile Scenes.

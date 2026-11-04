@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/IRenderPass.hpp>
 #include <Graphics/RayTracing/RayReflectionResources.hpp>
 
@@ -18,8 +19,8 @@ public:
         : m_scene(scene), m_constants(constants), m_shader(shader), m_incomplete(incomplete), m_lighting(lighting),
           m_reconstruction(reconstruction), m_halfRaw(halfRaw) {}
     std::string_view Name() const override { return "RayReflection"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& context) const override;
-    void Execute(PassResources& resources, RenderPassContext& context) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& context) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& context) override;
 private:
     RaySceneGpu m_scene;
     ResourceHandle<ConstantBufferTag> m_constants;

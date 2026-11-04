@@ -166,7 +166,7 @@ std::string StemOf(const std::string& path)
     return util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(path).stem());
 }
 
-} // namespace
+} /// @note namespace
 
 VolumeFlipbookBakePanel::VolumeFlipbookBakePanel()
     : m_compare(std::make_unique<VolumeFlipbookComparePreview>())
@@ -252,7 +252,12 @@ void VolumeFlipbookBakePanel::HandleFinishedJob(EditorContext& ctx)
 
 void VolumeFlipbookBakePanel::OnBeforeBegin(EditorContext& ctx)
 {
-    if (ctx.renderer == nullptr || ctx.resources == nullptr || ctx.fluidBake == nullptr) return;
+    static_cast<void>(ctx);
+}
+
+void VolumeFlipbookBakePanel::OnRenderFrame(EditorContext& ctx)
+{
+    if ((!visible && !m_apiPreview && m_jobId == 0) || ctx.renderer == nullptr || ctx.resources == nullptr || ctx.fluidBake == nullptr) return;
     FluidBakeService& service = *ctx.fluidBake;
 
     if (m_framingDirty) {
@@ -735,18 +740,24 @@ void VolumeFlipbookBakePanel::ApplyToMaterial(EditorContext& ctx)
     }
 
     EditorContext* context = &ctx;
-    const auto applyToDisk = [context, file](const asset::MaterialAssetAuthoring& value) {
-        if (!asset::SaveMaterialAssetToFile(file, value)) return;
+    const std::string project = ctx.projectRoot;
+    const auto applyToDisk = [context, project, file](const asset::MaterialAssetAuthoring& value, std::string& reason) {
+        if (context->projectRoot != project) { reason = "Project changed."; return false; }
+        if (!asset::SaveMaterialAssetToFile(file, value)) { reason = "Material write failed."; return false; }
         asset::AssetManager::ReloadPath(file);
         context->requestAssetBrowserRefresh = true;
+        return true;
     };
-    auto command = std::make_unique<LambdaCommand>("Apply Volume Flipbook",
-        [applyToDisk, newAsset]() { applyToDisk(newAsset); },
-        [applyToDisk, oldAsset]() { applyToDisk(oldAsset); });
-    if (ctx.undoStack != nullptr)
-        ctx.undoStack->Execute(std::move(command));
-    else
-        command->Execute();
+    auto command = std::make_unique<CheckedLambdaCommand>("Apply Volume Flipbook",
+        [applyToDisk, newAsset](std::string& reason) { return applyToDisk(newAsset, reason); },
+        [applyToDisk, oldAsset](std::string& reason) { return applyToDisk(oldAsset, reason); });
+    std::string reason;
+    const bool applied = ctx.undoStack ? ctx.undoStack->Execute(std::move(command)) : command->TryExecute(reason);
+    if (!applied) {
+        m_status = ctx.undoStack ? ctx.undoStack->LastDiagnostic() : reason;
+        m_statusIsError = true;
+        return;
+    }
     m_status = "適用しました: " + m_materialPath;
     m_statusIsError = false;
 }
@@ -779,4 +790,4 @@ void VolumeFlipbookBakePanel::OpenInPrefabPreview(EditorContext& ctx)
     m_statusIsError = !result.ok;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -4,6 +4,7 @@
 /// @date    2026-07-15
 #include <Engine/Scene/Systems/ParticleSimulationSystem.hpp>
 #include <Engine/Scene/Systems/ParticleSimulationRuntime.hpp>
+#include "ParticleSimulationHelpers.hpp"
 
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Core/Time.hpp>
@@ -40,8 +41,9 @@ void ParticleSimulationSystem::Update(SystemContext& ctx)
         GameObject* gameObject = ctx.scene.GetGameObject(id);
         if (!emitter || !gameObject || !gameObject->activeInHierarchy() || !emitter->settings.enabled) continue;
 
+        particle_simulation_detail::PrepareParticleSimulationInputs(*emitter);
         /// @note VFX Editor のタイムラインスクラブ要求。決定論的な再シミュレーションで状態を作り直すため、
-        ///       このフレームの通常再生はスキップする (フレームガードはスクラブ側が立てる)。
+        /// @note このフレームの通常再生はスキップする (フレームガードはスクラブ側が立てる)。
         if (emitter->runtime.editorScrubTime >= 0.0f) {
             const float target = emitter->runtime.editorScrubTime;
             emitter->runtime.editorScrubTime = -1.0f;
@@ -52,7 +54,7 @@ void ParticleSimulationSystem::Update(SystemContext& ctx)
         if (emitter->settings.culling.pauseWhenCulled && emitter->runtime.isCulledThisFrame) continue;
 
         /// @note 再生進行の実体は AdvanceParticleEmitterPlayback が持つ (描画パスと共用)。
-        ///       VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速) だけここで dt へ掛ける。
+        /// @note VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速) だけここで dt へ掛ける。
         (void)AdvanceParticleEmitterPlayback(*emitter, gameObject->transform,
                                              ctx.dt * emitter->GetEditorTimeScale(Time::frameCount));
     }
@@ -61,4 +63,4 @@ void ParticleSimulationSystem::Update(SystemContext& ctx)
     UpdateParticleCpuSimulation(ctx.scene, ctx.world, ctx.dt, Time::time);
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

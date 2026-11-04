@@ -85,10 +85,12 @@ const std::string& SaveStore::GetPath() const { return m_impl->path; }
 
 bool SaveStore::Write(std::string_view key, scene::IScriptSerializable& object)
 {
+    /// @note Reflect callback が呼出し側のキー文字列を変更しても、開始時の保存先を使う。
+    std::string ownedKey(key);
     /// @note 完成するまで独立した heap table を所有し、nested pointer は writer の生存中に移さない。
     auto candidate = std::make_unique<toml::table>();
     { TomlWriteReflector writer(*candidate); object.Reflect(writer); }
-    m_impl->table.insert_or_assign(std::string(key), std::move(*candidate));
+    m_impl->table.insert_or_assign(std::move(ownedKey), std::move(*candidate));
     m_impl->dirty = true;
     m_impl->revision = AllocateStoreRevision();
     return true;
@@ -101,7 +103,9 @@ bool SaveStore::Read(std::string_view key, scene::IScriptSerializable& object)
     const toml::table* source = it->second.as_table();
     if (!source) return false;
 
-    TomlReadReflector reader(*source);
+    /// @note Reflect の再入で同じキーの置換・Clear・Load が起きても、入れ子の参照を失効させない。
+    const toml::table snapshot = *source;
+    TomlReadReflector reader(snapshot);
     object.Reflect(reader);
     return true;
 }

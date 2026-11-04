@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <Math/Vector4.hpp>
 #include <array>
@@ -81,6 +82,6 @@ struct RayReflectionReconstructionViewResources {
 
 /// @return false は再構成だけを無効化し、同フレームの生 Reflection を維持する。
 /// @note 実験 RT のセッション許可なしでは専用 shader / GPU 資源を生成せず false。
-[[nodiscard]] bool PrepareRayReflectionReconstruction(RenderPassContext& context,
+[[nodiscard]] FBZZ_GRAPHICS_API bool PrepareRayReflectionReconstruction(RenderPassContext& context,
     RenderViewResources& view, RenderSharedResources& shared);
 } /// @note namespace fbzz::renderer

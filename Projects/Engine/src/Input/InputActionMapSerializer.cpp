@@ -3,10 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// TOML は .scene / ProjectSettings と共通で依存を増やさない。バインドは BuildPipeline の
-/// CopyProjectFiles で配布物に含めるゲーム設定のため、Assets/EditorConfig/ ではなく
-/// ProjectSettings/ に置く (EditorConfig は配布物から漏れる)。
+/// @note TOML は .scene / ProjectSettings と共通で依存を増やさない。バインドは BuildPipeline の
+/// @note CopyProjectFiles で配布物に含めるゲーム設定のため、Assets/EditorConfig/ ではなく
+/// @note ProjectSettings/ に置く (EditorConfig は配布物から漏れる)。
 #include "Engine/Input/InputActionMap.hpp"
+#include <Engine/Input/InputBindingsDocument.hpp>
+#include <sstream>
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Util/FileSystem.hpp"
 
@@ -45,13 +47,13 @@ bool ParseSource(std::string_view text, BindingSource& out)
     return false;
 }
 
-toml::table BindingToTable(const InputBinding& binding)
+toml::table BindingToTable(const InputBinding& binding, bool explicitDefaults)
 {
     toml::table table;
     table.insert("source", SourceToString(binding.source));
 
     /// @note ゲームパッドは列挙名で保存する (数値だと enum への要素追加で既存ファイルの意味がずれる)。
-    ///       キーコードは Win32 仮想キーコードで値が固定なので数値のままでよい。
+    /// @note       キーコードは Win32 仮想キーコードで値が固定なので数値のままでよい。
     if (binding.source == BindingSource::GAMEPAD_BUTTON) {
         table.insert("button", ToString(static_cast<GamepadButton>(binding.code)));
     } else if (binding.source == BindingSource::GAMEPAD_AXIS) {
@@ -61,9 +63,9 @@ toml::table BindingToTable(const InputBinding& binding)
     }
 
     /// @note 既定値と同じフィールドは書き出さない。差分の読みやすさを優先する。
-    if (binding.scale != 1.0f)           table.insert("scale", static_cast<double>(binding.scale));
-    if (binding.padIndex != -1)          table.insert("pad", static_cast<int64_t>(binding.padIndex));
-    if (binding.buttonThreshold != 0.5f)
+    if (explicitDefaults || binding.scale != 1.0f)           table.insert("scale", static_cast<double>(binding.scale));
+    if (explicitDefaults || binding.padIndex != -1)          table.insert("pad", static_cast<int64_t>(binding.padIndex));
+    if (explicitDefaults || binding.buttonThreshold != 0.5f)
         table.insert("threshold", static_cast<double>(binding.buttonThreshold));
 
     return table;
@@ -109,11 +111,11 @@ bool TableToBinding(const toml::table& table, InputBinding& out)
     return true;
 }
 
-toml::array BindingsToArray(const std::vector<InputBinding>& bindings)
+toml::array BindingsToArray(const std::vector<InputBinding>& bindings, bool explicitDefaults)
 {
     toml::array array;
     for (const InputBinding& binding : bindings) {
-        array.push_back(BindingToTable(binding));
+        array.push_back(BindingToTable(binding, explicitDefaults));
     }
     return array;
 }
@@ -133,7 +135,7 @@ void ArrayToBindings(const toml::node* node, std::vector<InputBinding>& out)
     }
 }
 
-} // namespace
+} /// @note namespace
 
 bool InputActionMap::LoadFromFile(const std::string& path)
 {
@@ -150,17 +152,53 @@ bool InputActionMap::LoadFromFile(const std::string& path)
         FBZZ_LOG_ERROR("InputActionMap: %s を読み込めません", path.c_str());
         return false;
     }
-    toml::parse_result parsed = toml::parse(stream, path);
-    if (!parsed) {
-        FBZZ_LOG_ERROR("InputActionMap: %s のパースに失敗しました: %s",
-                       path.c_str(), std::string(parsed.error().description()).c_str());
+    std::ostringstream contents;
+    contents << stream.rdbuf();
+    InputBindingsDocument document;
+    if (!document.LoadFromToml(contents.str())) {
+        FBZZ_LOG_ERROR("InputActionMap: failed to parse %s", path.c_str());
+        return false;
+    }
+    Clear();
+    for (const auto& axis : document.axes) AddAxis(axis);
+    for (const auto& action : document.actions) AddAction(action);
+    return true;
+}
+
+bool InputActionMap::SaveToFile(const std::string& path)
+{
+    InputBindingsDocument document;
+    document.axes = GetAxes();
+    document.actions = GetActions();
+    /// @note 親ディレクトリが無い場合は作る (新規プロジェクトの初回保存)。
+    std::error_code error;
+    const std::filesystem::path filePath = util::FileSystem::PathFromUtf8(path);
+    if (filePath.has_parent_path()) {
+        std::filesystem::create_directories(filePath.parent_path(), error);
+    }
+
+    std::ofstream stream(filePath, std::ios::binary | std::ios::trunc);
+    if (!stream.is_open()) {
+        FBZZ_LOG_ERROR("InputActionMap: %s を書き込めません", path.c_str());
         return false;
     }
 
+    stream << "# FBZZ Engine — Input Action Map\n"
+              "# ゲーム入力のバインド定義。エディタの Project Settings > Input から編集できる。\n\n";
+    stream << document.ToToml();
+    stream << '\n';
+
+    return stream.good();
+}
+
+bool InputBindingsDocument::LoadFromToml(std::string_view text)
+{
+    const auto parsed = toml::parse(text);
+    if (!parsed) return false;
     const toml::table& root = parsed.table();
 
     /// @note 先にローカルへ組み立て、成功確定後に差し替える。パース途中の失敗で現在のバインドが
-    ///       半端に壊れるのを防ぐ。
+    /// @note       半端に壊れるのを防ぐ。
     std::vector<InputAxis>   loadedAxes;
     std::vector<InputAction> loadedActions;
 
@@ -201,66 +239,46 @@ bool InputActionMap::LoadFromFile(const std::string& path)
         }
     }
 
-    Clear();
-    for (const InputAxis& axis : loadedAxes)       AddAxis(axis);
-    for (const InputAction& action : loadedActions) AddAction(action);
-
-    FBZZ_LOG_INFO("InputActionMap: %s を読み込みました (axis=%zu action=%zu)",
-                  path.c_str(), loadedAxes.size(), loadedActions.size());
+    axes = std::move(loadedAxes);
+    actions = std::move(loadedActions);
     return true;
 }
 
-bool InputActionMap::SaveToFile(const std::string& path)
+std::string InputBindingsDocument::ToToml(bool explicitDefaults) const
 {
     toml::table root;
 
     toml::array axisArray;
-    for (const InputAxis& axis : GetAxes()) {
+    for (const InputAxis& axis : axes) {
         toml::table table;
         table.insert("name", axis.name);
         table.insert("deadZone",    static_cast<double>(axis.deadZone));
         table.insert("gravity",     static_cast<double>(axis.gravity));
         table.insert("sensitivity", static_cast<double>(axis.sensitivity));
         table.insert("snap", axis.snap);
-        if (axis.raw) table.insert("raw", true);
+        if (explicitDefaults || axis.raw) table.insert("raw", axis.raw);
 
         /// @note 空の配列は書き出さない。既定バインドのファイルが読みやすくなる。
-        if (!axis.positive.empty()) table.insert("positive", BindingsToArray(axis.positive));
-        if (!axis.negative.empty()) table.insert("negative", BindingsToArray(axis.negative));
-        if (!axis.analog.empty())   table.insert("analog",   BindingsToArray(axis.analog));
+        if (explicitDefaults || !axis.positive.empty()) table.insert("positive", BindingsToArray(axis.positive, explicitDefaults));
+        if (explicitDefaults || !axis.negative.empty()) table.insert("negative", BindingsToArray(axis.negative, explicitDefaults));
+        if (explicitDefaults || !axis.analog.empty())   table.insert("analog",   BindingsToArray(axis.analog, explicitDefaults));
 
         axisArray.push_back(std::move(table));
     }
     root.insert("axis", std::move(axisArray));
 
     toml::array actionArray;
-    for (const InputAction& action : GetActions()) {
+    for (const InputAction& action : actions) {
         toml::table table;
         table.insert("name", action.name);
-        table.insert("bindings", BindingsToArray(action.bindings));
+        table.insert("bindings", BindingsToArray(action.bindings, explicitDefaults));
         actionArray.push_back(std::move(table));
     }
     root.insert("action", std::move(actionArray));
 
-    /// @note 親ディレクトリが無い場合は作る (新規プロジェクトの初回保存)。
-    std::error_code error;
-    const std::filesystem::path filePath = util::FileSystem::PathFromUtf8(path);
-    if (filePath.has_parent_path()) {
-        std::filesystem::create_directories(filePath.parent_path(), error);
-    }
-
-    std::ofstream stream(filePath, std::ios::binary | std::ios::trunc);
-    if (!stream.is_open()) {
-        FBZZ_LOG_ERROR("InputActionMap: %s を書き込めません", path.c_str());
-        return false;
-    }
-
-    stream << "# FBZZ Engine — Input Action Map\n"
-              "# ゲーム入力のバインド定義。エディタの Project Settings > Input から編集できる。\n\n";
+    std::ostringstream stream;
     stream << root;
-    stream << '\n';
-
-    return stream.good();
+    return stream.str();
 }
 
-} // namespace fbzz::input
+} /// @note namespace fbzz::input

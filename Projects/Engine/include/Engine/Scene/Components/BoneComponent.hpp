@@ -5,7 +5,7 @@
 #pragma once
 
 #include <Engine/Scene/Entity.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <string>
 
 namespace fbzz::scene {
@@ -27,4 +27,4 @@ struct BoneComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

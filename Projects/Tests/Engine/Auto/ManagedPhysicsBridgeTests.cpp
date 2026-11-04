@@ -631,4 +631,48 @@ TEST_F(PhysicsSpatialDebugBridgeTest, SceneGenerationChangeRejectsOldPublication
     EXPECT_EQ(retained->physics->proxies.front().handle.generation, oldHandle.generation);
 }
 
+TEST_F(ManagedPhysicsBridgeTest, IndexedQueriesSurviveComponentRemovalShapeReplacementAndSceneClear)
+{
+    EXPECT_TRUE(m_world.OverlapSphere({}, 1).empty());
+    auto& target = m_scene.CreateGameObject("Target");
+    target.AddComponent<scene::SphereColliderComponent>();
+    for (int index = 0; index < 31; ++index)
+        m_scene.CreateGameObject("Far").AddComponent<scene::SphereColliderComponent>();
+    const auto syncScene = [&] {
+        m_world.BeginSceneSync();
+        int index = 0;
+        for (auto& object : m_scene.GameObjects()) {
+            auto* sphere = object.GetComponent<scene::SphereColliderComponent>();
+            if (sphere) Sync(*sphere, index++ == 0 ? math::Vector3(0, 0, 5) : math::Vector3(100 + index * 4.0f, 0, 5));
+        }
+        m_world.EndSceneSync();
+    };
+    const auto expectEmpty = [&] {
+        std::vector<scene::managed_detail::ManagedPhysicsHit> hits;
+        for (const auto op : {scene::ManagedBridgeOp::PHYSICS_RAYCAST, scene::ManagedBridgeOp::PHYSICS_RAYCAST_ALL,
+            scene::ManagedBridgeOp::PHYSICS_SPHERE_CAST, scene::ManagedBridgeOp::PHYSICS_OVERLAP_SPHERE}) {
+            ASSERT_EQ(Query(op, {}, math::Vector3::FORWARD, 10, 1, hits), scene::ManagedBridgeStatus::OK);
+            EXPECT_TRUE(hits.empty());
+        }
+    };
+    syncScene();
+    target.RemoveComponent<scene::SphereColliderComponent>();
+    expectEmpty();
+
+    auto& replacement = target.AddComponent<scene::SphereColliderComponent>();
+    syncScene();
+    replacement.SetRadius(2);
+    expectEmpty();
+
+    syncScene();
+    m_scene.Clear();
+    m_scene.CreateGameObject("NewSceneTarget").AddComponent<scene::SphereColliderComponent>();
+    expectEmpty();
+    syncScene();
+    std::vector<scene::managed_detail::ManagedPhysicsHit> hits;
+    ASSERT_EQ(Query(scene::ManagedBridgeOp::PHYSICS_RAYCAST, {}, math::Vector3::FORWARD, 10, 0, hits), scene::ManagedBridgeStatus::OK);
+    ASSERT_EQ(hits.size(), 1u);
+    EXPECT_EQ(hits[0].object->name, "NewSceneTarget");
+}
+
 } /// @note namespace fbzz::tests

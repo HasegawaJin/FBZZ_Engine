@@ -2,6 +2,8 @@
 /// @brief   Patrol、Line、Off-Mesh Linkの制御点MutationをChecked Undoへまとめる。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Tools/AdditionalControlPointEditing.hpp>

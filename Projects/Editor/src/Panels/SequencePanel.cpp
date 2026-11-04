@@ -187,7 +187,7 @@ ItemSpan SpanOf(const SequenceTrack& track, int channel, std::size_t index, doub
         const auto& clip = track.animationClips[index];
         span.start = clip.start;
         /// @note 尺を書いていないクリップは次のクリップの頭まで。最後なら演出の終わりまで。
-        ///       実際のクリップ長は Animator がロードしないと分からないので、ここでは出さない。
+        /// @note       実際のクリップ長は Animator がロードしないと分からないので、ここでは出さない。
         span.end = clip.duration > 0.0 ? clip.start + clip.duration
                  : (index + 1 < track.animationClips.size()
                         ? track.animationClips[index + 1].start
@@ -349,7 +349,7 @@ void InsertItem(SequenceTrack& track, int channel, double time)
             SetElementStart(element, time);
             values.push_back(std::move(element));
             /// @note ElementStart で比べる: この generic lambda は switch の全分岐ぶん実体化されるため、
-            ///       キー型にしか無い .time を直接書くと clip 型で落ちる。
+            /// @note       キー型にしか無い .time を直接書くと clip 型で落ちる。
             std::stable_sort(values.begin(), values.end(),
                              [](const Element& a, const Element& b) {
                                  return ElementStart(a) < ElementStart(b);
@@ -399,7 +399,7 @@ bool SequencePanel::Save()
 {
     if (m_path.empty()) return false;
     /// @note ディスクへ出す前に必ず時刻順へ整える。ドラッグ中は並べ替えずに済ませているため、
-    ///       保存だけが「並びの崩れたまま書かれる」経路になりうる。
+    /// @note       保存だけが「並びの崩れたまま書かれる」経路になりうる。
     auto saved = m_asset;
     for (auto& track : saved.tracks)
         for (int channel = 0; channel < ChannelCount(track.type); ++channel)
@@ -420,6 +420,9 @@ void SequencePanel::CloseDocument(EditorContext& ctx)
 {
     ReleasePreview(ctx);
     m_asset = {};
+    m_apiPreview = false;
+    m_playing = false;
+    m_previewing = false;
     m_path.clear();
     m_assetPath.clear();
     m_selection = {};
@@ -494,7 +497,7 @@ scene::SequencePlayerComponent* SequencePanel::ResolvePreviewPlayer(
     if (auto* player = accept(ctx.GetSelectedGO())) return player;
 
     /// @note 最後に、この .sequence を指している Player を探す。「今いじっているオブジェクト」を
-    ///       優先しないと、同じ演出を複数の敵が持つ盤面でプレビュー先が勝手に移る。
+    /// @note       優先しないと、同じ演出を複数の敵が持つ盤面でプレビュー先が勝手に移る。
     if (m_assetPath.empty()) return nullptr;
     for (auto* go : ctx.activeScene->FindObjectsOfType<scene::SequencePlayerComponent>()) {
         if (!go) continue;
@@ -552,15 +555,41 @@ void SequencePanel::ReleasePreview(EditorContext& ctx)
 void SequencePanel::OnShutdown()
 {
     /// @note ここでは EditorContext を貰えない。scrub は保存されないうえ、
-    ///       Play/Stop の往復でコンポーネントごと作り直されるため残留しない。
+    /// @note       Play/Stop の往復でコンポーネントごと作り直されるため残留しない。
     m_previewEntity = scene::EntityID::INVALID;
+}
+
+void SequencePanel::OnUpdate(EditorContext& ctx, float dt)
+{
+    const bool inPlay = ctx.playMode && !ctx.playMode->IsInEditor();
+    if (m_path.empty()) return;
+    /// @note Play 中はシーンの権威がゲーム側にある。そこへスクラブを重ねると、
+    /// @note       演出が動いているのか自分が動かしているのか区別できなくなる。
+    if (inPlay) { m_playing = false; ReleasePreview(ctx); return; }
+    if (!m_apiPreview && (!visible || !WasContentRendered())) {
+        if (m_previewEntity.IsValid()) ReleasePreview(ctx);
+        return;
+    }
+
+    if (m_playing) {
+        m_playhead += static_cast<double>(dt)
+                    * static_cast<double>(m_playSpeed);
+        if (m_asset.wrapMode == asset::SequenceWrapMode::Loop) {
+            m_playhead = std::fmod(m_playhead, Duration());
+        } else if (m_playhead >= Duration()) {
+            m_playhead = Duration();
+            m_playing  = false;
+        }
+    }
+    if (m_apiPreview && m_previewing && !inPlay) PushPreview(ctx);
+    else if (inPlay && m_previewEntity.IsValid()) ReleasePreview(ctx);
 }
 
 void SequencePanel::OnAfterEnd(EditorContext& ctx)
 {
     /// @note ウィンドウを閉じた / タブが隠れたフレームでもここは呼ばれる。
-    ///       閉じた瞬間にスクラブを畳まないと、編集用の姿勢がシーンに残ったままになる。
-    if ((!visible || !WasContentRendered()) && m_previewEntity.IsValid())
+    /// @note       閉じた瞬間にスクラブを畳まないと、編集用の姿勢がシーンに残ったままになる。
+    if (!m_apiPreview && (!visible || !WasContentRendered()) && m_previewEntity.IsValid())
         ReleasePreview(ctx);
 }
 
@@ -679,20 +708,7 @@ void SequencePanel::DrawTransport(EditorContext& ctx)
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.4f, 1.0f), "Play 中はスクラブしません");
     }
 
-    /// @note Play 中はシーンの権威がゲーム側にある。そこへスクラブを重ねると、
-    ///       演出が動いているのか自分が動かしているのか区別できなくなる。
-    if (inPlay) { m_playing = false; return; }
 
-    if (m_playing) {
-        m_playhead += static_cast<double>(ImGui::GetIO().DeltaTime)
-                    * static_cast<double>(m_playSpeed);
-        if (m_asset.wrapMode == asset::SequenceWrapMode::Loop) {
-            m_playhead = std::fmod(m_playhead, Duration());
-        } else if (m_playhead >= Duration()) {
-            m_playhead = Duration();
-            m_playing  = false;
-        }
-    }
 }
 
 /// @name タイムライン
@@ -760,8 +776,8 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
         draw->AddText({ origin.x + 6.0f, rowTop + 4.0f }, labelColor, label.c_str());
 
         /// @note 行に乗っていれば、項目の上でなくてもそのトラックを指しているものとして扱う。
-        ///       キーを打つ操作は「その行の、その時刻で右クリック」なので、既存の項目の上でしか
-        ///       行を掴めないと最初の 1 個が置けない。
+        /// @note       キーを打つ操作は「その行の、その時刻で右クリック」なので、既存の項目の上でしか
+        /// @note       行を掴めないと最初の 1 個が置けない。
         const bool rowHot = canvasHovered && mouse.y >= rowTop && mouse.y < rowTop + kRowHeight;
         if (rowHot) hovered = { static_cast<int>(t), 0, -1 };
 
@@ -841,7 +857,7 @@ void SequencePanel::DrawTimeline(EditorContext& ctx)
     if (m_drag.HasItem()) {
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             /// @note 掴んでいる間は並べ替えない (添字が動くと掴んだ対象が入れ替わる)。
-            ///       離した時点で 1 回だけ整える。
+            /// @note       離した時点で 1 回だけ整える。
             SortChannelKeepingSelection(m_drag.track, m_drag.channel, m_dragLastValue);
             m_drag = {};
             m_dragKind = -1;
@@ -1172,6 +1188,29 @@ void SequencePanel::DrawSelectedItemFields(SequenceTrack& track)
     }
 }
 
+void SequencePanel::FitFloatCurve(const SequenceTrack& track)
+{
+    auto keys = track.property.floatKeys;
+    (void)detail::SortFloatCurve(keys, -1);
+    m_curveTrack = m_selection.track;
+    m_curveEnd = (std::max)(Duration(), 1.0);
+    double low = 0.0;
+    double high = 0.0;
+    for (const auto& key : keys) {
+        low = (std::min)(low, static_cast<double>(key.value));
+        high = (std::max)(high, static_cast<double>(key.value));
+    }
+    for (int i = 0; i <= 256; ++i) {
+        const double value = asset::SampleFloatKeys(keys, m_curveEnd * i / 256.0, track.property.interp);
+        if (!std::isfinite(value)) continue;
+        low = (std::min)(low, value);
+        high = (std::max)(high, value);
+    }
+    const double padding = (std::max)((high - low) * 0.15, 0.5);
+    m_curveMin = static_cast<float>((std::max)(low - padding, -1.0e30));
+    m_curveMax = static_cast<float>((std::min)(high + padding, 1.0e30));
+}
+
 void SequencePanel::DrawFloatCurve(SequenceTrack& track)
 {
     auto& keys = track.property.floatKeys;
@@ -1195,26 +1234,7 @@ void SequencePanel::DrawFloatCurve(SequenceTrack& track)
         m_selection.index = -1;
         MarkEdited();
     }
-    if (fit) {
-        m_curveTrack = m_selection.track;
-        m_curveEnd = (std::max)(Duration(), 1.0);
-        double low = 0.0;
-        double high = 0.0;
-        for (const auto& key : keys) {
-            low = (std::min)(low, static_cast<double>(key.value));
-            high = (std::max)(high, static_cast<double>(key.value));
-        }
-        for (int i = 0; i <= 256; ++i) {
-            const double value = asset::SampleFloatKeys(sampledKeys, m_curveEnd * i / 256.0,
-                                                        track.property.interp);
-            if (!std::isfinite(value)) continue;
-            low = (std::min)(low, value);
-            high = (std::max)(high, value);
-        }
-        const double padding = (std::max)((high - low) * 0.15, 0.5);
-        m_curveMin = static_cast<float>((std::max)(low - padding, -1.0e30));
-        m_curveMax = static_cast<float>((std::min)(high + padding, 1.0e30));
-    }
+    if (fit) FitFloatCurve(track);
 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const ImVec2 size{ (std::max)(ImGui::GetContentRegionAvail().x, 80.0f), 180.0f };
@@ -1382,7 +1402,7 @@ void SequencePanel::DrawInspector(EditorContext& ctx)
     DrawSelectedItemFields(track);
 
     /// @note プレビュー先の表示。どのオブジェクトへ出しているのか分からないと、
-    ///       「絵が変わらない」がバインド漏れなのか値の問題なのか切り分けられない。
+    /// @note       「絵が変わらない」がバインド漏れなのか値の問題なのか切り分けられない。
     ImGui::Separator();
     if (m_previewEntity.IsValid() && ctx.activeScene) {
         if (auto* go = ctx.activeScene->GetGameObject(m_previewEntity))
@@ -1417,7 +1437,7 @@ void SequencePanel::AddTrack(SequenceTrackType type)
     track.type = type;
     track.name = asset::SequenceTrackTypeName(type);
     /// @note Event 以外はターゲットが要る。空欄のままだと黙って何も起きないので、
-    ///       最初から埋めておいて「ここを直す」と分かる形にする。
+    /// @note       最初から埋めておいて「ここを直す」と分かる形にする。
     if (type != SequenceTrackType::Event) track.binding = "$self";
     m_asset.tracks.push_back(std::move(track));
     m_selection = { static_cast<int>(m_asset.tracks.size()) - 1, 0, -1 };
@@ -1515,13 +1535,13 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note スクラブの反映はこのフレームの最後で行う。ツールバーで済ませると、
-    ///       直後のタイムラインで動かした再生ヘッドが 1 フレーム遅れて絵に出る。
+    /// @note       直後のタイムラインで動かした再生ヘッドが 1 フレーム遅れて絵に出る。
     const bool inPlay = ctx.playMode && !ctx.playMode->IsInEditor();
     if (m_previewing && !inPlay) PushPreview(ctx);
-    else if (m_previewEntity.IsValid()) ReleasePreview(ctx);
+    else if (m_previewEntity.IsValid() && !m_apiPreview) ReleasePreview(ctx);
 
     /// @note 未保存を保存待ちアセットへ載せる。終了時の一括保存ダイアログがこれを見るため、
-    ///       載せ忘れると編集だけが黙って捨てられる。
+    /// @note       載せ忘れると編集だけが黙って捨てられる。
     if (m_dirty)
         AssetDirtyRegistry::Register(m_path, m_assetPath, "Sequence",
                                      [this]() { return Save(); });

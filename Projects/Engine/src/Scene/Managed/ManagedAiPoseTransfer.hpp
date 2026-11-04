@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
+#include <Engine/Api.hpp>
 #include "ManagedTransformBatch.hpp"
 #include <cstddef>
 #include <vector>
@@ -17,7 +18,7 @@ public:
     /// @note AI_CROWD_STEP index=1, integer=count, flags=0; count header then 44-byte identity/pose rows.
     /// @note Missing slots are skipped. Duplicates use the last pose; ancestor/descendant target pairs fail atomically.
     /// @return Failure leaves targets and output unchanged; BUFFER_TOO_SMALL reports required outputBytes.
-    ManagedBridgeStatus Run(Scene& scene, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus Run(Scene& scene, const ManagedBridgeRequest& request,
         ManagedBridgeReply& reply, ObjectResolver resolver, void* resolverState);
 
 private:
@@ -27,12 +28,12 @@ private:
         math::Vector3 position = math::Vector3::ZERO;
         math::Quaternion rotation = math::Quaternion::Identity();
     };
-    void BeginEpoch(const Scene& scene);
-    Transform* Shadow(GameObject& object);
+    FBZZ_ENGINE_API void BeginEpoch(const Scene& scene);
+    FBZZ_ENGINE_API Transform* Shadow(GameObject& object);
     /// @note Topology is validated once per packet; every intermediate pose still receives its arithmetic validation.
-    bool Update(GameObject& object);
-    bool Stage(Entry& entry);
-    bool ValidateHierarchy(const Scene& scene);
+    FBZZ_ENGINE_API bool Update(GameObject& object);
+    FBZZ_ENGINE_API bool Stage(Entry& entry);
+    FBZZ_ENGINE_API bool ValidateHierarchy(const Scene& scene);
     std::vector<Entry> m_entries;
     std::vector<Transform> m_shadow;
     std::vector<uint32_t> m_cloneEpoch, m_targetEpoch, m_ancestorEpoch, m_pathEpoch, m_subtreeEpoch;

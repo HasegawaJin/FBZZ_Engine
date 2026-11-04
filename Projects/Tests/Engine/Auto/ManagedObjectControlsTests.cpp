@@ -2,6 +2,7 @@
 /// @brief   Component 制御と深い階層・Prefab 部位の全件検索を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Scene.hpp>

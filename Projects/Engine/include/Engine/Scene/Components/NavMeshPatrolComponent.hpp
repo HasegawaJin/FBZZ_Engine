@@ -6,7 +6,7 @@
 
 #include <Engine/Scene/ControlPointModes.hpp>
 #include <Engine/Scene/ObjectReference.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
 #include <cstddef>

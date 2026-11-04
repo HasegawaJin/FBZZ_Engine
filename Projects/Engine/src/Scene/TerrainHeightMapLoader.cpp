@@ -13,6 +13,9 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <DirectXTex.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 #include <algorithm>
 #include <cmath>
@@ -20,6 +23,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -27,8 +31,7 @@ namespace {
 
 /// @brief 呼び出しスレッドで COM を使える状態にする。
 /// @return COM が使えるか。既に別モード (STA) で初期化済みの RPC_E_CHANGED_MODE も使える扱い。
-/// @note CoUninitialize は呼ばない。DirectXTex は WIC ファクトリをプロセス全体でキャッシュするため、
-///       最後の参照で COM を畳むと次回の呼び出しが解放済みのファクトリを掴む。
+/// @note DirectXTex の共有 WIC ファクトリの寿命中は COM を維持する。
 /// @see https://learn.microsoft.com/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex (CoInitializeEx, Return value)
 bool HeightMapEnsureCom()
 {
@@ -36,13 +39,15 @@ bool HeightMapEnsureCom()
     return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE;
 }
 
-} // namespace
+} /// @note namespace
 
 bool LoadHeightMapFromFile(
     const std::string& path,
     TerrainComponent&  terrain,
     bool               unipolar)
 {
+    if (path.empty() || terrain.columns < 2 || terrain.rows < 2
+        || terrain.columns > 4097 || terrain.rows > 4097) return false;
     /// @note ハイトマップも ".meta" サイドカー表記 / 生画像の両形式を受け付ける。
     std::string sourcePath;
     if (!asset::TexDescSerializer::ResolveSourcePath(path, sourcePath)) return false;
@@ -57,21 +62,25 @@ bool LoadHeightMapFromFile(
     else if (sourcePath.ends_with(".tga") || sourcePath.ends_with(".TGA"))
         hr = DirectX::LoadFromTGAFile(wpath.c_str(), nullptr, image);
     else
-        hr = DirectX::LoadFromWICFile(wpath.c_str(), DirectX::WIC_FLAGS_NONE, nullptr, image);
+        hr = DirectX::LoadFromWICFile(wpath.c_str(), DirectX::WIC_FLAGS_IGNORE_SRGB, nullptr, image);
 
     if (FAILED(hr)) return false;
 
     /// @note グレースケール (R8/R16) もカラー (R8G8B8A8) も R チャンネルだけを高さとして使う。
     DirectX::ScratchImage converted;
-    hr = DirectX::Convert(
-        *image.GetImage(0, 0, 0),
-        DXGI_FORMAT_R32_FLOAT,
-        DirectX::TEX_FILTER_DEFAULT,
-        DirectX::TEX_THRESHOLD_DEFAULT,
-        converted);
-    if (FAILED(hr)) return false;
-
-    const DirectX::Image* src = converted.GetImage(0, 0, 0);
+    if (!image.GetImage(0, 0, 0)) return false;
+    DirectX::Image linear = *image.GetImage(0, 0, 0);
+    /// @note 高さは色ではないため PNG/TGA/DDS の sRGB 指定によるガンマ変換を行わない。
+    /// @see https://github.com/microsoft/DirectXTex/wiki/Convert Convert の sRGB 入出力契約。
+    linear.format = DirectX::MakeLinear(linear.format);
+    const DirectX::Image* src = &linear;
+    if (linear.format != DXGI_FORMAT_R32_FLOAT) {
+        hr = DirectX::Convert(linear, DXGI_FORMAT_R32_FLOAT, DirectX::TEX_FILTER_DEFAULT,
+            DirectX::TEX_THRESHOLD_DEFAULT, converted);
+        if (FAILED(hr)) return false;
+        src = converted.GetImage(0, 0, 0);
+    }
+    if (!src) return false;
     DirectX::ScratchImage resized;
     const size_t targetW = static_cast<size_t>(terrain.columns);
     const size_t targetH = static_cast<size_t>(terrain.rows);
@@ -82,19 +91,20 @@ bool LoadHeightMapFromFile(
     }
 
     const size_t count = targetW * targetH;
-    terrain.heightData.resize(count);
+    std::vector<float> heights(count);
     for (size_t z = 0; z < targetH; ++z) {
         const std::uint8_t* row = src->pixels + z * src->rowPitch;
         for (size_t x = 0; x < targetW; ++x) {
             float value = 0.0f;
             std::memcpy(&value, row + x * sizeof(float), sizeof(float));
+            if (!std::isfinite(value)) return false;
             const float p = std::clamp(value, 0.0f, 1.0f);
-            terrain.heightData[z * targetW + x] = unipolar ? p : (p * 2.0f - 1.0f);
+            heights[z * targetW + x] = unipolar ? p : (p * 2.0f - 1.0f);
         }
     }
 
-    terrain.heightDirty   = true;
-    terrain.colliderDirty = true;
+    terrain.heightData.swap(heights);
+    terrain.RequestHeightRebuild();
     return true;
 }
 
@@ -106,6 +116,8 @@ bool SaveHeightMapToFile(
     if (path.empty() || terrain.columns <= 0 || terrain.rows <= 0
         || terrain.heightData.size() != terrain.VertexCount())
         return false;
+    for (float height : terrain.heightData)
+        if (!std::isfinite(height)) return false;
 
     const size_t width  = static_cast<size_t>(terrain.columns);
     const size_t height = static_cast<size_t>(terrain.rows);
@@ -140,4 +152,4 @@ bool SaveHeightMapToFile(
     return SUCCEEDED(hr);
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

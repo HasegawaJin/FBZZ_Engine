@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-03
 #pragma once
+#include <Core/Api.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -80,33 +81,33 @@ public:
     using ClockFn = double (*)();
     static constexpr size_t MAX_SAMPLES = 8192;
     static constexpr size_t MAX_DEPTH = 128;
-    explicit ProfileRecorder(bool recording = true, ClockFn clock = nullptr);
+    FBZZ_CORE_API explicit ProfileRecorder(bool recording = true, ClockFn clock = nullptr);
     ProfileRecorder(const ProfileRecorder&) = delete;
     ProfileRecorder& operator=(const ProfileRecorder&) = delete;
-    static double NowMs();
-    double ReadClock() const;
+    FBZZ_CORE_API static double NowMs();
+    FBZZ_CORE_API double ReadClock() const;
     bool IsRecording() const { return m_recording; }
     /// @note 次の frame 境界で適用する要求があれば、その意図を現在値より優先する。
     bool IsRecordingRequested() const { return m_hasPendingRecording ? m_pendingRecording : m_recording; }
     bool IsFrameOpen() const { return m_frameOpen; }
-    void RequestRecording(bool recording);
-    void RequestClear();
+    FBZZ_CORE_API void RequestRecording(bool recording);
+    FBZZ_CORE_API void RequestClear();
     /// @note 旧 API 専用の即時失効。新しい UI は RequestRecording を使う。
-    void SetRecordingImmediate(bool recording);
-    void BeginFrame(uint64_t applicationFrameSerial, double frameStartMs);
-    void EndFrame();
+    FBZZ_CORE_API void SetRecordingImmediate(bool recording);
+    FBZZ_CORE_API void BeginFrame(uint64_t applicationFrameSerial, double frameStartMs);
+    FBZZ_CORE_API void EndFrame();
     /// @note collect=false は意図的除外。時計・sample を確保せず、ネスト対応を保つ。子は独立して選択できる。
-    ProfileToken Begin(uint64_t sampleKey, bool collect = true);
-    void End(ProfileToken token, ProfileSampleStatus status = ProfileSampleStatus::COMPLETE);
-    void Push(uint64_t sampleKey, double durationMs, ProfileSampleKind kind, bool collect = true);
+    FBZZ_CORE_API ProfileToken Begin(uint64_t sampleKey, bool collect = true);
+    FBZZ_CORE_API void End(ProfileToken token, ProfileSampleStatus status = ProfileSampleStatus::COMPLETE);
+    FBZZ_CORE_API void Push(uint64_t sampleKey, double durationMs, ProfileSampleKind kind, bool collect = true);
     /// @note 抑制中の生存境界は最大 MAX_SAMPLES 件。超過は無効 checkpoint を返し、外側の既存境界は保持する。
-    ProfileCheckpoint Checkpoint() const;
-    bool Recover(ProfileCheckpoint checkpoint);
+    FBZZ_CORE_API ProfileCheckpoint Checkpoint() const;
+    FBZZ_CORE_API bool Recover(ProfileCheckpoint checkpoint);
     const ProfileSnapshot& GetSnapshot() const { return m_snapshot; }
 private:
     friend class Profiler;
     /// @note Performance facade は所有 snapshot へ直接確定し、samples の二重コピーを避ける。
-    void EndFrameTo(ProfileSnapshot& destination);
+    FBZZ_CORE_API void EndFrameTo(ProfileSnapshot& destination);
     struct ActiveScope {
         ProfileToken token;
         double startMs = 0.0;
@@ -121,9 +122,9 @@ private:
         uint64_t scopeId = 0;
         uint32_t depth = 0;
     };
-    bool Matches(uint64_t recorderId, uint64_t generation, uint64_t frame) const;
-    void MarkIncomplete();
-    void Reset();
+    FBZZ_CORE_API bool Matches(uint64_t recorderId, uint64_t generation, uint64_t frame) const;
+    FBZZ_CORE_API void MarkIncomplete();
+    FBZZ_CORE_API void Reset();
     ClockFn m_clock = nullptr;
     uint64_t m_recorderId = 0;
     uint64_t m_generation = 1;

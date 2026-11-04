@@ -2,6 +2,7 @@
 /// @brief   ComponentRegistry を畳んで名前引きテーブルを 1 度だけ構築する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
+#include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/ComponentOps.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -14,7 +15,7 @@ namespace fbzz::scene {
 namespace {
 
 /// @note 型ごとの関数ポインタ生成を伴うため、名前空間スコープの静的初期化に置くと他 TU の
-///       初期化順序に依存する。初回アクセス時に一度だけ組み立てて順序依存を避ける。
+/// @note 初期化順序に依存する。初回アクセス時に一度だけ組み立てて順序依存を避ける。
 const std::vector<ComponentOps>& BuildTable()
 {
     static const std::vector<ComponentOps> table = [] {
@@ -33,7 +34,7 @@ const std::vector<ComponentOps>& BuildTable()
     return table;
 }
 
-} // namespace
+} /// @note namespace
 
 std::span<const ComponentOps> ComponentOpsTable()
 {
@@ -51,4 +52,4 @@ const ComponentOps* FindComponentOps(std::string_view typeName)
     return it == table.end() ? nullptr : &*it;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

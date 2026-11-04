@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/Camera.hpp>
 #include <array>
 #include <cstdint>
@@ -20,7 +21,7 @@ struct RayPathIntegratorSettings {
     uint32_t integratorVersion = 3;
     float maxDistance = 1000;
     float radianceClamp = 0;
-    [[nodiscard]] bool operator==(const RayPathIntegratorSettings& other) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool operator==(const RayPathIntegratorSettings& other) const;
 };
 
 /// @note cameraWords は jitter 前の姿勢・射影入力の bit pattern。Math の近似比較を使わない。
@@ -37,7 +38,7 @@ struct RayPathHistoryKey {
     bool operator==(const RayPathHistoryKey&) const = default;
 };
 
-[[nodiscard]] RayPathHistoryKey MakeRayPathHistoryKey(
+[[nodiscard]] FBZZ_GRAPHICS_API RayPathHistoryKey MakeRayPathHistoryKey(
     const RayPathScene& scene, const Camera& camera, uint32_t width, uint32_t height,
     const RayPathIntegratorSettings& integrator, uint64_t deviceEpoch, uint64_t shaderEpoch);
 
@@ -46,13 +47,13 @@ struct RayPathHistoryKey {
 class RayPathHistory {
 public:
     /// @return 初回または exact key 変更で履歴をリセットしたとき true。
-    [[nodiscard]] bool Prepare(const RayPathHistoryKey& key);
+    [[nodiscard]] FBZZ_GRAPHICS_API bool Prepare(const RayPathHistoryKey& key);
     /// @return 未準備・0 サンプル・有効サンプル上限超過なら false。サンプル数は未変更。
     /// @note UINT32_MAX は GPU RAW の sticky error sentinel。正常な蓄積数の上限は UINT32_MAX-1。
-    [[nodiscard]] bool Commit(uint32_t sampleCount);
+    [[nodiscard]] FBZZ_GRAPHICS_API bool Commit(uint32_t sampleCount);
     [[nodiscard]] uint32_t GetSampleCount() const { return m_sampleCount; }
     [[nodiscard]] bool IsPrepared() const { return m_prepared; }
-    void Reset();
+    FBZZ_GRAPHICS_API void Reset();
 
 private:
     RayPathHistoryKey m_key;

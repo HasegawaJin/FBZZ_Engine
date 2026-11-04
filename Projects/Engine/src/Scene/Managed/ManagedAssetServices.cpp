@@ -45,8 +45,8 @@ bool OwnedTexture(const TextureRecord& record, Scene& scene, Script& caller, con
 }
 renderer::ResourceManager* TextureResources(const TextureRecord& record)
 {
-    auto* resources = renderer::ResourceManager::Active();
-    return resources && resources->GetInstanceId() == record.resourceOwner
+    auto* resources = renderer::ResourceManager::FindOwner(record.resourceOwner);
+    return resources
         && resources->GetResetVersion() == record.reset ? resources : nullptr;
 }
 bool TextureAvailable(const TextureRecord& record)
@@ -100,7 +100,7 @@ ManagedBridgeStatus ManagedAssetServices::Impl::RunTexture(Scene& scene, Script&
             if (!std::isfinite(values[index]) || std::trunc(values[index]) != values[index]) return ManagedBridgeStatus::INVALID_ARGUMENT;
         if (values[0] < 1 || values[0] > 16384 || values[1] < 1 || values[1] > 16384 || values[2] < 0 || values[2] > 1)
             return ManagedBridgeStatus::INVALID_ARGUMENT;
-        auto* resources = renderer::ResourceManager::Active();
+        auto* resources = scene.GetResourceManager();
         if (!resources || nextTexture == (std::numeric_limits<int64_t>::max)()) { result = {}; return ManagedBridgeStatus::OK; }
         const auto format = values[2] == 0 ? renderer::DynamicTextureFormat::R8 : renderer::DynamicTextureFormat::RGBA8;
         const auto texture = resources->CreateDynamicTexture(static_cast<uint32_t>(values[0]), static_cast<uint32_t>(values[1]), format);

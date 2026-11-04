@@ -2,14 +2,15 @@
 /// @brief   .ibl バイナリ descriptor → IblAsset Runtime ローダー。
 /// @author  Hasegawa Jin
 /// @date    2026-06-23
-///
-/// .ibl ファイルは Editor 側の IblBaker が生成する FzIblHeader を持つバイナリ。
-/// ヘッダー内の 4 つの DDS パス (相対) を ResourceManager::LoadTexture() で GPU にロードし、
-/// IblAsset::ResourceHandle として返す。
-///
-/// バックエンドの ITexture::Init() が DDS cubemap を DirectXTex で正しく処理するため、
-/// このインポーターは DDS のロードを完全に ResourceManager に委譲できる。
+
+/// @note .ibl ファイルは Editor 側の IblBaker が生成する FzIblHeader を持つバイナリ。
+/// @note ヘッダー内の 4 つの DDS パス (相対) を ResourceManager::LoadTexture() で GPU にロードし、
+/// @note IblAsset::ResourceHandle として返す。
+
+/// @note バックエンドの ITexture::Init() が DDS cubemap を DirectXTex で正しく処理するため、
+/// @note このインポーターは DDS のロードを完全に ResourceManager に委譲できる。
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>
 #include <Engine/Asset/IblAsset.hpp>
 
@@ -17,7 +18,7 @@ namespace fbzz::asset {
 
 class IblImporter final : public IAssetImporter<IblAsset> {
 public:
-    [[nodiscard]] std::unique_ptr<IblAsset> Import(
+    [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<IblAsset> Import(
         const std::string&          absPath,
         renderer::ResourceManager*  resources) override;
 
@@ -27,4 +28,4 @@ public:
     }
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

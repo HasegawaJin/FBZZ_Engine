@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Fluid/Api.hpp>
 
 #include <Math/Vector2.hpp>
 #include <array>
@@ -51,7 +52,7 @@ struct GerstnerWaveGenerationSettings {
 /// @return False for unsupported versions, invalid ranges, or counts above 16.
 /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems 1.2, Gerstner wave model.
 /// @see https://www.pcg-random.org/paper.html Melissa E. O'Neill, PCG: A Family of Simple Fast Space-Efficient Statistically Good Algorithms for Random Number Generation, 2014.
-[[nodiscard]] bool GenerateGerstnerWaves(
+[[nodiscard]] FBZZ_FLUID_API bool GenerateGerstnerWaves(
     const GerstnerWaveGenerationSettings& settings,
     std::array<GerstnerWave, MAX_BASE_GERSTNER_WAVES>& out);
 
@@ -61,7 +62,7 @@ struct GerstnerWaveGenerationSettings {
 /// @param spread Directional spread in [0,1].
 /// @return A finite bound, or infinity when an input is invalid.
 /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems 1.2.2, mapping Gerstner displacement back to the surface.
-[[nodiscard]] float GerstnerWaveContractionBound(
+[[nodiscard]] FBZZ_FLUID_API float GerstnerWaveContractionBound(
     std::span<const GerstnerWave> waves, float grouping, float spread);
 
 /// @brief Scale steepness uniformly until the supplied contraction limit is met.
@@ -71,7 +72,7 @@ struct GerstnerWaveGenerationSettings {
 /// @param maximumContraction Positive upper bound for inverse mapping.
 /// @return False for invalid inputs; otherwise true, including an unchanged set.
 /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems 1.2.2, mapping Gerstner displacement back to the surface.
-[[nodiscard]] bool LimitGerstnerWaveContraction(
+[[nodiscard]] FBZZ_FLUID_API bool LimitGerstnerWaveContraction(
     std::span<GerstnerWave> waves, float grouping, float spread, float maximumContraction);
 
 } /// @note namespace fbzz::fluid

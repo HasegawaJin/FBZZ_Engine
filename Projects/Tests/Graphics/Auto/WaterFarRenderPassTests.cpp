@@ -315,6 +315,7 @@ protected:
         auto result = std::make_shared<renderer::RenderScene>();
         for (const auto& spec : specs) {
             renderer::RenderObject object;
+            object.sourceIndex = static_cast<uint32_t>(result->objects.size());
             object.firstItem = static_cast<uint32_t>(result->items.size());
             object.itemCount = 1; object.colorEligible = true; object.skinned = spec.skinned;
             object.sortPosition = m_camera.m_position + math::Vector3{0, 0, spec.distance};
@@ -337,6 +338,7 @@ protected:
         context.renderScene = std::move(scene); context.frustumCullingEnabled = false;
         context.resourceRegistry.BindTarget("HDR", m_output);
         renderer::ExecuteForwardPasses(context);
+        renderer::ExecuteForwardTransparentPass(context);
     }
 
     void ExpectItems(size_t offset, const renderer::RenderScene& scene, std::initializer_list<size_t> indices)
@@ -378,48 +380,55 @@ TEST_F(ForwardScratchPassTest, NestedExecutionPreservesOuterGroupsQueueDistanceA
     ASSERT_EQ(m_backend.submittedCalls.size(), 15u);
     ExpectItems(0, *outer, {9});
     ExpectItems(1, *inner, {1, 2, 3, 0});
-    ExpectItems(5, *outer, {4, 2, 10, 5, 3, 1, 0, 7, 6, 8});
+    ExpectItems(5, *outer, {4, 2, 10, 5, 3, 0, 1, 7, 6, 8});
     m_backend.submittedCalls.clear();
     Draw(outer);
     ASSERT_EQ(m_backend.submittedCalls.size(), 11u);
-    ExpectItems(0, *outer, {9, 4, 2, 10, 5, 3, 1, 0, 7, 6, 8});
+    ExpectItems(0, *outer, {9, 4, 2, 10, 5, 3, 0, 1, 7, 6, 8});
 }
 
 TEST_F(ForwardScratchPassTest, KeepsSnapshotAliveWhenSubmitReplacesTheSameContextAndDropsTheLastExternalOwner)
 {
-    auto original = Scene({{true, true, 2, 3000}, {false, false, 5, 2000}, {true, false, 3, 2000},
-        {false, true, 4, 3000}, {false, false, 1, 2000}, {false, true, 3, 3000}});
-    const std::weak_ptr<const renderer::RenderScene> retired = original;
-    std::vector<renderer::ResourceHandle<renderer::ConstantBufferTag>> expected;
-    for (const size_t index : {4u, 1u, 2u, 3u, 5u, 0u})
-        expected.push_back(original->items[index].forwardMaterial.paramsBuffer);
-    const auto replacement = Scene({});
-    renderer::RenderPassContext context{{}, m_backend, m_resources, m_camera, m_settings, m_output, ~0u, m_handles};
-    context.renderScene = original; context.frustumCullingEnabled = false;
-    context.resourceRegistry.BindTarget("HDR", m_output);
-    bool replaced = false;
-    size_t observed = 0;
-    m_backend.afterSubmit = [&] {
-        if (!replaced) {
-            replaced = true;
-            context.renderScene = replacement;
-            original.reset();
-        }
-        EXPECT_FALSE(retired.expired());
-        ++observed;
-    };
+    for (const bool transparent : {false, true}) {
+        SCOPED_TRACE(transparent);
+        m_backend.submittedCalls.clear();
+        auto original = Scene({{true, true, 2, 3000}, {false, false, 5, 2000}, {true, false, 3, 2000},
+            {false, true, 4, 3000}, {false, false, 1, 2000}, {false, true, 3, 3000}});
+        const std::weak_ptr<const renderer::RenderScene> retired = original;
+        std::vector<renderer::ResourceHandle<renderer::ConstantBufferTag>> expected;
+        const auto indices = transparent ? std::initializer_list<size_t>{3, 5, 0}
+                                        : std::initializer_list<size_t>{4, 1, 2};
+        for (const auto index : indices)
+            expected.push_back(original->items[index].forwardMaterial.paramsBuffer);
+        const auto replacement = Scene({});
+        renderer::RenderPassContext context{{}, m_backend, m_resources, m_camera, m_settings, m_output, ~0u, m_handles};
+        context.renderScene = original; context.frustumCullingEnabled = false;
+        context.resourceRegistry.BindTarget("HDR", m_output);
+        bool replaced = false;
+        size_t observed = 0;
+        m_backend.afterSubmit = [&] {
+            if (!replaced) {
+                replaced = true;
+                context.renderScene = replacement;
+                original.reset();
+            }
+            EXPECT_FALSE(retired.expired());
+            ++observed;
+        };
 
-    renderer::ExecuteForwardPasses(context);
-    m_backend.afterSubmit = {};
+        if (transparent) renderer::ExecuteForwardTransparentPass(context);
+        else renderer::ExecuteForwardPasses(context);
+        m_backend.afterSubmit = {};
 
-    EXPECT_TRUE(replaced);
-    EXPECT_EQ(original, nullptr);
-    EXPECT_EQ(context.renderScene, replacement);
-    EXPECT_TRUE(retired.expired());
-    ASSERT_EQ(observed, expected.size());
-    ASSERT_EQ(m_backend.submittedCalls.size(), expected.size());
-    for (size_t index = 0; index < expected.size(); ++index)
-        EXPECT_EQ(m_backend.submittedCalls[index].constantBuffers[2], expected[index]);
+        EXPECT_TRUE(replaced);
+        EXPECT_EQ(original, nullptr);
+        EXPECT_EQ(context.renderScene, replacement);
+        EXPECT_TRUE(retired.expired());
+        ASSERT_EQ(observed, expected.size());
+        ASSERT_EQ(m_backend.submittedCalls.size(), expected.size());
+        for (size_t index = 0; index < expected.size(); ++index)
+            EXPECT_EQ(m_backend.submittedCalls[index].constantBuffers[2], expected[index]);
+    }
 }
 
 TEST_F(ForwardScratchPassTest, OversizedAndEmptyScenesDoNotLeakEntriesIntoLaterViewsOrRetainedSnapshots)
@@ -525,6 +534,7 @@ TEST_F(WaterFarRenderPassTest, ForwardGroupsKeepPerObjectBindingsAndRefreshShare
         backend.submittedCalls.clear();
 
         renderer::ExecuteForwardPasses(context);
+        renderer::ExecuteForwardTransparentPass(context);
 
         ASSERT_EQ(backend.submittedCalls.size(), 3u);
         for (uint32_t index = 0; index < 3; ++index) {

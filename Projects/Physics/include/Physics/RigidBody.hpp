@@ -3,6 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Physics/Api.hpp>
+#include <Physics/RegistrationLifetime.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Quaternion.hpp>
 
@@ -21,41 +23,47 @@ namespace fbzz::physics
     /// @note Scene の Transform は直接所有せず、World::Step 後に外側で反映する。
     class RigidBody
     {
+        friend class World;
+        friend class Constraint;
+        detail::RegistrationLifetime m_registrationLifetime;
+
     public:
+        /// @note 非所有接触キャッシュ用の個体寿命。所有スレッドで観測する。
+        [[nodiscard]] std::weak_ptr<const void> ObserveLifetime() const { return m_registrationLifetime.Observe(); }
         /// @brief 力・インパルスの適用。Force は積分時まで蓄積し、Impulse は速度へ即時反映する。
-        void ApplyForce(const math::Vector3& force);
+        FBZZ_PHYSICS_API void ApplyForce(const math::Vector3& force);
         /// @brief World 内部用: 重力などの常時力を sleep timer をリセットせず蓄積する。
         /// @note 通常の ApplyForce は Script/API からの外力として扱い WakeUp するが、
         /// @note 重力まで WakeUp すると接地中の剛体が永久に Sleep できない。
-        void ApplyForceNoWake(const math::Vector3& force);
-        void ApplyForceAtPoint(const math::Vector3& force,
+        FBZZ_PHYSICS_API void ApplyForceNoWake(const math::Vector3& force);
+        FBZZ_PHYSICS_API void ApplyForceAtPoint(const math::Vector3& force,
                                 const math::Vector3& worldPoint);
-        void ApplyImpulse(const math::Vector3& impulse);
+        FBZZ_PHYSICS_API void ApplyImpulse(const math::Vector3& impulse);
         /// @brief 重心から外れた点へのインパルス。並進と回転の両方が変わる。
         /// @note 重心へのインパルスは物体を «押す» だけだが、端を殴れば回る。ラグドールが
         /// @note 瓦礫を蹴るときに必要なのは後者で、重心へ入れると不自然な弾き方になる。
-        void ApplyImpulseAtPoint(const math::Vector3& impulse,
+        FBZZ_PHYSICS_API void ApplyImpulseAtPoint(const math::Vector3& impulse,
                                  const math::Vector3& worldPoint);
         /// @brief PhysicsSolver から使用。
-        void ApplyAngularImpulse(const math::Vector3& angularImpulse);
-        void ApplyTorque(const math::Vector3& torque);
+        FBZZ_PHYSICS_API void ApplyAngularImpulse(const math::Vector3& angularImpulse);
+        FBZZ_PHYSICS_API void ApplyTorque(const math::Vector3& torque);
         /// @brief World 内部用: Volume が毎 substep 掛ける環境トルク。ApplyForceNoWake と同じ理由で Wake しない。
-        void ApplyTorqueNoWake(const math::Vector3& torque);
+        FBZZ_PHYSICS_API void ApplyTorqueNoWake(const math::Vector3& torque);
 
         /// @brief 積分 (半陰的オイラー法、World::Step から呼ばれる)。
-        void Integrate(float dt);
+        FBZZ_PHYSICS_API void Integrate(float dt);
 
         /// @brief 質量の設定。負値可 (反重力挙動用として許容する)。
-        void SetMass(float mass);
+        FBZZ_PHYSICS_API void SetMass(float mass);
         float GetMass()    const { return m_mass; }
         float GetInvMass() const { return (m_isStatic || m_isSleeping) ? 0.0f : m_invMass; }
         bool  IsStatic()   const { return m_isStatic; }
         bool  IsSleeping() const { return m_isSleeping; }
         /// @return 蓄積した力・トルクと逆慣性を含む全数値状態が有限なら true。所有 pointer は参照しない。
-        [[nodiscard]] bool IsFiniteState() const;
-        void  WakeUp();
-        void  Sleep();
-        void  UpdateSleepState(float dt, float linearThreshold, float angularThreshold, float sleepTime);
+        [[nodiscard]] FBZZ_PHYSICS_API bool IsFiniteState() const;
+        FBZZ_PHYSICS_API void  WakeUp();
+        FBZZ_PHYSICS_API void  Sleep();
+        FBZZ_PHYSICS_API void  UpdateSleepState(float dt, float linearThreshold, float angularThreshold, float sleepTime);
 
         /// @name 状態アクセス
         /// @{
@@ -64,12 +72,12 @@ namespace fbzz::physics
         math::Quaternion GetRotation()        const { return m_rotation;        }
         math::Vector3    GetAngularVelocity() const { return m_angularVelocity; }
 
-        void SetPosition(const math::Vector3& pos);
-        void SetVelocity(const math::Vector3& vel);
-        void SetAngularVelocity(const math::Vector3& angVel);
-        void SetRotation(const math::Quaternion& rot);
-        void SetFreezePosition(const AxisLock& lock);
-        void SetFreezeRotation(const AxisLock& lock);
+        FBZZ_PHYSICS_API void SetPosition(const math::Vector3& pos);
+        FBZZ_PHYSICS_API void SetVelocity(const math::Vector3& vel);
+        FBZZ_PHYSICS_API void SetAngularVelocity(const math::Vector3& angVel);
+        FBZZ_PHYSICS_API void SetRotation(const math::Quaternion& rot);
+        FBZZ_PHYSICS_API void SetFreezePosition(const AxisLock& lock);
+        FBZZ_PHYSICS_API void SetFreezeRotation(const AxisLock& lock);
         AxisLock GetFreezePosition() const { return m_freezePosition; }
         AxisLock GetFreezeRotation() const { return m_freezeRotation; }
         /// @}
@@ -79,7 +87,9 @@ namespace fbzz::physics
         bool  m_isStatic    = false;  ///< @brief true のとき積分・衝突解決をスキップ
         /// @}
 
-        void SetInertiaFromCollider(const Collider* collider);
+        FBZZ_PHYSICS_API void SetInertiaFromCollider(const Collider* collider);
+        /// @note ボディ空間の対角慣性 [kg·m²]。全軸有限かつ正でなければ変更せず false。形状の再指定で解除。
+        [[nodiscard]] FBZZ_PHYSICS_API bool SetInertiaDiagonal(const math::Vector3& inertia);
         /// @note 非所有の慣性計算元。次の再計算前に呼び出し側が寿命を照合し、失効した pointer を参照しない。
         [[nodiscard]] const Collider* GetInertiaCollider() const { return m_inertiaCollider; }
 
@@ -141,18 +151,19 @@ namespace fbzz::physics
         /// @note 自動再計算される。m_isStatic == true のとき {0,0,0}。
         math::Vector3 m_invInertiaDiag = { 1.0f, 1.0f, 1.0f };
         const Collider* m_inertiaCollider = nullptr;
+        math::Vector3 m_authoredInertia = math::Vector3::ZERO;
         AxisLock m_freezePosition;
         AxisLock m_freezeRotation;
         float m_flowCoupling = 0.0f; ///< @brief 媒質との結合係数 [1/s]。0 で流れを受けない
 
-        void RecomputeInertia();
-        math::Vector3 ApplyPositionFreeze(const math::Vector3& value,
+        FBZZ_PHYSICS_API void RecomputeInertia();
+        FBZZ_PHYSICS_API math::Vector3 ApplyPositionFreeze(const math::Vector3& value,
                                           const math::Vector3& base) const;
-        math::Vector3 ApplyRotationFreeze(const math::Vector3& value) const;
+        FBZZ_PHYSICS_API math::Vector3 ApplyRotationFreeze(const math::Vector3& value) const;
 
     public:
         /// @brief ワールド空間で I⁻¹ * v を計算する (= R * (m_invInertiaDiag ⊙ (Rᵀ * v)))。
         /// @note PhysicsSolver::Resolve から使用するため public。
-        math::Vector3 ApplyInvInertia(const math::Vector3& v) const;
+        FBZZ_PHYSICS_API math::Vector3 ApplyInvInertia(const math::Vector3& v) const;
     };
 } /// @note namespace fbzz::physics

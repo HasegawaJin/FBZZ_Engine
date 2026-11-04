@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/AccelerationStructure.hpp>
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -16,21 +17,21 @@ class ResourceManager;
 
 class DX12AccelerationStructure final : public IAccelerationStructure {
 public:
-    ~DX12AccelerationStructure() override;
-    bool Init(DX12Context& context, DX12StateTracker& tracker,
+    FBZZ_GRAPHICS_API ~DX12AccelerationStructure() override;
+    FBZZ_GRAPHICS_API bool Init(DX12Context& context, DX12StateTracker& tracker,
               const AccelerationStructureDesc& desc, ResourceManager& resources);
-    bool Build(ID3D12GraphicsCommandList4& commands, DX12UploadArena& arena,
+    FBZZ_GRAPHICS_API bool Build(ID3D12GraphicsCommandList4& commands, DX12UploadArena& arena,
                ResourceManager& resources);
     AccelerationStructureKind GetKind() const override { return m_desc.kind; }
     size_t GetSize() const override { return m_size; }
     bool IsBuilt() const override { return m_built; }
-    uint32_t GetBindlessIndex() const override;
+    FBZZ_GRAPHICS_API uint32_t GetBindlessIndex() const override;
     ID3D12Resource* GetResource() const { return m_result.Get(); }
 
 private:
-    bool ResolveGeometry(ResourceManager& resources, DX12UploadArena* arena,
+    FBZZ_GRAPHICS_API bool ResolveGeometry(ResourceManager& resources, DX12UploadArena* arena,
                          std::vector<D3D12_RAYTRACING_GEOMETRY_DESC>& geometry) const;
-    bool ResolveInstances(ResourceManager& resources,
+    FBZZ_GRAPHICS_API bool ResolveInstances(ResourceManager& resources,
                           std::vector<D3D12_RAYTRACING_INSTANCE_DESC>& instances,
                           bool requireBuilt) const;
     AccelerationStructureDesc m_desc;

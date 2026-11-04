@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/GraphicsCapabilities.hpp>
 #include <Graphics/Renderer/OpaqueRenderPlan.hpp>
@@ -86,11 +87,11 @@ struct ResolvedRenderPlan {
 /// @note GAME は専用 GBuffer の準備を要求する。通常の Forward プリパスでは代用しない。
 /// @return 復帰先も未準備なら無効な Plan。fallbackReason と failureReason を別々に保持する。
 /// @see Docs/design/RayTracing.md
-[[nodiscard]] ResolvedRenderPlan ResolveRenderPlan(
+[[nodiscard]] FBZZ_GRAPHICS_API ResolvedRenderPlan ResolveRenderPlan(
     const RenderSettings& settings, const RenderModeRequest& request,
     const GraphicsCapabilities& capabilities, const SceneRayCoverage& coverage,
     const RenderAvailability& availability);
 
-[[nodiscard]] const char* DescribeRenderPlanReason(RenderPlanReason reason);
+[[nodiscard]] FBZZ_GRAPHICS_API const char* DescribeRenderPlanReason(RenderPlanReason reason);
 
 }

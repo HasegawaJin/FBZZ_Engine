@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 #pragma once
+#include <Engine/Api.hpp>
 #include "Engine/Core/Scheduler/ISystem.hpp"
 #include <Engine/Scene/Entity.hpp>
 #include <cstddef>
@@ -17,16 +18,16 @@ public:
     std::string_view Name()       const override { return "NavigationSystem"; }
     Phase            GetPhase()   const override { return Phase::Navigation; }
     RunMode          GetRunMode() const override { return RunMode::SimOnly; }
-    ComponentAccess  GetAccess()  const override;
-    OrderingHints    GetOrder()   const override;
-    void Update(SystemContext& ctx) override;
+    FBZZ_ENGINE_API ComponentAccess  GetAccess()  const override;
+    FBZZ_ENGINE_API OrderingHints    GetOrder()   const override;
+    FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 
 private:
     struct SurfaceEntry {
         int agentTypeId = 0;
         NavMeshSurfaceComponent* surface = nullptr;
     };
-    [[nodiscard]] SurfaceEntry& FindSurfaceSlot(int agentTypeId);
+    [[nodiscard]] FBZZ_ENGINE_API SurfaceEntry& FindSurfaceSlot(int agentTypeId);
     struct AvoidanceEntry {
         EntityID entity;
         size_t next = SIZE_MAX;
@@ -37,7 +38,7 @@ private:
         size_t first = SIZE_MAX;
         size_t last = SIZE_MAX;
     };
-    [[nodiscard]] AvoidanceBucket& FindAvoidanceBucket(int x, int z);
+    [[nodiscard]] FBZZ_ENGINE_API AvoidanceBucket& FindAvoidanceBucket(int x, int z);
     /// @note Scheduler の非再入 Update ごとに値を作り直し、callback を跨ぐ Entity 一覧の容量だけを保持する。
     std::vector<EntityID> m_agentEntities;
     std::vector<SurfaceEntry> m_surfaces;

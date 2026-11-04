@@ -350,6 +350,11 @@ struct EditorSettings {
     /// @note 絶対パスのまま保存するとプロジェクトフォルダを移動した後に無効になるため。
     bool Load(const std::string& path, const std::string& projectRoot = "");
     bool Save(const std::string& path, const std::string& projectRoot = "") const;
+    /// @note 共有設定と個人状態を結合した編集用の値。ディスクを変更しない。
+    [[nodiscard]] std::string ToToml(const std::string& projectRoot = "") const;
+    [[nodiscard]] bool LoadFromToml(const std::string& text, const std::string& projectRoot = "");
+    /// @note 通常保存とMCPが同じキー定義を使う。sharedとlocalは実際の保存先ごとの本文。
+    void SerializeToml(std::string& shared, std::string& local, const std::string& projectRoot = "") const;
 
 };
 

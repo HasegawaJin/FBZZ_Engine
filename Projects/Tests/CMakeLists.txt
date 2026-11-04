@@ -9,6 +9,17 @@
 
 add_subdirectory(TestKit)
 
+add_test(NAME AgentLintCoroutineBoundaries
+    COMMAND node --test "${CMAKE_CURRENT_SOURCE_DIR}/DevTools/AgentLintCoroutineTests.mjs")
+set_tests_properties(AgentLintCoroutineBoundaries PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 30 LABELS "Build")
+
+# @note 実際のゲームテンプレートをリンクし、内部 Engine ヘッダーを必要としない起動境界を検証する。
+add_executable(FBZZStandaloneBoundarySmoke EXCLUDE_FROM_ALL
+    "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates/standard/Src/AppMain.cpp")
+target_link_libraries(FBZZStandaloneBoundarySmoke PRIVATE FBZZEngine)
+set_target_properties(FBZZStandaloneBoundarySmoke PROPERTIES FOLDER "Tests")
+
 include("${CMAKE_SOURCE_DIR}/CMake/FBZZTests.cmake")
 
 # @note Runtime packaging is a CMake contract, so validate its isolated fixture through the same CTest entry point.
@@ -16,8 +27,13 @@ add_test(NAME SharedSDKTemplates
     COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
         -P "${CMAKE_SOURCE_DIR}/CMake/SDK/TestSharedSDKTemplates.cmake")
 set_tests_properties(SharedSDKTemplates PROPERTIES
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 30 LABELS "Build")
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 120 LABELS "Build")
 
+add_test(NAME EngineModuleBoundaries
+    COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/CMake/EngineModuleBoundaries.cmake")
+set_tests_properties(EngineModuleBoundaries PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 30 LABELS "Build")
 add_test(NAME SandboxProjectPreservation
     COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/CMake/SandboxProjectPreservation.cmake")
@@ -95,6 +111,7 @@ fbzz_add_test_suite(PhysicsAuto
     Physics/Auto/ClothInterCollisionTests.cpp
     Physics/Auto/ClothWindTests.cpp
         Physics/Auto/XPBDJointTests.cpp
+        Physics/Auto/XPBDJointVelocityTests.cpp
         Physics/Auto/RigidBodyTests.cpp
         Physics/Auto/BroadPhaseTests.cpp
         Physics/Auto/BroadPhaseIncrementalTests.cpp
@@ -114,6 +131,8 @@ fbzz_add_test_suite(PhysicsAuto
         Physics/Auto/MeshColliderTests.cpp
         Physics/Auto/RigidBodySerializerTests.cpp
         Physics/Auto/XPBDContactTests.cpp
+        Physics/Auto/XPBDBodyDriveTests.cpp
+        Physics/Auto/XPBDGripTests.cpp
         Physics/Auto/XPBDPlaneContactTests.cpp
         Physics/Auto/XPBDPoseAnchorTests.cpp
         Physics/Auto/ConstraintTests.cpp
@@ -147,6 +166,8 @@ fbzz_add_test_suite(FluidAuto
 fbzz_add_test_suite(EngineAuto
     SOURCES
         Engine/Auto/RagdollRigTests.cpp
+        Engine/Auto/RagdollDefinitionTests.cpp
+        Engine/Auto/RagdollControlsTests.cpp
         Engine/Auto/StandingPoseTests.cpp
         Engine/Auto/RagdollSystemTests.cpp
     Engine/Auto/ClothSystemTests.cpp
@@ -173,6 +194,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/NavigationControlPointTests.cpp
         Engine/Auto/NavigationWorkspaceTests.cpp
         Engine/Auto/IKTargetReferenceTests.cpp
+        Engine/Auto/FootIKTests.cpp
         Engine/Auto/AdditionalTargetPointPersistenceTests.cpp
         Engine/Auto/ManagedTargetPointRuntimeTests.cpp
         Engine/Auto/AdditionalTargetPointUsageTests.cpp
@@ -236,6 +258,11 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ParticleCodecTests.cpp
         Engine/Auto/ParticleCurveTests.cpp
         Engine/Auto/VectorFieldTests.cpp
+        Engine/Auto/AssetTypeBoundaryTests.cpp
+        Engine/Auto/TransientGpuStateTests.cpp
+        Engine/Auto/RuntimeMeshOwnershipTests.cpp
+        Engine/Auto/HostResourceBindingTests.cpp
+        Engine/Auto/UIInteractionTests.cpp
         Engine/Auto/FlipbookMotionVectorEncodingTests.cpp
         Engine/Auto/FlipbookMotionVectorsTests.cpp
         Engine/Auto/VolumeFlipbookAnalyticTests.cpp
@@ -246,6 +273,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/VFXSubEmitterScopeTests.cpp
         Engine/Auto/ParticleMaterialPathTests.cpp
         Engine/Auto/FiberTests.cpp
+        Engine/Auto/TerrainFiberStreamingTests.cpp
     Engine/Auto/FiberPlacementTests.cpp
     Engine/Auto/ParticleFlipbookTests.cpp
     Engine/Auto/ParticleLoopInspectionTests.cpp
@@ -287,6 +315,17 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/SceneSerializerTests.cpp
         Engine/Auto/TerrainSplatTests.cpp
         Engine/Auto/TerrainPatchLodTests.cpp
+        Engine/Auto/TerrainRenderResourceTests.cpp
+        Engine/Auto/VelocityFieldAtlasOwnershipTests.cpp
+        Engine/Auto/MeshTrailRenderResourceTests.cpp
+        Engine/Auto/ParticlePlaybackTests.cpp
+        Engine/Auto/ParticleGpuOwnershipTests.cpp
+        Engine/Auto/BakeGpuOwnershipTests.cpp
+        Engine/Auto/AnimatorControllerDefinitionTests.cpp
+        Engine/Auto/ReflectionStandaloneTests.cpp
+        Engine/Auto/SaveStoreReflectionTests.cpp
+        Engine/Auto/TweenCoroutineTests.cpp
+        Engine/Auto/UIAnimatorSchedulingTests.cpp
         Engine/Auto/TrailMultiKeyTests.cpp
         Engine/Auto/UIRectTests.cpp
         Engine/Auto/WaterWaveTests.cpp
@@ -390,6 +429,17 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/FluidJetFlamePlaybackTests.cpp
     Editor/Auto/ImportCacheStoreTests.cpp
     Editor/Auto/ImportFingerprintTests.cpp
+    Editor/Auto/ModelImportOperatorTests.cpp
+    Editor/Auto/ProjectSettingsOperatorTests.cpp
+    Editor/Auto/InputBindingOperatorTests.cpp
+    Editor/Auto/TextureImportOperatorTests.cpp
+    Editor/Auto/EditorSettingsDocumentTests.cpp
+    Editor/Auto/SequenceOperatorTests.cpp
+    Editor/Auto/IblOperatorTests.cpp
+    Editor/Auto/VolumeFlipbookOperatorTests.cpp
+    Editor/Auto/DirectPanelOperatorTests.cpp
+    Editor/Auto/AssetFileOperatorTests.cpp
+    Editor/Auto/RenderPassOperatorTests.cpp
     Editor/Auto/InputRecorderTests.cpp
     Editor/Auto/JsonTests.cpp
     Editor/Auto/MaterialPreviewFiberTests.cpp
@@ -616,3 +666,7 @@ if(FBZZ_DXC_RUNTIME_DIRECTORY)
         endforeach()
     endforeach()
 endif()
+
+# @note gtest_discover_tests が登録した後に、実測で 30 秒を超える統合ケースだけの上限を適用する。
+set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/CMake/IntegrationTimeouts.cmake")

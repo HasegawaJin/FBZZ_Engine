@@ -6,6 +6,7 @@
 /// @note Script::InstantiatePrefab のコールバック未設定で PrefabPool::Spawn が必ず失敗していた。
 /// @note 保存・Apply・Revert・差分算出はオーサリング操作なので Editor に残る。
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <toml++/toml.hpp>
 #include <memory>
@@ -25,14 +26,14 @@ struct PrefabInstantiationContext;
 /// @pre 呼び出し間に Scene の名前・構造を変える場合、先に DisableSceneCache を呼ぶこと。
 class PrefabInstantiationBatch final {
 public:
-    explicit PrefabInstantiationBatch(Scene& scene);
-    ~PrefabInstantiationBatch();
+    FBZZ_ENGINE_API explicit PrefabInstantiationBatch(Scene& scene);
+    FBZZ_ENGINE_API ~PrefabInstantiationBatch();
     PrefabInstantiationBatch(const PrefabInstantiationBatch&) = delete;
     PrefabInstantiationBatch& operator=(const PrefabInstantiationBatch&) = delete;
     /// @note 注入 callback などが Scene の名前・構造を変更できる場合、呼び出す直前に使う。
-    void DisableSceneCache();
+    FBZZ_ENGINE_API void DisableSceneCache();
     /// @note 任意の Scene 変更が可能な callback を通った場合は false。生成後の追加実体の保護に使う。
-    [[nodiscard]] bool CanReuseSceneCache() const;
+    [[nodiscard]] FBZZ_ENGINE_API bool CanReuseSceneCache() const;
 
 private:
     std::unique_ptr<PrefabInstantiationContext> m_context;
@@ -40,19 +41,19 @@ private:
 
 /// @brief GUID と旧パスを共通のアセット解決口でディスク上のパスへ戻す。
 /// @return GUID が未登録なら空文字列。
-[[nodiscard]] std::string ResolvePrefabAssetPath(const std::string& reference,
+[[nodiscard]] FBZZ_ENGINE_API std::string ResolvePrefabAssetPath(const std::string& reference,
                                                 const std::string& projectRoot = {});
 
 /// @brief 解決できる旧パスを GUID 参照へ正規化する。
 /// @return .meta を確保できなければ元のパス。
-[[nodiscard]] std::string CanonicalPrefabAssetRef(const std::string& reference);
+[[nodiscard]] FBZZ_ENGINE_API std::string CanonicalPrefabAssetRef(const std::string& reference);
 
 /// @brief パスヒントに依らない比較キー。解決できるアセットは GUID のみを返す。
-[[nodiscard]] std::string PrefabAssetKey(const std::string& reference);
+[[nodiscard]] FBZZ_ENGINE_API std::string PrefabAssetKey(const std::string& reference);
 
 /// @brief コンポーネント内の内部参照だけを指定の識別子へ振り替える。
 /// @note トップレベルの instanceId / parentInstanceId は呼び出し側が扱う。
-void RemapPrefabObjectReferences(toml::table& object,
+FBZZ_ENGINE_API void RemapPrefabObjectReferences(toml::table& object,
                                   const std::unordered_map<std::string, std::string>& guidMap);
 
 /// @brief プレファブ定義とインスタンスの差分 1 件。
@@ -80,27 +81,27 @@ struct PrefabOverrideSet {
 
 /// @brief ドット区切りパスで node を引く。
 /// @return 見つからなければ nullptr。
-[[nodiscard]] const toml::node* FindNodeAtPath(const toml::table& table, const std::string& path);
+[[nodiscard]] FBZZ_ENGINE_API const toml::node* FindNodeAtPath(const toml::table& table, const std::string& path);
 
 /// @brief ドット区切りパスへ node を書き込む。
 /// @return 途中のテーブルが無い場合は作らず false。
-bool SetNodeAtPath(toml::table& table, const std::string& path, const toml::node& value);
+FBZZ_ENGINE_API bool SetNodeAtPath(toml::table& table, const std::string& path, const toml::node& value);
 
 /// @brief 差分で取り除いたコンポーネントまたはプロパティを削除する。
-bool RemoveNodeAtPath(toml::table& table, const std::string& path);
+FBZZ_ENGINE_API bool RemoveNodeAtPath(toml::table& table, const std::string& path);
 
 /// @brief 差し替え後の実体へ、シーンに残る非所有参照を振り替える。
 /// @note 削除された対象は EntityID::INVALID へ振り替える。
-void RemapScenePrefabEntityReferences(Scene& scene,
+FBZZ_ENGINE_API void RemapScenePrefabEntityReferences(Scene& scene,
                                        const std::vector<std::pair<EntityID, EntityID>>& replacements);
 
 /// @brief 通常の追記で復元されないコンポーネントだけを補完し、一時 Scene の参照を振り替える。
-void CopyPreparedPrefabComponents(Scene& source, Scene& destination,
+FBZZ_ENGINE_API void CopyPreparedPrefabComponents(Scene& source, Scene& destination,
                                     const std::vector<std::pair<EntityID, EntityID>>& replacements);
 
 /// @brief 複製 forest 内だけを型付き参照として再対応し、外部参照を Scene 間で安全に扱う。
 /// @note 同一 Scene の範囲外参照は保持し、別 Scene の範囲外参照は ObjectReference の GUID を残して EntityID を失効させる。
-void RemapCopiedObjectReferences(Scene& source, Scene& destination,
+FBZZ_ENGINE_API void RemapCopiedObjectReferences(Scene& source, Scene& destination,
                                  const std::vector<std::pair<EntityID, EntityID>>& replacements,
                                  std::span<const EntityID> copiedOwners);
 
@@ -110,7 +111,7 @@ void RemapCopiedObjectReferences(Scene& source, Scene& destination,
 /// @param preserveGuids プレファブ側 instanceId → 生成後に名乗らせたい instanceId。Revert/Apply の作り直し経路で使う。
 /// @note GPU が無い場合はデータだけを復元する。既存実体の差し替えは ReplacePrefabInstanceAsset を使う。
 /// @note 渡した guid が既にシーンで使われていないことは呼び出し側の責任。表に無い分は新規採番する。
-bool InstantiatePrefabAsset(Scene& scene,
+FBZZ_ENGINE_API bool InstantiatePrefabAsset(Scene& scene,
                             const std::string& path,
                             std::vector<EntityID>& outRootEntities,
                             const PrefabOverrideSet* overrides = nullptr,
@@ -120,7 +121,7 @@ bool InstantiatePrefabAsset(Scene& scene,
 /// @return 読み込み・構造・容量の不備なら false。旧階層は変更しない。
 /// @note 単一ルートのアセットと両階層を同時に保持できる空き容量が必要。旧 EntityID は無効になり、保存対象のシーン内参照は新 EntityID へ移す。
 /// @see Docs/design/prefab-safety.md
-bool ReplacePrefabInstanceAsset(Scene& scene,
+FBZZ_ENGINE_API bool ReplacePrefabInstanceAsset(Scene& scene,
                                  EntityID rootEntity,
                                  const std::string& reference,
                                  std::vector<EntityID>& outRootEntities,
@@ -130,7 +131,7 @@ bool ReplacePrefabInstanceAsset(Scene& scene,
 /// @note sourceSnapshot is the actual template baseline, independent of local overrides in document.
 /// @note preserveGuids includes instance-only keys so retained local objects keep their saved identity.
 /// @pre document has one root with stable source IDs; caller revalidates its review and source before publication.
-bool ReplacePrefabInstanceDocument(Scene& scene,
+FBZZ_ENGINE_API bool ReplacePrefabInstanceDocument(Scene& scene,
                                     EntityID rootEntity,
                                     const std::string& reference,
                                     const toml::table& document,

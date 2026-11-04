@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <cstdint>
 #include <string>
@@ -20,7 +21,7 @@ struct FlipbookAtlasBakeSettings {
     bool generateTextureMeta = true;
 };
 
-/// 生成物の参照とParticleEmitterへ設定するColumns/Rowsを呼び出し側へ返す。
+/// @note 生成物の参照とParticleEmitterへ設定するColumns/Rowsを呼び出し側へ返す。
 struct FlipbookAtlasBakeResult {
     bool success = false;
     std::string message;
@@ -34,9 +35,9 @@ struct FlipbookAtlasBakeResult {
     std::uint32_t atlasHeight = 0;
 };
 
-/// framePathsの順序を再生順として、左上から右方向・次に下方向へ配置する。
-/// 異なるフレーム寸法を暗黙に拡縮すると時間方向に画質が揺れるため、寸法不一致はエラーにする。
-[[nodiscard]] FlipbookAtlasBakeResult BakeFlipbookAtlas(
+/// @note framePathsの順序を再生順として、左上から右方向・次に下方向へ配置する。
+/// @note 異なるフレーム寸法を暗黙に拡縮すると時間方向に画質が揺れるため、寸法不一致はエラーにする。
+[[nodiscard]] FBZZ_ENGINE_API FlipbookAtlasBakeResult BakeFlipbookAtlas(
     const FlipbookAtlasBakeSettings& settings);
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

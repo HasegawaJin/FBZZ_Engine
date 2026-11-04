@@ -21,7 +21,8 @@ public:
     virtual std::string_view Name()       const = 0;
     virtual Phase            GetPhase()   const = 0;
     virtual RunMode          GetRunMode() const { return RunMode::Always; }
-    virtual ComponentAccess  GetAccess()  const { return {}; }
+    /// @note 未宣言のアクセスは全システムと競合させ、並列化には明示した読み書き契約を要求する。
+    virtual ComponentAccess  GetAccess()  const { return ComponentAccess{}.Unrestricted(); }
     virtual OrderingHints    GetOrder()   const { return {}; }
 
     virtual void OnInit()     {}
@@ -33,4 +34,4 @@ public:
     virtual int  RunInterval() const { return 1; }
 };
 
-} // namespace fbzz
+} /// @note namespace fbzz

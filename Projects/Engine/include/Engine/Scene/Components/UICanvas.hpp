@@ -7,7 +7,7 @@
 /// @note UISystem は sortOrder と renderMode を見て描画順を決める。
 #pragma once
 #include <Engine/Scene/EntityRef.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector4.hpp>
 

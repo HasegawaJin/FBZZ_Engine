@@ -5,7 +5,7 @@
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
 #include <cmath>

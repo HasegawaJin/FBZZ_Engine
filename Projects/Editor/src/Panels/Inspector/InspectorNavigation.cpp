@@ -2,6 +2,13 @@
 /// @brief   NavMesh 系 Component (Surface / Modifier / Agent / Patrol / Link / Sensor) の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include "InspectorNavigation.hpp"
 
 namespace fbzz::editor {

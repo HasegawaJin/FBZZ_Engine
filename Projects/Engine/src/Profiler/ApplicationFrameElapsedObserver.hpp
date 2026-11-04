@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-13
 #pragma once
+#include <Engine/Api.hpp>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -119,9 +120,9 @@ private:
 };
 
 /// @pre All bridge calls are on the application main thread; state remains inside FBZZEngine.dll.
-[[nodiscard]] uint64_t ArmApplicationFrameElapsedObserver();
-void RequestStopApplicationFrameElapsedObserver();
-[[nodiscard]] ApplicationFrameElapsedSnapshot ReadApplicationFrameElapsedObserver();
-void MarkApplicationFrameElapsedAborted();
+[[nodiscard]] FBZZ_ENGINE_API uint64_t ArmApplicationFrameElapsedObserver();
+FBZZ_ENGINE_API void RequestStopApplicationFrameElapsedObserver();
+[[nodiscard]] FBZZ_ENGINE_API ApplicationFrameElapsedSnapshot ReadApplicationFrameElapsedObserver();
+FBZZ_ENGINE_API void MarkApplicationFrameElapsedAborted();
 
 } /// @note namespace fbzz::profiler::detail

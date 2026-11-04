@@ -2,7 +2,6 @@
 /// @brief   .fluid レシピを編集する専用パネル (Outliner・2D ライブプレビュー・タイムライン・Properties)
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
-///
 /// @note Inspector の縦 1 列では «どの部品がいつ・どこで効くか» が見えず、値を 1 つ触るたびに頭から解き直していた。
 /// @note 部品を絵の上で掴んで動かし、タイムラインで出番をずらし、スクラブで同じ瞬間を見比べる UI にする。
 /// @note 開くのは asset.open (Asset Browser のダブルクリック) が積む EditorContext::requestOpenFluidEditor。
@@ -37,6 +36,8 @@ public:
 
     void OnInit(EditorContext& ctx) override;
     void OnShutdown() override;
+    void OnRegisterOperators(OperatorRegistry& registry) override;
+    void OnRenderFrame(EditorContext& ctx) override;
     void OnLoadSettings(const EditorSettings& settings) override;
     void OnSaveSettings(EditorSettings& settings) const override;
 
@@ -103,6 +104,8 @@ private:
     int m_newPresetIndex = 0;
     /// @note 焼き上がったフレームに Baked タブを前へ出す。
     bool m_selectBakedTab = false;
+    bool m_apiPreview = false;
+    std::string m_apiProject;
     /// @note 「自動保存しました」を出しておく残り時間 [秒]。
     float m_autoSaveNotice = 0.0f;
     /// @note Asset Browser の選択に追従するか (EditorSettings::fluidEditorFollowSelection が保存先)。
@@ -123,4 +126,4 @@ private:
     std::string m_registeredDirtyPath;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

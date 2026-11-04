@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <cstdint>
 #include <string_view>
@@ -17,9 +18,9 @@ class Script;
 /// @see Docs/design/asset-streaming.md «識別子・利用権・API 契約»
 struct ScriptAssetProxy {
     /// @note 要求台帳と AssetStreamer は、このプロキシを持つ Script より先に構築して長く生存させる。
-    explicit ScriptAssetProxy(Script* owner = nullptr);
+    FBZZ_ENGINE_API explicit ScriptAssetProxy(Script* owner = nullptr);
     Script* script = nullptr;
-    ~ScriptAssetProxy();
+    FBZZ_ENGINE_API ~ScriptAssetProxy();
 
     /// @brief 無効な要求 ID。
     static constexpr std::uint64_t kInvalid = 0;
@@ -27,21 +28,21 @@ struct ScriptAssetProxy {
     /// @brief テクスチャ・モデル (.fbx / .fzasset)・マテリアル (.mat) を拡張子で見分けて要求する。
     /// @param prefetch true なら先読み扱い (予算超過中は後回しにされる)。
     /// @return 要求 ID。種類が分からない・受け付けられない (予算超過など) なら kInvalid。
-    std::uint64_t Request(std::string_view path, bool prefetch = false) const;
-    [[nodiscard]] bool IsReady(std::uint64_t request) const;
+    FBZZ_ENGINE_API std::uint64_t Request(std::string_view path, bool prefetch = false) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool IsReady(std::uint64_t request) const;
     /// @brief 失敗して、Retry しない限り完成しない。
-    [[nodiscard]] bool IsFailed(std::uint64_t request) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool IsFailed(std::uint64_t request) const;
     /// @brief 希望品質 (0 が最高、1 段ごとにテクスチャは mip・モデルは LOD を 1 段落とす)。
-    void SetQuality(std::uint64_t request, int quality) const;
-    bool Retry(std::uint64_t request) const;
+    FBZZ_ENGINE_API void SetQuality(std::uint64_t request, int quality) const;
+    FBZZ_ENGINE_API bool Retry(std::uint64_t request) const;
     /// @brief 自分の要求だけを手放す。他の利用者が居れば読み込みは続く。
-    void Release(std::uint64_t request) const;
+    FBZZ_ENGINE_API void Release(std::uint64_t request) const;
 
     /// @brief 登録済みシーンが参照するアセットを先読みする。遷移はしない。
     /// @return ファイル登録でないシーン名なら false。
-    bool PrefetchScene(std::string_view sceneName) const;
+    FBZZ_ENGINE_API bool PrefetchScene(std::string_view sceneName) const;
     /// @brief 先読みの進み具合 [0, 1]。1 なら LoadScene で同期ロードが起きない。先読みしていなければ 0。
-    [[nodiscard]] float GetScenePrefetchProgress(std::string_view sceneName) const;
+    [[nodiscard]] FBZZ_ENGINE_API float GetScenePrefetchProgress(std::string_view sceneName) const;
 };
 
 } /// @note namespace fbzz::scene

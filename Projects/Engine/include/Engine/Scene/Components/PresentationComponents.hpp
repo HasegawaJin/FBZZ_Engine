@@ -3,11 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/ControlPointModes.hpp>
 #include <Engine/Scene/ObjectReference.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
@@ -39,19 +40,18 @@ struct DoubleBufferedMesh {
     std::uint32_t current = 0;
 
     DoubleBufferedMesh() = default;
-    ~DoubleBufferedMesh() = default;
-    DoubleBufferedMesh(DoubleBufferedMesh&&) noexcept = default;
-    DoubleBufferedMesh& operator=(DoubleBufferedMesh&&) noexcept = default;
+    FBZZ_ENGINE_API ~DoubleBufferedMesh();
+    FBZZ_ENGINE_API DoubleBufferedMesh(DoubleBufferedMesh&& other) noexcept;
+    FBZZ_ENGINE_API DoubleBufferedMesh& operator=(DoubleBufferedMesh&& other) noexcept;
+    FBZZ_ENGINE_API void Reset();
 
     /// @note コピーで中身を連れていかないのは、Component の複製・プレファブ展開が値コピーのため。
     /// @note GPU バッファまで写すと 2 つの GameObject が同じバッファへ交互に書き、片方が畳まれた
     /// @note 時点でもう片方が消えたバッファを描く。複製先は «まだ焼いていない» 状態から始める。
     DoubleBufferedMesh(const DoubleBufferedMesh&) {}
-    DoubleBufferedMesh& operator=(const DoubleBufferedMesh&)
+    DoubleBufferedMesh& operator=(const DoubleBufferedMesh& other)
     {
-        slots[0].reset(); slots[1].reset();
-        signature = 0; current = 0; geometryValid = false;
-        geometryInputs.clear(); candidateInputs.clear();
+        if (this != &other) Reset();
         return *this;
     }
 
@@ -134,8 +134,8 @@ struct LineControlPointBinding {
     ObjectReference target;
 
     /// @brief Reflect the stable id and typed TargetPoint reference.
-    void Reflect(IReflector& reflector);
-    bool operator==(const LineControlPointBinding& other) const;
+    FBZZ_ENGINE_API void Reflect(IReflector& reflector);
+    FBZZ_ENGINE_API bool operator==(const LineControlPointBinding& other) const;
 };
 
 /// @brief Numeric Line point retained by a static bake.
@@ -144,16 +144,16 @@ struct LineControlPointValue {
     math::Vector3 position = math::Vector3::ZERO;
 
     /// @brief Reflect the stable id and captured position.
-    void Reflect(IReflector& reflector);
+    FBZZ_ENGINE_API void Reflect(IReflector& reflector);
     bool operator==(const LineControlPointValue& other) const = default;
 };
 
 /// @brief Reflect ordered Line point bindings without changing their order or attributes.
-void ReflectLineControlPointBindings(IReflector& reflector,
+FBZZ_ENGINE_API void ReflectLineControlPointBindings(IReflector& reflector,
     std::vector<LineControlPointBinding>& bindings);
 
 /// @brief Reflect stable-ID numeric Line points.
-void ReflectLineControlPointValues(IReflector& reflector, const char* fieldName,
+FBZZ_ENGINE_API void ReflectLineControlPointValues(IReflector& reflector, const char* fieldName,
     std::vector<LineControlPointValue>& points);
 
 struct LineRendererComponent {

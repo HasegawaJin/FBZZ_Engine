@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/ParticleMaterialSettings.hpp>
 #include <Engine/Asset/MaterialAuthoringState.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
@@ -73,7 +74,7 @@ struct MaterialAssetAuthoring {
     ParticleMaterialSettings particle;
     /// @note [dielectric] は alpha 被覆と独立。未記載の旧材質は光透過を持たない。
     renderer::SolidDielectricSettings dielectric;
-    [[nodiscard]] bool operator==(const MaterialAssetAuthoring& other) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool operator==(const MaterialAssetAuthoring& other) const;
 };
 
 /// @brief Shared material authoring exposes only controlled immutable publications.
@@ -113,16 +114,16 @@ private:
 };
 
 /// @note Own authoring values before callbacks/native waits; a missing or retired asset produces an empty snapshot.
-[[nodiscard]] MaterialAsset::AuthoringSnapshotPtr ReadMaterialAuthoring(AssetHandle<MaterialAsset> handle);
+[[nodiscard]] FBZZ_ENGINE_API MaterialAsset::AuthoringSnapshotPtr ReadMaterialAuthoring(AssetHandle<MaterialAsset> handle);
 
 /// @note TOML から .mat を読み込む。破損・未存在時は false を返し、例外は使わない。
-[[nodiscard]] bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset);
+[[nodiscard]] FBZZ_ENGINE_API bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset);
 /// @note Owned draft loading keeps the target unchanged on failure and preserves the same TOML normalization.
-[[nodiscard]] bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& outAsset);
+[[nodiscard]] FBZZ_ENGINE_API bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& outAsset);
 
 /// @note .mat を TOML へ保存する。Editor からの Save とテンプレート生成で共有する。
-[[nodiscard]] bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset);
+[[nodiscard]] FBZZ_ENGINE_API bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset);
 /// @note Owned generator/editor drafts use the same unchanged TOML representation without publishing a stored asset.
-[[nodiscard]] bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring& asset);
+[[nodiscard]] FBZZ_ENGINE_API bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring& asset);
 
 } /// @note namespace fbzz::asset

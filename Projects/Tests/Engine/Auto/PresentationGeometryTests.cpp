@@ -2,6 +2,8 @@
 /// @brief   Line の RGBA・world 幅・cache と Sprite nine-slice・Material 上書きの回帰を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-06
+#include <Engine/Scene/Components/MotionWarpComponent.hpp>
+#include <Engine/Scene/Components/PresentationComponents.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Systems/PresentationGeometry.hpp>

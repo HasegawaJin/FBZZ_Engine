@@ -15,6 +15,14 @@
 
 namespace fbzz::editor {
 
+bool LogListView::SetFilterText(const std::string& text)
+{
+    if (text.size() >= m_filter.size() || text.find('\0') != std::string::npos) return false;
+    m_filter.fill('\0');
+    std::copy(text.begin(), text.end(), m_filter.begin());
+    return true;
+}
+
 namespace {
 
 /// @note 名前に LogList を冠する: Editor は unity build で、Console 側の匿名名前空間にも同じ役割の関数 (LogLevelColor 等) があり、同じバッチに入ると再定義になる。

@@ -13,6 +13,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Physics/AABBCollider.hpp>
@@ -77,12 +78,12 @@ void CopyComponentEnabledFlag(const T& from, T& to)
         to.settings.enabled = from.settings.enabled;
 }
 
-inline scene::MeshRenderer CreateDefaultMeshRenderer()
+inline scene::MeshRenderer CreateDefaultMeshRenderer(renderer::ResourceManager* resources)
 {
     scene::MeshRenderer mr;
     mr.meshPath = "primitive:cube";
-    if (auto* resources = renderer::ResourceManager::Active())
-        mr.mesh = renderer::PrimitiveMesh::Cube(*resources);
+    if (resources) mr.mesh = renderer::PrimitiveMesh::Cube(*resources);
+    mr.meshPathDirty = mr.mesh == nullptr;
     return mr;
 }
 
@@ -234,7 +235,7 @@ template<typename T>
 [[nodiscard]] T MakeDefaultComponent(scene::GameObject& go)
 {
     if constexpr (std::is_same_v<T, scene::MeshRenderer>) {
-        return CreateDefaultMeshRenderer();
+        return CreateDefaultMeshRenderer(go.GetScene() ? go.GetScene()->GetResourceManager() : nullptr);
     } else if constexpr (std::is_same_v<T, scene::SkinnedMeshRenderer>) {
         return T{};
     } else if constexpr (std::is_same_v<T, scene::MaterialComponent>) {
@@ -366,7 +367,7 @@ inline std::vector<std::string> AddRegisteredComponentByNameTracked(scene::GameO
 /// @brief type を go から外すと壊れる相手の名前を返す。
 /// @return 同じ GameObject のスクリプトの FBZZ_REQUIRE_COMPONENT、または追加時依存の相手。無ければ空。
 /// @note 追加時依存: Material←(Skinned)MeshRenderer / NavMeshAgent←NavMeshPatrol /
-///       SkinnedMeshRenderer←Animator / Terrain←TerrainCollider (後者が前者を読む)。
+/// @note SkinnedMeshRenderer←Animator / Terrain←TerrainCollider (後者が前者を読む)。
 inline std::string FindComponentRemovalBlocker(scene::GameObject& go, const std::type_info& type)
 {
     if (type == typeid(scene::MaterialComponent)) {
@@ -398,4 +399,4 @@ inline std::string FindComponentRemovalBlocker(scene::GameObject& go, const std:
     return {};
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

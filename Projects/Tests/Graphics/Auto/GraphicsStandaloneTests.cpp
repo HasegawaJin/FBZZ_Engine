@@ -554,7 +554,13 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
         renderer::ViewPipelineExtensions extensions;
         extensions.begin = [&]() { stages.push_back("begin"); };
         extensions.setup = [&]() { stages.push_back("setup"); };
-        extensions.userPasses = [&](renderer::UserRenderPassInjectionPoint) { stages.push_back("user"); };
+        extensions.userPasses = [&](renderer::UserRenderPassInjectionPoint point) {
+            stages.push_back("user");
+            if (point == renderer::UserRenderPassInjectionPoint::AfterOpaque)
+                viewA.pipeline.AddRawPass("UserAfterOpaque", {"HDR"}, {"HDR"}, []() {});
+            if (point == renderer::UserRenderPassInjectionPoint::AfterTransparent)
+                viewA.pipeline.AddRawPass("UserAfterTransparent", {"HDR"}, {"HDR"}, []() {});
+        };
         extensions.depthDebug = [&]() { stages.push_back("depth"); };
         extensions.overlayDebug = [&](const char*) { stages.push_back("overlay"); };
         extensions.ui = [&]() { stages.push_back("ui"); };
@@ -565,6 +571,14 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
         EXPECT_EQ(stages, (std::vector<std::string>{"begin", "setup", "user", "user", "depth", "user", "overlay", "ui"}));
         const auto names = viewA.pipeline.RegisteredPassNames();
         const auto position = [&](const char* name) { return std::find(names.begin(), names.end(), name); };
+        const char* transparent = preparedPlan.rasterPlan.UsesDeferredLighting() ? "DeferredForwardTransparent" : "ForwardTransparent";
+        EXPECT_NE(position("UserAfterOpaque"), names.end());
+        EXPECT_NE(position(transparent), names.end());
+        EXPECT_NE(position("WaterForward"), names.end());
+        EXPECT_LT(position("UserAfterOpaque"), position(transparent));
+        EXPECT_LT(position(transparent), position("WaterForward"));
+        EXPECT_LT(position("WaterForward"), position("UserAfterTransparent"));
+        EXPECT_LT(position("UserAfterTransparent"), position("Composite"));
         EXPECT_LT(position("AutoExposure"), position("Bloom"));
         EXPECT_LT(position("Bloom"), position("Composite"));
         viewA.pipeline.BeginBuild();

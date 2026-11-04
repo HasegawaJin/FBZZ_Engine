@@ -4,7 +4,7 @@
 /// @date    2026-09-11
 #include <Engine/Asset/FluidRecipeCodec.hpp>
 
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
@@ -18,8 +18,8 @@
 #include <utility>
 
 /// @note この翻訳単位は «設定型そのもの» を端から端まで舐めるので、全項目を fluid:: で
-///       修飾すると型より修飾のほうが長くなる。読み書きの対象が FBZZFluid の型しか
-///       無いことが自明なため、ここだけ持ち込む (ヘッダーでは決してやらない)。
+/// @note 修飾すると型より修飾のほうが長くなる。読み書きの対象が FBZZFluid の型しか
+/// @note 無いことが自明なため、ここだけ持ち込む (ヘッダーでは決してやらない)。
 using namespace fbzz::fluid;
 
 namespace fbzz::asset {
@@ -27,7 +27,7 @@ namespace {
 
 using NodeView = toml::node_view<const toml::node>;
 
-/// 保存する形式の版。1 は発生源を気体 [[gas_source]] / 液体 [[liquid_emitter]] の 2 本で持っていた。
+/// @note 保存する形式の版。1 は発生源を気体 [[gas_source]] / 液体 [[liquid_emitter]] の 2 本で持っていた。
 constexpr int64_t kFormatVersion = 2;
 
 const char* KindName(FluidKind kind)
@@ -61,8 +61,8 @@ FluidShading ShadingFromName(std::string_view name)
     return FluidShading::Smoke;
 }
 
-/// ReflectFluidRecipe の Enum の選択肢。並びは enum の値、文字列は TOML に書く名前と同じにする
-/// (JSON は添字で運び、TOML は名前で書く。両者の対応はテストで縛る)。
+/// @note ReflectFluidRecipe の Enum の選択肢。並びは enum の値、文字列は TOML に書く名前と同じにする
+/// @note (JSON は添字で運び、TOML は名前で書く。両者の対応はテストで縛る)。
 constexpr const char* kKindLabels[] = { "gas", "liquid" };
 constexpr const char* kShadingLabels[] = { "smoke", "fire", "glow", "distortion", "liquid" };
 constexpr const char* kShapeLabels[] = { "sphere", "box", "cone", "ring", "texture", "capsule", "cylinder" };
@@ -78,7 +78,7 @@ const char* LabelOf(E value, const char* const (&labels)[N])
     return labels[index < N ? index : 0];
 }
 
-/// 知らない名前は既定 (添字 0) に落とす。新しい版で増えた種類を古いビルドで開いても読めるようにする。
+/// @note 知らない名前は既定 (添字 0) に落とす。新しい版で増えた種類を古いビルドで開いても読めるようにする。
 template <typename E, std::size_t N>
 E FromLabel(std::string_view name, const char* const (&labels)[N])
 {
@@ -109,8 +109,8 @@ FluidBakeSolver BakeSolverFromName(std::string_view name)
 
 /// @brief float を «最短往復» の double にする。
 /// @note 素の static_cast だと 0.1f が 0.10000000149011612 と書き出され、読んで書き戻すだけで
-///       .fluid の行が汚れ、AI の 1 項目修正が無関係な行まで動かして見え «同じレシピなら同じ
-///       バイト列» も崩れる。float として読み戻せる最短の 10 進へ畳んでから書く。
+/// @note .fluid の行が汚れ、AI の 1 項目修正が無関係な行まで動かして見え «同じレシピなら同じ
+/// @note バイト列» も崩れる。float として読み戻せる最短の 10 進へ畳んでから書く。
 double NormalizedDouble(float value)
 {
     char buffer[32]{};
@@ -151,7 +151,7 @@ math::Vector4 ReadVector4(NodeView view, const math::Vector4& fallback)
              static_cast<float>((*array)[3].value_or(static_cast<double>(fallback.w))) };
 }
 
-/// 欠けたキーは今の値のまま残す。古い .fluid に新しい設定が無くても既定値で開ける。
+/// @note 欠けたキーは今の値のまま残す。古い .fluid に新しい設定が無くても既定値で開ける。
 struct Reader {
     NodeView table;
     void Float(const char* key, float& value) const
@@ -182,7 +182,7 @@ struct Writer {
     void Vec4(const char* key, const math::Vector4& value) { table.insert(key, WriteVector4(value)); }
 };
 
-/// 表の配列を maxCount 個まで読む。表でない要素は飛ばす。
+/// @note 表の配列を maxCount 個まで読む。表でない要素は飛ばす。
 template <typename T, typename ReadElement>
 void ReadTableArray(NodeView view, std::size_t maxCount, std::vector<T>& out, ReadElement readElement)
 {
@@ -196,7 +196,7 @@ void ReadTableArray(NodeView view, std::size_t maxCount, std::vector<T>& out, Re
 
 /// @brief 表の配列を書く。空なら何も書かない。
 /// @note «key = []» は表の配列ではなく値の葉として読まれ、要素が無ければ項目も出さない
-///       Reflect の一覧 (FluidRecipeBakeTests) と食い違うため。
+/// @note Reflect の一覧 (FluidRecipeBakeTests) と食い違うため。
 template <typename T, typename WriteElement>
 void WriteTableArray(toml::table& parent, const char* key, const std::vector<T>& items, WriteElement writeElement)
 {
@@ -333,8 +333,8 @@ void ReadAmount(NodeView view, FluidAmount& amount)
                      [](const FluidAmountKey& a, const FluidAmountKey& b) { return a.time < b.time; });
 }
 
-/// キーが 1 つも無ければ節ごと書かない (WriteTableArray が空の配列を書かないのと同じ理由に加えて、
-/// «倍率 1» を意味する空の [source.amount] を既存の全ファイルへ増やさないため)。
+/// @note キーが 1 つも無ければ節ごと書かない (WriteTableArray が空の配列を書かないのと同じ理由に加えて、
+/// @note «倍率 1» を意味する空の [source.amount] を既存の全ファイルへ増やさないため)。
 void WriteAmountInto(toml::table& parent, const FluidAmount& amount)
 {
     Writer w;
@@ -499,7 +499,7 @@ FluidSource ReadV1GasSource(NodeView view)
 FluidSource ReadV1LiquidEmitter(NodeView view)
 {
     /// @note version 1 の液体の発生源は既定値が今の FluidSource と違う。欠けたキーを今の既定で埋めると、
-    ///       キーを省いて書いた古いファイルが «開いただけで別の絵» になる。当時の既定から読み始める。
+    /// @note キーを省いて書いた古いファイルが «開いただけで別の絵» になる。当時の既定から読み始める。
     FluidSource source;
     source.shape = FluidSourceShape::Sphere;
     source.center = { 0.0f, -0.6f, 0.0f };
@@ -698,10 +698,10 @@ toml::table WriteBake(const FluidBakeSettings& bake)
 }
 
 /// @name ReflectFluidRecipe
-/// 範囲は FluidInspector / Volume Flipbook Bake パネルと各ベイカーの clamp に揃える。
-/// JsonWriteReflector はこの範囲で丸めて書くので、AI が範囲外を送っても焼けない値にはならない。
+/// @note 範囲は FluidInspector / Volume Flipbook Bake パネルと各ベイカーの clamp に揃える。
+/// @note JsonWriteReflector はこの範囲で丸めて書くので、AI が範囲外を送っても焼けない値にはならない。
 
-/// 読むだけのリフレクタに通しても値を変えないよう、変わったときだけ書き戻す。
+/// @note 読むだけのリフレクタに通しても値を変えないよう、変わったときだけ書き戻す。
 template <typename E, std::size_t N>
 void ReflectEnum(scene::IReflector& r, const char* name, E& value, const char* const (&labels)[N])
 {
@@ -710,7 +710,7 @@ void ReflectEnum(scene::IReflector& r, const char* name, E& value, const char* c
     if (index != static_cast<int>(value)) value = static_cast<E>(std::clamp(index, 0, static_cast<int>(N) - 1));
 }
 
-/// FieldIf の範囲つき版。FieldIf は Field へ流すので、JSON 側の範囲の丸めが効かなくなる。
+/// @note FieldIf の範囲つき版。FieldIf は Field へ流すので、JSON 側の範囲の丸めが効かなくなる。
 void FloatRangeIf(scene::IReflector& r, const char* name, float& value, float min, float max, bool visible,
                   const char* tooltip = nullptr)
 {
@@ -1123,7 +1123,7 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     switch (preset) {
     case FluidPreset::Smoke: {
         /// @note 芯・外周リング・左右の耳の 3 役で湧かせ、repulse で押し開いてタイルを埋めるまで育てる。
-        ///       1 つの球だけだと «小さな煙玉が中央でくすぶる» 絵にしかならない。
+        /// @note 1 つの球だけだと «小さな煙玉が中央でくすぶる» 絵にしかならない。
         FluidSource& core = addSource("Core", { 0.0f, -0.5f, 0.0f }, 0.26f);
         core.density = 6.0f;
         core.temperature = 3.0f;
@@ -1180,8 +1180,8 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::Fire: {
         /// @note 燃料だけを流し込み、燃えた所に熱と少しの煤が生まれる。炎の長さは Cooling で決まる。
-        ///       口を 1 つにすると «細い蝋燭» になる。中央の柱に左右の舌と根元の輪を足して幅を作り、
-        ///       逆向きの渦 2 つで舌を内側へ巻き込む。煙は注がない (煤は燃焼からしか生まれない)。
+        /// @note 口を 1 つにすると «細い蝋燭» になる。中央の柱に左右の舌と根元の輪を足して幅を作り、
+        /// @note 逆向きの渦 2 つで舌を内側へ巻き込む。煙は注がない (煤は燃焼からしか生まれない)。
         FluidSource& column = addCone("Fuel Column", { 0.0f, -0.95f, 0.0f }, { 0.0f, 1.0f, 0.0f }, 0.24f, 0.6f);
         column.density = 0.0f;
         column.fuel = 6.5f;
@@ -1250,8 +1250,8 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
         source.duration = 0.14f;
         source.noise = 0.7f;
         /// @note 火球の周りに明るい土煙の輪を置く (2D の断面では芯の左右 2 か所)。芯の煤と色の鍵を分け、
-        ///       黒い芯と灰茶の外側が混ざる境目を albedo_ramp で描く (発生源ごとの色の見本)。
-        ///       燃料は持たせない: 燃えると膨張で芯より先に爆ぜ、火球の形が崩れる。
+        /// @note 黒い芯と灰茶の外側が混ざる境目を albedo_ramp で描く (発生源ごとの色の見本)。
+        /// @note 燃料は持たせない: 燃えると膨張で芯より先に爆ぜ、火球の形が崩れる。
         FluidSource& dust = addRing("Dust Ring", { 0.0f, -0.14f, 0.0f }, 0.38f, 0.11f);
         dust.density = 3.2f;
         dust.temperature = 0.4f;
@@ -1259,7 +1259,7 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
         dust.noise = 0.85f;
         dust.colorKey = 1.0f;
         /// @note 火球より一回り外を遅れて走る «衝撃の輪» と、そこから千切れて飛ぶ塊。芯の煙が届く前に
-        ///       画面の端まで «何かが来た» と分かる。
+        /// @note 画面の端まで «何かが来た» と分かる。
         FluidSource& shock = addRing("Shock Ring", { 0.0f, -0.1f, 0.0f }, 0.6f, 0.08f);
         shock.density = 1.6f;
         shock.temperature = 0.2f;
@@ -1320,14 +1320,14 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::Steam: {
         /// @note 細い口から噴き上がる蒸気。円錐は口で細く、上へ開くので «噴く» 形が球より出やすい。
-        ///       円錐の体積は同じ幅の球より小さい。注ぐ量が減って薄くならないよう密度を少し上げてある。
+        /// @note 円錐の体積は同じ幅の球より小さい。注ぐ量が減って薄くならないよう密度を少し上げてある。
         FluidSource& source = addCone("Jet", { 0.0f, -1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, 0.2f, 0.55f);
         source.density = 5.0f;
         source.temperature = 1.2f;
         source.velocity = { 0.0f, 2.0f, 0.0f };
         source.noise = 0.7f;
         /// @note 柱 1 本だと画面の真ん中に細い線が立つだけ。斜めの口を左右に足して裾を広げ、
-        ///       高い所へ «雲の頭» を別に湧かせて repulse で潰す (上るほど太る蒸気の形)。
+        /// @note 高い所へ «雲の頭» を別に湧かせて repulse で潰す (上るほど太る蒸気の形)。
         for (int side = 0; side < 2; ++side) {
             const float sign = side == 0 ? -1.0f : 1.0f;
             FluidSource& vent = addCone(side == 0 ? "Vent L" : "Vent R", { sign * 0.3f, -0.95f, 0.0f },
@@ -1365,7 +1365,7 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::DustBurst: {
         /// @note 床に張り付いた爆発 (着地・衝撃の土煙)。横へ這わせるだけだと床に薄い帯が残って終わるので、
-        ///       端をめくり上げてから浮かせ、立ち上がる壁にする。
+        /// @note 端をめくり上げてから浮かせ、立ち上がる壁にする。
         FluidSource& source = addSource("Impact", { 0.0f, -0.88f, 0.0f }, 0.2f);
         source.density = 2.5f;
         source.fuel = 7.0f;
@@ -1373,7 +1373,7 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
         source.duration = 0.12f;
         source.noise = 0.8f;
         /// @note 床を «掃く» 円錐を左右へ寝かせ、逆回りの渦で外側の端をめくり上げる。押し出す力だけでは
-        ///       薄い帯が床を這うだけで終わり、縦に何も無い絵になる。
+        /// @note 薄い帯が床を這うだけで終わり、縦に何も無い絵になる。
         for (int side = 0; side < 2; ++side) {
             const float sign = side == 0 ? -1.0f : 1.0f;
             FluidSource& sweep = addCone(side == 0 ? "Sweep L" : "Sweep R", { sign * 0.1f, -0.9f, 0.0f },
@@ -1448,9 +1448,9 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::Ink: {
         /// @note 浮力なし・高い渦度。噴き出した勢いだけで巻き込む (水中のインク・霊気の渦)。
-        ///       噴き出し口を横へ振る。動く速さが流れに乗り (inherit_velocity)、筋が片側へ巻き込む。
-        ///       上下から逆向きに撃ち合わせるのは «ぶつかった所で巻く» ため。1 本だけだと筋が真上へ伸びて
-        ///       途中で力尽き、タイルの半分が空のまま終わる。
+        /// @note 噴き出し口を横へ振る。動く速さが流れに乗り (inherit_velocity)、筋が片側へ巻き込む。
+        /// @note 上下から逆向きに撃ち合わせるのは «ぶつかった所で巻く» ため。1 本だけだと筋が真上へ伸びて
+        /// @note 途中で力尽き、タイルの半分が空のまま終わる。
         FluidSource& source = addSource("Nozzle", { 0.0f, -0.7f, 0.0f }, 0.1f);
         source.density = 8.0f;
         source.temperature = 0.0f;
@@ -1517,7 +1517,7 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::MagicWisp: {
         /// @note 柱 + 輪 + 周回する 2 つの玉。玉は motion のキーで «湧き口ごと» 回るので、
-        ///       力で回すのと違って輪郭が保たれたまま動く。
+        /// @note 力で回すのと違って輪郭が保たれたまま動く。
         FluidSource& source = addSource("Wisp", { 0.0f, -0.6f, 0.0f }, 0.16f);
         source.density = 3.5f;
         source.temperature = 1.4f;
@@ -1575,8 +1575,8 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::HeatHaze: {
         /// @note 見えない熱気の流れを歪みマップへ。密度は «どこが揺らぐか» のマスクとしてだけ使う。
-        ///       歪みは色を持たないので、揺れる «面積» がそのまま効き目になる。細い柱ではなく
-        ///       床いっぱいの熱の床から立ち上げる。
+        /// @note 歪みは色を持たないので、揺れる «面積» がそのまま効き目になる。細い柱ではなく
+        /// @note 床いっぱいの熱の床から立ち上げる。
         FluidSource& source = addSource("Heat Bed", { 0.0f, -0.85f, 0.0f }, 0.7f);
         source.shape = FluidSourceShape::Box;
         source.size = { 0.7f, 0.12f, 0.3f };
@@ -1618,9 +1618,9 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::WaterSplash: {
         /// @note 芯の柱 + 左右の王冠 + 上から降る霧。spread (ばらつき) は «撃ち出す速さ × spread» の
-        ///       横向きの当たりくじで、1 秒あれば当たった粒はタイルの外へ出るため小さく保ち、横幅は
-        ///       別の湧き口で作る。寿命を付けるのは、床に落ちた粒の溜まりが «粒子の数 ÷ 高さ» の幅まで
-        ///       必ず広がるため。飛沫が消えていけば、溜まりが枠を越える前に絵が終わる。
+        /// @note 横向きの当たりくじで、1 秒あれば当たった粒はタイルの外へ出るため小さく保ち、横幅は
+        /// @note 別の湧き口で作る。寿命を付けるのは、床に落ちた粒の溜まりが «粒子の数 ÷ 高さ» の幅まで
+        /// @note 必ず広がるため。飛沫が消えていけば、溜まりが枠を越える前に絵が終わる。
         FluidSource& source = addLiquidSource("Splash", { 0.0f, -0.85f, 0.0f }, 0.15f);
         source.velocity = { 0.0f, 3.6f, 0.0f };
         source.spread = 0.16f;
@@ -1662,7 +1662,7 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
         source.count = 1600;
         source.duration = 1.6f;
         /// @note 芯の弧に «ばらけた霧» を重ねて 1 本の線に見えないようにする。ばらつきは小さく保つ
-        ///       (大きくすると後ろ向きに飛ぶ粒が出て、口の左側がタイルからはみ出す)。
+        /// @note (大きくすると後ろ向きに飛ぶ粒が出て、口の左側がタイルからはみ出す)。
         FluidSource& spray = addLiquidSource("Spray", { -0.82f, -0.28f, 0.0f }, 0.07f);
         spray.velocity = { 2.1f, 1.5f, 0.0f };
         spray.spread = 0.22f;
@@ -1676,7 +1676,7 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
         rebound.startTime = 0.25f;
         rebound.duration = 1.35f;
         /// @note 弧が床の少し上を横切る所 (x ≈ 0.7) に岩を置く。噴流が天面で砕けて両側へこぼれる。
-        ///       床 (floorHeight = -0.95) に接地させ、下をくぐる隙間を作らない。
+        /// @note 床 (floorHeight = -0.95) に接地させ、下をくぐる隙間を作らない。
         FluidCollider rock;
         rock.name = "Rock";
         rock.shape = FluidColliderShape::Box;
@@ -1697,8 +1697,8 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::BloodBurst: {
         /// @note 全方位へ飛ぶ粘い雫。床は置かず、寿命で細りながら消す (被弾の飛沫)。床が無いので、
-        ///       撃ち出す速さは遅く保つ (速い粒はそのままタイルの外へ出て二度と戻らない)。«大きさ» は
-        ///       速度ではなく «湧き口の広さ» と «数» で作る (粒子どうしが押し合って広がる)。
+        /// @note 撃ち出す速さは遅く保つ (速い粒はそのままタイルの外へ出て二度と戻らない)。«大きさ» は
+        /// @note 速度ではなく «湧き口の広さ» と «数» で作る (粒子どうしが押し合って広がる)。
         FluidSource& source = addLiquidSource("Burst", { 0.0f, 0.2f, 0.0f }, 0.26f);
         source.velocity = { 0.0f, 0.3f, 0.0f };
         source.spread = 0.5f;
@@ -1734,8 +1734,8 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::LavaBlob: {
         /// @note 噴き上げた塊が落ちて、床いっぱいに広がる «溜まり» になる。粒子 1 つは «その面積» を
-        ///       要求し、床に落ちた溜まりの広さはほぼ «数 × 粒子の断面» で決まるので、粒子を増やすと
-        ///       タイルの左右から溢れる (高さは増えない)。
+        /// @note 要求し、床に落ちた溜まりの広さはほぼ «数 × 粒子の断面» で決まるので、粒子を増やすと
+        /// @note タイルの左右から溢れる (高さは増えない)。
         FluidSource& source = addLiquidSource("Blob", { 0.0f, -0.8f, 0.0f }, 0.12f);
         source.velocity = { 0.0f, 2.6f, 0.0f };
         source.spread = 0.3f;
@@ -1773,7 +1773,7 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
     case FluidPreset::PlasmaBurst: {
         /// @note 放電が弾けた «瞬間» の空気。稲妻の線そのものは VFX Line の担当で、ここは線の周りだけ。
-        ///       芯 → 輪 → 上下へ抜ける枝の 3 段で、0.8 秒のうちにタイルの端まで届いて消える。
+        /// @note 芯 → 輪 → 上下へ抜ける枝の 3 段で、0.8 秒のうちにタイルの端まで届いて消える。
         FluidSource& source = addSource("Core", { 0.0f, 0.0f, 0.0f }, 0.14f);
         source.density = 7.0f;
         source.temperature = 4.0f;
@@ -2012,8 +2012,8 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
     }
 
     /// @note 焼き方の既定。すべて 3D で焼く (6 方向ライトマップで光が回り込み、焼いた後で光の向きを変えられる)。
-    ///       以前ループものと陽炎を 2D に残していたのは、3D の焼きが末尾→先頭のクロスフェードと歪みマップを
-    ///       持たなかったため。どちらも 3D で焼けるようになり、2D に残す理由が無くなった。
+    /// @note 以前ループものと陽炎を 2D に残していたのは、3D の焼きが末尾→先頭のクロスフェードと歪みマップを
+    /// @note 持たなかったため。どちらも 3D で焼けるようになり、2D に残す理由が無くなった。
     FluidBakeSettings& bake = recipe.bake;
     bake.mode = FluidBakeMode::Volume3D;
     if (recipe.kind == FluidKind::Gas) {
@@ -2026,7 +2026,7 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
         /// @note CPU の粒子ソルバーの上限は 96³。粒子の太さに対して 64 で液面が足りる。
         bake.volumeResolution = 64;
         /// @note GPU の粒子ソルバーは入ったばかりで、CPU と同じ絵になるかをまだ見比べていない。
-        ///       出発点になるプリセットは確かめた CPU に置き、gpu はユーザーが選んで試す。
+        /// @note 出発点になるプリセットは確かめた CPU に置き、gpu はユーザーが選んで試す。
         bake.solver = FluidBakeSolver::Cpu;
     }
     return recipe;
@@ -2035,14 +2035,14 @@ FluidRecipe MakeFluidPreset(FluidPreset preset)
 bool LoadFluidRecipe(const std::string& absPath, FluidRecipe& outRecipe, std::string* outError)
 {
     std::ifstream stream(util::FileSystem::PathFromUtf8(absPath), std::ios::binary);
-    if (!stream) {
-        if (outError != nullptr) *outError = "開けません: " + absPath;
-        return false;
-    }
-    std::stringstream buffer;
-    buffer << stream.rdbuf();
-    const std::string text = buffer.str();
-    toml::parse_result parsed = toml::parse(text, absPath);
+    if (!stream) { if (outError) *outError = "開けません: " + absPath; return false; }
+    std::stringstream buffer; buffer << stream.rdbuf();
+    return LoadFluidRecipeFromToml(buffer.str(), outRecipe, outError);
+}
+
+bool LoadFluidRecipeFromToml(std::string_view text, FluidRecipe& outRecipe, std::string* outError)
+{
+    toml::parse_result parsed = toml::parse(text);
     if (!parsed) {
         if (outError != nullptr) *outError = std::string(parsed.error().description());
         return false;
@@ -2062,7 +2062,7 @@ bool LoadFluidRecipe(const std::string& absPath, FluidRecipe& outRecipe, std::st
     const auto maxSources = static_cast<std::size_t>(kMaxFluidSources);
     if (version < 2) {
         /// @note version 1 は気体と液体で別のリストを持ち、焼くときは今の kind の側しか見ていなかった。
-        ///       使われていなかった側まで移すと、kind を切り替えただけで知らない発生源が湧く。
+        /// @note 使われていなかった側まで移すと、kind を切り替えただけで知らない発生源が湧く。
         if (recipe.kind == FluidKind::Liquid)
             ReadTableArray(view["liquid_emitter"], maxSources, recipe.sources, ReadV1LiquidEmitter);
         else
@@ -2079,6 +2079,11 @@ bool LoadFluidRecipe(const std::string& absPath, FluidRecipe& outRecipe, std::st
 
 bool SaveFluidRecipe(const std::string& absPath, const FluidRecipe& recipe)
 {
+    return util::FileSystem::WriteText(absPath, SerializeFluidRecipe(recipe));
+}
+
+std::string SerializeFluidRecipe(const FluidRecipe& recipe, bool explicitDefaults)
+{
     toml::table root;
     root.insert("version", kFormatVersion);
     root.insert("kind", std::string(KindName(recipe.kind)));
@@ -2092,9 +2097,25 @@ bool SaveFluidRecipe(const std::string& absPath, const FluidRecipe& recipe)
     WriteTableArray(root, "force", recipe.forces, WriteForce);
     WriteTableArray(root, "collider", recipe.colliders, WriteCollider);
 
+    if (explicitDefaults) {
+        for (const char* key : {"source", "force", "collider"}) {
+            if (!root.contains(key)) root.insert(key, toml::array{});
+            auto* parts = root[key].as_array();
+            if (!parts) continue;
+            for (auto& node : *parts) {
+                auto* part = node.as_table(); if (!part) continue;
+                for (const char* section : {"motion", "amount"}) {
+                    if (std::string_view(section) == "amount" && std::string_view(key) == "collider") continue;
+                    if (!part->contains(section)) part->insert(section, toml::table{});
+                    auto* table = (*part)[section].as_table();
+                    if (table && !table->contains("key")) table->insert("key", toml::array{});
+                }
+            }
+        }
+    }
     std::ostringstream out;
     out << root << '\n';
-    return util::FileSystem::WriteText(absPath, out.str());
+    return out.str();
 }
 
 void ReflectFluidRecipe(FluidRecipe& recipe, scene::IReflector& r)

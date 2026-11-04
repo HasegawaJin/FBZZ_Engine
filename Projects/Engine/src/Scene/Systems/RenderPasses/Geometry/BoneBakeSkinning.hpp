@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <cstdint>
 #include <span>
@@ -18,6 +19,6 @@ struct BoneBakeSkinRequest {
     uint64_t animatorLifetime = 0;
 };
 /// @note CPU packed palettes are retained until replay succeeds, then unused matrix transfers are removed.
-void PrepareBakedSkinningRequests(RenderPassContext& context, std::span<const BoneBakeSkinRequest> requests);
-void ReleaseBoneBakeSkinningCaches();
+FBZZ_ENGINE_API void PrepareBakedSkinningRequests(RenderPassContext& context, std::span<const BoneBakeSkinRequest> requests);
+FBZZ_ENGINE_API void ReleaseBoneBakeSkinningCaches();
 }

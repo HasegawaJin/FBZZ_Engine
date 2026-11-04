@@ -5,7 +5,7 @@
 #include "Engine/Audio/AudioManager.hpp"
 #include "Engine/Audio/Synth.hpp"
 #include "Engine/Core/Logger.hpp"
-#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/AssetPath.hpp>
 #include <Engine/Asset/SynthAsset.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
@@ -65,7 +65,7 @@ std::string LowerExtension(const std::string& path)
 /// @note 生のまま ifstream へ渡すと、カレントディレクトリ次第で読めない。
 std::string ResolveClipPath(const std::string& path)
 {
-    const std::string resolved = asset::AssetManager::ResolveAssetPath(path);
+    const std::string resolved = asset::ResolveAssetPath(path);
     if (!resolved.empty() && util::FileSystem::Exists(resolved)) return resolved;
     return path;
 }

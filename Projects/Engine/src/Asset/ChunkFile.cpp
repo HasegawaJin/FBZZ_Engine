@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
 #include <Engine/Asset/ChunkFile.hpp>
+#include <Core/Util/AtomicFileReplace.hpp>
 #include "AtomicChunkFileWrite.hpp"
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -115,36 +116,8 @@ public:
 
     detail::AtomicWriteError Publish()
     {
-        std::error_code error;
-        const auto target = std::filesystem::absolute(m_target, error);
-        if (error) return {error};
-        const auto& name = target.native();
-        if (name.size() > (MAXDWORD - sizeof(FILE_RENAME_INFO) - sizeof(wchar_t)) / sizeof(wchar_t))
-            return {{ERROR_FILENAME_EXCED_RANGE, std::system_category()}, ERROR_FILENAME_EXCED_RANGE};
-        FILE_RENAME_INFO rename{};
-        rename.Flags = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
-        rename.FileNameLength = static_cast<DWORD>(name.size() * sizeof(wchar_t));
-        std::vector<uint8_t> bytes(sizeof(rename) + rename.FileNameLength + sizeof(wchar_t), 0);
-        std::memcpy(bytes.data(), &rename, sizeof(rename));
-        std::memcpy(bytes.data() + offsetof(FILE_RENAME_INFO, FileName), name.data(), rename.FileNameLength);
-        const HANDLE source = ::CreateFileW(m_temporary.c_str(), DELETE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (source == INVALID_HANDLE_VALUE) {
-            const DWORD code = ::GetLastError();
-            return {{static_cast<int>(code), std::system_category()}, code};
-        }
-        /// @note POSIX replacement preserves open old snapshots; MoveFileEx cannot replace an open target even with delete sharing.
-        /// @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information FILE_RENAME_POSIX_SEMANTICS.
-        const BOOL replaced = ::SetFileInformationByHandle(source, FileRenameInfoEx, bytes.data(), static_cast<DWORD>(bytes.size()));
-        const DWORD code = replaced ? ERROR_SUCCESS : ::GetLastError();
-        ::CloseHandle(source);
-        if (replaced) return {};
-        /// @note Older filesystems may not support the extended rename class. Retain the previous closed-target behavior only there.
-        if (code == ERROR_INVALID_PARAMETER || code == ERROR_NOT_SUPPORTED || code == ERROR_INVALID_FUNCTION) {
-            std::filesystem::rename(m_temporary, m_target, error);
-            return {error};
-        }
-        return {{static_cast<int>(code), std::system_category()}, code};
+        const auto error = util::ReplaceFileAtomic(m_temporary, m_target);
+        return {error, error.category() == std::system_category() ? static_cast<DWORD>(error.value()) : 0};
     }
 
     detail::AtomicWriteError Cleanup()
@@ -267,18 +240,28 @@ bool BinaryReader::OpenReplaceableChunkStream(const std::string& path)
 bool ChunkFileReader::Open(const std::string& path)
 {
     m_entries.clear();
+    m_header = {};
     if (!m_reader.OpenReplaceableChunkStream(path)) return false;
-    if (!m_reader.Read(m_header)) return false;
-    if (m_header.magic[0] != 'F' || m_header.magic[1] != 'Z' || m_header.magic[2] != 'C' || m_header.magic[3] != 'K'
-        || m_header.version != FZCHUNK_VERSION)
-        return false;
+    const auto fail = [&] { m_reader.Close(); return false; };
+    FzChunkFileHeader header{};
+    if (!m_reader.Read(header)) return fail();
+    if (header.magic[0] != 'F' || header.magic[1] != 'Z' || header.magic[2] != 'C' || header.magic[3] != 'K'
+        || header.version != FZCHUNK_VERSION)
+        return fail();
     /// @note 壊れた数で巨大な確保をしない。索引がファイルに収まるかを先に確かめる。
-    const uint64_t indexBytes = static_cast<uint64_t>(m_header.chunkCount) * sizeof(FzChunkEntry);
-    if (sizeof(FzChunkFileHeader) + indexBytes > m_reader.Size()) return false;
-    m_entries.resize(m_header.chunkCount);
-    if (!m_reader.ReadBytes(m_entries.data(), static_cast<std::size_t>(indexBytes))) return false;
-    for (const FzChunkEntry& entry : m_entries)
-        if (entry.offset + entry.storedSize > m_reader.Size() || entry.flags != FZCHUNK_FLAG_STORED) return false;
+    const uint64_t indexBytes = static_cast<uint64_t>(header.chunkCount) * sizeof(FzChunkEntry);
+    const uint64_t payloadStart = sizeof(FzChunkFileHeader) + indexBytes;
+    const uint64_t fileSize = m_reader.Size();
+    if (payloadStart > fileSize) return fail();
+    std::vector<FzChunkEntry> entries(header.chunkCount);
+    if (!m_reader.ReadBytes(entries.data(), static_cast<std::size_t>(indexBytes))) return fail();
+    /// @note 非負の残量で比較し、offset + storedSize の桁あふれを避ける。v1 の無圧縮本体は索引の後に置く。
+    for (const FzChunkEntry& entry : entries)
+        if (entry.offset < payloadStart || entry.offset > fileSize || entry.storedSize > fileSize - entry.offset
+            || entry.flags != FZCHUNK_FLAG_STORED || entry.rawSize != entry.storedSize) return fail();
+    /// @note 一件でも壊れていたら Find / ReadChunk から検証途中の索引を参照させない。
+    m_header = header;
+    m_entries = std::move(entries);
     return true;
 }
 

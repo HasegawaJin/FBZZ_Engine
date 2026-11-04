@@ -34,6 +34,7 @@ public:
     /// Animation Preview の表示トグル・カメラ角を EditorLocalState.toml と往復させる。
     void OnLoadSettings(const EditorSettings& settings) override;
     void OnSaveSettings(EditorSettings& settings) const override;
+    void OnRegisterOperators(OperatorRegistry& registry) override;
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
@@ -59,4 +60,4 @@ private:
     MaterialPreviewView  m_materialPreview;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

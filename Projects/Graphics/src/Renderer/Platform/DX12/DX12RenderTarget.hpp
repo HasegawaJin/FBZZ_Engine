@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/Format.hpp>
 #include <Graphics/Renderer/IRenderTarget.hpp>
@@ -18,32 +19,32 @@ class DX12StateTracker;
 class DX12RenderTarget final : public IRenderTarget {
 public:
     static constexpr uint32_t MAX_COLOR = 8;
-    ~DX12RenderTarget() override;
-    bool Init(DX12Context* context, DX12StateTracker* tracker,
+    FBZZ_GRAPHICS_API ~DX12RenderTarget() override;
+    FBZZ_GRAPHICS_API bool Init(DX12Context* context, DX12StateTracker* tracker,
               uint32_t width, uint32_t height, const RenderTargetDesc& desc);
-    bool InitCubemap(DX12Context* context, DX12StateTracker* tracker,
+    FBZZ_GRAPHICS_API bool InitCubemap(DX12Context* context, DX12StateTracker* tracker,
                      uint32_t size, uint32_t mipCount);
     uint32_t GetWidth() const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
     uint32_t GetColorCount() const override { return m_colorCount; }
-    void* GetNativeSRV(int slot = 0) const override;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetRtv(uint32_t index) const;
+    FBZZ_GRAPHICS_API void* GetNativeSRV(int slot = 0) const override;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetRtv(uint32_t index) const;
     /// @note Cube faces share depth per mip; the caller clears it after selecting each capture face.
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_tex2d_dsv DSV mip selection.
-    D3D12_CPU_DESCRIPTOR_HANDLE GetDsv(uint32_t mip = 0) const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetColorSrv(uint32_t index) const;
-    D3D12_GPU_DESCRIPTOR_HANDLE GetColorSrvGpu(uint32_t index) const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetDepthSrv() const;
-    ID3D12Resource* GetColorResource(uint32_t index) const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetDsv(uint32_t mip = 0) const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetColorSrv(uint32_t index) const;
+    FBZZ_GRAPHICS_API D3D12_GPU_DESCRIPTOR_HANDLE GetColorSrvGpu(uint32_t index) const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetDepthSrv() const;
+    FBZZ_GRAPHICS_API ID3D12Resource* GetColorResource(uint32_t index) const;
     ID3D12Resource* GetDepthResource() const { return m_depth.Get(); }
     bool            HasDepth() const { return m_depth != nullptr; }
     /// @brief 深度が Reversed-Z か。深度を持たない RT では false。
     bool            IsReversedZ() const override { return m_reversedZ; }
     DXGI_FORMAT GetColorFormat() const { return m_colorFormat; }
-    void TransitionColorForRead(ID3D12GraphicsCommandList* commands, uint32_t index);
+    FBZZ_GRAPHICS_API void TransitionColorForRead(ID3D12GraphicsCommandList* commands, uint32_t index);
     bool IsCubemap() const { return m_isCubemap; }
     uint32_t GetMipCount() const { return m_mipCount; }
-    D3D12_CPU_DESCRIPTOR_HANDLE GetFaceRtv(uint32_t face, uint32_t mip) const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetFaceRtv(uint32_t face, uint32_t mip) const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetCubeSrv() const { return m_srvHeap->GetCPUDescriptorHandleForHeapStart(); }
     ID3D12Resource* GetCubeResource() const { return m_cube.Get(); }
 

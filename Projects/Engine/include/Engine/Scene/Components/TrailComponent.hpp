@@ -3,10 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-06
 #pragma once
+#include <Engine/Scene/Components/TransientGpuState.hpp>
 
 #include <Graphics/Effects/RenderTrailInput.hpp>
 #include <Engine/Scene/ParticleCurve.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <cstdint>
@@ -22,7 +23,18 @@ using renderer::TrailWidthEasing;
 
 /// @brief GameObject に追従するトレイルの設定とランタイム状態。
 /// @note System がリングバッファへ制御点を追加し、毎フレーム GPU 頂点バッファへリボンを展開する。
-struct TrailComponent {
+/// @note GPU 所有権と再確保用キャッシュは Component の値コピーへ含めない。
+struct TrailComponentGpuState {
+    /// @brief GPU リソースは保存対象ではない。帯の頂点は TrailRenderPass がビューごとにプールから借りる。
+    /// @note Scene View と Game View で帯の形が違うため、Component に 1 本持たせると奪い合う。
+    renderer::ResourceHandle<renderer::TextureTag> texture;
+    renderer::OwnedResource<renderer::ConstantBufferTag> trailCB;
+    std::string loadedTexturePath;
+    std::string loadedMaterialPath; ///< @note materialPath の変更検出用。シーン保存対象外。
+
+};
+
+struct TrailComponent : TransientGpuState<TrailComponentGpuState> {
     bool enabled = true;
 
     float duration       = 1.0f;
@@ -95,13 +107,6 @@ struct TrailComponent {
     int   ringCount      = 0;
     float lastSampleTime = -1.0f;
     uint64_t lastExtractionFrame = UINT64_MAX;
-
-    /// @brief GPU リソースは保存対象ではない。帯の頂点は TrailRenderPass がビューごとにプールから借りる。
-    /// @note Scene View と Game View で帯の形が違うため、Component に 1 本持たせると奪い合う。
-    renderer::ResourceHandle<renderer::TextureTag> texture;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> trailCB;
-    std::string loadedTexturePath;
-    std::string loadedMaterialPath; ///< @note materialPath の変更検出用。シーン保存対象外。
 
     const char* GetTypeName() const { return "Trail"; }
 

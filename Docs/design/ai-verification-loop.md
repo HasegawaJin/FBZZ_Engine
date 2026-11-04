@@ -100,7 +100,8 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 
 - `node Projects/DevTools/AgentLint/lint.mjs <files...>` / `--changed` (git の差分)。PostToolUse フックでは編集したファイル 1 本を見る。コメント規約の詳細は `Docs/conventions/comments.md`
 - 共有するのは `.claude/settings.json` (フックと AgentBuild / lint の許可) と `.claude/skills/` (verify-cpp / playtest / add-bus-command / add-script-proxy / add-script)。`settings.local.json` は個人設定なので追跡しない
-- **error** (フックが止める): `new` / `delete` 式、`throw`、`dynamic_cast`、`std::ranges`、コルーチン、`import` モジュール、ヘッダーの `<Windows.h>`、エンジンヘッダーの `using namespace`、`.generated.hpp`、禁止ライブラリの include、生成物 (`ScriptList.inl` / `DataAssetList.inl`) の手編集、4 行ヘッダーの欠落、シェーダー複製の不一致、ツール置き場 (`Tools/` / `Projects/DevTools/` / `<Project>/Tools/`) の索引 `README.md` に無いファイル (`tool-unlisted`。拡張子を問わない)、ASCII 以外を含むのに BOM の無い `.ps1` (`ps1-bom`。Windows PowerShell 5.1 が CP932 で読んで構文エラーになる)。
+- **error** (フックが止める): `new` / `delete` 式、`throw`、`dynamic_cast`、`std::ranges`、Coroutine 共通実装外の中断構文・標準 coroutine ABI、`import` モジュール、ヘッダーの `<Windows.h>`、エンジンヘッダーの `using namespace`、`.generated.hpp`、禁止ライブラリの include、生成物 (`ScriptList.inl` / `DataAssetList.inl`) の手編集、4 行ヘッダーの欠落、シェーダー複製の不一致、ツール置き場 (`Tools/` / `Projects/DevTools/` / `<Project>/Tools/`) の索引 `README.md` に無いファイル (`tool-unlisted`。拡張子を問わない)、ASCII 以外を含むのに BOM の無い `.ps1` (`ps1-bom`。Windows PowerShell 5.1 が CP932 で読んで構文エラーになる)。
+- Coroutine の中断構文は `Engine/Scene/Coroutine.hpp` と内部 `Scene/CoroutineFrameLoop.cpp` のみに限定する。利用側が Coroutine.hpp を include しても検査の対象外にはならない。所有・待機・停止の境界は [engine-module-boundaries.md](engine-module-boundaries.md) を参照する。
 - **warn** (文脈へ返すだけ): `//` の自由記述コメント (旧コードに大量にあるため止めない)、`reinterpret_cast` (定数バッファ転送のみ可)、テスト `.cpp` の CMake 登録漏れ。
 - 判定はコメントと文字列リテラルを空白に潰してから行う (`= delete` と «new» という単語を誤検出しない)。
 

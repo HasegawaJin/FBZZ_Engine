@@ -2,6 +2,7 @@
 /// @brief   Production terrain LOD borders remain identical and holes retain their authored footprint.
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include "../../../Engine/src/Scene/Systems/RenderPasses/Geometry/TerrainPatchIndices.hpp"

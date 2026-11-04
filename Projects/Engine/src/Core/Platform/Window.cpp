@@ -5,6 +5,8 @@
 /// @note /// Input へのメッセージ転送、リサイズ通知、WndProc フックをまとめる。
 /// @note Renderer / ImGui とはコールバックで疎結合に接続する。
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 #include "Engine/Core/Window.hpp"
 #include "Engine/Core/Cursor.hpp"
 #include "Engine/Core/Logger.hpp"
@@ -17,6 +19,7 @@
 #include <ole2.h>
 #include <oleidl.h>
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <filesystem>
 #include <string>
@@ -189,6 +192,15 @@ namespace
     public:
         FileDropTarget(Window* window, HWND hwnd) : m_window(window), m_hwnd(hwnd) {}
 
+        /// @note COM の最終 Release まで単独所有を保ち、戻り値は参照カウント操作用の借用とする。
+        static FileDropTarget* Create(Window* window, HWND hwnd)
+        {
+            auto owner = std::make_unique<FileDropTarget>(window, hwnd);
+            auto* target = owner.get();
+            target->m_lifetime = std::move(owner);
+            return target;
+        }
+
         /// @note IUnknown
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override
         {
@@ -204,7 +216,9 @@ namespace
         ULONG STDMETHODCALLTYPE Release() override
         {
             const ULONG r = --m_refCount;
-            if (r == 0) delete this;
+            if (r == 0) {
+                auto retired = std::move(m_lifetime);
+            }
             return r;
         }
 
@@ -250,6 +264,7 @@ namespace
             if (m_window) m_window->InvokeFileDragOver(p.x, p.y);
         }
 
+        std::unique_ptr<FileDropTarget> m_lifetime;
         Window* m_window  = nullptr;
         HWND    m_hwnd    = nullptr;
         ULONG   m_refCount = 1;
@@ -281,7 +296,7 @@ namespace
             if (!item.children.empty()) {
                 HMENU submenu = CreatePopupMenu();
                 AppendNativeMenuItems(submenu, item.children);
-                AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), item.label.c_str());
+                AppendMenuW(menu, MF_POPUP, std::bit_cast<UINT_PTR>(submenu), item.label.c_str());
                 continue;
             }
 
@@ -289,6 +304,13 @@ namespace
         }
     }
 }
+
+struct Window::PlacementState {
+    WINDOWPLACEMENT m_value{sizeof(WINDOWPLACEMENT)};
+};
+
+Window::Window() : m_placement(std::make_unique<PlacementState>()) {}
+Window::~Window() = default;
 
 bool Window::Initialize(const Config& config)
 {
@@ -305,7 +327,7 @@ bool Window::Initialize(const Config& config)
     wc.hInstance     = instance;
     wc.hIcon         = LoadApplicationIcon(instance, GetSystemMetrics(SM_CXICON));
     wc.hIconSm       = LoadApplicationIcon(instance, GetSystemMetrics(SM_CXSMICON));
-    wc.hCursor       = LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_ARROW));
+    wc.hCursor       = LoadCursorW(nullptr, std::bit_cast<LPCWSTR>(IDC_ARROW));
     wc.lpszClassName = kWindowClassName;
 
     RegisterClassExW(&wc);
@@ -340,10 +362,10 @@ bool Window::Initialize(const Config& config)
     if (SUCCEEDED(OleInitialize(nullptr))) {
         m_oleInitialized = true;
         /// @note ref=1 (自分の参照)
-        auto* target = new FileDropTarget(this, m_hwnd);
+        auto* target = FileDropTarget::Create(this, m_hwnd);
         if (RegisterDragDrop(m_hwnd, target) == S_OK) {
             /// @note RegisterDragDrop が AddRef 済み。自分の初期参照は手放し、OLE 側の 1 参照だけ残す。
-            /// @note Shutdown の RevokeDragDrop がその最後の参照を解放して delete させる。
+            /// @note Shutdown の RevokeDragDrop が最後の参照を返却して破棄する。
             m_dropTarget = target;
             target->Release();
         } else {
@@ -377,8 +399,8 @@ void Window::SetWindowMode(WindowMode mode)
     if (mode == WindowMode::BorderlessFullscreen) {
         /// @note 復帰用にウィンドウ配置を控える。WS_OVERLAPPEDWINDOW を戻すだけでは
         /// @note 位置とサイズがフルスクリーンのまま残る。
-        m_windowedPlacement.length = sizeof(WINDOWPLACEMENT);
-        m_hasWindowedPlacement = GetWindowPlacement(m_hwnd, &m_windowedPlacement) != FALSE;
+        m_placement->m_value.length = sizeof(WINDOWPLACEMENT);
+        m_hasWindowedPlacement = GetWindowPlacement(m_hwnd, &m_placement->m_value) != FALSE;
 
         const RECT monitor = GetMonitorRectFor(m_hwnd);
         SetWindowLongPtrW(m_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
@@ -390,7 +412,7 @@ void Window::SetWindowMode(WindowMode mode)
     } else {
         SetWindowLongPtrW(m_hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
         if (m_hasWindowedPlacement)
-            SetWindowPlacement(m_hwnd, &m_windowedPlacement);
+            SetWindowPlacement(m_hwnd, &m_placement->m_value);
         /// @note 新しい枠を反映させる。SetWindowPlacement だけでは非クライアント領域が再計算されない。
         SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
@@ -559,12 +581,12 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 {
     if (msg == WM_NCCREATE)
     {
-        auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+        auto* cs = std::bit_cast<CREATESTRUCTW*>(lParam);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, std::bit_cast<LONG_PTR>(cs->lpCreateParams));
         return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 
-    auto* window = reinterpret_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    auto* window = std::bit_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 
     /// @note Safety lifecycle must run even when the ImGui hook consumes a window message.
     if (msg == WM_ACTIVATEAPP) {
@@ -631,7 +653,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         /// @note PER_MONITOR_AWARE_V2 は非クライアント領域の再スケールのみ OS が自動処理するため、
         /// @note ウィンドウ本体の寸法を新 DPI へ合わせるのはアプリの責務 (放置すると移動先モニターで
         /// @note 全体が相対的に小さく/大きくなる)。lParam は OS 算出の推奨矩形 (新 DPI・フレーム込み)。
-        const auto* suggested = reinterpret_cast<const RECT*>(lParam);
+        const auto* suggested = std::bit_cast<const RECT*>(lParam);
         if (!suggested) return 0;
 
         SetWindowPos(hwnd, nullptr,

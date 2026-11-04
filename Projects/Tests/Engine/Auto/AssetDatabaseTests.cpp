@@ -10,12 +10,14 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Core/Concurrency/TaskSystem.hpp>
 
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 namespace fbzz::tests {
 namespace {
@@ -178,7 +180,7 @@ TEST_F(AssetRefTest, GeneratedArtefactsDoNotGetMeta)
 TEST_F(AssetRefTest, AtomicSaveTempFilesDoNotGetMeta)
 {
     /// @note 原子的な保存の途中経過。rename で消える相手に .meta を発行すると孤児が残る。
-    ///       一時名は .tmp の «後ろ» に pid とハッシュが付くので、末尾拡張子だけでは弾けない。
+    /// @note 一時名は .tmp の «後ろ» に pid とハッシュが付くので、末尾拡張子だけでは弾けない。
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("stage_01.scene.tmp.3588.b6c904700d2b"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("keyicons.hpp.tmp.3588.44fddd02650a"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("player.tmp"));
@@ -191,7 +193,7 @@ TEST_F(AssetRefTest, AtomicSaveTempFilesDoNotGetMeta)
 TEST_F(AssetRefTest, NonFileLikeNamesDoNotGetMeta)
 {
     /// @note EncodeGuidRefs は文書中の全文字列にこの判定を掛ける。
-    ///       «拡張子に見えるだけの値» をディスクへ問い合わせに行かせない。
+    /// @note «拡張子に見えるだけの値» をディスクへ問い合わせに行かせない。
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("license"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta(".gitignore"));
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("player.001"));
@@ -255,6 +257,41 @@ TEST_F(AssetDatabaseTest, GeneratesMetaForAssetsFoundDuringInit)
 
     EXPECT_TRUE(std::filesystem::exists(texture.string() + ".meta"));
     EXPECT_TRUE(IsLowerHex32(AssetDatabase::TryGetGuidFromPath(Utf8(texture))));
+}
+
+TEST_F(AssetDatabaseTest, ParallelInitPreservesExistingAndRepairedGuids)
+{
+    ASSERT_EQ(TaskSystem::WorkerCount(), 0);
+    std::vector<std::string> paths;
+    std::vector<std::string> guids;
+    for (int i = 0; i < 96; ++i) {
+        const auto path = AssetsRoot() / "Textures" / (std::to_string(i) + ".png");
+        WriteFile(path, "texture");
+        paths.push_back(Utf8(path));
+    }
+    WriteFile(AssetsRoot() / "Unimported.fbx", "source");
+    WriteFile(AssetsRoot() / "Textures" / "ignored.cso", "generated");
+    WriteFile(AssetsRoot() / "orphan.png.meta", "[meta]\nguid = 'orphan'\n");
+    InitDatabase();
+    for (const auto& path : paths) guids.push_back(AssetDatabase::TryGetGuidFromPath(path));
+    const auto repaired = AssetsRoot() / "Textures" / "repaired.png";
+    WriteFile(repaired, "missing metadata");
+
+    struct PoolScope {
+        PoolScope() { TaskSystem::Init(2); }
+        ~PoolScope() { TaskSystem::Shutdown(); }
+    } pool;
+    InitDatabase();
+
+    for (size_t i = 0; i < paths.size(); ++i) {
+        EXPECT_EQ(AssetDatabase::TryGetGuidFromPath(paths[i]), guids[i]);
+        EXPECT_EQ(AssetDatabase::PathFromGuid(guids[i]), paths[i]);
+    }
+    EXPECT_TRUE(IsLowerHex32(AssetDatabase::TryGetGuidFromPath(Utf8(repaired))));
+    EXPECT_FALSE(std::filesystem::exists((AssetsRoot() / "Unimported.fbx.meta")));
+    EXPECT_FALSE(std::filesystem::exists((AssetsRoot() / "Textures" / "ignored.cso.meta")));
+    EXPECT_TRUE(std::filesystem::exists(AssetsRoot() / "orphan.png.meta"));
+    EXPECT_EQ(AssetDatabase::GuidConflictCount(), 0u);
 }
 
 TEST_F(AssetDatabaseTest, ResolvesTheGuidBackToItsPath)
@@ -462,7 +499,7 @@ TEST_F(AssetDatabaseTest, SweepRefusesToRunWithoutAnIndex)
 TEST_F(AssetDatabaseTest, CopiesOfTheSameAssetAreNotReportedAsDuplicates)
 {
     /// @note エンジンは共通シェーダーをプロジェクトの Assets へ配る。.meta ごとコピーされるので
-    ///       guid も同じになるが、これは «同じアセットが 2 箇所にある» だけで衝突ではない。
+    /// @note guid も同じになるが、これは «同じアセットが 2 箇所にある» だけで衝突ではない。
     const std::string guid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const std::string meta =
         "file_format_version = 1\n\n[meta]\nguid = '" + guid + "'\n";
@@ -487,7 +524,7 @@ TEST_F(AssetDatabaseTest, CopiesOfTheSameAssetAreNotReportedAsDuplicates)
 TEST_F(AssetDatabaseTest, DifferentAssetsSharingAGuidAreStillReported)
 {
     /// @note Assets からの相対パスが違う = 別のアセットが同じ guid を名乗っている。
-    ///       これは参照が黙って他人へ吸われる本物の衝突なので、報告しなければならない。
+    /// @note これは参照が黙って他人へ吸われる本物の衝突なので、報告しなければならない。
     const std::string guid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     const std::string meta =
         "file_format_version = 1\n\n[meta]\nguid = '" + guid + "'\n";
@@ -508,7 +545,7 @@ TEST_F(AssetDatabaseTest, DifferentAssetsSharingAGuidAreStillReported)
 TEST_F(AssetDatabaseTest, TheSameFileUnderTwoSpellingsIsNotADuplicate)
 {
     /// @note 索引には絶対パスが載るが、参照解決は大文字小文字や区切りの違う表記で入ってくる。
-    ///       同じ実体なら «重複» ではないので、警告も衝突記録もしてはいけない。
+    /// @note 同じ実体なら «重複» ではないので、警告も衝突記録もしてはいけない。
     const std::string guid = "cccccccccccccccccccccccccccccccc";
     const std::filesystem::path texture = AssetsRoot() / "Textures" / "Player.png";
     WriteFile(texture, "png");

@@ -1001,7 +1001,7 @@ void EditorApp::TickHlslCompile()
         if (!SyncCompiledShadersToRuntimeAssets(m_hlslSourceDir)) {
             FBZZ_LOG_WARN("HLSL: runtime CSO sync failed; renderer may still use stale shader binaries");
         }
-        if (auto* resources = renderer::ResourceManager::Active();
+        if (auto* resources = m_resources;
             resources && !resources->ReloadAllShaders()) {
             SetHotReloadState(EditorContext::HotReloadState::Failed,
                               "HLSL: reload failed; previous shaders retained");

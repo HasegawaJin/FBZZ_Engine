@@ -2,6 +2,7 @@
 /// @brief   水面の実効波の解決と、剛体の着水 (波紋・しぶき・航跡) の検出。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Systems/WaterSystem.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
@@ -24,7 +25,7 @@
 #include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/Fields/FlowFieldFrame.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
-#include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
+#include <Engine/Scene/WaterInteraction.hpp>
 #include <Math/MathUtils.hpp>
 #include <Physics/RigidBody.hpp>
 #include <algorithm>

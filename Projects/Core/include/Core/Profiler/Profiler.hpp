@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-02
 #pragma once
+#include <Core/Api.hpp>
 
 #include <Core/Profiler/ProfilerMarker.hpp>
 #include <Core/Profiler/ProfileRecorder.hpp>
@@ -56,31 +57,31 @@ struct ProfilerCheckpoint {
 class Profiler {
 public:
     /// @note 即時に token と公開データを失効させる旧契約。新 UI は RequestRecording を使う。
-    static void SetEnabled(bool enabled);
-    static bool IsEnabled();
+    FBZZ_CORE_API static void SetEnabled(bool enabled);
+    FBZZ_CORE_API static bool IsEnabled();
     /// @note frame 境界へ未適用の要求も含め、recording の意図を返す。
-    static bool IsRecordingRequested();
-    static void RequestRecording(bool recording);
-    static void RequestClear();
+    FBZZ_CORE_API static bool IsRecordingRequested();
+    FBZZ_CORE_API static void RequestRecording(bool recording);
+    FBZZ_CORE_API static void RequestClear();
     /// @note 全 Performance スレッドへ次の BeginFrame で適用し、変更時は新しい session を開始する。
     /// @return category が128 byte、scope が256 byteを超える要求は変更せず false。
-    static bool RequestCaptureFilter(PerformanceCaptureFilter filter);
-    static PerformanceCaptureFilter GetRequestedCaptureFilter();
-    static void BeginFrame();
-    static void BeginFrame(uint64_t applicationFrameSerial, double frameStartMs);
-    static void EndFrame();
-    static void BeginSample(const ProfilerMarker& marker);
-    static void EndSample();
-    static ProfileToken BeginScope(const ProfilerMarker& marker);
-    static void EndScope(ProfileToken token);
-    static void PushMarker(const ProfilerMarker& marker);
+    FBZZ_CORE_API static bool RequestCaptureFilter(PerformanceCaptureFilter filter);
+    FBZZ_CORE_API static PerformanceCaptureFilter GetRequestedCaptureFilter();
+    FBZZ_CORE_API static void BeginFrame();
+    FBZZ_CORE_API static void BeginFrame(uint64_t applicationFrameSerial, double frameStartMs);
+    FBZZ_CORE_API static void EndFrame();
+    FBZZ_CORE_API static void BeginSample(const ProfilerMarker& marker);
+    FBZZ_CORE_API static void EndSample();
+    FBZZ_CORE_API static ProfileToken BeginScope(const ProfilerMarker& marker);
+    FBZZ_CORE_API static void EndScope(ProfileToken token);
+    FBZZ_CORE_API static void PushMarker(const ProfilerMarker& marker);
     /// @note join 後の外部経過時間は Self と開始位置を unavailable とする。
-    static void PushSample(const ProfilerMarker& marker, double elapsedMs);
-    static ProfilerCheckpoint Checkpoint();
-    static void Recover(ProfilerCheckpoint checkpoint);
-    static const std::vector<ProfileRecord>& GetLastFrameRecords();
-    static uint64_t GetLastFrameIndex();
-    static const PerformanceSnapshot& GetSnapshot();
+    FBZZ_CORE_API static void PushSample(const ProfilerMarker& marker, double elapsedMs);
+    FBZZ_CORE_API static ProfilerCheckpoint Checkpoint();
+    FBZZ_CORE_API static void Recover(ProfilerCheckpoint checkpoint);
+    FBZZ_CORE_API static const std::vector<ProfileRecord>& GetLastFrameRecords();
+    FBZZ_CORE_API static uint64_t GetLastFrameIndex();
+    FBZZ_CORE_API static const PerformanceSnapshot& GetSnapshot();
 };
 
 } /// @note namespace fbzz::profiler

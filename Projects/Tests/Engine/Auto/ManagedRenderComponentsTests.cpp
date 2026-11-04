@@ -2,6 +2,7 @@
 /// @brief   描画 bridge の検証、native birth と実 CoreCLR facade・保存・catalog を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-06
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Scene.hpp>

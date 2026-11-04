@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/RayTracing/RayScene.hpp>
 #include <Graphics/Pipeline/RenderPipeline.hpp>
 
@@ -48,8 +49,8 @@ public:
     /// @pre フレーム内の DIRECT queue で、compute batch / 非同期区間の外から呼ぶ。
     /// @note 需要のあるビューだけが呼ぶ。新規 AS は共有準備 graph を実行してから公開する。
     /// @note TLAS inputs and each immutable table are compared independently; failed preparation never publishes prior handles as current.
-    [[nodiscard]] RaySceneGpu Prepare(const RayScene& scene, RenderPassContext& context);
-    void Release(ResourceManager& resources);
+    [[nodiscard]] FBZZ_GRAPHICS_API RaySceneGpu Prepare(const RayScene& scene, RenderPassContext& context);
+    FBZZ_GRAPHICS_API void Release(ResourceManager& resources);
     void Trim(ResourceManager& resources, uint64_t frameStamp) { Prune(resources, frameStamp); }
     [[nodiscard]] uint32_t BottomLevelCount() const { return static_cast<uint32_t>(m_geometry.size()); }
 private:
@@ -67,7 +68,7 @@ private:
         RaySceneGpu gpu;
         uint64_t lastUse = 0;
     };
-    void Prune(ResourceManager& resources, uint64_t frameStamp);
+    FBZZ_GRAPHICS_API void Prune(ResourceManager& resources, uint64_t frameStamp);
     std::vector<GeometryEntry> m_geometry;
     std::vector<SceneEntry> m_scenes;
     RenderPipeline m_preparation;

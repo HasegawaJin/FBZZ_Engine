@@ -2,6 +2,7 @@
 /// @brief   実 CoreCLR へ Engine 通知の値・権限・所有購読・世代と障害を転送する回帰。
 /// @author  Hasegawa Jin
 /// @date    2026-10-06
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Core/Scheduler/SystemScheduler.hpp>
@@ -47,7 +48,7 @@ protected:
         m_adapter = Attach(*m_owner);
         ASSERT_NE(m_adapter, nullptr);
         m_scheduler.AddSystem<scene::ScriptSystem>();
-        m_scheduler.Build();
+        ASSERT_TRUE(m_scheduler.Build());
         Tick();
         ASSERT_FALSE(m_adapter->IsRuntimeFaulted()) << m_adapter->FaultDiagnostic();
     }

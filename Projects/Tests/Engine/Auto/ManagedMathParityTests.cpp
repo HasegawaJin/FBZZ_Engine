@@ -2,6 +2,7 @@
 /// @brief   実 CoreCLR の純計算を自作 Math と比較し、閾値・外挿・成分配置を守る。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Managed/ManagedScriptAdapter.hpp>

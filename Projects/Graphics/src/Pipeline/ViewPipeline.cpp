@@ -497,7 +497,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         if (passCtx.rayReflectionPassActive)
             BuildRayReflectionPipeline(pipeline, viewTargets, shared, passCtx);
     }, passCtx.hybridReflectionSsrPlanned);
-    BuildWaterComposition(pipeline);
 
     if (extensions.setup) extensions.setup();
 
@@ -514,6 +513,9 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note 画面を歪める効果をこの後 (SceneHDR) に置くと、既に描かれたパーティクルごと曲がって
     /// @note «エフェクトだけ別の場所に居る» 絵になる。
     appendCustomHdrPasses("CustomAfterOpaque", customAfterOpaqueIndices);
+
+    BuildGeometryTransparency(pipeline, opaquePlan);
+    BuildWaterComposition(pipeline);
 
     /// @note デカール用深度スナップショット
     /// @note 深度専用 RT (colorCount = 0)。カラーを持つ RT と貸し回してはいけない。

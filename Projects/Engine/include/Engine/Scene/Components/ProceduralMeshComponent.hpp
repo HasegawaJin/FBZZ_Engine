@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 #pragma once
+#include <Engine/Scene/Components/TransientGpuState.hpp>
 
 #include <Engine/Scene/Components/PresentationComponents.hpp>
 #include <Engine/Scene/MeshBuilder.hpp>
@@ -11,36 +12,30 @@
 
 namespace fbzz::scene {
 
-/// MeshBuilder の内容を GPU メッシュにして MeshRenderer へ差す。
-///
-/// シーンには保存しない (FBZZ_INTERNAL_COMPONENT)。形を決めているのはスクリプトなので、
-/// 保存しても Play のたびに上書きされるだけで意味を持たない。Play/Stop で消えるのは
-/// SpriteRenderer の runtimeMesh と同じ扱い。
-///
-/// アップロードは RuntimeMeshSystem が Phase::LateUpdate で行う。ResourceManager を
-/// 触れるのがそこだけで、かつ描画より前なので、同じフレームのうちに画面へ出る。
-struct ProceduralMeshComponent {
+/// @note シーンへ保存しない個体専用メッシュ。コピー先は RuntimeMeshSystem が LateUpdate で全体を再作成する。
+struct ProceduralMeshComponentGpuState {
+    MeshDirty dirty = MeshDirty::None;
+    DoubleBufferedMesh runtimeMesh;
+    /// @note builder の値は残り、GPU だけが空になるので、次の更新で全体を再転送する。
+    void OnResetGpuRuntime() { dirty = MeshDirty::All; }
+};
+
+struct ProceduralMeshComponent : TransientGpuState<ProceduralMeshComponentGpuState> {
     bool enabled = true;
 
-    /// 形の正本。スクリプトが直接書き換えてよい。
+    /// @note 形の正本。スクリプトが直接書き換えてよい。
     MeshBuilder builder;
 
-    /// builder のどこが変わったか。アップロード後に None へ戻される。
-    MeshDirty dirty = MeshDirty::None;
-
-    /// 差し込むマテリアル。空文字列なら MaterialComponent に触らない
-    /// (Inspector で別のマテリアルを付けたい場合はこちらを空にする)。
+    /// @note 差し込むマテリアル。空文字列なら MaterialComponent に触らない
+    /// @note (Inspector で別のマテリアルを付けたい場合はこちらを空にする)。
     std::string materialPath = "Assets/Materials/Fallback/ProceduralMeshFallback.mat";
 
-    /// 最後に MaterialComponent へ書いた値。
+    /// @note 最後に MaterialComponent へ書いた値。
     /// @note 毎フレーム書き直すと ScriptMaterialProxy や Inspector が指定したマテリアルが
-    ///       毎フレーム剥がれる。差分を持ち «materialPath を変えたときだけ» 反映する。
+    /// @note 毎フレーム剥がれる。差分を持ち «materialPath を変えたときだけ» 反映する。
     std::string appliedMaterialPath;
-
-    /// GPU 側の実体。2 枚交互に使う理由は DoubleBufferedMesh のヘッダーを参照。
-    DoubleBufferedMesh runtimeMesh;
 
     const char* GetTypeName() const { return "Procedural Mesh"; }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

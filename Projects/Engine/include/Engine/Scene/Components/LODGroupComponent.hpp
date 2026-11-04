@@ -7,7 +7,7 @@
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/ControlPointModes.hpp>
 #include <Engine/Scene/ObjectReference.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <string>
 #include <vector>
 

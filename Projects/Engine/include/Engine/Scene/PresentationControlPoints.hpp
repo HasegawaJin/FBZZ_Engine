@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Scene/Components/MotionWarpComponent.hpp>
 #include <Engine/Scene/ControlPointResolver.hpp>
@@ -44,24 +45,24 @@ struct LineControlPointSnapshot {
 
 /// @brief Resolve the current authoring source and capture its canonical numeric signature.
 /// @note Successful signatures use ordered stable ids and numeric coordinates, excluding object GUIDs and Scene caches.
-[[nodiscard]] LineControlPointSnapshot ResolveLineControlPointAuthoring(
+[[nodiscard]] FBZZ_ENGINE_API LineControlPointSnapshot ResolveLineControlPointAuthoring(
     Scene& scene, EntityID ownerId, LineRendererComponent& line,
     ControlPointRuntimeMode signatureRuntimeMode);
 
 /// @brief Resolve the live source or return the captured static values for a Line.
 /// @note RUNTIME reads BAKED_STATIC numeric values without resolving target objects.
-[[nodiscard]] LineControlPointSnapshot ResolveLineControlPoints(
+[[nodiscard]] FBZZ_ENGINE_API LineControlPointSnapshot ResolveLineControlPoints(
     Scene& scene, EntityID ownerId, LineRendererComponent& line,
     ControlPointReadContext context = ControlPointReadContext::AUTHORING);
 
 /// @brief Capture a configured target pose and begin one object-backed MotionWarp.
 /// @note LIVE targets must be outside the owner hierarchy; CAPTURED targets may be descendants.
-[[nodiscard]] bool BeginMotionWarpToTarget(Scene& scene, EntityID ownerId,
+[[nodiscard]] FBZZ_ENGINE_API bool BeginMotionWarpToTarget(Scene& scene, EntityID ownerId,
     MotionWarpComponent& warp, float duration);
 
 /// @brief Refresh only the pose of an active LIVE object-backed MotionWarp.
 /// @return False when the reference no longer resolves or enters the owner hierarchy; the active warp is canceled.
-[[nodiscard]] bool RefreshLiveMotionWarpTarget(Scene& scene, EntityID ownerId,
+[[nodiscard]] FBZZ_ENGINE_API bool RefreshLiveMotionWarpTarget(Scene& scene, EntityID ownerId,
     MotionWarpComponent& warp);
 
 } /// @note namespace fbzz::scene

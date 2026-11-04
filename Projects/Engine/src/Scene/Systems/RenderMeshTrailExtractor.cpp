@@ -26,6 +26,7 @@
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -68,17 +69,54 @@ struct TrailMaterialBinding {
     uint64_t                                              resolvedPass = 0;
 };
 
-std::unordered_map<std::string, TrailMaterialBinding> g_trailMaterials;
-std::unordered_set<std::string>                       g_warnedTrailMaterials;
-/// @note Execute の呼び出し通番。0 は「未解決」を表すため 1 から始める。
-uint64_t                                              g_trailPassSerial = 0;
-/// @note ResourceManager::Reset() の世代。世代が変われば、握っていたシェーダー/定数バッファの
-/// @note ハンドルは失効済みなので中身を返さず捨てる。
-uint32_t                                              g_resetVersion = 0;
+struct TrailMaterialCache {
+    TrailMaterialCache() = default;
+    TrailMaterialCache(const TrailMaterialCache&) = delete;
+    TrailMaterialCache& operator=(const TrailMaterialCache&) = delete;
+    uint64_t m_owner = 0, m_resetVersion = 0, m_passSerial = 0;
+    std::unordered_map<std::string, TrailMaterialBinding> m_materials;
+    std::unordered_set<std::string> m_warnedMaterials;
+    ~TrailMaterialCache()
+    {
+        auto* resources = renderer::ResourceManager::FindOwner(m_owner);
+        if (!resources || resources->GetResetVersion() != m_resetVersion) return;
+        for (auto& [path, binding] : m_materials) resources->Release(binding.paramsCB);
+    }
+};
+using TrailMaterialCaches = std::vector<std::unique_ptr<TrailMaterialCache>>;
+std::unordered_map<uint64_t, TrailMaterialCaches> g_trailCaches;
 
-bool WarnTrailMaterialOnce(const std::string& path)
+TrailMaterialCache& AcquireTrailCache(Scene& scene, renderer::ResourceManager& resources)
 {
-    return g_warnedTrailMaterials.insert(path).second;
+    auto& caches = g_trailCaches[scene.GetRenderSceneGeneration()];
+    std::erase_if(caches, [](const auto& cache) {
+        auto* owner = renderer::ResourceManager::FindOwner(cache->m_owner);
+        return !owner || owner->GetResetVersion() != cache->m_resetVersion;
+    });
+    for (auto& cache : caches)
+        if (cache->m_owner == resources.GetInstanceId()) return *cache;
+    auto cache = std::make_unique<TrailMaterialCache>();
+    cache->m_owner = resources.GetInstanceId();
+    cache->m_resetVersion = resources.GetResetVersion();
+    caches.push_back(std::move(cache));
+    return *caches.back();
+}
+
+/// @note 個体に保持したバッファは現在の描画先ではなく、記録した作成元へ返す。
+void ReleaseOwnedBuffer(renderer::ResourceHandle<renderer::ConstantBufferTag>& handle)
+{
+    renderer::ReleaseOwnedResource(handle);
+    handle = {};
+}
+
+void ReleaseOwnedBuffer(renderer::OwnedResource<renderer::ConstantBufferTag>& handle)
+{
+    handle.Reset();
+}
+
+bool WarnTrailMaterialOnce(TrailMaterialCache& cache, const std::string& path)
+{
+    return cache.m_warnedMaterials.insert(path).second;
 }
 
 /// @brief `.mat` の shader と [params] を解決する。
@@ -87,14 +125,14 @@ bool WarnTrailMaterialOnce(const std::string& path)
 /// @note (Skinned なら) ボーン付きで来る。メッシュ用の `.mat` を割り当てると「静かに
 /// @note 壊れた絵」になるため、UI/Decal/Particle と同じ判断で宣言を要求する。
 const TrailMaterialBinding* ResolveTrailMaterialBinding(
-    renderer::ResourceManager& resources, const std::string& materialPath)
+    TrailMaterialCache& cache, renderer::ResourceManager& resources, const std::string& materialPath)
 {
     if (materialPath.empty()) return nullptr;
 
-    TrailMaterialBinding& binding = g_trailMaterials[materialPath];
-    if (binding.resolvedPass == g_trailPassSerial)
-        return binding.shader.IsValid() ? &binding : nullptr;
-    binding.resolvedPass = g_trailPassSerial;
+    TrailMaterialBinding& binding = cache.m_materials[materialPath];
+    if (binding.resolvedPass == cache.m_passSerial)
+        return resources.Get(binding.shader) ? &binding : nullptr;
+    binding.resolvedPass = cache.m_passSerial;
 
     const auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(materialPath);
     const auto matAuthoringSnapshot = asset::ReadMaterialAuthoring(matHandle);
@@ -104,7 +142,7 @@ const TrailMaterialBinding* ResolveTrailMaterialBinding(
 
     const bool declaredForTrails = (mat->renderPath == asset::RenderPath::Trail);
     if (!declaredForTrails && !mat->shaderPath.empty()
-        && WarnTrailMaterialOnce(materialPath)) {
+        && WarnTrailMaterialOnce(cache, materialPath)) {
         FBZZ_LOG_WARN("Mesh trail material '%s' declares shader '%s' but is not declared for "
                       "trails (render_path must be \"trail\") -> ignoring the shader and "
                       "drawing with the built-in mesh trail shader.",
@@ -113,7 +151,7 @@ const TrailMaterialBinding* ResolveTrailMaterialBinding(
     const std::string shaderPath = declaredForTrails ? mat->shaderPath : std::string{};
     binding.meshType = mat->meshType;
 
-    if (binding.loadedShaderPath != shaderPath) {
+    if (binding.loadedShaderPath != shaderPath || !resources.Get(binding.shader)) {
         binding.loadedShaderPath = shaderPath;
         binding.shader = shaderPath.empty()
             ? renderer::ResourceHandle<renderer::ShaderTag>{}
@@ -121,13 +159,17 @@ const TrailMaterialBinding* ResolveTrailMaterialBinding(
         /// @note 黙って組み込みへ落ちると «前と同じ絵» が出るだけで、材質を書いた側からは
         /// @note 「効いていない」としか見えない。コンパイル漏れが一番起きやすい。
         if (!shaderPath.empty() && !binding.shader.IsValid()
-            && WarnTrailMaterialOnce(materialPath + "|load")) {
+            && WarnTrailMaterialOnce(cache, materialPath + "|load")) {
             FBZZ_LOG_WARN("Mesh trail material '%s' references shader '%s' but it failed to load "
                           "(not compiled?). Falling back to the built-in mesh trail shader.",
                           materialPath.c_str(), shaderPath.c_str());
         }
     }
-    if (!binding.shader.IsValid()) return nullptr;
+    if (!resources.Get(binding.shader)) {
+        ReleaseOwnedBuffer(binding.paramsCB);
+        binding.paramsCBSize = 0;
+        return nullptr;
+    }
 
     /// @note MaterialConstants を宣言していないシェーダーは cbufferSize が 0 (= IsValid() が false)。
     /// @note その場合 b2 へは何も束縛しない。束縛規則そのものは asset::MaterialParamBinding が持つ。
@@ -135,7 +177,8 @@ const TrailMaterialBinding* ResolveTrailMaterialBinding(
     if (auto* compiled = resources.Get(binding.shader))
         binding.descriptor = compiled->GetDescriptor();
     if (!binding.descriptor.IsValid()) {
-        binding.paramsCB = {};
+        ReleaseOwnedBuffer(binding.paramsCB);
+        binding.paramsCBSize = 0;
         return &binding;
     }
 
@@ -177,12 +220,10 @@ float DistanceSq(const math::Vector3& a, const math::Vector3& b)
     return (a - b).LengthSq();
 }
 
-void ReleaseSampleResources(MeshTrailSample& sample, renderer::ResourceManager& resources)
+void ReleaseSampleResources(MeshTrailSample& sample)
 {
-    if (sample.skinningCB.IsValid()) {
-        resources.Release(sample.skinningCB);
-        sample.skinningCB = {};
-    }
+    ReleaseOwnedBuffer(sample.skinningCB);
+    sample.skinningCBDirty = true;
 }
 
 MeshTrailSample& SampleAt(MeshTrailComponent& trail, int logicalIndex)
@@ -197,7 +238,7 @@ const MeshTrailSample& SampleAt(const MeshTrailComponent& trail, int logicalInde
     return trail.samples[static_cast<size_t>(physicalIndex)];
 }
 
-void EnsureSampleStorage(MeshTrailComponent& trail, renderer::ResourceManager& resources)
+void EnsureSampleStorage(MeshTrailComponent& trail)
 {
     const int desiredMaxSamples = (std::max)(trail.maxSamples, 1);
     if (trail.allocatedMaxSamples == desiredMaxSamples &&
@@ -210,7 +251,7 @@ void EnsureSampleStorage(MeshTrailComponent& trail, renderer::ResourceManager& r
         const int keepCount = (std::min)(trail.sampleCount, desiredMaxSamples);
         const int discardCount = trail.sampleCount - keepCount;
         for (int i = 0; i < discardCount; ++i)
-            ReleaseSampleResources(SampleAt(trail, i), resources);
+            ReleaseSampleResources(SampleAt(trail, i));
         for (int i = discardCount; i < trail.sampleCount; ++i)
             ordered.push_back(std::move(SampleAt(trail, i)));
     }
@@ -224,11 +265,11 @@ void EnsureSampleStorage(MeshTrailComponent& trail, renderer::ResourceManager& r
     trail.allocatedMaxSamples = desiredMaxSamples;
 }
 
-void ClearSamples(MeshTrailComponent& trail, renderer::ResourceManager& resources)
+void ClearSamples(MeshTrailComponent& trail)
 {
     for (int i = 0; i < trail.sampleCount; ++i) {
         auto& sample = SampleAt(trail, i);
-        ReleaseSampleResources(sample, resources);
+        ReleaseSampleResources(sample);
         sample = {};
     }
     trail.sampleHead = 0;
@@ -236,14 +277,14 @@ void ClearSamples(MeshTrailComponent& trail, renderer::ResourceManager& resource
     trail.lastSampleTime = -1.0f;
 }
 
-void ExpireSamples(MeshTrailComponent& trail, renderer::ResourceManager& resources, float currentTime)
+void ExpireSamples(MeshTrailComponent& trail, float currentTime)
 {
     const float duration = (std::max)(trail.duration, 0.01f);
     const float oldestAllowed = currentTime - duration;
 
     while (trail.sampleCount > 0 && SampleAt(trail, 0).timestamp < oldestAllowed) {
         auto& oldest = SampleAt(trail, 0);
-        ReleaseSampleResources(oldest, resources);
+        ReleaseSampleResources(oldest);
         oldest = {};
         trail.sampleHead = (trail.sampleHead + 1) % trail.allocatedMaxSamples;
         --trail.sampleCount;
@@ -252,7 +293,7 @@ void ExpireSamples(MeshTrailComponent& trail, renderer::ResourceManager& resourc
     trail.maxSamples = (std::max)(trail.maxSamples, 1);
     while (trail.sampleCount > trail.maxSamples) {
         auto& oldest = SampleAt(trail, 0);
-        ReleaseSampleResources(oldest, resources);
+        ReleaseSampleResources(oldest);
         oldest = {};
         trail.sampleHead = (trail.sampleHead + 1) % trail.allocatedMaxSamples;
         --trail.sampleCount;
@@ -279,7 +320,7 @@ bool IsMeshIndexExcluded(const MeshTrailComponent& trail, int meshIndex)
         != trail.excludedMeshIndices.end();
 }
 
-void CaptureSample(GameObject& go, MeshTrailComponent& trail, renderer::ResourceManager& resources, float currentTime)
+void CaptureSample(GameObject& go, MeshTrailComponent& trail, float currentTime)
 {
     MeshTrailSample sample{};
     sample.timestamp = currentTime;
@@ -299,7 +340,7 @@ void CaptureSample(GameObject& go, MeshTrailComponent& trail, renderer::Resource
 
     if (trail.sampleCount == trail.allocatedMaxSamples) {
         MeshTrailSample& writeSlot = trail.samples[static_cast<size_t>(trail.sampleHead)];
-        ReleaseSampleResources(writeSlot, resources);
+        ReleaseSampleResources(writeSlot);
         writeSlot = std::move(sample);
         trail.sampleHead = (trail.sampleHead + 1) % trail.allocatedMaxSamples;
     } else {
@@ -316,10 +357,12 @@ void EnsureComponentResources(MeshTrailComponent& trail, renderer::ResourceManag
     trail.sampleInterval = (std::max)(trail.sampleInterval, 0.0f);
     trail.minVertexDist = (std::max)(trail.minVertexDist, 0.0f);
     trail.maxSamples = (std::max)(trail.maxSamples, 1);
-    EnsureSampleStorage(trail, resources);
+    EnsureSampleStorage(trail);
 
-    if (!trail.meshTrailCB.IsValid())
+    if (!resources.Get(trail.meshTrailCB)) {
+        ReleaseOwnedBuffer(trail.meshTrailCB);
         trail.meshTrailCB = resources.CreateConstantBuffer(sizeof(MeshTrailCB));
+    }
 
     /// @note materialPath が設定されている場合: .mat の albedo テクスチャと doubleSided を優先する。
     trail.texture = resources.GetWhiteTexture();
@@ -359,8 +402,11 @@ renderer::ResourceHandle<renderer::ConstantBufferTag> EnsureSampleSkinningCB(
     if (sample.boneMatrices.empty())
         return bindPoseCB;
 
-    if (!sample.skinningCB.IsValid())
+    if (!resources.Get(sample.skinningCB)) {
+        ReleaseOwnedBuffer(sample.skinningCB);
         sample.skinningCB = resources.CreateConstantBuffer(sizeof(SkinningCB));
+        sample.skinningCBDirty = true;
+    }
 
     if (!sample.skinningCBDirty)
         return sample.skinningCB;
@@ -418,18 +464,19 @@ void ExtractSkinnedSample(MeshTrailComponent& trail, MeshTrailSample& sample, Sk
     }
 }
 }
+void ReleaseMeshTrailRenderResources(Scene& scene)
+{
+    g_trailCaches.erase(scene.GetRenderSceneGeneration());
+}
+
 void ExtractRenderMeshTrails(RenderPassContext& ctx, renderer::RenderScene& output) {
     auto& resources = ctx.resources;
-    if (g_resetVersion != resources.GetResetVersion()) {
-        g_resetVersion = resources.GetResetVersion();
-        g_trailMaterials.clear();
-        g_warnedTrailMaterials.clear();
-    }
+    auto& cache = AcquireTrailCache(ctx.scene, resources);
 
     const float currentTime = Time::time;
     /// @note .mat の解決をこのパスで 1 回だけやり直すための通番。編集が次のフレームで
     /// @note 絵へ出つつ、同じ .mat を共有する実体ぶん引き直さない。
-    ++g_trailPassSerial;
+    ++cache.m_passSerial;
     if (ctx.scene.GetEntities<MeshTrailComponent>().empty()) return;
 
     for (auto& go : ctx.scene.GameObjects()) {
@@ -441,13 +488,13 @@ void ExtractRenderMeshTrails(RenderPassContext& ctx, renderer::RenderScene& outp
             continue;
 
         if (!trail->enabled && trail->clearOnDisable) {
-            ClearSamples(*trail, resources);
+            ClearSamples(*trail);
             trail->clearRequested = false;
             continue;
         }
 
         if (trail->clearRequested) {
-            ClearSamples(*trail, resources);
+            ClearSamples(*trail);
             trail->clearRequested = false;
         }
 
@@ -458,7 +505,7 @@ void ExtractRenderMeshTrails(RenderPassContext& ctx, renderer::RenderScene& outp
 
         EnsureComponentResources(*trail, resources);
         const TrailMaterialBinding* material =
-            ResolveTrailMaterialBinding(resources, trail->materialPath);
+            ResolveTrailMaterialBinding(cache, resources, trail->materialPath);
         if (auto* emitter = go.GetComponent<ParticleEmitter>();
             emitter != nullptr && !emitter->settings.meshParticlePath.empty()) {
             auto* mesh = go.GetComponent<MeshRenderer>();
@@ -499,13 +546,13 @@ void ExtractRenderMeshTrails(RenderPassContext& ctx, renderer::RenderScene& outp
             trail->colorEnd = savedEnd;
             continue;
         }
-        ExpireSamples(*trail, resources, currentTime);
+        ExpireSamples(*trail, currentTime);
 
         if (trail->enabled && ShouldSample(
             *trail, go.transform.worldPosition, currentTime))
-            CaptureSample(go, *trail, resources, currentTime);
+            CaptureSample(go, *trail, currentTime);
 
-        ExpireSamples(*trail, resources, currentTime);
+        ExpireSamples(*trail, currentTime);
 
         for (int i = 0; i < trail->sampleCount; ++i) {
             auto& sample = SampleAt(*trail, i);

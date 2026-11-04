@@ -2,7 +2,9 @@
 /// @brief   シェーダーの一括差し替え・失敗時保持と定数バッファ容量の契約を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/OwnedResources.hpp>
 #include <Graphics/Renderer/BuiltinShader.hpp>
 #include <Graphics/Renderer/ShaderDependencyTracker.hpp>
 #include <Graphics/Passes/Geometry/ComputedSkinningDemand.hpp>
@@ -844,6 +846,7 @@ protected:
         };
         m_backend.shaderSize = 96;
         m_resources = std::make_unique<r::ResourceManager>(m_backend);
+        m_scene.SetResourceManager(m_resources.get());
         asset::AssetManager::Init(*m_resources, m_temp.Path().generic_string() + "/");
         asset::MaterialAssetAuthoring material;
         material.shaderPath = "typed.hlsl";
@@ -1346,6 +1349,7 @@ protected:
         m_backend.shaderVars.push_back({"flags", 88, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::UInt});
         m_backend.allowGeometry = true;
         m_resources = std::make_unique<r::ResourceManager>(m_backend);
+        m_scene.SetResourceManager(m_resources.get());
         asset::AssetManager::Init(*m_resources, m_temp.Path().generic_string() + "/");
         asset::DataAssetRegistry::ClearCache();
         /// @note Retire the previous fixture's function-static instance materials before this renderer owns any constant buffers.
@@ -1673,9 +1677,9 @@ TEST_F(ManagedFrameGeometryTest, KeepsManagedViewsIndependentWithoutPublishingFr
     skinned.gpuSkinnedThisFrame = true;
     skinned.gpuSkinningFrame = Time::frameCount;
     skinned.skinnedBufferModel = skinned.model;
-    skinned.skinnedVertexBuffers = {firstBuffer};
+    skinned.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({firstBuffer});
     const auto firstDeformed = ExtractView(settings, nullptr);
-    skinned.skinnedVertexBuffers = {secondBuffer};
+    skinned.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({secondBuffer});
     const auto secondDeformed = ExtractView(settings, nullptr);
     EXPECT_NE(firstDeformed->Objects().data(), secondDeformed->Objects().data());
     EXPECT_EQ(firstDeformed->items[skinnedObject->firstItem].deformedVertexBuffer, firstBuffer);

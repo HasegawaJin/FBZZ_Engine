@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Math/Api.hpp>
 
 #include "MathUtils.hpp"
 
@@ -25,7 +26,7 @@ struct Vector2 {
 
     float   Length()     const;
     float   LengthSq()   const;
-    Vector2 Normalized() const;
+    FBZZ_MATH_API Vector2 Normalized() const;
 
     static float   Dot(const Vector2& a, const Vector2& b);
     static Vector2 Lerp(const Vector2& a, const Vector2& b, float t);
@@ -62,4 +63,4 @@ inline Vector2 Vector2::Lerp(const Vector2& a, const Vector2& b, float t) {
     return a + (b - a) * t;
 }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

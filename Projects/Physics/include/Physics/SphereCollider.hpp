@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Physics/Api.hpp>
 #include <Physics/Collider.hpp>
 
 namespace fbzz::physics {
@@ -11,14 +12,14 @@ namespace fbzz::physics {
     class SphereCollider : public Collider
     {
     public:
-        explicit SphereCollider(float radius);
+        FBZZ_PHYSICS_API explicit SphereCollider(float radius);
 
-        AABB         GetAABB() const override;
+        FBZZ_PHYSICS_API AABB         GetAABB() const override;
         ColliderType GetType() const override { return ColliderType::SPHERE; }
-        void Update(const math::Vector3& worldPos,
+        FBZZ_PHYSICS_API void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
         /// @brief 4/3 π r³。
-        [[nodiscard]] float ComputeVolume() const override;
+        [[nodiscard]] FBZZ_PHYSICS_API float ComputeVolume() const override;
 
         float m_radius;
 
@@ -26,4 +27,4 @@ namespace fbzz::physics {
         math::Vector3 m_worldCenter;
     };
 
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

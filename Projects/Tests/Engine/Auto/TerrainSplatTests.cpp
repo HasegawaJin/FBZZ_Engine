@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 /// @see Docs/design/terrain-layers.md
+#include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/FzTerrainFormat.hpp>
@@ -24,6 +25,10 @@
 #include "../../../Engine/src/Scene/Systems/RenderPasses/Geometry/TerrainSurfacePatch.hpp"
 #include <limits>
 #include <Engine/Util/FileSystem.hpp>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 
 #include <array>
 #include <bit>
@@ -436,6 +441,48 @@ TEST_F(TerrainAssetSerializerTest, FztnCurrentRoundTripPreservesLayersSplatAndHo
     EXPECT_EQ(loaded.splatIndices, source.splatIndices);
     EXPECT_EQ(loaded.splatWeights, source.splatWeights);
     EXPECT_EQ(loaded.holeCells, (std::vector<uint32_t>{ 1, 11 }));
+}
+
+TEST_F(TerrainAssetSerializerTest, FztnReplacesUnicodeAssetWithoutLeavingTemporaryFiles)
+{
+    const auto file = m_temp.Path() / L"地形.terrain";
+    const auto path = util::FileSystem::PathToUtf8(file);
+    asset::TerrainAsset source;
+    source.columns = source.rows = 2;
+    source.heightData = {0, .25f, .5f, 1};
+    ASSERT_TRUE(asset::FzTerrainSerializer{}.Save(source, path));
+    source.heightData[0] = .75f;
+
+    ASSERT_TRUE(asset::FzTerrainSerializer{}.Save(source, path));
+
+    ASSERT_TRUE(util::FileSystem::Exists(file));
+    asset::TerrainAsset loaded;
+    ASSERT_TRUE(asset::FzTerrainSerializer{}.Load(path, loaded));
+    EXPECT_EQ(loaded.heightData, source.heightData);
+    EXPECT_EQ(util::FileSystem::ListAll(util::FileSystem::PathToUtf8(m_temp.Path())).size(), 1u);
+}
+
+TEST_F(TerrainAssetSerializerTest, FztnFailedReplacementPreservesOriginalAsset)
+{
+    const auto file = m_temp.File("locked.terrain");
+    const auto path = util::FileSystem::PathToUtf8(file);
+    asset::TerrainAsset source;
+    source.columns = source.rows = 2;
+    source.heightData = {0, .25f, .5f, 1};
+    ASSERT_TRUE(asset::FzTerrainSerializer{}.Save(source, path));
+    const auto originalHeights = source.heightData;
+    const HANDLE locked = ::CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ASSERT_NE(locked, INVALID_HANDLE_VALUE);
+    struct Close { HANDLE handle; ~Close() { ::CloseHandle(handle); } } close{locked};
+    source.heightData.assign(4, .75f);
+
+    EXPECT_FALSE(asset::FzTerrainSerializer{}.Save(source, path));
+
+    asset::TerrainAsset loaded;
+    ASSERT_TRUE(asset::FzTerrainSerializer{}.Load(path, loaded));
+    EXPECT_EQ(loaded.heightData, originalHeights);
+    EXPECT_EQ(util::FileSystem::ListAll(util::FileSystem::PathToUtf8(m_temp.Path())).size(), 1u);
 }
 
 TEST_F(TerrainAssetSerializerTest, FztnV1DenseWeightsFoldIntoTopFourLayers)

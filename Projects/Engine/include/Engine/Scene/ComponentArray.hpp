@@ -5,6 +5,7 @@
 /// @note dense 要素は小さな連続 chunk に置き、追加で既存 Component のアドレスを変えない。Remove は末尾との swap で O(1)。
 /// @note Entities の Span は追加で失効し得る。削除は swap される要素の参照先を変えるため EntityID から再取得する。
 #pragma once
+#include <Engine/Api.hpp>
 #include "Entity.hpp"
 #include <span>
 #include <cassert>
@@ -18,24 +19,24 @@
 namespace fbzz::scene {
 
 /// @note Engine 本体で一元発行する。型・Scene・DLL を越えて再利用しない非ゼロの寿命・構造識別値。
-[[nodiscard]] uint64_t AllocateComponentLifetime();
+[[nodiscard]] FBZZ_ENGINE_API uint64_t AllocateComponentLifetime();
 
 /// @note chunk directory を全 Component 型で共有し、型ごとの STL export 増加による import library の枯渇を防ぐ。
 /// @see https://learn.microsoft.com/en-us/cpp/error-messages/tool-errors/linker-tools-error-lnk1189 LNK1189 の library member 数制限。
 class ComponentChunkStorage {
 public:
     using Allocation = std::unique_ptr<void, void (*)(void*)>;
-    ComponentChunkStorage();
-    ~ComponentChunkStorage();
+    FBZZ_ENGINE_API ComponentChunkStorage();
+    FBZZ_ENGINE_API ~ComponentChunkStorage();
     ComponentChunkStorage(const ComponentChunkStorage&) = delete;
     ComponentChunkStorage& operator=(const ComponentChunkStorage&) = delete;
-    ComponentChunkStorage(ComponentChunkStorage&& other) noexcept;
-    ComponentChunkStorage& operator=(ComponentChunkStorage&& other) noexcept;
+    FBZZ_ENGINE_API ComponentChunkStorage(ComponentChunkStorage&& other) noexcept;
+    FBZZ_ENGINE_API ComponentChunkStorage& operator=(ComponentChunkStorage&& other) noexcept;
     /// @note 成功後だけ caller の typed owner を release する。directory 拡張の失敗時は caller が所有を維持する。
-    void Add(void* memory, void (*deleter)(void*));
-    void Clear();
-    size_t Count() const;
-    void* Get(size_t index) const;
+    FBZZ_ENGINE_API void Add(void* memory, void (*deleter)(void*));
+    FBZZ_ENGINE_API void Clear();
+    FBZZ_ENGINE_API size_t Count() const;
+    FBZZ_ENGINE_API void* Get(size_t index) const;
 private:
     std::vector<Allocation> m_chunks;
 };
@@ -140,6 +141,13 @@ public:
     /// @return 未登録・削除済みなら 0。dense の拡張・swap と配列の move では個体の寿命を保持する。
     [[nodiscard]] uint64_t GetLifetime(EntityID id) const {
         return Has(id) ? m_lifetimes[m_sparseToIndex[id.index]] : 0;
+    }
+
+    /// @pre Has(id) が true であること。
+    /// @note Remove の末尾 swap で添字は変わり得る。
+    [[nodiscard]] uint32_t GetDenseIndex(EntityID id) const {
+        assert(Has(id));
+        return m_sparseToIndex[id.index];
     }
 
     T& Get(EntityID id) {

@@ -5,7 +5,8 @@
 /// @note EnvironmentLightComponent はシーン全体のグローバル IBL を管理するが、室内や窓際など
 /// @note 局所的に異なる反射環境が必要な場所には別のキューブマップが要る。
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Components/TransientGpuState.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector3.hpp>
 #include <cstdint>
@@ -23,7 +24,26 @@ enum class ReflectionProbeCaptureMode : uint8_t {
     DynamicScene
 };
 
-struct ReflectionProbeComponent {
+/// @note GPU 所有権と再確保用キャッシュは Component の値コピーへ含めない。
+struct ReflectionProbeComponentGpuState {
+    /// @note ランタイム GPU リソース。Scene / Prefab には保存しない。
+    /// @note 動的プローブは Scene の瞬間値であり、GPU ハンドルを Scene / Prefab へ保存しない。
+    /// @note RenderSystem が解像度変更時に再生成し、更新時に畳み込み結果を差し替える。
+    renderer::OwnedResource<renderer::RenderTargetTag> runtimeCubeRT;
+    renderer::OwnedResource<renderer::TextureTag> runtimeIrradiance;
+    renderer::OwnedResource<renderer::TextureTag> runtimePrefilter;
+    uint32_t runtimeResolution = 0;
+    uint32_t runtimePrefilterMipCount = 0;
+    /// @note Successful capture publishes fresh never-again-written textures; invalidation clears the proof independently of authored state.
+    const renderer::ResourceManager* runtimePublicationOwner = nullptr;
+    renderer::ResourceHandle<renderer::TextureTag> runtimePublishedIrradiance, runtimePublishedPrefilter;
+    uint64_t runtimePublicationEpoch = 0;
+    bool runtimeImmutablePublished = false;
+    float    lastCaptureTime = -1.0e30f;
+
+};
+
+struct ReflectionProbeComponent : TransientGpuState<ReflectionProbeComponentGpuState> {
     bool          enabled         = true;
     std::string   cubemapPath;               ///< @note 静的環境キューブマップ (.dds)
     ReflectionProbeCaptureMode captureMode = ReflectionProbeCaptureMode::Static;
@@ -34,21 +54,6 @@ struct ReflectionProbeComponent {
     float         intensity       = 1.0f;    ///< @note 反射強度スケール
     bool          boxInfluence    = false;   ///< @note true のときボックス影響範囲
     math::Vector3 boxExtents      = { 1.0f, 1.0f, 1.0f }; ///< @note ボックス半径 [m]
-
-    /// @note ランタイム GPU リソース。Scene / Prefab には保存しない。
-    /// @note 動的プローブは Scene の瞬間値であり、GPU ハンドルを Scene / Prefab へ保存しない。
-    /// @note RenderSystem が解像度変更時に再生成し、更新時に畳み込み結果を差し替える。
-    renderer::ResourceHandle<renderer::RenderTargetTag> runtimeCubeRT;
-    renderer::ResourceHandle<renderer::TextureTag> runtimeIrradiance;
-    renderer::ResourceHandle<renderer::TextureTag> runtimePrefilter;
-    uint32_t runtimeResolution = 0;
-    uint32_t runtimePrefilterMipCount = 0;
-    /// @note Successful capture publishes fresh never-again-written textures; invalidation clears the proof independently of authored state.
-    const renderer::ResourceManager* runtimePublicationOwner = nullptr;
-    renderer::ResourceHandle<renderer::TextureTag> runtimePublishedIrradiance, runtimePublishedPrefilter;
-    uint64_t runtimePublicationEpoch = 0;
-    bool runtimeImmutablePublished = false;
-    float    lastCaptureTime = -1.0e30f;
 
     const char* GetTypeName() const { return "ReflectionProbe"; }
 

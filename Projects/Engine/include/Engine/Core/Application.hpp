@@ -2,10 +2,11 @@
 /// @brief   エンジンのエントリポイントとメインループ。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// Window / Renderer / Audio / SceneManager を一箇所で所有する Application シングルトン。
-/// sandbox や editor は Get() から各サブシステムへアクセスする。
+
+/// @note Window / Renderer / Audio / SceneManager を一箇所で所有する Application シングルトン。
+/// @note sandbox や editor は Get() から各サブシステムへアクセスする。
 #pragma once
+#include <Engine/Api.hpp>
 #include "Engine/Core/Memory/MemorySystem.hpp"
 #include "Engine/Core/Window.hpp"
 #include "Engine/Renderer/IImGuiRenderer.hpp"
@@ -17,7 +18,7 @@
 
 namespace fbzz::audio { class AudioManager; class IAudioDevice; }
 namespace fbzz::util { class SaveStore; }
-namespace fbzz::renderer { struct RenderSettings; }
+namespace fbzz::renderer { struct RenderSettings; class ResourceManager; }
 
 namespace fbzz::core {
 
@@ -25,25 +26,28 @@ class IModule;
 
 class Application {
 public:
-    static Application& Get();
+    FBZZ_ENGINE_API static Application& Get();
 
     /// @brief デフォルト設定 (エディタモード) で初期化する。
-    bool Init();
+    FBZZ_ENGINE_API bool Init();
     /// @brief Standalone モード用: ウィンドウ設定を外部から指定して初期化する。
     /// @note ProjectSettings を Application::Init() より前に読み込んでウィンドウを正しいサイズで生成するため、Window::Config を受け取るオーバーロードを別途用意する。
     /// @param preferredBackend プロジェクト設定で指定された描画バックエンド。ただしコマンドライン (--renderer=dx11 / dx12) が指定されていればそちらを優先する。
-    bool Init(const Window::Config& windowConfig,
+    FBZZ_ENGINE_API bool Init(const Window::Config& windowConfig,
               renderer::RendererBackend preferredBackend = renderer::RendererBackend::DX12);
-    void Shutdown();
-    void Run();
-    void Run(IModule& module);
-    void Quit();
+    FBZZ_ENGINE_API void Shutdown();
+    FBZZ_ENGINE_API void Run();
+    FBZZ_ENGINE_API void Run(IModule& module);
+    FBZZ_ENGINE_API void Quit();
 
     bool                    IsRunning()      const { return m_isRunning; }
     Window&                 GetWindow()      const { return *m_window; }
     uint32_t                GetWindowWidth() const { return m_window ? m_window->GetWidth() : 0u; }
     uint32_t                GetWindowHeight() const { return m_window ? m_window->GetHeight() : 0u; }
     renderer::IRenderer&      GetRenderer()      const { return *m_renderer; }
+    /// @note ホストが使用する Manager だけを非所有で登録する。終了済みなら GetResourceManager は nullptr を返す。
+    FBZZ_ENGINE_API void SetResourceManager(renderer::ResourceManager* resources);
+    [[nodiscard]] FBZZ_ENGINE_API renderer::ResourceManager* GetResourceManager() const;
     renderer::IImGuiRenderer& GetImGuiRenderer() const { return *m_imguiRenderer; }
     scene::SceneManager&      GetSceneManager() const { return *m_sceneManager; }
     /// @brief Audio 初期化に失敗した場合は nullptr を返し、描画・編集機能だけで起動を継続する。
@@ -67,10 +71,11 @@ public:
     const MemorySystem&     GetMemorySystem() const { return m_memorySystem; }
 
 private:
-    Application();
-    ~Application();
+    FBZZ_ENGINE_API Application();
+    FBZZ_ENGINE_API ~Application();
 
     bool m_isRunning = true;
+    uint64_t m_resourceOwner = 0;
     std::unique_ptr<Window>                   m_window;
     std::unique_ptr<renderer::IRenderer>      m_renderer;
     std::unique_ptr<renderer::IImGuiRenderer> m_imguiRenderer;
@@ -86,4 +91,4 @@ private:
     MemorySystem                         m_memorySystem;
 };
 
-} // namespace fbzz::core
+} /// @note namespace fbzz::core

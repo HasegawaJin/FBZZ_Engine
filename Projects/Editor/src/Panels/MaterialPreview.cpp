@@ -4,6 +4,7 @@
 /// @date    2026-08-19
 #include <Editor/Panels/MaterialPreview.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
@@ -22,8 +23,11 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <system_error>
 #include <tuple>
+#include <type_traits>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -221,6 +225,99 @@ void MaterialPreviewView::ResetView()
     m_orbit   = {};
     m_rig     = {};
     m_channel = mp::Channel::Shaded;
+}
+
+void MaterialPreviewView::RegisterOperators(OperatorRegistry& registry, std::string_view prefix)
+{
+    for (const std::string_view action : {"inspect", "configure", "reset"}) {
+        EditorOperator op;
+        op.id = std::string(prefix) + "." + std::string(action);
+        op.label = op.id;
+        op.category = "Preview";
+        op.kind = action == "inspect" ? OpKind::Query : OpKind::Action;
+        op.desc = "材質プレビューの一時表示設定。configure は inspect のキーを settings に部分指定。角度はラジアン。";
+        if (action == "configure") {
+            OpParam settings;
+            settings.name = "settings";
+            settings.type = OpParamType::Data;
+            op.params.push_back(std::move(settings));
+        }
+        op.exec = [this, action](OpContext&, const OpArgs& args) {
+            const auto* settings = args.GetData("settings");
+            if (action == "configure" && (!settings || !settings->IsObject()))
+                return OpResult::Err("BAD_ARG", "settings");
+            if (action == "reset") ResetView();
+
+            auto data = OpData::MakeObject();
+            std::vector<std::function<void()>> changes;
+            std::string invalid;
+            const auto field = [&](const char* key, auto& target, auto encode, auto decode) {
+                if (!settings) {
+                    data.Set(key, encode(target));
+                    return;
+                }
+                const auto* value = settings->Find(key);
+                if (!value) return;
+                auto next = target;
+                if (!decode(*value, next)) {
+                    invalid = key;
+                    return;
+                }
+                changes.emplace_back([&target, next] { target = next; });
+            };
+            const auto choice = [&](const char* key, auto& target, const auto& values, auto label) {
+                field(key, target, [&](auto value) { return OpData(label(value)); },
+                    [&](const OpData& input, auto& next) {
+                        if (!input.IsString()) return false;
+                        const auto match = std::find_if(values.begin(), values.end(),
+                            [&](auto value) { return input.AsString() == label(value); });
+                        if (match == values.end()) return false;
+                        next = *match;
+                        return true;
+                    });
+            };
+            const auto number = [&](const char* key, auto& target, double minimum, double maximum) {
+                field(key, target, [](auto value) { return OpData(value); },
+                    [&](const OpData& input, auto& next) {
+                        using Number = std::remove_reference_t<decltype(next)>;
+                        if (!input.IsInt() && (std::is_integral_v<Number> || !input.IsFloat())) return false;
+                        const double value = input.IsInt() ? static_cast<double>(input.AsInt64()) : input.AsDouble();
+                        if (!std::isfinite(value) || value < minimum || value > maximum) return false;
+                        next = static_cast<Number>(value);
+                        return true;
+                    });
+            };
+            choice("shape", m_shape, kShapes, mp::ShapeLabel);
+            choice("channel", m_channel, kChannels, mp::ChannelLabel);
+            choice("light", m_rig.preset, kPresets, mp::LightPresetLabel);
+            choice("background", m_background, kBackgrounds, BackgroundLabel);
+            choice("fiberMode", m_fiberMode, kFiberModes, mp::FiberModeLabel);
+            number("backgroundRed", m_solidColor[0], 0, 1);
+            number("backgroundGreen", m_solidColor[1], 0, 1);
+            number("backgroundBlue", m_solidColor[2], 0, 1);
+            number("exposure", m_rig.exposure, 0.1, 4);
+            number("lightYaw", m_rig.yaw, -100000, 100000);
+            number("lightPitch", m_rig.pitch, -1.35, 1.35);
+            number("yaw", m_orbit.yaw, -100000, 100000);
+            number("pitch", m_orbit.pitch, -1.35, 1.35);
+            number("distance", m_orbit.distance, 1.5, 8);
+            number("fiberShells", m_fiberShellCount, 1, 64);
+            number("fiberWind", m_fiberWind, 0, 10);
+            field("animate", m_animateWater, [](bool value) { return OpData(value); },
+                [](const OpData& input, bool& next) {
+                    if (!input.IsBool()) return false;
+                    next = input.AsBool();
+                    return true;
+                });
+            if (!invalid.empty()) return OpResult::Err("BAD_ARG", invalid);
+            if (!settings) return OpResult::Data(std::move(data));
+            if (changes.size() != settings->AsObject().size())
+                return OpResult::Err("BAD_ARG", "settings に不明なキーがあります。");
+            for (const auto& change : changes) change();
+            return OpResult::Ok();
+        };
+        registry.Register(std::move(op));
+    }
 }
 
 void MaterialPreviewView::SynchronizeResources(EditorContext& ctx)

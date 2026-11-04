@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-26
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Asset/IAssetImporter.hpp>
 #include <Engine/Asset/SequenceAsset.hpp>
@@ -11,7 +12,7 @@ namespace fbzz::asset {
 
 class SequenceImporter final : public IAssetImporter<SequenceAsset> {
 public:
-    [[nodiscard]] std::unique_ptr<SequenceAsset> Import(
+    [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<SequenceAsset> Import(
         const std::string&         absPath,
         renderer::ResourceManager* resources) override;
 
@@ -22,4 +23,4 @@ public:
     }
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

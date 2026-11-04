@@ -4,7 +4,12 @@
 /// @date    2026-05-21
 /// @brief EntityID の生成・破棄、Destroy キュー、Component 複製を扱う。
 /// @brief フレーム中の削除は遅延させ、System 走査中の参照破壊を避ける。
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include "Engine/Scene/Scene.hpp"
+#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Renderer/RenderSettings.hpp>
 #include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneRenderResources.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
@@ -38,6 +43,7 @@ namespace fbzz::scene {
 
 namespace {
 
+void RemapCopiedRuntimeMeshBindings(const Scene& source, EntityID src, Scene& destination, EntityID dst);
 std::atomic<uint64_t> s_renderSceneGeneration{0};
 std::atomic<uint64_t> s_componentLifetime{0};
 
@@ -141,11 +147,10 @@ void ResetCopiedWaterRuntime(Scene& scene, EntityID destination)
 }
 
 /// @brief Component 個体が抱えている GPU リソースを、返す先がまだ生きているあいだだけ返す。
-/// @note ResourceManager が先に終了した場合は Active が空になり、返す先がないので何もしない。
+/// @note 作成元が先に終了した資源は返却せず、別の Manager へ返さない。
 void ReleaseGpuResourcesIfPossible(Scene& scene)
 {
-    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
-        ReleaseSceneOwnedGpuResources(scene, *resources);
+    ReleaseSceneOwnedGpuResources(scene);
 }
 
 } /// @note namespace
@@ -167,17 +172,44 @@ void ComponentChunkStorage::Clear() { m_chunks.clear(); }
 size_t ComponentChunkStorage::Count() const { return m_chunks.size(); }
 void* ComponentChunkStorage::Get(size_t index) const { return m_chunks[index].get(); }
 
+struct Scene::ComponentStorage {
+    template<typename Tuple> struct Arrays;
+    template<typename... Ts> struct Arrays<std::tuple<Ts...>> { using Type = std::tuple<ComponentArray<Ts>...>; };
+    typename Arrays<ComponentList>::Type m_arrays;
+};
+
+namespace detail {
+#define FBZZ_COMPONENT_ENTRY(Kind, Type, ...) \
+ComponentArray<Type>& ComponentStorageAccess<Type>::Get(Scene& scene) { return std::get<ComponentArray<Type>>(scene.m_components->m_arrays); } \
+const ComponentArray<Type>& ComponentStorageAccess<Type>::Get(const Scene& scene) { return std::get<ComponentArray<Type>>(scene.m_components->m_arrays); }
+#define FBZZ_COMPONENT_FIRST FBZZ_COMPONENT_ENTRY
+#include <Engine/Scene/ComponentRegistry.inl>
+#undef FBZZ_COMPONENT_FIRST
+#undef FBZZ_COMPONENT_ENTRY
+} /// @note namespace detail
+
 Scene::Scene() : m_renderSceneGeneration(++s_renderSceneGeneration),
-    m_rendererOwnerRevision(AllocateComponentLifetime()) {}
+    m_rendererOwnerRevision(AllocateComponentLifetime()), m_components(std::make_unique<ComponentStorage>()) {}
 
 Scene::~Scene()
 {
+    PrefabPool::Clear(*this);
     ManagedScriptRuntime::RetireScene(*this);
     /// @note 終了済み subsystem を Script が触らないよう、破棄では Clear / OnDestroy を呼ばない。
     ReleaseGpuResourcesIfPossible(*this);
 }
 
-Scene::Scene(Scene&& other) noexcept
+void Scene::SetResourceManager(renderer::ResourceManager* resources)
+{
+    m_resourceOwner = resources ? resources->GetInstanceId() : 0;
+}
+
+renderer::ResourceManager* Scene::GetResourceManager() const
+{
+    return renderer::ResourceManager::FindOwner(m_resourceOwner);
+}
+
+Scene::Scene(Scene&& other) noexcept : Scene()
 {
     *this = std::move(other);
 }
@@ -190,13 +222,14 @@ Scene& Scene::operator=(Scene&& other) noexcept
     Clear();
 
     m_generations = std::move(other.m_generations);
+    m_resourceOwner = std::exchange(other.m_resourceOwner, 0);
     m_nextIndex = other.m_nextIndex;
     m_freeIndices = std::move(other.m_freeIndices);
     m_gameObjects = std::move(other.m_gameObjects);
     m_gameObjectCount = other.m_gameObjectCount;
     m_entityToGameObject = std::move(other.m_entityToGameObject);
 
-    m_arrays       = std::move(other.m_arrays);
+    m_components->m_arrays       = std::move(other.m_components->m_arrays);
     m_destroyQueue = std::move(other.m_destroyQueue);
     m_runtimePostProcessSettings = std::move(other.m_runtimePostProcessSettings);
     m_userRenderPasses = std::move(other.m_userRenderPasses);
@@ -261,8 +294,7 @@ void Scene::DestroyImmediate(EntityID id) {
     if (generation != m_renderSceneGeneration || GetGameObject(id) != go) return;
 
     /// @note Component が抱えている GPU リソースを、Component を捨てる前に返す。
-    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
-        ReleaseEntityOwnedGpuResources(*this, id, *resources);
+    ReleaseEntityOwnedGpuResources(*this, id);
 
     ManagedScriptRuntime::RetireObject(*this, id);
     /// @note Component 削除
@@ -703,7 +735,7 @@ void Scene::Clear()
     m_gameObjects.clear();
     m_gameObjectCount = 0;
 
-    std::apply([](auto&... arrs) { (..., arrs.Clear()); }, m_arrays);
+    std::apply([](auto&... arrs) { (..., arrs.Clear()); }, m_components->m_arrays);
 
     m_generations.clear();
     m_entityToGameObject.clear();
@@ -796,18 +828,33 @@ void Scene::RemoveAllComponents(EntityID id)
 {
     std::apply([&](auto&... arrs) {
         (..., RemoveIfHas(arrs, id));
-    }, m_arrays);
+    }, m_components->m_arrays);
 }
 
 void Scene::DuplicateComponents(EntityID src, EntityID dst)
 {
     std::apply([&](auto&... arrs) {
         (..., CopyIfHas(arrs, src, dst));
-    }, m_arrays);
+    }, m_components->m_arrays);
 
     ResetCopiedWaterRuntime(*this, dst);
+    RemapCopiedRuntimeMeshBindings(*this, src, *this, dst);
     CopyScriptComponentFrom(*this, src, dst);
-    ClearDuplicatedGpuHandles(*this, dst);
+}
+
+namespace {
+/// @note 個体専用メッシュへの借用は複製先へ持ち越さず、各生成システムが新しい所有メッシュを再公開する。
+void RemapCopiedRuntimeMeshBindings(const Scene& source, EntityID src, Scene& destination, EntityID dst)
+{
+    auto* object = source.GetGameObject(src);
+    if (!object) return;
+    ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if constexpr (requires(const T& component) { component.runtimeMesh; }) {
+            if (const auto* component = object->GetComponent<T>())
+                UnlinkRuntimeMesh(destination, dst, component->runtimeMesh);
+        }
+    });
+}
 }
 
 void Scene::CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst)
@@ -815,22 +862,22 @@ void Scene::CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst
     std::apply([&](const auto&... srcArrs) {
         std::apply([&](auto&... dstArrs) {
             (..., CopyFromOtherIfHas(srcArrs, dstArrs, src, dst));
-        }, m_arrays);
-    }, srcScene.m_arrays);
+        }, m_components->m_arrays);
+    }, srcScene.m_components->m_arrays);
 
     ResetCopiedWaterRuntime(*this, dst);
+    RemapCopiedRuntimeMeshBindings(srcScene, src, *this, dst);
     CopyScriptComponentFrom(srcScene, src, dst);
-    ClearDuplicatedGpuHandles(*this, dst);
 }
 
 void Scene::DuplicateComponentsPassive(EntityID src, EntityID dst)
 {
     std::apply([&](auto&... arrs) {
         (..., CopyIfHas(arrs, src, dst));
-    }, m_arrays);
+    }, m_components->m_arrays);
     ResetCopiedWaterRuntime(*this, dst);
+    RemapCopiedRuntimeMeshBindings(*this, src, *this, dst);
     CopyScriptComponentPassive(*this, src, dst);
-    ClearDuplicatedGpuHandles(*this, dst);
 }
 
 void Scene::CopyComponentsFromPassive(const Scene& srcScene, EntityID src, EntityID dst)
@@ -838,11 +885,11 @@ void Scene::CopyComponentsFromPassive(const Scene& srcScene, EntityID src, Entit
     std::apply([&](const auto&... srcArrs) {
         std::apply([&](auto&... dstArrs) {
             (..., CopyFromOtherIfHas(srcArrs, dstArrs, src, dst));
-        }, m_arrays);
-    }, srcScene.m_arrays);
+        }, m_components->m_arrays);
+    }, srcScene.m_components->m_arrays);
     ResetCopiedWaterRuntime(*this, dst);
+    RemapCopiedRuntimeMeshBindings(srcScene, src, *this, dst);
     CopyScriptComponentPassive(srcScene, src, dst);
-    ClearDuplicatedGpuHandles(*this, dst);
 }
 
 void Scene::PreparePassiveCopiedScripts(std::span<const EntityID> owners)

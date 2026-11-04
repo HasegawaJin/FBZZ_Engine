@@ -2,21 +2,24 @@
 /// @brief   Light / Camera 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/SkyRenderer.hpp>
 #include "InspectorLighting.hpp"
 
 namespace fbzz::editor {
 
 namespace {
 
-/// 名前なしレイヤーは既定で 26 個あり、空文字のままウィジェットへ渡すと
-/// ImGui の ID が全部同じになる (空ラベル = 親と同じ ID)。表示名を必ず埋める。
+/// @note 名前なしレイヤーは既定で 26 個あり、空文字のままウィジェットへ渡すと
+/// @note ImGui の ID が全部同じになる (空ラベル = 親と同じ ID)。表示名を必ず埋める。
 std::string LayerDisplayName(const ProjectSettings& settings, int layer)
 {
     const std::string& name = settings.game.layerNames[layer];
     return name.empty() ? ("User Layer " + std::to_string(layer)) : name;
 }
 
-} // namespace
+} /// @note namespace
 
 void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
@@ -74,7 +77,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                                   : "Mixed...";
             const bool maskComboOpen = ImGui::BeginCombo("Culling Mask", maskLabel);
             /// @note ホバー判定はコンボを開く前に取る。BeginCombo が true を返すと「直前のアイテム」が
-            ///       中身のチェックボックスへ移り、EndCombo 後の IsItemHovered() は本体を指さない。
+            /// @note 中身のチェックボックスへ移り、EndCombo 後の IsItemHovered() は本体を指さない。
             const bool maskHovered = ImGui::IsItemHovered();
             if (maskComboOpen) {
                 bool all = cc.cullingMask == fbzz::Layer::Everything;
@@ -115,7 +118,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             }
 
             /// @note 余白は「バインドポーズ球からはみ出すモーション」への実務的な逃げ道。
-            ///       Inspector からしか触れないと気付けないので、意図をツールチップに残す。
+            /// @note Inspector からしか触れないと気付けないので、意図をツールチップに残す。
             ImGui::DragFloat("Culling Bounds Padding", &cc.cullingBoundsPadding,
                              0.05f, 0.0f, 50.0f, "%.2f m");
             if (cc.cullingBoundsPadding < 0.0f) cc.cullingBoundsPadding = 0.0f;
@@ -159,7 +162,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             }
 
             /// @note 既定で畳む (32 行分)。距離カリングはレイヤー単位 (小物 30m・建物 500m 等) が
-            ///       実用的な粒度で、オブジェクトごとの設定は運用に耐えない (Unity の layerCullDistances 相当)。
+            /// @note 実用的な粒度で、オブジェクトごとの設定は運用に耐えない (Unity の layerCullDistances 相当)。
             if (ImGui::TreeNode("Layer Cull Distances")) {
                 ImGui::TextDisabled("0 = use Max Draw Distance");
                 if (ImGui::SmallButton("Clear All")) {
@@ -206,4 +209,4 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
 }
 
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -1,11 +1,13 @@
 /// @file    UISystem.hpp
-/// @brief   ランタイム UI の描画とボタン入力処理。
+/// @brief   UI の描画資源と CPU 更新を接続する描画アダプター。
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 
 /// @note UICanvas / UIImage / UIText / UIButton を走査して DrawCall とヒット状態を作る。
 /// @note WorldSpace UI には viewProjection を渡して座標変換する。
 #pragma once
+#include <Engine/Api.hpp>
+#include <Engine/Scene/Systems/UIInteraction.hpp>
 #include <Engine/Renderer/DynamicBufferPool.hpp>
 #include <Engine/Renderer/FontAtlas.hpp>
 #include <Engine/Renderer/Material.hpp>
@@ -36,29 +38,6 @@ class GameObject;
 
 namespace fbzz::scene {
 
-struct UICanvas;
-
-/// @note 描画と同じ規則で求める Canvas 全体の寸法。safeArea を差し引く前の Canvas 単位。
-[[nodiscard]] math::Vector2 GetCanvasRectSize(const UICanvas& canvas,
-    float viewportWidth, float viewportHeight);
-
-enum class UIRenderTargetView {
-    GameViewport,  ///< @note 実ゲーム出力。ScreenSpace / WorldSpace の両方を最終合成として描く。
-    SceneViewport, ///< @note 3D 編集ビュー。シーン内オブジェクトである WorldSpace Canvas だけ描く。
-    CanvasEditor   ///< @note UI 専用編集ビュー。3D 空間に属する WorldSpace Canvas は描かない。
-};
-
-/// @note テキスト 1 行ぶんの分割結果。折り返しを入れると「どこで切れたか」を
-/// @note 測るときと描くときで共有しないと、行数と行幅が食い違う。
-struct UITextLine {
-    std::size_t begin = 0;   ///< @note text.text へのバイトオフセット (この行の先頭)
-    std::size_t end   = 0;   ///< @note 同 (この行の終端。改行文字は含まない)
-    float       width = 0.0f;
-    /// @note この行の送り高さ。リッチテキストで `<size>` を使うと行ごとに変わる。
-    float       height = 0.0f;
-    /// @note この行の末尾を "…" に置き換えて描く (TextOverflow::Ellipsis)。
-    bool        ellipsis = false;
-};
 
 /// @note UI の頂点。UISystem.cpp の UIVertex と同じレイアウトで、
 /// @note 作業領域を Context に置くためにヘッダーへ出したもの。
@@ -130,7 +109,7 @@ struct UIMaterialBinding {
 /// @note Viewport / Scene ごとに一つ生成してライフタイムを呼び出し元が管理する。
 /// @note 複数 Viewport (Game/Scene/CanvasEditor) が同一フレームに UISystem を呼ぶとき、
 /// @note static リソースを共有すると定数バッファが上書きし合うため、インスタンスで分離する。
-struct UISystemContext {
+struct UISystemContext : UIInteractionContext {
     bool initialized = false;
     /// @note 当たり判定に使っている矩形・アンカー・ピボットを重ねて描く。呼び出し側が
     /// @note RenderSettings::showUIRects から毎フレーム入れる。
@@ -139,15 +118,6 @@ struct UISystemContext {
     /// @note 出し分けもできる。
     bool showRects = false;
     bool reversedDepth = false;
-    bool sceneDepthAvailable = true;
-    std::string defaultFontPath =
-        "Assets/Fonts/Default/Roboto/Roboto-VariableFont_wdth,wght";
-
-    /// @note 今処理している Canvas の「Canvas 1px あたりの実画面ピクセル数」。フォントを焼く解像度を
-    /// @note これで決める (fontSize は Canvas 空間の値なので、掛けないと小さな Game ビューで字が潰れる)。
-    /// @note 引数でなくここに置く理由: 使うのはテキストの計測と描画の 2 箇所だが、そこへ届けるには
-    /// @note Canvas から降りる再帰を全段引き回すことになる。Canvas に入るたび書き、抜けるまで不変。
-    float textPixelScale = 1.0f;
 
     renderer::ResourceHandle<renderer::ShaderTag>         shader;
     renderer::ResourceHandle<renderer::ShaderTag>         textShader;
@@ -176,30 +146,13 @@ struct UISystemContext {
     /// @note 結果 .mat を編集しても再起動まで反映されない状態が長く残った。
     /// @note 初期値が 0 の理由: ResourceManager の版数は 1 始まり、AssetManager は 0 始まりで
     /// @note «1 度も同期していない» を表せる。初回は空キャッシュを捨てるだけで無害。
+    std::uint64_t cachedResourceOwner   = 0;
     std::uint64_t cachedResetVersion    = 0;
     std::uint64_t cachedShaderVersion   = 0;
     int           cachedAssetGeneration = -1;
 
-    /// @note 子要素を sortOrder 順に並べる作業領域。UI 階層の深さでインデックスする。
-    /// @note 深さごとに持つ理由: 並べた結果は子の再帰処理が終わるまで読み続けるため、1 本を
-    /// @note 共有すると降りた先で親のリストが上書きされ兄弟が消える。
-    /// @note Context に置く理由: UI ノードごと・毎フレームの確保をここで殺す。深さは階層の
-    /// @note 段数ぶんしか無く、Viewport ごとに Context が分かれているため互いの作業領域を踏まない。
-    /// @note vector でなく deque の理由: 再帰で 1 段深く降りるとき外側が伸びうるが、vector だと
-    /// @note 全要素移動で参照が宙に浮く。deque は末尾を伸ばしても既存要素の参照が生き残る。
-    std::deque<std::vector<GameObject*>>                  childScratch;
-
-    /// @note テキスト 1 要素ぶんの行分割結果。測るときと描くときの両方が読む。
-    /// @note 1 本で足りる理由: 行分割は 1 つのテキストを処理し終えるまでしか生きず、その間に
-    /// @note 別のテキストへ入ることが無い (再帰の途中で使い回されない)。
-    std::vector<UITextLine>                               textLineScratch;
     /// @note グリフ頂点をアトラスのページごとに溜める領域。ページ数はフォント依存。
     std::vector<std::vector<UIVertex2D>>                  textPageScratch;
-    /// @note UILayoutGroup が並べ替えに使う子インデックス。
-    std::vector<int>                                      layoutIndexScratch;
-    /// @note レイアウトが子のサイズを一度に見るための作業領域。
-    /// @note 揃え・伸縮・Grid の折り返しは「全部の寸法が分かってから」でないと解けない。
-    std::vector<math::Vector2>                            layoutSizeScratch;
 
     /// @note いま有効なクリップ半平面。Mask / Scroll View に入るたび 4 枚積み、抜けると外す。
     /// @note 深さごとに分けない理由: 積んだ面は子孫すべてに効き続けるため、1 本のスタックが
@@ -215,37 +168,23 @@ struct UISystemContext {
     /// @note 下限を 1 にする理由: 矩形 1 枚ごとに 1 本借りるため、既定 1024 頂点を下限にすると
     /// @note 本数×1024 頂点が常駐する。要求そのもの (2 の冪へ切り上げ) で足りる。
     renderer::DynamicVertexBufferPool vertexPool{ 1 };
-    /// @note Input domain is supplied per render invocation; interaction history is local to this UI context.
-    bool gameplayInput = false;
-    std::uint64_t inputInteractionRevision = ~std::uint64_t{0};
 };
 
 /// @note UIText.fontPath が空のときに使用するデフォルトフォントアトラスのベースパス (拡張子なし) を設定する。
-void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePath);
+FBZZ_ENGINE_API void UISystemSetDefaultFontPath(UISystemContext& ctx, const std::string& basePath);
 
-/// @note Context が抱えている頂点バッファを ResourceManager へ返す。
-
-/// @note UISystemContext は ResourceManager を知らないため、デストラクタでは返せない。
-/// @note Context を捨てる側が明示的に呼ぶこと。Play セッションごとに作り直される
-/// @note ProjectRuntime::m_gameUICtx がこれを呼ばないと、往復のたびに DrawCall 数ぶんの
-/// @note 頂点バッファが取り残される。
-void UISystemReleaseGpuResources(UISystemContext& ctx, renderer::ResourceManager& resources);
+/// @note Context の定数バッファ・PSO・フォント・描画キャッシュを各作成元へ返す。
+/// @note 頂点プールは自動解放するが、ホストの終了時は全 GPU キャッシュを明示的に畳む。
+FBZZ_ENGINE_API void UISystemReleaseGpuResources(UISystemContext& ctx, renderer::ResourceManager& resources);
+/// @note 各ハンドルの作成元へ返す。作成元が終了済みでも安全に Context を空にする。
+FBZZ_ENGINE_API void UISystemReleaseGpuResources(UISystemContext& ctx);
 
 /// @note 呼び手が束縛した最終出力の深度へ、Reversed-Z のシーン深度を正規化 UV で転写する。
 /// @note カラーは保持する。描画スケールと出力の深度規約が違っても WorldSpace UI の遮蔽を保つ。
-bool UICopySceneDepth(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
+FBZZ_ENGINE_API bool UICopySceneDepth(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                       UISystemContext& ctx, renderer::ResourceHandle<renderer::TextureTag> sceneDepth,
                       bool reversedOutput);
 
-/// @note 直近の UI 入力処理で、ポインターがいずれかの UI 要素に吸われたか。
-/// @note 無いとメニュー上のクリックがそのままゲーム側 (射撃・カメラ操作) にも届く。判定自体は
-/// @note ProcessUIEventsRecursive が既に出しているが、外へ出す口が無かった。
-/// @note GameViewport の入力パスだけが更新する。UI が 1 度も回っていなければ false。
-[[nodiscard]] bool UIPointerOverUI();
-
-/// @note リッチテキストのタグを除いた文字数。visibleCharacters の上限を知るのに使う。
-/// @note richText が false なら単純な UTF-8 の文字数。
-[[nodiscard]] std::size_t UITextVisibleLength(const std::string& text, bool richText);
 
 /// @note フォントアトラスとマテリアル解決のキャッシュを捨てる。
 
@@ -254,14 +193,14 @@ bool UICopySceneDepth(renderer::IRenderer& renderer, renderer::ResourceManager& 
 
 /// @param resources 抱えている GPU リソースの返却先。デバイスリセット後は nullptr を渡すこと
 /// @note (実体はもう無く、ハンドルだけが残っている)。
-void UISystemFlushCache(UISystemContext& ctx, renderer::ResourceManager* resources);
+FBZZ_ENGINE_API void UISystemFlushCache(UISystemContext& ctx, renderer::ResourceManager* resources);
 
 /// @note cameraWorldPos / cameraWorldRot:
 /// @note WorldSpace ヒット判定と ScreenSpaceCamera モードのためのカメラ姿勢。
 /// @note WorldSpace / ScreenSpaceCamera を使わない場合はデフォルト値でよい。
 /// @note viewProjection: WorldSpace / ScreenSpaceCamera canvas 用のカメラ VP 行列。
 /// @note targetView: Game / UI Editor など、呼び出し元 Viewport の役割に応じて描画対象 Canvas を絞る。
-void UISystem(Scene& scene,
+FBZZ_ENGINE_API void UISystem(Scene& scene,
               renderer::IRenderer& renderer,
               renderer::ResourceManager& resources,
               UISystemContext& ctx,
@@ -279,7 +218,7 @@ void UISystem(Scene& scene,
 /// @note 輪郭自体を UI パスで描かない理由: 3D オブジェクトの選択輪郭は SelectionOutline パスが
 /// @note マスクの縁を検出して描く。UI だけ別に描くと太さも色も RenderSettings の
 /// @note outlineColor/outlineWidth から外れ、同じ「選択中」が 2 種類の見た目になる。
-void UISelectionMaskSystem(Scene& scene,
+FBZZ_ENGINE_API void UISelectionMaskSystem(Scene& scene,
                            renderer::IRenderer& renderer,
                            renderer::ResourceManager& resources,
                            UISystemContext& ctx,

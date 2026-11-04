@@ -2,6 +2,10 @@
 /// @brief   選択 Entity / Asset の Inspector ルーティング。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/Panels/AnimationGraphInspector.hpp>
 #include <Editor/Panels/AnimationPreview.hpp>

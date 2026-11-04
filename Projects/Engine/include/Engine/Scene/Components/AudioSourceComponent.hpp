@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2025-01-01
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Engine/Audio/VoiceLifetime.hpp>
 #include <memory>
 #include <algorithm>

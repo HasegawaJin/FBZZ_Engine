@@ -5,6 +5,7 @@
 /// @note 静的メッシュとスキンメッシュの両方を扱う。
 /// @note CPU 側頂点配列はデバッグや再生成用に必要な範囲だけ保持する。
 #pragma once
+#include <Graphics/Api.hpp>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -77,13 +78,13 @@ struct Mesh {
 
     /// @note CPU 頂点配列からバウンディング球と AABB を計算する。
     /// @note メッシュ生成後・GPU アップロード前に一度だけ呼ぶ想定。
-    void ComputeBounds();
+    FBZZ_GRAPHICS_API void ComputeBounds();
 
     /// @note boundsExtents だけを CPU 頂点配列から埋める (球には触れない)。
     /// @note .mesh / .fzasset は球だけをヘッダーに持つため、そちらから読んだメッシュは AABB を
     /// @note       知らないまま「薄い形」と区別がつかない。フォーマットを変えずに補うため、頂点を
     /// @note       読み終えた直後にこれだけを走らせる。
-    void ComputeBoundsExtents();
+    FBZZ_GRAPHICS_API void ComputeBoundsExtents();
 };
 
 } /// @note namespace fbzz::renderer

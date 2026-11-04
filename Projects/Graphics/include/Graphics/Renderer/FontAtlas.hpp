@@ -11,6 +11,7 @@
 /// @note 焼く解像度は呼び出し側 (UISystem) が渡す。SDF は縮小に弱く実画面 1px がアトラスの数
 /// @note       テクセル相当まで縮むと字が潰れるため、実際の表示サイズを知る側に委ねる。
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -53,10 +54,10 @@ struct FontGlyph {
 /// @note UISystem が「パス + 焼いた解像度」をキーにキャッシュし、重複ロードを防ぐ。
 class FontAtlas {
 public:
-    FontAtlas();
-    ~FontAtlas();
-    FontAtlas(FontAtlas&&) noexcept;
-    FontAtlas& operator=(FontAtlas&&) noexcept;
+    FBZZ_GRAPHICS_API FontAtlas();
+    FBZZ_GRAPHICS_API ~FontAtlas();
+    FBZZ_GRAPHICS_API FontAtlas(FontAtlas&&) noexcept;
+    FBZZ_GRAPHICS_API FontAtlas& operator=(FontAtlas&&) noexcept;
     FontAtlas(const FontAtlas&)            = delete;
     FontAtlas& operator=(const FontAtlas&) = delete;
 
@@ -66,32 +67,32 @@ public:
     /// @param rasterPixelHeight 動的モードで焼く em サイズ (px)。静的モードでは無視される。
     /// @note        ResolveRasterPixelHeight() を通した値を渡すこと。
     /// @return 失敗しても例外は投げない。IsValid() で成否を確認すること。
-    bool Load(const std::string& path, ResourceManager& resources, float rasterPixelHeight);
+    FBZZ_GRAPHICS_API bool Load(const std::string& path, ResourceManager& resources, float rasterPixelHeight);
 
     /// @brief 拡張子が動的モード (TrueType/OpenType) のものかどうか。
     /// @note 「同じフォントを解像度別に焼き分けるか」は呼び出し側のキャッシュキーの問題であり、
     /// @note       動的モードでしか意味を持たないため公開する。
-    [[nodiscard]] static bool IsDynamicFontPath(const std::string& path);
+    [[nodiscard]] FBZZ_GRAPHICS_API static bool IsDynamicFontPath(const std::string& path);
 
     /// @brief 欲しい解像度を、実際に焼く段階の値へ丸める。
     /// @note 要求どおりの px で焼くと、ビューポートを 1px 動かすたびに別のアトラスが生まれる。
     /// @note       段にしておけば、リサイズ中も同じ実体を使い回せる。
-    [[nodiscard]] static float ResolveRasterPixelHeight(float desiredPixelHeight);
+    [[nodiscard]] FBZZ_GRAPHICS_API static float ResolveRasterPixelHeight(float desiredPixelHeight);
 
     /// @brief テキストに含まれるグリフのうち、まだアトラスに無いものを焼いて GPU へ反映する。
     /// @note 静的モードでは何もしない。UISystem がレイアウト前に 1 度だけ呼ぶ。
     /// @note GetGlyph 内で遅延生成しないのは、GetGlyph がレイアウト計算から何度も呼ばれる const
     /// @note       アクセサだから。「先に全部焼く→あとは読むだけ」に分け、転送をフレーム 1 回に抑える。
-    void PrepareText(std::string_view utf8Text, ResourceManager& resources);
+    FBZZ_GRAPHICS_API void PrepareText(std::string_view utf8Text, ResourceManager& resources);
 
     /// @brief ロード成功かつ 1 枚以上のページテクスチャが有効なら true。
-    [[nodiscard]] bool IsValid() const;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool IsValid() const;
 
     /// @brief コードポイントに対応するグリフを返す。未登録なら nullptr。
-    [[nodiscard]] const FontGlyph* GetGlyph(char32_t codePoint) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API const FontGlyph* GetGlyph(char32_t codePoint) const;
 
     /// @brief 連続する 2 文字間のカーニング量 (px) を返す。定義が無ければ 0。
-    [[nodiscard]] float GetKerning(char32_t previous, char32_t next) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API float GetKerning(char32_t previous, char32_t next) const;
 
     /// @brief アトラス生成時の行高さ (px)。fontSize / lineHeight がスケール係数になる。
     /// @note fontSize は「em サイズ」でなく「行の高さ」として解釈する (既存シーンの fontSize
@@ -106,7 +107,7 @@ public:
     [[nodiscard]] float GetFallbackAdvance() const { return m_fallbackAdvance; }
 
     /// @brief ページ番号に対応するテクスチャ。範囲外なら無効ハンドル。
-    [[nodiscard]] ResourceHandle<TextureTag> GetTexture(int page = 0) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API ResourceHandle<TextureTag> GetTexture(int page = 0) const;
 
     /// @brief ページ数 (1 以上)。
     [[nodiscard]] std::size_t GetPageCount() const { return m_pages.size(); }
@@ -115,21 +116,26 @@ public:
     /// @note «まだ生きているアトラスを捨てる» (フォント差し替え・アセットリロード) では破棄を
     /// @note       待たずにその場で返したい。動的モードの SDF ページは 1 枚 MB 級で、キャッシュを
     /// @note       捨てるたびに残ると効いてくる。
-    void ReleaseGpuResources(ResourceManager& resources);
+    FBZZ_GRAPHICS_API void ReleaseGpuResources(ResourceManager& resources);
+
+    /// @note GPU を作らず配置用の送り幅・行高を読む。描画用 Atlas とは別のインスタンスで使う。
+    FBZZ_GRAPHICS_API bool LoadMetrics(const std::string& path, float rasterPixelHeight);
+    FBZZ_GRAPHICS_API void PrepareTextMetrics(std::string_view utf8Text);
 
 private:
+    bool LoadImpl(const std::string& path, ResourceManager* resources, float rasterPixelHeight);
     /// @brief BMFont テキスト形式をパースする。成功したら true。
-    bool ParseBMFont(const std::string& fntText,
+    FBZZ_GRAPHICS_API bool ParseBMFont(const std::string& fntText,
                      const std::string& fntPath,
-                     ResourceManager&   resources);
+                     ResourceManager*   resources);
 
     /// @brief gen_font_atlas.py が吐く旧独自形式をパースする。成功したら true。
-    bool ParseLegacy(const std::string& fntText,
+    FBZZ_GRAPHICS_API bool ParseLegacy(const std::string& fntText,
                      const std::string& basePath,
-                     ResourceManager&   resources);
+                     ResourceManager*   resources);
 
     /// @brief TTF/TTC/OTF を動的モードで開く。成功したら true。
-    bool LoadDynamic(const std::string& fontPath, float rasterPixelHeight);
+    FBZZ_GRAPHICS_API bool LoadDynamic(const std::string& fontPath, float rasterPixelHeight);
 
     /// @brief カーニング表のキー。上位 32bit に前の文字、下位 32bit に次の文字を詰める。
     /// @note pair<char32_t,char32_t> + 自作ハッシュより、64bit 整数キーの方が unordered_map の

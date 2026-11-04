@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/WaterSpline.hpp>
 #include <array>
 #include <memory>
@@ -33,7 +34,7 @@ struct WaterZoneSnapshot {
 /// @note source[0]は接続先の親水域。同じpriorityでは入力順を優先する。
 /// @return 無効入力・形状/演算予算超過ではfalse。outは未変更、diagnosticへ理由を返す。
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-meshing-system-and-surface-rendering-in-unreal-engine Epic Water Zoneと共有水面メッシュ。
-[[nodiscard]] bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
+[[nodiscard]] FBZZ_ENGINE_API bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     std::span<const WaterZoneMouthInput> mouths, const Transform& ownerTransform,
     float maximumWaterDepth, float maximumWorldCellSize, WaterZoneSnapshot& out,
     std::string& diagnostic);

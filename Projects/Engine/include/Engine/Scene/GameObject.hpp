@@ -5,6 +5,7 @@
 /// @note  Scene が unique_ptr で所有し、ComponentArray への入口を提供する。
 /// @note  親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
 #pragma once
+#include <Engine/Api.hpp>
 #include "Entity.hpp"
 #include "Transform.hpp"
 #include "ManagedBridgeAbi.hpp"
@@ -46,12 +47,12 @@ public:
     Transform transform;
 
     /// @note  Unity: SetActive / activeSelf / activeInHierarchy
-    void SetActive(bool active);
-    bool activeSelf()        const;
-    bool activeInHierarchy() const;
+    FBZZ_ENGINE_API void SetActive(bool active);
+    FBZZ_ENGINE_API bool activeSelf()        const;
+    FBZZ_ENGINE_API bool activeInHierarchy() const;
 
     /// @note  Unity: CompareTag
-    bool CompareTag(const std::string& t) const;
+    FBZZ_ENGINE_API bool CompareTag(const std::string& t) const;
 
     /// @note  Unity: AddComponent<T> / GetComponent<T>
     /// @note  template 本体は Scene.hpp の末尾で定義する (Scene が完全型である必要があるため)
@@ -61,37 +62,37 @@ public:
     template<typename T> T* GetScript();
 
     /// @note  Unity: transform.SetParent / childCount / GetChild
-    void        SetParent(GameObject& parent);
-    bool        SetParent(GameObject* parent);
-    bool        ClearParent();
-    bool        IsDescendantOf(const GameObject& ancestor) const;
-    GameObject* GetParent()         const;
-    int         GetChildCount()     const;
-    GameObject* GetChild(int index) const;
+    FBZZ_ENGINE_API void        SetParent(GameObject& parent);
+    FBZZ_ENGINE_API bool        SetParent(GameObject* parent);
+    FBZZ_ENGINE_API bool        ClearParent();
+    FBZZ_ENGINE_API bool        IsDescendantOf(const GameObject& ancestor) const;
+    FBZZ_ENGINE_API GameObject* GetParent()         const;
+    FBZZ_ENGINE_API int         GetChildCount()     const;
+    FBZZ_ENGINE_API GameObject* GetChild(int index) const;
 
     /// @note  自分を含む部分木を子の表示順に深さ優先で検索する。非アクティブも含む。
     /// @note  同名は最初の1件、未検出は nullptr。戻り値は Scene が所有する非所有参照。
-    [[nodiscard]] GameObject* FindInSubtree(std::string_view objectName);
+    [[nodiscard]] FBZZ_ENGINE_API GameObject* FindInSubtree(std::string_view objectName);
 
     /// @brief Unity: transform.GetSiblingIndex / SetSiblingIndex
     /// @note 兄弟内の表示順 (Hierarchy の並び)。親がいない場合はルート同士の並び順を指す。Hierarchy パネルのドラッグ並べ替え (挿入ライン) に使う。
-    int  GetSiblingIndex() const;
-    bool SetSiblingIndex(int index);
+    FBZZ_ENGINE_API int  GetSiblingIndex() const;
+    FBZZ_ENGINE_API bool SetSiblingIndex(int index);
 
     /// @note  Unity: GameObject.Find / FindWithTag / FindObjectsOfType (static)
     /// @note Unity と同じく既定では親ごと無効化された GameObject を返さない。FindByGuid は参照解決用なので無効な物も返す。
-    static GameObject*              Find(const std::string& n, bool includeInactive = false);
-    static GameObject*              FindByGuid(const std::string& guid);
-    static GameObject*              FindWithTag(const std::string& t, bool includeInactive = false);
+    FBZZ_ENGINE_API static GameObject*              Find(const std::string& n, bool includeInactive = false);
+    FBZZ_ENGINE_API static GameObject*              FindByGuid(const std::string& guid);
+    FBZZ_ENGINE_API static GameObject*              FindWithTag(const std::string& t, bool includeInactive = false);
     template<typename T>
     static std::vector<GameObject*> FindObjectsOfType();
 
     /// @note  Unity: Object.Destroy(go, delay)
     /// @note  delay=0 → 次フレーム末尾で削除 / delay>0 → 毎フレーム減算後に削除
-    static void Destroy(GameObject& go, float delay = 0.0f);
+    FBZZ_ENGINE_API static void Destroy(GameObject& go, float delay = 0.0f);
 
     [[nodiscard]] Scene* GetScene() const { return m_scene; }
-    bool     IsValid() const;
+    FBZZ_ENGINE_API bool     IsValid() const;
     EntityID GetID()   const { return m_id; }
 
 private:

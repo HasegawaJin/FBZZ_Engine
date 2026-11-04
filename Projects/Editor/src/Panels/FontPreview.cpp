@@ -10,6 +10,9 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
+/// @note プレビューの実装は Editor 内へ閉じ、Graphics DLL の第三者ライブラリシンボルへ依存しない。
+#define STBTT_STATIC
+#define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
 #include <imgui.h>
 #include <algorithm>
@@ -146,9 +149,7 @@ bool RasterizeFontPreview(std::string_view path, bool large, FontPreviewImage& o
 
 void FontPreviewView::ReleaseTexture()
 {
-    if (auto* resources = renderer::ResourceManager::Active();
-        resources && resources == m_resourceOwner &&
-        resources->GetResetVersion() == m_resetVersion && m_texture.IsValid())
+    if (auto* resources = renderer::ResourceManager::FindOwner(m_texture.owner))
         resources->Release(m_texture);
     m_texture = {};
 }

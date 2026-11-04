@@ -2,6 +2,10 @@
 /// @brief   Transform / Script の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/UIImage.hpp>
+#include <Engine/Scene/Components/UIText.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
 #include "InspectorCore.hpp"
 #include <Editor/Util/TransformAuthoringValues.hpp>
 #include "ManagedSettingsReflector.hpp"
@@ -364,6 +368,21 @@ void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
 
 } /// @note namespace
 
+bool SetUIImageNativeSize(scene::GameObject& object, EditorContext& context)
+{
+    const auto* image = object.GetComponent<scene::UIImage>();
+    if (!image || (image->anchoring.stretchX && image->anchoring.stretchY)) return false;
+    math::Vector2 size{};
+    if (!ResolveUIImageNativeSize(*image, context, size)) return false;
+    auto& transform = object.transform;
+    const auto before = transform;
+    if (!image->anchoring.stretchX) transform.scale.x = size.x;
+    if (!image->anchoring.stretchY) transform.scale.y = size.y;
+    if (!TransformAuthoringValuesEqual(before, transform))
+        PushTransformSnapshotUndo(object, context, before, "Set Native Size");
+    return true;
+}
+
 std::string GetScriptOrderKey(const scene::ScriptComponent& component, int index)
 {
     return ScriptOrderKey(component, index);
@@ -456,14 +475,7 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 /// @note 両軸ストレッチなら原寸に戻す先が無い。
                 const bool canSetNative = hasNativeSize && !(stretchX && stretchY);
                 ImGui::BeginDisabled(!canSetNative);
-                if (ImGui::SmallButton("Set Native Size")) {
-                    const scene::Transform before = t;
-                    /// @note ストレッチしている軸には書かない。書いても捨てられる値で
-                    /// @note        Undo の履歴だけが増える。
-                    if (!stretchX) t.scale.x = nativeSize.x;
-                    if (!stretchY) t.scale.y = nativeSize.y;
-                    PushTransformSnapshotUndo(*go, ctx, before, "Set Native Size");
-                }
+                if (ImGui::SmallButton("Set Native Size")) SetUIImageNativeSize(*go, ctx);
                 ImGui::EndDisabled();
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
                     ImGui::SetTooltip(!hasNativeSize

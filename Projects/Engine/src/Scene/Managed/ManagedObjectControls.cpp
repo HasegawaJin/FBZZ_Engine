@@ -2,6 +2,20 @@
 /// @brief   寿命検証後の Component 操作と循環検出付きの階層検索。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/UIButton.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Components/UICanvasGroup.hpp>
+#include <Engine/Scene/Components/UIControls.hpp>
+#include <Engine/Scene/Components/UIImage.hpp>
+#include <Engine/Scene/Components/UIText.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
 #include "ManagedObjectControls.hpp"
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>

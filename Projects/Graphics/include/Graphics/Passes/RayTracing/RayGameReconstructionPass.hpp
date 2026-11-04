@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/IRenderPass.hpp>
 #include <Graphics/RayTracing/RayPathTraceResources.hpp>
 
@@ -14,8 +15,8 @@ public:
     RayGameReconstructionPass(RayPathViewResources& state, ResourceHandle<ShaderTag> shader, bool spatial)
         : m_state(state), m_shader(shader), m_spatial(spatial) {}
     std::string_view Name() const override { return m_spatial ? "RayGameSpatial" : "RayGameTemporal"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& context) const override;
-    void Execute(PassResources& resources, RenderPassContext& context) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& context) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& context) override;
 private:
     RayPathViewResources& m_state;
     ResourceHandle<ShaderTag> m_shader;

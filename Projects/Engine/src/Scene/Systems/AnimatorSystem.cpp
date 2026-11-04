@@ -2,6 +2,7 @@
 /// @brief   スケルタルアニメーションのサンプリングとスキニングパレットのアップロード。
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
 #include "AnimationClipHelpers.hpp"
 #include "AnimationWorkTrace.hpp"
@@ -19,6 +20,7 @@
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
 #include <Engine/Scene/Components/SpringBoneComponent.hpp>
+#include <Engine/Scene/Components/RagdollComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <Engine/Scene/Components/MotionWarpComponent.hpp>
@@ -35,6 +37,7 @@
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
+#include <bit>
 #include <array>
 #include <cctype>
 #include <cmath>
@@ -1029,7 +1032,7 @@ void SnapshotPreviousBonePalette(AnimatorComponent& animator,
     if(auto* observation=CurrentAnimationActorRow()) {
         observation->snapshotObserved=true; observation->previousValidBeforeSnapshot=animator.prevBoneMatricesValid;
         observation->currentCountBeforeSnapshot=animator.boneMatrices.size(); observation->previousCountBeforeSnapshot=animator.prevBoneMatrices.size();
-        observation->key.previousHandleId=animator.prevSkinningBuffer.id; observation->key.previousHandleGeneration=animator.prevSkinningBuffer.gen;
+        observation->key.previousHandleId=animator.prevSkinningBuffer.Get().id; observation->key.previousHandleGeneration=animator.prevSkinningBuffer.Get().gen;
     }
     auto& bake = animator.boneBake;
     bake.previousPoseValid = bake.active && bake.source && !bake.invalidateHistory;
@@ -1050,8 +1053,8 @@ void SnapshotPreviousBonePalette(AnimatorComponent& animator,
         observation->previousValidBeforeSnapshot=animator.prevBoneMatricesValid;
         observation->currentCountBeforeSnapshot=animator.boneMatrices.size();
         observation->previousCountBeforeSnapshot=animator.prevBoneMatrices.size();
-        observation->key.previousHandleId=animator.prevSkinningBuffer.id;
-        observation->key.previousHandleGeneration=animator.prevSkinningBuffer.gen;
+        observation->key.previousHandleId=animator.prevSkinningBuffer.Get().id;
+        observation->key.previousHandleGeneration=animator.prevSkinningBuffer.Get().gen;
         observation->currentClampedCount=static_cast<uint32_t>((std::min)(animator.boneMatrices.size(),size_t{128}));
         observation->previousClampedCount=static_cast<uint32_t>((std::min)(animator.prevBoneMatrices.size(),size_t{128}));
         if(animator.prevBoneMatricesValid) {
@@ -2849,7 +2852,7 @@ static bool PhaseEligible(const AnimatorComponent& animator,GameObject& owner,co
         || animator.appliedAssetGeneration!=asset::AssetManager::GetAssetGeneration()
         || animator.loadedControllerPath!=animator.controllerPath || !animator.blendToState.empty()
         || !owner.activeInHierarchy() || !animator.enabled || !smr.morphWeights.empty()
-        || owner.GetComponent<IKSolverComponent>() || owner.GetComponent<SpringBoneComponent>()
+        || owner.GetComponent<IKSolverComponent>() || owner.GetComponent<SpringBoneComponent>() || owner.GetComponent<RagdollComponent>()
         || owner.GetComponent<MotionWarpComponent>() || !FindState(animator,animator.currentStateName))return false;
     for(const auto& clip:animator.Clips())
         if(clip.hasRootMotion || !clip.events.empty() || !clip.propertyTracks.empty())return false;
@@ -2861,7 +2864,7 @@ static bool PhaseHierarchyEligible(Scene& scene,const asset::Skeleton& skeleton,
         || smr.nodeEntities.size()!=skeleton.nodes.size() || skeleton.bones.empty())return false;
     for(EntityID id:smr.nodeEntities) {
         auto* object=scene.GetGameObject(id);
-        if(!object || object->GetComponent<IKSolverComponent>() || object->GetComponent<SpringBoneComponent>()
+        if(!object || object->GetComponent<IKSolverComponent>() || object->GetComponent<SpringBoneComponent>() || object->GetComponent<RagdollComponent>()
             || object->GetComponent<MotionWarpComponent>())return false;
     }
     for(size_t bone=0;bone<(std::min)(skeleton.bones.size(),size_t{asset::MAX_SKINNING_BONES});++bone)
@@ -2880,7 +2883,7 @@ static bool SuccessfulPhaseLegacyPose(Scene& scene,const asset::Skeleton& skelet
     for(size_t node=0;node<skeleton.nodes.size();++node) {
         auto* object=scene.GetGameObject(smr.nodeEntities[node]);
         if(!object || !evaluated[node] || !propagated[node] || object->GetComponent<IKSolverComponent>()
-            || object->GetComponent<SpringBoneComponent>() || object->GetComponent<MotionWarpComponent>())return false;
+            || object->GetComponent<SpringBoneComponent>() || object->GetComponent<RagdollComponent>() || object->GetComponent<MotionWarpComponent>())return false;
     }
     for(size_t bone=0;bone<bones;++bone)
         if(skeleton.bones[bone].nodeIndex<0 || static_cast<size_t>(skeleton.bones[bone].nodeIndex)>=skeleton.nodes.size())return false;
@@ -2903,8 +2906,8 @@ static animation_phase_detail::Source PhaseSource(Scene& scene,renderer::Resourc
     source.rendererLifetime=scene.GetComponentLifetime<SkinnedMeshRenderer>(rendererID);
     source.rendererIndex=rendererID.index;source.rendererGeneration=rendererID.generation;
     /// @note Numeric identity witnesses are never dereferenced or used as lifetime keys; the renderer is live at this read.
-    source.modelIdentity=static_cast<uint64_t>(reinterpret_cast<uintptr_t>(renderer.model));
-    source.skeletonIdentity=renderer.model?static_cast<uint64_t>(reinterpret_cast<uintptr_t>(renderer.model->skeleton.get())):0;
+    source.modelIdentity=static_cast<uint64_t>(std::bit_cast<uintptr_t>(renderer.model));
+    source.skeletonIdentity=renderer.model?static_cast<uint64_t>(std::bit_cast<uintptr_t>(renderer.model->skeleton.get())):0;
     const float config[]={animator.poseLodNearDistance,animator.poseLodFarDistance,animator.poseLodMidInterval,
         animator.poseLodFarInterval,animator.localTimeScale,animator.speed};
     for(size_t index=0;index<source.lodSettings.size();++index)std::memcpy(&source.lodSettings[index],&config[index],sizeof(float));
@@ -3160,7 +3163,7 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
 ComponentAccess AnimatorSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<AnimatorComponent, TargetPointComponent, CameraComponent, IKSolverComponent, SpringBoneComponent, MotionWarpComponent>()
+        .Reads<AnimatorComponent, TargetPointComponent, CameraComponent, IKSolverComponent, SpringBoneComponent, RagdollComponent, MotionWarpComponent>()
         .Writes<AnimatorComponent, BoneComponent, SkinnedMeshRenderer, Transform>();
 }
 
@@ -3223,6 +3226,26 @@ void AnimatorSystem::Update(SystemContext& ctx)
             if(phaseEnabled)CancelAnimationPhaseDistribution(PhaseKey(scene,id));
             continue;
         }
+        if (!ctx.simulating && ctx.playing) {
+            /// @note Pause は物理補正済みの最終姿勢を保持し、静止した現在姿勢を前回パレットにも反映する。
+            if (AnimationPhaseDistributionEnabled()) CancelAnimationPhaseDistribution(PhaseKey(scene,id));
+            animator->poseEvaluatedThisFrame = false;
+            animator->firedEvents.clear();
+            SnapshotPreviousBonePalette(*animator, resources);
+            animator->rootMotionDeltaPosition = math::Vector3::ZERO;
+            animator->rootMotionDeltaRotation = math::Quaternion::Identity();
+            animator->rootMotionWorldDelta = math::Vector3::ZERO;
+            animator->rootMotionWorldVelocity = math::Vector3::ZERO;
+            animator->rootMotionDeltaTime = 0.0f;
+            animator->rootMotionAppliedByEngine = false;
+            /// @note 再開直後の差分を失わないよう、連続した有効履歴だけ時計を止めたまま描画フレームへ繋ぐ。
+            if (animator->clipsLoaded && animator->appliedAssetGeneration == asset::AssetManager::GetAssetGeneration()
+                && animator->loadedControllerPath == animator->controllerPath) {
+                for (auto& sample : animator->rootMotionSamples)
+                    if (sample.frame + 1 == Time::frameCount) sample.frame = Time::frameCount;
+            }
+            continue;
+        }
         auto* actorObservation=actorFrame.Active()?actorFrame.BeginActor(id.index,id.generation,
             scene.GetComponentLifetime<AnimatorComponent>(id),ctx.dt,animator->localTimeScale):nullptr;
         AnimationActorScope actorScope(actorObservation);
@@ -3246,6 +3269,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
             && animator->boneBake.gpuReady && animator->boneBake.gpuOwner == resources.GetInstanceId()
             && animator->boneBake.gpuEpoch == resources.GetResetVersion()
             && scene.GetEntities<IKSolverComponent>().empty() && scene.GetEntities<SpringBoneComponent>().empty()
+            && scene.GetEntities<RagdollComponent>().empty()
             && scene.GetEntities<MotionWarpComponent>().empty() && batchRenderer && batchRenderer->model
             && batchRenderer->skinnedBufferModel == batchRenderer->model
             && batchRenderer->morphWeights == batchRenderer->appliedMorphWeights
@@ -3390,7 +3414,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
         const bool safeLod = animator->poseLodEnabled && lodState && poseOnlyClips
             && animator->blendToState.empty() && !animator->externalPose
             && !animator->rootMotion.Extracts() && animator->layers.empty()
-            && !go.GetComponent<IKSolverComponent>() && !go.GetComponent<SpringBoneComponent>()
+            && !go.GetComponent<IKSolverComponent>() && !go.GetComponent<SpringBoneComponent>() && !go.GetComponent<RagdollComponent>()
             && !go.GetComponent<MotionWarpComponent>() && !cameraPositions.empty();
         if (safeLod) {
             float nearestSq = (std::numeric_limits<float>::max)();
@@ -3446,7 +3470,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
         bool allowBoneBake = bakeRequested;
         if (allowBoneBake && animator->boneBakeRequireCpuBones) bakeFallback = BoneBakeFallback::CPU_BONES_REQUIRED;
         else if (allowBoneBake && (animator->externalPose || go.GetComponent<IKSolverComponent>()
-            || go.GetComponent<SpringBoneComponent>() || go.GetComponent<MotionWarpComponent>())) bakeFallback = BoneBakeFallback::RIG_CONTROL;
+            || go.GetComponent<SpringBoneComponent>() || go.GetComponent<RagdollComponent>() || go.GetComponent<MotionWarpComponent>())) bakeFallback = BoneBakeFallback::RIG_CONTROL;
         else if (allowBoneBake && (!animator->layers.empty() || !animator->baseLayerMask.path.empty())) bakeFallback = BoneBakeFallback::LAYERS_OR_MASK;
         else if (allowBoneBake && !smr->morphWeights.empty()) bakeFallback = BoneBakeFallback::MORPH;
         else if (allowBoneBake && (!std::isfinite(animator->boneBakeMinDistance) || animator->boneBakeMinDistance < 0.0f)) bakeFallback = BoneBakeFallback::INVALID_SOURCE;
@@ -3458,9 +3482,10 @@ void AnimatorSystem::Update(SystemContext& ctx)
                 ? BoneBakeFallback::NEAR_CAMERA : BoneBakeFallback::NONE;
             /// @note Query live membership per actor so controls added by an earlier callback still disable sharing in this frame.
             if (!scene.GetEntities<IKSolverComponent>().empty() || !scene.GetEntities<SpringBoneComponent>().empty()
+                || !scene.GetEntities<RagdollComponent>().empty()
                 || !scene.GetEntities<MotionWarpComponent>().empty()) for (EntityID node : smr->nodeEntities) {
                 auto* boneObject = scene.GetGameObject(node);
-                if (boneObject && (boneObject->GetComponent<IKSolverComponent>() || boneObject->GetComponent<SpringBoneComponent>()
+                if (boneObject && (boneObject->GetComponent<IKSolverComponent>() || boneObject->GetComponent<SpringBoneComponent>() || boneObject->GetComponent<RagdollComponent>()
                     || boneObject->GetComponent<MotionWarpComponent>())) bakeFallback = BoneBakeFallback::RIG_CONTROL;
             }
         }

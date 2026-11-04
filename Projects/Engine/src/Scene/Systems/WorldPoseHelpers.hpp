@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -20,7 +21,7 @@ namespace fbzz::scene::world_pose_detail {
 /// @pre 親のワールド姿勢が確定済みであること。子孫の同期は呼び出し側が行う。
 /// @note scale は変更せず、worldRotation は入力をそのまま保持する。
 /// @note 親 scale が厳密に 0 の軸だけ localPosition を 0 へ投影する。
-void WriteWorldPoseToTransform(GameObject& go, const math::Vector3& worldPosition,
+FBZZ_ENGINE_API void WriteWorldPoseToTransform(GameObject& go, const math::Vector3& worldPosition,
                                 const math::Quaternion& worldRotation);
 
 
@@ -36,9 +37,9 @@ struct AiWorldMathWorkspace { AiWorldMathEntry* rows = nullptr; std::size_t coun
 extern constinit thread_local AiWorldMathWorkspace g_aiWorldMath;
 
 /// @note Scratch grows up to 65536 entity slots (under 8 MiB); larger indices retain ordinary computation.
-void ReserveAiWorldMath(std::size_t slots);
+FBZZ_ENGINE_API void ReserveAiWorldMath(std::size_t slots);
 /// @note Traversals contain no callbacks; reset pure arithmetic proofs when SSE rounding, denormals or exception masks change.
-void PrepareAiWorldMath();
+FBZZ_ENGINE_API void PrepareAiWorldMath();
 
 /// @note Bitwise input keys preserve signed zero and exact arithmetic; stale world fields are always replaced.
 inline bool TryReuseAiWorldMath(uint32_t slot, Transform& value, const Transform* parent)

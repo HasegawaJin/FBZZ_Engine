@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-16
 #pragma once
+#include <Core/Api.hpp>
 
 namespace fbzz::core {
 
@@ -14,14 +15,14 @@ class ExternalCallbackScope final {
 public:
     using Handler = bool (*)(void*);
 
-    ExternalCallbackScope(Handler handler, void* context) noexcept;
-    ~ExternalCallbackScope();
+    FBZZ_CORE_API ExternalCallbackScope(Handler handler, void* context) noexcept;
+    FBZZ_CORE_API ~ExternalCallbackScope();
     ExternalCallbackScope(const ExternalCallbackScope&) = delete;
     ExternalCallbackScope& operator=(const ExternalCallbackScope&) = delete;
 
 private:
-    friend bool NotifyBeforeExternalCallback() noexcept;
-    bool NotifyOuterFirst() noexcept;
+    friend FBZZ_CORE_API bool NotifyBeforeExternalCallback() noexcept;
+    FBZZ_CORE_API bool NotifyOuterFirst() noexcept;
     Handler m_handler = nullptr;
     void* m_context = nullptr;
     ExternalCallbackScope* m_previous = nullptr;
@@ -29,7 +30,7 @@ private:
 
 /// @return すべての handler が成功なら true。false でも各 handler は失敗状態の公開を完了している。
 /// @note ロック取得前に呼ぶ。handler 自体の再入を抑止して未完成結果を隠す guard は設けない。
-[[nodiscard]] bool NotifyBeforeExternalCallback() noexcept;
+[[nodiscard]] FBZZ_CORE_API bool NotifyBeforeExternalCallback() noexcept;
 
 
 }

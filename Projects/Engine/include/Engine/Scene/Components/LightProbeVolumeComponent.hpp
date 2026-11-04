@@ -5,7 +5,8 @@
 /// @note 箱はワールド軸に沿い、中心は worldPosition。回転とスケールは見ない (ReflectionProbe の箱と同じ扱い)。
 /// @see Docs/design/light-probe-gi.md
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Components/TransientGpuState.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
@@ -14,7 +15,31 @@
 
 namespace fbzz::scene {
 
-struct LightProbeVolumeComponent {
+/// @note GPU 所有権と再確保用キャッシュは Component の値コピーへ含めない。
+struct LightProbeVolumeComponentGpuState {
+    /// @name ランタイム (保存しない)
+    /// @note GPU ハンドルは Scene の瞬間値で、保存すると古いハンドルを復元してしまう。Play の往復で作り直され、自動で焼き直す。
+    /// @{
+    renderer::OwnedResource<renderer::TextureTag> runtimeVolume;    ///< @note 描画が読む (無効プローブを埋めた後)
+    renderer::OwnedResource<renderer::TextureTag> runtimeRawVolume; ///< @note 射影 CS が書く生の値
+    /// @note プローブごとの 8x8 octahedral 距離モーメントと有効度。SH と同じ寿命で破棄する。
+    renderer::OwnedResource<renderer::TextureTag> runtimeVisibility;
+    std::array<renderer::OwnedResource<renderer::RenderTargetTag>, 6> runtimeFaces{};
+    std::array<renderer::OwnedResource<renderer::RenderTargetTag>, 6> runtimeFacing{}; ///< @note 表裏判定の面
+    uint64_t runtimeSettingsKey = 0;       ///< @note 焼き結果を左右する設定の要約。変わったら焼き直す
+    std::array<int, 3> runtimeGrid{};      ///< @note runtimeVolume を作ったときの格子
+    math::Vector3 runtimeBoxMin{};         ///< @note 焼いたときの箱。動いたら焼き直す
+    math::Vector3 runtimeBoxSize{};
+    int      runtimeFaceSize  = 0;
+    int      runtimeCursor    = 0;         ///< @note 次に焼くプローブの通し番号
+    int      runtimePass      = 0;         ///< @note 何回目の焼き (0 始まり)
+    bool     runtimeBaking    = false;
+    bool     runtimeReady     = false;     ///< @note 1 回目の焼きが全プローブ終わったか (それまでは描画に使わない)
+    /// @}
+
+};
+
+struct LightProbeVolumeComponent : TransientGpuState<LightProbeVolumeComponentGpuState> {
     bool          enabled         = true;
     math::Vector3 boxExtents      = { 5.0f, 2.5f, 5.0f }; ///< @note 箱の半分の大きさ [m]
     int           probeCountX     = 8;
@@ -31,26 +56,6 @@ struct LightProbeVolumeComponent {
     int           bounces         = 2;     ///< @note 焼く回数。2 回目以降は前回の結果を受けた面を描くので多重反射になる
     bool          realtimeUpdate  = false; ///< @note 焼き終えたら最初から焼き直し続ける (昼夜や動く光源に追従)
     bool          bakeRequested   = false; ///< @note Inspector / Script が立てる。次フレームから焼き直す
-
-    /// @name ランタイム (保存しない)
-    /// @note GPU ハンドルは Scene の瞬間値で、保存すると古いハンドルを復元してしまう。Play の往復で作り直され、自動で焼き直す。
-    /// @{
-    renderer::ResourceHandle<renderer::TextureTag> runtimeVolume;    ///< @note 描画が読む (無効プローブを埋めた後)
-    renderer::ResourceHandle<renderer::TextureTag> runtimeRawVolume; ///< @note 射影 CS が書く生の値
-    /// @note プローブごとの 8x8 octahedral 距離モーメントと有効度。SH と同じ寿命で破棄する。
-    renderer::ResourceHandle<renderer::TextureTag> runtimeVisibility;
-    std::array<renderer::ResourceHandle<renderer::RenderTargetTag>, 6> runtimeFaces{};
-    std::array<renderer::ResourceHandle<renderer::RenderTargetTag>, 6> runtimeFacing{}; ///< @note 表裏判定の面
-    uint64_t runtimeSettingsKey = 0;       ///< @note 焼き結果を左右する設定の要約。変わったら焼き直す
-    std::array<int, 3> runtimeGrid{};      ///< @note runtimeVolume を作ったときの格子
-    math::Vector3 runtimeBoxMin{};         ///< @note 焼いたときの箱。動いたら焼き直す
-    math::Vector3 runtimeBoxSize{};
-    int      runtimeFaceSize  = 0;
-    int      runtimeCursor    = 0;         ///< @note 次に焼くプローブの通し番号
-    int      runtimePass      = 0;         ///< @note 何回目の焼き (0 始まり)
-    bool     runtimeBaking    = false;
-    bool     runtimeReady     = false;     ///< @note 1 回目の焼きが全プローブ終わったか (それまでは描画に使わない)
-    /// @}
 
     [[nodiscard]] std::array<int, 3> ClampedGrid() const
     {
@@ -84,4 +89,4 @@ struct LightProbeVolumeComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

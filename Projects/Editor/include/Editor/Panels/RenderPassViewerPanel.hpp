@@ -22,6 +22,7 @@ public:
     const char* GetMenuCategory() const override { return "Debug"; }
     void OnInit(EditorContext& ctx) override;
     void OnShutdown() override;
+    void OnRegisterOperators(OperatorRegistry& registry) override;
 
     /// @brief ビューの描画より前に毎フレーム呼ぶ。
     /// @note 閉じていれば専用 RT を解放する。
@@ -121,6 +122,8 @@ private:
     bool m_capturedGameView = false;
     bool m_snapshotGameView = false;
     bool m_captureActive = false;
+    bool m_apiCapture = false;
+    bool m_apiGallery = false;
     bool m_showCulled = true;
     bool m_galleryIssuesOnly = false;
     float m_tileZoom = 1.0f;
@@ -143,4 +146,4 @@ private:
     std::string m_graphMenuPass;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

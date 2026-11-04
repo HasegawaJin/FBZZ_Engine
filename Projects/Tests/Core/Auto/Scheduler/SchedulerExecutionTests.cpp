@@ -46,7 +46,7 @@ TEST_F(SystemSchedulerTest, BuildsAndFindsASystemByItsPublicName)
     auto system = std::make_unique<RecordingSystem>(&shutdownCount);
     RecordingSystem* systemAddress = system.get();
     scheduler.AddSystemPtr(std::move(system));
-    scheduler.Build();
+    ASSERT_TRUE(scheduler.Build());
 
     EXPECT_EQ(scheduler.FindSystem("RecordingSystem"), systemAddress);
     EXPECT_EQ(scheduler.FindSystem("Missing"), nullptr);
@@ -62,7 +62,7 @@ TEST_F(SystemSchedulerTest, UpdatesSystemsInTheirConfiguredPhase)
     auto system = std::make_unique<RecordingSystem>();
     RecordingSystem* systemAddress = system.get();
     scheduler.AddSystemPtr(std::move(system));
-    scheduler.Build();
+    ASSERT_TRUE(scheduler.Build());
 
     fbzz::scene::Scene scene;
     fbzz::physics::World world;
@@ -74,4 +74,4 @@ TEST_F(SystemSchedulerTest, UpdatesSystemsInTheirConfiguredPhase)
     scheduler.Shutdown();
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

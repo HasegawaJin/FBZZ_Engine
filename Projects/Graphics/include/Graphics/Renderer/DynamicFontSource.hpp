@@ -11,6 +11,7 @@
 /// @note FontAtlas 経由でのみ使う。fontPath の拡張子が .ttf/.ttc/.otf のとき FontAtlas が生成し、
 /// @note       UISystem がレイアウト前に FontAtlas::PrepareText() を呼ぶと未登録グリフが焼かれる。
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/FontAtlas.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <cstdint>
@@ -25,32 +26,32 @@ class ResourceManager;
 
 class DynamicFontSource {
 public:
-    DynamicFontSource();
-    ~DynamicFontSource();
-    DynamicFontSource(DynamicFontSource&&) noexcept;
-    DynamicFontSource& operator=(DynamicFontSource&&) noexcept;
+    FBZZ_GRAPHICS_API DynamicFontSource();
+    FBZZ_GRAPHICS_API ~DynamicFontSource();
+    FBZZ_GRAPHICS_API DynamicFontSource(DynamicFontSource&&) noexcept;
+    FBZZ_GRAPHICS_API DynamicFontSource& operator=(DynamicFontSource&&) noexcept;
     DynamicFontSource(const DynamicFontSource&)            = delete;
     DynamicFontSource& operator=(const DynamicFontSource&) = delete;
 
     /// @brief フォントファイルを読み込み、メトリクスを確定する。
     /// @param pixelHeight アトラスへ焼く際のラスタライズ解像度 (行高さではなく em 相当の px)。
     /// @note テクスチャは最初のグリフ追加時に遅延生成されるため、ここでは GPU に触らない。
-    bool Load(const std::string& fontPath, float pixelHeight);
+    FBZZ_GRAPHICS_API bool Load(const std::string& fontPath, float pixelHeight);
 
-    [[nodiscard]] bool IsValid() const;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool IsValid() const;
 
     /// @name フォントのメトリクス (アトラスピクセル単位)
     /// @{
-    [[nodiscard]] float GetLineHeight() const;
-    [[nodiscard]] float GetBase() const;
-    [[nodiscard]] float GetFallbackAdvance() const;
+    [[nodiscard]] FBZZ_GRAPHICS_API float GetLineHeight() const;
+    [[nodiscard]] FBZZ_GRAPHICS_API float GetBase() const;
+    [[nodiscard]] FBZZ_GRAPHICS_API float GetFallbackAdvance() const;
     /// @}
 
     /// @brief 未登録のコードポイント群をラスタライズしてアトラスへ配置し、glyphTable へ登録する。
     /// @note 新しいページが必要になった場合は pages へテクスチャハンドルを追加する。追加した
     /// @note       内容は関数の最後に 1 度だけ GPU へ転送される (ページごとにダーティ矩形 1 回)。
     /// @return 1 つでもグリフを追加できたら true。
-    bool AddGlyphs(const std::vector<char32_t>&             codePoints,
+    FBZZ_GRAPHICS_API bool AddGlyphs(const std::vector<char32_t>&             codePoints,
                    std::unordered_map<char32_t, FontGlyph>& glyphTable,
                    std::vector<ResourceHandle<TextureTag>>& pages,
                    ResourceManager&                         resources);
@@ -58,7 +59,10 @@ public:
     /// @brief 2 文字間のカーニング量 (アトラスピクセル単位)。
     /// @note stb_truetype が読むのは旧来の `kern` テーブルのみで、GPOS ベースのカーニングしか
     /// @note       持たない現代的なフォントでは 0 が返る。
-    [[nodiscard]] float GetKerning(char32_t previous, char32_t next) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API float GetKerning(char32_t previous, char32_t next) const;
+
+    /// @note ラスタライズとページ確保を行わず、AddGlyphs と同じ送り幅を返す。
+    [[nodiscard]] FBZZ_GRAPHICS_API float GetAdvance(char32_t code) const;
 
 private:
     struct Impl;

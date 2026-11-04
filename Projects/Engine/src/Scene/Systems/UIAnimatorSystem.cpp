@@ -180,7 +180,7 @@ ComponentAccess UIAnimatorSystem::GetAccess() const
 {
     return ComponentAccess{}
         .Reads<UIAnimator>()
-        .Writes<UIAnimator, UIImage, UIText>();
+        .Writes<UIAnimator, UIImage, UIText, Transform>();
 }
 
 OrderingHints UIAnimatorSystem::GetOrder() const

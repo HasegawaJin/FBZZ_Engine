@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/ManagedBridgeAbi.hpp>
 #include <span>
 #include <string>
@@ -11,7 +12,7 @@ namespace fbzz::scene::managed_detail {
 struct ManagedServiceResult;
 /// @pre caller・Scene・row lifetime の権限は Runtime が検証済み。
 /// @return 不正 packet・scope・不在では対象と result を変更しない。
-ManagedBridgeStatus RunAudioSourceSettings(GameObject& target, const ManagedBridgeRequest& request,
+FBZZ_ENGINE_API ManagedBridgeStatus RunAudioSourceSettings(GameObject& target, const ManagedBridgeRequest& request,
     int64_t integer, std::span<const float> values, std::span<const std::string> text,
     uint64_t relatedId, ManagedServiceResult& result);
 } /// @note namespace fbzz::scene::managed_detail

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/IRenderer.hpp>
 #include <Graphics/Renderer/GpuProfilerLedger.hpp>
@@ -25,60 +26,60 @@ public:
     /// @note m_iblBaker は unique_ptr<DX12IblBaker> (前方宣言のみ) を持つため、デストラクターを
     /// @note       out-of-line 化する。省くと `make_unique<DX12Renderer>()` が不完全型のデリーターを
     /// @note       インスタンス化し "can't delete an incomplete type" で失敗する。定義は DX12Renderer.cpp。
-    DX12Renderer();
-    ~DX12Renderer() override;
+    FBZZ_GRAPHICS_API DX12Renderer();
+    FBZZ_GRAPHICS_API ~DX12Renderer() override;
 
     const char* GetBackendName() const override { return "DirectX 12"; }
     bool SupportsIndirectDraw() const override { return m_context.GetDrawIndexedCommandSignature() != nullptr; }
     bool SupportsMeshShaders() const override { return m_context.SupportsMeshShaders(); }
     void SetCpuExecutor(IRenderer* executor) override { m_context.SetCpuExecutor(executor); }
-    [[nodiscard]] GraphicsCapabilities GetCapabilities() const override;
-    bool Init(HWND hwnd, uint32_t width, uint32_t height);
-    void Shutdown() override;
-    void BeginFrame() override;
-    void EndFrame() override;
+    [[nodiscard]] FBZZ_GRAPHICS_API GraphicsCapabilities GetCapabilities() const override;
+    FBZZ_GRAPHICS_API bool Init(HWND hwnd, uint32_t width, uint32_t height);
+    FBZZ_GRAPHICS_API void Shutdown() override;
+    FBZZ_GRAPHICS_API void BeginFrame() override;
+    FBZZ_GRAPHICS_API void EndFrame() override;
     void SetRenderWhenOccluded(bool enabled) override { m_context.SetRenderWhenOccluded(enabled); }
-    void Clear(const math::Vector4& color) override;
-    void ClearDepth() override;
-    void Submit(const DrawCall& call, ResourceManager& resources) override;
-    bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
+    FBZZ_GRAPHICS_API void Clear(const math::Vector4& color) override;
+    FBZZ_GRAPHICS_API void ClearDepth() override;
+    FBZZ_GRAPHICS_API void Submit(const DrawCall& call, ResourceManager& resources) override;
+    FBZZ_GRAPHICS_API bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
                             ResourceManager& resources) override;
-    void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
-    bool TryDispatch(const ComputeCall& call, ResourceManager& resources) override;
-    bool BuildAccelerationStructure(ResourceHandle<AccelerationStructureTag>, ResourceManager&) override;
-    void BeginComputeBatch() override;
-    void EndComputeBatch() override;
-    bool BeginAsyncCompute(ResourceManager& resources) override;
-    void EndAsyncCompute() override;
-    void Resize(uint32_t width, uint32_t height) override;
-    void SetVSync(bool enabled) override;
-    [[nodiscard]] bool GetVSync() const override;
-    void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
-    bool SetRenderTargetColors(std::span<const RenderTargetColorAttachment> colors, ResourceManager& resources) override;
-    void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
-    void SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
+    FBZZ_GRAPHICS_API void Dispatch(const ComputeCall& call, ResourceManager& resources) override;
+    FBZZ_GRAPHICS_API bool TryDispatch(const ComputeCall& call, ResourceManager& resources) override;
+    FBZZ_GRAPHICS_API bool BuildAccelerationStructure(ResourceHandle<AccelerationStructureTag>, ResourceManager&) override;
+    FBZZ_GRAPHICS_API void BeginComputeBatch() override;
+    FBZZ_GRAPHICS_API void EndComputeBatch() override;
+    FBZZ_GRAPHICS_API bool BeginAsyncCompute(ResourceManager& resources) override;
+    FBZZ_GRAPHICS_API void EndAsyncCompute() override;
+    FBZZ_GRAPHICS_API void Resize(uint32_t width, uint32_t height) override;
+    FBZZ_GRAPHICS_API void SetVSync(bool enabled) override;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool GetVSync() const override;
+    FBZZ_GRAPHICS_API void SetRenderTarget(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources) override;
+    FBZZ_GRAPHICS_API bool SetRenderTargetColors(std::span<const RenderTargetColorAttachment> colors, ResourceManager& resources) override;
+    FBZZ_GRAPHICS_API void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
+    FBZZ_GRAPHICS_API void SetRenderTargetFace(ResourceHandle<RenderTargetTag> rt, uint32_t face,
                              uint32_t mip, ResourceManager& resources) override;
-    bool BakeSkyLight(ResourceHandle<RenderTargetTag>, ResourceManager&, uint32_t, uint32_t,
+    FBZZ_GRAPHICS_API bool BakeSkyLight(ResourceHandle<RenderTargetTag>, ResourceManager&, uint32_t, uint32_t,
                       uint32_t, uint32_t, std::unique_ptr<ITexture>&,
                       std::unique_ptr<ITexture>&) override;
     /// @brief Editor の HDRI → DDS ベイクは DX12HdriBaker (IIblBaker 実装) を返す。
     /// @note BakeSkyLight (実行時畳み込み) とは別に、フレーム非依存で 4 DDS を焼く同期経路。
-    std::unique_ptr<IIblBaker> CreateIblBaker() override;
-    void GpuProfBeginFrame() override;
-    void GpuProfEndFrame() override;
-    void GpuProfBeginPass(const char* name) override;
-    void GpuProfEndPass(const char* name) override;
-    void GpuProfCollect() override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IIblBaker> CreateIblBaker() override;
+    FBZZ_GRAPHICS_API void GpuProfBeginFrame() override;
+    FBZZ_GRAPHICS_API void GpuProfEndFrame() override;
+    FBZZ_GRAPHICS_API void GpuProfBeginPass(const char* name) override;
+    FBZZ_GRAPHICS_API void GpuProfEndPass(const char* name) override;
+    FBZZ_GRAPHICS_API void GpuProfCollect() override;
     const std::vector<GpuPassProfile>& GpuProfGetResults() const override { return m_gpuProfilerLedger.GetSnapshot().passes; }
-    bool GpuProfBeginView(const GpuProfilerViewMetadata& metadata) override;
-    void GpuProfEndView() override;
+    FBZZ_GRAPHICS_API bool GpuProfBeginView(const GpuProfilerViewMetadata& metadata) override;
+    FBZZ_GRAPHICS_API void GpuProfEndView() override;
     const GpuProfilerSnapshot& GpuProfGetSnapshot() const override { return m_gpuProfilerLedger.GetSnapshot(); }
     /// @note AI 連携 (viewport.capture): Scene View RT を PNG バイト列へ読み戻す。
-    bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+    FBZZ_GRAPHICS_API bool CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
                                   std::vector<uint8_t>& outPng,
                                   uint32_t& outWidth, uint32_t& outHeight) override;
     /// @note AI 連携 (vfx.previewMetrics): 同じ RT を HDR 線形値のまま数値評価用に読み戻す。
-    bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
+    FBZZ_GRAPHICS_API bool CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
                                          std::vector<float>& outRgba,
                                          uint32_t& outWidth, uint32_t& outHeight) override;
     uint32_t GetWidth() const override { return m_context.GetWidth(); }
@@ -86,39 +87,39 @@ public:
     DX12Context& GetContext() { return m_context; }
 
 private:
-    static std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareCapturedNative(
+    FBZZ_GRAPHICS_API static std::unique_ptr<prepared_skinning_detail::NativeWork> PrepareCapturedNative(
         IRenderer& native, ResourceManager& resources, ResourceHandle<ShaderTag> shader,
         std::span<const CapturedSkinningRequest> requests, std::span<const math::Matrix4> matrices);
     std::shared_ptr<class DX12PreparedSkinningPool> m_preparedSkinningPool;
-    bool PrepareShaderReload() override;
-    std::unique_ptr<IAccelerationStructure> CreateNativeAccelerationStructure(
+    FBZZ_GRAPHICS_API bool PrepareShaderReload() override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IAccelerationStructure> CreateNativeAccelerationStructure(
         const AccelerationStructureDesc&, ResourceManager&) override;
-    std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override;
-    std::unique_ptr<IBuffer> CreateNativeGpuWritableVertexBuffer(size_t sizeBytes, uint32_t stride) override;
-    std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override;
-    std::unique_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t) override;
-    std::unique_ptr<IShader> CreateNativeShader(const std::string&) override;
-    std::unique_ptr<ITexture> CreateNativeTexture(const std::string&) override;
-    std::unique_ptr<ITexture> CreateNativeTextureFromData(const uint8_t*, uint32_t, uint32_t) override;
-    std::unique_ptr<ITexture> CreateNativeTextureFromDataMips(const TextureMipData*, uint32_t) override;
-    std::unique_ptr<ITexture> CreateNativeTextureFromDataMipsAsync(const TextureMipData*, uint32_t,
+    FBZZ_GRAPHICS_API std::unique_ptr<IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IBuffer> CreateNativeGpuWritableVertexBuffer(size_t sizeBytes, uint32_t stride) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IConstantBuffer> CreateNativeConstantBuffer(size_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IShader> CreateNativeShader(const std::string&) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeTexture(const std::string&) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeTextureFromData(const uint8_t*, uint32_t, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeTextureFromDataMips(const TextureMipData*, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeTextureFromDataMipsAsync(const TextureMipData*, uint32_t,
                                                                    uint64_t& outUploadToken) override;
-    bool IsUploadComplete(uint64_t uploadToken) const override;
-    std::unique_ptr<ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override;
-    std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(IRenderTarget&, uint32_t, RenderTargetTextureKind) override;
-    std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc&) override;
-    std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t, uint32_t,
+    FBZZ_GRAPHICS_API bool IsUploadComplete(uint64_t uploadToken) const override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeTexture3DFromData(const uint8_t*, uint32_t, uint32_t, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeTextureFromRenderTarget(IRenderTarget&, uint32_t, RenderTargetTextureKind) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IPipelineState> CreateNativePipelineState(const PipelineStateDesc&) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IRenderTarget> CreateNativeRenderTarget(uint32_t, uint32_t,
                                                             const RenderTargetDesc&) override;
-    std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t, uint32_t) override;
-    std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget&) override;
-    std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t, uint32_t) override;
-    std::unique_ptr<ITexture> CreateNativeComputeTexture3D(uint32_t, uint32_t, uint32_t) override;
-    std::unique_ptr<ITexture> CreateNativeDynamicTexture(uint32_t width, uint32_t height,
+    FBZZ_GRAPHICS_API std::unique_ptr<IRenderTarget> CreateNativeCubemapRenderTarget(uint32_t, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeCubeTextureFromRenderTarget(IRenderTarget&) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeComputeTexture(uint32_t, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeComputeTexture3D(uint32_t, uint32_t, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateNativeDynamicTexture(uint32_t width, uint32_t height,
                                                          DynamicTextureFormat format) override;
-    std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void*, uint32_t, uint32_t) override;
-    std::unique_ptr<IStructuredBuffer> CreateNativeGpuLocalStructuredBuffer(
+    FBZZ_GRAPHICS_API std::unique_ptr<IStructuredBuffer> CreateNativeStructuredBuffer(const void*, uint32_t, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IStructuredBuffer> CreateNativeGpuLocalStructuredBuffer(
         const void*, uint32_t, uint32_t) override;
-    std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t, uint32_t) override;
+    FBZZ_GRAPHICS_API std::unique_ptr<IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t, uint32_t) override;
 
     DX12Context m_context;
     DX12UploadArena m_uploadArena;
@@ -132,22 +133,22 @@ private:
     bool m_asyncComputeActive = false;
     /// @brief いま記録すべきコマンドリスト。非同期区間ではコンピュートリストを返す。
     /// @note Submit / SetRenderTarget は常に描画リストを使う。区間の中で描画は呼ばない契約。
-    [[nodiscard]] ID3D12GraphicsCommandList* RecordingList() const;
+    [[nodiscard]] FBZZ_GRAPHICS_API ID3D12GraphicsCommandList* RecordingList() const;
     /// @brief 列を割った後の描画リストへ、描画先・ビューポート・その状態を張り直す。
     /// @note Reset で束縛が全部落ちるうえ、区間へ入る前に束縛中の RT も COMMON へ落としてある。
     /// @note       呼び出し側が SetRenderTarget を呼び直すとは限らないので、ここで揃える。
-    void RestoreGraphicsTargetState(ResourceManager& resources);
+    FBZZ_GRAPHICS_API void RestoreGraphicsTargetState(ResourceManager& resources);
     /// @brief 束縛中の RT をハンドルから引き直す。
     /// @return バックバッファ束縛中、または束縛した RT が解放済みなら nullptr。
     /// @note 生ポインタを持たないのは、RT が描画の途中でも解放されるため
     /// @note       (ビューポートのリサイズ、ViewRenderTargets の作り直し)。
-    [[nodiscard]] class DX12RenderTarget* ResolveCurrentRenderTarget(ResourceManager* resources = nullptr) const;
-    [[nodiscard]] class DX12RenderTarget* ResolveCurrentColorAttachment(uint32_t index, ResourceManager* resources = nullptr) const;
-    void TransitionCurrentTargetForRead();
+    [[nodiscard]] FBZZ_GRAPHICS_API class DX12RenderTarget* ResolveCurrentRenderTarget(ResourceManager* resources = nullptr) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API class DX12RenderTarget* ResolveCurrentColorAttachment(uint32_t index, ResourceManager* resources = nullptr) const;
+    FBZZ_GRAPHICS_API void TransitionCurrentTargetForRead();
     /// @brief RT を束縛したのに、その RT が既に解放されているか。
     /// @note 描き先の書式も RTV も失われているので、Clear / Submit は何もしない。
-    [[nodiscard]] bool IsCurrentRenderTargetLost(ResourceManager* resources = nullptr) const;
-    void ReportLostRenderTarget(const char* where);
+    [[nodiscard]] FBZZ_GRAPHICS_API bool IsCurrentRenderTargetLost(ResourceManager* resources = nullptr) const;
+    FBZZ_GRAPHICS_API void ReportLostRenderTarget(const char* where);
     /// @note 束縛中の RT。無効ハンドルはバックバッファを表す。
     ResourceHandle<RenderTargetTag> m_currentRenderTargetHandle;
     /// @note ハンドルの数値は Manager 間で重複する。生ポインタを保存せず、生存台帳へ所有者 ID を照会する。
@@ -191,7 +192,7 @@ private:
 
     /// @note Compute へ切り替えるとグラフィクス側のルート束縛は当てにできなくなる。
     /// @note Dispatch / BeginFrame / コマンドリスト再取得のたびに呼ぶこと。
-    void InvalidateRootCbvCache();
+    FBZZ_GRAPHICS_API void InvalidateRootCbvCache();
 
     /// @note 頂点バッファ実ストライドとリフレクション推定ストライドの不一致を
     /// @note シェーダーごとに一度だけ警告するための記録。
@@ -206,7 +207,7 @@ private:
     double m_bindingSectionMs = 0;
 
     static constexpr uint32_t GPU_MAX_PASSES = GpuProfilerLedger::MAX_PASSES;
-    bool InitializeGpuProfiler();
+    FBZZ_GRAPHICS_API bool InitializeGpuProfiler();
     Microsoft::WRL::ComPtr<ID3D12QueryHeap> m_gpuQueryHeap;
     Microsoft::WRL::ComPtr<ID3D12Resource> m_gpuReadback;
     uint64_t* m_gpuMappedTimestamps = nullptr;

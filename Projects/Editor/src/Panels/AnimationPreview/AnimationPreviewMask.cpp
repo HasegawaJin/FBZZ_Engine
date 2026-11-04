@@ -8,18 +8,26 @@
 /// @note どちらの都合で書かれた分岐かが読めなくなるため分ける。
 #include <Engine/Asset/ModelSource.hpp>
 #include "AnimationPreviewInternal.hpp"
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 
 namespace fbzz::editor {
 
 using namespace fbzz::editor::animpreview;
+
+namespace {
+std::string g_panelModelPath;
+std::string g_panelMaskPath;
+std::string g_panelLastSelectedAsset;
+} /// @note namespace
 
 void SetAnimationMaskPreviewSelection(std::string_view nodePath)
 {
@@ -54,8 +62,9 @@ bool DrawAnimationMaskPreviewWidget(EditorContext& ctx,
     target.label = util::FileSystem::GetFilename(target.modelPath);
 
     const std::string normalizedMaskPath = NormalizeAssetPath(std::string(maskPath));
-    if ((g_maskPreview.modelPath != target.modelPath ||
-         g_maskPreview.maskPath != normalizedMaskPath) &&
+    const bool targetChanged = g_maskPreview.modelPath != target.modelPath
+        || g_maskPreview.maskPath != normalizedMaskPath || g_state.target.modelPath != target.modelPath;
+    if (targetChanged &&
         g_maskPreview.pendingSelectionPath.empty()) {
         ClearAnimationMaskPreviewSelection();
     }
@@ -77,7 +86,7 @@ bool DrawAnimationMaskPreviewWidget(EditorContext& ctx,
     g_state.origin = TargetOrigin::Manual;
     g_state.time = 0.0f;
     g_state.playing = false;
-    g_state.needsFraming = true;
+    if (targetChanged) g_state.needsFraming = true;
     const bool previousShowMesh = g_state.showMesh;
     const bool previousShowBones = g_state.showBones;
     g_state.showMesh = true;
@@ -100,9 +109,9 @@ void RequestAnimationMaskPreview(std::string_view maskPath, std::string_view mod
 
 void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx)
 {
-    static std::string modelPath;
-    static std::string maskPath;
-    static std::string lastSelectedAsset;
+    auto& modelPath = g_panelModelPath;
+    auto& maskPath = g_panelMaskPath;
+    auto& lastSelectedAsset = g_panelLastSelectedAsset;
 
     /// @note 外部からの指定は選択追従より強い。押した本人が「今これを見たい」と言っている。
     if (g_maskPreviewRequest.pending) {
@@ -161,6 +170,80 @@ void DrawAnimationMaskPreviewPanelContent(EditorContext& ctx)
                    160.0f);
     if (!DrawAnimationMaskPreviewWidget(ctx, modelPath, maskPath, previewHeight)) {
         ImGui::TextDisabled("モデルと .mask を指定してください。");
+    }
+}
+
+void RegisterAnimationMaskPreviewOperators(OperatorRegistry& registry)
+{
+    for (const std::string_view action : {"inspect", "open", "configure"}) {
+        EditorOperator op;
+        op.id = "animation.mask.preview." + std::string(action);
+        op.label = op.id;
+        op.category = "Animation Preview";
+        op.kind = action == "inspect" ? OpKind::Query : OpKind::Action;
+        op.desc = "Avatar Mask専用プレビューのモデル・マスク・骨選択・カメラを指定する。角度はラジアン。";
+        if (action == "open") {
+            op.params = {
+                {"mask", OpParamType::String, "Avatar Mask asset path", true, {}},
+                {"model", OpParamType::String, "Skeleton model override", false, {}}
+            };
+        } else if (action == "configure") {
+            op.params = {
+                {"nodePath", OpParamType::String, "Selected bone path", false, {}},
+                {"yaw", OpParamType::Float, "Camera yaw", false, {}},
+                {"pitch", OpParamType::Float, "Camera pitch", false, {}},
+                {"distance", OpParamType::Float, "Camera distance", false, {}}
+            };
+        }
+        op.exec = [action](OpContext& context, const OpArgs& args) {
+            if (action == "open") {
+                const auto path = NormalizeAssetPath(args.GetString("mask"));
+                const auto extension = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
+                if (extension != ".mask" && extension != ".maskpreset") return OpResult::Err("BAD_ARG", "mask");
+                asset::AvatarMaskAsset mask;
+                const auto resolved = asset::AssetManager::ResolveAssetPath(path);
+                if (!asset::LoadAvatarMaskAsset(resolved.empty() ? path : resolved, mask))
+                    return OpResult::Err("MASK_NOT_FOUND", path);
+                const auto model = NormalizeAssetPath(args.GetString("model", mask.skeletonSourcePath));
+                PreviewTarget target;
+                if (model.empty() || !ResolvePathTarget(model, target)) return OpResult::Err("MODEL_NOT_FOUND", model);
+                g_panelModelPath = model;
+                g_panelMaskPath = path;
+                g_panelLastSelectedAsset = NormalizeAssetPath(context.ctx.selectedAssetPath);
+                g_maskPreviewRequest.pending = false;
+                ClearAnimationMaskPreviewSelection();
+                g_maskPreview.modelPath = model;
+                g_maskPreview.maskPath = path;
+                target.modelPath = model;
+                target.label = util::FileSystem::GetFilename(model);
+                g_state.target = std::move(target);
+                g_state.origin = TargetOrigin::Manual;
+                g_state.time = 0.0f;
+                g_state.playing = false;
+                g_state.needsFraming = true;
+            } else if (action == "configure") {
+                const float yaw = args.GetFloat("yaw", g_state.yaw);
+                const float pitch = args.GetFloat("pitch", g_state.pitch);
+                const float distance = args.GetFloat("distance", g_state.distance);
+                if (!std::isfinite(yaw) || !(pitch >= -1.35f && pitch <= 1.35f)
+                    || !(distance >= 0.01f && distance <= 86400.0f))
+                    return OpResult::Err("BAD_ARG", "yaw/pitch/distance");
+                g_state.yaw = yaw;
+                g_state.pitch = pitch;
+                g_state.distance = distance;
+                if (args.Has("distance")) g_state.needsFraming = false;
+                if (args.Has("nodePath")) SetAnimationMaskPreviewSelection(args.GetString("nodePath"));
+            }
+            auto data = OpData::MakeObject();
+            data.Set("mask", g_panelMaskPath);
+            data.Set("model", g_panelModelPath);
+            data.Set("nodePath", g_maskPreview.selectedNodePath);
+            data.Set("yaw", g_state.yaw);
+            data.Set("pitch", g_state.pitch);
+            data.Set("distance", g_state.distance);
+            return OpResult::Data(std::move(data));
+        };
+        registry.Register(std::move(op));
     }
 }
 

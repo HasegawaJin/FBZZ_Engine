@@ -2,7 +2,17 @@
 /// @brief   Environment / Decal / IBL / PostProcess 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
+#include <Engine/Scene/Components/DecalComponent.hpp>
+#include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
+#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
+#include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
+#include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/SunMoonRenderer.hpp>
+#include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
 #include "InspectorEnvironment.hpp"
+#include <Editor/Op/EditorOperator.hpp>
 
 namespace fbzz::editor {
 
@@ -379,7 +389,7 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 
     /// @name LightProbeVolumeComponent
     DrawComponentSection<scene::LightProbeVolumeComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Light Probe Volume",
-        [](scene::LightProbeVolumeComponent& lpv, EditorContext&) {
+        [go](scene::LightProbeVolumeComponent& lpv, EditorContext& ctx) {
 
             ImGui::SeparatorText("Volume");
             float ext[3] = { lpv.boxExtents.x, lpv.boxExtents.y, lpv.boxExtents.z };
@@ -446,8 +456,9 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             } else {
                 ImGui::TextDisabled("未ベイク — IBL (Environment Light) が有効なときに自動で焼きます");
             }
-            if (ImGui::Button("Bake", ImVec2(-1.0f, 0.0f)))
-                lpv.bakeRequested = true;
+            if (ImGui::Button("Bake", ImVec2(-1.0f, 0.0f))) {
+                OpArgs args; args.Set("node", go->instanceId); InvokeOperator(ctx, "component.light_probe.bake", args);
+            }
         });
 
     /// @name AtmosphericScatteringComponent
@@ -537,4 +548,4 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
 }
 
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

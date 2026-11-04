@@ -2,9 +2,9 @@
 /// @brief   Phase × DAG によるシステム実行管理。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-///
-/// Build() でトポロジカルソートし、競合しない System ペアを同バッチに配置する。
-/// 同バッチの System は TaskSystem 経由で並列実行される。
+
+/// @note Build() でトポロジカルソートし、競合しない System ペアを同バッチに配置する。
+/// @note 同バッチの System は TaskSystem 経由で並列実行される。
 #include "Engine/Core/Scheduler/SystemScheduler.hpp"
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"
@@ -57,9 +57,10 @@ void SystemScheduler::AddSystemPtr(std::unique_ptr<ISystem> sys)
     m_systems.push_back(std::move(sys));
 }
 
-void SystemScheduler::Build()
+bool SystemScheduler::Build()
 {
     assert(!m_built);
+    if (m_built) return false;
 
     for (size_t pi = 0; pi < static_cast<size_t>(Phase::Count); ++pi) {
         const Phase phase = static_cast<Phase>(pi);
@@ -80,12 +81,6 @@ void SystemScheduler::Build()
         /// @note 隣接行列: adj[i] = i が先、j が後（i→j の依存）
         std::vector<std::vector<int>> adj(n);
         std::vector<int> inDegree(n, 0);
-
-        auto indexOf = [&](const ISystem* p) -> int {
-            for (size_t k = 0; k < n; ++k)
-                if (phSystems[k] == p) return static_cast<int>(k);
-            return -1;
-        };
 
         /// @note OrderingHints から辺を張る
         for (size_t i = 0; i < n; ++i) {
@@ -110,15 +105,26 @@ void SystemScheduler::Build()
             }
         }
 
-        /// @note ComponentAccess 競合から追加の辺を張る（順序は登録順で決定）
+        /// @note 間接的な順序も既存の制約。到達経路がある頂点へ逆向きの辺を足さない。
+        const auto reachable = [&](size_t from, size_t to) {
+            std::vector<bool> visited(n, false);
+            std::vector<size_t> pending{from};
+            while (!pending.empty()) {
+                const size_t current = pending.back();
+                pending.pop_back();
+                if (current == to) return true;
+                if (visited[current]) continue;
+                visited[current] = true;
+                for (int next : adj[current]) pending.push_back(static_cast<size_t>(next));
+            }
+            return false;
+        };
+
+        /// @note 順序が未指定の競合だけを登録順で直列化する。
         for (size_t i = 0; i < n; ++i) {
             for (size_t j = i + 1; j < n; ++j) {
                 if (!HasConflict(phSystems[i]->GetAccess(), phSystems[j]->GetAccess())) continue;
-                /// @note 競合する場合、OrderingHints で既に辺がなければ登録順 (i→j) を使う
-                bool alreadyOrdered = false;
-                for (int v : adj[i]) if (v == static_cast<int>(j)) { alreadyOrdered = true; break; }
-                for (int v : adj[j]) if (v == static_cast<int>(i)) { alreadyOrdered = true; break; }
-                if (!alreadyOrdered) {
+                if (!reachable(i, j) && !reachable(j, i)) {
                     adj[i].push_back(static_cast<int>(j));
                     inDegree[j]++;
                 }
@@ -149,13 +155,18 @@ void SystemScheduler::Build()
             batches.push_back(std::move(batch));
         }
 
-        assert(processed == n && "Circular dependency detected in System ordering!");
+        if (processed != n) {
+            FBZZ_LOG_ERROR("SystemScheduler: cyclic ordering in phase %zu (%zu/%zu systems).", pi, processed, n);
+            for (auto& phaseBatches : m_batches) phaseBatches.clear();
+            return false;
+        }
     }
 
     for (auto& sys : m_systems)
         sys->OnInit();
 
     m_built = true;
+    return true;
 }
 
 void SystemScheduler::SetSingleStep(bool enabled)
@@ -197,8 +208,8 @@ void SystemScheduler::RunPhase(Phase p, SystemContext& ctx)
                 }
             } else {
                 /// @note Profiler は s_stack を素の static で持つ main スレッド専用の作りで、
-                ///       ワーカーから Begin/End を呼ぶとスタックが壊れるため、ここで計測し
-                ///       join 後に main から積む。計測しないと重い System を名指しできなくなる。
+                /// @note ワーカーから Begin/End を呼ぶとスタックが壊れるため、ここで計測し
+                /// @note join 後に main から積む。計測しないと重い System を名指しできなくなる。
                 std::vector<std::future<void>> futs;
                 std::vector<double> elapsedMs(toRun.size(), 0.0);
                 std::vector<double> queueWaitMs(toRun.size(), 0.0);
@@ -258,6 +269,7 @@ void SystemScheduler::RunPhase(Phase p, SystemContext& ctx)
 void SystemScheduler::Update(SystemContext ctx)
 {
     assert(m_built);
+    if (!m_built) return;
     RunPhase(Phase::PreScript,   ctx);
     RunPhase(Phase::Script,      ctx);
     RunPhase(Phase::PrePhysics,  ctx);
@@ -272,12 +284,13 @@ void SystemScheduler::Update(SystemContext ctx)
 void SystemScheduler::LateUpdate(SystemContext ctx)
 {
     assert(m_built);
+    if (!m_built) return;
     const PhaseConfig& physicsConfig = m_phaseConfigs[static_cast<size_t>(Phase::Physics)];
     if (physicsConfig.fixedStep && physicsConfig.hz > 0)
     {
         const float fixedDt = 1.0f / static_cast<float>(physicsConfig.hz);
         /// @note Update() 後に残った accumulator は、現在の確定姿勢から次の fixed step
-        ///       までの経過割合。LateUpdate の描画だけをこの係数で補間する。
+        /// @note までの経過割合。LateUpdate の描画だけをこの係数で補間する。
         ctx.interpolationAlpha = std::clamp(m_accumulator / fixedDt, 0.0f, 1.0f);
     }
     RunPhase(Phase::LateUpdate, ctx);
@@ -285,8 +298,9 @@ void SystemScheduler::LateUpdate(SystemContext ctx)
 
 void SystemScheduler::Shutdown()
 {
-    for (auto& sys : m_systems)
-        sys->OnShutdown();
+    if (m_built)
+        for (auto& sys : m_systems)
+            sys->OnShutdown();
     m_systems.clear();
     for (auto& b : m_batches) b.clear();
     m_built = false;
@@ -326,7 +340,7 @@ void SystemScheduler::DumpGraph() const
         }
     }
     /// @note Logger は printf 形式の可変長引数。"{}" は書式指定として解釈されずそのまま出力され、
-    ///       std::string を ... へ渡すのは未定義動作になるため %s を使う。
+    /// @note std::string を ... へ渡すのは未定義動作になるため %s を使う。
     FBZZ_LOG_INFO("%s", oss.str().c_str());
 }
 

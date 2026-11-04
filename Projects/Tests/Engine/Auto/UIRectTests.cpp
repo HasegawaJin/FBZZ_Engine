@@ -2,11 +2,12 @@
 /// @brief   アンカー・ピボット・ストレッチから最終矩形を求める規則を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
-/// この式は以前 UISystem.cpp と Editor の ViewportUI.cpp に別々に書かれており、
-/// Play 中と編集中で結果が分かれていた。1 本に寄せた «いまの形» を固定しないと、
-/// 片方だけ直された瞬間に同じ状態へ戻る。既定値が «アンカー導入前と一致する»
-/// ことも、既存シーンを動かさないための契約として残す。
+
+/// @note この式は以前 UISystem.cpp と Editor の ViewportUI.cpp に別々に書かれており、
+/// @note Play 中と編集中で結果が分かれていた。1 本に寄せた «いまの形» を固定しないと、
+/// @note 片方だけ直された瞬間に同じ状態へ戻る。既定値が «アンカー導入前と一致する»
+/// @note ことも、既存シーンを動かさないための契約として残す。
+#include <Engine/Scene/Components/UICanvas.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
@@ -118,7 +119,7 @@ TEST_F(UIRectTest, ContainsIncludesTheEdges)
 TEST_F(UIRectTest, DefaultAnchoringPlacesTheRectAtTheLocalPosition)
 {
     /// @note 既定は「親の左上を基準に、自分の左上を合わせる」。ここが動くと
-    ///       アンカーを設定していない既存シーンが全部ずれる。
+    /// @note アンカーを設定していない既存シーンが全部ずれる。
     const scene::UIAnchor anchoring;
 
     const scene::UIRect rect =

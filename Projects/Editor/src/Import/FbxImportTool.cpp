@@ -378,14 +378,15 @@ bool FbxImportTool::Import(const std::string& fbxPath,
 
     /// @name 出力ディレクトリを作成
     /// @note 生成物の親ディレクトリは Library 側だけを作る。Assets/Foo/ は作成しない。
+    const bool existingGeneration = util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(manifestDir));
     if (!util::FileSystem::EnsureDirectory(manifestDir)) return false;
 
     FbxImportContext ctx;
 
-    /// @note ロールバックガード (失敗時に import 生成物フォルダを丸ごと削除)
+    /// @note 新規生成だけを失敗時に片付ける。既存の変換結果は再変換失敗で削除しない。
     bool success = false;
     auto cleanup = [&] {
-        if (!success) {
+        if (!success && !existingGeneration) {
             util::FileSystem::RemoveAll(manifestDir);
         }
     };

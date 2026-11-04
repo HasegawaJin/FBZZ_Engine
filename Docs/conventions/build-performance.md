@@ -1,4 +1,10 @@
+<!-- @file    build-performance.md -->
+<!-- @brief   ビルド時間の測定記録と前処理・リンクの規約。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-09-04 -->
 # ビルド時間の規約
+
+2026-10-30 に Math / Physics / Fluid / Core / Graphics / Engine を明示 API export へ移行した。本文の自動 export の件数・回避策・移行課題とモジュール構成表は旧構成の測定記録であり、現在の DLL・SDK・モジュール境界は [Engine の内部構造と公開境界](../design/engine-module-boundaries.md) を正本とする。API マクロは各ライブラリの `Api.hpp` へ集約し、LTO は通常の IPO 設定を使う。
 
 フルビルドが 7 分かかる状態から、どこに時間が消えているかを実測して整理した記録
 (2026-09-03)。数値は静的解析による見積りで、`#if` を評価しないため上限寄り。

@@ -2,11 +2,12 @@
 /// @brief   GameObject Transform で駆動する Collider コンポーネント。
 /// @author  Hasegawa Jin
 /// @date    2026-05-22
-///
-/// 形状設定を physics::Collider 生成へ渡し、Scene と physics の境界を保つ。
-/// 実際の衝突判定は physics モジュールに委譲する。
+
+/// @note 形状設定を physics::Collider 生成へ渡し、Scene と physics の境界を保つ。
+/// @note 実際の衝突判定は physics モジュールに委譲する。
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Api.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector3.hpp>
 #include <Physics/AABBCollider.hpp>
 #include <Physics/BodyHandle.hpp>
@@ -31,34 +32,34 @@ struct ColliderComponent {
     std::unique_ptr<physics::Collider> collider;
     physics::ColliderHandle colliderHandle;
 
-    /// 実効的な表面物性。physicsMaterialPath が設定されていれば、そこから解決した値の
-    /// キャッシュになる (物理ソルバはこの値だけを見る)。空なら手打ちのインライン値。
-    ///
+    /// @note 実効的な表面物性。physicsMaterialPath が設定されていれば、そこから解決した値の
+    /// @note キャッシュになる (物理ソルバはこの値だけを見る)。空なら手打ちのインライン値。
+
     /// @note PhysicsSystem は毎フレーム &material を World へ渡す。アセット解決結果をこの
-    ///       フィールドへ同期する形にすることで、ソルバ側の経路は共有アセット化前後で変わらない。
+    /// @note フィールドへ同期する形にすることで、ソルバ側の経路は共有アセット化前後で変わらない。
     physics::PhysicsMaterial material = physics::PhysicsMaterial::Default;
 
-    /// 共有 .physmat アセットへの参照 (Assets 起点の相対パス)。空 = インライン値を使う。
+    /// @note 共有 .physmat アセットへの参照 (Assets 起点の相対パス)。空 = インライン値を使う。
     std::string physicsMaterialPath;
 
     math::Vector3 center = math::Vector3::ZERO;
     bool isTrigger = false;
     bool enabled = true;
 
-    /// このコライダーを «祖先の剛体» へ属させる。既定 false = 自分の GameObject に
-    /// RigidBody が無ければ静的コライダー。
-    ///
+    /// @note このコライダーを «祖先の剛体» へ属させる。既定 false = 自分の GameObject に
+    /// @note RigidBody が無ければ静的コライダー。
+
     /// @note 骨に生やした当たり (BossHitboxRigComponent) のように剛体は親に 1 つで形だけが
-    ///       子に複数ぶら下がる場合、既定のままだと子は静的コライダーとして毎フレーム瞬間移動する
-    ///       親の剛体を押してしまう。祖先の剛体へ属させると同一ボディのコライダー同士は
-    ///       PhysicsSolver で衝突除外され、自己衝突が起きない。既定 false は既存シーンの
-    ///       「親が剛体・子が静的」構成の意味を変えないため。
+    /// @note 子に複数ぶら下がる場合、既定のままだと子は静的コライダーとして毎フレーム瞬間移動する
+    /// @note 親の剛体を押してしまう。祖先の剛体へ属させると同一ボディのコライダー同士は
+    /// @note PhysicsSolver で衝突除外され、自己衝突が起きない。既定 false は既存シーンの
+    /// @note 「親が剛体・子が静的」構成の意味を変えないため。
     bool attachToParentBody = false;
 
     ColliderComponent() = default;
     ~ColliderComponent() = default;
     /// @note collider は abstract 型のため clone 不可。派生クラスのコピーコンストラクタが
-    ///       適切な型で再生成する。colliderHandle は runtime 状態のためリセットする。
+    /// @note 適切な型で再生成する。colliderHandle は runtime 状態のためリセットする。
     ColliderComponent(const ColliderComponent& o)
         : collider(nullptr)
         , colliderHandle{}
@@ -95,14 +96,14 @@ struct ColliderComponent {
         r.Field("attachToParentBody", attachToParentBody);
         r.Field("physicsMaterial", physicsMaterialPath);
         /// @note 共有アセット使用時もインライン値を保存し続ける。.physmat が見つからない場合に
-        ///       最後に解決できた値へフォールバックし、既定値への黙った復帰より穏やかに壊す。
+        /// @note 最後に解決できた値へフォールバックし、既定値への黙った復帰より穏やかに壊す。
         r.Field("restitution", material.restitution);
         r.Field("staticFriction", material.staticFriction);
         r.Field("dynamicFriction", material.dynamicFriction);
         r.Field("density", material.density);
         /// @note 合成規則。.scene には保存されていたのに Reflect に無く、AI バスと汎用
-        ///       Inspector からだけ見えない状態だった («跳ね返りが噛み合わない» の原因を
-        ///       外から確かめられない)。
+        /// @note Inspector からだけ見えない状態だった («跳ね返りが噛み合わない» の原因を
+        /// @note 外から確かめられない)。
         int restitutionCombineValue = static_cast<int>(material.restitutionCombine);
         r.Field("restitutionCombine", restitutionCombineValue);
         /// @note Average / GeometricMean / Minimum / Multiply / Maximum の 5 種。
@@ -115,28 +116,28 @@ struct ColliderComponent {
             std::clamp(frictionCombineValue, 0, kCombineMax));
     }
 
-    /// Script / Editor から共通で使う安全なランタイム更新 API。
+    /// @note Script / Editor から共通で使う安全なランタイム更新 API。
     /// @note Proxy 側で public フィールドを直接触ると、将来 Collider 再生成や dirty 管理が
-    ///       必要になったとき呼び出し側全てを修正する必要がある。
+    /// @note 必要になったとき呼び出し側全てを修正する必要がある。
     void SetEnabled(bool v) { enabled = v; }
     void SetTrigger(bool v) { isTrigger = v; }
     void SetCenter(const math::Vector3& v) { center = v; }
-    /// 共有アセットの参照を切り、インライン値で上書きする。
+    /// @note 共有アセットの参照を切り、インライン値で上書きする。
     void SetMaterial(const physics::PhysicsMaterial& v)
     {
         physicsMaterialPath.clear();
         material = v;
     }
-    /// 共有 .physmat を割り当てる。空文字で参照を外し、直前の解決値をインライン値として残す。
+    /// @note 共有 .physmat を割り当てる。空文字で参照を外し、直前の解決値をインライン値として残す。
     void SetPhysicsMaterialPath(std::string path)
     {
         physicsMaterialPath = std::move(path);
         ResolvePhysicsMaterial();
     }
-    /// physicsMaterialPath から material を解決する。参照が無ければ何もしない。
-    /// 解決できたら true。PhysicsSystem が毎フレーム呼ぶため、.physmat を編集すると
-    /// 参照している全コライダーへ即座に反映される。
-    bool ResolvePhysicsMaterial();
+    /// @note physicsMaterialPath から material を解決する。参照が無ければ何もしない。
+    /// @note 解決できたら true。PhysicsSystem が毎フレーム呼ぶため、.physmat を編集すると
+    /// @note 参照している全コライダーへ即座に反映される。
+    FBZZ_ENGINE_API bool ResolvePhysicsMaterial();
 };
 
 struct AabbColliderComponent : public ColliderComponent {
@@ -209,7 +210,7 @@ struct CapsuleColliderComponent : public ColliderComponent {
     }
 };
 
-/// 天面と底面が平らな円柱。カプセルと違い縁が鋭いので、平面上に立てても倒れない。
+/// @note 天面と底面が平らな円柱。カプセルと違い縁が鋭いので、平面上に立てても倒れない。
 struct CylinderColliderComponent : public ColliderComponent {
     float radius     = 0.5f;
     float halfHeight = 1.0f;
@@ -276,7 +277,7 @@ struct ConvexHullColliderComponent : public ColliderComponent {
 
 /// @brief TerrainComponent 専用の HeightField コライダー。
 /// @note MeshColliderComponent と違い地形と無関係なフィールドを持たない。PhysicsSystem が
-///       同一 GO の TerrainComponent から heightData を読んで HeightFieldCollider を自動構築する。
+/// @note 同一 GO の TerrainComponent から heightData を読んで HeightFieldCollider を自動構築する。
 struct TerrainColliderComponent : public ColliderComponent {
     TerrainColliderComponent() = default;
     TerrainColliderComponent(const TerrainColliderComponent& o) : ColliderComponent(o) {}
@@ -289,4 +290,4 @@ struct TerrainColliderComponent : public ColliderComponent {
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

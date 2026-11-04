@@ -4,6 +4,11 @@
 /// @date    2026-06-07
 #pragma once
 
+#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/Components/ClothComponent.hpp>
+#include <Engine/Scene/Components/PresentationComponents.hpp>
+#include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
+#include <Engine/Scene/Components/SplineComponents.hpp>
 #include <Editor/Panels/InspectorPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/ImGuiReflector.hpp>
@@ -142,8 +147,12 @@ T CaptureInspectorComponentValues(const T& value)
 }
 
 template<typename T>
-void ApplyInspectorComponentValues(T& target, const T& values)
+void ApplyInspectorComponentValues(scene::GameObject& owner, T& target, const T& values)
 {
+    if (&target == &values) return;
+    if constexpr (requires { target.runtimeMesh; }) {
+        if (auto* scene = owner.GetScene()) scene::UnlinkRuntimeMesh(*scene, owner.GetID(), target.runtimeMesh);
+    }
     if constexpr (std::is_same_v<T, scene::WaterComponent>) ApplyWaterAuthoringValues(target, values);
     else target = values;
 }
@@ -163,7 +172,7 @@ void PushComponentValueCommand(scene::GameObject& go,
     auto apply = [scene, instanceId, markDirty](const T& value) {
         if (auto* target = scene->FindByGuid(instanceId)) {
             if (auto* component = target->GetComponent<T>()) {
-                ApplyInspectorComponentValues(*component, value);
+                ApplyInspectorComponentValues(*target, *component, value);
                 if constexpr (std::is_same_v<T, scene::TerrainComponent>) {
                     component->heightDirty = true;
                     component->splatDirty = true;
@@ -1042,7 +1051,7 @@ void DrawComponentSection(scene::GameObject* go,
             /// @note Add Component と同じ既定値へ戻す (T{} だと RigidBody の本体や Terrain の格子が消える)。
             T after = MakeDefaultComponent<T>(*go);
             CopyComponentEnabledFlag(before, after);
-            ApplyInspectorComponentValues(*comp, after);
+            ApplyInspectorComponentValues(*go, *comp, after);
             PushComponentValueCommand(
                 *go, ctx, std::string("Reset ") + label, before, *comp);
             if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -1059,10 +1068,10 @@ void DrawComponentSection(scene::GameObject* go,
             const T before = *comp;
             if constexpr (hasEnabled) {
                 const bool wasEnabled = ComponentEnabledFlag(*comp);
-                ApplyInspectorComponentValues(*comp, std::any_cast<T>(compClipboard));
+                ApplyInspectorComponentValues(*go, *comp, std::any_cast<T>(compClipboard));
                 ComponentEnabledFlag(*comp) = wasEnabled;
             } else {
-                ApplyInspectorComponentValues(*comp, std::any_cast<T>(compClipboard));
+                ApplyInspectorComponentValues(*go, *comp, std::any_cast<T>(compClipboard));
             }
             PushComponentValueCommand(
                 *go, ctx, std::string("Paste ") + label, before, *comp);
@@ -1109,9 +1118,8 @@ void DrawComponentSection(scene::GameObject* go,
             ctx.memoryLeakDiff->CaptureBaseline(*ctx.resources, std::string("Before remove ") + label);
             ctx.memoryLeakDiff->ScheduleCompare(3, std::string("Remove ") + label);
         }
-        /// @note RemoveComponent は GPU リソースを返すので、やり直し用のコピーはハンドルを消しておく (再利用された枠を掴まない)。
+        /// @note Component の値コピーは GPU 所有権を持たないため、Undo からの復元時に描画資源を再作成する。
         T removed = CaptureInspectorComponentValues(*comp);
-        scene::ClearComponentGpuHandles(removed);
         scene::Scene* scene = ctx.activeScene;
         const std::string instanceId = go->instanceId;
         const auto markDirty = ctx.markSceneDirty;
@@ -1888,7 +1896,6 @@ inline std::unique_ptr<ICommand> PasteComponentAsNewWithUndo(scene::GameObject& 
             if (*clipboardType != typeid(T)) return;
             T value = std::any_cast<const T&>(clipboard);
             /// @note コピー元の GPU ハンドルを共有すると片方の破棄でもう片方が消えた枠を掴む。
-            scene::ClearComponentGpuHandles(value);
             go.AddComponent<T>(std::move(value));
             AddComponentDependencies<T>(go);
             description = std::string("Paste ") + Registration::displayName + " As New";

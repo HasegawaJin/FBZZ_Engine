@@ -6,7 +6,7 @@
 
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/ObjectReference.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
 #include <cstdint>
@@ -84,6 +84,15 @@ struct IKChain {
     math::Vector3 footNormalAxis = math::Vector3::ZERO;
     bool     adjustHip = true;
     std::string hipBoneName = "Hips";
+    /// @note 腰の地形追従率 [0,1]。距離は world m。0 の上限はその方向の補正を禁止する。
+    /// @see Docs/design/foot-ik-tuning.md
+    float hipWeight = 1.0f;
+    float maxHipLowering = 0.10f;
+    float maxHipRaising = 0.0f;
+    /// @note FK の膝曲げを維持する既定値は 0 m。maxExtension から人工的な沈み込みを生成しない。
+    float hipBendReserve = 0.0f;
+    /// @note 同じ個体に Ragdoll があれば、その物理形状の底面と足裏姿勢を接地目標にする。
+    bool useRagdollFootShape = true;
 
     /// @note Spine 自動傾斜ウェイト: FootPlace の足高さ差を地形傾斜メトリクスとして weight を自動変化させる。
     /// @note 平地では低 weight で FK を維持し、坂道では自動で weight を上げて脊椎補正を効かせる。
@@ -104,12 +113,23 @@ struct IKChain {
     /// @note FootPlace の指数平滑化状態。シーンへは保存しない。
     float smoothedLeft           = 0.0f;
     float smoothedRight          = 0.0f;
+    /// @note 物理接触の瞬断で足目標を FK へ跳ね戻さない。水平追従を smoothTime で平滑化する。
+    math::Vector3 smoothedLeftSupportOffset = math::Vector3::ZERO;
+    math::Vector3 smoothedRightSupportOffset = math::Vector3::ZERO;
+    /// @note 地形の三角形境界で足裏の目標姿勢が跳ばないよう、法線も smoothTime で平滑化する。
+    math::Vector3 smoothedLeftSoleNormal = math::Vector3::UP;
+    math::Vector3 smoothedRightSoleNormal = math::Vector3::UP;
     float smoothedHip            = 0.0f;
     float leftPlantWeight        = 0.0f;
     float rightPlantWeight       = 0.0f;
-    /// @note bendReserve を除いた地形起伏のみの Hip 変位。Spine/LookAt がこれを参照する。
-    /// @note bendReserve は平地でも非ゼロのため smoothedHip をそのまま渡すと平地で背骨が傾く。
+    /// @note 明示した hipBendReserve を除いた地形起伏のみの腰変位。Spine/LookAt が参照する。
     float smoothedTerrainOnlyHip = 0.0f;
+    float runtimeHipTarget = 0.0f;
+    bool runtimeHipLimited = false;
+    bool runtimeLeftGrounded = false;
+    bool runtimeRightGrounded = false;
+    float runtimeAppliedHip = 0.0f;
+    bool runtimePhysicsFootShape = false;
 };
 
 /// @brief キャラクターに属する IK チェーン群を実行順とともに所有する。

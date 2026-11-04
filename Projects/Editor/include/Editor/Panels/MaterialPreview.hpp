@@ -18,6 +18,7 @@ namespace fbzz::asset { struct MaterialAssetAuthoring; }
 namespace fbzz::editor {
 
 struct EditorContext;
+class OperatorRegistry;
 
 /// @brief マテリアルプレビューの背景表示。
 enum class MaterialPreviewBackground {
@@ -36,6 +37,9 @@ public:
 
     /// @brief 視点・照明・表示チャンネルを既定へ戻す。
     void ResetView();
+
+    /// @brief このビューの表示設定を操作登録簿へ公開する。
+    void RegisterOperators(OperatorRegistry& registry, std::string_view prefix);
 
 private:
     void DrawToolbar(EditorContext& ctx, matpreview::Flavor flavor);

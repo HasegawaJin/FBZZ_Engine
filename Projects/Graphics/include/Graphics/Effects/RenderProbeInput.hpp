@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/RenderConstants.hpp>
 namespace fbzz::renderer {
 inline constexpr size_t kLightProbeProjectCBSize = 448;
@@ -23,7 +24,7 @@ struct RenderReflectionProbeResult {
 };
 /// @note DynamicScene は現在の直射光と world-space cloud shadow を捕捉し、主カメラ依存の shadow/cookie/AO は unavailable とする。
 /// @note 捕捉専用 b4/b12 が無効なら false。主ビューの shadow 定数は変更しない。
-bool CaptureReflectionProbe(RenderPassContext&, const RenderReflectionProbeInput&, RenderReflectionProbeResult&);
+FBZZ_GRAPHICS_API bool CaptureReflectionProbe(RenderPassContext&, const RenderReflectionProbeInput&, RenderReflectionProbeResult&);
 struct RenderLightProbeInput {
     uint32_t sourceIndex = 0, sourceGeneration = 0;
     math::Vector3 boxMin, boxSize;
@@ -34,6 +35,6 @@ struct RenderLightProbeInput {
     bool rejectInsideGeometry = false;
     float deringing = 0;
 };
-void BakeLightProbe(RenderPassContext&, const RenderLightProbeInput&, int, ResourceHandle<TextureTag>);
-void DilateLightProbeVolume(RenderPassContext&, const RenderLightProbeInput&);
+FBZZ_GRAPHICS_API void BakeLightProbe(RenderPassContext&, const RenderLightProbeInput&, int, ResourceHandle<TextureTag>);
+FBZZ_GRAPHICS_API void DilateLightProbeVolume(RenderPassContext&, const RenderLightProbeInput&);
 }

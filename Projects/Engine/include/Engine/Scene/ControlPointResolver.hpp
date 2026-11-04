@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/ObjectReference.hpp>
@@ -52,19 +53,15 @@ enum class ControlPointResolveStatus : uint8_t {
 
 inline constexpr std::size_t MAX_CONTROL_POINT_BINDINGS = 16384;
 
-/// @brief Binding を順序どおり解決し、Scene 非依存の数値列と変更署名を返す。
-/// @note owner 子孫は Engine の world TRS 合成順でローカル階層を原点から相対評価する。外部 target は同期済み world transform と float 精度を使う。
-/// @param scene 参照を解決する Scene。
-/// @param ownerId owner GameObject。
-/// @param bindings owner 内の順序付き Binding 行。解決前に Scene の world transform を同期しておくこと。
-/// @pre Scene の owner・target・階層 parent は呼び出し前に同期済み world transform を持つ。
+/// @brief Binding 順の数値点列と変更署名を解決する。
+/// @pre owner・target・親の world transform が同期済みであること。
+/// @note owner 子孫はローカル階層を相対評価し、外部 target は float 精度の同期済み world transform を使う。
 /// @param requireTargetPointMarker true なら全 target に TargetPointComponent を要求する。
-/// @param out 成功時だけ置換される数値点列。
-/// @param status 成功または最初に検出した無効条件。
-/// @param signature 成功時の非ゼロ署名。失敗時は 0。
-/// @return 全 Binding が解決できた場合は true。
+/// @param out 全件成功時だけ置換する。
+/// @param status 最初の無効条件、または成功。
+/// @return 失敗は false と署名 0。成功は true と非ゼロ署名。
 /// @see Docs/design/control-point-authoring.md
-[[nodiscard]] bool ResolveControlPointBindings(
+[[nodiscard]] FBZZ_ENGINE_API bool ResolveControlPointBindings(
     Scene& scene,
     EntityID ownerId,
     std::span<const ControlPointBinding> bindings,

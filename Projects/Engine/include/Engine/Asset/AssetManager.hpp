@@ -2,16 +2,17 @@
 /// @brief   統一アセットロード API。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
+
 /// @note `AssetManager::Load<T>(path)` → `AssetHandle<T>`、`Get<T>(h)` → `T*`、`Unload<T>(path)`。
 /// @note 対応型: Model, ModelAsset, AnimationClip, TextureAsset, MaterialAsset,
 /// @note TerrainAsset, AnimatorControllerAsset, SequenceAsset
 /// @note RegisterImporter<T>() で IAssetImporter<T> を登録してから使う (Init で実施)
-///
+
 /// @note テクスチャの GPU 実体は ResourceManager::LoadTexture() が持つ。
 /// @see Docs/design/ — Model は .fzasset (ModelAsset) から組み立てる旧表現で、
 /// @note メッシュ・マテリアル・クリップを一括保持する。新規コードは ModelAsset を使う。
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/AssetStreaming.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>
@@ -30,10 +31,14 @@
 #include <vector>
 
 namespace fbzz::renderer { class ResourceManager; }
+namespace fbzz::fluid { struct VectorFieldAsset; }
 
 namespace fbzz::asset {
 
 struct AnimationClip;
+struct Skeleton;
+struct IblAsset;
+struct ParticleCurveAsset;
 struct AnimatorControllerAsset;
 struct ModelAsset;
 struct PhysicsMaterialAsset;
@@ -43,8 +48,8 @@ struct SequenceAsset;
 struct TerrainAsset;
 struct TextureAsset;
 
-/// @brief 型ごとスロットプール (Meyers シングルトン)。
-/// @note ヘッダーに置いて Load<T> を完全インライン化する。type_index マップは使わない。
+/// @brief 型別のスロットプール。組込み型の実体は Engine DLL が単独所有する。
+/// @note 独自型の汎用入口だけをインライン化し、組込み型は AssetTypes.inl の明示特殊化へ接続する。
 template<typename T>
 class AssetStore {
 public:
@@ -150,50 +155,50 @@ private:
 
 class AssetManager {
 public:
-    static void Init(renderer::ResourceManager& resources, const std::string& basePath = "assets/");
-    static void UnloadAll();
-    static void FlushFailed();
-    static int  GetFlushGeneration();
+    FBZZ_ENGINE_API static void Init(renderer::ResourceManager& resources, const std::string& basePath = "assets/");
+    FBZZ_ENGINE_API static void UnloadAll();
+    FBZZ_ENGINE_API static void FlushFailed();
+    FBZZ_ENGINE_API static int  GetFlushGeneration();
 
     /// @note 指定ファイルを参照しているキャッシュ済みアセットを、ハンドルを保ったまま再取り込みする。
     /// @param absPath 監視イベントが返す絶対パス
     /// @return 差し替えた件数。0 ならこのファイルはどのストアにも載っていない
-    ///
+
     /// @note 取り込みに失敗した場合は既存の中身を残す。書き込み途中のファイルを掴んで
     /// @note 動いていたアセットを壊さないため。
-    static int ReloadPath(const std::string& absPath);
+    FBZZ_ENGINE_API static int ReloadPath(const std::string& absPath);
 
     /// @brief ホットリロードで「その場で中身を差し替えられる」拡張子の一覧。
     /// @note ReloadPath が差し替える型と Editor 側の監視ゲートが共有する、唯一の正本リスト。
     /// @note ここに載るのは «キャッシュ済みの値を入れ替えるだけで済む» 型だけ。GPU 資源を持つ型 (テクスチャ・モデル) は別経路で、ここには載せない。
-    [[nodiscard]] static std::span<const std::string_view> HotReloadableExtensions();
+    [[nodiscard]] FBZZ_ENGINE_API static std::span<const std::string_view> HotReloadableExtensions();
 
     /// @brief 拡張子 (先頭のドット込み・大小問わず) がホットリロード対象か。
-    [[nodiscard]] static bool IsHotReloadableExtension(std::string_view extension);
+    [[nodiscard]] FBZZ_ENGINE_API static bool IsHotReloadableExtension(std::string_view extension);
 
     /// @brief アセットの中身が変わるたびに進む世代番号。
     /// @note 派生キャッシュを持つ側 (クリップのコピー・マスク等) が「作り直すべきか」を整数比較 1 つで判断するために使う。
-    static int GetAssetGeneration();
+    FBZZ_ENGINE_API static int GetAssetGeneration();
 
     /// @brief ストアを通さず直読みしているアセット (.mask 等) を差し替えたときの、派生キャッシュへの明示的な世代更新。
-    static void BumpAssetGeneration();
+    FBZZ_ENGINE_API static void BumpAssetGeneration();
 
-    [[nodiscard]] static std::string ResolveAssetPath(const std::string& path);
+    [[nodiscard]] FBZZ_ENGINE_API static std::string ResolveAssetPath(const std::string& path);
 
     /// @brief ストアのキャッシュキー。非同期要求 (AssetStreamer) の重複集約も同じキーを使う。
     [[nodiscard]] static std::string CanonicalKey(const std::string& path) { return CacheKey(path); }
 
     /// @brief importer へ渡す実パス。modelContainer なら .fbx を Library/Baked の .fzasset へ寄せる。
-    [[nodiscard]] static std::string ResolveImportPath(const std::string& key, bool modelContainer);
+    [[nodiscard]] FBZZ_ENGINE_API static std::string ResolveImportPath(const std::string& key, bool modelContainer);
 
     /// @brief ストリーミング用キャッシュの置き場所 `<Project>/Library/StreamCache` (末尾 '/' なし)。
     /// @return プロジェクト構成でない (basePath が Assets/ で終わらない) なら空文字。キャッシュは使わない。
-    [[nodiscard]] static std::string StreamCacheDir();
+    [[nodiscard]] FBZZ_ENGINE_API static std::string StreamCacheDir();
 
     /// @brief 原本 FBX に対応する `Library/Baked/<fbx-guid>/` の絶対パスを返す (末尾 '/' なし)。
     /// @return guid が引けない (Assets 外の FBX 等) なら空文字。
     /// @note AssetBrowser がファイル名を知らない状態でサブアセット (.anim 等) の隔離先ディレクトリを列挙するために使う。ResolveAssetPath は実在ファイルしか返せない。
-    [[nodiscard]] static std::string BakedDirForSource(const std::string& sourceAbsPath);
+    [[nodiscard]] FBZZ_ENGINE_API static std::string BakedDirForSource(const std::string& sourceAbsPath);
 
     /// @name 新統一 API
     /// @{
@@ -274,32 +279,32 @@ public:
     /// @}
 
 private:
-    static renderer::ResourceManager* s_resources;
-    static std::string                s_basePath;
-    static std::string                s_engineBasePath;
-    static bool                       s_initialized;
+    FBZZ_ENGINE_API static renderer::ResourceManager* s_resources;
+    FBZZ_ENGINE_API static std::string                s_basePath;
+    FBZZ_ENGINE_API static std::string                s_engineBasePath;
+    FBZZ_ENGINE_API static bool                       s_initialized;
 
-    static std::string Normalize(const std::string& path);
+    FBZZ_ENGINE_API static std::string Normalize(const std::string& path);
 
     /// @brief キャッシュキーを 1 つに寄せる。解決できる guid 参照は `"Assets/..."` 相対へ畳む。
     /// @note シーンは `"guid:<hex>|Assets/X.mat"`、Inspector/D&D は `"Assets/X.mat"` で同じファイルを引く。キーが分かれるとストアに実体が 2 つでき、Inspector の編集が描画側へ届かない。
     /// @note 解決できない参照は元のキーのまま通す。ResolvePath の «参照切れ» 報告を残すため。
-    static std::string CacheKey(const std::string& path);
-    static std::string ResolvePath(const std::string& key, const std::string& basePath);
+    FBZZ_ENGINE_API static std::string CacheKey(const std::string& path);
+    FBZZ_ENGINE_API static std::string ResolvePath(const std::string& key, const std::string& basePath);
 
     /// @name DLL 境界ヘルパー
     /// @note static データメンバーは DLL 境界を直接越えられないため、ヘッダーインラインの Load<T> 等はこれらのエクスポート関数を呼ぶ。
     /// @{
-    static bool                        S_init() noexcept;
-    static const std::string&          S_base() noexcept;
-    static renderer::ResourceManager*  S_res()  noexcept;
+    FBZZ_ENGINE_API static bool                        S_init() noexcept;
+    FBZZ_ENGINE_API static const std::string&          S_base() noexcept;
+    FBZZ_ENGINE_API static renderer::ResourceManager*  S_res()  noexcept;
     template<typename T>
     static constexpr bool IsModelContainer() {
         return std::is_same_v<T, ModelAsset> || std::is_same_v<T, Model>;
     }
     /// @brief 同期経路の変化を AssetStreamer::Engine() へ伝える。台帳は DLL 側の 1 つだけ。
-    static void NotifyStreamerSyncFilled(std::string_view typeName, const std::string& key);
-    static void NotifyStreamerUnloaded(std::string_view typeName, const std::string& key);
+    FBZZ_ENGINE_API static void NotifyStreamerSyncFilled(std::string_view typeName, const std::string& key);
+    FBZZ_ENGINE_API static void NotifyStreamerUnloaded(std::string_view typeName, const std::string& key);
     template<typename T>
     static AssetHandle<T> LoadFromStore(const std::string& relativePath);
     template<typename T>
@@ -311,77 +316,14 @@ private:
     /// @}
 };
 
-/// @note Material registration enters the same DLL-owned store as its explicit Load/Get/Unload specializations.
-template<>
-void AssetManager::RegisterImporter<MaterialAsset>(std::unique_ptr<IAssetImporter<MaterialAsset>> imp);
-
-template<>
-AssetHandle<Model> AssetManager::Load<Model>(const std::string& relativePath);
-template<>
-AssetHandle<ModelAsset> AssetManager::Load<ModelAsset>(const std::string& relativePath);
-template<>
-AssetHandle<AnimationClip> AssetManager::Load<AnimationClip>(const std::string& relativePath);
-template<>
-AssetHandle<MaterialAsset> AssetManager::Load<MaterialAsset>(const std::string& relativePath);
-template<>
-AssetHandle<AnimatorControllerAsset> AssetManager::Load<AnimatorControllerAsset>(const std::string& relativePath);
-template<>
-AssetHandle<TerrainAsset> AssetManager::Load<TerrainAsset>(const std::string& relativePath);
-template<>
-AssetHandle<TextureAsset> AssetManager::Load<TextureAsset>(const std::string& relativePath);
-template<>
-AssetHandle<PhysicsMaterialAsset> AssetManager::Load<PhysicsMaterialAsset>(const std::string& relativePath);
-template<>
-AssetHandle<ClothAsset> AssetManager::Load<ClothAsset>(const std::string& relativePath);
-template<>
-AssetHandle<FiberPaintAsset> AssetManager::Load<FiberPaintAsset>(const std::string& relativePath);
-template<>
-AssetHandle<SequenceAsset> AssetManager::Load<SequenceAsset>(const std::string& relativePath);
-
-template<>
-Model* AssetManager::Get<Model>(AssetHandle<Model> h);
-template<>
-ModelAsset* AssetManager::Get<ModelAsset>(AssetHandle<ModelAsset> h);
-template<>
-AnimationClip* AssetManager::Get<AnimationClip>(AssetHandle<AnimationClip> h);
-template<>
-MaterialAsset* AssetManager::Get<MaterialAsset>(AssetHandle<MaterialAsset> h);
-template<>
-AnimatorControllerAsset* AssetManager::Get<AnimatorControllerAsset>(AssetHandle<AnimatorControllerAsset> h);
-template<>
-TerrainAsset* AssetManager::Get<TerrainAsset>(AssetHandle<TerrainAsset> h);
-template<>
-TextureAsset* AssetManager::Get<TextureAsset>(AssetHandle<TextureAsset> h);
-template<>
-PhysicsMaterialAsset* AssetManager::Get<PhysicsMaterialAsset>(AssetHandle<PhysicsMaterialAsset> h);
-template<>
-ClothAsset* AssetManager::Get<ClothAsset>(AssetHandle<ClothAsset> h);
-template<>
-FiberPaintAsset* AssetManager::Get<FiberPaintAsset>(AssetHandle<FiberPaintAsset> h);
-template<>
-SequenceAsset* AssetManager::Get<SequenceAsset>(AssetHandle<SequenceAsset> h);
-
-template<>
-void AssetManager::Unload<Model>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<ModelAsset>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<AnimationClip>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<MaterialAsset>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<AnimatorControllerAsset>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<TerrainAsset>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<TextureAsset>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<PhysicsMaterialAsset>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<ClothAsset>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<FiberPaintAsset>(const std::string& relativePath);
-template<>
-void AssetManager::Unload<SequenceAsset>(const std::string& relativePath);
+/// @note 全組込み型のストアと公開入口は Engine DLL に一つだけ置く。独自テスト型は汎用実装を使う。
+#define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) \
+    template<> FBZZ_ENGINE_API AssetStore<Type>& AssetStore<Type>::Get(); \
+    template<> FBZZ_ENGINE_API void AssetManager::RegisterImporter<Type>(std::unique_ptr<IAssetImporter<Type>> importer); \
+    template<> FBZZ_ENGINE_API AssetHandle<Type> AssetManager::Load<Type>(const std::string& path); \
+    template<> FBZZ_ENGINE_API Type* AssetManager::Get<Type>(AssetHandle<Type> handle); \
+    template<> FBZZ_ENGINE_API void AssetManager::Unload<Type>(const std::string& path);
+#include <Engine/Asset/AssetTypes.inl>
+#undef FBZZ_ASSET_TYPE
 
 } /// @note namespace fbzz::asset

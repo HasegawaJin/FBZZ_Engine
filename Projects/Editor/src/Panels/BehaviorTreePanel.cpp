@@ -115,6 +115,11 @@ using btops::IsDescendant;
 
 
 void BehaviorTreePanel::OnInit(EditorContext&) { m_graphCanvas.CreateContexts(); }
+
+void BehaviorTreePanel::OnRegisterOperators(OperatorRegistry& registry)
+{
+    m_graphCanvas.RegisterViewOperators(registry, "behavior_tree.view");
+}
 void BehaviorTreePanel::OnShutdown() { m_graphCanvas.DestroyContexts(); }
 
 

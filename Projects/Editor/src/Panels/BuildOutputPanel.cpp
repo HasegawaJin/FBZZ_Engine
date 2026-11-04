@@ -163,8 +163,7 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
     }
 
     if (ImGui::Button("Clear")) {
-        console.ClearHistory();
-        m_viewHistoryIndex = -1;
+        ClearHistory(console);
     }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Clear the build history (a running build is kept)");
@@ -196,17 +195,8 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
-    const auto& history = console->History();
-    const BuildRecord* rec = nullptr;
-    if (m_viewHistoryIndex >= 0 && m_viewHistoryIndex < static_cast<int>(history.size()))
-        rec = &history[static_cast<size_t>(m_viewHistoryIndex)];
-    else
-        rec = console->Latest();
-
-    DrawHeader(ctx, *console, rec);
-    /// @note Clear で履歴が消えた直後は rec が宙に浮くので引き直す。
-    if (m_viewHistoryIndex < 0 || m_viewHistoryIndex >= static_cast<int>(history.size()))
-        rec = console->Latest();
+    DrawHeader(ctx, *console, SelectedRecord(*console));
+    const BuildRecord* rec = SelectedRecord(*console);
     ImGui::Separator();
 
     SyncDiagnostics(rec);
@@ -250,4 +240,4 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
     m_rawView.DrawList({ 0.0f, 0.0f });
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

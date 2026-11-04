@@ -2,6 +2,7 @@
 /// @brief   Terrain / Water 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include "InspectorTerrainWater.hpp"
 #include "../../Util/MaterialAuthoringEditing.hpp"
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>

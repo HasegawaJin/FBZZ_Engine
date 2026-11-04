@@ -102,6 +102,8 @@ void StandaloneProjectModule::OnUpdate(float dt)
              && input::Input::PhysicalMouseButtonDown(0))
         (void)core::Cursor::AcquireGameInput();
     core::Cursor::ApplyLock();
+    const auto& window = core::Application::Get().GetWindow();
+    m_runtime.UpdateScriptViewport(window.GetWidth(), window.GetHeight());
     m_runtime.Update(dt, m_settings, true);
     if (m_waitingForStartScene) {
         m_waitingForStartScene = false;

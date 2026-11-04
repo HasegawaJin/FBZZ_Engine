@@ -6,6 +6,7 @@
 /// @note R8G8B8A8 化して PNG へエンコードする」後段は完全に共通なので 1 か所へ集約する。本ヘッダは
 /// @note DirectXTex を include せず前方宣言のみで軽量に保つ (include は .cpp に閉じる)。
 #pragma once
+#include <Graphics/Api.hpp>
 #include <cstdint>
 #include <vector>
 
@@ -15,14 +16,14 @@ namespace fbzz::renderer::detail {
 
 /// @note captured (CaptureTexture の結果) の mip0/slice0 を PNG へエンコードして outPng へ書く。
 /// @note HDR (R16G16B16A16_FLOAT 等) は R8G8B8A8_UNORM へ変換してから保存する。失敗時 false。
-bool EncodeCapturedImageToPng(const DirectX::ScratchImage& captured,
+FBZZ_GRAPHICS_API bool EncodeCapturedImageToPng(const DirectX::ScratchImage& captured,
                               std::vector<std::uint8_t>& outPng,
                               std::uint32_t& outWidth, std::uint32_t& outHeight);
 
 /// @note captured の mip0/slice0 を線形 RGBA float 列 (画素あたり 4 要素・行優先) へ展開する。
 /// @note PNG 化は [0,1] へクランプするため、露出の破綻 (白飛び) と「単に明るい」を区別できない。
 /// @note       数値評価には HDR のままの線形値が必要なので、8bit 化と別経路で読み出す。
-bool ReadCapturedImageAsLinearRGBA(const DirectX::ScratchImage& captured,
+FBZZ_GRAPHICS_API bool ReadCapturedImageAsLinearRGBA(const DirectX::ScratchImage& captured,
                                    std::vector<float>& outRgba,
                                    std::uint32_t& outWidth, std::uint32_t& outHeight);
 

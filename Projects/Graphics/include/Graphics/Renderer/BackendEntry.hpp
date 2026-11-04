@@ -7,6 +7,7 @@
 /// @note       シグネチャだけを出す。
 /// @see  Docs/design/dx11-removal.md
 #pragma once
+#include <Graphics/Api.hpp>
 #include <cstdint>
 
 #include "RendererFactory.hpp"
@@ -20,7 +21,7 @@ namespace fbzz::renderer {
 /// @note FBZZ_ENABLE_DX12=OFF の構成では定義ごと存在しない。DX11 撤去後、この構成は
 /// @note       描画バックエンドを 1 つも持たないため、カバレッジ計測など GPU を使わない
 /// @note       ビルド専用となる。
-RendererBundle CreateDX12Backend(void* hwnd, uint32_t width, uint32_t height);
+FBZZ_GRAPHICS_API RendererBundle CreateDX12Backend(void* hwnd, uint32_t width, uint32_t height);
 #endif
 
 } /// @note namespace fbzz::renderer

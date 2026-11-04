@@ -38,7 +38,7 @@ std::unique_ptr<physics::RigidBody> MakeBody(const math::Vector3& position, floa
     return body;
 }
 
-} // namespace
+} /// @note namespace
 
 TEST_F(XPBDSolverTest, FreeFallMatchesAnalyticDrop)
 {
@@ -71,7 +71,6 @@ TEST_F(XPBDSolverTest, PlaneContactStopsTheBody)
     Simulate(solver, 180);
 
     EXPECT_NEAR(body->GetPosition().y, 0.5f, 1.0e-3f);
-    /// @note 位置から速度を出し直しているので、静止していれば速度も 0 になる。
     EXPECT_LT(body->GetVelocity().Length(), 1.0e-2f);
 
     solver.ClearBodies();
@@ -179,4 +178,32 @@ TEST_F(XPBDSolverTest, FinalProjectionIsIncludedInDerivedVelocity)
     solver.ClearBodies();
 }
 
-} // namespace fbzz::tests
+TEST_F(XPBDSolverTest, LimitProjectionStopsOutwardMotionWithoutCreatingVelocity)
+{
+    for (float outwardSpeed : {0.0f, 0.25f}) {
+        physics::XPBDSolver solver;
+        solver.SetGravity(math::Vector3::ZERO);
+        solver.SetSubsteps(1);
+        auto body = MakeBody({0.02f, 0.0f, 0.0f});
+        body->m_linearDrag = body->m_angularDrag = 0.0f;
+        body->SetVelocity({outwardSpeed, 2.0f, 0.0f});
+        body->SetRotation(math::Quaternion::FromAxisAngle(math::Vector3::UP, 0.5f));
+        body->SetAngularVelocity(math::Vector3::UP * outwardSpeed);
+        solver.AddBody(body.get());
+
+        solver.Step(1.0f / 60.0f, nullptr, [](void* context) {
+            auto& projected = *static_cast<physics::RigidBody*>(context);
+            auto position = projected.GetPosition();
+            position.x = 0.0f;
+            projected.SetPosition(position);
+            projected.SetRotation(math::Quaternion::Identity());
+        }, body.get(), physics::XPBDProjectionMode::LIMIT);
+
+        EXPECT_FLOAT_EQ(body->GetPosition().x, 0.0f);
+        EXPECT_VEC3_NEAR(body->GetVelocity(), (math::Vector3{0.0f, 2.0f, 0.0f}), 1.0e-5f);
+        EXPECT_VEC3_NEAR(body->GetAngularVelocity(), math::Vector3::ZERO, 1.0e-5f);
+        solver.ClearBodies();
+    }
+}
+
+} /// @note namespace fbzz::tests

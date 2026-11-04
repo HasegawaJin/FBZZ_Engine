@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 #pragma once
+#include <Physics/Api.hpp>
 
 #include <Math/Vector3.hpp>
 #include <Math/Matrix3.hpp>
@@ -92,23 +93,23 @@ class ClothSolver {
 public:
     /// @return 不正な面・添字・質量・非多様体辺なら false。失敗時は既存状態を維持する。
     /// @note indices は三角形の列、inverseMasses は頂点と同数 [1/kg]、0 は固定点。
-    [[nodiscard]] bool Initialize(std::span<const math::Vector3> positions,
+    [[nodiscard]] FBZZ_PHYSICS_API bool Initialize(std::span<const math::Vector3> positions,
                                   std::span<const uint32_t> indices,
                                   std::span<const float> inverseMasses);
     /// @return 非有限値または範囲外なら false。設定を変更しない。
-    [[nodiscard]] bool SetSettings(const ClothSettings& settings);
+    [[nodiscard]] FBZZ_PHYSICS_API bool SetSettings(const ClothSettings& settings);
     /// @return 固定点以外・範囲外・非有限値なら false。
-    [[nodiscard]] bool SetPinTarget(uint32_t vertex, const math::Vector3& position);
+    [[nodiscard]] FBZZ_PHYSICS_API bool SetPinTarget(uint32_t vertex, const math::Vector3& position);
     /// @return 不正な刻み・接触・移動制約、重複質点、計算の非有限値なら false。位置・速度は未変更。
     /// @note dt は (0, 0.1]。span は呼び出し中だけ参照する。固定質点への正半径は拒否する。
     /// @note 移動制約は接触より優先するため、両立しない設定では接触面へ侵入し得る。
     /// @note 自己 CCD は substep 開始時に交差がない前提。既に交差した状態からは解かない。
     /// @note wind は各 substep の現在の三角形重心で同期評価し windVelocity に加算する。空なら追加なし。保持せず、非有限の戻り値は Step 全体を戻す。
     /// @see https://graphics.stanford.edu/papers/cloth-sig02/cloth.pdf Bridson et al. 2002 の近接と CCD。
-    [[nodiscard]] bool Step(float dt, std::span<const ClothContact> contacts = {},
+    [[nodiscard]] FBZZ_PHYSICS_API bool Step(float dt, std::span<const ClothContact> contacts = {},
                             std::span<const ClothMotionConstraint> motion = {}, const ClothWindSampler& wind = {});
     /// @brief 初期位置に戻し、速度と固定先を初期化する。
-    void Reset();
+    FBZZ_PHYSICS_API void Reset();
     [[nodiscard]] const std::vector<math::Vector3>& Positions() const { return m_positions; }
     [[nodiscard]] const std::vector<math::Vector3>& Velocities() const { return m_velocities; }
     [[nodiscard]] const ClothSettings& Settings() const { return m_settings; }
@@ -117,7 +118,7 @@ public:
     /// @note 同じ dt で Step 成功後に呼ぶ。質点球と任意の面・辺接触を解き、motion を最後に戻す。失敗時は全参加者を復元する。
     /// @note 相互 CCD は固定更新の開始→終了の直線軌跡を扱う。substep 間の曲線軌跡と初期交差の解消は保証しない。
     /// @see https://nvidiagameworks.github.io/PhysX/3.3/PhysXGuide/Manual/Cloth.html#inter-collision Inter-Collision。
-    [[nodiscard]] static bool SolveInterCollision(std::span<const ClothInteraction> cloths, float dt);
+    [[nodiscard]] FBZZ_PHYSICS_API static bool SolveInterCollision(std::span<const ClothInteraction> cloths, float dt);
 
 private:
     struct DistanceConstraint {
@@ -127,22 +128,22 @@ private:
         float lambda = 0.0f;
         bool bending = false;
     };
-    void SolveDistances(float h);
+    FBZZ_PHYSICS_API void SolveDistances(float h);
     struct BendConstraint {
         std::array<uint32_t,4> v{};
         float restAngle = 0;
         float lambda = 0;
     };
-    void SolveBending(float h);
-    bool ApplyWind(float h, const ClothWindSampler& wind);
-    void SolveContacts(std::span<const ClothContact> contacts, float h);
-    void SolveMotion(std::span<const ClothMotionConstraint> motion, float fraction, float h, bool updateVelocity);
-    bool SolveSelfContacts();
+    FBZZ_PHYSICS_API void SolveBending(float h);
+    FBZZ_PHYSICS_API bool ApplyWind(float h, const ClothWindSampler& wind);
+    FBZZ_PHYSICS_API void SolveContacts(std::span<const ClothContact> contacts, float h);
+    FBZZ_PHYSICS_API void SolveMotion(std::span<const ClothMotionConstraint> motion, float fraction, float h, bool updateVelocity);
+    FBZZ_PHYSICS_API bool SolveSelfContacts();
     /// @note 開始位置 m_previous から現在位置までの掃引 AABB で候補を作る。候補数が上限を超えたら false。
-    bool BuildPrimitivePairs(float inflation);
-    void SolvePrimitiveProximity();
+    FBZZ_PHYSICS_API bool BuildPrimitivePairs(float inflation);
+    FBZZ_PHYSICS_API void SolvePrimitiveProximity();
     /// @return 交差を補正したら true。
-    bool SolvePrimitiveContinuous();
+    FBZZ_PHYSICS_API bool SolvePrimitiveContinuous();
     struct SelfCell {
         std::array<int64_t, 3> cell{};
         uint32_t particle = 0;

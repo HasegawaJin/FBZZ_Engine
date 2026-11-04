@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <cstdint>
 #include <d3d12.h>
@@ -21,26 +22,26 @@ class DX12Shader;
 
 class DX12IblBaker final {
 public:
-    DX12IblBaker(DX12Context* context, DX12StateTracker* tracker,
+    FBZZ_GRAPHICS_API DX12IblBaker(DX12Context* context, DX12StateTracker* tracker,
                  DX12PsoCache* psoCache, DX12UploadArena* uploadArena);
-    bool Convolve(DX12RenderTarget& environment, uint32_t irradianceSize,
+    FBZZ_GRAPHICS_API bool Convolve(DX12RenderTarget& environment, uint32_t irradianceSize,
                   uint32_t prefilterSize, uint32_t prefilterMips, uint32_t sampleCount,
                   std::unique_ptr<DX12Texture>& irradiance,
                   std::unique_ptr<DX12Texture>& prefilter);
 
 private:
     struct CubeOutput;
-    bool EnsureShaders();
-    bool CreateOutput(uint32_t size, uint32_t mipCount, CubeOutput& output);
-    bool DispatchIrradiance(DX12RenderTarget& environment, CubeOutput& output);
-    bool DispatchPrefilter(DX12RenderTarget& environment, CubeOutput& output, uint32_t sampleCount);
+    FBZZ_GRAPHICS_API bool EnsureShaders();
+    FBZZ_GRAPHICS_API bool CreateOutput(uint32_t size, uint32_t mipCount, CubeOutput& output);
+    FBZZ_GRAPHICS_API bool DispatchIrradiance(DX12RenderTarget& environment, CubeOutput& output);
+    FBZZ_GRAPHICS_API bool DispatchPrefilter(DX12RenderTarget& environment, CubeOutput& output, uint32_t sampleCount);
 
     /// @brief 一時ビューを bindless 枠へ発行し、後で返せるよう控えておく。
     /// @note 面ごと・mip ごとの UAV は自前のリソースが持てる添字ではない (同じリソースの
     /// @note       別スライスを指すビュー) ので、ベイクの間だけ枠を借りる。
-    uint32_t PublishTransient(D3D12_CPU_DESCRIPTOR_HANDLE source);
+    FBZZ_GRAPHICS_API uint32_t PublishTransient(D3D12_CPU_DESCRIPTOR_HANDLE source);
     /// @brief PublishTransient で借りた枠をすべて返す。Convolve の出口で必ず呼ぶ。
-    void ReleaseTransients();
+    FBZZ_GRAPHICS_API void ReleaseTransients();
 
     DX12Context* m_context = nullptr;
     DX12StateTracker* m_tracker = nullptr;

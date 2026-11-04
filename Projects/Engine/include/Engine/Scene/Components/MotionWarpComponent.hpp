@@ -4,7 +4,7 @@
 /// @date    2026-08-25
 #pragma once
 
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Engine/Scene/ObjectReference.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>

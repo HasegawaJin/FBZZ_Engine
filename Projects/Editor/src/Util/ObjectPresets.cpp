@@ -2,6 +2,60 @@
 /// @brief   Create プリセットの実体。Hierarchy・メインメニュー・Operator・AI が同じ表を使う。
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
+#include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
+#include <Engine/Scene/Components/AudioListenerComponent.hpp>
+#include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/AudioSpatialComponents.hpp>
+#include <Engine/Scene/Components/BehaviorTreeComponent.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/CameraRigComponents.hpp>
+#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/ConstraintComponents.hpp>
+#include <Engine/Scene/Components/DecalComponent.hpp>
+#include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
+#include <Engine/Scene/Components/JointComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/MeshTrailComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/NavMeshModifierComponent.hpp>
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
+#include <Engine/Scene/Components/PresentationComponents.hpp>
+#include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/SequencePlayerComponent.hpp>
+#include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/SplineComponents.hpp>
+#include <Engine/Scene/Components/SunMoonRenderer.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
+#include <Engine/Scene/Components/TrailComponent.hpp>
+#include <Engine/Scene/Components/UIButton.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Components/UICanvasGroup.hpp>
+#include <Engine/Scene/Components/UIControls.hpp>
+#include <Engine/Scene/Components/UIImage.hpp>
+#include <Engine/Scene/Components/UILayoutGroup.hpp>
+#include <Engine/Scene/Components/UIText.hpp>
+#include <Engine/Scene/Components/VFXAudioEnvelope.hpp>
+#include <Engine/Scene/Components/VFXBeamComponent.hpp>
+#include <Engine/Scene/Components/VFXComponent.hpp>
+#include <Engine/Scene/Components/VFXElement.hpp>
+#include <Engine/Scene/Components/VFXScreenEffect.hpp>
+#include <Engine/Scene/Components/VolumeComponent.hpp>
+#include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/WeatherComponent.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Editor/Util/ObjectPresets.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -32,9 +86,8 @@ namespace {
 
 enum class PrimitiveKind { Cube, Sphere, Plane, Quad, Cylinder, Cone, Torus, Capsule };
 
-renderer::Mesh* PrimitiveMeshFor(PrimitiveKind kind)
+renderer::Mesh* PrimitiveMeshFor(PrimitiveKind kind, renderer::ResourceManager* resources)
 {
-    auto* resources = renderer::ResourceManager::Active();
     if (resources == nullptr) return nullptr;
     switch (kind) {
     case PrimitiveKind::Cube:     return renderer::PrimitiveMesh::Cube(*resources);
@@ -94,7 +147,8 @@ scene::GameObject* NewPrimitive(EditorContext& ctx, const char* name, PrimitiveK
 
     scene::MeshRenderer mr;
     mr.meshPath = PrimitiveMeshPath(kind);
-    mr.mesh     = PrimitiveMeshFor(kind);
+    mr.mesh     = PrimitiveMeshFor(kind, ctx.resources);
+    mr.meshPathDirty = mr.mesh == nullptr;
     go.AddComponent<scene::MeshRenderer>(mr);
 
     scene::MaterialComponent mc;
@@ -150,7 +204,8 @@ scene::GameObject* MakeCapsule(EditorContext& ctx)  { return NewPrimitive(ctx, "
 
 scene::GameObject* MakeQuad(EditorContext& ctx)
 {
-    auto* created = NewPrimitive(ctx, "Quad", PrimitiveKind::Quad, /*withCollider=*/false);
+    /// @note withCollider=
+    auto* created = NewPrimitive(ctx, "Quad", PrimitiveKind::Quad, false);
     if (!created) return nullptr;
     auto& go = *created;
     AttachFittedCollider(go, PrimitiveKind::Quad);
@@ -265,7 +320,8 @@ scene::GameObject* MakeLineRenderer(EditorContext& ctx)
 
 scene::GameObject* MakeBillboard(EditorContext& ctx)
 {
-    auto* created = NewPrimitive(ctx, "Billboard", PrimitiveKind::Quad, /*withCollider=*/false);
+    /// @note withCollider=
+    auto* created = NewPrimitive(ctx, "Billboard", PrimitiveKind::Quad, false);
     if (!created) return nullptr;
     auto& go = *created;
     go.AddComponent<scene::BillboardComponent>();
@@ -514,7 +570,8 @@ scene::GameObject* MakeNavMeshSurface(EditorContext& ctx)
 
 scene::GameObject* MakeNavMeshAgent(EditorContext& ctx)
 {
-    auto* created = NewPrimitive(ctx, "NavMesh Agent", PrimitiveKind::Capsule, /*withCollider=*/false);
+    /// @note withCollider=
+    auto* created = NewPrimitive(ctx, "NavMesh Agent", PrimitiveKind::Capsule, false);
     if (!created) return nullptr;
     auto& go = *created;
     go.AddComponent<scene::NavMeshAgentComponent>();
@@ -523,7 +580,8 @@ scene::GameObject* MakeNavMeshAgent(EditorContext& ctx)
 
 scene::GameObject* MakeNavMeshModifier(EditorContext& ctx)
 {
-    auto* created = NewPrimitive(ctx, "NavMesh Modifier", PrimitiveKind::Cube, /*withCollider=*/true);
+    /// @note withCollider=
+    auto* created = NewPrimitive(ctx, "NavMesh Modifier", PrimitiveKind::Cube, true);
     if (!created) return nullptr;
     auto& go = *created;
     go.AddComponent<scene::NavMeshModifierComponent>();
@@ -542,7 +600,8 @@ scene::GameObject* MakeOffMeshLink(EditorContext& ctx)
 /// @note 4 つを 1 セットで置く。Sensor だけ忘れると BT の条件が永久に偽になり、最も追いにくい。
 scene::GameObject* MakeAIAgent(EditorContext& ctx)
 {
-    auto* created = NewPrimitive(ctx, "AI Agent", PrimitiveKind::Capsule, /*withCollider=*/false);
+    /// @note withCollider=
+    auto* created = NewPrimitive(ctx, "AI Agent", PrimitiveKind::Capsule, false);
     if (!created) return nullptr;
     auto& go = *created;
     go.AddComponent<scene::NavMeshAgentComponent>();
@@ -893,7 +952,8 @@ scene::GameObject* MakeCapsuleTrigger(EditorContext& ctx)
 /// @note meshPath は空のままにする。ColliderSync は同じ GameObject の MeshRenderer を先に見る。
 scene::GameObject* MakeMeshColliderObject(EditorContext& ctx)
 {
-    auto* created = NewPrimitive(ctx, "Mesh Collider", PrimitiveKind::Torus, /*withCollider=*/false);
+    /// @note withCollider=
+    auto* created = NewPrimitive(ctx, "Mesh Collider", PrimitiveKind::Torus, false);
     if (!created) return nullptr;
     auto& go = *created;
     go.AddComponent<scene::MeshColliderComponent>();
@@ -902,7 +962,8 @@ scene::GameObject* MakeMeshColliderObject(EditorContext& ctx)
 
 scene::GameObject* MakeConvexHullObject(EditorContext& ctx)
 {
-    auto* created = NewPrimitive(ctx, "Convex Hull Collider", PrimitiveKind::Cone, /*withCollider=*/false);
+    /// @note withCollider=
+    auto* created = NewPrimitive(ctx, "Convex Hull Collider", PrimitiveKind::Cone, false);
     if (!created) return nullptr;
     auto& go = *created;
     go.AddComponent<scene::ConvexHullColliderComponent>();
@@ -1045,7 +1106,8 @@ scene::GameObject* MakeSpline(EditorContext& ctx)
 
 scene::GameObject* MakeSplineFollower(EditorContext& ctx)
 {
-    auto* created = NewPrimitive(ctx, "Spline Follower", PrimitiveKind::Cube, /*withCollider=*/false);
+    /// @note withCollider=
+    auto* created = NewPrimitive(ctx, "Spline Follower", PrimitiveKind::Cube, false);
     if (!created) return nullptr;
     auto& go = *created;
     go.AddComponent<scene::SplineFollowerComponent>();

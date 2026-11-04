@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-25
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <cstdint>
 #include <filesystem>
@@ -21,12 +22,12 @@ struct FluidBakeBudget {
 };
 
 /// @brief 全コマ画像・Atlas・書き出しの同時保持量を安全側に見積もる。
-[[nodiscard]] FluidBakeBudget EstimateFluidBakeBudget(const fluid::FluidRecipe& recipe);
-[[nodiscard]] FluidBakeBudget EstimateVolumeBakeBudget(const VolumeFlipbookBakeSettings& settings);
+[[nodiscard]] FBZZ_ENGINE_API FluidBakeBudget EstimateFluidBakeBudget(const fluid::FluidRecipe& recipe);
+[[nodiscard]] FBZZ_ENGINE_API FluidBakeBudget EstimateVolumeBakeBudget(const VolumeFlipbookBakeSettings& settings);
 
 /// @brief RAM と出力先ディスクの空き容量を確認する。
 /// @return 不足・Atlas 過大なら false。利用可能量を取得できなければ容量判定だけ省く。
-[[nodiscard]] bool ValidateFluidBakeBudget(const FluidBakeBudget& budget,
+[[nodiscard]] FBZZ_ENGINE_API bool ValidateFluidBakeBudget(const FluidBakeBudget& budget,
                                            const std::filesystem::path& outputDirectory,
                                            std::string& outError);
 

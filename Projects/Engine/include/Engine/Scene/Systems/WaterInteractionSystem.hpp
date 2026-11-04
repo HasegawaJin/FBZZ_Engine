@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Core/Scheduler/ISystem.hpp>
 #include <Engine/Scene/WaterInteraction.hpp>
@@ -15,7 +16,7 @@ public:
     Phase GetPhase() const override { return Phase::Cleanup; }
     RunMode GetRunMode() const override { return RunMode::Always; }
     ComponentAccess GetAccess() const override { return ComponentAccess{}.Unrestricted(); }
-    void Update(SystemContext& context) override;
+    FBZZ_ENGINE_API void Update(SystemContext& context) override;
 private:
     std::shared_ptr<WaterInteractionSceneStore> m_store;
 };

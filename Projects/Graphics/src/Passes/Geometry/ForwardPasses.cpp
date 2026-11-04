@@ -34,7 +34,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
     UpdateShadowConstants(ctx);
     UpdatePunctualShadowConstants(ctx);
-    std::vector<Entry> staticOpaque, skinnedOpaque, transparent;
+    std::vector<Entry> staticOpaque, skinnedOpaque;
     const bool detailed = profiler::Profiler::IsEnabled()
         && profiler::Profiler::GetRequestedCaptureFilter().scope == "ForwardOpaque";
     double cullingMs = 0, objectUploadMs = 0, drawPreparationMs = 0, submitCallMs = 0;
@@ -57,7 +57,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
                     if (!HasColorGeometry(item)) continue;
                     Entry entry{ &object, &item, distance };
                     if (renderer::ResolveGeometryRoute(item.material.capabilities, false)
-                        == renderer::GeometryRoute::ForwardTransparent) transparent.push_back(entry);
+                        == renderer::GeometryRoute::ForwardTransparent) continue;
                     else if (skinned) skinnedOpaque.push_back(entry);
                     else staticOpaque.push_back(entry);
                 }
@@ -119,19 +119,6 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     }
     ExecuteInstanceForward(ctx);
     ExecuteFiberPass(ctx);
-    /// @note Instance/fiber execution may touch view state; resolve the transparent group's bindings again at its own boundary.
-    bindings.reset();
-    const auto transparentSort = profiler::Profiler::BeginScope({"ForwardOpaque::SortTransparent", "Rendering"});
-    std::sort(transparent.begin(), transparent.end(), [](const Entry& a, const Entry& b) {
-        if (a.item->material.renderQueue != b.item->material.renderQueue)
-            return a.item->material.renderQueue < b.item->material.renderQueue;
-        return a.distanceSquared > b.distanceSquared;
-    });
-    profiler::Profiler::EndScope(transparentSort);
-    for (const auto& entry : transparent) {
-        if (detailed) submit.template operator()<true>(entry);
-        else submit.template operator()<false>(entry);
-    }
     if (detailed) {
         /// @note These sums are diagnostic aggregates, not contiguous child spans; visibility overlaps Gather, and per-draw clocks affect this run only.
         profiler::Profiler::PushSample({"ForwardOpaque::CullingAggregate", "Rendering"}, cullingMs);

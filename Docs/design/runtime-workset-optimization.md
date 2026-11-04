@@ -19,7 +19,7 @@
 
 BVH は Physics 内部に置き、Scene・RHI に依存しない。問い合わせが使われた後の同期・Step の安全点でだけ構築・refit し、query のない World へ索引維持の走査を追加しない。初回、16 個未満の Collider、不正な境界では従来の全候補経路を使う。Raycast / RaycastAll / SphereCast / OverlapSphere の詳細形状判定は共通の既存実装を保つ。同距離の最近接結果は元の登録順を保つ。query traversal は escape 添字を使い、候補ごとの確保と固定長 stack の上限を持たない。
 
-Collider は外部所有で、Update や公開寸法を直接変更できる。問い合わせごとに現 AABB と同期時の境界を照合し、差分があれば従来の全候補へ戻す。これは O(n) の境界検証を残すが、古い索引による見落としを防ぐ。問い合わせは索引を書き換えず、複数 thread の read と filter 内の再入 query で作業領域を共有しない。Scene sync / Step / Collider 変更と query の並行実行は行わない。
+Collider は外部所有で、Update や公開寸法を直接変更できる。問い合わせごとに寿命証明を先に確認し、生存する個体の現 AABB と同期時の境界を照合する。失効・差分があれば従来の全候補へ戻し、失効した形状・剛体は filter より前に除外する。これは O(n) の境界検証を残すが、古い索引による見落としを防ぐ。問い合わせは索引を書き換えず、複数 thread の read と filter 内の再入 query で作業領域を共有しない。Scene sync / Step / Collider 変更と query の並行実行は行わない。
 
 ## RenderScene
 

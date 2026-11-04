@@ -51,7 +51,7 @@ void OverlayEditorLocalState(const std::string& projectRoot, toml::table& tbl)
 }
 
 /// @note 個人状態のセクションを Library/EditorLocalState.toml へ書き出す。
-bool SaveEditorLocalState(const std::string& projectRoot, toml::table&& localRoot)
+bool SaveEditorLocalState(const std::string& projectRoot, const std::string& localText)
 {
     const std::string localPath = EditorLocalStatePath(projectRoot);
     if (localPath.empty()) return false;
@@ -60,7 +60,7 @@ bool SaveEditorLocalState(const std::string& projectRoot, toml::table&& localRoo
     ss << "# 自動生成 — このマシンのエディター作業状態。git には載せない (Library は .gitignore 済み)。\n"
           "# 視点位置・開いていたシーン・パネル配置などは触るたびに変わり、人ごとに違う。\n"
           "# 共有ファイルへ置くと、同じプロジェクトを触る全員がこの行で衝突し続ける。\n\n";
-    ss << localRoot;
+    ss << localText;
 
     util::FileSystem::EnsureDirectory(util::FileSystem::GetDirectory(localPath));
     if (util::FileSystem::WriteText(localPath, ss.str())) return true;
@@ -93,6 +93,19 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
     /// @note 残っていても local 側が勝つので、移行はこの 1 行で済む。
     OverlayEditorLocalState(projectRoot, tbl);
 
+    std::ostringstream merged;
+    merged << tbl;
+    if (!LoadFromToml(merged.str(), projectRoot)) return false;
+    if (!tbl["build"].is_table()) BuildSettings::LoadLegacyFile(projectRoot, build);
+
+    return sharedLoaded;
+}
+
+bool EditorSettings::LoadFromToml(const std::string& text, const std::string& projectRoot)
+{
+    auto parsed = toml::parse(text);
+    if (!parsed) return false;
+    auto& tbl = parsed.table();
     /// @note カメラ
     if (auto v = tbl["camera"]["speed"].value<float>())        cameraSpeed        = *v;
     if (auto v = tbl["camera"]["sensitivity"].value<float>())  cameraSensitivity  = *v;
@@ -455,15 +468,21 @@ bool EditorSettings::Load(const std::string& path, const std::string& projectRoo
                 if (!entry.path.empty()) build.scenes.push_back(std::move(entry));
             }
         }
-    } else {
-        /// @note 旧 `<projectRoot>/BuildSettings.toml` を一度だけ引き継ぐ。
-        BuildSettings::LoadLegacyFile(projectRoot, build);
     }
 
-    return sharedLoaded;
+    return true;
 }
 
 bool EditorSettings::Save(const std::string& path, const std::string& projectRoot) const
+{
+    std::string shared, local;
+    SerializeToml(shared, local, projectRoot);
+    const bool localSaved = projectRoot.empty() || SaveEditorLocalState(projectRoot, local);
+    const bool sharedSaved = util::FileSystem::WriteText(path, shared);
+    return localSaved && sharedSaved;
+}
+
+void EditorSettings::SerializeToml(std::string& shared, std::string& local, const std::string& projectRoot) const
 {
     /// @note カメラ。これだけ書き出し先が Library/EditorLocalState.toml (git 管理外)。
     toml::table camTbl;
@@ -799,7 +818,7 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
 
     /// @note 個人状態は共有ファイルより先に片付ける。ここが失敗しても共有側の保存は続ける
     /// @note (作業状態を落とすだけで、ビルド設定やホットキーまで巻き添えにする理由が無い)。
-    (void)SaveEditorLocalState(projectRoot, std::move(localRoot));
+
 
     /// @name 共有設定 (Assets/EditorConfig/editor_settings.toml)
     toml::table root;
@@ -822,7 +841,26 @@ bool EditorSettings::Save(const std::string& path, const std::string& projectRoo
 
     std::ostringstream ss;
     ss << root;
-    return util::FileSystem::WriteText(path, ss.str());
+    shared = ss.str();
+    std::ostringstream localStream;
+    localStream << localRoot;
+    local = localStream.str();
+}
+
+std::string EditorSettings::ToToml(const std::string& projectRoot) const
+{
+    std::string shared, local;
+    SerializeToml(shared, local, projectRoot);
+    auto merged = toml::parse(shared);
+    const auto state = toml::parse(local);
+    if (!merged || !state) return {};
+    for (const auto& [key, value] : state.table()) {
+        if (const auto* table = value.as_table()) merged.table().insert_or_assign(key.str(), *table);
+        else if (const auto* array = value.as_array()) merged.table().insert_or_assign(key.str(), *array);
+    }
+    std::ostringstream output;
+    output << merged.table();
+    return output.str();
 }
 
 } /// @note namespace fbzz::editor

@@ -3,10 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #pragma once
+#include <Engine/Scene/Components/TransientGpuState.hpp>
 
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Scene/Entity.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Matrix4.hpp>
 #include <Graphics/Effects/PreparedSkinning.hpp>
 #include <cstdint>
@@ -17,7 +18,44 @@
 
 namespace fbzz::scene {
 
-struct SkinnedMeshRenderer {
+/// @note GPU 所有権と再確保用キャッシュは Component の値コピーへ含めない。
+struct SkinnedMeshRendererGpuState {
+    std::unordered_map<std::string, float> appliedMorphWeights;
+    std::vector<renderer::OwnedResource<renderer::BufferTag>> morphVertexBuffers;
+
+    /// @name コンピュートスキニングの出力
+    /// @{
+    /// @brief 従来の全 dispatch 経路が再利用する mutable 出力。配列自体は現在姿勢の公開境界ではない。
+    /// @note 現在の可用性と変形入力は ResolveSkinnedVertexBuffer / ResolveSlotSkinnedVertexBuffer で解決する。
+    /// @note 遅延 ticket は専用世代を持ち、この配列へ別所有の lease を混ぜない。
+    std::vector<renderer::OwnedResource<renderer::BufferTag>> skinnedVertexBuffers;
+    /// @brief skinnedVertexBuffers を確保したときのモデル。model が差し替わったら作り直す。
+    /// @note バッファは submesh の頂点数に合わせて確保するため、古いバッファを使い回すと
+    /// @note 頂点数が足りず描画が途中で切れる / 範囲外へ書き込む。
+    const asset::Model* skinnedBufferModel = nullptr;
+    /// @brief このフレームで GPU スキニングが成立したか。
+    /// @note false は未投入 ticket も含む。既知の描画 consumer は RenderScene の元入力 ticket を必要時に完了する。
+    bool gpuSkinnedThisFrame = false;
+    /// @brief 最後にポーズを GPU へ展開したエンジンフレーム。
+    /// @note Scene View と Game View は同じ Time::frameCount 内で別々に RenderSystem を実行するため、
+    /// @note bool だけでは 2 回目のビューでも同じポーズを Dispatch してしまう。
+    uint64_t gpuSkinningFrame = (std::numeric_limits<uint64_t>::max)();
+    /// @brief 同フレームの別ビューでも同じパス統計を表示できるよう、実際に処理した仕事量を保持する。
+    uint64_t gpuSkinningVertexCount = 0;
+    uint32_t gpuSkinningDispatchCount = 0;
+    /// @note 入力の完全比較で同じポーズの再 Dispatch を省く。保存せず、model / resource 世代が変われば棄却する。
+    std::vector<uint32_t> gpuSkinningContent;
+    /// @note 未使用の元姿勢は GPU 未投入のまま所有する。mutable 出力とは別世代で古い snapshot も保持できる。
+    std::shared_ptr<renderer::PreparedSkinningTicket> preparedSkinning;
+    /// @note model->meshes 添字から ticket の行への対応。未担当 submesh は UINT32_MAX。
+    std::vector<uint32_t> preparedSkinningRows;
+    /// @note 元入力の一致を確認したエンジンフレーム。ticket の RHI frame や成功投入 frame とは別である。
+    uint64_t preparedSkinningFrame = (std::numeric_limits<uint64_t>::max)();
+    /// @}
+
+};
+
+struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
     bool enabled = true;
     /// @note LODSystem 専用のランタイム可視性。Scene には保存しない。
     bool lodVisible = true;
@@ -31,8 +69,8 @@ struct SkinnedMeshRenderer {
 
     /// @brief この Renderer が描く submesh の添字列 (model->meshes の添字)。空ならモデル全体を描く。
     /// @note ローカルスロット i (= MaterialComponent のスロット i) が submeshIndices[i] を描く。
-    ///       Assimp は 1 DCC メッシュをマテリアルごとに分割するため、配列にして「1 ノード =
-    ///       1 GameObject、マテリアルはスロット配列」という Unity と同じ対応にしている。
+    /// @note Assimp は 1 DCC メッシュをマテリアルごとに分割するため、配列にして「1 ノード =
+    /// @note 1 GameObject、マテリアルはスロット配列」という Unity と同じ対応にしている。
     /// @note 配置時に決まる構造的な値。Inspector には出さず、Serializer と配置コードだけが書き込む。
     std::vector<uint32_t> submeshIndices;
 
@@ -46,7 +84,7 @@ struct SkinnedMeshRenderer {
     /// @brief ローカルスロット番号 → model->meshes の添字。
     /// @return 範囲外は UINT32_MAX。
     /// @note 描画・影・スキニング・ピッキングが同じ対応をここへ集約する。各所で書き直すと
-    ///       片方だけ直したときに部位ごとに食い違う壊れ方をする。
+    /// @note 片方だけ直したときに部位ごとに食い違う壊れ方をする。
     [[nodiscard]] uint32_t SubmeshAt(size_t localIndex) const
     {
         if (!submeshIndices.empty())
@@ -67,55 +105,22 @@ struct SkinnedMeshRenderer {
     }
 
     /// @note SkeletonNode はアセット側の参照テーブルのまま。これらの EntityID はロード/実行時に
-    ///       再構築され、実体である Bone GameObject を指す (Transform を編集・アニメ・リグの共通基盤にするため)。
+    /// @note 再構築され、実体である Bone GameObject を指す (Transform を編集・アニメ・リグの共通基盤にするため)。
     EntityID skeletonRootEntity = EntityID::INVALID;
     std::vector<EntityID> nodeEntities;
     /// @note Morph は共有 Mesh を変更せず、この Renderer インスタンス専用の頂点バッファへ反映する。
     std::unordered_map<std::string, float> morphWeights;
-    std::unordered_map<std::string, float> appliedMorphWeights;
-    std::vector<renderer::ResourceHandle<renderer::BufferTag>> morphVertexBuffers;
-
-    /// @name コンピュートスキニングの出力
-    /// @{
-    /// @brief 従来の全 dispatch 経路が再利用する mutable 出力。配列自体は現在姿勢の公開境界ではない。
-    /// @note 現在の可用性と変形入力は ResolveSkinnedVertexBuffer / ResolveSlotSkinnedVertexBuffer で解決する。
-    /// @note 遅延 ticket は専用世代を持ち、この配列へ別所有の lease を混ぜない。
-    std::vector<renderer::ResourceHandle<renderer::BufferTag>> skinnedVertexBuffers;
-    /// @brief skinnedVertexBuffers を確保したときのモデル。model が差し替わったら作り直す。
-    /// @note バッファは submesh の頂点数に合わせて確保するため、古いバッファを使い回すと
-    ///       頂点数が足りず描画が途中で切れる / 範囲外へ書き込む。
-    const asset::Model* skinnedBufferModel = nullptr;
-    /// @brief このフレームで GPU スキニングが成立したか。
-    /// @note false は未投入 ticket も含む。既知の描画 consumer は RenderScene の元入力 ticket を必要時に完了する。
-    bool gpuSkinnedThisFrame = false;
-    /// @brief 最後にポーズを GPU へ展開したエンジンフレーム。
-    /// @note Scene View と Game View は同じ Time::frameCount 内で別々に RenderSystem を実行するため、
-    ///       bool だけでは 2 回目のビューでも同じポーズを Dispatch してしまう。
-    uint64_t gpuSkinningFrame = (std::numeric_limits<uint64_t>::max)();
-    /// @brief 同フレームの別ビューでも同じパス統計を表示できるよう、実際に処理した仕事量を保持する。
-    uint64_t gpuSkinningVertexCount = 0;
-    uint32_t gpuSkinningDispatchCount = 0;
-    /// @note 入力の完全比較で同じポーズの再 Dispatch を省く。保存せず、model / resource 世代が変われば棄却する。
-    std::vector<uint32_t> gpuSkinningContent;
-    /// @note 未使用の元姿勢は GPU 未投入のまま所有する。mutable 出力とは別世代で古い snapshot も保持できる。
-    std::shared_ptr<renderer::PreparedSkinningTicket> preparedSkinning;
-    /// @note model->meshes 添字から ticket の行への対応。未担当 submesh は UINT32_MAX。
-    std::vector<uint32_t> preparedSkinningRows;
-    /// @note 元入力の一致を確認したエンジンフレーム。ticket の RHI frame や成功投入 frame とは別である。
-    uint64_t preparedSkinningFrame = (std::numeric_limits<uint64_t>::max)();
-    /// @}
-
     /// @note VelocityPass だけが読み書きする。シーンへは保存しない。ボーンの動きは
-    ///       AnimatorComponent::prevBoneMatrices が持つので、ここはキャラクター自身の
-    ///       移動・回転ぶんだけ。2 枚持つのは MeshRenderer と同じ理由 (Scene View と Game View が
-    ///       同じフレームで 2 回描く)。
+    /// @note AnimatorComponent::prevBoneMatrices が持つので、ここはキャラクター自身の
+    /// @note 移動・回転ぶんだけ。2 枚持つのは MeshRenderer と同じ理由 (Scene View と Game View が
+    /// @note 同じフレームで 2 回描く)。
     math::Matrix4 prevWorldMatrix     = math::Matrix4::Identity();
     math::Matrix4 worldMatrixSnapshot = math::Matrix4::Identity();
     uint64_t      prevWorldFrame      = (std::numeric_limits<uint64_t>::max)();
 
     /// @brief GPU スキニング済みなら変形済み頂点バッファを、そうでなければ無効ハンドルを返す。
     /// @note ResolveVertexBuffer と混同しないこと。あちらは「VS でスキニングする入力」を返す。
-    ///       こちらを VS スキニング用シェーダーへ渡すと二重に変形がかかって崩れる。
+    /// @note こちらを VS スキニング用シェーダーへ渡すと二重に変形がかかって崩れる。
     renderer::ResourceHandle<renderer::BufferTag> ResolveSkinnedVertexBuffer(size_t index) const
     {
         if (gpuSkinnedThisFrame && preparedSkinning && index < preparedSkinningRows.size()) {
@@ -133,15 +138,15 @@ struct SkinnedMeshRenderer {
         renderer::ResourceHandle<renderer::BufferTag> fallback) const
     {
         return index < morphVertexBuffers.size() && morphVertexBuffers[index].IsValid()
-            ? morphVertexBuffers[index] : fallback;
+            ? morphVertexBuffers[index].Get() : fallback;
     }
 
     /// @name ローカルスロット番号で引く版
     /// @{
     /// @note morphVertexBuffers / skinnedVertexBuffers は model->meshes の添字で確保するが、
-    ///       MaterialComponent のスロットとループ変数はこの Renderer 内のローカル番号。
-    ///       submeshIndices が入ると両者が食い違い、誤った添字で引くと別部位の頂点で描かれる。
-    ///       呼び出し側にはローカル番号だけを使わせ、変換をここへ閉じ込める。
+    /// @note MaterialComponent のスロットとループ変数はこの Renderer 内のローカル番号。
+    /// @note submeshIndices が入ると両者が食い違い、誤った添字で引くと別部位の頂点で描かれる。
+    /// @note 呼び出し側にはローカル番号だけを使わせ、変換をここへ閉じ込める。
     [[nodiscard]] renderer::ResourceHandle<renderer::BufferTag> ResolveSlotVertexBuffer(
         size_t localIndex,
         renderer::ResourceHandle<renderer::BufferTag> fallback) const

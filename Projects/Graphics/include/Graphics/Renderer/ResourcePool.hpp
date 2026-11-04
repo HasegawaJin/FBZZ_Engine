@@ -47,7 +47,7 @@ public:
         Slot& slot = m_slots[id];
         slot.resource = std::move(resource);
         slot.occupied = true;
-        return { id, slot.gen };
+        return { id, slot.gen, m_owner };
     }
 
     T* Get(ResourceHandle<Tag> handle)
@@ -140,6 +140,9 @@ public:
     }
 
 private:
+    friend class ResourceManager;
+    uint64_t m_owner = 0;
+
     static core::AllocationInfo MakeAllocationInfo(const T* pointer,
                                                    std::size_t bytes,
                                                    const char* debugName,
@@ -165,7 +168,7 @@ private:
 
     [[nodiscard]] bool IsLive(ResourceHandle<Tag> handle) const
     {
-        if (!handle.IsValid()) return false;
+        if (!handle.IsValid() || handle.owner != m_owner) return false;
         if (handle.id >= m_slots.size()) return false;
         const Slot& slot = m_slots[handle.id];
         return slot.occupied && slot.gen == handle.gen;

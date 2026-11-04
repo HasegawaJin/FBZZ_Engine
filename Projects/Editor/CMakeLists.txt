@@ -21,10 +21,11 @@ set_source_files_properties(${EDITOR_MINIZ_SRC} PROPERTIES
 add_library(FBZZEditor STATIC ${EDITOR_SOURCES} ${EDITOR_MINIZ_SRC})
 fbzz_use_std_pch(FBZZEditor)
 
-# @note StbImage.cpp と HdriLoader.cpp はヘッダーオンリー実装の展開場所なので統合しない。miniz.c は念のため明示する。
+# @note 第三者ヘッダーの実装を展開する翻訳単位は統合しない。miniz.c も明示する。
 fbzz_use_unity_build(FBZZEditor EXCLUDE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Import/StbImage.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Import/HdriLoader.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Panels/FontPreview.cpp"
     "${EDITOR_MINIZ_SRC}"
 )
 set_target_properties(FBZZEditor PROPERTIES

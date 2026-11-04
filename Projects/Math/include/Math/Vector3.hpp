@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Math/Api.hpp>
 
 #include "MathUtils.hpp"
 
@@ -29,20 +30,20 @@ struct Vector3 {
     /// @brief 正規化したベクトルを返す。
     /// @pre 長さが 0 でないこと。
     /// @note 契約違反時は ZERO を返し、MathContract.hpp が発生位置つきで 1 度だけ報告する。
-    Vector3 Normalized() const;
+    FBZZ_MATH_API Vector3 Normalized() const;
     /// @brief 正規化を試み、長さ 0 なら fallback を返す。
     /// @note 接触法線・進行方向・視線ベクトルなど退化入力が正常系に含まれる箇所で使う。契約違反として報告しない。
     Vector3 NormalizedOr(const Vector3& fallback) const;
 
-    static float   Dot(const Vector3& a, const Vector3& b);
-    static Vector3 Cross(const Vector3& a, const Vector3& b);
+    FBZZ_MATH_API static float   Dot(const Vector3& a, const Vector3& b);
+    FBZZ_MATH_API static Vector3 Cross(const Vector3& a, const Vector3& b);
     static Vector3 Lerp(const Vector3& a, const Vector3& b, float t);
 
     static const Vector3 ZERO;
     static const Vector3 ONE;
     static const Vector3 UP;
     static const Vector3 RIGHT;
-    static const Vector3 FORWARD; ///< DirectX 左手系: +Z が画面奥方向 (OpenGL は -Z)。
+    static const Vector3 FORWARD; ///< @note DirectX 左手系: +Z が画面奥方向 (OpenGL は -Z)。
 };
 
 inline const Vector3 Vector3::ZERO    = {0.0f, 0.0f, 0.0f};
@@ -91,4 +92,4 @@ inline Vector3 Vector3::Lerp(const Vector3& a, const Vector3& b, float t) {
     return a + (b - a) * t;
 }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

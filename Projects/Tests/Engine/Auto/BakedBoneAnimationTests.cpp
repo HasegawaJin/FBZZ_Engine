@@ -4,15 +4,21 @@
 /// @date    2026-10-12
 #include <TestKit/TestKit.hpp>
 #include <Engine/Scene/Systems/AnimatorSystem.hpp>
+#include <Engine/Scene/Systems/IKSystem.hpp>
+#include <Engine/Scene/Systems/SpringBoneSystem.hpp>
+#include <Engine/Scene/Systems/RagdollSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Core/ILogSink.hpp>
 #include <Math/MathUtils.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
+#include <Engine/Core/Scheduler/SystemScheduler.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/SpringBoneComponent.hpp>
+#include <Engine/Scene/Components/RagdollComponent.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Physics/World.hpp>
 #include "../../../Engine/src/Scene/Systems/BonePoseSharing.hpp"
@@ -32,6 +38,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/BoneBakeRuntime.hpp>
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -696,6 +703,218 @@ TEST_F(BakedBoneAnimationTest, NearBakedAnimatorKeepsOrdinaryBoneHierarchy)
     SystemContext context{scene,world,&assets.resources,nullptr,1.0f/60,1.0f/60,true,true};system.Update(context);
     EXPECT_FALSE(animator.boneBake.active);EXPECT_EQ(animator.boneBake.fallback,scene::BoneBakeFallback::NEAR_CAMERA);
     EXPECT_EQ(scene.GetEntities<scene::BoneComponent>().size(),3u);
+}
+
+TEST_F(BakedBoneAnimationTest, RagdollSamplesFreshAnimationAcrossDistanceLodAndBakeModes)
+{
+    for (const auto mode : {scene::BoneBakeMode::LEGACY, scene::BoneBakeMode::CPU_BAKED,
+                           scene::BoneBakeMode::GPU_SHARED, scene::BoneBakeMode::GPU_POSE_SHARED}) {
+        SCOPED_TRACE(static_cast<int>(mode));
+        BoneBakeLodTestWorld world(mode);
+        auto& ragdoll = world.actor->AddComponent<scene::RagdollComponent>();
+        ragdoll.rootBoneName = "Body";
+        ragdoll.activateOnStart = true;
+        ragdoll.blendIn = 0.0f;
+        ragdoll.groundPlane = false;
+        ragdoll.contactWorld = ragdoll.contactDynamic = ragdoll.contactSelf = false;
+        scene::RagdollSystem ragdollSystem;
+
+        for (int frame = 1; frame <= 4; ++frame) {
+            world.Step();
+            auto& animator = world.Animator();
+            EXPECT_TRUE(animator.poseEvaluatedThisFrame);
+            EXPECT_FALSE(animator.boneBake.active);
+            if (mode != scene::BoneBakeMode::LEGACY)
+                EXPECT_EQ(animator.boneBake.fallback, scene::BoneBakeFallback::RIG_CONTROL);
+            ASSERT_EQ(world.SkinnedRenderer().nodeEntities.size(), 3u);
+            if (frame == 1) ragdoll.pendingImpulses.push_back({{}, {0, 2, 0}, 0});
+            SystemContext context{world.scene, world.physics, &world.resources, nullptr,
+                                  0.0625f, 0.0625f, true, true};
+            ragdollSystem.Update(context);
+            world.renderer.Drain();
+
+            ASSERT_EQ(ragdoll.runtimeStatus, scene::RagdollStatus::Running);
+            ASSERT_FALSE(ragdoll.runtime.bones.empty());
+            EXPECT_NEAR(ragdoll.runtime.bones.front().position.y,
+                        static_cast<float>(frame) * 0.0625f * 0.2f, 0.0001f);
+        }
+    }
+}
+
+TEST_F(BakedBoneAnimationTest, AddingRagdollToHeldBakeRestoresItsCurrentCpuTargets)
+{
+    for (const auto mode : {scene::BoneBakeMode::CPU_BAKED, scene::BoneBakeMode::GPU_SHARED,
+                           scene::BoneBakeMode::GPU_POSE_SHARED}) {
+        SCOPED_TRACE(static_cast<int>(mode));
+        BoneBakeLodTestWorld world(mode);
+        world.Step();
+        world.Step();
+        ASSERT_TRUE(world.Animator().boneBake.active);
+        ASSERT_FALSE(world.Animator().poseEvaluatedThisFrame);
+        ASSERT_TRUE(world.SkinnedRenderer().nodeEntities.empty());
+        auto& ragdoll = world.actor->AddComponent<scene::RagdollComponent>();
+        ragdoll.rootBoneName = "Body";
+        ragdoll.activateOnStart = true;
+        ragdoll.groundPlane = false;
+        ragdoll.contactWorld = ragdoll.contactDynamic = ragdoll.contactSelf = false;
+
+        world.Step();
+        scene::RagdollSystem ragdollSystem;
+        SystemContext context{world.scene, world.physics, &world.resources, nullptr,
+                              0.0625f, 0.0625f, true, true};
+        ragdollSystem.Update(context);
+        world.renderer.Drain();
+
+        EXPECT_FALSE(world.Animator().boneBake.active);
+        EXPECT_EQ(world.Animator().boneBake.fallback, scene::BoneBakeFallback::RIG_CONTROL);
+        ASSERT_EQ(ragdoll.runtimeStatus, scene::RagdollStatus::Running);
+        ASSERT_FALSE(ragdoll.runtime.bones.empty());
+        EXPECT_NEAR(ragdoll.runtime.bones.front().position.y, 3.0f * 0.0625f * 0.2f, 0.0001f);
+    }
+}
+
+TEST_F(BakedBoneAnimationTest, PausePreservesTheFinalIkSpringAndRagdollPoseUntilResume)
+{
+    BoneBakeLodTestWorld world(scene::BoneBakeMode::LEGACY);
+    auto& target = world.scene.CreateGameObject("AimTarget");
+    target.transform.position = {103, 2, 1};
+    auto& ik = world.actor->AddComponent<scene::IKSolverComponent>();
+    scene::IKChain aim;
+    aim.type = scene::IKSolverType::AimAt;
+    aim.boneNames = {"Tail"};
+    aim.targetEntity = target.GetID();
+    aim.lookAtAxis = math::Vector3::RIGHT;
+    ik.chains.push_back(aim);
+    auto& spring = world.actor->AddComponent<scene::SpringBoneComponent>();
+    scene::SpringBoneChain tail;
+    tail.rootBoneName = "Tail";
+    tail.leafTailLength = 0.3f;
+    tail.gravityPower = 2.0f;
+    tail.weight = 0.3f;
+    spring.chains.push_back(tail);
+    auto& ragdoll = world.actor->AddComponent<scene::RagdollComponent>();
+    ragdoll.rootBoneName = "Body";
+    ragdoll.beginRequested = ragdoll.activeRequested = true;
+    ragdoll.blendIn = 0.0f;
+    ragdoll.activationWeight = 0.5f;
+    ragdoll.standingGuard = true;
+    ragdoll.groundPlane = false;
+    ragdoll.contactWorld = ragdoll.contactDynamic = ragdoll.contactSelf = false;
+    SystemScheduler scheduler;
+    scheduler.AddSystem<scene::TransformLateUpdate>();
+    scheduler.AddSystem<scene::AnimatorSystem>();
+    scheduler.AddSystem<scene::IKSystem>();
+    scheduler.AddSystem<scene::SpringBoneSystem>();
+    scheduler.AddSystem<scene::RagdollSystem>();
+    ASSERT_TRUE(scheduler.Build());
+    const auto tick = [&](float dt, bool simulating) {
+        world.resources.AdvanceFrame();
+        ++Time::frameCount;
+        SystemContext context{world.scene, world.physics, &world.resources, nullptr,
+                              dt, dt, simulating, true};
+        scheduler.LateUpdate(context);
+        world.renderer.Drain();
+    };
+    for (int frame = 0; frame < 6; ++frame) tick(0.0625f, true);
+    ASSERT_EQ(ragdoll.runtimeStatus, scene::RagdollStatus::Running);
+    ASSERT_GT(ik.runtimeSolvedChainCount, 0);
+    ASSERT_GT(spring.runtimeSimulatedBoneCount, 0);
+    ASSERT_NE(ragdoll.runtime.rig->GetBody(0), nullptr);
+    const auto* body = ragdoll.runtime.rig->GetBody(0);
+    const auto bodyPosition = body->GetPosition();
+    const auto bodyRotation = body->GetRotation();
+    const auto bodyVelocity = body->GetVelocity();
+    const auto palette = world.Animator().boneMatrices;
+    const auto globals = world.Animator().nodeGlobalTransforms;
+    std::vector<math::Matrix4> boneWorld;
+    for (const auto entity : world.SkinnedRenderer().nodeEntities)
+        boneWorld.push_back(world.scene.GetGameObject(entity)->transform.GetWorldMatrix());
+    const float stateTime = world.Animator().stateTime;
+    const auto poseCount = world.Animator().poseEvaluationCount;
+    const auto ikUpdates = ik.runtimeUpdateCount;
+    const auto springUpdates = spring.runtimeUpdateCount;
+    target.transform.position = {98, -2, -1};
+
+    for (int frame = 0; frame < 2; ++frame) {
+        tick(0.5f, false);
+
+        EXPECT_FLOAT_EQ(world.Animator().stateTime, stateTime);
+        EXPECT_EQ(world.Animator().poseEvaluationCount, poseCount);
+        EXPECT_EQ(ik.runtimeUpdateCount, ikUpdates);
+        EXPECT_EQ(spring.runtimeUpdateCount, springUpdates);
+        EXPECT_VEC3_NEAR(body->GetPosition(), bodyPosition, 0.000001f);
+        EXPECT_VEC3_NEAR(body->GetVelocity(), bodyVelocity, 0.000001f);
+        EXPECT_VEC3_NEAR(body->GetRotation() * math::Vector3::RIGHT,
+                         bodyRotation * math::Vector3::RIGHT, 0.000001f);
+        EXPECT_VEC3_NEAR(body->GetRotation() * math::Vector3::UP,
+                         bodyRotation * math::Vector3::UP, 0.000001f);
+        ASSERT_EQ(world.Animator().prevBoneMatrices.size(), palette.size());
+        for (size_t index = 0; index < palette.size(); ++index) {
+            ExpectBoneBakeTestMatrix(world.Animator().boneMatrices[index], palette[index]);
+            ExpectBoneBakeTestMatrix(world.Animator().prevBoneMatrices[index], palette[index]);
+        }
+        for (size_t index = 0; index < globals.size(); ++index) {
+            ExpectBoneBakeTestMatrix(world.Animator().nodeGlobalTransforms[index], globals[index]);
+            const auto* bone = world.scene.GetGameObject(world.SkinnedRenderer().nodeEntities[index]);
+            ExpectBoneBakeTestMatrix(bone->transform.GetWorldMatrix(), boneWorld[index]);
+        }
+    }
+
+    tick(0.0625f, true);
+
+    EXPECT_GT(world.Animator().stateTime, stateTime);
+    EXPECT_GT(world.Animator().poseEvaluationCount, poseCount);
+    EXPECT_GT(ik.runtimeUpdateCount, ikUpdates);
+    EXPECT_GT(spring.runtimeUpdateCount, springUpdates);
+    SystemContext editContext{world.scene, world.physics, &world.resources, nullptr,
+                              0.0625f, 0.0625f, false, false};
+    world.system.Update(editContext);
+    world.renderer.Drain();
+    const auto* editBody = world.scene.GetGameObject(world.SkinnedRenderer().nodeEntities[1]);
+    EXPECT_NEAR(editBody->transform.worldPosition.y, 0.0f, 0.000001f);
+    scheduler.Shutdown();
+}
+
+TEST_F(BakedBoneAnimationTest, PauseKeepsTheFirstResumedRootMotionDeltaWithoutRevivingInvalidHistory)
+{
+    for (int interruption = 0; interruption < 3; ++interruption) {
+        SCOPED_TRACE(interruption);
+        auto clip = MakeBoneBakeTestSwim();
+        clip.hasRootMotion = true;
+        clip.rootMotionTrackIndex = 0;
+        clip.rootMotionApplyXZ = true;
+        clip.rootMotionApplyY = false;
+        clip.rootMotionApplyRotation = false;
+        clip.tracks[0].positions = {{0.0, {1, 0, 0}}, {2.0, {3, 0, 0}}};
+        BoneBakeLodTestWorld world(scene::BoneBakeMode::LEGACY, clip);
+        world.Animator().rootMotion.mode = scene::RootMotionMode::ExtractOnly;
+        const auto tick = [&](float dt, bool simulating) {
+            world.resources.AdvanceFrame();
+            ++Time::frameCount;
+            SystemContext context{world.scene, world.physics, &world.resources, nullptr,
+                                  dt, dt, simulating, true};
+            world.system.Update(context);
+            world.renderer.Drain();
+        };
+        tick(0.25f, true);
+        tick(0.25f, true);
+        ASSERT_NEAR(world.Animator().rootMotionDeltaPosition.x, 0.25f, 0.000001f);
+        const float pausedTime = world.Animator().stateTime;
+        if (interruption == 1) ++Time::frameCount;
+        if (interruption == 2) asset::AssetManager::BumpAssetGeneration();
+
+        for (int frame = 0; frame < 2; ++frame) {
+            tick(0.5f, false);
+            EXPECT_FLOAT_EQ(world.Animator().stateTime, pausedTime);
+            EXPECT_VEC3_NEAR(world.Animator().rootMotionDeltaPosition, math::Vector3::ZERO, 0.000001f);
+        }
+        tick(0.25f, true);
+
+        EXPECT_NEAR(world.Animator().rootMotionDeltaPosition.x, interruption == 0 ? 0.25f : 0.0f, 0.000001f);
+        EXPECT_FALSE(world.Animator().rootMotionAppliedByEngine);
+        tick(0.25f, true);
+        EXPECT_NEAR(world.Animator().rootMotionDeltaPosition.x, 0.25f, 0.000001f);
+    }
 }
 
 

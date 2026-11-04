@@ -3,8 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 #pragma once
+#include <Engine/Api.hpp>
 #include <string>
-namespace fbzz::scene { bool IsEffectTextureSrgb(const std::string& texturePath); }
+namespace fbzz::scene { FBZZ_ENGINE_API bool IsEffectTextureSrgb(const std::string& texturePath); }
 #include <Graphics/Effects/ParticleColorSpace.hpp>
 namespace fbzz::scene {
 using renderer::ParticleColorSpace;

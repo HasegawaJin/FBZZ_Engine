@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Core/Scheduler/ISystem.hpp>
 
@@ -15,8 +16,8 @@ class ConstraintSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "ConstraintSystem"; }
     Phase GetPhase() const override { return Phase::LateUpdate; }
-    ComponentAccess GetAccess() const override;
-    void Update(SystemContext& ctx) override;
+    FBZZ_ENGINE_API ComponentAccess GetAccess() const override;
+    FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 };
 
 /// @note Catmull-Rom 曲線上の移動はワールド姿勢へ適用する。
@@ -24,8 +25,8 @@ class SplineSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "SplineSystem"; }
     Phase GetPhase() const override { return Phase::LateUpdate; }
-    ComponentAccess GetAccess() const override;
-    void Update(SystemContext& ctx) override;
+    FBZZ_ENGINE_API ComponentAccess GetAccess() const override;
+    FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 };
 
 /// @note Virtual Camera 選択、追従、Blend、Shake の順に評価する。
@@ -33,8 +34,8 @@ class CameraRigSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "CameraRigSystem"; }
     Phase GetPhase() const override { return Phase::LateUpdate; }
-    ComponentAccess GetAccess() const override;
-    void Update(SystemContext& ctx) override;
+    FBZZ_ENGINE_API ComponentAccess GetAccess() const override;
+    FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 };
 
 /// @note Billboard は Main Camera のワールド姿勢を基準とする。
@@ -42,8 +43,8 @@ class BillboardSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "BillboardSystem"; }
     Phase GetPhase() const override { return Phase::LateUpdate; }
-    ComponentAccess GetAccess() const override;
-    void Update(SystemContext& ctx) override;
+    FBZZ_ENGINE_API ComponentAccess GetAccess() const override;
+    FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 };
 
 /// @note Sprite と Line の GPU Mesh、Sorting、Projector の Decal を確定する。
@@ -51,9 +52,9 @@ class PresentationSystem final : public ISystem {
 public:
     std::string_view Name() const override { return "PresentationSystem"; }
     Phase GetPhase() const override { return Phase::LateUpdate; }
-    ComponentAccess GetAccess() const override;
-    OrderingHints GetOrder() const override;
-    void Update(SystemContext& ctx) override;
+    FBZZ_ENGINE_API ComponentAccess GetAccess() const override;
+    FBZZ_ENGINE_API OrderingHints GetOrder() const override;
+    FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 };
 
 } /// @note namespace fbzz::scene

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <condition_variable>
 #include <cstdint>
@@ -43,7 +44,7 @@ public:
         /// @pre This is a valid reservation, its executor remains alive, and publication stays on the reserving thread.
         /// @pre Frame owns all worker inputs.
         /// @note Publishes before notification; no wait, callback, or producer-side execution occurs.
-        [[nodiscard]] bool Publish(std::unique_ptr<IRenderFrame> frame);
+        [[nodiscard]] FBZZ_GRAPHICS_API bool Publish(std::unique_ptr<IRenderFrame> frame);
     private:
         friend class RenderThread;
         SubmissionReservation(RenderThread& owner, uint64_t serial, std::unique_lock<std::mutex> lock)
@@ -56,33 +57,33 @@ public:
     /// @return Invalid if the mutex/slot is busy, stopping, worker-owned, or serial is not increasing.
     /// @pre Caller holds no reservation from this executor.
     /// @note Uses try-lock only; input construction and serial commitment occur after success.
-    [[nodiscard]] SubmissionReservation TryReserveSubmission(uint64_t serial);
+    [[nodiscard]] FBZZ_GRAPHICS_API SubmissionReservation TryReserveSubmission(uint64_t serial);
 
-    RenderThread();
-    ~RenderThread();
+    FBZZ_GRAPHICS_API RenderThread();
+    FBZZ_GRAPHICS_API ~RenderThread();
     RenderThread(const RenderThread&) = delete;
     RenderThread& operator=(const RenderThread&) = delete;
 
     /// @return 受付済みなら true。停止中、空入力、単調増加しない serial では false。
     /// @note 前フレームの入力が生存する間だけ待つ。serial は application frame の識別値。
     /// @pre Render Thread 自身から呼ばないこと。
-    [[nodiscard]] bool Submit(uint64_t serial, std::unique_ptr<IRenderFrame> frame);
+    [[nodiscard]] FBZZ_GRAPHICS_API bool Submit(uint64_t serial, std::unique_ptr<IRenderFrame> frame);
 
     /// @return 指定 serial 以上の CPU 処理と入力破棄が完了したら true。未受付の未来 serial なら false。
     /// @pre Render Thread 自身から呼ばないこと。
-    [[nodiscard]] bool WaitUntilCompleted(uint64_t serial);
+    [[nodiscard]] FBZZ_GRAPHICS_API bool WaitUntilCompleted(uint64_t serial);
 
     /// @note 受付済みの最新入力が破棄されるまで待つ。GPU の fence は別途待つ。
     /// @pre Render Thread 自身から呼ばないこと。
-    void WaitIdle();
+    FBZZ_GRAPHICS_API void WaitIdle();
 
     /// @return True only after accepting the mutex with no queued or executing input, including its destruction.
     /// @pre Caller holds no reservation from this executor.
     /// @note Worker calls and a busy mutex return false without waiting or pumping; true is an observation, not a reservation.
-    [[nodiscard]] bool TryIsIdle();
+    [[nodiscard]] FBZZ_GRAPHICS_API bool TryIsIdle();
 
     /// @pre producer から呼ぶ。Stop 同士を並行実行せず、Render Thread 自身から呼ばないこと。
-    void Stop();
+    FBZZ_GRAPHICS_API void Stop();
 
     /// @note 同期呼び出しの再入を判定し、Render Thread が自分の完了を待たないための境界。
     [[nodiscard]] bool IsCurrentThread() const { return CalledFromWorker(); }
@@ -90,9 +91,9 @@ public:
     void SetWaitPump(void (*pump)()) { m_waitPump = pump; }
 
 private:
-    void Run();
-    [[nodiscard]] bool CalledFromWorker() const;
-    void Wait(std::unique_lock<std::mutex>& lock, const std::function<bool()>& ready);
+    FBZZ_GRAPHICS_API void Run();
+    [[nodiscard]] FBZZ_GRAPHICS_API bool CalledFromWorker() const;
+    FBZZ_GRAPHICS_API void Wait(std::unique_lock<std::mutex>& lock, const std::function<bool()>& ready);
 
     std::mutex m_mutex;
     std::condition_variable m_wakeup;

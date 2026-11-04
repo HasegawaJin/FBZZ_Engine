@@ -10,6 +10,7 @@
 /// @note バイトオフセットを持たない。オフセットはシェーダーをコンパイルして初めて決まるため、
 /// @note 保存時に焼き付けるとシェーダーを 1 行足しただけで全 .mat が壊れる。名前で引き直す。
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Renderer/ShaderDescriptor.hpp>
@@ -24,13 +25,13 @@
 namespace fbzz::asset {
 
 /// @note 値列は行優先でパディングなし。型・範囲・要素数・転送先を検証し、失敗時は未変更。
-[[nodiscard]] bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable,
+[[nodiscard]] FBZZ_ENGINE_API bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable,
                                            std::span<const double> values);
-[[nodiscard]] bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable,
+[[nodiscard]] FBZZ_ENGINE_API bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable,
                                            std::span<const float> values);
-[[nodiscard]] bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable,
+[[nodiscard]] FBZZ_ENGINE_API bool ValidateMaterialValues(const renderer::ShaderVarDesc& variable,
                                            std::span<const int64_t> values);
-[[nodiscard]] bool WriteMaterialValues(const renderer::ShaderVarDesc& variable,
+[[nodiscard]] FBZZ_ENGINE_API bool WriteMaterialValues(const renderer::ShaderVarDesc& variable,
                                         std::span<const double> values,
                                         std::span<uint8_t> destination);
 
@@ -48,38 +49,38 @@ inline constexpr std::array<const char*, 8> kMaterialTextureSlotNames = {
 };
 
 /// @note .mat の params から 1 変数ぶんを引く。手書き .mat 向けの snake_case 別名も見る。
-[[nodiscard]] const std::vector<float>* FindMaterialParam(
+[[nodiscard]] FBZZ_ENGINE_API const std::vector<float>* FindMaterialParam(
     const MaterialAsset& asset, std::string_view shaderVarName);
 
 /// @note シェーダーの全 float 変数へ既定値を敷く。.mat の適用より前に呼ぶこと。
-void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc,
+FBZZ_ENGINE_API void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc,
                                std::vector<uint8_t>& paramData);
 
 /// @note .mat の params を名前で束縛する。
-void ApplyMaterialAssetParams(const MaterialAsset& asset,
+FBZZ_ENGINE_API void ApplyMaterialAssetParams(const MaterialAsset& asset,
                               const renderer::ShaderDescriptor& desc,
                               std::vector<uint8_t>& paramData);
 
 /// @note 共有アセット適用後に「この描画専用」の上書きを重ねる (per-instance パラメータ)。
-void ApplyMaterialParamOverrides(
+FBZZ_ENGINE_API void ApplyMaterialParamOverrides(
     const std::unordered_map<std::string, std::vector<float>>& overrides,
     const renderer::ShaderDescriptor& desc,
     std::vector<uint8_t>& paramData);
 
-void ApplyMaterialIntegerOverrides(
+FBZZ_ENGINE_API void ApplyMaterialIntegerOverrides(
     const std::unordered_map<std::string, std::vector<int64_t>>& overrides,
     const renderer::ShaderDescriptor& desc,
     std::vector<uint8_t>& paramData);
 
 /// @note .mat の textures をスロット順の相対パス配列へ落とす。未設定スロットは空文字列。
-[[nodiscard]] std::array<std::string, kMaterialTextureSlotNames.size()>
+[[nodiscard]] FBZZ_ENGINE_API std::array<std::string, kMaterialTextureSlotNames.size()>
 ResolveMaterialTexturePaths(const MaterialAsset& asset);
 
 /// @note Immutable authoring values use the same binding rules without a borrowed mutable asset owner.
-[[nodiscard]] const std::vector<float>* FindMaterialParam(const MaterialAssetAuthoring& asset, std::string_view shaderVarName);
-void ApplyMaterialAssetParams(const MaterialAssetAuthoring& asset, const renderer::ShaderDescriptor& desc,
+[[nodiscard]] FBZZ_ENGINE_API const std::vector<float>* FindMaterialParam(const MaterialAssetAuthoring& asset, std::string_view shaderVarName);
+FBZZ_ENGINE_API void ApplyMaterialAssetParams(const MaterialAssetAuthoring& asset, const renderer::ShaderDescriptor& desc,
     std::vector<uint8_t>& paramData);
-[[nodiscard]] std::array<std::string, kMaterialTextureSlotNames.size()>
+[[nodiscard]] FBZZ_ENGINE_API std::array<std::string, kMaterialTextureSlotNames.size()>
 ResolveMaterialTexturePaths(const MaterialAssetAuthoring& asset);
 
 } /// @note namespace fbzz::asset

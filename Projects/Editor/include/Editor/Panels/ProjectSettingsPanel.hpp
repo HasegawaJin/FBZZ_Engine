@@ -5,6 +5,7 @@
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
 #include <Engine/ProjectSettings.hpp>
+#include <Engine/Input/InputBindingsDocument.hpp>
 #include <imgui.h>
 #include <array>
 #include <cstddef>
@@ -47,6 +48,7 @@ private:
     void DrawSection(EditorContext& ctx, Section section);
     void TrackUndo(EditorContext& ctx, const ProjectSettings& beforeDraw,
                    ImGuiID activeBefore, std::uint64_t generationBefore);
+    void TrackInputUndo(EditorContext& ctx, const input::InputBindingsDocument& beforeDraw, ImGuiID activeBefore);
     /// @}
 
     /// @name 行の枠組み
@@ -117,6 +119,9 @@ private:
     std::string   m_pipelineAssetError;
     std::uint64_t m_editGeneration = 0;
     UndoTracker   m_undo;
+    input::InputBindingsDocument m_inputUndoBefore;
+    ImGuiID m_inputUndoActiveId = 0;
+    bool m_inputUndoActive = false;
 
     /// @brief 描いている最中のセクションが ProjectSettings の値か (false なら EditorSettings)。
     bool          m_editingProjectSettings = true;

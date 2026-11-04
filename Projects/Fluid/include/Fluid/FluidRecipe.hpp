@@ -2,22 +2,23 @@
 /// @brief   流体エフェクトのレシピの設定型 (全体の設定 + 発生源・力の部品リスト + 見た目・出力)
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
+
 /// @note ここに置くのは «設定の形» だけ。.fluid (TOML) の読み書き・Reflect・プリセットは
-///       Engine の FluidRecipeCodec が担当する。ファイル形式を Fluid が知らないことで、
-///       ソルバーは Math だけに依存したまま実行時からも呼べる。
-///
+/// @note Engine の FluidRecipeCodec が担当する。ファイル形式を Fluid が知らないことで、
+/// @note ソルバーは Math だけに依存したまま実行時からも呼べる。
+
 /// @note 気体と液体を 1 つのレシピにするのは、解き方が違っても «発生源 → ソルバー → 1 コマの絵 →
-///       アトラス → .mat» という流れが同じで、出力・見た目・素材化の設定を共有できるため。
-///       種類ごとに別アセットにすると、焼き・Inspector・.mat 生成が 2 本ずつになる。
-///
+/// @note アトラス → .mat» という流れが同じで、出力・見た目・素材化の設定を共有できるため。
+/// @note 種類ごとに別アセットにすると、焼き・Inspector・.mat 生成が 2 本ずつになる。
+
 /// @note 部品 (発生源・力) を種類別のリストにしてノードグラフにしないのは、同じレシピを
-///       CPU 2D / CPU 3D / 液体 PBF / GPU の 4 通りで解くため。部品の «種類» と «ソルバーの段»
-///       (発生源 = 注入、力 = 外力) が 1 対 1 なら、部品を 1 つ足しても実装箇所は段ごとに 1 つで済む。
-///       計算の順番まで自由にすると、それが 4 通り × 任意の順になって追いつかない。
+/// @note CPU 2D / CPU 3D / 液体 PBF / GPU の 4 通りで解くため。部品の «種類» と «ソルバーの段»
+/// @note (発生源 = 注入、力 = 外力) が 1 対 1 なら、部品を 1 つ足しても実装箇所は段ごとに 1 つで済む。
+/// @note 計算の順番まで自由にすると、それが 4 通り × 任意の順になって追いつかない。
 /// @see Fluid/FluidOperatorEval.hpp 形と力の式の正本 (GPU は FluidGpuCommon.hlsli に 1:1 の写し)。
 /// @see Docs/design/fluid-library.md
 #pragma once
+#include <Fluid/Api.hpp>
 
 #include <Fluid/FluidBakeSettings.hpp>
 #include <Math/Vector3.hpp>
@@ -50,8 +51,8 @@ inline constexpr int kMaxFluidColliders = 8;
 inline constexpr int kMaxFluidMotionKeys = 8;
 /// @brief 量のエンベロープのキーの数。動きのキーと同じ数に揃える。
 /// @note 定数バッファに載らないのに上限を決める理由: 倍率は刻みごとに CPU が畳んで 1 つの float で渡すため
-///       GPU の枠は要らないが、「ファイルと AI から来る配列は上限で切る」規則を動きと違えると、
-///       どちらが何個まで置けるか覚えていられなくなる。
+/// @note GPU の枠は要らないが、「ファイルと AI から来る配列は上限で切る」規則を動きと違えると、
+/// @note どちらが何個まで置けるか覚えていられなくなる。
 inline constexpr int kMaxFluidAmountKeys = 8;
 
 enum class FluidSourceShape : uint8_t {
@@ -95,9 +96,9 @@ struct FluidAmountKey {
 /// @brief 変わらない)。先頭より前・末尾より後は端のキーの値で止まる (外挿しない)。式は FluidOperatorEval.hpp の
 /// @brief SampleFluidAmount。
 /// @note 位置と velocity には掛けない理由: 「どこに居るか」は FluidMotion の担当。同じ動きを 2 つの表から
-///       作れると、直すときにどちらを触るのか決まらない。ここは「勢い」だけを持つ。
+/// @note 作れると、直すときにどちらを触るのか決まらない。ここは「勢い」だけを持つ。
 /// @note 倍率 (絶対値でなく) にする理由: 部品の density / strength に掛けるので、基準の値を 1 か所で直せば
-///       エンベロープの形を書き直さずに全体の強さを変えられる。
+/// @note エンベロープの形を書き直さずに全体の強さを変えられる。
 struct FluidAmount {
     /// @brief time の昇順。kMaxFluidAmountKeys まで。
     std::vector<FluidAmountKey> keys;
@@ -220,7 +221,7 @@ struct FluidCollider {
 struct FluidGasSettings {
     /// @brief 2D ベイクの格子の 1 辺。0 は Auto (コマの解像度に合わせる。上限 256)。
     /// @note 既定を Auto にする理由: 格子がコマより粗いと、どれだけ大きく焼いても輪郭は
-    ///       格子の粗さのままぼやける。コマを大きくしたら格子も付いてくるのが自然な期待。
+    /// @note 格子の粗さのままぼやける。コマを大きくしたら格子も付いてくるのが自然な期待。
     int   resolution = 0;
     /// @brief 上向きの加速度 = buoyancy × 温度 − weight × 密度 [領域単位/秒²]。
     float buoyancy = 1.5f;
@@ -302,12 +303,12 @@ struct FluidRenderSettings {
     /// @brief 倍率は `1 ± detailStrength` (2D / 3D で同じ意味。1.0 = 密度 ±100 %)。
     /// @brief 0.375 で 0.62〜1.38 倍。1 に近づけるほど「消える所」と「倍になる所」が同時に出る。
     /// @note 格子を細かくするだけで済ませない理由: 解像度を倍にすると焼き時間は 8 倍になる。
-    ///       細部は「流れに沿って動くこと」さえ守れば物理で解かなくても見分けが付かない。
+    /// @note 細部は「流れに沿って動くこと」さえ守れば物理で解かなくても見分けが付かない。
     /// @note 2D と 3D は同じ 4 オクターブ、層オフセット、振幅正規化を使う。
     /// @note CPU 側の式は FluidRenderMath.hpp、GPU 側の対応式は VolumeRaymarch.hlsl。
     float detailStrength = 0.375f;
     /// @note 7 で止める理由: 最小の特徴は `1 / (detailScale × 8.37)` (4 オクターブ目は基本の 8.37 倍)。
-    ///       10 だと 0.0119 で、128³ のボクセル幅 0.0156 を下回り標本化できずちらつくだけになる。
+    /// @note 10 だと 0.0119 で、128³ のボクセル幅 0.0156 を下回り標本化できずちらつくだけになる。
     float detailScale    = 7.0f;
     /// @name 炎
     /// @{
@@ -384,6 +385,6 @@ struct FluidRecipe {
 };
 
 /// @brief 2D ベイクで実際に使う格子の 1 辺 (Auto を解決した値)。
-[[nodiscard]] int ResolveGasResolution(const FluidRecipe& recipe);
+[[nodiscard]] FBZZ_FLUID_API int ResolveGasResolution(const FluidRecipe& recipe);
 
-} // namespace fbzz::fluid
+} /// @note namespace fbzz::fluid

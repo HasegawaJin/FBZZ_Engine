@@ -2,16 +2,16 @@
 /// @brief   Sandbox エディタ / スタンドアロンの起動分岐。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
+
 /// @note 起動モード: `Sandbox.exe --project <path>` はエディタ起動、`--standalone` 併用でゲームのみ起動、
-///       exe 隣に `.fbzz_proj` があれば配布物として Standalone 起動、引数なしなら開発用テンプレートを Editor 起動。
+/// @note exe 隣に `.fbzz_proj` があれば配布物として Standalone 起動、引数なしなら開発用テンプレートを Editor 起動。
 /// @note main.cpp は起動順序だけを読み取れる入口にする。引数解析・プロジェクト解決・Editor/Standalone のループ本体は
-///       専用ファイルへ分割し、実行モードごとの依存関係と責務を分ける。
+/// @note 専用ファイルへ分割し、実行モードごとの依存関係と責務を分ける。
 #ifndef FBZZ_STANDALONE_TARGET
 #include <Editor/EditorApp.hpp>
 #endif
 #include "LaunchArgs.hpp"
-#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/AssetSession.hpp>
 #include <Engine/ProjectResolver.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Scene/StandaloneProjectModule.hpp>
@@ -35,7 +35,7 @@ namespace {
 using fbzz::util::StringUtils;
 using fbzz::util::FileSystem;
 
-/// Engine / Renderer / AssetManager 初期化後に StandaloneModule を起動する。
+/// @note Engine / Renderer / AssetManager 初期化後に StandaloneModule を起動する。
 [[nodiscard]] int RunStandalone(core::Application& app, const LaunchProject& project)
 {
     ProjectSettings settings;
@@ -45,12 +45,13 @@ using fbzz::util::FileSystem;
     }
 
     /// @note Standalone は ProjectSettings の renderer 指定 (dx11/dx12) でレンダラーを生成する。
-    ///       コマンドライン --renderer= があれば Application::Init 内でそちらが優先される。
+    /// @note コマンドライン --renderer= があれば Application::Init 内でそちらが優先される。
     if (!app.Init(scene::MakeWindowConfig(settings), settings.app.rendererBackend)) return 1;
 
     auto& renderer = app.GetRenderer();
     renderer::ResourceManager resources(renderer);
-    asset::AssetManager::Init(resources, StringUtils::PathToUtf8(project.root / L"Assets") + "/");
+    app.SetResourceManager(&resources);
+    asset::AssetSession assets(resources, StringUtils::PathToUtf8(project.root / L"Assets") + "/");
 
     scene::StandaloneProjectModule module(
         renderer, resources, project.root, project.sceneFile, settings);
@@ -58,7 +59,7 @@ using fbzz::util::FileSystem;
     return 0;
 }
 
-/// 共通EditorAppを直接起動し、Sandbox固有のEditorループを持たない。
+/// @note 共通EditorAppを直接起動し、Sandbox固有のEditorループを持たない。
 [[nodiscard]] int RunEditor(core::Application& app, const LaunchProject& project)
 {
 #ifdef FBZZ_STANDALONE_TARGET
@@ -67,7 +68,7 @@ using fbzz::util::FileSystem;
     return 1;
 #else
     /// @note Editor も起動時プロジェクトの renderer 設定 (dx11/dx12) に従う (--renderer= 優先)。
-    ///       レンダラーはプロジェクト読込前に生成するため、設定をここで先読みする。
+    /// @note レンダラーはプロジェクト読込前に生成するため、設定をここで先読みする。
     ProjectSettings settings;
     settings.Load(StringUtils::PathToUtf8(project.settingsFile));
     if (!app.Init(core::Window::Config{}, settings.app.rendererBackend)) return 1;
@@ -75,9 +76,10 @@ using fbzz::util::FileSystem;
     auto& renderer = app.GetRenderer();
     auto& imguiRenderer = app.GetImGuiRenderer();
     renderer::ResourceManager resources(renderer);
+    app.SetResourceManager(&resources);
 
     const std::filesystem::path assetRoot = project.root / L"Assets";
-    asset::AssetManager::Init(resources, StringUtils::PathToUtf8(assetRoot) + "/");
+    asset::AssetSession assets(resources, StringUtils::PathToUtf8(assetRoot) + "/");
 
     editor::EditorApp editorApp;
     if (!editorApp.Init(renderer, imguiRenderer, resources, app.GetWindow())) return 1;
@@ -89,12 +91,12 @@ using fbzz::util::FileSystem;
 #endif
 }
 
-} // namespace
+} /// @note namespace
 
 int Run()
 {
     /// @note FBZZEngine.dll は実行中ロックされ再ビルドできない。Engine ソースが古い DLL より
-    ///       新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
+    /// @note 新しければ、ここで一旦終了して cmake 再ビルド → 再起動を予約する (開発ビルドのみ)。
     if (fbzz::core::CheckEngineFreshnessAndRelaunch())
         return 0;
 
@@ -131,12 +133,11 @@ int Run()
     const int result = args.standalone ? RunStandalone(app, project) : RunEditor(app, project);
 #endif
 
-    asset::AssetManager::UnloadAll();
     app.Shutdown();
     return result;
 }
 
-} // namespace fbzz::sandbox
+} /// @note namespace fbzz::sandbox
 
 int main()
 {

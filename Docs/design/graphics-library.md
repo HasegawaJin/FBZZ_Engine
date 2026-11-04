@@ -112,6 +112,10 @@ Engine の EntityID と Graphics の RenderObjectID の対応は Engine が管�
 
 ### 4.3 時間・所有権・スレッド
 
+Engine は Graphics/include の公開契約だけを読み、Graphics/src の実装を直接・推移的に include しない。材質転送の寿命スコープは MaterialTransferScope.hpp、資源読込み区間は BufferReadScope.hpp、スキニング計測は SkinningTrace.hpp へ最小の宣言を公開する。転送ペイロードの構築・検査、状態境界の判断、環境変数からのスキニング方式選択は Graphics の実装に閉じる。Engine は SkinningPolicy.hpp の問い合わせで解決済みの方針を受け取る。既存の固定長スコープを維持し、境界のためのフレームごとの動的確保を増やさない。
+
+OwnedResource は ResourceManager の実体への単独所有権を持つ move 専用ラッパーとする。破棄と Reset でハンドルの作成元を解決し、既に終了した Manager と世代の違う資源には触れない。生の ResourceHandle は引き続き非所有参照であり、共有キャッシュから Load したシェーダー・テクスチャと借用プールはラップしない。
+
 - 初期実装は既存の描画呼び出しスレッドで同期的に構築・記録する。GPU の終了を同期的に待つ契約ではない。
 - Engine が入力配列を所有し、`RenderFrame` の全ビューの記録終了まで不変で保持する。Graphics は入力の参照をフレーム越しに保持しない。
 - ハンドルは非所有参照。GPU 実体は Graphics の ResourceManager が単独所有する。入力に掲載した資源の解放・差し替えは記録中に行わない。
@@ -197,7 +201,7 @@ Deferred 内の ForwardOpaque も最終シーン深度へ反映する。GBuffer 
 
 透明メッシュは static / skinned 共通のキューへ集め、renderQueue、奥行き、安定 ID の順で並べる。水・屈折・加算粒子まで一律に同じ距離ソートへ押し込まない。背景コピーの位置と資源世代を各機能が宣言する。異種透明物の交差を完全に解くことは本分離の範囲外とする。
 
-現行コードでは Deferred の透明メッシュや Water が `AfterOpaque` より前に登録されており、名前どおりの境界になっていない。**ファイル移設の段では現在の順序を保存し、段境界の修正は別の機能変更として行う。** 既存の拡張には Engine 側の互換挿入点を残し、新しい境界への移行時にシナリオを更新する。
+2026-10-30 の段境界修正で、`BuildGeometryPipeline` は不透明部分だけを登録し、`AfterOpaque` と同段のカスタム HDR 処理の後に `BuildGeometryTransparency`、Water、Decal、Trail、Particle を登録する。static / skinned の透明メッシュは共通キューを使う。Fiber の現行 PSO は alpha clip を使う不透明描画なので不透明段に残す。保存済み pass override の識別子を保つため、Deferred の共通透明パス名は `DeferredForwardTransparent` を維持する。
 
 SSR の現行の方式別位置、Water / VFX の背景コピー、露出とギズモの順序も同様に扱う。目標では不透明向け SSR は透明合成前に解決する。透明表面への反射は各専用パスの責務とし、旧画像との無差分を主張しない。
 
@@ -417,7 +421,19 @@ F の意図的な画像差分は、挿入点・SSR・被覆など原因ごとに
 
 実装時のコンパイル・テストは `Tools/AgentBuild.ps1`、描画は既存 Playtest の入口を使う ([ai-verification-loop.md](ai-verification-loop.md))。ビルドは同時に 1 本とし、DLL の再リンクにエディター停止が必要なら既存の VS Code タスクによるビルドを依頼する。本設計文書だけの変更ではビルドを実行しない。
 
-## 10. 採らない分け方
+## 10. 資源の作成元と内部依存の強制
+
+`ResourceHandle` は slot・generation に加え、作成元 ResourceManager の寿命 ID を保持する。同じ slot・generation を別 Manager が発行しても異なるハンドルとし、Pool の取得・差し替え・取り出し・削除と Manager の Release・メタデータ参照で他の作成元を拒否する。Manager を再生成しても寿命 ID を再利用しない。
+
+Scene と Component の所有 GPU 資源はハンドルの作成元へ返却する。作成元が終了済みならハンドルだけを手放し、現在の `Active()` へ返さない。複製先の所有権を切る処理は返却せずハンドルだけを消す。水面のキャッシュも記録済みの作成元を使い、ImGui のディスクリプタキーには作成元を含める。生存 Manager の照会は既存の資源管理スレッド上で行う。
+
+`Scene.hpp` は軽量な `UserRenderPass.hpp` だけを読み、実行文脈と GPU 定数を include しない。パスを実行する側が `RenderPassContext.hpp` を明示的に読む。フレーム内の callback と資源アクセス申告の契約は §6.3 を維持する。
+
+Engine の OBJECT モジュールは依存先と追加 include を個別に宣言する。Platform へ Graphics・Physics・Fluid・ImGui の依存を一括配布しない。Application を使う Cursor の実装は合成側の Engine に置く。configure 時に Core・Math・Graphics・Physics・Fluid と EnginePlatform の直接 include を検査し、§3 と逆向きの依存を拒否する。
+
+GPU ハンドルのレイアウト変更を含むため、同じ SDK の全 native 利用側を再ビルドする。旧 DLL と新しいヘッダーの混在はサポートしない。回帰は `WaterRenderResourceTest` の別 Manager 同居・先行終了・Component 削除と既存の Scene 世代／水面解放テストで確認する。
+
+## 11. 採らない分け方
 
 | 案 | 採らない理由 |
 |---|---|

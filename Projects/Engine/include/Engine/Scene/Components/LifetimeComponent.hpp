@@ -4,11 +4,11 @@
 /// @date    2026-06-10
 #pragma once
 
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 
 namespace fbzz::scene {
 
-/// LifetimeComponent — エフェクトなどの一時GameObjectへ秒単位の寿命を与える。
+/// @note LifetimeComponent — エフェクトなどの一時GameObjectへ秒単位の寿命を与える。
 struct LifetimeComponent {
     float remaining = 5.0f;
     bool  enabled   = true;
@@ -21,4 +21,4 @@ struct LifetimeComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

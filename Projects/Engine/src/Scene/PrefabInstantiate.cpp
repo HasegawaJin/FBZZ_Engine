@@ -442,7 +442,7 @@ bool InstantiatePrefabAssetImpl(Scene& scene,
     for (const auto& identity : replacedIdentities) replacedGuids.insert(identity.guid);
     const std::string& sourceSnapshot = retainedDefinition ? retainedDefinition->sourceSnapshot : localSnapshot;
 
-    auto* resources = renderer::ResourceManager::Active();
+    auto* resources = scene.GetResourceManager();
     std::unordered_set<std::string> localUsedNames;
     const bool reuseScene = batch && batch->sceneReuseAllowed && !retainedDefinition->hasScripts;
     auto& existingEntities = reuseScene ? batch->existingEntities : localExistingEntities;

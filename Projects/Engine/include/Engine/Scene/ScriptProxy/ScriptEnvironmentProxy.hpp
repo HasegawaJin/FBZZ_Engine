@@ -2,12 +2,13 @@
 /// @brief   Script からシーン全体の環境設定を操作するショートハンド。
 /// @author  Hasegawa Jin
 /// @date    2026-06-23
-///
-/// EnvironmentLightComponent / AtmosphericScatteringComponent / SkyRenderer を
-/// シーン内から検索して操作するため、任意の Script から呼べる。
+
+/// @note EnvironmentLightComponent / AtmosphericScatteringComponent / SkyRenderer を
+/// @note シーン内から検索して操作するため、任意の Script から呼べる。
 /// @note これらはシーンに通常 1 つしか存在しないグローバル設定コンポーネントであり、
-///       Script が所属する GO に付いていなくても操作できる必要がある。
+/// @note Script が所属する GO に付いていなくても操作できる必要がある。
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Math/Vector3.hpp>
 
@@ -19,41 +20,41 @@ struct ScriptEnvironmentProxy {
     Script* script = nullptr;
 
     /// @name EnvironmentLightComponent (IBL)
-    ///@{
-    void SetIBLEnabled(bool enabled)       const;
-    void SetIBLIntensity(float intensity)  const;
-    void SetIBLDiffuseScale(float scale)   const;
-    void SetIBLSpecularScale(float scale)  const;
-    ///@}
+    /// @{
+    FBZZ_ENGINE_API void SetIBLEnabled(bool enabled)       const;
+    FBZZ_ENGINE_API void SetIBLIntensity(float intensity)  const;
+    FBZZ_ENGINE_API void SetIBLDiffuseScale(float scale)   const;
+    FBZZ_ENGINE_API void SetIBLSpecularScale(float scale)  const;
+    /// @}
 
     /// @name AtmosphericScatteringComponent (霧)
-    ///@{
-    void SetFogEnabled(bool enabled)           const;
-    void SetFogDensity(float density)          const;
-    void SetFogFar(float fogFar)               const;
-    void SetFogColor(const math::Vector3& rgb) const;
-    ///@}
+    /// @{
+    FBZZ_ENGINE_API void SetFogEnabled(bool enabled)           const;
+    FBZZ_ENGINE_API void SetFogDensity(float density)          const;
+    FBZZ_ENGINE_API void SetFogFar(float fogFar)               const;
+    FBZZ_ENGINE_API void SetFogColor(const math::Vector3& rgb) const;
+    /// @}
 
     /// @name SkyRenderer (大気散乱空)
-    ///@{
-    void SetSunIntensity(float intensity)  const;
-    void SetMieScattering(float mie)       const;
-    void SetMieG(float g)                  const;
-    ///@}
+    /// @{
+    FBZZ_ENGINE_API void SetSunIntensity(float intensity)  const;
+    FBZZ_ENGINE_API void SetMieScattering(float mie)       const;
+    FBZZ_ENGINE_API void SetMieG(float g)                  const;
+    /// @}
 
-    float GetSunIntensity()  const;
-    float GetFogDensity()    const;
-    bool  IsFogEnabled()     const;
+    FBZZ_ENGINE_API float GetSunIntensity()  const;
+    FBZZ_ENGINE_API float GetFogDensity()    const;
+    FBZZ_ENGINE_API bool  IsFogEnabled()     const;
 
     /// @note 対応するコンポーネントがシーンに無ければ既定値 (0 / false / 黒) を返す。
-    bool          IsIBLEnabled()        const;
-    float         GetIBLIntensity()     const;
-    float         GetIBLDiffuseScale()  const;
-    float         GetIBLSpecularScale() const;
-    math::Vector3 GetFogColor()         const;
-    float         GetFogFar()           const;
-    float         GetMieScattering()    const;
-    float         GetMieG()             const;
+    FBZZ_ENGINE_API bool          IsIBLEnabled()        const;
+    FBZZ_ENGINE_API float         GetIBLIntensity()     const;
+    FBZZ_ENGINE_API float         GetIBLDiffuseScale()  const;
+    FBZZ_ENGINE_API float         GetIBLSpecularScale() const;
+    FBZZ_ENGINE_API math::Vector3 GetFogColor()         const;
+    FBZZ_ENGINE_API float         GetFogFar()           const;
+    FBZZ_ENGINE_API float         GetMieScattering()    const;
+    FBZZ_ENGINE_API float         GetMieG()             const;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

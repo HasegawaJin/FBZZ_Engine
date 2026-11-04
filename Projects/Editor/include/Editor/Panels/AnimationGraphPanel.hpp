@@ -24,6 +24,7 @@ public:
     const char* GetWindowName()        const override { return "Animation Graph"; }
     bool        GetDefaultVisibility() const override { return false; }
     void OnInit(EditorContext& ctx) override;
+    void OnRegisterOperators(OperatorRegistry& registry) override;
     void OnShutdown() override;
 
     /// 編集する .animcontroller を明示的に開く (BehaviorTreePanel::RequestOpen と同じ方式)。

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace fbzz::tests {
@@ -182,4 +183,96 @@ TEST_F(WorldQueryIndexTest, KeepsInfiniteDistanceAndExactBoundaryHits)
     EXPECT_EQ(m_world.OverlapSphere({0, 0, 8}, 1).size(), 1u);
 }
 } /// @note namespace
+TEST_F(WorldQueryIndexTest, RetiresDestroyedIndexedShapesBeforeFiltersAndEveryQueryFamily)
+{
+    auto* removed = &Add({0, 0, 10});
+    auto& survivor = Add({0, 0, 15});
+    DistantShapes();
+    Sync();
+    m_shapes.erase(m_shapes.begin());
+    const auto liveOnly = [removed](const auto& instance) {
+        EXPECT_NE(instance.collider, removed);
+        return true;
+    };
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(m_world.Raycast({}, math::Vector3::FORWARD, 20, hit, liveOnly));
+    EXPECT_EQ(hit.collider, &survivor);
+    const auto all = m_world.RaycastAll({}, math::Vector3::FORWARD, 20);
+    ASSERT_EQ(all.size(), 1u);
+    EXPECT_EQ(all[0].collider, &survivor);
+    ASSERT_TRUE(m_world.SphereCast({}, 1, math::Vector3::FORWARD, 20, hit));
+    EXPECT_EQ(hit.collider, &survivor);
+    EXPECT_TRUE(m_world.OverlapSphere({0, 0, 10}, 1).empty());
+    m_world.Step(0);
+    EXPECT_TRUE(m_world.OverlapSphere({0, 0, 10}, 1).empty());
+}
+
+TEST_F(WorldQueryIndexTest, ReusedShapeAddressRequiresANewRegistrationGeneration)
+{
+    std::optional<physics::SphereCollider> shape(std::in_place, 1.0f);
+    shape->Update({0, 0, 10}, math::Quaternion::Identity());
+    DistantShapes();
+    m_world.BeginSceneSync();
+    const auto first = m_world.SyncCollider({}, {&*shape});
+    for (const auto& far : m_shapes) m_world.SyncCollider({}, {far.get()});
+    m_world.EndSceneSync();
+    m_world.BeginSceneSync();
+    shape.reset();
+    shape.emplace(1.0f);
+    shape->Update({0, 0, 10}, math::Quaternion::Identity());
+
+    physics::World::RaycastHit hit;
+    EXPECT_FALSE(m_world.Raycast({}, math::Vector3::FORWARD, 20, hit));
+    EXPECT_TRUE(m_world.RaycastAll({}, math::Vector3::FORWARD, 20).empty());
+    EXPECT_FALSE(m_world.SphereCast({}, 1, math::Vector3::FORWARD, 20, hit));
+    EXPECT_TRUE(m_world.OverlapSphere({0, 0, 10}, 1).empty());
+
+    const auto replacement = m_world.SyncCollider(first, {&*shape});
+    m_world.EndSceneSync();
+    EXPECT_EQ(replacement.slot, first.slot);
+    EXPECT_NE(replacement.generation, first.generation);
+    ASSERT_TRUE(m_world.Raycast({}, math::Vector3::FORWARD, 20, hit));
+    EXPECT_EQ(hit.collider, &*shape);
+}
+
+TEST_F(WorldQueryIndexTest, CopiesDoNotKeepTheOriginalRegistrationAliveAcrossWorldMoves)
+{
+    auto& original = Add({0, 0, 10});
+    physics::SphereCollider copy(original);
+    DistantShapes();
+    Sync();
+    physics::World moved = std::move(m_world);
+    m_shapes.erase(m_shapes.begin());
+
+    physics::World::RaycastHit hit;
+    EXPECT_FALSE(moved.Raycast({}, math::Vector3::FORWARD, 20, hit));
+    moved.BeginSceneSync();
+    moved.SyncCollider({}, {&copy});
+    moved.EndSceneSync();
+    ASSERT_TRUE(moved.Raycast({}, math::Vector3::FORWARD, 20, hit));
+    EXPECT_EQ(hit.collider, &copy);
+}
+
+TEST_F(WorldQueryIndexTest, DestroyedBodyRetiresItsShapeAndConstraintBeforeTheNextStep)
+{
+    auto body = std::make_unique<physics::RigidBody>();
+    body->m_useGravity = false;
+    auto& shape = Add({0, 0, 10});
+    DistantShapes();
+    m_world.BeginSceneSync();
+    m_world.SyncBody({}, body.get());
+    m_world.SyncCollider({}, {&shape, body.get()});
+    for (size_t index = 1; index < m_shapes.size(); ++index) m_world.SyncCollider({}, {m_shapes[index].get()});
+    m_world.EndSceneSync();
+    auto constraint = std::make_unique<physics::DistanceConstraint>(body.get(), nullptr, 1.0f);
+    m_world.AddConstraint(std::move(constraint));
+    body.reset();
+
+    physics::World::RaycastHit hit;
+    EXPECT_FALSE(m_world.Raycast({}, math::Vector3::FORWARD, 20, hit));
+    m_world.Step(0.01f);
+    EXPECT_TRUE(m_world.GetConstraints().empty());
+    EXPECT_TRUE(m_world.OverlapSphere({0, 0, 10}, 1).empty());
+}
+
 } /// @note namespace fbzz::tests

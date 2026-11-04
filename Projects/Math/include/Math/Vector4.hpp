@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Math/Api.hpp>
 
 #include "Vector3.hpp"
 
@@ -21,7 +22,7 @@ struct Vector4 {
     bool    operator==(const Vector4& rhs) const;
 
     float   Length()     const;
-    Vector4 Normalized() const;
+    FBZZ_MATH_API Vector4 Normalized() const;
 
     Vector3 XYZ() const;
 

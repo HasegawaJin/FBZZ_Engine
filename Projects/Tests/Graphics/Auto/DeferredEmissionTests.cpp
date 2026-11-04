@@ -80,6 +80,142 @@ struct GBufferMaterialCB {
 };
 static_assert(sizeof(GBufferMaterialCB) == 96);
 
+TEST_F(DeferredEmissionTest, ForwardOnlyBackgroundIsCompositedBeforeTransparentForeground)
+{
+    constexpr uint32_t extent = 32;
+    auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, extent, extent);
+    ASSERT_NE(bundle.renderer, nullptr);
+    auto& device = *bundle.renderer;
+    device.SetRenderWhenOccluded(true);
+    {
+        renderer::ResourceManager resources(device);
+        const auto shader = resources.LoadShader((std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT)
+            / "Material/Surface/Unlit.hlsl").generic_string());
+        const auto hdr = resources.CreateRenderTarget(extent, extent, renderer::CameraDepthTargetDesc(1));
+        std::array<renderer::Vertex, 3> vertices{};
+        const std::array<math::Vector3, 3> positions{{{-4, -4, 0}, {-4, 12, 0}, {12, -4, 0}}};
+        for (size_t i = 0; i < vertices.size(); ++i) {
+            vertices[i].position = positions[i];
+            vertices[i].normal = {0, 0, -1};
+        }
+        const uint32_t indices[]{0, 1, 2};
+        const auto vertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::Vertex));
+        const auto indexBuffer = resources.CreateIndexBuffer(indices, 3);
+        struct alignas(16) UnlitConstants {
+            math::Vector4 albedo;
+            uint32_t textureMask = 0, albedoIndex = 0, receiveLighting = 0, padding = 0;
+        };
+        static_assert(sizeof(UnlitConstants) == 32);
+        const auto opaqueCB = resources.CreateConstantBuffer(sizeof(UnlitConstants));
+        const auto transparentCB = resources.CreateConstantBuffer(sizeof(UnlitConstants));
+        const auto farTransparentCB = resources.CreateConstantBuffer(sizeof(UnlitConstants));
+        renderer::RenderPassHandles handles;
+        handles.frameCB = resources.CreateConstantBuffer(sizeof(renderer::PerFrameCB));
+        handles.objectCB = resources.CreateConstantBuffer(sizeof(renderer::PerObjectCB));
+        handles.lightCB = resources.CreateConstantBuffer(sizeof(renderer::LightConstantsCB));
+        handles.shadowCB = resources.CreateConstantBuffer(sizeof(renderer::ShadowConstantsCB));
+        handles.advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(renderer::AdvancedGraphicsCB));
+        ASSERT_TRUE(shader && hdr && vertexBuffer && indexBuffer && opaqueCB && transparentCB && farTransparentCB
+            && handles.frameCB && handles.objectCB && handles.lightCB && handles.shadowCB && handles.advancedGraphicsCB);
+        renderer::Camera camera;
+        camera.m_position = {};
+        camera.LookAt({0, 0, 1});
+        camera.m_aspect = 1;
+        camera.m_near = 0.1f;
+        camera.m_far = 20;
+        renderer::PerFrameCB frame{};
+        frame.view = camera.GetViewMatrix();
+        frame.projection = camera.GetGpuProjectionMatrix();
+        frame.viewProjection = frame.projection * frame.view;
+        frame.invViewProjection = math::Matrix4::Inverse(frame.viewProjection);
+        frame.cameraPos = camera.m_position;
+        frame.nearZ = camera.m_near;
+        frame.farZ = camera.m_far;
+        const renderer::LightConstantsCB light{};
+        const renderer::ShadowConstantsCB shadow{};
+        const renderer::AdvancedGraphicsCB advanced{};
+        const UnlitConstants opaque{{0, 0, 1, 1}};
+        const UnlitConstants transparent{{1, 0, 0, 0.5f}};
+        const UnlitConstants farTransparent{{0, 1, 0, 0.5f}};
+        renderer::RenderSettings settings;
+        renderer::RenderPassContext context{{}, device, resources, camera, settings, hdr, ~0u, handles};
+        context.width = context.height = extent;
+        context.isDeferred = true;
+        context.frustumCullingEnabled = false;
+        context.resourceRegistry.BindTarget("HDR", hdr);
+        for (bool deferred : {false, true}) {
+        context.isDeferred = deferred;
+        for (bool skinnedAlpha : {false, true}) {
+        for (bool transparentFirst : {false, true}) {
+            for (bool opaqueOccluder : {false, true}) {
+                SCOPED_TRACE("deferred=" + std::to_string(deferred) + " skinnedAlpha=" + std::to_string(skinnedAlpha)
+                    + " transparentFirst=" + std::to_string(transparentFirst) + " opaqueOccluder=" + std::to_string(opaqueOccluder));
+                auto scene = std::make_shared<renderer::RenderScene>();
+                for (uint32_t i = 0; i < 3; ++i) {
+                    const uint32_t kind = (i + (transparentFirst ? 1u : 0u)) % 3u;
+                    const bool alpha = kind != 0;
+                    const float distance = alpha ? (kind == 1 ? 2.0f : 3.0f) : opaqueOccluder ? 1.0f : 4.0f;
+                    renderer::RenderObject object;
+                    object.firstItem = i;
+                    object.itemCount = 1;
+                    object.colorEligible = true;
+                    object.skinned = alpha && ((kind == 1) == skinnedAlpha);
+                    object.world.m[2][3] = distance;
+                    object.boundsCenter = object.sortPosition = {0, 0, distance};
+                    object.boundsRadius = 16;
+                    renderer::RenderMeshItem item;
+                    item.objectIndex = i;
+                    item.vertexBuffer = vertexBuffer;
+                    item.skinningVertexBuffer = vertexBuffer;
+                    item.indexBuffer = indexBuffer;
+                    item.vertexCount = item.indexCount = 3;
+                    item.material.valid = true;
+                    item.material.shader = shader;
+                    item.material.paramsBuffer = kind == 1 ? transparentCB : kind == 2 ? farTransparentCB : opaqueCB;
+                    item.material.doubleSided = true;
+                    item.material.capabilities.blend = alpha ? renderer::BlendMode::ALPHA_BLEND : renderer::BlendMode::OPAQUE_BLEND;
+                    item.material.capabilities.gbufferEquivalentShader = false;
+                    item.material.renderQueue = alpha ? 2990 : 2000;
+                    item.forwardMaterial = item.material;
+                    scene->objects.push_back(object);
+                    scene->items.push_back(item);
+                }
+                context.renderScene = scene;
+                resources.AdvanceFrame();
+                device.BeginFrame();
+                resources.Update(handles.frameCB, &frame, sizeof(frame));
+                resources.Update(handles.lightCB, &light, sizeof(light));
+                resources.Update(handles.shadowCB, &shadow, sizeof(shadow));
+                resources.Update(handles.advancedGraphicsCB, &advanced, sizeof(advanced));
+                resources.Update(opaqueCB, &opaque, sizeof(opaque));
+                resources.Update(transparentCB, &transparent, sizeof(transparent));
+                resources.Update(farTransparentCB, &farTransparent, sizeof(farTransparent));
+                device.SetRenderTarget(hdr, resources);
+                device.Clear({0, 0, 0, 0});
+                if (deferred) renderer::ExecuteDeferredSkinnedForwardPass(context);
+                else renderer::ExecuteForwardPasses(context);
+                renderer::ExecuteForwardTransparentPass(context);
+                device.SetRenderTarget({}, resources);
+                device.EndFrame();
+                std::vector<float> pixels;
+                uint32_t width = 0, height = 0;
+                ASSERT_TRUE(device.CaptureRenderTargetToLinearRGBA(hdr, resources, pixels, width, height));
+                ASSERT_EQ(width, extent);
+                ASSERT_EQ(height, extent);
+                const size_t center = (extent / 2 * extent + extent / 2) * 4u;
+                /// @note A rear opaque surface must remain visible through the red layer; a nearer opaque surface must still occlude it.
+                EXPECT_NEAR(pixels[center], opaqueOccluder ? 0.0f : 0.5f, 0.003f);
+                EXPECT_NEAR(pixels[center + 1], opaqueOccluder ? 0.0f : 0.25f, 0.003f);
+                EXPECT_NEAR(pixels[center + 2], opaqueOccluder ? 1.0f : 0.25f, 0.003f);
+            }
+        }
+        }
+        }
+        resources.Reset();
+    }
+    device.Shutdown();
+}
+
 TEST_F(DeferredEmissionTest, WaterParticleOutputGainKeepsLightingAndEmissionIndependent)
 {
     constexpr uint32_t extent = 64;

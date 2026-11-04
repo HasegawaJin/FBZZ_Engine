@@ -2,6 +2,8 @@
 /// @brief   consumer参照と配置点作成をauthoring差分だけのChecked Undoへまとめる。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <Editor/Tools/TargetPointReferenceEditing.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
 #include <Editor/EditorContext.hpp>

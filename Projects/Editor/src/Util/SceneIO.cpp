@@ -5,13 +5,12 @@
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/EditorSceneState.hpp>
 #include <Editor/Util/EditorSerializer.hpp>
-#include <Engine/Core/Application.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/FileSystem.hpp>
-#include <cassert>
+#include <utility>
 #include <vector>
 
 namespace fbzz::editor {
@@ -22,7 +21,7 @@ std::string s_snapshotDir  = "Assets/EditorConfig";
 std::string s_snapshotPath = "Assets/EditorConfig/.playmode_snapshot.scene";
 EditorSceneState* s_editorSceneState = nullptr;
 
-} // namespace
+} /// @note namespace
 
 void SceneIO::SetProjectRoot(const std::string& projectRoot)
 {
@@ -38,8 +37,8 @@ void SceneIO::SetEditorSceneState(EditorSceneState* state)
 bool SceneIO::Save(const scene::Scene& scene, const std::string& path)
 {
     /// @note Engine の SceneSerializer::Save が非const Scene& を要求する設計になっているため const_cast で対応。
-    ///       Save は概念的に読み取り専用 (シーンを変更しない) なので安全だが、
-    ///       Engine 側が const 対応になったタイミングで除去すること。
+    /// @note Save は概念的に読み取り専用 (シーンを変更しない) なので安全だが、
+    /// @note Engine 側が const 対応になったタイミングで除去すること。
     scene::Scene& mutableScene = const_cast<scene::Scene&>(scene);
     if (!scene::SceneSerializer::Save(mutableScene, path)) return false;
     if (s_editorSceneState) {
@@ -53,21 +52,20 @@ bool SceneIO::Save(const scene::Scene& scene, const std::string& path)
 
 bool SceneIO::Load(scene::Scene& scene, const std::string& path)
 {
-    (void)core::Application::Get().GetRenderer();
-    auto* resources = renderer::ResourceManager::Active();
-    assert(resources && "ResourceManager must be initialized before editor scene load");
-    if (!scene::SceneSerializer::LoadInPlace(scene, path, *resources)) return false;
+    auto prepared = scene::SceneSerializer::Load(path, scene.GetResourceManager());
+    if (!prepared) return false;
+    scene = std::move(*prepared);
     return !s_editorSceneState || EditorSerializer::Load(*s_editorSceneState, path);
 }
 
 std::string SceneIO::Serialize(const scene::Scene& scene)
 {
     /// @note Engine の SceneSerializer::Save が非 const Scene& を要求する設計になっているため
-    ///       const_cast で対応。直列化はシーンを変更しない。
+    /// @note const_cast で対応。直列化はシーンを変更しない。
     scene::Scene& mutableScene = const_cast<scene::Scene&>(scene);
 
     /// @note ディスクを経由しない。書き込み先が無いだけで空文字を返すと、呼び出し側 (変更検知・
-    ///       プレハブ切り出し) には «中身が空 = 変更なし» に見えてしまう。
+    /// @note プレハブ切り出し) には «中身が空 = 変更なし» に見えてしまう。
     std::string text = scene::SceneSerializer::SaveToText(mutableScene);
     if (text.empty())
         FBZZ_LOG_ERROR("SceneIO::Serialize produced an empty snapshot");
@@ -92,9 +90,7 @@ bool SceneIO::AppendObjects(scene::Scene& scene, const std::string& toml,
                              std::vector<scene::EntityID>& outRoots)
 {
     if (toml.empty()) return false;
-    auto* resources = renderer::ResourceManager::Active();
-    assert(resources && "ResourceManager must be initialized");
-    return scene::SceneSerializer::AppendObjects(scene, toml, *resources, outRoots);
+    return scene::SceneSerializer::AppendObjects(scene, toml, scene.GetResourceManager(), outRoots);
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

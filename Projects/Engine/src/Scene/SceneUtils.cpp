@@ -6,7 +6,7 @@
 
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/UISystem.hpp>
+#include <Engine/Scene/Systems/UIInteraction.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <Physics/Layer.hpp>
 #include <algorithm>
@@ -46,10 +46,10 @@ void ApplyPhysicsSettings(physics::World& world, const ProjectSettings& settings
     world.SetCollisionMatrix(settings.physics.collisionMatrix);
 }
 
-void ApplyUISettings(const ProjectSettings& settings, UISystemContext* ctx)
+void ApplyUISettings(const ProjectSettings& settings, UIInteractionContext* ctx)
 {
     if (ctx && !settings.ui.defaultFontPath.empty())
-        UISystemSetDefaultFontPath(*ctx, settings.ui.defaultFontPath);
+        ctx->defaultFontPath = settings.ui.defaultFontPath;
 }
 
 core::Window::Config MakeWindowConfig(const ProjectSettings& settings)

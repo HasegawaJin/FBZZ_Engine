@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Math/Matrix4.hpp>
 #include <Math/Vector2.hpp>
@@ -97,28 +98,28 @@ class SurfacePatchSelectionCache {
 public:
     /// @brief 入力値が一致する選択を返す。
     /// @return cache hit なら選択への非所有ポインター。cache を変更すると無効になり得る。
-    [[nodiscard]] const SurfacePatchSelection* Find(const SurfacePatchSurface& surface,
+    [[nodiscard]] FBZZ_GRAPHICS_API const SurfacePatchSelection* Find(const SurfacePatchSurface& surface,
         const SurfacePatchLodSettings& settings, const SurfacePatchView& view);
 
     /// @brief Pins immutable geometry across nested callbacks, cache eviction and Clear.
-    [[nodiscard]] std::shared_ptr<const SurfacePatchSelection> FindOwned(const SurfacePatchSurface& surface,
+    [[nodiscard]] FBZZ_GRAPHICS_API std::shared_ptr<const SurfacePatchSelection> FindOwned(const SurfacePatchSurface& surface,
         const SurfacePatchLodSettings& settings, const SurfacePatchView& view);
 
     /// @brief 正常に選択した結果を入力値と対応付けて保存する。
     /// @note 保存枠は最大 8 件・patch array capacity の合計 16384。超過時は最古の選択を追い出す。
-    void Store(const SurfacePatchSurface& surface, const SurfacePatchLodSettings& settings,
+    FBZZ_GRAPHICS_API void Store(const SurfacePatchSurface& surface, const SurfacePatchLodSettings& settings,
         const SurfacePatchView& view, const SurfacePatchSelection& selection);
 
     /// @brief Owns a completed selection without copying its patch array.
     /// @return An invocation owner even when invalid input or the retention budget prevents caching.
-    [[nodiscard]] std::shared_ptr<const SurfacePatchSelection> Store(const SurfacePatchSurface& surface,
+    [[nodiscard]] FBZZ_GRAPHICS_API std::shared_ptr<const SurfacePatchSelection> Store(const SurfacePatchSurface& surface,
         const SurfacePatchLodSettings& settings, const SurfacePatchView& view, SurfacePatchSelection&& selection);
 
     /// @brief 保持している選択を破棄する。
-    void Clear();
+    FBZZ_GRAPHICS_API void Clear();
 
     /// @brief Transfers exclusive invocation storage without borrowing pointers into another cache.
-    void Swap(SurfacePatchSelectionCache& other) noexcept;
+    FBZZ_GRAPHICS_API void Swap(SurfacePatchSelectionCache& other) noexcept;
 
 private:
     struct Entry {
@@ -155,12 +156,12 @@ private:
 public:
     class Lease {
     public:
-        ~Lease();
+        FBZZ_GRAPHICS_API ~Lease();
         Lease(const Lease&) = delete;
         Lease& operator=(const Lease&) = delete;
     private:
         friend class SurfacePatchSelectionCacheOwner;
-        Lease(SurfacePatchSelectionCacheOwner& owner, const ViewKey& key,
+        FBZZ_GRAPHICS_API Lease(SurfacePatchSelectionCacheOwner& owner, const ViewKey& key,
             SurfacePatchSelectionCache& execution);
         Slot* m_slot = nullptr;
         SurfacePatchSelectionCache* m_execution = nullptr;
@@ -168,9 +169,9 @@ public:
 
     /// @brief Borrows one view's cache and restores the caller's prior cache at invocation exit.
     /// @pre This owner and execution outlive the returned lease.
-    [[nodiscard]] Lease Borrow(const ViewKey& key, SurfacePatchSelectionCache& execution);
+    [[nodiscard]] FBZZ_GRAPHICS_API Lease Borrow(const ViewKey& key, SurfacePatchSelectionCache& execution);
     /// @brief Clears idle views and discards active view storage when its lease returns.
-    void Clear();
+    FBZZ_GRAPHICS_API void Clear();
 private:
     std::array<Slot, 2> m_slots;
     uint64_t m_useClock = 0;
@@ -183,7 +184,7 @@ private:
 /// @note 予算には視錐台外のパッチも含める。分割不可なら粗い面を保持し、穴を作らない。
 /// @note 巨大な投影要求は倍精度で評価する。幾何が有限なら失敗ではなく予算による qualityLimited とする。
 /// @see https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-2-terrain-rendering-using-gpu-based-geometry GPU Gems 2, 2.3.2 shared grid footprints and 2.3.3 patch bounds.
-[[nodiscard]] bool SelectSurfacePatches(const SurfacePatchSurface& surface,
+[[nodiscard]] FBZZ_GRAPHICS_API bool SelectSurfacePatches(const SurfacePatchSurface& surface,
     const SurfacePatchLodSettings& settings, const SurfacePatchView& view,
     SurfacePatchSelection& out);
 
@@ -193,7 +194,7 @@ private:
 /// @param view 視錐台。nullptr なら可視として扱う。
 /// @return 視錐台と交差する、または視錐台なしなら true。
 /// @pre patch は surface と同じ入力の成功した選択から得る。
-[[nodiscard]] bool IsSurfacePatchVisible(const SurfacePatchSurface& surface,
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsSurfacePatchVisible(const SurfacePatchSurface& surface,
     const SurfacePatch& patch, const SurfacePatchView& view);
 
 /// @brief 正規化した (cellsPerPatch+1)^2 格子に、粗い隣接辺を縫合するインデックスを生成する。
@@ -201,7 +202,7 @@ private:
 /// @note 頂点順は Z 行優先、各頂点は X/Z = (x,z)/cellsPerPatch。表面の法線は +Y。
 /// @note mask の辺では奇数の辺頂点を省き、隣接の二倍幅の格子と一致させる。内部は 2x2 セルの中心から張る。
 /// @see https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-2-terrain-rendering-using-gpu-based-geometry GPU Gems 2, 2.3.2 watertight regular-grid boundaries.
-[[nodiscard]] bool BuildSurfacePatchIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
+[[nodiscard]] FBZZ_GRAPHICS_API bool BuildSurfacePatchIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
     std::vector<uint32_t>& outIndices);
 
 /// @brief 同じ境界頂点を共有するパッチが使う波・高さ評価のセル幅を返す。
@@ -209,7 +210,7 @@ private:
 /// @note 内部は cellSize、辺は edgeCellSize、角は cornerCellSize。辺上で角の影響を補間しない。
 /// @note 境界から内部への高さの遷移は三角形の補間へ任せ、異なる辺の長さによる帯域の不一致を防ぐ。
 /// @warning GPU の同名評価も同じ辺・角の順序にすること。
-[[nodiscard]] math::Vector2 ResolveSurfacePatchCellSize(const SurfacePatch& patch,
+[[nodiscard]] FBZZ_GRAPHICS_API math::Vector2 ResolveSurfacePatchCellSize(const SurfacePatch& patch,
     math::Vector2 unitUv);
 
 }

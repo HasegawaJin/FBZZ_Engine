@@ -5,6 +5,7 @@
 /// @note RigidBodyComponent から World へ入力し、シミュレーション後の結果を Transform へ戻す。
 /// @note 固定ステップは SystemScheduler::PhaseConfig で制御する。
 #pragma once
+#include <Engine/Api.hpp>
 #include "Engine/Core/Scheduler/ISystem.hpp"
 #include <Engine/Scene/SpatialDebugSnapshot.hpp>
 #include <Physics/BodyHandle.hpp>
@@ -16,17 +17,17 @@ public:
     std::string_view Name()       const override { return "PhysicsSystem"; }
     Phase            GetPhase()   const override { return Phase::Physics; }
     RunMode          GetRunMode() const override { return RunMode::SimOnly; }
-    ComponentAccess  GetAccess()  const override;
+    FBZZ_ENGINE_API ComponentAccess  GetAccess()  const override;
     /// @note ctx.fixedDt を使う。固定ステップループは SystemScheduler::RunPhase が担う。
-    void Update(SystemContext& ctx) override;
+    FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 
     /// @note Thread-safe; effective changes retire the previous publication and advance its revision.
     /// @return The current request revision; an unchanged request preserves the revision.
-    static uint64_t SetSpatialDebugRequest(const PhysicsSpatialDebugRequest& request);
+    FBZZ_ENGINE_API static uint64_t SetSpatialDebugRequest(const PhysicsSpatialDebugRequest& request);
     /// @note Thread-safe; disables capture and rejects any in-flight publication immediately.
-    static void InvalidateSpatialDebugSnapshot();
+    FBZZ_ENGINE_API static void InvalidateSpatialDebugSnapshot();
     /// @return Immutable current-revision values for this scene, or null while disabled or awaiting a step.
-    [[nodiscard]] static std::shared_ptr<const PhysicsSpatialDebugSnapshot>
+    [[nodiscard]] FBZZ_ENGINE_API static std::shared_ptr<const PhysicsSpatialDebugSnapshot>
         GetSpatialDebugSnapshot(uint64_t sceneGeneration);
 
 private:

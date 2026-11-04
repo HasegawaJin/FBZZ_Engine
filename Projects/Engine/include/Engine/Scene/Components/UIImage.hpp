@@ -3,46 +3,46 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 ///
-/// 位置とサイズは GameObject::transform の local 値から読む。
-/// Texture は ResourceHandle で参照し、AssetManager / ResourceManager が所有する。
+/// @note 位置とサイズは GameObject::transform の local 値から読む。
+/// @note Texture は ResourceHandle で参照し、AssetManager / ResourceManager が所有する。
 #pragma once
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Vector2.hpp>
 #include <Engine/Scene/Components/UIRect.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace fbzz::scene {
 
-/// Canvas 1 単位あたりのピクセル数。Sprite の pixelsPerUnit を UI の寸法へ直す基準。
+/// @note Canvas 1 単位あたりのピクセル数。Sprite の pixelsPerUnit を UI の寸法へ直す基準。
 /// @note UI 座標は Canvas ピクセルだが pixelsPerUnit は「ワールド 1m あたりのピクセル数」で桁が違う。
-///       pixelsPerUnit = 100 の素材を「1px = 1 Canvas px」と定義して橋渡しする。
+/// @note pixelsPerUnit = 100 の素材を「1px = 1 Canvas px」と定義して橋渡しする。
 inline constexpr float kUIReferencePixelsPerUnit = 100.0f;
 
-/// UIImage の塗り潰し基点。fillAmount < 1 のとき、どこを起点に残すかを決める。
-/// 体力ゲージのように「左から減る」「下から伸びる」といった方向制御に使う。
+/// @note UIImage の塗り潰し基点。fillAmount < 1 のとき、どこを起点に残すかを決める。
+/// @note 体力ゲージのように「左から減る」「下から伸びる」といった方向制御に使う。
 ///
-/// 辺 (0-3) は Edge / Radial 360 / Radial 180 が、角 (4-7) は Radial 90 が使う。
-/// 方式に合わない値は NormalizeFillOrigin が近い側へ寄せるので、組み合わせで壊れない。
+/// @note 辺 (0-3) は Edge / Radial 360 / Radial 180 が、角 (4-7) は Radial 90 が使う。
+/// @note 方式に合わない値は NormalizeFillOrigin が近い側へ寄せるので、組み合わせで壊れない。
 enum class UIImageFillOrigin {
-    Left        = 0, ///< 左端を固定し右側を削る (一般的な体力バー)
-    Right       = 1, ///< 右端を固定し左側を削る
-    Bottom      = 2, ///< 下端を固定し上側を削る (縦ゲージ)
-    Top         = 3, ///< 上端を固定し下側を削る
+    Left        = 0, ///< @note 左端を固定し右側を削る (一般的な体力バー)
+    Right       = 1, ///< @note 右端を固定し左側を削る
+    Bottom      = 2, ///< @note 下端を固定し上側を削る (縦ゲージ)
+    Top         = 3, ///< @note 上端を固定し下側を削る
     BottomLeft  = 4,
     TopLeft     = 5,
     TopRight    = 6,
     BottomRight = 7,
 };
 
-/// 塗り潰しの削り方。
-///   Edge       … fillOrigin の反対側から直線的に削る
-///   Radial 360 … 要素の中心を軸に一周させる (クールダウン表示)
-///   Radial 180 … fillOrigin の辺の中点を軸に半周させる (半円ゲージ)
-///   Radial 90  … fillOrigin の角を軸に四半周させる (扇形ゲージ)
+/// @note 塗り潰しの削り方。
+/// @note Edge       … fillOrigin の反対側から直線的に削る
+/// @note Radial 360 … 要素の中心を軸に一周させる (クールダウン表示)
+/// @note Radial 180 … fillOrigin の辺の中点を軸に半周させる (半円ゲージ)
+/// @note Radial 90  … fillOrigin の角を軸に四半周させる (扇形ゲージ)
 /// @note 90/180 は軸が辺の中点や角へ移り、その形で要素全体をちょうど覆う。360 を部分利用しても同じ絵にはならない。
 enum class UIImageFillMethod {
     Edge      = 0,
@@ -51,8 +51,8 @@ enum class UIImageFillMethod {
     Radial90  = 3,
 };
 
-/// 方式が受け付けない fillOrigin を、意味の近い値へ寄せる。
-/// Radial 90 は角を、それ以外は辺を要求する。
+/// @note 方式が受け付けない fillOrigin を、意味の近い値へ寄せる。
+/// @note Radial 90 は角を、それ以外は辺を要求する。
 [[nodiscard]] inline UIImageFillOrigin NormalizeFillOrigin(
     UIImageFillMethod method, UIImageFillOrigin origin)
 {
@@ -78,8 +78,8 @@ enum class UIImageFillMethod {
     }
 }
 
-/// Simple は 1 枚を矩形いっぱいに伸ばす。
-/// Sliced は Border を保ったまま中央だけを伸縮し、Tiled は原寸のまま敷き詰める。
+/// @note Simple は 1 枚を矩形いっぱいに伸ばす。
+/// @note Sliced は Border を保ったまま中央だけを伸縮し、Tiled は原寸のまま敷き詰める。
 enum class UIImageType {
     Simple = 0,
     Sliced = 1,
@@ -87,64 +87,64 @@ enum class UIImageType {
 };
 
 struct UIImage {
-    /// 親のどこを基準に、自分のどこを合わせるか。既定は左上/左上で、
-    /// アンカー導入前の挙動と同じ (UIRect.hpp 参照)。
+    /// @note 親のどこを基準に、自分のどこを合わせるか。既定は左上/左上で、
+    /// @note アンカー導入前の挙動と同じ (UIRect.hpp 参照)。
     UIAnchor      anchoring{};
-    /// .mat への参照。空なら組み込みの UISprite で描く。
+    /// @note .mat への参照。空なら組み込みの UISprite で描く。
     /// @note texturePath だけで済む用途が大半なので、素材を増やさずに済む既定。マテリアルは
-    ///       メッシュ材質と共有し、render_path = "ui" で UI 用途を区別する。
+    /// @note メッシュ材質と共有し、render_path = "ui" で UI 用途を区別する。
     std::string   materialPath = "";
     std::string   texturePath = "";
     renderer::ResourceHandle<renderer::TextureTag> texture = {};
     math::Vector4 color  = { 1.0f, 1.0f, 1.0f, 1.0f };
     math::Vector2 uvMin  = { 0.0f, 0.0f };
     math::Vector2 uvMax  = { 1.0f, 1.0f };
-    /// 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
+    /// @note 同一 Canvas 内の描画順。値が大きい要素ほど手前に描画する。
     int           sortOrder = 0;
     bool          enabled = true;
-    /// 塗り潰し量 [0,1]。1 で矩形全体、0 で非表示。体力・スタミナゲージ等の進捗表現に使う。
-    /// UISystem が描画時に矩形と UV を fillOrigin 方向へクリップする (transform.scale は変えない)。
+    /// @note 塗り潰し量 [0,1]。1 で矩形全体、0 で非表示。体力・スタミナゲージ等の進捗表現に使う。
+    /// @note UISystem が描画時に矩形と UV を fillOrigin 方向へクリップする (transform.scale は変えない)。
     float             fillAmount = 1.0f;
     UIImageFillOrigin fillOrigin = UIImageFillOrigin::Left;
     UIImageFillMethod fillMethod = UIImageFillMethod::Edge;
-    /// Radial のときの回転方向。Edge では使わない。
-    /// 90 / 180 では「軸から見てどちらの端から満ちるか」を決める (覆う範囲は同じ)。
+    /// @note Radial のときの回転方向。Edge では使わない。
+    /// @note 90 / 180 では「軸から見てどちらの端から満ちるか」を決める (覆う範囲は同じ)。
     bool              fillClockwise = true;
     UIImageType       imageType = UIImageType::Simple;
-    /// 9-slice の余白 (L,T,R,B ピクセル)。Sliced のときだけ効く。
+    /// @note 9-slice の余白 (L,T,R,B ピクセル)。Sliced のときだけ効く。
     /// @note Sprite の Border は Sprite 型の .meta 専用のため、素の .png でも使えるようここに持つ。
-    ///       全成分 0 (既定) なら Sprite Editor の Border へ譲る (EffectiveBorder 参照)。
+    /// @note 全成分 0 (既定) なら Sprite Editor の Border へ譲る (EffectiveBorder 参照)。
     math::Vector4     border = { 0.0f, 0.0f, 0.0f, 0.0f };
-    /// Border とタイルの描画寸法をこの値で割る。1 なら元画像のピクセル寸法どおり。
-    /// 低解像度の素材を大きな画面で使うとき、素材を作り直さずに角とタイルだけ拡大できる。
+    /// @note Border とタイルの描画寸法をこの値で割る。1 なら元画像のピクセル寸法どおり。
+    /// @note 低解像度の素材を大きな画面で使うとき、素材を作り直さずに角とタイルだけ拡大できる。
     float             pixelsPerUnitMultiplier = 1.0f;
     /// @name マテリアルのこの要素だけの上書き (ランタイム専用)
     /// @{
     /// @note .mat は参照する全要素の共有実体のため、要素ごとの差分はここに持つ。値は毎フレーム
-    ///       動く量 (HP・充填率等) なのでシーンへは保存せず、ui.SetMaterialFloat() 等で書く。
+    /// @note 動く量 (HP・充填率等) なのでシーンへは保存せず、ui.SetMaterialFloat() 等で書く。
     std::unordered_map<std::string, std::vector<float>> materialParamOverrides;
     std::unordered_map<std::string, std::string>        materialTextureOverrides;
 
-    /// ランタイム専用: この要素だけ一時的に別の絵で描く (UIButton の状態別スプライト)。
+    /// @note ランタイム専用: この要素だけ一時的に別の絵で描く (UIButton の状態別スプライト)。
     /// @note texturePath は人が指定しシーンに保存される値なので直接書き換えない。差し替えは
-    ///       描画側の一時的な上書きとして別フィールドに持つ。
+    /// @note 描画側の一時的な上書きとして別フィールドに持つ。
     std::string   overrideTexturePath = {};
     bool          hasTextureOverride = false;
 
-    /// ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
+    /// @note ランタイム専用: 最後にロードしたパスをキャッシュし、毎フレームの LoadTexture を回避する。
     std::string   loadedTexturePath = {};
-    /// Spriteサブアセット参照時に.metaから解決したUV。通常TextureではuvMin/uvMaxを使う。
+    /// @note Spriteサブアセット参照時に.metaから解決したUV。通常TextureではuvMin/uvMaxを使う。
     math::Vector2 resolvedSpriteUvMin = { 0.0f, 0.0f };
     math::Vector2 resolvedSpriteUvMax = { 1.0f, 1.0f };
-    math::Vector4 resolvedSpriteBorder = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< L,T,R,B pixels
+    math::Vector4 resolvedSpriteBorder = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< @note L,T,R,B pixels
     math::Vector2 resolvedTextureSize = { 0.0f, 0.0f };
-    /// 切り抜き (Sprite なら矩形、通常テクスチャなら画像全体) のピクセル寸法。
-    /// Tiled の 1 タイル分の大きさと、Inspector の Set Native Size がこれを読む。
+    /// @note 切り抜き (Sprite なら矩形、通常テクスチャなら画像全体) のピクセル寸法。
+    /// @note Tiled の 1 タイル分の大きさと、Inspector の Set Native Size がこれを読む。
     math::Vector2 resolvedSizePixels = { 0.0f, 0.0f };
     bool          hasResolvedSprite = false;
 
-    /// ピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW, texH) で正規化した UV ペアに変換する。
-    /// スクリプトからスプライトシートの切り抜き範囲を設定するときに使う。
+    /// @note ピクセル矩形 (x,y,w,h) をテクスチャサイズ (texW, texH) で正規化した UV ペアに変換する。
+    /// @note スクリプトからスプライトシートの切り抜き範囲を設定するときに使う。
     bool overrideThemeColor = false;
 
     static std::pair<math::Vector2, math::Vector2> PixelRectToUV(
@@ -153,14 +153,14 @@ struct UIImage {
         return { { x / texW, y / texH }, { (x + w) / texW, (y + h) / texH } };
     }
 
-    /// 実際に描く絵のパス。上書き中はそちら、それ以外は指定された texturePath。
+    /// @note 実際に描く絵のパス。上書き中はそちら、それ以外は指定された texturePath。
     [[nodiscard]] const std::string& EffectiveTexturePath() const
     {
         return hasTextureOverride ? overrideTexturePath : texturePath;
     }
 
-    /// 実際に 9-slice へ使う余白 (元画像のピクセル単位)。border が既定値のままなら
-    /// Sprite Editor で切った Border を使う。
+    /// @note 実際に 9-slice へ使う余白 (元画像のピクセル単位)。border が既定値のままなら
+    /// @note Sprite Editor で切った Border を使う。
     [[nodiscard]] math::Vector4 EffectiveBorder() const
     {
         const bool authored = border.x > 0.0f || border.y > 0.0f
@@ -168,7 +168,7 @@ struct UIImage {
         return authored ? border : resolvedSpriteBorder;
     }
 
-    /// 元画像のピクセル寸法を描画ピクセルへ直す係数。
+    /// @note 元画像のピクセル寸法を描画ピクセルへ直す係数。
     [[nodiscard]] float UnitScale() const
     {
         return pixelsPerUnitMultiplier > 0.0f ? 1.0f / pixelsPerUnitMultiplier : 1.0f;
@@ -227,4 +227,4 @@ struct UIImage {
     /// @}
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <cstdint>
 
@@ -29,19 +30,19 @@ enum class ControlPointReadContext : std::uint8_t {
 };
 
 /// @brief Reflect a source mode while preserving unsupported serialized values.
-void ReflectControlPointSourceMode(IReflector& reflector, const char* fieldName,
+FBZZ_ENGINE_API void ReflectControlPointSourceMode(IReflector& reflector, const char* fieldName,
     ControlPointSourceMode& mode);
 
 /// @brief Reflect a runtime mode while preserving unsupported serialized values.
-void ReflectControlPointRuntimeMode(IReflector& reflector, const char* fieldName,
+FBZZ_ENGINE_API void ReflectControlPointRuntimeMode(IReflector& reflector, const char* fieldName,
     ControlPointRuntimeMode& mode);
 
 /// @brief Reflect a 64-bit canonical input signature through its supported string codec.
-void ReflectControlPointSignature(IReflector& reflector, const char* fieldName,
+FBZZ_ENGINE_API void ReflectControlPointSignature(IReflector& reflector, const char* fieldName,
     std::uint64_t& signature);
 
 /// @brief Reflect a nonnegative adapter version through its supported integer codec.
-void ReflectControlPointVersion(IReflector& reflector, const char* fieldName,
+FBZZ_ENGINE_API void ReflectControlPointVersion(IReflector& reflector, const char* fieldName,
     std::uint32_t& version);
 
 } /// @note namespace fbzz::scene

@@ -2,11 +2,12 @@
 /// @brief   アセットの非同期要求・利用権・フレーム境界での公開。
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
-///
-/// ファイル読み込みとデコードをワーカーへ、GPU 転送の投入と完成物の公開をメインスレッドの
-/// Pump() へ分ける。ストア (AssetStore<T>) はメインスレッド所有のまま、完成した結果だけを反映する。
+
+/// @note ファイル読み込みとデコードをワーカーへ、GPU 転送の投入と完成物の公開をメインスレッドの
+/// @note Pump() へ分ける。ストア (AssetStore<T>) はメインスレッド所有のまま、完成した結果だけを反映する。
 /// @see Docs/design/asset-streaming.md
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -21,7 +22,7 @@ namespace fbzz::asset {
 
 /// @brief ロード段階。READING と DECODING はワーカー 1 回の呼び出しで行うため Decoding に畳む。
 enum class AssetLoadState : std::uint8_t {
-    None,                ///< 知らないハンドル (未要求・解放済み・プロジェクト切り替え前のもの)
+    None,                ///< @note 知らないハンドル (未要求・解放済み・プロジェクト切り替え前のもの)
     Queued,
     Decoding,
     WaitingDependencies,
@@ -34,13 +35,13 @@ enum class AssetLoadState : std::uint8_t {
 
 enum class AssetLoadError : std::uint8_t {
     None,
-    NoChannel,           ///< その型の非同期経路が登録されていない
-    NotFound,            ///< 参照を実ファイルへ解決できない
+    NoChannel,           ///< @note その型の非同期経路が登録されていない
+    NotFound,            ///< @note 参照を実ファイルへ解決できない
     DecodeFailed,
     UploadFailed,
     DependencyFailed,
     DependencyCycle,
-    BudgetExceeded,      ///< 台帳の枠 (maxEntries) が尽きた、または固定物だけで常駐予算を超えている
+    BudgetExceeded,      ///< @note 台帳の枠 (maxEntries) が尽きた、または固定物だけで常駐予算を超えている
     ShuttingDown,
 };
 
@@ -52,21 +53,21 @@ using AssetQuality = std::uint8_t;
 
 struct AssetRequestOptions {
     AssetPriority priority = AssetPriority::Visible;
-    /// 希望品質。同じアセットの利用権の中で最も高い (小さい) 値に集約する。
+    /// @note 希望品質。同じアセットの利用権の中で最も高い (小さい) 値に集約する。
     AssetQuality  quality = 0;
 };
 
 struct AssetLoadStatus {
     AssetLoadState state = AssetLoadState::None;
     AssetLoadError error = AssetLoadError::None;
-    /// 公開中の中身の世代。0 は未公開。ホットリロードと品質変更で進む。
+    /// @note 公開中の中身の世代。0 は未公開。ホットリロードと品質変更で進む。
     std::uint32_t  publishedRevision = 0;
-    /// 公開中の実体はそのまま、再読み込みの候補だけが失敗した。
+    /// @note 公開中の実体はそのまま、再読み込みの候補だけが失敗した。
     bool           updateFailed = false;
-    /// 実際に常駐している品質。希望品質とは別 (ヒステリシスと予算で遅れる)。
+    /// @note 実際に常駐している品質。希望品質とは別 (ヒステリシスと予算で遅れる)。
     AssetQuality   residentQuality = 0;
     AssetQuality   desiredQuality = 0;
-    /// 公開中の実体が占めるバイト数 (経路の見積もり)。
+    /// @note 公開中の実体が占めるバイト数 (経路の見積もり)。
     std::uint64_t  residentBytes = 0;
     std::string    message;
 };
@@ -81,9 +82,9 @@ struct RawAssetHandle {
 
 /// @brief 親が読み込みの途中で要求する別アセット。
 struct AssetDependency {
-    std::string typeName;   ///< AssetStreamTypeName<T>() の値
+    std::string typeName;   ///< @note AssetStreamTypeName<T>() の値
     std::string reference;
-    /// false の依存は失敗しても親を止めず、完成も待たない (型別の代替表示に任せる)。
+    /// @note false の依存は失敗しても親を止めず、完成も待たない (型別の代替表示に任せる)。
     bool        required = true;
 };
 
@@ -91,7 +92,7 @@ struct AssetDependency {
 /// @note GPU ハンドルや Scene を指すものを入れない。ワーカーとメインスレッドを跨いで move される。
 struct IDecodedAsset {
     virtual ~IDecodedAsset() = default;
-    /// 転送量・台帳の計上に使うバイト数。
+    /// @note 転送量・台帳の計上に使うバイト数。
     [[nodiscard]] virtual std::size_t CpuBytes() const { return 0; }
     std::vector<AssetDependency> dependencies;
 };
@@ -106,7 +107,7 @@ struct AssetJobInput {
     std::string                            key;
     std::string                            resolvedPath;
     std::shared_ptr<const AssetJobContext> context;
-    /// 作る表現の品質段。品質を持たない経路は無視してよい。
+    /// @note 作る表現の品質段。品質を持たない経路は無視してよい。
     AssetQuality                           quality = 0;
 };
 
@@ -123,7 +124,7 @@ struct IAssetCandidate {
 
 /// @brief 型 1 つ分の非同期経路。ストア操作・デコード・転送を AssetStreamer から隠す。
 /// @note Decode 以外はメインスレッドから呼ぶ。Decode はワーカーから並行に呼ばれるので、
-///       メンバーの可変状態・Logger・AssetDatabase・ストアに触らない。
+/// @note メンバーの可変状態・Logger・AssetDatabase・ストアに触らない。
 class IAssetStreamChannel {
 public:
     virtual ~IAssetStreamChannel() = default;
@@ -147,10 +148,13 @@ public:
     /// @return 外せない (同期 Load が固定している・GPU 実体が他で使われている) なら false。
     [[nodiscard]] virtual bool Evict(RawAssetHandle handle, const std::string& key) = 0;
     /// @brief 公開中の実体が占めるバイト数の見積もり。非同期で作った実体は台帳が CPU 成果物の大きさで数える。
-    [[nodiscard]] virtual std::uint64_t EstimateResidentBytes(RawAssetHandle /*handle*/) const { return 0; }
+    /// @note handle
+    [[nodiscard]] virtual std::uint64_t EstimateResidentBytes(RawAssetHandle ) const { return 0; }
     /// @brief 予約中のスロットをこの場で同期ロードして埋める。待機を許した箇所 (ロード画面など) だけが使う。
     /// @return 経路が同期ロードを持たない、または失敗したら false。
-    [[nodiscard]] virtual bool LoadImmediately(RawAssetHandle /*handle*/, const std::string& /*key*/) { return false; }
+    /// @note key
+    /// @note handle
+    [[nodiscard]] virtual bool LoadImmediately(RawAssetHandle , const std::string& ) { return false; }
     /// @}
 
     /// @name 品質段
@@ -176,7 +180,8 @@ public:
     /// @return 失敗なら nullptr と理由。
     [[nodiscard]] virtual std::unique_ptr<IAssetCandidate> BeginUpload(
         IDecodedAsset& decoded, std::uint64_t& outToken, std::string& outError) = 0;
-    [[nodiscard]] virtual bool IsUploadComplete(std::uint64_t /*token*/) const { return true; }
+    /// @note token
+    [[nodiscard]] virtual bool IsUploadComplete(std::uint64_t ) const { return true; }
     /// @brief 完成した候補をスロットへ入れる。旧実体はここで置き換わる。
     /// @return スロットが既に無効なら false (候補は Discard される)。
     [[nodiscard]] virtual bool Publish(RawAssetHandle handle, IAssetCandidate& candidate) = 0;
@@ -248,25 +253,25 @@ private:
 /// @brief 要求台帳。要求の重複集約・利用権・ワーカー投入・完了の検証と公開を持つ。
 /// @note すべての公開メンバーはメインスレッドから呼ぶ。ワーカーが触るのは内部の完了キューだけ。
 /// @note 受付から公開までの各結果は (projectEpoch, attempt, contentRevision, deviceEpoch) で照合し、
-///       古いものは捨てる。
+/// @note 古いものは捨てる。
 /// @see Docs/design/asset-streaming.md «状態と世代»
 class AssetStreamer {
 public:
     struct Config {
-        /// 同時にワーカーへ出すジョブ数。完了キューの長さもこれで抑える。
+        /// @note 同時にワーカーへ出すジョブ数。完了キューの長さもこれで抑える。
         std::uint32_t maxJobsInFlight = 4;
-        /// 1 回の Pump で投入する GPU 転送の件数とバイト数。
+        /// @note 1 回の Pump で投入する GPU 転送の件数とバイト数。
         std::uint32_t maxUploadsPerPump = 8;
         std::uint64_t maxUploadBytesPerPump = 64ull * 1024ull * 1024ull;
-        /// 台帳が同時に持てる要求キーの数。
+        /// @note 台帳が同時に持てる要求キーの数。
         std::uint32_t maxEntries = 16384;
-        /// 常駐予算 (公開済みの実体 + 転送待ちの CPU 成果物)。0 は無制限。
+        /// @note 常駐予算 (公開済みの実体 + 転送待ちの CPU 成果物)。0 は無制限。
         std::uint64_t residentBudgetBytes = 0;
-        /// 利用権がゼロになってから解放するまでの猶予 (Pump 回数)。予算超過中は待たずに LRU で解放する。
+        /// @note 利用権がゼロになってから解放するまでの猶予 (Pump 回数)。予算超過中は待たずに LRU で解放する。
         /// @note 0 は猶予による解放をしない (予算超過のときだけ解放する)。既定を 0 にしているのは、
-        ///       解放した物を再び使うと同期ロードの引っかかりになり、既存ゲームの手触りが変わるため。
+        /// @note 解放した物を再び使うと同期ロードの引っかかりになり、既存ゲームの手触りが変わるため。
         std::uint32_t evictionGracePumps = 0;
-        /// 希望品質がこの回数だけ続いてから常駐品質を動かす (ちらつき防止のヒステリシス)。
+        /// @note 希望品質がこの回数だけ続いてから常駐品質を動かす (ちらつき防止のヒステリシス)。
         std::uint32_t qualityHoldPumps = 30;
     };
 
@@ -286,7 +291,7 @@ public:
         std::uint64_t residentBytes = 0;
         std::uint64_t evictions = 0;
         std::uint32_t deferredPrefetches = 0;
-        /// 予算超過で全体に上乗せしている品質の段数。
+        /// @note 予算超過で全体に上乗せしている品質の段数。
         AssetQuality  qualityBias = 0;
         bool          overBudget = false;
     };
@@ -295,20 +300,20 @@ public:
     using JobExecutor = std::function<void(std::function<void()>)>;
 
     /// @brief エンジン全体で共有する台帳 (TaskSystem で実行)。
-    [[nodiscard]] static AssetStreamer& Engine();
+    [[nodiscard]] FBZZ_ENGINE_API static AssetStreamer& Engine();
 
-    explicit AssetStreamer(JobExecutor executor);
-    AssetStreamer(JobExecutor executor, Config config);
-    ~AssetStreamer();
+    FBZZ_ENGINE_API explicit AssetStreamer(JobExecutor executor);
+    FBZZ_ENGINE_API AssetStreamer(JobExecutor executor, Config config);
+    FBZZ_ENGINE_API ~AssetStreamer();
     AssetStreamer(const AssetStreamer&) = delete;
     AssetStreamer& operator=(const AssetStreamer&) = delete;
 
     /// @brief 型の経路を登録する。同じ型名は置き換える。
-    void RegisterChannel(std::shared_ptr<IAssetStreamChannel> channel);
+    FBZZ_ENGINE_API void RegisterChannel(std::shared_ptr<IAssetStreamChannel> channel);
 
     /// @brief 予算・猶予などを差し替える。次の Pump から効く。
-    void Configure(const Config& config);
-    [[nodiscard]] const Config& GetConfig() const;
+    FBZZ_ENGINE_API void Configure(const Config& config);
+    [[nodiscard]] FBZZ_ENGINE_API const Config& GetConfig() const;
 
     /// @brief 非同期ロードを要求する。I/O を待たない。
     /// @return 受け付けたら予約済みハンドルを持つ利用権。拒否なら無効ハンドルと RequestError。
@@ -348,18 +353,18 @@ public:
 
     /// @brief フレーム境界の処理。完了の回収 → 依存の判定 → 転送の投入と完了確認 → 公開 → 次のジョブ投入。
     /// @note Scene 更新と描画コマンドの記録より前 (レンダラーのフレーム外) で呼ぶ。
-    void Pump();
+    FBZZ_ENGINE_API void Pump();
 
     /// @brief プロジェクト切り替え。epoch を進め、全要求と経路を捨てる。実行中ジョブの結果は棄却される。
     /// @note ResourceManager が生きているうちに呼ぶ (転送中の候補を返すため)。
-    void ResetForProjectSwitch();
+    FBZZ_ENGINE_API void ResetForProjectSwitch();
 
     /// @brief 同期 Load<T> が予約中のスロットを自分で埋めた。実行中の非同期結果を棄却する。
-    void NotifySyncFilled(std::string_view typeName, const std::string& key);
+    FBZZ_ENGINE_API void NotifySyncFilled(std::string_view typeName, const std::string& key);
     /// @brief 同期 Unload<T> がスロットを返した。台帳からも外す。
-    void NotifyUnloaded(std::string_view typeName, const std::string& key);
+    FBZZ_ENGINE_API void NotifyUnloaded(std::string_view typeName, const std::string& key);
 
-    [[nodiscard]] Stats GetStats() const;
+    [[nodiscard]] FBZZ_ENGINE_API Stats GetStats() const;
 
     /// @name 型を消した入口 (テンプレートと AssetLease が使う)
     /// @{
@@ -368,17 +373,17 @@ public:
         RawAssetHandle handle;
         AssetLoadError error = AssetLoadError::None;
     };
-    [[nodiscard]] RawRequest RequestRaw(std::string_view typeName, const std::string& reference,
+    [[nodiscard]] FBZZ_ENGINE_API RawRequest RequestRaw(std::string_view typeName, const std::string& reference,
                                         const AssetRequestOptions& options);
-    [[nodiscard]] AssetLoadStatus GetStatusRaw(std::string_view typeName, RawAssetHandle handle) const;
-    [[nodiscard]] void* TryGetRaw(std::string_view typeName, RawAssetHandle handle) const;
-    bool RetryRaw(std::string_view typeName, RawAssetHandle handle);
-    bool ReloadRaw(std::string_view typeName, RawAssetHandle handle);
-    bool CompleteNowRaw(std::string_view typeName, RawAssetHandle handle);
-    void ReleaseLease(std::uint64_t leaseId);
-    void SetLeasePriority(std::uint64_t leaseId, AssetPriority priority);
-    void SetLeaseQuality(std::uint64_t leaseId, AssetQuality quality);
-    [[nodiscard]] AssetLoadStatus GetLeaseStatus(std::uint64_t leaseId) const;
+    [[nodiscard]] FBZZ_ENGINE_API AssetLoadStatus GetStatusRaw(std::string_view typeName, RawAssetHandle handle) const;
+    [[nodiscard]] FBZZ_ENGINE_API void* TryGetRaw(std::string_view typeName, RawAssetHandle handle) const;
+    FBZZ_ENGINE_API bool RetryRaw(std::string_view typeName, RawAssetHandle handle);
+    FBZZ_ENGINE_API bool ReloadRaw(std::string_view typeName, RawAssetHandle handle);
+    FBZZ_ENGINE_API bool CompleteNowRaw(std::string_view typeName, RawAssetHandle handle);
+    FBZZ_ENGINE_API void ReleaseLease(std::uint64_t leaseId);
+    FBZZ_ENGINE_API void SetLeasePriority(std::uint64_t leaseId, AssetPriority priority);
+    FBZZ_ENGINE_API void SetLeaseQuality(std::uint64_t leaseId, AssetQuality quality);
+    [[nodiscard]] FBZZ_ENGINE_API AssetLoadStatus GetLeaseStatus(std::uint64_t leaseId) const;
     /// @}
 
 private:
@@ -406,4 +411,4 @@ void AssetLease<T>::Release()
     m_leaseId = 0;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

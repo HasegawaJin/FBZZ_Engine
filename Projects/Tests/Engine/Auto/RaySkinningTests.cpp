@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
 #include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/OwnedResources.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Format/FzAssetFormat.hpp>
@@ -1541,7 +1542,7 @@ TEST_F(RaySkinningTest, MorphSnapshotRatherThanOriginalCpuVerticesIsSkinnedAndIt
     for (auto& vertex : morphed) vertex.position.z = 4;
     const auto source = m_resources->CreateVertexBuffer(morphed.data(), morphed.size() * sizeof(renderer::SkinnedVertex),
         sizeof(renderer::SkinnedVertex));
-    Skinned().morphVertexBuffers = {source};
+    Skinned().morphVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({source});
     Skinned().morphWeights = {{"Raise", 1.0f}};
     Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 1});
     BeginFrame();
@@ -2754,7 +2755,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationMapsSelectedTargetsAndBakeFlags
     Skinned().morphWeights={{"UnusedNonzero",2.0f},{"Used",0.0f}};
     Skinned().appliedMorphWeights={{"UnusedNonzero",2.0f},{"Used",0.0f}};
     /// @note A valid handle in an unselected model slot is not the renderer's selected morph input.
-    Skinned().morphVertexBuffers={{},m_model->meshes[0]->vertexBuffer};
+    Skinned().morphVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{},m_model->meshes[0]->vertexBuffer});
     scene::RenderPassContext context{m_scene,*m_bundle.renderer,*m_resources,m_camera,m_settings,{},~0u,m_handles};
     context.frustumCullingEnabled=false;
     {

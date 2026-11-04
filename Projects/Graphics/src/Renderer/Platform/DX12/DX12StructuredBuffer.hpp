@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/IStructuredBuffer.hpp>
 #include <d3d12.h>
@@ -15,27 +16,27 @@ class DX12StateTracker;
 
 class DX12StructuredBuffer final : public IStructuredBuffer {
 public:
-    ~DX12StructuredBuffer() override;
-    bool Init(DX12Context* context, DX12StateTracker* tracker, const void* data,
+    FBZZ_GRAPHICS_API ~DX12StructuredBuffer() override;
+    FBZZ_GRAPHICS_API bool Init(DX12Context* context, DX12StateTracker* tracker, const void* data,
               uint32_t elementCount, uint32_t stride, bool readWrite,
               bool gpuLocalReadOnly = false);
-    void Update(const void* data, size_t sizeBytes) override;
-    bool UpdateRegion(const void* data, size_t sizeBytes, size_t offsetBytes) override;
+    FBZZ_GRAPHICS_API void Update(const void* data, size_t sizeBytes) override;
+    FBZZ_GRAPHICS_API bool UpdateRegion(const void* data, size_t sizeBytes, size_t offsetBytes) override;
     uint32_t GetElementCount() const override { return m_elementCount; }
     uint32_t GetStride() const override { return m_stride; }
     size_t GetSize() const override { return static_cast<size_t>(m_elementCount) * m_stride; }
     bool IsReadWrite() const { return m_readWrite; }
     ID3D12Resource* GetResource() const { return m_resource.Get(); }
-    D3D12_CPU_DESCRIPTOR_HANDLE GetSrv() const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetUav() const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetSrv() const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetUav() const;
 
     /// @brief 永続 bindless ディスクリプタの添字 (SRV)。初回呼び出しで確保して発行する。
     /// @note 遅延発行の理由と GPU 実行中に書ける理由は DX12Texture::GetBindlessIndex と同じ。
     /// @see  Docs/design/bindless.md
-    uint32_t GetBindlessIndex() const override;
+    FBZZ_GRAPHICS_API uint32_t GetBindlessIndex() const override;
 
     /// @brief UAV 側の永続 bindless 添字。読み取り専用で作られたバッファは INVALID を返す。
-    uint32_t GetBindlessUavIndex() const override;
+    FBZZ_GRAPHICS_API uint32_t GetBindlessUavIndex() const override;
 
 private:
     DX12StateTracker* m_tracker = nullptr;

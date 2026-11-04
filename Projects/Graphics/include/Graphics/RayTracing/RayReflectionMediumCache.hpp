@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/RayTracing/RayScene.hpp>
 #include <array>
 #include <functional>
@@ -20,12 +21,12 @@ class RayReflectionMediumCache {
 public:
     /// @return true only when the origin is strictly outside every validated solid owner's conservative world bounds; false means unknown or inside.
     /// @note Uses current live CPU-readable, non-UAV buffer versions and never reads back GPU-only geometry.
-    [[nodiscard]] bool IsOriginProvenAir(const RayScene& scene, ResourceManager& resources,
+    [[nodiscard]] FBZZ_GRAPHICS_API bool IsOriginProvenAir(const RayScene& scene, ResourceManager& resources,
                                        const math::Vector3& origin);
     /// @pre The lookup and CPU buffer updates run on the rendering thread; unchanged nonzero versions denote unchanged content.
-    [[nodiscard]] bool IsOriginProvenAir(const RayScene& scene, const RayReflectionMediumBufferLookup& lookup,
+    [[nodiscard]] FBZZ_GRAPHICS_API bool IsOriginProvenAir(const RayScene& scene, const RayReflectionMediumBufferLookup& lookup,
                                        const math::Vector3& origin);
-    void Reset();
+    FBZZ_GRAPHICS_API void Reset();
 
 private:
     struct Bounds {
@@ -41,11 +42,11 @@ private:
         double relativeCrossError = 0;
         double minimumNormalizedProjection = 0;
     };
-    [[nodiscard]] bool IsOriginProvenAirImpl(const RayScene& scene,
+    [[nodiscard]] FBZZ_GRAPHICS_API bool IsOriginProvenAirImpl(const RayScene& scene,
         const RayReflectionMediumBufferLookup& lookup, const math::Vector3& origin);
-    [[nodiscard]] const GeometryEntry* ReadGeometry(const RaySceneGeometry& geometry,
+    [[nodiscard]] FBZZ_GRAPHICS_API const GeometryEntry* ReadGeometry(const RaySceneGeometry& geometry,
         const RayReflectionMediumBufferLookup& lookup);
-    [[nodiscard]] bool WorldBounds(const GeometryEntry& geometry, const math::Matrix4& world, Bounds& bounds) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool WorldBounds(const GeometryEntry& geometry, const math::Matrix4& world, Bounds& bounds) const;
     std::vector<GeometryEntry> m_geometry;
     const ResourceManager* m_resources = nullptr;
     uint64_t m_resetVersion = 0;

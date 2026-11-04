@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <array>
 #include <vector>
+#include <optional>
+#include <tuple>
 
 namespace fbzz::renderer {
 namespace {
@@ -294,40 +296,50 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
 
 /// @name Deferred 内スキンドメッシュフォワードパス
 namespace {
-void SubmitDeferredForward(RenderPassContext& ctx, bool skinned, renderer::GeometryRoute route)
+void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route)
 {
-    const auto& input = SceneInput(ctx);
+    const auto sceneOwner = ctx.renderScene;
+    const auto& input = sceneOwner ? *sceneOwner : SceneInput(ctx);
     std::vector<MeshEntry> queue;
     for (const auto& object : input.Objects()) {
-        if (object.skinned != skinned || !object.colorEligible || !MatchesView(ctx, object)) continue;
-        if (!skinned) {
-            const auto& item = input.items[object.firstItem];
-            if (!HasColorGeometry(item) || renderer::ResolveGeometryRoute(item.material.capabilities, true) != route) continue;
-        }
-        if (skinned || route == renderer::GeometryRoute::ForwardTransparent) ++ctx.statsTotalObjects;
-        if (!IsRenderObjectVisible(ctx, object)) continue;
-        const math::Vector3 position{ object.world.m[0][3], object.world.m[1][3], object.world.m[2][3] };
-        for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
-            const auto& item = input.items[i];
-            const auto itemRoute = renderer::ResolveGeometryRoute(item.material.capabilities, true);
-            if (!HasColorGeometry(item) || !item.forwardMaterial.valid || !item.forwardMaterial.shader.IsValid()) continue;
-            if (skinned ? itemRoute == renderer::GeometryRoute::GBuffer : itemRoute != route) continue;
-            const auto constants = ObjectConstants(object);
-            if (itemRoute == renderer::GeometryRoute::ForwardOpaque) {
-                ctx.resources.Update(ctx.handles.objectCB, &constants, sizeof(constants));
-                SubmitCounted(ctx, ForwardDraw(ctx, object, item));
-            } else queue.push_back({ &object, &item, (position - ctx.camera.m_position).LengthSq() });
+        if (!object.colorEligible || !MatchesView(ctx, object)) continue;
+        if (route == renderer::GeometryRoute::ForwardOpaque && object.skinned) ++ctx.statsTotalObjects;
+        const auto first = input.items.begin() + object.firstItem;
+        const auto last = first + object.itemCount;
+        if (std::none_of(first, last, [&](const auto& item) {
+            return HasColorGeometry(item) && renderer::ResolveGeometryRoute(item.material.capabilities, ctx.isDeferred) == route;
+        })) continue;
+        if (ctx.isDeferred && !object.skinned) ++ctx.statsTotalObjects;
+        const bool visible = [&] {
+            if (route == renderer::GeometryRoute::ForwardTransparent && (!ctx.isDeferred || object.skinned)) {
+                CullStatsRollback rollback(ctx);
+                return IsRenderObjectVisible(ctx, object);
+            }
+            return IsRenderObjectVisible(ctx, object);
+        }();
+        if (!visible) continue;
+        for (auto it = first; it != last; ++it) {
+            const auto& item = *it;
+            if (!HasColorGeometry(item) || !item.forwardMaterial.valid || !item.forwardMaterial.shader.IsValid()
+                || renderer::ResolveGeometryRoute(item.material.capabilities, ctx.isDeferred) != route) continue;
+            queue.push_back({&object, &item, (object.sortPosition - ctx.camera.m_position).LengthSq()});
         }
     }
-    std::sort(queue.begin(), queue.end(), [](const MeshEntry& a, const MeshEntry& b) {
+    std::sort(queue.begin(), queue.end(), [route](const MeshEntry& a, const MeshEntry& b) {
         if (a.item->material.renderQueue != b.item->material.renderQueue)
             return a.item->material.renderQueue < b.item->material.renderQueue;
-        return a.distanceSquared > b.distanceSquared;
+        if (a.distanceSquared != b.distanceSquared)
+            return route == renderer::GeometryRoute::ForwardTransparent
+                ? a.distanceSquared > b.distanceSquared : a.distanceSquared < b.distanceSquared;
+        return std::tie(a.object->sourceIndex, a.object->sourceGeneration, a.item->materialSlot, a.item->sourceSubmesh)
+            < std::tie(b.object->sourceIndex, b.object->sourceGeneration, b.item->materialSlot, b.item->sourceSubmesh);
     });
+    std::optional<DrawCall> bindings;
     for (const auto& entry : queue) {
+        if (!bindings) bindings = ForwardPassBindings(ctx);
         const auto constants = ObjectConstants(*entry.object);
         ctx.resources.Update(ctx.handles.objectCB, &constants, sizeof(constants));
-        SubmitCounted(ctx, ForwardDraw(ctx, *entry.object, *entry.item));
+        SubmitCounted(ctx, ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings));
     }
 }
 }
@@ -335,15 +347,24 @@ void SubmitDeferredForward(RenderPassContext& ctx, bool skinned, renderer::Geome
 void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
 {
     ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
-    SubmitDeferredForward(ctx, true, renderer::GeometryRoute::ForwardOpaque);
+    SubmitForwardRoute(ctx, renderer::GeometryRoute::ForwardOpaque);
+    ExecuteInstanceForward(ctx);
+}
+
+void ExecuteForwardTransparentPass(RenderPassContext& ctx)
+{
+    ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
+    const auto frame = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    ctx.resources.Update(ctx.handles.frameCB, &frame, sizeof(frame));
+    ctx.resources.Update(ctx.handles.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
+    UpdateShadowConstants(ctx);
+    UpdatePunctualShadowConstants(ctx);
+    SubmitForwardRoute(ctx, renderer::GeometryRoute::ForwardTransparent);
 }
 
 void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
 {
-    ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
-    SubmitDeferredForward(ctx, false, renderer::GeometryRoute::ForwardTransparent);
-    SubmitDeferredForward(ctx, false, renderer::GeometryRoute::ForwardOpaque);
-    ExecuteInstanceForward(ctx);
+    ExecuteForwardTransparentPass(ctx);
 }
 
 std::string_view GBufferPass::Name() const
@@ -392,17 +413,18 @@ void DeferredSkinnedForwardPass::Execute(PassResources&, RenderPassContext& ctx)
     ExecuteDeferredSkinnedForwardPass(ctx);
 }
 
-void DeferredForwardTransparentPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
+void ForwardTransparentPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas")
            .ReadWrite("HDR");
+    if (ctx.gbufferDepthReady) DeclareScreenSpaceOcclusionReads(builder, ctx);
     if (ctx.waterMediumPassActive)
         builder.Read("WaterMediumAtlas");
 }
 
-void DeferredForwardTransparentPass::Execute(PassResources&, RenderPassContext& ctx)
+void ForwardTransparentPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    ExecuteDeferredForwardTransparentPass(ctx);
+    ExecuteForwardTransparentPass(ctx);
 }
 
 void DeferredLightingPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Input/Gamepad.hpp>
 #include <Engine/Core/Cursor.hpp>
@@ -68,7 +69,7 @@ private:
 };
 
 /// @note Engine-private shared consumption state; the raw Input API stays available to Editor UI.
-GameInputConsumption& GameInputConsumptionState();
+FBZZ_ENGINE_API GameInputConsumption& GameInputConsumptionState();
 
 /// @note Private gameplay/host source selection shared by scripts, action maps and runtime UI.
 struct GameInputAccess final {

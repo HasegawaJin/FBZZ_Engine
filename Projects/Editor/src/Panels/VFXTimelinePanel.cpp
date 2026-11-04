@@ -29,7 +29,7 @@ constexpr float kIndentPx    = 10.0f;
 constexpr float kEdgeGrabPx  = 5.0f;
 constexpr float kMinDuration = 0.01f;
 
-/// 帯の色。何で始まるかが一目で分かるよう、時間 / ループ / 発火待ちを塗り分ける。
+/// @note 帯の色。何で始まるかが一目で分かるよう、時間 / ループ / 発火待ちを塗り分ける。
 constexpr ImU32 kBarNormal    = IM_COL32(86, 132, 196, 210);
 constexpr ImU32 kBarLooping   = IM_COL32(96, 168, 120, 210);
 constexpr ImU32 kBarTriggered = IM_COL32(196, 138, 70, 210);
@@ -41,7 +41,7 @@ constexpr ImU32 kBarTriggered = IM_COL32(196, 138, 70, 210);
     return kBarNormal;
 }
 
-/// 入れ子 VFX の内側へは降りない (その VFXComponent が自分の時間軸を持つ)。
+/// @note 入れ子 VFX の内側へは降りない (その VFXComponent が自分の時間軸を持つ)。
 [[nodiscard]] bool IsNestedRoot(scene::GameObject& gameObject)
 {
     return gameObject.GetComponent<scene::VFXComponent>() != nullptr;
@@ -54,7 +54,7 @@ constexpr ImU32 kBarTriggered = IM_COL32(196, 138, 70, 210);
     return buffer;
 }
 
-} // namespace
+} /// @note namespace
 
 scene::GameObject* VFXTimelinePanel::ResolveRoot(EditorContext& ctx) const
 {
@@ -67,7 +67,7 @@ scene::GameObject* VFXTimelinePanel::ResolveRoot(EditorContext& ctx) const
     }
 
     /// @note 選択が無いときはシーンのルートから 1 つ拾う。プレハブ編集モードでは
-    ///       .vfx のルートが唯一のルートなので、開いた直後から中身が出る。
+    /// @note       .vfx のルートが唯一のルートなので、開いた直後から中身が出る。
     for (scene::GameObject* root : ctx.activeScene->GetRootGameObjects())
         if (root != nullptr && root->GetComponent<scene::VFXComponent>() != nullptr) return root;
 
@@ -158,6 +158,7 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
                         static_cast<int>(m_tracks.size()));
 
     if (ImGui::Button(vfx->playing ? "Pause" : "Play")) {
+        m_apiScrubTime = -1.0f;
         m_scrubTime = -1.0f;
         if (vfx->playing) vfx->Pause();
         else vfx->Resume();
@@ -176,17 +177,20 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
     float scrub = m_scrubTime >= 0.0f ? m_scrubTime : vfx->time;
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::SliderFloat("##scrub", &scrub, 0.0f, span, "t = %.3fs")) {
+        m_apiScrubTime = -1.0f;
         m_scrubTime = scrub;
         vfx->playing = false;
     }
     /// @note 掴んでいる間だけ時刻を固定する。離しても固定し続けると
-    ///       「Play を押しても動かない」に見える。
+    /// @note       「Play を押しても動かない」に見える。
     if (m_scrubTime >= 0.0f && ImGui::IsItemDeactivated()) m_scrubTime = -1.0f;
-    vfx->editorScrubTime = m_scrubTime;
-    vfx->editorScrubFrame = Time::frameCount;
+    if (m_apiScrubTime < 0 || m_apiRoot != root->instanceId) {
+        vfx->editorScrubTime = m_scrubTime;
+        vfx->editorScrubFrame = Time::frameCount;
+    }
 
     /// @note 曲線で駆動する層 (光・デカール・メッシュ・画面演出) は時刻だけで決まるが、パーティクルは
-    ///       «それまでの積み重ね» なので巻き戻すと頭から出直す。断らないと «消えた» をバグとして追われる。
+    /// @note       «それまでの積み重ね» なので巻き戻すと頭から出直す。断らないと «消えた» をバグとして追われる。
     if (m_scrubTime >= 0.0f)
         ImGui::TextDisabled("スクラブ中: パーティクルは前方向にのみ再現されます");
 
@@ -230,7 +234,7 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
             draw->AddRect(barMin, barMax, IM_COL32(240, 240, 240, 140), 3.0f);
 
         /// @note 当たり判定はレーン全幅に置く。帯そのものを幅 0 のボタンにすると、
-        ///       短い窓 (0.05 秒) が掴めなくなる。
+        /// @note       短い窓 (0.05 秒) が掴めなくなる。
         ImGui::SetCursorScreenPos(ImVec2(laneLeft, rowTop.y));
         ImGui::InvisibleButton("##lane", ImVec2(laneWidth, kRowHeight));
 
@@ -262,7 +266,7 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
 
         if (ImGui::IsItemActive() && m_dragEntity == track.entity) {
             /// @note ドラッグ量は «掴んだ時点の値 + 総移動量» で出す。毎フレームの差分を足し込むと
-            ///       クランプのたびに誤差が残り «掴んだ場所と帯がずれていく»。
+            /// @note       クランプのたびに誤差が残り «掴んだ場所と帯がずれていく»。
             const float deltaTime = (ImGui::GetMouseDragDelta().x / laneWidth) * span;
             if (m_dragEdge == 0) {
                 m_dragResultStart = (std::max)(m_dragStart + deltaTime, 0.0f);
@@ -277,13 +281,13 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
             }
             ApplyTrack(scene, track, m_dragResultStart, m_dragResultDuration);
             /// @note markSceneDirty は Prefab 編集モードを見て prefabEditDirty 側へ振り分ける。
-            ///       sceneDirty を直に立てると、編集モードを抜けたあと «触っていないシーン» に
-            ///       未保存扱いが残る。
+            /// @note       sceneDirty を直に立てると、編集モードを抜けたあと «触っていないシーン» に
+            /// @note       未保存扱いが残る。
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
 
         /// @note Undo は «掴んで離すまで» を 1 手にする。ドラッグ中に積むと 1 回の調整で
-        ///       履歴が数十件になり、戻す操作が使い物にならなくなる。
+        /// @note       履歴が数十件になり、戻す操作が使い物にならなくなる。
         if (ImGui::IsItemDeactivated() && m_dragEntity == track.entity) {
             const Track captured = track;
             const float finalStart = m_dragResultStart;
@@ -309,4 +313,4 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

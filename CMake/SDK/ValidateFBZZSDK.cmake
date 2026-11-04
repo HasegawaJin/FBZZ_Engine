@@ -38,6 +38,8 @@ set(REQUIRED_PATHS
     "cmake/FBZZ/AgilitySDKExports.cpp.in"
     "share/fbzz/Assets/Shaders"
     "include/Engine/Scene/ManagedBridgeAbi.hpp"
+    "include/Engine/Api.hpp"
+    "include/Engine/Standalone.hpp"
     "include/Engine/Scene/ManagedBridgeContract.inl"
     "Tools/AgentBuild.ps1"
     "Projects/Managed/global.json"
@@ -92,6 +94,12 @@ set(REQUIRED_PATHS
 foreach(RETIRED_SCRIPT_HEADER ScriptDllAbi.hpp ScriptModules.hpp)
     if(EXISTS "${SDK_ROOT}/include/Engine/Scene/${RETIRED_SCRIPT_HEADER}")
         message(FATAL_ERROR "FBZZ SDK validation failed: retired native Script header ${RETIRED_SCRIPT_HEADER}")
+    endif()
+endforeach()
+# @note 配布 Engine の native 境界は起動入口と managed POD ABI に限定する。
+foreach(INTERNAL_ENGINE_HEADER "Scene/Scene.hpp" "Scene/ComponentRegistry.hpp" "Core/Application.hpp")
+    if(EXISTS "${SDK_ROOT}/include/Engine/${INTERNAL_ENGINE_HEADER}")
+        message(FATAL_ERROR "FBZZ SDK validation failed: internal Engine header ${INTERNAL_ENGINE_HEADER}")
     endif()
 endforeach()
 # @note Every Editor module must be the same installed configuration, including SDKs without DX12.

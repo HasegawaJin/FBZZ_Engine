@@ -118,10 +118,17 @@ install(DIRECTORY
     "${CMAKE_SOURCE_DIR}/Projects/Fluid/include/"
     "${CMAKE_SOURCE_DIR}/Projects/Core/include/"
     "${CMAKE_SOURCE_DIR}/Projects/Graphics/include/"
-    "${CMAKE_SOURCE_DIR}/Projects/Engine/include/"
     "${CMAKE_SOURCE_DIR}/ThirdParty/TomlPlusPlus/include/"
     DESTINATION "include"
 )
+install(FILES
+    "${CMAKE_SOURCE_DIR}/Projects/Engine/include/Engine/Api.hpp"
+    "${CMAKE_SOURCE_DIR}/Projects/Engine/include/Engine/Standalone.hpp"
+    DESTINATION "include/Engine")
+install(FILES
+    "${CMAKE_SOURCE_DIR}/Projects/Engine/include/Engine/Scene/ManagedBridgeAbi.hpp"
+    "${CMAKE_SOURCE_DIR}/Projects/Engine/include/Engine/Scene/ManagedBridgeContract.inl"
+    DESTINATION "include/Engine/Scene")
 # @note ImGui は FBZZEngine の private 共有依存だが、CMake export の依存グラフを完結させるため
 # @note FBZZ::ImGui として同梱する。公開 include path と同じ構造で必要な header のみ配置する。
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/ThirdParty/ImGui/"

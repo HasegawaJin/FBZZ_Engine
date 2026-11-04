@@ -143,6 +143,7 @@ void RigidBody::SetFreezeRotation(const AxisLock& lock)
 void RigidBody::SetInertiaFromCollider(const Collider* collider)
 {
     m_inertiaCollider = collider;
+    m_authoredInertia = math::Vector3::ZERO;
     RecomputeInertia();
 }
 
@@ -246,6 +247,15 @@ math::Vector3 RigidBody::ApplyInvInertia(const math::Vector3& v) const
     return ApplyRotationFreeze(m_rotation * scaled);
 }
 
+bool RigidBody::SetInertiaDiagonal(const math::Vector3& inertia)
+{
+    if (!std::isfinite(inertia.x) || !std::isfinite(inertia.y) || !std::isfinite(inertia.z)
+        || inertia.x <= 0.0f || inertia.y <= 0.0f || inertia.z <= 0.0f) return false;
+    m_authoredInertia = inertia;
+    RecomputeInertia();
+    return true;
+}
+
 void RigidBody::RecomputeInertia()
 {
     if (m_isStatic)
@@ -256,6 +266,10 @@ void RigidBody::RecomputeInertia()
     if (m_mass == 0.0f)
     {
         m_invInertiaDiag = math::Vector3::ZERO;
+        return;
+    }
+    if (m_authoredInertia.x > 0.0f) {
+        m_invInertiaDiag = {1.0f/m_authoredInertia.x,1.0f/m_authoredInertia.y,1.0f/m_authoredInertia.z};
         return;
     }
     if (!m_inertiaCollider)

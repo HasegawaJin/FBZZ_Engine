@@ -4,6 +4,7 @@
 /// @date    2026-07-15
 
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Math/Vector3.hpp>
 #include <cstdint>
@@ -24,24 +25,24 @@ enum class ScriptFlowFieldType : uint8_t {
 struct ScriptFlowFieldProxy {
     Script* script = nullptr;
 
-    void SetEnabled(bool enabled) const;
-    void SetType(ScriptFlowFieldType type) const;
-    /// 流速の大きさ [m/s]。
-    void SetSpeed(float speed) const;
-    void SetRadius(float radius, float falloffPower = 2.0f) const;
-    void SetDirection(const math::Vector3& direction) const;
-    void SetTurbulence(float frequency, float speed) const;
+    FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
+    FBZZ_ENGINE_API void SetType(ScriptFlowFieldType type) const;
+    /// @note 流速の大きさ [m/s]。
+    FBZZ_ENGINE_API void SetSpeed(float speed) const;
+    FBZZ_ENGINE_API void SetRadius(float radius, float falloffPower = 2.0f) const;
+    FBZZ_ENGINE_API void SetDirection(const math::Vector3& direction) const;
+    FBZZ_ENGINE_API void SetTurbulence(float frequency, float speed) const;
 
-    /// この場を受け取るエミッターを絞る。ParticleEmitter 側の
-    /// ScriptParticleProxy::SetFlowFieldChannels と 1 ビットでも重なった相手にだけ作用する。
-    /// 既定は全ビット ON (シーン内の全エミッターへ一律に効く)。
-    void SetChannels(uint32_t channels) const;
+    /// @note この場を受け取るエミッターを絞る。ParticleEmitter 側の
+    /// @note ScriptParticleProxy::SetFlowFieldChannels と 1 ビットでも重なった相手にだけ作用する。
+    /// @note 既定は全ビット ON (シーン内の全エミッターへ一律に効く)。
+    FBZZ_ENGINE_API void SetChannels(uint32_t channels) const;
 
-    [[nodiscard]] bool  IsEnabled() const;
-    [[nodiscard]] float GetSpeed() const;
-    [[nodiscard]] float GetRadius() const;
-    [[nodiscard]] ScriptFlowFieldType GetType() const;
-    [[nodiscard]] uint32_t GetChannels() const;
+    [[nodiscard]] FBZZ_ENGINE_API bool  IsEnabled() const;
+    [[nodiscard]] FBZZ_ENGINE_API float GetSpeed() const;
+    [[nodiscard]] FBZZ_ENGINE_API float GetRadius() const;
+    [[nodiscard]] FBZZ_ENGINE_API ScriptFlowFieldType GetType() const;
+    [[nodiscard]] FBZZ_ENGINE_API uint32_t GetChannels() const;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

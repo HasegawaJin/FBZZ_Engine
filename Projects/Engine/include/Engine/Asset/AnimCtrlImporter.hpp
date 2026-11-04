@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>
 
@@ -10,7 +11,7 @@ namespace fbzz::asset {
 
 class AnimCtrlImporter final : public IAssetImporter<AnimatorControllerAsset> {
 public:
-    [[nodiscard]] std::unique_ptr<AnimatorControllerAsset> Import(
+    [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<AnimatorControllerAsset> Import(
         const std::string&         absPath,
         renderer::ResourceManager* resources) override;
 
@@ -20,4 +21,4 @@ public:
     }
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

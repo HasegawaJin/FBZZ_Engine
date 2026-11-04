@@ -3,10 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-03
 #pragma once
+#include <Graphics/Api.hpp>
 #include <filesystem>
 #include <string>
 namespace fbzz::renderer {
 /// @return 契約違反なら false とファイル名付き reason。DX12 無効ビルドでは true。
 /// @note DLL をロードせず EXE データ export と x64 ファイル版を確認する。
-[[nodiscard]] bool ValidateGraphicsRuntimePackage(const std::filesystem::path& exePath, std::string& reason);
+[[nodiscard]] FBZZ_GRAPHICS_API bool ValidateGraphicsRuntimePackage(const std::filesystem::path& exePath, std::string& reason);
 }

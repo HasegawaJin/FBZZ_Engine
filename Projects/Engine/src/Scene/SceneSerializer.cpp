@@ -4,7 +4,9 @@
 /// @date    2026-05-21
 /// @note GameObject 階層と登録済み Component を .fbzz へ書き出す。
 /// @note ロード時は既存 Scene をクリアしてから復元する。
+#include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Core/Memory/MakeUnique.hpp>
 #include <Engine/Scene/TomlReflector.hpp>
@@ -85,6 +87,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -1067,6 +1070,11 @@ IKSolverComponent ReadIKSolverComponent(const toml::table& ikTable)
                 (*chainTable)["footNormalAxis"].as_array(), math::Vector3::ZERO);
             chain.adjustHip = (*chainTable)["adjustHip"].value_or(true);
             chain.hipBoneName = (*chainTable)["hipBoneName"].value_or(std::string{"Hips"});
+            chain.hipWeight = static_cast<float>((*chainTable)["hipWeight"].value_or(1.0));
+            chain.maxHipLowering = static_cast<float>((*chainTable)["maxHipLowering"].value_or(0.10));
+            chain.maxHipRaising = static_cast<float>((*chainTable)["maxHipRaising"].value_or(0.0));
+            chain.hipBendReserve = static_cast<float>((*chainTable)["hipBendReserve"].value_or(0.0));
+            chain.useRagdollFootShape = (*chainTable)["useRagdollFootShape"].value_or(true);
             chain.spineAutoWeight = (*chainTable)["spineAutoWeight"].value_or(false);
             chain.spineFlatWeight = static_cast<float>(
                 (*chainTable)["spineFlatWeight"].value_or(0.05));
@@ -1262,6 +1270,24 @@ std::string ResolveAssetDiskPathForScene(const std::string& scenePath, const std
         return normalizedAsset;
 
     return normalizedScene.substr(0, assetsPos + 1) + normalizedAsset;
+}
+
+/// @note 共有 SDK の材質は参照として保存し、シーンの保存から上書きしない。
+std::string ResolveTerrainLayerWritePath(const std::string& scenePath, const std::string& reference)
+{
+    const auto path = asset::AssetDatabase::IsGuidRef(reference)
+        ? asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(reference))
+        : ResolveAssetDiskPathForScene(scenePath, reference);
+    if (path.empty()) return {};
+    const auto disk = util::FileSystem::PathFromUtf8(path);
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(disk, error) || error) return {};
+    const auto assetsRoot = asset::AssetDatabase::AssetsRoot();
+    if (!assetsRoot.empty()) {
+        const auto relative = std::filesystem::relative(disk, util::FileSystem::PathFromUtf8(assetsRoot), error);
+        if (error || relative.empty() || *relative.begin() == "..") return {};
+    }
+    return path;
 }
 
 } /// @note namespace
@@ -2196,6 +2222,11 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
                 chainTbl.insert("footNormalAxis",      Vec3ToArr(chain.footNormalAxis));
                 chainTbl.insert("adjustHip",           chain.adjustHip);
                 chainTbl.insert("hipBoneName",         chain.hipBoneName);
+                chainTbl.insert("hipWeight",           (double)chain.hipWeight);
+                chainTbl.insert("maxHipLowering",      (double)chain.maxHipLowering);
+                chainTbl.insert("maxHipRaising",       (double)chain.maxHipRaising);
+                chainTbl.insert("hipBendReserve",      (double)chain.hipBendReserve);
+                chainTbl.insert("useRagdollFootShape", chain.useRagdollFootShape);
                 chainTbl.insert("spineAutoWeight",      chain.spineAutoWeight);
                 chainTbl.insert("spineFlatWeight",     (double)chain.spineFlatWeight);
                 chainTbl.insert("spineSlopeRampMeters",(double)chain.spineSlopeRampMeters);
@@ -2304,10 +2335,10 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
                 /// @note 保存先が決まっているときだけ、レイヤーマテリアルを実ファイルへ書く。
                 /// @note scenePath が空 = «テキストだけ欲しい» 呼び出しなので、副作用は起こさない。
                 if (!path.empty() && !layerMaterial.empty()) {
+                    const auto matDiskPath = ResolveTerrainLayerWritePath(path, layerMaterial);
+                    if (matDiskPath.empty()) continue;
                     auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(layerMaterial);
                     if (const auto snapshot = asset::ReadMaterialAuthoring(matHandle)) {
-                        const std::string matDiskPath =
-                            ResolveAssetDiskPathForScene(path, layerMaterial);
                         (void)asset::SaveMaterialAssetToFile(matDiskPath, snapshot->Data());
                     }
                 }
@@ -2516,6 +2547,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     TransformSceneAssetRefs(doc, asset::DecodeGuidRefs);
 
     auto scene = std::make_unique<Scene>();
+    scene->SetResourceManager(resources);
 
     /// @note 環境流。無ければ «半径なしの Uniform (+ Curl)» を環境風と読んでいた旧シーンなので、
     /// @note ReadFlowFieldComponent のあとで MigrateAmbientFlowFields が拾い上げる。

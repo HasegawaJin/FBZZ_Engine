@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/AI/BehaviorTreeRuntime.hpp>
 #include <Engine/AI/Blackboard.hpp>
 #include <Engine/Scene/Entity.hpp>
@@ -17,30 +18,30 @@ namespace fbzz::ai {
 
 /// @brief エージェント 1 体ぶんの実行状態。木そのものは共有なので、可変なのはここだけ。
 struct BTInstanceState {
-    std::vector<std::uint8_t> flags;    ///< ノードごとのビットフラグ (BTNodeFlag)
-    std::vector<std::uint16_t> cursor;  ///< Composite の現在の子スロット / Repeat の完了回数 / RandomSelector の選択結果
-    std::vector<float> timers;          ///< Wait の経過 / TimeLimit の経過。中断でクリアされる。
+    std::vector<std::uint8_t> flags;    ///< @note ノードごとのビットフラグ (BTNodeFlag)
+    std::vector<std::uint16_t> cursor;  ///< @note Composite の現在の子スロット / Repeat の完了回数 / RandomSelector の選択結果
+    std::vector<float> timers;          ///< @note Wait の経過 / TimeLimit の経過。中断でクリアされる。
     /// @note Cooldown の残り時間。中断でクリアしない。timers と分けるのは、中断で消すと「中断→即再突入」でクールダウンが無効化され連打できてしまうため。
     std::vector<float> cooldowns;
 
-    std::uint16_t runningLeaf = kInvalidNode;   ///< デバッグ用の代表 Running リーフ。Parallel の全実行状態は flags に保持する。
+    std::uint16_t runningLeaf = kInvalidNode;   ///< @note デバッグ用の代表 Running リーフ。Parallel の全実行状態は flags に保持する。
 
     /// @note RandomSelector 用の決定的 RNG 状態。インスタンスごとに持つのは、同じ木を使う敵が全員同じ選択をすると群れが機械的に見え、テストでは種を固定して再現する必要があるため。
     std::uint32_t rngState = 0x9E3779B9u;
 
-    void Resize(std::size_t nodeCount);
+    FBZZ_ENGINE_API void Resize(std::size_t nodeCount);
     /// @brief 全状態を初期化する (木の差し替え / Restart)。
     /// @pre 実行中の木は先に AbortBehaviorTree() で Action の後始末を通知する。
-    void Clear();
+    FBZZ_ENGINE_API void Clear();
     /// @brief [lo, hi) の範囲だけ初期化する。cooldowns は触らない。
-    void ClearRange(std::uint16_t lo, std::uint16_t hi);
+    FBZZ_ENGINE_API void ClearRange(std::uint16_t lo, std::uint16_t hi);
 };
 
 namespace BTNodeFlag {
-inline constexpr std::uint8_t Running     = 1 << 0;  ///< 前回 Running を返した
-inline constexpr std::uint8_t Done        = 1 << 1;  ///< Parallel の子: 完了済み
-inline constexpr std::uint8_t DoneSuccess = 1 << 2;  ///< Parallel の子: 完了結果が Success
-inline constexpr std::uint8_t Entered     = 1 << 3;  ///< 一度でも実行に入った (Wait の初期化用)
+inline constexpr std::uint8_t Running     = 1 << 0;  ///< @note 前回 Running を返した
+inline constexpr std::uint8_t Done        = 1 << 1;  ///< @note Parallel の子: 完了済み
+inline constexpr std::uint8_t DoneSuccess = 1 << 2;  ///< @note Parallel の子: 完了結果が Success
+inline constexpr std::uint8_t Entered     = 1 << 3;  ///< @note 一度でも実行に入った (Wait の初期化用)
 } /// @note namespace BTNodeFlag
 
 class IBTActionHandler;
@@ -95,7 +96,7 @@ public:
 };
 
 /// @brief 木を 1 tick 進める。
-BTStatus TickBehaviorTree(const BehaviorTreeRuntime& tree,
+FBZZ_ENGINE_API BTStatus TickBehaviorTree(const BehaviorTreeRuntime& tree,
                           BTInstanceState& state,
                           Blackboard& blackboard,
                           BTTickContext& ctx);
@@ -103,12 +104,12 @@ BTStatus TickBehaviorTree(const BehaviorTreeRuntime& tree,
 /// @brief 全ての Running Action に一度ずつ中断を通知し、実行状態を初期化する。
 /// @note cooldowns と RNG は保持する。Restart はこの後で state.Clear() を呼ぶ。
 /// @pre 木の差し替え時は旧 tree と旧 state が生存している間に呼ぶ。
-void AbortBehaviorTree(const BehaviorTreeRuntime& tree,
+FBZZ_ENGINE_API void AbortBehaviorTree(const BehaviorTreeRuntime& tree,
                        BTInstanceState& state,
                        BTTickContext& ctx);
 
 /// @brief 副作用なしで条件ノードを評価する (observerAborts のチェックとテスト用)。
-[[nodiscard]] bool EvaluateBTCondition(const BehaviorTreeRuntime& tree,
+[[nodiscard]] FBZZ_ENGINE_API bool EvaluateBTCondition(const BehaviorTreeRuntime& tree,
                                        std::uint16_t node,
                                        const Blackboard& blackboard,
                                        const BTTickContext& ctx);

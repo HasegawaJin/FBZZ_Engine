@@ -2,7 +2,15 @@
 /// @brief   Physics 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/JointComponent.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/VolumeComponent.hpp>
 #include "InspectorPhysics.hpp"
+#include <Editor/Op/EditorOperator.hpp>
+#include <Engine/Core/Logger.hpp>
 #include <algorithm>
 
 namespace fbzz::editor {
@@ -117,22 +125,20 @@ void DrawCylinderCollider(scene::CylinderColliderComponent& col, scene::GameObje
     DrawAxialCollider(col, go, projectRoot);
 }
 
-void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
+void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, EditorContext& ctx)
 {
-    DrawColliderCommon(col, go, projectRoot);
-    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", projectRoot);
+    DrawColliderCommon(col, go, ctx.projectRoot);
+    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", ctx.projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
-    if (ImGui::Button("Rebuild From Renderer")) {
-        col.collider.reset();
-        auto mesh = SourceMeshFromGameObject(go, col.meshPath, col.meshIndex);
-        BuildMeshCollider(col, mesh);
-    }
+    const auto rebuild = [&](const char* source) {
+        OpArgs args; args.Set("node", go.instanceId); args.Set("component", std::string("MeshCollider")); args.Set("source", std::string(source));
+        const auto result = InvokeOperator(ctx, "component.collider.rebuild", args);
+        if (!result.ok) FBZZ_LOG_WARN("Collider rebuild failed: %s", result.message.c_str());
+    };
+    if (ImGui::Button("Rebuild From Renderer")) rebuild("renderer");
     ImGui::SameLine();
-    if (ImGui::Button("Rebuild From FBX")) {
-        col.collider.reset();
-        BuildMeshCollider(col, MeshFromModelPath(col.meshPath, col.meshIndex));
-    }
+    if (ImGui::Button("Rebuild From FBX")) rebuild("model");
     if (!col.collider)
         ImGui::TextDisabled("No mesh data. Drop FBX or rebuild from renderer.");
     SyncColliderPreview(go, col);
@@ -146,22 +152,20 @@ void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject
     SyncColliderPreview(go, col);
 }
 
-void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
+void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go, EditorContext& ctx)
 {
-    DrawColliderCommon(col, go, projectRoot);
-    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", projectRoot);
+    DrawColliderCommon(col, go, ctx.projectRoot);
+    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", ctx.projectRoot);
     ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
     ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
-    if (ImGui::Button("Rebuild From Renderer")) {
-        col.collider.reset();
-        auto mesh = SourceMeshFromGameObject(go, col.meshPath, col.meshIndex);
-        BuildConvexHullCollider(col, mesh);
-    }
+    const auto rebuild = [&](const char* source) {
+        OpArgs args; args.Set("node", go.instanceId); args.Set("component", std::string("ConvexHullCollider")); args.Set("source", std::string(source));
+        const auto result = InvokeOperator(ctx, "component.collider.rebuild", args);
+        if (!result.ok) FBZZ_LOG_WARN("Collider rebuild failed: %s", result.message.c_str());
+    };
+    if (ImGui::Button("Rebuild From Renderer")) rebuild("renderer");
     ImGui::SameLine();
-    if (ImGui::Button("Rebuild From FBX")) {
-        col.collider.reset();
-        BuildConvexHullCollider(col, MeshFromModelPath(col.meshPath, col.meshIndex));
-    }
+    if (ImGui::Button("Rebuild From FBX")) rebuild("model");
     if (!col.collider)
         ImGui::TextDisabled("No hull data. Drop FBX or rebuild from renderer.");
     SyncColliderPreview(go, col);
@@ -363,7 +367,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
     DrawComponentSectionCustom<scene::MeshColliderComponent, MeshColliderValue>(
         go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Collider",
         [go](scene::MeshColliderComponent& col, EditorContext& ctx2) {
-            DrawMeshCollider(col, *go, ctx2.projectRoot);
+            DrawMeshCollider(col, *go, ctx2);
         },
         [](const scene::MeshColliderComponent& c) { return CaptureMeshColliderValue(c); },
         [](scene::MeshColliderComponent& c, const MeshColliderValue& v) { ApplyMeshColliderValue(c, v); });
@@ -371,7 +375,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
     DrawComponentSectionCustom<scene::ConvexHullColliderComponent, MeshColliderValue>(
         go, ctx, m_componentClipboard, m_componentClipboardType, "Convex Hull Collider",
         [go](scene::ConvexHullColliderComponent& col, EditorContext& ctx2) {
-            DrawConvexHullCollider(col, *go, ctx2.projectRoot);
+            DrawConvexHullCollider(col, *go, ctx2);
         },
         [](const scene::ConvexHullColliderComponent& c) { return CaptureConvexHullValue(c); },
         [](scene::ConvexHullColliderComponent& c, const MeshColliderValue& v) { ApplyConvexHullValue(c, v); });

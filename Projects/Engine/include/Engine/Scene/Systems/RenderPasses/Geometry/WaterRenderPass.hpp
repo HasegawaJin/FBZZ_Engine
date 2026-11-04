@@ -3,6 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
+#include <Engine/Api.hpp>
+#include <Engine/Scene/WaterInteraction.hpp>
 #include <Graphics/Passes/Geometry/WaterRenderPass.hpp>
 
 #include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>
@@ -20,7 +22,7 @@ namespace fbzz::renderer { class ResourceManager; }
 namespace fbzz::scene {
 
 /// @note 波紋テクスチャの一辺 [texel]。水面 1 枚につき 1 枚だけ張る。
-inline constexpr uint32_t kWaterRippleTextureSize = 128;
+
 
 using renderer::WaterDetailNoise;
 using renderer::GetWaterDetailNoise;
@@ -32,7 +34,7 @@ using renderer::WaterRenderPass;
 class Scene;
 struct EntityID;
 /// @note Sceneと実効ownerの値だけを記録し、粒子生成はCleanupの構造変更境界へ委譲する。
-void QueueWaterSplash(Scene& scene, EntityID owner, const math::Vector3& worldPos, float intensity);
+
 
 /// @note WorldToWaterUV — ワールド座標を水面 UV [0,1] に変換する。
 inline math::Vector2 WorldToWaterUV(

@@ -2,6 +2,7 @@
 /// @brief   RegistryとReflect定義から標準コンポーネントInspectorを自動生成する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/ComponentRegistry.hpp>
 #include "InspectorUI.hpp"
 
 namespace fbzz::editor {
@@ -24,4 +25,4 @@ void DrawAutomaticInspectors(scene::ComponentCategory category,
     });
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

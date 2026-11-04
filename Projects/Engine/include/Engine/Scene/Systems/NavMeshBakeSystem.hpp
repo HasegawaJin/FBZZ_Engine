@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Core/Scheduler/ISystem.hpp>
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
@@ -35,7 +36,7 @@ struct NavMeshBakeOffMeshLinkInput {
 /// @param surfaceId Entity carrying the surface component.
 /// @return Nonzero signature, or zero if the surface or its GameObject is missing.
 /// @note Terrain height data is scanned; avoid calling this once per frame.
-[[nodiscard]] std::uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId);
+[[nodiscard]] FBZZ_ENGINE_API std::uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId);
 
 /// @brief Schedule, validate, and publish NavMesh bake jobs.
 class NavMeshBakeSystem final : public ISystem {
@@ -47,12 +48,12 @@ public:
     /// @brief Run in editor and simulation scenes.
     RunMode GetRunMode() const override { return RunMode::Always; }
     /// @brief Declare NavMesh, transform, marker, terrain, and modifier access.
-    ComponentAccess GetAccess() const override;
+    FBZZ_ENGINE_API ComponentAccess GetAccess() const override;
     /// @brief Complete ready jobs and submit requested bakes.
-    void Update(SystemContext& ctx) override;
+    FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 
     /// @brief Return current job progress for a surface entity index.
-    float BakeProgress(std::uint32_t surfaceId) const;
+    FBZZ_ENGINE_API float BakeProgress(std::uint32_t surfaceId) const;
 
 private:
     struct BakeJob {

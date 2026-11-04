@@ -39,7 +39,7 @@ constexpr const char* kKernelPaths[] = {
     "Assets/Shaders/Bake/Fluid/FluidSolid.cs.hlsl",
 };
 
-/// FluidGpuCommon.hlsli の FluidPassConstants と 1:1。
+/// @note FluidGpuCommon.hlsli の FluidPassConstants と 1:1。
 struct alignas(16) PassConstants {
     float advectSign;
     float pad[3];
@@ -54,8 +54,10 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
         outError = "3D で解けるのは気体 (kind = gas) のレシピだけです";
         return false;
     }
-    /// @note デバイスリセット後の古いハンドルは返せない (実体ごと消えている)。捨てて作り直す。
-    if (m_resetVersion != resources.GetResetVersion()) {
+    /// @note 作成元の変更では旧資源を返却し、Reset 済みの世代では実体へ触れず再構築する。
+    m_ready = false;
+    if (m_resourceOwner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()) {
+        m_ready = false;
         m_kernels = {};
         m_velocity = {};
         m_scalars = {};
@@ -71,6 +73,7 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
         m_outputConstants = {};
         m_resolution = 0;
         m_resetVersion = resources.GetResetVersion();
+        m_resourceOwner = resources.GetInstanceId();
     }
 
     static_assert(sizeof(kKernelPaths) / sizeof(kKernelPaths[0]) == KernelCount,
@@ -90,7 +93,7 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
     if (clampedResolution != m_resolution) {
         ReleaseTextures(resources);
         const auto n = static_cast<std::uint32_t>(clampedResolution);
-        const auto create = [&](TextureHandle& texture) {
+        const auto create = [&](auto& texture) {
             texture = resources.CreateComputeTexture3D(n, n, n);
             return texture.IsValid();
         };
@@ -113,8 +116,9 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
     BuildMaskAtlas(resources, recipe);
 
     const std::size_t constantCount = static_cast<std::size_t>(kMaxFramesPerTick) * kMaxSubsteps;
-    while (m_stepConstants.size() < constantCount)
-        m_stepConstants.push_back(resources.CreateConstantBuffer(sizeof(fluid::FluidGpuStepConstants)));
+    m_stepConstants.resize(constantCount);
+    for (auto& constants : m_stepConstants)
+        if (!constants.IsValid()) constants = resources.CreateConstantBuffer(sizeof(fluid::FluidGpuStepConstants));
     if (!m_forwardConstants.IsValid()) {
         m_forwardConstants = resources.CreateConstantBuffer(sizeof(PassConstants));
         const PassConstants forward{ 1.0f, { 0.0f, 0.0f, 0.0f } };
@@ -129,8 +133,8 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
         m_outputConstants = resources.CreateConstantBuffer(sizeof(fluid::FluidGpuStepConstants));
 
     /// @note 確保に失敗しても size() は増えるので、ここで確かめないと «半端に成功» のまま
-    ///       m_ready = true まで進む。無効な定数バッファは束縛が飛ばされ、直前のパスが b0 に残した
-    ///       別物の定数でシェーダーが走る (= 解像度すら別の値で読む)。落とすなら開く前に落とす。
+    /// @note m_ready = true まで進む。無効な定数バッファは束縛が飛ばされ、直前のパスが b0 に残した
+    /// @note 別物の定数でシェーダーが走る (= 解像度すら別の値で読む)。落とすなら開く前に落とす。
     const bool constantsReady =
         std::all_of(m_stepConstants.begin(), m_stepConstants.end(),
                     [](const ConstantHandle& handle) { return handle.IsValid(); })
@@ -155,11 +159,8 @@ bool FluidGpuSolver::Initialize(renderer::ResourceManager& resources, const flui
 
 void FluidGpuSolver::ReleaseTextures(renderer::ResourceManager& resources)
 {
-    const bool owned = m_resetVersion == resources.GetResetVersion();
-    const auto release = [&](TextureHandle& texture) {
-        if (owned && texture.IsValid()) resources.Release(texture);
-        texture = {};
-    };
+    (void)resources;
+    const auto release = [](auto& texture) { texture.Reset(); };
     for (auto& texture : m_velocity) release(texture);
     for (auto& texture : m_scalars) release(texture);
     for (auto& texture : m_pressure) release(texture);
@@ -173,8 +174,7 @@ void FluidGpuSolver::ReleaseTextures(renderer::ResourceManager& resources)
 
 void FluidGpuSolver::BuildMaskAtlas(renderer::ResourceManager& resources, const fluid::FluidRecipe& recipe)
 {
-    if (m_maskAtlas.IsValid() && m_resetVersion == resources.GetResetVersion()) resources.Release(m_maskAtlas);
-    m_maskAtlas = {};
+    m_maskAtlas.Reset();
     const std::vector<std::string> paths = fluid::FluidGpuMaskPaths(recipe);
     if (paths.empty()) return;
 
@@ -209,13 +209,6 @@ void FluidGpuSolver::BuildMaskAtlas(renderer::ResourceManager& resources, const 
 void FluidGpuSolver::Release(renderer::ResourceManager& resources)
 {
     ReleaseTextures(resources);
-    /// @note デバイスリセット後のハンドルは既に実体が無い。返しに行くと別のリソースを消しかねない。
-    if (m_resetVersion == resources.GetResetVersion()) {
-        for (const auto& constants : m_stepConstants)
-            if (constants.IsValid()) resources.Release(constants);
-        for (auto* constants : { &m_forwardConstants, &m_backwardConstants, &m_outputConstants })
-            if (constants->IsValid()) resources.Release(*constants);
-    }
     m_stepConstants.clear();
     m_forwardConstants = {};
     m_backwardConstants = {};
@@ -266,10 +259,11 @@ void FluidGpuSolver::Run(renderer::IRenderer& renderer, renderer::ResourceManage
 
 bool FluidGpuSolver::StepFrame(renderer::IRenderer& renderer, renderer::ResourceManager& resources)
 {
-    if (!m_ready || m_nextStepConstant + static_cast<std::size_t>(m_substeps) > m_stepConstants.size())
+    if (m_resourceOwner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()
+        || !m_ready || m_nextStepConstant + static_cast<std::size_t>(m_substeps) > m_stepConstants.size())
         return false;
     /// @note 1 コマ目は予算を超えても必ず通す (通さないと «永久に追いつかない» になる)。2 コマ目からは
-    ///       本数とコマ数の両方で止める。止めても呼び手は次の Tick で続きを解くので、絵が遅れるだけで済む。
+    /// @note 本数とコマ数の両方で止める。止めても呼び手は次の Tick で続きを解くので、絵が遅れるだけで済む。
     if (m_framesThisTick > 0) {
         if (m_framesThisTick >= kMaxFramesPerTick) return false;
         if (m_dispatchesThisTick + DispatchesPerFrame() > kDispatchBudgetPerTick) return false;
@@ -313,10 +307,10 @@ void FluidGpuSolver::Step(renderer::IRenderer& renderer, renderer::ResourceManag
     };
 
     /// @note 固体は刻みの頭に 1 回だけ作り、以降の段はすべて同じものを見る (段ごとに作ると動く障害物の位置が段でずれる)。
-    ///       障害物が無ければ全セル 0 になり、以降の段は障害物を足す前と同じ結果を出す。
+    /// @note 障害物が無ければ全セル 0 になり、以降の段は障害物を足す前と同じ結果を出す。
     Run(renderer, resources, m_kernels[Solid], constants, {}, { m_solid });
     /// @note Inject の t3 を空のまま Dispatch させない。白ならどのタイルを引いてもマスク 1 = 板の形。
-    const TextureHandle masks = m_maskAtlas.IsValid() ? m_maskAtlas : resources.GetWhiteTexture();
+    const TextureHandle masks = m_maskAtlas.IsValid() ? m_maskAtlas.Get() : resources.GetWhiteTexture();
 
     /// @note 注入 + 燃焼: 今の場 (scalars[0]) → 注入後 (scalars[1])。速度も発生源の流速へ寄せる。
     Run(renderer, resources, m_kernels[Inject], constants, { m_scalars[0], velocity, m_solid, masks, m_fuelColor[0] },
@@ -352,7 +346,7 @@ void FluidGpuSolver::Step(renderer::IRenderer& renderer, renderer::ResourceManag
         { m_scalars[0] });
 
     /// @note 燃料の色も燃料と同じ速度・同じ往復で運ぶ (Correct の z の規則がそのまま燃料の散逸規則になる)。
-    ///       作業場は scalars[2]/[3] を借用する。直前の Correct で用済みで、専用に 2 枚増やすと 192³ で 100 MB 余分に要る。
+    /// @note 作業場は scalars[2]/[3] を借用する。直前の Correct で用済みで、専用に 2 枚増やすと 192³ で 100 MB 余分に要る。
     Run(renderer, resources, m_kernels[AdvectScalar], constants, { m_fuelColor[1], velocity }, { m_scalars[2] },
         m_forwardConstants);
     if (packed.sharp != 0u)
@@ -372,7 +366,8 @@ void FluidGpuSolver::Step(renderer::IRenderer& renderer, renderer::ResourceManag
 void FluidGpuSolver::WriteVolumes(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
                                   TextureHandle medium, TextureHandle velocity)
 {
-    if (!m_ready || !medium.IsValid() || !velocity.IsValid()) return;
+    if (m_resourceOwner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()
+        || !m_ready || !medium.IsValid() || !velocity.IsValid()) return;
     const fluid::FluidGpuStepConstants packed =
         fluid::PackFluidGpuStep(m_recipe, m_resolution, m_time, 0.0f, m_densityScale, m_temperatureScale);
     resources.Update(m_outputConstants, &packed, sizeof(packed));

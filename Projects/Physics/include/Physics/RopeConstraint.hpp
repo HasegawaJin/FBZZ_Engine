@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-22
 #pragma once
+#include <Physics/Api.hpp>
 #include <Physics/Constraint.hpp>
 
 namespace fbzz::physics
@@ -11,11 +12,11 @@ namespace fbzz::physics
     class RopeConstraint : public Constraint
     {
     public:
-        RopeConstraint(RigidBody* bodyA, RigidBody* bodyB, float maxLength);
+        FBZZ_PHYSICS_API RopeConstraint(RigidBody* bodyA, RigidBody* bodyB, float maxLength);
 
-        void SolvePosition(float dt) override;
+        FBZZ_PHYSICS_API void SolvePosition(float dt) override;
         ConstraintType GetType() const override { return ConstraintType::ROPE; }
 
         float m_maxLength = 1.0f;
     };
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

@@ -7,7 +7,9 @@
 namespace fbzz::physics
 {
     Constraint::Constraint(RigidBody* bodyA, RigidBody* bodyB)
-        : m_bodyA(bodyA), m_bodyB(bodyB)
+        : m_bodyALifetime(bodyA ? bodyA->m_registrationLifetime.Observe() : std::weak_ptr<const void>{})
+        , m_bodyBLifetime(bodyB ? bodyB->m_registrationLifetime.Observe() : std::weak_ptr<const void>{})
+        , m_bodyA(bodyA), m_bodyB(bodyB)
     {
     }
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

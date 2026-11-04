@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #include <Engine/Scene/Systems/GameplayComponentSystems.hpp>
+#include "RuntimeMeshUpload.hpp"
 #include <Engine/Asset/StreamedTextureResolver.hpp>
 #include <Engine/Core/Memory/MakeUnique.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
@@ -737,48 +738,6 @@ void PresentationSystem::Update(SystemContext& ctx)
     /// @note 作り直しに戻る条件と、なぜ 1 枚では駄目かは DoubleBufferedMesh のヘッダーを参照。
     /// @note 容量は 2 の冪で確保する。線の頂点数は毎フレーム増減するため、ぴったり確保すると
     /// @note 1 頂点増えただけで作り直しに逆戻りする。
-    const auto uploadMesh = [&](DoubleBufferedMesh& target,
-                                std::vector<renderer::Vertex> vertices,
-                                std::vector<uint32_t> indices) {
-        target.current ^= 1u;
-        std::unique_ptr<renderer::Mesh>& slot = target.slots[target.current];
-        if (!slot) slot = core::MakeUnique<renderer::Mesh>();
-        if (!slot) return;
-        renderer::Mesh& mesh = *slot;
-
-        mesh.cpuVertices = std::move(vertices);
-        mesh.cpuIndices  = std::move(indices);
-        mesh.vertexCount = static_cast<uint32_t>(mesh.cpuVertices.size());
-        mesh.indexCount  = static_cast<uint32_t>(mesh.cpuIndices.size());
-        mesh.ComputeBounds();
-
-        const auto capacityFor = [](uint32_t needed) {
-            uint32_t capacity = 256;
-            while (capacity < needed) capacity *= 2;
-            return capacity;
-        };
-
-        if (!mesh.vertexBuffer.IsValid() || mesh.vertexCapacity < mesh.vertexCount) {
-            if (mesh.vertexBuffer.IsValid()) resources.Release(mesh.vertexBuffer);
-            mesh.vertexCapacity = capacityFor(mesh.vertexCount);
-            mesh.vertexBuffer   = resources.CreateVertexBuffer(
-                nullptr, static_cast<size_t>(mesh.vertexCapacity) * sizeof(renderer::Vertex),
-                sizeof(renderer::Vertex));
-        }
-        if (!mesh.indexBuffer.IsValid() || mesh.indexCapacity < mesh.indexCount) {
-            if (mesh.indexBuffer.IsValid()) resources.Release(mesh.indexBuffer);
-            mesh.indexCapacity = capacityFor(mesh.indexCount);
-            mesh.indexBuffer   = resources.CreateIndexBuffer(nullptr, mesh.indexCapacity);
-        }
-
-        if (mesh.vertexCount > 0)
-            resources.Update(mesh.vertexBuffer, mesh.cpuVertices.data(),
-                             static_cast<size_t>(mesh.vertexCount) * sizeof(renderer::Vertex));
-        if (mesh.indexCount > 0)
-            resources.Update(mesh.indexBuffer, mesh.cpuIndices.data(),
-                             static_cast<size_t>(mesh.indexCount) * sizeof(uint32_t));
-
-    };
     const auto applyMaterial = [](GameObject& go, const std::string& path,
                                    const math::Vector4& color, const std::string& texture,
                                    int64_t sortValue, bool receiveLighting) {
@@ -801,6 +760,7 @@ void PresentationSystem::Update(SystemContext& ctx)
         auto* sprite = ctx.scene.GetComponent<SpriteRendererComponent>(id);
         if (!go || !sprite)
             continue;
+        (void)PrepareRuntimeMesh(ctx.scene, id, sprite->runtimeMesh, resources);
         asset::ResolvedSprite resolved;
         resolved.texturePath = sprite->spritePath;
         if (!sprite->spritePath.empty()) {
@@ -822,8 +782,9 @@ void PresentationSystem::Update(SystemContext& ctx)
         if (!sprite->runtimeMesh.HasMesh() || sprite->runtimeMesh.geometryInputs != sprite->runtimeMesh.candidateInputs) {
             std::vector<renderer::Vertex> vertices;
             std::vector<uint32_t> indices;
-            sprite->runtimeMesh.geometryValid = BuildSpriteGeometry(*sprite, resolved, vertices, indices);
-            uploadMesh(sprite->runtimeMesh, std::move(vertices), std::move(indices));
+            const bool valid = BuildSpriteGeometry(*sprite, resolved, vertices, indices);
+            if (!UploadRuntimeMesh(sprite->runtimeMesh, resources, vertices, indices)) continue;
+            sprite->runtimeMesh.geometryValid = valid;
             sprite->runtimeMesh.geometryInputs = sprite->runtimeMesh.candidateInputs;
         }
         auto* meshRenderer = go->GetComponent<MeshRenderer>();
@@ -839,6 +800,7 @@ void PresentationSystem::Update(SystemContext& ctx)
         auto* line = ctx.scene.GetComponent<LineRendererComponent>(id);
         if (!go || !line)
             continue;
+        (void)PrepareRuntimeMesh(ctx.scene, id, line->runtimeMesh, resources);
         const auto* cameraPosition = mainCamera ? &mainCamera->transform.worldPosition : nullptr;
         const ControlPointReadContext readContext = ctx.playing
             ? ControlPointReadContext::RUNTIME : ControlPointReadContext::AUTHORING;
@@ -853,8 +815,9 @@ void PresentationSystem::Update(SystemContext& ctx)
             if (!line->runtimeMesh.HasMesh() || line->runtimeMesh.geometryInputs != line->runtimeMesh.candidateInputs) {
                 std::vector<renderer::Vertex> vertices;
                 std::vector<uint32_t> indices;
-                line->runtimeMesh.geometryValid = BuildLineGeometry(geometry, go->transform, cameraPosition, vertices, indices);
-                uploadMesh(line->runtimeMesh, std::move(vertices), std::move(indices));
+                const bool valid = BuildLineGeometry(geometry, go->transform, cameraPosition, vertices, indices);
+                if (!UploadRuntimeMesh(line->runtimeMesh, resources, vertices, indices)) continue;
+                line->runtimeMesh.geometryValid = valid;
                 line->runtimeMesh.geometryInputs = line->runtimeMesh.candidateInputs;
             }
         }

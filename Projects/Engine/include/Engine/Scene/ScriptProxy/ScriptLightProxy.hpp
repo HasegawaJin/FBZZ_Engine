@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-01
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Math/Vector3.hpp>
 
@@ -16,27 +17,27 @@ enum class LightType { Directional, Point, Spot, Area, Sphere, Tube };
 struct ScriptLightProxy {
     Script* script = nullptr;
 
-    void SetColor(const math::Vector3& color) const;
-    void SetType(LightType type) const;
-    void SetIntensity(float intensity) const;
-    void SetRange(float range) const;
-    void SetInnerCone(float degrees) const;
-    void SetOuterCone(float degrees) const;
-    void SetEnabled(bool enabled) const;
+    FBZZ_ENGINE_API void SetColor(const math::Vector3& color) const;
+    FBZZ_ENGINE_API void SetType(LightType type) const;
+    FBZZ_ENGINE_API void SetIntensity(float intensity) const;
+    FBZZ_ENGINE_API void SetRange(float range) const;
+    FBZZ_ENGINE_API void SetInnerCone(float degrees) const;
+    FBZZ_ENGINE_API void SetOuterCone(float degrees) const;
+    FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
 
     /// @name 読み取り
-    /// オーサリング値を起点に増減させる演出 (点滅・フェード・被弾時のフラッシュ) は、
-    /// 元の値を Script 側に控えておかなくてもここから読める。LightComponent が
-    /// 無ければ既定値を返す。
-    ///@{
-    [[nodiscard]] math::Vector3 GetColor() const;
-    [[nodiscard]] LightType     GetType() const;
-    [[nodiscard]] float         GetIntensity() const;
-    [[nodiscard]] float         GetRange() const;
-    [[nodiscard]] float         GetInnerCone() const;
-    [[nodiscard]] float         GetOuterCone() const;
-    [[nodiscard]] bool          IsEnabled() const;
-    ///@}
+    /// @note オーサリング値を起点に増減させる演出 (点滅・フェード・被弾時のフラッシュ) は、
+    /// @note 元の値を Script 側に控えておかなくてもここから読める。LightComponent が
+    /// @note 無ければ既定値を返す。
+    /// @{
+    [[nodiscard]] FBZZ_ENGINE_API math::Vector3 GetColor() const;
+    [[nodiscard]] FBZZ_ENGINE_API LightType     GetType() const;
+    [[nodiscard]] FBZZ_ENGINE_API float         GetIntensity() const;
+    [[nodiscard]] FBZZ_ENGINE_API float         GetRange() const;
+    [[nodiscard]] FBZZ_ENGINE_API float         GetInnerCone() const;
+    [[nodiscard]] FBZZ_ENGINE_API float         GetOuterCone() const;
+    [[nodiscard]] FBZZ_ENGINE_API bool          IsEnabled() const;
+    /// @}
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

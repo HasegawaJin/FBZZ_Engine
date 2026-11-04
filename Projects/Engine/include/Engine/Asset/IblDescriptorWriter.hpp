@@ -3,9 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Engine/Api.hpp>
 #include <filesystem>
 #include <Graphics/Renderer/IIblBaker.hpp>
 namespace fbzz::asset {
 /// @return 書き込みに失敗した場合は false。
-bool WriteIblDescriptor(const std::filesystem::path& path, const renderer::IblBakeOutput& output);
+FBZZ_ENGINE_API bool WriteIblDescriptor(const std::filesystem::path& path, const renderer::IblBakeOutput& output);
 }

@@ -4,6 +4,7 @@
 /// @date    2026-06-01
 /// @note アロケータの実装詳細と独立して、サブシステム単位の使用傾向を確認できるようにする。
 #pragma once
+#include <Core/Api.hpp>
 
 #include "Core/Memory/Allocator.hpp"
 
@@ -20,28 +21,28 @@ public:
 
     MemoryTracker() = default;
 
-    void Reset();
-    void RecordAllocation(MemoryTag tag, std::size_t size);
-    void RecordFree(MemoryTag tag, std::size_t size);
-    [[nodiscard]] bool RecordAllocation(const AllocationInfo& info);
-    [[nodiscard]] bool RecordFree(void* ptr);
+    FBZZ_CORE_API void Reset();
+    FBZZ_CORE_API void RecordAllocation(MemoryTag tag, std::size_t size);
+    FBZZ_CORE_API void RecordFree(MemoryTag tag, std::size_t size);
+    [[nodiscard]] FBZZ_CORE_API bool RecordAllocation(const AllocationInfo& info);
+    [[nodiscard]] FBZZ_CORE_API bool RecordFree(void* ptr);
 
-    [[nodiscard]] MemoryStats GetStats(MemoryTag tag) const;
-    [[nodiscard]] MemoryStats GetTotalStats() const;
-    [[nodiscard]] const char* GetTagName(MemoryTag tag) const;
+    [[nodiscard]] FBZZ_CORE_API MemoryStats GetStats(MemoryTag tag) const;
+    [[nodiscard]] FBZZ_CORE_API MemoryStats GetTotalStats() const;
+    [[nodiscard]] FBZZ_CORE_API const char* GetTagName(MemoryTag tag) const;
     [[nodiscard]] std::size_t GetActiveAllocationCount() const { return m_activeAllocationCount; }
     [[nodiscard]] std::size_t GetDroppedAllocationCount() const { return m_droppedAllocationCount; }
     [[nodiscard]] std::size_t GetLeakCount() const { return m_activeAllocationCount; }
     [[nodiscard]] const AllocationInfo* GetActiveAllocations() const { return m_allocations; }
-    [[nodiscard]] const AllocationInfo* GetLeak(std::size_t leakIndex) const;
+    [[nodiscard]] FBZZ_CORE_API const AllocationInfo* GetLeak(std::size_t leakIndex) const;
     [[nodiscard]] std::size_t GetMaxTrackedAllocationCount() const { return MAX_TRACKED_ALLOCATIONS; }
 
 private:
     static constexpr std::size_t TAG_COUNT = static_cast<std::size_t>(MemoryTag::COUNT);
 
-    [[nodiscard]] std::size_t ToIndex(MemoryTag tag) const;
-    [[nodiscard]] AllocationInfo* FindAllocation(void* ptr);
-    [[nodiscard]] const AllocationInfo* FindAllocation(void* ptr) const;
+    [[nodiscard]] FBZZ_CORE_API std::size_t ToIndex(MemoryTag tag) const;
+    [[nodiscard]] FBZZ_CORE_API AllocationInfo* FindAllocation(void* ptr);
+    [[nodiscard]] FBZZ_CORE_API const AllocationInfo* FindAllocation(void* ptr) const;
 
     MemoryStats m_stats[TAG_COUNT] = {};
     AllocationInfo m_allocations[MAX_TRACKED_ALLOCATIONS] = {};

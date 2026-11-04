@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Math/Matrix4.hpp>
 #include <Math/Quaternion.hpp>
@@ -51,22 +52,22 @@ enum class ProjectionMode : uint8_t {
 
 class Camera {
 public:
-    math::Matrix4 GetViewMatrix()       const;
+    FBZZ_GRAPHICS_API math::Matrix4 GetViewMatrix()       const;
     /// @brief CPU 側で使う射影。深度は near → 0、far → 1 (視錐台・レイ・スクリーン座標変換の前提)。
-    math::Matrix4 GetProjectionMatrix() const;
-    math::Matrix4 GetViewProjection()   const;
+    FBZZ_GRAPHICS_API math::Matrix4 GetProjectionMatrix() const;
+    FBZZ_GRAPHICS_API math::Matrix4 GetViewProjection()   const;
     /// @brief GPU へ送る射影。カメラ視点の深度バッファは Reversed-Z なので near → 1、far → 0。
     /// @note xy と w は GetProjectionMatrix と同じ。深度バッファ (RenderTargetDesc::reversedZ) へ
     /// @note       描く・読むシェーダーに渡す行列はすべてこちらから作る。
     /// @see https://docs.unity3d.com/ScriptReference/GL.GetGPUProjectionMatrix.html (Unity, GL.GetGPUProjectionMatrix)
-    math::Matrix4 GetGpuProjectionMatrix() const;
-    math::Matrix4 GetGpuViewProjection()   const;
+    FBZZ_GRAPHICS_API math::Matrix4 GetGpuProjectionMatrix() const;
+    FBZZ_GRAPHICS_API math::Matrix4 GetGpuViewProjection()   const;
 
-    math::Vector3 GetForward() const;
-    math::Vector3 GetRight()   const;
-    math::Vector3 GetUp()      const;
+    FBZZ_GRAPHICS_API math::Vector3 GetForward() const;
+    FBZZ_GRAPHICS_API math::Vector3 GetRight()   const;
+    FBZZ_GRAPHICS_API math::Vector3 GetUp()      const;
 
-    void LookAt(const math::Vector3& target);
+    FBZZ_GRAPHICS_API void LookAt(const math::Vector3& target);
 
     math::Vector3    m_position = { 0.0f, 0.0f, -10.0f };
     math::Quaternion m_rotation;

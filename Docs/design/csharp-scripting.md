@@ -311,6 +311,10 @@ MoveTowardsWorld は現在、C# で距離を計算し、native の WorldPosition
 
 ## 通知と延期処理
 
+ScriptEventBus と汎用 EventBus は購読ごとに一つの callable を保持し、連続した通知・同期再入でも mutable な捕捉状態を同じ実体へ蓄積する。配信リストの取り置きで callable 本体をコピーしない。購読表と進行中の配信は callback の所有を共有し、購読追加による配列の再確保や解除・Clear の後も実行中の callback を生かす。既存の選択規則は維持し、ScriptEventBus は未配送の解除済み購読を飛ばし、汎用 EventBus は開始時の購読列へ現在の通知を最後まで配る。解除後の次回通知はどちらも配らない。
+
+ScriptEventBus と汎用 EventBus の購読 ID は Clear 後も再利用しない。ID 空間を使い切った登録は無効な ID を返し、古い解除要求を別の購読へ適用しない。ScriptEventBus の Clear は既存の個別解除と同様に旧購読を無効化し、物理的な破棄は最外の同期配送が終了した安全点へ遅延する。Clear 後の新規購読は進行中の配送へ混ぜず、次の Publish から受信する。配送先のチャンネルは開始時に確定し、呼出し側の文字列の変更を途中で読み直さない。DLL のアンロードは進行中の配送がすべて戻った後に行う。
+
 Godot の signal を参考に、Events.Subscribe<T> / Publish<T> を既存 ScriptEventBus の同期配送へ接続する。接続は所有 Script とコード世代を持つ。通常の C# event と所有者付きサービスは別であり、signal を結線する専用 Inspector UI は現在の公開機能に含めない。
 
 購読の宣言場所は引数なしの Connect() に集める。新規個体は既存 Start の成功後、有効な場合に一度呼ぶ。Play 差し替えでは復元・commit と AfterReload の後、開始済みで有効な個体へ呼ぶ。Connect は Events の所有者付き購読の登録と解除に限り、ワールド変更を許可しない。登録は呼び出し成功時に一括有効化し、途中の購読へ配信しない。無効化で仕事と購読を解除し、開始済み個体の再有効化では Connect を一度呼び直す。fault・requirementsBlocked の個体を自動再開せず、破棄・世代終了でも登録を解除する。

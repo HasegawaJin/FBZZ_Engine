@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-16
 #pragma once
+#include <Core/Api.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -32,22 +33,22 @@ struct Context {
 };
 
 /// @note Initialize outside the frame loop; an absent FBZZ_FRAME_TIMELINE_OUTPUT keeps clocks and allocations disabled.
-void InitializeFromEnvironment();
-[[nodiscard]] bool IsEnabled();
+FBZZ_CORE_API void InitializeFromEnvironment();
+[[nodiscard]] FBZZ_CORE_API bool IsEnabled();
 /// @note One opt-in capture per process; reserve storage before the next passive observer boundary.
 /// @note Capture includes the final warmup frame, sample frames and a closing next-Begin anchor without changing passive timing semantics.
-[[nodiscard]] bool ArmFromEnvironment(uint64_t observerSession, size_t warmupFrames, size_t sampleFrames);
-void CancelCapture(uint64_t observerSession);
+[[nodiscard]] FBZZ_CORE_API bool ArmFromEnvironment(uint64_t observerSession, size_t warmupFrames, size_t sampleFrames);
+FBZZ_CORE_API void CancelCapture(uint64_t observerSession);
 /// @note Resource and application serials are distinct domains; profileStartMs is the existing passive clock anchor.
-void BeginApplicationFrame(uint64_t applicationFrameSerial, uint64_t resourceFrameSerial, double profileStartMs);
-void EndApplicationFrame(double profileEndMs);
+FBZZ_CORE_API void BeginApplicationFrame(uint64_t applicationFrameSerial, uint64_t resourceFrameSerial, double profileStartMs);
+FBZZ_CORE_API void EndApplicationFrame(double profileEndMs);
 
-[[nodiscard]] Context CurrentContext();
+[[nodiscard]] FBZZ_CORE_API Context CurrentContext();
 
 class ContextScope final {
 public:
-    explicit ContextScope(Context context);
-    ~ContextScope();
+    FBZZ_CORE_API explicit ContextScope(Context context);
+    FBZZ_CORE_API ~ContextScope();
     ContextScope(const ContextScope&) = delete;
     ContextScope& operator=(const ContextScope&) = delete;
 private:
@@ -58,15 +59,15 @@ private:
 /// @return Zero when disabled, outside the selected window or capacity is exhausted.
 /// @note Empty context uses the current thread's copied context. Explicit contexts should start from CurrentContext().
 /// @note Read thread CPU counters only at coarse frame boundaries; raw cycles are never converted to elapsed time.
-[[nodiscard]] uint64_t Begin(Event event, Context context = {}, uint64_t value = 0, bool threadCpu = false);
+[[nodiscard]] FBZZ_CORE_API uint64_t Begin(Event event, Context context = {}, uint64_t value = 0, bool threadCpu = false);
 /// @pre A nonzero ticket is ended exactly once on the same OS thread that began it.
-void End(uint64_t ticket, uint64_t value = 0);
-void Mark(Event event, Context context = {}, uint64_t value = 0);
+FBZZ_CORE_API void End(uint64_t ticket, uint64_t value = 0);
+FBZZ_CORE_API void Mark(Event event, Context context = {}, uint64_t value = 0);
 
 class Scope final {
 public:
-    explicit Scope(Event event, Context context = {}, uint64_t value = 0, bool threadCpu = false);
-    ~Scope();
+    FBZZ_CORE_API explicit Scope(Event event, Context context = {}, uint64_t value = 0, bool threadCpu = false);
+    FBZZ_CORE_API ~Scope();
     Scope(const Scope&) = delete;
     Scope& operator=(const Scope&) = delete;
 private:
@@ -75,6 +76,6 @@ private:
 
 /// @pre All render workers and timeline scopes have stopped through their existing shutdown path.
 /// @note Performs no RHI wait or callbacks; CSV serialization and file writes occur only here.
-[[nodiscard]] bool WriteAfterStop();
+[[nodiscard]] FBZZ_CORE_API bool WriteAfterStop();
 
 } /// @note namespace fbzz::profiler::frame_timeline

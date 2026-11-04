@@ -3,6 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 
+#include <Engine/Scene/Components/MeshTrailComponent.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/TrailComponent.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include "InspectorEffects.hpp"
 
 #include <Editor/Util/ParticleEditWidgets.hpp>
@@ -17,11 +21,11 @@ namespace fbzz::editor {
 void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
     /// @note ParticleEmitter は Shuriken 式のモジュールスタックで描画する。約 80 項目を素直に並べると
-    ///       «どこを触ればよいか» が読めなくなるため。Undo は DrawComponentSection の ActiveID 追跡がそのまま効く。
+    /// @note «どこを触ればよいか» が読めなくなるため。Undo は DrawComponentSection の ActiveID 追跡がそのまま効く。
     DrawComponentSection<scene::ParticleEmitter>(go, ctx, m_componentClipboard, m_componentClipboardType, "Particle Emitter",
         [](scene::ParticleEmitter& pe, EditorContext& ctx) {
             /// @note 戻り値は「どれか 1 つでも変わった」。捨てるとモジュール側の編集が
-            ///       シーンの dirty マークへ伝わらず、保存し忘れて消える。
+            /// @note シーンの dirty マークへ伝わらず、保存し忘れて消える。
             if (DrawParticleEmitterModules(pe.settings, ctx, &pe) && ctx.markSceneDirty)
                 ctx.markSceneDirty();
         });
@@ -30,11 +34,12 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
     DrawComponentSection<scene::FlowField>(go, ctx, m_componentClipboard, m_componentClipboardType, "Flow Field",
         [](scene::FlowField& ff, EditorContext& ctx) {
             /// @note 流れのリストはエミッター内蔵の流れと同じ UI。座標系は GameObject の Transform が
-            ///       決めるので選択は出さない。
-            DrawFlowFieldList(ff.forces, ctx, /*showSpace=*/false);
+            /// @note 決めるので選択は出さない。
+            /// @note showSpace=
+            DrawFlowFieldList(ff.forces, ctx, false);
             /// @note channels はシーンに置いた場だけの概念 (内蔵の流れは相手が決まっている)。
-            ///       流れごとに持てるが、束ねて置く用途では全部同じにしたいことが多いので
-            ///       «先頭に合わせて全部へ» 配る。個別に分けたいなら GameObject を分ける。
+            /// @note 流れごとに持てるが、束ねて置く用途では全部同じにしたいことが多いので
+            /// @note «先頭に合わせて全部へ» 配る。個別に分けたいなら GameObject を分ける。
             if (!ff.forces.empty()) {
                 std::uint32_t mask = ff.forces.front().channels;
                 if (widgets::FlowFieldChannelMask("Channels", mask))
@@ -45,8 +50,8 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
         });
 
     /// @note 雷・ビーム。プリセットと «形が動くプレビュー» を上に置き、細かい値は Reflect の行で出す。
-    ///       40 近い値のうち «どれを触ると枝が増えるか» は数値の列からは読めず、触ったその場で形が
-    ///       変わるのを見せないと雷は作れないため専用にした。
+    /// @note 40 近い値のうち «どれを触ると枝が増えるか» は数値の列からは読めず、触ったその場で形が
+    /// @note 変わるのを見せないと雷は作れないため専用にした。
     DrawComponentSection<scene::VFXLineComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "VFX Line",
         [](scene::VFXLineComponent& line, EditorContext& ctx) {
             if (DrawVFXLinePresetBar(line) && ctx.markSceneDirty) ctx.markSceneDirty();
@@ -68,8 +73,8 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 ImGui::SetTooltip("Cut the trail when it jumps farther than this in one frame. 0 = never cut.");
 
             /// @note 幅は «2 点 + イージング» と «多キーカーブ» の二択で、有効な側だけを見せる。
-            ///       curveChanged を拾うのは、カーブ / グラデーションのキードラッグ編集は ImGui の
-            ///       ActiveID 追跡が拾えず、捨てると dirty マークが立たず保存し忘れで消えるため。
+            /// @note curveChanged を拾うのは、カーブ / グラデーションのキードラッグ編集は ImGui の
+            /// @note ActiveID 追跡が拾えず、捨てると dirty マークが立たず保存し忘れで消えるため。
             bool curveChanged = false;
             ImGui::Checkbox("Use Width Curve", &trail.widthCurveEnabled);
             if (trail.widthCurveEnabled) {
@@ -110,7 +115,7 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             widgets::DragVec3("Attach Offset", trail.attachOffset, 0.001f);
             ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
             /// @note .mat アセット参照。albedo テクスチャを .mat から解決する。
-            ///       変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+            /// @note 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
             if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
                 trail.loadedMaterialPath.clear();
                 trail.texture = {};
@@ -141,7 +146,7 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             ImGui::Checkbox("Double Sided", &trail.doubleSided);
             ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
             /// @note .mat アセット参照。albedo テクスチャと doubleSided を .mat から解決する。
-            ///       変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
+            /// @note 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
             if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
                 trail.loadedMaterialPath.clear();
                 trail.texture = {};
@@ -152,4 +157,4 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 }
 
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

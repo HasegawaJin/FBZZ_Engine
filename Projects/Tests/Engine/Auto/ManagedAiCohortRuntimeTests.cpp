@@ -2,6 +2,7 @@
 /// @brief   Real CoreCLR AI340 pose/crowd and Terrain190/194 directional-query contracts.
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Managed/ManagedScriptAdapter.hpp>

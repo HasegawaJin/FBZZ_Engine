@@ -10,9 +10,18 @@
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
+#include <Editor/Panels/BuildOutputPanel.hpp>
 #include <Editor/Panels/IPanel.hpp>
+#include <Editor/Panels/InspectorPanel.hpp>
+#include <Editor/Panels/PreviewPanel.hpp>
+#include <Editor/Util/AssetSearch.hpp>
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/SceneQueryIndex.hpp>
+#include <Editor/Util/Selection.hpp>
+#include <Editor/Util/SourceOpen.hpp>
+#include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/Scene.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
 #include <imgui.h>
@@ -32,7 +41,253 @@ namespace {
 constexpr float kUiScaleMin = 0.7f;
 constexpr float kUiScaleMax = 2.0f;
 
-} // namespace
+} /// @note namespace
+
+void PreviewPanel::OnRegisterOperators(OperatorRegistry& registry)
+{
+    m_materialPreview.RegisterOperators(registry, "material.preview");
+}
+
+void InspectorPanel::OnRegisterOperators(OperatorRegistry& registry)
+{
+    m_materialPreview.RegisterOperators(registry, "inspector.material.preview");
+}
+
+const BuildRecord* BuildOutputPanel::SelectedRecord(const BuildConsole& console) const
+{
+    const auto& history = console.History();
+    if (m_viewHistoryIndex >= 0 && m_viewHistoryIndex < static_cast<int>(history.size()))
+        return &history[static_cast<size_t>(m_viewHistoryIndex)];
+    return console.Latest();
+}
+
+void BuildOutputPanel::ClearHistory(BuildConsole& console)
+{
+    console.ClearHistory();
+    m_viewHistoryIndex = -1;
+}
+
+void BuildOutputPanel::OnRegisterOperators(OperatorRegistry& registry)
+{
+    EditorOperator inspect;
+    inspect.id = "build.output.inspect";
+    inspect.label = "Inspect Build Output";
+    inspect.category = "Build";
+    inspect.kind = OpKind::Query;
+    inspect.desc = "ビルド履歴と選択中の診断、最新ビルドの生ログを返す。";
+    inspect.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.buildConsole != nullptr; };
+    inspect.exec = [this](OpContext& context, const OpArgs&) {
+        const auto& console = *context.ctx.buildConsole;
+        const auto filters = [](const LogListView& view) {
+            auto data = OpData::MakeObject();
+            data.Set("search", std::string(view.FilterText()));
+            data.Set("showInfo", view.ShowsSeverity(LogListSeverity::Info));
+            data.Set("showWarnings", view.ShowsSeverity(LogListSeverity::Warning));
+            data.Set("showErrors", view.ShowsSeverity(LogListSeverity::Error));
+            data.Set("autoScroll", view.autoScroll);
+            return data;
+        };
+        auto history = OpData::MakeArray();
+        for (const auto& record : console.History()) {
+            auto row = OpData::MakeObject();
+            row.Set("startClock", record.startClock);
+            row.Set("durationSec", record.durationSec);
+            row.Set("exitCode", record.exitCode);
+            row.Set("errors", record.errorCount);
+            row.Set("warnings", record.warnCount);
+            constexpr const char* states[] = {"building", "success", "failed", "cancelled"};
+            row.Set("result", states[static_cast<int>(record.result)]);
+            history.Push(std::move(row));
+        }
+        auto diagnostics = OpData::MakeArray();
+        if (const auto* record = SelectedRecord(console)) {
+            for (const auto& entry : record->diagnostics) {
+                auto row = OpData::MakeObject();
+                row.Set("severity", entry.severity == BuildDiagnostic::Severity::Error ? "error" : "warning");
+                row.Set("file", entry.file);
+                row.Set("line", entry.line);
+                row.Set("column", entry.column);
+                row.Set("code", entry.code);
+                row.Set("message", entry.message);
+                diagnostics.Push(std::move(row));
+            }
+        }
+        auto result = OpData::MakeObject();
+        result.Set("history", std::move(history));
+        result.Set("diagnostics", std::move(diagnostics));
+        result.Set("index", m_viewHistoryIndex);
+        result.Set("splitRatio", m_splitRatio);
+        result.Set("currentFile", console.CurrentFile());
+        result.Set("building", console.IsBuilding());
+        result.Set("notificationVisible", console.HasActiveFailure());
+        result.Set("diagnosticFilters", filters(m_diagView));
+        result.Set("outputFilters", filters(m_rawView));
+        result.Set("liveLog", console.LiveLog());
+        return OpResult::Data(std::move(result));
+    };
+    registry.Register(std::move(inspect));
+
+    EditorOperator control;
+    control.id = "build.output.control";
+    control.label = "Control Build Output";
+    control.category = "Build";
+    control.kind = OpKind::Action;
+    control.desc = "履歴と表示を操作する。filterはlistと絞り込み、open_sourceは診断のindexを指定。";
+    OpParam action;
+    action.name = "action";
+    action.enumValues = {"select", "latest", "clear", "focus_first_error", "dismiss_notification", "resize", "filter", "open_source"};
+    control.params.push_back(std::move(action));
+    OpParam index;
+    index.name = "index";
+    index.type = OpParamType::Int;
+    index.required = false;
+    control.params.push_back(std::move(index));
+    OpParam ratio;
+    ratio.name = "splitRatio";
+    ratio.type = OpParamType::Float;
+    ratio.required = false;
+    ratio.hasRange = true;
+    ratio.minValue = 0.1f;
+    ratio.maxValue = 0.85f;
+    control.params.push_back(std::move(ratio));
+    control.params.push_back({"list", OpParamType::String, "Log list", false, {}});
+    control.params.back().enumValues = {"diagnostics", "output"};
+    control.params.push_back({"search", OpParamType::String, "Search text", false, {}});
+    for (const char* key : {"showInfo", "showWarnings", "showErrors", "autoScroll"})
+        control.params.push_back({key, OpParamType::Bool, "Log list display flag", false, {}});
+    control.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.buildConsole != nullptr; };
+    control.exec = [this](OpContext& context, const OpArgs& args) {
+        auto& console = *context.ctx.buildConsole;
+        const auto actionName = args.GetString("action");
+        if (actionName == "select") {
+            const auto selected = args.GetInt("index", -1);
+            if (selected < 0 || selected >= static_cast<int>(console.History().size()))
+                return OpResult::Err("BAD_ARG", "index");
+            m_viewHistoryIndex = selected;
+        } else if (actionName == "latest") {
+            m_viewHistoryIndex = -1;
+        } else if (actionName == "clear") {
+            ClearHistory(console);
+        } else if (actionName == "focus_first_error") {
+            RequestFocusFirstError();
+        } else if (actionName == "dismiss_notification") {
+            console.DismissNotification();
+        } else if (actionName == "open_source") {
+            const auto* record = SelectedRecord(console);
+            const int index = args.GetInt("index", -1);
+            if (!record || index < 0 || static_cast<size_t>(index) >= record->diagnostics.size()
+                || record->diagnostics[static_cast<size_t>(index)].file.empty())
+                return OpResult::Err("NO_DIAGNOSTIC_SOURCE", "index");
+            const auto& diagnostic = record->diagnostics[static_cast<size_t>(index)];
+            OpenSourceInExternalEditor(diagnostic.file, diagnostic.line);
+        } else if (actionName == "filter") {
+            const auto list = args.GetString("list");
+            if (list != "diagnostics" && list != "output") return OpResult::Err("BAD_ARG", "list");
+            auto& view = list == "diagnostics" ? m_diagView : m_rawView;
+            if (args.Has("search") && !view.SetFilterText(args.GetString("search")))
+                return OpResult::Err("BAD_ARG", "search");
+            if (args.Has("showInfo")) view.SetShowSeverity(LogListSeverity::Info, args.GetBool("showInfo"));
+            if (args.Has("showWarnings")) view.SetShowSeverity(LogListSeverity::Warning, args.GetBool("showWarnings"));
+            if (args.Has("showErrors")) view.SetShowSeverity(LogListSeverity::Error, args.GetBool("showErrors"));
+            if (args.Has("autoScroll")) view.autoScroll = args.GetBool("autoScroll");
+        } else if (actionName == "resize") {
+            const auto splitRatio = args.GetFloat("splitRatio", 0.0f);
+            if (!(splitRatio >= 0.1f && splitRatio <= 0.85f))
+                return OpResult::Err("BAD_ARG", "splitRatio");
+            m_splitRatio = splitRatio;
+        } else {
+            return OpResult::Err("BAD_ARG", "action");
+        }
+        return OpResult::Ok();
+    };
+    registry.Register(std::move(control));
+}
+
+namespace {
+
+void RegisterSearchOperators(OperatorRegistry& registry)
+{
+    EditorOperator search;
+    search.id = "search.everything";
+    search.label = "Search Everything";
+    search.category = "Workspace";
+    search.kind = OpKind::Query;
+    search.desc = "Search Everything と同じ名前索引でシーンとアセットを検索する。";
+    OpParam query;
+    query.name = "query";
+    search.params.push_back(std::move(query));
+    search.poll = [](const OpContext& context, const OpArgs&) { return !context.ctx.projectRoot.empty(); };
+    search.exec = [](OpContext& context, const OpArgs& args) {
+        const auto queryText = args.GetString("query");
+        if (queryText.empty() || queryText.size() >= 256) return OpResult::Err("BAD_ARG", "query");
+        auto objects = OpData::MakeArray();
+        auto assets = OpData::MakeArray();
+        auto& ctx = context.ctx;
+        AssetSearch::SetProjectRoot(ctx.projectRoot);
+        if (ctx.activeScene) {
+            auto& world = *ctx.activeScene;
+            SceneQueryIndex index;
+            index.Refresh(world, 0);
+            for (const auto id : index.FindNames(queryText, 100)) {
+                const auto* object = world.GetGameObject(id);
+                if (!object) continue;
+                auto row = OpData::MakeObject();
+                row.Set("id", object->instanceId);
+                row.Set("name", object->name);
+                objects.Push(std::move(row));
+            }
+        }
+        for (const auto& hit : AssetSearch::Query(queryText)) {
+            auto row = OpData::MakeObject();
+            row.Set("path", hit.entry->relativePath);
+            row.Set("name", hit.entry->filename);
+            row.Set("score", hit.score);
+            assets.Push(std::move(row));
+        }
+        auto data = OpData::MakeObject();
+        data.Set("objects", std::move(objects));
+        data.Set("assets", std::move(assets));
+        return OpResult::Data(std::move(data));
+    };
+    registry.Register(std::move(search));
+
+    EditorOperator focus;
+    focus.id = "search.focus_object";
+    focus.label = "Focus Search Object";
+    focus.category = "Workspace";
+    focus.kind = OpKind::Action;
+    focus.desc = "検索結果のオブジェクトを選択し、Sceneカメラをそこへ移動する。";
+    OpParam node;
+    node.name = "node";
+    focus.params.push_back(std::move(node));
+    focus.exec = [](OpContext& context, const OpArgs& args) {
+        auto& ctx = context.ctx;
+        auto* object = ctx.activeScene ? ctx.activeScene->FindByGuid(args.GetString("node")) : nullptr;
+        if (!object) return OpResult::Err("NODE_NOT_FOUND", "node");
+        SelectEntity(ctx, object->GetID());
+        ctx.focusTargetPosition = object->transform.worldPosition;
+        ctx.focusTargetRadius = 0.0f;
+        ctx.requestFocusOnSelected = true;
+        return OpResult::Ok();
+    };
+    registry.Register(std::move(focus));
+
+    EditorOperator refresh;
+    refresh.id = "search.refresh";
+    refresh.label = "Refresh Search Index";
+    refresh.category = "Workspace";
+    refresh.kind = OpKind::Action;
+    refresh.desc = "Search Everything と共有するアセット索引を作り直す。";
+    refresh.poll = [](const OpContext& context, const OpArgs&) { return !context.ctx.projectRoot.empty(); };
+    refresh.exec = [](OpContext& context, const OpArgs&) {
+        if (AssetSearch::ProjectRoot() == context.ctx.projectRoot) AssetSearch::Rebuild();
+        else AssetSearch::SetProjectRoot(context.ctx.projectRoot);
+        return OpResult::Ok();
+    };
+    registry.Register(std::move(refresh));
+}
+
+} /// @note namespace
 
 /// @brief パネルを名前で引く。ウィンドウ名 → View メニュー名の順に、大小無視の完全一致。
 /// @note 部分一致にすると意図しないパネルに当たりうる。候補は panel.list で全部返すので曖昧一致は不要。
@@ -92,6 +347,7 @@ void EditorApp::InvokePanelFocus(IPanel* panel)
 
 void EditorApp::RegisterPanelOperators()
 {
+    RegisterSearchOperators(m_operators);
     /// @name パネルの目録 (Query)
     /// @note 名前を知らなければ panel.set_visible は呼べない。ウィンドウ名と表示ラベルは別物なので、AI が画面の文言から推測すると外す。
     {
@@ -274,4 +530,4 @@ void EditorApp::RegisterPanelOperators()
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

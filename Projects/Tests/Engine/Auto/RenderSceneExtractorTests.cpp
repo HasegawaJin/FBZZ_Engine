@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/OwnedResources.hpp>
 #include "../../../Engine/src/Scene/Managed/ManagedRenderComponentServices.hpp"
 #include "../../../Engine/src/Scene/Managed/ManagedServicesBridge.hpp"
 #include "../../../Engine/src/Scene/Systems/MaterialDemandTrace.hpp"
@@ -747,7 +748,7 @@ TEST_F(RenderSceneExtractorTest, LocalSlotsResolveReorderedSubmeshesAndMorphInpu
     auto& go = SkinnedObject();
     auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>();
     smr->morphVertexBuffers.resize(3);
-    smr->morphVertexBuffers[2] = { 90, 7 };
+    smr->morphVertexBuffers[2] = renderer::ResourceHandle<renderer::BufferTag>{ 90, 7 };
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10);
     ASSERT_EQ(snapshot.items.size(), 2u);
     EXPECT_EQ(snapshot.items[0].sourceSubmesh, 2u);
@@ -766,7 +767,7 @@ TEST_F(RenderSceneExtractorTest, DeformedOutputRequiresCurrentFrameAndMatchingMo
     smr->gpuSkinnedThisFrame = true;
     smr->gpuSkinningFrame = 10;
     smr->skinnedBufferModel = &m_model;
-    smr->skinnedVertexBuffers = { { 60, 1 }, { 61, 1 }, { 62, 1 } };
+    smr->skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({ { 60, 1 }, { 61, 1 }, { 62, 1 } });
     auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10);
     EXPECT_EQ(snapshot.items[0].deformedVertexBuffer.id, 62u);
     EXPECT_EQ(snapshot.items[1].deformedVertexBuffer.id, 60u);
@@ -775,7 +776,7 @@ TEST_F(RenderSceneExtractorTest, DeformedOutputRequiresCurrentFrameAndMatchingMo
     EXPECT_FALSE(scene::ExtractRenderSceneGeometry(m_scene, 10).items[0].deformedVertexBuffer.IsValid());
     smr->skinnedBufferModel = &m_model;
     smr->morphVertexBuffers.resize(3);
-    smr->morphVertexBuffers[2] = { 80, 1 };
+    smr->morphVertexBuffers[2] = renderer::ResourceHandle<renderer::BufferTag>{ 80, 1 };
     EXPECT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).items[0].deformedVertexBuffer.id, 62u);
 }
 
@@ -837,10 +838,10 @@ TEST_F(RenderSceneExtractorTest, ParentAnimatorWinsOverReferencePoseAndPreserves
     auto& parent = m_scene.CreateGameObject("AnimatorRoot");
     child.SetParent(parent);
     scene::AnimatorComponent animator;
-    animator.skinningBuffer = { 71, 1 };
-    animator.prevSkinningBuffer = { 72, 2 };
+    animator.skinningBuffer = renderer::ResourceHandle<renderer::ConstantBufferTag>{ 71, 1 };
+    animator.prevSkinningBuffer = renderer::ResourceHandle<renderer::ConstantBufferTag>{ 72, 2 };
     animator.prevBoneMatricesValid = true;
-    parent.AddComponent<scene::AnimatorComponent>(animator);
+    parent.AddComponent<scene::AnimatorComponent>(std::move(animator));
     m_model.referencePoseCB = { 81, 1 };
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, { 91, 1 });
     ASSERT_EQ(snapshot.objects.size(), 1u);
@@ -1361,7 +1362,7 @@ TEST_F(RenderSceneExtractorMaterialTest, MixedAndRayCachesKeepEagerSeedsAndCurre
     skinned.gpuSkinnedThisFrame = true;
     skinned.gpuSkinningFrame = Time::frameCount;
     skinned.skinnedBufferModel = &m_model;
-    skinned.skinnedVertexBuffers = {{71, 4}, {72, 4}, {73, 4}};
+    skinned.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{71, 4}, {72, 4}, {73, 4}});
     scene::RenderFrameGeometryCache mixedCache;
     auto mixed = ExtractView({}, mixedCache);
     ASSERT_EQ(mixed->items.size(), 3u);
@@ -1369,7 +1370,7 @@ TEST_F(RenderSceneExtractorMaterialTest, MixedAndRayCachesKeepEagerSeedsAndCurre
     std::weak_ptr<const renderer::RenderScene> retiredMixed = mixed;
     mixed.reset();
     EXPECT_TRUE(retiredMixed.expired());
-    skinned.skinnedVertexBuffers[2] = {91, 6};
+    skinned.skinnedVertexBuffers[2] = renderer::ResourceHandle<renderer::BufferTag>{91, 6};
     const auto current = ExtractView({}, mixedCache);
     ASSERT_EQ(current->items.size(), 3u);
     EXPECT_EQ(current->items[1].deformedVertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{91, 6}));
@@ -1390,7 +1391,7 @@ TEST_F(RenderSceneExtractorMaterialTest, CompactFrameGeometryPreservesStaticAndS
     auto& skinned = *skinnedOwner.GetComponent<scene::SkinnedMeshRenderer>();
     skinned.gpuSkinningFrame = Time::frameCount;
     skinned.skinnedBufferModel = &m_model;
-    skinned.skinnedVertexBuffers = {{71, 4}, {72, 4}, {73, 4}};
+    skinned.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{71, 4}, {72, 4}, {73, 4}});
     scene::RenderFrameGeometryCache cache;
     const auto first = ExtractView({}, cache);
     const auto second = ExtractView({}, cache);
@@ -1438,7 +1439,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedScansKeepInterleavedSkinnedInputsF
     mixed.gpuSkinnedThisFrame = true;
     mixed.gpuSkinningFrame = Time::frameCount;
     mixed.skinnedBufferModel = &m_model;
-    mixed.skinnedVertexBuffers = {{71, 4}, {72, 4}, {73, 4}};
+    mixed.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{71, 4}, {72, 4}, {73, 4}});
     ASSERT_EQ(mixed.ResolveSlotSkinnedVertexBuffer(0), (renderer::ResourceHandle<renderer::BufferTag>{73, 4}));
     (void)StaticObject();
     auto& secondOwner = m_scene.CreateGameObject("SecondSkinned");
@@ -1449,7 +1450,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedScansKeepInterleavedSkinnedInputsF
     second.gpuSkinnedThisFrame = true;
     second.gpuSkinningFrame = Time::frameCount;
     second.skinnedBufferModel = &m_model;
-    second.skinnedVertexBuffers = {{81, 5}, {82, 5}, {83, 5}};
+    second.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{81, 5}, {82, 5}, {83, 5}});
     ASSERT_EQ(second.ResolveSlotSkinnedVertexBuffer(0), (renderer::ResourceHandle<renderer::BufferTag>{82, 5}));
     (void)StaticObject();
 
@@ -1462,8 +1463,8 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedScansKeepInterleavedSkinnedInputsF
     EXPECT_FALSE(first->Objects()[3].skinned);
     EXPECT_TRUE(first->Objects()[4].skinned);
     EXPECT_FALSE(first->Objects()[5].skinned);
-    mixed.skinnedVertexBuffers = {{91, 6}, {92, 6}, {93, 6}};
-    second.skinnedVertexBuffers = {{101, 7}, {102, 7}, {103, 7}};
+    mixed.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{91, 6}, {92, 6}, {93, 6}});
+    second.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{101, 7}, {102, 7}, {103, 7}});
     const auto current = ExtractView({}, cache);
     EXPECT_EQ(current->Objects().data(), first->Objects().data());
     EXPECT_EQ(current->items[2].deformedVertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{93, 6}));
@@ -1483,12 +1484,12 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedScansFallBackForLegacyReplacedAndI
     skinned.gpuSkinnedThisFrame = true;
     skinned.gpuSkinningFrame = Time::frameCount;
     skinned.skinnedBufferModel = &m_model;
-    skinned.skinnedVertexBuffers = {{71, 4}, {72, 4}, {73, 4}};
+    skinned.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{71, 4}, {72, 4}, {73, 4}});
     ASSERT_EQ(skinned.ResolveSlotSkinnedVertexBuffer(0), (renderer::ResourceHandle<renderer::BufferTag>{73, 4}));
     scene::RenderFrameGeometryCache cache;
     const auto legacy = ExtractView({}, cache);
     _putenv_s("FBZZ_RENDER_EXTRACTION_SCAN_MODE", "fused");
-    skinned.skinnedVertexBuffers[2] = {91, 6};
+    skinned.skinnedVertexBuffers[2] = renderer::ResourceHandle<renderer::BufferTag>{91, 6};
     const auto fromLegacyCache = ExtractView({}, cache);
     EXPECT_EQ(fromLegacyCache->Objects().data(), legacy->Objects().data());
     EXPECT_EQ(fromLegacyCache->items[1].deformedVertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{91, 6}));
@@ -1498,7 +1499,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedScansFallBackForLegacyReplacedAndI
     (void)ExtractView({}, cache);
     /// @note A caller-replaced immutable geometry owner does not inherit the original producer's range certificate.
     cache.geometry = std::make_shared<renderer::RenderScene>(*cache.geometry);
-    skinned.skinnedVertexBuffers[2] = {101, 7};
+    skinned.skinnedVertexBuffers[2] = renderer::ResourceHandle<renderer::BufferTag>{101, 7};
     const auto replaced = ExtractView({}, cache);
     EXPECT_EQ(replaced->items[1].deformedVertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{101, 7}));
 
@@ -1507,7 +1508,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedScansFallBackForLegacyReplacedAndI
     (void)ExtractView({}, cache);
     cache.skinnedObjectBegin = cache.geometry->Objects().size();
     cache.skinnedObjectEnd = cache.skinnedObjectBegin + 1;
-    skinned.skinnedVertexBuffers[2] = {111, 8};
+    skinned.skinnedVertexBuffers[2] = renderer::ResourceHandle<renderer::BufferTag>{111, 8};
     const auto invalid = ExtractView({}, cache);
     EXPECT_EQ(invalid->items[1].deformedVertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{111, 8}));
     EXPECT_EQ(legacy->items[1].deformedVertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{73, 4}));
@@ -1569,7 +1570,7 @@ TEST_F(RenderSceneExtractorMaterialTest, ScanModesKeepGeometryAndSkinnedInputsIn
         skinned.gpuSkinnedThisFrame = true;
         skinned.gpuSkinningFrame = Time::frameCount;
         skinned.skinnedBufferModel = &m_model;
-        skinned.skinnedVertexBuffers = {{71, 4}, {72, 4}, {73, 4}};
+        skinned.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{71, 4}, {72, 4}, {73, 4}});
         ASSERT_EQ(skinned.ResolveSlotSkinnedVertexBuffer(0), (renderer::ResourceHandle<renderer::BufferTag>{73, 4}));
         auto importer = std::make_unique<ExtractionCallbackMaterialImporter>();
         auto* callback = importer.get();
@@ -1578,7 +1579,7 @@ TEST_F(RenderSceneExtractorMaterialTest, ScanModesKeepGeometryAndSkinnedInputsIn
         std::shared_ptr<const renderer::RenderScene> nested;
         callback->beforeImport = [&] {
             material.enabled = false;
-            skinned.skinnedVertexBuffers[2] = {91, 6};
+            skinned.skinnedVertexBuffers[2] = renderer::ResourceHandle<renderer::BufferTag>{91, 6};
             nested = ExtractView({}, cache);
         };
         const auto outer = ExtractView({}, cache);

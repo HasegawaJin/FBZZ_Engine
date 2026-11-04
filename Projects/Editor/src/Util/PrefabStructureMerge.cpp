@@ -2,6 +2,9 @@
 /// @brief   Three-way Prefab topology merge, conflict review and recoverable editor command.
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
+#include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Editor/Util/PrefabStructureMerge.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -298,7 +301,7 @@ bool RestoreSnapshot(EditorContext& context, const std::string& expected,
         reason = "Scene changed since this Prefab command; history was retained"; return false;
     }
     auto prepared = scene::SceneSerializer::LoadFromText(replacement,
-        renderer::ResourceManager::Active(), context.currentScenePath);
+        context.resources, context.currentScenePath);
     if (!prepared || prepared->GameObjectCount() != ObjectCount(replacement)) {
         reason = "Could not prepare the complete Prefab history snapshot; Scene unchanged"; return false;
     }
@@ -552,7 +555,7 @@ std::unique_ptr<ICommand> MakePrefabStructureMergeCommand(EditorContext& context
             reason = "Scene has objects outside the recovery snapshot; Scene unchanged"; return false;
         }
         auto recovery = scene::SceneSerializer::LoadFromText(state->before,
-            renderer::ResourceManager::Active(), context.currentScenePath);
+            context.resources, context.currentScenePath);
         if (!recovery || recovery->GameObjectCount() != ObjectCount(state->before)) {
             reason = "Could not prepare the recovery snapshot; Scene unchanged"; return false;
         }

@@ -138,7 +138,7 @@ TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPa
     const std::vector<std::string> deferred{
         "DeferredGBuffer", "TerrainGBuffer", "DeferredDepthCopy", "GTAO", "ContactShadows",
         "SSAO", "DeferredLighting", "Sky", "SunMoon", "VolumetricCloud",
-        "DeferredSkinnedForward", "FiberForward", "SSR", "SSRResolve", "DeferredForwardTransparent",
+        "DeferredSkinnedForward", "FiberForward", "SSR", "SSRResolve",
     };
 
     for (const auto path : { OpaqueRenderPath::FORWARD, OpaqueRenderPath::FORWARD_DEPTH_NORMAL,
@@ -148,6 +148,8 @@ TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPa
             pipeline.BeginBuild();
             scene::BuildGeometryPreparation(pipeline, clustered);
             scene::BuildGeometryPipeline(pipeline, OpaqueRenderPlan{ path });
+            pipeline.AddRawPass("AfterOpaque", {}, {}, []() {});
+            scene::BuildGeometryTransparency(pipeline, OpaqueRenderPlan{ path });
             scene::BuildWaterComposition(pipeline);
 
             std::vector<std::string> expected{ "SkinningCompute" };
@@ -159,6 +161,8 @@ TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPa
             const auto& geometry = path == OpaqueRenderPath::DEFERRED ? deferred
                 : path == OpaqueRenderPath::FORWARD_DEPTH_NORMAL ? forwardPrepass : forward;
             expected.insert(expected.end(), geometry.begin(), geometry.end());
+            expected.emplace_back("AfterOpaque");
+            expected.emplace_back(path == OpaqueRenderPath::DEFERRED ? "DeferredForwardTransparent" : "ForwardTransparent");
             expected.insert(expected.end(), { "WaterInterface", "VolumetricLight", "WaterCaustics", "WaterForward" });
             EXPECT_EQ(pipeline.RegisteredPassNames(), expected);
         }
@@ -174,7 +178,7 @@ TEST_F(GeometryPipelineTest, HybridScreenFirstFreezesBaselineBeforeTracingAndRes
     const std::vector<std::string> expected{
         "DeferredGBuffer", "TerrainGBuffer", "DeferredDepthCopy", "GTAO", "ContactShadows", "SSAO",
         "ReflectionSourceLighting", "Sky", "SunMoon", "SSR", "RayReflection",
-        "DeferredLighting", "VolumetricCloud", "DeferredSkinnedForward", "FiberForward", "DeferredForwardTransparent",
+        "DeferredLighting", "VolumetricCloud", "DeferredSkinnedForward", "FiberForward",
     };
     EXPECT_EQ(pipeline.RegisteredPassNames(), expected);
     const auto names = pipeline.RegisteredPassNames();

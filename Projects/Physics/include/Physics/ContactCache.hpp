@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #pragma once
+#include <Physics/Api.hpp>
 #include <map>
 #include <utility>
 #include <vector>
@@ -12,7 +13,7 @@
 namespace fbzz::physics
 {
 
-    /// キー: コライダーポインタペアを a < b に正規化
+    /// @note キー: コライダーポインタペアを a < b に正規化
     struct ContactKey
     {
         const Collider* a;
@@ -27,26 +28,26 @@ namespace fbzz::physics
     class ContactCache
     {
     public:
-        /// 接触点が前フレームの同一ペアと近傍と見なす距離の閾値。
-        /// 位置が少し揺れても同じ接触として扱い、静止接触のジッターを抑える。
+        /// @note 接触点が前フレームの同一ペアと近傍と見なす距離の閾値。
+        /// @note 位置が少し揺れても同じ接触として扱い、静止接触のジッターを抑える。
         static constexpr float MATCH_RADIUS_SQ = 0.05f * 0.05f;
 
-        /// NarrowPhase 後に呼ぶ。前フレームの蓄積インパルスを cp に書き戻す
-        void WarmStart(std::vector<ContactPoint>& contacts);
+        /// @note NarrowPhase 後に呼ぶ。前フレームの蓄積インパルスを cp に書き戻す
+        FBZZ_PHYSICS_API void WarmStart(std::vector<ContactPoint>& contacts);
 
-        /// Resolve 後に呼ぶ。今フレームの蓄積インパルスをキャッシュに保存する
-        void UpdateCache(const std::vector<ContactPoint>& contacts);
+        /// @note Resolve 後に呼ぶ。今フレームの蓄積インパルスをキャッシュに保存する
+        FBZZ_PHYSICS_API void UpdateCache(const std::vector<ContactPoint>& contacts);
 
-        /// フレーム末尾で呼ぶ。一定フレーム以上接触がないエントリを削除する。
-        /// Collider のポインタをキーにするため、古いエントリを残し続けない。
-        void PurgeStale();
+        /// @note フレーム末尾で呼ぶ。一定フレーム以上接触がないエントリを削除する。
+        /// @note Collider のポインタをキーにするため、古いエントリを残し続けない。
+        FBZZ_PHYSICS_API void PurgeStale();
 
     private:
         struct CacheEntry
         {
             math::Vector3 point;
             /// @note 前フレームの接触基底。法線が変わったときに摩擦インパルスを
-            ///       現フレームの接線へ変換するために保持する。
+            /// @note 現フレームの接線へ変換するために保持する。
             math::Vector3 normal            = math::Vector3::ZERO;
             math::Vector3 tangent[2]        = {
                 math::Vector3::ZERO,
@@ -62,4 +63,4 @@ namespace fbzz::physics
         std::map<ContactKey, std::vector<CacheEntry>> m_cache;
     };
 
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

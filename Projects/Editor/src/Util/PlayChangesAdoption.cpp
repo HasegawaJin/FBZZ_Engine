@@ -2,6 +2,27 @@
 /// @brief   Whitelisted native values and generated forests cross Play boundaries without runtime resources.
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
+#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/CameraRigComponents.hpp>
+#include <Engine/Scene/Components/ClothComponent.hpp>
+#include <Engine/Scene/Components/ConstraintComponents.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/JointComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/SequencePlayerComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/SplineComponents.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
+#include <Engine/Scene/Components/UIControls.hpp>
+#include <Engine/Scene/Components/VFXBeamComponent.hpp>
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
+#include <Engine/Scene/Components/WaterExclusionComponent.hpp>
+#include <Engine/Scene/Components/WaterZoneComponent.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <Editor/Util/PlayChangesAdoption.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>

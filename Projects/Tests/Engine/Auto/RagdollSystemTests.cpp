@@ -2,9 +2,13 @@
 /// @brief   描画デバイスに依存せず起動待ち・時計・復帰・最終姿勢の境界を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-13
+#include <Engine/Scene/Components/RagdollComponent.hpp>
+#include <Engine/Scene/Ragdoll/RagdollControls.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -14,6 +18,7 @@
 #include <Engine/Scene/Ragdoll/RagdollPlayback.hpp>
 #include <Engine/Scene/SkinnedPoseBounds.hpp>
 #include <Engine/Scene/Systems/RagdollSystem.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include "../../../Engine/src/Scene/Managed/ManagedObjectControls.hpp"
 #include <Physics/OBBCollider.hpp>
 #include <Physics/World.hpp>
@@ -118,6 +123,56 @@ TEST_F(RagdollSystemTest, StartWaitsForAnimatorModelAndBoneEntities)
     EXPECT_TRUE(Ragdoll().IsStanding());
     EXPECT_TRUE(Ragdoll().startTriggered);
     EXPECT_FALSE(Ragdoll().beginRequested);
+}
+
+TEST_F(RagdollSystemTest, DisableInactiveHierarchyAndEndReleaseAllGrips)
+{
+    Actor().AddComponent<scene::AnimatorComponent>();PrepareModel();PrepareBones();
+    Ragdoll().activateOnStart=true;Ragdoll().blendOut=0;
+    for(int action=0;action<3;++action) {
+        Ragdoll().enabled=true;Actor().SetActive(true);
+        Ragdoll().beginRequested=true;Ragdoll().activeRequested=true;Tick();
+        ASSERT_NE(Ragdoll().runtime.rig,nullptr);
+        auto& controls=Ragdoll().runtime.rig->Controls();
+        const auto body=controls.BodyState("Body");ASSERT_TRUE(body.valid);
+        physics::XPBDGripSettings settings;settings.breakForce=0;
+        ASSERT_TRUE(controls.Grab("Body",nullptr,body.position,settings));
+        if(action==0)Ragdoll().enabled=false;
+        if(action==1)Actor().SetActive(false);
+        if(action==2)Ragdoll().endRequested=true;
+        Tick();
+        EXPECT_EQ(controls.GrabState("Body").status,physics::XPBDGripStatus::RELEASED);
+        EXPECT_FALSE(controls.HasGrabs());
+    }
+}
+
+TEST_F(RagdollSystemTest, PhysicsAssetReloadIsTransactionalAndSerializedReferenceSurvives)
+{
+    Actor().AddComponent<scene::AnimatorComponent>(); PrepareModel(); PrepareBones();
+    testkit::TempDir temp("ragdoll-system"); ASSERT_TRUE(temp.IsValid());
+    const auto path=temp.File("Actor.ragdoll").string();
+    scene::RagdollDefinition definition;
+    scene::RagdollBodyDefinition body; body.bone="Body"; body.shape=scene::RagdollBodyShape::SPHERE; body.mass=7;
+    definition.bodies.push_back(body);
+    ASSERT_TRUE(scene::SaveRagdollDefinition(path,definition));
+    Ragdoll().physicsAssetPath=path; Ragdoll().activateOnStart=true;
+    Tick();
+    ASSERT_EQ(Ragdoll().runtimeStatus,scene::RagdollStatus::Running);
+    EXPECT_NEAR(Ragdoll().runtime.rig->GetBody(0)->GetMass(),7,1.0e-6f);
+    auto* original=Ragdoll().runtime.rig.get();
+    ASSERT_TRUE(util::FileSystem::WriteTextAtomic(path,"[ragdoll]\nversion=99\n"));
+    asset::AssetManager::BumpAssetGeneration(); Tick();
+    EXPECT_EQ(Ragdoll().runtime.rig.get(),original);
+    EXPECT_NEAR(Ragdoll().runtime.rig->GetBody(0)->GetMass(),7,1.0e-6f);
+    definition.bodies[0].mass=11;
+    ASSERT_TRUE(scene::SaveRagdollDefinition(path,definition));
+    asset::AssetManager::BumpAssetGeneration(); Tick();
+    EXPECT_NEAR(Ragdoll().runtime.rig->GetBody(0)->GetMass(),11,1.0e-6f);
+    EXPECT_EQ(Ragdoll().runtimeStatus,scene::RagdollStatus::Running);
+    scene::RagdollComponent copied=Ragdoll();
+    EXPECT_EQ(copied.physicsAssetPath,path);
+    EXPECT_FALSE(copied.runtime.definitionValid);
+    EXPECT_EQ(copied.runtime.rig,nullptr);
 }
 
 TEST_F(RagdollSystemTest, FifteenFpsAdvancesAFullSecondOfGravityAndFinalBounds)
@@ -246,6 +301,55 @@ TEST_F(RagdollSystemTest, PauseDoesNotAdvancePhysicsOrPlayback)
     Tick(1.0f, false);
     EXPECT_VEC3_NEAR(Ragdoll().runtime.rig->BodyOfBone(0)->GetPosition(), before, 1.0e-6f);
     EXPECT_NEAR(Ragdoll().phaseTimer, phaseTimer, 1.0e-6f);
+}
+
+TEST_F(RagdollSystemTest, PausePreservesGuardPoseAndDefersPendingInputUntilResume)
+{
+    Actor().AddComponent<scene::AnimatorComponent>();
+    PrepareModel();
+    PrepareBones();
+    Ragdoll().gravity = 0.0f;
+    Ragdoll().standingGuard = true;
+    Ragdoll().beginRequested = true;
+    Ragdoll().activeRequested = true;
+    Tick();
+    ASSERT_NE(Ragdoll().runtime.rig, nullptr);
+    const auto* body = Ragdoll().runtime.rig->BodyOfBone(0);
+    ASSERT_NE(body, nullptr);
+    const auto position = body->GetPosition();
+    const auto rotation = body->GetRotation();
+    const auto velocity = body->GetVelocity();
+    const auto angularVelocity = body->GetAngularVelocity();
+    const auto phase = Ragdoll().phase;
+    const float phaseTimer = Ragdoll().phaseTimer;
+    Actor().transform.position = {3.0f, 0.0f, 0.0f};
+    Actor().transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, 0.4f);
+    scene::FlushWorldTransforms(m_scene);
+    scene::RagdollImpulse impulse;
+    impulse.velocity = {1.0f, 0.0f, 0.0f};
+    Ragdoll().pendingImpulses.push_back(impulse);
+    Ragdoll().endRequested = true;
+
+    Tick(0.5f, false);
+
+    EXPECT_VEC3_NEAR(body->GetPosition(), position, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(body->GetRotation() * math::Vector3::RIGHT,
+                     rotation * math::Vector3::RIGHT, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(body->GetRotation() * math::Vector3::UP,
+                     rotation * math::Vector3::UP, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(body->GetVelocity(), velocity, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(body->GetAngularVelocity(), angularVelocity, testkit::kTolerance);
+    EXPECT_EQ(Ragdoll().phase, phase);
+    EXPECT_NEAR(Ragdoll().phaseTimer, phaseTimer, testkit::kTolerance);
+    EXPECT_EQ(Ragdoll().pendingImpulses.size(), 1u);
+    EXPECT_TRUE(Ragdoll().endRequested);
+
+    Tick();
+
+    EXPECT_GT(body->GetPosition().x, 2.5f);
+    EXPECT_TRUE(Ragdoll().pendingImpulses.empty());
+    EXPECT_FALSE(Ragdoll().endRequested);
+    EXPECT_EQ(Ragdoll().phase, scene::RagdollPhase::BlendOut);
 }
 
 TEST_F(RagdollSystemTest, ManagedRemovalReleasesActiveContactSolverAndReaddGetsFreshRig)

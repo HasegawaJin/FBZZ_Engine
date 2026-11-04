@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Pipeline/ResolvedRenderPlan.hpp>
 #include <functional>
@@ -16,7 +17,7 @@ struct ViewPipelineOptions {
     std::vector<uint32_t> customPostProcessIndices;
 };
 /// @note 登録中だけ同期的に呼ぶ。ホストは Scene の参照を自身のパスに閉じ込める。
-/// @note パス順は従来の挿入点を維持する。段境界の変更は別途行う。
+/// @note AfterOpaque は不透明合成後・半透明と水の前、AfterTransparent は VFX の合成後。
 struct ViewPipelineExtensions {
     std::function<void()> begin;
     std::function<void()> setup;
@@ -30,7 +31,7 @@ struct ViewPipelineExtensions {
 /// @pre context とビューは登録されたパスの実行終了まで生存すること。
 /// @note options/extensions は保持しない。実行後は BeginBuild でホストのコールバックを破棄する。
     /// @note 無効な Plan は登録しない。Reference Path は Raster の照明・TAA を使用しない。
-void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& context,
+FBZZ_GRAPHICS_API void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& context,
     RenderViewResources& view, RenderSharedResources& shared,
     const ViewPipelineOptions& options, const ViewPipelineExtensions& extensions = {});
 }

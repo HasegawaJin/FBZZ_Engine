@@ -2,15 +2,14 @@
 /// @brief   Pub/Sub の型ごとの配信・解除・発行中の解除に対する安全性を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
-/// 購読者リストはプロセス全体で共有される静的な状態。解除漏れや配信中の破壊は
-/// «別のシーンの購読者がまだ生きていて、破棄済みオブジェクトを触る» という形で出る。
-/// 落ちる場所とバグの原因が離れるため、ここは自動テストでしか押さえられない。
+/// @note 大域の購読表に破棄済みシーンの参照を残さず、通知中の変更と旧トークンを隔離する。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
 #include <Engine/Util/EventBus.hpp>
+#include <Engine/Scene/ScriptEvent.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,9 +24,9 @@ struct StageCleared {
     std::string stage;
 };
 
-} // namespace
+} /// @note namespace
 
-/// EventBus は静的な購読者表を持つ。前後で必ず空にして、実行順に結果を依存させない。
+/// @note 静的な購読者表を前後で空にし、実行順に依存させない。
 class EventBusTest : public testkit::EngineFixture {
 protected:
     void SetUp() override
@@ -215,4 +214,177 @@ TEST_F(EventBusTest, ClearRemovesSubscribersOfEveryType)
     EXPECT_EQ(stages, 0);
 }
 
-} // namespace fbzz::tests
+TEST_F(EventBusTest, StaleSubscriberIdCannotCancelRegistrationAfterClear)
+{
+    const auto oldId = util::EventBus::Subscribe<DamageTaken>([](const DamageTaken&) {});
+    util::EventBus::Clear();
+    int calls = 0;
+    const auto currentId = util::EventBus::Subscribe<DamageTaken>([&](const DamageTaken&) { ++calls; });
+
+    util::EventBus::Unsubscribe<DamageTaken>(oldId);
+    util::EventBus::Publish(DamageTaken{});
+
+    EXPECT_NE(oldId, currentId);
+    EXPECT_EQ(calls, 1);
+}
+
+TEST_F(EventBusTest, PreservesMutableHandlerStateAcrossPublications)
+{
+    std::vector<int> seen;
+    util::EventBus::Subscribe<DamageTaken>([count = 0, &seen](const DamageTaken&) mutable { seen.push_back(++count); });
+
+    for (int i = 0; i < 3; ++i) util::EventBus::Publish(DamageTaken{});
+
+    EXPECT_EQ(seen, (std::vector<int>{1, 2, 3}));
+}
+
+TEST_F(EventBusTest, NestedPublicationUsesTheSameHandlerState)
+{
+    std::vector<int> seen;
+    util::EventBus::Subscribe<DamageTaken>([count = 0, &seen](const DamageTaken& event) mutable {
+        seen.push_back(++count);
+        if (event.amount == 1) {
+            util::EventBus::Publish(DamageTaken{});
+            seen.push_back(++count);
+        }
+    });
+
+    util::EventBus::Publish(DamageTaken{1});
+    util::EventBus::Publish(DamageTaken{});
+
+    EXPECT_EQ(seen, (std::vector<int>{1, 2, 3, 4}));
+}
+
+TEST_F(EventBusTest, ClearDuringInvocationKeepsCaptureAliveUntilReturn)
+{
+    auto state = std::make_shared<int>(41);
+    const std::weak_ptr<int> lifetime = state;
+    int received = 0;
+    util::EventBus::Subscribe<DamageTaken>([state = std::move(state), &lifetime, &received](const DamageTaken&) {
+        util::EventBus::Clear();
+        EXPECT_FALSE(lifetime.expired());
+        received = ++*state;
+    });
+
+    util::EventBus::Publish(DamageTaken{});
+
+    EXPECT_EQ(received, 42);
+    EXPECT_TRUE(lifetime.expired());
+    util::EventBus::Publish(DamageTaken{});
+    EXPECT_EQ(received, 42);
+}
+
+class ScriptEventBusTest : public testkit::EngineFixture {
+protected:
+    void SetUp() override
+    {
+        EngineFixture::SetUp();
+        scene::ScriptEventBus::Clear();
+    }
+    void TearDown() override
+    {
+        scene::ScriptEventBus::Clear();
+        EngineFixture::TearDown();
+    }
+};
+
+TEST_F(ScriptEventBusTest, PreservesMutableHandlerStateAcrossPublications)
+{
+    std::vector<int> seen;
+    scene::ScriptEventBus::SubscribeRaw(nullptr, "state", [count = 0, &seen](const void*) mutable { seen.push_back(++count); });
+
+    for (int i = 0; i < 3; ++i) scene::ScriptEventBus::PublishRaw("state", nullptr);
+
+    EXPECT_EQ(seen, (std::vector<int>{1, 2, 3}));
+}
+
+TEST_F(ScriptEventBusTest, ReentrantGrowthKeepsMutableHandlerState)
+{
+    std::vector<int> seen;
+    scene::ScriptEventBus::SubscribeRaw(nullptr, "state", [count = 0, &seen](const void* payload) mutable {
+        seen.push_back(++count);
+        if (count == 1)
+            for (int i = 0; i < 64; ++i) scene::ScriptEventBus::SubscribeRaw(nullptr, "state", [](const void*) {});
+        if (payload) scene::ScriptEventBus::PublishRaw("state", nullptr);
+    });
+
+    const int event = 1;
+    scene::ScriptEventBus::PublishRaw("state", &event);
+    scene::ScriptEventBus::PublishRaw("state", nullptr);
+
+    EXPECT_EQ(seen, (std::vector<int>{1, 2, 3}));
+}
+
+TEST_F(ScriptEventBusTest, ClearDuringInvocationKeepsCaptureAliveUntilReturn)
+{
+    auto state = std::make_shared<int>(41);
+    const std::weak_ptr<int> lifetime = state;
+    int received = 0;
+    scene::ScriptEventBus::SubscribeRaw(nullptr, "state", [state = std::move(state), &lifetime, &received](const void*) {
+        scene::ScriptEventBus::Clear();
+        EXPECT_FALSE(lifetime.expired());
+        received = ++*state;
+    });
+
+    scene::ScriptEventBus::PublishRaw("state", nullptr);
+
+    EXPECT_EQ(received, 42);
+    EXPECT_TRUE(lifetime.expired());
+    scene::ScriptEventBus::PublishRaw("state", nullptr);
+    EXPECT_EQ(received, 42);
+}
+
+TEST_F(ScriptEventBusTest, StaleTokenCannotCancelRegistrationAfterClear)
+{
+    const auto oldToken = scene::ScriptEventBus::SubscribeRaw(nullptr, "channel", [](const void*) {});
+    scene::ScriptEventBus::Clear();
+    int calls = 0;
+    const auto currentToken = scene::ScriptEventBus::SubscribeRaw(nullptr, "channel", [&](const void*) { ++calls; });
+
+    scene::ScriptEventBus::Unsubscribe(oldToken);
+    scene::ScriptEventBus::PublishRaw("channel", nullptr);
+
+    EXPECT_NE(oldToken.id, currentToken.id);
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(scene::ScriptEventBus::SubscriptionCount(), 1u);
+}
+
+TEST_F(ScriptEventBusTest, ClearDuringNestedDeliveryCancelsOldCallbacksAndDefersNewOnes)
+{
+    int oldCalls = 0;
+    int firstNewCalls = 0;
+    int secondNewCalls = 0;
+    scene::ScriptEventBus::SubscribeRaw(nullptr, "channel", [&](const void*) {
+        scene::ScriptEventBus::Clear();
+        EXPECT_EQ(scene::ScriptEventBus::SubscriptionCount(), 0u);
+        scene::ScriptEventBus::SubscribeRaw(nullptr, "channel", [&](const void*) { ++firstNewCalls; });
+        scene::ScriptEventBus::SubscribeRaw(nullptr, "channel", [&](const void*) { ++secondNewCalls; });
+        scene::ScriptEventBus::PublishRaw("channel", nullptr);
+    });
+    scene::ScriptEventBus::SubscribeRaw(nullptr, "channel", [&](const void*) { ++oldCalls; });
+
+    scene::ScriptEventBus::PublishRaw("channel", nullptr);
+
+    EXPECT_EQ(oldCalls, 0);
+    EXPECT_EQ(firstNewCalls, 1);
+    EXPECT_EQ(secondNewCalls, 1);
+    EXPECT_EQ(scene::ScriptEventBus::SubscriptionCount(), 2u);
+    scene::ScriptEventBus::PublishRaw("channel", nullptr);
+    EXPECT_EQ(firstNewCalls, 2);
+    EXPECT_EQ(secondNewCalls, 2);
+}
+
+TEST_F(ScriptEventBusTest, DeliveryKeepsOriginalChannelWhenCallerChangesItsString)
+{
+    std::string channel = "main";
+    int calls = 0;
+    scene::ScriptEventBus::SubscribeRaw(nullptr, channel, [&](const void*) { channel[0] = 'x'; });
+    scene::ScriptEventBus::SubscribeRaw(nullptr, channel, [&](const void*) { ++calls; });
+
+    scene::ScriptEventBus::PublishRaw(channel, nullptr);
+
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(scene::ScriptEventBus::SubscriptionCount(), 2u);
+}
+
+} /// @note namespace fbzz::tests

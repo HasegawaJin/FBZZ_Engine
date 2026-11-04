@@ -2,11 +2,12 @@
 /// @brief   パーティクルの重なり枚数 (fill rate) を数値として取り出すための集計結果。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-///
+
 /// @note 実コストは粒子数でなく fill rate で決まるが、数値で取る手段が無かった。閾値を持てない
 /// @note ヒートマップの代わりに、RenderSettings::particleOverdrawReadback を立てたフレームだけ
 /// @note GPU から読み戻して集計する (同期を伴うため常時計測はしない)。
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <cstdint>
 
@@ -31,9 +32,9 @@ struct ParticleOverdrawStats {
 };
 
 /// @note 直近に計測した結果を返す。まだ計測していなければ valid = false。
-[[nodiscard]] const ParticleOverdrawStats& GetLastParticleOverdrawStats();
+[[nodiscard]] FBZZ_GRAPHICS_API const ParticleOverdrawStats& GetLastParticleOverdrawStats();
 
 /// @note 計測結果を書き込む。Particle Overdraw パスだけが呼ぶ (エンジン内部用)。
-void SetLastParticleOverdrawStats(const ParticleOverdrawStats& stats);
+FBZZ_GRAPHICS_API void SetLastParticleOverdrawStats(const ParticleOverdrawStats& stats);
 
 } /// @note namespace fbzz::renderer

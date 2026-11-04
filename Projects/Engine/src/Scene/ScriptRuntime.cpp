@@ -12,6 +12,12 @@ namespace fbzz::scene {
 
 ScriptRuntime* ScriptRuntime::s_override = nullptr;
 
+bool ScriptRuntime::IsPointerOverUI(uint64_t sceneLifetime)
+{
+    return sceneLifetime && s_override && s_override->queryPointerOverUI
+        && s_override->queryPointerOverUI(s_override->pointerContext, sceneLifetime);
+}
+
 bool ScriptRuntime::RequestQuit(uint64_t sceneLifetime)
 {
     if (!Script::IsInPlayMode() || !sceneLifetime) return false;
@@ -59,4 +65,4 @@ ScriptRuntime* ScriptRuntime::GetOverride()
     return s_override;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -5,7 +5,7 @@
 #pragma once
 
 #include <Engine/Scene/EntityRef.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector3.hpp>
 #include <string>
 
@@ -13,18 +13,18 @@ namespace fbzz::scene {
 
 struct SocketAttachmentComponent {
     bool enabled = true;
-    /// 追従先を含む GameObject。省略可 (無効な EntityRef のままでよい)。
+    /// @note 追従先を含む GameObject。省略可 (無効な EntityRef のままでよい)。
     ///
     /// @note EntityRef は Prefab に保存できないため、必須にすると Prefab 自身が追従を宣言できない。
-    ///       省略時は ConstraintSystem が自分の祖先を根へたどり最初に見つかった socketName を使う。
+    /// @note 省略時は ConstraintSystem が自分の祖先を根へたどり最初に見つかった socketName を使う。
     EntityRef target;
-    /// 追従先ソケット。GameObject 名か BoneComponent::boneName で引く。
-    /// target 指定時はその部分木から、省略時は自分の祖先方向から探す。
+    /// @note 追従先ソケット。GameObject 名か BoneComponent::boneName で引く。
+    /// @note target 指定時はその部分木から、省略時は自分の祖先方向から探す。
     std::string socketName;
-    /// 自分側の合わせ点。空なら自分の原点が socketName に一致する (従来動作)。
+    /// @note 自分側の合わせ点。空なら自分の原点が socketName に一致する (従来動作)。
     ///
     /// @note positionOffset への手打ちはモデル修正のたびに古くなる。合わせ点をモデル側の
-    ///       ソケットで宣言すれば FBX を直した瞬間に正しい位置へ追従する。
+    /// @note ソケットで宣言すれば FBX を直した瞬間に正しい位置へ追従する。
     std::string localSocketName;
     math::Vector3 positionOffset = math::Vector3::ZERO;
     math::Vector3 rotationOffsetDegrees = math::Vector3::ZERO;
@@ -33,19 +33,19 @@ struct SocketAttachmentComponent {
     bool followRotation = true;
     bool followScale = false;
 
-    /// socketName を書き換えたとき、旧ソケットから新ソケットへこの秒数かけて移る。
-    /// 0 なら即座にスナップする (従来動作)。
+    /// @note socketName を書き換えたとき、旧ソケットから新ソケットへこの秒数かけて移る。
+    /// @note 0 なら即座にスナップする (従来動作)。
     ///
     /// @note 両ソケットの「その瞬間の」姿勢を混ぜられるのは Animator / IK の後に走る
-    ///       ConstraintSystem だけなので、補間はここで完結させる (Script 側では静止ポーズを
-    ///       captureしがちで、歩行中に置き去りになる)。
+    /// @note ConstraintSystem だけなので、補間はここで完結させる (Script 側では静止ポーズを
+    /// @note captureしがちで、歩行中に置き去りになる)。
     float blendDuration = 0.0f;
 
     /// @name ランタイム専用 (シリアライズしない)
     /// @{
-    /// 直近フレームで実際に適用したソケット名。socketName との差分が「切り替え」。
+    /// @note 直近フレームで実際に適用したソケット名。socketName との差分が「切り替え」。
     std::string appliedSocketName;
-    /// 補間元のソケット名。空なら補間せずスナップする。
+    /// @note 補間元のソケット名。空なら補間せずスナップする。
     std::string blendFromSocketName;
     float       blendRemaining = 0.0f;
 
@@ -104,4 +104,4 @@ struct TransformConstraintComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

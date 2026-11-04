@@ -20,6 +20,7 @@ namespace fbzz::editor {
 
 class InspectorPanel : public IPanel {
 public:
+    void OnRegisterOperators(OperatorRegistry& registry) override;
     const char* GetWindowName() const override { return "Inspector"; }
     void OnShutdown() override;
 

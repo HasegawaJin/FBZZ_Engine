@@ -11,6 +11,7 @@
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/WaterExclusionComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/WaterZoneComponent.hpp>
@@ -29,6 +30,9 @@
 #include <Engine/Scene/Systems/RenderWaterExtractor.hpp>
 #include <Engine/Scene/Systems/RenderEnvironmentExtractor.hpp>
 #include <Graphics/Renderer/IBuffer.hpp>
+#include <Graphics/Renderer/DynamicBufferPool.hpp>
+#include "../../../Engine/src/Scene/Managed/ManagedAssetServices.hpp"
+#include "../../../Engine/src/Scene/Managed/ManagedServicesBridge.hpp"
 #include <Graphics/Renderer/IRenderer.hpp>
 #include <Graphics/Renderer/ITexture.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
@@ -89,13 +93,15 @@ private:
 
 class WaterCpuTexture final : public renderer::ITexture {
 public:
-    WaterCpuTexture(uint32_t width, uint32_t height, uint32_t depth = 1)
-        : m_width(width), m_height(height), m_depth(depth) {}
+    WaterCpuTexture(uint32_t width, uint32_t height, uint32_t depth = 1, size_t* alive = nullptr)
+        : m_width(width), m_height(height), m_depth(depth), m_alive(alive) { if (m_alive) ++*m_alive; }
+    ~WaterCpuTexture() override { if (m_alive) --*m_alive; }
     uint32_t GetWidth() const override { return m_width; }
     uint32_t GetHeight() const override { return m_height; }
     uint32_t GetDepth() const override { return m_depth; }
 private:
     uint32_t m_width, m_height, m_depth;
+    size_t* m_alive;
 };
 
 /// @note The opt-in dynamic backend observes only successful writes to its own texture; terrain-info uploads are separate.
@@ -137,6 +143,8 @@ public:
     size_t buffersAlive = 0;
     size_t textureUploads = 0;
     bool recordDynamicRippleUploads = false;
+    bool recordRuntimeTextures = false;
+    size_t runtimeTexturesAlive = 0;
     size_t rippleTextureCreations = 0;
     std::shared_ptr<size_t> rippleTextureUploads;
     std::function<void()> beforeVertexBuffer;
@@ -175,6 +183,7 @@ private:
     std::unique_ptr<renderer::ITexture> CreateNativeDynamicTexture(
         uint32_t width, uint32_t height, renderer::DynamicTextureFormat format) override
     {
+        if (recordRuntimeTextures) return std::make_unique<WaterCpuTexture>(width, height, 1, &runtimeTexturesAlive);
         if (!recordDynamicRippleUploads || format != renderer::DynamicTextureFormat::RGBA8
             || width != scene::kWaterRippleTextureSize || height != scene::kWaterRippleTextureSize) return {};
         ++rippleTextureCreations;
@@ -197,8 +206,119 @@ private:
 };
 } /// @note namespace
 
+
+class DynamicPoolOwnershipTest : public testkit::EngineFixture {
+protected:
+    void SetUp() override
+    {
+        EngineFixture::SetUp();
+        m_playing = scene::Script::IsInPlayMode();
+    }
+    void TearDown() override
+    {
+        scene::Script::SetInPlayMode(m_playing);
+        EngineFixture::TearDown();
+    }
+    bool m_playing = false;
+};
+
+TEST_F(DynamicPoolOwnershipTest, SwitchingOwnerReturnsBuffersToThePreviousManager)
+{
+    WaterCpuRenderer firstRenderer, secondRenderer;
+    renderer::ResourceManager first(firstRenderer), second(secondRenderer);
+    renderer::DynamicVertexBufferPool pool(1);
+    ASSERT_TRUE(pool.Acquire(first, 4, sizeof(float)));
+    EXPECT_EQ(firstRenderer.buffersAlive, 1u);
+    ASSERT_TRUE(pool.Acquire(second, 4, sizeof(float)));
+    EXPECT_EQ(firstRenderer.buffersAlive, 0u);
+    EXPECT_EQ(secondRenderer.buffersAlive, 1u);
+    pool.ReleaseAll(first);
+    EXPECT_EQ(secondRenderer.buffersAlive, 0u);
+}
+
+TEST_F(DynamicPoolOwnershipTest, MoveAssignmentAndDestructionReleaseTheirOwnedBuffers)
+{
+    WaterCpuRenderer device;
+    renderer::ResourceManager resources(device);
+    {
+        renderer::DynamicVertexBufferPool source(1), target(1);
+        ASSERT_TRUE(source.Acquire(resources, 4, sizeof(float)));
+        ASSERT_TRUE(target.Acquire(resources, 8, sizeof(float)));
+        EXPECT_EQ(device.buffersAlive, 2u);
+        target = std::move(source);
+        EXPECT_EQ(device.buffersAlive, 1u);
+        EXPECT_EQ(source.GetBufferCount(), 0u);
+    }
+    EXPECT_EQ(device.buffersAlive, 0u);
+}
+
+TEST_F(DynamicPoolOwnershipTest, PoolMayOutliveItsOwnerAndResetGeneration)
+{
+    WaterCpuRenderer device;
+    renderer::DynamicVertexBufferPool pool(1);
+    {
+        renderer::ResourceManager resources(device);
+        ASSERT_TRUE(pool.Acquire(resources, 4, sizeof(float)));
+        resources.Reset();
+        EXPECT_EQ(device.buffersAlive, 0u);
+        ASSERT_TRUE(pool.Acquire(resources, 4, sizeof(float)));
+    }
+    EXPECT_EQ(device.buffersAlive, 0u);
+    pool.ReleaseAll();
+    EXPECT_EQ(pool.GetBufferCount(), 0u);
+}
+
+TEST_F(DynamicPoolOwnershipTest, ManagedTextureDisposeAndRetirementUseTheirCreationOwner)
+{
+    WaterCpuRenderer firstRenderer, secondRenderer;
+    firstRenderer.recordRuntimeTextures = true;
+    renderer::ResourceManager first(firstRenderer);
+    scene::Scene scene;
+    scene.SetResourceManager(&first);
+    auto& target = scene.CreateGameObject("Texture owner");
+    class Caller final : public scene::Script {
+    public:
+        void Bind(scene::Scene& scene, scene::GameObject& object) { m_scene = &scene; m_gameObject = &object; }
+    } caller;
+    caller.Bind(scene, target);
+    scene::Script::SetInPlayMode(true);
+    scene::managed_detail::ManagedAssetServices services;
+    scene::ManagedBridgeRequest request{};
+    request.op = scene::ManagedBridgeOp::SERVICE_ASSETS;
+    request.index = 10;
+    request.ownerId = request.instanceId = request.generation = 1;
+    scene::managed_detail::ManagedServiceResult result;
+    const float dimensions[]{4, 4, 1};
+    ASSERT_EQ(services.Run(scene, caller, target, request, 0, dimensions, {}, result), scene::ManagedBridgeStatus::OK);
+    const auto firstTexture = result.integer;
+    ASSERT_GT(firstTexture, 0);
+    ASSERT_EQ(services.Run(scene, caller, target, request, 0, dimensions, {}, result), scene::ManagedBridgeStatus::OK);
+    ASSERT_GT(result.integer, 0);
+    EXPECT_EQ(firstRenderer.runtimeTexturesAlive, 2u);
+    renderer::ResourceManager second(secondRenderer);
+    request.index = 15;
+    request.flags = 1;
+    ASSERT_EQ(services.Run(scene, caller, target, request, firstTexture, {}, {}, result), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(result.integer, 1);
+    request.index = 16;
+    request.flags = 0;
+    ASSERT_EQ(services.Run(scene, caller, target, request, firstTexture, {}, {}, result), scene::ManagedBridgeStatus::OK);
+    EXPECT_EQ(result.integer, 1);
+    EXPECT_EQ(firstRenderer.runtimeTexturesAlive, 1u);
+    services.RetireGeneration(1);
+    EXPECT_EQ(firstRenderer.runtimeTexturesAlive, 0u);
+}
+
 class WaterRenderResourceTest : public testkit::EngineFixture {
 protected:
+    renderer::RenderWaterInput ExtractWithOwner(scene::Scene& source, WaterCpuRenderer& device, renderer::ResourceManager& resources)
+    {
+        renderer::Camera camera; renderer::RenderSettings settings; renderer::RenderPassHandles handles;
+        scene::RenderPassContext context(source, device, resources, camera, settings, {}, UINT32_MAX, handles);
+        renderer::RenderScene output; scene::ExtractRenderWater(context, output);
+        EXPECT_EQ(output.water.size(), 1u);
+        return output.water.empty() ? renderer::RenderWaterInput{} : std::move(output.water.front());
+    }
     void SetUp() override
     {
         EngineFixture::SetUp();
@@ -306,6 +426,136 @@ protected:
     testkit::TempDir m_temp{"water-render-resources"};
     bool m_assetsInitialized = false;
 };
+
+TEST_F(WaterRenderResourceTest, AlternatingManagersPreservesMeshesAndClearReturnsBothOwners)
+{
+    scene::Scene source; AddWater(source);
+    WaterCpuRenderer device; renderer::ResourceManager other(device);
+    const auto first = ExtractWithOwner(source, m_renderer, *m_resources);
+    const auto second = ExtractWithOwner(source, device, other);
+    ASSERT_FALSE(first.patches.empty()); ASSERT_FALSE(second.patches.empty());
+
+    for (int iteration = 0; iteration < 4; ++iteration) {
+        const auto a = ExtractWithOwner(source, m_renderer, *m_resources);
+        const auto b = ExtractWithOwner(source, device, other);
+        EXPECT_EQ(a.patches[0].vertexBuffer, first.patches[0].vertexBuffer);
+        EXPECT_EQ(b.patches[0].vertexBuffer, second.patches[0].vertexBuffer);
+    }
+    source.Clear();
+
+    EXPECT_EQ(m_renderer.buffersAlive, 0u); EXPECT_EQ(device.buffersAlive, 0u);
+    EXPECT_EQ(m_resources->Get(first.patches[0].vertexBuffer), nullptr);
+    EXPECT_EQ(other.Get(second.patches[0].vertexBuffer), nullptr);
+    EXPECT_EQ(m_resources->Get(first.foam), nullptr);
+    EXPECT_EQ(m_resources->Get(first.ripple), nullptr);
+    EXPECT_EQ(other.Get(second.foam), nullptr);
+    EXPECT_EQ(other.Get(second.ripple), nullptr);
+}
+TEST_F(WaterRenderResourceTest, RemovingWaterComponentReleasesEveryCreationOwner)
+{
+    scene::Scene source; const auto id = AddWater(source);
+    WaterCpuRenderer device; renderer::ResourceManager other(device);
+    const auto first = ExtractWithOwner(source, m_renderer, *m_resources);
+    const auto second = ExtractWithOwner(source, device, other);
+
+    source.RemoveComponent<scene::WaterComponent>(id);
+
+    EXPECT_EQ(m_renderer.buffersAlive, 0u); EXPECT_EQ(device.buffersAlive, 0u);
+    EXPECT_EQ(m_resources->Get(first.patches[0].vertexBuffer), nullptr);
+    EXPECT_EQ(other.Get(second.patches[0].vertexBuffer), nullptr);
+    EXPECT_EQ(m_resources->Get(first.foam), nullptr);
+    EXPECT_EQ(m_resources->Get(first.ripple), nullptr);
+    EXPECT_EQ(other.Get(second.foam), nullptr);
+    EXPECT_EQ(other.Get(second.ripple), nullptr);
+}
+TEST_F(WaterRenderResourceTest, DirtyGeometryRebuildsBothOwnersAfterTheFirstViewConsumesTheFlag)
+{
+    scene::Scene source; const auto id = AddWater(source);
+    WaterCpuRenderer device; renderer::ResourceManager other(device);
+    const auto first = ExtractWithOwner(source, m_renderer, *m_resources);
+    const auto second = ExtractWithOwner(source, device, other);
+    source.GetComponent<scene::WaterComponent>(id)->meshDirty = true;
+
+    const auto a = ExtractWithOwner(source, m_renderer, *m_resources);
+    const auto b = ExtractWithOwner(source, device, other);
+
+    EXPECT_NE(a.patches[0].vertexBuffer, first.patches[0].vertexBuffer);
+    EXPECT_NE(b.patches[0].vertexBuffer, second.patches[0].vertexBuffer);
+    source.Clear();
+}
+TEST_F(WaterRenderResourceTest, DirtyTexturesRebuildBothOwnersAfterTheFirstViewConsumesTheFlag)
+{
+    scene::Scene source;
+    const auto id = AddWater(source);
+    WaterCpuRenderer device;
+    renderer::ResourceManager other(device);
+    const auto first = ExtractWithOwner(source, m_renderer, *m_resources);
+    const auto second = ExtractWithOwner(source, device, other);
+    source.GetComponent<scene::WaterComponent>(id)->foamDirty = true;
+
+    const auto a = ExtractWithOwner(source, m_renderer, *m_resources);
+    const auto b = ExtractWithOwner(source, device, other);
+
+    EXPECT_NE(a.foam, first.foam);
+    EXPECT_NE(b.foam, second.foam);
+    EXPECT_EQ(m_resources->Get(first.foam), nullptr);
+    EXPECT_EQ(other.Get(second.foam), nullptr);
+    source.Clear();
+}
+
+TEST_F(WaterRenderResourceTest, ResetAndEarlyOwnerDestructionPreservesOtherWaterMeshes)
+{
+    scene::Scene source; AddWater(source);
+    WaterCpuRenderer device; auto other = std::make_unique<renderer::ResourceManager>(device);
+    const auto first = ExtractWithOwner(source, m_renderer, *m_resources);
+    ExtractWithOwner(source, device, *other);
+    other->Reset(); ExtractWithOwner(source, device, *other); other.reset();
+
+    const auto repeated = ExtractWithOwner(source, m_renderer, *m_resources);
+
+    EXPECT_EQ(first.patches[0].vertexBuffer, repeated.patches[0].vertexBuffer);
+    EXPECT_EQ(device.buffersAlive, 0u);
+    source.Clear(); EXPECT_EQ(m_renderer.buffersAlive, 0u);
+}
+
+TEST_F(WaterRenderResourceTest, ComponentRemovalReturnsBuffersToTheirCreatingManager)
+{
+    scene::Scene source;
+    auto& object = source.CreateGameObject("OwnedBuffers");
+    auto& skin = object.AddComponent<scene::SkinnedMeshRenderer>();
+    const auto owned = m_resources->CreateVertexBuffer(nullptr, 32, 4);
+    skin.morphVertexBuffers.push_back(owned);
+    WaterCpuRenderer otherRenderer;
+    renderer::ResourceManager other(otherRenderer);
+    const auto unrelated = other.CreateVertexBuffer(nullptr, 32, 4);
+    ASSERT_EQ(owned.id, unrelated.id);
+    ASSERT_EQ(owned.gen, unrelated.gen);
+    ASSERT_NE(owned, unrelated);
+    EXPECT_EQ(other.Get(owned), nullptr);
+    other.Release(owned);
+    EXPECT_NE(other.Get(unrelated), nullptr);
+
+    object.RemoveComponent<scene::SkinnedMeshRenderer>();
+    EXPECT_EQ(m_resources->Get(owned), nullptr);
+    EXPECT_NE(other.Get(unrelated), nullptr);
+    other.Release(unrelated);
+}
+
+TEST_F(WaterRenderResourceTest, SceneClearReturnsBuffersAfterAnotherManagerHasEnded)
+{
+    scene::Scene source;
+    auto& skin = source.CreateGameObject("OwnedBuffers").AddComponent<scene::SkinnedMeshRenderer>();
+    const auto owned = m_resources->CreateVertexBuffer(nullptr, 32, 4);
+    skin.morphVertexBuffers.push_back(owned);
+    {
+        WaterCpuRenderer otherRenderer;
+        renderer::ResourceManager other(otherRenderer);
+    }
+    ASSERT_EQ(renderer::ResourceManager::Active(), nullptr);
+    source.Clear();
+    EXPECT_EQ(m_resources->Get(owned), nullptr);
+    EXPECT_EQ(m_renderer.buffersAlive, 0u);
+}
 
 TEST_F(WaterRenderResourceTest, KeepsSameIndexScenesIndependentThroughClearAndDestruction)
 {
@@ -494,7 +744,7 @@ TEST_F(WaterRenderResourceTest, ReleasesDestroyedEntityGenerationBeforeReusingIt
     const auto newInput = Extract(scene);
     ASSERT_EQ(newInput.patches.size(), 1u);
     EXPECT_NE(newInput.patches[0].vertexBuffer, oldInput.patches[0].vertexBuffer);
-    scene::ReleaseWaterRenderResources(scene, oldId, *m_resources);
+    scene::ReleaseWaterRenderResources(scene, oldId);
     EXPECT_NE(m_resources->Get(newInput.patches[0].vertexBuffer), nullptr);
     EXPECT_NE(m_resources->Get(newInput.foam), nullptr);
     EXPECT_NE(m_resources->Get(newInput.ripple), nullptr);
@@ -533,7 +783,7 @@ TEST_F(WaterRenderResourceTest, ReleasesSharedAdaptiveBuffersAcrossGridRebuildsW
         EXPECT_EQ(m_resources->Get(patch.indexBuffer), nullptr);
     }
     EXPECT_EQ(m_renderer.buffersAlive, 18u);
-    scene::ReleaseWaterRenderResources(scene, *m_resources);
+    scene::ReleaseWaterRenderResources(scene);
     EXPECT_EQ(m_resources->Get(rebuilt.patchVertexBuffer), nullptr);
     for (const auto buffer : rebuilt.patchIndexBuffers) EXPECT_EQ(m_resources->Get(buffer), nullptr);
     EXPECT_EQ(m_resources->Get(rebuilt.foam), nullptr);
@@ -541,7 +791,7 @@ TEST_F(WaterRenderResourceTest, ReleasesSharedAdaptiveBuffersAcrossGridRebuildsW
     EXPECT_NE(m_resources->Get(rebuilt.detailNoise), nullptr);
     EXPECT_NE(m_resources->Get(rebuilt.velocityField), nullptr);
     EXPECT_NE(m_resources->Get(canary), nullptr);
-    scene::ReleaseWaterRenderResources(scene, *m_resources);
+    scene::ReleaseWaterRenderResources(scene);
     scene.Clear();
     EXPECT_NE(m_resources->Get(canary), nullptr);
     EXPECT_EQ(m_renderer.buffersAlive, 1u);

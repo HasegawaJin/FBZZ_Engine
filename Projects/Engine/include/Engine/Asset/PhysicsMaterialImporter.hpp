@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-16
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/IAssetImporter.hpp>
 #include <Engine/Asset/PhysicsMaterialAsset.hpp>
 
@@ -10,7 +11,7 @@ namespace fbzz::asset {
 
 class PhysicsMaterialImporter final : public IAssetImporter<PhysicsMaterialAsset> {
 public:
-    [[nodiscard]] std::unique_ptr<PhysicsMaterialAsset> Import(
+    [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<PhysicsMaterialAsset> Import(
         const std::string&         absPath,
         renderer::ResourceManager* resources) override;
 
@@ -20,4 +21,4 @@ public:
     }
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

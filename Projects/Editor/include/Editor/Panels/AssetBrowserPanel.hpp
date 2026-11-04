@@ -53,6 +53,7 @@ public:
     /// @note 2 枚目以降は既定で非表示。View > Panels から出す (Unity の Project ウィンドウと同じ)。
     bool GetDefaultVisibility() const override { return m_instanceIndex == 0; }
     void OnInit(EditorContext& ctx) override;
+    void OnRegisterOperators(OperatorRegistry& registry) override;
     void OnShutdown() override;
     void OnLoadSettings(const EditorSettings& settings) override;
     void OnSaveSettings(EditorSettings& settings) const override;

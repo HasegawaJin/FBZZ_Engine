@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
 #pragma once
+#include <Engine/Api.hpp>
 
 #include "Engine/Scene/ManagedBridgeAbi.hpp"
 #include "Engine/Scene/Transform.hpp"
@@ -23,18 +24,18 @@ public:
     using ObjectResolver = ManagedBridgeStatus (*)(void*, uint64_t, GameObject*&);
 
     /// @return 全体失敗では Scene と output は未変更。容量不足は reply.outputBytes に必要長を返す。
-    ManagedBridgeStatus Run(Scene& scene, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus Run(Scene& scene, const ManagedBridgeRequest& request,
         ManagedBridgeReply& reply, ObjectResolver resolver, void* resolverState);
     /// @note caller-sized aggregate の候補用。wire の uint32 byte 数から切り離し、全体検証後に一度だけ変更する。
-    ManagedBridgeStatus RunAggregate(Scene& scene, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus RunAggregate(Scene& scene, const ManagedBridgeRequest& request,
         std::span<const char> input, std::span<char> output, ManagedBridgeReply& reply,
         ObjectResolver resolver, void* resolverState, bool publish = true);
 
     /// @note Position setters and local translation validate all computed poses before changing ancestors or descendants.
-    ManagedBridgeStatus RunPosition(GameObject& target, const ManagedBridgeRequest& request);
+    FBZZ_ENGINE_API ManagedBridgeStatus RunPosition(GameObject& target, const ManagedBridgeRequest& request);
 
     /// @note 回転・拡縮の単体操作。読み取りは描画 world キャッシュを保ち、書き込み失敗は祖先・子孫も未変更。
-    ManagedBridgeStatus RunPose(GameObject& target, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus RunPose(GameObject& target, const ManagedBridgeRequest& request,
         ManagedBridgeReply& reply);
 
 private:
@@ -45,18 +46,18 @@ private:
         bool apply = false;
     };
 
-    Transform* Shadow(GameObject& object);
-    bool Synchronize(GameObject& root, bool shadow);
-    bool Update(GameObject& object, bool shadow);
-    bool PrepareWrite(Entry& entry, bool translate, const math::Vector3& displacement);
-    void ApplyWrite(const Entry& entry);
+    FBZZ_ENGINE_API Transform* Shadow(GameObject& object);
+    FBZZ_ENGINE_API bool Synchronize(GameObject& root, bool shadow);
+    FBZZ_ENGINE_API bool Update(GameObject& object, bool shadow);
+    FBZZ_ENGINE_API bool PrepareWrite(Entry& entry, bool translate, const math::Vector3& displacement);
+    FBZZ_ENGINE_API void ApplyWrite(const Entry& entry);
     /// @note 子なしルートが重複しない場合だけ dense 作業配列へ進む。親子・重複は入力順の shadow を使う。
-    bool CanStageIndependentRoots(const Scene& scene);
-    bool StageIndependentRoots(bool translate, const math::Vector3& displacement);
-    void CommitIndependentRoots();
-    void BeginEpoch(const Scene& scene);
-    void BeginShadow(const Scene& scene);
-    void CommitShadow();
+    FBZZ_ENGINE_API bool CanStageIndependentRoots(const Scene& scene);
+    FBZZ_ENGINE_API bool StageIndependentRoots(bool translate, const math::Vector3& displacement);
+    FBZZ_ENGINE_API void CommitIndependentRoots();
+    FBZZ_ENGINE_API void BeginEpoch(const Scene& scene);
+    FBZZ_ENGINE_API void BeginShadow(const Scene& scene);
+    FBZZ_ENGINE_API void CommitShadow();
 
     std::vector<Entry> m_entries;
     std::vector<Transform> m_rootShadow;

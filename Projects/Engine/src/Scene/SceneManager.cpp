@@ -2,7 +2,7 @@
 /// @brief   Scene 遷移と System 更新順の管理。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-/// @note /// 登録済み Scene をアクティブ化し、フレーム境界で LoadScene を適用する。
+/// @note 登録済み Scene をアクティブ化し、フレーム境界で LoadScene を適用する。
 /// @note RenderSystem は BeginFrame / EndFrame の都合でゲームループ側から呼ぶ。
 #include "Engine/Scene/SceneManager.hpp"
 #include "Engine/Core/Cursor.hpp"
@@ -139,20 +139,22 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<WeatherSystem>();
     m_scheduler.AddSystem<ParticleSimulationSystem>();
 
-    m_scheduler.Build();
+    const bool built = m_scheduler.Build();
+    assert(built && "Built-in System ordering must be valid");
+    static_cast<void>(built);
 }
 
 void SceneManager::Register(const std::string& name, SceneFactory factory)
 {
     m_factories[name] = std::move(factory);
+    m_scenePaths.erase(name);
 }
 
 void SceneManager::RegisterFromFile(const std::string& name, const std::string& path,
                                     renderer::ResourceManager& resources)
 {
-    Register(name, [path, &resources]() {
-        return SceneSerializer::Load(path, resources);
-    });
+    SetResourceManager(&resources);
+    Register(name, {});
     m_scenePaths[name] = path;
 }
 
@@ -218,8 +220,21 @@ void SceneManager::SetScene(Scene* scene)
 {
     if (m_externalScene && m_externalScene != scene) ClearWaterInteractions(*m_externalScene);
     m_externalScene = scene;
+    if (scene) scene->SetResourceManager(GetResourceManager());
     /// @note 外部 Scene を差し直した時点で、遷移で切り替えた名前は実行対象ではなくなる。
     if (scene) m_activeName.clear();
+}
+
+void SceneManager::SetResourceManager(renderer::ResourceManager* resources)
+{
+    m_resourceOwner = resources ? resources->GetInstanceId() : 0;
+    if (m_externalScene) m_externalScene->SetResourceManager(resources);
+    if (m_active) m_active->SetResourceManager(resources);
+}
+
+renderer::ResourceManager* SceneManager::GetResourceManager() const
+{
+    return renderer::ResourceManager::FindOwner(m_resourceOwner);
 }
 
 void SceneManager::ReleaseOwnedScene()
@@ -312,7 +327,9 @@ void SceneManager::Update(float dt, physics::World& world)
 
         /// @note ロードに失敗しても現在の Scene は保持したまま続ける。ここで実行対象を
         /// @note 失うと、遷移できなかっただけのはずが「以降なにも動かない」に化ける。
-        std::unique_ptr<Scene> nextScene = factoryIt->second();
+        const auto scenePath = m_scenePaths.find(m_pendingLoad);
+        std::unique_ptr<Scene> nextScene = scenePath != m_scenePaths.end()
+            ? SceneSerializer::Load(scenePath->second, GetResourceManager()) : factoryIt->second();
         if (!nextScene) {
             FBZZ_LOG_ERROR("SceneManager: failed to load scene '%s'. Staying in the current scene.",
                            m_pendingLoad.c_str());
@@ -320,6 +337,7 @@ void SceneManager::Update(float dt, physics::World& world)
             return;
         }
 
+        nextScene->SetResourceManager(GetResourceManager());
         FlushWorldTransforms(*nextScene);
         if ((m_simulating || m_playing) && !ValidateStaticControlPointBakes(*nextScene)) {
             FBZZ_LOG_ERROR("SceneManager: stale control-point bake in '%s'. Staying in the current scene.", m_pendingLoad.c_str());
@@ -371,7 +389,8 @@ void SceneManager::Update(float dt, physics::World& world)
         if (!m_staticBakeValidationSucceeded) return;
     }
 
-    m_scheduler.Update({ *scene, world, nullptr, m_audioManager, dt, 0.0f, m_simulating, m_playing });
+    scene->SetResourceManager(GetResourceManager());
+    m_scheduler.Update({ *scene, world, GetResourceManager(), m_audioManager, dt, 0.0f, m_simulating, m_playing });
 }
 
 void SceneManager::LateUpdate(float dt, physics::World& world)
@@ -384,7 +403,8 @@ void SceneManager::LateUpdate(float dt, physics::World& world)
     if ((m_simulating || m_playing) && m_staticBakeValidationScene == scene->GetRenderSceneGeneration()
         && !m_staticBakeValidationSucceeded) return;
 
-    m_scheduler.LateUpdate({ *scene, world, renderer::ResourceManager::Active(), m_audioManager, dt, 0.0f, m_simulating, m_playing });
+    scene->SetResourceManager(GetResourceManager());
+    m_scheduler.LateUpdate({ *scene, world, GetResourceManager(), m_audioManager, dt, 0.0f, m_simulating, m_playing });
 }
 
 Scene* SceneManager::GetActive()

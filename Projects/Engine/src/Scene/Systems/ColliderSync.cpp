@@ -2,8 +2,9 @@
 /// @brief   ColliderComponent と physics::Collider の同期処理の実体。
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
-///
+
 /// @note PhysicsSystem と DebugCollidersPass が同じ衝突形状を使うための共通基盤。
+#include <Engine/Scene/Components/ColliderComponent.hpp>
 #include "Engine/Scene/Systems/ColliderSync.hpp"
 #include "TerrainHeightHelpers.hpp"
 

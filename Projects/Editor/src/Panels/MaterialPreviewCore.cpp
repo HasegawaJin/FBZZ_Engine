@@ -2,6 +2,7 @@
 /// @brief   .mat プレビューのパラメータ解決・メッシュ生成・オフスクリーン描画。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Core/Logger.hpp>

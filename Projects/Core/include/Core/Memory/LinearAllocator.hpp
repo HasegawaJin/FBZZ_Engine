@@ -4,6 +4,7 @@
 /// @date    2026-06-01
 /// @note フレーム中の作業バッファなど、個別解放が不要な短命データに使う。
 #pragma once
+#include <Core/Api.hpp>
 
 #include "Core/Memory/Allocator.hpp"
 
@@ -16,23 +17,23 @@ namespace fbzz::core {
 class LinearAllocator final : public Allocator {
 public:
     LinearAllocator() = default;
-    ~LinearAllocator() override;
+    FBZZ_CORE_API ~LinearAllocator() override;
 
     LinearAllocator(const LinearAllocator&)            = delete;
     LinearAllocator& operator=(const LinearAllocator&) = delete;
 
-    LinearAllocator(LinearAllocator&& other) noexcept;
-    LinearAllocator& operator=(LinearAllocator&& other) noexcept;
+    FBZZ_CORE_API LinearAllocator(LinearAllocator&& other) noexcept;
+    FBZZ_CORE_API LinearAllocator& operator=(LinearAllocator&& other) noexcept;
 
-    [[nodiscard]] bool Initialize(std::size_t capacity);
-    void Shutdown();
+    [[nodiscard]] FBZZ_CORE_API bool Initialize(std::size_t capacity);
+    FBZZ_CORE_API void Shutdown();
 
-    [[nodiscard]] void* Allocate(std::size_t size,
+    [[nodiscard]] FBZZ_CORE_API void* Allocate(std::size_t size,
                                  std::size_t alignment = alignof(std::max_align_t)) override;
-    void Free(void* ptr) override;
-    void Reset() override;
+    FBZZ_CORE_API void Free(void* ptr) override;
+    FBZZ_CORE_API void Reset() override;
 
-    [[nodiscard]] bool Owns(const void* ptr) const override;
+    [[nodiscard]] FBZZ_CORE_API bool Owns(const void* ptr) const override;
     [[nodiscard]] MemoryStats GetStats() const override { return m_stats; }
     [[nodiscard]] bool IsInitialized() const { return m_memory != nullptr; }
 

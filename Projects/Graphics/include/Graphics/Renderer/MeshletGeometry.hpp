@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <array>
@@ -49,7 +50,7 @@ public:
     /// @param indexCount Number of indices; must be a nonzero multiple of three.
     /// @return False for invalid, non-finite, overflowing, or over-capacity input; outputs remain unchanged.
     /// @see https://github.com/microsoft/DirectXMesh/wiki/ComputeMeshlets «meshlet generation inputs and output streams»
-    [[nodiscard]] static bool Build(const uint8_t* vertexData, size_t vertexDataBytes,
+    [[nodiscard]] FBZZ_GRAPHICS_API static bool Build(const uint8_t* vertexData, size_t vertexDataBytes,
                                     uint32_t vertexCount, uint32_t vertexStride,
                                     const uint8_t* indexData, size_t indexDataBytes,
                                     uint32_t indexCount,
@@ -68,17 +69,17 @@ public:
     /// @pre The caller selects static geometry with no GPU deformation.
     /// @note Cache hits use mirrored metadata; misses synchronize through ResourceManager before reading CPU shadows.
     /// @note Cached blobs are bounded by count and byte budget; least-recently-used entries are evicted.
-    [[nodiscard]] bool Prepare(ResourceManager& resources,
+    [[nodiscard]] FBZZ_GRAPHICS_API bool Prepare(ResourceManager& resources,
                                ResourceHandle<BufferTag> vertexBuffer,
                                ResourceHandle<BufferTag> indexBuffer,
                                uint32_t vertexCount, uint32_t vertexStride,
                                uint32_t indexCount, MeshletGeometry& outGeometry);
 
     /// @brief Invalidates entries that use a released source or blob handle.
-    void Invalidate(ResourceManager& resources, ResourceHandle<BufferTag> buffer);
+    FBZZ_GRAPHICS_API void Invalidate(ResourceManager& resources, ResourceHandle<BufferTag> buffer);
 
     /// @brief Releases every cached blob through its owning ResourceManager.
-    void Release(ResourceManager& resources);
+    FBZZ_GRAPHICS_API void Release(ResourceManager& resources);
 
 private:
     struct InputKey {
@@ -92,7 +93,7 @@ private:
     };
 
     struct InputKeyHash {
-        [[nodiscard]] size_t operator()(const InputKey& key) const;
+        [[nodiscard]] FBZZ_GRAPHICS_API size_t operator()(const InputKey& key) const;
     };
 
     struct Entry {

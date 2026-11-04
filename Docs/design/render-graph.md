@@ -1,10 +1,11 @@
-# RenderGraph — 何を担い、何を担わないか
+<!-- @file    render-graph.md -->
+<!-- @brief   描画パスの依存解決、寿命解析、DX12 との責務分担。 -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-09-16 -->
 
-`fbzz::renderer::RenderGraph` と `fbzz::scene::RenderPipeline` の役割分担と、
-**意図的に作っていない機能とその理由**をまとめる。
+# RenderGraph の依存解決と責務
 
-実装は `Engine/Renderer/RenderGraph.hpp`（依存解決器・GPU を触らない）と
-`Engine/Scene/Systems/RenderPasses/RenderPipeline.{hpp,cpp}`（登録・実行）。
+Engine が Scene を `RenderScene` へ抽出し、Graphics の `RenderPipeline` がパスを登録・実行する。`RenderGraph` は資源アクセスから実行計画を導く。DX12 の資源状態と GPU への記録はバックエンドが扱う。 [RenderGraph](../../Projects/Graphics/include/Graphics/Renderer/RenderGraph.hpp) · [RenderPipeline](../../Projects/Graphics/src/Pipeline/RenderPipeline.cpp) · [Graphics の境界](graphics-library.md)
 
 ---
 
@@ -43,9 +44,7 @@ FNV-1a 指紋が前フレームと一致すれば、依存解決・カリング�
 
 ### グラフ駆動のリソース状態遷移（バリア）
 
-**担当は各バックエンド。** DX12 は `DX12StateTracker` がリソースごとに状態を追跡し、
-束縛サイトで `QueueTransition` して 1 回の `ResourceBarrier` にまとめて発行する
-（`DX12Renderer.cpp`）。DX11 は暗黙遷移なので何も要らない。
+DX12 の `DX12StateTracker` がリソースごとの状態を追跡する。束縛時に `QueueTransition` で集め、必要な時点で `ResourceBarrier` にまとめて発行する。 [DX12StateTracker](../../Projects/Graphics/src/Renderer/Platform/DX12/DX12StateTracker.cpp)
 
 グラフ駆動のバリアはこの上に乗る **最適化**（冗長な遷移の除去、split barrier、
 パス跨ぎのバッチ）であって、欠けている土台ではない。現状で正しく動いているものを
@@ -57,11 +56,8 @@ FNV-1a 指紋が前フレームと一致すれば、依存解決・カリング�
 
 ### トランジェントリソースのエイリアスプール
 
-**一度作って、実測の上で消した。** alias グループごとに物理リソースを確保して
-貸し回すプールがあったが、貸出先が 1 つも無いまま、グループの数だけ実体を確保していた。
-実測（`Artifacts/RenderGraph` の構成テキスト）ではトランジェント 7 個が 7 グループに
-分かれて 1 枚も共有できておらず、それでも 7 枚ぶんの VRAM（1 ビュー約 34MB）を握っていた。
-**節約ゼロで消費だけがある状態**だったので、使う当てができるまで確保しない。
+現行のグラフはエイリアス候補を計算して診断へ出す。GPU リソースの実体はパイプライン側で管理する。
+以前のプールは、計測した構成でトランジェント 7 個がすべて別グループになり、共有できないまま 1 ビュー約 34 MB を追加で確保していたため撤去した。
 
 寿命とエイリアスグループの解析そのものは `RenderGraph::AnalyzeLifetimes` に残っている
 （構成テキストの `alias=` がそれ）。パスが増えて寿命が分かれたら、

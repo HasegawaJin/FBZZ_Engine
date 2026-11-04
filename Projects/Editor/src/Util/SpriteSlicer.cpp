@@ -7,6 +7,7 @@
 #include <stb_image.h>
 #include <algorithm>
 #include <queue>
+#include <memory>
 #include <utility>
 
 namespace fbzz::editor::spriteslice {
@@ -42,7 +43,32 @@ std::string MakeUniqueName(const std::vector<asset::SpriteRect>& sprites,
     }
 }
 
-} // namespace
+} /// @note namespace
+
+bool Trim(const std::string& imagePath, asset::SpriteRect& sprite, std::string& error, uint32_t maxWidth, uint32_t maxHeight)
+{
+    int width = 0, height = 0, channels = 0;
+    std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(stbi_load(imagePath.c_str(), &width, &height, &channels, 4), stbi_image_free);
+    if (!pixels || width <= 0 || height <= 0) { error = "Trim could not decode this image."; return false; }
+    const auto limitX = maxWidth == 0 ? static_cast<uint32_t>(width) : (std::min)(maxWidth, static_cast<uint32_t>(width));
+    const auto limitY = maxHeight == 0 ? static_cast<uint32_t>(height) : (std::min)(maxHeight, static_cast<uint32_t>(height));
+    const auto left = (std::min)(sprite.x, limitX), top = (std::min)(sprite.y, limitY);
+    const auto right = sprite.width == 0 ? limitX : static_cast<uint32_t>((std::min)(static_cast<std::uint64_t>(sprite.x) + sprite.width, static_cast<std::uint64_t>(limitX)));
+    const auto bottom = sprite.height == 0 ? limitY : static_cast<uint32_t>((std::min)(static_cast<std::uint64_t>(sprite.y) + sprite.height, static_cast<std::uint64_t>(limitY)));
+    uint32_t minX = right, minY = bottom, maxX = left, maxY = top; bool found = false;
+    for (auto y = top; y < bottom; ++y) for (auto x = left; x < right; ++x) {
+        const auto offset = (static_cast<std::size_t>(y) * static_cast<std::size_t>(width) + x) * 4;
+        if (pixels.get()[offset + 3] <= kAlphaThreshold) continue;
+        minX = (std::min)(minX, x); minY = (std::min)(minY, y); maxX = (std::max)(maxX, x); maxY = (std::max)(maxY, y); found = true;
+    }
+    if (!found) { error = "Trim found no visible pixels inside the selected SpriteRect."; return false; }
+    sprite.x = minX; sprite.y = minY; sprite.width = maxX - minX + 1; sprite.height = maxY - minY + 1;
+    sprite.borderLeft = (std::min)(sprite.borderLeft, static_cast<float>(sprite.width));
+    sprite.borderRight = (std::min)(sprite.borderRight, static_cast<float>(sprite.width) - sprite.borderLeft);
+    sprite.borderTop = (std::min)(sprite.borderTop, static_cast<float>(sprite.height));
+    sprite.borderBottom = (std::min)(sprite.borderBottom, static_cast<float>(sprite.height) - sprite.borderTop);
+    error.clear(); return true;
+}
 
 Result GenerateGrid(const std::string& imagePath,
                     uint32_t textureWidth, uint32_t textureHeight,
@@ -238,7 +264,7 @@ std::vector<asset::SpriteRect> MergeIntoExisting(
         }
         if (outReusedCount != nullptr) ++(*outReusedCount);
         /// @note Smart は矩形だけ合わせ直す。ID・名前・pivot・Border は人が詰めた «この絵のための値»
-        ///       なので残す。切り直しは «位置がずれた» の修正でしかなく、既定値上書きだと当たりが静かにずれる。
+        /// @note       なので残す。切り直しは «位置がずれた» の修正でしかなく、既定値上書きだと当たりが静かにずれる。
         if (mode == ExistingMode::Smart) {
             asset::SpriteRect& target = merged[static_cast<size_t>(bestIndex)];
             target.x      = candidate.x;
@@ -250,4 +276,4 @@ std::vector<asset::SpriteRect> MergeIntoExisting(
     return merged;
 }
 
-} // namespace fbzz::editor::spriteslice
+} /// @note namespace fbzz::editor::spriteslice

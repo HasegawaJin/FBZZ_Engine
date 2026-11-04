@@ -1,18 +1,9 @@
-// FBZZ Engine
-// lint.mjs | Projects/DevTools/AgentLint
-// AGENTS.md の «絶対制約» と記述規約を機械で検査する。AI の編集直後 (Claude Code PostToolUse フック) と手動で使う。
-//
-// 使い方:
-//   node Projects/DevTools/AgentLint/lint.mjs <file...>     指定ファイル (HEAD からの «増えた違反» だけ報告)
-//   node Projects/DevTools/AgentLint/lint.mjs --changed     git の未コミット変更すべて
-//   node Projects/DevTools/AgentLint/lint.mjs --base <ref>  <ref>...HEAD で変わったファイル (CI の PR 差分。<ref> 版から増えた違反)
-//   node Projects/DevTools/AgentLint/lint.mjs --all <file>  HEAD と比べず全違反を報告
-//   node Projects/DevTools/AgentLint/lint.mjs --hook        stdin の PostToolUse JSON から編集ファイルを読む
-//
-// WHY «増えた違反» だけか: 旧コードには `//` コメント等が大量に残っている。触るたびに
-//     既存の違反まで報告すると、AI がその修正に追われて本来の変更が埋もれる。
-//     HEAD 版と行テキスト単位で数を比べ、この編集で増えたものだけを出す。
-// 設計: Docs/design/ai-verification-loop.md
+/// @file    lint.mjs
+/// @brief   規約違反の増分とツール登録を手動・フック・CI で検査する。
+/// @author  Hasegawa Jin
+/// @date    2026-09-18
+/// @note 引数は対象ファイル、--all、--changed、--base、--hook。既定では基準版から増えた指摘だけを返す。
+/// @see Docs/design/ai-verification-loop.md
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -24,7 +15,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const CPP_EXTENSIONS = new Set(['.hpp', '.cpp', '.inl', '.h']);
 const SHADER_EXTENSIONS = new Set(['.hlsl', '.hlsli']);
 
-/** シェーダーの複製がある根。同じ相対パスのファイルは中身が一致していなければならない。 */
+/** @brief シェーダーの複製がある根。同じ相対パスのファイルは中身が一致していなければならない。 */
 function ShaderRoots() {
     const roots = ['Assets/Shaders'];
     const templates = path.join(REPO_ROOT, 'Projects/GameHub/Templates');
@@ -52,7 +43,7 @@ function IsLintTarget(repoPath) {
     return false;
 }
 
-/** `0x8000'0000u` の桁区切りか。文字リテラルの開始と取り違えると、行末の `//` コメントを見落とす。 */
+/** @brief `0x8000'0000u` の桁区切りか。文字リテラルの開始と取り違えると、行末の `//` コメントを見落とす。 */
 export function IsDigitSeparator(source, index) {
     if (!/[0-9A-Fa-f]/.test(source[index - 1] ?? '') || !/[0-9A-Fa-f]/.test(source[index + 1] ?? '')) return false;
     let start = index - 1;
@@ -61,8 +52,8 @@ export function IsDigitSeparator(source, index) {
 }
 
 /**
- * コメントと文字列リテラルを空白へ潰したコードと、コメントの一覧を返す。
- * 行数と桁は保つ (報告する行番号を元ファイルと一致させるため)。
+ * @note コメントと文字列リテラルを空白へ潰したコードと、コメントの一覧を返す。
+ * @note 行数と桁は保つ (報告する行番号を元ファイルと一致させるため)。
  */
 export function SplitCode(source) {
     const code = [];
@@ -122,7 +113,7 @@ export function SplitCode(source) {
     return { code: code.join(''), comments };
 }
 
-/** @returns {{severity:'error'|'warn', rule:string, line:number, message:string, key:string}[]} */
+/** @return {{severity:'error'|'warn', rule:string, line:number, message:string, key:string}[]} */
 function LintCpp(repoPath, source) {
     const findings = [];
     const lines = source.split(/\r?\n/);
@@ -130,16 +121,18 @@ function LintCpp(repoPath, source) {
     const extension = path.extname(repoPath).toLowerCase();
     const isHeader = extension === '.hpp' || extension === '.h';
     const isRendererBackend = /Renderer\/DX1[12]|RenderDX1[12]|\/DX1[12]\//.test(repoPath);
-    /// @note `new` の唯一の置き場。ここが nothrow new を書くので «失敗したら nullptr» を全体へ配れる (AGENTS.md «絶対制約»)。
+    /// @note 中断構文と標準 coroutine ABI は、既存待機型と内部フレームループの実装だけに閉じる。
+    const isCoroutinePrimitive = repoPath === 'Projects/Engine/include/Engine/Scene/Coroutine.hpp'
+        || repoPath === 'Projects/Engine/src/Scene/CoroutineFrameLoop.cpp';
+    /// @note `new` は nothrow による確保プリミティブへ限定する (AGENTS.md «絶対制約»)。
     const isAllocationPrimitive = /(^|\/)Memory\/MakeUnique\.hpp$/.test(repoPath);
-    // key は HEAD 版と突き合わせて «増えた違反» だけを残すための識別子 (OnlyNew)。
-    // WHY 原文の行をそのまま使わないか: 行末コメントを別の行へ移しただけ・旧形式の見出しを少し書き換えただけで
-    //     既存の違反が «新しい違反» に見え、PR の差分検査が関係の無い箇所で落ちる。規則ごとに不変な部分で比べる。
+    /// @note key は HEAD 版と突き合わせて «増えた違反» だけを残すための識別子 (OnlyNew)。
+    /// @note コメントの移動や見出し変更を新しい違反と誤認しないよう、規則ごとに不変な部分で比べる。
     const add = (severity, rule, line, message, keyText = (lines[line - 1] ?? '')) => findings.push({
         severity, rule, line, message, key: `${rule}|${keyText.replace(/\s+/g, ' ').trim()}`,
     });
 
-    // 4 行ヘッダー
+    /// @note 4 行ヘッダー
     const header = lines.slice(0, 4);
     const expected = [
         new RegExp(`^/// @file\\s+${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`),
@@ -168,12 +161,15 @@ function LintCpp(repoPath, source) {
         { rule: 'no-std-exception', re: /\bstd::exception\b/, message: 'std::exception 禁止' },
         { rule: 'no-dynamic-cast', re: /\bdynamic_cast\s*</, message: 'dynamic_cast 禁止。GetComponent<T>()' },
         { rule: 'no-ranges', re: /\bstd::(ranges|views)::/, message: 'std::ranges 禁止' },
-        { rule: 'no-coroutine', re: /\bco_(await|yield|return)\b/, message: 'C++20 コルーチン禁止。Engine/Scene/Coroutine.hpp' },
+        { rule: 'no-coroutine', re: /\bco_(await|yield|return)\b/, message: '中断構文は Engine の Coroutine 実装内のみ' },
+        { rule: 'no-native-coroutine', re: /\bstd\s*::\s*(?:coroutine_handle|coroutine_traits|suspend_always|suspend_never)\b/, message: '標準 coroutine ABI は Engine の Coroutine 実装内のみ' },
+        { rule: 'no-coroutine-header', re: /^\s*#\s*include\s*[<"]coroutine[>"]/, message: '<coroutine> は Engine の Coroutine 実装内のみ' },
         { rule: 'no-modules', re: /^\s*(export\s+module\b|import\s+[\w.:]+\s*;|import\s*<)/, message: 'C++20 Modules 禁止' },
         { rule: 'no-generated-hpp', re: /#\s*include\s*[<"][^>"]*\.generated\.hpp[>"]/, message: '.generated.hpp は廃止。FBZZ_FIELD* + FBZZ_REFLECT' },
         { rule: 'no-banned-lib', re: /#\s*include\s*[<"](glm\/|GLFW\/|btBulletDynamicsCommon|PxPhysicsAPI|box2d\/|Box2D\/)/, message: 'GLM / GLFW / Bullet / PhysX / Box2D 禁止。自作 Math / Physics' },
         { rule: 'warn-reinterpret-cast', re: /\breinterpret_cast\s*</, message: 'reinterpret_cast は定数バッファ転送のみ可', severity: 'warn' },
-    ].filter(({ rule }) => !(isAllocationPrimitive && rule === 'no-new'));
+    ].filter(({ rule }) => !(isAllocationPrimitive && rule === 'no-new')
+        && !(isCoroutinePrimitive && ['no-coroutine', 'no-native-coroutine', 'no-coroutine-header'].includes(rule)));
     if (isHeader) {
         rules.push({ rule: 'no-windows-h-in-header', re: /#\s*include\s*<(W|w)indows\.h>/, message: 'ヘッダーへ <Windows.h> 禁止。.cpp に閉じる' });
         rules.push({ rule: 'no-using-namespace-in-header', re: /^\s*using\s+namespace\b/, message: 'エンジン .hpp での using namespace 禁止' });
@@ -182,16 +178,17 @@ function LintCpp(repoPath, source) {
         rules.push({ rule: 'no-backend-downcast', re: /\bDX1[12]Renderer\s*[*&]/, message: 'DX11Renderer* / DX12Renderer* 禁止。IRenderer& のみ' });
     }
 
-    // #include は文字列扱いで潰れるので、原文の行で見る規則を分ける。
-    const rawLineRules = new Set(['no-generated-hpp', 'no-banned-lib', 'no-windows-h-in-header']);
+    /// @note #include は文字列扱いで潰れるので、原文の行で見る規則を分ける。
+    const rawLineRules = new Set(['no-generated-hpp', 'no-banned-lib', 'no-windows-h-in-header', 'no-coroutine-header']);
     for (let n = 0; n < codeLines.length; n++) {
         for (const { rule, re, message, severity } of rules) {
+            if (rule === 'no-coroutine-header' && !/^\s*#\s*include\b/.test(codeLines[n])) continue;
             const target = rawLineRules.has(rule) ? (lines[n] ?? '') : codeLines[n];
             if (re.test(target)) add(severity ?? 'error', rule, n + 1, message, target);
         }
     }
 
-    // 長すぎる `///` ブロック (規約: ファイル説明 4 行・クラス 4 行・@note 1〜3 行)。8 行超だけ警告し、圧縮の目印にする。
+    /// @note 長すぎる `///` ブロック (規約: ファイル説明 4 行・クラス 4 行・@note 1〜3 行)。8 行超だけ警告し、圧縮の目印にする。
     {
         let run = 0;
         let start = 0;
@@ -204,13 +201,13 @@ function LintCpp(repoPath, source) {
         });
         flush(lines.length);
     }
-    // コメント様式 (Docs/conventions/comments.md): `///` だけ。例外は namespace 閉じ・#endif・clang-format・NOLINT。
+    /// @note コメント様式 (Docs/conventions/comments.md): `///` だけ。例外は namespace 閉じ・#endif・clang-format・NOLINT。
     for (const comment of comments) {
         const text = comment.text;
         const isDoxygen = text.startsWith('///') || text.startsWith('/**') || text.startsWith('//!');
         if (!isDoxygen) {
             if (/^\/\/\s*(NOLINT|clang-format|namespace\b)/.test(text)) continue;
-            if (/^\/\*\s*\w*\s*=?\s*\*\/$/.test(text)) continue; // 引数名のコメント `/*unused*/` `/*poolTag=*/`
+            if (/^\/\*\s*\w*\s*=?\s*\*\/$/.test(text)) continue; /// @note 引数名のコメント `/*unused*/` `/*poolTag=*/`
             const codeBefore = codeLines[comment.line - 1] ?? '';
             if (/^\s*#\s*endif\b/.test(codeBefore)) continue;
             add('warn', 'doxygen-comment', comment.line, 'コメントは Doxygen 形式 (/// @brief / @note)');
@@ -251,7 +248,7 @@ function LintShader(repoPath) {
 }
 
 /**
- * `#` コメントの言語 (CMake / PowerShell) でラベル儀式を拾う。C++ の doxygen-label と同じ規則。
+ * @note `#` コメントの言語 (CMake / PowerShell) でラベル儀式を拾う。C++ の doxygen-label と同じ規則。
  * @see Docs/conventions/comments.md §1
  */
 function LintHashComments(source) {
@@ -278,7 +275,7 @@ function LintCMake(repoPath, source) {
     return findings;
 }
 
-/** テストの .cpp が Projects/Tests/CMakeLists.txt の SOURCES に載っているか。 */
+/** @brief テストの .cpp が Projects/Tests/CMakeLists.txt の SOURCES に載っているか。 */
 function LintTestRegistration(repoPath) {
     if (!repoPath.startsWith('Projects/Tests/') || !repoPath.endsWith('.cpp')) return [];
     if (repoPath.includes('/TestKit/')) return [];
@@ -291,8 +288,8 @@ function LintTestRegistration(repoPath) {
 }
 
 /**
- * 入場を索引 (各根の README.md) で管理するツール置き場。
- * [根, 直下の項目名] を取り出す。`<Project>/Tools` のような «プロジェクト/Tools» も含む。
+ * @note 入場を索引 (各根の README.md) で管理するツール置き場。
+ * @note [根, 直下の項目名] を取り出す。`<Project>/Tools` のような «プロジェクト/Tools» も含む。
  */
 const TOOL_ROOTS = [
     /^(Tools)\/([^/]+)/,
@@ -301,10 +298,10 @@ const TOOL_ROOTS = [
 ];
 
 /**
- * ツール置き場のファイルが、その根の README.md の索引に載っているか。
- * WHY: AI は作業中の一回きりのスクリプトを «後で使うかも» と残し、Tools が溜まり場になる。
- *      索引に載せる (= 呼び出し元と役割を書く) ことを入場の条件にし、置いた瞬間に止める。
- * 設計: AGENTS.md «ツールの置き場所»
+ * @note ツール置き場のファイルが、その根の README.md の索引に載っているか。
+ * @note AI は作業中の一回きりのスクリプトを «後で使うかも» と残し、Tools が溜まり場になる。
+ * @note 索引に載せる (= 呼び出し元と役割を書く) ことを入場の条件にし、置いた瞬間に止める。
+ * @note 設計: AGENTS.md «ツールの置き場所»
  */
 function LintToolRegistration(repoPath) {
     if (/(^|\/)(node_modules|dist|out|__pycache__)\//.test(repoPath)) return [];
@@ -324,11 +321,11 @@ function LintToolRegistration(repoPath) {
 }
 
 /**
- * ASCII 以外を含む .ps1 が UTF-8 の BOM を持つか。
- * WHY: Windows PowerShell 5.1 (タスクと AgentBuild の `powershell`) は BOM の無い .ps1 を CP932 として読む。
- *      日本語の文字列やコメントが化けて構文エラーになるのに、PowerShell 7 では通るので気づけない。
+ * @note ASCII 以外を含む .ps1 が UTF-8 の BOM を持つか。
+ * @note Windows PowerShell 5.1 (タスクと AgentBuild の `powershell`) は BOM の無い .ps1 を CP932 として読む。
+ * @note 日本語の文字列やコメントが化けて構文エラーになるのに、PowerShell 7 では通るので気づけない。
  * @see https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding
- *      about_Character_Encoding «Character encoding in Windows PowerShell»
+ * @note about_Character_Encoding «Character encoding in Windows PowerShell»
  */
 function LintPowerShellEncoding(repoPath, absolute) {
     if (path.extname(repoPath).toLowerCase() !== '.ps1') return [];
@@ -339,7 +336,7 @@ function LintPowerShellEncoding(repoPath, absolute) {
         message: 'ASCII 以外を含む .ps1 は UTF-8 (BOM 付き) で保存する。無いと Windows PowerShell 5.1 が CP932 で読み、構文エラーになる' }];
 }
 
-function LintContent(repoPath, source) {
+export function LintContent(repoPath, source) {
     const extension = path.extname(repoPath).toLowerCase();
     if (CPP_EXTENSIONS.has(extension)) return LintCpp(repoPath, source);
     if (path.basename(repoPath) === 'CMakeLists.txt' || extension === '.cmake') return LintCMake(repoPath, source);
@@ -358,7 +355,7 @@ function HeadVersion(repoPath, ref = 'HEAD') {
 const renameCache = new Map();
 
 /**
- * base 側の改名元パス。改名されていなければ null。
+ * @note base 側の改名元パス。改名されていなければ null。
  * @note 改名先は base に無いので、これが無いと移動しただけの既存違反がすべて «増えた» 扱いになる。
  * @note base が HEAD 以外 (CI) は PR 差分と同じ merge-base 起点で見る。HEAD (手元) は作業ツリーとの比較で git mv 済みの改名を拾う。
  */
@@ -372,13 +369,13 @@ function RenameSource(repoPath, base) {
                 const [status, from, to] = line.split('\t');
                 if (status?.startsWith('R') && from && to) renames.set(to, from);
             }
-        } catch { /* @note git が使えないときは改名を追わず、従来どおり新規ファイル扱い。 */ }
+        } catch { /** @note git が使えないときは改名を追わず、従来どおり新規ファイル扱い。 */ }
         renameCache.set(base, renames);
     }
     return renameCache.get(base).get(repoPath) ?? null;
 }
 
-/** HEAD 版にも同じ (規則, 行テキスト) が同数以上あった指摘を落とす。 */
+/** @brief HEAD 版にも同じ (規則, 行テキスト) が同数以上あった指摘を落とす。 */
 function OnlyNew(findings, baseline) {
     const budget = new Map();
     for (const finding of baseline) budget.set(finding.key, (budget.get(finding.key) ?? 0) + 1);
@@ -394,7 +391,7 @@ export function LintFile(file, { all = false, base = 'HEAD' } = {}) {
     const absolute = path.join(REPO_ROOT, repoPath);
     if (!existsSync(absolute) || !statSync(absolute).isFile()) return [];
 
-    // 置き場所の検査は拡張子を問わない (.py / .mjs / .ts もツールとして置かれる)。
+    /// @note 置き場所の検査は拡張子を問わない (.py / .mjs / .ts もツールとして置かれる)。
     const findings = LintToolRegistration(repoPath);
     if (!IsLintTarget(repoPath)) return findings.map((finding) => ({ ...finding, file: repoPath }));
 
@@ -412,7 +409,7 @@ export function LintFile(file, { all = false, base = 'HEAD' } = {}) {
     return findings.map((finding) => ({ ...finding, file: repoPath }));
 }
 
-/** CI 用: base から HEAD までに変わったファイル (PR の差分)。 */
+/** @brief CI 用: base から HEAD までに変わったファイル (PR の差分)。 */
 function ChangedSince(base) {
     return execFileSync('git', ['diff', '--name-only', '--diff-filter=ACMR', `${base}...HEAD`], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 })
         .split(/\r?\n/).filter(Boolean);

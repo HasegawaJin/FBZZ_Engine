@@ -5,6 +5,7 @@
 /// @note Directional / Point / Spot を HLSL の LightConstants と一致する形に詰める。
 /// @note 配列上限はシェーダー側レイアウトと同期して変更する。
 #pragma once
+#include <Graphics/Api.hpp>
 #include "IConstantBuffer.hpp"
 #include <Math/Vector3.hpp>
 #include <vector>
@@ -59,19 +60,19 @@ struct LightConstantsCB {
 
 class LightSystem {
 public:
-    void SetDirectional(const DirectionalLight& light);
-    const DirectionalLight& GetDirectional() const;
+    FBZZ_GRAPHICS_API void SetDirectional(const DirectionalLight& light);
+    FBZZ_GRAPHICS_API const DirectionalLight& GetDirectional() const;
 
-    void AddPoint(const PointLight& light);
-    void AddSpot(const SpotLight& light);
-    void Clear();
+    FBZZ_GRAPHICS_API void AddPoint(const PointLight& light);
+    FBZZ_GRAPHICS_API void AddSpot(const SpotLight& light);
+    FBZZ_GRAPHICS_API void Clear();
 
     std::vector<PointLight>&       GetPointLights()       { return m_pointLights; }
     const std::vector<PointLight>& GetPointLights() const { return m_pointLights; }
     std::vector<SpotLight>&        GetSpotLights()        { return m_spotLights;  }
     const std::vector<SpotLight>&  GetSpotLights()  const { return m_spotLights;  }
 
-    void Upload(IConstantBuffer& cb) const;
+    FBZZ_GRAPHICS_API void Upload(IConstantBuffer& cb) const;
 
 private:
     DirectionalLight    m_directional;

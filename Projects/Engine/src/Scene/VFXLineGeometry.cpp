@@ -2,6 +2,7 @@
 /// @brief   VFX Line の形と明るさ
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
+#include <Engine/Scene/Components/VFXLineComponent.hpp>
 #include <Engine/Scene/VFXLineGeometry.hpp>
 
 #include <Math/CurlNoise.hpp>
@@ -15,7 +16,7 @@ namespace {
 constexpr float kTwoPi = 6.28318530718f;
 constexpr float kDegreesToRadians = 3.14159265359f / 180.0f;
 
-/// 決定論的な乱数 [0,1)。
+/// @note 決定論的な乱数 [0,1)。
 class LineRandom {
 public:
     explicit LineRandom(std::uint32_t seed) : m_state(math::PcgHash(seed * 2654435761u + 0x9e3779b9u) | 1u) {}
@@ -30,7 +31,7 @@ private:
     std::uint32_t m_state;
 };
 
-/// 線に直交する 2 軸。真上・真下へ伸びる線 (落雷) で外積が縮退しないよう、基準を切り替える。
+/// @note 線に直交する 2 軸。真上・真下へ伸びる線 (落雷) で外積が縮退しないよう、基準を切り替える。
 void Basis(const math::Vector3& direction, math::Vector3& outRight, math::Vector3& outUp)
 {
     const math::Vector3 reference = std::fabs(math::Vector3::Dot(direction, math::Vector3::UP)) > 0.99f
@@ -39,8 +40,8 @@ void Basis(const math::Vector3& direction, math::Vector3& outRight, math::Vector
     outUp = math::Vector3::Cross(outRight, direction).NormalizedOr(math::Vector3::UP);
 }
 
-/// 中点変位 (midpoint displacement)。段ごとに区間を 2 分し、中点を線に直交する向きへずらす。
-/// ずらす量は段ごとに半分にする — 大きな折れと細かい震えが入れ子になり、稲妻の «自己相似» になる。
+/// @note 中点変位 (midpoint displacement)。段ごとに区間を 2 分し、中点を線に直交する向きへずらす。
+/// @note ずらす量は段ごとに半分にする — 大きな折れと細かい震えが入れ子になり、稲妻の «自己相似» になる。
 std::vector<math::Vector3> Displace(const math::Vector3& from, const math::Vector3& to, int levels, float offset,
                                     LineRandom& random)
 {
@@ -67,7 +68,7 @@ std::vector<math::Vector3> Displace(const math::Vector3& from, const math::Vecto
     return points;
 }
 
-} // namespace
+} /// @note namespace
 
 void GenerateLightning(const VFXLineComponent& line, const math::Vector3& from, const math::Vector3& to,
                        std::uint32_t strikeSeed, float jitterTime, std::vector<VFXLineStrand>& out)
@@ -284,4 +285,4 @@ void ApplyVFXLinePreset(VFXLineComponent& line, VFXLinePreset preset)
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

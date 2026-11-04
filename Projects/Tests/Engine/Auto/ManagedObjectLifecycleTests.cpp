@@ -2,6 +2,7 @@
 /// @brief   C# の生成・Prefab 内部参照・破棄 queue を容量と callback 順まで検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>

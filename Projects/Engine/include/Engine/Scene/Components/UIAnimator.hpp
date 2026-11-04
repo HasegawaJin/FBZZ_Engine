@@ -3,10 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 ///
-/// 色と位置の変化を時間で補間し、UIAnimatorSystem が結果を書き込む。
-/// UI 表示そのものは UISystem に委譲する。
+/// @note 色と位置の変化を時間で補間し、UIAnimatorSystem が結果を書き込む。
+/// @note UI 表示そのものは UISystem に委譲する。
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector4.hpp>
 #include <cstdio>
@@ -26,7 +26,7 @@ struct UIColorTween {
     /// @brief ループごとに from/to を反転する。往復アニメーションに使う。
     /// @note loop との違い: loop は終端でリセット、pingPong は折り返す。
     bool          pingPong = false;
-    bool          active   = false; ///< false のとき UIAnimatorSystem はこのトゥイーンをスキップする
+    bool          active   = false; ///< @note false のとき UIAnimatorSystem はこのトゥイーンをスキップする
 };
 
 struct UIPositionTween {
@@ -53,8 +53,8 @@ struct UIScaleTween {
 
 /// @brief 1 つの数値を動かすトゥイーン。回転・塗り潰し量・マテリアルの 1 パラメータが使う。
 /// @note 既存 3 種は Reflect でフィールド名を平坦に並べており (colorFrom / posFrom …)、1 つの
-///       テンプレートへまとめるとシーンに保存済みのキー名が変わって既存シーンが壊れるため、
-///       型ごとに分けたまま数値版だけ追加している。
+/// @note テンプレートへまとめるとシーンに保存済みのキー名が変わって既存シーンが壊れるため、
+/// @note 型ごとに分けたまま数値版だけ追加している。
 struct UIFloatTween {
     float        from     = 0.0f;
     float        to       = 1.0f;
@@ -76,13 +76,13 @@ struct UIAnimator {
     UIFloatTween    fillTween;
     /// @brief UIImage の要素ごとマテリアル上書き 1 つ。materialParam が空なら何もしない。
     /// @note 複数を同時に動かしたい場面は .mat 側で 1 つの進行度から派生させたほうが破綻しない
-    ///       (色と縁と発光がばらばらに進むと調整が指数的に増える)。入口は 1 本に絞る。
+    /// @note (色と縁と発光がばらばらに進むと調整が指数的に増える)。入口は 1 本に絞る。
     UIFloatTween    materialTween;
     std::string     materialParam;
 
     /// @brief 再生開始までの待ち (秒)。全トゥイーン共通。
     /// @note 連結ではなく待ちにする理由: 「0.1 秒後に出る」のように絶対時刻で指定したい場面が
-    ///       多い。待ちだけあれば、同時再生も段差も作れる。
+    /// @note 多い。待ちだけあれば、同時再生も段差も作れる。
     float           delay   = 0.0f;
     /// @note ランタイム専用: delay の消化量。
     float           delayElapsed = 0.0f;
@@ -91,7 +91,7 @@ struct UIAnimator {
 
     /// @brief Tween 再生 API。ScriptProxy / Inspector ボタンの両方から同じ入口を使う。
     /// @note elapsed と active の初期化規則を呼び出し側へ分散させると、途中再生・ループ・
-    ///       pingPong の挙動が API ごとにずれるため、ここへ集約する。
+    /// @note pingPong の挙動が API ごとにずれるため、ここへ集約する。
     void PlayColor(const math::Vector4& from, const math::Vector4& to,
                    float duration, UIEasingType easing = UIEasingType::Linear,
                    bool loop = false, bool pingPong = false)
@@ -249,7 +249,7 @@ struct UIAnimator {
         r.Field("scaleActive",      scaleTween.active);
 
         /// @note 数値トゥイーン 3 種は項目の並びを上の 3 つと揃える。既存 3 種がフィールド名を
-        ///       平坦に並べているため、ここだけ入れ子にすると保存キーの付け方が 2 種類になる。
+        /// @note 平坦に並べているため、ここだけ入れ子にすると保存キーの付け方が 2 種類になる。
         const auto reflectFloatTween = [&](const char* prefix, UIFloatTween& tween,
                                            float minDuration, float maxDuration) {
             char key[48];
@@ -289,4 +289,4 @@ struct UIAnimator {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

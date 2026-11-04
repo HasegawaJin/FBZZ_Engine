@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Math/Api.hpp>
 
 #include "Vector3.hpp"
 
@@ -19,7 +20,7 @@ struct Matrix3 {
     static Matrix3 Transpose(const Matrix3& mat);
     /// @brief Matrix4 の左上 3x3 を取り出す。
     /// @note 非一様スケールを含む行列は法線変換に使えない。その場合は Inverse(mat3).Transposed() を使う。
-    static Matrix3 FromMatrix4(const Matrix4& mat);
+    FBZZ_MATH_API static Matrix3 FromMatrix4(const Matrix4& mat);
 
     Matrix3 operator*(const Matrix3& rhs) const;
     Vector3 operator*(const Vector3& v)   const;
@@ -59,4 +60,4 @@ inline Vector3 Matrix3::operator*(const Vector3& v) const {
     };
 }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

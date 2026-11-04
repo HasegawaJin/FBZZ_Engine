@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <Math/Matrix4.hpp>
 #include <cstddef>
@@ -42,14 +43,14 @@ struct BoneReplayGpuAsset {
     BoneReplayGpuAsset() = default;
     BoneReplayGpuAsset(const BoneReplayGpuAsset&) = delete;
     BoneReplayGpuAsset& operator=(const BoneReplayGpuAsset&) = delete;
-    ~BoneReplayGpuAsset();
+    FBZZ_GRAPHICS_API ~BoneReplayGpuAsset();
     ResourceHandle<StructuredBufferTag> samples, nodes, bindings;
     uint32_t sampleCount = 0, nodeCount = 0, boneCount = 0;
     uint64_t owner = 0, epoch = 0, residentBytes = 0;
     math::Matrix4 rootInverse = math::Matrix4::Identity();
 };
 
-std::unique_ptr<BoneReplayGpuAsset> UploadBakedBoneReplay(ResourceManager& resources,
+FBZZ_GRAPHICS_API std::unique_ptr<BoneReplayGpuAsset> UploadBakedBoneReplay(ResourceManager& resources,
     const BoneReplaySource& source, BoneReplayStatus& status);
 
 struct BoneReplayResult {
@@ -62,7 +63,7 @@ struct BoneReplayResult {
 /// @note Render-thread only. Palette belongs to the existing three-lane dynamic buffer pool and must not be released by callers.
 /// @param shaderOverride Optional caller-owned program handle, allowing isolated tests to load the Engine shader by absolute path.
 /// @return Failure publishes no palette; caller keeps its current CPU/VS skinning fallback and history.
-BoneReplayResult ReplayBakedBones(RenderPassContext& context, const BoneReplayGpuAsset& asset,
+FBZZ_GRAPHICS_API BoneReplayResult ReplayBakedBones(RenderPassContext& context, const BoneReplayGpuAsset& asset,
                                  std::span<const BoneReplayRow> rows, ResourceHandle<ShaderTag> shaderOverride = {});
-void ReleaseBakedBoneReplayCaches(ResourceManager& resources);
+FBZZ_GRAPHICS_API void ReleaseBakedBoneReplayCaches(ResourceManager& resources);
 }

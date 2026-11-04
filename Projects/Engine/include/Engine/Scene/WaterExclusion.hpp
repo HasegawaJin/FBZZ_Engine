@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
@@ -23,7 +24,7 @@ struct WaterExclusionBox {
     math::Vector3 halfExtent = math::Vector3::ZERO;
 
     /// @brief Test a world point against the box using the captured signed world scale.
-    [[nodiscard]] bool Contains(const math::Vector3& worldPoint) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool Contains(const math::Vector3& worldPoint) const;
 };
 
 /// @brief Per-water immutable exclusion set captured at a Scene read boundary.
@@ -34,14 +35,14 @@ struct WaterExclusionSnapshot {
 };
 
 /// @brief Select the LIVE_QUERY or fixed-step exclusion snapshot for a Water consumer.
-[[nodiscard]] const WaterExclusionSnapshot* WaterSurfaceExclusions(
+[[nodiscard]] FBZZ_ENGINE_API const WaterExclusionSnapshot* WaterSurfaceExclusions(
     const WaterComponent& water, WaterSurfaceReadView view);
 
 /// @brief Return true when a captured exclusion set rejects the world point.
-[[nodiscard]] bool IsWaterPointExcluded(
+[[nodiscard]] FBZZ_ENGINE_API bool IsWaterPointExcluded(
     const WaterExclusionSnapshot* snapshot, const math::Vector3& worldPoint);
 
 /// @brief Build/reuse numeric exclusion snapshots after water Zone ownership is resolved.
-void PrepareWaterExclusionSnapshots(Scene& scene);
+FBZZ_ENGINE_API void PrepareWaterExclusionSnapshots(Scene& scene);
 
 } /// @note namespace fbzz::scene

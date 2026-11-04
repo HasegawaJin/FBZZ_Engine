@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/IImGuiRenderer.hpp>
 #include <d3d12.h>
@@ -16,26 +17,26 @@ class DX12Context;
 /// @note Phase 1 のフォント描画用 SRV を所有コンテキストの可視ヒープへ割り当てる。
 class DX12ImGuiRenderer final : public IImGuiRenderer {
 public:
-    ~DX12ImGuiRenderer() override;
-    bool Init(DX12Context* context);
-    void ImGuiInit(void* hwnd) override;
-    void ImGuiShutdown() override;
-    void ImGuiNewFrame() override;
-    void ImGuiRenderDrawData() override;
-    void ImGuiRenderDrawData(ImDrawData& data) override;
-    void ImGuiPrepareTextures(ImDrawData& data) override;
-    void ImGuiPrepareGpuFrame() override;
-    void ImGuiPreparePlatformFrame() override;
-    void ImGuiRenderPlatformWindows() override;
-    void ImGuiPreparePlatformWindows() override;
-    void ImGuiRenderPreparedPlatformWindows() override;
-    void* GetImTextureID(ResourceHandle<RenderTargetTag>, ResourceManager&, int = 0) override;
-    void* GetImTextureID(ResourceHandle<TextureTag>, ResourceManager&) override;
+    FBZZ_GRAPHICS_API ~DX12ImGuiRenderer() override;
+    FBZZ_GRAPHICS_API bool Init(DX12Context* context);
+    FBZZ_GRAPHICS_API void ImGuiInit(void* hwnd) override;
+    FBZZ_GRAPHICS_API void ImGuiShutdown() override;
+    FBZZ_GRAPHICS_API void ImGuiNewFrame() override;
+    FBZZ_GRAPHICS_API void ImGuiRenderDrawData() override;
+    FBZZ_GRAPHICS_API void ImGuiRenderDrawData(ImDrawData& data) override;
+    FBZZ_GRAPHICS_API void ImGuiPrepareTextures(ImDrawData& data) override;
+    FBZZ_GRAPHICS_API void ImGuiPrepareGpuFrame() override;
+    FBZZ_GRAPHICS_API void ImGuiPreparePlatformFrame() override;
+    FBZZ_GRAPHICS_API void ImGuiRenderPlatformWindows() override;
+    FBZZ_GRAPHICS_API void ImGuiPreparePlatformWindows() override;
+    FBZZ_GRAPHICS_API void ImGuiRenderPreparedPlatformWindows() override;
+    FBZZ_GRAPHICS_API void* GetImTextureID(ResourceHandle<RenderTargetTag>, ResourceManager&, int = 0) override;
+    FBZZ_GRAPHICS_API void* GetImTextureID(ResourceHandle<TextureTag>, ResourceManager&) override;
 
     /// @note imgui_impl_dx12 のC形式コールバックから呼ぶディスクリプタ割り当て境界。
-    bool AllocateDescriptor(uint32_t& index, D3D12_CPU_DESCRIPTOR_HANDLE& cpu,
+    FBZZ_GRAPHICS_API bool AllocateDescriptor(uint32_t& index, D3D12_CPU_DESCRIPTOR_HANDLE& cpu,
                             D3D12_GPU_DESCRIPTOR_HANDLE& gpu);
-    void FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE cpu);
+    FBZZ_GRAPHICS_API void FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE cpu);
 
 private:
     /// @note CacheKey::kind — ハンドルの種別。回収時にどちらの Get で生存を問うかを決める。
@@ -49,10 +50,11 @@ private:
         uint32_t generation = 0;
         uint16_t slot = 0;
         uint8_t kind = 0;
+        uint64_t owner = 0;
         bool operator==(const CacheKey&) const = default;
     };
     struct CacheKeyHash {
-        size_t operator()(const CacheKey& key) const;
+        FBZZ_GRAPHICS_API size_t operator()(const CacheKey& key) const;
     };
 
     /// @note 回収済みディスクリプタ。GPU が読み終わるまで再利用へ回せない。
@@ -61,8 +63,8 @@ private:
         uint64_t frame = 0;  ///< @note 回収した ImGui フレーム番号
     };
 
-    void* CacheDescriptor(const CacheKey& key, D3D12_CPU_DESCRIPTOR_HANDLE source);
-    void SweepReleasedDescriptors();
+    FBZZ_GRAPHICS_API void* CacheDescriptor(const CacheKey& key, D3D12_CPU_DESCRIPTOR_HANDLE source);
+    FBZZ_GRAPHICS_API void SweepReleasedDescriptors();
 
     DX12Context* m_context = nullptr;
     bool m_imguiInitialized = false;

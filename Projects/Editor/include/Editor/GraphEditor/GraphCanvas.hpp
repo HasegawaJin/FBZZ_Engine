@@ -22,12 +22,15 @@
 #include <Editor/GraphEditor/GraphView.hpp>
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct ImNodesContext;
 struct ImNodesEditorContext;
 
 namespace fbzz::editor {
+
+class OperatorRegistry;
 
 class GraphCanvas {
 public:
@@ -89,6 +92,9 @@ public:
     void   SetZoom(float zoom);
     [[nodiscard]] ImVec2 Panning() const;
     void   SetPanning(ImVec2 panning);
+
+    /// @note 同じビューを描画するパネルがズーム値を別に保持する場合は同期先を渡す。
+    void RegisterViewOperators(OperatorRegistry& registry, std::string_view prefix, float* panelZoom = nullptr);
 
     /// 画面座標 → 論理座標。ツールが独自のドロップ処理を書くとき用。
     /// Draw() の後に呼ぶこと (キャンバス原点が確定している必要がある)。

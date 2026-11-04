@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include "RenderMeshSpatialIndex.hpp"
 #include <Graphics/Renderer/RenderScene.hpp>
@@ -261,8 +262,8 @@ private:
 };
 
 /// @note Unset/linear bypass all source projection and index maintenance; environment choices are captured once per process.
-[[nodiscard]] bool MeshSpatialQueriesEnabled();
+[[nodiscard]] FBZZ_GRAPHICS_API bool MeshSpatialQueriesEnabled();
 /// @note Shadow query owns the union of light frusta; camera visibility and reflection-face visibility are separate consumers.
-[[nodiscard]] CandidateBatch CollectShadowCandidates(const RenderPassContext& context, int cascadeCount);
+[[nodiscard]] FBZZ_GRAPHICS_API CandidateBatch CollectShadowCandidates(const RenderPassContext& context, int cascadeCount);
 
 } /// @note namespace fbzz::renderer::spatial_detail

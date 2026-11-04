@@ -2,14 +2,15 @@
 /// @brief   流体レシピを焼く — 1 コマの絵 (プレビューと共有)・フリップブック・Motion Vector・速度場 PNG
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
+
 /// @note Inspector のライブプレビューが別の描き方をすると «プレビューでは濃いのに焼くと薄い» が
 /// @note 起きるため、プレビューも焼きも同じ RenderFluid*Frame() を通す。
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Fluid/FluidRecipe.hpp>
 #include <Engine/Renderer/RenderState.hpp>
-#include <Engine/Scene/ScriptProxy/ScriptParticleProxy.hpp>
+#include <Engine/Scene/Components/ParticleTypes.hpp>
 #include <atomic>
 #include <span>
 #include <string>
@@ -44,12 +45,12 @@ struct FluidBakeTiming {
 };
 
 /// @brief rgba が事前乗算かどうか (プレビューの合成とテクスチャ .meta が使う)。
-[[nodiscard]] bool FluidShadingIsPremultiplied(fluid::FluidShading shading);
+[[nodiscard]] FBZZ_ENGINE_API bool FluidShadingIsPremultiplied(fluid::FluidShading shading);
 
 /// @brief size は描く解像度。格子より大きく描くときは双三次で補間し、流れに乗せた細部ノイズを重ねる。
-void RenderFluidGasFrame(const fluid::FluidGasSolver& solver, const fluid::FluidRecipe& recipe,
+FBZZ_ENGINE_API void RenderFluidGasFrame(const fluid::FluidGasSolver& solver, const fluid::FluidRecipe& recipe,
                          int size, float frameDt, FluidFrameImage& out);
-void RenderFluidLiquidFrame(const fluid::FluidLiquidSolver& solver, const fluid::FluidRecipe& recipe,
+FBZZ_ENGINE_API void RenderFluidLiquidFrame(const fluid::FluidLiquidSolver& solver, const fluid::FluidRecipe& recipe,
                             int size, float frameDt, FluidFrameImage& out);
 
 /// @brief 焼きの «その番号のコマ» を解いて描く。焼き (BakeFluid) もプレビューもここを通る。
@@ -60,14 +61,14 @@ void RenderFluidLiquidFrame(const fluid::FluidLiquidSolver& solver, const fluid:
 /// @param size   1 コマの 1 辺 [px]。0 以下なら output.frameSize
 /// @param out    frames と同じ並びで返る
 /// @param cancel 非 null で true になったら諦めて false を返す
-[[nodiscard]] bool RenderFluidBakeFrames(const fluid::FluidRecipe& recipe, std::span<const int> frames, int size,
+[[nodiscard]] FBZZ_ENGINE_API bool RenderFluidBakeFrames(const fluid::FluidRecipe& recipe, std::span<const int> frames, int size,
                                          std::vector<FluidFrameImage>& out,
                                          std::atomic<float>* progress = nullptr,
                                          const std::atomic<bool>* cancel = nullptr,
                                          FluidBakeTiming* timing = nullptr);
 
 /// @brief 1 コマだけ欲しいときの入口 (RenderFluidBakeFrames の薄い包み)。
-[[nodiscard]] bool RenderFluidBakeFrame(const fluid::FluidRecipe& recipe, int frame, int size, FluidFrameImage& out,
+[[nodiscard]] FBZZ_ENGINE_API bool RenderFluidBakeFrame(const fluid::FluidRecipe& recipe, int frame, int size, FluidFrameImage& out,
                                         std::atomic<float>* progress = nullptr,
                                         const std::atomic<bool>* cancel = nullptr);
 
@@ -106,9 +107,9 @@ struct FluidBakeResult {
 /// @param progress 非 null なら [0,1] の進み具合を書く (別スレッドから読んでよい)
 /// @note 同期処理 (解像度とコマ数により数秒〜数十秒)。**別スレッドから呼んでよい** —
 /// @note PNG の書き出し (WIC) に要る COM はこの関数が呼び出しスレッドで初期化する。
-[[nodiscard]] FluidBakeResult BakeFluid(const fluid::FluidRecipe& recipe, const std::string& basePath,
+[[nodiscard]] FBZZ_ENGINE_API FluidBakeResult BakeFluid(const fluid::FluidRecipe& recipe, const std::string& basePath,
                                         std::atomic<float>* progress = nullptr,
                                         FluidBakeTiming* timing = nullptr,
                                         const std::atomic<bool>* cancel = nullptr);
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

@@ -12,6 +12,7 @@
 /// @note - PassBuilder            … パスが読む/書くものを申告する (Setup)
 /// @note - PassResources          … 申告した名前からだけ実体を引ける (Execute)
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/RenderGraph.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
@@ -257,10 +258,10 @@ public:
         return m_registry.AccelerationStructure(name);
     }
 
-    [[nodiscard]] bool IsDeclared(std::string_view name) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool IsDeclared(std::string_view name) const;
 
 private:
-    void WarnIfUndeclared(std::string_view name) const;
+    FBZZ_GRAPHICS_API void WarnIfUndeclared(std::string_view name) const;
 
     const RenderResourceRegistry&                              m_registry;
     const std::vector<renderer::RenderGraph::ResourceAccess>&  m_accesses;

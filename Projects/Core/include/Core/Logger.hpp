@@ -5,6 +5,7 @@
 /// @note マクロ経由で呼ぶと呼び出し位置を LogEntry に残せる。
 /// @note ログ出力先は非所有参照として扱い、Logger は所有しない。
 #pragma once
+#include <Core/Api.hpp>
 #include <cstdarg>
 #include <cstring>
 #include <vector>
@@ -19,25 +20,25 @@ class ILogSink;
 
 class Logger {
 public:
-    static void Debug(const char* fmt, ...);
-    static void Info (const char* fmt, ...);
-    static void Warn (const char* fmt, ...);
-    static void Error(const char* fmt, ...);
+    FBZZ_CORE_API static void Debug(const char* fmt, ...);
+    FBZZ_CORE_API static void Info (const char* fmt, ...);
+    FBZZ_CORE_API static void Warn (const char* fmt, ...);
+    FBZZ_CORE_API static void Error(const char* fmt, ...);
 
-    static void DebugAt(const char* file, int line, const char* fmt, ...);
-    static void InfoAt (const char* file, int line, const char* fmt, ...);
-    static void WarnAt (const char* file, int line, const char* fmt, ...);
-    static void ErrorAt(const char* file, int line, const char* fmt, ...);
+    FBZZ_CORE_API static void DebugAt(const char* file, int line, const char* fmt, ...);
+    FBZZ_CORE_API static void InfoAt (const char* file, int line, const char* fmt, ...);
+    FBZZ_CORE_API static void WarnAt (const char* file, int line, const char* fmt, ...);
+    FBZZ_CORE_API static void ErrorAt(const char* file, int line, const char* fmt, ...);
 
-    static void SetMinLevel(LogLevel level);
+    FBZZ_CORE_API static void SetMinLevel(LogLevel level);
 
-    static void AddSink(ILogSink* sink);
-    static void RemoveSink(ILogSink* sink);
+    FBZZ_CORE_API static void AddSink(ILogSink* sink);
+    FBZZ_CORE_API static void RemoveSink(ILogSink* sink);
 
 private:
-    static LogLevel s_minLevel;
+    FBZZ_CORE_API static LogLevel s_minLevel;
     static std::vector<ILogSink*> s_sinks;
-    static void Log(LogLevel level, const char* fmt, va_list args);
+    FBZZ_CORE_API static void Log(LogLevel level, const char* fmt, va_list args);
 };
 
 } /// @note namespace fbzz::core

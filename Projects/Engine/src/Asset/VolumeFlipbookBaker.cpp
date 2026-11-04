@@ -393,29 +393,7 @@ VolumeFramingReport AnalyzeVolumeFraming(const VolumeFlipbookBakeSettings& setti
 bool VolumeFlipbookBaker::EnsureGpu(renderer::ResourceManager& resources, std::uint32_t volumeResolution,
                                     std::uint32_t tileSize, std::string& outError)
 {
-    /// @note デバイスリセット後の古いハンドルは返せない (実体ごと消えている)。捨てて作り直す。
-    if (m_resetVersion != resources.GetResetVersion()) {
-        m_fillShader = {};
-        m_raymarchShader = {};
-        m_pipeline = {};
-        m_fillConstants = {};
-        m_raymarchConstants = {};
-        m_puffBuffers = {};
-        m_puffRing = 0;
-        m_uploadShader = {};
-        m_uploadConstants = {};
-        m_fluidMediumBuffers = {};
-        m_fluidVelocityBuffers = {};
-        m_fluidRing = 0;
-        m_fluidResolution = 0;
-        m_medium = {};
-        m_velocity = {};
-        m_target = {};
-        m_volumeResolution = 0;
-        m_tileSize = 0;
-        m_previewTile = 0;
-        m_resetVersion = resources.GetResetVersion();
-    }
+    BindGpuOwner(resources);
 
     if (!m_fillShader.IsValid())
         m_fillShader = resources.LoadShader(util::FileSystem::PathToUtf8(util::ResolveEngineAssetPath(kFillShaderPath)));
@@ -434,6 +412,10 @@ bool VolumeFlipbookBaker::EnsureGpu(renderer::ResourceManager& resources, std::u
         m_fillConstants = resources.CreateConstantBuffer(sizeof(VolumeFillHeader));
     if (!m_raymarchConstants.IsValid())
         m_raymarchConstants = resources.CreateConstantBuffer(sizeof(RaymarchConstants));
+    if (!m_pipeline.IsValid() || !m_fillConstants.IsValid() || !m_raymarchConstants.IsValid()) {
+        outError = "ベイク用のパイプラインまたは定数バッファを作れません";
+        return false;
+    }
     for (auto& buffer : m_puffBuffers) {
         if (!buffer.IsValid())
             buffer = resources.CreateStructuredBuffer(nullptr, kVolumeFillMaxPuffs, sizeof(VolumeFillPuffGpu));
@@ -444,8 +426,8 @@ bool VolumeFlipbookBaker::EnsureGpu(renderer::ResourceManager& resources, std::u
     }
 
     if (m_volumeResolution != volumeResolution) {
-        if (m_medium.IsValid()) resources.Release(m_medium);
-        if (m_velocity.IsValid()) resources.Release(m_velocity);
+        m_medium.Reset();
+        m_velocity.Reset();
         m_medium = resources.CreateComputeTexture3D(volumeResolution, volumeResolution, volumeResolution);
         m_velocity = resources.CreateComputeTexture3D(volumeResolution, volumeResolution, volumeResolution);
         m_volumeResolution = volumeResolution;
@@ -457,7 +439,7 @@ bool VolumeFlipbookBaker::EnsureGpu(renderer::ResourceManager& resources, std::u
     }
 
     if (m_tileSize != tileSize) {
-        if (m_target.IsValid()) resources.Release(m_target);
+        m_target.Reset();
         m_target = resources.CreateRenderTarget(tileSize * kRaymarchTiles, tileSize,
                                                 renderer::RenderTargetDesc{ 1, renderer::Format::RGBA16F, false });
         m_tileSize = tileSize;
@@ -478,6 +460,7 @@ bool VolumeFlipbookBaker::Begin(const VolumeFlipbookBakeSettings& settings,
         outError = "ベイク中です";
         return false;
     }
+    BindGpuOwner(resources);
     /// @note 焼きとプレビューで CPU のソルバーが 2 本同時に回ると、焼きが取り分を奪われて倍近く遅くなる。
     m_fluidPreview.Cancel();
     m_settings = settings;
@@ -612,7 +595,7 @@ void VolumeFlipbookBaker::RecordFrame(renderer::IRenderer& renderer, renderer::R
 {
     PackVolumeFill(puffs, settings.noise, m_volumeResolution, time, settings.source.frameDt, m_fill);
     resources.Update(m_fillConstants, &m_fill.header, sizeof(m_fill.header));
-    const auto puffBuffer = m_puffBuffers[m_puffRing];
+    const auto puffBuffer = m_puffBuffers[m_puffRing].Get();
     m_puffRing = (m_puffRing + 1) % kPuffBufferRing;
     if (!m_fill.puffs.empty())
         resources.Update(puffBuffer, m_fill.puffs.data(), m_fill.puffs.size() * sizeof(VolumeFillPuffGpu));
@@ -673,7 +656,7 @@ bool VolumeFlipbookBaker::EnsureFluidGpu(renderer::ResourceManager& resources, s
     if (m_fluidResolution != resolution) {
         for (auto* ring : { &m_fluidMediumBuffers, &m_fluidVelocityBuffers }) {
             for (auto& buffer : *ring) {
-                if (buffer.IsValid()) resources.Release(buffer);
+                buffer.Reset();
                 buffer = {};
             }
         }
@@ -694,15 +677,9 @@ bool VolumeFlipbookBaker::EnsureFluidGpu(renderer::ResourceManager& resources, s
     return true;
 }
 
-void VolumeFlipbookBaker::ReleaseFluidGpu(renderer::ResourceManager& resources)
+void VolumeFlipbookBaker::ReleaseFluidGpu(renderer::ResourceManager&)
 {
-    /// @note デバイスリセット後のハンドルは既に実体が無い。返しに行くと別のリソースを消しかねない。
-    if (m_resetVersion == resources.GetResetVersion()) {
-        for (auto* ring : { &m_fluidMediumBuffers, &m_fluidVelocityBuffers })
-            for (const auto& buffer : *ring)
-                if (buffer.IsValid()) resources.Release(buffer);
-        if (m_uploadConstants.IsValid()) resources.Release(m_uploadConstants);
-    }
+    /// @note 所有ラッパーが作成元とハンドル世代を照合して返却する。
     m_fluidMediumBuffers = {};
     m_fluidVelocityBuffers = {};
     m_fluidRing = 0;
@@ -724,8 +701,8 @@ void VolumeFlipbookBaker::RecordFluidFrame(renderer::IRenderer& renderer, render
 
     const UploadConstants constants{ resolution, { 0u, 0u, 0u } };
     resources.Update(m_uploadConstants, &constants, sizeof(constants));
-    const auto medium = m_fluidMediumBuffers[m_fluidRing];
-    const auto velocity = m_fluidVelocityBuffers[m_fluidRing];
+    const auto medium = m_fluidMediumBuffers[m_fluidRing].Get();
+    const auto velocity = m_fluidVelocityBuffers[m_fluidRing].Get();
     m_fluidRing = (m_fluidRing + 1) % kPuffBufferRing;
     resources.Update(medium, volume.medium.data(), cells * sizeof(math::Vector4));
     resources.Update(velocity, volume.velocity.data(), cells * sizeof(math::Vector4));
@@ -756,6 +733,7 @@ void VolumeFlipbookBaker::RecordPreview(renderer::IRenderer& renderer, renderer:
                                         std::uint64_t recipeRevision)
 {
     if (IsBusy()) return;
+    BindGpuOwner(resources);
     std::string error;
     const auto fail = [&](const std::string& message) {
         m_result = {};
@@ -988,7 +966,8 @@ bool VolumeFlipbookBaker::ReadbackPreview(renderer::IRenderer& renderer, rendere
                                           std::vector<std::uint8_t>& outRgba8, std::uint32_t& outWidth,
                                           std::uint32_t& outHeight)
 {
-    if (IsBusy() || m_previewPending || !m_target.IsValid() || m_previewTile == 0 || m_previewTile != m_tileSize)
+    if (m_resourceOwner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()
+        || IsBusy() || m_previewPending || !m_target.IsValid() || m_previewTile == 0 || m_previewTile != m_tileSize)
         return false;
     const std::uint32_t tile = m_previewTile;
     std::vector<float> capture;
@@ -1488,6 +1467,10 @@ bool VolumeFlipbookBaker::TakeBakedFlipbook(BakedVolumeFlipbook& out)
 
 void VolumeFlipbookBaker::Tick(renderer::IRenderer& renderer, renderer::ResourceManager& resources)
 {
+    if (IsBusy() && (m_resourceOwner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion())) {
+        Fail("GPU の所有者または Reset 世代が変わったため、ベイクを開始し直してください");
+        return;
+    }
     if (m_state == VolumeFlipbookBakeState::Cancelling) {
         if (m_encodeJob.valid() && m_encodeJob.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
             (void)m_encodeJob.get();
@@ -1624,6 +1607,14 @@ void VolumeFlipbookBaker::Cancel()
     ReleaseCpuBuffers();
 }
 
+void VolumeFlipbookBaker::BindGpuOwner(renderer::ResourceManager& resources)
+{
+    if (m_resourceOwner == resources.GetInstanceId() && m_resetVersion == resources.GetResetVersion()) return;
+    Release(resources);
+    m_resourceOwner = resources.GetInstanceId();
+    m_resetVersion = resources.GetResetVersion();
+}
+
 void VolumeFlipbookBaker::Release(renderer::ResourceManager& resources)
 {
     Cancel();
@@ -1654,17 +1645,7 @@ void VolumeFlipbookBaker::Release(renderer::ResourceManager& resources)
     m_previewGpuLiquid = false;
     m_baked = {};
     m_hasBaked = false;
-    /// @note デバイスリセット後のハンドルは既に実体が無い。返しに行くと別のリソースを消しかねない。
-    if (m_resetVersion == resources.GetResetVersion()) {
-        if (m_medium.IsValid()) resources.Release(m_medium);
-        if (m_velocity.IsValid()) resources.Release(m_velocity);
-        if (m_target.IsValid()) resources.Release(m_target);
-        if (m_fillConstants.IsValid()) resources.Release(m_fillConstants);
-        if (m_raymarchConstants.IsValid()) resources.Release(m_raymarchConstants);
-        if (m_pipeline.IsValid()) resources.Release(m_pipeline);
-        for (const auto& buffer : m_puffBuffers)
-            if (buffer.IsValid()) resources.Release(buffer);
-    }
+    /// @note 所有ラッパーが作成元とハンドル世代を照合して返却する。
     m_puffBuffers = {};
     m_puffRing = 0;
     m_fill = {};

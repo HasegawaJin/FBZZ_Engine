@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/IConstantBuffer.hpp>
 #include <d3d12.h>
@@ -14,11 +15,11 @@ class DX12UploadArena;
 
 class DX12ConstantBuffer final : public IConstantBuffer {
 public:
-    bool Init(DX12UploadArena* arena, size_t sizeBytes);
-    void Update(const void* data, size_t sizeBytes) override;
+    FBZZ_GRAPHICS_API bool Init(DX12UploadArena* arena, size_t sizeBytes);
+    FBZZ_GRAPHICS_API void Update(const void* data, size_t sizeBytes) override;
     size_t GetSize() const override { return m_size; }
     /// @note 現在のフレーム用UploadArenaへCPU側の最新値を転送し、Root CBVアドレスを返す。
-    D3D12_GPU_VIRTUAL_ADDRESS PrepareForSubmit();
+    FBZZ_GRAPHICS_API D3D12_GPU_VIRTUAL_ADDRESS PrepareForSubmit();
 
 private:
     DX12UploadArena* m_arena = nullptr;

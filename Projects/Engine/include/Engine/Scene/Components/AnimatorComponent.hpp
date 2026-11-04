@@ -2,17 +2,20 @@
 /// @brief   スケルタルアニメーション再生状態コンポーネント。
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
-///
+
 /// @note Model の AnimationClip を参照し、現在時刻や再生速度を保持する。骨行列の計算と GPU 転送、
 /// @note State/BlendTree を統一したステートマシンの評価は AnimatorSystem が行う。
 #pragma once
+#include <Engine/Scene/Components/TransientGpuState.hpp>
+#include <Engine/Api.hpp>
 
 #include <Engine/Asset/AnimationClip.hpp>
+#include <Engine/Asset/AnimatorControllerDefinition.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Asset/AvatarMaskAsset.hpp>
-#include <Engine/Scene/BoneBakeRuntime.hpp>
+#include <Engine/Scene/Components/BoneBakeTypes.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Matrix4.hpp>
 #include <algorithm>
 #include <cctype>
@@ -40,49 +43,9 @@ struct FiredAnimationEvent {
 /// @name ステートマシン用データ型
 /// @{
 
-/// @brief パラメーター比較演算子。
-/// @note Greater/Less/Equal/NotEqual は Float/Int、True/False は Bool/Trigger に使う。
-enum class ConditionOp : int {
-    Greater  = 0,
-    Less     = 1,
-    Equal    = 2,
-    NotEqual = 3,
-    True     = 4,
-    False    = 5,
-};
 
-/// @brief 遷移の発火条件を1つ表す。複数条件は AND で評価される。
-struct AnimatorCondition {
-    std::string paramName;
-    ConditionOp op        = ConditionOp::True;
-    float       threshold = 0.0f; ///< @note Float/Int の比較閾値。Bool/Trigger では使わない
-};
 
-/// @brief あるステートから別ステートへの遷移定義。
-/// @note conditions が空 + hasExitTime=false の場合は無効定義として遷移しない。
-struct AnimationTransition {
-    std::string                    toStateName;
-    bool                           hasExitTime        = false;
-    float                          exitTime           = 1.0f;   ///< @note 0..1 正規化再生位置
-    /// @note true は秒、false は遷移元ステート Length に対する正規化割合として解釈する。
-    bool                           fixedDuration      = true;
-    float                          transitionDuration = 0.25f;
-    std::vector<AnimatorCondition> conditions;
-};
 
-/// @brief BlendTree 内の1モーション。1D は threshold、2D は posX/posY を使用する。
-struct BlendTreeMotion {
-    float       threshold = 0.0f;
-    float       posX      = 0.0f;
-    float       posY      = 0.0f;
-    /// @note この Motion が直接参照するアニメーションソース。Animator 全体の Clip Sources と
-    /// @note index の組み合わせを廃止し、Node 単体で参照を完結させる。
-    std::string sourcePath;
-    std::string clipName;
-    int         clipIndex = -1;
-    float       speed     = 1.0f;
-    float       ikWeight  = 1.0f; ///< @note Motion ごとの IK 寄与率。BlendTree の姿勢 Weight と同じ比率で補間する
-};
 
 /// @brief Float パラメーター1本で複数モーションを補間する。
 struct BlendTree1D {
@@ -102,11 +65,6 @@ struct BlendTree1D {
     /// @}
 };
 
-/// @brief 2D BlendTree の座標解釈方式。
-enum class BlendTree2DType : int {
-    SimpleDirectional = 0,
-    FreeformCartesian = 1
-};
 
 /// @brief Float パラメーター2本で複数モーションを2D補間する。
 struct BlendTree2D {
@@ -132,12 +90,6 @@ struct BlendTree2D {
     /// @}
 };
 
-/// @brief AnimationState が単一クリップと BlendTree のどれを評価するかを表す。
-enum class AnimationStateMode : int {
-    Clip        = 0,
-    BlendTree1D = 1,
-    BlendTree2D = 2
-};
 
 /// @brief ステートマシンの1状態。アニメーションクリップと遷移リストを持つ。
 /// @note clipName が animator.clips 内の名前と一致しない場合は clipIndex で直接指定する。
@@ -158,34 +110,12 @@ struct AnimationState {
     BlendTree2D                      blendTree2D;
 };
 
-/// @brief パラメーター型。
-/// @note Trigger は SetTrigger() で true になり、遷移に消費されると自動で false にリセットされる。
-enum class ParamType : int { Float = 0, Int = 1, Bool = 2, Trigger = 3 };
 
-/// @brief スクリプトからステートマシンを操作するためのパラメーター。
-/// @note float/int/bool/trigger を統一構造体で管理し、シリアライズと Inspector UI を単純に保つ。
-struct AnimatorParameter {
-    std::string name;
-    ParamType   type       = ParamType::Float;
-    float       floatValue = 0.0f;
-    int         intValue   = 0;
-    bool        boolValue  = false;
-};
 
-/// @brief Base Layer の結果へ重ねる追加レイヤー。
-enum class AnimationLayerMode : int { Override = 0, Additive = 1 };
 
-/// @note レイヤー weight の上限。
-/// @note Additive は 1.0 を超えるとクリップの差分をそのまま誇張する (1.0 未満は従来どおり減衰)。
-/// @note Override は補間係数なので 1.0 より上は意味を持たず、適用時に 1.0 へ丸められる。
-inline constexpr float MAX_LAYER_WEIGHT = 4.0f;
 
-struct RetargetBoneMapping {
-    std::string sourcePath;
-    std::string targetPath;
-    math::Quaternion rotationOffset = math::Quaternion::Identity();
-    float translationScale = 1.0f;
-};
+
+
 
 /// @brief .mask アセットへの参照と、そのロード済みキャッシュ。
 /// @note Base Layer と各 AnimationLayer が同じ形を共有する。別フィールドで二重に持つと
@@ -224,14 +154,6 @@ struct AnimatorStateMachineRuntime {
     float       blendDuration = 0.25f;
 };
 
-/// @brief 加算レイヤーの基準ポーズ。加算量は「評価ポーズ - 基準ポーズ」で求める。
-/// @note 基準をクリップ自身の先頭フレームに固定すると、その1フレーム目を必ず無変化として
-/// @note       作る必要があり既存アニメを流用できない。別クリップの任意フレームを基準に取れる。
-struct AdditiveReferencePose {
-    std::string sourcePath; ///< @note 空なら従来動作 (加算クリップ自身の先頭キー) にフォールバックする
-    std::string clipName;
-    float       time = 0.0f; ///< @note 基準として抜き出す秒位置
-};
 
 /// @brief レイヤーへ一時的に差し込むワンショット再生 (Unreal の Montage/Slot 相当)。
 /// @note ステートマシンに専用ステートと復帰遷移を足さずに、スクリプトから1行で
@@ -286,7 +208,7 @@ struct AnimationLayer {
 
 /// @name Root Motion
 /// @{
-///
+
 /// @note 単一の適用可否フラグでは「抽出のみ」「RigidBody 速度として消費」「ポーズへ残したまま
 /// @note       抽出停止」を表現できないため、適用先 (Mode) / 解決方法 (Source) / 軸マスクを直交分解する。
 
@@ -355,12 +277,18 @@ struct RootMotionClipSample {
 /// @note PlaySlot/StopSlot/PlayLayerState/SetLayerWeight は名前不一致だと無言で戻るため、原因切り分けにこの報告が要る。
 /// @note 定義は src/Scene/Components/AnimatorComponent.cpp に置く。Logger 依存を広く include されるこのヘッダーへ持ち込まないため。
 /// @note 一致に失敗したときしか呼ばれない。成功経路には何も足さない。
-void ReportUnknownAnimationLayer(const char* api,
+FBZZ_ENGINE_API void ReportUnknownAnimationLayer(const char* api,
                                  std::string_view layerName,
                                  const std::vector<AnimationLayer>& available);
 
 /// @brief アニメーション再生・ステートマシン・ルートモーションを統括する主コンポーネント。
-struct AnimatorComponent {
+/// @note GPU 所有権と再確保用キャッシュは Component の値コピーへ含めない。
+struct AnimatorComponentGpuState {
+    renderer::OwnedResource<renderer::ConstantBufferTag> skinningBuffer;
+    renderer::OwnedResource<renderer::ConstantBufferTag> prevSkinningBuffer;
+};
+
+struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     /// @name 後方互換フィールド (states が空のとき使用)
     /// @{
     bool        enabled    = true;
@@ -429,7 +357,7 @@ struct AnimatorComponent {
     std::vector<ClipReference> sharedClips;
     [[nodiscard]] std::size_t ClipCount() const { return clips.empty() ? sharedClips.size() : clips.size(); }
     /// @return An empty clip for expired handles; manually supplied clips retain the value-array contract.
-    [[nodiscard]] const asset::AnimationClip& ClipAt(std::size_t index) const;
+    [[nodiscard]] FBZZ_ENGINE_API const asset::AnimationClip& ClipAt(std::size_t index) const;
     struct ClipRange {
         const AnimatorComponent* owner;
         struct Iterator {
@@ -461,7 +389,6 @@ struct AnimatorComponent {
 
     std::vector<math::Matrix4> boneMatrices;
     std::vector<math::Matrix4> nodeGlobalTransforms;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> skinningBuffer;
 
     /// @brief 前フレームの確定ボーンパレット。VelocityPass が VS で前フレーム頂点位置を組み直す
     /// @note        際に使う (b2 = CB_PREV_SKINNING へ束縛)。
@@ -471,7 +398,6 @@ struct AnimatorComponent {
     /// @note boneMatrices の最終書き込み者は SpringBoneSystem。AnimatorSystem が上書きする直前に
     /// @note       スナップショットを取ることで「前フレームの最終ポーズ」になる (フレーム末ではなく次フレーム頭)。
     std::vector<math::Matrix4> prevBoneMatrices;
-    renderer::ResourceHandle<renderer::ConstantBufferTag> prevSkinningBuffer;
     /// @note prevBoneMatrices が有効か。初回フレームは前フレームが存在しないため速度 0 にする。
     bool prevBoneMatricesValid = false;
     /// @}
@@ -579,7 +505,7 @@ struct AnimatorComponent {
 
     /// @name Script API
     /// @{
-    ///
+
     /// @note AnimatorSystem が毎フレーム更新するため、Set* はフィールド書き換えのみで十分。
 
     void SetFloat(std::string_view name, float v)
@@ -644,7 +570,7 @@ struct AnimatorComponent {
 
     /// @name レイヤー API
     /// @{
-    ///
+
     /// @note 上半身/下半身の出し分けはレイヤー操作が入口になる。名前引きの重複実装を避けるためここに集約する。
 
     [[nodiscard]] AnimationLayer* FindLayer(std::string_view layerName)

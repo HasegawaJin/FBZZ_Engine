@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-08
 #pragma once
+#include <Physics/Api.hpp>
 #include <Physics/Constraint.hpp>
 
 namespace fbzz::physics
@@ -10,15 +11,15 @@ namespace fbzz::physics
     class SliderConstraint : public Constraint
     {
     public:
-        SliderConstraint(RigidBody* bodyA,
+        FBZZ_PHYSICS_API SliderConstraint(RigidBody* bodyA,
                          RigidBody* bodyB,
                          const math::Vector3& axis);
 
-        void SolvePosition(float dt) override;
+        FBZZ_PHYSICS_API void SolvePosition(float dt) override;
         ConstraintType GetType() const override { return ConstraintType::SLIDER; }
 
-        void SetLimits(float minDistance, float maxDistance);
-        void ClearLimits();
+        FBZZ_PHYSICS_API void SetLimits(float minDistance, float maxDistance);
+        FBZZ_PHYSICS_API void ClearLimits();
 
         math::Vector3 m_axis;
         bool  m_limitEnabled = false;
@@ -26,4 +27,4 @@ namespace fbzz::physics
         float m_maxDistance = 0.0f;
 
     };
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 #pragma once
+#include <Physics/Api.hpp>
 #include <Physics/Volume.hpp>
 #include <Math/Vector3.hpp>
 #include <functional>
@@ -17,14 +18,14 @@ namespace fbzz::physics
 
     /// @brief 剛体ごとの «流体に浸かる大きさ» = 同じ体積を持つ球の半径 [m]。
     /// @note 球で近似する理由: Volume::Apply が受け取るのは RigidBody だけで、形状は分からない。
-    ///       浮力に要るのは «どれだけ沈んだか» の割合なので、体積さえ合っていれば形は球で足りる。
+    /// @note 浮力に要るのは «どれだけ沈んだか» の割合なので、体積さえ合っていれば形は球で足りる。
     using BodyRadiusMap = std::unordered_map<const RigidBody*, float>;
 
     /// @brief 表に載っていない剛体に使う半径 [m]。
     constexpr float DEFAULT_BODY_RADIUS = 0.5f;
 
     /// @brief 体積表を等価球の半径表 r = cbrt(3V/4pi) へ直す。半径は 0.05〜50 m へクランプする。
-    [[nodiscard]] std::shared_ptr<const BodyRadiusMap> MakeBodyRadii(const BodyVolumeMap& volumes);
+    [[nodiscard]] FBZZ_PHYSICS_API std::shared_ptr<const BodyRadiusMap> MakeBodyRadii(const BodyVolumeMap& volumes);
 
     /// @brief FluidVolume 1 つぶんの入力。表面と流れは callback で受けるので、Physics は
     /// @brief 水面も格子も高さ場も知らない。
@@ -58,7 +59,7 @@ namespace fbzz::physics
         float drag = 2.0f;
         /// @brief 浮力が届く表面からの深さ [m]。
         /// @note 上限を置く理由: 表面は厚みを持たない板なので、置いたままだと
-        ///       «表面の真下にある洞窟» の中まで浮力が届いてしまう。
+        /// @note «表面の真下にある洞窟» の中まで浮力が届いてしまう。
         float depthLimit = 10.0f;
         /// @brief 表面の評価に渡す初期時刻 [秒]。Tick(dt) がここから進める。
         /// @note Physics は Engine の Time を知らないので、時計の起点は呼び手が渡す。
@@ -77,18 +78,18 @@ namespace fbzz::physics
     class FluidVolume final : public Volume
     {
     public:
-        explicit FluidVolume(FluidVolumeDesc desc);
+        FBZZ_PHYSICS_API explicit FluidVolume(FluidVolumeDesc desc);
 
         /// @brief Test the broadphase vertical and rectangular bounds before per-probe membership.
-        [[nodiscard]] bool Contains(const math::Vector3& position) const override;
-        void Apply(RigidBody& body, float dt) override;
-        void Tick(float dt) override;
+        [[nodiscard]] FBZZ_PHYSICS_API bool Contains(const math::Vector3& position) const override;
+        FBZZ_PHYSICS_API void Apply(RigidBody& body, float dt) override;
+        FBZZ_PHYSICS_API void Tick(float dt) override;
 
     private:
         /// @brief 表面のワールド Y。
-        float SurfaceY(float worldX, float worldZ) const;
-        float DepthLimitAt(float worldX, float worldZ) const;
-        float RadiusOf(const RigidBody& body) const;
+        FBZZ_PHYSICS_API float SurfaceY(float worldX, float worldZ) const;
+        FBZZ_PHYSICS_API float DepthLimitAt(float worldX, float worldZ) const;
+        FBZZ_PHYSICS_API float RadiusOf(const RigidBody& body) const;
 
         FluidVolumeDesc m_desc;
         float m_maxRadius = DEFAULT_BODY_RADIUS;

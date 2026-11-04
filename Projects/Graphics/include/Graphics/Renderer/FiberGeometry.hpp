@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Matrix4.hpp>
@@ -58,7 +59,7 @@ struct FiberFinMesh {
 /// @note 完全に同じ位置の頂点を接続して UV 継ぎ目の二重 Fin を防ぐ。離れた頂点を許容誤差で結ばない。
 /// @note UV は最初の隣接面から取る。縮退面は無視する。分離した重なり面は別 Mesh にする。
 /// @see https://hhoppe.com/fur.pdf
-[[nodiscard]] bool BuildFiberFins(const Mesh& mesh, FiberFinMesh& out);
+[[nodiscard]] FBZZ_GRAPHICS_API bool BuildFiberFins(const Mesh& mesh, FiberFinMesh& out);
 
 /// @note 三角形面積に比例した決定的な根元分布。幅はローカル座標、密度はローカル面積あたり。
 /// @note 頂点は作らず根元だけを返す (1 葉 64 バイト)。形状は FiberSurface.hlsli が SV_VertexID から組み立てる。
@@ -67,10 +68,10 @@ struct FiberFinMesh {
 /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-7-rendering-countless-blades-waving-grass
 /// @see https://en.wikipedia.org/wiki/Rejection_sampling (Rejection sampling)
 /// @see Docs/design/terrain-layers.md §5 Fiber を層で制御する
-[[nodiscard]] bool BuildFiberBlades(const Mesh& mesh, float density, float width, uint32_t seed,
+[[nodiscard]] FBZZ_GRAPHICS_API bool BuildFiberBlades(const Mesh& mesh, float density, float width, uint32_t seed,
                                     std::vector<FiberBladeRoot>& out, bool densityFromVertexAlpha = false);
 
 /// @note 近距離では最大品質、遠距離では段階的に層数を減らす。距離・境界はワールド m。
-[[nodiscard]] int FiberLodShellCount(int maximum, int minimum, float distance, float nearDistance, float farDistance);
+[[nodiscard]] FBZZ_GRAPHICS_API int FiberLodShellCount(int maximum, int minimum, float distance, float nearDistance, float farDistance);
 
 } /// @note namespace fbzz::renderer

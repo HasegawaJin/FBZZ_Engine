@@ -231,6 +231,25 @@ void DrawCellHeightPreview(ImDrawList* draw, const ImVec2& rectMin, const ImVec2
 
 } /// @note namespace
 
+scene::EntityID MapEditorPanel::CreateGridTerrain(EditorContext& ctx, scene::EntityID grid, int x, int z)
+{
+    return CreateTerrainInGridCell(ctx, *ctx.activeScene, grid, x, z);
+}
+void MapEditorPanel::RefreshGrid(EditorContext& ctx, scene::EntityID id)
+{
+    if (auto* grid = ctx.activeScene->GetComponent<scene::TerrainGridComponent>(id)) {
+        EnsureTerrainGridColliders(*ctx.activeScene, *grid); EnsureTerrainGridAssets(ctx, *grid);
+        MarkTerrainGridDirty(*ctx.activeScene, *grid);
+    }
+}
+void MapEditorPanel::DetachGridCell(EditorContext& ctx, scene::EntityID id, int x, int z)
+{
+    if (auto* grid = ctx.activeScene->GetComponent<scene::TerrainGridComponent>(id)) {
+        MarkTerrainDirty(*ctx.activeScene, grid->GetCell(x, z)); grid->ClearCell(x, z);
+        MarkTerrainGridDirty(*ctx.activeScene, *grid);
+    }
+}
+
 void MapEditorPanel::OnRenderContent(EditorContext& ctx)
 {
     DrawEditorToolbar(ctx, "World / Terrain");

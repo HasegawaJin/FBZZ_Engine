@@ -15,7 +15,7 @@ namespace fbzz::scene {
 void ProjectLauncher::ApplySettings(physics::World& world,
                                      SceneManager& sceneManager,
                                      const ProjectSettings& settings,
-                                     UISystemContext* primaryUICtx)
+                                     UIInteractionContext* primaryUICtx)
 {
     ApplyPhysicsSettings(world, settings);
     ApplyUISettings(settings, primaryUICtx);
@@ -23,7 +23,7 @@ void ProjectLauncher::ApplySettings(physics::World& world,
 }
 
 void ProjectLauncher::ApplyAdditionalUIContext(const ProjectSettings& settings,
-                                                UISystemContext& ctx)
+                                                UIInteractionContext& ctx)
 {
     ApplyUISettings(settings, &ctx);
 }
@@ -51,4 +51,4 @@ void ProjectLauncher::RegisterScenesFromDirectory(SceneManager& sceneManager,
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

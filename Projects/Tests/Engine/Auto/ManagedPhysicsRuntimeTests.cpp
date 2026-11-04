@@ -2,6 +2,7 @@
 /// @brief   実 CoreCLR から剛体・query・位相拒否・保持 facade の native 接続を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>

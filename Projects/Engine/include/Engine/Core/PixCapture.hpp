@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #pragma once
+#include <Engine/Api.hpp>
 #include <filesystem>
 #include <span>
 #include <string>
@@ -30,13 +31,13 @@ struct PixCaptureStatus {
 /// @brief Parse already-tokenized PIX arguments without filesystem access or module loading.
 /// @note The caller consumes operands of its other options before passing PIX arguments here; unrelated arguments are ignored.
 /// @return False leaves out unchanged and provides a reason; success clears reason.
-[[nodiscard]] bool ParsePixCaptureOptions(std::span<const std::wstring_view> arguments,
+[[nodiscard]] FBZZ_ENGINE_API bool ParsePixCaptureOptions(std::span<const std::wstring_view> arguments,
                                          PixCaptureOptions& out, std::string& reason);
 
 /// @brief Resolve the opt-in directory lexically without probing disk, changing process state or loading a module.
 /// @note An unrequested option resolves to an empty path even if Program Files is unavailable.
 /// @return False leaves out unchanged and provides a reason; success clears reason.
-[[nodiscard]] bool ResolvePixCaptureDirectory(const PixCaptureOptions& options,
+[[nodiscard]] FBZZ_ENGINE_API bool ResolvePixCaptureDirectory(const PixCaptureOptions& options,
                                              const std::filesystem::path& programFilesDirectory,
                                              std::filesystem::path& out, std::string& reason);
 
@@ -45,10 +46,10 @@ struct PixCaptureStatus {
 /// @note Startup options are immutable after the first call; ordinary startup never loads PIX, and failed startup is not retried.
 /// @return False logs the failure and never reports readiness; callers must stop startup before creating a renderer.
 /// @see https://devblogs.microsoft.com/pix/taking-a-capture/ Matching WinPixGpuCapturer.dll must precede D3D12 initialization.
-[[nodiscard]] bool InitializePixCapture(const PixCaptureOptions& options);
+[[nodiscard]] FBZZ_ENGINE_API bool InitializePixCapture(const PixCaptureOptions& options);
 
 /// @brief Read the process startup proof; no probing, loading, injection or restart is performed.
 /// @note Read on the main thread after startup initialization; the referenced status lives until process termination.
-[[nodiscard]] const PixCaptureStatus& GetPixCaptureStatus();
+[[nodiscard]] FBZZ_ENGINE_API const PixCaptureStatus& GetPixCaptureStatus();
 
 } /// @note namespace fbzz::core

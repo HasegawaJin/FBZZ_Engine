@@ -3,15 +3,16 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 namespace fbzz::renderer {
-void ExecuteInstanceGBuffer(RenderPassContext& context);
-void ExecuteInstanceForward(RenderPassContext& context);
-void ExecuteInstanceSelection(RenderPassContext& context);
-void ExecuteInstanceVelocity(RenderPassContext& context);
+FBZZ_GRAPHICS_API void ExecuteInstanceGBuffer(RenderPassContext& context);
+FBZZ_GRAPHICS_API void ExecuteInstanceForward(RenderPassContext& context);
+FBZZ_GRAPHICS_API void ExecuteInstanceSelection(RenderPassContext& context);
+FBZZ_GRAPHICS_API void ExecuteInstanceVelocity(RenderPassContext& context);
 /// @note Normal-Z probe capture uses its own camera and shadow/cookie providers; the probe owner is excluded.
-void ExecuteInstanceCapture(RenderPassContext& context,const Camera& captureCamera,uint32_t resolution,
+FBZZ_GRAPHICS_API void ExecuteInstanceCapture(RenderPassContext& context,const Camera& captureCamera,uint32_t resolution,
     uint32_t excludedIndex,uint32_t excludedGeneration);
-void SubmitInstanceShadows(RenderPassContext& context,const math::Frustum& frustum,
+FBZZ_GRAPHICS_API void SubmitInstanceShadows(RenderPassContext& context,const math::Frustum& frustum,
     ResourceHandle<ConstantBufferTag> frameConstants);
 } /// @note namespace fbzz::renderer

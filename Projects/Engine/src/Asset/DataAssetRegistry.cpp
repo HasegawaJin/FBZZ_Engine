@@ -12,7 +12,7 @@
 #include <Engine/Asset/RenderPipelineAsset.hpp>
 #include "RenderPipelineAssetCodec.hpp"
 /// @note scene::IReflector / DataAssetRef を使う。
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Scene/TomlReflector.hpp>
 #include <Engine/Core/Logger.hpp>

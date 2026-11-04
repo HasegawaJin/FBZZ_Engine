@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 
 namespace fbzz::scene {
 /// @note 中心は GameObject の worldPosition。足元へ配置する。物理力は発生させない。
@@ -21,4 +21,4 @@ struct FiberInteractorComponent {
         r.FloatRange("recoverySeconds", m_recoverySeconds, 0.05f, 30.0f);
     }
 };
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

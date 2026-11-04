@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/RayTracing/RayScene.hpp>
 #include <Graphics/RayTracing/RayLightInput.hpp>
 #include <array>
@@ -152,13 +153,13 @@ using RayPathBufferLookup = std::function<const IBuffer*(ResourceHandle<BufferTa
 class RayPathSceneBuilder {
 public:
     /// @note respectArtistShadows=true は Hybrid 専用。既定の Reference は artist shadow 値を検証・内容キー・transport に使わない。
-    [[nodiscard]] RayPathScene Build(const RayScene& scene, ResourceManager& resources,
+    [[nodiscard]] FBZZ_GRAPHICS_API RayPathScene Build(const RayScene& scene, ResourceManager& resources,
                                     const RayPathLighting& lighting, bool respectArtistShadows = false);
     /// @note Reference の既定 false は各 record の shadowStrength=1 を維持する。
-    [[nodiscard]] RayPathScene Build(const RayScene& scene, const RayPathBufferLookup& lookup,
+    [[nodiscard]] FBZZ_GRAPHICS_API RayPathScene Build(const RayScene& scene, const RayPathBufferLookup& lookup,
                                     const RayPathLighting& lighting, bool respectArtistShadows = false);
     /// @note cache を破棄する。次回 Build は内容版を進め、以前の履歴キーを再利用しない。
-    void Reset();
+    FBZZ_GRAPHICS_API void Reset();
 
 private:
     struct LocalTriangle {
@@ -169,13 +170,13 @@ private:
         RayGeometryKey key;
         std::vector<LocalTriangle> triangles;
     };
-    [[nodiscard]] bool ReadGeometry(const RayGeometryKey& key, const RayPathBufferLookup& lookup,
+    [[nodiscard]] FBZZ_GRAPHICS_API bool ReadGeometry(const RayGeometryKey& key, const RayPathBufferLookup& lookup,
                                     std::vector<LocalTriangle>& triangles, RayPathSceneIssue& issue) const;
     std::vector<CachedGeometry> m_geometries;
     std::vector<uint32_t> m_contentKey;
     uint64_t m_contentRevision = 0;
 };
 
-[[nodiscard]] const char* DescribeRayPathSceneIssue(RayPathSceneIssue issue);
+[[nodiscard]] FBZZ_GRAPHICS_API const char* DescribeRayPathSceneIssue(RayPathSceneIssue issue);
 
 } /// @note namespace fbzz::renderer

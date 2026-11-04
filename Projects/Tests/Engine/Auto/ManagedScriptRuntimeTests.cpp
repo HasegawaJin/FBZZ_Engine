@@ -2,6 +2,7 @@
 /// @brief   実 CoreCLR と既存 Script/Serializer の縦断接続を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Core/Profiler/Profiler.hpp>

@@ -347,6 +347,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_renderer      = &renderer;
     m_imguiRenderer = &imguiRenderer;
     m_resources     = &resources;
+    m_runtime.GetSceneManager().SetResourceManager(&resources);
 
     /// @note ゲーム入力のアクション層は編集中は止め、Play 開始時に PlayModeController が有効化する。
     /// @note        既定は有効 (Standalone でそのまま遊べる状態) なので、エディタ側で明示的に落とす。
@@ -628,6 +629,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     /// @note 操作の登録が先。ホットキーは operator id へキーを割り当てるだけなので、
     /// @note        レジストリが空だと 1 つも解決できない。
     RegisterBuiltinOperators();
+    for (auto& panel : m_panels) panel->OnRegisterOperators(m_operators);
     RegisterDefaultHotkeys();
     /// @note 保存済みオーバーライドの適用は OpenProject()。ここではまだ設定を読んでいない。
 
@@ -656,6 +658,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     /// @note シーンはここで生成し activeScene にバインドする。
     /// @note        OpenProject() が activeScene を参照するため Init() で確立しておく必要がある。
     m_scene = std::make_unique<scene::Scene>();
+    m_scene->SetResourceManager(m_resources);
     m_ctx.activeScene = m_scene.get();
     m_ctx.editScene   = m_scene.get();
     /// @note AI(EditorBusDispatcher)のphysicsクエリが参照するProjectRuntimeを共有する。EditorAppが所有。
@@ -680,6 +683,7 @@ void EditorApp::Shutdown()
     m_packageBuild.Cancel();
     /// @note 接続中の AI ワーカーを Scene / Panel より先に停止し、破棄済み状態への要求を防ぐ。
     StopAiCommandBus();
+    if (m_ctx.waitForModelImports) m_ctx.waitForModelImports();
     /// @note 正常終了の印。ここまで来なかった起動は次回の OpenProject が異常終了とみなす。
     ClearSessionLock();
     /// @note AI が止まった後に、レンダラーと ResourceManager が生きているうちに GPU 資源を返す。
@@ -719,6 +723,134 @@ void EditorApp::Shutdown()
     m_imguiRenderer->ImGuiShutdown();
     m_implotContext.reset();
     ImGui::DestroyContext();
+}
+
+void EditorApp::ApplyEditorSettingsToContext(bool loadPanels)
+{
+    m_ctx.inspectorSectionState = m_settings.inspectorSectionState;
+    m_ctx.showGrid           = m_settings.showGrid;
+    m_ctx.gridSize           = m_settings.gridSize;
+    m_ctx.snapEnabled = m_settings.snapEnabled;
+    m_ctx.snapPos     = m_settings.snapPos;
+    m_ctx.snapRot     = m_settings.snapRot;
+    m_ctx.snapScale   = m_settings.snapScale;
+    /// @note TOML は手で書き換えられ、enum の値を減らした版で保存したファイルも残る。範囲外の
+    /// @note        int を enum へキャストすると switch が既定へ落ちず原因不明の挙動になるため、
+    /// @note        読み口で clamp して潰す。
+    m_ctx.gizmoMode          = static_cast<EditorContext::GizmoMode>(std::clamp(m_settings.gizmoMode, 0, 2));
+    m_ctx.gizmoSpace         = static_cast<EditorContext::GizmoSpace>(std::clamp(m_settings.gizmoSpace, 0, 1));
+    m_ctx.gizmoPivot         = static_cast<EditorContext::GizmoPivot>(std::clamp(m_settings.gizmoPivot, 0, 1));
+    m_ctx.showLightRange     = m_settings.showLightRange;
+    m_ctx.showVFXGizmos      = m_settings.showVFXGizmos;
+    m_ctx.showFlowFields     = m_settings.showFlowFields;
+    m_ctx.showFlowSamples    = m_settings.showFlowSamples;
+    m_ctx.showPhysicsVolumes = m_settings.showPhysicsVolumes;
+    m_ctx.showWaterFlow      = m_settings.showWaterFlow;
+    m_ctx.showRagdoll        = m_settings.showRagdoll;
+    m_ctx.showSkeleton       = m_settings.showSkeleton;
+    m_ctx.skeletonSelectedOnly = m_settings.skeletonSelectedOnly;
+    m_ctx.showScriptGizmos   = m_settings.showScriptGizmos;
+    m_ctx.showConstraints    = m_settings.showConstraints;
+    m_ctx.showRigidBodies    = m_settings.showRigidBodies;
+    m_ctx.showIK             = m_settings.showIK;
+    m_ctx.showSpringBones    = m_settings.showSpringBones;
+    m_ctx.showAttachments    = m_settings.showAttachments;
+    m_ctx.showVFXPaths       = m_settings.showVFXPaths;
+    m_ctx.showTerrainBounds  = m_settings.showTerrainBounds;
+    m_ctx.showLODBounds      = m_settings.showLODBounds;
+    m_ctx.showSceneIcons     = m_settings.showSceneIcons;
+    m_ctx.hiddenSceneIcons   = m_settings.hiddenSceneIcons;
+    m_ctx.showStats          = m_settings.showStats;
+    m_ctx.sceneViewOcclusionCulling = m_settings.sceneViewOcclusionCulling;
+    m_ctx.hotReloadEnabled   = m_settings.hotReloadEnabled;
+    m_ctx.hotReloadSound     = m_settings.hotReloadSound;
+    m_ctx.sceneAutoSaveEnabled     = m_settings.autoSaveEnabled;
+    m_ctx.sceneAutoSaveIntervalSec = m_settings.autoSaveIntervalSec;
+    m_ctx.aiCommandBusEnabled = m_settings.aiCommandBusEnabled;
+    core::DeveloperMode::SetPreference(m_settings.developerMode);
+    m_ctx.showTerrainTool    = m_settings.showTerrainTool;
+    m_ctx.gameViewportAspect = static_cast<EditorContext::GameViewportAspect>(
+        std::clamp(m_settings.gameViewportAspect,
+                   0, static_cast<int>(EditorContext::GameViewportAspect::iPhoneLandscape)));
+    m_ctx.playFocusMode      = static_cast<EditorContext::PlayFocusMode>(
+        std::clamp(m_settings.playFocusMode,
+                   0, static_cast<int>(EditorContext::PlayFocusMode::Unfocused)));
+    m_ctx.playExecutionMode = static_cast<PlayExecutionMode>(
+        std::clamp(m_settings.playExecutionMode, 0, static_cast<int>(PlayExecutionMode::STANDALONE)));
+    m_ctx.surfaceSnapAlignToNormal = m_settings.surfaceSnapAlignToNormal;
+    m_ctx.showGeneratedObjects     = m_settings.showGeneratedObjects;
+    m_ctx.mapActiveTool      = static_cast<EditorContext::MapTool>(
+        std::clamp(m_settings.mapActiveTool,
+                   0, static_cast<int>(EditorContext::MapTool::TerrainHole)));
+    m_ctx.cameraSpeed        = m_settings.cameraSpeed;
+    m_ctx.cameraSensitivity  = m_settings.cameraSensitivity;
+    if (m_ctx.editorCamera) {
+        m_ctx.editorCamera->m_orthoHeight = m_settings.cameraOrthoHeight;
+        m_ctx.editorCamera->m_projection  = m_settings.cameraOrthographic
+            ? renderer::ProjectionMode::Orthographic
+            : renderer::ProjectionMode::Perspective;
+        /// @note Teleport 経由にして DebugCamera の yaw / pitch / pivot まで揃える。
+        /// @note        直書きだけだと、復元直後の 1 回目のオービットで視点が飛ぶ。
+        m_debugCamera.Teleport(
+            { m_settings.cameraLastPx, m_settings.cameraLastPy, m_settings.cameraLastPz },
+            { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz,
+              m_settings.cameraLastRw });
+    }
+    m_ctx.editorUiScale = m_settings.editorUiScale;
+    /// @note ロードしたスケールを即適用
+    EditorTheme::SetUiScale(m_ctx.editorUiScale);
+    /// @note 表示言語。辞書の作り直しだけなので、UI スケールと違ってフォントには触らない
+    /// @note        (EditorTheme が日本語グリフを最初から merge している)。
+    loc::SetLanguage(loc::FromId(m_settings.language));
+    m_ctx.assetBrowserBookmarks = m_settings.assetBrowserBookmarks;
+    m_ctx.assetBrowserFolderColors.clear();
+    for (const auto& [path, color] : m_settings.assetBrowserFolderColors)
+        m_ctx.assetBrowserFolderColors.emplace(path, color);
+    m_ctx.assetBrowserRecentFolderColors.assign(
+        m_settings.assetBrowserRecentFolderColors.begin(),
+        m_settings.assetBrowserRecentFolderColors.end());
+    m_ctx.defaultImportOptions  = m_settings.defaultImportOptions;
+    for (std::size_t i = 0; i < 9; ++i) {
+        const auto& s = m_settings.cameraBookmarks[i];
+        auto& d = m_ctx.cameraBookmarks[i];
+        d.valid      = s.valid;
+        d.position   = { s.px, s.py, s.pz };
+        d.rotation   = { s.rx, s.ry, s.rz, s.rw };
+    }
+    m_ctx.mapHierarchyFilter = m_settings.mapHierarchyFilter;
+    m_ctx.mapInspectorFilter = m_settings.mapInspectorFilter;
+    if (m_terrainTool) {
+        m_terrainTool->SetBrush(
+            m_settings.terrainBrushRadius,
+            m_settings.terrainBrushStrength,
+            static_cast<TerrainTool::FalloffType>(
+                std::clamp(m_settings.terrainBrushFalloff,
+                           0, static_cast<int>(TerrainFalloff::Gaussian))));
+        m_terrainTool->SetSculptMode(
+            static_cast<TerrainTool::SculptMode>(
+                std::clamp(m_settings.terrainSculptMode,
+                           0, static_cast<int>(TerrainSculptOp::Terrace))));
+        m_terrainTool->SetPaintLayer(m_settings.terrainPaintLayer);
+    }
+
+    /// @note 設定を読むのはこの OpenProject なので、適用もここで行う。Init 時点の
+    /// @note        m_settings は既定値のままで、上書きしたキーが戻らない。
+    for (const auto& ov : m_settings.hotkeyOverrides)
+        m_hotkeys.Rebind(ov.name, ov.key, ov.ctrl, ov.shift, ov.alt);
+    if (loadPanels) {
+        for (auto& panel : m_panels) panel->OnLoadSettings(m_settings);
+        RestorePanelVisibility();
+        m_ctx.projectSettings.render.showColliders        = m_settings.showColliders;
+        m_ctx.projectSettings.render.showUIRects          = m_settings.showUIRects;
+        m_ctx.projectSettings.render.showTerrainCollision = m_settings.showTerrainCollision;
+        m_ctx.projectSettings.render.showDecalBounds      = m_settings.showDecalBounds;
+        m_ctx.projectSettings.render.showNavMesh          = m_settings.showNavMesh;
+        m_ctx.projectSettings.render.showNavSensors       = m_settings.showNavSensors;
+        m_ctx.projectSettings.render.navMeshDrawMode =
+            static_cast<renderer::NavMeshDrawMode>(std::clamp(m_settings.navMeshDrawMode, 0, 4));
+        m_ctx.projectSettings.render.navMeshDrawDistance  = m_settings.navMeshDrawDistance;
+        m_ctx.projectSettings.render.viewMode = static_cast<renderer::ViewMode>(m_settings.viewMode);
+    }
 }
 
 void EditorApp::CaptureEditorSettingsFromContext()
@@ -873,6 +1005,10 @@ void EditorApp::PersistEditorSettings()
 
 bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath)
 {
+    if (m_ctx.modelImportBusy && m_ctx.modelImportBusy()) {
+        FBZZ_LOG_WARN("Project switch waits for model imports to finish.");
+        return false;
+    }
     m_standalonePlay.Shutdown();
     scene::ScriptProfiler::AdvanceRuntimeEpoch();
     scene::ScriptProfiler::SetExecutionMode(false);
@@ -908,115 +1044,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         /// @note EditorSettings → EditorContext への全フィールド適用。EditorSettings は TOML の
         /// @note        raw 値、EditorContext はライブ値を保持し、OpenProject で一括コピー、Shutdown で
         /// @note        逆方向に書き戻す。
-        m_ctx.showGrid           = m_settings.showGrid;
-        m_ctx.gridSize           = m_settings.gridSize;
-        m_ctx.snapEnabled = m_settings.snapEnabled;
-        m_ctx.snapPos     = m_settings.snapPos;
-        m_ctx.snapRot     = m_settings.snapRot;
-        m_ctx.snapScale   = m_settings.snapScale;
-        /// @note TOML は手で書き換えられ、enum の値を減らした版で保存したファイルも残る。範囲外の
-        /// @note        int を enum へキャストすると switch が既定へ落ちず原因不明の挙動になるため、
-        /// @note        読み口で clamp して潰す。
-        m_ctx.gizmoMode          = static_cast<EditorContext::GizmoMode>(std::clamp(m_settings.gizmoMode, 0, 2));
-        m_ctx.gizmoSpace         = static_cast<EditorContext::GizmoSpace>(std::clamp(m_settings.gizmoSpace, 0, 1));
-        m_ctx.gizmoPivot         = static_cast<EditorContext::GizmoPivot>(std::clamp(m_settings.gizmoPivot, 0, 1));
-        m_ctx.showLightRange     = m_settings.showLightRange;
-        m_ctx.showVFXGizmos      = m_settings.showVFXGizmos;
-        m_ctx.showFlowFields     = m_settings.showFlowFields;
-        m_ctx.showFlowSamples    = m_settings.showFlowSamples;
-        m_ctx.showPhysicsVolumes = m_settings.showPhysicsVolumes;
-        m_ctx.showWaterFlow      = m_settings.showWaterFlow;
-        m_ctx.showRagdoll        = m_settings.showRagdoll;
-        m_ctx.showSkeleton       = m_settings.showSkeleton;
-        m_ctx.skeletonSelectedOnly = m_settings.skeletonSelectedOnly;
-        m_ctx.showScriptGizmos   = m_settings.showScriptGizmos;
-        m_ctx.showConstraints    = m_settings.showConstraints;
-        m_ctx.showRigidBodies    = m_settings.showRigidBodies;
-        m_ctx.showIK             = m_settings.showIK;
-        m_ctx.showSpringBones    = m_settings.showSpringBones;
-        m_ctx.showAttachments    = m_settings.showAttachments;
-        m_ctx.showVFXPaths       = m_settings.showVFXPaths;
-        m_ctx.showTerrainBounds  = m_settings.showTerrainBounds;
-        m_ctx.showLODBounds      = m_settings.showLODBounds;
-        m_ctx.showSceneIcons     = m_settings.showSceneIcons;
-        m_ctx.hiddenSceneIcons   = m_settings.hiddenSceneIcons;
-        m_ctx.showStats          = m_settings.showStats;
-        m_ctx.sceneViewOcclusionCulling = m_settings.sceneViewOcclusionCulling;
-        m_ctx.hotReloadEnabled   = m_settings.hotReloadEnabled;
-        m_ctx.hotReloadSound     = m_settings.hotReloadSound;
-        m_ctx.sceneAutoSaveEnabled     = m_settings.autoSaveEnabled;
-        m_ctx.sceneAutoSaveIntervalSec = m_settings.autoSaveIntervalSec;
-        m_ctx.aiCommandBusEnabled = m_settings.aiCommandBusEnabled;
-        core::DeveloperMode::SetPreference(m_settings.developerMode);
-        m_ctx.showTerrainTool    = m_settings.showTerrainTool;
-        m_ctx.gameViewportAspect = static_cast<EditorContext::GameViewportAspect>(
-            std::clamp(m_settings.gameViewportAspect,
-                       0, static_cast<int>(EditorContext::GameViewportAspect::iPhoneLandscape)));
-        m_ctx.playFocusMode      = static_cast<EditorContext::PlayFocusMode>(
-            std::clamp(m_settings.playFocusMode,
-                       0, static_cast<int>(EditorContext::PlayFocusMode::Unfocused)));
-        m_ctx.playExecutionMode = static_cast<PlayExecutionMode>(
-            std::clamp(m_settings.playExecutionMode, 0, static_cast<int>(PlayExecutionMode::STANDALONE)));
-        m_ctx.surfaceSnapAlignToNormal = m_settings.surfaceSnapAlignToNormal;
-        m_ctx.showGeneratedObjects     = m_settings.showGeneratedObjects;
-        m_ctx.mapActiveTool      = static_cast<EditorContext::MapTool>(
-            std::clamp(m_settings.mapActiveTool,
-                       0, static_cast<int>(EditorContext::MapTool::TerrainHole)));
-        m_ctx.cameraSpeed        = m_settings.cameraSpeed;
-        m_ctx.cameraSensitivity  = m_settings.cameraSensitivity;
-        if (m_ctx.editorCamera) {
-            m_ctx.editorCamera->m_orthoHeight = m_settings.cameraOrthoHeight;
-            m_ctx.editorCamera->m_projection  = m_settings.cameraOrthographic
-                ? renderer::ProjectionMode::Orthographic
-                : renderer::ProjectionMode::Perspective;
-            /// @note Teleport 経由にして DebugCamera の yaw / pitch / pivot まで揃える。
-            /// @note        直書きだけだと、復元直後の 1 回目のオービットで視点が飛ぶ。
-            m_debugCamera.Teleport(
-                { m_settings.cameraLastPx, m_settings.cameraLastPy, m_settings.cameraLastPz },
-                { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz,
-                  m_settings.cameraLastRw });
-        }
-        m_ctx.editorUiScale = m_settings.editorUiScale;
-        /// @note ロードしたスケールを即適用
-        EditorTheme::SetUiScale(m_ctx.editorUiScale);
-        /// @note 表示言語。辞書の作り直しだけなので、UI スケールと違ってフォントには触らない
-        /// @note        (EditorTheme が日本語グリフを最初から merge している)。
-        loc::SetLanguage(loc::FromId(m_settings.language));
-        m_ctx.assetBrowserBookmarks = m_settings.assetBrowserBookmarks;
-        m_ctx.assetBrowserFolderColors.clear();
-        for (const auto& [path, color] : m_settings.assetBrowserFolderColors)
-            m_ctx.assetBrowserFolderColors.emplace(path, color);
-        m_ctx.assetBrowserRecentFolderColors.assign(
-            m_settings.assetBrowserRecentFolderColors.begin(),
-            m_settings.assetBrowserRecentFolderColors.end());
-        m_ctx.defaultImportOptions  = m_settings.defaultImportOptions;
-        for (std::size_t i = 0; i < 9; ++i) {
-            const auto& s = m_settings.cameraBookmarks[i];
-            auto& d = m_ctx.cameraBookmarks[i];
-            d.valid      = s.valid;
-            d.position   = { s.px, s.py, s.pz };
-            d.rotation   = { s.rx, s.ry, s.rz, s.rw };
-        }
-        m_ctx.mapHierarchyFilter = m_settings.mapHierarchyFilter;
-        m_ctx.mapInspectorFilter = m_settings.mapInspectorFilter;
-        if (m_terrainTool) {
-            m_terrainTool->SetBrush(
-                m_settings.terrainBrushRadius,
-                m_settings.terrainBrushStrength,
-                static_cast<TerrainTool::FalloffType>(
-                    std::clamp(m_settings.terrainBrushFalloff,
-                               0, static_cast<int>(TerrainFalloff::Gaussian))));
-            m_terrainTool->SetSculptMode(
-                static_cast<TerrainTool::SculptMode>(
-                    std::clamp(m_settings.terrainSculptMode,
-                               0, static_cast<int>(TerrainSculptOp::Terrace))));
-            m_terrainTool->SetPaintLayer(m_settings.terrainPaintLayer);
-        }
-
-        /// @note 設定を読むのはこの OpenProject なので、適用もここで行う。Init 時点の
-        /// @note        m_settings は既定値のままで、上書きしたキーが戻らない。
-        for (const auto& ov : m_settings.hotkeyOverrides)
-            m_hotkeys.Rebind(ov.name, ov.key, ov.ctrl, ov.shift, ov.alt);
+        ApplyEditorSettingsToContext(false);
 
         /// @note ImGui レイアウトファイルも同ディレクトリに配置する。io.IniFilename は const
         /// @note        char* を保持するため、メンバ文字列のアドレスを渡して寿命を保証する。
@@ -1976,6 +2004,7 @@ void EditorApp::TickPlaytest()
 
 void EditorApp::OnUpdate(float dt)
 {
+    CompleteAnimationPreviewRequests(m_ctx);
     TickStandalonePlay(dt);
     const uint64_t timelineEditor = profiler::frame_timeline::Begin(profiler::frame_timeline::Event::EDITOR_UPDATE);
     if (m_scriptQuitSceneLifetime) {
@@ -2037,6 +2066,8 @@ void EditorApp::OnUpdate(float dt)
     if (m_ctx.resources != nullptr)
         static_cast<void>(m_memoryLeakDiff.Tick(*m_ctx.resources));
 
+    for (auto& panel : m_panels) panel->OnUpdate(m_ctx, dt);
+
     if (!playMode->IsPlaying()) {
         m_debugCamera.moveSpeed = m_ctx.cameraSpeed;
         m_debugCamera.mouseSens = m_ctx.cameraSensitivity;
@@ -2069,6 +2100,10 @@ void EditorApp::OnUpdate(float dt)
         ? ActiveRuntime().GetActiveScene() : m_scene.get();
     UpdateSpatialDebugRequests(m_ctx, spatialScene, !m_playMode.IsInEditor(),
         m_sceneViewportRT.id, m_sceneViewportRT.gen);
+    const ImVec2 uiPointer = ImGui::GetIO().MousePos;
+    ActiveRuntime().SetUIPointerPosition(m_ctx.gameViewportRectValid
+        ? math::Vector2{uiPointer.x - m_ctx.gameViewportOriginX, uiPointer.y - m_ctx.gameViewportOriginY}
+        : math::Vector2{-1.0e30f, -1.0e30f});
     ActiveRuntime().Update(m_simulationDt, m_ctx.projectSettings,
                      playMode->IsPlaying() || stepFrame, stepFrame,
                      !playMode->IsInEditor());
@@ -2142,6 +2177,7 @@ void EditorApp::OnRender()
     /// @note 3D の焼きは Dispatch と読み戻しを伴うのでフレーム内で回す (DX12 はフレーム外を捨てる)。
     /// @note        パネルの開閉に関わらず毎フレーム進める。Baker が触った RT は直後のバックバッファ設定で戻る。
     if (m_fluidBake) m_fluidBake->Tick(m_ctx);
+    for (auto& panel : m_panels) panel->OnRenderFrame(m_ctx);
 
     m_renderer->SetRenderTarget({}, *m_resources);
     m_renderer->Clear({ 0.02f, 0.02f, 0.02f, 1.0f });
@@ -2172,6 +2208,7 @@ void EditorApp::OnRender()
     /// @note        選択変化を拾えず、再アタッチするまでプレビューが更新されない。
     TickAnimationPreview(m_ctx);
     RenderPanels(m_ctx);
+    ProcessAnimationPreviewRequests(m_ctx);
     EndFrame(*m_imguiRenderer);
 
     m_renderer->EndFrame();

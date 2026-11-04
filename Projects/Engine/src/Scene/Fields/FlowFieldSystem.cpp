@@ -2,6 +2,7 @@
 /// @brief   流れのフレームキャッシュの更新。Scene::FlowFrame() の遅延更新もここに置く。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/Fields/FlowFieldSystem.hpp>
 
 #include <Engine/Core/Scheduler/SystemContext.hpp>
@@ -43,7 +44,7 @@ ComponentAccess FlowFieldSystem::GetAccess() const
 OrderingHints FlowFieldSystem::GetOrder() const
 {
     /// @note TransformPrePhysics は RunMode::SimOnly。編集中はこのヒントの相手が走らず、
-    ///       代わりに TransformEditorPreview (PreScript) がワールド姿勢を確定させている。
+    /// @note 代わりに TransformEditorPreview (PreScript) がワールド姿勢を確定させている。
     return OrderingHints{}.After<TransformPrePhysics>();
 }
 
@@ -53,4 +54,4 @@ void FlowFieldSystem::Update(SystemContext& ctx)
     (void)ctx.scene.FlowFrame();
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -9,6 +9,7 @@
 #include <Engine/Scene/Ragdoll/RagdollRig.hpp>
 
 #include <Physics/OBBCollider.hpp>
+#include <Physics/HeightFieldCollider.hpp>
 #include <Physics/World.hpp>
 
 #include <algorithm>
@@ -112,6 +113,9 @@ TEST_F(RagdollRigTest, PlayerHumanoidProfileHandlesReportedBonesWithoutFallback)
     EXPECT_FALSE(profile.IsExcluded("ForeArm_L"));
     EXPECT_FALSE(profile.IsExcluded("Giant_Arm"));
     EXPECT_TRUE(profile.IsExcluded("ant_a"));
+    EXPECT_TRUE(profile.IsExcluded("mixamorig:LeftHandRing1"));
+    EXPECT_TRUE(profile.IsExcluded("mixamorig:RightHandRing1"));
+    EXPECT_FALSE(profile.IsExcluded("ShoulderRing"));
 }
 
 TEST_F(RagdollRigTest, BuildsOneBodyPerBoneThatHasAChild)
@@ -380,6 +384,74 @@ TEST_F(RagdollRigTest, WorldColliderStopsTheFall)
     EXPECT_GT(rig.GetContactCount(), 0) << "no contact was generated against the world";
     for (std::size_t i = 0; i < positions.size(); ++i)
         EXPECT_GT(positions[i].y, -0.2f) << "bone " << i << " fell through the world collider";
+}
+
+TEST_F(RagdollRigTest, PassiveSettlesOnHeightFieldWithoutGroundPlane)
+{
+    auto bones = HorizontalChain(4);
+    for (auto& bone : bones) bone.position += math::Vector3(4.0f, 2.0f, 4.0f);
+
+    physics::HeightFieldCollider terrain(std::vector<float>(289, 0.0f), 17, 17, 1.0f, 1.0f);
+    terrain.Update({ -4.0f, -1.0f, -4.0f }, math::Quaternion::Identity());
+    const physics::PhysicsMaterial material;
+    physics::World world;
+    world.BeginSceneSync();
+    world.SyncCollider({}, physics::ColliderInstance{
+        &terrain, nullptr, &material, math::Vector3::ZERO, false, 0 });
+    world.EndSceneSync();
+
+    auto profile = SoftProfile();
+    profile.fallback.servo.enabled = true;
+    scene::RagdollRig rig;
+    rig.Build(bones, profile);
+    rig.Capture(bones);
+    rig.SetGravity({ 0.0f, -9.81f, 0.0f });
+    rig.SetRootAnchor(5.0f, 0.02f, 0.02f);
+    rig.SetDrive(false, 1.0f, 1.0f, 1.0f);
+    rig.DisableGround();
+
+    std::vector<math::Vector3> settledPositions;
+    std::vector<math::Vector3> positions;
+    std::vector<math::Quaternion> rotations;
+    for (int frame = 0; frame < 600; ++frame) {
+        rig.RefreshContacts(&world);
+        rig.Step(1.0f / 60.0f);
+        rig.ApplyContactReactions();
+        if (frame == 539) rig.WritePose(bones, settledPositions, rotations);
+    }
+    rig.WritePose(bones, positions, rotations);
+
+    EXPECT_GT(rig.GetContactCount(), 0);
+    for (std::size_t i = 0; i < positions.size(); ++i) {
+        EXPECT_GT(positions[i].y, -1.2f) << "bone " << i;
+        EXPECT_LT(positions[i].y, -0.5f) << "bone " << i << " remained anchored";
+        EXPECT_LT((positions[i] - settledPositions[i]).Length(), 1.0e-4f) << "bone " << i;
+    }
+
+    const auto advance = [&](int frames) {
+        for (int frame = 0; frame < frames; ++frame) {
+            rig.RefreshContacts(&world);
+            rig.Step(1.0f / 60.0f);
+            rig.ApplyContactReactions();
+        }
+        rig.WritePose(bones, positions, rotations);
+    };
+    const float restX = positions[0].x;
+    rig.ApplyImpulse(math::Vector3::ZERO, { 1.0f, 0.0f, 0.0f }, 0.0f);
+    advance(15);
+    EXPECT_GT(positions[0].x, restX + 0.05f);
+
+    advance(600);
+    const float supportedY = positions[0].y;
+    terrain.Update({ -4.0f, -4.0f, -4.0f }, math::Quaternion::Identity());
+    advance(30);
+    EXPECT_LT(positions[0].y, supportedY - 0.5f);
+
+    const float fallenY = positions[0].y;
+    rig.SetDrive(true, 1.0f, 1.0f, 1.0f);
+    rig.UpdateDriveTargets(bones);
+    advance(30);
+    EXPECT_GT(positions[0].y, fallenY + 0.1f);
 }
 
 /// @note World が積分する剛体を substep で動かさず、フレーム末の反作用の力積で動かすこと。

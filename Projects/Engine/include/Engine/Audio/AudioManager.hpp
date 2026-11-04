@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2025-01-01
 #pragma once
+#include <Engine/Api.hpp>
 #include "AudioBus.hpp"
 #include "IAudioDevice.hpp"
 #include "SynthSpec.hpp"
@@ -31,53 +32,53 @@ public:
     using ClipId = uint32_t;
 
     /// @note device の所有権は呼び出し元が保持する。Init より前に渡すこと。
-    explicit AudioManager(IAudioDevice& device);
+    FBZZ_ENGINE_API explicit AudioManager(IAudioDevice& device);
 
-    bool Init();
-    void Shutdown();
+    FBZZ_ENGINE_API bool Init();
+    FBZZ_ENGINE_API void Shutdown();
 
     /// @note フェードを進め、終了した voice を回収し、参照の切れた生成クリップを解放する。
     /// @note Application が毎フレーム呼ぶ。呼ばないとフェードが進まず、生成クリップも残る。
-    void Update(float dt);
+    FBZZ_ENGINE_API void Update(float dt);
 
     /// @note 同時に鳴らせる voice の上限。超えた状態で鳴らそうとすると、より優先度の低い
     /// @note 音を畳んで場所を空ける (空けられなければ新しい音の方を捨てる)。
-    void SetVoiceLimit(size_t limit);
+    FBZZ_ENGINE_API void SetVoiceLimit(size_t limit);
     [[nodiscard]] size_t VoiceLimit() const { return m_voiceLimit; }
     [[nodiscard]] size_t ActiveVoiceCount() const { return m_voices.size(); }
 
     /// @name ミキサーバス
-    ///@{
+    /// @{
     /// @note バス構成を作り直す。再生中の音はすべて止まる。
     /// @note 送り先の submix を破棄するため。構成変更は設定画面やプロジェクト読み込みの境界でしか起きない想定。
-    void ApplyBusLayout(const std::vector<BusDesc>& buses);
+    FBZZ_ENGINE_API void ApplyBusLayout(const std::vector<BusDesc>& buses);
     /// @note 大文字小文字を無視して引く。見つからなければ kMasterBus。
-    [[nodiscard]] BusIndex FindBus(std::string_view name) const;
-    void  SetBusVolume(std::string_view name, float volume);
-    [[nodiscard]] float GetBusVolume(std::string_view name) const;
-    void  SetBusLowPass(std::string_view name, float normalizedCutoff);
+    [[nodiscard]] FBZZ_ENGINE_API BusIndex FindBus(std::string_view name) const;
+    FBZZ_ENGINE_API void  SetBusVolume(std::string_view name, float volume);
+    [[nodiscard]] FBZZ_ENGINE_API float GetBusVolume(std::string_view name) const;
+    FBZZ_ENGINE_API void  SetBusLowPass(std::string_view name, float normalizedCutoff);
     [[nodiscard]] const std::vector<BusDesc>& BusLayout() const { return m_busLayout; }
 
     /// @note AudioReverbZone の合成結果を、reverb を有効にした全バスへ流す。
     /// @note AudioSystem が毎フレーム呼ぶ。値が変わったフレームだけデバイスへ届く。
-    void SetEnvironmentReverb(float wet, float decaySeconds, float highFrequencyRatio);
-    ///@}
+    FBZZ_ENGINE_API void SetEnvironmentReverb(float wet, float decaySeconds, float highFrequencyRatio);
+    /// @}
 
     /// @name クリップ
-    ///@{
+    /// @{
     /// @note パスからクリップを得る (読み込み済みなら再利用)。失敗時は 0。
-    [[nodiscard]] ClipId AcquireClip(const std::string& path);
+    [[nodiscard]] FBZZ_ENGINE_API ClipId AcquireClip(const std::string& path);
     /// @note spec を合成してクリップを得る。同じ spec は同じハンドルを返す。
     /// @note 呼び出し側は不要になったら ReleaseClip すること。
-    [[nodiscard]] ClipId AcquireGeneratedClip(const SynthSpec& spec);
+    [[nodiscard]] FBZZ_ENGINE_API ClipId AcquireGeneratedClip(const SynthSpec& spec);
     /// @note 生成クリップの参照を 1 つ増やす。ハンドルを別の持ち主へ渡すときに使う。
-    void AddClipRef(ClipId clip);
+    FBZZ_ENGINE_API void AddClipRef(ClipId clip);
     /// @note 生成クリップの参照を 1 つ手放す。再生中なら終わるまで実体は残る。
-    void ReleaseClip(ClipId clip);
-    ///@}
+    FBZZ_ENGINE_API void ReleaseClip(ClipId clip);
+    /// @}
 
     /// @name 再生
-    ///@{
+    /// @{
     /// @note 鳴らし始めるときだけ決まる設定。既定のままなら従来どおりの即時再生。
     struct PlayParams
     {
@@ -92,58 +93,58 @@ public:
 
     /// @note Scene の AudioSourceComponent が所有する voice を個別に操作する低レベル API。
     /// @note 複数の 3D 音源を同時追跡するため voiceId を返す。共有状態では足りない。
-    [[nodiscard]] uint32_t PlayVoice(const std::string& path, bool loop, BusIndex bus,
+    [[nodiscard]] FBZZ_ENGINE_API uint32_t PlayVoice(const std::string& path, bool loop, BusIndex bus,
                                      const PlayParams& params = {});
-    [[nodiscard]] uint32_t PlayClipVoice(ClipId clip, bool loop, BusIndex bus,
+    [[nodiscard]] FBZZ_ENGINE_API uint32_t PlayClipVoice(ClipId clip, bool loop, BusIndex bus,
                                          const PlayParams& params = {});
 
     /// @note 既定の短いフェードを掛けてから畳む。
     /// @note 波形の途中で切ると段差が生まれ「プツッ」と鳴るため即断しない。呼んだ側から見た voiceId はこの時点で無効になり、実体の後始末は Update が引き取る (フェード中も PCM は保持される)。
-    void StopVoice(uint32_t voiceId);
+    FBZZ_ENGINE_API void StopVoice(uint32_t voiceId);
     /// @note フェードを挟まず即座に畳む。ライフサイクル境界とボイススティール用。
-    void StopVoiceImmediate(uint32_t voiceId);
+    FBZZ_ENGINE_API void StopVoiceImmediate(uint32_t voiceId);
     /// @note 現在のフェードゲインから toGain まで動かす。SetVoiceVolume が毎フレーム
     /// @note 別の音量を書き込んでも、フェードは掛かったまま残る (両者は掛け算)。
-    void FadeVoice(uint32_t voiceId, float toGain, float seconds);
+    FBZZ_ENGINE_API void FadeVoice(uint32_t voiceId, float toGain, float seconds);
     /// @note フェードし切ったところで畳む。voiceId はこの時点で呼び出し側から見て無効。
-    void FadeOutAndStop(uint32_t voiceId, float seconds);
+    FBZZ_ENGINE_API void FadeOutAndStop(uint32_t voiceId, float seconds);
 
     /// @note 再生位置を保ったまま止める / 続きから再開する。
-    void PauseVoice(uint32_t voiceId);
-    void ResumeVoice(uint32_t voiceId);
+    FBZZ_ENGINE_API void PauseVoice(uint32_t voiceId);
+    FBZZ_ENGINE_API void ResumeVoice(uint32_t voiceId);
     /// @note EditorのPlay終了など、Scene Audioを一括停止するライフサイクル境界で使用する。
-    void StopAllVoices();
+    FBZZ_ENGINE_API void StopAllVoices();
     /// @note 所有トークンの失効後、次の Update で停止する。AudioSource が消えた後も回収できる。
-    void BindVoiceLifetime(uint32_t voiceId, const std::shared_ptr<VoiceLifetime>& lifetime);
+    FBZZ_ENGINE_API void BindVoiceLifetime(uint32_t voiceId, const std::shared_ptr<VoiceLifetime>& lifetime);
     /// @note 上位が意図する音量。実際にデバイスへ届くのは、これにフェードゲインを掛けた値。
-    void SetVoiceVolume(uint32_t voiceId, float volume);
-    void SetVoicePitch(uint32_t voiceId, float pitch);
-    void SetVoicePan(uint32_t voiceId, float pan);
+    FBZZ_ENGINE_API void SetVoiceVolume(uint32_t voiceId, float volume);
+    FBZZ_ENGINE_API void SetVoicePitch(uint32_t voiceId, float pitch);
+    FBZZ_ENGINE_API void SetVoicePan(uint32_t voiceId, float pan);
     /// @brief 空文字または存在しないバス名は補助センドを解除する。
-    void SetVoiceSend(uint32_t voiceId, std::string_view busName, float level);
-    void SetVoiceLowPass(uint32_t voiceId, float normalizedCutoff);
-    [[nodiscard]] bool IsVoicePlaying(uint32_t voiceId);
-    ///@}
+    FBZZ_ENGINE_API void SetVoiceSend(uint32_t voiceId, std::string_view busName, float level);
+    FBZZ_ENGINE_API void SetVoiceLowPass(uint32_t voiceId, float normalizedCutoff);
+    [[nodiscard]] FBZZ_ENGINE_API bool IsVoicePlaying(uint32_t voiceId);
+    /// @}
 
     /// @name BGM / SE のショートハンド
     /// @note それぞれ "BGM" / "SE" バスへ流す。バスが無ければ Master。
-    ///@{
+    /// @{
     /// @param fadeSeconds 0 より大きいと、鳴っていた BGM を消しながら新しい BGM を
     /// @note 立ち上げる (クロスフェード)。曲の切り替わりで音が途切れない。
-    void PlayBGM(const std::string& path, bool loop = true, float fadeSeconds = 0.0f);
-    void StopBGM(float fadeSeconds = 0.0f);
-    void PlaySE(const std::string& path);
-    void SetBGMVolume(float volume);  ///< @note 0.0f ~ 1.0f
-    void SetSEVolume(float volume);
-    [[nodiscard]] float GetBGMVolume() const;
-    [[nodiscard]] float GetSEVolume() const;
+    FBZZ_ENGINE_API void PlayBGM(const std::string& path, bool loop = true, float fadeSeconds = 0.0f);
+    FBZZ_ENGINE_API void StopBGM(float fadeSeconds = 0.0f);
+    FBZZ_ENGINE_API void PlaySE(const std::string& path);
+    FBZZ_ENGINE_API void SetBGMVolume(float volume);  ///< @note 0.0f ~ 1.0f
+    FBZZ_ENGINE_API void SetSEVolume(float volume);
+    [[nodiscard]] FBZZ_ENGINE_API float GetBGMVolume() const;
+    [[nodiscard]] FBZZ_ENGINE_API float GetSEVolume() const;
     [[nodiscard]] bool  IsBGMPlaying() const { return m_bgmVoiceId != 0; }
-    ///@}
+    /// @}
 
     /// @name 位置を指定した使い捨て再生
     /// @note 距離減衰とパンの計算は Listener を知っている AudioSystem が行う。
     /// @note 受聴点の選び方 (priority/有効判定) が AudioSystem にあり、二重に書くと選ばれる Listener がずれる。
-    ///@{
+    /// @{
     struct PositionalRequest
     {
         std::string path;              ///< @note 空なら clip を使う
@@ -158,10 +159,10 @@ public:
         int   priority      = 0;
         BusIndex bus = kMasterBus;
     };
-    void QueuePositional(PositionalRequest request);
+    FBZZ_ENGINE_API void QueuePositional(PositionalRequest request);
     /// @note 溜まっている要求を引き取る (呼ぶと空になる)。AudioSystem が毎フレーム呼ぶ。
-    [[nodiscard]] std::vector<PositionalRequest> TakePositional();
-    ///@}
+    [[nodiscard]] FBZZ_ENGINE_API std::vector<PositionalRequest> TakePositional();
+    /// @}
 
     /// @note 読み込み済みクリップの中身を覗く。波形表示など、再生以外の用途向け。
     struct ClipInfo
@@ -171,7 +172,7 @@ public:
         size_t         bytes = 0;
         float          durationSeconds = 0.0f;
     };
-    [[nodiscard]] bool DescribeClip(ClipId clip, ClipInfo& out) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool DescribeClip(ClipId clip, ClipInfo& out) const;
 
 private:
     struct ClipEntry
@@ -205,22 +206,22 @@ private:
 
     /// @note 上限に達していれば 1 本畳んで場所を空ける。
     /// @return 場所を空けられたか。false なら新しい音を鳴らさない。
-    [[nodiscard]] bool MakeRoomForVoice(int priority);
-    void ApplyVoiceGain(uint32_t voiceId, const VoiceState& state);
+    [[nodiscard]] FBZZ_ENGINE_API bool MakeRoomForVoice(int priority);
+    FBZZ_ENGINE_API void ApplyVoiceGain(uint32_t voiceId, const VoiceState& state);
 
-    [[nodiscard]] ClipId InternClip(const WaveFormat& fmt, std::vector<uint8_t>&& pcm,
+    [[nodiscard]] FBZZ_ENGINE_API ClipId InternClip(const WaveFormat& fmt, std::vector<uint8_t>&& pcm,
                                     bool persistent, uint64_t specHash);
-    [[nodiscard]] bool LoadClipData(const std::string& path,
+    [[nodiscard]] FBZZ_ENGINE_API bool LoadClipData(const std::string& path,
                                     WaveFormat& outFmt, std::vector<uint8_t>& outPcm);
-    [[nodiscard]] bool LoadWav(const std::string& path,
+    [[nodiscard]] FBZZ_ENGINE_API bool LoadWav(const std::string& path,
                                WaveFormat& outFmt, std::vector<uint8_t>& outPcm);
-    [[nodiscard]] bool LoadWithMediaFoundation(const std::string& path,
+    [[nodiscard]] FBZZ_ENGINE_API bool LoadWithMediaFoundation(const std::string& path,
                                                WaveFormat& outFmt, std::vector<uint8_t>& outPcm);
-    [[nodiscard]] bool LoadSynth(const std::string& path,
+    [[nodiscard]] FBZZ_ENGINE_API bool LoadSynth(const std::string& path,
                                  WaveFormat& outFmt, std::vector<uint8_t>& outPcm);
 
-    void ForgetVoice(uint32_t voiceId);
-    void DropClipIfUnused(ClipId clip);
+    FBZZ_ENGINE_API void ForgetVoice(uint32_t voiceId);
+    FBZZ_ENGINE_API void DropClipIfUnused(ClipId clip);
 
     IAudioDevice&        m_device;
     std::vector<BusDesc> m_busLayout;

@@ -315,7 +315,7 @@ ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
         if (!Synchronize(target, true)) return ManagedBridgeStatus::INVALID_ARGUMENT;
         if (request.op == ManagedBridgeOp::TRANSFORM_ROTATE) {
             /// @note C++ ScriptTransformProxy と同じ親のローカル軸・度単位・左積の回転。
-            /// @see Projects/Engine/src/Scene/ScriptProxies.cpp ScriptTransformProxy::Rotate。
+            /// @see Projects/Engine/src/Scene/ScriptRuntimeProxies.cpp ScriptTransformProxy::Rotate。
             const math::Quaternion delta = math::Quaternion::FromAxisAngle(value.Normalized(), request.w * math::DEG2RAD);
             const math::Quaternion rotation = delta * transform->rotation;
             if (!FiniteNormalization(rotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;

@@ -2,6 +2,10 @@
 /// @brief   Animation / IK 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/SpringBoneComponent.hpp>
 #include "InspectorAnimation.hpp"
 #include "InspectorBoneBake.hpp"
 #include <Editor/Util/EditorTheme.hpp>
@@ -17,7 +21,7 @@ namespace {
 /// @note Scene 上の Animator と、開いている Controller 編集モデルが同じ Controller を指す場合は、
 /// @note Inspector のレイヤー編集も Graph の編集モデルへ反映する。
 /// @note Controller を開いた Graph は scene component のコピーを編集しているため、Inspector 側だけを
-///       書き換えると Add/Rename/Mask の結果が Graph に現れず、次の Apply で失われる。
+/// @note 書き換えると Add/Rename/Mask の結果が Graph に現れず、次の Apply で失われる。
 void SyncOpenControllerLayers(EditorContext& ctx,
                               const scene::AnimatorComponent& source)
 {
@@ -48,10 +52,17 @@ void QueueLayerRename(EditorContext& ctx,
         ctx.animationGraphSelection.layerName = newName;
 }
 
+template<typename Enum, size_t N>
+void DrawRootMotionEnum(const char* label, Enum& value, const char* const (&labels)[N])
+{
+    int selected = static_cast<int>(value);
+    if (ImGui::Combo(label, &selected, labels, static_cast<int>(N))) value = static_cast<Enum>(selected);
+}
+
 /// @name Root Motion
 /// @note 従来は "Apply Root Motion" チェックボックス 1 個だけで、「抽出だけしてスクリプトへ渡す」
-///       「RigidBody 速度として食わせる」「トラックをノード名で指定する」を選べなかった。
-///       Mode / Source / 軸マスクを分けて提示し、実行中の値も併せて見せる。
+/// @note 「RigidBody 速度として食わせる」「トラックをノード名で指定する」を選べなかった。
+/// @note Mode / Source / 軸マスクを分けて提示し、実行中の値も併せて見せる。
 void DrawRootMotionSettings(scene::AnimatorComponent& anim)
 {
     using scene::RootMotionMode;
@@ -66,8 +77,7 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
         "Extract Only (Script が動かす)",
         "Apply To RigidBody (速度として渡す)",
     };
-    ImGui::Combo("Mode", reinterpret_cast<int*>(&anim.rootMotion.mode),
-                 kModeNames, IM_ARRAYSIZE(kModeNames));
+    DrawRootMotionEnum("Mode", anim.rootMotion.mode, kModeNames);
 
     switch (anim.rootMotion.mode) {
     case RootMotionMode::ExtractOnly:
@@ -88,8 +98,7 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
             "Strip (その場再生)",
             "Keep (クリップのまま前進)",
         };
-        ImGui::Combo("Pose", reinterpret_cast<int*>(&anim.rootMotion.poseMode),
-                     kPoseNames, IM_ARRAYSIZE(kPoseNames));
+        DrawRootMotionEnum("Pose", anim.rootMotion.poseMode, kPoseNames);
     }
 
     static const char* kSourceNames[] = {
@@ -97,8 +106,7 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
         "Auto Detect (候補名から推定)",
         "Node Name (名前で指定)",
     };
-    ImGui::Combo("Source", reinterpret_cast<int*>(&anim.rootMotion.source),
-                 kSourceNames, IM_ARRAYSIZE(kSourceNames));
+    DrawRootMotionEnum("Source", anim.rootMotion.source, kSourceNames);
 
     if (anim.rootMotion.source == RootMotionSource::NodeName) {
         char nodeName[128] = {};
@@ -119,15 +127,9 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
     ImGui::TextDisabled("空 = この GameObject。\"..\" で親 (RigidBody が親にある構成)。");
 
     static const char* kAxisNames[] = { "Use Clip", "Disabled", "Enabled" };
-    ImGui::Combo("Horizontal (XZ)",
-                 reinterpret_cast<int*>(&anim.rootMotion.applyXZ),
-                 kAxisNames, IM_ARRAYSIZE(kAxisNames));
-    ImGui::Combo("Vertical (Y)",
-                 reinterpret_cast<int*>(&anim.rootMotion.applyY),
-                 kAxisNames, IM_ARRAYSIZE(kAxisNames));
-    ImGui::Combo("Rotation",
-                 reinterpret_cast<int*>(&anim.rootMotion.applyRotation),
-                 kAxisNames, IM_ARRAYSIZE(kAxisNames));
+    DrawRootMotionEnum("Horizontal (XZ)", anim.rootMotion.applyXZ, kAxisNames);
+    DrawRootMotionEnum("Vertical (Y)", anim.rootMotion.applyY, kAxisNames);
+    DrawRootMotionEnum("Rotation", anim.rootMotion.applyRotation, kAxisNames);
 
     ImGui::DragFloat("Position Scale", &anim.rootMotion.positionScale,
                      0.01f, 0.0f, 10.0f);
@@ -152,8 +154,8 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
 
 /// @name Animator Layers
 /// @note 上半身だけ / 下半身だけの制御はレイヤーが入口だが、従来 Inspector にはレイヤーを作る導線が
-///       無く、ランタイムが対応していても使えなかった。「レイヤーを足す → .mask を割り当てる →
-///       加算にするか決める」までをここで完結させる。
+/// @note 無く、ランタイムが対応していても使えなかった。「レイヤーを足す → .mask を割り当てる →
+/// @note 加算にするか決める」までをここで完結させる。
 void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
 {
     ImGui::SeparatorText("Layers");
@@ -184,7 +186,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         ImGui::PushID(i);
 
         /// @note ヘッダーには実行中の状態 (weight / Slot) を出す。上半身レイヤーが効いていない原因は
-        ///       大抵 weight か mask なので、折りたたんだままでも一目で分かるようにする。
+        /// @note 大抵 weight か mask なので、折りたたんだままでも一目で分かるようにする。
         char header[192];
         std::snprintf(header, sizeof(header), "%s  [%s %.0f%%]%s",
                       layer.name.empty() ? "(unnamed)" : layer.name.c_str(),
@@ -219,7 +221,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
             }
 
             /// @note Additive だけ 1.0 より上を許す。差分の倍率なので、クリップの振れ幅が
-            ///       足りないときの誇張がここで完結する。
+            /// @note 足りないときの誇張がここで完結する。
             const float weightMax = layer.mode == scene::AnimationLayerMode::Additive
                 ? scene::MAX_LAYER_WEIGHT : 1.0f;
             if (widgets::RangeField("Weight", layer.weight, 0.0f, weightMax)) markLayerDirty();
@@ -253,8 +255,8 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 ImGui::SeparatorText("Additive Reference Pose");
                 ImGui::TextDisabled("空なら加算クリップ自身の先頭フレームを基準にします。");
                 /// @note 基準ポーズも通常の Source と同じ種類のアセットを受ける。
-                ///       .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
-                ///       (Pose_XXX.anim 等) をドロップで割り当てられない。
+                /// @note .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
+                /// @note (Pose_XXX.anim 等) をドロップで割り当てられない。
                 if (widgets::AssetPathField("Ref Source", layer.additiveReference.sourcePath,
                                             ".anim,.asset,.fzasset,.fbx,.obj,.gltf,.glb", ctx.projectRoot))
                     markLayerDirty();
@@ -475,8 +477,8 @@ void DrawSpringBoneInspector(scene::GameObject* go,
 void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any& m_componentClipboard, const std::type_info*& m_componentClipboardType)
 {
     /// @note Unity の Animator コンポーネントと同じ密度に揃える。ステート/遷移/パラメーターの編集は
-    ///       Animation Graph に一本化し、Inspector には Controller 参照と再生設定だけを置く。
-    ///       Controller 未設定はサポート対象外の過渡状態として扱い、割り当てを促す。
+    /// @note Animation Graph に一本化し、Inspector には Controller 参照と再生設定だけを置く。
+    /// @note Controller 未設定はサポート対象外の過渡状態として扱い、割り当てを促す。
     DrawComponentSection<scene::AnimatorComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Animator",
         [go](scene::AnimatorComponent& anim, EditorContext& ctx) {
             if (widgets::AssetPathField("Controller", anim.controllerPath,
@@ -520,8 +522,8 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
             if (ImGui::Button("Open Animation Graph", ImVec2(-1.0f, 0.0f))) {
                 /// @note selectedAssetPath 任せにしないのは、ここでの選択は GameObject であって
-                ///       .animcontroller ではないため。開くべき Controller はこの Animator が指す
-                ///       ものなので、パスを明示して渡す。
+                /// @note .animcontroller ではないため。開くべき Controller はこの Animator が指す
+                /// @note ものなので、パスを明示して渡す。
                 if (ctx.openAnimationGraph) ctx.openAnimationGraph(anim.controllerPath);
                 ctx.requestOpenAnimationGraph = true;
             }
@@ -554,8 +556,8 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
         });
 
     /// @note Bone は FBX インポートで自動付与される内部コンポーネント。編集は想定しないが、
-    ///       ボーン名とインデックスの対応をシーン上で確認できないとリターゲットや
-    ///       IK 設定のデバッグが Hierarchy 頼みになるため、read-only で表示する。
+    /// @note ボーン名とインデックスの対応をシーン上で確認できないとリターゲットや
+    /// @note IK 設定のデバッグが Hierarchy 頼みになるため、read-only で表示する。
     DrawComponentSection<scene::BoneComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Bone",
         [](scene::BoneComponent& bone, EditorContext&) {
             ImGui::BeginDisabled();
@@ -577,7 +579,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 ImGui::PushID(ci);
 
                 /// @note ヘッダー行: [▶] [✓] Chain 0  (TipBone)           [Remove]。Unity の Constraint
-                ///       コンポーネントと同様に enabled を折りたたみ矢印の横に置き、開かずに ON/OFF できる。
+                /// @note コンポーネントと同様に enabled を折りたたみ矢印の横に置き、開かずに ON/OFF できる。
                 const char* solverNames[] = {
                     "Two Bone", "Foot Place", "Aim At", "FABRIK", "Hand Place",
                     "Full Body Biped"
@@ -693,7 +695,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
                     /// @name Targets
                     /// @note Target/Pole は名前文字列で保持し、Resolve ボタンで EntityID を解決する。
-                    ///       解決状態は色付きドットで即座に確認できる。
+                    /// @note 解決状態は色付きドットで即座に確認できる。
                     ImGui::SeparatorText("Targets");
                     {
                         char buf[256];
@@ -702,8 +704,8 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         const float dotW     = ImGui::GetFrameHeight();
 
                         /// @note guid を追加することでリネーム後も参照が壊れなくなる。手入力時は guid を
-                        ///       クリアして名前フォールバックで解決させ、ドロップ・Resolve 時は
-                        ///       dropped/found の instanceId を記録する。
+                        /// @note クリアして名前フォールバックで解決させ、ドロップ・Resolve 時は
+                        /// @note dropped/found の instanceId を記録する。
                         auto DrawObjectField = [&](const char* label,
                                                    const char* idStr,
                                                    std::string& name,
@@ -891,24 +893,41 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     if (chain.type == scene::IKSolverType::FootPlace) {
                         ImGui::SeparatorText("Foot Placement");
                         ImGui::Checkbox("Use Animator IK Weight", &chain.useAnimatorIKWeight);
-                        ImGui::DragFloat("Ray Up Ratio", &chain.rayUpRatio, 0.01f, 0.0f, 2.0f, "%.2f");
-                        ImGui::DragFloat("Ray Down Ratio", &chain.rayDownRatio, 0.01f, 0.0f, 4.0f, "%.2f");
-                        ImGui::DragFloat("Surface Offset", &chain.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f");
-                        ImGui::DragFloat("Dead Zone", &chain.correctionDeadZone, 0.001f, 0.0f, 0.25f, "%.3f");
-                        ImGui::DragFloat("Max Correction", &chain.maxCorrection, 0.001f, 0.0f, 1.0f, "%.3f");
+                        ImGui::Checkbox("Use Ragdoll Foot Shape", &chain.useRagdollFootShape);
+                        ImGui::Text("Physics foot shape: %s", chain.runtimePhysicsFootShape ? "active" : "manual offset");
+                        ImGui::DragFloat("Ray Up Ratio", &chain.rayUpRatio, 0.01f, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+                        ImGui::DragFloat("Ray Down Ratio", &chain.rayDownRatio, 0.01f, 0.0f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+                        ImGui::DragFloat("Surface Offset", &chain.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                        ImGui::DragFloat("Dead Zone", &chain.correctionDeadZone, 0.001f, 0.0f, 0.25f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                        ImGui::DragFloat("Max Correction", &chain.maxCorrection, 0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
                         ImGui::DragFloat("Plant Distance", &chain.footPlantDistance,
-                                         0.001f, 0.0f, 1.0f, "%.3f");
-                        ImGui::DragFloat("Smooth Time", &chain.smoothTime, 0.005f, 0.001f, 1.0f, "%.3f s");
-                        ImGui::DragFloat("Max Extension", &chain.maxExtension, 0.005f, 0.5f, 1.0f, "%.3f");
-                        ImGui::DragFloat("Softness", &chain.softness, 0.005f, 0.0f, 0.5f, "%.3f");
+                                         0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                        ImGui::DragFloat("Smooth Time", &chain.smoothTime, 0.005f, 0.0f, 1.0f, "%.3f s", ImGuiSliderFlags_AlwaysClamp);
+                        ImGui::TextWrapped("Surface Offset is manual ankle height; Ragdoll Foot Shape uses the physical sole instead.");
+                        ImGui::TextWrapped("Keep Bend Reserve at zero to preserve the animation's knee bend.");
                         ImGui::Checkbox("Adjust Hip", &chain.adjustHip);
                         if (chain.adjustHip) {
+                            if (ImGui::Button("Animation Priority")) {
+                                chain.hipWeight = 0.5f;
+                                chain.maxHipLowering = 0.05f;
+                                chain.maxHipRaising = 0.0f;
+                                chain.hipBendReserve = 0.0f;
+                            }
+                            ImGui::SliderFloat("Hip Weight", &chain.hipWeight, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+                            ImGui::DragFloat("Max Hip Lowering", &chain.maxHipLowering, 0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                            ImGui::DragFloat("Max Hip Raising", &chain.maxHipRaising, 0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                            ImGui::DragFloat("Bend Reserve", &chain.hipBendReserve, 0.001f, 0.0f, 0.25f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
                             char hipName[128];
                             std::snprintf(hipName, sizeof(hipName), "%s", chain.hipBoneName.c_str());
                             if (ImGui::InputText("Hip Bone", hipName, sizeof(hipName)))
                                 chain.hipBoneName = hipName;
                         }
                         widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);
+                        ImGui::Text("Foot correction L/R: %.3f / %.3f m", chain.smoothedLeft, chain.smoothedRight);
+                        ImGui::Text("Hip target / applied: %.3f / %.3f m%s",
+                            chain.runtimeHipTarget, chain.runtimeAppliedHip, chain.runtimeHipLimited ? " (limited)" : "");
+                        ImGui::Text("Grounded L/R: %s / %s",
+                            chain.runtimeLeftGrounded ? "yes" : "no", chain.runtimeRightGrounded ? "yes" : "no");
                     }
 
                     /// @name Ground Snap

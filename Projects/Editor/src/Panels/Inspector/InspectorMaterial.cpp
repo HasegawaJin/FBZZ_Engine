@@ -2,6 +2,11 @@
 /// @brief   Material Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Asset/ShaderCapabilities.hpp>
 #include "InspectorMaterial.hpp"
 #include <Editor/Util/AssetDirtyRegistry.hpp>
@@ -65,7 +70,7 @@ void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, Editor
             bool materialDirty = false;
             std::optional<renderer::ShaderDescriptor> ownedDescriptor;
             const renderer::ShaderDescriptor* desc = nullptr;
-            if (auto* resources = renderer::ResourceManager::Active()) {
+            if (auto* resources = ctx.resources) {
                 const std::string shaderPath = mat.shaderPath.empty()
                     ? "Assets/Shaders/Material/Surface/Fallback.hlsl"
                     : mat.shaderPath;

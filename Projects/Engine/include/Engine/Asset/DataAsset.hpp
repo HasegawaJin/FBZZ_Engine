@@ -9,7 +9,7 @@
 /// @note  宣言は FBZZ_DATA_ASSET、参照側は FBZZ_ASSET / FBZZ_REQUIRED_ASSET を使う (下記マクロ参照)。
 #pragma once
 /// @note IReflector / FBZZ_* 登録マクロ / DataAssetRef を持ち込む。
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 /// @note Asset<T>::Get() の解決先。
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <string>

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Audio/AudioStreamReader.hpp>
 #include <xaudio2.h>
 #include <atomic>
@@ -12,8 +13,8 @@ namespace fbzz::audio {
 /// @brief voice を破棄するまで PCM とコールバックを保持する。
 class XAudio2Stream final : public IXAudio2VoiceCallback {
 public:
-    ~XAudio2Stream();
-    bool Start(IXAudio2& device, IXAudio2Voice* destination, const std::string& path, bool loop);
+    FBZZ_ENGINE_API ~XAudio2Stream();
+    FBZZ_ENGINE_API bool Start(IXAudio2& device, IXAudio2Voice* destination, const std::string& path, bool loop);
     [[nodiscard]] IXAudio2SourceVoice* Voice() const { return m_voice; }
     [[nodiscard]] const WaveFormat& Format() const { return m_format; }
     [[nodiscard]] bool Finished() const { return m_finished.load(); }
@@ -22,11 +23,11 @@ public:
     void STDMETHODCALLTYPE OnVoiceProcessingPassEnd() override {}
     void STDMETHODCALLTYPE OnStreamEnd() override {}
     void STDMETHODCALLTYPE OnBufferStart(void*) override {}
-    void STDMETHODCALLTYPE OnBufferEnd(void*) override;
+    FBZZ_ENGINE_API void STDMETHODCALLTYPE OnBufferEnd(void*) override;
     void STDMETHODCALLTYPE OnLoopEnd(void*) override {}
-    void STDMETHODCALLTYPE OnVoiceError(void*, HRESULT) override;
+    FBZZ_ENGINE_API void STDMETHODCALLTYPE OnVoiceError(void*, HRESULT) override;
 private:
-    void Run(IXAudio2& device, IXAudio2Voice* destination, const std::string& path, bool loop);
+    FBZZ_ENGINE_API void Run(IXAudio2& device, IXAudio2Voice* destination, const std::string& path, bool loop);
     IXAudio2SourceVoice* m_voice = nullptr;
     WaveFormat m_format{};
     void* m_wake = nullptr;

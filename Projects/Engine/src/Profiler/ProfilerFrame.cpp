@@ -27,10 +27,9 @@ ApplicationFrameElapsedSnapshot ReadApplicationFrameElapsedObserver() { return s
 void MarkApplicationFrameElapsedAborted() { s_frameElapsedObserver.MarkAborted(); }
 } /// @note namespace detail
 
-void BeginApplicationProfileFrame()
+void BeginApplicationProfileFrame(const renderer::ResourceManager* resources)
 {
     static uint64_t hostSerial = 0;
-    const auto* resources = renderer::ResourceManager::Active();
     const uint64_t serial = resources ? resources->FrameStamp() : ++hostSerial;
     const double startMs = ProfileRecorder::NowMs();
     frame_timeline::BeginApplicationFrame(Time::frameCount, serial, startMs);

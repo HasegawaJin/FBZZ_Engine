@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-22
 #include <Engine/Scene/ProjectRuntime.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
 
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
@@ -12,12 +13,17 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/Window.hpp>
+#include <Engine/Core/Time.hpp>
+#include <Engine/Input/Input.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
 namespace fbzz::scene {
+ProjectRuntime::ProjectRuntime() : m_gameUICtx(std::make_unique<UISystemContext>()) {}
+UISystemContext& ProjectRuntime::GetGameUIContext() { return *m_gameUICtx; }
 ProjectRuntime::~ProjectRuntime()
 {
     m_scriptRuntime.requestDisplay = nullptr; m_scriptRuntime.displayContext = nullptr;
+    m_scriptRuntime.queryPointerOverUI = nullptr; m_scriptRuntime.pointerContext = nullptr;
     SetScriptQuitHandler(nullptr, nullptr);
     if (ScriptRuntime::GetOverride() == &m_scriptRuntime) ScriptRuntime::Override(nullptr);
 }
@@ -25,7 +31,7 @@ ProjectRuntime::~ProjectRuntime()
 void ProjectRuntime::ApplySettings(const ProjectSettings& settings)
 {
     ProjectLauncher::ApplySettings(
-        m_physicsWorld, m_sceneManager, settings, &m_gameUICtx);
+        m_physicsWorld, m_sceneManager, settings, m_gameUICtx.get());
 }
 
 void ProjectRuntime::ApplyAdditionalUIContext(const ProjectSettings& settings,
@@ -37,6 +43,7 @@ void ProjectRuntime::ApplyAdditionalUIContext(const ProjectSettings& settings,
 void ProjectRuntime::RegisterScenes(const std::filesystem::path& projectRoot,
                                     renderer::ResourceManager& resources)
 {
+    m_sceneManager.SetResourceManager(&resources);
     ProjectLauncher::RegisterScenesFromDirectory(
         m_sceneManager, projectRoot / L"Assets" / L"Scenes", resources);
 }
@@ -111,6 +118,12 @@ void ProjectRuntime::UpdateScriptViewport(uint32_t viewportWidth, uint32_t viewp
     m_scriptRuntime.viewportHeight = viewportHeight;
 }
 
+void ProjectRuntime::SetUIPointerPosition(math::Vector2 position)
+{
+    m_uiPointerPosition = position;
+    m_uiPointerFrame = Time::frameCount;
+}
+
 void ProjectRuntime::ActivateScriptRuntime(uint32_t viewportWidth, uint32_t viewportHeight)
 {
     m_scriptRuntime.sceneManager = &m_sceneManager;
@@ -122,6 +135,24 @@ void ProjectRuntime::ActivateScriptRuntime(uint32_t viewportWidth, uint32_t view
 }
 void ProjectRuntime::BindDisplayHandler()
 {
+    m_scriptRuntime.pointerContext = this;
+    m_scriptRuntime.queryPointerOverUI = [](void* context, uint64_t lifetime) {
+        auto& owner = *static_cast<ProjectRuntime*>(context);
+        Scene* scene = owner.GetActiveScene();
+        if (!scene || scene->GetRenderSceneGeneration() != lifetime) return false;
+        UIInputView view;
+        view.width = static_cast<float>(owner.m_scriptRuntime.viewportWidth);
+        view.height = static_cast<float>(owner.m_scriptRuntime.viewportHeight);
+        if (view.width <= 0.0f || view.height <= 0.0f) return false;
+        view.pointer = owner.m_uiPointerFrame == Time::frameCount
+            ? owner.m_uiPointerPosition : input::Input::MousePosition();
+        const auto camera = ResolveGameCamera(*scene, view.width / view.height);
+        view.viewProjection = camera.GetViewProjection();
+        view.cameraPosition = camera.m_position;
+        view.cameraRotation = camera.m_rotation;
+        view.sceneDepthAvailable = owner.m_gameUICtx->sceneDepthAvailable;
+        return UIPointerOverUI(*scene, view);
+    };
     m_scriptRuntime.displayContext = this;
     m_scriptRuntime.requestDisplay = [](void* context, uint64_t lifetime, uint32_t operation, uint32_t first, uint32_t second) {
         auto& owner = *static_cast<ProjectRuntime*>(context); auto& app = core::Application::Get();
@@ -161,6 +192,8 @@ void ProjectRuntime::Shutdown()
     /// @note OnDestroy can request quit while Play is still active; keep the host hook and override until every teardown callback has returned.
     SetScriptQuitHandler(nullptr, nullptr);
     m_scriptRuntime.requestDisplay = nullptr; m_scriptRuntime.displayContext = nullptr; m_displayIntents = {};
+    m_scriptRuntime.queryPointerOverUI = nullptr; m_scriptRuntime.pointerContext = nullptr;
+    m_uiPointerFrame = UINT64_MAX;
     Script::SetPhysicsWorld(nullptr);
     if (ScriptRuntime::GetOverride() == &m_scriptRuntime) {
         ScriptRuntime::Override(nullptr);
@@ -168,10 +201,9 @@ void ProjectRuntime::Shutdown()
     m_sceneManager.SetSimulating(false);
     m_sceneManager.SetPlaying(false);
 
-    /// @note m_gameUICtx は Play セッションごとに作り直される。抱えている頂点バッファは
-    /// @note ResourceHandle なのでデストラクタでは返せず、ここで返さないと往復のたびに残る。
-    if (renderer::ResourceManager* resources = renderer::ResourceManager::Active())
-        UISystemReleaseGpuResources(m_gameUICtx, *resources);
+    /// @note 頂点プールの自動解放に加え、定数バッファ・PSO・フォントのキャッシュも
+    /// @note Play 終了時に作成元へ返し、次のセッションへ GPU 資源を持ち越さない。
+    UISystemReleaseGpuResources(*m_gameUICtx);
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

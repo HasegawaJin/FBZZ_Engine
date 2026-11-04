@@ -5,6 +5,7 @@
 /// @note Transform は Set / Offset の 2 モード、共通コンポーネントは Reflect() 経由で実編集し、
 /// @note 列挙はコンポーネントレジストリ由来にして追加漏れを防ぐ (「選んだ 20 個のライト強度を
 /// @note まとめて下げる」「全員を +Y に 2m」のようなレベル調整の一括操作に対応する)。
+#include <Engine/Scene/ScriptComponent.hpp>
 #include "InspectorMultiEdit.hpp"
 #include "InspectorCommon.hpp"
 #include "ManagedSettingsReflector.hpp"
@@ -547,7 +548,6 @@ void DrawRemoveFromAllSelectedButton(EditorContext& ctx,
                     guids.push_back(g->instanceId);
                     /// @note やり直し用のコピーからは GPU ハンドルを消す (実体は RemoveComponent が返す)。
                     removed.push_back(*c);
-                    scene::ClearComponentGpuHandles(removed.back());
                     g->RemoveComponent<T>();
                 }
             }

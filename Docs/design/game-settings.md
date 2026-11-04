@@ -493,7 +493,7 @@ config が違うときだけ `OnStart` で切り替える。ボーダーレス�
 
 **`SaveData` は残さず `SaveStore` へ置き換えた。**
 static のまま 2 本目を足すと、どちらのテーブルを触っているかが呼び出し側から見えない。
-`SaveData.hpp/.cpp` は削除した (呼び出し元は `ScriptProxies.cpp` の 1 か所だけだった)。
+`SaveData.hpp/.cpp` は削除した (呼び出し元は `ScriptStoreProxies.cpp` の 1 か所だけだった)。
 `toml++` を `Application.hpp` から波及させないため `SaveStore` は pImpl。
 
 **save / config は共通の実体を継承した 2 つの薄い型にした。**

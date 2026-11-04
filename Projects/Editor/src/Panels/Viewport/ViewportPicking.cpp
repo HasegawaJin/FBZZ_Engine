@@ -2,6 +2,8 @@
 /// @brief   Scene View のアセットドロップと3Dピッキング。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Asset/ModelSource.hpp>
 #include "ViewportCommon.hpp"
 #include "../../Util/MaterialAuthoringEditing.hpp"

@@ -2,6 +2,8 @@
 /// @brief   Resolve Line and MotionWarp TargetPoint references into numeric runtime inputs.
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Engine/Scene/Components/MotionWarpComponent.hpp>
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
 #include <Engine/Scene/PresentationControlPoints.hpp>
 #include <Engine/Scene/Components/PresentationComponents.hpp>
 #include <Engine/Scene/Scene.hpp>

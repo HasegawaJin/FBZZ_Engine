@@ -4,6 +4,7 @@
 /// @date    2026-05-24
 /// @note グローバルは mt19937、独立ストリームは uint64 状態の xorshift64*。
 #pragma once
+#include <Engine/Api.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/MathContract.hpp>
@@ -16,28 +17,28 @@ namespace fbzz::util {
 class Random {
 public:
     /// @return [min, max) の float。
-    static float Range(float min, float max);
+    FBZZ_ENGINE_API static float Range(float min, float max);
 
     /// @return [min, max] の int。
-    static int   Range(int min, int max);
+    FBZZ_ENGINE_API static int   Range(int min, int max);
 
     /// @return [0, 1) の float。
-    static float Value();
+    FBZZ_ENGINE_API static float Value();
 
     /// @return 半径 1 以下の円内の点。
-    static math::Vector2 InsideUnitCircle();
+    FBZZ_ENGINE_API static math::Vector2 InsideUnitCircle();
 
     /// @return 単位円上の点。
-    static math::Vector2 OnUnitCircle();
+    FBZZ_ENGINE_API static math::Vector2 OnUnitCircle();
 
     /// @return 半径 1 以下の球内の点。
-    static math::Vector3 InsideUnitSphere();
+    FBZZ_ENGINE_API static math::Vector3 InsideUnitSphere();
 
     /// @return 単位球面上の方向。
-    static math::Vector3 OnUnitSphere();
+    FBZZ_ENGINE_API static math::Vector3 OnUnitSphere();
 
     /// @note グローバル乱数列を再現するための seed。
-    static void SetSeed(unsigned int seed);
+    FBZZ_ENGINE_API static void SetSeed(unsigned int seed);
 };
 
 /// @brief 自前の状態を持つ乱数ストリーム。フィールドへ 1 本ずつ持たせれば互いに干渉しない。
@@ -113,10 +114,10 @@ struct RandomStream {
         return Value() < probability;
     }
 
-    math::Vector2 InsideUnitCircle();
-    math::Vector2 OnUnitCircle();
-    math::Vector3 InsideUnitSphere();
-    math::Vector3 OnUnitSphere();
+    FBZZ_ENGINE_API math::Vector2 InsideUnitCircle();
+    FBZZ_ENGINE_API math::Vector2 OnUnitCircle();
+    FBZZ_ENGINE_API math::Vector3 InsideUnitSphere();
+    FBZZ_ENGINE_API math::Vector3 OnUnitSphere();
 };
 
 } /// @note namespace fbzz::util

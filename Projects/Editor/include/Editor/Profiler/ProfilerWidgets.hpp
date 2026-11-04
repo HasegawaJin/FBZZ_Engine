@@ -5,10 +5,12 @@
 #pragma once
 namespace fbzz::editor {
 struct EditorContext;
+class OperatorRegistry;
 /// @note 所有履歴を差分投影する。非表示でもスパイク検出を続け、Freeze 中は派生表示を固定する。
 /// @see Docs/design/profiler.md 履歴と CPU/GPU の対応契約。
 void TickProfilerWidgets(EditorContext& ctx);
 void ResetProfilerWidgets();
+void RegisterProfilerViewOperators(OperatorRegistry& registry);
 void DrawPerformanceCpu(EditorContext& ctx);
 void DrawPerformanceRendering(EditorContext& ctx);
 void DrawMemoryDebug(EditorContext& ctx);

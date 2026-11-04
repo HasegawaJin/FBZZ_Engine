@@ -21,6 +21,7 @@ public:
     const char* GetViewMenuName() const override { return "Sprite Editor"; }
     const char* GetMenuCategory() const override { return "Assets"; }
     bool GetDefaultVisibility() const override { return false; }
+    void OnRegisterOperators(OperatorRegistry& registry) override;
 
     /// Texture の .meta sidecar を作業コピーへ読み込み、パネルを前面に開く。
     void Open(const std::string& metaPath);
@@ -45,9 +46,13 @@ private:
         std::string message;
     };
 
+    bool OpenWorkingCopy(const std::string& metaPath);
     bool LoadWorkingCopy();
+    bool LoadTextureDimensions(EditorContext& ctx);
+    void ExpandFullSpriteRects();
+    void FrameAll();
     bool Apply(EditorContext& ctx);
-    void Revert();
+    bool Revert();
     void SliceGrid(uint32_t textureWidth, uint32_t textureHeight);
     void AutoTrim(uint32_t textureWidth, uint32_t textureHeight);
     void TrimSelected(uint32_t textureWidth, uint32_t textureHeight);
@@ -71,6 +76,7 @@ private:
 
     std::string m_metaPath;
     std::string m_texturePath;
+    std::string m_loadedMeta;
     asset::TextureAsset m_working;
     renderer::ResourceHandle<renderer::TextureTag> m_texture;
     std::uint64_t m_textureResetVersion = 0;
@@ -112,4 +118,4 @@ private:
     int m_renameStartIndex = 0;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

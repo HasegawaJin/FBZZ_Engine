@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Graphics/Renderer/ResourceHandle.hpp>
@@ -39,7 +40,7 @@ struct SolidDielectricSettings {
     math::Vector3 attenuationColor{1, 1, 1};
     float attenuationDistance = 1;
     bool thinWalled = false;
-    [[nodiscard]] bool operator==(const SolidDielectricSettings& other) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool operator==(const SolidDielectricSettings& other) const;
 };
 
 /// @note 色・emission は線形 RGB。emission は emissiveColor と emissiveScale の積。
@@ -64,7 +65,7 @@ struct SurfaceMaterialData {
     uint32_t textureMask = 0;
 
     /// @note snapshotSerial に依存せず float の bit pattern を比較し、微小な材質変更も検出する。
-    [[nodiscard]] bool operator==(const SurfaceMaterialData& other) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool operator==(const SurfaceMaterialData& other) const;
 };
 
 /// @note InstanceID ごとに 128 bytes。前半 64 bytes は旧定数表と同じ並び。
@@ -99,28 +100,28 @@ static_assert(sizeof(RaySurfaceRecord) == 128);
 /// @note dielectric は full transmission / nonmetal / nonemissive / alpha=1。rough thin sheets と dielectric textures は未対応。
 /// @see https://pbr-book.org/4ed/Reflection_Models/Dielectric_BSDF Independent dielectric transmission model.
 /// @see Docs/design/RayTracing.md §Raster と RT の表面モデル
-[[nodiscard]] SurfaceMaterialData ResolveConstantSurfaceMaterial(
+[[nodiscard]] FBZZ_GRAPHICS_API SurfaceMaterialData ResolveConstantSurfaceMaterial(
     const std::array<uint8_t, 96>& gbufferParams, bool standardPbr,
     bool usesTextures = false, bool advancedLobes = false,
     const SolidDielectricSettings& dielectric = {});
 
 /// @note Canonical slots and encoded UNORM views only. Textured emission and dielectric textures remain unsupported.
 /// @see Assets/Shaders/Material/Surface/PBR.hlsl PSMain texture and UV conventions.
-[[nodiscard]] SurfaceMaterialData ResolveTexturedSurfaceMaterial(
+[[nodiscard]] FBZZ_GRAPHICS_API SurfaceMaterialData ResolveTexturedSurfaceMaterial(
     const std::array<uint8_t, 96>& gbufferParams, bool standardPbr,
     const std::array<RayTextureBinding, 5>& textures, bool unresolvedTexture = false,
     bool advancedLobes = false, const SolidDielectricSettings& dielectric = {});
 
 /// @note 非有限値を GPU へ渡さず supported=0 とする。材質表だけの更新で AS を再構築しない。
-[[nodiscard]] RaySurfaceRecord MakeRaySurfaceRecord(const SurfaceMaterialData& material);
+[[nodiscard]] FBZZ_GRAPHICS_API RaySurfaceRecord MakeRaySurfaceRecord(const SurfaceMaterialData& material);
 /// @note Hybrid supports constant rough/smooth solids and smooth, unabsorbing thin sheets; partial transmission and dielectric textures remain unsupported.
 /// @see Assets/Shaders/RayTracing/RayDielectric.hlsli RayDielectricSmooth and thin-sheet contracts.
-[[nodiscard]] bool IsHybridRayDielectricSupported(const SurfaceMaterialData& material);
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsHybridRayDielectricSupported(const SurfaceMaterialData& material);
 /// @return 0=opaque, 1=Hybrid-supported dielectric, 2=authored but unsupported dielectric; unsupported glass is not SSR source radiance.
-[[nodiscard]] float ResolveHybridRaySurfaceMarker(const SurfaceMaterialData& material);
+[[nodiscard]] FBZZ_GRAPHICS_API float ResolveHybridRaySurfaceMarker(const SurfaceMaterialData& material);
 /// @note The canonical 96B GBuffer material reserves float@84 for the typed surface marker; all other bytes remain unchanged.
-[[nodiscard]] std::array<uint8_t, 96> MakeHybridGBufferParams(
+[[nodiscard]] FBZZ_GRAPHICS_API std::array<uint8_t, 96> MakeHybridGBufferParams(
     const std::array<uint8_t, 96>& canonicalParams, const SurfaceMaterialData& material);
-[[nodiscard]] const char* DescribeSurfaceMaterialIssue(SurfaceMaterialIssue issue);
+[[nodiscard]] FBZZ_GRAPHICS_API const char* DescribeSurfaceMaterialIssue(SurfaceMaterialIssue issue);
 
 } /// @note namespace fbzz::renderer

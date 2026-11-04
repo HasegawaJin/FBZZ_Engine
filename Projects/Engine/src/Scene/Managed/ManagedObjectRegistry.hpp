@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-05
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <cstddef>
 #include <memory>
@@ -16,18 +17,18 @@ namespace managed_detail {
 class ManagedObjectRegistry final {
 public:
     struct Record { Scene* scene; uint64_t sceneGeneration; EntityID entity; std::string guid; };
-    ManagedObjectRegistry();
-    ~ManagedObjectRegistry();
+    FBZZ_ENGINE_API ManagedObjectRegistry();
+    FBZZ_ENGINE_API ~ManagedObjectRegistry();
     ManagedObjectRegistry(const ManagedObjectRegistry&) = delete;
     ManagedObjectRegistry& operator=(const ManagedObjectRegistry&) = delete;
-    uint64_t Register(Scene& scene, GameObject& object);
-    GameObject* Resolve(Scene& scene, uint64_t token) const;
-    const Record* Find(uint64_t token) const;
-    void RetireObject(Scene& scene, EntityID entity);
-    void RetireScene(Scene& scene);
+    FBZZ_ENGINE_API uint64_t Register(Scene& scene, GameObject& object);
+    FBZZ_ENGINE_API GameObject* Resolve(Scene& scene, uint64_t token) const;
+    FBZZ_ENGINE_API const Record* Find(uint64_t token) const;
+    FBZZ_ENGINE_API void RetireObject(Scene& scene, EntityID entity);
+    FBZZ_ENGINE_API void RetireScene(Scene& scene);
     /// @note token sequence は reset しない。CLR が保持する旧 token と再起動後の token を区別する。
-    void Clear();
-    size_t Count() const;
+    FBZZ_ENGINE_API void Clear();
+    FBZZ_ENGINE_API size_t Count() const;
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

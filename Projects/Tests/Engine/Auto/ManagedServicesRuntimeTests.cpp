@@ -2,6 +2,7 @@
 /// @brief   実 CoreCLR の Component facade・数値拒否・形状削除と query 寿命を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <TestKit/TempDir.hpp>

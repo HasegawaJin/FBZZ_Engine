@@ -2,6 +2,7 @@
 /// @brief   ライト・影・Cookie の抽出入力。
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Systems/RenderLightExtractor.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>

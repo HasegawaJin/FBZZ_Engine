@@ -2,13 +2,14 @@
 /// @brief   cellCountX × cellCountZ のグリッドで TerrainComponent エンティティを管理する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-16
-///
-/// 複数 Terrain を手動でリンクするとセル数が増えるほどリンク数が二乗で増える。Grid 座標から
-/// 隣接を自動解決することで、ユーザーはセル追加/削除だけに集中できる。TerrainRenderPass は
-/// このグリッドを参照してエッジ頂点を隣接 Terrain に合わせる。
+
+/// @note 複数 Terrain を手動でリンクするとセル数が増えるほどリンク数が二乗で増える。Grid 座標から
+/// @note 隣接を自動解決することで、ユーザーはセル追加/削除だけに集中できる。TerrainRenderPass は
+/// @note このグリッドを参照してエッジ頂点を隣接 Terrain に合わせる。
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/Entity.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <string>
 #include <vector>
 
@@ -30,7 +31,7 @@ struct TerrainGridComponent {
 
     /// @brief row-major: cells[gz * cellCountX + gx]。ランタイム解決済み EntityID。
     /// @note EntityID は起動ごとに変わり得るため、GUID (cellInstanceIds) を正規データとして保持し
-    ///       ロード後に ResolveFromScene() で変換する。
+    /// @note ロード後に ResolveFromScene() で変換する。
     std::vector<EntityID> cells;
 
     /// @brief 保存/復元用 GUID 配列。SceneSerializer が読み書きし、Load 後に ResolveFromScene() で解決する。
@@ -82,10 +83,10 @@ struct TerrainGridComponent {
     }
 
     /// @brief SceneSerializer の Load 後に呼ぶ。cellInstanceIds → cells を解決する。
-    void ResolveFromScene(const Scene& scene);
+    FBZZ_ENGINE_API void ResolveFromScene(const Scene& scene);
 
     /// @brief Save 前に呼ぶ。cells → cellInstanceIds を同期する。
-    void SyncInstanceIds(const Scene& scene);
+    FBZZ_ENGINE_API void SyncInstanceIds(const Scene& scene);
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

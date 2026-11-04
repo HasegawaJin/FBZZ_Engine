@@ -2,6 +2,7 @@
 /// @brief   静的Meshの再利用・通知・公開フィールド照合とsnapshotの独立性を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
+#include <Engine/Scene/Components/MeshRenderer.hpp>
 #include "../Fixtures/StaticMeshRenderReuseFixture.hpp"
 #include "../../../Engine/src/Scene/Systems/RenderShadowPreparation.hpp"
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -229,6 +230,43 @@ TEST_F(StaticMeshRenderReuseTest, ObservesParentMotionReparentingAndHierarchyAct
     ASSERT_EQ(detached.items.size(), 1u);
     EXPECT_VEC3_NEAR(detached.items[0].boundsCenter, (math::Vector3{-2, 0, 0}), testkit::kTolerance);
     EXPECT_VEC3_NEAR(moved.items[0].boundsCenter, (math::Vector3{13, 0, 0}), testkit::kTolerance);
+}
+
+TEST_F(StaticMeshRenderReuseTest, KeepsUnchangedGeometryWhenAnEarlyRendererLeavesAndRejoins)
+{
+    auto& parent = m_scene.CreateGameObject("Parent");
+    auto& child = Object(m_scene);
+    child.SetParent(parent);
+    for (int i = 0; i < 80; ++i) Object(m_scene);
+    const auto full = Extract(1);
+    ASSERT_EQ(full.Objects().size(), 81u);
+    ASSERT_EQ(full.Objects().front().sourceIndex, child.GetID().index);
+
+    parent.SetActive(false);
+    const auto hidden = Extract(2);
+    ASSERT_EQ(hidden.Objects().size(), 80u);
+    EXPECT_EQ(hidden.Objects().front().sourceIndex, full.Objects()[1].sourceIndex);
+    EXPECT_EQ(Rebuilds(), 0u);
+
+    parent.SetActive(true);
+    const auto visible = Extract(3);
+    ASSERT_EQ(visible.Objects().size(), 81u);
+    EXPECT_EQ(visible.Objects().front().sourceIndex, child.GetID().index);
+    EXPECT_EQ(Rebuilds(), 0u);
+
+    parent.SetActive(false);
+    ASSERT_TRUE(child.ClearParent());
+    child.transform.position.x = 5.0f;
+    scene::FlushWorldTransforms(m_scene);
+    const auto detached = Extract(4);
+    ASSERT_EQ(detached.Objects().size(), 81u);
+    EXPECT_EQ(detached.Objects().front().sourceIndex, child.GetID().index);
+    EXPECT_FLOAT_EQ(detached.Objects().front().world.m[0][3], 5.0f);
+    EXPECT_EQ(Rebuilds(), 1u);
+
+    (void)Extract(5);
+    EXPECT_EQ(Rebuilds(), 0u);
+    EXPECT_EQ(SampleCount("RenderSceneExtractor::DenseGeometryFallback"), 0u);
 }
 
 TEST_F(StaticMeshRenderReuseTest, RevalidatesAfterBoundedSceneEvictionAndRendererReordering)

@@ -2,6 +2,11 @@
 /// @brief   プレファブ階層の差し替え後に、保存対象のシーン内参照を新しい実体へ移す。
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
+#include <Engine/Scene/Components/BoneComponent.hpp>
+#include <Engine/Scene/Components/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/PrefabInstantiate.hpp>
 
 #include <Engine/Scene/ComponentRegistry.hpp>

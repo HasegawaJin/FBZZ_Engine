@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <string_view>
 #include <cstddef>
 #include <cstdio>
@@ -397,6 +398,8 @@ struct MemoryHistoryState {
     std::string selectedTag;
     DerivedHistoryCursor cursor;
     bool autoFit = true;
+    std::optional<ImPlotRect> limits;
+    bool applyLimits = false;
 };
 MemoryHistoryState s_memHistory;
 
@@ -545,7 +548,8 @@ void SyncDisplayRows()
 /// @see https://github.com/epezent/implot/blob/524f9fcd48d76c13fdf94c5ffbba8787a1ff7e39/implot.h ImPlotSpec と Setup API の契約。
 void DrawAnalysisHistoryPlot(const char* plotId, const char* seriesLabel, const char* unit,
                              const std::vector<float>& values, const ImVec2& size, bool& autoFit,
-                             const std::vector<RenderingSample>* gpuSamples = nullptr)
+                             const std::vector<RenderingSample>* gpuSamples = nullptr,
+                             MemoryHistoryState* memory = nullptr)
 {
     ImGui::PushID(plotId);
     ImGui::SameLine();
@@ -566,12 +570,18 @@ void DrawAnalysisHistoryPlot(const char* plotId, const char* seriesLabel, const 
         ImPlot::SetupAxisFormat(ImAxis_X1, "%.0f");
         ImPlot::SetupAxisLimitsConstraints(ImAxis_Y1, 0.0, DBL_MAX);
         ImPlot::SetupAxisZoomConstraints(ImAxis_X1, 1.0, DBL_MAX);
+        if (memory && memory->applyLimits && !autoFit && memory->limits) {
+            const auto& limits = *memory->limits;
+            ImPlot::SetupAxesLimits(limits.X.Min, limits.X.Max, limits.Y.Min, limits.Y.Max, ImPlotCond_Always);
+            memory->applyLimits = false;
+        }
 
         ImPlotSpec lineSpec;
         lineSpec.LineColor = ImGui::GetStyleColorVec4(ImGuiCol_PlotLines);
         lineSpec.LineWeight = 1.5f;
         lineSpec.Marker = values.size() == 1u ? ImPlotMarker_Circle : ImPlotMarker_None;
         ImPlot::PlotLine(seriesLabel, values.data(), static_cast<int>(values.size()), 1.0, 0.0, lineSpec);
+        if (memory) memory->limits = ImPlot::GetPlotLimits();
 
         if (ImPlot::IsPlotHovered() && !values.empty()) {
             const double sample = std::clamp(ImPlot::GetPlotMousePos().x, 0.0,
@@ -1961,7 +1971,7 @@ void DrawMemoryDebug(EditorContext& ctx)
             ImGui::SameLine();
             ImGui::TextDisabled("%.3f MB", static_cast<double>(vals.back()));
             DrawAnalysisHistoryPlot("##memHistory", s_memHistory.selectedTag.c_str(), "MB", vals,
-                                     { -1.0f, 60.0f }, s_memHistory.autoFit);
+                                     { -1.0f, 60.0f }, s_memHistory.autoFit, nullptr, &s_memHistory);
         }
     }
 }
@@ -2432,6 +2442,118 @@ void TickProfilerWidgets(EditorContext& ctx)
             (!history.spike || frame->wallFrameIntervalMs > history.spike->wallFrameIntervalMs)) history.spike = frame;
     }
     SyncPerformanceView(); SyncMemoryView(); SyncRenderingView();
+}
+
+void RegisterProfilerViewOperators(OperatorRegistry& registry)
+{
+    for (const bool memory : {false, true}) {
+        for (const bool configure : {false, true}) {
+            EditorOperator op;
+            op.id = std::string(memory ? "profiler.memory.view." : "profiler.performance.view.")
+                + (configure ? "configure" : "inspect");
+            op.label = op.id;
+            op.category = "Profiler";
+            op.kind = configure ? OpKind::Action : OpKind::Query;
+            op.desc = memory ? "タグ、フィルター、履歴チャートの軸設定を扱う。"
+                             : "カテゴリ、表示形式、履歴とスパイク検出の設定を扱う。";
+            if (configure && memory) {
+                op.params = {
+                    {"search", OpParamType::String, "Tag filter", false, {}},
+                    {"tag", OpParamType::String, "Graph tag", false, {}},
+                    {"autoFit", OpParamType::Bool, "Fit the graph automatically", false, {}},
+                    {"xMin", OpParamType::Float, "Lower sample index", false, {}},
+                    {"xMax", OpParamType::Float, "Upper sample index", false, {}},
+                    {"yMin", OpParamType::Float, "Lower MB bound", false, {}},
+                    {"yMax", OpParamType::Float, "Upper MB bound", false, {}}
+                };
+            } else if (configure) {
+                op.params = {
+                    {"search", OpParamType::String, "CPU scope filter", false, {}},
+                    {"category", OpParamType::String, "Profiler category", false, {}},
+                    {"minMs", OpParamType::Float, "Minimum scope duration", false, {}},
+                    {"flat", OpParamType::Bool, "Flat view", false, {}},
+                    {"historyFrames", OpParamType::Int, "History plot size", false, {}},
+                    {"catchSpikes", OpParamType::Bool, "Detect frame spikes", false, {}},
+                    {"spikeThresholdMs", OpParamType::Float, "Spike duration threshold", false, {}}
+                };
+            }
+            op.exec = [memory, configure](OpContext&, const OpArgs& args) {
+                auto* filter = memory ? s_memoryFilter.tagFilter : s_profilerFilter.nameFilter;
+                const size_t capacity = memory ? sizeof(s_memoryFilter.tagFilter) : sizeof(s_profilerFilter.nameFilter);
+                if (configure) {
+                    const auto search = args.GetString("search");
+                    if (search.size() >= capacity || search.find('\0') != std::string::npos)
+                        return OpResult::Err("BAD_ARG", "search");
+                    if (memory) {
+                        const auto tag = args.GetString("tag", s_memHistory.selectedTag);
+                        if (args.Has("tag") && !tag.empty() && !s_memHistory.tagUsedMB.contains(tag))
+                            return OpResult::Err("BAD_ARG", "tag");
+                        const bool axis = args.Has("xMin") || args.Has("xMax") || args.Has("yMin") || args.Has("yMax");
+                        const float xMin = args.GetFloat("xMin");
+                        const float xMax = args.GetFloat("xMax");
+                        const float yMin = args.GetFloat("yMin");
+                        const float yMax = args.GetFloat("yMax");
+                        if (axis && (!args.Has("xMin") || !args.Has("xMax") || !args.Has("yMin") || !args.Has("yMax")
+                            || args.GetBool("autoFit") || !std::isfinite(xMin) || !std::isfinite(xMax)
+                            || !std::isfinite(yMin) || !std::isfinite(yMax) || xMax - xMin < 1 || yMin < 0 || yMin >= yMax))
+                            return OpResult::Err("BAD_ARG", "xMin/xMax/yMin/yMax");
+                        const bool autoFit = args.GetBool("autoFit", tag != s_memHistory.selectedTag || s_memHistory.autoFit);
+                        s_memHistory.selectedTag = tag;
+                        s_memHistory.autoFit = !axis && autoFit;
+                        if (s_memHistory.autoFit) s_memHistory.applyLimits = false;
+                        if (axis) {
+                            s_memHistory.limits.emplace(xMin, xMax, yMin, yMax);
+                            s_memHistory.applyLimits = true;
+                        }
+                    } else {
+                        const auto category = args.GetString("category", k_profilerCategoryNames[s_profilerFilter.categoryFilterIndex]);
+                        const auto categoryIt = std::find(std::begin(k_profilerCategoryNames), std::end(k_profilerCategoryNames), category);
+                        const int frames = args.GetInt("historyFrames", s_profilerDisplay.historyFrameLimit);
+                        const float minMs = args.GetFloat("minMs", s_profilerFilter.minMsFilter);
+                        const float threshold = args.GetFloat("spikeThresholdMs", s_profilerDisplay.spikeThresholdMs);
+                        if (categoryIt == std::end(k_profilerCategoryNames) || frames < 10 || frames > 240
+                            || !std::isfinite(minMs) || minMs < 0 || !(threshold >= 1 && threshold <= 1000))
+                            return OpResult::Err("BAD_ARG", "category/historyFrames/minMs/spikeThresholdMs");
+                        s_profilerFilter.categoryFilterIndex = static_cast<int>(categoryIt - std::begin(k_profilerCategoryNames));
+                        s_profilerFilter.minMsFilter = minMs;
+                        if (args.Has("flat")) {
+                            s_profilerFilter.flatView = args.GetBool("flat");
+                            s_profHistory.autoFit = true;
+                        }
+                        s_profilerDisplay.historyFrameLimit = frames;
+                        s_profilerDisplay.spikeThresholdMs = threshold;
+                        s_profilerDisplay.catchSpikes = args.GetBool("catchSpikes", s_profilerDisplay.catchSpikes);
+                    }
+                    if (args.Has("search")) {
+                        std::copy(search.begin(), search.end(), filter);
+                        filter[search.size()] = '\0';
+                    }
+                }
+                auto data = OpData::MakeObject();
+                data.Set("search", std::string(filter));
+                if (memory) {
+                    data.Set("tag", s_memHistory.selectedTag);
+                    data.Set("autoFit", s_memHistory.autoFit);
+                    if (s_memHistory.limits) {
+                        const auto& limits = *s_memHistory.limits;
+                        data.Set("xMin", limits.X.Min);
+                        data.Set("xMax", limits.X.Max);
+                        data.Set("yMin", limits.Y.Min);
+                        data.Set("yMax", limits.Y.Max);
+                    }
+                } else {
+                    data.Set("category", k_profilerCategoryNames[s_profilerFilter.categoryFilterIndex]);
+                    data.Set("minMs", s_profilerFilter.minMsFilter);
+                    data.Set("flat", s_profilerFilter.flatView);
+                    data.Set("historyFrames", s_profilerDisplay.historyFrameLimit);
+                    data.Set("catchSpikes", s_profilerDisplay.catchSpikes);
+                    data.Set("spikeThresholdMs", s_profilerDisplay.spikeThresholdMs);
+                }
+                return OpResult::Data(std::move(data));
+            };
+            registry.Register(std::move(op));
+        }
+    }
 }
 
 void ResetProfilerWidgets()

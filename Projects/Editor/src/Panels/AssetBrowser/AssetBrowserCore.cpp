@@ -4,6 +4,7 @@
 /// @date    2026-06-07
 #include <Engine/Asset/ModelSource.hpp>
 #include "AssetBrowserCommon.hpp"
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorSettings.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
@@ -11,6 +12,72 @@
 
 namespace fbzz::editor {
 
+void AssetBrowserPanel::OnRegisterOperators(OperatorRegistry& registry)
+{
+    const std::string prefix = "asset.browser." + std::to_string(m_instanceIndex + 1);
+    for (const std::string_view action : {"inspect", "configure"}) {
+        EditorOperator op;
+        op.id = prefix + "." + std::string(action);
+        op.label = op.id;
+        op.category = "AssetBrowser";
+        op.kind = action == "inspect" ? OpKind::Query : OpKind::Action;
+        op.desc = "指定番号のAsset Browserの検索、型フィルターとGrid/List表示。";
+        if (action == "configure") {
+            op.params = {
+                {"search", OpParamType::String, "Search string", false, {}},
+                {"searchAllFolders", OpParamType::Bool, "Search across folders", false, {}},
+                {"typeFilters", OpParamType::Data, "Array of labels from availableTypes", false, {}},
+                {"view", OpParamType::String, "Display mode", false, {}}
+            };
+            op.params.back().enumValues = {"grid", "list"};
+        }
+        op.exec = [this, action](OpContext&, const OpArgs& args) {
+            if (action == "inspect") {
+                auto data = OpData::MakeObject();
+                auto types = OpData::MakeArray();
+                auto available = OpData::MakeArray();
+                for (int index = 1; index < static_cast<int>(TypeFilter::COUNT); ++index) {
+                    const auto type = static_cast<TypeFilter>(index);
+                    available.Push(OpData(TypeFilterLabel(type)));
+                    if (IsTypeFilterActive(type)) types.Push(OpData(TypeFilterLabel(type)));
+                }
+                data.Set("typeFilters", std::move(types));
+                data.Set("availableTypes", std::move(available));
+                data.Set("search", std::string(m_searchBuf.data()));
+                data.Set("searchAllFolders", m_searchAllFolders);
+                data.Set("view", m_viewMode == ViewMode::Grid ? "grid" : "list");
+                return OpResult::Data(std::move(data));
+            }
+            const std::string search = args.GetString("search");
+            if (search.size() >= m_searchBuf.size() || search.find('\0') != std::string::npos)
+                return OpResult::Err("BAD_ARG", "search");
+            auto mask = m_typeFilterMask;
+            if (const auto* filters = args.GetData("typeFilters")) {
+                if (!filters->IsArray()) return OpResult::Err("BAD_ARG", "typeFilters");
+                mask = 0;
+                for (const auto& label : filters->AsArray()) {
+                    if (!label.IsString()) return OpResult::Err("BAD_ARG", "typeFilters");
+                    int index = 1;
+                    for (; index < static_cast<int>(TypeFilter::COUNT); ++index)
+                        if (label.AsString() == TypeFilterLabel(static_cast<TypeFilter>(index))) break;
+                    if (index == static_cast<int>(TypeFilter::COUNT))
+                        return OpResult::Err("BAD_ARG", "typeFilters");
+                    mask |= 1u << index;
+                }
+            }
+            if (args.Has("search")) {
+                m_searchBuf.fill('\0');
+                std::copy(search.begin(), search.end(), m_searchBuf.begin());
+            }
+            if (args.Has("searchAllFolders")) m_searchAllFolders = args.GetBool("searchAllFolders");
+            if (args.Has("view")) m_viewMode = args.GetString("view") == "grid" ? ViewMode::Grid : ViewMode::List;
+            m_typeFilterMask = mask;
+            m_listCacheDirty = true;
+            return OpResult::Ok();
+        };
+        registry.Register(std::move(op));
+    }
+}
 
 
 std::string UniquePrefabPathInDir(const std::string& dir, const std::string& objectName)
@@ -751,7 +818,7 @@ std::vector<AssetBrowserPanel::Entry> AssetBrowserPanel::GetAssetSubEntries(
     }
 
     /// @note サブメッシュエントリを先に追加 (Unity FBX 展開: メッシュ→アニメの順)。ResourceManager 未初期化時に Load を呼ぶと GPU バッファなしでキャッシュされるため必ずガードする。
-    if (renderer::ResourceManager::Active()) {
+    if (m_resources) {
         /// @note .fzasset 生成前に一度失敗した Null cache が残っていると、ファイル更新後もサブアセット展開が importer まで到達しない。
         asset::AssetManager::FlushFailed();
         auto modelHandle = asset::AssetManager::Load<asset::ModelAsset>(sourceAssetPath);

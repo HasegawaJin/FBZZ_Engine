@@ -2,6 +2,7 @@
 /// @brief   C# 回転・拡縮の実接続と子孫同期・失敗時の原子性を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>

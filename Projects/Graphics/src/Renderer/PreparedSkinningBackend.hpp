@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-16
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Effects/PreparedSkinning.hpp>
 #include <vector>
 #include <atomic>
@@ -14,8 +15,8 @@ struct ResourceOwner {
     uint64_t instance = 0, epoch = 0;
     std::atomic<bool> alive{true};
 };
-std::shared_ptr<ResourceOwner> AcquireResourceOwner(const ResourceManager& resources);
-void InvalidateResourceOwner(uint64_t instance);
+FBZZ_GRAPHICS_API std::shared_ptr<ResourceOwner> AcquireResourceOwner(const ResourceManager& resources);
+FBZZ_GRAPHICS_API void InvalidateResourceOwner(uint64_t instance);
 
 class NativeWork {
 public:
@@ -31,8 +32,8 @@ public:
 };
 
 struct TicketFactory {
-    static bool MatchesFacade(const ResourceManager& resources, const IRenderer& facade);
-    static std::shared_ptr<PreparedSkinningTicket> Make(std::unique_ptr<NativeWork> native);
+    FBZZ_GRAPHICS_API static bool MatchesFacade(const ResourceManager& resources, const IRenderer& facade);
+    FBZZ_GRAPHICS_API static std::shared_ptr<PreparedSkinningTicket> Make(std::unique_ptr<NativeWork> native);
     static const NativeWork& Native(const PreparedSkinningTicket& ticket) { return *ticket.m_native; }
 };
 
@@ -40,12 +41,12 @@ using NativeFactory = std::unique_ptr<NativeWork> (*)(IRenderer&, ResourceManage
     std::span<const CapturedSkinningRequest>, std::span<const math::Matrix4>);
 
 /// @note 登録関数は Graphics DLL 内の final native 実装だけから呼ぶ。
-void RegisterBackend(IRenderer& native, NativeFactory factory);
-void UnregisterBackend(IRenderer& native);
-bool HasRegisteredBackend(const IRenderer& native) noexcept;
-bool SupportsViaFacade(const IRenderer& facade) noexcept;
-std::unique_ptr<NativeWork> PrepareExactNative(IRenderer& native, ResourceManager& resources, ResourceHandle<ShaderTag> shader,
+FBZZ_GRAPHICS_API void RegisterBackend(IRenderer& native, NativeFactory factory);
+FBZZ_GRAPHICS_API void UnregisterBackend(IRenderer& native);
+FBZZ_GRAPHICS_API bool HasRegisteredBackend(const IRenderer& native) noexcept;
+FBZZ_GRAPHICS_API bool SupportsViaFacade(const IRenderer& facade) noexcept;
+FBZZ_GRAPHICS_API std::unique_ptr<NativeWork> PrepareExactNative(IRenderer& native, ResourceManager& resources, ResourceHandle<ShaderTag> shader,
     std::span<const CapturedSkinningRequest> requests, std::span<const math::Matrix4> matrices);
-std::unique_ptr<NativeWork> PrepareViaFacade(IRenderer& facade, ResourceManager& resources, ResourceHandle<ShaderTag> shader,
+FBZZ_GRAPHICS_API std::unique_ptr<NativeWork> PrepareViaFacade(IRenderer& facade, ResourceManager& resources, ResourceHandle<ShaderTag> shader,
     std::span<const CapturedSkinningRequest> requests, std::span<const math::Matrix4> matrices);
 } /// @note namespace fbzz::renderer::prepared_skinning_detail

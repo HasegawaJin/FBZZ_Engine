@@ -138,9 +138,9 @@ velocity は土台の world 行列が静止していても描く。ビューご�
 ## スキニング・地形・Blade・選択
 
 - Shell / Fin / Hybrid は SkinnedMeshRenderer の可視サブメッシュと親 Animator を使う。根元と法線を現在のボーンで変形し、velocity は前フレームのボーンも評価する。Fin の各高さへ元頂点の 4 ウェイトを保持する。初回の過去パレットなしでは速度を 0 にする。Blade は静的メッシュと地形向け。
-- Terrain と併用すると高さデータからパッチを生成する。`terrainPatchCells` は分割するセル数。地形の内容署名を毎フレーム一度確認し、編集時にパッチを再構築する。密度はローカル面積あたりで、スケールを変えるとワールド面積あたりの密度も変わる。
+- Terrain と併用すると高さデータからパッチを生成する。`terrainPatchCells` は分割するセル数。密度はローカル面積あたりで、スケールを変えるとワールド面積あたりの密度も変わる。大地形の生成範囲・編集・寿命は「地形の近傍常駐」で定める。
 - 地形の層で生やす範囲を決める (`terrain-layers.md` §5)。`terrainLayer = -1` (既定) は全面、0 以上ならその層だけ。4 隅の層の重みの最大値が `terrainLayerThreshold` (既定 0.25) 未満のセルと穴セルはパッチから省き、三角形 0 枚のパッチは作らない。パッチ頂点の色 A に層の重み (全面なら 1) を入れ、層指定時だけ `BuildFiberBlades(..., densityFromVertexAlpha = true)` が棄却法で根元を間引く。内容署名は高さ・穴・層設定に加え、層指定時は番号と重みも含める。
-- 繊維のある地形は、根元と地面の高さがずれないよう本体と影の地形 LOD を 0 に固定する。繊維自体は距離 LOD で削減するが、地面の三角形数は減らない。
+- 繊維の根元と地面の高さがずれないよう、Fiber の距離範囲に届く地形チャンクは本体と影の地形 LOD を 0 に固定する。離れた地形は通常の LOD を使い、Fiber の距離 LOD を無効にした場合だけ全チャンクを LOD 0 にする。
 - Blade は三角形の面積に比例して根元を配置する。各葉は高さ方向 6 分割のリボン 2 枚で、元メッシュの辺から離れた場所にも生える。Shell の層間や Fin の辺の隙間を厚く塗って隠す方式ではない。近距離の草には `mode = 3` を指定する。
 - `bladeDensity`・`bladeWidth`・`seed` で分布を制御する。CPU / GPU の過剰確保を避けるため 1 メッシュ / 地形パッチは最大 32768 葉。超過時は警告して生成を拒否するので、密度かパッチを小さくする。
 - Blade は頂点バッファを持たない。CPU は 1 葉 64 バイトの根元 (`FiberBladeRoot`: 位置・相対高さ・法線・乱数・2 リボンの半幅ベクトル・UV) だけを作り、GPU ローカルの StructuredBuffer (VS の `vsBuffers[0]`) に置く。VS が `SV_VertexID` から 1 葉 72 頂点 (リボン 2 × 高さ 6 区間 × 6 頂点) を組み立て、インデックスなしで描く。三角形の並びと各頂点の高さ・左右は旧インデックスバッファと同じで、乱数の消費順も変えていないため形状は一致する。32768 葉で以前は約 108 MB (28 頂点 × 108 バイト + 72 インデックス) を CPU で生成・転送していたが、約 2 MB になる。距離 LOD は提出する頂点数を 72 の倍数で減らす。
@@ -150,6 +150,57 @@ velocity は土台の world 行列が静止していても描く。ビューご�
 - 選択マスクも同じ頂点変形・Alpha Clip・距離 LOD を使い、両面を描く。元の表面だけを囲む輪郭を繊維まで拡張する。
 
 `FiberStage4.scene` は短い Blade、背の高い Blade、丘の Blade と足元の Interactor を比較する。`FiberStage4.playtest.json` は押し倒し・回復・近接・遠距離・選択を撮影する。回復比較では乱流を 0 にして時刻による風の差を除く。`FiberSkinning.scene` / `FiberSkinning.playtest.json` は既存 Player モデルへ繊維を追加し、アニメーション姿勢と 3 モードを検査する。
+
+### 透過テクスチャの草束 (2026-11-04)
+
+Alpine の既定は `GrassCards.mat`。Blade の根元・高さ乱数・90 度交差する板を使い、各板の全面 UV で色と透過輪郭を読む。固定した板は視点が変わっても向きが変わらず、影とモーションの形状を共有できる。草束でも地形レイヤーによる根元の選択と近傍常駐を使う。
+
+`GrassCard` シェーダー一式は Blade の 128 バイト材質契約を共有し、`albedo` に RGB と Alpha を持つ草束、`cardAlphaCutoff` に透過のしきい値を持つ。根元を留めた曲げには環境風と局所の流れに加えて `cardSway` [m] と `cardSwayHz` [Hz] を使う。モーションは現在と前フレームの時刻で同じ式を評価する。Terrain Tool の既定は幅 0.5 m、密度 4 束 / local m²、表示距離 80 m。
+
+`cardSpeciesAtlas = 1` で `albedo` を 2 × 2 のアトラスとして使う。`cardSpeciesWeights` の 4 要素は左上、右上、左下、右下の順で、値は草束を選ぶときの相対比率。アトラスが無効か全要素が 0 なら画像全体を 1 枚のカードに使う。各セルの縁に透過の余白を取る。
+
+`cardSpeciesHeight` と `cardSpeciesWidth` はそれぞれ毛丈と束幅に対する倍率 [0.05, 1]。`cardSpeciesSway` と `cardSpeciesSwayHz` は揺れの振幅と周波数に対する倍率。種の選択はローカルの根元位置から求め、一部の束は近くで同じ種を選ぶ。根元バッファと描画パスは既存の草カードと共通。
+
+### 地形の近傍常駐 (2026-11-04)
+
+地形全域の CPU メッシュと Blade 根元を先に作ってから描画時に距離で捨てると、見える草の量が同じでも地形面積に比例して初期生成と常駐メモリーが増える。生成対象は既存の距離 LOD と同じ範囲まで絞り、CPU の根元生成と GPU 確保より前に判定する。
+
+- `distanceLod` が有効で距離が有限なら、`max(lodFar, max(lodNear, 0) + 0.1)` [world m] の球を対象とする。カメラ位置を Terrain の逆 TRS で local へ移し、軸ごとの半径を world scale の絶対値で割って候補の格子範囲を求める。候補パッチの AABB 中心を world へ戻し、既存描画と同じ中心距離で最終判定する。錐台では絞らないので、画面外の草が落とす影も残る。距離 LOD を無効にした場合は既存の全地形生成を維持する。
+- キャッシュの単位は Scene 世代・Terrain 個体・パッチ格子座標。三角形の順序、頂点、`seed`、葉の生成規則を維持し、離れた場所から戻っても同じ地形から同じ草を再生成する。未変更のパッチは GPU ハンドルを維持し、既存の速度履歴を継続する。
+- 各ビューが自分の候補範囲を要求する。同一フレームの最初のカメラだけで生成を打ち切らない。直近 2 フレームの要求と、編集で置き換えた旧世代を保持し、それより古いパッチの頂点・インデックス・Fin・Blade 根元をまとめて返却する。先に抽出した別ビューの非所有ハンドルを同一フレーム中に失効させない。
+- 高さ・穴・植生の変更世代とパッチ設定を確認する。変更時の内容署名は要求されたパッチの高さ、法線計算に必要な隣接 1 頂点、穴、指定層の重みだけを読む。地形全域のハッシュは取らない。離れた編集で未変更の近傍パッチを作り直さない。地形の移動・回転・非一様スケールでは生成範囲を更新し、local 根元を共有する。
+- 1 パッチ最大 32768 葉の既存上限を維持する。総量は地形全体ではなく、有効な距離・セル寸法・パッチ寸法・直近のビュー要求で決まる。上限を超えたパッチは従来どおり警告付きで拒否し、見えているパッチを任意の総数で黙って切り捨てない。作者向けの即時設定は距離 LOD を有効にする。
+- CPU の抽出・根元生成・確保数は実際の `ExtractRenderFibers` と ResourceManager を通して測る。追跡用 CPU Renderer の時間は DX12 の GPU 時間として扱わない。冷状態、同じカメラの再抽出、移動、同一フレームの別カメラ、局所編集を区別し、変更前後の地形寸法・密度・距離を揃える。
+
+### 地形の近傍常駐の計測と検証 (2026-11-04)
+
+Release の `TerrainFiberStreamingTest` を変更前後の別プロセスで実行した。513 × 513 頂点、cellSize 4 m、2048 m 四方の平坦な地形、8 セル四方のパッチ、層 0 を全面 100%、Blade 密度 4 本 / local m²、距離 LOD 20～80 m、カメラ高 3 m の同じ条件。下表の時間は `ExtractRenderFibers` の CPU 経過時間で、先行する `ExtractRenderTerrains` の時間は別に記録する。
+
+| 項目 | 変更前 | 変更後 |
+|---|---:|---:|
+| 初回の草抽出・生成 | 1231.622 ms | 5.043 ms |
+| 同じカメラ 8 フレームの中央値 | 8.819 ms | 0.098 ms |
+| 64 m ずつ移動する 8 フレームの中央値 | 8.481 ms | 2.440 ms |
+| 近傍の高さ 1 頂点を編集 | 1242.150 ms | 1.688 ms |
+| 同じ頂点の層を編集 | 1367.818 ms | 1.335 ms |
+| 同じ場所の穴 1 セルを編集 | 1334.854 ms | 0.614 ms |
+| 初回の抽出パッチ数 | 4096 | 16 |
+| 初回の抽出根元数 | 16,777,216 | 65,536 |
+| 初回の根元 StructuredBuffer 要求サイズ | 1024 MiB | 4 MiB |
+
+実際の地形・草の抽出、根元計算、ResourceManager の確保経路を使うが、Renderer は資源追跡用の CPU 実装である。ドライバー転送・DX12 の GPU 実行・Present・画面全体のフレーム時間は測っていない。容量は ResourceManager へ要求したバッファのバイト数で、実機 VRAM の実測ではない。初回と各編集は各 1 回、定常と移動は各 8 回であり、時刻の値をテストの合否条件にはしない。
+
+`root_bytes` はそのビューへ抽出した根元だけを数える。別ビューや移動前のパッチと編集前の世代は 2 resource frame 保持するため、常駐量はこの値より大きくなる。`live_bytes` は地面本体を含む全追跡資源の要求サイズを数える。距離 LOD を明示的に無効にすると全域生成へ戻るため、この比較値は適用しない。
+
+元データは `build/agent/terrain-fiber-before.json` と `build/agent/terrain-fiber-after.json`。実行時の XML と標準出力も同じディレクトリの `terrain-fiber-before.xml` / `terrain-fiber-after.xml`、`terrain-fiber-before-console.log` / `terrain-fiber-after-console.log` に残す。計測用の 2 ケース、常駐・編集・寿命を検証する 8 ケース、Alpine 素材を実際の読込経路で確認する 1 ケースの計 11 ケースが成功した。回帰には地形寸法を大きくしても近傍確保数が一定であること、定常時のハンドル再利用、同一フレームの別カメラ、ResourceManager の 3 フレーム後の返却、再生成した根元の内容一致、局所編集、符号付き非一様 TRS、複数所有者と Reset を含む。
+
+再計測はリポジトリルートからビルドを直列に終えた後、明示実行のテストを有効にして行う。出力先は実際のチェックアウトに合わせた絶対パスへ変える。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 build FBZZTestsEngineAuto -Preset release
+$env:FBZZ_TERRAIN_FIBER_BENCH_OUTPUT = 'K:/FBZZ_Engine/build/agent/terrain-fiber-after.json'
+& 'K:/FBZZ_Engine/build/Release/Binaries/Release/Tests/FBZZTestsEngineAuto.exe' --gtest_also_run_disabled_tests '--gtest_filter=TerrainFiberStreamingTest.*' '--gtest_output=xml:K:/FBZZ_Engine/build/agent/terrain-fiber-after.xml'
+```
 
 ### 段階 4 の検証 (2026-09-17)
 

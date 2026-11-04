@@ -5,6 +5,7 @@
 /// @note RenderSettings::passViewerEnabled が true のとき RenderSystem の末尾から呼ばれる。
 /// @note ImGui フレーム内 (ImGui::NewFrame() と ImGui::Render() の間) での呼び出しが前提。
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include "ResourceHandle.hpp"
 #include "GpuProfiler.hpp"
@@ -98,19 +99,19 @@ public:
 
     /// @note 最後の UpdateSnapshot() で保存されたスナップショットを返す。
     /// @note ViewportPanel の Stats オーバーレイから renderStats を読む用途を想定。
-    static const Snapshot& GetLastSnapshot();
+    FBZZ_GRAPHICS_API static const Snapshot& GetLastSnapshot();
 
     /// @note RenderSystem 末尾から呼ぶ。ハンドルを静的領域に保存するだけで ImGui / GPU に触れない。
     /// @note ImGui フレーム外 (GPU レンダリング中) から安全に呼べる。
-    static void UpdateSnapshot(const Snapshot& snapshot, bool enabled);
+    FBZZ_GRAPHICS_API static void UpdateSnapshot(const Snapshot& snapshot, bool enabled);
 
     /// @note ImGui フレーム内・GPU レンダリング完了後に呼ぶ (EditorApp::RenderPanels 等)。
     /// @note UpdateSnapshot で enabled=false が渡されていれば即リターンする。
-    static void DrawIfEnabled(IImGuiRenderer& imguiRenderer, ResourceManager& resources);
+    FBZZ_GRAPHICS_API static void DrawIfEnabled(IImGuiRenderer& imguiRenderer, ResourceManager& resources);
 
 private:
     /// @note 実際の ImGui 描画ロジック。DrawIfEnabled からのみ呼ぶ。
-    static void Draw(IImGuiRenderer& imguiRenderer, ResourceManager& resources,
+    FBZZ_GRAPHICS_API static void Draw(IImGuiRenderer& imguiRenderer, ResourceManager& resources,
                      const Snapshot& snapshot);
 };
 

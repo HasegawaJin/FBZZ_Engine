@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Math/Quaternion.hpp>
 #include <Math/Vector2.hpp>
@@ -48,16 +49,16 @@ struct WaterDepthField {
 };
 
 /// @return 有効なatlas と水域値から数値 snapshot を作る。失敗時は out 未変更。
-bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComponent& water,
+FBZZ_ENGINE_API bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComponent& water,
     const Transform& transform, WaterDepthField& out,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 /// @return world XZ の bilinear attenuation factor と解析勾配。失敗時は out 未変更。
 /// @note 底なしは1、dryは0、clipped depthは符号で0/1を選び、範囲外は有限距離で1へ滑らかに戻す。
-bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldXZ, WaterDepthSample& out);
+FBZZ_ENGINE_API bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldXZ, WaterDepthSample& out);
 
 /// @note 物理snapshotと描画なし照会のために、現在のSceneの全Waterへ不変fieldを準備する。
-void PrepareWaterDepthFields(Scene& scene,
+FBZZ_ENGINE_API void PrepareWaterDepthFields(Scene& scene,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 } /// @note namespace fbzz::scene
 

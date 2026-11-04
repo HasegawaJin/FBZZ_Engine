@@ -16,7 +16,7 @@
 #include <Engine/Scene/ControlPointAdapters.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Entity.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Fluid/GerstnerWaves.hpp>
 #include <Fluid/VectorFieldAsset.hpp>
 #include <Math/MathUtils.hpp>
@@ -61,12 +61,12 @@ inline constexpr int kWaterSurfaceFlowCount = 8;
 
 /// @brief 流れが水面の形へ出せる変位の上限 [m]。穴にも盛り上がりにも同じ値で効く。
 /// @note 見た目の歯止めで物理的な意味は無い。Bernoulli をそのまま採ると speed 10 m/s が
-///       5 m の穴を掘り、水面が裏返って «底» が見える。
+/// @note 5 m の穴を掘り、水面が裏返って «底» が見える。
 inline constexpr float kMaxWaterSurfaceDisplacement = 3.0f;
 
 /// @brief 渦の軸が «鉛直» と認める、軸と上向きの内積の下限。
 /// @note 45 度 (0.707) をわずかに下回るところ。これより寝た渦は水面を掘らず撫でるだけで、
-///       高さの解析項として書けない。Inspector の注意書きも同じ値を見る。
+/// @note 高さの解析項として書けない。Inspector の注意書きも同じ値を見る。
 inline constexpr float kWaterVortexUprightDot = 0.7f;
 
 /// @brief 形の Gaussian の実効半径を影響半径の何割にするか。
@@ -81,7 +81,7 @@ inline constexpr float kWaterSurfaceFlowReference = 4.0f;
 /// @brief WaterSystem が FlowFieldFrame から毎フレーム組み立てる (保存しない)。
 ///
 /// @warning vectorField はフレームを跨いで持たない。速度場 PNG のホットリロードは AssetStore の
-///          スロットへ新しい実体を差し込むため、古いポインタは黙って別の場を指す。
+/// @note スロットへ新しい実体を差し込むため、古いポインタは黙って別の場を指す。
 /// @see Docs/design/water-waves.md 「流れの場が水面に出る 3 つの道」
 struct WaterSurfaceFlow {
     FlowFieldType kind   = FlowFieldType::Vortex; ///< @brief 型。CB へは float として渡る
@@ -116,13 +116,13 @@ inline constexpr float kWaterRippleHeightAmplitude = 0.15f;
 
 /// @brief 波紋テクスチャの B チャンネルが表せる高さの範囲 [m] (±)。
 /// @warning Water.hlsl の kRippleHeightScale と同じ値であること。片方だけ変えると、
-///          見えている輪と浮力が別の高さになる。
+/// @note 見えている輪と浮力が別の高さになる。
 inline constexpr float kWaterRippleHeightScale = 0.5f;
 
 /// @brief 生きている着水の輪 1 つ。**ワールド座標で持つ** (保存しない)。
 ///
 /// @note 正本を WaterComponent へ置く理由: 描画パスの静的キャッシュに置くと SceneView と
-///       GameView で寿命が 2 回進み、さらに CPU 側の GetSurfaceHeightAt が読めない。
+/// @note GameView で寿命が 2 回進み、さらに CPU 側の GetSurfaceHeightAt が読めない。
 /// @see Docs/design/water-waves.md 「波紋の帯分け」
 struct WaterRipple {
     math::Vector2 center    = math::Vector2::ZERO; ///< @brief ワールド XZ [m]
@@ -354,7 +354,7 @@ struct WaterComponent {
 
     /// @brief 頂点グリッドで «刻めない» 波を寝かせる係数 [0,1]。Water.hlsl の WaveMeshFade と同じ式。
     /// @note Gerstner 波は頂点でしか評価されないため、1 波長あたり数セルしか取れない波は山と谷が
-    ///       セル境界で入れ替わり «別の波» に化ける。刻めない波は消し、細かさは手続きさざ波に任せる。
+    /// @note セル境界で入れ替わり «別の波» に化ける。刻めない波は消し、細かさは手続きさざ波に任せる。
     /// @param cell 頂点グリッド 1 セルのワールド実寸 [m]。0 のときはフェードしない。
     static float WaveMeshFade(float wavelength, math::Vector2 cell)
     {
@@ -367,18 +367,18 @@ struct WaterComponent {
 
     /// @brief 群の向きを波からどれだけ傾けるか (rad 0.55 の cos / sin)。Water.hlsl と同じ値。
     /// @note 群が波と同じ向きに進むだけだと波頭が «高さの揃った無限に長い直線» のままになる。
-    ///       斜めにずらすと包絡が波頭に沿っても変化し、うねりが塊へ割れる。
+    /// @note 斜めにずらすと包絡が波頭に沿っても変化し、うねりが塊へ割れる。
     static constexpr float WAVE_GROUP_COS = 0.852525f;
     static constexpr float WAVE_GROUP_SIN = 0.522687f;
 
     /// @brief 波の «群» の包絡 [1-depth, 1+depth]。振幅にそのまま掛ける。
     /// @note 正弦を 4 本足しただけでは全波頭が同じ高さ・形になる。実海面は近い周波数の «うなり»
-    ///       で波が群れ、大きい塊と凪の区間が交互に来る。
+    /// @note で波が群れ、大きい塊と凪の区間が交互に来る。
     /// @param index 波の番号 [0,15]。群の波長帯と傾ける向きをここから決める。
     /// @note 群の角周波数を r*omega/2 にするのは、深水波の群速度が位相速度の 1/2 だから。
-    ///       これで «群はゆっくり進み、個々の波頭がその中を追い越していく» 見え方になる。
+    /// @note これで «群はゆっくり進み、個々の波頭がその中を追い越していく» 見え方になる。
     /// @warning Water.hlsl の WaveGroupEnvelope と同じ式であること。片方だけ変えると、
-    ///          見えている波と浮力が別の水面になる。
+    /// @note 見えている波と浮力が別の水面になる。
     static float WaveGroupEnvelope(int index, math::Vector2 direction, float k, float omega,
                                    float worldX, float worldZ, float time, float depth,
                                    float phaseOffsetRadians = 0.0f)
@@ -407,7 +407,7 @@ struct WaterComponent {
     ///
     /// @param component 0 = 主成分, 1 = 伴走成分。
     /// @note 実海面の波は 1 方向へ揃わず狭い方向スペクトルを持つ。同じ波数で向きだけ違う波を
-    ///       重ねると、波頭が有限の長さに切れる (short-crested sea)。
+    /// @note 重ねると、波頭が有限の長さに切れる (short-crested sea)。
     /// @note 振幅は main^2 + comp^2 = 1 で分ける。分けないと spread を上げるだけで海が高くなる。
     /// @warning Water.hlsl の ApplyWaveSpread / ResolveWaveSpread と同じ式であること。
     static WaveSpreadPart WaveSpreadComponent(int index, int component, math::Vector2 direction,
@@ -440,11 +440,11 @@ struct WaterComponent {
     /// @brief 中心を持つ流れ 1 本が作る変位 [m] (穴は負、盛り上がりは正)。
     ///
     /// @param worldX,worldZ ワールド XZ。**変位前へ戻さない** — 形は水平変位を持たないので
-    ///        逆写像の対象ではなく、入れると Gerstner の位相まで穴のぶんずれる。
+    /// @note 逆写像の対象ではなく、入れると Gerstner の位相まで穴のぶんずれる。
     /// @note 形を Gaussian にするのは C¹ 連続だから。(1 - r/R)^p は r = R で折れ、頂点法線が
-    ///       1 セルだけ跳ねて縁に輪が出る。
+    /// @note 1 セルだけ跳ねて縁に輪が出る。
     /// @warning Water.hlsl の WaterRadialDisplacement と同じ式であること。片方だけ変えると、
-    ///          見えている形と浮力・水中判定が別の水面になる。
+    /// @note 見えている形と浮力・水中判定が別の水面になる。
     static float WaterRadialDisplacement(const WaterSurfaceFlow& flow, float worldX, float worldZ)
     {
         if (std::abs(flow.height) <= 0.0001f || flow.radius <= 0.0001f) return 0.0f;
@@ -459,7 +459,7 @@ struct WaterComponent {
     /// @param baseX,baseZ **変位前の** ワールド XZ。高さは planeOffsetY で基準面に固定する。
     /// @note 高さを «波を乗せた後の Y» で引くと «高さを高さで引く» 循環になる。
     /// @note 流速の XZ 成分だけを Bernoulli へ通す。鉛直成分は水面を «押し上げる» 話で、
-    ///       淀みの深さとしては二重に数えることになる。
+    /// @note 淀みの深さとしては二重に数えることになる。
     /// @warning Water.hlsl の WaterBakedDisplacement と同じ式であること。
     static float WaterBakedDisplacement(const WaterSurfaceFlow& flow, float baseX, float baseZ)
     {
@@ -504,7 +504,7 @@ struct WaterComponent {
     /// @param ringRadius 今の輪の半径 [m]。
     /// @param width     輪の太さ [m]。断面の «波長» は 2·width。
     /// @warning 波紋テクスチャを焼く側と GetSurfaceHeightAt が**この 1 本だけ**を呼ぶこと。
-    ///          片方だけ変えると、見えている輪の上で物が別の高さに浮く。
+    /// @note 片方だけ変えると、見えている輪の上で物が別の高さに浮く。
     static float WaterRippleProfile(float distance, float ringRadius, float width)
     {
         const float w = (std::max)(width, 1.0e-4f);
@@ -534,7 +534,7 @@ struct WaterComponent {
 
     /// @brief 逆写像の反復回数。
     /// @note 減衰を波の急峻度から決めるので、収束する設定 (Σ Q·k·A ≤ 1) では素の不動点反復に
-    ///       なり、4 回で残差が mm 台へ入る。
+    /// @note なり、4 回で残差が mm 台へ入る。
     static constexpr int SURFACE_SOLVE_ITERATIONS = 4;
 
     struct ResolvedWave {
@@ -705,9 +705,9 @@ public:
 
     /// @brief ワールド XZ に «水面が来ている» とき、その点の変位前の水平位置を解く。
     /// @note Gerstner 波は «変位前の位置» を位相の入力に取る。ワールド XZ をそのまま使うと水平変位分
-    ///       だけ別の場所の高さを読み、急な斜面では Q·A の合計 (Ocean.mat で 1〜2m) ずれる。
+    /// @note だけ別の場所の高さを読み、急な斜面では Q·A の合計 (Ocean.mat で 1〜2m) ずれる。
     /// @warning 折り畳んだ波では逆写像が一意でない (同じ XZ に複数の水面)。反復はその枝の 1 つへ
-    ///          落ちる。初期値依存で連続性は保証しない。
+    /// @note 落ちる。初期値依存で連続性は保証しない。
     math::Vector2 SolveUndisplacedXZ(float worldX, float worldZ, float time,
         WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
     {
@@ -715,14 +715,14 @@ public:
         if (!enableGerstnerWaves) return target;
 
         /// @note 不動点反復の縮小率の上界 Σ Q·k·A。三角関数を 1 度も回さずに出せる。
-        ///       群の包絡は最大 (1 + waveGrouping) 倍、方向広がりは主 + 伴走の和まで振幅を持ち上げる。
+        /// @note 群の包絡は最大 (1 + waveGrouping) 倍、方向広がりは主 + 伴走の和まで振幅を持ち上げる。
         PrepareWaveCache(view);
         const float contraction = m_horizontalContraction;
         /// @note 水平変位を持たない水面 (湖・プール・急峻度 0) は解く必要がない。
         if (contraction <= 0.0001f) return target;
 
         /// @note Σ Q·k·A ≤ 1 なら素の反復がそのまま縮小写像。超える («波が折り畳む») 設定では
-        ///       その比で減衰させ、有限回で暴れないところへ抑える。
+        /// @note その比で減衰させ、有限回で暴れないところへ抑える。
         const float relax = 1.0f / (std::max)(contraction, 1.0f);
 
         math::Vector2 guess = target;
@@ -737,9 +737,9 @@ public:
     /// @brief 水面の基準面からの変位 [m] を CPU で評価する。
     /// @param worldX, worldZ ワールド座標 (変位«後»、つまり画面に出ている位置)。
     /// @note シェーダーは波の位相をワールド XZ で取るため、原点からの相対座標で評価すると
-    ///       水面を原点以外へ置いた瞬間に浮力・水中判定と描画の波がずれる。
+    /// @note 水面を原点以外へ置いた瞬間に浮力・水中判定と描画の波がずれる。
     /// @note Spline の基準高さ、流れの場が作る形、着水の輪も足す。中心型はワールド XZ、Baked と輪は変位前の XZ で
-    ///       引く (VS が波紋テクスチャを «波を乗せる前の» 頂点 UV で引いているため)。
+    /// @note 引く (VS が波紋テクスチャを «波を乗せる前の» 頂点 UV で引いているため)。
     /// @see SolveUndisplacedXZ
     float GetSurfaceHeightAt(float worldX, float worldZ, float time,
         WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const

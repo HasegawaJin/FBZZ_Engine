@@ -3,11 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
+#include <Engine/Api.hpp>
 #include <string>
 #include <memory>
 #include <array>
-#include "RenderPasses/Geometry/SkinningOutputDemand.hpp"
-#include "../../../../Graphics/src/Passes/Geometry/SkinningWorkTrace.hpp"
+#include <Engine/Scene/Systems/SkinningDemandTypes.hpp>
+#include <Graphics/Renderer/SkinningTrace.hpp>
 #include <algorithm>
 #include <atomic>
 #include <cstring>
@@ -116,12 +117,12 @@ inline bool ClaimBoundedSlot(uint32_t& count,uint32_t capacity,uint32_t& index)
 class Scene;
 namespace animation_actor_detail { struct ActorCapture; }
 /// @note Separate opt-in scalar collector; its OFF path reads no clock and creates no capture storage.
-bool AnimationActorTraceRequested();
-animation_actor_detail::ActorRow* CurrentAnimationActorRow();
+FBZZ_ENGINE_API bool AnimationActorTraceRequested();
+FBZZ_ENGINE_API animation_actor_detail::ActorRow* CurrentAnimationActorRow();
 class AnimationActorScope {
 public:
-    explicit AnimationActorScope(animation_actor_detail::ActorRow* row);
-    ~AnimationActorScope();
+    FBZZ_ENGINE_API explicit AnimationActorScope(animation_actor_detail::ActorRow* row);
+    FBZZ_ENGINE_API ~AnimationActorScope();
     AnimationActorScope(const AnimationActorScope&)=delete;
     AnimationActorScope& operator=(const AnimationActorScope&)=delete;
 private:
@@ -130,16 +131,16 @@ private:
 };
 class AnimationActorFrame {
 public:
-    AnimationActorFrame(bool simulating,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance);
-    ~AnimationActorFrame();
+    FBZZ_ENGINE_API AnimationActorFrame(bool simulating,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance);
+    FBZZ_ENGINE_API ~AnimationActorFrame();
     bool Active() const { return m_capture!=nullptr; }
-    void SetPopulation(uint64_t population);
-    void CountExcluded(uint32_t reason);
-    animation_actor_detail::ActorRow* BeginActor(uint32_t entityIndex,uint32_t entityGeneration,uint64_t lifetime,float ctxDt,float localScale);
+    FBZZ_ENGINE_API void SetPopulation(uint64_t population);
+    FBZZ_ENGINE_API void CountExcluded(uint32_t reason);
+    FBZZ_ENGINE_API animation_actor_detail::ActorRow* BeginActor(uint32_t entityIndex,uint32_t entityGeneration,uint64_t lifetime,float ctxDt,float localScale);
     /// @note Reacquires the component after pose/effect callbacks; no actor reference is stored for later use.
-    void FinishActor(animation_actor_detail::ActorRow* row,Scene& scene,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance);
+    FBZZ_ENGINE_API void FinishActor(animation_actor_detail::ActorRow* row,Scene& scene,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance);
     /// @note Called after compatibilityBatch flush, before destruction; all pending component lifetimes are revalidated.
-    void FinalizeSource(Scene& scene,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance);
+    FBZZ_ENGINE_API void FinalizeSource(Scene& scene,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance);
     AnimationActorFrame(const AnimationActorFrame&)=delete;
     AnimationActorFrame& operator=(const AnimationActorFrame&)=delete;
 private:
@@ -228,17 +229,17 @@ struct Ticket {
     uint32_t index=NO_ENTRY;
     bool tracked=false,eligible=false,canSeed=false,capacityRejected=false;
 };
-uint64_t HashKey(const Key& key);
-float InitialCredit(const Key& key,float interval);
-bool CreditDue(bool normalDue,float elapsed,float interval,float credit);
+FBZZ_ENGINE_API uint64_t HashKey(const Key& key);
+FBZZ_ENGINE_API float InitialCredit(const Key& key,float interval);
+FBZZ_ENGINE_API bool CreditDue(bool normalDue,float elapsed,float interval,float credit);
 /// @note No eviction: issued lifetimes remain tombstones on invalidation/removal, so neither gaps nor source changes re-seed.
 class Ledger {
 public:
-    explicit Ledger(uint32_t capacity=CAPACITY);
-    ~Ledger();
-    Ticket Prepare(const Key& key,const Source& source,float interval,bool eligible);
-    bool Complete(const Ticket& ticket,const RefreshOutcome& outcome,bool coherentEligible,float& seededCredit);
-    void Cancel(const Key& key);
+    FBZZ_ENGINE_API explicit Ledger(uint32_t capacity=CAPACITY);
+    FBZZ_ENGINE_API ~Ledger();
+    FBZZ_ENGINE_API Ticket Prepare(const Key& key,const Source& source,float interval,bool eligible);
+    FBZZ_ENGINE_API bool Complete(const Ticket& ticket,const RefreshOutcome& outcome,bool coherentEligible,float& seededCredit);
+    FBZZ_ENGINE_API void Cancel(const Key& key);
     Ledger(const Ledger&)=delete; Ledger& operator=(const Ledger&)=delete;
 private:
     struct Entry;
@@ -247,26 +248,26 @@ private:
     uint32_t m_capacity=0,m_slotCount=0,m_count=0;
     std::atomic_flag m_owned=ATOMIC_FLAG_INIT;
     std::atomic<uint64_t> m_rejectionEpoch{0};
-    uint32_t Find(const Key& key) const;
+    FBZZ_ENGINE_API uint32_t Find(const Key& key) const;
 };
 }
-bool BeginAnimationPhaseDistribution(uint64_t resourceFrame,uint64_t timeFrame,uint64_t sceneGeneration);
-bool AnimationPhaseDistributionEnabled();
-animation_phase_detail::Ticket PrepareAnimationPhaseDistribution(const animation_phase_detail::Key& key,
+FBZZ_ENGINE_API bool BeginAnimationPhaseDistribution(uint64_t resourceFrame,uint64_t timeFrame,uint64_t sceneGeneration);
+FBZZ_ENGINE_API bool AnimationPhaseDistributionEnabled();
+FBZZ_ENGINE_API animation_phase_detail::Ticket PrepareAnimationPhaseDistribution(const animation_phase_detail::Key& key,
     const animation_phase_detail::Source& source,float interval,bool eligible);
-void CancelAnimationPhaseDistribution(const animation_phase_detail::Key& key);
-void CompleteAnimationPhaseDistribution(const animation_phase_detail::Ticket& ticket,
+FBZZ_ENGINE_API void CancelAnimationPhaseDistribution(const animation_phase_detail::Key& key);
+FBZZ_ENGINE_API void CompleteAnimationPhaseDistribution(const animation_phase_detail::Ticket& ticket,
     const animation_phase_detail::RefreshOutcome& outcome,bool coherentEligible);
-void CountAnimationPhaseCreditDue();
-std::string AnimationPhaseDistributionConditions();
+FBZZ_ENGINE_API void CountAnimationPhaseCreditDue();
+FBZZ_ENGINE_API std::string AnimationPhaseDistributionConditions();
 
-AnimationWorkRow* CurrentAnimationWorkRow();
-void CountAnimationCompatibilityUpdate(uint64_t bytes);
-void CaptureAnimationGpuWork(const renderer::GpuProfilerSnapshot& snapshot);
-bool AnimationGpuTraceRequested();
+FBZZ_ENGINE_API AnimationWorkRow* CurrentAnimationWorkRow();
+FBZZ_ENGINE_API void CountAnimationCompatibilityUpdate(uint64_t bytes);
+FBZZ_ENGINE_API void CaptureAnimationGpuWork(const renderer::GpuProfilerSnapshot& snapshot);
+FBZZ_ENGINE_API bool AnimationGpuTraceRequested();
 /// @note Experimental process opt-in; zero preserves continuous phase and the existing uncached pose path.
-uint32_t AnimationPoseShareRate();
-bool AnimationCompatibilityBatchRequested();
+FBZZ_ENGINE_API uint32_t AnimationPoseShareRate();
+FBZZ_ENGINE_API bool AnimationCompatibilityBatchRequested();
 /// @note All counters describe one ExecuteSkinningComputePass call; existing frame-accumulated UI stats are not copied.
 struct AnimationSkinningCpuRow {
     uint64_t resourceFrame=0,sceneGeneration=0,resourceEpoch=0;
@@ -312,8 +313,8 @@ struct AnimationSkinningCpuRow {
     uint64_t signatureScratchRetainedPointerPayloadBytes=0,signatureScratchSlotsAtPassEnd=0;
 };
 /// @note This is an invocation ordinal per resource instance/epoch/frame, not a GPU view ID; zero means ordinal tracking capacity was exhausted.
-void AssignAnimationSkinningPassOrdinal(AnimationSkinningCpuRow& row);
-void CaptureAnimationSkinningCpuWork(const AnimationSkinningCpuRow& row);
+FBZZ_ENGINE_API void AssignAnimationSkinningPassOrdinal(AnimationSkinningCpuRow& row);
+FBZZ_ENGINE_API void CaptureAnimationSkinningCpuWork(const AnimationSkinningCpuRow& row);
 class AnimationSkinningCpuFrame {
 public:
     AnimationSkinningCpuFrame(uint64_t frame,uint64_t scene,uint64_t epoch,uint64_t instance):m_enabled(AnimationGpuTraceRequested())
@@ -362,9 +363,9 @@ private:
 };
 class AnimationWorkFrame {
 public:
-    AnimationWorkFrame(bool simulating, uint64_t resourceFrame, uint64_t sceneGeneration, uint64_t resourceEpoch);
-    ~AnimationWorkFrame();
-    void FinalizeSource(uint64_t resourceFrame, uint64_t sceneGeneration, uint64_t resourceEpoch);
+    FBZZ_ENGINE_API AnimationWorkFrame(bool simulating, uint64_t resourceFrame, uint64_t sceneGeneration, uint64_t resourceEpoch);
+    FBZZ_ENGINE_API ~AnimationWorkFrame();
+    FBZZ_ENGINE_API void FinalizeSource(uint64_t resourceFrame, uint64_t sceneGeneration, uint64_t resourceEpoch);
     AnimationWorkFrame(const AnimationWorkFrame&) = delete;
     AnimationWorkFrame& operator=(const AnimationWorkFrame&) = delete;
 private:

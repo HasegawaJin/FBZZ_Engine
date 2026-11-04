@@ -172,4 +172,32 @@ TEST_F(FileSystemTest, AtomicUnicodeReplacementPreservesUnownedTemporaryAndLeave
     for (const auto& entry : std::filesystem::directory_iterator(directory, error)) { (void)entry; ++files; }
     EXPECT_FALSE(error); EXPECT_EQ(files, 2u);
 }
+TEST_F(FileSystemTest, AtomicBinaryReplacementPreservesBytesAndLockedOriginal)
+{
+    const auto target = m_temp.Path() / L"地形.bin";
+    const std::vector<uint8_t> original{0, 13, 10, 255, 0, 128};
+    ASSERT_TRUE(FileSystem::WriteBinaryAtomic(target, original.data(), original.size()));
+    std::vector<uint8_t> loaded;
+    ASSERT_TRUE(FileSystem::ReadBinary(target, loaded));
+    EXPECT_EQ(loaded, original);
+    EXPECT_FALSE(FileSystem::WriteBinaryAtomic(target, nullptr, 1));
+
+    {
+        const HANDLE locked = ::CreateFileW(target.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        ASSERT_NE(locked, INVALID_HANDLE_VALUE);
+        struct Close { HANDLE handle; ~Close() { ::CloseHandle(handle); } } close{locked};
+        const std::vector<uint8_t> replacement{42};
+
+        EXPECT_FALSE(FileSystem::WriteBinaryAtomic(target, replacement.data(), replacement.size()));
+
+        ASSERT_TRUE(FileSystem::ReadBinary(target, loaded));
+        EXPECT_EQ(loaded, original);
+        EXPECT_EQ(FileSystem::ListAll(FileSystem::PathToUtf8(m_temp.Path())).size(), 1u);
+    }
+
+    EXPECT_TRUE(FileSystem::WriteBinaryAtomic(target, nullptr, 0));
+    EXPECT_EQ(std::filesystem::file_size(target), 0u);
+}
+
 } /// @note namespace fbzz::tests

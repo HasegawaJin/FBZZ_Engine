@@ -1,11 +1,11 @@
 /// @file    RenderTerrainExtractor.cpp
-/// @brief   TerrainComponent → GPU チャンクメッシュ生成・描画 (IRenderPass 実装)。
+/// @brief   TerrainComponent から描画用パッチと GPU 入力を抽出する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 
 /// @note 枠 (TerrainSurface.hlsli と同期): t0 = 層番号マップ、t1 = 重みマップ、t13 = 影。層テクスチャと層パラメーターは
 /// @note StructuredBuffer (TerrainLayerGpu) と bindless 添字で渡す。
-/// @note シングルスレッド前提。GPU 資源は ResourceHandle で所有し、static map でエンティティごとにキャッシュする。
+/// @note シングルスレッド前提。GPU 資源は Scene 世代・作成元・Reset 世代で分離したキャッシュが所有する。
 /// @note heightDirty (穴を含む) でチャンクを、splatDirty で番号 / 重みマップを作り直す。
 /// @see Docs/design/terrain-layers.md
 #include <Engine/Asset/StreamedTextureResolver.hpp>
@@ -13,6 +13,7 @@
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
 #include "TerrainHeightHelpers.hpp"
+#include "TerrainRenderCache.hpp"
 #include <Graphics/Renderer/RenderScene.hpp>
 #include "RenderPasses/Geometry/TerrainPatchIndices.hpp"
 #include "RenderPasses/Geometry/TerrainSurfacePatch.hpp"
@@ -59,31 +60,6 @@ using terrain_height_detail::TryAddTerrainHeightSample;
 static constexpr int kLODCount            = 3;
 static constexpr int kLODSteps[kLODCount] = { 1, 2, 4 };
 
-using TerrainChunk = renderer::RenderTerrainPatch;
-
-struct TerrainChunkKey {
-    EntityID entityId;
-    uint32_t chunkX = 0;
-    uint32_t chunkZ = 0;
-    bool operator==(const TerrainChunkKey& o) const = default;
-};
-
-} /// @note namespace fbzz::scene
-
-template<>
-struct std::hash<fbzz::scene::TerrainChunkKey> {
-    size_t operator()(const fbzz::scene::TerrainChunkKey& k) const noexcept
-    {
-        size_t h = std::hash<uint32_t>{}(k.entityId.index);
-        h ^= std::hash<uint32_t>{}(k.entityId.generation) + 0x9e3779b9u + (h << 6) + (h >> 2);
-        h ^= std::hash<uint32_t>{}(k.chunkX)              + 0x9e3779b9u + (h << 6) + (h >> 2);
-        h ^= std::hash<uint32_t>{}(k.chunkZ)              + 0x9e3779b9u + (h << 6) + (h >> 2);
-        return h;
-    }
-};
-
-namespace fbzz::scene {
-
 namespace {
 struct TerrainCandidatePool {
     std::vector<std::unique_ptr<std::vector<EntityID>>> entries;
@@ -116,28 +92,6 @@ private:
     std::vector<EntityID>* m_entities = nullptr;
 };
 } /// @note namespace
-
-/// @brief 地形 1 つぶんの GPU 資源。層テクスチャは LoadTexture のパスキャッシュが所有するので持たない。
-struct TerrainGpuState {
-    EntityID entityId = EntityID::INVALID;
-    renderer::ResourceHandle<renderer::TextureTag> splatIndices;   ///< @note 所有
-    renderer::ResourceHandle<renderer::TextureTag> splatWeights;   ///< @note 所有
-    renderer::ResourceHandle<renderer::StructuredBufferTag> layerBuffer; ///< @note 所有
-    uint32_t layerCapacity = 0;
-    /// @note 直前に転送したバイト列。同じなら Update を省く。
-    std::vector<TerrainLayerGpu> uploadedLayers;
-    renderer::ResourceHandle<renderer::StructuredBufferTag> heights, patches;
-    renderer::ResourceHandle<renderer::BufferTag> indices;
-    std::vector<std::array<uint32_t, 3>> indexStarts;
-    uint32_t indexCount = 0, vertexCapacity = 0;
-    bool geometryDirty = true;
-    renderer::ResourceHandle<renderer::StructuredBufferTag> surfaceLayerBuffer;
-    renderer::ResourceHandle<renderer::TextureTag> surfaceSplatIndices, surfaceSplatWeights;
-    std::optional<TerrainLayerGpu> uploadedSurfaceLayer;
-};
-
-static std::unordered_map<TerrainChunkKey, TerrainChunk> g_chunkCache;
-static std::unordered_map<uint32_t, TerrainGpuState>     g_gpuCache;
 
 struct TerrainNeighbors {
     const TerrainComponent* north = nullptr;
@@ -270,53 +224,42 @@ static TerrainNeighbors ResolveTerrainNeighbors(
     return neighbors;
 }
 
-/// @note チャンクが保持する GPU 頂点・インデックスバッファを明示解放する。ResourceHandle は RAII
-/// @note ではなく明示解放が必要 (このファイルの texCache 解放や末尾の GC 経路と同じ規約)。キャッシュ
-/// @note からチャンクを破棄する前に必ず呼ばないと、スカルプト中は heightDirty が毎フレーム立って
-/// @note チャンクを作り直すため、編集するほど GPU バッファがリークし続けてフレームが重くなる。
-static void ReleaseChunkBuffers(renderer::ResourceManager& resources, TerrainChunk& chunk)
+static void EraseTerrainChunkCache(TerrainRenderCache& cache, renderer::ResourceManager& resources, EntityID eid)
 {
-    resources.Release(chunk.vertexBuffer);
-    for (auto& ib : chunk.indexBufferLOD)
-        resources.Release(ib);
-}
-
-static void EraseTerrainChunkCache(renderer::ResourceManager& resources, EntityID eid)
-{
-    std::erase_if(g_chunkCache, [&](auto& kv) {
+    std::erase_if(cache.chunks, [&](auto& kv) {
         if (kv.first.entityId != eid)
             return false;
-        ReleaseChunkBuffers(resources, kv.second);
+        ReleaseTerrainChunkBuffers(resources, kv.second);
         return true;
     });
 }
 
-static void EraseTerrainChunkCacheForComponent(Scene& scene, renderer::ResourceManager& resources, const TerrainComponent* terrain)
+static void EraseTerrainChunkCacheForComponent(TerrainRenderCache& cache, Scene& scene, renderer::ResourceManager& resources, const TerrainComponent* terrain)
 {
     if (!terrain)
         return;
 
     for (EntityID candidate : scene.GetEntities<TerrainComponent>()) {
         if (scene.GetComponent<TerrainComponent>(candidate) == terrain) {
-            EraseTerrainChunkCache(resources, candidate);
+            EraseTerrainChunkCache(cache, resources, candidate);
             return;
         }
     }
 }
 
-static void EraseNeighborTerrainChunkCaches(Scene& scene, renderer::ResourceManager& resources, const TerrainNeighbors& neighbors)
+static void EraseNeighborTerrainChunkCaches(TerrainRenderCache& cache, Scene& scene, renderer::ResourceManager& resources, const TerrainNeighbors& neighbors)
 {
     /// @note 境界頂点は隣接 Terrain の高さを参照して構築されるため、自身の高さが変わったときは
     /// @note 隣接側の GPU キャッシュも無効化する。heightDirty を相互に立てると隣接同士で毎フレーム
     /// @note 再 dirty 化されるため、ここではキャッシュだけを直接破棄する (GPU バッファは解放する)。
-    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.north);
-    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.south);
-    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.west);
-    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.east);
-    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.northWest);
-    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.northEast);
-    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.southWest);
-    EraseTerrainChunkCacheForComponent(scene, resources, neighbors.southEast);
+    EraseTerrainChunkCacheForComponent(cache, scene, resources, neighbors.north);
+    EraseTerrainChunkCacheForComponent(cache, scene, resources, neighbors.south);
+    EraseTerrainChunkCacheForComponent(cache, scene, resources, neighbors.west);
+    EraseTerrainChunkCacheForComponent(cache, scene, resources, neighbors.east);
+    EraseTerrainChunkCacheForComponent(cache, scene, resources, neighbors.northWest);
+    EraseTerrainChunkCacheForComponent(cache, scene, resources, neighbors.northEast);
+    EraseTerrainChunkCacheForComponent(cache, scene, resources, neighbors.southWest);
+    EraseTerrainChunkCacheForComponent(cache, scene, resources, neighbors.southEast);
 }
 
 static void BuildChunk(
@@ -377,6 +320,7 @@ static void BuildChunk(
 }
 
 static TerrainChunk& EnsureTerrainChunk(
+    TerrainRenderCache& cache,
     const TerrainComponent& terrain,
     EntityID eid,
     int cx,
@@ -385,7 +329,7 @@ static TerrainChunk& EnsureTerrainChunk(
     renderer::ResourceManager& resources)
 {
     const TerrainChunkKey key{ eid, static_cast<uint32_t>(cx), static_cast<uint32_t>(cz) };
-    if (!g_chunkCache.contains(key)) {
+    if (!cache.chunks.contains(key)) {
         std::vector<TerrainVertex> verts;
         math::Vector3 aabbMin, aabbMax;
         int x0, z0, x1, z1;
@@ -410,10 +354,10 @@ static TerrainChunk& EnsureTerrainChunk(
             if (chunk.indexCountLOD[lod] > 0)
                 chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), chunk.indexCountLOD[lod]);
         }
-        g_chunkCache[key] = std::move(chunk);
-        g_gpuCache[eid.index].geometryDirty = true;
+        cache.chunks[key] = std::move(chunk);
+        cache.entities[eid.index].geometryDirty = true;
     }
-    return g_chunkCache.at(key);
+    return cache.chunks.at(key);
 }
 
 static float TGetF(const asset::MaterialAssetAuthoring* m, const std::string& name, float def)
@@ -570,20 +514,6 @@ static void RebuildSplatTextures(TerrainGpuState& state, const TerrainComponent&
     state.splatWeights = resources.CreateTexture(weights, 1, 1);
 }
 
-static void ReleaseTerrainGpuState(TerrainGpuState& state, renderer::ResourceManager& resources)
-{
-    resources.Release(state.splatIndices);
-    resources.Release(state.splatWeights);
-    resources.Release(state.layerBuffer);
-    resources.Release(state.surfaceLayerBuffer);
-    resources.Release(state.surfaceSplatIndices);
-    resources.Release(state.surfaceSplatWeights);
-    resources.Release(state.heights);
-    resources.Release(state.patches);
-    resources.Release(state.indices);
-    state = {};
-}
-
 /// @note Scalar samples include stitched neighbor heights; GPU central differences match the CPU fallback.
 static void PrepareTerrainGpuGeometry(TerrainGpuState& state, const TerrainComponent& terrain,
     const TerrainNeighbors& neighbors, renderer::RenderTerrainInput& input,
@@ -656,12 +586,12 @@ static void UploadLayerBuffer(TerrainGpuState& state, const std::vector<TerrainL
 
 
 /// @note Surface patches retain full topology at every LOD so entrances, walls and thin roofs never disappear.
-static TerrainChunk& EnsureSurfaceChunk(const TerrainComponent& terrain, EntityID eid, size_t first,
+static TerrainChunk& EnsureSurfaceChunk(TerrainRenderCache& cache, const TerrainComponent& terrain, EntityID eid, size_t first,
     renderer::ResourceManager& resources)
 {
     const TerrainChunkKey key{eid, UINT32_MAX, static_cast<uint32_t>(first / TERRAIN_SURFACE_PATCH_INDICES)};
-    const auto found = g_chunkCache.find(key);
-    if (found != g_chunkCache.end()) return found->second;
+    const auto found = cache.chunks.find(key);
+    if (found != cache.chunks.end()) return found->second;
     const auto data = BuildTerrainSurfacePatch(terrain, first);
     TerrainChunk chunk;
     chunk.aabbMin = data.aabbMin; chunk.aabbMax = data.aabbMax;
@@ -670,9 +600,9 @@ static TerrainChunk& EnsureSurfaceChunk(const TerrainComponent& terrain, EntityI
         chunk.indexCountLOD[lod] = static_cast<uint32_t>(data.indices.size());
         chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(data.indices.data(), chunk.indexCountLOD[lod]);
     }
-    return g_chunkCache.emplace(key, std::move(chunk)).first->second;
+    return cache.chunks.emplace(key, std::move(chunk)).first->second;
 }
-static void ExtractTerrainSurface(const TerrainComponent& terrain, EntityID eid, TerrainGpuState& gpu,
+static void ExtractTerrainSurface(TerrainRenderCache& cache, const TerrainComponent& terrain, EntityID eid, TerrainGpuState& gpu,
     const renderer::RenderTerrainInput& base, const TerrainFallbackTextures& fallback,
     renderer::ResourceManager& resources, renderer::RenderScene& output)
 {
@@ -708,7 +638,7 @@ static void ExtractTerrainSurface(const TerrainComponent& terrain, EntityID eid,
         surface.splatIndices = gpu.surfaceSplatIndices; surface.splatWeights = gpu.surfaceSplatWeights;
     }
     for (size_t first = 0; first < terrain.surfaceIndices.size(); first += TERRAIN_SURFACE_PATCH_INDICES)
-        surface.patches.push_back(EnsureSurfaceChunk(terrain, eid, first, resources));
+        surface.patches.push_back(EnsureSurfaceChunk(cache, terrain, eid, first, resources));
     /// @note No GPU heightfield decoder and no terrain grass on cave ceilings; camera/shadow/mask consume these same patches.
     output.terrains.push_back(std::move(surface));
 }
@@ -716,28 +646,20 @@ static void ExtractTerrainSurface(const TerrainComponent& terrain, EntityID eid,
 void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output) {
     auto& scene = ctx.scene;
     auto& resources = ctx.resources;
-    static renderer::ResourceManager* owner = nullptr;
-    static uint64_t resourceOwnerId = 0;
-    static uint64_t version = UINT64_MAX;
-    static TerrainFallbackTextures s_fallback;
-    if (owner != &resources || resourceOwnerId != resources.GetInstanceId() || version != resources.GetResetVersion()) {
-        owner = &resources; resourceOwnerId = resources.GetInstanceId(); version = resources.GetResetVersion();
-        g_chunkCache.clear(); g_gpuCache.clear();
-        s_fallback = CreateTerrainFallbackTextures(resources);
-    }
+    auto& cache = AcquireTerrainRenderCache(scene, resources);
     {
         std::unordered_set<uint32_t> validIndices;
         for (EntityID eid : scene.GetEntities<TerrainComponent>())
             validIndices.insert(eid.index);
 
-        std::erase_if(g_chunkCache, [&scene, &validIndices, &resources](auto& kv) {
+        std::erase_if(cache.chunks, [&scene, &validIndices, &resources](auto& kv) {
             if (scene.IsValid(kv.first.entityId) && validIndices.count(kv.first.entityId.index)) return false;
             resources.Release(kv.second.vertexBuffer);
             for (auto& ib : kv.second.indexBufferLOD)
                 resources.Release(ib);
             return true;
         });
-        std::erase_if(g_gpuCache, [&validIndices, &resources](auto& kv) {
+        std::erase_if(cache.entities, [&validIndices, &resources](auto& kv) {
             if (validIndices.count(kv.first)) return false;
             ReleaseTerrainGpuState(kv.second, resources);
             return true;
@@ -772,23 +694,22 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
 
         const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
 
-        if (terrain.heightDirty) {
-            /// @note heightData を直接変更して dirty だけ立てる旧編集口も水深ベイクへ通知する。
-            ++terrain.surfaceRevision;
-            EraseTerrainChunkCache(resources, eid);
-            EraseNeighborTerrainChunkCaches(scene, resources, neighbors);
-            terrain.heightDirty = false;
-        }
-
-        TerrainGpuState& gpu = g_gpuCache[eid.index];
+        TerrainGpuState& gpu = cache.entities[eid.index];
         if (gpu.entityId != eid) {
             ReleaseTerrainGpuState(gpu, resources);
             gpu.entityId = eid;
         }
-        if (terrain.splatDirty || !gpu.splatIndices.IsValid() || !gpu.splatWeights.IsValid()) {
-            if (terrain.splatDirty) ++terrain.vegetationRevision;
+        if (terrain.heightDirty) { ++terrain.surfaceRevision; terrain.heightDirty = false; }
+        if (gpu.surfaceRevision != terrain.surfaceRevision) {
+            EraseTerrainChunkCache(cache, resources, eid);
+            EraseNeighborTerrainChunkCaches(cache, scene, resources, neighbors);
+            gpu.geometryDirty = true;
+            gpu.surfaceRevision = terrain.surfaceRevision;
+        }
+        if (terrain.splatDirty) { ++terrain.vegetationRevision; terrain.splatDirty = false; }
+        if (gpu.vegetationRevision != terrain.vegetationRevision || !gpu.splatIndices.IsValid() || !gpu.splatWeights.IsValid()) {
             RebuildSplatTextures(gpu, terrain, resources);
-            terrain.splatDirty = false;
+            gpu.vegetationRevision = terrain.vegetationRevision;
         }
 
         /// @note 層パラメーターは毎フレーム .mat から読み直す。Material インスペクタで .mat を直接編集しても
@@ -806,14 +727,14 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
                 material = materialAuthoringSnapshot ? &materialAuthoringSnapshot->Data() : nullptr;
             }
             TerrainLayerGpu layer = ReadTerrainLayerParamsImpl(material, {});
-            FillTerrainLayerTextureIndicesImpl(resources, material, {}, s_fallback, layer);
+            FillTerrainLayerTextureIndicesImpl(resources, material, {}, cache.fallback, layer);
             anyAutoBlend |= layer.autoBlendEnabled > 0.0f && layer.autoBlendStrength > 0.0f;
             layers.push_back(layer);
         }
         if (layers.empty()) {
             /// @note 層 0 枚の地形は白い既定層 1 枚で描く。シェーダーは layerCount >= 1 を前提にする。
             TerrainLayerGpu layer;
-            FillTerrainLayerTextureIndices(resources, nullptr, {}, s_fallback, layer);
+            FillTerrainLayerTextureIndices(resources, nullptr, {}, cache.fallback, layer);
             layers.push_back(layer);
         }
         UploadLayerBuffer(gpu, layers, resources);
@@ -859,11 +780,11 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
             if (selected.index == eid.index && selected.generation == eid.generation) { input.selected = true; break; }
         for (int cz = 0; cz < chunkCountZ; ++cz)
             for (int cx = 0; cx < chunkCountX; ++cx)
-                if (const auto& chunk = EnsureTerrainChunk(terrain, eid, cx, cz, neighbors, resources);
+                if (const auto& chunk = EnsureTerrainChunk(cache, terrain, eid, cx, cz, neighbors, resources);
                     chunk.indexCountLOD[0] != 0)
                     input.patches.push_back(chunk);
         PrepareTerrainGpuGeometry(gpu, terrain, neighbors, input, resources);
-        ExtractTerrainSurface(terrain, eid, gpu, input, s_fallback, resources, output);
+        ExtractTerrainSurface(cache, terrain, eid, gpu, input, cache.fallback, resources, output);
         output.terrains.push_back(std::move(input));
     }
 }

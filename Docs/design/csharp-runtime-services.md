@@ -40,6 +40,8 @@ ParticleSystem の Play(restart=true) / Stop(clear=false) / Burst(count) / Clear
 
 ## Material
 
+数値列の write 転送は、開始時に共有材質の遅延ロードを試みてから対象シェーダーを固定する。ロード callback 後は Entity・Component birth・slot の所有者を再照合し、差し替え先へ転送を接続し直さない。初回の正常なロードを commit 後の外部変更と誤認せず、書込みの成否と実際の override 変更を一致させる。ロード不能・値数不一致等の書込み結果は従来どおり commit の false とし、旧 override を維持する。
+
 Play の書き込み可能テクスチャは [RuntimeTexture](csharp-runtime-textures.md) を使う。`CreateR8` / `CreateRGBA8`、同期 `UpdateRegion`、`Material.TrySetRuntimeTexture` は作成元 Script が所有し、共有アセットや保存内容を変更しない。
 
 `GameObject.GetComponent<Material>()` は実 MaterialComponent の kind 29 と birth token を持つ。pending removal は即座に不在、再追加は別 token で、保持済み facade が replacement を操作しない。pending bitset・制御・保存 birth table は共通 NativeComponentKind.COUNT を正本とし、番号だけを追加して mask を越えない。
@@ -79,6 +81,8 @@ Brightness は 0.1..4、BloomScale は 0..2、RenderScale は 0.5..2 に native 
 Fixed / Distance / Rope / Spring / Hinge / Slider の接続、limits、motor、distance、Break は既存 `JointComponent` と `physics::World` を変更する。Hinge/Slider 軸は world-space direction、local anchors は各 body の local-space [m]。Chain は順序付き `GameObject` recipe を保存する。全 target の Scene・birth・RigidBody・重複を検証し、全 chain candidate を用意してから一度だけ公開する。64 KiB の内部 transfer packet は chain の件数上限ではない。途中 packet・target 解決・owner lifetime fence の失敗では以前の recipe を保持する。物理 World から partner body が消えたときは constraint を解放し、古い EntityID を持つ recipe は再接続しない。
 
 ## Save と Config
+
+Engine 内部の `SaveStore::Read(IScriptSerializable&)` は、反射開始前に対象キーのテーブルだけを複製して保持する。Reflect callback が同じストアへ Write/Clear/Load しても、その変更はストアへ残し、進行中の読込みには開始時の値を一貫して渡す。欠損フィールドは読込み先の既定値を保持する。native Write の保存先キーも Reflect 前に所有し、callback が元の文字列を変更しても保存先を変えない。読込み時は対象テーブル一件分の追加メモリを必要とする。これは内部 native 反射の寿命契約であり、公開 CLR codec の callback 非実行契約は維持する。
 
 Script.Save と Script.Config は実 Application の別 SaveStore に接続する。進行データの path/Load/Clear で環境設定を消さない。全操作は Play の同期 main-thread callback。Connect ではメモリの read だけ、Load/Save を含む変更は live callback。DrawGizmos と authoring candidate callback では使わない。既定の path は実行ファイル隣の Saves/save0.toml と Config/settings.toml、相対 path も実行ファイル基準で、path 設定は暗黙に Load しない。
 

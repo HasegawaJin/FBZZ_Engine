@@ -2,6 +2,7 @@
 /// @brief   Cloth と FlowField の受信設定、空間・チャンネル・環境風の接続を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>

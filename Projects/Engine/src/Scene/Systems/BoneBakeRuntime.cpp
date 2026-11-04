@@ -215,7 +215,7 @@ bool MaterializeBoneBakeCpu(AnimatorComponent& animator, renderer::ResourceManag
     runtime.previousCpuDeferred = false;
     if (current) runtime.cpuDeferred = false;
     if (!valid) animator.prevBoneMatricesValid = false;
-    const auto currentBuffer = animator.skinningBuffer, previousBuffer = animator.prevSkinningBuffer;
+    const auto currentBuffer = animator.skinningBuffer.Get(), previousBuffer = animator.prevSkinningBuffer.Get();
     /// @note All component publication precedes resource calls; local packets remain valid if the executor pumps a Scene edit.
     if (publishCurrent) BoneCbBatch::UpdatePalette(resources, currentBuffer, currentMatrices);
     if (publishPrevious) BoneCbBatch::UpdatePalette(resources, previousBuffer, previousMatrices);

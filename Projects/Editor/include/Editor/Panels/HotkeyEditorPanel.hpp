@@ -13,6 +13,7 @@ public:
     const char* GetWindowName()        const override { return "Hotkey Editor"; }
     const char* GetViewMenuName()      const override { return "Hotkey Editor"; }
     bool        GetDefaultVisibility() const override { return false; }
+    void OnRegisterOperators(OperatorRegistry& registry) override;
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
@@ -25,4 +26,4 @@ private:
     std::string m_conflictNote;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

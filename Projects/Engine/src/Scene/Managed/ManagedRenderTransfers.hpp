@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-06
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/ManagedBridgeAbi.hpp>
 #include <memory>
 #include <span>
@@ -16,15 +17,15 @@ namespace managed_detail {
 struct ManagedServiceResult;
 class ManagedRenderTransfers final {
 public:
-    ManagedRenderTransfers();
-    ~ManagedRenderTransfers();
+    FBZZ_ENGINE_API ManagedRenderTransfers();
+    FBZZ_ENGINE_API ~ManagedRenderTransfers();
     /// @note 全 stage を owner/generation/instance/call/Scene/Entity/object token/Component birth に結ぶ。
     /// @return 失敗で live geometry と result は未変更。正常 commit だけが候補 buffer の所有を移す。
-    ManagedBridgeStatus Run(Scene& scene, GameObject& target, Script& view, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus Run(Scene& scene, GameObject& target, Script& view, const ManagedBridgeRequest& request,
         int64_t integer, std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result);
-    void CancelOwner(uint64_t owner);
-    void RetireGeneration(uint64_t generation);
-    void EndCall(uint64_t call);
+    FBZZ_ENGINE_API void CancelOwner(uint64_t owner);
+    FBZZ_ENGINE_API void RetireGeneration(uint64_t generation);
+    FBZZ_ENGINE_API void EndCall(uint64_t call);
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

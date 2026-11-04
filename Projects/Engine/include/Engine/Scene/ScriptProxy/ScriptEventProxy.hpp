@@ -2,10 +2,11 @@
 /// @brief   Script からスクリプト間イベントを発火・購読する。
 /// @author  Hasegawa Jin
 /// @date    2026-08-16
-///
-/// 設計意図は ScriptEvent.hpp を参照。ここは型安全な薄いラッパーで、
-/// イベント構造体 ←→ void* の詰め替えだけを担う。
+
+/// @note 設計意図は ScriptEvent.hpp を参照。ここは型安全な薄いラッパーで、
+/// @note イベント構造体 ←→ void* の詰め替えだけを担う。
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Engine/Scene/ScriptEvent.hpp>
 #include <concepts>
@@ -39,9 +40,9 @@ struct ScriptEventProxy {
     }
 
     /// @brief 発火する。購読者はこの呼び出しの中で同期的に処理される。
-    ///
+
     /// @code
-    /// events.Publish(PlayerDied{ .score = 1200 });
+    /// @note events.Publish(PlayerDied{ .score = 1200 });
     /// @endcode
     template<ScriptEventType T>
     void Publish(const T& event) const
@@ -52,7 +53,7 @@ struct ScriptEventProxy {
     /// @brief 個別解除。
     void Unsubscribe(ScriptEventToken token) const { ScriptEventBus::Unsubscribe(token); }
     /// @brief この Script の購読をすべて解除する (OnDisable で一旦降りる用途)。
-    void UnsubscribeAll() const;
+    FBZZ_ENGINE_API void UnsubscribeAll() const;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

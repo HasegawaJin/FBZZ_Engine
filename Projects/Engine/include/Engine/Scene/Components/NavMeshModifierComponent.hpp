@@ -3,31 +3,31 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 ///
-/// 明示的に修飾するコンポーネント。
+/// @note 明示的に修飾するコンポーネント。
 ///
-/// NotWalkable (デフォルト):
-/// この GO のコライダーを NavMesh から除外する障害物として扱う。
-/// 旧 NavMeshObstacleComponent と同等。
+/// @note NotWalkable (デフォルト):
+/// @note この GO のコライダーを NavMesh から除外する障害物として扱う。
+/// @note 旧 NavMeshObstacleComponent と同等。
 ///
-/// Walkable:
-/// この GO のコライダーを歩行可能面として NavMesh Bake ソースに追加する。
-/// Terrain のない室内床・プラットフォームなど、明示的にウォーカブル指定が
-/// 必要なオブジェクトに付ける。
+/// @note Walkable:
+/// @note この GO のコライダーを歩行可能面として NavMesh Bake ソースに追加する。
+/// @note Terrain のない室内床・プラットフォームなど、明示的にウォーカブル指定が
+/// @note 必要なオブジェクトに付ける。
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <cstdint>
 
 namespace fbzz::scene {
 
 enum class NavMeshModifierMode : uint8_t {
-    NotWalkable,  ///< 障害物: Bake 時にこの GO の Collider を歩行不可領域として除外
-    Walkable,     ///< 歩行可: Bake 時にこの GO の Collider を歩行可能面ソースとして追加
+    NotWalkable,  ///< @note 障害物: Bake 時にこの GO の Collider を歩行不可領域として除外
+    Walkable,     ///< @note 歩行可: Bake 時にこの GO の Collider を歩行可能面ソースとして追加
 };
 
 struct NavMeshModifierComponent {
     NavMeshModifierMode mode    = NavMeshModifierMode::NotWalkable;
-    /// Walkable モード専用: このコライダーが生成するポリゴンに割り当てるエリアタイプ ID (0〜31)。
-    /// NavMeshSurfaceComponent::areaCosts[areaType] がパスコスト計算に使われる。
+    /// @note Walkable モード専用: このコライダーが生成するポリゴンに割り当てるエリアタイプ ID (0〜31)。
+    /// @note NavMeshSurfaceComponent::areaCosts[areaType] がパスコスト計算に使われる。
     int areaType = 0;
     bool                enabled = true;
 
@@ -43,4 +43,4 @@ struct NavMeshModifierComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

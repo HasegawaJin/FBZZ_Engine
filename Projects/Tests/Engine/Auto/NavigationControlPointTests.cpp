@@ -2,6 +2,7 @@
 /// @brief   Verify navigation point resolution, stable attributes, and static bake behavior.
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
 #include <TestKit/TestKit.hpp>
 
 #include <Engine/Core/Scheduler/SystemContext.hpp>

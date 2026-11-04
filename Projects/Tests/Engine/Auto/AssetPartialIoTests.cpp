@@ -10,6 +10,7 @@
 #include "../../../Engine/src/Asset/AtomicChunkFileWrite.hpp"
 #include <Engine/Util/FileSystem.hpp>
 
+#include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Asset/ChunkFile.hpp>
 #include <Engine/Asset/FzModelFormat.hpp>
 #include <Engine/Asset/ModelAssetImporter.hpp>
@@ -23,6 +24,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <memory>
+#include <limits>
 #include <thread>
 #include <cstring>
 #include <filesystem>
@@ -206,6 +208,69 @@ void WriteTwoLodModel(const std::string& path)
 
 /// @name チャンク索引付き形式
 
+TEST_F(AssetPartialIoTest, BinaryReaderRejectsWrappedSkipWithoutMovingEitherCursor)
+{
+    const auto path = PathOf("reader-range.bin");
+    WriteFileBytes(path, Bytes({11, 22, 33, 44}));
+    for (const bool streaming : {false, true}) {
+        SCOPED_TRACE(streaming);
+        asset::BinaryReader reader;
+        ASSERT_TRUE(streaming ? reader.OpenStreaming(path) : reader.Open(path));
+        ASSERT_TRUE(reader.Seek(1));
+
+        EXPECT_FALSE(reader.Skip(std::numeric_limits<size_t>::max()));
+
+        EXPECT_EQ(reader.pos, 1u);
+        uint8_t value = 0;
+        ASSERT_TRUE(reader.Read(value));
+        EXPECT_EQ(value, 22);
+    }
+}
+
+TEST_F(AssetPartialIoTest, BinaryReaderRejectedRangePreservesDestinationAndBothCursors)
+{
+    const auto path = PathOf("reader-range-failure.bin");
+    WriteFileBytes(path, Bytes({11, 22, 33, 44}));
+    for (const bool streaming : {false, true}) {
+        SCOPED_TRACE(streaming);
+        asset::BinaryReader reader;
+        ASSERT_TRUE(streaming ? reader.OpenStreaming(path) : reader.Open(path));
+        ASSERT_TRUE(reader.Seek(1));
+        const auto previousBytesRead = reader.bytesRead;
+        std::array<uint8_t, 4> output{99, 99, 99, 99};
+
+        EXPECT_FALSE(reader.ReadBytes(output.data(), output.size()));
+
+        EXPECT_EQ(output, (std::array<uint8_t, 4>{99, 99, 99, 99}));
+        EXPECT_EQ(reader.pos, 1u);
+        EXPECT_EQ(reader.bytesRead, previousBytesRead);
+        uint8_t value = 0;
+        ASSERT_TRUE(reader.Read(value));
+        EXPECT_EQ(value, 22);
+    }
+}
+
+TEST_F(AssetPartialIoTest, BinaryReaderKeepsEndAndZeroLengthOperationsWithinBounds)
+{
+    const auto path = PathOf("reader-end.bin");
+    WriteFileBytes(path, Bytes({11, 22}));
+    for (const bool streaming : {false, true}) {
+        SCOPED_TRACE(streaming);
+        asset::BinaryReader reader;
+        ASSERT_TRUE(streaming ? reader.OpenStreaming(path) : reader.Open(path));
+        ASSERT_TRUE(reader.Seek(reader.Size()));
+        uint8_t value = 99;
+
+        EXPECT_FALSE(reader.Read(value));
+        EXPECT_FALSE(reader.Skip(1));
+        EXPECT_TRUE(reader.ReadBytes(nullptr, 0));
+        EXPECT_TRUE(reader.Skip(0));
+
+        EXPECT_EQ(value, 99);
+        EXPECT_EQ(reader.pos, 2u);
+    }
+}
+
 TEST_F(AssetPartialIoTest, Crc32MatchesTheStandardCheckValue)
 {
     const std::string text = "123456789";
@@ -248,6 +313,132 @@ TEST_F(AssetPartialIoTest, ChunkFileRejectsCorruptedChunk)
     ASSERT_TRUE(reader.Open(path));
     std::vector<uint8_t> chunk;
     EXPECT_FALSE(reader.ReadChunk(7, chunk)) << "CRC32 が合わないチャンクは使わない";
+}
+
+TEST_F(AssetPartialIoTest, ChunkFileRejectsOverflowingPayloadExtent)
+{
+    const auto path = PathOf("overflow.fztc");
+    asset::FzChunkFileHeader header{};
+    std::memcpy(header.magic, "FZCK", 4);
+    header.version = asset::FZCHUNK_VERSION;
+    header.chunkCount = 1;
+    asset::FzChunkEntry entry{};
+    entry.id = 7;
+    entry.offset = sizeof(header) + sizeof(entry);
+    entry.storedSize = entry.rawSize = std::numeric_limits<uint64_t>::max();
+    std::vector<uint8_t> bytes;
+    Append(bytes, header);
+    Append(bytes, entry);
+    WriteFileBytes(path, bytes);
+    asset::ChunkFileReader reader;
+
+    EXPECT_FALSE(reader.Open(path));
+
+    EXPECT_EQ(reader.Find(7), nullptr);
+}
+
+TEST_F(AssetPartialIoTest, ChunkFileFailedIndexDoesNotPublishEarlierValidEntries)
+{
+    const auto path = PathOf("partial-index.fztc");
+    asset::FzChunkFileHeader header{};
+    std::memcpy(header.magic, "FZCK", 4);
+    header.version = asset::FZCHUNK_VERSION;
+    header.chunkCount = 2;
+    const auto payload = Bytes({42});
+    asset::FzChunkEntry first{};
+    first.id = 7;
+    first.offset = sizeof(header) + 2 * sizeof(first);
+    first.storedSize = first.rawSize = payload.size();
+    first.checksum = asset::Crc32(payload);
+    auto invalid = first;
+    invalid.id = 8;
+    invalid.flags = 1;
+    std::vector<uint8_t> bytes;
+    Append(bytes, header);
+    Append(bytes, first);
+    Append(bytes, invalid);
+    AppendRaw(bytes, payload.data(), payload.size());
+    WriteFileBytes(path, bytes);
+    asset::ChunkFileReader reader;
+
+    EXPECT_FALSE(reader.Open(path));
+
+    EXPECT_EQ(reader.Find(7), nullptr);
+    std::vector<uint8_t> chunk;
+    EXPECT_FALSE(reader.ReadChunk(7, chunk));
+    EXPECT_EQ(reader.Header().chunkCount, 0u);
+    EXPECT_TRUE(util::FileSystem::WriteBinary(util::FileSystem::PathFromUtf8(path), payload.data(), payload.size()));
+}
+
+TEST_F(AssetPartialIoTest, ChunkFileRejectsPayloadInsideIndexAndInconsistentStoredSize)
+{
+    const auto path = PathOf("invalid-layout.fztc");
+    asset::FzChunkFileHeader header{};
+    std::memcpy(header.magic, "FZCK", 4);
+    header.version = asset::FZCHUNK_VERSION;
+    header.chunkCount = 1;
+    for (const bool insideIndex : {true, false}) {
+        SCOPED_TRACE(insideIndex);
+        asset::FzChunkEntry entry{};
+        entry.id = 7;
+        entry.offset = insideIndex ? sizeof(header) : sizeof(header) + sizeof(entry);
+        entry.storedSize = 1;
+        entry.rawSize = insideIndex ? 1 : 2;
+        std::vector<uint8_t> bytes;
+        Append(bytes, header);
+        Append(bytes, entry);
+        bytes.push_back(42);
+        WriteFileBytes(path, bytes);
+        asset::ChunkFileReader reader;
+
+        EXPECT_FALSE(reader.Open(path));
+    }
+}
+
+TEST_F(AssetPartialIoTest, ChunkFileFailedReopenClearsOldHeaderAndReleasesRejectedFile)
+{
+    const auto goodPath = PathOf("valid.fztc");
+    const auto badPath = PathOf("bad-magic.fztc");
+    asset::ChunkFileWriter writer;
+    writer.AddChunk(7, Bytes({42}));
+    ASSERT_TRUE(writer.WriteAtomically(goodPath, 1, 91));
+    asset::ChunkFileReader reader;
+    ASSERT_TRUE(reader.Open(goodPath));
+    auto invalidHeader = reader.Header();
+    invalidHeader.magic[0] = 'X';
+    std::vector<uint8_t> bytes;
+    Append(bytes, invalidHeader);
+    WriteFileBytes(badPath, bytes);
+
+    EXPECT_FALSE(reader.Open(badPath));
+
+    EXPECT_EQ(reader.Header().sourceStamp, 0u);
+    EXPECT_EQ(reader.Header().chunkCount, 0u);
+    EXPECT_EQ(reader.Find(7), nullptr);
+    EXPECT_TRUE(util::FileSystem::WriteBinary(util::FileSystem::PathFromUtf8(badPath), bytes.data(), bytes.size()));
+    ASSERT_TRUE(reader.Open(goodPath));
+    std::vector<uint8_t> chunk;
+    ASSERT_TRUE(reader.ReadChunk(7, chunk));
+    EXPECT_EQ(chunk, Bytes({42}));
+}
+
+TEST_F(AssetPartialIoTest, ChunkFileAcceptsEmptyIndexAndEmptyPayloadAtEndOfFile)
+{
+    const auto path = PathOf("empty.fztc");
+    asset::ChunkFileWriter empty;
+    ASSERT_TRUE(empty.WriteAtomically(path, 1, 1));
+    asset::ChunkFileReader reader;
+    ASSERT_TRUE(reader.Open(path));
+    EXPECT_EQ(reader.Header().chunkCount, 0u);
+    asset::ChunkFileWriter writer;
+    writer.AddChunk(7, {});
+    ASSERT_TRUE(writer.WriteAtomically(path, 1, 2));
+
+    ASSERT_TRUE(reader.Open(path));
+
+    std::vector<uint8_t> chunk{42};
+    EXPECT_TRUE(reader.ReadChunk(7, chunk));
+    EXPECT_TRUE(chunk.empty());
 }
 
 TEST_F(AssetPartialIoTest, AtomicWriteReplacesAnExistingFile)

@@ -3,9 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-18
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/BoneBakeRuntime.hpp>
 
 namespace fbzz::scene {
 /// @note Includes cached rejections: this proves preparation performs no loading or logging, not that a bake is supported.
-bool AreBoneBakeAssetsPrepared(const AnimatorComponent& animator, const asset::Model& model);
+FBZZ_ENGINE_API bool AreBoneBakeAssetsPrepared(const AnimatorComponent& animator, const asset::Model& model);
 }

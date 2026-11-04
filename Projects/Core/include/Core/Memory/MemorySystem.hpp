@@ -4,6 +4,7 @@
 /// @date    2026-06-01
 /// @note フレーム用アロケータとメモリ統計を束ね、Application など所有者から明示的に初期化する。
 #pragma once
+#include <Core/Api.hpp>
 
 #include "Core/Memory/FrameAllocator.hpp"
 #include "Core/Memory/MemoryTracker.hpp"
@@ -15,21 +16,21 @@ namespace fbzz::core {
 class MemorySystem {
 public:
     MemorySystem() = default;
-    ~MemorySystem();
+    FBZZ_CORE_API ~MemorySystem();
 
     MemorySystem(const MemorySystem&)            = delete;
     MemorySystem& operator=(const MemorySystem&) = delete;
 
-    MemorySystem(MemorySystem&& other) noexcept;
-    MemorySystem& operator=(MemorySystem&& other) noexcept;
+    FBZZ_CORE_API MemorySystem(MemorySystem&& other) noexcept;
+    FBZZ_CORE_API MemorySystem& operator=(MemorySystem&& other) noexcept;
 
-    [[nodiscard]] bool Initialize(std::size_t frameAllocatorCapacity);
-    void Shutdown();
+    [[nodiscard]] FBZZ_CORE_API bool Initialize(std::size_t frameAllocatorCapacity);
+    FBZZ_CORE_API void Shutdown();
 
-    void BeginFrame();
-    void EndFrame();
-    [[nodiscard]] bool HasLeaks() const;
-    [[nodiscard]] std::size_t GetLeakCount() const;
+    FBZZ_CORE_API void BeginFrame();
+    FBZZ_CORE_API void EndFrame();
+    [[nodiscard]] FBZZ_CORE_API bool HasLeaks() const;
+    [[nodiscard]] FBZZ_CORE_API std::size_t GetLeakCount() const;
 
     [[nodiscard]] FrameAllocator& GetFrameAllocator() { return m_frameAllocator; }
     [[nodiscard]] const FrameAllocator& GetFrameAllocator() const { return m_frameAllocator; }

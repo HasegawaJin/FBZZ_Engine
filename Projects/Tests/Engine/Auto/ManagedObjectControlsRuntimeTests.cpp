@@ -2,6 +2,7 @@
 /// @brief   実 CoreCLR の生成・削除・受け手所有の jobs とイベントを検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>

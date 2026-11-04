@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Engine/Api.hpp>
 #include <Math/Vector3.hpp>
 #include <Graphics/Renderer/ShaderDescriptor.hpp>
 #include <cstdint>
@@ -12,7 +13,7 @@ struct MaterialAsset;
 struct MaterialAssetAuthoring;
 /// @note Resolve the legacy water appearance defaults by reflected name, then apply authored typed values.
 /// @note The shader owns b2 layout; water geometry/view constants remain in b0/b1.
-void InitializeWaterAppearanceParameters(const MaterialAssetAuthoring& values,
+FBZZ_ENGINE_API void InitializeWaterAppearanceParameters(const MaterialAssetAuthoring& values,
     const renderer::ShaderDescriptor& descriptor, std::vector<uint8_t>& parameters);
 struct WaterOpticalSettings {
     bool enabled = false;
@@ -22,7 +23,7 @@ struct WaterOpticalSettings {
 };
 /// @note RGB消散係数は [1/m]。NaN/負値は0、正の無限大は1000、位相は [-.95,.95] に制限する。
 /// @see Docs/design/water-wave-optics-morph.md 光学係数。
-[[nodiscard]] WaterOpticalSettings ResolveWaterOpticalSettings(const MaterialAsset* material);
+[[nodiscard]] FBZZ_ENGINE_API WaterOpticalSettings ResolveWaterOpticalSettings(const MaterialAsset* material);
 /// @note The caller owns the immutable snapshot when passing its values across resource callbacks.
-[[nodiscard]] WaterOpticalSettings ResolveWaterOpticalSettings(const MaterialAssetAuthoring& values);
+[[nodiscard]] FBZZ_ENGINE_API WaterOpticalSettings ResolveWaterOpticalSettings(const MaterialAssetAuthoring& values);
 } /// @note namespace fbzz::asset

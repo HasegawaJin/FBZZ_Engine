@@ -248,6 +248,7 @@ int Run()
         auto& renderer = app.GetRenderer();
         auto& imguiRenderer = app.GetImGuiRenderer();
         renderer::ResourceManager resources(renderer);
+        app.SetResourceManager(&resources);
         asset::AssetManager::Init(resources, StringUtils::PathToUtf8(project.root / L"Assets") + "/");
 
         bool started = true;
@@ -288,6 +289,7 @@ int Run()
         /// @note バッチは window が occluded でも offscreen RT を描く。通常 Editor は DXGI の occlusion 休止を維持する。
         renderer.SetRenderWhenOccluded(!args.batchScenario.empty());
         renderer::ResourceManager resources(renderer);
+        app.SetResourceManager(&resources);
 
         const std::filesystem::path assetRoot = project.root / L"Assets";
         asset::AssetManager::Init(resources, StringUtils::PathToUtf8(assetRoot) + "/");

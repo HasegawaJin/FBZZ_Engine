@@ -20,12 +20,15 @@ public:
     const char* GetWindowName()      const override { return "Build Output"; }
     /// 起動時は非表示。ビルド失敗の通知やステータスクリックで開く運用にする。
     bool        GetDefaultVisibility() const override { return false; }
+    void OnRegisterOperators(OperatorRegistry& registry) override;
 
     /// 外部 (通知バー / StatusBar クリック) から呼ばれ、パネルを開いて最初のエラーへスクロールさせる。
     void RequestFocusFirstError() { visible = true; m_focusFirstError = true; m_viewHistoryIndex = -1; }
 
 private:
     void OnRenderContent(EditorContext& ctx) override;
+    const BuildRecord* SelectedRecord(const BuildConsole& console) const;
+    void ClearHistory(BuildConsole& console);
 
     /// 状態 (ビルド中 / 件数) と履歴・操作ボタンの 1 行。
     void DrawHeader(EditorContext& ctx, BuildConsole& console, const BuildRecord* rec);
@@ -47,4 +50,4 @@ private:
     std::size_t        m_diagCount  = ~static_cast<std::size_t>(0);
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

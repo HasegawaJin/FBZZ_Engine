@@ -2,10 +2,11 @@
 /// @brief   ParticleEmitter / VFXComponent の再生制御 Operator。
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
-///
-/// Inspector にはエフェクト再生・停止・リセットの操作があるが、AI からはアセット編集しかできず
-/// シーン上の実体を同じ手順で確認できなかった。コンポーネント共通 API を呼ぶ薄い Operator にまとめる。
-/// 再生状態はランタイム操作なので Undo には載せない。
+
+/// @note Inspector にはエフェクト再生・停止・リセットの操作があるが、AI からはアセット編集しかできず
+/// @note シーン上の実体を同じ手順で確認できなかった。コンポーネント共通 API を呼ぶ薄い Operator にまとめる。
+/// @note 再生状態はランタイム操作なので Undo には載せない。
+#include <Engine/Scene/Components/VFXElement.hpp>
 #include <Editor/Op/OperatorGroups.hpp>
 
 #include <Editor/EditorContext.hpp>
@@ -40,7 +41,7 @@ bool IsVFXAction(const std::string& action)
         || action == "restart" || action == "stop" || action == "trigger";
 }
 
-} // namespace
+} /// @note namespace
 
 void RegisterEffectOperators(OperatorRegistry& registry)
 {
@@ -141,4 +142,4 @@ void RegisterEffectOperators(OperatorRegistry& registry)
     registry.Register(std::move(op));
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

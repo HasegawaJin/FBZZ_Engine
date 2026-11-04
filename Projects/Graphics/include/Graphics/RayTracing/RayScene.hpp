@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/AccelerationStructure.hpp>
 #include <Graphics/RayTracing/RayMaterialCapabilities.hpp>
 #include <Graphics/RayTracing/SurfaceMaterialData.hpp>
@@ -45,7 +46,7 @@ struct RayGeometryKey {
 };
 
 struct RayGeometryKeyHash {
-    [[nodiscard]] size_t operator()(const RayGeometryKey& key) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API size_t operator()(const RayGeometryKey& key) const;
 };
 
 struct RaySceneGeometry {
@@ -126,8 +127,8 @@ struct RayScene {
 /// @note カメラの visible / lodVisible / Hi-Z / 距離を使わない。明示的な slot 非表示だけを除外する。
 /// @note static layout と保証済み被覆だけ。smooth solid dielectric は明示 opt-in のみ収集する。
 /// @see Docs/design/RayTracing.md §RenderScene から Ray Scene を作る
-[[nodiscard]] RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options = {});
+[[nodiscard]] FBZZ_GRAPHICS_API RayScene BuildRayScene(const RenderScene& scene, RaySceneBuildOptions options = {});
 
-[[nodiscard]] const char* DescribeRaySceneIssue(RaySceneIssue issue);
+[[nodiscard]] FBZZ_GRAPHICS_API const char* DescribeRaySceneIssue(RaySceneIssue issue);
 
 } /// @note namespace fbzz::renderer

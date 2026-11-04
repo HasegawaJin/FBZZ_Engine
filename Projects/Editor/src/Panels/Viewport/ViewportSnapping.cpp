@@ -2,9 +2,12 @@
 /// @brief   頂点スナップ (V ドラッグ) と面スナップ (Ctrl+Shift ドラッグ)。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
-///
+
 /// @note ImGuizmo に混ぜないのは、軸に沿った移動ではなく «掴んだ点をカーソル下の点へ吸着させる» 操作だから。
 /// @note スナップ中は呼び出し側 (ViewportPanel) がギズモ・ピッキング・矩形選択を止める。
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include "ViewportCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
 
@@ -15,15 +18,15 @@ namespace {
 /// @brief ドラッグ 1 回ぶんの状態。位置はすべてワールド空間。
 struct SnapDrag {
     bool active     = false;
-    bool vertexMode = false;   ///< true=頂点スナップ / false=面スナップ
+    bool vertexMode = false;   ///< @note true=頂点スナップ / false=面スナップ
     /// @note 頂点スナップは掴んだ頂点を目標へ合わせるので、原点ではなくこのオフセットぶんずらして置く。
     math::Vector3 grabOffset{};
     math::Vector3 grabWorld{};
     bool          hasTarget = false;
     math::Vector3 targetWorld{};
 
-    std::vector<std::string>      guids;   ///< 移動対象 (選択済みの祖先を持たないものだけ)
-    std::vector<scene::Transform> before;  ///< Undo 用
+    std::vector<std::string>      guids;   ///< @note 移動対象 (選択済みの祖先を持たないものだけ)
+    std::vector<scene::Transform> before;  ///< @note Undo 用
 };
 SnapDrag g_drag;
 
@@ -324,7 +327,7 @@ void DrawSnapFeedback(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpS
     }
 }
 
-} // namespace
+} /// @note namespace
 
 bool HandleViewportSnapping(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize)
 {
@@ -425,4 +428,4 @@ bool HandleViewportSnapping(EditorContext& ctx, const ImVec2& vpMin, const ImVec
     return true;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

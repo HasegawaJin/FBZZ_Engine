@@ -2,10 +2,11 @@
 /// @brief   プロジェクト共通設定の定義と永続化。
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
-///
+
 /// @note タグ名・レイヤー名など、エディタとランタイムで共有する軽量設定。
 /// @note 読み書きは bool で成否を返し、例外は使わない。
 #pragma once
+#include <Engine/Api.hpp>
 #include <array>
 #include <Math/Vector3.hpp>
 #include <Engine/Audio/AudioBus.hpp>
@@ -14,6 +15,7 @@
 #include <Engine/Renderer/RendererBackend.hpp>
 #include <Physics/Layer.hpp>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz {
@@ -39,7 +41,7 @@ struct AudioSettings {
     std::vector<audio::BusDesc> buses = audio::DefaultBusLayout();
 
     /// @brief masterVolume を反映した AudioManager::ApplyBusLayout 用の構成。
-    [[nodiscard]] std::vector<audio::BusDesc> BuildBusLayout() const;
+    [[nodiscard]] FBZZ_ENGINE_API std::vector<audio::BusDesc> BuildBusLayout() const;
 };
 
 struct ScreenSettings {
@@ -81,7 +83,7 @@ struct CursorAppearance {
     std::array<ShapeImage, core::kCursorShapeCount> shapes{};
 
     /// @brief 絶対 projectRoot から画像を読み、Play 開始時と配布ゲーム起動時に OS へ適用する。
-    void Apply(const std::string& projectRoot) const;
+    FBZZ_ENGINE_API void Apply(const std::string& projectRoot) const;
 };
 
 struct ProjectMetadataSettings {
@@ -123,12 +125,16 @@ struct ProjectSettings {
     WindowSettings               window;
     CursorAppearance             cursor;   ///< @note カーソルの絵だけ。拘束と表示はスクリプトが持つ。
 
-    static ProjectSettings Default();
-    bool Load(const std::string& path);
-    bool Save(const std::string& path) const;
+    FBZZ_ENGINE_API static ProjectSettings Default();
+    FBZZ_ENGINE_API bool Load(const std::string& path);
+    /// @note 設定値だけを読む。入力バインドやディスクを変更せず、呼び出し側の編集用コピーへ適用できる。
+    [[nodiscard]] FBZZ_ENGINE_API bool LoadFromToml(std::string_view text);
+    FBZZ_ENGINE_API bool Save(const std::string& path) const;
     /// @brief Save が書く TOML 本文。
     /// @note エディターの自動保存が «前回保存した内容と違うか» の比較に使う (構造体に == が無いため)。
-    [[nodiscard]] std::string ToToml() const;
+    [[nodiscard]] FBZZ_ENGINE_API std::string ToToml() const;
+    /// @note trueは既定値や空配列も列挙する編集用表現。通常保存は引数なしの簡潔な形式を使う。
+    [[nodiscard]] FBZZ_ENGINE_API std::string ToToml(bool explicitDefaults) const;
 };
 
 } /// @note namespace fbzz

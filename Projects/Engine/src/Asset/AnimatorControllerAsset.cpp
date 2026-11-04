@@ -2,6 +2,7 @@
 /// @brief   .animcontroller の TOML 入出力と AnimatorComponent への適用。
 /// @author  Hasegawa Jin
 /// @date    2026-06-13
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Asset/AnimatorControllerAsset.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
@@ -13,6 +14,64 @@
 
 namespace fbzz::asset {
 namespace {
+
+template<class To, class From>
+To CopyControllerState(const From& source)
+{
+    To result;
+    result.name = source.name;
+    result.mode = source.mode;
+    result.sourcePath = source.sourcePath;
+    result.clipName = source.clipName;
+    result.clipIndex = source.clipIndex;
+    result.speed = source.speed;
+    result.loop = source.loop;
+    result.ikWeight = source.ikWeight;
+    result.transitions = source.transitions;
+    result.blendTree1D.paramName = source.blendTree1D.paramName;
+    result.blendTree1D.dampTime = source.blendTree1D.dampTime;
+    result.blendTree1D.syncNormalizedTime = source.blendTree1D.syncNormalizedTime;
+    result.blendTree1D.motions = source.blendTree1D.motions;
+    result.blendTree2D.paramX = source.blendTree2D.paramX;
+    result.blendTree2D.paramY = source.blendTree2D.paramY;
+    result.blendTree2D.type = source.blendTree2D.type;
+    result.blendTree2D.dampTime = source.blendTree2D.dampTime;
+    result.blendTree2D.syncNormalizedTime = source.blendTree2D.syncNormalizedTime;
+    result.blendTree2D.motions = source.blendTree2D.motions;
+    return result;
+}
+template<class To, class From>
+std::vector<To> CopyControllerStates(const std::vector<From>& source)
+{
+    std::vector<To> result;
+    result.reserve(source.size());
+    for (const auto& state : source) result.push_back(CopyControllerState<To>(state));
+    return result;
+}
+template<class To, class From>
+std::vector<To> CopyControllerLayers(const std::vector<From>& source)
+{
+    std::vector<To> result;
+    result.reserve(source.size());
+    for (const auto& layer : source) {
+        To converted;
+        converted.name = layer.name;
+        converted.weight = layer.weight;
+        converted.mode = layer.mode;
+        converted.enabled = layer.enabled;
+        converted.additiveReference = layer.additiveReference;
+        converted.defaultStateName = layer.defaultStateName;
+        converted.anyStateTransitions = layer.anyStateTransitions;
+        converted.retargetMappings = layer.retargetMappings;
+        converted.mask.path = layer.mask.path;
+        converted.slot.fadeInDuration = layer.slot.fadeInDuration;
+        converted.slot.fadeOutDuration = layer.slot.fadeOutDuration;
+        using State = typename decltype(converted.states)::value_type;
+        converted.states = CopyControllerStates<State>(layer.states);
+        result.push_back(std::move(converted));
+    }
+    return result;
+}
 
 toml::table WriteMotion(const scene::BlendTreeMotion& motion)
 {
@@ -174,7 +233,7 @@ AnimatorGraphLayout ReadEditorLayout(const toml::table& table)
 /// @brief AnimationState 1 件を TOML へ書き出す。
 /// @note Base Layer (asset.states) と各 AnimationLayer::states の両方が同じ形式を使うため、
 /// @note Save/Load へインライン展開せず 1 箇所に集約する。片方だけ直す事故を防ぐ。
-toml::table WriteState(const scene::AnimationState& state)
+toml::table WriteState(const AnimationStateDefinition& state)
 {
     toml::table stateTable;
     stateTable.insert("name", state.name);
@@ -216,9 +275,9 @@ toml::table WriteState(const scene::AnimationState& state)
 }
 
 /// @note TOML から AnimationState 1 件を読む。
-scene::AnimationState ReadState(const toml::table& stateTable)
+AnimationStateDefinition ReadState(const toml::table& stateTable)
 {
-    scene::AnimationState state;
+    AnimationStateDefinition state;
     state.name = stateTable["name"].value_or(std::string{});
     state.mode = static_cast<scene::AnimationStateMode>(
         stateTable["mode"].value_or(int64_t{0}));
@@ -380,7 +439,7 @@ bool LoadAnimatorControllerAsset(const std::string& path,
         for (const auto& element : *states) {
             const auto* stateTable = element.as_table();
             if (!stateTable) continue;
-            scene::AnimationState state = ReadState(*stateTable);
+            AnimationStateDefinition state = ReadState(*stateTable);
 
             loaded.states.push_back(std::move(state));
         }
@@ -410,7 +469,7 @@ bool LoadAnimatorControllerAsset(const std::string& path,
         for (const auto& element : *layers) {
             const auto* layerTable = element.as_table();
             if (!layerTable) continue;
-            scene::AnimationLayer layer;
+            AnimationLayerDefinition layer;
             layer.name = (*layerTable)["name"].value_or(std::string{"Layer"});
             layer.weight = static_cast<float>((*layerTable)["weight"].value_or(1.0));
             layer.mode = static_cast<scene::AnimationLayerMode>(
@@ -491,7 +550,7 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
     const auto previousLayers = animator.layers;
 
     animator.defaultStateName = asset.defaultStateName;
-    animator.states = asset.states;
+    animator.states = CopyControllerStates<scene::AnimationState>(asset.states);
     animator.anyStateTransitions = asset.anyStateTransitions;
     animator.parameters = asset.parameters;
     /// @note 旧形式・手編集された Controller に残る Trigger の true も実行開始前に捨てる。
@@ -500,7 +559,7 @@ void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
         if (parameter.type == scene::ParamType::Trigger)
             parameter.boolValue = false;
     }
-    animator.layers = asset.layers;
+    animator.layers = CopyControllerLayers<scene::AnimationLayer>(asset.layers);
     animator.baseLayerMask.path = asset.baseLayerMaskPath;
     animator.baseLayerMask.Invalidate();
     animator.currentStateName.clear();
@@ -555,10 +614,10 @@ AnimatorControllerAsset MakeAnimatorControllerAsset(
 {
     AnimatorControllerAsset asset;
     asset.defaultStateName = animator.defaultStateName;
-    asset.states = animator.states;
+    asset.states = CopyControllerStates<AnimationStateDefinition>(animator.states);
     asset.anyStateTransitions = animator.anyStateTransitions;
     asset.parameters = animator.parameters;
-    asset.layers = animator.layers;
+    asset.layers = CopyControllerLayers<AnimationLayerDefinition>(animator.layers);
     asset.baseLayerMaskPath = animator.baseLayerMask.path;
     return asset;
 }

@@ -5,6 +5,7 @@
 #include <Physics/XPBDPlaneContact.hpp>
 
 #include <cmath>
+#include <algorithm>
 
 namespace fbzz::physics
 {
@@ -29,13 +30,13 @@ namespace fbzz::physics
 
     void XPBDPlaneContact::ResetLambda()
     {
+        m_penetration = 0.0f;
         m_lambda         = 0.0f;
         m_lambdaFriction = 0.0f;
     }
 
     void XPBDPlaneContact::SolvePosition(float h)
     {
-        m_penetration = 0.0f;
         if (!m_body) return;
 
         const math::Vector3 r     = m_body->GetRotation() * m_localPoint;
@@ -43,13 +44,13 @@ namespace fbzz::physics
         const float depth = m_offset + m_radius - math::Vector3::Dot(m_normal, world);
 
         /// @note 片側拘束。離れている間は λ も動かさない ─ 引き戻す力を持たせると床が
-        ///       磁石になり、跳ねずに貼り付く。
+        /// @note 磁石になり、跳ねずに貼り付く。
         if (depth <= 0.0f) {
             m_previousPoint    = world;
             m_hasPreviousPoint = true;
             return;
         }
-        m_penetration = depth;
+        m_penetration = std::max(m_penetration,depth);
 
         /// @note SolvePositional は correction の «逆» へ動かすので、法線の逆向きに深さを渡す。
         SolvePositional(m_body, nullptr, r, math::Vector3::ZERO,
@@ -62,12 +63,7 @@ namespace fbzz::physics
         m_hasPreviousPoint = true;
     }
 
-    /// @brief 位置パスが押し返した «跳ね上がり» を打ち消す。
-    /// @note substep 末の速度は (位置-直前位置)/h で作り直されるため、位置パスが深い潜りを
-    ///       一気に戻すと補正量が丸ごと上向き速度に化ける (SetPlane 直後や捕獲直後に射出される)。
-    ///       位置パスは «めり込みを消す» ためのものであり «跳ね返す» ためのものではないので、
-    ///       接触中の法線速度は 0 にする (速度パスで e=0 とするのと同じ)。m_penetration が 0
-    ///       の substep では何もせず、跳んで抜ける・地面を蹴る動きは妨げない。
+    /// @note 実速度の法線成分を反発0で解く。幾何的な貫通補正は XPBDSolver が速度再構成から除外する。
     void XPBDPlaneContact::SolveVelocity(float h)
     {
         if (!m_body || m_penetration <= 0.0f || h <= 0.0f) return;
@@ -77,15 +73,24 @@ namespace fbzz::physics
             m_body->GetVelocity() + math::Vector3::Cross(m_body->GetAngularVelocity(), r);
 
         const float normalSpeed = math::Vector3::Dot(m_normal, pointVelocity);
-        if (normalSpeed == 0.0f) return;
+        /// @note 接触は押す力だけを持つ。離反中の法線速度を消すと、床へ引く力と架空の摩擦が生じる。
+        /// @see https://box2d.org/posts/2024/02/solver2d/ Projected Gauss-Seidel の片側接触力積。
+        if (normalSpeed >= 0.0f) return;
+        const float inverseMass=GeneralizedInverseMass(m_body,r,m_normal);
+        const float normalImpulse=inverseMass>0.0f ? std::abs(normalSpeed)/inverseMass : 0.0f;
 
         ApplyVelocityChangeAtPoint(m_body, nullptr, r, math::Vector3::ZERO,
                                    m_normal * normalSpeed);
+        /// @note 幾何的な固着は実速度へ混ぜず、速度の摩擦を物理的な法線力積に従わせる。
+        const auto velocity=m_body->GetVelocity()+math::Vector3::Cross(m_body->GetAngularVelocity(),r);
+        const auto tangent=velocity-m_normal*math::Vector3::Dot(m_normal,velocity);
+        if (m_friction>0.0f && normalImpulse>0.0f)
+            ApplyVelocityChangeAtPoint(m_body,nullptr,r,math::Vector3::ZERO,tangent,m_friction*normalImpulse);
     }
 
-    /// 静摩擦を位置パスで解く。速度パスで «接線速度を削る» 形にすると、倒れた体が
-    /// 止まった後もじりじり滑る ── 削るのは速度で、既にずれた位置は戻らないため。
-    /// この substep で滑った距離そのものを打ち消し、上限だけをクーロンに従わせる。
+    /// @note 静摩擦を位置パスで解く。速度パスで «接線速度を削る» 形にすると、倒れた体が
+    /// @note 止まった後もじりじり滑る ── 削るのは速度で、既にずれた位置は戻らないため。
+    /// @note この substep で滑った距離そのものを打ち消し、上限だけをクーロンに従わせる。
     void XPBDPlaneContact::SolveFriction(float h)
     {
         if (m_friction <= 0.0f || !m_hasPreviousPoint) return;
@@ -100,4 +105,4 @@ namespace fbzz::physics
                         slip, 0.0f, h, m_lambdaFriction,
                         m_friction * std::abs(m_lambda));
     }
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

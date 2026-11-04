@@ -5,6 +5,7 @@
 #include <Engine/Asset/ModelSource.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <toml++/toml.hpp>
@@ -433,7 +434,7 @@ std::string AssetDatabase::DeriveGuid(std::string_view sourceGuid, std::string_v
 }
 
 /// @brief s_mutex を呼び出し側が保持している前提の実体。
-/// @note Init は本体の全体でロックを持つため、そこから公開 API を呼ぶと std::mutex は
+/// @note Init は索引の登録中にロックを持つため、そこから公開 API を呼ぶと std::mutex は
 /// @note 再帰不可なのでデッドロックする。分けて内部専用にすることでそれを避ける。
 static void IndexBakedLibraryLocked(const std::string& libraryBakedRoot)
 {
@@ -598,6 +599,34 @@ void AssetDatabase::Init(const std::string& assetsRoot,
                          const std::string& sharedAssetsRoot)
 {
     namespace fs = std::filesystem;
+    const fs::path root = util::FileSystem::PathFromUtf8(assetsRoot);
+    const auto files = util::FileSystem::ListFilesRecursive(root);
+    struct MetaRead {
+        std::string path;
+        std::string guid;
+    };
+    std::vector<MetaRead> metaReads;
+    metaReads.reserve(files.size());
+    for (const auto& file : files) {
+        const std::string path = NormalizePath(util::FileSystem::PathToUtf8(file));
+        if (ShouldHaveMeta(util::StringUtils::ToLowerCopy(util::FileSystem::GetFilename(path))))
+            metaReads.push_back({path, {}});
+    }
+    /// @note Only independent reads run on workers; repairs and duplicate winners retain traversal order.
+    /// @note Finish before taking s_mutex so queued asset tasks cannot deadlock the shared pool.
+    const size_t readerCount = metaReads.size() < 64 ? 0
+        : static_cast<size_t>((std::min)(8, TaskSystem::WorkerCount()));
+    std::vector<std::future<void>> reads;
+    for (size_t reader = 0; reader < readerCount; ++reader) {
+        reads.push_back(TaskSystem::Submit([&, reader] {
+            for (size_t i = reader; i < metaReads.size(); i += readerCount)
+                metaReads[i].guid = ReadGuidFromMeta(metaReads[i].path + ".meta");
+        }));
+    }
+    if (readerCount == 0) {
+        for (auto& meta : metaReads) meta.guid = ReadGuidFromMeta(meta.path + ".meta");
+    }
+    for (auto& read : reads) read.get();
     std::lock_guard lock(s_mutex);
     ++s_revision;
     s_guidToPath.clear();
@@ -611,7 +640,6 @@ void AssetDatabase::Init(const std::string& assetsRoot,
     if (!s_assetsRoot.empty() && s_assetsRoot.back() != '/') s_assetsRoot.push_back('/');
     s_sharedAssetsRoot = NormalizeSharedAssetsRoot(sharedAssetsRoot);
 
-    const fs::path root = util::FileSystem::PathFromUtf8(assetsRoot);
     if (!util::FileSystem::Exists(root)) {
         FBZZ_LOG_WARN("AssetDatabase: assets root not found [%s]", assetsRoot.c_str());
         IndexSharedAssetsLocked();
@@ -623,9 +651,8 @@ void AssetDatabase::Init(const std::string& assetsRoot,
     size_t orphans = 0;
 
     /// @note .meta を持つべき対象を 1 件処理する共通クロージャ (ファイル / フォルダ共通)。
-    const auto indexTarget = [&](const std::string& absPath) {
+    const auto indexTarget = [&](const std::string& absPath, std::string guid) {
         const std::string metaPath = absPath + ".meta";
-        std::string guid = ReadGuidFromMeta(metaPath);
         if (guid.empty()) {
             /// @note モデル原本は Import 実行時に GUID を確定する。AssetBrowser を開いただけで
             /// @note 原本の隣に .meta を生成すると、未 Import と Import 済みの境界が崩れる。
@@ -641,7 +668,8 @@ void AssetDatabase::Init(const std::string& assetsRoot,
         RegisterLocked(guid, absPath);
     };
 
-    for (const fs::path& p : util::FileSystem::ListFilesRecursive(root)) {
+    size_t metaIndex = 0;
+    for (const fs::path& p : files) {
         const std::string absPath = NormalizePath(util::FileSystem::PathToUtf8(p));
         const std::string ext = util::StringUtils::ToLowerCopy(util::FileSystem::GetExtension(absPath));
 
@@ -652,7 +680,7 @@ void AssetDatabase::Init(const std::string& assetsRoot,
         }
 
         if (!ShouldHaveMeta(util::StringUtils::ToLowerCopy(util::FileSystem::GetFilename(absPath)))) continue;
-        indexTarget(absPath);
+        indexTarget(absPath, std::move(metaReads[metaIndex++].guid));
     }
 
     /// @name フォルダの .meta
@@ -676,7 +704,8 @@ void AssetDatabase::Init(const std::string& assetsRoot,
                 if (!ShouldHaveFolderMeta(name) || IsGeneratedModelPackageDir(dir))
                     it.disable_recursion_pending();
                 else
-                    indexTarget(NormalizePath(util::FileSystem::PathToUtf8(dir)));
+                    indexTarget(NormalizePath(util::FileSystem::PathToUtf8(dir)),
+                        ReadGuidFromMeta(util::FileSystem::PathToUtf8(dir) + ".meta"));
             }
 
             it.increment(ec);

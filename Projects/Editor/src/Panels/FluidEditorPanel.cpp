@@ -1168,20 +1168,8 @@ void FluidEditorPanel::OnBeforeBegin(EditorContext& ctx)
     }
     FollowAssetSelection(ctx);
 
-    /// @note 最小化中も、焼きの完了と外からの書き換えは拾っておく。
-    PollBakeJob(ctx);
-    if (m_state->document.IsOpen()) {
-        m_state->document.PollExternalChange();
-        /// @note 保存できたら dirty が下りる。レジストリからの取り下げは下の SyncDirtyRegistry がやる。
-        if (fluideditor::TickFluidAutoSave(ctx, m_state->document)) m_autoSaveNotice = 2.5f;
-    }
     m_autoSaveNotice = (std::max)(m_autoSaveNotice - ImGui::GetIO().DeltaTime, 0.0f);
-    SyncDirtyRegistry(ctx);
 
-    /// @note 3D のライブプレビューは GPU を記録するので、レンダラーのフレーム内 = Begin より前に積む
-    /// @note (Volume Flipbook Baker パネルと同じ場所)。共有 Baker は 1 つしかなく、最小化中も
-    /// @note 撃つと Volume Flipbook Baker パネルのプレビューと鍵を奪い合って両方が解き直し続ける。
-    if (WasContentRendered()) fluideditor::TickVolumePreview(ctx, *m_state);
 }
 
 HotkeyScope FluidEditorPanel::GetHotkeyScope() const
@@ -1223,9 +1211,7 @@ void FluidEditorPanel::OnRenderContent(EditorContext& ctx)
 
     fluideditor::ClampSelection(state);
     fluideditor::ClampKeySelection(state);
-    SyncPreview();
-    state.preview.Tick(ctx.resources, ctx.imguiRenderer);
-    AdvancePlayback();
+
 
     const ImGuiStyle& style = ImGui::GetStyle();
     const ImVec2 avail = ImGui::GetContentRegionAvail();

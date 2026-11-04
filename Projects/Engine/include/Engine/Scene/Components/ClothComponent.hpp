@@ -121,6 +121,8 @@ struct ClothComponent {
     ClothRuntime runtime;
     DoubleBufferedMesh runtimeMesh;
 
+    void ResetGpuRuntime() { runtimeMesh.Reset(); runtime.initialized = false; }
+
     const char* GetTypeName() const { return "Cloth"; }
     void Reflect(IReflector& r)
     {

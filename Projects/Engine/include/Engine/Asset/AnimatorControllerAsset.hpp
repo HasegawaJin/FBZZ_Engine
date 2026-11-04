@@ -3,8 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-13
 #pragma once
+#include <Engine/Api.hpp>
 
-#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Asset/AnimatorControllerDefinition.hpp>
+namespace fbzz::scene { struct AnimatorComponent; }
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -29,10 +31,10 @@ struct AnimatorGraphLayout {
 /// @note 複数 GameObject が同じ遷移グラフを参照し、Hierarchy 選択なしで編集できる。
 struct AnimatorControllerAsset {
     std::string                             defaultStateName;
-    std::vector<scene::AnimationState>      states;
+    std::vector<AnimationStateDefinition>      states;
     std::vector<scene::AnimationTransition> anyStateTransitions;
     std::vector<scene::AnimatorParameter>   parameters;
-    std::vector<scene::AnimationLayer>      layers;
+    std::vector<AnimationLayerDefinition>      layers;
     /// @brief Base Layer 自身のマスク (.mask アセットパス)。空なら全身。
     std::string                             baseLayerMaskPath;
     /// @brief Editor 専用のノード配置。ランタイム Animator には適用しない。
@@ -40,13 +42,13 @@ struct AnimatorControllerAsset {
     AnimatorGraphLayout                     editorLayout;
 };
 
-[[nodiscard]] bool LoadAnimatorControllerAsset(const std::string& path,
+[[nodiscard]] FBZZ_ENGINE_API bool LoadAnimatorControllerAsset(const std::string& path,
                                                AnimatorControllerAsset& outAsset);
-[[nodiscard]] bool SaveAnimatorControllerAsset(const std::string& path,
+[[nodiscard]] FBZZ_ENGINE_API bool SaveAnimatorControllerAsset(const std::string& path,
                                                const AnimatorControllerAsset& asset);
-void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
+FBZZ_ENGINE_API void ApplyAnimatorControllerAsset(const AnimatorControllerAsset& asset,
                                   scene::AnimatorComponent& animator);
-[[nodiscard]] AnimatorControllerAsset MakeAnimatorControllerAsset(
+[[nodiscard]] FBZZ_ENGINE_API AnimatorControllerAsset MakeAnimatorControllerAsset(
     const scene::AnimatorComponent& animator);
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

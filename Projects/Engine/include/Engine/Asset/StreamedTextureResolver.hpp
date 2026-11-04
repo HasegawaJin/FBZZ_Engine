@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/AssetStreaming.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <cstdint>
@@ -30,17 +31,17 @@ public:
         Placeholder,
     };
 
-    [[nodiscard]] static StreamedTextureResolver& Engine();
+    [[nodiscard]] FBZZ_ENGINE_API static StreamedTextureResolver& Engine();
 
     /// @brief 参照 (パス・guid 参照・Sprite 参照) の GPU 実体を返す。
     /// @param screenPixels このテクスチャを貼って描く物体の画面上の直径 [px]。0 以下は «不明» (最高品質を保つ)。
     /// @return 非同期経路が未完成なら代替テクスチャを返す。同期ロードは MissPolicy::Synchronous のみ行う。
-    [[nodiscard]] renderer::ResourceHandle<renderer::TextureTag> ResolveGpu(
+    [[nodiscard]] FBZZ_ENGINE_API renderer::ResourceHandle<renderer::TextureTag> ResolveGpu(
         renderer::ResourceManager& resources, std::string_view reference, float screenPixels = 0.0f);
 
     /// @brief 画面上の大きさから品質段を決める。テクスチャの長辺が画面の何倍かを 2 の対数で段にし、1 段の余裕を残す。
     /// @return 0 (最高品質) 以上 lowest 以下。screenPixels が 0 以下なら 0。
-    [[nodiscard]] static AssetQuality QualityForScreenSize(uint32_t textureWidth, uint32_t textureHeight,
+    [[nodiscard]] FBZZ_ENGINE_API static AssetQuality QualityForScreenSize(uint32_t textureWidth, uint32_t textureHeight,
                                                            float screenPixels, AssetQuality lowest);
 
     /// @brief 画面上の大きさによる品質の自動選択を有効にする。既定は無効 (既存の絵を変えないため)。
@@ -49,21 +50,21 @@ public:
     [[nodiscard]] bool GetAutoQuality() const { return m_autoQuality; }
 
     /// @brief 公開済みの TextureAsset。未完成・失敗なら nullptr。元画像寸法 (sourceWidth) を引く用途。
-    [[nodiscard]] const TextureAsset* ResolveAsset(renderer::ResourceManager& resources, std::string_view reference);
+    [[nodiscard]] FBZZ_ENGINE_API const TextureAsset* ResolveAsset(renderer::ResourceManager& resources, std::string_view reference);
 
     /// @return 公開済みの内容版。利用権を保持できない・未完成なら 0。
-    [[nodiscard]] uint64_t ResolveContentRevision(renderer::ResourceManager& resources, std::string_view reference);
+    [[nodiscard]] FBZZ_ENGINE_API uint64_t ResolveContentRevision(renderer::ResourceManager& resources, std::string_view reference);
 
     /// @brief ResolveGpu と同時に元画像の寸法を返す (スプライト矩形の UV 換算用)。
     /// @note 品質段で縮小して常駐していても元の寸法を返す。分からなければ GPU 実体の寸法、それも無ければ 0。
-    [[nodiscard]] renderer::ResourceHandle<renderer::TextureTag> ResolveGpuWithSourceSize(
+    [[nodiscard]] FBZZ_ENGINE_API renderer::ResourceHandle<renderer::TextureTag> ResolveGpuWithSourceSize(
         renderer::ResourceManager& resources, std::string_view reference,
         uint32_t& outSourceWidth, uint32_t& outSourceHeight);
 
     /// @brief フレームの終わりに呼ぶ。releaseAfterFrames の間引かれなかった参照の利用権を手放す。
-    void EndFrame();
+    FBZZ_ENGINE_API void EndFrame();
     /// @brief 全利用権を手放す (プロジェクト切り替え)。
-    void Reset();
+    FBZZ_ENGINE_API void Reset();
 
     void SetMissPolicy(MissPolicy policy) { m_missPolicy = policy; }
     [[nodiscard]] MissPolicy GetMissPolicy() const { return m_missPolicy; }
@@ -83,8 +84,8 @@ private:
     };
 
     /// @return 非同期経路で扱えないなら nullptr。
-    Entry* Acquire(std::string_view reference);
-    const TextureAsset* Complete(Entry& entry);
+    FBZZ_ENGINE_API Entry* Acquire(std::string_view reference);
+    FBZZ_ENGINE_API const TextureAsset* Complete(Entry& entry);
 
     std::unordered_map<std::string, Entry> m_entries;
     std::uint64_t m_frame = 0;

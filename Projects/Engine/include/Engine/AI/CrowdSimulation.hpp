@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
+#include <Engine/Api.hpp>
 #include <Math/Vector3.hpp>
 #include <cstdint>
 #include <span>
@@ -124,7 +125,7 @@ struct CrowdStats {
 class CrowdWorkspace {
 public:
     /// @brief Preallocates capacity before measured or real-time work.
-    void Reserve(std::size_t capacity);
+    FBZZ_ENGINE_API void Reserve(std::size_t capacity);
 private:
     /// @note Spheres are rebuilt per batch; candidates are original input indices and never escape StepCrowd.
     struct SpatialIndex {
@@ -135,21 +136,21 @@ private:
         std::vector<std::uint16_t> m_order;
         std::size_t m_count = 0;
         std::size_t m_nodeCount = 0;
-        void Reserve(std::size_t capacity);
+        FBZZ_ENGINE_API void Reserve(std::size_t capacity);
         template<class Sphere> void Build(std::span<const Sphere> spheres);
         /// @note Returns every index in original order when the query is unsafe or traversal exceeds its fixed budget.
-        std::size_t Query(math::Vector3 position, float radius, std::span<std::uint16_t> candidates) const;
-        std::size_t All(std::span<std::uint16_t> candidates) const;
+        FBZZ_ENGINE_API std::size_t Query(math::Vector3 position, float radius, std::span<std::uint16_t> candidates) const;
+        FBZZ_ENGINE_API std::size_t All(std::span<std::uint16_t> candidates) const;
         /// @note Bounds include operand-scaled float slack so the unchanged rounded sphere test remains authoritative.
-        static Bounds MakeBounds(math::Vector3 position, float radius);
-        static bool Overlaps(const Bounds& left, const Bounds& right);
+        FBZZ_ENGINE_API static Bounds MakeBounds(math::Vector3 position, float radius);
+        FBZZ_ENGINE_API static bool Overlaps(const Bounds& left, const Bounds& right);
     };
     struct Cell { int x = 0, y = 0, z = 0, head = -1; std::uint32_t stamp = 0; };
     std::vector<Cell> m_cells;
     std::vector<int> m_next;
     std::uint32_t m_stamp = 0;
     SpatialIndex m_threats, m_obstacles;
-    friend bool StepCrowd(const CrowdSettings&, std::span<const CrowdProfile>, std::span<const CrowdAgent>,
+    friend FBZZ_ENGINE_API bool StepCrowd(const CrowdSettings&, std::span<const CrowdProfile>, std::span<const CrowdAgent>,
                           std::span<const CrowdThreat>, std::span<const CrowdObstacle>, std::span<CrowdAgent>,
                           CrowdStats&, CrowdWorkspace&);
 };
@@ -159,7 +160,7 @@ private:
 /// @note Decision budgets are deterministic work counts. Threat steering bypasses the decision budget.
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-mass-gameplay-in-unreal-engine
 /// @see https://www.red3d.com/cwr/boids/
-[[nodiscard]] bool StepCrowd(const CrowdSettings& settings, std::span<const CrowdProfile> profiles,
+[[nodiscard]] FBZZ_ENGINE_API bool StepCrowd(const CrowdSettings& settings, std::span<const CrowdProfile> profiles,
                              std::span<const CrowdAgent> agents, std::span<const CrowdThreat> threats,
                              std::span<const CrowdObstacle> obstacles, std::span<CrowdAgent> output,
                              CrowdStats& stats, CrowdWorkspace& workspace);

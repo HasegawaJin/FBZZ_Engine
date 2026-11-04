@@ -2,10 +2,11 @@
 /// @brief   Script から SpringBoneComponent のチェーンを組み、外力を与えるプロキシ
 /// @author  Hasegawa Jin
 /// @date    2026-09-01
-///
-/// チェーンは根ボーン名で引く。Inspector で組んだものと Script が組んだものを
-/// 区別しないので、同じ根を指定すれば既存のチェーンがそのまま設定対象になる。
+
+/// @note チェーンは根ボーン名で引く。Inspector で組んだものと Script が組んだものを
+/// @note 区別しないので、同じ根を指定すれば既存のチェーンがそのまま設定対象になる。
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Math/Vector3.hpp>
 #include <string_view>
@@ -17,38 +18,38 @@ class Script;
 struct ScriptSpringBoneProxy {
     Script* script = nullptr;
 
-    /// 根ボーン名のチェーンが無ければ作る。あれば maxDepth だけ更新して何もしない。
-    /// SpringBoneComponent 自体が無ければ追加する。
-    void EnsureChain(std::string_view rootBoneName, int maxDepth = 0) const;
-    [[nodiscard]] bool HasChain(std::string_view rootBoneName) const;
+    /// @note 根ボーン名のチェーンが無ければ作る。あれば maxDepth だけ更新して何もしない。
+    /// @note SpringBoneComponent 自体が無ければ追加する。
+    FBZZ_ENGINE_API void EnsureChain(std::string_view rootBoneName, int maxDepth = 0) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool HasChain(std::string_view rootBoneName) const;
 
-    void SetChainEnabled(std::string_view rootBoneName, bool enabled) const;
-    [[nodiscard]] bool IsChainEnabled(std::string_view rootBoneName) const;
+    FBZZ_ENGINE_API void SetChainEnabled(std::string_view rootBoneName, bool enabled) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool IsChainEnabled(std::string_view rootBoneName) const;
 
-    /// 揺れの適用率 [0,1]。0 で完全に FK ポーズ、1 でシミュレーション結果そのまま。
-    void SetWeight(std::string_view rootBoneName, float weight) const;
-    [[nodiscard]] float GetWeight(std::string_view rootBoneName) const;
+    /// @note 揺れの適用率 [0,1]。0 で完全に FK ポーズ、1 でシミュレーション結果そのまま。
+    FBZZ_ENGINE_API void SetWeight(std::string_view rootBoneName, float weight) const;
+    [[nodiscard]] FBZZ_ENGINE_API float GetWeight(std::string_view rootBoneName) const;
 
-    /// 静止姿勢へ戻ろうとする強さ [0,1] と速度の減衰 [0,1]。
-    void SetSpring(std::string_view rootBoneName, float stiffness, float damping) const;
-    /// 静止方向からの最大ふれ角 [degrees]。0 で無制限。
-    void SetLimitAngle(std::string_view rootBoneName, float degrees) const;
-    /// 揺れボーン側の衝突半径 [m]。
-    void SetRadius(std::string_view rootBoneName, float radius) const;
+    /// @note 静止姿勢へ戻ろうとする強さ [0,1] と速度の減衰 [0,1]。
+    FBZZ_ENGINE_API void SetSpring(std::string_view rootBoneName, float stiffness, float damping) const;
+    /// @note 静止方向からの最大ふれ角 [degrees]。0 で無制限。
+    FBZZ_ENGINE_API void SetLimitAngle(std::string_view rootBoneName, float degrees) const;
+    /// @note 揺れボーン側の衝突半径 [m]。
+    FBZZ_ENGINE_API void SetRadius(std::string_view rootBoneName, float radius) const;
 
-    /// チェーンに掛かる外力。重力の口をそのまま向きと強さで使う。
-    ///
-    /// 磁力のように毎フレーム向きが変わる力はここへ書く。power が 0 なら向きは無視される。
-    void SetForce(std::string_view rootBoneName,
+    /// @note チェーンに掛かる外力。重力の口をそのまま向きと強さで使う。
+
+    /// @note 磁力のように毎フレーム向きが変わる力はここへ書く。power が 0 なら向きは無視される。
+    FBZZ_ENGINE_API void SetForce(std::string_view rootBoneName,
                   const math::Vector3& direction,
                   float power) const;
-    void ClearForce(std::string_view rootBoneName) const;
+    FBZZ_ENGINE_API void ClearForce(std::string_view rootBoneName) const;
 
-    /// 全チェーンを静止姿勢へ戻す。ワープや状態の切り替えで慣性を捨てたいときに使う。
-    void ResetAll() const;
+    /// @note 全チェーンを静止姿勢へ戻す。ワープや状態の切り替えで慣性を捨てたいときに使う。
+    FBZZ_ENGINE_API void ResetAll() const;
 
-    void SetEnabled(bool enabled) const;
-    [[nodiscard]] bool IsEnabled() const;
+    FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
+    [[nodiscard]] FBZZ_ENGINE_API bool IsEnabled() const;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <array>
 #include <cstdint>
@@ -97,8 +98,8 @@ struct GpuGeometryDispatch {
 /// @note CPU への結果読み戻しは行わない。LOD の投影密度は任意メッシュの幾何誤差を保証しない。
 class GpuGeometrySelection {
 public:
-    GpuGeometrySelection();
-    ~GpuGeometrySelection();
+    FBZZ_GRAPHICS_API GpuGeometrySelection();
+    FBZZ_GRAPHICS_API ~GpuGeometrySelection();
     GpuGeometrySelection(const GpuGeometrySelection&) = delete;
     GpuGeometrySelection& operator=(const GpuGeometrySelection&) = delete;
 
@@ -109,12 +110,12 @@ public:
     /// @param vertexCapacityElements 共有 vertex buffer の有効 vertex 数。
     /// @param out 成功時だけ更新する Dispatch 出力。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/indirect-drawing - ExecuteIndirect argument records.
-    [[nodiscard]] bool Prepare(IRenderer& renderer, ResourceManager& resources,
+    [[nodiscard]] FBZZ_GRAPHICS_API bool Prepare(IRenderer& renderer, ResourceManager& resources,
         const GpuGeometrySelectionView& view, std::span<const GpuGeometryCandidate> candidates,
         uint32_t indexCapacityElements, uint32_t vertexCapacityElements, GpuGeometryDispatch& out);
 
     /// @brief service が保持する GPU buffer pool を解放する。
-    void Release(ResourceManager& resources);
+    FBZZ_GRAPHICS_API void Release(ResourceManager& resources);
 
 private:
     struct State;

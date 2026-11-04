@@ -7,5 +7,6 @@
 namespace fbzz::scene {
 using renderer::BuildGeometryPreparation;
 using renderer::BuildGeometryPipeline;
+using renderer::BuildGeometryTransparency;
 using renderer::BuildWaterComposition;
 }

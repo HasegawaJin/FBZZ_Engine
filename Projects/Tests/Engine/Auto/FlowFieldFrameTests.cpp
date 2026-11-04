@@ -2,10 +2,11 @@
 /// @brief   Scene の «流れ» フレームキャッシュが、フレームごとに 1 回だけ集め直すこと。
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
-///
+
 /// @brief 収集を 1 か所へ畳んだ目的は «同じフレーム内では誰が引いても同じ値» にすること。
 /// @brief 同じフレームで集め直すと、CPU 粒子と GPU 粒子と描画パスが別々の場を見る余地が戻る。
 /// @brief 逆にフレームが進んでも集め直さないと、動く力場が 1 フレーム古いまま凍る。
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
@@ -35,7 +36,7 @@ scene::GameObject& AddUniformField(scene::Scene& scene, const char* name, float 
     return go;
 }
 
-} // namespace
+} /// @note namespace
 
 class FlowFieldFrameTest : public testkit::EngineFixture {};
 
@@ -115,7 +116,7 @@ TEST_F(FlowFieldFrameTest, TheAmbientFlowIsAlsoAFieldParticlesCanSample)
 TEST_F(FlowFieldFrameTest, SceneFieldsPrecedeTheAmbientFlow)
 {
     /// @note 環境風を AmbientWind で受ける消費者 (繊維) は、先頭 sceneFieldCount 本だけを場として読む。
-    ///       境界がずれると環境風を二重に受けるか、置いた場を取りこぼす。
+    /// @note 境界がずれると環境風を二重に受けるか、置いた場を取りこぼす。
     scene::Scene scene;
     AddUniformField(scene, "Local", 2.0f);
     scene::SceneEnvironment& environment = scene.Environment();
@@ -140,7 +141,7 @@ TEST_F(FlowFieldFrameTest, SceneFieldsPrecedeTheAmbientFlow)
 TEST_F(FlowFieldFrameTest, APointOutsideEveryRadiusIsNotCovered)
 {
     /// @note «場が無い» は «流速 0 の静止した空気» ではない。ここを覆いとして数えると、
-    ///       場を 1 つ置いただけで半径の外の粒子まで一斉に減速する。
+    /// @note 場を 1 つ置いただけで半径の外の粒子まで一斉に減速する。
     scene::Scene scene;
     scene::GameObject& go = scene.CreateGameObject("Local Swirl");
     scene::FlowFieldSettings local;
@@ -165,4 +166,4 @@ TEST_F(FlowFieldFrameTest, APointOutsideEveryRadiusIsNotCovered)
     EXPECT_VEC3_NEAR(velocity, math::Vector3(10.0f, 0.0f, 0.0f), testkit::kTolerance);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

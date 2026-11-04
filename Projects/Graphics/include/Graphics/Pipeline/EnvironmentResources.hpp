@@ -10,6 +10,7 @@
 /// @note 要する永続状態のため、OcclusionCuller と同じく非 System ヘルパーとして持つ。
 /// @see Docs/design/water-waves.md 空反射と雲の捕捉キャッシュ
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/ResourceHandle.hpp>
 #include <Graphics/Renderer/ProbeCaptureBudget.hpp>
@@ -44,9 +45,9 @@ public:
         math::Vector3 capturePosition = math::Vector3::ZERO;
 
         /// @note 大気・照明の設定を比較する。太陽方向は ConsumeDirty の角度閾値で間引く。
-        bool AtmosphereApproxEquals(const SkySignature& o, float eps = 1.0e-4f) const;
+        FBZZ_GRAPHICS_API bool AtmosphereApproxEquals(const SkySignature& o, float eps = 1.0e-4f) const;
         /// @note 雲時刻だけを除き、主ビューと同じ密度・照明設定を比較する。
-        bool CloudApproxEquals(const SkySignature& o, float eps = 1.0e-4f) const;
+        FBZZ_GRAPHICS_API bool CloudApproxEquals(const SkySignature& o, float eps = 1.0e-4f) const;
     };
 
     /// @name ベイク結果ハンドル (空連動)
@@ -78,7 +79,7 @@ public:
     /// @param currentTimeSeconds 単調な実時間の経過秒。停止中の編集とカメラ移動も更新できること。
     /// @param frameStamp ResourceManager の描画フレーム。0 はフレーム単位の抑制を行わない。
     /// @note 全ビューで環境 1 個を共有し、雲の時間・捕捉位置だけの更新は最大 2 Hz、同一フレームは一度まで。
-    bool ConsumeDirty(const SkySignature& current, float currentTimeSeconds, uint64_t frameStamp = 0);
+    FBZZ_GRAPHICS_API bool ConsumeDirty(const SkySignature& current, float currentTimeSeconds, uint64_t frameStamp = 0);
 
     /// @note 解像度変更・テクスチャ破棄後に次の描画フレームで必ず再捕捉する。
     void MarkDirty() { m_forceDirty = true; }

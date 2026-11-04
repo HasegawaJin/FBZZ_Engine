@@ -192,6 +192,15 @@ float DynamicFontSource::GetKerning(char32_t previous, char32_t next) const
     return static_cast<float>(kern) * m_impl->scale;
 }
 
+/// @see https://github.com/nothings/stb/blob/master/stb_truetype.h stbtt_GetCodepointHMetrics: advance はフォント単位で取得する。
+float DynamicFontSource::GetAdvance(char32_t code) const
+{
+    if (!m_impl->valid) return 0.0f;
+    int advance = 0, bearing = 0;
+    stbtt_GetCodepointHMetrics(&m_impl->font, static_cast<int>(code), &advance, &bearing);
+    return static_cast<float>(advance) * m_impl->scale;
+}
+
 bool DynamicFontSource::AddGlyphs(const std::vector<char32_t>&             codePoints,
                                   std::unordered_map<char32_t, FontGlyph>& glyphTable,
                                   std::vector<ResourceHandle<TextureTag>>& pages,

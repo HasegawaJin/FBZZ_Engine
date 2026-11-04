@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2025-01-01
 #pragma once
+#include <Engine/Api.hpp>
 #include "IAudioDevice.hpp"
 #include <xaudio2.h>
 #include <wrl/client.h>
@@ -21,31 +22,31 @@ class XAudio2Stream;
 class XAudio2Device : public IAudioDevice
 {
 public:
-    XAudio2Device();
-    ~XAudio2Device() override;
-    bool Init()     override;
-    void Shutdown() override;
+    FBZZ_ENGINE_API XAudio2Device();
+    FBZZ_ENGINE_API ~XAudio2Device() override;
+    FBZZ_ENGINE_API bool Init()     override;
+    FBZZ_ENGINE_API void Shutdown() override;
 
-    bool RebuildBuses(const BusDesc* descs, size_t count) override;
-    void SetBusVolume(BusIndex bus, float volume) override;
-    void SetBusLowPass(BusIndex bus, float normalizedCutoff) override;
-    void SetBusReverb(BusIndex bus, float wet,
+    FBZZ_ENGINE_API bool RebuildBuses(const BusDesc* descs, size_t count) override;
+    FBZZ_ENGINE_API void SetBusVolume(BusIndex bus, float volume) override;
+    FBZZ_ENGINE_API void SetBusLowPass(BusIndex bus, float normalizedCutoff) override;
+    FBZZ_ENGINE_API void SetBusReverb(BusIndex bus, float wet,
                       float decaySeconds, float highFrequencyRatio) override;
 
-    [[nodiscard]] uint32_t PlayBuffer(
+    [[nodiscard]] FBZZ_ENGINE_API uint32_t PlayBuffer(
         const void* pcmData, size_t bytes,
         const WaveFormat& fmt, bool loop, BusIndex bus) override;
-    [[nodiscard]] uint32_t PlayStream(const std::string& path, bool loop, BusIndex bus) override;
+    [[nodiscard]] FBZZ_ENGINE_API uint32_t PlayStream(const std::string& path, bool loop, BusIndex bus) override;
 
-    void StopBuffer(uint32_t voiceId)             override;
-    void PauseBuffer(uint32_t voiceId)            override;
-    void ResumeBuffer(uint32_t voiceId)           override;
-    void SetVolume(uint32_t voiceId, float volume) override;
-    void SetPitch(uint32_t voiceId, float pitch) override;
-    void SetPan(uint32_t voiceId, float pan) override;
-    void SetSend(uint32_t voiceId, BusIndex bus, float level) override;
-    void SetLowPass(uint32_t voiceId, float normalizedCutoff) override;
-    [[nodiscard]] bool IsPlaying(uint32_t voiceId) override;
+    FBZZ_ENGINE_API void StopBuffer(uint32_t voiceId)             override;
+    FBZZ_ENGINE_API void PauseBuffer(uint32_t voiceId)            override;
+    FBZZ_ENGINE_API void ResumeBuffer(uint32_t voiceId)           override;
+    FBZZ_ENGINE_API void SetVolume(uint32_t voiceId, float volume) override;
+    FBZZ_ENGINE_API void SetPitch(uint32_t voiceId, float pitch) override;
+    FBZZ_ENGINE_API void SetPan(uint32_t voiceId, float pan) override;
+    FBZZ_ENGINE_API void SetSend(uint32_t voiceId, BusIndex bus, float level) override;
+    FBZZ_ENGINE_API void SetLowPass(uint32_t voiceId, float normalizedCutoff) override;
+    [[nodiscard]] FBZZ_ENGINE_API bool IsPlaying(uint32_t voiceId) override;
 
 private:
     /// @note 鳴り終わった voice を «畳まずに» プールへ戻すための鍵。
@@ -94,15 +95,15 @@ private:
     };
 
     /// @note 鳴り終わった voice をプールへ戻す (溢れていれば畳む)。
-    void RecycleVoice(const VoiceEntry& entry);
-    void ApplyOutputMatrices(VoiceEntry& entry);
+    FBZZ_ENGINE_API void RecycleVoice(const VoiceEntry& entry);
+    FBZZ_ENGINE_API void ApplyOutputMatrices(VoiceEntry& entry);
     /// @note 同じ形式・同じ送り先の voice をプールから取る。無ければ nullptr。
-    [[nodiscard]] IXAudio2SourceVoice* TakePooledVoice(const VoiceKey& key);
+    [[nodiscard]] FBZZ_ENGINE_API IXAudio2SourceVoice* TakePooledVoice(const VoiceKey& key);
 
-    void PurgeFinishedVoices();
-    void DestroyAllSourceVoices();
-    void DestroyBuses();
-    [[nodiscard]] IXAudio2Voice* BusVoice(BusIndex bus) const;
+    FBZZ_ENGINE_API void PurgeFinishedVoices();
+    FBZZ_ENGINE_API void DestroyAllSourceVoices();
+    FBZZ_ENGINE_API void DestroyBuses();
+    [[nodiscard]] FBZZ_ENGINE_API IXAudio2Voice* BusVoice(BusIndex bus) const;
 
     Microsoft::WRL::ComPtr<IXAudio2> m_xaudio2;
     IXAudio2MasteringVoice*          m_masterVoice = nullptr;

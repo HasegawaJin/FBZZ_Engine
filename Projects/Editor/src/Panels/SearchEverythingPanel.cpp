@@ -67,10 +67,9 @@ void SearchEverythingPanel::OnRenderContent(EditorContext& ctx)
                 if (!go) continue;
                 ImGui::PushID(go);
                 if (ImGui::Selectable(go->name.c_str())) {
-                    SelectEntity(ctx, go->GetID());
-                    ctx.focusTargetPosition    = go->transform.worldPosition;
-                    ctx.focusTargetRadius      = 0.0f;
-                    ctx.requestFocusOnSelected = true;
+                    OpArgs args;
+                    args.Set("node", go->instanceId);
+                    InvokeOperator(ctx, "search.focus_object", args);
                 }
                 ImGui::PopID();
             }

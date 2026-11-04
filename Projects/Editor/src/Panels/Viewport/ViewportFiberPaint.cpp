@@ -2,6 +2,7 @@
 /// @brief   草の追加、表面ブラシとストローク単位の確定を Scene View へ提供する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
+#include <Engine/Scene/Components/MeshRenderer.hpp>
 #include "ViewportCommon.hpp"
 #include <Editor/Tools/FiberPaintTool.hpp>
 #include <Editor/Op/EditorOperator.hpp>

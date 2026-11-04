@@ -2,21 +2,23 @@
 /// @brief   Reflect() 経由へ畳んだコンポーネントが、旧シーンと同じキーを書き続けることを検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
-///
-/// SceneSerializer は 57 種類のコンポーネントを手書きで読み書きしていた。その大半は
-/// 既に Reflect() を持っており、同じフィールド表が «保存側・読み込み側・Reflect()» の
-/// 3 か所に分かれている状態だった。ParticleEmitter では実際に 44 フィールドがずれていた。
-///
-/// 畳むときの唯一にして最大の危険は **キー名の食い違い**。1 つでも違うと、
-/// そのフィールドだけ «保存はされるのに開くと既定値» になる。エラーも警告も出ない。
-///
-/// ここに並ぶキー一覧は、**畳む前の手書きコードから機械的に抜き出したもの** ——
-/// つまり «既に出荷されている .scene ファイルの中に実在するキー名» そのもの。
-/// Reflect() でキーを改名すると、既存シーンのその項目が孤児になる。
-/// このテストはそれを «改名した瞬間» に落とす。
-///
+
+/// @note SceneSerializer は 57 種類のコンポーネントを手書きで読み書きしていた。その大半は
+/// @note 既に Reflect() を持っており、同じフィールド表が «保存側・読み込み側・Reflect()» の
+/// @note 3 か所に分かれている状態だった。ParticleEmitter では実際に 44 フィールドがずれていた。
+
+/// @note 畳むときの唯一にして最大の危険は **キー名の食い違い**。1 つでも違うと、
+/// @note そのフィールドだけ «保存はされるのに開くと既定値» になる。エラーも警告も出ない。
+
+/// @note ここに並ぶキー一覧は、**畳む前の手書きコードから機械的に抜き出したもの** ——
+/// @note つまり «既に出荷されている .scene ファイルの中に実在するキー名» そのもの。
+/// @note Reflect() でキーを改名すると、既存シーンのその項目が孤児になる。
+/// @note このテストはそれを «改名した瞬間» に落とす。
+
 /// @note 項目を **足す** ぶんには落ちない (kExpectedKeys に無いキーは «新規» として許す)。
-///       落ちるのは «消えた / 名前が変わった» ときだけ。既存データを壊すのはそちらだけなので。
+/// @note 落ちるのは «消えた / 名前が変わった» ときだけ。既存データを壊すのはそちらだけなので。
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
@@ -75,12 +77,12 @@ std::string Join(const std::set<std::string>& keys)
     return joined.empty() ? "(なし)" : joined;
 }
 
-} // namespace
+} /// @note namespace
 
 class ComponentReflectionParityTest : public testkit::EngineFixture {
 protected:
-    /// component を 1 個だけ付けた GameObject をシーンとして保存し、そのテーブルを返す。
-    /// 実際の保存経路を通すので、«畳んだ呼び出しを消してしまった» もここで落ちる。
+    /// @note component を 1 個だけ付けた GameObject をシーンとして保存し、そのテーブルを返す。
+    /// @note 実際の保存経路を通すので、«畳んだ呼び出しを消してしまった» もここで落ちる。
     template<class T>
     toml::table SavedTable(const char* componentKey, const T& value)
     {
@@ -111,7 +113,7 @@ protected:
         return componentTable != nullptr ? *componentTable : toml::table{};
     }
 
-    /// 出荷済みシーンに実在するキーが、今も全部書かれていることを確かめる。
+    /// @note 出荷済みシーンに実在するキーが、今も全部書かれていることを確かめる。
     template<class T>
     void ExpectKeysStillWritten(const char* componentKey,
                                 const std::vector<const char*>& expectedKeys,
@@ -131,7 +133,7 @@ protected:
 };
 
 /// @name 畳み済みコンポーネント
-/// キー一覧は畳む前の手書きコードから抜き出した「出荷済みシーンにあるキー名」。
+/// @note キー一覧は畳む前の手書きコードから抜き出した「出荷済みシーンにあるキー名」。
 
 TEST_F(ComponentReflectionParityTest, LightKeepsItsSceneKeys)
 {
@@ -166,7 +168,7 @@ TEST_F(ComponentReflectionParityTest, NavMeshSensorKeepsItsSceneKeys)
 TEST_F(ComponentReflectionParityTest, FlowFieldWritesItsFlowList)
 {
     /// @note 場は 2026-09-11 に «1 本» から «リスト» になり、2026-09-16 に FlowField へ改名した。
-    ///       保存の外枠は forces 1 キーで、中身は ParticleEmitter::localForces と同じ形。
+    /// @note 保存の外枠は forces 1 キーで、中身は ParticleEmitter::localForces と同じ形。
     scene::FlowField field{};
     scene::FlowFieldSettings uniform;
     uniform.fieldType = scene::FlowFieldType::Uniform;
@@ -212,9 +214,9 @@ TEST_F(ComponentReflectionParityTest, TrailKeepsItsSceneKeys)
 TEST_F(ComponentReflectionParityTest, VolumeKeepsItsSceneKeys)
 {
     /// @note buoyancy / drag は «意図して消した» キー。前者は VolumeType::Buoyancy ごと
-    ///       WaterComponent へ移り (buoyancy.md)、後者はどの VolumeType も読んでいない
-    ///       死んだノブだった (flow-field.md)。消したキーはここからも外す ── 残すと
-    ///       «改名を捕まえる網» が «廃止を禁じる鎖» になる。
+    /// @note WaterComponent へ移り (buoyancy.md)、後者はどの VolumeType も読んでいない
+    /// @note 死んだノブだった (flow-field.md)。消したキーはここからも外す ── 残すと
+    /// @note «改名を捕まえる網» が «廃止を禁じる鎖» になる。
     ExpectKeysStillWritten<scene::VolumeComponent>("VolumeComponent",
         { "duration", "elapsed", "enabled", "explosionImpulse", "gravity",
           "inwardStrength", "liftStrength", "magneticField", "swirlStrength", "timeScale",
@@ -267,7 +269,7 @@ TEST_F(ComponentReflectionParityTest, RagdollKeepsItsSceneKeys)
 TEST_F(ComponentReflectionParityTest, NavMeshOffMeshLinkKeepsItsSceneKeys)
 {
     /// @note enabled は保存されていたのに Reflect に無く、AI バスから見えなかった。
-    ///       畳むにあたって Reflect へ足したので、ここで «消えていない» ことを押さえる。
+    /// @note 畳むにあたって Reflect へ足したので、ここで «消えていない» ことを押さえる。
     ExpectKeysStillWritten<scene::NavMeshOffMeshLinkComponent>("NavMeshOffMeshLinkComponent",
         { "activated", "agentTypeMask", "bidirectional", "enabled", "endPoint", "startPoint",
           "traversalTime" });
@@ -283,8 +285,8 @@ TEST_F(ComponentReflectionParityTest, MeshTrailKeepsItsSceneKeys)
 }
 
 /// @name 往復
-/// キーが揃っていても «値が落ちない» は別の話。畳んだ経路が実際に値を運ぶことを
-/// 通しで確かめる (キー名は上で全件見ているので、ここは代表 1 つでよい)。
+/// @note キーが揃っていても «値が落ちない» は別の話。畳んだ経路が実際に値を運ぶことを
+/// @note 通しで確かめる (キー名は上で全件見ているので、ここは代表 1 つでよい)。
 
 TEST_F(ComponentReflectionParityTest, AFoldedComponentKeepsItsValues)
 {
@@ -318,7 +320,7 @@ TEST_F(ComponentReflectionParityTest, AFoldedComponentKeepsItsValues)
 }
 
 /// @note Light Probe Volume は設定だけを運ぶ。焼いた結果と焼きの要求はランタイム値で、
-///       読み直したシーンは «未ベイク» から自動で焼き直す (古い GPU ハンドルを復元しない)。
+/// @note 読み直したシーンは «未ベイク» から自動で焼き直す (古い GPU ハンドルを復元しない)。
 TEST_F(ComponentReflectionParityTest, LightProbeVolumeKeepsSettingsButNotBakeState)
 {
     scene::Scene source;
@@ -376,7 +378,7 @@ TEST_F(ComponentReflectionParityTest, LightProbeVolumeClampsItsGrid)
 TEST_F(ComponentReflectionParityTest, LegacyWindZoneBecomesAmbientWindForces)
 {
     /// @note 旧 WindZoneComponent を持つシーンを «手で組んだ TOML» として読ませる。
-    ///       捨てると既存シーンの風が黙って止まる (しかも «風が弱い» と区別が付かない)。
+    /// @note 捨てると既存シーンの風が黙って止まる (しかも «風が弱い» と区別が付かない)。
     const std::string legacy = R"(
 [[gameobjects]]
 name = "Wind Zone"
@@ -398,7 +400,7 @@ pulseFrequency = 3.0
     ASSERT_NE(object, nullptr);
 
     /// @note 環境風は GameObject ではなくシーン設定へ移る。«どれが環境風か» が並び順で
-    ///       決まる状態をやめるのがこの移行の目的なので、場としては残さない。
+    /// @note 決まる状態をやめるのがこの移行の目的なので、場としては残さない。
     EXPECT_EQ(object->GetComponent<scene::FlowField>(), nullptr);
 
     const scene::SceneEnvironment& environment = loaded->Environment();
@@ -416,7 +418,7 @@ pulseFrequency = 3.0
 TEST_F(ComponentReflectionParityTest, TheLegacyForceFieldKeyIsStillRead)
 {
     /// @note 型は ParticleForceField → ForceField → FlowField と変わり、そのたび保存キーも変わった。
-    ///       出荷済みシーンは旧キーで書かれている。読めなくなると場が丸ごと消える。
+    /// @note 出荷済みシーンは旧キーで書かれている。読めなくなると場が丸ごと消える。
     const std::string legacy = R"(
 [[gameobjects]]
 name = "Old Field"
@@ -477,7 +479,7 @@ direction = [0.0, 1.0, 0.0]
 TEST_F(ComponentReflectionParityTest, LegacyGlobalWindBecomesTheSceneEnvironment)
 {
     /// @note [environment] を持たないシーンでは «半径 0 の Uniform (+ Curl)» が環境風だった。
-    ///       残したままにすると環境流と局所の場で二重に掛かる。
+    /// @note 残したままにすると環境流と局所の場で二重に掛かる。
     const std::string legacy = R"(
 [[gameobjects]]
 name = "Air"
@@ -528,9 +530,9 @@ TEST_F(ComponentReflectionParityTest, TheSceneEnvironmentSurvivesTheRoundTrip)
     EXPECT_NEAR(restored.pulseFrequency, 2.5f, testkit::kTolerance);
 }
 
-/// キー名が合っていても «値の書き方» が変わると同じように黙って壊れる。
-/// LightComponent::type は手書き時代だけ文字列で、Reflect() は他の enum と同じ int を読む。
-/// 移行が抜けると Spot も Tube も既定値の Directional に落ち、次の保存で書き戻されて消える。
+/// @note キー名が合っていても «値の書き方» が変わると同じように黙って壊れる。
+/// @note LightComponent::type は手書き時代だけ文字列で、Reflect() は他の enum と同じ int を読む。
+/// @note 移行が抜けると Spot も Tube も既定値の Directional に落ち、次の保存で書き戻されて消える。
 TEST_F(ComponentReflectionParityTest, LegacyStringLightTypeSurvivesLoad)
 {
     const std::string legacy = R"(
@@ -586,4 +588,4 @@ outerCone = 45.0
     EXPECT_NEAR(light->outerCone, 45.0f, testkit::kTolerance);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

@@ -1481,6 +1481,11 @@ static void DrawTransitionEditor(EditorContext& ctx,
 /// @note パネル側でも 1 つ作っており、パン・ズーム・選択が二重に存在していた。
 void AnimationGraphPanel::OnInit(EditorContext&) { m_graphCanvas.CreateContexts(); }
 
+void AnimationGraphPanel::OnRegisterOperators(OperatorRegistry& registry)
+{
+    m_graphCanvas.RegisterViewOperators(registry, "animation.graph.view", &m_canvasZoom);
+}
+
 void AnimationGraphPanel::OnShutdown() { m_graphCanvas.DestroyContexts(); }
 
 /// @name 選択の同一性 (名前が権威 / 添字は派生値)

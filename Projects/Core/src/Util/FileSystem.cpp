@@ -5,6 +5,7 @@
 /// @note 存在確認、列挙、読み書き、ディレクトリ作成をまとめる。
 /// @note 失敗は bool や空配列で返し、例外は使わない。
 #include <Core/Util/FileSystem.hpp>
+#include <Core/Util/AtomicFileReplace.hpp>
 #include <Core/Util/StringUtils.hpp>
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -26,6 +27,8 @@
 #include <atomic>
 #include <cctype>
 #include <cstdint>
+#include <cstddef>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -64,6 +67,37 @@ std::string WideToUtf8(const std::wstring& w)
 } /// @note namespace
 
 namespace fbzz::util {
+
+std::error_code ReplaceFileAtomic(const std::filesystem::path& temporary, const std::filesystem::path& target)
+{
+    std::error_code error;
+    const auto absoluteTarget = std::filesystem::absolute(target, error);
+    if (error) return error;
+    const auto& name = absoluteTarget.native();
+    if (name.size() > (MAXDWORD - sizeof(FILE_RENAME_INFO) - sizeof(wchar_t)) / sizeof(wchar_t))
+        return {ERROR_FILENAME_EXCED_RANGE, std::system_category()};
+    FILE_RENAME_INFO rename{};
+    rename.Flags = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
+    rename.FileNameLength = static_cast<DWORD>(name.size() * sizeof(wchar_t));
+    std::vector<uint8_t> bytes(sizeof(rename) + rename.FileNameLength + sizeof(wchar_t), 0);
+    std::memcpy(bytes.data(), &rename, sizeof(rename));
+    std::memcpy(bytes.data() + offsetof(FILE_RENAME_INFO, FileName), name.data(), rename.FileNameLength);
+    const HANDLE source = ::CreateFileW(temporary.c_str(), DELETE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (source == INVALID_HANDLE_VALUE)
+        return {static_cast<int>(::GetLastError()), std::system_category()};
+    /// @note 削除共有された読み手を保持したまま、対象名を新しいファイルへ切り替える。
+    /// @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information FILE_RENAME_POSIX_SEMANTICS.
+    const BOOL replaced = ::SetFileInformationByHandle(source, FileRenameInfoEx, bytes.data(), static_cast<DWORD>(bytes.size()));
+    const DWORD code = replaced ? ERROR_SUCCESS : ::GetLastError();
+    ::CloseHandle(source);
+    if (replaced) return {};
+    if (code == ERROR_INVALID_PARAMETER || code == ERROR_NOT_SUPPORTED || code == ERROR_INVALID_FUNCTION) {
+        std::filesystem::rename(temporary, target, error);
+        return error;
+    }
+    return {static_cast<int>(code), std::system_category()};
+}
 
 bool FileSystem::Exists(const std::string& path)
 {
@@ -327,8 +361,13 @@ bool FileSystem::WriteText(const std::string& path, const std::string& text)
 
 bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& text)
 {
+    return WriteBinaryAtomic(PathFromUtf8(path), text.data(), text.size());
+}
+
+bool FileSystem::WriteBinaryAtomic(const std::filesystem::path& input, const void* data, size_t size)
+{
+    if (!data && size > 0) return false;
     std::error_code error;
-    const auto input = PathFromUtf8(path);
     if (input.empty()) return false;
     const auto target = std::filesystem::absolute(input, error).lexically_normal();
     if (error || !EnsureParentDirectory(target)) return false;
@@ -354,10 +393,10 @@ bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& tex
     if (file == INVALID_HANDLE_VALUE) return false;
     bool success = true;
     size_t offset = 0;
-    while (offset < text.size()) {
-        const DWORD count = static_cast<DWORD>(std::min<size_t>(text.size() - offset, 1024U * 1024U));
+    while (offset < size) {
+        const DWORD count = static_cast<DWORD>(std::min<size_t>(size - offset, 1024U * 1024U));
         DWORD written = 0;
-        if (!::WriteFile(file, text.data() + offset, count, &written, nullptr) || !written) { success = false; break; }
+        if (!::WriteFile(file, static_cast<const char*>(data) + offset, count, &written, nullptr) || !written) { success = false; break; }
         offset += written;
     }
     if (success) success = ::FlushFileBuffers(file) != FALSE;

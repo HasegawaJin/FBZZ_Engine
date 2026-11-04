@@ -2,6 +2,7 @@
 /// @brief   Line の色付き帯・筒と Sprite の atlas 内 nine-slice を生成する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-06
+#include <Engine/Scene/Components/PresentationComponents.hpp>
 #include <Engine/Scene/Systems/PresentationGeometry.hpp>
 #include <algorithm>
 #include <array>

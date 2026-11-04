@@ -3,42 +3,42 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-25
 ///
-/// EnvironmentLightComponent と同じ「シーンに 1 つ」パターン。
-/// 複数ある場合は最初の有効な 1 つを使う。
+/// @note EnvironmentLightComponent と同じ「シーンに 1 つ」パターン。
+/// @note 複数ある場合は最初の有効な 1 つを使う。
 #pragma once
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 
 namespace fbzz::scene {
 
 struct WeatherComponent {
     bool enabled = true;
 
-    /// 降雨量 [0, 1]。雨パーティクルの発生量と、下の wetness の到達点を決める。
+    /// @note 降雨量 [0, 1]。雨パーティクルの発生量と、下の wetness の到達点を決める。
     float rainIntensity = 0.0f;
 
-    /// rainIntensity から wetness を時間積分するか。
+    /// @note rainIntensity から wetness を時間積分するか。
     /// @note 雨が降った «あと» に地面が濡れるのが天候で、雨脚と濡れが同じフレームで立ち上がると
-    ///       書き割りに見える。手付けでカーブを作るときは切って wetness を直接書く。
+    /// @note 書き割りに見える。手付けでカーブを作るときは切って wetness を直接書く。
     bool autoWetness = true;
 
-    /// 乾いた状態から rainIntensity ぶんまで濡れるのに要する秒数。
+    /// @note 乾いた状態から rainIntensity ぶんまで濡れるのに要する秒数。
     float wetDuration = 8.0f;
-    /// 雨が止んでから乾ききるまでの秒数。乾く方が遅いのが自然。
+    /// @note 雨が止んでから乾ききるまでの秒数。乾く方が遅いのが自然。
     float dryDuration = 30.0f;
 
-    /// 濡れ量 [0, 1]。autoWetness が有効な間は WeatherSystem が毎フレーム書く。
+    /// @note 濡れ量 [0, 1]。autoWetness が有効な間は WeatherSystem が毎フレーム書く。
     float wetness = 0.0f;
 
-    /// 濡れによる albedo の減衰 [0, 1]。多孔質な表面が水を吸って暗くなる量。
+    /// @note 濡れによる albedo の減衰 [0, 1]。多孔質な表面が水を吸って暗くなる量。
     float darkening = 0.55f;
 
-    /// 水平な面に水が溜まる量 [0, 1]。上向きの面ほど強く効く。
+    /// @note 水平な面に水が溜まる量 [0, 1]。上向きの面ほど強く効く。
     float puddleAmount = 0.6f;
 
-    /// rainIntensity = 1 のときの雨粒の発生量 [個/秒]。WeatherSystem がこの GameObject と
-    /// その子の ParticleEmitter へ rainEmitRate * rainIntensity を毎フレーム書く。
+    /// @note rainIntensity = 1 のときの雨粒の発生量 [個/秒]。WeatherSystem がこの GameObject と
+    /// @note その子の ParticleEmitter へ rainEmitRate * rainIntensity を毎フレーム書く。
     /// @note emitRate を倍率で触ると元の値の退避が要り、Play/Stop や DLL リロードを挟むと
-    ///       «だんだん弱くなる雨» になる。正本をここ 1 か所にすれば同じ値へ落ち着く。
+    /// @note «だんだん弱くなる雨» になる。正本をここ 1 か所にすれば同じ値へ落ち着く。
     float rainEmitRate = 4000.0f;
 
     const char* GetTypeName() const { return "Weather"; }
@@ -66,4 +66,4 @@ struct WeatherComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

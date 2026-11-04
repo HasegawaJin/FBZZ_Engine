@@ -10,8 +10,8 @@ namespace fbzz::physics
 {
     namespace
     {
-        /// 一般化逆質量の和がこれを下回る = 双方が動けない。ここで打ち切らないと
-        /// 0 除算で NaN が姿勢へ入り、以降のフレームが全部壊れる。
+        /// @note 一般化逆質量の和がこれを下回る = 双方が動けない。ここで打ち切らないと
+        /// @note 0 除算で NaN が姿勢へ入り、以降のフレームが全部壊れる。
         constexpr float kMinInverseMass = 1e-9f;
         constexpr float kMinViolation   = 1e-9f;
 
@@ -37,21 +37,25 @@ namespace fbzz::physics
             if (angular.LengthSq() > 0.0f)
                 body->SetRotation(IntegrateRotation(body->GetRotation(), angular, 1.0f));
         }
-    } // namespace
+    } /// @note namespace
 
     math::Quaternion IntegrateRotation(const math::Quaternion& q,
                                        const math::Vector3&    angular,
                                        float                   h)
     {
         /// @note q_dot = 0.5 * [ω, 0] * q。RigidBody::Integrate と同じ形にしてある。
+        /// @note 線形化した角度補正を 0.5 rad 内へ収め、小慣性部位の単発補正で半回転する不安定化を防ぐ。
+        /// @see https://github.com/matthias-research/pages/blob/master/challenges/PBD.js Body.applyRotation の回転増分制限。
+        const double angle = std::hypot(static_cast<double>(angular.x),
+            static_cast<double>(angular.y), static_cast<double>(angular.z)) * std::abs(static_cast<double>(h));
+        const float scale = 0.5f * h * static_cast<float>(angle > 0.5 ? 0.5 / angle : 1.0);
         const math::Quaternion spin =
-            math::Quaternion{ angular.x, angular.y, angular.z, 0.0f } * q;
-        const float s = 0.5f * h;
+            math::Quaternion{ angular.x * scale, angular.y * scale, angular.z * scale, 0.0f } * q;
         return math::Quaternion{
-            q.x + spin.x * s,
-            q.y + spin.y * s,
-            q.z + spin.z * s,
-            q.w + spin.w * s
+            q.x + spin.x,
+            q.y + spin.y,
+            q.z + spin.z,
+            q.w + spin.w
         }.Normalized();
     }
 
@@ -213,10 +217,10 @@ namespace fbzz::physics
         /// @note ツイスト軸は関節フレームの X。q の X 成分と実部だけを残せばツイストになる。
         const float length = std::sqrt(q.x * q.x + q.w * q.w);
         /// @note 特異点: スイングが 180° に近いとツイスト成分が消え、向きが決められない。
-        ///       ここを 0 除算で通すと NaN が姿勢へ入って以降のフレームが全部壊れる。
+        /// @note ここを 0 除算で通すと NaN が姿勢へ入って以降のフレームが全部壊れる。
         twist = length <= kMinViolation
             ? math::Quaternion::Identity()
             : math::Quaternion{ q.x / length, 0.0f, 0.0f, q.w / length };
         swing = q * twist.Conjugate();
     }
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

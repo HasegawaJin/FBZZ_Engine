@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Math/Api.hpp>
 
 #include "Vector3.hpp"
 #include "Vector4.hpp"
@@ -22,25 +23,25 @@ struct Matrix4 {
     static Matrix4 Zero();
 
     static Matrix4 Translate(const Vector3& t);
-    static Matrix4 Rotate(const Quaternion& q);
+    FBZZ_MATH_API static Matrix4 Rotate(const Quaternion& q);
     static Matrix4 Scale(const Vector3& s);
-    static Matrix4 TRS(const Vector3& t, const Quaternion& r, const Vector3& s);
+    FBZZ_MATH_API static Matrix4 TRS(const Vector3& t, const Quaternion& r, const Vector3& s);
 
     /// @note DirectX 左手系。
-    static Matrix4 LookAt(const Vector3& eye, const Vector3& target, const Vector3& up);
+    FBZZ_MATH_API static Matrix4 LookAt(const Vector3& eye, const Vector3& target, const Vector3& up);
     /// @note DirectX 左手系。
-    static Matrix4 Perspective(float fovY, float aspect, float nearZ, float farZ);
+    FBZZ_MATH_API static Matrix4 Perspective(float fovY, float aspect, float nearZ, float farZ);
     /// @note DirectX 左手系。
-    static Matrix4 Orthographic(float left, float right,
+    FBZZ_MATH_API static Matrix4 Orthographic(float left, float right,
                                  float bottom, float top,
                                  float nearZ, float farZ);
     /// @brief Perspective の深度を反転した射影 (Reversed-Z)。near → 1、far → 0。
     /// @note 深度 1 付近で粗い float の刻みを遠景へ回さず、遠景の Z-fighting を抑える。
-    ///       1 - Perspective の深度を後から計算すると、その引き算で精度を失うため直接組む。
+    /// @note 1 - Perspective の深度を後から計算すると、その引き算で精度を失うため直接組む。
     /// @see https://developer.nvidia.com/content/depth-precision-visualized (NVIDIA, "Depth Precision Visualized")
-    static Matrix4 PerspectiveReversedZ(float fovY, float aspect, float nearZ, float farZ);
+    FBZZ_MATH_API static Matrix4 PerspectiveReversedZ(float fovY, float aspect, float nearZ, float farZ);
     /// @brief Orthographic の深度を反転した射影 (Reversed-Z)。near → 1、far → 0。
-    static Matrix4 OrthographicReversedZ(float left, float right,
+    FBZZ_MATH_API static Matrix4 OrthographicReversedZ(float left, float right,
                                          float bottom, float top,
                                          float nearZ, float farZ);
 
@@ -48,14 +49,14 @@ struct Matrix4 {
     Vector4 operator*(const Vector4& v)   const;
 
     static Matrix4 Transpose(const Matrix4& mat);
-    static Matrix4 Inverse(const Matrix4& mat);
+    FBZZ_MATH_API static Matrix4 Inverse(const Matrix4& mat);
 
     /// @brief 法線変換行列 (逆転置) をアフィン行列限定で安く求める。
     /// @return Transpose(Inverse(mat)) の左上 3x3 と同じ値。平行移動成分は寄与しないため残りは単位行列。
     /// @note 完全な 4x4 逆行列より安い。アフィン行列は左上 3x3 の余因子行列 1 回で足りる。
     /// @note シェーダーは float3x3 へキャストして使うため、左上 3x3 が一致していれば結果は変わらない。
     /// @note 退化行列 (行列式 0) では単位行列を返す。呼び出し側の分岐を不要にするため。
-    static Matrix4 InverseTransposeAffine(const Matrix4& mat);
+    FBZZ_MATH_API static Matrix4 InverseTransposeAffine(const Matrix4& mat);
 
     /// @brief 転置行列を返す。
     /// @note HLSL cbuffer は column-major で読むため、row-major な C++ 側の行列はこれで転置してからアップロードする。
@@ -137,4 +138,4 @@ inline Matrix4 Matrix4::Transpose(const Matrix4& mat) {
 
 inline Matrix4 Matrix4::Transposed() const { return Transpose(*this); }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

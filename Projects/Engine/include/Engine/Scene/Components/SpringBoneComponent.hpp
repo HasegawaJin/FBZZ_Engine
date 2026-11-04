@@ -4,7 +4,7 @@
 /// @date    2026-08-25
 #pragma once
 
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
 
@@ -43,7 +43,7 @@ struct SpringBoneNodeState {
 
     /// @brief 静止時に「先端」が向くボーンローカル方向。初期化時に 1 度だけ確定する。
     /// @note 毎フレーム取り直すと軸が揺れの結果へ追従し、戻ろうとする先が自分の現在位置になる。
-    ///       バネが復元力を失って発散するため、確定は初期化時の 1 回だけ。
+    /// @note バネが復元力を失って発散するため、確定は初期化時の 1 回だけ。
     math::Vector3 boneAxis   = math::Vector3::ZERO;
     float         boneLength = 0.0f;
 
@@ -81,7 +81,7 @@ struct SpringBoneChain {
 
     /// @brief 葉ボーンに与える仮想先端の長さ [m]。
     /// @note 揺れの回転は「ボーンから先端へのベクトル」で決まるが、葉ボーンには子が無く
-    ///       先端が取れない。0 にすると葉だけ揺れずに硬く残る。
+    /// @note 先端が取れない。0 にすると葉だけ揺れずに硬く残る。
     float leafTailLength = 0.03f;
 
     std::vector<SpringBoneNodeState> nodes;
@@ -112,7 +112,7 @@ struct SpringBoneComponent {
     const char* GetTypeName() const { return "Spring Bone"; }
 
     /// @note chains / colliders は可変長配列のため Reflect では出さない。IKSolverComponent と
-    ///       同じく Inspector 側が型別に描き、SceneSerializer が明示的に読み書きする。
+    /// @note 同じく Inspector 側が型別に描き、SceneSerializer が明示的に読み書きする。
     void Reflect(IReflector& r)
     {
         r.Field("enabled",               enabled);
@@ -121,4 +121,4 @@ struct SpringBoneComponent {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

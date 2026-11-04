@@ -4,6 +4,7 @@
 /// @date    2026-06-01
 /// @note BeginFrame/EndFrame のタイミングで Reset し、短命データをまとめて再利用する。
 #pragma once
+#include <Core/Api.hpp>
 
 #include "Core/Memory/LinearAllocator.hpp"
 
@@ -24,19 +25,19 @@ public:
     FrameAllocator(FrameAllocator&&) noexcept = default;
     FrameAllocator& operator=(FrameAllocator&&) noexcept = default;
 
-    [[nodiscard]] bool Initialize(std::size_t capacity);
-    void Shutdown();
+    [[nodiscard]] FBZZ_CORE_API bool Initialize(std::size_t capacity);
+    FBZZ_CORE_API void Shutdown();
 
-    void BeginFrame();
-    void EndFrame();
+    FBZZ_CORE_API void BeginFrame();
+    FBZZ_CORE_API void EndFrame();
 
-    [[nodiscard]] void* Allocate(std::size_t size,
+    [[nodiscard]] FBZZ_CORE_API void* Allocate(std::size_t size,
                                  std::size_t alignment = alignof(std::max_align_t)) override;
-    void Free(void* ptr) override;
-    void Reset() override;
+    FBZZ_CORE_API void Free(void* ptr) override;
+    FBZZ_CORE_API void Reset() override;
 
-    [[nodiscard]] bool Owns(const void* ptr) const override;
-    [[nodiscard]] MemoryStats GetStats() const override;
+    [[nodiscard]] FBZZ_CORE_API bool Owns(const void* ptr) const override;
+    [[nodiscard]] FBZZ_CORE_API MemoryStats GetStats() const override;
     [[nodiscard]] bool IsInitialized() const { return m_allocator.IsInitialized(); }
 
 private:

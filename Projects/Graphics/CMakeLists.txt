@@ -11,7 +11,7 @@ if(NOT FBZZ_ENABLE_DX12)
     list(FILTER GRAPHICS_SOURCES EXCLUDE REGEX "/Platform/DX12/")
 endif()
 add_library(FBZZGraphics SHARED ${GRAPHICS_SOURCES})
-set_target_properties(FBZZGraphics PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON EXPORT_NAME Graphics)
+set_target_properties(FBZZGraphics PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS OFF EXPORT_NAME Graphics)
 target_include_directories(FBZZGraphics
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
     PRIVATE "${DIRECTXTEX_INCLUDE}" "${CMAKE_SOURCE_DIR}/ThirdParty/Stb")

@@ -62,6 +62,11 @@ public:
     /// 診断一覧のように Info 行が出ない出所では、常に 0 のトグルを置かない。
     void SetInfoToggleVisible(bool visible) { m_infoToggle = visible; }
 
+    [[nodiscard]] const char* FilterText() const { return m_filter.data(); }
+    [[nodiscard]] bool SetFilterText(const std::string& text);
+    [[nodiscard]] bool ShowsSeverity(LogListSeverity severity) const { return m_show[static_cast<size_t>(severity)]; }
+    void SetShowSeverity(LogListSeverity severity, bool show) { m_show[static_cast<size_t>(severity)] = show; }
+
     bool autoScroll = true;
 
 private:
@@ -101,4 +106,4 @@ private:
     const char*                       m_emptyText = "No output.";
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

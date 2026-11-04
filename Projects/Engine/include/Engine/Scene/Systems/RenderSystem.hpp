@@ -5,6 +5,7 @@
 /// @note MeshRenderer / Light / Camera / Transform を集約し、IRenderer へ送信する。
 /// @note Renderer の具体実装には依存せず、ResourceManager とインターフェースだけを使う。
 #pragma once
+#include <Engine/Api.hpp>
 #include <Graphics/Pipeline/RenderPassCapture.hpp>
 #include <Physics/Layer.hpp>
 #include <memory>
@@ -49,7 +50,7 @@ struct RenderSystemUIOptions {
     std::span<const ScriptDebugDrawCommand> spatialDebugCommands;
 };
 
-void RenderSystem(Scene& scene,
+FBZZ_ENGINE_API void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
                   renderer::ResourceManager& resources,
                   const renderer::Camera& camera,

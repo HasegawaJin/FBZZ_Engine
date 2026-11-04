@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #pragma once
+#include <Physics/Api.hpp>
 #include <array>
 #include <vector>
 #include <cstdint>
@@ -15,38 +16,38 @@ namespace fbzz::physics
     struct Triangle
     {
         math::Vector3 v[3];
-        math::Vector3 normal;    ///< 正規化済み面法線
-        uint32_t      index = 0; ///< 元のインデックスバッファ上の三角形番号 (デバッグ用)
+        math::Vector3 normal;    ///< @note 正規化済み面法線
+        uint32_t      index = 0; ///< @note 元のインデックスバッファ上の三角形番号 (デバッグ用)
     };
 
     struct BVHNode
     {
         AABB                  aabb;
-        int                   left       = -1; ///< 内部ノード: 左子インデックス
-        int                   right      = -1; ///< 内部ノード: 右子インデックス (-1 なら葉ノード)
-        std::vector<uint32_t> triIndices;       ///< 葉ノードのみ有効
+        int                   left       = -1; ///< @note 内部ノード: 左子インデックス
+        int                   right      = -1; ///< @note 内部ノード: 右子インデックス (-1 なら葉ノード)
+        std::vector<uint32_t> triIndices;       ///< @note 葉ノードのみ有効
 
         bool IsLeaf() const { return left == -1; }
     };
 
-    /// BVH ツリー本体。再帰ポインタではなくフラット配列で管理し、再構築時の所有を単純にする。
+    /// @note BVH ツリー本体。再帰ポインタではなくフラット配列で管理し、再構築時の所有を単純にする。
     struct BVHTree
     {
         std::vector<BVHNode> nodes;
         std::vector<Triangle> triangles;
 
-        /// ワールド変換済み三角形リストから中点分割で BVH を構築する。
-        /// maxLeafTris は、葉ノードに格納する最大三角形数。
-        void Build(std::vector<Triangle>&& tris, int maxLeafTris = 8);
+        /// @note ワールド変換済み三角形リストから中点分割で BVH を構築する。
+        /// @note maxLeafTris は、葉ノードに格納する最大三角形数。
+        FBZZ_PHYSICS_API void Build(std::vector<Triangle>&& tris, int maxLeafTris = 8);
 
-        /// triangles の頂点を書き換えた後に、木の構造はそのままノード AABB だけ測り直す。
+        /// @note triangles の頂点を書き換えた後に、木の構造はそのままノード AABB だけ測り直す。
         /// @note transform だけが変わったとき「どの三角形がどの葉に入るか」は妥当な空間分割のままで、
-        ///       作り直す必要があるのは境界だけ。Build は重心ソートを伴う O(n log n) だが、こちらは
-        ///       葉から根への一巡で済む。
-        void Refit();
+        /// @note 作り直す必要があるのは境界だけ。Build は重心ソートを伴う O(n log n) だが、こちらは
+        /// @note 葉から根への一巡で済む。
+        FBZZ_PHYSICS_API void Refit();
 
-        /// AABB と重なる三角形だけを列挙する。非再帰 DFS にして深いメッシュでも C++ の呼び出しスタックを使わない。
-        /// predicate: void(const Triangle&)
+        /// @note AABB と重なる三角形だけを列挙する。非再帰 DFS にして深いメッシュでも C++ の呼び出しスタックを使わない。
+        /// @note predicate: void(const Triangle&)
         template<typename Pred>
         void Query(const AABB& queryAABB, Pred&& predicate) const
         {
@@ -68,8 +69,8 @@ namespace fbzz::physics
                     for (uint32_t ti : node.triIndices)
                     {
                         /// @note 葉ノードは複数三角形をまとめて持つため、葉 AABB が当たっても個別
-                        ///       三角形は queryAABB から大きく外れていることがある。Terrain のような
-                        ///       大規模メッシュでは、この軽い判定で最近傍計算まで進む候補数を抑える。
+                        /// @note 三角形は queryAABB から大きく外れていることがある。Terrain のような
+                        /// @note 大規模メッシュでは、この軽い判定で最近傍計算まで進む候補数を抑える。
                         const Triangle& tri = triangles[ti];
                         AABB triAABB;
                         triAABB.min = tri.v[0];
@@ -102,10 +103,10 @@ namespace fbzz::physics
         }
 
     private:
-        /// 再帰的なノード構築。[begin, end) の三角形インデックス範囲を処理し
-        /// 構築したノードのインデックスを返す
-        int BuildRecursive(std::vector<uint32_t>& triOrder,
+        /// @note 再帰的なノード構築。[begin, end) の三角形インデックス範囲を処理し
+        /// @note 構築したノードのインデックスを返す
+        FBZZ_PHYSICS_API int BuildRecursive(std::vector<uint32_t>& triOrder,
                            int begin, int end, int maxLeafTris);
     };
 
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

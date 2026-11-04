@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Renderer/RenderScene.hpp>
 #include <cstddef>
 #include <memory>
@@ -62,23 +63,23 @@ struct RenderFrameGeometryCache {
 /// @note Call after a MeshRenderer write on the Scene update/extraction thread; invalidates retained geometry without retaining the component.
 /// @note Direct field writes remain supported through current-input validation at the next geometry build.
 /// @see Docs/design/static-mesh-render-reuse.md
-void NotifyMeshRendererChanged(Scene& scene, EntityID entity);
+FBZZ_ENGINE_API void NotifyMeshRendererChanged(Scene& scene, EntityID entity);
 /// @return 品質要求用の投影直径 [px]。境界・射影が不明なら 0 (最高品質)。
-[[nodiscard]] float EstimateRenderTexturePixels(const renderer::RenderObject& object,
+[[nodiscard]] FBZZ_ENGINE_API float EstimateRenderTexturePixels(const renderer::RenderObject& object,
     const renderer::RenderMeshItem& item, const math::Vector3& cameraPosition,
     float projectionScaleY, uint32_t height, bool orthographic);
 
 /// @note 更新・スキニング完了後に呼ぶ。GPU 操作と材質ロードを行わず、全レイヤーの候補を抽出する。
 /// @param rayTracingInputs 実験 RT の実行を許可したビューだけ true。既定では RT 専用の LOD 収集を行わない。
-[[nodiscard]] renderer::RenderScene ExtractRenderSceneGeometry(
+[[nodiscard]] FBZZ_ENGINE_API renderer::RenderScene ExtractRenderSceneGeometry(
     Scene& scene, uint64_t frameStamp,
     renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette = {}, bool rayTracingInputs = false);
 
 /// @note 材質・テクスチャを解決してから const としてパスへ公開する。GPU スキニング完了後に呼ぶ。
-void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameGeometry = nullptr);
+FBZZ_ENGINE_API void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameGeometry = nullptr);
 
 /// @note 成功済み ticket の参照だけを COW 完成し、旧 geometry/material と旧 snapshot を保持する。
 /// @return 差替前の所有 snapshot。callback handler は返値を handler の外まで退役保持する。
-[[nodiscard]] std::shared_ptr<const renderer::RenderScene> CompletePreparedSkinningSnapshot(RenderPassContext& ctx);
+[[nodiscard]] FBZZ_ENGINE_API std::shared_ptr<const renderer::RenderScene> CompletePreparedSkinningSnapshot(RenderPassContext& ctx);
 
 } /// @note namespace fbzz::scene

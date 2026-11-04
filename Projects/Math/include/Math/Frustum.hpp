@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #pragma once
+#include <Math/Api.hpp>
 
 #include "Plane.hpp"
 #include "Vector3.hpp"
@@ -13,7 +14,7 @@
 #include <span>
 
 /// @note Plane.hpp include 後に別ヘッダ経由で Plane マクロが再定義された場合に備える。
-///       Frustum は Plane 型を返すため、ここで名前を必ず型として解決させる。
+/// @note Frustum は Plane 型を返すため、ここで名前を必ず型として解決させる。
 #ifdef Plane
 #undef Plane
 #endif
@@ -49,11 +50,11 @@ struct Frustum {
     /// @param visible 球ごとに交差なら 1、完全に外側なら 0 を書く。
     /// @pre visible.size() >= spheres.size()。足りなければ契約違反を報告し、入る数だけ判定する。
     /// @note 4 球ずつ転置して 6 平面と比べる。物体ごとに IntersectsSphere を呼ぶより 1 球あたりが安い。
-    void IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint8_t> visible) const;
+    FBZZ_MATH_API void IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint8_t> visible) const;
 
     /// @brief ビュープロジェクション行列から 6 平面を抽出する (Gribb-Hartmann 法)。
     /// @pre DirectX 左手系、深度 [0,1]、列ベクトル規則 (M * v)。
-    static Frustum FromViewProjection(const Matrix4& vp);
+    FBZZ_MATH_API static Frustum FromViewProjection(const Matrix4& vp);
 
 private:
     /// @brief 4 レーン × 2 本。レーン 6, 7 は使わず、判定のビットマスクで捨てる。
@@ -142,4 +143,4 @@ inline bool Frustum::IntersectsAABB(const Vector3& center, const Vector3& halfEx
     return (outside & PLANE_MASK) == 0;
 }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

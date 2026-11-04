@@ -5,6 +5,7 @@
 /// @note ModelAssetImporter / AnimationImporter が共有する一括読み込みと範囲読み込み。
 /// @note Open は FileSystem::ReadBinary の Unicode path を使い、MSVC の ANSI narrow path を避ける。
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -62,11 +63,17 @@ struct BinaryReader {
         return ReadBytes(&out, sizeof(T));
     }
 
+    /// @pre bytes > 0 なら dst は bytes バイトを書き込める領域を指すこと。bytes == 0 なら nullptr でもよい。
+    /// @return 範囲外なら false (位置と dst は未変更)。実 I/O の失敗では dst は未定義となり、ファイルを閉じる。
+    /// @note 不完全な fread の後は物理位置が不定となり得るため、再接続せずに後続の読込みを続けない。
+    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fread fread の返却件数と失敗時のファイル位置。
     bool ReadBytes(void* dst, size_t bytes) {
-        if (pos + bytes > Size()) return false;
+        if (!HasRemaining(bytes)) return false;
+        if (bytes == 0) return true;
         if (m_file) {
-            if (bytes != 0 && std::fread(dst, 1, bytes, m_file) != bytes) return false;
-            bytesRead += bytes;
+            const size_t transferred = std::fread(dst, 1, bytes, m_file);
+            bytesRead += transferred;
+            if (transferred != bytes) { Close(); return false; }
         } else {
             std::memcpy(dst, data.data() + pos, bytes);
         }
@@ -75,7 +82,7 @@ struct BinaryReader {
     }
 
     bool Skip(size_t bytes) {
-        if (pos + bytes > Size()) return false;
+        if (!HasRemaining(bytes)) return false;
         if (m_file && _fseeki64(m_file, static_cast<long long>(pos + bytes), SEEK_SET) != 0) return false;
         pos += bytes;
         return true;
@@ -96,10 +103,16 @@ struct BinaryReader {
     }
 
 private:
+    /// @note Read と Skip の境界を残量で検査し、pos + bytes の桁あふれで範囲外を通さない。
+    [[nodiscard]] bool HasRemaining(size_t bytes) const {
+        const uint64_t size = Size();
+        return pos <= size && bytes <= size - pos;
+    }
+
     friend class ChunkFileReader;
     /// @brief ChunkFileReader alone permits atomic replacement while retaining the opened file's immutable snapshot.
     /// @note Generic OpenStreaming retains its existing sharing policy; no Windows type escapes this header.
-    bool OpenReplaceableChunkStream(const std::string& path);
+    FBZZ_ENGINE_API bool OpenReplaceableChunkStream(const std::string& path);
 
     std::FILE* m_file = nullptr;
     uint64_t   m_fileSize = 0;

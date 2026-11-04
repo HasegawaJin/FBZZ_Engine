@@ -3,10 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Pipeline/IRenderPass.hpp>
 namespace fbzz::renderer {
-void SubmitTerrainShadowCasters(
+FBZZ_GRAPHICS_API void SubmitTerrainShadowCasters(
     RenderPassContext&                            ctx,
     const math::Frustum&                          lightFrustum,
     renderer::ResourceHandle<renderer::ShaderTag> shadowShader,
@@ -15,7 +16,7 @@ void SubmitTerrainShadowCasters(
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB
 );
 
-void TerrainSelectionMaskSystem(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void TerrainSelectionMaskSystem(RenderPassContext& ctx);
 
 /// @note 地形を «どこへ» 描くか。描き先とシェーダーだけが違い、収集と描画の手順は同じ。
 /// @note ctx.isDeferred で分けないのは、以前は Forward の GBuffer プリパスの間だけ
@@ -32,9 +33,9 @@ class TerrainRenderPass final : public IRenderPass {
 public:
     explicit TerrainRenderPass(TerrainDrawMode mode) : m_mode(mode) {}
 
-    std::string_view Name() const override;
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API std::string_view Name() const override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 
 private:
     TerrainDrawMode m_mode;

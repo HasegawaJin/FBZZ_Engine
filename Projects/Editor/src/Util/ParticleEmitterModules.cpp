@@ -3,6 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 
+#include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/MeshTrailComponent.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Editor/Util/ParticleEmitterModules.hpp>
 
 #include <Editor/EditorContext.hpp>

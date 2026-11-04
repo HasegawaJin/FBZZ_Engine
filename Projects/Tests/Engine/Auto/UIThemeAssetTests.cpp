@@ -2,6 +2,7 @@
 /// @brief   Game UI theme persistence, runtime replacement, state rendering and fallback contracts.
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
+#include <Engine/Scene/Components/UIButton.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>

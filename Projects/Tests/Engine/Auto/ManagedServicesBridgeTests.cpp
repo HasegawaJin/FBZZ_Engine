@@ -2,6 +2,7 @@
 /// @brief   Component サービス実転送・形状寿命・フィルター・原子性・カメラ座標契約の回帰。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -232,6 +233,28 @@ TEST_F(ManagedServicesBridgeTest, CursorRequestsKeepPriorityAndCleanupOnlyTheirO
     ASSERT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_CURSOR, 0, false, 9, {1, 1}, {"100"}), scene::ManagedBridgeStatus::OK);
     const int64_t current = m_result.integer;
     EXPECT_NE(current, first); m_services.RetireGeneration(7); EXPECT_EQ(core::Cursor::GetRequestCount(), 0U);
+}
+
+TEST_F(ManagedServicesBridgeTest, ApplicationEnvironmentIsIndependentOfPlayAndRejectsWrites)
+{
+    auto& app = core::Application::Get();
+    const bool previous = app.IsEditorHosted();
+    auto& object = m_scene.CreateGameObject();
+    for (bool editor : {false, true}) {
+        app.SetEditorHosted(editor);
+        ASSERT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_APPLICATION, 5, true), scene::ManagedBridgeStatus::OK);
+        EXPECT_EQ(m_result.integer, editor ? 1 : 0);
+    }
+    app.SetEditorHosted(previous);
+    EXPECT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_APPLICATION, 5, false), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    ASSERT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_APPLICATION, 6, true), scene::ManagedBridgeStatus::OK);
+#ifdef NDEBUG
+    EXPECT_EQ(m_result.integer, 0);
+#else
+    EXPECT_EQ(m_result.integer, 1);
+#endif
+    EXPECT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_APPLICATION, 6, false), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+    EXPECT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_APPLICATION, 7, true), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
 }
 
 TEST_F(ManagedServicesBridgeTest, SceneQueuesRegisteredNameAndQuitUsesAHostLifetimeIntent)

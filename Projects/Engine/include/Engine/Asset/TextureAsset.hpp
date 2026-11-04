@@ -2,9 +2,10 @@
 /// @brief   テクスチャアセットのランタイム表現とインポート設定。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-///
-/// .tex TOML descriptor または .png/.dds/.tga 直参照を統一型で扱う。
+
+/// @note .tex TOML descriptor または .png/.dds/.tga 直参照を統一型で扱う。
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector4.hpp>
@@ -27,7 +28,7 @@ enum class SpriteMode         { Single, Multiple };
 /// @brief Texture 内の矩形を名前付きサブアセットとして公開する。
 /// @note width/height が 0 の Single Sprite は画像全体を表し、元画像サイズへの依存をメタから排除する。
 struct SpriteRect {
-    /// Sprite 名を変更しても参照を維持する永続 ID。
+    /// @note Sprite 名を変更しても参照を維持する永続 ID。
     /// @note 表示名を参照キーにすると、Sprite Editor でのリネームが Scene / Material の参照切れになる。
     std::string id;
     std::string name;
@@ -71,60 +72,60 @@ struct TextureImportSettings {
 };
 
 /// @brief type からデフォルト設定を返す。.tex ローダーはこれを基にして TOML 値で上書きする。
-[[nodiscard]] TextureImportSettings DefaultSettingsForType(TextureType type);
+[[nodiscard]] FBZZ_ENGINE_API TextureImportSettings DefaultSettingsForType(TextureType type);
 
 /// @brief テクスチャ型のファイルパスから TextureType をヒューリスティックで推定する。
 /// @note _n.png → Normal, _d.png → Color 等。
-[[nodiscard]] TextureType GuessTextureType(std::string_view filename);
+[[nodiscard]] FBZZ_ENGINE_API TextureType GuessTextureType(std::string_view filename);
 
 /// @brief Sprite サブアセット参照は元 Texture パスを壊さない文字列形式で保持する。
 /// @note 例: "Assets/UI/Atlas.png::sprite::836d2b4d-…" / "Assets/UI/Atlas.png::sprite::Key_W"
-[[nodiscard]] std::string MakeSpriteReference(
+[[nodiscard]] FBZZ_ENGINE_API std::string MakeSpriteReference(
     std::string_view texturePath, std::string_view spriteToken);
-[[nodiscard]] bool ParseSpriteReference(
+[[nodiscard]] FBZZ_ENGINE_API bool ParseSpriteReference(
     std::string_view reference, std::string& outTexturePath, std::string& outSpriteToken);
 
 /// @brief トークンは ID か名前のどちらか。ID を先に見る。
 /// @note ID は UUID で人も AI も手で書けない。書ける形が名前しか無いのに ID しか受けないと、名前で
-///       書いた参照が «エラーにならずアトラス全面» に化ける。名前はテクスチャ内で一意 (Sprite Editor
-///       が保証) なので曖昧さは無い。
-[[nodiscard]] const SpriteRect* FindSprite(
+/// @note 書いた参照が «エラーにならずアトラス全面» に化ける。名前はテクスチャ内で一意 (Sprite Editor
+/// @note が保証) なので曖昧さは無い。
+[[nodiscard]] FBZZ_ENGINE_API const SpriteRect* FindSprite(
     const TextureImportSettings& settings, std::string_view spriteToken);
 
 /// @name 解決結果
-/// テクスチャ参照 1 件を、描く側が必要とする数値へ解決した結果。
+/// @note テクスチャ参照 1 件を、描く側が必要とする数値へ解決した結果。
 /// @note 「参照を割って .meta を読み、矩形を UV へ直す」処理を UISystem・SpriteRenderer・Inspector が
-///       それぞれ書いており、幅 0 の Single Sprite が画像全体を指す規則のような細部が写し違いで散って
-///       いた。解決の正解をここへ 1 箇所に置き、呼ぶ側は結果だけを見る。
+/// @note それぞれ書いており、幅 0 の Single Sprite が画像全体を指す規則のような細部が写し違いで散って
+/// @note いた。解決の正解をここへ 1 箇所に置き、呼ぶ側は結果だけを見る。
 /// @{
 
-/// 解決が「どこで決まったか」。壊れた参照を無言で全面へ落とさないために持つ。
+/// @note 解決が「どこで決まったか」。壊れた参照を無言で全面へ落とさないために持つ。
 enum class SpriteResolveStatus {
-    NotASpriteReference,      ///< "::sprite::" が無い。texturePath がそのまま絵
-    TextureSizeUnknown,       ///< 元画像がまだ読めていない。次のフレームで解決し直す
+    NotASpriteReference,      ///< @note "::sprite::" が無い。texturePath がそのまま絵
+    TextureSizeUnknown,       ///< @note 元画像がまだ読めていない。次のフレームで解決し直す
     ResolvedById,
     ResolvedByName,
-    ResolvedAsImplicitSingle, ///< sprites を持たない Single Texture の «全面 1 枚»
-    MetaMissing,              ///< .meta が読めない
-    SpriteNotFound,           ///< .meta にそのトークンが無い
+    ResolvedAsImplicitSingle, ///< @note sprites を持たない Single Texture の «全面 1 枚»
+    MetaMissing,              ///< @note .meta が読めない
+    SpriteNotFound,           ///< @note .meta にそのトークンが無い
 };
 
 struct ResolvedSprite {
-    std::string   texturePath;                  ///< 元画像パス (Sprite 参照でなければ入力そのまま)
-    std::string   spriteId;                     ///< Sprite 参照のときだけ非空 (ID か名前)
+    std::string   texturePath;                  ///< @note 元画像パス (Sprite 参照でなければ入力そのまま)
+    std::string   spriteId;                     ///< @note Sprite 参照のときだけ非空 (ID か名前)
     math::Vector2 uvMin      = { 0.0f, 0.0f };
     math::Vector2 uvMax      = { 1.0f, 1.0f };
-    math::Vector4 border     = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< 9-slice の余白 L,T,R,B (ピクセル)
-    math::Vector2 sizePixels = { 0.0f, 0.0f };  ///< 切り抜きのピクセル寸法 (未解決なら 0)
+    math::Vector4 border     = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< @note 9-slice の余白 L,T,R,B (ピクセル)
+    math::Vector2 sizePixels = { 0.0f, 0.0f };  ///< @note 切り抜きのピクセル寸法 (未解決なら 0)
     math::Vector2 pivot      = { 0.5f, 0.5f };
     float pixelsPerUnit      = 100.0f;
-    bool  isSpriteReference  = false;           ///< 入力が "::sprite::" 形式だった
-    bool  resolved           = false;           ///< .meta から矩形を取り出せた
+    bool  isSpriteReference  = false;           ///< @note 入力が "::sprite::" 形式だった
+    bool  resolved           = false;           ///< @note .meta から矩形を取り出せた
     SpriteResolveStatus status = SpriteResolveStatus::NotASpriteReference;
-    std::string displayName;                    ///< 解決できたときの表示名 (Inspector 用)
+    std::string displayName;                    ///< @note 解決できたときの表示名 (Inspector 用)
 
-    /// 参照が指す Sprite に辿り着けなかった。呼ぶ側はここで «壊れている» と言ってよい。
-    /// 読み込み待ち (TextureSizeUnknown) は含めない。待てば直るものを赤くしないため。
+    /// @note 参照が指す Sprite に辿り着けなかった。呼ぶ側はここで «壊れている» と言ってよい。
+    /// @note 読み込み待ち (TextureSizeUnknown) は含めない。待てば直るものを赤くしないため。
     [[nodiscard]] bool IsBroken() const
     {
         return status == SpriteResolveStatus::MetaMissing
@@ -135,38 +136,38 @@ struct ResolvedSprite {
 
 /// @param textureWidth  元画像の実ピクセル幅。0 以下だと UV へ直せないため矩形は解決しない。
 /// @param textureHeight 同・高さ。
-[[nodiscard]] ResolvedSprite ResolveSpriteReference(
+[[nodiscard]] FBZZ_ENGINE_API ResolvedSprite ResolveSpriteReference(
     std::string_view reference, float textureWidth, float textureHeight);
 
-/// Sprite トークン (ID または名前) から .meta 上の ID を引く。見つからなければ空。
-/// 名前で書かれた参照を保存形 (ID) へ正規化するのに使う。
-[[nodiscard]] std::string LookupSpriteId(
+/// @note Sprite トークン (ID または名前) から .meta 上の ID を引く。見つからなければ空。
+/// @note 名前で書かれた参照を保存形 (ID) へ正規化するのに使う。
+[[nodiscard]] FBZZ_ENGINE_API std::string LookupSpriteId(
     std::string_view texturePath, std::string_view spriteToken);
 
-/// 同・表示名。ヒント併記と Inspector の表示に使う。
-[[nodiscard]] std::string LookupSpriteName(
+/// @note 同・表示名。ヒント併記と Inspector の表示に使う。
+[[nodiscard]] FBZZ_ENGINE_API std::string LookupSpriteName(
     std::string_view texturePath, std::string_view spriteToken);
 
-/// .meta のインポート設定を、書き込み時刻で無効化しながら共有キャッシュから読む。
+/// @note .meta のインポート設定を、書き込み時刻で無効化しながら共有キャッシュから読む。
 /// @note Sprite の解決は毎フレーム・毎ドローで走る。素直に読むと 1 件につき数千行の TOML を毎回
-///       パースすることになる (SpriteRenderer が実際そうだった)。
+/// @note パースすることになる (SpriteRenderer が実際そうだった)。
 /// @param texturePathOrRef 元画像パス。Sprite 参照を渡してもよい (接尾辞は落とす)。
-[[nodiscard]] bool GetCachedTextureImportSettings(
+[[nodiscard]] FBZZ_ENGINE_API bool GetCachedTextureImportSettings(
     std::string_view texturePathOrRef, TextureImportSettings& outSettings);
 
-/// .meta を書き換えた側が呼ぶ。次の解決で読み直させる。
-/// 書き込み時刻でも気付けるが、同一秒内の連続 Apply を取りこぼさないために明示で潰す。
-void InvalidateTextureImportSettings(std::string_view texturePathOrRef);
+/// @note .meta を書き換えた側が呼ぶ。次の解決で読み直させる。
+/// @note 書き込み時刻でも気付けるが、同一秒内の連続 Apply を取りこぼさないために明示で潰す。
+FBZZ_ENGINE_API void InvalidateTextureImportSettings(std::string_view texturePathOrRef);
 
 struct TextureAsset {
-    /// .tex なら source フィールドが指す画像パス、直参照なら自身のパス
+    /// @note .tex なら source フィールドが指す画像パス、直参照なら自身のパス
     std::string                                    sourcePath;
     TextureImportSettings                          settings;
-    renderer::ResourceHandle<renderer::TextureTag> gpuHandle; ///< ロード後に設定
-    /// 元画像の寸法。品質段で縮小して常駐していても元の値。0 は未知 (GPU 実体の寸法を使う)。
+    renderer::ResourceHandle<renderer::TextureTag> gpuHandle; ///< @note ロード後に設定
+    /// @note 元画像の寸法。品質段で縮小して常駐していても元の値。0 は未知 (GPU 実体の寸法を使う)。
     /// @note スプライト矩形はピクセル単位で書かれているので、UV への換算は必ずこの寸法で行う。
     uint32_t                                       sourceWidth  = 0;
     uint32_t                                       sourceHeight = 0;
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

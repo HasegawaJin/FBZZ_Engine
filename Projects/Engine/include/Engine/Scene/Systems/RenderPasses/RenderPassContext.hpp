@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
+#include <Engine/Scene/UserRenderPass.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Scene/CameraCullingSettings.hpp>
@@ -98,16 +99,7 @@ using renderer::kTrailFlagSrgbTexture;
 using renderer::kOutsideGraphAccesses;
 using renderer::SubmitCounted;
 using renderer::SubmitCountedShadow;
-/// @note UserRenderPassDesc — Script / Scene が RenderGraph へ追加したい 1 パス分の宣言。
-/// @note reads/writes は RenderGraph 上の論理リソース名、execute は実際の描画処理。execute は
-/// @note RenderSystem が保持する RenderPassContext を渡して呼ぶため、Script 側は renderer/resources/handles を参照できる。
-struct UserRenderPassDesc {
-    std::string name;
-    UserRenderPassInjectionPoint injectionPoint = UserRenderPassInjectionPoint::AfterTransparent;
-    std::vector<renderer::RenderGraph::ResourceAccess> accesses;
-    std::function<void(RenderPassContext&)> execute;
-    bool allowCulling = true;
-};
+
 
 
 struct RenderPassContext : renderer::RenderPassContext {

@@ -5,7 +5,9 @@
 ///
 /// AnimationImporter.cpp の v3 レイアウトと対応し、Node Transform と Morph Weight を同時に保存する。
 #include <Editor/Import/AnimSubExporter.hpp>
+#include <Core/Util/AtomicFileReplace.hpp>
 #include <Engine/Asset/AnimationClip.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Format/FzAssetFormat.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -359,7 +361,13 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
         /// @note 実際に書き出すクリップが確定したこの時点で初めて anims/ を作る。
         if (!util::FileSystem::EnsureParentDirectory(animFsPath)) return false;
 
-        std::ofstream out(animPath, std::ios::binary);
+        auto temporary = animFsPath;
+        temporary += "." + asset::AssetDatabase::GenerateGuid() + ".tmp";
+        struct TempClip {
+            const fs::path& path;
+            ~TempClip() { std::error_code error; fs::remove(path, error); }
+        } guard{temporary};
+        std::ofstream out(temporary, std::ios::binary);
         if (!out) return false;
 
         const double tps = (anim->mTicksPerSecond > 0.0) ? anim->mTicksPerSecond : 30.0;
@@ -567,7 +575,12 @@ bool AnimSubExporter::Export(FbxImportContext& ctx)
                       static_cast<std::streamsize>(morph.keys.size() * sizeof(FzFloatKeyV3)));
         }
 
-        if (!out.good()) return false;
+        out.close();
+        if (!out) return false;
+        if (const auto error = util::ReplaceFileAtomic(temporary, animFsPath)) {
+            FBZZ_LOG_ERROR("FBX animation publish failed: %s (%d)", animPath.c_str(), error.value());
+            return false;
+        }
     }
 
     return true;

@@ -14,6 +14,7 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/Localization.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/ProjectSettingsEditing.hpp>
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -363,15 +364,8 @@ void ProjectSettingsPanel::TrackUndo(EditorContext& ctx, const ProjectSettings& 
     auto pushCommand = [&ctx](const ProjectSettings& before, const ProjectSettings& after) {
         /// @note ProjectSettings に触れない編集 (検索欄・Input・Preferences) で空の履歴を積まない。
         if (before.ToToml() == after.ToToml()) return;
-        EditorContext* context = &ctx;
-        auto apply = [context](const ProjectSettings& value) {
-            context->projectSettings = value;
-            Time::targetFps = value.app.targetFps;
-        };
-        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-            "Edit Project Settings",
-            [apply, after]() { apply(after); },
-            [apply, before]() { apply(before); }));
+        if (auto command = CommitProjectSettingsEdit(ctx, before, after))
+            ctx.undoStack->Push(std::move(command));
     };
 
     if (structuralEdit) {

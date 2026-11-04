@@ -3,6 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
+#include <Graphics/Api.hpp>
+#include <Graphics/Pipeline/RenderPassInjectionPoint.hpp>
 
 #include <Graphics/Renderer/Camera.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
@@ -35,14 +37,7 @@ namespace fbzz::renderer {
 
 struct RenderPassContext;
 
-/// @note UserRenderPassInjectionPoint — Script が追加するパスを既存パイプラインのどこへ挿入するかを表す。
-/// @note RenderGraph は依存関係で実行順を決めるが、HDR へ ReadWrite する透明系パスは依存が同じになりやすい。
-/// @note 明示的な挿入点を持たせ、Water / VFX / PostProcess 前処理の意図をコードから読めるようにする。
-enum class UserRenderPassInjectionPoint : uint8_t {
-    AfterOpaque,
-    AfterTransparent,
-    BeforePostProcess
-};
+
 
 /// @note GPU パーティクル CS が参照する流れ 1 本分 (96 bytes)。
 /// @note LAYOUT: ParticleGpuSim.cs.hlsl の GpuFlowField と完全に一致させること。
@@ -993,7 +988,7 @@ inline constexpr std::uint32_t kTrailFlagSrgbTexture = 1u;
 /// @note このエンジンは _SRGB フォーマットの SRV を作らず「シェーダーが自分で
 /// @note SRGBToLinear する」規約で統一されているため、素材ごとに判定が要る
 /// @note (手描きは sRGB、ProceduralVFXTextures はリニアで焼くため一律に決められない)。
-[[nodiscard]] bool IsEffectTextureSrgb(const std::string& texturePath);
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsEffectTextureSrgb(const std::string& texturePath);
 static_assert(sizeof(TrailCB) == 224, "TrailCB layout mismatch");
 
 /// @brief Terrain シェーダーの b1。

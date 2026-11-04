@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-09
 ///
-/// WorldQueryTests は «最も近い 1 件を返す» «フィルタで除外する» という検索そのものの契約を見る。
-/// ここで見るのはその 1 段下 — 形状ごとの交差計算。ここが形状ごとに壊れると、球では拾えるのに
-/// 箱やカプセルだけ «すり抜ける» という、形状を差し替えるまで気づけない不具合になる。
+/// @note WorldQueryTests は «最も近い 1 件を返す» «フィルタで除外する» という検索そのものの契約を見る。
+/// @note ここで見るのはその 1 段下 — 形状ごとの交差計算。ここが形状ごとに壊れると、球では拾えるのに
+/// @note 箱やカプセルだけ «すり抜ける» という、形状を差し替えるまで気づけない不具合になる。
 #include <TestKit/TestKit.hpp>
 
 #include <Math/MathUtils.hpp>
@@ -36,8 +36,8 @@ physics::ColliderInstance Instance(physics::Collider& collider)
     return instance;
 }
 
-/// y = 0 に広がる 1x1 の板 (2 三角形)。斜辺は (0,0,1)-(1,0,0) を結ぶので、
-/// レイは辺に乗らない位置へ落とすこと。
+/// @note y = 0 に広がる 1x1 の板 (2 三角形)。斜辺は (0,0,1)-(1,0,0) を結ぶので、
+/// @note レイは辺に乗らない位置へ落とすこと。
 std::vector<math::Vector3> QuadPositions()
 {
     return { { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f },
@@ -58,7 +58,7 @@ std::vector<math::Vector3> CubePoints(float half)
 
 const math::Vector3 kDown{ 0.0f, -1.0f, 0.0f };
 
-} // namespace
+} /// @note namespace
 
 class WorldRaycastShapeTest : public testkit::Fixture {
 protected:
@@ -96,7 +96,7 @@ TEST_F(WorldRaycastShapeTest, RaycastMissesABoxWhenTravellingAlongsideAnAxis)
     Register({ Instance(box) });
 
     /// @note 軸に平行なレイでは、その軸のスラブに «入る時刻» が計算できない。
-    ///       0 除算を避けたつもりで «常に当たる» 側へ倒すと、箱の真横を通る弾が全部当たる。
+    /// @note 0 除算を避けたつもりで «常に当たる» 側へ倒すと、箱の真横を通る弾が全部当たる。
     EXPECT_FALSE(world.Raycast(math::Vector3(0.0f, 5.0f, 0.0f),
                                math::Vector3::RIGHT, 100.0f, hit));
 }
@@ -108,7 +108,7 @@ TEST_F(WorldRaycastShapeTest, RaycastReportsZeroDistanceFromInsideABox)
     Register({ Instance(box) });
 
     /// @note めり込んだ状態から撃つのはよくある (足元判定・脱出方向探し)。当たり無しにすると
-    ///       «埋まっているときだけ何も検出できない» という一番困る挙動になる。
+    /// @note «埋まっているときだけ何も検出できない» という一番困る挙動になる。
     ASSERT_TRUE(world.Raycast(math::Vector3::ZERO, math::Vector3::RIGHT, 100.0f, hit));
 
     EXPECT_NEAR(hit.distance, 0.0f, testkit::kLooseTolerance);
@@ -127,7 +127,7 @@ TEST_F(WorldRaycastShapeTest, RaycastFollowsTheRotationOfAnOBB)
                               math::Vector3::FORWARD, 100.0f, hit));
 
     /// @note 45° 回した立方体は角がレイ側へ出る。外接 AABB で判定していると 4.0 になり、
-    ///       回転を無視していることがここで露見する。
+    /// @note 回転を無視していることがここで露見する。
     EXPECT_NEAR(hit.distance, 5.0f - std::sqrt(2.0f), testkit::kLooseTolerance);
     EXPECT_UNIT_LENGTH(hit.normal, testkit::kLooseTolerance);
     EXPECT_LT(math::Vector3::Dot(hit.normal, math::Vector3::FORWARD), 0.0f);
@@ -155,7 +155,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheRoundedEndOfACapsule)
     Register({ Instance(capsule) });
 
     /// @note 中心線の «外» にある半球。無限円柱の解だけを見ていると軸の外側で棄却され、
-    ///       頭の上から撃った弾がすり抜ける。
+    /// @note 頭の上から撃った弾がすり抜ける。
     ASSERT_TRUE(world.Raycast(math::Vector3(0.0f, 5.0f, 0.0f), kDown, 100.0f, hit));
 
     EXPECT_NEAR(hit.distance, 3.5f, testkit::kLooseTolerance);
@@ -279,7 +279,7 @@ TEST_F(WorldRaycastShapeTest, SphereCastFindsABoxThatAZeroWidthRayPassesBeside)
     ASSERT_FALSE(world.Raycast(origin, math::Vector3::FORWARD, 100.0f, hit));
 
     /// @note 太さのあるキャラクターの移動判定はこちらを使う。箱を半径ぶん膨らませるので、
-    ///       手前の面 (z = 9) が半径 1 だけ手前 (z = 8) へせり出す。
+    /// @note 手前の面 (z = 9) が半径 1 だけ手前 (z = 8) へせり出す。
     ASSERT_TRUE(world.SphereCast(origin, 1.0f, math::Vector3::FORWARD, 100.0f, hit));
     EXPECT_NEAR(hit.distance, 8.0f, testkit::kLooseTolerance);
 }
@@ -352,4 +352,19 @@ TEST_F(WorldRaycastShapeTest, OverlapSphereApproximatesAConvexHullWithItsBounds)
     EXPECT_TRUE(world.OverlapSphere(math::Vector3(3.0f, 0.0f, 0.0f), 0.5f).empty());
 }
 
-} // namespace fbzz::tests
+TEST_F(WorldRaycastShapeTest, OverlapSphereIncludesTranslatedAndScaledHeightFieldBounds)
+{
+    const std::vector<float> flat(4, 0.0f);
+    physics::HeightFieldCollider field(flat, 2, 2, 1.0f, 1.0f);
+    field.UpdateWithScale(math::Vector3(3.0f, -2.0f, 5.0f),
+                          math::Quaternion::Identity(), math::Vector3(2.0f, 1.0f, 2.0f));
+    Register({ Instance(field) });
+
+    const auto overlaps = world.OverlapSphere(math::Vector3(4.0f, -1.75f, 6.0f), 0.5f);
+    ASSERT_EQ(overlaps.size(), 1u);
+    EXPECT_EQ(overlaps.front()->collider, static_cast<const physics::Collider*>(&field));
+    EXPECT_TRUE(world.OverlapSphere(math::Vector3(4.0f, 0.0f, 6.0f), 0.5f).empty());
+    EXPECT_TRUE(world.OverlapSphere(math::Vector3(6.0f, -2.0f, 6.0f), 0.5f).empty());
+}
+
+} /// @note namespace fbzz::tests

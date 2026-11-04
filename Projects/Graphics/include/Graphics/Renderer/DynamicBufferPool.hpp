@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include <utility>
 
 namespace fbzz::renderer {
 
@@ -64,6 +65,15 @@ public:
     /// @note UI の矩形のように 1 回が数頂点で本数が多い用途は小さく取る (本数 × 下限が常駐する)。
     explicit DynamicBufferPool(std::size_t minCapacity = Factory::kMinCapacity)
         : m_minCapacity(minCapacity == 0 ? 1 : minCapacity) {}
+    ~DynamicBufferPool() { ReleaseAll(); }
+    DynamicBufferPool(const DynamicBufferPool&) = delete;
+    DynamicBufferPool& operator=(const DynamicBufferPool&) = delete;
+    DynamicBufferPool(DynamicBufferPool&& other) noexcept : DynamicBufferPool() { Swap(other); }
+    DynamicBufferPool& operator=(DynamicBufferPool&& other) noexcept
+    {
+        if (this != &other) { ReleaseAll(); Swap(other); }
+        return *this;
+    }
 
     /// @brief stride バイトの要素を count 個ぶん収められるバッファを 1 つ貸し出す。
     /// @return 確保に失敗した場合は無効ハンドル。返したバッファの持ち主はプールで、借り手は
@@ -79,8 +89,9 @@ public:
     {
         if (count == 0 || stride == 0) return {};
 
-        /// @note ResourceManager::Reset() 後は旧ハンドルが無効なので、Release せずキャッシュだけ捨てる。
+        /// @note 別 Manager へ移る場合は旧所有者へ返す。Reset 済みの世代は既に破棄されている。
         if (m_owner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()) {
+            ReleaseAll();
             m_owner = resources.GetInstanceId();
             m_resetVersion = resources.GetResetVersion();
             m_buckets.clear();
@@ -108,15 +119,23 @@ public:
     }
 
     /// @brief 抱えているバッファをすべて返す。プールごと畳むとき (シャットダウン) に呼ぶ。
-    void ReleaseAll(ResourceManager& resources)
+    void ReleaseAll()
     {
-        if (m_owner != resources.GetInstanceId() || m_resetVersion != resources.GetResetVersion()) return;
-        for (Bucket& bucket : m_buckets)
-            for (auto& lane : bucket.lanes)
-                for (ResourceHandle<Tag> handle : lane)
-                    if (handle.IsValid()) resources.Release(handle);
+        if (auto* resources = ResourceManager::FindOwner(m_owner);
+            resources && m_resetVersion == resources->GetResetVersion()) {
+            for (Bucket& bucket : m_buckets)
+                for (auto& lane : bucket.lanes)
+                    for (ResourceHandle<Tag> handle : lane)
+                        if (handle.IsValid()) resources->Release(handle);
+        }
         m_buckets.clear();
+        m_frame = UINT64_MAX;
+        m_owner = 0;
+        m_resetVersion = 0;
     }
+
+    /// @note 呼び手の現在の Manager ではなく、記録済みの作成元へ返す。
+    void ReleaseAll(ResourceManager&) { ReleaseAll(); }
 
     /// @brief 抱えている本数 (診断用)。
     [[nodiscard]] std::size_t GetBufferCount() const
@@ -134,6 +153,16 @@ public:
     static constexpr std::size_t kFramesInFlight = 3;
 
 private:
+    void Swap(DynamicBufferPool& other) noexcept
+    {
+        m_buckets.swap(other.m_buckets);
+        std::swap(m_minCapacity, other.m_minCapacity);
+        std::swap(m_frame, other.m_frame);
+        std::swap(m_lane, other.m_lane);
+        std::swap(m_resetVersion, other.m_resetVersion);
+        std::swap(m_owner, other.m_owner);
+    }
+
     /// @brief 同じ «容量 × stride» のバッファを並べた列。next はこのフレームで何本貸したか。
     struct Bucket {
         std::size_t   capacity = 0; ///< @note 要素数

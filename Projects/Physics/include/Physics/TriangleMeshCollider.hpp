@@ -2,9 +2,10 @@
 /// @brief   任意メッシュの静的コライダー (BVH 加速)。
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
-///
+
 /// @note Physics は Engine に依存しないため、Mesh の代わりに生データを受け取る。
 #pragma once
+#include <Physics/Api.hpp>
 #include <vector>
 #include <cstdint>
 #include <Physics/Collider.hpp>
@@ -21,7 +22,7 @@ namespace fbzz::physics
         /// @brief 頂点位置リストとインデックスリスト (三角形ごとに 3 つ) から BVH を構築する。
         /// @param positions ローカル空間の頂点位置。
         /// @param indices   三角形インデックス。3 の倍数でない端数は捨てる。
-        TriangleMeshCollider(const std::vector<math::Vector3>& positions,
+        FBZZ_PHYSICS_API TriangleMeshCollider(const std::vector<math::Vector3>& positions,
                              const std::vector<uint32_t>&      indices);
 
         AABB         GetAABB() const override { return m_worldAABB; }
@@ -29,19 +30,19 @@ namespace fbzz::physics
 
         /// @brief Static 前提: 初期化後は位置・回転が変わらないことを想定。
         /// @note 動的オブジェクトへの適用は将来拡張 (UpdateWithScale 等)。
-        void Update(const math::Vector3& worldPos,
+        FBZZ_PHYSICS_API void Update(const math::Vector3& worldPos,
                     const math::Quaternion& worldRot) override;
 
         /// @brief スケールを含むワールド変換で再構築する (Static 初期化時に明示的に呼ぶ)。
         /// @note Transform が変わっていなければ内部で再構築をスキップする。
-        void UpdateWithScale(const math::Vector3&    worldPos,
+        FBZZ_PHYSICS_API void UpdateWithScale(const math::Vector3&    worldPos,
                              const math::Quaternion& worldRot,
                              const math::Vector3&    worldScale);
 
         const BVHTree& GetBVH() const { return m_bvh; }
 
     private:
-        std::vector<math::Vector3> m_localPositions; ///< ローカル空間頂点 (スケール前)
+        std::vector<math::Vector3> m_localPositions; ///< @note ローカル空間頂点 (スケール前)
         std::vector<uint32_t>      m_indices;
 
         BVHTree       m_bvh;
@@ -51,13 +52,13 @@ namespace fbzz::physics
         math::Quaternion m_lastRot;
         math::Vector3    m_lastScale = {1.0f, 1.0f, 1.0f};
 
-        void RebuildBVH(const math::Vector3&    pos,
+        FBZZ_PHYSICS_API void RebuildBVH(const math::Vector3&    pos,
                         const math::Quaternion& rot,
                         const math::Vector3&    scale);
 
         /// @brief 木の構造はそのままに、現在のスケールと与えられた姿勢で三角形を置き直す。
         /// @pre スケールが変わっていないこと (= 剛体変換であること)。
-        void RefitTransform(const math::Vector3& pos, const math::Quaternion& rot);
+        FBZZ_PHYSICS_API void RefitTransform(const math::Vector3& pos, const math::Quaternion& rot);
     };
 
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

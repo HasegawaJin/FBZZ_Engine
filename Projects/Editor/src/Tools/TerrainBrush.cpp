@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
 /// @see Docs/design/terrain-layers.md
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include "TerrainBrush.hpp"
 
 #include <Engine/Scene/TerrainSplat.hpp>
@@ -373,7 +374,7 @@ void TerrainBrushHydraulic(scene::TerrainComponent& terrain, const math::Vector3
     }
 }
 
-} // namespace
+} /// @note namespace
 
 math::Vector3 ToTerrainLocal(const scene::Transform& transform, const math::Vector3& worldPoint)
 {
@@ -633,4 +634,4 @@ bool ApplyTerrainHole(scene::TerrainComponent& terrain,
     return changed;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

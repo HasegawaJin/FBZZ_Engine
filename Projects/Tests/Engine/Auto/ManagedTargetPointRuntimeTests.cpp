@@ -2,6 +2,7 @@
 /// @brief   実CLRの配置点spawn、MotionWarpとIK接続の姿勢・寿命契約を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <TestKit/TempDir.hpp>

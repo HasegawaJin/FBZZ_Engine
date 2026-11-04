@@ -6,7 +6,11 @@
 #include <Editor/Panels/IPanel.hpp>
 #include <Editor/Util/HierarchyTraversal.hpp>
 #include <Engine/Scene/Entity.hpp>
+#include <string>
+#include <unordered_map>
 #include <vector>
+
+namespace fbzz::scene { class Scene; }
 
 namespace fbzz::editor {
 
@@ -14,6 +18,7 @@ class SceneHierarchyPanel : public IPanel {
 public:
     const char* GetWindowName() const override { return "Scene Hierarchy"; }
     HotkeyScope GetHotkeyScope() const override { return HotkeyScope::Hierarchy; }
+    void OnRegisterOperators(OperatorRegistry& registry) override;
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
@@ -51,6 +56,8 @@ private:
     HierarchyTraversal m_traversal;
 
     char m_searchFilter[128] = {};
+    const scene::Scene* m_expansionScene = nullptr;
+    std::unordered_map<std::string, bool> m_expansionRequests;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

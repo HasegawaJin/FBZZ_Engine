@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/AI/CrowdSimulation.hpp>
 #include <Engine/Scene/ManagedBridgeAbi.hpp>
 #include <vector>
@@ -13,7 +14,7 @@ namespace fbzz::scene::managed_detail {
 class ManagedAiCrowdTransfer {
 public:
     /// @return Failure leaves caller output untouched; BUFFER_TOO_SMALL reports exact outputBytes before simulation.
-    ManagedBridgeStatus Run(const ManagedBridgeRequest& request, ManagedBridgeReply& reply);
+    FBZZ_ENGINE_API ManagedBridgeStatus Run(const ManagedBridgeRequest& request, ManagedBridgeReply& reply);
 private:
     std::vector<ai::CrowdProfile> m_profiles;
     std::vector<ai::CrowdAgent> m_agents, m_output;

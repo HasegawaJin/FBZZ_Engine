@@ -3,14 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 ///
-/// TOML の規約:
-/// - Save は EncodeGuidRefs → FileSystem::WriteText(AssetManager::ResolveAssetPath(path))
-/// - Load は ReadText(ResolveAssetPath(path)) → toml::parse → DecodeGuidRefs
-/// - int / enum は std::int64_t へキャストして書く
-/// - 読み込みは全て value_or で既定値を持たせる (フィールド追加で既存アセットが壊れない)
+/// @note TOML の規約:
+/// @note - Save は EncodeGuidRefs → FileSystem::WriteText(AssetManager::ResolveAssetPath(path))
+/// @note - Load は ReadText(ResolveAssetPath(path)) → toml::parse → DecodeGuidRefs
+/// @note - int / enum は std::int64_t へキャストして書く
+/// @note - 読み込みは全て value_or で既定値を持たせる (フィールド追加で既存アセットが壊れない)
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 
-#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/AssetPath.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
@@ -222,8 +222,8 @@ void EnsureReservedBlackboardKeys(BehaviorTreeAsset& asset)
     const std::vector<BlackboardDef>& reserved = ReservedBlackboardDefs();
 
     /// @note 予約キーと同名のユーザー定義は上書きせず取り除く。予約キーの型は PerceptionSystem の
-    ///       書き込む型と一致している必要があり、型を変えた定義を残すと書き込みが
-    ///       静かに失敗し続ける (Set*() は false を返すだけ)。
+    /// @note 書き込む型と一致している必要があり、型を変えた定義を残すと書き込みが
+    /// @note 静かに失敗し続ける (Set*() は false を返すだけ)。
     std::vector<BlackboardDef> userDefs;
     userDefs.reserve(asset.blackboard.size());
     for (const BlackboardDef& def : asset.blackboard) {
@@ -319,8 +319,8 @@ bool ValidateBehaviorTreeAsset(const BehaviorTreeAsset& asset, std::string* outE
 
     /// @name abortMode は純粋条件にのみ
     /// @note observerAborts は Running 中に毎 tick 条件を再評価するため、副作用のあるノードを
-    ///       指定すると中断のたびに Blackboard 書き換えやアニメ再生が起きて木が非決定的になる。
-    ///       実行時に気付くのは困難なため保存時点で止める。
+    /// @note 指定すると中断のたびに Blackboard 書き換えやアニメ再生が起きて木が非決定的になる。
+    /// @note 実行時に気付くのは困難なため保存時点で止める。
     for (const BTNodeDef& node : asset.nodes) {
         if (node.abortMode == AbortMode::None) continue;
         if (BTNodeIsPureCondition(node.type)) continue;
@@ -340,7 +340,7 @@ bool SaveBehaviorTreeAsset(const std::string& path, const BehaviorTreeAsset& ass
                            std::string* outError)
 {
     /// @note 壊れた木をディスクへ書くと次にロードしたプロジェクトが起動時に落ちるため、
-    ///       エディタ上で直せるうちに保存前検証で止める。
+    /// @note エディタ上で直せるうちに保存前検証で止める。
     if (!ValidateBehaviorTreeAsset(asset, outError)) return false;
 
     toml::table root;
@@ -359,7 +359,7 @@ bool SaveBehaviorTreeAsset(const std::string& path, const BehaviorTreeAsset& ass
     root.insert("blackboard", std::move(blackboard));
 
     /// @note アセット参照 (soundPath 等) を guid: へ変換する。リネーム・移動しても参照が切れない
-    ///       ようにするためで、ディスク上だけが guid、メモリ上は常に "Assets/..." パス (GuidRefCodec の規約)。
+    /// @note ようにするためで、ディスク上だけが guid、メモリ上は常に "Assets/..." パス (GuidRefCodec の規約)。
     asset::EncodeGuidRefs(root);
 
     std::ostringstream stream;
@@ -368,7 +368,7 @@ bool SaveBehaviorTreeAsset(const std::string& path, const BehaviorTreeAsset& ass
     stream << root;
     stream << '\n';
 
-    if (!util::FileSystem::WriteText(asset::AssetManager::ResolveAssetPath(path), stream.str())) {
+    if (!util::FileSystem::WriteText(asset::ResolveAssetPath(path), stream.str())) {
         SetError(outError, "Behavior Tree を書き込めませんでした: " + path);
         return false;
     }
@@ -379,7 +379,7 @@ bool ParseBehaviorTreeAsset(const std::string& path, BehaviorTreeAsset& out,
                             std::string* outError)
 {
     std::string text;
-    if (!util::FileSystem::ReadText(asset::AssetManager::ResolveAssetPath(path), text)) {
+    if (!util::FileSystem::ReadText(asset::ResolveAssetPath(path), text)) {
         SetError(outError, "Behavior Tree を読み取れませんでした: " + path);
         return false;
     }
@@ -412,7 +412,7 @@ bool ParseBehaviorTreeAsset(const std::string& path, BehaviorTreeAsset& out,
     }
 
     /// @note nextNodeId が既存 id と衝突していたら押し上げる。手書きの .behaviortree や
-    ///       クラッシュ中保存で id が重複すると、次に追加したノードが既存を上書きする。
+    /// @note クラッシュ中保存で id が重複すると、次に追加したノードが既存を上書きする。
     for (const BTNodeDef& node : loaded.nodes)
         loaded.nextNodeId = std::max(loaded.nextNodeId, node.id + 1);
 
@@ -449,7 +449,7 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
     };
 
     /// @note 親ごとの子を order 順に持つ。BT の挙動は order で決まるため、木の形だけでは足りず、
-    ///       「どの枝が先に試されるか」を復元しないと中断も到達性も判定できない。
+    /// @note 「どの枝が先に試されるか」を復元しないと中断も到達性も判定できない。
     std::unordered_map<int, std::vector<const BTNodeDef*>> childrenOf;
     for (const BTNodeDef& node : asset.nodes)
         if (node.parentId != 0) childrenOf[node.parentId].push_back(&node);
@@ -462,7 +462,7 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
     };
 
     /// @note 「この枝を守っている条件」を返す。枝そのものが条件のことも、
-    ///       Sequence(条件, 行動...) の先頭が条件のこともある。無ければ nullptr。
+    /// @note Sequence(条件, 行動...) の先頭が条件のこともある。無ければ nullptr。
     const auto guardConditionOf = [&childrenOf](const BTNodeDef& branch) -> const BTNodeDef* {
         const auto isGuard = [](const BTNodeDef& node) {
             return BTNodeIsPureCondition(node.type)
@@ -477,7 +477,7 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
     };
 
     /// @note その子が「後続の兄弟へ制御を渡さない」種別か。
-    ///       Sequence では Running を返し続ける子、Selector では必ず Success する子が該当する。
+    /// @note Sequence では Running を返し続ける子、Selector では必ず Success する子が該当する。
     const auto blocksFollowingSiblings = [](const BTNodeDef& parent, const BTNodeDef& child) {
         if (parent.type == BTNodeType::Sequence || parent.type == BTNodeType::Selector) {
             if (child.type == BTNodeType::AlwaysRunning) return true;
@@ -538,13 +538,13 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
                 "Play Audio の soundPath が空です (音が鳴りません)" });
         }
         /// @note Wait は 0 秒だと 1 tick で Success する。「待つ」意図が消えているのに
-        ///       木としては成立するので、実行しても待たない理由が最後まで判らない。
+        /// @note 木としては成立するので、実行しても待たない理由が最後まで判らない。
         if (node.type == BTNodeType::Wait && node.duration <= 0.0f && node.durationRandom <= 0.0f) {
             warnings.push_back({ node.id, "zero-duration-wait",
                 "Wait の duration が 0 です (待機になりません)" });
         }
         /// @note キーを引く種別で keyName が空 = 参照先が無い。unresolved-key (綴り違い) と
-        ///       区別して出す。直し方が違う (片方は改名、片方は設定) ため。
+        /// @note 区別して出す。直し方が違う (片方は改名、片方は設定) ため。
         const bool needsKey = node.type == BTNodeType::BlackboardCondition
                            || node.type == BTNodeType::BlackboardCompare
                            || node.type == BTNodeType::SetBlackboard;
@@ -560,9 +560,9 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
         const std::vector<const BTNodeDef*>& list = children->second;
 
         /// @note 最も重要な検査。Selector の高優先枝を守る条件に lowerPriority 中断が無いと、
-        ///       「巡回中にプレイヤーを発見しても、現在のウェイポイントに着くまで反応しない」
-        ///       という BT を採用する意味の大半を失った木になる。木の形は正しいので、
-        ///       実行して観察する以外に気づく手段が無い類の壊れ方。
+        /// @note 「巡回中にプレイヤーを発見しても、現在のウェイポイントに着くまで反応しない」
+        /// @note という BT を採用する意味の大半を失った木になる。木の形は正しいので、
+        /// @note 実行して観察する以外に気づく手段が無い類の壊れ方。
         if (node.type == BTNodeType::Selector) {
             for (std::size_t index = 0; index + 1 < list.size(); ++index) {
                 const BTNodeDef* guard = guardConditionOf(*list[index]);
@@ -577,7 +577,7 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
             }
         }
         /// @note 後続の兄弟へ制御が渡らない子。木には見えているのに絶対に実行されない枝は、
-        ///       「書いたのに効かない」形でしか現れず、木を読んでも気づけない。
+        /// @note 「書いたのに効かない」形でしか現れず、木を読んでも気づけない。
         for (std::size_t index = 0; index + 1 < list.size(); ++index) {
             if (!blocksFollowingSiblings(node, *list[index])) continue;
             warnings.push_back({ list[index]->id, "unreachable-sibling",
@@ -594,4 +594,4 @@ std::vector<BTWarning> CollectBehaviorTreeWarnings(const BehaviorTreeAsset& asse
     return warnings;
 }
 
-} // namespace fbzz::ai
+} /// @note namespace fbzz::ai

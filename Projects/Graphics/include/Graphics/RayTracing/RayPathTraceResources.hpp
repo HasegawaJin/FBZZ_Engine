@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/RayTracing/RayGeometryCache.hpp>
 #include <Graphics/RayTracing/RayPathHistory.hpp>
 #include <Graphics/RayTracing/RayPathScene.hpp>
@@ -94,6 +95,6 @@ struct RayPathViewResources {
 };
 
 /// @return カメラ契約が無効なら false。カメラ以外の integrator 設定は変更しない。
-[[nodiscard]] bool MakeRayPathCameraConstants(const Camera& camera, RayPathTraceConstants& output);
+[[nodiscard]] FBZZ_GRAPHICS_API bool MakeRayPathCameraConstants(const Camera& camera, RayPathTraceConstants& output);
 
 } /// @note namespace fbzz::renderer

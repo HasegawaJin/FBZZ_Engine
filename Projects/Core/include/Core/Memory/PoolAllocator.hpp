@@ -4,6 +4,7 @@
 /// @date    2026-06-01
 /// @note Component など同サイズのオブジェクトを頻繁に生成破棄する場面の断片化を抑える。
 #pragma once
+#include <Core/Api.hpp>
 
 #include "Core/Memory/Allocator.hpp"
 
@@ -16,26 +17,26 @@ namespace fbzz::core {
 class PoolAllocator final : public Allocator {
 public:
     PoolAllocator() = default;
-    ~PoolAllocator() override;
+    FBZZ_CORE_API ~PoolAllocator() override;
 
     PoolAllocator(const PoolAllocator&)            = delete;
     PoolAllocator& operator=(const PoolAllocator&) = delete;
 
-    PoolAllocator(PoolAllocator&& other) noexcept;
-    PoolAllocator& operator=(PoolAllocator&& other) noexcept;
+    FBZZ_CORE_API PoolAllocator(PoolAllocator&& other) noexcept;
+    FBZZ_CORE_API PoolAllocator& operator=(PoolAllocator&& other) noexcept;
 
-    [[nodiscard]] bool Initialize(std::size_t blockSize,
+    [[nodiscard]] FBZZ_CORE_API bool Initialize(std::size_t blockSize,
                                   std::size_t blockCount,
                                   std::size_t alignment = alignof(std::max_align_t));
-    void Shutdown();
+    FBZZ_CORE_API void Shutdown();
 
-    [[nodiscard]] void* Allocate(std::size_t size,
+    [[nodiscard]] FBZZ_CORE_API void* Allocate(std::size_t size,
                                  std::size_t alignment = alignof(std::max_align_t)) override;
-    [[nodiscard]] void* AllocateBlock();
-    void Free(void* ptr) override;
-    void Reset() override;
+    [[nodiscard]] FBZZ_CORE_API void* AllocateBlock();
+    FBZZ_CORE_API void Free(void* ptr) override;
+    FBZZ_CORE_API void Reset() override;
 
-    [[nodiscard]] bool Owns(const void* ptr) const override;
+    [[nodiscard]] FBZZ_CORE_API bool Owns(const void* ptr) const override;
     [[nodiscard]] MemoryStats GetStats() const override { return m_stats; }
     [[nodiscard]] bool IsInitialized() const { return m_memory != nullptr; }
     [[nodiscard]] std::size_t BlockSize() const { return m_blockSize; }

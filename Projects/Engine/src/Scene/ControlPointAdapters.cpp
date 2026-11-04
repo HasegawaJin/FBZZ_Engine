@@ -2,6 +2,7 @@
 /// @brief   Water と Spline の制御点入力を不変な owner-local 数値列へ解決する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Engine/Scene/Components/TargetPointComponent.hpp>
 #include <Engine/Scene/ControlPointAdapters.hpp>
 #include <Engine/Scene/NavigationControlPoints.hpp>
 #include <Engine/Scene/PresentationControlPoints.hpp>

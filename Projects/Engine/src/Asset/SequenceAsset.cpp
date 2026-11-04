@@ -25,7 +25,7 @@ constexpr int64_t kSequenceFormatVersion = 1;
 
 /// @name 列挙 ⇄ 文字列
 /// @note .sequence は人が読んで尺を追う対象で diff にも出るため、数値ではなく名前で書く。
-///       type = 3 では何のトラックか分からず、列挙へ値を挿し込んだ瞬間に全ファイルがずれる。
+/// @note       type = 3 では何のトラックか分からず、列挙へ値を挿し込んだ瞬間に全ファイルがずれる。
 
 struct EnumName {
     const char* name;
@@ -114,7 +114,7 @@ toml::array WriteFloats(std::initializer_list<float> values)
     return array;
 }
 
-/// キー配列の要素は { time = .., value = [..] } の形で統一する。
+/// @note キー配列の要素は { time = .., value = [..] } の形で統一する。
 template<typename Key, typename ReadValue>
 void ReadKeys(const toml::table& table, std::string_view name,
               std::vector<Key>& outKeys, ReadValue readValue)
@@ -504,14 +504,14 @@ double MaxTime(const Container& items, TimeOf timeOf, double current)
     return current;
 }
 
-} // namespace
+} /// @note namespace
 
 double SequenceAsset::GetDurationSeconds() const
 {
     if (duration > 0.0) return duration;
 
     /// @note 尺を書き忘れた .sequence が「再生した瞬間に終わる」形で壊れると、原因が
-    ///       トラック側に見えて追いにくいため、最も遅いキーまでは必ず回して導出する。
+    /// @note       トラック側に見えて追いにくいため、最も遅いキーまでは必ず回して導出する。
     double derived = 0.0;
     for (const auto& track : tracks) {
         derived = MaxTime(track.animationClips,
@@ -553,6 +553,11 @@ bool LoadSequenceAsset(const std::string& path, SequenceAsset& outAsset)
 {
     std::string text;
     if (!util::FileSystem::ReadText(AssetManager::ResolveAssetPath(path), text)) return false;
+    return LoadSequenceAssetFromToml(text, outAsset);
+}
+
+bool LoadSequenceAssetFromToml(std::string_view text, SequenceAsset& outAsset)
+{
     toml::parse_result result = toml::parse(text);
     if (!result) return false;
 
@@ -582,6 +587,13 @@ bool LoadSequenceAsset(const std::string& path, SequenceAsset& outAsset)
 
 bool SaveSequenceAsset(const std::string& path, const SequenceAsset& asset)
 {
+    std::string text;
+    return SerializeSequenceAsset(asset, text)
+        && util::FileSystem::WriteTextAtomic(AssetManager::ResolveAssetPath(path), text);
+}
+
+bool SerializeSequenceAsset(const SequenceAsset& asset, std::string& text)
+{
     /// @note Reject invalid authored floats before opening the destination, preserving its last good contents.
     if (!std::isfinite(asset.duration)) return false;
     for (const auto& track : asset.tracks)
@@ -610,7 +622,8 @@ bool SaveSequenceAsset(const std::string& path, const SequenceAsset& asset)
 
     std::ostringstream stream;
     stream << root;
-    return util::FileSystem::WriteText(AssetManager::ResolveAssetPath(path), stream.str());
+    text = stream.str();
+    return true;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

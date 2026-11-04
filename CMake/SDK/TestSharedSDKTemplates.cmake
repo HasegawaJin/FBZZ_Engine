@@ -12,6 +12,10 @@ foreach(TEMPLATE_KIND standard empty)
     file(READ "${TEMPLATE_ROOT}/CMakeLists.txt" CMAKE_TEXT)
     file(READ "${TEMPLATE_ROOT}/CMakePresets.json" PRESET_TEXT)
     file(READ "${TEMPLATE_ROOT}/.fbzz_proj" PROJECT_TEXT)
+    file(READ "${TEMPLATE_ROOT}/Src/AppMain.cpp" APP_MAIN_TEXT)
+    if(NOT APP_MAIN_TEXT MATCHES "RunStandaloneApplication" OR APP_MAIN_TEXT MATCHES "Application.hpp|StandaloneProjectModule")
+        message(FATAL_ERROR "${TEMPLATE_KIND}: Standalone must use the public native startup boundary")
+    endif()
 
     foreach(REQUIRED_TEXT "find_package(FBZZ {{ENGINE_VERSION}} EXACT CONFIG REQUIRED)"
                           "FBZZ::Engine" "fbzz_stage_runtime" "fbzz_enable_agility_sdk")
@@ -138,6 +142,7 @@ foreach(FIXTURE_PATH
         "cmake/FBZZ/FBZZConfig.cmake" "cmake/FBZZ/FBZZConfigVersion.cmake" "cmake/FBZZ/build.config.in"
         "cmake/FBZZ/FBZZAgilitySDK.cmake" "cmake/FBZZ/StageAgilitySDK.cmake" "cmake/FBZZ/AgilitySDKExports.cpp.in"
         "include/Engine/Scene/ManagedBridgeAbi.hpp" "include/Engine/Scene/ManagedBridgeContract.inl"
+        "include/Engine/Api.hpp" "include/Engine/Standalone.hpp"
         "include/Physics/World.hpp" "include/Fluid/FluidSolver.hpp"
         "include/Math/Vector3.hpp" "include/Core/Logger.hpp" "include/Graphics/Renderer/RenderScene.hpp")
     file(WRITE "${FIXTURE_SDK}/${FIXTURE_PATH}" "")
@@ -177,11 +182,16 @@ set(FBZZ_SDK_DXC_EXE_SHA256 "${FBZZ_DXC_EXECUTABLE_SHA256}")
 set(FBZZ_SDK_DXC_COMPILER_SHA256 "${FBZZ_DXC_COMPILER_SHA256}")
 set(FBZZ_SDK_DXC_VALIDATOR_SHA256 "${FBZZ_DXC_VALIDATOR_SHA256}")
 configure_file("${SOURCE_ROOT}/CMake/SDK/fbzz-sdk.toml.in" "${FIXTURE_ROOT}/manifest.toml" @ONLY)
+file(MAKE_DIRECTORY "${FIXTURE_SDK}/include/Engine/Scene")
+file(WRITE "${FIXTURE_SDK}/include/Engine/Scene/Scene.hpp" "retired internal header")
 execute_process(COMMAND "${CMAKE_COMMAND}" "-DSDK_ROOT=${FIXTURE_SDK}" "-DCONFIG=${FIXTURE_CONFIG}"
     "-DPUBLISH_BEGIN=ON" "-DMANIFEST_TEMPLATE=${FIXTURE_ROOT}/manifest.toml"
     -P "${SOURCE_ROOT}/CMake/SDK/StageFBZZSDK.cmake" RESULT_VARIABLE BEGIN_RESULT)
 if(NOT BEGIN_RESULT EQUAL 0)
     message(FATAL_ERROR "Fixture publication invalidation failed")
+endif()
+if(EXISTS "${FIXTURE_SDK}/include/Engine/Scene/Scene.hpp" OR NOT EXISTS "${FIXTURE_SDK}/include/Engine/Standalone.hpp")
+    message(FATAL_ERROR "Fixture native boundary migration failed")
 endif()
 foreach(PACKAGE AgilitySDK DXC)
     file(MAKE_DIRECTORY "${FIXTURE_SDK}/share/fbzz/licenses/${PACKAGE}")

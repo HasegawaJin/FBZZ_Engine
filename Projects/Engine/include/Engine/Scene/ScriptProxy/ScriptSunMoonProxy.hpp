@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Math/Vector3.hpp>
 
@@ -13,10 +14,10 @@ class Script;
 struct ScriptSunMoonProxy {
     Script* script = nullptr;
 
-    void SetEnabled(bool enabled) const;
-    void SetSun(bool enabled, float intensity) const;
-    void SetMoon(bool enabled, float size, float brightness,
+    FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
+    FBZZ_ENGINE_API void SetSun(bool enabled, float intensity) const;
+    FBZZ_ENGINE_API void SetMoon(bool enabled, float size, float brightness,
                  const math::Vector3& color) const;
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

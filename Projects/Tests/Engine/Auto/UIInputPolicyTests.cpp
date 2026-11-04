@@ -2,7 +2,18 @@
 /// @brief   Exercises the production UI button handler and handoff cancellation without GPU or OS input.
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
+#include <Engine/Scene/Components/UIButton.hpp>
+#include <Engine/Scene/Components/UIControls.hpp>
 #include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/ProjectRuntime.hpp>
+#include <Engine/Scene/ScriptRuntime.hpp>
+#include <Engine/Core/Time.hpp>
+#include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Components/UICanvasGroup.hpp>
+#include <Engine/Scene/Systems/UISystem.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Scene/UIPointer.hpp>
 #include "../../../Engine/src/Scene/Systems/UIInputPolicy.hpp"
@@ -131,6 +142,138 @@ TEST_F(UIInputPolicyTest, InteractionRevisionRemainsMonotonicAcrossMaskReset)
     consumption.Clear();
     EXPECT_GT(cancelled, initial);
     EXPECT_GT(consumption.InteractionRevision(), cancelled);
+}
+
+
+class UIQueryTest : public testkit::EngineFixture {
+protected:
+    void SetUp() override
+    {
+        EngineFixture::SetUp();
+        m_frame = Time::frameCount;
+        m_override = scene::ScriptRuntime::GetOverride();
+        m_pointerActive = scene::UIPointer::IsActive();
+        m_pointerPosition = scene::UIPointer::Position();
+        m_pointerPressed = scene::UIPointer::Pressed();
+        scene::UIPointer::Clear();
+    }
+    void TearDown() override
+    {
+        Time::frameCount = m_frame;
+        scene::ScriptRuntime::Override(m_override);
+        scene::UIPointer::Clear();
+        if (m_pointerActive) scene::UIPointer::Set(m_pointerPosition, m_pointerPressed);
+        EngineFixture::TearDown();
+    }
+    uint64_t m_frame = 0;
+    scene::ScriptRuntime* m_override = nullptr;
+    math::Vector2 m_pointerPosition;
+    bool m_pointerActive = false, m_pointerPressed = false;
+    scene::GameObject& Canvas(scene::Scene& scene)
+    {
+        auto& object = scene.CreateGameObject("Canvas");
+        auto& canvas = object.AddComponent<scene::UICanvas>();
+        canvas.canvasWidth = canvas.canvasHeight = 100.0f;
+        return object;
+    }
+    scene::GameObject& Button(scene::Scene& scene, scene::GameObject& parent)
+    {
+        auto& object = scene.CreateGameObject("Button");
+        object.SetParent(parent);
+        object.transform.position = {10, 10, 0};
+        object.transform.scale = {40, 30, 1};
+        object.AddComponent<scene::UIButton>();
+        return object;
+    }
+    scene::UIInputView View(math::Vector2 pointer = {20, 20})
+    {
+        scene::UIInputView view;
+        view.width = view.height = 100;
+        view.pointer = pointer;
+        view.gameplayInput = false;
+        return view;
+    }
+};
+
+TEST_F(UIQueryTest, CurrentQueryWorksWithoutRenderAndDoesNotConsumeClickState)
+{
+    scene::Scene scene;
+    auto& canvas = Canvas(scene);
+    auto& object = Button(scene, canvas);
+    auto& button = *object.GetComponent<scene::UIButton>();
+    button.onClick = true;
+    EXPECT_TRUE(scene::UIPointerOverUI(scene, View()));
+    EXPECT_FALSE(scene::UIPointerOverUI(scene, View({80, 80})));
+    EXPECT_TRUE(scene::UIPointerOverUI(scene, View()));
+    EXPECT_TRUE(button.onClick);
+    EXPECT_EQ(button.state, scene::UIButtonState::NORMAL);
+    button.enabled = false;
+    EXPECT_FALSE(scene::UIPointerOverUI(scene, View()));
+}
+
+TEST_F(UIQueryTest, RuntimeQueryUsesActiveSceneLifetimeBeforeRenderingAcrossFrames)
+{
+    scene::Scene first, second;
+    auto& canvas = Canvas(first);
+    Button(first, canvas);
+    scene::ProjectRuntime runtime;
+    runtime.BindExternalScene(&first);
+    runtime.ActivateScriptRuntime(100, 100);
+    scene::UIPointer::Set({20, 20}, false);
+    EXPECT_TRUE(scene::ScriptRuntime::IsPointerOverUI(first.GetRenderSceneGeneration()));
+    ++Time::frameCount;
+    scene::UIPointer::Set({20, 20}, false);
+    EXPECT_TRUE(scene::ScriptRuntime::IsPointerOverUI(first.GetRenderSceneGeneration()));
+    runtime.BindExternalScene(&second);
+    EXPECT_FALSE(scene::ScriptRuntime::IsPointerOverUI(first.GetRenderSceneGeneration()));
+    EXPECT_FALSE(scene::ScriptRuntime::IsPointerOverUI(second.GetRenderSceneGeneration()));
+    scene::UIPointer::Clear();
+    runtime.BindExternalScene(nullptr);
+}
+
+TEST_F(UIQueryTest, MasksAndGroupRaycastPolicyApplyBeforeAnyDraw)
+{
+    scene::Scene scene;
+    auto& canvas = Canvas(scene);
+    auto& mask = scene.CreateGameObject("Mask");
+    mask.SetParent(canvas);
+    mask.transform.scale = {25, 25, 1};
+    mask.AddComponent<scene::UIMask>();
+    auto& object = Button(scene, mask);
+    EXPECT_TRUE(scene::UIPointerOverUI(scene, View()));
+    EXPECT_FALSE(scene::UIPointerOverUI(scene, View({40, 20})));
+    auto& group = mask.AddComponent<scene::UICanvasGroup>();
+    group.blocksRaycasts = false;
+    EXPECT_FALSE(scene::UIPointerOverUI(scene, View()));
+    auto& childGroup = object.AddComponent<scene::UICanvasGroup>();
+    childGroup.ignoreParentGroups = true;
+    EXPECT_TRUE(scene::UIPointerOverUI(scene, View()));
+}
+
+TEST_F(UIQueryTest, ScrollOffsetAndViewportScalingUseCurrentValues)
+{
+    scene::Scene scene;
+    auto& canvas = Canvas(scene);
+    auto& scroll = scene.CreateGameObject("Scroll");
+    scroll.SetParent(canvas);
+    scroll.transform.scale = {60, 60, 1};
+    auto& control = scroll.AddComponent<scene::UIScrollView>();
+    auto& object = Button(scene, scroll);
+    object.transform.position.y = 100;
+    auto& canvasComponent = *canvas.GetComponent<scene::UICanvas>();
+    canvasComponent.scaleMode = scene::UICanvasScaleMode::ScaleWithScreenSize;
+    canvasComponent.referenceWidth = canvasComponent.referenceHeight = 100;
+    control.scrollPosition.y = 90;
+    auto view = View({40, 40});
+    view.width = view.height = 200;
+    EXPECT_TRUE(scene::UIPointerOverUI(scene, view));
+    control.enabled = false;
+    EXPECT_FALSE(scene::UIPointerOverUI(scene, view));
+    scene::UIPointer::Set({20, 110}, false);
+    EXPECT_TRUE(scene::UIPointerOverUI(scene, view));
+    scene::UIPointer::Clear();
+    view.width = 0;
+    EXPECT_FALSE(scene::UIPointerOverUI(scene, view));
 }
 
 } /// @note namespace fbzz::tests

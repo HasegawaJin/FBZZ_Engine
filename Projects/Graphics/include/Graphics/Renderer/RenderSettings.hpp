@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/RenderState.hpp>
 #include <Graphics/Renderer/RenderMode.hpp>
 #include <Graphics/Renderer/HybridQualitySettings.hpp>
@@ -622,7 +623,7 @@ struct RenderSettings {
     /// @see Docs/design/async-compute.md
     bool asyncCompute = false;
     /// @name 診断表示 (StripDebugVisualization が落とす)
-    ///@{
+    /// @{
     bool showColliders        = false;
     bool showTerrainCollision = false;
     bool showDecalBounds      = false;
@@ -667,7 +668,7 @@ struct RenderSettings {
     bool showTerrainBounds    = false;
     /// @note LODGroup の判定球 (size × 最大スケール)。色は現在の LOD 段。
     bool showLODBounds        = false;
-    ///@}
+    /// @}
     /// @note UI 要素の矩形・アンカー・ピボットを Canvas 上へ重ねる。
     bool showUIRects          = false;
     bool showSelectionOutline = true;
@@ -915,7 +916,7 @@ struct RenderSettings {
 };
 
 /// @name 描画スケール
-///@{
+/// @{
 /// @note renderScale として意味を持つ範囲。これを超える値は丸められる。
 /// @note 上限 2.0 はスーパーサンプリング用。面積が 4 倍になり VRAM も 4 倍要る。
 inline constexpr float kMinRenderScale = 0.5f;
@@ -948,7 +949,7 @@ inline void ResolveRenderResolution(uint32_t nativeWidth, uint32_t nativeHeight,
     outWidth  = apply(nativeWidth,  kMinRenderWidth);
     outHeight = apply(nativeHeight, kMinRenderHeight);
 }
-///@}
+/// @}
 
 /// @note Option 画面の「画質」。1 つのつまみで重い機能をまとめて切り替える。
 enum class QualityPreset : uint8_t {
@@ -962,10 +963,10 @@ enum class QualityPreset : uint8_t {
 /// @note アセット参照 (IBL の cubemap パス) と絵作りのパラメーターには触れない。
 /// @note 中身を Engine 側に置くのは、ゲーム側へ散らすと機能追加時に古いまま取り残されるため。
 /// @note プリセットは出発点でしかないので、適用後に個別 setter で上書きできる。
-void ApplyQualityPreset(RenderSettings& settings, QualityPreset preset);
+FBZZ_GRAPHICS_API void ApplyQualityPreset(RenderSettings& settings, QualityPreset preset);
 
 /// @note settings の構成が どのプリセットと一致するかを引き当てる。一致しなければ
 /// @note 直近の (= より軽い側の) プリセットを返す。Option 画面の初期表示に使う。
-[[nodiscard]] QualityPreset DetectQualityPreset(const RenderSettings& settings);
+[[nodiscard]] FBZZ_GRAPHICS_API QualityPreset DetectQualityPreset(const RenderSettings& settings);
 
 } /// @note namespace fbzz::renderer

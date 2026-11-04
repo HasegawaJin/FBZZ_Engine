@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Asset/AssetStreaming.hpp>
 #include <cstdint>
 #include <string>
@@ -20,7 +21,7 @@ public:
         std::uint32_t total = 0;
         std::uint32_t ready = 0;
         std::uint32_t failed = 0;
-        /// 失敗も «待つ必要が無い» に数える。
+        /// @note 失敗も «待つ必要が無い» に数える。
         [[nodiscard]] bool IsSettled() const { return ready + failed >= total; }
     };
 
@@ -29,22 +30,22 @@ public:
     ~AssetLeaseSet() { Release(); }
     AssetLeaseSet(const AssetLeaseSet&) = delete;
     AssetLeaseSet& operator=(const AssetLeaseSet&) = delete;
-    AssetLeaseSet(AssetLeaseSet&& other) noexcept;
-    AssetLeaseSet& operator=(AssetLeaseSet&& other) noexcept;
+    FBZZ_ENGINE_API AssetLeaseSet(AssetLeaseSet&& other) noexcept;
+    FBZZ_ENGINE_API AssetLeaseSet& operator=(AssetLeaseSet&& other) noexcept;
 
     /// @brief 1 件要求して束へ加える。
     /// @return 受け付けられなかった理由。None なら加えた。
-    AssetLoadError Add(std::string_view typeName, const std::string& reference, const AssetRequestOptions& options);
+    FBZZ_ENGINE_API AssetLoadError Add(std::string_view typeName, const std::string& reference, const AssetRequestOptions& options);
 
     /// @brief 束の全員の優先度を変える (先読みから可視へ上げる等)。
-    void SetPriority(AssetPriority priority);
+    FBZZ_ENGINE_API void SetPriority(AssetPriority priority);
     /// @brief まだ完成していないものをこの場で同期ロードする。待機を許した箇所 (ロード画面) だけが使う。
     /// @return 同期ロードした件数。
-    std::uint32_t CompleteAllNow();
+    FBZZ_ENGINE_API std::uint32_t CompleteAllNow();
 
-    [[nodiscard]] Progress GetProgress() const;
+    [[nodiscard]] FBZZ_ENGINE_API Progress GetProgress() const;
     [[nodiscard]] std::size_t Size() const { return m_leases.size(); }
-    void Release();
+    FBZZ_ENGINE_API void Release();
 
 private:
     struct Held {
@@ -56,4 +57,4 @@ private:
     std::vector<Held> m_leases;
 };
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

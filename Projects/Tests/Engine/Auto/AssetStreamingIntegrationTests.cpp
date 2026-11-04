@@ -341,6 +341,7 @@ TEST_F(MaterialPathScratchTest, ManagedTransferReacquiresLoadOwnersAndHonorsRefl
     auto* callbacks = importer.get();
     asset::AssetManager::RegisterImporter<asset::MaterialAsset>(std::move(importer));
     scene::Scene testScene;
+    testScene.SetResourceManager(&m_resources);
     auto& target = testScene.CreateGameObject("MaterialTransferOwner");
     auto& component = target.AddComponent<scene::MaterialComponent>();
     component.ResizeSlots(2);
@@ -388,6 +389,95 @@ TEST_F(MaterialPathScratchTest, ManagedTransferReacquiresLoadOwnersAndHonorsRefl
     EXPECT_EQ(transfers.Run(testScene, target, caller, request, result, &reply), scene::ManagedBridgeStatus::NOT_FOUND);
     EXPECT_TRUE(cancelled);
     EXPECT_EQ(output, (std::array<double, 4>{-7.0, -7.0, -7.0, -7.0}));
+}
+
+TEST_F(MaterialPathScratchTest, ManagedNumericWriteResolvesLazyMaterialBeforeItsCommitFence)
+{
+    struct RestoreImporter final {
+        ~RestoreImporter() { asset::AssetManager::RegisterImporter<asset::MaterialAsset>(std::make_unique<asset::MatAssetImporter>()); }
+    } restore;
+    asset::AssetManager::RegisterImporter<asset::MaterialAsset>(std::make_unique<RelocatingMaterialImporter>(MakeMaterialShader()));
+    for (const uint32_t count : {3u, 4u}) {
+        SCOPED_TRACE(count);
+        scene::Scene testScene;
+        testScene.SetResourceManager(&m_resources);
+        auto& target = testScene.CreateGameObject("LazyNumericWrite");
+        auto& component = target.AddComponent<scene::MaterialComponent>();
+        component.SetMaterialPath(m_temp.File("LazyWrite" + std::to_string(count) + ".mat").generic_string());
+        ASSERT_FALSE(component.GetMaterialAsset().IsValid());
+        scene::Script caller; caller.SetContext(&testScene, &target);
+        scene::managed_detail::ManagedMaterialTransfers transfers;
+        scene::ManagedBridgeRequest request;
+        request.index = 32; request.callId = 13;
+        request.ownerId = 9; request.instanceId = 11; request.generation = 7;
+        scene::managed_detail::ManagedServiceResult result;
+        const std::array<std::string, 2> property{"albedo", std::to_string(count)};
+        ASSERT_EQ(transfers.Open(testScene, target, caller, request, 0, {}, property, result), scene::ManagedBridgeStatus::OK);
+        const uint64_t reception = static_cast<uint64_t>(result.integer);
+        ASSERT_NE(reception, 0u);
+        const auto append = []<typename T>(std::string& bytes, const T& value) {
+            bytes.append(static_cast<const char*>(static_cast<const void*>(&value)), sizeof(T));
+        };
+        std::string packet;
+        append(packet, reception); append(packet, uint64_t{0}); append(packet, count); append(packet, uint32_t{0});
+        for (uint32_t index = 0; index < count; ++index) append(packet, double{0.75});
+        request.index = 33; request.input = packet.data(); request.inputBytes = static_cast<uint32_t>(packet.size());
+        ASSERT_EQ(transfers.Run(testScene, target, caller, request, result), scene::ManagedBridgeStatus::OK);
+        packet.resize(sizeof(reception));
+        request.index = 34; request.input = packet.data(); request.inputBytes = static_cast<uint32_t>(packet.size());
+
+        EXPECT_EQ(transfers.Run(testScene, target, caller, request, result), scene::ManagedBridgeStatus::OK);
+
+        EXPECT_EQ(result.integer, count == 4 ? 1 : 0);
+        const auto& overrides = component.Authoring().paramOverrides;
+        if (count == 4) {
+            const auto found = overrides.find("albedo");
+            ASSERT_NE(found, overrides.end());
+            ASSERT_EQ(found->second.size(), 4u);
+            for (const float value : found->second) EXPECT_FLOAT_EQ(value, 0.75f);
+        } else EXPECT_TRUE(overrides.empty());
+    }
+}
+
+TEST_F(MaterialPathScratchTest, ManagedNumericWriteRejectsOwnerReplacementDuringLazyLoad)
+{
+    struct RestoreImporter final {
+        ~RestoreImporter() { asset::AssetManager::RegisterImporter<asset::MaterialAsset>(std::make_unique<asset::MatAssetImporter>()); }
+    } restore;
+    auto importer = std::make_unique<RelocatingMaterialImporter>(MakeMaterialShader());
+    auto* callbacks = importer.get();
+    asset::AssetManager::RegisterImporter<asset::MaterialAsset>(std::move(importer));
+    scene::Scene testScene;
+    testScene.SetResourceManager(&m_resources);
+    auto& target = testScene.CreateGameObject("ReplacedNumericWrite");
+    auto& component = target.AddComponent<scene::MaterialComponent>();
+    component.ResizeSlots(2);
+    const auto path = m_temp.File("ReplacedNumericWrite.mat").generic_string();
+    component.RawSlotAt(1).SetMaterialPath(path);
+    const auto previous = component.RawSlotAt(1).ReadAuthoring();
+    scene::Script caller; caller.SetContext(&testScene, &target);
+    scene::managed_detail::ManagedMaterialTransfers transfers;
+    scene::ManagedBridgeRequest request;
+    request.index = 32; request.callId = 13;
+    request.ownerId = 9; request.instanceId = 11; request.generation = 7;
+    const std::array<std::string, 2> property{"albedo", "4"};
+    scene::managed_detail::ManagedServiceResult result;
+    bool replaced = false;
+    callbacks->beforeImport = [&] {
+        component.RawSlotAt(1) = scene::MaterialSlot{};
+        component.RawSlotAt(1).SetMaterialPath(path);
+        EditMaterialAuthoring(component.RawSlotAt(1), [](auto& draft) { draft.paramOverrides["albedo"] = {0.5f, 0.5f, 0.5f, 1.0f}; });
+        replaced = true;
+    };
+
+    EXPECT_EQ(transfers.Open(testScene, target, caller, request, 1, {}, property, result), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
+
+    EXPECT_TRUE(replaced);
+    const auto current = component.RawSlotAt(1).ReadAuthoring();
+    EXPECT_NE(current->OwnerToken(), previous->OwnerToken());
+    const auto found = current->Data().paramOverrides.find("albedo");
+    ASSERT_NE(found, current->Data().paramOverrides.end());
+    EXPECT_FLOAT_EQ(found->second[0], 0.5f);
 }
 
 /// @note Mutating defaults/overrides and reentering from native texture creation must not replace the outer call's already-owned path snapshot.
@@ -737,7 +827,8 @@ TEST_F(AssetStreamingIntegrationTest, ManagedMaterialNumericPagesValidateRealPro
     shared.integerParams["values"].resize(9004, 17); shared.integerParams["values"].back() = UINT32_MAX;
     const std::string materialPath = m_temp.File("fixture.mat").generic_string();
     ASSERT_TRUE(asset::SaveMaterialAssetToFile(materialPath, shared));
-    scene::Scene scene; auto& target = scene.CreateGameObject("Material"); auto& component = target.AddComponent<scene::MaterialComponent>();
+    scene::Scene scene; scene.SetResourceManager(&m_resources);
+    auto& target = scene.CreateGameObject("Material"); auto& component = target.AddComponent<scene::MaterialComponent>();
     component.SetMaterialPath(materialPath); scene::Script caller; caller.SetContext(&scene, &target);
     scene::managed_detail::ManagedServicesBridge services; scene::managed_detail::ManagedServiceResult result;
     const auto append = []<typename T>(std::string& bytes, const T& value) { bytes.append(std::bit_cast<const char*>(&value), sizeof(T)); };

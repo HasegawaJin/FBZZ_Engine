@@ -470,7 +470,7 @@ RMS 周波数 `fs/(2π)·√(Σ(Δx)²/Σx²)`。必要なのは「明るいか�
 | 5 | Mixer Bus | `Audio/AudioBus.hpp` (新規), `IAudioDevice.hpp`, `XAudio2Device.hpp/.cpp`, `AudioManager.hpp/.cpp` |
 | 6 | ProjectSettings 結線 (課題 3 の解消) | `ProjectSettings.hpp/.cpp`, `Application.cpp`, `ProjectSettingsPanel.cpp` |
 | 7 | AudioSourceComponent の bus 対応 | `AudioSourceComponent.hpp`, `AudioSystem.cpp` |
-| 8 | ScriptProxy API | `ScriptAudioProxy.hpp`, `ScriptProxies.cpp` |
+| 8 | ScriptProxy API | `ScriptAudioProxy.hpp`, `ScriptAudioProxies.cpp` |
 | 9 | Editor 統合 (AssetBrowser / Inspector) | §5.1 の一覧 |
 | 10 | SFX Editor パネル | `Panels/SfxEditorPanel.hpp/.cpp` (新規), `EditorApp.cpp` |
 | 11 | AI 連携 (§9.1 / §9.2) | `Op/SfxOperators.cpp` (新規), `Audio/Synth.cpp` の `Analyze`, `EditorBusDispatcher.cpp`, `EditorMcp/src/tools.ts` |

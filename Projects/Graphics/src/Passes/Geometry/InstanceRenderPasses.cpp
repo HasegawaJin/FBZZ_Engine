@@ -57,6 +57,10 @@ InstanceResources& Resources(ResourceManager& manager)
 {
     static InstanceResources cache;
     if (cache.owner!=manager.GetInstanceId() || cache.epoch!=manager.GetResetVersion()) {
+        if (auto* owner = ResourceManager::FindOwner(cache.owner)) {
+            for (const auto& [identity, source] : cache.sources) owner->Release(source.gpu);
+            owner->Release(cache.material);
+        }
         cache={}; cache.owner=manager.GetInstanceId(); cache.epoch=manager.GetResetVersion();
     }
     constexpr std::array<const char*,10> paths{"Assets/Shaders/Pipeline/Deferred/GBufferResident.hlsl",
@@ -257,6 +261,8 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         }
         for (uint32_t partIndex=0;partIndex<input.parts.size();++partIndex) {
             const auto& part=input.parts[partIndex]; const auto& material=part.mesh.material;
+            if ((pass == InstancePass::FORWARD || pass == InstancePass::GBUFFER)
+                && material.capabilities.blend != BlendMode::OPAQUE_BLEND) continue;
             const bool standard=material.shaderCapabilities.SupportsGBuffer();
             if (forwardPass && !standard && cache.warnedCustom.insert({material.shader.id,material.shader.gen}).second)
                 FBZZ_LOG_WARN("Instance rendering: custom shader uses individual CPU draws to preserve its vertex/material contract");

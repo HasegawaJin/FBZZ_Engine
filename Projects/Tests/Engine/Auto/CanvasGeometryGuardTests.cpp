@@ -2,6 +2,9 @@
 /// @brief   Preserve Canvas geometry safety and visit overlapping subtree nodes once per call.
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/UICanvas.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include "../../../Engine/src/Scene/Systems/CanvasGeometryGuard.hpp"

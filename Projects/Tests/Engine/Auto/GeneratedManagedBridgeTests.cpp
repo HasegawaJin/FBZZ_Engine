@@ -2,6 +2,7 @@
 /// @brief   生成 marshaller 五経路を実 CoreCLR と native の階層・入力・時間契約で検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Core/Time.hpp>

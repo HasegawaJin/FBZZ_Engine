@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 ///
-/// AssetBrowser の一覧・検査・サムネイルは AI Query から既に使えるが、参照確認や再インポート設定を
-/// 開く検証導線は UI だけに閉じていた。EditorContext の one-shot request を共有し、パネルの所有権や
-/// ファイル監視の実装を Operator 層へ漏らさない。
+/// @note AssetBrowser の一覧・検査・サムネイルは AI Query から既に使えるが、参照確認や再インポート設定を
+/// @note 開く検証導線は UI だけに閉じていた。EditorContext の one-shot request を共有し、パネルの所有権や
+/// @note ファイル監視の実装を Operator 層へ漏らさない。
 #include <Editor/Op/OperatorGroups.hpp>
 #include <Editor/Util/ScriptCodeGen.hpp>
 #include <Editor/Util/ManagedDataAssetEditor.hpp>
@@ -51,6 +51,13 @@ bool HasSingleManagedProject(const std::string& projectRoot)
 void RegisterAssetBrowserOperators(OperatorRegistry& registry)
 {
     RegisterManagedDataAssetOperators(registry);
+    RegisterModelImportOperators(registry);
+    RegisterTextureImportOperators(registry);
+    RegisterAnimationPreviewOperators(registry);
+    RegisterAssetFileOperators(registry);
+    RegisterAssetReferenceOperators(registry);
+    RegisterProjectSettingsOperators(registry);
+    RegisterInputBindingOperators(registry);
     const auto registerCSharpCreation = [&registry](const char* id,
                                                      const char* label,
                                                      const char* description,
@@ -144,23 +151,6 @@ void RegisterAssetBrowserOperators(OperatorRegistry& registry)
         registry.Register(std::move(op));
     }
 
-    {
-        EditorOperator op;
-        op.id       = "asset.open_import_settings";
-        op.label    = "Open Asset Import Settings";
-        op.category = "AssetBrowser";
-        op.desc     = "指定アセットの既存インポート設定モーダルを開く。";
-        op.kind     = OpKind::Action;
-        op.params   = { AssetPathParam("再インポートするアセットのパス") };
-        op.poll = [](const OpContext&, const OpArgs& args) {
-            return !args.GetString("path").empty();
-        };
-        op.exec = [](OpContext& context, const OpArgs& args) {
-            context.ctx.requestOpenImportModal = args.GetString("path");
-            return OpResult::Ok();
-        };
-        registry.Register(std::move(op));
-    }
 }
 
 } /// @note namespace fbzz::editor

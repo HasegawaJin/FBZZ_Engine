@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Math/Matrix4.hpp>
 #include <array>
@@ -45,27 +46,27 @@ struct ClothAsset {
 };
 
 /// @return 不正な面、未使用質点、範囲外の対応・固定点、非有限値なら false。
-[[nodiscard]] bool ValidateClothAsset(const ClothAsset& asset);
+[[nodiscard]] FBZZ_ENGINE_API bool ValidateClothAsset(const ClothAsset& asset);
 /// @note 両メッシュは同じモデル空間。最近接三角形まで maxDistance [m] 以内のみ結合する。失敗時 out は未変更。
 /// @see https://realtimecollisiondetection.net/ Real-Time Collision Detection 5.1.5 Closest Point on Triangle。
-[[nodiscard]] bool BindClothRenderMesh(const ClothAsset& simulation, const renderer::Mesh& renderMesh,
+[[nodiscard]] FBZZ_ENGINE_API bool BindClothRenderMesh(const ClothAsset& simulation, const renderer::Mesh& renderMesh,
                                       float maxDistance, ClothAsset& out);
 /// @note positions と rest は同じローカル空間。潰れた三角形のオフセット方向は静止形状を使う。失敗時 out は未変更。
-[[nodiscard]] bool EvaluateClothRenderBindings(std::span<const ClothRenderBinding> bindings,
+[[nodiscard]] FBZZ_ENGINE_API bool EvaluateClothRenderBindings(std::span<const ClothRenderBinding> bindings,
     std::span<const math::Vector3> rest, std::span<const math::Vector3> positions, std::vector<math::Vector3>& out);
 /// @note mapping が空なら 1:1。指定時は密な質点 ID を使用し、同じ ID の位置は一致させる。
 /// @return 失敗時は out を変更しない。スキンメッシュには CreateSkinnedClothAsset を使用する。
-[[nodiscard]] bool CreateClothAsset(const renderer::Mesh& mesh, std::span<const uint32_t> mapping, ClothAsset& out);
+[[nodiscard]] FBZZ_ENGINE_API bool CreateClothAsset(const renderer::Mesh& mesh, std::span<const uint32_t> mapping, ClothAsset& out);
 /// @note referencePose を静止形状に焼き、元の逆バインドと最大 4 ウェイトを質点へ転送する。seam のウェイト不一致は拒否する。
 /// @return 失敗時は out を変更しない。Skeleton の referencePose は構築済みであること。
-[[nodiscard]] bool CreateSkinnedClothAsset(const renderer::Mesh& mesh, const Skeleton& skeleton,
+[[nodiscard]] FBZZ_ENGINE_API bool CreateSkinnedClothAsset(const renderer::Mesh& mesh, const Skeleton& skeleton,
                                           std::span<const uint32_t> mapping, ClothAsset& out);
 /// @note boneWorld は skinBones 順のワールド行列。out は失敗時に変更しない。
 /// @see https://github.khronos.org/glTF-Tutorials/gltfTutorial/gltfTutorial_020_Skins.html Joint matrices と線形ブレンド。
-[[nodiscard]] bool EvaluateClothSkinning(const ClothAsset& asset, std::span<const math::Matrix4> boneWorld,
+[[nodiscard]] FBZZ_ENGINE_API bool EvaluateClothSkinning(const ClothAsset& asset, std::span<const math::Matrix4> boneWorld,
                                         std::vector<math::Vector3>& out);
 /// @return 読み込み・検証失敗時は false、out は未変更。
-[[nodiscard]] bool LoadClothAssetFromFile(std::string_view path, ClothAsset& out);
+[[nodiscard]] FBZZ_ENGINE_API bool LoadClothAssetFromFile(std::string_view path, ClothAsset& out);
 /// @note 検証後、テンポラリから原子的に置き換える。
-[[nodiscard]] bool SaveClothAssetToFile(std::string_view path, const ClothAsset& asset);
+[[nodiscard]] FBZZ_ENGINE_API bool SaveClothAssetToFile(std::string_view path, const ClothAsset& asset);
 }

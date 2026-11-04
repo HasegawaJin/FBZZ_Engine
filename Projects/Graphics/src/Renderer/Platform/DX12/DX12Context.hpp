@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <span>
 #include <memory>
@@ -29,18 +30,18 @@ public:
     static constexpr DXGI_FORMAT BACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
     static constexpr DXGI_FORMAT DEPTH_FORMAT = DXGI_FORMAT_D32_FLOAT;
 
-    ~DX12Context();
+    FBZZ_GRAPHICS_API ~DX12Context();
 
-    bool Initialize(HWND hwnd, uint32_t width, uint32_t height);
-    void Shutdown();
-    bool BeginFrame();
+    FBZZ_GRAPHICS_API bool Initialize(HWND hwnd, uint32_t width, uint32_t height);
+    FBZZ_GRAPHICS_API void Shutdown();
+    FBZZ_GRAPHICS_API bool BeginFrame();
     /// @return Query Resolve を含む最後の描画提出の Signal 値。未提出・失敗では 0。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management Fence-Based Resource Management
-    uint64_t EndFrame();
-    void Resize(uint32_t width, uint32_t height);
-    void Flush();
+    FBZZ_GRAPHICS_API uint64_t EndFrame();
+    FBZZ_GRAPHICS_API void Resize(uint32_t width, uint32_t height);
+    FBZZ_GRAPHICS_API void Flush();
     /// @note 描画 list の fence 通過まで保持し、専用 compute fence の完了だけで output を再利用しない。
-    void RetainPreparedSkinning(std::shared_ptr<const PreparedSkinningTicket> ticket);
+    FBZZ_GRAPHICS_API void RetainPreparedSkinning(std::shared_ptr<const PreparedSkinningTicket> ticket);
     /// @note Context と同じ寿命の非所有 executor。native 資源の同期更新を描画スレッドへ橋渡しする。
     void SetCpuExecutor(IRenderer* executor) { m_cpuExecutor = executor; }
     [[nodiscard]] IRenderer* GetCpuExecutor() const { return m_cpuExecutor; }
@@ -54,17 +55,17 @@ public:
     uint64_t GetGraphicsCommandListSerial() const { return m_graphicsCommandListSerial; }
     /// @note Scopes belong to a recording list and reopen only after a successful split Reset.
     /// @see https://devblogs.microsoft.com/pix/winpixeventruntime/ Official SDK GPU event overloads.
-    [[nodiscard]] uint64_t BeginPixEvent(ID3D12GraphicsCommandList* commands,
+    [[nodiscard]] FBZZ_GRAPHICS_API uint64_t BeginPixEvent(ID3D12GraphicsCommandList* commands,
         std::string_view name, uint64_t color = 0xff4d9de0u);
-    void EndPixEvent(ID3D12GraphicsCommandList* commands, uint64_t token);
+    FBZZ_GRAPHICS_API void EndPixEvent(ID3D12GraphicsCommandList* commands, uint64_t token);
     ID3D12DescriptorHeap* GetImGuiSrvHeap() const { return m_imguiSrvHeap.Get(); }
     ID3D12DescriptorHeap* GetResourceSrvHeap() const { return m_resourceSrvHeap.Get(); }
-    D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRtv() const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetDsv() const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetImGuiSrvCpu() const;
-    D3D12_GPU_DESCRIPTOR_HANDLE GetImGuiSrvGpu() const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetImGuiSrvCpu(uint32_t index) const;
-    D3D12_GPU_DESCRIPTOR_HANDLE GetImGuiSrvGpu(uint32_t index) const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRtv() const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetDsv() const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetImGuiSrvCpu() const;
+    FBZZ_GRAPHICS_API D3D12_GPU_DESCRIPTOR_HANDLE GetImGuiSrvGpu() const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetImGuiSrvCpu(uint32_t index) const;
+    FBZZ_GRAPHICS_API D3D12_GPU_DESCRIPTOR_HANDLE GetImGuiSrvGpu(uint32_t index) const;
     uint32_t GetImGuiDescriptorCapacity() const { return IMGUI_DESCRIPTOR_CAPACITY; }
     /// @note 転送する 1 段ぶん。rowPitch は rgba の 1 行のバイト数。
     struct TextureMip {
@@ -74,19 +75,19 @@ public:
         std::size_t rowPitch = 0;
     };
     /// @note 0 段目から並べたミップの列を RGBA8 の 2D テクスチャとして同期転送する。
-    bool UploadTexture2DMips(std::span<const TextureMip> mips, Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
-    bool UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t height,
+    FBZZ_GRAPHICS_API bool UploadTexture2DMips(std::span<const TextureMip> mips, Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
+    FBZZ_GRAPHICS_API bool UploadTexture2D(const uint8_t* rgba, uint32_t width, uint32_t height,
                          Microsoft::WRL::ComPtr<ID3D12Resource>& texture);
     /// @brief UploadTexture2DMips の待たない版。転送を投入して戻る。
     /// @param outFenceValue 転送完了で通過するフェンス値。0 なら投入時に完了済み。
     /// @note upload バッファとアロケーターはフェンス通過まで内部で保持し、CollectDeferredReleases で返す。
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/fence-based-resource-management Fence-Based Resource Management
-    bool UploadTexture2DMipsAsync(std::span<const TextureMip> mips,
+    FBZZ_GRAPHICS_API bool UploadTexture2DMipsAsync(std::span<const TextureMip> mips,
                                   Microsoft::WRL::ComPtr<ID3D12Resource>& texture,
                                   uint64_t& outFenceValue);
     /// @brief フェンス値を GPU が通過したか。0 は常に true。CPU は待たない。
     /// @note kCopyQueueTokenBit の立った値はコピーキューのフェンスとして見る。
-    [[nodiscard]] bool IsFenceComplete(uint64_t fenceValue) const;
+    [[nodiscard]] FBZZ_GRAPHICS_API bool IsFenceComplete(uint64_t fenceValue) const;
     /// @note UploadTexture2DMipsAsync が返す値のうち、コピーキューで転送したことを表す印。
     static constexpr uint64_t kCopyQueueTokenBit = 1ull << 63;
     /// @brief 非同期転送に専用コピーキューを使うか。無効ならこれまでどおり描画キューで転送する。
@@ -107,23 +108,23 @@ public:
     /// @note          ルート引数の記憶を捨て直すこと (DX12Renderer::InvalidateRootCbvCache)。
     /// @note アロケーターはフレーム末まで Reset しない。投入済みリストが参照する記録メモリを
     /// @note       生かしたまま、同じアロケーターへ追記していく。
-    uint64_t SplitGraphicsList();
+    FBZZ_GRAPHICS_API uint64_t SplitGraphicsList();
 
     /// @brief コンピュートリストを開く。waitGraphicsFenceValue まで描画キューを待ってから走る。
     /// @return 記録先。使えないときは nullptr (呼び出し側は描画キューのまま続けてよい)。
-    ID3D12GraphicsCommandList* BeginComputeList(uint64_t waitGraphicsFenceValue);
+    FBZZ_GRAPHICS_API ID3D12GraphicsCommandList* BeginComputeList(uint64_t waitGraphicsFenceValue);
 
     /// @brief コンピュートリストを閉じて投入し、描画キューへ «通過するまで待て» を積む。
     /// @note 描画キューへの Wait はこの後に投入される描画にだけ効く。区間を抜けた後の描画が
     /// @note       結果を読むので、これで順序は足りる。
-    void EndComputeList();
+    FBZZ_GRAPHICS_API void EndComputeList();
     [[nodiscard]] bool IsComputeListOpen() const { return m_computeListOpen; }
     [[nodiscard]] ID3D12GraphicsCommandList* GetComputeList() const { return m_computeList.Get(); }
     /// @}
-    bool CreateDefaultBuffer(const void* data, size_t sizeBytes,
+    FBZZ_GRAPHICS_API bool CreateDefaultBuffer(const void* data, size_t sizeBytes,
                              Microsoft::WRL::ComPtr<ID3D12Resource>& buffer);
-    bool StageBufferCopy(ID3D12Resource* destination, const void* data, size_t sizeBytes, size_t destinationOffset = 0);
-    void DeferRelease(Microsoft::WRL::ComPtr<ID3D12Resource>& resource);
+    FBZZ_GRAPHICS_API bool StageBufferCopy(ID3D12Resource* destination, const void* data, size_t sizeBytes, size_t destinationOffset = 0);
+    FBZZ_GRAPHICS_API void DeferRelease(Microsoft::WRL::ComPtr<ID3D12Resource>& resource);
     uint32_t GetWidth() const { return m_width; }
     uint32_t GetHeight() const { return m_height; }
     uint32_t GetFrameIndex() const { return m_frameIndex; }
@@ -192,21 +193,21 @@ public:
 
     /// @brief 永続レンジから 1 枠確保する。返るのはヒープ先頭からの添字 (シェーダーが使う値)。
     /// @return 枯渇した場合は INVALID_BINDLESS_INDEX。呼び出し側はテーブル経路へ縮退すること。
-    uint32_t AllocateBindlessSlot();
+    FBZZ_GRAPHICS_API uint32_t AllocateBindlessSlot();
 
     /// @brief 枠を解放する。GPU が参照し終えるまで再利用しない。
     /// @note 現在記録中のコマンドリストがまだその添字を読む可能性があるため、フェンス通過まで
     /// @note       フリーリストへ戻さない。即時に戻すと、直後の確保が生きている描画のテクスチャを奪う。
-    void FreeBindlessSlot(uint32_t index);
+    FBZZ_GRAPHICS_API void FreeBindlessSlot(uint32_t index);
 
     /// @brief 永続レンジ内の CPU ハンドル。ここへ SRV を書き込むと添字で引けるようになる。
-    D3D12_CPU_DESCRIPTOR_HANDLE GetBindlessCpu(uint32_t index) const;
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetBindlessCpu(uint32_t index) const;
 
     /// @brief 任意の CPU ディスクリプタを新しい枠へ複製し、その添字を返す。
     /// @return 枯渇していれば INVALID_BINDLESS_INDEX。
     /// @note リソース自身が添字を持てない一時ビュー (IBL ベイクの面ごと UAV など) 用。
     /// @note       呼び出し側が使い終わったら FreeBindlessSlot で返すこと。
-    uint32_t PublishBindlessDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE source);
+    FBZZ_GRAPHICS_API uint32_t PublishBindlessDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE source);
 
     uint32_t GetBindlessCapacity() const { return BINDLESS_DESCRIPTOR_CAPACITY; }
     uint32_t GetBindlessUsage() const { return m_bindlessNextSlot - static_cast<uint32_t>(m_bindlessFreeList.size()); }
@@ -215,11 +216,11 @@ public:
     /// @note 描画スレッド専用。CPU staging は共有ページへ置き、buffer ごとの native heap 生成を避ける。
     /// @return 失敗時は INVALID_BINDLESS_INDEX。GPU の bindless 添字とは別の索引。
     /// @see Docs/design/dx12-resource-descriptors.md
-    uint32_t AllocateCpuResourceDescriptor();
+    FBZZ_GRAPHICS_API uint32_t AllocateCpuResourceDescriptor();
     /// @note CPU staging は CopyDescriptorsSimple 完了後 GPU から参照されず、即時に再利用できる。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device-copydescriptorssimple Immediate descriptor copy.
-    void FreeCpuResourceDescriptor(uint32_t index);
-    D3D12_CPU_DESCRIPTOR_HANDLE GetCpuResourceDescriptor(uint32_t index) const;
+    FBZZ_GRAPHICS_API void FreeCpuResourceDescriptor(uint32_t index);
+    FBZZ_GRAPHICS_API D3D12_CPU_DESCRIPTOR_HANDLE GetCpuResourceDescriptor(uint32_t index) const;
 
 private:
     static constexpr uint32_t CPU_RESOURCE_DESCRIPTOR_PAGE_SIZE = 4096;
@@ -242,19 +243,19 @@ private:
         std::vector<std::shared_ptr<const PreparedSkinningTicket>> preparedSkinning;
     };
 
-    bool CreateFactoryAndDevice(HWND hwnd);
-    bool CreateSwapChain(HWND hwnd);
-    bool CreateDescriptorHeaps();
-    bool CreateBackBuffers();
-    bool CreateDepthBuffer();
-    bool CreateCommandsAndFence();
-    bool ApplyResize(uint32_t width, uint32_t height);
-    void WaitForFence(uint64_t value);
+    FBZZ_GRAPHICS_API bool CreateFactoryAndDevice(HWND hwnd);
+    FBZZ_GRAPHICS_API bool CreateSwapChain(HWND hwnd);
+    FBZZ_GRAPHICS_API bool CreateDescriptorHeaps();
+    FBZZ_GRAPHICS_API bool CreateBackBuffers();
+    FBZZ_GRAPHICS_API bool CreateDepthBuffer();
+    FBZZ_GRAPHICS_API bool CreateCommandsAndFence();
+    FBZZ_GRAPHICS_API bool ApplyResize(uint32_t width, uint32_t height);
+    FBZZ_GRAPHICS_API void WaitForFence(uint64_t value);
     /// @brief Wait for already submitted DIRECT work without completing the recording frame's retirement fence.
     /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/user-mode-heap-synchronization Fences: one progress timeline per fence.
-    bool WaitForSynchronousQueue();
-    void TransitionBackBuffer(D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after);
-    void CollectDeferredReleases();
+    FBZZ_GRAPHICS_API bool WaitForSynchronousQueue();
+    FBZZ_GRAPHICS_API void TransitionBackBuffer(D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after);
+    FBZZ_GRAPHICS_API void CollectDeferredReleases();
 
     struct DeferredResource {
         Microsoft::WRL::ComPtr<ID3D12Resource> resource;
@@ -278,12 +279,12 @@ private:
     };
     /// @brief 転送を記録してキューへ投入する。待機もフェンスの Signal もしない。
     /// @param onCopyQueue true ならコピーキューへ (遷移は記録しない)。コピーキューが無ければ失敗する。
-    bool SubmitTexture2DUpload(std::span<const TextureMip> mips,
+    FBZZ_GRAPHICS_API bool SubmitTexture2DUpload(std::span<const TextureMip> mips,
                                Microsoft::WRL::ComPtr<ID3D12Resource>& texture,
                                PendingUpload& outUpload, bool onCopyQueue);
-    void FlushCopyQueue();
+    FBZZ_GRAPHICS_API void FlushCopyQueue();
     /// @brief フレーム用コマンドリストの頭で、コピーを終えた転送先を PIXEL_SHADER_RESOURCE へ遷移させる。
-    void RecordPostCopyBarriers();
+    FBZZ_GRAPHICS_API void RecordPostCopyBarriers();
 
     Microsoft::WRL::ComPtr<IDXGIFactory6> m_factory;
     Microsoft::WRL::ComPtr<ID3D12Device> m_device;

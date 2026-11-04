@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 
 #pragma once
+#include <Engine/Scene/Components/TransientGpuState.hpp>
 #include <Graphics/Effects/ParticleDrawTypes.hpp>
 #include <Engine/Asset/ParticleMaterialSettings.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
@@ -11,7 +12,7 @@
 #include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/Entity.hpp>
 #include <Engine/Scene/ParticleCurve.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -124,20 +125,8 @@ inline constexpr const char* PARTICLE_FALLBACK_MATERIAL =
 /// @note オーサリング設定 (ParticleEmitterSettings) と分けるのは、GameObject 複製時に
 /// @note GPU バッファ・粒子列などのハンドルを新旧で共有させないため。
 /// @note コピー代入は常に初期状態を作る (複製のたびにリセットを書かなくて済む規則)。
-struct ParticleRuntime {
-    std::vector<Particle> particles;
-    /// @brief emitRate * dt の累積値。1.0 を超えるたびに 1 粒子を発生させる。
-    /// @brief こうすることで低フレームレートでも発生数が dt に比例して安定する。
-    float                 emitAccum = 0.0f;
-    /// @brief randomSeed から初期化されるランタイム状態。シーン保存対象ではない。
-    uint32_t              randomState = 1;
-    float                 playTime = 0.0f;
-    float                 delayTime = 0.0f;
-    int                   burstPending = 0;
-    /// @brief SubEmitter が積んだ «発火元つき» のスポーン。CPU スポーンがレート/バーストより先に
-    /// @brief 消費し、消費したら空にする。積み手 (QueueSubEmitter) が maxParticles 相当で打ち切るので、
-    /// @brief 受け側が一度も回らなくても (GPU / 非アクティブ) 無限には伸びない。
-    std::vector<ParticleInjectedSpawn> injectedSpawns;
+/// @note GPU 所有権と再確保用キャッシュは Component の値コピーへ含めない。
+struct ParticleRuntimeGpuState {
     renderer::ResourceHandle<renderer::TextureTag> texture;
     std::string           loadedTexturePath;
     renderer::ResourceHandle<renderer::TextureTag> motionVectorTexture;
@@ -166,6 +155,48 @@ struct ParticleRuntime {
     /// @note ここで返すと他のエミッターの b2 まで道連れに落ちる。
     renderer::ResourceHandle<renderer::ConstantBufferTag> materialParamsCB;
 
+    /// @brief GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
+    renderer::OwnedResource<renderer::StructuredBufferTag> gpuParticleBuffer; ///< @brief RWStructuredBuffer: CS が更新
+    /// @brief 今フレームのスポーンデータ。ParticlePass のプールから借りているだけで、持ち主はプール
+    /// @brief (シミュレーションのたびに借り直す。Release しないこと)。
+    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer;
+    /// @brief このエミッターに効く力場一式 (内蔵 + シーン)。定数バッファではなく SRV なので
+    /// @brief 本数に上限が無い。gpuSpawnBuffer と同じくプールから借りたもの。
+    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuForceBuffer;
+    renderer::OwnedResource<renderer::ConstantBufferTag>   gpuEmitterCB;      ///< @brief CS 用エミッター定数バッファ
+    renderer::OwnedResource<renderer::ConstantBufferTag>   renderCB;          ///< @brief VS/PS 描画モード・Soft Particle
+    /// @brief GPU ソート。sortMode != None のときだけ確保する。並べ替えるのは (キー, 粒子 index)
+    /// @brief の対だけ (プール自体を動かすとリングバッファ位置が変わってスポーンが壊れる)。
+    /// @brief 連続リボン (trailRibbon)。帯の頂点は毎フレーム CPU で作り直す (GPU では履歴を持てない)。
+    /// @brief 頂点バッファは描画側の DynamicVertexBufferPool から借りる。帯はビューごとに形が
+    /// @brief 変わるので、エミッターに 1 本持たせると後のビューが先のビューの Draw を書き替える。
+    renderer::OwnedResource<renderer::ConstantBufferTag>   trailRibbonCB;
+    renderer::OwnedResource<renderer::StructuredBufferTag> gpuSortBuffer;     ///< @brief `RWStructuredBuffer<uint2>`
+    renderer::OwnedResource<renderer::ConstantBufferTag>   gpuSortCB;         ///< @brief bitonic の (k, j) を段ごとに更新
+    uint32_t gpuSortCapacity = 0;   ///< @brief gpuSortBuffer の要素数 (2 のべき乗、maxParticles 以上)
+    uint32_t gpuWriteHead    = 0;   ///< @brief gpuSpawnBuffer の次書き込み位置 (リングバッファインデックス)
+    uint32_t gpuSpawnCount   = 0;   ///< @brief 今フレームのスポーン数
+    bool     gpuInitialized  = false;
+    uint32_t gpuCapacity = 0;
+    bool     gpuClearPending = false;
+    uint64_t gpuResetVersion = 0;   ///< @brief 最後に確認した ResourceManager::GetResetVersion()
+    uint64_t lastGpuSimulationFrame = UINT64_MAX;
+};
+
+struct ParticleRuntime : TransientGpuState<ParticleRuntimeGpuState> {
+    std::vector<Particle> particles;
+    /// @brief emitRate * dt の累積値。1.0 を超えるたびに 1 粒子を発生させる。
+    /// @brief こうすることで低フレームレートでも発生数が dt に比例して安定する。
+    float                 emitAccum = 0.0f;
+    /// @brief randomSeed から初期化されるランタイム状態。シーン保存対象ではない。
+    uint32_t              randomState = 1;
+    float                 playTime = 0.0f;
+    float                 delayTime = 0.0f;
+    int                   burstPending = 0;
+    /// @brief SubEmitter が積んだ «発火元つき» のスポーン。CPU スポーンがレート/バーストより先に
+    /// @brief 消費し、消費したら空にする。積み手 (QueueSubEmitter) が maxParticles 相当で打ち切るので、
+    /// @brief 受け側が一度も回らなくても (GPU / 非アクティブ) 無限には伸びない。
+    std::vector<ParticleInjectedSpawn> injectedSpawns;
     /// @brief .mat から解決した «見た目» 一式。シミュレーションも描画もこちらだけを見る。
     /// @brief settings はシーン保存対象なので書き戻さない («触っていないのに保存内容が変わる» /
     /// @brief «Inspector で変えても次のフレームで戻る» が起きる)。
@@ -194,32 +225,6 @@ struct ParticleRuntime {
     ParticleCurveInterpolation runtimeGradientTemperatureInterpolation = ParticleCurveInterpolation::Linear;
     ParticleColorSpace runtimeGradientSourceColorSpace = ParticleColorSpace::Gamma;
 
-    /// @brief GPU パーティクル実行時状態 (シーン保存不要、デバイスリセット時に再生成)
-    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuParticleBuffer; ///< @brief RWStructuredBuffer: CS が更新
-    /// @brief 今フレームのスポーンデータ。ParticlePass のプールから借りているだけで、持ち主はプール
-    /// @brief (シミュレーションのたびに借り直す。Release しないこと)。
-    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSpawnBuffer;
-    /// @brief このエミッターに効く力場一式 (内蔵 + シーン)。定数バッファではなく SRV なので
-    /// @brief 本数に上限が無い。gpuSpawnBuffer と同じくプールから借りたもの。
-    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuForceBuffer;
-    renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuEmitterCB;      ///< @brief CS 用エミッター定数バッファ
-    renderer::ResourceHandle<renderer::ConstantBufferTag>   renderCB;          ///< @brief VS/PS 描画モード・Soft Particle
-    /// @brief GPU ソート。sortMode != None のときだけ確保する。並べ替えるのは (キー, 粒子 index)
-    /// @brief の対だけ (プール自体を動かすとリングバッファ位置が変わってスポーンが壊れる)。
-    /// @brief 連続リボン (trailRibbon)。帯の頂点は毎フレーム CPU で作り直す (GPU では履歴を持てない)。
-    /// @brief 頂点バッファは描画側の DynamicVertexBufferPool から借りる。帯はビューごとに形が
-    /// @brief 変わるので、エミッターに 1 本持たせると後のビューが先のビューの Draw を書き替える。
-    renderer::ResourceHandle<renderer::ConstantBufferTag>   trailRibbonCB;
-    renderer::ResourceHandle<renderer::StructuredBufferTag> gpuSortBuffer;     ///< @brief `RWStructuredBuffer<uint2>`
-    renderer::ResourceHandle<renderer::ConstantBufferTag>   gpuSortCB;         ///< @brief bitonic の (k, j) を段ごとに更新
-    uint32_t gpuSortCapacity = 0;   ///< @brief gpuSortBuffer の要素数 (2 のべき乗、maxParticles 以上)
-    uint32_t gpuWriteHead    = 0;   ///< @brief gpuSpawnBuffer の次書き込み位置 (リングバッファインデックス)
-    uint32_t gpuSpawnCount   = 0;   ///< @brief 今フレームのスポーン数
-    bool     gpuInitialized  = false;
-    uint32_t gpuCapacity = 0;
-    bool     gpuClearPending = false;
-    uint64_t gpuResetVersion = 0;   ///< @brief 最後に確認した ResourceManager::GetResetVersion()
-    uint64_t lastGpuSimulationFrame = UINT64_MAX;
     uint64_t lastCpuSimulationFrame = UINT64_MAX;
     uint64_t lastPlaybackFrame = UINT64_MAX;
     bool emitThisFrame = false;

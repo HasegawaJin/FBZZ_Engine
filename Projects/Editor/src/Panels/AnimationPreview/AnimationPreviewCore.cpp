@@ -6,6 +6,7 @@
 /// @note 選択中の State / Transition / .anim / モデルからクリップを解決し、
 /// @note スキンメッシュを SkinnedLit でレンダーターゲットへ毎フレーム描画する。
 /// @note UI (ツールバー・トランスポート・オーバーレイ) は AnimationPreviewUI.cpp が持つ。
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Asset/ModelSource.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include "AnimationPreviewInternal.hpp"

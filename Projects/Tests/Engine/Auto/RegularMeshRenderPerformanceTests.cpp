@@ -477,7 +477,7 @@ protected:
             animator->prevBoneMatricesValid = true;
             animator->skinningBuffer = resources.CreateConstantBuffer(sizeof(math::Matrix4) * asset::MAX_SKINNING_BONES);
             animator->prevSkinningBuffer = resources.CreateConstantBuffer(sizeof(math::Matrix4) * asset::MAX_SKINNING_BONES);
-            ASSERT_TRUE(animator->skinningBuffer && animator->prevSkinningBuffer);
+            ASSERT_TRUE(animator->skinningBuffer.IsValid() && animator->prevSkinningBuffer.IsValid());
         } else object.AddComponent<scene::MeshRenderer>().mesh = m_mesh;
         auto& fiber = object.AddComponent<scene::FiberComponent>();
         fiber.m_mode = hybrid ? r::FiberRenderMode::HYBRID : r::FiberRenderMode::SHELL;

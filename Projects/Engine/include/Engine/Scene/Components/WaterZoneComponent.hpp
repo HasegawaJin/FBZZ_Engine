@@ -4,7 +4,7 @@
 /// @date    2026-10-07
 #pragma once
 #include <Engine/Scene/EntityRef.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <algorithm>
 #include <cmath>

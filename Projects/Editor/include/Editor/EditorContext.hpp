@@ -3,6 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
+#include <Engine/Scene/Components/VolumeComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <Editor/StandalonePlaySession.hpp>
 #include <Editor/GraphLayout.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
@@ -108,6 +113,9 @@ struct EditorContext {
     renderer::ResourceManager* resources = nullptr;
     /// @note  .fluid の焼き・プレビューの窓口 (EditorApp が所有)。
     FluidBakeService* fluidBake = nullptr;
+    /// @note モデル変換ワーカーの完了前にプロジェクト索引やEditorを破棄しないための寿命境界。
+    std::function<bool()> modelImportBusy;
+    std::function<void()> waitForModelImports;
     core::MemorySystem* memorySystem = nullptr;
     /// @note  Renderer リソースのリーク差分。EditorApp が所有し、Analysis パネルが読む。
     MemoryLeakDiff*     memoryLeakDiff = nullptr;
@@ -386,7 +394,7 @@ struct EditorContext {
     bool showLightRange  = true;
     bool showSkeleton    = false;
     /// @name Scene View の診断オーバーレイ (RenderSettings の同名フラグへ毎フレーム複写)
-    ///@{
+    /// @{
     /// @note  true なら選択中のスケルトンだけ描く。
     bool skeletonSelectedOnly = true;
     /// @note  スクリプトの OnDrawGizmos / debug.Draw*。Game View と配布ビルドでは常に出ない。
@@ -401,7 +409,7 @@ struct EditorContext {
     bool showLODBounds     = false;
     /// @brief Scene View diagnostics are opt-in and never persisted in project render settings.
     SpatialDebugVisualization spatialDebugVisualization;
-    ///@}
+    /// @}
     /// @brief Scene View のコンポーネントアイコン全体の表示。false ならアイコンのピッキングも止まる。
     bool showSceneIcons  = true;
     /// @brief 非表示にしたアイコン種別の保存キー。

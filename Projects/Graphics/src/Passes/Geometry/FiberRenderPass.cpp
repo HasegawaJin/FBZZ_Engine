@@ -52,6 +52,12 @@ FiberResources& GetFiberResources(ResourceManager& resources) {
     static FiberResources cache;
     if (cache.owner != &resources || cache.ownerIdentity != resources.GetInstanceId()
         || cache.version != resources.GetResetVersion()) {
+        if (auto* owner = ResourceManager::FindOwner(cache.ownerIdentity)) {
+            for (auto handle : {cache.m_material, cache.m_frame, cache.m_motion, cache.m_contacts, cache.m_appearanceMaterial})
+                owner->Release(handle);
+            owner->Release(cache.m_pipeline);
+            owner->Release(cache.m_deferredPipeline);
+        }
         cache = {}; cache.owner = &resources; cache.ownerIdentity = resources.GetInstanceId();
         cache.version = resources.GetResetVersion();
     }
@@ -202,7 +208,7 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         const auto bladeShader = drawBlades && !skinned ? GetFiberShader(cache, resources, mode, FiberShape::BLADE, false, surface.appearance.get())
                                                         : renderer::ResourceHandle<renderer::ShaderTag>{};
         if (!shellShader.IsValid() && !finShader.IsValid() && !bladeShader.IsValid()) continue;
-        
+
         resources.Update(ctx.handles.objectCB, &object, sizeof(object));
         UploadIfChanged(resources, cache.m_material, cache.m_uploadedMaterial, settings);
         UploadIfChanged(resources, cache.m_frame, cache.m_uploadedFrame, frame);

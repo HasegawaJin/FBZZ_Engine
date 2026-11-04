@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <string>
 
@@ -26,13 +27,13 @@ struct SkinnedMeshRenderer;
 namespace fbzz::scene::bone_pose_detail {
 
 /// @return オーナー、直下の子の順で最初の Renderer。孫以下は探索せず、未発見なら nullptr。
-SkinnedMeshRenderer* FindSkinnedMeshRenderer(GameObject& owner);
+FBZZ_ENGINE_API SkinnedMeshRenderer* FindSkinnedMeshRenderer(GameObject& owner);
 
 /// @note Assimp FBX の補助接尾辞とパスだけを除去し、namespace と '|' は保持する。
-std::string CanonicalBoneName(std::string name);
+FBZZ_ENGINE_API std::string CanonicalBoneName(std::string name);
 
 /// @return 範囲外・削除済みのノードなら nullptr。返す参照は Scene が所有する。
-GameObject* BoneObject(Scene& scene, const SkinnedMeshRenderer& renderer, int nodeIndex);
+FBZZ_ENGINE_API GameObject* BoneObject(Scene& scene, const SkinnedMeshRenderer& renderer, int nodeIndex);
 
 /// @brief スキニング行列とボーン Transform に同じワールド姿勢を確定する。
 /// @param ownerInv スケルトンを所有する GameObject のワールド行列の逆行列。
@@ -41,7 +42,7 @@ GameObject* BoneObject(Scene& scene, const SkinnedMeshRenderer& renderer, int no
 /// @note local も更新し、後続の SocketAttachment と FlushWorldTransforms に姿勢を維持する。
 /// @note nodeEntities または nodeGlobalTransforms の範囲外なら変更しない。ボーン個体がなくても行列は更新する。
 /// @see Docs/design/script-transform-contract.md
-void CommitBoneWorldPose(Scene& scene,
+FBZZ_ENGINE_API void CommitBoneWorldPose(Scene& scene,
                          const asset::Skeleton& skeleton,
                          const SkinnedMeshRenderer& renderer,
                          AnimatorComponent& animator,

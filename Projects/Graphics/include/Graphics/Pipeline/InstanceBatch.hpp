@@ -2,10 +2,11 @@
 /// @brief   連続する同一の描画を 1 回の Instanced Draw へ束ねる。
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
-///
+
 /// @see Docs/design/gpu-instancing.md
 /// @see Docs/design/skinned-crowds.md
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Math/Matrix4.hpp>
@@ -30,7 +31,7 @@ static_assert(sizeof(PerObjectCB) == 144, "PerObjectCB に詰め物が入って�
 /// @note 「メッシュとマテリアルが同じなら束ねる」という鍵を手書きしない理由: テクスチャ 32 枠・
 /// @note 定数バッファ 14 枠のどれか 1 つでも違えば絵が変わる。鍵を手書きすると枠を増やしたときに
 /// @note 束ね条件だけが古くなり、別のテクスチャで描かれても絵から原因に辿りつけない。
-[[nodiscard]] bool IsSameInstanceBatch(const renderer::DrawCall& a, const renderer::DrawCall& b);
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsSameInstanceBatch(const renderer::DrawCall& a, const renderer::DrawCall& b);
 
 /// @brief 積まれた描画のうち連続して同一のものを束ね、まとめて Submit する。
 /// @note 比較は直前の 1 件とだけ行う (O(n))。総当たりにしないのは、各パスが既にマテリアル順や
@@ -45,12 +46,12 @@ public:
     /// @note baseShader を受けるのは、同じループに別のシェーダーで描く物体が混ざるため
     /// @note (影の列には VS スキニングへ落ちた caster が混ざる)。シェーダーを見ずに差し替えると、
     /// @note 変種が想定していない頂点入力のまま描いてジオメトリが壊れる。
-    InstanceBatcher(RenderPassContext& ctx,
+    FBZZ_GRAPHICS_API InstanceBatcher(RenderPassContext& ctx,
                     renderer::ResourceHandle<renderer::ShaderTag> baseShader,
                     renderer::ResourceHandle<renderer::ShaderTag> instancedShader,
                     bool shadow, const math::Frustum* gpuFrustum = nullptr);
     /// @note 溜めたまま捨てると描画が黙って消えるため、デストラクタでも吐き出す。
-    ~InstanceBatcher();
+    FBZZ_GRAPHICS_API ~InstanceBatcher();
 
     InstanceBatcher(const InstanceBatcher&)            = delete;
     InstanceBatcher& operator=(const InstanceBatcher&) = delete;
@@ -59,11 +60,11 @@ public:
     /// @param prototype b1 と instanceBuffer / instanceCount を空にした DrawCall。
     /// @param object この物体の b1 の中身。objectParams.x != 0 (LOD 遷移中) は束ねない。
     /// @param worldSphere Conservative world-space bounds; a negative radius disables GPU compaction for this batch.
-    void Add(const renderer::DrawCall& prototype, const PerObjectCB& object,
+    FBZZ_GRAPHICS_API void Add(const renderer::DrawCall& prototype, const PerObjectCB& object,
         const math::Vector4& worldSphere = {0, 0, 0, -1});
 
     /// @brief 溜まっている束を吐き出す。描画先やビューポートを切り替える前に必ず呼ぶこと。
-    void Flush();
+    FBZZ_GRAPHICS_API void Flush();
 
     /// @brief 「b1 に何を載せたか」の記憶を捨てる。
     /// @note 呼び出し側が handles.objectCB を自分で書き換えたときに呼ぶこと。載せ直しの省略は
@@ -74,9 +75,9 @@ public:
 private:
     const math::Frustum* m_gpuFrustum = nullptr;
     std::vector<math::Vector4> m_gpuBounds;
-    void SubmitOne(const renderer::DrawCall& call);
+    FBZZ_GRAPHICS_API void SubmitOne(const renderer::DrawCall& call);
     /// @brief b1 を更新する。直前に載せた内容と同じなら何もしない。
-    void BindObjectConstants(renderer::DrawCall& call, const PerObjectCB& object);
+    FBZZ_GRAPHICS_API void BindObjectConstants(renderer::DrawCall& call, const PerObjectCB& object);
 
     RenderPassContext&                            m_ctx;
     renderer::ResourceHandle<renderer::ShaderTag> m_baseShader;
@@ -93,6 +94,6 @@ private:
 };
 
 /// @brief インスタンスバッファの貸出プールを手放す。シーン切り替え・リソースリセットで呼ぶこと。
-void ReleaseInstanceBatchCaches(renderer::ResourceManager& resources);
+FBZZ_GRAPHICS_API void ReleaseInstanceBatchCaches(renderer::ResourceManager& resources);
 
 } /// @note namespace fbzz::renderer

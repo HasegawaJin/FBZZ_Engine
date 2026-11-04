@@ -3,11 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 ///
-/// ヒット判定結果と遷移状態を保持し、UISystem が入力から更新する。
-/// クリック時の処理は script / event 側へ接続する。
+/// @note ヒット判定結果と遷移状態を保持し、UISystem が入力から更新する。
+/// @note クリック時の処理は script / event 側へ接続する。
 #pragma once
 #include <Math/Vector4.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <string>
 
 namespace fbzz::scene {
@@ -20,7 +20,7 @@ enum class UIButtonState {
 
 /// @brief 状態別スプライト欄が受け付ける拡張子 (ImageImporter が読める画像)。
 /// @note 先頭の .sprite は Sprite のコマも受ける印 (Editor の kSpriteAssetFilter と同じ規約)。
-///       ここへ入った値は UIImage.texturePath へ渡るので、UIImage が受けるものと同じ集合になる。
+/// @note ここへ入った値は UIImage.texturePath へ渡るので、UIImage が受けるものと同じ集合になる。
 inline constexpr const char* kSpriteFieldExtensions =
     ".sprite,.fztex,.png,.jpg,.jpeg,.tga,.dds,.bmp";
 
@@ -35,10 +35,10 @@ struct UIButton {
     math::Vector4 disabledColor = { 0.5f, 0.5f, 0.5f, 0.5f };
 
     /// @brief 状態ごとの絵。同じ GameObject の UIImage.texturePath を差し替える。
-    ///        Sprite サブアセット参照 (`<画像>.png::sprite::<id>`) も入れられる。
+    /// @note Sprite サブアセット参照 (`<画像>.png::sprite::<id>`) も入れられる。
     /// @note 色の明暗と別に要る理由: 枠が光る・アイコンが変わるなど絵そのものが違うボタンは
-    ///       色の相対変換では作れない。空欄は「変えない」の意味で、押下だけ差し替えたい
-    ///       ボタンでも同じ絵を 3 回指定しなくて済む。
+    /// @note 色の相対変換では作れない。空欄は「変えない」の意味で、押下だけ差し替えたい
+    /// @note ボタンでも同じ絵を 3 回指定しなくて済む。
     std::string normalSprite;
     std::string hoveredSprite;
     std::string pressedSprite;
@@ -46,8 +46,8 @@ struct UIButton {
 
     /// @brief 状態が変わった瞬間に鳴らす音。空欄なら鳴らさない。
     /// @note 「触れたら鳴る・押したら鳴る」は全ボタン共通の挙動のため、スクリプトへ分散させず
-    ///       UIAudioSystem に集約する。.synth も受け付けるのは UI 効果音が短い手続き音で
-    ///       足りることが多いため。
+    /// @note UIAudioSystem に集約する。.synth も受け付けるのは UI 効果音が短い手続き音で
+    /// @note 足りることが多いため。
     /// @see Docs/design/audio-system.md
     std::string hoverSound;
     std::string clickSound;
@@ -57,13 +57,13 @@ struct UIButton {
 
     UIButtonState state = UIButtonState::NORMAL;
     /// @note 以下の 3 フラグは UISystem が毎フレーム更新する 1 フレーム限定イベント。Script の
-    ///       OnUpdate() 内で読み取り、次フレームには false に戻る。
+    /// @note OnUpdate() 内で読み取り、次フレームには false に戻る。
     bool onClick = false;
     bool onEnter = false;
     bool onExit  = false;
 
     /// @note ランタイム専用 (シリアライズしない)。押下がこのボタン上で開始されたかを追跡し、
-    ///       ドラッグアウト後の誤 onClick 発火と、他要素から流入した押下の誤検出を防ぐ。
+    /// @note ドラッグアウト後の誤 onClick 発火と、他要素から流入した押下の誤検出を防ぐ。
     bool wasPressedOnThis = false;
     bool lastMouseState   = false;
 
@@ -98,4 +98,4 @@ struct UIButton {
     }
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

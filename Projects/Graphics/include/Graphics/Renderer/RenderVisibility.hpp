@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Math/Vector3.hpp>
 
@@ -38,11 +39,11 @@ enum class VisibilityResult {
 };
 
 /// @note 距離、極小、視錐台の順で最初の除外理由を返す。統計は呼び出し側が加算する。
-[[nodiscard]] VisibilityResult EvaluateVisibility(
+[[nodiscard]] FBZZ_GRAPHICS_API VisibilityResult EvaluateVisibility(
     const RenderCullingView& view, const RenderCullingItem& item);
 
 /// @note 距離制限だけを評価する。半径未確定でも距離判定する既存の補助パス用。
-[[nodiscard]] bool IsWithinDrawDistance(
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsWithinDrawDistance(
     const RenderCullingView& view, const RenderCullingItem& item);
 
 } /// @note namespace fbzz::renderer

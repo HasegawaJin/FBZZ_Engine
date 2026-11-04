@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/SurfacePatchLod.hpp>
 #include <cstdint>
@@ -36,7 +37,7 @@ struct SurfaceFarPatch {
 /// @note 内側の辺と角は inner と同じセル幅、その他の共有頂点は全 far patch の共通セル幅で評価する。
 /// @note 各 strip の外向き分割数は共通。隣接 strip の幅が違っても、共有辺の頂点列は一致する。
 /// @see https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-2-terrain-rendering-using-gpu-based-geometry GPU Gems 2, 2.3.2 shared grid footprints.
-[[nodiscard]] bool BuildSurfaceFarMesh(const SurfacePatchSurface& inner,
+[[nodiscard]] FBZZ_GRAPHICS_API bool BuildSurfaceFarMesh(const SurfacePatchSurface& inner,
     std::span<const SurfacePatch> innerLeaves, math::Vector2 outerMin, math::Vector2 outerMax,
     uint32_t cellsPerPatch, std::vector<SurfaceFarPatch>& out, bool morphEnabled = false);
 

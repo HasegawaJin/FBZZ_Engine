@@ -10,6 +10,7 @@
 /// @note GPU 実体の所有権は呼び出し側に残る。Declare 系 API が記述と型付きハンドルを同時に受け取る。
 /// @note Execute() の冒頭で登録簿へ流し、パスは PassResources から名前で引く。
 #pragma once
+#include <Graphics/Api.hpp>
 #include "IRenderPass.hpp"
 #include <Graphics/Pipeline/ResolvedRenderPlan.hpp>
 #include <Graphics/Renderer/GpuProfiler.hpp>
@@ -91,17 +92,17 @@ public:
     class GraphFingerprint {
     public:
         /// @param desc 寸法・形式だけでなく実体の «形» を決める項目もすべて混ぜる。
-        void MixResource(std::string_view name, const renderer::RenderGraph::ResourceDesc& desc);
-        void MixOutput(std::string_view name);
-        void MixPass(std::string_view name, bool allowCulling,
+        FBZZ_GRAPHICS_API void MixResource(std::string_view name, const renderer::RenderGraph::ResourceDesc& desc);
+        FBZZ_GRAPHICS_API void MixOutput(std::string_view name);
+        FBZZ_GRAPHICS_API void MixPass(std::string_view name, bool allowCulling,
                      const std::vector<renderer::RenderGraph::ResourceAccess>& accesses);
 
         [[nodiscard]] uint64_t Value() const { return m_value; }
 
     private:
-        void MixBytes(const void* data, size_t size);
+        FBZZ_GRAPHICS_API void MixBytes(const void* data, size_t size);
         /// @note 末尾に区切りを足す。"ab"+"c" と "a"+"bc" を別の鍵にするため。
-        void MixString(std::string_view text);
+        FBZZ_GRAPHICS_API void MixString(std::string_view text);
 
         uint64_t m_value = 1469598103934665603ull; ///< @note FNV-1a offset basis
     };
@@ -111,14 +112,14 @@ public:
     /// @param allowCulling 入出力。false 方向にしか変わらない。
     /// @note extraReads のうち既に申告済みの名前は足さない (重複した辺は無意味)。
     /// @note ctx を要らないので単体で試せる。判定の本体はここに閉じる。
-    static void ApplyOverride(const renderer::RenderPassOverride& over,
+    FBZZ_GRAPHICS_API static void ApplyOverride(const renderer::RenderPassOverride& over,
                               std::vector<renderer::RenderGraph::ResourceAccess>& accesses,
                               bool& allowCulling);
 
     /// @note 前フレームの登録内容だけを破棄し、Plan とトランジェント RT のキャッシュは維持する。
     /// @note Scene/Game View ごとに RenderPipeline を永続化しつつ、フレーム固有のラムダが
     /// @note 前フレームの RenderPassContext を参照し続けないよう毎フレーム登録し直す。
-    void BeginBuild();
+    FBZZ_GRAPHICS_API void BeginBuild();
 
     /// @brief 無効判定・カリング前の登録列を診断用に取得する。
     /// @note 実行順は LastReport で確認する。返した文字列は BeginBuild 後も有効。
@@ -183,48 +184,48 @@ public:
     /// @note 実体が無い» が静かに成立した。同じ引数列に並べ片方だけ書けなくする。
     /// @note 束縛は Execute() の冒頭でまとめて登録簿へ流す。実体を差し替えるパス
     /// @note (TAA の ping-pong) はその後で上書きすればよい。
-    void DeclareTarget(std::string_view name,
+    FBZZ_GRAPHICS_API void DeclareTarget(std::string_view name,
                        renderer::ResourceHandle<renderer::RenderTargetTag> handle,
                        renderer::RenderGraph::ResourceDesc desc);
-    void DeclareTexture(std::string_view name,
+    FBZZ_GRAPHICS_API void DeclareTexture(std::string_view name,
                         renderer::ResourceHandle<renderer::TextureTag> handle,
                         renderer::RenderGraph::ResourceDesc desc);
 
     /// @note 実体の所有権は呼び出し側に残る。stride は頂点幅 [byte]、raw / index Buffer では 0。
-    void DeclareBuffer(std::string_view name,
+    FBZZ_GRAPHICS_API void DeclareBuffer(std::string_view name,
                        renderer::ResourceHandle<renderer::BufferTag> handle,
                        renderer::RenderGraph::ResourceDesc desc);
     /// @note StructuredBuffer も ResourceKind::Buffer とし、byteSize / stride で記述する。
-    void DeclareBuffer(std::string_view name,
+    FBZZ_GRAPHICS_API void DeclareBuffer(std::string_view name,
                        renderer::ResourceHandle<renderer::StructuredBufferTag> handle,
                        renderer::RenderGraph::ResourceDesc desc);
-    void DeclareStructuredBuffer(std::string_view name,
+    FBZZ_GRAPHICS_API void DeclareStructuredBuffer(std::string_view name,
                                  renderer::ResourceHandle<renderer::StructuredBufferTag> handle,
                                  renderer::RenderGraph::ResourceDesc desc);
     /// @note AS は transient 宣言でも alias しない。状態と build 同期は backend の契約。
-    void DeclareAccelerationStructure(std::string_view name,
+    FBZZ_GRAPHICS_API void DeclareAccelerationStructure(std::string_view name,
                                       renderer::ResourceHandle<renderer::AccelerationStructureTag> handle,
                                       renderer::RenderGraph::ResourceDesc desc);
 
-    void SetOutputs(std::initializer_list<std::string_view> outputs);
+    FBZZ_GRAPHICS_API void SetOutputs(std::initializer_list<std::string_view> outputs);
 
     /// @note エディターからのパス単位の上書き。BeginBuild では消えない (登録ではなく設定)。
 
     /// @note allowCulling は «false でだけ効く»。パス自身が false を返しているものを
     /// @note true にはできない。SkinningCompute のように «刈られては困る» と自分で言っている
     /// @note パスを、UI の既定値が黙って刈れるようにしてしまうため。
-    void SetPassOverrides(std::vector<renderer::RenderPassOverride> overrides);
+    FBZZ_GRAPHICS_API void SetPassOverrides(std::vector<renderer::RenderPassOverride> overrides);
 
     /// @note 実行順の決め方。次の Plan から効く。
     /// @note 指紋に含める。方針が変われば実行順が変わるので、Plan を作り直す必要がある。
     void SetSchedulePolicy(renderer::RenderGraphSchedulePolicy policy) { m_policy = policy; }
-    void SetGpuProfilerHooks(std::function<void(std::string_view)> begin,
+    FBZZ_GRAPHICS_API void SetGpuProfilerHooks(std::function<void(std::string_view)> begin,
                               std::function<void(std::string_view)> end);
 
     /// @note 登録されたすべてのパスを RenderGraph に組み込んで実行する。
     /// @note IsEnabled が false のパスはスキップされる。
     /// @note GPU の出自は最終解決済み Plan と実際の Graph 計画世代を記録する。準備処理は計測範囲外。
-    bool Execute(RenderPassContext& ctx, RenderPassCapture* capture = nullptr,
+    FBZZ_GRAPHICS_API bool Execute(RenderPassContext& ctx, RenderPassCapture* capture = nullptr,
                  const GpuProfilerViewMetadata* gpuView = nullptr,
                  const ResolvedRenderPlan* gpuPlan = nullptr);
 
@@ -239,13 +240,13 @@ public:
 
     /// @note 保持している GPU リソースを ResourceManager へ返す。
     /// @note Viewport のリサイズなど、実体を直ちに破棄すべき境界で呼び出す。
-    void ReleaseViewResources(renderer::ResourceManager& resources);
+    FBZZ_GRAPHICS_API void ReleaseViewResources(renderer::ResourceManager& resources);
 
 private:
     /// @note 契約は 1 つ。ラムダ式パスも LambdaPass として同じ列に並ぶ。
     using Entry = std::unique_ptr<IRenderPass>;
 
-    static std::vector<renderer::RenderGraph::ResourceAccess>
+    FBZZ_GRAPHICS_API static std::vector<renderer::RenderGraph::ResourceAccess>
     MakeAccesses(std::initializer_list<std::string_view> reads,
                  std::initializer_list<std::string_view> writes);
 
@@ -260,20 +261,20 @@ private:
     }
 
     /// @note 宣言された実体を登録簿へ流す。パス本体が名前から引けるのはここを通ったものだけ。
-    void BindDeclaredResources(RenderPassContext& ctx) const;
+    FBZZ_GRAPHICS_API void BindDeclaredResources(RenderPassContext& ctx) const;
 
     /// @note このフレームに載せるパスの添字列を確定し、同時に Setup を引き直す。
-    std::vector<size_t> CollectEnabledSetups(RenderPassContext& ctx);
+    FBZZ_GRAPHICS_API std::vector<size_t> CollectEnabledSetups(RenderPassContext& ctx);
 
     /// @note 申告 (リソース記述 / 出力 / パス名 / accesses / allowCulling) の FNV-1a 指紋。
     /// @note 前フレームと一致すれば Plan の結果をそのまま使い回せる。
-    uint64_t ComputeGraphFingerprint(const std::vector<size_t>& enabled) const;
+    FBZZ_GRAPHICS_API uint64_t ComputeGraphFingerprint(const std::vector<size_t>& enabled) const;
 
-    void BuildGraph(renderer::RenderGraph& graph,
+    FBZZ_GRAPHICS_API void BuildGraph(renderer::RenderGraph& graph,
                     RenderPassContext& ctx,
                     const std::vector<size_t>& enabled);
 
-    const renderer::RenderPassOverride* FindOverride(std::string_view name) const;
+    FBZZ_GRAPHICS_API const renderer::RenderPassOverride* FindOverride(std::string_view name) const;
 
     /// @note Setup が返した申告に上書きを適用した «このフレームの確定値»。グラフへ渡すラムダが
     /// @note 参照で掴むので、Execute の間ずっと生きている場所へ置く。添字は m_entries と揃える。

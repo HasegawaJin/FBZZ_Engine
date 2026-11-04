@@ -2,8 +2,9 @@
 /// @brief   Script 基底クラスの便利 API 実装。
 /// @author  Hasegawa Jin
 /// @date    2026-05-27
-///
+
 /// @note template 以外のショートハンドをここに集約し、ヘッダの include 依存を最小化する。
+#include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Profiler/ScriptProfiler.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -504,7 +505,7 @@ void Script::QueueRenderPass(UserRenderPassDesc desc) const
 const renderer::ShaderDescriptor* Script::GetShaderDescriptor(std::string_view shaderPath) const
 {
     if (shaderPath.empty()) return nullptr;
-    auto* resources = renderer::ResourceManager::Active();
+    auto* resources = m_scene ? m_scene->GetResourceManager() : nullptr;
     if (!resources) return nullptr;
 
     /// @note Script は ResourceManager を直接所有しないためここで解決だけを代行し、

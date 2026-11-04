@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
@@ -87,30 +88,30 @@ struct BakedBoneWorkspace {
 };
 
 /// @return Failure leaves output untouched; unsupported tracks must continue through the ordinary Animator.
-BoneBakeStatus BakeBoneAnimation(const Skeleton& skeleton, const AnimationClip& clip,
+FBZZ_ENGINE_API BoneBakeStatus BakeBoneAnimation(const Skeleton& skeleton, const AnimationClip& clip,
                                 const BoneBakeSettings& settings, BakedBoneAnimation& output);
 
 /// @note Content keys include hierarchy, bind TRS, inverse bind matrices, clip keys, times and loop policy; never use a raw asset pointer as a cache key.
-uint64_t BoneBakeSkeletonFingerprint(const Skeleton& skeleton);
-uint64_t BoneBakeClipFingerprint(const AnimationClip& clip);
+FBZZ_ENGINE_API uint64_t BoneBakeSkeletonFingerprint(const Skeleton& skeleton);
+FBZZ_ENGINE_API uint64_t BoneBakeClipFingerprint(const AnimationClip& clip);
 
-BoneBakeStatus ValidateBakedBoneAnimation(const BakedBoneAnimation& bake);
-BoneBakeStatus ValidateBoneBakeSource(const BakedBoneAnimation& bake, const Skeleton& skeleton,
+FBZZ_ENGINE_API BoneBakeStatus ValidateBakedBoneAnimation(const BakedBoneAnimation& bake);
+FBZZ_ENGINE_API BoneBakeStatus ValidateBoneBakeSource(const BakedBoneAnimation& bake, const Skeleton& skeleton,
                                     const AnimationClip& clip, float lodMeshRadius);
 
 /// @note Two-clip bounds combine per-node maxima before hierarchy propagation; max(radiusA, radiusB) is insufficient for blended hierarchies.
-BoneBakeStatus BoneBakeBlendRadius(const BakedBoneAnimation& bake, const BakedBoneAnimation& target,
+FBZZ_ENGINE_API BoneBakeStatus BoneBakeBlendRadius(const BakedBoneAnimation& bake, const BakedBoneAnimation& target,
                                   float& output);
 
 /// @param elapsedSeconds Unscaled per-individual time; phase is measured in clip seconds and is added after speed.
 /// @return Non-finite clocks are rejected; finite loop clocks wrap in both directions and non-looping clocks clamp.
-BoneBakeStatus ResolveBakedBoneFrame(const BakedBoneAnimation& bake, double elapsedSeconds,
+FBZZ_ENGINE_API BoneBakeStatus ResolveBakedBoneFrame(const BakedBoneAnimation& bake, double elapsedSeconds,
                                    double speed, double phaseSeconds, bool loop,
                                    BakedBoneFrame& output);
 
 /// @note Evaluates local TRS with shortest-arc Slerp before hierarchy composition; matrices are never linearly blended.
 /// @note Optional target uses the same skeleton and local two-clip blend as the GPU kernel. Failure leaves outputs untouched.
-BoneBakeStatus EvaluateBakedBoneAnimation(const BakedBoneAnimation& bake, const BakedBoneFrame& frame,
+FBZZ_ENGINE_API BoneBakeStatus EvaluateBakedBoneAnimation(const BakedBoneAnimation& bake, const BakedBoneFrame& frame,
                                         std::vector<math::Matrix4>& palette,
                                         std::vector<math::Matrix4>& nodeGlobals,
                                         const BakedBoneAnimation* target = nullptr,
@@ -120,6 +121,6 @@ BoneBakeStatus EvaluateBakedBoneAnimation(const BakedBoneAnimation& bake, const 
 
 /// @note .bba is little endian, versioned, length checked and checksummed; it is a derived cache, not an FBX replacement.
 /// @see https://github.com/microsoft/DirectXTex/wiki/DirectXTex DDS supports float image payloads; a structured asset also retains skeleton/cache metadata.
-BoneBakeStatus EncodeBoneBake(const BakedBoneAnimation& bake, std::vector<std::byte>& output);
-BoneBakeStatus DecodeBoneBake(std::span<const std::byte> bytes, BakedBoneAnimation& output);
+FBZZ_ENGINE_API BoneBakeStatus EncodeBoneBake(const BakedBoneAnimation& bake, std::vector<std::byte>& output);
+FBZZ_ENGINE_API BoneBakeStatus DecodeBoneBake(std::span<const std::byte> bytes, BakedBoneAnimation& output);
 }

@@ -483,6 +483,7 @@ void EditorApp::RegisterBuiltinOperators()
     /// @name EditorApp に依存しない操作群
     /// @note パネル操作は m_panels を必要とするため EditorApp のメンバーとして別ファイルへ置く。
     RegisterPanelOperators();
+    RegisterWorkspaceOperators();
     RegisterProfilerOperators(m_operators);
 
     /// @note EditorContext と UndoStack だけで完結する登録関数はパネル実装へ依存しない。
@@ -500,6 +501,7 @@ void EditorApp::RegisterBuiltinOperators()
     RegisterPrefabStructureMergeOperators(m_operators);
     RegisterTerrainOperators(m_operators);
     RegisterEffectOperators(m_operators);
+    RegisterComponentActionOperators(m_operators);
     RegisterClothOperators(m_operators);
     RegisterFiberOperators(m_operators);
     RegisterSfxOperators(m_operators);

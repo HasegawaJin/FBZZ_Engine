@@ -22,6 +22,16 @@
 #include <utility>
 
 namespace fbzz::scene {
+void QueueWaterSplash(Scene& scene, EntityID owner, const math::Vector3& worldPos, float intensity)
+{
+    if (!std::isfinite(intensity)) return;
+    const float strength = math::Clamp01(intensity);
+    WaterInteractionImpulse impulse{WaterInteractionKind::SURFACE_FOAM, worldPos,
+        {0.0f, 1.5f + strength * 3.0f, 0.0f}, 0.2f + strength * 0.3f, strength, 1.2f};
+    impulse.emitSurfaceRipple = false;
+    static_cast<void>(QueueWaterInteraction(scene, owner, impulse));
+}
+
 namespace {
 uint64_t Key(EntityID id) { return (static_cast<uint64_t>(id.generation) << 32) | id.index; }
 bool Finite(math::Vector3 value)

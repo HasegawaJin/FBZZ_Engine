@@ -176,14 +176,17 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
             resources.Update(h.lightProbeCaptureAdvancedCB, &capture, sizeof(capture));
             resources.Update(h.lightCB, &ctx.lightData, sizeof(ctx.lightData));
 
-            const auto probeInput = multiBounce ? volume->runtimeVolume
+            const auto probeInput = multiBounce ? volume->runtimeVolume.Get()
                                                 : renderer::ResourceHandle<renderer::TextureTag>{};
             renderer::RenderLightProbeInput input;
             input.sourceIndex = go.GetID().index;
             input.sourceGeneration = go.GetID().generation;
             input.boxMin = boxMin; input.boxSize = boxSize;
             input.runtimeGrid = volume->runtimeGrid;
-            input.runtimeFaces = volume->runtimeFaces; input.runtimeFacing = volume->runtimeFacing;
+            for (size_t face = 0; face < input.runtimeFaces.size(); ++face) {
+                input.runtimeFaces[face] = volume->runtimeFaces[face].Get();
+                input.runtimeFacing[face] = volume->runtimeFacing[face].Get();
+            }
             input.runtimeRawVolume = volume->runtimeRawVolume; input.runtimeVolume = volume->runtimeVolume;
             input.runtimeVisibility = volume->runtimeVisibility;
             input.runtimeFaceSize = volume->runtimeFaceSize;

@@ -78,7 +78,6 @@ void BuildDeferredOpaque(RenderPipeline& pipeline, const std::function<void()>& 
         pipeline.AddPass<SSRPass>();
         pipeline.AddPass<SSRResolvePass>();
     }
-    pipeline.AddPass<DeferredForwardTransparentPass>();
 }
 
 } /// @note namespace
@@ -101,6 +100,11 @@ void BuildGeometryPipeline(RenderPipeline& pipeline, const renderer::OpaqueRende
         BuildDeferredOpaque(pipeline, deferredSurfaceReady, hybridScreenFirst);
     else
         BuildForwardOpaque(pipeline, plan.HasScreenSpaceInputs());
+}
+
+void BuildGeometryTransparency(RenderPipeline& pipeline, const renderer::OpaqueRenderPlan& plan)
+{
+    pipeline.AddPass<ForwardTransparentPass>(plan.UsesDeferredLighting());
 }
 
 void BuildWaterComposition(RenderPipeline& pipeline)

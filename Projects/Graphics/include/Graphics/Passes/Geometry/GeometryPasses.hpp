@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/IRenderPass.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Renderer/Material.hpp>
@@ -11,24 +12,25 @@
 #include <vector>
 #include <algorithm>
 namespace fbzz::renderer {
-void ExecuteShadowPass(RenderPassContext& ctx);
-void ExecuteForwardPasses(RenderPassContext& ctx);
-void ExecuteGBufferPass(RenderPassContext& ctx);
-void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx);
-void ExecuteDeferredLightingPass(RenderPassContext& ctx);
-void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx);
-void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx);
-void ExecuteSkinningRequests(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteShadowPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteForwardPasses(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteGBufferPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteDeferredLightingPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteForwardTransparentPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteSkinningRequests(RenderPassContext& ctx);
 /// @return Invalid when batching is disabled or the backend/program cannot consume bindless output rows.
-ResourceHandle<ShaderTag> ResolveSkinningBatchShader(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API ResourceHandle<ShaderTag> ResolveSkinningBatchShader(RenderPassContext& ctx);
 /// @note Called after outstanding frame packets finish, before scene skinning caches are discarded.
-void ReleaseSkinningRequestCaches(ResourceManager& resources);
+FBZZ_GRAPHICS_API void ReleaseSkinningRequestCaches(ResourceManager& resources);
 class SkinningComputePass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "SkinningCompute"; }
     void Setup(PassBuilder&, const RenderPassContext&) const override {}
     bool AllowCulling() const override { return false; }
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 /// @note 背景色とクリア方法は CameraComponent が持ち、renderer::Camera 経由で各パスへ届く。
 /// @note 既定値は renderer::kDefaultBackgroundColor が正本。ここに定数を置くと、
@@ -128,7 +130,7 @@ inline constexpr std::uint32_t kParticleSortBlock = 256u;
 
 /// @brief リボン 1 点ぶんの法線 (帯の幅方向)。カメラへ正対する向きを返す。
 /// @note 帯は板なので、幅方向を進行方向とカメラ方向の両方に直交させないと視点によって「線」に潰れる。Trail ノードと粒子リボンで同じ式を使う。
-[[nodiscard]] math::Vector3 ComputeCameraFacingRibbonNormal(
+[[nodiscard]] FBZZ_GRAPHICS_API math::Vector3 ComputeCameraFacingRibbonNormal(
     const math::Vector3& direction, const math::Vector3& cameraPos, const math::Vector3& point);
 
 /// @note ポリラインの各点に「帯の幅方向」を割り当てる。隣り合う線分の法線を平均 (マイター) する。
@@ -209,39 +211,39 @@ inline void DeclareScreenSpaceOcclusionReads(PassBuilder& builder, const RenderP
     if (ctx.settings.contactShadow.enabled) builder.Read("ContactShadowResult");
 }
 
-renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
+FBZZ_GRAPHICS_API renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::ResourceManager& resources,
     renderer::BlendMode        blend,
     bool                       doubleSided,
     int32_t                    depthBias      = 0,
     float                      depthBiasSlope = 0.0f,
     bool                       wireframe = false);
-void UpdateShadowConstants(RenderPassContext& ctx);
-void UpdatePunctualShadowConstants(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void UpdateShadowConstants(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void UpdatePunctualShadowConstants(RenderPassContext& ctx);
 /// @note GPU へ書き込まず、当該ビューの現在のライト／影入力を値として組み立てる。
-[[nodiscard]] ShadowConstantsCB MakeShadowConstants(const RenderPassContext& ctx);
+[[nodiscard]] FBZZ_GRAPHICS_API ShadowConstantsCB MakeShadowConstants(const RenderPassContext& ctx);
 /// @note b12 の光源形状と sourceRadius は影・cookie provider を外す捕捉でも維持する。
-[[nodiscard]] PunctualShadowConstantsCB MakePunctualShadowConstants(const RenderPassContext& ctx);
+[[nodiscard]] FBZZ_GRAPHICS_API PunctualShadowConstantsCB MakePunctualShadowConstants(const RenderPassContext& ctx);
 struct WorldBounds { math::Vector3 center; float radius; };
 class SkyPass final : public IRenderPass {
 public:
-    std::string_view Name() const override;
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API std::string_view Name() const override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
 class SunMoonPass final : public IRenderPass {
 public:
-    std::string_view Name() const override;
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API std::string_view Name() const override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
 class LightCookiePass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "LightCookie"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
 class ClusterLightCullPass final : public IRenderPass {
@@ -249,51 +251,51 @@ public:
     std::string_view Name() const override { return "ClusterLightCull"; }
     void Setup(PassBuilder&, const RenderPassContext&) const override {}
     bool AllowCulling() const override { return false; }
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
 class ObjectMaskPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "ObjectMask"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    bool IsEnabled(const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API bool IsEnabled(const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
 class WaterCausticsPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "WaterCaustics"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
-void ExecuteSkyPass                        (RenderPassContext& ctx);
-void ExecuteSunMoonPass                    (RenderPassContext& ctx);
-void ExecuteSkyCapturePass                 (RenderPassContext& ctx);
-void ExecuteSkyLightBakePass               (RenderPassContext& ctx);
-void ExecuteLightCookiePass                (RenderPassContext& ctx);
-void ReleaseLightCookieCache               ();
-void ExecuteClusterLightCullPass           (RenderPassContext& ctx);
-void ExecuteObjectMaskPass                (RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteSkyPass                        (RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteSunMoonPass                    (RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteSkyCapturePass                 (RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteSkyLightBakePass               (RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteLightCookiePass                (RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ReleaseLightCookieCache               ();
+FBZZ_GRAPHICS_API void ExecuteClusterLightCullPass           (RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteObjectMaskPass                (RenderPassContext& ctx);
 class DecalDepthCopyPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "DecalDepthCopy"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 class DecalPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "Decal"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
-void ExecuteDecalPass(RenderPassContext& ctx);
-void ExecuteDecalDepthCopyPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteDecalPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteDecalDepthCopyPass(RenderPassContext& ctx);
 class ForwardOpaquePass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "ForwardOpaque"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 enum class GBufferPassMode {
     /// @brief Forward 経路の «深度と法線のプリパス»。画面空間効果への入力だけを作る。
@@ -306,9 +308,9 @@ enum class GBufferPassMode {
 class GBufferPass final : public IRenderPass {
 public:
     explicit GBufferPass(GBufferPassMode mode) : m_mode(mode) {}
-    std::string_view Name() const override;
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API std::string_view Name() const override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 
 private:
     GBufferPassMode m_mode;
@@ -316,21 +318,26 @@ private:
 class DeferredDepthCopyPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "DeferredDepthCopy"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 class DeferredSkinnedForwardPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "DeferredSkinnedForward"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
-class DeferredForwardTransparentPass final : public IRenderPass {
+class ForwardTransparentPass final : public IRenderPass {
 public:
-    std::string_view Name() const override { return "DeferredForwardTransparent"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    explicit ForwardTransparentPass(bool deferred = false) : m_deferred(deferred) {}
+    /// @note Deferred の旧 ID は保存済み passOverrides との互換性のため維持する。
+    std::string_view Name() const override { return m_deferred ? "DeferredForwardTransparent" : "ForwardTransparent"; }
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
+private:
+    bool m_deferred;
 };
+using DeferredForwardTransparentPass = ForwardTransparentPass;
 class DeferredLightingPass final : public IRenderPass {
 public:
     explicit DeferredLightingPass(bool reflectionSource = false) : m_reflectionSource(reflectionSource) {}
@@ -338,8 +345,8 @@ public:
     {
         return m_reflectionSource ? "ReflectionSourceLighting" : "DeferredLighting";
     }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 
 private:
     bool m_reflectionSource;
@@ -347,36 +354,36 @@ private:
 class ShadowPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "Shadow"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 class VelocityPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "Velocity"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 class ParticlePass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "Particle"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 class ParticleOverdrawPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "ParticleOverdraw"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    bool IsEnabled(const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API bool IsEnabled(const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 class ParticleReactivePass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "ParticleReactive"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    bool IsEnabled(const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API bool IsEnabled(const RenderPassContext& ctx) const override;
+    FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
-void ExecuteParticlePass(RenderPassContext& ctx);
-void ExecuteParticleOverdrawPass(RenderPassContext& ctx);
-void ExecuteParticleReactivePass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteParticlePass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteParticleOverdrawPass(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteParticleReactivePass(RenderPassContext& ctx);
 }

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/IShader.hpp>
 #include <d3d12.h>
@@ -14,17 +15,17 @@ namespace fbzz::renderer {
 
 class DX12Shader final : public IShader {
 public:
-    bool Init(const std::string& path);
+    FBZZ_GRAPHICS_API bool Init(const std::string& path);
     /// @note Process-unique bytecode generation; allocator address reuse and reinitialization must never select a previous shader's PSO.
     uint64_t GetCacheIdentity() const { return m_cacheIdentity; }
     const std::string& GetPath() const override { return m_path; }
     const ShaderDescriptor& GetDescriptor() const override { return m_descriptor; }
     bool IsMeshShader() const override { return !m_meshBlob.empty(); }
-    D3D12_SHADER_BYTECODE GetVertexBytecode() const;
-    D3D12_SHADER_BYTECODE GetPixelBytecode() const;
+    FBZZ_GRAPHICS_API D3D12_SHADER_BYTECODE GetVertexBytecode() const;
+    FBZZ_GRAPHICS_API D3D12_SHADER_BYTECODE GetPixelBytecode() const;
     /// @brief .ms.hlsl の MSMain から作成した DXIL bytecode。
-    D3D12_SHADER_BYTECODE GetMeshBytecode() const;
-    D3D12_SHADER_BYTECODE GetComputeBytecode() const;
+    FBZZ_GRAPHICS_API D3D12_SHADER_BYTECODE GetMeshBytecode() const;
+    FBZZ_GRAPHICS_API D3D12_SHADER_BYTECODE GetComputeBytecode() const;
     bool IsCompute() const { return !m_computeBlob.empty(); }
     const std::vector<D3D12_INPUT_ELEMENT_DESC>& GetInputLayout() const { return m_inputElements; }
     /// @note リフレクションで密詰め (tightly packed) を仮定して算出した頂点ストライド。
@@ -33,11 +34,11 @@ public:
     uint32_t GetReflectedStride() const { return m_reflectedStride; }
 
 private:
-    static std::string CompiledBase(const std::string& path);
-    static std::vector<uint8_t> LoadBinary(const std::string& path);
+    FBZZ_GRAPHICS_API static std::string CompiledBase(const std::string& path);
+    FBZZ_GRAPHICS_API static std::vector<uint8_t> LoadBinary(const std::string& path);
     /// @note PS バイトコード (DXBC / DXIL) から定数とテクスチャバインドをリフレクションする。
-    static ShaderDescriptor BuildDescriptor(const std::vector<uint8_t>& psBlob);
-    bool ReflectVertexInput();
+    FBZZ_GRAPHICS_API static ShaderDescriptor BuildDescriptor(const std::vector<uint8_t>& psBlob);
+    FBZZ_GRAPHICS_API bool ReflectVertexInput();
 
     std::string m_path;
     ShaderDescriptor m_descriptor;

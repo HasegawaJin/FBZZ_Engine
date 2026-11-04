@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #pragma once
+#include <Engine/Api.hpp>
 
 #include <string>
 #include <string_view>
@@ -21,7 +22,7 @@ enum class ScriptAssetType {
     AnimationClip,
     Scene,
     Shader,
-    VFX, ///< `.vfx` Graph を SerializeField へ型安全に保持する。
+    VFX, ///< @note `.vfx` Graph を SerializeField へ型安全に保持する。
 };
 
 /// @brief GUID を正本、path を Editor 表示と未登録 Asset 用 fallback として保持する。
@@ -30,10 +31,10 @@ struct ScriptAssetReference {
     std::string guid;
     std::string path;
 
-    void SetPath(std::string_view assetPath);
-    void Clear();
-    [[nodiscard]] std::string ResolvePath() const;
-    [[nodiscard]] bool IsValid() const;
+    FBZZ_ENGINE_API void SetPath(std::string_view assetPath);
+    FBZZ_ENGINE_API void Clear();
+    [[nodiscard]] FBZZ_ENGINE_API std::string ResolvePath() const;
+    [[nodiscard]] FBZZ_ENGINE_API bool IsValid() const;
 };
 
 template<ScriptAssetType TypeValue>
@@ -61,4 +62,4 @@ using SceneRef         = ScriptAssetRef<ScriptAssetType::Scene>;
 using ShaderRef        = ScriptAssetRef<ScriptAssetType::Shader>;
 using VFXRef           = ScriptAssetRef<ScriptAssetType::VFX>;
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -2,6 +2,8 @@
 /// @brief   制御点の正本変換、接続編集とベイクを検証付きUndoへまとめる。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>

@@ -14,7 +14,7 @@
 /// 1. ScriptProxy/XxxProxy.hpp を作成
 /// 2. AllScriptProxies.hpp に #include を追加
 /// 3. ここにエントリを 1 行追加 (コンストラクタが Script* を受け取る → MEMBER, そうでない → STANDALONE)
-/// 4. ScriptProxies.cpp に実装を追加
+/// 4. 領域に対応する Script*Proxies.cpp に実装を追加
 
 /// FBZZ_PROXY_MEMBER     — Script* { this } で初期化するプロキシ (大多数)
 /// FBZZ_PROXY_STANDALONE — デフォルト初期化するプロキシ (Script* を受け取らない設計のもの)

@@ -6,11 +6,60 @@
 /// 一覧・整形・競合判定は HotkeyManager 側に持たせ、このパネルは表示と入力待ちだけを担当する
 /// (整形処理を F1 オーバーレイと重複させない)。
 #include <Editor/Panels/HotkeyEditorPanel.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <imgui.h>
 
 namespace fbzz::editor {
+
+void HotkeyEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
+{
+    EditorOperator inspect;
+    inspect.id = "hotkey.capture.inspect";
+    inspect.label = "Inspect Hotkey Capture";
+    inspect.category = "Hotkeys";
+    inspect.kind = OpKind::Query;
+    inspect.desc = "キー入力待機中の対象と競合メッセージを返す。";
+    inspect.exec = [this](OpContext&, const OpArgs&) {
+        auto data = OpData::MakeObject();
+        data.Set("target", m_rebindTarget);
+        data.Set("conflict", m_conflictNote);
+        return OpResult::Data(std::move(data));
+    };
+    registry.Register(std::move(inspect));
+
+    EditorOperator control;
+    control.id = "hotkey.capture.control";
+    control.label = "Control Hotkey Capture";
+    control.category = "Hotkeys";
+    control.kind = OpKind::Action;
+    control.desc = "キー待機を開始・取消し、競合表示を閉じる。キー割当はworkspace.settings.configureでも変更可能。";
+    control.params = {
+        {"action", OpParamType::String, "Capture action", true, {}},
+        {"target", OpParamType::String, "Hotkey display name", false, {}}
+    };
+    control.params.front().enumValues = {"begin", "cancel", "dismiss"};
+    control.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.hotkeyManager != nullptr; };
+    control.exec = [this](OpContext& context, const OpArgs& args) {
+        const auto action = args.GetString("action");
+        if (action == "begin") {
+            const auto target = args.GetString("target");
+            bool found = false;
+            for (const auto& key : context.ctx.hotkeyManager->GetHotkeys())
+                if (key.name == target && !key.infoOnly) { found = true; break; }
+            if (!found) return OpResult::Err("HOTKEY_NOT_FOUND", "target");
+            m_rebindTarget = target;
+        } else if (action == "cancel") {
+            m_rebindTarget.clear();
+        } else if (action != "dismiss") {
+            return OpResult::Err("BAD_ARG", "action");
+        }
+        m_conflictNote.clear();
+        return OpResult::Ok();
+    };
+    registry.Register(std::move(control));
+}
 
 void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
 {

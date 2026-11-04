@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <array>
 #include <cstddef>
@@ -21,11 +22,11 @@ public:
         explicit operator bool() const { return cpu != nullptr; }
     };
 
-    ~DX12UploadArena();
-    bool Initialize(ID3D12Device* device, size_t bytesPerFrame);
-    void Shutdown();
-    void BeginFrame(uint32_t frameIndex);
-    Allocation Allocate(size_t sizeBytes, size_t alignment);
+    FBZZ_GRAPHICS_API ~DX12UploadArena();
+    FBZZ_GRAPHICS_API bool Initialize(ID3D12Device* device, size_t bytesPerFrame);
+    FBZZ_GRAPHICS_API void Shutdown();
+    FBZZ_GRAPHICS_API void BeginFrame(uint32_t frameIndex);
+    FBZZ_GRAPHICS_API Allocation Allocate(size_t sizeBytes, size_t alignment);
 
     /// @note BeginFrame のたびに進む世代。アリーナはここでオフセットを 0 へ巻き戻すため、
     /// @note 以前に配った GPU アドレスはこの値が変わった時点で無効になる。

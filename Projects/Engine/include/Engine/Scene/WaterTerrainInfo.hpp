@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/WaterSpline.hpp>
 #include <Math/Vector2.hpp>
@@ -32,7 +33,7 @@ class WaterTerrainInfoCache {
 public:
     /// @return 不正な有効 Terrain 入力では false、out 未変更。未初期化/無効 Terrain は除く。
     /// @note inputs は Scene の Terrain を借用する。Collect〜query/bake の間は Scene と Terrain を編集・破棄しない。
-    bool TryCollect(const Scene& scene, WaterTerrainInfoInputs& out);
+    FBZZ_ENGINE_API bool TryCollect(const Scene& scene, WaterTerrainInfoInputs& out);
 private:
     struct Validation {
         uint64_t signature = 0;
@@ -67,22 +68,22 @@ struct WaterTerrainInfoAtlas {
 
 /// @return 不正入力/結果では false、out 未変更。holes/範囲外を含め底が無い場合は成功し hasBottom=false。
 /// @note 全 Terrain の最上交点を選び、水位より上の Terrain も dry として残す。深度-buffer の視線距離とは別の鉛直地形水深。
-bool TrySampleWaterTerrainInfo(const WaterTerrainInfoInputs& inputs, math::Vector2 worldXZ,
+FBZZ_ENGINE_API bool TrySampleWaterTerrainInfo(const WaterTerrainInfoInputs& inputs, math::Vector2 worldXZ,
     float meanWaterY, float depthLimit, float foamThreshold, float foamFade, WaterTerrainSample& out);
 
 /// @return 有限で有効な water/settings の更新署名。失敗時は false、out 未変更。
 /// @note Terrain 内容・water world TRS/extent/depthLimit・foam 設定・解像度を含み、camera/波の時刻を含めない。
-bool TryComputeWaterTerrainInfoSignature(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
+FBZZ_ENGINE_API bool TryComputeWaterTerrainInfoSignature(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
     const Transform& transform, const WaterTerrainBakeSettings& settings, uint64_t& out,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 /// @return 最大257×257の texel 中心を world へ写した RGBA8 atlas。失敗時は false、out 未変更。
 /// @note 波を乗せる前の基準水位で焼く。浅瀬による波高の変更は行わず、GPU/CPU の波の正本を変えない。
-bool TryBakeWaterTerrainInfo(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
+FBZZ_ENGINE_API bool TryBakeWaterTerrainInfo(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
     const Transform& transform, const WaterTerrainBakeSettings& settings, WaterTerrainInfoAtlas& out,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 /// @return GB を [-depthRange,+depthRange] [m] へ復元する。無効 range/結果では false、out 未変更。
 /// @note nearest の16bit丸め誤差は depthRange/65535 以下。GPU は各 texel を Load 復号し、底ありかつ範囲内の重みだけ補間する。
-bool TryDecodeWaterTerrainDepth(uint8_t highByte, uint8_t lowByte, float depthRange, float& out);
+FBZZ_ENGINE_API bool TryDecodeWaterTerrainDepth(uint8_t highByte, uint8_t lowByte, float depthRange, float& out);
 } /// @note namespace fbzz::scene

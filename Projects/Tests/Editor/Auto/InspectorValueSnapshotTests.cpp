@@ -2,7 +2,23 @@
 /// @brief   編集前値の復元・構造体配列・観測非評価と最初の操作の Undo を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Engine/Scene/Components/SpringBoneComponent.hpp>
+#include <Engine/Scene/Components/TrailComponent.hpp>
+#include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Fields/FlowField.hpp>
 #include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/OwnedResources.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <Editor/Util/InspectorValueSnapshot.hpp>
 #include <Editor/Util/UndoStack.hpp>
@@ -255,7 +271,7 @@ TEST_F(InspectorValueSnapshotTest, SkinnedProjectionRestoresAuthoredValuesWithou
     skinned.modelPath = "Assets/Old.fbx";
     skinned.submeshIndices = {4, 2};
     skinned.nodeEntities = {{3, 1}, {4, 1}};
-    skinned.skinnedVertexBuffers = {{7, 2}};
+    skinned.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{7, 2}});
     skinned.gpuSkinningContent = {1, 2, 3};
     const auto* nodeData = skinned.nodeEntities.data();
     snapshot.BeginCapture();
@@ -266,7 +282,7 @@ TEST_F(InspectorValueSnapshotTest, SkinnedProjectionRestoresAuthoredValuesWithou
     skinned.submeshIndices.clear();
     skinned.castShadows = false;
     skinned.nodeEntities = {{9, 1}};
-    skinned.skinnedVertexBuffers = {{8, 3}};
+    skinned.skinnedVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{8, 3}});
     skinned.gpuSkinningContent = {4, 5};
 
     snapshot.BeginApply();
@@ -276,7 +292,7 @@ TEST_F(InspectorValueSnapshotTest, SkinnedProjectionRestoresAuthoredValuesWithou
     EXPECT_EQ(skinned.submeshIndices, (std::vector<std::uint32_t>{4, 2}));
     EXPECT_TRUE(skinned.castShadows);
     EXPECT_EQ(skinned.nodeEntities, (std::vector<scene::EntityID>{{9, 1}}));
-    EXPECT_EQ(skinned.skinnedVertexBuffers,
+    EXPECT_EQ(testkit::BorrowResources(skinned.skinnedVertexBuffers),
         (std::vector<renderer::ResourceHandle<renderer::BufferTag>>{{8, 3}}));
     EXPECT_EQ(skinned.gpuSkinningContent, (std::vector<std::uint32_t>{4, 5}));
 }

@@ -41,11 +41,16 @@ namespace fbzz::renderer {
 namespace {
 ResourceManager* s_activeResourceManager = nullptr;
 std::atomic<uint64_t> s_resourceManagerInstanceId{0};
+bool s_managerRegistryAlive = true;
+struct ManagerRegistry {
+    std::unordered_map<uint64_t, ResourceManager*> instances;
+    ~ManagerRegistry() { s_managerRegistryAlive = false; }
+};
 /// @note GPU ハンドルを保持せず、終了した Manager の非所有参照を引かないための描画スレッド専用台帳。
 std::unordered_map<uint64_t, ResourceManager*>& LiveResourceManagers()
 {
-    static std::unordered_map<uint64_t, ResourceManager*> instances;
-    return instances;
+    static ManagerRegistry registry;
+    return registry.instances;
 }
 
 /// @note 表面宣言だけで標準 PBR と認定せず、実際にロードした PS に正規化可能な定数を要求する。
@@ -124,6 +129,14 @@ ResourceManager::ResourceManager(IRenderer& renderer)
 {
     m_instanceId = s_resourceManagerInstanceId.fetch_add(1, std::memory_order_relaxed) + 1;
     assert(m_instanceId != 0 && "Resource manager identity exhausted");
+    m_shaders.m_owner = m_instanceId;
+    m_textures.m_owner = m_instanceId;
+    m_buffers.m_owner = m_instanceId;
+    m_constantBuffers.m_owner = m_instanceId;
+    m_pipelineStates.m_owner = m_instanceId;
+    m_renderTargets.m_owner = m_instanceId;
+    m_structuredBuffers.m_owner = m_instanceId;
+    m_accelerationStructures.m_owner = m_instanceId;
     LiveResourceManagers().emplace(m_instanceId, this);
     s_activeResourceManager = this;
 }
@@ -167,11 +180,18 @@ ResourceManager* ResourceManager::Active()
     return s_activeResourceManager;
 }
 
-ResourceManager* FindLiveResourceManager(uint64_t instanceId)
+ResourceManager* ResourceManager::FindOwner(uint64_t instanceId)
 {
+    /// @note 関数 static の GPU キャッシュは台帳より遅く破棄され得る。終了済みの台帳へ触れない。
+    if (!s_managerRegistryAlive || instanceId == 0) return nullptr;
     const auto& instances = LiveResourceManagers();
     const auto found = instances.find(instanceId);
     return found == instances.end() ? nullptr : found->second;
+}
+
+ResourceManager* FindLiveResourceManager(uint64_t instanceId)
+{
+    return ResourceManager::FindOwner(instanceId);
 }
 
 namespace {
@@ -225,6 +245,7 @@ Material* ResourceManager::GetErrorMaterial(bool skinned)
 
 ShaderCapabilities ResourceManager::GetShaderCapabilities(ResourceHandle<ShaderTag> handle) const
 {
+    if (handle.owner != m_instanceId) return {};
     const auto found = m_shaderCapabilities.find((static_cast<uint64_t>(handle.gen) << 32) | handle.id);
     return found != m_shaderCapabilities.end() ? found->second : ShaderCapabilities{};
 }
@@ -891,7 +912,7 @@ void BufferStateReadScope::CaptureReadBoundary()
 bool ResourceManager::GetBufferMetadata(ResourceHandle<BufferTag> handle,
                                         BufferResourceMetadata& out) const
 {
-    if (!handle.IsValid()) return false;
+    if (!handle.IsValid() || handle.owner != m_instanceId) return false;
     std::lock_guard lock(m_bufferMetadataMutex);
     if (handle.id >= m_bufferMetadata.size()) return false;
     const BufferResourceMetadata& metadata = m_bufferMetadata[handle.id];
@@ -1097,6 +1118,7 @@ bool ResourceManager::UpdateRegion(ResourceHandle<StructuredBufferTag> handle, c
 
 void ResourceManager::Release(ResourceHandle<ShaderTag> h)
 {
+    if (h.owner != m_instanceId) return;
     /// @note Renderer shutdown already released owned resources; late Material/FontAtlas destructors must not call its detached reference.
     if (m_rendererDetached) return;
     if (!m_renderer.IsRenderThread()) {
@@ -1113,12 +1135,14 @@ void ResourceManager::Release(ResourceHandle<ShaderTag> h)
 }
 void ResourceManager::Release(ResourceHandle<TextureTag> h)
 {
+    if (h.owner != m_instanceId) return;
     if (m_rendererDetached) return;
     if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
     m_textures.Remove(h);
 }
 void ResourceManager::Release(ResourceHandle<BufferTag> h)
 {
+    if (h.owner != m_instanceId) return;
     if (m_rendererDetached) return;
     if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
     if (m_meshletGeometryCache)
@@ -1128,30 +1152,35 @@ void ResourceManager::Release(ResourceHandle<BufferTag> h)
 }
 void ResourceManager::Release(ResourceHandle<ConstantBufferTag> h)
 {
+    if (h.owner != m_instanceId) return;
     if (m_rendererDetached) return;
     if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
     m_constantBuffers.Remove(h);
 }
 void ResourceManager::Release(ResourceHandle<PipelineStateTag> h)
 {
+    if (h.owner != m_instanceId) return;
     if (m_rendererDetached) return;
     if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
     m_pipelineStates.Remove(h);
 }
 void ResourceManager::Release(ResourceHandle<StructuredBufferTag> h)
 {
+    if (h.owner != m_instanceId) return;
     if (m_rendererDetached) return;
     if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
     m_structuredBuffers.Remove(h);
 }
 void ResourceManager::Release(ResourceHandle<AccelerationStructureTag> h)
 {
+    if (h.owner != m_instanceId) return;
     if (m_rendererDetached) return;
     if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
     m_accelerationStructures.Remove(h);
 }
 void ResourceManager::Release(ResourceHandle<RenderTargetTag> h)
 {
+    if (h.owner != m_instanceId) return;
     if (m_rendererDetached) return;
     if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
     if (m_renderResources) m_renderResources->ReleaseOutput(h);

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
+#include <Engine/Api.hpp>
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>
 namespace fbzz::scene {
@@ -37,9 +38,9 @@ using renderer::FroxelFogPass;
 using renderer::AutoExposurePass;
 using renderer::LensFlarePass;
 using renderer::BloomPass;
-void ExecuteUIPass(RenderPassContext& ctx);
+FBZZ_ENGINE_API void ExecuteUIPass(RenderPassContext& ctx);
 using renderer::ExecuteCustomPostProcessPass;
 using renderer::ExecuteCustomHdrPass;
-void ReleaseCustomPassMaterialCache();
+FBZZ_ENGINE_API void ReleaseCustomPassMaterialCache();
 
 }

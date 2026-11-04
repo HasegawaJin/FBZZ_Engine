@@ -6,6 +6,7 @@
 /// @note imnodes の実装は ThirdParty の imnodes ターゲットにある (fbzz_editor が
 ///       PUBLIC リンクする)。ここは宣言だけを含める。
 #include <Editor/GraphEditor/GraphCanvas.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 
 #include <imgui.h>
@@ -226,6 +227,69 @@ void GraphCanvas::SetPanning(ImVec2 panning)
     if (!m_editorContext) return;
     ImNodes::EditorContextSet(m_editorContext);
     ImNodes::EditorContextResetPanning(panning);
+}
+
+void GraphCanvas::RegisterViewOperators(OperatorRegistry& registry, std::string_view prefix, float* panelZoom)
+{
+    EditorOperator inspect;
+    inspect.id = std::string(prefix) + ".inspect";
+    inspect.label = "Inspect Graph View";
+    inspect.category = "Graph";
+    inspect.kind = OpKind::Query;
+    inspect.desc = "現在のグラフのズーム倍率とパン位置を返す。";
+    inspect.exec = [this, panelZoom](OpContext&, const OpArgs&) {
+        const auto pan = Panning();
+        auto data = OpData::MakeObject();
+        data.Set("zoom", panelZoom ? *panelZoom : Zoom());
+        data.Set("panX", pan.x);
+        data.Set("panY", pan.y);
+        return OpResult::Data(std::move(data));
+    };
+    registry.Register(std::move(inspect));
+
+    EditorOperator control;
+    control.id = std::string(prefix) + ".control";
+    control.label = "Control Graph View";
+    control.category = "Graph";
+    control.kind = OpKind::Action;
+    control.desc = "setで倍率とパンを設定。reset、frame_all、frame_selectionも指定できる。";
+    OpParam action;
+    action.name = "action";
+    action.enumValues = {"set", "reset", "frame_all", "frame_selection"};
+    control.params.push_back(std::move(action));
+    for (const char* name : {"zoom", "panX", "panY"}) {
+        OpParam param;
+        param.name = name;
+        param.type = OpParamType::Float;
+        param.required = false;
+        control.params.push_back(std::move(param));
+    }
+    control.poll = [this](const OpContext&, const OpArgs&) { return IsReady(); };
+    control.exec = [this, panelZoom](OpContext&, const OpArgs& args) {
+        const auto action = args.GetString("action");
+        if (action == "set") {
+            const auto pan = Panning();
+            const float x = args.GetFloat("panX", pan.x);
+            const float y = args.GetFloat("panY", pan.y);
+            const float zoom = args.GetFloat("zoom", panelZoom ? *panelZoom : Zoom());
+            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(zoom)
+                || zoom < MIN_SUPPORTED_ZOOM || zoom > MAX_SUPPORTED_ZOOM)
+                return OpResult::Err("BAD_ARG", "zoom/panX/panY");
+            SetPanning({x, y});
+            SetZoom(zoom);
+        } else if (action == "reset") {
+            ResetView();
+        } else if (action == "frame_all") {
+            RequestFrameAll();
+        } else if (action == "frame_selection") {
+            RequestFrameSelection();
+        } else {
+            return OpResult::Err("BAD_ARG", "action");
+        }
+        if (panelZoom) *panelZoom = Zoom();
+        return OpResult::Ok();
+    };
+    registry.Register(std::move(control));
 }
 
 ImVec2 GraphCanvas::ScreenToLogical(ImVec2 screenPos) const

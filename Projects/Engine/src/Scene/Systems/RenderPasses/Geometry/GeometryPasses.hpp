@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
+#include <Engine/Api.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Engine/Scene/Systems/RenderPasses/IRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -28,7 +29,7 @@
 
 
 namespace fbzz::scene {
-bool IsEffectTextureSrgb(const std::string& texturePath);
+FBZZ_ENGINE_API bool IsEffectTextureSrgb(const std::string& texturePath);
 using renderer::ClearForCamera;
 using renderer::BindForwardShadingResources;
 using renderer::kMaxParticleDraw;
@@ -67,10 +68,10 @@ struct SkinnedMeshRenderer;
 
 /// @note コンピュートスキニング。ボーン変形を 1 フレーム 1 回だけ計算し、静的メッシュと同じ
 /// @note 頂点レイアウトへ書き出す。Shadow より前に実行すること (結果を各パスが共有するため)。
-void ExecuteSkinningComputePass            (RenderPassContext& ctx);
+FBZZ_ENGINE_API void ExecuteSkinningComputePass            (RenderPassContext& ctx);
 /// @note Mesh* / AnimatorComponent* をキーにした内部キャッシュを破棄する。
 /// @note シーン切り替えやリソースリセットの際に呼ぶこと。
-void ReleaseSkinningComputeCaches          ();
+FBZZ_ENGINE_API void ReleaseSkinningComputeCaches          ();
 /// @note クラスタライトカリング。Shadow より前に 1 回だけ実行し、Forward / Deferred の
 /// @note 両方が同じクラスタ結果を読む。出力は StructuredBuffer なので RenderGraph の
 /// @note 論理リソースには乗らない (SkinningCompute と同じ扱い)。
@@ -115,7 +116,7 @@ using renderer::GBufferPass;
 using renderer::DeferredDepthCopyPass;
 
 /// @note Deferred の中で «前方描画される» 2 パス。
-///
+
 /// @note どちらも BindForwardShadingResources を通るので、Forward パスと同じく
 /// @note Spot / Point の影 (t28) と Cookie (t31) を読む。申告しないと依存辺が張られず、
 /// @note Shadow / LightCookie より先に走ってよいことになる。
@@ -128,13 +129,13 @@ using renderer::DeferredForwardTransparentPass;
 /// @note 宣言する順序は SSAO → GTAOResult → ContactShadowResult で固定する。順序が変わると Plan キャッシュの鍵だけが変わり無駄な再 Plan が走る。
 
 /// @note Forward の不透明本描画。
-///
+
 /// @note HDR は Write であって ReadWrite ではない。この時点で producer が居らず、
 /// @note 読み手として申告すると検証が落ちる。自分でクリアしてから描く。
 using renderer::ForwardOpaquePass;
 
 /// @note GBuffer をライティングして HDR へ合成する。
-///
+
 /// @note 影と Cookie はライティングの本体が読む (t13 / t28 / t31)。申告が抜けていた
 /// @note ため «Shadow / LightCookie の後» という依存が張られず、登録順が偶然そう
 /// @note なっているだけの状態だった。
@@ -168,9 +169,9 @@ using renderer::ParticleReactivePass;
 class SelectionMaskPass final : public IRenderPass {
 public:
     std::string_view Name() const override { return "SelectionMask"; }
-    void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
-    bool IsEnabled(const RenderPassContext& ctx) const override;
-    void Execute(PassResources& resources, RenderPassContext& ctx) override;
+    FBZZ_ENGINE_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
+    FBZZ_ENGINE_API bool IsEnabled(const RenderPassContext& ctx) const override;
+    FBZZ_ENGINE_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 };
 
 using renderer::VelocityPass;
@@ -178,7 +179,7 @@ using renderer::VelocityPass;
 
 /// @note ReflectionProbe の動的キューブマップを更新し、メインカメラに最も近い有効プローブを返す。
 /// @note 戻り値が nullptr の場合は既存のグローバル IBL をそのまま使う。
-ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& ctx);
+FBZZ_ENGINE_API ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& ctx);
 
 /// @brief SH 射影 CS / 膨張 CS の定数バッファの大きさ。中身は LightProbeBakePass.cpp が持つ。
 inline constexpr size_t kLightProbeProjectCBSize = 448;
@@ -197,29 +198,29 @@ struct LightProbeVolumeSelection {
 /// @param mainData このフレームの b8。捕捉で描く面にも同じ IBL・天候を効かせるために写す。
 /// @return 焼き上がったボリュームのうちカメラに近い 2 つ (箱の中なら距離 0)。小さい方が inner。
 /// @note グラフの外で呼ぶ (描画先が RenderGraph 管理外の RT とボリュームのため)。影マップは前フレームの中身を読む。
-LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, const AdvancedGraphicsCB& mainData);
+FBZZ_ENGINE_API LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, const AdvancedGraphicsCB& mainData);
 /// @brief ボリュームの箱と格子を b8 の probeVolumes[i] へ書く。
-void FillLightProbeVolumeConstants(const GameObject& owner, const LightProbeVolumeComponent& volume,
+FBZZ_ENGINE_API void FillLightProbeVolumeConstants(const GameObject& owner, const LightProbeVolumeComponent& volume,
                                    ProbeVolumeParamsCB& data);
-void ExecuteParticlePass                   (RenderPassContext& ctx);
+FBZZ_ENGINE_API void ExecuteParticlePass                   (RenderPassContext& ctx);
 /// @brief パーティクルの重なり枚数を可視化して HDR RT へ上書きする診断パス。
 /// @note fill rate は通常の絵からは読めないが、パーティクルの実コストはほぼここで決まる。Particle パスと同じジオメトリを計数シェーダーで描き直しヒートマップへ変換し、ctx.settings.particleOverdrawView が true のときだけ Particle パスの直後に走る。
-void ExecuteParticleOverdrawPass           (RenderPassContext& ctx);
+FBZZ_ENGINE_API void ExecuteParticleOverdrawPass           (RenderPassContext& ctx);
 /// @note TAA の反応マスク (粒子が覆う割合) を particleReactiveRT へ描く。TAA が有効なフレームだけ呼ぶ。
-void ExecuteParticleReactivePass           (RenderPassContext& ctx);
-void ExecuteDecalPass                      (RenderPassContext& ctx);
+FBZZ_ENGINE_API void ExecuteParticleReactivePass           (RenderPassContext& ctx);
+FBZZ_ENGINE_API void ExecuteDecalPass                      (RenderPassContext& ctx);
 /// @brief 不透明の深度をデカール専用の深度 RT へ写す。
 /// @note 描き先 (hdrRT / gbufferRT) の深度を SRV として同時に読めないため写す。
-void ExecuteDecalDepthCopyPass             (RenderPassContext& ctx);
+FBZZ_ENGINE_API void ExecuteDecalDepthCopyPass             (RenderPassContext& ctx);
 /// @brief RenderSettings::objectMaskRequests のシルエットを objectMaskRT へ描く (RGB=色 / A=太さ)。輪郭そのものは描かない — 見た目は CustomPostProcess のシェーダーが決める。
 /// @note エディタ選択マスク (SelectionMaskPass) とは別。あちらは «選ばれているか» の 1 ビットで SelectionOutline.hlsl が .r を被覆率として読むため、同じ RT へ色を書くと選択輪郭の太さが対象の色で変わってしまう。
 
 /// @note 不透明ジオメトリのモーションベクターを velocityRT へ描く。TAA / MotionBlur が
 /// @note 「カメラの動き」しか知らない状態を解消する。両方が無効なら実行しなくてよい。
-void ExecuteVelocityPass                   (RenderPassContext& ctx);
+FBZZ_ENGINE_API void ExecuteVelocityPass                   (RenderPassContext& ctx);
 /// @note .mat のパスをキーにした解決済みマテリアルのキャッシュを破棄する。
 /// @note シーン切り替えやリソースリセットの際に呼ぶこと。
-void ReleaseDecalMaterialCache             ();
+FBZZ_ENGINE_API void ReleaseDecalMaterialCache             ();
 
 
 /// @brief ShadowConstants (b4) を組み立てて handles.shadowCB へ書き込む。
@@ -231,14 +232,14 @@ void ReleaseDecalMaterialCache             ();
 
 /// @note 主スロット (submesh 0) を同期する。単一マテリアルのオブジェクト向け。
 /// @param screenPixels 描く物体の画面上の直径 [px] (EstimateScreenPixels)。テクスチャの品質段の自動選択に使う。0 は不明。
-renderer::Material* SyncMaterial(
+FBZZ_ENGINE_API renderer::Material* SyncMaterial(
     MaterialComponent& mc, renderer::ResourceManager& resources, bool preferSkinnedFallback = false,
     float screenPixels = 0.0f);
 
 /// @note submesh 単位でスロットを同期する。SkinnedMeshRenderer のように 1 GameObject が
 /// @note 複数 submesh を描くケースで使う。slotIndex が SlotCount() を超える場合は
 /// @note MaterialComponent::SlotAt() が主スロットへフォールバックする。
-renderer::Material* SyncMaterialSlot(
+FBZZ_ENGINE_API renderer::Material* SyncMaterialSlot(
     MaterialComponent& mc, size_t slotIndex, renderer::ResourceManager& resources,
     bool preferSkinnedFallback = false, float screenPixels = 0.0f);
 
@@ -255,37 +256,37 @@ struct PreparedMaterialParams {
     std::vector<uint8_t> bytes;
 };
 /// @note Reuse only matching asset, shader descriptor and ResourceManager generations; invalid preparation falls back to ordinary synchronization.
-renderer::Material* SyncMaterialSlotPrepared(MaterialComponent& mc, size_t slotIndex,
+FBZZ_ENGINE_API renderer::Material* SyncMaterialSlotPrepared(MaterialComponent& mc, size_t slotIndex,
     renderer::ResourceManager& resources, bool preferSkinnedFallback, float screenPixels,
     const PreparedMaterialParams* prepared);
 
 /// @brief メッシュのワールド境界球を画面へ投影した直径 [px]。求められなければ 0。
 /// @note 極小カリングと同じ射影の縦倍率 (cullProjScaleY) を使う。NDC の縦 2 が描画先の高さに当たる。
-[[nodiscard]] float EstimateScreenPixels(const RenderPassContext& ctx, const GameObject& go,
+[[nodiscard]] FBZZ_ENGINE_API float EstimateScreenPixels(const RenderPassContext& ctx, const GameObject& go,
                                          const renderer::Mesh& mesh);
 
-renderer::Material* GetFallbackMaterial(
+FBZZ_ENGINE_API renderer::Material* GetFallbackMaterial(
     renderer::ResourceManager& resources, bool skinned);
 
-const char* GetFallbackMaterialPath(bool skinned);
+FBZZ_ENGINE_API const char* GetFallbackMaterialPath(bool skinned);
 
-void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath);
+FBZZ_ENGINE_API void LogSkinnedSurfaceFallbackWarningOnce(std::string_view shaderPath);
 
 /// @brief AnimatorComponent を自 GO → 親 GO の順に探す。
 /// @note 子 GO (submesh ごとの SkinnedMeshRenderer) は AnimatorComponent を持たない。
-AnimatorComponent* FindAnimator(GameObject& go);
+FBZZ_ENGINE_API AnimatorComponent* FindAnimator(GameObject& go);
 
 /// @param depthBias / depthBiasSlope 正で手前へ寄せる (renderer::PipelineStateDesc::depthBias)。
 
 
 /// @brief スロットのブレンド・両面・深度バイアスから PSO を引く。
 /// @note カメラ視点で同じメッシュを描くパスはすべてこちらを通す (バイアスがパス間で食い違うと深度が合わない)。
-renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
+FBZZ_ENGINE_API renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::ResourceManager& resources,
     const MaterialSlot&        slot,
     bool                      wireframe = false);
 
-bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask);
+FBZZ_ENGINE_API bool ShouldRenderGameObject(const GameObject& go, fbzz::LayerMask mask);
 /// @note シーングローバル天候 (WeatherComponent) の解決結果。既定は「乾いている」。
 /// @note b8 を宣言できないシェーダー (Terrain) へ値を手渡すために使う。b8 を持つシェーダーは
 /// @note RenderSystem が AdvancedGraphicsCB へ書いた値をそのまま読む。
@@ -295,7 +296,7 @@ struct ActiveWeather {
     float puddleAmount = 0.0f;
 };
 
-ActiveWeather FindActiveWeather(Scene& scene);
+FBZZ_ENGINE_API ActiveWeather FindActiveWeather(Scene& scene);
 
 
 /// @note ワールド空間バウンディング球 (カリング用)
@@ -306,20 +307,20 @@ ActiveWeather FindActiveWeather(Scene& scene);
 /// @note OcclusionCuller はバウンディング球の投影円に内接する正方形へ「球の背面深度」を焼く。床タイル・壁パネル・板ポリ・フェンスのように球に対し実体が薄い形では「球の内側は概ねメッシュで埋まっている」という前提が崩れ、実際には何も無い空間まで遮蔽者として主張してしまう (見えているものが消える)。
 /// @note 判定材料は AABB の最小半径成分と球半径の比。立方体で 0.577、球で 1.0、10x10x0.2 の板で 0.014 になるので、この比だけで薄い形を弾ける。
 /// @note 弾かれた物も「遮蔽される側」としては通常どおり判定される (描画は落ちる)。
-[[nodiscard]] bool IsReliableOccluder(const renderer::Mesh& mesh);
+[[nodiscard]] FBZZ_ENGINE_API bool IsReliableOccluder(const renderer::Mesh& mesh);
 
-WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh,
+FBZZ_ENGINE_API WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh,
                                float padding = 0.0f);
 
 /// @return Maximum axis norm of the current world matrix, preserving nonuniform and negative scale bounds.
-float ComputeWorldBoundsScale(const math::Matrix4& world);
+FBZZ_ENGINE_API float ComputeWorldBoundsScale(const math::Matrix4& world);
 /// @pre maximumScale was computed from this same world matrix; both values belong to one callback-free extraction.
-WorldBounds ComputeWorldBounds(const math::Matrix4& world, float maximumScale,
+FBZZ_ENGINE_API WorldBounds ComputeWorldBounds(const math::Matrix4& world, float maximumScale,
                                const renderer::Mesh& mesh, float padding = 0.0f);
 
 /// @brief SkinnedMeshRenderer の全 submesh bounds を 1 つの保守的なワールド球へまとめる。false の場合は CPU bounds 未生成などで安全にカリングできないため、呼び出し側は描画を継続する。
 /// @note Transform でなく GameObject を受ける。骨がバインドポーズから大きく離れる構成ではバインドポーズ球が実体と別の場所に残るため、親をたどって Animator を引き、そこに焼かれた «いまの骨の広がり» を使う (AnimatorSystem::UpdateSkinnedBounds)。
-bool ComputeSkinnedWorldBounds(const GameObject& go,
+FBZZ_ENGINE_API bool ComputeSkinnedWorldBounds(const GameObject& go,
                                const SkinnedMeshRenderer& smr,
                                WorldBounds& outBounds,
                                float padding = 0.0f);
@@ -327,11 +328,11 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
 /// @brief カメラのカリング設定 (距離 / 極小 / 錐台) をこの順で 1 回の bounds 計算から判定し、落とした理由に対応する統計カウンターまでここで加算する。
 /// @note パスから個別の判定関数を直接呼ばない理由: (1) Frustum Culling を切ったら全部出ることを保証したいが、パスごとに手書きすると書き漏らす。(2) 統計をパス側で ++ すると判定を足すたびに全パスへ追加が要るため、判定と数え上げは同じ場所に置く。(3) 距離・極小・錐台は同じワールド球を使うため、呼び出し側で分けるとスキンドメッシュの bounds を何度も作り直すことになる。
 /// @return false ならこのカメラでは描かない。統計は加算済みなので呼び出し側は continue するだけでよい。
-bool IsMeshVisible(RenderPassContext& ctx,
+FBZZ_ENGINE_API bool IsMeshVisible(RenderPassContext& ctx,
                    const GameObject& go,
                    const renderer::Mesh& mesh);
 
-bool IsSkinnedVisible(RenderPassContext& ctx,
+FBZZ_ENGINE_API bool IsSkinnedVisible(RenderPassContext& ctx,
                       const GameObject& go,
                       const SkinnedMeshRenderer& smr);
 
@@ -341,7 +342,7 @@ bool IsSkinnedVisible(RenderPassContext& ctx,
 /// @brief 距離カリングの判定だけを単体で行う (ShadowPass 用)。
 /// @note 距離で本体を消しても caster を残すと、オブジェクトが無い場所に影だけが落ちる。カリングの中で一番目につく壊れ方なので、同じ距離で揃える。
 /// @note 極小オブジェクト判定は共有しない。ShadowPass はシャドウマップのテクセル基準で独自の極小カリングを持ち、そちらの方が影の解像度に即している。
-bool IsWithinCullDistance(const RenderPassContext& ctx,
+FBZZ_ENGINE_API bool IsWithinCullDistance(const RenderPassContext& ctx,
                           const GameObject& go,
                           const WorldBounds& bounds);
 
@@ -351,6 +352,6 @@ bool IsWithinCullDistance(const RenderPassContext& ctx,
 
 /// @brief fzmat の mesh_type フィールドから static mesh 専用かを決定する。
 /// @note カスタムシェーダーはエンジンコードを触らず mesh_type = "surface"/"skinned"/"any" で対応するメッシュタイプを宣言できるようにするため。
-bool IsSurfaceMaterial(const MaterialSlot& slot);
+FBZZ_ENGINE_API bool IsSurfaceMaterial(const MaterialSlot& slot);
 
 }

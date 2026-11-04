@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-13
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <cstdint>
 
@@ -38,26 +39,26 @@ struct Stamp {
 } /// @note namespace detail
 
 /// @note Initialize outside the hot loop. Missing FBZZ_RENDER_CPU_TRACE_OUTPUT leaves all capture branches disabled.
-void InitializeFromEnvironment();
-[[nodiscard]] bool IsEnabled();
-[[nodiscard]] bool HasSelectedFrame();
+FBZZ_GRAPHICS_API void InitializeFromEnvironment();
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsEnabled();
+[[nodiscard]] FBZZ_GRAPHICS_API bool HasSelectedFrame();
 /// @note Register identity includes a monotonically issued lifetime ID, not only the object's address.
-void RegisterThread(const void* thread);
-void UnregisterThread(const void* thread);
-void ThreadStopped(const void* thread);
-void BeginFrame(const void* thread, uint64_t applicationFrame);
-void Count(Counter counter, uint64_t amount = 1);
+FBZZ_GRAPHICS_API void RegisterThread(const void* thread);
+FBZZ_GRAPHICS_API void UnregisterThread(const void* thread);
+FBZZ_GRAPHICS_API void ThreadStopped(const void* thread);
+FBZZ_GRAPHICS_API void BeginFrame(const void* thread, uint64_t applicationFrame);
+FBZZ_GRAPHICS_API void Count(Counter counter, uint64_t amount = 1);
 /// @note The packet's immutable origin describes submission, not the exclusive origin of all queued commands.
-void BindPacket(const void* thread, uint64_t serial, uint64_t commands);
-void PacketAccepted(const void* thread, uint64_t serial, bool accepted);
+FBZZ_GRAPHICS_API void BindPacket(const void* thread, uint64_t serial, uint64_t commands);
+FBZZ_GRAPHICS_API void PacketAccepted(const void* thread, uint64_t serial, bool accepted);
 /// @pre All registered worker threads have stopped through the existing drain/Stop path.
 /// @note No additional RHI wait is introduced; serialization and file I/O occur only here.
-[[nodiscard]] bool WriteCsvAfterStop();
+[[nodiscard]] FBZZ_GRAPHICS_API bool WriteCsvAfterStop();
 
 class SourceScope final {
 public:
-    SourceScope(Source source, const char* api = nullptr, bool preserveSource = false);
-    ~SourceScope();
+    FBZZ_GRAPHICS_API SourceScope(Source source, const char* api = nullptr, bool preserveSource = false);
+    FBZZ_GRAPHICS_API ~SourceScope();
     SourceScope(const SourceScope&) = delete;
     SourceScope& operator=(const SourceScope&) = delete;
 private:
@@ -68,8 +69,8 @@ private:
 
 class WaitKindScope final {
 public:
-    explicit WaitKindScope(WaitKind kind);
-    ~WaitKindScope();
+    FBZZ_GRAPHICS_API explicit WaitKindScope(WaitKind kind);
+    FBZZ_GRAPHICS_API ~WaitKindScope();
     WaitKindScope(const WaitKindScope&) = delete;
     WaitKindScope& operator=(const WaitKindScope&) = delete;
 private:
@@ -79,11 +80,11 @@ private:
 
 class ViewScope final {
 public:
-    ViewScope(uint64_t resourceInstance, uint64_t resourceEpoch, uint64_t resourceFrame,
+    FBZZ_GRAPHICS_API ViewScope(uint64_t resourceInstance, uint64_t resourceEpoch, uint64_t resourceFrame,
         uint64_t sceneGeneration, uint32_t outputId, uint32_t outputGeneration);
-    ~ViewScope();
-    void SetViewId(uint32_t viewId);
-    void SetPhase(Phase phase);
+    FBZZ_GRAPHICS_API ~ViewScope();
+    FBZZ_GRAPHICS_API void SetViewId(uint32_t viewId);
+    FBZZ_GRAPHICS_API void SetPhase(Phase phase);
     ViewScope(const ViewScope&) = delete;
     ViewScope& operator=(const ViewScope&) = delete;
 private:
@@ -97,8 +98,8 @@ private:
 /// @note Leaf elapsed subtracts only directly nested waits' inclusive elapsed; overflow makes leaf unavailable.
 class WaitScope final {
 public:
-    explicit WaitScope(bool initiallyNotReady);
-    ~WaitScope();
+    FBZZ_GRAPHICS_API explicit WaitScope(bool initiallyNotReady);
+    FBZZ_GRAPHICS_API ~WaitScope();
     WaitScope(const WaitScope&) = delete;
     WaitScope& operator=(const WaitScope&) = delete;
 private:
@@ -112,8 +113,8 @@ private:
 /// @note Pump elapsed overlaps nested waits and must not be added to wait elapsed.
 class PumpScope final {
 public:
-    PumpScope();
-    ~PumpScope();
+    FBZZ_GRAPHICS_API PumpScope();
+    FBZZ_GRAPHICS_API ~PumpScope();
     PumpScope(const PumpScope&) = delete;
     PumpScope& operator=(const PumpScope&) = delete;
 private:
@@ -124,9 +125,9 @@ private:
 /// @note Lock acquisition elapsed is not proof that the mutex was contended.
 class AcquireScope final {
 public:
-    explicit AcquireScope(AcquireKind kind);
-    ~AcquireScope();
-    void Acquired();
+    FBZZ_GRAPHICS_API explicit AcquireScope(AcquireKind kind);
+    FBZZ_GRAPHICS_API ~AcquireScope();
+    FBZZ_GRAPHICS_API void Acquired();
     AcquireScope(const AcquireScope&) = delete;
     AcquireScope& operator=(const AcquireScope&) = delete;
 private:
@@ -137,10 +138,10 @@ private:
 
 class PacketScope final {
 public:
-    PacketScope(const void* thread, uint64_t serial);
-    ~PacketScope();
-    void BeginDestruction();
-    void FinishedDestruction();
+    FBZZ_GRAPHICS_API PacketScope(const void* thread, uint64_t serial);
+    FBZZ_GRAPHICS_API ~PacketScope();
+    FBZZ_GRAPHICS_API void BeginDestruction();
+    FBZZ_GRAPHICS_API void FinishedDestruction();
     PacketScope(const PacketScope&) = delete;
     PacketScope& operator=(const PacketScope&) = delete;
 private:
@@ -158,18 +159,18 @@ struct Summary {
     uint64_t emptySubmits = 0, sourceStaticCalls = 0, sourceDeformedCalls = 0;
     bool complete = true, leafAvailable = true, cpuAvailable = true, cyclesAvailable = true;
 };
-[[nodiscard]] Summary SnapshotSummary();
+[[nodiscard]] FBZZ_GRAPHICS_API Summary SnapshotSummary();
 struct PacketInfo {
     uint64_t threadLifetimeId = 0, applicationFrame = 0, resourceFrame = 0, serial = 0;
     uint32_t token = 0, viewOrdinal = 0, viewId = 0;
     bool accepted = false, complete = false;
 };
-[[nodiscard]] PacketInfo SnapshotPacket(uint32_t index);
+[[nodiscard]] FBZZ_GRAPHICS_API PacketInfo SnapshotPacket(uint32_t index);
 /// @pre No trace scope or packet is active. Existing idle workers may be registered again at the next BeginFrame.
-[[nodiscard]] bool ConfigureForTesting(uint32_t warmup = 0, uint32_t stride = 1,
+[[nodiscard]] FBZZ_GRAPHICS_API bool ConfigureForTesting(uint32_t warmup = 0, uint32_t stride = 1,
     uint32_t samples = 1, uint32_t packetLimit = MAX_PACKETS, TestCpuMode cpuMode = TestCpuMode::NATIVE,
     const char* outputPath = nullptr);
 /// @pre All trace scopes/packets have finished; fixture shutdown precedes disabling/resetting capture state.
-[[nodiscard]] bool DisableForTesting();
+[[nodiscard]] FBZZ_GRAPHICS_API bool DisableForTesting();
 
 } /// @note namespace fbzz::renderer::cpu_trace

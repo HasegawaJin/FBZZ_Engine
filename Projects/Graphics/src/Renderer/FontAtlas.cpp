@@ -133,16 +133,22 @@ constexpr float RASTER_PIXEL_HEIGHT_STEPS[] = {
 
 } /// @note namespace
 
+namespace {
+void ReleaseAtlasPages(std::vector<ResourceHandle<TextureTag>>& pages)
+{
+    for (const auto page : pages) {
+        if (auto* owner = ResourceManager::FindOwner(page.owner)) owner->Release(page);
+    }
+    pages.clear();
+}
+} /// @note namespace
+
 FontAtlas::FontAtlas()                                  = default;
 FontAtlas::FontAtlas(FontAtlas&&) noexcept              = default;
 
 FontAtlas::~FontAtlas()
 {
-    /// @note Active() を使う理由: アトラスはキャッシュ (UISystemContext) の要素として畳まれ、
-    /// @note       破棄地点へ ResourceManager& を渡す経路が無い (Material と同じ扱い)。ResourceManager
-    /// @note       より後に消えるアトラスでは Active() が空で、そのときは返す先が無いので何もしない。
-    if (ResourceManager* resources = ResourceManager::Active())
-        ReleaseGpuResources(*resources);
+    ReleaseAtlasPages(m_pages);
 }
 
 /// @note メンバーを足したらここにも足すこと (既定のムーブに任せられないのは、
@@ -152,8 +158,7 @@ FontAtlas& FontAtlas::operator=(FontAtlas&& other) noexcept
     if (this == &other) return *this;
     /// @note 上書きされる側のページを先に返す。ムーブ代入で «元のページを捨てる» のは
     /// @note       フォントを焼き直したときに通る (同じキーへ新しいアトラスを入れ直す)。
-    if (ResourceManager* resources = ResourceManager::Active())
-        ReleaseGpuResources(*resources);
+    ReleaseAtlasPages(m_pages);
 
     m_pages           = std::move(other.m_pages);
     m_glyphs          = std::move(other.m_glyphs);
@@ -166,11 +171,9 @@ FontAtlas& FontAtlas::operator=(FontAtlas&& other) noexcept
     return *this;
 }
 
-void FontAtlas::ReleaseGpuResources(ResourceManager& resources)
+void FontAtlas::ReleaseGpuResources(ResourceManager&)
 {
-    for (ResourceHandle<TextureTag>& page : m_pages)
-        if (page.IsValid()) resources.Release(page);
-    m_pages.clear();
+    ReleaseAtlasPages(m_pages);
 }
 
 bool FontAtlas::IsDynamicFontPath(const std::string& path)
@@ -195,6 +198,29 @@ float FontAtlas::ResolveRasterPixelHeight(float desiredPixelHeight)
 }
 
 bool FontAtlas::Load(const std::string& path, ResourceManager& resources, float rasterPixelHeight)
+{
+    return LoadImpl(path, &resources, rasterPixelHeight);
+}
+
+bool FontAtlas::LoadMetrics(const std::string& path, float rasterPixelHeight)
+{
+    return LoadImpl(path, nullptr, rasterPixelHeight);
+}
+
+void FontAtlas::PrepareTextMetrics(std::string_view text)
+{
+    if (!m_dynamic) return;
+    std::size_t offset = 0;
+    while (offset < text.size()) {
+        const char32_t code = util::Utf8::Decode(text, offset);
+        if (code == 0 || code == U'\n' || m_glyphs.contains(code)) continue;
+        FontGlyph glyph{};
+        glyph.advance = m_dynamic->GetAdvance(code);
+        m_glyphs.emplace(code, glyph);
+    }
+}
+
+bool FontAtlas::LoadImpl(const std::string& path, ResourceManager* resources, float rasterPixelHeight)
 {
     /// @note TTF/TTC/OTF を直接指定された場合は動的モード。日本語フォントは字種が多く
     /// @note       静的アトラスに載せきれないため、`.ttf` を fontPath に書けばそのまま出る導線を用意する。
@@ -231,7 +257,7 @@ bool FontAtlas::Load(const std::string& path, ResourceManager& resources, float 
 
 bool FontAtlas::ParseBMFont(const std::string& fntText,
                             const std::string& fntPath,
-                            ResourceManager&   resources)
+                            ResourceManager*   resources)
 {
     const std::string directory = DirectoryOf(fntPath);
 
@@ -329,8 +355,8 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
             continue;
         }
         const std::string pngPath = directory.empty() ? file : directory + "/" + file;
-        ResourceHandle<TextureTag> texture = resources.LoadTexture(pngPath);
-        if (!texture.IsValid())
+        ResourceHandle<TextureTag> texture = resources ? resources->LoadTexture(pngPath) : ResourceHandle<TextureTag>{};
+        if (resources && !texture.IsValid())
             FBZZ_LOG_ERROR("FontAtlas: failed to load page texture: %s", pngPath.c_str());
         m_pages.push_back(texture);
     }
@@ -346,12 +372,12 @@ bool FontAtlas::ParseBMFont(const std::string& fntText,
 
 bool FontAtlas::ParseLegacy(const std::string& fntText,
                             const std::string& basePath,
-                            ResourceManager&   resources)
+                            ResourceManager*   resources)
 {
     /// @note 旧形式は単一ページ固定で、テクスチャ名は basePath + ".png"。
     const std::string pngPath = basePath + ".png";
-    ResourceHandle<TextureTag> texture = resources.LoadTexture(pngPath);
-    if (!texture.IsValid()) {
+    ResourceHandle<TextureTag> texture = resources ? resources->LoadTexture(pngPath) : ResourceHandle<TextureTag>{};
+    if (resources && !texture.IsValid()) {
         FBZZ_LOG_ERROR("FontAtlas: failed to load texture: %s", pngPath.c_str());
         return false;
     }

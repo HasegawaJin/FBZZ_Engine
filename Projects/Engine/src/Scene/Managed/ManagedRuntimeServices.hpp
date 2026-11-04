@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-05
 #pragma once
+#include <Engine/Api.hpp>
 #include <Engine/Scene/ManagedBridgeAbi.hpp>
 #include <memory>
 #include <span>
@@ -16,13 +17,13 @@ namespace managed_detail {
 struct ManagedServiceResult;
 class ManagedRuntimeServices final {
 public:
-    ManagedRuntimeServices();
-    ~ManagedRuntimeServices();
+    FBZZ_ENGINE_API ManagedRuntimeServices();
+    FBZZ_ENGINE_API ~ManagedRuntimeServices();
     /// @note caller は Cursor 登録の実所有 Script。authority scope と別 receiver の lifetime は Runtime が先に検証する。
-    ManagedBridgeStatus Run(Scene& scene, Script& caller, GameObject& target, const ManagedBridgeRequest& request,
+    FBZZ_ENGINE_API ManagedBridgeStatus Run(Scene& scene, Script& caller, GameObject& target, const ManagedBridgeRequest& request,
         int64_t integer, std::span<const float> values, std::span<const std::string> text, ManagedServiceResult& result);
-    void CancelOwner(uint64_t owner);
-    void RetireGeneration(uint64_t generation);
+    FBZZ_ENGINE_API void CancelOwner(uint64_t owner);
+    FBZZ_ENGINE_API void RetireGeneration(uint64_t generation);
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

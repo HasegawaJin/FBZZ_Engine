@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #pragma once
+#include <Graphics/Api.hpp>
 #include <Graphics/Pipeline/RenderPipeline.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Pipeline/ResolvedRenderPlan.hpp>
@@ -325,8 +326,8 @@ struct RenderSharedResources {
     /// @note 記録に成功した LUT だけを焼き済みとして扱う。
     ResourceHandle<TextureTag> bakedBrdfTarget{};
 
-    void Initialize(ResourceManager& resources);
-    bool Prepare(ResourceManager& resources, const RenderSettings& rs);
+    FBZZ_GRAPHICS_API void Initialize(ResourceManager& resources);
+    FBZZ_GRAPHICS_API bool Prepare(ResourceManager& resources, const RenderSettings& rs);
 private:
     bool m_initialized = false;
 };
@@ -335,25 +336,25 @@ private:
 /// @see Docs/design/graphics-library.md GPU 資源・終了順
 class RenderResources {
 public:
-    explicit RenderResources(ResourceManager& resources);
+    FBZZ_GRAPHICS_API explicit RenderResources(ResourceManager& resources);
     /// @pre ビューの準備・記録開始前に呼ぶ。
     /// @note 許可を解除したら全ビューの実験 RT 専用資源を退役する。描画設定・Raster 資源は変更しない。
     /// @see Docs/design/developer-mode.md
-    void SetExperimentalRayTracingEnabled(bool enabled);
+    FBZZ_GRAPHICS_API void SetExperimentalRayTracingEnabled(bool enabled);
     RenderSharedResources& Shared() { return m_shared; }
-    RenderViewResources& View(uint32_t key);
+    FBZZ_GRAPHICS_API RenderViewResources& View(uint32_t key);
     /// @return 未登録なら nullptr。診断の照会でビューや GPU 資源を生成しない。
     [[nodiscard]] const RenderViewResources* FindView(uint32_t key) const
     {
         const auto found = m_views.find(key);
         return found == m_views.end() ? nullptr : &found->second;
     }
-    bool PrepareView(RenderViewResources& view, IRenderer& renderer,
+    FBZZ_GRAPHICS_API bool PrepareView(RenderViewResources& view, IRenderer& renderer,
                      ResourceHandle<RenderTargetTag> output, const RenderSettings& settings);
     /// @note ビュー所有者の破棄時に呼ぶ。共有シェーダーや他ビューの履歴は解放しない。
-    void ReleaseView(uint32_t key);
-    void ReleaseOutput(ResourceHandle<RenderTargetTag> output);
-    void BindPassHandles(RenderViewResources& view, RenderPassHandles& handles);
+    FBZZ_GRAPHICS_API void ReleaseView(uint32_t key);
+    FBZZ_GRAPHICS_API void ReleaseOutput(ResourceHandle<RenderTargetTag> output);
+    FBZZ_GRAPHICS_API void BindPassHandles(RenderViewResources& view, RenderPassHandles& handles);
 private:
     ResourceManager& m_resources;
     RenderSharedResources m_shared;

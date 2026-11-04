@@ -6,11 +6,13 @@
 #include <Engine/Asset/FzTerrainSerializer.hpp>
 #include <Engine/Asset/FzTerrainFormat.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
 #include <Engine/Scene/TerrainSurfaceGeometry.hpp>
 #include <algorithm>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <vector>
 
 namespace fbzz::asset {
@@ -20,10 +22,10 @@ constexpr size_t SLOTS = static_cast<size_t>(scene::TERRAIN_SPLAT_SLOTS);
 
 /// @brief POD 配列をそのままバイト列で書く。
 template <class T>
-void WriteArray(std::ofstream& f, const T* values, size_t count)
+void WriteArray(std::ostream& f, const T* values, size_t count)
 {
     if (count == 0) return;
-    f.write(reinterpret_cast<const char*>(values), static_cast<std::streamsize>(count * sizeof(T)));
+    f.write(static_cast<const char*>(static_cast<const void*>(values)), static_cast<std::streamsize>(count * sizeof(T)));
 }
 
 size_t CellCountOf(uint32_t columns, uint32_t rows)
@@ -44,8 +46,7 @@ std::vector<uint32_t> SanitizeHoles(const std::vector<uint32_t>& holes, size_t c
 }
 
 /// @brief v1 の密な重み (index = 頂点 × layerCount + 層) を上位 4 層の正準形へ畳む。
-/// @note Canonicalize は重みの上位 4 つだけで正規化するので、同じ順序 (重み降順・同重みは番号昇順)
-///       で先に 4 つ選んでから渡しても結果は変わらない。層数が Canonicalize の作業枠を超えても畳める。
+/// @note Canonicalize と同じ重み降順・同重み番号昇順で先に 4 層を選び、作業枠を超える層数も畳む。
 void FoldDenseWeights(const uint8_t* dense, uint32_t layerCount, size_t vertexCount,
                       std::vector<uint8_t>& outIndices, std::vector<uint8_t>& outWeights)
 {
@@ -83,11 +84,8 @@ void FoldDenseWeights(const uint8_t* dense, uint32_t layerCount, size_t vertexCo
 bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& absPath) const
 {
     if (!scene::IsValidTerrainSurfaceGeometry(asset.surfacePositions, asset.surfaceIndices)) return false;
-    std::ofstream f(absPath, std::ios::binary);
-    if (!f) {
-        FBZZ_LOG_ERROR("FzTerrainSerializer: cannot open for write [%s]", absPath.c_str());
-        return false;
-    }
+    /// @note 原本の切詰めを避け、完成した FZTN だけを Core の原子的置換へ渡す。
+    std::ostringstream f(std::ios::binary | std::ios::out);
 
     const uint32_t layerCount = static_cast<uint32_t>(
         (std::min)(asset.layerMaterialPaths.size(), static_cast<size_t>(scene::TERRAIN_MAX_LAYERS)));
@@ -120,8 +118,7 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
     if (asset.heightData.size() >= heightCount) {
         WriteArray(f, asset.heightData.data(), heightCount);
     } else {
-        /// @note 不完全な TerrainAsset を保存してもロード不能な .terrain にしないため、
-        ///       欠けた高さはフラット地形として 0 で埋める。
+        /// @note 不完全な TerrainAsset でもロードできるよう、欠けた高さはフラット地形として 0 で埋める。
         const std::vector<float> defaultHeights(heightCount, 0.0f);
         WriteArray(f, defaultHeights.data(), heightCount);
     }
@@ -149,13 +146,18 @@ bool FzTerrainSerializer::Save(const TerrainAsset& asset, const std::string& abs
     WriteArray(f, asset.surfacePositions.data(), asset.surfacePositions.size());
     WriteArray(f, asset.surfaceIndices.data(), asset.surfaceIndices.size());
 
-    return f.good();
+    if (!f.good()) return false;
+    const std::string bytes = std::move(f).str();
+    if (util::FileSystem::WriteBinaryAtomic(util::FileSystem::PathFromUtf8(absPath), bytes.data(), bytes.size()))
+        return true;
+    FBZZ_LOG_ERROR("FzTerrainSerializer: cannot publish [%s]", absPath.c_str());
+    return false;
 }
 
 bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsset) const
 {
     TerrainAsset candidate;
-    std::ifstream f(absPath, std::ios::binary | std::ios::ate);
+    std::ifstream f(util::FileSystem::PathFromUtf8(absPath), std::ios::binary | std::ios::ate);
     if (!f) {
         FBZZ_LOG_ERROR("FzTerrainSerializer: cannot open [%s]", absPath.c_str());
         return false;
@@ -164,7 +166,7 @@ bool FzTerrainSerializer::Load(const std::string& absPath, TerrainAsset& outAsse
     const auto fileSize = static_cast<size_t>(f.tellg());
     std::vector<uint8_t> data(fileSize);
     f.seekg(0);
-    f.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(fileSize));
+    f.read(static_cast<char*>(static_cast<void*>(data.data())), static_cast<std::streamsize>(fileSize));
     if (!f.good() && !f.eof()) {
         FBZZ_LOG_ERROR("FzTerrainSerializer: read failed [%s]", absPath.c_str());
         return false;

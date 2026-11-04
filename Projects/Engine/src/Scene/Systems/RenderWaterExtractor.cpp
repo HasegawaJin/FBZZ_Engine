@@ -224,18 +224,45 @@ struct WaterCacheKeyHash {
             ^ std::hash<uint64_t>{}((static_cast<uint64_t>(key.generation) << 32u) | key.index);
     }
 };
-static std::unordered_map<WaterCacheKey, WaterMesh, WaterCacheKeyHash> s_meshCache;
-static std::unordered_map<WaterCacheKey, WaterTextures, WaterCacheKeyHash> s_texCache;
-/// @note Appearance owns b2 independently of generated foam/depth textures and follows the same scene/resource lifetime.
-static std::unordered_map<WaterCacheKey, renderer::Material, WaterCacheKeyHash> s_appearanceCache;
-static std::unordered_map<WaterCacheKey, WaterRippleState, WaterCacheKeyHash> s_rippleStates;
-static uint64_t s_waterResourceOwner = 0;
-static uint64_t s_waterResourceVersion = UINT64_MAX;
-
-struct TerrainInfoState {
-    WaterTerrainInfoCache cache;
+struct TerrainInfoState { WaterTerrainInfoCache cache; };
+struct WaterRenderCache {
+    WaterRenderCache() = default;
+    WaterRenderCache(const WaterRenderCache&) = delete;
+    WaterRenderCache& operator=(const WaterRenderCache&) = delete;
+    uint64_t owner = 0, resetVersion = 0, sceneGeneration = 0;
+    std::unordered_map<WaterCacheKey, WaterMesh, WaterCacheKeyHash> meshes;
+    std::unordered_map<WaterCacheKey, WaterTextures, WaterCacheKeyHash> textures;
+    std::unordered_map<WaterCacheKey, renderer::Material, WaterCacheKeyHash> appearances;
+    std::unordered_map<WaterCacheKey, WaterRippleState, WaterCacheKeyHash> ripples;
+    std::unordered_map<uint64_t, TerrainInfoState> terrainInfo;
+    std::unordered_set<WaterCacheKey, WaterCacheKeyHash> dirtyMeshes, dirtyTextures;
+    ~WaterRenderCache();
 };
-static std::unordered_map<uint64_t, TerrainInfoState> s_terrainInfoStates;
+using WaterCacheList = std::vector<std::unique_ptr<WaterRenderCache>>;
+std::unordered_map<uint64_t, WaterCacheList> s_waterCaches;
+renderer::ResourceManager* WaterCacheOwner(const WaterRenderCache& cache)
+{
+    auto* owner = renderer::ResourceManager::FindOwner(cache.owner);
+    return owner && owner->GetResetVersion() == cache.resetVersion ? owner : nullptr;
+}
+WaterRenderCache& AcquireWaterCache(Scene& scene, renderer::ResourceManager& resources)
+{
+    auto& caches = s_waterCaches[scene.GetRenderSceneGeneration()];
+    std::erase_if(caches, [](const auto& cache) { return !WaterCacheOwner(*cache); });
+    for (auto& cache : caches) if (cache->owner == resources.GetInstanceId()) return *cache;
+    auto cache = std::make_unique<WaterRenderCache>();
+    cache->owner = resources.GetInstanceId(); cache->resetVersion = resources.GetResetVersion();
+    cache->sceneGeneration = scene.GetRenderSceneGeneration();
+    caches.push_back(std::move(cache));
+    return *caches.back();
+}
+void InvalidateWaterCaches(const WaterCacheKey& key, bool meshDirty, bool textureDirty)
+{
+    for (auto& cache : s_waterCaches.at(key.sceneGeneration)) {
+        if (meshDirty) cache->dirtyMeshes.insert(key);
+        if (textureDirty) cache->dirtyTextures.insert(key);
+    }
+}
 
 void ReleaseWaterMesh(WaterMesh& mesh, renderer::ResourceManager& resources)
 {
@@ -249,36 +276,44 @@ void ReleaseWaterMesh(WaterMesh& mesh, renderer::ResourceManager& resources)
     mesh = {};
 }
 
-void ReleaseWaterCacheEntries(uint64_t sceneGeneration, const EntityID* entity, renderer::ResourceManager& resources)
+void ReleaseWaterCacheEntries(WaterRenderCache& cache, uint64_t sceneGeneration, const EntityID* entity, renderer::ResourceManager& resources)
 {
-    if (s_waterResourceOwner != resources.GetInstanceId() || s_waterResourceVersion != resources.GetResetVersion()) return;
+    if (cache.owner != resources.GetInstanceId() || cache.resetVersion != resources.GetResetVersion()) return;
     const auto matches = [sceneGeneration, entity](const WaterCacheKey& key) {
         return key.sceneGeneration == sceneGeneration
             && (!entity || (key.index == entity->index && key.generation == entity->generation));
     };
-    std::erase_if(s_meshCache, [&](auto& entry) {
+    std::erase_if(cache.meshes, [&](auto& entry) {
         if (!matches(entry.first)) return false;
         ReleaseWaterMesh(entry.second, resources);
         return true;
     });
-    std::erase_if(s_appearanceCache, [&](auto& entry) {
+    std::erase_if(cache.appearances, [&](auto& entry) {
         if (!matches(entry.first)) return false;
         if (entry.second.paramsBuffer.IsValid()) resources.Release(entry.second.paramsBuffer);
         entry.second.paramsBuffer = {};
         return true;
     });
-    std::erase_if(s_texCache, [&](auto& entry) {
+    std::erase_if(cache.textures, [&](auto& entry) {
         if (!matches(entry.first)) return false;
         if (entry.second.foamMask.IsValid()) resources.Release(entry.second.foamMask);
         return true;
     });
-    std::erase_if(s_rippleStates, [&](auto& entry) {
+    std::erase_if(cache.ripples, [&](auto& entry) {
         if (!matches(entry.first)) return false;
         if (entry.second.gpuTex.IsValid()) resources.Release(entry.second.gpuTex);
         return true;
     });
 }
 
+
+WaterRenderCache::~WaterRenderCache()
+{
+    if (auto* resources = WaterCacheOwner(*this))
+        ReleaseWaterCacheEntries(*this, sceneGeneration, nullptr, *resources);
+    /// @note 終了済み・Reset 済みの資源は返さずに手放し、Material の破棄にも旧ハンドルを渡さない。
+    for (auto& [key, appearance] : appearances) appearance.paramsBuffer = {};
+}
 
 void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::ResourceManager& resources)
 {
@@ -872,15 +907,6 @@ void ExpandByWaveMargin(const WaveMargin& margin, math::Vector3& outMin, math::V
 }
 
 }
-void QueueWaterSplash(Scene& scene, EntityID owner, const math::Vector3& worldPos, float intensity)
-{
-    if (!std::isfinite(intensity)) return;
-    const float strength = math::Clamp01(intensity);
-    WaterInteractionImpulse impulse{WaterInteractionKind::SURFACE_FOAM, worldPos,
-        {0.0f, 1.5f + strength * 3.0f, 0.0f}, 0.2f + strength * 0.3f, strength, 1.2f};
-    impulse.emitSurfaceRipple = false;
-    static_cast<void>(QueueWaterInteraction(scene, owner, impulse));
-}
 
 namespace {
 std::array<math::Vector4, 3> WorldToLocalRows(const math::Vector3& position,
@@ -981,40 +1007,35 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         FBZZ_PROFILE_SCOPE("WaterPrepare::Surfaces");
         PrepareWaterSceneSurfaces(scene);
     }
-    if (s_waterResourceOwner != resources.GetInstanceId() || s_waterResourceVersion != resources.GetResetVersion()) {
-        s_waterResourceOwner = resources.GetInstanceId(); s_waterResourceVersion = resources.GetResetVersion();
-        /// @note An epoch switch invalidates the old owner/handles. Abandon them like the geometry caches; Material's Active() destructor must not release into the new manager.
-        for (auto& [key, appearance] : s_appearanceCache) appearance.paramsBuffer = {};
-        s_meshCache.clear(); s_texCache.clear(); s_appearanceCache.clear(); s_rippleStates.clear(); s_terrainInfoStates.clear();
-    }
+    auto& cache = AcquireWaterCache(scene, resources);
     const uint64_t sceneGeneration = scene.GetRenderSceneGeneration();
     for (EntityID eid : scene.GetEntities<WaterComponent>()) {
         const auto* water = scene.GetComponent<WaterComponent>(eid);
         if (water && WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION).IsValid())
-            ReleaseWaterCacheEntries(sceneGeneration, &eid, resources);
+            ReleaseWaterCacheEntries(cache, sceneGeneration, &eid, resources);
     }
     {
         std::unordered_set<WaterCacheKey, WaterCacheKeyHash> validKeys;
         for (EntityID eid : scene.GetEntities<WaterComponent>())
             validKeys.insert({sceneGeneration, eid.index, eid.generation});
 
-        std::erase_if(s_meshCache, [&validKeys, sceneGeneration, &resources](auto& kv) {
+        std::erase_if(cache.meshes, [&validKeys, sceneGeneration, &resources](auto& kv) {
             if (kv.first.sceneGeneration != sceneGeneration || validKeys.contains(kv.first)) return false;
             ReleaseWaterMesh(kv.second, resources);
             return true;
         });
-        std::erase_if(s_appearanceCache, [&validKeys, sceneGeneration, &resources](auto& entry) {
+        std::erase_if(cache.appearances, [&validKeys, sceneGeneration, &resources](auto& entry) {
             if (entry.first.sceneGeneration != sceneGeneration || validKeys.contains(entry.first)) return false;
             if (entry.second.paramsBuffer.IsValid()) resources.Release(entry.second.paramsBuffer);
             entry.second.paramsBuffer = {};
             return true;
         });
-        std::erase_if(s_texCache, [&validKeys, sceneGeneration, &resources](auto& kv) {
+        std::erase_if(cache.textures, [&validKeys, sceneGeneration, &resources](auto& kv) {
             if (kv.first.sceneGeneration != sceneGeneration || validKeys.contains(kv.first)) return false;
             if (kv.second.foamMask.IsValid()) resources.Release(kv.second.foamMask);
             return true;
         });
-        std::erase_if(s_rippleStates, [&validKeys, sceneGeneration, &resources](auto& kv) {
+        std::erase_if(cache.ripples, [&validKeys, sceneGeneration, &resources](auto& kv) {
             if (kv.first.sceneGeneration != sceneGeneration || validKeys.contains(kv.first)) return false;
             if (kv.second.gpuTex.IsValid()) resources.Release(kv.second.gpuTex);
             return true;
@@ -1024,7 +1045,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         FBZZ_PROFILE_SCOPE("WaterPrepare::DepthFields");
         PrepareWaterDepthFields(scene, WaterSurfaceReadView::SIMULATION);
     }
-    TerrainInfoState& terrainInfo = s_terrainInfoStates[scene.GetRenderSceneGeneration()];
+    TerrainInfoState& terrainInfo = cache.terrainInfo[scene.GetRenderSceneGeneration()];
     /// @note 借用 Terrain pointer は抽出中だけ保持する。同一 frame の追加・削除・配列移動でも再取得する。
     WaterTerrainInfoInputs terrainInputs;
     const bool validTerrainInputs = [&]() {
@@ -1072,6 +1093,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         water.lodPatchResolution = patchCells;
 
         const WaterCacheKey cacheKey{scene.GetRenderSceneGeneration(), eid.index, eid.generation};
+        InvalidateWaterCaches(cacheKey, water.meshDirty, water.texDirty || water.foamDirty);
         if (!ownerObject->activeInHierarchy()) continue;
 
         const WaveMargin margin = ComputeWaveMargin(water);
@@ -1104,20 +1126,23 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             depthField && water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION) > 0.0f)
             terrainSignature = depthField->signature;
 
-        const auto cachedMesh = s_meshCache.find(cacheKey);
-        const bool geometryChanged = cachedMesh != s_meshCache.end()
+        const auto cachedMesh = cache.meshes.find(cacheKey);
+        const bool geometryChanged = cachedMesh != cache.meshes.end()
             && cachedMesh->second.geometry != ResolveWaterMeshGeometry(water);
-        if (water.meshDirty || cachedMesh == s_meshCache.end() || geometryChanged) {
+        if (cache.dirtyMeshes.contains(cacheKey) || cachedMesh == cache.meshes.end() || geometryChanged) {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Mesh");
-            BuildWaterMesh(water, s_meshCache[cacheKey], resources);
+            BuildWaterMesh(water, cache.meshes[cacheKey], resources);
+            cache.dirtyMeshes.erase(cacheKey);
+            cache.dirtyTextures.insert(cacheKey);
             water.meshDirty = false;
             water.foamDirty = true;
         }
 
-        if (water.texDirty || water.foamDirty || !s_texCache.contains(cacheKey)
-            || s_texCache.at(cacheKey).signature != terrainSignature) {
+        if (cache.dirtyTextures.contains(cacheKey) || !cache.textures.contains(cacheKey)
+            || cache.textures.at(cacheKey).signature != terrainSignature) {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Textures");
-            WaterTextures& cached = s_texCache[cacheKey];
+            cache.dirtyTextures.erase(cacheKey);
+            WaterTextures& cached = cache.textures[cacheKey];
             /// @note 焼き直しは解像度スライダー操作中フレーム毎に走るため、上書き前に解放する。
             /// @note 返さず差し替えると 1 フレームぶんの泡マスクがそのまま漏れ続ける。
             if (cached.foamMask.IsValid()) resources.Release(cached.foamMask);
@@ -1130,14 +1155,14 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
 
         /// @note 波紋がなく既存テクスチャも有効なら CPU 更新・GPU アップロードを省く。
         /// @note hadRipples を見るのは最後の 1 つが消えたフレームに 1 回だけ焼き直すため。
-        WaterRippleState& rippleState = s_rippleStates[cacheKey];
+        WaterRippleState& rippleState = cache.ripples[cacheKey];
         if (rippleState.dirty || !rippleState.gpuTex.IsValid()
             || !water.ripples.empty() || rippleState.hadRipples) {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Ripples");
             UpdateRippleState(rippleState, water, surfaceTransform, resources);
         }
 
-        const WaterMesh& mesh = s_meshCache.at(cacheKey);
+        const WaterMesh& mesh = cache.meshes.at(cacheKey);
         renderer::RenderWaterInput input;
         input.layer = static_cast<uint32_t>(scene.GetGameObject(eid)->layer);
         const uint64_t entityKey = (static_cast<uint64_t>(eid.generation) << 32u) | eid.index;
@@ -1174,20 +1199,20 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             if (std::isfinite(maximumWorldEdge) && maximumWorldEdge > 0.0f)
                 input.constants.timeParams.x = input.constants.timeParams.y = maximumWorldEdge;
         }
-        input.constants.terrainInfoParams = s_texCache.at(cacheKey).terrainInfoParams;
+        input.constants.terrainInfoParams = cache.textures.at(cacheKey).terrainInfoParams;
         {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Medium");
             input.medium = BuildMediumInput(water, surfaceTransform, eid, mat, mesh, margin);
         }
-        input.medium.depthIsUniform = s_texCache.at(cacheKey).depthIsUniform;
+        input.medium.depthIsUniform = cache.textures.at(cacheKey).depthIsUniform;
         input.effects = BuildWaterEffectParams(mat);
         input.detailNoise = noise.texture;
-        input.foam = s_texCache.at(cacheKey).foamMask;
+        input.foam = cache.textures.at(cacheKey).foamMask;
         input.ripple = rippleState.gpuTex;
         input.velocityField = asset::VelocityFieldAtlas::Texture(resources);
         if (mat && !mat->shaderPath.empty()) {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Shader");
-            renderer::Material& appearance = s_appearanceCache[cacheKey];
+            renderer::Material& appearance = cache.appearances[cacheKey];
             appearance.shaderPath = mat->shaderPath;
             appearance.shader = resources.LoadShader(mat->shaderPath);
             input.shader = appearance.shader;
@@ -1210,14 +1235,20 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
     }
 }
 
-void ReleaseWaterRenderResources(Scene& scene, renderer::ResourceManager& resources)
+void ReleaseWaterRenderResources(Scene& scene)
 {
-    ReleaseWaterCacheEntries(scene.GetRenderSceneGeneration(), nullptr, resources);
-    s_terrainInfoStates.erase(scene.GetRenderSceneGeneration());
+    s_waterCaches.erase(scene.GetRenderSceneGeneration());
 }
 
-void ReleaseWaterRenderResources(Scene& scene, EntityID entity, renderer::ResourceManager& resources)
+void ReleaseWaterRenderResources(Scene& scene, EntityID entity)
 {
-    ReleaseWaterCacheEntries(scene.GetRenderSceneGeneration(), &entity, resources);
+    const auto found = s_waterCaches.find(scene.GetRenderSceneGeneration());
+    if (found == s_waterCaches.end()) return;
+    for (auto& cache : found->second) {
+        if (auto* resources = WaterCacheOwner(*cache))
+            ReleaseWaterCacheEntries(*cache, scene.GetRenderSceneGeneration(), &entity, *resources);
+        const WaterCacheKey key{scene.GetRenderSceneGeneration(), entity.index, entity.generation};
+        cache->dirtyMeshes.erase(key); cache->dirtyTextures.erase(key);
+    }
 }
 } /// @note namespace fbzz::scene

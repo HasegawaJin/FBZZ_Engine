@@ -338,6 +338,7 @@ struct HierarchyRevealState {
     scene::EntityID&              pendingExpand; /// @note SetParent 直後に開くノード
     std::vector<scene::EntityID>& openChain;     /// @note 他の面から選ばれた対象の祖先
     scene::EntityID&              scrollTo;      /// @note 行までスクロールする対象
+    std::unordered_map<std::string, bool>& expansionRequests;
 };
 
 /// @param rootIndex roots 配列内の位置。Order メニュー用で、ルートのときだけ意味を持つ。
@@ -433,6 +434,10 @@ void DrawHierarchyNode(EditorContext& ctx,
     /// @note 要求はこのフレームの描画が終わった時点で捨ててよい (畳み直しを妨げない)。
     if (ContainsEntity(reveal.openChain, id))
         ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    if (const auto request = reveal.expansionRequests.find(go.instanceId); request != reveal.expansionRequests.end()) {
+        ImGui::SetNextItemOpen(request->second, ImGuiCond_Always);
+        reveal.expansionRequests.erase(request);
+    }
 
     /// @note エディタ専用非表示はシアン（runtime 非アクティブより優先）、非アクティブはグレー、
     /// @note ロック中はオレンジ、プレファブインスタンスは水色
@@ -1079,8 +1084,65 @@ void SceneHierarchyPanel::ConsumeRevealRequest(EditorContext& ctx)
     m_revealScrollTo = target;
 }
 
+void SceneHierarchyPanel::OnRegisterOperators(OperatorRegistry& registry)
+{
+    EditorOperator inspect;
+    inspect.id = "hierarchy.view.inspect";
+    inspect.label = "Inspect Hierarchy View";
+    inspect.category = "Hierarchy";
+    inspect.kind = OpKind::Query;
+    inspect.desc = "Hierarchyの検索とマップオブジェクト絞り込みを返す。";
+    inspect.exec = [this](OpContext& context, const OpArgs&) {
+        auto data = OpData::MakeObject();
+        data.Set("search", std::string(m_searchFilter));
+        data.Set("mapOnly", context.ctx.mapHierarchyFilter);
+        return OpResult::Data(std::move(data));
+    };
+    registry.Register(std::move(inspect));
+
+    EditorOperator configure;
+    configure.id = "hierarchy.view.configure";
+    configure.label = "Configure Hierarchy View";
+    configure.category = "Hierarchy";
+    configure.kind = OpKind::Action;
+    configure.desc = "検索・絞り込みを変更する。node/openを指定すると次のツリー描画時に枝を開閉する。";
+    configure.params = {
+        {"search", OpParamType::String, "Search string", false, {}},
+        {"mapOnly", OpParamType::Bool, "Map objects only", false, {}},
+        {"node", OpParamType::String, "Object GUID", false, {}},
+        {"open", OpParamType::Bool, "Expand the branch", false, {}}
+    };
+    configure.exec = [this](OpContext& context, const OpArgs& args) {
+        auto& ctx = context.ctx;
+        const auto search = args.GetString("search");
+        if (search.size() >= sizeof(m_searchFilter) || search.find('\0') != std::string::npos
+            || args.Has("node") != args.Has("open"))
+            return OpResult::Err("BAD_ARG", "search/node/open");
+        if (args.Has("node")) {
+            auto* object = ctx.activeScene ? ctx.activeScene->FindByGuid(args.GetString("node")) : nullptr;
+            if (!object) return OpResult::Err("NODE_NOT_FOUND", "node");
+            if (m_expansionScene != ctx.activeScene) {
+                m_expansionScene = ctx.activeScene;
+                m_expansionRequests.clear();
+            }
+            m_expansionRequests.insert_or_assign(object->instanceId, args.GetBool("open"));
+        }
+        if (args.Has("search")) {
+            std::copy(search.begin(), search.end(), m_searchFilter);
+            m_searchFilter[search.size()] = '\0';
+        }
+        if (args.Has("mapOnly")) ctx.mapHierarchyFilter = args.GetBool("mapOnly");
+        return OpResult::Ok();
+    };
+    registry.Register(std::move(configure));
+}
+
 void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 {
+    if (m_expansionScene != ctx.activeScene) {
+        m_expansionScene = ctx.activeScene;
+        m_expansionRequests.clear();
+    }
     if (!ctx.activeScene) {
         ImGui::TextDisabled("No active scene");
         return;
@@ -1261,7 +1323,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 && !go->GetComponent<scene::WaterComponent>())
                 continue;
             DrawHierarchyNode(ctx, *go, 0, rootCount, visited, deferred, pendingCreate,
-                HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo },
+                HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo, m_expansionRequests },
                 m_lastClickedEntity, m_pendingClickEntity, m_hierarchyDragStarted,
                 hierarchyNodeHovered, mapVisible, m_visibleOrder,
                 InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
@@ -1298,7 +1360,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     const size_t rootCount = roots.size();
     for (size_t i = 0; i < roots.size(); ++i)
         if (roots[i]) DrawHierarchyNode(ctx, *roots[i], i, rootCount, visited, deferred, pendingCreate,
-            HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo },
+            HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo, m_expansionRequests },
             m_lastClickedEntity, m_pendingClickEntity,
             m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
             InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
@@ -1307,7 +1369,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     for (auto& go : ctx.activeScene->GameObjects()) {
         if (go.GetParent() == nullptr && !visited.Contains(go.GetID()))
             DrawHierarchyNode(ctx, go, 0, 0, visited, deferred, pendingCreate,
-                HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo },
+                HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo, m_expansionRequests },
                 m_lastClickedEntity, m_pendingClickEntity,
                 m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
                 InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });

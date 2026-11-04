@@ -5,7 +5,7 @@
 #pragma once
 
 #include <Engine/Reflection/TypeSchema.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Reflection.hpp>
 #include <any>
 #include <string>
 
@@ -67,4 +67,4 @@ inline void ReflectTypeSchema(IReflector& reflector, const reflection::ITypeSche
     }
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

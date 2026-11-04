@@ -3,15 +3,16 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-02
 #pragma once
+#include <Engine/Api.hpp>
 
 namespace fbzz::profiler {
 
-/// Profiler が保持する直近フレームの CPU サンプルを描画するビュー。
+/// @note Profiler が保持する直近フレームの CPU サンプルを描画するビュー。
 /// @note Editor/Sandbox どちらからでも確認できるよう、計測 API と表示を同じ機能単位に置く。
 class ProfilerViewer {
 public:
-    /// ImGui フレーム内で呼び、直近フレームのサンプル一覧と合計時間を描画する。
-    static void Draw(bool* open = nullptr);
+    /// @note ImGui フレーム内で呼び、直近フレームのサンプル一覧と合計時間を描画する。
+    FBZZ_ENGINE_API static void Draw(bool* open = nullptr);
 };
 
-} // namespace fbzz::profiler
+} /// @note namespace fbzz::profiler

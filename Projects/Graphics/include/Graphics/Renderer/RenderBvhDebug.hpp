@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
 #pragma once
+#include <Graphics/Api.hpp>
 
 #include <Math/Vector3.hpp>
 #include <cstdint>
@@ -67,10 +68,10 @@ struct RenderBvhDebugSnapshot {
 /// @note Unset/linear production mode remains unchanged; availability explains that FBZZ_MESH_SPATIAL_MODE=bvh/validate/auto is required at process startup.
 class RenderBvhDebug {
 public:
-    static void SetRequest(const RenderBvhDebugRequest& request);
-    [[nodiscard]] static std::shared_ptr<const RenderBvhDebugSnapshot> GetSnapshot();
+    FBZZ_GRAPHICS_API static void SetRequest(const RenderBvhDebugRequest& request);
+    [[nodiscard]] FBZZ_GRAPHICS_API static std::shared_ptr<const RenderBvhDebugSnapshot> GetSnapshot();
     /// @note Disables capture and retires the publication; SetRequest is required to start a new capture lifetime.
-    static void Invalidate();
+    FBZZ_GRAPHICS_API static void Invalidate();
 };
 
 } /// @note namespace fbzz::renderer

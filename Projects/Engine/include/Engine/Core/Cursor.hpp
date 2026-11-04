@@ -3,17 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-26
 #pragma once
-
-#ifdef _WIN32
-#   ifdef FBZZEngine_EXPORTS
-#       define FBZZ_ENGINE_API __declspec(dllexport)
-#   else
-#       define FBZZ_ENGINE_API __declspec(dllimport)
-#   endif
-#else
-#   define FBZZ_ENGINE_API
-#endif
-
+#include <Engine/Api.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -101,30 +91,30 @@ struct CursorState {
     bool windowActive = false;
 };
 
-struct FBZZ_ENGINE_API Cursor {
+struct Cursor {
     /// @note Legacy IsVisible/GetLockMode/GetEffectivePolicy return the winning requested settings.
     /// @see https://docs.unity3d.com/ScriptReference/Cursor-visible.html Requested visibility and locked effective visibility.
-    [[nodiscard]] static CursorPolicy GetRequestedPolicy();
-    [[nodiscard]] static CursorState GetState();
+    [[nodiscard]] FBZZ_ENGINE_API static CursorPolicy GetRequestedPolicy();
+    [[nodiscard]] FBZZ_ENGINE_API static CursorState GetState();
 
     /// @brief Explicit host handoff; focus return alone never reacquires game input.
     /// @note Consumes controls already held by the host until their individual release; raw Editor UI input is preserved.
     /// @return False while the application is inactive.
-    static bool AcquireGameInput();
-    static void ReleaseGameInput(CursorSuspendReason reason = CursorSuspendReason::RELEASED);
-    [[nodiscard]] static bool IsGameInputOwned();
-    [[nodiscard]] static bool CanReadGameInput();
+    FBZZ_ENGINE_API static bool AcquireGameInput();
+    FBZZ_ENGINE_API static void ReleaseGameInput(CursorSuspendReason reason = CursorSuspendReason::RELEASED);
+    [[nodiscard]] FBZZ_ENGINE_API static bool IsGameInputOwned();
+    [[nodiscard]] FBZZ_ENGINE_API static bool CanReadGameInput();
 
     /// @name 基底の要求
     /// @note 誰も Push していないときの状態。Unity の Cursor.visible / lockState 相当で、「1 画面に主張者が 1 つしか居ない」単純なゲームはこれだけで足りる。
     /// @{
-    static void SetVisible(bool visible);
-    static bool IsVisible();
+    FBZZ_ENGINE_API static void SetVisible(bool visible);
+    FBZZ_ENGINE_API static bool IsVisible();
 
-    static void SetLockMode(CursorLockMode mode);
-    static CursorLockMode GetLockMode();
+    FBZZ_ENGINE_API static void SetLockMode(CursorLockMode mode);
+    FBZZ_ENGINE_API static CursorLockMode GetLockMode();
 
-    static void Apply(const CursorPolicy& policy);
+    FBZZ_ENGINE_API static void Apply(const CursorPolicy& policy);
     /// @}
 
     /// @name 要求スタック
@@ -134,30 +124,30 @@ struct FBZZ_ENGINE_API Cursor {
 
     /// @param owner EntityID の生値 (省略可)。
     /// @param label 要求元の名前 (省略可)。Editor の Game View オーバーレイが表示する。
-    [[nodiscard]] static CursorRequestId Push(const CursorPolicy& policy,
+    [[nodiscard]] FBZZ_ENGINE_API static CursorRequestId Push(const CursorPolicy& policy,
                                               int                 priority = CursorPriority::Gameplay,
                                               std::uint32_t       owner    = 0,
                                               const char*         label    = nullptr);
     /// @brief 積んだままの要求の中身を差し替える。
     /// @note Release → Push だと «同値なら後勝ち» の順序が変わるため、状態だけを変えたい側はこちらを使う。
-    static void UpdateRequest(CursorRequestId id, const CursorPolicy& policy);
-    static void Release(CursorRequestId id);
+    FBZZ_ENGINE_API static void UpdateRequest(CursorRequestId id, const CursorPolicy& policy);
+    FBZZ_ENGINE_API static void Release(CursorRequestId id);
     /// @return ClearRequests / Release 後は false。優先順位の勝者かとは区別する。
-    [[nodiscard]] static bool IsRequestActive(CursorRequestId id);
-    static void ReleaseByOwner(std::uint32_t owner);
+    [[nodiscard]] FBZZ_ENGINE_API static bool IsRequestActive(CursorRequestId id);
+    FBZZ_ENGINE_API static void ReleaseByOwner(std::uint32_t owner);
 
     /// @brief 全ての要求を畳み、基底も既定 (拘束なし・表示) へ戻す。シーン遷移と Play 終了で呼ぶ。
     /// @note 遷移先に主張者が居なければ前の画面の拘束が «誰も外さない» 状態で残るため、画面をまたいで持ち越してよいカーソル状態は無いと決めておく。
-    static void ClearRequests();
+    FBZZ_ENGINE_API static void ClearRequests();
 
-    [[nodiscard]] static std::size_t GetRequestCount();
+    [[nodiscard]] FBZZ_ENGINE_API static std::size_t GetRequestCount();
     /// @brief index は «優先度の高い順»。実効値を決めている要求が先頭に来る。
-    static bool GetRequest(std::size_t index, CursorRequestInfo& out);
+    FBZZ_ENGINE_API static bool GetRequest(std::size_t index, CursorRequestInfo& out);
 
     /// @brief 実効値 (要求スタックの勝者。無ければ基底)。IsVisible / GetLockMode と同じ出所。
     /// @deprecated Use GetRequestedPolicy for game intent or GetState for effective OS state. Kept with its original meaning.
-    [[nodiscard]] static CursorPolicy GetEffectivePolicy();
-    [[nodiscard]] static CursorPolicy GetBasePolicy();
+    [[nodiscard]] FBZZ_ENGINE_API static CursorPolicy GetEffectivePolicy();
+    [[nodiscard]] FBZZ_ENGINE_API static CursorPolicy GetBasePolicy();
     /// @}
 
     /// @name 見た目
@@ -166,62 +156,62 @@ struct FBZZ_ENGINE_API Cursor {
     /// @param hotspotX 画像左上からの画素。
     /// @param hotspotY 画像左上からの画素。
     /// @note 失敗しても既定の矢印が残るだけで、拘束や表示には影響しない。
-    static bool SetShapeImage(CursorShape shape, const char* path,
+    FBZZ_ENGINE_API static bool SetShapeImage(CursorShape shape, const char* path,
                               float hotspotX, float hotspotY);
-    static void ClearShapeImages();
-    [[nodiscard]] static bool HasShapeImage(CursorShape shape);
+    FBZZ_ENGINE_API static void ClearShapeImages();
+    [[nodiscard]] FBZZ_ENGINE_API static bool HasShapeImage(CursorShape shape);
 
-    static void SetShape(CursorShape shape);
-    [[nodiscard]] static CursorShape GetShape();
+    FBZZ_ENGINE_API static void SetShape(CursorShape shape);
+    [[nodiscard]] FBZZ_ENGINE_API static CursorShape GetShape();
     /// @}
 
     /// @name OS への反映
     /// @{
     /// @brief 拘束範囲をスクリーン (デスクトップ) 座標の矩形で指定する。未指定ならウィンドウのクライアント領域全体を使う (Standalone はこちら)。
     /// @note Editor では «見えているゲーム画面» は Game View パネルの矩形でしかなく、ウィンドウ全体へ拘束すると Confined の範囲も Locked の中心も UISystem が座標を解く viewport とずれる。
-    static void SetClipRegion(float x, float y, float width, float height);
-    static void ClearClipRegion();
+    FBZZ_ENGINE_API static void SetClipRegion(float x, float y, float width, float height);
+    FBZZ_ENGINE_API static void ClearClipRegion();
 
     /// @brief アプリのアクティブ状態。Window の WM_ACTIVATEAPP から呼ぶ。
     /// @note 非アクティブ中に拘束を残すと Alt+Tab した先でカーソルが動かせないため、要求状態は保持したまま OS 拘束だけ外し復帰時に自動で張り直す。
-    static void SetWindowActive(bool active);
+    FBZZ_ENGINE_API static void SetWindowActive(bool active);
 
     /// @brief ゲームの要求を «一時的に OS へ効かせない» 状態にする (Editor 専用)。
     /// @note Game View からフォーカスが外れた・Escape で解放した、といった «Editor の都合» でゲームの要求そのものを None へ落とすと、戻ってきたときに何を復元すればよいか分からなくなる。要求はスタックが持ち続け、ここは «今それを OS へ流すか» だけを切り替える。
-    static void SetSuppressed(bool suppressed);
-    static bool IsSuppressed();
+    FBZZ_ENGINE_API static void SetSuppressed(bool suppressed);
+    FBZZ_ENGINE_API static bool IsSuppressed();
 
     /// @brief 現在の LockMode を OS カーソルへ再適用する。ウィンドウ移動・リサイズ後に呼ぶ。
-    static void ApplyLock();
+    FBZZ_ENGINE_API static void ApplyLock();
 
     /// @brief Editor / PlayMode 終了時の安全復元。カーソルを必ず表示し、拘束と絵を元へ戻す。
-    static void ResetForEditor();
+    FBZZ_ENGINE_API static void ResetForEditor();
     /// @}
 
 private:
     /// @brief 実効値が変わったかもしれないときに呼ぶ。表示・拘束・絵をまとめて追従させる。
-    static void Refresh();
+    FBZZ_ENGINE_API static void Refresh();
 
     /// @param force 追跡している OS 状態を信用せず、必ず ShowCursor のカウンタを補正し直す。
-    static void ApplyVisibility(bool force = false);
+    FBZZ_ENGINE_API static void ApplyVisibility(bool force = false);
 
     /// @brief 現在の CursorShape に対応する HCURSOR をウィンドウへ適用する。
-    static void ApplyShape();
+    FBZZ_ENGINE_API static void ApplyShape();
 
     /// @brief OS へ効かせてよいか。ウィンドウが非アクティブでも Editor が取り上げていても効かせない。
-    [[nodiscard]] static bool Effective();
+    [[nodiscard]] FBZZ_ENGINE_API static bool Effective();
 
-    static CursorPolicy s_base;
-    static bool s_osVisible;
-    static bool s_windowActive;
-    static bool s_suppressed;
-    static bool s_clipActive;
-    static bool s_hasClipRegion;
-    static float s_clipX;
-    static float s_clipY;
-    static float s_clipWidth;
-    static float s_clipHeight;
-    static CursorShape s_shape;
+    FBZZ_ENGINE_API static CursorPolicy s_base;
+    FBZZ_ENGINE_API static bool s_osVisible;
+    FBZZ_ENGINE_API static bool s_windowActive;
+    FBZZ_ENGINE_API static bool s_suppressed;
+    FBZZ_ENGINE_API static bool s_clipActive;
+    FBZZ_ENGINE_API static bool s_hasClipRegion;
+    FBZZ_ENGINE_API static float s_clipX;
+    FBZZ_ENGINE_API static float s_clipY;
+    FBZZ_ENGINE_API static float s_clipWidth;
+    FBZZ_ENGINE_API static float s_clipHeight;
+    FBZZ_ENGINE_API static CursorShape s_shape;
 };
 
 } /// @note namespace fbzz::core

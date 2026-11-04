@@ -4,6 +4,7 @@
 /// @date    2026-09-19
 /// @see Docs/design/developer-mode.md
 #pragma once
+#include <Engine/Api.hpp>
 
 namespace fbzz::core {
 
@@ -11,16 +12,16 @@ namespace fbzz::core {
 class DeveloperMode {
 public:
     /// @brief 起動引数と環境変数から «起動で強制» を決める。入口が 1 回呼ぶ。
-    static void InitFromCommandLine();
+    FBZZ_ENGINE_API static void InitFromCommandLine();
 
-    [[nodiscard]] static bool IsEnabled();
+    [[nodiscard]] FBZZ_ENGINE_API static bool IsEnabled();
 
     /// @brief 起動引数か環境変数でオンにされているか。このあいだは SetPreference(false) しても有効のまま。
-    [[nodiscard]] static bool IsForcedByLaunch();
+    [[nodiscard]] FBZZ_ENGINE_API static bool IsForcedByLaunch();
 
     /// @brief 保存される設定値 (エディターの設定)。起動での強制は含まない。
-    [[nodiscard]] static bool Preference();
-    static void SetPreference(bool enabled);
+    [[nodiscard]] FBZZ_ENGINE_API static bool Preference();
+    FBZZ_ENGINE_API static void SetPreference(bool enabled);
 };
 
 } /// @note namespace fbzz::core

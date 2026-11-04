@@ -2,6 +2,7 @@
 /// @brief   実 CoreCLR ABI を通じ runtime11型と粒子の状態・拒否・row寿命を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Scene.hpp>
