@@ -28,23 +28,15 @@ set(SANDBOX_PROJECT_TEMPLATE_DIR "${CMAKE_SOURCE_DIR}/Projects/GameHub/Templates
 set(SANDBOX_MANAGED_STARTER_DIR "${CMAKE_SOURCE_DIR}/Projects/Managed/Authoring/ManagedStarter")
 set(SANDBOX_ENSURE_PROJECT_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/EnsureSandboxProject.cmake")
 
-# @note エンジン全アセットを Sandbox 実行ディレクトリと SandboxProject に常時同期するターゲット。
-# @note post-build は Sandbox.exe が再ビルドされたときのみ実行される。
-# @note Synchronize changed assets into the runtime project.
-# @note ALL キーワードで毎 cmake --build 実行時に走るターゲットを分離する。
-# @note rm -rf を行わず copy_directory だけで上書き同期するため、既存ファイルは保持される。
+# @note 更新するのは実行用の共通 Assets だけ。編集する SandboxProject は初回配置後に上書きしない。
 add_custom_target(SyncSandboxAssets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/Assets"
         "$<TARGET_FILE_DIR:Sandbox>/Assets"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/Assets"
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
-    COMMENT "Syncing engine Assets to SandboxProject..."
+    COMMENT "Syncing engine runtime Assets..."
     VERBATIM
 )
-# @note SandboxProject ディレクトリは sandbox の post-build で初回作成されるため、
-# @note SyncSandboxAssets はその後に実行する必要がある。
+# @note Sandbox の実行ファイルと共通 Assets の配置を同じ依存先で完了させる。
 add_dependencies(SyncSandboxAssets Sandbox)
 
 set(SANDBOX_STANDALONE_SOURCES ${SANDBOX_SOURCES})
@@ -138,8 +130,6 @@ add_custom_command(TARGET Sandbox POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:Sandbox>"
-    COMMAND ${CMAKE_COMMAND} -E rm -rf
-        "$<TARGET_FILE_DIR:Sandbox>/Assets"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/Assets"
         "$<TARGET_FILE_DIR:Sandbox>/Assets"
@@ -148,23 +138,8 @@ add_custom_command(TARGET Sandbox POST_BUILD
         -D "DEST_DIR=${SANDBOX_DEFAULT_PROJECT_DIR}"
         -D "BUILD_DIR=${CMAKE_BINARY_DIR}"
         -D "MANAGED_STARTER_DIR=${SANDBOX_MANAGED_STARTER_DIR}"
+        -D "ENGINE_ASSET_DIR=${CMAKE_SOURCE_DIR}/Assets"
         -P "${SANDBOX_ENSURE_PROJECT_SCRIPT}"
-    COMMAND ${CMAKE_COMMAND} -E rm -rf
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${SANDBOX_PROJECT_TEMPLATE_DIR}/Assets"
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
-    COMMAND ${CMAKE_COMMAND} -E rm -rf
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/ProjectSettings"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${SANDBOX_PROJECT_TEMPLATE_DIR}/ProjectSettings"
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/ProjectSettings"
-    # @note Editor の AssetBrowser は実行時プロジェクトの Assets を表示する。
-    # @note Shaders / Models などを個別列挙すると Fonts / Icons のような新カテゴリが漏れるため、
-    # @note テンプレート固有 Assets にエンジン共通 Assets 全体をマージして同期する。
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/Assets"
-        "${SANDBOX_DEFAULT_PROJECT_DIR}/Assets"
 )
 
 add_custom_command(TARGET SandboxStandalone POST_BUILD
@@ -180,8 +155,6 @@ add_custom_command(TARGET SandboxStandalone POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<IF:$<CONFIG:Debug>,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Debug/assimp-vc145-mtd.dll,${CMAKE_SOURCE_DIR}/ThirdParty/Assimp/dll/Release/assimp-vc145-mt.dll>"
         "$<TARGET_FILE_DIR:SandboxStandalone>"
-    COMMAND ${CMAKE_COMMAND} -E rm -rf
-        "$<TARGET_FILE_DIR:SandboxStandalone>/Assets"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/Assets"
         "$<TARGET_FILE_DIR:SandboxStandalone>/Assets"

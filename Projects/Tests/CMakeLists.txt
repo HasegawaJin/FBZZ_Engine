@@ -18,6 +18,12 @@ add_test(NAME SharedSDKTemplates
 set_tests_properties(SharedSDKTemplates PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 30 LABELS "Build")
 
+add_test(NAME SandboxProjectPreservation
+    COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/CMake/SandboxProjectPreservation.cmake")
+set_tests_properties(SandboxProjectPreservation PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 30 LABELS "Build")
+
 # @note --- Math -------------------------------------------------------------------
 fbzz_add_test_suite(MathAuto
     SOURCES
