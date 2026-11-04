@@ -616,6 +616,125 @@ TEST_F(GraphicsQualityShaderTest, TaaIgnoresOldVelocityUntilTheCurrentViewWrites
     }
 }
 
+TEST_F(GraphicsQualityShaderTest, MovingCutoutVelocityPreservesTextureAndMaterialHoles)
+{
+    const r::Vertex vertices[] = {
+        {{-1,-1,3},{0,0,-1},{1,0,0},{0,1}}, {{-1,1,3},{0,0,-1},{1,0,0},{0,0}},
+        {{1,1,3},{0,0,-1},{1,0,0},{1,0}}, {{1,-1,3},{0,0,-1},{1,0,0},{1,1}}
+    };
+    const uint32_t indices[]{0,1,2,0,2,3};
+    auto scene = std::make_shared<r::RenderScene>();
+    r::RenderObject object;
+    object.colorEligible = true; object.itemCount = 1; object.previousWorld.m[0][3] = -0.5f;
+    scene->objects.push_back(object);
+    r::RenderMeshItem item;
+    item.vertexBuffer = m_resources->CreateVertexBuffer(vertices, sizeof(vertices), sizeof(r::Vertex));
+    item.indexBuffer = m_resources->CreateIndexBuffer(indices, 6); item.indexCount = 6; item.vertexCount = 4;
+    item.material.surface.alphaCutoff = 0.5f;
+    scene->items.push_back(item);
+    const uint8_t transparent[]{255,255,255,0};
+    const auto alphaTexture = m_resources->CreateTexture(transparent, 1, 1);
+    const auto hdr = m_resources->CreateRenderTarget(8,8,r::CameraDepthTargetDesc(1));
+    const auto velocity = m_resources->CreateRenderTarget(8,8,r::CameraDepthTargetDesc(1));
+    r::RenderPassHandles handles;
+    handles.frameCB = m_frame; handles.advancedGraphicsCB = m_advanced;
+    handles.objectCB = m_resources->CreateConstantBuffer(sizeof(r::PerObjectCB));
+    handles.velocityShader = m_resources->LoadShader("Assets/Shaders/Motion/Velocity.hlsl");
+    /// @note 検出力の確認だけは旧シェーダーを注入し、本番アセットを書き換えない。
+    if (const char* mutation = std::getenv("FBZZ_GRAPHICS_QUALITY_MUTATION");
+        mutation && std::string_view(mutation) == "velocity-alpha")
+        m_resources->Rendering().Shared().velocityAlphaShader = handles.velocityShader;
+    r::RenderSettings settings;
+    r::RenderPassContext context{{}, *m_bundle.renderer, *m_resources, m_camera, settings, velocity, ~0u, handles};
+    context.renderScene = scene; context.frustumCullingEnabled = false;
+    context.resourceRegistry.BindTarget("HDR", hdr); context.resourceRegistry.BindTarget("Velocity", velocity);
+    m_data.prevViewProjection = m_camera.GetGpuViewProjection();
+    ASSERT_TRUE(item.vertexBuffer && item.indexBuffer && alphaTexture && hdr && velocity && handles.velocityShader);
+
+    for (bool instancing : {false, true}) for (uint32_t mode = 0; mode < 4; ++mode) {
+        SCOPED_TRACE(::testing::Message() << "instancing=" << instancing << ", mode=" << mode);
+        settings.gpuInstancing = instancing;
+        auto& material = scene->items[0].material;
+        std::array<float, 24> parameters{};
+        parameters[3] = mode == 2 ? 0.0f : 1.0f;
+        parameters[12] = parameters[13] = 1.0f;
+        parameters[16] = 0.5f;
+        std::memcpy(material.gbufferParams.data(), parameters.data(), sizeof(parameters));
+        const uint32_t textureMask = mode == 1 ? 1u : 0u;
+        std::memcpy(material.gbufferParams.data() + 80, &textureMask, sizeof(textureMask));
+        material.textures[0] = alphaTexture;
+        Begin();
+        m_bundle.renderer->SetRenderTarget(hdr, *m_resources); m_bundle.renderer->Clear({0,0,0,1});
+        r::VelocityPass pass;
+        r::PassBuilder builder; pass.Setup(builder, context);
+        r::PassResources access(context.resourceRegistry, builder.Accesses(), pass.Name());
+        pass.Execute(access, context); End();
+        std::vector<float> pixels; uint32_t width = 0, height = 0;
+        ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(velocity, *m_resources, pixels, width, height));
+        ASSERT_EQ(width, 8u); ASSERT_EQ(height, 8u);
+        const auto center = (4 * 8 + 4) * 4;
+        const bool visible = mode == 0 || mode == 3;
+        EXPECT_NEAR(pixels[center + 2], visible ? 1.0f : 0.0f, 0.001f);
+        if (visible) EXPECT_GT(pixels[center], 0.05f);
+        else EXPECT_NEAR(pixels[center], 0.0f, 0.001f);
+    }
+}
+
+TEST_F(GraphicsQualityShaderTest, MotionBlurRemovesRasterJitterAndPreservesCameraMotion)
+{
+    std::array<uint8_t, 8 * 8 * 4> source{};
+    source[(4 * 8 + 4) * 4] = 255;
+    const auto texture = m_resources->CreateTexture(source.data(), 8, 8);
+    const auto copy = m_resources->LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+    const auto hdr = m_resources->CreateRenderTarget(8,8,r::CameraDepthTargetDesc(1));
+    r::RenderPassHandles handles;
+    handles.frameCB = m_frame; handles.advancedGraphicsCB = m_advanced;
+    handles.motionBlurShader = m_resources->LoadShader("Assets/Shaders/PostProcess/Motion/MotionBlur.cs.hlsl");
+    /// @note ジッター補正を除いた一時コピーで、静止画の回帰検出を確認できるようにする。
+    if (const char* mutation = std::getenv("FBZZ_GRAPHICS_QUALITY_MUTATION");
+        mutation && std::string_view(mutation) == "motion-jitter") {
+        std::ifstream input(std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT) / "PostProcess/Motion/MotionBlur.cs.hlsl");
+        ASSERT_TRUE(input);
+        std::string source((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        constexpr std::string_view before = "(uv - jitterUV) - NdcToUv(prevClip.xy)";
+        const auto location = source.find(before);
+        ASSERT_NE(location, std::string::npos);
+        source.replace(location, before.size(), "uv - NdcToUv(prevClip.xy)");
+        const auto path = m_temp.File("Shaders/MotionBlurMutation.cs.hlsl");
+        std::ofstream output(path); ASSERT_TRUE(output);
+        output << source; output.close(); ASSERT_TRUE(output);
+        handles.motionBlurShader = m_resources->LoadShader(path.generic_string());
+    }
+    handles.motionBlurResult = m_resources->CreateComputeTexture(8,8);
+    r::RenderSettings settings; settings.motionBlur.enabled = true;
+    r::RenderPassContext context{{}, *m_bundle.renderer, *m_resources, m_camera, settings, m_output, ~0u, handles};
+    context.width = context.height = 8; context.resourceRegistry.BindTarget("HDR", hdr);
+    m_data.motionBlurStrength = 1; m_data.motionBlurSamples = 32;
+    m_data.screenWidth = m_data.screenHeight = 8;
+    ASSERT_TRUE(texture && copy && hdr && handles.motionBlurShader && handles.motionBlurResult);
+
+    for (auto projection : {r::ProjectionMode::Perspective, r::ProjectionMode::Orthographic})
+    for (bool moving : {false, true}) for (float jitter : {-0.375f, 0.0f, 0.375f}) {
+        SCOPED_TRACE(::testing::Message() << "moving=" << moving << ", jitter=" << jitter);
+        m_camera.m_projection = projection;
+        auto previous = m_camera;
+        if (moving) previous.m_position.x -= 100.0f;
+        m_data.prevViewProjection = previous.GetGpuViewProjection();
+        m_data.taaJitterX = 2.0f * jitter / 8.0f;
+        m_data.taaJitterY = -2.0f * jitter / 8.0f;
+        Begin();
+        const auto frame = r::MakeCameraFrameCB(m_camera, m_data.taaJitterX, m_data.taaJitterY);
+        m_resources->Update(m_frame, &frame, sizeof(frame));
+        m_bundle.renderer->SetRenderTarget(hdr, *m_resources); m_bundle.renderer->Clear({0,0,0,1});
+        auto draw = Draw(copy); draw.textures[5] = texture; m_bundle.renderer->Submit(draw, *m_resources);
+        r::ExecuteMotionBlurPass(context);
+        m_bundle.renderer->SetRenderTarget(m_output, *m_resources);
+        draw.textures[5] = handles.motionBlurResult; m_bundle.renderer->Submit(draw, *m_resources); End();
+        if (moving) EXPECT_LT(Read().x, 0.99f);
+        else EXPECT_NEAR(Read().x, 1.0f, 0.002f);
+    }
+}
+
 TEST_F(GraphicsQualityShaderTest, MotionBlurIgnoresOldVelocityUntilTheCurrentViewWritesIt)
 {
     const auto copy = m_resources->LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");

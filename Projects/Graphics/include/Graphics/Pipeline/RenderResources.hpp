@@ -189,6 +189,9 @@ struct RenderSharedResources {
     ResourceHandle<ShaderTag> velocityShader{};
     ResourceHandle<ShaderTag> velocityInstancedShader{};
     ResourceHandle<ShaderTag> velocitySkinnedShader{};
+    /// @note 切り抜き速度の材質定数も Manager ごとに保持し、Reset で失効させる。
+    ResourceHandle<ShaderTag> velocityAlphaShader{};
+    ResourceHandle<ConstantBufferTag> velocityMaterialCB{};
     ResourceHandle<ShaderTag> skinningComputeCS{};
     ResourceHandle<ConstantBufferTag> bindPoseSkinningCB{};
     ResourceHandle<ShaderTag> compositeShader{};

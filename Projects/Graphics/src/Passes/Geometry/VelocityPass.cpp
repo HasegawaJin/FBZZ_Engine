@@ -2,15 +2,12 @@
 /// @brief   不透明ジオメトリのモーションベクターを専用 RT へ描く
 /// @author  Hasegawa Jin
 /// @date    2026-08-25
-/// @note /// @note TAA とモーションブラーはこれまで深度 + prevViewProjection の再投影だけを使っており、
-/// @note 復元できるのはカメラの動きに限られていた。動くオブジェクトは「静止している」と
-/// @note 判定されるため、TAA では輪郭に尾を引き、カメラを止めるとモーションブラーが
-/// @note 一切かからなかった。このパスが両者の欠けていた入力を供給する。
-/// @note /// @note Forward / Deferred の両経路へ同じ速度入力を供給するため、専用 RT を使う。
+/// @note Forward / Deferred で共通の専用 RT を使い、物体とカメラの移動を同じ UV 差分で渡す。
 
 #include "RenderScenePassHelpers.hpp"
 #include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
 #include <Graphics/Pipeline/InstanceBatch.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
 
 #include "Graphics/Renderer/DrawCall.hpp"
@@ -27,7 +24,7 @@ namespace {
 
 /// @note Velocity.hlsl / VelocitySkinned.hlsl の b1。ObjectConstants と同じ大きさで、
 /// @note 2 枠目の意味だけが worldInvTranspose から prevWorld へ変わる。
-/// @note /// @note b1 の末尾に前パスの値を残さないよう、PerObjectCB と同じサイズで更新する。
+/// @note b1 の末尾に前パスの値を残さないよう、PerObjectCB と同じサイズで更新する。
 struct VelocityObjectCB {
     math::Matrix4 world;
     math::Matrix4 prevWorld;
@@ -103,6 +100,28 @@ void ExecuteVelocityPass(RenderPassContext& ctx)
             dc.constantBuffers[0] = h.frameCB;
             dc.constantBuffers[8] = h.advancedGraphicsCB;
             dc.textures[7] = sceneDepth;
+            if (item.material.surface.alphaCutoff > 0.0f) {
+                /// @note 切り抜きの穴は背景の速度を保つ。材質更新と直接描画を遅延バッチの外で順序付ける。
+                /// @see Assets/Shaders/Motion/VelocityAlpha.hlsl 本描画と同じ albedo・UV・alphaCutoff。
+                batcher.Flush();
+                auto& shared = resources.Rendering().Shared();
+                if (!resources.Get(shared.velocityAlphaShader))
+                    shared.velocityAlphaShader = resources.LoadShader("Assets/Shaders/Motion/VelocityAlpha.hlsl");
+                if (!resources.Get(shared.velocityMaterialCB))
+                    shared.velocityMaterialCB = resources.CreateConstantBuffer(item.material.gbufferParams.size());
+                if (!resources.Get(shared.velocityAlphaShader) || !resources.Get(shared.velocityMaterialCB)) continue;
+                dc.shader = shared.velocityAlphaShader;
+                dc.pipelineState = GetOrCreateMaterialPSO(resources, renderer::BlendMode::OPAQUE_BLEND,
+                    item.material.doubleSided, item.material.depthBias, item.material.depthBiasSlope);
+                resources.Update(shared.velocityMaterialCB, item.material.gbufferParams.data(), item.material.gbufferParams.size());
+                resources.Update(h.objectCB, &constants, sizeof(constants));
+                dc.constantBuffers[1] = h.objectCB;
+                dc.constantBuffers[2] = shared.velocityMaterialCB;
+                dc.textures[0] = item.material.textures[0];
+                SubmitCounted(ctx, dc);
+                batcher.InvalidateObjectConstants();
+                continue;
+            }
             batcher.Add(dc, constants);
         }
     }
