@@ -27,6 +27,7 @@ bool Compiler::Start(const Config& config)
     m_config   = config;
     m_log.clear();
     m_exitCode = 0;
+    m_cleanupRequested = false;
 
     const auto fail = [this](const char* operation, DWORD error) {
         m_log += "ERROR Compiler " + std::string(operation) + " failed (Windows error " + std::to_string(error) + ")\n";
@@ -170,7 +171,7 @@ void Compiler::Tick()
 
     PollOutput();
 
-    if (WaitForSingleObject(m_hProcess, 0) == WAIT_OBJECT_0) {
+    if (!m_cleanupRequested && WaitForSingleObject(m_hProcess, 0) == WAIT_OBJECT_0) {
         PollOutput();
 
         DWORD exitCode = 0;
@@ -180,12 +181,31 @@ void Compiler::Tick()
         const bool requestedCleanup = TerminateJobObject(m_hJob, exitCode) != FALSE;
         if (!requestedCleanup)
             m_log += "ERROR Compiler TerminateJobObject failed (Windows error " + std::to_string(GetLastError()) + ")\n";
-        const bool collected = requestedCleanup && WaitForJobExit();
-        PollOutput();
-        CloseHandles();
-        m_state = (exitCode == 0 && collected) ? State::Done : State::Failed;
-        if (!collected && m_exitCode == 0) m_exitCode = 1;
+        if (!requestedCleanup) {
+            if (m_exitCode == 0) m_exitCode = 1;
+            CloseHandles();
+            m_state = State::Failed;
+            return;
+        }
+        m_cleanupRequested = true;
     }
+    if (!m_cleanupRequested) return;
+
+    /// @note 子孫の終了は非同期。UI スレッドで待たず、全子終了を次フレーム以降にも確認する。
+    /// @see https://learn.microsoft.com/windows/win32/procthread/terminating-a-process TerminateProcess の非同期終了。
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
+    if (!QueryInformationJobObject(m_hJob, JobObjectBasicAccountingInformation, &accounting, sizeof(accounting), nullptr)) {
+        m_log += "ERROR Compiler QueryJobAccounting failed (Windows error " + std::to_string(GetLastError()) + ")\n";
+        if (m_exitCode == 0) m_exitCode = 1;
+        CloseHandles();
+        m_state = State::Failed;
+        return;
+    }
+    if (accounting.ActiveProcesses != 0) return;
+
+    PollOutput();
+    CloseHandles();
+    m_state = m_exitCode == 0 ? State::Done : State::Failed;
 }
 
 void Compiler::Cancel()

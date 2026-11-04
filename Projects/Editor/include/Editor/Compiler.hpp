@@ -42,7 +42,7 @@ public:
     /// @note 子を停止状態で作り、Job 登録後にだけ実行を開始する。
     [[nodiscard]] bool Start(const Config& config);
 
-    /// @note 親コマンド終了後は所有する残存 worker も回収して Done / Failed へ遷移する。
+    /// @note 親コマンド終了後は残存 worker の回収をフレームごとに確認し、完了まで Building を保つ。
     void Tick();
 
     /// @note 自分が開始した子と子孫だけを終了し、回収完了後に Cancelled へ遷移する。
@@ -68,6 +68,7 @@ private:
     State       m_state    = State::Idle;
     std::string m_log;
     int         m_exitCode = 0;
+    bool        m_cleanupRequested = false;
 
     /// @note 所有する Windows handle。Win32 の宣言は実装だけへ閉じる。
     void* m_hProcess    = nullptr;
