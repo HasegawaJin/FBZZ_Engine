@@ -2,7 +2,6 @@
 /// @brief   Terrain データ編集の Operator。
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
-///
 /// @note Terrain の columns/rows は heightData / splatIndices / splatWeights / holeData のサイズと一体で、数値だけ変えると TerrainRenderPass/PhysicsSystem が不整合な配列を読む。Inspector と同じく TerrainComponent::Resize() を通し、変更前後を丸ごと Undo へ保持する。
 /// @see Docs/design/editor-operator-model.md
 #include <Editor/Op/OperatorGroups.hpp>
@@ -11,13 +10,16 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Tools/TerrainAuthoring.hpp>
+#include <Tools/TerrainBrush.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
+#include <Engine/Scene/TerrainSurfaceQuery.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <cmath>
 #include <filesystem>
@@ -40,8 +42,7 @@ scene::GameObject* ResolveTerrainNode(const OpContext& context, const std::strin
 
 bool IsValidTerrainDimension(int value)
 {
-    /// @note Inspector と同じ上限に揃える。極端な値は Undo スナップショットと GPU 再構築の
-    ///       両方で巨大な一時確保を起こすため、Operator 側でも先に拒否する。
+    /// @note Inspector と同じ上限に揃え、Undo と GPU 再構築の巨大な一時確保を防ぐ。
     return value >= 2 && value <= 4097;
 }
 
@@ -215,6 +216,63 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     };
     registry.Register(std::move(import));
 
+    auto stamp = TerrainMutation("terrain.heightmap.stamp", "Stamp Terrain Heightmap");
+    stamp.desc = "高さ画像を対象地形の矩形範囲へ一回貼り付ける。範囲外の高さ・材質・穴は保持する。";
+    stamp.params.push_back(TerrainParameter("path", OpParamType::String, "PNG / TGA / DDS のパスまたは GUID"));
+    stamp.params.push_back(TerrainParameter("center", OpParamType::Vec3, "貼り付け中心のworld座標[m]"));
+    stamp.params.push_back(TerrainParameter("width", OpParamType::Float, "地形ローカルX幅[m]、0より大きく100000以下", 20.0f));
+    stamp.params.push_back(TerrainParameter("depth", OpParamType::Float, "地形ローカルZ幅[m]、0より大きく100000以下", 20.0f));
+    stamp.params.push_back(TerrainParameter("rotation", OpParamType::Float, "地形ローカル+Y軸回転[度]", 0.0f));
+    stamp.params.push_back(TerrainParameter("heightScale", OpParamType::Float, "画像値に掛ける地形ローカル高さ[m]、負で上下反転", 10.0f));
+    stamp.params.push_back(TerrainParameter("heightOffset", OpParamType::Float, "地形ローカル基準高[m]。addでは加算量", 0.0f));
+    stamp.params.push_back(TerrainParameter("strength", OpParamType::Float, "一回の合成強度[0,1]、時間非依存", 1.0f));
+    stamp.params.push_back(TerrainParameter("edgeFade", OpParamType::Float, "各辺から内側へぼかすUV幅[0,0.5]", 0.1f));
+    stamp.params.push_back(TerrainParameter("unipolar", OpParamType::Bool, "黒0・白1。falseは黒-1・白1", true));
+    auto blend = TerrainParameter("blend", OpParamType::String, "高さの合成方式", std::string{"add"});
+    blend.enumValues = {"add", "replace", "max", "min"};
+    stamp.params.push_back(std::move(blend));
+    stamp.exec = [](OpContext& context, const OpArgs& args) {
+        auto* go = ResolveTerrainNode(context, args.GetString("node"));
+        if (!go || !go->GetComponent<scene::TerrainComponent>()) return OpResult::Err("NO_TERRAIN", "対象地形がありません");
+        math::Vector3 normal;
+        if (!scene::TryTerrainNormalToWorld(go->transform, math::Vector3::UP, normal))
+            return OpResult::Err("BAD_TERRAIN", "地形の変換が不正です");
+        const auto& terrain = *go->GetComponent<scene::TerrainComponent>();
+        TerrainHeightStampSettings settings;
+        settings.centerLocal = ToTerrainLocal(go->transform, args.GetVec3("center"));
+        settings.width = args.GetFloat("width", 20.0f);
+        settings.depth = args.GetFloat("depth", 20.0f);
+        settings.rotationDegrees = args.GetFloat("rotation", 0.0f);
+        settings.heightScale = args.GetFloat("heightScale", 10.0f);
+        settings.heightOffset = args.GetFloat("heightOffset", 0.0f);
+        settings.strength = args.GetFloat("strength", 1.0f);
+        settings.edgeFade = args.GetFloat("edgeFade", 0.1f);
+        const auto blendName = args.GetString("blend", "add");
+        if (blendName == "replace") settings.blend = TerrainHeightStampBlend::REPLACE;
+        else if (blendName == "max") settings.blend = TerrainHeightStampBlend::MAXIMUM;
+        else if (blendName == "min") settings.blend = TerrainHeightStampBlend::MINIMUM;
+        if (!IsValidTerrainHeightStamp(terrain, settings))
+            return OpResult::Err("BAD_ARG", "貼り付け寸法・高さ・強度・ぼかし・中心座標が不正です");
+        scene::TerrainComponent image;
+        /// @note 読み込みはクリック時だけ。貼り付けの格子密度へ再標本化し、毎フレームの画像I/Oを避ける。
+        image.columns = static_cast<int>(std::clamp(std::ceil(static_cast<double>(settings.width) / terrain.cellSize) + 1.0, 2.0, 4097.0));
+        image.rows = static_cast<int>(std::clamp(std::ceil(static_cast<double>(settings.depth) / terrain.cellSize) + 1.0, 2.0, 4097.0));
+        const auto path = ResolveTerrainInput(context.ctx, args.GetString("path"));
+        if (path.empty() || !scene::LoadHeightMapFromFile(path, image, args.GetBool("unipolar", true)))
+            return OpResult::Err("IMPORT_FAILED", "高さ画像を読み込めません。地形は未変更です");
+        auto after = terrain;
+        if (!ApplyTerrainHeightStamp(after, image, settings))
+            return OpResult::Err("BAD_TERRAIN", "高さデータが不正です。地形は未変更です");
+        if (after.heightData == terrain.heightData) {
+            OpResult result;
+            result.noChange = true;
+            result.message = "貼り付けによる高さの変化はありません";
+            return result;
+        }
+        return CommitTerrain(context, *go, std::move(after), "Stamp Terrain Heightmap");
+    };
+    registry.Register(std::move(stamp));
+
     auto biome = TerrainMutation("terrain.biome.bake", "Bake Grass Rock Snow");
     biome.desc = "world標高・傾斜から草地・岩肌・雪の3層を確定する。Fiberと配置は保存層を参照できる。";
     biome.caution = "全頂点の塗りを置換します。材質の Auto Blend はオフにしてください。Undo可能。";
@@ -337,8 +395,7 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
         after.Resize(columns, rows);
         MarkTerrainDirty(after);
 
-        /// @note OperatorRegistry::Invoke は返却コマンドを再実行せず Push だけ行う契約なので、
-        ///       画面へはここで反映してから、同じ状態を redo 用スナップショットへ渡す。
+        /// @note OperatorRegistry::Invoke は返却コマンドを再実行しないため、画面へ反映してから同じ状態を履歴へ渡す。
         *terrain = after;
         if (context.ctx.markSceneDirty) context.ctx.markSceneDirty();
 

@@ -26,6 +26,18 @@
 
 Undo/Redo は Scene 世代と TerrainComponent 寿命を確認し、別 Scene や削除・再作成した Component へ古い編集を適用しない。保存は通常の Scene/terrain 保存と分離する。
 
+## 高さ画像の部分貼り付け
+
+2026-11-05、ユーザー指定の「HeightMap画像を地形の一部へ貼り付け」を Paint の HeightMap Stamp として追加する。対象を選択し、画像・矩形サイズ・回転・高さ・合成方式・強度・縁のぼかしを設定し、Scene View の対象上をクリックして一回確定する。長押しでは重ねない。外枠とぼかし開始位置のプレビューは地表に沿って表示する。
+
+UI と AI は `terrain.heightmap.stamp` を共用する。center は world 座標、width/depth と heightScale/heightOffset は地形ローカルの m、rotation はローカル +Y 軸の度数。画像上端は -Z、右端は +X。画像は既存の線形16bit対応ローダーで貼り付けサイズの格子密度（各軸2〜4097標本）へ再標本化し、回転後の各頂点で双線形補間する。
+
+画像値 p は unipolar で [0,1]、bipolar で [-1,1]、目標値 V = heightOffset + heightScale × p。add は現在高 H + V、replace は V、max は max(H,V)、min は min(H,V) を合成先とする。UI の Anchor to Clicked Height は add 以外でクリック地点のローカル高さを heightOffset に足す。画像範囲内のUV端距離 d = min(u,1-u,v,1-v)、f = clamp(d/edgeFade,0,1)、重み = strength × f²(3−2f)。edgeFade=0 は重み strength のみ。結果を ±maxHeight へ収める。
+
+矩形の外側・他の地形・材質分布・穴・追加メッシュは保持する。編集後の高さは既存 heightData に確定して通常の .terrain 保存対象にし、新しい保存形式や持続的な編集レイヤーは導入しない。不正画像・設定・変換では地形と履歴を変更せず、変化のない適用も履歴へ積まない。Undo/Redo は既存の競合・寿命検証と実行時世代の維持に従い、形状とコライダーを失効させる。
+
+参考は Cygames の [Cyllista Game Engine 公式講演](https://speakerdeck.com/cygames/dainamitukunabian-geng-woke-neng-nisurucyllista-game-enginefalseopunwarudoxiang-kepurosiziyarubei-jing-zhi-zuo-turutomiao-hua-ji-neng) のスライド21（画像ブラシ）と26（矩形のレイヤー化）。本機能は画像の部分貼り付けを FBZZ の確定保存方式へ合わせたもので、同講演の非破壊レイヤースタック全体を再現するものではない。
+
 ## 境界
 
 木・岩は [配置の契約](terrain-scatter.md) に従う。独自 Vegetation Component やゲーム作者向け C++ スクリプトは作らない。メッシュ形状を押す Stamp、曲線で編集する道、非破壊の積層地形は別機能であり、既存の球状 Stamp / 直線 Ramp と区別する。

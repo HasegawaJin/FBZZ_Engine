@@ -1,5 +1,5 @@
 /// @file    TerrainAuthoring.hpp
-/// @brief   標高・斜面から保存可能な地形レイヤー分布を作る。
+/// @brief   高さ画像の部分貼り付けと標高・斜面による地形の塗り分け。
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
 #pragma once
@@ -13,6 +13,32 @@ void ApplyTerrainAuthoringSnapshot(scene::TerrainComponent& terrain, const scene
 
 /// @note 保存時に割り当てる terrainAssetPath と描画・物理の実行時状態を除き、編集内容の競合を判定する。
 bool TerrainAuthoringValuesEqual(const scene::TerrainComponent& first, const scene::TerrainComponent& second);
+
+enum class TerrainHeightStampBlend { ADD, REPLACE, MAXIMUM, MINIMUM };
+
+struct TerrainHeightStampSettings {
+    math::Vector3 centerLocal;
+    float width = 20.0f;
+    float depth = 20.0f;
+    float rotationDegrees = 0.0f;
+    float heightScale = 10.0f;
+    float heightOffset = 0.0f;
+    float strength = 1.0f;
+    float edgeFade = 0.1f;
+    TerrainHeightStampBlend blend = TerrainHeightStampBlend::ADD;
+};
+
+/// @return 地形寸法・設定が不正なら false。画像の読み込み前と範囲プレビューでも共用する。
+bool IsValidTerrainHeightStamp(const scene::TerrainComponent& terrain, const TerrainHeightStampSettings& settings);
+
+/// @return 不正な設定・配列・非有限値では false、地形と実行時世代は未変更。
+/// @note 寸法・高さは地形ローカルの m、回転は +Y 軸の度数。画像上端を -Z、右端を +X に写す。
+/// @note image.heightData は線形の正規化値。双線形補間し、矩形の外は保持、内側は strength と edgeFade [0,0.5] で合成する。
+/// @note ADD は画像高さを加算、他は heightOffset + image * heightScale を目標高にする。結果は地形の [-maxHeight,+maxHeight] 内へ収める。
+/// @see https://speakerdeck.com/cygames/dainamitukunabian-geng-woke-neng-nisurucyllista-game-enginefalseopunwarudoxiang-kepurosiziyarubei-jing-zhi-zuo-turutomiao-hua-ji-neng Cygames Tech Conference 2021、スライド21の画像ブラシ。
+/// @see Docs/design/terrain-authoring.md
+bool ApplyTerrainHeightStamp(scene::TerrainComponent& terrain, const scene::TerrainComponent& image,
+    const TerrainHeightStampSettings& settings);
 
 struct TerrainBiomeSettings {
     int grassLayer = 0;
