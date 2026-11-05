@@ -217,6 +217,7 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
     const auto cameraFrustum=math::Frustum::FromViewProjection(ctx.camera.GetViewProjection());
     if (pass!=InstancePass::SHADOW) ctx.resources.Update(ctx.handles.frameCB,&frame,sizeof(frame));
     for (const auto& input : ctx.renderScene->instances) {
+        if (input.selectionOnly && pass != InstancePass::SELECTION) continue;
         if (pass==InstancePass::CAPTURE && input.identity[1]==excludedOwner) continue;
         if (!input.data || input.lodCount==0 || input.lodCount>4 || input.layer>=32 || (ctx.cullingMask&(1u<<input.layer))==0) continue;
         if (input.parts.empty() || input.parts.size()>64 || input.data->placements.size()>1048576) continue;

@@ -12,6 +12,12 @@
 #include <initializer_list>
 #include <Editor/Panels/MaterialPreviewCore.hpp>
 #include <Tools/TerrainPaintLibrary.hpp>
+#include <Tools/TerrainTool.hpp>
+#include <Engine/Asset/MeshInstancesAsset.hpp>
+#include <Engine/Scene/Components/InstancedMeshComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Renderer/Camera.hpp>
+#include <ImGuizmo.h>
 #include <Editor/EditorContext.hpp>
 #include <Engine/Asset/TerrainPaintAsset.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -23,6 +29,8 @@
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/DrawCall.hpp>
+#include <Math/MathUtils.hpp>
 #include <Graphics/Renderer/IImGuiRenderer.hpp>
 #include <Graphics/Renderer/IShader.hpp>
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
@@ -242,6 +250,60 @@ TEST_F(MaterialPreviewShaderTest, TerrainPaintLibraryRendersItsMeshAndRefreshesA
     double difference = 0.0;
     for (size_t index = 0; index < red.size(); ++index) difference += std::abs(red[index] - blue[index]);
     EXPECT_GT(difference, 1.0);
+}
+
+TEST_F(MaterialPreviewShaderTest, PaintMixThumbnailsReflectWeightsAndViewportPickingSelectsOneInstance)
+{
+    struct ImGuiScope{ImGuiContext* previous=ImGui::GetCurrentContext();ImGuiContext* current=ImGui::CreateContext();~ImGuiScope(){ImGui::DestroyContext(current);ImGui::SetCurrentContext(previous);}} imgui;
+    class PreviewIds final:public renderer::IImGuiRenderer {
+    public: renderer::ResourceHandle<renderer::RenderTargetTag> target;
+        void ImGuiInit(void*)override{}void ImGuiShutdown()override{}void ImGuiNewFrame()override{}void ImGuiRenderDrawData()override{}void ImGuiRenderPlatformWindows()override{}
+        void* GetImTextureID(renderer::ResourceHandle<renderer::RenderTargetTag> value,renderer::ResourceManager&,int)override{target=value;return this;}
+        void* GetImTextureID(renderer::ResourceHandle<renderer::TextureTag>,renderer::ResourceManager&)override{return this;}
+    } ids;
+    auto& io=ImGui::GetIO();io.IniFilename=nullptr;io.DisplaySize={900,900};io.DeltaTime=1.0f/60;io.ConfigInputTrickleEventQueue=false;
+    unsigned char* font=nullptr;int width=0,height=0;io.Fonts->GetTexDataAsRGBA32(&font,&width,&height);
+    std::vector<std::string> references;asset::TerrainPaintAsset cube;
+    for(int i=0;i<2;++i){
+        asset::MaterialAssetAuthoring material;ASSERT_TRUE(asset::LoadMaterialAssetFromFile((m_root/"Assets/Materials/Samples/SurfaceExamples/BaseSurface.mat").generic_string(),material));
+        material.params["albedo"]=i==0?std::vector<float>{0.8f,0.02f,0.02f,1}:std::vector<float>{0.02f,0.02f,0.8f,1};
+        const auto mat=(m_project/"Assets"/("Mix"+std::to_string(i)+".mat")).generic_string();ASSERT_TRUE(asset::SaveMaterialAssetToFile(mat,material));
+        asset::TerrainPaintAsset paint;paint.name=i==0?"Red cube":"Blue cone";paint.placement.spacing=1;paint.placement.minScale=paint.placement.maxScale=1;
+        const std::array<asset::InstanceMeshPart,1> parts{{{i==0?"primitive:cube":"primitive:cone","guid:"+asset::AssetDatabase::GuidFromPath(mat),0}}};const std::array<float,1> heights{0};
+        ASSERT_TRUE(paint.definition.Replace(parts,heights,{}));const auto file=(m_project/"Assets"/("Mix"+std::to_string(i)+".terrainpaint")).generic_string();
+        ASSERT_TRUE(asset::SaveTerrainPaintAsset(file,paint));references.push_back("guid:"+asset::AssetDatabase::GuidFromPath(file));if(i==0)cube=paint;
+    }
+    editor::EditorContext context;context.projectRoot=m_project.generic_string();context.renderer=m_bundle.renderer.get();context.resources=m_resources.get();context.imguiRenderer=&ids;
+    editor::TerrainPaintLibrary library;
+    const auto capture=[&](std::array<float,2> weights,const char* name){
+        for(int frame=0;frame<3;++frame){m_resources->AdvanceFrame();m_bundle.renderer->BeginFrame();m_frameOpen=true;ImGui::NewFrame();ImGui::Begin("Mix thumbnails");
+            static_cast<void>(library.MixThumbnail(context,"#testMix",references,weights));ImGui::End();ImGui::Render();m_bundle.renderer->EndFrame();m_frameOpen=false;}
+        std::vector<float> pixels;uint32_t width=0,height=0;
+        EXPECT_TRUE(ids.target.IsValid());EXPECT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(ids.target,*m_resources,pixels,width,height));
+        std::vector<uint8_t> png;if(m_bundle.renderer->CaptureRenderTargetToPng(ids.target,*m_resources,png,width,height)){
+            const auto path=m_root/"Scratch/TerrainPaintLibrary"/(std::string(name)+".png");EXPECT_TRUE(util::FileSystem::EnsureParentDirectory(path));EXPECT_TRUE(util::FileSystem::WriteBinary(path,png.data(),png.size()));}
+        return pixels;
+    };
+    const auto red=capture({100,0},"MixRed"),blue=capture({0,100},"MixBlue");ASSERT_EQ(red.size(),blue.size());ASSERT_FALSE(red.empty());
+    EXPECT_GT(RgbEnergy(red),1.0f);EXPECT_GT(RgbEnergy(blue),1.0f);
+    double difference=0;for(size_t i=0;i<red.size();++i)difference+=std::abs(red[i]-blue[i]);EXPECT_GT(difference,1.0);
+    m_resources->Reset();const auto afterReset=capture({0,100},"MixBlueAfterReset");ASSERT_EQ(afterReset.size(),blue.size());EXPECT_GT(RgbEnergy(afterReset),1.0f);
+    double resetDifference=0;for(size_t i=0;i<blue.size();++i)resetDifference+=std::abs(blue[i]-afterReset[i]);EXPECT_LT(resetDifference,0.01);
+    scene::Scene world;context.activeScene=&world;auto& ground=world.CreateGameObject("Ground");auto& terrain=ground.AddComponent<scene::TerrainComponent>();terrain.Resize(9,9);terrain.cellSize=2;terrain.InitFlat();
+    asset::MeshInstancesAsset placements;placements.terrainPaintRef=references[0];
+    const std::array<renderer::InstancePlacement,2> points{{{7,{10,0,4},{},{1,1,1},true},{93,{0,0,4},{},{1,1,1},true}}};
+    ASSERT_TRUE(placements.instances.Replace(cube.definition.Parts(),cube.definition.LodHeights(),points));const auto file=(m_project/"Assets/Pick.meshinstances").generic_string();ASSERT_TRUE(asset::SaveMeshInstancesAsset(file,placements));
+    auto& owner=world.CreateGameObject("Painted cubes");owner.AddComponent<scene::InstancedMeshComponent>().m_instanceSetRef.path=file;
+    editor::TerrainTool tool;tool.SetPaintPalette({references[0]},false);ASSERT_TRUE(tool.SelectPaintInstance(context,owner.instanceId,7));
+    renderer::Camera camera;camera.m_position={0,2,-8};camera.m_aspect=1;camera.LookAt({0,0,4});
+    for(int frame=0;frame<3;++frame){
+        io.AddMousePosEvent(128,128);io.AddMouseButtonEvent(ImGuiMouseButton_Left,frame==1);
+        m_resources->AdvanceFrame();m_bundle.renderer->BeginFrame();m_frameOpen=true;ImGui::NewFrame();ImGuizmo::BeginFrame();ImGui::Begin("Scene");
+        tool.Update(context,camera,1.0f/60,true,{0,0},{256,256});ImGui::End();ImGui::Render();m_bundle.renderer->EndFrame();m_frameOpen=false;
+    }
+    const auto preview=tool.PaintPreviewInputs(world);ASSERT_EQ(preview.size(),1u);ASSERT_EQ(preview[0].data->placements.size(),1u);EXPECT_EQ(preview[0].data->placements[0].id,93u);
+    EXPECT_TRUE(preview[0].erase);EXPECT_TRUE(preview[0].highlight);EXPECT_EQ(owner.GetComponent<scene::InstancedMeshComponent>()->Snapshot()->placements.size(),2u);
+    context.activeScene=nullptr;
 }
 
 TEST_F(MaterialPreviewShaderTest, BuiltinParticleMaterialPreservesTintLightingAndOutputGain)

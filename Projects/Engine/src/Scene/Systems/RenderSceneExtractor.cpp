@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-20
 #include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
+#include <Engine/Scene/Systems/RenderSystem.hpp>
 #include "MaterialDemandTrace.hpp"
 #include <Graphics/Renderer/MaterialTransferScope.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
@@ -2255,30 +2256,53 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
         if (instanceOwner!=ctx.resources.GetInstanceId() || instanceEpoch!=ctx.resources.GetResetVersion()) {
             instanceMaterials.clear(); instanceOwner=ctx.resources.GetInstanceId(); instanceEpoch=ctx.resources.GetResetVersion();
         }
-        for (EntityID id : ctx.scene.GetEntities<InstancedMeshComponent>()) {
-            auto* go=ctx.scene.GetGameObject(id);
-            const auto* component=ctx.scene.GetComponent<InstancedMeshComponent>(id);
-            if (!go || !go->activeInHierarchy() || !component || !component->m_enabled) continue;
-            InstancePhaseTimer setSnapshotTimer(collectInstancePhases, setSnapshotNs);
-            const auto* assetBase=asset::ResolveMeshInstanceDefinition(component->m_instanceSetRef.path);
-            if (!assetBase) continue;
-            const auto& definition=*assetBase;
+        struct InstanceSourceView {
+            const asset::InstanceSetAsset* definition;
             renderer::RenderInstanceInput input;
-            input.data=component->Snapshot(definition);
+            GameObject* owner = nullptr;
+        };
+        std::vector<InstanceSourceView> sources;
+        for (EntityID id : ctx.scene.GetEntities<InstancedMeshComponent>()) {
+            InstancePhaseTimer setSnapshotTimer(collectInstancePhases, setSnapshotNs);
+            auto* go = ctx.scene.GetGameObject(id);
+            const auto* component = ctx.scene.GetComponent<InstancedMeshComponent>(id);
+            if (!go || !go->activeInHierarchy() || !component || !component->m_enabled) continue;
+            const auto* definition = asset::ResolveMeshInstanceDefinition(component->m_instanceSetRef.path);
+            if (!definition) continue;
+            renderer::RenderInstanceInput input;
+            input.data = component->Snapshot(*definition);
+            input.identity = {ctx.scene.GetRenderSceneGeneration(), (static_cast<uint64_t>(id.generation) << 32) | id.index};
+            input.world = go->transform.GetWorldMatrix(); input.layer = static_cast<uint32_t>(go->layer);
+            input.selected = IsSelectedForOutline(*go, ctx.settings); input.castShadows = component->m_castShadows;
+            input.maxDistance = component->m_maxDistance;
+            sources.push_back({definition, std::move(input), go});
+        }
+        if (ctx.uiOptions) for (const auto& preview : ctx.uiOptions->instancePreviews) {
+            const auto* definition = asset::ResolveMeshInstanceDefinition(preview.definition);
+            if (!definition || !preview.data || preview.data->placements.size() > 384) continue;
+            renderer::RenderInstanceInput input;
+            input.data = preview.data; input.world = preview.world;
+            input.identity = {ctx.scene.GetRenderSceneGeneration() ^ (1ull << 63), preview.identity};
+            input.selected = preview.erase || preview.highlight; input.selectionOnly = preview.erase; input.castShadows = false;
+            sources.push_back({definition, std::move(input)});
+        }
+        for (auto& sourceView : sources) {
+            InstancePhaseTimer setSnapshotTimer(collectInstancePhases, setSnapshotNs);
+            const auto& definition = *sourceView.definition;
+            auto input = std::move(sourceView.input);
             if (!input.data || input.data->placements.empty()) continue;
-            input.identity={ctx.scene.GetRenderSceneGeneration(),(static_cast<uint64_t>(id.generation)<<32)|id.index};
-            input.world=go->transform.GetWorldMatrix(); input.layer=static_cast<uint32_t>(go->layer);
-            input.selected=IsSelectedForOutline(*go,ctx.settings); input.castShadows=component->m_castShadows;
-            input.maxDistance=component->m_maxDistance;
-            input.lodCount=static_cast<uint32_t>(definition.LodHeights().size());
-            std::copy(definition.LodHeights().begin(),definition.LodHeights().end(),input.lodHeights.begin());
+            input.lodCount = static_cast<uint32_t>(definition.LodHeights().size());
+            std::copy(definition.LodHeights().begin(), definition.LodHeights().end(), input.lodHeights.begin());
             math::Vector3 boundsCenter{}; float boundsRadius=-1;
             setSnapshotTimer.Finish();
             for (const auto& sourcePart : definition.Parts()) {
                 InstancePhaseTimer meshTimer(collectInstancePhases, meshAndBoundsNs);
                 auto* mesh=ResolveMeshPath(sourcePart.meshPath,ctx.resources);
                 if (!mesh || mesh->isSkinned || mesh->indexCount==0) { input.parts.clear(); break; }
-                renderer::RenderInstancePart part; part.mesh=ExtractMesh(*go,*mesh); part.lod=sourcePart.lod;
+                renderer::RenderInstancePart part;
+                part.mesh = sourceView.owner ? ExtractMesh(*sourceView.owner, *mesh)
+                    : ExtractMesh(input.world, ComputeWorldBoundsScale(input.world), *mesh);
+                part.lod=sourcePart.lod;
                 meshTimer.Finish();
                 InstancePhaseTimer materialTimer(collectInstancePhases, materialNs);
                 auto& componentMaterial=instanceMaterials[sourcePart.materialPath];
@@ -2308,6 +2332,7 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
                 input.parts.push_back(std::move(part));
             }
             if (input.parts.empty()) continue;
+            if (sourceView.owner) input.world = sourceView.owner->transform.GetWorldMatrix();
             input.localBoundsCenter=boundsCenter; input.localBoundsRadius=boundsRadius;
             output->instances.push_back(std::move(input));
         }

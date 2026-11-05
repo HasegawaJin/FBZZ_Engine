@@ -31,7 +31,8 @@ bool ValidateTerrainPaintAsset(const TerrainPaintAsset& asset)
         && range(p.minScale, 0.01f, 100.0f) && range(p.maxScale, p.minScale, 100.0f)
         && range(p.minYaw, -360.0f, 360.0f) && range(p.maxYaw, p.minYaw, 360.0f)
         && range(p.minSlope, 0.0f, 90.0f) && range(p.maxSlope, p.minSlope, 90.0f)
-        && range(p.downslopeJitter, 0.0f, 180.0f) && range(p.embedDepth, 0.0f, 100.0f);
+        && range(p.downslopeJitter, 0.0f, 180.0f) && range(p.embedDepth, 0.0f, 100.0f)
+        && range(p.waterClearance, 0.0f, 1000.0f) && range(p.pathClearance, 0.0f, 1000.0f);
 }
 
 bool TerrainPaintAssetsEqual(const TerrainPaintAsset& first, const TerrainPaintAsset& second)
@@ -46,7 +47,9 @@ bool LoadTerrainPaintAsset(std::string_view path, TerrainPaintAsset& out)
     std::string text;
     if (!ReadFile(path, text, 1024 * 1024)) return false;
     const auto parsed = toml::parse(text, std::string(path));
-    if (!parsed || parsed["format"].value<std::string>() != "fbzz.terrainpaint" || parsed["version"].value<int64_t>() != 1) return false;
+    if (!parsed || parsed["format"].value<std::string>() != "fbzz.terrainpaint") return false;
+    const auto version = parsed["version"].value<int64_t>();
+    if (!version || (*version != 1 && *version != 2)) return false;
     TerrainPaintAsset candidate;
     const auto name = parsed["name"].value<std::string>(), category = parsed["category"].value<std::string>();
     if (!name || !category) return false;
@@ -72,6 +75,7 @@ bool LoadTerrainPaintAsset(std::string_view path, TerrainPaintAsset& out)
         || !number("minSlope", p.minSlope) || !number("maxSlope", p.maxSlope)
         || !number("downslopeJitter", p.downslopeJitter) || !number("embedDepth", p.embedDepth) || !normal || !downslope) return false;
     p.alignToNormal = *normal; p.alignDownslope = *downslope;
+    if (*version == 2 && (!number("waterClearance", p.waterClearance) || !number("pathClearance", p.pathClearance))) return false;
     if (!ValidateTerrainPaintAsset(candidate)) return false;
     out = std::move(candidate);
     return true;
@@ -81,13 +85,14 @@ bool SaveTerrainPaintAsset(std::string_view path, const TerrainPaintAsset& asset
 {
     if (!ValidateTerrainPaintAsset(asset)) return false;
     static constexpr const char* CATEGORIES[]{"grass", "tree", "rock", "other"};
-    toml::table table{{"format", "fbzz.terrainpaint"}, {"version", 1}, {"name", asset.name},
+    toml::table table{{"format", "fbzz.terrainpaint"}, {"version", 2}, {"name", asset.name},
         {"category", CATEGORIES[static_cast<int>(asset.category)]}};
     mesh_instances_serialization::WriteDefinition(table, asset.definition);
     const auto& p = asset.placement;
     table.insert("placement", toml::table{{"spacing", p.spacing}, {"density", p.density}, {"minScale", p.minScale},
         {"maxScale", p.maxScale}, {"minYaw", p.minYaw}, {"maxYaw", p.maxYaw}, {"minSlope", p.minSlope}, {"maxSlope", p.maxSlope},
-        {"alignToNormal", p.alignToNormal}, {"alignDownslope", p.alignDownslope}, {"downslopeJitter", p.downslopeJitter}, {"embedDepth", p.embedDepth}});
+        {"alignToNormal", p.alignToNormal}, {"alignDownslope", p.alignDownslope}, {"downslopeJitter", p.downslopeJitter}, {"embedDepth", p.embedDepth},
+        {"waterClearance", p.waterClearance}, {"pathClearance", p.pathClearance}});
     return mesh_instances_serialization::WriteFile(path, table);
 }
 } /// @note namespace fbzz::asset

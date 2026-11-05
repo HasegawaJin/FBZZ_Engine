@@ -55,6 +55,57 @@ TEST_F(TerrainScatterTest, SameSeedReproducesTransformsAndDensityKeepsCandidateI
     m_settings.density = 0.0f; ASSERT_TRUE(Build()); EXPECT_TRUE(m_placements.empty());
 }
 
+TEST_F(TerrainScatterTest, MinimumSeparationAndWorldFilterApplyToExistingAndNewPoints)
+{
+    m_settings.spacing = 0.5f; m_settings.minimumDistance = 1.5f;
+    const std::array<math::Vector3, 1> centers{{{4, 0, 4}}};
+    const editor::TerrainScatterBrush brush{centers, 10, false};
+    m_placements = {{701, {6, 0, 4}, {}, {1, 1, 1}, true}};
+    ASSERT_TRUE(editor::BuildTerrainScatter(m_terrain, m_terrainTransform, m_targetTransform, m_settings,
+        m_placements, m_reason, &brush, [](const auto& point) { return point.x > 4; })) << m_reason;
+    ASSERT_GT(m_placements.size(), 1u);
+    for (size_t i = 0; i < m_placements.size(); ++i) {
+        EXPECT_GT(m_placements[i].position.x, 4);
+        for (size_t j = 0; j < i; ++j)
+            EXPECT_GE((m_placements[i].position - m_placements[j].position).Length(), 1.5f - 0.00001f);
+    }
+    const auto before = m_placements;
+    m_settings.minimumDistance = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(editor::BuildTerrainScatter(m_terrain, m_terrainTransform, m_targetTransform, m_settings, m_placements, m_reason, &brush));
+    ASSERT_EQ(m_placements.size(), before.size()); EXPECT_EQ(m_placements[0].id, 701u);
+}
+
+TEST_F(TerrainScatterTest, PolygonFillHandlesConcavityAndRejectsCrossingsWithoutChangingPlacements)
+{
+    const std::array<math::Vector3,6> polygon{{{0,0,0},{8,0,0},{8,0,3},{3,0,3},{3,0,8},{0,0,8}}};
+    editor::TerrainScatterBrush brush{polygon,2,false,true,0};
+    ASSERT_TRUE(editor::ValidateTerrainRegion(m_terrainTransform,brush));
+    ASSERT_TRUE(editor::BuildTerrainScatter(m_terrain,m_terrainTransform,m_targetTransform,m_settings,m_placements,m_reason,&brush));
+    ASSERT_FALSE(m_placements.empty());
+    for(const auto& p:m_placements)EXPECT_TRUE(p.position.x<3||p.position.z<3);
+    const auto before=m_placements;
+    const std::array<math::Vector3,4> crossed{{{0,0,0},{8,0,8},{0,0,8},{8,0,0}}};brush.centers=crossed;
+    EXPECT_FALSE(editor::BuildTerrainScatter(m_terrain,m_terrainTransform,m_targetTransform,m_settings,m_placements,m_reason,&brush));
+    EXPECT_EQ(m_placements.size(),before.size());
+}
+
+TEST_F(TerrainScatterTest, SoftBoundaryIsDeterministicAndDiagnosticsAccountForEveryCandidate)
+{
+    m_settings.spacing=0.5f;
+    const std::array<math::Vector3,1> center{{{4,0,4}}};editor::TerrainScatterBrush brush{center,4,false,false,0};
+    editor::TerrainPaintDiagnostics hard;
+    ASSERT_TRUE(editor::BuildTerrainScatter(m_terrain,m_terrainTransform,m_targetTransform,m_settings,m_placements,m_reason,&brush,{},&hard));
+    const auto before=m_placements; m_placements.clear();brush.feather=0.8f;editor::TerrainPaintDiagnostics soft;
+    ASSERT_TRUE(editor::BuildTerrainScatter(m_terrain,m_terrainTransform,m_targetTransform,m_settings,m_placements,m_reason,&brush,{},&soft));
+    EXPECT_LT(m_placements.size(),before.size());EXPECT_GT(m_placements.size(),0u);
+    EXPECT_EQ(soft.counts[static_cast<size_t>(editor::TerrainPaintReason::ACCEPTED)],m_placements.size());
+    size_t visits=0;for(size_t count:soft.counts)visits+=count;
+    EXPECT_EQ(visits,before.size());EXPECT_GT(soft.counts[static_cast<size_t>(editor::TerrainPaintReason::DENSITY)],0u);
+    const auto repeated=m_placements;m_placements.clear();
+    ASSERT_TRUE(editor::BuildTerrainScatter(m_terrain,m_terrainTransform,m_targetTransform,m_settings,m_placements,m_reason,&brush));
+    ASSERT_EQ(repeated.size(),m_placements.size());for(size_t n=0;n<repeated.size();++n)EXPECT_EQ(repeated[n].id,m_placements[n].id);
+}
+
 TEST_F(TerrainScatterTest, HolesHeightSlopeAndSavedLayerRestrictTheSameSurface)
 {
     ASSERT_TRUE(m_terrain.SetHoleCell(0, 0, true));

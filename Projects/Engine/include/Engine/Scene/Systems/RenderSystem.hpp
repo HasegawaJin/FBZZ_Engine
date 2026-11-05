@@ -10,6 +10,8 @@
 #include <Physics/Layer.hpp>
 #include <memory>
 #include <span>
+#include <string>
+#include <Graphics/Effects/RenderInstanceInput.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/CameraCullingSettings.hpp>
 #include <Engine/Scene/Systems/UISystem.hpp>
@@ -27,6 +29,16 @@ namespace fbzz::renderer {
 namespace fbzz::scene {
 
 using renderer::RenderPassCapture;
+
+/// @note View-local authoring geometry; never added to Scene, serialization, physics or the shared geometry cache.
+struct RenderInstancePreview {
+    std::string definition;
+    std::shared_ptr<const renderer::InstanceSetData> data;
+    math::Matrix4 world = math::Matrix4::Identity();
+    uint64_t identity = 0;
+    bool erase = false;
+    bool highlight = false;
+};
 
 /// @note RenderGraph 内へ UI 合成パスを登録するための設定。
 /// @note UI を外で描くと PostProcess 後の RT バインド状態に依存し、複数 Viewport で別 RT へ
@@ -48,6 +60,7 @@ struct RenderSystemUIOptions {
     /// @note Borrowed only for this RenderSystem call; DebugDraw captures owned line/triangle values.
     /// @note Per-view diagnostics bypass the script flag and queue; at most 8192 commands are captured.
     std::span<const ScriptDebugDrawCommand> spatialDebugCommands;
+    std::span<const RenderInstancePreview> instancePreviews;
 };
 
 FBZZ_ENGINE_API void RenderSystem(Scene& scene,

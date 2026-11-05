@@ -2432,6 +2432,7 @@ void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
         /// @note 背景色だけはゲームカメラから借りる。発光や UI の色決めが本番と同じ背景で成立するように。
         renderer::Camera sceneViewCamera = m_debugCamera.camera;
         sceneViewCamera.m_backgroundColor = scene::ResolveGameBackgroundColor(*sceneViewScene);
+        if (m_ctx.terrainTool) uiOptions.instancePreviews = m_ctx.terrainTool->PaintPreviewInputs(*sceneViewScene);
         std::vector<scene::ScriptDebugDrawCommand> spatialDebugCommands;
         BuildSpatialDebugOverlay(m_ctx, *sceneViewScene, sceneRT.id, sceneRT.gen,
             m_resources->FrameStamp(), spatialDebugCommands, sceneRenderSettings.shadowEnabled);

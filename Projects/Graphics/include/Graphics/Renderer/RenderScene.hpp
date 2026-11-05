@@ -123,6 +123,7 @@ struct RenderInstanceInput {
     std::array<uint64_t,2> identity{};
     uint32_t layer=0;
     bool selected=false, castShadows=true;
+    bool selectionOnly=false;
     float maxDistance=0;
     math::Matrix4 world=math::Matrix4::Identity();
     math::Vector3 localBoundsCenter{};

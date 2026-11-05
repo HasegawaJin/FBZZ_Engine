@@ -24,6 +24,8 @@ struct TerrainPaintPlacement {
     bool alignDownslope = false;
     float downslopeJitter = 0.0f;
     float embedDepth = 0.0f;
+    float waterClearance = 0.0f;
+    float pathClearance = 0.0f;
     bool operator==(const TerrainPaintPlacement&) const = default;
 };
 

@@ -2205,7 +2205,7 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
         resources.Update(g_shared.waterCB, &waterData, sizeof(waterData));
         objectCBForDraw = g_shared.waterCB;
     } else {
-        UploadIdentityObjectCB(resources);
+        UploadObjectCB(resources, desc.world);
     }
 
     if (desc.flavor == Flavor::Skinned) {

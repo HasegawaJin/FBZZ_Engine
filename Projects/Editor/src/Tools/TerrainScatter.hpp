@@ -4,7 +4,10 @@
 /// @date    2026-11-04
 #pragma once
 #include <Graphics/Effects/RenderInstanceInput.hpp>
+#include <Math/Matrix4.hpp>
 #include <cstdint>
+#include <functional>
+#include <array>
 #include <span>
 #include <string>
 #include <vector>
@@ -31,6 +34,7 @@ struct TerrainScatterSettings {
     bool alignDownslope = false;
     float downslopeJitter = 0.0f;
     float embedDepth = 0.0f;
+    float minimumDistance = 0.0f;
 };
 
 inline constexpr size_t TERRAIN_SCATTER_STROKE_LIMIT = 512;
@@ -41,16 +45,35 @@ struct TerrainScatterBrush {
     std::span<const math::Vector3> centers;
     float radius = 5.0f;
     bool erase = false;
+    bool polygon = false;
+    float feather = 0.0f;
 };
+
+enum class TerrainPaintReason { ACCEPTED, DENSITY, HOLE, HEIGHT, SLOPE, LAYER, WATER, PATH, OBSTACLE, SPACING, OCCUPIED, COUNT };
+struct TerrainPaintDiagnosticPoint { math::Vector3 position; TerrainPaintReason reason; };
+struct TerrainPaintDiagnostics {
+    std::array<size_t, static_cast<size_t>(TerrainPaintReason::COUNT)> counts{};
+    std::array<size_t, TERRAIN_SCATTER_PALETTE_LIMIT> sources{};
+    std::vector<TerrainPaintDiagnosticPoint> points;
+};
+[[nodiscard]] const char* TerrainPaintReasonLabel(TerrainPaintReason reason);
+/// @return 地形接平面で測った領域の被覆 [0,1]。polygon は単純な閉多角形。
+[[nodiscard]] float TerrainRegionCoverage(const scene::Transform& terrain, const TerrainScatterBrush& brush, const math::Vector3& world);
+[[nodiscard]] bool ValidateTerrainRegion(const scene::Transform& terrain, const TerrainScatterBrush& brush);
 
 struct TerrainPaintPreviewPoint {
     math::Vector3 position;
     size_t sourceIndex;
+    renderer::InstancePlacement placement;
+    math::Matrix4 world = math::Matrix4::Identity();
+    std::string definition;
+    bool erase = false;
 };
 
 /// @note 確定処理と同じ配置案を読み取り、アセットや履歴を作らずに表示用の候補を返す。
 [[nodiscard]] bool BuildTerrainPaintPreview(EditorContext& context, const OpArgs& args,
-    std::vector<TerrainPaintPreviewPoint>& points, size_t& total, std::string& reason);
+    std::vector<TerrainPaintPreviewPoint>& points, size_t& total, std::string& reason,
+    TerrainPaintDiagnostics* diagnostics = nullptr);
 
 /// @return 失敗時は placements を変更せず reason を設定する。成功時は配置を全置換する。
 /// @note 高さは world m、傾斜・yaw は度。density は候補の採用率で、指定層の保存済み重みも乗算する。
@@ -61,7 +84,9 @@ struct TerrainPaintPreviewPoint {
 [[nodiscard]] bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
     const scene::Transform& terrainTransform, const scene::Transform& targetTransform,
     const TerrainScatterSettings& settings, std::vector<renderer::InstancePlacement>& placements,
-    std::string& reason, const TerrainScatterBrush* brush = nullptr);
+    std::string& reason, const TerrainScatterBrush* brush = nullptr,
+    const std::function<bool(const math::Vector3&)>& accepts = {}, TerrainPaintDiagnostics* diagnostics = nullptr,
+    const std::function<TerrainPaintReason(const math::Vector3&)>& classify = {});
 
 void RegisterTerrainScatterOperators(OperatorRegistry& registry);
 } /// @note namespace fbzz::editor

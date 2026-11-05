@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <Math/Matrix4.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -161,6 +162,7 @@ void ResetGpuData(GpuData& gpu, renderer::ResourceManager* resources);
 
 
 struct RenderDesc {
+    math::Matrix4 world = math::Matrix4::Identity();
     renderer::ResourceHandle<renderer::RenderTargetTag> target;
     const renderer::Mesh*       mesh     = nullptr;
     Flavor                      flavor   = Flavor::Surface;

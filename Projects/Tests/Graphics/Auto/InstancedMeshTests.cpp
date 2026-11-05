@@ -223,6 +223,14 @@ TEST_F(InstancedMeshTest, ShadowAlphaCoverageMatchesStandardGBufferIncludingVert
     }
     EXPECT_GT(covered,100u); EXPECT_EQ(differences,0u);
 }
+TEST_F(InstancedMeshTest, ErasePreviewDoesNotContributeColorOrShadows)
+{
+    const auto scene = Scene(130); scene->instances[0].selectionOnly = true;
+    const auto color = Render(scene, 2);
+    for (float value : color) EXPECT_EQ(value, 0.0f);
+    const auto depth = Render(scene, 2, true, true);
+    for (size_t i = 0; i < depth.size(); i += 4) EXPECT_GE(depth[i], 0.9999f);
+}
 TEST_F(InstancedMeshTest, AssetReplacementWithEqualRevisionDoesNotReuseStaleRows)
 {
     auto scene=Scene(130); const auto before=Render(scene,2); auto replaced=std::make_shared<r::InstanceSetData>(*scene->instances[0].data);

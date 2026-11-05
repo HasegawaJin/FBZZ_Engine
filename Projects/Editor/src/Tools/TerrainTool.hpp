@@ -11,6 +11,8 @@
 #include "TerrainBrush.hpp"
 #include "TerrainAuthoring.hpp"
 #include "TerrainPaintLibrary.hpp"
+#include "TerrainPaintMix.hpp"
+#include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -74,6 +76,10 @@ public:
     void DrawPaintAssetInspector(EditorContext& context, const std::string& path);
     void OpenPaintAssetCreation(const std::string& directory);
     void SetPaintPalette(std::vector<std::string> sources, bool focusWindow);
+    [[nodiscard]] std::span<const scene::RenderInstancePreview> PaintPreviewInputs(const scene::Scene& scene) const;
+    [[nodiscard]] TerrainPaintMix CapturePaintMix(const std::string& name) const;
+    void ApplyPaintMix(const TerrainPaintMix& mix);
+    [[nodiscard]] bool SelectPaintInstance(EditorContext& context, const std::string& owner, uint32_t id);
     void DrawHoleContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
     /// @note 取り込み・層生成・散布は共通の明示選択先へ適用する。初回に有効な地形が一個だけなら自動選択する。
     void DrawAuthoringSection(EditorContext& context);
@@ -152,6 +158,29 @@ private:
     double m_nextPaintPreviewTime = 0.0;
     size_t m_paintPreviewTotal = 0;
     std::vector<TerrainPaintPreviewPoint> m_paintPreview;
+    std::vector<scene::RenderInstancePreview> m_paintPreviewInputs;
+    uint64_t m_paintPreviewGeneration = 0;
+    bool m_paintAvoidWater = true;
+    bool m_paintAvoidPaths = true;
+    int m_paintExcludedLayer = -1;
+    float m_paintMinimumDistance = 0.5f;
+    std::string m_paintMixName = "New Mix";
+    std::string m_paintMixPath;
+    std::vector<std::string> m_paintExcludedMaterials;
+    float m_paintFeather = 0.2f;
+    bool m_paintShowDiagnostics = true;
+    TerrainPaintDiagnostics m_paintDiagnostics;
+    int m_instanceMode = 0;
+    std::vector<math::Vector3> m_paintArea;
+    int m_editScope = 0;
+    float m_editKeep = 0.7f, m_editScale = 1.0f, m_editHeight = 1.0f;
+    std::string m_instanceOwner;
+    uint32_t m_instanceId = 0;
+    uint64_t m_instanceRevision = 0, m_instanceLifetime = 0;
+    renderer::InstancePlacement m_instanceDraft;
+    renderer::InstancePlacement m_instanceOriginal;
+    bool m_instanceDragging = false;
+    int m_instanceGizmo = 0;
     std::string m_paintPreviewError;
     std::string m_paintPreviewTerrainId;
     math::Vector3 m_paintPreviewCenter;
@@ -242,11 +271,19 @@ private:
     void DrawHeightMapStampPreview(const ImVec2& viewportMin, const ImVec2& viewportSize, const renderer::Camera& camera) const;
     void DrawScatterSection(EditorContext& context, scene::GameObject* terrain);
     void DrawInstancePaint(EditorContext& context, scene::GameObject* terrain);
+    void DrawInstanceWorkspace(EditorContext& context, scene::GameObject* terrain);
+    void DrawInstanceAdjustments(EditorContext& context, scene::GameObject* terrain);
+    void DrawPaintDiagnostics(const renderer::Camera& camera, const ImVec2& origin, const ImVec2& size) const;
+    void DrawPaintDiagnosticSummary() const;
+    void UpdateInstanceSelection(EditorContext& context, const renderer::Camera& camera, const ImVec2& origin, const ImVec2& size, bool hovered);
+    void UpdatePaintArea(EditorContext& context, const renderer::Camera& camera, const ImVec2& origin, const ImVec2& size, bool pressed, bool hovered);
+    void RefreshInstanceSelection(EditorContext& context);
+    void PublishInstancePreview(EditorContext& context);
+    void ApplyInstanceAdjustment(EditorContext& context, const std::string& action);
     void DrawScatterSettings(scene::GameObject* terrain);
     [[nodiscard]] OpArgs ScatterArguments(const std::string& terrainId, const std::string& targetId) const;
     void UpdateScatterStroke(EditorContext& context, bool pressed, bool held);
     void UpdateScatterPreview(EditorContext& context, bool viewportHovered);
-    void DrawScatterPreview(const ImVec2& viewportMin, const ImVec2& viewportSize, const renderer::Camera& camera) const;
     [[nodiscard]] OpArgs ScatterStrokeArguments(const std::string& terrainId,
         std::span<const math::Vector3> centers, float radius, bool erase) const;
 

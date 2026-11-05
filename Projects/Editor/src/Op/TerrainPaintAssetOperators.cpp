@@ -25,7 +25,8 @@ constexpr PlacementField PLACEMENT_FIELDS[]{
     {"minScale", &asset::TerrainPaintPlacement::minScale}, {"maxScale", &asset::TerrainPaintPlacement::maxScale},
     {"minYaw", &asset::TerrainPaintPlacement::minYaw}, {"maxYaw", &asset::TerrainPaintPlacement::maxYaw},
     {"minSlope", &asset::TerrainPaintPlacement::minSlope}, {"maxSlope", &asset::TerrainPaintPlacement::maxSlope},
-    {"downslopeJitter", &asset::TerrainPaintPlacement::downslopeJitter}, {"embedDepth", &asset::TerrainPaintPlacement::embedDepth}};
+    {"downslopeJitter", &asset::TerrainPaintPlacement::downslopeJitter}, {"embedDepth", &asset::TerrainPaintPlacement::embedDepth},
+    {"waterClearance", &asset::TerrainPaintPlacement::waterClearance}, {"pathClearance", &asset::TerrainPaintPlacement::pathClearance}};
 constexpr const char* CATEGORIES[]{"grass", "tree", "rock", "other"};
 
 OpParam Parameter(const char* name, OpParamType type, OpValue value = {})

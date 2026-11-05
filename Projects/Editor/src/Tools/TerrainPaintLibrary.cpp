@@ -21,6 +21,8 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <algorithm>
+#include <cmath>
+#include <Math/Quaternion.hpp>
 #include <filesystem>
 #include <unordered_map>
 
@@ -125,6 +127,8 @@ bool DrawForm(EditorContext& ctx, PaintForm& form, bool modal)
     ImGui::Checkbox("Face Downslope", &p.alignDownslope);
     if (p.alignDownslope) ImGui::SliderFloat("Downslope Jitter [deg]", &p.downslopeJitter, 0.0f, 180.0f);
     ImGui::DragFloat("Embed Depth [m]", &p.embedDepth, 0.01f, 0.0f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::DragFloat("Water Clearance [m]", &p.waterClearance, 0.1f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::DragFloat("Path Clearance [m]", &p.pathClearance, 0.1f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     asset::TerrainPaintAsset candidate = form.value;
     const bool valid = candidate.definition.Replace(form.parts, form.heights, {}) && asset::ValidateTerrainPaintAsset(candidate);
     if (!valid) ImGui::TextWrapped("Assign every mesh and material. Each LOD needs a part and descending screen-height thresholds.");
@@ -261,6 +265,79 @@ struct TerrainPaintLibrary::Impl {
 
 TerrainPaintLibrary::TerrainPaintLibrary() : m_impl(std::make_unique<Impl>()) {}
 TerrainPaintLibrary::~TerrainPaintLibrary() { m_impl->Release(); }
+
+void* TerrainPaintLibrary::Thumbnail(EditorContext& ctx,const std::string& reference)
+{
+    m_impl->Begin(ctx);
+    const auto path=asset::AssetManager::ResolveAssetPath(reference);
+    if(util::FileSystem::GetExtension(path)!=".terrainpaint")return nullptr;
+    const auto* source=m_impl->Source(path);
+    return source?m_impl->Preview(ctx,path,*source,false):nullptr;
+}
+
+void* TerrainPaintLibrary::GroundThumbnail(EditorContext& ctx,const std::string& reference)
+{
+    if(!ctx.resources||!ctx.imguiRenderer)return nullptr;
+    const auto material=asset::ReadMaterialAuthoring(asset::AssetManager::Load<asset::MaterialAsset>(reference));
+    if(!material)return nullptr;
+    const auto path=matpreview::RepresentativeTexturePath(material->Data());
+    if(path.empty())return nullptr;
+    const auto texture=ctx.resources->LoadTexture(matpreview::TextureLoadPath(path,ctx.projectRoot));
+    return texture.IsValid()?ctx.imguiRenderer->GetImTextureID(texture,*ctx.resources):nullptr;
+}
+
+void* TerrainPaintLibrary::MixThumbnail(EditorContext& ctx,const std::string& key,std::span<const std::string> references,std::span<const float> weights)
+{
+    auto& state=*m_impl;state.Begin(ctx);
+    if(!ctx.renderer||!ctx.resources||!ctx.imguiRenderer||references.empty()||references.size()>16||references.size()!=weights.size())return nullptr;
+    std::string signature;float total=0;
+    std::vector<const asset::TerrainPaintAsset*> sources;
+    for(size_t i=0;i<references.size();++i){if(!std::isfinite(weights[i])||weights[i]<0||weights[i]>100)return nullptr;const auto path=asset::AssetManager::ResolveAssetPath(references[i]);if(util::FileSystem::GetExtension(path)!=".terrainpaint")return nullptr;const auto* value=state.Source(path);if(!value)return nullptr;
+        sources.push_back(value);signature+=TerrainPaintAssetFingerprint(*value)+std::to_string(weights[i]);total+=weights[i];}
+    if(total<=0)return nullptr;
+    if(state.thumbnails.size()>=48&&!state.thumbnails.contains(key)){
+        auto oldest=std::min_element(state.thumbnails.begin(),state.thumbnails.end(),[](const auto& a,const auto& b){return a.second.usedFrame<b.second.usedFrame;});
+        if(oldest==state.thumbnails.end()||oldest->second.usedFrame>=state.frame-1)return nullptr;
+        if(oldest->second.target.IsValid())ctx.resources->Release(oldest->second.target);
+        state.thumbnails.erase(oldest);
+    }
+    auto& thumb=state.thumbnails[key];thumb.usedFrame=state.frame;
+    const int generation=asset::AssetManager::GetAssetGeneration();
+    if(thumb.signature!=signature||thumb.assetGeneration!=generation){thumb.rendered=false;thumb.attempted=false;}
+    if(!thumb.target.IsValid())thumb.target=ctx.resources->CreateRenderTarget(128,128,renderer::CameraDepthTargetDesc(1));
+    if(!thumb.rendered&&!thumb.attempted&&state.renderedThisFrame<2&&thumb.target.IsValid()){
+        thumb.attempted=true;++state.renderedThisFrame;
+        struct Specimen{const asset::TerrainPaintAsset* source;math::Matrix4 world;};
+        std::vector<Specimen> specimens;float spacing=1;
+        for(const auto* source:sources)spacing=std::max(spacing,std::min(12.0f,source->placement.spacing));
+        math::Vector3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
+        for(size_t n=0;n<12;++n){float pick=(static_cast<float>(n)+0.5f)/12*total;size_t index=0;
+            while(index+1<weights.size()&&pick>=weights[index]){pick-=weights[index];++index;}
+            const auto* source=sources[index];const float scale=(source->placement.minScale+source->placement.maxScale)*0.5f;
+            const math::Vector3 position{(static_cast<float>(n%4)-1.5f)*spacing,0,(static_cast<float>(n/4)-1)*spacing};
+            const auto world=math::Matrix4::TRS(position,math::Quaternion::FromEuler({0,static_cast<float>(n)*0.81f,0}),{scale,scale,scale});
+            specimens.push_back({source,world});
+            for(const auto& part:source->definition.Parts())if(part.lod==0)if(const auto* mesh=scene::ResolveMeshPath(part.meshPath,*ctx.resources)){
+                const auto c=world*math::Vector4{mesh->boundsCenter,1};const float r=mesh->boundsRadius*scale;
+                lo.x=std::min(lo.x,c.x-r);lo.y=std::min(lo.y,c.y-r);lo.z=std::min(lo.z,c.z-r);
+                hi.x=std::max(hi.x,c.x+r);hi.y=std::max(hi.y,c.y+r);hi.z=std::max(hi.z,c.z+r);
+            }
+        }
+        const auto center=(lo+hi)*0.5f;const float radius=(hi-lo).Length()*0.5f;bool clear=true,valid=std::isfinite(radius)&&radius>0;
+        for(const auto& specimen:specimens)for(const auto& part:specimen.source->definition.Parts()){
+            if(part.lod!=0)continue;auto* mesh=scene::ResolveMeshPath(part.meshPath,*ctx.resources);
+            const auto material=asset::ReadMaterialAuthoring(asset::AssetManager::Load<asset::MaterialAsset>(part.materialPath));
+            if(!mesh||!material){valid=false;continue;}
+            matpreview::GpuData gpu;const auto values=std::make_shared<const asset::MaterialAssetAuthoring>(material->Data());
+            if(!matpreview::BuildGpuData(gpu,*values,*ctx.resources,ctx.projectRoot)){matpreview::ResetGpuData(gpu,ctx.resources);valid=false;continue;}
+            matpreview::RenderDesc desc;desc.target=thumb.target;desc.mesh=mesh;desc.material=values;desc.gpu=&gpu;desc.clear=clear;
+            desc.world=specimen.world;desc.overrideCenter=center;desc.overrideRadius=radius;desc.rig.preset=matpreview::LightPreset::Outdoor;
+            valid=matpreview::Render(*ctx.renderer,*ctx.resources,desc)&&valid;matpreview::ResetGpuData(gpu,ctx.resources);clear=false;
+        }
+        thumb.rendered=valid;thumb.signature=signature;thumb.assetGeneration=generation;
+    }
+    return thumb.rendered?ctx.imguiRenderer->GetImTextureID(thumb.target,*ctx.resources,0):nullptr;
+}
 
 void TerrainPaintLibrary::OpenCreate(const std::string& directory)
 {

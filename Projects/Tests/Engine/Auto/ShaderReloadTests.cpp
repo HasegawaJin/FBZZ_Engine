@@ -37,6 +37,7 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/ScriptProxy/ScriptMaterialProxy.hpp>
 #include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
+#include <Engine/Scene/Systems/RenderSystem.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Asset/Model.hpp>
@@ -2396,6 +2397,56 @@ TEST_F(MaterialExtractionSharingTest, InstancePartsShareMaterialBindingsAndPrese
     EXPECT_EQ(m_backend.constantBufferUpdates, 2u);
     EXPECT_FLOAT_EQ(Roughness(changed->instances[3].parts[1].mesh.material), 0.8f);
     EXPECT_FLOAT_EQ(Roughness(output->instances[0].parts[0].mesh.material), 0.65f);
+}
+
+TEST_F(MaterialExtractionSharingTest, PaintPreviewIsViewLocalAndLeavesSceneAndSharedGeometryUnchanged)
+{
+    const auto file = m_temp.File("Preview.fzdata").generic_string();
+    ASSERT_TRUE(asset::DataAssetRegistry::Create(file, asset::InstanceSetAsset::TYPE_NAME));
+    auto* definition = static_cast<asset::InstanceSetAsset*>(asset::DataAssetRegistry::Resolve(file));
+    ASSERT_NE(definition, nullptr);
+    const std::array<asset::InstanceMeshPart, 1> parts{{{"primitive:cube", m_materialPath, 0}}};
+    const std::array<float, 1> heights{0.0f};
+    ASSERT_TRUE(definition->Replace(parts, heights, {}));
+    auto data = std::make_shared<r::InstanceSetData>();
+    data->placements.push_back({9, {1, 2, 3}, {0, 0.3f, 0}, {2, 2, 2}, true});
+    const std::array<scene::RenderInstancePreview, 1> previews{{{file, data, math::Matrix4::Identity(), 71, true}}};
+    scene::RenderSystemUIOptions ui; ui.instancePreviews = previews;
+    r::Camera camera; r::RenderSettings settings; r::RenderPassHandles handles;
+    scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
+    scene::RenderFrameGeometryCache cache;
+    context.uiOptions = &ui; scene::ExtractRenderScene(context, &cache);
+    ASSERT_EQ(context.renderScene->instances.size(), 1u);
+    EXPECT_EQ(context.renderScene->instances[0].data, data);
+    EXPECT_TRUE(context.renderScene->instances[0].selectionOnly);
+    EXPECT_TRUE(context.renderScene->instances[0].selected);
+    EXPECT_FALSE(context.renderScene->instances[0].castShadows);
+    ASSERT_EQ(context.renderScene->instances[0].parts.size(), 1u);
+    bool empty = true;
+    for (const auto& object : m_scene.GameObjects()) { (void)object; empty = false; }
+    EXPECT_TRUE(empty);
+    context.uiOptions = nullptr; scene::ExtractRenderScene(context, &cache);
+    EXPECT_TRUE(context.renderScene->instances.empty());
+}
+
+TEST_F(MaterialExtractionSharingTest, LeafWindParametersPackIntoTheStandardPrefixAndDefaultToRigid)
+{
+    m_backend.shaderVars.push_back({"leafWindStrength", 68, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::Float});
+    m_backend.shaderVars.push_back({"leafWindFrequency", 72, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::Float});
+    m_backend.shaderVars.push_back({"leafWindRootHeight", 76, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::Float});
+    auto* material = asset::AssetManager::Get<asset::MaterialAsset>(m_asset);
+    ASSERT_NE(material, nullptr);
+    EditMaterialAuthoring(*material, [](auto& values) {
+        values.params["leafWindStrength"] = {0.15f}; values.params["leafWindFrequency"] = {1.8f}; values.params["leafWindRootHeight"] = {1.6f};
+    });
+    AddObject();
+    const auto output = Extract(); ASSERT_EQ(output->items.size(), 1u);
+    const auto scalar = [](const auto& value, size_t offset) { float result = 0; std::memcpy(&result, value.gbufferParams.data() + offset, 4); return result; };
+    EXPECT_FLOAT_EQ(scalar(output->items[0].material, 68), 0.15f);
+    EXPECT_FLOAT_EQ(scalar(output->items[0].material, 72), 1.8f);
+    EXPECT_FLOAT_EQ(scalar(output->items[0].material, 76), 1.6f);
+    EditMaterialAuthoring(*material, [](auto& values) { values.params["leafWindStrength"] = {0.0f}; });
+    EXPECT_FLOAT_EQ(scalar(Extract()->items[0].material, 68), 0.0f);
 }
 
 TEST_F(MaterialExtractionSharingTest, RetainedCpuTemplatesRestoreRuntimeBytesAndRejectSameHandleAssetReplacement)

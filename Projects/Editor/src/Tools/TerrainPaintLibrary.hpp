@@ -19,6 +19,10 @@ public:
     void OpenCreate(const std::string& directory);
     [[nodiscard]] bool Draw(EditorContext& context, std::span<const std::string> selected, std::vector<std::string>& next);
     void DrawInspector(EditorContext& context, const std::string& path);
+    [[nodiscard]] void* Thumbnail(EditorContext& context, const std::string& reference);
+    [[nodiscard]] void* MixThumbnail(EditorContext& context, const std::string& key,
+        std::span<const std::string> sources, std::span<const float> weights);
+    [[nodiscard]] void* GroundThumbnail(EditorContext& context, const std::string& reference);
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

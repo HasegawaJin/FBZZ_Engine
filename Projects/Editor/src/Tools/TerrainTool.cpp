@@ -10,6 +10,8 @@
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -31,6 +33,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstddef>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -41,6 +44,11 @@
 namespace fbzz::editor {
 
 namespace {
+
+bool IsTerrainPaintReference(const std::string& reference)
+{
+    return util::FileSystem::GetExtension(asset::AssetManager::ResolveAssetPath(reference)) == ".terrainpaint";
+}
 
 ImU32 TerrainPaintColor(size_t index)
 {
@@ -210,6 +218,7 @@ void TerrainTool::Update(
         m_paintPreviewTerrainId.clear();
         m_strokeActive = m_rampDragging = m_flattenLocked = false;
         m_hitTerrain = nullptr;
+        m_instanceOwner.clear();m_instanceId=0;m_instanceDragging=false;m_paintArea.clear();
     }
     /// @note ビューポート外・非アクティブではレイキャストしない。ただし進行中のストロークは離すまで追う。
     const bool scatterPaint = m_mode == Mode::Paint && m_paintTarget == PaintTarget::Instances;
@@ -218,6 +227,7 @@ void TerrainTool::Update(
         m_scatterStroke.clear();
         m_paintPreviewTerrainId.clear();
     }
+    if(m_active&&scatterPaint&&m_instanceMode==1){UpdateInstanceSelection(context,camera,viewportMin,viewportSize,viewportHovered);return;}
     if (!m_active || !viewportHovered) {
         m_isHovering = false;
         m_hitTerrain = nullptr;
@@ -241,11 +251,11 @@ void TerrainTool::Update(
         const float strengthStep = 0.02f;
         if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, true)) {
             if (shift) m_brush.strength = std::clamp(m_brush.strength - strengthStep, 0.001f, 1.0f);
-            else       m_brush.radius   = std::clamp(m_brush.radius   - radiusStep,   0.5f,  50.0f);
+            else       m_brush.radius   = std::clamp(m_brush.radius   - radiusStep,   0.5f, scatterPaint?500.0f:50.0f);
         }
         if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, true)) {
             if (shift) m_brush.strength = std::clamp(m_brush.strength + strengthStep, 0.001f, 1.0f);
-            else       m_brush.radius   = std::clamp(m_brush.radius   + radiusStep,   0.5f,  50.0f);
+            else       m_brush.radius   = std::clamp(m_brush.radius   + radiusStep,   0.5f, scatterPaint?500.0f:50.0f);
         }
     }
 
@@ -281,9 +291,10 @@ void TerrainTool::Update(
     }
 
     if (scatterPaint) {
+        if(m_instanceMode==2){UpdatePaintArea(context,camera,viewportMin,viewportSize,mousePressed,viewportHovered);UpdateScatterPreview(context,viewportHovered);DrawPaintDiagnostics(camera,viewportMin,viewportSize);return;}
         UpdateScatterStroke(context, mousePressed, mouseHeld);
         UpdateScatterPreview(context, viewportHovered);
-        DrawScatterPreview(viewportMin, viewportSize, camera);
+        DrawPaintDiagnostics(camera,viewportMin,viewportSize);
         if (!m_paintPalette.empty() && m_hitTerrain && m_hitTerrain->instanceId == m_heightMapTargetId)
             DrawBrushPreview(viewportMin, viewportSize, camera);
         return;
@@ -425,7 +436,9 @@ void TerrainTool::SetPaintPalette(std::vector<std::string> sources, bool focusWi
     m_paintPalette = std::move(palette);
     m_nextPaintPreviewTime = 0.0;
     m_paintPreview.clear();
+    m_paintPreviewInputs.clear();
     m_paintPreviewTotal = 0;
+    m_paintDiagnostics={};
     m_paintPreviewError.clear();
     m_focusPaintPalette = focusWindow;
     m_scatterStroke.clear();
@@ -492,7 +505,7 @@ OpArgs TerrainTool::ScatterStrokeArguments(const std::string& terrainId,
     args.Set("sources", std::move(sources));
     args.Set("weights", std::move(weights));
     if (std::any_of(m_paintPalette.begin(), m_paintPalette.end(), [](const PaintSource& source) {
-        return asset::AssetDatabase::HintFromRef(source.reference).ends_with(".terrainpaint");
+        return IsTerrainPaintReference(source.reference);
     })) {
         args.Set("minSlope", 0.0f); args.Set("maxSlope", 90.0f);
     }
@@ -501,6 +514,12 @@ OpArgs TerrainTool::ScatterStrokeArguments(const std::string& terrainId,
     args.Set("stroke", std::move(stroke));
     args.Set("brushRadius", radius);
     args.Set("erase", erase);
+    args.Set("avoidWater", m_paintAvoidWater);
+    args.Set("avoidPaths", m_paintAvoidPaths);
+    args.Set("excludedLayer", m_paintExcludedLayer);
+    args.Set("minimumDistance", m_paintMinimumDistance);
+    args.Set("feather",m_paintFeather);args.Set("polygon",m_instanceMode==2);
+    auto excluded=OpData::MakeArray();for(const auto& ref:m_paintExcludedMaterials)excluded.Push(OpData(ref));args.Set("excludedMaterials",std::move(excluded));
     return args;
 }
 
@@ -516,10 +535,13 @@ void TerrainTool::UpdateScatterPreview(EditorContext& context, bool viewportHove
             m_paintPreviewTerrainId.clear();
         }
     }
-    if (!m_showPaintPreview || m_paintPalette.empty() || erase || m_paintPreviewTerrainId.empty()
-        || m_paintPreviewTerrainId != m_heightMapTargetId) {
+    if(m_instanceMode==2&&m_paintArea.size()>=3)m_paintPreviewTerrainId=m_heightMapTargetId;
+    if (!m_showPaintPreview || m_paintPalette.empty() || m_paintPreviewTerrainId.empty()
+        || m_paintPreviewTerrainId != m_heightMapTargetId || (m_instanceMode==2&&m_paintArea.size()<3)) {
         m_paintPreview.clear();
+        m_paintPreviewInputs.clear();
         m_paintPreviewTotal = 0;
+        m_paintDiagnostics={};
         m_paintPreviewError.clear();
         m_nextPaintPreviewTime = 0.0;
         return;
@@ -528,27 +550,34 @@ void TerrainTool::UpdateScatterPreview(EditorContext& context, bool viewportHove
     if (now < m_nextPaintPreviewTime) return;
     /// @note シーン側の占有格子の照会は描画フレームごとに繰り返さない。
     m_nextPaintPreviewTime = now + 0.1;
-    const auto centers = dragging ? std::span<const math::Vector3>(m_scatterStroke)
+    const auto centers = m_instanceMode==2 ? std::span<const math::Vector3>(m_paintArea) : dragging ? std::span<const math::Vector3>(m_scatterStroke)
         : std::span<const math::Vector3>(&m_paintPreviewCenter, 1);
     const auto args = ScatterStrokeArguments(m_paintPreviewTerrainId, centers,
-        dragging ? m_scatterStrokeRadius : m_brush.radius, false);
-    (void)BuildTerrainPaintPreview(context, args, m_paintPreview, m_paintPreviewTotal, m_paintPreviewError);
+        dragging ? m_scatterStrokeRadius : m_brush.radius, erase);
+    (void)BuildTerrainPaintPreview(context, args, m_paintPreview, m_paintPreviewTotal, m_paintPreviewError, &m_paintDiagnostics);
+    m_paintPreviewInputs.clear();
+    m_paintPreviewGeneration = context.activeScene->GetRenderSceneGeneration();
+    std::vector<std::shared_ptr<renderer::InstanceSetData>> data;
+    for (const auto& point : m_paintPreview) {
+        size_t group = 0;
+        for (; group < m_paintPreviewInputs.size(); ++group)
+            if (m_paintPreviewInputs[group].definition == point.definition
+                && std::memcmp(&m_paintPreviewInputs[group].world, &point.world, sizeof(point.world)) == 0) break;
+        if (group == m_paintPreviewInputs.size()) {
+            data.push_back(std::make_shared<renderer::InstanceSetData>());
+            m_paintPreviewInputs.push_back({point.definition, data.back(), point.world, group + 1, erase});
+        }
+        auto placement = point.placement;
+        placement.id = static_cast<uint32_t>(data[group]->placements.size() + 1);
+        data[group]->placements.push_back(placement);
+    }
 }
 
-void TerrainTool::DrawScatterPreview(const ImVec2& viewportMin, const ImVec2& viewportSize, const renderer::Camera& camera) const
+std::span<const scene::RenderInstancePreview> TerrainTool::PaintPreviewInputs(const scene::Scene& scene) const
 {
-    if (m_paintPreview.empty()) return;
-    auto* draw = ImGui::GetForegroundDrawList();
-    const auto viewProjection = camera.GetViewProjection();
-    const ImVec2 viewportMax{viewportMin.x + viewportSize.x, viewportMin.y + viewportSize.y};
-    draw->PushClipRect(viewportMin, viewportMax, true);
-    for (const auto& point : m_paintPreview) {
-        const auto screen = TerrainToolProject(viewProjection, viewportMin, viewportSize, point.position);
-        if (screen.x < viewportMin.x || screen.x > viewportMax.x || screen.y < viewportMin.y || screen.y > viewportMax.y) continue;
-        draw->AddCircleFilled(screen, 5.5f, IM_COL32(19, 22, 25, 220));
-        draw->AddCircleFilled(screen, 3.5f, TerrainPaintColor(point.sourceIndex));
-    }
-    draw->PopClipRect();
+    if (!m_active || m_mode != Mode::Paint || m_paintTarget != PaintTarget::Instances || (!m_showPaintPreview&&m_instanceMode!=1)
+        || m_paintPreviewGeneration != scene.GetRenderSceneGeneration()) return {};
+    return m_paintPreviewInputs;
 }
 
 void TerrainTool::CaptureStrokeBefore(scene::GameObject& go, const scene::TerrainComponent& terrain)
@@ -1173,7 +1202,7 @@ void TerrainTool::DrawBrushSettings()
     if (m_mode == Mode::Paint && m_paintTarget == PaintTarget::HeightMap) return;
     ImGui::Spacing();
     ImGui::SeparatorText("Brush Settings");
-    ImGui::SliderFloat("Radius", &m_brush.radius, 0.5f, 50.0f, "%.1f");
+    ImGui::SliderFloat("Radius", &m_brush.radius, 0.5f, m_mode==Mode::Paint&&m_paintTarget==PaintTarget::Instances?500.0f:50.0f, "%.1f");
     if (m_mode == Mode::Paint && m_paintTarget == PaintTarget::Instances) {
         ImGui::TextDisabled("[ / ] : Radius in meters");
         return;
@@ -1229,6 +1258,7 @@ scene::GameObject* TerrainTool::DrawHeightMapTarget(scene::Scene& scene)
             const bool selected = object->instanceId == m_heightMapTargetId;
             ImGui::PushID(object->instanceId.c_str());
             if (ImGui::Selectable(TerrainToolObjectLabel(*object).c_str(), selected)) {
+                if(m_heightMapTargetId!=object->instanceId)m_paintArea.clear();
                 m_heightMapTargetId = object->instanceId;
                 targetObject = object;
                 m_heightMapStatus.clear();
@@ -1418,47 +1448,121 @@ void TerrainTool::OpenPaintAssetCreation(const std::string& directory)
     m_focusPaintPalette = true;
 }
 
+TerrainPaintMix TerrainTool::CapturePaintMix(const std::string& name) const
+{
+    TerrainPaintMix mix;
+    mix.name = name; mix.radius = m_brush.radius; mix.avoidWater = m_paintAvoidWater; mix.excludedLayer = m_paintExcludedLayer;
+    mix.avoidPaths = m_paintAvoidPaths;mix.excludedMaterials=m_paintExcludedMaterials;mix.feather=m_paintFeather;
+    for (const auto& source : m_paintPalette) mix.sources.push_back({source.reference, source.weight});
+    auto& p = mix.settings;
+    p.spacing = m_scatterSpacing; p.density = m_scatterDensity; p.seed = static_cast<uint32_t>(m_scatterSeed);
+    p.minHeight = m_scatterMinHeight; p.maxHeight = m_scatterMaxHeight;
+    p.minSlope = m_scatterMinSlope; p.maxSlope = m_scatterMaxSlope; p.layer = m_scatterLayer;
+    p.layerThreshold = m_scatterLayerThreshold; p.minScale = m_scatterMinScale; p.maxScale = m_scatterMaxScale;
+    p.minYaw = m_scatterMinYaw; p.maxYaw = m_scatterMaxYaw;
+    p.alignToNormal = m_scatterOrientation == 1; p.alignDownslope = m_scatterOrientation == 2;
+    p.downslopeJitter = m_scatterDownslopeJitter; p.embedDepth = m_scatterEmbedDepth;
+    p.maxInstances = static_cast<uint32_t>(m_scatterMaxInstances); p.minimumDistance = m_paintMinimumDistance;
+    return mix;
+}
+
+void TerrainTool::ApplyPaintMix(const TerrainPaintMix& mix)
+{
+    std::vector<std::string> sources;
+    for (const auto& source : mix.sources) sources.push_back(source.reference);
+    SetPaintPalette(std::move(sources), false);
+    for (size_t i = 0; i < m_paintPalette.size(); ++i) m_paintPalette[i].weight = mix.sources[i].weight;
+    m_paintMixName = mix.name; m_brush.radius = mix.radius; m_paintAvoidWater = mix.avoidWater; m_paintExcludedLayer = mix.excludedLayer;
+    m_paintAvoidPaths = mix.avoidPaths;m_paintExcludedMaterials=mix.excludedMaterials;m_paintFeather=mix.feather;
+    const auto& p = mix.settings;
+    m_scatterSpacing = p.spacing; m_scatterDensity = p.density; m_scatterSeed = static_cast<int>(p.seed);
+    m_scatterMinHeight = p.minHeight; m_scatterMaxHeight = p.maxHeight;
+    m_scatterMinSlope = p.minSlope; m_scatterMaxSlope = p.maxSlope; m_scatterLayer = p.layer;
+    m_scatterLayerThreshold = p.layerThreshold; m_scatterMinScale = p.minScale; m_scatterMaxScale = p.maxScale;
+    m_scatterMinYaw = p.minYaw; m_scatterMaxYaw = p.maxYaw;
+    m_scatterOrientation = p.alignDownslope ? 2 : p.alignToNormal ? 1 : 0;
+    m_scatterDownslopeJitter = p.downslopeJitter; m_scatterEmbedDepth = p.embedDepth;
+    m_scatterMaxInstances = static_cast<int>(p.maxInstances); m_paintMinimumDistance = p.minimumDistance;
+    m_nextPaintPreviewTime = 0.0;
+}
+
 void TerrainTool::DrawInstancePaint(EditorContext& context, scene::GameObject* terrain)
 {
+    DrawInstanceWorkspace(context,terrain);
     std::vector<std::string> selected, next;
     for (const auto& source : m_paintPalette) selected.push_back(source.reference);
-    if (m_paintLibrary.Draw(context, selected, next)) SetPaintPalette(std::move(next), false);
+    if(ImGui::CollapsingHeader("Add / change assets",m_paintPalette.empty()?ImGuiTreeNodeFlags_DefaultOpen:0))
+        if (m_paintLibrary.Draw(context, selected, next)) SetPaintPalette(std::move(next), false);
+    ImGui::SeparatorText("Saved Mixes");
+    AssetSearch::SetProjectRoot(context.projectRoot);
+    std::string useMix;
+    if (ImGui::BeginCombo("Load Mix", m_paintMixName.c_str())) {
+        for (const auto& entry : AssetSearch::Entries()) {
+            if (entry.extension != ".terrainmix") continue;
+            TerrainPaintMix mix;
+            if(!LoadTerrainPaintMix(entry.absolutePath,mix))continue;
+            std::vector<std::string> refs;std::vector<float> weights;
+            for(const auto& source:mix.sources){refs.push_back(source.reference);weights.push_back(source.weight);}
+            ImGui::PushID(entry.absolutePath.c_str());
+            if(void* image=m_paintLibrary.MixThumbnail(context,entry.absolutePath,refs,weights))ImGui::Image(widgets::ToImTextureID(image),{64,64});
+            else ImGui::Dummy({64,64});
+            ImGui::SameLine();
+            if (ImGui::Selectable(mix.name.c_str(), m_paintMixPath == entry.relativePath,0,{0,64})) useMix = entry.relativePath;
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+    if (!useMix.empty()) {
+        OpArgs args; args.Set("path", useMix);
+        const auto result = InvokeOperator(context, "terrain.paint_mix.use", args);
+        m_scatterStatus = TerrainToolOpStatus(result);
+        if (result.ok) m_paintMixPath = useMix;
+    }
+    widgets::InputString("Mix Name", m_paintMixName);
+    ImGui::BeginDisabled(m_paintPalette.empty() || m_paintMixName.empty());
+    if (ImGui::Button("Save Mix")) {
+        std::string filename = m_paintMixName;
+        for (char& c : filename) if (static_cast<unsigned char>(c) < 32 || std::string_view("<>:\"/\\|?*").find(c) != std::string_view::npos) c = '_';
+        m_paintMixPath = "Assets/Terrain/Paint/Mixes/" + filename + ".terrainmix";
+        OpArgs args; args.Set("path", m_paintMixPath); args.Set("name", m_paintMixName);
+        m_scatterStatus = TerrainToolOpStatus(InvokeOperator(context, "terrain.paint_mix.save", args));
+    }
+    ImGui::EndDisabled();
     ImGui::SeparatorText("Placement Palette");
     if (m_paintPalette.empty()) {
         ImGui::TextWrapped("Choose a thumbnail above, or create a Paint asset from a mesh and material.");
         return;
     }
-    float totalWeight = 0.0f;
-    for (const auto& source : m_paintPalette) totalWeight += source.weight;
-    if (ImGui::BeginTable("##paintMix", 3, ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("Asset", ImGuiTableColumnFlags_WidthStretch, 2.0f);
-        ImGui::TableSetupColumn("Weight", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-        ImGui::TableSetupColumn("Share", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("100%").x);
-        ImGui::TableHeadersRow();
-        for (size_t index = 0; index < m_paintPalette.size(); ++index) {
-            auto& source = m_paintPalette[index];
-            const auto hint = asset::AssetDatabase::HintFromRef(source.reference);
-            const auto name = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(hint).stem());
+    float totalWeight=0;for(const auto& source:m_paintPalette)totalWeight+=source.weight;
+    size_t removeIndex=m_paintPalette.size();
+    ImGui::TextDisabled("Weight controls the mix. Counts also depend on each asset's spacing.");
+    if(ImGui::BeginChild("##ActivePaintAssets",{0,std::min(260.0f,static_cast<float>(m_paintPalette.size())*88.0f)},true)) {
+        for(size_t index=0;index<m_paintPalette.size();++index){
+            auto& source=m_paintPalette[index];const auto* paint=IsTerrainPaintReference(source.reference)?asset::AssetManager::Get(asset::AssetManager::Load<asset::TerrainPaintAsset>(source.reference)):nullptr;
+            const auto path=asset::AssetManager::ResolveAssetPath(source.reference);
+            const std::string name=paint?paint->name:util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(path).stem());
             ImGui::PushID(static_cast<int>(index));
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::AlignTextToFramePadding();
-            ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(TerrainPaintColor(index)), "%s", name.c_str());
-            ImGui::SetItemTooltip("%s", hint.c_str());
-            ImGui::TableNextColumn();
-            ImGui::SetNextItemWidth(-1.0f);
-            const float previous = source.weight;
-            if (ImGui::SliderFloat("##weight", &source.weight, 0.0f, 100.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp)) {
-                totalWeight += source.weight - previous;
-                m_nextPaintPreviewTime = 0.0;
+            if(ImGui::BeginTable("##SourceCard",2,ImGuiTableFlags_SizingStretchProp)){
+                ImGui::TableSetupColumn("Preview",ImGuiTableColumnFlags_WidthFixed,64);ImGui::TableSetupColumn("Settings");ImGui::TableNextRow();ImGui::TableNextColumn();
+                if(void* image=m_paintLibrary.Thumbnail(context,source.reference))ImGui::Image(widgets::ToImTextureID(image),{64,64});else ImGui::Dummy({64,64});
+                ImGui::TableNextColumn();ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(TerrainPaintColor(index)),"%s",name.c_str());
+                ImGui::SameLine();if(ImGui::SmallButton("x##RemovePaintSource"))removeIndex=index;
+                ImGui::SetNextItemWidth(-1);
+                if(ImGui::SliderFloat("##weight",&source.weight,0,100,"Weight %.0f",ImGuiSliderFlags_AlwaysClamp))m_nextPaintPreviewTime=0;
+                ImGui::TextDisabled("Mix %.0f%%    Preview %zu",totalWeight>0?source.weight/totalWeight*100:0,m_paintDiagnostics.sources[index]);
+                ImGui::EndTable();
             }
-            ImGui::SetItemTooltip("Relative weight. Zero excludes this asset from new placements.");
-            ImGui::TableNextColumn();
-            ImGui::AlignTextToFramePadding();
-            ImGui::Text("%.0f%%", totalWeight > 0.0f ? 100.0f * source.weight / totalWeight : 0.0f);
             ImGui::PopID();
         }
-        ImGui::EndTable();
+    }ImGui::EndChild();
+    if (removeIndex < m_paintPalette.size()) {
+        m_paintPalette.erase(m_paintPalette.begin() + static_cast<std::ptrdiff_t>(removeIndex));
+        m_scatterStroke.clear();
+        m_paintPreview.clear();
+        m_paintPreviewInputs.clear();
+        m_paintPreviewTotal = 0;
+        m_paintPreviewError.clear();
+        m_nextPaintPreviewTime = 0.0;
     }
     if (ImGui::Checkbox("Live Preview", &m_showPaintPreview)) m_nextPaintPreviewTime = 0.0;
     ImGui::SameLine();
@@ -1466,30 +1570,57 @@ void TerrainTool::DrawInstancePaint(EditorContext& context, scene::GameObject* t
         for (auto& source : m_paintPalette) source.weight = 100.0f;
         m_nextPaintPreviewTime = 0.0;
     }
-    if (m_showPaintPreview && !m_paintPreviewTerrainId.empty() && !m_scatterErase) {
+    if (m_showPaintPreview && !m_paintPreviewTerrainId.empty()) {
         if (!m_paintPreviewError.empty()) TerrainToolStatus("Error: " + m_paintPreviewError);
         else if (m_paintPreviewTotal > m_paintPreview.size())
-            ImGui::TextDisabled("Preview: %zu placements (%zu markers)", m_paintPreviewTotal, m_paintPreview.size());
+            ImGui::TextDisabled("Preview: %zu placements (%zu models shown)", m_paintPreviewTotal, m_paintPreview.size());
         else ImGui::TextDisabled("Preview: %zu placements", m_paintPreviewTotal);
     }
     ImGui::Spacing();
     if (ImGui::RadioButton("Add", !m_scatterErase)) m_scatterErase = false;
     ImGui::SameLine();
     if (ImGui::RadioButton("Erase", m_scatterErase)) m_scatterErase = true;
-    ImGui::TextWrapped(terrain ? "Drag on the terrain. Ctrl+drag switches Add / Erase."
+    if(m_instanceMode==0)ImGui::TextWrapped(terrain ? "Drag on the terrain. Ctrl+drag switches Add / Erase."
                                : "Choose a terrain to begin painting.");
     const bool native = std::any_of(m_paintPalette.begin(), m_paintPalette.end(), [](const PaintSource& source) {
-        return asset::AssetDatabase::HintFromRef(source.reference).ends_with(".terrainpaint");
+        return IsTerrainPaintReference(source.reference);
     });
     if (!native) ImGui::DragFloat("Spacing [m]", &m_scatterSpacing, 0.1f, 0.25f, 10000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::SliderFloat(native ? "Density Multiplier" : "Density", &m_scatterDensity, 0.0f, 1.0f);
+    if(ImGui::CollapsingHeader("Placement boundaries")) {
+        ImGui::Checkbox("Avoid Water", &m_paintAvoidWater);ImGui::Checkbox("Avoid Paths", &m_paintAvoidPaths);
+        ImGui::SetItemTooltip("Named Path / Road / Trail layers are detected. Choose any additional ground materials below.");
+        ImGui::DragFloat("Minimum Separation [m]", &m_paintMinimumDistance, 0.1f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SliderFloat("Soft edge",&m_paintFeather,0,1,"%.2f");
+        const auto* ground=terrain?terrain->GetComponent<scene::TerrainComponent>():nullptr;
+        if(ground&&m_paintExcludedLayer>=0&&m_paintExcludedLayer<ground->LayerCount()){
+            m_paintExcludedMaterials.push_back(ground->layerMaterials[m_paintExcludedLayer]);m_paintExcludedLayer=-1;
+        }
+        ImGui::TextDisabled("Avoid these ground materials:");
+        for(int i=0;ground&&i<ground->LayerCount();++i){
+            const auto& reference=ground->layerMaterials[i];if(reference.empty())continue;
+            auto found=std::find(m_paintExcludedMaterials.begin(),m_paintExcludedMaterials.end(),reference);bool checked=found!=m_paintExcludedMaterials.end();
+            ImGui::PushID(i);
+            if(void* image=m_paintLibrary.GroundThumbnail(context,reference)){ImGui::Image(widgets::ToImTextureID(image),{32,32});ImGui::SameLine();}
+            const auto path=asset::AssetManager::ResolveAssetPath(reference);const auto name=util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(path).stem());
+            if(ImGui::Checkbox(name.empty()?reference.c_str():name.c_str(),&checked)){
+                if(checked)m_paintExcludedMaterials.push_back(reference);else if(found!=m_paintExcludedMaterials.end())m_paintExcludedMaterials.erase(found);m_nextPaintPreviewTime=0;
+            }
+            ImGui::PopID();
+        }
+        ImGui::TextWrapped("Water / path clearance is set per asset in Edit Paint Asset.");
+    }
+    ImGui::Checkbox("Show placement reasons",&m_paintShowDiagnostics);
+    DrawPaintDiagnosticSummary();
     if (native) {
         ImGui::TextWrapped("Each Paint asset supplies its spacing, scale, orientation and slope rules.");
         if (ImGui::CollapsingHeader("Area Filters")) {
+            ImGui::DragInt("Instance Limit",&m_scatterMaxInstances,100,1,1000000,"%d",ImGuiSliderFlags_AlwaysClamp);
             ImGui::DragFloatRange2("Height [world m]", &m_scatterMinHeight, &m_scatterMaxHeight, 1.0f, -100000.0f, 100000.0f);
             ImGui::DragInt("Seed", &m_scatterSeed, 1.0f, 0, (std::numeric_limits<int>::max)(), "%d", ImGuiSliderFlags_AlwaysClamp);
         }
     } else if (ImGui::CollapsingHeader("Placement Rules")) DrawScatterSettings(terrain);
+    DrawInstanceAdjustments(context,terrain);
     TerrainToolStatus(m_scatterStatus);
 }
 

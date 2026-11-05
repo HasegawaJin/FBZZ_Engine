@@ -653,8 +653,10 @@ void RenderSystem(Scene& scene,
         ssaoRaw.IsValid() &&
         ssaoBlur.IsValid();
 
+    const bool previewSelection = uiOptions && std::any_of(uiOptions->instancePreviews.begin(), uiOptions->instancePreviews.end(),
+        [](const auto& preview) { return preview.erase && preview.data && !preview.data->placements.empty(); });
     const bool selectionOutlineEnabled =
-        rs.showSelectionOutline && !rs.selectedObjects.empty() &&
+        rs.showSelectionOutline && (!rs.selectedObjects.empty() || previewSelection) &&
         selectionMaskRT.IsValid() && selectionMaskPso.IsValid() &&
         selectionOutlineShader.IsValid();
 

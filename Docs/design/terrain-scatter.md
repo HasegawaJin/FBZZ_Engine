@@ -43,7 +43,7 @@
 
 一回の操作は一回の Undo。Scene 所有者、Component 寿命、現在の参照・設定・配置 snapshot、未保存破棄世代を検査する。他の操作が配置先を変更していたら履歴の位置もデータも動かさない。Undo は参照または配置内容を戻し、追加した Component は除去する。生成した配置アセットは Undo で削除せず、Redo で再利用する。初回ファイルは操作時に保存し、以後の塗り足し・消去は同じ専用ファイルの draft として通常の保存に従う。未保存破棄は最後に保存した内容を再読込し、旧履歴を無効化する。自身の保存に伴う同内容の監視イベントは snapshot を交換しない。書込み失敗後の Scene は未変更で、.meta または読み戻しの失敗時は既に書いたアセットのパスを返す。
 
-再配置は全置換であり、手動編集を混ぜた target には実行前に注意表示を出す。新しい配置アセットに属する ID は格子番号から決まり、元 asset の個体 ID を移植しない。生成後の地形編集で木・岩は自動移動しない。同じ設定で再実行して確定する。
+再配置は全置換であり、手動編集を混ぜた target には実行前に注意表示を出す。新しい配置アセットに属する ID は格子番号から決まり、元 asset の個体 ID を移植しない。生成後の地形編集で木・岩は自動移動しない。既存 ID を保って地表へ戻す場合は後述の Reground Objects を明示的に実行する。
 
 ## Paint の範囲編集
 
@@ -71,14 +71,14 @@ Import Existing Definition は旧 `.fzdata`、`.meshinstances`、別 `.terrainpa
 
 ## 専用形式の契約
 
-両形式は UTF-8 TOML、`version = 1` の固定スキーマとし、DataAssetFactory へ新しい `.fzdata` 型を登録しない。アセット参照は `guid:` を正本とし `.meta` を随伴する。旧 InstanceSetAsset の `.fzdata` は引き続き読める。
+両形式は UTF-8 TOML とし、DataAssetFactory へ新しい `.fzdata` 型を登録しない。`.terrainpaint` の保存は version=2、読込みは1/2に対応する。`.meshinstances` は version=1を維持する。アセット参照は `guid:` を正本とし `.meta` を随伴する。旧 InstanceSetAsset の `.fzdata` は引き続き読める。
 
 | 拡張子 | 用途 | 主なフィールド |
 |---|---|---|
 | `.terrainpaint` | 再利用する素材定義 | `format = "fbzz.terrainpaint"`、`name`、`category` (`grass/tree/rock/other`)、`mesh.parts`、`mesh.lodHeights`、`placement` |
 | `.meshinstances` | 保存済み配置結果 | `format = "fbzz.meshinstances"`、`terrainPaintRef`、`mesh.parts`、`mesh.lodHeights`、`placements` |
 
-`mesh.parts` は `mesh/material/lod` の配列、`mesh.lodHeights` は最大4段階の閾値。`placement` は上表の spacing、density、min/maxScale、min/maxYaw、min/maxSlope、alignToNormal、alignDownslope、downslopeJitter、embedDepth を持つ。素材に個体配列は含めない。
+`mesh.parts` は `mesh/material/lod` の配列、`mesh.lodHeights` は最大4段階の閾値。`placement` は上表の spacing、density、min/maxScale、min/maxYaw、min/maxSlope、alignToNormal、alignDownslope、downslopeJitter、embedDepth と、version=2の waterClearance / pathClearance [world m、0〜1000] を持つ。version=1では離隔距離を0として読む。素材に個体配列は含めない。
 
 `placements` は同じ長さの `ids`、`positions`、`rotations`、`scales`。位置・回転・scale は各要素が XYZ の配列で、座標は配置 Component のローカル、回転は Euler [rad]、ID は正の安定 ID。モデル・材質の見た目は配置結果へ保存し、terrainPaintRef は来歴として持つ。未知バージョン・壊れた配列・非有限値は部分適用せず拒否する。通常の配布パイプラインは両形式と `.meta` を Assets の一部としてコピーする。
 
@@ -88,7 +88,7 @@ Asset Browser の **Filters → Instance Set** は `.terrainpaint`、`.meshinsta
 
 **Placement Palette** は素材名を色分けし、相対的な **Weight** と正規化した **Share** を表示する。旧素材だけの場合は間隔・密度をストローク全体に適用し、候補ごとに配合比で素材を一つ割り当てる。専用素材は素材ごとの規則に従う。重み 0 は追加から外れる。Ctrl+ドラッグで追加と消去を切り替える。消去は選択素材で描いた配置に適用する。
 
-**Live Preview** はブラシを当てた範囲の候補点を同じ素材色で表示し、最後に当てた位置はパレットの調整中も参照できる。配置確定と同じ計画から、標高・傾斜・穴・占有格子・配合を反映する。表示は最大 384 マーカーで、全候補数をパレットに表示する。プレビューはシーン編集や保存を行わない。
+**Live Preview** は確定と同じ配置案の実モデル・材質・回転・大きさを Scene View へ表示する。最後に当てた位置は配合調整中も参照できる。表示は最大384個、更新は最大10Hz。消去は対象個体だけを選択輪郭へ渡し、色・影の重複描画をしない。Game View、物理、保存、共有ジオメトリキャッシュへは入れず、Scene 世代とツール状態が一致する間だけ表示する。
 
 `terrain.paint_instances` は地形と素材 GUID の組ごとに配置用 InstancedMesh を作る。既存の配置を占有格子として扱い、追加分だけを各素材へ振り分ける。任意の `weights` は `sources` と同順の 0〜100 の数値配列で、省略時は等配合になる。出力は `Assets/Terrain/Scatter/Painted/` 以下へ保存する。全変更の準備が完了した時点でシーンへ反映し、一筆を一件の履歴にまとめる。
 
@@ -97,3 +97,45 @@ Asset Browser の **Filters → Instance Set** は `.terrainpaint`、`.meshinsta
 付属の `Assets/Terrain/Alpine/AlpinePine.fzdata`、`AlpineBoulder.fzdata`、`AlpineRock.fzdata` は個体ゼロの配置テンプレート。Asset Browser のパレットに渡せる。一括ベイクでは地形と別の空 GameObject を target に指定し、source にテンプレートを指定する。Pine は幹と葉を共通の足元原点へ作った二 part を同じ配置に描く。
 
 回帰では seed の再現、密度変更時の候補 ID、穴・高度・傾斜・保存層、回転・負/非一様地形 scale に対する実 world query と配置の一致、非有限値・容量超過で出力不変、template/兄弟参照の不変、保存・再読込、一括 Undo/Redo と競合拒否を検証する。
+
+## 移行済み配置・配置除外・配合の再利用
+
+2026-11-05 の「全て実装して」により以下を採用する。消去は専用 owner のほか、シーン内の有効な InstancedMesh の `terrainPaintRef` が選択素材と同じものを対象にする。来歴の無い旧配置は、全ての mesh/material/LOD 部品が選択素材に含まれる場合に対象にする。幹・葉を分けた配置も同じブラシで消せる。world のブラシを owner の変換後に照合し、残った個体のローカル ID・姿勢は変えない。排他的に参照されるプロジェクト内 `.meshinstances` は draft として編集し、共有ファイルは複製してから参照を切り替える。
+
+追加時は移行済み配置も占有と距離判定へ含める。ブラシ範囲と近傍だけを作業バッファへ取り込み、距離判定には地形平面上の近傍セルを使う。`minimumDistance` は既存・新規個体間の world m。木は素材 spacing の45%を下限とする。草と木・石の格子は分け、森の下草が樹木の粗い格子で欠落することを防ぐ。通常 MeshRenderer のローカル AABB 内部にある地表候補も避ける。
+
+`avoidWater` (既定 true) は有効な海・川・湖の共通 WaterSurfaceQuery を時刻0で評価し、footprint 内かつ基準水面+0.15m以下の地表を除外する。水域の exclusion は共通 query に従う。`avoidPaths` (既定 true) は材質ファイル名に Path / Road / Trail を含む保存地形層を探し、重み0.35以上を除外する。任意の材質名では `excludedLayer` (-1=指定なし) で追加の除外層を選ぶ。shader だけで描いた道は保存層へベイクしてから使う。消去にはこれらの追加用条件を掛けない。
+
+`Saved Mixes` は `.terrainmix` (UTF-8 TOML、format=`fbzz.terrainmix`) を Assets 内に保存する Editor 専用の配合。素材 GUID と比率、ブラシ半径、全散布条件、水・道・追加層の回避条件を保持する。version=2は `excludedMaterials` (最大256個の材質参照) と `feather` [0,1] を保存し、version=1は空配列と0で読む。旧 `excludedLayer` も読める。地形や配置 owner は保存せず、別の場所にも再利用できる。Load Mix / Mix Name / Save Mix で呼び出し・保存する。登録操作は `terrain.paint_mix.save` と `terrain.paint_mix.use`。破損・未知形式・素材の解決失敗は現在のブラシを変更しない。
+
+## 個体編集と広域制作
+
+2026-11-05 の7項目の実装承認により、Objectsの作業を Paint / Select object / Outline area に分ける。共通パレットの選択を保ち、同じ素材と条件を使う。
+
+| 操作 | 契約 |
+|---|---|
+| Reground Objects | 編集済み地形へ再接地する。ID・scaleを保持し、素材の埋め込みを反映する。正の一様owner scaleでは法線合わせ・下り方向も更新し、それ以外は位置だけ戻す。再サンプルできない穴などは元の姿勢を保つ |
+| Select object | Scene Viewで最高詳細LODの部品AABBを判定して個体を選ぶ。W/E/RまたはMove/Rotate/Scaleで操作し、ドラッグ終了を1件のUndoにする。数値入力はApply Transformまでプレビュー。Delete Objectと素材置換も同じ履歴境界を使う |
+| Thin Objects | 対象IDをseedで並べ、Keep densityから計算した個数だけ除く。残る個体のID・姿勢を保持する |
+| Resize Objects | 既存scaleへSize multiplierとHeight multiplierを掛ける。位置とIDを保持する |
+| Outline area | 地形上の角を最大512点指定する。EnterまたはFill Areaで追加・消去。Backspaceで末尾を戻し、Escで解除する。自己交差・退化した輪郭は変更前に拒否する |
+
+既存個体への操作は Last brush position / Outlined area / Whole terrain / Selected object の範囲を明示する。範囲操作は選択素材の来歴を優先し、来歴の無い配置だけ部品の包含一致を使う。別素材の同形状モデルを一緒に変更しない。全域でも指定地形の外の根は対象にしない。
+
+`terrain.edit_instances` は action=`reground/thin/scale/transform/replace` を共有する。個体はowner GUID・安定ID・expectedRevisionで指定し、競合した変換を拒否する。共通素材の分離した部品で根の距離が0.75m以内の旧幹・葉を一緒に扱う。広域の間引き・置換も近傍セルから組を作り、葉のバッチが分かれていても木単位で採否を決める。同じ部品を含む配置同士は一組にしない。置換は元部品を除き、新素材の全パーツを一組だけ生成する。TRSで表現できないshearと非可逆変換は変更前に拒否する。素材の定義変更だけで確定済み結果を更新しない。
+
+初回の新しい配置ファイルは `Assets/Terrain/Scatter/Edited/` に作り、以後は既存の専有draft・共有複製・検査付きUndoの契約を共用する。まとめて変更する全ownerの準備に成功してから反映し、失敗時はSceneを部分変更しない。
+
+## 配置条件の見える化
+
+Soft edgeは輪郭またはブラシ円の境界から `brushRadius * feather` [world m] の帯で追加の採用率を0から1へ線形に変える。格子ID・seedを維持して判定するため、同条件のプレビューと確定は同じ結果になる。消去は輪郭内の個体を対象にし、Soft edgeや追加条件で対象を落とさない。探索は範囲の外接矩形と重なる格子だけ、候補100万点の上限を維持する。
+
+水際の離隔は共通queryで水没を除外したうえで、水面の輪郭から素材のwaterClearanceを確保する。川はSplineの境界、有限水面は外周、Horizontal Seaは地形と基準水位の交線を使う。pathClearanceは指定除外層または自動検出した道の重み0.35の境界から測る。地形三角形と保存層を使うため、shaderだけの岸・道はベイクしてから使う。両距離は0で旧動作を保つ。境界の線分は近傍セルへ索引化し、全候補と全線分の総当たりを避ける。長い斜め外周はセル増大を防ぐため少数の共通線分として照合する。
+
+Ground / water boundariesには地形材質の名前と代表テクスチャを並べ、複数選択できる。参照で保存するので地形層の並べ替えにも追従する。素材ごとの離隔はEdit Paint Assetに置く。
+
+Live Previewは追加・消去予定の個数を素材カードへ表示する。配置できない候補は水=青、道=黄土、斜面=朱、間隔/既存占有=紫、その他=灰の小印と件数で示す。件数はプレビューの同じ配置案から求め、world印は理由ごと最大64点に制限する。Show placement reasonsで切り替え、Game Viewや保存結果には含めない。
+
+選択素材はサムネイル・名前・Weight・Share・予定本数を一枚にまとめる。追加素材のLibraryと詳細条件は折りたたむ。Saved Mixesのサムネイルは配合比から12個の標本を決定的に選び、実メッシュ・材質を共通のworld範囲に描画する。素材または比率が変わったときだけ更新し、通常のサムネイルと同じ48件キャッシュ・1フレーム2件の生成上限を共有する。
+
+基本形状のCPUメッシュは安定したアドレスを保ち、GPUハンドルをResourceManagerの個体IDごとに分離する。Reset後の再取得ではCPU頂点・索引からGPUバッファを再作成し、別Rendererの有効そうに見える古いハンドルをサムネイルへ渡さない。
