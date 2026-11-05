@@ -4,6 +4,7 @@
 /// @date    2026-10-10
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
+#include <Engine/Asset/MeshInstancesAsset.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <algorithm>
 #include <cmath>
@@ -12,9 +13,8 @@ namespace fbzz::scene {
 std::shared_ptr<const renderer::InstanceSetData> InstancedMeshComponent::Snapshot() const
 {
     if (m_runtime && m_runtimeAssetPath==m_instanceSetRef.path) return m_runtime;
-    const auto* value=asset::DataAssetRegistry::Resolve(m_instanceSetRef.path);
-    if (!value || std::string_view(value->GetTypeName())!=asset::InstanceSetAsset::TYPE_NAME) return {};
-    return static_cast<const asset::InstanceSetAsset*>(value)->Snapshot();
+    const auto* value=asset::ResolveMeshInstanceDefinition(m_instanceSetRef.path);
+    return value ? value->Snapshot() : nullptr;
 }
 std::shared_ptr<const renderer::InstanceSetData> InstancedMeshComponent::Snapshot(const asset::InstanceSetAsset& resolvedDefinition) const
 {

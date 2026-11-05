@@ -44,6 +44,8 @@ struct ModelAsset;
 struct PhysicsMaterialAsset;
 struct ClothAsset;
 struct FiberPaintAsset;
+struct TerrainPaintAsset;
+struct MeshInstancesAsset;
 struct SequenceAsset;
 struct TerrainAsset;
 struct TextureAsset;

@@ -33,6 +33,8 @@
 #include <Engine/Asset/PhysicsMaterialImporter.hpp>
 #include <Engine/Asset/ClothImporter.hpp>
 #include <Engine/Asset/FiberPaintAsset.hpp>
+#include <Engine/Asset/TerrainPaintAsset.hpp>
+#include <Engine/Asset/MeshInstancesAsset.hpp>
 #include <Engine/Asset/ParticleCurveImporter.hpp>
 #include <Engine/Asset/VectorFieldImporter.hpp>
 #include <Engine/Asset/VelocityFieldAtlas.hpp>
@@ -781,7 +783,14 @@ int AssetManager::ReloadFromStore(const std::string& absPath)
             ++it;
             continue;
         }
-        if (store.Replace(it->second, std::move(fresh))) ++reloaded;
+        bool unchanged = false;
+        if constexpr (std::is_same_v<T, MeshInstancesAsset>) {
+            if (const auto* current = store.GetPtr(it->second)) unchanged = MeshInstancesAssetsEqual(*current, *fresh);
+        } else if constexpr (std::is_same_v<T, TerrainPaintAsset>) {
+            if (const auto* current = store.GetPtr(it->second)) unchanged = TerrainPaintAssetsEqual(*current, *fresh);
+        }
+        /// @note 自分の保存通知では同じ snapshot を保ち、履歴の競合判定を失効させない。
+        if (unchanged || store.Replace(it->second, std::move(fresh))) ++reloaded;
         ++it;
     }
     return reloaded;
@@ -795,7 +804,7 @@ std::span<const std::string_view> AssetManager::HotReloadableExtensions()
     /// @note キャッシュが作り直される。載せ忘れると «直したのに反映されない» になる。
     static constexpr std::string_view kExtensions[] = {
         ".mat", ".anim", ".animcontroller", ".mask", ".fzdata", ".physmat", ".ragdoll",
-        ".cloth", ".fiberpaint", ".synth", ".terrain", ".sequence", ".curve", ".gradient",
+        ".cloth", ".fiberpaint", ".terrainpaint", ".meshinstances", ".synth", ".terrain", ".sequence", ".curve", ".gradient",
         /// @note 速度場。GPU 常駐はアトラスが持つのでアセット自体は CPU データだけ。
         ".fga",
     };

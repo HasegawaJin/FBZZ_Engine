@@ -8,9 +8,9 @@
 
 ## 作者データと所有
 
-InstanceSetAssetは既存.fzdataの内蔵DataAssetとして、mesh/material参照、partのLOD番号、最大4段階のscreen-height閾値、stable ID、local位置・Euler回転[rad]・scaleを持つ。全partは同じ個体配列を共有する。参照はguidを正本にし、primitiveも既存MeshResolverを使う。配列の長さ不一致・ID重複・非有限値・不正LOD・過剰個体数は診断して描画を拒否する。共有assetへの変更は全参照へ反映する。
+配置結果は専用 `.meshinstances`、Terrain Paint の再利用素材は `.terrainpaint` を使う。旧 InstanceSetAsset の `.fzdata` は読み込み互換を維持する。内部の InstanceSetAsset 値は mesh/material参照、partのLOD番号、最大4段階のscreen-height閾値、stable ID、local位置・Euler回転[rad]・scaleを持つ。全partは同じ個体配列を共有する。参照はguidを正本にし、primitiveも既存MeshResolverを使う。配列の長さ不一致・ID重複・非有限値・不正LOD・過剰個体数は診断して描画を拒否する。共有assetへの変更は全参照へ反映する。専用形式と作成手順は [地形 Paint](terrain-scatter.md) に従う。
 
-InstancedMeshComponentはasset参照・有効状態・影・描画距離を持ち、Playでの個体変更はcomponent専用のcopy-on-write状態へ保存する。Edit Sceneの配置・asset・履歴をPlayで変更しない。削除したIDを新個体へ再利用しない。保存とUndoは既存Reflection/DataAsset経路を使う。作者向けC# APIは型付きasset設定とIDによる個体操作を提供し、Engine実装型を公開しない。
+InstancedMeshComponentはasset参照・有効状態・影・描画距離を持ち、Playでの個体変更はcomponent専用のcopy-on-write状態へ保存する。Edit Sceneの配置・asset・履歴をPlayで変更しない。削除したIDを新個体へ再利用しない。Component の保存キーは既存Reflectionと互換を保ち、専用配置は型付き AssetManager から解決する。作者向けC# APIは型付きasset設定とIDによる個体操作を提供し、Engine実装型を公開しない。
 
 ## 描画
 
@@ -50,3 +50,5 @@ GPU 回帰の `InstancedVegetationTest` / `TerrainVegetationShaderTest` は `Ins
 ## Loaded GUID resolution (2026-10-18)
 
 Render extraction resolves loaded instance-set GUIDs through bounded canonical-key aliases. Each hit checks the current AssetDatabase revision and reacquires the current DataAssetRegistry entry; no asset pointer is retained. Index moves/removal/project retirement and ClearCache reopen normal resolution. Reload, undo, replacement and snapshots remain authoritative in the registry. Failed loads and non-GUID references retain the original filesystem, path-priority and retry behavior. Raw disk presence is checked on cold/reindexed lookup rather than polled for every render frame of an already-loaded definition. Absolute-path normalization separately retains only pure path spelling, with locale folding left live and relative inputs excluded.
+
+Dedicated `.meshinstances` / `.terrainpaint` GUIDs use a bounded cache of generational AssetManager handles. Every hit reacquires the current value through `Get`; unload and AssetDatabase revision changes reopen normal resolution. The dispatcher chooses the format from the indexed path without adding filesystem checks to the legacy warm path. Snapshot revisions remain unique across imported object replacements, and same-content native reloads retain the current snapshot for editing history.

@@ -9,6 +9,7 @@
 #include <bit>
 #include <limits>
 #include <unordered_set>
+#include <atomic>
 
 namespace fbzz::asset {
 namespace {
@@ -75,7 +76,9 @@ bool InstanceSetAsset::Rebuild()
     for (size_t i=0; i<m_lodHeights.size(); ++i) { if (!hasLod[i]) return invalid(); add(std::bit_cast<uint32_t>(m_lodHeights[i])); }
     add(count);
     if (m_snapshot && hash==m_signature) return true;
-    auto snapshot=std::make_shared<renderer::InstanceSetData>(); snapshot->revision=++m_revision;
+    /// @note Importer の再読込で別実体になっても、描画側へ渡す世代は過去の値と衝突させない。
+    static std::atomic<uint64_t> nextRevision{1};
+    auto snapshot=std::make_shared<renderer::InstanceSetData>(); snapshot->revision=m_revision=nextRevision.fetch_add(1, std::memory_order_relaxed);
     snapshot->placements.reserve(count);
     for (size_t i=0; i<count; ++i) snapshot->placements.push_back({static_cast<uint32_t>(m_ids[i]),m_positions[i],m_rotations[i],m_scales[i],true});
     m_parts.clear();

@@ -15,6 +15,7 @@
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
+#include <Engine/Asset/MeshInstancesAsset.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
 #include <Engine/Scene/SceneAssetReferences.hpp>
@@ -137,9 +138,8 @@ ManagedBridgeStatus RunRenderComponentServices(Scene& scene, Script& view, GameO
             status=Reference(row->m_instanceSetRef.path,out); break;
         case 6: {
             if (!Packet(read,false,integer,p,t,0,1)) return Status::INVALID_ARGUMENT;
-            const auto* candidate=asset::DataAssetRegistry::Resolve(t[0]);
-            out.integer=candidate && std::string_view(candidate->GetTypeName())==asset::InstanceSetAsset::TYPE_NAME
-                && static_cast<const asset::InstanceSetAsset*>(candidate)->Snapshot()!=nullptr;
+            const auto* candidate=asset::ResolveMeshInstanceDefinition(t[0]);
+            out.integer=candidate && candidate->Snapshot()!=nullptr;
             if (out.integer) { row->m_instanceSetRef.path=t[0]; row->ResetOverrides(); }
             status=Status::OK; break;
         }

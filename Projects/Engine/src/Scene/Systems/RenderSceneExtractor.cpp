@@ -26,6 +26,7 @@
 #include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
+#include <Engine/Asset/MeshInstancesAsset.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Scene/MeshResolver.hpp>
 #include <Engine/Scene/Systems/RenderPasses/GeometryRoute.hpp>
@@ -2259,9 +2260,9 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             const auto* component=ctx.scene.GetComponent<InstancedMeshComponent>(id);
             if (!go || !go->activeInHierarchy() || !component || !component->m_enabled) continue;
             InstancePhaseTimer setSnapshotTimer(collectInstancePhases, setSnapshotNs);
-            const auto* assetBase=asset::DataAssetRegistry::Resolve(component->m_instanceSetRef.path);
-            if (!assetBase || std::string_view(assetBase->GetTypeName())!=asset::InstanceSetAsset::TYPE_NAME) continue;
-            const auto& definition=*static_cast<const asset::InstanceSetAsset*>(assetBase);
+            const auto* assetBase=asset::ResolveMeshInstanceDefinition(component->m_instanceSetRef.path);
+            if (!assetBase) continue;
+            const auto& definition=*assetBase;
             renderer::RenderInstanceInput input;
             input.data=component->Snapshot(definition);
             if (!input.data || input.data->placements.empty()) continue;
