@@ -462,6 +462,7 @@ void AssetBrowserPanel::RefreshDirectory()
     evictStaleEntries(m_texturePreviews);
     evictStaleEntries(m_materialPreviews);
     evictStaleEntries(m_meshPreviews);
+    evictStaleEntries(m_instanceSetPreviews);
     evictStaleEntries(m_prefabPreviews);
     evictStaleEntries(m_vfxPreviews);
     evictStaleEntries(m_curveAssetPreviews);
@@ -483,6 +484,7 @@ void AssetBrowserPanel::RefreshDirectory()
     };
     retryFailures(m_texturePreviews); retryFailures(m_materialPreviews);
     retryFailures(m_meshPreviews); retryFailures(m_modelAssetPreviews);
+    retryFailures(m_instanceSetPreviews);
     retryFailures(m_prefabPreviews); retryFailures(m_texDescPreviews);
     m_texLoadQueue.clear();
     for (auto& entry : m_texturePreviews)
@@ -497,6 +499,7 @@ void AssetBrowserPanel::RefreshDirectory()
         e.isDir = util::FileSystem::IsDirectory(p);
         if (!ShouldDisplayEntry(e.path, e.name, e.isDir)) continue;
         if (!e.isDir) {
+            e.isInstanceSet = e.ext == ".fzdata" && IsInstanceSetFile(e.path);
             e.hasSubAssets = IsImportableRaw(e.ext);
             if (e.ext == ".png" || e.ext == ".jpg" || e.ext == ".jpeg" ||
                 e.ext == ".tga" || e.ext == ".dds" || e.ext == ".hdr" ||

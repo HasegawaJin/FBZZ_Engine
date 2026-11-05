@@ -43,6 +43,7 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
         for (const auto& key : keys) ResetSingleAssetPreviewCache(key);
     };
     releaseDependent(m_prefabPreviews);
+    releaseDependent(m_instanceSetPreviews);
     releaseDependent(m_vfxPreviews);
     releaseDependent(m_terrainPreviews);
 }

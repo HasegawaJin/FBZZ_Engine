@@ -67,7 +67,7 @@ private:
     /// @note メンバー群 (m_typeFilterMask 等) より前に置く。
     /// @note Skeleton は無い。.skel は ShouldDisplayEntry が生成物として隠すため、フィルタに出しても 0 件になる。
     enum class TypeFilter { All=0, Scene, Material, Script, Texture, Audio, Mesh, Shader, Prefab,
-                            Animation, Asset, COUNT };
+                            Animation, Asset, InstanceSet, COUNT };
 
     struct Entry {
         std::string path;
@@ -80,6 +80,7 @@ private:
         bool        hasSubAssets = false; /// @note FBX または Sprite Texture の展開トグルを表示する
         bool        isSpriteSubAsset = false; /// @note 元画像の SpriteRect を指す仮想サブエントリ
         std::string sourceAssetPath; /// @note 仮想サブエントリのプレビューに使う元素材
+        bool        isInstanceSet = false;
         uint32_t    spriteIndex = 0; /// @note .meta 内 sprites 配列の添字
     };
 
@@ -225,6 +226,10 @@ private:
     void HandleRevealRequest(EditorContext& ctx);
     [[nodiscard]] bool PassesTypeFilter(const Entry& e) const;
     /// @note 単一の種別に当てはまるか。複数フィルタの OR 判定から呼ばれる。
+    [[nodiscard]] static bool IsInstanceSetFile(const std::string& path);
+    void DrawTerrainPaintAction(EditorContext& ctx);
+    std::string m_terrainPaintStatus;
+    void ToggleEntrySelection(EditorContext& ctx, const std::string& path);
     [[nodiscard]] static bool MatchesTypeFilter(const Entry& e, TypeFilter type);
     /// @}
 
@@ -510,6 +515,9 @@ private:
         asset::Model* model = nullptr;
         std::filesystem::file_time_type lastWriteTime{};
     };
+    struct InstanceSetPreview : ThumbnailBase {
+        std::filesystem::file_time_type lastWriteTime{};
+    };
     struct PrefabPreview : ThumbnailBase {
         asset::AssetLease<asset::Model> lease;
         asset::Model* model = nullptr;
@@ -577,6 +585,7 @@ private:
     std::deque<std::string>                               m_texLoadQueue;
     std::unordered_map<std::string, MaterialPreview>      m_materialPreviews;
     std::unordered_map<std::string, MeshPreview>          m_meshPreviews;
+    std::unordered_map<std::string, InstanceSetPreview>   m_instanceSetPreviews;
     std::unordered_map<std::string, PrefabPreview>        m_prefabPreviews;
     std::unordered_map<std::string, VfxPreview>           m_vfxPreviews;
     std::unordered_map<std::string, CurveAssetPreview>    m_curveAssetPreviews;

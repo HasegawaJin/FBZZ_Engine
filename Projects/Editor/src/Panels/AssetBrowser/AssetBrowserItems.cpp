@@ -20,6 +20,9 @@
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Engine/Asset/InstanceSetAsset.hpp>
+#include <Engine/Scene/MeshResolver.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <toml++/toml.hpp>
 #include <Engine/Asset/ModelAsset.hpp>
@@ -648,6 +651,7 @@ const char* AssetBrowserPanel::TypeFilterLabel(TypeFilter type)
     case TF::Prefab:    return "Prefab";
     case TF::Animation: return "Animation";
     case TF::Asset:     return "Asset";
+    case TF::InstanceSet: return "Instance Set";
     default:            return "All";
     }
 }
@@ -992,6 +996,18 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
     }
 }
 
+void AssetBrowserPanel::ToggleEntrySelection(EditorContext& ctx, const std::string& path)
+{
+    if (m_selectedPaths.empty() && !ctx.selectedAssetPath.empty())
+        m_selectedPaths.insert(ctx.selectedAssetPath);
+    if (m_selectedPaths.erase(path) == 0) {
+        m_selectedPaths.insert(path);
+        SelectAsset(ctx, path);
+    } else if (ctx.selectedAssetPath == path) {
+        SelectAsset(ctx, m_selectedPaths.empty() ? std::string{} : *std::min_element(m_selectedPaths.begin(), m_selectedPaths.end()));
+    }
+}
+
 void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
 {
     /// @note 行ごとに ID を分けるのは、DrawEntryContextMenu は固定文字列 "##entry_ctx" でポップアップを
@@ -1032,12 +1048,11 @@ void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
     if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !m_treeRowDragStarted) {
         const bool ctrl = ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
         if (ctrl) {
-            if (m_selectedPaths.count(e.path)) m_selectedPaths.erase(e.path);
-            else                               m_selectedPaths.insert(e.path);
+            ToggleEntrySelection(ctx, e.path);
         } else {
             m_selectedPaths.clear();
+            SelectAsset(ctx, e.path);
         }
-        SelectAsset(ctx, e.path);
         m_lastClickedPath = e.path;
     }
 
@@ -1105,9 +1120,9 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
     TouchAssetPreview(e.path);
     const bool previewType = IsTextureExt(e.ext) || IsFontExt(e.ext) || IsMeshExt(e.ext) ||
         e.isSpriteSubAsset || e.ext == ".tex" || e.ext == ".mat" || e.ext == ".prefab" ||
-        e.ext == ".vfx" || e.ext == ".terrain" || e.ext == ".curve" || e.ext == ".gradient";
+        e.ext == ".vfx" || e.ext == ".terrain" || e.ext == ".curve" || e.ext == ".gradient" || e.isInstanceSet;
     const bool textPreview = e.ext == ".mat" || e.ext == ".prefab" || e.ext == ".vfx" ||
-        e.ext == ".terrain" || e.ext == ".curve" || e.ext == ".gradient";
+        e.ext == ".terrain" || e.ext == ".curve" || e.ext == ".gradient" || e.isInstanceSet;
     if (textPreview) {
         std::error_code error;
         const auto bytes = std::filesystem::file_size(util::FileSystem::PathFromUtf8(e.path), error);
@@ -1118,7 +1133,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
     }
     /// @note Cold 3D thumbnail work is limited to one visible entry per ImGui frame across this panel.
-    if (IsMeshExt(e.ext) || e.ext == ".mat" || e.ext == ".prefab" || e.ext == ".terrain") {
+    if (IsMeshExt(e.ext) || e.ext == ".mat" || e.ext == ".prefab" || e.ext == ".terrain" || e.isInstanceSet) {
         auto needsWork = [&](const auto& cache) {
             const auto it = cache.find(e.path);
             if (it == cache.end()) return true;
@@ -1142,7 +1157,8 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         const bool work = IsImportableRaw(e.ext) || e.isSubAsset ? needsWork(m_modelAssetPreviews)
             : IsMeshExt(e.ext) ? needsWork(m_meshPreviews)
             : e.ext == ".mat" ? needsWork(m_materialPreviews)
-            : e.ext == ".prefab" ? needsWork(m_prefabPreviews) : needsWork(m_terrainPreviews);
+            : e.ext == ".prefab" ? needsWork(m_prefabPreviews)
+            : e.isInstanceSet ? needsWork(m_instanceSetPreviews) : needsWork(m_terrainPreviews);
         if (work) {
             const int frame = ImGui::GetFrameCount();
             if (m_thumbnailWorkFrame == frame) {
@@ -1586,6 +1602,58 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, badge)) return;
     }
 
+    if (e.isInstanceSet && ctx.renderer && ctx.resources && ctx.imguiRenderer) {
+        auto& preview = m_instanceSetPreviews[e.path];
+        const auto writeTime = ReadLastWriteTime(e.path);
+        if (preview.lastWriteTime != writeTime) {
+            preview.lastWriteTime = writeTime;
+            preview.thumbnailRendered = false;
+            MarkPreviewSucceeded(preview);
+        }
+        if (!preview.thumbnailRendered && CanAttemptPreview(preview)) {
+            EnsureThumbnailRT(preview, ctx);
+            const auto* value = asset::DataAssetRegistry::Resolve(e.path);
+            const auto* set = value && std::string_view(value->GetTypeName()) == asset::InstanceSetAsset::TYPE_NAME
+                ? static_cast<const asset::InstanceSetAsset*>(value) : nullptr;
+            if (set && !set->Parts().empty() && preview.thumbnailRT.IsValid()) {
+                uint32_t lod = set->Parts().front().lod;
+                for (const auto& part : set->Parts()) lod = std::min(lod, part.lod);
+                std::vector<std::pair<renderer::Mesh*, const asset::InstanceMeshPart*>> parts;
+                for (const auto& part : set->Parts()) {
+                    if (part.lod != lod) continue;
+                    if (auto* mesh = scene::ResolveMeshPath(part.meshPath, *ctx.resources))
+                        parts.emplace_back(mesh, &part);
+                }
+                if (!parts.empty()) {
+                    math::Vector3 center{};
+                    for (const auto& [mesh, part] : parts) center += mesh->boundsCenter;
+                    center = center / static_cast<float>(parts.size());
+                    float radius = 0.01f;
+                    for (const auto& [mesh, part] : parts)
+                        radius = std::max(radius, (mesh->boundsCenter - center).Length() + mesh->boundsRadius);
+                    for (const auto& [mesh, part] : parts) {
+                        MaterialPreview material;
+                        const auto live = part->materialPath.empty() ? nullptr : asset::ReadMaterialAuthoring(
+                            asset::AssetManager::Load<asset::MaterialAsset>(part->materialPath));
+                        if (live) material.asset = live->Data();
+                        const auto flavor = matpreview::DetectFlavor(material.asset);
+                        const bool hasMaterial = live && flavor == matpreview::Flavor::Surface
+                            && RebuildMaterialThumbnailGpuData(material, ctx);
+                        const bool drawn = RenderMeshThumbnail(*ctx.renderer, *ctx.resources, *mesh, preview.thumbnailRT, {},
+                            hasMaterial ? SelectMaterialColor(material.asset) : ImVec4{0.67f, 0.73f, 0.65f, 1.0f},
+                            hasMaterial ? &material.gpu : nullptr, matpreview::Flavor::Surface,
+                            hasMaterial ? &material.asset : nullptr, !preview.thumbnailRendered, center, radius);
+                        matpreview::ResetGpuData(material.gpu, ctx.resources);
+                        preview.thumbnailRendered = preview.thumbnailRendered || drawn;
+                    }
+                }
+            }
+            if (preview.thumbnailRendered) MarkPreviewSucceeded(preview);
+            else MarkPreviewFailed(preview);
+        }
+        if (DrawThumbnailIfReady(preview, origin, sz, ctx, hovered, "INSTANCE SET")) return;
+    }
+
     /// @note .prefab: TOML を解析してメッシュを持つ場合は 3D サムネイル、なければキューブアイコン
     if (e.ext == ".prefab") {
         if (ctx.renderer && ctx.resources && ctx.imguiRenderer) {
@@ -1867,7 +1935,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
             }
         };
         read(m_texturePreviews, e.isSpriteSubAsset ? e.sourceAssetPath : e.path);
-        read(m_materialPreviews, e.path); read(m_meshPreviews, e.path);
+        read(m_materialPreviews, e.path); read(m_meshPreviews, e.path); read(m_instanceSetPreviews, e.path);
         read(m_modelAssetPreviews, e.path); read(m_prefabPreviews, e.path); read(m_texDescPreviews, e.path);
         if (e.ext == ".vfx") {
             const auto it = m_vfxPreviews.find(e.path);
@@ -1994,6 +2062,7 @@ void AssetBrowserPanel::ResetSingleAssetPreviewCache(const std::string& path)
     };
     releaseAndErase(m_materialPreviews);
     releaseAndErase(m_meshPreviews);
+    releaseAndErase(m_instanceSetPreviews);
     releaseAndErase(m_prefabPreviews);
     releaseAndErase(m_vfxPreviews);
     releaseAndErase(m_curveAssetPreviews);
@@ -2051,6 +2120,7 @@ void AssetBrowserPanel::ClearAllAssetPreviews()
     };
     releaseAll(m_materialPreviews);
     releaseAll(m_meshPreviews);
+    releaseAll(m_instanceSetPreviews);
     releaseAll(m_prefabPreviews);
     releaseAll(m_terrainPreviews);
     releaseAll(m_modelAssetPreviews);
@@ -2167,16 +2237,14 @@ void AssetBrowserPanel::HandleEntryClick(const Entry& e, EditorContext& ctx, boo
     const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
 
     if (ctrl) {
-        if (m_selectedPaths.count(e.path)) m_selectedPaths.erase(e.path);
-        else                                m_selectedPaths.insert(e.path);
-        SelectAsset(ctx, e.path);
+        ToggleEntrySelection(ctx, e.path);
         m_lastClickedPath     = e.path;
         m_pendingRenamePath.clear();
     } else if (shift && !m_lastClickedPath.empty()) {
         m_selectedPaths.clear();
         bool inside = false;
-        for (const Entry& entry : m_entries) {
-            if (entry.isDir) continue;
+        for (const Entry& entry : VisibleEntries()) {
+            if (entry.isDir || !PassesTypeFilter(entry)) continue;
             if (entry.path == m_lastClickedPath || entry.path == e.path) {
                 inside = !inside;
                 m_selectedPaths.insert(entry.path);

@@ -45,8 +45,26 @@
 
 再配置は全置換であり、手動編集を混ぜた target には実行前に注意表示を出す。新しい配置アセットに属する ID は格子番号から決まり、元 asset の個体 ID を移植しない。生成後の地形編集で木・岩は自動移動しない。同じ設定で再実行して確定する。
 
+## Paint の範囲編集
+
+Terrain Tool と Map Editing Mode の Paint は材質・草・木や石を切り替える。草は対象地形の Fiber が参照する保存層を既存の地形ブラシで塗り、消去時は指定した別の層へ塗り戻す。未設定の地形では Paint から既存の草設定操作を呼べる。
+
+`terrain.scatter` に `stroke` を渡すと全置換を範囲編集へ切り替える。 `stroke` は 1〜512 個の world XYZ 点、`brushRadius` は地形の接平面上で scale 適用後の距離 [m]、`erase` は消去。点の円の和を使う。追加は既存と同じ候補格子・条件を使い、既存配置が入る格子には重ねない。消去は円内の配置だけに適用し、標高・傾斜・密度フィルターを使わない。既存配置の ID と姿勢を保ち、追加時に ID が衝突したら未使用の ID を割り当てる。配置先がすでにアセットを参照している場合、その mesh・材質・LOD を引き継ぐ。
+
+ストロークはドラッグ中に範囲を表示し、離したときに 1 回保存して 1 件の Undo に積む。変更が無い場合は保存・履歴を作らない。追加候補の探索はブラシに重なる格子に絞る。
+
+## Asset Browser の配置パレット
+
+Asset Browser の **Filters → Instance Set** は配置に使える `.fzdata` を拾う。**All Assets** でフォルダをまたいで表示する。タイルはモデルの最高詳細 LOD の部品を同じ視点から描く。Ctrl+クリックで最大 16 素材を選び、**Paint on Terrain** で既存 Paint に渡す。
+
+**Placement Palette** は素材名を色分けし、相対的な **Weight** と正規化した **Share** を表示する。間隔・密度はストローク全体に適用し、候補ごとに配合比で素材を一つ割り当てる。重み 0 は追加から外れる。Ctrl+ドラッグで追加と消去を切り替える。消去は選択素材で描いた配置に適用する。
+
+**Live Preview** はブラシを当てた範囲の候補点を同じ素材色で表示し、最後に当てた位置はパレットの調整中も参照できる。配置確定と同じ計画から、標高・傾斜・穴・占有格子・配合を反映する。表示は最大 384 マーカーで、全候補数をパレットに表示する。プレビューはシーン編集や保存を行わない。
+
+`terrain.paint_instances` は地形と素材 GUID の組ごとに配置用 InstancedMesh を作る。既存の配置を占有格子として扱い、追加分だけを各素材へ振り分ける。任意の `weights` は `sources` と同順の 0〜100 の数値配列で、省略時は等配合になる。出力は `Assets/Terrain/Scatter/Painted/` 以下へ保存する。全変更の準備が完了した時点でシーンへ反映し、一筆を一件の履歴にまとめる。
+
 ## 素材と開始手順
 
-付属の `Assets/Terrain/Alpine/AlpinePine.fzdata`、`AlpineBoulder.fzdata`、`AlpineRock.fzdata` は個体ゼロの配置テンプレート。地形と別の空 GameObject を用意して target に指定し、source にテンプレートを指定する。Pine は幹と葉を共通の足元原点へ作った二 part を同じ配置に描く。
+付属の `Assets/Terrain/Alpine/AlpinePine.fzdata`、`AlpineBoulder.fzdata`、`AlpineRock.fzdata` は個体ゼロの配置テンプレート。Asset Browser のパレットに渡せる。一括ベイクでは地形と別の空 GameObject を target に指定し、source にテンプレートを指定する。Pine は幹と葉を共通の足元原点へ作った二 part を同じ配置に描く。
 
 回帰では seed の再現、密度変更時の候補 ID、穴・高度・傾斜・保存層、回転・負/非一様地形 scale に対する実 world query と配置の一致、非有限値・容量超過で出力不変、template/兄弟参照の不変、保存・再読込、一括 Undo/Redo と競合拒否を検証する。

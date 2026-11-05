@@ -3,7 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include "AssetBrowser/AssetBrowserCommon.hpp"
+#include <Editor/Op/EditorOperator.hpp>
+#include "../Tools/TerrainScatter.hpp"
+#include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetSearch.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/InstanceSetAsset.hpp>
+#include <fstream>
 #include <Engine/Profiler/ProfileScope.hpp>
 
 namespace fbzz::editor {
@@ -14,7 +20,7 @@ namespace fbzz::editor {
 
 bool AssetBrowserPanel::IsGlobalSearchActive() const
 {
-    return m_searchAllFolders && m_searchBuf[0] != '\0';
+    return m_searchAllFolders && (m_searchBuf[0] != '\0' || IsTypeFilterActive(TypeFilter::InstanceSet));
 }
 
 const std::vector<AssetBrowserPanel::Entry>& AssetBrowserPanel::VisibleEntries() const
@@ -55,6 +61,7 @@ std::vector<std::string> AssetBrowserPanel::ExtensionsForTypeFilter(TypeFilter t
     case TypeFilter::Animation: return { ".anim", ".animcontroller", ".animctrl", ".mask",
                                          ".sequence" };
     case TypeFilter::Asset:     return { ".asset" };
+    case TypeFilter::InstanceSet: return { ".fzdata" };
     case TypeFilter::All:
     default:                    return {};
     }
@@ -147,7 +154,7 @@ void AssetBrowserPanel::RefreshSearchResults()
     m_searchResults.clear();
     InvalidateListCache();
 
-    if (query.empty()) return;
+    if (query.empty() && !IsTypeFilterActive(TypeFilter::InstanceSet)) return;
 
     /// @note 表示件数の上限。これを超えるヒットは絞り込みを促す: グリッドは ImGuiListClipper で
     /// @note 間引くが Entry の構築自体は全件走るため、上限が無いと曖昧な 1 文字検索で数千件を組み立てる。
@@ -169,6 +176,8 @@ void AssetBrowserPanel::RefreshSearchResults()
         entry.name  = hit.entry.filename;
         entry.ext   = hit.entry.extension;
         entry.isDir = false;
+        entry.isInstanceSet = entry.ext == ".fzdata" && IsInstanceSetFile(entry.path);
+        if (!PassesTypeFilter(entry)) continue;
         m_searchResults.push_back(std::move(entry));
     }
 }
@@ -562,6 +571,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     /// @note 有効なフィルタを、種別色のピルとしてツールバー直下に並べる。
     DrawFilterChips();
+    DrawTerrainPaintAction(ctx);
 
     ImGui::Separator();
 
@@ -800,6 +810,95 @@ void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
     }
 }
 
+bool AssetBrowserPanel::IsInstanceSetFile(const std::string& path)
+{
+    /// @note Native writers place the top-level type before arrays or at the end. Avoid reading all placements for filtering.
+    std::ifstream file(util::FileSystem::PathFromUtf8(path), std::ios::binary | std::ios::ate);
+    if (!file) return false;
+    constexpr std::streamoff PROBE_BYTES = 4096;
+    const std::streamoff size = file.tellg();
+    if (size <= 0) return false;
+    const auto readType = [&](std::streamoff offset) {
+        std::string bytes(static_cast<size_t>(std::min(size, PROBE_BYTES)), '\0');
+        file.seekg(offset);
+        file.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        std::string_view lines(bytes.data(), static_cast<size_t>(file.gcount()));
+        if (offset != 0) {
+            const auto newline = lines.find('\n');
+            if (newline == std::string_view::npos) return false;
+            lines.remove_prefix(newline + 1);
+        }
+        while (!lines.empty()) {
+            const auto newline = lines.find('\n');
+            auto line = lines.substr(0, newline);
+            if (const auto start = line.find_first_not_of(" \t"); start != std::string_view::npos) {
+                line.remove_prefix(start);
+                if (line.starts_with("type")) {
+                    line.remove_prefix(4);
+                    if (const auto equals = line.find_first_not_of(" \t");
+                        equals != std::string_view::npos && line[equals] == '=') {
+                        line.remove_prefix(equals + 1);
+                        const auto quote = line.find_first_not_of(" \t");
+                        if (quote != std::string_view::npos && (line[quote] == '\'' || line[quote] == '"')) {
+                            const auto end = line.find(line[quote], quote + 1);
+                            if (end != std::string_view::npos)
+                                return line.substr(quote + 1, end - quote - 1) == asset::InstanceSetAsset::TYPE_NAME;
+                        }
+                    }
+                }
+            }
+            if (newline == std::string_view::npos) break;
+            lines.remove_prefix(newline + 1);
+        }
+        return false;
+    };
+    return readType(0) || (size > PROBE_BYTES && readType(size - PROBE_BYTES));
+}
+
+void AssetBrowserPanel::DrawTerrainPaintAction(EditorContext& ctx)
+{
+    if (!ctx.terrainTool || !ctx.activeScene || (ctx.playMode && !ctx.playMode->IsInEditor())) return;
+    std::vector<std::string> paths;
+    const auto add = [&](const std::string& path) {
+        if (!util::FileSystem::IsChildPathText(path, m_rootPath)) return;
+        if (util::StringUtils::ToLower(util::FileSystem::GetExtension(path)) != ".fzdata") return;
+        const auto hint = NormalizeAssetPath(path);
+        if (hint.starts_with("Assets/Terrain/Scatter/Painted/")) return;
+        const auto& entries = VisibleEntries();
+        const auto found = std::find_if(entries.begin(), entries.end(), [&](const Entry& entry) { return entry.path == path; });
+        if (found != entries.end() ? found->isInstanceSet : IsInstanceSetFile(path)) paths.push_back(path);
+    };
+    if (m_selectedPaths.empty()) add(ctx.selectedAssetPath);
+    else for (const auto& path : m_selectedPaths) add(path);
+    if (paths.empty()) {
+        if (IsTypeFilterActive(TypeFilter::InstanceSet))
+            ImGui::TextDisabled("Ctrl+click to mix. Switch to All Assets to browse the whole project.");
+        return;
+    }
+    const std::string label = "Paint on Terrain (" + std::to_string(paths.size()) + ")";
+    ImGui::BeginDisabled(paths.size() > TERRAIN_SCATTER_PALETTE_LIMIT);
+    if (ImGui::Button(label.c_str())) {
+        std::sort(paths.begin(), paths.end());
+        auto sources = OpData::MakeArray();
+        for (const auto& path : paths) {
+            const auto guid = asset::AssetDatabase::GuidFromPath(path);
+            if (!guid.empty()) sources.Push(OpData("guid:" + guid + "|" + NormalizeAssetPath(path)));
+        }
+        OpArgs args;
+        args.Set("sources", std::move(sources));
+        const auto result = InvokeOperator(ctx, "terrain.select_paint_palette", args);
+        m_terrainPaintStatus = result.ok ? std::string{} : result.message;
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Send these assets to the terrain brush. Ctrl+click to select multiple assets.");
+    if (ImGui::GetContentRegionAvail().x > 420.0f) {
+        ImGui::SameLine();
+        ImGui::TextDisabled(paths.size() > TERRAIN_SCATTER_PALETTE_LIMIT ? "Select up to 16 assets."
+            : paths.size() > 1 ? "Equal mix   |   One brush" : "Ctrl+click to mix assets");
+    }
+    if (!m_terrainPaintStatus.empty()) ImGui::TextWrapped("%s", m_terrainPaintStatus.c_str());
+}
+
 bool AssetBrowserPanel::PassesTypeFilter(const Entry& e) const
 {
     /// @note サブアセットは親が表示されていれば常に表示
@@ -839,6 +938,7 @@ bool AssetBrowserPanel::MatchesTypeFilter(const Entry& e, TypeFilter type)
     case TypeFilter::Animation: return e.ext == ".anim" || e.ext == ".animcontroller"
                                      || e.ext == ".animctrl" || e.ext == ".mask";
     case TypeFilter::Asset:     return e.ext == ".asset";
+    case TypeFilter::InstanceSet: return e.isInstanceSet && !NormalizeAssetPath(e.path).starts_with("Assets/Terrain/Scatter/Painted/");
     default:                    return true;
     }
 }
