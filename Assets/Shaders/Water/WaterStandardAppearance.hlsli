@@ -26,6 +26,7 @@ cbuffer MaterialConstants : register(b2)
 float4 PSMain(WaterPSInput p) : SV_Target0
 {
     bool splineSurface = p.splineSurface.w > 0.5f;
+#ifndef FBZZ_WATER_SMOOTH_SPLINE_OPTICS
     if (splineSurface) {
         float3 triangleNormal = cross(ddy(p.worldPos), ddx(p.worldPos));
         float normalLengthSq = dot(triangleNormal, triangleNormal);
@@ -35,6 +36,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
             p.normal = triangleNormal;
         }
     }
+#endif
     if (WaterSurfaceExcluded(p)) discard;
     /// @note ワイヤーは変形後のメッシュを診断する。屈折・SSR・透明度・外周フェードを通すと線が背景へ溶け込むため、不透明な診断色で描く。
     if (waterWireframeMode > 0.5f) {
@@ -145,11 +147,24 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note クリップ w は平行投影では 1。両投影とも同じ view Z で水層の距離を求める。
     float linearSurfDepth = max(mul(float4(p.worldPos, 1.0f), view).z, 0.0001f);
     float waterDepth = lerp(max(0.0f, linearSceneDepth - linearSurfDepth), g_deepColorDepth.w, backgroundMask);
+#ifdef FBZZ_WATER_SMOOTH_SPLINE_OPTICS
+    float2 splineTerrainDepth = float2(0.0f, 0.0f);
+#endif
     if (splineSurface) {
+#ifdef FBZZ_WATER_SMOOTH_SPLINE_OPTICS
+        /// @note Bilinear world-space bottom depth keeps optical bands independent of spline tessellation and viewing distance.
+        if (g_terrainInfoParams.x > 0.5f)
+            splineTerrainDepth = SampleWaterTerrainDepth(p.uv);
+        const float verticalDepth = max(0.0f, splineTerrainDepth.y + p.worldPos.y - p.baseWorldY);
+        const float terrainPath = verticalDepth * lerp(1.0f, 1.65f, 1.0f - abs(V.y));
+        const float fallbackDepth = min(waterDepth, max(p.splineSurface.x, 0.0f));
+        waterDepth = lerp(fallbackDepth, terrainPath, saturate(splineTerrainDepth.x));
+#else
         float viewRayZ = abs(mul(float4(-V, 0.0f), view).z);
         float authoredDepthView = max(p.splineSurface.x, 0.0f)
             * viewRayZ / max(abs(V.y), 0.05f);
         waterDepth = min(waterDepth, authoredDepthView);
+#endif
     }
     float depthFactor = smoothstep(0.0f, 1.0f, saturate(waterDepth / max(g_deepColorDepth.w, 0.0001f)));
 
@@ -262,6 +277,10 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         float4 ssrReflection = TraceWaterSSR(p.worldPos, N);
         /// @note Screen-color SSR is unfiltered; let roughness-AA IBL replace its sharp hit as fine slopes leave the pixel footprint.
         float ssrRoughnessWeight = saturate(1.0f - roughnessAA);
+#ifdef FBZZ_WATER_SMOOTH_SPLINE_OPTICS
+        /// @note Broad river reflections blend with the sky to soften abrupt hits at the banks.
+        if (splineSurface) ssrRoughnessWeight *= 0.32f;
+#endif
         reflectColor = lerp(reflectColor, ssrReflection.rgb, ssrReflection.a * ssrRoughnessWeight);
     }
 
@@ -390,7 +409,11 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float foamMaskVal = 0.0f;
     if (g_terrainInfoParams.x > 0.5f) {
         float2 terrainUv = splineSurface ? p.uv : WaterTerrainUvAtWorldXZ(p.worldPos.xz);
+#ifdef FBZZ_WATER_SMOOTH_SPLINE_OPTICS
+        float2 terrainDepth = splineSurface ? splineTerrainDepth : SampleWaterTerrainDepth(terrainUv);
+#else
         float2 terrainDepth = SampleWaterTerrainDepth(terrainUv);
+#endif
         float verticalDepth = terrainDepth.y + p.worldPos.y - p.baseWorldY;
         float wet = verticalDepth > 0.0f ? 1.0f : 0.0f;
         float terrainFoam = (1.0f - smoothstep(foamThreshold, foamThreshold + foamFade,
