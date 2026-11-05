@@ -101,12 +101,12 @@ bool FBZZ_WaterMediumVerticalBounds(bool allowCausticsOnly, out float2 bounds)
     return true;
 }
 
-/// @brief Resolve one owner's atlas sample, requiring nearest-pixel ownership before blending valid neighbors.
-bool FBZZ_WaterAtlasSampleWithFootprint(uint bodyIndex, float2 worldXZ,
-                           FBZZWaterMediumQueryContext context, out float4 sample, out float bottomRange)
+/// @brief Resolve a world point to texel coordinates clamped inside its owner's atlas tile.
+bool FBZZ_WaterAtlasCoordinates(uint bodyIndex, float2 worldXZ, FBZZWaterMediumQueryContext context,
+                                out float2 pixel, out int2 pixelMin, out int2 pixelMax)
 {
-    sample = 0.0f;
-    bottomRange = 0.0f;
+    pixel = 0.0f;
+    pixelMin = pixelMax = 0;
     const uint bodyOffset = FBZZ_WATER_MEDIUM_HEADER_ROWS + bodyIndex * FBZZ_WATER_MEDIUM_BODY_ROWS;
     if (bodyIndex >= context.bodyCount || bodyOffset + FBZZ_WATER_MEDIUM_BODY_ROWS > context.tableRows)
         return false;
@@ -118,15 +118,32 @@ bool FBZZ_WaterAtlasSampleWithFootprint(uint bodyIndex, float2 worldXZ,
     const float2 localUv = saturate((worldXZ - worldBounds.xy) / worldSpan);
     const float2 atlasSize = float2(context.atlasWidth, context.atlasHeight);
     const float2 rawPixel = (tileUv.xy + localUv * (tileUv.zw - tileUv.xy)) * atlasSize - 0.5f;
-    const int2 pixelMin = (int2)floor(tileUv.xy * atlasSize);
-    const int2 pixelMax = max(pixelMin, (int2)ceil(tileUv.zw * atlasSize) - 1);
-    const float2 pixel = clamp(rawPixel, (float2)pixelMin, (float2)pixelMax);
+    pixelMin = (int2)floor(tileUv.xy * atlasSize);
+    pixelMax = max(pixelMin, (int2)ceil(tileUv.zw * atlasSize) - 1);
+    pixel = clamp(rawPixel, (float2)pixelMin, (float2)pixelMax);
+    return true;
+}
+
+/// @brief Test coverage without reading the interpolated height, depth, or Jacobian.
+bool FBZZ_WaterAtlasHasOwner(uint bodyIndex, float2 pixel, int2 pixelMin, int2 pixelMax)
+{
+    const int2 nearest = clamp((int2)floor(pixel + 0.5f), pixelMin, pixelMax);
+    return (uint)round(g_waterMediumAtlas.Load(int3(nearest, 0)).a) == bodyIndex + 1u;
+}
+
+/// @brief Resolve one owner's atlas sample, requiring nearest-pixel ownership before blending valid neighbors.
+bool FBZZ_WaterAtlasSampleWithFootprint(uint bodyIndex, float2 worldXZ,
+                           FBZZWaterMediumQueryContext context, out float4 sample, out float bottomRange)
+{
+    sample = 0.0f;
+    bottomRange = 0.0f;
+    float2 pixel;
+    int2 pixelMin, pixelMax;
+    if (!FBZZ_WaterAtlasCoordinates(bodyIndex, worldXZ, context, pixel, pixelMin, pixelMax)) return false;
+    if (!FBZZ_WaterAtlasHasOwner(bodyIndex, pixel, pixelMin, pixelMax)) return false;
     const int2 p0 = clamp((int2)floor(pixel), pixelMin, pixelMax);
     const int2 p1 = clamp(p0 + 1, pixelMin, pixelMax);
-    const int2 nearest = clamp((int2)floor(pixel + 0.5f), pixelMin, pixelMax);
     const float ownerTag = (float)(bodyIndex + 1u);
-    const float4 nearestValue = g_waterMediumAtlas.Load(int3(nearest, 0));
-    if ((uint)round(nearestValue.a) != bodyIndex + 1u) return false;
     const float2 blend = saturate(pixel - floor(pixel));
     const float weights[4] = {
         (1.0f - blend.x) * (1.0f - blend.y),

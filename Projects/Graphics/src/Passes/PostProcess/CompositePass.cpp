@@ -168,6 +168,13 @@ void ExecuteCompositePass(RenderPassContext& ctx)
         && (sharedWaterOptics || legacyWaterOptics) && ctx.underwaterLightPassActive
         && h.volumetricResult.IsValid() && resources.Get(h.volumetricResult);
     postData.underwaterLightReady = underwaterLightWritten ? 1.0f : 0.0f;
+    if (sharedWaterOptics && !underwaterLightWritten
+        && std::any_of(ctx.waterOpticalDryTiles.begin(), ctx.waterOpticalDryTiles.end(),
+                       [](uint32_t tiles) { return tiles != 0u; })) {
+        /// @note Mode 2.25 selects the tile mask for the single-pass compositor. Mode 3 retains the split coverage contract.
+        postData.underwaterOpticalMode = 2.25f;
+        postData.waterOpticalDryTiles = ctx.waterOpticalDryTiles;
+    }
     resources.Update(h.postprocCB, &postData, sizeof(PostProcCB));
 
     renderer::DrawCall compositeDC;

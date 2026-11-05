@@ -170,6 +170,17 @@ bool SampleCachedWaterColumn(uint owner, float3 world, float4 bounds, float4 til
     return FBZZ_WaterAtlasSample(owner, worldXZ, context, value);
 }
 
+#if !defined(FBZZ_WATER_CACHED_FAST)
+/// @brief Query the 16x16 conservative view mask with the same UV used for depth.
+bool WaterOpticalTileIsDry(float2 uv)
+{
+    if (!all(uv >= 0.0f) || !all(uv <= 1.0f)) return false;
+    const uint2 tile = min((uint2)(uv * 16.0f), 15u);
+    const uint rows = waterOpticalDryTiles[tile.y >> 3u][(tile.y >> 1u) & 3u];
+    return (rows & (1u << (tile.x + 16u * (tile.y & 1u)))) != 0u;
+}
+#endif
+
 /// @brief Integrates RGB water extinction from the camera to the first visible interface or opaque point.
 /// @param hdr Scene radiance after surface effects and before tone mapping.
 /// @param uv Distorted screen UV shared by color, depth, and interface lookups.
@@ -178,6 +189,10 @@ bool SampleCachedWaterColumn(uint owner, float3 world, float4 bounds, float4 til
 /// @see Docs/design/water-gameplay-visuals.md §水域情報; https://www.pbr-book.org/4ed/Volume_Scattering/Transmittance PBRT v4, §11.2.
 float3 ApplySharedWaterOpticsHDR(float3 hdr, float2 uv, float ndcDepth)
 {
+#if !defined(FBZZ_WATER_CACHED_FAST)
+    [branch]
+    if (underwaterOpticalMode == 2.25f && WaterOpticalTileIsDry(uv)) return hdr;
+#endif
 #if BINDLESS_SUPPORTED
     if (!IsBindlessValid(FbzzPixelSlot(13))) return hdr;
 #endif

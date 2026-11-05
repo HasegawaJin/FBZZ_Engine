@@ -4,6 +4,7 @@
 /// @date    2026-10-09
 #include <Graphics/Passes/Geometry/WaterRenderPass.hpp>
 #include <Graphics/Effects/RenderWaterInput.hpp>
+#include <Graphics/Pipeline/RenderConstants.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Renderer/Format.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
@@ -31,6 +32,7 @@ constexpr uint32_t MAXIMUM_TILE_RESOLUTION = 512u;
 constexpr uint32_t MINIMUM_TILE_RESOLUTION = 64u;
 constexpr uint32_t GRID_RESOLUTION = 16u;
 constexpr uint32_t GRID_CELL_COUNT = GRID_RESOLUTION * GRID_RESOLUTION;
+constexpr uint32_t SCREEN_TILE_COUNT = 16u;
 constexpr uint32_t MAXIMUM_BODIES = 256u;
 constexpr uint32_t MAXIMUM_BOXES_PER_BODY = 64u;
 constexpr uint32_t MAXIMUM_PLUMES_PER_BODY = 64u;
@@ -71,6 +73,8 @@ struct Bounds3 {
     math::Vector3 minimum{};
     math::Vector3 maximum{};
 };
+
+using ScreenTileRows = std::array<uint16_t, SCREEN_TILE_COUNT>;
 
 [[nodiscard]] bool IsFinite(float value)
 {
@@ -409,6 +413,107 @@ void AppendDisabled(std::vector<uint64_t>& disabled, std::unordered_set<uint64_t
     if (seen.insert(key).second) disabled.push_back(key);
 }
 
+/// @brief Project the part of a conservative box in the forward half-space.
+/// @note Clip only at W=0 because the optical march may begin in front of the near plane.
+[[nodiscard]] std::array<uint16_t, 2> ProjectScreenTiles(const Bounds3& bounds,
+                                                         const math::Matrix4& viewProjection)
+{
+    constexpr double infinity = std::numeric_limits<double>::infinity();
+    std::array<double, 2> minimum{infinity, infinity}, maximum{-infinity, -infinity};
+    const auto include = [&](uint32_t axis, double numerator, double w) {
+        if (w > 0.0) {
+            const double ndc = numerator / w;
+            minimum[axis] = (std::min)(minimum[axis], ndc);
+            maximum[axis] = (std::max)(maximum[axis], ndc);
+        } else {
+            /// @note A box edge reaching the camera plane can project without a finite bound on either side.
+            if (numerator <= 1.0e-6) minimum[axis] = -infinity;
+            if (numerator >= -1.0e-6) maximum[axis] = infinity;
+        }
+    };
+    struct ClipCorner { double x, y, w; };
+    std::array<ClipCorner, 8> corners;
+    for (uint32_t i = 0; i < corners.size(); ++i) {
+        const double x = (i & 1u) ? bounds.maximum.x : bounds.minimum.x;
+        const double y = (i & 2u) ? bounds.maximum.y : bounds.minimum.y;
+        const double z = (i & 4u) ? bounds.maximum.z : bounds.minimum.z;
+        const auto project = [&](uint32_t row) {
+            const auto& m = viewProjection.m[row];
+            return m[0] * x + m[1] * y + m[2] * z + m[3];
+        };
+        auto& corner = corners[i];
+        corner = {project(0u), project(1u), project(3u)};
+        if (corner.w >= 0.0) {
+            include(0u, corner.x, corner.w);
+            include(1u, corner.y, corner.w);
+        }
+    }
+    for (uint32_t i = 0; i < corners.size(); ++i) {
+        for (uint32_t edge : {1u, 2u, 4u}) {
+            if (i & edge) continue;
+            const auto& a = corners[i];
+            const auto& b = corners[i | edge];
+            if ((a.w < 0.0) == (b.w < 0.0)) continue;
+            const double t = a.w / (a.w - b.w);
+            include(0u, std::lerp(a.x, b.x, t), 0.0);
+            include(1u, std::lerp(a.y, b.y, t), 0.0);
+        }
+    }
+    std::array<uint16_t, 2> masks{};
+    constexpr double tileStep = 2.0 / SCREEN_TILE_COUNT;
+    /// @note Expand by half a tile to cover projection and inverse-projection roundoff.
+    for (uint32_t axis = 0; axis < masks.size(); ++axis) {
+        for (uint32_t tile = 0; tile < SCREEN_TILE_COUNT; ++tile) {
+            const double lower = -1.0 + tileStep * (tile - 0.5);
+            const double upper = -1.0 + tileStep * (tile + 1.5);
+            if (minimum[axis] <= upper && maximum[axis] >= lower)
+                masks[axis] |= static_cast<uint16_t>(1u << tile);
+        }
+    }
+    return masks;
+}
+
+[[nodiscard]] bool BuildScreenTileRows(const RenderPassContext& ctx, const std::vector<BodyCandidate>& bodies,
+                                        ScreenTileRows& rows)
+{
+    const auto viewProjection = MakeJitteredViewProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    if (!IsFinite(viewProjection) || !IsFinite(ctx.camera.m_position)
+        || !(ctx.camera.m_near > 0.0f && ctx.camera.m_far > ctx.camera.m_near)) return false;
+    float reach = 0.0f;
+    for (const auto& body : bodies)
+        if (body.medium->opticalEnabled) reach = (std::max)(reach, body.medium->maxDistance);
+    if (reach <= 0.0f) return false;
+    /// @note The shader uses the longest optical distance among all packed owners.
+    const auto& origin = ctx.camera.m_position;
+    const float padding = 0.1f + 2.0e-5f * (std::max)({
+        std::abs(origin.x), std::abs(origin.y), std::abs(origin.z), reach});
+    const math::Vector3 guard{padding, padding, padding};
+    for (const auto& body : bodies) {
+        if (!body.medium->opticalEnabled) continue;
+        Bounds3 bounds{{body.bounds.x, body.physicalMinimumY, body.bounds.y},
+                       {body.bounds.z, body.physicalMaximumY, body.bounds.w}};
+        if (!(bounds.minimum.y < bounds.maximum.y)) return false;
+        bounds.minimum -= guard;
+        bounds.maximum += guard;
+        if (ctx.camera.m_projection != ProjectionMode::Orthographic) {
+            const float limit = reach + padding;
+            bounds.minimum = {(std::max)(bounds.minimum.x, origin.x - limit),
+                              (std::max)(bounds.minimum.y, origin.y - limit),
+                              (std::max)(bounds.minimum.z, origin.z - limit)};
+            bounds.maximum = {(std::min)(bounds.maximum.x, origin.x + limit),
+                              (std::min)(bounds.maximum.y, origin.y + limit),
+                              (std::min)(bounds.maximum.z, origin.z + limit)};
+        }
+        if (!IsFinite(bounds.minimum) || !IsFinite(bounds.maximum)) return false;
+        if (bounds.minimum.x > bounds.maximum.x || bounds.minimum.y > bounds.maximum.y
+            || bounds.minimum.z > bounds.maximum.z) continue;
+        const auto [horizontal, vertical] = ProjectScreenTiles(bounds, viewProjection);
+        for (uint32_t y = 0; y < SCREEN_TILE_COUNT; ++y)
+            if ((vertical & (1u << y)) != 0u) rows[SCREEN_TILE_COUNT - 1u - y] |= horizontal;
+    }
+    return true;
+}
+
 [[nodiscard]] bool PackRows(const std::vector<BodyCandidate>& bodies,
                             const math::Vector4& globalBounds,
                             uint32_t tileResolution,
@@ -551,6 +656,7 @@ void ClearPreparedState(RenderPassContext& ctx, RenderViewResources& viewTargets
 {
     ctx.waterMediumPassActive = false;
     ctx.waterInterfacePassActive = false;
+    ctx.waterOpticalDryTiles = {};
     ctx.waterMediumQualityLimited = false;
     ctx.handles.waterMediumAtlasRT = &viewTargets.waterMediumAtlasRT;
     ctx.handles.waterInterfaceRT = &viewTargets.waterInterfaceRT;
@@ -763,6 +869,14 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
     }
 
     ctx.handles.waterMediumTable = table;
+    ScreenTileRows screenTiles{};
+    if (BuildScreenTileRows(ctx, bodies, screenTiles)) {
+        for (size_t word = 0; word < ctx.waterOpticalDryTiles.size(); ++word) {
+            const uint32_t wet = static_cast<uint32_t>(screenTiles[word * 2])
+                | (static_cast<uint32_t>(screenTiles[word * 2 + 1]) << 16u);
+            ctx.waterOpticalDryTiles[word] = ~wet;
+        }
+    }
     ctx.handles.waterMediumBodyCount = static_cast<uint32_t>(bodies.size());
     ctx.handles.waterMediumTileResolution = tileResolution;
     ctx.waterMediumQualityLimited = tileResolution < MAXIMUM_TILE_RESOLUTION;

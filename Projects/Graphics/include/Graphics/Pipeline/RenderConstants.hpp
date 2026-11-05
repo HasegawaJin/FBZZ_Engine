@@ -734,9 +734,11 @@ struct PostProcCB {
     float underwaterLightSteps = 48.0f;
     /// @note 当該ビューで今フレームの水中散乱を記録した場合だけSRVを読む。
     float underwaterLightReady = 0.0f;
+    /// @note Two 16-bit rows per word. Set bits certify tiles outside all optical water.
+    std::array<uint32_t, 8> waterOpticalDryTiles{};
 };
 /// @note HLSL 側 (Common/Constants.hlsli の PostProcConstants) は複数コピーある。サイズがずれたら全コピーを直す。
-static_assert(sizeof(PostProcCB) == 512, "PostProcCB must match PostProcConstants in Constants.hlsli (512 bytes)");
+static_assert(sizeof(PostProcCB) == 544, "PostProcCB must match PostProcConstants in Constants.hlsli (544 bytes)");
 
 /// @note 画面サイズ由来のフィールドだけを埋めた PostProcCB を返す。
 /// @note b5 は全ポストプロセスで共有され、各パスが構造体ごと上書きする。texelSize/screenSize を

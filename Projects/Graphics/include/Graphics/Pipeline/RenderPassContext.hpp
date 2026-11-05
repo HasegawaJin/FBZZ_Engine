@@ -133,6 +133,8 @@ struct RenderPassContext : RenderLightingInput {
     bool waterMediumPassActive = false;
     /// @note Water interface mask is valid only after its graph pass writes the current view.
     bool waterInterfacePassActive = false;
+    /// @note Zero leaves all pixels on the exact path.
+    std::array<uint32_t, 8> waterOpticalDryTiles{};
     /// @note Quality is reduced when visible water bodies share the fixed atlas pixel budget.
     bool waterMediumQualityLimited = false;
     /// @note HYBRID を要求した Lit Deferred の反射 resolver。RT 縮退・記録失敗でも全 HDR 補間へ戻さない。

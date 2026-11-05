@@ -223,6 +223,7 @@ cbuffer PostProcConstants : register(CB_POSTPROC)
     float underwaterSinYaw;
     float underwaterLightSteps;
     float underwaterLightReady;
+    uint4 waterOpticalDryTiles[2];
 };
 
 /// @brief カスタムパスが入力テクスチャを引く UV。縮小して走るときの倍率を掛け、有効範囲の内側へ留める。
