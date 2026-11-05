@@ -17,7 +17,8 @@ internal static class SdkDocumentationTests
 {
     internal static IReadOnlyList<(string Name, Action Run)> Cases => [
         (nameof(DistributedXmlContainsStandardDescriptionsAndParameterUnits), DistributedXmlContainsStandardDescriptionsAndParameterUnits),
-        (nameof(XmlAndCatalogUseTheSameDeclaredFailureAndUnitContracts), XmlAndCatalogUseTheSameDeclaredFailureAndUnitContracts)
+        (nameof(XmlAndCatalogUseTheSameDeclaredFailureAndUnitContracts), XmlAndCatalogUseTheSameDeclaredFailureAndUnitContracts),
+        (nameof(DoxygenCommentsKeepMathUnitsAndGenericReferenceContracts), DoxygenCommentsKeepMathUnitsAndGenericReferenceContracts)
     ];
     static XDocument Read() => XDocument.Load(Path.ChangeExtension(typeof(Script).Assembly.Location, ".xml"));
     static XElement Member(XDocument document, string id) => document.Descendants("member").Single(value => (string?)value.Attribute("name") == id);
@@ -71,5 +72,23 @@ internal static class SdkDocumentationTests
             "An incremental build must not duplicate generated contract remarks.");
         Program.Check(documentation.Elements("param").Single(value => (string?)value.Attribute("name") == "min").Value.Contains("m", StringComparison.Ordinal),
             "World bounds metres must survive the distribution build.");
+    }
+
+    static void DoxygenCommentsKeepMathUnitsAndGenericReferenceContracts()
+    {
+        XDocument document = Read();
+        XElement radians = Member(document, "M:Fbzz.Mathf.ToRadians(System.Single)");
+        Program.Check(radians.Elements("param").Single(value => (string?)value.Attribute("name") == "degrees").Value.Contains("[deg]", StringComparison.Ordinal)
+            && radians.Element("returns")?.Value.Contains("[rad]", StringComparison.Ordinal) == true,
+            "Doxygen parameter and return text must survive alongside declaration attributes.");
+        XElement clamp = Member(document, "M:Fbzz.Mathf.Clamp(System.Single,System.Single,System.Single)");
+        Program.Check(clamp.Elements("remarks").Any(value => value.Value.Contains("min は max 以下", StringComparison.Ordinal)),
+            "Doxygen preconditions must remain visible to SDK consumers.");
+        XElement reference = Member(document, "M:Fbzz.ComponentRef`1.TryGet(`0@)");
+        Program.Check(reference.Elements("remarks").Single(value => (string?)value.Attribute("fbzzContract") == "true")
+            .Value.Contains("never_resolves_GUID", StringComparison.Ordinal),
+            "Generic type parameters passed by reference must retain their declaration contract at the compiler's XML ID.");
+        Program.Check(document.Descendants("member").Select(value => (string?)value.Attribute("name")).Distinct(StringComparer.Ordinal).Count()
+            == document.Descendants("member").Count(), "Declaration projection must not duplicate compiler member IDs.");
     }
 }

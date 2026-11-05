@@ -4,6 +4,10 @@
 # @date    2026-05-15
 # @note Build
 build/
+# @note SDK の XML 正規化タスクはビルド出力でなく、配布 XML の生成に必要なソース。
+!/Projects/Managed/Build/
+/Projects/Managed/Build/*
+!/Projects/Managed/Build/NormalizeSdkDocumentation.cs
 out/
 build_log.txt
 .cache/
