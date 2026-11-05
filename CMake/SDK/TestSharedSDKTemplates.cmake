@@ -136,6 +136,7 @@ foreach(FIXTURE_PATH
         "share/fbzz/Docs/csharp-start.md" "share/fbzz/Docs/design/csharp-authoring.md"
         "share/fbzz/Docs/design/ai-script-workflow.md" "share/fbzz/Docs/design/csharp-scripting.md"
         "share/fbzz/managed/ManagedStarter/Starter.Scripts.csproj"
+        "share/fbzz/managed/ManagedStarter/Fbzz.ScriptBuild.props"
         "share/fbzz/managed/ManagedStarter/Assets/Scripts/Managed/MoveForwardComponent.cs"
         "share/fbzz/managed/ManagedStarter/global.json" "share/fbzz/managed/ManagedStarter/AGENTS.md"
         "share/fbzz/managed/ManagedStarter/.vscode/launch.json"
@@ -149,7 +150,7 @@ foreach(FIXTURE_PATH
 endforeach()
 # @note Managed artifacts model the same install contract without running CoreCLR or requiring an SDK build for this layout regression.
 file(WRITE "${FIXTURE_SDK}/bin/${FIXTURE_CONFIG}/nethost.dll" "installed nethost\n")
-foreach(MANAGED_FILE Fbzz.ScriptApi.dll Fbzz.ScriptApi.xml Fbzz.ScriptGenerator.dll Fbzz.ManagedBuildTasks.dll ManagedIncremental.targets Fbzz.ManagedHost.dll Fbzz.ManagedHost.runtimeconfig.json Fbzz.ManagedHost.deps.json)
+foreach(MANAGED_FILE Fbzz.ScriptApi.dll Fbzz.ScriptApi.xml Fbzz.ScriptGenerator.dll Fbzz.ManagedBuildTasks.dll ManagedIncremental.targets Fbzz.ScriptBuild.props Fbzz.ManagedHost.dll Fbzz.ManagedHost.runtimeconfig.json Fbzz.ManagedHost.deps.json)
     file(WRITE "${FIXTURE_SDK}/bin/${FIXTURE_CONFIG}/Managed/${MANAGED_FILE}" "managed ${MANAGED_FILE}\n")
     file(WRITE "${FIXTURE_EDITOR}/Managed/${MANAGED_FILE}" "managed ${MANAGED_FILE}\n")
 endforeach()
@@ -283,6 +284,28 @@ function(VerifyCanonicalEditorFixture)
     endforeach()
 endfunction()
 
+function(VerifyManagedBuildPropsFixture)
+    file(READ "${FIXTURE_SDK}/cmake/FBZZ/configurations/${FIXTURE_CONFIG}.toml" CONFIG_RECORD)
+    foreach(PROPS_PATH
+            "bin/${FIXTURE_CONFIG}/Managed/Fbzz.ScriptBuild.props"
+            "tools/${FIXTURE_CONFIG}/Editor/Managed/Fbzz.ScriptBuild.props"
+            "share/fbzz/managed/ManagedStarter/Fbzz.ScriptBuild.props")
+        file(SHA256 "${FIXTURE_SDK}/${PROPS_PATH}" PROPS_HASH)
+        string(FIND "${CONFIG_RECORD}" "\"${PROPS_PATH}\" = \"${PROPS_HASH}\"" HASH_ROW_POS)
+        if(HASH_ROW_POS EQUAL -1)
+            message(FATAL_ERROR "Managed build props hash was not recorded: ${PROPS_PATH}")
+        endif()
+        file(RENAME "${FIXTURE_SDK}/${PROPS_PATH}" "${FIXTURE_SDK}/${PROPS_PATH}.fixture-hidden")
+        RunFixtureValidation(RESULT LOG)
+        file(RENAME "${FIXTURE_SDK}/${PROPS_PATH}.fixture-hidden" "${FIXTURE_SDK}/${PROPS_PATH}")
+        string(REGEX REPLACE "[ \t\r\n]+" " " NORMALIZED "${LOG}")
+        string(FIND "${NORMALIZED}" "${PROPS_PATH} is missing" MISSING_POS)
+        if("${RESULT}" STREQUAL "0" OR MISSING_POS EQUAL -1)
+            message(FATAL_ERROR "Missing managed build props were not rejected precisely: ${PROPS_PATH}: ${LOG}")
+        endif()
+    endforeach()
+endfunction()
+
 function(RunFixtureValidation OUT_RESULT OUT_LOG)
     execute_process(COMMAND "${CMAKE_COMMAND}"
         "-DSDK_ROOT=${FIXTURE_SDK}" "-DSDK_ID=${FIXTURE_ID}" "-DCONFIG=${FIXTURE_CONFIG}"
@@ -302,6 +325,7 @@ if(NOT "${VALIDATE_RESULT}" STREQUAL "0")
     message(FATAL_ERROR "Complete PIX fixture was rejected: ${VALIDATE_LOG}")
 endif()
 VerifyCanonicalEditorFixture()
+VerifyManagedBuildPropsFixture()
 foreach(FIXTURE_NOTICE LICENSE VERSION ThirdPartyNotices.txt)
     file(SHA256 "${FIXTURE_LICENSE_SOURCE}/${FIXTURE_NOTICE}" SOURCE_HASH)
     file(SHA256 "${FIXTURE_SDK}/share/fbzz/licenses/WinPixEventRuntime/${FIXTURE_NOTICE}" STAGED_HASH)
@@ -368,6 +392,7 @@ if(NOT "${STAGE_RESULT}" STREQUAL "0" OR NOT "${VALIDATE_RESULT}" STREQUAL "0")
     message(FATAL_ERROR "GPUless canonical Editor fixture failed: ${STAGE_LOG}${VALIDATE_LOG}")
 endif()
 VerifyCanonicalEditorFixture()
+VerifyManagedBuildPropsFixture()
 set(FIXTURE_SDK "${DX12_FIXTURE_SDK}")
 set(FIXTURE_STAGE_DX12 ON)
 set(FBZZ_SDK_DX12_ENABLED true)
@@ -401,6 +426,7 @@ RunFixtureValidation(VALIDATE_RESULT VALIDATE_LOG)
 if(NOT VALIDATE_RESULT EQUAL 0)
     message(FATAL_ERROR "Development Agility fixture was rejected: ${VALIDATE_LOG}")
 endif()
+VerifyManagedBuildPropsFixture()
 foreach(PREFIX "bin/${FIXTURE_CONFIG}" "tools/${FIXTURE_CONFIG}/Editor")
     set(MISSING_PATH "${PREFIX}/D3D12/d3d12SDKLayers.dll")
     file(RENAME "${FIXTURE_SDK}/${MISSING_PATH}" "${FIXTURE_SDK}/${MISSING_PATH}.fixture-hidden")
@@ -444,38 +470,36 @@ if(NOT "${VALIDATE_RESULT}" STREQUAL "0" OR NOT CONFIG_RECORD MATCHES "validated
     message(FATAL_ERROR "Changed common module kept Development validated: ${VALIDATE_LOG}")
 endif()
 
-# @note Old successful records without a mandatory Editor hash row cannot be restored by another configuration's publication.
-file(READ "${FIXTURE_SDK}/cmake/FBZZ/configurations/Release.toml" CONFIG_RECORD)
-string(REGEX REPLACE "\"tools/Release/Editor/FBZZEngine\\.dll\" = \"[0-9a-f]+\"\n" "" CONFIG_RECORD "${CONFIG_RECORD}")
-file(WRITE "${FIXTURE_SDK}/cmake/FBZZ/configurations/Release.toml" "${CONFIG_RECORD}")
-set(FIXTURE_CONFIG Development)
-RunFixtureBegin("${FIXTURE_ROOT}/updated-manifest.toml")
-RunFixtureStage("${FIXTURE_SDK}" "${FIXTURE_INPUT}/WinPixEventRuntime.dll" STAGE_RESULT STAGE_LOG)
-RunFixtureValidation(VALIDATE_RESULT VALIDATE_LOG)
-file(READ "${FIXTURE_SDK}/cmake/FBZZ/configurations/Release.toml" CONFIG_RECORD)
-if(NOT "${VALIDATE_RESULT}" STREQUAL "0" OR NOT CONFIG_RECORD MATCHES "validated = false")
-    message(FATAL_ERROR "Incomplete canonical Editor record kept Release validated: ${VALIDATE_LOG}")
-endif()
-
-# @note A missing common-module hash row must independently prevent restoration even when all binaries and files still exist.
-set(FIXTURE_CONFIG Release)
-RunFixtureBegin("${FIXTURE_ROOT}/updated-manifest.toml")
-RunFixtureStage("${FIXTURE_SDK}" "${FIXTURE_INPUT}/WinPixEventRuntime.dll" STAGE_RESULT STAGE_LOG)
-RunFixtureValidation(VALIDATE_RESULT VALIDATE_LOG)
-if(NOT "${STAGE_RESULT}" STREQUAL "0" OR NOT "${VALIDATE_RESULT}" STREQUAL "0")
-    message(FATAL_ERROR "Complete record restoration precondition failed: ${STAGE_LOG}${VALIDATE_LOG}")
-endif()
-file(READ "${FIXTURE_SDK}/cmake/FBZZ/configurations/Release.toml" CONFIG_RECORD)
-string(REGEX REPLACE "\"cmake/FBZZ/FBZZAgilitySDK\\.cmake\" = \"[0-9a-f]+\"\n" "" CONFIG_RECORD "${CONFIG_RECORD}")
-file(WRITE "${FIXTURE_SDK}/cmake/FBZZ/configurations/Release.toml" "${CONFIG_RECORD}")
-set(FIXTURE_CONFIG Development)
-RunFixtureBegin("${FIXTURE_ROOT}/updated-manifest.toml")
-RunFixtureStage("${FIXTURE_SDK}" "${FIXTURE_INPUT}/WinPixEventRuntime.dll" STAGE_RESULT STAGE_LOG)
-RunFixtureValidation(VALIDATE_RESULT VALIDATE_LOG)
-file(READ "${FIXTURE_SDK}/cmake/FBZZ/configurations/Release.toml" CONFIG_RECORD)
-if(NOT "${VALIDATE_RESULT}" STREQUAL "0" OR NOT CONFIG_RECORD MATCHES "validated = false")
-    message(FATAL_ERROR "Missing common module hash row kept Release validated: ${VALIDATE_LOG}")
-endif()
+# @note An old successful record missing any mandatory hash must not be restored even when its files still exist.
+foreach(MISSING_HASH_PATH
+        "tools/Release/Editor/FBZZEngine.dll"
+        "cmake/FBZZ/FBZZAgilitySDK.cmake"
+        "bin/Release/Managed/Fbzz.ScriptBuild.props"
+        "tools/Release/Editor/Managed/Fbzz.ScriptBuild.props"
+        "share/fbzz/managed/ManagedStarter/Fbzz.ScriptBuild.props")
+    set(FIXTURE_CONFIG Release)
+    RunFixtureBegin("${FIXTURE_ROOT}/updated-manifest.toml")
+    RunFixtureStage("${FIXTURE_SDK}" "${FIXTURE_INPUT}/WinPixEventRuntime.dll" STAGE_RESULT STAGE_LOG)
+    RunFixtureValidation(VALIDATE_RESULT VALIDATE_LOG)
+    if(NOT "${STAGE_RESULT}" STREQUAL "0" OR NOT "${VALIDATE_RESULT}" STREQUAL "0")
+        message(FATAL_ERROR "Complete record restoration precondition failed: ${STAGE_LOG}${VALIDATE_LOG}")
+    endif()
+    file(READ "${FIXTURE_SDK}/cmake/FBZZ/configurations/Release.toml" CONFIG_RECORD)
+    file(SHA256 "${FIXTURE_SDK}/${MISSING_HASH_PATH}" MISSING_HASH)
+    string(REPLACE "\"${MISSING_HASH_PATH}\" = \"${MISSING_HASH}\"\n" "" INCOMPLETE_RECORD "${CONFIG_RECORD}")
+    if(INCOMPLETE_RECORD STREQUAL CONFIG_RECORD)
+        message(FATAL_ERROR "Incomplete record fixture did not remove ${MISSING_HASH_PATH}")
+    endif()
+    file(WRITE "${FIXTURE_SDK}/cmake/FBZZ/configurations/Release.toml" "${INCOMPLETE_RECORD}")
+    set(FIXTURE_CONFIG Development)
+    RunFixtureBegin("${FIXTURE_ROOT}/updated-manifest.toml")
+    RunFixtureStage("${FIXTURE_SDK}" "${FIXTURE_INPUT}/WinPixEventRuntime.dll" STAGE_RESULT STAGE_LOG)
+    RunFixtureValidation(VALIDATE_RESULT VALIDATE_LOG)
+    file(READ "${FIXTURE_SDK}/cmake/FBZZ/configurations/Release.toml" CONFIG_RECORD)
+    if(NOT "${VALIDATE_RESULT}" STREQUAL "0" OR NOT CONFIG_RECORD MATCHES "validated = false")
+        message(FATAL_ERROR "Missing ${MISSING_HASH_PATH} hash kept Release validated: ${VALIDATE_LOG}")
+    endif()
+endforeach()
 
 # @note VERSION の取得元 URL と配置引数の衝突を、実際の vendor / SDK DLL の配置で検出する。
 foreach(LOCAL_STAGE_KIND SourceDebug SourceRelease SdkDevelopment GPUless)
