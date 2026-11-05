@@ -1,9 +1,7 @@
-/**
- * @file templateService.ts
- * @brief テンプレートのコピーとプレースホルダー展開で新規プロジェクトを生成する。
- * @author Hasegawa Jin
- * @date 2026/07/19
- */
+/// @file    templateService.ts
+/// @brief   テンプレートと共通 C# starter から新規プロジェクトを生成する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-19
 
 import { app } from 'electron';
 import { access, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
@@ -18,8 +16,7 @@ const TEXT_EXTENSIONS = new Set([
   '.cpp', '.hpp', '.h', '.inl', '.txt', '.toml', '.json', '.cmake', '.md', '.hlsl', '.hlsli', '.glsl', '.gitignore',
 ]);
 
-// ビルド生成物はテンプレート作業中に混入しても新規プロジェクトへ持ち込まない。
-// WHY: CMakeCache.txt には生成元の絶対パスが焼き込まれ、コピー先の configure を必ず失敗させる。
+/// @note CMakeCache の生成元絶対パスと旧ビルド出力を新規プロジェクトへ持ち込まない。
 const GENERATED_ROOT_DIRECTORIES = new Set(['Binaries', 'Build', 'Lib', 'Library']);
 
 
@@ -42,16 +39,10 @@ function applyPlaceholders(text: string, info: ProjectIdentifiers, createdAt: st
   const replacements: Record<string, string> = {
     PROJECT_NAME: info.name,
     PROJECT_ID: info.projectId,
-    CPP_NAMESPACE: info.cppNamespace,
     TARGET_NAME: info.targetName,
     ENGINE_VERSION,
     SDK_ID: sdkId,
     CREATED_AT: createdAt,
-    SETTINGS_PATH: 'ProjectSettings/ProjectSettings.toml',
-    API_ROOT: 'Include/',
-    LIBRARY_ROOT: 'Lib/',
-    BINARY_ROOT: 'Binaries/',
-    BUILD_ROOT: 'Build/',
   };
   return text.replace(/\{\{([A-Z_]+)\}\}/g, (original, key: string) => replacements[key] ?? original);
 }
@@ -80,12 +71,10 @@ export class TemplateService {
   }
 
   async listTemplates(): Promise<TemplateInfo[]> {
-    // テンプレートはGameHubの実行中に変化しないため、一覧をプロセス内で共有する。
-    // WHY: bootstrap は設定保存後や操作完了後にも呼ばれる。毎回 template.toml を
-    //      探して読むと、起動直後のStrictMode再実行も含めて不要なI/Oが増える。
+    /// @note bootstrap の反復で同じ template.toml を再走査しない。
     if (!this.templatesPromise) {
       this.templatesPromise = this.loadTemplates().catch((error: unknown) => {
-        // 一時的なファイルアクセス失敗から復帰できるよう、失敗したPromiseは捨てる。
+        /// @note 一時的なアクセス失敗は次の要求で再試行する。
         this.templatesPromise = null;
         throw error;
       });
@@ -145,6 +134,7 @@ export class TemplateService {
       for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
         if (!relativeDirectory && entry.name === 'template.toml') continue;
         if (!relativeDirectory && entry.isDirectory() && GENERATED_ROOT_DIRECTORIES.has(entry.name)) continue;
+        if (relativeDirectory === 'Src' && entry.isDirectory() && entry.name === 'Scripts') continue;
         const replacedName = applyPlaceholders(entry.name, info, createdAt, sdkId).replace(/\.tmpl$/, '');
         const relativePath = path.join(relativeDirectory, replacedName);
         const sourcePath = path.join(sourceDirectory, entry.name);

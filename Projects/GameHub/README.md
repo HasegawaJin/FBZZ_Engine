@@ -1,8 +1,10 @@
 # FBZZ GameHub
 
-新規プロジェクトはスクリプト言語C++ / C#を選択できます。既存のEmpty / Standardテンプレートとnative登録は共通で、C#を選んだ場合だけ選択SDKの共通starterからcsproj・サンプル・global.json・AGENTSを追加します。選択SDKはFbzz.Sdk.propsに記録し、IDEとEditorが公開API / Analyzerを参照できます。SDK同梱の `share/fbzz/Docs/csharp-start.md` が導入の入口です。既存/言語省略の作成要求は従来のnative動作を保ちます。
+新規プロジェクトのゲームロジックは C# です。Empty / Standard の両テンプレートへ、選択 SDK の共通 ManagedStarter から csproj・サンプル・ビルド設定・global.json・AGENTS を追加します。選択 SDK は `Fbzz.Sdk.props` に記録し、IDE と Editor が同じ公開 API / Analyzer を参照します。SDK 同梱の `share/fbzz/Docs/csharp-start.md` が導入の入口です。
 
-`npm run test:authoring` はNode 24で配布starter導入、版不一致・欠損の拒否、既存ファイル保持、native要求の互換を検証します。
+Editor の起動には `Assets` と `.fbzz_proj` が指す設定ファイル・起動シーンを使います。`Include`、`Lib`、`Src/Scripts` は不要です。`Src/AppMain.cpp` と CMake は Standalone 実行ファイルの起動入口だけを持ち、C++ Script は生成しません。Standalone のビルド先は `Build/VS/`、出力先は `Binaries/<構成>/` です。
+
+`npm run test:authoring` は Node 24 で両テンプレートの生成・起動ファイル検査、共通スターターの導入、版不一致・欠損の拒否、既存ファイル保持を検証します。
 
 FBZZ Engineのプロジェクト管理ツールです。Electron・React・TypeScriptで構築し、`Projects/GameHub`を正式な実装として使用します。
 

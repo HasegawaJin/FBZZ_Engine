@@ -1,9 +1,9 @@
 /// @file    managedStarter.test.mjs
-/// @brief   Verify source-free SDK starter creation and native request compatibility.
+/// @brief   Verify C# project generation, launch inputs and published SDK authoring contracts.
 /// @author  Hasegawa Jin
 /// @date    2026-10-05
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,8 +11,38 @@ import test from 'node:test';
 import { LoadManagedStarter, PrepareManagedStarter, WriteManagedStarter } from '../src/main/managedStarter.ts';
 import { createHash } from 'node:crypto';
 import { AssertManagedAuthoringContract } from '../src/shared/sdkManagedContract.mjs';
+import { build } from 'esbuild';
+import { parse } from 'smol-toml';
+import { ReadEngineVersion } from '../scripts/EngineVersion.mjs';
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const engineVersion = ReadEngineVersion(repository);
+const gameHubRoot = path.join(repository, 'Projects/GameHub');
+const services = build({
+  stdin: {
+    contents: 'export { TemplateService } from "./src/main/templateService.ts"; export { ProjectService } from "./src/main/projectService.ts";',
+    resolveDir: gameHubRoot,
+  },
+  bundle: true,
+  write: false,
+  platform: 'node',
+  format: 'esm',
+  define: {
+    __FBZZ_ENGINE_VERSION__: JSON.stringify(engineVersion),
+    __FBZZ_BUILD_CONFIGURATION__: JSON.stringify('Development'),
+    'process.resourcesPath': JSON.stringify(gameHubRoot),
+  },
+  plugins: [{
+    name: 'electron-test-host',
+    setup(builder) {
+      builder.onResolve({ filter: /^electron$/ }, () => ({ path: 'electron', namespace: 'test-host' }));
+      builder.onLoad({ filter: /.*/, namespace: 'test-host' }, () => ({
+        contents: `export const app = { getAppPath: () => ${JSON.stringify(gameHubRoot)} }; export const shell = {}; export const net = {};`,
+      }));
+    },
+  }],
+}).then((result) => import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`));
+
 async function Fixture(run) {
   const root = await mkdtemp(path.join(tmpdir(), 'fbzz-managed-starter-'));
   try {
@@ -63,6 +93,63 @@ async function PublishedManagedFixture(configuration, run) {
     await rm(root, { recursive: true, force: true });
   }
 }
+
+for (const templateId of ['empty', 'standard']) {
+  test(`${templateId} creates a launchable C# project without native Script scaffolding`, async () => {
+    const { TemplateService, ProjectService } = await services;
+    await Fixture(async (root, sdk) => {
+      const project = await new TemplateService().create({
+        displayName: 'CSharp Game', destinationRoot: root, templateId,
+      }, engineVersion, sdk, 'Development');
+      const entry = await new ProjectService().inspectProject({ path: project, lastOpened: '' });
+      assert.equal(entry.projectFileValid, true);
+      assert.equal(entry.layoutValid, true);
+      assert.equal(entry.migrationRequired, false);
+      const projectText = await readFile(path.join(project, '.fbzz_proj'), 'utf8');
+      assert.doesNotMatch(projectText, /\{\{/);
+      const metadata = parse(projectText).project;
+      await access(path.resolve(project, metadata.default_scene));
+      assert.equal(metadata.build_root, 'Build/VS/');
+      for (const retired of ['api_root', 'public_api_header', 'script_root', 'cpp_namespace', 'library_root']) {
+        assert.equal(metadata[retired], undefined);
+      }
+      for (const relative of ['CSharpGame.Scripts.csproj', 'Fbzz.Sdk.props', 'Fbzz.ScriptBuild.props',
+        'global.json', '.vscode/launch.json', 'Assets/Scripts/Managed/MoveForwardComponent.cs']) {
+        await access(path.join(project, relative));
+      }
+      for (const retired of ['Include', 'Src/Scripts', 'Lib']) {
+        await assert.rejects(access(path.join(project, retired)), /ENOENT/, retired);
+      }
+      const cmake = await readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
+      assert.doesNotMatch(cmake, /ScriptsDll|ScriptModules|REGISTER_SCRIPT|PRIVATE Assets Include Src/);
+    });
+  });
+}
+
+test('C# project inspection requires launch settings and scene rather than native authoring folders', async () => {
+  const { TemplateService, ProjectService } = await services;
+  await Fixture(async (root, sdk) => {
+    const project = await new TemplateService().create({
+      displayName: 'LaunchFiles', destinationRoot: root, templateId: 'empty',
+    }, engineVersion, sdk, 'Development');
+    const service = new ProjectService();
+    await rename(path.join(project, 'Src'), path.join(project, 'NativeStart.saved'));
+    const inspect = () => service.inspectProject({ path: project, lastOpened: '' });
+    assert.equal((await inspect()).layoutValid, true);
+    for (const relative of ['ProjectSettings/ProjectSettings.toml', 'Assets/Scenes/Main.scene']) {
+      const original = path.join(project, relative);
+      await rename(original, `${original}.saved`);
+      assert.equal((await inspect()).layoutValid, false, relative);
+      await rename(`${original}.saved`, original);
+      assert.equal((await inspect()).layoutValid, true, relative);
+    }
+    const metadataPath = path.join(project, '.fbzz_proj');
+    const metadata = await readFile(metadataPath, 'utf8');
+    const oldSettings = path.join(root, 'MovedProject/ProjectSettings/ProjectSettings.toml').replaceAll('\\', '/');
+    await writeFile(metadataPath, metadata.replace('ProjectSettings/ProjectSettings.toml', oldSettings));
+    assert.equal((await inspect()).layoutValid, true);
+  });
+});
 
 test('each advertised configuration needs its own complete published managed authoring pair', async () => {
   for (const configuration of ['Debug', 'Development', 'Release']) {

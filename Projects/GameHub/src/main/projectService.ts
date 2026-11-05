@@ -1,7 +1,7 @@
-/// @file projectService.ts
+/// @file    projectService.ts
 /// @brief プロジェクト検証、サムネイル取得、Editor 起動を OS 権限側へ集約する。
-/// @author Hasegawa Jin
-/// @date 2026/07/19
+/// @author  Hasegawa Jin
+/// @date    2026-07-19
 
 import { shell } from 'electron';
 import { access, readFile, stat } from 'node:fs/promises';
@@ -29,6 +29,42 @@ function stringField(table: Record<string, unknown>, key: string, fallback = '')
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/// @note 移動前の絶対パスは Editor の ProjectResolver と同じく、末尾からプロジェクト配下を探す。
+async function ResolveProjectFile(projectRoot: string, filePath: string): Promise<string> {
+  const absolute = path.resolve(projectRoot, filePath);
+  if (!path.isAbsolute(filePath) || await exists(absolute)) return absolute;
+  let current = filePath;
+  let suffix = '';
+  while (current !== path.dirname(current)) {
+    suffix = path.join(path.basename(current), suffix);
+    const candidate = path.resolve(projectRoot, suffix);
+    if (await exists(candidate)) return candidate;
+    current = path.dirname(current);
+  }
+  return absolute;
+}
+
+/// @note C# authoring の起動可否は設定とシーンで決まり、native 用 Include / Src は不要。
+async function HasLaunchFiles(projectRoot: string, project: Record<string, unknown>): Promise<boolean> {
+  let settingsPath = stringField(project, 'settings_path');
+  if (settingsPath.startsWith('{{')) settingsPath = 'ProjectSettings/ProjectSettings.toml';
+  if (!settingsPath) return false;
+  try {
+    const settingsFile = await ResolveProjectFile(projectRoot, settingsPath);
+    const settings = parse(await readFile(settingsFile, 'utf8')) as Record<string, unknown>;
+    const scenePath = stringField((settings.runtime ?? {}) as Record<string, unknown>, 'start_scene')
+      || stringField(project, 'default_scene');
+    if (!scenePath) return false;
+    const [assets, scene] = await Promise.all([
+      stat(path.join(projectRoot, 'Assets')),
+      stat(await ResolveProjectFile(projectRoot, scenePath)),
+    ]);
+    return assets.isDirectory() && scene.isFile();
+  } catch {
+    return false;
+  }
 }
 
 export class ProjectService {
@@ -75,15 +111,13 @@ export class ProjectService {
     if (!await exists(projectRoot)) return empty;
     empty.pathExists = true;
 
-    const [cmakeExists, layoutChecks, generatedChecks, thumbnailDataUrl, projectFile] = await Promise.all([
+    const [cmakeExists, generatedChecks, thumbnailDataUrl, projectFile] = await Promise.all([
       exists(path.join(projectRoot, 'CMakeLists.txt')),
-      Promise.all(['Assets', 'Src', 'Include'].map((name) => exists(path.join(projectRoot, name)))),
-      Promise.all(['Lib', 'Binaries', 'Build'].map((name) => exists(path.join(projectRoot, name)))),
+      Promise.all(['Binaries', 'Build'].map((name) => exists(path.join(projectRoot, name)))),
       this.loadThumbnail(projectRoot),
       readFile(path.join(projectRoot, '.fbzz_proj'), 'utf8').catch(() => null),
     ]);
     empty.cmakeExists = cmakeExists;
-    empty.layoutValid = layoutChecks.every(Boolean);
     empty.generatedRootsExist = generatedChecks.every(Boolean);
     empty.thumbnailDataUrl = thumbnailDataUrl;
 
@@ -97,6 +131,7 @@ export class ProjectService {
       empty.engineVersion = stringField(project, 'engine_version', '-');
       empty.sdkId = stringField(engine, 'sdk_id');
       empty.projectFileValid = Boolean(empty.name && empty.projectId);
+      empty.layoutValid = await HasLaunchFiles(projectRoot, project);
       empty.engineVersionMismatch = empty.engineVersion !== '-' && empty.engineVersion !== ENGINE_VERSION;
       empty.migrationRequired = empty.engineVersionMismatch || !empty.sdkId;
     } catch {

@@ -58,7 +58,6 @@ add_executable({{TARGET_NAME}}Standalone
     Src/AppMain.cpp
 )
 target_compile_definitions({{TARGET_NAME}}Standalone PRIVATE FBZZ_STANDALONE_TARGET)
-target_include_directories({{TARGET_NAME}}Standalone PRIVATE Assets Include Src)
 target_link_libraries({{TARGET_NAME}}Standalone PRIVATE FBZZ::Engine shell32 user32)
 target_link_options({{TARGET_NAME}}Standalone PRIVATE
     "$<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS>"

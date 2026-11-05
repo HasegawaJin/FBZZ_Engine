@@ -1,7 +1,7 @@
-/// @file App.tsx
+/// @file    App.tsx
 /// @brief プロジェクト一覧・テンプレート・設定をまとめる GameHub のルート UI。
-/// @author Hasegawa Jin
-/// @date 2026/09/02
+/// @author  Hasegawa Jin
+/// @date    2026-09-02
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BootstrapData, CreateProjectRequest, HubSettings, HubTheme, ProjectEntry, SdkBuildConfiguration, TemplateInfo, UpdateNotice } from '../shared/contracts';
@@ -58,11 +58,11 @@ function diagnose(project: ProjectEntry, hubVersion: string, selectedSdkId: stri
   const sdkNotice = outdatedSdkNotice(project.sdkId, selectedSdkId, hubVersion);
   if (sdkNotice) diagnostics.push({ severity: 'warning', label: `古い SDK ${project.sdkId || selectedSdkId} を使用`, detail: sdkNotice });
   if (!project.projectFileValid) diagnostics.push({ severity: 'error', label: '.fbzz_proj が不正', detail: 'name と project_id を読み取れませんでした。' });
-  if (!project.layoutValid) diagnostics.push({ severity: 'error', label: '必須フォルダーが不足', detail: 'Assets / Src / Include のいずれかがありません。' });
-  if (!project.cmakeExists) diagnostics.push({ severity: 'warning', label: 'CMakeLists.txt がありません', detail: 'スクリプト DLL をビルドできません。' });
+  if (!project.layoutValid) diagnostics.push({ severity: 'error', label: '起動に必要なファイルを確認', detail: 'Assets フォルダーと、.fbzz_proj が指定する設定ファイル・起動シーンを確認してください。' });
+  if (!project.cmakeExists) diagnostics.push({ severity: 'warning', label: 'CMakeLists.txt がありません', detail: 'Standalone をビルドできません。' });
   if (project.engineVersionMismatch) diagnostics.push({ severity: 'warning', label: `Engine ${project.engineVersion} 向け`, detail: `GameHub は ${hubVersion} です。マイグレーションが必要になる場合があります。` });
   else if (project.migrationRequired) diagnostics.push({ severity: 'warning', label: 'SDK が固定されていません', detail: '.fbzz_proj に sdk_id がないため、設定中の SDK で開きます。' });
-  if (!project.generatedRootsExist) diagnostics.push({ severity: 'info', label: '未ビルド', detail: 'Lib / Binaries / Build は初回ビルドで生成されます。' });
+  if (!project.generatedRootsExist) diagnostics.push({ severity: 'info', label: 'Standalone は未ビルド', detail: 'Binaries / Build は Standalone の初回ビルドで生成されます。' });
   return diagnostics;
 }
 
