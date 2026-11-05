@@ -94,7 +94,7 @@ Asset Browser の **Filters → Instance Set** は `.terrainpaint`、`.meshinsta
 
 ## 素材と開始手順
 
-付属の `Assets/Terrain/Alpine/AlpinePine.fzdata`、`AlpineBoulder.fzdata`、`AlpineRock.fzdata` は個体ゼロの配置テンプレート。Asset Browser のパレットに渡せる。一括ベイクでは地形と別の空 GameObject を target に指定し、source にテンプレートを指定する。Pine は幹と葉を共通の足元原点へ作った二 part を同じ配置に描く。
+付属の `Assets/Terrain/Alpine/AlpinePine.terrainpaint`、`AlpineBoulder.terrainpaint`、`AlpineRock.terrainpaint` は再利用できる Terrain Paint 素材。Asset Browser のパレットに渡せる。一括ベイクでは地形と別の空 GameObject を target に指定し、source にテンプレートを指定する。Pine は幹と葉を共通の足元原点へ作った二 part を同じ配置に描く。
 
 回帰では seed の再現、密度変更時の候補 ID、穴・高度・傾斜・保存層、回転・負/非一様地形 scale に対する実 world query と配置の一致、非有限値・容量超過で出力不変、template/兄弟参照の不変、保存・再読込、一括 Undo/Redo と競合拒否を検証する。
 

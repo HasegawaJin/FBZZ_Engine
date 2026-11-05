@@ -60,9 +60,9 @@
 
 | 散布テンプレート | 内容 |
 |---|---|
-| `AlpinePine.fzdata` | 約 8.9 m の針葉樹。幹と葉の 2 パーツ、計 1,152 三角形 |
-| `AlpineBoulder.fzdata` | 高さ約 2.4 m の大岩、224 三角形 |
-| `AlpineRock.fzdata` | 高さ約 1.25 m の小岩、224 三角形 |
+| `AlpinePine.terrainpaint` | 約 8.9 m の針葉樹。幹と葉の 2 パーツ、計 1,152 三角形 |
+| `AlpineBoulder.terrainpaint` | 高さ約 2.4 m の大岩、224 三角形 |
+| `AlpineRock.terrainpaint` | 高さ約 1.25 m の小岩、224 三角形 |
 
 **3. Trees / Rocks Placement** の Placement Object に散布先 GameObject を指定し、Model template に上表の `.fzdata` を指定して **Bake Placements** を使います。木・大岩・小岩ごとに別の GameObject にすると、密度と再配置を独立して扱えます。テンプレートは配置数 0 の原本です。散布結果は別の配置アセットへ保存し、元テンプレートは空のまま残します。木は低地・緩斜面・草の層、岩は岩の層を出発点に、seed、密度、縮尺、回転を調整します。雪の上や道に不要な物体が残ったときは、その分布条件を直して再配置します。
 
@@ -74,9 +74,9 @@
 
 `ForestHills_Height16.png` は森林用の緩やかな丘です。513 × 513 頂点、格子間隔 1.5 m、Max Height 40 m、Unipolar で取り込むと、768 m 四方、高さ約 4〜33 m の地形になります。
 
-Alpine Starter で材質を用意し、この画像を指定の寸法で取り込み直してから塗り分けます。小道を出すには `ForestHills_TrailMask.png` を岩の層へ取り込みます。草は層 0 に密度 5 束 / m²、表示距離 85 m。木は `AlpinePine.fzdata` を使い、層 0 に間隔 8 m、採用率 0.87、縮尺 1.6〜2.35 で配置します。元の針葉樹はこの設定で高さ約 14〜21 m になります。
+Alpine Starter で材質を用意し、この画像を指定の寸法で取り込み直してから塗り分けます。小道を出すには `ForestHills_TrailMask.png` を岩の層へ取り込みます。草は層 0 に密度 5 束 / m²、表示距離 85 m。木は `AlpinePine.terrainpaint` を使い、層 0 に間隔 8 m、採用率 0.87、縮尺 1.6〜2.35 で配置します。元の針葉樹はこの設定で高さ約 14〜21 m になります。
 
-近くの木にも揺れを付ける場合は、`ForestPineSpecimen.fzdata` を参照する Instanced Mesh と Sequence Player を同じオブジェクトに付けます。地面に原点を合わせ、`ForestPineSway.sequence` と **Play On Awake** を設定すると Play 中に根元を支点に揺れます。シーンの環境風は草に使い、木の揺れはこのループで調整します。
+近くの木にも揺れを付ける場合は、`ForestPineSpecimen.meshinstances` を参照する Instanced Mesh と Sequence Player を同じオブジェクトに付けます。地面に原点を合わせ、`ForestPineSway.sequence` と **Play On Awake** を設定すると Play 中に根元を支点に揺れます。シーンの環境風は草に使い、木の揺れはこのループで調整します。
 
 ## 保存と検証
 

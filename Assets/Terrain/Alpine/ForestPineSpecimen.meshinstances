@@ -1,0 +1,27 @@
+# @file    ForestPineSpecimen.meshinstances
+# @brief   地形の専用素材または配置結果。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+
+format = "fbzz.meshinstances"
+version = 1
+terrainPaintRef = "guid:0ab40eb92eb852698a12943d02df3557|Assets/Terrain/Alpine/AlpinePine.terrainpaint"
+
+[mesh]
+lodHeights = [0.0]
+
+[[mesh.parts]]
+mesh = "Assets/Terrain/Alpine/AlpinePineTrunk.mesh:0"
+material = "guid:90d85e213f7f58a180517828ccdc2fdc|Assets/Terrain/Alpine/Bark.mat"
+lod = 0
+
+[[mesh.parts]]
+mesh = "Assets/Terrain/Alpine/AlpinePineNeedles.mesh:0"
+material = "guid:72a95da1664f5075a94f691b9aa96e63|Assets/Terrain/Alpine/Needles.mat"
+lod = 0
+
+[placements]
+ids = [1]
+positions = [[0.0, 0.0, 0.0]]
+rotations = [[0.0, 0.0, 0.0]]
+scales = [[1.0, 1.0, 1.0]]

@@ -1,0 +1,56 @@
+# @file    ForestSpruce.terrainpaint
+# @brief   地形の専用素材または配置結果。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+
+format = "fbzz.terrainpaint"
+version = 1
+name = "ForestSpruce"
+category = "tree"
+
+[mesh]
+lodHeights = [0.36, 0.125, 0.0]
+
+[[mesh.parts]]
+mesh = "guid:99e4125096235447b3909d4248a8f431|Assets/Terrain/Alpine/Spruce/SpruceBarkLod0.obj:0"
+material = "guid:801c4cb6f37e59f886c539ffb608078e|Assets/Terrain/Alpine/Spruce/SpruceBark.mat"
+lod = 0
+
+[[mesh.parts]]
+mesh = "guid:7ae69402c3df5323ba57368e6ce45166|Assets/Terrain/Alpine/Spruce/SpruceNeedlesLod0.obj:0"
+material = "guid:4e76d5cb787250bc841ff59c9439a3de|Assets/Terrain/Alpine/Spruce/SpruceNeedles.mat"
+lod = 0
+
+[[mesh.parts]]
+mesh = "guid:c626cd7b470c5a26bc6236a60647d561|Assets/Terrain/Alpine/Spruce/SpruceBarkLod1.obj:0"
+material = "guid:801c4cb6f37e59f886c539ffb608078e|Assets/Terrain/Alpine/Spruce/SpruceBark.mat"
+lod = 1
+
+[[mesh.parts]]
+mesh = "guid:5dfa287013eb5f85bfbac36de50d7d88|Assets/Terrain/Alpine/Spruce/SpruceNeedlesLod1.obj:0"
+material = "guid:4e76d5cb787250bc841ff59c9439a3de|Assets/Terrain/Alpine/Spruce/SpruceNeedles.mat"
+lod = 1
+
+[[mesh.parts]]
+mesh = "guid:ef16cdf63e4152e7aac99cf0b2ca41fa|Assets/Terrain/Alpine/Spruce/SpruceBarkLod2.obj:0"
+material = "guid:801c4cb6f37e59f886c539ffb608078e|Assets/Terrain/Alpine/Spruce/SpruceBark.mat"
+lod = 2
+
+[[mesh.parts]]
+mesh = "guid:88ab03c45bc25f55902a69e2bdab2882|Assets/Terrain/Alpine/Spruce/SpruceNeedlesLod2.obj:0"
+material = "guid:f5d20af9796c5cabade190ac1bcecf46|Assets/Terrain/Alpine/Spruce/SpruceNeedlesFar.mat"
+lod = 2
+
+[placement]
+spacing = 6.0
+density = 1.0
+minScale = 0.8
+maxScale = 1.2
+minYaw = 0.0
+maxYaw = 360.0
+minSlope = 0.0
+maxSlope = 40.0
+alignToNormal = false
+alignDownslope = false
+downslopeJitter = 0.0
+embedDepth = 0.0

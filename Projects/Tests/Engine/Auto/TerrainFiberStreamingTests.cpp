@@ -9,6 +9,7 @@
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
+#include <Engine/Asset/MeshInstancesAsset.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -663,13 +664,11 @@ TEST_F(TerrainFiberStreamingTest, AlpineNativeMeshesAndPlacementTemplatesLoadThr
         EXPECT_LE(maximumY, item.maximumHeight);
         for (uint32_t index : mesh->cpuIndices) EXPECT_LT(index, item.vertices);
     }
-    const char* templates[] = {"AlpinePine.fzdata", "AlpineBoulder.fzdata", "AlpineRock.fzdata"};
+    const char* templates[] = {"AlpinePine.terrainpaint", "AlpineBoulder.terrainpaint", "AlpineRock.terrainpaint"};
     for (size_t index = 0; index < 3; ++index) {
         SCOPED_TRACE(templates[index]);
-        auto* base = asset::DataAssetRegistry::Resolve((alpine / templates[index]).generic_string());
-        ASSERT_NE(base, nullptr);
-        ASSERT_STREQ(base->GetTypeName(), asset::InstanceSetAsset::TYPE_NAME);
-        const auto* instance = static_cast<const asset::InstanceSetAsset*>(base);
+        const auto* instance = asset::ResolveMeshInstanceDefinition((alpine / templates[index]).generic_string());
+        ASSERT_NE(instance, nullptr);
         ASSERT_NE(instance->Snapshot(), nullptr);
         EXPECT_TRUE(instance->Snapshot()->placements.empty());
         EXPECT_EQ(instance->Parts().size(), index == 0 ? 2u : 1u);

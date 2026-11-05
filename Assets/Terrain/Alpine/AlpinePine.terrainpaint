@@ -1,0 +1,36 @@
+# @file    AlpinePine.terrainpaint
+# @brief   地形の専用素材または配置結果。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+
+format = "fbzz.terrainpaint"
+version = 1
+name = "AlpinePine"
+category = "tree"
+
+[mesh]
+lodHeights = [0.0]
+
+[[mesh.parts]]
+mesh = "Assets/Terrain/Alpine/AlpinePineTrunk.mesh:0"
+material = "guid:90d85e213f7f58a180517828ccdc2fdc|Assets/Terrain/Alpine/Bark.mat"
+lod = 0
+
+[[mesh.parts]]
+mesh = "Assets/Terrain/Alpine/AlpinePineNeedles.mesh:0"
+material = "guid:72a95da1664f5075a94f691b9aa96e63|Assets/Terrain/Alpine/Needles.mat"
+lod = 0
+
+[placement]
+spacing = 6.0
+density = 1.0
+minScale = 0.8
+maxScale = 1.2
+minYaw = 0.0
+maxYaw = 360.0
+minSlope = 0.0
+maxSlope = 40.0
+alignToNormal = false
+alignDownslope = false
+downslopeJitter = 0.0
+embedDepth = 0.0

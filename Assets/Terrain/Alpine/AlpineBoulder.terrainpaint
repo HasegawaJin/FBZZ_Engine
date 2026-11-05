@@ -1,0 +1,31 @@
+# @file    AlpineBoulder.terrainpaint
+# @brief   地形の専用素材または配置結果。
+# @author  Hasegawa Jin
+# @date    2026-11-04
+
+format = "fbzz.terrainpaint"
+version = 1
+name = "AlpineBoulder"
+category = "rock"
+
+[mesh]
+lodHeights = [0.0]
+
+[[mesh.parts]]
+mesh = "Assets/Terrain/Alpine/AlpineBoulder.mesh:0"
+material = "guid:0a8186ed63195fdc9fa66ff258793e63|Assets/Terrain/Alpine/Stone.mat"
+lod = 0
+
+[placement]
+spacing = 2.0
+density = 1.0
+minScale = 0.8
+maxScale = 1.2
+minYaw = 0.0
+maxYaw = 360.0
+minSlope = 0.0
+maxSlope = 65.0
+alignToNormal = true
+alignDownslope = true
+downslopeJitter = 35.0
+embedDepth = 0.05
