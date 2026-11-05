@@ -26,8 +26,7 @@ bool IsDirectory(const std::filesystem::path& path)
     return std::filesystem::is_directory(path, error);
 }
 
-/// 先頭要素が "Assets" なら取り除く。EngineAssetRoot 自体が Assets を指すため、
-/// "Assets/Shaders/..." をそのまま連結すると Assets が二重になる。
+/// @note EngineAssetRoot は Assets 自体を指すため、先頭の Assets を取り除く。
 std::filesystem::path StripAssetsPrefix(const std::filesystem::path& path)
 {
     auto it = path.begin();
@@ -66,10 +65,14 @@ std::filesystem::path Discover()
     const std::filesystem::path sdk =
         executableDirectory.parent_path().parent_path().parent_path()
         / L"share" / L"fbzz" / L"Assets";
-    return IsDirectory(sdk) ? sdk : std::filesystem::path{};
+    if (IsDirectory(sdk)) return sdk;
+
+    /// @note ソースビルドの Launcher は標準シェーダーを exe 隣の assets に配置する。
+    const std::filesystem::path launcherAssets = executableDirectory / L"assets";
+    return IsDirectory(launcherAssets / L"Shaders") ? launcherAssets : std::filesystem::path{};
 }
 
-} // namespace
+} /// @note namespace
 
 const std::filesystem::path& EngineAssetRoot()
 {
@@ -110,4 +113,4 @@ std::filesystem::path ResolveEngineAssetPath(const std::filesystem::path& reques
     return requested;
 }
 
-} // namespace fbzz::util
+} /// @note namespace fbzz::util
