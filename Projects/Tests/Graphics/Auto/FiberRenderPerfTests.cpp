@@ -486,6 +486,52 @@ protected:
     uint32_t m_validationErrors = 0; bool m_frameOpen = false;
 };
 
+TEST_F(FiberRenderPerfTest, ShadedBladesReceiveEnvironmentLightWithoutDirectLight)
+{
+    auto& prepared = Prepare(10000);
+    ASSERT_GT(prepared.roots, 0u);
+    MakeStraight(prepared.scene);
+    for (auto& surface : prepared.scene->fibers) {
+        surface.material.m_rootColor = surface.material.m_tipColor = {1, 1, 1, 1};
+        surface.material.m_colorVariation = 0;
+        surface.material.m_rootOcclusion = 0;
+        surface.material.m_specular = 0;
+    }
+    r::LightConstantsCB light{};
+    light.lightIntensity = 0;
+    light.ambientColor = {};
+    m_resources->Update(m_handles.lightCB, &light, sizeof(light));
+    r::AdvancedGraphicsCB advanced{};
+    advanced.iblIntensity = advanced.iblDiffuseScale = 1;
+    m_resources->Update(m_handles.advancedGraphicsCB, &advanced, sizeof(advanced));
+    const auto camera = CorrectnessCamera();
+    const auto unbound = RenderOnce(prepared.scene, camera);
+    EXPECT_EQ(ExpectFiniteImage(unbound, false), 0u);
+
+    const auto environment = m_resources->CreateCubemapRenderTarget(8);
+    ASSERT_TRUE(environment);
+    Begin();
+    for (uint32_t face = 0; face < 6; ++face) {
+        m_bundle.renderer->SetRenderTargetFace(environment, face, 0, *m_resources);
+        m_bundle.renderer->Clear({0.1f, 0.3f, 0.7f, 1});
+    }
+    End();
+    m_handles.iblIrradiance = m_handles.iblPrefilter = m_resources->GetCubemapTexture(environment);
+    m_handles.iblBrdfLut = m_resources->GetWhiteTexture();
+    const auto shaded = RenderOnce(prepared.scene, camera);
+    EXPECT_GT(ExpectFiniteImage(shaded, true), 100u);
+    double red = 0, green = 0, blue = 0;
+    for (size_t i = 0; i + 3 < shaded.pixels.size(); i += 4) {
+        red += shaded.pixels[i]; green += shaded.pixels[i + 1]; blue += shaded.pixels[i + 2];
+    }
+    EXPECT_GT(green, red * 2.5);
+    EXPECT_GT(blue, green * 2.0);
+    advanced.iblIntensity = 0;
+    m_resources->Update(m_handles.advancedGraphicsCB, &advanced, sizeof(advanced));
+    EXPECT_EQ(ExpectFiniteImage(RenderOnce(prepared.scene, camera), false), 0u);
+    m_resources->Release(environment);
+}
+
 TEST_F(FiberRenderPerfTest, StraightBladeShadowDepthKeepsBoundedCoverageAcrossSegmentQualityAndCastToggle)
 {
     RecordProperty("depthComparison", "zero raster bias; normal-Z world height slab; selected quality is not pixel-equivalent");

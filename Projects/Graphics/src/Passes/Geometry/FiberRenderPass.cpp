@@ -259,6 +259,9 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
             BindForwardShadingResources(call, ctx);
             call.textures[8] = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
+            call.textures[16] = ctx.handles.iblIrradiance;
+            call.textures[17] = ctx.handles.iblPrefilter;
+            call.textures[18] = ctx.handles.iblBrdfLut;
         }
         if (mode == FiberPassMode::VELOCITY) {
             const uint64_t geometryIdentity = drawBlades

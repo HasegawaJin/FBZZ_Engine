@@ -72,6 +72,8 @@ Shell は元メッシュのインスタンス、Fin は元メッシュの辺か�
 
 GBuffer に繊維の法線・色・roughness・深度を書き、metallic は 0 とする。Deferred と Forward の GBuffer prepass の両方で同じ形状を描く。Deferred の専用 Fur / Grass 照明は LESS_EQUAL・深度書き込みなしで重ね、SSAO / Contact Shadow も受け取る。
 
+Colorパスは共通Forward資源に加え、IBLのirradiance・prefilter・BRDF LUTをt16/17/18へ束縛する。IBL有効時は定数ambientを置き換えるため、これらを省くと直接光を遮った草だけが黒くなる。`FiberRenderPerfTest.ShadedBladesReceiveEnvironmentLightWithoutDirectLight`が直接光0の実GPU描画で環境色と無効化を検査する。
+
 velocity は土台の world 行列が静止していても描く。ビューごとに前フレームの world・風・時刻・曲げパラメーターを保存し、現在と過去の変形後位置からジッターを除いた UV 差を求める。初回・非連続フレーム・時刻巻き戻し・描画方式 / 層数変更では履歴をリセットする。完成した HDR 深度との比較で、静止した遮蔽物の背後から速度が漏れるのを防ぐ。履歴はランタイム専用でシリアライズしない。
 
 影は Alpha Clip であり、毛の透過を積分した影ではない。
