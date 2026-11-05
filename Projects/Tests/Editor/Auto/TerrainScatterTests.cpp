@@ -193,10 +193,101 @@ protected:
         args.Set("spacing", 2.0f); args.Set("maxInstances", cap);
         return editor::InvokeOperator(Context(), "terrain.scatter", args);
     }
+    editor::OpArgs PaintArguments(std::span<const std::string> paths, const math::Vector3& center, float radius, bool erase = false)
+    {
+        auto sources = editor::OpData::MakeArray();
+        for (const auto& path : paths) sources.Push(editor::OpData("guid:" + asset::AssetDatabase::GuidFromPath(path)));
+        auto stroke = editor::OpData::MakeArray();
+        stroke.Push(editor::OpData(center));
+        editor::OpArgs args;
+        args.Set("terrain", m_terrainId);
+        args.Set("sources", std::move(sources));
+        args.Set("stroke", std::move(stroke));
+        args.Set("spacing", 2.0f);
+        args.Set("brushRadius", radius);
+        args.Set("erase", erase);
+        return args;
+    }
+    editor::OpResult Paint(std::span<const std::string> paths, const math::Vector3& center, float radius, bool erase = false)
+    {
+        return editor::InvokeOperator(Context(), "terrain.paint_instances", PaintArguments(paths, center, radius, erase));
+    }
     editor::OperatorRegistry m_registry;
     editor::UndoStack m_undo;
     std::string m_terrainId, m_targetId, m_source, m_sourceSnapshot;
 };
+
+TEST_F(TerrainScatterOperatorTest, MixedBrushSharesCandidateDensityAndUndoAcrossSources)
+{
+    const auto rockPath = util::FileSystem::PathToUtf8(ProjectRoot() / "Assets" / "Rock.fzdata");
+    ASSERT_TRUE(asset::DataAssetRegistry::Create(rockPath, asset::InstanceSetAsset::TYPE_NAME));
+    auto* rock = static_cast<asset::InstanceSetAsset*>(asset::DataAssetRegistry::Resolve(rockPath));
+    ASSERT_NE(rock, nullptr);
+    const std::array<asset::InstanceMeshPart, 1> rockParts{{{"primitive:sphere", "guid:test-material", 0}}};
+    const std::array<float, 1> lod{0};
+    ASSERT_TRUE(rock->Replace(rockParts, lod, {}));
+    ASSERT_TRUE(asset::DataAssetRegistry::Save(rockPath));
+
+    const std::array sources{m_source, rockPath};
+    auto previewArgs = PaintArguments(sources, {4, 0, 4}, 6.0f);
+    auto weights = editor::OpData::MakeArray();
+    weights.Push(editor::OpData(0));
+    weights.Push(editor::OpData(100));
+    previewArgs.Set("weights", std::move(weights));
+    std::vector<editor::TerrainPaintPreviewPoint> preview;
+    size_t count = 0;
+    std::string reason;
+    ASSERT_TRUE(editor::BuildTerrainPaintPreview(Context(), previewArgs, preview, count, reason)) << reason;
+    ASSERT_EQ(count, 16u);
+    ASSERT_EQ(preview.size(), count);
+    EXPECT_TRUE(AttachedScene()->GetEntities<scene::InstancedMeshComponent>().empty());
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    const auto weighted = editor::InvokeOperator(Context(), "terrain.paint_instances", previewArgs);
+    ASSERT_TRUE(weighted.ok) << weighted.message;
+    const auto weightedOwners = AttachedScene()->GetEntities<scene::InstancedMeshComponent>();
+    ASSERT_EQ(weightedOwners.size(), 1u);
+    EXPECT_EQ(AttachedScene()->GetGameObject(weightedOwners.front())->name, "Rock (Terrain Paint)");
+    const auto weightedSnapshot = AttachedScene()->GetComponent<scene::InstancedMeshComponent>(weightedOwners.front())->Snapshot();
+    ASSERT_TRUE(weightedSnapshot);
+    ASSERT_EQ(weightedSnapshot->placements.size(), preview.size());
+    for (size_t index = 0; index < preview.size(); ++index) {
+        EXPECT_EQ(preview[index].sourceIndex, 1u);
+        EXPECT_VEC3_NEAR(preview[index].position, weightedSnapshot->placements[index].position, 0.0001f);
+    }
+    ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic();
+
+    const auto paint = Paint(sources, {4, 0, 4}, 6.0f);
+    ASSERT_TRUE(paint.ok) << paint.message;
+    const auto placements = [&]() {
+        size_t count = 0;
+        for (const auto id : AttachedScene()->GetEntities<scene::InstancedMeshComponent>()) {
+            const auto snapshot = AttachedScene()->GetComponent<scene::InstancedMeshComponent>(id)->Snapshot();
+            if (snapshot) count += snapshot->placements.size();
+        }
+        return count;
+    };
+    EXPECT_EQ(AttachedScene()->GetEntities<scene::InstancedMeshComponent>().size(), 2u);
+    EXPECT_EQ(placements(), 16u);
+    EXPECT_EQ(m_undo.GetHistorySize(), 1u);
+    const std::array oneSource{rockPath};
+    EXPECT_TRUE(Paint(oneSource, {4, 0, 4}, 6.0f).noChange);
+    EXPECT_EQ(m_undo.GetHistorySize(), 1u);
+
+    const auto erase = Paint(sources, {2, 0, 2}, 2.1f, true);
+    ASSERT_TRUE(erase.ok) << erase.message;
+    const auto remaining = placements();
+    EXPECT_LT(remaining, 16u);
+    EXPECT_GT(remaining, 0u);
+    ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic();
+    EXPECT_EQ(placements(), 16u);
+    ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic();
+    EXPECT_EQ(AttachedScene()->GetEntities<scene::InstancedMeshComponent>().size(), 0u);
+    ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic();
+    EXPECT_EQ(placements(), 16u);
+    ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic();
+    EXPECT_EQ(placements(), remaining);
+    EXPECT_EQ(asset::DataAssetRegistry::Snapshot(m_source), m_sourceSnapshot);
+}
 
 TEST_F(TerrainScatterOperatorTest, EmptyTargetGetsIndependentSavedAssetAndUndoRedo)
 {

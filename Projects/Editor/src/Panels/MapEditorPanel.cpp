@@ -333,8 +333,7 @@ void MapEditorPanel::OnRenderContent(EditorContext& ctx)
         break;
     case EditorContext::MapTool::TerrainPaint:
         if (ctx.terrainTool) {
-            ctx.terrainTool->DrawPaintContent(
-                *ctx.activeScene, ctx.undoStack, ctx.markSceneDirty);
+            ctx.terrainTool->DrawPaintContent(ctx);
             ctx.terrainTool->DrawBrushSettings();
         }
         break;

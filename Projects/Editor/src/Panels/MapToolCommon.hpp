@@ -22,7 +22,7 @@ struct MapToolDef {
 
 inline constexpr MapToolDef kMapToolDefs[] = {
     { EditorContext::MapTool::TerrainSculpt, "Sculpt",  "1", "Raise / lower / smooth / erode terrain height, or build a ramp\nShift+drag: Smooth, Ctrl+drag: Lower, [ ]: brush size" },
-    { EditorContext::MapTool::TerrainPaint,  "Paint",   "2", "Paint splatmap texture layers onto the terrain" },
+    { EditorContext::MapTool::TerrainPaint,  "Paint",   "2", "Paint terrain materials, grass layers, or a mix of placement assets" },
     { EditorContext::MapTool::Grid,          "Grid",    "3", "Manage terrain grid layout and cell assignment" },
     { EditorContext::MapTool::TerrainHole,   "Holes",   "4", "Cut or fill holes in the terrain surface\nCtrl+drag: invert" },
 };
@@ -48,4 +48,4 @@ inline void ActivateMapTool(EditorContext& ctx, EditorContext::MapTool tool)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

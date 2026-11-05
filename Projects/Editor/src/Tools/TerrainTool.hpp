@@ -6,6 +6,7 @@
 /// @note 呼び出し順: ViewportPanel::OnRenderContent 末尾で Update()、パネル側で Draw*Content()。dirty フラグは Update() が立てる。
 /// @see Docs/design/terrain-layers.md
 #pragma once
+#include "TerrainScatter.hpp"
 
 #include "TerrainBrush.hpp"
 #include <Engine/Scene/Scene.hpp>
@@ -26,6 +27,7 @@ namespace fbzz::editor {
 
 class UndoStack;
 struct EditorContext;
+class OpArgs;
 
 /// @brief Scene View 上の地形編集ツール。
 class TerrainTool {
@@ -66,7 +68,8 @@ public:
     /// @name ウィンドウを持たないタブ内容 (MapEditorPanel から呼ぶ)
     /// @{
     void DrawSculptContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
-    void DrawPaintContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
+    void DrawPaintContent(EditorContext& context);
+    void SetPaintPalette(std::vector<std::string> sources, bool focusWindow);
     void DrawHoleContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
     /// @note 取り込み・層生成・散布は共通の明示選択先へ適用する。初回に有効な地形が一個だけなら自動選択する。
     void DrawAuthoringSection(EditorContext& context);
@@ -119,6 +122,30 @@ private:
     bool     m_rampMode      = false;  ///< @note SculptOp と別に保持する Sculpt のサブモード。
     bool     m_holeErase     = false;  ///< @note true なら穴を埋める。
     uint32_t m_paintLayer    = 0;      ///< @note 参照地形の層数 - 1 へ丸める。
+    enum class PaintTarget { Materials, Grass, Instances };
+    PaintTarget m_paintTarget = PaintTarget::Materials;
+    bool m_grassErase = false;
+    int m_grassEraseLayer = -1;
+    bool m_scatterErase = false;
+    bool m_scatterStrokeErase = false;
+    bool m_scatterStrokeContinuous = false;
+    float m_scatterStrokeRadius = 0.0f;
+    uint64_t m_scatterTerrainLifetime = 0;
+    std::string m_scatterStrokeTerrainId;
+    struct PaintSource {
+        std::string reference;
+        float weight = 100.0f;
+    };
+    std::vector<PaintSource> m_paintPalette;
+    bool m_focusPaintPalette = false;
+    bool m_showPaintPreview = true;
+    double m_nextPaintPreviewTime = 0.0;
+    size_t m_paintPreviewTotal = 0;
+    std::vector<TerrainPaintPreviewPoint> m_paintPreview;
+    std::string m_paintPreviewError;
+    std::string m_paintPreviewTerrainId;
+    math::Vector3 m_paintPreviewCenter;
+    std::vector<math::Vector3> m_scatterStroke;
     float    m_flattenTarget = 0.0f;   ///< @note 基準高さ (ローカル Y [m])。
     bool     m_flattenLocked = false;
 
@@ -199,7 +226,16 @@ private:
     scene::GameObject* DrawHeightMapTarget(scene::Scene& scene);
     void DrawImportSection(EditorContext& context, scene::GameObject* target);
     void DrawBiomeSection(EditorContext& context, scene::GameObject* target);
+    void DrawGrassPaint(EditorContext& context, scene::GameObject* terrain);
     void DrawScatterSection(EditorContext& context, scene::GameObject* terrain);
+    void DrawInstancePaint(scene::GameObject* terrain);
+    void DrawScatterSettings(scene::GameObject* terrain);
+    [[nodiscard]] OpArgs ScatterArguments(const std::string& terrainId, const std::string& targetId) const;
+    void UpdateScatterStroke(EditorContext& context, bool pressed, bool held);
+    void UpdateScatterPreview(EditorContext& context, bool viewportHovered);
+    void DrawScatterPreview(const ImVec2& viewportMin, const ImVec2& viewportSize, const renderer::Camera& camera) const;
+    [[nodiscard]] OpArgs ScatterStrokeArguments(const std::string& terrainId,
+        std::span<const math::Vector3> centers, float radius, bool erase) const;
 
     /// @brief DDA + 二分探索でレイと地形の交差を求める。穴のセルの交差は飛ばして次を探す。
     /// @param outLocalHit テレインローカル座標。
