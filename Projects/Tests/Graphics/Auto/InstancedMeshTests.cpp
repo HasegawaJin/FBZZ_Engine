@@ -134,7 +134,7 @@ protected:
     }
     void Begin() { m_resources->AdvanceFrame(); m_bundle.renderer->BeginFrame(); m_frameOpen=true; }
     void End() { m_bundle.renderer->SetRenderTarget({},*m_resources); m_bundle.renderer->EndFrame(); m_frameOpen=false; }
-    void Draw(const std::shared_ptr<r::RenderScene>& scene,int mode,bool shadow=false)
+    void Draw(const std::shared_ptr<r::RenderScene>& scene,int mode,bool shadow=false,bool forward=false)
     {
         m_settings.gpuInstancing=mode!=0; m_settings.bulkInstanceGpuCulling=mode==2 || mode==3;
         m_settings.geometryDrawMode=mode==3 ? r::GeometryDrawMode::GPU_INSTANCE_INDIRECT : mode==2 ? r::GeometryDrawMode::GPU_INDIRECT : r::GeometryDrawMode::CPU;
@@ -150,7 +150,8 @@ protected:
             auto frame=r::MakeCameraFrameCB(m_camera,0,0); frame.projection=m_camera.GetProjectionMatrix(); frame.viewProjection=frame.projection*frame.view;
             m_resources->Update(m_handles.frameCB,&frame,sizeof(frame));
             r::SubmitInstanceShadows(ctx,math::Frustum::FromViewProjection(frame.viewProjection),m_handles.frameCB);
-        } else r::ExecuteInstanceGBuffer(ctx);
+        } else if (forward) r::ExecuteInstanceForward(ctx);
+        else r::ExecuteInstanceGBuffer(ctx);
         m_uploadBytes=ctx.statsInstanceUploadBytes; m_draws=shadow ? ctx.statsShadowDrawCalls : ctx.statsDrawCalls;
     }
     std::vector<float> Read(bool shadow=false,bool depth=false)
@@ -273,6 +274,19 @@ TEST_F(InstancedMeshTest, CameraDistancePaddingSmallObjectAndLayerPoliciesMatchC
     }
     m_cullingMask=0;const auto pixels=Render(scene,2);Same(pixels,Render(scene,0));
     for (size_t i=0;i<pixels.size();++i) EXPECT_EQ(pixels[i],0);
+}
+
+TEST_F(InstancedMeshTest, DeferredForwardSkipsPreparingGBufferOnlyInstances)
+{
+    const auto scene=Scene(130);
+    Begin(); Draw(scene,2,false,true); End();
+    EXPECT_EQ(m_uploadBytes,0u);
+    EXPECT_EQ(m_draws,0u);
+    for (float value : Read()) EXPECT_EQ(value,0.0f);
+
+    Render(scene,2);
+    EXPECT_GT(m_uploadBytes,0u);
+    EXPECT_GT(m_draws,0u);
 }
 
 TEST_F(InstancedMeshTest, DISABLED_MeasureTenThousandInstancesWithNativeProfiler)

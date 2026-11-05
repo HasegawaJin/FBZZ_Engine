@@ -52,3 +52,13 @@ GPU 回帰の `InstancedVegetationTest` / `TerrainVegetationShaderTest` は `Ins
 Render extraction resolves loaded instance-set GUIDs through bounded canonical-key aliases. Each hit checks the current AssetDatabase revision and reacquires the current DataAssetRegistry entry; no asset pointer is retained. Index moves/removal/project retirement and ClearCache reopen normal resolution. Reload, undo, replacement and snapshots remain authoritative in the registry. Failed loads and non-GUID references retain the original filesystem, path-priority and retry behavior. Raw disk presence is checked on cold/reindexed lookup rather than polled for every render frame of an already-loaded definition. Absolute-path normalization separately retains only pure path spelling, with locale folding left live and relative inputs excluded.
 
 Dedicated `.meshinstances` / `.terrainpaint` GUIDs use a bounded cache of generational AssetManager handles. Every hit reacquires the current value through `Get`; unload and AssetDatabase revision changes reopen normal resolution. The dispatcher chooses the format from the indexed path without adding filesystem checks to the legacy warm path. Snapshot revisions remain unique across imported object replacements, and same-content native reloads retain the current snapshot for editing history.
+
+## 遠景樹木のアセットLOD (2026-11-06)
+
+ユーザーの遠景ビルボード化と負荷削減の指示により、島のSpruce/Birchへ既存4段階目のLODを使う。LOD0〜2のモデルと材質を保ち、最後に切替前のLOD2の実形状・透過色・接空間法線を焼いた交差ビルボードを足す。外形寸法はLOD0を基準にし、切替で樹冠が急に密になることを避ける。3方向の垂直板と上面の計8三角形を標準PBR/alpha-testの単一partとして描き、通常のinstancing・影・GBuffer・選択を共有する。配置ID・位置・姿勢・本数は変えない。遠景の材質は風を0にし、近景の葉は既存の材質で揺らす。
+
+切替は距離の固定値ではなく既存の保守的boundsと画面内の大きさで選ぶ。近い2段の閾値を保ち、Spruceは0.055、Birchは0.04未満で最終LODへ移す。Paint素材にも同じ定義を保存して、新規配置へ継承する。焼いたアトラスは色と法線で同じ配置を使い、透過縁へ色を延長してmipの黒縁を抑える。遠景から近景へ移動した画像と同一視点の実DX12時間・三角形数を比較する。
+
+色・法線アトラスで遠景の樹木の光応答を保つ方式の参考: [Unity BillboardAsset](https://docs.unity.com/en-us/engine/7000.0/script-reference/unityengine/billboardasset)。この島は固定した交差板を使い、カメラ方向で画像を選ぶ方式は追加しない。
+
+Deferredの後段Forwardでは、全partがGBuffer対応ならSourceの行列upload・CPU/GPU選別・LOD指示の準備を行わない。描画対象は既にGBufferへ提出しており、後段のpartループも全て省くためである。混在するcustom shader、通常のForwardと反射captureは既存経路で描く。初回Forward呼出しのupload/drawが0で、その後のGBufferが正しく初期化して描けることを実DX12で検証する。

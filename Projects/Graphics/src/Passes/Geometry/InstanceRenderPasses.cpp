@@ -243,6 +243,9 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         if (!valid) continue;
         if (pass==InstancePass::SHADOW && !input.castShadows) continue;
         if (pass==InstancePass::SELECTION && !input.selected) continue;
+        /// @note Deferred already consumed these parts; reject before preparing rows or synchronizing GPU visibility dispatches.
+        if (pass==InstancePass::FORWARD && ctx.isDeferred && std::all_of(input.parts.begin(),input.parts.end(),
+            [](const auto& part) { return part.mesh.material.shaderCapabilities.SupportsGBuffer(); })) continue;
         auto& source=Source(ctx,cache,input);
         if (pass==InstancePass::GBUFFER || (pass==InstancePass::FORWARD && !ctx.isDeferred)) ctx.statsTotalObjects+=static_cast<int>(source.activeCount);
         const bool animated = std::any_of(input.parts.begin(), input.parts.end(), [](const auto& part) { return LeafAnimated(part.mesh.material); });
