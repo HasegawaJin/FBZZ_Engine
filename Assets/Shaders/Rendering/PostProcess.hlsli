@@ -163,9 +163,12 @@ float3 ApplyShadowHighlight(float3 color, float shadowAmount, float highlightAmo
     /// @note 露出を変えず、トーンマップ後の LDR の階調を補正する。
     float luma = Luminance(color);
     float shadowMask = 1.0f - smoothstep(0.08f, 0.45f, luma);
-    float highlightMask = smoothstep(0.55f, 1.0f, luma);
     color = lerp(color, color + (1.0f - color) * shadowAmount, shadowMask);
-    color = lerp(color, color / (1.0f + color * highlightAmount * 2.0f), highlightMask);
+    /// @note x/(1+a*x*(1-x)) は0と1を固定し、導関数(1+a*x*x)/denom^2が正なので白い太陽と周囲の明暗を逆転させない。
+    luma = Luminance(color);
+    float x = saturate((luma - 0.55f) / 0.45f);
+    float compressed = 0.55f + 0.45f * x / (1.0f + 2.0f * saturate(highlightAmount) * x * (1.0f - x));
+    color *= luma > 0.55f ? compressed / max(luma, 1.0e-5f) : 1.0f;
     return saturate(color);
 }
 

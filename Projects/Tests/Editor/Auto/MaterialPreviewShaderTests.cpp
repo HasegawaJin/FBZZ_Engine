@@ -306,6 +306,82 @@ TEST_F(MaterialPreviewShaderTest, PaintMixThumbnailsReflectWeightsAndViewportPic
     context.activeScene=nullptr;
 }
 
+TEST_F(MaterialPreviewShaderTest, SunHasNaturalAngularSizeAndFollowsTheObserverHorizon)
+{
+    const auto shaderRoot=m_project/"Assets/Shaders";
+    for(const auto* relative:{"Common/Math.hlsli","Rendering/Atmosphere.hlsli"}){
+        const auto destination=shaderRoot/relative;ASSERT_TRUE(util::FileSystem::EnsureParentDirectory(destination));
+        std::error_code error;ASSERT_TRUE(std::filesystem::copy_file(m_root/"Assets/Shaders"/relative,destination,error));ASSERT_FALSE(error);
+    }
+    const auto path=(shaderRoot/"SolarProbe.hlsl").generic_string();
+    const std::string source=R"HLSL(/// @file    SolarProbe.hlsl
+/// @brief   本番の太陽ディスクと地平線を角度指定で撮影する。
+/// @author  Hasegawa Jin
+/// @date    2026-11-05
+#include "Rendering/Atmosphere.hlsli"
+cbuffer SolarProbe : register(b13) { float4 sampleSettings; };
+float4 VSMain(uint id:SV_VertexID):SV_POSITION
+{
+    float2 p=float2((id<<1)&2,id&2);return float4(p*float2(2,-2)+float2(-1,1),0,1);
+}
+float4 PSMain(float4 pixel:SV_POSITION):SV_Target0
+{
+    float2 angle=(pixel.xy/256.0-0.5)*radians(4.0);
+    float3 ray=normalize(float3(tan(angle.x),tan(sampleSettings.z-angle.y),1));
+    float3 sun=float3(0,sin(sampleSettings.x),cos(sampleSettings.x));
+    return float4(SunDisk(ray,sun,1.0,sampleSettings.y,6371.0),1);
+}
+)HLSL";
+    ASSERT_TRUE(util::FileSystem::WriteText(path,source));
+    const auto shader=m_resources->LoadShader(path);
+    const auto state=m_resources->CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,renderer::BlendMode::OPAQUE_BLEND,renderer::DepthMode::DEPTH_OFF});
+    const auto settings=m_resources->CreateConstantBuffer(sizeof(math::Vector4));ASSERT_TRUE(shader.IsValid()&&state.IsValid()&&settings.IsValid());
+    const auto render=[&](float altitude,float height){
+        const math::Vector4 config{math::ToRad(altitude),height,math::ToRad(altitude),0};m_resources->Update(settings,&config,sizeof(config));
+        m_resources->AdvanceFrame();m_bundle.renderer->BeginFrame();m_frameOpen=true;m_bundle.renderer->SetRenderTarget(m_target,*m_resources);m_bundle.renderer->Clear({0,0,0,0});
+        renderer::DrawCall draw;draw.shader=shader;draw.pipelineState=state;draw.vertexCount=3;draw.constantBuffers[13]=settings;m_bundle.renderer->Submit(draw,*m_resources);
+        m_bundle.renderer->EndFrame();m_frameOpen=false;std::vector<float> pixels;uint32_t width=0,heightPixels=0;
+        EXPECT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(m_target,*m_resources,pixels,width,heightPixels));EXPECT_EQ(width,256u);EXPECT_EQ(heightPixels,256u);return pixels;
+    };
+    const auto flux=[](const auto& pixels){double sum=0;for(size_t i=0;i<pixels.size();i+=4){EXPECT_TRUE(std::isfinite(pixels[i]));sum+=pixels[i];}return sum;};
+    const auto full=render(10,0);ASSERT_EQ(full.size(),256u*256u*4u);const auto energy=flux(full);EXPECT_GT(energy,700);EXPECT_LT(energy,1100);
+    size_t diameter=0;for(size_t x=0;x<256;++x)if(full[(127*256+x)*4]>0.5f)++diameter;EXPECT_GE(diameter,32u);EXPECT_LE(diameter,36u);
+    const auto half=flux(render(0,0));EXPECT_GT(half/energy,0.46);EXPECT_LT(half/energy,0.54);
+    EXPECT_GT(flux(render(-0.1f,100))/energy,0.90);EXPECT_LT(flux(render(-1,0)),0.001);
+}
+
+TEST_F(MaterialPreviewShaderTest, HighlightCompressionKeepsWhiteAndBrightnessOrdering)
+{
+    const auto shaderRoot=m_project/"Assets/Shaders";
+    for(const auto* relative:{"Common/Color.hlsli","Common/Math.hlsli"}){
+        const auto destination=shaderRoot/relative;ASSERT_TRUE(util::FileSystem::EnsureParentDirectory(destination));
+        std::error_code error;ASSERT_TRUE(std::filesystem::copy_file(m_root/"Assets/Shaders"/relative,destination,error));ASSERT_FALSE(error);
+    }
+    std::string production;ASSERT_TRUE(util::FileSystem::ReadText(m_root/"Assets/Shaders/Rendering/PostProcess.hlsli",production));
+    const auto begin=production.find("float3 ApplyShadowHighlight("),end=production.find("float3 ApplyColorFilter(",begin);ASSERT_NE(begin,std::string::npos);ASSERT_NE(end,std::string::npos);
+    const auto path=(shaderRoot/"HighlightProbe.hlsl").generic_string();
+    const std::string prefix=R"HLSL(/// @file    HighlightProbe.hlsl
+/// @brief   本番ハイライト補正へ黒から白の階調を入力する。
+/// @author  Hasegawa Jin
+/// @date    2026-11-05
+#include "Common/Color.hlsli"
+cbuffer Probe : register(b13) { float4 strength; };
+)HLSL";
+    const std::string suffix=R"HLSL(
+float4 VSMain(uint id:SV_VertexID):SV_POSITION { float2 p=float2((id<<1)&2,id&2);return float4(p*float2(2,-2)+float2(-1,1),0,1); }
+float4 PSMain(float4 pixel:SV_POSITION):SV_Target0 { float value=saturate((pixel.x-0.5)/255.0);return float4(ApplyShadowHighlight(value.xxx,0.015,strength.x),1); }
+)HLSL";
+    ASSERT_TRUE(util::FileSystem::WriteText(path,prefix+production.substr(begin,end-begin)+suffix));
+    const auto shader=m_resources->LoadShader(path);const auto settings=m_resources->CreateConstantBuffer(sizeof(math::Vector4));
+    const auto state=m_resources->CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,renderer::BlendMode::OPAQUE_BLEND,renderer::DepthMode::DEPTH_OFF});ASSERT_TRUE(shader.IsValid()&&settings.IsValid()&&state.IsValid());
+    for(float amount:{0.0f,0.3f,1.0f}){
+        const math::Vector4 value{amount,0,0,0};m_resources->Update(settings,&value,sizeof(value));m_resources->AdvanceFrame();m_bundle.renderer->BeginFrame();m_frameOpen=true;
+        m_bundle.renderer->SetRenderTarget(m_target,*m_resources);m_bundle.renderer->Clear({0,0,0,0});renderer::DrawCall draw;draw.shader=shader;draw.pipelineState=state;draw.vertexCount=3;draw.constantBuffers[13]=settings;m_bundle.renderer->Submit(draw,*m_resources);
+        m_bundle.renderer->EndFrame();m_frameOpen=false;std::vector<float> pixels;uint32_t width=0,height=0;ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(m_target,*m_resources,pixels,width,height));ASSERT_EQ(width,256u);
+        EXPECT_NEAR(pixels[255*4],1,0.0001f);for(size_t x=1;x<256;++x){EXPECT_TRUE(std::isfinite(pixels[x*4]));EXPECT_GE(pixels[x*4]+0.00001f,pixels[(x-1)*4])<<"amount="<<amount<<" x="<<x;}
+    }
+}
+
 TEST_F(MaterialPreviewShaderTest, BuiltinParticleMaterialPreservesTintLightingAndOutputGain)
 {
     asset::MaterialAssetAuthoring particle;

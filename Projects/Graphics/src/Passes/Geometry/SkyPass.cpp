@@ -6,6 +6,21 @@
 #include "Graphics/Renderer/DrawCall.hpp"
 
 namespace fbzz::renderer {
+namespace {
+AtmosphereCB SkyAtmosphere(const RenderSkyInput* sky)
+{
+    AtmosphereCB data{};
+    data.planetRadius=sky?sky->planetRadius:6371.0f;
+    data.atmosphereRadius=sky?sky->atmosphereRadius:6471.0f;
+    if(sky){
+        data.rayleighScattering[0]=sky->rayleighScattering.x;
+        data.rayleighScattering[1]=sky->rayleighScattering.y;
+        data.rayleighScattering[2]=sky->rayleighScattering.z;
+        data.mieScattering=sky->mieScattering;data.sunIntensity=sky->skyScatterIntensity;data.mieG=sky->mieG;
+    }
+    return data;
+}
+} /// @note namespace
 
 void ExecuteSkyPass(RenderPassContext& ctx)
 {
@@ -22,15 +37,7 @@ void ExecuteSkyPass(RenderPassContext& ctx)
         skyPostData.time     = ctx.time;
         resources.Update(h.postprocCB, &skyPostData, sizeof(PostProcCB));
 
-        AtmosphereCB atmData{};
-        atmData.rayleighScattering[0] = sky->rayleighScattering.x;
-        atmData.rayleighScattering[1] = sky->rayleighScattering.y;
-        atmData.rayleighScattering[2] = sky->rayleighScattering.z;
-        atmData.mieScattering         = sky->mieScattering;
-        atmData.planetRadius          = sky->planetRadius;
-        atmData.atmosphereRadius      = sky->atmosphereRadius;
-        atmData.sunIntensity          = sky->skyScatterIntensity;
-        atmData.mieG                  = sky->mieG;
+        const auto atmData = SkyAtmosphere(sky);
         resources.Update(h.atmosphereCB, &atmData, sizeof(AtmosphereCB));
 
         renderer::DrawCall dc;
@@ -57,7 +64,8 @@ void ExecuteSunMoonPass(RenderPassContext& ctx)
     if (ctx.environment.sunMoon) {
         const auto* sunMoon = &*ctx.environment.sunMoon;
 
-        AtmosphereCB atmData{};
+        const auto skyData = SkyAtmosphere(ctx.environment.sky ? &*ctx.environment.sky : nullptr);
+        auto atmData = skyData;
         atmData.sunIntensity          = sunMoon->sunEnabled ? sunMoon->sunDiskIntensity : 0.0f;
         atmData.moonEnabled           = sunMoon->moonEnabled ? 1.0f : 0.0f;
         atmData.moonSize              = sunMoon->moonSize;
@@ -77,6 +85,8 @@ void ExecuteSunMoonPass(RenderPassContext& ctx)
         dc.constantBuffers[3] = h.lightCB;
         dc.constantBuffers[6] = h.atmosphereCB;
         SubmitCounted(ctx, dc);
+        /// @note 後段の大気フォグが同じb6を読むため、ディスクの輝度と空の散乱係数を混同させない。
+        resources.Update(h.atmosphereCB, &skyData, sizeof(skyData));
     }
 }
 

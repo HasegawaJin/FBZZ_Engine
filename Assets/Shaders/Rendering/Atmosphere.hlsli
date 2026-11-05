@@ -39,12 +39,12 @@ float3 ComputeAtmosphericScattering(float3 rayDir, float3 sunDir,
     float phaseM = MiePhase(cosTheta, mieG);
 
     /// @note 光路長は 1/(y + 0.15) で地平線へ滑らかに伸ばす。min(1/y, 40) のような硬いクランプは
-    ///       帯になる。地平線下は y=0 の薄い層として扱い、地平線色へ収束させる。6.0 は調整係数。
+    /// @note 帯になる。地平線下は y=0 の薄い層として扱い、地平線色へ収束させる。6.0 は調整係数。
     float altitude = max(rayDir.y, 0.0f);
     float path     = 6.0f / (altitude + 0.15f);
 
     /// @note 消散 (Beer-Lambert) を入れた解析解 (betaR*phaseR + betaM*phaseM)/betaExt*(1-exp(-betaExt*path))。
-    ///       光路を線形に掛けるだけだと地平線で無制限に白飛びする。吸収は無視し散乱だけで近似。
+    /// @note 光路を線形に掛けるだけだと地平線で無制限に白飛びする。吸収は無視し散乱だけで近似。
     float3 betaR   = rayleigh;
     float3 betaM   = float3(mie, mie, mie);
     float3 betaExt = betaR + betaM;
@@ -56,38 +56,49 @@ float3 ComputeAtmosphericScattering(float3 rayDir, float3 sunDir,
     return sunIntensity * inScatter;
 }
 
-/// @brief 地平線より下の画素を隠す係数 [0,1]。
-/// @param rayDir 視線方向 (正規化)。地平線は Skydome と同じく rayDir.y = 0。
-/// @note 天体の «中心の高度» ではなく «画素の方向» で隠す。中心で判定すると、沈んだ後もディスクが
-///       地平線の下 (地形が覆っていない空ドーム) に描かれ続け、半分沈んだ姿も作れない。
-/// @note 縁の幅 0.003 (約 0.17°) はディスク半径より十分細く、地平線の切れ目がジャギーにならない量。
-float HorizonMask(float3 rayDir)
+/// @brief 観測高度に応じた幾何学的地平線の可視率 [0,1]。
+/// @param observerHeight 海面 Y=0 からの観測高度 [world m]。負値は海面として扱う。
+/// @param radiusKm 惑星半径 [km]。屈折は含めず、地形と水面は実際の深度で遮蔽する。
+/// @note h*(2R+h) は低い観測点でも 1-(R/(R+h))^2 の桁落ちを避ける。
+/// @see https://aty.sdsu.edu/explain/atmos_refr/dip.html Dip without refraction, cos(d)=R/(R+h)
+/// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-fwidth Pixel derivatives
+float HorizonMask(float3 rayDir, float observerHeight = 0.0f, float radiusKm = 6371.0f)
 {
-    return smoothstep(0.0f, 0.003f, rayDir.y);
+    float radius = max(radiusKm, 1.0f) * 1000.0f;
+    float height = max(observerHeight, 0.0f);
+    float horizonY = -sqrt(height * (2.0f * radius + height)) / (radius + height);
+    float edge = max(fwidth(rayDir.y) * 0.5f, 1.0e-6f);
+    return smoothstep(horizonY - edge, horizonY + edge, rayDir.y);
 }
 
-/// @brief 太陽ディスク。
-/// @param sunDir 太陽へ向かう方向 (正規化)。
-/// @note 0.9994 ≒ cos(2°)。実際の太陽 (約 0.53°) より大きくして視認しやすくしている。
-float3 SunDisk(float3 rayDir, float3 sunDir, float sunIntensity)
+/// @brief 1 AU で角直径約0.533度の太陽ディスク。
+/// @param sunDir 光源と同じ、太陽へ向かう正規化方向。
+/// @note 弦長で縁を測り、acos の中心での特異点と dot の 1 近傍の精度低下を避ける。
+/// @see https://aa.usno.navy.mil/faq/sun_approx Angular semidiameter SD=0.2666/R degrees
+float3 SunDisk(float3 rayDir, float3 sunDir, float sunIntensity,
+               float observerHeight = 0.0f, float radiusKm = 6371.0f)
 {
-    float cosAngle = dot(rayDir, sunDir);
-    float disk     = smoothstep(0.9994f, 0.9999f, cosAngle);
-    return float3(1.0f, 0.95f, 0.8f) * sunIntensity * disk * HorizonMask(rayDir);
+    const float radius = 2.0f * sin(0.2666f * PI / 360.0f);
+    float chord = length(rayDir - sunDir);
+    float edge = max(fwidth(chord) * 0.5f, 1.0e-6f);
+    float disk = 1.0f - smoothstep(radius - edge, radius + edge, chord);
+    return max(sunIntensity, 0.0f) * disk * HorizonMask(rayDir, observerHeight, radiusKm);
 }
 
 /// @brief 月ディスク。
 /// @param moonDir   月へ向かう方向 (正規化)。SunMoon では -sunDir。
-/// @param sizeScale 角サイズの倍率 (1 で太陽程度)。
-/// @note 地平線は画素ごとに HorizonMask で切る。昇り沈みでディスクが地平線に隠れていく。
-float3 MoonDisk(float3 rayDir, float3 moonDir, float3 color, float brightness, float sizeScale)
+/// @param sizeScale 従来の月ディスクのサイズ調整係数。太陽の角直径とは独立。
+/// @note 地平線の可視率は太陽と共通で、観測高度と画素の角度から求める。
+float3 MoonDisk(float3 rayDir, float3 moonDir, float3 color, float brightness, float sizeScale,
+                float observerHeight = 0.0f, float radiusKm = 6371.0f)
 {
     float cosAngle = dot(rayDir, moonDir);
     float s     = max(sizeScale, 0.05f);
     float edge0 = 1.0f - 0.0010f * s;
     float edge1 = 1.0f - 0.0002f * s;
     float disk  = smoothstep(edge0, edge1, cosAngle);
-    return color * brightness * disk * HorizonMask(rayDir);
+    return color * brightness * disk * HorizonMask(rayDir, observerHeight, radiusKm);
 }
 
-#endif // ATMOSPHERE_HLSLI
+/// @note ATMOSPHERE_HLSLI
+#endif

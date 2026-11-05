@@ -32,12 +32,12 @@ float4 PSMain(SkyPSInput p) : SV_Target0
     float3 sunDir = normalize(-lightDir);
 
     /// @note 明るさは skyDimmer で取る。Skydome と同じ軸に揃え、太陽ディスクと空の明るさを一致させる。
-    /// @note 地平線より下は SunDisk / MoonDisk が画素ごとに隠す (Atmosphere.hlsli の HorizonMask)。
-    float3 color = SunDisk(ray, sunDir, sunIntensity * skyDimmer);
+    /// @note 光源の色・方向を共有し、観測高度に応じた地平線で画素ごとに隠す。
+    float3 color = SunDisk(ray, sunDir, sunIntensity * skyDimmer, cameraPos.y, planetRadius) * max(lightColor, 0.0f);
     if (moonEnabled > 0.5f)
     {
         float3 moonDir = -sunDir;
-        color += MoonDisk(ray, moonDir, moonColor, moonBrightness, moonSize);
+        color += MoonDisk(ray, moonDir, moonColor, moonBrightness, moonSize, cameraPos.y, planetRadius);
     }
 
     return float4(max(color, 0.0f), 1.0f);
