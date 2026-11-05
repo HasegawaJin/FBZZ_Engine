@@ -37,6 +37,7 @@
 #include <Engine/Asset/DataAsset.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Editor/Util/ManagedDataAssetEditor.hpp>
+#include <Tools/TerrainPaintLibrary.hpp>
 #include <Engine/Asset/FzTerrainSerializer.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
@@ -2749,6 +2750,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 ImGui::TextColored({1.0f, 0.8f, 0.2f, 1.0f}, "Modified");
             }
         }
+    } else if (ext == ".terrainpaint") {
+        DrawTerrainPaintAssetInspector(ctx, absPath);
+    } else if (ext == ".meshinstances") {
+        DrawMeshInstancesAssetInspector(ctx, absPath);
     } else if (ext == ".fzdata") {
         if (DrawManagedDataAssetInspector(ctx, absPath)) return;
         /// @name DataAsset (純共有 ScriptableObject)

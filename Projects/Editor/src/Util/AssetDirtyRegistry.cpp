@@ -13,7 +13,7 @@ std::uint64_t AssetDirtyRegistry::s_discardEpoch = 0;
 void AssetDirtyRegistry::Register(const std::string& absPath,
                                    const std::string& displayPath,
                                    const std::string& typeLabel,
-                                   std::function<bool()> saveFunc, std::any draft)
+                                   std::function<bool()> saveFunc, std::any draft, std::function<void()> discardFunc)
 {
     for (auto& entry : s_dirty) {
         if (entry.path == absPath) {
@@ -22,10 +22,11 @@ void AssetDirtyRegistry::Register(const std::string& absPath,
             entry.displayPath = displayPath;
             entry.typeLabel = typeLabel;
             entry.draft = std::move(draft);
+            entry.discardFunc = std::move(discardFunc);
             return;
         }
     }
-    s_dirty.push_back({ absPath, displayPath, typeLabel, std::move(saveFunc), std::move(draft) });
+    s_dirty.push_back({ absPath, displayPath, typeLabel, std::move(saveFunc), std::move(draft), std::move(discardFunc) });
 }
 
 void AssetDirtyRegistry::MarkClean(const std::string& absPath)
@@ -70,7 +71,7 @@ bool AssetDirtyRegistry::Save(const std::string& absPath)
 int AssetDirtyRegistry::SaveAll()
 {
     int failed = 0;
-    /// @note 保存しながら clean 扱いにする (逆順ループで safe erase)
+    /// @note callback の完了後に登録を外し、保存失敗の draft は保持する。
     std::vector<std::string> saved;
     for (auto& entry : s_dirty) {
         if (entry.saveFunc && entry.saveFunc())
@@ -85,8 +86,11 @@ int AssetDirtyRegistry::SaveAll()
 
 void AssetDirtyRegistry::DiscardAll()
 {
+    auto discarded = std::move(s_dirty);
     s_dirty.clear();
     ++s_discardEpoch;
+    for (auto& entry : discarded)
+        if (entry.discardFunc) entry.discardFunc();
 }
 
 std::uint64_t AssetDirtyRegistry::DiscardEpoch()

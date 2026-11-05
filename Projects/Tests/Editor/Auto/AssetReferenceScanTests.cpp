@@ -93,6 +93,27 @@ TEST_F(AssetReferenceScanTest, FindsCodecGuidAndNestedPathValuesWithOwnerAndFiel
     EXPECT_EQ(report.owners[1].evidence[0].field, "entities[0].renderer.textures[0]");
 }
 
+TEST_F(AssetReferenceScanTest, FindsDependenciesInDedicatedPaintAndPlacementFormats)
+{
+    ASSERT_TRUE(Write("Assets/Pine.fbx", "mesh"));
+    asset::AssetDatabase::Init(Path("Assets"));
+    const auto guid = asset::AssetDatabase::TryGetGuidFromPath(Path("Assets/Pine.fbx"));
+    ASSERT_FALSE(guid.empty());
+    const auto reference = "guid:" + guid;
+    ASSERT_TRUE(Write("Assets/Pine.terrainpaint", "[[mesh.parts]]\nmesh='" + reference + "'\n"));
+    ASSERT_TRUE(Write("Assets/Pine.meshinstances", "[[mesh.parts]]\nmesh='" + reference + "'\n"));
+    editor::assetrefs::Scan scan;
+    scan.Begin(Request("Assets/Pine.fbx", {Entry("Assets/Pine.terrainpaint"), Entry("Assets/Pine.meshinstances")}));
+    Finish(scan);
+    ASSERT_EQ(scan.Result().owners.size(), 2u);
+    EXPECT_EQ(scan.Result().unsupported, 0u);
+    for (const auto& owner : scan.Result().owners) {
+        EXPECT_TRUE(owner.kind == "Terrain paint" || owner.kind == "Mesh instances");
+        ASSERT_EQ(owner.evidence.size(), 1u);
+        EXPECT_EQ(owner.evidence[0].field, "mesh.parts[0].mesh");
+    }
+}
+
 TEST_F(AssetReferenceScanTest, IgnoresCommentsSubstringsScriptLoadsAndUnknownGuidSuffixes)
 {
     ASSERT_TRUE(Write("Assets/Boat.png", "source"));

@@ -15,6 +15,7 @@
 #include <Engine/Input/KeyCode.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Engine/Asset/MeshInstancesAsset.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <algorithm>
@@ -589,6 +590,13 @@ struct ImGuiReflector : scene::IReflector {
     void Field(const char* name, scene::DataAssetRef& v) override
     {
         if (!BeginRow(name)) return;
+        if (v.type == asset::InstanceSetAsset::TYPE_NAME) {
+            const auto before = v.path;
+            widgets::AssetPathField("##meshInstances", v.path, ".meshinstances,.fzdata", m_projectRoot);
+            if (v.path != before && !v.path.empty() && !asset::ResolveMeshInstanceDefinition(v.path)) v.path = before;
+            m_changed |= v.path != before;
+            EndRow(); return;
+        }
         const std::string before = v.path;
 
         const auto  slash   = v.path.find_last_of("/\\");

@@ -499,7 +499,7 @@ void AssetBrowserPanel::RefreshDirectory()
         e.isDir = util::FileSystem::IsDirectory(p);
         if (!ShouldDisplayEntry(e.path, e.name, e.isDir)) continue;
         if (!e.isDir) {
-            e.isInstanceSet = e.ext == ".fzdata" && IsInstanceSetFile(e.path);
+        e.isInstanceSet = (e.ext == ".fzdata" || e.ext == ".terrainpaint" || e.ext == ".meshinstances") && IsInstanceSetFile(e.path);
             e.hasSubAssets = IsImportableRaw(e.ext);
             if (e.ext == ".png" || e.ext == ".jpg" || e.ext == ".jpeg" ||
                 e.ext == ".tga" || e.ext == ".dds" || e.ext == ".hdr" ||

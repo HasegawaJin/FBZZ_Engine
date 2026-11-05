@@ -812,6 +812,8 @@ void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
 
 bool AssetBrowserPanel::IsInstanceSetFile(const std::string& path)
 {
+    const auto extension = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
+    if (extension == ".terrainpaint" || extension == ".meshinstances") return true;
     /// @note Native writers place the top-level type before arrays or at the end. Avoid reading all placements for filtering.
     std::ifstream file(util::FileSystem::PathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!file) return false;
@@ -861,7 +863,8 @@ void AssetBrowserPanel::DrawTerrainPaintAction(EditorContext& ctx)
     std::vector<std::string> paths;
     const auto add = [&](const std::string& path) {
         if (!util::FileSystem::IsChildPathText(path, m_rootPath)) return;
-        if (util::StringUtils::ToLower(util::FileSystem::GetExtension(path)) != ".fzdata") return;
+        const auto extension = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
+        if (extension != ".fzdata" && extension != ".terrainpaint" && extension != ".meshinstances") return;
         const auto hint = NormalizeAssetPath(path);
         if (hint.starts_with("Assets/Terrain/Scatter/Painted/")) return;
         const auto& entries = VisibleEntries();

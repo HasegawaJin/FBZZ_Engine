@@ -11,6 +11,9 @@
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <initializer_list>
 #include <Editor/Panels/MaterialPreviewCore.hpp>
+#include <Tools/TerrainPaintLibrary.hpp>
+#include <Editor/EditorContext.hpp>
+#include <Engine/Asset/TerrainPaintAsset.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
@@ -20,6 +23,7 @@
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/IImGuiRenderer.hpp>
 #include <Graphics/Renderer/IShader.hpp>
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
 #define WIN32_LEAN_AND_MEAN
@@ -33,6 +37,8 @@
 #include <memory>
 #include <optional>
 #include <vector>
+#include <array>
+#include <imgui.h>
 
 namespace fbzz::tests {
 namespace {
@@ -164,6 +170,79 @@ protected:
     HRESULT m_com = E_FAIL;
     bool m_frameOpen = false;
 };
+
+TEST_F(MaterialPreviewShaderTest, TerrainPaintLibraryRendersItsMeshAndRefreshesAfterMaterialReload)
+{
+    struct ImGuiScope {
+        ImGuiContext* previous = ImGui::GetCurrentContext();
+        ImGuiContext* current = ImGui::CreateContext();
+        ~ImGuiScope() { ImGui::DestroyContext(current); ImGui::SetCurrentContext(previous); }
+    } imgui;
+    class PreviewIds final : public renderer::IImGuiRenderer {
+    public:
+        renderer::ResourceHandle<renderer::RenderTargetTag> target;
+        void ImGuiInit(void*) override {}
+        void ImGuiShutdown() override {}
+        void ImGuiNewFrame() override {}
+        void ImGuiRenderDrawData() override {}
+        void ImGuiRenderPlatformWindows() override {}
+        void* GetImTextureID(renderer::ResourceHandle<renderer::RenderTargetTag> value, renderer::ResourceManager&, int) override
+        { target = value; return this; }
+        void* GetImTextureID(renderer::ResourceHandle<renderer::TextureTag>, renderer::ResourceManager&) override { return this; }
+    } ids;
+    auto& io = ImGui::GetIO();
+    io.IniFilename = nullptr; io.DisplaySize = {900, 700}; io.DeltaTime = 1.0f / 60.0f;
+    unsigned char* font = nullptr; int fontWidth = 0, fontHeight = 0;
+    io.Fonts->GetTexDataAsRGBA32(&font, &fontWidth, &fontHeight);
+    asset::MaterialAssetAuthoring material;
+    ASSERT_TRUE(asset::LoadMaterialAssetFromFile((m_root / "Assets/Materials/Samples/SurfaceExamples/BaseSurface.mat").generic_string(), material));
+    material.params["albedo"] = {0.8f, 0.04f, 0.02f, 1.0f};
+    const auto materialPath = (m_project / "Assets/PaintPreview.mat").generic_string();
+    ASSERT_TRUE(asset::SaveMaterialAssetToFile(materialPath, material));
+    const auto materialRef = "guid:" + asset::AssetDatabase::GuidFromPath(materialPath);
+    asset::TerrainPaintAsset paint; paint.name = "Preview Cone";
+    const std::array<asset::InstanceMeshPart, 1> parts{{{"primitive:cone", materialRef, 0}}};
+    const std::array<float, 1> heights{0.0f};
+    ASSERT_TRUE(paint.definition.Replace(parts, heights, {}));
+    const auto paintPath = (m_project / "Assets/Cone.terrainpaint").generic_string();
+    ASSERT_TRUE(asset::SaveTerrainPaintAsset(paintPath, paint));
+    ASSERT_FALSE(asset::AssetDatabase::GuidFromPath(paintPath).empty());
+    editor::EditorContext context;
+    context.projectRoot = m_project.generic_string(); context.renderer = m_bundle.renderer.get();
+    context.resources = m_resources.get(); context.imguiRenderer = &ids;
+    editor::TerrainPaintLibrary library;
+    const auto capture = [&](const char* name) {
+        for (int frame = 0; frame < 3; ++frame) {
+            m_resources->AdvanceFrame(); m_bundle.renderer->BeginFrame(); m_frameOpen = true;
+            ImGui::NewFrame(); ImGui::SetNextWindowSize({900, 700});
+            ImGui::Begin("Terrain Paint GPU Test", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            std::vector<std::string> selected;
+            (void)library.Draw(context, {}, selected);
+            ImGui::End(); ImGui::Render();
+            m_bundle.renderer->EndFrame(); m_frameOpen = false;
+        }
+        std::vector<float> pixels;
+        if (!ids.target.IsValid()) { ADD_FAILURE() << "No Paint thumbnail was rendered"; return pixels; }
+        uint32_t width = 0, height = 0;
+        EXPECT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(ids.target, *m_resources, pixels, width, height));
+        EXPECT_EQ(width, 128u); EXPECT_EQ(height, 128u);
+        std::vector<uint8_t> png;
+        if (m_bundle.renderer->CaptureRenderTargetToPng(ids.target, *m_resources, png, width, height)) {
+            const auto path = m_root / "Scratch/TerrainPaintLibrary" / (std::string(name) + ".png");
+            EXPECT_TRUE(util::FileSystem::EnsureParentDirectory(path));
+            EXPECT_TRUE(util::FileSystem::WriteBinary(path, png.data(), png.size()));
+        }
+        return pixels;
+    };
+    const auto red = capture("Red"); ASSERT_FALSE(red.empty());
+    material.params["albedo"] = {0.02f, 0.04f, 0.8f, 1.0f};
+    ASSERT_TRUE(asset::SaveMaterialAssetToFile(materialPath, material));
+    ASSERT_GT(asset::AssetManager::ReloadPath(materialPath), 0);
+    const auto blue = capture("Blue"); ASSERT_EQ(blue.size(), red.size());
+    double difference = 0.0;
+    for (size_t index = 0; index < red.size(); ++index) difference += std::abs(red[index] - blue[index]);
+    EXPECT_GT(difference, 1.0);
+}
 
 TEST_F(MaterialPreviewShaderTest, BuiltinParticleMaterialPreservesTintLightingAndOutputGain)
 {

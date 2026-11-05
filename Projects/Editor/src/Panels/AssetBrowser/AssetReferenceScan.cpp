@@ -82,6 +82,8 @@ const char* Kind(std::string_view extension)
     if (extension == ".vfx") return "VFX";
     if (extension == ".terrain") return "Terrain";
     if (extension == ".fzdata") return "Data asset";
+    if (extension == ".terrainpaint") return "Terrain paint";
+    if (extension == ".meshinstances") return "Mesh instances";
     return nullptr;
 }
 

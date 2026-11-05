@@ -365,7 +365,11 @@ void AssetBrowserPanel::DrawCreateMenu(EditorContext& ctx)
         ImGui::EndMenu();
     }
 
-    /// @note 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。ファイル内容は `type = ...` の 1 行だけにしておき、フィールドの既定値は Inspector の初回 Resolve 時に型のフィールド初期化子から補完する。Create 側でデフォルト値を二重管理せずに済む。
+    if (ImGui::MenuItem("Terrain Paint Asset")) {
+        OpArgs args; args.Set("directory", NormalizeAssetPath(m_currentPath));
+        (void)InvokeOperator(ctx, "terrain.paint_asset.new", args);
+    }
+    /// @note 登録済み DataAsset 型を列挙し、選んだ型の .fzdata を生成する。フィールドの既定値は Inspector の初回 Resolve 時に補完する。
     if (ImGui::BeginMenu("Data Asset")) {
         DrawManagedDataAssetCreateMenu(ctx, m_currentPath);
         const auto types = asset::DataAssetFactory::RegisteredTypeNames();

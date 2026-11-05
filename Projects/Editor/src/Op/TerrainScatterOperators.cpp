@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
 #include "Tools/TerrainScatter.hpp"
+#include "Tools/TerrainPaintEditing.hpp"
 #include "Panels/MapToolCommon.hpp"
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
@@ -12,6 +13,9 @@
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
+#include <Engine/Asset/MeshInstancesAsset.hpp>
+#include <Engine/Asset/TerrainPaintAsset.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -37,11 +41,9 @@ OpParam Parameter(const char* name, OpParamType type, OpValue fallback, const ch
     return param;
 }
 
-asset::InstanceSetAsset* ResolveSet(const std::string& reference)
+const asset::InstanceSetAsset* ResolveSet(const std::string& reference)
 {
-    auto* value = asset::DataAssetRegistry::Resolve(reference);
-    return value && std::string_view(value->GetTypeName()) == asset::InstanceSetAsset::TYPE_NAME
-        ? static_cast<asset::InstanceSetAsset*>(value) : nullptr;
+    return asset::ResolveMeshInstanceDefinition(reference);
 }
 
 bool SameComponent(const scene::InstancedMeshComponent& current, const scene::InstancedMeshComponent& expected,
@@ -82,7 +84,23 @@ struct ScatterChange {
     scene::InstancedMeshComponent after;
     std::shared_ptr<uint64_t> lifetime;
     std::shared_ptr<const renderer::InstanceSetData> beforeSnapshot, afterSnapshot;
+    std::shared_ptr<asset::MeshInstancesAsset> beforeAsset, afterAsset;
 };
+
+asset::MeshInstancesAsset* ResolvePlacement(const std::string& path)
+{
+    return asset::AssetManager::Get(asset::AssetManager::Load<asset::MeshInstancesAsset>(path));
+}
+
+void PublishPlacementDraft(const ScatterChange& change, const std::shared_ptr<asset::MeshInstancesAsset>& value)
+{
+    if (auto* current = ResolvePlacement(change.diskPath)) *current = *value;
+    AssetDirtyRegistry::RegisterDraft(change.diskPath, change.after.m_instanceSetRef.path, "MESH INSTANCES", value,
+        [path = change.diskPath](const asset::MeshInstancesAsset& draft) {
+            const auto* current = ResolvePlacement(path);
+            return current && asset::MeshInstancesAssetsEqual(*current, draft) && asset::SaveMeshInstancesAsset(path, draft);
+        }, [path = change.diskPath] { (void)asset::AssetManager::ReloadPath(path); });
+}
 
 class ScatterCommand final : public ICommand {
 public:
@@ -103,6 +121,11 @@ public:
             reason = "配置したシーンまたは未保存データの世代が変わりました。"; return false;
         }
         for (const auto& change : m_changes) {
+            const auto* currentAsset = ResolvePlacement(change.diskPath);
+            const auto& expectedAsset = m_applied || !change.beforeAsset ? change.afterAsset : change.beforeAsset;
+            if (!currentAsset || !expectedAsset || !asset::MeshInstancesAssetsEqual(*currentAsset, *expectedAsset)) {
+                reason = "配置アセットの内容が変更されています。"; return false;
+            }
             auto* node = m_scene->FindByGuid(change.node);
             if (!m_applied && !change.newName.empty() && !node) continue;
             const auto* component = node ? node->GetComponent<scene::InstancedMeshComponent>() : nullptr;
@@ -125,7 +148,7 @@ private:
         for (const auto& change : m_changes) {
             if (after) {
                 if (!util::FileSystem::Exists(util::FileSystem::PathFromUtf8(change.diskPath))
-                    || change.after.Snapshot() != change.afterSnapshot) {
+                    || (!change.beforeAsset && change.after.Snapshot() != change.afterSnapshot)) {
                     reason = "生成した配置アセットが削除または変更されています。"; return false;
                 }
                 if (!change.newName.empty()) ++createCount;
@@ -144,6 +167,11 @@ private:
         }
         if (createCount && !m_scene->CanCreateGameObjects(createCount)) {
             reason = "配置先の GameObject 上限を超えます。"; return false;
+        }
+        for (const auto& change : m_changes) {
+            if (after) PublishPlacementDraft(change, change.afterAsset);
+            else if (change.beforeAsset) PublishPlacementDraft(change, change.beforeAsset);
+            else AssetDirtyRegistry::MarkClean(change.diskPath);
         }
         for (const auto& change : m_changes) {
             auto* node = m_scene->FindByGuid(change.node);
@@ -220,31 +248,51 @@ bool ReadSettings(const OpArgs& args, TerrainScatterSettings& settings)
 
 std::optional<OpResult> StageSet(EditorContext& ctx, const asset::InstanceSetAsset& definition,
     std::span<const renderer::InstancePlacement> placements, const std::string& folder,
-    const scene::InstancedMeshComponent* previous, ScatterChange& change)
+    const scene::InstancedMeshComponent* previous, ScatterChange& change, const std::string& source = {}, bool reusable = true)
 {
-    asset::InstanceSetAsset staged;
-    if (!staged.Replace(definition.Parts(), definition.LodHeights(), placements))
+    asset::MeshInstancesAsset staged;
+    bool reuse = reusable && previous && asset::AssetDatabase::HintFromRef(previous->m_instanceSetRef.path).starts_with(folder)
+        && util::FileSystem::GetExtension(asset::AssetManager::ResolveAssetPath(previous->m_instanceSetRef.path)) == ".meshinstances";
+    if (reuse) {
+        for (auto id : ctx.activeScene->GetEntities<scene::InstancedMeshComponent>()) {
+            const auto* node = ctx.activeScene->GetGameObject(id);
+            const auto* other = ctx.activeScene->GetComponent<scene::InstancedMeshComponent>(id);
+            if (node && node->instanceId != change.node && other
+                && asset::AssetManager::ResolveAssetPath(other->m_instanceSetRef.path)
+                    == asset::AssetManager::ResolveAssetPath(previous->m_instanceSetRef.path)) reuse = false;
+        }
+    }
+    std::string reference;
+    if (reuse) {
+        change.diskPath = asset::AssetManager::ResolveAssetPath(previous->m_instanceSetRef.path);
+        const auto* current = ResolvePlacement(change.diskPath);
+        if (!current) return OpResult::Err("LOAD_FAILED", "現在の配置を読み込めません。");
+        change.beforeAsset = std::make_shared<asset::MeshInstancesAsset>(*current);
+        staged = *current;
+        reference = previous->m_instanceSetRef.path;
+    }
+    if (!staged.instances.Replace(definition.Parts(), definition.LodHeights(), placements))
         return OpResult::Err("INVALID_TEMPLATE", "配置またはテンプレートの mesh・材質・LOD が不正です。");
-    toml::table table;
-    util::TomlWriteReflector writer(table);
-    staged.Reflect(writer);
-    std::ostringstream serialized;
-    /// @note 型を先頭に置くと Asset Browser は個体配列を読まずに分類できる。
-    serialized << "type = '" << asset::InstanceSetAsset::TYPE_NAME << "'\n" << table;
-    const auto relative = folder + asset::AssetDatabase::GenerateGuid() + ".fzdata";
-    change.diskPath = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(ctx.projectRoot) / relative);
-    if (!util::FileSystem::WriteTextAtomic(change.diskPath, serialized.str()))
-        return OpResult::Err("WRITE_FAILED", "生成した配置を保存できませんでした: " + change.diskPath);
-    const auto guid = asset::AssetDatabase::GuidFromPath(change.diskPath);
-    if (guid.empty())
-        return OpResult::Err("META_FAILED", "配置の .meta を作成できませんでした: " + change.diskPath);
-    const std::string reference = "guid:" + guid + "|" + relative;
+    staged.terrainPaintRef = source;
+    if (!reuse) {
+        const auto relative = folder + asset::AssetDatabase::GenerateGuid() + ".meshinstances";
+        change.diskPath = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(ctx.projectRoot) / relative);
+        if (!asset::SaveMeshInstancesAsset(change.diskPath, staged))
+            return OpResult::Err("WRITE_FAILED", "生成した配置を保存できませんでした: " + change.diskPath);
+        const auto guid = asset::AssetDatabase::GuidFromPath(change.diskPath);
+        if (guid.empty()) return OpResult::Err("META_FAILED", "配置の .meta を作成できませんでした: " + change.diskPath);
+        reference = "guid:" + guid + "|" + relative;
+        const auto* loaded = ResolvePlacement(change.diskPath);
+        if (!loaded) return OpResult::Err("LOAD_FAILED", "生成した配置を読み込めませんでした: " + change.diskPath);
+        staged = *loaded;
+    }
+    change.afterAsset = std::make_shared<asset::MeshInstancesAsset>(std::move(staged));
     if (previous) change.before = *previous;
     change.beforeSnapshot = previous ? previous->Snapshot() : nullptr;
     change.after = previous ? *previous : scene::InstancedMeshComponent{};
     change.after.m_instanceSetRef = {reference, asset::InstanceSetAsset::TYPE_NAME};
     change.after.ResetOverrides();
-    change.afterSnapshot = change.after.Snapshot();
+    change.afterSnapshot = change.afterAsset->instances.Snapshot();
     if (!change.afterSnapshot)
         return OpResult::Err("LOAD_FAILED", "生成した配置を読み込めませんでした: " + change.diskPath);
     return std::nullopt;
@@ -298,7 +346,7 @@ OpResult Scatter(OpContext& context, const OpArgs& args)
     const std::string source = (reference.empty() || (stroke && !previousReference.empty())) ? previousReference : reference;
     auto* definition = source.empty() ? nullptr : ResolveSet(source);
     if (!definition || !definition->Snapshot())
-        return OpResult::Err("NO_TEMPLATE", "source に有効な InstanceSetAsset (.fzdata) を指定してください。");
+        return OpResult::Err("NO_TEMPLATE", "有効な .terrainpaint / .meshinstances または旧配置素材を指定してください。");
     TerrainScatterSettings settings;
     if (!ReadSettings(args, settings)) return OpResult::Err("BAD_ARG", "seed または maxInstances が範囲外です。");
     std::vector<renderer::InstancePlacement> placements;
@@ -320,7 +368,7 @@ OpResult Scatter(OpContext& context, const OpArgs& args)
     change.node = targetNode->instanceId;
     const auto lifetime = ctx.activeScene->GetComponentLifetime<scene::InstancedMeshComponent>(targetNode->GetID());
     change.lifetime = lifetime ? ScatterLifetime(lifetime) : std::make_shared<uint64_t>(0);
-    if (auto failure = StageSet(ctx, *definition, placements, "Assets/Terrain/Scatter/", previous, change))
+    if (auto failure = StageSet(ctx, *definition, placements, "Assets/Terrain/Scatter/", previous, change, reference, stroke != nullptr))
         return std::move(*failure);
     const size_t changed = erase ? oldCount - placements.size() : placements.size() - oldCount;
     std::vector<ScatterChange> changes;
@@ -329,13 +377,14 @@ OpResult Scatter(OpContext& context, const OpArgs& args)
 }
 
 struct PaintSet {
-    std::string guid, name, ownerId;
+    std::string guid, name, ownerId, reference;
     const asset::InstanceSetAsset* definition = nullptr;
     scene::GameObject* owner = nullptr;
     std::vector<renderer::InstancePlacement> placements;
     size_t beforeCount = 0;
     size_t sourceIndex = 0;
     float weight = 1.0f;
+    const asset::TerrainPaintAsset* paintAsset = nullptr;
 };
 
 struct PaintPlan {
@@ -381,13 +430,17 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
         const auto* definition = sourcePath.empty() ? nullptr : ResolveSet(reference);
         if (!definition || !definition->Snapshot()
             || util::FileSystem::IsChildPathText(sourcePath, ctx.projectRoot + "/Assets/Terrain/Scatter/Painted"))
-            return OpResult::Err("NO_TEMPLATE", "配置用の Instance Set を選んでください。");
+            return OpResult::Err("NO_TEMPLATE", "有効な Terrain Paint 素材を選んでください。");
         if (std::any_of(palette.begin(), palette.end(), [&](const PaintSet& set) { return set.guid == guid; })) continue;
         PaintSet set;
         set.guid = guid;
+        set.reference = reference;
+        if (util::FileSystem::GetExtension(sourcePath) == ".terrainpaint")
+            set.paintAsset = asset::AssetManager::Get(asset::AssetManager::Load<asset::TerrainPaintAsset>(reference));
         set.sourceIndex = index;
         set.weight = weight;
         set.name = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(sourcePath).stem());
+        if (set.paintAsset) set.name = set.paintAsset->name;
         set.definition = definition;
         set.ownerId = asset::AssetDatabase::DeriveGuid(terrainNode->instanceId, "Terrain Paint/" + guid);
         set.owner = scene.FindByGuid(set.ownerId);
@@ -397,6 +450,8 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
             if (!snapshot || !asset::AssetDatabase::HintFromRef(current->m_instanceSetRef.path).starts_with(plan.folder + guid + "/")
                 || !IsPaintOwnerTransform(*set.owner))
                 return OpResult::Err("PLACEMENT_CHANGED", "配置先が編集されています。配置先の参照と Transform を確認してください。");
+            set.definition = ResolveSet(current->m_instanceSetRef.path);
+            if (!set.definition) return OpResult::Err("NO_TEMPLATE", "現在の配置定義を読み込めません。");
             for (const auto& item : snapshot->placements)
                 if (item.active) set.placements.push_back(item);
         }
@@ -435,6 +490,33 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
             }
         }
         const size_t existingCount = candidates.size();
+        const bool assetSettings = std::any_of(palette.begin(), palette.end(), [](const PaintSet& set) { return set.paintAsset != nullptr; });
+        if (assetSettings) {
+            for (auto& set : palette) {
+                if (set.weight == 0.0f) continue;
+                auto sourceSettings = settings;
+                if (set.paintAsset) {
+                    const auto& p = set.paintAsset->placement;
+                    sourceSettings.spacing = p.spacing;
+                    sourceSettings.density *= p.density;
+                    sourceSettings.minScale = p.minScale; sourceSettings.maxScale = p.maxScale;
+                    sourceSettings.minYaw = p.minYaw; sourceSettings.maxYaw = p.maxYaw;
+                    sourceSettings.minSlope = p.minSlope; sourceSettings.maxSlope = p.maxSlope;
+                    sourceSettings.alignToNormal = p.alignToNormal; sourceSettings.alignDownslope = p.alignDownslope;
+                    sourceSettings.downslopeJitter = p.downslopeJitter; sourceSettings.embedDepth = p.embedDepth;
+                }
+                if (sourceSettings.minSlope > sourceSettings.maxSlope) continue;
+                sourceSettings.density *= static_cast<float>(set.weight / totalWeight);
+                for (unsigned char character : set.guid) sourceSettings.seed = sourceSettings.seed * 16777619u ^ character;
+                auto sourceCandidates = candidates;
+                const size_t before = sourceCandidates.size();
+                if (!BuildTerrainScatter(*terrain, terrainNode->transform, scene::Transform{}, sourceSettings, sourceCandidates, reason, &brush))
+                    return OpResult::Err("INVALID_SCATTER", reason);
+                set.placements.insert(set.placements.end(), sourceCandidates.begin() + before, sourceCandidates.end());
+                candidates.insert(candidates.end(), sourceCandidates.begin() + before, sourceCandidates.end());
+            }
+            return OpResult::Ok();
+        }
         if (!BuildTerrainScatter(*terrain, terrainNode->transform, scene::Transform{}, settings, candidates, reason, &brush))
             return OpResult::Err("INVALID_SCATTER", reason);
         for (size_t index = existingCount; index < candidates.size(); ++index) {
@@ -482,7 +564,7 @@ OpResult PaintPalette(OpContext& context, const OpArgs& args)
         change.lifetime = set.owner
             ? ScatterLifetime(scene.GetComponentLifetime<scene::InstancedMeshComponent>(set.owner->GetID()))
             : std::make_shared<uint64_t>(0);
-        if (auto failure = StageSet(ctx, *set.definition, set.placements, plan.folder + set.guid + "/", previous, change))
+        if (auto failure = StageSet(ctx, *set.definition, set.placements, plan.folder + set.guid + "/", previous, change, set.reference))
             return std::move(*failure);
         changes.push_back(std::move(change));
     }
@@ -515,6 +597,7 @@ bool BuildTerrainPaintPreview(EditorContext& ctx, const OpArgs& args, std::vecto
 
 void RegisterTerrainScatterOperators(OperatorRegistry& registry)
 {
+    RegisterTerrainPaintAssetOperators(registry);
     using namespace terrain_scatter_operators;
     EditorOperator op;
     op.id = "terrain.scatter"; op.label = "Scatter Trees and Rocks"; op.category = "Terrain";
@@ -555,7 +638,7 @@ void RegisterTerrainScatterOperators(OperatorRegistry& registry)
     auto paint = op;
     paint.id = "terrain.paint_instances";
     paint.label = "Paint Terrain Instances";
-    paint.desc = "選択した配置素材を同じブラシの候補へ割り当て、1 回の Undo に記録する。";
+    paint.desc = "選択した配置素材の規則でメッシュ草・木・石を塗り、1 回の Undo に記録する。";
     paint.caution = "生成アセットは Undo 後も残る。";
     paint.params.erase(paint.params.begin() + 1, paint.params.begin() + 3);
     auto sources = Parameter("sources", OpParamType::Data, std::monostate{}, "Instance Set の GUID 参照の配列 (1〜16)。");

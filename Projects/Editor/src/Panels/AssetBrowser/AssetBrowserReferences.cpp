@@ -73,7 +73,7 @@ void AssetBrowserPanel::DrawFindRefsPopup(EditorContext& ctx)
         DrawImportMetadata(report.metadata);
         ImGui::TextWrapped("Import settings describe how an asset was imported; they do not establish who added it or its purpose.");
         ImGui::Separator();
-        ImGui::TextWrapped("Direct, exact TOML string values in indexed project Assets: .scene, .mat, .prefab, .animcontroller, .vfx, .terrain, .fzdata.");
+        ImGui::TextWrapped("Direct, exact TOML string values in indexed project Assets: .scene, .mat, .prefab, .animcontroller, .vfx, .terrain, .terrainpaint, .meshinstances, .fzdata.");
         ImGui::TextWrapped("Scripts/dynamic loading, binary/other formats, sidecar contents, external/shared owners, generated dependencies, transitive use and unsaved scenes are outside this scan. A serialized value alone does not prove runtime use.");
         ImGui::TextDisabled("Parsed %zu | unsupported indexed files %zu | unreadable/changed %zu | over limit %zu | invalid TOML %zu",
             report.parsed, report.unsupported, report.unreadable, report.oversized, report.malformed);

@@ -229,6 +229,22 @@ TEST_F(AssetDirtyRegistryTest, DiscardAllDropsEverythingWithoutSaving)
     EXPECT_FALSE(called);
 }
 
+TEST_F(AssetDirtyRegistryTest, DiscardRunsTheLatestRollbackAfterClearingEntriesAndAdvancingTheEpoch)
+{
+    const auto epoch = AssetDirtyRegistry::DiscardEpoch();
+    bool oldCalled = false, called = false;
+    AssetDirtyRegistry::Register("C:/a.meshinstances", "a", "INSTANCES", [] { return true; }, {}, [&] { oldCalled = true; });
+    AssetDirtyRegistry::Register("C:/a.meshinstances", "a", "INSTANCES", [] { return true; }, {}, [&] {
+        called = true;
+        EXPECT_FALSE(AssetDirtyRegistry::HasAny());
+        EXPECT_GT(AssetDirtyRegistry::DiscardEpoch(), epoch);
+        AssetDirtyRegistry::Register("C:/b.mat", "b", "MAT", [] { return true; });
+    });
+    AssetDirtyRegistry::DiscardAll();
+    EXPECT_FALSE(oldCalled); EXPECT_TRUE(called);
+    EXPECT_TRUE(AssetDirtyRegistry::IsDirty("C:/b.mat"));
+}
+
 TEST_F(AssetDirtyRegistryTest, KeepsTheTypeLabelForDisplay)
 {
     AssetDirtyRegistry::Register("C:/a.animcontroller", "Assets/a.animcontroller",

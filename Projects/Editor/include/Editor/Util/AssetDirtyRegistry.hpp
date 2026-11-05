@@ -2,7 +2,6 @@
 /// @brief   Unreal 方式の未保存アセット中央レジストリ。
 /// @author  Hasegawa Jin
 /// @date    2026-06-13
-///
 /// @note 未保存の値と保存処理を所有し、選択変更後も Save All / 終了時確認へ接続する。
 #pragma once
 #include <any>
@@ -21,6 +20,7 @@ struct DirtyAsset {
     std::string typeLabel;
     std::function<bool()> saveFunc;
     std::any draft;                   ///< @note 型付き shared_ptr の所有者。保存完了または明示破棄まで保持する。
+    std::function<void()> discardFunc;
 };
 
 /// @note Editor のメインスレッド専用。保存失敗時は値と callback を保持する。
@@ -30,17 +30,17 @@ public:
     static void Register(const std::string& absPath,
                          const std::string& displayPath,
                          const std::string& typeLabel,
-                         std::function<bool()> saveFunc, std::any draft = {});
+                         std::function<bool()> saveFunc, std::any draft = {}, std::function<void()> discardFunc = {});
 
     /// @note Inspector と保存 callback が同じ値を共有し、選択が移っても別アセットの値で上書きしない。
     template<typename T, typename SaveFunc>
     static void RegisterDraft(const std::string& absPath, const std::string& displayPath,
                               const std::string& typeLabel, std::shared_ptr<T> draft,
-                              SaveFunc saveFunc)
+                              SaveFunc saveFunc, std::function<void()> discardFunc = {})
     {
         Register(absPath, displayPath, typeLabel, [draft, saveFunc = std::move(saveFunc)] {
             return draft && saveFunc(*draft);
-        }, draft);
+        }, draft, std::move(discardFunc));
     }
 
     /// @return 未保存の同型の値。保存完了・明示破棄・異なる型なら nullptr。

@@ -5,17 +5,20 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Fixture.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
+#include <TestKit/Engine/ResourceTrackingRenderer.hpp>
 #include <Tools/TerrainScatter.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
+#include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/TerrainSurfaceQuery.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Engine/Renderer/ResourceManager.hpp>
 #include <array>
 #include <limits>
 
@@ -161,7 +164,7 @@ protected:
         EditorFixture::SetUp();
         editor::AssetDirtyRegistry::DiscardAll(); asset::DataAssetRegistry::ClearCache();
         Context().projectRoot = util::FileSystem::PathToUtf8(ProjectRoot());
-        asset::AssetDatabase::Init(util::FileSystem::PathToUtf8(ProjectRoot() / "Assets"));
+        asset::AssetManager::Init(m_resources, util::FileSystem::PathToUtf8(ProjectRoot() / "Assets"));
         auto& scene = AttachScene();
         auto& terrainNode = scene.CreateGameObject("Mountain"); m_terrainId = terrainNode.instanceId;
         auto& terrain = terrainNode.AddComponent<scene::TerrainComponent>();
@@ -180,8 +183,8 @@ protected:
     }
     void TearDown() override
     {
-        m_undo.Clear(); asset::DataAssetRegistry::ClearCache(); asset::AssetDatabase::Shutdown();
-        editor::AssetDirtyRegistry::DiscardAll(); EditorFixture::TearDown();
+        m_undo.Clear(); editor::AssetDirtyRegistry::DiscardAll();
+        asset::DataAssetRegistry::ClearCache(); asset::AssetManager::UnloadAll(); EditorFixture::TearDown();
     }
     scene::InstancedMeshComponent* Target()
     {
@@ -215,6 +218,8 @@ protected:
     editor::OperatorRegistry m_registry;
     editor::UndoStack m_undo;
     std::string m_terrainId, m_targetId, m_source, m_sourceSnapshot;
+    testkit::ResourceTrackingRenderer m_device;
+    renderer::ResourceManager m_resources{m_device};
 };
 
 TEST_F(TerrainScatterOperatorTest, MixedBrushSharesCandidateDensityAndUndoAcrossSources)
@@ -300,7 +305,8 @@ TEST_F(TerrainScatterOperatorTest, EmptyTargetGetsIndependentSavedAssetAndUndoRe
     ASSERT_FALSE(disk.empty()); EXPECT_TRUE(util::FileSystem::Exists(util::FileSystem::PathFromUtf8(disk)));
     ASSERT_TRUE(m_undo.Undo()); EXPECT_FALSE(Target()); ASSERT_TRUE(m_undo.Redo()); ASSERT_TRUE(Target());
     EXPECT_EQ(Target()->m_instanceSetRef.path, reference);
-    ASSERT_EQ(asset::DataAssetRegistry::ReloadFile(disk), 1); ASSERT_TRUE(Target()->Snapshot());
+    EXPECT_EQ(util::FileSystem::GetExtension(disk), ".meshinstances");
+    ASSERT_GT(asset::AssetManager::ReloadPath(disk), 0); ASSERT_TRUE(Target()->Snapshot());
     EXPECT_EQ(Target()->Snapshot()->placements.size(), 16u);
 }
 

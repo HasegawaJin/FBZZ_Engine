@@ -10,6 +10,7 @@
 
 #include "TerrainBrush.hpp"
 #include "TerrainAuthoring.hpp"
+#include "TerrainPaintLibrary.hpp"
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -70,6 +71,8 @@ public:
     /// @{
     void DrawSculptContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
     void DrawPaintContent(EditorContext& context);
+    void DrawPaintAssetInspector(EditorContext& context, const std::string& path);
+    void OpenPaintAssetCreation(const std::string& directory);
     void SetPaintPalette(std::vector<std::string> sources, bool focusWindow);
     void DrawHoleContent(scene::Scene& scene, UndoStack* undoStack, const std::function<void()>& markDirty);
     /// @note 取り込み・層生成・散布は共通の明示選択先へ適用する。初回に有効な地形が一個だけなら自動選択する。
@@ -95,7 +98,7 @@ public:
     bool          IsHoleErase()     const { return m_holeErase; }
     void          SetHoleErase(bool erase) { m_holeErase = erase; }
     uint32_t      GetPaintLayer()   const { return m_paintLayer; }
-    void          SetPaintLayer(uint32_t layer) { m_paintLayer = layer; }
+    void          SetPaintLayer(uint32_t layer) { m_paintLayer = layer; m_paintTarget = PaintTarget::Materials; }
     /// @return Sculpt ならサブモード名 (Ramp 含む)、Paint なら "Layer N"、Hole なら "Cut" / "Fill"。
     std::string   StatusLabel() const;
     /// @}
@@ -124,7 +127,8 @@ private:
     bool     m_holeErase     = false;  ///< @note true なら穴を埋める。
     uint32_t m_paintLayer    = 0;      ///< @note 参照地形の層数 - 1 へ丸める。
     enum class PaintTarget { Materials, Grass, Instances, HeightMap };
-    PaintTarget m_paintTarget = PaintTarget::Materials;
+    PaintTarget m_paintTarget = PaintTarget::Instances;
+    TerrainPaintLibrary m_paintLibrary;
     char m_heightStampPath[512] = {};
     TerrainHeightStampSettings m_heightStamp;
     bool m_heightStampUnipolar = true;
@@ -237,7 +241,7 @@ private:
     void UpdateHeightMapStamp(EditorContext& context, bool pressed);
     void DrawHeightMapStampPreview(const ImVec2& viewportMin, const ImVec2& viewportSize, const renderer::Camera& camera) const;
     void DrawScatterSection(EditorContext& context, scene::GameObject* terrain);
-    void DrawInstancePaint(scene::GameObject* terrain);
+    void DrawInstancePaint(EditorContext& context, scene::GameObject* terrain);
     void DrawScatterSettings(scene::GameObject* terrain);
     [[nodiscard]] OpArgs ScatterArguments(const std::string& terrainId, const std::string& targetId) const;
     void UpdateScatterStroke(EditorContext& context, bool pressed, bool held);

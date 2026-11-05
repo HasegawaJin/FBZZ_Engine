@@ -22,6 +22,7 @@
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
+#include <Engine/Asset/MeshInstancesAsset.hpp>
 #include <Engine/Scene/MeshResolver.hpp>
 #include <Engine/Asset/TexDescSerializer.hpp>
 #include <toml++/toml.hpp>
@@ -1612,9 +1613,7 @@ void AssetBrowserPanel::DrawAssetPreviewIconAt(ImVec2 origin, float sz, const En
         }
         if (!preview.thumbnailRendered && CanAttemptPreview(preview)) {
             EnsureThumbnailRT(preview, ctx);
-            const auto* value = asset::DataAssetRegistry::Resolve(e.path);
-            const auto* set = value && std::string_view(value->GetTypeName()) == asset::InstanceSetAsset::TYPE_NAME
-                ? static_cast<const asset::InstanceSetAsset*>(value) : nullptr;
+            const auto* set = asset::ResolveMeshInstanceDefinition(e.path);
             if (set && !set->Parts().empty() && preview.thumbnailRT.IsValid()) {
                 uint32_t lod = set->Parts().front().lod;
                 for (const auto& part : set->Parts()) lod = std::min(lod, part.lod);

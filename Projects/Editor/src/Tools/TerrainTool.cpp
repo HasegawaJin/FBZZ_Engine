@@ -16,6 +16,8 @@
 #include <Engine/Scene/Components/FiberComponent.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/TerrainPaintAsset.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
@@ -489,6 +491,11 @@ OpArgs TerrainTool::ScatterStrokeArguments(const std::string& terrainId,
     }
     args.Set("sources", std::move(sources));
     args.Set("weights", std::move(weights));
+    if (std::any_of(m_paintPalette.begin(), m_paintPalette.end(), [](const PaintSource& source) {
+        return asset::AssetDatabase::HintFromRef(source.reference).ends_with(".terrainpaint");
+    })) {
+        args.Set("minSlope", 0.0f); args.Set("maxSlope", 90.0f);
+    }
     auto stroke = OpData::MakeArray();
     for (const auto& point : centers) stroke.Push(OpData(point));
     args.Set("stroke", std::move(stroke));
@@ -958,7 +965,7 @@ void TerrainTool::DrawSculptContent(
 void TerrainTool::DrawPaintContent(EditorContext& context)
 {
     auto& scene = *context.activeScene;
-    constexpr const char* targets[] = {"Materials", "Grass Layer", "Placement Brush", "HeightMap Stamp"};
+    constexpr const char* targets[] = {"Ground Materials", "Fiber Grass Layer", "Objects", "HeightMap Stamp"};
     int target = static_cast<int>(m_paintTarget);
     if (ImGui::Combo("Paint", &target, targets, IM_ARRAYSIZE(targets))) {
         if (m_strokeActive) CommitStroke(context, "Paint Terrain", false);
@@ -968,7 +975,7 @@ void TerrainTool::DrawPaintContent(EditorContext& context)
         auto* terrain = DrawHeightMapTarget(scene);
         if (m_paintTarget == PaintTarget::HeightMap) DrawHeightMapPaint();
         else if (m_paintTarget == PaintTarget::Grass) DrawGrassPaint(context, terrain);
-        else DrawInstancePaint(terrain);
+        else DrawInstancePaint(context, terrain);
         return;
     }
     const scene::TerrainComponent* referenceTerrain = nullptr;
@@ -1398,12 +1405,27 @@ void TerrainTool::DrawBiomeSection(EditorContext& context, scene::GameObject* ta
     }
 }
 
-void TerrainTool::DrawInstancePaint(scene::GameObject* terrain)
+void TerrainTool::DrawPaintAssetInspector(EditorContext& context, const std::string& path)
 {
+    m_paintLibrary.DrawInspector(context, path);
+}
+
+void TerrainTool::OpenPaintAssetCreation(const std::string& directory)
+{
+    m_active = true;
+    m_mode = Mode::Paint; m_paintTarget = PaintTarget::Instances;
+    m_paintLibrary.OpenCreate(directory);
+    m_focusPaintPalette = true;
+}
+
+void TerrainTool::DrawInstancePaint(EditorContext& context, scene::GameObject* terrain)
+{
+    std::vector<std::string> selected, next;
+    for (const auto& source : m_paintPalette) selected.push_back(source.reference);
+    if (m_paintLibrary.Draw(context, selected, next)) SetPaintPalette(std::move(next), false);
     ImGui::SeparatorText("Placement Palette");
     if (m_paintPalette.empty()) {
-        ImGui::TextWrapped("Select Instance Sets in Asset Browser, then click Paint on Terrain.");
-        ImGui::TextDisabled("Ctrl+click to mix multiple assets.");
+        ImGui::TextWrapped("Choose a thumbnail above, or create a Paint asset from a mesh and material.");
         return;
     }
     float totalWeight = 0.0f;
@@ -1456,9 +1478,18 @@ void TerrainTool::DrawInstancePaint(scene::GameObject* terrain)
     if (ImGui::RadioButton("Erase", m_scatterErase)) m_scatterErase = true;
     ImGui::TextWrapped(terrain ? "Drag on the terrain. Ctrl+drag switches Add / Erase."
                                : "Choose a terrain to begin painting.");
-    ImGui::DragFloat("Spacing [m]", &m_scatterSpacing, 0.1f, 0.25f, 10000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::SliderFloat("Density", &m_scatterDensity, 0.0f, 1.0f);
-    if (ImGui::CollapsingHeader("Placement Rules")) DrawScatterSettings(terrain);
+    const bool native = std::any_of(m_paintPalette.begin(), m_paintPalette.end(), [](const PaintSource& source) {
+        return asset::AssetDatabase::HintFromRef(source.reference).ends_with(".terrainpaint");
+    });
+    if (!native) ImGui::DragFloat("Spacing [m]", &m_scatterSpacing, 0.1f, 0.25f, 10000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::SliderFloat(native ? "Density Multiplier" : "Density", &m_scatterDensity, 0.0f, 1.0f);
+    if (native) {
+        ImGui::TextWrapped("Each Paint asset supplies its spacing, scale, orientation and slope rules.");
+        if (ImGui::CollapsingHeader("Area Filters")) {
+            ImGui::DragFloatRange2("Height [world m]", &m_scatterMinHeight, &m_scatterMaxHeight, 1.0f, -100000.0f, 100000.0f);
+            ImGui::DragInt("Seed", &m_scatterSeed, 1.0f, 0, (std::numeric_limits<int>::max)(), "%d", ImGuiSliderFlags_AlwaysClamp);
+        }
+    } else if (ImGui::CollapsingHeader("Placement Rules")) DrawScatterSettings(terrain);
     TerrainToolStatus(m_scatterStatus);
 }
 
@@ -1489,7 +1520,7 @@ void TerrainTool::DrawScatterSection(EditorContext& context, scene::GameObject* 
         m_scatterStatus.clear();
     }
     ImGui::EndDisabled();
-    ImGui::TextDisabled("Model template (.fzdata)");
+    ImGui::TextDisabled("Model template (.terrainpaint / .meshinstances)");
     TerrainToolPathField("##scatterSource", m_scatterSource, sizeof(m_scatterSource));
     if (targetObject) {
         const auto* instances = targetObject->GetComponent<scene::InstancedMeshComponent>();
@@ -1577,7 +1608,6 @@ void TerrainTool::OnEditorGUI(EditorContext& context)
     auto& scene = *context.activeScene;
     auto* undoStack = context.undoStack;
     const auto& markDirty = context.markSceneDirty;
-    if (!TerrainToolFirstTerrain(scene, nullptr)) return;
 
     const ImGuiViewport* mainVP = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(

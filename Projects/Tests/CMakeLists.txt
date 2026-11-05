@@ -467,6 +467,7 @@ fbzz_add_test_suite(EditorAuto
         Editor/Auto/TerrainAuthoringTests.cpp
         Editor/Auto/TerrainGrassOperatorTests.cpp
         Editor/Auto/TerrainScatterTests.cpp
+        Editor/Auto/TerrainPaintAssetTests.cpp
         Editor/Auto/TerrainToolAuthoringTests.cpp
     Editor/Auto/UndoStackTests.cpp
     Editor/Auto/WaterInspectorRuntimeTests.cpp
@@ -629,6 +630,9 @@ fbzz_add_test_suite(GraphicsStandalone OPT_IN
         FBZZTestKitEngine
         FBZZTestKitEditor
 )
+
+# @note Paint Library の GPU 検証は本番の非公開 Editor UI を描く。
+target_include_directories(FBZZTestsGraphicsStandaloneObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Editor/src")
 
 # @note DXR / Hybrid / PathTracing は合否を自動判定し、選択したときだけビルド・実行する。
 fbzz_add_test_suite(RayTracing OPT_IN
