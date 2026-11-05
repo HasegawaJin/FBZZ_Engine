@@ -6,8 +6,11 @@
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <Tools/TerrainTool.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Op/EditorOperator.hpp>
+#include <Editor/Op/OperatorGroups.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <string>
@@ -22,6 +25,8 @@ protected:
         EditorFixture::SetUp();
         AttachScene();
         Context().undoStack = &m_undo;
+        Context().operators = &m_registry;
+        editor::RegisterTerrainOperators(m_registry);
         Context().markSceneDirty = [] {};
         m_previous = ImGui::GetCurrentContext();
         m_imgui = ImGui::CreateContext();
@@ -40,6 +45,7 @@ protected:
     {
         m_undo.Clear();
         Context().undoStack = nullptr;
+        Context().operators = nullptr;
         ImGui::DestroyContext(m_imgui);
         ImGui::SetCurrentContext(m_previous);
         EditorFixture::TearDown();
@@ -128,9 +134,56 @@ protected:
         ASSERT_EQ(m_undo.GetHistorySize(), 1u);
     }
 
+    void PaintFrame(const char* activate = nullptr, bool input = false)
+    {
+        auto* popup = !m_imgui->OpenPopupStack.empty() ? m_imgui->OpenPopupStack.back().Window : nullptr;
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0, 0});
+        ImGui::SetNextWindowSize({1000, 1400});
+        ImGui::Begin("Terrain paint test", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        if (activate) {
+            /// @note ImGui::Combo の選択肢IDには表示ラベルだけでなく配列の添字も含まれる。
+            const int heightMapItem = 3;
+            const auto seed = popup ? ImHashData(&heightMapItem, sizeof(heightMapItem), popup->IDStack.back()) : 0;
+            const auto id = popup ? ImHashStr(activate, 0, seed) : ImGui::GetID(activate);
+            m_imgui->NavActivateId = id;
+            m_imgui->NavActivateDownId = id;
+            m_imgui->NavActivatePressedId = id;
+            m_imgui->NavActivateFlags = input ? ImGuiActivateFlags_PreferInput : ImGuiActivateFlags_None;
+        }
+        ImGui::LogToBuffer();
+        m_tool.DrawPaintContent(Context());
+        m_tool.DrawBrushSettings();
+        m_text = m_imgui->LogBuffer.c_str();
+        ImGui::LogFinish();
+        ImGui::End();
+        ImGui::Render();
+    }
+
+    void ChooseHeightStamp(const std::string& path)
+    {
+        m_tool.SetMode(editor::TerrainTool::Mode::Paint);
+        PaintFrame();
+        PaintFrame("Paint");
+        ASSERT_FALSE(m_imgui->OpenPopupStack.empty());
+        PaintFrame("HeightMap Stamp");
+        PaintFrame();
+        ASSERT_NE(m_text.find("Stamp Strength"), std::string::npos) << m_text;
+        PaintFrame("##HeightStampPath", true);
+        ASSERT_NE(m_imgui->InputTextState.ID, 0u);
+        ImGui::GetIO().AddInputCharactersUTF8(path.c_str());
+        PaintFrame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, true);
+        PaintFrame();
+        ImGui::GetIO().AddKeyEvent(ImGuiKey_Enter, false);
+        PaintFrame();
+        ASSERT_NE(m_text.find(path), std::string::npos) << m_text;
+    }
+
     ImGuiContext* m_previous = nullptr;
     ImGuiContext* m_imgui = nullptr;
     editor::TerrainTool m_tool;
+    editor::OperatorRegistry m_registry;
     editor::UndoStack m_undo;
     std::string m_text;
 };
@@ -283,6 +336,51 @@ TEST_F(TerrainToolAuthoringTest, SceneClearDuringStrokeDoesNotRecordAnEditOnTheN
     BrushFrame(false);
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
     EXPECT_EQ(terrain.splatWeights, weights);
+}
+
+TEST_F(TerrainToolAuthoringTest, HeightMapPaintPastesOncePerClickAndUndoesAsOneEdit)
+{
+    const auto id = AddTerrain("Stamped terrain", 5, 5);
+    auto& terrain = *AttachedScene()->GetComponent<scene::TerrainComponent>(id);
+    const auto original = terrain.heightData;
+    auto image = terrain;
+    image.heightData.assign(image.VertexCount(), 1.0f);
+    const auto path = File("PaintStamp.png").string();
+    ASSERT_TRUE(scene::SaveHeightMapToFile(path, image));
+    ChooseHeightStamp(path);
+    EXPECT_EQ(m_tool.StatusLabel(), "HeightMap Stamp");
+    m_tool.SetActive(true);
+    BrushFrame(false);
+    BrushFrame(true);
+    const auto stamped = terrain.heightData;
+    ASSERT_NE(stamped, original);
+    EXPECT_NEAR(terrain.GetHeightAt(8.0f, 8.0f), 10.0f, 0.001f);
+    BrushFrame(true);
+    BrushFrame(true);
+    EXPECT_EQ(terrain.heightData, stamped);
+    BrushFrame(false);
+    EXPECT_EQ(m_undo.GetHistorySize(), 1u);
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(terrain.heightData, original);
+    ASSERT_TRUE(m_undo.Redo());
+    EXPECT_EQ(terrain.heightData, stamped);
+}
+
+TEST_F(TerrainToolAuthoringTest, MissingStampImageDoesNotFallThroughToMaterialPainting)
+{
+    const auto id = AddTerrain("Unchanged terrain", 5, 5);
+    auto& terrain = *AttachedScene()->GetComponent<scene::TerrainComponent>(id);
+    const auto original = terrain;
+    ChooseHeightStamp(File("MissingStamp.png").string());
+    m_tool.SetActive(true);
+    BrushFrame(false);
+    BrushFrame(true);
+    BrushFrame(false);
+    EXPECT_EQ(terrain.heightData, original.heightData);
+    EXPECT_EQ(terrain.splatWeights, original.splatWeights);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    PaintFrame();
+    EXPECT_NE(m_text.find("Error:"), std::string::npos) << m_text;
 }
 
 } /// @note namespace

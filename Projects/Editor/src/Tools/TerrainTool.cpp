@@ -182,6 +182,7 @@ std::string TerrainTool::StatusLabel() const
         case Mode::Paint:
             if (m_paintTarget == PaintTarget::Grass) return "Grass";
             if (m_paintTarget == PaintTarget::Instances) return "Placement Brush";
+            if (m_paintTarget == PaintTarget::HeightMap) return "HeightMap Stamp";
             return "Layer " + std::to_string(m_paintLayer);
         case Mode::Hole:   return m_holeErase ? "Fill Hole" : "Cut Hole";
     }
@@ -210,6 +211,7 @@ void TerrainTool::Update(
     }
     /// @note ビューポート外・非アクティブではレイキャストしない。ただし進行中のストロークは離すまで追う。
     const bool scatterPaint = m_mode == Mode::Paint && m_paintTarget == PaintTarget::Instances;
+    const bool heightStamp = m_mode == Mode::Paint && m_paintTarget == PaintTarget::HeightMap;
     if (!scatterPaint || !m_active) {
         m_scatterStroke.clear();
         m_paintPreviewTerrainId.clear();
@@ -222,7 +224,16 @@ void TerrainTool::Update(
     }
 
     /// @note [ / ] で半径、Shift+[ / ] で強度。ホイールはカメラ操作と競合するため使わない。
-    if (viewportHovered) {
+    if (viewportHovered && heightStamp) {
+        const float factor = ImGui::IsKeyPressed(ImGuiKey_LeftBracket, true) ? 0.9f
+            : ImGui::IsKeyPressed(ImGuiKey_RightBracket, true) ? 1.1f : 1.0f;
+        if (ImGui::GetIO().KeyShift)
+            m_heightStamp.strength = std::clamp(m_heightStamp.strength + (factor - 1.0f) * 0.2f, 0.0f, 1.0f);
+        else {
+            m_heightStamp.width = std::clamp(m_heightStamp.width * factor, 0.01f, 100000.0f);
+            m_heightStamp.depth = std::clamp(m_heightStamp.depth * factor, 0.01f, 100000.0f);
+        }
+    } else if (viewportHovered) {
         const bool  shift        = ImGui::GetIO().KeyShift;
         const float radiusStep   = std::max(0.5f, m_brush.radius * 0.1f);
         const float strengthStep = 0.02f;
@@ -259,6 +270,13 @@ void TerrainTool::Update(
     const bool mousePressed  = viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
     const bool mouseHeld     = ImGui::IsMouseDown(ImGuiMouseButton_Left);
     const bool mouseReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+
+    if (heightStamp) {
+        UpdateHeightMapStamp(context, mousePressed);
+        if (m_isHovering && m_hitTerrain && m_hitTerrain->instanceId == m_heightMapTargetId)
+            DrawHeightMapStampPreview(viewportMin, viewportSize, camera);
+        return;
+    }
 
     if (scatterPaint) {
         UpdateScatterStroke(context, mousePressed, mouseHeld);
@@ -940,13 +958,16 @@ void TerrainTool::DrawSculptContent(
 void TerrainTool::DrawPaintContent(EditorContext& context)
 {
     auto& scene = *context.activeScene;
-    constexpr const char* targets[] = {"Materials", "Grass Layer", "Placement Brush"};
+    constexpr const char* targets[] = {"Materials", "Grass Layer", "Placement Brush", "HeightMap Stamp"};
     int target = static_cast<int>(m_paintTarget);
-    if (ImGui::Combo("Paint", &target, targets, IM_ARRAYSIZE(targets)))
+    if (ImGui::Combo("Paint", &target, targets, IM_ARRAYSIZE(targets))) {
+        if (m_strokeActive) CommitStroke(context, "Paint Terrain", false);
         m_paintTarget = static_cast<PaintTarget>(target);
+    }
     if (m_paintTarget != PaintTarget::Materials) {
         auto* terrain = DrawHeightMapTarget(scene);
-        if (m_paintTarget == PaintTarget::Grass) DrawGrassPaint(context, terrain);
+        if (m_paintTarget == PaintTarget::HeightMap) DrawHeightMapPaint();
+        else if (m_paintTarget == PaintTarget::Grass) DrawGrassPaint(context, terrain);
         else DrawInstancePaint(terrain);
         return;
     }
@@ -984,6 +1005,106 @@ void TerrainTool::DrawPaintContent(EditorContext& context)
     }
     ImGui::EndChild();
     ImGui::TextDisabled("Add or reorder layers in the Terrain Inspector.");
+}
+
+void TerrainTool::DrawHeightMapPaint()
+{
+    ImGui::SeparatorText("HeightMap Stamp");
+    ImGui::TextDisabled("Image (PNG / TGA / DDS)");
+    TerrainToolPathField("##HeightStampPath", m_heightStampPath, sizeof(m_heightStampPath));
+    ImGui::TextWrapped("Drop a height image here, then click the selected terrain to paste once. The bright edge marks the top of the image.");
+    ImGui::DragFloat("Width [m]", &m_heightStamp.width, 0.5f, 0.01f, 100000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::DragFloat("Depth [m]", &m_heightStamp.depth, 0.5f, 0.01f, 100000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::SliderFloat("Rotation [deg]", &m_heightStamp.rotationDegrees, -180.0f, 180.0f, "%.1f");
+    ImGui::DragFloat("Height [m]", &m_heightStamp.heightScale, 0.25f, -100000.0f, 100000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::DragFloat("Height Offset [m]", &m_heightStamp.heightOffset, 0.25f, -100000.0f, 100000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::Checkbox("Black = Zero (off: gray = zero)", &m_heightStampUnipolar);
+    constexpr const char* modes[] = {"Add", "Replace", "Maximum", "Minimum"};
+    int blend = static_cast<int>(m_heightStamp.blend);
+    if (ImGui::Combo("Blend", &blend, modes, IM_ARRAYSIZE(modes)))
+        m_heightStamp.blend = static_cast<TerrainHeightStampBlend>(blend);
+    if (m_heightStamp.blend != TerrainHeightStampBlend::ADD)
+        ImGui::Checkbox("Anchor to Clicked Height", &m_heightStampAnchor);
+    ImGui::SliderFloat("Stamp Strength", &m_heightStamp.strength, 0.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Edge Fade", &m_heightStamp.edgeFade, 0.0f, 0.5f, "%.2f");
+    ImGui::TextWrapped("Dimensions and height follow the terrain's axes and scale. The inner outline marks where the edge fade ends.");
+    ImGui::TextDisabled("[ / ] : Size    Shift+[ / ] : Strength");
+    TerrainToolStatus(m_heightStampStatus);
+}
+
+void TerrainTool::UpdateHeightMapStamp(EditorContext& context, bool pressed)
+{
+    if (!pressed || !m_isHovering || !m_hitTerrain || m_hitTerrain->instanceId != m_heightMapTargetId) return;
+    OpArgs args;
+    args.Set("node", m_hitTerrain->instanceId);
+    args.Set("path", std::string(m_heightStampPath));
+    args.Set("center", m_hitPoint);
+    args.Set("width", m_heightStamp.width);
+    args.Set("depth", m_heightStamp.depth);
+    args.Set("rotation", m_heightStamp.rotationDegrees);
+    args.Set("heightScale", m_heightStamp.heightScale);
+    float offset = m_heightStamp.heightOffset;
+    if (m_heightStampAnchor && m_heightStamp.blend != TerrainHeightStampBlend::ADD)
+        offset += ToTerrainLocal(m_hitTerrain->transform, m_hitPoint).y;
+    args.Set("heightOffset", offset);
+    args.Set("strength", m_heightStamp.strength);
+    args.Set("edgeFade", m_heightStamp.edgeFade);
+    args.Set("unipolar", m_heightStampUnipolar);
+    constexpr const char* modes[] = {"add", "replace", "max", "min"};
+    args.Set("blend", std::string(modes[static_cast<int>(m_heightStamp.blend)]));
+    m_heightStampStatus = TerrainToolOpStatus(InvokeOperator(context, "terrain.heightmap.stamp", args));
+}
+
+void TerrainTool::DrawHeightMapStampPreview(const ImVec2& viewportMin, const ImVec2& viewportSize,
+    const renderer::Camera& camera) const
+{
+    if (!m_hitTerrain || m_heightStampPath[0] == '\0') return;
+    const auto* terrain = m_hitTerrain->GetComponent<scene::TerrainComponent>();
+    if (!terrain) return;
+    auto settings = m_heightStamp;
+    settings.centerLocal = ToTerrainLocal(m_hitTerrain->transform, m_hitPoint);
+    if (!IsValidTerrainHeightStamp(*terrain, settings)) return;
+    const float angle = std::remainder(settings.rotationDegrees, 360.0f) * (math::PI / 180.0f);
+    const float cosine = std::cos(angle), sine = std::sin(angle);
+    const auto viewProjection = camera.GetViewProjection();
+    auto* draw = ImGui::GetForegroundDrawList();
+    draw->PushClipRect(viewportMin, {viewportMin.x + viewportSize.x, viewportMin.y + viewportSize.y}, true);
+    const auto point = [&](float u, float v) {
+        const float x = (u - 0.5f) * settings.width, z = (v - 0.5f) * settings.depth;
+        math::Vector3 local{settings.centerLocal.x + cosine * x + sine * z, 0.0f,
+            settings.centerLocal.z - sine * x + cosine * z};
+        local.y = terrain->GetHeightAt(local.x, local.z);
+        return local;
+    };
+    const auto inside = [&](const math::Vector3& local) {
+        return local.x >= 0.0f && local.x <= (terrain->columns - 1) * terrain->cellSize
+            && local.z >= 0.0f && local.z <= (terrain->rows - 1) * terrain->cellSize;
+    };
+    const auto outline = [&](float margin, bool inner) {
+        const float corners[][2] = {{margin, margin}, {1.0f - margin, margin},
+            {1.0f - margin, 1.0f - margin}, {margin, 1.0f - margin}};
+        for (int side = 0; side < 4; ++side) {
+            const auto& a = corners[side];
+            const auto& b = corners[(side + 1) % 4];
+            auto previous = point(a[0], a[1]);
+            for (int segment = 1; segment <= 32; ++segment) {
+                const float t = static_cast<float>(segment) / 32.0f;
+                const auto current = point(std::lerp(a[0], b[0], t), std::lerp(a[1], b[1], t));
+                if (inside(previous) && inside(current)) {
+                    const auto from = TerrainToolProject(viewProjection, viewportMin, viewportSize, ToTerrainWorld(m_hitTerrain->transform, previous));
+                    const auto to = TerrainToolProject(viewProjection, viewportMin, viewportSize, ToTerrainWorld(m_hitTerrain->transform, current));
+                    const ImU32 color = inner ? IM_COL32(96, 200, 255, 120)
+                        : side == 0 ? IM_COL32(240, 225, 100, 255) : IM_COL32(96, 200, 255, 240);
+                    draw->AddLine(from, to, color, inner ? 1.0f : 2.0f);
+                }
+                previous = current;
+            }
+        }
+    };
+    outline(0.0f, false);
+    if (settings.edgeFade > 0.0f && settings.edgeFade < 0.5f) outline(settings.edgeFade, true);
+    draw->AddCircle(TerrainToolProject(viewProjection, viewportMin, viewportSize, m_hitPoint), 4.0f, IM_COL32(240, 225, 100, 255));
+    draw->PopClipRect();
 }
 
 void TerrainTool::DrawGrassPaint(EditorContext& context, scene::GameObject* object)
@@ -1042,6 +1163,7 @@ void TerrainTool::DrawHoleContent(
 
 void TerrainTool::DrawBrushSettings()
 {
+    if (m_mode == Mode::Paint && m_paintTarget == PaintTarget::HeightMap) return;
     ImGui::Spacing();
     ImGui::SeparatorText("Brush Settings");
     ImGui::SliderFloat("Radius", &m_brush.radius, 0.5f, 50.0f, "%.1f");
@@ -1065,6 +1187,7 @@ scene::GameObject* TerrainTool::DrawHeightMapTarget(scene::Scene& scene)
         m_heightMapTargetId.clear();
         m_heightMapStatus.clear();
         m_heightMapExportStatus.clear();
+        m_heightStampStatus.clear();
         m_biomeStatus.clear();
         m_grassStatus.clear();
         m_layerMaskStatus.clear();
@@ -1103,6 +1226,7 @@ scene::GameObject* TerrainTool::DrawHeightMapTarget(scene::Scene& scene)
                 targetObject = object;
                 m_heightMapStatus.clear();
                 m_heightMapExportStatus.clear();
+                m_heightStampStatus.clear();
                 m_biomeStatus.clear();
                 m_grassStatus.clear();
                 m_layerMaskStatus.clear();
