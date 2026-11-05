@@ -1,0 +1,6 @@
+# @file    LeafWetness.hlsli.meta
+# @brief   Asset identity for the leaf wetness shader include.
+# @author  Hasegawa Jin
+# @date    2026-11-05
+[meta]
+guid = '83dd52de91685a18b00c808105a70582'

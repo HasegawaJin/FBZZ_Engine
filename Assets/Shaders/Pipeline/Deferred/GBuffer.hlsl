@@ -13,6 +13,7 @@
 #include "Platform/Backend.hlsli"
 #include "Rendering/SpecularAA.hlsli"
 #include "Rendering/Wetness.hlsli"
+#include "Rendering/LeafWetness.hlsli"
 #include "Rendering/LodDither.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Common/ObjectInstance.hlsli"
@@ -21,6 +22,7 @@ FBZZ_TEX2D(texAlbedo, TEX_ALBEDO_SLOT);
 FBZZ_TEX2D(texNormal, TEX_NORMAL_SLOT);
 FBZZ_TEX2D(texMetallicRough, TEX_METALLIC_ROUGH_SLOT);
 FBZZ_TEX2D(texEmissive, TEX_EMISSIVE_SLOT);
+FBZZ_TEX2D(texLeafWetness, 7);
 SamplerState sampDefault      : register(SAMPLER_DEFAULT);
 
 /// @brief 本体。入口だけが変種ごとに違い、変換そのものは 1 か所に置く。
@@ -117,7 +119,12 @@ GBufferOut PSMain(PSInput p)
 
     /// @note 濡れは素材の値なので、法線分散のフィルタより先に掛ける。
     /// @note 逆順にすると、AA で持ち上げた粗さを濡れが再び下げてちらつきが戻る。
-    const WetSurface wet = ApplyWetness(col, saturate(rough), N);
+    WetSurface wet;
+    [branch]
+    if (weatherWetness > 0.0f && (textureMask & (1u << 7)))
+        wet = ApplyLeafWetness(col, saturate(rough), texLeafWetness.Sample(sampDefault, uv), p.tangent, N);
+    else
+        wet = ApplyWetness(col, saturate(rough), N);
     col   = wet.albedo;
     rough = wet.roughness;
 

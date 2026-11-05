@@ -15,6 +15,7 @@
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/SpecularAA.hlsli"
 #include "Rendering/Wetness.hlsli"
+#include "Rendering/LeafWetness.hlsli"
 #include "Rendering/LodDither.hlsli"
 /// @note ApplyNormalMap は Shadow.hlsli → Space.hlsli 経由で入る。
 
@@ -47,6 +48,7 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     uint texMetallicIndex;
     uint texEmissiveIndex;
     uint texAOIndex;
+    uint tex7Index;
 };
 
 /// @note bindless 化は宣言の置き換えだけで、Sample 呼び出しは従来のまま。添字は b14 の添字ブロックで毎ドロー配られる。
@@ -57,6 +59,7 @@ FBZZ_MATERIAL_TEX(texNormal, texNormalIndex);
 FBZZ_MATERIAL_TEX(texMetallicRough, texMetallicIndex);
 FBZZ_MATERIAL_TEX(texEmissive, texEmissiveIndex);
 FBZZ_MATERIAL_TEX(texAO, texAOIndex);
+FBZZ_MATERIAL_TEX(texLeafWetness, tex7Index);
 FBZZ_TEXCUBE(        texIBLIrradiance, TEX_IBL_IRRADIANCE_SLOT);
 FBZZ_TEXCUBE(        texIBLPrefilter,  TEX_IBL_PREFILTER_SLOT);
 FBZZ_TEX2D_T(float4, texBRDFLut,       TEX_IBL_BRDF_LUT_SLOT);
@@ -124,7 +127,12 @@ float4 PSMain(PSInput p) : SV_Target0
     met   = saturate(met);
     rough = max(saturate(rough), 0.045f);
     /// @note 濡れは素材の値なので法線分散のフィルタより先に掛ける (GBuffer.hlsl と同順)。
-    const WetSurface wet = ApplyWetness(col, rough, N);
+    WetSurface wet;
+    [branch]
+    if (weatherWetness > 0.0f && (textureMask & (1u << 7)))
+        wet = ApplyLeafWetness(col, rough, texLeafWetness.Sample(sampDefault, uv), p.tangent, N);
+    else
+        wet = ApplyWetness(col, rough, N);
     col   = wet.albedo;
     rough = max(wet.roughness, 0.045f);
     rough = FilterSpecularRoughness(N, rough);
