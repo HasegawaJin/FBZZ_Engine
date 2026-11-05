@@ -7,6 +7,7 @@
 #include "Common/ObjectInstance.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Rendering/LodDither.hlsli"
+#include "Rendering/LeafWind.hlsli"
 FBZZ_TEX2D(g_shadowAlbedo, TEX_ALBEDO_SLOT);
 SamplerState g_shadowAlbedoSampler : register(SAMPLER_DEFAULT);
 struct ShadowOutput { float4 position : SV_POSITION; float2 uv : TEXCOORD0; float alpha : TEXCOORD1; };
@@ -29,7 +30,7 @@ ShadowOutput VSMain(VSInput v)
     const float4x4 objectWorld = world;
 #endif
     ShadowOutput output;
-    output.position = mul(mul(position,objectWorld),viewProjection);
+    output.position = mul(mul(float4(FbzzLeafWind(position.xyz, v.uv, objectWorld, time), 1),objectWorld),viewProjection);
     output.uv = v.uv*uvTiling + uvOffset;
     /// @note Keep the complete standard vertex ABI so UV reflection retains offset 36; color alpha is not part of PBR coverage.
     output.alpha = albedo.a;

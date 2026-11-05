@@ -32,7 +32,9 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float2 uvTiling;           ///< @note offset 48
     float2 uvOffset;           ///< @note offset 56
     float  alphaCutoff;        ///< @note offset 64
-    float3 _pad0;              ///< @note offset 68
+    float  leafWindStrength;   ///< @note offset 68
+    float  leafWindFrequency;  ///< @note offset 72
+    float  leafWindRootHeight; ///< @note offset 76
     uint   textureMask;        ///< @note bit0 albedo / 1 normal / 2 metalRough / 3 emissive / 4 AO。offset 80
     float3 _pad1;              ///< @note offset 84
     float  clearcoat;
@@ -50,6 +52,8 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     uint texAOIndex;
     uint tex7Index;
 };
+
+#include "Rendering/LeafWind.hlsli"
 
 /// @note bindless 化は宣言の置き換えだけで、Sample 呼び出しは従来のまま。添字は b14 の添字ブロックで毎ドロー配られる。
 /// @see Docs/design/bindless.md
@@ -81,7 +85,7 @@ PSInput VSMain(VSInput v)
     const float4x4 objectWorld=world, objectNormal=worldInvTranspose;
 #endif
     PSInput o;
-    float4 worldPos4 = mul(float4(v.position, 1.0f), objectWorld);
+    float4 worldPos4 = mul(float4(FbzzLeafWind(v.position, v.uv, objectWorld, time), 1.0f), objectWorld);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
     o.normal     = SafeNormalize(mul(v.normal,  (float3x3)objectNormal), float3(0.0f, 1.0f, 0.0f));

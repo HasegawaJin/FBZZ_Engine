@@ -217,6 +217,10 @@ void InitDefaultMaterialParams(const renderer::ShaderDescriptor& desc,
     setFloat2("uvTiling",      uvTiling);
     setFloat2("uvOffset",      uvOffset);
     setFloat("alphaCutoff",    0.5f);
+    /// @note 葉の変形は明示的なopt-in。汎用floatの既定1を残すと幹・石までモデル空間で1m揺れる。
+    setFloat("leafWindStrength", 0.0f);
+    setFloat("leafWindFrequency", 1.0f);
+    setFloat("leafWindRootHeight", 0.0f);
     setFloat3("emissiveColor", white3);
 }
 

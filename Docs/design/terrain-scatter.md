@@ -139,3 +139,9 @@ Live Previewは追加・消去予定の個数を素材カードへ表示する�
 選択素材はサムネイル・名前・Weight・Share・予定本数を一枚にまとめる。追加素材のLibraryと詳細条件は折りたたむ。Saved Mixesのサムネイルは配合比から12個の標本を決定的に選び、実メッシュ・材質を共通のworld範囲に描画する。素材または比率が変わったときだけ更新し、通常のサムネイルと同じ48件キャッシュ・1フレーム2件の生成上限を共有する。
 
 基本形状のCPUメッシュは安定したアドレスを保ち、GPUハンドルをResourceManagerの個体IDごとに分離する。Reset後の再取得ではCPU頂点・索引からGPUバッファを再作成し、別Rendererの有効そうに見える古いハンドルをサムネイルへ渡さない。
+
+木の葉は PBR 材質の `leafWindStrength` (model m)、`leafWindFrequency` (rad/s)、`leafWindRootHeight` (model m) で揺らす。幹材質の strength は0のまま保つ。材質の68〜76 byteの予約領域を使い、96 byte共通 prefixを維持する。色・影・選択・速度が同じ頂点関数を使い、隣接木の位相は world 原点から決める。InstancedMesh の配置行をフレームごとに変更せず、前時刻と現時刻から速度を書く。新しく塗った木も、配置 snapshot の葉材質を通して同じ揺れを継承する。
+
+EngineTestProjectの旧CanopyWind/PineCrownWind Sequenceは葉のGameObject全体を平行移動・回転するため、樹冠の枝や幹の接合部も動いて見える。島シーンに残る12個の植生SequencePlayerを無効にし、元の配置・固定幹は維持する。天候Sequenceは維持する。`IslandNaturalDetails.playtest.json`はPlayを180フレーム進めても18個の幹・樹冠Transformが変化しないことを確認する。
+
+汎用floatパラメーターの初期値1を葉の強さへ適用しない。`InitDefaultMaterialParams`はstrength=0、frequency=1、rootHeight=0を設定し、旧Barkなど風の値を持たない材質を固定する。葉材質の明示値はその後に適用する。`MaterialReflectionTest.LegacyMaterialsStayRigidUntilLeafWindIsExplicitlyAuthored`が旧材質と葉のopt-inを検査する。島と共通素材のBarkにもstrength=0を保存し、旧実行環境で読み直した場合も幹を揺らさない。

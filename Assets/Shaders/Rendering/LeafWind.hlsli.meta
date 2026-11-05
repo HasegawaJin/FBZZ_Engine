@@ -1,0 +1,6 @@
+# @file    LeafWind.hlsli.meta
+# @brief   葉の風揺れ共通定義のアセット識別。
+# @author  Hasegawa Jin
+# @date    2026-11-05
+[meta]
+guid = '1f2dc04dc18c5e2d82f3ea333478b1ba'

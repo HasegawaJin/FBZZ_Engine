@@ -794,15 +794,16 @@ bool IsGBufferCopyVariable(const renderer::ShaderVarDesc& variable, uint32_t byt
 
 /// @note Retain only lookup indices and offsets; current descriptor names/types and current source byte ranges are still verified.
 struct GBufferCopyPlan {
-    std::array<GBufferCopyField, 10> fields{};
+    std::array<GBufferCopyField, 13> fields{};
 
     explicit GBufferCopyPlan(const renderer::ShaderDescriptor& descriptor)
     {
         struct FieldSpec { std::string_view name; uint32_t offset, bytes; };
-        constexpr std::array<FieldSpec, 10> specs{{
+        constexpr std::array<FieldSpec, 13> specs{{
             {"albedo", 0, 16}, {"metallic", 16, 4}, {"roughness", 20, 4},
             {"normalStrength", 24, 4}, {"occlusionStrength", 28, 4}, {"emissiveColor", 32, 12},
-            {"emissiveScale", 44, 4}, {"uvTiling", 48, 8}, {"uvOffset", 56, 8}, {"alphaCutoff", 64, 4}}};
+            {"emissiveScale", 44, 4}, {"uvTiling", 48, 8}, {"uvOffset", 56, 8}, {"alphaCutoff", 64, 4},
+            {"leafWindStrength", 68, 4}, {"leafWindFrequency", 72, 4}, {"leafWindRootHeight", 76, 4}}};
         for (size_t index = 0; index < fields.size(); ++index) {
             auto& field = fields[index];
             field.destinationOffset = specs[index].offset; field.bytes = specs[index].bytes;
@@ -1222,6 +1223,9 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
         copy("uvTiling", 48, 8);
         copy("uvOffset", 56, 8);
         copy("alphaCutoff", 64, 4);
+        copy("leafWindStrength", 68, 4);
+        copy("leafWindFrequency", 72, 4);
+        copy("leafWindRootHeight", 76, 4);
     }
     if (descriptor.textureMaskOffset != UINT32_MAX &&
         descriptor.textureMaskOffset <= material->paramData.size() &&
@@ -2293,7 +2297,7 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             if (!input.data || input.data->placements.empty()) continue;
             input.lodCount = static_cast<uint32_t>(definition.LodHeights().size());
             std::copy(definition.LodHeights().begin(), definition.LodHeights().end(), input.lodHeights.begin());
-            math::Vector3 boundsCenter{}; float boundsRadius=-1;
+            math::Vector3 boundsCenter{}; float boundsRadius=-1, windBounds=0;
             setSnapshotTimer.Finish();
             for (const auto& sourcePart : definition.Parts()) {
                 InstancePhaseTimer meshTimer(collectInstancePhases, meshAndBoundsNs);
@@ -2317,6 +2321,8 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
                     materialCache.RememberSynchronized(componentMaterial,ctx.resources,false,0,material,true);
                 }
                 part.mesh.forwardMaterial=material;
+                float windStrength = 0; std::memcpy(&windStrength, material.gbufferParams.data() + 68, sizeof(windStrength));
+                windBounds = std::max(windBounds, std::abs(windStrength) * 2.0f);
                 materialTimer.Finish();
                 if (!material.valid || material.capabilities.blend!=renderer::BlendMode::OPAQUE_BLEND) { input.parts.clear(); break; }
                 InstancePhaseTimer boundsTimer(collectInstancePhases, meshAndBoundsNs);
@@ -2333,7 +2339,7 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             }
             if (input.parts.empty()) continue;
             if (sourceView.owner) input.world = sourceView.owner->transform.GetWorldMatrix();
-            input.localBoundsCenter=boundsCenter; input.localBoundsRadius=boundsRadius;
+            input.localBoundsCenter=boundsCenter; input.localBoundsRadius=boundsRadius + windBounds;
             output->instances.push_back(std::move(input));
         }
         if (collectInstancePhases) {

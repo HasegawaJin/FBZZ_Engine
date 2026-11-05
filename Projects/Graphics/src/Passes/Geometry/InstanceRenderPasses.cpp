@@ -51,6 +51,9 @@ struct InstanceResources {
     DynamicStructuredBufferPool views{1}, partLods{1}, cpuIds{64};
     DynamicRWStructuredBufferPool ids{64}, arguments{1};
     ResourceHandle<ConstantBufferTag> material;
+    ResourceHandle<ConstantBufferTag> windFrame;
+    uint64_t windStamp = UINT64_MAX;
+    float windTime = 0.0f, previousWindTime = 0.0f;
     std::set<std::array<uint32_t,2>> warnedCustom;
 };
 InstanceResources& Resources(ResourceManager& manager)
@@ -60,6 +63,7 @@ InstanceResources& Resources(ResourceManager& manager)
         if (auto* owner = ResourceManager::FindOwner(cache.owner)) {
             for (const auto& [identity, source] : cache.sources) owner->Release(source.gpu);
             owner->Release(cache.material);
+            owner->Release(cache.windFrame);
         }
         cache={}; cache.owner=manager.GetInstanceId(); cache.epoch=manager.GetResetVersion();
     }
@@ -70,6 +74,7 @@ InstanceResources& Resources(ResourceManager& manager)
         "Assets/Shaders/Pipeline/Shadow/AlphaShadow.hlsl","Assets/Shaders/Pipeline/AlphaSelection.hlsl","Assets/Shaders/Motion/VelocityAlpha.hlsl"};
     for (size_t i=0;i<paths.size();++i) if (!manager.Get(cache.shaders[i])) cache.shaders[i]=manager.LoadShader(paths[i]);
     if (!manager.Get(cache.material)) cache.material=manager.CreateConstantBuffer(96);
+    if (!manager.Get(cache.windFrame)) cache.windFrame=manager.CreateConstantBuffer(sizeof(PostProcCB));
     std::erase_if(cache.sources,[&](auto& entry) {
         if (manager.FrameStamp()<=entry.second.lastSeen+120) return false;
         manager.Release(entry.second.gpu); return true;
@@ -78,6 +83,11 @@ InstanceResources& Resources(ResourceManager& manager)
 }
 bool SameMatrix(const math::Matrix4& a,const math::Matrix4& b) { return std::memcmp(&a,&b,sizeof(a))==0; }
 bool SameVector(math::Vector3 a,math::Vector3 b) { return a.x==b.x&&a.y==b.y&&a.z==b.z; }
+bool LeafAnimated(const RenderMaterial& material)
+{
+    float strength = 0; std::memcpy(&strength, material.gbufferParams.data() + 68, sizeof(strength));
+    return strength > 0.0f;
+}
 float Stretch(const math::Matrix4& world)
 {
     const std::array<math::Vector3,3> axes{{{world.m[0][0],world.m[1][0],world.m[2][0]},
@@ -208,6 +218,12 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
 {
     if (!ctx.renderScene || ctx.renderScene->instances.empty()) return;
     auto& cache=Resources(ctx.resources);
+    if (cache.windStamp != ctx.resources.FrameStamp()) {
+        cache.previousWindTime = cache.windStamp == UINT64_MAX ? ctx.time : cache.windTime;
+        cache.windTime = ctx.time; cache.windStamp = ctx.resources.FrameStamp();
+    }
+    PostProcCB windFrame{}; windFrame.time = cache.windTime; windFrame.customParameters[0] = cache.previousWindTime;
+    ctx.resources.Update(cache.windFrame, &windFrame, sizeof(windFrame));
     auto frame=MakeCameraFrameCB(ctx.camera,ctx.taaJitterNdcX,ctx.taaJitterNdcY);
     const bool forwardPass=pass==InstancePass::FORWARD || pass==InstancePass::CAPTURE;
     if (pass==InstancePass::CAPTURE) {
@@ -229,12 +245,13 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         if (pass==InstancePass::SELECTION && !input.selected) continue;
         auto& source=Source(ctx,cache,input);
         if (pass==InstancePass::GBUFFER || (pass==InstancePass::FORWARD && !ctx.isDeferred)) ctx.statsTotalObjects+=static_cast<int>(source.activeCount);
-        if (pass==InstancePass::VELOCITY && !source.moved) continue;
+        const bool animated = std::any_of(input.parts.begin(), input.parts.end(), [](const auto& part) { return LeafAnimated(part.mesh.material); });
+        if (pass==InstancePass::VELOCITY && !source.moved && !animated) continue;
         const auto view=View(ctx,input,lightFrustum ? *lightFrustum : cameraFrustum,pass==InstancePass::SHADOW);
         ResourceHandle<StructuredBufferTag> gpuIds,gpuArgs;
         bool residentShaders=true;
         for (const auto& part : input.parts) {
-            const size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : part.mesh.material.surface.alphaCutoff>0 ? 3u : 2u;
+            const size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : (part.mesh.material.surface.alphaCutoff>0 || LeafAnimated(part.mesh.material)) ? 3u : 2u;
             residentShaders=residentShaders && ctx.resources.Get(cache.shaders[shader]);
         }
         const bool gpu=residentShaders && PrepareGpu(ctx,cache,input,source,view,gpuIds,gpuArgs);
@@ -277,11 +294,12 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
                 : MaterialPipeline(ctx,material);
             draw.constantBuffers[0]=pass==InstancePass::SHADOW ? lightFrame : ctx.handles.frameCB;
             draw.constantBuffers[1]=ctx.handles.objectCB; draw.constantBuffers[8]=ctx.handles.advancedGraphicsCB;
+            draw.constantBuffers[5]=cache.windFrame;
             PerObjectCB identity{}; ctx.resources.Update(ctx.handles.objectCB,&identity,sizeof(identity));
             for (size_t i=0;i<material.textures.size();++i) draw.textures[i]=material.textures[i];
             ctx.resources.Update(cache.material,material.gbufferParams.data(),material.gbufferParams.size());
             draw.constantBuffers[2]=cache.material;
-            size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : material.surface.alphaCutoff>0 ? 3u : 2u;
+            size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : (material.surface.alphaCutoff>0 || LeafAnimated(material)) ? 3u : 2u;
             draw.shader=cache.shaders[shader];
             if (forwardPass) {
                 draw.constantBuffers[2]=material.paramsBuffer; draw.constantBuffers[3]=ctx.handles.lightCB; draw.constantBuffers[4]=ctx.handles.shadowCB;
@@ -303,7 +321,7 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
                 if (pass==InstancePass::SHADOW) SubmitCountedShadow(ctx,draw); else SubmitCounted(ctx,draw);
             } else {
                 draw.shader=pass==InstancePass::GBUFFER ? ctx.handles.gbufferShader : forwardPass ? material.shader
-                    : pass==InstancePass::VELOCITY ? cache.shaders[9] : pass==InstancePass::SHADOW ? (material.surface.alphaCutoff>0 ? cache.shaders[7] : ctx.handles.shadowShader) : cache.shaders[8];
+                    : pass==InstancePass::VELOCITY ? cache.shaders[9] : pass==InstancePass::SHADOW ? ((material.surface.alphaCutoff>0 || LeafAnimated(material)) ? cache.shaders[7] : ctx.handles.shadowShader) : cache.shaders[8];
                 for (uint32_t slot : visible[part.lod]) {
                     PerObjectCB object{}; object.world=source.rows[slot].world;
                     object.worldInvTranspose=pass==InstancePass::VELOCITY ? source.rows[slot].previousWorld : source.rows[slot].normal;

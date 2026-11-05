@@ -56,6 +56,36 @@ FBZZ_REFLECT(NestedReflectionData)
 
 class MaterialReflectionTest : public testkit::EngineFixture {};
 
+TEST_F(MaterialReflectionTest, LegacyMaterialsStayRigidUntilLeafWindIsExplicitlyAuthored)
+{
+    renderer::ShaderDescriptor descriptor;
+    descriptor.cbufferSize = 96;
+    descriptor.vars = {
+        Scalar("leafWindStrength", renderer::ShaderVarType::Float, 68),
+        Scalar("leafWindFrequency", renderer::ShaderVarType::Float, 72),
+        Scalar("leafWindRootHeight", renderer::ShaderVarType::Float, 76),
+        Scalar("customMultiplier", renderer::ShaderVarType::Float, 12)
+    };
+    std::vector<uint8_t> bytes(descriptor.cbufferSize);
+    asset::MaterialAssetAuthoring bark;
+    bark.params["roughness"] = {0.92f};
+    asset::InitDefaultMaterialParams(descriptor, bytes);
+    asset::ApplyMaterialAssetParams(bark, descriptor, bytes);
+    EXPECT_FLOAT_EQ(Read<float>(bytes, 68), 0.0f);
+    EXPECT_FLOAT_EQ(Read<float>(bytes, 72), 1.0f);
+    EXPECT_FLOAT_EQ(Read<float>(bytes, 76), 0.0f);
+    EXPECT_FLOAT_EQ(Read<float>(bytes, 12), 1.0f);
+
+    asset::MaterialAssetAuthoring leaves;
+    leaves.params["leafWindStrength"] = {0.13f};
+    leaves.params["leafWindFrequency"] = {1.4f};
+    leaves.params["leafWindRootHeight"] = {1.8f};
+    asset::ApplyMaterialAssetParams(leaves, descriptor, bytes);
+    EXPECT_FLOAT_EQ(Read<float>(bytes, 68), 0.13f);
+    EXPECT_FLOAT_EQ(Read<float>(bytes, 72), 1.4f);
+    EXPECT_FLOAT_EQ(Read<float>(bytes, 76), 1.8f);
+}
+
 TEST_F(MaterialReflectionTest, IntegerAndBoolOverridesReachGpuBytesWithoutFloatRounding)
 {
     renderer::ShaderDescriptor descriptor;

@@ -13,6 +13,9 @@ render_queue = 2000
 shader = 'guid:73d100e5a351425aaf52953c23425438|Assets/Shaders/Material/Surface/PBR.hlsl'
 
 [params]
+leafWindStrength = 0.1
+leafWindFrequency = 1.3
+leafWindRootHeight = 1.5
 base_color = [0.12, 0.27, 0.13, 1.0]
 albedo = [0.12, 0.27, 0.13, 1.0]
 roughness = 0.95

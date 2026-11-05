@@ -17,6 +17,7 @@
 #include "Rendering/LodDither.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Common/ObjectInstance.hlsli"
+#include "Rendering/LeafWind.hlsli"
 
 FBZZ_TEX2D(texAlbedo, TEX_ALBEDO_SLOT);
 FBZZ_TEX2D(texNormal, TEX_NORMAL_SLOT);
@@ -29,7 +30,7 @@ SamplerState sampDefault      : register(SAMPLER_DEFAULT);
 PSInput GBufferVS(VSInput v, float4x4 objectWorld, float4x4 objectWorldInvTranspose)
 {
     PSInput o;
-    float4 worldPos4 = mul(float4(v.position, 1.0f), objectWorld);
+    float4 worldPos4 = mul(float4(FbzzLeafWind(v.position, v.uv, objectWorld, time), 1.0f), objectWorld);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
     o.normal     = SafeNormalize(mul(v.normal, (float3x3)objectWorldInvTranspose), float3(0.0f, 1.0f, 0.0f));

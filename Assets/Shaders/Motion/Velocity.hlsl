@@ -15,6 +15,7 @@ cbuffer ObjectConstants : register(CB_OBJECT)
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Common/ObjectInstance.hlsli"
+#include "Rendering/LeafWind.hlsli"
 
 /// @note t7 = 完成したシーン深度 (Reversed-Z)。静止物は速度を描かないので、Velocity RT 自身の深度には居ない。
 FBZZ_TEX2D_T(float, texSceneDepth, TEX_DEPTH_SLOT);
@@ -60,8 +61,8 @@ VelocityPSInput VelocityVS(VelocityVSInput v, float4x4 objectWorld, float4x4 obj
     o.uv=v.uv*uvTiling+uvOffset;
 #endif
     const float4 localPos = float4(v.position, 1.0f);
-    const float4 currWorld = mul(localPos, objectWorld);
-    const float4 prevWorldPos = mul(localPos, objectPrevWorld);
+    const float4 currWorld = mul(float4(FbzzLeafWind(v.position, v.uv, objectWorld, time), 1), objectWorld);
+    const float4 prevWorldPos = mul(float4(FbzzLeafWind(v.position, v.uv, objectPrevWorld, customParameters.x), 1), objectPrevWorld);
 
     o.currClip   = mul(currWorld, viewProjection);
     o.prevClip   = mul(prevWorldPos, prevViewProjection);

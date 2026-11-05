@@ -55,7 +55,9 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float2 uvTiling;              /// @note UV タイリング (X, Y)             offset 48
     float2 uvOffset;              /// @note UV オフセット (X, Y)             offset 56
     float  alphaCutoff;           /// @note アルファカットオフしきい値         offset 64
-    float3 _matPad0;              /// @note offset 68
+    float  leafWindStrength;      /// @note Model metres; zero keeps rigid geometry. offset 68
+    float  leafWindFrequency;     /// @note Angular frequency [rad/s]. offset 72
+    float  leafWindRootHeight;    /// @note Fixed root height in model metres. offset 76
     uint   textureMask;           /// @note テクスチャ存在フラグ (bit 0-4)    offset 80
     float3 _matPad1;              /// @note offset 84
 };

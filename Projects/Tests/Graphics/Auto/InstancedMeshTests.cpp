@@ -140,6 +140,7 @@ protected:
         m_settings.geometryDrawMode=mode==3 ? r::GeometryDrawMode::GPU_INSTANCE_INDIRECT : mode==2 ? r::GeometryDrawMode::GPU_INDIRECT : r::GeometryDrawMode::CPU;
         r::RenderPassContext ctx{{},*m_bundle.renderer,*m_resources,m_camera,m_settings,m_target,UINT32_MAX,m_handles};
         ctx.renderScene=scene; ctx.width=m_width; ctx.height=m_height; ctx.isDeferred=true;
+        ctx.time=m_time;
         ctx.cullMaxDistance=m_maxDistance; ctx.cullingBoundsPadding=m_boundsPadding;
         ctx.smallObjectScreenHeight=m_smallHeight; ctx.cullDistanceSpherical=m_sphericalDistance;
         ctx.cullingMask=m_cullingMask;
@@ -180,6 +181,7 @@ protected:
     r::ResourceHandle<r::PipelineStateTag> m_copyState; r::ResourceHandle<r::TextureTag> m_checker;
     uint64_t m_identity=0,m_uploadBytes=0; uint32_t m_draws=0,m_width=128,m_height=128,m_validationErrors=0; bool m_frameOpen=false;
     float m_maxDistance=0,m_boundsPadding=0,m_smallHeight=0; bool m_sphericalDistance=true; uint32_t m_cullingMask=UINT32_MAX;
+    float m_time=0;
 };
 
 TEST_F(InstancedMeshTest, GpuCullingMatchesIndividualAndCpuInstancedPixelsAcrossViews)
@@ -223,6 +225,29 @@ TEST_F(InstancedMeshTest, ShadowAlphaCoverageMatchesStandardGBufferIncludingVert
     }
     EXPECT_GT(covered,100u); EXPECT_EQ(differences,0u);
 }
+
+TEST_F(InstancedMeshTest, LeafWindChangesPixelsWithoutPlacementUploadsAndKeepsShadowCoverage)
+{
+    const auto scene = Scene(130);
+    const auto rigid = Render(scene, 2); m_time = 1.1f;
+    Same(rigid, Render(scene, 2));
+    for (auto& part : scene->instances[0].parts) {
+        const float wind[]{0.65f, 1.7f, -1.0f};
+        std::memcpy(part.mesh.material.gbufferParams.data() + 68, wind, sizeof(wind));
+    }
+    m_time = 0.25f; const auto first = Render(scene, 2);
+    m_time = 1.7f; const auto second = Render(scene, 2);
+    EXPECT_NE(first, second); EXPECT_EQ(m_uploadBytes, 0u);
+    Same(second, Render(scene, 0));
+    const auto colorDepth = Render(scene, 2, false, true), shadowDepth = Render(scene, 2, true, true);
+    ASSERT_EQ(colorDepth.size(), shadowDepth.size()); size_t covered = 0, differences = 0;
+    for (size_t i = 0; i < colorDepth.size(); i += 4) {
+        const bool color = colorDepth[i] > 0.0001f, shadow = shadowDepth[i] < 0.9999f;
+        if (color) ++covered; if (color != shadow) ++differences;
+    }
+    EXPECT_GT(covered, 100u); EXPECT_EQ(differences, 0u);
+}
+
 TEST_F(InstancedMeshTest, ErasePreviewDoesNotContributeColorOrShadows)
 {
     const auto scene = Scene(130); scene->instances[0].selectionOnly = true;

@@ -13,6 +13,9 @@ render_path = 'auto'
 render_queue = 2450
 
 [params]
+leafWindStrength = 0.06
+leafWindFrequency = 1.8
+leafWindRootHeight = 1.6
 base_color = [0.68, 0.81, 0.65, 1.0]
 albedo = [0.68, 0.81, 0.65, 1.0]
 roughness = 0.9
