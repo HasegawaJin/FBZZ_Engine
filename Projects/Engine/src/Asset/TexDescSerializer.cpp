@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include <Engine/Asset/TexDescSerializer.hpp>
+#include <Engine/Asset/MetaFile.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
@@ -173,10 +174,8 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
         std::istringstream iss(existing);
         const auto parsed = toml::parse(iss);
         if (parsed) {
-            if (const auto* field = parsed.table()["vector_field"].as_table())
-                root.insert("vector_field", *field);
-            if (const auto* meta = parsed.table()["meta"].as_table()) {
-                root.insert("meta", *meta);
+            root = parsed.table();
+            if (const auto* meta = root["meta"].as_table()) {
                 if (auto guid = (*meta)["guid"].value<std::string>(); guid && !guid->empty())
                     spriteIdentity = *guid;
             }
@@ -202,7 +201,6 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
     tex.insert("aniso",               static_cast<int64_t>(s.anisoLevel));
     tex.insert("alpha_mode",          std::string(AlphaModeToStr(s.alphaMode)));
     tex.insert("alpha_dither",        s.alphaDither);
-    /// @note 型を一時的に変えても、切り抜いた矩形と永続IDは著作データとして保持する。
     /// @note 型を一時的に変えても、切り抜いた矩形と永続IDは著作データとして保持する。
     if (s.type == TextureType::Sprite || !s.sprites.empty()) {
         tex.insert("sprite_mode",
@@ -253,11 +251,11 @@ bool TexDescSerializer::Save(const TextureAsset& asset, const std::string& absPa
         tex.insert("sprites", std::move(sprites));
     }
 
-    root.insert("texture", std::move(tex));
+    root.insert_or_assign("texture", std::move(tex));
 
     std::ostringstream ss;
     ss << root;
-    if (!util::FileSystem::WriteTextAtomic(absPath, ss.str())) return false;
+    if (!MetaFile::Save(absPath, ss.str())) return false;
 
     /// @note 書いた本人が共有キャッシュを潰す。書き込み時刻でも気付けるが、
     /// @note 同一秒内の連続 Apply では時刻が動かないことがある。

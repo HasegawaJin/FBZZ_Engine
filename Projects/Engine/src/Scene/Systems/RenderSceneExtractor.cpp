@@ -2255,6 +2255,7 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
                 && (requestedFilter.category.empty() || requestedFilter.category == "General");
         }
         int64_t setSnapshotNs = 0, meshAndBoundsNs = 0, materialNs = 0;
+        int64_t definitionNs = 0, snapshotNs = 0, ownerNs = 0;
         static uint64_t instanceOwner=0, instanceEpoch=UINT64_MAX;
         static std::unordered_map<std::string,MaterialComponent> instanceMaterials;
         if (instanceOwner!=ctx.resources.GetInstanceId() || instanceEpoch!=ctx.resources.GetResetVersion()) {
@@ -2268,13 +2269,20 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
         std::vector<InstanceSourceView> sources;
         for (EntityID id : ctx.scene.GetEntities<InstancedMeshComponent>()) {
             InstancePhaseTimer setSnapshotTimer(collectInstancePhases, setSnapshotNs);
+            InstancePhaseTimer ownerTimer(collectInstancePhases, ownerNs);
             auto* go = ctx.scene.GetGameObject(id);
             const auto* component = ctx.scene.GetComponent<InstancedMeshComponent>(id);
             if (!go || !go->activeInHierarchy() || !component || !component->m_enabled) continue;
+            ownerTimer.Finish();
+            InstancePhaseTimer definitionTimer(collectInstancePhases, definitionNs);
             const auto* definition = asset::ResolveMeshInstanceDefinition(component->m_instanceSetRef.path);
+            definitionTimer.Finish();
             if (!definition) continue;
             renderer::RenderInstanceInput input;
+            InstancePhaseTimer snapshotTimer(collectInstancePhases, snapshotNs);
             input.data = component->Snapshot(*definition);
+            snapshotTimer.Finish();
+            InstancePhaseTimer ownerStateTimer(collectInstancePhases, ownerNs);
             input.identity = {ctx.scene.GetRenderSceneGeneration(), (static_cast<uint64_t>(id.generation) << 32) | id.index};
             input.world = go->transform.GetWorldMatrix(); input.layer = static_cast<uint32_t>(go->layer);
             input.selected = IsSelectedForOutline(*go, ctx.settings); input.castShadows = component->m_castShadows;
@@ -2343,10 +2351,13 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             output->instances.push_back(std::move(input));
         }
         if (collectInstancePhases) {
-            /// @note General matches the existing Instances marker; these disjoint sums preserve its inclusive duration but make ancestor Self unavailable.
+            /// @note General matches Instances; Definition/Snapshot/Owner subdivide SetSnapshot, so diagnostic sums overlap and ancestor Self is unavailable.
             profiler::Profiler::PushSample({"RenderSceneExtractor::Instances::SetSnapshot", "General"}, static_cast<double>(setSnapshotNs) / 1000000.0);
             profiler::Profiler::PushSample({"RenderSceneExtractor::Instances::MeshAndBounds", "General"}, static_cast<double>(meshAndBoundsNs) / 1000000.0);
             profiler::Profiler::PushSample({"RenderSceneExtractor::Instances::Material", "General"}, static_cast<double>(materialNs) / 1000000.0);
+            profiler::Profiler::PushSample({"RenderSceneExtractor::Instances::Definition", "General"}, static_cast<double>(definitionNs) / 1000000.0);
+            profiler::Profiler::PushSample({"RenderSceneExtractor::Instances::Snapshot", "General"}, static_cast<double>(snapshotNs) / 1000000.0);
+            profiler::Profiler::PushSample({"RenderSceneExtractor::Instances::Owner", "General"}, static_cast<double>(ownerNs) / 1000000.0);
         }
     }
 

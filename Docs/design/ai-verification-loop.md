@@ -1,3 +1,7 @@
+<!-- @file    ai-verification-loop.md
+@brief   AI による変更・ビルド・実行検証と操作契約の整合確認。
+@author  Hasegawa Jin
+@date    2026-09-17 -->
 # AI 検証ループ
 
 ## 目的
@@ -110,7 +114,15 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 - `Projects/Editor/src/Ai/Bus/` に領域ごとのファイル (`SceneHandlers.cpp`, `AssetHandlers.cpp`, …) を置く。各ファイルは `RegisterXxxHandlers(BusHandlerTable&)` を公開する。
 - **自己登録の静的初期化子は使わない。** FBZZEditor は STATIC ライブラリで、参照されない .obj の初期化子はリンカーに捨てられる。`EditorBusDispatcher` のコンストラクタが登録関数を明示的に順に呼ぶ。
 - 表は `{ type, kind (Query/Command), handler }`。同じ型の二重登録は assert。`editor.bus.list` で型名の一覧を返す。
-- `EditorAuto` のテストが `Projects/EditorMcp/src/editorContracts.ts` の `t: '...'` を全部読み、表に無い型があれば落ちる (MCP だけに生えて C++ に無い / 綴り違いの検出)。
+- `EditorAuto` の `BusContractParityTest` は `Projects/EditorMcp/src/editorContracts.ts` の型宣言と実行時スキーマを Query / Command ごとに別々に読み、相互の一致・二重定義・native 登録表との双方向の一致・操作種別・プロトコルを検査する。native の `undoable` は wire の `command` に対応する。
+
+### MCP の領域分割と共有入力ケース
+
+`Projects/EditorMcp/src/tools.ts` は登録入口と権限による公開面の切り替えだけを持つ。`src/Tools/` の Editor / Scene / Script / Asset / BehaviorTree / Rendering / Animation / Physics / World / Build / Playtest / Fluid が Query と Command を明示登録し、既存の reliability は独立したまま使う。`ToolSupport.ts` は応答・Scene 差分・Command 入力検証と dry-run 強制を共有する。Scene snapshot 等の可変状態は登録呼び出しごとに保持し、セッション間で共有しない。
+
+`src/tests/fixtures/EditorContractCases.json` は MCP と native の共有入力例である。`ContractParity.test.ts` は Zod と実際の MCP 呼び出しを検査し、`BusContractParityTest.SharedInputCasesMatchNativeDryRun` は同じ JSON を実際の dispatcher へ送る。必須値・真偽値・文字列・整数の境界と範囲外・固定長ベクトルを扱い、不正な MCP 入力が Editor へ転送されないことも確認する。現段階の共有例は Scene / Node / Transform が対象で、全操作の引数仕様を完全に照合するものではない。契約変更時は該当する共有例を追加し、両方のテストを通す。
+
+MCP の検証は `Projects/EditorMcp` で `npm test`、native は `Tools/AgentBuild.ps1 build FBZZTestsEditorAuto` 後に `Tools/AgentBuild.ps1 test -Filter BusContractParityTest` を使う。稼働中 MCP の再ビルドを避けたい場合は `Scratch/` の隔離コピーで同じ npm 検証を行い、常駐サーバーや SDK は更新しない。
 
 ## 検証
 

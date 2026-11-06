@@ -122,8 +122,11 @@ public:
             const auto* buffer = resources.Get(handle);
             if (!handle.IsValid() || !buffer || buffer->GetElementCount() < capacity
                 || buffer->GetStride() != stride || buffer->GetSize() < static_cast<size_t>(capacity) * stride
-                || buffer->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX)
+                || buffer->GetBindlessUavIndex() == INVALID_BINDLESS_INDEX) {
+                /// @note Rejected buffers have no pool owner and must not accumulate after descriptor exhaustion.
+                if (handle.IsValid()) resources.Release(handle);
                 return {};
+            }
             lane.push_back(handle);
         }
         return lane[bucket.next++];

@@ -2,28 +2,26 @@
 /// @brief   Scene に付随する Editor 専用メタデータの TOML 永続化。
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
-///
-/// 保存先は Scene の `<scene>.meta` サイドカー内の [editor] テーブル。
-/// @note 丸ごと上書きしない: AssetDatabase も同じファイルの [meta] guid にアセット GUID を書くため、
-///       上書きすると guid: 参照が保存のたびに壊れる。`WriteGuidToMeta` と同じく既存テーブルを読んで自分のセクションだけ差し替える。
+/// @note [meta] guidと他の設定は保持し、[editor]だけを更新する。
 #include <Editor/Util/EditorSerializer.hpp>
 #include <Editor/Util/EditorSceneState.hpp>
+#include <Engine/Asset/MetaFile.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
+#include <algorithm>
 #include <sstream>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace fbzz::editor {
 
 namespace {
 
-/// サイドカー内で Editor 専用データを収めるテーブル名。
 constexpr std::string_view kEditorTable = "editor";
 
-/// 既存のサイドカーを読み、他の書き手のセクション ([meta] 等) を保った table を返す。
-/// 読めない / 壊れている場合は空の table (新規作成扱い)。
+/// @note 読取・解析失敗時は空を返すが、MetaFile::Saveが既存ファイルの上書きを拒否する。
 toml::table ReadSidecar(const std::string& path)
 {
     std::string text;
@@ -31,15 +29,13 @@ toml::table ReadSidecar(const std::string& path)
     std::istringstream stream(text);
     const auto parsed = toml::parse(stream);
     if (!parsed) {
-        FBZZ_LOG_WARN("EditorSerializer: sidecar is not valid TOML, other sections may be lost: %s",
+        FBZZ_LOG_WARN("EditorSerializer: sidecar is not valid TOML: %s",
                       path.c_str());
         return {};
     }
     return parsed.table();
 }
 
-/// 1 GameObject ぶんの並び順を読み取って state へ流し込む。
-/// キー名は形式ごとに違うため呼び出し側から渡す。
 void ReadComponentOrders(const toml::array& objectArray,
                          const char* instanceIdKey,
                          const char* orderKey,
@@ -62,8 +58,10 @@ void ReadComponentOrders(const toml::array& objectArray,
 
 toml::array ToIdArray(const EditorSceneState::InstanceIds& ids)
 {
+    auto sorted = ids;
+    std::sort(sorted.begin(), sorted.end());
     toml::array array;
-    for (const std::string& id : ids)
+    for (const std::string& id : sorted)
         if (!id.empty()) array.push_back(id);
     return array;
 }
@@ -81,12 +79,11 @@ EditorSceneState::InstanceIds ReadIdArray(const toml::node_view<const toml::node
     return ids;
 }
 
-} // namespace
+} /// @note namespace
 
 std::string EditorSerializer::MetadataPath(const std::string& scenePath)
 {
-    /// @note .meta を末尾に置くことで AssetBrowser の通常アセット一覧から隠し、
-    ///       Scene の移動・リネーム時も既存のサイドカー処理で追随させる。
+    /// @note .metaの移動・リネームはScene本体と対で扱う。
     return scenePath + ".meta";
 }
 
@@ -94,9 +91,16 @@ bool EditorSerializer::Save(const EditorSceneState& state, const std::string& sc
 {
     if (scenePath.empty()) return false;
 
+    const auto& componentOrders = state.GetAllComponentOrders();
+    std::vector<std::string> instanceIds;
+    instanceIds.reserve(componentOrders.size());
+    for (const auto& [instanceId, order] : componentOrders)
+        if (!instanceId.empty() && !order.empty()) instanceIds.push_back(instanceId);
+    /// @note unordered_mapの挿入順・再ハッシュに依存させず、Componentの表示順自体は維持する。
+    std::sort(instanceIds.begin(), instanceIds.end());
     toml::array objectArray;
-    for (const auto& [instanceId, order] : state.GetAllComponentOrders()) {
-        if (instanceId.empty() || order.empty()) continue;
+    for (const auto& instanceId : instanceIds) {
+        const auto& order = componentOrders.at(instanceId);
         toml::table objectTable;
         objectTable.insert("instance_id", instanceId);
         toml::array orderArray;
@@ -126,7 +130,7 @@ bool EditorSerializer::Save(const EditorSceneState& state, const std::string& sc
 
     std::ostringstream stream;
     stream << root;
-    if (!util::FileSystem::WriteText(path, stream.str())) {
+    if (!asset::MetaFile::Save(path, stream.str())) {
         FBZZ_LOG_ERROR("EditorSerializer: failed to save metadata: %s", path.c_str());
         return false;
     }
@@ -160,14 +164,11 @@ bool EditorSerializer::Load(EditorSceneState& state, const std::string& scenePat
             ReadComponentOrders(*objectArray, "instance_id", "component_order", state);
             return true;
         }
-        /// @note サイドカーはあるが Editor セクションが無い = GUID だけの .meta。
-        ///       並び順は未保存として扱い、Scene 本体の最旧形式へは落ちない
-        ///       (サイドカーが正であり、そこに無いなら「まだ並べ替えていない」が正しい)。
+        /// @note GUIDだけの.metaは正当な未設定データとして扱い、Scene本体の旧設定を復活させない。
         return true;
     }
 
-    /// @note さらに前の暫定実装では componentOrder を Scene 本体へ書いていた。
-    ///       サイドカーがまったく無い場合だけ読み取り、次回保存時に移行する。
+    /// @note サイドカーが無い場合だけScene本体の旧設定を移行する。
     if (!util::FileSystem::ReadText(scenePath, text))
         /// @note 旧 Scene / 初回利用ではどちらも無い。
         return true;
@@ -179,4 +180,4 @@ bool EditorSerializer::Load(EditorSceneState& state, const std::string& scenePat
     return true;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

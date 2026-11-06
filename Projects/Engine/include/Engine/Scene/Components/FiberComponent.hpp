@@ -55,6 +55,8 @@ struct FiberComponent {
     int m_flowChannels = -1;
     /// @note 影だけの層数の上限。影は層の隙間が見えにくく、Shell の負荷の大半を占める (カスケード・光源の面ごとに全層を描く)。
     int m_shadowShellCount = 6;
+    /// @note Fiber 自身の投影だけを制御し、元の表面の投影と Fiber の受影は変更しない。
+    bool m_castShadows = true;
     /// @name 個体ごとの上書き。共有 .mat の値へ掛ける。スクリプトから書き換えてよい
     /// @{
     /// @note 根元色・毛先色の RGB に掛ける (線形)。
@@ -112,6 +114,8 @@ struct FiberComponent {
         r.Tooltip("受け取る Flow Field のチャンネル (ビットマスク)。-1 で全チャンネル、0 で局所の場を無視します。環境風は常に受けます。");
         r.FileField("materialPath", m_materialPath, ".mat");
         r.Tooltip("Fiber マテリアル。Mesh Renderer / Skinned Mesh Renderer / Terrain と併用します。");
+        r.Field("castShadows", m_castShadows);
+        r.Tooltip("毛・草自身が影を落とすかを切り替えます。");
         r.IntRange("shadowShellCount", m_shadowShellCount, 1, 64);
         r.Tooltip("影に描く Shell の層数の上限。影は層の隙間が目立たず、層を減らすと負荷が大きく下がります。");
         r.Field("colorTint", m_colorTint);

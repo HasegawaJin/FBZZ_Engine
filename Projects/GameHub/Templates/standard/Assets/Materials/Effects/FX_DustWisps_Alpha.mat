@@ -1,4 +1,8 @@
-# 地面の粉と粗い粒。既存の無彩色素材を使い、光源で床に馴染ませる。
+# @file    FX_DustWisps_Alpha.mat
+# @brief   Project-owned starter asset referencing shared SDK materials.
+# @author  Hasegawa Jin
+# @date    2026-09-14
+# @note 地面の粉と粗い粒。既存の無彩色素材を使い、光源で床に馴染ませる。
 version = 1
 shader = ""
 blend_mode = "AlphaBlend"
@@ -8,7 +12,7 @@ render_queue = 3000
 render_path = "particle"
 mesh_type = "surface"
 [textures]
-albedo = "Assets/Textures/Particles/smoke_03.png"
+albedo = "guid:f9e05e34474942639e3e139ac6c31528"
 [params]
 albedo = [1.0, 1.0, 1.0, 1.0]
 [particle]

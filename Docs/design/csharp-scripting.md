@@ -514,7 +514,7 @@ runtime 同梱、NativeAOT、コンソール対応は別の配布判断とする
 | 反射・観測 | `Projects/Engine/include/Engine/Scene/Script.hpp`、`Projects/Engine/include/Engine/Scene/SchemaReflectorAdapter.hpp` |
 | 保存往復 | `Projects/Engine/src/Scene/SceneSerializer.cpp` |
 | 階層と Prefab 内参照 | `Projects/Engine/include/Engine/Scene/GameObject.hpp`、`Projects/Engine/src/Scene/PrefabInstantiate.cpp`、`Projects/Editor/src/Util/PrefabSerializer.cpp` |
-| AI の候補検索と範囲 | `Projects/Editor/src/Ai/Bus/SceneHandlers.cpp`、`Projects/EditorMcp/src/tools.ts` |
+| AI の候補検索と範囲 | `Projects/Editor/src/Ai/Bus/SceneHandlers.cpp`、`Projects/EditorMcp/src/Tools/SceneTools.ts` |
 | C# の全宣言元と型 GUID | `Projects/Managed/Fbzz.ScriptGenerator/ScriptSourceGenerator.cs`、`Projects/Editor/src/ManagedScriptMetadata.cpp` |
 | C++ / C# の固定 ABI 生成 | `Projects/Engine/include/Engine/Scene/ManagedBridgeContract.inl`、`Projects/Managed/Fbzz.ScriptGenerator/ManagedBridgeSourceGenerator.cs` |
 | 純粋な数学計算 | `Projects/Managed/Fbzz.ScriptApi/Vector3.cs`、`Mathf.cs`、`Projects/Tests/Engine/Auto/ManagedMathParityTests.cpp` |

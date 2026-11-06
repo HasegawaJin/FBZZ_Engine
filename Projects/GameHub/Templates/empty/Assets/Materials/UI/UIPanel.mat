@@ -1,5 +1,9 @@
+# @file    UIPanel.mat
+# @brief   Project-owned starter asset referencing shared SDK materials.
+# @author  Hasegawa Jin
+# @date    2026-08-23
 version = 1
-shader = "Assets/Shaders/UI/Material/UIPanel.hlsl"
+shader = "guid:af8c6df6110b4d74836d5951d13a33b0"
 render_path = "ui"
 blend_mode = "AlphaBlend"
 double_sided = true

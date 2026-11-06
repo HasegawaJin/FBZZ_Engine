@@ -33,6 +33,7 @@
 #endif
 #include <Windows.h>
 #include <wrl/client.h>
+#include <wrl/implements.h>
 
 namespace fbzz::renderer {
 
@@ -118,6 +119,47 @@ Microsoft::WRL::ComPtr<ID3D12ShaderReflection> CreateShaderReflection(
     return reflection;
 }
 
+/// @note DXC の通常探索に失敗した include は、ホストの同じ論理パス探索へ戻して共有 SDK を参照する。
+/// @see https://github.com/microsoft/DirectXShaderCompiler/blob/main/include/dxc/dxcapi.h IDxcIncludeHandler::LoadSource.
+class ShaderIncludeHandler final : public Microsoft::WRL::RuntimeClass<
+    Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IDxcIncludeHandler> {
+public:
+    explicit ShaderIncludeHandler(IDxcUtils* utils) : m_utils(utils)
+    {
+        m_utils->CreateDefaultIncludeHandler(&m_default);
+    }
+
+    HRESULT STDMETHODCALLTYPE LoadSource(LPCWSTR filename, IDxcBlob** source) override
+    {
+        if (!filename || !source) return E_INVALIDARG;
+        *source = nullptr;
+        if (m_default && SUCCEEDED(m_default->LoadSource(filename, source))) return S_OK;
+        const std::filesystem::path requested(filename);
+        std::filesystem::path logical;
+        bool shaderRelative = false;
+        for (const auto& part : requested) {
+            std::wstring name = part.wstring();
+            std::transform(name.begin(), name.end(), name.begin(),
+                [](wchar_t value) { return static_cast<wchar_t>(std::towlower(value)); });
+            if (!shaderRelative && name == L"shaders") { shaderRelative = true; continue; }
+            if (shaderRelative) logical /= part;
+        }
+        if (!shaderRelative) {
+            if (requested.is_absolute()) return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+            logical = requested;
+        }
+        const auto resolved = ResolveShaderFilePath(std::filesystem::path(L"Assets/Shaders") / logical);
+        Microsoft::WRL::ComPtr<IDxcBlobEncoding> blob;
+        const HRESULT result = m_utils->LoadFile(resolved.c_str(), nullptr, &blob);
+        if (FAILED(result)) return result;
+        *source = blob.Detach();
+        return S_OK;
+    }
+private:
+    Microsoft::WRL::ComPtr<IDxcUtils> m_utils;
+    Microsoft::WRL::ComPtr<IDxcIncludeHandler> m_default;
+};
+
 /// @note HLSLをDX12定義付きで SM 6.8 DXIL へコンパイルし、次回起動用に保存する。
 std::vector<uint8_t> CompileShader(
     const std::string& path, const char* entryPoint, const char* target,
@@ -155,8 +197,8 @@ std::vector<uint8_t> CompileShader(
 #else
     arguments.push_back(L"-O3");
 #endif
-    Microsoft::WRL::ComPtr<IDxcIncludeHandler> includeHandler;
-    if (FAILED(utils->CreateDefaultIncludeHandler(&includeHandler))) return {};
+    const auto includeHandler = Microsoft::WRL::Make<ShaderIncludeHandler>(utils.Get());
+    if (!includeHandler) return {};
     DxcBuffer sourceBuffer{};
     sourceBuffer.Ptr = source->GetBufferPointer();
     sourceBuffer.Size = source->GetBufferSize();

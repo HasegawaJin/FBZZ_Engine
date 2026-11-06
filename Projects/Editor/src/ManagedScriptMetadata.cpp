@@ -5,6 +5,7 @@
 #include "ManagedScriptMetadata.hpp"
 #include <Editor/Ai/Json.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/MetaFile.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
@@ -254,13 +255,14 @@ bool CommitFiles(std::vector<MetadataFile>& files, std::string& diagnostic)
         if (!file.changed) continue;
         std::ostringstream stream;
         stream << file.root;
-        if (util::FileSystem::WriteTextAtomic(util::FileSystem::PathToUtf8(file.path), stream.str())) {
+        if (asset::MetaFile::Save(util::FileSystem::PathToUtf8(file.path), stream.str())) {
             committed.push_back(index);
             continue;
         }
         bool restored = true;
         for (const std::size_t previous : committed) {
             MetadataFile& written = files[previous];
+            /// @note ロールバックは失敗前の原本バイト列を正確に復元する。
             if (written.existed)
                 restored = util::FileSystem::WriteTextAtomic(util::FileSystem::PathToUtf8(written.path), written.original) && restored;
             else {

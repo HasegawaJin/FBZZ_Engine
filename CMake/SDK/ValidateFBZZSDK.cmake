@@ -31,6 +31,8 @@ set(REQUIRED_PATHS
     "fbzz-sdk.toml"
     "cmake/FBZZ/FBZZConfig.cmake"
     "cmake/FBZZ/FBZZConfigVersion.cmake"
+    "cmake/FBZZ/FBZZRuntime.cmake"
+    "cmake/FBZZ/StageFBZZEngineAssets.cmake"
     "cmake/FBZZ/FBZZTargets.cmake"
     "cmake/FBZZ/build.config.in"
     "cmake/FBZZ/FBZZAgilitySDK.cmake"

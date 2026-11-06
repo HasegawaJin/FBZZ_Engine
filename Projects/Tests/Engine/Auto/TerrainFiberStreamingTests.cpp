@@ -10,6 +10,7 @@
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
 #include <Engine/Asset/MeshInstancesAsset.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -26,10 +27,12 @@
 #include <Graphics/Renderer/IStructuredBuffer.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -680,6 +683,40 @@ TEST_F(TerrainFiberStreamingTest, AlpineNativeMeshesAndPlacementTemplatesLoadThr
     }
 }
 
+TEST_F(TerrainFiberStreamingTest, DisablingFiberShadowsPreservesGrassGeometryAndResidency)
+{
+    m_renderer.m_captureStructuredBytes = true;
+    CreateTerrain(33, 1.0f);
+    ExtractContractFrame(64.0f, 64.0f);
+    ASSERT_FALSE(m_output.fibers.empty());
+    for (const auto& input : m_output.fibers) EXPECT_TRUE(input.cast);
+    const auto before = Snapshot();
+    ASSERT_FALSE(before.empty());
+
+    auto* fiber = m_scene.GetComponent<scene::FiberComponent>(m_terrainId);
+    ASSERT_NE(fiber, nullptr);
+    fiber->m_castShadows = false;
+    ExtractContractFrame(64.0f, 64.0f, true, nullptr, nullptr, false);
+    ASSERT_FALSE(m_output.fibers.empty());
+    for (const auto& input : m_output.fibers) EXPECT_FALSE(input.cast);
+    const auto after = Snapshot();
+    ExpectSamePatchHandles(before, after);
+    for (const auto& [coordinate, patch] : before) {
+        const auto found = after.find(coordinate);
+        ASSERT_NE(found, after.end());
+        EXPECT_EQ(patch.rootCount, found->second.rootCount);
+        EXPECT_EQ(patch.indexCount, found->second.indexCount);
+        EXPECT_EQ(patch.vertexHash, found->second.vertexHash);
+        EXPECT_EQ(patch.rootHash, found->second.rootHash);
+    }
+
+    fiber->m_castShadows = true;
+    ExtractContractFrame(64.0f, 64.0f, true, nullptr, nullptr, false);
+    ASSERT_FALSE(m_output.fibers.empty());
+    for (const auto& input : m_output.fibers) EXPECT_TRUE(input.cast);
+    ExpectSamePatchHandles(before, Snapshot());
+}
+
 TEST_F(TerrainFiberStreamingTest, SavingTerrainWritesIndexedProjectMaterialAndPreservesSharedMaterial)
 {
     const auto local = m_temp.File("Assets/Local.mat").generic_string();
@@ -714,6 +751,110 @@ TEST_F(TerrainFiberStreamingTest, SavingTerrainWritesIndexedProjectMaterialAndPr
     EXPECT_FLOAT_EQ(localOnDisk.params.at("roughness").at(0), 0.2f);
     EXPECT_FLOAT_EQ(sharedOnDisk.params.at("roughness").at(0), 0.7f);
     ASSERT_NE(scene::SceneSerializer::LoadData(scenePath), nullptr);
+}
+
+TEST_F(TerrainFiberStreamingTest, IndexedRuntimePlacementsObserveEditsReloadUnloadAndMoves)
+{
+    const auto disk = m_temp.File("Assets/Trees.meshinstances").generic_string();
+    asset::MeshInstancesAsset authored;
+    const std::array<asset::InstanceMeshPart, 1> parts{{{"primitive:cube", m_materialPath, 0}}};
+    const std::array<float, 1> heights{0};
+    std::array<renderer::InstancePlacement, 1> placements{{{1, {1, 2, 3}, {}, {1, 1, 1}, true}}};
+    ASSERT_TRUE(authored.instances.Replace(parts, heights, placements));
+    ASSERT_TRUE(asset::SaveMeshInstancesAsset(disk, authored));
+    asset::AssetManager::UnloadAll();
+    asset::AssetManager::Init(*m_resources, m_temp.File("Assets").generic_string());
+    const auto guid = asset::AssetDatabase::GuidFromPath(disk);
+    const auto reference = asset::DecodeGuidRef("guid:" + guid);
+    ASSERT_EQ(reference, "Assets/Trees.meshinstances");
+    const auto* first = asset::ResolveMeshInstanceDefinition(reference); ASSERT_NE(first, nullptr);
+    const auto retained = first->Snapshot(); ASSERT_NE(retained, nullptr);
+    EXPECT_EQ(asset::ResolveMeshInstanceDefinition(reference)->Snapshot(), retained);
+    auto* loaded = asset::AssetManager::LoadAndGet<asset::MeshInstancesAsset>(reference); ASSERT_NE(loaded, nullptr);
+    placements[0].position.x = 5;
+    ASSERT_TRUE(loaded->instances.Replace(parts, heights, placements));
+    EXPECT_FLOAT_EQ(asset::ResolveMeshInstanceDefinition(reference)->Snapshot()->placements[0].position.x, 5);
+    EXPECT_FLOAT_EQ(retained->placements[0].position.x, 1);
+    placements[0].position.x = 9;
+    ASSERT_TRUE(authored.instances.Replace(parts, heights, placements));
+    ASSERT_TRUE(asset::SaveMeshInstancesAsset(disk, authored));
+    ASSERT_GT(asset::AssetManager::ReloadPath(disk), 0);
+    EXPECT_FLOAT_EQ(asset::ResolveMeshInstanceDefinition(reference)->Snapshot()->placements[0].position.x, 9);
+    asset::AssetManager::Unload<asset::MeshInstancesAsset>(reference);
+    ASSERT_NE(asset::ResolveMeshInstanceDefinition(reference), nullptr);
+    EXPECT_FLOAT_EQ(asset::ResolveMeshInstanceDefinition("Assets/./Trees.meshinstances")->Snapshot()->placements[0].position.x, 9);
+    const auto moved = m_temp.File("Assets/Moved.meshinstances").generic_string();
+    std::error_code error;
+    std::filesystem::rename(disk, moved, error); ASSERT_FALSE(error);
+    std::filesystem::rename(disk + ".meta", moved + ".meta", error); ASSERT_FALSE(error);
+    asset::AssetDatabase::OnAssetMoved(disk, moved);
+    ASSERT_NE(asset::ResolveMeshInstanceDefinition(reference), nullptr);
+    EXPECT_FLOAT_EQ(asset::ResolveMeshInstanceDefinition("guid:" + guid)->Snapshot()->placements[0].position.x, 9);
+    EXPECT_FLOAT_EQ(retained->placements[0].position.x, 1);
+}
+
+TEST_F(TerrainFiberStreamingTest, RuntimePlacementCacheSeparatesProjectsAndFailedLoadsRecover)
+{
+    asset::MeshInstancesAsset authored;
+    const std::array<asset::InstanceMeshPart, 1> parts{{{"primitive:cube", m_materialPath, 0}}};
+    const std::array<float, 1> heights{0};
+    std::array<renderer::InstancePlacement, 1> placements{{{1, {2, 0, 0}, {}, {1, 1, 1}, true}}};
+    std::shared_ptr<const renderer::InstanceSetData> retained;
+    for (const auto* project : {"First", "Second"}) {
+        const auto directory = m_temp.File(std::string(project) + "/Assets").generic_string();
+        const auto disk = m_temp.File(std::string(project) + "/Assets/Trees.meshinstances").generic_string();
+        ASSERT_TRUE(authored.instances.Replace(parts, heights, placements));
+        ASSERT_TRUE(asset::SaveMeshInstancesAsset(disk, authored));
+        asset::AssetManager::UnloadAll(); asset::AssetManager::Init(*m_resources, directory);
+        const auto* current = asset::ResolveMeshInstanceDefinition("Assets/Trees.meshinstances"); ASSERT_NE(current, nullptr);
+        EXPECT_FLOAT_EQ(current->Snapshot()->placements[0].position.x, placements[0].position.x);
+        if (!retained) retained = current->Snapshot();
+        placements[0].position.x = 8;
+    }
+    EXPECT_FLOAT_EQ(retained->placements[0].position.x, 2);
+    EXPECT_EQ(asset::ResolveMeshInstanceDefinition("Assets/Later.meshinstances"), nullptr);
+    ASSERT_TRUE(asset::SaveMeshInstancesAsset(m_temp.File("Second/Assets/Later.meshinstances").generic_string(), authored));
+    asset::AssetManager::FlushFailed();
+    ASSERT_NE(asset::ResolveMeshInstanceDefinition("Assets/Later.meshinstances"), nullptr);
+}
+
+TEST_F(TerrainFiberStreamingTest, TerrainRuntimeMaterialHandlesKeepCurrentAuthoringAcrossReloadResetAndProjectSwitch)
+{
+    m_renderer.m_captureStructuredBytes = true;
+    const auto disk = m_temp.File("First/Assets/Ground.mat").generic_string();
+    asset::MaterialAssetAuthoring authored; authored.params["roughness"] = {0.7f};
+    ASSERT_TRUE(asset::SaveMaterialAssetToFile(disk, authored));
+    asset::AssetManager::UnloadAll();
+    asset::AssetManager::Init(*m_resources, m_temp.File("First/Assets").generic_string());
+    CreateTerrain(3, 0);
+    auto* terrain = m_scene.GetComponent<scene::TerrainComponent>(m_terrainId); ASSERT_NE(terrain, nullptr);
+    terrain->layerMaterials = {"Assets/Ground.mat", "Assets/Ground.mat"};
+    const auto readRoughness = [&] {
+        renderer::Camera camera; renderer::RenderSettings settings; renderer::RenderPassHandles handles;
+        scene::RenderPassContext context(m_scene, m_renderer, *m_resources, camera, settings, {}, UINT32_MAX, handles);
+        renderer::RenderScene output; scene::ExtractRenderTerrains(context, output);
+        EXPECT_EQ(output.terrains.size(), 1u);
+        for (const auto& [buffer, bytes] : m_renderer.m_structuredBytes) {
+            if (buffer->GetStride() != sizeof(renderer::TerrainLayerGpu) || buffer->GetElementCount() != 2) continue;
+            renderer::TerrainLayerGpu layer{}; std::memcpy(&layer, bytes.data(), sizeof(layer)); return layer.roughness;
+        }
+        ADD_FAILURE() << "Terrain layer GPU payload is missing"; return -1.0f;
+    };
+    EXPECT_FLOAT_EQ(readRoughness(), 0.7f); EXPECT_FLOAT_EQ(readRoughness(), 0.7f);
+    auto* loaded = asset::AssetManager::LoadAndGet<asset::MaterialAsset>("Assets/Ground.mat"); ASSERT_NE(loaded, nullptr);
+    const auto retained = loaded->ReadAuthoring();
+    authored.params["roughness"] = {0.2f}; loaded->ReplaceAuthoring(authored);
+    EXPECT_FLOAT_EQ(readRoughness(), 0.2f);
+    EXPECT_FLOAT_EQ(retained->Data().params.at("roughness")[0], 0.7f);
+    authored.params["roughness"] = {0.4f}; ASSERT_TRUE(asset::SaveMaterialAssetToFile(disk, authored));
+    ASSERT_GT(asset::AssetManager::ReloadPath(disk), 0); EXPECT_FLOAT_EQ(readRoughness(), 0.4f);
+    asset::AssetManager::Unload<asset::MaterialAsset>("Assets/Ground.mat"); EXPECT_FLOAT_EQ(readRoughness(), 0.4f);
+    m_resources->Reset(); EXPECT_FLOAT_EQ(readRoughness(), 0.4f);
+    authored.params["roughness"] = {0.9f};
+    ASSERT_TRUE(asset::SaveMaterialAssetToFile(m_temp.File("Second/Assets/Ground.mat").generic_string(), authored));
+    asset::AssetManager::UnloadAll();
+    asset::AssetManager::Init(*m_resources, m_temp.File("Second/Assets").generic_string());
+    EXPECT_FLOAT_EQ(readRoughness(), 0.9f);
 }
 
 } /// @note namespace

@@ -1405,8 +1405,8 @@ std::unique_ptr<ICommand> BuildNodeSetLayerCommand([[maybe_unused]] editor::Edit
         GameObject* go = scene->FindByGuid(id);
         if (go == nullptr) { err = Outcome::Err("NODE_NOT_FOUND", "NodeId が見つかりません: " + id); return nullptr; }
         const JsonValue* layerValue = payload.Find("layer");
-        if (layerValue == nullptr || !layerValue->IsNumber()) { err = Outcome::Err("BAD_ARG", "layer (整数) が必要です"); return nullptr; }
-        const int layer = layerValue->AsInt();
+        int layer = 0;
+        if (layerValue == nullptr || !layerValue->TryGetInt32(layer)) { err = Outcome::Err("BAD_ARG", "layer (整数) が必要です"); return nullptr; }
         if (layer < 0 || layer > 31) { err = Outcome::Err("BAD_ARG", "layer は 0〜31 です"); return nullptr; }
         const int oldLayer = go->layer;
         return std::make_unique<LambdaCommand>("AI: Set Node Layer",
@@ -1476,6 +1476,11 @@ std::unique_ptr<ICommand> BuildTransformSetCommand([[maybe_unused]] editor::Edit
         const bool hasPos   = ReadVec3(payload, "pos", pos);
         const bool hasRot   = ReadVec3(payload, "rot", rotDeg);
         const bool hasScale = ReadVec3(payload, "scale", scl);
+        if ((payload.Find("pos") != nullptr && !hasPos) || (payload.Find("rot") != nullptr && !hasRot)
+            || (payload.Find("scale") != nullptr && !hasScale)) {
+            err = Outcome::Err("BAD_ARG", "pos/rot/scale は長さ3の数値配列です");
+            return nullptr;
+        }
         if (!hasPos && !hasRot && !hasScale) { err = Outcome::Err("BAD_ARG", "pos/rot/scale のいずれかが必要です"); return nullptr; }
         const math::Vector3    oldPos = go->transform.position;
         const math::Quaternion oldRot = go->transform.rotation;

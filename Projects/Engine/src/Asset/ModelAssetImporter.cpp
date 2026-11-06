@@ -1,11 +1,14 @@
 /// @file    ModelAssetImporter.cpp
-/// @brief   .fzasset バイナリ → ModelAsset デシリアライザ。
+/// @brief   .fzasset と未ベイクのモデル原本から ModelAsset を読み込む。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include <Engine/Asset/BinaryReader.hpp>
 #include <Engine/Asset/FzModelFormat.hpp>
 #include <Engine/Asset/FzVertexCompat.hpp>
 #include <Engine/Asset/ModelAssetImporter.hpp>
+#include <Engine/Asset/ModelImporter.hpp>
+#include <Engine/Asset/Model.hpp>
+#include <Engine/Asset/ModelSource.hpp>
 #include <Engine/Asset/Skeleton.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -16,6 +19,7 @@
 #include <algorithm>
 #include <cstring>
 #include <vector>
+#include <utility>
 
 namespace fbzz::asset {
 
@@ -87,7 +91,7 @@ bool ReadSkeleton(BinaryReader& r, ModelAsset& out, const std::string& path)
     return true;
 }
 
-/// v4 のノード階層チャンクを読む。ファイル末尾に置かれている。
+/// @note v4 のノード階層チャンクを読む。ファイル末尾に置かれている。
 bool ReadNodes(BinaryReader& r, ModelAsset& out, const std::string& path)
 {
     FzModelNodeChunkHeader hdr{};
@@ -152,13 +156,35 @@ bool SkipSubmeshPayload(BinaryReader& r, const FzSubmeshHeader& header,
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 std::unique_ptr<ModelAsset> ModelAssetImporter::Import(
     const std::string&         absPath,
     renderer::ResourceManager* resources)
 {
     FBZZ_LOG_INFO("ModelAssetImporter: importing [%s]", absPath.c_str());
+    /// @note SDK の読み取り専用原本には project のベイクが無い場合があるため、既存の原本 importer を共有する。
+    if (IsModelSourcePath(absPath)) {
+        if (!resources) return nullptr;
+        auto source = ModelImporter::Import(absPath, *resources);
+        if (!source || source->meshes.empty()) return nullptr;
+        auto model = std::make_unique<ModelAsset>();
+        model->skeleton = std::move(source->skeleton);
+        model->nodes = std::move(source->nodes);
+        model->rootNodeIndex = source->rootNodeIndex;
+        model->nodeTransformsBaked = source->nodeTransformsBaked;
+        auto& lod = model->lods.emplace_back();
+        lod.submeshes.reserve(source->meshes.size());
+        model->materialSlotNames.reserve(source->meshes.size());
+        for (size_t index = 0; index < source->meshes.size(); ++index) {
+            SubmeshEntry entry;
+            entry.materialSlotIndex = static_cast<uint32_t>(index);
+            entry.mesh = std::move(source->meshes[index]);
+            lod.submeshes.push_back(std::move(entry));
+            model->materialSlotNames.push_back("Material" + std::to_string(index));
+        }
+        return model;
+    }
     BinaryReader r;
     if (!r.Open(absPath)) {
         FBZZ_LOG_ERROR("ModelAssetImporter: cannot open [%s]", absPath.c_str());
@@ -374,4 +400,4 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
     return model;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

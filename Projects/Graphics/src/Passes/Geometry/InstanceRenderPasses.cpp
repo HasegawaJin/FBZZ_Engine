@@ -43,6 +43,8 @@ struct InstanceSource {
     std::vector<uint32_t> motionSlots;
     bool moved=false;
     uint32_t activeCount=0;
+    math::Vector3 boundsMin{}, boundsMax{};
+    bool hasBounds=false, finiteBounds=true;
 };
 struct InstanceResources {
     uint64_t owner=0, epoch=UINT64_MAX;
@@ -114,7 +116,7 @@ InstanceSource& Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
         else { changed.resize(input.data->placements.size()); for (size_t i=0;i<changed.size();++i) changed[i]=static_cast<uint32_t>(i); }
         std::sort(changed.begin(),changed.end()); changed.erase(std::unique(changed.begin(),changed.end()),changed.end());
         const size_t previousCount=source.rows.size();
-        if (!partial) source.activeCount=0;
+        if (!partial) { source.activeCount=0; source.hasBounds=false; source.finiteBounds=true; }
         source.rows.resize(input.data->placements.size());
         for (uint32_t slot : changed) {
             const auto& placement=input.data->placements[slot]; auto& row=source.rows[slot];
@@ -127,6 +129,19 @@ InstanceSource& Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
             row.world=world; row.normal=math::Matrix4::InverseTransposeAffine(world); row.previousWorld=old;
             const auto center=world*math::Vector4{input.localBoundsCenter,1};
             row.bounds={center.x,center.y,center.z,placement.active ? input.localBoundsRadius*Stretch(world) : -1};
+            if (placement.active) {
+                if (!std::isfinite(row.bounds.x) || !std::isfinite(row.bounds.y)
+                    || !std::isfinite(row.bounds.z) || !std::isfinite(row.bounds.w) || row.bounds.w<0) source.finiteBounds=false;
+                else {
+                    const math::Vector3 low{center.x-row.bounds.w,center.y-row.bounds.w,center.z-row.bounds.w};
+                    const math::Vector3 high{center.x+row.bounds.w,center.y+row.bounds.w,center.z+row.bounds.w};
+                    if (!source.hasBounds) { source.boundsMin=low; source.boundsMax=high; source.hasBounds=true; }
+                    else {
+                        source.boundsMin={std::min(source.boundsMin.x,low.x),std::min(source.boundsMin.y,low.y),std::min(source.boundsMin.z,low.z)};
+                        source.boundsMax={std::max(source.boundsMax.x,high.x),std::max(source.boundsMax.y,high.y),std::max(source.boundsMax.z,high.z)};
+                    }
+                }
+            }
             if (placement.active && !SameMatrix(old,world)) { source.motionSlots.push_back(slot); source.moved=true; }
         }
         source.world=input.world; source.center=input.localBoundsCenter; source.radius=input.localBoundsRadius; source.data=input.data;
@@ -179,6 +194,29 @@ InstanceView View(const RenderPassContext& ctx,const RenderInstanceInput& input,
     result.culling={std::max(ctx.cullingBoundsPadding,0.0f),shadow ? 0.0f : ctx.smallObjectScreenHeight,ctx.cullDistanceSpherical ? 0.0f : 1.0f,0};
     for (uint32_t i=0;i<input.parts.size();++i) if (result.firstParts[input.parts[i].lod]==UINT32_MAX) result.firstParts[input.parts[i].lod]=i;
     return result;
+}
+/// @note Partial edits only expand the cached union; retaining old extents cannot hide a live placement.
+/// @see Docs/design/instanced-mesh.md
+bool SourceOutsideView(const InstanceSource& source,const InstanceView& view,const math::Frustum& frustum)
+{
+    if (source.activeCount==0) return true;
+    if (!source.hasBounds || !source.finiteBounds) return false;
+    const auto center=source.boundsMin*0.5f+source.boundsMax*0.5f;
+    const float padding=view.culling.x;
+    const auto extents=(source.boundsMax-source.boundsMin)*0.5f+math::Vector3{padding,padding,padding};
+    if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)
+        || !std::isfinite(extents.x) || !std::isfinite(extents.y) || !std::isfinite(extents.z)) return false;
+    if (view.counts[3] && !frustum.IntersectsAABB(center,extents)) return true;
+    if (view.metrics.z<=0) return false;
+    const math::Vector3 camera{view.cameraProjection.x,view.cameraProjection.y,view.cameraProjection.z};
+    if (view.culling.z>0.5f) {
+        const math::Vector3 forward{view.forward.x,view.forward.y,view.forward.z};
+        const float reach=std::abs(forward.x)*extents.x+std::abs(forward.y)*extents.y+std::abs(forward.z)*extents.z;
+        return math::Vector3::Dot(center-camera,forward)-reach>view.metrics.z;
+    }
+    const auto low=center-extents,high=center+extents;
+    const math::Vector3 nearest{std::clamp(camera.x,low.x,high.x),std::clamp(camera.y,low.y,high.y),std::clamp(camera.z,low.z,high.z)};
+    return (nearest-camera).Length()>view.metrics.z;
 }
 uint32_t CpuLod(const InstanceView& view,const math::Vector4& bounds)
 {
@@ -250,7 +288,9 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         if (pass==InstancePass::GBUFFER || (pass==InstancePass::FORWARD && !ctx.isDeferred)) ctx.statsTotalObjects+=static_cast<int>(source.activeCount);
         const bool animated = std::any_of(input.parts.begin(), input.parts.end(), [](const auto& part) { return LeafAnimated(part.mesh.material); });
         if (pass==InstancePass::VELOCITY && !source.moved && !animated) continue;
-        const auto view=View(ctx,input,lightFrustum ? *lightFrustum : cameraFrustum,pass==InstancePass::SHADOW);
+        const auto& frustum=lightFrustum ? *lightFrustum : cameraFrustum;
+        const auto view=View(ctx,input,frustum,pass==InstancePass::SHADOW);
+        if (SourceOutsideView(source,view,frustum)) continue;
         ResourceHandle<StructuredBufferTag> gpuIds,gpuArgs;
         bool residentShaders=true;
         for (const auto& part : input.parts) {
@@ -261,7 +301,6 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         std::array<std::vector<uint32_t>,4> visible;
         std::array<ResourceHandle<StructuredBufferTag>,4> cpuIds{};
         if (!gpu) {
-            const auto& frustum=lightFrustum ? *lightFrustum : cameraFrustum;
             for (uint32_t i=0;i<source.rows.size();++i) {
                 const auto& sphere=source.rows[i].bounds; if (sphere.w<0) continue;
                 const float radius=sphere.w+view.culling.x;

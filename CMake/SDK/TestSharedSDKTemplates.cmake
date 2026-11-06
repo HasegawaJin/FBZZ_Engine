@@ -2,10 +2,23 @@
 # @brief   Shared SDK templates, PIX runtime staging and distribution contracts.
 # @author  Hasegawa Jin
 # @date    2026-07-15
+cmake_minimum_required(VERSION 3.25)
 
 if(NOT DEFINED SOURCE_ROOT OR SOURCE_ROOT STREQUAL "")
     message(FATAL_ERROR "TestSharedSDKTemplates: SOURCE_ROOT is required")
 endif()
+
+# @note Shared references in project-owned starter assets must resolve through metadata shipped by the SDK.
+file(GLOB_RECURSE SDK_METADATA LIST_DIRECTORIES false "${SOURCE_ROOT}/Assets/*.meta")
+set(SDK_GUIDS)
+foreach(METADATA IN LISTS SDK_METADATA)
+    file(STRINGS "${METADATA}" GUID_LINES REGEX "^guid[ \t]*=")
+    foreach(GUID_LINE IN LISTS GUID_LINES)
+        if(GUID_LINE MATCHES "guid[ \t]*=[ \t]*['\"]([0-9a-f]+)['\"]")
+            list(APPEND SDK_GUIDS "guid:${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
+endforeach()
 
 foreach(TEMPLATE_KIND standard empty)
     set(TEMPLATE_ROOT "${SOURCE_ROOT}/Projects/GameHub/Templates/${TEMPLATE_KIND}")
@@ -40,6 +53,31 @@ foreach(TEMPLATE_KIND standard empty)
     if(EXISTS "${TEMPLATE_ROOT}/Assets/Shaders")
         message(FATAL_ERROR "${TEMPLATE_KIND}: Assets/Shaders must not exist in a template (engine shaders come from the SDK)")
     endif()
+    foreach(SHARED_GROUP AI Fonts Icons Materials Nature Textures)
+        file(GLOB_RECURSE TEMPLATE_ASSETS LIST_DIRECTORIES false RELATIVE "${TEMPLATE_ROOT}/Assets"
+            "${TEMPLATE_ROOT}/Assets/${SHARED_GROUP}/*")
+        foreach(TEMPLATE_ASSET IN LISTS TEMPLATE_ASSETS)
+            if(EXISTS "${SOURCE_ROOT}/Assets/${TEMPLATE_ASSET}")
+                message(FATAL_ERROR "${TEMPLATE_KIND}: shared SDK asset is shadowed by template copy: ${TEMPLATE_ASSET}")
+            endif()
+        endforeach()
+    endforeach()
+    if(NOT EXISTS "${TEMPLATE_ROOT}/Assets/Scenes/Main.scene")
+        message(FATAL_ERROR "${TEMPLATE_KIND}: the editable project startup scene is missing")
+    endif()
+    file(GLOB_RECURSE STARTER_ASSETS LIST_DIRECTORIES false "${TEMPLATE_ROOT}/Assets/*.mat"
+        "${TEMPLATE_ROOT}/Assets/*.terrain" "${TEMPLATE_ROOT}/Assets/*.fzdata")
+    foreach(STARTER_ASSET IN LISTS STARTER_ASSETS)
+        file(STRINGS "${STARTER_ASSET}" REFERENCE_LINES REGEX "guid:")
+        foreach(REFERENCE_LINE IN LISTS REFERENCE_LINES)
+            string(REGEX MATCHALL "guid:[0-9a-f]+" REFERENCES "${REFERENCE_LINE}")
+            foreach(REFERENCE IN LISTS REFERENCES)
+                if(NOT REFERENCE IN_LIST SDK_GUIDS)
+                    message(FATAL_ERROR "${TEMPLATE_KIND}: shared GUID has no SDK metadata: ${STARTER_ASSET}: ${REFERENCE}")
+                endif()
+            endforeach()
+        endforeach()
+    endforeach()
 
     if(TEMPLATE_KIND STREQUAL "standard")
         # @note A later project-owned shader tree must still participate in the Standalone build.
@@ -70,6 +108,21 @@ set(FIXTURE_SDK "${FIXTURE_ROOT}/SDK")
 set(FIXTURE_INPUT "${FIXTURE_ROOT}/Input")
 set(FIXTURE_EDITOR "${FIXTURE_ROOT}/InputEditor")
 
+# @note Retired format aliases and their metadata must not survive republishing a versioned SDK.
+set(PRUNE_SOURCE "${FIXTURE_ROOT}/PruneSource")
+set(PRUNE_SDK "${FIXTURE_ROOT}/PruneSDK")
+file(WRITE "${PRUNE_SOURCE}/Current.mat" "current\n")
+file(WRITE "${PRUNE_SDK}/share/fbzz/Assets/Current.mat" "current\n")
+file(WRITE "${PRUNE_SDK}/share/fbzz/Assets/Retired.fzdata" "retired\n")
+file(WRITE "${PRUNE_SDK}/share/fbzz/Assets/Retired.fzdata.meta" "retired GUID\n")
+execute_process(COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ASSETS=${PRUNE_SOURCE}" "-DSDK_ROOT=${PRUNE_SDK}"
+    -P "${SOURCE_ROOT}/CMake/SDK/PruneFBZZSDKAssets.cmake" RESULT_VARIABLE PRUNE_RESULT)
+if(NOT PRUNE_RESULT EQUAL 0 OR NOT EXISTS "${PRUNE_SDK}/share/fbzz/Assets/Current.mat"
+    OR EXISTS "${PRUNE_SDK}/share/fbzz/Assets/Retired.fzdata"
+    OR EXISTS "${PRUNE_SDK}/share/fbzz/Assets/Retired.fzdata.meta")
+    message(FATAL_ERROR "SDK asset pruning must retain current assets and remove retired files with their metadata")
+endif()
+
 # @note SDK preview guards run before install/stage and must reject redirected output paths without touching the external target.
 function(AssertSdkPreviewGuard binaryRoot sdkRoot shouldSucceed)
     execute_process(COMMAND "${CMAKE_COMMAND}"
@@ -85,7 +138,7 @@ endfunction()
 
 function(CreateSdkPreviewFixtureLink linkPath targetPath)
     if(WIN32)
-        execute_process(COMMAND powershell.exe -NoProfile -File
+        execute_process(COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
             "${SOURCE_ROOT}/CMake/SDK/CreateSDKPreviewTestJunction.ps1"
             -LinkPath "${linkPath}" -TargetPath "${targetPath}"
             RESULT_VARIABLE linkResult OUTPUT_VARIABLE linkOutput ERROR_VARIABLE linkError)
@@ -141,6 +194,7 @@ foreach(FIXTURE_PATH
         "share/fbzz/managed/ManagedStarter/global.json" "share/fbzz/managed/ManagedStarter/AGENTS.md"
         "share/fbzz/managed/ManagedStarter/.vscode/launch.json"
         "cmake/FBZZ/FBZZConfig.cmake" "cmake/FBZZ/FBZZConfigVersion.cmake" "cmake/FBZZ/build.config.in"
+        "cmake/FBZZ/FBZZRuntime.cmake" "cmake/FBZZ/StageFBZZEngineAssets.cmake"
         "cmake/FBZZ/FBZZAgilitySDK.cmake" "cmake/FBZZ/StageAgilitySDK.cmake" "cmake/FBZZ/AgilitySDKExports.cpp.in"
         "include/Engine/Scene/ManagedBridgeAbi.hpp" "include/Engine/Scene/ManagedBridgeContract.inl"
         "include/Engine/Api.hpp" "include/Engine/Standalone.hpp"
@@ -582,16 +636,16 @@ foreach(LOCAL_STAGE_KIND SourceDebug SourceRelease SdkDevelopment GPUless)
 endforeach()
 
 # @note Packaging itself is asynchronous; fixed source contracts verify that its existing file queue preserves notices without asset stripping.
-file(READ "${SOURCE_ROOT}/CMake/SDK/FBZZConfig.cmake.in" PACKAGE_TEXT)
+file(READ "${SOURCE_ROOT}/CMake/SDK/FBZZRuntime.cmake" PACKAGE_TEXT)
 foreach(REQUIRED_TEXT
-        "set(FBZZ_ENGINE_LICENSE_ROOT \"\${FBZZ_SDK_ROOT}/share/fbzz/licenses\")"
-        "\"\${FBZZ_ENGINE_LICENSE_ROOT}\""
-        "\"$<TARGET_FILE_DIR:\${TARGET_NAME}>/EngineLicenses\"")
+        "add_custom_target(\"\${TARGET_NAME}EngineAssets\""
+        "StageFBZZEngineAssets.cmake")
     string(FIND "${PACKAGE_TEXT}" "${REQUIRED_TEXT}" REQUIRED_POS)
     if(REQUIRED_POS EQUAL -1)
         message(FATAL_ERROR "SDK consumer notice staging contract is missing: ${REQUIRED_TEXT}")
     endif()
 endforeach()
+include("${SOURCE_ROOT}/CMake/SDK/TestFBZZRuntimeAssets.cmake")
 file(READ "${SOURCE_ROOT}/Projects/Editor/src/BuildPipeline.cpp" PIPELINE_TEXT)
 foreach(REQUIRED_TEXT
         "required.push_back(L\"WinPixEventRuntime.dll\");"

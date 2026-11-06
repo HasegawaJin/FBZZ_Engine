@@ -289,6 +289,58 @@ TEST_F(InstancedMeshTest, DeferredForwardSkipsPreparingGBufferOnlyInstances)
     EXPECT_GT(m_draws,0u);
 }
 
+TEST_F(InstancedMeshTest, EntireSetOutsideViewSkipsDrawsAndReentersWithoutUploadingPlacements)
+{
+    const auto scene=Scene(130);
+    scene->instances[0].world.m[0][3]=1000.0f;
+    const auto outside=Render(scene,2);
+    EXPECT_EQ(m_draws,0u);
+    for (float value : outside) EXPECT_EQ(value,0.0f);
+
+    m_camera.m_position={1000,0,-8}; m_camera.LookAt({1000,0,4});
+    const auto reentered=Render(scene,2);
+    EXPECT_GT(m_draws,0u);
+    EXPECT_EQ(m_uploadBytes,0u);
+    EXPECT_NE(reentered,outside);
+    Same(reentered,Render(scene,0));
+    const auto shadow=Render(scene,2,true,true);
+    EXPECT_GT(m_draws,0u);
+    Same(shadow,Render(scene,0,true,true));
+}
+
+TEST_F(InstancedMeshTest, DistanceRejectedSetKeepsPartialEditsAndInactiveRowsCorrect)
+{
+    for (bool spherical : {true,false}) {
+        const auto scene=Scene(130);
+        m_sphericalDistance=spherical; m_maxDistance=2.0f; m_boundsPadding=0.25f;
+        const auto outside=Render(scene,2);
+        EXPECT_EQ(m_draws,0u);
+        for (float value : outside) EXPECT_EQ(value,0.0f);
+
+        const auto previous=scene->instances[0].data;
+        auto edited=std::make_shared<r::InstanceSetData>(*previous);
+        edited->parentRevision=previous->revision; ++edited->revision;
+        edited->dirtySlots={4}; edited->placements[4].position={0,0,-7};
+        scene->instances[0].data=edited;
+        const auto entered=Render(scene,2);
+        EXPECT_EQ(m_uploadBytes,208u);
+        EXPECT_GT(m_draws,0u);
+        EXPECT_NE(entered,outside);
+        Same(entered,Render(scene,0));
+
+        auto inactive=std::make_shared<r::InstanceSetData>(*edited);
+        inactive->parentRevision=edited->revision; ++inactive->revision;
+        inactive->dirtySlots.clear();
+        for (uint32_t i=0;i<inactive->placements.size();++i) {
+            inactive->placements[i].active=false; inactive->dirtySlots.push_back(i);
+        }
+        scene->instances[0].data=inactive;
+        const auto removed=Render(scene,2);
+        EXPECT_EQ(m_draws,0u);
+        Same(outside,removed);
+    }
+}
+
 TEST_F(InstancedMeshTest, DISABLED_MeasureTenThousandInstancesWithNativeProfiler)
 {
     Resize(1920,1080); m_camera.m_aspect=1920.0f/1080; m_camera.m_orthoHeight=14;

@@ -8,6 +8,7 @@
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include "MeshInstancesSerialization.hpp"
+#include "CacheableLoadedReference.hpp"
 #include <limits>
 #include <algorithm>
 #include <cctype>
@@ -104,10 +105,14 @@ const InstanceSetAsset* ResolveMeshInstanceDefinition(const std::string& referen
     /// @note 世代付き handle のみを保持し、再読込後の実体は毎回 Get する。GUID 索引の変更で移動・プロジェクト切替を反映する。
     static std::unordered_map<std::string, Loaded> loaded;
     static uint64_t revision = UINT64_MAX;
+    static int assetGeneration = -1;
     const auto currentRevision = AssetDatabase::Revision();
-    if (revision != currentRevision) { loaded.clear(); revision = currentRevision; }
+    const auto currentGeneration = AssetManager::GetAssetGeneration();
+    if (revision != currentRevision || assetGeneration != currentGeneration) {
+        loaded.clear(); revision = currentRevision; assetGeneration = currentGeneration;
+    }
     const bool guid = AssetDatabase::IsGuidRef(reference);
-    if (guid) {
+    {
         if (const auto found = loaded.find(reference); found != loaded.end()) {
             if (const auto* value = AssetManager::Get(found->second.placements)) return &value->instances;
             if (const auto* value = AssetManager::Get(found->second.paint)) return &value->definition;
@@ -122,13 +127,13 @@ const InstanceSetAsset* ResolveMeshInstanceDefinition(const std::string& referen
     if (extension == ".meshinstances") {
         const auto handle = AssetManager::Load<MeshInstancesAsset>(reference);
         const auto* asset = AssetManager::Get(handle);
-        if (asset && guid && loaded.size() < 4096) loaded[reference].placements = handle;
+        if (asset && loaded.size() < 4096 && detail::IsCacheableLoadedReference(reference)) loaded[reference].placements = handle;
         return asset ? &asset->instances : nullptr;
     }
     if (extension == ".terrainpaint") {
         const auto handle = AssetManager::Load<TerrainPaintAsset>(reference);
         const auto* asset = AssetManager::Get(handle);
-        if (asset && guid && loaded.size() < 4096) loaded[reference].paint = handle;
+        if (asset && loaded.size() < 4096 && detail::IsCacheableLoadedReference(reference)) loaded[reference].paint = handle;
         return asset ? &asset->definition : nullptr;
     }
     const auto* asset = DataAssetRegistry::Resolve(reference);

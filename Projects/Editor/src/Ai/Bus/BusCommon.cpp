@@ -43,7 +43,7 @@ std::string StringField(const JsonValue& obj, const char* key)
 bool ReadVec3(const JsonValue& obj, const char* key, math::Vector3& out)
 {
     const JsonValue* v = obj.Find(key);
-    if (v == nullptr || !v->IsArray() || v->AsArray().size() < 3) return false;
+    if (v == nullptr || !v->IsArray() || v->AsArray().size() != 3) return false;
     const auto& a = v->AsArray();
     if (!a[0].IsNumber() || !a[1].IsNumber() || !a[2].IsNumber()) return false;
     out = { static_cast<float>(a[0].AsNumber()), static_cast<float>(a[1].AsNumber()), static_cast<float>(a[2].AsNumber()) };

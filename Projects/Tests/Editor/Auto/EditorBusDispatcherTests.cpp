@@ -1589,13 +1589,34 @@ TEST_F(EditorBusReliabilityTest, VerifiesSupportedNodeTransformAndNativeComponen
     EXPECT_FLOAT_EQ(light->intensity, 2.0f);
 }
 
+TEST_F(EditorBusReliabilityTest, RejectsFractionalLayerBeforeApplyingAnyBatchCommand)
+{
+    auto& node = AttachScene().CreateGameObject("Original");
+    JsonValue layer = ReliablePayload("node.setLayer");
+    layer.Set("id", JsonValue(node.instanceId));
+    /// @note 不正な後続 Command は、先行する有効な変更も適用する前に拒否する。
+    layer.Set("layer", JsonValue(1.75));
+
+    const JsonValue response = Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Partial"), layer }));
+
+    EXPECT_EQ(ErrorCode(response), "BAD_ARG");
+    EXPECT_EQ(node.name, "Original");
+    EXPECT_EQ(node.layer, 0);
+    EXPECT_EQ(m_undo.GetCursor(), 0u);
+    EXPECT_EQ(ErrorCode(Send(Rollback())), "RECEIPT_NOT_FOUND");
+}
+
 TEST_F(EditorBusReliabilityTest, RollsBackItsOwnBatchWhenNativeReadbackDiffersFromTheRequest)
 {
     auto& node = AttachScene().CreateGameObject("Original");
     JsonValue layer = ReliablePayload("node.setLayer");
     layer.Set("id", JsonValue(node.instanceId));
-    /// @note The legacy builder converts a JSON number to an integer; checked readback must never claim that 1.75 was applied.
-    layer.Set("layer", JsonValue(1.75));
+    layer.Set("layer", JsonValue(7));
+    /// @note 正当な入力の適用後に host callback が値を変えても、読み返しで検出し batch 全体を戻す。
+    Context().markSceneDirty = [this, &node]() {
+        Context().sceneDirty = true;
+        if (node.name == "Partial") node.name = "Changed by host";
+    };
 
     const JsonValue response = Send(Checked(CurrentGuard(), { RenamePayload(node.instanceId, "Partial"), layer }));
 

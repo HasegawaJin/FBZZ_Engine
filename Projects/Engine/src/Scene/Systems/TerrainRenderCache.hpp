@@ -4,13 +4,16 @@
 /// @date    2026-10-30
 #pragma once
 #include <Engine/Scene/Entity.hpp>
+#include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <array>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
+namespace fbzz::asset { struct MaterialAsset; }
 namespace fbzz::scene {
 class Scene;
 using TerrainChunk = renderer::RenderTerrainPatch;
@@ -60,6 +63,9 @@ struct TerrainRenderCache {
     TerrainFallbackTextures fallback;
     std::unordered_map<TerrainChunkKey, TerrainChunk, TerrainChunkKeyHash> chunks;
     std::unordered_map<uint32_t, TerrainGpuState> entities;
+    uint64_t materialIndexRevision = UINT64_MAX;
+    int materialAssetGeneration = -1;
+    std::unordered_map<std::string, asset::AssetHandle<asset::MaterialAsset>> materials;
     ~TerrainRenderCache();
     void ReleaseEntity(EntityID entity);
 };

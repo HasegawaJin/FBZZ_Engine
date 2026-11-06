@@ -1,5 +1,5 @@
 /// @file    BusContractParityTests.cpp
-/// @brief   MCP 側の契約 (editorContracts.ts) と editor.bus.list 応答の型名が一致することを検証する。
+/// @brief   MCP と C++ の操作名・種別・プロトコルと共有入力ケースの整合を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 /// @note    片側だけに型を足すと «MCP のツールは有るのに UNKNOWN_COMMAND» か «Editor に実装が有るのに AI から呼べない» になる。どちらも実行するまで気付けない。
@@ -13,32 +13,71 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <regex>
-#include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::tests {
 namespace {
 
-/// @brief 契約ファイルの型名。TypeScript の型 (`t: 'x'`) と zod (`z.literal('x')` を持つ t) の両方から拾う。
-std::set<std::string> ContractTypes()
+using editor::ai::JsonValue;
+using ContractMap = std::map<std::string, std::string>;
+
+std::string ReadSource(const char* relativePath)
 {
-    const std::filesystem::path file = std::filesystem::path(FBZZ_SOURCE_DIR) / "Projects/EditorMcp/src/editorContracts.ts";
+    const std::filesystem::path file = std::filesystem::path(FBZZ_SOURCE_DIR) / relativePath;
     std::ifstream stream(file, std::ios::binary);
     EXPECT_TRUE(static_cast<bool>(stream)) << file.generic_string();
-    const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+    return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
+}
 
-    std::set<std::string> types;
-    const std::regex pattern(R"(\bt:\s*(?:z\.literal\()?'([A-Za-z][A-Za-z0-9_.]*)')");
-    for (auto it = std::sregex_iterator(text.begin(), text.end(), pattern); it != std::sregex_iterator(); ++it)
-        types.insert((*it)[1].str());
+/// @note 型宣言と実行時スキーマを混ぜると、一方から消えた操作をもう一方が隠してしまう。
+void AppendContractTypes(const std::string& source, std::string_view beginMarker,
+                         std::string_view endMarker, const char* kind,
+                         const std::regex& pattern, ContractMap& types)
+{
+    const auto begin = source.find(beginMarker);
+    ASSERT_NE(begin, std::string::npos) << beginMarker;
+    const auto end = source.find(endMarker, begin + beginMarker.size());
+    ASSERT_NE(end, std::string::npos) << endMarker;
+    const std::string section = source.substr(begin, end - begin);
+    std::size_t count = 0;
+    for (auto it = std::sregex_iterator(section.begin(), section.end(), pattern); it != std::sregex_iterator(); ++it) {
+        const std::string type = (*it)[1].str();
+        EXPECT_TRUE(types.emplace(type, kind).second) << kind << ": duplicate contract " << type;
+        ++count;
+    }
+    EXPECT_GT(count, 0u) << beginMarker;
+}
+
+ContractMap ContractTypes(bool runtimeSchema = true)
+{
+    const std::string source = ReadSource("Projects/EditorMcp/src/editorContracts.ts");
+    const std::regex pattern(runtimeSchema
+        ? R"(\bt:\s*z\.literal\('([A-Za-z][A-Za-z0-9_.]*)')"
+        : R"(\bt:\s*'([A-Za-z][A-Za-z0-9_.]*)')");
+    ContractMap types;
+    AppendContractTypes(source,
+        runtimeSchema ? "export const EditorQuerySchema" : "export type EditorQuery =",
+        runtimeSchema ? "const CommandNameSchema" : "export const EditorQuerySchema",
+        "query", pattern, types);
+    AppendContractTypes(source,
+        runtimeSchema ? "export const EditorCommandSchema" : "export type EditorCommand =",
+        runtimeSchema ? "export interface EditorBusRequest" : "export const EditorCommandSchema",
+        "command", pattern, types);
     return types;
 }
 
+struct BusType {
+    std::string type;
+    std::string kind;
+};
+
 class BusContractParityTest : public testkit::EditorFixture {
 protected:
-    void QueryBusTypes(std::vector<std::string>& types)
+    void QueryBusTypes(std::vector<BusType>& types)
     {
         using editor::ai::JsonValue;
         JsonValue payload = JsonValue::MakeObject();
@@ -82,7 +121,12 @@ protected:
             ASSERT_NE(type, nullptr) << responseText;
             ASSERT_TRUE(type->IsString()) << responseText;
             ASSERT_FALSE(type->AsString().empty()) << responseText;
-            types.push_back(type->AsString());
+            const JsonValue* kind = entry.Find("kind");
+            ASSERT_NE(kind, nullptr) << responseText;
+            ASSERT_TRUE(kind->IsString()) << responseText;
+            ASSERT_TRUE(kind->AsString() == "query" || kind->AsString() == "command" || kind->AsString() == "undoable") << responseText;
+            /// @note undoable は native 内部の区分で、wire では command として送る。
+            types.push_back({type->AsString(), kind->AsString() == "query" ? "query" : "command"});
         }
     }
 };
@@ -91,35 +135,129 @@ protected:
 
 TEST_F(BusContractParityTest, EveryContractTypeHasAHandler)
 {
-    std::vector<std::string> registered;
+    std::vector<BusType> registered;
     ASSERT_NO_FATAL_FAILURE(QueryBusTypes(registered));
-    const std::set<std::string> contract = ContractTypes();
+    const ContractMap contract = ContractTypes();
     ASSERT_GT(contract.size(), 100u) << "契約ファイルの読み取りに失敗している";
 
-    for (const std::string& type : contract) {
-        EXPECT_NE(std::find(registered.begin(), registered.end(), type), registered.end())
+    for (const auto& [type, kind] : contract) {
+        EXPECT_NE(std::find_if(registered.begin(), registered.end(), [&](const BusType& entry) { return entry.type == type; }), registered.end())
             << type << " は editorContracts.ts に有るが Editor のハンドラー表に無い";
     }
 }
 
 TEST_F(BusContractParityTest, EveryHandlerIsReachableFromTheContract)
 {
-    std::vector<std::string> registered;
+    std::vector<BusType> registered;
     ASSERT_NO_FATAL_FAILURE(QueryBusTypes(registered));
-    const std::set<std::string> contract = ContractTypes();
+    const ContractMap contract = ContractTypes();
     ASSERT_GT(contract.size(), 100u) << "契約ファイルの読み取りに失敗している";
 
-    for (const std::string& type : registered) {
-        EXPECT_TRUE(contract.count(type) > 0) << type << " は Editor に実装が有るが editorContracts.ts に無い (AI から呼べない)";
+    for (const BusType& entry : registered) {
+        EXPECT_TRUE(contract.count(entry.type) > 0) << entry.type << " は Editor に実装が有るが editorContracts.ts に無い (AI から呼べない)";
     }
 }
 
 TEST_F(BusContractParityTest, NoTypeIsRegisteredTwice)
 {
-    std::vector<std::string> registered;
+    std::vector<BusType> registered;
     ASSERT_NO_FATAL_FAILURE(QueryBusTypes(registered));
-    std::sort(registered.begin(), registered.end());
-    EXPECT_EQ(std::adjacent_find(registered.begin(), registered.end()), registered.end());
+    ContractMap types;
+    for (const BusType& entry : registered) EXPECT_TRUE(types.emplace(entry.type, entry.kind).second) << entry.type;
+}
+
+TEST_F(BusContractParityTest, QueryAndCommandKindsMatchNativeHandlers)
+{
+    std::vector<BusType> registered;
+    ASSERT_NO_FATAL_FAILURE(QueryBusTypes(registered));
+    const ContractMap contract = ContractTypes();
+    ASSERT_GT(contract.size(), 100u);
+
+    for (const BusType& entry : registered) {
+        const auto found = contract.find(entry.type);
+        ASSERT_NE(found, contract.end()) << entry.type;
+        EXPECT_EQ(found->second, entry.kind) << entry.type;
+    }
+}
+
+TEST_F(BusContractParityTest, TypeAliasesAndRuntimeSchemasDeclareTheSameKinds)
+{
+    const ContractMap types = ContractTypes(false);
+    const ContractMap schemas = ContractTypes();
+    ASSERT_GT(types.size(), 100u);
+    EXPECT_EQ(types, schemas);
+}
+
+TEST_F(BusContractParityTest, ProtocolMatchesTypeScriptAndSharedCases)
+{
+    const std::string source = ReadSource("Projects/EditorMcp/src/editorContracts.ts");
+    const std::regex pattern(R"(export const EDITOR_PROTOCOL\s*=\s*'([^']+)')");
+    std::smatch match;
+    ASSERT_TRUE(std::regex_search(source, match, pattern));
+    EXPECT_EQ(match[1].str(), editor::ai::kEditorProtocol);
+    const auto fixture = editor::ai::ParseJson(ReadSource("Projects/EditorMcp/src/tests/fixtures/EditorContractCases.json"));
+    ASSERT_TRUE(fixture.has_value());
+    const JsonValue* protocol = fixture->Find("protocol");
+    ASSERT_NE(protocol, nullptr);
+    ASSERT_TRUE(protocol->IsString());
+    EXPECT_EQ(protocol->AsString(), editor::ai::kEditorProtocol);
+}
+
+TEST_F(BusContractParityTest, SharedInputCasesMatchNativeDryRun)
+{
+    const auto fixture = editor::ai::ParseJson(ReadSource("Projects/EditorMcp/src/tests/fixtures/EditorContractCases.json"));
+    ASSERT_TRUE(fixture.has_value());
+    const JsonValue* cases = fixture->Find("cases");
+    const JsonValue* nodeId = fixture->Find("nodeId");
+    ASSERT_NE(cases, nullptr);
+    ASSERT_TRUE(cases->IsArray());
+    ASSERT_FALSE(cases->AsArray().empty());
+    ASSERT_NE(nodeId, nullptr);
+    ASSERT_TRUE(nodeId->IsString());
+    auto& node = AttachScene().CreateGameObject("Contract node");
+    node.instanceId = nodeId->AsString();
+    editor::ai::EditorBusDispatcher dispatcher(Context());
+
+    for (const JsonValue& entry : cases->AsArray()) {
+        const JsonValue* name = entry.Find("name");
+        const JsonValue* kind = entry.Find("kind");
+        const JsonValue* payload = entry.Find("payload");
+        const JsonValue* accepted = entry.Find("accepted");
+        ASSERT_NE(name, nullptr);
+        ASSERT_TRUE(name->IsString());
+        SCOPED_TRACE(name->AsString());
+        ASSERT_NE(kind, nullptr);
+        ASSERT_TRUE(kind->IsString());
+        ASSERT_TRUE(kind->AsString() == "query" || kind->AsString() == "command");
+        ASSERT_NE(payload, nullptr);
+        ASSERT_TRUE(payload->IsObject());
+        ASSERT_NE(accepted, nullptr);
+        ASSERT_TRUE(accepted->IsBool());
+        JsonValue request = JsonValue::MakeObject();
+        request.Set("protocol", JsonValue(editor::ai::kEditorProtocol));
+        request.Set("id", JsonValue(name->AsString()));
+        request.Set("kind", *kind);
+        request.Set("payload", *payload);
+        request.Set("dryRun", JsonValue(true));
+        const std::string responseText = dispatcher.Handle(editor::ai::SerializeJson(request));
+        const auto response = editor::ai::ParseJson(responseText);
+        ASSERT_TRUE(response.has_value()) << responseText;
+        const JsonValue* ok = response->Find("ok");
+        ASSERT_NE(ok, nullptr);
+        ASSERT_TRUE(ok->IsBool());
+        EXPECT_EQ(ok->AsBool(), accepted->AsBool()) << responseText;
+        if (!accepted->AsBool()) {
+            const JsonValue* error = response->Find("error");
+            ASSERT_NE(error, nullptr) << responseText;
+            const JsonValue* code = error->Find("code");
+            ASSERT_NE(code, nullptr) << responseText;
+            EXPECT_EQ(code->AsString(), "BAD_ARG") << responseText;
+        }
+    }
+    EXPECT_EQ(node.layer, 0);
+    EXPECT_TRUE(node.activeSelf());
+    EXPECT_NE(node.tag, "Enemy");
+    EXPECT_VEC3_NEAR(node.transform.position, math::Vector3::ZERO, 0.000001f);
 }
 
 } /// @note namespace fbzz::tests

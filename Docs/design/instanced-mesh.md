@@ -53,6 +53,24 @@ Render extraction resolves loaded instance-set GUIDs through bounded canonical-k
 
 Dedicated `.meshinstances` / `.terrainpaint` GUIDs use a bounded cache of generational AssetManager handles. Every hit reacquires the current value through `Get`; unload and AssetDatabase revision changes reopen normal resolution. The dispatcher chooses the format from the indexed path without adding filesystem checks to the legacy warm path. Snapshot revisions remain unique across imported object replacements, and same-content native reloads retain the current snapshot for editing history.
 
+## 配置全体の保守的カリング (2026-11-06)
+
+8kmマップの最適化では、常駐行の作成時に、有効な各個体のworld球を含むAABBをSourceへ保持する。ビューとライトごとに、個体単位のCPU走査・GPU選別用バッファの貸出より前に、同じ余白・球距離または前方距離と視錐台で配置全体を判定する。範囲外と確定したSourceだけを省き、極小物判定とLODは既存の個体単位の処理へ残す。
+
+部分編集では変更した球を既存AABBへ加え、削除・移動前の範囲は残す。全体の再構築時だけ縮めるため、範囲の再走査を毎フレームや一個体の編集へ追加しない。非有限の境界は粗い判定を使わず従来の個体処理へ戻す。全個体が無効なら描画しない。内容・owner変換・モデル境界・ResourceManager世代の既存照合に従い、カメラ移動だけで常駐行を再転送しない。
+
+GPU選別用バッファの確保後にUAV等の検証で拒否した場合は、ハンドルをResourceManagerへ返す。ディスクリプター不足でプールへ入らなかったバッファを保持し続けない。
+
+## 地形・森林の参照解決 (2026-11-06)
+
+Scene読込は保存GUIDを標準の`Assets/...`参照へ戻す。配置定義と地形材質は、GUIDに加えて、現在のプロジェクト索引・実パスと一致した読込成功済みの標準参照も世代付きhandleで再利用する。各表は最大4,096件とし、AssetDatabaseの索引版またはAssetManagerの内容世代が変われば捨てる。非標準表記・未登録・共有側への相対fallback・失敗した読込は従来のパス優先順位と再試行を維持する。索引付きの読込済み資産のファイル変更は既存の監視・移動・削除通知から反映し、定常描画ではディスクの有無を再確認しない。
+
+各取得で現在のhandleをGetし直すため、Unload・プロジェクト切替後の実体や過去のポインターを使わない。地形材質のauthoring snapshotとテクスチャのbindless添字は各抽出で現在値を読み、地形のdirtyが立たないInspector編集・ホットリロードも反映する。地形資源は既存のScene・ResourceManager・Reset世代の所有を保つ。配置数・高さ・splat・LOD・風と影の時刻は変更しない。
+
+索引通知を提供しないホストや同一バイナリーの比較では、起動時に`FBZZ_LOADED_REFERENCE_MODE=poll`を指定すると、この参照再利用を省いて通常のロード解決へ戻る。実行中には切り替えない。
+
+Profilerの明示的なInstancesフィルターは定義解決・snapshot取得・owner状態を、Terrainsフィルターはsetup・層材質・patchを分けて集計する。通常描画では内部フェーズの時計を読まない。検証は現在のGPU層パラメーター、保持snapshot、編集・reload・unload・移動・Reset・同じ標準パスを持つ別プロジェクトで行う。
+
 ## 遠景樹木のアセットLOD (2026-11-06)
 
 ユーザーの遠景ビルボード化と負荷削減の指示により、島のSpruce/Birchへ既存4段階目のLODを使う。LOD0〜2のモデルと材質を保ち、最後に切替前のLOD2の実形状・透過色・接空間法線を焼いた交差ビルボードを足す。外形寸法はLOD0を基準にし、切替で樹冠が急に密になることを避ける。3方向の垂直板と上面の計8三角形を標準PBR/alpha-testの単一partとして描き、通常のinstancing・影・GBuffer・選択を共有する。配置ID・位置・姿勢・本数は変えない。遠景の材質は風を0にし、近景の葉は既存の材質で揺らす。

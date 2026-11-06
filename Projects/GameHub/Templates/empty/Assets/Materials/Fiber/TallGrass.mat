@@ -3,7 +3,7 @@
 # @author  Hasegawa Jin
 # @date    2026-09-17
 version = 1
-shader = 'Assets/Shaders/Fiber/FiberShell.hlsl'
+shader = 'guid:aef89576fbea4916a2a3905f4ef1ead5'
 blend_mode = 'Opaque'
 double_sided = true
 depth_write = true

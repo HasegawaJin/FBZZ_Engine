@@ -76,7 +76,9 @@ if(FBZZ_ENABLE_DX12)
 endif()
 # @note The canonical Editor layout and package contract apply equally to SDKs without DX12.
 foreach(FBZZ_CONTRACT_FILE CMake/FBZZAgilitySDK.cmake CMake/StageAgilitySDK.cmake CMake/AgilitySDKExports.cpp.in
-        CMake/SDK/fbzz-sdk.toml.in CMake/SDK/FBZZConfig.cmake.in CMake/SDK/StageFBZZSDK.cmake CMake/SDK/ValidateFBZZSDK.cmake)
+        CMake/SDK/fbzz-sdk.toml.in CMake/SDK/FBZZConfig.cmake.in CMake/SDK/FBZZRuntime.cmake
+        CMake/SDK/StageFBZZEngineAssets.cmake CMake/SDK/PruneFBZZSDKAssets.cmake
+        CMake/SDK/StageFBZZSDK.cmake CMake/SDK/ValidateFBZZSDK.cmake)
     file(SHA256 "${CMAKE_SOURCE_DIR}/${FBZZ_CONTRACT_FILE}" FBZZ_CONTRACT_HASH)
     string(APPEND FBZZ_SDK_RUNTIME_CONTRACT ";${FBZZ_CONTRACT_FILE}=${FBZZ_CONTRACT_HASH}")
 endforeach()
@@ -159,6 +161,8 @@ install(FILES "${FBZZ_DOTNET_ROOT}/LICENSE.txt" "${FBZZ_DOTNET_ROOT}/ThirdPartyN
 install(FILES
     "${FBZZ_SDK_GENERATED_DIR}/FBZZConfig.cmake"
     "${FBZZ_SDK_GENERATED_DIR}/FBZZConfigVersion.cmake"
+    "${CMAKE_SOURCE_DIR}/CMake/SDK/FBZZRuntime.cmake"
+    "${CMAKE_SOURCE_DIR}/CMake/SDK/StageFBZZEngineAssets.cmake"
     "${CMAKE_SOURCE_DIR}/CMake/build.config.in"
     DESTINATION "cmake/FBZZ"
 )
@@ -256,6 +260,10 @@ function(FBZZAddSdkTarget target sdkRoot preview)
             --install "${CMAKE_BINARY_DIR}"
             --config "$<CONFIG>"
             --prefix "${sdkRoot}"
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_ASSETS=${CMAKE_SOURCE_DIR}/Assets"
+            "-DSDK_ROOT=${sdkRoot}"
+            -P "${CMAKE_SOURCE_DIR}/CMake/SDK/PruneFBZZSDKAssets.cmake"
         COMMAND ${CMAKE_COMMAND}
             "-DSDK_ROOT=${sdkRoot}"
             "-DCONFIG=$<CONFIG>"

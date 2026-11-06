@@ -5,6 +5,7 @@
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Import/ImportCacheStore.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/MetaFile.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <toml++/toml.hpp>
@@ -250,7 +251,7 @@ bool WriteRoot(const std::string& metaPath, const toml::table& root)
 {
     std::ostringstream ss;
     ss << root;
-    return util::FileSystem::WriteTextAtomic(metaPath, ss.str());
+    return asset::MetaFile::Save(metaPath, ss.str());
 }
 
 void WriteOptionsToRoot(toml::table& root, const FbxImportOptions& options)

@@ -1,5 +1,9 @@
+# @file    UITextGradient.mat
+# @brief   Project-owned starter asset referencing shared SDK materials.
+# @author  Hasegawa Jin
+# @date    2026-08-23
 version = 1
-shader = "Assets/Shaders/UI/Material/UITextGradient.hlsl"
+shader = "guid:f367455f104a482286dbb6a4d27e82ff"
 render_path = "ui"
 blend_mode = "AlphaBlend"
 double_sided = true

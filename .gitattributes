@@ -5,6 +5,9 @@
 # @note 通常テキストは自動判定して LF へ正規化する。
 * text=auto
 
+# @note メタデータは端末のcore.autocrlfに依存せずLFで保存する。
+*.meta text eol=lf
+
 # @note 固定パッケージは VERSION の SHA256 と一致させるため、改行を含む取得時の全バイトを保持する。
 ThirdParty/AgilitySDK/** -text
 ThirdParty/DXC/** -text

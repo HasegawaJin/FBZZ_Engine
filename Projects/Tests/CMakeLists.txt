@@ -25,6 +25,9 @@ include("${CMAKE_SOURCE_DIR}/CMake/FBZZTests.cmake")
 # @note Runtime packaging is a CMake contract, so validate its isolated fixture through the same CTest entry point.
 add_test(NAME SharedSDKTemplates
     COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+        "-DTEST_GENERATOR=${CMAKE_GENERATOR}"
+        "-DTEST_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}"
+        "-DTEST_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}"
         -P "${CMAKE_SOURCE_DIR}/CMake/SDK/TestSharedSDKTemplates.cmake")
 set_tests_properties(SharedSDKTemplates PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 120 LABELS "Build")
@@ -259,6 +262,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/ParticleCurveTests.cpp
         Engine/Auto/VectorFieldTests.cpp
         Engine/Auto/AssetTypeBoundaryTests.cpp
+    Engine/Auto/SharedSDKAssetTests.cpp
         Engine/Auto/TransientGpuStateTests.cpp
         Engine/Auto/RuntimeMeshOwnershipTests.cpp
         Engine/Auto/HostResourceBindingTests.cpp
@@ -390,6 +394,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/AssetBrowserThumbnailTests.cpp
     Editor/Auto/AssetDirtyRegistryTests.cpp
     Editor/Auto/AssetInspectorPersistenceTests.cpp
+    Editor/Auto/MetaFilePersistenceTests.cpp
     Editor/Auto/AssetPathTests.cpp
     Editor/Auto/AssetPickerTests.cpp
     Editor/Auto/ClothPinBrushTests.cpp

@@ -14,6 +14,7 @@
 #include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
 #include "TerrainHeightHelpers.hpp"
 #include "TerrainRenderCache.hpp"
+#include "../../Asset/CacheableLoadedReference.hpp"
 #include <Graphics/Renderer/RenderScene.hpp>
 #include "RenderPasses/Geometry/TerrainPatchIndices.hpp"
 #include "RenderPasses/Geometry/TerrainSurfacePatch.hpp"
@@ -41,9 +42,11 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <Physics/Layer.hpp>
+#include <Core/Profiler/ProfileScope.hpp>
 #include <array>
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -61,6 +64,23 @@ static constexpr int kLODCount            = 3;
 static constexpr int kLODSteps[kLODCount] = { 1, 2, 4 };
 
 namespace {
+/// @note Only an explicit terrain diagnostic reads clocks; accumulate phases without per-patch profiler records.
+class TerrainPhaseTimer {
+public:
+    TerrainPhaseTimer(bool enabled, int64_t& elapsed) : m_elapsed(enabled ? &elapsed : nullptr)
+    { if (m_elapsed) m_start = std::chrono::steady_clock::now(); }
+    ~TerrainPhaseTimer() { Finish(); }
+    void Finish()
+    {
+        if (!m_elapsed) return;
+        *m_elapsed += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - m_start).count();
+        m_elapsed = nullptr;
+    }
+private:
+    int64_t* m_elapsed;
+    std::chrono::steady_clock::time_point m_start{};
+};
+
 struct TerrainCandidatePool {
     std::vector<std::unique_ptr<std::vector<EntityID>>> entries;
     size_t depth = 0;
@@ -367,6 +387,27 @@ static float TGetF(const asset::MaterialAssetAuthoring* m, const std::string& na
     if (it != m->params.end() && !it->second.empty()) return it->second[0];
     return def;
 }
+
+/// @note Retain handles, never MaterialAsset pointers or authoring snapshots; edits/reimports remain visible on every extraction.
+/// @see Docs/design/instanced-mesh.md
+static asset::MaterialAsset::AuthoringSnapshotPtr ReadTerrainMaterial(TerrainRenderCache& cache, const std::string& path)
+{
+    if (path.empty()) return {};
+    const auto revision = asset::AssetDatabase::Revision();
+    const auto generation = asset::AssetManager::GetAssetGeneration();
+    if (cache.materialIndexRevision != revision || cache.materialAssetGeneration != generation) {
+        cache.materials.clear(); cache.materialIndexRevision = revision; cache.materialAssetGeneration = generation;
+    }
+    if (const auto found = cache.materials.find(path); found != cache.materials.end()) {
+        if (const auto* material = asset::AssetManager::Get(found->second)) return material->ReadAuthoring();
+        cache.materials.erase(found);
+    }
+    const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
+    const auto* material = asset::AssetManager::Get(handle);
+    if (material && cache.materials.size() < 4096 && asset::detail::IsCacheableLoadedReference(path))
+        cache.materials.emplace(path, handle);
+    return material ? material->ReadAuthoring() : asset::MaterialAsset::AuthoringSnapshotPtr{};
+}
 static std::string TGetTex(const asset::MaterialAssetAuthoring* m, const std::string& name)
 {
     if (!m) return {};
@@ -613,8 +654,7 @@ static void ExtractTerrainSurface(TerrainRenderCache& cache, const TerrainCompon
     surface.constants = base.constants;
     surface.splatIndices = base.splatIndices; surface.splatWeights = base.splatWeights;
     if (!terrain.surfaceMaterial.empty()) {
-        const auto materialAuthoringSnapshot = asset::ReadMaterialAuthoring(
-            asset::AssetManager::Load<asset::MaterialAsset>(terrain.surfaceMaterial));
+        const auto materialAuthoringSnapshot = ReadTerrainMaterial(cache, terrain.surfaceMaterial);
         const auto* material = materialAuthoringSnapshot ? &materialAuthoringSnapshot->Data() : nullptr;
         auto layer = ReadTerrainLayerParamsImpl(material, {});
         layer.triplanar = 1.0f; layer.autoBlendEnabled = 0.0f;
@@ -678,7 +718,15 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
     const ActiveWeather weather = FindActiveWeather(scene);
 
     const TerrainCandidateLease candidates(scene);
+    bool collectPhases = false;
+    if (profiler::Profiler::IsEnabled()) {
+        const auto filter = profiler::Profiler::GetRequestedCaptureFilter();
+        collectPhases = filter.scope == "RenderSceneExtractor::Terrains"
+            && (filter.category.empty() || filter.category == "General");
+    }
+    int64_t layersNs = 0, patchesNs = 0, setupNs = 0;
     for (const EntityID eid : candidates.Entities()) {
+        TerrainPhaseTimer setupTimer(collectPhases, setupNs);
         auto* ownerObject = scene.GetGameObject(eid);
         auto* terrainComponent = scene.GetComponent<TerrainComponent>(eid);
         if (!ownerObject || !terrainComponent) continue;
@@ -711,21 +759,17 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
             RebuildSplatTextures(gpu, terrain, resources);
             gpu.vegetationRevision = terrain.vegetationRevision;
         }
+        setupTimer.Finish();
+        TerrainPhaseTimer layersTimer(collectPhases, layersNs);
 
-        /// @note 層パラメーターは毎フレーム .mat から読み直す。Material インスペクタで .mat を直接編集しても
-        /// @note 地形側の dirty は立たないため。抽出は map 参照だけで安く、内容が同じなら転送もしない。
+        /// @note 地形の dirty に依存せず現 authoring を毎回読む。索引付きの読込済み参照だけ handle を再利用する。
         /// @note bindless 添字も毎フレーム引く。差し替え・ホットリロードで変わるため (Material::Upload と同じ方針)。
         std::vector<TerrainLayerGpu> layers;
         layers.reserve(static_cast<size_t>((std::max)(terrain.LayerCount(), 1)));
         bool anyAutoBlend = false;
         for (const std::string& path : terrain.layerMaterials) {
-            asset::MaterialAsset::AuthoringSnapshotPtr materialAuthoringSnapshot;
-        const asset::MaterialAssetAuthoring* material = nullptr;
-            if (!path.empty())
-                {
-                materialAuthoringSnapshot = asset::ReadMaterialAuthoring(asset::AssetManager::Load<asset::MaterialAsset>(path));
-                material = materialAuthoringSnapshot ? &materialAuthoringSnapshot->Data() : nullptr;
-            }
+            const auto materialAuthoringSnapshot = ReadTerrainMaterial(cache, path);
+            const auto* material = materialAuthoringSnapshot ? &materialAuthoringSnapshot->Data() : nullptr;
             TerrainLayerGpu layer = ReadTerrainLayerParamsImpl(material, {});
             FillTerrainLayerTextureIndicesImpl(resources, material, {}, cache.fallback, layer);
             anyAutoBlend |= layer.autoBlendEnabled > 0.0f && layer.autoBlendStrength > 0.0f;
@@ -742,6 +786,8 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
 
         const renderer::IStructuredBuffer* layerBuffer = resources.Get(gpu.layerBuffer);
         const uint32_t layerBufferIndex = layerBuffer ? layerBuffer->GetBindlessIndex() : renderer::INVALID_BINDLESS_INDEX;
+        layersTimer.Finish();
+        TerrainPhaseTimer patchesTimer(collectPhases, patchesNs);
         /// @note 添字が無いと ResourceDescriptorHeap の範囲外を読む。描かない方が原因を切り分けやすい。
         if (layerBufferIndex == renderer::INVALID_BINDLESS_INDEX) continue;
 
@@ -786,6 +832,11 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         PrepareTerrainGpuGeometry(gpu, terrain, neighbors, input, resources);
         ExtractTerrainSurface(cache, terrain, eid, gpu, input, cache.fallback, resources, output);
         output.terrains.push_back(std::move(input));
+    }
+    if (collectPhases) {
+        profiler::Profiler::PushSample({"RenderSceneExtractor::Terrains::Setup", "General"}, static_cast<double>(setupNs) / 1000000.0);
+        profiler::Profiler::PushSample({"RenderSceneExtractor::Terrains::Layers", "General"}, static_cast<double>(layersNs) / 1000000.0);
+        profiler::Profiler::PushSample({"RenderSceneExtractor::Terrains::Patches", "General"}, static_cast<double>(patchesNs) / 1000000.0);
     }
 }
 }

@@ -134,6 +134,7 @@ TEST_F(FiberTest, ComponentDefaultsFitCharacterBudget)
     const scene::FiberComponent fiber;
     EXPECT_EQ(fiber.m_shellCount, 16);
     EXPECT_TRUE(fiber.m_distanceLod);
+    EXPECT_TRUE(fiber.m_castShadows);
     EXPECT_LE(fiber.m_shadowShellCount, fiber.m_shellCount);
     EXPECT_EQ(fiber.m_bladeSegments, 6);
     EXPECT_EQ(fiber.m_shadowBladeSegments, 0);
@@ -230,6 +231,7 @@ TEST_F(FiberTest, PreservesFiberModesAndMaterialThroughSceneSave)
     fiber.m_motionHistories.back().Advance(42, renderer::FiberDeformationState{});
     fiber.m_materialPath = "guid:739d861ca4e047919d17c941c10191c8|Assets/Materials/Fiber/Grass.mat";
     fiber.m_shadowShellCount = 3;
+    fiber.m_castShadows = false;
     fiber.m_colorTint = {0.5f, 0.25f, 1.0f};
     fiber.m_lengthScale = 1.5f;
     fiber.m_densityScale = 0.5f;
@@ -249,11 +251,25 @@ TEST_F(FiberTest, PreservesFiberModesAndMaterialThroughSceneSave)
     EXPECT_TRUE(loaded->m_motionHistories.empty());
     EXPECT_EQ(loaded->m_materialPath, fiber.m_materialPath);
     EXPECT_EQ(loaded->m_shadowShellCount, 3);
+    EXPECT_FALSE(loaded->m_castShadows);
     EXPECT_VEC3_NEAR(loaded->m_colorTint, fiber.m_colorTint, 1.0e-6f);
     EXPECT_FLOAT_EQ(loaded->m_lengthScale, 1.5f);
     EXPECT_FLOAT_EQ(loaded->m_densityScale, 0.5f);
     EXPECT_FLOAT_EQ(loaded->m_clumpingScale, 2.0f);
     EXPECT_EQ(loaded->m_maskPath, fiber.m_maskPath);
+
+    std::string legacyText;
+    ASSERT_TRUE(util::FileSystem::ReadText(path, legacyText));
+    const std::string shadowFlag = "castShadows = false";
+    const auto shadowFlagAt = legacyText.find(shadowFlag);
+    ASSERT_NE(shadowFlagAt, std::string::npos);
+    legacyText.erase(shadowFlagAt, shadowFlag.size());
+    ASSERT_TRUE(util::FileSystem::WriteText(path, legacyText));
+    const auto legacy = scene::SceneSerializer::LoadData(path);
+    ASSERT_NE(legacy, nullptr);
+    const auto legacyEntities = legacy->GetEntities<scene::FiberComponent>();
+    ASSERT_EQ(legacyEntities.size(), 1u);
+    EXPECT_TRUE(legacy->GetComponent<scene::FiberComponent>(legacyEntities[0])->m_castShadows);
 }
 
 TEST_F(FiberTest, AdvancesWindHistoryEvenWhenWorldIsStatic)

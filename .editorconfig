@@ -1,3 +1,7 @@
+# @file    .editorconfig
+# @brief   ソースとアセットメタデータの文字コード・改行・インデント設定。
+# @author  Hasegawa Jin
+# @date    2026-05-15
 root = true
 
 [*]
@@ -19,3 +23,7 @@ indent_size = 4
 
 [*.md]
 trim_trailing_whitespace = false
+
+[*.meta]
+charset = utf-8
+end_of_line = lf

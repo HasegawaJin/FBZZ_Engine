@@ -540,7 +540,7 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             input.skinned = mesh->isSkinned;
             input.preparedSkinning = surface.preparedSkinning;
             input.preparedSkinningWrite = surface.preparedSkinningWrite;
-            input.cast = surface.cast;
+            input.cast = fiber.m_castShadows && surface.cast;
             input.validPreviousSkin = surface.validPreviousSkin;
             input.object.world = go.transform.GetWorldMatrix();
             input.object.worldInvTranspose = math::Matrix4::InverseTransposeAffine(input.object.world);

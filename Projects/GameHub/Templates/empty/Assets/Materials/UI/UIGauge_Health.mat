@@ -1,5 +1,9 @@
+# @file    UIGauge_Health.mat
+# @brief   Project-owned starter asset referencing shared SDK materials.
+# @author  Hasegawa Jin
+# @date    2026-08-23
 version = 1
-shader = "Assets/Shaders/UI/Material/UIGauge.hlsl"
+shader = "guid:ac7fd2a1b2d84dba82717575295114c2"
 render_path = "ui"
 blend_mode = "AlphaBlend"
 double_sided = true

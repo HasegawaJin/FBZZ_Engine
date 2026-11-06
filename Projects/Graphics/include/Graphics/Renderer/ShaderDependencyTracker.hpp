@@ -209,6 +209,9 @@ inline bool HasNewerDependency(const std::filesystem::path& sourcePath,
             error.clear();
             if (!std::filesystem::is_regular_file(dependency, error)) dependency = shaderRoot / includeName;
             error.clear();
+            if (!std::filesystem::is_regular_file(dependency, error))
+                dependency = ResolveShaderFilePath(std::filesystem::path("Assets/Shaders") / includeName);
+            error.clear();
             if (!std::filesystem::is_regular_file(dependency, error)
                 || HasNewerDependency(dependency, shaderRoot, binaryTime, visited, state)) return true;
         }

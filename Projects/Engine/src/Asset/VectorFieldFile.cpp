@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-16
 #include <Engine/Asset/VectorFieldFile.hpp>
+#include <Engine/Asset/MetaFile.hpp>
 #include "FlipbookImageIO.hpp"
 #include <Engine/Util/FileSystem.hpp>
 #ifndef WIN32_LEAN_AND_MEAN
@@ -28,9 +29,7 @@ constexpr uint32_t kMaxResolution = fluid::kMaxVectorFieldResolution;
 
 /// @brief 呼び出しスレッドで COM を使える状態にする。
 /// @return COM が使えるか。既に別モード (STA) で初期化済みの RPC_E_CHANGED_MODE も使える扱い。
-/// @note CoUninitialize は呼ばない。DirectXTex は WIC ファクトリをプロセス全体でキャッシュするため、
-///       最後の参照で COM を畳むと次回の呼び出しが解放済みのファクトリを掴む。同じプロセスで
-///       保存と読み込みを続けると 2 回目以降が必ず失敗する。
+/// @note DirectXTexのWICファクトリはプロセス全体で共有するため、解放済みCOM参照を残さないようCoUninitializeを呼ばない。
 /// @see https://learn.microsoft.com/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex (CoInitializeEx, Return value)
 bool EnsureCom()
 {
@@ -101,7 +100,7 @@ bool SaveVectorFieldPng(const std::string& path, const fluid::VectorFieldAsset& 
     }
     std::ostringstream text;
     text << root;
-    return util::FileSystem::WriteTextAtomic(path + ".meta", text.str());
+    return MetaFile::Save(path + ".meta", text.str());
 }
 
 bool LoadVectorFieldPng(const std::string& path, fluid::VectorFieldAsset& outField)
@@ -159,7 +158,7 @@ bool LoadVectorFieldPng(const std::string& path, fluid::VectorFieldAsset& outFie
     return true;
 }
 
-} // namespace
+} /// @note namespace
 
 bool SaveVectorField(const std::string& absPath, const fluid::VectorFieldAsset& field)
 {
@@ -178,8 +177,7 @@ bool IsVectorFieldPng(const std::string& absPath)
         && root["vector_field"]["version"].value_or(0) == 1;
 }
 
-/// @note .fga は 1 行目にヘッダー、以降カンマ区切りで xyz が並ぶ ASCII
-///       (sizeX,sizeY,sizeZ, minX,minY,minZ, maxX,maxY,maxZ, x,y,z, ...)。
+/// @note .fgaはsize、境界のmin/max、各点のxyzをカンマで区切るASCII形式。
 /// @note 改行の位置は書き出したツールによって違うので、区切りだけを見て数値を順に取る。
 bool ImportFgaFile(const std::string& absPath, fluid::VectorFieldAsset& outField)
 {

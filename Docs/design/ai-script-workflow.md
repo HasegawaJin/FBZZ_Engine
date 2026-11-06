@@ -259,7 +259,7 @@ Playtest は既存 scenario_run / scenario_status とシナリオを使う。「
 | 読み取り catalog / inspect | `Projects/Editor/src/Ai/Bus/ScriptHandlers.cpp` |
 | transaction の command 構築 | `Projects/Editor/src/Ai/EditorBusDispatcher.cpp` |
 | Composite / Undo revision | `Projects/Editor/src/Util/UndoStack.cpp` |
-| Scene 検索と MCP の上限 | `Projects/Editor/src/Ai/Bus/SceneHandlers.cpp`、`Projects/EditorMcp/src/tools.ts` |
+| Scene 検索と MCP の上限 | `Projects/Editor/src/Ai/Bus/SceneHandlers.cpp`、`Projects/EditorMcp/src/Tools/SceneTools.ts` |
 | GUID の保存・要求検証 | `Projects/Engine/src/Scene/SceneSerializer.cpp`、既存 ScriptSystem |
 | Op の共通登録 | `Projects/Editor/src/Op/` |
 | シナリオの実行・表明 | `Projects/Editor/src/Playtest/PlaytestRunner.cpp`、`Projects/Editor/src/Ai/Bus/PlaytestHandlers.cpp`、[AI の検証ループ](ai-verification-loop.md) |

@@ -4,6 +4,7 @@
 /// @date    2026-07-08
 #include <Engine/Asset/ModelSource.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/MetaFile.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -123,7 +124,7 @@ bool WriteGuidToMeta(const std::string& metaPath, const std::string& guid)
 
     std::ostringstream ss;
     ss << root;
-    return util::FileSystem::WriteText(metaPath, ss.str());
+    return MetaFile::Save(metaPath, ss.str());
 }
 
 /// @brief `Foo.fbx` のインポートで生成される従属フォルダ `Foo/` か判定する。
